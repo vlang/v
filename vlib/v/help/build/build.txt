@@ -45,6 +45,7 @@ NB: the build flags are shared with the run command too:
     * `js_node`           - V outputs JS source code to run with nodejs.
     * `js_freestanding`   - V outputs JS source code with no hard runtime dependency.
     * `native`            - V outputs a native executable directly (see -arch x64|arm64 and -os linux|macos) (EXPERIMENTAL).
+    * `wasm`              - V outputs a WebAssembly module directly (see -os wasi|browser) (EXPERIMENTAL).
 
   -d <flag>[=<value>], -define <flag>[=<value>]
     Define the provided flag.
@@ -209,6 +210,7 @@ NB: the build flags are shared with the run command too:
 For C-specific build flags, use `v help build-c`.
 For JS-specific build flags, use `v help build-js`.
 For Native-specific build flags, use `v help build-native`.
+For WebAssembly-specific build flags, use `v help build-wasm`.
 
 See also:
    `v help run` for documentation regarding `v run`.

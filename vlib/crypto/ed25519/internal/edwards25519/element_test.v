@@ -364,7 +364,7 @@ fn (mut v Element) to_big_integer() big.Integer {
 
 // from_big_integer sets v = n, and returns v. The bit length of n must not exceed 256.
 fn (mut v Element) from_big_integer(n big.Integer) !Element {
-	if n.binary_str().len > 32 * 8 {
+	if n.bin_str().len > 32 * 8 {
 		return error('invalid edwards25519 element input size')
 	}
 	mut bytes, _ := n.bytes()

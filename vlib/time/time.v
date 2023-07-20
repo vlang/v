@@ -86,6 +86,10 @@ pub enum FormatDelimiter {
 	no_delimiter
 }
 
+pub fn Time.new(t Time) Time {
+	return new_time(t)
+}
+
 // smonth returns month name abbreviation.
 pub fn (t Time) smonth() string {
 	if t.month <= 0 || t.month > 12 {

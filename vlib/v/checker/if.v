@@ -27,8 +27,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	mut node_is_expr := false
 	if node.branches.len > 0 && node.has_else {
 		stmts := node.branches[0].stmts
-		if stmts.len > 0 && stmts.last() is ast.ExprStmt
-			&& (stmts.last() as ast.ExprStmt).typ != ast.void_type {
+		if stmts.len > 0 && stmts.last() is ast.ExprStmt && stmts.last().typ != ast.void_type {
 			node_is_expr = true
 		}
 	}
@@ -509,7 +508,7 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope) {
 					if is_variable {
 						if (node.left is ast.Ident && node.left.is_mut)
 							|| (node.left is ast.SelectorExpr && node.left.is_mut) {
-							c.fail_if_immutable(node.left)
+							c.fail_if_immutable(mut node.left)
 						}
 						// TODO: Add check for sum types in a way that it doesn't break a lot of compiler code
 						if mut node.left is ast.Ident

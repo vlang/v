@@ -59,7 +59,12 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		shared_styp = g.typ(shared_typ)
 		g.writeln('(${shared_styp}*)__dup${shared_styp}(&(${shared_styp}){.mtx = {0}, .val =(${styp}){')
 	} else if is_amp || g.inside_cast_in_heap > 0 {
-		g.write('(${styp}*)memdup(&(${styp}){')
+		if node.typ.has_flag(.option) {
+			basetyp := g.base_type(node.typ)
+			g.write('(${basetyp}*)memdup(&(${basetyp}){')
+		} else {
+			g.write('(${styp}*)memdup(&(${styp}){')
+		}
 	} else if node.typ.is_ptr() {
 		basetyp := g.typ(node.typ.set_nr_muls(0))
 		if is_multiline {
@@ -305,7 +310,12 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
 		g.write('}, sizeof(${shared_styp}))')
 	} else if is_amp || g.inside_cast_in_heap > 0 {
-		g.write(', sizeof(${styp}))')
+		if node.typ.has_flag(.option) {
+			basetyp := g.base_type(node.typ)
+			g.write(', sizeof(${basetyp}))')
+		} else {
+			g.write(', sizeof(${styp}))')
+		}
 	}
 }
 
@@ -517,8 +527,6 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 	} else {
 		g.type_definitions.writeln('\tEMPTY_STRUCT_DECLARATION;')
 	}
-	// g.type_definitions.writeln('} $name;\n')
-	//
 	ti_attrs := if !g.is_cc_msvc && s.attrs.contains('packed') {
 		'__attribute__((__packed__))'
 	} else {
@@ -528,8 +536,10 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 	if !is_anon {
 		g.type_definitions.write_string(';')
 	}
-	g.type_definitions.writeln('\n')
-	g.type_definitions.writeln(post_pragma)
+	g.type_definitions.writeln('')
+	if post_pragma.len > 0 {
+		g.type_definitions.writeln(post_pragma)
+	}
 }
 
 fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Language) {

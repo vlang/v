@@ -29,8 +29,8 @@ fn (m Integer) montgomery() MontgomeryContext {
 		// ri := multiplicative inverse of r in the ring Z/nZ
 		// ri * r == 1 (mod n)
 		// ni = ((ri * 2^(log_2(n))) - 1) / n
-		ni: (one_int.lshift(b).mod_inv(n).lshift(b) - one_int) / n
-		rr: one_int.lshift(b * 2) % n
+		ni: (one_int.left_shift(b).mod_inv(n).left_shift(b) - one_int) / n
+		rr: one_int.left_shift(b * 2) % n
 	}
 }
 
@@ -164,7 +164,7 @@ fn (a Integer) mont_even(x Integer, m Integer) Integer {
 	}
 
 	m1, j := m.rsh_to_set_bit()
-	m2 := one_int.lshift(j)
+	m2 := one_int.left_shift(j)
 
 	$if debug {
 		assert m1 * m2 == m
@@ -321,7 +321,7 @@ fn (a Integer) to_mont(ctx MontgomeryContext) Integer {
 fn (a Integer) from_mont(ctx MontgomeryContext) Integer {
 	log2n := u32(ctx.n.bit_len())
 
-	r := (a + ((a.mask_bits(log2n) * ctx.ni).mask_bits(log2n) * ctx.n)).rshift(log2n)
+	r := (a + ((a.mask_bits(log2n) * ctx.ni).mask_bits(log2n) * ctx.n)).right_shift(log2n)
 
 	return if r.abs_cmp(ctx.n) >= 0 {
 		r - ctx.n

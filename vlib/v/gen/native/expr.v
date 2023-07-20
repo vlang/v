@@ -98,7 +98,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.code_gen.gen_match_expr(node)
 		}
 		ast.SelectorExpr {
-			g.code_gen.gen_selector_expr(node)
+			g.gen_selector_expr(node)
 		}
 		ast.CastExpr {
 			g.code_gen.gen_cast_expr(node)
@@ -111,7 +111,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.expr(node.expr)
 		}
 		ast.ConcatExpr {
-			g.code_gen.gen_concat_expr(node)
+			g.gen_concat_expr(node)
 		}
 		ast.TypeOf {
 			g.gen_typeof_expr(node, false)
@@ -417,6 +417,43 @@ fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string) {
 			if newline {
 				g.code_gen.gen_print('\n', fd)
 			}
+		}
+	}
+}
+
+fn (mut g Gen) gen_selector_expr(expr ast.SelectorExpr) {
+	main_reg := g.code_gen.main_reg()
+	g.expr(expr.expr)
+	offset := g.get_field_offset(expr.expr_type, expr.field_name)
+	g.code_gen.add(main_reg, offset)
+	g.code_gen.mov_deref(main_reg, main_reg, expr.typ)
+}
+
+fn (mut g Gen) gen_left_value(node ast.Expr) {
+	match node {
+		ast.Ident {
+			offset := g.get_var_offset(node.name)
+			g.code_gen.lea_var_to_reg(Amd64Register.rax, offset)
+		}
+		ast.SelectorExpr {
+			g.expr(node.expr)
+			offset := g.get_field_offset(node.expr_type, node.field_name)
+			if offset != 0 {
+				g.code_gen.add(Amd64Register.rax, offset)
+			}
+		}
+		ast.StructInit, ast.ArrayInit {
+			g.expr(node)
+		}
+		ast.IndexExpr {} // TODO
+		ast.PrefixExpr {
+			if node.op != .mul {
+				g.n_error('Unsupported left value')
+			}
+			g.expr(node.right)
+		}
+		else {
+			g.n_error('Unsupported left value')
 		}
 	}
 }

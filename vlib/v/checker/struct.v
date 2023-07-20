@@ -88,8 +88,12 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			if field.typ.has_flag(.result) {
 				c.error('struct field does not support storing Result', field.option_pos)
 			}
-			c.ensure_type_exists(field.typ, field.type_pos) or { return }
-			c.ensure_generic_type_specify_type_names(field.typ, field.type_pos) or { return }
+			if !c.ensure_type_exists(field.typ, field.type_pos) {
+				continue
+			}
+			if !c.ensure_generic_type_specify_type_names(field.typ, field.type_pos) {
+				continue
+			}
 			if field.typ.has_flag(.generic) {
 				has_generic_types = true
 			}
@@ -366,7 +370,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 		c.table.unwrap_generic_type(node.typ, c.table.cur_fn.generic_names, c.table.cur_concrete_types)
 	}
 	if !is_field_zero_struct_init {
-		c.ensure_type_exists(node.typ, node.pos) or {}
+		c.ensure_type_exists(node.typ, node.pos)
 	}
 	type_sym := c.table.sym(node.typ)
 	if !c.inside_unsafe && type_sym.kind == .sum_type {

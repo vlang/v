@@ -9,6 +9,13 @@ const (
 	colon     = ':'
 )
 
+// new returns a new `Block` with the specified block_type
+[deprecated: 'use Block.new instead']
+[inline]
+pub fn new(block_type string) Block {
+	return Block.new(block_type)
+}
+
 [params]
 pub struct EncodeConfig {
 pub mut:
@@ -34,7 +41,7 @@ pub enum Header {
 	crl
 }
 
-// `str` returns the string representation of the header
+// str returns the string representation of the header
 pub fn (header Header) str() string {
 	return match header {
 		.proctype { 'Proc-Type' }
@@ -62,6 +69,14 @@ pub mut:
 	data []u8
 }
 
+// Block.new returns a new `Block` with the specified block_type
+[inline]
+pub fn Block.new(block_type string) Block {
+	return Block{
+		block_type: block_type
+	}
+}
+
 // free the resources taken by the Block `block`
 [unsafe]
 pub fn (mut block Block) free() {
@@ -75,15 +90,7 @@ pub fn (mut block Block) free() {
 	}
 }
 
-// returns a new `Block` with the specified block_type
-[inline]
-pub fn new(block_type string) Block {
-	return Block{
-		block_type: block_type
-	}
-}
-
-// returns the selected key using the Header enum
+// header_by_key returns the selected key using the Header enum
 //
 // same as `block.headers[key.str()]`
 [inline]

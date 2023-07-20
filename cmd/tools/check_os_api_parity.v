@@ -24,8 +24,6 @@ const (
 		'crypto.rand',
 		'os.bare',
 		'os2',
-		'picohttpparser',
-		'picoev',
 		'szip',
 		'v.eval',
 	]

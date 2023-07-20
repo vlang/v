@@ -861,6 +861,17 @@ pub fn (mut func Function) cast_trapping(a NumType, is_signed bool, b NumType) {
 	func.cast(a, is_signed, b)
 }
 
+// reinterpret returns a value which has the same bit-pattern as its operand value, in its result type.
+// WebAssembly instruction: `f32.reinterpret_i32`, `i32.reinterpret_f32`, `f64.reinterpret_i64`, `i64.reinterpret_f64`.
+pub fn (mut func Function) reinterpret(a NumType) {
+	match a {
+		.f32_t { func.code << 0xBC } // i32.reinterpret_f32
+		.i32_t { func.code << 0xBE } // f32.reinterpret_i32
+		.f64_t { func.code << 0xBD } // i64.reinterpret_f64
+		.i64_t { func.code << 0xBF } // f64.reinterpret_i64
+	}
+}
+
 // unreachable denotes a point in code that should not be reachable, it is an unconditional trap.
 // WebAssembly instruction: `unreachable`.
 pub fn (mut func Function) unreachable() {
@@ -919,7 +930,7 @@ pub fn (mut func Function) c_return() {
 	func.code << 0x0F // return
 }
 
-// c_end ends the block or loop with the label passed in at `label`.
+// c_end ends the block, loop or if expression with the label passed in at `label`.
 pub fn (mut func Function) c_end(label LabelIndex) {
 	assert func.label == label, 'c_end: called with an invalid label ${label}'
 	func.label--
@@ -943,11 +954,6 @@ pub fn (mut func Function) c_br_if(label LabelIndex) {
 	assert v >= 0, 'c_br_if: malformed label index'
 	func.code << 0x0D // br_if
 	func.u32(u32(v))
-}
-
-// c_end_if closes the current if expression.
-pub fn (mut func Function) c_end_if() {
-	func.code << 0x0B // END expression opcode
 }
 
 // call calls a locally defined function.

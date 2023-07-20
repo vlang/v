@@ -225,8 +225,16 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	mut name := g.c_fn_name(node)
 	mut type_name := g.typ(g.unwrap_generic(node.return_type))
 
-	if node.return_type.has_flag(.generic) && g.table.sym(node.return_type).kind == .array_fixed {
+	ret_sym := g.table.sym(node.return_type)
+	if node.return_type.has_flag(.generic) && ret_sym.kind == .array_fixed {
 		type_name = '_v_${type_name}'
+	} else if ret_sym.kind == .alias && !node.return_type.has_flag(.option) {
+		unalias_typ := g.table.unaliased_type(node.return_type)
+		unalias_sym := g.table.sym(unalias_typ)
+		if unalias_sym.kind == .array_fixed {
+			type_name = if !(unalias_sym.info as ast.ArrayFixed).is_fn_ret { '_v_' } else { '' } +
+				g.typ(unalias_typ)
+		}
 	}
 
 	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__') && !node.is_main
@@ -683,9 +691,12 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			tmp_var := g.new_tmp_var()
 			fn_type := g.fn_var_signature(node.left.decl.return_type, node.left.decl.params.map(it.typ),
 				tmp_var)
+			line := g.go_before_stmt(0).trim_space()
+			g.empty_line = true
 			g.write('${fn_type} = ')
 			g.expr(node.left)
 			g.writeln(';')
+			g.write(line)
 			g.write(tmp_var)
 		} else if node.or_block.kind == .absent {
 			g.expr(node.left)
@@ -754,7 +765,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 				ret_typ = unaliased_type
 			}
 		}
-		styp := g.typ(ret_typ)
+		mut styp := g.typ(ret_typ)
 		if gen_or && !is_gen_or_and_assign_rhs {
 			cur_line = g.go_before_stmt(0)
 		}
@@ -764,6 +775,9 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			g.indent++
 			g.write('${tmp_opt} = ')
 		} else if !g.inside_curry_call {
+			if g.assign_ct_type != 0 && node.or_block.kind in [.propagate_option, .propagate_result] {
+				styp = g.typ(g.assign_ct_type.derive(ret_typ))
+			}
 			g.write('${styp} ${tmp_opt} = ')
 			if node.left is ast.AnonFn {
 				g.expr(node.left)

@@ -60,6 +60,14 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		g.expr(node.expr)
 		g.write('.data)')
 		g.inside_opt_or_res = old_inside_opt_or_res
+	} else if node.expr is ast.ArrayInit {
+		if node.expr.is_fixed {
+			s := g.typ(node.expr.typ)
+			if !node.expr.has_index {
+				g.write('(${s})')
+			}
+		}
+		g.expr(node.expr)
 	} else {
 		old_inside_opt_or_res := g.inside_opt_or_res
 		g.inside_opt_or_res = true
@@ -100,6 +108,7 @@ fn (mut g Gen) dump_expr_definitions() {
 			}
 			str_dumparg_type += g.cc_type(dump_type, true) + ptr_asterisk
 		}
+		mut is_fixed_arr_ret := false
 		if dump_sym.kind == .function {
 			fninfo := dump_sym.info as ast.FnType
 			str_dumparg_type = 'DumpFNType_${name}'
@@ -109,14 +118,30 @@ fn (mut g Gen) dump_expr_definitions() {
 			g.go_back(str_tdef.len)
 			dump_typedefs['typedef ${str_tdef};'] = true
 			str_dumparg_ret_type = str_dumparg_type
-		} else if !typ.has_flag(.option) && dump_sym.kind == .array_fixed {
-			if (dump_sym.info as ast.ArrayFixed).is_fn_ret {
-				str_dumparg_ret_type = str_dumparg_type
-				str_dumparg_type = str_dumparg_type.trim_string_left('_v_')
-			} else {
-				// fixed array returned from function
-				str_dumparg_ret_type = '_v_' + str_dumparg_type
+		} else if !typ.has_flag(.option) && dump_sym.is_array_fixed() {
+			match dump_sym.kind {
+				.array_fixed {
+					if (dump_sym.info as ast.ArrayFixed).is_fn_ret {
+						str_dumparg_ret_type = str_dumparg_type
+						str_dumparg_type = str_dumparg_type.trim_string_left('_v_')
+					} else {
+						// fixed array returned from function
+						str_dumparg_ret_type = '_v_' + str_dumparg_type
+					}
+				}
+				.alias {
+					parent_sym := g.table.sym((dump_sym.info as ast.Alias).parent_type)
+					if parent_sym.kind == .array_fixed {
+						str_dumparg_ret_type =
+							if (parent_sym.info as ast.ArrayFixed).is_fn_ret { '' } else { '_v_' } +
+							g.cc_type((dump_sym.info as ast.Alias).parent_type, true)
+						str_dumparg_type = str_dumparg_ret_type.trim_string_left('_v_')
+						is_fixed_arr_ret = true
+					}
+				}
+				else {}
 			}
+			is_fixed_arr_ret = true
 		} else {
 			str_dumparg_ret_type = str_dumparg_type
 		}
@@ -173,7 +198,7 @@ fn (mut g Gen) dump_expr_definitions() {
 		dump_fns.writeln('\tstrings__Builder_write_string(&sb, value);')
 		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, '\\n');")
 		surrounder.builder_write_afters(mut dump_fns)
-		if !typ.has_flag(.option) && dump_sym.kind == .array_fixed {
+		if is_fixed_arr_ret {
 			tmp_var := g.new_tmp_var()
 			dump_fns.writeln('\t${str_dumparg_ret_type} ${tmp_var} = {0};')
 			dump_fns.writeln('\tmemcpy(${tmp_var}.ret_arr, dump_arg, sizeof(${str_dumparg_type}));')

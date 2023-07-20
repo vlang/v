@@ -1,0 +1,6 @@
+vlib/v/checker/tests/template_type_mismatch_err.vv:6:9: error: cannot use `string` as type `int` in return argument
+    4 | 
+    5 | fn return_item() int {
+    6 |     return $tmpl('./templates/template.md')
+      |            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    7 | }

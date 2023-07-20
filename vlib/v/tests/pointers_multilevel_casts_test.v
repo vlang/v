@@ -49,10 +49,10 @@ fn test_struct_pointer_casts_with_field_selectors() {
 	}
 	dump(ss)
 	pss := voidptr(ss)
-	if &Struct(pss).name == 'abc' {
+	if unsafe { &Struct(pss).name } == 'abc' {
 		assert true
 	}
-	if &Struct(pss).x == 123 {
+	if unsafe { &Struct(pss).x } == 123 {
 		// &Struct cast and selecting .x
 		assert true
 	}

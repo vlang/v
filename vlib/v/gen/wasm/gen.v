@@ -1,3 +1,6 @@
+// Copyright (c) 2023 l-m.dev. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
 module wasm
 
 import v.ast
@@ -6,7 +9,8 @@ import v.util
 import v.token
 import v.errors
 import v.eval
-import v.gen.wasm.binaryen
+import v.gen.wasm.serialise
+import wasm
 import os
 
 [heap; minify]
@@ -15,50 +19,47 @@ pub struct Gen {
 	pref     &pref.Preferences = unsafe { nil } // Preferences shared from V struct
 	files    []&ast.File
 mut:
-	file_path     string // current ast.File path
-	file_path_idx int    // current binaryen debug info index, see `BinaryenModuleAddDebugInfoFileName`
-	warnings      []errors.Warning
-	errors        []errors.Error
-	table         &ast.Table = unsafe { nil }
-	eval          eval.Eval
-	enum_vals     map[string]Enum
+	file_path string // current ast.File path
+	warnings  []errors.Warning
+	errors    []errors.Error
+	table     &ast.Table = unsafe { nil }
+	eval      eval.Eval
+	enum_vals map[string]Enum
 	//
-	bp_idx            int // Base pointer temporary's index for function, if needed (-1 for none)
-	stack_frame       int // Size of the current stack frame, if needed
-	mod               binaryen.Module         // Current Binaryen WebAssembly module
-	curr_ret          []ast.Type              // Current return value, multi returns will be split into an array
-	local_temporaries []Temporary             // Local WebAssembly temporaries, referenced with an index
-	local_addresses   map[string]Stack        // Local stack structures relative to `bp_idx`
-	structs           map[ast.Type]StructInfo // Cached struct field offsets
-	//
-	lbl                     int
-	for_labels              []string // A stack of strings containing the names of blocks/loops to break/continue to
-	stack_patches           []BlockPatch
-	needs_stack             bool // If true, will use `memory` and `__vsp`
-	constant_data           []ConstantData
-	constant_data_offset    int = 1024 // Low 1KiB of data unused, for optimisations
-	module_import_namespace string // `[wasm_import_namespace: 'wasi_snapshot_preview1']` else `env`
-	globals                 map[string]GlobalData
+	mod                    wasm.Module
+	pool                   serialise.Pool
+	func                   wasm.Function
+	local_vars             []Var
+	global_vars            map[string]Global
+	ret_rvars              []Var
+	ret                    ast.Type
+	ret_types              []ast.Type
+	ret_br                 wasm.LabelIndex
+	bp_idx                 wasm.LocalIndex = -1 // Base pointer temporary's index for function, if needed (-1 for none)
+	sp_global              ?wasm.GlobalIndex
+	heap_base              ?wasm.GlobalIndex
+	fn_local_idx_end       int
+	fn_name                string
+	stack_frame            int             // Size of the current stack frame, if needed
+	is_leaf_function       bool = true
+	loop_breakpoint_stack  []LoopBreakpoint
+	stack_top              int // position in linear memory
+	data_base              int // position in linear memory
+	needs_address          bool
+	defer_vars             []Var
+	is_direct_array_access bool // inside a `[direct_array_access]` function
 }
 
-// Constants and globals
-struct GlobalData {
-	init        ast.Expr
-	ast_typ     ast.Type
-	abs_address int // relative to `Gen.constant_data_offset`
-}
-
-fn (gd GlobalData) to_var(name string) Global {
-	return Global{
-		name: name
-		ast_typ: gd.ast_typ
-		abs_address: gd.abs_address
-	}
-}
-
-struct StructInfo {
+struct Global {
 mut:
-	offsets []int
+	init ?ast.Expr
+	v    Var
+}
+
+pub struct LoopBreakpoint {
+	c_continue wasm.LabelIndex
+	c_break    wasm.LabelIndex
+	name       string
 }
 
 pub fn (mut g Gen) v_error(s string, pos token.Pos) {
@@ -96,78 +97,7 @@ pub fn (mut g Gen) w_error(s string) {
 	util.verror('wasm error', s)
 }
 
-fn (mut g Gen) vsp_leave() binaryen.Expression {
-	return binaryen.globalset(g.mod, c'__vsp', binaryen.localget(g.mod, g.bp_idx, type_i32))
-}
-
-fn (mut g Gen) setup_stack_frame(body binaryen.Expression) binaryen.Expression {
-	// The V WASM stack grows upwards. This is a choice that came
-	// to me after considering the following.
-	//
-	// 1. Store operator offsets cannot be negative.
-	// 2. The size allocated for the stack is unknown until
-	//    the end of the function's generation.
-	//    This means that stack deallocation code when returning
-	//    early from function's do not know how much to free.
-	// 3. I came up with an alternative, a single exit point
-	//    inside a function, with values "falling through" to the
-	//    end of a function and being returned.
-	//    This would fix problem 2. It did not work...
-	//      https://github.com/WebAssembly/binaryen/issues/5490
-	//
-	// Any other option would cause a large amount of boilerplate
-	// WASM code being duplicated at every return statement.
-	//
-	// stack_enter:
-	//     global.get $__vsp
-	//     local.tee $bp_idx
-	//     i32.const {stack_frame}
-	//     i32.add
-	//     global.set $__vsp
-	// stack_leave:
-	//     local.get $bp_idx
-	//     global.set $__vsp
-
-	// No stack allocations needed!
-	if g.stack_frame == 0 {
-		g.stack_patches.clear()
-		return body
-	}
-	g.needs_stack = true
-
-	padded_stack_frame := round_up_to_multiple(g.stack_frame, 8)
-
-	stack_enter := binaryen.globalset(g.mod, c'__vsp', binaryen.binary(g.mod, binaryen.addint32(),
-		binaryen.constant(g.mod, binaryen.literalint32(padded_stack_frame)), binaryen.localtee(g.mod,
-		g.bp_idx, binaryen.globalget(g.mod, c'__vsp', type_i32), type_i32)))
-	mut n_body := [stack_enter, body]
-
-	if g.curr_ret[0] == ast.void_type {
-		n_body << g.vsp_leave()
-	}
-
-	for bp in g.stack_patches {
-		// Insert stack leave on all return calls
-		binaryen.blockinsertchildat(bp.block, bp.idx, g.vsp_leave())
-	}
-	g.stack_patches.clear()
-
-	return g.mkblock(n_body)
-}
-
-fn (mut g Gen) function_return_wasm_type(typ ast.Type) binaryen.Type {
-	if typ == ast.void_type {
-		return type_none
-	}
-	types := g.unpack_type(typ).filter(it.is_any_kind_of_pointer()
-		|| g.table.sym(it).info !is ast.Struct).map(g.get_wasm_type(it))
-	if types.len == 0 {
-		return type_none
-	}
-	return binaryen.typecreate(types.data, types.len)
-}
-
-fn (g Gen) unpack_type(typ ast.Type) []ast.Type {
+pub fn (g Gen) unpack_type(typ ast.Type) []ast.Type {
 	ts := g.table.sym(typ)
 	return match ts.info {
 		ast.MultiReturn {
@@ -179,57 +109,66 @@ fn (g Gen) unpack_type(typ ast.Type) []ast.Type {
 	}
 }
 
-fn (mut g Gen) fn_external_import(node ast.FnDecl) {
+pub fn (g Gen) is_param_type(typ ast.Type) bool {
+	return !typ.is_ptr() && !g.is_pure_type(typ)
+}
+
+pub fn (mut g Gen) dbg_type_name(name string, typ ast.Type) string {
+	return '${name}<${`&`.repeat(typ.nr_muls())}${*g.table.sym(typ)}>'
+}
+
+pub fn unpack_literal_int(typ ast.Type) ast.Type {
+	return if typ == ast.int_literal_type { ast.i64_type } else { typ }
+}
+
+pub fn (g &Gen) get_ns_plus_name(default_name string, attrs []ast.Attr) (string, string) {
+	mut name := default_name
+	mut namespace := 'env'
+
+	if cattr := attrs.find_first('wasm_import_namespace') {
+		namespace = cattr.arg
+	}
+	if cattr := attrs.find_first('wasm_import_name') {
+		name = cattr.arg
+	}
+
+	return namespace, name
+}
+
+pub fn (mut g Gen) fn_external_import(node ast.FnDecl) {
 	if !node.no_body || node.is_method {
 		g.v_error('interop functions cannot have bodies', node.body_pos)
 	}
 	if node.language == .js && g.pref.os == .wasi {
 		g.v_error('javascript interop functions are not allowed in a `wasi` build', node.pos)
 	}
+	if node.return_type.has_flag(.option) || node.return_type.has_flag(.result) {
+		g.v_error('interop functions must not return option or result', node.pos)
+	}
 
-	mut paraml := []binaryen.Type{cap: node.params.len}
+	mut paraml := []wasm.ValType{cap: node.params.len}
+	mut retl := []wasm.ValType{cap: 1}
 	for arg in node.params {
 		if !g.is_pure_type(arg.typ) {
-			g.v_error('arguments to interop functions must be numbers, pointers or booleans',
-				arg.type_pos)
+			g.v_error('interop functions do not support complex arguments', arg.type_pos)
 		}
 		paraml << g.get_wasm_type(arg.typ)
 	}
-	if !(node.return_type == ast.void_type || g.is_pure_type(node.return_type)) {
-		g.v_error('interop functions must return numbers, pointers or booleans', node.return_type_pos)
+
+	is_ret := node.return_type != ast.void_type
+
+	if is_ret && !g.is_pure_type(node.return_type) {
+		g.v_error('interop functions do not support complex returns', node.return_type_pos)
 	}
-	return_type := g.get_wasm_type(node.return_type)
-
-	// internal name: `JS.setpixel`
-	// external name: `setpixel`
-	binaryen.addfunctionimport(g.mod, node.name.str, g.module_import_namespace.str, node.short_name.str,
-		binaryen.typecreate(paraml.data, paraml.len), return_type)
-}
-
-fn (mut g Gen) bare_function_start() {
-	g.bp_idx = g.new_local_temporary_anon(ast.int_type)
-	g.stack_frame = 0
-}
-
-fn (mut g Gen) bare_function(name string, expr binaryen.Expression) binaryen.Function {
-	mut temporaries := []binaryen.Type{cap: g.local_temporaries.len}
-	for idx := 0; idx < g.local_temporaries.len; idx++ {
-		temporaries << g.local_temporaries[idx].typ
+	if is_ret {
+		retl << g.get_wasm_type(node.return_type)
 	}
 
-	wasm_expr := g.setup_stack_frame(expr)
-
-	func := binaryen.addfunction(g.mod, name.str, type_none, type_none, temporaries.data,
-		temporaries.len, wasm_expr)
-
-	g.local_temporaries.clear()
-	g.local_addresses = map[string]Stack{}
-	assert g.for_labels.len == 0
-
-	return func
+	namespace, name := g.get_ns_plus_name(node.short_name, node.attrs)
+	g.mod.new_function_import(namespace, name, paraml, retl)
 }
 
-fn (mut g Gen) fn_decl(node ast.FnDecl) {
+pub fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	if node.language in [.js, .wasm] {
 		g.fn_external_import(node)
 		return
@@ -256,216 +195,353 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		g.warning('fn_decl: ${name} is deprecated', node.pos)
 	}
 
-	// The first parameter is an address of returned struct,
-	// regardless if the struct contains one field.
-	//   (this should change and is currently a TODO to simplify generation)
+	mut paramdbg := []?string{cap: node.params.len}
+	mut paraml := []wasm.ValType{cap: node.params.len}
+	mut retl := []wasm.ValType{cap: 1}
+
+	// fn ()!       | fn () &IError
+	// fn () ?(...) | fn () (..., bool)
+	// fn () !(...) | fn () (..., &IError)
 	//
-	// All structs are passed by reference regardless if the struct contains one field.
-	//   (todo again...)
-	//
-	// Multi returns are implemented with a binaryen tuple type, not a struct reference.
+	// fn (...) struct      | fn (_ &struct, ...)
+	// fn (...) !struct     | fn (_ &struct, ...) &IError
+	// fn (...) (...struct) | fn (...&struct, ...)
 
-	return_type := g.function_return_wasm_type(node.return_type)
-
-	mut paraml := []binaryen.Type{cap: node.params.len + 1}
-	g.bp_idx = -1
-	g.stack_frame = 0
-
-	g.curr_ret = g.unpack_type(node.return_type)
-
-	for idx, typ in g.curr_ret {
-		sym := g.table.sym(typ)
-		if sym.info is ast.Struct && !typ.is_any_kind_of_pointer() {
-			g.local_temporaries << Temporary{
-				name: '__return${idx}'
-				typ: type_i32 // pointer
-				ast_typ: typ
-				idx: g.local_temporaries.len
+	g.ret_rvars = []Var{}
+	rt := node.return_type
+	rts := g.table.sym(rt)
+	g.ret = rt
+	match rts.info {
+		ast.MultiReturn {
+			for t in rts.info.types {
+				wtyp := g.get_wasm_type(t)
+				if g.is_param_type(t) {
+					paramdbg << g.dbg_type_name('__rval(${g.ret_rvars.len})', t)
+					paraml << wtyp
+					g.ret_rvars << Var{
+						typ: t
+						idx: g.ret_rvars.len
+						is_address: true
+					}
+				} else {
+					retl << wtyp
+				}
+				g.ret_types << t
 			}
-			paraml << ast.voidptr_type
+			if rt.has_flag(.option) {
+				g.v_error('option types are not implemented', node.return_type_pos)
+				retl << .i32_t // bool
+			}
 		}
+		else {
+			if rt.idx() != ast.void_type_idx {
+				wtyp := g.get_wasm_type(rt)
+				if g.is_param_type(rt) {
+					paramdbg << g.dbg_type_name('__rval(0)', rt)
+					paraml << wtyp
+					g.ret_rvars << Var{
+						typ: rt
+						is_address: true
+					}
+				} else {
+					retl << wtyp
+				}
+				g.ret_types << rt
+			} else if rt.has_flag(.option) {
+				g.v_error('returning a void option is forbidden', node.return_type_pos)
+			}
+		}
+	}
+	if rt.has_flag(.result) {
+		g.v_error('result types are not implemented', node.return_type_pos)
+		retl << .i32_t // &IError
 	}
 
 	for p in node.params {
-		typ := g.get_wasm_type(p.typ)
-		/*
-		if g.table.sym(p.typ).info is ast.Struct {
-			println("INIT: ${g.structs}, ${g.table.sym(p.typ)}, ${g.table.sym(p.typ).idx}, ${p.typ}, ${p.typ.idx()}")
-		}*/
-		g.local_temporaries << Temporary{
+		typ := g.get_wasm_type_int_literal(p.typ)
+		ntyp := unpack_literal_int(p.typ)
+		g.local_vars << Var{
 			name: p.name
-			typ: typ
-			ast_typ: p.typ
-			idx: g.local_temporaries.len
+			typ: ntyp
+			idx: g.local_vars.len + g.ret_rvars.len
+			is_address: !g.is_pure_type(p.typ)
 		}
+		paramdbg << g.dbg_type_name(p.name, p.typ)
 		paraml << typ
 	}
-	params_type := binaryen.typecreate(paraml.data, paraml.len)
 
-	g.bp_idx = g.new_local_temporary_anon(ast.int_type)
-	mut wasm_expr := g.expr_stmts(node.stmts, ast.void_type)
-	wasm_expr = g.setup_stack_frame(wasm_expr)
+	// bottom scope
 
-	mut temporaries := []binaryen.Type{cap: g.local_temporaries.len - paraml.len}
-	for idx := paraml.len; idx < g.local_temporaries.len; idx++ {
-		temporaries << g.local_temporaries[idx].typ
+	g.is_direct_array_access = node.is_direct_arr || g.pref.no_bounds_checking
+	g.fn_local_idx_end = (g.local_vars.len + g.ret_rvars.len)
+	g.fn_name = name
+
+	mut should_export := g.pref.os == .browser && node.is_pub && node.mod == 'main'
+
+	g.func = g.mod.new_debug_function(name, wasm.FuncType{paraml, retl, none}, paramdbg)
+	func_start := g.func.patch_pos()
+	if node.stmts.len > 0 {
+		g.ret_br = g.func.c_block([], retl)
+		{
+			g.expr_stmts(node.stmts, ast.void_type)
+		}
+		{
+			for idx, defer_stmt in node.defer_stmts {
+				g.get(g.defer_vars[idx])
+				lbl := g.func.c_if([], [])
+				{
+					g.expr_stmts(defer_stmt.stmts, ast.void_type)
+				}
+				g.func.c_end(lbl)
+			}
+		}
+		g.func.c_end(g.ret_br)
+		g.bare_function_frame(func_start)
 	}
-
-	function := binaryen.addfunction(g.mod, name.str, params_type, return_type, temporaries.data,
-		temporaries.len, wasm_expr)
-
-	mut export_name := name.str
 	if cattr := node.attrs.find_first('export') {
-		export_name = cattr.arg.str
+		g.func.export_name(cattr.arg)
+		should_export = true
 	}
-	//&& g.pref.os == .browser
-	if node.is_pub && node.mod == 'main' {
-		binaryen.addfunctionexport(g.mod, name.str, export_name)
-	}
-	if g.pref.is_debug {
-		binaryen.functionsetdebuglocation(function, wasm_expr, g.file_path_idx, node.pos.line_nr,
-			node.pos.col)
-	}
+	g.mod.commit(g.func, should_export)
+	g.bare_function_end()
 
-	if g.pref.printfn_list.len > 0 && name in g.pref.printfn_list {
-		binaryen.expressionprint(wasm_expr)
-	}
-
-	// WTF?? map values are not resetting???
-	//   g.local_addresses.clear()
-	g.local_temporaries.clear()
-	g.local_addresses = map[string]Stack{}
-	assert g.for_labels.len == 0
+	// printfn is not implemented!
 }
 
-fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_type ast.Type) binaryen.Expression {
+pub fn (mut g Gen) bare_function_frame(func_start wasm.PatchPos) {
+	// Setup stack frame.
+	// If the function does not call other functions,
+	// a leaf function, the omission of setting the
+	// stack pointer is perfectly acceptable.
+	//
+	if g.stack_frame != 0 {
+		prolouge := g.func.patch_pos()
+		{
+			g.func.global_get(g.sp())
+			g.func.i32_const(g.stack_frame)
+			g.func.sub(.i32_t)
+			if !g.is_leaf_function {
+				g.func.local_tee(g.bp())
+				g.func.global_set(g.sp())
+			} else {
+				g.func.local_set(g.bp())
+			}
+		}
+		g.func.patch(func_start, prolouge)
+		if !g.is_leaf_function {
+			g.func.global_get(g.sp())
+			g.func.i32_const(g.stack_frame)
+			g.func.add(.i32_t)
+			g.func.global_set(g.sp())
+		}
+	}
+}
+
+pub fn (mut g Gen) bare_function_end() {
+	g.local_vars.clear()
+	g.ret_rvars.clear()
+	g.ret_types.clear()
+	g.defer_vars.clear()
+	g.bp_idx = -1
+	g.stack_frame = 0
+	g.is_leaf_function = true
+	g.is_direct_array_access = false
+	assert g.loop_breakpoint_stack.len == 0
+}
+
+pub fn (mut g Gen) literalint(val i64, expected ast.Type) {
+	match g.get_wasm_type(expected) {
+		.i32_t { g.func.i32_const(val) }
+		.i64_t { g.func.i64_const(val) }
+		.f32_t { g.func.f32_const(f32(val)) }
+		.f64_t { g.func.f64_const(f64(val)) }
+		else { g.w_error('literalint: bad type `${expected}`') }
+	}
+}
+
+pub fn (mut g Gen) literal(val string, expected ast.Type) {
+	match g.get_wasm_type(expected) {
+		.i32_t { g.func.i32_const(val.int()) }
+		.i64_t { g.func.i64_const(val.i64()) }
+		.f32_t { g.func.f32_const(val.f32()) }
+		.f64_t { g.func.f64_const(val.f64()) }
+		else { g.w_error('literal: bad type `${expected}`') }
+	}
+}
+
+pub fn (mut g Gen) cast(typ ast.Type, expected_type ast.Type) {
+	wtyp := g.as_numtype(g.get_wasm_type_int_literal(typ))
+	expected_wtype := g.as_numtype(g.get_wasm_type_int_literal(expected_type))
+
+	g.func.cast(wtyp, typ.is_signed(), expected_wtype)
+}
+
+pub fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_type ast.Type) {
 	if expr is ast.IntegerLiteral {
-		return g.literal(expr.val, expected_type)
+		g.literal(expr.val, expected_type)
+		return
 	} else if expr is ast.FloatLiteral {
-		return g.literal(expr.val, expected_type)
+		g.literal(expr.val, expected_type)
+		return
 	}
 
 	got_type := ast.mktyp(got_type_raw)
-	return g.cast_t(g.expr(expr, got_type), got_type, expected_type)
+	got_wtype := g.as_numtype(g.get_wasm_type(got_type))
+	expected_wtype := g.as_numtype(g.get_wasm_type(expected_type))
+
+	g.expr(expr, got_type)
+	g.func.cast(got_wtype, got_type.is_signed(), expected_wtype)
 }
 
-fn (mut g Gen) literalint(val i64, expected ast.Type) binaryen.Expression {
-	match g.get_wasm_type(expected) {
-		type_i32 { return binaryen.constant(g.mod, binaryen.literalint32(int(val))) }
-		type_i64 { return binaryen.constant(g.mod, binaryen.literalint64(val)) }
-		else {}
-	}
-	g.w_error('literalint: bad type `${*g.table.sym(expected)}`')
-}
-
-fn (mut g Gen) literal(val string, expected ast.Type) binaryen.Expression {
-	match g.get_wasm_type(expected) {
-		type_i32 { return binaryen.constant(g.mod, binaryen.literalint32(val.int())) }
-		type_i64 { return binaryen.constant(g.mod, binaryen.literalint64(val.i64())) }
-		type_f32 { return binaryen.constant(g.mod, binaryen.literalfloat32(val.f32())) }
-		type_f64 { return binaryen.constant(g.mod, binaryen.literalfloat64(val.f64())) }
-		else {}
-	}
-	g.w_error('literal: bad type `${expected}`')
-}
-
-fn (mut g Gen) handle_ptr_arithmetic(typ ast.Type, expr binaryen.Expression) binaryen.Expression {
-	return if typ.is_ptr() {
-		size, _ := g.get_type_size_align(typ)
-		binaryen.binary(g.mod, binaryen.mulint32(), expr, g.literalint(size, ast.voidptr_type))
-	} else {
-		expr
+pub fn (mut g Gen) handle_ptr_arithmetic(typ ast.Type) {
+	if typ.is_ptr() {
+		size, _ := g.pool.type_size(typ)
+		g.func.i32_const(size)
+		g.func.mul(.i32_t)
 	}
 }
 
-fn (mut g Gen) postfix_expr(node ast.PostfixExpr) binaryen.Expression {
-	kind := if node.op == .inc { token.Kind.plus } else { token.Kind.minus }
-
-	var := g.get_var_from_expr(node.expr)
-	op := g.infix_from_typ(node.typ, kind)
-
-	expr := binaryen.binary(g.mod, op, g.get_or_lea_lop(var, node.typ), g.handle_ptr_arithmetic(node.typ,
-		g.literal('0', node.typ)))
-
-	return g.set_var(var, expr, ast_typ: node.typ)
-}
-
-fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) binaryen.Expression {
+pub fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) {
 	if node.op in [.logical_or, .and] {
-		mut exprs := []binaryen.Expression{cap: 2}
-
-		left := g.expr(node.left, node.left_type)
-
-		temporary := g.new_local_temporary_anon(ast.bool_type)
-		exprs << binaryen.localset(g.mod, temporary, left)
-
-		cmp := if node.op == .logical_or {
-			binaryen.unary(g.mod, binaryen.eqzint32(), binaryen.localget(g.mod, temporary,
-				type_i32))
-		} else {
-			binaryen.localget(g.mod, temporary, type_i32)
+		temp := g.func.new_local_named(.i32_t, '__tmp<bool>')
+		{
+			g.expr(node.left, ast.bool_type)
+			g.func.local_set(temp)
 		}
-		exprs << binaryen.bif(g.mod, cmp, g.expr(node.right, node.right_type), binaryen.localget(g.mod,
-			temporary, type_i32))
+		g.func.local_get(temp)
+		if node.op == .logical_or {
+			g.func.eqz(.i32_t)
+		}
 
-		return g.mkblock(exprs)
+		blk := g.func.c_if([], [.i32_t])
+		{
+			g.expr(node.right, ast.bool_type)
+		}
+		g.func.c_else(blk)
+		{
+			g.func.local_get(temp)
+		}
+		g.func.c_end(blk)
+		return
 	}
 
-	op := g.infix_from_typ(node.left_type, node.op)
+	{
+		g.expr(node.left, node.left_type)
+	}
+	{
+		g.expr_with_cast(node.right, node.right_type, node.left_type)
+		if node.op in [.plus, .minus] && node.left_type.is_ptr() {
+			g.handle_ptr_arithmetic(node.left_type.deref())
+		}
+	}
+	g.infix_from_typ(node.left_type, node.op)
 
-	infix := binaryen.binary(g.mod, op, g.expr(node.left, node.left_type), g.handle_ptr_arithmetic(node.left_type,
-		g.expr_with_cast(node.right, node.right_type, node.left_type)))
-
-	res_typ := if infix_kind_return_bool(node.op) {
+	res_typ := if node.op in [.eq, .ne, .gt, .lt, .ge, .le] {
 		ast.bool_type
 	} else {
 		node.left_type
 	}
-	return g.cast_t(infix, res_typ, expected)
+	g.func.cast(g.as_numtype(g.get_wasm_type(res_typ)), res_typ.is_signed(), g.as_numtype(g.get_wasm_type(expected)))
 }
 
-fn (mut g Gen) prefix_expr(node ast.PrefixExpr) binaryen.Expression {
-	expr := g.expr(node.right, node.right_type)
+pub fn (mut g Gen) wasm_builtin(name string, node ast.CallExpr) {
+	for idx, arg in node.args {
+		g.expr(arg.expr, node.expected_arg_types[idx])
+	}
 
-	return match node.op {
+	match name {
+		'__memory_grow' {
+			g.func.memory_grow()
+		}
+		'__memory_fill' {
+			g.func.memory_fill()
+		}
+		'__memory_copy' {
+			g.func.memory_copy()
+		}
+		'__memory_size' {
+			g.func.memory_size()
+		}
+		'__heap_base' {
+			if hp := g.heap_base {
+				g.func.global_get(hp)
+			}
+			hp := g.mod.new_global('__heap_base', false, .i32_t, false, wasm.constexpr_value(0))
+			g.func.global_get(hp)
+			g.heap_base = hp
+		}
+		'__reinterpret_f32_u32' {
+			g.func.reinterpret(.f32_t)
+		}
+		'__reinterpret_u32_f32' {
+			g.func.reinterpret(.i32_t)
+		}
+		'__reinterpret_f64_u64' {
+			g.func.reinterpret(.f64_t)
+		}
+		'__reinterpret_u64_f64' {
+			g.func.reinterpret(.i64_t)
+		}
+		else {
+			panic('unreachable')
+		}
+	}
+}
+
+pub fn (mut g Gen) prefix_expr(node ast.PrefixExpr, expected ast.Type) {
+	match node.op {
 		.minus {
 			if node.right_type.is_pure_float() {
+				g.expr(node.right, node.right_type)
 				if node.right_type == ast.f32_type_idx {
-					binaryen.unary(g.mod, binaryen.negfloat32(), expr)
+					g.func.neg(.f32_t)
 				} else {
-					binaryen.unary(g.mod, binaryen.negfloat64(), expr)
+					g.func.neg(.f64_t)
 				}
 			} else {
 				// -val == 0 - val
 
-				if g.get_wasm_type(node.right_type) == type_i32 {
-					binaryen.binary(g.mod, binaryen.subint32(), binaryen.constant(g.mod,
-						binaryen.literalint32(0)), expr)
-				} else {
-					binaryen.binary(g.mod, binaryen.subint64(), binaryen.constant(g.mod,
-						binaryen.literalint64(0)), expr)
-				}
+				vt := g.get_wasm_type(node.right_type)
+
+				g.literalint(0, node.right_type)
+				g.expr(node.right, node.right_type)
+				g.func.sub(g.as_numtype(vt))
 			}
 		}
 		.not {
-			binaryen.unary(g.mod, binaryen.eqzint32(), expr)
+			g.expr(node.right, node.right_type)
+			g.func.eqz(.i32_t) // !expr
 		}
 		.bit_not {
 			// ~val == val ^ -1
 
-			if g.get_wasm_type(node.right_type) == type_i32 {
-				binaryen.binary(g.mod, binaryen.xorint32(), expr, binaryen.constant(g.mod,
-					binaryen.literalint32(-1)))
-			} else {
-				binaryen.binary(g.mod, binaryen.xorint64(), expr, binaryen.constant(g.mod,
-					binaryen.literalint64(-1)))
-			}
+			vt := g.get_wasm_type(node.right_type)
+
+			g.expr(node.right, node.right_type)
+			g.literalint(-1, node.right_type)
+			g.func.b_xor(g.as_numtype(vt))
 		}
 		.amp {
-			g.lea_var_from_expr(node.right)
+			if v := g.get_var_from_expr(node.right) {
+				if !v.is_address {
+					g.v_error("cannot take the address of a value that doesn't live on the stack",
+						node.pos)
+				}
+				g.ref(v)
+			} else {
+				g.needs_address = true
+				{
+					g.expr(node.right, node.right_type)
+				}
+				g.needs_address = false
+			}
 		}
 		.mul {
-			g.deref(expr, node.right_type)
+			g.expr(node.right, node.right_type)
+			if g.is_pure_type(expected) && !g.needs_address {
+				// in a RHS context, not lvalue
+				g.load(expected, 0)
+			}
 		}
 		else {
 			// impl deref (.mul), and impl address of (.amp)
@@ -474,205 +550,338 @@ fn (mut g Gen) prefix_expr(node ast.PrefixExpr) binaryen.Expression {
 	}
 }
 
-fn (mut g Gen) mknblock(name string, nodes []binaryen.Expression) binaryen.Expression {
-	if nodes.len == 0 {
-		return binaryen.nop(g.mod)
-	}
-
-	g.lbl++
-	return binaryen.block(g.mod, '${name}${g.lbl}'.str, nodes.data, nodes.len, type_auto)
-}
-
-fn (mut g Gen) mkblock(nodes []binaryen.Expression) binaryen.Expression {
-	if nodes.len == 0 {
-		return binaryen.nop(g.mod)
-	}
-
-	g.lbl++
-	return binaryen.block(g.mod, 'BLK${g.lbl}'.str, nodes.data, nodes.len, type_auto)
-}
-
-fn (mut g Gen) if_branch(ifexpr ast.IfExpr, idx int) binaryen.Expression {
+pub fn (mut g Gen) if_branch(ifexpr ast.IfExpr, expected ast.Type, unpacked_params []wasm.ValType, idx int, existing_rvars []Var) {
 	curr := ifexpr.branches[idx]
 
-	next := if ifexpr.has_else && idx + 2 >= ifexpr.branches.len {
-		g.expr_stmts(ifexpr.branches[idx + 1].stmts, ifexpr.typ)
-	} else if idx + 1 >= ifexpr.branches.len {
-		unsafe { nil }
+	g.expr(curr.cond, ast.bool_type)
+	blk := g.func.c_if([], unpacked_params)
+	{
+		g.rvar_expr_stmts(curr.stmts, expected, existing_rvars)
+	}
+	{
+		if ifexpr.has_else && idx + 2 >= ifexpr.branches.len {
+			g.func.c_else(blk)
+			g.rvar_expr_stmts(ifexpr.branches[idx + 1].stmts, expected, existing_rvars)
+		} else if !(idx + 1 >= ifexpr.branches.len) {
+			g.func.c_else(blk)
+			g.if_branch(ifexpr, expected, unpacked_params, idx + 1, existing_rvars)
+		}
+	}
+	g.func.c_end(blk)
+}
+
+pub fn (mut g Gen) if_expr(ifexpr ast.IfExpr, expected ast.Type, existing_rvars []Var) {
+	params := if expected == ast.void_type {
+		[]wasm.ValType{}
+	} else if existing_rvars.len == 0 {
+		g.unpack_type(expected).map(g.get_wasm_type(it))
 	} else {
-		g.if_branch(ifexpr, idx + 1)
+		g.unpack_type(expected).filter(!g.is_param_type(it)).map(g.get_wasm_type(it))
 	}
-	return binaryen.bif(g.mod, g.expr(curr.cond, ast.bool_type), g.expr_stmts(curr.stmts,
-		ifexpr.typ), next)
+	g.if_branch(ifexpr, expected, params, 0, existing_rvars)
 }
 
-fn (mut g Gen) if_expr(ifexpr ast.IfExpr) binaryen.Expression {
-	return g.if_branch(ifexpr, 0)
-}
+pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvars []Var) {
+	mut wasm_ns := ?string(none)
+	mut name := node.name
 
-const wasm_builtins = ['__memory_grow', '__memory_fill', '__memory_copy', '__memory_size',
-	'__heap_base']
+	is_print := name in ['panic', 'println', 'print', 'eprintln', 'eprint']
 
-fn (mut g Gen) wasm_builtin(name string, node ast.CallExpr) binaryen.Expression {
-	mut args := []binaryen.Expression{cap: node.args.len}
+	if name in ['__memory_grow', '__memory_fill', '__memory_copy', '__memory_size', '__heap_base',
+		'__reinterpret_f32_u32', '__reinterpret_u32_f32', '__reinterpret_f64_u64',
+		'__reinterpret_u64_f64'] {
+		g.wasm_builtin(node.name, node)
+		return
+	}
+
+	if node.is_method {
+		name = '${g.table.get_type_name(node.receiver_type)}.${node.name}'
+	}
+
+	if node.language in [.js, .wasm] {
+		cfn_attrs := g.table.fns[node.name].attrs
+
+		short_name := if node.language == .js {
+			node.name.all_after_last('JS.')
+		} else {
+			node.name.all_after_last('WASM.')
+		}
+
+		// setting a `?string` in a multireturn causes UNDEFINED BEHAVIOR AND STACK CORRUPTION
+		// best to use a workaround till that is fixed
+
+		mut wasm_ns_storage := ''
+		wasm_ns_storage, name = g.get_ns_plus_name(short_name, cfn_attrs)
+		wasm_ns = wasm_ns_storage
+	}
+
+	// callconv: {return structs} {method self} {arguments}
+
+	// {return structs}
+	//
+	mut rvars := existing_rvars.clone()
+	rts := g.unpack_type(node.return_type)
+	if rvars.len == 0 && node.return_type != ast.void_type {
+		for rt in rts {
+			if g.is_param_type(rt) {
+				v := g.new_local('', rt)
+				rvars << v
+			}
+		}
+	}
+	for v in rvars {
+		g.ref(v)
+	}
+
+	// {method self}
+	//
+	if node.is_method {
+		expr := if !node.left_type.is_ptr() && node.receiver_type.is_ptr() {
+			ast.Expr(ast.PrefixExpr{
+				op: .amp
+				right: node.left
+			})
+		} else {
+			node.left
+		}
+		// hack alert!
+		if node.receiver_type == ast.int_literal_type && expr is ast.IntegerLiteral {
+			g.literal(expr.val, ast.i64_type)
+		} else {
+			g.expr(expr, node.receiver_type)
+		}
+	}
+
+	// {arguments}
+	//
 	for idx, arg in node.args {
-		args << g.expr(arg.expr, node.expected_arg_types[idx])
+		mut expr := arg.expr
+
+		mut typ := arg.typ
+		if is_print && typ != ast.string_type {
+			has_str, _, _ := g.table.sym(typ).str_method_info()
+			if typ != ast.string_type && !has_str {
+				g.v_error('cannot implicitly convert as argument does not have a .str() function',
+					arg.pos)
+			}
+
+			expr = ast.CallExpr{
+				name: 'str'
+				left: expr
+				left_type: typ
+				receiver_type: typ
+				return_type: ast.string_type
+				is_method: true
+			}
+		}
+
+		// another hack alert!
+		if node.expected_arg_types[idx] == ast.int_literal_type && mut expr is ast.IntegerLiteral {
+			g.literal(expr.val, ast.i64_type)
+		} else {
+			g.expr(expr, node.expected_arg_types[idx])
+		}
 	}
 
-	match name {
-		'__memory_grow' {
-			return binaryen.memorygrow(g.mod, args[0], c'memory', false)
-		}
-		'__memory_fill' {
-			return binaryen.memoryfill(g.mod, args[0], args[1], args[2], c'memory')
-		}
-		'__memory_copy' {
-			return binaryen.memorycopy(g.mod, args[0], args[1], args[2], c'memory', c'memory')
-		}
-		'__memory_size' {
-			return binaryen.memorysize(g.mod, c'memory', false)
-		}
-		'__heap_base' {
-			return binaryen.globalget(g.mod, c'__heap_base', type_i32)
-		}
-		else {
-			panic('unreachable')
-		}
+	if namespace := wasm_ns {
+		// import calls won't touch `__vsp` !
+
+		g.func.call_import(namespace, name)
+	} else {
+		// other calls may...
+		g.is_leaf_function = false
+
+		g.func.call(name)
 	}
-}
 
-[params]
-struct AssignOpts {
-	op token.Kind = .assign
-}
+	if expected == ast.void_type && node.return_type != ast.void_type {
+		for rt in rts { // order doesn't matter
+			if !g.is_param_type(rt) {
+				g.func.drop()
+			}
+		}
+	} else if rvars.len > 0 && existing_rvars.len == 0 {
+		mut rr_vars := []Var{cap: rts.len}
+		mut r := rvars.len
 
-fn (mut g Gen) assign_expr_to_var(address LocalOrPointer, right ast.Expr, expected ast.Type, cfg AssignOpts) binaryen.Expression {
-	return match right {
-		ast.StructInit {
-			if cfg.op !in [.decl_assign, .assign] {
-				op := token.assign_op_to_infix_op(cfg.op)
-				name := '${g.table.get_type_name(expected)}.${op}'
-
-				// args: [&return, &left, &right]
-				args := [g.get_or_lea_lop(address, expected),
-					g.get_or_lea_lop(address, expected), g.expr(right, expected)]
-
-				binaryen.call(g.mod, name.str, args.data, args.len, type_none)
+		for rt in rts.reverse() {
+			if !g.is_param_type(rt) {
+				v := g.new_local('', rt)
+				rr_vars << v
+				g.set(v)
 			} else {
-				g.init_struct(address as Var, right)
+				r--
+				rr_vars << rvars[r]
 			}
 		}
-		ast.StringLiteral {
-			if g.table.sym(expected).info !is ast.Struct {
-				offset, _ := g.allocate_string(right)
-				return g.set_var(address as Var, g.literalint(offset, ast.int_type))
-			}
 
-			var := (address as Var) as Stack
-
-			offset, len := g.allocate_string(right)
-
-			g.mknblock('STRINGINIT', [
-				g.set_var_v(Stack{ address: var.address, ast_typ: ast.charptr_type },
-					g.literalint(offset, ast.u32_type),
-					offset: 0
-				),
-				g.set_var_v(Stack{ address: var.address, ast_typ: ast.int_type }, g.literalint(len,
-					ast.int_type),
-					offset: g.table.pointer_size
-				),
-			])
+		for v in rr_vars.reverse() {
+			g.get(v)
 		}
-		ast.ArrayInit {
-			var := (address as Var) as Stack
-			mut exprs := []binaryen.Expression{}
-
-			if !right.is_fixed {
-				g.w_error('wasm backend does not support non fixed arrays yet')
-			}
-			elm_typ := right.elem_type
-			elm_size, _ := g.get_type_size_align(elm_typ)
-			mut offset := 0
-			if !right.has_val {
-				return g.mknblock('ARRAYINIT(ZERO)', [
-					g.zero_fill(right.typ, var.address),
-				])
-			}
-			// [10, 15]!
-			for e in right.exprs {
-				exprs << g.assign_expr_to_var(Var(Stack{
-					address: var.address + offset
-					ast_typ: elm_typ
-				}), e, elm_typ)
-				offset += elm_size
-			}
-
-			g.mknblock('ARRAYINIT', exprs)
-		}
-		else {
-			initexpr := g.expr(right, expected)
-
-			expr := if cfg.op !in [.decl_assign, .assign] {
-				if g.is_pure_type(expected) {
-					val := g.get_or_lea_lop(address, expected)
-					op := g.infix_from_typ(expected, token.assign_op_to_infix_op(cfg.op))
-
-					binaryen.binary(g.mod, op, val, initexpr)
-				} else {
-					g.w_error('arith unimplemented or unreachable for struct')
-				}
-			} else {
-				initexpr
-			}
-			g.set_var(address, expr, ast_typ: expected)
-		}
+	}
+	if node.is_noreturn {
+		g.func.unreachable()
 	}
 }
 
-fn (mut g Gen) expr_impl(node ast.Expr, expected ast.Type) binaryen.Expression {
-	return match node {
+pub fn (mut g Gen) get_field_offset(typ ast.Type, name string) int {
+	ts := g.table.sym(typ)
+	field := ts.find_field(name) or { g.w_error('could not find field `${name}` on init') }
+	si := g.pool.type_struct_info(typ) or { panic('unreachable') }
+	return si.offsets[field.i]
+}
+
+pub fn (mut g Gen) field_offset(typ ast.Type, name string) {
+	offset := g.get_field_offset(typ, name)
+	if offset != 0 {
+		g.func.i32_const(offset)
+		g.func.add(.i32_t)
+	}
+}
+
+pub fn (mut g Gen) load_field(typ ast.Type, ftyp ast.Type, name string) {
+	offset := g.get_field_offset(typ, name)
+	g.load(ftyp, offset)
+}
+
+pub fn (mut g Gen) store_field(typ ast.Type, ftyp ast.Type, name string) {
+	offset := g.get_field_offset(typ, name)
+	g.store(ftyp, offset)
+}
+
+pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
+	match node {
 		ast.ParExpr, ast.UnsafeExpr {
 			g.expr(node.expr, expected)
 		}
 		ast.ArrayInit {
-			pos := g.allocate_local_var('_anonarray', node.typ)
-			expr := g.assign_expr_to_var(Var(Stack{ address: pos, ast_typ: node.typ }),
-				node, node.typ)
-			g.mknblock('EXPR(ARRAYINIT)', [expr, g.lea_address(pos)])
+			v := g.new_local('', node.typ)
+			g.set_with_expr(node, v)
+			g.get(v)
 		}
 		ast.GoExpr {
 			g.w_error('wasm backend does not support threads')
 		}
 		ast.IndexExpr {
-			// TODO: IMPLICIT BOUNDS CHECKING
-			/*
-			if !node.is_direct {
-				g.w_error('implicit bounds checks are not implemented, create one manually')
-			}*/
-
-			mut ptr := g.expr(node.left, ast.voidptr_type)
-			if node.left_type == ast.string_type {
-				ptr = g.deref(ptr, ast.voidptr_type)
-			}
-
-			size, _ := g.get_type_size_align(expected)
-			index := g.expr(node.index, ast.int_type)
+			mut direct_array_access := g.is_direct_array_access || node.is_direct
+			mut tmp_voidptr_var := wasm.LocalIndex(-1)
 
 			// ptr + index * size
-			new_ptr := binaryen.binary(g.mod, binaryen.addint32(), ptr, binaryen.binary(g.mod,
-				binaryen.mulint32(), index, g.literalint(size, ast.int_type)))
+			mut typ := node.left_type
+			ts := g.table.sym(typ)
 
-			g.deref(new_ptr, expected)
-		}
-		ast.SelectorExpr {
-			g.cast_t(g.get_or_lea_lop(g.get_var_from_expr(node), node.typ), node.typ,
-				expected)
+			g.expr(node.left, node.left_type)
+			if node.left_type == ast.string_type {
+				if !direct_array_access {
+					tmp_voidptr_var = g.func.new_local_named(.i32_t, '__tmp<voidptr>')
+					g.func.local_tee(tmp_voidptr_var)
+				}
+
+				// be pedantic...
+				g.load_field(ast.string_type, ast.voidptr_type, 'str')
+				typ = ast.u8_type
+			} else if typ.is_ptr() {
+				typ = typ.deref()
+				direct_array_access = true
+			} else {
+				match ts.info {
+					ast.Array {
+						g.w_error('wasm backend does not support dynamic arrays')
+					}
+					ast.ArrayFixed {
+						typ = ts.info.elem_type
+						if node.index.is_pure_literal() {
+							// checker would have gotten this by now
+							direct_array_access = true
+						}
+					}
+					else {
+						g.w_error('ast.IndexExpr: unreachable')
+					}
+				}
+			}
+
+			size, _ := g.pool.type_size(typ)
+
+			g.expr(node.index, ast.int_type)
+
+			if !direct_array_access {
+				g.is_leaf_function = false // calls panic()
+
+				idx_temp := g.func.new_local_named(.i32_t, '__tmp<int>')
+				g.func.local_tee(idx_temp)
+
+				// .len
+				if node.left_type == ast.string_type {
+					g.func.local_get(tmp_voidptr_var)
+					g.load_field(ast.string_type, ast.int_type, 'len')
+				} else if ts.info is ast.ArrayFixed {
+					g.func.i32_const(ts.info.size)
+				} else {
+					panic('unreachable')
+				}
+
+				g.func.ge(.i32_t, false)
+				// is_signed: false, negative numbers will be reinterpreted as > 2^31 and will also trigger false
+				blk := g.func.c_if([], [])
+				{
+					g.expr(ast.StringLiteral{ val: '${g.file_pos(node.pos)}: ${ast.Expr(node)}' },
+						ast.string_type)
+					g.func.call('eprintln')
+					g.expr(ast.StringLiteral{ val: 'index out of range' }, ast.string_type)
+					g.func.call('panic')
+				}
+				g.func.c_end(blk)
+
+				g.func.local_get(idx_temp)
+			}
+
+			if size > 1 {
+				g.literalint(size, ast.int_type)
+				g.func.mul(.i32_t)
+			}
+
+			g.func.add(.i32_t)
+
+			if !g.is_pure_type(typ) {
+				return
+			}
+
+			if !g.needs_address {
+				// ptr
+				g.load(typ, 0)
+			}
+			g.cast(typ, expected)
 		}
 		ast.StructInit {
-			pos := g.allocate_local_var('_anonstruct', node.typ)
-			expr := g.assign_expr_to_var(Var(Stack{ address: pos, ast_typ: node.typ }),
-				node, node.typ)
-			g.mknblock('EXPR(STRUCTINIT)', [expr, g.lea_address(pos)])
+			v := g.new_local('', node.typ)
+			g.set_with_expr(node, v)
+			g.get(v)
+		}
+		ast.SelectorExpr {
+			if v := g.get_var_from_expr(node) {
+				if g.needs_address {
+					if !v.is_address {
+						g.v_error("cannot take the address of a value that doesn't live on the stack. this is a current limitation.",
+							node.pos)
+					}
+					g.ref(v)
+				} else {
+					g.get(v)
+				}
+			} else {
+				g.needs_address = true
+				{
+					g.expr(node.expr, node.typ)
+				}
+				g.needs_address = false
+				g.field_offset(node.expr_type, node.field_name)
+				if g.is_pure_type(node.typ) && !g.needs_address {
+					// expected to be a pointer
+					g.load(node.typ, 0)
+				}
+			}
+			g.cast(node.typ, expected)
 		}
 		ast.MatchExpr {
 			g.w_error('wasm backend does not support match expressions yet')
@@ -694,185 +903,85 @@ fn (mut g Gen) expr_impl(node ast.Expr, expected ast.Type) binaryen.Expression {
 			if !g.table.known_type_idx(node.typ) {
 				g.v_error('unknown type `${*g.table.sym(node.typ)}`', node.pos)
 			}
-			size, _ := g.table.type_size(node.typ)
+			size, _ := g.pool.type_size(node.typ)
 			g.literalint(size, ast.u32_type)
 		}
 		ast.BoolLiteral {
-			val := if node.val { binaryen.literalint32(1) } else { binaryen.literalint32(0) }
-			binaryen.constant(g.mod, val)
+			g.func.i32_const(i32(node.val))
 		}
 		ast.StringLiteral {
-			if g.table.sym(expected).info !is ast.Struct {
-				offset, _ := g.allocate_string(node)
-				return g.literalint(offset, ast.int_type)
+			if expected != ast.string_type {
+				val := serialise.eval_escape_codes(node) or { panic('unreachable') }
+				str_pos := g.pool.append_string(val)
+
+				// c'str'
+				g.literalint(g.data_base + str_pos, ast.voidptr_type)
+				return
 			}
 
-			pos := g.allocate_local_var('_anonstring', ast.string_type)
-
-			expr := g.assign_expr_to_var(Var(Stack{ address: pos, ast_typ: ast.string_type }),
-				node, ast.string_type)
-			g.mknblock('EXPR(STRINGINIT)', [expr, g.lea_address(pos)])
+			v := g.new_local('', ast.string_type)
+			g.set_with_expr(node, v)
+			g.get(v)
 		}
 		ast.InfixExpr {
 			g.infix_expr(node, expected)
 		}
 		ast.PrefixExpr {
-			g.prefix_expr(node)
+			g.prefix_expr(node, expected)
 		}
 		ast.PostfixExpr {
-			g.postfix_expr(node)
+			kind := if node.op == .inc { token.Kind.plus } else { token.Kind.minus }
+			v := g.get_var_or_make_from_expr(node.expr, node.typ)
+
+			g.set_prepare(v)
+			{
+				g.get(v)
+				g.literalint(1, node.typ)
+				g.handle_ptr_arithmetic(node.typ)
+				g.infix_from_typ(node.typ, kind)
+			}
+			g.set_set(v)
 		}
 		ast.CharLiteral {
-			rns := node.val.runes()[0]
-			g.literalint(rns, ast.u32_type)
+			rns := serialise.eval_escape_codes_raw(node.val) or { panic('unreachable') }.runes()[0]
+			g.func.i32_const(rns)
 		}
 		ast.Ident {
-			// TODO: only supports local identifiers, no path.expressions or global names
-			g.get_var_t(node, expected)
+			v := g.get_var_from_ident(node)
+			g.get(v)
+			g.cast(v.typ, expected)
 		}
 		ast.IntegerLiteral, ast.FloatLiteral {
 			g.literal(node.val, expected)
 		}
 		ast.Nil {
-			g.literalint(0, expected)
+			g.func.i32_const(0)
 		}
 		ast.IfExpr {
-			if node.branches.len == 2 && node.is_expr {
-				left := g.expr_stmts(node.branches[0].stmts, expected)
-				right := g.expr_stmts(node.branches[1].stmts, expected)
-				binaryen.bselect(g.mod, g.expr(node.branches[0].cond, ast.bool_type_idx),
-					left, right, g.get_wasm_type(expected))
-			} else {
-				g.if_expr(node)
-			}
+			g.if_expr(node, expected, [])
 		}
 		ast.CastExpr {
-			expr := g.expr(node.expr, node.expr_type)
-
-			if node.typ == ast.bool_type {
-				panic('unreachable')
+			// don't want to handle ast.int_literal_type
+			if node.expr is ast.IntegerLiteral || node.expr is ast.FloatLiteral {
+				g.expr(node.expr, node.typ)
+				return
 			}
 
-			/*
-			if node.typ == ast.bool_type {
-				// WebAssembly booleans use the `i32` type
-				//   = 0 | is false
-				//   > 0 | is truestyp_to_str_fn_name
-				//
-				// It's a checker error to cast to bool anyway...
+			g.expr(node.expr, node.expr_type)
 
-				bexpr := g.cast(expr, g.get_wasm_type(node.expr_type), g.is_signed(node.expr_type),
-					type_i32)
-				binaryen.bselect(g.mod, bexpr, binaryen.constant(g.mod, binaryen.literalint32(1)), binaryen.constant(g.mod,
-					binaryen.literalint32(0)), type_i32)
-			} else
-			*/
-			g.cast(expr, g.get_wasm_type(node.expr_type), g.is_signed(node.expr_type),
-				g.get_wasm_type(node.typ))
+			// TODO: unbelievable colossal hack
+			mut typ := node.expr_type
+			if node.expr is ast.Ident {
+				v := g.get_var_from_ident(node.expr)
+				if g.is_param(v) && node.expr_type == ast.int_literal_type {
+					typ = ast.i64_type
+				}
+			}
+
+			g.func.cast(g.as_numtype(g.get_wasm_type(typ)), typ.is_signed(), g.as_numtype(g.get_wasm_type(node.typ)))
 		}
 		ast.CallExpr {
-			mut name := node.name
-			mut arguments := []binaryen.Expression{cap: node.args.len + 1}
-
-			fret := g.function_return_wasm_type(node.return_type)
-			is_print := name in ['panic', 'println', 'print', 'eprintln', 'eprint']
-
-			if name in wasm.wasm_builtins {
-				return g.wasm_builtin(node.name, node)
-			}
-
-			if node.is_method {
-				name = '${g.table.get_type_name(node.receiver_type)}.${node.name}'
-			}
-
-			ret_types := g.unpack_type(node.return_type)
-			structs := ret_types.filter(g.table.sym(it).info is ast.Struct
-				&& !it.is_any_kind_of_pointer())
-			mut structs_addrs := []int{cap: structs.len}
-
-			// ABI: {return structs} {method `self`}, then {arguments}
-			for typ in structs {
-				pos := g.allocate_local_var('_anonstruct', typ)
-				structs_addrs << pos
-				arguments << g.lea_address(pos)
-			}
-			if node.is_method {
-				expr := if !node.left_type.is_ptr() && node.receiver_type.is_ptr() {
-					ast.Expr(ast.PrefixExpr{
-						op: .amp
-						right: node.left
-					})
-				} else {
-					node.left
-				}
-				arguments << g.expr(expr, node.receiver_type)
-			}
-			for idx, arg in node.args {
-				mut expr := arg.expr
-				typ := arg.typ
-
-				if is_print && typ != ast.string_type {
-					has_str, _, _ := g.table.sym(typ).str_method_info()
-					if typ != ast.string_type && !has_str {
-						g.v_error('cannot implicitly convert as argument does not have a .str() function',
-							arg.pos)
-					}
-
-					expr = ast.CallExpr{
-						name: 'str'
-						left: expr
-						left_type: typ
-						receiver_type: typ
-						return_type: ast.string_type
-						is_method: true
-					}
-				}
-				arguments << g.expr(expr, node.expected_arg_types[idx])
-			}
-
-			mut call := binaryen.call(g.mod, name.str, arguments.data, arguments.len,
-				fret)
-			if structs.len != 0 {
-				mut temporary := 0
-				// The function's return values contains structs and must be reordered
-
-				if ret_types.len - structs.len != 0 {
-					temporary = g.new_local_temporary_anon_wtyp(fret)
-					call = binaryen.localset(g.mod, temporary, call)
-				}
-				mut exprs := []binaryen.Expression{}
-
-				mut sidx := 0
-				mut tidx := 0
-				for typ in ret_types {
-					ts := g.table.sym(typ)
-
-					if ts.info is ast.Struct {
-						exprs << g.lea_address(structs_addrs[tidx])
-						tidx++
-					} else {
-						exprs << binaryen.tupleextract(g.mod, binaryen.localget(g.mod,
-							temporary, fret), sidx)
-						sidx++
-					}
-				}
-
-				vexpr := if exprs.len != 1 {
-					binaryen.tuplemake(g.mod, exprs.data, exprs.len)
-				} else {
-					exprs[0]
-				}
-
-				call = g.mkblock([call, vexpr])
-			}
-			if expected == ast.void_type && node.return_type != ast.void_type {
-				call = binaryen.drop(g.mod, call)
-			}
-			if node.is_noreturn {
-				// `[noreturn]` functions cannot return values
-				call = g.mkblock([call, binaryen.unreachable(g.mod)])
-			}
-			call
+			g.call_expr(node, expected, [])
 		}
 		else {
 			g.w_error('wasm.expr(): unhandled node: ' + node.type_name())
@@ -880,246 +989,261 @@ fn (mut g Gen) expr_impl(node ast.Expr, expected ast.Type) binaryen.Expression {
 	}
 }
 
-fn (mut g Gen) expr(node ast.Expr, expected ast.Type) binaryen.Expression {
-	expr := g.expr_impl(node, expected)
-
-	return expr
+pub fn (g &Gen) file_pos(pos token.Pos) string {
+	return '${g.file_path}:${pos.line_nr + 1}:${pos.col + 1}'
 }
 
-fn (mut g Gen) multi_assign_stmt(node ast.AssignStmt) binaryen.Expression {
-	if node.has_cross_var {
-		g.w_error('complex assign statements are not implemented')
-	}
-
-	//
-	// Expected to be a `a, b := multi_return()`.
-	//
-
-	mut exprs := []binaryen.Expression{cap: node.left.len + 1}
-
-	ret := (node.right[0] as ast.CallExpr).return_type
-	wret := g.get_wasm_type(ret)
-	temporary := g.new_local_temporary_anon(ret)
-
-	// Set multi return function to temporary, then use `tuple.extract`.
-	exprs << binaryen.localset(g.mod, temporary, g.expr(node.right[0], 0))
-
-	for i := 0; i < node.left.len; i++ {
-		left := node.left[i]
-		typ := node.left_types[i]
-		// rtyp := node.right_types[i]
-
-		if left is ast.Ident {
-			// `_ = expr`
-			if left.kind == .blank_ident {
-				continue
-			}
-			if node.op == .decl_assign {
-				g.new_local(left, typ)
-			}
-		}
-		var := g.get_var_from_expr(left)
-		popexpr := binaryen.tupleextract(g.mod, binaryen.localget(g.mod, temporary, wret),
-			i)
-		exprs << g.set_var(var, popexpr)
-	}
-
-	return g.mkblock(exprs)
-}
-
-fn (mut g Gen) new_for_label(node_label string) string {
-	g.lbl++
-	label := if node_label != '' {
-		node_label
-	} else {
-		g.lbl.str()
-	}
-	g.for_labels << label
-
-	return label
-}
-
-fn (mut g Gen) pop_for_label() {
-	g.for_labels.pop()
-}
-
-struct BlockPatch {
-mut:
-	idx   int
-	block binaryen.Expression
-}
-
-fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) binaryen.Expression {
-	return match node {
+pub fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
+	match node {
 		ast.Block {
 			g.expr_stmts(node.stmts, expected)
 		}
 		ast.Return {
-			mut leave_expr_list := []binaryen.Expression{cap: node.exprs.len}
-			mut exprs := []binaryen.Expression{cap: node.exprs.len}
-			for idx, expr in node.exprs {
-				typ := g.curr_ret[idx]
-				if g.table.sym(typ).info is ast.Struct && !typ.is_any_kind_of_pointer() {
-					// Could be adapted to use random pointers?
-					/*
-					if expr is ast.StructInit {
-						var := g.local_temporaries[g.get_local_temporary('__return${idx}')]
-						leave_expr_list << g.init_struct(var, expr)
-					}*/
-					var := g.local_temporaries[g.get_local_temporary('__return${idx}')]
-					address := g.expr(expr, typ)
-
-					leave_expr_list << g.blit(address, typ, binaryen.localget(g.mod, var.idx,
-						var.typ))
-				} else {
-					exprs << g.expr(expr, typ)
-				}
+			if node.exprs.len > 1 {
+				g.set_with_multi_expr(ast.ConcatExpr{ vals: node.exprs }, g.ret, g.ret_rvars)
+			} else if node.exprs.len == 1 {
+				g.set_with_multi_expr(node.exprs[0], g.ret, g.ret_rvars)
 			}
-
-			mut patch := BlockPatch{
-				idx: leave_expr_list.len
-			}
-			// leave_expr_list << g.vsp_leave()
-
-			ret_expr := if exprs.len == 1 {
-				exprs[0]
-			} else if exprs.len == 0 {
-				unsafe { nil }
-			} else {
-				binaryen.tuplemake(g.mod, exprs.data, exprs.len)
-			}
-			leave_expr_list << binaryen.ret(g.mod, ret_expr)
-
-			patch.block = g.mkblock(leave_expr_list)
-			g.stack_patches << patch
-
-			patch.block
+			g.func.c_br(g.ret_br)
 		}
 		ast.ExprStmt {
 			g.expr(node.expr, expected)
 		}
 		ast.ForStmt {
-			lbl := g.new_for_label(node.label)
+			block := g.func.c_block([], [])
+			{
+				loop := g.func.c_loop([], [])
+				{
+					g.loop_breakpoint_stack << LoopBreakpoint{
+						c_continue: loop
+						c_break: block
+						name: node.label
+					}
 
-			lpp_name := 'L${lbl}'
-			blk_name := 'B${lbl}'
-			expr := if !node.is_inf {
-				// binaryen.bif(g.mod, g.expr(node.cond, ast.bool_type))
+					if !node.is_inf {
+						g.expr(node.cond, ast.bool_type)
+						g.func.eqz(.i32_t)
+						g.func.c_br_if(block) // !cond, goto end
+					}
+					g.expr_stmts(node.stmts, ast.void_type)
+					g.func.c_br(loop) // goto loop
 
-				body := g.expr_stmts(node.stmts, ast.void_type)
-				lbody := [
-					// If !condition, leave.
-					binaryen.br(g.mod, blk_name.str, binaryen.unary(g.mod, binaryen.eqzint32(),
-						g.expr(node.cond, ast.bool_type)), unsafe { nil }),
-					// Body.
-					body,
-					// Unconditional loop back to top.
-					binaryen.br(g.mod, lpp_name.str, unsafe { nil }, unsafe { nil }),
-				]
-				loop := binaryen.loop(g.mod, lpp_name.str, g.mkblock(lbody))
-
-				binaryen.block(g.mod, blk_name.str, &loop, 1, type_none)
-			} else {
-				loop_top := binaryen.br(g.mod, lpp_name.str, unsafe { nil }, unsafe { nil })
-
-				loop := binaryen.loop(g.mod, lpp_name.str, g.mkblock([
-					g.expr_stmts(node.stmts, ast.void_type),
-					loop_top,
-				]))
-
-				binaryen.block(g.mod, blk_name.str, &loop, 1, type_none)
+					g.loop_breakpoint_stack.pop()
+				}
+				g.func.c_end(loop)
 			}
-			g.pop_for_label()
-			expr
+			g.func.c_end(block)
 		}
 		ast.ForCStmt {
-			mut for_stmt := []binaryen.Expression{}
-			if node.has_init {
-				for_stmt << g.expr_stmt(node.init, ast.void_type)
+			block := g.func.c_block([], [])
+			{
+				if node.has_init {
+					g.expr_stmt(node.init, ast.void_type)
+				}
+
+				loop := g.func.c_loop([], [])
+				{
+					g.loop_breakpoint_stack << LoopBreakpoint{
+						c_continue: loop
+						c_break: block
+						name: node.label
+					}
+
+					if node.has_cond {
+						g.expr(node.cond, ast.bool_type)
+						g.func.eqz(.i32_t)
+						g.func.c_br_if(block) // !cond, goto end
+					}
+
+					g.expr_stmts(node.stmts, ast.void_type)
+
+					if node.has_inc {
+						g.expr_stmt(node.inc, ast.void_type)
+					}
+
+					g.func.c_br(loop)
+					g.loop_breakpoint_stack.pop()
+				}
+				g.func.c_end(loop)
 			}
-
-			lbl := g.new_for_label(node.label)
-			lpp_name := 'L${lbl}'
-			blk_name := 'B${lbl}'
-
-			mut loop_exprs := []binaryen.Expression{}
-			if node.has_cond {
-				condexpr := binaryen.unary(g.mod, binaryen.eqzint32(), g.expr(node.cond,
-					ast.bool_type))
-				loop_exprs << binaryen.br(g.mod, blk_name.str, condexpr, unsafe { nil })
-			}
-			loop_exprs << g.expr_stmts(node.stmts, ast.void_type)
-
-			if node.has_inc {
-				loop_exprs << g.expr_stmt(node.inc, ast.void_type)
-			}
-			loop_exprs << binaryen.br(g.mod, lpp_name.str, unsafe { nil }, unsafe { nil })
-			loop := binaryen.loop(g.mod, lpp_name.str, g.mkblock(loop_exprs))
-
-			for_stmt << binaryen.block(g.mod, blk_name.str, &loop, 1, type_none)
-			g.pop_for_label()
-			g.mkblock(for_stmt)
+			g.func.c_end(block)
 		}
 		ast.BranchStmt {
-			mut blabel := if node.label != '' {
-				node.label
-			} else {
-				g.for_labels[g.for_labels.len - 1]
+			mut bp := g.loop_breakpoint_stack.last()
+			if node.label != '' {
+				for i := g.loop_breakpoint_stack.len; i > 0; {
+					i--
+					if g.loop_breakpoint_stack[i].name == node.label {
+						bp = g.loop_breakpoint_stack[i]
+					}
+				}
 			}
 
 			if node.kind == .key_break {
-				blabel = 'B${blabel}'
+				g.func.c_br(bp.c_break)
 			} else {
-				blabel = 'L${blabel}'
+				g.func.c_br(bp.c_continue)
 			}
-			binaryen.br(g.mod, blabel.str, unsafe { nil }, unsafe { nil })
+		}
+		ast.DeferStmt {
+			v := g.new_local('__defer(${node.idx_in_fn})', ast.bool_type)
+			g.func.i32_const(1)
+			g.set(v)
+			g.defer_vars << v
+		}
+		ast.AssertStmt {
+			if !node.is_used {
+				return
+			}
+
+			// calls builtin functions, don't want to corrupt stack frame!
+			g.is_leaf_function = false
+
+			g.expr(node.expr, ast.bool_type)
+			g.func.eqz(.i32_t) // !expr
+			lbl := g.func.c_if([], [])
+			{
+				// main.main: ${msg}
+				// V panic: Assertion failed...
+
+				mut msg := '${g.file_pos(node.pos)}: fn ${g.fn_name}: ${ast.Stmt(node)}'
+				if node.extra is ast.StringLiteral {
+					msg += ", '${node.extra.val}'"
+				}
+
+				g.expr(ast.StringLiteral{ val: msg }, ast.string_type)
+				g.func.call('eprintln')
+				g.expr(ast.StringLiteral{ val: 'Assertion failed...' }, ast.string_type)
+				g.func.call('panic')
+			}
+			g.func.c_end(lbl)
 		}
 		ast.AssignStmt {
-			if (node.left.len > 1 && node.right.len == 1) || node.has_cross_var {
+			if node.has_cross_var {
+				g.w_error('complex assign statements are not implemented')
+				// `a, b = b, a`
+			} else {
+				// `a := 1` | `a, b := 1, 2`
 				// `a, b := foo()`
 				// `a, b := if cond { 1, 2 } else { 3, 4 }`
-				// `a, b = b, a`
 
-				g.multi_assign_stmt(node)
-			} else {
-				// `a := 1` | `a,b := 1,2`
+				is_expr_assign := node.op !in [.decl_assign, .assign]
 
-				mut exprs := []binaryen.Expression{cap: node.left.len}
-				for i, left in node.left {
-					right := node.right[i]
+				// similar code from `call_expr()`
+				// create variables or obtain them for use as rvals
+				mut rvars := []Var{cap: node.left_types.len}
+				for idx, rt in node.left_types {
+					left := node.left[idx]
+
+					mut var := Var{}
+					mut passed := false
+
+					if left is ast.Ident {
+						if left.kind == .blank_ident {
+							var = g.new_local('_', rt)
+							passed = true
+						} else if node.op == .decl_assign {
+							var = g.new_local(left.name, rt)
+							passed = true
+						}
+					}
+
+					if !passed && node.op == .assign {
+						if v := g.get_var_from_expr(left) {
+							var = v
+						}
+					}
+
+					if g.is_param_type(rt) {
+						rvars << var
+					}
+				}
+
+				mut set := false
+				if node.right.len == 1 {
+					right := node.right[0]
+					match right {
+						ast.IfExpr {
+							params := node.left_types.filter(!g.is_param_type(it)).map(g.get_wasm_type(it))
+							g.if_branch(right, right.typ, params, 0, rvars)
+							set = true
+						}
+						ast.CallExpr {
+							g.call_expr(right, 0, rvars)
+							set = true
+						}
+						else {
+							// : set = false
+							// execute below instead
+						}
+					}
+				}
+
+				// will never be a multi expr
+				// assume len == 1 for left and right
+				if is_expr_assign {
+					left, right, typ := node.left[0], node.right[0], node.left_types[0]
+
+					rop := token.assign_op_to_infix_op(node.op)
+					lhs := g.get_var_or_make_from_expr(left, typ)
+
+					if !g.is_pure_type(lhs.typ) {
+						// main.struct.+
+						name := '${g.table.get_type_name(lhs.typ)}.${rop}'
+						g.ref(lhs)
+						g.ref(lhs)
+						g.expr(right, lhs.typ)
+						g.func.call(name)
+					} else {
+						g.set_prepare(lhs)
+						{
+							g.get(lhs)
+							g.expr(right, lhs.typ)
+							g.infix_from_typ(lhs.typ, rop)
+						}
+						g.set_set(lhs)
+					}
+
+					return
+				}
+
+				// prepare variables using expr()
+				// if is an rvar, set it and ignore following
+				if !set {
+					assert node.left.len == node.right.len
+					mut ridx := 0
+					for idx, right in node.right {
+						typ := node.left_types[idx]
+						if g.is_param_type(typ) {
+							g.set_with_expr(right, rvars[ridx])
+							ridx++
+						} else {
+							g.expr(right, typ)
+						}
+					}
+				}
+
+				for i := node.left.len; i > 0; {
+					i--
+					left := node.left[i]
 					typ := node.left_types[i]
 
-					// `_ = expr` must be evaluated even if the value is being dropped!
-					// The optimiser would remove expressions without side effects.
-
-					// a    =  expr
-					// b    *= expr
-					// _    =  expr
-					// a.b  =  expr
-					// *a   =  expr
-					// a[b] =  expr
+					if g.is_param_type(typ) {
+						// is already set
+						continue
+					}
 
 					if left is ast.Ident {
 						// `_ = expr`
 						if left.kind == .blank_ident {
-							exprs << binaryen.drop(g.mod, g.expr(right, typ))
+							// expression still may have side effect
+							g.func.drop()
 							continue
-						}
-						if node.op == .decl_assign {
-							g.new_local(left, typ)
 						}
 					}
 
-					var := g.get_var_from_expr(left)
-					exprs << g.assign_expr_to_var(var, right, typ, op: node.op)
-				}
-
-				if exprs.len == 1 {
-					exprs[0]
-				} else if exprs.len != 0 {
-					g.mkblock(exprs)
-				} else {
-					binaryen.nop(g.mod)
+					v := g.get_var_or_make_from_expr(left, typ)
+					g.set(v)
 				}
 			}
 		}
@@ -1129,37 +1253,30 @@ fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) binaryen.Expression {
 	}
 }
 
-pub fn (mut g Gen) expr_stmts(stmts []ast.Stmt, expected ast.Type) binaryen.Expression {
-	if stmts.len == 0 {
-		return binaryen.nop(g.mod)
-	}
-	if stmts.len == 1 {
-		return g.expr_stmt(stmts[0], expected)
-	}
-	mut exprl := []binaryen.Expression{cap: stmts.len}
-	for idx, stmt in stmts {
-		rtyp := if idx + 1 == stmts.len {
-			expected
-		} else {
-			ast.void_type
-		}
-		exprl << g.expr_stmt(stmt, rtyp)
-	}
-	return g.mkblock(exprl)
+pub fn (mut g Gen) expr_stmts(stmts []ast.Stmt, expected ast.Type) {
+	g.rvar_expr_stmts(stmts, expected, [])
 }
 
-fn (mut g Gen) toplevel_stmt(node ast.Stmt) {
+pub fn (mut g Gen) rvar_expr_stmts(stmts []ast.Stmt, expected ast.Type, existing_rvars []Var) {
+	for idx, stmt in stmts {
+		if idx + 1 >= stmts.len {
+			if stmt is ast.ExprStmt {
+				g.set_with_multi_expr(stmt.expr, expected, existing_rvars)
+			} else {
+				g.expr_stmt(stmt, expected)
+			}
+		} else {
+			g.expr_stmt(stmt, ast.void_type)
+		}
+	}
+}
+
+pub fn (mut g Gen) toplevel_stmt(node ast.Stmt) {
 	match node {
 		ast.FnDecl {
 			g.fn_decl(node)
 		}
-		ast.Module {
-			if ns := node.attrs.find_first('wasm_import_namespace') {
-				g.module_import_namespace = ns.arg
-			} else {
-				g.module_import_namespace = 'env'
-			}
-		}
+		ast.Module {}
 		ast.GlobalDecl {}
 		ast.ConstDecl {}
 		ast.Import {}
@@ -1204,64 +1321,83 @@ pub fn (mut g Gen) calculate_enum_fields() {
 }
 
 pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Preferences) {
+	stack_top := 1024 + (16 * 1024)
 	mut g := &Gen{
 		table: table
 		pref: w_pref
 		files: files
 		eval: eval.new_eval(table, w_pref)
-		mod: binaryen.modulecreate()
+		pool: serialise.new_pool(table, store_relocs: true, null_terminated: false)
+		stack_top: stack_top
+		data_base: calc_align(stack_top + 1, 16)
 	}
 	g.table.pointer_size = 4
-	binaryen.modulesetfeatures(g.mod, binaryen.featureall())
-	binaryen.setlowmemoryunused(true) // Low 1KiB of memory is unused.
-	defer {
-		binaryen.moduledispose(g.mod)
-	}
+	g.mod.assign_memory('memory', true, 1, none)
 
-	if g.pref.os == .browser {
-		eprintln('`-os browser` is experimental and will not live up to expectations...')
+	if g.pref.is_debug {
+		g.mod.enable_debug(none)
 	}
 
 	g.calculate_enum_fields()
 	for file in g.files {
 		g.file_path = file.path
-		if g.pref.is_debug {
-			g.file_path_idx = binaryen.moduleadddebuginfofilename(g.mod, g.file_path.str)
-		}
 		if file.errors.len > 0 {
 			util.verror('wasm error', file.errors[0].str())
 		}
 		g.toplevel_stmts(file.stmts)
 	}
-	if g.globals.len != 0 {
-		g.needs_stack = true
-	}
 	g.housekeeping()
 
-	mut valid := binaryen.modulevalidate(g.mod)
-	if valid {
-		binaryen.setdebuginfo(w_pref.is_debug)
-		if w_pref.is_prod {
-			binaryen.setoptimizelevel(3)
-			binaryen.moduleoptimize(g.mod)
-		}
-	}
+	mod := g.mod.compile()
 
 	if out_name == '-' {
-		if g.pref.is_verbose {
-			binaryen.moduleprint(g.mod)
+		if os.is_atty(1) == 1 {
+			eprintln('pretty printing to stdout is not implemented for the time being')
+			eprintln('raw bytes can mess up your terminal, are you piping into a file?')
+			exit(1)
 		} else {
-			binaryen.moduleprintstackir(g.mod, w_pref.is_prod)
+			print(mod.bytestr())
 		}
-	}
-
-	if !valid {
-		g.w_error('validation failed, this should not happen. report an issue with the above messages')
 	}
 
 	if out_name != '-' {
-		bytes := binaryen.moduleallocateandwrite(g.mod, unsafe { nil })
-		str := unsafe { (&char(bytes.binary)).vstring_with_len(int(bytes.binaryBytes)) }
-		os.write_file(out_name, str) or { panic(err) }
+		os.write_file_array(out_name, mod) or { panic(err) }
+		if g.pref.wasm_validate {
+			exe := $if windows { 'wasm-validate.exe' } $else { 'wasm-validate' }
+			if rt := os.find_abs_path_of_executable(exe) {
+				mut p := os.new_process(rt)
+				p.set_args([out_name])
+				p.set_redirect_stdio()
+				p.run()
+				err := p.stderr_slurp()
+				p.wait()
+				if p.code != 0 {
+					eprintln(err)
+					g.w_error('validation failed, this should not happen. report an issue with the above messages, the webassembly generated, and appropriate code.')
+				}
+			} else {
+				g.w_error('${exe} not found! Try installing WABT (WebAssembly Binary Toolkit). Run `./cmd/tools/install_wabt.vsh`, to download a prebuilt executable for your platform.')
+			}
+		}
+		if g.pref.is_prod {
+			exe := $if windows { 'wasm-opt.exe' } $else { 'wasm-opt' }
+			if rt := os.find_abs_path_of_executable(exe) {
+				// -lmu: low memory unused, very important optimisation
+				res := os.execute('${os.quoted_path(rt)} -all -lmu -c -O4 ${os.quoted_path(out_name)} -o ${os.quoted_path(out_name)}')
+				if res.exit_code != 0 {
+					eprintln(res.output)
+					g.w_error('${rt} failed, this should not happen. Report an issue with the above messages, the webassembly generated, and appropriate code.')
+				}
+			} else {
+				g.w_error('${exe} not found! Try installing Binaryen.
+				|    Run `./cmd/tools/install_binaryen.vsh`, to download a prebuilt executable for your platform.
+				|    After that, either copy or symlink thirdparty/binaryen/bin/wasm-opt to a folder on your PATH,
+				|    or add thirdparty/binaryen/bin to your PATH.
+				|    Use `wasm-opt --version` to verify that it can be found.
+				'.strip_margin())
+			}
+		}
+	} else if g.pref.wasm_validate || g.pref.is_prod {
+		eprintln('stdout output, cannot validate or optimise wasm')
 	}
 }

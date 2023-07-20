@@ -84,3 +84,60 @@ pub fn powi(a i64, b i64) i64 {
 
 	return v
 }
+
+pub fn sqrti(a i64) i64 {
+	mut x := a
+	mut q, mut r := i64(1), i64(0)
+	for ; q <= x; {
+		q <<= 2
+	}
+	for ; q > 1; {
+		q >>= 2
+		t := x - r - q
+		r >>= 1
+		if t >= 0 {
+			x = t
+			r += q
+		}
+	}
+	return r
+}
+
+fn main() {
+	println('--- test printing numbers')
+	println(-20)
+	println(0)
+	println(22)
+	println(-1000000022)
+
+	println('--- test powi')
+	println(powi(2, 62))
+	println(powi(0, -2))
+	println(powi(2, -1))
+
+	println('--- test sqrti')
+	println(sqrti(i64(123456789) * i64(123456789)))
+	println(sqrti(144))
+	println(sqrti(0))
+
+	println('--- test negate')
+	println(negate(20))
+	println(negate(-1))
+
+	println('--- test inc')
+	println(inc(20))
+	println(inc(-1))
+
+	println('--- test lcm')
+	println(lcm(2, 3))
+	println(lcm(-2, 3))
+	println(lcm(-2, -3))
+	println(lcm(0, 0))
+
+	println('--- test gcd')
+
+	println(gcd(6, 9))
+	println(gcd(6, -9))
+	println(gcd(-6, -9))
+	println(gcd(0, 0))
+}

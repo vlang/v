@@ -7,7 +7,14 @@ The [gitly](https://gitly.org/) site is based on vweb.
 **_Some features may not be complete, and have some bugs._**
 
 ## Quick Start
-Just run **`v new <name> web`** in your terminal
+Just run **`v new <name> web`** in your terminal.
+
+Run your vweb app with a live reload via `v -d vweb_livereload watch run .`
+
+Now modifying any file in your web app (whether it's a .v file with the backend logic
+or a compiled .html template file) will result in an instant refresh of your app
+in the browser. No need to quit the app, rebuild it, and refresh the page in the browser!
+
 
 ## Features
 
@@ -227,6 +234,23 @@ header you want example. `app.req.header.get(.content_type)`. See `struct Header
 for all available methods (`v doc net.http Header`).
 It has, too, fields for the `query`, `form`, `files`.
 
+#### - Parameter Arrays
+
+If you want multiple parameters in your route and if you want to parse the parameters 
+yourself, or you want a wildcard route, you can add `...`  after the `:` and name,
+e.g. `['/:path...']`.
+
+This will match all routes after `'/'`. For example the url `/path/to/test` would give
+`path = '/path/to/test'`.
+
+```v ignore
+        vvv
+['/:path...']             vvvv
+fn (mut app App) wildcard(path string) vweb.Result {
+	return app.text('URL path = "${path}"')
+}
+```
+
 #### - Query
 To handle the query context, you just need use the  `query` field
 
@@ -253,7 +277,7 @@ pub fn (mut app App) controller_get_user_by_id() vweb.Result {
 ```
 #### - Host
 To restrict an endpoint to a specific host, you can use the `host` attribute
-followed by a colon `:` and the host name. You can test the Host feature locally 
+followed by a colon `:` and the host name. You can test the Host feature locally
 by adding a host to the "hosts" file of your device.
 
 **Example:**
@@ -293,10 +317,10 @@ pub fn (mut app App) before_request() {
 }
 ```
 
-Middleware functions can be passed directly when creating an App instance and is 
-executed when the url starts with the defined key. 
+Middleware functions can be passed directly when creating an App instance and is
+executed when the url starts with the defined key.
 
-In the following example, if a user navigates to `/path/to/test` the middleware 
+In the following example, if a user navigates to `/path/to/test` the middleware
 is executed in the following order: `middleware_func`, `other_func`, `global_middleware`.
 The middleware is executed in the same order as they are defined and if any function in
 the chain returns `false` the propogation is stopped.
@@ -342,7 +366,7 @@ fn global_middleware(mut ctx vweb.Context) bool {
 }
 ```
 
-Middleware functions will be of type `vweb.Middleware` and are not methods of App, 
+Middleware functions will be of type `vweb.Middleware` and are not methods of App,
 so they could also be imported from other modules.
 ```v ignore
 pub type Middleware = fn (mut Context) bool
@@ -374,7 +398,7 @@ The middleware is executed in the following order:
 3. The middleware in the `[middleware]` attribute
 
 If any function of step 2 or 3 returns `false` the middleware functions that would
-come after it are not executed and the app handler will also not be executed. You 
+come after it are not executed and the app handler will also not be executed. You
 can think of it as a chain.
 
 ### Context values
@@ -435,7 +459,7 @@ We get this key in `index` and display it to the user if the `'user'` key exists
 
 #### Changing Context values
 
-By default context values are immutable when retrieved with `get_value`. If you want to 
+By default context values are immutable when retrieved with `get_value`. If you want to
 change the value later you have to set it again with `set_value`.
 
 **Example:**
@@ -493,9 +517,9 @@ pub fn (mut app App) with_auth() bool {
 }
 ```
 
-### Fallback route
-You can implement a fallback `not_found` route that is called when a request is made and no 
-matching route is found.
+### Custom not found page
+You can implement a `not_found` route that is called when a request is made and no
+matching route is found to replace the default HTTP 404 not found page.
 
 **Example:**
 
@@ -507,7 +531,7 @@ pub fn (mut app App) not_found() vweb.Result {
 ```
 
 ### Databases
-The `db` field in a vweb app is reserved for database connections. The connection is 
+The `db` field in a vweb app is reserved for database connections. The connection is
 copied to each new request.
 
 **Example:**
@@ -536,7 +560,7 @@ fn main() {
 
 ### Multithreading
 By default, a vweb app is multithreaded, that means that multiple requests can
-be handled in parallel by using multiple CPU's: a worker pool. You can 
+be handled in parallel by using multiple CPU's: a worker pool. You can
 change the number of workers (maximum allowed threads) by altering the `nr_workers`
 option. The default behaviour is to use the maximum number of jobs (cores in most cases).
 
@@ -560,7 +584,7 @@ To resolve this issue, you can use the vweb's built-in database pool. The databa
 will keep a number of connections open when the app is started and each worker is
 assigned its own connection.
 
-Let's look how we can improve our previous example with database pooling and using a 
+Let's look how we can improve our previous example with database pooling and using a
 postgresql server instead.
 
 **Example:**
@@ -593,14 +617,14 @@ fn main() {
 }
 ```
 
-If you don't use the default number of workers (`nr_workers`) you have to change 
+If you don't use the default number of workers (`nr_workers`) you have to change
 it to the same number in `vweb.run_at` as in `vweb.database_pool`
 
 ### Extending the App struct with `[vweb_global]`
 You can change your `App` struct however you like, but there are some things you
 have to keep in mind. Under the hood at each request a new instance of `App` is
-constructed, and all fields are re-initialized with their default type values, 
-except for the `db` field. 
+constructed, and all fields are re-initialized with their default type values,
+except for the `db` field.
 
 This behaviour ensures that each request is treated equally and in the same context, but
 problems arise when we want to provide more context than just the default `vweb.Context`.
@@ -628,8 +652,8 @@ fn (mut app App) index() vweb.Result {
 }
 ```
 
-When you visit `localhost:8080/` you would expect to see the text 
-`"My secret is: my secret"`, but instead there is only the text 
+When you visit `localhost:8080/` you would expect to see the text
+`"My secret is: my secret"`, but instead there is only the text
 `"My secret is: "`. This is because of the way vweb works. We can override the default
 behaviour by adding the attribute `[vweb_global]` to the `secret` field.
 
@@ -647,8 +671,8 @@ Now if you visit `localhost:8080/` you see the text `"My secret is: my secret"`.
 > next request. You can use shared fields for this.
 
 ### Shared Objects across requests
-We saw in the previous section that we can persist data across multiple requests, 
-but what if we want to be able to mutate the data? Since vweb works with threads, 
+We saw in the previous section that we can persist data across multiple requests,
+but what if we want to be able to mutate the data? Since vweb works with threads,
 we have to use `shared` fields.
 
 Let's see how we can add a visitor counter to our `App`.
@@ -700,7 +724,7 @@ requests the next requests will have to wait for the lock to be released.
 It is best practice to limit the use of shared objects as much as possible.
 
 ### Controllers
-Controllers can be used to split up app logic so you are able to have one struct 
+Controllers can be used to split up app logic so you are able to have one struct
 per `"/"`.  E.g. a struct `Admin` for urls starting with `"/admin"` and a struct `Foo`
 for urls starting with `"/foo"`
 
@@ -734,9 +758,9 @@ fn main() {
 }
 ```
 
-You can do everything with a controller struct as with a regular `App` struct. 
+You can do everything with a controller struct as with a regular `App` struct.
 The only difference being is that only the main app that is being passed to `vweb.run`
-is able to have controllers. If you add `vweb.Controller` on a controller struct it 
+is able to have controllers. If you add `vweb.Controller` on a controller struct it
 will simply be ignored.
 
 #### Routing
@@ -749,10 +773,10 @@ pub fn (mut app Admin) path vweb.Result {
 }
 ```
 When we created the controller with `vweb.controller('/admin', &Admin{})` we told
-vweb that the namespace of that controller is `"/admin"` so in this example we would 
+vweb that the namespace of that controller is `"/admin"` so in this example we would
 see the text `"Admin"` if we navigate to the url `"/admin/path"`.
 
-Vweb doesn't support fallback routes or duplicate routes, so if we add the following 
+Vweb doesn't support fallback routes or duplicate routes, so if we add the following
 route to the example the code will produce an error.
 
 ```v ignore
@@ -1198,5 +1222,5 @@ pub fn (mut app App) error() vweb.Result {
 ```
 # Cross-Site Request Forgery (CSRF) protection
 
-Vweb has built-in csrf protection. Go to the [csrf module](csrf/) to learn how 
+Vweb has built-in csrf protection. Go to the [csrf module](csrf/) to learn how
 you can protect your app against CSRF.

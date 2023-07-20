@@ -1,54 +1,26 @@
 vlib/sokol/audio/audio.v:107:26: error: struct `C.saudio_desc` was declared as private to module `module_with_redeclaration`, so it can not be used inside module `sokol.audio`
   105 | fn C.saudio_userdata() voidptr
-  106 | 
+  106 |
   107 | fn C.saudio_query_desc() C.saudio_desc
       |                          ~~~~~~~~~~~~~
-  108 | 
+  108 |
   109 | fn C.saudio_sample_rate() int
 vlib/sokol/audio/audio.v:122:19: error: struct `C.saudio_desc` was declared as private to module `module_with_redeclaration`, so it can not be used inside module `sokol.audio`
-  120 | 
+  120 |
   121 | // setup - setup sokol-audio
   122 | pub fn setup(desc &C.saudio_desc) {
       |                   ~~~~~~~~~~~~~~
   123 |     if desc.allocator.alloc == unsafe { nil } && desc.allocator.free == unsafe { nil } {
   124 |         unsafe {
-vlib/sokol/audio/audio.v:125:9: error: struct `C.saudio_desc` was declared as private to module `module_with_redeclaration`, so it can not be used inside module `sokol.audio`
-  123 |     if desc.allocator.alloc == unsafe { nil } && desc.allocator.free == unsafe { nil } {
-  124 |         unsafe {
-  125 |             desc.allocator.alloc = memory.salloc
-      |                  ~~~~~~~~~
-  126 |             desc.allocator.free = memory.sfree
-  127 |             desc.allocator.user_data = voidptr(0x100a0d10)
-vlib/sokol/audio/audio.v:126:9: error: struct `C.saudio_desc` was declared as private to module `module_with_redeclaration`, so it can not be used inside module `sokol.audio`
-  124 |         unsafe {
-  125 |             desc.allocator.alloc = memory.salloc
-  126 |             desc.allocator.free = memory.sfree
-      |                  ~~~~~~~~~
-  127 |             desc.allocator.user_data = voidptr(0x100a0d10)
-  128 |         }
-vlib/sokol/audio/audio.v:127:9: error: struct `C.saudio_desc` was declared as private to module `module_with_redeclaration`, so it can not be used inside module `sokol.audio`
-  125 |             desc.allocator.alloc = memory.salloc
-  126 |             desc.allocator.free = memory.sfree
-  127 |             desc.allocator.user_data = voidptr(0x100a0d10)
-      |                  ~~~~~~~~~
-  128 |         }
-  129 |     }
-vlib/sokol/audio/audio.v:132:9: error: struct `C.saudio_desc` was declared as private to module `module_with_redeclaration`, so it can not be used inside module `sokol.audio`
-  130 |     if desc.logger.log_cb == unsafe { nil } {
-  131 |         unsafe {
-  132 |             desc.logger.log_cb = memory.slog
-      |                  ~~~~~~
-  133 |         }
-  134 |     }
 vlib/sokol/audio/audio.v:154:16: error: struct `C.saudio_desc` was declared as private to module `module_with_redeclaration`, so it can not be used inside module `sokol.audio`
-  152 | 
+  152 |
   153 | // query - return a copy of the original saudio_desc struct
   154 | pub fn query() C.saudio_desc {
       |                ~~~~~~~~~~~~~
   155 |     return C.saudio_query_desc()
   156 | }
 vlib/v/checker/tests/private_redeclaration_of_C_struct.vv:7:10: error: struct `C.saudio_desc` was declared as private to module `module_with_redeclaration`, so it can not be used inside module `main`
-    5 | 
+    5 |
     6 | fn main() {
     7 |     sd := C.saudio_desc{}
       |             ~~~~~~~~~~~~~

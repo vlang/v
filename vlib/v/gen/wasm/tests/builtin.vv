@@ -1,7 +1,6 @@
 fn test() {
 	print('hello!')
 	println('hello!')
-	panic('nooo!')
 }
 
 fn str_methods() {
@@ -15,4 +14,20 @@ fn str_implicit() {
 	println(true)
 	a := 100
 	println(a + 10)
+}
+
+fn assertions() {
+	assert true, 'hello'
+	assert true
+
+	// assert false, 'no can do'
+}
+
+fn main() {
+	test()
+	str_methods()
+	str_implicit()
+	assertions()
+
+	// panic('nooo!')
 }

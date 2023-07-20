@@ -40,7 +40,7 @@ pub fn (t Time) local() Time {
 }
 
 // in most systems, these are __quad_t, which is an i64
-struct C.timespec {
+pub struct C.timespec {
 mut:
 	tv_sec  i64
 	tv_nsec i64

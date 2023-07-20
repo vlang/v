@@ -6,6 +6,23 @@ const is_verbose = os.getenv('VTEST_SHOW_CMD') != ''
 
 // TODO some logic copy pasted from valgrind_test.v and compiler_test.v, move to a module
 fn test_wasm() {
+	mut runtimes := ['wasmer', 'wasmtime', 'wavm', 'wasm3']
+	mut runtime_found := false
+
+	for runtime in runtimes {
+		basename := $if windows { runtime + '.exe' } $else { runtime }
+
+		if rf := os.find_abs_path_of_executable(basename) {
+			runtime_found = true
+			break
+		}
+	}
+
+	if !runtime_found {
+		eprintln('cannot find suitable wasm runtime, exiting...')
+		exit(0)
+	}
+
 	mut bench := benchmark.new_benchmark()
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
@@ -33,7 +50,7 @@ fn test_wasm() {
 		tmperrfile := '${dir}/${test}.tmperr'
 		outfile := '${dir}/${test}.out'
 		// force binaryen to print without colour
-		cmd := '${os.quoted_path(vexe)} -o - -b wasm ${os.quoted_path(full_test_path)} 2> ${os.quoted_path(tmperrfile)}'
+		cmd := '${os.quoted_path(vexe)} -b wasm run ${os.quoted_path(full_test_path)} 2> ${os.quoted_path(tmperrfile)}'
 		if is_verbose {
 			println(cmd)
 		}
@@ -65,6 +82,9 @@ fn test_wasm() {
 				bench.fail()
 				continue
 			}
+		} else {
+			os.write_file(outfile, res_wasm.output.trim_right('\r\n').replace('\r\n',
+				'\n'))!
 		}
 		bench.ok()
 		eprintln(bench.step_message_ok(relative_test_path))

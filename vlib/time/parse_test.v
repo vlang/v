@@ -209,7 +209,6 @@ fn test_parse_format() {
 		assert false
 		return
 	}
-
 	assert t.year == 2018 && t.month == 1 && t.day == 27 && t.hour == 12 && t.minute == 48
 		&& t.second == 34
 
@@ -222,13 +221,13 @@ fn test_parse_format() {
 	assert t.year == 2018 && t.month == 11 && t.day == 27 && t.hour == 12 && t.minute == 48
 		&& t.second == 20
 
-	s = '2018-1-2 1:8:2'
-	t = time.parse_format(s, 'YYYY-M-D H:m:s') or {
+	s = '18-1-2 0:8:2'
+	t = time.parse_format(s, 'YY-M-D H:m:s') or {
 		eprintln('> failing format: ${s} | err: ${err}')
 		assert false
 		return
 	}
-	assert t.year == 2018 && t.month == 1 && t.day == 2 && t.hour == 1 && t.minute == 8
+	assert t.year == 2018 && t.month == 1 && t.day == 2 && t.hour == 0 && t.minute == 8
 		&& t.second == 2
 
 	// This should always fail, because we test if M and D allow for a 01 value which they shouldn't

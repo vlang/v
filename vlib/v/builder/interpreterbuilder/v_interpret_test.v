@@ -48,6 +48,8 @@ fn test_interpreter() {
 	tests << InterpTest{'println(3-4)', '-1'}
 	tests << InterpTest{'println(3*3)', '9'}
 	tests << InterpTest{'a := 3\nprintln(a*3)', '9'}
+	tests << InterpTest{'arr := [10,20,30]\nprintln(arr[1])', '20'}
+	tests << InterpTest{'fa := [10,20,30]!\nprintln(fa[2])', '30'}
 	for test in tests {
 		interp_test(test.input, test.output)!
 		assert true

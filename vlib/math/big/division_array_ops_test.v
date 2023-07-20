@@ -2,35 +2,35 @@ module big
 
 import rand
 
-fn test_lshift_in_place() {
+fn test_left_shift_in_place() {
 	mut a := [u32(1), 1, 1, 1, 1]
-	lshift_in_place(mut a, 1)
+	left_shift_in_place(mut a, 1)
 	assert a == [u32(2), 2, 2, 2, 2]
-	lshift_in_place(mut a, 7)
+	left_shift_in_place(mut a, 7)
 	assert a == [u32(256), 256, 256, 256, 256]
 	mut b := [u32(0x80000001), 0xc0000000, 0x80000000, 0x7fffffff]
-	lshift_in_place(mut b, 1)
+	left_shift_in_place(mut b, 1)
 	assert b == [u32(2), 0x80000001, 1, 0xffffffff]
 	mut c := [u32(0x00ffffff), 0xf0f0f0f0, 1, 0x3fffffff, 1]
-	lshift_in_place(mut c, 2)
+	left_shift_in_place(mut c, 2)
 	assert c == [u32(0x3fffffc), 0xc3c3c3c0, 7, 0xfffffffc, 4]
 }
 
-fn test_rshift_in_place() {
+fn test_right_shift_in_place() {
 	mut a := [u32(2), 2, 2, 2, 2]
-	rshift_in_place(mut a, 1)
+	right_shift_in_place(mut a, 1)
 	assert a == [u32(1), 1, 1, 1, 1]
 	a = [u32(256), 256, 256, 256, 256]
-	rshift_in_place(mut a, 7)
+	right_shift_in_place(mut a, 7)
 	assert a == [u32(2), 2, 2, 2, 2]
 	a = [u32(0), 0, 1]
-	rshift_in_place(mut a, 1)
+	right_shift_in_place(mut a, 1)
 	assert a == [u32(0), 0x80000000, 0]
 	mut b := [u32(3), 0x80000001, 1, 0xffffffff]
-	rshift_in_place(mut b, 1)
+	right_shift_in_place(mut b, 1)
 	assert b == [u32(0x80000001), 0xc0000000, 0x80000000, 0x7fffffff]
 	mut c := [u32(0x03ffffff), 0xc3c3c3c0, 7, 0xfffffffc, 4]
-	rshift_in_place(mut c, 2)
+	right_shift_in_place(mut c, 2)
 	assert c == [u32(0x00ffffff), 0xf0f0f0f0, 1, 0x3fffffff, 1]
 }
 

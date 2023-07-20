@@ -64,6 +64,10 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 			}
 		}
 		p.check(.rsbr)
+		p.fixed_array_dim++
+		defer {
+			p.fixed_array_dim--
+		}
 		elem_type := p.parse_type()
 		if elem_type.idx() == 0 {
 			// error is handled by parse_type
@@ -73,7 +77,7 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 			p.error_with_pos('fixed size cannot be zero or negative', size_expr.pos())
 		}
 		idx := p.table.find_or_register_array_fixed(elem_type, fixed_size, size_expr,
-			!is_option && p.inside_fn_return)
+			p.fixed_array_dim == 1 && !is_option && p.inside_fn_return)
 		if elem_type.has_flag(.generic) {
 			return ast.new_type(idx).set_flag(.generic)
 		}
@@ -649,7 +653,7 @@ fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot b
 					}
 					'any' {
 						if p.file_backend_mode != .js && p.mod != 'builtin' {
-							p.error('cannot use `any` type here, `any` will be implemented in V 0.4')
+							p.error('cannot use `any` type here')
 						}
 						ret = ast.any_type
 					}
@@ -703,6 +707,16 @@ fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Languag
 						})
 					}
 					typ = ast.new_type(idx)
+				}
+			}
+			ast.Alias {
+				if p.inside_fn_return {
+					parent_sym := p.table.sym(sym.info.parent_type)
+					if parent_sym.kind == .array_fixed {
+						info := parent_sym.array_fixed_info()
+						typ = p.table.find_or_register_array_fixed(info.elem_type, info.size,
+							info.size_expr, p.inside_fn_return)
+					}
 				}
 			}
 			else {}

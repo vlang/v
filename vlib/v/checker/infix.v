@@ -195,7 +195,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					} else {
 						if mut node.right is ast.ArrayInit {
 							for i, typ in node.right.expr_types {
-								c.ensure_type_exists(typ, node.right.exprs[i].pos()) or {}
+								c.ensure_type_exists(typ, node.right.exprs[i].pos())
 							}
 						}
 					}
@@ -505,7 +505,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 				// `array << elm`
 				c.check_expr_opt_call(node.right, right_type)
-				node.auto_locked, _ = c.fail_if_immutable(node.left)
+				node.auto_locked, _ = c.fail_if_immutable(mut node.left)
 				left_value_type := c.table.value_type(c.unwrap_generic(left_type))
 				left_value_sym := c.table.sym(c.unwrap_generic(left_value_type))
 				if left_value_sym.kind == .interface_ {
@@ -661,7 +661,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 				if chan_info.is_mut {
 					// TODO: The error message of the following could be more specific...
-					c.fail_if_immutable(node.right)
+					c.fail_if_immutable(mut node.right)
 				}
 				if elem_type.is_ptr() && !right_type.is_ptr() {
 					c.error('cannot push non-reference `${right_sym.name}` on `${left_sym.name}`',
@@ -779,9 +779,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		}
 	}
 	/*
-	if (node.left is ast.InfixExpr &&
-		(node.left as ast.InfixExpr).op == .inc) ||
-		(node.right is ast.InfixExpr && (node.right as ast.InfixExpr).op == .inc) {
+	if (node.left is ast.InfixExpr && node.left.op == .inc) ||
+		(node.right is ast.InfixExpr && node.right.op == .inc) {
 		c.warn('`++` and `--` are statements, not expressions', node.pos)
 	}
 	*/
@@ -856,6 +855,11 @@ fn (mut c Checker) autocast_in_if_conds(mut right ast.Expr, from_expr ast.Expr, 
 		}
 		ast.ParExpr {
 			c.autocast_in_if_conds(mut right.expr, from_expr, from_type, to_type)
+		}
+		ast.AsCast {
+			if right.typ != to_type {
+				c.autocast_in_if_conds(mut right.expr, from_expr, from_type, to_type)
+			}
 		}
 		ast.PrefixExpr {
 			c.autocast_in_if_conds(mut right.right, from_expr, from_type, to_type)
