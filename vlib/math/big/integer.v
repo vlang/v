@@ -1099,9 +1099,20 @@ fn (x Integer) is_odd() bool {
 }
 
 // is_power_of_2 returns true when the integer `x` satisfies `2^n`, where `n >= 0`
-[inline]
+[direct_array_access; inline]
 pub fn (x Integer) is_power_of_2() bool {
-	return x.bitwise_and(x - one_int).bit_len() == 0
+	if x.signum == 0 {
+		return false
+	}
+
+	// check if all but the most significant digit are 0
+	for i := 0; i < x.digits.len - 1; i++ {
+		if x.digits[i] != 0 {
+			return false
+		}
+	}
+	n := u32(x.digits.last())
+	return n & (n - u32(1)) == 0
 }
 
 // bit_len returns the number of bits required to represent the integer `a`.
