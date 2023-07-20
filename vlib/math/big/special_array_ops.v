@@ -228,7 +228,7 @@ fn toom3_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u3
 	p2 := ((ptemp + a2).left_shift(1) - a0) * ((qtemp + b2).left_shift(1) - b0)
 	pinf := a2 * b2
 
-	mut t2 := (p2 - vm1) / three_int
+	mut t2, _ := (p2 - vm1).div_mod_internal(three_int)
 	mut tm1 := (p1 - vm1).right_shift(1)
 	mut t1 := p1 - p0
 	t2 = (t2 - t1).right_shift(1)

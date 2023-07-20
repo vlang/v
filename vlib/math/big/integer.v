@@ -369,22 +369,14 @@ pub fn (multiplicand Integer) * (multiplier Integer) Integer {
 	}
 }
 
-// div_mod returns the quotient and remainder from the division of the integers `dividend`
-// divided by `divisor`.
-//
-// WARNING: this method will panic if `divisor == 0`. Refer to div_mod_checked for a safer version.
-[inline]
-pub fn (dividend Integer) div_mod(divisor Integer) (Integer, Integer) {
-	return dividend.div_mod_checked(divisor) or { panic(err) }
-}
-
-// div_mod_checked returns the quotient and remainder from the division of the integers `dividend`
-// divided by `divisor`. An error is returned if `divisor == 0`.
-pub fn (dividend Integer) div_mod_checked(divisor Integer) !(Integer, Integer) {
-	// Quick exits
-	if _unlikely_(divisor.signum == 0) {
-		return error('math.big: Cannot divide by zero')
+// div_mod_internal is an entirely not zero-checked method for division.
+// This should only be used for internal calculations involving a definitive non-zero
+// divisor.
+fn (dividend Integer) div_mod_internal(divisor Integer) (Integer, Integer) {
+	$if debug {
+		assert divisor.signum != 0
 	}
+
 	if dividend.signum == 0 {
 		return zero_int, zero_int
 	}
@@ -392,11 +384,11 @@ pub fn (dividend Integer) div_mod_checked(divisor Integer) !(Integer, Integer) {
 		return dividend.clone(), zero_int
 	}
 	if divisor.signum == -1 {
-		q, r := dividend.div_mod_checked(divisor.neg())!
+		q, r := dividend.div_mod_internal(divisor.neg())
 		return q.neg(), r
 	}
 	if dividend.signum == -1 {
-		q, r := dividend.neg().div_mod_checked(divisor)!
+		q, r := dividend.neg().div_mod_internal(divisor)
 		if r.signum == 0 {
 			return q.neg(), zero_int
 		} else {
@@ -418,10 +410,35 @@ pub fn (dividend Integer) div_mod_checked(divisor Integer) !(Integer, Integer) {
 	return quotient, remainder
 }
 
+// div_mod returns the quotient and remainder from the division of the integers `dividend`
+// divided by `divisor`.
+//
+// WARNING: this method will panic if `divisor == 0`. Refer to div_mod_checked for a safer version.
+[inline]
+pub fn (dividend Integer) div_mod(divisor Integer) (Integer, Integer) {
+	if _unlikely_(divisor.signum == 0) {
+		panic('math.big: Cannot divide by zero')
+	}
+	return dividend.div_mod_internal(divisor)
+}
+
+// div_mod_checked returns the quotient and remainder from the division of the integers `dividend`
+// divided by `divisor`. An error is returned if `divisor == 0`.
+[inline]
+pub fn (dividend Integer) div_mod_checked(divisor Integer) !(Integer, Integer) {
+	// Quick exits
+	if _unlikely_(divisor.signum == 0) {
+		return error('math.big: Cannot divide by zero')
+	}
+
+	return dividend.div_mod_internal(divisor)
+}
+
 // / returns the quotient of `dividend` divided by `divisor`.
 //
 // WARNING: this method will panic if `divisor == 0`. For a division method that returns a Result
 // refer to `div_checked`.
+[inline]
 pub fn (dividend Integer) / (divisor Integer) Integer {
 	q, _ := dividend.div_mod(divisor)
 	return q
@@ -431,6 +448,7 @@ pub fn (dividend Integer) / (divisor Integer) Integer {
 //
 // WARNING: this method will panic if `divisor == 0`. For a modulation method that returns a Result
 // refer to `mod_checked`.
+[inline]
 pub fn (dividend Integer) % (divisor Integer) Integer {
 	_, r := dividend.div_mod(divisor)
 	return r
@@ -438,6 +456,7 @@ pub fn (dividend Integer) % (divisor Integer) Integer {
 
 // div_checked returns the quotient of `dividend` divided by `divisor`
 // or an error if `divisor == 0`.
+[inline]
 pub fn (dividend Integer) div_checked(divisor Integer) !Integer {
 	q, _ := dividend.div_mod_checked(divisor)!
 	return q
@@ -445,6 +464,7 @@ pub fn (dividend Integer) div_checked(divisor Integer) !Integer {
 
 // mod_checked returns the remainder of `dividend` divided by `divisor`
 // or an error if `divisor == 0`.
+[inline]
 pub fn (dividend Integer) mod_checked(divisor Integer) !Integer {
 	_, r := dividend.div_mod_checked(divisor)!
 	return r
@@ -821,7 +841,7 @@ pub fn (integer Integer) hex() string {
 
 // radix_str returns the string representation of the integer `a` in the specified radix.
 pub fn (integer Integer) radix_str(radix u32) string {
-	if integer.signum == 0 {
+	if integer.signum == 0 || radix == 0 {
 		return '0'
 	}
 	return match radix {
@@ -841,7 +861,6 @@ fn (integer Integer) general_radix_str(radix u32) string {
 	$if debug {
 		assert radix != 0
 	}
-
 	divisor := integer_from_u32(radix)
 
 	mut current := integer.abs()
@@ -849,7 +868,7 @@ fn (integer Integer) general_radix_str(radix u32) string {
 	mut digit := zero_int
 	mut rune_array := []rune{cap: current.digits.len * 4}
 	for current.signum > 0 {
-		new_current, digit = current.div_mod(divisor)
+		new_current, digit = current.div_mod_internal(divisor)
 		rune_array << big.digit_array[digit.int()]
 		unsafe { digit.free() }
 		unsafe { current.free() }
@@ -1068,7 +1087,8 @@ fn (a Integer) mod_inv(m Integer) Integer {
 		q, r := if n.bit_len() == b.bit_len() {
 			one_int, n - b
 		} else {
-			n.div_mod(b)
+			// safe because the loop terminates if b == 0
+			n.div_mod_internal(b)
 		}
 
 		n = b
