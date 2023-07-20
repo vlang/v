@@ -1086,9 +1086,11 @@ fn (x Integer) rsh_to_set_bit() (Integer, u32) {
 	return x.right_shift(n), n
 }
 
+// is_odd returns true if the integer `x` is odd, therefore an integer of the form `2k + 1`.
+// An input of 0 returns false.
 [direct_array_access; inline]
-fn (x Integer) is_odd() bool {
-	return x.digits[0] & 1 == 1
+pub fn (x Integer) is_odd() bool {
+	return x.digits.len != 0 && x.digits[0] & 1 == 1
 }
 
 // is_power_of_2 returns true when the integer `x` satisfies `2^n`, where `n >= 0`
