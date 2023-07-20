@@ -590,16 +590,9 @@ pub fn (a Integer) < (b Integer) bool {
 	return if signum < 0 { cmp > 0 } else { cmp < 0 }
 }
 
-fn check_sign(a Integer) {
-	if a.signum < 0 {
-		panic('Bitwise operations are only supported for nonnegative integers')
-	}
-}
-
 // get_bit checks whether the bit at the given index is set.
 [direct_array_access]
 pub fn (a Integer) get_bit(i u32) bool {
-	check_sign(a)
 	target_index := i / 32
 	offset := i % 32
 	if target_index >= a.digits.len {
@@ -610,7 +603,6 @@ pub fn (a Integer) get_bit(i u32) bool {
 
 // set_bit sets the bit at the given index to the given value.
 pub fn (mut a Integer) set_bit(i u32, value bool) {
-	check_sign(a)
 	target_index := i / 32
 	offset := i % 32
 
@@ -635,10 +627,10 @@ pub fn (mut a Integer) set_bit(i u32, value bool) {
 	}
 }
 
-// bitwise_or returns the "bitwise or" of the integers `a` and `b`.
+// bitwise_or returns the "bitwise or" of the integers `|a|` and `|b|`.
+//
+// Note: both operands are treated as absolute values.
 pub fn (a Integer) bitwise_or(b Integer) Integer {
-	check_sign(a)
-	check_sign(b)
 	mut result := []u32{len: imax(a.digits.len, b.digits.len)}
 	bitwise_or_digit_array(a.digits, b.digits, mut result)
 	return Integer{
@@ -647,10 +639,10 @@ pub fn (a Integer) bitwise_or(b Integer) Integer {
 	}
 }
 
-// bitwise_and returns the "bitwise and" of the integers `a` and `b`.
+// bitwise_and returns the "bitwise and" of the integers `|a|` and `|b|`.
+//
+// Note: both operands are treated as absolute values.
 pub fn (a Integer) bitwise_and(b Integer) Integer {
-	check_sign(a)
-	check_sign(b)
 	mut result := []u32{len: imax(a.digits.len, b.digits.len)}
 	bitwise_and_digit_array(a.digits, b.digits, mut result)
 	return Integer{
@@ -659,9 +651,10 @@ pub fn (a Integer) bitwise_and(b Integer) Integer {
 	}
 }
 
-// bitwise_not returns the "bitwise not" of the integer `a`.
+// bitwise_not returns the "bitwise not" of the integer `|a|`.
+//
+// Note: the integer is treated as an absolute value.
 pub fn (a Integer) bitwise_not() Integer {
-	check_sign(a)
 	mut result := []u32{len: a.digits.len}
 	bitwise_not_digit_array(a.digits, mut result)
 	return Integer{
@@ -670,10 +663,10 @@ pub fn (a Integer) bitwise_not() Integer {
 	}
 }
 
-// bitwise_xor returns the "bitwise exclusive or" of the integers `a` and `b`.
+// bitwise_xor returns the "bitwise exclusive or" of the integers `|a|` and `|b|`.
+//
+// Note: both operands are treated as absolute values.
 pub fn (a Integer) bitwise_xor(b Integer) Integer {
-	check_sign(a)
-	check_sign(b)
 	mut result := []u32{len: imax(a.digits.len, b.digits.len)}
 	bitwise_xor_digit_array(a.digits, b.digits, mut result)
 	return Integer{
