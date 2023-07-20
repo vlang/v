@@ -428,11 +428,9 @@ pub fn (dividend Integer) div_mod(divisor Integer) (Integer, Integer) {
 // divided by `divisor`. An error is returned if `divisor == 0`.
 [inline]
 pub fn (dividend Integer) div_mod_checked(divisor Integer) !(Integer, Integer) {
-	// Quick exits
 	if _unlikely_(divisor.signum == 0) {
 		return error('math.big: Cannot divide by zero')
 	}
-
 	return dividend.div_mod_internal(divisor)
 }
 
