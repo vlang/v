@@ -803,7 +803,7 @@ pub fn (integer Integer) radix_str(radix u32) string {
 	}
 	return match radix {
 		2 {
-			integer.binary_str()
+			integer.bin_str()
 		}
 		16 {
 			integer.hex()
