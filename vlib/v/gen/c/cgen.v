@@ -3795,6 +3795,7 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 	if g.pref.ccompiler == 'msvc' {
 		mut last_value := '0'
 		enum_typ_name := g.table.get_type_name(node.typ)
+		g.enum_typedefs.writeln('')
 		g.enum_typedefs.writeln('typedef ${enum_typ_name} ${enum_name};')
 		for i, field in node.fields {
 			g.enum_typedefs.write_string('\t#define ${enum_name}__${field.name} ')
@@ -3816,6 +3817,7 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 		}
 		return
 	}
+	g.enum_typedefs.writeln('')
 	if node.typ != ast.int_type {
 		g.enum_typedefs.writeln('#pragma pack(push, 1)')
 	}
@@ -4593,7 +4595,7 @@ fn (mut g Gen) hash_stmt(node ast.HashStmt) {
 			guarded_include = '#include ${node.main}'
 		}
 		if node.main.contains('.m') {
-			g.definitions.writeln('\n')
+			g.definitions.writeln('')
 			if ct_condition.len > 0 {
 				g.definitions.writeln('#if ${ct_condition}')
 			}
@@ -4604,9 +4606,8 @@ fn (mut g Gen) hash_stmt(node ast.HashStmt) {
 			if ct_condition.len > 0 {
 				g.definitions.writeln('#endif // \$if ${ct_condition}')
 			}
-			g.definitions.writeln('\n')
 		} else {
-			g.includes.writeln('\n')
+			g.includes.writeln('')
 			if ct_condition.len > 0 {
 				g.includes.writeln('#if ${ct_condition}')
 			}
@@ -4615,7 +4616,6 @@ fn (mut g Gen) hash_stmt(node ast.HashStmt) {
 			if ct_condition.len > 0 {
 				g.includes.writeln('#endif // \$if ${ct_condition}')
 			}
-			g.includes.writeln('\n')
 		}
 	} else if node.kind == 'preinclude' {
 		mut missing_message := 'Header file ${node.main}, needed for module `${node.mod}` was not found.'
@@ -4632,7 +4632,7 @@ fn (mut g Gen) hash_stmt(node ast.HashStmt) {
 		if node.main.contains('.m') {
 			// Might need to support '#preinclude' for .m files as well but for the moment
 			// this does the same as '#include' for them
-			g.definitions.writeln('\n')
+			g.definitions.writeln('')
 			if ct_condition.len > 0 {
 				g.definitions.writeln('#if ${ct_condition}')
 			}
@@ -4643,9 +4643,8 @@ fn (mut g Gen) hash_stmt(node ast.HashStmt) {
 			if ct_condition.len > 0 {
 				g.definitions.writeln('#endif // \$if ${ct_condition}')
 			}
-			g.definitions.writeln('\n')
 		} else {
-			g.preincludes.writeln('\n')
+			g.preincludes.writeln('')
 			if ct_condition.len > 0 {
 				g.preincludes.writeln('#if ${ct_condition}')
 			}
@@ -4654,7 +4653,6 @@ fn (mut g Gen) hash_stmt(node ast.HashStmt) {
 			if ct_condition.len > 0 {
 				g.preincludes.writeln('#endif // \$if ${ct_condition}')
 			}
-			g.preincludes.writeln('\n')
 		}
 	} else if node.kind == 'insert' {
 		if ct_condition.len > 0 {
