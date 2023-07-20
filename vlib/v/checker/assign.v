@@ -458,20 +458,42 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			// no point to show the notice, if the old error was already shown:
 			if !old_assign_error_condition {
 				mut_str := if node.op == .decl_assign { 'mut ' } else { '' }
-				c.note('use `${mut_str}array2 ${node.op.str()} array1.clone()` instead of `${mut_str}array2 ${node.op.str()} array1` (or use `unsafe`)',
+				c.warn('use `${mut_str}array2 ${node.op.str()} array1.clone()` instead of `${mut_str}array2 ${node.op.str()} array1` (or use `unsafe`)',
 					node.pos)
 			}
 		}
-		if left_sym.kind == .array && right_sym.kind == .array && node.op == .assign {
-			// `mut arr := [u8(1),2,3]`
-			// `arr = [byte(4),5,6]`
-			left_info := left_sym.info as ast.Array
-			left_elem_type := c.table.unaliased_type(left_info.elem_type)
+		if left_sym.kind == .array && right_sym.kind == .array {
 			right_info := right_sym.info as ast.Array
 			right_elem_type := c.table.unaliased_type(right_info.elem_type)
-			if left_type_unwrapped.nr_muls() == right_type_unwrapped.nr_muls()
-				&& left_info.nr_dims == right_info.nr_dims && left_elem_type == right_elem_type {
-				continue
+			if node.op in [.decl_assign, .assign] {
+				// Do not allow `mut arr := [&immutable_object]`
+				if mut left is ast.Ident && right_elem_type.is_ptr() {
+					if left.is_mut() || (left.obj is ast.Var && left.obj.is_mut) {
+						if mut right is ast.ArrayInit && right.exprs.len > 0 {
+							elem_expr := right.exprs[0]
+							if elem_expr is ast.PrefixExpr && elem_expr.op == .amp {
+								r := elem_expr.right
+								if r is ast.Ident {
+									obj := r.obj
+									if obj is ast.Var && !obj.is_mut {
+										c.warn('cannot add a referenece to an immutable object to a mutable array',
+											elem_expr.pos)
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+			if node.op == .assign {
+				// `mut arr := [u8(1),2,3]`
+				// `arr = [byte(4),5,6]`
+				left_info := left_sym.info as ast.Array
+				left_elem_type := c.table.unaliased_type(left_info.elem_type)
+				if left_type_unwrapped.nr_muls() == right_type_unwrapped.nr_muls()
+					&& left_info.nr_dims == right_info.nr_dims && left_elem_type == right_elem_type {
+					continue
+				}
 			}
 		}
 		if left_sym.kind == .array_fixed && !c.inside_unsafe && node.op in [.assign, .decl_assign]
