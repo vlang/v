@@ -573,6 +573,11 @@ fn test_div_mod() {
 		assert q == eq
 		assert r == er
 	}
+
+	// an extra test for checked division by zero
+	if _, _ := div_mod_test_data[0].dividend.parse().div_mod_checked(TestInteger(0).parse()) {
+		assert false, 'Division by 0 should return an error'
+	}
 }
 
 fn test_comparison() {

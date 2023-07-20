@@ -369,11 +369,21 @@ pub fn (multiplicand Integer) * (multiplier Integer) Integer {
 	}
 }
 
-// div_mod returns the quotient and remainder from the division of the integers `dividend` divided by `divisor`.
+// div_mod returns the quotient and remainder from the division of the integers `dividend`
+// divided by `divisor`.
+//
+// WARNING: this method will panic if `divisor == 0`. Refer to div_mod_checked for a safer version.
+[inline]
 pub fn (dividend Integer) div_mod(divisor Integer) (Integer, Integer) {
+	return dividend.div_mod_checked(divisor) or { panic(err) }
+}
+
+// div_mod_checked returns the quotient and remainder from the division of the integers `dividend`
+// divided by `divisor`. An error is returned if `divisor == 0`.
+pub fn (dividend Integer) div_mod_checked(divisor Integer) !(Integer, Integer) {
 	// Quick exits
-	if divisor.signum == 0 {
-		panic('Cannot divide by zero')
+	if _unlikely_(divisor.signum == 0) {
+		return error('math.big: Cannot divide by zero')
 	}
 	if dividend.signum == 0 {
 		return zero_int, zero_int
@@ -382,11 +392,11 @@ pub fn (dividend Integer) div_mod(divisor Integer) (Integer, Integer) {
 		return dividend.clone(), zero_int
 	}
 	if divisor.signum == -1 {
-		q, r := dividend.div_mod(divisor.neg())
+		q, r := dividend.div_mod_checked(divisor.neg())!
 		return q.neg(), r
 	}
 	if dividend.signum == -1 {
-		q, r := dividend.neg().div_mod(divisor)
+		q, r := dividend.neg().div_mod_checked(divisor)!
 		if r.signum == 0 {
 			return q.neg(), zero_int
 		} else {
@@ -409,14 +419,34 @@ pub fn (dividend Integer) div_mod(divisor Integer) (Integer, Integer) {
 }
 
 // / returns the quotient of `dividend` divided by `divisor`.
+//
+// WARNING: this method will panic if `divisor == 0`. For a division method that returns a Result
+// refer to `div_checked`.
 pub fn (dividend Integer) / (divisor Integer) Integer {
 	q, _ := dividend.div_mod(divisor)
 	return q
 }
 
 // % returns the remainder of `dividend` divided by `divisor`.
+//
+// WARNING: this method will panic if `divisor == 0`. For a modulation method that returns a Result
+// refer to `mod_checked`.
 pub fn (dividend Integer) % (divisor Integer) Integer {
 	_, r := dividend.div_mod(divisor)
+	return r
+}
+
+// div_checked returns the quotient of `dividend` divided by `divisor`
+// or an error if `divisor == 0`.
+pub fn (dividend Integer) div_checked(divisor Integer) !Integer {
+	q, _ := dividend.div_mod_checked(divisor)!
+	return q
+}
+
+// mod_checked returns the remainder of `dividend` divided by `divisor`
+// or an error if `divisor == 0`.
+pub fn (dividend Integer) mod_checked(divisor Integer) !Integer {
+	_, r := dividend.div_mod_checked(divisor)!
 	return r
 }
 
@@ -808,6 +838,10 @@ pub fn (integer Integer) radix_str(radix u32) string {
 }
 
 fn (integer Integer) general_radix_str(radix u32) string {
+	$if debug {
+		assert radix != 0
+	}
+
 	divisor := integer_from_u32(radix)
 
 	mut current := integer.abs()
