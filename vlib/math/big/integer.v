@@ -369,7 +369,7 @@ pub fn (multiplicand Integer) * (multiplier Integer) Integer {
 	}
 }
 
-// div_mod_internal is an entirely not zero-checked method for division.
+// div_mod_internal is an entirely unchecked (in terms of division by zero) method for division.
 // This should only be used for internal calculations involving a definitive non-zero
 // divisor.
 //
