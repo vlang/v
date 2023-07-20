@@ -23,6 +23,8 @@ enum Action {
 	commit_line
 	delete_left
 	delete_right
+	delete_word_left
+	delete_line
 	move_cursor_left
 	move_cursor_right
 	move_cursor_begining
@@ -188,6 +190,12 @@ fn (r Readline) analyse(c int) Action {
 		27 {
 			return r.analyse_control()
 		} // ESC
+		21 {
+			return .delete_line
+		} // CTRL + U
+		23 {
+			return .delete_word_left
+		} // CTRL + W
 		1 {
 			return .move_cursor_begining
 		} // ^A
@@ -226,27 +234,7 @@ fn (r Readline) analyse_control() Action {
 		}
 		else {}
 	}
-	/*
-	//TODO
-match c {
-	case `[`:
-	sequence := r.read_char()?
-	match sequence {
-	case `C`: return .move_cursor_right
-	case `D`: return .move_cursor_left
-	case `B`: return .history_next
-	case `A`: return .history_previous
-	case `1`: return r.analyse_extended_control()
-	case `2`: return r.analyse_extended_control_no_eat(sequence)
-	case `3`: return r.analyse_extended_control_no_eat(sequence)
-	case `9`:
-		foo()
-		bar()
-	else:
-	}
-	else:
-}
-	*/
+
 	return .nothing
 }
 
@@ -294,6 +282,8 @@ fn (mut r Readline) execute(a Action, c int) bool {
 		.commit_line { return r.commit_line() }
 		.delete_left { r.delete_character() }
 		.delete_right { r.suppr_character() }
+		.delete_line { r.delete_line() }
+		.delete_word_left { r.delete_word_left() }
 		.move_cursor_left { r.move_cursor_left() }
 		.move_cursor_right { r.move_cursor_right() }
 		.move_cursor_begining { r.move_cursor_begining() }
@@ -421,6 +411,46 @@ fn (mut r Readline) delete_character() {
 	}
 	r.cursor--
 	r.current.delete(r.cursor)
+	r.refresh_line()
+}
+
+fn (mut r Readline) delete_word_left() {
+	if r.cursor == 0 {
+		return
+	}
+
+	orig_cursor := r.cursor
+	if r.cursor >= r.current.len {
+		r.cursor = r.current.len - 1
+	}
+
+	if r.current[r.cursor] != ` ` && r.current[r.cursor - 1] == ` ` {
+		r.cursor--
+	}
+
+	if r.current[r.cursor] == ` ` {
+		for r.cursor > 0 && r.current[r.cursor] == ` ` {
+			r.cursor--
+		}
+		for r.cursor > 0 && r.current[r.cursor - 1] != ` ` {
+			r.cursor--
+		}
+	} else {
+		for r.cursor > 0 {
+			if r.current[r.cursor - 1] == ` ` {
+				break
+			}
+			r.cursor--
+		}
+	}
+
+	r.current.delete_many(r.cursor, orig_cursor - r.cursor)
+	r.refresh_line()
+}
+
+fn (mut r Readline) delete_line() {
+	r.current = []
+	r.cursor = 0
 	r.refresh_line()
 }
 
