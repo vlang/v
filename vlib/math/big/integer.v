@@ -372,6 +372,8 @@ pub fn (multiplicand Integer) * (multiplier Integer) Integer {
 // div_mod_internal is an entirely not zero-checked method for division.
 // This should only be used for internal calculations involving a definitive non-zero
 // divisor.
+//
+// DO NOT use this method if the divisor has any chance of being 0.
 fn (dividend Integer) div_mod_internal(divisor Integer) (Integer, Integer) {
 	$if debug {
 		assert divisor.signum != 0
