@@ -723,10 +723,9 @@ fn (mut g Gen) gen_interface_is_op(node ast.InfixExpr) {
 fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 	left := g.unwrap(node.left_type)
 	right := g.unwrap(node.right_type)
-	if left.sym.kind == .struct_ && (left.sym.info as ast.Struct).generic_types.len > 0 {
-		concrete_types := (left.sym.info as ast.Struct).concrete_types
+	if left.sym.info is ast.Struct && left.sym.info.generic_types.len > 0 {
 		mut method_name := left.sym.cname + '_' + util.replace_op(node.op.str())
-		method_name = g.generic_fn_name(concrete_types, method_name)
+		method_name = g.generic_fn_name(left.sym.info.concrete_types, method_name)
 		g.write(method_name)
 		g.write('(')
 		g.expr(node.left)
