@@ -13,7 +13,7 @@ pub struct EscapeConfig {
 pub fn escape(input string, config EscapeConfig) string {
 	tag_free_input := input.replace_each(['&', '&amp;', '<', '&lt;', '>', '&gt;'])
 	return if config.quote {
-		tag_free_input.replace_each(['"', '&quot;', "'", '&#x27;'])
+		tag_free_input.replace_each(['"', '&#34;', "'", '&#39;'])
 	} else {
 		tag_free_input
 	}
