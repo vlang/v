@@ -68,10 +68,10 @@ jobs:
         run: VJOBS=1 ./v test-self
       - name: Build examples
         run: ./v build-examples
-      - name: Build examples with -autofree
-        run: |
-          ./v -autofree -o tetris examples/tetris/tetris.v
-          ./v -autofree -o blog tutorials/building_a_simple_web_blog_with_vweb/code/blog
+      - name: Build tetris with -autofree
+        run: ./v -autofree -o tetris examples/tetris/tetris.v
+      - name: Build blog tutorial with -autofree
+        run: ./v -autofree -o blog tutorials/building_a_simple_web_blog_with_vweb/code/blog
       - name: Build examples with -prod
         run: |
           ./v -prod examples/news_fetcher.v
