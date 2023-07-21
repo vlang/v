@@ -472,6 +472,7 @@ fn (mut r Readline) commit_line() bool {
 		r.refresh_line()
 		println('')
 	}
+	r.current.pop()
 	return true
 }
 
