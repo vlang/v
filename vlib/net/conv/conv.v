@@ -3,7 +3,7 @@ module conv
 // htn64 converts a the 64 bit value `host` to the net format (htonll)
 pub fn htn64(host u64) u64 {
 	$if little_endian {
-		$if amd64 {
+		$if amd64 && !tinyc {
 			mut r := host
 			asm volatile amd64 {
 				bswap a
@@ -32,7 +32,7 @@ pub fn htn64(host u64) u64 {
 // htn32 converts the 32 bit value `host` to the net format (htonl)
 pub fn htn32(host u32) u32 {
 	$if little_endian {
-		$if amd64 || i386 {
+		$if !tinyc && (amd64 || i386) {
 			mut r := host
 			asm amd64 {
 				bswap a
@@ -57,7 +57,7 @@ pub fn htn32(host u32) u32 {
 // htn16 converts the 16 bit value `host` to the net format (htons)
 pub fn htn16(host u16) u16 {
 	$if little_endian {
-		$if amd64 || i386 {
+		$if !tinyc && (amd64 || i386) {
 			mut r := host
 			asm amd64 {
 				rol a, 8
