@@ -1,6 +1,7 @@
 module conv
 
 [deprecated: 'use hton64() instead']
+[deprecated_after: '2023-12-31']
 pub fn htn64(host u64) u64 {
 	return hton64(host)
 }
@@ -20,6 +21,7 @@ pub fn hton64(host u64) u64 {
 }
 
 [deprecated: 'use hton32() instead']
+[deprecated_after: '2023-12-31']
 pub fn htn32(host u32) u32 {
 	return hton32(host)
 }
@@ -37,6 +39,7 @@ pub fn hton32(host u32) u32 {
 }
 
 [deprecated: 'use hton16() instead']
+[deprecated_after: '2023-12-31']
 pub fn htn16(host u16) u16 {
 	return hton16(host)
 }
@@ -51,6 +54,7 @@ pub fn hton16(host u16) u16 {
 }
 
 [deprecated: 'use ntoh64() instead']
+[deprecated_after: '2023-12-31']
 pub fn nth64(net u64) u64 {
 	return ntoh64(net)
 }
@@ -61,6 +65,7 @@ pub fn ntoh64(net u64) u64 {
 }
 
 [deprecated: 'use ntoh32() instead']
+[deprecated_after: '2023-12-31']
 pub fn nth32(net u32) u32 {
 	return ntoh32(net)
 }
@@ -71,6 +76,7 @@ pub fn ntoh32(net u32) u32 {
 }
 
 [deprecated: 'use ntoh16() instead']
+[deprecated_after: '2023-12-31']
 pub fn nth16(net u16) u16 {
 	return ntoh16(net)
 }
