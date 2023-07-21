@@ -223,8 +223,10 @@ jobs:
         run: VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 ./v -cc gcc -cstrict test-self
       - name: Build examples
         run: ./v build-examples
-      - name: Build tetris.v with -autofree
-        run: ./v -autofree -experimental -o tetris examples/tetris/tetris.v
+      - name: Build tetris with -autofree
+        run: ./v -autofree -o tetris examples/tetris/tetris.v
+      - name: Build blog tutorial with -autofree
+        run: ./v -autofree -o blog tutorials/building_a_simple_web_blog_with_vweb/code/blog
       - name: Build option_test.v with -autofree
         run: ./v -autofree vlib/v/tests/option_test.v
       - name: V self compilation with -parallel-cc

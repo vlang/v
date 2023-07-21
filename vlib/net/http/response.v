@@ -42,7 +42,7 @@ pub fn parse_response(resp string) !Response {
 	header := parse_headers(resp.substr(start_idx, end_idx))!
 	mut body := resp.substr(end_idx, resp.len)
 	if header.get(.transfer_encoding) or { '' } == 'chunked' {
-		body = chunked.decode(body)
+		body = chunked.decode(body)!
 	}
 	return Response{
 		http_version: version
