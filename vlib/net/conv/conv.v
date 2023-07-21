@@ -7,7 +7,7 @@ pub fn htn64(host u64) u64 {
 	return hton64(host)
 }
 
-// hton64 converts a the 64 bit value `host` to the net format (htonll)
+// hton64 converts the 64 bit value `host` to the net format (htonll)
 pub fn hton64(host u64) u64 {
 	$if little_endian {
 		// vfmt off
