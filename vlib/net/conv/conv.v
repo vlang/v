@@ -5,9 +5,9 @@ pub fn htn64(host u64) u64 {
 	$if little_endian {
 		$if amd64 {
 			mut r := host
-			asm amd64 {
+			asm volatile amd64 {
 				bswap a
-				; =r (r) as a
+				; +r (r) as a
 			}
 			return r
 		} $else {
@@ -36,7 +36,7 @@ pub fn htn32(host u32) u32 {
 			mut r := host
 			asm amd64 {
 				bswap a
-				; =r (r) as a
+				; +r (r) as a
 			}
 			return r
 		} $else {
@@ -61,7 +61,7 @@ pub fn htn16(host u16) u16 {
 			mut r := host
 			asm amd64 {
 				rol a, 8
-				; =r (r) as a
+				; +r (r) as a
 			}
 			return r
 		} $else {
