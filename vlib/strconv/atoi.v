@@ -115,12 +115,12 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 		c -= 48 // subtract the rune `0`
 
 		// check if we are in the superior base rune interval [A..Z]
-		if c >= (65 - 48) {
+		if c >= 17 { // (65 - 48)
 			sub_count++
 			c -= 7 // subtract the `a` - `0` rune to obtain the value of the digit
 
 			// check if we are in the superior base rune interval [a..z]
-			if c >= (97 - 7 - 48) {
+			if c >= 42 { // (97 - 7 - 48)
 				sub_count++
 				c -= 32 // subtract the `a` - `0` rune to obtain the value of the digit
 			}
