@@ -133,6 +133,10 @@ pub fn (mut r Readline) read_line_utf8(prompt string) ![]rune {
 	r.disable_raw_mode()
 	if r.current.len == 0 {
 		return error('empty line')
+	} else {
+		if r.current.last() == `\n` {
+			r.current.pop()
+		}
 	}
 	return r.current
 }
@@ -472,7 +476,6 @@ fn (mut r Readline) commit_line() bool {
 		r.refresh_line()
 		println('')
 	}
-	r.current.pop()
 	return true
 }
 
