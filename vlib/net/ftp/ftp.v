@@ -130,12 +130,7 @@ pub fn (mut zftp FTP) login(user string, password string) ! {
 
 // close closes the FTP connection.
 pub fn (mut zftp FTP) close() ! {
-	zftp.write('QUIT')!
-	res := zftp.read()!
-	if res.code != ftp.connection_closing {
-		return error_with_code(res.msg, res.code)
-	}
-
+	zftp.write('QUIT') or {}
 	zftp.conn.close()!
 	return
 }
@@ -156,12 +151,12 @@ pub fn (mut zftp FTP) pwd() !string {
 }
 
 fn (mut zftp FTP) read() !Response {
-	raw_data := zftp.reader.read_line()!
-	return Response.parse(raw_data)!
+	data := zftp.reader.read_line()!
+	return Response.parse(data)!
 }
 
 fn (mut zftp FTP) write(data string) !int {
-	return zftp.conn.write('${data}\n'.bytes())
+	return zftp.conn.write_string('${data}\r\n')
 }
 
 fn get_host_ip_from_dtp_message(msg string) !(string, u16) {
