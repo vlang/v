@@ -187,10 +187,15 @@ fn test_add() {
 	assert t2.second == t1.second + d_seconds
 	assert t2.microsecond == t1.microsecond + d_microseconds
 	assert t2.unix == t1.unix + d_seconds
+	assert t2.is_local == t1.is_local
 	t3 := time_to_test.add(-duration)
 	assert t3.second == t1.second - d_seconds
 	assert t3.microsecond == t1.microsecond - d_microseconds
 	assert t3.unix == t1.unix - d_seconds
+	assert t3.is_local == t1.is_local
+	t4 := time_to_test.as_local()
+	t5 := t4.add(duration)
+	assert t5.is_local == t4.is_local
 }
 
 fn test_add_days() {
