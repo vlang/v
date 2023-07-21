@@ -67,7 +67,8 @@ pub fn decode(text string) !string {
 			break
 		}
 		cscanner.skip_crlf()
-		sb.write_string(cscanner.read_chunk(csize)!)
+		ch := cscanner.read_chunk(csize)!
+		sb.write_string(ch)
 		cscanner.skip_crlf()
 	}
 	cscanner.skip_crlf()
