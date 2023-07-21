@@ -446,8 +446,8 @@ pub fn (dividend Integer) / (divisor Integer) Integer {
 
 // % returns the remainder of `dividend` divided by `divisor`.
 //
-// WARNING: this method will panic if `divisor == 0`. For a modulation method that returns a Result
-// refer to `mod_checked`.
+// WARNING: this method will panic if `divisor == 0`. For a modular division method that
+// returns a Result refer to `mod_checked`.
 [inline]
 pub fn (dividend Integer) % (divisor Integer) Integer {
 	_, r := dividend.div_mod(divisor)
