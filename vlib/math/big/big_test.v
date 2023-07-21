@@ -713,7 +713,7 @@ fn test_isqrt() {
 	for i in 0 .. 1000 {
 		a := big.integer_from_int(i)
 		b := big.integer_from_int(i * i)
-		assert b.isqrt() or { panic(err) } == a
+		assert b.isqrt() == a
 	}
 	values := [
 		TestInteger(314),
@@ -727,11 +727,11 @@ fn test_isqrt() {
 	for value in values {
 		a := value.parse()
 		b := a * a
-		assert b.isqrt() or { panic(err) } == a
+		assert b.isqrt() == a
 	}
 
 	for t in isqrt_test_data {
-		assert t.base.parse().isqrt() or { panic(err) } == t.expected.parse()
+		assert t.base.parse().isqrt() == t.expected.parse()
 	}
 }
 
