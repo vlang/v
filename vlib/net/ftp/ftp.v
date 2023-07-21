@@ -20,31 +20,58 @@ basic ftp module
 import net
 import io
 
-const (
-	connected             = 220
-	specify_password      = 331
-	logged_in             = 230
-	login_first           = 503
-	anonymous             = 530
-	open_data_connection  = 150
-	close_data_connection = 226
-	command_ok            = 200
-	denied                = 550
-	passive_mode          = 227
-	complete              = 226
+pub const (
+	default_port = 21
 )
+
+const (
+	opening_dtp           = 150
+	connected             = 220
+	connection_closing    = 221
+	completed_dtp         = 226
+	entering_passive_mode = 227
+	logged_in             = 230
+	ok_completed          = 250
+	pathname_created      = 257
+	specify_password      = 331
+)
+
+struct Response {
+	code int
+	msg  string
+}
+
+fn Response.parse(r string) !Response {
+	code := r[..3]!.u16()
+	msg := r#[4..]
+	return Response{
+		code: int(code)
+		msg: msg
+	}
+}
 
 struct DTP {
 mut:
-	conn   &net.TcpConn = unsafe { nil }
+	conn   &net.TcpConn
 	reader io.BufferedReader
-	ip     string
-	port   int
 }
 
-fn (mut dtp DTP) read() ![]u8 {
+fn DTP.new(ip string, port u16) !&DTP {
+	conn := net.dial_tcp('${ip}:${port}')!
+	mut dtp := &DTP{
+		conn: conn
+		reader: io.new_buffered_reader(reader: conn)
+	}
+
+	return dtp
+}
+
+fn (mut dtp DTP) read(buffer_size int) ![]u8 {
+	if buffer_size <= 0 {
+		return error('buffer_size must be > 0')
+	}
 	mut data := []u8{}
-	mut buf := []u8{len: 1024}
+	mut buf := []u8{len: buffer_size}
 	for {
 		len := dtp.reader.read(mut buf) or { break }
 		if len == 0 {
@@ -52,228 +79,161 @@ fn (mut dtp DTP) read() ![]u8 {
 		}
 		data << buf[..len]
 	}
-	return data
+
+	return data[..data.len - 2] // removes the '\r\n' delim
 }
 
-fn (mut dtp DTP) close() {
-	dtp.conn.close() or { panic(err) }
+fn (mut dtp DTP) close() ! {
+	dtp.conn.close()!
 }
 
 struct FTP {
 mut:
-	conn        &net.TcpConn = unsafe { nil }
-	reader      io.BufferedReader
-	buffer_size int
+	conn   &net.TcpConn
+	reader io.BufferedReader
 }
 
 // new returns an `FTP` instance.
-pub fn new() FTP {
-	mut f := FTP{
-		conn: 0
+pub fn new(ip string, port u16) !&FTP {
+	conn := net.dial_tcp('${ip}:${port}')!
+	mut zftp := &FTP{
+		conn: conn
+		reader: io.new_buffered_reader(reader: conn)
 	}
-	f.buffer_size = 1024
-	return f
-}
 
-fn (mut zftp FTP) write(data string) !int {
-	$if debug {
-		println('FTP.v >>> ${data}')
-	}
-	return zftp.conn.write('${data}\r\n'.bytes())
-}
+	res := zftp.read()!
 
-fn (mut zftp FTP) read() !(int, string) {
-	mut data := zftp.reader.read_line()!
-	$if debug {
-		println('FTP.v <<< ${data}')
+	if res.code != ftp.connected {
+		return error_with_code(res.msg, res.code)
 	}
-	if data.len < 5 {
-		return 0, ''
-	}
-	code := data[..3].int()
-	if data[3] == `-` {
-		for {
-			data = zftp.reader.read_line()!
-			if data[..3].int() == code && data[3] != `-` {
-				break
-			}
-		}
-	}
-	return code, data
-}
-
-// connect establishes an FTP connection to the host at `ip` port 21.
-pub fn (mut zftp FTP) connect(ip string) !bool {
-	zftp.conn = net.dial_tcp('${ip}:21')!
-	zftp.reader = io.new_buffered_reader(reader: zftp.conn)
-	code, _ := zftp.read()!
-	if code == ftp.connected {
-		return true
-	}
-	return false
+	return zftp
 }
 
 // login sends the "USER `user`" and "PASS `passwd`" commands to the remote host.
-pub fn (mut zftp FTP) login(user string, passwd string) !bool {
-	zftp.write('USER ${user}') or {
-		$if debug {
-			println('ERROR sending user')
-		}
-		return false
+pub fn (mut zftp FTP) login(user string, password string) ! {
+	zftp.write('USER ${user}')!
+	res_u := zftp.read()!
+	if res_u.code == ftp.logged_in {
+		return
 	}
-	mut code, _ := zftp.read()!
-	if code == ftp.logged_in {
-		return true
+	if res_u.code != ftp.specify_password {
+		return error_with_code(res_u.msg, res_u.code)
 	}
-	if code != ftp.specify_password {
-		return false
+
+	zftp.write('PASS ${password}')!
+	res_p := zftp.read()!
+
+	if res_p.code != ftp.logged_in {
+		return error_with_code(res_p.msg, res_p.code)
 	}
-	zftp.write('PASS ${passwd}') or {
-		$if debug {
-			println('ERROR sending password')
-		}
-		return false
-	}
-	code, _ = zftp.read()!
-	if code == ftp.logged_in {
-		return true
-	}
-	return false
 }
 
 // close closes the FTP connection.
 pub fn (mut zftp FTP) close() ! {
 	zftp.write('QUIT')!
+	res := zftp.read()!
+	if res.code != ftp.connection_closing {
+		return error_with_code(res.msg, res.code)
+	}
+
 	zftp.conn.close()!
+	return
 }
 
 // pwd returns the current working directory on the remote host for the logged in user.
 pub fn (mut zftp FTP) pwd() !string {
 	zftp.write('PWD')!
-	_, data := zftp.read()!
-	spl := data.split('"') // "
-	if spl.len >= 2 {
-		return spl[1]
+	res := zftp.read()!
+	if res.code != ftp.pathname_created {
+		return error_with_code(res.msg, res.code)
 	}
-	return data
+
+	if `"` !in res.msg.bytes() {
+		return error('Unable to parse path')
+	}
+	after := res.msg.after_char(`"`)
+	return after[..after.len - 1]!
+}
+
+fn (mut zftp FTP) read() !Response {
+	raw_data := zftp.reader.read_line()!
+	return Response.parse(raw_data)!
+}
+
+fn (mut zftp FTP) write(data string) !int {
+	return zftp.conn.write('${data}\n'.bytes())
+}
+
+fn get_host_ip_from_dtp_message(msg string) !(string, u16) {
+	after_par := msg.after('(')
+	data := after_par[..after_par.len - 2].split(',')
+	if data.len < 6 {
+		return error('Unable to parse message')
+	}
+	ip := data[..4].join('.')
+	port := data[4].u16() * 256 + data[5].u16()
+	return ip, port
+}
+
+fn (mut zftp FTP) pasv() !&DTP {
+	zftp.write('PASV')!
+	res := zftp.read()!
+	if res.code != ftp.entering_passive_mode {
+		return error_with_code(res.msg, res.code)
+	}
+
+	ip, port := get_host_ip_from_dtp_message(res.msg)!
+	dtp := DTP.new(ip, port)!
+	return dtp
 }
 
 // cd changes the current working directory to the specified remote directory `dir`.
 pub fn (mut zftp FTP) cd(dir string) ! {
 	zftp.write('CWD ${dir}') or { return }
-	mut code, mut data := zftp.read()!
-	match int(code) {
-		ftp.denied {
-			$if debug {
-				println('CD ${dir} denied!')
-			}
-		}
-		ftp.complete {
-			code, data = zftp.read()!
-		}
-		else {}
-	}
-	$if debug {
-		println('CD ${data}')
-	}
-}
+	res := zftp.read()!
 
-fn new_dtp(msg string) !&DTP {
-	if !is_dtp_message_valid(msg) {
-		return error('Bad message')
+	if res.code != ftp.ok_completed {
+		return error_with_code(res.msg, res.code)
 	}
-	ip, port := get_host_ip_from_dtp_message(msg)
-	mut dtp := &DTP{
-		ip: ip
-		port: port
-		conn: 0
-	}
-	conn := net.dial_tcp('${ip}:${port}') or { return error('Cannot connect to the data channel') }
-	dtp.conn = conn
-	dtp.reader = io.new_buffered_reader(reader: dtp.conn)
-	return dtp
-}
-
-fn (mut zftp FTP) pasv() !&DTP {
-	zftp.write('PASV')!
-	code, data := zftp.read()!
-	$if debug {
-		println('pass: ${data}')
-	}
-	if code != ftp.passive_mode {
-		return error('passive mode not allowed')
-	}
-	dtp := new_dtp(data)!
-	return dtp
 }
 
 // dir returns a list of the files in the current working directory.
 pub fn (mut zftp FTP) dir() ![]string {
-	mut dtp := zftp.pasv() or { return error('Cannot establish data connection') }
-	zftp.write('LIST')!
-	code, _ := zftp.read()!
-	if code == ftp.denied {
-		return error('`LIST` denied')
+	mut dtp := zftp.pasv()!
+	zftp.write('NLST')!
+	res := zftp.read()!
+
+	if res.code != ftp.opening_dtp {
+		return error_with_code(res.msg, res.code)
 	}
-	if code != ftp.open_data_connection {
-		return error('Data channel empty')
+
+	data := dtp.read(128)!.bytestr()
+
+	end_res := zftp.read()!
+	if end_res.code != ftp.completed_dtp {
+		return error_with_code(end_res.msg, end_res.code)
 	}
-	list_dir := dtp.read()!
-	result, _ := zftp.read()!
-	if result != ftp.close_data_connection {
-		println('`LIST` not ok')
-	}
-	dtp.close()
-	mut dir := []string{}
-	sdir := list_dir.bytestr()
-	for lfile in sdir.split('\n') {
-		if lfile.len > 56 {
-			dir << lfile#[56..lfile.len - 1]
-			continue
-		}
-		if lfile.len > 1 {
-			trimmed := lfile.after(':')
-			dir << trimmed#[3..trimmed.len - 1]
-			continue
-		}
-	}
-	return dir
+	dtp.close()!
+
+	return data.split('\r\n')
 }
 
 // get retrieves `file` from the remote host.
 pub fn (mut zftp FTP) get(file string) ![]u8 {
-	mut dtp := zftp.pasv() or { return error('Cannot stablish data connection') }
+	mut dtp := zftp.pasv()!
 	zftp.write('RETR ${file}')!
-	code, _ := zftp.read()!
-	if code == ftp.denied {
-		return error('Permission denied')
+	res := zftp.read()!
+
+	if res.code != ftp.opening_dtp {
+		return error_with_code(res.msg, res.code)
 	}
-	if code != ftp.open_data_connection {
-		return error('Data connection not ready')
+
+	blob := dtp.read(8192)!
+
+	end_res := zftp.read()!
+	if end_res.code != ftp.completed_dtp {
+		return error_with_code(end_res.msg, end_res.code)
 	}
-	blob := dtp.read()!
-	dtp.close()
+	dtp.close()!
 	return blob
-}
-
-fn is_dtp_message_valid(msg string) bool {
-	// An example of message:
-	// '227 Entering Passive Mode (209,132,183,61,48,218)'
-	return msg.contains('(') && msg.contains(')') && msg.contains(',')
-}
-
-fn get_host_ip_from_dtp_message(msg string) (string, int) {
-	mut par_start_idx := -1
-	mut par_end_idx := -1
-	for i, c in msg {
-		if c == `(` {
-			par_start_idx = i + 1
-		} else if c == `)` {
-			par_end_idx = i
-		}
-	}
-	data := msg[par_start_idx..par_end_idx].split(',')
-	ip := data[0..4].join('.')
-	port := data[4].int() * 256 + data[5].int()
-	return ip, port
 }
