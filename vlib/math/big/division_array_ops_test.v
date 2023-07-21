@@ -146,6 +146,6 @@ fn random_number(length int) Integer {
 		nr := numbers[i]
 		stri = stri + nr.ascii_str()
 	}
-	res := integer_from_string(stri) or { panic('error in random_number') }
+	res := integer_from_string(stri) or { panic(err) }
 	return res
 }
