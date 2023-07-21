@@ -972,9 +972,17 @@ pub fn (a Integer) factorial() Integer {
 	return product
 }
 
-// isqrt returns the closest integer square root of the given integer.
+// isqrt returns the closest integer square root of the integer `a`.
+//
+// WARNING: this method will panic if `a < 0`. Refer to isqrt_checked for a safer version.
+[inline]
+pub fn (a Integer) isqrt() Integer {
+	return a.isqrt_checked() or { panic(err) }
+}
+
+// isqrt returns the closest integer square root of the integer `a`.
 // An error is returned if `a < 0`.
-pub fn (a Integer) isqrt() !Integer {
+pub fn (a Integer) isqrt_checked() !Integer {
 	if a.signum < 0 {
 		return error('math.big: Cannot calculate square root of negative integer')
 	}
