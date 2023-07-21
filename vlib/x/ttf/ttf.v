@@ -162,17 +162,17 @@ pub fn (mut tf TTF_File) get_horizontal_metrics(glyph_index u16) (int, int) {
 	mut advance_width := 0
 	mut left_side_bearing := 0
 	if glyph_index < tf.num_of_long_hor_metrics {
-		offset += glyph_index * 4
+		offset += u32(glyph_index) * 4
 		tf.pos = offset
 		advance_width = tf.get_u16()
 		left_side_bearing = tf.get_i16()
 		// dprintln("${glyph_index} aw:${advance_width} lsb:${left_side_bearing}")
 	} else {
 		// read the last entry of the hMetrics array
-		tf.pos = offset + (tf.num_of_long_hor_metrics - 1) * 4
+		tf.pos = offset + u32(tf.num_of_long_hor_metrics - 1) * 4
 		advance_width = tf.get_u16()
-		tf.pos = offset + tf.num_of_long_hor_metrics * 4 +
-			2 * (glyph_index - tf.num_of_long_hor_metrics)
+		tf.pos = offset + u32(tf.num_of_long_hor_metrics) * 4 +
+			2 * u32(glyph_index - tf.num_of_long_hor_metrics)
 		left_side_bearing = tf.get_fword()
 	}
 	tf.pos = old_pos
