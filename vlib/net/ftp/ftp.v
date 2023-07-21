@@ -152,10 +152,12 @@ pub fn (mut zftp FTP) pwd() !string {
 
 fn (mut zftp FTP) read() !Response {
 	data := zftp.reader.read_line()!
+	$if debug { println('FTP.v <<< ${data}') }
 	return Response.parse(data)!
 }
 
 fn (mut zftp FTP) write(data string) !int {
+	$if debug { println('FTP.v >>> ${data}') }
 	return zftp.conn.write_string('${data}\r\n')
 }
 
