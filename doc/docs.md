@@ -5583,13 +5583,13 @@ is compiled with `v -g` or `v -cg`.
 If you're using a custom ifdef, then you do need `$if option ? {}` and compile with`v -d option`.
 Full list of builtin options:
 
-| OS                             | Compilers        | Platforms        | Other                                         |
-|--------------------------------|------------------|------------------|-----------------------------------------------|
-| `windows`, `linux`, `macos`    | `gcc`, `tinyc`   | `amd64`, `arm64` | `debug`, `prod`, `test`                       |
-| `mac`, `darwin`, `ios`,        | `clang`, `mingw` | `x64`, `x32`     | `js`, `glibc`, `prealloc`                     |
-| `android`, `mach`, `dragonfly` | `msvc`           | `little_endian`  | `no_bounds_checking`, `freestanding`          |
-| `gnu`, `hpux`, `haiku`, `qnx`  | `cplusplus`      | `big_endian`     | `no_segfault_handler`, `no_backtrace`         |
-| `solaris`, `termux`            |                  |                  | `no_main`                                     |
+| OS                             | Compilers        | Platforms                     | Other                                         |
+|--------------------------------|------------------|-------------------------------|-----------------------------------------------|
+| `windows`, `linux`, `macos`    | `gcc`, `tinyc`   | `amd64`, `arm64`, `aarch64`   | `debug`, `prod`, `test`                       |
+| `mac`, `darwin`, `ios`,        | `clang`, `mingw` | `i386`, `arm32`               | `js`, `glibc`, `prealloc`                     |
+| `android`, `mach`, `dragonfly` | `msvc`           | `x64`, `x32`                  | `no_bounds_checking`, `freestanding`          |
+| `gnu`, `hpux`, `haiku`, `qnx`  | `cplusplus`      | `little_endian`, `big_endian` | `no_segfault_handler`, `no_backtrace`         |
+| `solaris`, `termux`            |                  |                               | `no_main`                                     |
 
 #### `$embed_file`
 
