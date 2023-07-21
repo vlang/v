@@ -257,6 +257,7 @@ pub fn println(s string) {
 		return
 	} $else {
 		_writeln_to_fd(1, s)
+		C.fflush(C.stdout)
 	}
 }
 
