@@ -87,26 +87,29 @@ fn test_common_parse_uint2() {
 }
 
 fn test_common_parse_uint2_fail() {
-    mut ascii_characters := [' ', '!', '\"', '#', '\$', '%', '&', "'", '(', ')', '*', '+', ',', '-', '.', '/', ':', ';', '<', '=', '>', '?', '@', '[', '\\', ']', '^', '_', '`', '{', '|', '}', '~']
-    mut special_characters := [':', ';', '<', '=', '>', '?', '@', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', '`']
-    
-    num0,err0 := strconv.common_parse_uint2("1Ab", 16, 32)
-    assert num0 == 427
-    assert err0 == 0
+	mut ascii_characters := [' ', '!', '"', '#', '\$', '%', '&', "'", '(', ')', '*', '+', ',',
+		'-', '.', '/', ':', ';', '<', '=', '>', '?', '@', '[', '\\', ']', '^', '_', '`', '{', '|',
+		'}', '~']
+	mut special_characters := [':', ';', '<', '=', '>', '?', '@', 'X', 'Y', 'Z', '[', '\\', ']',
+		'^', '_', '`']
 
-    for ch in ascii_characters {
-        // println("ch: [${ch}]")
-        txt_str := '${ch[0]:c}12Ab'
-        num,err := strconv.common_parse_uint2(txt_str, 16, 32)
-        assert err != 0
-    }
+	num0, err0 := strconv.common_parse_uint2('1Ab', 16, 32)
+	assert num0 == 427
+	assert err0 == 0
 
-    for ch in special_characters {
-        // println("ch: [${ch}]")
-        txt_str := '${ch[0]:c}12Ab'
-        num,err := strconv.common_parse_uint2(txt_str, 16, 32)
-        assert err != 0
-    }
+	for ch in ascii_characters {
+		// println("ch: [${ch}]")
+		txt_str := '${ch[0]:c}12Ab'
+		num, err := strconv.common_parse_uint2(txt_str, 16, 32)
+		assert err != 0
+	}
+
+	for ch in special_characters {
+		// println("ch: [${ch}]")
+		txt_str := '${ch[0]:c}12Ab'
+		num, err := strconv.common_parse_uint2(txt_str, 16, 32)
+		assert err != 0
+	}
 }
 
 fn test_common_parse_uint2_compatibility() {
