@@ -30,13 +30,13 @@ pub fn new_stopwatch(opts StopWatchOptions) StopWatch {
 	}
 }
 
-// start starts the stopwatch. If the timer was paused, restarts counting.
+// start starts the stopwatch. If the timer was paused, it continues counting.
 pub fn (mut t StopWatch) start() {
 	t.start = sys_mono_now()
 	t.end = 0
 }
 
-// restart restarts the stopwatch. If the timer was paused, restarts counting.
+// restart restarts the stopwatch. If the timer was paused, it restarts counting.
 pub fn (mut t StopWatch) restart() {
 	t.start = sys_mono_now()
 	t.end = 0

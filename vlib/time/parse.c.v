@@ -5,7 +5,7 @@ module time
 
 import strconv
 
-// parse_rfc3339 returns time from a date string in RFC 3339 datetime format.
+// parse_rfc3339 returns the time from a date string in RFC 3339 datetime format.
 // See also https://ijmacd.github.io/rfc3339-iso8601/ for a visual reference of
 // the differences between ISO-8601 and RFC 3339.
 pub fn parse_rfc3339(s string) !Time {
@@ -59,7 +59,7 @@ pub fn parse_rfc3339(s string) !Time {
 	return error_invalid_time(9, 'malformed date')
 }
 
-// parse returns time from a date string in "YYYY-MM-DD HH:mm:ss" format.
+// parse returns the time from a date string in "YYYY-MM-DD HH:mm:ss" format.
 pub fn parse(s string) !Time {
 	if s == '' {
 		return error_invalid_time(0, 'datetime string is empty')
@@ -197,7 +197,7 @@ pub fn parse_iso8601(s string) !Time {
 	return t
 }
 
-// parse_rfc2822 returns time from a date string in RFC 2822 datetime format.
+// parse_rfc2822 returns the time from a date string in RFC 2822 datetime format.
 pub fn parse_rfc2822(s string) !Time {
 	if s == '' {
 		return error_invalid_time(0, 'datetime string is empty')
