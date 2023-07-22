@@ -10,7 +10,6 @@ import strconv
 pub struct Response {
 pub mut:
 	body         string
-	text         string [deprecated: 'use Response.body instead'; deprecated_after: '2022-10-03']
 	header       Header
 	status_code  int
 	status_msg   string
@@ -118,7 +117,6 @@ pub struct ResponseConfig {
 	status  Status  = .ok
 	header  Header
 	body    string
-	text    string  [deprecated: 'use ResponseConfig.body instead'; deprecated_after: '2022-10-03']
 }
 
 // new_response creates a Response object from the configuration. This

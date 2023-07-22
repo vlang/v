@@ -179,13 +179,6 @@ pub fn url_encode_form_data(data map[string]string) string {
 	return pieces.join('&')
 }
 
-[deprecated: 'use fetch()']
-fn fetch_with_method(method Method, _config FetchConfig) !Response {
-	mut config := _config
-	config.method = method
-	return fetch(config)
-}
-
 fn build_url_from_fetch(config FetchConfig) !string {
 	mut url := urllib.parse(config.url)!
 	if config.params.len == 0 {
@@ -201,24 +194,4 @@ fn build_url_from_fetch(config FetchConfig) !string {
 	}
 	url.raw_query = query
 	return url.str()
-}
-
-[deprecated: 'unescape_url is deprecated, use urllib.query_unescape() instead']
-pub fn unescape_url(s string) string {
-	panic('http.unescape_url() was replaced with urllib.query_unescape()')
-}
-
-[deprecated: 'escape_url is deprecated, use urllib.query_escape() instead']
-pub fn escape_url(s string) string {
-	panic('http.escape_url() was replaced with urllib.query_escape()')
-}
-
-[deprecated: 'unescape is deprecated, use urllib.query_escape() instead']
-pub fn unescape(s string) string {
-	panic('http.unescape() was replaced with http.unescape_url()')
-}
-
-[deprecated: 'escape is deprecated, use urllib.query_unescape() instead']
-pub fn escape(s string) string {
-	panic('http.escape() was replaced with http.escape_url()')
 }
