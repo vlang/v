@@ -48,7 +48,7 @@ pub fn (mut tf_skl TTF_render_Sokol) create_text(in_txt string, in_font_size f32
 	tf_skl.bmp.scale = scale * scale_reduct
 	w, h := tf_skl.bmp.get_bbox(in_txt)
 	tf_skl.bmp.width = int(w)
-	tf_skl.bmp.height = int((h + 8))
+	tf_skl.bmp.height = int(h + 8)
 	sz := tf_skl.bmp.width * tf_skl.bmp.height * tf_skl.bmp.bp
 
 	// RAM buffer
