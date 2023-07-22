@@ -20,7 +20,7 @@ fn C.gmtime(t &C.time_t) &C.tm
 fn C.gmtime_r(t &C.time_t, res &C.tm) &C.tm
 fn C.strftime(buf &char, maxsize usize, const_format &char, const_tm &C.tm) usize
 
-// now returns current local time.
+// now returns the current local time.
 pub fn now() Time {
 	$if macos {
 		return darwin_now()
@@ -62,7 +62,7 @@ pub fn utc() Time {
 	*/
 }
 
-// new_time returns a time struct with calculated Unix time.
+// new_time returns a time struct with the calculated Unix time.
 pub fn new_time(t Time) Time {
 	if t.unix != 0 {
 		return t
@@ -82,7 +82,8 @@ pub fn new_time(t Time) Time {
 	}
 }
 
-// ticks returns a number of milliseconds elapsed since system start.
+// ticks returns the number of milliseconds since the UNIX epoch.
+// On Windows ticks returns the number of milliseconds elapsed since system start.
 pub fn ticks() i64 {
 	$if windows {
 		return C.GetTickCount()
@@ -96,7 +97,7 @@ pub fn ticks() i64 {
 	// # return (double)(* (uint64_t *) &elapsedNano) / 1000000;
 }
 
-// str returns time in the same format as `parse` expects ("YYYY-MM-DD HH:mm:ss").
+// str returns the time in the same format as `parse` expects ("YYYY-MM-DD HH:mm:ss").
 pub fn (t Time) str() string {
 	// TODO Define common default format for
 	// `str` and `parse` and use it in both ways

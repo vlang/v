@@ -11,6 +11,7 @@ module time
 #return t + $timeOff
 #}
 
+// sys_mono_now returns a *monotonically increasing time*, NOT a time adjusted for daylight savings, location etc.
 pub fn sys_mono_now() u64 {
 	$if js_browser {
 		mut res := u64(0)
