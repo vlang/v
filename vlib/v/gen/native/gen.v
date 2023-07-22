@@ -43,6 +43,7 @@ mut:
 	stack_var_pos        int
 	stack_depth          int
 	debug_pos            int
+	current_file         &ast.File
 	errors               []errors.Error
 	warnings             []errors.Warning
 	syms                 []Symbol
@@ -346,6 +347,7 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref_ &pref.Pre
 			eprintln('warning: ${file.warnings[0]}')
 		}
 		*/
+		g.current_file = file
 		if file.errors.len > 0 {
 			g.n_error(file.errors[0].str())
 		}
@@ -1055,10 +1057,10 @@ pub fn (mut g Gen) n_error(s string) {
 
 pub fn (mut g Gen) warning(s string, pos token.Pos) {
 	if g.pref.output_mode == .stdout {
-		util.show_compiler_message('warning:', pos: pos, file_path: g.pref.path, message: s)
+		util.show_compiler_message('warning:', pos: pos, file_path: g.current_file.path, message: s)
 	} else {
 		g.warnings << errors.Warning{
-			file_path: g.pref.path
+			file_path: g.current_file.path
 			pos: pos
 			reporter: .gen
 			message: s
