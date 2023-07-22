@@ -43,7 +43,7 @@ mut:
 	stack_var_pos        int
 	stack_depth          int
 	debug_pos            int
-	current_file         &ast.File
+	current_file         &ast.File = unsafe { nil }
 	errors               []errors.Error
 	warnings             []errors.Warning
 	syms                 []Symbol
