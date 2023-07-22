@@ -158,7 +158,7 @@ pub fn integer_from_string(characters string) !Integer {
 // integer_from_radix creates a new `big.Integer` from the given string and radix.
 pub fn integer_from_radix(all_characters string, radix u32) !Integer {
 	if radix < 2 || radix > 36 {
-		return error('Radix must be between 2 and 36 (inclusive)')
+		return error('math.big: Radix must be between 2 and 36 (inclusive)')
 	}
 	characters := all_characters.to_lower()
 	validate_string(characters, radix)!
@@ -186,10 +186,10 @@ fn validate_string(characters string, radix u32) ! {
 		value := big.digit_array.index(digit)
 
 		if value == -1 {
-			return error('Invalid character ${digit}')
+			return error('math.big: Invalid character ${digit}')
 		}
 		if value >= radix {
-			return error('Invalid character ${digit} for base ${radix}')
+			return error('math.big: Invalid character ${digit} for base ${radix}')
 		}
 	}
 }
@@ -972,10 +972,19 @@ pub fn (a Integer) factorial() Integer {
 	return product
 }
 
-// isqrt returns the closest integer square root of the given integer.
+// isqrt returns the closest integer square root of the integer `a`.
+//
+// WARNING: this method will panic if `a < 0`. Refer to isqrt_checked for a safer version.
+[inline]
 pub fn (a Integer) isqrt() Integer {
+	return a.isqrt_checked() or { panic(err) }
+}
+
+// isqrt returns the closest integer square root of the integer `a`.
+// An error is returned if `a < 0`.
+pub fn (a Integer) isqrt_checked() !Integer {
 	if a.signum < 0 {
-		panic('Cannot obtain square root of negative integer')
+		return error('math.big: Cannot calculate square root of negative integer')
 	}
 	if a.signum == 0 {
 		return a
