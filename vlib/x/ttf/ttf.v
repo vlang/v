@@ -757,7 +757,7 @@ fn (mut tf TTF_File) read_name_table() {
 		offset := tf.get_u16()
 
 		old_pos := tf.pos
-		tf.pos = table_offset + string_offset + offset
+		tf.pos = u32(table_offset) + u32(string_offset) + u32(offset)
 
 		mut name := ''
 		if platform_id == 0 || platform_id == 3 {
@@ -929,7 +929,7 @@ fn (mut tm TrueTypeCmap) map_4(char_code int, mut tf TTF_File) int {
 			if segment.start_code <= char_code && segment.end_code >= char_code {
 				mut index := (segment.id_delta + char_code) & 0xffff
 				if segment.id_range_offset > 0 {
-					glyph_index_address := segment.id_range_offset +
+					glyph_index_address := u32(segment.id_range_offset) +
 						2 * u32(char_code - segment.start_code)
 					tf.pos = glyph_index_address
 					index = tf.get_u16()
