@@ -17,19 +17,6 @@ mut:
 	done() chan int
 }
 
-[deprecated]
-pub fn cancel(mut ctx Context) {
-	match mut ctx {
-		CancelContext {
-			ctx.cancel(true, canceled)
-		}
-		TimerContext {
-			ctx.cancel(true, canceled)
-		}
-		else {}
-	}
-}
-
 // A CancelContext can be canceled. When canceled, it also cancels any children
 // that implement Canceler.
 pub struct CancelContext {

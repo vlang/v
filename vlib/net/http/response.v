@@ -10,7 +10,6 @@ import strconv
 pub struct Response {
 pub mut:
 	body         string
-	text         string [deprecated: 'use Response.body instead'; deprecated_after: '2022-10-03']
 	header       Header
 	status_code  int
 	status_msg   string
@@ -50,7 +49,6 @@ pub fn parse_response(resp string) !Response {
 		status_msg: status_msg
 		header: header
 		body: body
-		text: body // TODO: remove as depreciated
 	}
 }
 
@@ -118,14 +116,13 @@ pub struct ResponseConfig {
 	status  Status  = .ok
 	header  Header
 	body    string
-	text    string  [deprecated: 'use ResponseConfig.body instead'; deprecated_after: '2022-10-03']
 }
 
 // new_response creates a Response object from the configuration. This
 // function will add a Content-Length header if body is not empty.
 pub fn new_response(conf ResponseConfig) Response {
 	mut resp := Response{
-		body: conf.body + conf.text
+		body: conf.body
 		header: conf.header
 	}
 	if resp.body.len > 0 && !resp.header.contains(.content_length) {
