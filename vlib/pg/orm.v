@@ -105,21 +105,21 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []int, mut formats 
 		}
 		u16 {
 			types << u32(Oid.t_int2)
-			num := conv.htn16(data)
+			num := conv.hton16(data)
 			vals << &char(&num)
 			lens << int(sizeof(u16))
 			formats << 1
 		}
 		u32 {
 			types << u32(Oid.t_int4)
-			num := conv.htn32(data)
+			num := conv.hton32(data)
 			vals << &char(&num)
 			lens << int(sizeof(u32))
 			formats << 1
 		}
 		u64 {
 			types << u32(Oid.t_int8)
-			num := conv.htn64(data)
+			num := conv.hton64(data)
 			vals << &char(&num)
 			lens << int(sizeof(u64))
 			formats << 1
@@ -132,21 +132,21 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []int, mut formats 
 		}
 		i16 {
 			types << u32(Oid.t_int2)
-			num := conv.htn16(u16(data))
+			num := conv.hton16(u16(data))
 			vals << &char(&num)
 			lens << int(sizeof(i16))
 			formats << 1
 		}
 		int {
 			types << u32(Oid.t_int4)
-			num := conv.htn32(u32(data))
+			num := conv.hton32(u32(data))
 			vals << &char(&num)
 			lens << int(sizeof(int))
 			formats << 1
 		}
 		i64 {
 			types << u32(Oid.t_int8)
-			num := conv.htn64(u64(data))
+			num := conv.hton64(u64(data))
 			vals << &char(&num)
 			lens << int(sizeof(i64))
 			formats << 1
