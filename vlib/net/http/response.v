@@ -49,7 +49,6 @@ pub fn parse_response(resp string) !Response {
 		status_msg: status_msg
 		header: header
 		body: body
-		text: body // TODO: remove as depreciated
 	}
 }
 
@@ -123,7 +122,7 @@ pub struct ResponseConfig {
 // function will add a Content-Length header if body is not empty.
 pub fn new_response(conf ResponseConfig) Response {
 	mut resp := Response{
-		body: conf.body + conf.text
+		body: conf.body
 		header: conf.header
 	}
 	if resp.body.len > 0 && !resp.header.contains(.content_length) {
