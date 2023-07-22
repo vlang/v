@@ -1,0 +1,17 @@
+module main
+
+struct StructVoidptr {
+	func voidptr
+}
+
+fn function() {
+	println('Function!')
+}
+
+fn main() {
+	fun := function
+
+	_ := &StructVoidptr{
+		func: &fun
+	}
+}
