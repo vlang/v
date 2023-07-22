@@ -116,6 +116,9 @@ pub fn (t Time) add(d Duration) Time {
 	microseconds := i64(t.unix) * 1_000_000 + t.microsecond + d.microseconds()
 	unix := microseconds / 1_000_000
 	micro := microseconds % 1_000_000
+	if t.is_local {
+		return unix2(unix, int(micro)).as_local()
+	}
 	return unix2(unix, int(micro))
 }
 
