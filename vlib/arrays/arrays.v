@@ -3,8 +3,8 @@ module arrays
 import strings
 
 // Common arrays functions:
-// - min / max - return the value of the minumum / maximum
-// - idx_min / idx_max - return the index of the first minumum / maximum
+// - min / max - return the value of the minimum / maximum
+// - idx_min / idx_max - return the index of the first minimum / maximum
 // - merge - combine two sorted arrays and maintain sorted order
 // - chunk - chunk array to arrays with n elements
 // - window - get snapshots of the window of the given size sliding along array with the given step, where each snapshot is an array
@@ -312,7 +312,7 @@ pub fn fold_indexed[T, R](array []T, init R, fold_op fn (idx int, acc R, elem T)
 }
 
 // flatten flattens n + 1 dimensional array into n dimensional array
-// Example: arrays.flatten<int>([[1, 2, 3], [4, 5]]) // => [1, 2, 3, 4, 5]
+// Example: arrays.flatten[int]([[1, 2, 3], [4, 5]]) // => [1, 2, 3, 4, 5]
 pub fn flatten[T](array [][]T) []T {
 	// calculate required capacity
 	mut required_size := 0
