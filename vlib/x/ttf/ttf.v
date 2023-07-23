@@ -162,17 +162,17 @@ pub fn (mut tf TTF_File) get_horizontal_metrics(glyph_index u16) (int, int) {
 	mut advance_width := 0
 	mut left_side_bearing := 0
 	if glyph_index < tf.num_of_long_hor_metrics {
-		offset += glyph_index * 4
+		offset += u32(glyph_index) * 4
 		tf.pos = offset
 		advance_width = tf.get_u16()
 		left_side_bearing = tf.get_i16()
 		// dprintln("${glyph_index} aw:${advance_width} lsb:${left_side_bearing}")
 	} else {
 		// read the last entry of the hMetrics array
-		tf.pos = offset + (tf.num_of_long_hor_metrics - 1) * 4
+		tf.pos = offset + u32(tf.num_of_long_hor_metrics - 1) * 4
 		advance_width = tf.get_u16()
-		tf.pos = offset + tf.num_of_long_hor_metrics * 4 +
-			2 * (glyph_index - tf.num_of_long_hor_metrics)
+		tf.pos = offset + u32(tf.num_of_long_hor_metrics) * 4 +
+			2 * u32(glyph_index - tf.num_of_long_hor_metrics)
 		left_side_bearing = tf.get_fword()
 	}
 	tf.pos = old_pos
@@ -757,7 +757,7 @@ fn (mut tf TTF_File) read_name_table() {
 		offset := tf.get_u16()
 
 		old_pos := tf.pos
-		tf.pos = table_offset + string_offset + offset
+		tf.pos = u32(table_offset) + u32(string_offset) + u32(offset)
 
 		mut name := ''
 		if platform_id == 0 || platform_id == 3 {
@@ -929,7 +929,7 @@ fn (mut tm TrueTypeCmap) map_4(char_code int, mut tf TTF_File) int {
 			if segment.start_code <= char_code && segment.end_code >= char_code {
 				mut index := (segment.id_delta + char_code) & 0xffff
 				if segment.id_range_offset > 0 {
-					glyph_index_address := segment.id_range_offset +
+					glyph_index_address := u32(segment.id_range_offset) +
 						2 * u32(char_code - segment.start_code)
 					tf.pos = glyph_index_address
 					index = tf.get_u16()

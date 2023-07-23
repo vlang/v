@@ -118,7 +118,7 @@ pub fn (t Time) local() Time {
 		hour: st_local.hour
 		minute: st_local.minute
 		second: st_local.second // These are the same
-		microsecond: st_local.millisecond * 1000
+		microsecond: int(st_local.millisecond) * 1000
 		unix: st_local.unix_time()
 	}
 	return t_local
@@ -141,7 +141,7 @@ fn win_now() Time {
 		hour: st_local.hour
 		minute: st_local.minute
 		second: st_local.second
-		microsecond: st_local.millisecond * 1000
+		microsecond: int(st_local.millisecond) * 1000
 		unix: st_local.unix_time()
 		is_local: true
 	}
@@ -163,7 +163,7 @@ fn win_utc() Time {
 		hour: st_utc.hour
 		minute: st_utc.minute
 		second: st_utc.second
-		microsecond: st_utc.millisecond * 1000
+		microsecond: int(st_utc.millisecond) * 1000
 		unix: st_utc.unix_time()
 		is_local: false
 	}
