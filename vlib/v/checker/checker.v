@@ -1626,18 +1626,11 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 		}
 		node.fields[i].typ = ast.mktyp(typ)
 		if mut field.expr is ast.IfExpr {
-			if field.expr.branches.len == 2 {
-				first_stmts := field.expr.branches[0].stmts
-				second_stmts := field.expr.branches[1].stmts
-				if first_stmts.len > 0 && first_stmts.last() is ast.ExprStmt
-					&& first_stmts.last().typ != ast.void_type {
+			for branch in field.expr.branches {
+				if branch.stmts.len > 0 && branch.stmts.last() is ast.ExprStmt
+					&& branch.stmts.last().typ != ast.void_type {
 					field.expr.is_expr = true
-					field.expr.typ = (first_stmts.last() as ast.ExprStmt).typ
-					field.typ = field.expr.typ
-				} else if second_stmts.len > 0 && second_stmts.last() is ast.ExprStmt
-					&& second_stmts.last().typ != ast.void_type {
-					field.expr.is_expr = true
-					field.expr.typ = (second_stmts.last() as ast.ExprStmt).typ
+					field.expr.typ = (branch.stmts.last() as ast.ExprStmt).typ
 					field.typ = field.expr.typ
 				}
 			}
