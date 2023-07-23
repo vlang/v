@@ -19,6 +19,10 @@ $if macos {
 		#flag -framework Metal -framework Cocoa -framework MetalKit -framework QuartzCore
 	}
 }
+$if linux {
+	#flag -D SOKOL_GLCORE33
+}
+
 $if ios {
 	#flag -DSOKOL_METAL
 	#flag -framework Foundation -framework Metal -framework MetalKit -framework UIKit
