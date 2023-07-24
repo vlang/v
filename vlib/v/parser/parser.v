@@ -106,6 +106,7 @@ pub mut:
 	warnings       []errors.Warning
 	notices        []errors.Notice
 	vet_errors     []vet.Error
+	vet_notices    []vet.Error
 	template_paths []string // record all compiled $tmpl files; needed for `v watch run webserver.v`
 }
 
@@ -254,7 +255,7 @@ pub fn parse_file(path string, table &ast.Table, comments_mode scanner.CommentsM
 	return res
 }
 
-pub fn parse_vet_file(path string, table_ &ast.Table, pref_ &pref.Preferences) (&ast.File, []vet.Error) {
+pub fn parse_vet_file(path string, table_ &ast.Table, pref_ &pref.Preferences) (&ast.File, []vet.Error, []vet.Error) {
 	$if trace_parse_vet_file ? {
 		eprintln('> ${@MOD}.${@FN} path: ${path}')
 	}
@@ -290,7 +291,7 @@ pub fn parse_vet_file(path string, table_ &ast.Table, pref_ &pref.Preferences) (
 	p.vet_errors << p.scanner.vet_errors
 	file := p.parse()
 	unsafe { p.free_scanner() }
-	return file, p.vet_errors
+	return file, p.vet_errors, p.vet_notices
 }
 
 pub fn (mut p Parser) parse() &ast.File {
@@ -2072,7 +2073,7 @@ fn (mut p Parser) vet_notice(msg string, line int, fix vet.FixKind, typ vet.Erro
 	pos := token.Pos{
 		line_nr: line + 1
 	}
-	p.vet_errors << vet.Error{
+	p.vet_notices << vet.Error{
 		message: msg
 		file_path: p.scanner.file_path
 		pos: pos
