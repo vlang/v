@@ -2068,6 +2068,20 @@ fn (mut p Parser) vet_error(msg string, line int, fix vet.FixKind, typ vet.Error
 	}
 }
 
+fn (mut p Parser) vet_notice(msg string, line int, fix vet.FixKind, typ vet.ErrorType) {
+	pos := token.Pos{
+		line_nr: line + 1
+	}
+	p.vet_errors << vet.Error{
+		message: msg
+		file_path: p.scanner.file_path
+		pos: pos
+		kind: .notice
+		fix: fix
+		typ: typ
+	}
+}
+
 fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	// in here might be 1) multi-expr 2) multi-assign
 	// 1, a, c ... }       // multi-expression
@@ -3712,6 +3726,9 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			return ast.ConstDecl{}
 		}
 		expr := p.expr(0)
+		if expr is ast.ArrayInit && !expr.is_fixed && p.pref.is_vet {
+			p.vet_notice('use a fixed array, instead of a dynamic one', pos.line_nr, vet.FixKind.vfmt, .default)
+		}
 		field := ast.ConstField{
 			name: full_name
 			mod: p.mod

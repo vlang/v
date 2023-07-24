@@ -16,6 +16,7 @@ struct Vet {
 mut:
 	errors []vet.Error
 	warns  []vet.Error
+	notices []vet.Error
 	file   string
 }
 
@@ -69,6 +70,9 @@ fn main() {
 		}
 	}
 	vfmt_err_count := vt.errors.filter(it.fix == .vfmt).len
+	for n in vt.notices {
+		eprintln(vt.e2string(n))
+	}
 	if vt.opt.show_warnings {
 		for w in vt.warns {
 			eprintln(vt.e2string(w))
@@ -235,6 +239,7 @@ fn (vt &Vet) e2string(err vet.Error) string {
 		kind = match err.kind {
 			.warning { term.magenta(kind) }
 			.error { term.red(kind) }
+			.notice { term.yellow(kind) }
 		}
 		kind = term.bold(kind)
 		location = term.bold(location)
@@ -273,5 +278,19 @@ fn (mut vt Vet) warn(msg string, line int, fix vet.FixKind) {
 		vt.errors << w
 	} else {
 		vt.warns << w
+	}
+}
+
+fn (mut vt Vet) notice(msg string, line int, fix vet.FixKind) {
+	pos := token.Pos{
+		line_nr: line + 1
+	}
+	vt.notices << vet.Error{
+		message: msg
+		file_path: vt.file
+		pos: pos
+		kind: .notice
+		fix: fix
+		typ: .default
 	}
 }
