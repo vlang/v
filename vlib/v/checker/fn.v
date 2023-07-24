@@ -893,15 +893,15 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 
 		if typ != 0 {
 			generic_vts := c.table.final_sym(typ)
-			if generic_vts.kind == .function {
-				info := generic_vts.info as ast.FnType
+			if generic_vts.info is ast.FnType {
+				info := generic_vts.info
 				func = info.func
 				found = true
 				found_in_args = true
 			} else {
 				vts := c.table.sym(c.unwrap_generic(typ))
-				if vts.kind == .function {
-					info := vts.info as ast.FnType
+				if vts.info is ast.FnType {
+					info := vts.info
 					func = info.func
 					found = true
 					found_in_args = true
@@ -914,8 +914,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		if obj := c.file.global_scope.find(fn_name) {
 			if obj.typ != 0 {
 				sym := c.table.sym(obj.typ)
-				if sym.kind == .function {
-					func = (sym.info as ast.FnType).func
+				if sym.info is ast.FnType {
+					func = sym.info.func
 					found = true
 				}
 			}
@@ -931,13 +931,13 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 			if obj.typ != 0 {
 				sym := c.table.sym(obj.typ)
-				if sym.kind == .function {
+				if sym.info is ast.FnType {
 					// at this point, the const metadata should be already known,
 					// and we are sure that it is just a function
 					c.table.fns[qualified_const_name].usages++
 					c.table.fns[func.name].usages++
 					found = true
-					func = (sym.info as ast.FnType).func
+					func = sym.info.func
 					node.is_fn_a_const = true
 					node.fn_var_type = obj.typ
 					node.const_name = qualified_const_name
@@ -1418,9 +1418,9 @@ fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_t
 						mut ctyp := c.get_comptime_var_type(call_arg.expr)
 						if ctyp != ast.void_type {
 							arg_sym := c.table.sym(ctyp)
-							if arg_sym.kind == .array && param_typ.has_flag(.generic)
+							if arg_sym.info is ast.Array && param_typ.has_flag(.generic)
 								&& c.table.final_sym(param_typ).kind == .array {
-								ctyp = (arg_sym.info as ast.Array).elem_type
+								ctyp = arg_sym.info.elem_type
 							}
 							comptime_args[i] = ctyp
 						}
@@ -1433,9 +1433,9 @@ fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_t
 							if param_typ.has_flag(.variadic) {
 								ctyp = ast.mktyp(ctyp)
 								comptime_args[i] = ctyp
-							} else if arg_sym.kind == .array && param_typ.has_flag(.generic)
+							} else if arg_sym.info is ast.Array && param_typ.has_flag(.generic)
 								&& param_typ_sym.kind == .array {
-								ctyp = c.get_generic_array_element_type(arg_sym.info as ast.Array)
+								ctyp = c.get_generic_array_element_type(arg_sym.info)
 								comptime_args[i] = ctyp
 							} else if arg_sym.kind in [.struct_, .interface_, .sum_type] {
 								mut generic_types := []ast.Type{}
@@ -1459,9 +1459,9 @@ fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_t
 									}
 								}
 							} else if arg_sym.kind == .any {
-								mut cparam_type_sym := c.table.sym(c.unwrap_generic(ctyp))
-								if param_typ_sym.kind == .array && cparam_type_sym.kind == .array {
-									ctyp = (cparam_type_sym.info as ast.Array).elem_type
+								cparam_type_sym := c.table.sym(c.unwrap_generic(ctyp))
+								if param_typ_sym.kind == .array && cparam_type_sym.info is ast.Array {
+									ctyp = cparam_type_sym.info.elem_type
 									comptime_args[i] = ctyp
 								} else {
 									if node_.args[i].expr.is_auto_deref_var() {
@@ -1529,20 +1529,18 @@ fn (mut c Checker) resolve_fn_generic_args(func ast.Fn, mut node ast.CallExpr) [
 
 // cast_fixed_array_ret casts a ArrayFixed type created to return to a non returning one
 fn (mut c Checker) cast_fixed_array_ret(typ ast.Type, sym ast.TypeSymbol) ast.Type {
-	if sym.kind == .array_fixed && (sym.info as ast.ArrayFixed).is_fn_ret {
-		info := sym.info as ast.ArrayFixed
-		return c.table.find_or_register_array_fixed(info.elem_type, info.size, info.size_expr,
-			false)
+	if sym.info is ast.ArrayFixed && sym.info.is_fn_ret {
+		return c.table.find_or_register_array_fixed(sym.info.elem_type, sym.info.size,
+			sym.info.size_expr, false)
 	}
 	return typ
 }
 
 // cast_to_fixed_array_ret casts a ArrayFixed type created to do not return to a returning one
 fn (mut c Checker) cast_to_fixed_array_ret(typ ast.Type, sym ast.TypeSymbol) ast.Type {
-	if sym.kind == .array_fixed && !(sym.info as ast.ArrayFixed).is_fn_ret {
-		info := sym.info as ast.ArrayFixed
-		return c.table.find_or_register_array_fixed(info.elem_type, info.size, info.size_expr,
-			true)
+	if sym.info is ast.ArrayFixed && !sym.info.is_fn_ret {
+		return c.table.find_or_register_array_fixed(sym.info.elem_type, sym.info.size,
+			sym.info.size_expr, true)
 	}
 	return typ
 }
@@ -1635,7 +1633,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		if !c.check_types(arg_type, info.elem_type) && !c.check_types(left_type, arg_type) {
 			c.error('cannot ${method_name} `${arg_sym.name}` to `${left_sym.name}`', arg_expr.pos())
 		}
-	} else if final_left_sym.info is ast.Array && method_name in ['first', 'last', 'pop'] {
+	} else if final_left_sym.kind == .array && method_name in ['first', 'last', 'pop'] {
 		return c.array_builtin_method_call(mut node, left_type, final_left_sym)
 	} else if c.pref.backend.is_js() && left_sym.name.starts_with('Promise[')
 		&& method_name == 'wait' {
@@ -1649,13 +1647,12 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		node.return_type = info.concrete_types[0]
 		node.return_type.set_flag(.option)
 		return node.return_type
-	} else if left_sym.kind == .thread && method_name == 'wait' {
-		info := left_sym.info as ast.Thread
+	} else if left_sym.info is ast.Thread && method_name == 'wait' {
 		if node.args.len > 0 {
 			c.error('wait() does not have any arguments', node.args[0].pos)
 		}
-		node.return_type = info.return_type
-		return info.return_type
+		node.return_type = left_sym.info.return_type
+		return left_sym.info.return_type
 	} else if left_sym.kind == .char && left_type.nr_muls() == 0 && method_name == 'str' {
 		c.error('calling `.str()` on type `char` is not allowed, use its address or cast it to an integer instead',
 			node.left.pos().extend(node.pos))
