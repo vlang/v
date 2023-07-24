@@ -894,15 +894,13 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		if typ != 0 {
 			generic_vts := c.table.final_sym(typ)
 			if generic_vts.info is ast.FnType {
-				info := generic_vts.info
-				func = info.func
+				func = generic_vts.info.func
 				found = true
 				found_in_args = true
 			} else {
 				vts := c.table.sym(c.unwrap_generic(typ))
 				if vts.info is ast.FnType {
-					info := vts.info
-					func = info.func
+					func = vts.info.func
 					found = true
 					found_in_args = true
 				}
