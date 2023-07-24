@@ -19,6 +19,11 @@ fn (mut t TestStruct) test_struct_w_high_order(cb fn (int) string) string {
 	return 'test' + cb(2)
 }
 
+fn TestStruct.static_method() string {
+	assert @STRUCT == 'TestStruct'
+	return @STRUCT
+}
+
 struct Abc {
 }
 
@@ -112,6 +117,8 @@ fn test_at_struct() {
 	})
 	assert r1 == 'test'
 	assert r2 == 'test2'
+	assert TestStruct.static_method() == 'TestStruct'
+	assert @STRUCT == ''
 }
 
 fn test_vmod_file() {

@@ -3203,7 +3203,7 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 			node.val = c.table.cur_fn.mod
 		}
 		.struct_name {
-			if c.table.cur_fn.is_method {
+			if c.table.cur_fn.is_method || c.table.cur_fn.is_static_type_method {
 				node.val = c.table.type_to_str(c.table.cur_fn.receiver.typ).all_after_last('.')
 			} else {
 				node.val = ''
