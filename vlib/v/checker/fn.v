@@ -1053,9 +1053,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		if func.is_variadic && i >= func.params.len - 1 {
 			param_sym := c.table.sym(param.typ)
 			mut expected_type := param.typ
-			if param_sym.kind == .array {
-				info := param_sym.array_info()
-				expected_type = info.elem_type
+			if param_sym.info is ast.Array {
+				expected_type = param_sym.info.elem_type
 				c.expected_type = expected_type
 			}
 			typ := c.expr(mut call_arg.expr)
@@ -1196,18 +1195,17 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			if param.typ.has_flag(.generic) {
 				continue
 			}
-			if param_typ_sym.kind == .array && arg_typ_sym.kind == .array {
-				param_info := param_typ_sym.info as ast.Array
-				param_elem_type := c.table.unaliased_type(param_info.elem_type)
-				arg_info := arg_typ_sym.info as ast.Array
-				arg_elem_type := c.table.unaliased_type(arg_info.elem_type)
+			if param_typ_sym.info is ast.Array && arg_typ_sym.info is ast.Array {
+				param_elem_type := c.table.unaliased_type(param_typ_sym.info.elem_type)
+				arg_elem_type := c.table.unaliased_type(arg_typ_sym.info.elem_type)
 				param_nr_muls := param.typ.nr_muls()
 				arg_nr_muls := if call_arg.is_mut {
 					arg_typ.nr_muls() + 1
 				} else {
 					arg_typ.nr_muls()
 				}
-				if param_nr_muls == arg_nr_muls && param_info.nr_dims == arg_info.nr_dims
+				if param_nr_muls == arg_nr_muls
+					&& param_typ_sym.info.nr_dims == arg_typ_sym.info.nr_dims
 					&& param_elem_type == arg_elem_type {
 					continue
 				}
@@ -1255,24 +1253,27 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				if param_type.is_any_kind_of_pointer() && arg_typ.is_any_kind_of_pointer() {
 					continue
 				}
-				param_typ_sym_ := c.table.sym(c.table.unaliased_type(param_type))
-				arg_typ_sym_ := c.table.sym(c.table.unaliased_type(arg_typ))
+				unaliased_param_sym := c.table.sym(c.table.unaliased_type(param_type))
+				unaliased_arg_sym := c.table.sym(c.table.unaliased_type(arg_typ))
 				// Allow `[32]i8` as `&i8` etc
-				if ((arg_typ_sym_.kind == .array_fixed || arg_typ_sym_.kind == .array)
+				if ((unaliased_arg_sym.kind == .array_fixed || unaliased_arg_sym.kind == .array)
 					&& (param_is_number
 					|| c.table.unaliased_type(param_type).is_any_kind_of_pointer()))
-					|| ((param_typ_sym_.kind == .array_fixed || param_typ_sym_.kind == .array)
+					|| ((unaliased_param_sym.kind == .array_fixed
+					|| unaliased_param_sym.kind == .array)
 					&& (typ_is_number || c.table.unaliased_type(arg_typ).is_any_kind_of_pointer())) {
 					continue
 				}
 				// Allow `[N]anyptr` as `[N]anyptr`
-				if arg_typ_sym_.kind == .array && param_typ_sym_.kind == .array {
-					if (arg_typ_sym_.info as ast.Array).elem_type.is_any_kind_of_pointer()
-						&& (param_typ_sym_.info as ast.Array).elem_type.is_any_kind_of_pointer() {
+				if unaliased_arg_sym.info is ast.Array && unaliased_param_sym.info is ast.Array {
+					if unaliased_arg_sym.info.elem_type.is_any_kind_of_pointer()
+						&& unaliased_param_sym.info.elem_type.is_any_kind_of_pointer() {
 						continue
 					}
-				} else if arg_typ_sym_.kind == .array_fixed && param_typ_sym_.kind == .array_fixed {
-					if (arg_typ_sym_.info as ast.ArrayFixed).elem_type.is_any_kind_of_pointer()&& (param_typ_sym_.info as ast.ArrayFixed).elem_type.is_any_kind_of_pointer() {
+				} else if unaliased_arg_sym.info is ast.ArrayFixed
+					&& unaliased_param_sym.info is ast.ArrayFixed {
+					if unaliased_arg_sym.info.elem_type.is_any_kind_of_pointer()
+						&& unaliased_param_sym.info.elem_type.is_any_kind_of_pointer() {
 						continue
 					}
 				}
