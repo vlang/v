@@ -14,10 +14,10 @@ import term
 struct Vet {
 	opt Options
 mut:
-	errors []vet.Error
-	warns  []vet.Error
+	errors  []vet.Error
+	warns   []vet.Error
 	notices []vet.Error
-	file   string
+	file    string
 }
 
 struct Options {
