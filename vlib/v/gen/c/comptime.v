@@ -364,7 +364,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 		expr_str := g.out.last_n(g.out.len - start_pos).trim_space()
 		if expr_str != '' {
 			if g.defer_ifdef != '' {
-				g.defer_ifdef += '\r\n' + '\t'.repeat(g.indent + 1)
+				g.defer_ifdef += '\n' + '\t'.repeat(g.indent + 1)
 			}
 			g.defer_ifdef += expr_str
 		}
