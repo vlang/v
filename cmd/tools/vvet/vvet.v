@@ -14,9 +14,10 @@ import term
 struct Vet {
 	opt Options
 mut:
-	errors []vet.Error
-	warns  []vet.Error
-	file   string
+	errors  []vet.Error
+	warns   []vet.Error
+	notices []vet.Error
+	file    string
 }
 
 struct Options {
@@ -69,6 +70,9 @@ fn main() {
 		}
 	}
 	vfmt_err_count := vt.errors.filter(it.fix == .vfmt).len
+	for n in vt.notices {
+		eprintln(vt.e2string(n))
+	}
 	if vt.opt.show_warnings {
 		for w in vt.warns {
 			eprintln(vt.e2string(w))
@@ -100,9 +104,10 @@ fn (mut vt Vet) vet_file(path string) {
 	prefs.is_vsh = path.ends_with('.vsh')
 	table := ast.new_table()
 	vt.vprintln("vetting file '${path}'...")
-	_, errors := parser.parse_vet_file(path, table, prefs)
+	_, errors, notices := parser.parse_vet_file(path, table, prefs)
 	// Transfer errors from scanner and parser
 	vt.errors << errors
+	vt.notices << notices
 	// Scan each line in file for things to improve
 	source_lines := os.read_lines(vt.file) or { []string{} }
 	for lnumber, line in source_lines {
@@ -235,6 +240,7 @@ fn (vt &Vet) e2string(err vet.Error) string {
 		kind = match err.kind {
 			.warning { term.magenta(kind) }
 			.error { term.red(kind) }
+			.notice { term.yellow(kind) }
 		}
 		kind = term.bold(kind)
 		location = term.bold(location)
@@ -273,5 +279,19 @@ fn (mut vt Vet) warn(msg string, line int, fix vet.FixKind) {
 		vt.errors << w
 	} else {
 		vt.warns << w
+	}
+}
+
+fn (mut vt Vet) notice(msg string, line int, fix vet.FixKind) {
+	pos := token.Pos{
+		line_nr: line + 1
+	}
+	vt.notices << vet.Error{
+		message: msg
+		file_path: vt.file
+		pos: pos
+		kind: .notice
+		fix: fix
+		typ: .default
 	}
 }
