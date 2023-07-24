@@ -46,7 +46,8 @@ pub mut:
 	is_print_rel_paths_on_error bool
 	quote                       u8  // which quote is used to denote current string: ' or "
 	inter_quote                 u8
-	nr_lines                    int // total number of lines in the source file that were scanned
+	just_closed_inter           bool // if is_enclosed_inter was set to false on the previous character: `}`
+	nr_lines                    int  // total number of lines in the source file that were scanned
 	is_vh                       bool // Keep newlines
 	is_fmt                      bool // Used for v fmt.
 	comments_mode               CommentsMode
@@ -836,6 +837,7 @@ fn (mut s Scanner) text_scan() token.Token {
 						return s.new_token(.string, '', 1)
 					}
 					s.is_enclosed_inter = false
+					s.just_closed_inter = true
 					ident_string := s.ident_string()
 					return s.new_token(.string, ident_string, ident_string.len + 2) // + two quotes
 				} else {
@@ -1149,13 +1151,16 @@ fn (mut s Scanner) ident_string() string {
 	is_quote := q == scanner.single_quote || q == scanner.double_quote
 	is_raw := is_quote && s.pos > 0 && s.text[s.pos - 1] == `r` && !s.is_inside_string
 	is_cstr := is_quote && s.pos > 0 && s.text[s.pos - 1] == `c` && !s.is_inside_string
-	if is_quote {
+	// don't interpret quote as "start of string" quote when a string interpolation has
+	// just ended on the previous character meaning it's not the start of a new string
+	if is_quote && !s.just_closed_inter {
 		if s.is_inside_string || s.is_enclosed_inter || s.is_inter_start {
 			s.inter_quote = q
 		} else {
 			s.quote = q
 		}
 	}
+	s.just_closed_inter = false
 	mut n_cr_chars := 0
 	mut start := s.pos
 	start_char := s.text[start]
