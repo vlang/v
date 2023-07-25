@@ -129,6 +129,8 @@ pub fn new_scanner_file(file_path string, comments_mode CommentsMode, pref_ &pre
 	return s
 }
 
+const internally_generated_v_code = 'internally_generated_v_code'
+
 // new scanner from string.
 pub fn new_scanner(text string, comments_mode CommentsMode, pref_ &pref.Preferences) &Scanner {
 	mut s := &Scanner{
@@ -140,8 +142,8 @@ pub fn new_scanner(text string, comments_mode CommentsMode, pref_ &pref.Preferen
 		is_print_rel_paths_on_error: true
 		is_fmt: pref_.is_fmt
 		comments_mode: comments_mode
-		file_path: 'internal_memory'
-		file_base: 'internal_memory'
+		file_path: scanner.internally_generated_v_code
+		file_base: scanner.internally_generated_v_code
 	}
 	s.scan_all_tokens_in_buffer()
 	return s
