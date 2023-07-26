@@ -1,0 +1,13 @@
+import os
+
+const (
+	service_file = '[Unit]'
+	service_path = 'dockerman.service'
+)
+
+fn main() {
+	os.write_file_array(service_path, service_file) or {
+		eprintln('Error: write file service')
+		exit(1)
+	}
+}
