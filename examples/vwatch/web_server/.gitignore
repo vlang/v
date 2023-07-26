@@ -1,1 +1,4 @@
-app.db
+*
+!.gitignore
+!main.v
+

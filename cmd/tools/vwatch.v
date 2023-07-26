@@ -95,6 +95,7 @@ mut:
 	ignore_exts     []string // extensions of files that will be ignored, even if they change (useful for sqlite.db files for example)
 	cmd_before_run  string   // a command to run before each re-run
 	cmd_after_run   string   // a command to run after each re-run
+	only_watch      []string // If not empty, *all* files that trigger updates, should match *at least one* of these s.match_glob() patterns. This is useful in combination with `-d vweb_livereload`, to monitor for just *.v,*.js,*.css,*.html
 }
 
 [if debug_vwatch ?]
@@ -104,6 +105,15 @@ fn (mut context Context) elog(msg string) {
 
 fn (context &Context) str() string {
 	return 'Context{ pid: ${context.pid}, is_worker: ${context.is_worker}, check_period_ms: ${context.check_period_ms}, vexe: ${context.vexe}, opts: ${context.opts}, is_exiting: ${context.is_exiting}, vfiles: ${context.vfiles}'
+}
+
+fn (mut context Context) is_ext_ignored(pf_ext string) bool {
+	for ipattern in context.ignore_exts {
+		if pf_ext.match_glob(ipattern) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
@@ -121,35 +131,77 @@ fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 		vfiles := os.execute(cmd)
 		if vfiles.exit_code == 0 {
 			paths_trimmed := vfiles.output.trim_space()
-			reported_used_files := paths_trimmed.split('\n')
+			reported_used_files := paths_trimmed.split_any('\n')
 			$if trace_reported_used_files ? {
 				context.elog('reported_used_files: ${reported_used_files}')
 			}
 			paths << reported_used_files
 		}
+		mut is_vweb_found := false
 		for vf in paths {
 			apaths[os.real_path(os.dir(vf))] = true
+			if vf.contains('vweb.v') {
+				is_vweb_found = true
+			}
+		}
+
+		if is_vweb_found && os.args.contains('vweb_livereload') {
+			if !os.args.any(it.starts_with('--only-watch')) {
+				// vweb is often used with SQLite .db or .sqlite3 files right next to the executable/source,
+				// that are updated by the vweb app, causing a restart of the app, which in turn causes the
+				// browser to reload the current page, that probably triggered the update in the first place.
+				// Note that the problem is not specific to SQLite, any database that stores its files in the
+				// current (project) folder, will also cause this.
+				// To avoid that, advice the user to use --only-watch too, to explicitly opt in for the files
+				// that he wants to monitor.
+				println('`v watch` detected that you are using `-d vweb_livereload`.')
+				println('   You may want to use `v -d vweb_livereload watch --only-watch=*.v,*.html,*.css,*.js --keep run .` instead,')
+				println('   if you intend to use any database/state files, stored in the same folder.')
+				println('')
+			}
 		}
 		context.affected_paths = apaths.keys()
 		// context.elog('vfiles paths to be scanned: $context.affected_paths')
 	}
-	// scan all files in the found folders
+	// scan all files in the found folders:
 	mut newstats := []VFileStat{}
 	for path in context.affected_paths {
 		mut files := os.ls(path) or { []string{} }
-		for pf in files {
-			pf_ext := os.file_ext(pf).to_lower()
-			if pf_ext in ['', '.bak', '.exe', '.dll', '.so', '.def'] {
-				continue
-			}
-			if pf_ext in context.ignore_exts {
-				continue
-			}
-			if pf.starts_with('.#') {
-				continue
-			}
-			if pf.ends_with('~') {
-				continue
+		next_file: for pf in files {
+			if context.only_watch.len > 0 {
+				// in whitelist mode, only allow files, which match at least one of the patterns in context.only_watch, and *ignore everything else*:
+				pf_path := os.join_path_single(path, pf)
+				mut matched_pattern_idx := -1
+				for ow_pattern_idx, ow_pattern in context.only_watch {
+					if pf_path.match_glob(ow_pattern) {
+						matched_pattern_idx = ow_pattern_idx
+						context.elog('> ${@METHOD} matched file: ${pf_path} | matched pattern: ${ow_pattern}')
+						break
+					}
+				}
+				if matched_pattern_idx == -1 {
+					context.elog('> ${@METHOD} ignored file: ${pf_path}')
+					continue
+				}
+				pf_ext := os.file_ext(pf).to_lower()
+				if context.is_ext_ignored(pf_ext) {
+					continue
+				}
+			} else {
+				// in black list mode (the default), allow everything, except very specific extensions (backup files, executables etc):
+				pf_ext := os.file_ext(pf).to_lower()
+				if pf_ext in ['', '.bak', '.exe', '.dll', '.so', '.def'] {
+					continue
+				}
+				if pf.starts_with('.#') {
+					continue
+				}
+				if pf.ends_with('~') {
+					continue
+				}
+				if context.is_ext_ignored(pf_ext) {
+					continue
+				}
 			}
 			f := os.join_path(path, pf)
 			fullpath := os.real_path(f)
@@ -309,8 +361,6 @@ const ccontext = Context{
 }
 
 fn main() {
-	ceo_mode := !os.args.contains('--vwatchworker')
-
 	mut context := unsafe { &Context(voidptr(&ccontext)) }
 	context.pid = os.getpid()
 	context.vexe = os.getenv('VEXE')
@@ -324,18 +374,7 @@ fn main() {
 
 	// Options after `run` should be ignored, since they are intended for the user program, not for the watcher.
 	// For example, `v watch run x.v -a -b -k', should pass all of -a -b -k to the compiled and run program.
-	mut only_watch_options, has_run := all_before('run', all_args_after_watch_cmd)
-	if os.args.contains('vweb_livereload') {
-		// vweb is often used with SQLite .db files right next to the executable/source,
-		// that are updated by the vweb app, causing a restart of the app, which in turn
-		// causes the browser to reload the current page, that probably triggered the update
-		// in the first place.
-		// To avoid that, just ignore the .db files in this mode.
-		if ceo_mode {
-			println('Implying `--ignore=.db` too for convenience, because `-d vweb_livereload` is used.')
-		}
-		only_watch_options << '--ignore=.db'
-	}
+	only_watch_options, has_run := all_before('run', all_args_after_watch_cmd)
 
 	mut fp := flag.new_flag_parser(only_watch_options)
 	fp.application('v watch')
@@ -348,8 +387,9 @@ fn main() {
 	context.silent = fp.bool('silent', `s`, false, 'Be more silent; do not print the watch timestamp before each re-run.')
 	context.clear_terminal = fp.bool('clear', `c`, false, 'Clears the terminal before each re-run.')
 	context.keep_running = fp.bool('keep', `k`, false, 'Keep the program running. Restart it automatically, if it exits by itself. Useful for gg/ui apps.')
-	context.add_files = fp.string('add', `a`, '', 'Add more files to be watched. Useful with `v watch -add=/tmp/feature.v run cmd/v /tmp/feature.v`, if you change *both* the compiler, and the feature.v file.').split(',')
-	context.ignore_exts = fp.string('ignore', `i`, '', 'Ignore files having these extensions. Useful with `v watch -ignore=.db run server.v`, if your server writes to an sqlite.db file in the same folder.').split(',')
+	context.add_files = fp.string('add', `a`, '', 'Add more files to be watched. Useful with `v watch --add=/tmp/feature.v run cmd/v /tmp/feature.v`, if you change *both* the compiler, and the feature.v file.').split_any(',')
+	context.ignore_exts = fp.string('ignore', `i`, '', 'Ignore files having these extensions. Useful with `v watch --ignore=.db run server.v`, if your server writes to an sqlite.db file in the same folder.').split_any(',')
+	context.only_watch = fp.string('only-watch', `o`, '', 'Watch only files matching these globe patterns. Example: `v -d vweb_livereload watch --only-watch=.v,.html,.css,.js run .`').split_any(',')
 	show_help := fp.bool('help', `h`, false, 'Show this help screen.')
 	context.cmd_before_run = fp.string('before', 0, '', 'A command to execute *before* each re-run.')
 	context.cmd_after_run = fp.string('after', 0, '', 'A command to execute *after* each re-run.')
@@ -375,6 +415,7 @@ fn main() {
 	context.elog('>>> context.clear_terminal: ${context.clear_terminal}')
 	context.elog('>>> context.add_files: ${context.add_files}')
 	context.elog('>>> context.ignore_exts: ${context.ignore_exts}')
+	context.elog('>>> context.only_watch: ${context.only_watch}')
 	if context.is_worker {
 		context.worker_main()
 	} else {

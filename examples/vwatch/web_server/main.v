@@ -5,11 +5,11 @@ module main
 // Note 1: while developing services, it is useful to also add the `--keep` option of `v watch`,
 // which will restart the app right away, even when it exits on its own.
 //
-// Note 2: vweb supports a special mode, where it will make the browser to check for server
+// Note 2: vweb supports a special live reload mode, where it will make the browser to check for server
 // restarts, and it will trigger a refresh of the current page, right after that is detected.
 //
 // The above means, that to get the most optimal prototyping experience for vweb apps, use:
-// `v -d vweb_livereload watch --keep run .`
+// `v -d vweb_livereload watch --only-watch=*.v,*.html,*.css,*.js --keep run .`
 import os
 import vweb
 import db.sqlite
@@ -50,7 +50,7 @@ fn (mut app App) update_db() !int {
 fn main() {
 	println('App demonstrating the use of `vweb` & `db.sqlite` together.')
 	println('For best prototyping experience, run with:')
-	println('`v -d vweb_livereload watch --keep run examples/vwatch/web_server/`')
+	println('`v -d vweb_livereload watch --only-watch=*.v,*.html,*.css,*.js --keep run examples/vwatch/web_server/`')
 	println('')
 	mut db := mydb()!
 	db.exec('CREATE TABLE visits (id integer primary key AUTOINCREMENT, created_at timestamp default current_timestamp);')
