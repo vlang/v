@@ -350,7 +350,8 @@ fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 		return true
 	}
 	// TODO: use sym so it can be absorbed into below [.voidptr, .any] logic
-	if expected.idx() == ast.array_type_idx || got.idx() == ast.array_type_idx {
+	if (expected.idx() == ast.array_type_idx && c.table.final_sym(got).kind == .array)
+		|| (got.idx() == ast.array_type_idx && c.table.final_sym(expected).kind == .array) {
 		return true
 	}
 	got_sym, exp_sym := c.table.sym(got), c.table.sym(expected)
