@@ -808,7 +808,7 @@ fn (mut s Scanner) text_scan() token.Token {
 			}
 			`{` {
 				// Skip { in `${` in strings
-				if s.is_inside_string {
+				if s.is_inside_string || s.is_enclosed_inter {
 					if s.text[s.pos - 1] == `$` {
 						continue
 					} else {
