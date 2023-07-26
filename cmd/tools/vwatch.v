@@ -309,6 +309,8 @@ const ccontext = Context{
 }
 
 fn main() {
+	ceo_mode := !os.args.contains('--vwatchworker')
+
 	mut context := unsafe { &Context(voidptr(&ccontext)) }
 	context.pid = os.getpid()
 	context.vexe = os.getenv('VEXE')
@@ -322,14 +324,26 @@ fn main() {
 
 	// Options after `run` should be ignored, since they are intended for the user program, not for the watcher.
 	// For example, `v watch run x.v -a -b -k', should pass all of -a -b -k to the compiled and run program.
-	only_watch_options, has_run := all_before('run', all_args_after_watch_cmd)
+	mut only_watch_options, has_run := all_before('run', all_args_after_watch_cmd)
+	if os.args.contains('vweb_livereload') {
+		// vweb is often used with SQLite .db files right next to the executable/source,
+		// that are updated by the vweb app, causing a restart of the app, which in turn
+		// causes the browser to reload the current page, that probably triggered the update
+		// in the first place.
+		// To avoid that, just ignore the .db files in this mode.
+		if ceo_mode {
+			println('Implying `--ignore=.db` too for convenience, because `-d vweb_livereload` is used.')
+		}
+		only_watch_options << '--ignore=.db'
+	}
+
 	mut fp := flag.new_flag_parser(only_watch_options)
 	fp.application('v watch')
 	fp.version('0.0.2')
 	fp.description('Collect all .v files needed for a compilation, then re-run the compilation when any of the source changes.')
 	fp.arguments_description('[--silent] [--clear] [--ignore .db] [--add /path/to/a/file.v] [run] program.v')
 	fp.allow_unknown_args()
-	fp.limit_free_args_to_at_least(1)!
+
 	context.is_worker = fp.bool('vwatchworker', 0, false, 'Internal flag. Used to distinguish vwatch manager and worker processes.')
 	context.silent = fp.bool('silent', `s`, false, 'Be more silent; do not print the watch timestamp before each re-run.')
 	context.clear_terminal = fp.bool('clear', `c`, false, 'Clears the terminal before each re-run.')
@@ -351,6 +365,7 @@ fn main() {
 	context.opts << all_args_before_watch_cmd
 	context.opts << remaining_options
 	if has_run {
+		context.opts << 'run'
 		context.opts << all_after('run', all_args_after_watch_cmd)
 	}
 	context.elog('>>> context.pid: ${context.pid}')
@@ -407,7 +422,7 @@ fn all_before(needle string, all []string) ([]string, bool) {
 	if needle_pos == -1 {
 		return all, false
 	}
-	return all#[..needle_pos + 1], true
+	return all#[..needle_pos], true
 }
 
 fn all_after(needle string, all []string) []string {
