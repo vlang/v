@@ -1150,7 +1150,7 @@ fn (mut s Scanner) ident_string() string {
 		col: s.pos - s.last_nl_pos - 1
 	}
 	q := s.text[s.pos]
-	is_quote := q == scanner.single_quote || q == scanner.double_quote
+	is_quote := q in [scanner.single_quote, scanner.double_quote]
 	is_raw := is_quote && s.pos > 0 && s.text[s.pos - 1] == `r` && !s.is_inside_string
 	is_cstr := is_quote && s.pos > 0 && s.text[s.pos - 1] == `c` && !s.is_inside_string
 	// don't interpret quote as "start of string" quote when a string interpolation has
