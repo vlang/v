@@ -9,6 +9,6 @@ fn main() {
 	println('')
 	for {
 		println('The time is now: ${time.now()}')
-		time.sleep(1 * time.second)
+		time.sleep(1000 * time.millisecond)
 	}
 }

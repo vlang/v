@@ -36,7 +36,10 @@ pub fn (mut app App) index() vweb.Result {
 		c = app.state.counter
 	}
 	visits := app.update_db() or { 0 }
-	return app.html('<!doctype html><html><body>asd Hi, current request number: ${c}. Stored visits: ${visits}</body></html>')
+	return app.html('<!doctype html><html><body>
+	<br/>Current request counter, after the server restart: ${c}.
+	<br/>Total stored visits: ${visits}
+	</body></html>')
 }
 
 fn (mut app App) update_db() !int {
@@ -50,7 +53,7 @@ fn (mut app App) update_db() !int {
 fn main() {
 	println('App demonstrating the use of `vweb` & `db.sqlite` together.')
 	println('For best prototyping experience, run with:')
-	println('`v -d vweb_livereload watch --only-watch=*.v,*.html,*.css,*.js --keep run examples/vwatch/web_server/`')
+	println('`v -d vweb_livereload watch --keep run examples/vwatch/web_server/`')
 	println('')
 	mut db := mydb()!
 	db.exec('CREATE TABLE visits (id integer primary key AUTOINCREMENT, created_at timestamp default current_timestamp);')
