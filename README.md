@@ -31,7 +31,7 @@
 - Hot code reloading
 - [Flexible memory management](https://vlang.io/#memory). GC by default, manual via `v -gc none`,
   arena allocation via `v -prealloc`, autofree via `v -autofree`
-  ([autofree demo video](https://www.youtube.com/watch?v=gmB8ea8uLsM)).
+  ([autofree demo video](https://www.youtube.com/watch?v=gmB8ea8uLsM))
 - [Cross-platform UI library](https://github.com/vlang/ui)
 - Built-in graphics library
 - Easy cross-compilation
