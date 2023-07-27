@@ -209,7 +209,7 @@ fn main() {
 	}
 	sql app.db {
 		create table Article
-	} or { panic(err) }
+	}!
 
 	first_article := Article{
 		title: 'Hello, world!'
