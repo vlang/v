@@ -795,10 +795,9 @@ fn (mut c Builder) cc_windows_cross() {
 	if !c.pref.out_name.to_lower().ends_with('.exe') {
 		c.pref.out_name += '.exe'
 	}
-	c.pref.out_name = os.quoted_path(c.pref.out_name)
 	mut args := []string{}
 	args << '${c.pref.cflags}'
-	args << '-o ${c.pref.out_name}'
+	args << '-o ${os.quoted_path(c.pref.out_name)}'
 	args << '-w -L.'
 	//
 	cflags := c.get_os_cflags()
