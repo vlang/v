@@ -50,6 +50,8 @@ V projects can be created anywhere and don't need to have a certain structure:
 mkdir blog
 cd blog
 v init
+rm -rf src
+touch blog.v
 ```
 
 First, let's create a simple hello world website:
@@ -207,7 +209,7 @@ fn main() {
 	}
 	sql app.db {
 		create table Article
-	}
+	} or { panic(err) }
 
 	first_article := Article{
 		title: 'Hello, world!'
@@ -222,7 +224,7 @@ fn main() {
 	sql app.db {
 		insert first_article into Article
 		insert second_article into Article
-	}
+	} or { panic(err) }
 	vweb.run(app, 8080)
 }
 ```
@@ -242,7 +244,7 @@ struct Article {
 pub fn (app &App) find_all_articles() []Article {
 	return sql app.db {
 		select from Article
-	}
+	} or { panic(err) }
 }
 ```
 
@@ -289,7 +291,7 @@ For example, if we only wanted to find articles with ids between 100 and 200, we
 
 return sql app.db {
 	select from Article where id >= 100 && id <= 200
-}
+} or { panic(err) }
 ```
 
 Retrieving a single article is very simple:
@@ -299,7 +301,7 @@ Retrieving a single article is very simple:
 pub fn (app &App) retrieve_article() ?Article {
 	return sql app.db {
 		select from Article limit 1
-	}
+	} or { panic(err) }
 }
 ```
 
@@ -349,7 +351,7 @@ pub fn (mut app App) new_article(title string, text string) vweb.Result {
 	println(article)
 	sql app.db {
 		insert article into Article
-	}
+	} or { panic(err) }
 	return app.redirect('/')
 }
 ```
