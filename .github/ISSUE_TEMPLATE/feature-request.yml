@@ -1,6 +1,5 @@
 name: 🚀 Feature Request
 description: Suggest an idea for this project
-title: (feature request summary)
 labels: [Feature Request]
 body:
   - type: textarea
