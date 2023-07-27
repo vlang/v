@@ -205,7 +205,7 @@ since a DB connection doesn't have to be set up for each request.
 // blog.v
 fn main() {
 	mut app := App{
-		db: sqlite.connect(':memory:') or { panic(err) }
+		db: sqlite.connect(':memory:')!
 	}
 	sql app.db {
 		create table Article
@@ -301,7 +301,7 @@ Retrieving a single article is very simple:
 pub fn (app &App) retrieve_article() ?Article {
 	return sql app.db {
 		select from Article limit 1
-	} or { panic(err) }
+	} or { panic (err) }[0]
 }
 ```
 
@@ -404,7 +404,7 @@ If one wants to persist data they need to use a file instead of memory SQLite Da
 Replace the db setup code with this instead:
 
 ```
-db: sqlite.connect('blog.db') or { panic(err) }
+db: sqlite.connect('blog.db')!
 ```
 
 As we can see it attempts to open a file in the current directory named `blog.db`.
