@@ -224,7 +224,7 @@ fn main() {
 	sql app.db {
 		insert first_article into Article
 		insert second_article into Article
-	} or { panic(err) }
+	}!
 	vweb.run(app, 8080)
 }
 ```
