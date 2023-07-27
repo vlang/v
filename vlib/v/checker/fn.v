@@ -507,8 +507,11 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	c.inside_fn_arg = old_inside_fn_arg
 	// autofree: mark args that have to be freed (after saving them in tmp exprs)
 	free_tmp_arg_vars := c.pref.autofree && !c.is_builtin_mod && node.args.len > 0
-		&& !node.args[0].typ.has_flag(.option) && !node.args[0].typ.has_flag(.result)
-	if free_tmp_arg_vars && !c.inside_const {
+		&& !c.inside_const && !node.args[0].typ.has_flag(.option)
+		&& !node.args[0].typ.has_flag(.result) && !(node.args[0].expr is ast.CallExpr
+		&& (node.args[0].expr.return_type.has_flag(.option)
+		|| node.args[0].expr.return_type.has_flag(.result)))
+	if free_tmp_arg_vars {
 		for i, arg in node.args {
 			if arg.typ != ast.string_type {
 				continue
