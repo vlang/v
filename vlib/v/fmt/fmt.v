@@ -1292,11 +1292,13 @@ pub fn (mut f Fmt) interface_field(field ast.StructField) {
 	ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
 	end_pos := field.pos.pos + field.pos.len
 	before_comments := field.comments.filter(it.pos.pos < field.pos.pos)
-	between_comments := field.comments[before_comments.len..].filter(it.pos.pos < end_pos)
-	after_type_comments := field.comments[(before_comments.len + between_comments.len)..]
+	end_comments := field.comments.filter(it.pos.pos > field.pos.pos)
+	if before_comments.len > 0 {
+		f.comments(before_comments, level: .indent)
+	}
 	f.write('\t${field.name} ${ft}')
-	if after_type_comments.len > 0 {
-		f.comments(after_type_comments, level: .indent)
+	if end_comments.len > 0 {
+		f.comments(end_comments, level: .indent)
 	} else {
 		f.writeln('')
 	}
