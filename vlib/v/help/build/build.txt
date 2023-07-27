@@ -161,7 +161,7 @@ NB: the build flags are shared with the run command too:
         ... will generate a TAGS file, that emacs can then use to jump
     to the definition of functions used by v itself. For vim:
       ./v -print-v-files cmd/v | ctags -L -
-        ... will generate a simillar tags file, that vi compatible editors can use.
+        ... will generate a similar tags file, that vi compatible editors can use.
     NB: an useful, although not entirely accurate regexp based Universal Ctags options file
       for V is located in `.ctags.d/v.ctags` . If you use https://ctags.io/ , it will be used
       up automatically, or you can specify it explicitly with --options=.ctags.d/v.ctags .
