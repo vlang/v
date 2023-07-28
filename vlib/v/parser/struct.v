@@ -702,18 +702,13 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			info.methods << tmethod
 		} else {
 			// interface fields
+			mut comments := p.eat_comments()
 			field_pos := p.tok.pos()
 			field_name := p.check_name()
 			mut type_pos := p.tok.pos()
 			field_typ := p.parse_type()
 			type_pos = type_pos.extend(p.prev_tok.pos())
-			mut comments := []ast.Comment{}
-			for p.tok.kind == .comment {
-				comments << p.comment()
-				if p.tok.kind == .rcbr {
-					break
-				}
-			}
+			comments << p.eat_comments(same_line: true)
 			fields << ast.StructField{
 				name: field_name
 				pos: field_pos
