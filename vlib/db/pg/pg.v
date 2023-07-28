@@ -251,7 +251,7 @@ pub fn (db DB) exec_one(query string) !Row {
 	return row
 }
 
-// exec_param_many executes a query with the provided parameters
+// exec_param_many executes a query with the parameters provided as ($1), ($2), ($n)
 pub fn (db DB) exec_param_many(query string, params []string) ![]Row {
 	unsafe {
 		mut param_vals := []&char{len: params.len}
@@ -265,12 +265,12 @@ pub fn (db DB) exec_param_many(query string, params []string) ![]Row {
 	}
 }
 
-// exec_param2 executes a query with 1 parameter, and returns either an error on failure, or the full result set on success
+// exec_param2 executes a query with 1 parameter ($1), and returns either an error on failure, or the full result set on success
 pub fn (db DB) exec_param(query string, param string) ![]Row {
 	return db.exec_param_many(query, [param])
 }
 
-// exec_param2 executes a query with 2 parameters, and returns either an error on failure, or the full result set on success
+// exec_param2 executes a query with 2 parameters ($1) and ($2), and returns either an error on failure, or the full result set on success
 pub fn (db DB) exec_param2(query string, param string, param2 string) ![]Row {
 	return db.exec_param_many(query, [param, param2])
 }
