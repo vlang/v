@@ -37,8 +37,8 @@ fn new_user() User {
 }
 
 struct SomeStruct {
-mut:
 	// 1
+mut:
 	// 2
 	// 3
 	somefield /* 4 */ /* 5 */ int // 6

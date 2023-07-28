@@ -105,9 +105,11 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	mut is_field_pub := false
 	mut is_field_global := false
 	mut last_line := p.prev_tok.pos().line_nr + 1
+	mut pre_comments := []ast.Comment{}
 	mut end_comments := []ast.Comment{}
 	if !no_body {
 		p.check(.lcbr)
+		pre_comments = p.eat_comments()
 		mut i := 0
 		for p.tok.kind != .rcbr {
 			mut comments := []ast.Comment{}
@@ -118,7 +120,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				}
 			}
 			if p.tok.kind == .rcbr {
-				end_comments = comments.clone()
+				end_comments = p.eat_comments(same_line: true)
 				break
 			}
 			if p.tok.kind == .key_pub {
@@ -338,6 +340,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		p.top_level_statement_end()
 		last_line = p.tok.line_nr
 		p.check(.rcbr)
+		end_comments = p.eat_comments(same_line: true)
 	}
 	is_minify := attrs.contains('minify')
 	mut sym := ast.TypeSymbol{
@@ -388,6 +391,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		language: language
 		is_union: is_union
 		attrs: if is_anon { []ast.Attr{} } else { attrs } // anon structs can't have attributes
+		pre_comments: pre_comments
 		end_comments: end_comments
 		generic_types: generic_types
 		embeds: embeds
