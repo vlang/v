@@ -128,7 +128,7 @@ fn main() {
 }
 
 pub fn (mut app App) before_request() {
-	// This build server json files
+	// Build the cube.js javascript file
 	os.execute_or_panic('v -b js_browser cube.js.v ')
 }
 
