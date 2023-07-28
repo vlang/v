@@ -106,8 +106,6 @@ fn (mut pv Picoev) del(fd int) int {
 	}
 
 	if pv.update_events(fd, picoev.picoev_del) != 0 {
-		target.loop_id = -1
-		target.fd = 0
 		return -1
 	}
 
@@ -149,14 +147,19 @@ fn (mut pv Picoev) set_timeout(fd int, secs int) {
 // timeout event
 [direct_array_access; inline]
 fn (mut pv Picoev) handle_timeout() {
+	mut to_remove := []int{}
+
 	for fd, timeout in pv.timeouts {
 		if timeout <= pv.loop.now {
-			target := pv.file_descriptors[fd]
-			assert target.loop_id == pv.loop.id
-
-			pv.timeouts.delete(fd)
-			unsafe { target.cb(fd, picoev.picoev_timeout, &pv) }
+			to_remove << fd
 		}
+	}
+
+	for fd in to_remove {
+		target := pv.file_descriptors[fd]
+		assert target.loop_id == pv.loop.id
+		pv.timeouts.delete(fd)
+		unsafe { target.cb(fd, picoev.picoev_timeout, &pv) }
 	}
 }
 
