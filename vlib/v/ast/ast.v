@@ -381,6 +381,7 @@ pub:
 	language     Language
 	is_union     bool
 	attrs        []Attr
+	pre_comments []Comment
 	end_comments []Comment
 	embeds       []Embed
 pub mut:
