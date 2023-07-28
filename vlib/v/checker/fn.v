@@ -2304,7 +2304,7 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 		has_decompose := node.args.filter(it.expr is ast.ArrayDecompose).len > 0
 		if has_decompose {
 			// if call(...args) is present
-			min_required_params = nr_args
+			min_required_params = nr_args - 1
 		}
 	}
 	if min_required_params < 0 {
