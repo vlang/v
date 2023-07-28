@@ -308,9 +308,8 @@ bad queries will always be handled by the developer:
 
 ```v ignore
 // article.v
-article := app.retrieve_article(10) or {
-	app.text('Article not found')
-	return
+article := app.retrieve_article() or {
+	return app.text('Article not found')
 }
 ```
 
