@@ -299,7 +299,7 @@ Retrieving a single article is very simple:
 pub fn (app &App) retrieve_article() ?Article {
 	return sql app.db {
 		select from Article limit 1
-	} or { panic (err) }[0]
+	} or { panic(err) }[0]
 }
 ```
 
