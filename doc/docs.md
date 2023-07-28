@@ -5339,8 +5339,8 @@ module abc
 pub struct Xyz {
 pub mut:
 	a int
-	// the tags will produce a notice, since the deprecation date is in the far future
 	d int [deprecated: 'use Xyz.a instead'; deprecated_after: '2999-03-01']
+	// the tags above, will produce a notice, since the deprecation date is in the far future
 }
 ```
 

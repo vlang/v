@@ -267,7 +267,6 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				}
 			}
 			// Comments after type (same line)
-			comments << p.eat_comments()
 			prev_attrs := p.attrs
 			p.attrs = []
 			if p.tok.kind == .lsbr {
@@ -281,6 +280,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				}
 				p.inside_struct_attr_decl = false
 			}
+			comments << p.eat_comments()
 			mut default_expr := ast.empty_expr
 			mut has_default_expr := false
 			if !is_embed {
