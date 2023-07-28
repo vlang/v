@@ -106,8 +106,6 @@ fn (mut pv Picoev) del(fd int) int {
 	}
 
 	if pv.update_events(fd, picoev.picoev_del) != 0 {
-		target.loop_id = -1
-		target.fd = 0
 		return -1
 	}
 
