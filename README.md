@@ -201,33 +201,22 @@ cd v
 make
 ```
 
-## Installing editor/IDE plugin
+## Editor/IDE Plugins
 
-V has plugins for many editors:
+To bring IDE functions for the V programming languages to your editor, check out
+[v-analyzer](https://github.com/v-analyzer/v-analyzer). It provides a
+[VS code extension](https://marketplace.visualstudio.com/items?itemName=VOSCA.vscode-v-analyzer)
+and language server capabilities for other editors.
 
-- [VS Code plugin](https://github.com/vlang/vscode-vlang)
-- [JetBrains IDE plugin](https://plugins.jetbrains.com/plugin/20287-vlang/docs/quick-start-guide.html)
+The plugin for JetBrains IDEs (IntelliJ, CLion, GoLand, etc.) also offer a great development 
+experience with V. You can check out all the features it [its documentation](https://plugins.jetbrains.com/plugin/20287-vlang/docs/syntax-highlighting.html).
+
+Other Plugins:
+
 - [Vim plugins](https://github.com/vlang/awesome-v#vim)
 - [Emacs plugins](https://github.com/vlang/awesome-v#emacs)
 - [Sublime Text 3 plugins](https://github.com/vlang/awesome-v#sublime-text-3)
 - [Atom plugins](https://github.com/vlang/awesome-v#atom)
-
-### IntelliSense
-
-V has a Language Server:
-[VLS](https://github.com/vlang/vls).
-The VS Code plugin provides built-in support for VLS.
-
-> **Note**
-> 
-> VLS may be unstable at the moment.
-> If you encounter any problem, please create a new
-> [issue](https://github.com/vlang/vls/issues).
-
-The plugin for JetBrains IDE (IntelliJ, CLion, GoLand, etc) at the moment is
-the best choice if you want a great V development experience.
-You can see all its features in
-[its documentation](https://plugins.jetbrains.com/plugin/20287-vlang/docs/syntax-highlighting.html).
 
 ## Testing and running the examples
 
