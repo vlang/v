@@ -188,9 +188,9 @@ fn test_split_nth() {
 	assert f.rsplit_nth(':', 2) == ['3', '1:2']
 	g := '123'
 	assert g.split_nth('', 2) == ['1', '23']
-	assert g.rsplit_nth('', 2)    == ['3', '12']
+	assert g.rsplit_nth('', 2) == ['3', '12']
 	h := ''
-	assert h.split_nth('', 2)  == []
+	assert h.split_nth('', 2) == []
 	assert h.rsplit_nth('', 2) == []
 }
 
