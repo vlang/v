@@ -233,6 +233,9 @@ fn (vd VDoc) get_readme(path string) string {
 		}
 	}
 	if fname == '' {
+		if path.all_after_last(os.path_separator) == 'src' {
+			return vd.get_readme(path.all_before_last(os.path_separator))
+		}
 		return ''
 	}
 	readme_path := os.join_path(path, '${fname}.md')
