@@ -1305,9 +1305,14 @@ pub fn (mut f Fmt) interface_field(field ast.StructField) {
 }
 
 pub fn (mut f Fmt) interface_method(method ast.FnDecl) {
+	before_comments := method.comments.filter(it.pos.pos < method.pos.pos)
+	end_comments := method.comments.filter(it.pos.pos > method.pos.pos)
+	if before_comments.len > 0 {
+		f.comments(before_comments, level: .indent)
+	}
 	f.write('\t')
 	f.write(method.stringify_fn_decl(f.table, f.cur_mod, f.mod2alias).all_after_first('fn '))
-	f.comments(method.comments, inline: true, has_nl: false, level: .indent)
+	f.comments(end_comments, inline: true, has_nl: false, level: .indent)
 	f.writeln('')
 	f.comments(method.next_comments, inline: false, has_nl: true, level: .indent)
 	for param in method.params {

@@ -646,6 +646,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 				p.peek_tok.pos())
 			return ast.InterfaceDecl{}
 		}
+		mut comments := p.eat_comments()
 		if p.peek_tok.kind == .lpar {
 			method_start_pos := p.tok.pos()
 			line_nr := p.tok.line_nr
@@ -687,9 +688,9 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 				method.return_type_pos = method.return_type_pos.extend(p.tok.pos())
 				method.pos = method.pos.extend(method.return_type_pos)
 			}
-			mcomments := p.eat_comments(same_line: true)
+			comments << p.eat_comments(same_line: true)
 			mnext_comments := p.eat_comments()
-			method.comments = mcomments
+			method.comments = comments
 			method.next_comments = mnext_comments
 			methods << method
 			tmethod := ast.Fn{
@@ -706,7 +707,6 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			info.methods << tmethod
 		} else {
 			// interface fields
-			mut comments := p.eat_comments()
 			field_pos := p.tok.pos()
 			field_name := p.check_name()
 			mut type_pos := p.tok.pos()
