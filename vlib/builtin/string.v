@@ -865,7 +865,7 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 			i = 1
 			for ch in s {
 				if nth > 0 && i >= nth {
-					res << s[i..]
+					res << s[i - 1..]
 					break
 				}
 				res << ch.ascii_str()
@@ -938,7 +938,7 @@ pub fn (s string) rsplit_nth(delim string, nth int) []string {
 		0 {
 			for i >= 0 {
 				if nth > 0 && res.len == nth - 1 {
-					res << s[..i]
+					res << s[..i + 1]
 					break
 				}
 				res << s[i].ascii_str()
