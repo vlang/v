@@ -205,11 +205,11 @@ make
 
 To bring IDE functions for the V programming languages to your editor, check out
 [v-analyzer](https://github.com/v-analyzer/v-analyzer). It provides a
-[VS code extension](https://marketplace.visualstudio.com/items?itemName=VOSCA.vscode-v-analyzer)
+[VS Code extension](https://marketplace.visualstudio.com/items?itemName=VOSCA.vscode-v-analyzer)
 and language server capabilities for other editors.
 
-The plugin for JetBrains IDEs (IntelliJ, CLion, GoLand, etc.) also offer a great development 
-experience with V. You can check out all the features it [its documentation](https://plugins.jetbrains.com/plugin/20287-vlang/docs/syntax-highlighting.html).
+The plugin for JetBrains IDEs (IntelliJ, CLion, GoLand, etc.) also offers a great development
+experience with V. You can find all features in [its documentation](https://plugins.jetbrains.com/plugin/20287-vlang/docs/syntax-highlighting.html).
 
 Other Plugins:
 
