@@ -1,9 +1,9 @@
 module mod1
 
-#flag -I @VMODROOT/c
-#flag @VMODROOT/c/implementation.o
+#flag -I @VMODROOT/mod1/c
+#flag @VMODROOT/mod1/c/implementation.o
 
-#include "header.h"
+#include "@VMODROOT/mod1/c/header.h"
 
 struct C.MyStruct {
 	UppercaseField int
