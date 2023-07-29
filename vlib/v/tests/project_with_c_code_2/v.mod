@@ -1,5 +1,5 @@
 Module {
 	name: 'project_with_c_code_2',
-	description: 'A simple projecrt, containing C code.',
+	description: 'A simple project, containing C code.',
 	dependencies: []
 }
