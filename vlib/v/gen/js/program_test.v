@@ -84,7 +84,7 @@ fn check_path(dir string, tests []string) !int {
 			println(found)
 			println('============\n')
 			println('diff:')
-			println(diff.color_compare_strings(diff_cmd, rand.ulid(), found, expected))
+			println(diff.color_compare_strings(diff_cmd, rand.ulid(), expected, found))
 			println('============\n')
 			nb_fail++
 		} else {

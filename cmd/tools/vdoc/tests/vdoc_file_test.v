@@ -71,7 +71,7 @@ fn print_compare(expected string, found string) {
 	println(found)
 	println('============\n')
 	println('diff:')
-	println(diff.color_compare_strings(diff_cmd, rand.ulid(), found, expected))
+	println(diff.color_compare_strings(diff_cmd, rand.ulid(), expected, found))
 	println('============\n')
 }
 

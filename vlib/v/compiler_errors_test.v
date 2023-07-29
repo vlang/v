@@ -362,10 +362,10 @@ fn clean_line_endings(s string) string {
 	return res
 }
 
-fn diff_content(s1 string, s2 string) {
+fn diff_content(expected string, found string) {
 	diff_cmd := diff.find_working_diff_command() or { return }
 	println(term.bold(term.yellow('diff: ')))
-	println(diff.color_compare_strings(diff_cmd, rand.ulid(), s1, s2))
+	println(diff.color_compare_strings(diff_cmd, rand.ulid(), expected, found))
 	println('============\n')
 }
 
