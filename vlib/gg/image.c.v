@@ -25,49 +25,59 @@ pub mut:
 }
 
 // create_image creates an `Image` from `file`.
-pub fn (ctx &Context) create_image(file string) !Image {
-	// println('\ncreate_image("$file")')
-	if !os.exists(file) {
-		return error('image file "${file}" not found')
-	}
-	$if macos {
-		if ctx.native_rendering {
-			// return C.darwin_create_image(file)
-			mut img := C.darwin_create_image(file)
-			// println('created macos image: $img.path w=$img.width')
-			// C.printf('p = %p\n', img.data)
-			img.id = ctx.image_cache.len
+pub fn (mut ctx Context) create_image(file string) !Image {
+	$if android {
+		image_data := os.read_apk_asset(file)!
+		mut image := ctx.create_image_from_byte_array(image_data)!
+
+		image.path = file
+
+		return image
+	} $else {
+		if !os.exists(file) {
+			return error('image file "${file}" not found')
+		}
+
+		$if macos {
+			if ctx.native_rendering {
+				// return C.darwin_create_image(file)
+				mut img := C.darwin_create_image(file)
+				// println('created macos image: $img.path w=$img.width')
+				// C.printf('p = %p\n', img.data)
+				img.id = ctx.image_cache.len
+				unsafe {
+					ctx.image_cache << img
+				}
+				return img
+			}
+		}
+
+		if !gfx.is_valid() {
+			// Sokol is not initialized yet, add stbi object to a queue/cache
+			// ctx.image_queue << file
+			stb_img := stbi.load(file)!
+			img := Image{
+				width: stb_img.width
+				height: stb_img.height
+				nr_channels: stb_img.nr_channels
+				ok: false
+				data: stb_img.data
+				ext: stb_img.ext
+				path: file
+				id: ctx.image_cache.len
+			}
 			unsafe {
 				ctx.image_cache << img
 			}
 			return img
 		}
-	}
-	if !gfx.is_valid() {
-		// Sokol is not initialized yet, add stbi object to a queue/cache
-		// ctx.image_queue << file
-		stb_img := stbi.load(file)!
-		img := Image{
-			width: stb_img.width
-			height: stb_img.height
-			nr_channels: stb_img.nr_channels
-			ok: false
-			data: stb_img.data
-			ext: stb_img.ext
-			path: file
-			id: ctx.image_cache.len
-		}
+		mut img := create_image(file)
+		img.id = ctx.image_cache.len
 		unsafe {
 			ctx.image_cache << img
 		}
 		return img
 	}
-	mut img := create_image(file)
-	img.id = ctx.image_cache.len
-	unsafe {
-		ctx.image_cache << img
-	}
-	return img
 }
 
 // init_sokol_image initializes this `Image` for use with the
