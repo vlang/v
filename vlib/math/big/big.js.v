@@ -88,13 +88,18 @@ pub fn (a &Number) % (b &Number) Number {
 	return c
 }*/
 
-pub fn divmod(a &Number, b &Number) (Number, Number) {
+pub fn div_mod(a &Number, b &Number) (Number, Number) {
 	c := Number{}
 	d := Number{}
 	#c.value = a.val.value / b.val.value
 	#d.value = a.val.value % b.val.value
 
 	return c, d
+}
+
+[deprecated: 'use div_mod(a, b) instead']
+pub fn divmod(a &Number, b &Number) (Number, Number) {
+	return div_mod(a, b)
 }
 
 pub fn cmp(a &Number, b &Number) int {
@@ -137,37 +142,62 @@ pub fn (a &Number) isqrt() Number {
 	return b
 }
 
+[deprecated: 'use bitwise_and(a, b) instead']
 pub fn b_and(a &Number, b &Number) Number {
+	return bitwise_and(a, b)
+}
+
+[deprecated: 'use bitwise_or(a, b) instead']
+pub fn b_or(a &Number, b &Number) Number {
+	return bitwise_or(a, b)
+}
+
+[deprecated: 'use bitwise_xor(a, b) instead']
+pub fn b_xor(a &Number, b &Number) Number {
+	return bitwise_xor(a, b)
+}
+
+pub fn bitwise_and(a &Number, b &Number) Number {
 	c := Number{}
 	#c.value = a.val.value & b.val.value
 
 	return c
 }
 
-pub fn b_or(a &Number, b &Number) Number {
+pub fn bitwise_or(a &Number, b &Number) Number {
 	c := Number{}
 	#c.value = a.val.value | b.val.value
 
 	return c
 }
 
-pub fn b_xor(a &Number, b &Number) Number {
+pub fn bitwise_xor(a &Number, b &Number) Number {
 	c := Number{}
 	#c.value = a.val.value ^ b.val.value
 
 	return c
 }
 
-pub fn (a &Number) lshift(nbits int) Number {
+[deprecated: 'use a.left_shift(amount) instead']
+pub fn (a &Number) lshift(amount int) Number {
+	return a.left_shift(amount)
+}
+
+[deprecated: 'use a.right_shift(amount) instead']
+pub fn (a &Number) rshift(amount int) Number {
+	return a.right_shift(amount)
+}
+
+pub fn (a &Number) left_shift(amount int) Number {
 	c := Number{}
-	#c.value = a.val.value << BigInt(+nbits)
+	#c.value = a.val.value << BigInt(+amount)
 
 	return c
 }
 
-pub fn (a &Number) rshift(nbits int) Number {
+pub fn (a &Number) right_shift(amount int) Number {
 	c := Number{}
-	#c.value = a.val.value << BigInt(+nbits)
+	#c.value = a.val.value << BigInt(+amount)
 
 	return c
 }
@@ -193,6 +223,11 @@ pub fn factorial(nn &Number) Number {
 	return a
 }
 
+[deprecated: 'use factorial_int instead']
 pub fn fact(n int) Number {
+	return factorial_int(n)
+}
+
+pub fn factorial_int(n int) Number {
 	return factorial(from_int(n))
 }

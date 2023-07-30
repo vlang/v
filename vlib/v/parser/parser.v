@@ -65,6 +65,7 @@ mut:
 	inside_map_init           bool
 	inside_orm                bool
 	inside_chan_decl          bool
+	fixed_array_dim           int        // fixed array dim parsing level
 	or_is_handled             bool       // ignore `or` in this expression
 	builtin_mod               bool       // are we in the `builtin` module?
 	mod                       string     // current module name
@@ -105,6 +106,7 @@ pub mut:
 	warnings       []errors.Warning
 	notices        []errors.Notice
 	vet_errors     []vet.Error
+	vet_notices    []vet.Error
 	template_paths []string // record all compiled $tmpl files; needed for `v watch run webserver.v`
 }
 
@@ -253,7 +255,7 @@ pub fn parse_file(path string, table &ast.Table, comments_mode scanner.CommentsM
 	return res
 }
 
-pub fn parse_vet_file(path string, table_ &ast.Table, pref_ &pref.Preferences) (&ast.File, []vet.Error) {
+pub fn parse_vet_file(path string, table_ &ast.Table, pref_ &pref.Preferences) (&ast.File, []vet.Error, []vet.Error) {
 	$if trace_parse_vet_file ? {
 		eprintln('> ${@MOD}.${@FN} path: ${path}')
 	}
@@ -289,7 +291,7 @@ pub fn parse_vet_file(path string, table_ &ast.Table, pref_ &pref.Preferences) (
 	p.vet_errors << p.scanner.vet_errors
 	file := p.parse()
 	unsafe { p.free_scanner() }
-	return file, p.vet_errors
+	return file, p.vet_errors, p.vet_notices
 }
 
 pub fn (mut p Parser) parse() &ast.File {
@@ -330,7 +332,7 @@ pub fn (mut p Parser) parse() &ast.File {
 		}
 		stmt := p.top_stmt()
 		// clear the attributes after each statement
-		if !(stmt is ast.ExprStmt && (stmt as ast.ExprStmt).expr is ast.Comment) {
+		if !(stmt is ast.ExprStmt && stmt.expr is ast.Comment) {
 			p.attrs = []
 		}
 		stmts << stmt
@@ -2067,6 +2069,20 @@ fn (mut p Parser) vet_error(msg string, line int, fix vet.FixKind, typ vet.Error
 	}
 }
 
+fn (mut p Parser) vet_notice(msg string, line int, fix vet.FixKind, typ vet.ErrorType) {
+	pos := token.Pos{
+		line_nr: line + 1
+	}
+	p.vet_notices << vet.Error{
+		message: msg
+		file_path: p.scanner.file_path
+		pos: pos
+		kind: .notice
+		fix: fix
+		typ: typ
+	}
+}
+
 fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	// in here might be 1) multi-expr 2) multi-assign
 	// 1, a, c ... }       // multi-expression
@@ -2103,7 +2119,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 			if (is_top_level || p.tok.kind != .rcbr)
 				&& node !in [ast.CallExpr, ast.PostfixExpr, ast.ComptimeCall, ast.SelectorExpr, ast.DumpExpr] {
 				is_complex_infix_expr := node is ast.InfixExpr
-					&& (node as ast.InfixExpr).op in [.left_shift, .right_shift, .unsigned_right_shift, .arrow]
+					&& node.op in [.left_shift, .right_shift, .unsigned_right_shift, .arrow]
 				if !is_complex_infix_expr {
 					return p.error_with_pos('expression evaluated but not used', node.pos())
 				}
@@ -3689,8 +3705,8 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		pos := p.tok.pos()
 		name := p.check_name()
 		end_comments << p.eat_comments()
-		if util.contains_capital(name) {
-			p.warn_with_pos('const names cannot contain uppercase letters, use snake_case instead',
+		if !p.pref.translated && !p.is_translated && util.contains_capital(name) {
+			p.error_with_pos('const names cannot contain uppercase letters, use snake_case instead',
 				pos)
 		}
 		full_name := p.prepend_mod(name)
@@ -3711,6 +3727,10 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			return ast.ConstDecl{}
 		}
 		expr := p.expr(0)
+		if expr is ast.ArrayInit && !expr.is_fixed && p.pref.is_vet {
+			p.vet_notice('use a fixed array, instead of a dynamic one', pos.line_nr, vet.FixKind.unknown,
+				.default)
+		}
 		field := ast.ConstField{
 			name: full_name
 			mod: p.mod

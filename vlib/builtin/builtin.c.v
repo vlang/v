@@ -223,7 +223,7 @@ pub fn flush_stderr() {
 	}
 }
 
-// print prints a message to stdout. Unlike `println` stdout is not automatically flushed.
+// print prints a message to stdout. Note that unlike `eprint`, stdout is not automatically flushed.
 [manualfree]
 pub fn print(s string) {
 	$if android && !termux {
@@ -238,7 +238,7 @@ pub fn print(s string) {
 	}
 }
 
-// println prints a message with a line end, to stdout. stdout is flushed.
+// println prints a message with a line end, to stdout. Note that unlike `eprintln`, stdout is not automatically flushed.
 [manualfree]
 pub fn println(s string) {
 	if s.str == 0 {
@@ -316,8 +316,8 @@ pub fn malloc(n isize) &u8 {
 		C.fprintf(C.stderr, c'_v_malloc %6d total %10d\n', n, total_m)
 		// print_backtrace()
 	}
-	if n <= 0 {
-		panic('malloc(${n} <= 0)')
+	if n < 0 {
+		panic('malloc(${n} < 0)')
 	}
 	$if vplayground ? {
 		if n > 10000 {
@@ -359,8 +359,8 @@ pub fn malloc_noscan(n isize) &u8 {
 		C.fprintf(C.stderr, c'malloc_noscan %6d total %10d\n', n, total_m)
 		// print_backtrace()
 	}
-	if n <= 0 {
-		panic('malloc_noscan(${n} <= 0)')
+	if n < 0 {
+		panic('malloc_noscan(${n} < 0)')
 	}
 	$if vplayground ? {
 		if n > 10000 {
@@ -418,8 +418,8 @@ pub fn malloc_uncollectable(n isize) &u8 {
 		C.fprintf(C.stderr, c'malloc_uncollectable %6d total %10d\n', n, total_m)
 		// print_backtrace()
 	}
-	if n <= 0 {
-		panic('malloc_uncollectable(${n} <= 0)')
+	if n < 0 {
+		panic('malloc_uncollectable(${n} < 0)')
 	}
 	$if vplayground ? {
 		if n > 10000 {

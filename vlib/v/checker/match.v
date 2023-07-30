@@ -18,15 +18,17 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 			c.expected_expr_type = ast.void_type
 		}
 	}
-	cond_type := c.expr(node.cond)
+	cond_type := c.expr(mut node.cond)
 	// we setting this here rather than at the end of the method
 	// since it is used in c.match_exprs() it saves checking twice
 	node.cond_type = ast.mktyp(cond_type)
 	if (node.cond is ast.Ident && node.cond.is_mut)
 		|| (node.cond is ast.SelectorExpr && node.cond.is_mut) {
-		c.fail_if_immutable(node.cond)
+		c.fail_if_immutable(mut node.cond)
 	}
-	c.ensure_type_exists(node.cond_type, node.pos) or { return ast.void_type }
+	if !c.ensure_type_exists(node.cond_type, node.pos) {
+		return ast.void_type
+	}
 	c.check_expr_opt_call(node.cond, cond_type)
 	cond_type_sym := c.table.sym(cond_type)
 	cond_is_option := cond_type.has_flag(.option)
@@ -37,11 +39,11 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	mut ret_type := ast.void_type
 	mut nbranches_with_return := 0
 	mut nbranches_without_return := 0
-	for branch in node.branches {
+	for mut branch in node.branches {
 		if node.is_expr {
-			c.stmts_ending_with_expression(branch.stmts)
+			c.stmts_ending_with_expression(mut branch.stmts)
 		} else {
-			c.stmts(branch.stmts)
+			c.stmts(mut branch.stmts)
 		}
 		c.smartcast_mut_pos = token.Pos{}
 		c.smartcast_cond_pos = token.Pos{}
@@ -58,7 +60,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 				if node.is_expr {
 					c.expected_type = node.expected_type
 				}
-				expr_type := c.expr(stmt.expr)
+				expr_type := c.expr(mut stmt.expr)
 				if !branch.is_else && cond_is_option && branch.exprs[0] !is ast.None {
 					c.error('`match` expression with Option type only checks against `none`, to match its value you must unwrap it first `var?`',
 						branch.pos)
@@ -170,7 +172,7 @@ fn (mut c Checker) get_comptime_number_value(mut expr ast.Expr) ?i64 {
 
 		if mut obj := c.table.global_scope.find_const(expr_name) {
 			if obj.typ == 0 {
-				obj.typ = c.expr(obj.expr)
+				obj.typ = c.expr(mut obj.expr)
 			}
 			return c.get_comptime_number_value(mut obj.expr)
 		}
@@ -192,7 +194,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 			// TODO: investigate why enums are different here:
 			if expr !is ast.EnumVal {
 				// ensure that the sub expressions of the branch are actually checked, before anything else:
-				_ := c.expr(expr)
+				_ := c.expr(mut expr)
 			}
 			if expr is ast.TypeNode && cond_sym.kind == .struct_ {
 				c.error('struct instances cannot be matched by type name, they can only be matched to other instances of the same struct type',
@@ -276,7 +278,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				c.error('match case `${key}` is handled more than once', branch.pos)
 			}
 			c.expected_type = node.cond_type
-			expr_type := c.expr(expr)
+			expr_type := c.expr(mut expr)
 			if expr_type.idx() == 0 {
 				// parser failed, stop checking
 				return
@@ -357,7 +359,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					expr_type = expr_types[0].typ
 				}
 
-				c.smartcast(node.cond, node.cond_type, expr_type, mut branch.scope)
+				c.smartcast(mut node.cond, node.cond_type, expr_type, mut branch.scope)
 			}
 		}
 	}

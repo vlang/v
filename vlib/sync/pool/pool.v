@@ -37,7 +37,7 @@ pub struct PoolProcessorConfig {
 //      thread in the pool will run for each item.
 //      The callback function will receive as parameters:
 //      1) the PoolProcessor instance, so it can call
-//            p.get_item<int>(idx) to get the actual item at index idx
+//            p.get_item[int](idx) to get the actual item at index idx
 //      2) idx - the index of the currently processed item
 //      3) task_id - the index of the worker thread in which the callback
 //            function is running.

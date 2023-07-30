@@ -40,6 +40,6 @@ Other less frequently used commands supported by V include:
                    Mainly useful as a parser bug finder for the V Language Server project.
 
   test-self        Test if V is working properly by running all tests, including the compiler ones.
-                   NB: this can 1-2 minutes to run.
+                   NB: this can take 1-2 minutes to run.
 
   wipe-cache       Remove the V cache folder. Useful for cleaning the cache, and guaranteeing a clean build.

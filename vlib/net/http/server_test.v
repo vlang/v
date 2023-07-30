@@ -1,3 +1,4 @@
+import net
 import net.http
 import time
 
@@ -19,6 +20,22 @@ fn test_server_close() {
 	mut server := &http.Server{
 		accept_timeout: 1 * time.second
 		handler: MyHttpHandler{}
+	}
+	t := spawn server.listen_and_serve()
+	time.sleep(250 * time.millisecond)
+	mut watch := time.new_stopwatch()
+	server.close()
+	assert server.status() == .closed
+	assert watch.elapsed() < 100 * time.millisecond
+	t.wait()
+	assert watch.elapsed() < 999 * time.millisecond
+}
+
+fn test_server_custom_listener() {
+	listener := net.listen_tcp(.ip6, ':8081')!
+	mut server := &http.Server{
+		accept_timeout: 1 * time.second
+		listener: listener
 	}
 	t := spawn server.listen_and_serve()
 	time.sleep(250 * time.millisecond)

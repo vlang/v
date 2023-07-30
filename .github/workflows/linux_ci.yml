@@ -168,9 +168,6 @@ jobs:
     timeout-minutes: 121
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: 16
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -223,8 +220,10 @@ jobs:
         run: VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 ./v -cc gcc -cstrict test-self
       - name: Build examples
         run: ./v build-examples
-      - name: Build tetris.v with -autofree
-        run: ./v -autofree -experimental -o tetris examples/tetris/tetris.v
+      - name: Build tetris with -autofree
+        run: ./v -autofree -o tetris examples/tetris/tetris.v
+      - name: Build blog tutorial with -autofree
+        run: ./v -autofree -o blog tutorials/building_a_simple_web_blog_with_vweb/code/blog
       - name: Build option_test.v with -autofree
         run: ./v -autofree vlib/v/tests/option_test.v
       - name: V self compilation with -parallel-cc
@@ -273,9 +272,6 @@ jobs:
       VFLAGS: -cc clang
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: 16
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -380,9 +376,6 @@ jobs:
 #       V_CI_MUSL: 1
 #     steps:
 #     - uses: actions/checkout@v3
-#     - uses: actions/setup-node@v3
-#       with:
-#         node-version: 16
 #     - name: Install dependencies
 #       run: |
 #          sudo apt-get install --quiet -y musl musl-tools libssl-dev sqlite3 libsqlite3-dev valgrind

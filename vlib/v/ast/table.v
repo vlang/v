@@ -98,15 +98,11 @@ pub fn new_table() &Table {
 	}
 	t.register_builtin_type_symbols()
 	t.is_fmt = true
-	set_global_table(t)
+	global_table = t
 	return t
 }
 
 __global global_table = &Table(unsafe { nil })
-
-pub fn set_global_table(t &Table) {
-	global_table = t
-}
 
 // used to compare fn's & for naming anon fn's
 pub fn (t &Table) fn_type_signature(f &Fn) string {
@@ -497,7 +493,7 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) !StructField {
 				}
 			}
 			SumType {
-				t.resolve_common_sumtype_fields(ts)
+				t.resolve_common_sumtype_fields(mut ts)
 				if field := ts.info.find_field(name) {
 					return field
 				}
@@ -564,8 +560,7 @@ pub fn (t &Table) find_field_with_embeds(sym &TypeSymbol, field_name string) !St
 	}
 }
 
-pub fn (t &Table) resolve_common_sumtype_fields(sym_ &TypeSymbol) {
-	mut sym := unsafe { sym_ }
+pub fn (t &Table) resolve_common_sumtype_fields(mut sym TypeSymbol) {
 	mut info := sym.info as SumType
 	if info.found_fields {
 		return
@@ -579,7 +574,7 @@ pub fn (t &Table) resolve_common_sumtype_fields(sym_ &TypeSymbol) {
 				t.struct_fields(v_sym)
 			}
 			SumType {
-				t.resolve_common_sumtype_fields(v_sym)
+				t.resolve_common_sumtype_fields(mut v_sym)
 				v_sym.info.fields
 			}
 			else {
@@ -658,9 +653,9 @@ pub fn (t &Table) sym(typ Type) &TypeSymbol {
 pub fn (t &Table) final_sym(typ Type) &TypeSymbol {
 	mut idx := typ.idx()
 	if idx > 0 {
-		current_symbol := t.type_symbols[idx]
-		if current_symbol.kind == .alias {
-			idx = (current_symbol.info as Alias).parent_type.idx()
+		cur_sym := t.type_symbols[idx]
+		if cur_sym.info is Alias {
+			idx = cur_sym.info.parent_type.idx()
 		}
 		return t.type_symbols[idx]
 	}
@@ -671,23 +666,20 @@ pub fn (t &Table) final_sym(typ Type) &TypeSymbol {
 
 [inline]
 pub fn (t &Table) get_type_name(typ Type) string {
-	sym := t.sym(typ)
-	return sym.name
+	return t.sym(typ).name
 }
 
 [inline]
 pub fn (t &Table) get_final_type_name(typ Type) string {
-	sym := t.final_sym(typ)
-	return sym.name
+	return t.final_sym(typ).name
 }
 
 [inline]
 pub fn (t &Table) unalias_num_type(typ Type) Type {
 	sym := t.sym(typ)
-	if sym.kind == .alias {
-		pt := (sym.info as Alias).parent_type
-		if pt <= char_type && pt >= void_type {
-			return pt
+	if sym.info is Alias {
+		if sym.info.parent_type <= char_type && sym.info.parent_type >= void_type {
+			return sym.info.parent_type
 		}
 	}
 	return typ
@@ -696,9 +688,8 @@ pub fn (t &Table) unalias_num_type(typ Type) Type {
 [inline]
 pub fn (t &Table) unaliased_type(typ Type) Type {
 	sym := t.sym(typ)
-	if sym.kind == .alias {
-		pt := (sym.info as Alias).parent_type
-		return pt
+	if sym.info is Alias {
+		return sym.info.parent_type
 	}
 	return typ
 }

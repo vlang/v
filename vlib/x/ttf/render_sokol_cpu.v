@@ -42,13 +42,13 @@ pub fn (mut tf_skl TTF_render_Sokol) create_text(in_txt string, in_font_size f32
 
 	// Formula: (font_size * device dpi) / (72dpi * em_unit)
 	// scale := ((1.0  * devide_dpi )/ f32(72 * tf_skl.bmp.tf.units_per_em))* font_size
-	scale := f32(font_size * device_dpi) / f32(72 * tf_skl.bmp.tf.units_per_em)
+	scale := f32(font_size * device_dpi) / f32(72 * int(tf_skl.bmp.tf.units_per_em))
 	// dprintln("Scale: $scale")
 
 	tf_skl.bmp.scale = scale * scale_reduct
 	w, h := tf_skl.bmp.get_bbox(in_txt)
 	tf_skl.bmp.width = int(w)
-	tf_skl.bmp.height = int((h + 8))
+	tf_skl.bmp.height = int(h + 8)
 	sz := tf_skl.bmp.width * tf_skl.bmp.height * tf_skl.bmp.bp
 
 	// RAM buffer
@@ -77,7 +77,7 @@ pub fn (mut tf_skl TTF_render_Sokol) create_text_block(in_txt string, in_w int, 
 	font_size := in_font_size //* scale_reduct
 	// Formula: (font_size * device dpi) / (72dpi * em_unit)
 	// scale := ((1.0  * devide_dpi )/ f32(72 * tf_skl.bmp.tf.units_per_em))* font_size
-	scale := f32(font_size * device_dpi) / f32(72 * tf_skl.bmp.tf.units_per_em)
+	scale := f32(font_size * device_dpi) / f32(72 * int(tf_skl.bmp.tf.units_per_em))
 	// dprintln("Scale: $scale")
 
 	tf_skl.bmp.scale = scale * scale_reduct

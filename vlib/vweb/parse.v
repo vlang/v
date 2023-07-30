@@ -55,8 +55,8 @@ fn parse_attrs(name string, attrs []string) !([]http.Method, string, string, str
 	if path == '' {
 		path = '/${name}'
 	}
-	// Make path and host lowercase for case-insensitive comparisons
-	return methods, path.to_lower(), middleware, host.to_lower()
+	// Make host lowercase for case-insensitive comparisons
+	return methods, path, middleware, host.to_lower()
 }
 
 fn parse_query_from_url(url urllib.URL) map[string]string {
@@ -67,22 +67,25 @@ fn parse_query_from_url(url urllib.URL) map[string]string {
 	return query
 }
 
+const boundary_start = 'boundary='
+
 fn parse_form_from_request(request http.Request) !(map[string]string, map[string][]http.FileData) {
-	mut form := map[string]string{}
-	mut files := map[string][]http.FileData{}
-	if request.method in methods_with_form {
-		ct := request.header.get(.content_type) or { '' }.split(';').map(it.trim_left(' \t'))
-		if 'multipart/form-data' in ct {
-			boundary := ct.filter(it.starts_with('boundary='))
-			if boundary.len != 1 {
-				return error('detected more that one form-data boundary')
-			}
-			// omit 'boundary="' and the last '"'
-			boundary_str := boundary[0].substr(10, boundary[0].len - 1)
-			form, files = http.parse_multipart_form(request.data, boundary_str)
-		} else {
-			form = http.parse_form(request.data)
-		}
+	if request.method !in [http.Method.post, .put, .patch] {
+		return map[string]string{}, map[string][]http.FileData{}
 	}
-	return form, files
+	ct := request.header.get(.content_type) or { '' }.split(';').map(it.trim_left(' \t'))
+	if 'multipart/form-data' in ct {
+		boundaries := ct.filter(it.starts_with(vweb.boundary_start))
+		if boundaries.len != 1 {
+			return error('detected more that one form-data boundary')
+		}
+		boundary := boundaries[0].all_after(vweb.boundary_start)
+		if boundary.len > 0 && boundary[0] == `"` {
+			// quotes are send by our http.post_multipart_form/2:
+			return http.parse_multipart_form(request.data, boundary.trim('"'))
+		}
+		// Firefox and other browsers, do not use quotes around the boundary:
+		return http.parse_multipart_form(request.data, boundary)
+	}
+	return http.parse_form(request.data), map[string][]http.FileData{}
 }

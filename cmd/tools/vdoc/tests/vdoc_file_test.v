@@ -52,6 +52,11 @@ fn check_path(vexe string, dir string, tests []string) int {
 			cmd: '${os.quoted_path(vexe)} doc -comments ${os.quoted_path(program)}'
 			out_filename: 'main.comments.out'
 		)
+		fails += check_output(
+			program: program
+			cmd: '${os.quoted_path(vexe)} doc -readme -comments ${os.quoted_path(program)}'
+			out_filename: 'main.readme.comments.out'
+		)
 		total_fails += fails
 		if fails == 0 {
 			println(term.green('OK'))
@@ -71,7 +76,7 @@ fn print_compare(expected string, found string) {
 	println(found)
 	println('============\n')
 	println('diff:')
-	println(diff.color_compare_strings(diff_cmd, rand.ulid(), found, expected))
+	println(diff.color_compare_strings(diff_cmd, rand.ulid(), expected, found))
 	println('============\n')
 }
 

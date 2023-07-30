@@ -102,6 +102,32 @@ const integer_from_radix_test_data = [
 ]
 // vfmt on
 
+// is_*
+struct IsXTest {
+	value    TestInteger
+	expected bool
+}
+
+// vfmt off
+const is_power_of_2_test_data = [
+	IsXTest{ u32(0b110000000000), false },
+	IsXTest{ "537502395172353242345", false },
+	IsXTest{ "590295810358705700000", false },
+	IsXTest{ "1125899906842624", true },
+	IsXTest{ "590295810358705651712", true },
+	IsXTest{ "4611686018427388002", false },
+	IsXTest{ "31195165372897259196222538898096203590151924108450147950531565441852619837316692843188389598728651769482088968838700984268947453885587967878549286444999755742573423371025356539077075265986419171772426279084559025861175301940492273427120221755816136975739916983004778387946699939545354293487098252428954036286183995782377175227121587657233553706589448547148066273280603243167958729707736664649187444136702017299877489729451997277875868782399735511520086969969766278182145454186690598629675562422923132555707758646587702550600894625696538109646366308973392363200122154242784576162149305816215109893613161331026672647000825615987247035266514313689413563779184515427920269935280569035788081552413007563772309295149800172031645681720569680154349893907395864528243629654386620034655445226295834594630792819545156798270599481573436039129275439653984521135652249263653985326577886990615665734998585216581730937090703518997669223802429711292740491797911117308280939507973715877108492303860661291987529284719391551256912380499409630332506454532263266457209921483705507359152839264852808182519011100934922492651373859423833024010283468753147686188675294998119637462200763443029190704825719342806119404339670408160210011918981038977425180213726646978883378058838510330816291941879581568740273684084511318422175006728346276489384220596694727036836687670632486602655240593463885077059375085482211864761344849868123074687509143827139683659102930877963676911995751113159944160296419825178911962487549670296207457410515598040046860567719116506974858703739531721991704589155513182996455827177472", true },
+]
+
+const is_odd_test_data = [
+	IsXTest{ u32(0), false },
+	IsXTest{ u32(1), true },
+	IsXTest{ u32(1805), true },
+	IsXTest{ "1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111", true },
+	IsXTest{ "57495732561923751347562394571325712358054", false },
+]
+// vfmt on
+
 struct AddTest {
 	augend TestInteger
 	addend TestInteger
@@ -389,7 +415,7 @@ const factorial_test_data = [
 ]
 // vfmt on
 
-// for lshift and rshift
+// for left_shift and right_shift
 struct ShiftTest {
 	base     TestInteger
 	amount   u32
@@ -397,7 +423,7 @@ struct ShiftTest {
 }
 
 // vfmt off
-const lshift_test_data = [
+const left_shift_test_data = [
 	ShiftTest{ 45, 2, 45 * 4 },
 	ShiftTest{ 45, 3, 45 * 8 },
 	ShiftTest{ 45, 4, 45 * 16 },
@@ -406,7 +432,7 @@ const lshift_test_data = [
 	ShiftTest{ [u8(1), 1, 1], 56, [u8(1), 1, 1, 0, 0, 0, 0, 0, 0, 0] },
 ]
 
-const rshift_test_data = [
+const right_shift_test_data = [
 	ShiftTest{ 45, 3, 5 },
 	ShiftTest{ 0x13374956, 16, 0x1337 },
 	ShiftTest{ [u8(1), 1, 1, 0, 0, 0, 0, 0, 0, 0], 56, [u8(1), 1, 1] },
@@ -435,7 +461,7 @@ const bit_len_test_data = [
 	BitLenTest{ big.zero_int, 0 },
 	BitLenTest{ big.one_int, 1 },
 	BitLenTest{ u32(0xffffffff), 32 },
-	BitLenTest{ big.one_int.lshift(1239), 1240 },
+	BitLenTest{ big.one_int.left_shift(1239), 1240 },
 	BitLenTest{ '4338476092346017364013796407961305761039463198075691378460917856', 212 },
 ]
 // vfmt on
@@ -490,6 +516,18 @@ fn test_bytes() {
 	assert sign == 1
 }
 
+fn test_is_power_of_2() {
+	for t in is_power_of_2_test_data {
+		assert t.value.parse().is_power_of_2() == t.expected
+	}
+}
+
+fn test_is_odd() {
+	for t in is_odd_test_data {
+		assert t.value.parse().is_odd() == t.expected
+	}
+}
+
 fn test_addition() {
 	for t in add_test_data {
 		assert t.augend.parse() + t.addend.parse() == t.sum.parse()
@@ -534,6 +572,11 @@ fn test_div_mod() {
 		q, r := a.div_mod(b)
 		assert q == eq
 		assert r == er
+	}
+
+	// an extra test for checked division by zero
+	if _, _ := div_mod_test_data[0].dividend.parse().div_mod_checked(TestInteger(0).parse()) {
+		assert false, 'Division by 0 should return an error'
 	}
 }
 
@@ -639,15 +682,15 @@ fn test_inc_and_dec() {
 	assert b == c
 }
 
-fn test_lshift() {
-	for t in lshift_test_data {
-		assert t.base.parse().lshift(t.amount) == t.expected.parse()
+fn test_left_shift() {
+	for t in left_shift_test_data {
+		assert t.base.parse().left_shift(t.amount) == t.expected.parse()
 	}
 }
 
-fn test_rshift() {
-	for t in rshift_test_data {
-		assert t.base.parse().rshift(t.amount) == t.expected.parse()
+fn test_right_shift() {
+	for t in right_shift_test_data {
+		assert t.base.parse().right_shift(t.amount) == t.expected.parse()
 	}
 }
 
@@ -693,7 +736,7 @@ fn test_isqrt() {
 }
 
 fn test_bitwise_ops() {
-	a := big.integer_from_int(1).lshift(512)
+	a := big.integer_from_int(1).left_shift(512)
 	b := a - big.one_int
 	assert a.bitwise_and(b) == big.zero_int
 	assert b.bitwise_xor(b) == big.zero_int
@@ -732,7 +775,7 @@ fn test_set_bit() {
 	a.set_bit(3, true)
 	assert a.int() == 40
 	a.set_bit(50, true)
-	assert a == big.one_int.lshift(50) + big.integer_from_int(40)
+	assert a == big.one_int.left_shift(50) + big.integer_from_int(40)
 	b := a
 	a.set_bit(100, false)
 	assert a == b

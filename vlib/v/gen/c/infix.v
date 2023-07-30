@@ -35,7 +35,16 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.infix_expr_arithmetic_op(node)
 		}
 		.left_shift {
+			// `a << b` can mean many things in V ...
+			// TODO: disambiguate everything in the checker; cgen should not decide all this.
+			// Instead it should be as simple, as the branch for .right_shift is.
+			// `array << val` should have its own separate operation internally.
 			g.infix_expr_left_shift_op(node)
+		}
+		.right_shift {
+			g.write('(')
+			g.gen_plain_infix_expr(node)
+			g.write(')')
 		}
 		.and, .logical_or {
 			g.infix_expr_and_or_op(node)
@@ -110,7 +119,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		g.gen_plain_infix_expr(node)
 	} else if (left.typ.idx() == ast.string_type_idx || (!has_defined_eq_operator
 		&& left.unaliased.idx() == ast.string_type_idx)) && node.right is ast.StringLiteral
-		&& (node.right as ast.StringLiteral).val == '' {
+		&& node.right.val == '' {
 		// `str == ''` -> `str.len == 0` optimization
 		g.write('(')
 		g.expr(node.left)
@@ -714,10 +723,9 @@ fn (mut g Gen) gen_interface_is_op(node ast.InfixExpr) {
 fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 	left := g.unwrap(node.left_type)
 	right := g.unwrap(node.right_type)
-	if left.sym.kind == .struct_ && (left.sym.info as ast.Struct).generic_types.len > 0 {
-		concrete_types := (left.sym.info as ast.Struct).concrete_types
+	if left.sym.info is ast.Struct && left.sym.info.generic_types.len > 0 {
 		mut method_name := left.sym.cname + '_' + util.replace_op(node.op.str())
-		method_name = g.generic_fn_name(concrete_types, method_name)
+		method_name = g.generic_fn_name(left.sym.info.concrete_types, method_name)
 		g.write(method_name)
 		g.write('(')
 		g.expr(node.left)
@@ -846,7 +854,9 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 			}
 		}
 	} else {
+		g.write('(')
 		g.gen_plain_infix_expr(node)
+		g.write(')')
 	}
 }
 
@@ -1015,6 +1025,13 @@ fn (mut g Gen) gen_is_none_check(node ast.InfixExpr) {
 // It handles auto dereferencing of variables, as well as automatic casting
 // (see Gen.expr_with_cast for more details)
 fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
+	needs_cast := node.left_type.is_number() && node.right_type.is_number()
+		&& node.op in [.plus, .minus, .mul, .div, .mod] && !(g.pref.translated
+		|| g.file.is_translated)
+	if needs_cast {
+		typ_str := g.typ(node.promoted_type)
+		g.write('(${typ_str})(')
+	}
 	if node.left_type.is_ptr() && node.left.is_auto_deref_var() {
 		g.write('*')
 	}
@@ -1025,6 +1042,9 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 		g.expr(node.right)
 	} else {
 		g.expr_with_cast(node.right, node.right_type, node.left_type)
+	}
+	if needs_cast {
+		g.write(')')
 	}
 }
 

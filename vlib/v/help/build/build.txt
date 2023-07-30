@@ -45,6 +45,7 @@ NB: the build flags are shared with the run command too:
     * `js_node`           - V outputs JS source code to run with nodejs.
     * `js_freestanding`   - V outputs JS source code with no hard runtime dependency.
     * `native`            - V outputs a native executable directly (see -arch x64|arm64 and -os linux|macos) (EXPERIMENTAL).
+    * `wasm`              - V outputs a WebAssembly module directly (see -os wasi|browser) (EXPERIMENTAL).
 
   -d <flag>[=<value>], -define <flag>[=<value>]
     Define the provided flag.
@@ -160,7 +161,7 @@ NB: the build flags are shared with the run command too:
         ... will generate a TAGS file, that emacs can then use to jump
     to the definition of functions used by v itself. For vim:
       ./v -print-v-files cmd/v | ctags -L -
-        ... will generate a simillar tags file, that vi compatible editors can use.
+        ... will generate a similar tags file, that vi compatible editors can use.
     NB: an useful, although not entirely accurate regexp based Universal Ctags options file
       for V is located in `.ctags.d/v.ctags` . If you use https://ctags.io/ , it will be used
       up automatically, or you can specify it explicitly with --options=.ctags.d/v.ctags .
@@ -209,6 +210,7 @@ NB: the build flags are shared with the run command too:
 For C-specific build flags, use `v help build-c`.
 For JS-specific build flags, use `v help build-js`.
 For Native-specific build flags, use `v help build-native`.
+For WebAssembly-specific build flags, use `v help build-wasm`.
 
 See also:
    `v help run` for documentation regarding `v run`.

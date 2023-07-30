@@ -60,6 +60,9 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 		}
 	}
 	f.writeln(' {')
+	if node.pre_comments.len > 0 {
+		f.comments_before_field(node.pre_comments)
+	}
 	for embed in node.embeds {
 		f.mark_types_import_as_used(embed.typ)
 		styp := f.table.type_to_str_using_aliases(embed.typ, f.mod2alias)
@@ -188,11 +191,13 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 			f.writeln('')
 		}
 	}
-	f.comments_after_last_field(node.end_comments)
-	if is_anon {
+	if is_anon || node.end_comments.len > 0 {
 		f.write('}')
 	} else {
-		f.writeln('}\n')
+		f.writeln('}')
+	}
+	if node.end_comments.len > 0 {
+		f.comments(node.end_comments, inline: true)
 	}
 }
 

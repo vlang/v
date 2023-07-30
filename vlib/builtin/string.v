@@ -865,7 +865,7 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 			i = 1
 			for ch in s {
 				if nth > 0 && i >= nth {
-					res << s[i..]
+					res << s[i - 1..]
 					break
 				}
 				res << ch.ascii_str()
@@ -938,7 +938,7 @@ pub fn (s string) rsplit_nth(delim string, nth int) []string {
 		0 {
 			for i >= 0 {
 				if nth > 0 && res.len == nth - 1 {
-					res << s[..i]
+					res << s[..i + 1]
 					break
 				}
 				res << s[i].ascii_str()
@@ -1675,22 +1675,6 @@ pub fn (s string) trim_string_right(str string) string {
 		return s[..s.len - str.len]
 	}
 	return s.clone()
-}
-
-// trim_prefix strips `str` from the start of the string.
-// Example: assert 'WorldHello V'.trim_prefix('World') == 'Hello V'
-[deprecated: 'use s.trim_string_left(x) instead']
-[deprecated_after: '2022-01-19']
-pub fn (s string) trim_prefix(str string) string {
-	return s.trim_string_left(str)
-}
-
-// trim_suffix strips `str` from the end of the string.
-// Example: assert 'Hello VWorld'.trim_suffix('World') == 'Hello V'
-[deprecated: 'use s.trim_string_right(x) instead']
-[deprecated_after: '2022-01-19']
-pub fn (s string) trim_suffix(str string) string {
-	return s.trim_string_right(str)
 }
 
 // compare_strings returns `-1` if `a < b`, `1` if `a > b` else `0`.

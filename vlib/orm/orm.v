@@ -209,9 +209,16 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table string, q string, kind StmtKin
 				if data.data.len > 0 {
 					// Allow the database to insert an automatically generated primary key
 					// under the hood if it is not passed by the user.
-					if is_primary_column && data.data[i].type_idx() in orm.nums {
-						if (data.data[i] as int) == 0 {
-							continue
+					tidx := data.data[i].type_idx()
+					if is_primary_column && (tidx in orm.nums || tidx in orm.num64) {
+						x := data.data[i]
+						match x {
+							i8, i16, int, i64, u8, u16, u32, u64 {
+								if i64(x) == 0 {
+									continue
+								}
+							}
+							else {}
 						}
 					}
 

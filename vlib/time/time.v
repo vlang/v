@@ -86,7 +86,11 @@ pub enum FormatDelimiter {
 	no_delimiter
 }
 
-// smonth returns month name abbreviation.
+pub fn Time.new(t Time) Time {
+	return new_time(t)
+}
+
+// smonth returns the month name abbreviation.
 pub fn (t Time) smonth() string {
 	if t.month <= 0 || t.month > 12 {
 		return '---'
@@ -95,23 +99,26 @@ pub fn (t Time) smonth() string {
 	return time.months_string[i * 3..(i + 1) * 3]
 }
 
-// unix_time returns Unix time.
+// unix_time returns the UNIX time.
 [inline]
 pub fn (t Time) unix_time() i64 {
 	return t.unix
 }
 
-// unix_time_milli returns Unix time with millisecond resolution.
+// unix_time_milli returns the UNIX time with millisecond resolution.
 [inline]
 pub fn (t Time) unix_time_milli() i64 {
 	return t.unix * 1000 + (t.microsecond / 1000)
 }
 
-// add returns a new time that duration is added
+// add returns a new time with the given duration added.
 pub fn (t Time) add(d Duration) Time {
 	microseconds := i64(t.unix) * 1_000_000 + t.microsecond + d.microseconds()
 	unix := microseconds / 1_000_000
 	micro := microseconds % 1_000_000
+	if t.is_local {
+		return unix2(unix, int(micro)).as_local()
+	}
 	return unix2(unix, int(micro))
 }
 

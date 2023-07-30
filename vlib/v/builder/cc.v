@@ -777,7 +777,7 @@ fn (mut b Builder) cc_linux_cross() {
 		verror(res.output)
 		return
 	}
-	println(out_name + ' has been successfully compiled')
+	println(out_name + ' has been successfully cross compiled for linux.')
 }
 
 fn (mut c Builder) cc_windows_cross() {
@@ -795,10 +795,9 @@ fn (mut c Builder) cc_windows_cross() {
 	if !c.pref.out_name.to_lower().ends_with('.exe') {
 		c.pref.out_name += '.exe'
 	}
-	c.pref.out_name = os.quoted_path(c.pref.out_name)
 	mut args := []string{}
 	args << '${c.pref.cflags}'
-	args << '-o ${c.pref.out_name}'
+	args << '-o ${os.quoted_path(c.pref.out_name)}'
 	args << '-w -L.'
 	//
 	cflags := c.get_os_cflags()
@@ -839,21 +838,6 @@ fn (mut c Builder) cc_windows_cross() {
 	} else {
 		args << cflags.c_options_after_target()
 	}
-	/*
-	winroot := '${pref.default_module_path}/winroot'
-	if !os.is_dir(winroot) {
-		winroot_url := 'https://github.com/vlang/v/releases/download/v0.1.10/winroot.zip'
-		println('"$winroot" not found.')
-		println('Download it from $winroot_url and save it in ${pref.default_module_path}')
-		println('Unzip it afterwards.\n')
-		println('winroot.zip contains all library and header files needed ' + 'to cross-compile for Windows.')
-		exit(1)
-	}
-	mut obj_name := c.out_name
-	obj_name = obj_name.replace('.exe', '')
-	obj_name = obj_name.replace('.o.o', '.o')
-	include := '-I $winroot/include '
-	*/
 	if os.user_os() !in ['macos', 'linux', 'termux'] {
 		println(os.user_os())
 		panic('your platform is not supported yet')
@@ -883,20 +867,7 @@ fn (mut c Builder) cc_windows_cross() {
 		}
 		exit(1)
 	}
-	/*
-	if c.pref.build_mode != .build_module {
-		link_cmd := 'lld-link $obj_name $winroot/lib/libcmt.lib ' + '$winroot/lib/libucrt.lib $winroot/lib/kernel32.lib $winroot/lib/libvcruntime.lib ' + '$winroot/lib/uuid.lib'
-		if c.pref.show_cc {
-			println(link_cmd)
-		}
-		if os.system(link_cmd) != 0 {
-			println('Cross compilation for Windows failed. Make sure you have lld linker installed.')
-			exit(1)
-		}
-		// os.rm(obj_name)
-	}
-	*/
-	println(c.pref.out_name + ' has been successfully compiled')
+	println(c.pref.out_name + ' has been successfully cross compiled for windows.')
 }
 
 fn (mut b Builder) build_thirdparty_obj_files() {

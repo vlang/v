@@ -63,21 +63,28 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				// if no statements, just dont make it
 				return
 			}
-			g.code_gen.for_in_stmt(node)
+			g.for_in_stmt(node)
 		}
 		ast.ForStmt {
 			g.for_stmt(node)
 		}
 		ast.HashStmt {
 			words := node.val.split(' ')
+			mut unsupported := false
 			for word in words {
 				if word.len != 2 {
-					g.n_error('opcodes format: xx xx xx xx\nhash statements are not allowed with the native backend, use the C backend for extended C interoperability.')
+					unsupported = true
+					break
 				}
 				b := unsafe { C.strtol(&char(word.str), 0, 16) }
 				// b := word.u8()
 				// println('"$word" $b')
 				g.write8(b)
+			}
+
+			if unsupported {
+				g.warning('opcodes format: xx xx xx xx\nhash statements are not allowed with the native backend, use the C backend for extended C interoperability.',
+					node.pos)
 			}
 		}
 		ast.Module {}
@@ -88,12 +95,16 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.code_gen.gen_asm_stmt(node)
 		}
 		ast.AssertStmt {
-			g.code_gen.gen_assert(node)
+			g.gen_assert(node)
+		}
+		ast.GlobalDecl {
+			g.warning('globals are not supported yet', node.pos)
 		}
 		ast.Import {} // do nothing here
 		ast.StructDecl {}
 		ast.EnumDecl {}
 		ast.TypeDecl {}
+		ast.InterfaceDecl {}
 		else {
 			eprintln('native.stmt(): bad node: ' + node.type_name())
 		}
@@ -119,8 +130,14 @@ fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
 							.gt {
 								jump_addr = g.code_gen.cjmp(.jle)
 							}
+							.ge {
+								jump_addr = g.code_gen.cjmp(.jl)
+							}
 							.lt {
 								jump_addr = g.code_gen.cjmp(.jge)
+							}
+							.le {
+								jump_addr = g.code_gen.cjmp(.jg)
 							}
 							else {
 								g.n_error('unsupported conditional in for-c loop')
@@ -256,4 +273,69 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	g.labels.addrs[end_label] = g.pos()
 	g.println('; label ${end_label}')
 	g.println('jmp after for')
+}
+
+fn (mut g Gen) for_in_stmt(node ast.ForInStmt) { // Work on that
+	if node.is_range {
+		// for a in node.cond .. node.high {
+		i := g.code_gen.allocate_var(node.val_var, 8, 0) // iterator variable
+		g.expr(node.cond) // outputs the lower loop bound (initial value) to the main reg
+		main_reg := g.code_gen.main_reg()
+		g.code_gen.mov_reg_to_var(LocalVar{i, ast.i64_type_idx, node.val_var}, main_reg) // i = node.cond // initial value
+
+		start := g.pos() // label-begin:
+		start_label := g.labels.new_label()
+		g.code_gen.mov_var_to_reg(main_reg, LocalVar{i, ast.i64_type_idx, node.val_var})
+		g.code_gen.push(main_reg) // put the iterator on the stack
+		g.expr(node.high) // final value (upper bound) to the main reg
+		g.code_gen.cmp_to_stack_top(main_reg)
+		jump_addr := g.code_gen.cjmp(.jge) // leave loop i >= upper bound
+
+		end_label := g.labels.new_label()
+		g.labels.patches << LabelPatch{
+			id: end_label
+			pos: jump_addr
+		}
+		g.println('; jump to label ${end_label}')
+		g.labels.branches << BranchLabel{
+			name: node.label
+			start: start_label
+			end: end_label
+		}
+		g.stmts(node.stmts) // writes the actual body of the loop
+		g.labels.addrs[start_label] = g.pos()
+		g.println('; label ${start_label}')
+		g.code_gen.inc_var(LocalVar{i, ast.i64_type_idx, node.val_var})
+		g.labels.branches.pop()
+		g.code_gen.jmp_back(start) // loops
+		g.labels.addrs[end_label] = g.pos()
+		g.println('; label ${end_label}')
+		/*
+		} else if node.kind == .array {
+	} else if node.kind == .array_fixed {
+	} else if node.kind == .map {
+	} else if node.kind == .string {
+	} else if node.kind == .struct_ {
+	} else if it.kind in [.array, .string] || it.cond_type.has_flag(.variadic) {
+	} else if it.kind == .map {
+		*/
+	} else {
+		g.v_error('for-in statement is not yet implemented', node.pos)
+	}
+}
+
+fn (mut g Gen) gen_assert(assert_node ast.AssertStmt) {
+	mut cjmp_addr := 0
+	ane := assert_node.expr
+	label := g.labels.new_label()
+	cjmp_addr = g.condition(ane, true)
+	g.labels.patches << LabelPatch{
+		id: label
+		pos: cjmp_addr
+	}
+	g.println('; jump to label ${label}')
+	g.expr(assert_node.expr)
+	g.code_gen.trap()
+	g.labels.addrs[label] = g.pos()
+	g.println('; label ${label}')
 }

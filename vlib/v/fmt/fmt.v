@@ -1290,13 +1290,14 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 
 pub fn (mut f Fmt) interface_field(field ast.StructField) {
 	ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
-	end_pos := field.pos.pos + field.pos.len
 	before_comments := field.comments.filter(it.pos.pos < field.pos.pos)
-	between_comments := field.comments[before_comments.len..].filter(it.pos.pos < end_pos)
-	after_type_comments := field.comments[(before_comments.len + between_comments.len)..]
+	end_comments := field.comments.filter(it.pos.pos > field.pos.pos)
+	if before_comments.len > 0 {
+		f.comments(before_comments, level: .indent)
+	}
 	f.write('\t${field.name} ${ft}')
-	if after_type_comments.len > 0 {
-		f.comments(after_type_comments, level: .indent)
+	if end_comments.len > 0 {
+		f.comments(end_comments, level: .indent)
 	} else {
 		f.writeln('')
 	}
@@ -1304,9 +1305,14 @@ pub fn (mut f Fmt) interface_field(field ast.StructField) {
 }
 
 pub fn (mut f Fmt) interface_method(method ast.FnDecl) {
+	before_comments := method.comments.filter(it.pos.pos < method.pos.pos)
+	end_comments := method.comments.filter(it.pos.pos > method.pos.pos)
+	if before_comments.len > 0 {
+		f.comments(before_comments, level: .indent)
+	}
 	f.write('\t')
 	f.write(method.stringify_fn_decl(f.table, f.cur_mod, f.mod2alias).all_after_first('fn '))
-	f.comments(method.comments, inline: true, has_nl: false, level: .indent)
+	f.comments(end_comments, inline: true, has_nl: false, level: .indent)
 	f.writeln('')
 	f.comments(method.next_comments, inline: false, has_nl: true, level: .indent)
 	for param in method.params {
@@ -1977,7 +1983,11 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 				f.write("\$pkgconfig('${node.args_var}')")
 			}
 			node.method_name in ['compile_error', 'compile_warn'] {
-				f.write("\$${node.method_name}('${node.args_var}')")
+				if node.args_var.contains("'") {
+					f.write('\$${node.method_name}("${node.args_var}")')
+				} else {
+					f.write("\$${node.method_name}('${node.args_var}')")
+				}
 			}
 			node.method_name == 'res' {
 				if node.args_var != '' {
@@ -2248,7 +2258,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 		f.comments(node.before_op_comments, iembed: node.before_op_comments[0].is_inline)
 	}
 	is_one_val_array_init := node.op in [.key_in, .not_in] && node.right is ast.ArrayInit
-		&& (node.right as ast.ArrayInit).exprs.len == 1
+		&& node.right.exprs.len == 1
 	is_and := node.op == .amp && f.node_str(node.right).starts_with('&')
 	if is_one_val_array_init && !f.inside_comptime_if {
 		// `var in [val]` => `var == val`

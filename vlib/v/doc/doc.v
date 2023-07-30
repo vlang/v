@@ -177,7 +177,7 @@ pub fn new(input_path string) Doc {
 // stmt reads the data of an `ast.Stmt` node and returns a `DocNode`.
 // An option error is thrown if the symbol is not exposed to the public
 // (when `pub_only` is enabled) or the content's of the AST node is empty.
-pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) !DocNode {
+pub fn (mut d Doc) stmt(mut stmt ast.Stmt, filename string) !DocNode {
 	mut name := d.stmt_name(stmt)
 	if name in d.common_symbols {
 		return error('already documented')
@@ -202,14 +202,14 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) !DocNode {
 	if node.name.len == 0 && node.comments.len == 0 && node.content.len == 0 {
 		return error('empty stmt')
 	}
-	match stmt {
+	match mut stmt {
 		ast.ConstDecl {
 			node.kind = .const_group
 			node.parent_name = 'Constants'
 			if d.extract_vars {
-				for field in stmt.fields {
+				for mut field in stmt.fields {
 					ret_type := if field.typ == 0 {
-						d.expr_typ_to_string(field.expr)
+						d.expr_typ_to_string(mut field.expr)
 					} else {
 						d.type_to_str(field.typ)
 					}
@@ -225,8 +225,12 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) !DocNode {
 		ast.EnumDecl {
 			node.kind = .enum_
 			if d.extract_vars {
-				for field in stmt.fields {
-					ret_type := if field.has_expr { d.expr_typ_to_string(field.expr) } else { 'int' }
+				for mut field in stmt.fields {
+					ret_type := if field.has_expr {
+						d.expr_typ_to_string(mut field.expr)
+					} else {
+						'int'
+					}
 					node.children << DocNode{
 						name: field.name
 						kind: .enum_field
@@ -243,9 +247,9 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) !DocNode {
 		ast.StructDecl {
 			node.kind = .struct_
 			if d.extract_vars {
-				for field in stmt.fields {
+				for mut field in stmt.fields {
 					ret_type := if field.typ == 0 && field.has_default_expr {
-						d.expr_typ_to_string(field.default_expr)
+						d.expr_typ_to_string(mut field.default_expr)
 					} else {
 						d.type_to_str(field.typ)
 					}
@@ -310,30 +314,29 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) !DocNode {
 }
 
 // file_ast reads the contents of `ast.File` and returns a map of `DocNode`s.
-pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
+pub fn (mut d Doc) file_ast(mut file_ast ast.File) map[string]DocNode {
 	mut contents := map[string]DocNode{}
-	stmts := file_ast.stmts
 	d.fmt.file = file_ast
 	d.fmt.set_current_module_name(d.orig_mod_name)
 	d.fmt.process_file_imports(file_ast)
 	mut last_import_stmt_idx := 0
-	for sidx, stmt in stmts {
+	for sidx, stmt in file_ast.stmts {
 		if stmt is ast.Import {
 			last_import_stmt_idx = sidx
 		}
 	}
 	mut preceeding_comments := []DocComment{}
 	// mut imports_section := true
-	for sidx, stmt in stmts {
-		if stmt is ast.ExprStmt {
+	for sidx, mut stmt in file_ast.stmts {
+		if mut stmt is ast.ExprStmt {
 			// Collect comments
-			if stmt.expr is ast.Comment {
+			if mut stmt.expr is ast.Comment {
 				preceeding_comments << ast_comment_to_doc_comment(stmt.expr)
 				continue
 			}
 		}
 		// TODO: Fetch head comment once
-		if stmt is ast.Module {
+		if mut stmt is ast.Module {
 			if !d.with_head {
 				continue
 			}
@@ -360,7 +363,7 @@ pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
 		if stmt is ast.Import {
 			continue
 		}
-		mut node := d.stmt(stmt, os.base(file_ast.path)) or {
+		mut node := d.stmt(mut stmt, os.base(file_ast.path)) or {
 			preceeding_comments = []
 			continue
 		}
@@ -398,21 +401,21 @@ pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
 
 // file_ast_with_pos has the same function as the `file_ast` but
 // instead returns a list of variables in a given offset-based position.
-pub fn (mut d Doc) file_ast_with_pos(file_ast ast.File, pos int) map[string]DocNode {
+pub fn (mut d Doc) file_ast_with_pos(mut file_ast ast.File, pos int) map[string]DocNode {
 	lscope := file_ast.scope.innermost(pos)
 	mut contents := map[string]DocNode{}
 	for name, val in lscope.objects {
 		if val !is ast.Var {
 			continue
 		}
-		vr_data := val as ast.Var
+		mut vr_data := val as ast.Var
 		l_node := DocNode{
 			name: name
 			pos: vr_data.pos
 			file_path: file_ast.path
 			from_scope: true
 			kind: .variable
-			return_type: d.expr_typ_to_string(vr_data.expr)
+			return_type: d.expr_typ_to_string(mut vr_data.expr)
 		}
 		contents[l_node.name] = l_node
 	}
@@ -446,15 +449,15 @@ pub fn (mut d Doc) generate() ! {
 		}
 		file_asts << parser.parse_file(file_path, d.table, comments_mode, d.prefs)
 	}
-	return d.file_asts(file_asts)
+	return d.file_asts(mut file_asts)
 }
 
 // file_asts has the same function as the `file_ast` function but
 // accepts an array of `ast.File` and throws an error if necessary.
-pub fn (mut d Doc) file_asts(file_asts []ast.File) ! {
+pub fn (mut d Doc) file_asts(mut file_asts []ast.File) ! {
 	mut fname_has_set := false
 	d.orig_mod_name = file_asts[0].mod.name
-	for i, file_ast in file_asts {
+	for i, mut file_ast in file_asts {
 		if d.filename.len > 0 && file_ast.path.contains(d.filename) && !fname_has_set {
 			d.filename = file_ast.path
 			fname_has_set = true
@@ -473,10 +476,10 @@ pub fn (mut d Doc) file_asts(file_asts []ast.File) ! {
 			continue
 		}
 		if file_ast.path == d.filename {
-			d.checker.check(file_ast)
-			d.scoped_contents = d.file_ast_with_pos(file_ast, d.pos)
+			d.checker.check(mut file_ast)
+			d.scoped_contents = d.file_ast_with_pos(mut file_ast, d.pos)
 		}
-		contents := d.file_ast(file_ast)
+		contents := d.file_ast(mut file_ast)
 		for name, node in contents {
 			if name !in d.contents {
 				d.contents[name] = node

@@ -193,18 +193,7 @@ fn rebuild(prefs &pref.Preferences) {
 			util.launch_tool(prefs.is_verbose, 'builders/golang_builder', os.args[1..])
 		}
 		.wasm {
-			assert_wasm_backend_thirdparty()
 			util.launch_tool(prefs.is_verbose, 'builders/wasm_builder', os.args[1..])
 		}
-	}
-}
-
-fn assert_wasm_backend_thirdparty() {
-	vroot := os.dir(pref.vexe_path())
-	if !os.exists('${vroot}/cmd/tools/builders/wasm_builder')
-		&& !os.exists('${vroot}/thirdparty/binaryen') {
-		eprintln('The WebAssembly backend requires `binaryen`, an external library dependency')
-		eprintln('This can be installed with `./cmd/tools/install_binaryen.vsh`, to download prebuilt libraries for your platform')
-		exit(1)
 	}
 }

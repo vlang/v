@@ -169,8 +169,9 @@ by using any of the following commands in a terminal:
     * [Attributes](#attributes)
     * [Conditional compilation](#conditional-compilation)
         * [Compile time pseudo variables](#compile-time-pseudo-variables)
-        * [Compile-time reflection](#compile-time-reflection)
+        * [Compile time reflection](#compile-time-reflection)
         * [Compile time code](#compile-time-code)
+        * [Compile time types](#compile-time-types)
         * [Environment specific files](#environment-specific-files)
     * [Memory-unsafe code](#memory-unsafe-code)
     * [Structs with reference fields](#structs-with-reference-fields)
@@ -2957,7 +2958,7 @@ const (
 		g: 0
 		b: 0
 	}
-	// evaluate function call at compile-time*
+	// evaluate function call at compile time*
 	blue = rgb(0, 0, 255)
 )
 
@@ -4550,9 +4551,9 @@ If a test function has an error return type, any propagated errors will fail the
 ```v
 import strconv
 
-fn test_atoi() ? {
-	assert strconv.atoi('1')? == 1
-	assert strconv.atoi('one')? == 1 // test will fail
+fn test_atoi() ! {
+	assert strconv.atoi('1')! == 1
+	assert strconv.atoi('one')! == 1 // test will fail
 }
 ```
 
@@ -5503,10 +5504,12 @@ vm := vmod.decode( @VMOD_FILE ) or { panic(err) }
 eprintln('${vm.name} ${vm.version}\n ${vm.description}')
 ```
 
-### Compile-time reflection
+### Compile time reflection
+
+`$` is used as a prefix for compile time (also referred to as 'comptime') operations.
 
 Having built-in JSON support is nice, but V also allows you to create efficient
-serializers for any data format. V has compile-time `if` and `for` constructs:
+serializers for any data format. V has compile time `if` and `for` constructs:
 
 ```v
 struct User {
@@ -5530,8 +5533,6 @@ See [`examples/compiletime/reflection.v`](/examples/compiletime/reflection.v)
 for a more complete example.
 
 ### Compile time code
-
-`$` is used as a prefix for compile-time operations.
 
 #### `$if` condition
 
@@ -5582,13 +5583,13 @@ is compiled with `v -g` or `v -cg`.
 If you're using a custom ifdef, then you do need `$if option ? {}` and compile with`v -d option`.
 Full list of builtin options:
 
-| OS                             | Compilers        | Platforms        | Other                                         |
-|--------------------------------|------------------|------------------|-----------------------------------------------|
-| `windows`, `linux`, `macos`    | `gcc`, `tinyc`   | `amd64`, `arm64` | `debug`, `prod`, `test`                       |
-| `mac`, `darwin`, `ios`,        | `clang`, `mingw` | `x64`, `x32`     | `js`, `glibc`, `prealloc`                     |
-| `android`, `mach`, `dragonfly` | `msvc`           | `little_endian`  | `no_bounds_checking`, `freestanding`          |
-| `gnu`, `hpux`, `haiku`, `qnx`  | `cplusplus`      | `big_endian`     | `no_segfault_handler`, `no_backtrace`         |
-| `solaris`, `termux`            |                  |                  | `no_main`                                     |
+| OS                             | Compilers        | Platforms                     | Other                                         |
+|--------------------------------|------------------|-------------------------------|-----------------------------------------------|
+| `windows`, `linux`, `macos`    | `gcc`, `tinyc`   | `amd64`, `arm64`, `aarch64`   | `debug`, `prod`, `test`                       |
+| `mac`, `darwin`, `ios`,        | `clang`, `mingw` | `i386`, `arm32`               | `js`, `glibc`, `prealloc`                     |
+| `android`, `mach`, `dragonfly` | `msvc`           | `x64`, `x32`                  | `no_bounds_checking`, `freestanding`          |
+| `gnu`, `hpux`, `haiku`, `qnx`  | `cplusplus`      | `little_endian`, `big_endian` | `no_segfault_handler`, `no_backtrace`         |
+| `solaris`, `termux`            |                  |                               | `no_main`                                     |
 
 #### `$embed_file`
 
@@ -5718,6 +5719,27 @@ x.v:4:5: error: Linux is not supported
     5 | }
     6 |
 ```
+
+### Compile time types
+
+Compile time types group multiple types into a general higher-level type. This is useful in
+functions with generic parameters, where the input type must have a specific property, for example
+the `.len` attribute in arrays.
+
+V supports the following compile time types:
+
+- `$alias` => matches [Type aliases](#type-aliases).
+- `$array` => matches [Arrays](#arrays) and [Fixed Size Arrays](#fixed-size-arrays).
+- `$enum` => matches [Enums](#enums).
+- `$float` => matches `f32`, `f64` and float literals.
+- `$function` => matches [Function Types](#function-types).
+- `$int` => matches `int`, `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `isize`, `usize`
+  and integer literals.
+- `$interface` => matches [Interfaces](#interfaces).
+- `$map` => matches [Maps](#maps).
+- `$option` => matches [Option Types](#optionresult-types-and-error-handling).
+- `$struct` => matches [Structs](#structs).
+- `$sumtype` => matches [Sum Types](#sum-types).
 
 ### Environment specific files
 
@@ -6642,7 +6664,7 @@ println('c: ${c}') // 120
 ```
 
 For more examples, see
-[github.com/vlang/v/tree/master/vlib/v/tests/assembly/asm_test.amd64.v](https://github.com/vlang/v/tree/master/vlib/v/tests/assembly/asm_test.amd64.v)
+[vlib/v/slow_tests/assembly/asm_test.amd64.v](https://github.com/vlang/v/tree/master/vlib/v/slow_tests/assembly/asm_test.amd64.v)
 
 ### Hot code reloading
 
@@ -6716,7 +6738,7 @@ fn sh(cmd string) {
 rmdir_all('build') or {}
 
 // Create build/, never fails as build/ does not exist
-mkdir('build')?
+mkdir('build')!
 
 // Move *.v files to build/
 result := execute('mv *.v build/')
@@ -6727,7 +6749,7 @@ if result.exit_code != 0 {
 sh('ls')
 
 // Similar to:
-// files := ls('.')?
+// files := ls('.')!
 // mut count := 0
 // if files.len > 0 {
 //     for file in files {

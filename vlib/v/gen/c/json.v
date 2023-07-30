@@ -65,6 +65,9 @@ fn (mut g Gen) gen_jsons() {
 				g.expr_with_tmp_var(ast.Expr(ast.StructInit{ typ: utyp, typ_str: styp }),
 					utyp, utyp, 'res')
 				init_styp = g.out.cut_to(pos).trim_space()
+			} else {
+				none_str := g.expr_string(ast.None{})
+				init_styp += ' = (${styp}){ .state=2, .err=${none_str}, .data={EMPTY_STRUCT_INITIALIZATION} }'
 			}
 		} else {
 			if sym.kind == .struct_ {
@@ -148,8 +151,13 @@ ${enc_fn_dec} {
 			parent_typ := a.parent_type
 			psym := g.table.sym(parent_typ)
 			if is_js_prim(g.typ(parent_typ)) {
-				g.gen_json_for_type(parent_typ)
-				g.gen_prim_enc_dec(parent_typ, mut enc, mut dec)
+				if utyp.has_flag(.option) {
+					g.gen_json_for_type(parent_typ.set_flag(.option))
+					g.gen_option_enc_dec(parent_typ.set_flag(.option), mut enc, mut dec)
+				} else {
+					g.gen_json_for_type(parent_typ)
+					g.gen_prim_enc_dec(parent_typ, mut enc, mut dec)
+				}
 			} else if psym.info is ast.Struct {
 				enc.writeln('\to = cJSON_CreateObject();')
 				g.gen_struct_enc_dec(utyp, psym.info, ret_styp, mut enc, mut dec)
@@ -163,6 +171,8 @@ ${enc_fn_dec} {
 				g.gen_json_for_type(m.value_type)
 				dec.writeln(g.decode_map(utyp, m.key_type, m.value_type, ret_styp))
 				enc.writeln(g.encode_map(utyp, m.key_type, m.value_type))
+			} else if utyp.has_flag(.option) {
+				g.gen_option_enc_dec(utyp, mut enc, mut dec)
 			} else {
 				verror('json: ${sym.name} is not struct')
 			}
@@ -190,7 +200,9 @@ ${enc_fn_dec} {
 		dec.writeln('\t${result_name}_${ret_styp} ret;')
 		dec.writeln('\t_result_ok(&res, (${result_name}*)&ret, sizeof(res));')
 		if utyp.has_flag(.option) {
-			dec.writeln('\t_option_ok(&res.data, (${option_name}*)&ret.data, sizeof(${g.base_type(utyp)}));')
+			dec.writeln('\tif (res.state != 2) {')
+			dec.writeln('\t\t_option_ok(&res.data, (${option_name}*)&ret.data, sizeof(${g.base_type(utyp)}));')
+			dec.writeln('\t}')
 		}
 		dec.writeln('\treturn ret;\n}')
 		enc.writeln('\treturn o;\n}')
@@ -332,7 +344,11 @@ fn (mut g Gen) gen_option_enc_dec(typ ast.Type, mut enc strings.Builder, mut dec
 	enc.writeln('\to = ${encode_name}(*(${type_str}*)val.data);')
 
 	dec_name := js_dec_name(type_str)
-	dec.writeln('\t_option_ok(&(${type_str}[]){ ${dec_name}(root) }, (${option_name}*)&res, sizeof(${type_str}));')
+	dec.writeln('\tif (!cJSON_IsNull(root)) {')
+	dec.writeln('\t\t_option_ok(&(${type_str}[]){ ${dec_name}(root) }, (${option_name}*)&res, sizeof(${type_str}));')
+	dec.writeln('\t} else {')
+	dec.writeln('\t\t_option_none(&(${type_str}[]){ {0} }, (${option_name}*)&res, sizeof(${type_str}));')
+	dec.writeln('\t}')
 }
 
 [inline]
@@ -613,7 +629,7 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 			if field.typ.has_flag(.option) {
 				g.gen_json_for_type(field.typ)
 				base_typ := g.base_type(field.typ)
-				dec.writeln('\tif (!cJSON_IsString(js_get(root, "${name}")))')
+				dec.writeln('\tif (js_get(root, "${name}") == NULL)')
 				dec.writeln('\t\t_option_none(&(${base_typ}[]) { {0} }, &${prefix}${op}${c_name(field.name)}, sizeof(${base_typ}));')
 				dec.writeln('\telse')
 				dec.writeln('\t\t_option_ok(&(${base_typ}[]) {  tos5(cJSON_PrintUnformatted(js_get(root, "${name}"))) }, &${prefix}${op}${c_name(field.name)}, sizeof(${base_typ}));')
@@ -630,6 +646,9 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				tmp := g.new_tmp_var()
 				gen_js_get(styp, tmp, name, mut dec, is_required)
 				dec.writeln('\tif (jsonroot_${tmp}) {')
+				if utyp.has_flag(.option) {
+					dec.writeln('\t\tres.state = 0;')
+				}
 				dec.writeln('\t\t${prefix}${op}${c_name(field.name)} = ${dec_name}(jsonroot_${tmp});')
 				if field.has_default_expr {
 					dec.writeln('\t} else {')
@@ -684,9 +703,14 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				dec.writeln('\t}')
 			} else if field_sym.kind == .alias {
 				alias := field_sym.info as ast.Alias
-				parent_type := g.typ(alias.parent_type)
-				parent_dec_name := js_dec_name(parent_type)
-				if is_js_prim(parent_type) {
+				parent_type := if field.typ.has_flag(.option) {
+					alias.parent_type.set_flag(.option)
+				} else {
+					alias.parent_type
+				}
+				sparent_type := g.typ(parent_type)
+				parent_dec_name := js_dec_name(sparent_type)
+				if is_js_prim(sparent_type) {
 					tmp := g.new_tmp_var()
 					gen_js_get(styp, tmp, name, mut dec, is_required)
 					dec.writeln('\tif (jsonroot_${tmp}) {')
@@ -697,7 +721,7 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 					}
 					dec.writeln('\t}')
 				} else {
-					g.gen_json_for_type(alias.parent_type)
+					g.gen_json_for_type(parent_type)
 					tmp := g.new_tmp_var()
 					gen_js_get_opt(dec_name, field_type, styp, tmp, name, mut dec, is_required)
 					dec.writeln('\tif (jsonroot_${tmp}) {')
@@ -772,7 +796,11 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 		if !is_js_prim(field_type) {
 			if field_sym.kind == .alias {
 				ainfo := field_sym.info as ast.Alias
-				enc_name = js_enc_name(g.typ(ainfo.parent_type))
+				if field.typ.has_flag(.option) {
+					enc_name = js_enc_name(g.typ(ainfo.parent_type.set_flag(.option)))
+				} else {
+					enc_name = js_enc_name(g.typ(ainfo.parent_type))
+				}
 			}
 		}
 		if field_sym.kind == .enum_ {
@@ -803,19 +831,24 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 			if field_sym.name == 'time.Time' {
 				// time struct requires special treatment
 				// it has to be encoded as a unix timestamp number
-				enc.writeln('${indent}\tcJSON_AddItemToObject(o, "${name}", json__encode_u64(${prefix_enc}${op}${c_name(field.name)}._v_unix));')
+				enc.writeln('${indent}cJSON_AddItemToObject(o, "${name}", json__encode_u64(${prefix_enc}${op}${c_name(field.name)}._v_unix));')
 			} else {
 				if !field.typ.is_any_kind_of_pointer() {
-					enc.writeln('${indent}\tcJSON_AddItemToObject(o, "${name}", ${enc_name}(${prefix_enc}${op}${c_name(field.name)})); /*A*/')
+					if field_sym.kind == .alias && field.typ.has_flag(.option) {
+						parent_type := g.table.unaliased_type(field.typ).set_flag(.option)
+						enc.writeln('${indent}\tcJSON_AddItemToObject(o, "${name}", ${enc_name}(*(${g.typ(parent_type)}*)&${prefix_enc}${op}${c_name(field.name)})); /*?A*/')
+					} else {
+						enc.writeln('${indent}\tcJSON_AddItemToObject(o, "${name}", ${enc_name}(${prefix_enc}${op}${c_name(field.name)})); /*A*/')
+					}
 				} else {
 					arg_prefix := if field.typ.is_ptr() { '' } else { '*' }
 					sptr_value := '${prefix_enc}${op}${c_name(field.name)}'
 					if !field.typ.has_flag(.option) {
-						enc.writeln('${indent}\tif (${sptr_value} != 0) {')
-						enc.writeln('${indent}\t\tcJSON_AddItemToObject(o, "${name}", ${enc_name}(${arg_prefix}${sptr_value}));')
-						enc.writeln('${indent}\t}\n')
+						enc.writeln('${indent}if (${sptr_value} != 0) {')
+						enc.writeln('${indent}\tcJSON_AddItemToObject(o, "${name}", ${enc_name}(${arg_prefix}${sptr_value}));')
+						enc.writeln('${indent}}\n')
 					} else {
-						enc.writeln('${indent}\t\tcJSON_AddItemToObject(o, "${name}", ${enc_name}(${arg_prefix}${sptr_value}));')
+						enc.writeln('${indent}cJSON_AddItemToObject(o, "${name}", ${enc_name}(${arg_prefix}${sptr_value}));')
 					}
 				}
 			}

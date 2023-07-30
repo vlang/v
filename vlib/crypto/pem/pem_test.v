@@ -5,6 +5,7 @@ fn test_decode_rfc1421() {
 	for i in 0 .. pem.test_data_rfc1421.len {
 		decoded, rest := decode(pem.test_data_rfc1421[i]) or { Block{}, '' }
 		assert decoded == pem.expected_results_rfc1421[i]
+		assert decoded == decode_only(pem.test_data_rfc1421[i]) or { Block{} }
 		assert rest == ''
 	}
 }
@@ -13,6 +14,7 @@ fn test_decode() {
 	for i in 0 .. pem.test_data.len {
 		decoded, rest := decode(pem.test_data[i]) or { Block{}, '' }
 		assert decoded == pem.expected_results[i]
+		assert decoded == decode_only(pem.test_data[i]) or { Block{} }
 		assert rest == pem.expected_rest[i]
 	}
 }
@@ -23,6 +25,7 @@ fn test_encode_rfc1421() {
 		decoded, rest := decode(encoded) or { Block{}, '' }
 		assert rest == ''
 		assert decoded == pem.expected_results_rfc1421[i]
+		assert decoded == decode_only(encoded) or { Block{} }
 	}
 }
 
@@ -32,6 +35,7 @@ fn test_encode() {
 		decoded, rest := decode(encoded) or { Block{}, '' }
 		assert rest == ''
 		assert decoded == pem.expected_results[i]
+		assert decoded == decode_only(encoded) or { Block{} }
 	}
 }
 
@@ -41,8 +45,27 @@ fn test_encode_config() {
 		decoded, rest := decode(encoded) or { Block{}, '' }
 		assert rest == ''
 		assert decoded == pem.expected_results[i]
+		assert decoded == decode_only(encoded) or { Block{} }
 	}
 }
+
+fn test_decode_no_pem() {
+	for test in pem.test_data_no_pem {
+		if _, _ := decode(test) {
+			assert false, 'decode should return `none` on input without PEM data'
+		}
+		if _ := decode_only(test) {
+			assert false, 'decode_only should return `none` on input without PEM data'
+		}
+	}
+}
+
+const test_data_no_pem = [
+	'',
+	'-----BEGIN',
+	'-----BEGIN -----',
+	'-----END',
+]
 
 // https://datatracker.ietf.org/doc/html/rfc7468#section-4
 const test_data_rfc1421 = [
@@ -305,8 +328,8 @@ BEGIN BEGIN BEGIN
 -----END RSA PRIVATE KEY
 : fkalsdjflkasdjf
 private key: fsaddf",
-	'Mollitia magnam ullam ipsam voluptas ipsa 
-rerum debitis. Vel nulla ipsum enim perspiciatis adipisci quam. Nihil incidunt ipsum 
+	'Mollitia magnam ullam ipsam voluptas ipsa
+rerum debitis. Vel nulla ipsum enim perspiciatis adipisci quam. Nihil incidunt ipsum
 --- --BEGIN
 
 
@@ -327,46 +350,46 @@ xph0pSfsfFsTKM4RhTWD2v4fgk+xZiKd1p0+L4hTtpwnEw0uXRVd0ki6muwV5y/P
 BQUAA4GBAJiDAAtY0mQQeuxWdzLRzXmjvdSuL9GoyT3BF/jSnpxz5/58dba8pWen
 v3pj4P3w5DoOso0rzkZy2jEsEitlVM2mLSbQpMM+MUVQCQoiG6W9xuCFuxSrwPIS
 pAqEAuV4DNoxQKKWmhVv+J0ptMWD25Pnpxeq5sXzghfJnslJlQND
------END CERTIFICATE----- 
+-----END CERTIFICATE-----
 fdsjaf888888888888
 -----
 
 -----END
 -----BEGIN',
 	'Lorem ipsum dolor sit amet
-, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore 
-et dolore magna aliqua. Massa id neque aliquam vestibulum 
-morbi blandit cursus risus. Elit at imperdiet dui accumsan sit amet nulla. Pulvinar pellentesque habitant 
+, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore
+et dolore magna aliqua. Massa id neque aliquam vestibulum
+morbi blandit cursus risus. Elit at imperdiet dui accumsan sit amet nulla. Pulvinar pellentesque habitant
 
 
-morbi tristique senectus. Vulputate 
-dignissim suspendisse in est ante in. Egestas dui id ornare arcu. Ultrices mi tempus imperdiet 
-nulla malesuada. Elementum nisi quis eleifend quam adipiscing. 
-Mi in nulla posuere sollicitudin aliquam ultrices. Elit at imperdiet dui accumsan sit amet nulla facilisi. In hac 
-habitasse platea dictumst quisque sagittis. Vestibulum 
-lectus mauris ultrices eros in cursus. Blandit volutpat maecenas volutpat blandit. Sed nisi 
-lacus sed viverra tellus in hac habitasse platea. 
-Nulla facilisi etiam dignissim diam. Donec et odio pellentesque diam volutpat 
-commodo sed egestas. Eleifend quam adipiscing 
+morbi tristique senectus. Vulputate
+dignissim suspendisse in est ante in. Egestas dui id ornare arcu. Ultrices mi tempus imperdiet
+nulla malesuada. Elementum nisi quis eleifend quam adipiscing.
+Mi in nulla posuere sollicitudin aliquam ultrices. Elit at imperdiet dui accumsan sit amet nulla facilisi. In hac
+habitasse platea dictumst quisque sagittis. Vestibulum
+lectus mauris ultrices eros in cursus. Blandit volutpat maecenas volutpat blandit. Sed nisi
+lacus sed viverra tellus in hac habitasse platea.
+Nulla facilisi etiam dignissim diam. Donec et odio pellentesque diam volutpat
+commodo sed egestas. Eleifend quam adipiscing
 vitae proin sagittis nisl.
 
-Pharetra et ultrices neque ornare aenean euismod elementum nisi. Sit amet consectetur sed id semper risus in. 
+Pharetra et ultrices neque ornare aenean euismod elementum nisi. Sit amet consectetur sed id semper risus in.
 Eget nullam non nisi est. A diam maecenas sed enim. Enim nec dui nunc mattis. Lectus quam id leo in vitae turpis massa sed
 . In eu mi bibendum neque egestas congue. Dui faucibus in ornare quam viverra orci j
 sagittis. Lectus sit amet est placerat in egestas erat imperdiet.
 
-Suspendisse potenti nullam ac tortor. Iaculis nunc sed augue lacus viverra vitae congue eu consequat. 
-Lacus vestibulum sed arcu 
+Suspendisse potenti nullam ac tortor. Iaculis nunc sed augue lacus viverra vitae congue eu consequat.
+Lacus vestibulum sed arcu
 non odio euismod. Massa sed elementum tempus egestas sed. Nulla facilisi etiam dignissim diam quis enim
-. Ac ut consequat semper viverra. Eleifend quam adipiscing vitae proin sagittis nisl rhoncus mattis rhoncus. Nunc consequat interdum varius sit amet mattis vulputate enim. 
-Orci nulla pellentesque dignissim enim sit amet. Sed vulputate mi sit amet. 
-Sagittis vitae et leo duis ut diam. Orci a scelerisque purus semper eget duis 
+. Ac ut consequat semper viverra. Eleifend quam adipiscing vitae proin sagittis nisl rhoncus mattis rhoncus. Nunc consequat interdum varius sit amet mattis vulputate enim.
+Orci nulla pellentesque dignissim enim sit amet. Sed vulputate mi sit amet.
+Sagittis vitae et leo duis ut diam. Orci a scelerisque purus semper eget duis
 at tellus at. In hac habitasse platea dictumst vestibulum rhoncus est
-. Fames 
-ac turpis egestas integer. Mattis enim ut 
-tellus elementum sagittis vitae. Pellentesque pulvinar pellentesque habitant morbi tristique senectus et netus 
-et. Id semper risus in hendrerit. 
-Et sollicitudin ac orci phasellus egestas. Sem integer vitae justo eget 
+. Fames
+ac turpis egestas integer. Mattis enim ut
+tellus elementum sagittis vitae. Pellentesque pulvinar pellentesque habitant morbi tristique senectus et netus
+et. Id semper risus in hendrerit.
+Et sollicitudin ac orci phasellus egestas. Sem integer vitae justo eget
 magna. Et ligula ullamcorper malesuada proin libero nunc consequat.-----BEGIN CERTIFICATE-----
 MIICMzCCAZygAwIBAgIJALiPnVsvq8dsMA0GCSqGSIb3DQEBBQUAMFMxCzAJBgNV
 BAYTAlVTMQwwCgYDVQQIEwNmb28xDDAKBgNVBAcTA2ZvbzEMMAoGA1UEChMDZm9v
@@ -662,7 +685,7 @@ BEGIN BEGIN BEGIN
 -----END RSA PRIVATE KEY
 : fkalsdjflkasdjf
 private key: fsaddf',
-	' 
+	'
 fdsjaf888888888888
 -----
 

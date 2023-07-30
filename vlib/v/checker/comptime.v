@@ -41,7 +41,7 @@ fn (mut c Checker) get_comptime_var_type(node ast.Expr) ast.Type {
 	} else if node is ast.ComptimeSelector {
 		// val.$(field.name)
 		return c.get_comptime_selector_type(node, ast.void_type)
-	} else if node is ast.SelectorExpr && c.is_comptime_selector_type(node as ast.SelectorExpr) {
+	} else if node is ast.SelectorExpr && c.is_comptime_selector_type(node) {
 		// field_var.typ from $for field
 		return c.comptime_fields_default_type
 	}
@@ -50,7 +50,7 @@ fn (mut c Checker) get_comptime_var_type(node ast.Expr) ast.Type {
 
 fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	if node.left !is ast.EmptyExpr {
-		node.left_type = c.expr(node.left)
+		node.left_type = c.expr(mut node.left)
 	}
 	if node.method_name == 'compile_error' {
 		c.error(node.args_var, node.pos)
@@ -126,7 +126,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		}
 		mut c2 := new_checker(c.table, pref2)
 		c2.comptime_call_pos = node.pos.pos
-		c2.check(node.vweb_tmpl)
+		c2.check(mut node.vweb_tmpl)
 		c.warnings << c2.warnings
 		c.errors << c2.errors
 		c.notices << c2.notices
@@ -145,11 +145,11 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		if c.inside_anon_fn && 'method' !in c.cur_anon_fn.inherited_vars.map(it.name) {
 			c.error('undefined ident `method` in the anonymous function', node.pos)
 		}
-		for i, arg in node.args {
+		for i, mut arg in node.args {
 			// check each arg expression
-			node.args[i].typ = c.expr(arg.expr)
+			node.args[i].typ = c.expr(mut arg.expr)
 		}
-		c.stmts_ending_with_expression(node.or_block.stmts)
+		c.stmts_ending_with_expression(mut node.or_block.stmts)
 		// assume string for now
 		return ast.string_type
 	}
@@ -218,8 +218,8 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 }
 
 fn (mut c Checker) comptime_selector(mut node ast.ComptimeSelector) ast.Type {
-	node.left_type = c.expr(node.left)
-	mut expr_type := c.unwrap_generic(c.expr(node.field_expr))
+	node.left_type = c.expr(mut node.left)
+	mut expr_type := c.unwrap_generic(c.expr(mut node.field_expr))
 	expr_sym := c.table.sym(expr_type)
 	if expr_type != ast.string_type {
 		c.error('expected `string` instead of `${expr_sym.name}` (e.g. `field.name`)',
@@ -246,7 +246,7 @@ fn (mut c Checker) comptime_selector(mut node ast.ComptimeSelector) ast.Type {
 	return ast.void_type
 }
 
-fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
+fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 	typ := c.unwrap_generic(node.typ)
 	sym := c.table.final_sym(typ)
 	if sym.kind == .placeholder || typ.has_flag(.generic) {
@@ -274,7 +274,7 @@ fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
 				c.comptime_for_field_var = node.val_var
 				c.comptime_fields_type[node.val_var] = node.typ
 				c.comptime_fields_default_type = field.typ
-				c.stmts(node.stmts)
+				c.stmts(mut node.stmts)
 
 				unwrapped_expr_type := c.unwrap_generic(field.typ)
 				tsym := c.table.sym(unwrapped_expr_type)
@@ -294,11 +294,11 @@ fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
 				c.comptime_enum_field_value = field
 				c.comptime_for_field_var = node.val_var
 				c.comptime_fields_type[node.val_var] = node.typ
-				c.stmts(node.stmts)
+				c.stmts(mut node.stmts)
 			}
 		}
 	} else {
-		c.stmts(node.stmts)
+		c.stmts(mut node.stmts)
 	}
 }
 
@@ -481,9 +481,9 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 				return none
 			}
 			for i in 0 .. expr.branches.len {
-				branch := expr.branches[i]
+				mut branch := expr.branches[i]
 				if !expr.has_else || i < expr.branches.len - 1 {
-					if c.comptime_if_branch(branch.cond, branch.pos) == .eval {
+					if c.comptime_if_branch(mut branch.cond, branch.pos) == .eval {
 						last_stmt := branch.stmts.last()
 						if last_stmt is ast.ExprStmt {
 							return c.eval_comptime_const_expr(last_stmt.expr, nlevel + 1)
@@ -568,7 +568,7 @@ fn (mut c Checker) evaluate_once_comptime_if_attribute(mut node ast.Attr) bool {
 	if node.ct_evaled {
 		return node.ct_skip
 	}
-	if node.ct_expr is ast.Ident {
+	if mut node.ct_expr is ast.Ident {
 		if node.ct_opt {
 			if node.ct_expr.name in ast.valid_comptime_not_user_defined {
 				c.error('option `[if expression ?]` tags, can be used only for user defined identifiers',
@@ -597,7 +597,11 @@ fn (mut c Checker) evaluate_once_comptime_if_attribute(mut node ast.Attr) bool {
 		}
 	}
 	c.inside_ct_attr = true
-	node.ct_skip = if c.comptime_if_branch(node.ct_expr, node.pos) == .skip { true } else { false }
+	node.ct_skip = if c.comptime_if_branch(mut node.ct_expr, node.pos) == .skip {
+		true
+	} else {
+		false
+	}
 	c.inside_ct_attr = false
 	node.ct_evaled = true
 	return node.ct_skip
@@ -611,20 +615,20 @@ enum ComptimeBranchSkipState {
 
 // comptime_if_branch checks the condition of a compile-time `if` branch. It returns `true`
 // if that branch's contents should be skipped (targets a different os for example)
-fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBranchSkipState {
+fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) ComptimeBranchSkipState {
 	// TODO: better error messages here
-	match cond {
+	match mut cond {
 		ast.BoolLiteral {
 			return if cond.val { .eval } else { .skip }
 		}
 		ast.ParExpr {
-			return c.comptime_if_branch(cond.expr, pos)
+			return c.comptime_if_branch(mut cond.expr, pos)
 		}
 		ast.PrefixExpr {
 			if cond.op != .not {
 				c.error('invalid `\$if` condition', cond.pos)
 			}
-			reversed := c.comptime_if_branch(cond.right, cond.pos)
+			reversed := c.comptime_if_branch(mut cond.right, cond.pos)
 			return if reversed == .eval {
 				.skip
 			} else if reversed == .skip {
@@ -636,7 +640,7 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 		ast.PostfixExpr {
 			if cond.op != .question {
 				c.error('invalid \$if postfix operator', cond.pos)
-			} else if cond.expr is ast.Ident {
+			} else if mut cond.expr is ast.Ident {
 				return if cond.expr.name in c.pref.compile_defines_all { .eval } else { .skip }
 			} else {
 				c.error('invalid `\$if` condition', cond.pos)
@@ -645,31 +649,30 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 		ast.InfixExpr {
 			match cond.op {
 				.and {
-					l := c.comptime_if_branch(cond.left, cond.pos)
-					r := c.comptime_if_branch(cond.right, cond.pos)
+					l := c.comptime_if_branch(mut cond.left, cond.pos)
+					r := c.comptime_if_branch(mut cond.right, cond.pos)
 					if l == .unknown || r == .unknown {
 						return .unknown
 					}
 					return if l == .eval && r == .eval { .eval } else { .skip }
 				}
 				.logical_or {
-					l := c.comptime_if_branch(cond.left, cond.pos)
-					r := c.comptime_if_branch(cond.right, cond.pos)
+					l := c.comptime_if_branch(mut cond.left, cond.pos)
+					r := c.comptime_if_branch(mut cond.right, cond.pos)
 					if l == .unknown || r == .unknown {
 						return .unknown
 					}
 					return if l == .eval || r == .eval { .eval } else { .skip }
 				}
 				.key_is, .not_is {
-					if cond.left is ast.TypeNode && cond.right is ast.TypeNode {
+					if cond.left is ast.TypeNode && mut cond.right is ast.TypeNode {
 						// `$if Foo is Interface {`
 						sym := c.table.sym(cond.right.typ)
 						if sym.kind != .interface_ {
-							c.expr(cond.left)
-							// c.error('`$sym.name` is not an interface', cond.right.pos())
+							c.expr(mut cond.left)
 						}
 						return .unknown
-					} else if cond.left is ast.TypeNode && cond.right is ast.ComptimeType {
+					} else if cond.left is ast.TypeNode && mut cond.right is ast.ComptimeType {
 						left := cond.left as ast.TypeNode
 						checked_type := c.unwrap_generic(left.typ)
 						return if c.table.is_comptime_type(checked_type, cond.right) {
@@ -679,10 +682,9 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 						}
 					} else if cond.left in [ast.Ident, ast.SelectorExpr, ast.TypeNode] {
 						// `$if method.@type is string`
-						c.expr(cond.left)
-						if cond.left is ast.SelectorExpr
-							&& c.is_comptime_selector_type(cond.left as ast.SelectorExpr)
-							&& cond.right is ast.ComptimeType {
+						c.expr(mut cond.left)
+						if cond.left is ast.SelectorExpr && c.is_comptime_selector_type(cond.left)
+							&& mut cond.right is ast.ComptimeType {
 							checked_type := c.get_comptime_var_type(cond.left)
 							return if c.table.is_comptime_type(checked_type, cond.right) {
 								.eval
@@ -703,17 +705,17 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 						// $if method.args.len == 1
 						return .unknown
 					} else if cond.left is ast.SelectorExpr
-						&& c.check_comptime_is_field_selector_bool(cond.left as ast.SelectorExpr) {
+						&& c.check_comptime_is_field_selector_bool(cond.left) {
 						// field.is_public (from T.fields)
 					} else if cond.right is ast.SelectorExpr
-						&& c.check_comptime_is_field_selector_bool(cond.right as ast.SelectorExpr) {
+						&& c.check_comptime_is_field_selector_bool(cond.right) {
 						// field.is_public (from T.fields)
 					} else if cond.left is ast.Ident {
 						// $if version == 2
-						left_type := c.expr(cond.left)
-						right_type := c.expr(cond.right)
-						expr := c.find_definition(cond.left) or {
-							c.error(err.msg(), cond.left.pos)
+						left_type := c.expr(mut cond.left)
+						right_type := c.expr(mut cond.right)
+						expr := c.find_definition(cond.left as ast.Ident) or {
+							c.error(err.msg(), cond.left.pos())
 							return .unknown
 						}
 						if !c.check_types(right_type, left_type) {
@@ -744,7 +746,9 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 					}
 				}
 				.key_in, .not_in {
-					if cond.left in [ast.SelectorExpr, ast.TypeNode] && cond.right is ast.ArrayInit {
+					if mut cond.right is ast.ArrayInit
+						&& cond.left in [ast.TypeNode, ast.SelectorExpr, ast.Ident] {
+						c.expr(mut cond.left)
 						for expr in cond.right.exprs {
 							if expr !in [ast.ComptimeType, ast.TypeNode] {
 								c.error('invalid `\$if` condition, only types are allowed',
@@ -757,12 +761,9 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 					}
 				}
 				.gt, .lt, .ge, .le {
-					if cond.left is ast.SelectorExpr && cond.right is ast.IntegerLiteral {
-						if c.is_comptime_selector_field_name(cond.left as ast.SelectorExpr,
-							'indirections')
-						{
-							return .unknown
-						}
+					if cond.left is ast.SelectorExpr && cond.right is ast.IntegerLiteral
+						&& c.is_comptime_selector_field_name(cond.left, 'indirections') {
+						return .unknown
 					}
 					c.error('invalid `\$if` condition', cond.pos)
 				}
@@ -854,7 +855,7 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 					return .unknown
 				}
 				// `$if some_var {}`, or `[if user_defined_tag] fn abc(){}`
-				typ := c.unwrap_generic(c.expr(cond))
+				typ := c.unwrap_generic(c.expr(mut cond))
 				if cond.obj !in [ast.Var, ast.ConstField, ast.GlobalField] {
 					if !c.inside_ct_attr {
 						c.error('unknown var: `${cname}`', pos)
@@ -905,9 +906,8 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 // get_comptime_selector_type retrieves the var.$(field.name) type when field_name is 'name' otherwise default_type is returned
 [inline]
 fn (mut c Checker) get_comptime_selector_type(node ast.ComptimeSelector, default_type ast.Type) ast.Type {
-	if node.field_expr is ast.SelectorExpr
-		&& c.check_comptime_is_field_selector(node.field_expr as ast.SelectorExpr)
-		&& (node.field_expr as ast.SelectorExpr).field_name == 'name' {
+	if node.field_expr is ast.SelectorExpr && c.check_comptime_is_field_selector(node.field_expr)
+		&& node.field_expr.field_name == 'name' {
 		return c.unwrap_generic(c.comptime_fields_default_type)
 	}
 	return default_type

@@ -17,6 +17,7 @@ pub mut:
 	version    Version = .v1_1
 	method     Method
 	header     Header
+	host       string
 	cookies    map[string]string
 	data       string
 	url        string
@@ -224,6 +225,7 @@ pub fn parse_request_head(mut reader io.BufferedReader) !Request {
 		method: method
 		url: target.str()
 		header: header
+		host: header.get(.host) or { '' }
 		version: version
 		cookies: request_cookies
 	}
@@ -303,13 +305,11 @@ pub fn (err MultiplePathAttributesError) msg() string {
 // (body, boundary).
 // Note: Form keys should not contain quotes
 fn multipart_form_body(form map[string]string, files map[string][]FileData) (string, string) {
-	alpha_numeric := 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-	boundary := rand.string_from_set(alpha_numeric, 64)
-
+	rboundary := rand.ulid()
 	mut sb := strings.new_builder(1024)
 	for name, value in form {
 		sb.write_string('\r\n--')
-		sb.write_string(boundary)
+		sb.write_string(rboundary)
 		sb.write_string('\r\nContent-Disposition: form-data; name="')
 		sb.write_string(name)
 		sb.write_string('"\r\n\r\n')
@@ -318,7 +318,7 @@ fn multipart_form_body(form map[string]string, files map[string][]FileData) (str
 	for name, fs in files {
 		for f in fs {
 			sb.write_string('\r\n--')
-			sb.write_string(boundary)
+			sb.write_string(rboundary)
 			sb.write_string('\r\nContent-Disposition: form-data; name="')
 			sb.write_string(name)
 			sb.write_string('"; filename="')
@@ -330,9 +330,9 @@ fn multipart_form_body(form map[string]string, files map[string][]FileData) (str
 		}
 	}
 	sb.write_string('\r\n--')
-	sb.write_string(boundary)
+	sb.write_string(rboundary)
 	sb.write_string('--')
-	return sb.str(), boundary
+	return sb.str(), rboundary
 }
 
 struct LineSegmentIndexes {

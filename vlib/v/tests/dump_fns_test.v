@@ -67,3 +67,13 @@ fn test_dump_of_type_that_has_no_custom_str_method() {
 	ps := &StructWithoutStrMethod{456}
 	assert dump(ps).x == 456
 }
+
+fn test_nil_values_and_voidptr_values_can_be_dumped_in_the_same_program() {
+	// Note, that nil is its own type in the main v repo,
+	// while dump() generates `_v_dump_expr_voidptr` for *both* `nil` and `voidptr` values.
+	a := unsafe { nil }
+	b := voidptr(456)
+	dump(a)
+	dump(b)
+	assert true
+}

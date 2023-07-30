@@ -4,26 +4,27 @@ A module to provide eventing capabilities using pub/sub.
 
 ## API
 
-1. `new()` - create a new `EventBus`
+1. `new[T]()` - create a new `EventBus`
+2. `EventBus.new[T]()` - create a new `EventBus`
 
 ### Structs:
 
 **EventBus:**
 
-1. `publish(name string, sender voidptr, args voidptr)` - publish an event with provided
+1. `publish(name T, sender voidptr, args voidptr)` - publish an event with provided
     Params & name
 2. `clear_all()` - clear all subscribers
-3. `has_subscriber(name string)` - check if a subscriber to an event exists
+3. `has_subscriber(name T)` - check if a subscriber to an event exists
 
 **Subscriber:**
 
-1. `subscribe(name string, handler EventHandlerFn)` - subscribe to an event
-2. `subscribe_once(name string, handler EventHandlerFn)` - subscribe only once to an event
-3. `subscribe_method(name string, handler EventHandlerFn, receiver voidptr)` - subscribe to
+1. `subscribe(name T, handler EventHandlerFn)` - subscribe to an event
+2. `subscribe_once(name T, handler EventHandlerFn)` - subscribe only once to an event
+3. `subscribe_method(name T, handler EventHandlerFn, receiver voidptr)` - subscribe to
     an event and also set the `receiver` as a parameter.
     Since it's not yet possible to send methods as parameters, this is a workaround.
-4. `is_subscribed(name string)` - check if we are subscribed to an event
-5. `unsubscribe(name string)` - unsubscribe from an event
+4. `is_subscribed(name T)` - check if we are subscribed to an event
+5. `unsubscribe(name T)` - unsubscribe from an event
 
 **Event Handler Signature:**
 
@@ -63,7 +64,7 @@ import eventbus
 
 // initialize it globally
 const (
-	eb = eventbus.new()
+	eb = eventbus.new[string]()
 )
 
 fn main() {
@@ -88,7 +89,7 @@ module main
 
 import eventbus
 
-const eb = eventbus.new()
+const eb = eventbus.new[string]()
 
 struct Work {
 	hours int

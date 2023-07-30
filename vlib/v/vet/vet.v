@@ -7,6 +7,7 @@ import v.token
 pub enum ErrorKind {
 	error
 	warning
+	notice
 }
 
 pub enum FixKind {

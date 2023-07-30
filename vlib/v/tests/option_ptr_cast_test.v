@@ -14,7 +14,7 @@ pub fn cast_object_desc[H](desc &ObjectDesc) ?H {
 			return &ABCD(desc.ptr)
 		}*/
 		if desc.typ == 12 { // desc == ABCD
-			return ?&ABCD(&ABCD(desc.ptr))
+			return ?&ABCD(unsafe { &ABCD(desc.ptr) })
 		}
 	}
 	return none

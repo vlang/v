@@ -24,9 +24,6 @@ jobs:
       VERBOSE_MAKE: 1
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: 16
       - name: Build
         run: |
           gcc --version
@@ -53,6 +50,8 @@ jobs:
         run: .\v.exe test-self
         #    - name: Test
         #      run: .\v.exe test-all
+      - name: Build option_test.v with -autofree
+        run: .\v.exe -autofree vlib/v/tests/option_test.v
       - name: Test time functions in a timezone UTC-12
         run: |
           tzutil /s "Dateline Standard Time"
@@ -87,9 +86,6 @@ jobs:
       VERBOSE_MAKE: 1
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: 16
       - name: Build
         run: |
           echo %VFLAGS%
@@ -137,9 +133,6 @@ jobs:
       VERBOSE_MAKE: 1
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: 16
       - name: Build with make.bat -tcc
         run: |
           .\make.bat -tcc

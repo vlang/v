@@ -43,6 +43,7 @@ mut:
 	stack_var_pos        int
 	stack_depth          int
 	debug_pos            int
+	current_file         &ast.File = unsafe { nil }
 	errors               []errors.Error
 	warnings             []errors.Warning
 	syms                 []Symbol
@@ -67,6 +68,7 @@ mut:
 interface CodeGen {
 mut:
 	g &Gen
+	add(r Register, val int)
 	address_size() int
 	adr(r Arm64Register, delta int) // Note: Temporary!
 	allocate_var(name string, size int, initial_val int) int
@@ -78,6 +80,7 @@ mut:
 	call_fn(node ast.CallExpr)
 	call(addr int) i64
 	cjmp(op JumpOp) int
+	cmp_to_stack_top(r Register)
 	cmp_var_reg(var Var, reg Register, config VarConfig)
 	cmp_var(var Var, val int, config VarConfig)
 	cmp_zero(reg Register)
@@ -86,16 +89,12 @@ mut:
 	convert_rune_to_string(r Register, buffer int, var Var, config VarConfig)
 	dec_var(var Var, config VarConfig)
 	fn_decl(node ast.FnDecl)
-	for_in_stmt(node ast.ForInStmt)
 	gen_asm_stmt(asm_node ast.AsmStmt)
-	gen_assert(assert_node ast.AssertStmt)
 	gen_cast_expr(expr ast.CastExpr)
-	gen_concat_expr(expr ast.ConcatExpr)
 	gen_exit(expr ast.Expr)
 	gen_match_expr(expr ast.MatchExpr)
 	gen_print_reg(r Register, n int, fd int)
 	gen_print(s string, fd int)
-	gen_selector_expr(expr ast.SelectorExpr)
 	gen_syscall(node ast.CallExpr)
 	inc_var(var Var, config VarConfig)
 	infix_expr(node ast.InfixExpr) // TODO: make platform-independant
@@ -110,6 +109,7 @@ mut:
 	load_fp_var(var Var, config VarConfig)
 	load_fp(val f64)
 	main_reg() Register
+	mov_deref(reg Register, regptr Register, typ ast.Type)
 	mov_int_to_var(var Var, integer int, config VarConfig)
 	mov_reg_to_var(var Var, reg Register, config VarConfig)
 	mov_reg(r1 Register, r2 Register)
@@ -118,15 +118,28 @@ mut:
 	mov64(r Register, val i64)
 	movabs(reg Register, val i64)
 	prefix_expr(node ast.PrefixExpr)
+	push(r Register)
 	ret()
 	return_stmt(node ast.Return)
 	reverse_string(r Register)
 	svc()
 	syscall() // unix syscalls
 	trap()
+	zero_fill(size int, var LocalVar)
 }
 
 type Register = Amd64Register | Arm64Register
+
+fn (r Register) str() string {
+	return match r {
+		Amd64Register {
+			'${r as Amd64Register}'
+		}
+		Arm64Register {
+			'${r as Arm64Register}'
+		}
+	}
+}
 
 enum RelocType {
 	rel8
@@ -322,6 +335,7 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref_ &pref.Pre
 		structs: []Struct{len: table.type_symbols.len}
 		eval: eval.new_eval(table, pref_)
 	}
+
 	g.code_gen.g = g
 	g.generate_header()
 	g.init_builtins()
@@ -333,6 +347,7 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref_ &pref.Pre
 			eprintln('warning: ${file.warnings[0]}')
 		}
 		*/
+		g.current_file = file
 		if file.errors.len > 0 {
 			g.n_error(file.errors[0].str())
 		}
@@ -976,10 +991,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	} else {
 		node.name
 	}
-	if node.no_body || !g.is_used_by_main(node) {
-		if g.pref.is_verbose {
-			println(term.italic(term.green('\n-> skipping unused function `${name}`')))
-		}
+	if node.no_body || !g.is_used_by_main(node) || g.is_blacklisted(name, node.is_builtin) {
 		return
 	}
 	if g.pref.is_verbose {
@@ -987,9 +999,6 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	}
 	if node.is_deprecated {
 		g.warning('fn_decl: ${name} is deprecated', node.pos)
-	}
-	if node.is_builtin {
-		g.warning('fn_decl: ${name} is builtin', node.pos)
 	}
 
 	g.stack_var_pos = 0
@@ -1048,10 +1057,10 @@ pub fn (mut g Gen) n_error(s string) {
 
 pub fn (mut g Gen) warning(s string, pos token.Pos) {
 	if g.pref.output_mode == .stdout {
-		util.show_compiler_message('warning:', pos: pos, file_path: g.pref.path, message: s)
+		util.show_compiler_message('warning:', pos: pos, file_path: g.current_file.path, message: s)
 	} else {
 		g.warnings << errors.Warning{
-			file_path: g.pref.path
+			file_path: g.current_file.path
 			pos: pos
 			reporter: .gen
 			message: s
@@ -1075,4 +1084,30 @@ pub fn (mut g Gen) v_error(s string, pos token.Pos) {
 			message: s
 		}
 	}
+}
+
+fn (mut g Gen) gen_concat_expr(node ast.ConcatExpr) {
+	typ := node.return_type
+	ts := g.table.sym(typ)
+	size := g.get_type_size(typ)
+	// construct a struct variable contains the return value
+	var := LocalVar{
+		offset: g.allocate_by_type('', typ)
+		typ: typ
+	}
+
+	g.code_gen.zero_fill(size, var)
+	main_reg := g.code_gen.main_reg()
+	// store exprs to the variable
+	for i, expr in node.vals {
+		offset := g.structs[typ.idx()].offsets[i]
+		g.expr(expr)
+		// TODO expr not on rax
+		g.code_gen.mov_reg_to_var(var, main_reg,
+			offset: offset
+			typ: ts.mr_info().types[i]
+		)
+	}
+	// store the multi return struct value
+	g.code_gen.lea_var_to_reg(main_reg, var.offset)
 }

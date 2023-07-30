@@ -89,6 +89,7 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 	// Use compile-time constants for common cases.
 	cutoff := strconv.max_u64 / u64(base) + u64(1)
 	max_val := if bit_size == 64 { strconv.max_u64 } else { (u64(1) << u64(bit_size)) - u64(1) }
+	basem1 := base - 1
 
 	mut n := u64(0)
 	for i in start_index .. s.len {
@@ -96,7 +97,6 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 
 		// manage underscore inside the number
 		if c == `_` {
-			// println("Here: ${s#[i..]}")
 			if i == start_index || i >= (s.len - 1) {
 				// println("_ limit")
 				return u64(0), 1
@@ -109,21 +109,25 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 			continue
 		}
 
+		mut sub_count := 0
+
 		// get the 0-9 digit
 		c -= 48 // subtract the rune `0`
 
 		// check if we are in the superior base rune interval [A..Z]
-		if c >= base {
-			c -= 7
-		}
+		if c >= 17 { // (65 - 48)
+			sub_count++
+			c -= 7 // subtract the `A` - `0` rune to obtain the value of the digit
 
-		// check if we are in the superior base rune interval [a..z]
-		if c >= base {
-			c -= 32 // subtract the `A` - `0` rune to obtain the value of the digit
+			// check if we are in the superior base rune interval [a..z]
+			if c >= 42 { // (97 - 7 - 48)
+				sub_count++
+				c -= 32 // subtract the `a` - `0` rune to obtain the value of the digit
+			}
 		}
 
 		// check for digit over base
-		if c >= base {
+		if c > basem1 || (sub_count == 0 && c > 9) {
 			return n, i + 1
 		}
 

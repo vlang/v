@@ -27,6 +27,7 @@ const skip_valgrind_files = [
 	'vlib/v/slow_tests/valgrind/struct_field.v',
 	'vlib/v/slow_tests/valgrind/fn_returning_string_param.v',
 	'vlib/v/slow_tests/valgrind/fn_with_return_should_free_local_vars.v',
+	'vlib/v/slow_tests/valgrind/multiple_fn_calls.v',
 	'vlib/v/slow_tests/valgrind/option_simple.v',
 	'vlib/v/slow_tests/valgrind/string_plus_string_plus.v',
 	'vlib/v/slow_tests/valgrind/import_x_json2.v',
@@ -86,7 +87,8 @@ fn test_all() {
 		base_filename := os.file_name(test).replace('.v', '')
 		exe_filename := '${wrkdir}/${base_filename}'
 		full_path_to_source_file := os.join_path(vroot, test)
-		compile_cmd := '${os.quoted_path(vexe)} -o ${os.quoted_path(exe_filename)} -cg -cflags "-w" -experimental -gc none -autofree ${os.quoted_path(full_path_to_source_file)}'
+		compile_cmd := '${os.quoted_path(vexe)} -o ${os.quoted_path(exe_filename)} -cg -cflags ' +
+			' "-w" -experimental -autofree ${os.quoted_path(full_path_to_source_file)}'
 		vprintln('compile cmd: ${bold(compile_cmd)}')
 		res := os.execute(compile_cmd)
 		if res.exit_code != 0 {

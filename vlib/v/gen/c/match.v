@@ -70,9 +70,8 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	if (node.cond in [ast.Ident, ast.IntegerLiteral, ast.StringLiteral, ast.FloatLiteral]
 		&& (node.cond !is ast.Ident || (node.cond is ast.Ident
 		&& node.cond.or_expr.kind == .absent))) || (node.cond is ast.SelectorExpr
-		&& node.cond.or_block.kind == .absent
-		&& ((node.cond as ast.SelectorExpr).expr !is ast.CallExpr
-		|| ((node.cond as ast.SelectorExpr).expr as ast.CallExpr).or_block.kind == .absent)) {
+		&& node.cond.or_block.kind == .absent && (node.cond.expr !is ast.CallExpr
+		|| (node.cond.expr as ast.CallExpr).or_block.kind == .absent)) {
 		cond_var = g.expr_string(node.cond)
 	} else {
 		line := if is_expr {
@@ -253,7 +252,7 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 
 	mut covered_enum_cap := 0
 	if cond_fsym.info is ast.Enum {
-		covered_enum_cap = (cond_fsym.info as ast.Enum).vals.len
+		covered_enum_cap = cond_fsym.info.vals.len
 	}
 	mut covered_enum := []string{cap: covered_enum_cap} // collects missing enum variant branches to avoid cstrict errors
 
@@ -268,7 +267,7 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 	for branch in node.branches {
 		if branch.is_else {
 			if cond_fsym.info is ast.Enum {
-				for val in (cond_fsym.info as ast.Enum).vals {
+				for val in cond_fsym.info.vals {
 					if val !in covered_enum {
 						g.writeln('case ${cname}${val}:')
 					}

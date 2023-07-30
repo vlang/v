@@ -27,11 +27,11 @@ fn newton_divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient [
 		digits: operand_b
 	}
 
-	k := bit_length(a) + bit_length(b) // a*b < 2**k
+	k := a.bit_len() + b.bit_len() // a*b < 2**k
 	mut x := integer_from_int(2) //  0 < x < 2**(k+1)/b  // initial guess for convergence
 	// https://en.wikipedia.org/wiki/Division_algorithm#Newton%E2%80%93Raphson_division
 	// use 48/17 - 32/17.D (divisor)
-	initial_guess := (((integer_from_int(48) - (integer_from_int(32) * b)) * integer_from_i64(0x0f0f0f0f0f0f0f0f)).rshift(64)).neg() // / 17 == 0x11
+	initial_guess := (((integer_from_int(48) - (integer_from_int(32) * b)) * integer_from_i64(0x0f0f0f0f0f0f0f0f)).right_shift(64)).neg() // / 17 == 0x11
 	if initial_guess > zero_int {
 		x = initial_guess
 	}
@@ -39,12 +39,12 @@ fn newton_divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient [
 	pow2_k_plus_1 := pow2(k + 1) // outside of the loop to optimize allocatio
 	for lastx != x { // main loop
 		lastx = x
-		x = (x * (pow2_k_plus_1 - (x * b))).rshift(u32(k))
+		x = (x * (pow2_k_plus_1 - (x * b))).right_shift(u32(k))
 	}
 	if x * b < pow2(k) {
 		x.inc()
 	}
-	mut q := (a * x).rshift(u32(k))
+	mut q := (a * x).right_shift(u32(k))
 	// possible adjustments. see literature
 	if q * b > a {
 		q.dec()
@@ -61,6 +61,7 @@ fn newton_divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient [
 }
 
 // bit_length returns the number of bits needed to represent the absolute value of the integer a.
+[deprecated: 'use a.bit_len() instead']
 [inline]
 pub fn bit_length(a Integer) int {
 	return a.digits.len * 32 - bits.leading_zeros_32(a.digits.last())
@@ -141,9 +142,9 @@ fn karatsuba_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage 
 	subtract_in_place(mut p_2, storage) // p_1
 	subtract_in_place(mut p_2, p_3)
 
-	// return p_1.lshift(2 * u32(half * 32)) + p_2.lshift(u32(half * 32)) + p_3
-	lshift_digits_in_place(mut storage, 2 * half)
-	lshift_digits_in_place(mut p_2, half)
+	// return p_1.left_shift(2 * u32(half * 32)) + p_2.left_shift(u32(half * 32)) + p_3
+	left_shift_digits_in_place(mut storage, 2 * half)
+	left_shift_digits_in_place(mut p_2, half)
 	add_in_place(mut storage, p_2)
 	add_in_place(mut storage, p_3)
 
@@ -224,21 +225,22 @@ fn toom3_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u3
 	ptemp += a1
 	qtemp += b1
 	p1 := ptemp * qtemp
-	p2 := ((ptemp + a2).lshift(1) - a0) * ((qtemp + b2).lshift(1) - b0)
+	p2 := ((ptemp + a2).left_shift(1) - a0) * ((qtemp + b2).left_shift(1) - b0)
 	pinf := a2 * b2
 
-	mut t2 := (p2 - vm1) / three_int
-	mut tm1 := (p1 - vm1).rshift(1)
+	mut t2, _ := (p2 - vm1).div_mod_internal(three_int)
+	mut tm1 := (p1 - vm1).right_shift(1)
 	mut t1 := p1 - p0
-	t2 = (t2 - t1).rshift(1)
+	t2 = (t2 - t1).right_shift(1)
 	t1 = (t1 - tm1 - pinf)
-	t2 = t2 - pinf.lshift(1)
+	t2 = t2 - pinf.left_shift(1)
 	tm1 = tm1 - t2
 
 	// shift amount
 	s := u32(k) << 5
 
-	result := (((pinf.lshift(s) + t2).lshift(s) + t1).lshift(s) + tm1).lshift(s) + p0
+	result := (((pinf.left_shift(s) + t2).left_shift(s) + t1).left_shift(s) + tm1).left_shift(s) +
+		p0
 
 	storage = result.digits.clone()
 }
@@ -255,7 +257,7 @@ fn pow2(k int) Integer {
 
 // optimized left shift in place. amount must be positive
 [direct_array_access]
-fn lshift_digits_in_place(mut a []u32, amount int) {
+fn left_shift_digits_in_place(mut a []u32, amount int) {
 	a_len := a.len
 	// control or allocate capacity
 	for _ in a_len .. a_len + amount {
@@ -271,7 +273,7 @@ fn lshift_digits_in_place(mut a []u32, amount int) {
 
 // optimized right shift in place. amount must be positive
 [direct_array_access]
-fn rshift_digits_in_place(mut a []u32, amount int) {
+fn right_shift_digits_in_place(mut a []u32, amount int) {
 	for index := 0; index < a.len - amount; index++ {
 		a[index] = a[index + amount]
 	}

@@ -24,9 +24,6 @@ jobs:
       PKG_CONFIG_PATH: /usr/local/opt/pkgconfig:/usr/local/opt/libpq/lib/pkgconfig:/usr/local/opt/openssl@3/lib/pkgconfig:/opt/homebrew/lib/pkgconfig:/opt/homebrew/opt/libpq/lib/pkgconfig:/opt/homebrew/opt/openssl@3/lib/pkgconfig
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: 16
       - name: Install dependencies
         run: |
           echo "PKG_CONFIG_PATH is '$PKG_CONFIG_PATH'"
@@ -68,10 +65,10 @@ jobs:
         run: VJOBS=1 ./v test-self
       - name: Build examples
         run: ./v build-examples
-      - name: Build examples with -autofree
-        run: |
-          ./v -autofree -o tetris examples/tetris/tetris.v
-          ./v -autofree -o blog tutorials/building_a_simple_web_blog_with_vweb/code/blog
+      - name: Build tetris with -autofree
+        run: ./v -autofree -o tetris examples/tetris/tetris.v
+      - name: Build blog tutorial with -autofree
+        run: ./v -autofree -o blog tutorials/building_a_simple_web_blog_with_vweb/code/blog
       - name: Build examples with -prod
         run: |
           ./v -prod examples/news_fetcher.v

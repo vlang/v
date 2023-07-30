@@ -40,7 +40,7 @@ pub fn (t Time) local() Time {
 }
 
 // in most systems, these are __quad_t, which is an i64
-struct C.timespec {
+pub struct C.timespec {
 mut:
 	tv_sec  i64
 	tv_nsec i64
@@ -125,7 +125,7 @@ pub fn (d Duration) timespec() C.timespec {
 	return ts
 }
 
-// return timespec of 1970/1/1
+// zero_timespec returns the calendar time in seconds and nanoseconds of the beginning of the Unix epoch.
 pub fn zero_timespec() C.timespec {
 	ts := C.timespec{
 		tv_sec: 0
@@ -134,7 +134,7 @@ pub fn zero_timespec() C.timespec {
 	return ts
 }
 
-// sleep makes the calling thread sleep for a given duration (in nanoseconds).
+// sleep suspends the execution of the calling thread for a given duration (in nanoseconds).
 pub fn sleep(duration Duration) {
 	mut req := C.timespec{duration / second, duration % second}
 	rem := C.timespec{}

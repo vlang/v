@@ -385,12 +385,12 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		}
 	}
 	// Args
-	args2, are_args_type_only, mut is_variadic := p.fn_args()
+	args2, are_params_type_only, mut is_variadic := p.fn_args()
 	if is_c2v_variadic {
 		is_variadic = true
 	}
 	params << args2
-	if !are_args_type_only {
+	if !are_params_type_only {
 		for k, param in params {
 			if p.scope.known_var(param.name) {
 				p.error_with_pos('redefinition of parameter `${param.name}`', param.pos)
@@ -567,8 +567,8 @@ run them via `v file.v` instead',
 		p.inside_unsafe_fn = false
 		p.inside_fn = false
 	}
-	if !no_body && are_args_type_only {
-		p.error_with_pos('functions with type only args can not have bodies', body_start_pos)
+	if !no_body && are_params_type_only {
+		p.error_with_pos('functions with type only params can not have bodies', body_start_pos)
 		return ast.FnDecl{
 			scope: 0
 		}
@@ -764,6 +764,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			name: arg.name
 			typ: arg.typ
 			is_mut: arg.is_mut
+			is_auto_deref: arg.is_mut || arg.is_auto_rec
 			pos: arg.pos
 			is_used: true
 			is_arg: true

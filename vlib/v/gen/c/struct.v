@@ -22,7 +22,12 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		g.empty_line = false
 		g.write(s)
 	}
-	styp := g.typ(g.table.unaliased_type(node.typ)).replace('*', '')
+	unalised_typ := g.table.unaliased_type(node.typ)
+	styp := if g.table.sym(unalised_typ).language == .v {
+		g.typ(unalised_typ).replace('*', '')
+	} else {
+		g.typ(node.typ)
+	}
 	mut shared_styp := '' // only needed for shared x := St{...
 	if styp in c.skip_struct_init {
 		// needed for c++ compilers
@@ -54,7 +59,12 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		shared_styp = g.typ(shared_typ)
 		g.writeln('(${shared_styp}*)__dup${shared_styp}(&(${shared_styp}){.mtx = {0}, .val =(${styp}){')
 	} else if is_amp || g.inside_cast_in_heap > 0 {
-		g.write('(${styp}*)memdup(&(${styp}){')
+		if node.typ.has_flag(.option) {
+			basetyp := g.base_type(node.typ)
+			g.write('(${basetyp}*)memdup(&(${basetyp}){')
+		} else {
+			g.write('(${styp}*)memdup(&(${styp}){')
+		}
 	} else if node.typ.is_ptr() {
 		basetyp := g.typ(node.typ.set_nr_muls(0))
 		if is_multiline {
@@ -184,7 +194,6 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 					continue
 				}
 				if sfield.expected_type.has_flag(.generic) && g.cur_fn != unsafe { nil } {
-					mut mut_table := unsafe { &ast.Table(g.table) }
 					mut t_generic_names := g.table.cur_fn.generic_names.clone()
 					mut t_concrete_types := g.cur_concrete_types.clone()
 					ts := g.table.sym(node.typ)
@@ -202,15 +211,15 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 									t_concrete_types << g.cur_concrete_types[index]
 								}
 							} else {
-								if tt := mut_table.resolve_generic_to_concrete(t_typ,
-									g.table.cur_fn.generic_names, g.cur_concrete_types)
+								if tt := g.table.resolve_generic_to_concrete(t_typ, g.table.cur_fn.generic_names,
+									g.cur_concrete_types)
 								{
 									t_concrete_types << tt
 								}
 							}
 						}
 					}
-					if tt := mut_table.resolve_generic_to_concrete(sfield.expected_type,
+					if tt := g.table.resolve_generic_to_concrete(sfield.expected_type,
 						t_generic_names, t_concrete_types)
 					{
 						sfield.expected_type = tt
@@ -301,7 +310,12 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
 		g.write('}, sizeof(${shared_styp}))')
 	} else if is_amp || g.inside_cast_in_heap > 0 {
-		g.write(', sizeof(${styp}))')
+		if node.typ.has_flag(.option) {
+			basetyp := g.base_type(node.typ)
+			g.write(', sizeof(${basetyp}))')
+		} else {
+			g.write(', sizeof(${styp}))')
+		}
 	}
 }
 
@@ -513,8 +527,6 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 	} else {
 		g.type_definitions.writeln('\tEMPTY_STRUCT_DECLARATION;')
 	}
-	// g.type_definitions.writeln('} $name;\n')
-	//
 	ti_attrs := if !g.is_cc_msvc && s.attrs.contains('packed') {
 		'__attribute__((__packed__))'
 	} else {
@@ -524,8 +536,10 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 	if !is_anon {
 		g.type_definitions.write_string(';')
 	}
-	g.type_definitions.writeln('\n')
-	g.type_definitions.writeln(post_pragma)
+	g.type_definitions.writeln('')
+	if post_pragma.len > 0 {
+		g.type_definitions.writeln(post_pragma)
+	}
 }
 
 fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Language) {

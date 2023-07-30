@@ -72,7 +72,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			}
 			if field.has_default_expr {
 				c.expected_type = field.typ
-				field.default_expr_typ = c.expr(field.default_expr)
+				field.default_expr_typ = c.expr(mut field.default_expr)
 				for mut symfield in struct_sym.info.fields {
 					if symfield.name == field.name {
 						symfield.default_expr_typ = field.default_expr_typ
@@ -88,8 +88,12 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			if field.typ.has_flag(.result) {
 				c.error('struct field does not support storing Result', field.option_pos)
 			}
-			c.ensure_type_exists(field.typ, field.type_pos) or { return }
-			c.ensure_generic_type_specify_type_names(field.typ, field.type_pos) or { return }
+			if !c.ensure_type_exists(field.typ, field.type_pos) {
+				continue
+			}
+			if !c.ensure_generic_type_specify_type_names(field.typ, field.type_pos) {
+				continue
+			}
 			if field.typ.has_flag(.generic) {
 				has_generic_types = true
 			}
@@ -366,7 +370,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 		c.table.unwrap_generic_type(node.typ, c.table.cur_fn.generic_names, c.table.cur_concrete_types)
 	}
 	if !is_field_zero_struct_init {
-		c.ensure_type_exists(node.typ, node.pos) or {}
+		c.ensure_type_exists(node.typ, node.pos)
 	}
 	type_sym := c.table.sym(node.typ)
 	if !c.inside_unsafe && type_sym.kind == .sum_type {
@@ -427,7 +431,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 		.any {
 			// `T{ foo: 22 }`
 			for mut init_field in node.init_fields {
-				init_field.typ = c.expr(init_field.expr)
+				init_field.typ = c.expr(mut init_field.expr)
 				init_field.expected_type = init_field.typ
 			}
 			sym := c.table.sym(c.unwrap_generic(node.typ))
@@ -510,7 +514,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				exp_type = field_info.typ
 				exp_type_sym := c.table.sym(exp_type)
 				c.expected_type = exp_type
-				got_type = c.expr(init_field.expr)
+				got_type = c.expr(mut init_field.expr)
 				got_type_sym := c.table.sym(got_type)
 				if got_type == ast.void_type {
 					c.error('`${init_field.expr}` (no value) used as value', init_field.pos)
@@ -595,6 +599,13 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 					for struct_field in struct_fields {
 						inited_fields << struct_field.name
 					}
+				}
+				expected_type_sym := c.table.final_sym(init_field.expected_type)
+				if expected_type_sym.kind in [.string, .array, .map, .array_fixed, .chan, .struct_]
+					&& init_field.expr.is_nil() && !init_field.expected_type.is_ptr()
+					&& mut init_field.expr is ast.UnsafeExpr {
+					c.error('cannot assign `nil` to struct field `${init_field.name}` with type `${expected_type_sym.name}`',
+						init_field.expr.pos.extend(init_field.expr.expr.pos()))
 				}
 			}
 			// Check uninitialized refs/sum types
@@ -708,7 +719,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 		else {}
 	}
 	if node.has_update_expr {
-		update_type := c.expr(node.update_expr)
+		update_type := c.expr(mut node.update_expr)
 		node.update_expr_type = update_type
 		if node.update_expr is ast.ComptimeSelector {
 			c.error('cannot use struct update syntax in compile time expressions', node.update_expr_pos)

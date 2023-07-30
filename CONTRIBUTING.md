@@ -84,7 +84,13 @@ accordingly in the steps below.)
    `https://github.com/YOUR_GITHUB_USERNAME/v` .
 2. Clone the main v repository https://github.com/vlang/v to a local folder on
    your computer, say named nv/ (`git clone https://github.com/vlang/v nv`)
-3. `cd nv`
+3. `cd nv`   
+3.1 (optional) Run these commands, which ensure that all your code will be 
+   automatically formatted, before commiting:
+   ```
+   cp cmd/tools/git_pre_commit_hook.vsh .git/hooks/pre-commit
+   chmod 755 .git/hooks/pre-commit
+   ```
 4. `git remote add pullrequest https://github.com/YOUR_GITHUB_USERNAME/v`
 
    Note: The remote named `pullrequest` should point to YOUR own forked repo, not the
@@ -94,7 +100,9 @@ accordingly in the steps below.)
 
 5. When finished with a feature/bugfix/change, you can:
 `git checkout -b fix_alabala`
-   - Don't forget to keep formatting standards, run `v fmt -w YOUR_MODIFIED_FILES` before committing
+   - Don't forget to keep formatting standards, run `v fmt -w YOUR_MODIFIED_FILES`
+   before committing (if you have not run the commands from 3.1)
+   
 6. `git push pullrequest` Note: The `pullrequest` remote was setup on step 4
 
 7. On GitHub's web interface, go to: https://github.com/vlang/v/pulls
@@ -141,6 +149,12 @@ command.
 
 1. `hub clone vlang/v my_v`
 2. `cd my_v`
+2.1 (optional) Run these commands, which ensure that all your code will be 
+   automatically formatted, before commiting:
+   ```
+   cp cmd/tools/git_pre_commit_hook.vsh .git/hooks/pre-commit
+   chmod 755 .git/hooks/pre-commit
+   ```
 3. `hub fork --remote-name pullrequest`
 
 4. `git checkout -b my_cool_feature` # Step 4 is better done *once per each new
