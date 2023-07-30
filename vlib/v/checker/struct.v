@@ -155,6 +155,9 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 									true)
 							}
 						}
+					} else if c.table.final_sym(field.typ).kind == .function
+						&& field.default_expr_typ.is_pointer() {
+						continue
 					} else {
 						c.error('incompatible initializer for field `${field.name}`: ${err.msg()}',
 							field.default_expr.pos())
