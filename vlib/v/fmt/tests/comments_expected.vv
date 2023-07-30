@@ -6,26 +6,23 @@ comment
 */
 
 fn fun() int {
-	// comment zero
-	return 0 // another comment
+	return /* comment zero */ 0 // another comment
 }
 
 fn mr_fun() (int, int) {
-	// one comment
-	// another comment
-	return 1, 2
+	return /* one comment */ 1, /* another comment */ 2
 }
 
 fn single_line_blocks() {
-	// 1
+	/* 1 */
 	println('')
-	// 2
+	/* 2 */
 	println('')
-	// 3
-	// 4
+	/* 3 */
+	/* 4 */
 	println('')
 	// 5
-	// 6
+	/* 6 */
 }
 
 fn main() {
@@ -38,38 +35,28 @@ fn main() {
 	/*
 	block3
 	*/
-	// this is a comment
-	a := 1
-	// and another comment
-	// just to make it worse
-	b, c := a, 2
+	a := /* this is a comment */ 1
+	b, c := /* and another comment */ a, /* just to make it worse */ 2
 	d := c // and an extra one
 	e := c
 	// more comments = more good
 	arr := [
-		// block foo bar
+		/* block foo bar */
 		//   inline foo bar
 		0,
 	]
-	// before arg comment
-	// after arg comment
-	println('this is a test')
-	// before if expr
-	// after if expr
-	if true {
+	println( /* before arg comment */ 'this is a test' /* after arg comment */ )
+	if /* before if expr */ true /* after if expr */  {
 		println('if')
 	}
 	// before else if
-	// between else if
-	else if false {
+	else if /* between else if */ false {
 		println('else if')
 	}
 	// before else
-	// after else
 	else {
 		println('else')
 	}
-	// empty return
 	return
 }
 
@@ -104,47 +91,37 @@ fn between_if_branches() {
 	}
 }
 
-// comments
-for {
+for // comments
+ {
 	break
 }
 
-// comments
-for {
+for /* comments */ {
 	break
 }
 
-// comments
-for i := 0; i < 1; i++ {
+for i := 0; i < 1; i++ // comments
+ {
 	break
 }
 
-// comments
-for i := 0; i < 1; i++ {
+for i := 0; i < 1; i++ /* comments */ {
 	break
 }
 
-// comments1
-// comments2
-// comments3
-// comments4
-for i := 0; i < 1; i++ {
+for /* comments1 */ i := 0; /* comments2 */ i < 1; /* comments3 */ i++ /* comments4 */ {
 	break
 }
 
-// comments
-for _ in [1, 2] {
+for _ in [1, 2] /* comments */ {
 	break
 }
 
-// comments
-for _ in [1, 2] {
+for _ in [1, 2] // comments
+ {
 	break
 }
 
-// comments1
-// comments2
-// comments3
-for _ in [1, 2] {
+for /* comments1 */ _ in /* comments2 */ [1, 2] /* comments3 */ {
 	break
 }
