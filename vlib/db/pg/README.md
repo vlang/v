@@ -54,8 +54,10 @@ Read this section to learn how to install and connect to PostgreSQL
 
 ## Using Parameterized Queries
 
-Parameterized queries (exec_param, exec_param2, exec_param_many) in V require the use of the following syntax: ($1) ($2)...($n). The number following the $ specifies which parameter from the argument array to use.
-```v
+Parameterized queries (exec_param, etc.) in V require the use of the following syntax: ($1) ($2)...($n). 
+The number following the $ specifies which parameter from the argument array to use.
+
+```v ignore
 db.exec_param_many('INSERT INTO users (username, password) VALUES ($1, $2)', ['tom', 'securePassword']) or { panic(err) }
 db.exec_param('SELECT * FROM users WHERE username = ($1) limit 1', 'tom') or { panic(err) }
 ```
