@@ -292,7 +292,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	}
 	mut name := ''
 	mut type_sym := p.table.sym(rec.typ)
-	name_pos := p.tok.pos()
+	mut name_pos := p.tok.pos()
 	if p.tok.kind == .name {
 		mut check_name := ''
 		// TODO high order fn
@@ -304,6 +304,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			p.check(.dot)
 			check_name = p.check_name()
 			name = type_name + '__static__' + check_name // "foo__bar"
+			name_pos = name_pos.extend(p.prev_tok.pos())
 		} else {
 			check_name = if language == .js { p.check_js_name() } else { p.check_name() }
 			name = check_name
@@ -451,6 +452,9 @@ run them via `v file.v` instead',
 					name_pos)
 			}
 		}
+	}
+	if is_method && is_static_type_method {
+		p.error_with_pos('cannot declare a static function as a receiver method', name_pos)
 	}
 	// Register
 	if is_method {
