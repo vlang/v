@@ -92,7 +92,7 @@ fn between_if_branches() {
 }
 
 for // comments
- {
+{
 	break
 }
 
@@ -101,7 +101,7 @@ for /* comments */ {
 }
 
 for i := 0; i < 1; i++ // comments
- {
+{
 	break
 }
 
@@ -118,7 +118,7 @@ for _ in [1, 2] /* comments */ {
 }
 
 for _ in [1, 2] // comments
- {
+{
 	break
 }
 

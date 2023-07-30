@@ -1264,7 +1264,10 @@ pub fn (mut f Fmt) for_c_stmt(node ast.ForCStmt) {
 	if after_inc_comments.len > 0 {
 		f.comments(after_inc_comments)
 	}
-	f.write(' {')
+	if f.out.len > 1 && !f.out.last_n(1)[0].is_space() {
+		f.write(' ')
+	}
+	f.write('{')
 	if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
 		f.writeln('')
 		f.stmts(node.stmts)
@@ -1309,7 +1312,10 @@ pub fn (mut f Fmt) for_in_stmt(node ast.ForInStmt) {
 	if after_comments.len > 0 {
 		f.comments(after_comments)
 	}
-	f.write(' {')
+	if f.out.len > 1 && !f.out.last_n(1)[0].is_space() {
+		f.write(' ')
+	}
+	f.write('{')
 	if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
 		f.writeln('')
 		f.stmts(node.stmts)
@@ -1324,10 +1330,9 @@ pub fn (mut f Fmt) for_stmt(node ast.ForStmt) {
 	f.write('for ')
 	if node.comments.len > 0 {
 		f.comments(node.comments)
-		f.write(' ')
 	}
 	f.expr(node.cond)
-	if !node.is_inf {
+	if f.out.len > 1 && !f.out.last_n(1)[0].is_space() {
 		f.write(' ')
 	}
 	f.write('{')
