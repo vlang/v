@@ -29,7 +29,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	if !c.ensure_type_exists(node.table_expr.typ, node.pos) {
 		return ast.void_type
 	}
-	mut table_sym := c.table.sym(c.unwrap_generic(node.table_expr.typ))
+	table_sym := c.table.sym(c.unwrap_generic(node.table_expr.typ))
 
 	if !c.check_orm_table_expr_type(node.table_expr) {
 		return ast.void_type

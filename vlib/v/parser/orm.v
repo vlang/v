@@ -25,7 +25,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	}
 
 	table_pos := p.tok.pos()
-	mut table_type := p.parse_type() // `User`
+	table_type := p.parse_type() // `User`
 
 	mut where_expr := ast.empty_expr
 	has_where := p.tok.kind == .name && p.tok.lit == 'where'
