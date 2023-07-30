@@ -26,7 +26,6 @@ fn (mut p Parser) sql_expr() ast.Expr {
 
 	table_pos := p.tok.pos()
 	mut table_type := p.parse_type() // `User`
-	// eprintln('parser: ${table_type} ${table_type.has_flag(.generic)}')
 
 	mut where_expr := ast.empty_expr
 	has_where := p.tok.kind == .name && p.tok.lit == 'where'
