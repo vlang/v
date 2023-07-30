@@ -25,7 +25,8 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	}
 
 	table_pos := p.tok.pos()
-	table_type := p.parse_type() // `User`
+	mut table_type := p.parse_type() // `User`
+	// eprintln('parser: ${table_type} ${table_type.has_flag(.generic)}')
 
 	mut where_expr := ast.empty_expr
 	has_where := p.tok.kind == .name && p.tok.lit == 'where'
@@ -80,6 +81,9 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		typ = ast.int_type
 	} else {
 		typ = ast.new_type(p.table.find_or_register_array(table_type))
+		if table_type.has_flag(.generic) {
+			typ = typ.set_flag(.generic)
+		}
 	}
 
 	p.check(.rcbr)

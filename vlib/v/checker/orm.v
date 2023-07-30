@@ -29,10 +29,17 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	if !c.ensure_type_exists(node.table_expr.typ, node.pos) {
 		return ast.void_type
 	}
-	table_sym := c.table.sym(node.table_expr.typ)
+	mut table_sym := c.table.sym(c.unwrap_generic(node.table_expr.typ))
 
 	if !c.check_orm_table_expr_type(node.table_expr) {
 		return ast.void_type
+	}
+
+	if node.typ.has_flag(.generic) {
+		node.typ = c.unwrap_generic(node.typ).set_flag(.result)
+	}
+	if node.table_expr.typ.has_flag(.generic) {
+		node.table_expr.typ = c.unwrap_generic(node.table_expr.typ)
 	}
 
 	old_ts := c.cur_orm_ts
@@ -180,7 +187,10 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	if !c.ensure_type_exists(node.table_expr.typ, node.pos) {
 		return ast.void_type
 	}
-	table_sym := c.table.sym(node.table_expr.typ)
+	table_sym := c.table.sym(c.unwrap_generic(node.table_expr.typ))
+	if node.table_expr.typ.has_flag(.generic) {
+		node.table_expr.typ = c.unwrap_generic(node.table_expr.typ)
+	}
 
 	if !c.check_orm_table_expr_type(node.table_expr) {
 		return ast.void_type
@@ -199,7 +209,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 			c.error('undefined ident: `${inserting_object_name}`', node.pos)
 			return ast.void_type
 		}
-		mut inserting_object_type := inserting_object.typ
+		mut inserting_object_type := c.unwrap_generic(inserting_object.typ)
 
 		if inserting_object_type.is_ptr() {
 			inserting_object_type = inserting_object.typ.deref()
@@ -569,7 +579,7 @@ fn (mut c Checker) check_db_expr(mut db_expr ast.Expr) bool {
 }
 
 fn (mut c Checker) check_orm_table_expr_type(type_node &ast.TypeNode) bool {
-	table_sym := c.table.sym(type_node.typ)
+	table_sym := c.table.sym(c.unwrap_generic(type_node.typ))
 
 	if table_sym.info !is ast.Struct {
 		c.orm_error('the table symbol `${table_sym.name}` has to be a struct', type_node.pos)
