@@ -14,14 +14,12 @@ pub enum CommentsLevel {
 // - has_nl: adds an newline at the end of a list of comments
 // - inline: line comments will be on the same line as the last statement
 // - level:  either .keep (don't indent), or .indent (increment indentation)
-// - iembed: a /* ... */ block comment used inside expressions; // comments the whole line
 // - prev_line: the line number of the previous token to save linebreaks
 [minify; params]
 pub struct CommentsOptions {
 	has_nl    bool = true
 	inline    bool
 	level     CommentsLevel
-	iembed    bool
 	prev_line int = -1
 }
 
@@ -44,7 +42,7 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 	if options.level == .indent {
 		f.indent++
 	}
-	if options.iembed {
+	if node.is_inline && !node.is_multi {
 		x := node.text.trim_left('\x01').trim_space()
 		if x.contains('\n') {
 			f.writeln('/*')
@@ -105,7 +103,9 @@ pub fn (mut f Fmt) comments(comments []ast.Comment, options CommentsOptions) {
 			f.write(' ')
 		}
 		f.comment(c, options)
-		if !options.iembed && (i < comments.len - 1 || options.has_nl) {
+		if c.is_inline && i < comments.len - 1 && !c.is_multi {
+			f.write(' ')
+		} else if (!c.is_inline || c.is_multi) && (i < comments.len - 1 || options.has_nl) {
 			f.writeln('')
 		}
 		prev_line = c.pos.last_line

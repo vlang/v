@@ -135,7 +135,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 		f.write('\t${volatile_prefix}${field.name} ')
 		// Handle comments between field name and type
 		before_len := f.line_len
-		f.comments(between_comments, iembed: true, has_nl: false)
+		f.comments(between_comments, has_nl: false)
 		comments_len := f.line_len - before_len
 		if field_aligns[field_align_i].line_nr < field.pos.line_nr {
 			field_align_i++

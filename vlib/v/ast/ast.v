@@ -532,10 +532,11 @@ pub:
 	method_idx            int
 	rec_mut               bool // is receiver mutable
 	rec_share             ShareType
-	language              Language  // V, C, JS
-	file_mode             Language  // whether *the file*, where a function was a '.c.v', '.js.v' etc.
-	no_body               bool      // just a definition `fn C.malloc()`
-	is_builtin            bool      // this function is defined in builtin/strconv
+	language              Language // V, C, JS
+	file_mode             Language // whether *the file*, where a function was a '.c.v', '.js.v' etc.
+	no_body               bool     // just a definition `fn C.malloc()`
+	is_builtin            bool     // this function is defined in builtin/strconv
+	name_pos              token.Pos
 	body_pos              token.Pos // function bodys position
 	file                  string
 	generic_names         []string
@@ -634,7 +635,8 @@ pub:
 	type_pos    token.Pos
 	is_hidden   bool // interface first arg
 pub mut:
-	typ Type
+	typ      Type
+	comments []Comment
 }
 
 pub fn (p &Param) specifier() string {
@@ -1195,6 +1197,7 @@ pub:
 	val_var    string
 	is_range   bool
 	pos        token.Pos
+	kv_pos     token.Pos
 	comments   []Comment
 	val_is_mut bool // `for mut val in vals {` means that modifying `val` will modify the array
 	// and the array cannot be indexed inside the loop
