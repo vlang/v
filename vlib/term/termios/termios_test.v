@@ -13,8 +13,8 @@ fn test_termios() {
 	tcgetattr(0, mut check_term)
 	assert check_term.c_lflag == silent_term.c_lflag
 
-	tcsetattr(0, C.TCSANOW, mut orginal_term)
+	tcsetattr(0, C.TCSANOW, mut original_term)
 
 	tcgetattr(0, mut check_term)
-	assert check_term.c_lflag == orginal_term.c_lflag
+	assert check_term.c_lflag == original_term.c_lflag
 }

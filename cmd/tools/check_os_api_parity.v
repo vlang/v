@@ -12,7 +12,7 @@ import term
 
 const (
 	base_os      = 'linux'
-	os_names     = ['linux', 'macos', 'windows']
+	os_names     = ['linux', 'macos', 'windows', 'freebsd', 'openbsd', 'solaris', 'termux']
 	skip_modules = [
 		'builtin.bare',
 		'builtin.linux_bare.old',

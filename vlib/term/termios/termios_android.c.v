@@ -41,7 +41,7 @@ fn C.ioctl(fd int, request u64, arg voidptr) int
 // for the underlying C.termios structure
 [inline]
 pub fn flag(value int) TcFlag {
-	return int(value)
+	return TcFlag(value)
 }
 
 // invert is a platform dependant way to bitwise NOT (~) TcFlag
@@ -85,4 +85,16 @@ pub fn ioctl(fd int, request u64, arg voidptr) int {
 	unsafe {
 		return C.ioctl(fd, request, arg)
 	}
+}
+
+// set_state applies the flags in the `new_state` to the descriptor `fd`.
+pub fn set_state(fd int, new_state Termios) int {
+	mut x := new_state
+	return tcsetattr(0, C.TCSANOW, mut x)
+}
+
+// disable_echo disables echoing characters as they are typed,
+// when that Termios state is later set with termios.set_state(fd,t)
+pub fn (mut t Termios) disable_echo() {
+	t.c_lflag &= invert(C.ECHO)
 }

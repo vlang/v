@@ -13,17 +13,15 @@ pub fn input_password(prompt string) !string {
 	if termios.tcgetattr(0, mut old_state) != 0 {
 		return last_error()
 	}
-	defer {
-		termios.tcsetattr(0, C.TCSANOW, mut old_state)
-		println('')
-	}
 
 	mut new_state := old_state
-
-	new_state.c_lflag &= termios.invert(C.ECHO) // Disable echoing of characters
-	termios.tcsetattr(0, C.TCSANOW, mut new_state)
+	new_state.disable_echo()
+	termios.set_state(0, new_state)
 
 	password := input_opt(prompt) or { return error('Failed to read password') }
 
+	termios.set_state(0, old_state)
+
+	println('')
 	return password
 }

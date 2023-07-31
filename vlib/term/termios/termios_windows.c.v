@@ -47,3 +47,13 @@ pub fn tcsetattr(fd int, optional_actions int, mut termios_p Termios) int {
 pub fn ioctl(fd int, request u64, arg voidptr) int {
 	return -1
 }
+
+// set_state applies the flags in the `new_state` to the descriptor `fd`.
+pub fn set_state(fd int, new_state Termios) int {
+	return -1
+}
+
+// disable_echo disables echoing characters as they are typed,
+// when that Termios state is later set with termios.set_state(fd,t)
+pub fn (mut t Termios) disable_echo() {
+}
