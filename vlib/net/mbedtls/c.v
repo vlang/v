@@ -124,9 +124,7 @@ mut:
 }
 
 [typedef]
-struct C.mbedtls_x509_crt {
-	next voidptr
-}
+struct C.mbedtls_x509_crt {}
 
 [typedef]
 struct C.mbedtls_x509_crl {}
