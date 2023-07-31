@@ -124,7 +124,9 @@ mut:
 }
 
 [typedef]
-struct C.mbedtls_x509_crt {}
+struct C.mbedtls_x509_crt {
+	next voidptr
+}
 
 [typedef]
 struct C.mbedtls_x509_crl {}
@@ -170,7 +172,12 @@ fn C.mbedtls_pk_parse_keyfile(&C.mbedtls_pk_context, &char, &char, voidptr, void
 
 fn C.mbedtls_net_connect(&C.mbedtls_net_context, &u8, &u8, int) int
 
-fn C.mbedtls_ssl_conf_own_cert(&C.mbedtls_ssl_config, &C.mbedtls_x509_crt, &C.mbedtls_pk_context)
+fn C.mbedtls_net_bind(&C.mbedtls_net_context, voidptr, &u8, int) int
+fn C.mbedtls_net_accept(&C.mbedtls_net_context, &C.mbedtls_net_context, voidptr, int, voidptr) int
+fn C.mbedtls_ssl_session_reset(&C.mbedtls_ssl_context)
+fn C.mbedtls_ssl_conf_authmode(&C.mbedtls_ssl_config, int)
+
+fn C.mbedtls_ssl_conf_own_cert(&C.mbedtls_ssl_config, &C.mbedtls_x509_crt, &C.mbedtls_pk_context) int
 fn C.mbedtls_ssl_conf_authmode(&C.mbedtls_ssl_config, int)
 fn C.mbedtls_ssl_conf_ca_chain(&C.mbedtls_ssl_config, &C.mbedtls_x509_crt, &C.mbedtls_x509_crl)
 fn C.mbedtls_ssl_conf_rng(&C.mbedtls_ssl_config, voidptr, &C.mbedtls_ctr_drbg_context)
