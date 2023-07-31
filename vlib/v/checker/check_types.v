@@ -173,7 +173,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 			return false
 		}
 	}
-	if expected.has_flag(.generic) {
+	if expected.has_flag(.generic) && !got.has_flag(.generic) {
 		return false
 	}
 	return true
