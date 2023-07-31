@@ -135,3 +135,15 @@ pub fn (t Time) strftime(fmt string) string {
 	C.strftime(&buf[0], usize(sizeof(buf)), fmt_c, tm)
 	return unsafe { cstring_to_vstring(&char(&buf[0])) }
 }
+
+// some *nix system functions (e.g. `C.poll()`, C.epoll_wait()) accept an `int`
+// value as *timeout in milliseconds* with the special value `-1` meaning "infinite"
+pub fn (d Duration) sys_milliseconds() int {
+	if d > 2147483647 * millisecond { // treat 2147483647000001 .. C.INT64_MAX as "infinite"
+		return -1
+	} else if d <= 0 {
+		return 0 // treat negative timeouts as 0 - consistent with Unix behaviour
+	} else {
+		return int(d / millisecond)
+	}
+}

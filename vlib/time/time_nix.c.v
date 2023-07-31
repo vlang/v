@@ -95,12 +95,12 @@ fn linux_utc() Time {
 }
 
 // dummy to compile with all compilers
-pub fn win_now() Time {
+fn win_now() Time {
 	return Time{}
 }
 
 // dummy to compile with all compilers
-pub fn win_utc() Time {
+fn win_utc() Time {
 	return Time{}
 }
 
@@ -125,15 +125,6 @@ pub fn (d Duration) timespec() C.timespec {
 	return ts
 }
 
-// zero_timespec returns the calendar time in seconds and nanoseconds of the beginning of the Unix epoch.
-pub fn zero_timespec() C.timespec {
-	ts := C.timespec{
-		tv_sec: 0
-		tv_nsec: 0
-	}
-	return ts
-}
-
 // sleep suspends the execution of the calling thread for a given duration (in nanoseconds).
 pub fn sleep(duration Duration) {
 	mut req := C.timespec{duration / second, duration % second}
@@ -145,17 +136,5 @@ pub fn sleep(duration Duration) {
 		} else {
 			break
 		}
-	}
-}
-
-// some *nix system functions (e.g. `C.poll()`, C.epoll_wait()) accept an `int`
-// value as *timeout in milliseconds* with the special value `-1` meaning "infinite"
-pub fn (d Duration) sys_milliseconds() int {
-	if d > C.INT32_MAX * millisecond { // treat 2147483647000001 .. C.INT64_MAX as "infinite"
-		return -1
-	} else if d <= 0 {
-		return 0 // treat negative timeouts as 0 - consistent with Unix behaviour
-	} else {
-		return int(d / millisecond)
 	}
 }

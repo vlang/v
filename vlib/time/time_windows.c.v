@@ -171,7 +171,7 @@ fn win_utc() Time {
 }
 
 // unix_time returns Unix time.
-pub fn (st SystemTime) unix_time() i64 {
+fn (st SystemTime) unix_time() i64 {
 	tt := C.tm{
 		tm_sec: st.second
 		tm_min: st.minute
@@ -184,32 +184,32 @@ pub fn (st SystemTime) unix_time() i64 {
 }
 
 // dummy to compile with all compilers
-pub fn darwin_now() Time {
+fn darwin_now() Time {
 	return Time{}
 }
 
 // dummy to compile with all compilers
-pub fn linux_now() Time {
+fn linux_now() Time {
 	return Time{}
 }
 
 // dummy to compile with all compilers
-pub fn solaris_now() Time {
+fn solaris_now() Time {
 	return Time{}
 }
 
 // dummy to compile with all compilers
-pub fn darwin_utc() Time {
+fn darwin_utc() Time {
 	return Time{}
 }
 
 // dummy to compile with all compilers
-pub fn linux_utc() Time {
+fn linux_utc() Time {
 	return Time{}
 }
 
 // dummy to compile with all compilers
-pub fn solaris_utc() Time {
+fn solaris_utc() Time {
 	return Time{}
 }
 
@@ -222,16 +222,4 @@ pub struct C.timeval {
 // sleep makes the calling thread sleep for a given duration (in nanoseconds).
 pub fn sleep(duration Duration) {
 	C.Sleep(int(duration / millisecond))
-}
-
-// some Windows system functions (e.g. `C.WaitForSingleObject()`) accept an `u32`
-// value as *timeout in milliseconds* with the special value `u32(-1)` meaning "infinite"
-pub fn (d Duration) sys_milliseconds() u32 {
-	if d >= u32(-1) * millisecond { // treat 4294967295000000 .. C.INT64_MAX as "infinite"
-		return u32(-1)
-	} else if d <= 0 {
-		return 0 // treat negative timeouts as 0 - consistent with Unix behaviour
-	} else {
-		return u32(d / millisecond)
-	}
 }
