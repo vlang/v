@@ -25,15 +25,25 @@ pub mut:
 }
 
 // create_image creates an `Image` from `file`.
-pub fn (ctx &Context) create_image(file string) !Image {
-	// println('\ncreate_image("$file")')
+pub fn (mut ctx Context) create_image(file string) !Image {
 	if !os.exists(file) {
-		return error('image file "${file}" not found')
+		$if android {
+			image_data := os.read_apk_asset(file)!
+			mut image := ctx.create_image_from_byte_array(image_data)!
+
+			image.path = file
+
+			return image
+		} $else {
+			return error('image file "${file}" not found')
+		}
 	}
+
 	$if macos {
 		if ctx.native_rendering {
 			// return C.darwin_create_image(file)
 			mut img := C.darwin_create_image(file)
+
 			// println('created macos image: $img.path w=$img.width')
 			// C.printf('p = %p\n', img.data)
 			img.id = ctx.image_cache.len
@@ -43,6 +53,7 @@ pub fn (ctx &Context) create_image(file string) !Image {
 			return img
 		}
 	}
+
 	if !gfx.is_valid() {
 		// Sokol is not initialized yet, add stbi object to a queue/cache
 		// ctx.image_queue << file
