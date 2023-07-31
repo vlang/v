@@ -644,6 +644,7 @@ pre {
     position: relative;
     /* IE11 */
     position: sticky;
+    height: 100vh;
     position: -webkit-sticky;
     align-self: flex-start;
     top: 56px;
