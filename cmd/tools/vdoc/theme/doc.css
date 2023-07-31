@@ -157,8 +157,6 @@ body {
   fill: var(--menu-toggle-icon-color);
 }
 .doc-nav > .heading-container {
-  position: relative;
-  /* IE11 */
   position: sticky;
   position: -webkit-sticky;
   top: 0;
@@ -193,7 +191,6 @@ body {
   cursor: pointer;
   fill: #fff;
   display: flex;
-  visibility: hidden;
 }
 .doc-nav
   > .heading-container
@@ -379,7 +376,6 @@ body {
   padding: 5rem 0 2rem 0;
   margin-top: -4rem;
   overflow: hidden;
-  word-break: break-all; /* IE11 */
   word-break: break-word;
 }
 .doc-content > .doc-node.const:nth-child(2) {
@@ -641,8 +637,6 @@ pre {
     padding: 0rem 2rem 1rem 2rem;
   }
   .doc-toc {
-    position: relative;
-    /* IE11 */
     position: sticky;
     height: 100vh;
     position: -webkit-sticky;

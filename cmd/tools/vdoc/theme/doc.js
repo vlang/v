@@ -1,9 +1,7 @@
 (function () {
-    if (document.body.scrollIntoView) {
-        const docnav = document.querySelector('.doc-nav');
-        const active = docnav.querySelector('li.active');
-        active?.scrollIntoView({ block: 'center', inline: 'nearest' });
-    }
+    const docnav = document.querySelector('.doc-nav');
+    const active = docnav.querySelector('li.active');
+    active?.scrollIntoView({ block: 'center', inline: 'nearest' });
     setupMobileToggle();
     setupDarkMode();
     setupScrollSpy();
@@ -70,10 +68,6 @@ function setupDarkMode() {
         localStorage.setItem('dark-mode', isDarkModeEnabled);
         darkModeToggle.setAttribute('aria-checked', isDarkModeEnabled)
     });
-    // Check if css var() is supported and enable dark mode toggle
-    if (window.CSS && CSS.supports('color', 'var(--fake-var)')) {
-        darkModeToggle.style.visibility = 'unset';
-    }
 }
 
 function setupSearch() {
