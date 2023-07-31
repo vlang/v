@@ -1,7 +1,8 @@
-fn main() { // main
+fn /* main */ main() {
 	return
 }
 
-fn print_hi() { // hi
+fn // hi
+ print_hi() {
 	println('hi')
 }

@@ -82,11 +82,13 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 }
 
 fn (mut g Gen) dump_expr_definitions() {
+	mut dump_already_generated_fns := map[string]bool{}
 	mut dump_typedefs := map[string]bool{}
 	mut dump_fns := strings.new_builder(100)
 	mut dump_fn_defs := strings.new_builder(100)
 	for dump_type, cname in g.table.dumps {
 		dump_sym := g.table.sym(dump_type)
+		// eprintln('>>> dump_type: $dump_type | cname: $cname | dump_sym: $dump_sym.name')
 		mut name := cname
 		if dump_sym.language == .c {
 			name = name[3..]
@@ -147,6 +149,13 @@ fn (mut g Gen) dump_expr_definitions() {
 		}
 		dump_fn_name := '_v_dump_expr_${name}' +
 			(if is_ptr { '_ptr'.repeat(typ.nr_muls()) } else { '' })
+
+		// protect against duplicate declarations:
+		if dump_already_generated_fns[dump_fn_name] {
+			continue
+		}
+		dump_already_generated_fns[dump_fn_name] = true
+
 		dump_fn_defs.writeln('${str_dumparg_ret_type} ${dump_fn_name}(string fpath, int line, string sexpr, ${str_dumparg_type} dump_arg);')
 		if g.writeln_fn_header('${str_dumparg_ret_type} ${dump_fn_name}(string fpath, int line, string sexpr, ${str_dumparg_type} dump_arg)', mut
 			dump_fns)

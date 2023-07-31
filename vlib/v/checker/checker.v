@@ -39,46 +39,49 @@ pub const (
 pub struct Checker {
 	pref &pref.Preferences = unsafe { nil } // Preferences shared from V struct
 pub mut:
-	table                     &ast.Table = unsafe { nil }
-	file                      &ast.File  = unsafe { nil }
-	nr_errors                 int
-	nr_warnings               int
-	nr_notices                int
-	errors                    []errors.Error
-	warnings                  []errors.Warning
-	notices                   []errors.Notice
-	error_lines               []int // to avoid printing multiple errors for the same line
-	expected_type             ast.Type
-	expected_or_type          ast.Type        // fn() or { 'this type' } eg. string. expected or block type
-	expected_expr_type        ast.Type        // if/match is_expr: expected_type
-	mod                       string          // current module name
-	const_var                 &ast.ConstField = unsafe { nil } // the current constant, when checking const declarations
-	const_deps                []string
-	const_names               []string
-	global_names              []string
-	locked_names              []string // vars that are currently locked
-	rlocked_names             []string // vars that are currently read-locked
-	in_for_count              int      // if checker is currently in a for loop
-	should_abort              bool     // when too many errors/warnings/notices are accumulated, .should_abort becomes true. It is checked in statement/expression loops, so the checker can return early, instead of wasting time.
-	returns                   bool
-	scope_returns             bool
-	is_builtin_mod            bool // true inside the 'builtin', 'os' or 'strconv' modules; TODO: remove the need for special casing this
-	is_just_builtin_mod       bool // true only inside 'builtin'
-	is_generated              bool // true for `[generated] module xyz` .v files
-	inside_unsafe             bool // true inside `unsafe {}` blocks
-	inside_const              bool // true inside `const ( ... )` blocks
-	inside_anon_fn            bool // true inside `fn() { ... }()`
-	inside_ref_lit            bool // true inside `a := &something`
-	inside_defer              bool // true inside `defer {}` blocks
-	inside_fn_arg             bool // `a`, `b` in `a.f(b)`
-	inside_ct_attr            bool // true inside `[if expr]`
-	inside_x_is_type          bool // true inside the Type expression of `if x is Type {`
-	inside_comptime_for_field bool
-	skip_flags                bool      // should `#flag` and `#include` be skipped
-	fn_level                  int       // 0 for the top level, 1 for `fn abc() {}`, 2 for a nested fn, etc
-	smartcast_mut_pos         token.Pos // match mut foo, if mut foo is Foo
-	smartcast_cond_pos        token.Pos // match cond
-	ct_cond_stack             []ast.Expr
+	table                      &ast.Table = unsafe { nil }
+	file                       &ast.File  = unsafe { nil }
+	nr_errors                  int
+	nr_warnings                int
+	nr_notices                 int
+	errors                     []errors.Error
+	warnings                   []errors.Warning
+	notices                    []errors.Notice
+	error_lines                []int // to avoid printing multiple errors for the same line
+	expected_type              ast.Type
+	expected_or_type           ast.Type        // fn() or { 'this type' } eg. string. expected or block type
+	expected_expr_type         ast.Type        // if/match is_expr: expected_type
+	mod                        string          // current module name
+	const_var                  &ast.ConstField = unsafe { nil } // the current constant, when checking const declarations
+	const_deps                 []string
+	const_names                []string
+	global_names               []string
+	locked_names               []string // vars that are currently locked
+	rlocked_names              []string // vars that are currently read-locked
+	in_for_count               int      // if checker is currently in a for loop
+	should_abort               bool     // when too many errors/warnings/notices are accumulated, .should_abort becomes true. It is checked in statement/expression loops, so the checker can return early, instead of wasting time.
+	returns                    bool
+	scope_returns              bool
+	is_builtin_mod             bool // true inside the 'builtin', 'os' or 'strconv' modules; TODO: remove the need for special casing this
+	is_just_builtin_mod        bool // true only inside 'builtin'
+	is_generated               bool // true for `[generated] module xyz` .v files
+	inside_unsafe              bool // true inside `unsafe {}` blocks
+	inside_const               bool // true inside `const ( ... )` blocks
+	inside_anon_fn             bool // true inside `fn() { ... }()`
+	inside_ref_lit             bool // true inside `a := &something`
+	inside_defer               bool // true inside `defer {}` blocks
+	inside_fn_arg              bool // `a`, `b` in `a.f(b)`
+	inside_ct_attr             bool // true inside `[if expr]`
+	inside_x_is_type           bool // true inside the Type expression of `if x is Type {`
+	inside_comptime_for_field  bool
+	inside_generic_struct_init bool
+	cur_struct_generic_types   []ast.Type
+	cur_struct_concrete_types  []ast.Type
+	skip_flags                 bool      // should `#flag` and `#include` be skipped
+	fn_level                   int       // 0 for the top level, 1 for `fn abc() {}`, 2 for a nested fn, etc
+	smartcast_mut_pos          token.Pos // match mut foo, if mut foo is Foo
+	smartcast_cond_pos         token.Pos // match cond
+	ct_cond_stack              []ast.Expr
 mut:
 	stmt_level int // the nesting level inside each stmts list;
 	// .stmt_level is used to check for `evaluated but not used` ExprStmts like `1 << 1`
@@ -1626,18 +1629,11 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 		}
 		node.fields[i].typ = ast.mktyp(typ)
 		if mut field.expr is ast.IfExpr {
-			if field.expr.branches.len == 2 {
-				first_stmts := field.expr.branches[0].stmts
-				second_stmts := field.expr.branches[1].stmts
-				if first_stmts.len > 0 && first_stmts.last() is ast.ExprStmt
-					&& first_stmts.last().typ != ast.void_type {
+			for branch in field.expr.branches {
+				if branch.stmts.len > 0 && branch.stmts.last() is ast.ExprStmt
+					&& branch.stmts.last().typ != ast.void_type {
 					field.expr.is_expr = true
-					field.expr.typ = (first_stmts.last() as ast.ExprStmt).typ
-					field.typ = field.expr.typ
-				} else if second_stmts.len > 0 && second_stmts.last() is ast.ExprStmt
-					&& second_stmts.last().typ != ast.void_type {
-					field.expr.is_expr = true
-					field.expr.typ = (second_stmts.last() as ast.ExprStmt).typ
+					field.expr.typ = (branch.stmts.last() as ast.ExprStmt).typ
 					field.typ = field.expr.typ
 				}
 			}
@@ -2445,11 +2441,19 @@ fn (mut c Checker) stmts_ending_with_expression(mut stmts []ast.Stmt) {
 }
 
 fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
-	if typ.has_flag(.generic) && c.table.cur_fn != unsafe { nil } {
-		if t_typ := c.table.resolve_generic_to_concrete(typ, c.table.cur_fn.generic_names,
-			c.table.cur_concrete_types)
-		{
-			return t_typ
+	if typ.has_flag(.generic) {
+		if c.inside_generic_struct_init {
+			generic_names := c.cur_struct_generic_types.map(c.table.sym(it).name)
+			if t_typ := c.table.resolve_generic_to_concrete(typ, generic_names, c.cur_struct_concrete_types) {
+				return t_typ
+			}
+		}
+		if c.table.cur_fn != unsafe { nil } {
+			if t_typ := c.table.resolve_generic_to_concrete(typ, c.table.cur_fn.generic_names,
+				c.table.cur_concrete_types)
+			{
+				return t_typ
+			}
 		}
 	}
 	return typ
@@ -3210,7 +3214,7 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 			node.val = c.table.cur_fn.mod
 		}
 		.struct_name {
-			if c.table.cur_fn.is_method {
+			if c.table.cur_fn.is_method || c.table.cur_fn.is_static_type_method {
 				node.val = c.table.type_to_str(c.table.cur_fn.receiver.typ).all_after_last('.')
 			} else {
 				node.val = ''
@@ -3336,7 +3340,9 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		if func := c.table.find_fn(node.name) {
 			if func.generic_names.len > 0 {
 				concrete_types := node.concrete_types.map(c.unwrap_generic(it))
-				c.table.register_fn_concrete_types(func.fkey(), concrete_types)
+				if concrete_types.all(!it.has_flag(.generic)) {
+					c.table.register_fn_concrete_types(func.fkey(), concrete_types)
+				}
 			}
 		}
 		return info.typ
@@ -3500,7 +3506,9 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					concrete_types)
 				{
 					fn_type = typ_
-					c.table.register_fn_concrete_types(func.fkey(), concrete_types)
+					if concrete_types.all(!it.has_flag(.generic)) {
+						c.table.register_fn_concrete_types(func.fkey(), concrete_types)
+					}
 				}
 			}
 			node.name = name

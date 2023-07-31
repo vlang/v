@@ -1,0 +1,16 @@
+module main
+
+fn main() {
+}
+
+pub interface IOperateResult {
+mut:
+	// is_success
+	is_success bool
+	// is_show_msg
+	is_show_msg bool
+	// msg
+	msg string
+	// comment before method def
+	set_msg(msg string) // comment after method def
+}

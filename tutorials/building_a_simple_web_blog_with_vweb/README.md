@@ -49,7 +49,7 @@ V projects can be created anywhere and don't need to have a certain structure:
 ```bash
 mkdir blog
 cd blog
-v init
+touch blog.v
 ```
 
 First, let's create a simple hello world website:
@@ -203,11 +203,11 @@ since a DB connection doesn't have to be set up for each request.
 // blog.v
 fn main() {
 	mut app := App{
-		db: sqlite.connect(':memory:') or { panic(err) }
+		db: sqlite.connect(':memory:')!
 	}
 	sql app.db {
 		create table Article
-	}
+	}!
 
 	first_article := Article{
 		title: 'Hello, world!'
@@ -222,7 +222,7 @@ fn main() {
 	sql app.db {
 		insert first_article into Article
 		insert second_article into Article
-	}
+	}!
 	vweb.run(app, 8080)
 }
 ```
@@ -242,7 +242,7 @@ struct Article {
 pub fn (app &App) find_all_articles() []Article {
 	return sql app.db {
 		select from Article
-	}
+	} or { panic(err) }
 }
 ```
 
@@ -289,7 +289,7 @@ For example, if we only wanted to find articles with ids between 100 and 200, we
 
 return sql app.db {
 	select from Article where id >= 100 && id <= 200
-}
+} or { panic(err) }
 ```
 
 Retrieving a single article is very simple:
@@ -299,7 +299,7 @@ Retrieving a single article is very simple:
 pub fn (app &App) retrieve_article() ?Article {
 	return sql app.db {
 		select from Article limit 1
-	}
+	} or { panic(err) }[0]
 }
 ```
 
@@ -308,9 +308,8 @@ bad queries will always be handled by the developer:
 
 ```v ignore
 // article.v
-article := app.retrieve_article(10) or {
-	app.text('Article not found')
-	return
+article := app.retrieve_article() or {
+	return app.text('Article not found')
 }
 ```
 
@@ -349,7 +348,7 @@ pub fn (mut app App) new_article(title string, text string) vweb.Result {
 	println(article)
 	sql app.db {
 		insert article into Article
-	}
+	} or { panic(err) }
 	return app.redirect('/')
 }
 ```
@@ -402,7 +401,7 @@ If one wants to persist data they need to use a file instead of memory SQLite Da
 Replace the db setup code with this instead:
 
 ```
-db: sqlite.connect('blog.db') or { panic(err) }
+db: sqlite.connect('blog.db')!
 ```
 
 As we can see it attempts to open a file in the current directory named `blog.db`.

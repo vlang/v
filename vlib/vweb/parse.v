@@ -55,8 +55,8 @@ fn parse_attrs(name string, attrs []string) !([]http.Method, string, string, str
 	if path == '' {
 		path = '/${name}'
 	}
-	// Make path and host lowercase for case-insensitive comparisons
-	return methods, path.to_lower(), middleware, host.to_lower()
+	// Make host lowercase for case-insensitive comparisons
+	return methods, path, middleware, host.to_lower()
 }
 
 fn parse_query_from_url(url urllib.URL) map[string]string {

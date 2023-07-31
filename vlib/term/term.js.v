@@ -17,7 +17,8 @@ pub fn get_terminal_size() (int, int) {
 }
 
 // clear clears current terminal screen.
-pub fn clear() {
+pub fn clear() bool {
 	print('\x1b[2J')
 	print('\x1b[H')
+	return true
 }

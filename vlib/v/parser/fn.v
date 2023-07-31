@@ -292,7 +292,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	}
 	mut name := ''
 	mut type_sym := p.table.sym(rec.typ)
-	name_pos := p.tok.pos()
+	mut name_pos := p.tok.pos()
 	if p.tok.kind == .name {
 		mut check_name := ''
 		// TODO high order fn
@@ -304,6 +304,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			p.check(.dot)
 			check_name = p.check_name()
 			name = type_name + '__static__' + check_name // "foo__bar"
+			name_pos = name_pos.extend(p.prev_tok.pos())
 		} else {
 			check_name = if language == .js { p.check_js_name() } else { p.check_name() }
 			name = check_name
@@ -451,6 +452,9 @@ run them via `v file.v` instead',
 					name_pos)
 			}
 		}
+	}
+	if is_method && is_static_type_method {
+		p.error_with_pos('cannot declare a static function as a receiver method', name_pos)
 	}
 	// Register
 	if is_method {
@@ -616,6 +620,7 @@ run them via `v file.v` instead',
 		language: language
 		no_body: no_body
 		pos: start_pos.extend_with_last_line(end_pos, p.prev_tok.line_nr)
+		name_pos: name_pos
 		body_pos: body_start_pos
 		file: p.file_name
 		is_builtin: p.builtin_mod || p.mod in util.builtin_module_parts
@@ -863,6 +868,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 	if types_only {
 		mut arg_no := 1
 		for p.tok.kind != .rpar {
+			mut comments := p.eat_comments()
 			if p.tok.kind == .eof {
 				p.error_with_pos('expecting `)`', p.tok.pos())
 				return []ast.Param{}, false, false
@@ -922,6 +928,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 				p.error_with_pos('expecting `)`', p.prev_tok.pos())
 				return []ast.Param{}, false, false
 			}
+			comments << p.eat_comments()
 
 			if p.tok.kind == .comma {
 				if is_variadic {
@@ -950,6 +957,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 		}
 	} else {
 		for p.tok.kind != .rpar {
+			mut comments := p.eat_comments()
 			if p.tok.kind == .eof {
 				p.error_with_pos('expecting `)`', p.tok.pos())
 				return []ast.Param{}, false, false
@@ -962,6 +970,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 			}
 			mut arg_pos := [p.tok.pos()]
 			name := p.check_name()
+			comments << p.eat_comments()
 			mut arg_names := [name]
 			if name.len > 0 && p.fn_language == .v && name[0].is_capital() {
 				p.error_with_pos('parameter name must not begin with upper case letter (`${arg_names[0]}`)',
@@ -1027,6 +1036,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 				// derive flags, however nr_muls only needs to be set on the array elem type, so clear it on the arg type
 				typ = ast.new_type(p.table.find_or_register_array(typ)).derive(typ).set_nr_muls(0).set_flag(.variadic)
 			}
+			comments << p.eat_comments()
 			for i, arg_name in arg_names {
 				alanguage := p.table.sym(typ).language
 				if alanguage != .v {
@@ -1040,6 +1050,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 					is_shared: is_shared
 					typ: typ
 					type_pos: type_pos[i]
+					comments: comments
 				}
 				// if typ.typ.kind == .variadic && p.tok.kind == .comma {
 				if is_variadic && p.tok.kind == .comma && p.peek_tok.kind != .rpar {

@@ -1,3 +1,5 @@
+// vtest flaky: true
+// vtest retry: 4
 import os
 import term
 import rand
@@ -9,6 +11,8 @@ const vexe = @VEXE
 const vroot = @VMODROOT
 
 const diff_cmd = find_diff_cmd()
+
+const github_job = os.getenv('GITHUB_JOB')
 
 fn find_diff_cmd() string {
 	return diff.find_working_diff_command() or { '' }
@@ -33,6 +37,9 @@ fn test_node_exists() {
 		exit_because('node should be at least version 10, but is currently version: ${version}')
 	}
 	println('Using node version: ${version}')
+	// if github_job != '' && os.user_os() == 'macos' {
+	//	exit_because('program_test.v is flaky on macos')
+	//}
 }
 
 fn test_running_programs_compiled_with_the_js_backend() {
@@ -77,7 +84,7 @@ fn check_path(dir string, tests []string) !int {
 			println(found)
 			println('============\n')
 			println('diff:')
-			println(diff.color_compare_strings(diff_cmd, rand.ulid(), found, expected))
+			println(diff.color_compare_strings(diff_cmd, rand.ulid(), expected, found))
 			println('============\n')
 			nb_fail++
 		} else {

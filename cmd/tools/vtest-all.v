@@ -180,6 +180,15 @@ fn get_all_commands() []Command {
 			okmsg: 'V can compile 2048 with -skip-unused.'
 			rmfile: 'examples/2048/2048'
 		}
+		if _ := os.find_abs_path_of_executable('emcc') {
+			res << Command{
+				line: '${vexe} -os wasm32_emscripten examples/2048'
+				okmsg: 'V can compile 2048 with -os wasm32_emscripten, using emcc.'
+				rmfile: 'examples/2048/2048'
+			}
+		} else {
+			println('> emcc not found, skipping `v -os wasm32_emscripten examples/2048`.')
+		}
 		res << Command{
 			line: '${vexe} -skip-unused  -live examples/hot_reload/bounce.v'
 			okmsg: 'V can compile the hot code reloading bounce.v example with both: -skip-unused -live'

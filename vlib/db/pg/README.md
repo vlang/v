@@ -51,3 +51,14 @@ Read this section to learn how to install and connect to PostgreSQL
 [*Windows*](https://www.postgresqltutorial.com/install-postgresql);
 [*Linux*](https://www.postgresqltutorial.com/postgresql-getting-started/install-postgresql-linux);
 [*macOS*](https://www.postgresqltutorial.com/postgresql-getting-started/install-postgresql-macos).
+
+## Using Parameterized Queries
+
+Parameterized queries (exec_param, etc.) in V require the use of the following syntax: ($n). 
+
+The number following the $ specifies which parameter from the argument array to use.
+
+```v ignore
+db.exec_param_many('INSERT INTO users (username, password) VALUES ($1, $2)', ['tom', 'securePassword']) or { panic(err) }
+db.exec_param('SELECT * FROM users WHERE username = ($1) limit 1', 'tom') or { panic(err) }
+```

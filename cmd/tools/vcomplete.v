@@ -342,11 +342,19 @@ fn auto_complete(args []string) {
 				exit(0)
 			}
 			mut lines := []string{}
+			mut dirs := []string{}
+			mut files := []string{}
 			list := auto_complete_request(sub_args[1..])
 			for entry in list {
-				lines << 'compadd -U -S' + '""' + ' -- ' + "'${entry}';"
+				match true {
+					os.is_dir(entry) { dirs << entry }
+					os.is_file(entry) { files << entry }
+					else { lines << entry }
+				}
 			}
-			println(lines.join('\n'))
+			println('compadd -q -- ${lines.join(' ')}')
+			println('compadd -J "dirs" -X "directory" -d -- ${dirs.join(' ')}')
+			println('compadd -J "files" -X "file" -f -- ${files.join(' ')}')
 		}
 		'-h', '--help' {
 			println(help_text)

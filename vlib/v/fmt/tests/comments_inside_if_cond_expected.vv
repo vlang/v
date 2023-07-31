@@ -1,3 +1,2 @@
-// comments
-if true {
+if true /* comments */  {
 }

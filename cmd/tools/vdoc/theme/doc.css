@@ -98,7 +98,6 @@ body {
   height: 100%;
   padding-top: 56px;
   box-sizing: border-box;
-  overflow: hidden;
 }
 
 /** Reset for menus */
@@ -349,7 +348,6 @@ body {
 /* Main content */
 .doc-scrollview {
   height: 100%;
-  overflow-y: scroll;
 }
 .doc-container {
   display: flex;
@@ -649,8 +647,6 @@ pre {
     position: -webkit-sticky;
     align-self: flex-start;
     top: 56px;
-    height: auto;
-    height: 100vh;
     min-width: 200px;
     width: auto;
     max-width: 300px;

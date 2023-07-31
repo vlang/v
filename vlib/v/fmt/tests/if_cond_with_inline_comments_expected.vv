@@ -1,13 +1,12 @@
 fn main() {
 	a, b := true, true
 
-	// a
-	if a || b {
+	if a || b // a
+	  {
 		println('hi')
 	}
 
-	// a
-	if a || b {
+	if a || b /* a */  {
 		println('hi')
 	}
 }

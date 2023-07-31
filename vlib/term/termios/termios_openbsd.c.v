@@ -84,3 +84,15 @@ pub fn ioctl(fd int, request u64, arg voidptr) int {
 		return C.ioctl(fd, request, arg)
 	}
 }
+
+// set_state applies the flags in the `new_state` to the descriptor `fd`.
+pub fn set_state(fd int, new_state Termios) int {
+	mut x := new_state
+	return tcsetattr(0, C.TCSANOW, mut x)
+}
+
+// disable_echo disables echoing characters as they are typed,
+// when that Termios state is later set with termios.set_state(fd,t)
+pub fn (mut t Termios) disable_echo() {
+	t.c_lflag &= invert(C.ECHO)
+}

@@ -46,7 +46,8 @@ pub mut:
 	is_print_rel_paths_on_error bool
 	quote                       u8  // which quote is used to denote current string: ' or "
 	inter_quote                 u8
-	nr_lines                    int // total number of lines in the source file that were scanned
+	just_closed_inter           bool // if is_enclosed_inter was set to false on the previous character: `}`
+	nr_lines                    int  // total number of lines in the source file that were scanned
 	is_vh                       bool // Keep newlines
 	is_fmt                      bool // Used for v fmt.
 	comments_mode               CommentsMode
@@ -128,6 +129,8 @@ pub fn new_scanner_file(file_path string, comments_mode CommentsMode, pref_ &pre
 	return s
 }
 
+const internally_generated_v_code = 'internally_generated_v_code'
+
 // new scanner from string.
 pub fn new_scanner(text string, comments_mode CommentsMode, pref_ &pref.Preferences) &Scanner {
 	mut s := &Scanner{
@@ -139,8 +142,8 @@ pub fn new_scanner(text string, comments_mode CommentsMode, pref_ &pref.Preferen
 		is_print_rel_paths_on_error: true
 		is_fmt: pref_.is_fmt
 		comments_mode: comments_mode
-		file_path: 'internal_memory'
-		file_base: 'internal_memory'
+		file_path: scanner.internally_generated_v_code
+		file_base: scanner.internally_generated_v_code
 	}
 	s.scan_all_tokens_in_buffer()
 	return s
@@ -805,7 +808,7 @@ fn (mut s Scanner) text_scan() token.Token {
 			}
 			`{` {
 				// Skip { in `${` in strings
-				if s.is_inside_string {
+				if s.is_inside_string || s.is_enclosed_inter {
 					if s.text[s.pos - 1] == `$` {
 						continue
 					} else {
@@ -836,6 +839,7 @@ fn (mut s Scanner) text_scan() token.Token {
 						return s.new_token(.string, '', 1)
 					}
 					s.is_enclosed_inter = false
+					s.just_closed_inter = true
 					ident_string := s.ident_string()
 					return s.new_token(.string, ident_string, ident_string.len + 2) // + two quotes
 				} else {
@@ -1146,16 +1150,19 @@ fn (mut s Scanner) ident_string() string {
 		col: s.pos - s.last_nl_pos - 1
 	}
 	q := s.text[s.pos]
-	is_quote := q == scanner.single_quote || q == scanner.double_quote
+	is_quote := q in [scanner.single_quote, scanner.double_quote]
 	is_raw := is_quote && s.pos > 0 && s.text[s.pos - 1] == `r` && !s.is_inside_string
 	is_cstr := is_quote && s.pos > 0 && s.text[s.pos - 1] == `c` && !s.is_inside_string
-	if is_quote {
+	// don't interpret quote as "start of string" quote when a string interpolation has
+	// just ended on the previous character meaning it's not the start of a new string
+	if is_quote && !s.just_closed_inter {
 		if s.is_inside_string || s.is_enclosed_inter || s.is_inter_start {
 			s.inter_quote = q
 		} else {
 			s.quote = q
 		}
 	}
+	s.just_closed_inter = false
 	mut n_cr_chars := 0
 	mut start := s.pos
 	start_char := s.text[start]

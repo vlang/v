@@ -30,20 +30,21 @@ pub fn utc() Time {
 	return res
 }
 
-/// Returns local time
+// local returns the local time.
 pub fn (t Time) local() Time {
 	// TODO: Does this actually correct? JS clock is always set to timezone or no?
 	// if it is not we should try to use Intl for getting local time.
 	return t
 }
 
+// sleep suspends the execution for a given duration (in nanoseconds).
 pub fn sleep(dur Duration) {
 	#let now = new Date().getTime()
 	#let toWait = BigInt(dur.val) / BigInt(time__millisecond)
 	#while (new Date().getTime() < now + Number(toWait)) {}
 }
 
-// new_time returns a time struct with calculated Unix time.
+// new_time returns a time struct with the calculated Unix time.
 pub fn new_time(t Time) Time {
 	if t.unix != 0 {
 		return t

@@ -1,7 +1,7 @@
 module modc
 
-#flag -I @VMODROOT
-#flag @VMODROOT/impl.o
+#flag -I @VMODROOT/modc
+#flag @VMODROOT/modc/impl.o
 #include "header.h"
 
 struct C.Atype {
@@ -14,7 +14,7 @@ struct C.Atype {
 // Relatedly, if you want to mark a V function as unsafe, use [unsafe].
 //
 // The V compiler forces all calls of unsafe functions to be wrapped in `unsafe{...}` blocks.
-struct Vtype {
+pub struct Vtype {
 pub mut:
 	p &C.Atype
 }

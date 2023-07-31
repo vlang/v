@@ -218,7 +218,7 @@ struct StringifyModReplacement {
 	weight int
 }
 
-fn shorten_full_name_based_on_aliases(input string, m2a map[string]string) string {
+pub fn shorten_full_name_based_on_aliases(input string, m2a map[string]string) string {
 	if m2a.len == 0 || -1 == input.index_u8(`.`) {
 		// a simple typename, like `string` or `[]bool`; no module aliasings apply,
 		// (or there just are not any mappings)

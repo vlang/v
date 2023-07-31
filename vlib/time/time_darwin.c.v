@@ -88,11 +88,11 @@ fn darwin_utc() Time {
 }
 
 // dummy to compile with all compilers
-pub fn solaris_now() Time {
+fn solaris_now() Time {
 	return Time{}
 }
 
 // dummy to compile with all compilers
-pub fn solaris_utc() Time {
+fn solaris_utc() Time {
 	return Time{}
 }

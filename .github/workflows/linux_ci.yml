@@ -168,9 +168,6 @@ jobs:
     timeout-minutes: 121
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: 16
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -275,9 +272,6 @@ jobs:
       VFLAGS: -cc clang
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: 16
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -382,9 +376,6 @@ jobs:
 #       V_CI_MUSL: 1
 #     steps:
 #     - uses: actions/checkout@v3
-#     - uses: actions/setup-node@v3
-#       with:
-#         node-version: 16
 #     - name: Install dependencies
 #       run: |
 #          sudo apt-get install --quiet -y musl musl-tools libssl-dev sqlite3 libsqlite3-dev valgrind

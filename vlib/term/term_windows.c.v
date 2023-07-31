@@ -97,7 +97,7 @@ pub fn set_tab_title(title string) bool {
 
 // clear clears current terminal screen.
 // Implementation taken from https://docs.microsoft.com/en-us/windows/console/clearing-the-screen#example-2.
-pub fn clear() {
+pub fn clear() bool {
 	hconsole := C.GetStdHandle(C.STD_OUTPUT_HANDLE)
 	mut csbi := C.CONSOLE_SCREEN_BUFFER_INFO{}
 	mut scrollrect := C.SMALL_RECT{}
@@ -106,7 +106,7 @@ pub fn clear() {
 
 	// Get the number of character cells in the current buffer.
 	if !C.GetConsoleScreenBufferInfo(hconsole, &csbi) {
-		return
+		return false
 	}
 	// Scroll the rectangle of the entire buffer.
 	scrollrect.Left = 0
@@ -130,4 +130,5 @@ pub fn clear() {
 	csbi.dwCursorPosition.Y = 0
 
 	C.SetConsoleCursorPosition(hconsole, csbi.dwCursorPosition)
+	return true
 }
