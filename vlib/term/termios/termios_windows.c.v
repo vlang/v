@@ -27,6 +27,15 @@ pub fn invert(value TcFlag) TcFlag {
 }
 
 pub struct Termios {
+pub mut:
+	c_iflag  TcFlag
+	c_oflag  TcFlag
+	c_cflag  TcFlag
+	c_lflag  TcFlag
+	c_line   Cc
+	c_cc     [32]Cc
+	c_ispeed Speed
+	c_ospeed Speed
 }
 
 // tcgetattr is an unsafe wrapper around C.termios and keeps its semantic
