@@ -150,9 +150,7 @@ pub fn (mut ws Client) listen() ! {
 		ws.debug_log('got message: ${msg.opcode}')
 		match msg.opcode {
 			.text_frame {
-				log_msg = 'read: text'
-				ws.debug_log(log_msg)
-				unsafe { log_msg.free() }
+				ws.debug_log('read: text')
 				ws.send_message_event(msg)
 				unsafe { msg.free() }
 			}
@@ -184,9 +182,7 @@ pub fn (mut ws Client) listen() ! {
 				}
 			}
 			.close {
-				log_msg = 'read: close'
-				ws.debug_log(log_msg)
-				unsafe { log_msg.free() }
+				ws.debug_log('read: close')
 				defer {
 					ws.manage_clean_close()
 				}
