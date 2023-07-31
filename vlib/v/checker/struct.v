@@ -651,7 +651,8 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 							if field.typ.is_any_kind_of_pointer() {
 								info.fields[i].default_expr_typ = field.typ
 							}
-						} else if field.default_expr is ast.Ident {
+						} else if field.default_expr is ast.Ident
+							&& field.default_expr.info is ast.IdentFn {
 							c.expr(mut field.default_expr)
 						} else {
 							if const_field := c.table.global_scope.find_const('${field.default_expr}') {
