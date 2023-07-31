@@ -54,7 +54,7 @@ Read this section to learn how to install and connect to PostgreSQL
 
 ## Using Parameterized Queries
 
-Parameterized queries (exec_param, etc.) in V require the use of the following syntax: ($1) ($2)...($n). 
+Parameterized queries (exec_param, etc.) in V require the use of the following syntax: ($n). 
 The number following the $ specifies which parameter from the argument array to use.
 
 ```v ignore
