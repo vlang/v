@@ -52,7 +52,7 @@ jobs:
   v-compiles-os-android:
     runs-on: ubuntu-20.04
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
     - uses: actions/checkout@v3
     - name: Build V
