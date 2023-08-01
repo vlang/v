@@ -357,13 +357,16 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 		}
 		if struct_sym.info.generic_types.len > 0
 			&& struct_sym.info.generic_types.len == struct_sym.info.concrete_types.len {
+			old_inside_generic_struct_init := c.inside_generic_struct_init
+			old_cur_struct_generic_types := c.cur_struct_generic_types
+			old_cur_struct_concrete_types := c.cur_struct_concrete_types
 			c.inside_generic_struct_init = true
 			c.cur_struct_generic_types = struct_sym.info.generic_types.clone()
 			c.cur_struct_concrete_types = struct_sym.info.concrete_types.clone()
 			defer {
-				c.inside_generic_struct_init = false
-				c.cur_struct_generic_types = []
-				c.cur_struct_concrete_types = []
+				c.inside_generic_struct_init = old_inside_generic_struct_init
+				c.cur_struct_generic_types = old_cur_struct_generic_types
+				c.cur_struct_concrete_types = old_cur_struct_concrete_types
 			}
 		}
 	} else if struct_sym.info is ast.Alias {
