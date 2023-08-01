@@ -145,8 +145,9 @@ fn (mut l SSLListener) init()! {
 	if lhost != '' {
 		bind_ip = voidptr(lhost.str)
 	}
+	bind_port := lport.str()
 
-	ret = C.mbedtls_net_bind(&l.server_fd, bind_ip, lport.str().str, C.MBEDTLS_NET_PROTO_TCP)
+	ret = C.mbedtls_net_bind(&l.server_fd, bind_ip, voidptr(bind_port.str), C.MBEDTLS_NET_PROTO_TCP)
 
 	if ret != 0 {
 		return error_with_code("can't bind to $l.saddr", ret)
