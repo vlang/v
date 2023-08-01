@@ -258,9 +258,9 @@ fn (mut p Parser) parse_fn_type(name string, generic_types []ast.Type) ast.Type 
 
 	mut has_generic := false
 	line_nr := p.tok.line_nr
-	args, _, is_variadic := p.fn_args()
-	for arg in args {
-		if arg.typ.has_flag(.generic) {
+	params, _, is_variadic := p.fn_params()
+	for param in params {
+		if param.typ.has_flag(.generic) {
 			has_generic = true
 			break
 		}
@@ -277,7 +277,7 @@ fn (mut p Parser) parse_fn_type(name string, generic_types []ast.Type) ast.Type 
 	}
 	func := ast.Fn{
 		name: name
-		params: args
+		params: params
 		is_variadic: is_variadic
 		return_type: return_type
 		return_type_pos: return_type_pos
