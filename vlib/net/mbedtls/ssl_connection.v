@@ -47,21 +47,21 @@ mut:
 
 // SSLListener listens on a TCP port and accepts connection secured with TLS
 pub struct SSLListener {
-	saddr string
+	saddr  string
 	config SSLConnectConfig
 mut:
-	server_fd	C.mbedtls_net_context
-	ssl			C.mbedtls_ssl_context
-	conf		C.mbedtls_ssl_config
-	certs		&SSLCerts = unsafe { nil }
-	opened		bool
+	server_fd C.mbedtls_net_context
+	ssl       C.mbedtls_ssl_context
+	conf      C.mbedtls_ssl_config
+	certs     &SSLCerts = unsafe { nil }
+	opened    bool
 	// handle		int
 	// duration	time.Duration
 }
 
 // create a new SSLListener binding to `saddr`
 pub fn new_ssl_listener(saddr string, config SSLConnectConfig) !&SSLListener {
-	mut listener := &SSLListener {
+	mut listener := &SSLListener{
 		saddr: saddr
 		config: config
 	}
@@ -71,7 +71,7 @@ pub fn new_ssl_listener(saddr string, config SSLConnectConfig) !&SSLListener {
 }
 
 // finish the listener and clean up resources
-pub fn (mut l SSLListener) shutdown()! {
+pub fn (mut l SSLListener) shutdown() ! {
 	$if trace_ssl ? {
 		eprintln(@METHOD)
 	}
@@ -88,17 +88,17 @@ pub fn (mut l SSLListener) shutdown()! {
 }
 
 // internal function to init and bind the listener
-fn (mut l SSLListener) init()! {
+fn (mut l SSLListener) init() ! {
 	$if trace_ssl ? {
 		eprintln(@METHOD)
 	}
 
 	lhost, lport := net.split_address(l.saddr)!
 	if l.config.cert == '' || l.config.cert_key == '' {
-		return error("No certificate or key provided")
+		return error('No certificate or key provided')
 	}
 	if l.config.validate && l.config.verify == '' {
-		return error("No root CA provided")
+		return error('No root CA provided')
 	}
 	C.mbedtls_net_init(&l.server_fd)
 	C.mbedtls_ssl_init(&l.ssl)
@@ -150,10 +150,11 @@ fn (mut l SSLListener) init()! {
 	ret = C.mbedtls_net_bind(&l.server_fd, bind_ip, voidptr(bind_port.str), C.MBEDTLS_NET_PROTO_TCP)
 
 	if ret != 0 {
-		return error_with_code("can't bind to $l.saddr", ret)
+		return error_with_code("can't bind to ${l.saddr}", ret)
 	}
 
-	ret = C.mbedtls_ssl_config_defaults(&l.conf, C.MBEDTLS_SSL_IS_SERVER, C.MBEDTLS_SSL_TRANSPORT_STREAM, C.MBEDTLS_SSL_PRESET_DEFAULT)
+	ret = C.mbedtls_ssl_config_defaults(&l.conf, C.MBEDTLS_SSL_IS_SERVER, C.MBEDTLS_SSL_TRANSPORT_STREAM,
+		C.MBEDTLS_SSL_PRESET_DEFAULT)
 	if ret != 0 {
 		return error_with_code("can't to set config defaults", ret)
 	}
@@ -174,7 +175,7 @@ fn (mut l SSLListener) init()! {
 
 // accepts a new connection and returns a SSLConn of the connected client
 pub fn (mut l SSLListener) accept() !&SSLConn {
-	mut conn := &SSLConn {
+	mut conn := &SSLConn{
 		conf: l.conf
 		config: l.config
 		opened: true
@@ -182,7 +183,8 @@ pub fn (mut l SSLListener) accept() !&SSLConn {
 	}
 
 	// TODO: save the client's IP address somewhere (maybe add a field to SSLConn ?)
-	mut ret := C.mbedtls_net_accept(&l.server_fd, &conn.server_fd, unsafe { nil }, 0, unsafe { nil })
+	mut ret := C.mbedtls_net_accept(&l.server_fd, &conn.server_fd, unsafe { nil }, 0,
+		unsafe { nil })
 	if ret != 0 {
 		return error_with_code("can't accept connection", ret)
 	}
@@ -192,15 +194,16 @@ pub fn (mut l SSLListener) accept() !&SSLConn {
 	ret = C.mbedtls_ssl_setup(&conn.ssl, &l.conf)
 
 	if ret != 0 {
-		return error_with_code("SSL setup failed", ret)
+		return error_with_code('SSL setup failed', ret)
 	}
 
-	C.mbedtls_ssl_set_bio(&conn.ssl, &conn.server_fd, C.mbedtls_net_send, C.mbedtls_net_recv, unsafe { nil })
+	C.mbedtls_ssl_set_bio(&conn.ssl, &conn.server_fd, C.mbedtls_net_send, C.mbedtls_net_recv,
+		unsafe { nil })
 
 	ret = C.mbedtls_ssl_handshake(&conn.ssl)
 	for ret != 0 {
 		if ret != C.MBEDTLS_ERR_SSL_WANT_READ && ret != C.MBEDTLS_ERR_SSL_WANT_WRITE {
-			return error_with_code("SSL handshake failed", ret)
+			return error_with_code('SSL handshake failed', ret)
 		}
 		ret = C.mbedtls_ssl_handshake(&conn.ssl)
 	}
