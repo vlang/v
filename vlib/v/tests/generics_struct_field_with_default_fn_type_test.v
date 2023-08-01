@@ -7,7 +7,6 @@ struct BloomFilter1[T] {
 
 [heap]
 struct BloomFilter2[T] {
-	// TODO V bug
 	hash_func     fn (T) u32 = default_cb[T] // hash function, input [T] , output u32
 	table_size    int        // every entry is one-bit, packed into `table`
 	num_functions int        // 1~16
