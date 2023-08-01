@@ -45,6 +45,172 @@ mut:
 	owns_socket bool
 }
 
+// SSLListener listens on a TCP port and accepts connection secured with TLS
+pub struct SSLListener {
+	saddr  string
+	config SSLConnectConfig
+mut:
+	server_fd C.mbedtls_net_context
+	ssl       C.mbedtls_ssl_context
+	conf      C.mbedtls_ssl_config
+	certs     &SSLCerts = unsafe { nil }
+	opened    bool
+	// handle		int
+	// duration	time.Duration
+}
+
+// create a new SSLListener binding to `saddr`
+pub fn new_ssl_listener(saddr string, config SSLConnectConfig) !&SSLListener {
+	mut listener := &SSLListener{
+		saddr: saddr
+		config: config
+	}
+	listener.init()!
+	listener.opened = true
+	return listener
+}
+
+// finish the listener and clean up resources
+pub fn (mut l SSLListener) shutdown() ! {
+	$if trace_ssl ? {
+		eprintln(@METHOD)
+	}
+	if unsafe { l.certs != nil } {
+		C.mbedtls_x509_crt_free(&l.certs.cacert)
+		C.mbedtls_x509_crt_free(&l.certs.client_cert)
+		C.mbedtls_pk_free(&l.certs.client_key)
+	}
+	C.mbedtls_ssl_free(&l.ssl)
+	C.mbedtls_ssl_config_free(&l.conf)
+	if l.opened {
+		C.mbedtls_net_free(&l.server_fd)
+	}
+}
+
+// internal function to init and bind the listener
+fn (mut l SSLListener) init() ! {
+	$if trace_ssl ? {
+		eprintln(@METHOD)
+	}
+
+	lhost, lport := net.split_address(l.saddr)!
+	if l.config.cert == '' || l.config.cert_key == '' {
+		return error('No certificate or key provided')
+	}
+	if l.config.validate && l.config.verify == '' {
+		return error('No root CA provided')
+	}
+	C.mbedtls_net_init(&l.server_fd)
+	C.mbedtls_ssl_init(&l.ssl)
+	C.mbedtls_ssl_config_init(&l.conf)
+	l.certs = &SSLCerts{}
+	C.mbedtls_x509_crt_init(&l.certs.client_cert)
+	C.mbedtls_pk_init(&l.certs.client_key)
+
+	unsafe {
+		C.mbedtls_ssl_conf_rng(&l.conf, C.mbedtls_ctr_drbg_random, &mbedtls.ctr_drbg)
+	}
+
+	mut ret := 0
+
+	if l.config.in_memory_verification {
+		if l.config.verify != '' {
+			ret = C.mbedtls_x509_crt_parse(&l.certs.cacert, l.config.verify.str, l.config.verify.len)
+		}
+		if l.config.cert != '' {
+			ret = C.mbedtls_x509_crt_parse(&l.certs.client_cert, l.config.cert.str, l.config.cert.len)
+		}
+		if l.config.cert_key != '' {
+			unsafe {
+				ret = C.mbedtls_pk_parse_key(&l.certs.client_key, l.config.cert_key.str,
+					l.config.cert_key.len, 0, 0, C.mbedtls_ctr_drbg_random, &mbedtls.ctr_drbg)
+			}
+		}
+	} else {
+		if l.config.verify != '' {
+			ret = C.mbedtls_x509_crt_parse_file(&l.certs.cacert, &char(l.config.verify.str))
+		}
+		ret = C.mbedtls_x509_crt_parse_file(&l.certs.client_cert, &char(l.config.cert.str))
+		unsafe {
+			ret = C.mbedtls_pk_parse_keyfile(&l.certs.client_key, &char(l.config.cert_key.str),
+				0, C.mbedtls_ctr_drbg_random, &mbedtls.ctr_drbg)
+		}
+	}
+
+	if l.config.validate {
+		C.mbedtls_ssl_conf_authmode(&l.conf, C.MBEDTLS_SSL_VERIFY_REQUIRED)
+	}
+
+	mut bind_ip := unsafe { nil }
+	if lhost != '' {
+		bind_ip = voidptr(lhost.str)
+	}
+	bind_port := lport.str()
+
+	ret = C.mbedtls_net_bind(&l.server_fd, bind_ip, voidptr(bind_port.str), C.MBEDTLS_NET_PROTO_TCP)
+
+	if ret != 0 {
+		return error_with_code("can't bind to ${l.saddr}", ret)
+	}
+
+	ret = C.mbedtls_ssl_config_defaults(&l.conf, C.MBEDTLS_SSL_IS_SERVER, C.MBEDTLS_SSL_TRANSPORT_STREAM,
+		C.MBEDTLS_SSL_PRESET_DEFAULT)
+	if ret != 0 {
+		return error_with_code("can't to set config defaults", ret)
+	}
+
+	C.mbedtls_ssl_conf_ca_chain(&l.conf, &l.certs.cacert, unsafe { nil })
+	ret = C.mbedtls_ssl_conf_own_cert(&l.conf, &l.certs.client_cert, &l.certs.client_key)
+
+	if ret != 0 {
+		return error_with_code("can't load certificate", ret)
+	}
+
+	ret = C.mbedtls_ssl_setup(&l.ssl, &l.conf)
+
+	if ret != 0 {
+		return error_with_code("can't setup ssl", ret)
+	}
+}
+
+// accepts a new connection and returns a SSLConn of the connected client
+pub fn (mut l SSLListener) accept() !&SSLConn {
+	mut conn := &SSLConn{
+		conf: l.conf
+		config: l.config
+		opened: true
+		owns_socket: true
+	}
+
+	// TODO: save the client's IP address somewhere (maybe add a field to SSLConn ?)
+	mut ret := C.mbedtls_net_accept(&l.server_fd, &conn.server_fd, unsafe { nil }, 0,
+		unsafe { nil })
+	if ret != 0 {
+		return error_with_code("can't accept connection", ret)
+	}
+
+	C.mbedtls_ssl_init(&conn.ssl)
+	C.mbedtls_ssl_config_init(&conn.conf)
+	ret = C.mbedtls_ssl_setup(&conn.ssl, &l.conf)
+
+	if ret != 0 {
+		return error_with_code('SSL setup failed', ret)
+	}
+
+	C.mbedtls_ssl_set_bio(&conn.ssl, &conn.server_fd, C.mbedtls_net_send, C.mbedtls_net_recv,
+		unsafe { nil })
+
+	ret = C.mbedtls_ssl_handshake(&conn.ssl)
+	for ret != 0 {
+		if ret != C.MBEDTLS_ERR_SSL_WANT_READ && ret != C.MBEDTLS_ERR_SSL_WANT_WRITE {
+			return error_with_code('SSL handshake failed', ret)
+		}
+		ret = C.mbedtls_ssl_handshake(&conn.ssl)
+	}
+
+	return conn
+}
+
 [params]
 pub struct SSLConnectConfig {
 	verify   string // the path to a rootca.pem file, containing trusted CA certificate(s)
