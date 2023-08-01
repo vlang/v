@@ -284,20 +284,27 @@ mut:
 	accept_deadline time.Time
 }
 
-pub fn listen_tcp(family AddrFamily, saddr string) !&TcpListener {
-	s := new_tcp_socket(family) or { return error('${err.msg()}; could not create new socket') }
+[params]
+pub struct ListenOptions {
+pub:
+	dualstack bool = true
+	backlog   int  = 128
+}
+
+pub fn listen_tcp(family AddrFamily, saddr string, options ListenOptions) !&TcpListener {
+	mut s := new_tcp_socket(family) or { return error('${err.msg()}; could not create new socket') }
+	s.set_dualstack(options.dualstack) or {}
 
 	addrs := resolve_addrs(saddr, family, .tcp) or {
 		return error('${err.msg()}; could not resolve address ${saddr}')
 	}
-
 	// TODO(logic to pick here)
 	addr := addrs[0]
 
 	// cast to the correct type
 	alen := addr.len()
 	socket_error_message(C.bind(s.handle, voidptr(&addr), alen), 'binding to ${saddr} failed')!
-	socket_error_message(C.listen(s.handle, 128), 'listening on ${saddr} failed')!
+	socket_error_message(C.listen(s.handle, options.backlog), 'listening on ${saddr} with maximum backlog pending queue of ${options.backlog}, failed')!
 	return &TcpListener{
 		sock: s
 		accept_deadline: no_deadline
