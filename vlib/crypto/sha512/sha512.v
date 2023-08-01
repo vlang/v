@@ -151,17 +151,17 @@ pub fn new() &Digest {
 }
 
 // new512_224 returns a new Digest (implementing hash.Hash) computing the SHA-512/224 checksum.
-fn new512_224() &Digest {
+pub fn new512_224() &Digest {
 	return new_digest(.sha512_224)
 }
 
 // new512_256 returns a new Digest (implementing hash.Hash) computing the SHA-512/256 checksum.
-fn new512_256() &Digest {
+pub fn new512_256() &Digest {
 	return new_digest(.sha512_256)
 }
 
 // new384 returns a new Digest (implementing hash.Hash) computing the SHA-384 checksum.
-fn new384() &Digest {
+pub fn new384() &Digest {
 	return new_digest(.sha384)
 }
 
