@@ -16,7 +16,6 @@ const (
 	allowed_formats = ['md', 'markdown', 'json', 'text', 'stdout', 'html', 'htm']
 	vexe            = os.getenv_opt('VEXE') or { @VEXE }
 	vroot           = os.dir(vexe)
-	tabs            = ['\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t']
 )
 
 enum OutputType {

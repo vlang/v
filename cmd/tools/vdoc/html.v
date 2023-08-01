@@ -10,6 +10,7 @@ import v.ast
 import v.token
 import v.doc
 import v.pref
+import v.util { tabs }
 
 const (
 	css_js_assets         = ['doc.css', 'normalize.css', 'doc.js', 'dark-mode.js']
@@ -249,27 +250,27 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 		version).replace('{{ light_icon }}', vd.assets['light_icon']).replace('{{ dark_icon }}',
 		vd.assets['dark_icon']).replace('{{ menu_icon }}', vd.assets['menu_icon']).replace('{{ head_assets }}',
 		if cfg.inline_assets {
-		'\n${tabs[0]}<style>' + vd.assets['doc_css'] + '</style>\n${tabs[0]}<style>' +
-			vd.assets['normalize_css'] + '</style>\n${tabs[0]}<script>' +
-			vd.assets['dark_mode_js'] + '</script>'
+		'<style>${vd.assets['doc_css']}</style>
+${tabs(2)}<style>${vd.assets['normalize_css']}</style>
+${tabs(2)}<script>${vd.assets['dark_mode_js']}</script>'
 	} else {
-		'\n${tabs[0]}<link rel="stylesheet" href="' + vd.assets['doc_css'] +
-			'" />\n${tabs[0]}<link rel="stylesheet" href="' + vd.assets['normalize_css'] +
-			'" />\n${tabs[0]}<script src="' + vd.assets['dark_mode_js'] + '"></script>'
+		'<link rel="stylesheet" href="${vd.assets['doc_css']}" />
+${tabs(2)}<link rel="stylesheet" href="${vd.assets['normalize_css']}" />
+${tabs(2)}<script src="${vd.assets['dark_mode_js']}"></script>'
 	}).replace('{{ toc_links }}', if cfg.is_multi || vd.docs.len > 1 {
 		modules_toc_str
 	} else {
 		symbols_toc_str
 	}).replace('{{ contents }}', contents.str()).replace('{{ right_content }}', if cfg.is_multi
 		&& d.head.name != 'README' {
-		'<div class="doc-toc"><ul>' + symbols_toc_str + '</ul></div>'
+		'<div class="doc-toc"><ul>${symbols_toc_str}</ul></div>'
 	} else {
 		''
 	}).replace('{{ footer_content }}', gen_footer_text(d, !cfg.no_timestamp)).replace('{{ footer_assets }}',
 		if cfg.inline_assets {
-		'<script>' + vd.assets['doc_js'] + '</script>'
+		'<script>${vd.assets['doc_js']}</script>'
 	} else {
-		'<script src="' + vd.assets['doc_js'] + '"></script>'
+		'<script src="${vd.assets['doc_js']}"></script>'
 	})
 	return result
 }
@@ -407,12 +408,12 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 		node_id = 'readme_${node_id}'
 		hash_link = ' <a href="#${node_id}">#</a>'
 	}
-	dnw.writeln('${tabs[1]}<section id="${node_id}" class="doc-node${node_class}">')
+	dnw.writeln('${tabs(2)}<section id="${node_id}" class="doc-node${node_class}">')
 	if dn.name.len > 0 {
 		if dn.kind == .const_group {
-			dnw.write_string('${tabs[2]}<div class="title"><${head_tag}>${sym_name}${hash_link}</${head_tag}>')
+			dnw.write_string('${tabs(3)}<div class="title"><${head_tag}>${sym_name}${hash_link}</${head_tag}>')
 		} else {
-			dnw.write_string('${tabs[2]}<div class="title"><${head_tag}>${dn.kind} ${sym_name}${hash_link}</${head_tag}>')
+			dnw.write_string('${tabs(3)}<div class="title"><${head_tag}>${dn.kind} ${sym_name}${hash_link}</${head_tag}>')
 		}
 		if link.len != 0 {
 			dnw.write_string('<a class="link" rel="noreferrer" target="_blank" href="${link}">${link_svg}</a>')
