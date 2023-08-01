@@ -1067,6 +1067,18 @@ fn (mut g Gen) gen_array_wait(node ast.CallExpr) {
 	g.write(')')
 }
 
+fn (mut g Gen) gen_fixed_array_wait(node ast.CallExpr) {
+	arr := g.table.sym(g.unwrap_generic(node.receiver_type))
+	thread_type := arr.array_fixed_info().elem_type
+	thread_sym := g.table.sym(thread_type)
+	thread_ret_type := thread_sym.thread_info().return_type
+	eltyp := g.table.sym(thread_ret_type).cname
+	fn_name := g.register_thread_fixed_array_wait_call(node, eltyp)
+	g.write('${fn_name}(')
+	g.expr(node.left)
+	g.write(')')
+}
+
 fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 	tmp := g.new_tmp_var()
 	mut s := g.go_before_stmt(0)
