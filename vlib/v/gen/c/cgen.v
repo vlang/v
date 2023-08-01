@@ -1287,6 +1287,52 @@ ${ret_typ} ${fn_name}(${thread_arr_typ} a) {
 	return fn_name
 }
 
+fn (mut g Gen) register_thread_fixed_array_wait_call(node ast.CallExpr, eltyp string) string {
+	is_void := eltyp == 'void'
+	thread_typ := if is_void { '__v_thread' } else { '__v_thread_${eltyp}' }
+	ret_typ := if is_void { 'void' } else { 'Array_${eltyp}' }
+	rec_sym := g.table.sym(node.receiver_type)
+	len := (rec_sym.info as ast.ArrayFixed).size
+	thread_arr_typ := rec_sym.cname
+	fn_name := '${thread_arr_typ}_wait'
+	mut should_register := false
+	lock g.waiter_fns {
+		if fn_name !in g.waiter_fns {
+			g.waiter_fns << fn_name
+			should_register = true
+		}
+	}
+	if should_register {
+		if is_void {
+			g.register_thread_void_wait_call()
+			g.gowrappers.writeln('
+void ${fn_name}(${thread_arr_typ} a) {
+	for (int i = 0; i < ${len}; ++i) {
+		${thread_typ} t = ((${thread_typ}*)a)[i];
+		if (t == 0) continue;
+		__v_thread_wait(t);
+	}
+}')
+		} else {
+			g.gowrappers.writeln('
+${ret_typ} ${fn_name}(${thread_arr_typ} a) {
+	${ret_typ} res = __new_array_with_default(${len}, ${len}, sizeof(${eltyp}), 0);
+	for (int i = 0; i < ${len}; ++i) {
+		${thread_typ} t = ((${thread_typ}*)a)[i];')
+			if g.pref.os == .windows {
+				g.gowrappers.writeln('\t\tif (t.handle == 0) continue;')
+			} else {
+				g.gowrappers.writeln('\t\tif (t == 0) continue;')
+			}
+			g.gowrappers.writeln('\t\t((${eltyp}*)res.data)[i] = __v_thread_${eltyp}_wait(t);
+	}
+	return res;
+}')
+		}
+	}
+	return fn_name
+}
+
 fn (mut g Gen) register_chan_pop_option_call(opt_el_type string, styp string) {
 	g.chan_pop_options[opt_el_type] = styp
 }
