@@ -660,8 +660,8 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 				p.error_with_pos('duplicate method `${name}`', method_start_pos)
 				return ast.InterfaceDecl{}
 			}
-			args2, _, is_variadic := p.fn_args() // TODO merge ast.Param and ast.Arg to avoid this
-			mut args := [
+			params_t, _, is_variadic := p.fn_params() // TODO merge ast.Param and ast.Arg to avoid this
+			mut params := [
 				ast.Param{
 					name: 'x'
 					is_mut: is_mut
@@ -669,12 +669,12 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 					is_hidden: true
 				},
 			]
-			args << args2
+			params << params_t
 			mut method := ast.FnDecl{
 				name: name
 				short_name: name
 				mod: p.mod
-				params: args
+				params: params
 				file: p.file_name
 				return_type: ast.void_type
 				is_variadic: is_variadic
@@ -695,7 +695,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			methods << method
 			tmethod := ast.Fn{
 				name: name
-				params: args
+				params: params
 				pos: method.pos
 				return_type: method.return_type
 				is_variadic: is_variadic
