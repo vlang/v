@@ -6,7 +6,7 @@ end_of_line = lf
 insert_final_newline = true
 trim_trailing_whitespace = true
 
-[*.v]
+[*.{v,js,css}]
 indent_style = tab
 
 [*.{bat,cmd}]

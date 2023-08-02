@@ -1,0 +1,19 @@
+name: Code CI vlib modules
+
+on:
+  push:
+    paths:
+      - '**/cmd/tools/vdoc/theme/**'
+  pull_request:
+    paths:
+      - '**/cmd/tools/vdoc/theme/**'
+
+jobs:
+  lint-module-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Check Formatting
+        uses: actionsx/prettier@v2
+        with:
+          args: --check cmd/tools/vdoc/theme
