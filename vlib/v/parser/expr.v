@@ -182,18 +182,28 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			if p.expecting_type {
 				// parse json.decode type (`json.decode([]User, s)`)
 				node = p.name_expr()
-			} else if p.is_amp && p.peek_tok.kind == .rsbr && p.peek_token(3).kind != .lcbr {
-				pos := p.tok.pos()
-				typ := p.parse_type()
-				typname := p.table.sym(typ).name
-				p.check(.lpar)
-				expr := p.expr(0)
-				p.check(.rpar)
-				node = ast.CastExpr{
-					typ: typ
-					typname: typname
-					expr: expr
-					pos: pos
+			} else if p.is_amp && p.peek_tok.kind == .rsbr {
+				mut n := 2
+				mut peek_n_tok := p.peek_token(n)
+				for peek_n_tok.kind in [.name, .dot] {
+					n++
+					peek_n_tok = p.peek_token(n)
+				}
+				if peek_n_tok.kind != .lcbr {
+					pos := p.tok.pos()
+					typ := p.parse_type()
+					typname := p.table.sym(typ).name
+					p.check(.lpar)
+					expr := p.expr(0)
+					p.check(.rpar)
+					node = ast.CastExpr{
+						typ: typ
+						typname: typname
+						expr: expr
+						pos: pos
+					}
+				} else {
+					node = p.array_init(false)
 				}
 			} else {
 				node = p.array_init(false)
