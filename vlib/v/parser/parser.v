@@ -764,7 +764,7 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 						expr: if_expr
 						pos: if_expr.pos
 					}
-					if comptime_if_expr_contains_top_stmt(if_expr) {
+					if p.pref.is_fmt || comptime_if_expr_contains_top_stmt(if_expr) {
 						return cur_stmt
 					} else {
 						return p.other_stmts(cur_stmt)
