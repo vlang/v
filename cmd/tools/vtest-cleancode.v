@@ -22,7 +22,6 @@ const vet_known_failing_windows = [
 ]
 
 const vet_folders = [
-	'vlib/sqlite',
 	'vlib/v',
 	'vlib/x/json2',
 	'vlib/x/ttf',
@@ -53,7 +52,7 @@ const is_fix = '-fix' in os.args
 fn main() {
 	args_string := os.args[1..].join(' ')
 	pass_args := args_string.all_before('test-cleancode')
-	v_test_vetting(pass_args)
+	v_test_vetting(pass_args)!
 }
 
 fn tsession(vargs string, tool_source string, tool_cmd string, tool_args string, flist []string, slist []string) testing.TestSession {
@@ -72,8 +71,8 @@ fn tsession(vargs string, tool_source string, tool_cmd string, tool_args string,
 	return test_session
 }
 
-fn v_test_vetting(vargs string) {
-	expanded_vet_list := util.find_all_v_files(vet_folders) or { return }
+fn v_test_vetting(vargs string) ! {
+	expanded_vet_list := util.find_all_v_files(vet_folders)!
 	mut vet_known_exceptions := vet_known_failing.clone()
 	if os.user_os() == 'windows' {
 		vet_known_exceptions << vet_known_failing_windows

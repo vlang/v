@@ -326,9 +326,11 @@ fn main() {
 		tsession.skip_files << test_js_files.map(it.replace(testroot, ''))
 	}
 	testing.find_started_process('mysqld') or {
-		tsession.skip_files << 'vlib/mysql/mysql_orm_test.v'
+		tsession.skip_files << 'vlib/db/mysql/mysql_orm_test.v'
 	}
-	testing.find_started_process('postgres') or { tsession.skip_files << 'vlib/pg/pg_orm_test.v' }
+	testing.find_started_process('postgres') or {
+		tsession.skip_files << 'vlib/db/pg/pg_orm_test.v'
+	}
 
 	if github_job == 'windows-tcc' {
 		// TODO: fix these ASAP

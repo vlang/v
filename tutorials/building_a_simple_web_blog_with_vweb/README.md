@@ -40,7 +40,7 @@ Now V should be globally available on your system.
 ### Install SQLite development dependency
 
 If you don't have it already installed, look at the
-[`sqlite` README](../../vlib/sqlite/README.md) for instructions.
+[`sqlite` README](../../vlib/db/sqlite/README.md) for instructions.
 
 ### Creating a new Vweb project
 
