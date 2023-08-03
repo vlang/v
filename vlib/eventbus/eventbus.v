@@ -19,8 +19,8 @@ mut:
 
 struct EventHandler[T] {
 	name     T
-	handler  EventHandlerFn
-	receiver voidptr = unsafe { nil }
+	handler  EventHandlerFn = unsafe { nil }
+	receiver voidptr        = unsafe { nil }
 	once     bool
 }
 

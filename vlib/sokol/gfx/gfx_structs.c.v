@@ -46,8 +46,8 @@ pub type GLContextDesc = C.sg_gl_context_desc
 
 struct C.sg_metal_context_desc {
 	device                   voidptr
-	renderpass_descriptor_cb fn () voidptr
-	drawable_cb              fn () voidptr
+	renderpass_descriptor_cb fn () voidptr = unsafe { nil }
+	drawable_cb              fn () voidptr = unsafe { nil }
 }
 
 pub type MetalContextDesc = C.sg_metal_context_desc
@@ -55,8 +55,8 @@ pub type MetalContextDesc = C.sg_metal_context_desc
 struct C.sg_d3d11_context_desc {
 	device                voidptr
 	device_context        voidptr
-	render_target_view_cb fn () voidptr
-	depth_stencil_view_cb fn () voidptr
+	render_target_view_cb fn () voidptr = unsafe { nil }
+	depth_stencil_view_cb fn () voidptr = unsafe { nil }
 }
 
 pub type D3D11ContextDesc = C.sg_d3d11_context_desc

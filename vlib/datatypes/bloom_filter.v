@@ -4,12 +4,21 @@ module datatypes
 
 [heap]
 struct BloomFilter[T] {
-	hash_func     fn (T) u32 // hash function, input [T] , output u32
-	table_size    int        // every entry is one-bit, packed into `table`
-	num_functions int        // 1~16
+	// TODO V bug
+	hash_func fn (T) u32 = unsafe { nil } // hash function, input [T] , output u32
+	// hash_func     fn (T) u32 = empty_cb // hash function, input [T] , output u32
+	table_size    int // every entry is one-bit, packed into `table`
+	num_functions int // 1~16
 mut:
 	table []u8
 }
+
+/*
+TODO maybe allow pointing to generic fns?
+fn empty_cb[T](x T) u32 {
+	panic('empty BloomFilter.hash_func callback')
+}
+*/
 
 const (
 	// Salt values(random values).  These salts are XORed with the output of the hash function to give multiple unique hashes.

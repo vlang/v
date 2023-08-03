@@ -13,7 +13,7 @@ const (
 )
 
 struct Data {
-	f fn (int)
+	f fn (int) = unsafe { nil }
 mut:
 	value int  = bar(0)
 	opt   ?int = bar(0)

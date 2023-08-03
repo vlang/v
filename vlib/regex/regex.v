@@ -248,7 +248,7 @@ mut:
 	// counters for quantifier check (repetitions)
 	rep int
 	// validator function pointer
-	validator FnValidator
+	validator FnValidator = unsafe { nil }
 	// groups variables
 	group_neg bool // negation flag for the group, 0 => no negation > 0 => negataion
 	group_rep int  // repetition of the group
@@ -376,7 +376,7 @@ fn (mut re RE) reset_src() {
 ******************************************************************************/
 struct BslsStruct {
 	ch        rune        // meta char
-	validator FnValidator // validator function pointer
+	validator FnValidator = unsafe { nil } // validator function pointer
 }
 
 const (
@@ -463,7 +463,7 @@ mut:
 	cc_type   int         // type of cc token
 	ch0       rune        // first char of the interval a-b  a in this case
 	ch1       rune        // second char of the interval a-b b in this case
-	validator FnValidator // validator function pointer
+	validator FnValidator = unsafe { nil } // validator function pointer
 }
 
 enum CharClass_parse_state {

@@ -446,7 +446,7 @@ type ControllerHandler = fn (ctx Context, mut url urllib.URL, host string, tid i
 pub struct ControllerPath {
 pub:
 	path    string
-	handler ControllerHandler
+	handler ControllerHandler = unsafe { nil }
 pub mut:
 	host string
 }
@@ -1111,7 +1111,7 @@ fn (mut w Worker[T]) process_incomming_requests() {
 
 [params]
 pub struct PoolParams[T] {
-	handler    fn () T [required]
+	handler    fn () T [required] = unsafe { nil }
 	nr_workers int = runtime.nr_jobs()
 }
 

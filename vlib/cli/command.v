@@ -18,9 +18,9 @@ pub mut:
 	description     string
 	man_description string
 	version         string
-	pre_execute     FnCommandCallback
-	execute         FnCommandCallback
-	post_execute    FnCommandCallback
+	pre_execute     FnCommandCallback = unsafe { nil }
+	execute         FnCommandCallback = unsafe { nil }
+	post_execute    FnCommandCallback = unsafe { nil }
 	disable_help    bool
 	disable_man     bool
 	disable_version bool

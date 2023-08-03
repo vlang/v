@@ -24,9 +24,15 @@ mut:
 
 pub type ThreadCB = fn (mut p PoolProcessor, idx int, task_id int) voidptr
 
+fn empty_cb(mut p PoolProcessor, idx int, task_id int) voidptr {
+	unsafe {
+		return nil
+	}
+}
+
 pub struct PoolProcessorConfig {
 	maxjobs  int
-	callback ThreadCB
+	callback ThreadCB = empty_cb
 }
 
 // new_pool_processor returns a new PoolProcessor instance.

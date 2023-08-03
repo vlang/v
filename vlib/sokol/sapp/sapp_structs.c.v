@@ -37,18 +37,19 @@ pub type IconDesc = C.sapp_icon_desc
 [typedef]
 pub struct C.sapp_desc {
 pub:
-	init_cb    fn () // these are the user-provided callbacks without user data
-	frame_cb   fn ()
-	cleanup_cb fn ()
-	event_cb   fn (&Event) //&sapp_event)
-	fail_cb    fn (&u8)
+	// these are the user-provided callbacks without user data
+	init_cb    fn ()       = unsafe { nil }
+	frame_cb   fn ()       = unsafe { nil }
+	cleanup_cb fn ()       = unsafe { nil }
+	event_cb   fn (&Event) = unsafe { nil } // &sapp_event
+	fail_cb    fn (&u8)    = unsafe { nil }
 
 	user_data           voidptr // these are the user-provided callbacks with user data
-	init_userdata_cb    fn (voidptr)
-	frame_userdata_cb   fn (voidptr)
-	cleanup_userdata_cb fn (voidptr)
-	event_userdata_cb   fn (&Event, voidptr)
-	fail_userdata_cb    fn (&char, voidptr)
+	init_userdata_cb    fn (voidptr) = unsafe { nil }
+	frame_userdata_cb   fn (voidptr) = unsafe { nil }
+	cleanup_userdata_cb fn (voidptr) = unsafe { nil }
+	event_userdata_cb   fn (&Event, voidptr) = unsafe { nil }
+	fail_userdata_cb    fn (&char, voidptr)  = unsafe { nil }
 
 	width                        int      // the preferred width of the window / canvas
 	height                       int      // the preferred height of the window / canvas

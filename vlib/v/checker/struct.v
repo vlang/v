@@ -70,6 +70,19 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 					}
 				}
 			}
+			// Do not allow uninitialized `fn` fields, or force `?fn`
+			// (allow them in `C.` structs)
+			if !c.is_builtin_mod && node.language == .v {
+				sym := c.table.sym(field.typ)
+				if sym.kind == .function {
+					if !field.typ.has_flag(.option) && !field.has_default_expr
+						&& field.attrs.filter(it.name == 'required').len == 0 {
+						error_msg := 'uninitialized `fn` struct fields are not allowed, since they can result in segfaults; use `?fn` or initialize the field with `=` (if you absolutely want to have unsafe function pointers, use `= unsafe { nil }`)'
+						c.note(error_msg, field.pos)
+					}
+				}
+			}
+
 			if field.has_default_expr {
 				c.expected_type = field.typ
 				field.default_expr_typ = c.expr(mut field.default_expr)
