@@ -201,3 +201,19 @@ fn test_call() {
 	s := '${f(4)}'
 	assert s == '4'
 }
+
+// for issue: 19048
+struct Foo {
+}
+
+fn (mut f Foo) intp_pointer() string {
+	return '${f:p}'
+}
+
+fn test_intp_pointer_specifier_p() {
+	mut foo := Foo{}
+	str1 := foo.intp_pointer()
+
+	str2 := '${&foo:p}'
+	assert str1 == str2
+}
