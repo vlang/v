@@ -115,15 +115,15 @@ fn (mut l SSLListener) init() ! {
 
 	if l.config.in_memory_verification {
 		if l.config.verify != '' {
-			ret = C.mbedtls_x509_crt_parse(&l.certs.cacert, l.config.verify.str, l.config.verify.len)
+			ret = C.mbedtls_x509_crt_parse(&l.certs.cacert, l.config.verify.str, l.config.verify.len + 1)
 		}
 		if l.config.cert != '' {
-			ret = C.mbedtls_x509_crt_parse(&l.certs.client_cert, l.config.cert.str, l.config.cert.len)
+			ret = C.mbedtls_x509_crt_parse(&l.certs.client_cert, l.config.cert.str, l.config.cert.len + 1)
 		}
 		if l.config.cert_key != '' {
 			unsafe {
 				ret = C.mbedtls_pk_parse_key(&l.certs.client_key, l.config.cert_key.str,
-					l.config.cert_key.len, 0, 0, C.mbedtls_ctr_drbg_random, &mbedtls.ctr_drbg)
+					l.config.cert_key.len + 1, 0, 0, C.mbedtls_ctr_drbg_random, &mbedtls.ctr_drbg)
 			}
 		}
 	} else {
@@ -289,15 +289,15 @@ fn (mut s SSLConn) init() ! {
 
 	if s.config.in_memory_verification {
 		if s.config.verify != '' {
-			ret = C.mbedtls_x509_crt_parse(&s.certs.cacert, s.config.verify.str, s.config.verify.len)
+			ret = C.mbedtls_x509_crt_parse(&s.certs.cacert, s.config.verify.str, s.config.verify.len + 1)
 		}
 		if s.config.cert != '' {
-			ret = C.mbedtls_x509_crt_parse(&s.certs.client_cert, s.config.cert.str, s.config.cert.len)
+			ret = C.mbedtls_x509_crt_parse(&s.certs.client_cert, s.config.cert.str, s.config.cert.len + 1)
 		}
 		if s.config.cert_key != '' {
 			unsafe {
 				ret = C.mbedtls_pk_parse_key(&s.certs.client_key, s.config.cert_key.str,
-					s.config.cert_key.len, 0, 0, C.mbedtls_ctr_drbg_random, &mbedtls.ctr_drbg)
+					s.config.cert_key.len + 1, 0, 0, C.mbedtls_ctr_drbg_random, &mbedtls.ctr_drbg)
 			}
 		}
 	} else {
