@@ -1174,7 +1174,7 @@ pub fn (mut f Fmt) fn_header(node ast.FnDecl) {
 }
 
 pub fn (mut f Fmt) anon_fn(node ast.AnonFn) {
-	f.write(node.stringify_anon_decl(f.table, f.cur_mod, f.mod2alias)) // `Expr` instead of `ast.Expr` in mod ast
+	f.write(f.table.stringify_anon_decl(&node, f.cur_mod, f.mod2alias)) // `Expr` instead of `ast.Expr` in mod ast
 	f.fn_body(node.decl)
 }
 
@@ -1488,7 +1488,7 @@ pub fn (mut f Fmt) interface_method(method ast.FnDecl) {
 		f.comments(before_comments, level: .indent)
 	}
 	f.write('\t')
-	f.write(method.stringify_fn_decl(f.table, f.cur_mod, f.mod2alias).all_after_first('fn '))
+	f.write(f.table.stringify_fn_decl(&method, f.cur_mod, f.mod2alias).all_after_first('fn '))
 	f.comments(end_comments, inline: true, has_nl: false, level: .indent)
 	f.writeln('')
 	f.comments(method.next_comments, inline: false, has_nl: true, level: .indent)

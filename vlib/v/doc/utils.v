@@ -118,7 +118,7 @@ pub fn (mut d Doc) stmt_signature(stmt ast.Stmt) string {
 			return 'module ${stmt.name}'
 		}
 		ast.FnDecl {
-			return stmt.stringify_fn_decl(d.table, d.fmt.cur_mod, d.fmt.mod2alias)
+			return d.table.stringify_fn_decl(&stmt, d.fmt.cur_mod, d.fmt.mod2alias)
 		}
 		else {
 			d.fmt.out = strings.new_builder(1000)
