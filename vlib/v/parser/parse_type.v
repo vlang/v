@@ -182,7 +182,7 @@ fn (mut p Parser) parse_thread_type() ast.Type {
 	if is_opt {
 		p.next()
 	}
-	if p.peek_tok.kind !in [.name, .key_mut, .amp, .lsbr] {
+	if p.peek_tok.kind !in [.name, .key_pub, .key_mut, .amp, .lsbr] {
 		p.next()
 		if is_opt {
 			mut ret_type := ast.void_type
@@ -196,12 +196,21 @@ fn (mut p Parser) parse_thread_type() ast.Type {
 	if !is_opt {
 		p.next()
 	}
-	ret_type := p.parse_type()
-	idx := p.table.find_or_register_thread(ret_type)
-	if ret_type.has_flag(.generic) {
-		return ast.new_type(idx).set_flag(.generic)
+	if is_opt || p.tok.kind in [.amp, .lsbr]
+		|| (p.tok.lit.len > 0 && p.tok.lit[0].is_capital())
+		|| ast.builtin_type_names_matcher.matches(p.tok.lit)
+		|| p.peek_tok.kind == .dot {
+		mut ret_type := p.parse_type()
+		if is_opt {
+			ret_type = ret_type.set_flag(.option)
+		}
+		idx := p.table.find_or_register_thread(ret_type)
+		if ret_type.has_flag(.generic) {
+			return ast.new_type(idx).set_flag(.generic)
+		}
+		return ast.new_type(idx)
 	}
-	return ast.new_type(idx)
+	return ast.thread_type
 }
 
 fn (mut p Parser) parse_multi_return_type() ast.Type {

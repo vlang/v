@@ -167,13 +167,13 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 	if typ == ast.string_type && g.comptime_for_method.len == 0 {
 		if g.inside_vweb_tmpl {
 			g.write('vweb__filter(')
-			if expr.is_auto_deref_var() {
+			if expr.is_auto_deref_var() && fmt != `p` {
 				g.write('*')
 			}
 			g.expr(expr)
 			g.write(')')
 		} else {
-			if expr.is_auto_deref_var() {
+			if expr.is_auto_deref_var() && fmt != `p` {
 				g.write('*')
 			}
 			g.expr(expr)
@@ -221,13 +221,13 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 			g.expr(expr)
 			g.write(')')
 		} else {
-			if expr.is_auto_deref_var() {
+			if expr.is_auto_deref_var() && fmt != `p` {
 				g.write('*')
 			}
 			g.expr(expr)
 		}
 	} else {
-		if expr.is_auto_deref_var() {
+		if expr.is_auto_deref_var() && fmt != `p` {
 			g.write('*')
 		}
 		g.expr(expr)

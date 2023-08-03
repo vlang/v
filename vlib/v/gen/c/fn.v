@@ -1250,6 +1250,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		if g.gen_array_method_call(node, left_type) {
 			return
 		}
+	} else if left_sym.kind == .array_fixed && node.name == 'wait' {
+		g.gen_fixed_array_wait(node)
+		return
 	}
 
 	if final_left_sym.kind == .map {

@@ -60,7 +60,7 @@ jobs:
   doom-regressions:
     runs-on: ubuntu-20.04
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
-    timeout-minutes: 10
+    timeout-minutes: 20
     env:
       VFLAGS: -cc tcc
       DISPLAY: :99

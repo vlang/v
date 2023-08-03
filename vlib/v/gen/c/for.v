@@ -17,6 +17,9 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 		g.indent++
 		if node.has_init {
 			g.stmt(node.init)
+			if node.init is ast.ExprStmt {
+				g.write('; ')
+			}
 		}
 		g.writeln('bool _is_first = true;')
 		g.writeln('while (true) {')
@@ -58,6 +61,9 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 			g.write('; ')
 		} else {
 			g.stmt(node.init)
+			if node.init is ast.ExprStmt {
+				g.write('; ')
+			}
 			// Remove excess return and add space
 			if g.out.last_n(1) == '\n' {
 				g.go_back(1)

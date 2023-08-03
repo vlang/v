@@ -312,7 +312,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 		if line == '' && oline.ends_with('\n') {
 			continue
 		}
-		if line.len <= -1 || line == '' || line == 'exit' {
+		if line.len <= -1 || line == 'exit' {
 			break
 		}
 		if exit_pos := line.index('exit') {
