@@ -26,7 +26,7 @@ mut:
 	nxt  &Subscription  = unsafe { nil }
 }
 
-enum Direction {
+pub enum Direction {
 	pop
 	push
 }
