@@ -3713,10 +3713,13 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		if p.tok.kind == .comma {
 			p.error_with_pos('const declaration do not support multiple assign yet', p.tok.pos())
 		}
+		// Allow for `const x := 123`, and for `const x = 123` too.
+		// Supporting `const x := 123` in addition to `const x = 123`, makes extracting local variables to constants much less annoying, while prototyping:
 		if p.tok.kind == .decl_assign {
-			p.error_with_pos('cannot use `:=` to declare a const, use `=` instead', p.tok.pos())
+			p.check(.decl_assign)
+		} else {
+			p.check(.assign)
 		}
-		p.check(.assign)
 		end_comments << p.eat_comments()
 		if p.tok.kind == .key_fn {
 			p.error('const initializer fn literal is not a constant')
