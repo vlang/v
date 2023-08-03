@@ -176,10 +176,9 @@ fn (mut l SSLListener) init() ! {
 // accepts a new connection and returns a SSLConn of the connected client
 pub fn (mut l SSLListener) accept() !&SSLConn {
 	mut conn := &SSLConn{
-		conf: l.conf
 		config: l.config
 		opened: true
-		owns_socket: true
+		owns_socket: false
 	}
 
 	// TODO: save the client's IP address somewhere (maybe add a field to SSLConn ?)
