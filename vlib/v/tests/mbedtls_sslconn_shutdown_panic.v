@@ -28,7 +28,7 @@ fn read_input() string {
 }
 
 fn main() {
-	_ := go server()
+	_ := spawn server()
 	time.sleep(1 * time.second)
 	mut client := mbedtls.new_ssl_conn(validate: false)!
 	client.dial("127.0.0.1", 64443) or {
