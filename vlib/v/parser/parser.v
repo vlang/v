@@ -4011,7 +4011,8 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		}
 		is_pub: is_pub
 	})
-	if idx == -1 {
+	if idx in [ast.invalid_type_idx, ast.string_type_idx, ast.rune_type_idx, ast.array_type_idx,
+		ast.map_type_idx] {
 		p.error_with_pos('cannot register enum `${name}`, another type with this name exists',
 			end_pos)
 	}
@@ -4109,7 +4110,8 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			}
 			is_pub: is_pub
 		})
-		if typ == ast.invalid_type_idx {
+		if typ in [ast.invalid_type_idx, ast.string_type_idx, ast.rune_type_idx, ast.array_type_idx,
+			ast.map_type_idx] {
 			p.error_with_pos('cannot register sum type `${name}`, another type with this name exists',
 				name_pos)
 			return ast.SumTypeDecl{}
@@ -4149,7 +4151,8 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		is_pub: is_pub
 	})
 	type_end_pos := p.prev_tok.pos()
-	if idx == ast.invalid_type_idx {
+	if idx in [ast.invalid_type_idx, ast.string_type_idx, ast.rune_type_idx, ast.array_type_idx,
+		ast.map_type_idx] {
 		p.error_with_pos('cannot register alias `${name}`, another type with this name exists',
 			name_pos)
 		return ast.AliasTypeDecl{}
