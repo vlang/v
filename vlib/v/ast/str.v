@@ -59,7 +59,7 @@ pub fn (node &CallExpr) fkey() string {
 }
 
 // These methods are used only by vfmt, vdoc, and for debugging.
-pub fn (node &AnonFn) stringify_anon_decl(t &Table, cur_mod string, m2a map[string]string) string {
+pub fn (t &Table) stringify_anon_decl(node &AnonFn, cur_mod string, m2a map[string]string) string {
 	mut f := strings.new_builder(30)
 	f.write_string('fn ')
 	if node.inherited_vars.len > 0 {
@@ -79,11 +79,11 @@ pub fn (node &AnonFn) stringify_anon_decl(t &Table, cur_mod string, m2a map[stri
 		}
 		f.write_string('] ')
 	}
-	stringify_fn_after_name(node.decl, mut f, t, cur_mod, m2a)
+	t.stringify_fn_after_name(node.decl, mut f, cur_mod, m2a)
 	return f.str()
 }
 
-pub fn (node &FnDecl) stringify_fn_decl(t &Table, cur_mod string, m2a map[string]string) string {
+pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string]string) string {
 	mut f := strings.new_builder(30)
 	if node.is_pub {
 		f.write_string('pub ')
@@ -120,11 +120,11 @@ pub fn (node &FnDecl) stringify_fn_decl(t &Table, cur_mod string, m2a map[string
 	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!=', '>=', '<='] {
 		f.write_string(' ')
 	}
-	stringify_fn_after_name(node, mut f, t, cur_mod, m2a)
+	t.stringify_fn_after_name(node, mut f, cur_mod, m2a)
 	return f.str()
 }
 
-fn stringify_fn_after_name(node &FnDecl, mut f strings.Builder, t &Table, cur_mod string, m2a map[string]string) {
+fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_mod string, m2a map[string]string) {
 	mut add_para_types := true
 	if node.generic_names.len > 0 {
 		if node.is_method {
@@ -149,27 +149,26 @@ fn stringify_fn_after_name(node &FnDecl, mut f strings.Builder, t &Table, cur_mo
 		}
 	}
 	f.write_string('(')
-	for i, arg in node.params {
+	for i, param in node.params {
 		// skip receiver
-		// if (node.is_method || node.is_interface) && i == 0 {
 		if node.is_method && i == 0 {
 			continue
 		}
-		if arg.is_hidden {
+		if param.is_hidden {
 			continue
 		}
-		is_last_arg := i == node.params.len - 1
-		is_type_only := arg.name == ''
-		should_add_type := true // is_last_arg || is_type_only || node.params[i + 1].typ != arg.typ ||
+		is_last_param := i == node.params.len - 1
+		is_type_only := param.name == ''
+		should_add_type := true // is_last_param || is_type_only || node.params[i + 1].typ != param.typ ||
 		// (node.is_variadic && i == node.params.len - 2)
-		if arg.is_mut {
-			f.write_string(arg.typ.share().str() + ' ')
+		if param.is_mut {
+			f.write_string(param.typ.share().str() + ' ')
 		}
-		f.write_string(arg.name)
-		arg_sym := t.sym(arg.typ)
-		if arg_sym.kind == .struct_ && (arg_sym.info as Struct).is_anon {
+		f.write_string(param.name)
+		param_sym := t.sym(param.typ)
+		if param_sym.kind == .struct_ && (param_sym.info as Struct).is_anon {
 			f.write_string(' struct {')
-			struct_ := arg_sym.info as Struct
+			struct_ := param_sym.info as Struct
 			for field in struct_.fields {
 				f.write_string(' ${field.name} ${t.type_to_str(field.typ)}')
 				if field.has_default_expr {
@@ -181,9 +180,9 @@ fn stringify_fn_after_name(node &FnDecl, mut f strings.Builder, t &Table, cur_mo
 			}
 			f.write_string('}')
 		} else {
-			mut s := t.type_to_str(arg.typ.clear_flag(.shared_f))
-			if arg.is_mut {
-				if s.starts_with('&') && ((!arg_sym.is_number() && arg_sym.kind != .bool)
+			mut s := t.type_to_str(param.typ.clear_flag(.shared_f))
+			if param.is_mut {
+				if s.starts_with('&') && ((!param_sym.is_number() && param_sym.kind != .bool)
 					|| node.language != .v) {
 					s = s[1..]
 				}
@@ -194,13 +193,13 @@ fn stringify_fn_after_name(node &FnDecl, mut f strings.Builder, t &Table, cur_mo
 				if !is_type_only {
 					f.write_string(' ')
 				}
-				if node.is_variadic && is_last_arg {
+				if node.is_variadic && is_last_param {
 					f.write_string('...')
 				}
 				f.write_string(s)
 			}
 		}
-		if !is_last_arg {
+		if !is_last_param {
 			f.write_string(', ')
 		}
 	}
