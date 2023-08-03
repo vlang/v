@@ -12,8 +12,8 @@ pub:
 	vopts            string  // v compiler options for a live shared library
 	original         string  // full path to the original source file, compiled with -live
 	live_fn_mutex    voidptr // the address of the C mutex, that locks the [live] fns during reloads.
-	live_linkfn      FNLinkLiveSymbols // generated C callback; receives a dlopen handle
-	so_extension     string // .so or .dll
+	live_linkfn      FNLinkLiveSymbols = unsafe { nil } // generated C callback; receives a dlopen handle
+	so_extension     string            // .so or .dll
 	so_name_template string // a template for the shared libraries location
 pub mut:
 	monitored_files   []string       // an array, containing all paths that should be monitored for changes

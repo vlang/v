@@ -142,25 +142,28 @@ fn get_all_commands() []Command {
 			line: '${vexe} run examples/v_script.vsh > /dev/null'
 			okmsg: 'V can run the .VSH script file examples/v_script.vsh'
 		}
+		// Note: -experimental is used here, just to suppress the warningss,
+		// that are otherwise printed by the native backend,
+		// until globals and hash statements *are implemented*:
 		$if linux {
 			res << Command{
-				line: '${vexe} -b native run examples/native/hello_world.v > /dev/null'
+				line: '${vexe} -experimental -b native run examples/native/hello_world.v > /dev/null'
 				okmsg: 'V compiles and runs examples/native/hello_world.v on the native backend for linux'
 			}
 		}
 		// only compilation:
 		res << Command{
-			line: '${vexe} -os linux -b native -o hw.linux examples/hello_world.v'
+			line: '${vexe} -os linux -experimental -b native -o hw.linux examples/hello_world.v'
 			okmsg: 'V compiles hello_world.v on the native backend for linux'
 			rmfile: 'hw.linux'
 		}
 		res << Command{
-			line: '${vexe} -os macos -b native -o hw.macos examples/hello_world.v'
+			line: '${vexe} -os macos -experimental -b native -o hw.macos examples/hello_world.v'
 			okmsg: 'V compiles hello_world.v on the native backend for macos'
 			rmfile: 'hw.macos'
 		}
 		res << Command{
-			line: '${vexe} -os windows -b native -o hw.exe examples/hello_world.v'
+			line: '${vexe} -os windows -experimental -b native -o hw.exe examples/hello_world.v'
 			okmsg: 'V compiles hello_world.v on the native backend for windows'
 			rmfile: 'hw.exe'
 		}

@@ -207,13 +207,13 @@ fn overhead_for(c &Chunk) usize {
 //
 // Why not `interface?` Interfaces require memory allocation so it is simpler to pass a struct.
 pub struct Allocator {
-	alloc            fn (voidptr, usize) (voidptr, usize, u32)
-	remap            fn (voidptr, voidptr, usize, usize, bool) voidptr
-	free_part        fn (voidptr, voidptr, usize, usize) bool
-	free_            fn (voidptr, voidptr, usize) bool
-	can_release_part fn (voidptr, u32) bool
-	allocates_zeros  fn (voidptr) bool
-	page_size        fn (voidptr) usize // not a constant field because some platforms might have different page sizes depending on configs
+	alloc            fn (voidptr, usize) (voidptr, usize, u32) = unsafe { nil }
+	remap            fn (voidptr, voidptr, usize, usize, bool) voidptr = unsafe { nil }
+	free_part        fn (voidptr, voidptr, usize, usize) bool = unsafe { nil }
+	free_            fn (voidptr, voidptr, usize) bool        = unsafe { nil }
+	can_release_part fn (voidptr, u32) bool = unsafe { nil }
+	allocates_zeros  fn (voidptr) bool      = unsafe { nil }
+	page_size        fn (voidptr) usize     = unsafe { nil } // not a constant field because some platforms might have different page sizes depending on configs
 	data             voidptr
 }
 

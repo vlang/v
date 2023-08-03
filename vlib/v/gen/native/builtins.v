@@ -13,7 +13,7 @@ enum Builtin {
 }
 
 struct BuiltinFn {
-	body     fn (builtin BuiltinFn, mut g Gen)
+	body     fn (builtin BuiltinFn, mut g Gen) = unsafe { nil }
 	arg_regs []Register
 mut:
 	calls []i64 // call addresses

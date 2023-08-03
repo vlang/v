@@ -83,8 +83,10 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			}
 
 			if unsupported {
-				g.warning('opcodes format: xx xx xx xx\nhash statements are not allowed with the native backend, use the C backend for extended C interoperability.',
-					node.pos)
+				if !g.pref.experimental {
+					g.warning('opcodes format: xx xx xx xx\nhash statements are not allowed with the native backend, use the C backend for extended C interoperability.',
+						node.pos)
+				}
 			}
 		}
 		ast.Module {}
@@ -98,7 +100,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.gen_assert(node)
 		}
 		ast.GlobalDecl {
-			g.warning('globals are not supported yet', node.pos)
+			if !g.pref.experimental {
+				g.warning('globals are not supported yet', node.pos)
+			}
 		}
 		ast.Import {} // do nothing here
 		ast.StructDecl {}
