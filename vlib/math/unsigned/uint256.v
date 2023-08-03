@@ -382,7 +382,7 @@ pub fn (u_ Uint256) str() string {
 }
 
 // uint256_from_dec_str creates a new `unsigned.Uint256` from the given string if possible
-pub fn uint256_from_dec_str(value string) ?Uint256 {
+pub fn uint256_from_dec_str(value string) !Uint256 {
 	mut res := unsigned.uint256_zero
 	for b_ in value.bytes() {
 		b := b_ - '0'.bytes()[0]
