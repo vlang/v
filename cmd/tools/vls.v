@@ -249,7 +249,7 @@ fn (upd VlsUpdater) compile_from_source() ! {
 
 	if !os.exists(vls_src_folder) {
 		upd.log('Cloning VLS repo...')
-		clone_result := os.execute('${git} clone https://github.com/vlang/vls ${vls_src_folder}')
+		clone_result := os.execute('${git} clone --filter=blob:none https://github.com/vlang/vls ${vls_src_folder}')
 		if clone_result.exit_code != 0 {
 			return error('Failed to build VLS from source. Reason: ${clone_result.output}')
 		}
@@ -483,7 +483,7 @@ fn main() {
 
 	fp.application('v ls')
 	fp.description('Installs, updates, and executes the V language server program')
-	fp.version('0.1')
+	fp.version('0.1.1')
 
 	// just to make sure whenever user wants to
 	// interact directly with the executable

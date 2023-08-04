@@ -4,7 +4,7 @@ import scripting
 import vgit
 
 const (
-	tool_version     = '0.0.3'
+	tool_version     = '0.0.4'
 	tool_description = '  Checkout an old V and compile it as it was on specific commit.
 |     This tool is useful, when you want to discover when something broke.
 |     It is also useful, when you just want to experiment with an older historic V.
@@ -83,7 +83,7 @@ fn sync_cache() {
 		repofolder := os.join_path(cache_oldv_folder, reponame)
 		if !os.exists(repofolder) {
 			scripting.verbose_trace(@FN, 'cloning to ${repofolder}')
-			scripting.exec('git clone --quiet https://github.com/vlang/${reponame} ${repofolder}') or {
+			scripting.exec('git clone --filter=blob:none --quiet https://github.com/vlang/${reponame} ${repofolder}') or {
 				scripting.verbose_trace(@FN, '## error during clone: ${err}')
 				exit(1)
 			}

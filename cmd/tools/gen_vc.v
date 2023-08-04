@@ -42,7 +42,7 @@ const (
 	// name
 	app_name             = 'gen_vc'
 	// version
-	app_version          = '0.1.2'
+	app_version          = '0.1.3'
 	// description
 	app_description      = "This tool regenerates V's bootstrap .c files every time the V master branch is updated."
 	// assume something went wrong if file size less than this
@@ -233,8 +233,8 @@ fn (mut gen_vc GenVC) generate() {
 	// delete repos
 	gen_vc.purge_repos()
 	// clone repos
-	gen_vc.cmd_exec('git clone --depth 1 https://${git_repo_v} ${git_repo_dir_v}')
-	gen_vc.cmd_exec('git clone --depth 1 https://${git_repo_vc} ${git_repo_dir_vc}')
+	gen_vc.cmd_exec('git clone --filter=blob:none https://${git_repo_v} ${git_repo_dir_v}')
+	gen_vc.cmd_exec('git clone --filter=blob:none https://${git_repo_vc} ${git_repo_dir_vc}')
 	// get output of git log -1 (last commit)
 	git_log_v := gen_vc.cmd_exec('git -C ${git_repo_dir_v} log -1 --format="commit %H%nDate: %ci%nDate Unix: %ct%nSubject: %s"')
 	git_log_vc := gen_vc.cmd_exec('git -C ${git_repo_dir_vc} log -1 --format="Commit %H%nDate: %ci%nDate Unix: %ct%nSubject: %s"')

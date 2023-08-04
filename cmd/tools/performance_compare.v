@@ -4,7 +4,7 @@ import scripting
 import vgit
 
 const (
-	tool_version     = '0.0.5'
+	tool_version     = '0.0.6'
 	tool_description = "  Compares V executable size and performance,
 |  between 2 commits from V's local git history.
 |  When only one commit is given, it is compared to master.
@@ -39,7 +39,7 @@ fn (c Context) compare_versions() {
 	scripting.chdir(c.vgo.workdir)
 	scripting.run('rm -rf "${c.a}" "${c.b}" "${c.vc}" ')
 	// clone the VC source *just once per comparison*, and reuse it:
-	scripting.run('git clone --quiet "${c.vgo.vc_repo_url}" "${c.vc}" ')
+	scripting.run('git clone --filter=blob:none --quiet "${c.vgo.vc_repo_url}" "${c.vc}" ')
 	println('Comparing V performance of commit ${c.commit_before} (before) vs commit ${c.commit_after} (after) ...')
 	c.prepare_v(c.b, c.commit_before)
 	c.prepare_v(c.a, c.commit_after)
