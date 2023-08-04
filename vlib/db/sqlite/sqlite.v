@@ -286,6 +286,63 @@ pub fn (db &DB) exec_none(query string) int {
 }
 
 // TODO pub fn (db &DB) exec_param(query string, param string) []Row {
+pub fn (db &DB) exec_param_many(query string, params []string) ![]Row {
+	println(query)
+	println('')
+	println(params)
+	println('')
+
+	mut stmt := &C.sqlite3_stmt(unsafe { nil })
+	defer {
+		C.sqlite3_finalize(stmt)
+	}
+
+	mut code := C.sqlite3_prepare_v2(db.conn, &char(query.str), -1, &stmt, 0)
+	if code != 0 {
+		println('prepare failed')
+		return &SQLError{
+			msg: unsafe {
+				cstring_to_vstring(&char(C.sqlite3_errstr(code))) +
+					' Placeholder "?" cannot be used to select a table'
+			}
+			code: code
+		}
+	}
+
+	for i, param in params {
+		code = C.sqlite3_bind_text(stmt, i + 1, voidptr(param.str), param.len, 0)
+		if code != 0 {
+			println('bind failed at index=${i}')
+			return &SQLError{
+				msg: unsafe { cstring_to_vstring(&char(C.sqlite3_errstr(code))) }
+				code: code
+			}
+		}
+	}
+
+	nr_cols := C.sqlite3_column_count(stmt)
+	mut res := 0
+	mut rows := []Row{}
+	for {
+		res = C.sqlite3_step(stmt)
+		if res != 100 {
+			break
+		}
+		mut row := Row{}
+		for i in 0 .. nr_cols {
+			val := unsafe { &u8(C.sqlite3_column_text(stmt, i)) }
+			if val == &u8(0) {
+				row.vals << ''
+			} else {
+				row.vals << unsafe { cstring_to_vstring(C.sqlite3_column_name(stmt, i)) } + ': ' +
+					unsafe { tos_clone(val) }
+			}
+		}
+		rows << row
+	}
+
+	return rows
+}
 
 // create_table issues a "create table if not exists" command to the db.
 // It creates the table named 'table_name', with columns generated from 'columns' array.
