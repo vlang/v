@@ -221,12 +221,10 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string('${t.hour:02}')
 			}
 			'h' {
-				h := if t.hour > 12 { t.hour - 12 } else { t.hour }
-				sb.write_string(h.str())
+				sb.write_string(if t.hour > 12 { t.hour - 12 } else { t.hour }.str())
 			}
 			'hh' {
-				h := if t.hour > 12 { t.hour - 12 } else { t.hour }
-				sb.write_string('${h:02}')
+				sb.write_string('${if t.hour > 12 { t.hour - 12 } else { t.hour }:02}')
 			}
 			'm' {
 				sb.write_string(t.minute.str())
