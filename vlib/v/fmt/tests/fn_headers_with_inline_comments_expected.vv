@@ -3,6 +3,6 @@ fn /* main */ main() {
 }
 
 fn // hi
- print_hi() {
+print_hi() {
 	println('hi')
 }

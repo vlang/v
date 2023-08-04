@@ -89,6 +89,13 @@ pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string
 		f.write_string('pub ')
 	}
 	f.write_string('fn ')
+	pre_comments := node.comments.filter(it.pos.pos < node.name_pos.pos)
+	if pre_comments.len > 0 {
+		write_comments(pre_comments, mut f)
+		if !f.last_n(1)[0].is_space() {
+			f.write_string(' ')
+		}
+	}
 	if node.is_method {
 		f.write_string('(')
 		mut styp := util.no_cur_mod(t.type_to_code(node.receiver.typ.clear_flag(.shared_f)),
@@ -211,13 +218,50 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 	}
 }
 
+fn write_comments(comments []Comment, mut f strings.Builder) {
+	for i, c in comments {
+		if !f.last_n(1)[0].is_space() {
+			f.write_string(' ')
+		}
+		write_comment(c, mut f)
+		if c.is_inline && i < comments.len - 1 && !c.is_multi {
+			f.write_string(' ')
+		} else if (!c.is_inline || c.is_multi) && i < comments.len - 1 {
+			f.writeln('')
+		}
+	}
+}
+
+fn write_comment(node Comment, mut f strings.Builder) {
+	if node.is_inline {
+		x := node.text.trim_left('\x01').trim_space()
+		if x.contains('\n') {
+			f.writeln('/*')
+			f.writeln(x)
+			f.write_string('*/')
+		} else {
+			f.write_string('/* ${x} */')
+		}
+	} else {
+		mut s := node.text.trim_left('\x01').trim_right(' ')
+		mut out_s := '//'
+		if s != '' {
+			if s[0].is_letter() || s[0].is_digit() {
+				out_s += ' '
+			}
+			out_s += s
+		}
+		f.writeln(out_s)
+	}
+}
+
 struct StringifyModReplacement {
 	mod    string
 	alias  string
 	weight int
 }
 
-pub fn shorten_full_name_based_on_aliases(input string, m2a map[string]string) string {
+fn shorten_full_name_based_on_aliases(input string, m2a map[string]string) string {
 	if m2a.len == 0 || -1 == input.index_u8(`.`) {
 		// a simple typename, like `string` or `[]bool`; no module aliasings apply,
 		// (or there just are not any mappings)

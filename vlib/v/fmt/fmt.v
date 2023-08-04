@@ -1019,7 +1019,7 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 
 pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 	f.attrs(node.attrs)
-	f.fn_header(node)
+	f.write(f.table.stringify_fn_decl(&node, f.cur_mod, f.mod2alias))
 	// Handle trailing comments after fn header declarations
 	if node.no_body && node.end_comments.len > 0 {
 		first_comment := node.end_comments[0]
@@ -1041,136 +1041,6 @@ pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 		}
 	}
 	f.fn_body(node)
-}
-
-pub fn (mut f Fmt) fn_header(node ast.FnDecl) {
-	if node.is_pub {
-		f.write('pub ')
-	}
-	f.write('fn ')
-	pre_comments := node.comments.filter(it.pos.pos < node.name_pos.pos)
-	if pre_comments.len > 0 {
-		f.comments(pre_comments)
-		f.write(' ')
-	}
-	if node.is_method {
-		f.write('(')
-		mut styp := util.no_cur_mod(f.table.type_to_code(node.receiver.typ.clear_flag(.shared_f)),
-			f.cur_mod)
-		if node.rec_mut {
-			f.write(node.receiver.typ.share().str() + ' ')
-			styp = styp[1..] // remove &
-		}
-		f.write(node.receiver.name + ' ')
-		styp = util.no_cur_mod(styp, f.cur_mod)
-		if node.params[0].is_auto_rec {
-			styp = styp.trim('&')
-		}
-		f.write(styp + ') ')
-	} else if node.is_static_type_method {
-		mut styp := util.no_cur_mod(f.table.type_to_code(node.receiver.typ.clear_flag(.shared_f)),
-			f.cur_mod)
-		f.write(styp + '.')
-	}
-	mut name := if !node.is_method && node.language == .v {
-		node.name.all_after_last('.')
-	} else {
-		node.name
-	}
-	if node.is_static_type_method {
-		name = name.after('__static__')
-	}
-	f.write(name)
-	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!=', '>=', '<='] {
-		f.write(' ')
-	}
-	mut add_para_types := true
-	if node.generic_names.len > 0 {
-		if node.is_method {
-			sym := f.table.sym(node.params[0].typ)
-			if sym.info is ast.Struct {
-				generic_names := sym.info.generic_types.map(f.table.sym(it).name)
-				if generic_names == node.generic_names {
-					add_para_types = false
-				}
-			}
-		}
-		if add_para_types {
-			f.write('[')
-			for i, gname in node.generic_names {
-				is_last := i == node.generic_names.len - 1
-				f.write(gname)
-				if !is_last {
-					f.write(', ')
-				}
-			}
-			f.write(']')
-		}
-	}
-	f.write('(')
-	for i, arg in node.params {
-		before_comments := arg.comments.filter(it.pos.pos < arg.pos.pos)
-		if before_comments.len > 0 {
-			f.comments(before_comments, level: .indent)
-		}
-		// skip receiver
-		if node.is_method && i == 0 {
-			continue
-		}
-		if arg.is_hidden {
-			continue
-		}
-		is_last_arg := i == node.params.len - 1
-		is_type_only := arg.name == ''
-		should_add_type := true
-		if arg.is_mut {
-			f.write(arg.typ.share().str() + ' ')
-		}
-		f.write(arg.name)
-		arg_sym := f.table.sym(arg.typ)
-		if arg_sym.kind == .struct_ && (arg_sym.info as ast.Struct).is_anon {
-			f.write(' struct {')
-			struct_ := arg_sym.info as ast.Struct
-			for field in struct_.fields {
-				f.write(' ${field.name} ${f.table.type_to_str(field.typ)}')
-				if field.has_default_expr {
-					f.write(' = ${field.default_expr}')
-				}
-			}
-			if struct_.fields.len > 0 {
-				f.write(' ')
-			}
-			f.write('}')
-		} else {
-			mut s := f.table.type_to_str(arg.typ.clear_flag(.shared_f))
-			if arg.is_mut {
-				if s.starts_with('&') && ((!arg_sym.is_number() && arg_sym.kind != .bool)
-					|| node.language != .v) {
-					s = s[1..]
-				}
-			}
-			s = util.no_cur_mod(s, f.cur_mod)
-			s = ast.shorten_full_name_based_on_aliases(s, f.mod2alias)
-			if should_add_type {
-				if !is_type_only {
-					f.write(' ')
-				}
-				if node.is_variadic && is_last_arg {
-					f.write('...')
-				}
-				f.write(s)
-			}
-		}
-		if !is_last_arg {
-			f.write(', ')
-		}
-	}
-	f.write(')')
-	if node.return_type != ast.void_type {
-		sreturn_type := util.no_cur_mod(f.table.type_to_str(node.return_type), f.cur_mod)
-		short_sreturn_type := ast.shorten_full_name_based_on_aliases(sreturn_type, f.mod2alias)
-		f.write(' ${short_sreturn_type}')
-	}
 }
 
 pub fn (mut f Fmt) anon_fn(node ast.AnonFn) {
