@@ -9,7 +9,7 @@ import semver
 
 const (
 	tool_name        = os.file_name(os.executable())
-	tool_version     = '0.0.1'
+	tool_version     = '0.1.0'
 	tool_description = '\n  Bump the semantic version of the v.mod and/or specified files.
 
   The first instance of a version number is replaced with the new version.
@@ -20,6 +20,11 @@ const (
     tool_version = \'1.2.1\'
     version: \'0.2.42\'
     VERSION = "1.23.8"
+
+	If certain lines need to be skipped, use the --skip option. For instance,
+	the following command will skip lines containing "tool-version":
+
+		v bump --patch --skip "tool-version"
 
 Examples:
   Bump the patch version in v.mod if it exists
@@ -37,6 +42,7 @@ struct Options {
 	major     bool
 	minor     bool
 	patch     bool
+	skip      string
 }
 
 type ReplacementFunction = fn (re regex.RE, input string, start int, end int) string
@@ -85,7 +91,8 @@ fn process_file(input_file string, options Options) {
 		}
 
 		// Check if replacement is necessary
-		updated_line := if line.to_lower().contains('version') {
+		updated_line := if line.to_lower().contains('version') && !(options.skip != ''
+			&& line.contains(options.skip)) {
 			replacement_complete = true
 			re.replace_by_fn(line, repl_fn)
 		} else {
@@ -141,6 +148,12 @@ Try ${tool_name} -h for more help...')
 		patch: fp.bool('patch', `p`, false, 'Bump the patch version.')
 		minor: fp.bool('minor', `n`, false, 'Bump the minor version.')
 		major: fp.bool('major', `m`, false, 'Bump the major version.')
+		skip: fp.string('skip', `s`, '', 'Skip lines matching this pattern.').trim_space()
+	}
+
+	remaining := fp.finalize() or {
+		println(fp.usage())
+		exit(1)
 	}
 
 	if options.show_help {
@@ -150,7 +163,7 @@ Try ${tool_name} -h for more help...')
 
 	validate_options(options) or { panic(err) }
 
-	files := os.args[3..]
+	files := remaining[1..]
 
 	if files.len == 0 {
 		if !os.exists('v.mod') {
