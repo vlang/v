@@ -97,6 +97,7 @@ jobs:
           mkdir -p ~/.vmodules
           ln -s $(pwd) ~/.vmodules/ui
           ../v examples/rectangles.v
+          ../v examples/users.v
           ## ../v run examples/build_examples.vsh
       - name: V self compilation with -usecache
         run: |
