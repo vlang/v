@@ -308,17 +308,17 @@ pub fn (t Time) custom_format(s string) string {
 				}
 			}
 			'a' {
-				if t.hour >= 12 {
-					sb.write_string('pm')
-				} else {
+				if t.hour < 12 {
 					sb.write_string('am')
+				} else {
+					sb.write_string('pm')
 				}
 			}
 			'A' {
-				if t.hour >= 12 {
-					sb.write_string('PM')
-				} else {
+				if t.hour < 12 {
 					sb.write_string('AM')
+				} else {
+					sb.write_string('PM')
 				}
 			}
 			else {
