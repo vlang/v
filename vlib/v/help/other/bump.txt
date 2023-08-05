@@ -11,7 +11,12 @@ recognized by the heuristic:
 tool_version = '1.2.1'
 version: '0.2.42'
 VERSION = "1.23.8"
-  
+
+If certain lines need to be skipped, use the --skip option. For instance,
+the following command will skip lines containing "tool-version":
+
+  v bump --patch --skip "tool-version" [files...]
+
 Examples:
   Bump the patch version in v.mod if it exists
     v bump --patch

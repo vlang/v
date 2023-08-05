@@ -24,7 +24,7 @@ const (
 	If certain lines need to be skipped, use the --skip option. For instance,
 	the following command will skip lines containing "tool-version":
 
-		v bump --patch --skip "tool-version"
+		v bump --patch --skip "tool-version" [files...]
 
 Examples:
   Bump the patch version in v.mod if it exists
