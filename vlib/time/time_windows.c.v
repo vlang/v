@@ -40,7 +40,7 @@ fn C.SystemTimeToTzSpecificLocalTime(lpTimeZoneInformation &C.TIME_ZONE_INFORMAT
 fn C.localtime_s(t &C.time_t, tm &C.tm)
 
 fn C.timespec_get(t &C.timespec, base int) int
- 
+
 const (
 	// start_time is needed on Darwin and Windows because of potential overflows
 	start_time       = init_win_time_start()
