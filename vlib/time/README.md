@@ -28,7 +28,7 @@ const time_to_test = time.Time{
 	hour: 21
 	minute: 23
 	second: 42
-	microsecond: 123456
+	nanosecond: 123456789
 	unix: 332198622
 }
 
@@ -38,6 +38,7 @@ assert '1980-07-11 21:23' == time_to_test.format()
 assert '1980-07-11 21:23:42' == time_to_test.format_ss()
 assert '1980-07-11 21:23:42.123' == time_to_test.format_ss_milli()
 assert '1980-07-11 21:23:42.123456' == time_to_test.format_ss_micro()
+assert '1980-07-11 21:23:42.123456789' == time_to_test.format_ss_nano()
 ```
 
 You can also parse strings to produce time.Time values,

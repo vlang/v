@@ -39,6 +39,8 @@ fn C.SystemTimeToTzSpecificLocalTime(lpTimeZoneInformation &C.TIME_ZONE_INFORMAT
 
 fn C.localtime_s(t &C.time_t, tm &C.tm)
 
+fn C.timespec_get(t &C.timespec, base int) int
+
 const (
 	// start_time is needed on Darwin and Windows because of potential overflows
 	start_time       = init_win_time_start()
@@ -107,7 +109,7 @@ pub fn (t Time) local() Time {
 		hour: u16(t.hour)
 		minute: u16(t.minute)
 		second: u16(t.second)
-		millisecond: u16(t.microsecond / 1000)
+		millisecond: u16(t.nanosecond / 1_000_000)
 	}
 	st_local := SystemTime{}
 	C.SystemTimeToTzSpecificLocalTime(unsafe { nil }, &st_utc, &st_local)
@@ -118,7 +120,7 @@ pub fn (t Time) local() Time {
 		hour: st_local.hour
 		minute: st_local.minute
 		second: st_local.second // These are the same
-		microsecond: int(st_local.millisecond) * 1000
+		nanosecond: int(st_local.millisecond) * 1_000_000
 		unix: st_local.unix_time()
 	}
 	return t_local
@@ -141,7 +143,7 @@ fn win_now() Time {
 		hour: st_local.hour
 		minute: st_local.minute
 		second: st_local.second
-		microsecond: int(st_local.millisecond) * 1000
+		nanosecond: int(st_local.millisecond) * 1_000_000
 		unix: st_local.unix_time()
 		is_local: true
 	}
@@ -163,7 +165,7 @@ fn win_utc() Time {
 		hour: st_utc.hour
 		minute: st_utc.minute
 		second: st_utc.second
-		microsecond: int(st_utc.millisecond) * 1000
+		nanosecond: int(st_utc.millisecond) * 1_000_000
 		unix: st_utc.unix_time()
 		is_local: false
 	}
@@ -211,12 +213,6 @@ fn linux_utc() Time {
 // dummy to compile with all compilers
 fn solaris_utc() Time {
 	return Time{}
-}
-
-// dummy to compile with all compilers
-pub struct C.timeval {
-	tv_sec  u64
-	tv_usec u64
 }
 
 // sleep makes the calling thread sleep for a given duration (in nanoseconds).
