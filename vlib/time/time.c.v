@@ -53,13 +53,6 @@ pub fn utc() Time {
 		return solaris_utc()
 	}
 	return linux_utc()
-	/*
-	// defaults to most common feature, the microsecond precision is not available
-	// in this API call
-	t := C.time(0)
-	_ = C.time(&t)
-	return unix2(i64(t), 0)
-	*/
 }
 
 // new_time returns a time struct with the calculated Unix time.
@@ -90,7 +83,7 @@ pub fn ticks() i64 {
 	} $else {
 		ts := C.timeval{}
 		C.gettimeofday(&ts, 0)
-		return i64(ts.tv_sec * u64(1000) + (ts.tv_usec / u64(1000)))
+		return i64(ts.tv_sec * u64(1000) + (ts.tv_usec / u64(1_000)))
 	}
 	// t := i64(C.mach_absolute_time())
 	// # Nanoseconds elapsedNano = AbsoluteToNanoseconds( *(AbsoluteTime *) &t );
@@ -105,7 +98,7 @@ pub fn (t Time) str() string {
 }
 
 // convert_ctime converts a C time to V time.
-fn convert_ctime(t C.tm, microsecond int) Time {
+fn convert_ctime(t C.tm, nanosecond int) Time {
 	return Time{
 		year: t.tm_year + 1900
 		month: t.tm_mon + 1
@@ -113,7 +106,7 @@ fn convert_ctime(t C.tm, microsecond int) Time {
 		hour: t.tm_hour
 		minute: t.tm_min
 		second: t.tm_sec
-		microsecond: microsecond
+		nanosecond: nanosecond
 		unix: make_unix_time(t)
 		// for the actual code base when we
 		// call convert_ctime, it is always

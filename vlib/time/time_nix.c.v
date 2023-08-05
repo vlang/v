@@ -36,7 +36,7 @@ pub fn (t Time) local() Time {
 	}
 	loc_tm := C.tm{}
 	C.localtime_r(voidptr(&t.unix), &loc_tm)
-	return convert_ctime(loc_tm, t.microsecond)
+	return convert_ctime(loc_tm, t.nanosecond)
 }
 
 // in most systems, these are __quad_t, which is an i64
@@ -58,7 +58,7 @@ pub fn sys_mono_now() u64 {
 	} $else {
 		ts := C.timespec{}
 		C.clock_gettime(C.CLOCK_MONOTONIC, &ts)
-		return u64(ts.tv_sec) * 1000000000 + u64(ts.tv_nsec)
+		return u64(ts.tv_sec) * 1_000_000_000 + u64(ts.tv_nsec)
 	}
 }
 
@@ -68,7 +68,7 @@ pub fn sys_mono_now() u64 {
 fn vpc_now() u64 {
 	ts := C.timespec{}
 	C.clock_gettime(C.CLOCK_MONOTONIC, &ts)
-	return u64(ts.tv_sec) * 1000000000 + u64(ts.tv_nsec)
+	return u64(ts.tv_sec) * 1_000_000_000 + u64(ts.tv_nsec)
 }
 
 // The linux_* functions are placed here, since they're used on Android as well
@@ -83,7 +83,7 @@ fn linux_now() Time {
 	C.clock_gettime(C.CLOCK_REALTIME, &ts)
 	loc_tm := C.tm{}
 	C.localtime_r(voidptr(&ts.tv_sec), &loc_tm)
-	return convert_ctime(loc_tm, int(ts.tv_nsec / 1000))
+	return convert_ctime(loc_tm, int(ts.tv_nsec))
 }
 
 fn linux_utc() Time {
@@ -91,7 +91,7 @@ fn linux_utc() Time {
 	// and use the nanoseconds part
 	mut ts := C.timespec{}
 	C.clock_gettime(C.CLOCK_REALTIME, &ts)
-	return unix2(i64(ts.tv_sec), int(ts.tv_nsec / 1000))
+	return unix_nanosecond(i64(ts.tv_sec), int(ts.tv_nsec))
 }
 
 // dummy to compile with all compilers

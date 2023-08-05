@@ -17,7 +17,7 @@ pub fn (t Time) format_ss() string {
 
 // format_ss_milli returns a date string in "YYYY-MM-DD HH:mm:ss.123" format (24h).
 pub fn (t Time) format_ss_milli() string {
-	return '${t.year:04d}-${t.month:02d}-${t.day:02d} ${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${(t.microsecond / 1000):03d}'
+	return '${t.year:04d}-${t.month:02d}-${t.day:02d} ${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${(t.nanosecond / 1_000_000):03d}'
 }
 
 // format_rfc3339 returns a date string in "YYYY-MM-DDTHH:mm:ss.123Z" format (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
@@ -25,12 +25,17 @@ pub fn (t Time) format_ss_milli() string {
 // It is intended to improve consistency and interoperability, when representing and using date and time in Internet protocols.
 pub fn (t Time) format_rfc3339() string {
 	u := t.local_to_utc()
-	return '${u.year:04d}-${u.month:02d}-${u.day:02d}T${u.hour:02d}:${u.minute:02d}:${u.second:02d}.${(u.microsecond / 1000):03d}Z'
+	return '${u.year:04d}-${u.month:02d}-${u.day:02d}T${u.hour:02d}:${u.minute:02d}:${u.second:02d}.${(u.nanosecond / 1_000_000):03d}Z'
 }
 
 // format_ss_micro returns a date string in "YYYY-MM-DD HH:mm:ss.123456" format (24h).
 pub fn (t Time) format_ss_micro() string {
-	return '${t.year:04d}-${t.month:02d}-${t.day:02d} ${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${t.microsecond:06d}'
+	return '${t.year:04d}-${t.month:02d}-${t.day:02d} ${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${(t.nanosecond / 1_000):06d}'
+}
+
+// format_ss_nano returns a date string in "YYYY-MM-DD HH:mm:ss.123456789" format (24h).
+pub fn (t Time) format_ss_nano() string {
+	return '${t.year:04d}-${t.month:02d}-${t.day:02d} ${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${t.nanosecond:09d}'
 }
 
 // hhmm returns a date string in "HH:mm" format (24h).
@@ -381,8 +386,9 @@ pub fn (t Time) get_fmt_time_str(fmt_time FormatTime) string {
 		.hhmm24 { '${t.hour:02d}:${t.minute:02d}' }
 		.hhmmss12 { '${hour_}:${t.minute:02d}:${t.second:02d} ${tp}' }
 		.hhmmss24 { '${t.hour:02d}:${t.minute:02d}:${t.second:02d}' }
-		.hhmmss24_milli { '${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${(t.microsecond / 1000):03d}' }
-		.hhmmss24_micro { '${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${t.microsecond:06d}' }
+		.hhmmss24_milli { '${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${(t.nanosecond / 1_000_000):03d}' }
+		.hhmmss24_micro { '${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${(t.nanosecond / 1_000):06d}' }
+		.hhmmss24_nano { '${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${t.nanosecond:06d}' }
 		else { 'unknown enumeration ${fmt_time}' }
 	}
 }

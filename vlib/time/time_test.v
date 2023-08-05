@@ -1,18 +1,16 @@
 import time
 import math
 
-const (
-	time_to_test = time.Time{
-		year: 1980
-		month: 7
-		day: 11
-		hour: 21
-		minute: 23
-		second: 42
-		microsecond: 123456
-		unix: 332198622
-	}
-)
+const time_to_test = time.Time{
+	year: 1980
+	month: 7
+	day: 11
+	hour: 21
+	minute: 23
+	second: 42
+	nanosecond: 123456789
+	unix: 332198622
+}
 
 fn test_is_leap_year() {
 	// 1996 % 4 = 0 and 1996 % 100 > 0
@@ -83,6 +81,14 @@ fn test_unix() {
 	assert t6.second == 29
 }
 
+fn test_format_rfc3339() {
+	// assert '1980-07-11T19:23:42.123Z'
+	res := time_to_test.format_rfc3339()
+	assert res.ends_with('23:42.123Z')
+	assert res.starts_with('1980-07-1')
+	assert res.contains('T')
+}
+
 fn test_format_ss() {
 	assert '11.07.1980 21:23:42' == time_to_test.get_fmt_str(.dot, .hhmmss24, .ddmmyyyy)
 }
@@ -93,18 +99,16 @@ fn test_format_ss_milli() {
 	assert '1980-07-11 21:23:42.123' == time_to_test.format_ss_milli()
 }
 
-fn test_format_rfc3339() {
-	// assert '1980-07-11T19:23:42.123Z'
-	res := time_to_test.format_rfc3339()
-	assert res.ends_with('23:42.123Z')
-	assert res.starts_with('1980-07-1')
-	assert res.contains('T')
-}
-
 fn test_format_ss_micro() {
 	assert '11.07.1980 21:23:42.123456' == time_to_test.get_fmt_str(.dot, .hhmmss24_micro,
 		.ddmmyyyy)
 	assert '1980-07-11 21:23:42.123456' == time_to_test.format_ss_micro()
+}
+
+fn test_format_ss_nano() {
+	assert '11.07.1980 21:23:42.123456789' == time_to_test.get_fmt_str(.dot, .hhmmss24_nano,
+		.ddmmyyyy)
+	assert '1980-07-11 21:23:42.123456789' == time_to_test.format_ss_nano()
 }
 
 fn test_smonth() {
@@ -180,21 +184,29 @@ fn test_weekday_str() {
 
 fn test_add() {
 	d_seconds := 3
-	d_microseconds := 13
-	duration := time.Duration(d_seconds * time.second + d_microseconds * time.microsecond)
+	d_nanoseconds := 13
+	duration := time.Duration(d_seconds * time.second + d_nanoseconds * time.nanosecond)
+	// dump(duration.debug())
 	t1 := time_to_test
+	// dump(t1.debug())
 	t2 := time_to_test.add(duration)
+	// dump(t2.debug())
 	assert t2.second == t1.second + d_seconds
-	assert t2.microsecond == t1.microsecond + d_microseconds
+	assert t2.nanosecond == t1.nanosecond + d_nanoseconds
 	assert t2.unix == t1.unix + d_seconds
 	assert t2.is_local == t1.is_local
+	//
 	t3 := time_to_test.add(-duration)
+	// dump(t3.debug())
 	assert t3.second == t1.second - d_seconds
-	assert t3.microsecond == t1.microsecond - d_microseconds
+	assert t3.nanosecond == t1.nanosecond - d_nanoseconds
 	assert t3.unix == t1.unix - d_seconds
 	assert t3.is_local == t1.is_local
+	//
 	t4 := time_to_test.as_local()
+	// dump(t4.debug())
 	t5 := t4.add(duration)
+	// dump(t5.debug())
 	assert t5.is_local == t4.is_local
 }
 
@@ -220,13 +232,14 @@ fn test_now() {
 	assert now.minute < 60
 	assert now.second >= 0
 	assert now.second <= 60 // <= 60 cause of leap seconds
-	assert now.microsecond >= 0
-	assert now.microsecond < 1000000
+	assert now.nanosecond >= 0
+	assert now.nanosecond < time.second
 }
 
 fn test_utc() {
 	now := time.utc()
 	// The year the test was built
+	// dump(now.debug())
 	assert now.year >= 2020
 	assert now.month > 0
 	assert now.month <= 12
@@ -234,20 +247,20 @@ fn test_utc() {
 	assert now.minute < 60
 	assert now.second >= 0
 	assert now.second <= 60 // <= 60 cause of leap seconds
-	assert now.microsecond >= 0
-	assert now.microsecond < 1000000
+	assert now.nanosecond >= 0
+	assert now.nanosecond < time.second
 }
 
 fn test_unix_time() {
 	t1 := time.utc()
 	time.sleep(50 * time.millisecond)
 	t2 := time.utc()
-	eprintln('t1: ${t1}')
-	eprintln('t2: ${t2}')
+	eprintln('  t1: ${t1}')
+	eprintln('  t2: ${t2}')
 	ut1 := t1.unix_time()
 	ut2 := t2.unix_time()
-	eprintln('ut1: ${ut1}')
-	eprintln('ut2: ${ut2}')
+	eprintln(' ut1: ${ut1}')
+	eprintln(' ut2: ${ut2}')
 	assert ut2 - ut1 < 2
 	//
 	utm1 := t1.unix_time_milli()

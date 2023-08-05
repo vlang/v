@@ -27,7 +27,7 @@ struct InternalTimeBase {
 
 pub struct C.timeval {
 	tv_sec  u64
-	tv_usec u64
+	tv_nsec u64
 }
 
 fn init_time_base() C.mach_timebase_info_data_t {
@@ -64,8 +64,8 @@ fn vpc_now_darwin() u64 {
 
 // darwin_now returns a better precision current time for Darwin based operating system
 // this should be implemented with native system calls eventually
-// but for now a bit tweaky. It uses the deprecated  gettimeofday clock to get
-// the microseconds seconds part and converts to local time
+// but for now a bit tweaky. It uses the deprecated gettimeofday clock to get
+// the nanoseconds seconds part and converts to local time
 fn darwin_now() Time {
 	// get the high precision time as UTC clock
 	tv := C.timeval{}
@@ -73,18 +73,18 @@ fn darwin_now() Time {
 	loc_tm := C.tm{}
 	asec := voidptr(&tv.tv_sec)
 	C.localtime_r(asec, &loc_tm)
-	return convert_ctime(loc_tm, int(tv.tv_usec))
+	return convert_ctime(loc_tm, int(tv.tv_nsec))
 }
 
 // darwin_utc returns a better precision current time for Darwin based operating system
 // this should be implemented with native system calls eventually
 // but for now a bit tweaky. It uses the deprecated  gettimeofday clock to get
-// the microseconds seconds part and normal local time to get correct local time
+// the nanoseconds seconds part and normal local time to get correct local time
 fn darwin_utc() Time {
 	// get the high precision time as UTC clock
 	tv := C.timeval{}
 	C.gettimeofday(&tv, 0)
-	return unix2(i64(tv.tv_sec), int(tv.tv_usec))
+	return unix_nanosecond(i64(tv.tv_sec), int(tv.tv_nsec))
 }
 
 // dummy to compile with all compilers
