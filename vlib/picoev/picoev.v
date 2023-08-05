@@ -23,7 +23,7 @@ pub mut:
 	fd      int
 	loop_id int = -1
 	events  u32
-	cb      fn (int, int, voidptr)
+	cb      fn (int, int, voidptr) = unsafe { nil }
 	// used internally by the kqueue implementation
 	backend int
 }
@@ -31,7 +31,7 @@ pub mut:
 pub struct Config {
 pub:
 	port         int = 8080
-	cb           fn (voidptr, picohttpparser.Request, mut picohttpparser.Response)
+	cb           fn (voidptr, picohttpparser.Request, mut picohttpparser.Response) = unsafe { nil }
 	err_cb       fn (voidptr, picohttpparser.Request, mut picohttpparser.Response, IError) = default_err_cb
 	user_data    voidptr = unsafe { nil }
 	timeout_secs int     = 8
@@ -42,7 +42,7 @@ pub:
 
 [heap]
 pub struct Picoev {
-	cb        fn (voidptr, picohttpparser.Request, mut picohttpparser.Response)
+	cb        fn (voidptr, picohttpparser.Request, mut picohttpparser.Response) = unsafe { nil }
 	err_cb    fn (voidptr, picohttpparser.Request, mut picohttpparser.Response, IError) = default_err_cb
 	user_data voidptr = unsafe { nil }
 
