@@ -148,7 +148,7 @@ Try ${tool_name} -h for more help...')
 		patch: fp.bool('patch', `p`, false, 'Bump the patch version.')
 		minor: fp.bool('minor', `n`, false, 'Bump the minor version.')
 		major: fp.bool('major', `m`, false, 'Bump the major version.')
-		skip: fp.string('skip', `s`, '', 'Skip lines matching this pattern.').trim_space()
+		skip: fp.string('skip', `s`, '', 'Skip lines matching this substring.').trim_space()
 	}
 
 	remaining := fp.finalize() or {
