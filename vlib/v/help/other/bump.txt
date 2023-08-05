@@ -27,7 +27,8 @@ Examples:
 
 
 Options:
-  -h, --help   Show this help text.
-  -m, --major  Bump the major version.
-  -n, --minor  Bump the minor version.
-  -p, --patch  Bump the patch version.
+  -h, --help           Show this help text.
+  -m, --major          Bump the major version.
+  -n, --minor          Bump the minor version.
+  -p, --patch          Bump the patch version.
+  -s, --skip <string>  Skip lines matching this substring.
