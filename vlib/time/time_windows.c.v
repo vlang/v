@@ -213,12 +213,6 @@ fn solaris_utc() Time {
 	return Time{}
 }
 
-// dummy to compile with all compilers
-pub struct C.timeval {
-	tv_sec  u64
-	tv_usec u64
-}
-
 // sleep makes the calling thread sleep for a given duration (in nanoseconds).
 pub fn sleep(duration Duration) {
 	C.Sleep(int(duration / millisecond))

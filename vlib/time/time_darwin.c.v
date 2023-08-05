@@ -2,11 +2,10 @@ module time
 
 #include <mach/mach_time.h>
 
-const (
-	// start_time is needed on Darwin and Windows because of potential overflows
-	start_time = C.mach_absolute_time()
-	time_base  = init_time_base()
-)
+// start_time is needed on Darwin and Windows because of potential overflows
+const start_time = C.mach_absolute_time()
+
+const time_base = init_time_base()
 
 [typedef]
 struct C.mach_timebase_info_data_t {
@@ -23,11 +22,6 @@ fn C.clock_gettime_nsec_np(int) u64
 struct InternalTimeBase {
 	numer u32 = 1
 	denom u32 = 1
-}
-
-pub struct C.timeval {
-	tv_sec  u64
-	tv_nsec u64
 }
 
 fn init_time_base() C.mach_timebase_info_data_t {
@@ -62,29 +56,22 @@ fn vpc_now_darwin() u64 {
 	return (tm - time.start_time) * time.time_base.numer / time.time_base.denom
 }
 
-// darwin_now returns a better precision current time for Darwin based operating system
-// this should be implemented with native system calls eventually
-// but for now a bit tweaky. It uses the deprecated gettimeofday clock to get
-// the nanoseconds seconds part and converts to local time
+// darwin_now returns a better precision current time for macos
 fn darwin_now() Time {
-	// get the high precision time as UTC clock
-	tv := C.timeval{}
-	C.gettimeofday(&tv, 0)
+	// get the high precision time as UTC realtime clock, and use the nanoseconds part
+	mut ts := C.timespec{}
+	C.clock_gettime(C.CLOCK_REALTIME, &ts)
 	loc_tm := C.tm{}
-	asec := voidptr(&tv.tv_sec)
-	C.localtime_r(asec, &loc_tm)
-	return convert_ctime(loc_tm, int(tv.tv_nsec))
+	C.localtime_r(voidptr(&ts.tv_sec), &loc_tm)
+	return convert_ctime(loc_tm, int(ts.tv_nsec))
 }
 
-// darwin_utc returns a better precision current time for Darwin based operating system
-// this should be implemented with native system calls eventually
-// but for now a bit tweaky. It uses the deprecated  gettimeofday clock to get
-// the nanoseconds seconds part and normal local time to get correct local time
+// darwin_utc returns a better precision current time for macos
 fn darwin_utc() Time {
 	// get the high precision time as UTC clock
-	tv := C.timeval{}
-	C.gettimeofday(&tv, 0)
-	return unix_nanosecond(i64(tv.tv_sec), int(tv.tv_nsec))
+	mut ts := C.timespec{}
+	C.clock_gettime(C.CLOCK_REALTIME, &ts)
+	return unix_nanosecond(i64(ts.tv_sec), int(ts.tv_nsec))
 }
 
 // dummy to compile with all compilers

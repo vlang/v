@@ -104,12 +104,6 @@ fn win_utc() Time {
 	return Time{}
 }
 
-// dummy to compile with all compilers
-pub struct C.timeval {
-	tv_sec  u64
-	tv_usec u64
-}
-
 // return absolute timespec for now()+d
 pub fn (d Duration) timespec() C.timespec {
 	mut ts := C.timespec{}
