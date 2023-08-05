@@ -133,6 +133,7 @@ pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string
 
 fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_mod string, m2a map[string]string) {
 	mut add_para_types := true
+	mut is_wrap_needed := false
 	if node.generic_names.len > 0 {
 		if node.is_method {
 			sym := t.sym(node.params[0].typ)
@@ -168,6 +169,20 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 		is_type_only := param.name == ''
 		should_add_type := true // is_last_param || is_type_only || node.params[i + 1].typ != param.typ ||
 		// (node.is_variadic && i == node.params.len - 2)
+		pre_comments := param.comments.filter(it.pos.pos < param.pos.pos)
+		if pre_comments.len > 0 {
+			if i == 0 && !pre_comments.last().is_inline {
+				is_wrap_needed = true
+				f.write_string('\n\t')
+			}
+			write_comments(pre_comments, mut f)
+			if !f.last_n(1)[0].is_space() {
+				f.write_string(' ')
+			}
+		}
+		if is_wrap_needed {
+			f.write_string('\t')
+		}
 		if param.is_mut {
 			f.write_string(param.typ.share().str() + ' ')
 		}
