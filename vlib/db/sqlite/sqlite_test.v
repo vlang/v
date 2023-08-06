@@ -44,17 +44,21 @@ fn test_sqlite() {
 	assert db.last_insert_rowid() == 2
 	db.exec("insert into users (name) values ('Kate')")
 	assert db.last_insert_rowid() == 3
+	db.exec_param('insert into users (name) values (?)', 'Tom')!
+	assert db.last_insert_rowid() == 4
 	nr_users := db.q_int('select count(*) from users')
-	assert nr_users == 3
+	assert nr_users == 4
 	name := db.q_string('select name from users where id = 1')
 	assert name == 'Sam'
+	username := db.exec_param('select name from users where id = ?', '1')!
+	assert username[0].vals[0] == 'Sam'
 
 	// this insert will be rejected due to duplicated id
 	db.exec("insert into users (id,name) values (1,'Sam')")
 	assert db.get_affected_rows_count() == 0
 
 	users, mut code := db.exec('select * from users')
-	assert users.len == 3
+	assert users.len == 4
 	assert code == 101
 	code = db.exec_none('vacuum')
 	assert code == 101
@@ -66,6 +70,8 @@ fn test_sqlite() {
 	assert db.get_affected_rows_count() == 0
 
 	db.exec("update users set name='Peter1' where name='Peter'")
+	assert db.get_affected_rows_count() == 1
+	db.exec_param_many('update users set name=? where name=?', ['Peter', 'Peter1'])!
 	assert db.get_affected_rows_count() == 1
 
 	db.exec("delete from users where name='qqqq'")
