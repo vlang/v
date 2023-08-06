@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module time
 
-// unix returns a time struct from Unix time.
+// unix returns a time struct from an Unix timestamp (number of seconds since 1970-01-01)
 pub fn unix(abs i64) Time {
 	// Split into day and time
 	mut day_offset := abs / seconds_per_day
@@ -24,8 +24,20 @@ pub fn unix(abs i64) Time {
 	}
 }
 
-// unix2 returns a time struct from Unix time and microsecond value
+// unix2 returns a Time struct, given an Unix timestamp in seconds, and a microsecond value
+[deprecated: 'use unix_microsecond(unix_ts, us) instead']
+[deprecated_after: '2023-09-05']
 pub fn unix2(abs i64, microsecond int) Time {
+	return unix_nanosecond(abs, microsecond * 1000)
+}
+
+// unix_microsecond returns a Time struct, given an Unix timestamp in seconds, and a microsecond value
+pub fn unix_microsecond(abs i64, microsecond int) Time {
+	return unix_nanosecond(abs, microsecond * 1000)
+}
+
+// unix_nanosecond returns a Time struct, given an Unix timestamp in seconds, and a nanosecond value
+pub fn unix_nanosecond(abs i64, nanosecond int) Time {
 	// Split into day and time
 	mut day_offset := abs / seconds_per_day
 	if abs % seconds_per_day < 0 {
@@ -41,7 +53,7 @@ pub fn unix2(abs i64, microsecond int) Time {
 		hour: hr
 		minute: min
 		second: sec
-		microsecond: microsecond
+		nanosecond: nanosecond
 		unix: abs
 	}
 }

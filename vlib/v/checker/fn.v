@@ -1779,7 +1779,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 						// cannot hide interface expected type to make possible to pass its interface type automatically
 						earg_types << if targ.idx() != param.typ.idx() { param.typ } else { targ }
 					} else {
-						earg_types << targ
+						earg_types << param.typ
 					}
 					param_share := param.typ.share()
 					if param_share == .shared_t

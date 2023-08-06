@@ -40,15 +40,17 @@ pub const (
 // Time contains various time units for a point in time.
 pub struct Time {
 pub:
-	year        int
-	month       int
-	day         int
-	hour        int
-	minute      int
-	second      int
-	microsecond int
-	unix        i64
-	is_local    bool // used to make time.now().local().local() == time.now().local()
+	year       int
+	month      int
+	day        int
+	hour       int
+	minute     int
+	second     int
+	nanosecond int
+	unix       i64
+	is_local   bool // used to make time.now().local().local() == time.now().local()
+	//
+	microsecond int [deprecated: 'use t.nanosecond / 1000 instead'; deprecated_after: '2023-08-05']
 }
 
 // FormatDelimiter contains different time formats.
@@ -59,6 +61,7 @@ pub enum FormatTime {
 	hhmmss24
 	hhmmss24_milli
 	hhmmss24_micro
+	hhmmss24_nano
 	no_time
 }
 
@@ -99,7 +102,7 @@ pub fn (t Time) smonth() string {
 	return time.months_string[i * 3..(i + 1) * 3]
 }
 
-// unix_time returns the UNIX time.
+// unix_time returns the UNIX time with second resolution.
 [inline]
 pub fn (t Time) unix_time() i64 {
 	return t.unix
@@ -108,18 +111,39 @@ pub fn (t Time) unix_time() i64 {
 // unix_time_milli returns the UNIX time with millisecond resolution.
 [inline]
 pub fn (t Time) unix_time_milli() i64 {
-	return t.unix * 1000 + (t.microsecond / 1000)
+	return t.unix * 1_000 + (i64(t.nanosecond) / 1_000_000)
+}
+
+// unix_time_micro returns the UNIX time with microsecond resolution.
+[inline]
+pub fn (t Time) unix_time_micro() i64 {
+	return t.unix * 1_000_000 + (i64(t.nanosecond) / 1_000)
+}
+
+// unix_time_nano returns the UNIX time with nanosecond resolution.
+[inline]
+pub fn (t Time) unix_time_nano() i64 {
+	// TODO: use i128 here, when V supports it, since the following expression overflows for years like 3001:
+	return t.unix * 1_000_000_000 + i64(t.nanosecond)
 }
 
 // add returns a new time with the given duration added.
 pub fn (t Time) add(d Duration) Time {
-	microseconds := i64(t.unix) * 1_000_000 + t.microsecond + d.microseconds()
-	unix := microseconds / 1_000_000
-	micro := microseconds % 1_000_000
-	if t.is_local {
-		return unix2(unix, int(micro)).as_local()
+	// This expression overflows i64 for big years (and we do not have i128 yet):
+	// nanos := t.unix * 1_000_000_000 + i64(t.nanosecond) <-
+	// ... so instead, handle the addition manually in parts ¯\_(ツ)_/¯
+	mut unixs := t.unix
+	mut nanos := i64(t.nanosecond) + d.nanoseconds()
+	unixs += nanos / time.second
+	nanos = nanos % time.second
+	if nanos < 0 {
+		unixs--
+		nanos += time.second
 	}
-	return unix2(unix, int(micro))
+	if t.is_local {
+		return unix_nanosecond(unixs, int(nanos)).as_local()
+	}
+	return unix_nanosecond(unixs, int(nanos))
 }
 
 // add_seconds returns a new time struct with an added number of seconds.
@@ -311,9 +335,9 @@ pub fn days_in_month(month int, year int) !int {
 	return res
 }
 
-// debug returns detailed breakdown of time (`Time{ year: YYYY month: MM day: dd hour: HH: minute: mm second: ss microsecond: micros unix: unix }`)
+// debug returns detailed breakdown of time (`Time{ year: YYYY month: MM day: dd hour: HH: minute: mm second: ss nanosecond: nanos unix: unix }`)
 pub fn (t Time) debug() string {
-	return 'Time{ year: ${t.year:04} month: ${t.month:02} day: ${t.day:02} hour: ${t.hour:02} minute: ${t.minute:02} second: ${t.second:02} microsecond: ${t.microsecond:06} unix: ${t.unix:07} }'
+	return 'Time{ year: ${t.year:04} month: ${t.month:02} day: ${t.day:02} hour: ${t.hour:02} minute: ${t.minute:02} second: ${t.second:02} nanosecond: ${t.nanosecond:09} unix: ${t.unix:07} }'
 }
 
 // A lot of these are taken from the Go library.
@@ -326,6 +350,7 @@ pub const (
 	second      = Duration(1000 * millisecond)
 	minute      = Duration(60 * second)
 	hour        = Duration(60 * minute)
+	//	day         = Duration(24 * hour)
 	infinite    = Duration(i64(9223372036854775807))
 )
 
@@ -348,23 +373,22 @@ pub fn (d Duration) milliseconds() i64 {
 // consider all of them in sub-one intervals
 // seconds returns the duration as a floating point number of seconds.
 pub fn (d Duration) seconds() f64 {
-	sec := d / time.second
-	nsec := d % time.second
-	return f64(sec) + f64(nsec) / time.second
+	return f64(d) / f64(time.second)
 }
 
 // minutes returns the duration as a floating point number of minutes.
 pub fn (d Duration) minutes() f64 {
-	min := d / time.minute
-	nsec := d % time.minute
-	return f64(min) + f64(nsec) / time.minute
+	return f64(d) / f64(time.minute)
 }
 
 // hours returns the duration as a floating point number of hours.
 pub fn (d Duration) hours() f64 {
-	hr := d / time.hour
-	nsec := d % time.hour
-	return f64(hr) + f64(nsec) / time.hour
+	return f64(d) / f64(time.hour)
+}
+
+// days returns the duration as a floating point number of days.
+pub fn (d Duration) days() f64 {
+	return f64(d) / f64(time.hour * 24)
 }
 
 // str pretty prints the duration
@@ -410,6 +434,35 @@ pub fn (d Duration) str() string {
 		return '${us}.${ns:03}us'
 	}
 	return '${ns}ns'
+}
+
+// debug returns a detailed breakdown of the Duration, as: 'Duration: - 50days, 4h, 3m, 7s, 541ms, 78us, 9ns'
+pub fn (d Duration) debug() string {
+	mut res := []string{}
+	mut x := i64(d)
+	mut sign := ''
+	if x < 0 {
+		sign = '- '
+		x = -x
+	}
+	for label, v in {
+		'days': 24 * time.hour
+		'h':    time.hour
+		'm':    time.minute
+		's':    time.second
+		'ms':   time.millisecond
+		'us':   time.microsecond
+	} {
+		if x > v {
+			xx := x / v
+			x = x % v
+			res << xx.str() + label
+		}
+	}
+	if x > 0 {
+		res << '${x}ns'
+	}
+	return 'Duration: ${sign}${res.join(', ')}'
 }
 
 // offset returns time zone UTC offset in seconds.

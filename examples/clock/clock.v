@@ -74,12 +74,12 @@ fn on_frame(mut app App) {
 	// draw minute hand
 	mut j := f32(n.minute)
 	if n.second == 59 { // make minute hand move smoothly
-		j += f32(math.sin(f32(n.microsecond) / 1e6 * math.pi / 2.0))
+		j += f32(math.sin(f32(n.nanosecond) / 1e9 * math.pi / 2.0))
 	}
 	draw_convex_poly_rotate(mut app.gg, app.dpi_scale, app.minute_hand, hand_color, j * 6)
 
 	// draw second hand with smooth transition
-	k := f32(n.second) + f32(math.sin(f32(n.microsecond) / 1e6 * math.pi / 2.0))
+	k := f32(n.second) + f32(math.sin(f32(n.nanosecond) / 1e9 * math.pi / 2.0))
 	draw_convex_poly_rotate(mut app.gg, app.dpi_scale, app.second_hand, second_hand_color,
 		0 + k * 6)
 

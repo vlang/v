@@ -89,6 +89,13 @@ pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string
 		f.write_string('pub ')
 	}
 	f.write_string('fn ')
+	pre_comments := node.comments.filter(it.pos.pos < node.name_pos.pos)
+	if pre_comments.len > 0 {
+		write_comments(pre_comments, mut f)
+		if !f.last_n(1)[0].is_space() {
+			f.write_string(' ')
+		}
+	}
 	if node.is_method {
 		f.write_string('(')
 		mut styp := util.no_cur_mod(t.type_to_code(node.receiver.typ.clear_flag(.shared_f)),
@@ -126,6 +133,7 @@ pub fn (t &Table) stringify_fn_decl(node &FnDecl, cur_mod string, m2a map[string
 
 fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_mod string, m2a map[string]string) {
 	mut add_para_types := true
+	mut is_wrap_needed := false
 	if node.generic_names.len > 0 {
 		if node.is_method {
 			sym := t.sym(node.params[0].typ)
@@ -161,6 +169,20 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 		is_type_only := param.name == ''
 		should_add_type := true // is_last_param || is_type_only || node.params[i + 1].typ != param.typ ||
 		// (node.is_variadic && i == node.params.len - 2)
+		pre_comments := param.comments.filter(it.pos.pos < param.pos.pos)
+		if pre_comments.len > 0 {
+			if i == 0 && !pre_comments.last().is_inline {
+				is_wrap_needed = true
+				f.write_string('\n\t')
+			}
+			write_comments(pre_comments, mut f)
+			if !f.last_n(1)[0].is_space() {
+				f.write_string(' ')
+			}
+		}
+		if is_wrap_needed {
+			f.write_string('\t')
+		}
 		if param.is_mut {
 			f.write_string(param.typ.share().str() + ' ')
 		}
@@ -211,13 +233,50 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 	}
 }
 
+fn write_comments(comments []Comment, mut f strings.Builder) {
+	for i, c in comments {
+		if !f.last_n(1)[0].is_space() {
+			f.write_string(' ')
+		}
+		write_comment(c, mut f)
+		if c.is_inline && i < comments.len - 1 && !c.is_multi {
+			f.write_string(' ')
+		} else if (!c.is_inline || c.is_multi) && i < comments.len - 1 {
+			f.writeln('')
+		}
+	}
+}
+
+fn write_comment(node Comment, mut f strings.Builder) {
+	if node.is_inline {
+		x := node.text.trim_left('\x01').trim_space()
+		if x.contains('\n') {
+			f.writeln('/*')
+			f.writeln(x)
+			f.write_string('*/')
+		} else {
+			f.write_string('/* ${x} */')
+		}
+	} else {
+		mut s := node.text.trim_left('\x01').trim_right(' ')
+		mut out_s := '//'
+		if s != '' {
+			if s[0].is_letter() || s[0].is_digit() {
+				out_s += ' '
+			}
+			out_s += s
+		}
+		f.writeln(out_s)
+	}
+}
+
 struct StringifyModReplacement {
 	mod    string
 	alias  string
 	weight int
 }
 
-pub fn shorten_full_name_based_on_aliases(input string, m2a map[string]string) string {
+fn shorten_full_name_based_on_aliases(input string, m2a map[string]string) string {
 	if m2a.len == 0 || -1 == input.index_u8(`.`) {
 		// a simple typename, like `string` or `[]bool`; no module aliasings apply,
 		// (or there just are not any mappings)

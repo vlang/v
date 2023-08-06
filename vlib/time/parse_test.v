@@ -65,11 +65,11 @@ fn test_parse_iso8601() {
 	]
 	times := [
 		[2020, 6, 5, 15, 38, 6, 0],
-		[2020, 6, 5, 15, 38, 6, 15959],
-		[2020, 6, 5, 15, 38, 6, 15959],
-		[2020, 6, 5, 13, 38, 6, 15959],
-		[2020, 6, 5, 17, 38, 6, 15959],
-		[2020, 11, 5, 15, 38, 6, 15959],
+		[2020, 6, 5, 15, 38, 6, 15959000],
+		[2020, 6, 5, 15, 38, 6, 15959000],
+		[2020, 6, 5, 13, 38, 6, 15959000],
+		[2020, 6, 5, 17, 38, 6, 15959000],
+		[2020, 11, 5, 15, 38, 6, 15959000],
 	]
 	for i, format in formats {
 		t := time.parse_iso8601(format) or {
@@ -89,8 +89,8 @@ fn test_parse_iso8601() {
 		assert t.minute == minute
 		second := times[i][5]
 		assert t.second == second
-		microsecond := times[i][6]
-		assert t.microsecond == microsecond
+		nanosecond := times[i][6]
+		assert t.nanosecond == nanosecond
 	}
 }
 
@@ -107,7 +107,7 @@ fn test_parse_iso8601_local() {
 	assert t.hour == 15
 	assert t.minute == 38
 	assert t.second == 6
-	assert t.microsecond == 15959
+	assert t.nanosecond == 15959_000
 }
 
 fn test_parse_iso8601_invalid() {
@@ -145,7 +145,7 @@ fn test_parse_iso8601_date_only() {
 	assert t.hour == 0
 	assert t.minute == 0
 	assert t.second == 0
-	assert t.microsecond == 0
+	assert t.nanosecond == 0
 }
 
 fn check_invalid_date(s string) {
