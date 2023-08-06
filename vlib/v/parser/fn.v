@@ -948,6 +948,7 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 				is_mut: is_mut
 				typ: param_type
 				type_pos: type_pos
+				comments: comments
 			}
 			param_no++
 			if param_no > 1024 {
