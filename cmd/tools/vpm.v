@@ -342,6 +342,18 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 					continue
 				}
 				println('Module "${name}" relocated to "${vmod_.name}" successfully.')
+				publisher_dir := final_module_path.all_before_last(os.path_separator)
+				if os.ls(publisher_dir) or {
+					errors++
+					println('Errors while getting info about "${publisher_dir}" :')
+					println(err)
+				}.len == 0 {
+					os.rmdir(publisher_dir) or {
+						errors++
+						println('Errors while removing "${publisher_dir}" :')
+						println(err)
+					}
+				}
 				final_module_path = minfo.final_module_path
 			}
 			name = vmod_.name
