@@ -21,14 +21,12 @@ fn C.EV_SET(voidptr, u32, i16, u16, u32, int, voidptr)
 
 // KqueueNotifier provides methods that implement FdNotifier using the
 // kqueue I/O event notification facility (macos, freeBSD, xxxBSD...unix only)
-[noinit]
 struct KqueueNotifier {
 	kqueue_fd int
 }
 
 // KqueueEvent describes an event that occurred for a file descriptor in
 // the watch list
-[noinit]
 struct KqueueEvent {
 pub:
 	fd   int
