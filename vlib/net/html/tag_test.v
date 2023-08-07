@@ -32,17 +32,17 @@ const (
 
 fn test_search_tag_by_type() {
 	mut dom := parse(html.html)
-	tag := dom.get_tag('body')[0]
-	assert tag.get_tag('div') or { assert false }.attributes['id'] == '1st'
-	assert tag.get_tag_by_attribute('href') or { assert false }.content == 'V'
+	tag := dom.get_tags(GetTagsOptions{'body'})[0]
+	assert tag.get_tag('div')?.attributes['id'] == '1st'
+	assert tag.get_tag_by_attribute('href')?.content == 'V'
 	// TODO: update after improved parsing to not add trailing white space to attribute values
-	assert tag.get_tag_by_attribute_value('id', '3rd') or { assert false }.str() == '<div id="3rd" ></div>'
-	assert tag.get_tag_by_class_name('foo') or { assert false }.attributes['class'] == 'foo bar'
+	assert tag.get_tag_by_attribute_value('id', '3rd')?.str() == '<div id="3rd" ></div>'
+	assert tag.get_tag_by_class_name('foo')?.attributes['class'] == 'foo bar'
 }
 
 fn test_search_tags_by_type() {
 	mut dom := parse(html.html)
-	tag := dom.get_tag_by_attribute_value('id', '2nd')[0]
+	tag := dom.get_tags_by_attribute_value('id', '2nd')[0]
 	assert tag.get_tags('div').len == 5
 	assert tag.get_tags_by_attribute('href')[2].content == 'vpm'
 	assert tag.get_tags_by_attribute_value('class', 'bar').len == 3
@@ -65,7 +65,7 @@ fn generate_temp_html_with_classes() string {
 
 fn test_search_by_class() {
 	mut dom := parse(generate_temp_html_with_classes())
-	tag := dom.get_tag('body')[0]
+	tag := dom.get_tags(GetTagsOptions{'body'})[0]
 	single_class_tags := tag.get_tags_by_class_name('single')
 	common_class_tags := tag.get_tags_by_class_name('common')
 	complex_class_tags := tag.get_tags_by_class_name('complex-0', 'complex-1', 'complex-2')

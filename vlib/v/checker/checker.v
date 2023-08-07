@@ -1143,6 +1143,8 @@ fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast.Typ
 		c.check_expr_opt_call(expr.expr, ret_type)
 	} else if expr is ast.AsCast {
 		c.check_expr_opt_call(expr.expr, ret_type)
+	} else if expr is ast.ParExpr {
+		c.check_expr_opt_call(expr.expr, ret_type)
 	}
 	return ret_type
 }
