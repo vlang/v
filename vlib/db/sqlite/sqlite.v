@@ -131,7 +131,7 @@ pub fn connect(path string) !DB {
 	code := C.sqlite3_open(&char(path.str), &db)
 	if code != 0 {
 		return &SQLError{
-			msg: unsafe { cstring_to_vstring(&char(C.sqlite3_errstr(code))) }
+			msg: unsafe { cstring_to_vstring(&char(C.sqlite3_errmsg(db))) }
 			code: code
 		}
 	}
@@ -150,7 +150,7 @@ pub fn (mut db DB) close() !bool {
 		db.is_open = false
 	} else {
 		return &SQLError{
-			msg: unsafe { cstring_to_vstring(&char(C.sqlite3_errstr(code))) }
+			msg: unsafe { cstring_to_vstring(&char(C.sqlite3_errmsg(db.conn))) }
 			code: code
 		}
 	}
@@ -253,10 +253,7 @@ pub fn (db &DB) exec_one(query string) !Row {
 			code: code
 		}
 	} else if code != 101 {
-		return &SQLError{
-			msg: unsafe { cstring_to_vstring(&char(C.sqlite3_errstr(code))) }
-			code: code
-		}
+		return db.error_message(code, query)
 	}
 	res := rows[0]
 	return res
@@ -295,21 +292,13 @@ pub fn (db &DB) exec_param_many(query string, params []string) ![]Row {
 
 	mut code := C.sqlite3_prepare_v2(db.conn, &char(query.str), -1, &stmt, 0)
 	if code != 0 {
-		return &SQLError{
-			msg: unsafe {
-				cstring_to_vstring(&char(C.sqlite3_errstr(code)))
-			}
-			code: code
-		}
+		return db.error_message(code, query)
 	}
 
 	for i, param in params {
 		code = C.sqlite3_bind_text(stmt, i + 1, voidptr(param.str), param.len, 0)
 		if code != 0 {
-			return &SQLError{
-				msg: unsafe { cstring_to_vstring(&char(C.sqlite3_errstr(code))) }
-				code: code
-			}
+			return db.error_message(code, query)
 		}
 	}
 
