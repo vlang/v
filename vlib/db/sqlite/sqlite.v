@@ -285,7 +285,62 @@ pub fn (db &DB) exec_none(query string) int {
 	return code
 }
 
-// TODO pub fn (db &DB) exec_param(query string, param string) []Row {
+// exec_param_many executes a query with parameters provided as ?,
+// and returns either an error on failure, or the full result set on success
+pub fn (db &DB) exec_param_many(query string, params []string) ![]Row {
+	mut stmt := &C.sqlite3_stmt(unsafe { nil })
+	defer {
+		C.sqlite3_finalize(stmt)
+	}
+
+	mut code := C.sqlite3_prepare_v2(db.conn, &char(query.str), -1, &stmt, 0)
+	if code != 0 {
+		return &SQLError{
+			msg: unsafe {
+				cstring_to_vstring(&char(C.sqlite3_errstr(code)))
+			}
+			code: code
+		}
+	}
+
+	for i, param in params {
+		code = C.sqlite3_bind_text(stmt, i + 1, voidptr(param.str), param.len, 0)
+		if code != 0 {
+			return &SQLError{
+				msg: unsafe { cstring_to_vstring(&char(C.sqlite3_errstr(code))) }
+				code: code
+			}
+		}
+	}
+
+	nr_cols := C.sqlite3_column_count(stmt)
+	mut res := 0
+	mut rows := []Row{}
+	for {
+		res = C.sqlite3_step(stmt)
+		if res != sqlite.sqlite_row {
+			break
+		}
+		mut row := Row{}
+		for i in 0 .. nr_cols {
+			val := unsafe { &u8(C.sqlite3_column_text(stmt, i)) }
+			if val == &u8(0) {
+				row.vals << ''
+			} else {
+				row.vals << unsafe { tos_clone(val) }
+			}
+		}
+		rows << row
+	}
+
+	return rows
+}
+
+// exec_param executes a query with one parameter provided as a ?,
+// and returns either an error on failure, or the full result set on success
+pub fn (db &DB) exec_param(query string, param string) ![]Row {
+	return db.exec_param_many(query, [param])
+}
 
 // create_table issues a "create table if not exists" command to the db.
 // It creates the table named 'table_name', with columns generated from 'columns' array.
