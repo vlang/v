@@ -244,6 +244,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		if testing.github_job != 'ubuntu-tcc' {
 			skip_files << 'examples/c_interop_wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
 			skip_files << 'examples/call_v_from_python/test.v' // the example only makes sense to be compiled, when python is installed
+			skip_files << 'examples/call_v_from_ruby/test.v' // the example only makes sense to be compiled, when ruby is installed
 			// the ttf_test.v is not interactive, but needs X11 headers to be installed, which is done only on ubuntu-tcc for now
 			skip_files << 'vlib/x/ttf/ttf_test.v'
 			skip_files << 'vlib/vweb/vweb_app_test.v' // imports the `sqlite` module, which in turn includes sqlite3.h
