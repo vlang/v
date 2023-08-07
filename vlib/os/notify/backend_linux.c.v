@@ -26,14 +26,12 @@ fn C.epoll_wait(int, &C.epoll_event, int, int) int
 
 // EpollNotifier provides methods that implement FdNotifier using the
 // epoll I/O event notification facility (linux only)
-[noinit]
 struct EpollNotifier {
 	epoll_fd int
 }
 
 // EpollEvent describes an event that occurred for a file descriptor in
 // the watch list
-[noinit]
 struct EpollEvent {
 pub:
 	fd   int
