@@ -10,7 +10,8 @@ pub mut:
 	index &IndexState
 	table &ast.Table = unsafe { nil }
 mut:
-	is_assert bool
+	is_assert   bool
+	inside_dump bool
 }
 
 pub fn new_transformer(pref_ &pref.Preferences) &Transformer {
@@ -513,6 +514,9 @@ pub fn (mut t Transformer) interface_decl(mut node ast.InterfaceDecl) ast.Stmt {
 }
 
 pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
+	if t.inside_dump {
+		return node
+	}
 	match mut node {
 		ast.AnonFn {
 			node.decl = t.stmt(mut node.decl) as ast.FnDecl
@@ -563,6 +567,11 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 			}
 		}
 		ast.DumpExpr {
+			old_inside_dump := t.inside_dump
+			defer {
+				t.inside_dump = old_inside_dump
+			}
+			t.inside_dump = true
 			node.expr = t.expr(mut node.expr)
 		}
 		ast.GoExpr {
