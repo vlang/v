@@ -49,7 +49,6 @@ function setupMobileToggle() {
 		const isHidden = docNav.classList.contains('hidden');
 		docNav.classList.toggle('hidden');
 		const search = docNav.querySelector('.search');
-		// console.log(search);
 		const searchHasResults = search.classList.contains('has-results');
 		if (isHidden && searchHasResults) {
 			search.classList.remove('mobile-hidden');
