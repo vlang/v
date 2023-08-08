@@ -90,8 +90,8 @@ fn ordinal_suffix(n int) string {
 }
 
 const (
-	tokens_2 = ['MM', 'Mo', 'DD', 'Do', 'YY', 'ss', 'kk', 'NN', 'mm', 'hh', 'HH', 'ZZ', 'dd', 'Qo',
-		'QQ', 'wo', 'ww']
+	tokens_2 = ['MM', 'Mo', 'DD', 'Do', 'YY', 'ss', 'kk', 'NN', 'mm', 'hh', 'HH', 'ii', 'ZZ', 'dd',
+		'Qo', 'QQ', 'wo', 'ww']
 	tokens_3 = ['MMM', 'DDD', 'ZZZ', 'ddd']
 	tokens_4 = ['MMMM', 'DDDD', 'DDDo', 'dddd', 'YYYY']
 )
@@ -132,6 +132,8 @@ const (
 // |                  | HH    | 00 01 ... 22 23                        |
 // |                  | h     | 1 2 ... 11 12                          |
 // |                  | hh    | 01 02 ... 11 12                        |
+// |                  | i     | 0 1 ... 11 12 1 ... 11                 |
+// |                  | ii    | 00 01 ... 11 12 01 ... 11              |
 // |                  | k     | 1 2 ... 23 24                          |
 // |                  | kk    | 01 02 ... 23 24                        |
 // |       **Minute** | m     | 0 1 ... 58 59                          |
@@ -226,10 +228,18 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string('${t.hour:02}')
 			}
 			'h' {
-				h := if t.hour > 12 { t.hour - 12 } else { t.hour }
+				h := (t.hour + 11) % 12 + 1
 				sb.write_string(h.str())
 			}
 			'hh' {
+				h := (t.hour + 11) % 12 + 1
+				sb.write_string('${h:02}')
+			}
+			'i' {
+				h := if t.hour > 12 { t.hour - 12 } else { t.hour }
+				sb.write_string(h.str())
+			}
+			'ii' {
 				h := if t.hour > 12 { t.hour - 12 } else { t.hour }
 				sb.write_string('${h:02}')
 			}
