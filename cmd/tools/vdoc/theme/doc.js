@@ -145,6 +145,72 @@ function setupSearch() {
 		}
 	});
 	searchInput.addEventListener('input', onInputChange);
+	setupSearchKeymaps();
+}
+
+function setupSearchKeymaps() {
+	const searchInput = document.querySelector('#search input');
+	// Keyboard shortcut indicator
+	const searchKeys = document.createElement('div');
+	const modifierKeyPrefix = navigator.platform.includes('Mac') ? '⌘' : 'Ctrl';
+	searchKeys.setAttribute('id', 'search-keys');
+	searchKeys.innerHTML = '<kbd>' + modifierKeyPrefix + '</kbd><kbd>k</kbd>';
+	searchInput.parentElement?.appendChild(searchKeys);
+	searchInput.addEventListener('focus', () => searchKeys.classList.add('hide'));
+	searchInput.addEventListener('blur', () => searchKeys.classList.remove('hide'));
+	// Global shortcuts to focus searchInput
+	document.addEventListener('keydown', (ev) => {
+		if (ev.key === '/' || ((ev.ctrlKey || ev.metaKey) && ev.key === 'k')) {
+			ev.preventDefault();
+			searchInput.focus();
+		}
+	});
+	// Shortcuts while searchInput is focused
+	let selectedIdx = -1;
+	function selectResult(results, newIdx) {
+		if (selectedIdx !== -1) {
+			results[selectedIdx].classList.remove('selected');
+		}
+		results[newIdx].classList.add('selected');
+		results[newIdx].scrollIntoView({ behavior: 'smooth', block: 'end', inline: 'nearest' });
+		selectedIdx = newIdx;
+	}
+	searchInput.addEventListener('keydown', (ev) => {
+		const searchResults = document.querySelectorAll('.search .result');
+		switch (ev.key) {
+			case 'Escape':
+				searchInput.blur();
+				break;
+			case 'Enter':
+				if (!searchResults.length || selectedIdx === -1) break;
+				searchResults[selectedIdx].querySelector('a').click();
+				break;
+			case 'ArrowDown':
+				ev.preventDefault();
+				if (!searchResults.length) break;
+				if (selectedIdx >= searchResults.length - 1) {
+					// Cycle to first if last is selected
+					selectResult(searchResults, 0);
+				} else {
+					// Select next
+					selectResult(searchResults, selectedIdx + 1);
+				}
+				break;
+			case 'ArrowUp':
+				ev.preventDefault();
+				if (!searchResults.length) break;
+				if (selectedIdx <= 0) {
+					// Cycle to last if first is selected (or select it if none is selcted yet)
+					selectResult(searchResults, searchResults.length - 1);
+				} else {
+					// Select previous
+					selectResult(searchResults, selectedIdx - 1);
+				}
+				break;
+			default:
+				selectedIdx = -1;
+		}
+	});
 }
 
 function createSearchResult(data) {
@@ -194,11 +260,3 @@ function debounce(func, timeout) {
 		timer = setTimeout(next, timeout > 0 ? timeout : 300);
 	};
 }
-
-document.addEventListener('keypress', (ev) => {
-	if (ev.key == '/') {
-		const search = document.getElementById('search');
-		ev.preventDefault();
-		search.focus();
-	}
-});
