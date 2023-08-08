@@ -181,26 +181,32 @@ pub fn (db &DB) get_affected_rows_count() int {
 }
 
 // q_int returns a single integer value, from the first column of the result of executing `query`
-pub fn (db &DB) q_int(query string) int {
+pub fn (db &DB) q_int(query string) !int {
 	stmt := &C.sqlite3_stmt(unsafe { nil })
 	defer {
 		C.sqlite3_finalize(stmt)
 	}
 	C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
-	C.sqlite3_step(stmt)
+	code := C.sqlite3_step(stmt)
+	if code != sqlite.sqlite_row {
+		return db.error_message(code, query)
+	}
 
 	res := C.sqlite3_column_int(stmt, 0)
 	return res
 }
 
 // q_string returns a single string value, from the first column of the result of executing `query`
-pub fn (db &DB) q_string(query string) string {
+pub fn (db &DB) q_string(query string) !string {
 	stmt := &C.sqlite3_stmt(unsafe { nil })
 	defer {
 		C.sqlite3_finalize(stmt)
 	}
 	C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
-	C.sqlite3_step(stmt)
+	code := C.sqlite3_step(stmt)
+	if code != sqlite.sqlite_row {
+		return db.error_message(code, query)
+	}
 
 	val := unsafe { &u8(C.sqlite3_column_text(stmt, 0)) }
 	return if val != &u8(0) { unsafe { tos_clone(val) } } else { '' }
@@ -209,12 +215,16 @@ pub fn (db &DB) q_string(query string) string {
 // exec executes the query on the given `db`, and returns an array of all the results, alongside any result code.
 // Result codes: https://www.sqlite.org/rescode.html
 [manualfree]
-pub fn (db &DB) exec(query string) ([]Row, int) {
+pub fn (db &DB) exec(query string) ![]Row {
 	stmt := &C.sqlite3_stmt(unsafe { nil })
 	defer {
 		C.sqlite3_finalize(stmt)
 	}
-	C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
+	mut code := C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
+	if code != sqlite.sqlite_ok {
+		return db.error_message(code, query)
+	}
+
 	nr_cols := C.sqlite3_column_count(stmt)
 	mut res := 0
 	mut rows := []Row{}
@@ -236,24 +246,22 @@ pub fn (db &DB) exec(query string) ([]Row, int) {
 		}
 		rows << row
 	}
-	return rows, res
+	return rows
 }
 
 // exec_one executes a query on the given `db`.
 // It returns either the first row from the result, if the query was successful, or an error.
 [manualfree]
 pub fn (db &DB) exec_one(query string) !Row {
-	rows, code := db.exec(query)
+	rows := db.exec(query)!
 	defer {
 		unsafe { rows.free() }
 	}
 	if rows.len == 0 {
 		return &SQLError{
 			msg: 'No rows'
-			code: code
+			code: sqlite.sqlite_done
 		}
-	} else if code != 101 {
-		return db.error_message(code, query)
 	}
 	res := rows[0]
 	return res
@@ -334,8 +342,8 @@ pub fn (db &DB) exec_param(query string, param string) ![]Row {
 // create_table issues a "create table if not exists" command to the db.
 // It creates the table named 'table_name', with columns generated from 'columns' array.
 // The default columns type will be TEXT.
-pub fn (db &DB) create_table(table_name string, columns []string) {
-	db.exec('create table if not exists ${table_name} (' + columns.join(',\n') + ')')
+pub fn (db &DB) create_table(table_name string, columns []string) ! {
+	db.exec('create table if not exists ${table_name} (' + columns.join(',\n') + ')')!
 }
 
 // busy_timeout sets a busy timeout in milliseconds.
@@ -351,13 +359,13 @@ pub fn (db &DB) busy_timeout(ms int) int {
 // .off: No syncs at all. (fastest)
 // .normal: Sync after each sequence of critical disk operations.
 // .full: Sync after each critical disk operation (slowest).
-pub fn (db &DB) synchronization_mode(sync_mode SyncMode) {
+pub fn (db &DB) synchronization_mode(sync_mode SyncMode) ! {
 	if sync_mode == .off {
-		db.exec('pragma synchronous = OFF;')
+		db.exec('pragma synchronous = OFF;')!
 	} else if sync_mode == .full {
-		db.exec('pragma synchronous = FULL;')
+		db.exec('pragma synchronous = FULL;')!
 	} else {
-		db.exec('pragma synchronous = NORMAL;')
+		db.exec('pragma synchronous = NORMAL;')!
 	}
 }
 
@@ -367,18 +375,18 @@ pub fn (db &DB) synchronization_mode(sync_mode SyncMode) {
 // .delete: At the conclusion of a transaction, journal file is deleted.
 // .truncate: Journal file is truncated to a length of zero bytes.
 // .persist: Journal file is left in place, but the header is overwritten to indicate journal is no longer valid.
-pub fn (db &DB) journal_mode(journal_mode JournalMode) {
+pub fn (db &DB) journal_mode(journal_mode JournalMode) ! {
 	if journal_mode == .off {
-		db.exec('pragma journal_mode = OFF;')
+		db.exec('pragma journal_mode = OFF;')!
 	} else if journal_mode == .delete {
-		db.exec('pragma journal_mode = DELETE;')
+		db.exec('pragma journal_mode = DELETE;')!
 	} else if journal_mode == .truncate {
-		db.exec('pragma journal_mode = TRUNCATE;')
+		db.exec('pragma journal_mode = TRUNCATE;')!
 	} else if journal_mode == .persist {
-		db.exec('pragma journal_mode = PERSIST;')
+		db.exec('pragma journal_mode = PERSIST;')!
 	} else if journal_mode == .memory {
-		db.exec('pragma journal_mode = MEMORY;')
+		db.exec('pragma journal_mode = MEMORY;')!
 	} else {
-		db.exec('pragma journal_mode = MEMORY;')
+		db.exec('pragma journal_mode = MEMORY;')!
 	}
 }
