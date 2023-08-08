@@ -1779,9 +1779,6 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 						useen << uval
 					}
 				}
-				ast.PrefixExpr {
-					dump(field.expr)
-				}
 				ast.InfixExpr {
 					// Handle `enum Foo { x = 1 + 2 }`
 					c.infix_expr(mut field.expr)
