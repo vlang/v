@@ -568,11 +568,9 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 		}
 		ast.DumpExpr {
 			old_inside_dump := t.inside_dump
-			defer {
-				t.inside_dump = old_inside_dump
-			}
 			t.inside_dump = true
 			node.expr = t.expr(mut node.expr)
+			t.inside_dump = old_inside_dump
 		}
 		ast.GoExpr {
 			node.call_expr = t.expr(mut node.call_expr) as ast.CallExpr
