@@ -324,8 +324,8 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 					eprintln('Removing module "${minfo.final_module_path}" ...')
 					os.rmdir_all(minfo.final_module_path) or {
 						errors++
-						println('Errors while removing "${minfo.final_module_path}" :')
-						println(err)
+						eprintln('Errors while removing "${minfo.final_module_path}" :')
+						eprintln(err)
 						continue
 					}
 				}
@@ -342,6 +342,14 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 					continue
 				}
 				println('Module "${name}" relocated to "${vmod_.name}" successfully.')
+				publisher_dir := final_module_path.all_before_last(os.path_separator)
+				if os.is_dir_empty(publisher_dir) {
+					os.rmdir(publisher_dir) or {
+						errors++
+						eprintln('Errors while removing "${publisher_dir}" :')
+						eprintln(err)
+					}
+				}
 				final_module_path = minfo.final_module_path
 			}
 			name = vmod_.name
