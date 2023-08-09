@@ -34,6 +34,6 @@ For instance:
 import db.sqlite
 
 db := sqlite.connect('foo.db') or { panic(err) }
-db.synchronization_mode(sqlite.SyncMode.off)
-db.journal_mode(sqlite.JournalMode.memory)
+db.synchronization_mode(sqlite.SyncMode.off) or { panic(err) }
+db.journal_mode(sqlite.JournalMode.memory) or { panic(err) }
 ```
