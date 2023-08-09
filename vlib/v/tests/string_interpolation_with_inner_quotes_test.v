@@ -28,5 +28,11 @@ fn test_string_interp_with_inner_quotes() {
 
 	println("abc ${f(123, '$x $x')} xyz")
 	assert "abc ${f(123, '$x $x')} xyz" == 'abc label hi hi: 123 xyz'
+
+	println("abc ${f(123, "${x} ${x}")} xyz")
+	assert "abc ${f(123, "${x} ${x}")} xyz" == 'abc label hi hi: 123 xyz'
+
+	println('abc ${f(123, '${x} ${x}')} xyz')
+	assert 'abc ${f(123, '${x} ${x}')} xyz' == 'abc label hi hi: 123 xyz'
 }
 // vfmt on
