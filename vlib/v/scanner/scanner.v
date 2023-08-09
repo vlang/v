@@ -38,6 +38,7 @@ pub mut:
 	is_inter_start              bool   // for hacky string interpolation TODO simplify
 	is_inter_end                bool
 	is_enclosed_inter           bool
+	is_nested_enclosed_inter    bool
 	line_comment                string
 	last_lt                     int = -1 // position of latest <
 	is_started                  bool
@@ -818,7 +819,7 @@ fn (mut s Scanner) text_scan() token.Token {
 				return s.new_token(.lcbr, '', 1)
 			}
 			`$` {
-				if s.is_inside_string {
+				if s.is_inside_string || s.is_enclosed_inter {
 					return s.new_token(.str_dollar, '', 1)
 				} else {
 					return s.new_token(.dollar, '', 1)
@@ -827,7 +828,7 @@ fn (mut s Scanner) text_scan() token.Token {
 			`}` {
 				// s = `hello $name !`
 				// s = `hello ${name} !`
-				if s.is_enclosed_inter && s.inter_cbr_count == 0 {
+				if (s.is_enclosed_inter || s.is_nested_enclosed_inter) && s.inter_cbr_count == 0 {
 					if s.pos < s.text.len - 1 {
 						s.pos++
 					} else {
@@ -835,10 +836,18 @@ fn (mut s Scanner) text_scan() token.Token {
 					}
 					if s.text[s.pos] == s.quote {
 						s.is_inside_string = false
-						s.is_enclosed_inter = false
+						if s.is_nested_enclosed_inter {
+							s.is_nested_enclosed_inter = false
+						} else {
+							s.is_enclosed_inter = false
+						}
 						return s.new_token(.string, '', 1)
 					}
-					s.is_enclosed_inter = false
+					if s.is_nested_enclosed_inter {
+						s.is_nested_enclosed_inter = false
+					} else {
+						s.is_enclosed_inter = false
+					}
 					s.just_closed_inter = true
 					ident_string := s.ident_string()
 					return s.new_token(.string, ident_string, ident_string.len + 2) // + two quotes
@@ -1229,7 +1238,11 @@ fn (mut s Scanner) ident_string() string {
 		if prevc == `$` && c == `{` && !is_raw
 			&& s.count_symbol_before(s.pos - 2, scanner.backslash) % 2 == 0 {
 			s.is_inside_string = true
-			s.is_enclosed_inter = true
+			if s.is_enclosed_inter {
+				s.is_nested_enclosed_inter = true
+			} else {
+				s.is_enclosed_inter = true
+			}
 			// so that s.pos points to $ at the next step
 			s.pos -= 2
 			break

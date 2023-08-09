@@ -1,4 +1,4 @@
-vlib/v/checker/tests/fn_check_for_matching_option_result_in_fields.vv:2:2: notice: uninitialized `fn` struct fields are not allowed, since they can result in segfaults; use `?fn` or initialize the field with `=` (if you absolutely want to have unsafe function pointers, use `= unsafe { nil }`)
+vlib/v/checker/tests/fn_check_for_matching_option_result_in_fields.vv:2:2: notice: uninitialized `fn` struct fields are not allowed, since they can result in segfaults; use `?fn` or `[required]` or initialize the field with `=` (if you absolutely want to have unsafe function pointers, use `= unsafe { nil }`)
     1 | struct Abc {
     2 |     f fn (voidptr)
       |     ~~~~~~~~~~~~~~
