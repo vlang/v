@@ -89,6 +89,13 @@ fn test_format_rfc3339() {
 	assert res.contains('T')
 }
 
+fn test_format_rfc3339_nano() {
+	res := time_to_test.format_rfc3339_nano()
+	assert res.ends_with('23:42.123456789Z')
+	assert res.starts_with('1980-07-1')
+	assert res.contains('T')
+}
+
 fn test_format_ss() {
 	assert '11.07.1980 21:23:42' == time_to_test.get_fmt_str(.dot, .hhmmss24, .ddmmyyyy)
 }

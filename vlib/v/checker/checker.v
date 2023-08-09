@@ -526,6 +526,9 @@ fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 			// type Sum = int | Alias
 			// type Alias = Sum
 		}
+		.none_ {
+			c.error('cannot create a type alias of `none` as it is a value', node.type_pos)
+		}
 		// The rest of the parent symbol kinds are also allowed, since they are either primitive types,
 		// that in turn do not allow recursion, or are abstract enough so that they can not be checked at comptime:
 		else {}
@@ -1142,6 +1145,8 @@ fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast.Typ
 	} else if expr is ast.CastExpr {
 		c.check_expr_opt_call(expr.expr, ret_type)
 	} else if expr is ast.AsCast {
+		c.check_expr_opt_call(expr.expr, ret_type)
+	} else if expr is ast.ParExpr {
 		c.check_expr_opt_call(expr.expr, ret_type)
 	}
 	return ret_type
@@ -1773,9 +1778,6 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 					} else {
 						useen << uval
 					}
-				}
-				ast.PrefixExpr {
-					dump(field.expr)
 				}
 				ast.InfixExpr {
 					// Handle `enum Foo { x = 1 + 2 }`

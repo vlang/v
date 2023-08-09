@@ -20,14 +20,6 @@ pub fn (t Time) format_ss_milli() string {
 	return '${t.year:04d}-${t.month:02d}-${t.day:02d} ${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${(t.nanosecond / 1_000_000):03d}'
 }
 
-// format_rfc3339 returns a date string in "YYYY-MM-DDTHH:mm:ss.123Z" format (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
-// RFC3339 is an Internet profile, based on the ISO 8601 standard for for representation of dates and times using the Gregorian calendar.
-// It is intended to improve consistency and interoperability, when representing and using date and time in Internet protocols.
-pub fn (t Time) format_rfc3339() string {
-	u := t.local_to_utc()
-	return '${u.year:04d}-${u.month:02d}-${u.day:02d}T${u.hour:02d}:${u.minute:02d}:${u.second:02d}.${(u.nanosecond / 1_000_000):03d}Z'
-}
-
 // format_ss_micro returns a date string in "YYYY-MM-DD HH:mm:ss.123456" format (24h).
 pub fn (t Time) format_ss_micro() string {
 	return '${t.year:04d}-${t.month:02d}-${t.day:02d} ${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${(t.nanosecond / 1_000):06d}'
@@ -36,6 +28,20 @@ pub fn (t Time) format_ss_micro() string {
 // format_ss_nano returns a date string in "YYYY-MM-DD HH:mm:ss.123456789" format (24h).
 pub fn (t Time) format_ss_nano() string {
 	return '${t.year:04d}-${t.month:02d}-${t.day:02d} ${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${t.nanosecond:09d}'
+}
+
+// format_rfc3339 returns a date string in "YYYY-MM-DDTHH:mm:ss.123Z" format (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
+// RFC3339 is an Internet profile, based on the ISO 8601 standard for for representation of dates and times using the Gregorian calendar.
+// It is intended to improve consistency and interoperability, when representing and using date and time in Internet protocols.
+pub fn (t Time) format_rfc3339() string {
+	u := t.local_to_utc()
+	return '${u.year:04d}-${u.month:02d}-${u.day:02d}T${u.hour:02d}:${u.minute:02d}:${u.second:02d}.${(u.nanosecond / 1_000_000):03d}Z'
+}
+
+// format_rfc3339_nano returns a date string in "YYYY-MM-DDTHH:mm:ss.123456789Z" format (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
+pub fn (t Time) format_rfc3339_nano() string {
+	u := t.local_to_utc()
+	return '${u.year:04d}-${u.month:02d}-${u.day:02d}T${u.hour:02d}:${u.minute:02d}:${u.second:02d}.${(u.nanosecond):09d}Z'
 }
 
 // hhmm returns a date string in "HH:mm" format (24h).
@@ -90,8 +96,8 @@ fn ordinal_suffix(n int) string {
 }
 
 const (
-	tokens_2 = ['MM', 'Mo', 'DD', 'Do', 'YY', 'ss', 'kk', 'NN', 'mm', 'hh', 'HH', 'ZZ', 'dd', 'Qo',
-		'QQ', 'wo', 'ww']
+	tokens_2 = ['MM', 'Mo', 'DD', 'Do', 'YY', 'ss', 'kk', 'NN', 'mm', 'hh', 'HH', 'ii', 'ZZ', 'dd',
+		'Qo', 'QQ', 'wo', 'ww']
 	tokens_3 = ['MMM', 'DDD', 'ZZZ', 'ddd']
 	tokens_4 = ['MMMM', 'DDDD', 'DDDo', 'dddd', 'YYYY']
 )
@@ -132,6 +138,8 @@ const (
 // |                  | HH    | 00 01 ... 22 23                        |
 // |                  | h     | 1 2 ... 11 12                          |
 // |                  | hh    | 01 02 ... 11 12                        |
+// |                  | i     | 0 1 ... 11 12 1 ... 11                 |
+// |                  | ii    | 00 01 ... 11 12 01 ... 11              |
 // |                  | k     | 1 2 ... 23 24                          |
 // |                  | kk    | 01 02 ... 23 24                        |
 // |       **Minute** | m     | 0 1 ... 58 59                          |
@@ -226,10 +234,18 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string('${t.hour:02}')
 			}
 			'h' {
-				h := if t.hour > 12 { t.hour - 12 } else { t.hour }
+				h := (t.hour + 11) % 12 + 1
 				sb.write_string(h.str())
 			}
 			'hh' {
+				h := (t.hour + 11) % 12 + 1
+				sb.write_string('${h:02}')
+			}
+			'i' {
+				h := if t.hour > 12 { t.hour - 12 } else { t.hour }
+				sb.write_string(h.str())
+			}
+			'ii' {
 				h := if t.hour > 12 { t.hour - 12 } else { t.hour }
 				sb.write_string('${h:02}')
 			}

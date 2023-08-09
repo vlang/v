@@ -648,7 +648,7 @@ fn (mut s Scanner) text_scan() token.Token {
 		}
 		// End of $var, start next string
 		if s.is_inter_end {
-			if s.text[s.pos] == s.quote {
+			if s.text[s.pos] == s.quote || (s.text[s.pos] == s.inter_quote && s.is_enclosed_inter) {
 				s.is_inter_end = false
 				return s.new_token(.string, '', 1)
 			}
@@ -1472,17 +1472,23 @@ fn (mut s Scanner) ident_char() string {
 		u := c.runes()
 		if u.len != 1 {
 			if escaped_hex || escaped_unicode {
-				s.error('invalid character literal `${orig}` => `${c}` (${u}) (escape sequence did not refer to a singular rune)')
+				s.error_with_pos('invalid character literal `${orig}` => `${c}` (${u}) (escape sequence did not refer to a singular rune)',
+					lspos)
 			} else if u.len == 0 {
 				s.add_error_detail_with_pos('use quotes for strings, backticks for characters',
 					lspos)
-				s.error('invalid empty character literal `${orig}`')
+				s.error_with_pos('invalid empty character literal `${orig}`', lspos)
 			} else {
 				s.add_error_detail_with_pos('use quotes for strings, backticks for characters',
 					lspos)
-				s.error('invalid character literal `${orig}` => `${c}` (${u}) (more than one character)')
+				s.error_with_pos('invalid character literal `${orig}` => `${c}` (${u}) (more than one character)',
+					lspos)
 			}
 		}
+	} else if c == '\n' {
+		s.add_error_detail_with_pos('use quotes for strings, backticks for characters',
+			lspos)
+		s.error_with_pos('invalid character literal, use \`\\n\` instead', lspos)
 	}
 	// Escapes a `'` character
 	if c == "'" {
@@ -1566,14 +1572,18 @@ fn (mut s Scanner) eat_details() string {
 }
 
 pub fn (mut s Scanner) warn(msg string) {
-	if s.pref.warns_are_errors {
-		s.error(msg)
-		return
-	}
 	pos := token.Pos{
 		line_nr: s.line_nr
 		pos: s.pos
 		col: s.current_column() - 1
+	}
+	s.warn_with_pos(msg, pos)
+}
+
+pub fn (mut s Scanner) warn_with_pos(msg string, pos token.Pos) {
+	if s.pref.warns_are_errors {
+		s.error_with_pos(msg, pos)
+		return
 	}
 	details := s.eat_details()
 	if s.pref.output_mode == .stdout && !s.pref.check_only {
@@ -1604,6 +1614,10 @@ pub fn (mut s Scanner) error(msg string) {
 		pos: s.pos
 		col: s.current_column() - 1
 	}
+	s.error_with_pos(msg, pos)
+}
+
+pub fn (mut s Scanner) error_with_pos(msg string, pos token.Pos) {
 	details := s.eat_details()
 	if s.pref.output_mode == .stdout && !s.pref.check_only {
 		util.show_compiler_message('error:',
