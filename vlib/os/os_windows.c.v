@@ -262,8 +262,7 @@ fn ptr_win_get_error_msg(code u32) voidptr {
 		return buf
 	}
 	C.FormatMessage(os.format_message_allocate_buffer | os.format_message_from_system | os.format_message_ignore_inserts,
-		0, code, C.MAKELANGID(os.lang_neutral, os.sublang_default), voidptr(&buf), 0,
-		0)
+		0, code, 0, voidptr(&buf), 0, 0)
 	return buf
 }
 

@@ -349,7 +349,7 @@ fn C.FindClose(hFindFile voidptr)
 // macro
 fn C.MAKELANGID(lgid voidptr, srtid voidptr) int
 
-fn C.FormatMessage(dwFlags u32, lpSource voidptr, dwMessageId u32, dwLanguageId u32, lpBuffer voidptr, nSize int, arguments ...voidptr) voidptr
+fn C.FormatMessage(dwFlags u32, lpSource voidptr, dwMessageId u32, dwLanguageId u32, lpBuffer voidptr, nSize u32, arguments ...voidptr) u32
 
 fn C.CloseHandle(voidptr) int
 
