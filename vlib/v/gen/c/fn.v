@@ -2210,6 +2210,9 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 				&& lang != .c {
 				if arg.expr.is_lvalue() {
 					if expected_type.has_flag(.option) {
+						if expected_type.has_flag(.option_mut_param_t) {
+							g.write('&/*opt-mut*/')
+						}
 						g.expr_with_opt(arg.expr, arg_typ, expected_type)
 						return
 					} else {
@@ -2250,6 +2253,9 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		g.write('->val')
 		return
 	} else if expected_type.has_flag(.option) {
+		if expected_type.has_flag(.option_mut_param_t) {
+			g.write('&/*opt-mut*/')
+		}
 		g.expr_with_opt(arg.expr, arg_typ, expected_type)
 		return
 	} else if arg.expr is ast.ArrayInit {

@@ -71,6 +71,9 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 	} else {
 		old_inside_opt_or_res := g.inside_opt_or_res
 		g.inside_opt_or_res = true
+		if expr_type.has_flag(.option_mut_param_t) {
+			g.write('*')
+		}
 		g.expr(node.expr)
 		g.inside_opt_or_res = old_inside_opt_or_res
 	}
@@ -106,7 +109,11 @@ fn (mut g Gen) dump_expr_definitions() {
 		} else {
 			if typ.has_flag(.option) {
 				str_dumparg_type += '_option_'
-				ptr_asterisk = ptr_asterisk.replace('*', '_ptr')
+				if typ.has_flag(.option_mut_param_t) {
+					ptr_asterisk = ptr_asterisk.replace('*', '')
+				} else {
+					ptr_asterisk = ptr_asterisk.replace('*', '_ptr')
+				}
 			}
 			str_dumparg_type += g.cc_type(dump_type, true) + ptr_asterisk
 		}

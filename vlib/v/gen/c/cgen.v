@@ -1076,7 +1076,7 @@ fn (mut g Gen) option_type_name(t ast.Type) (string, string) {
 	} else {
 		styp = '${c.option_name}_${base}'
 	}
-	if t.is_ptr() {
+	if t.is_ptr() && !t.has_flag(.option_mut_param_t) {
 		styp = styp.replace('*', '_ptr')
 	}
 	return styp, base
@@ -1160,7 +1160,7 @@ fn (mut g Gen) write_options() {
 		done = g.done_options.clone()
 	}
 	for base, styp in g.options {
-		if base in done {
+		if base in done || styp.ends_with('*') {
 			continue
 		}
 		done << base
@@ -1947,7 +1947,12 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 			ret_styp := g.typ(g.unwrap_generic(ret_typ)).replace('*', '_ptr')
 			g.writeln('${ret_styp} ${tmp_var};')
 		} else {
-			g.writeln('${g.typ(ret_typ)} ${tmp_var};')
+			if ret_typ.has_flag(.option_mut_param_t) {
+				styp = styp.replace('*', '')
+				g.writeln('${g.typ(ret_typ).replace('*', '')} ${tmp_var};')
+			} else {
+				g.writeln('${g.typ(ret_typ)} ${tmp_var};')
+			}
 		}
 		if ret_typ.has_flag(.option) {
 			if expr_typ.has_flag(.option) && expr in [ast.StructInit, ast.ArrayInit, ast.MapInit] {
@@ -1969,7 +1974,7 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 				} else {
 					g.write('_option_ok(&(${styp}[]) { ')
 				}
-				if !expr_typ.is_ptr() && ret_typ.is_ptr() {
+				if !expr_typ.is_ptr() && ret_typ.is_ptr() && !ret_typ.has_flag(.option_mut_param_t) {
 					g.write('&/*ref*/')
 				}
 			}

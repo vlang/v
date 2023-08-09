@@ -113,6 +113,7 @@ pub enum TypeFlag {
 	generic
 	shared_f
 	atomic_f
+	option_mut_param_t
 }
 
 /*

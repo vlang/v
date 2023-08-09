@@ -610,10 +610,16 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					if op_overloaded {
 						g.op_arg(left, op_expected_left, var_type)
 					} else {
-						if !is_decl && left.is_auto_deref_var() {
+						if !is_decl && left.is_auto_deref_var() && !var_type.has_flag(.option) {
 							g.write('*')
 						}
-						g.expr(left)
+						if var_type.has_flag(.option_mut_param_t) {
+							g.write('memcpy(&')
+							g.expr(left)
+							g.write('->data, &')
+						} else {
+							g.expr(left)
+						}
 						if !is_decl && var_type.has_flag(.shared_f) {
 							g.write('->val') // don't reset the mutex, just change the value
 						}
@@ -630,7 +636,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				if is_decl {
 					g.writeln(';')
 				}
-			} else if !g.is_arraymap_set && !str_add && !op_overloaded {
+			} else if !var_type.has_flag(.option_mut_param_t) && !g.is_arraymap_set && !str_add && !op_overloaded {
 				g.write(' ${op} ')
 			} else if str_add || op_overloaded {
 				g.write(', ')
@@ -738,6 +744,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			}
 			if str_add || op_overloaded {
 				g.write(')')
+			}
+			if var_type.has_flag(.option_mut_param_t) {
+				g.write('.data, sizeof(${g.base_type(val_type)}))')		
 			}
 			if g.is_arraymap_set {
 				g.write(' })')
