@@ -197,9 +197,14 @@ body {
 	width: 1.2rem;
 	height: 1.2rem;
 }
-.doc-nav > .heading-container > .heading > #search {
+.doc-nav #search {
+	position: relative;
 	margin: 0.6rem 1.2rem 1rem 1.2rem;
+	display: flex;
+}
+.doc-nav #search input {
 	border: none;
+	width: 100%;
 	border-radius: 0.2rem;
 	padding: 0.5rem 1rem;
 	outline: none;
@@ -208,17 +213,32 @@ body {
 	color: #fff;
 	color: var(--menu-search-text-color);
 }
-.doc-nav > .heading-container > .heading > #search::placeholder {
+.doc-nav #search input::placeholder {
 	color: #edf2f7;
 	text-transform: uppercase;
 	font-size: 12px;
 	font-weight: 600;
 }
-.doc-nav > .heading-container > .heading > #search:-ms-input-placeholder {
-	color: #edf2f7;
-	text-transform: uppercase;
-	font-size: 12px;
-	font-weight: 600;
+.doc-nav #search-keys {
+	position: absolute;
+	height: 100%;
+	align-items: center;
+	display: flex;
+	top: 0;
+	right: 0.75rem;
+	opacity: 0.33;
+	transition: opacity 0.1s;
+}
+.doc-nav #search-keys.hide {
+	opacity: 0;
+}
+.doc-nav #search-keys kbd {
+	padding: 2.5px 3px;
+	margin-left: 1px;
+	font-size: 11px;
+	background-color: var(--menu-background-color);
+	border: 1px solid #ffffff44;
+	border-radius: 3px;
 }
 .doc-nav > .content {
 	padding: 0 2rem 2rem 2rem;
@@ -278,7 +298,8 @@ body {
 .doc-nav .search li {
 	line-height: 1.5;
 }
-.doc-nav > .search .result:hover {
+.doc-nav > .search .result:hover,
+.doc-nav > .search .result.selected {
 	background-color: #00000021;
 	background-color: var(--menu-search-result-background-hover-color);
 }
