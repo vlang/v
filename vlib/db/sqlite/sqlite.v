@@ -180,7 +180,7 @@ pub fn (db &DB) get_affected_rows_count() int {
 	return C.sqlite3_changes(db.conn)
 }
 
-// q_int returns a single integer value, from the first column of the result of executing `query`
+// q_int returns a single integer value, from the first column of the result of executing `query`, or an error on failure
 pub fn (db &DB) q_int(query string) !int {
 	stmt := &C.sqlite3_stmt(unsafe { nil })
 	defer {
@@ -196,7 +196,7 @@ pub fn (db &DB) q_int(query string) !int {
 	return res
 }
 
-// q_string returns a single string value, from the first column of the result of executing `query`
+// q_string returns a single string value, from the first column of the result of executing `query`, or an error on failure
 pub fn (db &DB) q_string(query string) !string {
 	stmt := &C.sqlite3_stmt(unsafe { nil })
 	defer {
@@ -212,8 +212,7 @@ pub fn (db &DB) q_string(query string) !string {
 	return if val != &u8(0) { unsafe { tos_clone(val) } } else { '' }
 }
 
-// exec executes the query on the given `db`, and returns an array of all the results, alongside any result code.
-// Result codes: https://www.sqlite.org/rescode.html
+// exec executes the query on the given `db`, and returns an array of all the results, or an error on failure
 [manualfree]
 pub fn (db &DB) exec(query string) ![]Row {
 	stmt := &C.sqlite3_stmt(unsafe { nil })
@@ -356,6 +355,7 @@ pub fn (db &DB) busy_timeout(ms int) int {
 
 // synchronization_mode sets disk synchronization mode, which controls how
 // aggressively SQLite will write data to physical storage.
+// If the command fails to execute an error is returned
 // .off: No syncs at all. (fastest)
 // .normal: Sync after each sequence of critical disk operations.
 // .full: Sync after each critical disk operation (slowest).
@@ -370,6 +370,7 @@ pub fn (db &DB) synchronization_mode(sync_mode SyncMode) ! {
 }
 
 // journal_mode controls how the journal file is stored and processed.
+// If the command fails to execute an error is returned
 // .off: No journal record is kept. (fastest)
 // .memory: Journal record is held in memory, rather than on disk.
 // .delete: At the conclusion of a transaction, journal file is deleted.
