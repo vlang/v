@@ -636,7 +636,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				if is_decl {
 					g.writeln(';')
 				}
-			} else if !var_type.has_flag(.option_mut_param_t) && !g.is_arraymap_set && !str_add && !op_overloaded {
+			} else if !var_type.has_flag(.option_mut_param_t) && !g.is_arraymap_set && !str_add
+				&& !op_overloaded {
 				g.write(' ${op} ')
 			} else if str_add || op_overloaded {
 				g.write(', ')
@@ -746,7 +747,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				g.write(')')
 			}
 			if var_type.has_flag(.option_mut_param_t) {
-				g.write('.data, sizeof(${g.base_type(val_type)}))')		
+				g.write('.data, sizeof(${g.base_type(val_type)}))')
 			}
 			if g.is_arraymap_set {
 				g.write(' })')
