@@ -286,8 +286,7 @@ pub fn winapi_lasterr_str() string {
 	}
 	mut msgbuf := &u16(0)
 	res := C.FormatMessage(C.FORMAT_MESSAGE_ALLOCATE_BUFFER | C.FORMAT_MESSAGE_FROM_SYSTEM | C.FORMAT_MESSAGE_IGNORE_INSERTS,
-		C.NULL, err_msg_id, C.MAKELANGID(C.LANG_NEUTRAL, C.SUBLANG_DEFAULT), &msgbuf,
-		0, C.NULL)
+		0, err_msg_id, 0, voidptr(&msgbuf), 0, 0)
 	err_msg := if res == 0 {
 		'Win-API error ${err_msg_id}'
 	} else {
