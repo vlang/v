@@ -1,6 +1,7 @@
 module mysql
 
 pub struct Result {
+pub:
 	result &C.MYSQL_RES = unsafe { nil }
 }
 
