@@ -77,8 +77,9 @@ pub fn (mut e Employee) from_toml(any toml.Any) {
 	mp := any.as_map()
 	e.name = mp['name'] or { toml.Any('') }.string()
 	e.age = mp['age'] or { toml.Any(0) }.int()
-	e.salary = mp['salary'] or { toml.Any(0) }.f32() - 15000.0
 	e.is_human = mp['is_human'] or { toml.Any(false) }.bool()
+	// Change some values to assert that the structs method is used instead of generic decoding.
+	e.salary = mp['salary'] or { toml.Any(0) }.f32() - 15000.0
 	e.title = unsafe { JobTitle(mp['title'] or { toml.Any(0) }.int() - 2) }
 }
 
