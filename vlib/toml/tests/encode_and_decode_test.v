@@ -82,7 +82,7 @@ pub fn (e Employee) to_toml() string {
 	mp['name'] = toml.Any(e.name)
 	mp['age'] = toml.Any(e.age)
 	mp['is_human'] = toml.Any(e.is_human)
-	// Change some values to assert that the structs method is used instead of generic decoding.
+	// Change some values to assert that the custom method is used instead of generic encoding.
 	mp['salary'] = toml.Any(f32(e.salary) + 5000.0)
 	mp['title'] = toml.Any(int(e.title) + 1)
 	return mp.to_toml()
@@ -93,7 +93,7 @@ pub fn (mut e Employee) from_toml(any toml.Any) {
 	e.name = mp['name'] or { toml.Any('') }.string()
 	e.age = mp['age'] or { toml.Any(0) }.int()
 	e.is_human = mp['is_human'] or { toml.Any(false) }.bool()
-	// Change some values to assert that the structs method is used instead of generic decoding.
+	// Change some values to assert that the custom method is used instead of generic decoding.
 	e.salary = mp['salary'] or { toml.Any(0) }.f32() - 15000.0
 	e.title = unsafe { JobTitle(mp['title'] or { toml.Any(0) }.int() - 2) }
 }
