@@ -608,10 +608,10 @@ pub fn (ctx &Context) end(options EndOptions) {
 
 pub struct FPSConfig {
 pub mut:
-	x           int
-	y           int
-	width       int
-	height      int
+	x           int  // horizontal position on screen
+	y           int  // vertical position on screen
+	width       int  // minimum width
+	height      int  // minimum height
 	show        bool // do not show by default, use `-d show_fps` or set it manually in your app to override with: `app.gg.fps.show = true`
 	text_config gx.TextCfg = gx.TextCfg{
 		color: gx.yellow
@@ -636,14 +636,18 @@ pub fn (ctx &Context) show_fps() {
 	sgl.matrix_mode_projection()
 	sgl.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
 	ctx.set_text_cfg(ctx.fps.text_config)
+	fps_text := int(0.5 + 1.0 / frame_duration).str()
 	if ctx.fps.width == 0 {
 		mut fps := unsafe { &ctx.fps }
-		fps.width, fps.height = ctx.text_size('00') // maximum size; prevents blinking on variable width fonts
+		fps.width, fps.height = ctx.text_size('00') // usual size; prevents blinking on variable width fonts
 	}
-	fps_text := int(0.5 + 1.0 / frame_duration).str()
-	ctx.draw_rect_filled(ctx.fps.x, ctx.fps.y, ctx.fps.width + 2, ctx.fps.height + 4,
-		ctx.fps.background_color)
-	ctx.draw_text(ctx.fps.x + ctx.fps.width / 2 + 1, ctx.fps.y + ctx.fps.height / 2 + 2,
+	char_width := ctx.fps.text_config.size / 2
+	mut full_width := ctx.fps.width
+	if char_width * fps_text.len > ctx.fps.width {
+		full_width += (fps_text.len - 2) * char_width
+	}
+	ctx.draw_rect_filled(ctx.fps.x, ctx.fps.y, full_width + 2, ctx.fps.height + 4, ctx.fps.background_color)
+	ctx.draw_text(ctx.fps.x + full_width / 2 + 1, ctx.fps.y + ctx.fps.height / 2 + 2,
 		fps_text, ctx.fps.text_config)
 }
 
