@@ -118,9 +118,17 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				}
 			}
 		}
-		return_sym := c.table.final_sym(node.return_type)
-		if return_sym.info is ast.MultiReturn {
-			for multi_type in return_sym.info.types {
+		return_sym := c.table.sym(node.return_type)
+		if return_sym.info is ast.Alias {
+			parent_sym := c.table.sym(return_sym.info.parent_type)
+			if parent_sym.info is ast.ArrayFixed {
+				c.table.find_or_register_array_fixed(parent_sym.info.elem_type, parent_sym.info.size,
+					parent_sym.info.size_expr, true)
+			}
+		}
+		final_return_sym := c.table.final_sym(node.return_type)
+		if final_return_sym.info is ast.MultiReturn {
+			for multi_type in final_return_sym.info.types {
 				if multi_type == ast.error_type {
 					c.error('type `IError` cannot be used in multi-return, return an Option instead',
 						node.return_type_pos)
