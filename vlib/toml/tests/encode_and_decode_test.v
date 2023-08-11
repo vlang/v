@@ -81,8 +81,9 @@ pub fn (e Employee) to_toml() string {
 	mut mp := map[string]toml.Any{}
 	mp['name'] = toml.Any(e.name)
 	mp['age'] = toml.Any(e.age)
-	mp['salary'] = toml.Any(f32(e.salary) + 5000.0)
 	mp['is_human'] = toml.Any(e.is_human)
+	// Change some values to assert that the structs method is used instead of generic decoding.
+	mp['salary'] = toml.Any(f32(e.salary) + 5000.0)
 	mp['title'] = toml.Any(int(e.title) + 1)
 	return mp.to_toml()
 }
