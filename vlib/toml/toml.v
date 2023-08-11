@@ -13,7 +13,7 @@ pub struct Null {
 }
 
 // decode decodes a TOML `string` into the target type `T`.
-// `T` can have a custom `.from_toml()` method that will be used in decode.
+// If `T` has a custom `.from_toml()` method, it will be used instead of the default.
 pub fn decode[T](toml_txt string) !T {
 	doc := parse_text(toml_txt)!
 	mut typ := T{}
