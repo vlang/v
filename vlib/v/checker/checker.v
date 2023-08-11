@@ -88,7 +88,7 @@ mut:
 	// 1 for statements directly at each inner scope level;
 	// increases for `x := if cond { statement_list1} else {statement_list2}`;
 	// increases for `x := optfn() or { statement_list3 }`;
-	files                            []ast.File
+	// files                            []ast.File
 	expr_level                       int // to avoid infinite recursion segfaults due to compiler bugs
 	ensure_generic_type_level        int // to avoid infinite recursion segfaults in ensure_generic_type_specify_type_names
 	cur_orm_ts                       ast.TypeSymbol
@@ -116,6 +116,7 @@ mut:
 	inside_decl_rhs                  bool
 	inside_if_guard                  bool // true inside the guard condition of `if x := opt() {}`
 	inside_assign                    bool
+	doing_line_info                  int // a quick single file run when called with v -line-info (contains line nr to inspect)
 	is_index_assign                  bool
 	comptime_call_pos                int // needed for correctly checking use before decl for templates
 	goto_labels                      map[string]ast.GotoLabel // to check for unused goto labels
@@ -371,6 +372,11 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 			c.add_error_detail('fn test_xyz(){ assert 2 + 2 == 4 }')
 			c.error('a _test.v file should have *at least* one `test_` function', token.Pos{})
 		}
+	}
+	// Print line info and exit
+	if c.pref.line_info != '' && c.doing_line_info == 0 {
+		c.do_line_info(c.pref.line_info, ast_files)
+		exit(0)
 	}
 	// Make sure fn main is defined in non lib builds
 	if c.pref.build_mode == .build_module || c.pref.is_test {
@@ -3274,6 +3280,20 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 }
 
 fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
+	if c.doing_line_info > 0 {
+		// Mini LS hack (v -line-info "a.v:16")
+		// println('line_nr=${node.pos.line_nr} doing line nr=${c.doing_line_info}')
+		if node.pos.line_nr == c.doing_line_info {
+			println('===')
+			sym := c.table.sym(node.obj.typ)
+			println('VAR ${node.name}:${sym.name}')
+			struct_info := sym.info as ast.Struct
+			for field in struct_info.fields {
+				field_sym := c.table.sym(field.typ)
+				println('${field.name}:${field_sym.name}')
+			}
+		}
+	}
 	// TODO: move this
 	if c.const_deps.len > 0 {
 		mut name := node.name

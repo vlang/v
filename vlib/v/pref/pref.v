@@ -186,6 +186,7 @@ pub mut:
 	out_name_c       string // full os.real_path to the generated .tmp.c file; set by builder.
 	out_name         string
 	path             string // Path to file/folder to compile
+	line_info        string // `-line-info="file.v:28"`: for "mini VLS" (shows information about objects on provided line)
 	//
 	run_only []string // VTEST_ONLY_FN and -run-only accept comma separated glob patterns.
 	// Only test_ functions that match these patterns will be run. -run-only is valid only for _test.v files.
@@ -803,6 +804,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-cmain' {
 				res.cmain = cmdline.option(current_args, '-cmain', '')
+				i++
+			}
+			'-line-info' {
+				res.line_info = cmdline.option(current_args, arg, '')
 				i++
 			}
 			'-use-coroutines' {
