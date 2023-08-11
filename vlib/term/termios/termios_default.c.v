@@ -43,7 +43,10 @@ pub fn invert(value TcFlag) TcFlag {
 // tcgetattr is an unsafe wrapper around C.termios and keeps its semantic
 // It is only implemented for Unix like OSes
 pub fn tcgetattr(fd int, mut t Termios) int {
-	$compile_warn('termios.tcgetattr is not implemented on the platform')
+	$if wasm32_emscripten {
+		return 0
+	}
+	eprintln('term.termios: tcgetattr,tcsetattr,ioctl,set_state are not implemented for the platform')
 	eprintln('tcgetattr, fd: ${fd}, t: ${t}')
 	return 0
 }
