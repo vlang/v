@@ -247,7 +247,7 @@ fn test_array_init_inferred_from_option() {
 	println(b)
 }
 
-fn read() ?[]string {
+fn read() ![]string {
 	return error('failed')
 }
 

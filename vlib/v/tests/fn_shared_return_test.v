@@ -10,7 +10,7 @@ fn f() shared St {
 	return x
 }
 
-fn g(good bool) ?shared St {
+fn g(good bool) !shared St {
 	if !good {
 		return error('no shared St created')
 	}
@@ -28,8 +28,8 @@ fn test_shared_fn_return() {
 	assert val == 3.25
 }
 
-fn shared_opt_propagate(good bool) ?f64 {
-	shared x := g(good)?
+fn shared_opt_propagate(good bool) !f64 {
+	shared x := g(good)!
 	ret := rlock x {
 		x.x
 	}

@@ -13,7 +13,7 @@ fn test_generics_with_nested_external_generics_fn() {
 	mut arr := [11, 32, 24, 45, 57, 32, 37, 52, 37, 24]
 	println(arr)
 
-	ret := sample[int](arr, 5)?
+	ret := sample[int](arr, 5)!
 	println(ret)
 
 	assert ret == [32, 45, 57, 11, 37]

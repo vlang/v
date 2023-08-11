@@ -13,7 +13,7 @@ pub:
 	name string
 }
 
-pub fn (mut gitstructure GitStructure) repo_get(name string) ?&GitRepo {
+pub fn (mut gitstructure GitStructure) repo_get(name string) !&GitRepo {
 	for r in gitstructure.repos {
 		if r.name == name {
 			if name != '' {
@@ -60,7 +60,7 @@ pub mut:
 	repos []GitRepo
 }
 
-pub fn (mut gitstructure GitStructureNoRef) repo_get(name string) ?&GitRepo {
+pub fn (mut gitstructure GitStructureNoRef) repo_get(name string) !&GitRepo {
 	for r in gitstructure.repos {
 		if r.name == name {
 			if name != '' {
