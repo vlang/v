@@ -76,7 +76,7 @@ fn decode_struct[T](doc Any, mut typ T) {
 }
 
 // encode encodes the type `T` into a TOML string.
-// `T` can have a custom `.to_toml()` method that will be used in encode.
+// If `T` has a custom `.to_toml()` method, it will be used instead of the default.
 pub fn encode[T](typ T) string {
 	$for method in T.methods {
 		$if method.name == 'to_toml' {
