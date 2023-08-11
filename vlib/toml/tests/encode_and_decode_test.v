@@ -104,8 +104,8 @@ fn test_custom_encode_and_decode() {
 	eprintln('Employee x: ${s}')
 	assert s == r'name = "Peter"
 age = 28
-salary = 100000.5
 is_human = true
+salary = 100000.5
 title = 2'
 
 	y := toml.decode[Employee](s) or {
