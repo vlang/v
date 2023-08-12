@@ -1691,6 +1691,9 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 						t_generic_names, t_concrete_types)
 					{
 						gts := t.sym(ct)
+						if ct.is_ptr() {
+							nrt += '&'
+						}
 						nrt += gts.name
 						rnrt += gts.name
 						if i != sym.info.generic_types.len - 1 {
@@ -1867,6 +1870,9 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 					t_concrete_types)
 				{
 					gts := t.sym(ct)
+					if ct.is_ptr() {
+						nrt += '&'
+					}
 					nrt += gts.name
 					c_nrt += gts.cname
 					if i != ts.info.generic_types.len - 1 {
