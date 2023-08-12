@@ -1,4 +1,4 @@
-name: Build Vinix kernel
+name: Build Vinix
 
 on:
   pull_request:
