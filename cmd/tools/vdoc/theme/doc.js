@@ -10,36 +10,35 @@
 })();
 
 function setupScrollSpy() {
-	const sections = document.querySelectorAll('section');
+	const mainContent = document.querySelector('#main-content');
+	mainContent.focus();
+	const toc = mainContent.querySelector('.doc-toc');
+	const sections = mainContent.querySelectorAll('section');
 	const sectionPositions = Array.from(sections).map((section) => section.offsetTop);
-	let scrollPos = 0;
-	window.addEventListener('scroll', () => {
-		const toc = document.querySelector('.doc-toc');
+	let lastScrollPos = 0;
+	mainContent.addEventListener('scroll', () => {
 		// Reset classes
 		toc.querySelectorAll('a[class="active"]').forEach((link) => link.classList.remove('active'));
-		// Set current menu link as active
-		let scrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
+		let scrollPos = mainContent.scrollTop;
 		for (const [i, position] of sectionPositions.entries()) {
-			if (position >= scrollPosition) {
+			if (position >= scrollPos) {
 				const section = sections[i];
 				const link = toc.querySelector('a[href="#' + section.id + '"]');
 				if (link) {
+					// Set current menu link as active
 					link.classList.add('active');
 					const tocHeight = toc.clientHeight;
 					const scrollTop = toc.scrollTop;
-					if (
-						document.body.getBoundingClientRect().top < scrollPos &&
-						scrollTop < link.offsetTop - 10
-					) {
+					if (lastScrollPos < scrollPos && scrollTop < link.offsetTop) {
 						toc.scrollTop = link.clientHeight + link.offsetTop - tocHeight + 10;
-					} else if (scrollTop > link.offsetTop - 10) {
-						toc.scrollTop = link.offsetTop - 10;
+					} else if (scrollTop > link.offsetTop) {
+						toc.scrollTop = link.offsetTop - 16;
 					}
 				}
 				break;
 			}
 		}
-		scrollPos = document.body.getBoundingClientRect().top;
+		lastScrollPos = mainContent.scrollTop;
 	});
 }
 

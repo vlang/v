@@ -361,6 +361,7 @@ body {
 /* Main content */
 .doc-scrollview {
 	height: 100%;
+	overflow-y: scroll;
 }
 .doc-container {
 	display: flex;
@@ -657,7 +658,6 @@ pre {
 		height: 100vh;
 		position: -webkit-sticky;
 		align-self: flex-start;
-		top: 56px;
 		min-width: 200px;
 		width: auto;
 		max-width: 300px;
