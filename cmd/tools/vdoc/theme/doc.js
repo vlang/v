@@ -29,8 +29,11 @@ function setupScrollSpy() {
 					link.classList.add('active');
 					const tocHeight = toc.clientHeight;
 					const scrollTop = toc.scrollTop;
+					const tocStart = toc.getBoundingClientRect().top + window.scrollY;
 					if (lastScrollPos < scrollPos && scrollTop < link.offsetTop) {
-						toc.scrollTop = link.clientHeight + link.offsetTop - tocHeight + 10;
+						toc.scrollTop = link.clientHeight + link.offsetTop - tocHeight + tocStart + 10;
+					} else if (link.offsetTop < tocStart) {
+						toc.scrollTop = 0;
 					} else if (scrollTop > link.offsetTop) {
 						toc.scrollTop = link.offsetTop - 16;
 					}
