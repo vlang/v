@@ -834,7 +834,8 @@ fn (mut s Scanner) text_scan() token.Token {
 					} else {
 						s.error('unfinished string literal')
 					}
-					if s.text[s.pos] == s.quote {
+					if s.text[s.pos] == s.quote
+						|| (s.text[s.pos] == s.inter_quote && s.is_nested_enclosed_inter) {
 						s.is_inside_string = false
 						if s.is_nested_enclosed_inter {
 							s.is_nested_enclosed_inter = false
