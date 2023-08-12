@@ -233,7 +233,7 @@ body {
 	opacity: 0;
 }
 .doc-nav #search-keys kbd {
-	padding: 2.5px 3px;
+	padding: 2.5px 4px;
 	margin-left: 1px;
 	font-size: 11px;
 	background-color: var(--menu-background-color);
