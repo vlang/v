@@ -3986,8 +3986,9 @@ fn (mut c Amd64) gen_cast_expr(expr ast.CastExpr) {
 }
 
 fn (mut c Amd64) cmp_to_stack_top(reg Register) {
-	c.pop(.rbx)
-	c.cmp_reg(.rbx, reg as Amd64Register)
+	second_reg := if reg == Amd64Register.rbx { Amd64Register.rax } else { Amd64Register.rbx }
+	c.pop(second_reg)
+	c.cmp_reg(second_reg, reg as Amd64Register)
 }
 
 // Temporary!
