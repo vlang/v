@@ -763,6 +763,9 @@ fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 		if gts.kind == .multi_return {
 			p.error_with_pos('cannot use multi return as generic concrete type', type_pos)
 		}
+		if gt.is_ptr() {
+			bs_name += '&'
+		}
 		bs_name += gts.name
 		bs_cname += gts.cname
 		concrete_types << gt

@@ -184,20 +184,22 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	mut cur_line := ''
 	mut raw_state := false
 	if needs_tmp_var {
+		mut styp := g.typ(node.typ)
 		if node.typ.has_flag(.option) {
 			raw_state = g.inside_if_option
 			defer {
 				g.inside_if_option = raw_state
 			}
 			g.inside_if_option = true
+			styp = styp.replace('*', '_ptr')
 		} else if node.typ.has_flag(.result) {
 			raw_state = g.inside_if_result
 			defer {
 				g.inside_if_result = raw_state
 			}
 			g.inside_if_result = true
+			styp = styp.replace('*', '_ptr')
 		}
-		styp := g.typ(node.typ)
 		cur_line = g.go_before_stmt(0)
 		g.empty_line = true
 		g.writeln('${styp} ${tmp}; /* if prepend */')
