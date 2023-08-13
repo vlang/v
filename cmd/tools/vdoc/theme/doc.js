@@ -11,6 +11,7 @@
 
 function setupScrollSpy() {
 	const mainContent = document.querySelector('#main-content');
+	// Ensure initial keyboard navigability
 	mainContent.focus();
 	const toc = mainContent.querySelector('.doc-toc');
 	const sections = mainContent.querySelectorAll('section');
@@ -41,7 +42,7 @@ function setupScrollSpy() {
 				break;
 			}
 		}
-		lastScrollPos = mainContent.scrollTop;
+		lastScrollPos = scrollPos;
 	});
 }
 
