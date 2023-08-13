@@ -321,7 +321,7 @@ pub fn (db &DB) exec_one(query string) !Row {
 	if row_vals == unsafe { nil } {
 		return Row{}
 	}
-		
+
 	mut row := Row{}
 	for i in 0 .. num_cols {
 		if unsafe { row_vals == &u8(0) } {
