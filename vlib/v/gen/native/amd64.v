@@ -1263,18 +1263,33 @@ fn (mut c Amd64) gen_print(s string, fd int) {
 	}
 }
 
-// TODO: strlen of string at runtime
 pub fn (mut c Amd64) gen_print_reg(r Register, n int, fd int) {
-	c.mov_reg(Amd64Register.rsi, r)
+	str_reg := if c.g.pref.os == .windows { Amd64Register.rdx } else { Amd64Register.rsi }
+	len_reg := if c.g.pref.os == .windows { Amd64Register.r8 } else { Amd64Register.rdx }
+	c.mov_reg(str_reg, r)
+
 	if n < 0 {
-		c.inline_strlen(.rsi)
-		c.mov_reg(Amd64Register.rdx, Amd64Register.rax)
+		c.inline_strlen(str_reg)
+		c.mov_reg(len_reg, Amd64Register.rax)
 	} else {
-		c.mov(Amd64Register.edx, n)
+		c.mov(len_reg, n)
 	}
-	c.mov(Amd64Register.eax, c.g.nsyscall(.write))
-	c.mov(Amd64Register.edi, fd)
-	c.syscall()
+
+	if c.g.pref.os == .windows {
+		c.sub(.rsp, 0x38)
+		c.mov(Amd64Register.rcx, -11)
+		c.apicall(.get_std_handle)
+		c.mov_reg(Amd64Register.rcx, Amd64Register.rax)
+		c.g.write([u8(0x4c), 0x8d, 0x4c, 0x24, 0x20]) // lea r9, [rsp+0x20]
+		c.g.write([u8(0x48), 0xc7, 0x44, 0x24, 0x20])
+		c.g.write32(0) // mov qword[rsp+0x20], 0
+		// c.mov(Amd64Register.r9, rsp+0x20)
+		c.apicall(.write_file)
+	} else {
+		c.mov(Amd64Register.eax, c.g.nsyscall(.write))
+		c.mov(Amd64Register.edi, fd)
+		c.syscall()
+	}
 }
 
 pub fn (mut c Amd64) gen_exit(expr ast.Expr) {
@@ -3986,7 +4001,11 @@ fn (mut c Amd64) gen_cast_expr(expr ast.CastExpr) {
 }
 
 fn (mut c Amd64) cmp_to_stack_top(reg Register) {
-	second_reg := if reg == Amd64Register.rbx { Amd64Register.rax } else { Amd64Register.rbx }
+	second_reg := if reg as Amd64Register == Amd64Register.rbx {
+		Amd64Register.rax
+	} else {
+		Amd64Register.rbx
+	}
 	c.pop(second_reg)
 	c.cmp_reg(second_reg, reg as Amd64Register)
 }

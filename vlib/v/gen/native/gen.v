@@ -28,8 +28,6 @@ mut:
 	sect_header_name_pos int
 	offset               i64
 	file_size_pos        i64
-	elf_text_header_addr i64 = -1
-	elf_rela_section     Section
 	main_fn_addr         i64
 	main_fn_size         i64
 	start_symbol_addr    i64
@@ -58,9 +56,14 @@ mut:
 	eval                 eval.Eval
 	enum_vals            map[string]Enum
 	return_type          ast.Type
+	// elf specific
+	elf_text_header_addr i64 = -1
+	elf_rela_section     Section
 	// macho specific
 	macho_ncmds   int
 	macho_cmdsize int
+	// pe specific
+	pe_opt_hdr_pos i64
 
 	requires_linking bool
 }
@@ -610,6 +613,19 @@ fn (mut g Gen) write_string_with_padding(s string, max int) {
 	}
 }
 
+fn (mut g Gen) pad_to(len int) {
+	for g.buf.len < len {
+		g.buf << u8(0)
+	}
+}
+
+fn (mut g Gen) align_to(align int) {
+	padded := (g.buf.len + align - 1) & ~(align - 1)
+	for g.buf.len < padded {
+		g.buf << u8(0)
+	}
+}
+
 fn (g &Gen) abs_to_rel_addr(addr i64) int {
 	return int(mu.abs(addr - g.buf.len)) - 1
 }
@@ -1056,6 +1072,10 @@ pub fn (mut g Gen) n_error(s string) {
 }
 
 pub fn (mut g Gen) warning(s string, pos token.Pos) {
+	if g.pref.skip_warnings {
+		return
+	}
+
 	if g.pref.output_mode == .stdout {
 		util.show_compiler_message('warning:', pos: pos, file_path: g.current_file.path, message: s)
 	} else {
@@ -1110,4 +1130,68 @@ fn (mut g Gen) gen_concat_expr(node ast.ConcatExpr) {
 	}
 	// store the multi return struct value
 	g.code_gen.lea_var_to_reg(main_reg, var.offset)
+}
+
+fn (mut g Gen) sym_string_table() int {
+	begin := g.buf.len
+	g.zeroes(1)
+	g.println('')
+	g.println('=== strings ===')
+
+	mut generated := map[string]int{}
+
+	for _, s in g.strs {
+		pos := generated[s.str] or { g.buf.len }
+
+		match s.typ {
+			.rel32 {
+				g.write32_at(s.pos, pos - s.pos - 4)
+			}
+			else {
+				if g.pref.os == .windows {
+					// that should be .rel32, not windows-specific
+					g.write32_at(s.pos, pos - s.pos - 4)
+				} else {
+					g.write64_at(s.pos, pos + base_addr)
+				}
+			}
+		}
+
+		if s.str !in generated {
+			generated[s.str] = pos
+			g.write_string(s.str)
+			if g.pref.is_verbose {
+				g.println('"${escape_string(s.str)}"')
+			}
+		}
+	}
+	return g.buf.len - begin
+}
+
+const escape_char = u8(`\\`)
+
+const escape_codes = {
+	u8(`\a`):    u8(`a`)
+	u8(`\b`):    u8(`b`)
+	u8(`\f`):    u8(`f`)
+	u8(`\n`):    u8(`n`)
+	u8(`\r`):    u8(`r`)
+	u8(`\t`):    u8(`t`)
+	u8(`\v`):    u8(`v`)
+	escape_char: escape_char
+	u8(`"`):     u8(`"`)
+}
+
+pub fn escape_string(s string) string {
+	mut out := []u8{cap: s.len}
+
+	for c in s {
+		if c in native.escape_codes {
+			out << native.escape_char
+			out << native.escape_codes[c]
+		} else {
+			out << c
+		}
+	}
+	return out.bytestr()
 }

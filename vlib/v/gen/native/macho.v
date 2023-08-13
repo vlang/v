@@ -474,34 +474,3 @@ fn (mut g Gen) write_symbol(s Symbol) {
 	g.write64(s.val)
 	// g.write16(s.desc)
 }
-
-fn (mut g Gen) sym_string_table() int {
-	begin := g.buf.len
-	g.zeroes(1)
-
-	mut generated := map[string]int{}
-
-	for _, s in g.strs {
-		pos := generated[s.str] or { g.buf.len }
-
-		match s.typ {
-			.rel32 {
-				g.write32_at(s.pos, pos - s.pos - 4)
-			}
-			else {
-				if g.pref.os == .windows {
-					// that should be .rel32, not windows-specific
-					g.write32_at(s.pos, pos - s.pos - 4)
-				} else {
-					g.write64_at(s.pos, pos + native.base_addr)
-				}
-			}
-		}
-
-		if s.str !in generated {
-			generated[s.str] = pos
-			g.write_string(s.str)
-		}
-	}
-	return g.buf.len - begin
-}

@@ -47,7 +47,8 @@ fn (mut g Gen) nsyscall(syscall SysCall) int {
 			return g.nsyscall_macos(syscall)
 		}
 		else {
-			g.n_error('syscall is unsupported on platform ${g.pref.os}')
+			panic('syscall on windows :(')
+			// g.n_error('syscall is unsupported on platform ${g.pref.os}')
 		}
 	}
 	return 0
