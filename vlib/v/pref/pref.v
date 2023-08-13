@@ -163,6 +163,7 @@ pub mut:
 	m64                bool         // true = generate 64-bit code, defaults to x64
 	ccompiler          string       // the name of the C compiler used
 	ccompiler_type     CompilerType // the type of the C compiler used
+	cppcompiler        string       // the name of the CPP compiler used
 	third_party_option string
 	building_v         bool
 	no_bounds_checking bool // `-no-bounds-checking` turns off *all* bounds checks for all functions at runtime, as if they all had been tagged with `[direct_array_access]`
@@ -736,6 +737,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-cc' {
 				res.ccompiler = cmdline.option(current_args, '-cc', 'cc')
 				res.build_options << '${arg} "${res.ccompiler}"'
+				i++
+			}
+			'-c++' {
+				res.cppcompiler = cmdline.option(current_args, '-c++', 'c++')
 				i++
 			}
 			'-checker-match-exhaustive-cutoff-limit' {
