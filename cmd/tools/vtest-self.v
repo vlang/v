@@ -170,6 +170,7 @@ const (
 		'vlib/orm/orm_insert_reserved_name_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
 		'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
+		'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.v', // fails compilation with: undefined reference to vtable for __cxxabiv1::__function_type_info'
 	]
 	skip_with_werror              = [
 		'do_not_remove',
