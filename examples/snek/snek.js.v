@@ -190,7 +190,7 @@ fn main() {
 		create_window: true
 		resizable: false
 		window_title: 'snek'
-		canvas: 'canvas'
+		html5_canvas_name: 'canvas'
 	)
 
 	app.gg.run()
