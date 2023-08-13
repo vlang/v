@@ -1436,8 +1436,13 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		arg_name := '_arg_expr_${fn_name}_0_${node.pos.pos}'
 		g.write('/*af receiver arg*/' + arg_name)
 	} else {
-		if left_sym.kind == .array && node.left.is_auto_deref_var()
-			&& is_array_method_first_last_repeat {
+		mut is_array := left_sym.kind == .array
+		if !is_array && left_sym.kind == .alias {
+			unaliased_type := g.table.unaliased_type(left_type)
+			unaliased_sym := g.table.sym(unaliased_type)
+			is_array = unaliased_sym.kind == .array
+		}
+		if is_array && node.left.is_auto_deref_var() && is_array_method_first_last_repeat {
 			g.write('*')
 		}
 		if node.left is ast.MapInit {
