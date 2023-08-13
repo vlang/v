@@ -16,14 +16,16 @@ function setupScrollSpy() {
 	const toc = mainContent.querySelector('.doc-toc');
 	const sections = mainContent.querySelectorAll('section');
 	const sectionPositions = Array.from(sections).map((section) => section.offsetTop);
+	let lastActive = null;
 	let clickedScroll = false;
 	const handleScroll = debounce(() => {
 		if (clickedScroll) {
 			clickedScroll = false;
 			return;
 		}
-		// Reset classes
-		toc.querySelectorAll('a[class="active"]').forEach((link) => link.classList.remove('active'));
+		if (lastActive) {
+			lastActive.classList.remove('active');
+		}
 		for (const [i, position] of sectionPositions.entries()) {
 			if (position >= mainContent.scrollTop) {
 				const link = toc.querySelector('a[href="#' + sections[i].id + '"]');
@@ -42,6 +44,7 @@ function setupScrollSpy() {
 						toc.scrollTop = link.offsetTop - 10;
 					}
 				}
+				lastActive = link;
 				break;
 			}
 		}
@@ -49,8 +52,11 @@ function setupScrollSpy() {
 	mainContent.addEventListener('scroll', handleScroll);
 	toc.querySelectorAll('a').forEach((a) =>
 		a.addEventListener('click', () => {
-			toc.querySelectorAll('a[class="active"]').forEach((link) => link.classList.remove('active'));
+			if (lastActive) {
+				lastActive.classList.remove('active');
+			}
 			a.classList.add('active');
+			lastActive = a;
 			clickedScroll = true;
 		})
 	);
