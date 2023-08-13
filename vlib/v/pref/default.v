@@ -248,6 +248,10 @@ pub fn (mut p Preferences) default_c_compiler() {
 }
 
 pub fn (mut p Preferences) default_cpp_compiler() {
+	if p.ccompiler.contains('clang') {
+		p.cppcompiler = 'clang++'
+		return
+	}
 	p.cppcompiler = 'c++'
 }
 
