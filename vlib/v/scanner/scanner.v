@@ -1235,7 +1235,7 @@ fn (mut s Scanner) ident_string() string {
 				u_escapes_pos << s.pos - 1
 			}
 			// Unknown escape sequence
-			if c !in [`x`, `u`, `e`, `n`, `r`, `t`, `v`, `a`, `f`, `b`, `\\`, `\``, `$`, `@`, `?`, `'`, `"`]
+			if c !in [`x`, `u`, `e`, `n`, `r`, `t`, `v`, `a`, `f`, `b`, `\\`, `\``, `$`, `@`, `?`, `{`, `}`, `'`, `"`]
 				&& !c.is_digit() {
 				s.error('`${c.ascii_str()}` unknown escape sequence')
 			}
