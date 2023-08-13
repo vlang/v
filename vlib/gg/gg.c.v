@@ -16,6 +16,8 @@ $if windows {
 	#include "windows.h"
 }
 
+#flag wasm32_emscripten --embed-file @VEXEROOT/examples/assets/fonts/RobotoMono-Regular.ttf@/assets/fonts/RobotoMono-Regular.ttf
+
 // call Windows API to get screen size
 fn C.GetSystemMetrics(int) int
 
@@ -58,6 +60,7 @@ pub:
 	create_window bool
 	// window_user_ptr voidptr
 	window_title      string
+	html5_canvas_name string = 'canvas'
 	borderless_window bool
 	always_on_top     bool
 	bg_color          gx.Color
@@ -465,7 +468,7 @@ pub fn new_context(cfg Config) &Context {
 			fail_userdata_cb: gg_fail_fn
 			cleanup_userdata_cb: gg_cleanup_fn
 			window_title: &char(cfg.window_title.str)
-			html5_canvas_name: &char(cfg.window_title.str)
+			html5_canvas_name: &char(cfg.html5_canvas_name.str)
 			width: cfg.width
 			height: cfg.height
 			sample_count: cfg.sample_count
