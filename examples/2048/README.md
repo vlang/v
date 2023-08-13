@@ -27,7 +27,8 @@ Compile & run the game with `./v run examples/2048`
 
 1. Install Emscripten from https://emscripten.org/docs/getting_started/downloads.html
 
-2. Make sure that the environment in your shell is setup correctly, i.e. that `emcc --version` works.
+2. Make sure that the environment in your shell is setup correctly,
+i.e. that `emcc --version` works.
 ```sh
 . /opt/emsdk/emsdk_env.sh
 emcc --version
@@ -48,4 +49,5 @@ cp examples/2048/2048 examples/2048/index.js
 emrun examples/2048/index.html
 ```
 
-Once you have run the game, you can make changes, then just recompile (step 3), and refresh the game in your browser.
+Once you have run the game, you can make changes,
+then just recompile (step 3), and refresh the game in your browser.
