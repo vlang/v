@@ -6,6 +6,7 @@ import strings
 // - min / max - return the value of the minimum / maximum
 // - idx_min / idx_max - return the index of the first minimum / maximum
 // - merge - combine two sorted arrays and maintain sorted order
+// - append - combine two arrays, by appending the second array to the first
 // - chunk - chunk array to arrays with n elements
 // - window - get snapshots of the window of the given size sliding along array with the given step, where each snapshot is an array
 // - group - merge two arrays by interleaving e.g. arrays.group([1,3,5], [2,4,6]) => [[1,2],[3,4],[5,6]]
@@ -106,6 +107,17 @@ pub fn merge[T](a []T, b []T) []T {
 		ib++
 		j++
 	}
+	return m
+}
+
+// append the second array `b` to the first array `a`, and return the result.
+// Note, that unlike arrays.concat, arrays.append is less flexible, but more efficient,
+// since it does not require you to use ...a for the second parameter.
+// Example: arrays.append([1, 3, 5, 7], [2, 4, 6, 8]) // => [1, 3, 5, 7, 2, 4, 6, 8]
+pub fn append[T](a []T, b []T) []T {
+	mut m := []T{cap: a.len + b.len}
+	m << a
+	m << b
 	return m
 }
 
