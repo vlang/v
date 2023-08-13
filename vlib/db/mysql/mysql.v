@@ -318,9 +318,13 @@ pub fn (db &DB) exec_one(query string) !Row {
 	row_vals := C.mysql_fetch_row(result)
 	num_cols := C.mysql_num_fields(result)
 
+	if row_vals == unsafe { nil } {
+		return Row{}
+	}
+		
 	mut row := Row{}
 	for i in 0 .. num_cols {
-		if unsafe { row_vals == 0 } {
+		if unsafe { row_vals == &u8(0) } {
 			row.vals << ''
 		} else {
 			row.vals << mystring(unsafe { &u8(row_vals[i]) })
