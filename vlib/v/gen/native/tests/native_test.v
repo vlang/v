@@ -10,10 +10,10 @@ fn test_native() {
 		return
 	}
 	// some tests are running fine in macos
-	if os.user_os() != 'linux' && os.user_os() != 'macos' {
-		eprintln('native tests only run on Linux and macOS for now.')
-		exit(0)
-	}
+	//	if os.user_os() != 'linux' && os.user_os() != 'macos' {
+	//		eprintln('native tests only run on Linux and macOS for now.')
+	//		exit(0)
+	//	}
 	mut bench := benchmark.new_benchmark()
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
