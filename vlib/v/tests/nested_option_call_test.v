@@ -31,7 +31,7 @@ mut:
 }
 
 fn (mut s St) raise() ?f64 {
-	return error('some error')
+	return none
 }
 
 fn retf(f f64) f64 {

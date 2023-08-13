@@ -12,7 +12,7 @@ pub:
 	details Possibilities
 }
 
-fn (t PossOwner) get_file(path string) ?(PossOwner, Poss1) {
+fn (t PossOwner) get_file(path string) !(PossOwner, Poss1) {
 	match t.details {
 		Poss1 { return t, t.details }
 		else { return error('not a file') }

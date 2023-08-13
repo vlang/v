@@ -7,6 +7,6 @@ fn test_or_expr_with_multi_stmts() {
 	assert x == -100
 }
 
-fn fmt_test() ?int {
+fn fmt_test() !int {
 	return error('foo')
 }

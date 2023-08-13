@@ -32,8 +32,8 @@ fn test_decode() {
 		'USm3fpXnKG5EUBx2ndxBDMPVciP5hGey2Jh4NDv6gmeo1LkMeiKrLJUUBk6Z': 'The quick brown fox jumps over the lazy dog.'
 		'11StV1DL6CwTryKyV':                                            '\x00\x00hello world'
 		'2NEpo7TZRRrLZSi2U':                                            'Hello World!'
-		'14cxpo3MBCYYWCgF74SWTdcmxipnGUsPw3':                           hex.decode('0027b5891b01da2db74cde1689a97a2acbe23d5fb1c0205bf6')?.bytestr()
-		'3vQB7B6MrGQZaxCuFg4oh':                                        hex.decode('68656c6c6f20776f726c64bc62d4b8')?.bytestr()
+		'14cxpo3MBCYYWCgF74SWTdcmxipnGUsPw3':                           hex.decode('0027b5891b01da2db74cde1689a97a2acbe23d5fb1c0205bf6')!.bytestr()
+		'3vQB7B6MrGQZaxCuFg4oh':                                        hex.decode('68656c6c6f20776f726c64bc62d4b8')!.bytestr()
 	} {
 		input := base58.decode(output)!
 		println('> output: `${output}` | decoded input: `${input}` | bytes: ${input.bytes().hex()}')

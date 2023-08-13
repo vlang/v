@@ -1,12 +1,12 @@
 struct Animal {
 mut:
-	age  fn (p int) int
+	age  fn (p int) int = unsafe { nil }
 	duck Duck
 }
 
 struct Duck {
 mut:
-	age &fn (p int) int
+	age &fn (p int) int = unsafe { nil }
 }
 
 fn test_main() {

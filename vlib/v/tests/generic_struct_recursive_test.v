@@ -1,7 +1,7 @@
 struct Node[T] {
 mut:
 	value T
-	next  ?&Node[T] = none
+	next  ?&Node[T]
 }
 
 fn test_main() {

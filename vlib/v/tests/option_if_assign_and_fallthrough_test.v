@@ -2,7 +2,7 @@ fn err_call(ok bool) ?int {
 	if ok {
 		return 42
 	}
-	return error('Not ok!')
+	return none
 }
 
 fn test_if_opt() {

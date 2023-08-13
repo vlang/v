@@ -346,7 +346,7 @@ fn parse_headers_test(s string, expected map[string]string) ? {
 	assert parse_headers(s)? == new_custom_header_from_map(expected)?
 }
 
-fn test_parse_headers() ? {
+fn test_parse_headers() ! {
 	parse_headers_test('foo: bar', {
 		'foo': 'bar'
 	})?
@@ -371,7 +371,7 @@ fn test_parse_headers() ? {
 		'foo': 'bar'
 		'bar': 'baz'
 	})?
-	assert parse_headers('foo: bar\r\nfoo:baz')?.custom_values('foo') == ['bar', 'baz']
+	assert parse_headers('foo: bar\r\nfoo:baz')!.custom_values('foo') == ['bar', 'baz']
 
 	if x := parse_headers(' oops: oh no') {
 		return error('should have errored, but got ${x}')

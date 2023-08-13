@@ -3,12 +3,12 @@ interface Greeting {
 }
 
 struct Hello {
-	tt    ?string = none
+	tt    ?string
 	value string
 }
 
 struct Hi {
-	tt ?string = none
+	tt ?string
 }
 
 fn greet(g Greeting) string {

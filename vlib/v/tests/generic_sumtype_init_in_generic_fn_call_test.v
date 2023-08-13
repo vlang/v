@@ -1,6 +1,6 @@
 pub type Result[S] = Ok[S] | string
 
-pub fn (x Result[S]) unwrap[S]() ?S {
+pub fn (x Result[S]) unwrap[S]() !S {
 	match x {
 		Ok[S] {
 			return x.value

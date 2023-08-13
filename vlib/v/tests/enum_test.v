@@ -4,7 +4,7 @@ enum Color {
 	green
 }
 
-fn enum_option_helper(b bool) ?Color {
+fn enum_option_helper(b bool) !Color {
 	if b {
 		return .red
 	}
