@@ -85,7 +85,7 @@ jobs:
           .\make.bat -msvc
           .\v.exe -skip-unused -prod -cc msvc -o cmd/vprod.exe cmd/v
           del *.exe
-          move /y cmd\vprod.exe v.exe
+          move cmd\vprod.exe v.exe
           .\v.exe -skip-unused -prod -cc msvc cmd\tools\vup.v
           .\v.exe -skip-unused -prod -cc msvc cmd\tools\vdoctor.v
       - name: Remove excluded
