@@ -37,14 +37,7 @@
 	--attribute-deprecated-text-color: #92400e;
 	--attribute-text-color: #000000cf;
 }
-:root.dark .dark-icon {
-	display: none;
-}
-:root:not(.dark) .light-icon {
-	display: none;
-}
-
-.dark body {
+html.dark {
 	--background-color: #1a202c;
 	--text-color: #fff;
 	--link-color: #90cdf4;
@@ -80,6 +73,12 @@
 	--attribute-background-color: #ffffff20;
 	--attribute-text-color: #ffffffaf;
 	--attribute-deprecated-text-color: #fef3c7;
+}
+html.dark .dark-icon {
+	display: none;
+}
+html:not(.dark) .light-icon {
+	display: none;
 }
 html {
 	height: 100%;
@@ -731,9 +730,6 @@ pre {
 	.doc-node {
 		padding-top: 1rem !important;
 		margin-top: 0 !important;
-	}
-	.doc-toc {
-		top: 0;
 	}
 }
 
