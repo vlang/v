@@ -212,7 +212,7 @@ function setupSearchKeymaps() {
 				ev.preventDefault();
 				if (!searchResults.length) break;
 				if (selectedIdx <= 0) {
-					// Cycle to last if first is selected (or select it if none is selcted yet)
+					// Cycle to last if first is selected (or select it if none is selected yet)
 					selectResult(searchResults, searchResults.length - 1);
 				} else {
 					// Select previous
@@ -232,9 +232,9 @@ function createSearchResult(data) {
 	a.href = data.link;
 	a.classList.add('link');
 	li.appendChild(a);
-	const defintion = document.createElement('div');
-	defintion.classList.add('definition');
-	a.appendChild(defintion);
+	const definition = document.createElement('div');
+	definition.classList.add('definition');
+	a.appendChild(definition);
 	if (data.description) {
 		const description = document.createElement('div');
 		description.classList.add('description');
@@ -244,11 +244,11 @@ function createSearchResult(data) {
 	const title = document.createElement('span');
 	title.classList.add('title');
 	title.textContent = data.title;
-	defintion.appendChild(title);
+	definition.appendChild(title);
 	const badge = document.createElement('badge');
 	badge.classList.add('badge');
 	badge.textContent = data.badge;
-	defintion.appendChild(badge);
+	definition.appendChild(badge);
 	return li;
 }
 
