@@ -24,7 +24,7 @@ fn encode[T](typ T) map[string]Any {
 fn test_main() {
 	a := Arr{[5], [2.0], ['asdf']}
 	r := encode[Arr](a)
-	assert r['ints'] == Any([Any(5)])
-	assert r['floats'] == Any([Any(2.0)])
-	assert r['strs'] == Any([Any('asdf')])
+	assert unsafe { r['ints'] } == Any([Any(5)])
+	assert unsafe { r['floats'] } == Any([Any(2.0)])
+	assert unsafe { r['strs'] } == Any([Any('asdf')])
 }

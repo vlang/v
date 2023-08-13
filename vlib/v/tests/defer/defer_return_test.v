@@ -77,7 +77,7 @@ fn test_defer_opt_return() {
 	assert y.n == 1
 }
 
-fn option_return_err(mut a Qwe) ?Qwe {
+fn option_return_err(mut a Qwe) !Qwe {
 	defer {
 		a.n += 5
 	}

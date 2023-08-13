@@ -12,9 +12,9 @@ enum Operator {
 type Value = Operator | int
 
 struct Expression {
-	left  ?&Expression = none
+	left  ?&Expression
 	val   Value
-	right ?&Expression = none
+	right ?&Expression
 }
 
 enum State {

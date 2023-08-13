@@ -360,13 +360,13 @@ fn test_struct_with_default_values_no_init() {
 }
 
 struct FieldsWithOptionVoidReturnType {
-	f fn () ?
-	g fn () ?
+	f fn () ! [required]
+	g fn () ? [required]
 }
 
 fn test_fields_anon_fn_with_option_void_return_type() {
 	foo := FieldsWithOptionVoidReturnType{
-		f: fn () ? {
+		f: fn () ! {
 			return error('oops')
 		}
 		g: fn () ? {

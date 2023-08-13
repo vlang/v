@@ -18,7 +18,7 @@ mut:
 
 fn (mut s StructsRowIterator) next() ?[]int {
 	if s.position >= s.array.len {
-		return error('out of range')
+		return none
 	}
 	defer {
 		s.position++
