@@ -37,7 +37,7 @@ struct TestDefaultAtribute {
 
 fn test_mysql_orm() {
 	mut db := mysql.connect(
-		host: 'localhost'
+		host: '127.0.0.1'
 		port: 3306
 		username: 'root'
 		password: ''
