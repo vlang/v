@@ -18,7 +18,6 @@ fn main() {
 }
 
 fn process_files(files []string) ! {
-	mut table := ast.new_table()
 	mut pref_ := pref.new_preferences()
 	pref_.is_fmt = true
 	pref_.skip_warnings = true
@@ -28,6 +27,7 @@ fn process_files(files []string) ! {
 	mut total_bytes := i64(0)
 	mut total_tokens := i64(0)
 	for f in files {
+		mut table := ast.new_table()
 		if f == '' {
 			continue
 		}
