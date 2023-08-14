@@ -1876,8 +1876,8 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 			f.write('${node.name.after_char(`.`)}')
 		} else {
 			name := f.short_module(node.name)
-			f.mark_import_as_used(name)
 			if node.name.contains('__static__') {
+				f.mark_import_as_used(node.name.split('__static__')[0])
 				if name.contains('.') {
 					indx := name.index('.') or { -1 } + 1
 					f.write(name[0..indx] + name[indx..].replace('__static__', '.').capitalize())
@@ -1885,6 +1885,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 					f.write(name.replace('__static__', '.').capitalize())
 				}
 			} else {
+				f.mark_import_as_used(name)
 				f.write(name)
 			}
 		}
