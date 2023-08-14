@@ -26,9 +26,8 @@ mut:
 	conn &C.MYSQL = unsafe { nil }
 }
 
+[params]
 pub struct Config {
-mut:
-	conn &C.MYSQL = C.mysql_init(0)
 pub mut:
 	host     string = '127.0.0.1'
 	port     u32    = 3306
