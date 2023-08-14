@@ -3,11 +3,15 @@ Packaging V
 
 Thank you for supporting V and its users, and for creating, *and maintaining* a package for it.
 
-Although V is still changing, and installing it from source, is still the *recommended way*, to
-distribute it to most V users, we understand that sooner or later, people will want to adapt the
-upstream source to their favourite distro/platform, and that usually involves preparing a package,
-that will be then installed and updated, using a standardised package manager, just like all other
-programs in the distribution. This document is for the brave people, that want to prepare and
+V is still changing, and installing it from source, is still the *recommended way*, to
+distribute it to most V users.
+
+However, we understand that sooner or later people will want to adapt the
+upstream source to their favorite distro/platform, and that usually involves preparing a package
+that will be installed and updated (using a standardized package manager) just like all other
+programs in the distribution.
+
+This document is for the brave people that want to prepare and
 *maintain* such a package.
 
 Good luck.
@@ -15,12 +19,12 @@ Good luck.
 Details
 =============
 
-Preparing a package of the current version of V for distribution, has some peculiarities,
-that should be understood, and taken into account, for the best experience of the users of
-your package, for your sanity, and for easier troubleshooting of problems, when they happen.
+Preparing a package of the current version of V for distribution, has some peculiarities
+that must be understood, and taken into account, for the best experience of the users of
+your package, for your sanity, and for easier troubleshooting of problems when they happen.
 
 1) V builds many of its commands on demand, to save both time and space. The source of the
-entry points of those commands, is stored in the folder cmd/tools/ . If you are preparing a
+entry points of those commands is stored in the folder cmd/tools/ . If you are preparing a
 prebuilt V package, that needs to ensure that the final package after installation will be
 read only, that will be a problem, since V will try to write to its cmd/tools/ folder.
 To prevent that, you need to build *all* the commands/executables in that folder *ahead of time*.
@@ -36,24 +40,25 @@ repository. That tool is `v up`. Most distros however, have the policy of not al
 to make modifications to themselves. Instead, they require the user to use their package manager,
 provided by the distro/platform.
 
-To facilitate that, it is usually best for all involved, if you as a package maintainer, remove
-or replace cmd/tools/vself.v, with a short v program, that advices the final V user to use the
+To facilitate that, it is usually best for all involved if you, as a package maintainer, remove
+or replace cmd/tools/vself.v, with a short v program, that advises the final V user to use the
 package manager tool, or to use a V installed from source instead.
 
-4) Another V feature/command, that can interfere with read only packaging, is `v self`. We
-recommended, that you disable command too, by replacing cmd/tools/vself.v with a small V program,
-that informs the user that `v self` is not recommended, when used with a packaged version of V,
-and then advices the user to install V from source, if he wants to use `v self`.
+4) Another V feature/command that can interfere with read only packaging is `v self`. We
+recommend that you disable this command as well, by replacing cmd/tools/vself.v with a small V program
+that informs the user that `v self` is not recommended when used with a packaged version of V,
+and then advises the user to install V from source if he wants to use `v self`.
 
-5) The V source repo contains sizable folders like .git/ and thirdparty/tcc/.git/ which will not
-be needed by users of packages (they are useful for `v up` to work, which will be disabled too,
-see above for the reasons why). Some of the files, like Makefile, make.bat, GNUmakefile will not
-be used either, so they can be safely removed too.
+5) The V source repo contains sizable folders like `.git/` and `thirdparty/tcc/.git/` which will not
+be needed by users of packages (they are not useful if `v up` is disabled,
+as recommended previously). Some other files, such as `Makefile`, `make.bat`, and `GNUmakefile` will not
+be used either, so they can also be safely removed.
 
-Depending on how stripped you want your package, you can remove the examples/ folder as well,
-since although it is usually good to have examples, people will try to compile them, and that
-would not work in a read-only package (because the executables are put right next to the 
-source `.v` files by default, if `-o executable_name` is not used ).
+Depending on how stripped you want your package, you can remove the examples/ folder as well.  It is usually good to have examples, but they could be in a separate package.
+
+If a user attempts to compile the examples in that folder, it
+will not work in a read-only package (because the executables are put right next to the 
+source `.v` files by default, unless `-o path_to_executable_name` is used).
 
 6) Location of vlib/ . V expects, that its vlib/ folder, will be located right next to its
 executable, and that is currently hard to customize. It will be changed, if there is enough
@@ -67,14 +72,11 @@ distro, i.e.: `sudo ln -s /opt/vlang/v /usr/bin/v` or `sudo ln -s /opt/vlang/v /
 7) Location of the V executable. Can be controlled by setting the env variable VEXE.
 It defaults to the absolute path of the V executable.
 
-8) Location of the modules folder for `v install`. VPM honors the presence of an environment
-variable named `VMODULES`. By default, if that is not set, it will be the same as if it was set
-to ~/.vmodules .
+8) Location of the modules folder for `v install` can be controlled by setting the env variable named `VMODULES`. By default, modules are installed to `~/.vmodules` (`C:\Users\<user id>\.vmodules` on Windows).
 
-9) Location of the folder used by V for its temporary files. You can override that location by
-setting the env variable `VTMP`.
+9) Location of the folder used by V for its temporary files can be controlled by setting the env variable `VTMP`.  By default, the system TEMP folder is used.
 
-10) Setting additional V flags for each compilation. That can be done by setting the env variable
+10) Setting additional V flags for each compilation can be done by setting the env variable
 `VFLAGS`.
 
 Note: points 7, 8, 9, 10 above, allow you to create a small launcher shell script, named `v`,
