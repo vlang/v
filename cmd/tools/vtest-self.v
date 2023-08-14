@@ -89,6 +89,7 @@ const (
 		'vlib/context/deadline_test.v' /* sometimes blocks */,
 		'vlib/context/onecontext/onecontext_test.v' /* backtrace_symbols is missing. */,
 		'vlib/db/mysql/mysql_orm_test.v' /* mysql not installed */,
+		'vlib/db/mysql/mysql_test.v' /* mysql not installed */,
 		'vlib/db/pg/pg_orm_test.v' /* pg not installed */,
 	]
 	// These tests are too slow to be run in the CI on each PR/commit
@@ -329,6 +330,7 @@ fn main() {
 	}
 	testing.find_started_process('mysqld') or {
 		tsession.skip_files << 'vlib/db/mysql/mysql_orm_test.v'
+		tsession.skip_files << 'vlib/db/mysql/mysql_test.v'
 	}
 	testing.find_started_process('postgres') or {
 		tsession.skip_files << 'vlib/db/pg/pg_orm_test.v'

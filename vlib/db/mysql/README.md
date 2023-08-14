@@ -1,3 +1,24 @@
+## Purpose:
+The db.mysql module can be used to develop software that connects to the popular open source
+MySQL or MariaDB database servers.
+
+### Local setup of a development server:
+To run the mysql module tests, or if you want to just experiment, you can use the following
+command to start a development version of MySQL using docker:
+```sh
+docker run -p 3306:3306 --name some-mysql -e MYSQL_ALLOW_EMPTY_PASSWORD=1 -e MYSQL_ROOT_PASSWORD= -d mysql:latest
+```
+The above command will start a server instance without any password for its root account,
+available to mysql client connections, on tcp port 3306.
+
+You can test that it works by doing: `mysql -uroot -h127.0.0.1` .
+You should see a mysql shell (use `exit` to end the mysql client session).
+
+Use `docker container stop some-mysql` to stop the server.
+
+Use `docker container rm some-mysql` to remove it completely, after it is stopped.
+
+### Installation of development dependencies:
 For Linux, you need to install `MySQL development` package and `pkg-config`.
 
 For Windows, install [the installer](https://dev.mysql.com/downloads/installer/) ,
