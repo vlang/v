@@ -11,7 +11,6 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 		util.timing_measure_cumulative(@METHOD)
 	}
 	mut struct_sym, struct_typ_idx := c.table.find_sym_and_type_idx(node.name)
-	// struct_sym.jj0
 	mut has_generic_types := false
 	if mut struct_sym.info is ast.Struct {
 		if node.language == .v && !c.is_builtin_mod && !struct_sym.info.is_anon {

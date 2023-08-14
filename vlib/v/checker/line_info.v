@@ -3,7 +3,7 @@
 module checker
 
 import v.ast
-import os
+// import os
 
 fn (mut c Checker) do_line_info(line string, all_ast_files []&ast.File) {
 	// println("do_line_info '${line}'")
@@ -26,7 +26,8 @@ fn (mut c Checker) do_line_info(line string, all_ast_files []&ast.File) {
 	mut found_path := ''
 	mut found_file_idx := -1
 	for i, file in all_ast_files {
-		base := os.base(file.path)
+		// base := os.base(file.path)
+		base := file.path // os.base(file.path)
 		// println(base)
 		if base == file_name {
 			if found {
@@ -46,5 +47,6 @@ fn (mut c Checker) do_line_info(line string, all_ast_files []&ast.File) {
 
 	// println('found ${found_path}')
 	c.doing_line_info = line_nr
+	c.doing_line_path = file_name
 	c.check_files([all_ast_files[found_file_idx]])
 }

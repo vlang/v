@@ -219,6 +219,39 @@ pub fn (ctx &Context) draw_rect_filled(x f32, y f32, w f32, h f32, c gx.Color) {
 	sgl.end()
 }
 
+enum PaintStyle {
+	fill
+	stroke
+}
+
+[params]
+pub struct DrawRectParams {
+	x          f32
+	y          f32
+	w          f32
+	h          f32
+	color      gx.Color   = gx.black
+	style      PaintStyle = .fill
+	is_rounded bool
+	radius     f32
+}
+
+pub fn (ctx &Context) draw_rect(p DrawRectParams) {
+	if p.is_rounded {
+		if p.style == .fill {
+			ctx.draw_rounded_rect_filled(p.x, p.y, p.w, p.h, p.radius, p.color)
+		} else {
+			ctx.draw_rounded_rect_empty(p.x, p.y, p.w, p.h, p.radius, p.color)
+		}
+	} else {
+		if p.style == .fill {
+			ctx.draw_rect_filled(p.x, p.y, p.w, p.h, p.color)
+		} else {
+			ctx.draw_rect_empty(p.x, p.y, p.w, p.h, p.color)
+		}
+	}
+}
+
 // draw_rounded_rect_empty draws the outline of a rounded rectangle with a thickness of 1 px.
 // `x`,`y` is the top-left corner of the rectangle.
 // `w` is the width, `h` is the height.

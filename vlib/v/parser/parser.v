@@ -192,6 +192,7 @@ const normalised_working_folder = (os.real_path(os.getwd()) + os.path_separator)
 	'/')
 
 pub fn (mut p Parser) set_path(path string) {
+	p.xx
 	p.file_name = path
 	p.file_base = os.base(path)
 	p.file_name_dir = os.dir(path)

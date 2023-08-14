@@ -12,6 +12,7 @@ import v.util
 import v.util.version
 import v.errors
 import v.pkgconfig
+import strings
 
 const (
 	int_min                                        = int(0x80000000)
@@ -116,7 +117,8 @@ mut:
 	inside_decl_rhs                  bool
 	inside_if_guard                  bool // true inside the guard condition of `if x := opt() {}`
 	inside_assign                    bool
-	doing_line_info                  int // a quick single file run when called with v -line-info (contains line nr to inspect)
+	doing_line_info                  int    // a quick single file run when called with v -line-info (contains line nr to inspect)
+	doing_line_path                  string // same, but stores the path being parsed
 	is_index_assign                  bool
 	comptime_call_pos                int // needed for correctly checking use before decl for templates
 	goto_labels                      map[string]ast.GotoLabel // to check for unused goto labels
@@ -3279,18 +3281,38 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 	return ast.string_type
 }
 
+struct ACFieldMethod {
+	name string
+	typ  string
+}
+
 fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 	if c.doing_line_info > 0 {
+		mut sb := strings.new_builder(10)
 		// Mini LS hack (v -line-info "a.v:16")
 		// println('line_nr=${node.pos.line_nr} doing line nr=${c.doing_line_info}')
-		if node.pos.line_nr == c.doing_line_info {
-			println('===')
+		// println('Start line_nr=${node.pos.line_nr}  line2=${c.doing_line_info} file="${c.file.path}", pppp="${c.doing_line_path}"')
+		if node.pos.line_nr == c.doing_line_info && c.file.path == c.doing_line_path {
+			sb.writeln('===')
 			sym := c.table.sym(node.obj.typ)
-			println('VAR ${node.name}:${sym.name}')
-			struct_info := sym.info as ast.Struct
+			sb.writeln('VAR ${node.name}:${sym.name}')
+			mut struct_info := sym.info as ast.Struct
+			mut fields := []ACFieldMethod{cap: struct_info.fields.len}
 			for field in struct_info.fields {
 				field_sym := c.table.sym(field.typ)
-				println('${field.name}:${field_sym.name}')
+				fields << ACFieldMethod{field.name, field_sym.name}
+			}
+			for method in sym.methods {
+				method_ret_type := c.table.sym(method.return_type)
+				fields << ACFieldMethod{method.name + '()', method_ret_type.name}
+			}
+			fields.sort(a.name < b.name)
+			for field in fields {
+				sb.writeln('${field.name}:${field.typ}')
+			}
+			res := sb.str().trim_space()
+			if res != '' {
+				println(res)
 			}
 		}
 	}
