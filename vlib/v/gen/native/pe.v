@@ -598,8 +598,8 @@ fn (mut g Gen) gen_pe_idata() {
 	// hint-name table; reference: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#hintname-table
 	for imp in imports {
 		for func, name_lookup_addr_pos in imp.functions {
-			g.write64_at(name_lookup_addr_pos, (g.pos() - idata_pos +
-				i64(idata_section.header.virtual_address)) << 32)
+			g.write64_at(name_lookup_addr_pos, i64(u64(g.pos() - idata_pos +
+				i64(idata_section.header.virtual_address)) << 32))
 
 			g.write16(0) // export pointer index; we go via names, so 0
 			g.write_string(func)
