@@ -39,6 +39,9 @@ If V is already installed on a machine, it can be upgraded to its latest version
 by using the V's built-in self-updater.
 To do so, run the command `v up`.
 
+## Packaging V for distribution
+See the [notes on how to prepare a package for V](doc/packaging_v_for_distributions.md) .
+
 ## Getting started
 
 You can let V automatically set up the bare-bones structure of a project for you
