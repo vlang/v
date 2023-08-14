@@ -94,6 +94,16 @@ fn test_sizeof() {
 	println(sizeof(Foo))
 }
 
+fn test_interpolated() {
+	article := 'an'
+	datatype := 'string'
+	println('this is ${article} interpolated ${datatype}')
+
+	num := 42
+	boool := true
+	println('num: ${num}; bool: ${boool}')
+}
+
 fn main() {
 	test_stdout()
 	test_stderr()
@@ -102,4 +112,5 @@ fn main() {
 	test_idents()
 	test_exprs()
 	test_sizeof()
+	test_interpolated()
 }

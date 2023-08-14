@@ -242,7 +242,7 @@ fn (mut g Gen) get_pe32_plus_optional_header() Pe32PlusOptionalHeader {
 		major_subsystem_version: 5
 		minor_subsystem_version: 0
 		win32_version_value: 0
-		size_of_image: 0x3000 // filled in later // header size + code size
+		//size_of_image: 0x3000 // filled in later // header size + code size
 		size_of_headers: native.pe_header_size
 		checksum: 0
 		subsystem: .windows_cui
@@ -418,6 +418,7 @@ fn (mut g Gen) gen_pe_data_dirs() {
 [packed; params]
 struct PeSectionHeader {
 	name                   [8]u8
+mut:
 	virtual_size           int
 	virtual_address        int
 	size_of_raw_data       int
@@ -434,6 +435,27 @@ struct PeSection {
 mut:
 	header     PeSectionHeader
 	header_pos i64
+}
+
+fn (mut s PeSection) set_pointer_to_raw_data(mut g Gen, pointer int) {
+	s.header.pointer_to_raw_data = pointer
+	g.write32_at(s.header_pos + __offsetof(PeSectionHeader, pointer_to_raw_data), pointer)
+}
+
+fn (mut s PeSection) set_size_of_raw_data(mut g Gen, size int) {
+	if size < s.header.virtual_size {
+		s.set_virtual_size(mut g, size)
+	}
+
+	s.header.pointer_to_raw_data = size
+	g.write32_at(s.header_pos + __offsetof(PeSectionHeader, size_of_raw_data), size)
+}
+
+fn (mut s PeSection) set_virtual_size(mut g Gen, size int) {
+	aligned := (size + native.pe_section_align - 1) & ~(native.pe_section_align - 1)
+
+	s.header.virtual_size = aligned
+	g.write32_at(s.header_pos + __offsetof(PeSectionHeader, virtual_size), aligned)
 }
 
 fn (mut g Gen) create_pe_section(name string, header PeSectionHeader) PeSection {
@@ -487,6 +509,15 @@ fn (mut g Gen) get_pe_section(name string) ?PeSection {
 	})
 }
 
+fn (mut g Gen) get_pe_section_index(name string) ?int {
+	for i, section in g.pe_sections {
+		if section.name == name {
+			return i
+		}
+	}
+	return none
+} 
+
 struct PeDllImport {
 	name      string
 mut:
@@ -498,14 +529,16 @@ fn (mut g Gen) gen_pe_directory_table(imports []PeDllImport) {
 
 // reference: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#the-idata-section
 fn (mut g Gen) gen_pe_idata() {
-	idata_section := g.get_pe_section('.idata') or {
+	idata_section_index := g.get_pe_section_index('.idata') or {
 		g.n_error('no ".idata" section header generated')
 	}
+	mut idata_section := &mut g.pe_sections[idata_section_index]
+
 	g.align_to(native.pe_file_align)
 	g.println('; padding to 0x${g.pos().hex()}')
 
 	idata_pos := g.pos()
-	g.write32_at(idata_section.header_pos + __offsetof(PeSectionHeader, pointer_to_raw_data), int(idata_pos))
+	idata_section.set_pointer_to_raw_data(mut g, int(idata_pos))
 
 	mut imports := [
 		PeDllImport{
@@ -582,8 +615,7 @@ fn (mut g Gen) gen_pe_idata() {
 
 	// write the section size
 	idata_size := int(g.pos() - idata_pos)
-	assert idata_size < idata_section.header.virtual_size
-	g.write32_at(idata_section.header_pos + __offsetof(PeSectionHeader, size_of_raw_data), idata_size)
+	idata_section.set_size_of_raw_data(mut g, idata_size)
 
 	g.println('^^^ hint/name table (PE)')
 }
@@ -615,8 +647,10 @@ pub fn (mut g Gen) generate_pe_header() {
 	g.println('^^^ padding to addr 0x${g.pos().hex()}')
 
 	g.code_start_pos = g.pos()
-	text_section := g.get_pe_section('.text') or { g.n_error('no ".text" section generated')}
-	g.write32_at(text_section.header_pos + __offsetof(PeSectionHeader, pointer_to_raw_data), int(g.code_start_pos))
+	
+	text_section_index := g.get_pe_section_index('.text') or { g.n_error('no ".text" section generated')}
+	mut text_section := &mut g.pe_sections[text_section_index]
+	text_section.set_pointer_to_raw_data(mut g, int(g.code_start_pos))
 
 	g.code_gen.call(0)
 	g.code_gen.ret()
@@ -624,19 +658,21 @@ pub fn (mut g Gen) generate_pe_header() {
 }
 
 fn (mut g Gen) patch_pe_code_size() {
-	text_section := g.get_pe_section('.text') or { g.n_error('no ".text" section generated') }
-
-	positions := [
-		// TODO: make general for non-pe32plus headers when implemented
-		g.pe_opt_hdr_pos + __offsetof(Pe32PlusOptionalHeader, size_of_code),
-		g.pe_opt_hdr_pos + __offsetof(Pe32PlusOptionalHeader, size_of_initialized_data),
-		text_section.header_pos + __offsetof(PeSectionHeader, size_of_raw_data),
-	]
-
 	code_size := int(g.file_size_pos - g.code_start_pos)
-	for pos in positions {
-		g.write32_at(pos, code_size)
-	}
+
+	g.write32_at(g.pe_opt_hdr_pos + __offsetof(Pe32PlusOptionalHeader, size_of_code), code_size)
+	g.write32_at(g.pe_opt_hdr_pos + __offsetof(Pe32PlusOptionalHeader, size_of_initialized_data), code_size)
+
+	text_section_index := g.get_pe_section_index('.text') or { g.n_error('no ".text" section generated') }
+	mut text_section := &mut g.pe_sections[text_section_index]
+	text_section.set_size_of_raw_data(mut g, code_size)
+	text_section.set_virtual_size(mut g, code_size)
+}
+
+fn (mut g Gen) patch_pe_image_size() {
+	last_section := g.pe_sections.last()
+	image_size := (last_section.header.virtual_address + last_section.header.virtual_size + native.pe_section_align - 1) & ~(native.pe_section_align - 1)
+	g.write32_at(g.pe_opt_hdr_pos + __offsetof(Pe32PlusOptionalHeader, size_of_image) - 2, image_size)
 }
 
 pub fn (mut g Gen) generate_pe_footer() {
@@ -650,6 +686,7 @@ pub fn (mut g Gen) generate_pe_footer() {
 	}
 
 	g.patch_pe_code_size()
+	g.patch_pe_image_size()
 
 	// patch call main
 	match g.pref.arch {
