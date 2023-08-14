@@ -1411,6 +1411,11 @@ fn (mut c Amd64) clear_reg(reg Amd64Register) {
 			c.g.write8(0x31)
 			c.g.write8(0xf6)
 		}
+		.r8 {
+			c.g.write8(0x4d)
+			c.g.write8(0x31)
+			c.g.write8(0xc0)
+		}
 		.r12 {
 			c.g.write8(0x4d)
 			c.g.write8(0x31)
