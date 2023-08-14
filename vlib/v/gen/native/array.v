@@ -3,7 +3,8 @@
 // that can be found in the LICENSE file.
 module native
 
-/*import v.ast
+/*
+import v.ast
 
 fn (mut g Gen) allocate_raw_array(name string, size int, items int) int {
 	pos := g.code_gen.allocate_var(name, size, items)
