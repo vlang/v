@@ -76,10 +76,12 @@ jobs:
         run: TZ=Europe/Paris ./v test vlib/time/
       - name: Build examples
         run: ./v -W build-examples
-      - name: Test building v tools
+      - name: Build v tools
         run: ./v -W build-tools
-      - name: Test v binaries
+      - name: Build v binaries
         run: ./v build-vbinaries
+      - name: Build benches
+        run: ./v should-compile-all vlib/v/tests/bench/
       - name: Run a VSH script
         run: ./v run examples/v_script.vsh
       - name: Test v tutorials

@@ -26,21 +26,21 @@ const (
 
 fn waste_mem() {
 	mut objs := PtrPtrObj{
-		nxt: []&PtrObj{len: n}
+		nxt: unsafe { []&PtrObj{len: n} }
 	}
 	for {
-		sz := rand.int_in_range(10, 1000)
+		sz := rand.int_in_range(10, 1000) or { 10 }
 		mut new_obj := &PtrObj{
-			nxt: []&DataObj{len: sz}
+			nxt: unsafe { []&DataObj{len: sz} }
 		}
-		sz2 := rand.int_in_range(10, 500000)
+		sz2 := rand.int_in_range(10, 500000) or { 10 }
 		new_obj2 := &DataObj{
-			data: []f64{len: sz2}
+			data: unsafe { []f64{len: sz2} }
 		}
-		idx2 := rand.int_in_range(0, sz)
+		idx2 := rand.int_in_range(0, sz) or { 0 }
 		new_obj.nxt[idx2] = new_obj2
 		// non-equally distributed random index
-		idx := int(math.sqrt(math.sqrt(rand.f64n(n4))))
+		idx := int(math.sqrt(math.sqrt(rand.f64n(n4) or { 0.0 })))
 		objs.nxt[idx] = new_obj
 	}
 }
