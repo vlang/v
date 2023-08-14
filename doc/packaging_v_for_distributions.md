@@ -69,7 +69,7 @@ https://github.com/vlang/v/issues
 then put a symlink from `/opt/vlang/v` to whatever folder that is on the user's PATH on your
 distro, i.e.: `sudo ln -s /opt/vlang/v /usr/bin/v` or `sudo ln -s /opt/vlang/v /bin/v` .
 
-7) Location of the V executable. Can be controlled by setting the env variable VEXE.
+7) Location of the V executable can be controlled by setting the env variable VEXE.
 It defaults to the absolute path of the V executable.
 
 8) Location of the modules folder for `v install` can be controlled by setting the env variable named `VMODULES`. By default, modules are installed to `~/.vmodules` (`C:\Users\<user id>\.vmodules` on Windows).
