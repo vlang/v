@@ -3,6 +3,8 @@
 // that can be found in the LICENSE file.
 module native
 
+import arrays
+
 enum PeCharacteristics {
 	// 1: relocation info stripped
 	// 2: file is executable
@@ -13,20 +15,54 @@ enum PeCharacteristics {
 }
 
 const (
-	image_base        = i64(0x400000)
-	pe_sections_start = 0x0180
-	pe_code_start     = 0x400
+	image_base                    = i64(0x400000)
+	pe_sections_start             = 0x0188
 
-	pe_section_align  = 0x1000
-	pe_file_align     = 0x0200
+	pe_section_align              = 0x1000
+	pe_file_align                 = 0x0200
 
-	pe_opt_hdr_size   = 0xf0
-	pe_header_size	  = pe_file_align
-	pe_stack_size	  = 0x1000
-	pe_heap_size 	  = 0x10000
+	pe_opt_hdr_size               = 0xf0
+	pe_header_size                = pe_file_align
+	pe_stack_size                 = 0x1000
+	pe_heap_size                  = 0x10000
 
-	dos_stub_end      = 0x80
-	optdr_location    = 0x98
+	pe_num_data_dirs              = 0x10
+
+	dos_stub_end                  = 0x80
+	optdr_location                = 0x98
+
+	// reference: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format?redirectedfrom=MSDN#section-flags
+	pe_scn_type_no_pad            = 0x00000008
+	pe_scn_cnt_code               = 0x00000020
+	pe_scn_cnt_initialized_data   = 0x00000040
+	pe_scn_cnt_uninitialized_data = 0x00000080
+	pe_scn_lnk_info               = 0x00000200
+	pe_scn_lnk_remove             = 0x00000400
+	pe_scn_lnk_comdat             = 0x00001000
+	pe_scn_gprel                  = 0x00008000
+	pe_scn_lnk_nreloc_ovfl        = 0x01000000
+	pe_scn_mem_discardable        = 0x02000000
+	pe_scn_mem_not_cached         = 0x04000000
+	pe_scn_mem_not_paged          = 0x08000000
+	pe_scn_mem_shared             = 0x10000000
+	pe_scn_mem_execute            = 0x20000000
+	pe_scn_mem_read               = 0x40000000
+	pe_scn_mem_write              = int(u32(0x80000000))
+	// obj files only:
+	pe_scn_align_1bytes           = 0x00100000
+	pe_scn_align_2bytes           = 0x00200000
+	pe_scn_align_4bytes           = 0x00300000
+	pe_scn_align_8bytes           = 0x00400000
+	pe_scn_align_16bytes          = 0x00500000
+	pe_scn_align_32bytes          = 0x00600000
+	pe_scn_align_64bytes          = 0x00700000
+	pe_scn_align_128bytes         = 0x00800000
+	pe_scn_align_256bytes         = 0x00900000
+	pe_scn_align_512bytes         = 0x00a00000
+	pe_scn_align_1024bytes        = 0x00b00000
+	pe_scn_align_2048bytes        = 0x00c00000
+	pe_scn_align_4096bytes        = 0x00d00000
+	pe_scn_align_8192bytes        = 0x00e00000
 )
 
 enum PeMachine as u16 {
@@ -75,51 +111,25 @@ enum DllCharacteristics as u16 {
 	terminal_server_aware = 0x8000
 }
 
-// reference: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format?redirectedfrom=MSDN#section-flags
-enum PeSectionFlags as u32 {
-	type_no_pad = 0x00000008
-	cnt_code = 0x00000020
-	cnt_initialized_data = 0x00000040
-	cnt_uninitialized_data = 0x00000080
-	lnk_info = 0x00000200
-	lnk_remove = 0x00000400
-	lnk_comdat = 0x00001000
-	gprel = 0x00008000
-	lnk_nreloc_ovfl = 0x01000000
-	mem_discardable = 0x02000000
-	mem_not_cached = 0x04000000
-	mem_not_paged = 0x08000000
-	mem_shared = 0x10000000
-	mem_execute = 0x20000000
-	mem_read = 0x40000000
-	mem_write = 0x80000000
-	// obj files only:
-	align_1bytes = 0x00100000
-	align_2bytes = 0x00200000
-	align_4bytes = 0x00300000
-	align_8bytes = 0x00400000
-	align_16bytes = 0x00500000
-	align_32bytes = 0x00600000
-	align_64bytes = 0x00700000
-	align_128bytes = 0x00800000
-	align_256bytes = 0x00900000
-	align_512bytes = 0x00a00000
-	align_1024bytes = 0x00b00000
-	align_2048bytes = 0x00c00000
-	align_4096bytes = 0x00d00000
-	align_8192bytes = 0x00e00000
+fn (mut g Gen) get_pe_machine() PeMachine {
+	return match g.pref.arch {
+		.amd64 {
+			PeMachine.amd64
+		}
+		.arm64 {
+			PeMachine.arm64
+		}
+		else {
+			g.n_error('arch ${g.pref.arch} is not supported with PE right now')
+		}
+	}
 }
 
-struct PeDataDirectory {
-	virtual_addr u32
-	size         u32
-}
-
-pub fn (mut g Gen) write_pe_header() {
+pub fn (mut g Gen) gen_pe_header() {
 	pe_header := [
 		int(PeMagic.pe),
 		0,
-		int(PeMachine.amd64), // machine
+		int(g.get_pe_machine()), // machine
 		2, // number of sections
 		0,
 		0, // timestamp
@@ -147,6 +157,7 @@ pub fn (mut g Gen) write_pe_header() {
 		assert 0x18 == pe_header.len * 2
 	}
 
+	g.pe_coff_hdr_pos = g.pos()
 	for i, b in pe_header {
 		end_addr := i * 2 + 2 // allign correctly with description table
 		g.write16(b)
@@ -164,13 +175,7 @@ pub fn (mut g Gen) write_pe_header() {
 	}
 
 	opt_hdr := g.get_pe_optional_header()
-	g.write_pe_optional_header(opt_hdr)
-
-	g.write32(0)
-	g.write32(0)
-	g.write32(0x1000)
-	g.write32(0x2000) // size of code
-	g.println('')
+	g.gen_pe_optional_header(opt_hdr)
 }
 
 [packed]
@@ -247,7 +252,7 @@ fn (mut g Gen) get_pe32_plus_optional_header() Pe32PlusOptionalHeader {
 		size_of_heap_reserve: native.pe_heap_size
 		size_of_heap_commit: 0
 		loader_flags: 0
-		number_of_rva_and_sizes: 0x10
+		number_of_rva_and_sizes: native.pe_num_data_dirs
 	}
 }
 
@@ -273,7 +278,7 @@ fn (mut g Gen) get_pe_optional_header() PeOptionalHeader {
 	}
 }
 
-fn (mut g Gen) write_pe_optional_header(opt_hdr PeOptionalHeader) {
+fn (mut g Gen) gen_pe_optional_header(opt_hdr PeOptionalHeader) {
 	if opt_hdr !is Pe32PlusOptionalHeader {
 		g.n_error('unsupported optional header architecture ${optional_header_arch(opt_hdr)}')
 	}
@@ -348,9 +353,71 @@ fn (mut g Gen) write_pe_optional_header(opt_hdr PeOptionalHeader) {
 	g.println('^^^ PE Optional Header')
 }
 
+struct PeDataDir {
+	rva  int
+	size int
+}
+
+struct PeDataDirs {
+mut:
+	debugnames [pe_num_data_dirs]string
+	dirs       [pe_num_data_dirs]PeDataDir
+	base_addr  i64
+}
+
+const pe_data_dir_names = [
+	'export table',
+	'import table',
+	'resource table',
+	'exception table',
+	'attribute certificate table',
+	'base relocation table',
+	'debug data',
+	'architecture',
+	'global ptr',
+	'thread local storage table',
+	'load config table',
+	'bound import table',
+	'import address table',
+	'delay import descriptors',
+	'COM runtime descriptor',
+	'reserved',
+]
+
+const pe_default_data_dirs = [
+	PeDataDir{},
+	PeDataDir{
+		rva: 0x1000
+		size: 0x2000
+	},
+]
+
+fn get_pe_data_dirs() PeDataDirs {
+	assert native.pe_data_dir_names.len == native.pe_num_data_dirs
+	assert native.pe_default_data_dirs.len <= native.pe_num_data_dirs
+
+	mut dd := PeDataDirs{}
+	for i in 0 .. native.pe_num_data_dirs {
+		dd.dirs[i] = native.pe_default_data_dirs[i] or { PeDataDir{} }
+		dd.debugnames[i] = native.pe_data_dir_names[i]
+	}
+	return dd
+}
+
+fn (mut g Gen) gen_pe_data_dirs() {
+	g.pe_data_dirs.base_addr = g.pos()
+	for i, dd in g.pe_data_dirs.dirs {
+		g.write32(dd.rva)
+		g.write32(dd.size)
+		g.println('; ${g.pe_data_dirs.debugnames[i]}')
+	}
+	g.println('^^^ data directories (PE)')
+}
+
 // reference: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format?redirectedfrom=MSDN#section-table-section-headers
+[packed; params]
 struct PeSectionHeader {
-	name                   string
+	name                   [8]u8
 	virtual_size           int
 	virtual_address        int
 	size_of_raw_data       int
@@ -359,16 +426,30 @@ struct PeSectionHeader {
 	pointer_to_linenumbers int
 	number_of_relocations  i16
 	number_of_linenumbers  i16
-	characteristics        PeSectionFlags
+	characteristics        int
 }
 
-fn (mut g Gen) gen_pe_section_header(sh PeSectionHeader) {
-	assert sh.name.len <= 8
-	g.write(sh.name.bytes())
-	for _ in sh.name.len .. 8 { // pad to 8 bytes
-		g.write8(0)
+struct PeSection {
+	name string
+mut:
+	header     PeSectionHeader
+	header_pos i64
+}
+
+fn (mut g Gen) create_pe_section(name string, header PeSectionHeader) PeSection {
+	return PeSection{
+		name: name
+		header: header
 	}
-	g.println('"${sh.name}"')
+}
+
+fn (mut g Gen) gen_pe_section_header(mut section PeSection) {
+	sh := &section.header
+	section.header_pos = g.pos()
+
+	assert sh.name.len <= 8
+	g.write_string_with_padding(section.name, 8)
+	g.println('"${section.name}"')
 
 	g.write32(sh.virtual_size)
 	g.println('; VirtualSize')
@@ -382,85 +463,180 @@ fn (mut g Gen) gen_pe_section_header(sh PeSectionHeader) {
 	g.println('; PointerToRelocations')
 	g.write32(sh.pointer_to_linenumbers)
 	g.println('; PointerToLinenumbers')
-	g.write32(sh.number_of_relocations)
+	g.write16(sh.number_of_relocations)
 	g.println('; NumberOfRelocations')
-	g.write32(sh.number_of_linenumbers)
+	g.write16(sh.number_of_linenumbers)
 	g.println('; NumberOfLinenumbers')
 	g.write32(int(sh.characteristics))
 }
 
-fn (mut g Gen) write_pe_sections() {
+fn (mut g Gen) gen_pe_sections() {
 	g.pad_to(native.pe_sections_start)
 	g.println('')
 	g.println('^^^ padding to addr 0x${native.pe_sections_start.hex()}')
 
-	g.write64(0)
-	g.write_string_with_padding('.idata', 8)
-	g.println('; ".idata"')
-	//
-	g.write32(0x89) // 137
-	g.write16(0x1000)
-	g.write32(0x02000000)
-	g.write32(0x02000000)
-	g.zeroes(14)
-	g.write16(64)
-	g.write8(0)
-	g.write8(192)
-	g.println('')
+	for mut section in g.pe_sections {
+		g.gen_pe_section_header(mut section)
+		g.println('; ^^^ section header (pe) "${section.name}"')
+	}
+}
 
-	g.write_string_with_padding('.text', 8)
-	g.println('".text"')
+fn (mut g Gen) get_pe_section(name string) ?PeSection {
+	return arrays.find_first(g.pe_sections, fn [name] (s PeSection) bool {
+		return s.name == name
+	})
+}
 
-	g.write32(75)
-	g.write8(0)
-	g.write32(0x20)
-	g.write32(0x00002)
-	g.write32(4)
-	g.write32(0)
-	g.write32(0)
-	g.write32(0x20000000) // 0, 0, 0, 32,
-	g.write([u8(0), 0, 96])
-	g.zeroes(52)
-	g.write([u8(72), 16, 0, 0])
-	g.write([u8(40), 16, 0, 0])
-	g.zeroes(20)
-	g.write([u8(96), 16, 0, 0])
-	g.write32(0)
-	g.write([u8(110), 16, 0, 0])
-	g.write32(0)
-	g.write([u8(125), 16, 0, 0])
-	g.println('')
-	g.zeroes(12)
-	g.println('')
-	g.write_string_with_padding('KERNEL32.DLL', 13)
-	g.println('\t"KERNEL32.DLL"')
-	g.write_string_with_padding('USER32.DLL', 13)
-	g.println('\t"USER32.DLL"')
-	g.write_string_with_padding('ExitProcess', 14)
-	g.println('\t"ExitProcess" (function)')
-	g.write_string_with_padding('GetStdHandle', 15)
-	g.println('\t"GetStdHandle" (function)')
-	g.write_string_with_padding('WriteFile', 13)
-	g.println('\t"WriteFile" (function)')
+struct PeDllImport {
+	name      string
+mut:
+	functions map[string]i64
+}
 
-	g.println('^^^ PE Sections')
+fn (mut g Gen) gen_pe_directory_table(imports []PeDllImport) {
+}
+
+// reference: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#the-idata-section
+fn (mut g Gen) gen_pe_idata() {
+	idata_section := g.get_pe_section('.idata') or {
+		g.n_error('no ".idata" section header generated')
+	}
+	g.align_to(native.pe_file_align)
+	g.println('; padding to 0x${g.pos().hex()}')
+
+	idata_pos := g.pos()
+	g.write32_at(idata_section.header_pos + __offsetof(PeSectionHeader, pointer_to_raw_data), int(idata_pos))
+
+	mut imports := [
+		PeDllImport{
+			name: 'KERNEL32.DLL'
+			functions: {
+				'ExitProcess': i64(0),
+				'GetStdHandle': i64(0),
+				'WriteFile': i64(0),
+			}
+		},
+		PeDllImport{
+			name: 'USER32.DLL'
+		},
+		PeDllImport{
+			name: 'CRTDLL.DLL'
+			functions: {}
+		}
+	]
+
+	// directory table
+	g.write32(0) // import lookup rva
+	g.println('; import lookup table rva')
+	g.write32(0) // time/date
+	g.println('; time/date stamp')
+	g.write32(0) // forwarder chain
+	g.println('; forwarder chain')
+
+	dll_name_addr_pos := g.pos()
+	g.write32(0) // dll name rva; filled in later
+	g.println('; dll name rva')
+	g.write32(idata_section.header.virtual_address + 40) // address table rva
+	g.println('; import address table rva')
+
+	// null entry
+	g.zeroes(16)
+	g.println('; null entry')
+	g.println('^^^ directory table (PE)')
+
+	for mut imp in imports {
+		for func, mut name_lookup_addr_pos in imp.functions {
+			name_lookup_addr_pos = g.pos()
+			g.write64(0) // filled in later
+			g.println('; name lookup addr to "${func}"')
+		}
+		g.write64(0) // null entry
+		g.println('; null entry')
+		g.println('^^^ import lookup table for "${imp.name}" (PE)')
+	}
+
+	// null entry
+	g.zeroes(4)
+	g.println('^^^ import lookup table (PE)')
+
+	// dll names	
+	g.write32_at(dll_name_addr_pos, int(g.pos() - idata_pos) +
+		idata_section.header.virtual_address)
+	for imp in imports {
+		g.write_string(imp.name)
+		g.println('"${imp.name}"')
+	}
+
+	// hint-name table; reference: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#hintname-table
+	for imp in imports {
+		for func, name_lookup_addr_pos in imp.functions {
+			g.write64_at(name_lookup_addr_pos, (g.pos() - idata_pos + i64(idata_section.header.virtual_address)) << 32)
+
+			g.write16(0) // export pointer index; we go via names, so 0
+			g.write_string(func)
+			g.println('"${func}"')
+		}
+	}
+	// zero entry
+	g.zeroes(4)
+
+	// write the section size
+	idata_size := int(g.pos() - idata_pos)
+	assert idata_size < idata_section.header.virtual_size
+	g.write32_at(idata_section.header_pos + __offsetof(PeSectionHeader, size_of_raw_data), idata_size)
+
+	g.println('^^^ hint/name table (PE)')
 }
 
 pub fn (mut g Gen) generate_pe_header() {
-	g.write_dos_header()
-	g.write_dos_stub()
-	g.write_pe_header()
-	g.write_pe_sections()
+	g.gen_dos_header()
+	g.gen_dos_stub()
+	g.gen_pe_header()
 
-	g.pad_to(native.pe_code_start)
+	g.gen_pe_data_dirs()
+
+	g.pe_sections = [
+		g.create_pe_section('.idata',
+			virtual_address: 0x1000
+			virtual_size: 0x1000
+			characteristics: native.pe_scn_cnt_initialized_data | native.pe_scn_mem_read | native.pe_scn_mem_write
+		),
+		g.create_pe_section('.text',
+			virtual_address: 0x2000
+			characteristics: native.pe_scn_cnt_code | native.pe_scn_mem_execute | native.pe_scn_mem_read
+		),
+	]
+
+	g.gen_pe_sections()
+	g.gen_pe_idata()
+
+	g.align_to(native.pe_file_align)
 	g.println('')
-	g.println('^^^ padding to addr 0x${native.pe_code_start.hex()}')
+	g.println('^^^ padding to addr 0x${g.pos().hex()}')
 
 	g.code_start_pos = g.pos()
+	text_section := g.get_pe_section('.text') or { g.n_error('no ".text" section generated')}
+	g.write32_at(text_section.header_pos + __offsetof(PeSectionHeader, pointer_to_raw_data), int(g.code_start_pos))
 
 	g.code_gen.call(0)
 	g.code_gen.ret()
 	g.main_fn_addr = g.pos()
+}
+
+fn (mut g Gen) patch_pe_code_size() {
+	text_section := g.get_pe_section('.text') or { g.n_error('no ".text" section generated') }
+
+	positions := [
+		// TODO: make general for non-pe32plus headers when implemented
+		g.pe_opt_hdr_pos + __offsetof(Pe32PlusOptionalHeader, size_of_code),
+		g.pe_opt_hdr_pos + __offsetof(Pe32PlusOptionalHeader, size_of_initialized_data),
+		text_section.header_pos + __offsetof(PeSectionHeader, size_of_raw_data),
+	]
+
+	code_size := int(g.file_size_pos - g.code_start_pos)
+	for pos in positions {
+		g.write32_at(pos, code_size)
+	}
 }
 
 pub fn (mut g Gen) generate_pe_footer() {
@@ -473,22 +649,7 @@ pub fn (mut g Gen) generate_pe_footer() {
 		g.n_error('no PE optional header generated')
 	}
 
-	code_size := int(g.file_size_pos - g.code_start_pos)
-
-	size_of_code_pos := g.pe_opt_hdr_pos + __offsetof(Pe32PlusOptionalHeader, size_of_code)
-	g.write32_at(size_of_code_pos, code_size)
-
-	size_of_initialized_data_pos := g.pe_opt_hdr_pos +
-		__offsetof(Pe32PlusOptionalHeader, size_of_initialized_data)
-	g.write32_at(size_of_initialized_data_pos, code_size)
-
-	//size_of_image := (int(g.file_size_pos) + native.pe_section_align - 1) & ~(native.pe_section_align - 1)
-	//size_of_image_pos := g.pe_opt_hdr_pos +
-	//	__offsetof(Pe32PlusOptionalHeader, size_of_image)
-	//g.write32_at(size_of_image_pos, size_of_image)
-//
-	//g.pad_to(size_of_image)
-	//g.println('fs: ${size_of_image.hex()}')
+	g.patch_pe_code_size()
 
 	// patch call main
 	match g.pref.arch {

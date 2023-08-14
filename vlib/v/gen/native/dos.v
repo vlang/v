@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module native
 
-pub fn (mut g Gen) write_dos_header() {
+pub fn (mut g Gen) gen_dos_header() {
 	dos_header := [
 		int(PeMagic.mz),
 		// signature
@@ -98,7 +98,7 @@ pub fn (mut g Gen) write_dos_header() {
 }
 
 // size is 0xb8
-pub fn (mut g Gen) write_dos_stub() {
+pub fn (mut g Gen) gen_dos_stub() {
 	// 14 code bytes + "This program cannot be run in DOS mode.\r\r\n$" + 6 * 0x00
 	g.write([
 		u8(0x0e),

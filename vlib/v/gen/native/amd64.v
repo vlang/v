@@ -1243,7 +1243,7 @@ pub fn (mut c Amd64) apicall(call ApiCall) {
 fn (mut c Amd64) gen_print(s string, fd int) {
 	if c.g.pref.os == .windows {
 		c.sub(.rsp, 0x38)
-		c.mov(Amd64Register.rcx, -11)
+		c.mov(Amd64Register.rcx, -10 - fd)
 		c.apicall(.get_std_handle)
 		c.mov_reg(Amd64Register.rcx, Amd64Register.rax)
 		// c.mov64(Amd64Register.rdx, c.g.allocate_string(s, 3))
@@ -1277,7 +1277,7 @@ pub fn (mut c Amd64) gen_print_reg(r Register, n int, fd int) {
 
 	if c.g.pref.os == .windows {
 		c.sub(.rsp, 0x38)
-		c.mov(Amd64Register.rcx, -11)
+		c.mov(Amd64Register.rcx, -10 - fd)
 		c.apicall(.get_std_handle)
 		c.mov_reg(Amd64Register.rcx, Amd64Register.rax)
 		c.g.write([u8(0x4c), 0x8d, 0x4c, 0x24, 0x20]) // lea r9, [rsp+0x20]
