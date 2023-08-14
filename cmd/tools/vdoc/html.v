@@ -450,12 +450,12 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 }
 
 fn html_tag_escape(str string) string {
-	excaped_string := str.replace_each(['<', '&lt;', '>', '&gt;'])
+	escaped_string := str.replace_each(['<', '&lt;', '>', '&gt;'])
 	mut re := regex.regex_opt(r'`.+[(&lt;)(&gt;)].+`') or { regex.RE{} }
-	if re.find_all_str(excaped_string).len > 0 {
+	if re.find_all_str(escaped_string).len > 0 {
 		return str
 	}
-	return excaped_string
+	return escaped_string
 }
 
 /*
