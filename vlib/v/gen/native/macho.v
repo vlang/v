@@ -433,12 +433,6 @@ fn (mut g Gen) sym_table_command() {
 	g.write32(str_size)
 }
 
-pub fn (mut g Gen) zeroes(n int) {
-	for _ in 0 .. n {
-		g.buf << 0
-	}
-}
-
 fn (mut g Gen) write_relocs() {
 	if g.pref.is_verbose {
 		println('relocs at ${g.buf.len} should be 0x160')

@@ -63,7 +63,11 @@ mut:
 	macho_ncmds   int
 	macho_cmdsize int
 	// pe specific
-	pe_opt_hdr_pos i64
+	pe_coff_hdr_pos  i64
+	pe_opt_hdr_pos   i64
+	pe_text_size_pos i64
+	pe_data_dirs     PeDataDirs = get_pe_data_dirs()
+	pe_sections      []PeSection
 
 	requires_linking bool
 }
@@ -595,6 +599,12 @@ fn (mut g Gen) write16_at(at i64, n int) {
 	// write 2 bytes
 	g.buf[at] = u8(n)
 	g.buf[at + 1] = u8(n >> 8)
+}
+
+pub fn (mut g Gen) zeroes(n int) {
+	for _ in 0 .. n {
+		g.buf << 0
+	}
 }
 
 fn (mut g Gen) write_string(s string) {
