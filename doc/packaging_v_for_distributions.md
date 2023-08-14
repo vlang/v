@@ -45,16 +45,17 @@ or replace cmd/tools/vself.v, with a short v program, that advises the final V u
 package manager tool, or to use a V installed from source instead.
 
 4) Another V feature/command that can interfere with read only packaging is `v self`. We
-recommend that you disable this command as well, by replacing cmd/tools/vself.v with a small V program
-that informs the user that `v self` is not recommended when used with a packaged version of V,
-and then advises the user to install V from source if he wants to use `v self`.
+recommend that you disable this command as well, by replacing cmd/tools/vself.v with a small
+V program that informs the user that `v self` is not recommended when used with a packaged
+version of V, and then advises the user to install V from source if he wants to use `v self`.
 
-5) The V source repo contains sizable folders like `.git/` and `thirdparty/tcc/.git/` which will not
-be needed by users of packages (they are not useful if `v up` is disabled,
-as recommended previously). Some other files, such as `Makefile`, `make.bat`, and `GNUmakefile` will not
-be used either, so they can also be safely removed.
+5) The V source repo contains sizable folders like `.git/` and `thirdparty/tcc/.git/` which will
+not be needed by users of packages (they are not useful if `v up` is disabled,
+as recommended previously). Some other files, such as `Makefile`, `make.bat`, and `GNUmakefile`
+will not be used either, so they can also be safely removed.
 
-Depending on how stripped you want your package, you can remove the examples/ folder as well.  It is usually good to have examples, but they could be in a separate package.
+Depending on how stripped you want your package, you can remove the examples/ folder as well.
+It is usually good to have examples, but they could be in a separate package.
 
 If a user attempts to compile the examples in that folder, it
 will not work in a read-only package (because the executables are put right next to the 
@@ -72,9 +73,12 @@ distro, i.e.: `sudo ln -s /opt/vlang/v /usr/bin/v` or `sudo ln -s /opt/vlang/v /
 7) Location of the V executable can be controlled by setting the env variable VEXE.
 It defaults to the absolute path of the V executable.
 
-8) Location of the modules folder for `v install` can be controlled by setting the env variable named `VMODULES`. By default, modules are installed to `~/.vmodules` (`C:\Users\<user id>\.vmodules` on Windows).
+8) Location of the modules folder for `v install` can be controlled by setting the env variable
+named `VMODULES`. By default, modules are installed to `~/.vmodules`,
+(`C:\Users\<user id>\.vmodules` on Windows).
 
-9) Location of the folder used by V for its temporary files can be controlled by setting the env variable `VTMP`.  By default, the system TEMP folder is used.
+9) Location of the folder used by V for its temporary files can be controlled by setting the env
+variable `VTMP`.  By default, the system TEMP folder is used.
 
 10) Setting additional V flags for each compilation can be done by setting the env variable
 `VFLAGS`.
