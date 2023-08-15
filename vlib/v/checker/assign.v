@@ -485,9 +485,12 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					}
 				} else if mut left is ast.Ident && right is ast.IndexExpr {
 					if (right as ast.IndexExpr).left is ast.Ident
+						&& (right as ast.IndexExpr).index is ast.RangeExpr
 						&& ((right as ast.IndexExpr).left.is_mut() || left.is_mut())
 						&& !c.inside_unsafe {
 						// `mut a := arr[..]` auto add clone() -> `mut a := arr[..].clone()`
+						c.note('using an implicit clone here, if you want to get reference data, please use unsafe{}',
+							right.pos())
 						right = ast.CallExpr{
 							name: 'clone'
 							left: right
