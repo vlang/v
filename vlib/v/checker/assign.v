@@ -489,8 +489,10 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						&& ((right as ast.IndexExpr).left.is_mut() || left.is_mut())
 						&& !c.inside_unsafe {
 						// `mut a := arr[..]` auto add clone() -> `mut a := arr[..].clone()`
-						c.note('using an implicit clone here, if you want to get reference data, please use unsafe{}',
+						c.add_error_detail_with_pos('To silence this notice, use either an explicit `a[..].clone()`,
+or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							right.pos())
+						c.note('an implicit clone of the slice was done here', right.pos())
 						right = ast.CallExpr{
 							name: 'clone'
 							left: right
