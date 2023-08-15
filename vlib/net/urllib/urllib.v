@@ -889,7 +889,7 @@ fn resolve_path(base string, ref string) string {
 			}
 			'..' {
 				if dst.len > 0 {
-					dst = dst[..dst.len - 1]
+					dst = unsafe { dst[..dst.len - 1] }
 				}
 			}
 			else {

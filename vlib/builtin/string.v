@@ -2190,12 +2190,12 @@ pub fn (s string) trim_indent() string {
 
 	// trim first line if it's blank
 	if lines.len > 0 && lines.first().is_blank() {
-		lines = lines[1..]
+		lines = unsafe { lines[1..] }
 	}
 
 	// trim last line if it's blank
 	if lines.len > 0 && lines.last().is_blank() {
-		lines = lines[..lines.len - 1]
+		lines = unsafe { lines[..lines.len - 1] }
 	}
 
 	mut trimmed_lines := []string{cap: lines.len}

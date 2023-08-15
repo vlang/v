@@ -526,9 +526,9 @@ pub fn (mut re RE) replace_n(in_txt string, repl_str string, count int) string {
 	mut lst := re.find_all(in_txt)
 
 	if count < 0 { // start from the right of the string
-		lst = lst#[count * 2..] // limitate the number of substitions
+		lst = unsafe { lst#[count * 2..] } // limitate the number of substitions
 	} else if count > 0 { // start from the left of the string
-		lst = lst#[..count * 2] // limitate the number of substitions
+		lst = unsafe { lst#[..count * 2] } // limitate the number of substitions
 	} else if count == 0 { // no replace
 		return in_txt
 	}
