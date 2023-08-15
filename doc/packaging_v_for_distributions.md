@@ -41,7 +41,7 @@ to make modifications to themselves. Instead, they require the user to use their
 provided by the distro/platform.
 
 To facilitate that, it is usually best for all involved if you, as a package maintainer, remove
-or replace cmd/tools/vself.v, with a short v program, that advises the final V user to use the
+or replace cmd/tools/vup.v, with a short v program, that advises the final V user to use the
 package manager tool, or to use a V installed from source instead.
 
 4) Another V feature/command that can interfere with read only packaging is `v self`. We
