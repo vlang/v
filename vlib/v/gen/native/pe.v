@@ -177,7 +177,6 @@ pub fn (mut g Gen) gen_pe_header() {
 	g.gen_pe_optional_header(opt_hdr)
 }
 
-[packed]
 struct Pe32OptionalHeader {
 	// TODO: potential support for 32-bit
 }
@@ -415,7 +414,8 @@ fn (mut g Gen) gen_pe_data_dirs() {
 }
 
 // reference: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format?redirectedfrom=MSDN#section-table-section-headers
-[packed; params]
+// should also be [packed], but -cstrict CI's didn't like it -> potential bug source
+[params]
 struct PeSectionHeader {
 	name [8]u8
 mut:
