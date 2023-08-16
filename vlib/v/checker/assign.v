@@ -483,7 +483,8 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							}
 						}
 					}
-				} else if mut left is ast.Ident && right is ast.IndexExpr {
+				} else if mut left is ast.Ident && left.kind != .blank_ident
+					&& right is ast.IndexExpr {
 					if (right as ast.IndexExpr).left is ast.Ident
 						&& (right as ast.IndexExpr).index is ast.RangeExpr
 						&& ((right as ast.IndexExpr).left.is_mut() || left.is_mut())
