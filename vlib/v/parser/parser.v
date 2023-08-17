@@ -2537,6 +2537,10 @@ fn (mut p Parser) name_expr() ast.Expr {
 			last_pos = p.tok.pos()
 			p.check(.rcbr)
 		}
+		if chan_type == ast.chan_type {
+			p.error_with_pos('`chan` has no type specified. Use `chan Type{}` instead of `chan{}`',
+				first_pos.extend(last_pos))
+		}
 		return ast.ChanInit{
 			pos: first_pos.extend(last_pos)
 			elem_type_pos: elem_type_pos
