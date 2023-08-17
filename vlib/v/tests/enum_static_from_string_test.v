@@ -1,21 +1,39 @@
 enum Color1 {
+	unknown
 	red
 	green
 	blue
 }
 
 enum Color2 {
+	unknown
 	red
 	blue = 11
 	green
 }
 
 fn test_enum_static_from_string() {
-	color1 := Color1.from_string('blue')?
-	println(color1)
-	assert color1 == Color1.blue
+	color11 := Color1.from_string('red')?
+	println(color11)
+	assert color11 == Color1.red
 
-	color2 := Color2.from_string('green')?
-	println(color2)
-	assert color2 == Color2.green
+	color12 := Color1.from_string('blue')?
+	println(color12)
+	assert color12 == Color1.blue
+
+	color13 := Color1.from_string('aaaaa') or { Color1.unknown }
+	println(color13)
+	assert color13 == Color1.unknown
+
+	color21 := Color2.from_string('red')?
+	println(color21)
+	assert color21 == Color2.red
+
+	color22 := Color2.from_string('green')?
+	println(color22)
+	assert color22 == Color2.green
+
+	color23 := Color2.from_string('bbbbb') or { Color2.unknown }
+	println(color23)
+	assert color23 == Color2.unknown
 }
