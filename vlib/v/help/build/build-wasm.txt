@@ -12,6 +12,10 @@ For more general build help, see also `v help build`.
       After compiling the WebAssembly module, execute wasm-validate to validate the module.
       Useful for debugging the compiler.
 
+   -wasm-stack-top
+      Overrides the default stack_top value used by the WebAssembly compiler.
+      Useful for some platforms with unusual memory requirements.
+
    -os <browser|wasi>, -target-os <browser|wasi>
       Change the target WebAssembly execution environment that V compiles for.
 
