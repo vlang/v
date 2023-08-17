@@ -418,19 +418,19 @@ pub fn (t &Table) get_enum_field_names(name string) []string {
 	return field_names
 }
 
-pub fn (t &Table) get_enum_field_vals(name string) []int {
+pub fn (t &Table) get_enum_field_vals(name string) []i64 {
 	enum_decl := t.enum_decls[name]
-	mut enum_vals := []int{}
+	mut enum_vals := []i64{}
 	mut last_val := i64(0)
 	for field in enum_decl.fields {
 		if field.has_expr {
 			if field.expr is IntegerLiteral {
-				enum_vals << int(field.expr.val.i64())
+				enum_vals << field.expr.val.i64()
 				last_val = field.expr.val.i64()
 			}
 		} else {
 			if enum_vals.len > 0 {
-				enum_vals << int(last_val + 1)
+				enum_vals << last_val + 1
 				last_val++
 			} else {
 				enum_vals << 0

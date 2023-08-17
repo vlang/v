@@ -5,10 +5,10 @@ enum Color1 {
 	blue
 }
 
-enum Color2 {
+enum Color2 as i64 {
 	unknown
 	red
-	blue = 11
+	blue = 123456789012345
 	green
 }
 

@@ -1165,13 +1165,13 @@ fn (mut g Gen) gen_enum_static_from_string(fn_name string) {
 	fn_builder.writeln('\t${option_enum_styp} t1;')
 	fn_builder.writeln('\tbool exists = false;')
 	fn_builder.writeln('\tint inx = 0;')
-	fn_builder.writeln('\tArray_string field_names = __new_array_with_default(0, 0, sizeof(string), 0);')
+	fn_builder.writeln('\tarray field_names = __new_array_with_default(0, 0, sizeof(string), 0);')
 	for field_name in enum_field_names {
 		fn_builder.writeln('\tarray_push((array*)&field_names, _MOV((string[]){ _SLIT("${field_name}") }));')
 	}
-	fn_builder.writeln('\tArray_int field_vals = __new_array_with_default(0, 0, sizeof(int), 0);')
+	fn_builder.writeln('\tarray field_vals = __new_array_with_default(0, 0, sizeof(i64), 0);')
 	for field_val in enum_field_vals {
-		fn_builder.writeln('\tarray_push((array*)&field_vals, _MOV((int[]){ ${field_val} }));')
+		fn_builder.writeln('\tarray_push((array*)&field_vals, _MOV((i64[]){ ${field_val} }));')
 	}
 	fn_builder.writeln('\tfor (int i = 0; i < ${enum_field_names.len}; ++i) {')
 	fn_builder.writeln('\t\tif (fast_string_eq(name, (*(string*)array_get(field_names, i)))) {')
@@ -1181,7 +1181,7 @@ fn (mut g Gen) gen_enum_static_from_string(fn_name string) {
 	fn_builder.writeln('\t\t}')
 	fn_builder.writeln('\t}')
 	fn_builder.writeln('\tif (exists) {')
-	fn_builder.writeln('\t\t_option_ok(&(${enum_styp}[]){ (*(int*)array_get(field_vals, inx)) }, (_option*)&t1, sizeof(${enum_styp}));')
+	fn_builder.writeln('\t\t_option_ok(&(${enum_styp}[]){ (*(i64*)array_get(field_vals, inx)) }, (_option*)&t1, sizeof(${enum_styp}));')
 	fn_builder.writeln('\t\treturn t1;')
 	fn_builder.writeln('\t} else {')
 	fn_builder.writeln('\t\treturn (${option_enum_styp}){ .state=2, .err=_const_none__, .data={EMPTY_STRUCT_INITIALIZATION} };')
