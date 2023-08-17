@@ -874,6 +874,18 @@ fn test_execute() {
 	assert hexresult.ends_with('0a7878')
 }
 
+fn test_execute_with_stderr_redirection() {
+	result := os.execute('${os.quoted_path(@VEXE)} wrong_command')
+	assert result.exit_code == 1
+	assert result.output.contains('unknown command `wrong_command`')
+
+	stderr_path := os.join_path_single(tfolder, 'stderr.txt')
+	result2 := os.execute('${os.quoted_path(@VEXE)} wrong_command 2> ${os.quoted_path(stderr_path)}')
+	assert result2.exit_code == 1
+	assert result2.output == ''
+	assert os.exists(stderr_path)
+}
+
 fn test_command() {
 	if os.user_os() == 'windows' {
 		eprintln('>>> os.Command is not implemented fully on Windows yet')
