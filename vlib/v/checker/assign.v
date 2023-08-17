@@ -264,15 +264,15 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		node.left_types << left_type
 		match mut left {
 			ast.Ident {
-				if is_decl || left.kind == .blank_ident {
-					if left_type.is_ptr() && mut right is ast.PrefixExpr
-						&& right.right_type == ast.int_literal_type_idx {
-						if mut right.right is ast.Ident && right.right.obj is ast.ConstField {
-							c.error('cannot assign a pointer to a constant with an integer literal value',
-								right.right.pos)
-							c.add_error_detail('Specify the type for the constant value. Example:')
-							c.add_error_detail('         `const ${right.right.name.all_after_last('.')} = int(${(right.right.obj as ast.ConstField).expr})`')
-						}
+				if (is_decl || left.kind == .blank_ident) && left_type.is_ptr()
+					&& mut right is ast.PrefixExpr && right.right_type == ast.int_literal_type_idx {
+					if mut right.right is ast.Ident && right.right.obj is ast.ConstField {
+						const_name := right.right.name.all_after_last('.')
+						const_val := (right.right.obj as ast.ConstField).expr
+						c.error('cannot assign a pointer to a constant with an integer literal value',
+							right.right.pos)
+						c.add_error_detail('Specify the type for the constant value. Example:')
+						c.add_error_detail('         `const ${const_name} = int(${const_val})`')
 					}
 				}
 				if left.kind == .blank_ident {
