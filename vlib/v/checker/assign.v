@@ -289,6 +289,15 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							c.error('use of untyped nil in assignment (use `unsafe` | ${c.inside_unsafe})',
 								right.pos())
 						}
+						if mut right is ast.PrefixExpr && left_type.is_ptr()
+							&& right.right_type == ast.int_literal_type_idx {
+							if mut right.right is ast.Ident && right.right.obj is ast.ConstField {
+								c.error('cannot assign a pointer to a constant with an integer literal value',
+									right.right.pos)
+								c.add_error_detail('Specify the type for the constant value. Example:')
+								c.add_error_detail('         `const ${right.right.name.all_after_last('.')} = int(${(right.right.obj as ast.ConstField).expr})`')
+							}
+						}
 					}
 					mut ident_var_info := left.info as ast.IdentVar
 					if ident_var_info.share == .shared_t {
