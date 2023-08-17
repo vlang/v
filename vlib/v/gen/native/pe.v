@@ -415,6 +415,7 @@ fn (mut g Gen) gen_pe_data_dirs() {
 
 // reference: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format?redirectedfrom=MSDN#section-table-section-headers
 // should also be [packed], but -cstrict CI's didn't like it -> potential bug source
+[_pack: '1']
 [params]
 struct PeSectionHeader {
 	name [8]u8
