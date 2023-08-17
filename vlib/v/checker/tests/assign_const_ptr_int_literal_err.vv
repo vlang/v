@@ -2,4 +2,5 @@ const a = 3
 
 fn main() {
 	b := &a
+	dump(b)
 }

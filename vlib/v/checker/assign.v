@@ -269,13 +269,12 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					if mut right.right is ast.Ident && right.right.obj is ast.ConstField {
 						const_name := right.right.name.all_after_last('.')
 						const_val := (right.right.obj as ast.ConstField).expr
-						c.error('cannot assign a pointer to a constant with an integer literal value',
-							right.right.pos)
 						c.add_error_detail('Specify the type for the constant value. Example:')
 						c.add_error_detail('         `const ${const_name} = int(${const_val})`')
+						c.error('cannot assign a pointer to a constant with an integer literal value',
+							right.right.pos)
 					}
-				}
-				if left.kind == .blank_ident {
+				} else if left.kind == .blank_ident {
 					left_type = right_type
 					node.left_types[i] = right_type
 					if node.op !in [.assign, .decl_assign] {
