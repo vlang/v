@@ -335,7 +335,15 @@ pub fn raw_execute(cmd string) Result {
 		dw_flags: u32(C.STARTF_USESTDHANDLES)
 	}
 
-	pcmd := if cmd.contains('2>') { 'cmd /c "${cmd}"' } else { 'cmd /c "${cmd} 2>&1"' }
+	mut pcmd := cmd
+	if cmd.contains('./') {
+		pcmd = pcmd.replace('./', '.\\')
+	}
+	if cmd.contains('2>') {
+		pcmd = 'cmd /c "${pcmd}"'
+	} else {
+		pcmd = 'cmd /c "${pcmd} 2>&1"'
+	}
 	command_line := [32768]u16{}
 	C.ExpandEnvironmentStringsW(pcmd.to_wide(), voidptr(&command_line), 32768)
 	create_process_ok := C.CreateProcessW(0, &command_line[0], 0, 0, C.TRUE, 0, 0, 0,
