@@ -865,6 +865,15 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 			idx := c.table.type_idxs[full_enum_name]
 			ret_typ := ast.Type(idx).set_flag(.option)
+			if node.args.len != 1 {
+				c.error('expected 1 argument, but got ${node.args.len}', node.pos)
+			} else {
+				node.args[0].typ = c.expr(mut node.args[0].expr)
+				if node.args[0].typ != ast.string_type {
+					styp := c.table.type_to_str(node.args[0].typ)
+					c.error('expected `string` argument, but got `${styp}`', node.pos)
+				}
+			}
 			node.return_type = ret_typ
 			return ret_typ
 		}
