@@ -1720,6 +1720,14 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			g.write('panic_debug(${paline}, tos3("${pafile}"), tos3("${pamod}"), tos3("${pafn}"),  ')
 			g.call_args(node)
 			g.write(')')
+		} else if node.name.ends_with('__static__from_string') {
+			if node.name !in g.str_fn_names {
+				g.gen_enum_static_from_string(node.name)
+				g.str_fn_names << node.name
+			}
+			g.write('${node.name}(')
+			g.call_args(node)
+			g.write(')')
 		} else {
 			// Simple function call
 			// if free_tmp_arg_vars {

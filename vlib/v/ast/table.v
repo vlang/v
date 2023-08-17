@@ -409,6 +409,37 @@ pub fn (t &Table) find_enum_field_val(name string, field_ string) ?i64 {
 	return val
 }
 
+pub fn (t &Table) get_enum_field_names(name string) []string {
+	enum_decl := t.enum_decls[name]
+	mut field_names := []string{}
+	for field in enum_decl.fields {
+		field_names << field.name
+	}
+	return field_names
+}
+
+pub fn (t &Table) get_enum_field_vals(name string) []int {
+	enum_decl := t.enum_decls[name]
+	mut enum_vals := []int{}
+	mut last_val := i64(0)
+	for field in enum_decl.fields {
+		if field.has_expr {
+			if field.expr is IntegerLiteral {
+				enum_vals << int(field.expr.val.i64())
+				last_val = field.expr.val.i64()
+			}
+		} else {
+			if enum_vals.len > 0 {
+				enum_vals << int(last_val + 1)
+				last_val++
+			} else {
+				enum_vals << 0
+			}
+		}
+	}
+	return enum_vals
+}
+
 pub fn (t &Table) get_embed_methods(sym &TypeSymbol) []Fn {
 	mut methods := []Fn{}
 	if sym.info is Struct {

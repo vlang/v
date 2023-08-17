@@ -856,6 +856,18 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				}
 			}
 		}
+		if fn_name.ends_with('from_string') {
+			enum_name := fn_name.all_before('__static__')
+			full_enum_name := if !enum_name.contains('.') {
+				c.mod + '.' + enum_name
+			} else {
+				enum_name
+			}
+			idx := c.table.type_idxs[full_enum_name]
+			ret_typ := ast.Type(idx).set_flag(.option)
+			node.return_type = ret_typ
+			return ret_typ
+		}
 	}
 	mut is_native_builtin := false
 	if !found && c.pref.backend == .native {
