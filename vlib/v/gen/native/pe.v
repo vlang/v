@@ -181,7 +181,7 @@ struct Pe32OptionalHeader {
 	// TODO: potential support for 32-bit
 }
 
-[packed]
+[_pack: '1']
 struct Pe32PlusOptionalHeader {
 	// standard fields
 	// refenrence: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format?redirectedfrom=MSDN#optional-header-standard-fields-image-only
