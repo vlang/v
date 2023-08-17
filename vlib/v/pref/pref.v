@@ -230,6 +230,7 @@ pub mut:
 	// checker settings:
 	checker_match_exhaustive_cutoff_limit int = 12
 	thread_stack_size                     int = 8388608 // Change with `-thread-stack-size 4194304`. Note: on macos it was 524288, which is too small for more complex programs with many nested callexprs.
+	wasm_stack_top                        int = 1024 + (16 * 1024) // stack size for webassembly backend
 	wasm_validate                         bool // validate webassembly code, by calling `wasm-validate`
 }
 
@@ -308,6 +309,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		match arg {
 			'-wasm-validate' {
 				res.wasm_validate = true
+			}
+			'-wasm-stack-top' {
+				res.wasm_stack_top = cmdline.option(current_args, arg, res.wasm_stack_top.str()).int()
+				i++
 			}
 			'-apk' {
 				res.is_apk = true
