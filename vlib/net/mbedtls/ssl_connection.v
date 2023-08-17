@@ -180,7 +180,6 @@ pub fn (mut l SSLListener) accept() !&SSLConn {
 	mut conn := &SSLConn{
 		config: l.config
 		opened: true
-		owns_socket: false
 	}
 
 	// TODO: save the client's IP address somewhere (maybe add a field to SSLConn ?)
@@ -189,6 +188,8 @@ pub fn (mut l SSLListener) accept() !&SSLConn {
 	if ret != 0 {
 		return error_with_code("can't accept connection", ret)
 	}
+	conn.handle = conn.server_fd.fd
+	conn.owns_socket = true
 
 	C.mbedtls_ssl_init(&conn.ssl)
 	C.mbedtls_ssl_config_init(&conn.conf)
