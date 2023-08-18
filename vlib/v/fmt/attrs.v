@@ -17,6 +17,9 @@ pub fn (mut f Fmt) attrs(attrs []ast.Attr) {
 			f.single_line_attrs(sorted_attrs[i..])
 			break
 		}
+		if attr.has_at {
+			f.write('@')
+		}
 		f.writeln('[${attr}]')
 	}
 }
@@ -34,6 +37,9 @@ pub fn (mut f Fmt) single_line_attrs(attrs []ast.Attr, options AttrsOptions) {
 	sorted_attrs.sort(a.name < b.name)
 	if options.inline {
 		f.write(' ')
+	}
+	if attrs[0].has_at {
+		f.write('@')
 	}
 	f.write('[')
 	for i, attr in sorted_attrs {

@@ -1,8 +1,8 @@
 import json
 
 enum Foo {
-	yay  [json: 'A'; yay]
-	foo  [foo; json: 'B']
+	yay  @[json: 'A'; yay]
+	foo  @[foo; json: 'B']
 }
 
 struct FooStruct {

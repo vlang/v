@@ -886,6 +886,10 @@ fn (mut s Scanner) text_scan() token.Token {
 				return s.new_token(.comma, '', 1)
 			}
 			`@` {
+				// @[attr]
+				if s.text[s.pos + 1] == `[` {
+					return s.new_token(.at, '', 1)
+				}
 				mut name := ''
 				if nextc != `\0` {
 					s.pos++

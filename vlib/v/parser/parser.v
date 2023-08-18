@@ -723,6 +723,14 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 					}
 				}
 			}
+			.at {
+				if p.peek_tok.kind == .lsbr {
+					p.attributes()
+					continue
+				} else {
+					return p.error('@[attr] expected')
+				}
+			}
 			.lsbr {
 				// attrs are stored in `p.attrs`
 				p.attributes()
@@ -1769,11 +1777,20 @@ fn (mut p Parser) is_attributes() bool {
 
 // when is_top_stmt is true attrs are added to p.attrs
 fn (mut p Parser) attributes() {
-	p.check(.lsbr)
+	mut is_at := false
+	if p.tok.kind == .lsbr {
+		// [attr]
+		p.check(.lsbr)
+	} else if p.tok.kind == .at {
+		// @[attr]
+		p.check(.at)
+		p.check(.lsbr)
+		is_at = true
+	}
 	mut has_ctdefine := false
 	for p.tok.kind != .rsbr {
 		start_pos := p.tok.pos()
-		attr := p.parse_attr()
+		attr := p.parse_attr(is_at)
 		if p.attrs.contains(attr.name) && attr.name != 'wasm_export' {
 			p.error_with_pos('duplicate attribute `${attr.name}`', start_pos.extend(p.prev_tok.pos()))
 			return
@@ -1809,7 +1826,7 @@ fn (mut p Parser) attributes() {
 	}
 }
 
-fn (mut p Parser) parse_attr() ast.Attr {
+fn (mut p Parser) parse_attr(is_at bool) ast.Attr {
 	mut kind := ast.AttrKind.plain
 	apos := p.prev_tok.pos()
 	if p.tok.kind == .key_unsafe {
@@ -1882,6 +1899,7 @@ fn (mut p Parser) parse_attr() ast.Attr {
 		ct_expr: comptime_cond
 		ct_opt: comptime_cond_opt
 		pos: apos.extend(p.tok.pos())
+		has_at: is_at
 	}
 }
 
@@ -3431,7 +3449,7 @@ fn (mut p Parser) parse_number_literal() ast.Expr {
 fn (mut p Parser) module_decl() ast.Module {
 	mut module_attrs := []ast.Attr{}
 	mut attrs_pos := p.tok.pos()
-	for p.tok.kind == .lsbr {
+	for p.tok.kind == .lsbr || p.tok.kind == .at {
 		p.attributes()
 	}
 	module_attrs << p.attrs
@@ -3959,7 +3977,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			uses_exprs = true
 		}
 		mut attrs := []ast.Attr{}
-		if p.tok.kind == .lsbr {
+		if p.tok.kind == .lsbr || p.tok.kind == .at {
 			p.attributes()
 			attrs << p.attrs
 			enum_attrs[val] = attrs

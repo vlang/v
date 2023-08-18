@@ -269,7 +269,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 			// Comments after type (same line)
 			prev_attrs := p.attrs
 			p.attrs = []
-			if p.tok.kind == .lsbr {
+			if p.tok.kind == .lsbr || p.tok.kind == .at {
 				p.inside_struct_attr_decl = true
 				// attrs are stored in `p.attrs`
 				p.attributes()
