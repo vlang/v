@@ -3465,7 +3465,9 @@ fn fn1(s Foo) {
 
 #### Casting an interface
 
-We can test the underlying type of an interface using dynamic cast operators:
+We can test the underlying type of an interface using dynamic cast operators.
+> **Note**
+> Dynamic cast converts variable `s` into a pointer inside the `if` statemnts in this example:
 
 ```v oksyntax
 // interface-example.3 (continued from interface-example.1)
