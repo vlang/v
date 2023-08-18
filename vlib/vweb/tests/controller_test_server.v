@@ -18,6 +18,10 @@ struct Other {
 	vweb.Context
 }
 
+struct OtherHidedByOther {
+	vweb.Context
+}
+
 fn exit_after_timeout(timeout_in_ms int) {
 	time.sleep(timeout_in_ms * time.millisecond)
 	println('>> webserver: pid: ${os.getpid()}, exiting ...')
@@ -38,6 +42,7 @@ fn main() {
 		controllers: [
 			vweb.controller('/admin', &Admin{}),
 			vweb.controller('/other', &Other{}),
+			vweb.controller('/other/hide', &OtherHidedByOther{}),
 		]
 	}
 
@@ -82,6 +87,16 @@ pub fn (mut app Other) other_home() vweb.Result {
 
 ['/path']
 pub fn (mut app Other) other_path() vweb.Result {
+	return app.text('Other path')
+}
+
+['/']
+pub fn (mut app OtherHidedByOther) other_home() vweb.Result {
+	return app.text('Other')
+}
+
+['/path']
+pub fn (mut app OtherHidedByOther) other_path() vweb.Result {
 	return app.text('Other path')
 }
 
