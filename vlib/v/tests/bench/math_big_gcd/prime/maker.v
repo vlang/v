@@ -120,7 +120,7 @@ pub fn random_list(cfg []string) []string {
 			}
 			mut num := ''
 			for prime_count != 0 {
-				num = primes[prime_size][rand.int_in_range(0, primes[prime_size].len - 1)]
+				num = primes[prime_size][rand.int_in_range(0, primes[prime_size].len - 1) or { 0 }]
 				if num in p_list {
 					continue
 				}
@@ -140,7 +140,7 @@ pub fn random_list(cfg []string) []string {
 	return p_list
 }
 
-pub fn random_set(cfg PrimeCfg) ?[]PrimeSet {
+pub fn random_set(cfg PrimeCfg) ![]PrimeSet {
 	p_lists := [
 		cfg.r.split('.'),
 		cfg.a.split('.'),

@@ -181,7 +181,7 @@ struct Pe32OptionalHeader {
 	// TODO: potential support for 32-bit
 }
 
-[packed]
+[_pack: '1']
 struct Pe32PlusOptionalHeader {
 	// standard fields
 	// refenrence: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format?redirectedfrom=MSDN#optional-header-standard-fields-image-only
@@ -414,8 +414,7 @@ fn (mut g Gen) gen_pe_data_dirs() {
 }
 
 // reference: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format?redirectedfrom=MSDN#section-table-section-headers
-// should also be [packed], but -cstrict CI's didn't like it -> potential bug source
-[params]
+[_pack: '1']
 struct PeSectionHeader {
 	name [8]u8
 mut:

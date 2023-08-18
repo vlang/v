@@ -23,10 +23,10 @@ pub struct CancelContext {
 	id string
 mut:
 	context  Context
-	mutex    &sync.Mutex
+	mutex    &sync.Mutex = sync.new_mutex()
 	done     chan int
 	children map[string]Canceler
-	err      IError
+	err      IError = none
 }
 
 // with_cancel returns a copy of parent with a new done channel. The returned

@@ -385,8 +385,8 @@ pub fn (mut p Parser) parse() &ast.File {
 struct Queue {
 mut:
 	idx              int
-	mu               &sync.Mutex
-	mu2              &sync.Mutex
+	mu               &sync.Mutex = sync.new_mutex()
+	mu2              &sync.Mutex = sync.new_mutex()
 	paths            []string
 	table            &ast.Table = unsafe { nil }
 	parsed_ast_files []&ast.File

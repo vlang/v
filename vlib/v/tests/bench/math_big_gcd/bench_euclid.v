@@ -33,7 +33,8 @@ fn main() {
 	mut clocks := Clocks(map[string]benchmark.Benchmark{})
 
 	for algo in [
-		'euclid',
+		'gcd',
+		'gcd_euclid',
 		'gcd_binary',
 		//'u32binary',
 		//'u64binary'
@@ -105,10 +106,10 @@ fn main() {
 	println(clocks['euclid'].total_message('both algorithms '))
 
 	msg := [
-		'Seems to me as if euclid in big.Integer.gcd() performs better on ',
+		'Seems to me, that big.Integer.gcd_euclid in big.Integer.gcd() performs better on ',
 		'very-small-integers up to 8-byte/u64. The tests #-1..5 show this.',
-		'The gcd_binary-algo seems to be perform better, the larger the numbers/buffers get.',
-		'On my machine, i see consistent gains between ~10-30-percent with :',
+		'The big.Integer.gcd_binary algo seems to be perform better, the larger the numbers/buffers get.',
+		'On my machine, I see consistent gains between ~10-30-percent with :',
 		'\n',
 		'v -prod -cg -gc boehm bench_euclid.v',
 		'\n',
@@ -177,8 +178,15 @@ fn run_benchmark(data []DataI, heap bool, mut clocks Clocks) bool {
 		for cycles < rounds {
 			for set in testdata {
 				match algo {
-					'euclid' {
+					'gcd' {
 						if set.r != set.aa.gcd(set.bb) {
+							eprintln('${algo} failed ?')
+							clock.fail()
+							break
+						}
+					}
+					'gcd_euclid' {
+						if set.r != set.aa.gcd_euclid(set.bb) {
 							eprintln('${algo} failed ?')
 							clock.fail()
 							break

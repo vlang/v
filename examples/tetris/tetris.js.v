@@ -171,7 +171,7 @@ fn main() {
 		user_data: game
 		frame_fn: frame
 		event_fn: on_event
-		canvas: 'canvas'
+		html5_canvas_name: 'canvas'
 	)
 	game.init_game()
 	game.gg.run() // Run the render loop in the main thread

@@ -28,6 +28,11 @@ fn main() {
 	}
 	mut failed_commands := []string{}
 	for idx, example in files {
+		folder_of_example := os.dir(example)
+		if os.is_file(os.join_path_single(folder_of_example, '.skip_should_compile_all')) {
+			println('>>> skipping file: ${example}, because a `.skip_should_compile_all` file is present next to it.')
+			continue
+		}
 		cmd := '${os.quoted_path(@VEXE)} ${os.quoted_path(example)}'
 		println('> compiling ${idx + 1:4}/${files.len:-4}: ${cmd}')
 		if 0 != os.system(cmd) {

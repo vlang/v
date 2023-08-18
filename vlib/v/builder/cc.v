@@ -10,6 +10,13 @@ import v.util
 import v.vcache
 import term
 
+const (
+	c_std       = 'c99'
+	c_std_gnu   = 'gnu99'
+	cpp_std     = 'c++17'
+	cpp_std_gnu = 'gnu++17'
+)
+
 const c_verror_message_marker = 'VERROR_MESSAGE '
 
 const c_error_info = '
@@ -131,13 +138,6 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	// arguments for the C compiler
 	ccoptions.args = [v.pref.cflags]
 	ccoptions.ldflags = [v.pref.ldflags]
-	if !v.pref.no_std {
-		if v.pref.os == .linux {
-			ccoptions.args << '-std=gnu99 -D_DEFAULT_SOURCE'
-		} else {
-			ccoptions.args << '-std=c99 -D_DEFAULT_SOURCE'
-		}
-	}
 	ccoptions.wargs = [
 		'-Wall',
 		'-Wextra',
@@ -343,6 +343,14 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	if v.pref.os == .macos {
 		ccoptions.source_args << '-x none'
 	}
+	if !v.pref.no_std {
+		if v.pref.os == .linux {
+			ccoptions.source_args << '-std=${builder.c_std_gnu}'
+		} else {
+			ccoptions.source_args << '-std=${builder.c_std}'
+		}
+		ccoptions.source_args << '-D_DEFAULT_SOURCE'
+	}
 	// Min macos version is mandatory I think?
 	if v.pref.os == .macos {
 		ccoptions.post_args << '-mmacosx-version-min=10.7'
@@ -396,7 +404,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	// setup the cache too, so that different compilers/options do not interfere:
 	v.pref.cache_manager.set_temporary_options(v.thirdparty_object_args(v.ccoptions, [
 		ccoptions.guessed_compiler,
-	]))
+	], false))
 }
 
 fn (v &Builder) all_args(ccoptions CcompilerOptions) []string {
@@ -437,8 +445,26 @@ fn (v &Builder) all_args(ccoptions CcompilerOptions) []string {
 	return all
 }
 
-fn (v &Builder) thirdparty_object_args(ccoptions CcompilerOptions, middle []string) []string {
+fn (v &Builder) thirdparty_object_args(ccoptions CcompilerOptions, middle []string, cpp_file bool) []string {
 	mut all := []string{}
+
+	if !v.pref.no_std {
+		if v.pref.os == .linux {
+			if cpp_file {
+				all << '-std=${builder.cpp_std_gnu}'
+			} else {
+				all << '-std=${builder.c_std_gnu}'
+			}
+		} else {
+			if cpp_file {
+				all << '-std=${builder.cpp_std}'
+			} else {
+				all << '-std=${builder.c_std}'
+			}
+		}
+		all << '-D_DEFAULT_SOURCE'
+	}
+
 	all << ccoptions.env_cflags
 	all << ccoptions.args
 	all << middle
@@ -888,7 +914,13 @@ fn (mut b Builder) build_thirdparty_obj_files() {
 
 fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflags []cflag.CFlag) {
 	obj_path := os.real_path(path)
-	cfile := '${obj_path[..obj_path.len - 2]}.c'
+	mut cfile := '${obj_path[..obj_path.len - 2]}.c'
+	mut cpp_file := false
+	if !os.exists(cfile) {
+		// Guessed C file does not exist, so it may be a CPP file
+		cfile += 'pp'
+		cpp_file = true
+	}
 	opath := v.pref.cache_manager.mod_postfix_with_key2cpath(mod, '.o', obj_path)
 	mut rebuild_reason_message := '${obj_path} not found, building it in ${opath} ...'
 	if os.exists(opath) {
@@ -918,8 +950,17 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 	all_options << moduleflags.c_options_before_target()
 	all_options << '-o ${os.quoted_path(opath)}'
 	all_options << '-c ${os.quoted_path(cfile)}'
-	cc_options := v.thirdparty_object_args(v.ccoptions, all_options).join(' ')
-	cmd := '${v.quote_compiler_name(v.pref.ccompiler)} ${cc_options}'
+	cc_options := v.thirdparty_object_args(v.ccoptions, all_options, cpp_file).join(' ')
+
+	// If the third party object file requires a CPP file compilation, switch to a CPP compiler
+	mut ccompiler := v.pref.ccompiler
+	if cpp_file {
+		$if trace_thirdparty_obj_files ? {
+			println('>>> build_thirdparty_obj_files switched from compiler "${ccompiler}" to "${v.pref.cppcompiler}"')
+		}
+		ccompiler = v.pref.cppcompiler
+	}
+	cmd := '${v.quote_compiler_name(ccompiler)} ${cc_options}'
 	$if trace_thirdparty_obj_files ? {
 		println('>>> build_thirdparty_obj_files cmd: ${cmd}')
 	}

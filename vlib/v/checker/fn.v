@@ -499,8 +499,8 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 		}
 	}
 	// If the left expr has an or_block, it needs to be checked for legal or_block statement.
-	return_type := c.expr(mut node.left)
-	c.check_expr_opt_call(node.left, return_type)
+	left_type := c.expr(mut node.left)
+	c.check_expr_opt_call(node.left, left_type)
 	// TODO merge logic from method_call and fn_call
 	// First check everything that applies to both fns and methods
 	old_inside_fn_arg := c.inside_fn_arg
@@ -839,6 +839,22 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			found = true
 			func = f
 			c.table.fns[fn_name].usages++
+		}
+	}
+	// already imported symbol (static Foo.new() in another module)
+	if !found && fn_name.contains('__static__') && fn_name[0].is_capital() {
+		if index := fn_name.index('__static__') {
+			owner_name := fn_name#[..index]
+			for import_sym in c.file.imports.filter(it.syms.any(it.name == owner_name)) {
+				qualified_name := '${import_sym.mod}.${fn_name}'
+				if f := c.table.find_fn(qualified_name) {
+					found = true
+					func = f
+					node.name = qualified_name
+					c.table.fns[qualified_name].usages++
+					break
+				}
+			}
 		}
 	}
 	mut is_native_builtin := false
