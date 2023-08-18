@@ -1685,8 +1685,8 @@ fn (mut s Scanner) vet_error(msg string, fix vet.FixKind) {
 	s.vet_errors << ve
 }
 
-fn (mut s Scanner) trace(fbase string, message string) {
+fn (mut s Scanner) trace[T](fbase string, x &T) {
 	if s.file_base == fbase {
-		println('> s.trace | ${fbase:-10s} | ${message}')
+		println('> s.trace | ${fbase:-10s} | ${voidptr(x):16} | ${x}')
 	}
 }

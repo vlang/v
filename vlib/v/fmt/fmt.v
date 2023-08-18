@@ -3006,8 +3006,8 @@ pub fn (mut f Fmt) unsafe_expr(node ast.UnsafeExpr) {
 	f.write('}')
 }
 
-fn (mut f Fmt) trace(fbase string, message string) {
+fn (mut f Fmt) trace[T](fbase string, x &T) {
 	if f.file.path_base == fbase {
-		println('> f.trace | ${fbase:-10s} | ${message}')
+		println('> f.trace | ${fbase:-10s} | ${voidptr(x):16} | ${x}')
 	}
 }

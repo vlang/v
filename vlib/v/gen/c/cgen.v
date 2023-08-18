@@ -6945,9 +6945,9 @@ pub fn get_guarded_include_text(iname string, imessage string) string {
 	return res
 }
 
-fn (mut g Gen) trace(fbase string, message string) {
+fn (mut g Gen) trace[T](fbase string, x &T) {
 	if g.file.path_base == fbase {
-		println('> g.trace | ${fbase:-10s} | ${message}')
+		println('> g.trace | ${fbase:-10s} | ${voidptr(x):16} | ${x}')
 	}
 }
 

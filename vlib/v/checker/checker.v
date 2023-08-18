@@ -4618,9 +4618,9 @@ fn (mut c Checker) fetch_field_name(field ast.StructField) string {
 	return name
 }
 
-fn (mut c Checker) trace(fbase string, message string) {
+fn (mut c Checker) trace[T](fbase string, x &T) {
 	if c.file.path_base == fbase {
-		println('> c.trace | ${fbase:-10s} | ${message}')
+		println('> c.trace | ${fbase:-10s} | ${x}')
 	}
 }
 

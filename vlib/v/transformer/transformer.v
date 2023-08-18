@@ -9,9 +9,16 @@ pub struct Transformer {
 pub mut:
 	index &IndexState
 	table &ast.Table = unsafe { nil }
+	file  &ast.File  = unsafe { nil }
 mut:
 	is_assert   bool
 	inside_dump bool
+}
+
+fn (mut t Transformer) trace[T](fbase string, x &T) {
+	if t.file.path_base == fbase {
+		println('> t.trace | ${fbase:-10s} | ${voidptr(x):16} | ${x}')
+	}
 }
 
 pub fn new_transformer(pref_ &pref.Preferences) &Transformer {
@@ -38,6 +45,7 @@ pub fn (mut t Transformer) transform_files(ast_files []&ast.File) {
 }
 
 pub fn (mut t Transformer) transform(mut ast_file ast.File) {
+	t.file = ast_file
 	for mut stmt in ast_file.stmts {
 		stmt = t.stmt(mut stmt)
 	}

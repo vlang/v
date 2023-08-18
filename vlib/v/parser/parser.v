@@ -4358,9 +4358,9 @@ fn (mut p Parser) disallow_declarations_in_script_mode() bool {
 	return false
 }
 
-fn (mut p Parser) trace(fbase string, message string) {
+fn (mut p Parser) trace[T](fbase string, x &T) {
 	if p.file_base == fbase {
-		println('> p.trace | ${fbase:-10s} | ${message}')
+		println('> p.trace | ${fbase:-10s} | ${voidptr(x):16} | ${x}')
 	}
 }
 
