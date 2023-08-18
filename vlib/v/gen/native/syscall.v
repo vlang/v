@@ -3,13 +3,6 @@
 // that can be found in the LICENSE file.
 module native
 
-// windows apicall names
-enum ApiCall {
-	write_file
-	get_std_handle
-	exit_process
-}
-
 // unix syscall names
 enum SysCall {
 	write

@@ -63,11 +63,12 @@ mut:
 	macho_ncmds   int
 	macho_cmdsize int
 	// pe specific
-	pe_coff_hdr_pos  i64
-	pe_opt_hdr_pos   i64
-	pe_text_size_pos i64
-	pe_data_dirs     PeDataDirs = get_pe_data_dirs()
-	pe_sections      []PeSection
+	pe_coff_hdr_pos    i64
+	pe_opt_hdr_pos     i64
+	pe_text_size_pos   i64
+	pe_data_dirs       PeDataDirs = get_pe_data_dirs()
+	pe_sections        []PeSection
+	pe_dll_relocations map[string]i64
 
 	requires_linking bool
 }
@@ -79,7 +80,6 @@ mut:
 	address_size() int
 	adr(r Arm64Register, delta int) // Note: Temporary!
 	allocate_var(name string, size int, initial_val int) int
-	apicall(call ApiCall) // winapi calls
 	assign_stmt(node ast.AssignStmt) // TODO: make platform-independant
 	builtin_decl(builtin BuiltinFn)
 	call_addr_at(addr int, at i64) i64
@@ -290,7 +290,7 @@ fn (mut g Gen) get_type_from_var(var Var) ast.Type {
 	}
 }
 
-fn get_backend(arch pref.Arch) !CodeGen {
+fn get_backend(arch pref.Arch, target_os pref.OS) !CodeGen {
 	match arch {
 		.arm64 {
 			return Arm64{
@@ -300,6 +300,8 @@ fn get_backend(arch pref.Arch) !CodeGen {
 		.amd64 {
 			return Amd64{
 				g: 0
+				fn_arg_registers: amd64_get_call_regs(target_os)
+				fn_arg_sse_registers: amd64_get_call_sseregs(target_os)
 			}
 		}
 		._auto {
@@ -334,7 +336,7 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref_ &pref.Pre
 		pref: pref_
 		files: files
 		// TODO: workaround, needs to support recursive init
-		code_gen: get_backend(pref_.arch) or {
+		code_gen: get_backend(pref_.arch, pref_.os) or {
 			eprintln('No available backend for this configuration. Use `-a arm64` or `-a amd64`.')
 			exit(1)
 		}

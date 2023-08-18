@@ -22,8 +22,15 @@ const (
 
 	pe_opt_hdr_size               = 0xf0
 	pe_header_size                = pe_file_align
-	pe_stack_size                 = 0x1000
-	pe_heap_size                  = 0x10000
+	pe_stack_size                 = 0x200000 // gcc default on windows
+	pe_heap_size                  = 0x100000 // gcc default on windows
+	// tcc defaults
+	pe_major_linker_version       = 6
+	pe_minor_linker_verion        = 0
+	pe_major_os_version           = 4
+	pe_minor_os_version           = 0
+	pe_major_subsystem_version    = 4
+	pe_minor_subsystem_version    = 0
 
 	pe_num_data_dirs              = 0x10
 
@@ -223,33 +230,20 @@ struct Pe32PlusOptionalHeader {
 fn (mut g Gen) get_pe32_plus_optional_header() Pe32PlusOptionalHeader {
 	return Pe32PlusOptionalHeader{
 		magic: .pe32plus
-		major_linker_version: 0x01
-		minor_linker_version: 0x49
-		size_of_code: 0 // filled in when the footer is generated
-		size_of_initialized_data: 0
-		size_of_uninitialized_data: 0x00
-		address_of_entry_point: 0x2000
-		base_of_code: 0x2000
+		major_linker_version: native.pe_major_linker_version
+		minor_linker_version: native.pe_minor_linker_verion
 		image_base: native.image_base
 		section_alignment: native.pe_section_align
 		file_alignment: native.pe_file_align
-		major_os_version: 1
-		minor_os_version: 0
-		major_image_version: 0
-		minor_image_version: 0
-		major_subsystem_version: 5
-		minor_subsystem_version: 0
-		win32_version_value: 0
-		// size_of_image: 0x3000 // filled in later // header size + code size
+		major_os_version: native.pe_major_os_version
+		minor_os_version: native.pe_minor_os_version
+		major_subsystem_version: native.pe_major_subsystem_version
+		minor_subsystem_version: native.pe_minor_subsystem_version
 		size_of_headers: native.pe_header_size
-		checksum: 0
 		subsystem: .windows_cui
-		dll_characteristics: 0
 		size_of_stack_reserve: native.pe_stack_size
 		size_of_stack_commit: native.pe_stack_size
 		size_of_heap_reserve: native.pe_heap_size
-		size_of_heap_commit: 0
-		loader_flags: 0
 		number_of_rva_and_sizes: native.pe_num_data_dirs
 	}
 }
@@ -457,6 +451,13 @@ fn (mut s PeSection) set_virtual_size(mut g Gen, size int) {
 	g.write32_at(s.header_pos + __offsetof(PeSectionHeader, virtual_size), aligned)
 }
 
+fn (mut s PeSection) set_virtual_address(mut g Gen, addr int) {
+	aligned := (addr + native.pe_section_align - 1) & ~(native.pe_section_align - 1)
+
+	s.header.virtual_address = aligned
+	g.write32_at(s.header_pos + __offsetof(PeSectionHeader, virtual_address), aligned)
+}
+
 fn (mut g Gen) create_pe_section(name string, header PeSectionHeader) PeSection {
 	return PeSection{
 		name: name
@@ -516,7 +517,7 @@ fn (mut g Gen) get_pe_section_index(name string) ?int {
 struct PeDllImport {
 	name string
 mut:
-	functions map[string]i64
+	functions []string
 }
 
 fn (mut g Gen) gen_pe_directory_table(imports []PeDllImport) {
@@ -538,18 +539,18 @@ fn (mut g Gen) gen_pe_idata() {
 	mut imports := [
 		PeDllImport{
 			name: 'KERNEL32.DLL'
-			functions: {
-				'ExitProcess':  i64(0)
-				'GetStdHandle': i64(0)
-				'WriteFile':    i64(0)
-			}
+			functions: [
+				'GetStdHandle',
+				'ExitProcess',
+				'WriteFile',
+			]
 		},
 		PeDllImport{
 			name: 'USER32.DLL'
 		},
 		PeDllImport{
 			name: 'CRTDLL.DLL'
-			functions: {}
+			functions: []
 		},
 	]
 
@@ -573,8 +574,8 @@ fn (mut g Gen) gen_pe_idata() {
 	g.println('^^^ directory table (PE)')
 
 	for mut imp in imports {
-		for func, mut name_lookup_addr_pos in imp.functions {
-			name_lookup_addr_pos = g.pos()
+		for func in imp.functions {
+			g.pe_dll_relocations[func] = g.pos()
 			g.write64(0) // filled in later
 			g.println('; name lookup addr to "${func}"')
 		}
@@ -596,8 +597,8 @@ fn (mut g Gen) gen_pe_idata() {
 
 	// hint-name table; reference: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#hintname-table
 	for imp in imports {
-		for func, name_lookup_addr_pos in imp.functions {
-			g.write64_at(name_lookup_addr_pos, i64(u64(g.pos() - idata_pos +
+		for func in imp.functions {
+			g.write64_at(g.pe_dll_relocations[func], i64(u64(g.pos() - idata_pos +
 				i64(idata_section.header.virtual_address)) << 32))
 
 			g.write16(0) // export pointer index; we go via names, so 0
@@ -611,6 +612,7 @@ fn (mut g Gen) gen_pe_idata() {
 	// write the section size
 	idata_size := int(g.pos() - idata_pos)
 	idata_section.set_size_of_raw_data(mut g, idata_size)
+	idata_section.set_virtual_size(mut g, idata_size)
 
 	g.println('^^^ hint/name table (PE)')
 }
@@ -628,7 +630,6 @@ pub fn (mut g Gen) generate_pe_header() {
 			characteristics: native.pe_scn_cnt_initialized_data | native.pe_scn_mem_read | native.pe_scn_mem_write
 		),
 		g.create_pe_section('.text',
-			virtual_address: 0x2000
 			characteristics: native.pe_scn_cnt_code | native.pe_scn_mem_execute | native.pe_scn_mem_read
 		),
 	]
@@ -677,6 +678,28 @@ fn (mut g Gen) patch_pe_image_size() {
 		image_size)
 }
 
+fn (mut g Gen) patch_pe_virtual_addrs() {
+	if g.pe_sections.len == 0 {
+		return
+	}
+
+	mut addr := g.pe_sections[0].header.virtual_address
+	for mut section in g.pe_sections {
+		section.set_virtual_address(mut g, addr)
+		addr += section.header.virtual_size
+
+		match section.name {
+			'.text' {
+				g.write32_at(g.pe_opt_hdr_pos + __offsetof(Pe32PlusOptionalHeader, base_of_code) - 2,
+					section.header.virtual_address)
+				g.write32_at(g.pe_opt_hdr_pos +
+					__offsetof(Pe32PlusOptionalHeader, address_of_entry_point) - 2, section.header.virtual_address)
+			}
+			else {}
+		}
+	}
+}
+
 pub fn (mut g Gen) generate_pe_footer() {
 	g.sym_string_table()
 
@@ -688,6 +711,7 @@ pub fn (mut g Gen) generate_pe_footer() {
 	}
 
 	g.patch_pe_code_size()
+	g.patch_pe_virtual_addrs()
 	g.patch_pe_image_size()
 
 	// patch call main
