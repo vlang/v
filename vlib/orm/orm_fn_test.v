@@ -11,6 +11,7 @@ fn test_orm_stmt_gen_update() {
 		data: []
 		types: []
 		kinds: [.ge, .eq]
+		is_and: [true]
 	})
 	assert query == "UPDATE 'Test' SET 'test' = ?0, 'a' = ?1 WHERE 'id' >= ?2 AND 'name' = ?3;"
 }
@@ -36,6 +37,7 @@ fn test_orm_stmt_gen_delete() {
 		data: []
 		types: []
 		kinds: [.ge, .eq]
+		is_and: [true]
 	})
 	assert query == "DELETE FROM 'Test' WHERE 'id' >= ?0 AND 'name' = ?1;"
 }
