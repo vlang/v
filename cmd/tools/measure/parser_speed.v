@@ -6,6 +6,8 @@ import v.parser
 import v.errors
 import v.scanner
 
+const skip_tests = os.getenv_opt('SKIP_TESTS') or { '' }.bool()
+
 fn main() {
 	files := os.args#[1..]
 	if files.len > 0 && files[0].starts_with('@') {
@@ -31,7 +33,7 @@ fn process_files(files []string) ! {
 		if f == '' {
 			continue
 		}
-		if f.ends_with('_test.v') {
+		if skip_tests && f.ends_with('_test.v') {
 			continue
 		}
 		// do not measure the scanning, but only the parsing:
