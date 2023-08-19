@@ -280,7 +280,7 @@ body {
 }
 .doc-nav > .content > ul > li > ul > li.active {
 	border-color: #00000066;
-	border-color: var(--menu-search-result-hover-background-color);
+	border-color: var(--menu-indent-line-active-color);
 }
 .doc-nav > .content a {
 	color: #fff;
