@@ -43,12 +43,16 @@ pub fn unpack(data []u8, flags int) ![]u8 {
 	return unsafe { address.vbytes(int(out_len)) }
 }
 
+// compress compresses an array of bytes based on the given flags and returns the result in a new array
+// NB: this is a low level api, a high level implementation like zlib/gzip should be preferred
 [deprecated: 'use pack() instead']
 [deprecated_after: '2023-10-31']
 pub fn compress(data []u8, flags int) ![]u8 {
 	return pack(data, flags)
 }
 
+// decompress decompresses an array of bytes based on the given flags and returns the result in a new array
+// NB: this is a low level api, a high level implementation like zlib/gzip should be preferred
 [deprecated: 'use unpack() instead']
 [deprecated_after: '2023-10-31']
 pub fn decompress(data []u8, flags int) ![]u8 {

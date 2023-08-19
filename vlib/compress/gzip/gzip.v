@@ -7,7 +7,7 @@ import compress as compr
 import hash.crc32
 
 // pack compresses an array of bytes using gzip and returns the result in a new array
-// Example: compressed := gzip.compress(b)!
+// Example: compressed := gzip.pack(b)!
 pub fn pack(data []u8) ![]u8 {
 	compressed := compr.pack(data, 0)!
 	// header
@@ -134,7 +134,7 @@ pub fn validate(data []u8, params DecompressParams) !GzipHeader {
 }
 
 // unpack decompresses an array of bytes using zlib and returns the result in a new array
-// Example: decompressed := gzip.decompress(b)!
+// Example: decompressed := gzip.unpack(b)!
 pub fn unpack(data []u8, params DecompressParams) ![]u8 {
 	gzip_header := validate(data, params)!
 	header_length := gzip_header.length
@@ -152,12 +152,16 @@ pub fn unpack(data []u8, params DecompressParams) ![]u8 {
 	return decompressed
 }
 
+// compress compresses an array of bytes using gzip and returns the result in a new array
+// Example: compressed := gzip.compress(b)!
 [deprecated: 'use pack() instead']
 [deprecated_after: '2023-10-31']
 pub fn compress(data []u8) ![]u8 {
 	return pack(data)
 }
 
+// decompress decompresses an array of bytes using zlib and returns the result in a new array
+// Example: decompressed := gzip.decompress(b)!
 [deprecated: 'use unpack() instead']
 [deprecated_after: '2023-10-31']
 pub fn decompress(data []u8, params DecompressParams) ![]u8 {
