@@ -262,8 +262,9 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					}
 				}
 			}
-			if node.mod == param.name && !c.file.path.contains('vlib') {
-				c.error('duplicate of a module name `${param.name}`', param.pos)
+			if node.mod == param.name {
+				c.add_error_detail('Module name duplicates become an error after 2023-31-10.')
+				c.note('duplicate of a module name `${param.name}`', param.pos)
 			}
 			// Check if parameter name is already registered as imported module symbol
 			if c.check_import_sym_conflict(param.name) {

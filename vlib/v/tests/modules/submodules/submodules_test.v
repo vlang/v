@@ -4,10 +4,10 @@ import submodules.test.test2
 
 fn test_main() {
 	println('main')
-	main := submodules.Main{
+	mod := submodules.Main{
 		a: 'main'
 	}
-	assert 'main' == main.a
+	assert 'main' == mod.a
 
 	test_ := test.Test{
 		a: 'test'

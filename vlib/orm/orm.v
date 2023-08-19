@@ -350,25 +350,25 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table string, q string, kind StmtKin
 // orm - See SelectConfig
 // q, num, qm, start_pos - see orm_stmt_gen
 // where - See QueryData
-pub fn orm_select_gen(orm SelectConfig, q string, num bool, qm string, start_pos int, where QueryData) string {
+pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos int, where QueryData) string {
 	mut str := 'SELECT '
 
-	if orm.is_count {
+	if cfg.is_count {
 		str += 'COUNT(*)'
 	} else {
-		for i, field in orm.fields {
+		for i, field in cfg.fields {
 			str += '${q}${field}${q}'
-			if i < orm.fields.len - 1 {
+			if i < cfg.fields.len - 1 {
 				str += ', '
 			}
 		}
 	}
 
-	str += ' FROM ${q}${orm.table}${q}'
+	str += ' FROM ${q}${cfg.table}${q}'
 
 	mut c := start_pos
 
-	if orm.has_where {
+	if cfg.has_where {
 		str += ' WHERE '
 		for i, field in where.fields {
 			mut pre_par := false
@@ -402,13 +402,13 @@ pub fn orm_select_gen(orm SelectConfig, q string, num bool, qm string, start_pos
 
 	// Note: do not order, if the user did not want it explicitly,
 	// ordering is *slow*, especially if there are no indexes!
-	if orm.has_order {
+	if cfg.has_order {
 		str += ' ORDER BY '
-		str += '${q}${orm.order}${q} '
-		str += orm.order_type.to_str()
+		str += '${q}${cfg.order}${q} '
+		str += cfg.order_type.to_str()
 	}
 
-	if orm.has_limit {
+	if cfg.has_limit {
 		str += ' LIMIT ${qm}'
 		if num {
 			str += '${c}'
@@ -416,7 +416,7 @@ pub fn orm_select_gen(orm SelectConfig, q string, num bool, qm string, start_pos
 		}
 	}
 
-	if orm.has_offset {
+	if cfg.has_offset {
 		str += ' OFFSET ${qm}'
 		if num {
 			str += '${c}'
