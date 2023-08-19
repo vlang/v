@@ -270,9 +270,6 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				c.error('duplicate of an import symbol `${param.name}`', param.pos)
 			}
 		}
-		if node.mod == node.short_name && !c.file.path.contains('vlib') && node.mod != 'main' {
-			c.error('duplicate of a module name `${node.short_name}`', node.pos)
-		}
 		// Check if function name is already registered as imported module symbol
 		if !node.is_method && c.check_import_sym_conflict(node.short_name) {
 			c.error('duplicate of an import symbol `${node.short_name}`', node.pos)
