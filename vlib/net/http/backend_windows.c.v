@@ -30,3 +30,7 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string)
 	}
 	return parse_response(response_text)
 }
+
+fn (req &Request) ssl_do_stream(port int, method Method, host_name string, path string, cb StreamCallback) !Response {
+	return error('https stream not supported on Windows')
+}

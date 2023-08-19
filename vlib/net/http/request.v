@@ -10,6 +10,8 @@ import rand
 import strings
 import time
 
+pub type StreamCallback = fn (data string)
+
 // Request holds information about an HTTP request (either received by
 // a server or to be sent by a client)
 pub struct Request {
@@ -89,6 +91,69 @@ pub fn (req &Request) do() !Response {
 	return resp
 }
 
+// do_stream will send the HTTP request, return a `http.Response` and call the stream callback with the data received
+pub fn (req &Request) do_stream(cb StreamCallback) !Response {
+	mut url := urllib.parse(req.url) or { return error('http.Request.do: invalid url ${req.url}') }
+	mut rurl := url
+	mut resp := Response{}
+	mut no_redirects := 0
+	for {
+		if no_redirects == max_redirects {
+			return error('http.request.do: maximum number of redirects reached (${max_redirects})')
+		}
+		qresp := req.method_and_url_to_stream(req.method, rurl, cb)!
+		resp = qresp
+		if !req.allow_redirect {
+			break
+		}
+		if resp.status() !in [.moved_permanently, .found, .see_other, .temporary_redirect,
+			.permanent_redirect] {
+			break
+		}
+		// follow any redirects
+		mut redirect_url := resp.header.get(.location) or { '' }
+		if redirect_url.len > 0 && redirect_url[0] == `/` {
+			url.set_path(redirect_url) or {
+				return error('http.request.do: invalid path in redirect: "${redirect_url}"')
+			}
+			redirect_url = url.str()
+		}
+		qrurl := urllib.parse(redirect_url) or {
+			return error('http.request.do: invalid URL in redirect "${redirect_url}"')
+		}
+		rurl = qrurl
+		no_redirects++
+	}
+	return resp
+}
+
+fn (req &Request) method_and_url_to_stream(method Method, url urllib.URL, cb StreamCallback) !Response {
+	host_name := url.hostname()
+	scheme := url.scheme
+	p := url.escaped_path().trim_left('/')
+	path := if url.query().len > 0 { '/${p}?${url.query().encode()}' } else { '/${p}' }
+	mut nport := url.port().int()
+	if nport == 0 {
+		if scheme == 'http' {
+			nport = 80
+		}
+		if scheme == 'https' {
+			nport = 443
+		}
+	}
+	// println('fetch $method, $scheme, $host_name, $nport, $path ')
+	if scheme == 'https' {
+		// println('ssl_do( $nport, $method, $host_name, $path )')
+		res := req.ssl_do_stream(nport, method, host_name, path, cb)!
+		return res
+	} else if scheme == 'http' {
+		// println('http_do( $nport, $method, $host_name, $path )')
+		res := req.http_do_stream('${host_name}:${nport}', method, path, cb)!
+		return res
+	}
+	return error('http.request.method_and_url_to_stream: unsupported scheme: "${scheme}"')
+}
+
 fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Response {
 	host_name := url.hostname()
 	scheme := url.scheme
@@ -151,6 +216,30 @@ fn (req &Request) build_request_cookies_header() string {
 	}
 	cookie << req.header.values(.cookie)
 	return 'Cookie: ' + cookie.join('; ') + '\r\n'
+}
+
+fn (req &Request) http_do_stream(host string, method Method, path string, cb StreamCallback) !Response {
+	host_name, _ := net.split_address(host)!
+	s := req.build_request_headers(method, host_name, path)
+	mut client := net.dial_tcp(host)!
+	client.set_read_timeout(req.read_timeout)
+	client.set_write_timeout(req.write_timeout)
+	// TODO this really needs to be exposed somehow
+	client.write(s.bytes())!
+	$if trace_http_request ? {
+		eprintln('> ${s}')
+	}
+	for {
+		mut rbuf := []u8{len: 512}
+		length := client.read(mut rbuf) or { break }
+		if length < 1 {
+			break
+		}
+		cb(rbuf.bytestr())
+	}
+	client.close()!
+	// handle response here? or let the user do it by itself?
+	return parse_response('')
 }
 
 fn (req &Request) http_do(host string, method Method, path string) !Response {
