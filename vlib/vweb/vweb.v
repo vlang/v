@@ -522,10 +522,16 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 
 	routes := generate_routes(global_app)!
 	// check duplicate routes in controllers
+	mut controllers_sorted := []&ControllerPath{}
 	$if T is ControllerInterface {
 		mut paths := []string{}
-		for controller in global_app.controllers {
+		controllers_sorted = global_app.controllers.clone()
+		controllers_sorted.sort(a.path.len > b.path.len)
+		for controller in controllers_sorted {
 			if controller.host == '' {
+				if controller.path in paths {
+					return error('conflicting paths: duplicate controller handling the route "${controller.path}"')
+				}
 				paths << controller.path
 			}
 		}
@@ -564,6 +570,7 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 		ch <- &RequestParams{
 			connection: connection
 			global_app: unsafe { global_app }
+			controllers: controllers_sorted
 			routes: &routes
 		}
 	}
@@ -612,7 +619,7 @@ fn new_request_app[T](global_app &T, ctx Context, tid int) &T {
 }
 
 [manualfree]
-fn handle_conn[T](mut conn net.TcpConn, global_app &T, routes &map[string]Route, tid int) {
+fn handle_conn[T](mut conn net.TcpConn, global_app &T, controllers []&ControllerPath, routes &map[string]Route, tid int) {
 	conn.set_read_timeout(30 * time.second)
 	conn.set_write_timeout(30 * time.second)
 	defer {
@@ -680,7 +687,7 @@ fn handle_conn[T](mut conn net.TcpConn, global_app &T, routes &map[string]Route,
 
 	// match controller paths
 	$if T is ControllerInterface {
-		for controller in global_app.controllers {
+		for controller in controllers {
 			// skip controller if the hosts don't match
 			if controller.host != '' && host != controller.host {
 				continue
@@ -1077,8 +1084,9 @@ fn filter(s string) string {
 
 // Worker functions for the thread pool:
 struct RequestParams {
-	global_app voidptr
-	routes     &map[string]Route
+	global_app  voidptr
+	controllers []&ControllerPath
+	routes      &map[string]Route
 mut:
 	connection &net.TcpConn
 }
@@ -1103,7 +1111,8 @@ fn (mut w Worker[T]) process_incomming_requests() {
 		$if vweb_trace_worker_scan ? {
 			eprintln(sid)
 		}
-		handle_conn[T](mut params.connection, params.global_app, params.routes, w.id)
+		handle_conn[T](mut params.connection, params.global_app, params.controllers, params.routes,
+			w.id)
 	}
 	$if vweb_trace_worker_scan ? {
 		eprintln('[vweb] closing worker ${w.id}.')

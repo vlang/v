@@ -88,6 +88,16 @@ fn test_other_path() {
 	assert x.body == 'Other path'
 }
 
+fn test_other_hided_home() {
+	x := http.get('http://${localserver}/other/hide') or { panic(err) }
+	assert x.body == 'Other'
+}
+
+fn test_other_hided_path() {
+	x := http.get('http://${localserver}/other/hide/path') or { panic(err) }
+	assert x.body == 'Other path'
+}
+
 fn test_different_404() {
 	res_app := http.get('http://${localserver}/zxcnbnm') or { panic(err) }
 	assert res_app.status() == .not_found
