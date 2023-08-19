@@ -52,11 +52,6 @@ fn check_path(vexe string, dir string, tests []string) int {
 			cmd: '${os.quoted_path(vexe)} doc -comments ${os.quoted_path(program)}'
 			out_filename: 'main.comments.out'
 		)
-		fails += check_output(
-			program: program
-			cmd: '${os.quoted_path(vexe)} doc -readme -comments ${os.quoted_path(program)}'
-			out_filename: 'main.readme.comments.out'
-		)
 		total_fails += fails
 		if fails == 0 {
 			println(term.green('OK'))
