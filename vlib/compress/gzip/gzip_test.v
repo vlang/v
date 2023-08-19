@@ -4,13 +4,13 @@ import hash.crc32
 
 fn test_gzip() {
 	uncompressed := 'Hello world!'
-	compressed := compress(uncompressed.bytes())!
-	decompressed := decompress(compressed)!
+	compressed := pack(uncompressed.bytes())!
+	decompressed := unpack(compressed)!
 	assert decompressed == uncompressed.bytes()
 }
 
 fn assert_decompress_error(data []u8, reason string) ! {
-	decompress(data) or {
+	unpack(data) or {
 		assert err.msg() == reason
 		return
 	}
@@ -34,37 +34,37 @@ fn test_gzip_invalid_compression() {
 
 fn test_gzip_with_ftext() {
 	uncompressed := 'Hello world!'
-	mut compressed := compress(uncompressed.bytes())!
+	mut compressed := pack(uncompressed.bytes())!
 	compressed[3] |= ftext
-	decompressed := decompress(compressed)!
+	decompressed := unpack(compressed)!
 	assert decompressed == uncompressed.bytes()
 }
 
 fn test_gzip_with_fname() {
 	uncompressed := 'Hello world!'
-	mut compressed := compress(uncompressed.bytes())!
+	mut compressed := pack(uncompressed.bytes())!
 	compressed[3] |= fname
 	compressed.insert(10, `h`)
 	compressed.insert(11, `i`)
 	compressed.insert(12, 0x00)
-	decompressed := decompress(compressed)!
+	decompressed := unpack(compressed)!
 	assert decompressed == uncompressed.bytes()
 }
 
 fn test_gzip_with_fcomment() {
 	uncompressed := 'Hello world!'
-	mut compressed := compress(uncompressed.bytes())!
+	mut compressed := pack(uncompressed.bytes())!
 	compressed[3] |= fcomment
 	compressed.insert(10, `h`)
 	compressed.insert(11, `i`)
 	compressed.insert(12, 0x00)
-	decompressed := decompress(compressed)!
+	decompressed := unpack(compressed)!
 	assert decompressed == uncompressed.bytes()
 }
 
 fn test_gzip_with_fname_fcomment() {
 	uncompressed := 'Hello world!'
-	mut compressed := compress(uncompressed.bytes())!
+	mut compressed := pack(uncompressed.bytes())!
 	compressed[3] |= (fname | fcomment)
 	compressed.insert(10, `h`)
 	compressed.insert(11, `i`)
@@ -72,37 +72,37 @@ fn test_gzip_with_fname_fcomment() {
 	compressed.insert(10, `h`)
 	compressed.insert(11, `i`)
 	compressed.insert(12, 0x00)
-	decompressed := decompress(compressed)!
+	decompressed := unpack(compressed)!
 	assert decompressed == uncompressed.bytes()
 }
 
 fn test_gzip_with_fextra() {
 	uncompressed := 'Hello world!'
-	mut compressed := compress(uncompressed.bytes())!
+	mut compressed := pack(uncompressed.bytes())!
 	compressed[3] |= fextra
 	compressed.insert(10, 2)
 	compressed.insert(11, `h`)
 	compressed.insert(12, `i`)
-	decompressed := decompress(compressed)!
+	decompressed := unpack(compressed)!
 	assert decompressed == uncompressed.bytes()
 }
 
 fn test_gzip_with_hcrc() {
 	uncompressed := 'Hello world!'
-	mut compressed := compress(uncompressed.bytes())!
+	mut compressed := pack(uncompressed.bytes())!
 	compressed[3] |= fhcrc
 	checksum := crc32.sum(compressed[..10])
 	compressed.insert(10, u8(checksum >> 24))
 	compressed.insert(11, u8(checksum >> 16))
 	compressed.insert(12, u8(checksum >> 8))
 	compressed.insert(13, u8(checksum))
-	decompressed := decompress(compressed)!
+	decompressed := unpack(compressed)!
 	assert decompressed == uncompressed.bytes()
 }
 
 fn test_gzip_with_invalid_hcrc() {
 	uncompressed := 'Hello world!'
-	mut compressed := compress(uncompressed.bytes())!
+	mut compressed := pack(uncompressed.bytes())!
 	compressed[3] |= fhcrc
 	checksum := crc32.sum(compressed[..10])
 	compressed.insert(10, u8(checksum >> 24))
@@ -114,21 +114,21 @@ fn test_gzip_with_invalid_hcrc() {
 
 fn test_gzip_with_invalid_checksum() {
 	uncompressed := 'Hello world!'
-	mut compressed := compress(uncompressed.bytes())!
+	mut compressed := pack(uncompressed.bytes())!
 	compressed[compressed.len - 5] += 1
 	assert_decompress_error(compressed, 'checksum verification failed')!
 }
 
 fn test_gzip_with_invalid_length() {
 	uncompressed := 'Hello world!'
-	mut compressed := compress(uncompressed.bytes())!
+	mut compressed := pack(uncompressed.bytes())!
 	compressed[compressed.len - 1] += 1
 	assert_decompress_error(compressed, 'length verification failed, got 12, expected 13')!
 }
 
 fn test_gzip_with_invalid_flags() {
 	uncompressed := 'Hello world!'
-	mut compressed := compress(uncompressed.bytes())!
+	mut compressed := pack(uncompressed.bytes())!
 	compressed[3] |= 0b1000_0000
 	assert_decompress_error(compressed, 'reserved flags are set, unsupported field detected')!
 }
