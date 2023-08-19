@@ -444,18 +444,18 @@ fn (mut s PeSection) set_size_of_raw_data(mut g Gen, size int) {
 	g.write32_at(s.header_pos + __offsetof(PeSectionHeader, size_of_raw_data), size)
 }
 
-fn (mut s PeSection) set_virtual_size(mut g Gen, size int) {
-	aligned := (size + native.pe_section_align - 1) & ~(native.pe_section_align - 1)
-
-	s.header.virtual_size = aligned
-	g.write32_at(s.header_pos + __offsetof(PeSectionHeader, virtual_size), aligned)
-}
-
 fn (mut s PeSection) set_virtual_address(mut g Gen, addr int) {
 	aligned := (addr + native.pe_section_align - 1) & ~(native.pe_section_align - 1)
 
 	s.header.virtual_address = aligned
 	g.write32_at(s.header_pos + __offsetof(PeSectionHeader, virtual_address), aligned)
+}
+
+fn (mut s PeSection) set_virtual_size(mut g Gen, size int) {
+	aligned := (size + native.pe_section_align - 1) & ~(native.pe_section_align - 1)
+
+	s.header.virtual_size = aligned
+	g.write32_at(s.header_pos + __offsetof(PeSectionHeader, virtual_size), aligned)
 }
 
 fn (mut g Gen) create_pe_section(name string, header PeSectionHeader) PeSection {
@@ -514,10 +514,43 @@ fn (mut g Gen) get_pe_section_index(name string) ?int {
 	return none
 }
 
+[_pack: '1']
+struct PeImportDirectoryTable {
+	import_lookup_table_rva int
+	time_date_stamp         int
+	forwarder_chain         int
+	name_rva                int
+mut:
+	import_address_table_rva int
+}
+
+fn default_pe_idt() PeImportDirectoryTable {
+	return PeImportDirectoryTable{
+		forwarder_chain: int(0xffffffff)
+		time_date_stamp: int(0xffffffff)
+	}
+}
+
+const pe_idt_field_description = ['Import Lookup Table RVA', 'Time/Date Stamp', 'Forwarder Chain',
+	'Name RVA', 'Import Address Table RVA']
+
+fn (mut g Gen) gen_pe_idt(idt &PeImportDirectoryTable, dll_name string) {
+	fields := [idt.import_lookup_table_rva, idt.time_date_stamp, idt.forwarder_chain, idt.name_rva,
+		idt.import_address_table_rva]
+
+	assert fields.len == native.pe_idt_field_description.len
+	for i, field in fields {
+		g.write32(field)
+		g.println('; ' + native.pe_idt_field_description[i])
+	}
+	g.println('^^^ Import Directory Table (${dll_name})')
+}
+
 struct PeDllImport {
 	name string
 mut:
 	functions []string
+	idt_pos   i64
 }
 
 fn (mut g Gen) gen_pe_directory_table(imports []PeDllImport) {
@@ -543,37 +576,40 @@ fn (mut g Gen) gen_pe_idata() {
 				'GetStdHandle',
 				'ExitProcess',
 				'WriteFile',
+				// winapi functions
 			]
 		},
 		PeDllImport{
 			name: 'USER32.DLL'
 		},
 		PeDllImport{
-			name: 'CRTDLL.DLL'
-			functions: []
+			name: 'msvcrt.dll'
+			functions: [
+				'malloc',
+				'free',
+				'printf',
+				'puts',
+				'isdigit',
+				'isalpha',
+				'memset'
+				// etc...
+			]
 		},
 	]
 
-	// directory table
-	g.write32(0) // import lookup rva
-	g.println('; import lookup table rva')
-	g.write32(0) // time/date
-	g.println('; time/date stamp')
-	g.write32(0) // forwarder chain
-	g.println('; forwarder chain')
-
-	dll_name_addr_pos := g.pos()
-	g.write32(0) // dll name rva; filled in later
-	g.println('; dll name rva')
-	g.write32(idata_section.header.virtual_address + 40) // address table rva
-	g.println('; import address table rva')
-
-	// null entry
-	g.zeroes(16)
-	g.println('; null entry')
-	g.println('^^^ directory table (PE)')
-
+	// import directory table
 	for mut imp in imports {
+		// generate idt
+		idt := default_pe_idt()
+		imp.idt_pos = g.pos()
+		g.gen_pe_idt(&idt, imp.name)
+	}
+	g.gen_pe_idt(&PeImportDirectoryTable{}, 'null entry') // null entry
+
+	for imp in imports {
+		g.write32_at(imp.idt_pos + __offsetof(PeImportDirectoryTable, import_address_table_rva),
+			int(g.pos() - idata_pos) + idata_section.header.virtual_address + 4)
+
 		for func in imp.functions {
 			g.pe_dll_relocations[func] = g.pos()
 			g.write64(0) // filled in later
@@ -581,40 +617,43 @@ fn (mut g Gen) gen_pe_idata() {
 		}
 		g.write64(0) // null entry
 		g.println('; null entry')
-		g.println('^^^ import lookup table for "${imp.name}" (PE)')
+		g.println('^^^ import lookup table ("${imp.name}")')
 	}
 
 	// null entry
 	g.zeroes(4)
-	g.println('^^^ import lookup table (PE)')
+	g.println('; null entry')
 
 	// dll names	
-	g.write32_at(dll_name_addr_pos, int(g.pos() - idata_pos) + idata_section.header.virtual_address)
 	for imp in imports {
+		g.write32_at(imp.idt_pos + __offsetof(PeImportDirectoryTable, name_rva),
+			int(g.pos() - idata_pos) + idata_section.header.virtual_address)
 		g.write_string(imp.name)
 		g.println('"${imp.name}"')
 	}
 
-	// hint-name table; reference: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#hintname-table
 	for imp in imports {
 		for func in imp.functions {
 			g.write64_at(g.pe_dll_relocations[func], i64(u64(g.pos() - idata_pos +
 				i64(idata_section.header.virtual_address)) << 32))
+			g.pe_dll_relocations[func] = g.pe_dll_relocations[func] - idata_pos +
+				idata_section.header.virtual_address + 4 // set correct lookup address for function calls
 
 			g.write16(0) // export pointer index; we go via names, so 0
 			g.write_string(func)
 			g.println('"${func}"')
 		}
+
+		// null entry
+		g.zeroes(4)
+		g.println('; null entry')
+		g.println('^^^ hint/name table (${imp.name})')
 	}
-	// zero entry
-	g.zeroes(4)
 
 	// write the section size
 	idata_size := int(g.pos() - idata_pos)
 	idata_section.set_size_of_raw_data(mut g, idata_size)
 	idata_section.set_virtual_size(mut g, idata_size)
-
-	g.println('^^^ hint/name table (PE)')
 }
 
 pub fn (mut g Gen) generate_pe_header() {
@@ -630,7 +669,7 @@ pub fn (mut g Gen) generate_pe_header() {
 			characteristics: native.pe_scn_cnt_initialized_data | native.pe_scn_mem_read | native.pe_scn_mem_write
 		),
 		g.create_pe_section('.text',
-			characteristics: native.pe_scn_cnt_code | native.pe_scn_mem_execute | native.pe_scn_mem_read
+			characteristics: native.pe_scn_cnt_initialized_data | native.pe_scn_cnt_code | native.pe_scn_mem_execute | native.pe_scn_mem_read
 		),
 	]
 
@@ -641,17 +680,41 @@ pub fn (mut g Gen) generate_pe_header() {
 	g.println('')
 	g.println('^^^ padding to addr 0x${g.pos().hex()}')
 
-	g.code_start_pos = g.pos()
+	// patch virtual addr of .text section
+	g.patch_section_virtual_addrs()
 
 	text_section_index := g.get_pe_section_index('.text') or {
 		g.n_error('no ".text" section generated')
 	}
 	mut text_section := &mut g.pe_sections[text_section_index]
+	g.code_start_pos = g.pos()
 	text_section.set_pointer_to_raw_data(mut g, int(g.code_start_pos))
 
 	g.code_gen.call(0)
 	g.code_gen.ret()
 	g.main_fn_addr = g.pos()
+}
+
+fn (mut g Gen) patch_section_virtual_addrs() {
+	if g.pe_sections.len == 0 {
+		return // _rare_ case
+	}
+
+	mut addr := g.pe_sections[0].header.virtual_address
+	for mut section in g.pe_sections {
+		section.set_virtual_address(mut g, addr)
+		addr += section.header.virtual_size
+
+		match section.name {
+			'.text' {
+				g.write32_at(g.pe_opt_hdr_pos + __offsetof(Pe32PlusOptionalHeader, base_of_code) - 2,
+					section.header.virtual_address)
+				g.write32_at(g.pe_opt_hdr_pos +
+					__offsetof(Pe32PlusOptionalHeader, address_of_entry_point) - 2, section.header.virtual_address)
+			}
+			else {}
+		}
+	}
 }
 
 fn (mut g Gen) patch_pe_code_size() {
@@ -678,28 +741,6 @@ fn (mut g Gen) patch_pe_image_size() {
 		image_size)
 }
 
-fn (mut g Gen) patch_pe_virtual_addrs() {
-	if g.pe_sections.len == 0 {
-		return
-	}
-
-	mut addr := g.pe_sections[0].header.virtual_address
-	for mut section in g.pe_sections {
-		section.set_virtual_address(mut g, addr)
-		addr += section.header.virtual_size
-
-		match section.name {
-			'.text' {
-				g.write32_at(g.pe_opt_hdr_pos + __offsetof(Pe32PlusOptionalHeader, base_of_code) - 2,
-					section.header.virtual_address)
-				g.write32_at(g.pe_opt_hdr_pos +
-					__offsetof(Pe32PlusOptionalHeader, address_of_entry_point) - 2, section.header.virtual_address)
-			}
-			else {}
-		}
-	}
-}
-
 pub fn (mut g Gen) generate_pe_footer() {
 	g.sym_string_table()
 
@@ -711,7 +752,6 @@ pub fn (mut g Gen) generate_pe_footer() {
 	}
 
 	g.patch_pe_code_size()
-	g.patch_pe_virtual_addrs()
 	g.patch_pe_image_size()
 
 	// patch call main

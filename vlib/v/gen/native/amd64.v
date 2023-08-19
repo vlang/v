@@ -952,10 +952,17 @@ fn (mut c Amd64) extern_call(addr int) {
 		}
 		.windows {
 			// TODO: handle others than dll imports
+			// c.g.write8(0xff)
+			// c.g.write8(0x14)
+			// c.g.write8(0x25)
+			// c.g.write32(addr)
+			////c.g.println('call QWORD PTR [rip + 0x${addr.hex()}] ; __declspec(dllimport)`')
+			// c.g.println('call QWORD [0x${addr.hex()}] ; __declspec(dllimport)')
+
 			c.g.write8(0xff)
 			c.g.write8(0x15)
 			c.g.write32(addr)
-			c.g.println('call QWORD PTR [rip + 0x${addr.hex()}] ; __declspec(dllimport)`')
+			c.g.println('call QWORD [rip + 0xffffffff${addr.hex()}]')
 		}
 		else {
 			c.g.n_error('extern calls not implemented for ${c.g.pref.os}')
@@ -1259,10 +1266,13 @@ pub fn (mut c Amd64) inline_strlen(r Amd64Register) {
 	c.g.println('strlen rax, ${r}')
 }
 
-pub fn (mut c Amd64) get_dllcall_addr(import_addr i64) int {
+pub fn (mut c Amd64) get_dllcall_addr(import_addr i64) i64 {
 	// TODO: handle imports from different DLLs
 	// +2 because of ff 05
-	return int(-(0xe00 + c.g.pos() + 2) + import_addr)
+	// return int(-(0xe00 + c.g.pos() + 2) + import_addr)
+	// return int(c.g.code_start_pos + import_addr)
+	text_section := c.g.get_pe_section('.text') or { c.g.n_error('no .text section generated') }
+	return 0xfffffffa - (c.g.pos() - c.g.code_start_pos + text_section.header.virtual_address - import_addr)
 }
 
 pub fn (mut c Amd64) dllcall(symbol string) {
@@ -1274,7 +1284,7 @@ pub fn (mut c Amd64) dllcall(symbol string) {
 		c.g.n_error('could not find DLL import named `${symbol}`')
 	}
 	call_addr := c.get_dllcall_addr(import_addr)
-	c.extern_call(call_addr)
+	c.extern_call(int(call_addr))
 }
 
 fn (mut c Amd64) gen_print(s string, fd int) {
@@ -1840,8 +1850,16 @@ pub fn (mut c Amd64) call_fn(node ast.CallExpr) {
 	}
 	c.mov(Amd64Register.rax, ssereg_args.len)
 	if node.name in c.g.extern_symbols {
-		c.g.extern_fn_calls[c.g.pos()] = node.name
-		c.extern_call(int(addr))
+		if c.g.pref.os == .windows {
+			mut symbol := node.name
+			if symbol.starts_with('C.') {
+				symbol = symbol.bytes()[2..].bytestr()
+			}
+			c.dllcall(symbol)
+		} else {
+			c.g.extern_fn_calls[c.g.pos()] = node.name
+			c.extern_call(int(addr))
+		}
 	} else if addr == 0 {
 		c.g.delay_fn_call(n)
 		c.call(int(0))

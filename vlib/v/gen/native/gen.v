@@ -603,6 +603,12 @@ fn (mut g Gen) write16_at(at i64, n int) {
 	g.buf[at + 1] = u8(n >> 8)
 }
 
+fn (mut g Gen) read64_at(at i64) i64 {
+	return i64(u64(g.buf[at]) | u64(g.buf[at + 1]) << 8 | u64(g.buf[at + 2]) << 16 | u64(g.buf[at +
+		3]) << 24 | u64(g.buf[at + 4]) << 32 | u64(g.buf[at + 5]) << 40 | u64(g.buf[at + 6]) << 48 | u64(g.buf[
+		at + 7]) << 56)
+}
+
 pub fn (mut g Gen) zeroes(n int) {
 	for _ in 0 .. n {
 		g.buf << 0
