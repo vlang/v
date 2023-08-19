@@ -183,11 +183,15 @@ fn (mut s Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Tok
 	cidx := s.tidx
 	s.tidx++
 	line_offset := if tok_kind == .hash { 0 } else { 1 }
+	mut max_column := s.current_column() - len + 1
+	if max_column < 1 {
+		max_column = 1
+	}
 	return token.Token{
 		kind: tok_kind
 		lit: lit
 		line_nr: s.line_nr + line_offset
-		col: mathutil.max(1, s.current_column() - len + 1)
+		col: max_column
 		pos: s.pos - len + 1
 		len: len
 		tidx: cidx
@@ -211,11 +215,15 @@ fn (s &Scanner) new_eof_token() token.Token {
 fn (mut s Scanner) new_multiline_token(tok_kind token.Kind, lit string, len int, start_line int) token.Token {
 	cidx := s.tidx
 	s.tidx++
+	mut max_column := s.current_column() - len + 1
+	if max_column < 1 {
+		max_column = 1
+	}
 	return token.Token{
 		kind: tok_kind
 		lit: lit
 		line_nr: start_line + 1
-		col: mathutil.max(1, s.current_column() - len + 1)
+		col: max_column
 		pos: s.pos - len + 1
 		len: len
 		tidx: cidx
@@ -1549,7 +1557,10 @@ fn (mut s Scanner) eat_to_end_of_line() {
 
 [inline]
 fn (mut s Scanner) inc_line_number() {
-	s.last_nl_pos = mathutil.min(s.text.len - 1, s.pos)
+	s.last_nl_pos = s.text.len - 1
+	if s.last_nl_pos > s.pos {
+		s.last_nl_pos = s.pos
+	}
 	if s.is_crlf {
 		s.last_nl_pos++
 	}

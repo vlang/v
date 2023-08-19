@@ -2294,6 +2294,7 @@ fn (mut p Parser) ident(language ast.Language) ast.Ident {
 	}
 }
 
+[direct_array_access]
 fn (p &Parser) is_generic_struct_init() bool {
 	lit0_is_capital := p.tok.kind != .eof && p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
 	if !lit0_is_capital || p.peek_tok.kind !in [.lt, .lsbr] {
@@ -2328,6 +2329,7 @@ fn (p &Parser) is_generic_struct_init() bool {
 	return false
 }
 
+[direct_array_access; inline]
 fn (p &Parser) is_typename(t token.Token) bool {
 	return t.kind == .name && (t.lit[0].is_capital() || p.table.known_type(t.lit))
 }
@@ -2344,6 +2346,7 @@ fn (p &Parser) is_typename(t token.Token) bool {
 // 8. if there is a &, ignore the & and see if it is a type
 // 9. otherwise, it's not generic
 // see also test_generic_detection in vlib/v/tests/generics_test.v
+[direct_array_access]
 fn (p &Parser) is_generic_call() bool {
 	lit0_is_capital := p.tok.kind != .eof && p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
 	if lit0_is_capital || p.peek_tok.kind !in [.lt, .lsbr] {
@@ -2457,6 +2460,7 @@ fn (mut p Parser) is_generic_cast() bool {
 	return false
 }
 
+[direct_array_access]
 fn (mut p Parser) name_expr() ast.Expr {
 	prev_tok_kind := p.prev_tok.kind
 	mut node := ast.empty_expr
@@ -2603,11 +2607,11 @@ fn (mut p Parser) name_expr() ast.Expr {
 			if p.tok.lit in p.imports {
 				// mark the imported module as used
 				p.register_used_import(p.tok.lit)
-				if p.peek_tok.kind == .dot && p.peek_token(2).kind != .eof
-					&& p.peek_token(2).lit.len > 0 && p.peek_token(2).lit[0].is_capital() {
+				tk2 := p.peek_token(2)
+				if p.peek_tok.kind == .dot && tk2.kind != .eof && tk2.lit.len > 0
+					&& tk2.lit[0].is_capital() {
 					is_mod_cast = true
-				} else if p.peek_tok.kind == .dot && p.peek_token(2).kind != .eof
-					&& p.peek_token(2).lit.len == 0 {
+				} else if p.peek_tok.kind == .dot && tk2.kind != .eof && tk2.lit.len == 0 {
 					// incomplete module selector must be handled by dot_expr instead
 					ident := p.ident(language)
 					node = ident
