@@ -591,7 +591,7 @@ fn (mut g Gen) gen_pe_idata() {
 				'puts',
 				'isdigit',
 				'isalpha',
-				'memset'
+				'memset',
 				// etc...
 			]
 		},
@@ -697,7 +697,7 @@ pub fn (mut g Gen) generate_pe_header() {
 
 fn (mut g Gen) patch_section_virtual_addrs() {
 	if g.pe_sections.len == 0 {
-		return // _rare_ case
+		return
 	}
 
 	mut addr := g.pe_sections[0].header.virtual_address
