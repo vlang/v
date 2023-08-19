@@ -190,6 +190,12 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 							for i, typ in node.right.expr_types {
 								c.ensure_type_exists(typ, node.right.exprs[i].pos())
 							}
+						} else {
+							elem_type := right_final_sym.array_info().elem_type
+							c.check_expected(left_type, elem_type) or {
+								c.error('left operand to `${node.op}` does not match the array element type: ${err.msg()}',
+									left_right_pos)
+							}
 						}
 					}
 				}
