@@ -29,7 +29,7 @@ fn main() {
 	}
 	compressed := match compression_type {
 		.zlib {
-			zlib.compress(content) or {
+			zlib.pack(content) or {
 				eprintln('compression error: ${err}')
 				exit(1)
 			}

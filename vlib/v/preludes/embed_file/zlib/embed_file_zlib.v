@@ -5,8 +5,8 @@ import v.embed_file
 
 struct ZLibDecoder {}
 
-fn (_ ZLibDecoder) decompress(data []u8) ![]u8 {
-	return zlib.decompress(data)
+fn (_ ZLibDecoder) unpack(data []u8) ![]u8 {
+	return zlib.unpack(data)
 }
 
 fn init() {

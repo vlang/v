@@ -8,10 +8,10 @@ pub const max_size = u64(1 << 31)
 fn C.tdefl_compress_mem_to_heap(source_buf voidptr, source_buf_len usize, out_len &usize, flags int) voidptr
 fn C.tinfl_decompress_mem_to_heap(source_buf voidptr, source_buf_len usize, out_len &usize, flags int) voidptr
 
-// compresses an array of bytes based on providing flags and returns the compressed bytes in a new array
+// pack compresses an array of bytes based on the given flags and returns the result in a new array
 // NB: this is a low level api, a high level implementation like zlib/gzip should be preferred
 [manualfree]
-pub fn compress(data []u8, flags int) ![]u8 {
+pub fn pack(data []u8, flags int) ![]u8 {
 	if u64(data.len) > compress.max_size {
 		return error('data too large (${data.len} > ${compress.max_size})')
 	}
@@ -27,10 +27,10 @@ pub fn compress(data []u8, flags int) ![]u8 {
 	return unsafe { address.vbytes(int(out_len)) }
 }
 
-// decompresses an array of bytes based on providing flags and returns the decompressed bytes in a new array
+// unpack decompresses an array of bytes based on the given flags and returns the result in a new array
 // NB: this is a low level api, a high level implementation like zlib/gzip should be preferred
 [manualfree]
-pub fn decompress(data []u8, flags int) ![]u8 {
+pub fn unpack(data []u8, flags int) ![]u8 {
 	mut out_len := usize(0)
 
 	address := C.tinfl_decompress_mem_to_heap(data.data, data.len, &out_len, flags)
@@ -41,4 +41,16 @@ pub fn decompress(data []u8, flags int) ![]u8 {
 		return error('decompressed data is too large (${out_len} > ${compress.max_size})')
 	}
 	return unsafe { address.vbytes(int(out_len)) }
+}
+
+[deprecated: 'use pack() instead']
+[deprecated_after: '2023-10-31']
+pub fn compress(data []u8, flags int) ![]u8 {
+	return pack(data, flags)
+}
+
+[deprecated: 'use unpack() instead']
+[deprecated_after: '2023-10-31']
+pub fn decompress(data []u8, flags int) ![]u8 {
+	return unpack(data, flags)
 }

@@ -66,7 +66,7 @@ pub fn (mut ed EmbedFileData) data() &u8 {
 			panic('EmbedFileData error: unknown compression of "${ed.path}": "${ed.compression_type}"')
 		}
 		compressed := unsafe { ed.compressed.vbytes(ed.len) }
-		decompressed := decoder.decompress(compressed) or {
+		decompressed := decoder.unpack(compressed) or {
 			panic('EmbedFileData error: decompression of "${ed.path}" failed: ${err}')
 		}
 		unsafe {
