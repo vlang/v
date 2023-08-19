@@ -3151,7 +3151,7 @@ pub fn say_hi() {
 }
 ```
 All items inside a module can be used between the files of a module regardless of whether or
-not they're prefaced with the `pub` keyword.
+not they are prefaced with the `pub` keyword.
 ```v
 // myfile2.v
 module mymodule
