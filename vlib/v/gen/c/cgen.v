@@ -1949,7 +1949,8 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 		} else {
 			if ret_typ.has_flag(.option_mut_param_t) {
 				styp = styp.replace('*', '')
-				g.writeln('${g.typ(ret_typ).replace('*', '')} ${tmp_var};')
+				ret_styp := g.typ(ret_typ).replace('*', '')
+				g.writeln('${ret_styp} ${tmp_var};')
 			} else {
 				g.writeln('${g.typ(ret_typ)} ${tmp_var};')
 			}
