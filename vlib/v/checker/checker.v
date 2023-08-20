@@ -1818,6 +1818,10 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 						if field.expr.language == .c {
 							continue
 						}
+						if field.expr.kind in [.constant, .unresolved] {
+							c.ident(mut field.expr)
+							continue
+						}
 					}
 					mut pos := field.expr.pos()
 					if pos.pos == 0 {
