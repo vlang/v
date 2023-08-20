@@ -28,7 +28,7 @@ pub enum DOMEventType {
 	update_cursor
 	quit_requested
 	clipboard_pasted
-	files_droped
+	files_dropped
 	num
 }
 

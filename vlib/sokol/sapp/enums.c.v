@@ -24,7 +24,7 @@ pub enum EventType {
 	resumed
 	quit_requested
 	clipboard_pasted
-	files_droped
+	files_dropped
 	num
 }
 
