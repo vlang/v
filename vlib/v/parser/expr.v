@@ -147,11 +147,14 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 		.lpar {
 			mut pos := p.tok.pos()
 			p.check(.lpar)
+			mut comments := p.eat_comments()
 			node = p.expr(0)
+			comments << p.eat_comments()
 			p.check(.rpar)
 			node = ast.ParExpr{
 				expr: node
 				pos: pos.extend(p.prev_tok.pos())
+				comments: comments
 			}
 		}
 		.key_if {

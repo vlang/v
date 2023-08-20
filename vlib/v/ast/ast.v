@@ -1380,7 +1380,8 @@ pub struct ParExpr {
 pub:
 	pos token.Pos
 pub mut:
-	expr Expr
+	expr     Expr
+	comments []Comment
 }
 
 [minify]
