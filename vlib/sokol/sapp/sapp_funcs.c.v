@@ -89,10 +89,10 @@ fn C.sapp_set_window_title(&char)
 // /* set the window icon (only on Windows and Linux) */
 // SOKOL_APP_API_DECL void sapp_set_icon(const sapp_icon_desc* icon_desc);
 
-// Get number of droped files
+// Get number of dropped files
 fn C.sapp_get_num_dropped_files() int
 
-// Get the file path of the droped file
+// Get the file path of the dropped file
 fn C.sapp_get_dropped_file_path(int) &u8
 
 // special run-function for SOKOL_NO_ENTRY (in standard mode this is an empty stub)
