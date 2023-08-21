@@ -3150,6 +3150,17 @@ pub fn say_hi() {
 	println('hello from mymodule!')
 }
 ```
+All items inside a module can be used between the files of a module regardless of whether or
+not they are prefaced with the `pub` keyword.
+```v failcompile
+// myfile2.v
+module mymodule
+
+pub fn say_hi_and_bye() {
+	say_hi() // from myfile.v
+	println('goodbye from mymodule')
+}
+```
 
 You can now use `mymodule` in your code:
 
@@ -3158,6 +3169,7 @@ import mymodule
 
 fn main() {
 	mymodule.say_hi()
+	mymodule.say_hi_and_bye()
 }
 ```
 
@@ -3453,7 +3465,9 @@ fn fn1(s Foo) {
 
 #### Casting an interface
 
-We can test the underlying type of an interface using dynamic cast operators:
+We can test the underlying type of an interface using dynamic cast operators.
+> **Note**
+> Dynamic cast converts variable `s` into a pointer inside the `if` statemnts in this example:
 
 ```v oksyntax
 // interface-example.3 (continued from interface-example.1)
