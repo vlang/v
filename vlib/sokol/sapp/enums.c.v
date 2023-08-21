@@ -26,6 +26,7 @@ pub enum EventType {
 	clipboard_pasted
 	files_dropped
 	num
+	files_droped  [deprecated: 'use files_dropped instead'; deprecated_after: '2023-08-21']
 }
 
 pub enum MouseButton {
