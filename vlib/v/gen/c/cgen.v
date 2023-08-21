@@ -4544,7 +4544,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 			g.expr_with_opt(node.expr, expr_type, (sym.info as ast.Alias).parent_type)
 		} else {
 			g.write('(${cast_label}(')
-			if sym.kind == .alias && g.table.final_sym(node.typ).kind == .string {
+			if sym.kind == .alias && g.table.final_sym(node.typ).kind in [.string, .map, .array] {
 				ptr_cnt := node.typ.nr_muls() - expr_type.nr_muls()
 				if ptr_cnt > 0 {
 					g.write('&'.repeat(ptr_cnt))
