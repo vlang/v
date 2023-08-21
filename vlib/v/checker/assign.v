@@ -376,7 +376,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						}
 						if left.name == left.mod && left.name != 'main' {
 							c.add_error_detail('Module name duplicates become an error after 2023-31-10.')
-							c.note('duplicate of a module names `${left.name}`', left.pos)
+							c.note('duplicate of a module name `${left.name}`', left.pos)
 						}
 						// Check if variable name is already registered as imported module symbol
 						if c.check_import_sym_conflict(left.name) {

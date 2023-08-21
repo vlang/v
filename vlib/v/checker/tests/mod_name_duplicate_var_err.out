@@ -1,4 +1,4 @@
-vlib/v/checker/tests/mod_name_duplicate_var_err.vv:4:2: notice: duplicate of a module names `foo`
+vlib/v/checker/tests/mod_name_duplicate_var_err.vv:4:2: notice: duplicate of a module name `foo`
     2 | 
     3 | fn bar() {
     4 |     foo := 'bar'

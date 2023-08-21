@@ -1,4 +1,4 @@
-vlib/v/checker/tests/mod_name_duplicate_const_err.vv:3:7: notice: duplicate of a module names `foo.foo`
+vlib/v/checker/tests/mod_name_duplicate_const_err.vv:3:7: notice: duplicate of a module name `foo.foo`
     1 | module foo
     2 | 
     3 | const foo = 'bar'
