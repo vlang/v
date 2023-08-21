@@ -804,7 +804,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 				unwrapped_typ = unaliased_type.clear_flags(.option, .result)
 			}
 		}
-		unwrapped_styp := g.typ(unwrapped_typ)
+		mut unwrapped_styp := g.typ(unwrapped_typ)
 		if g.infix_left_var_name.len > 0 {
 			g.indent--
 			g.writeln('}')
@@ -814,6 +814,11 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			g.write('\n ${cur_line}')
 		} else if !g.inside_curry_call {
 			if !g.inside_const_opt_or_res {
+				if g.assign_ct_type != 0
+					&& node.or_block.kind in [.propagate_option, .propagate_result] {
+					unwrapped_styp = g.typ(g.assign_ct_type.derive(node.return_type).clear_flags(.option,
+						.result))
+				}
 				g.write('\n ${cur_line} (*(${unwrapped_styp}*)${tmp_opt}.data)')
 			} else {
 				g.write('\n ${cur_line} ${tmp_opt}')
