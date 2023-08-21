@@ -11,6 +11,20 @@ body:
       required: true
 
   - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction Steps
+      description: |
+        Provide a self-contained, concise snippet of code that can be used to reproduce the issue.
+        For more complex issues provide a repo with the smallest sample that reproduces the bug.
+
+        Avoid including business logic or unrelated code, it makes diagnosis more difficult.
+        The code sample should be an SSCCE. See http://sscce.org/ for details.
+        In short, please provide a code sample that we can copy/paste, run and reproduce.
+    validations:
+      required: true
+
+  - type: textarea
     id: expected
     attributes:
       label: Expected Behavior
@@ -27,20 +41,6 @@ body:
 
         Please include full errors, uncaught exceptions, stack traces, and relevant logs.
         If service/functions responses are relevant, please include wire logs.
-    validations:
-      required: true
-
-  - type: textarea
-    id: reproduction
-    attributes:
-      label: Reproduction Steps
-      description: |
-        Provide a self-contained, concise snippet of code that can be used to reproduce the issue.
-        For more complex issues provide a repo with the smallest sample that reproduces the bug.
-
-        Avoid including business logic or unrelated code, it makes diagnosis more difficult.
-        The code sample should be an SSCCE. See http://sscce.org/ for details.
-        In short, please provide a code sample that we can copy/paste, run and reproduce.
     validations:
       required: true
 
