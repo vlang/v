@@ -3,22 +3,22 @@ type FooArr = []string
 type FooStr = string
 
 fn test_reference_aliases_of_map() {
-    addr1 := &FooMap(map[string]int{})
-	 println('${addr1:p}')
+	addr1 := &FooMap(map[string]int{})
+	println('${addr1:p}')
 
-	 assert true
+	assert true
 }
 
 fn test_reference_aliases_of_array() {
-	 addr2 := &FooArr([]string{})
-	 println('${addr2:p}')
+	addr2 := &FooArr([]string{})
+	println('${addr2:p}')
 
-	 assert true
+	assert true
 }
 
 fn test_reference_aliases_of_string() {
-	 addr3 := &FooStr('hello')
-	 println('${addr3:p}')
+	addr3 := &FooStr('hello')
+	println('${addr3:p}')
 
-	 assert true
+	assert true
 }
