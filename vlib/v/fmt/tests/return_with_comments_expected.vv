@@ -1,0 +1,22 @@
+fn foo1() int {
+	return (0 /* some comment */ )
+}
+
+fn foo2() int {
+	return ( /* some comment */ 0)
+}
+
+fn foo3() int {
+	return ( /* some comment1 */ 0 /* some comment2 */ )
+}
+
+fn foo4() int {
+	return ( /* some comment1 */ /* some comment2 */ 0)
+}
+
+fn foo5() int {
+	return ( /* some comment1 */ /* some comment2 */ 0 /* some comment3 */ /* some comment4 */ )
+}
+
+fn main() {
+}

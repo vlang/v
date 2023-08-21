@@ -1393,7 +1393,7 @@ pub fn (mut f Fmt) return_stmt(node ast.Return) {
 				f.comments(pre_comments)
 				f.write(' ')
 			}
-			if expr is ast.ParExpr {
+			if expr is ast.ParExpr && expr.comments.len == 0 {
 				f.expr(expr.expr)
 			} else {
 				f.expr(expr)
@@ -2698,12 +2698,22 @@ pub fn (mut f Fmt) par_expr(node ast.ParExpr) {
 	for mut expr is ast.ParExpr {
 		expr = expr.expr
 	}
-	requires_paren := expr !is ast.Ident
+	requires_paren := expr !is ast.Ident || node.comments.len > 0
 	if requires_paren {
 		f.par_level++
 		f.write('(')
 	}
+	pre_comments := node.comments.filter(it.pos.pos < expr.pos().pos)
+	post_comments := node.comments[pre_comments.len..]
+	if pre_comments.len > 0 {
+		f.comments(pre_comments)
+		f.write(' ')
+	}
 	f.expr(expr)
+	if post_comments.len > 0 {
+		f.comments(post_comments)
+		f.write(' ')
+	}
 	if requires_paren {
 		f.par_level--
 		f.write(')')
