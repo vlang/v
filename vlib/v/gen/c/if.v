@@ -7,7 +7,8 @@ import v.ast
 
 fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
 	if node.is_expr && g.inside_ternary == 0 {
-		if g.is_autofree || node.typ.has_flag(.option) || node.typ.has_flag(.result) {
+		if g.is_autofree || node.typ.has_flag(.option) || node.typ.has_flag(.result)
+			|| node.is_comptime {
 			return true
 		}
 		for branch in node.branches {
