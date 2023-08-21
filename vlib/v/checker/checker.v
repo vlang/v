@@ -1647,7 +1647,8 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 					field.expr.pos())
 			}
 		}
-		if field.name.all_after_last('.') == c.mod {
+		const_name := field.name.all_after_last('.')
+		if const_name == c.mod && const_name != 'main' {
 			name_pos := token.Pos{
 				...field.pos
 				len: util.no_cur_mod(field.name, c.mod).len

@@ -262,7 +262,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					}
 				}
 			}
-			if node.mod == param.name {
+			if param.name == node.mod && param.name != 'main' {
 				c.add_error_detail('Module name duplicates become an error after 2023-31-10.')
 				c.note('duplicate of a module name `${param.name}`', param.pos)
 			}
