@@ -405,7 +405,6 @@ mut:
 fn update_module(mut pp pool.PoolProcessor, idx int, wid int) &ModUpdateInfo {
 	mut result := ModUpdateInfo{
 		name: pp.get_item[string](idx)
-		has_err: false
 	}
 	zname := url_to_module_name(result.name)
 	result.final_path = valid_final_path_of_existing_module(result.name) or { return &result }
@@ -503,8 +502,6 @@ mut:
 fn get_mod_date_info(mut pp pool.PoolProcessor, idx int, wid int) &ModDateInfo {
 	mut result := ModDateInfo{
 		name: pp.get_item[string](idx)
-		outdated: false
-		exec_err: false
 	}
 	final_module_path := valid_final_path_of_existing_module(result.name) or { return &result }
 	vcs := vcs_used_in_dir(final_module_path) or { return &result }
