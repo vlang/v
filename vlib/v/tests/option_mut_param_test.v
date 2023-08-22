@@ -2,7 +2,7 @@ struct Abc {
 	a int
 }
 
-fn foo(mut baz ?&Abc) {
+fn foo(mut baz ?Abc) {
 	baz = Abc{
 		a: 3
 	}
