@@ -145,7 +145,7 @@ fn (r &Repl) import_to_source_code() []string {
 		if mod in r.alias {
 			import_str += ' as ${r.alias[mod]}'
 		}
-		imports_line << endline_if_missed(import_str)
+		imports_line << import_str
 	}
 	return imports_line
 }
