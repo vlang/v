@@ -1818,8 +1818,11 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 						if field.expr.language == .c {
 							continue
 						}
-						if field.expr.kind in [.constant, .unresolved] {
+						if field.expr.kind == .unresolved {
 							c.ident(mut field.expr)
+						}
+						if field.expr.kind == .constant && field.expr.obj.typ.is_int() {
+							/* accepts int constants as enum value */
 							continue
 						}
 					}
