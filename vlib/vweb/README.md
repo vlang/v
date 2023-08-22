@@ -1195,6 +1195,19 @@ fn main() {
 
 ### Others
 
+#### -ua
+
+Returns the user-agent from the current user
+
+**Example:**
+
+```v ignore
+pub fn (mut app App) ua() vweb.Result {
+    ua := app.ua()
+    return app.text('User-Agent: $ua')
+}
+```
+
 #### -ip
 
 Returns the ip address from the current user
