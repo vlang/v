@@ -12,6 +12,7 @@ import v.util
 import v.util.version
 import v.errors
 import v.pkgconfig
+import strings
 
 const (
 	int_min                                        = int(0x80000000)
@@ -88,7 +89,7 @@ mut:
 	// 1 for statements directly at each inner scope level;
 	// increases for `x := if cond { statement_list1} else {statement_list2}`;
 	// increases for `x := optfn() or { statement_list3 }`;
-	files                            []ast.File
+	// files                            []ast.File
 	expr_level                       int // to avoid infinite recursion segfaults due to compiler bugs
 	ensure_generic_type_level        int // to avoid infinite recursion segfaults in ensure_generic_type_specify_type_names
 	cur_orm_ts                       ast.TypeSymbol
@@ -116,6 +117,8 @@ mut:
 	inside_decl_rhs                  bool
 	inside_if_guard                  bool // true inside the guard condition of `if x := opt() {}`
 	inside_assign                    bool
+	doing_line_info                  int    // a quick single file run when called with v -line-info (contains line nr to inspect)
+	doing_line_path                  string // same, but stores the path being parsed
 	is_index_assign                  bool
 	comptime_call_pos                int // needed for correctly checking use before decl for templates
 	goto_labels                      map[string]ast.GotoLabel // to check for unused goto labels
@@ -371,6 +374,11 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 			c.add_error_detail('fn test_xyz(){ assert 2 + 2 == 4 }')
 			c.error('a _test.v file should have *at least* one `test_` function', token.Pos{})
 		}
+	}
+	// Print line info and exit
+	if c.pref.line_info != '' && c.doing_line_info == 0 {
+		c.do_line_info(c.pref.line_info, ast_files)
+		exit(0)
 	}
 	// Make sure fn main is defined in non lib builds
 	if c.pref.build_mode == .build_module || c.pref.is_test {
@@ -1640,6 +1648,13 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 					field.expr.is_expr = true
 					field.expr.typ = (branch.stmts.last() as ast.ExprStmt).typ
 					field.typ = field.expr.typ
+					// update ConstField object's type in table
+					if mut obj := c.file.global_scope.find(field.name) {
+						if mut obj is ast.ConstField {
+							obj.typ = field.typ
+						}
+					}
+					break
 				}
 			}
 		}
@@ -3273,7 +3288,41 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 	return ast.string_type
 }
 
+struct ACFieldMethod {
+	name string
+	typ  string
+}
+
 fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
+	if c.doing_line_info > 0 {
+		mut sb := strings.new_builder(10)
+		// Mini LS hack (v -line-info "a.v:16")
+		// println('line_nr=${node.pos.line_nr} doing line nr=${c.doing_line_info}')
+		// println('Start line_nr=${node.pos.line_nr}  line2=${c.doing_line_info} file="${c.file.path}", pppp="${c.doing_line_path}"')
+		if node.pos.line_nr == c.doing_line_info && c.file.path == c.doing_line_path {
+			sb.writeln('===')
+			sym := c.table.sym(node.obj.typ)
+			sb.writeln('VAR ${node.name}:${sym.name}')
+			mut struct_info := sym.info as ast.Struct
+			mut fields := []ACFieldMethod{cap: struct_info.fields.len}
+			for field in struct_info.fields {
+				field_sym := c.table.sym(field.typ)
+				fields << ACFieldMethod{field.name, field_sym.name}
+			}
+			for method in sym.methods {
+				method_ret_type := c.table.sym(method.return_type)
+				fields << ACFieldMethod{method.name + '()', method_ret_type.name}
+			}
+			fields.sort(a.name < b.name)
+			for field in fields {
+				sb.writeln('${field.name}:${field.typ}')
+			}
+			res := sb.str().trim_space()
+			if res != '' {
+				println(res)
+			}
+		}
+	}
 	// TODO: move this
 	if c.const_deps.len > 0 {
 		mut name := node.name
@@ -4576,9 +4625,9 @@ fn (mut c Checker) fetch_field_name(field ast.StructField) string {
 	return name
 }
 
-fn (mut c Checker) trace(fbase string, message string) {
+fn (mut c Checker) trace[T](fbase string, x &T) {
 	if c.file.path_base == fbase {
-		println('> c.trace | ${fbase:-10s} | ${message}')
+		println('> c.trace | ${fbase:-10s} | ${x}')
 	}
 }
 

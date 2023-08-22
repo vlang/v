@@ -448,7 +448,7 @@ fn test_fixed_array_of_function() {
 }
 
 struct CTypeDefStruct {
-	mutex &sync.Mutex
+	mutex &sync.Mutex = sync.new_mutex()
 }
 
 fn test_c_struct_typedef() {

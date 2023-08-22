@@ -212,8 +212,8 @@ fn (enc &Encoding) encode_(src_ []u8, mut dst []u8) {
 
 			break
 		}
-		src = src[5..]
-		dst = dst[8..]
+		src = unsafe { src[5..] }
+		dst = unsafe { dst[8..] }
 	}
 }
 

@@ -75,7 +75,7 @@ pub fn (db DB) delete(table string, where orm.QueryData) ! {
 pub fn (db DB) last_id() int {
 	query := 'SELECT last_insert_rowid();'
 
-	return db.q_int(query)
+	return db.q_int(query) or { 0 }
 }
 
 // DDL (table creation/destroying etc)

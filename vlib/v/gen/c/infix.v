@@ -148,13 +148,18 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		}
 		g.expr(node.right)
 		g.write(')')
-	} else if left.typ.idx() == right.typ.idx()
+	} else if left.unaliased.idx() == right.unaliased.idx()
 		&& left.sym.kind in [.array, .array_fixed, .alias, .map, .struct_, .sum_type, .interface_] {
 		if g.pref.translated && !g.is_builtin_mod {
 			g.gen_plain_infix_expr(node)
 			return
 		}
-		match left.sym.kind {
+		kind := if left.sym.kind == .alias && right.sym.kind != .alias {
+			left.unaliased_sym.kind
+		} else {
+			left.sym.kind
+		}
+		match kind {
 			.alias {
 				ptr_typ := g.equality_fn(left.typ)
 				if node.op == .ne {
@@ -289,7 +294,9 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				g.expr(node.right)
 				g.write(')')
 			}
-			else {}
+			else {
+				g.gen_plain_infix_expr(node)
+			}
 		}
 	} else if left.unaliased.idx() in [ast.u32_type_idx, ast.u64_type_idx]
 		&& right.unaliased.is_signed() {

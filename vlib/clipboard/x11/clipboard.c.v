@@ -145,7 +145,7 @@ mut:
 	selection Atom // the selection atom
 	window    Window
 	atoms     []Atom
-	mutex     &sync.Mutex = unsafe { nil }
+	mutex     &sync.Mutex = sync.new_mutex()
 	text      string // text data sent or received
 	got_text  bool   // used to confirm that we have got the text
 	is_owner  bool   // to save selection owner state

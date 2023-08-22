@@ -118,9 +118,17 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				}
 			}
 		}
-		return_sym := c.table.final_sym(node.return_type)
-		if return_sym.info is ast.MultiReturn {
-			for multi_type in return_sym.info.types {
+		return_sym := c.table.sym(node.return_type)
+		if return_sym.info is ast.Alias {
+			parent_sym := c.table.sym(return_sym.info.parent_type)
+			if parent_sym.info is ast.ArrayFixed {
+				c.table.find_or_register_array_fixed(parent_sym.info.elem_type, parent_sym.info.size,
+					parent_sym.info.size_expr, true)
+			}
+		}
+		final_return_sym := c.table.final_sym(node.return_type)
+		if final_return_sym.info is ast.MultiReturn {
+			for multi_type in final_return_sym.info.types {
 				if multi_type == ast.error_type {
 					c.error('type `IError` cannot be used in multi-return, return an Option instead',
 						node.return_type_pos)
@@ -491,8 +499,8 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 		}
 	}
 	// If the left expr has an or_block, it needs to be checked for legal or_block statement.
-	return_type := c.expr(mut node.left)
-	c.check_expr_opt_call(node.left, return_type)
+	left_type := c.expr(mut node.left)
+	c.check_expr_opt_call(node.left, left_type)
 	// TODO merge logic from method_call and fn_call
 	// First check everything that applies to both fns and methods
 	old_inside_fn_arg := c.inside_fn_arg
@@ -831,6 +839,43 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			found = true
 			func = f
 			c.table.fns[fn_name].usages++
+		}
+	}
+	// already imported symbol (static Foo.new() in another module)
+	if !found && fn_name.contains('__static__') && fn_name[0].is_capital() {
+		if index := fn_name.index('__static__') {
+			owner_name := fn_name#[..index]
+			for import_sym in c.file.imports.filter(it.syms.any(it.name == owner_name)) {
+				qualified_name := '${import_sym.mod}.${fn_name}'
+				if f := c.table.find_fn(qualified_name) {
+					found = true
+					func = f
+					node.name = qualified_name
+					c.table.fns[qualified_name].usages++
+					break
+				}
+			}
+		}
+		if fn_name.ends_with('from_string') {
+			enum_name := fn_name.all_before('__static__')
+			full_enum_name := if !enum_name.contains('.') {
+				c.mod + '.' + enum_name
+			} else {
+				enum_name
+			}
+			idx := c.table.type_idxs[full_enum_name]
+			ret_typ := ast.Type(idx).set_flag(.option)
+			if node.args.len != 1 {
+				c.error('expected 1 argument, but got ${node.args.len}', node.pos)
+			} else {
+				node.args[0].typ = c.expr(mut node.args[0].expr)
+				if node.args[0].typ != ast.string_type {
+					styp := c.table.type_to_str(node.args[0].typ)
+					c.error('expected `string` argument, but got `${styp}`', node.pos)
+				}
+			}
+			node.return_type = ret_typ
+			return ret_typ
 		}
 	}
 	mut is_native_builtin := false

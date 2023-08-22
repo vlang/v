@@ -1,4 +1,4 @@
-fn foo() ? {
+fn foo() ! {
 	return error('something')
 }
 
@@ -10,7 +10,7 @@ fn test_option_void() {
 	}
 }
 
-fn bar() ? {
+fn bar() ! {
 	return error('bar error')
 }
 
@@ -27,7 +27,7 @@ fn test_option_void_with_empty_or() {
 	assert true
 }
 
-fn option_void(a int) ? {
+fn option_void(a int) ! {
 	if a != 0 {
 		return
 	} else {

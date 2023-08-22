@@ -6344,7 +6344,8 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 			}
 			init_str := 'new_map${noscan}(sizeof(${g.typ(info.key_type)}), sizeof(${g.typ(info.value_type)}), ${hash_fn}, ${key_eq_fn}, ${clone_fn}, ${free_fn})'
 			if typ.has_flag(.shared_f) {
-				mtyp := '__shared__Map_${key_typ.cname}_${g.table.sym(info.value_type).cname}'
+				mtyp := '__shared__Map_${key_typ.cname}_${g.typ(info.value_type).replace('*',
+					'_ptr')}'
 				return '(${mtyp}*)__dup_shared_map(&(${mtyp}){.mtx = {0}, .val =${init_str}}, sizeof(${mtyp}))'
 			} else {
 				return init_str
@@ -6950,9 +6951,9 @@ pub fn get_guarded_include_text(iname string, imessage string) string {
 	return res
 }
 
-fn (mut g Gen) trace(fbase string, message string) {
+fn (mut g Gen) trace[T](fbase string, x &T) {
 	if g.file.path_base == fbase {
-		println('> g.trace | ${fbase:-10s} | ${message}')
+		println('> g.trace | ${fbase:-10s} | ${voidptr(x):16} | ${x}')
 	}
 }
 

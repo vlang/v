@@ -44,8 +44,8 @@ pub fn (mut app App) index() vweb.Result {
 
 fn (mut app App) update_db() !int {
 	mut db := mydb()!
-	db.exec('INSERT INTO visits (created_at) VALUES ("")')
-	visits := db.q_int('SELECT count(*) FROM visits')
+	db.exec('INSERT INTO visits (created_at) VALUES ("")')!
+	visits := db.q_int('SELECT count(*) FROM visits')!
 	db.close()!
 	return visits
 }
@@ -56,10 +56,10 @@ fn main() {
 	println('`v -d vweb_livereload watch --keep run examples/vwatch/web_server/`')
 	println('')
 	mut db := mydb()!
-	db.exec('CREATE TABLE visits (id integer primary key AUTOINCREMENT, created_at timestamp default current_timestamp);')
+	db.exec('CREATE TABLE visits (id integer primary key AUTOINCREMENT, created_at timestamp default current_timestamp);')!
 	db.exec('CREATE TRIGGER INSERT_visits AFTER INSERT ON visits BEGIN
 	  UPDATE visits SET created_at = datetime("now", "localtime") WHERE rowid = new.rowid ;
-	END')
+		END')!
 	db.close()!
 	vweb.run(&App{}, 19123)
 }

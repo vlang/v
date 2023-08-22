@@ -58,7 +58,12 @@ pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string, stri
 	scripting.run('git checkout --quiet master')
 	//
 	mut vccommit := ''
-	vcbefore_subject_match := scripting.run('git rev-list HEAD -n1 --timestamp --grep=${v_commithash[0..7]} ')
+	mut partial_hash := v_commithash[0..7]
+	if '5b7a1e8'.starts_with(partial_hash) {
+		// we need the following, otherwise --grep= below would find a93ef6e, which does include 5b7a1e8 in the commit message ... 🤦‍♂️
+		partial_hash = '5b7a1e84a4d283071d12cb86dc17aeda9b5306a8'
+	}
+	vcbefore_subject_match := scripting.run('git rev-list HEAD -n1 --timestamp --grep=${partial_hash} ')
 	scripting.verbose_trace(@FN, 'vcbefore_subject_match: ${vcbefore_subject_match}')
 	if vcbefore_subject_match.len > 3 {
 		_, vccommit = line_to_timestamp_and_commit(vcbefore_subject_match)
@@ -81,8 +86,35 @@ pub fn clone_or_pull(remote_git_url string, local_worktree_path string) {
 		scripting.run('git -C "${local_worktree_path}"  checkout --quiet master')
 		scripting.run('git -C "${local_worktree_path}"  pull     --quiet ')
 	} else {
-		// Clone a fresh
-		scripting.run('git clone --filter=blob:none --quiet "${remote_git_url}"  "${local_worktree_path}" ')
+		// Clone a fresh local tree.
+		if remote_git_url.starts_with('http') {
+			// cloning an https remote with --filter=blob:none is usually much less bandwidth intensive, at the
+			// expense of doing small network ops later when using checkouts.
+			scripting.run('git clone --filter=blob:none --quiet "${remote_git_url}"  "${local_worktree_path}" ')
+			return
+		}
+		mut is_blobless_clone := false
+		remote_git_config_path := os.join_path(remote_git_url, '.git', 'config')
+		if os.is_dir(remote_git_url) && os.is_file(remote_git_config_path) {
+			lines := os.read_lines(remote_git_config_path) or { [] }
+			is_blobless_clone = lines.filter(it.contains('partialclonefilter = blob:none')).len > 0
+		}
+		if is_blobless_clone {
+			// Note:
+			// 1) cloning a *local folder* with `--filter=blob:none`, that *itself* was cloned with `--filter=blob:none`
+			// leads to *extremely* slow checkouts for older commits later. It takes hours instead of milliseconds, for a commit
+			// that is just several thousands of commits old :( .
+			//
+			// 2) Cloning it *without* the `--filter=blob:none`, leads to `error: unable to read sha1 file of`, later,
+			// when checking out the older commits, depending on the local git client version (tested with git version 2.41.0).
+			//
+			// 3) => instead of cloning, it is much faster, and *bug free*, to just rsync the local repo directly,
+			// at the expense of a little more space usage, which will make the new tree in local_worktree_path,
+			// exactly 1:1 the same, as the one in remote_git_url, just independent from it .
+			scripting.run('rsync -a "${remote_git_url}/"  "${local_worktree_path}/"')
+			return
+		}
+		scripting.run('git clone --quiet "${remote_git_url}"  "${local_worktree_path}" ')
 	}
 }
 

@@ -264,7 +264,17 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		node.left_types << left_type
 		match mut left {
 			ast.Ident {
-				if left.kind == .blank_ident {
+				if (is_decl || left.kind == .blank_ident) && left_type.is_ptr()
+					&& mut right is ast.PrefixExpr && right.right_type == ast.int_literal_type_idx {
+					if mut right.right is ast.Ident && right.right.obj is ast.ConstField {
+						const_name := right.right.name.all_after_last('.')
+						const_val := (right.right.obj as ast.ConstField).expr
+						c.add_error_detail('Specify the type for the constant value. Example:')
+						c.add_error_detail('         `const ${const_name} = int(${const_val})`')
+						c.error('cannot assign a pointer to a constant with an integer literal value',
+							right.right.pos)
+					}
+				} else if left.kind == .blank_ident {
 					left_type = right_type
 					node.left_types[i] = right_type
 					if node.op !in [.assign, .decl_assign] {
@@ -482,6 +492,29 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 								}
 							}
 						}
+					}
+				} else if mut left is ast.Ident && left.kind != .blank_ident
+					&& right is ast.IndexExpr {
+					if (right as ast.IndexExpr).left is ast.Ident
+						&& (right as ast.IndexExpr).index is ast.RangeExpr
+						&& ((right as ast.IndexExpr).left.is_mut() || left.is_mut())
+						&& !c.inside_unsafe {
+						// `mut a := arr[..]` auto add clone() -> `mut a := arr[..].clone()`
+						c.add_error_detail_with_pos('To silence this notice, use either an explicit `a[..].clone()`,
+or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
+							right.pos())
+						c.note('an implicit clone of the slice was done here', right.pos())
+						right = ast.CallExpr{
+							name: 'clone'
+							left: right
+							left_type: left_type
+							is_method: true
+							receiver_type: left_type
+							return_type: left_type
+							scope: c.fn_scope
+						}
+						right_type = c.expr(mut right)
+						node.right[i] = right
 					}
 				}
 			}

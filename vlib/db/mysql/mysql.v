@@ -26,9 +26,8 @@ mut:
 	conn &C.MYSQL = unsafe { nil }
 }
 
+[params]
 pub struct Config {
-mut:
-	conn &C.MYSQL = C.mysql_init(0)
 pub mut:
 	host     string = '127.0.0.1'
 	port     u32    = 3306
@@ -288,6 +287,138 @@ pub fn get_client_version() u64 {
 // See https://dev.mysql.com/doc/c-api/8.0/en/mysql-debug.html
 pub fn debug(debug string) {
 	C.mysql_debug(debug.str)
+}
+
+// exec executes the `query` on the given `db`, and returns an array of all the results, or an error on failure
+pub fn (db &DB) exec(query string) ![]Row {
+	if C.mysql_query(db.conn, query.str) != 0 {
+		db.throw_mysql_error()!
+	}
+
+	result := C.mysql_store_result(db.conn)
+	if result == unsafe { nil } {
+		return []Row{}
+	} else {
+		return Result{result}.rows()
+	}
+}
+
+// exec_one executes the `query` on the given `db`, and returns either the first row from the result, if the query was successful, or an error
+pub fn (db &DB) exec_one(query string) !Row {
+	if C.mysql_query(db.conn, query.str) != 0 {
+		db.throw_mysql_error()!
+	}
+
+	result := C.mysql_store_result(db.conn)
+
+	if result == unsafe { nil } {
+		db.throw_mysql_error()!
+	}
+	row_vals := C.mysql_fetch_row(result)
+	num_cols := C.mysql_num_fields(result)
+
+	if row_vals == unsafe { nil } {
+		return Row{}
+	}
+
+	mut row := Row{}
+	for i in 0 .. num_cols {
+		if unsafe { row_vals == &u8(0) } {
+			row.vals << ''
+		} else {
+			row.vals << mystring(unsafe { &u8(row_vals[i]) })
+		}
+	}
+
+	return row
+}
+
+// exec_none executes the `query` on the given `db`, and returns the integer MySQL result code
+// Use it, in case you don't expect any row results, but still want a result code.
+// e.g. for queries like these: INSERT INTO ... VALUES (...)
+pub fn (db &DB) exec_none(query string) int {
+	C.mysql_query(db.conn, query.str)
+
+	return get_errno(db.conn)
+}
+
+// exec_param_many executes the `query` with parameters provided as `?`'s in the query
+// It returns either the full result set, or an error on failure
+pub fn (db &DB) exec_param_many(query string, params []string) ![]Row {
+	stmt := C.mysql_stmt_init(db.conn)
+	if stmt == unsafe { nil } {
+		db.throw_mysql_error()!
+	}
+
+	mut code := C.mysql_stmt_prepare(stmt, query.str, query.len)
+	if code != 0 {
+		db.throw_mysql_error()!
+	}
+
+	mut bind_params := []C.MYSQL_BIND{}
+	for param in params {
+		bind := C.MYSQL_BIND{
+			buffer_type: mysql_type_string
+			buffer: param.str
+			buffer_length: u32(param.len)
+			length: 0
+		}
+		bind_params << bind
+	}
+
+	mut response := C.mysql_stmt_bind_param(stmt, unsafe { &C.MYSQL_BIND(bind_params.data) })
+	if response == true {
+		db.throw_mysql_error()!
+	}
+
+	code = C.mysql_stmt_execute(stmt)
+	if code != 0 {
+		db.throw_mysql_error()!
+	}
+
+	query_metadata := C.mysql_stmt_result_metadata(stmt)
+	num_cols := C.mysql_num_fields(query_metadata)
+	mut length := []u32{len: num_cols}
+
+	mut binds := []C.MYSQL_BIND{}
+	for i in 0 .. num_cols {
+		bind := C.MYSQL_BIND{
+			buffer_type: mysql_type_string
+			buffer: 0
+			buffer_length: 0
+			length: unsafe { &length[i] }
+		}
+		binds << bind
+	}
+
+	mut rows := []Row{}
+	response = C.mysql_stmt_bind_result(stmt, unsafe { &C.MYSQL_BIND(binds.data) })
+	for {
+		code = C.mysql_stmt_fetch(stmt)
+		if code == mysql_no_data {
+			break
+		}
+		lengths := length[0..num_cols].clone()
+		mut row := Row{}
+		for i in 0 .. num_cols {
+			l := lengths[i]
+			data := unsafe { malloc(l) }
+			binds[i].buffer = data
+			binds[i].buffer_length = l
+			code = C.mysql_stmt_fetch_column(stmt, unsafe { &binds[i] }, i, 0)
+
+			row.vals << unsafe { data.vstring() }
+		}
+		rows << row
+	}
+	C.mysql_stmt_close(stmt)
+	return rows
+}
+
+// exec_param executes the `query` with one parameter provided as an `?` in the query
+// It returns either the full result set, or an error on failure
+pub fn (db &DB) exec_param(query string, param string) ![]Row {
+	return db.exec_param_many(query, [param])!
 }
 
 [inline]

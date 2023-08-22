@@ -126,6 +126,7 @@ const unicode_lit_overflow_message = 'unicode character exceeds max allowed valu
 
 // unicode character literals are limited to a maximum value of 0x10ffff
 // https://stackoverflow.com/questions/52203351/why-unicode-is-restricted-to-0x10ffff
+[direct_array_access]
 fn (mut c Checker) string_lit(mut node ast.StringLiteral) ast.Type {
 	mut idx := 0
 	for idx < node.val.len {

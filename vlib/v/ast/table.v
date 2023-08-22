@@ -409,6 +409,37 @@ pub fn (t &Table) find_enum_field_val(name string, field_ string) ?i64 {
 	return val
 }
 
+pub fn (t &Table) get_enum_field_names(name string) []string {
+	enum_decl := t.enum_decls[name]
+	mut field_names := []string{}
+	for field in enum_decl.fields {
+		field_names << field.name
+	}
+	return field_names
+}
+
+pub fn (t &Table) get_enum_field_vals(name string) []i64 {
+	enum_decl := t.enum_decls[name]
+	mut enum_vals := []i64{}
+	mut last_val := i64(0)
+	for field in enum_decl.fields {
+		if field.has_expr {
+			if field.expr is IntegerLiteral {
+				enum_vals << field.expr.val.i64()
+				last_val = field.expr.val.i64()
+			}
+		} else {
+			if enum_vals.len > 0 {
+				enum_vals << last_val + 1
+				last_val++
+			} else {
+				enum_vals << 0
+			}
+		}
+	}
+	return enum_vals
+}
+
 pub fn (t &Table) get_embed_methods(sym &TypeSymbol) []Fn {
 	mut methods := []Fn{}
 	if sym.info is Struct {
@@ -1691,6 +1722,9 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 						t_generic_names, t_concrete_types)
 					{
 						gts := t.sym(ct)
+						if ct.is_ptr() {
+							nrt += '&'
+						}
 						nrt += gts.name
 						rnrt += gts.name
 						if i != sym.info.generic_types.len - 1 {
@@ -1867,6 +1901,9 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 					t_concrete_types)
 				{
 					gts := t.sym(ct)
+					if ct.is_ptr() {
+						nrt += '&'
+					}
 					nrt += gts.name
 					c_nrt += gts.cname
 					if i != ts.info.generic_types.len - 1 {

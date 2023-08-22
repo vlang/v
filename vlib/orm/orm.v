@@ -321,7 +321,11 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table string, q string, kind StmtKin
 				str += ')'
 			}
 			if i < where.fields.len - 1 {
-				str += ' AND '
+				if where.is_and[i] {
+					str += ' AND '
+				} else {
+					str += ' OR '
+				}
 			}
 		}
 	}

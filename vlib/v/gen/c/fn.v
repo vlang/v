@@ -1436,8 +1436,13 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		arg_name := '_arg_expr_${fn_name}_0_${node.pos.pos}'
 		g.write('/*af receiver arg*/' + arg_name)
 	} else {
-		if left_sym.kind == .array && node.left.is_auto_deref_var()
-			&& is_array_method_first_last_repeat {
+		mut is_array := left_sym.kind == .array
+		if !is_array && left_sym.kind == .alias {
+			unaliased_type := g.table.unaliased_type(left_type)
+			unaliased_sym := g.table.sym(unaliased_type)
+			is_array = unaliased_sym.kind == .array
+		}
+		if is_array && node.left.is_auto_deref_var() && is_array_method_first_last_repeat {
 			g.write('*')
 		}
 		if node.left is ast.MapInit {
@@ -1491,7 +1496,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	g.write(')')
 	if node.return_type != 0 && !node.return_type.has_flag(.option)
-		&& g.table.sym(node.return_type).kind == .array_fixed {
+		&& g.table.final_sym(node.return_type).kind == .array_fixed {
 		// it's non-option fixed array, requires accessing .ret_arr member to get the array
 		g.write('.ret_arr')
 	}
@@ -1715,6 +1720,14 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			g.write('panic_debug(${paline}, tos3("${pafile}"), tos3("${pamod}"), tos3("${pafn}"),  ')
 			g.call_args(node)
 			g.write(')')
+		} else if node.name.ends_with('__static__from_string') && !g.table.known_fn(node.name) {
+			if node.name !in g.str_fn_names {
+				g.gen_enum_static_from_string(node.name)
+				g.str_fn_names << node.name
+			}
+			g.write('${node.name}(')
+			g.call_args(node)
+			g.write(')')
 		} else {
 			// Simple function call
 			// if free_tmp_arg_vars {
@@ -1798,7 +1811,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				g.write(')')
 			}
 			if node.return_type != 0 && !node.return_type.has_flag(.option)
-				&& g.table.sym(node.return_type).kind == .array_fixed {
+				&& g.table.final_sym(node.return_type).kind == .array_fixed {
 				// it's non-option fixed array, requires accessing .ret_arr member to get the array
 				g.write('.ret_arr')
 			}

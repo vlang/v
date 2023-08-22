@@ -909,23 +909,12 @@ fn (mut app App) showfps() {
 	}
 }
 
-$if emscripten ? {
-	#flag --embed-file ./examples/assets/fonts/RobotoMono-Regular.ttf@/assets/fonts/RobotoMono-Regular.ttf
-}
-
 fn main() {
 	mut app := &App{}
 	app.new_game()
 	mut font_path := os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'RobotoMono-Regular.ttf'))
 	$if android {
 		font_path = 'fonts/RobotoMono-Regular.ttf'
-	}
-	mut window_title_ := 'V 2048'
-	// TODO: Make emcc a real platform ifdef
-	$if emscripten ? {
-		// in emscripten, sokol uses `window_title` as the selector to the canvas it'll render to,
-		// and since `document.querySelector('V 2048')` isn't valid JS, we use `canvas` instead
-		window_title_ = 'canvas'
 	}
 	app.perf = &Perf{}
 	app.gg = gg.new_context(
@@ -934,7 +923,7 @@ fn main() {
 		height: default_window_height
 		sample_count: 4 // higher quality curves
 		create_window: true
-		window_title: window_title_
+		window_title: 'V 2048'
 		frame_fn: frame
 		event_fn: on_event
 		init_fn: init

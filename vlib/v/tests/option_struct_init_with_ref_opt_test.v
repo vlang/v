@@ -1,14 +1,14 @@
 struct Node {
 	value int
 mut:
-	prev ?&Node = none
-	next ?&Node = none
+	prev ?&Node
+	next ?&Node
 }
 
 struct LinkedList {
 mut:
-	head ?&Node = none
-	tail ?&Node = none
+	head ?&Node
+	tail ?&Node
 }
 
 pub fn (mut l LinkedList) push(value int) {

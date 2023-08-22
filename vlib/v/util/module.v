@@ -152,7 +152,7 @@ fn mod_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !stri
 				}
 				if last_v_mod > -1 {
 					mod_full_name := try_path_parts[last_v_mod..].join('.')
-					return mod_full_name
+					return if mod_full_name.len < mod.len { mod } else { mod_full_name }
 				}
 			}
 		}

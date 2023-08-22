@@ -75,7 +75,11 @@ jobs:
       - name: Build examples
         run: ./v build-examples
       - name: v2 self compilation
-        run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
+        run: ./v -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
+      - name: compile vdoctor.v with -skip-unused and -prod
+        run: ./v -showcc -skip-unused -prod cmd/tools/vdoctor.v
+      - name: compile vup.v with -skip-unused and -prod
+        run: ./v -showcc -skip-unused -prod cmd/tools/vup.v
 
   windows-msvc:
     runs-on: windows-2019

@@ -13,17 +13,99 @@ pub struct Null {
 }
 
 // decode decodes a TOML `string` into the target type `T`.
+// If `T` has a custom `.from_toml()` method, it will be used instead of the default.
 pub fn decode[T](toml_txt string) !T {
 	doc := parse_text(toml_txt)!
 	mut typ := T{}
-	typ.from_toml(doc.to_any())
+	$for method in T.methods {
+		$if method.name == 'from_toml' {
+			typ.$method(doc.to_any())
+			return typ
+		}
+	}
+	decode_struct[T](doc.to_any(), mut typ)
 	return typ
 }
 
+fn decode_struct[T](doc Any, mut typ T) {
+	$for field in T.fields {
+		value := doc.value(field.name)
+		$if field.is_enum {
+			typ.$(field.name) = value.int()
+		} $else $if field.typ is string {
+			typ.$(field.name) = value.string()
+		} $else $if field.typ is bool {
+			typ.$(field.name) = value.bool()
+		} $else $if field.typ is int {
+			typ.$(field.name) = value.int()
+		} $else $if field.typ is i64 {
+			typ.$(field.name) = value.i64()
+		} $else $if field.typ is u64 {
+			typ.$(field.name) = value.u64()
+		} $else $if field.typ is f32 {
+			typ.$(field.name) = value.f32()
+		} $else $if field.typ is f64 {
+			typ.$(field.name) = value.f64()
+		} $else $if field.typ is DateTime {
+			typ.$(field.name) = value.datetime()
+		} $else $if field.typ is Date {
+			typ.$(field.name) = value.date()
+		} $else $if field.typ is Time {
+			typ.$(field.name) = value.time()
+		} $else $if field.is_array {
+			arr := value.array()
+			match typeof(typ.$(field.name)).name {
+				'[]string' { typ.$(field.name) = arr.as_strings() }
+				'[]int' { typ.$(field.name) = arr.map(it.int()) }
+				'[]i64' { typ.$(field.name) = arr.map(it.i64()) }
+				'[]u64' { typ.$(field.name) = arr.map(it.u64()) }
+				'[]f32' { typ.$(field.name) = arr.map(it.f32()) }
+				'[]f64' { typ.$(field.name) = arr.map(it.f64()) }
+				'[]bool' { typ.$(field.name) = arr.map(it.bool()) }
+				'[]toml.DateTime' { typ.$(field.name) = arr.map(it.datetime()) }
+				'[]toml.Date' { typ.$(field.name) = arr.map(it.date()) }
+				'[]toml.Time' { typ.$(field.name) = arr.map(it.time()) }
+				else {}
+			}
+		} $else $if field.is_struct {
+			mut s := typ.$(field.name)
+			decode_struct(value, mut s)
+			typ.$(field.name) = s
+		}
+	}
+}
+
 // encode encodes the type `T` into a TOML string.
-// Currently encode expects the method `.to_toml()` exists on `T`.
+// If `T` has a custom `.to_toml()` method, it will be used instead of the default.
 pub fn encode[T](typ T) string {
-	return typ.to_toml()
+	$for method in T.methods {
+		$if method.name == 'to_toml' {
+			return typ.$method()
+		}
+	}
+	mp := encode_struct[T](typ)
+	return mp.to_toml()
+}
+
+fn encode_struct[T](typ T) map[string]Any {
+	mut mp := map[string]Any{}
+	$for field in T.fields {
+		value := typ.$(field.name)
+		$if field.is_enum {
+			mp[field.name] = Any(int(value))
+		} $else $if field.is_struct {
+			mp[field.name] = encode_struct(value)
+		} $else $if field.is_array {
+			mut arr := []Any{}
+			for v in value {
+				arr << Any(v)
+			}
+			mp[field.name] = arr
+		} $else {
+			mp[field.name] = Any(value)
+		}
+	}
+	return mp
 }
 
 // DateTime is the representation of an RFC 3339 datetime string.

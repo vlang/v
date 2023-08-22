@@ -21,7 +21,7 @@ fn delete_secret_v1() API_error {
 	println(response)
 }
 
-fn req_do() ?string {
+fn req_do() !string {
 	return error('dial_tcp failed')
 }
 

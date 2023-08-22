@@ -77,7 +77,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				if sym.kind == .function {
 					if !field.typ.has_flag(.option) && !field.has_default_expr
 						&& field.attrs.filter(it.name == 'required').len == 0 {
-						error_msg := 'uninitialized `fn` struct fields are not allowed, since they can result in segfaults; use `?fn` or initialize the field with `=` (if you absolutely want to have unsafe function pointers, use `= unsafe { nil }`)'
+						error_msg := 'uninitialized `fn` struct fields are not allowed, since they can result in segfaults; use `?fn` or `[required]` or initialize the field with `=` (if you absolutely want to have unsafe function pointers, use `= unsafe { nil }`)'
 						c.note(error_msg, field.pos)
 					}
 				}
@@ -565,6 +565,30 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				if exp_type_sym.kind == .voidptr && got_type_sym.kind == .struct_
 					&& !got_type.is_ptr() {
 					c.error('allocate on the heap for use in other functions', init_field.pos)
+				}
+				if exp_type_sym.kind == .array && got_type_sym.kind == .array {
+					if init_field.expr is ast.IndexExpr
+						&& (init_field.expr as ast.IndexExpr).left is ast.Ident
+						&& ((init_field.expr as ast.IndexExpr).left.is_mut()
+						|| field_info.is_mut) && init_field.expr.index is ast.RangeExpr
+						&& !c.inside_unsafe {
+						// `a: arr[..]` auto add clone() -> `a: arr[..].clone()`
+						c.add_error_detail_with_pos('To silence this notice, use either an explicit `a[..].clone()`,
+or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
+							init_field.expr.pos())
+						c.note('an implicit clone of the slice was done here', init_field.expr.pos())
+						mut right := ast.CallExpr{
+							name: 'clone'
+							left: init_field.expr
+							left_type: got_type
+							is_method: true
+							receiver_type: got_type.ref()
+							return_type: got_type
+							scope: c.fn_scope
+						}
+						got_type = c.expr(mut right)
+						node.init_fields[i].expr = right
+					}
 				}
 				if exp_type_sym.kind == .interface_ {
 					if c.type_implements(got_type, exp_type, init_field.pos) {

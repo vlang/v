@@ -6,6 +6,7 @@ import strings
 // - min / max - return the value of the minimum / maximum
 // - idx_min / idx_max - return the index of the first minimum / maximum
 // - merge - combine two sorted arrays and maintain sorted order
+// - append - combine two arrays, by appending the second array to the first
 // - chunk - chunk array to arrays with n elements
 // - window - get snapshots of the window of the given size sliding along array with the given step, where each snapshot is an array
 // - group - merge two arrays by interleaving e.g. arrays.group([1,3,5], [2,4,6]) => [[1,2],[3,4],[5,6]]
@@ -106,6 +107,17 @@ pub fn merge[T](a []T, b []T) []T {
 		ib++
 		j++
 	}
+	return m
+}
+
+// append the second array `b` to the first array `a`, and return the result.
+// Note, that unlike arrays.concat, arrays.append is less flexible, but more efficient,
+// since it does not require you to use ...a for the second parameter.
+// Example: arrays.append([1, 3, 5, 7], [2, 4, 6, 8]) // => [1, 3, 5, 7, 2, 4, 6, 8]
+pub fn append[T](a []T, b []T) []T {
+	mut m := []T{cap: a.len + b.len}
+	m << a
+	m << b
 	return m
 }
 
@@ -669,7 +681,7 @@ pub fn carray_to_varray[T](c_array_data voidptr, items int) []T {
 
 // find_first returns the first element that matches the given predicate
 // returns `none`, if there is no match found
-// Example: arrays.find_first([1, 2, 3, 4, 5], fn (arr int) bool { arr == 3}) // => 3
+// Example: arrays.find_first([1, 2, 3, 4, 5], fn (i int) bool { return i == 3 })? // => 3
 pub fn find_first[T](array []T, predicate fn (elem T) bool) ?T {
 	if array.len == 0 {
 		return none
@@ -684,7 +696,7 @@ pub fn find_first[T](array []T, predicate fn (elem T) bool) ?T {
 
 // find_last returns the last element that matches the given predicate
 // returns `none`, if there is no match found
-// Example: arrays.find_last([1, 2, 3, 4, 5], fn (arr int) bool { arr == 3}) // => 3
+// Example: arrays.find_last([1, 2, 3, 4, 5], fn (i int) bool { return i == 3})? // => 3
 pub fn find_last[T](array []T, predicate fn (elem T) bool) ?T {
 	if array.len == 0 {
 		return none

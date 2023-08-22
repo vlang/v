@@ -1321,7 +1321,7 @@ pub fn (mut g Gen) calculate_enum_fields() {
 }
 
 pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Preferences) {
-	stack_top := 1024 + (16 * 1024)
+	stack_top := w_pref.wasm_stack_top
 	mut g := &Gen{
 		table: table
 		pref: w_pref

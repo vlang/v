@@ -138,7 +138,7 @@ pub fn new_flag_parser(args []string) &FlagParser {
 	if idx_dashdash >= 0 {
 		all_before_dashdash.trim(idx_dashdash)
 		if idx_dashdash < original_args.len {
-			all_after_dashdash = original_args[idx_dashdash + 1..]
+			all_after_dashdash = unsafe { original_args[idx_dashdash + 1..] }
 		}
 	}
 	return &FlagParser{

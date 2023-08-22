@@ -89,6 +89,7 @@ const (
 		'vlib/context/deadline_test.v' /* sometimes blocks */,
 		'vlib/context/onecontext/onecontext_test.v' /* backtrace_symbols is missing. */,
 		'vlib/db/mysql/mysql_orm_test.v' /* mysql not installed */,
+		'vlib/db/mysql/mysql_test.v' /* mysql not installed */,
 		'vlib/db/pg/pg_orm_test.v' /* pg not installed */,
 	]
 	// These tests are too slow to be run in the CI on each PR/commit
@@ -170,6 +171,7 @@ const (
 		'vlib/orm/orm_insert_reserved_name_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
 		'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
+		'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.v', // fails compilation with: undefined reference to vtable for __cxxabiv1::__function_type_info'
 	]
 	skip_with_werror              = [
 		'do_not_remove',
@@ -243,6 +245,7 @@ const (
 		'vlib/v/tests/const_fixed_array_containing_references_to_itself_test.v', // error C2099: initializer is not a constant
 		'vlib/v/tests/const_and_global_with_same_name_test.v', // error C2099: initializer is not a constant
 		'vlib/v/tests/sumtype_as_cast_test.v', // error: cannot support compound statement expression ({expr; expr; expr;})
+		'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.v', // TODO
 	]
 	skip_on_windows               = [
 		'do_not_remove',
@@ -327,12 +330,14 @@ fn main() {
 	}
 	testing.find_started_process('mysqld') or {
 		tsession.skip_files << 'vlib/db/mysql/mysql_orm_test.v'
+		tsession.skip_files << 'vlib/db/mysql/mysql_test.v'
 	}
 	testing.find_started_process('postgres') or {
 		tsession.skip_files << 'vlib/db/pg/pg_orm_test.v'
 	}
 
 	if github_job == 'windows-tcc' {
+		tsession.skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.v'
 		// TODO: fix these ASAP
 		tsession.skip_files << 'vlib/net/tcp_test.v'
 		tsession.skip_files << 'vlib/net/udp_test.v'

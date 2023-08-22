@@ -23,7 +23,7 @@ fn test_ensure_db_exists_and_user_table_is_ok() {
 	assert true
 
 	eprintln('> drop pre-existing User table...')
-	db.exec('drop table if exists User')
+	db.exec('drop table if exists User')!
 
 	eprintln('> creating User table...')
 	sql db {

@@ -6,6 +6,8 @@ import v.parser
 import v.errors
 import v.scanner
 
+const skip_tests = os.getenv_opt('SKIP_TESTS') or { '' }.bool()
+
 fn main() {
 	files := os.args#[1..]
 	if files.len > 0 && files[0].starts_with('@') {
@@ -18,7 +20,6 @@ fn main() {
 }
 
 fn process_files(files []string) ! {
-	mut table := ast.new_table()
 	mut pref_ := pref.new_preferences()
 	pref_.is_fmt = true
 	pref_.skip_warnings = true
@@ -28,10 +29,11 @@ fn process_files(files []string) ! {
 	mut total_bytes := i64(0)
 	mut total_tokens := i64(0)
 	for f in files {
+		mut table := ast.new_table()
 		if f == '' {
 			continue
 		}
-		if f.ends_with('_test.v') {
+		if skip_tests && f.ends_with('_test.v') {
 			continue
 		}
 		// do not measure the scanning, but only the parsing:

@@ -32,7 +32,7 @@ const (
 
 fn test_search_tag_by_type() {
 	mut dom := parse(html.html)
-	tag := dom.get_tags(GetTagsOptions{'body'})[0]
+	tag := dom.get_tags(name: 'body')[0]
 	assert tag.get_tag('div')?.attributes['id'] == '1st'
 	assert tag.get_tag_by_attribute('href')?.content == 'V'
 	// TODO: update after improved parsing to not add trailing white space to attribute values
@@ -65,7 +65,7 @@ fn generate_temp_html_with_classes() string {
 
 fn test_search_by_class() {
 	mut dom := parse(generate_temp_html_with_classes())
-	tag := dom.get_tags(GetTagsOptions{'body'})[0]
+	tag := dom.get_tags(name: 'body')[0]
 	single_class_tags := tag.get_tags_by_class_name('single')
 	common_class_tags := tag.get_tags_by_class_name('common')
 	complex_class_tags := tag.get_tags_by_class_name('complex-0', 'complex-1', 'complex-2')

@@ -10,37 +10,56 @@
 })();
 
 function setupScrollSpy() {
-	const sections = document.querySelectorAll('section');
+	const mainContent = document.querySelector('#main-content');
+	// Ensure initial keyboard navigability
+	mainContent.focus();
+	const toc = mainContent.querySelector('.doc-toc');
+	const sections = mainContent.querySelectorAll('section');
 	const sectionPositions = Array.from(sections).map((section) => section.offsetTop);
-	let scrollPos = 0;
-	window.addEventListener('scroll', () => {
-		const toc = document.querySelector('.doc-toc');
-		// Reset classes
-		toc.querySelectorAll('a[class="active"]').forEach((link) => link.classList.remove('active'));
-		// Set current menu link as active
-		let scrollPosition = document.documentElement.scrollTop || document.body.scrollTop;
+	let lastActive = null;
+	let clickedScroll = false;
+	const handleScroll = debounce(() => {
+		if (clickedScroll) {
+			clickedScroll = false;
+			return;
+		}
+		if (lastActive) {
+			lastActive.classList.remove('active');
+		}
 		for (const [i, position] of sectionPositions.entries()) {
-			if (position >= scrollPosition) {
-				const section = sections[i];
-				const link = toc.querySelector('a[href="#' + section.id + '"]');
+			if (position >= mainContent.scrollTop) {
+				const link = toc.querySelector('a[href="#' + sections[i].id + '"]');
 				if (link) {
+					// Set current menu link as active
 					link.classList.add('active');
-					const tocHeight = toc.clientHeight;
-					const scrollTop = toc.scrollTop;
-					if (
-						document.body.getBoundingClientRect().top < scrollPos &&
-						scrollTop < link.offsetTop - 10
-					) {
-						toc.scrollTop = link.clientHeight + link.offsetTop - tocHeight + 10;
-					} else if (scrollTop > link.offsetTop - 10) {
+					const tocStart = toc.getBoundingClientRect().top + window.scrollY;
+					if (link.offsetTop > toc.scrollTop + toc.clientHeight - tocStart - 16) {
+						// Scroll the toc down if the active links position is below the bottom of the toc
+						toc.scrollTop = link.clientHeight + link.offsetTop - toc.clientHeight + tocStart + 10;
+					} else if (toc.scrollTop < 32 + tocStart) {
+						// Scroll to the top of the toc if having scrolled up into the last bit
+						toc.scrollTop = 0;
+					} else if (link.offsetTop < toc.scrollTop) {
+						// Scroll the toc up if the active links position is above the top of the toc
 						toc.scrollTop = link.offsetTop - 10;
 					}
 				}
+				lastActive = link;
 				break;
 			}
 		}
-		scrollPos = document.body.getBoundingClientRect().top;
-	});
+	}, 10);
+	mainContent.addEventListener('scroll', handleScroll);
+	toc.querySelectorAll('a').forEach((a) =>
+		a.addEventListener('click', () => {
+			if (lastActive) {
+				lastActive.classList.remove('active');
+			}
+			a.classList.add('active');
+			lastActive = a;
+			clickedScroll = true;
+		})
+	);
 }
 
 function setupMobileToggle() {
@@ -199,7 +218,7 @@ function setupSearchKeymaps() {
 				ev.preventDefault();
 				if (!searchResults.length) break;
 				if (selectedIdx <= 0) {
-					// Cycle to last if first is selected (or select it if none is selcted yet)
+					// Cycle to last if first is selected (or select it if none is selected yet)
 					selectResult(searchResults, searchResults.length - 1);
 				} else {
 					// Select previous
@@ -219,9 +238,9 @@ function createSearchResult(data) {
 	a.href = data.link;
 	a.classList.add('link');
 	li.appendChild(a);
-	const defintion = document.createElement('div');
-	defintion.classList.add('definition');
-	a.appendChild(defintion);
+	const definition = document.createElement('div');
+	definition.classList.add('definition');
+	a.appendChild(definition);
 	if (data.description) {
 		const description = document.createElement('div');
 		description.classList.add('description');
@@ -231,11 +250,11 @@ function createSearchResult(data) {
 	const title = document.createElement('span');
 	title.classList.add('title');
 	title.textContent = data.title;
-	defintion.appendChild(title);
+	definition.appendChild(title);
 	const badge = document.createElement('badge');
 	badge.classList.add('badge');
 	badge.textContent = data.badge;
-	defintion.appendChild(badge);
+	definition.appendChild(badge);
 	return li;
 }
 

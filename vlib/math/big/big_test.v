@@ -655,11 +655,14 @@ fn test_big_mod_pow() {
 	}
 }
 
-fn test_gcd() {
+fn test_gcd_vs_gcd_binary_vs_gcd_euclid() {
 	for t in gcd_test_data {
 		a := t.a.parse()
 		b := t.b.parse()
-		assert a.gcd(b) == t.expected.parse()
+		expected := t.expected.parse()
+		assert a.gcd(b) == expected
+		assert a.gcd_binary(b) == expected
+		assert a.gcd_euclid(b) == expected
 	}
 }
 

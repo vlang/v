@@ -1021,6 +1021,19 @@ fn bi_max(a Integer, b Integer) Integer {
 
 // gcd returns the greatest common divisor of the two integers `a` and `b`.
 pub fn (a Integer) gcd(b Integer) Integer {
+	// The cutoff is determined empirically, using vlib/v/tests/bench/math_big_gcd/bench_euclid.v .
+	if b.digits.len < 8 {
+		return a.gcd_euclid(b)
+	}
+	return a.gcd_binary(b)
+}
+
+// gcd_binary returns the greatest common divisor of the two integers `a` and `b`.
+// Note that gcd_binary is faster than gcd_euclid, for large integers (over 8 bytes long).
+// Inspired by the 2013-christmas-special by D. Lemire & R. Corderoy https://en.algorithmica.org/hpc/analyzing-performance/gcd/
+// For more information, refer to the Wikipedia article: https://en.wikipedia.org/wiki/Binary_GCD_algorithm
+// Discussion and further information: https://lemire.me/blog/2013/12/26/fastest-way-to-compute-the-greatest-common-divisor/
+pub fn (a Integer) gcd_binary(b Integer) Integer {
 	if a.signum == 0 {
 		return b.abs()
 	}
@@ -1031,24 +1044,42 @@ pub fn (a Integer) gcd(b Integer) Integer {
 		return one_int
 	}
 
-	return gcd_binary(a.abs(), b.abs())
-}
-
-// Inspired by the 2013-christmas-special by D. Lemire & R. Corderoy https://en.algorithmica.org/hpc/analyzing-performance/gcd/
-// For more information, refer to the Wikipedia article: https://en.wikipedia.org/wiki/Binary_GCD_algorithm
-// Discussion and further information: https://lemire.me/blog/2013/12/26/fastest-way-to-compute-the-greatest-common-divisor/
-fn gcd_binary(x Integer, y Integer) Integer {
-	mut a, az := x.rsh_to_set_bit()
-	mut b, bz := y.rsh_to_set_bit()
+	mut aa, az := a.abs().rsh_to_set_bit()
+	mut bb, bz := b.abs().rsh_to_set_bit()
 	shift := umin(az, bz)
 
-	for a.signum != 0 {
-		diff := b - a
-		b = bi_min(a, b)
-		a, _ = diff.abs().rsh_to_set_bit()
+	for aa.signum != 0 {
+		diff := bb - aa
+		bb = bi_min(aa, bb)
+		aa, _ = diff.abs().rsh_to_set_bit()
 	}
+	return bb.left_shift(shift)
+}
 
-	return b.left_shift(shift)
+// gcd_euclid returns the greatest common divisor of the two integers `a` and `b`.
+// Note that gcd_euclid is faster than gcd_binary, for very-small-integers up to 8-byte/u64.
+pub fn (a Integer) gcd_euclid(b Integer) Integer {
+	if a.signum == 0 {
+		return b.abs()
+	}
+	if b.signum == 0 {
+		return a.abs()
+	}
+	if a.signum < 0 {
+		return a.neg().gcd_euclid(b)
+	}
+	if b.signum < 0 {
+		return a.gcd_euclid(b.neg())
+	}
+	mut x := a
+	mut y := b
+	mut r := x % y
+	for r.signum != 0 {
+		x = y
+		y = r
+		r = x % y
+	}
+	return y
 }
 
 // mod_inverse calculates the multiplicative inverse of the integer `a` in the ring `ℤ/nℤ`.

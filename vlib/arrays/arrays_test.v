@@ -71,6 +71,15 @@ fn test_merge() {
 	assert merge[int](d, b) == b
 }
 
+fn test_append() {
+	a := [1, 3, 5, 5, 7]
+	b := [2, 4, 4, 5, 6, 8]
+	assert append(a, b) == [1, 3, 5, 5, 7, 2, 4, 4, 5, 6, 8]
+	assert append(b, a) == [2, 4, 4, 5, 6, 8, 1, 3, 5, 5, 7]
+	assert append(a, []int{}) == a
+	assert append([]int{}, b) == b
+}
+
 fn test_fixed_array_assignment() {
 	mut a := [2]int{}
 	a[0] = 111
