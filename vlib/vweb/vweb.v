@@ -1036,7 +1036,7 @@ pub fn (mut ctx Context) host_serve_static(host string, url string, file_path st
 }
 
 // Return the user-agent from the current user
-pub fn (ctx &Context) ua() string {
+pub fn (ctx &Context) user_agent() string {
 	return ctx.req.header.get(.user_agent) or { '' }
 }
 

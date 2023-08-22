@@ -1195,15 +1195,15 @@ fn main() {
 
 ### Others
 
-#### -ua
+#### -user_agent
 
 Returns the user-agent from the current user
 
 **Example:**
 
 ```v ignore
-pub fn (mut app App) ua() vweb.Result {
-    ua := app.ua()
+pub fn (mut app App) user_agent() vweb.Result {
+    ua := app.user_agent()
     return app.text('User-Agent: $ua')
 }
 ```
