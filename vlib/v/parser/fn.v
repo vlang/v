@@ -11,7 +11,8 @@ import os
 fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	first_pos := p.tok.pos()
 	mut name := if language == .js { p.check_js_name() } else { p.check_name() }
-	mut is_static_type_method := language == .v && name[0].is_capital() && p.tok.kind == .dot
+	mut is_static_type_method := language == .v && name.len > 0 && name[0].is_capital()
+		&& p.tok.kind == .dot
 	if is_static_type_method {
 		p.check(.dot)
 		name = name + '__static__' + p.check_name()
@@ -1133,10 +1134,10 @@ fn (mut p Parser) closure_vars() []ast.Param {
 			if p.table.global_scope.known_global(var_name) {
 				p.error_with_pos('no need to capture global variable `${var_name}` in closure',
 					p.prev_tok.pos())
-				continue
+				return []
 			}
 			p.error_with_pos('undefined ident: `${var_name}`', p.prev_tok.pos())
-			continue
+			return []
 		}
 		var.is_used = true
 		if is_mut {

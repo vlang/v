@@ -21,7 +21,7 @@ fn main() {
 }
 
 fn hline() {
-	println('------------------------------------------------------------------------------------------------------------------------------------')
+	println('---------------------------------------------------------------------------------------------------------------------------------------------------')
 }
 
 fn theader() {
@@ -40,6 +40,7 @@ fn process_files(files []string) ! {
 	mut total_tokens := i64(0)
 	mut total_lines := i64(0)
 	mut total_errors := i64(0)
+	mut total_files := i64(0)
 	for f in files {
 		mut table := ast.new_table()
 		if f == '' {
@@ -48,6 +49,7 @@ fn process_files(files []string) ! {
 		if skip_tests && f.ends_with('_test.v') {
 			continue
 		}
+		total_files++
 		// do not measure the scanning, but only the parsing:
 		mut p := new_parser(f, .skip_comments, table, pref_)
 		///
@@ -67,7 +69,7 @@ fn process_files(files []string) ! {
 	hline()
 	speed_mb_s := term.colorize(term.bright_yellow, '${(f64(total_bytes) / total_us):6.3f} MB/s')
 	speed_lines_s := term.colorize(term.bright_yellow, '${(1_000_000 * f64(total_lines) / total_us):10.1f} lines/s')
-	println('${total_us:10}us ${total_tokens:10} ${total_bytes:10} ${total_lines:10} ${(f64(total_bytes) / total_tokens):13.3} ${total_errors:10}   Parser speed: ${speed_mb_s}, ${speed_lines_s}, ${nthreads} thread(s)')
+	println('${total_us:10}us ${total_tokens:10} ${total_bytes:10} ${total_lines:10} ${(f64(total_bytes) / total_tokens):13.3} ${total_errors:10}   Parser speed: ${speed_mb_s}, ${speed_lines_s}, ${nthreads:3} thread(s), ${total_files:5} files.')
 }
 
 fn new_parser(path string, comments_mode scanner.CommentsMode, table &ast.Table, pref_ &pref.Preferences) &parser.Parser {

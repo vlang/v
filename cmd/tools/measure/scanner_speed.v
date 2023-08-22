@@ -18,7 +18,7 @@ fn main() {
 }
 
 fn hline() {
-	println('-------------------------------------------------------------------------------------------------------------------------------------')
+	println('----------------------------------------------------------------------------------------------------------------------------------------------------')
 }
 
 fn theader() {
@@ -37,6 +37,7 @@ fn process_files(files []string) ! {
 	mut total_tokens := i64(0)
 	mut total_lines := i64(0)
 	mut total_errors := i64(0)
+	mut total_files := i64(0)
 	for f in files {
 		if f == '' {
 			continue
@@ -44,6 +45,7 @@ fn process_files(files []string) ! {
 		if skip_tests && f.ends_with('_test.v') {
 			continue
 		}
+		total_files++
 		sw.restart()
 		s := scanner.new_scanner_file(f, .skip_comments, pref_)!
 		f_us := sw.elapsed().microseconds()
@@ -59,5 +61,5 @@ fn process_files(files []string) ! {
 	hline()
 	speed_mb_s := term.colorize(term.bright_yellow, '${(f64(total_bytes) / total_us):6.3f} MB/s')
 	speed_lines_s := term.colorize(term.bright_yellow, '${(1_000_000 * f64(total_lines) / total_us):10.1f} lines/s')
-	println('${total_us:10}us ${total_tokens:10} ${total_bytes:10} ${total_lines:10} ${(f64(total_bytes) / total_tokens):13.3} ${total_errors:10}   Scanner speed: ${speed_mb_s}, ${speed_lines_s}, ${nthreads} thread(s)')
+	println('${total_us:10}us ${total_tokens:10} ${total_bytes:10} ${total_lines:10} ${(f64(total_bytes) / total_tokens):13.3} ${total_errors:10}   Scanner speed: ${speed_mb_s}, ${speed_lines_s}, ${nthreads:3} thread(s), ${total_files:5} files.')
 }
