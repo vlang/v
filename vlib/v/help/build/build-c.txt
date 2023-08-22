@@ -34,13 +34,18 @@ see also `v help build`.
       slightly (~10% for gcc), but sometimes provides better error diagnosis.
 
    -cmain <MainFunctionName>
-      Useful with framework like code, that uses macros to re-define `main`, like SDL2 does for example.
+      Useful with framework like code, that uses macros to re-define `main`,
+      like SDL2 does for example.
       With that option, V will always generate:
-        `int MainFunctionName(int ___argc, char** ___argv) {` , for the program entry point function, *no matter* the OS.
+        `int MainFunctionName(int ___argc, char** ___argv) {`
+        ... for the program entry point function, *no matter* the OS.
       Without it, on non Windows systems, it will generate:
         `int main(int ___argc, char** ___argv) {`
         ... and on Windows, it will generate:
-          a) `int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, LPWSTR cmd_line, int show_cmd){`
+          a) `int WINAPI wWinMain( HINSTANCE instance,
+                                   HINSTANCE prev_instance,
+                                   LPWSTR cmd_line,
+                                   int show_cmd){`
           when you are compiling applications that `import gg`.
         ... or it will generate:
           b) `int wmain(int ___argc, wchar_t* ___argv[], wchar_t* ___envp[]){`
@@ -61,10 +66,12 @@ see also `v help build`.
          bare_eprint(buf &byte, len u64)
             Print len characters from the buffer pointed to by buf to stderr.
          bare_panic(msg string)
-            Print "V panic: " + msg, along with an optional backtrace and/or the V commit hash, and then exit.
+            Print "V panic: " + msg, along with an optional backtrace
+            and/or the V commit hash, and then exit.
          [export: 'malloc']
          __malloc(n usize) &C.void
-            Allocates n bytes of memory and returns the pointer to the first byte
+            Allocates n bytes of memory and returns the pointer to the first
+            byte.
          [export: 'free']
          __free(ptr &C.void)
             Free the block of memory ptr allocated by malloc.
@@ -212,17 +219,18 @@ see also `v help build`.
 
    -compress
       Compress the compiled executable with UPX.
-	  Note: `upx` should be installed beforehand.
-	  In most Linux distros it is in a package named `upx-ucl`.
-	  On macOS, you can install it with `brew install upx`.
-	  On Windows, you can download it from https://upx.github.io/ .
+      Note: `upx` should be installed beforehand.
+      In most Linux distros it is in a package named `upx-ucl`.
+      On macOS, you can install it with `brew install upx`.
+      On Windows, you can download it from https://upx.github.io/ .
 
    -live
       Build the executable with live capabilities (`[live]`).
 
    -no-preludes
       Prevents V from generating a prelude in generated .c files, useful for freestanding targets
-      where eg. you replace C standard library with your own, or some definitions/headers break something.
+      where eg. you replace C standard library with your own, or some definitions/headers
+      break something.
 
    -custom-prelude <path>
       Useful for similar use-case as above option, except it replaces V-generated prelude with

@@ -39,13 +39,16 @@ NB: the build flags are shared with the run command too:
     Current list of supported backends:
     * `c` (default)       - V outputs C source code, which is then passed to a C compiler.
     * `go`                - V outputs Go source code, which is then passed to a Go compiler.
-    * `interpret`         - V will interpret the V program directly, instead of compiling it first. Same as `v interpret file.v`.
+    * `interpret`         - V will interpret the V program directly, instead of compiling it first.
+	                        Same as `v interpret file.v`.
     * `js`                - V outputs JS source code which can be passed to NodeJS to be ran.
     * `js_browser`        - V outputs JS source code ready for the browser.
     * `js_node`           - V outputs JS source code to run with nodejs.
     * `js_freestanding`   - V outputs JS source code with no hard runtime dependency.
-    * `native`            - V outputs a native executable directly (see -arch x64|arm64 and -os linux|macos) (EXPERIMENTAL).
-    * `wasm`              - V outputs a WebAssembly module directly (see -os wasi|browser) (EXPERIMENTAL).
+    * `native`            - V outputs a native executable directly.
+	                        (see -arch x64|arm64 and -os linux|macos) (EXPERIMENTAL).
+    * `wasm`              - V outputs a WebAssembly module directly
+	                        (see -os wasi|browser) (EXPERIMENTAL).
 
   -d <flag>[=<value>], -define <flag>[=<value>]
     Define the provided flag.
@@ -111,7 +114,8 @@ NB: the build flags are shared with the run command too:
 
     NB: You can also select specific functions for profiling. For example:
         v -profile-fns println,i64_str -profile - run examples/hanoi.v
-        In this case, the profile counters will be updated only for them, *and* for the functions that they call.
+        In this case, the profile counters will be updated only for them,
+        *and* for the functions that they call.
         The profile result (after the program finishes), will look similar to this:
           127          0.721ms           5680ns println
           127          0.693ms           5456ns _writeln_to_fd
