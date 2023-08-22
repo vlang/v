@@ -403,7 +403,7 @@ can think of it as a chain.
 
 ### Context values
 
-You can store a value pair in vweb's context. It is especially usefull for passing variables
+You can store a value pair in vweb's context. It is especially useful for passing variables
 from a middleware function to the route handler.
 
 **Example**:
