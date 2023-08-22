@@ -11,6 +11,7 @@ import net.urllib
 import json
 import v.help
 import v.vmod
+import sync.pool
 
 const (
 	default_vpm_server_urls   = ['https://vpm.vlang.io', 'https://vpm.url4e.com']
@@ -21,20 +22,20 @@ const (
 	supported_vcs_systems     = ['git', 'hg']
 	supported_vcs_folders     = ['.git', '.hg']
 	supported_vcs_update_cmds = {
-		'git': 'git pull --recurse-submodules' // pulling with `--depth=1` leads to conflicts, when the upstream is more than 1 commit newer
-		'hg':  'hg pull --update'
+		'git': 'pull --recurse-submodules' // pulling with `--depth=1` leads to conflicts, when the upstream is more than 1 commit newer
+		'hg':  'pull --update'
 	}
 	supported_vcs_install_cmds = {
-		'git': 'git clone --depth=1 --recursive --shallow-submodules'
-		'hg':  'hg clone'
+		'git': 'clone --depth=1 --recursive --shallow-submodules'
+		'hg':  'clone'
 	}
 	supported_vcs_outdated_steps = {
-		'git': ['git fetch', 'git rev-parse @', 'git rev-parse @{u}']
-		'hg':  ['hg incoming']
+		'git': ['fetch', 'rev-parse @', 'rev-parse @{u}']
+		'hg':  ['incoming']
 	}
 	supported_vcs_version_cmds = {
-		'git': 'git version'
-		'hg':  'hg version'
+		'git': 'version'
+		'hg':  'version'
 	}
 )
 
@@ -231,7 +232,7 @@ fn vpm_install_from_vpm(module_names []string) {
 			errors++
 			eprintln('Errors while incrementing the download count for ${name}:')
 		}
-		vcs_install_cmd := supported_vcs_install_cmds[vcs]
+		vcs_install_cmd := '${vcs} ${supported_vcs_install_cmds[vcs]}'
 		cmd := '${vcs_install_cmd} "${mod.url}" "${minfo.final_module_path}"'
 		verbose_println('      command: ${cmd}')
 		cmdres := os.execute(cmd)
@@ -255,7 +256,7 @@ fn print_failed_cmd(cmd string, cmdres os.Result) {
 
 fn ensure_vcs_is_installed(vcs string) bool {
 	mut res := true
-	cmd := supported_vcs_version_cmds[vcs]
+	cmd := '${vcs} ${supported_vcs_version_cmds[vcs]}'
 	cmdres := os.execute(cmd)
 	if cmdres.exit_code != 0 {
 		print_failed_cmd(cmd, cmdres)
@@ -299,7 +300,7 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 			continue
 		}
 		println('Installing module "${name}" from "${url}" to "${final_module_path}" ...')
-		vcs_install_cmd := supported_vcs_install_cmds[vcs_key]
+		vcs_install_cmd := '${vcs_key} ${supported_vcs_install_cmds[vcs_key]}'
 		cmd := '${vcs_install_cmd} "${url}" "${final_module_path}"'
 		verbose_println('      command: ${cmd}')
 		cmdres := os.execute(cmd)
@@ -394,6 +395,46 @@ fn vpm_install(module_names []string, source Source) {
 	}
 }
 
+pub struct ModUpdateInfo {
+mut:
+	name       string
+	final_path string
+	has_err    bool
+}
+
+fn update_module(mut pp pool.PoolProcessor, idx int, wid int) &ModUpdateInfo {
+	mut result := ModUpdateInfo{
+		name: pp.get_item[string](idx)
+		has_err: false
+	}
+	zname := url_to_module_name(result.name)
+	result.final_path = valid_final_path_of_existing_module(result.name) or { return &result }
+	println('Updating module "${zname}" in "${result.final_path}" ...')
+	vcs := vcs_used_in_dir(result.final_path) or { return &result }
+	if !ensure_vcs_is_installed(vcs[0]) {
+		result.has_err = true
+		println('VPM needs `${vcs}` to be installed.')
+		return &result
+	}
+	path_flag := if vcs[0] == 'hg' { '-R' } else { '-C' }
+	vcs_cmd := '${vcs[0]} ${path_flag} "${result.final_path}" ${supported_vcs_update_cmds[vcs[0]]}'
+	// verbose_println('    command: ${vcs_cmd}')
+	vcs_res := os.execute('${vcs_cmd}')
+	if vcs_res.exit_code != 0 {
+		result.has_err = true
+		println('Failed updating module "${zname}" in "${result.final_path}".')
+		print_failed_cmd(vcs_cmd, vcs_res)
+		return &result
+	} else {
+		// verbose_println('    ${vcs_res.output.trim_space()}')
+		increment_module_download_count(zname) or {
+			result.has_err = true
+			eprintln('Errors while incrementing the download count for ${zname}:')
+		}
+	}
+	return &result
+}
+
 fn vpm_update(m []string) {
 	mut module_names := m.clone()
 	if settings.is_help {
@@ -403,11 +444,25 @@ fn vpm_update(m []string) {
 	if module_names.len == 0 {
 		module_names = get_installed_modules()
 	}
+	if settings.is_verbose {
+		vpm_update_verbose(module_names)
+		return
+	}
+	mut pp := pool.new_pool_processor(callback: update_module)
+	pp.work_on_items(module_names)
+	for res in pp.get_results[ModUpdateInfo]() {
+		if res.has_err {
+			exit(1)
+		}
+		resolve_dependencies(res.name, res.final_path, module_names)
+	}
+}
+
+fn vpm_update_verbose(module_names []string) {
 	mut errors := 0
-	for modulename in module_names {
-		zname := url_to_module_name(modulename)
-		final_module_path := valid_final_path_of_existing_module(modulename) or { continue }
-		os.chdir(final_module_path) or {}
+	for name in module_names {
+		zname := url_to_module_name(name)
+		final_module_path := valid_final_path_of_existing_module(name) or { continue }
 		println('Updating module "${zname}" in "${final_module_path}" ...')
 		vcs := vcs_used_in_dir(final_module_path) or { continue }
 		if !ensure_vcs_is_installed(vcs[0]) {
@@ -415,7 +470,8 @@ fn vpm_update(m []string) {
 			println('VPM needs `${vcs}` to be installed.')
 			continue
 		}
-		vcs_cmd := supported_vcs_update_cmds[vcs[0]]
+		path_flag := if vcs[0] == 'hg' { '-R' } else { '-C' }
+		vcs_cmd := '${vcs[0]} ${path_flag} "${final_module_path}" ${supported_vcs_update_cmds[vcs[0]]}'
 		verbose_println('    command: ${vcs_cmd}')
 		vcs_res := os.execute('${vcs_cmd}')
 		if vcs_res.exit_code != 0 {
@@ -430,39 +486,66 @@ fn vpm_update(m []string) {
 				eprintln('Errors while incrementing the download count for ${zname}:')
 			}
 		}
-		resolve_dependencies(modulename, final_module_path, module_names)
+		resolve_dependencies(name, final_module_path, module_names)
 	}
 	if errors > 0 {
 		exit(1)
 	}
 }
 
+pub struct ModDateInfo {
+	name string
+mut:
+	outdated bool
+	exec_err bool
+}
+
+fn get_mod_date_info(mut pp pool.PoolProcessor, idx int, wid int) &ModDateInfo {
+	mut result := ModDateInfo{
+		name: pp.get_item[string](idx)
+		outdated: false
+		exec_err: false
+	}
+	final_module_path := valid_final_path_of_existing_module(result.name) or { return &result }
+	vcs := vcs_used_in_dir(final_module_path) or { return &result }
+	vcs_cmd_steps := supported_vcs_outdated_steps[vcs[0]]
+	mut outputs := []string{}
+	for step in vcs_cmd_steps {
+		path_flag := if vcs[0] == 'hg' { '-R' } else { '-C' }
+		cmd := '${vcs[0]} ${path_flag} "${final_module_path}" ${step}'
+		res := os.execute('${cmd}')
+		if res.exit_code < 0 {
+			verbose_println('Error command: ${cmd}')
+			verbose_println('Error details:\n${res.output}')
+			result.exec_err = true
+			return &result
+		}
+		if vcs[0] == 'hg' {
+			if res.exit_code == 1 {
+				result.outdated = true
+				return &result
+			}
+		} else {
+			outputs << res.output
+		}
+	}
+	if vcs[0] == 'git' && outputs[1] != outputs[2] {
+		result.outdated = true
+	}
+	return &result
+}
+
 fn get_outdated() ![]string {
 	module_names := get_installed_modules()
 	mut outdated := []string{}
-	for name in module_names {
-		final_module_path := valid_final_path_of_existing_module(name) or { continue }
-		os.chdir(final_module_path) or {}
-		vcs := vcs_used_in_dir(final_module_path) or { continue }
-		vcs_cmd_steps := supported_vcs_outdated_steps[vcs[0]]
-		mut outputs := []string{}
-		for step in vcs_cmd_steps {
-			res := os.execute(step)
-			if res.exit_code < 0 {
-				verbose_println('Error command: ${step}')
-				verbose_println('Error details:\n${res.output}')
-				return error('Error while checking latest commits for "${name}" .')
-			}
-			if vcs[0] == 'hg' {
-				if res.exit_code == 1 {
-					outdated << name
-				}
-			} else {
-				outputs << res.output
-			}
+	mut pp := pool.new_pool_processor(callback: get_mod_date_info)
+	pp.work_on_items(module_names)
+	for res in pp.get_results[ModDateInfo]() {
+		if res.exec_err {
+			return error('Error while checking latest commits for "${res.name}" .')
 		}
-		if vcs[0] == 'git' && outputs[1] != outputs[2] {
-			outdated << name
+		if res.outdated {
+			outdated << res.name
 		}
 	}
 	return outdated
