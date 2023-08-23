@@ -119,18 +119,18 @@ fn test_server_custom_handler() {
 	z := http.fetch(
 		url: big_url
 		user_ptr: progress_calls
-		on_redirect: fn (req &http.Request, nredirects int, new_url string) {
+		on_redirect: fn (req &http.Request, nredirects int, new_url string) ! {
 			mut progress_calls := unsafe { &ProgressCalls(req.user_ptr) }
 			eprintln('>>>>>>>> on_redirect, req.url: ${req.url} | new_url: ${new_url} | nredirects: ${nredirects}')
 			progress_calls.redirected_to << new_url
 		}
-		on_progress: fn (req &http.Request, chunk []u8, read_so_far u64) {
+		on_progress: fn (req &http.Request, chunk []u8, read_so_far u64) ! {
 			mut progress_calls := unsafe { &ProgressCalls(req.user_ptr) }
 			eprintln('>>>>>>>> on_progress, req.url: ${req.url} | got chunk.len: ${chunk.len:5}, read_so_far: ${read_so_far:8}, chunk: ${chunk#[0..30].bytestr()}')
 			progress_calls.chunks << chunk
 			progress_calls.reads << read_so_far
 		}
-		on_finish: fn (req &http.Request, final_size u64) {
+		on_finish: fn (req &http.Request, final_size u64) ! {
 			mut progress_calls := unsafe { &ProgressCalls(req.user_ptr) }
 			eprintln('>>>>>>>> on_finish, req.url: ${req.url}, final_size: ${final_size}')
 			progress_calls.finished_was_called = true

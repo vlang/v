@@ -10,11 +10,11 @@ import rand
 import strings
 import time
 
-pub type RequestRedirectFn = fn (request &Request, nredirects int, new_url string)
+pub type RequestRedirectFn = fn (request &Request, nredirects int, new_url string) !
 
-pub type RequestProgressFn = fn (request &Request, chunk []u8, read_so_far u64)
+pub type RequestProgressFn = fn (request &Request, chunk []u8, read_so_far u64) !
 
-pub type RequestFinishFn = fn (request &Request, final_size u64)
+pub type RequestFinishFn = fn (request &Request, final_size u64) !
 
 // Request holds information about an HTTP request (either received by
 // a server or to be sent by a client)
@@ -91,7 +91,7 @@ pub fn (req &Request) do() !Response {
 			redirect_url = url.str()
 		}
 		if req.on_redirect != unsafe { nil } {
-			req.on_redirect(req, nredirects, redirect_url)
+			req.on_redirect(req, nredirects, redirect_url)!
 		}
 		qrurl := urllib.parse(redirect_url) or {
 			return error('http.request.do: invalid URL in redirect "${redirect_url}"')
@@ -184,7 +184,7 @@ fn (req &Request) http_do(host string, method Method, path string) !Response {
 		eprintln('< ${response_text}')
 	}
 	if req.on_finish != unsafe { nil } {
-		req.on_finish(req, u64(response_text.len))
+		req.on_finish(req, u64(response_text.len))!
 	}
 	return parse_response(response_text)
 }
@@ -197,7 +197,7 @@ fn (req &Request) read_all_from_client_connection(r &net.TcpConn) ![]u8 {
 		new_read := r.read(mut b[read..]) or { break }
 		read += new_read
 		if req.on_progress != unsafe { nil } {
-			req.on_progress(req, b[old_read..read], u64(read))
+			req.on_progress(req, b[old_read..read], u64(read))!
 		}
 		for b.len <= read {
 			unsafe { b.grow_len(4096) }

@@ -26,13 +26,13 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string)
 	C.vschannel_cleanup(&ctx)
 	response_text := unsafe { buff.vstring_with_len(length) }
 	if req.on_progress != unsafe { nil } {
-		req.on_progress(req, unsafe { buff.vbytes(length) }, u64(length))
+		req.on_progress(req, unsafe { buff.vbytes(length) }, u64(length))!
 	}
 	$if trace_http_response ? {
 		eprintln('< ${response_text}')
 	}
 	if req.on_finish != unsafe { nil } {
-		req.on_finish(req, u64(response_text.len))
+		req.on_finish(req, u64(response_text.len))!
 	}
 	return parse_response(response_text)
 }
