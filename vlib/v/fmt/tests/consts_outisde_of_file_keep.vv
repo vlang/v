@@ -1,0 +1,6 @@
+module test
+
+const foo = 'foo'
+
+dump(test.foo)
+dump(test.bar)

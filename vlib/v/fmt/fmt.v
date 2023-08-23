@@ -2155,6 +2155,12 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 				}
 			}
 		}
+		if !is_local && node.mod != 'main' {
+			// Do not shorten `modname.constname` to `constname` unless inside the main module.
+			name := '${node.mod}.${node.name}'
+			f.write(name)
+			return
+		}
 		name := f.short_module(node.name)
 		f.write(name)
 		if node.concrete_types.len > 0 {
