@@ -3875,7 +3875,16 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 		if field.has_expr {
 			g.enum_typedefs.write_string(' = ')
 			expr_str := g.expr_string(field.expr)
-			g.enum_typedefs.write_string(expr_str)
+			if field.expr is ast.Ident && field.expr.kind == .constant {
+				const_def := g.global_const_defs[util.no_dots(field.expr.name)]
+				if const_def.def.starts_with('#define') {
+					g.enum_typedefs.write_string(const_def.def.all_after_last(' '))
+				} else {
+					g.enum_typedefs.write_string(expr_str)
+				}
+			} else {
+				g.enum_typedefs.write_string(expr_str)
+			}
 			cur_enum_expr = expr_str
 			cur_enum_offset = 0
 		} else if is_flag {
