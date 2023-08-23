@@ -130,6 +130,7 @@ fn setup_symlink_windows(vexe string) {
 			set_reg_value(reg_sys_env_handle, 'Path', new_sys_env_path) or {
 				C.RegCloseKey(reg_sys_env_handle)
 				warn_and_exit(err.msg())
+				return
 			}
 			println('Done.')
 		}
@@ -138,6 +139,7 @@ fn setup_symlink_windows(vexe string) {
 			eprintln(err)
 			C.RegCloseKey(reg_sys_env_handle)
 			warn_and_exit('You might need to run this again to have the `v` command in your %PATH%')
+			return
 		}
 		C.RegCloseKey(reg_sys_env_handle)
 		println('Done.')
