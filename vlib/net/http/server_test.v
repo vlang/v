@@ -127,14 +127,16 @@ fn test_server_custom_handler() {
 			progress_calls.chunks << chunk
 			progress_calls.reads << read_so_far
 		}
-		on_finish: fn [mut progress_calls] (req &http.Request) {
-			eprintln('>>>>>>>> on_finish, req.url: ${req.url}')
+		on_finish: fn [mut progress_calls] (req &http.Request, final_size u64) {
+			eprintln('>>>>>>>> on_finish, req.url: ${req.url}, final_size: ${final_size}')
 			progress_calls.finished_was_called = true
+			progress_calls.final_size = final_size
 		}
 	)!
 	assert z.status_code == 200
 	assert z.body.starts_with('xyz')
 	assert z.body.len > 10000
+	assert progress_calls.final_size > 80_000
 	assert progress_calls.finished_was_called
 	assert progress_calls.chunks.len > 1
 	assert progress_calls.reads.len > 1
@@ -158,4 +160,5 @@ mut:
 	reads               []u64
 	finished_was_called bool
 	redirected_to       []string
+	final_size          u64
 }

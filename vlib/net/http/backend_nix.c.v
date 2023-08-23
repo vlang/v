@@ -47,7 +47,7 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string)
 		eprintln('< ${response_text}')
 	}
 	if req.on_finish != unsafe { nil } {
-		req.on_finish(req)
+		req.on_finish(req, u64(response_text.len))
 	}
 	return parse_response(response_text)
 }

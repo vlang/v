@@ -14,7 +14,7 @@ pub type RequestRedirectFn = fn (request &Request, nredirects int, new_url strin
 
 pub type RequestProgressFn = fn (request &Request, chunk []u8, read_so_far u64)
 
-pub type RequestFinishFn = fn (request &Request)
+pub type RequestFinishFn = fn (request &Request, final_size u64)
 
 // Request holds information about an HTTP request (either received by
 // a server or to be sent by a client)
@@ -184,7 +184,7 @@ fn (req &Request) http_do(host string, method Method, path string) !Response {
 		eprintln('< ${response_text}')
 	}
 	if req.on_finish != unsafe { nil } {
-		req.on_finish(req)
+		req.on_finish(req, u64(response_text.len))
 	}
 	return parse_response(response_text)
 }
