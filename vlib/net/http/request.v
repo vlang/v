@@ -10,6 +10,12 @@ import rand
 import strings
 import time
 
+pub type RequestRedirectFn = fn (request &Request, nredirects int, new_url string) !
+
+pub type RequestProgressFn = fn (request &Request, chunk []u8, read_so_far u64) !
+
+pub type RequestFinishFn = fn (request &Request, final_size u64) !
+
 // Request holds information about an HTTP request (either received by
 // a server or to be sent by a client)
 pub struct Request {
@@ -35,6 +41,10 @@ pub mut:
 	cert_key               string
 	in_memory_verification bool // if true, verify, cert, and cert_key are read from memory, not from a file
 	allow_redirect         bool = true // whether to allow redirect
+	// callbacks to allow custom reporting code to run, while the request is running
+	on_redirect RequestRedirectFn = unsafe { nil }
+	on_progress RequestProgressFn = unsafe { nil }
+	on_finish   RequestFinishFn   = unsafe { nil }
 }
 
 fn (mut req Request) free() {
@@ -58,9 +68,9 @@ pub fn (req &Request) do() !Response {
 	mut url := urllib.parse(req.url) or { return error('http.Request.do: invalid url ${req.url}') }
 	mut rurl := url
 	mut resp := Response{}
-	mut no_redirects := 0
+	mut nredirects := 0
 	for {
-		if no_redirects == max_redirects {
+		if nredirects == max_redirects {
 			return error('http.request.do: maximum number of redirects reached (${max_redirects})')
 		}
 		qresp := req.method_and_url_to_response(req.method, rurl)!
@@ -80,11 +90,14 @@ pub fn (req &Request) do() !Response {
 			}
 			redirect_url = url.str()
 		}
+		if req.on_redirect != unsafe { nil } {
+			req.on_redirect(req, nredirects, redirect_url)!
+		}
 		qrurl := urllib.parse(redirect_url) or {
 			return error('http.request.do: invalid URL in redirect "${redirect_url}"')
 		}
 		rurl = qrurl
-		no_redirects++
+		nredirects++
 	}
 	return resp
 }
@@ -164,13 +177,33 @@ fn (req &Request) http_do(host string, method Method, path string) !Response {
 	$if trace_http_request ? {
 		eprintln('> ${s}')
 	}
-	mut bytes := io.read_all(reader: client)!
+	mut bytes := req.read_all_from_client_connection(client)!
 	client.close()!
 	response_text := bytes.bytestr()
 	$if trace_http_response ? {
 		eprintln('< ${response_text}')
 	}
+	if req.on_finish != unsafe { nil } {
+		req.on_finish(req, u64(response_text.len))!
+	}
 	return parse_response(response_text)
+}
+
+fn (req &Request) read_all_from_client_connection(r &net.TcpConn) ![]u8 {
+	mut read := i64(0)
+	mut b := []u8{len: 32768}
+	for {
+		old_read := read
+		new_read := r.read(mut b[read..]) or { break }
+		read += new_read
+		if req.on_progress != unsafe { nil } {
+			req.on_progress(req, b[old_read..read], u64(read))!
+		}
+		for b.len <= read {
+			unsafe { b.grow_len(4096) }
+		}
+	}
+	return b[..read]
 }
 
 // referer returns 'Referer' header value of the given request
