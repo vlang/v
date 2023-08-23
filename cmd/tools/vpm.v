@@ -403,17 +403,17 @@ mut:
 }
 
 fn update_module(mut pp pool.PoolProcessor, idx int, wid int) &ModUpdateInfo {
-	mut result := ModUpdateInfo{
+	mut result := &ModUpdateInfo{
 		name: pp.get_item[string](idx)
 	}
 	zname := url_to_module_name(result.name)
-	result.final_path = valid_final_path_of_existing_module(result.name) or { return &result }
+	result.final_path = valid_final_path_of_existing_module(result.name) or { return result }
 	println('Updating module "${zname}" in "${result.final_path}" ...')
-	vcs := vcs_used_in_dir(result.final_path) or { return &result }
+	vcs := vcs_used_in_dir(result.final_path) or { return result }
 	if !ensure_vcs_is_installed(vcs[0]) {
 		result.has_err = true
 		println('VPM needs `${vcs}` to be installed.')
-		return &result
+		return result
 	}
 	path_flag := if vcs[0] == 'hg' { '-R' } else { '-C' }
 	vcs_cmd := '${vcs[0]} ${path_flag} "${result.final_path}" ${supported_vcs_update_cmds[vcs[0]]}'
@@ -423,7 +423,7 @@ fn update_module(mut pp pool.PoolProcessor, idx int, wid int) &ModUpdateInfo {
 		result.has_err = true
 		println('Failed updating module "${zname}" in "${result.final_path}".')
 		print_failed_cmd(vcs_cmd, vcs_res)
-		return &result
+		return result
 	} else {
 		// verbose_println('    ${vcs_res.output.trim_space()}')
 		increment_module_download_count(zname) or {
@@ -431,7 +431,7 @@ fn update_module(mut pp pool.PoolProcessor, idx int, wid int) &ModUpdateInfo {
 			eprintln('Errors while incrementing the download count for ${zname}:')
 		}
 	}
-	return &result
+	return result
 }
 
 fn vpm_update(m []string) {
@@ -500,11 +500,11 @@ mut:
 }
 
 fn get_mod_date_info(mut pp pool.PoolProcessor, idx int, wid int) &ModDateInfo {
-	mut result := ModDateInfo{
+	mut result := &ModDateInfo{
 		name: pp.get_item[string](idx)
 	}
-	final_module_path := valid_final_path_of_existing_module(result.name) or { return &result }
-	vcs := vcs_used_in_dir(final_module_path) or { return &result }
+	final_module_path := valid_final_path_of_existing_module(result.name) or { return result }
+	vcs := vcs_used_in_dir(final_module_path) or { return result }
 	vcs_cmd_steps := supported_vcs_outdated_steps[vcs[0]]
 	mut outputs := []string{}
 	for step in vcs_cmd_steps {
@@ -515,12 +515,12 @@ fn get_mod_date_info(mut pp pool.PoolProcessor, idx int, wid int) &ModDateInfo {
 			verbose_println('Error command: ${cmd}')
 			verbose_println('Error details:\n${res.output}')
 			result.exec_err = true
-			return &result
+			return result
 		}
 		if vcs[0] == 'hg' {
 			if res.exit_code == 1 {
 				result.outdated = true
-				return &result
+				return result
 			}
 		} else {
 			outputs << res.output
@@ -529,7 +529,7 @@ fn get_mod_date_info(mut pp pool.PoolProcessor, idx int, wid int) &ModDateInfo {
 	if vcs[0] == 'git' && outputs[1] != outputs[2] {
 		result.outdated = true
 	}
-	return &result
+	return result
 }
 
 fn get_outdated() ![]string {
