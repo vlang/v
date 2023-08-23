@@ -417,7 +417,7 @@ fn update_module(mut pp pool.PoolProcessor, idx int, wid int) &ModUpdateInfo {
 	}
 	path_flag := if vcs[0] == 'hg' { '-R' } else { '-C' }
 	vcs_cmd := '${vcs[0]} ${path_flag} "${result.final_path}" ${supported_vcs_update_cmds[vcs[0]]}'
-	// verbose_println('    command: ${vcs_cmd}')
+	verbose_println('    command: ${vcs_cmd}')
 	vcs_res := os.execute('${vcs_cmd}')
 	if vcs_res.exit_code != 0 {
 		result.has_err = true
@@ -425,7 +425,7 @@ fn update_module(mut pp pool.PoolProcessor, idx int, wid int) &ModUpdateInfo {
 		print_failed_cmd(vcs_cmd, vcs_res)
 		return result
 	} else {
-		// verbose_println('    ${vcs_res.output.trim_space()}')
+		verbose_println('    ${vcs_res.output.trim_space()}')
 		increment_module_download_count(zname) or {
 			result.has_err = true
 			eprintln('Errors while incrementing the download count for ${zname}:')
