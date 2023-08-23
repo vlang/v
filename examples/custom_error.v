@@ -1,8 +1,14 @@
 import semver
 
 fn main() {
-	semver.from('asd') or { check_error(err) }
-	semver.from('') or { check_error(err) }
+	semver.from('asd') or {
+		check_error(err)
+		return
+	}
+	semver.from('') or {
+		check_error(err)
+		return
+	}
 }
 
 fn check_error(err IError) {

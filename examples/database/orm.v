@@ -146,10 +146,10 @@ fn psql_array() ! {
 	eprintln('------------ ${@METHOD} -----------------')
 	mut db := pg.connect(host: pg_host, user: pg_user, password: pg_pass, dbname: pg_db)!
 	defer {
-		db.exec_one('drop table if exists "Parent", "Child"') or { eprintln(err) }
+		db.exec_one('drop table if exists "Parent", "Child"') or { panic(err) }
 		db.close()
 	}
-	db.exec_one('drop table if exists "Parent", "Child"') or { eprintln(err) }
+	db.exec_one('drop table if exists "Parent", "Child"') or { panic(err) }
 
 	sql db {
 		create table Parent
@@ -220,12 +220,12 @@ fn msql() ! {
 		dbname: mysql_db
 	)!
 	defer {
-		conn.query('DROP TABLE IF EXISTS Module') or { eprintln(err) }
-		conn.query('DROP TABLE IF EXISTS User') or { eprintln(err) }
+		conn.query('DROP TABLE IF EXISTS Module') or { panic(err) }
+		conn.query('DROP TABLE IF EXISTS User') or { panic(err) }
 		conn.close()
 	}
-	conn.query('DROP TABLE IF EXISTS Module') or { eprintln(err) }
-	conn.query('DROP TABLE IF EXISTS User') or { eprintln(err) }
+	conn.query('DROP TABLE IF EXISTS Module') or { panic(err) }
+	conn.query('DROP TABLE IF EXISTS User') or { panic(err) }
 
 	sql conn {
 		create table Module
@@ -255,10 +255,10 @@ fn psql() ! {
 	eprintln('------------ ${@METHOD} -----------------')
 	mut db := pg.connect(host: pg_host, user: pg_user, password: pg_pass, dbname: pg_db)!
 	defer {
-		db.exec_one('drop table if exists "modules", "User"') or { eprintln(err) }
+		db.exec_one('drop table if exists "modules", "User"') or { panic(err) }
 		db.close()
 	}
-	db.exec_one('drop table if exists "modules", "User"') or { eprintln(err) }
+	db.exec_one('drop table if exists "modules", "User"') or { panic(err) }
 	sql db {
 		create table Module
 		create table User

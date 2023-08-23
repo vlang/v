@@ -11,7 +11,10 @@ fn main() {
 	}
 	for file in files {
 		if os.is_file(file) {
-			f.write_string(file + '\r\n') or { println(err) }
+			f.write_string(file + '\r\n') or {
+				println(err)
+				return
+			}
 		}
 	}
 	f.close()
