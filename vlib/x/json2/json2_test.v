@@ -126,6 +126,7 @@ fn test_maps() {
 	assert json.decode[map[string]string]('{"test":"abc"}') or {
 		dump(err)
 		assert false
+		return
 	} == {
 		'test': 'abc'
 	}

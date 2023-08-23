@@ -25,6 +25,11 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 	if c.table.cur_fn == unsafe { nil } {
 		return
 	}
+	old_inside_return := c.inside_return
+	c.inside_return = true
+	defer {
+		c.inside_return = old_inside_return
+	}
 	c.expected_type = c.table.cur_fn.return_type
 	mut expected_type := c.unwrap_generic(c.expected_type)
 	if expected_type != 0 && c.table.sym(expected_type).kind == .alias {

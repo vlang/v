@@ -325,7 +325,11 @@ fn test_read_raw_at_negative_pos() {
 	if _ := f.read_raw_at[Point](u64(-1)) {
 		assert false
 	}
-	f.read_raw_at[Point](u64(-1)) or { assert err.msg() == 'Invalid argument' }
+	f.read_raw_at[Point](u64(-1)) or {
+		assert err.msg() == 'Invalid argument'
+		f.close()
+		return
+	}
 	f.close()
 }
 

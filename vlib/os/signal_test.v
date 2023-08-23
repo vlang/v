@@ -11,7 +11,10 @@ fn default_handler(signal os.Signal) {
 }
 
 fn test_signal_opt() {
-	os.signal_opt(.int, default_handler) or { assert false }
+	os.signal_opt(.int, default_handler) or {
+		assert false
+		return
+	}
 }
 
 fn test_signal_opt_invalid_argument() {
@@ -22,6 +25,7 @@ fn test_signal_opt_invalid_argument() {
 	os.signal_opt(.kill, default_handler) or {
 		assert err.msg() == 'Invalid argument; code: 22'
 		assert err.code() == 22
+		return
 	}
 }
 

@@ -29,7 +29,10 @@ pub struct GetTagsOptions {
 [if debug_html ?]
 fn (mut dom DocumentObjectModel) print_debug(data string) {
 	if data.len > 0 {
-		dom.debug_file.writeln(data) or { eprintln(err) }
+		dom.debug_file.writeln(data) or {
+			eprintln(err)
+			return
+		}
 	}
 }
 

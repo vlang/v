@@ -89,7 +89,10 @@ fn start_client(i int, shared ctx Context) {
 		ctx.ok_client_dials++
 	}
 	elog('client [${i}]: conn is connected, con.sock.handle: ${tcp_con.sock.handle}')
-	tcp_con.write([u8(i)]) or { elog('client [${i}]: write failed, err: ${err}') }
+	tcp_con.write([u8(i)]) or {
+		elog('client [${i}]: write failed, err: ${err}')
+		return
+	}
 	time.sleep(1 * time.second)
 	elog('client [${i}]: closing connection...')
 	tcp_con.close() or {

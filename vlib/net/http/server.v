@@ -145,7 +145,9 @@ fn (mut w HandlerWorker) process_requests() {
 
 fn (mut w HandlerWorker) handle_conn(mut conn net.TcpConn) {
 	defer {
-		conn.close() or { eprintln('close() failed: ${err}') }
+		conn.close() or {
+			panic('close() failed: ${err}')
+		}
 	}
 
 	mut reader := io.new_buffered_reader(reader: conn)
@@ -175,7 +177,10 @@ fn (mut w HandlerWorker) handle_conn(mut conn net.TcpConn) {
 		resp.header.set(.content_length, '${resp.body.len}')
 	}
 
-	conn.write(resp.bytes()) or { eprintln('error sending response: ${err}') }
+	conn.write(resp.bytes()) or {
+		eprintln('error sending response: ${err}')
+		return
+	}
 }
 
 // DebugHandler implements the Handler interface by echoing the request

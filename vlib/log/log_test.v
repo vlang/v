@@ -81,7 +81,7 @@ fn test_logger_mutable_reference() {
 	println(@FN + ' end')
 }
 
-fn test_level_from_tag() ? {
+fn test_level_from_tag() {
 	assert level_from_tag('INFO')? == .info
 	assert level_from_tag('FATAL')? == .fatal
 	assert level_from_tag('WARN')? == .warn
@@ -92,7 +92,10 @@ fn test_level_from_tag() ? {
 
 	for value in invalid {
 		mut passed := false
-		level_from_tag(value) or { passed = true }
+		level_from_tag(value) or {
+			passed = true
+			continue
+		}
 		assert passed
 	}
 }
@@ -106,7 +109,10 @@ fn test_target_from_label() ? {
 
 	for value in invalid {
 		mut passed := false
-		target_from_label(value) or { passed = true }
+		target_from_label(value) or {
+			passed = true
+			continue
+		}
 		assert passed
 	}
 }

@@ -17,7 +17,10 @@ fn test_return_err() {
 }
 
 fn test_return_err_var() {
-	foo_err() or { assert err.msg() == 'throw' }
+	foo_err() or {
+		assert err.msg() == 'throw'
+		return
+	}
 }
 
 fn test_str() {
@@ -31,7 +34,10 @@ fn result_void(err bool) ! {
 }
 
 fn test_result_void() {
-	result_void(false) or { assert false }
+	result_void(false) or {
+		assert false
+		return
+	}
 }
 
 fn test_result_void_err() {
@@ -39,6 +45,7 @@ fn test_result_void_err() {
 	result_void(true) or {
 		assert err.msg() == 'throw'
 		or_block = true
+		return
 	}
 	assert or_block
 }
@@ -48,7 +55,10 @@ fn propagate() ! {
 }
 
 fn test_propagation() {
-	propagate() or { assert false }
+	propagate() or {
+		assert false
+		return
+	}
 }
 
 fn function_that_can_return_error() !int {
@@ -61,7 +71,10 @@ fn util_error_propagation() ! {
 }
 
 fn test_return_on_error_propagation() {
-	util_error_propagation() or { assert err.msg() == 'abc' }
+	util_error_propagation() or {
+		assert err.msg() == 'abc'
+		return
+	}
 }
 
 fn unsafe_return_error() !int {
@@ -71,7 +84,10 @@ fn unsafe_return_error() !int {
 }
 
 fn test_unsafe_return_error() {
-	unsafe_return_error() or { assert err.msg() == 'abc' }
+	unsafe_return_error() or {
+		assert err.msg() == 'abc'
+		return
+	}
 }
 
 fn return_reference_type(path string) !&string {

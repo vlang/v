@@ -24,6 +24,9 @@ fn add_target(repo Target) !int {
 }
 
 fn test_main() {
-	add_target(Target{1, 'foo'}) or { println('>> ${err}') }
+	add_target(Target{1, 'foo'}) or {
+		println('>> ${err}')
+		return
+	}
 	assert true
 }

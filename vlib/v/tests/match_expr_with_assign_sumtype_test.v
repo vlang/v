@@ -1,5 +1,8 @@
 fn test_match_expr_with_assign_sumtype() {
-	parse_args(['1', '+', '-', '*', '/', ' ']) or { println(err) }
+	parse_args(['1', '+', '-', '*', '/', ' ']) or {
+		println(err)
+		return
+	}
 }
 
 enum Operator {

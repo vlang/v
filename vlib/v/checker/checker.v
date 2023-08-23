@@ -71,6 +71,7 @@ pub mut:
 	inside_anon_fn             bool // true inside `fn() { ... }()`
 	inside_ref_lit             bool // true inside `a := &something`
 	inside_defer               bool // true inside `defer {}` blocks
+	inside_return              bool // true inside `return a`
 	inside_fn_arg              bool // `a`, `b` in `a.f(b)`
 	inside_ct_attr             bool // true inside `[if expr]`
 	inside_x_is_type           bool // true inside the Type expression of `if x is Type {`

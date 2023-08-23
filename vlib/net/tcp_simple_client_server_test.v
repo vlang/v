@@ -70,7 +70,10 @@ fn test_socket_write_and_read() {
 		cleanup(mut server, mut client, mut socket)
 	}
 	message1 := 'a message 1'
-	socket.write_string(message1) or { assert false }
+	socket.write_string(message1) or {
+		assert false
+		return
+	}
 	mut rbuf := []u8{len: message1.len}
 	client.read(mut rbuf) or {
 		assert false
@@ -88,7 +91,10 @@ fn test_socket_read_line() {
 	}
 	message1, message2 := 'message1', 'message2'
 	message := '${message1}\n${message2}\n'
-	socket.write_string(message) or { assert false }
+	socket.write_string(message) or {
+		assert false
+		return
+	}
 	assert true
 	//
 	line1 := reader.read_line() or {
@@ -126,6 +132,7 @@ fn test_socket_write_fail_without_panic() {
 		socket.write_string(message2) or {
 			println('write to a socket without a recipient should produce an option fail: ${err} | ${message2}')
 			assert true
+			continue
 		}
 	}
 }

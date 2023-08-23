@@ -328,11 +328,13 @@ fn main() {
 		testroot := vroot + os.path_separator
 		tsession.skip_files << test_js_files.map(it.replace(testroot, ''))
 	}
-	testing.find_started_process('mysqld') or {
+	if _ := testing.find_started_process('mysqld') {
+	} else {
 		tsession.skip_files << 'vlib/db/mysql/mysql_orm_test.v'
 		tsession.skip_files << 'vlib/db/mysql/mysql_test.v'
 	}
-	testing.find_started_process('postgres') or {
+	if _ := testing.find_started_process('postgres') {
+	} else {
 		tsession.skip_files << 'vlib/db/pg/pg_orm_test.v'
 	}
 

@@ -21,7 +21,10 @@ fn main() {
 		println(err)
 	}
 	// works
-	return_option(true) or { println(err) }
+	return_option(true) or {
+		println(err)
+		return
+	}
 	// should be an checker error:
 	if x := return_string() {
 		println('x: ${x}')

@@ -23,6 +23,7 @@ fn test_dependency_resolution_fails_correctly() {
 		pcname := os.file_name(pc).replace('.pc', '')
 		pkgconfig.load(pcname, use_default_paths: false, path: samples_dir) or {
 			errors << err.msg()
+			continue
 		}
 	}
 	assert errors.len < pc_files.len

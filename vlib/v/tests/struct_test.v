@@ -374,9 +374,15 @@ fn test_fields_anon_fn_with_option_void_return_type() {
 		}
 	}
 
-	foo.f() or { assert err.msg() == 'oops' }
+	foo.f() or {
+		assert err.msg() == 'oops'
+		return
+	}
 
-	foo.g() or { assert false }
+	foo.g() or {
+		assert false
+		return
+	}
 }
 
 struct Commands {

@@ -3,9 +3,12 @@ module chunked
 fn test_invalid_chunk() {
 	mut is_failure := false
 
-	decode('eee') or { is_failure = true }
-
-	assert is_failure
+	decode('eee') or {
+		is_failure = true 
+		assert true
+		return
+	}
+	assert false
 }
 
 fn test_valid_chunk() {

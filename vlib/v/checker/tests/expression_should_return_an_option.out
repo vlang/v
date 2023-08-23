@@ -1,7 +1,7 @@
-vlib/v/checker/tests/expression_should_return_an_option.vv:26:10: error: expression should either return an Option or a Result
-   24 |     return_option(true) or { println(err) }
-   25 |     // should be an checker error:
-   26 |     if x := return_string() {
+vlib/v/checker/tests/expression_should_return_an_option.vv:29:10: error: expression should either return an Option or a Result
+   27 |     }
+   28 |     // should be an checker error:
+   29 |     if x := return_string() {
       |             ~~~~~~~~~~~~~~~
-   27 |         println('x: ${x}')
-   28 |     }
+   30 |         println('x: ${x}')
+   31 |     }

@@ -41,6 +41,7 @@ fn test_opt_with_fall_through() {
 		eprintln('  this *should* be an error: ${err}')
 		x++
 		assert true
+		return
 	}
 	assert x == 2
 }
