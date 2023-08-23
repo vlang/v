@@ -145,9 +145,7 @@ fn (mut w HandlerWorker) process_requests() {
 
 fn (mut w HandlerWorker) handle_conn(mut conn net.TcpConn) {
 	defer {
-		conn.close() or {
-			panic('close() failed: ${err}')
-		}
+		conn.close() or { panic('close() failed: ${err}') }
 	}
 
 	mut reader := io.new_buffered_reader(reader: conn)

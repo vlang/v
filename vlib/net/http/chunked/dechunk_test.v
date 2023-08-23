@@ -4,7 +4,7 @@ fn test_invalid_chunk() {
 	mut is_failure := false
 
 	decode('eee') or {
-		is_failure = true 
+		is_failure = true
 		assert true
 		return
 	}
