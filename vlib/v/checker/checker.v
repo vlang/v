@@ -1088,74 +1088,85 @@ fn (mut c Checker) expr_or_block_err(kind ast.OrKind, expr_name string, pos toke
 
 // return the actual type of the expression, once the option is handled
 fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast.Type {
-	if expr is ast.CallExpr {
-		mut expr_ret_type := expr.return_type
-		if expr_ret_type != 0 && c.table.sym(expr_ret_type).kind == .alias {
-			unaliased_ret_type := c.table.unaliased_type(expr_ret_type)
-			if unaliased_ret_type.has_flag(.option) || unaliased_ret_type.has_flag(.result) {
-				expr_ret_type = unaliased_ret_type
+	match expr {
+		ast.CallExpr {
+			mut expr_ret_type := expr.return_type
+			if expr_ret_type != 0 && c.table.sym(expr_ret_type).kind == .alias {
+				unaliased_ret_type := c.table.unaliased_type(expr_ret_type)
+				if unaliased_ret_type.has_flag(.option) || unaliased_ret_type.has_flag(.result) {
+					expr_ret_type = unaliased_ret_type
+				}
 			}
-		}
-		if expr_ret_type.has_flag(.option) || expr_ret_type.has_flag(.result) {
-			return_modifier_kind := if expr_ret_type.has_flag(.option) {
-				'an Option'
-			} else {
-				'a Result'
-			}
-			return_modifier := if expr_ret_type.has_flag(.option) { '?' } else { '!' }
-			if expr_ret_type.has_flag(.result) && expr.or_block.kind == .absent {
-				if c.inside_defer {
-					c.error('${expr.name}() returns ${return_modifier_kind}, so it should have an `or {}` block at the end',
-						expr.pos)
+			if expr_ret_type.has_flag(.option) || expr_ret_type.has_flag(.result) {
+				return_modifier_kind := if expr_ret_type.has_flag(.option) {
+					'an Option'
 				} else {
-					c.error('${expr.name}() returns ${return_modifier_kind}, so it should have either an `or {}` block, or `${return_modifier}` at the end',
-						expr.pos)
+					'a Result'
 				}
-			} else {
-				if expr.or_block.kind != .absent {
-					c.check_or_expr(expr.or_block, ret_type, expr_ret_type, expr)
-				}
-			}
-			return ret_type.clear_flag(.result)
-		} else {
-			c.expr_or_block_err(expr.or_block.kind, expr.name, expr.or_block.pos, false)
-		}
-	} else if expr is ast.SelectorExpr && c.table.sym(ret_type).kind != .chan {
-		if expr.typ.has_flag(.option) || expr.typ.has_flag(.result) {
-			with_modifier_kind := if expr.typ.has_flag(.option) {
-				'an Option'
-			} else {
-				'a Result'
-			}
-			with_modifier := if expr.typ.has_flag(.option) { '?' } else { '!' }
-			if expr.typ.has_flag(.result) && expr.or_block.kind == .absent {
-				if c.inside_defer {
-					c.error('field `${expr.field_name}` is ${with_modifier_kind}, so it should have an `or {}` block at the end',
-						expr.pos)
+				return_modifier := if expr_ret_type.has_flag(.option) { '?' } else { '!' }
+				if expr_ret_type.has_flag(.result) && expr.or_block.kind == .absent {
+					if c.inside_defer {
+						c.error('${expr.name}() returns ${return_modifier_kind}, so it should have an `or {}` block at the end',
+							expr.pos)
+					} else {
+						c.error('${expr.name}() returns ${return_modifier_kind}, so it should have either an `or {}` block, or `${return_modifier}` at the end',
+							expr.pos)
+					}
 				} else {
-					c.error('field `${expr.field_name}` is ${with_modifier_kind}, so it should have either an `or {}` block, or `${with_modifier}` at the end',
-						expr.pos)
+					if expr.or_block.kind != .absent {
+						c.check_or_expr(expr.or_block, ret_type, expr_ret_type, expr)
+					}
 				}
+				return ret_type.clear_flag(.result)
 			} else {
-				if expr.or_block.kind != .absent {
-					c.check_or_expr(expr.or_block, ret_type, expr.typ, expr)
+				c.expr_or_block_err(expr.or_block.kind, expr.name, expr.or_block.pos,
+					false)
+			}
+		}
+		ast.SelectorExpr {
+			if c.table.sym(ret_type).kind != .chan {
+				if expr.typ.has_flag(.option) || expr.typ.has_flag(.result) {
+					with_modifier_kind := if expr.typ.has_flag(.option) {
+						'an Option'
+					} else {
+						'a Result'
+					}
+					with_modifier := if expr.typ.has_flag(.option) { '?' } else { '!' }
+					if expr.typ.has_flag(.result) && expr.or_block.kind == .absent {
+						if c.inside_defer {
+							c.error('field `${expr.field_name}` is ${with_modifier_kind}, so it should have an `or {}` block at the end',
+								expr.pos)
+						} else {
+							c.error('field `${expr.field_name}` is ${with_modifier_kind}, so it should have either an `or {}` block, or `${with_modifier}` at the end',
+								expr.pos)
+						}
+					} else {
+						if expr.or_block.kind != .absent {
+							c.check_or_expr(expr.or_block, ret_type, expr.typ, expr)
+						}
+					}
+					return ret_type.clear_flag(.result)
+				} else {
+					c.expr_or_block_err(expr.or_block.kind, expr.field_name, expr.or_block.pos,
+						true)
 				}
 			}
-			return ret_type.clear_flag(.result)
-		} else {
-			c.expr_or_block_err(expr.or_block.kind, expr.field_name, expr.or_block.pos,
-				true)
 		}
-	} else if expr is ast.IndexExpr {
-		if expr.or_expr.kind != .absent {
-			c.check_or_expr(expr.or_expr, ret_type, ret_type.set_flag(.result), expr)
+		ast.IndexExpr {
+			if expr.or_expr.kind != .absent {
+				c.check_or_expr(expr.or_expr, ret_type, ret_type.set_flag(.result), expr)
+			}
 		}
-	} else if expr is ast.CastExpr {
-		c.check_expr_opt_call(expr.expr, ret_type)
-	} else if expr is ast.AsCast {
-		c.check_expr_opt_call(expr.expr, ret_type)
-	} else if expr is ast.ParExpr {
-		c.check_expr_opt_call(expr.expr, ret_type)
+		ast.CastExpr {
+			c.check_expr_opt_call(expr.expr, ret_type)
+		}
+		ast.AsCast {
+			c.check_expr_opt_call(expr.expr, ret_type)
+		}
+		ast.ParExpr {
+			c.check_expr_opt_call(expr.expr, ret_type)
+		}
+		else {}
 	}
 	return ret_type
 }
