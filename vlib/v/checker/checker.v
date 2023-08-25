@@ -1653,7 +1653,7 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 				...field.pos
 				len: util.no_cur_mod(field.name, c.mod).len
 			}
-			c.add_error_detail('Module name duplicates become an error after 2023-31-10.')
+			c.add_error_detail('Module name duplicates, will be an error after 2023/10/31.')
 			c.note('duplicate of a module name `${field.name}`', name_pos)
 		}
 		c.const_names << field.name
