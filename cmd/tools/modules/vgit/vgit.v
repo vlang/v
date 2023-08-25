@@ -140,6 +140,11 @@ pub mut:
 pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	vgit_context.vexename = if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
 	vgit_context.vexepath = os.real_path(os.join_path_single(vgit_context.path_v, vgit_context.vexename))
+	if os.is_dir(vgit_context.path_v) && os.is_executable(vgit_context.vexepath) {
+		// already compiled, no need to compile that specific v executable again
+		vgit_context.commit_v__hash = get_current_folder_commit_hash()
+		return
+	}
 	mut command_for_building_v_from_c_source := ''
 	mut command_for_selfbuilding := ''
 	if 'windows' == os.user_os() {
