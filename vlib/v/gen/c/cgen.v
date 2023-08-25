@@ -3603,7 +3603,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if node.or_block.kind != .absent && !g.is_assign_lhs && g.table.sym(node.typ).kind != .chan {
 		is_ptr := sym.kind in [.interface_, .sum_type]
 		stmt_str := g.go_before_stmt(0).trim_space()
-		styp := g.typ(node.typ)
+		styp := g.typ(g.unwrap_generic(node.typ))
 		g.empty_line = true
 		tmp_var := g.new_tmp_var()
 		g.write('${styp} ${tmp_var} = ')
