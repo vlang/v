@@ -6796,7 +6796,7 @@ instead use `#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp run`.
 
 ## Appendix I: Keywords
 
-V has 45 reserved keywords (3 are literals):
+V has 44 reserved keywords (3 are literals):
 
 ```v ignore
 as
@@ -6835,7 +6835,6 @@ sizeof
 spawn
 static
 struct
-thread
 true
 type
 typeof
