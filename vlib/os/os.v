@@ -276,7 +276,7 @@ pub fn file_name(opath string) string {
 }
 
 // input_opt returns a one-line string from stdin, after printing a prompt.
-// In the event of error (end of input), it returns `none`.
+// Returns `none` in case of an error (end of input).
 pub fn input_opt(prompt string) ?string {
 	print(prompt)
 	flush()
