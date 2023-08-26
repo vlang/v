@@ -22,7 +22,7 @@ pub fn validate_commit_exists(commit string) {
 	if commit.len == 0 {
 		return
 	}
-	cmd := "git cat-file -t '${commit}' "
+	cmd := 'git cat-file -t "${commit}" ' // windows's cmd.exe does not support ' for quoting
 	if !scripting.exit_0_status(cmd) {
 		eprintln('Commit: "${commit}" does not exist in the current repository.')
 		exit(3)
@@ -111,7 +111,8 @@ pub fn clone_or_pull(remote_git_url string, local_worktree_path string) {
 			// 3) => instead of cloning, it is much faster, and *bug free*, to just rsync the local repo directly,
 			// at the expense of a little more space usage, which will make the new tree in local_worktree_path,
 			// exactly 1:1 the same, as the one in remote_git_url, just independent from it .
-			scripting.run('rsync -a "${remote_git_url}/"  "${local_worktree_path}/"')
+			copy_cmd := if os.user_os() == 'windows' { 'robocopy /MIR' } else { 'rsync -a' }
+			scripting.run('${copy_cmd} "${remote_git_url}/"  "${local_worktree_path}/"')
 			return
 		}
 		scripting.run('git clone --quiet "${remote_git_url}"  "${local_worktree_path}" ')
@@ -145,15 +146,6 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 		vgit_context.commit_v__hash = get_current_folder_commit_hash()
 		return
 	}
-	mut command_for_building_v_from_c_source := ''
-	mut command_for_selfbuilding := ''
-	if 'windows' == os.user_os() {
-		command_for_building_v_from_c_source = '${vgit_context.cc} -std=c99 -I ./thirdparty/stdatomic/win -municode -w -o cv.exe  "${vgit_context.path_vc}/v_win.c" '
-		command_for_selfbuilding = './cv.exe -o ${vgit_context.vexename} {SOURCE}'
-	} else {
-		command_for_building_v_from_c_source = '${vgit_context.cc} -std=gnu11 -I ./thirdparty/stdatomic/nix -w -o cv "${vgit_context.path_vc}/v.c"  -lm -lpthread'
-		command_for_selfbuilding = './cv -o ${vgit_context.vexename} {SOURCE}'
-	}
 	scripting.chdir(vgit_context.workdir)
 	clone_or_pull(vgit_context.v_repo_url, vgit_context.path_v)
 	clone_or_pull(vgit_context.vc_repo_url, vgit_context.path_vc)
@@ -177,11 +169,33 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 		// already compiled, so no need to compile v again
 		return
 	}
+
+	scripting.chdir(vgit_context.path_v)
 	// Recompilation is needed. Just to be sure, clean up everything first.
 	scripting.run('git clean -xf')
 	if vgit_context.make_fresh_tcc {
 		scripting.run('make fresh_tcc')
 	}
+
+	// compiling the C sources with a C compiler:
+	mut command_for_building_v_from_c_source := ''
+	mut command_for_selfbuilding := ''
+	mut vc_source_file_location := os.join_path_single(vgit_context.path_vc, 'v.c')
+	if 'windows' == os.user_os() {
+		v_win_c_location := os.join_path_single(vgit_context.path_vc, 'v_win.c')
+		if os.exists(v_win_c_location) {
+			vc_source_file_location = v_win_c_location
+		}
+	}
+	dump(vc_source_file_location)
+	if 'windows' == os.user_os() {
+		command_for_building_v_from_c_source = '${vgit_context.cc} -std=c99 -I ./thirdparty/stdatomic/win -w -o cv.exe  "${vc_source_file_location}" '
+		command_for_selfbuilding = '.\\cv.exe -o ${vgit_context.vexename} {SOURCE}'
+	} else {
+		command_for_building_v_from_c_source = '${vgit_context.cc} -std=gnu11 -I ./thirdparty/stdatomic/nix -w -o cv "${vc_source_file_location}"  -lm -lpthread'
+		command_for_selfbuilding = './cv -o ${vgit_context.vexename} {SOURCE}'
+	}
+
 	scripting.run(command_for_building_v_from_c_source)
 	build_cmd := command_for_selfbuilding.replace('{SOURCE}', vgit_context.vvlocation)
 	scripting.run(build_cmd)
