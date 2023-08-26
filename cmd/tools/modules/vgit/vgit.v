@@ -45,7 +45,7 @@ fn get_current_folder_commit_hash() string {
 	return v_commithash
 }
 
-pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string, string) {
+pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string, string, int) {
 	scripting.chdir(cdir)
 	// Building a historic v with the latest vc is not always possible ...
 	// It is more likely, that the vc *at the time of the v commit*,
@@ -76,7 +76,7 @@ pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string, stri
 	scripting.run('git checkout --quiet "${vccommit}" ')
 	scripting.run('wc *.c')
 	scripting.chdir(cdir)
-	return v_commithash, vccommit
+	return v_commithash, vccommit, v_timestamp
 }
 
 pub fn clone_or_pull(remote_git_url string, local_worktree_path string) {
@@ -132,6 +132,7 @@ pub mut:
 	// these will be filled by vgitcontext.compile_oldv_if_needed()
 	commit_v__hash string // the git commit of the v repo that should be prepared
 	commit_vc_hash string // the git commit of the vc repo, corresponding to commit_v__hash
+	commit_v__ts   int    // unix timestamp, that corresponds to commit_v__hash; filled by prepare_vc_source
 	vexename       string // v or v.exe
 	vexepath       string // the full absolute path to the prepared v/v.exe
 	vvlocation     string // v.v or compiler/ or cmd/v, depending on v version
@@ -156,9 +157,10 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 		vgit_context.commit_v__hash = get_current_folder_commit_hash()
 		return
 	}
-	v_commithash, vccommit_before := prepare_vc_source(vgit_context.path_vc, vgit_context.path_v,
-		'HEAD')
+	v_commithash, vccommit_before, v_timestamp := prepare_vc_source(vgit_context.path_vc,
+		vgit_context.path_v, 'HEAD')
 	vgit_context.commit_v__hash = v_commithash
+	vgit_context.commit_v__ts = v_timestamp
 	vgit_context.commit_vc_hash = vccommit_before
 	if os.exists('cmd/v') {
 		vgit_context.vvlocation = 'cmd/v'
@@ -180,19 +182,26 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	// compiling the C sources with a C compiler:
 	mut command_for_building_v_from_c_source := ''
 	mut command_for_selfbuilding := ''
+	mut c_flags := '-std=gnu11 -I ./thirdparty/stdatomic/nix -w'
+	mut c_ldflags := '-lm -lpthread'
 	mut vc_source_file_location := os.join_path_single(vgit_context.path_vc, 'v.c')
 	if 'windows' == os.user_os() {
+		c_flags = '-std=c99 -I ./thirdparty/stdatomic/win -w'
+		c_ldflags = ''
 		v_win_c_location := os.join_path_single(vgit_context.path_vc, 'v_win.c')
 		if os.exists(v_win_c_location) {
 			vc_source_file_location = v_win_c_location
 		}
 	}
-	dump(vc_source_file_location)
 	if 'windows' == os.user_os() {
-		command_for_building_v_from_c_source = '${vgit_context.cc} -std=c99 -I ./thirdparty/stdatomic/win -w -o cv.exe  "${vc_source_file_location}" '
+		if vgit_context.commit_v__ts >= 1589793086 && vgit_context.cc.contains('gcc') {
+			// after 53ffee1 2020-05-18, gcc builds on windows do need `-municode`
+			c_flags += '-municode'
+		}
+		command_for_building_v_from_c_source = '${vgit_context.cc} ${c_flags} -o cv.exe  "${vc_source_file_location}" ${c_ldflags}'
 		command_for_selfbuilding = '.\\cv.exe -o ${vgit_context.vexename} {SOURCE}'
 	} else {
-		command_for_building_v_from_c_source = '${vgit_context.cc} -std=gnu11 -I ./thirdparty/stdatomic/nix -w -o cv "${vc_source_file_location}"  -lm -lpthread'
+		command_for_building_v_from_c_source = '${vgit_context.cc} ${c_flags} -o cv "${vc_source_file_location}"  ${c_ldflags}'
 		command_for_selfbuilding = './cv -o ${vgit_context.vexename} {SOURCE}'
 	}
 
