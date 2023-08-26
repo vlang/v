@@ -4,7 +4,7 @@ import os
 import flag
 import scripting
 
-pub fn check_v_commit_timestamp_before_self_rebuilding(v_timestamp int) {
+pub fn check_v_commit_timestamp_before_self_rebuilding(v_timestamp u64) {
 	if v_timestamp >= 1561805697 {
 		return
 	}
@@ -29,9 +29,9 @@ pub fn validate_commit_exists(commit string) {
 	}
 }
 
-pub fn line_to_timestamp_and_commit(line string) (int, string) {
+pub fn line_to_timestamp_and_commit(line string) (u64, string) {
 	parts := line.split(' ')
-	return parts[0].int(), parts[1]
+	return parts[0].u64(), parts[1]
 }
 
 pub fn normalized_workpath_for_commit(workdir string, commit string) string {
@@ -45,7 +45,7 @@ fn get_current_folder_commit_hash() string {
 	return v_commithash
 }
 
-pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string, string, int) {
+pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string, string, u64) {
 	scripting.chdir(cdir)
 	// Building a historic v with the latest vc is not always possible ...
 	// It is more likely, that the vc *at the time of the v commit*,
@@ -132,7 +132,7 @@ pub mut:
 	// these will be filled by vgitcontext.compile_oldv_if_needed()
 	commit_v__hash string // the git commit of the v repo that should be prepared
 	commit_vc_hash string // the git commit of the vc repo, corresponding to commit_v__hash
-	commit_v__ts   int    // unix timestamp, that corresponds to commit_v__hash; filled by prepare_vc_source
+	commit_v__ts   u64    // unix timestamp, that corresponds to commit_v__hash; filled by prepare_vc_source
 	vexename       string // v or v.exe
 	vexepath       string // the full absolute path to the prepared v/v.exe
 	vvlocation     string // v.v or compiler/ or cmd/v, depending on v version
@@ -214,7 +214,7 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 
 pub struct VGitOptions {
 pub mut:
-	workdir     string // the working folder (typically /tmp), where the tool will write
+	workdir     string = os.temp_dir() // the working folder (typically /tmp), where the tool will write
 	v_repo_url  string // the url of the V repository. It can be a local folder path, if you want to eliminate network operations...
 	vc_repo_url string // the url of the vc repository. It can be a local folder path, if you want to eliminate network operations...
 	show_help   bool   // whether to show the usage screen
@@ -222,8 +222,7 @@ pub mut:
 }
 
 pub fn add_common_tool_options(mut context VGitOptions, mut fp flag.FlagParser) []string {
-	tdir := os.temp_dir()
-	context.workdir = os.real_path(fp.string('workdir', `w`, context.workdir, 'A writable base folder. Default: ${tdir}'))
+	context.workdir = os.real_path(fp.string('workdir', `w`, context.workdir, 'A writable base folder. Default: ${context.workdir}'))
 	context.v_repo_url = fp.string('vrepo', 0, context.v_repo_url, 'The url of the V repository. You can clone it locally too. See also --vcrepo below.')
 	context.vc_repo_url = fp.string('vcrepo', 0, context.vc_repo_url, 'The url of the vc repository. You can clone it
 ${flag.space}beforehand, and then just give the local folder
