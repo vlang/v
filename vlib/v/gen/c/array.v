@@ -612,7 +612,7 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 		left_name := infix_expr.left.str()
 		if left_name.len > 1 {
 			compare_fn += '_by' +
-				left_name[1..].replace_each(['.', '_', '[', '_', ']', '_', "'", '_', '(', '', ')', '', ',', ''])
+				left_name[1..].replace_each(['.', '_', '[', '_', ']', '_', "'", '_', '"', '_', '(', '', ')', '', ',', ''])
 		}
 		// is_reverse is `true` for `.sort(a > b)` and `.sort(b < a)`
 		is_reverse := (left_name.starts_with('a') && infix_expr.op == .gt)
