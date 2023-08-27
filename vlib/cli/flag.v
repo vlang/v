@@ -23,7 +23,8 @@ pub mut:
 	abbrev string
 	// Desciption of flag
 	description string
-	global      bool
+	// If the flag is added to this command and to all subcommands
+	global bool
 	// If flag is requierd
 	required bool
 	// Default value if no value provide by command line
