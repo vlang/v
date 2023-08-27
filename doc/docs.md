@@ -4039,6 +4039,7 @@ println(compare(1.1, 1.2)) //         -1
 
 V's model of concurrency is going to be very similar to Go's.
 For now, `spawn foo()` runs `foo()` concurrently in a different thread:
+> **Note** Threads relies on running machine's CPU (number of cores/threads), so keep in mind that OS threads spawned with `spawn` have limitations in regard to concurrency, including resource overhead and scalability issues, and might affect performance in cases of high thread count.
 
 ```v
 import math
