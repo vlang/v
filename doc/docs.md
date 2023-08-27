@@ -4040,13 +4040,6 @@ println(compare(1.1, 1.2)) //         -1
 V's model of concurrency is going to be very similar to Go's.
 For now, `spawn foo()` runs `foo()` concurrently in a different thread:
 
-> **Note**
-> Threads relies on running machine's CPU (number of cores/threads).
-> Be aware that OS threads spawned with `spawn`
-> have limitations in regard to concurrency, 
-> including resource overhead and scalability issues, 
-> and might affect performance in cases of high thread count.
-
 ```v
 import math
 
@@ -4065,6 +4058,13 @@ fn main() {
 	// }(3, 4)
 }
 ```
+
+> **Note**
+> Threads rely on the machine's CPU (number of cores/threads).
+> Be aware that OS threads spawned with `spawn`
+> have limitations in regard to concurrency, 
+> including resource overhead and scalability issues, 
+> and might affect performance in cases of high thread count.
 
 There's also a `go` keyword. Right now `go foo()` will be automatically renamed via vfmt
 to `spawn foo()`, and there will be a way to launch a coroutine with `go` (a lightweight
