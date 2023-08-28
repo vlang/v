@@ -276,6 +276,10 @@ fn (mut p DateTimeParser) parse() !Time {
 		}
 	}
 
+	if !is_leap_year(year_) && month_ == 2 && day_in_month == 29 {
+		return error_invalid_time(0, '${year_}-${month_}-${day_in_month} is only valid in a leap year')
+	}
+
 	return new_time(
 		year: year_
 		month: month_
