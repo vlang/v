@@ -51,7 +51,8 @@ fn fix_windows_path(path string) string {
 	return p
 }
 
-// open_file can be used to open or create a file with custom flags and permissions and returns a `File` object.
+// open_file tries to open or create a file with custom flags and permissions.
+// If successful, it returns a `File` object.
 pub fn open_file(path string, mode string, options ...int) !File {
 	mut flags := 0
 	mut seek_to_end := false
@@ -129,7 +130,8 @@ pub fn open_file(path string, mode string, options ...int) !File {
 	}
 }
 
-// open tries to open a file for reading and returns back a read-only `File` object.
+// open tries to open a file from a given path for reading.
+// If successful, it returns a read-only `File` object.
 pub fn open(path string) !File {
 	/*
 	$if linux {

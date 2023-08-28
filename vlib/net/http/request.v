@@ -444,7 +444,7 @@ pub fn parse_multipart_form(body string, boundary string) (map[string]string, ma
 	return form, files
 }
 
-// parse_disposition parses the Content-Disposition header of a multipart form
+// parse_disposition parses the Content-Disposition header of a multipart form.
 // Returns a map of the key="value" pairs
 // Example: assert parse_disposition('Content-Disposition: form-data; name="a"; filename="b"') == {'name': 'a', 'filename': 'b'}
 fn parse_disposition(line string) map[string]string {

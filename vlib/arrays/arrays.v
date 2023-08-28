@@ -679,8 +679,8 @@ pub fn carray_to_varray[T](c_array_data voidptr, items int) []T {
 	return v_array
 }
 
-// find_first returns the first element that matches the given predicate
-// returns `none`, if there is no match found
+// find_first returns the first element that matches the given predicate.
+// Returns `none` if no match is found.
 // Example: arrays.find_first([1, 2, 3, 4, 5], fn (i int) bool { return i == 3 })? // => 3
 pub fn find_first[T](array []T, predicate fn (elem T) bool) ?T {
 	if array.len == 0 {
@@ -694,8 +694,8 @@ pub fn find_first[T](array []T, predicate fn (elem T) bool) ?T {
 	return none
 }
 
-// find_last returns the last element that matches the given predicate
-// returns `none`, if there is no match found
+// find_last returns the last element that matches the given predicate.
+// Returns `none` if no match is found.
 // Example: arrays.find_last([1, 2, 3, 4, 5], fn (i int) bool { return i == 3})? // => 3
 pub fn find_last[T](array []T, predicate fn (elem T) bool) ?T {
 	if array.len == 0 {
