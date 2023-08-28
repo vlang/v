@@ -586,7 +586,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		if p.tok.kind == .name && p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
 			&& (p.peek_tok.line_nr != p.tok.line_nr
 			|| p.peek_tok.kind !in [.name, .amp, .lsbr, .lpar]
-			|| (p.peek_tok.kind == .lsbr && p.peek_tok.pos - p.tok.pos == p.tok.len)) {
+			|| (p.peek_tok.kind == .lsbr && p.peek_tok.next_to(p.tok))) {
 			iface_pos := p.tok.pos()
 			mut iface_name := p.tok.lit
 			iface_type := p.parse_type()
@@ -641,7 +641,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			is_mut = true
 			mut_pos = fields.len
 		}
-		if p.peek_tok.kind in [.lt, .lsbr] && p.peek_tok.pos - p.tok.pos == p.tok.len {
+		if p.peek_tok.kind in [.lt, .lsbr] && p.peek_tok.next_to(p.tok) {
 			p.error_with_pos("no need to add generic type names in generic interface's method",
 				p.peek_tok.pos())
 			return ast.InterfaceDecl{}
