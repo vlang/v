@@ -279,37 +279,35 @@ fn (mut fs FlagParser) parse_value(longhand string, shorthand u8) []string {
 // -> '--flag' is parsed as true
 // -> '--flag' is equal to '--flag=true'
 fn (mut fs FlagParser) parse_bool_value(longhand string, shorthand u8) !string {
-	{
-		full := '--${longhand}'
-		for i, arg in fs.args {
-			if arg.len == 0 {
-				continue
-			}
-			if arg[0] != `-` {
-				continue
-			}
-			if (arg.len == 2 && arg[0] == `-` && arg[1] == shorthand) || arg == full {
-				if fs.args.len > i + 1 && fs.args[i + 1] in ['true', 'false'] {
-					val := fs.args[i + 1]
-					fs.args.delete(i + 1)
-					fs.args.delete(i)
-					return val
-				} else {
-					fs.args.delete(i)
-					return 'true'
-				}
-			}
-			if arg.len > full.len + 1 && arg[..full.len + 1] == '${full}=' {
-				// Flag abc=true
-				val := arg[full.len + 1..]
+	full := '--${longhand}'
+	for i, arg in fs.args {
+		if arg.len == 0 {
+			continue
+		}
+		if arg[0] != `-` {
+			continue
+		}
+		if (arg.len == 2 && arg[0] == `-` && arg[1] == shorthand) || arg == full {
+			if fs.args.len > i + 1 && fs.args[i + 1] in ['true', 'false'] {
+				val := fs.args[i + 1]
+				fs.args.delete(i + 1)
 				fs.args.delete(i)
 				return val
-			}
-			if arg.len > 1 && arg[0] == `-` && arg[1] != `-` && arg.index_u8(shorthand) != -1 {
-				// -abc is equivalent to -a -b -c
-				fs.args[i] = arg.replace(shorthand.ascii_str(), '') // -abc -> -bc
+			} else {
+				fs.args.delete(i)
 				return 'true'
 			}
+		}
+		if arg.len > full.len + 1 && arg[..full.len + 1] == '${full}=' {
+			// Flag abc=true
+			val := arg[full.len + 1..]
+			fs.args.delete(i)
+			return val
+		}
+		if arg.len > 1 && arg[0] == `-` && arg[1] != `-` && arg.index_u8(shorthand) != -1 {
+			// -abc is equivalent to -a -b -c
+			fs.args[i] = arg.replace(shorthand.ascii_str(), '') // -abc -> -bc
+			return 'true'
 		}
 	}
 	return error("parameter '${longhand}' not found")
@@ -319,15 +317,11 @@ fn (mut fs FlagParser) parse_bool_value(longhand string, shorthand u8) !string {
 // It returns an error, when the flag is not given by the user.
 // This version supports abbreviations.
 pub fn (mut fs FlagParser) bool_opt(name string, abbr u8, usage string) !bool {
-	mut res := false
-	{
-		fs.add_flag(name, abbr, usage, '<bool>')
-		parsed := fs.parse_bool_value(name, abbr) or {
-			return error("parameter '${name}' not provided")
-		}
-		res = parsed == 'true'
+	fs.add_flag(name, abbr, usage, '<bool>')
+	parsed := fs.parse_bool_value(name, abbr) or {
+		return error("parameter '${name}' not provided")
 	}
-	return res
+	return parsed == 'true'
 }
 
 // bool defines and parses a string flag/option named `name`.
@@ -356,17 +350,13 @@ pub fn (mut fs FlagParser) int_multi(name string, abbr u8, usage string) []int {
 // When the flag is not given by the user, it returns an error.
 // This version supports abbreviations.
 pub fn (mut fs FlagParser) int_opt(name string, abbr u8, usage string) !int {
-	mut res := 0
-	{
-		fs.add_flag(name, abbr, usage, '<int>')
-		parsed := fs.parse_value(name, abbr)
-		if parsed.len == 0 {
-			return error("parameter '${name}' not provided")
-		}
-		parsed0 := parsed[0]
-		res = parsed0.int()
+	fs.add_flag(name, abbr, usage, '<int>')
+	parsed := fs.parse_value(name, abbr)
+	if parsed.len == 0 {
+		return error("parameter '${name}' not provided")
 	}
-	return res
+	parsed0 := parsed[0]
+	return parsed0.int()
 }
 
 // int defines and parses an integer flag, named `name`.
@@ -395,16 +385,12 @@ pub fn (mut fs FlagParser) float_multi(name string, abbr u8, usage string) []f64
 // When the flag is not given by the user, it returns an error.
 // This version supports abbreviations.
 pub fn (mut fs FlagParser) float_opt(name string, abbr u8, usage string) !f64 {
-	mut res := 0.0
-	{
-		fs.add_flag(name, abbr, usage, '<float>')
-		parsed := fs.parse_value(name, abbr)
-		if parsed.len == 0 {
-			return error("parameter '${name}' not provided")
-		}
-		res = parsed[0].f64()
+	fs.add_flag(name, abbr, usage, '<float>')
+	parsed := fs.parse_value(name, abbr)
+	if parsed.len == 0 {
+		return error("parameter '${name}' not provided")
 	}
-	return res
+	return parsed[0].f64()
 }
 
 // float defines and parses a floating point flag, named `name`.
@@ -428,16 +414,12 @@ pub fn (mut fs FlagParser) string_multi(name string, abbr u8, usage string) []st
 // When the flag is not given by the user, it returns an error.
 // This version supports abbreviations.
 pub fn (mut fs FlagParser) string_opt(name string, abbr u8, usage string) !string {
-	mut res := ''
-	{
-		fs.add_flag(name, abbr, usage, '<string>')
-		parsed := fs.parse_value(name, abbr)
-		if parsed.len == 0 {
-			return error("parameter '${name}' not provided")
-		}
-		res = parsed[0]
+	fs.add_flag(name, abbr, usage, '<string>')
+	parsed := fs.parse_value(name, abbr)
+	if parsed.len == 0 {
+		return error("parameter '${name}' not provided")
 	}
-	return res
+	return parsed[0]
 }
 
 // string defines and parses a string flag/option, named `name`.
