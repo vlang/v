@@ -863,7 +863,6 @@ fn (t Tree) assign_stmt(node ast.AssignStmt) &Node {
 	obj.add_terse('has_cross_var', t.bool_node(node.has_cross_var))
 	obj.add('pos', t.pos(node.pos))
 	obj.add('comments', t.array_node_comment(node.comments))
-	obj.add('end_comments', t.array_node_comment(node.end_comments))
 	return obj
 }
 
