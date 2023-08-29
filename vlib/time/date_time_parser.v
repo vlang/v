@@ -276,6 +276,18 @@ fn (mut p DateTimeParser) parse() !Time {
 		}
 	}
 
+	if month_ == 2 {
+		feb_days_in_year := if is_leap_year(year_) { 29 } else { 28 }
+		if day_in_month > feb_days_in_year {
+			return error_invalid_time(0, 'February has only 28 days in the given year')
+		}
+	} else if day_in_month == 31 && month_ !in [1, 3, 5, 7, 8, 10, 12] {
+		month_name := Time{
+			month: month_
+		}.custom_format('MMMM')
+		return error_invalid_time(0, '${month_name} has only 30 days')
+	}
+
 	return new_time(
 		year: year_
 		month: month_
