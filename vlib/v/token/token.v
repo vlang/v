@@ -502,7 +502,7 @@ pub fn (tok Token) is_unary() bool {
 
 [inline]
 pub fn (tok Token) is_inline_comment() bool {
-	return tok.lit.len + 4 == tok.len
+	return tok.kind == .comment && tok.lit.len + 4 == tok.len
 }
 
 [inline]

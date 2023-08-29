@@ -1742,8 +1742,7 @@ fn (mut p Parser) expr_list() ([]ast.Expr, []ast.Comment, []token.Pos) {
 	for {
 		comments << p.eat_comments(same_line: true)
 		exprs << p.expr(0)
-		if p.tok.kind == .comment && p.tok.is_inline_comment()
-			&& p.peek_tok.kind in [.comma, .assign, .decl_assign] {
+		if p.tok.is_inline_comment() && p.peek_tok.kind in [.comma, .assign, .decl_assign] {
 			comments << p.eat_comments(same_line: true)
 		}
 		if p.tok.kind == .comma {
