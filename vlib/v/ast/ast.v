@@ -1259,10 +1259,12 @@ pub:
 [minify]
 pub struct AssignStmt {
 pub:
-	op           token.Kind // include: =,:=,+=,-=,*=,/= and so on; for a list of all the assign operators, see vlib/token/token.v
-	pos          token.Pos
-	comments     []Comment
-	end_comments []Comment
+	op               token.Kind // include: =,:=,+=,-=,*=,/= and so on; for a list of all the assign operators, see vlib/token/token.v
+	pos              token.Pos
+	comments         []Comment
+	left_comma_poss  []token.Pos
+	right_comma_poss []token.Pos
+	assign_pos       token.Pos
 pub mut:
 	right         []Expr
 	left          []Expr

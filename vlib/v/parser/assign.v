@@ -4,18 +4,19 @@
 module parser
 
 import v.ast
+import v.token
 
 fn (mut p Parser) assign_stmt() ast.Stmt {
 	mut defer_vars := p.defer_vars.clone()
 	p.defer_vars = []ast.Ident{}
 
-	exprs, comments := p.expr_list()
+	exprs, comments, comma_poss := p.expr_list()
 
 	if !(p.inside_defer && p.tok.kind == .decl_assign) {
 		defer_vars << p.defer_vars
 	}
 	p.defer_vars = defer_vars
-	return p.partial_assign_stmt(exprs, comments)
+	return p.partial_assign_stmt(exprs, comments, comma_poss)
 }
 
 const max_expr_level = 100
@@ -184,19 +185,21 @@ fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
 	return false
 }
 
-fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comment) ast.Stmt {
+fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comment, left_comma_poss []token.Pos) ast.Stmt {
 	p.is_stmt_ident = false
 	op := p.tok.kind
 	mut pos := p.tok.pos()
+	assign_pos := pos
 	p.next()
 	mut comments := []ast.Comment{cap: 2 * left_comments.len + 1}
 	comments << left_comments
-	comments << p.eat_comments()
+	comments << p.eat_comments(same_line: true)
 	mut right_comments := []ast.Comment{}
 	mut right := []ast.Expr{cap: left.len}
-	right, right_comments = p.expr_list()
+	mut right_comma_poss := []token.Pos{}
+	right, right_comments, right_comma_poss = p.expr_list()
 	comments << right_comments
-	end_comments := p.eat_comments(same_line: true)
+	comments << p.eat_comments(same_line: true)
 	mut has_cross_var := false
 	mut is_static := false
 	mut is_volatile := false
@@ -291,8 +294,10 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 		left: left
 		right: right
 		comments: comments
-		end_comments: end_comments
 		pos: pos
+		assign_pos: assign_pos
+		left_comma_poss: left_comma_poss
+		right_comma_poss: right_comma_poss
 		has_cross_var: has_cross_var
 		is_simple: p.inside_for && p.tok.kind == .lcbr
 		is_static: is_static

@@ -653,7 +653,6 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					op: .assign
 					pos: node.pos
 					comments: node.comments
-					end_comments: node.end_comments
 					left: node.left
 					right: [
 						ast.Expr(ast.InfixExpr{

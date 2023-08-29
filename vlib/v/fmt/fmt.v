@@ -822,6 +822,13 @@ pub fn (mut f Fmt) assign_stmt(node ast.AssignStmt) {
 			f.write(' ')
 		}
 		f.expr(left)
+		pos := if i == node.left.len - 1 { node.assign_pos.pos } else { node.left_comma_poss[i].pos }
+		pre_comma_comments := node.comments[sum_len..].filter(it.pos.pos < pos)
+		sum_len += pre_comma_comments.len
+		if pre_comma_comments.len > 0 {
+			f.comments(pre_comma_comments)
+			f.write(' ')
+		}
 		if i < node.left.len - 1 {
 			f.write(', ')
 		}
@@ -837,10 +844,16 @@ pub fn (mut f Fmt) assign_stmt(node ast.AssignStmt) {
 		}
 		f.expr(val)
 		if i < node.right.len - 1 {
+			pre_comma_comments := node.comments[sum_len..].filter(it.pos.pos < node.right_comma_poss[i].pos)
+			sum_len += pre_comma_comments.len
+			if pre_comma_comments.len > 0 {
+				f.comments(pre_comma_comments)
+				f.write(' ')
+			}
 			f.write(', ')
 		}
 	}
-	f.comments(node.end_comments, has_nl: false, inline: true, level: .keep)
+	f.comments(node.comments[sum_len..], has_nl: false, inline: true, level: .keep)
 	if !f.single_line_if {
 		f.writeln('')
 	}

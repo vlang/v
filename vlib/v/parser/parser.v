@@ -1735,22 +1735,25 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 	return res
 }
 
-fn (mut p Parser) expr_list() ([]ast.Expr, []ast.Comment) {
+fn (mut p Parser) expr_list() ([]ast.Expr, []ast.Comment, []token.Pos) {
 	mut exprs := []ast.Expr{}
 	mut comments := []ast.Comment{}
+	mut comma_poss := []token.Pos{}
 	for {
-		expr := p.expr(0)
-		if expr is ast.Comment {
-			comments << expr
-		} else {
-			exprs << expr
-			if p.tok.kind != .comma {
-				break
-			}
+		comments << p.eat_comments(same_line: true)
+		exprs << p.expr(0)
+		if p.tok.kind == .comment && p.tok.is_inline_comment()
+			&& p.peek_tok.kind in [.comma, .assign, .decl_assign] {
+			comments << p.eat_comments(same_line: true)
+		}
+		if p.tok.kind == .comma {
+			comma_poss << p.tok.pos()
 			p.next()
+		} else {
+			break
 		}
 	}
-	return exprs, comments
+	return exprs, comments, comma_poss
 }
 
 fn (mut p Parser) is_attributes() bool {
@@ -2112,7 +2115,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	mut defer_vars := p.defer_vars.clone()
 	p.defer_vars = []ast.Ident{}
 
-	left, left_comments := p.expr_list()
+	left, left_comments, left_pos_commas := p.expr_list()
 
 	if !(p.inside_defer && p.tok.kind == .decl_assign) {
 		defer_vars << p.defer_vars
@@ -2130,7 +2133,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	}
 	// TODO remove translated
 	if p.tok.kind in [.assign, .decl_assign] || p.tok.kind.is_assign() {
-		return p.partial_assign_stmt(left, left_comments)
+		return p.partial_assign_stmt(left, left_comments, left_pos_commas)
 	} else if !p.pref.translated && !p.is_translated && !p.pref.is_fmt && !p.pref.is_vet
 		&& tok.kind !in [.key_if, .key_match, .key_lock, .key_rlock, .key_select] {
 		for node in left {
@@ -3805,7 +3808,7 @@ fn (mut p Parser) return_stmt() ast.Return {
 		}
 	}
 	// return exprs
-	exprs, comments2 := p.expr_list()
+	exprs, comments2, _ := p.expr_list()
 	comments << comments2
 	end_pos := exprs.last().pos()
 	return ast.Return{
