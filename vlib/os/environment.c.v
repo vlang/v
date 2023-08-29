@@ -16,7 +16,7 @@ pub fn getenv(key string) string {
 	return getenv_opt(key) or { '' }
 }
 
-// `getenv_opt` returns the value a given environment variable.
+// `getenv_opt` returns the value of a given environment variable.
 // Returns `none` if the environment variable does not exist.
 [manualfree]
 pub fn getenv_opt(key string) ?string {
