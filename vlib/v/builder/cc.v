@@ -206,6 +206,13 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		|| ccoptions.guessed_compiler == 'msvc'
 	ccoptions.is_cc_clang = ccompiler_file_name.contains('clang')
 		|| ccoptions.guessed_compiler == 'clang'
+
+	// Add -fwrapv to handle UB overflows
+	if (ccoptions.is_cc_gcc || ccoptions.is_cc_clang || ccoptions.is_cc_tcc)
+		&& v.pref.os in [.macos, .linux, .windows] {
+		ccoptions.args << '-fwrapv'
+	}
+
 	// For C++ we must be very tolerant
 	if ccoptions.guessed_compiler.contains('++') {
 		ccoptions.args << '-fpermissive'
