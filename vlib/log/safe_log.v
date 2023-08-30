@@ -26,7 +26,7 @@ pub fn (mut x ThreadSafeLog) free() {
 	unsafe {
 		x.Log.free()
 		x.mu.destroy()
-		free(x) // TODO: think more about how freeing and interface value wrappers interact with -autofree
+		// C.printf(c'ThreadSafeLog free(x), x: %p\n', x)
 	}
 }
 

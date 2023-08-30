@@ -11,17 +11,6 @@ fn deinit() {
 	free_logger(default_logger)
 }
 
-[manualfree]
-fn free_logger(logger &Logger) {
-	if voidptr(logger) == unsafe { nil } {
-		return
-	}
-	unsafe {
-		logger.free()
-		free(logger)
-	}
-}
-
 // set_logger changes the default logger instance to the one provided by the user.
 // The existing logger will be freed, *after* the change is done.
 [manualfree]
@@ -30,6 +19,12 @@ pub fn set_logger(logger &Logger) {
 	old_logger := unsafe { default_logger }
 	default_logger = unsafe { logger }
 	free_logger(old_logger)
+}
+
+// get_logger returns a pointer to the current default logger instance
+[unsafe]
+pub fn get_logger() &Logger {
+	return default_logger
 }
 
 // get_level returns the log level of the default Logger instance
