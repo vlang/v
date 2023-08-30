@@ -1,4 +1,17 @@
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+[has_globals]
 module log
+
+__global default_logger &Logger
+
+// TODO: remove this hack, when the language has a way to access the raw pointer to an interface value directly:
+[typedef]
+struct C.log__Logger {
+mut:
+	_object voidptr
+}
 
 // init will be called before the user's main program starts, to initialize the default logger
 fn init() {
@@ -6,11 +19,9 @@ fn init() {
 	C.atexit(deinit)
 }
 
-// TODO: remove this hack, when the language has a way to access the raw pointer to an interface value directly:
-[typedef]
-struct C.log__Logger {
-mut:
-	_object voidptr
+// deinit will be called on exit of the program and will free the memory allocated for the default logger
+fn deinit() {
+	free_logger(default_logger)
 }
 
 [manualfree]

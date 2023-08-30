@@ -1,15 +1,7 @@
 // Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-[has_globals]
 module log
-
-__global default_logger &Logger
-
-// deinit will be called on exit of the program and will free the memory allocated for the default logger
-fn deinit() {
-	free_logger(default_logger)
-}
 
 // set_logger changes the default logger instance to the one provided by the user.
 // The existing logger will be freed, *after* the change is done.
