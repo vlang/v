@@ -17,15 +17,6 @@ pub mut:
 	output_file_name string // log output to this file
 }
 
-[unsafe]
-pub fn (mut f Log) free() {
-	unsafe {
-		f.output_label.free()
-		f.ofile.close()
-		f.output_file_name.free()
-	}
-}
-
 // get_level gets the internal logging level.
 pub fn (l &Log) get_level() Level {
 	return l.level
@@ -155,4 +146,14 @@ pub fn (mut l Log) debug(s string) {
 		return
 	}
 	l.send_output(s, .debug)
+}
+
+// free frees the given Log instance
+[unsafe]
+pub fn (mut f Log) free() {
+	unsafe {
+		f.output_label.free()
+		f.ofile.close()
+		f.output_file_name.free()
+	}
 }

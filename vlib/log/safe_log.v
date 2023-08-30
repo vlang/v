@@ -2,7 +2,8 @@ module log
 
 import sync
 
-// ThreadSafeLog embeds Log, and adds a mutex field. It uses the mutex to synchronise accesses to the embedded Log.
+// ThreadSafeLog embeds Log, and adds a mutex field.
+// It uses the mutex to synchronise accesses to the embedded Log.
 pub struct ThreadSafeLog {
 	Log
 pub mut:
