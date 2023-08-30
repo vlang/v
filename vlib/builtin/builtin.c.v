@@ -263,9 +263,9 @@ pub fn println(s string) {
 [manualfree]
 fn _writeln_to_fd(fd int, s string) {
 	$if !bultin_writeln_should_write_at_once ? {
-		buf := u8(`\n`)
+		lf := u8(`\n`)
 		_write_buf_to_fd(fd, s.str, s.len)
-		_write_buf_to_fd(fd, &buf, 1)
+		_write_buf_to_fd(fd, &lf, 1)
 		return
 	}
 	unsafe {
