@@ -1,4 +1,5 @@
 import log
+import time
 
 fn test_default_log_instance() {
 	println(@FN + ' start')
@@ -16,4 +17,21 @@ fn test_default_log_instance() {
 	log.error('no output anymore')
 	println('^^^ there should be no `no output anymore` shown above')
 	println(@FN + ' end')
+}
+
+fn log_messages(tidx int) {
+	time.sleep(2 * time.millisecond)
+	for i in 0 .. 3 {
+		log.debug('hi from thread ${tidx}')
+	}
+}
+
+fn test_default_log_instance_used_in_multiple_threads() {
+	eprintln('\n${@METHOD} start')
+	log.set_level(.debug)
+	mut threads := []thread{}
+	for tidx in 0 .. 3 {
+		threads << spawn log_messages(tidx)
+	}
+	threads.wait()
 }

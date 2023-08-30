@@ -5,84 +5,6 @@ module log
 
 import os
 import time
-import term
-
-// Level defines possible log levels used by `Log`
-pub enum Level {
-	disabled = 0
-	fatal
-	error
-	warn
-	info
-	debug
-}
-
-// LogTarget defines possible log targets
-pub enum LogTarget {
-	console
-	file
-	both
-}
-
-// tag_to_cli returns the tag for log level `l` as a colored string.
-fn tag_to_cli(l Level) string {
-	return match l {
-		.disabled { '' }
-		.fatal { term.red('FATAL') }
-		.error { term.red('ERROR') }
-		.warn { term.yellow('WARN ') }
-		.info { term.white('INFO ') }
-		.debug { term.bright_blue('DEBUG') }
-	}
-}
-
-// tag_to_file returns the tag for log level `l` as a string.
-fn tag_to_file(l Level) string {
-	return match l {
-		.disabled { '     ' }
-		.fatal { 'FATAL' }
-		.error { 'ERROR' }
-		.warn { 'WARN ' }
-		.info { 'INFO ' }
-		.debug { 'DEBUG' }
-	}
-}
-
-// level_from_tag returns the log level from the given string if it matches.
-pub fn level_from_tag(tag string) ?Level {
-	return match tag {
-		'DISABLED' { Level.disabled }
-		'FATAL' { Level.fatal }
-		'ERROR' { Level.error }
-		'WARN' { Level.warn }
-		'INFO' { Level.info }
-		'DEBUG' { Level.debug }
-		else { none }
-	}
-}
-
-// target_from_label returns the log target from the given string if it matches.
-pub fn target_from_label(label string) ?LogTarget {
-	return match label {
-		'console' { LogTarget.console }
-		'file' { LogTarget.file }
-		'both' { LogTarget.both }
-		else { none }
-	}
-}
-
-// Logger is an interface that describes a generic Logger
-pub interface Logger {
-mut:
-	fatal(s string)
-	error(s string)
-	warn(s string)
-	info(s string)
-	debug(s string)
-	set_level(level Level)
-	get_level() Level
-	free()
-}
 
 // Log represents a logging object
 pub struct Log {
@@ -105,16 +27,20 @@ pub fn (mut f Log) free() {
 }
 
 // get_level gets the internal logging level.
-pub fn (mut l Log) get_level() Level {
+pub fn (l &Log) get_level() Level {
 	return l.level
 }
 
-// set_level sets the internal logging to `level`.
+// set_level sets the logging level to `level`. Messges for levels above it will skipped.
+// For example, after calling log.set_level(.info), log.debug('message') will produce nothing.
+// Call log.set_level(.disabled) to turn off the logging of all messages.
 pub fn (mut l Log) set_level(level Level) {
 	l.level = level
 }
 
 // set_output_level sets the internal logging output to `level`.
+[deprecated: 'use .set_level(level) instead']
+[deprecated_after: '2023-09-30']
 pub fn (mut l Log) set_output_level(level Level) {
 	l.level = level
 }

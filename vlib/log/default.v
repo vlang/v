@@ -36,7 +36,7 @@ pub fn set_logger(logger &Logger) {
 }
 
 pub fn new_default() &Logger {
-	return &Log{
+	return &ThreadSafeLog{
 		level: .info
 	}
 }
