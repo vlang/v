@@ -21,8 +21,8 @@ pub fn getenv(key string) string {
 	return res
 }
 
-// `getenv_opt` returns the value of the environment variable named by the key.
-// If such an environment variable does not exist, then it returns `none`.
+// `getenv_opt` returns the value of a given environment variable.
+// Returns `none` if the environment variable does not exist.
 pub fn getenv_opt(key string) ?string {
 	#if (!$ENV[key]) return none__;
 

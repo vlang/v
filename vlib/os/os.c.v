@@ -1001,7 +1001,8 @@ pub fn chown(path string, owner int, group int) ! {
 	}
 }
 
-// open_append opens `path` file for appending.
+// open_append tries to open a file from a given path.
+// If successfull, it and returns a `File` for appending.
 pub fn open_append(path string) !File {
 	mut file := File{}
 	$if windows {
