@@ -21,6 +21,7 @@ fn C.pthread_rwlock_init(voidptr, voidptr) int
 fn C.pthread_rwlock_rdlock(voidptr) int
 fn C.pthread_rwlock_wrlock(voidptr) int
 fn C.pthread_rwlock_unlock(voidptr) int
+fn C.pthread_rwlock_destroy(voidptr) int
 fn C.pthread_condattr_init(voidptr) int
 fn C.pthread_condattr_setpshared(voidptr, int) int
 fn C.pthread_condattr_destroy(voidptr) int
