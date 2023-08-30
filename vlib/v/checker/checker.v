@@ -1064,23 +1064,32 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 	return true
 }
 
-fn (mut c Checker) expr_or_block_err(kind ast.OrKind, expr_name string, pos token.Pos, is_field bool) {
-	obj_does_not_return_or_is_not := if is_field {
+// helper for expr_or_block_err
+fn is_field_to_description(expr_name string, is_field bool) string {
+	return if is_field {
 		'field `${expr_name}` is not'
 	} else {
 		'function `${expr_name}` does not return'
 	}
+}
+
+fn (mut c Checker) expr_or_block_err(kind ast.OrKind, expr_name string, pos token.Pos, is_field bool) {
 	match kind {
-		.absent {}
+		.absent {
+			// do nothing, most common case; do not be tempted to move the call to is_field_to_description above it, since that will slow it down
+		}
 		.block {
+			obj_does_not_return_or_is_not := is_field_to_description(expr_name, is_field)
 			c.error('unexpected `or` block, the ${obj_does_not_return_or_is_not} an Option or a Result',
 				pos)
 		}
 		.propagate_option {
+			obj_does_not_return_or_is_not := is_field_to_description(expr_name, is_field)
 			c.error('unexpected `?`, the ${obj_does_not_return_or_is_not} an Option',
 				pos)
 		}
 		.propagate_result {
+			obj_does_not_return_or_is_not := is_field_to_description(expr_name, is_field)
 			c.error('unexpected `!`, the ${obj_does_not_return_or_is_not} a Result', pos)
 		}
 	}
