@@ -32,7 +32,7 @@ fn tag_to_cli(l Level) string {
 		.error { term.red('ERROR') }
 		.warn { term.yellow('WARN ') }
 		.info { term.white('INFO ') }
-		.debug { term.blue('DEBUG') }
+		.debug { term.bright_blue('DEBUG') }
 	}
 }
 
@@ -80,6 +80,8 @@ mut:
 	info(s string)
 	debug(s string)
 	set_level(level Level)
+	get_level() Level
+	free()
 }
 
 // Log represents a logging object
@@ -91,6 +93,15 @@ mut:
 	output_target LogTarget // output to console (stdout/stderr) or file or both.
 pub mut:
 	output_file_name string // log output to this file
+}
+
+[unsafe]
+pub fn (mut f Log) free() {
+	unsafe {
+		f.output_label.free()
+		f.ofile.close()
+		f.output_file_name.free()
+	}
 }
 
 // get_level gets the internal logging level.
@@ -154,14 +165,14 @@ pub fn (mut l Log) close() {
 
 // log_file writes log line `s` with `level` to the log file.
 fn (mut l Log) log_file(s string, level Level) {
-	timestamp := time.now().format_ss()
+	timestamp := time.now().format_ss_micro()
 	e := tag_to_file(level)
 	l.ofile.writeln('${timestamp} [${e}] ${s}') or { panic(err) }
 }
 
 // log_cli writes log line `s` with `level` to stdout.
 fn (l &Log) log_cli(s string, level Level) {
-	timestamp := time.now().format_ss()
+	timestamp := time.now().format_ss_micro()
 	e := tag_to_cli(level)
 	println('${timestamp} [${e}] ${s}')
 }
