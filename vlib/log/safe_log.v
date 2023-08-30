@@ -56,6 +56,8 @@ pub fn (mut x ThreadSafeLog) error(s string) {
 
 pub fn (mut x ThreadSafeLog) fatal(s string) {
 	x.mu.@lock()
-	x.Log.error(s)
-	x.mu.unlock()
+	defer {
+		x.mu.unlock()
+	}
+	x.Log.fatal(s)
 }

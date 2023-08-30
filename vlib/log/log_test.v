@@ -1,7 +1,5 @@
 module log
 
-import time
-
 fn log_mutable_statements(mut log Log) {
 	println(@FN + ' start')
 	log.info('info')
