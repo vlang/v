@@ -197,7 +197,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				&& (p.peek_tok.line_nr != p.tok.line_nr || p.peek_tok.kind !in [.name, .amp])
 				&& (p.peek_tok.kind != .lsbr || p.peek_token(2).kind != .rsbr))
 				|| p.peek_tok.kind == .dot) && language == .v && p.peek_tok.kind != .key_fn
-			is_on_top := ast_fields.len == 0 && !(is_field_mut || is_field_global)
+			is_on_top := ast_fields.len == 0 && !(is_field_pub || is_field_mut || is_field_global)
 			mut field_name := ''
 			mut typ := ast.Type(0)
 			mut type_pos := token.Pos{}
