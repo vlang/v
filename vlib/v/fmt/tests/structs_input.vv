@@ -8,8 +8,8 @@ struct User {
 }
 
 struct FamousUser {
-pub:
 	User
+pub:
 	aka string
 }
 
