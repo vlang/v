@@ -92,10 +92,6 @@ pub fn (mut m RwMutex) unlock() {
 	C.ReleaseSRWLockExclusive(&m.mx)
 }
 
-pub fn (mut m Mutex) destroy() {
-	// nothing to do
-}
-
 [inline]
 pub fn new_semaphore() &Semaphore {
 	return new_semaphore_init(0)
@@ -208,5 +204,14 @@ pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 	return res != 0
 }
 
+pub fn (mut m RwMutex) destroy() {
+	// nothing to do
+}
+
+pub fn (mut m Mutex) destroy() {
+	// nothing to do
+}
+
 pub fn (s Semaphore) destroy() {
+	// nothing to do
 }

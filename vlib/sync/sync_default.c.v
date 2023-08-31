@@ -66,26 +66,29 @@ pub struct Semaphore {
 	sem C.sem_t
 }
 
-// new_mutex create and init a new mutex object. You should not call `init` again.
+// new_mutex creates and initialises a new mutex instance on the heap, then returns a pointer to it.
 pub fn new_mutex() &Mutex {
 	mut m := &Mutex{}
 	m.init()
 	return m
 }
 
-// init the mutex object.
+// init initialises the mutex. It should be called once before the mutex is used,
+// since it creates the associated resources needed for the mutex to work properly.
+[inline]
 pub fn (mut m Mutex) init() {
 	C.pthread_mutex_init(&m.mutex, C.NULL)
 }
 
-// new_rwmutex create and init a new rwmutex object. You should not call `init` again.
+// new_rwmutex creates a new read/write mutex instance on the heap, and returns a pointer to it.
 pub fn new_rwmutex() &RwMutex {
 	mut m := &RwMutex{}
 	m.init()
 	return m
 }
 
-// init the rwmutex object.
+// init initialises the RwMutex instance. It should be called once before the rw mutex is used,
+// since it creates the associated resources needed for the mutex to work properly.
 pub fn (mut m RwMutex) init() {
 	a := RwMutexAttr{}
 	C.pthread_rwlockattr_init(&a.attr)
@@ -96,79 +99,117 @@ pub fn (mut m RwMutex) init() {
 	C.pthread_rwlockattr_destroy(&a.attr) // destroy the attr when done
 }
 
-// @lock the mutex, wait and return after got the mutex lock.
+// @lock locks the mutex instance (`lock` is a keyword).
+// If the mutex was already locked, it will block, till it is unlocked.
+[inline]
 pub fn (mut m Mutex) @lock() {
 	C.pthread_mutex_lock(&m.mutex)
 }
 
-// unlock the mutex. The mutex is released.
+// unlock unlocks the mutex instance. The mutex is released, and one of
+// the other threads, that were blocked, because they called @lock can continue.
+[inline]
 pub fn (mut m Mutex) unlock() {
 	C.pthread_mutex_unlock(&m.mutex)
 }
 
-// destroy the mutex object.
+// destroy frees the resources associated with the mutex instance.
+// Note: the mutex itself is not freed.
 pub fn (mut m Mutex) destroy() {
 	res := C.pthread_mutex_destroy(&m.mutex)
-	if res == 0 {
-		return
+	if res != 0 {
+		cpanic(res)
 	}
-	panic(unsafe { tos_clone(&u8(C.strerror(res))) })
 }
 
-// @rlock read-lock the rwmutex, wait and return after got read access.
+// @rlock locks the given RwMutex instance for reading.
+// If the mutex was already locked, it will block, and will try to get the lock,
+// once the lock is released by another thread calling unlock.
+// Once it succeds, it returns.
+// Note: there may be several threads that are waiting for the same lock.
+// Note: RwMutex has separate read and write locks.
+[inline]
 pub fn (mut m RwMutex) @rlock() {
 	C.pthread_rwlock_rdlock(&m.mutex)
 }
 
-// @lock read & write-lock the rwmutex, wait and return after got read & write access.
+// @lock locks the given RwMutex instance for writing.
+// If the mutex was already locked, it will block, till it is unlocked,
+// then it will try to get the lock, and if it can, it will return, otherwise
+// it will continue waiting for the mutex to become unlocked.
+// Note: there may be several threads that are waiting for the same lock.
+// Note: RwMutex has separate read and write locks.
+[inline]
 pub fn (mut m RwMutex) @lock() {
 	C.pthread_rwlock_wrlock(&m.mutex)
 }
 
-// destroy the rwmutex object.
+// destroy frees the resources associated with the rwmutex instance.
+// Note: the mutex itself is not freed.
 pub fn (mut m RwMutex) destroy() {
 	res := C.pthread_rwlock_destroy(&m.mutex)
-	if res == 0 {
-		return
+	if res != 0 {
+		cpanic(res)
 	}
-	panic(unsafe { tos_clone(&u8(C.strerror(res))) })
 }
 
-// Windows SRWLocks have different function to unlock
-// So provide two functions here, too, to have a common interface
+// runlock unlocks the RwMutex instance, locked for reading.
+// Note: Windows SRWLocks have different function to unlocking.
+// To have a common portable API, there are two methods for
+// unlocking here as well, even though that they do the same
+// on !windows platforms.
+[inline]
 pub fn (mut m RwMutex) runlock() {
 	C.pthread_rwlock_unlock(&m.mutex)
 }
 
-// unlock the rwmutex object. The rwmutex is released.
+// unlock unlocks the RwMutex instance, locked for writing.
+// Note: Windows SRWLocks have different function to unlocking.
+// To have a common portable API, there are two methods for
+// unlocking here as well, even though that they do the same
+// on !windows platforms.
+[inline]
 pub fn (mut m RwMutex) unlock() {
 	C.pthread_rwlock_unlock(&m.mutex)
 }
 
-// new_semaphore create a new semaphore, with zero initial value.
+// new_semaphore creates a new initialised Semaphore instance on the heap, and returns a pointer to it.
+// The initial counter value of the semaphore is 0.
 [inline]
 pub fn new_semaphore() &Semaphore {
 	return new_semaphore_init(0)
 }
 
-// new_semaphore_init create a semaphore, with `n` initial value.
+// new_semaphore_init creates a new initialised Semaphore instance on the heap, and returns a pointer to it.
+// The `n` parameter can be used to set the initial counter value of the semaphore.
 pub fn new_semaphore_init(n u32) &Semaphore {
 	mut sem := &Semaphore{}
 	sem.init(n)
 	return sem
 }
 
-// init the semaphore, with `n` initial value.
+// init initialises the Semaphore instance with `n` as its initial counter value.
+// It should be called once before the semaphore is used, since it creates the associated
+// resources needed for the semaphore to work properly.
+[inline]
 pub fn (mut sem Semaphore) init(n u32) {
 	C.sem_init(&sem.sem, 0, n)
 }
 
-// post increase the semaphore's value by 1.
+// post increases/unlocks the counter of the semaphore by 1.
+// If the resulting counter value is > 0, and if there is another thread waiting
+// on the semaphore, the waiting thread will decrement the counter by 1
+// (locking the semaphore), and then will continue running. See also .wait() .
+[inline]
 pub fn (mut sem Semaphore) post() {
 	C.sem_post(&sem.sem)
 }
 
-// wait decrease the semaphore's value by 1. If semaphore's original value is zero, then wait.
+// wait will just decrement the semaphore count, if it was positive.
+// It it was not positive, it will waits for the semaphore count to reach a positive number.
+// When that happens, it will decrease the semaphore count (lock the semaphore), and will return.
+// In effect, it allows you to block threads, until the semaphore, is posted by another thread.
+// See also .post() .
 pub fn (mut sem Semaphore) wait() {
 	for {
 		if C.sem_wait(&sem.sem) == 0 {
@@ -180,12 +221,14 @@ pub fn (mut sem Semaphore) wait() {
 				continue // interrupted by signal
 			}
 			else {
-				panic(unsafe { tos_clone(&u8(C.strerror(C.errno))) })
+				cpanic_errno()
 			}
 		}
 	}
 }
 
+// try_wait tries to decrease the semaphore count by 1, if it was positive.
+// If it succeeds in that, it returns true, otherwise it returns false.
 // try_wait should return as fast as possible so error handling is only
 // done when debugging
 pub fn (mut sem Semaphore) try_wait() bool {
@@ -199,7 +242,7 @@ pub fn (mut sem Semaphore) try_wait() bool {
 					return false
 				}
 				else {
-					panic(unsafe { tos_clone(&u8(C.strerror(C.errno))) })
+					cpanic_errno()
 				}
 			}
 		}
@@ -207,8 +250,8 @@ pub fn (mut sem Semaphore) try_wait() bool {
 	}
 }
 
-// timed_wait decrease the semaphore's value by 1. If semaphore's original
-// value is zero, then wait. If `timeout` return false.
+// timed_wait is similar to .wait(), but it also accepts a timeout duration,
+// thus it can return false early, if the timeout passed before the semaphore was posted.
 pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 	$if macos {
 		time.sleep(timeout)
@@ -230,18 +273,18 @@ pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 				break
 			}
 			else {
-				panic(unsafe { tos_clone(&u8(C.strerror(e))) })
+				cpanic(e)
 			}
 		}
 	}
 	return false
 }
 
-// destroy the semaphore object.
+// destroy frees the resources associated with the Semaphore instance.
+// Note: the semaphore instance itself is not freed.
 pub fn (mut sem Semaphore) destroy() {
 	res := C.sem_destroy(&sem.sem)
-	if res == 0 {
-		return
+	if res != 0 {
+		cpanic(res)
 	}
-	panic(unsafe { tos_clone(&u8(C.strerror(res))) })
 }
