@@ -53,6 +53,18 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 			} else {
 				if node.elem_type.has_flag(.option) {
 					g.expr_with_opt(expr, node.expr_types[i], node.elem_type)
+				} else if elem_type.unaliased_sym.kind == .array_fixed
+					&& expr in [ast.Ident, ast.SelectorExpr] {
+					g.write('{')
+					info := elem_type.unaliased_sym.info as ast.ArrayFixed
+					for idx in 0 .. info.size {
+						g.expr(expr)
+						g.write('[${idx}]')
+						if idx != info.size - 1 {
+							g.write(', ')
+						}
+					}
+					g.write('}')
 				} else {
 					g.expr_with_cast(expr, node.expr_types[i], node.elem_type)
 				}
@@ -153,11 +165,29 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 	}
 	g.write('{')
 	if node.has_val {
+		elem_type := (array_type.unaliased_sym.info as ast.ArrayFixed).elem_type
+		elem_sym := g.table.final_sym(elem_type)
 		for i, expr in node.exprs {
-			if expr.is_auto_deref_var() {
-				g.write('*')
+			if elem_sym.kind == .array_fixed && expr in [ast.Ident, ast.SelectorExpr] {
+				g.write('{')
+				info := array_type.unaliased_sym.info as ast.ArrayFixed
+				for idx in 0 .. info.size {
+					if expr.is_auto_deref_var() {
+						g.write('*')
+					}
+					g.expr(expr)
+					g.write('[${idx}]')
+					if idx != info.size - 1 {
+						g.write(', ')
+					}
+				}
+				g.write('}')
+			} else {
+				if expr.is_auto_deref_var() {
+					g.write('*')
+				}
+				g.expr(expr)
 			}
-			g.expr(expr)
 			if i != node.exprs.len - 1 {
 				g.write(', ')
 			}
