@@ -9,11 +9,18 @@
 // * Test for *visual* differences between two, structurally equal, directories
 //
 // vgret uses features and applications that is currently only available on Linux based distros:
-// idiff : `sudo apt install openimageio-tools` to programmatically find *visual* differences between two images.
+// idiff - to programmatically find *visual* differences between two images:
+//   - Ubuntu: `sudo apt install openimageio-tools`
+//   - Arch:   `sudo pacman -S openimageio`
+// Xvfb - to start a virtual X server framebuffer:
+//   - Ubuntu: `sudo apt install xvfb`
+//   - Arch:   `sudo pacman -S xorg-server-xvfb`
 //
 // For developers:
 // For a quick overview of the generated images you can use `montage` from imagemagick to generate a "Contact Sheet":
 // montage -verbose -label '%f' -font Helvetica -pointsize 10 -background '#000000' -fill 'gray' -define jpeg:size=200x200 -geometry 200x200+2+2 -auto-orient $(fd -t f . /path/to/vgret/out/dir) /tmp/montage.jpg
+//   - Ubuntu: `sudo apt install imagemagick`
+//   - Arch:   `sudo pacman -S imagemagick`
 //
 // To generate the reference images locally - or for uploading to a remote repo like `gg-regression-images`
 // You can do the following:
