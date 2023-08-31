@@ -831,11 +831,7 @@ pub fn (mut a array) sort(callback fn (voidptr, voidptr) int)
 // See also .sort() .
 // Example: assert [9,1,6,3,9].sorted() == [1,3,6,9,9]
 // Example: assert [9,1,6,3,9].sorted(b < a) == [9,9,6,3,1]
-pub fn (a &array) sorted(callback fn (voidptr, voidptr) int) array {
-	mut res := a.clone()
-	res.sorted(callback)
-	return res
-}
+pub fn (a &array) sorted(callback fn (voidptr, voidptr) int) array
 
 // sort_with_compare sorts the array in-place using the results of the
 // given function to determine sort order.
