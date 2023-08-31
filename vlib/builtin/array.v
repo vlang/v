@@ -876,6 +876,7 @@ pub fn (a &array) sorted_with_compare(callback fn (voidptr, voidptr) int) array 
 		unsafe { vqsort(r.data, usize(r.len), usize(r.element_size), callback) }
 		return r
 	}
+	return array{}
 }
 
 // contains determines whether an array includes a certain value among its elements
