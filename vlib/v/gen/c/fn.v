@@ -897,6 +897,10 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type) bool
 			g.gen_array_sort(node)
 			return true
 		}
+		'sorted' {
+			g.gen_array_sorted(node)
+			return true
+		}
 		'insert' {
 			g.gen_array_insert(node)
 			return true
@@ -1303,7 +1307,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		receiver_type_name = 'map'
 	}
 	if final_left_sym.kind == .array && !(left_sym.kind == .alias && left_sym.has_method(node.name))
-		&& node.name in ['clear', 'repeat', 'sort_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice', 'pointers'] {
+		&& node.name in ['clear', 'repeat', 'sort_with_compare', 'sorted_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice', 'pointers'] {
 		if !(left_sym.info is ast.Alias && typ_sym.has_method(node.name)) {
 			// `array_Xyz_clone` => `array_clone`
 			receiver_type_name = 'array'

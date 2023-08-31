@@ -604,6 +604,30 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	g.inside_lambda = false
 }
 
+// `susers := users.sorted(a.age < b.age)`
+fn (mut g Gen) gen_array_sorted(node ast.CallExpr) {
+	past := g.past_tmp_var_new()
+	defer {
+		g.past_tmp_var_done(past)
+	}
+	atype := g.typ(node.return_type)
+	sym := g.table.sym(node.return_type)
+	info := sym.info as ast.Array
+	depth := g.get_array_depth(info.elem_type)
+
+	g.write('${atype} ${past.tmp_var} = array_clone_to_depth(&')
+	g.expr(node.left)
+	g.writeln(', ${depth});')
+
+	unsafe {
+		node.left = ast.Expr(ast.Ident{
+			name: past.tmp_var
+		})
+	}
+	g.gen_array_sort(node)
+	g.writeln(';')
+}
+
 // `users.sort(a.age < b.age)`
 fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	// println('filter s="$s"')
