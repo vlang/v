@@ -67,12 +67,12 @@ fn test_deleting() {
 
 fn test_slice_delete() {
 	mut a := [1.5, 2.5, 3.25, 4.5, 5.75]
-	b := a[2..4]
+	b := unsafe { a[2..4] }
 	a.delete(0)
 	assert a == [2.5, 3.25, 4.5, 5.75]
 	assert b == [3.25, 4.5]
 	a = [3.75, 4.25, -1.5, 2.25, 6.0]
-	c := a[..3]
+	c := unsafe { a[..3] }
 	a.delete(2)
 	assert a == [3.75, 4.25, 2.25, 6.0]
 	assert c == [3.75, 4.25, -1.5]
@@ -80,11 +80,11 @@ fn test_slice_delete() {
 
 fn test_delete_many() {
 	mut a := [1, 2, 3, 4, 5, 6, 7, 8, 9]
-	b := a[2..6]
+	b := unsafe { a[2..6] }
 	a.delete_many(4, 3)
 	assert a == [1, 2, 3, 4, 8, 9]
 	assert b == [3, 4, 5, 6]
-	c := a[..a.len]
+	c := unsafe { a[..a.len] }
 	a.delete_many(2, 0) // this should just clone
 	a[1] = 17
 	assert a == [1, 17, 3, 4, 8, 9]
