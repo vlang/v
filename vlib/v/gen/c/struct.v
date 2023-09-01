@@ -333,7 +333,7 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 					break
 				}
 			}
-			if has_option_field {
+			if has_option_field || field.anon_struct_decl.fields.len > 0 {
 				default_init := ast.StructInit{
 					typ: field.typ
 				}
@@ -379,7 +379,6 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 				tmp_var)
 			return true
 		}
-
 		g.expr(field.default_expr)
 	} else if field.typ.has_flag(.option) {
 		tmp_var := g.new_tmp_var()
