@@ -2700,8 +2700,21 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			c.error('`.clone()` does not have any arguments', node.args[0].pos)
 		}
 		c.ensure_same_array_return_type(mut node, left_type)
-	} else if method_name in ['sorted', 'sorted_with_compare'] {
+	} else if method_name == 'sorted' {
 		c.ensure_same_array_return_type(mut node, left_type)
+	} else if method_name == 'sorted_with_compare' {
+		c.ensure_same_array_return_type(mut node, left_type)
+		// Inject a (voidptr) cast for the callback argument, to pass -cstrict, otherwise:
+		// error: incompatible function pointer types passing
+		//                            'int (string *, string *)'  (aka 'int (struct string *, struct string *)')
+		//       to parameter of type 'int (*)(voidptr, voidptr)' (aka 'int (*)(void *, void *)')
+		node.args[0].expr = ast.CastExpr{
+			expr: node.args[0].expr
+			typ: ast.voidptr_type
+			typname: 'voidptr'
+			expr_type: c.expr(mut node.args[0].expr)
+			pos: node.pos
+		}
 	} else if method_name == 'sort' {
 		node.return_type = ast.void_type
 	} else if method_name == 'contains' {

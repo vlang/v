@@ -615,9 +615,9 @@ fn (mut g Gen) gen_array_sorted(node ast.CallExpr) {
 	info := sym.info as ast.Array
 	depth := g.get_array_depth(info.elem_type)
 
-	g.write('${atype} ${past.tmp_var} = array_clone_to_depth(&')
+	g.write('${atype} ${past.tmp_var} = array_clone_to_depth(ADDR(${atype},')
 	g.expr(node.left)
-	g.writeln(', ${depth});')
+	g.writeln('), ${depth});')
 
 	unsafe {
 		node.left = ast.Expr(ast.Ident{
