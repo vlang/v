@@ -859,7 +859,7 @@ pub fn (a &array) sorted(callback fn (voidptr, voidptr) int) array
 // ```
 pub fn (mut a array) sort_with_compare(callback fn (voidptr, voidptr) int) {
 	$if freestanding {
-		panic('sort does not work with -freestanding')
+		panic('sort_with_compare does not work with -freestanding')
 	} $else {
 		unsafe { vqsort(a.data, usize(a.len), usize(a.element_size), callback) }
 	}
@@ -870,7 +870,7 @@ pub fn (mut a array) sort_with_compare(callback fn (voidptr, voidptr) int) {
 // See also .sort_with_compare()
 pub fn (a &array) sorted_with_compare(callback fn (voidptr, voidptr) int) array {
 	$if freestanding {
-		panic('sort does not work with -freestanding')
+		panic('sorted_with_compare does not work with -freestanding')
 	} $else {
 		mut r := a.clone()
 		unsafe { vqsort(r.data, usize(r.len), usize(r.element_size), callback) }
