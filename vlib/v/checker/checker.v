@@ -26,8 +26,13 @@ const (
 )
 
 pub const (
+	// array_builtin_methods contains a list of all methods on array, that return other typed arrays,
+	// i.e. that act as *pseudogeneric* methods, that need compiler support, so that the types of the results
+	// are properly checked.
+	// Note that methods that do not return anything, or that return known types, are not listed here, since they are just ordinary non generic methods.
 	array_builtin_methods       = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
-		'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop', 'delete']
+		'sorted', 'sorted_with_compare', 'contains', 'index', 'wait', 'any', 'all', 'first', 'last',
+		'pop', 'delete']
 	array_builtin_methods_chk   = token.new_keywords_matcher_from_array_trie(array_builtin_methods)
 	// TODO: remove `byte` from this list when it is no longer supported
 	reserved_type_names         = ['byte', 'bool', 'char', 'i8', 'i16', 'int', 'i64', 'u8', 'u16',

@@ -827,6 +827,12 @@ pub fn (a array) map(callback fn (voidptr) voidptr) array
 // Example: array.sort(b.name < a.name) // will sort descending by the .name field
 pub fn (mut a array) sort(callback fn (voidptr, voidptr) int)
 
+// sorted returns a sorted copy of the original array. The original array is *NOT* modified.
+// See also .sort() .
+// Example: assert [9,1,6,3,9].sorted() == [1,3,6,9,9]
+// Example: assert [9,1,6,3,9].sorted(b < a) == [9,9,6,3,1]
+pub fn (a &array) sorted(callback fn (voidptr, voidptr) int) array
+
 // sort_with_compare sorts the array in-place using the results of the
 // given function to determine sort order.
 //
@@ -857,6 +863,20 @@ pub fn (mut a array) sort_with_compare(callback fn (voidptr, voidptr) int) {
 	} $else {
 		unsafe { vqsort(a.data, usize(a.len), usize(a.element_size), callback) }
 	}
+}
+
+// sorted_with_compare sorts a clone of the array, using the results of the
+// given function to determine sort order. The original array is not modified.
+// See also .sort_with_compare()
+pub fn (a &array) sorted_with_compare(callback fn (voidptr, voidptr) int) array {
+	$if freestanding {
+		panic('sort does not work with -freestanding')
+	} $else {
+		mut r := a.clone()
+		unsafe { vqsort(r.data, usize(r.len), usize(r.element_size), callback) }
+		return r
+	}
+	return array{}
 }
 
 // contains determines whether an array includes a certain value among its elements

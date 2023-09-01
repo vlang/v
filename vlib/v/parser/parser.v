@@ -3099,7 +3099,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		p.name_error = true
 	}
 	is_filter := field_name in ['filter', 'map', 'any', 'all']
-	if is_filter || field_name == 'sort' {
+	if is_filter || field_name == 'sort' || field_name == 'sorted' {
 		p.open_scope()
 	}
 	// ! in mutable methods
@@ -3163,7 +3163,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			scope: p.scope
 			comments: comments
 		}
-		if is_filter || field_name == 'sort' {
+		if is_filter || field_name == 'sort' || field_name == 'sorted' {
 			p.close_scope()
 		}
 		return mcall_expr
