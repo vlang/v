@@ -1231,7 +1231,7 @@ The behaviour depends on the parent's capacity and is predictable:
 
 ```v
 mut a := []int{len: 5, cap: 6, init: 2}
-mut b := a[1..4]
+mut b := unsafe { a[1..4] }
 a << 3
 // no reallocation - fits in `cap`
 b[2] = 13 // `a[3]` is modified
