@@ -11,15 +11,18 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	mut is_update_tmp_var := false
 	mut tmp_update_var := ''
 	if node.has_update_expr && !node.update_expr.is_lvalue() {
-		tmp_update_var = g.new_tmp_var()
 		is_update_tmp_var = true
+
+		tmp_update_var = g.new_tmp_var()
 		s := g.go_before_stmt(0)
-		styp := g.typ(node.update_expr_type)
 		g.empty_line = true
+
+		styp := g.typ(node.update_expr_type)
 		g.write('${styp} ${tmp_update_var} = ')
 		g.expr(node.update_expr)
 		g.writeln(';')
 		g.empty_line = false
+
 		g.write(s)
 	}
 	unalised_typ := g.table.unaliased_type(node.typ)

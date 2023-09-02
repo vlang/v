@@ -355,15 +355,12 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 	is_fn_index_call := g.is_fn_index_call && elem_sym.info is ast.FnType
 
 	if node.left is ast.ArrayInit {
-		tmp := g.new_tmp_var()
-		line := g.go_before_stmt(0).trim_space()
+		past := g.past_tmp_var_new()
 		styp := g.typ(node.left_type)
-		g.empty_line = true
-		g.write('${styp} ${tmp} = ')
+		g.write('${styp} ${past.tmp_var} = ')
 		g.expr(node.left)
 		g.writeln(';')
-		g.write(line)
-		g.write(tmp)
+		g.past_tmp_var_done(past)
 	} else {
 		if is_fn_index_call {
 			g.write('(*')
