@@ -3231,6 +3231,11 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 				}
 			}
 		}
+		// don't allow casting `string` to `enum`, and suggest using `enum_name.type_to_string(str)` instead
+		if mut node.expr is ast.StringLiteral {
+			c.add_error_detail('use ${c.table.type_to_str(node.typ)}.from_string(\'${node.expr.val}\') instead')
+			c.error('cannot cast `string` to `enum`', node.pos)
+		}
 	}
 	node.typname = c.table.sym(node.typ).name
 	return node.typ
