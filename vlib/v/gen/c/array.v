@@ -1313,13 +1313,13 @@ fn (mut g Gen) write_prepared_it(inp_info ast.Array, inp_elem_type string, tmp s
 
 fn (mut g Gen) fixed_array_var_init(expr ast.Expr, size int) {
 	g.write('{')
-	for idx in 0 .. size {
+	for i in 0 .. size {
 		if expr.is_auto_deref_var() {
 			g.write('*')
 		}
 		g.expr(expr)
-		g.write('[${idx}]')
-		if idx != size - 1 {
+		g.write('[${i}]')
+		if i != size - 1 {
 			g.write(', ')
 		}
 	}
