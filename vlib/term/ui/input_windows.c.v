@@ -255,7 +255,7 @@ fn (mut ctx Context) parse_events() {
 							modifiers: modifiers
 						})
 					}
-					0x0008 /* C.MOUSE_HWHEELED */ {
+					0x0008 { // C.MOUSE_HWHEELED
 						ctx.event(&Event{
 							typ: .mouse_scroll
 							direction: if i16(e.dwButtonState >> 16) < 0 {
@@ -268,7 +268,7 @@ fn (mut ctx Context) parse_events() {
 							modifiers: modifiers
 						})
 					}
-					0 /* CLICK */, C.DOUBLE_CLICK {
+					0, C.DOUBLE_CLICK {
 						button := match int(e.dwButtonState) {
 							0 { ctx.mouse_down }
 							1 { MouseButton.left }

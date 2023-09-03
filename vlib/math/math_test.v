@@ -331,21 +331,41 @@ fn test_atan2() {
 		[pi, inf(1)], [pi, nan()], [inf(1), inf(-1)], [inf(1), -pi],
 		[inf(1), 0], [inf(1), pi], [inf(1), inf(1)], [inf(1), nan()],
 		[nan(), nan()]]
-	atan2_sc_ := [f64(-3.0) * pi / 4.0, /* atan2(-inf, -inf) */ -pi / 2, /* atan2(-inf, -pi) */
-		-pi / 2,
-		/* atan2(-inf, +0) */ -pi / 2, /* atan2(-inf, pi) */ -pi / 4, /* atan2(-inf, +inf) */
-		nan(), /* atan2(-inf, nan) */ -pi, /* atan2(-pi, -inf) */ -pi / 2, /* atan2(-pi, +0) */
-		-0.0,
-		/* atan2(-pi, inf) */ nan(), /* atan2(-pi, nan) */ -pi, /* atan2(-0, -inf) */ -pi,
-		/* atan2(-0, -pi) */ -pi, /* atan2(-0, -0) */ -0.0, /* atan2(-0, +0) */ -0.0, /* atan2(-0, pi) */
-		-0.0,
-		/* atan2(-0, +inf) */ nan(), /* atan2(-0, nan) */ pi, /* atan2(+0, -inf) */ pi, /* atan2(+0, -pi) */
-		pi, /* atan2(+0, -0) */ 0, /* atan2(+0, +0) */ 0, /* atan2(+0, pi) */ 0, /* atan2(+0, +inf) */
-		nan(), /* atan2(+0, nan) */ pi, /* atan2(pi, -inf) */ pi / 2, /* atan2(pi, +0) */ 0,
-		/* atan2(pi, +inf) */ nan(), /* atan2(pi, nan) */ 3.0 * pi / 4, /* atan2(+inf, -inf) */
-		pi / 2, /* atan2(+inf, -pi) */ pi / 2, /* atan2(+inf, +0) */ pi / 2, /* atan2(+inf, pi) */
-		pi / 4, /* atan2(+inf, +inf) */ nan(), /* atan2(+inf, nan) */
-		nan(), /* atan2(nan, nan) */
+	atan2_sc_ := [f64(-3.0) * pi / 4.0, // atan2(-inf, -inf)
+	 	-pi / 2, // atan2(-inf, -pi)
+	 	-pi / 2, // atan2(-inf, +0)
+	 	-pi / 2, // atan2(-inf, pi)
+	 	-pi / 4, // atan2(-inf, +inf)
+	 	nan(), // atan2(-inf, nan)
+	 	-pi, // atan2(-pi, -inf)
+	 	-pi / 2, // atan2(-pi, +0)
+	 	-0.0, // atan2(-pi, inf)
+	 	nan(), // atan2(-pi, nan)
+	 	-pi, // atan2(-0, -inf)
+	 	-pi, // atan2(-0, -pi)
+	 	-pi, // atan2(-0, -0)
+	 	-0.0, // atan2(-0, +0)
+	 	-0.0, // atan2(-0, pi)
+	 	-0.0, // atan2(-0, +inf)
+	 	nan(), // atan2(-0, nan)
+	 	pi, // atan2(+0, -inf)
+	 	pi, // atan2(+0, -pi)
+	 	pi, // atan2(+0, -0)
+	 	0, // atan2(+0, +0)
+	 	0, // atan2(+0, pi)
+	 	0, // atan2(+0, +inf)
+	 	nan(), // atan2(+0, nan)
+	 	pi, // atan2(pi, -inf)
+	 	pi / 2, // atan2(pi, +0)
+	 	0, // atan2(pi, +inf)
+	 	nan(), // atan2(pi, nan)
+	 	3.0 * pi / 4, // atan2(+inf, -inf)
+	 	pi / 2, // atan2(+inf, -pi)
+	 	pi / 2, // atan2(+inf, +0)
+	 	pi / 2, // atan2(+inf, pi)
+	 	pi / 4, // atan2(+inf, +inf)
+	 	nan(), // atan2(+inf, nan)
+	 	nan(), // atan2(nan, nan)
 	]
 	for i := 0; i < vfatan2_sc_.len; i++ {
 		f := atan2(vfatan2_sc_[i][0], vfatan2_sc_[i][1])
@@ -528,10 +548,10 @@ fn test_exp() {
 		f := exp(math.vf_[i])
 		assert veryclose(math.exp_[i], f)
 	}
-	vfexp_sc_ := [inf(-1), -2000, 2000, inf(1), nan(), /* smallest f64 that overflows Exp(x) */
-		7.097827128933841e+02, 1.48852223e+09, 1.4885222e+09, 1, /* near zero */
-		3.725290298461915e-09,
-		/* denormal */ -740]
+	vfexp_sc_ := [inf(-1), -2000, 2000, inf(1), nan(), // smallest f64 that overflows Exp(x)
+	 	7.097827128933841e+02, 1.48852223e+09, 1.4885222e+09, 1, // near zero
+	 	3.725290298461915e-09, -740, // denormal
+	]
 	exp_sc_ := [f64(0), 0, inf(1), inf(1), nan(), inf(1), inf(1),
 		inf(1), 2.718281828459045, 1.0000000037252903, 4.2e-322]
 	for i := 0; i < vfexp_sc_.len; i++ {
@@ -545,8 +565,10 @@ fn test_exp2() {
 		f := exp2(math.vf_[i])
 		assert soclose(math.exp2_[i], f, 1e-9)
 	}
-	vfexp2_sc_ := [f64(-2000), 2000, inf(1), nan(), /* smallest f64 that overflows Exp2(x) */
-		1024, /* near underflow */ -1.07399999999999e+03, /* near zero */ 3.725290298461915e-09]
+	vfexp2_sc_ := [f64(-2000), 2000, inf(1), nan(), // smallest f64 that overflows Exp2(x)
+	 	1024, -1.07399999999999e+03, // near underflow
+	 	3.725290298461915e-09, // near zero
+	]
 	exp2_sc_ := [f64(0), inf(1), inf(1), nan(), inf(1), 5e-324, 1.0000000025821745]
 	for i := 0; i < vfexp2_sc_.len; i++ {
 		f := exp2(vfexp2_sc_[i])
@@ -577,7 +599,8 @@ fn test_gamma() {
 	vfgamma_ := [[inf(1), inf(1)], [inf(-1), nan()], [f64(0), inf(1)],
 		[f64(-0.0), inf(-1)], [nan(), nan()], [f64(-1), nan()],
 		[f64(-2), nan()], [f64(-3), nan()], [f64(-1e+16), nan()],
-		[f64(-1e+300), nan()], [f64(1.7e+308), inf(1)], /* Test inputs inspi_red by Python test suite. */
+		[f64(-1e+300), nan()], [f64(1.7e+308), inf(1)], // Test inputs inspi_red by Python test suite
+
 		// Outputs computed at high precision by PARI/GP.
 		// If recomputing table entries), be careful to use
 		// high-precision (%.1000g) formatting of the f64 inputs.
@@ -646,12 +669,11 @@ fn test_hypot() {
 	vfhypot_sc_ := [[inf(-1), inf(-1)], [inf(-1), 0], [inf(-1),
 		inf(1)],
 		[inf(-1), nan()], [f64(-0.0), -0.0], [f64(-0.0), 0], [f64(0), -0.0],
-		[f64(0), 0], /* +0,0 */ [f64(0), inf(-1)], [f64(0), inf(1)],
-		[f64(0), nan()], [inf(1), inf(-1)], [inf(1), 0], [inf(1),
-			inf(1)],
-		[inf(1), nan()], [nan(), inf(-1)], [nan(), 0], [nan(),
-			inf(1)],
-		[nan(), nan()]]
+		[f64(0), 0], [f64(0), inf(-1)], [f64(0), inf(1)], [f64(0), nan()],
+		[inf(1), inf(-1)], [inf(1), 0], [inf(1), inf(1)], [inf(1),
+			nan()],
+		[nan(), inf(-1)], [nan(), 0], [nan(), inf(1)], [nan(),
+			nan()]]
 	hypot_sc_ := [inf(1), inf(1), inf(1), inf(1), 0, 0, 0, 0, inf(1),
 		inf(1), nan(), inf(1), inf(1), inf(1), inf(1), inf(1),
 		nan(), inf(1), nan()]
@@ -755,27 +777,69 @@ fn test_pow() {
 		[inf(1), 1], [inf(1), pi], [inf(1), nan()], [nan(), -pi],
 		[nan(), -0.0], [nan(), 0], [nan(), 1], [nan(), pi], [nan(),
 			nan()]]
-	pow_sc_ := [f64(0), /* pow(-inf, -pi) */ -0.0, /* pow(-inf, -3) */ 1, /* pow(-inf, -0) */ 1, /* pow(-inf, +0) */
-		inf(-1), /* pow(-inf, 1) */ inf(-1), /* pow(-inf, 3) */
-		inf(1), /* pow(-inf, pi) */ inf(1), /* pow(-inf, 0.5) */
-		nan(), /* pow(-inf, nan) */ 0, /* pow(-pi, -inf) */ nan(), /* pow(-pi, -pi) */
-		1, /* pow(-pi, -0) */ 1, /* pow(-pi, +0) */ -pi, /* pow(-pi, 1) */ nan(), /* pow(-pi, pi) */
-		inf(1), /* pow(-pi, +inf) */ nan(), /* pow(-pi, nan) */ 1, /* pow(-1, -inf) IEEE 754-2008 */
-		1, /* pow(-1, +inf) IEEE 754-2008 */ nan(), /* pow(-1, nan) */
-		inf(1), /* pow(-1/2, -inf) */ 0, /* pow(-1/2, +inf) */ inf(1), /* pow(-0, -inf) */
-		inf(1), /* pow(-0, -pi) */ inf(1), /* pow(-0, -0.5) */
-		inf(-1), /* pow(-0, -3) IEEE 754-2008 */ -0.0, /* pow(-0, 3) IEEE 754-2008 */ 0, /* pow(-0, pi) */
-		0, /* pow(-0, 0.5) */ 0, /* pow(-0, +inf) */ inf(1), /* pow(+0, -inf) */
-		inf(1), /* pow(+0, -pi) */ inf(1), /* pow(+0, -3) */ 1, /* pow(+0, -0) */ 1, /* pow(+0, +0) */
-		0, /* pow(+0, 3) */ 0,
-		/* pow(+0, pi) */ 0, /* pow(+0, +inf) */ nan(), /* pow(+0, nan) */
-		inf(1), /* pow(1/2, -inf) */ 0, /* pow(1/2, +inf) */ 1, /* pow(1, -inf) IEEE 754-2008 */
-		1, /* pow(1, +inf) IEEE 754-2008 */ 1, /* pow(1, nan) IEEE 754-2008 */ 0, /* pow(pi, -inf) */
-		1, /* pow(pi, -0) */ 1, /* pow(pi, +0) */ pi, /* pow(pi, 1) */ inf(1), /* pow(pi, +inf) */
-		nan(), /* pow(pi, nan) */ 0, /* pow(+inf, -pi) */ 1, /* pow(+inf, -0) */ 1, /* pow(+inf, +0) */
-		inf(1), /* pow(+inf, 1) */ inf(1), /* pow(+inf, pi) */
-		nan(), /* pow(+inf, nan) */ nan(), /* pow(nan, -pi) */ 1, /* pow(nan, -0) */ 1, /* pow(nan, +0) */
-		nan(), /* pow(nan, 1) */ nan(), /* pow(nan, pi) */ nan(), /* pow(nan, nan) */]
+	pow_sc_ := [f64(0), // pow(-inf, -pi)
+	 	-0.0, // pow(-inf, -3)
+	 	1, // pow(-inf, -0)
+	 	1, // pow(-inf, +0)
+	 	inf(-1), // pow(-inf, 1)
+	 	inf(-1), // pow(-inf, 3)
+	 	inf(1), // pow(-inf, pi)
+	 	inf(1), // pow(-inf, 0.5)
+	 	nan(), // pow(-inf, nan)
+	 	0, // pow(-pi, -inf)
+	 	nan(), // pow(-pi, -pi)
+	 	1, // pow(-pi, -0)
+	 	1, // pow(-pi, +0)
+	 	-pi, // pow(-pi, 1)
+	 	nan(), // pow(-pi, pi)
+	 	inf(1), // pow(-pi, +inf)
+	 	nan(), // pow(-pi, nan)
+	 	1, // pow(-1, -inf) IEEE 754-2008
+	 	1, // pow(-1, +inf) IEEE 754-2008
+	 	nan(), // pow(-1, nan)
+	 	inf(1), // pow(-1/2, -inf)
+	 	0, // pow(-1/2, +inf)
+	 	inf(1), // pow(-0, -inf)
+	 	inf(1), // pow(-0, -pi)
+	 	inf(1), // pow(-0, -0.5)
+	 	inf(-1), // pow(-0, -3) IEEE 754-2008
+	 	-0.0, // pow(-0, 3) IEEE 754-2008
+	 	0, // pow(-0, pi)
+	 	0, // pow(-0, 0.5)
+	 	0, // pow(-0, +inf)
+	 	inf(1), // pow(+0, -inf)
+	 	inf(1), // pow(+0, -pi)
+	 	inf(1), // pow(+0, -3)
+	 	1, // pow(+0, -0)
+	 	1, // pow(+0, +0)
+	 	0, // pow(+0, 3)
+	 	0, // pow(+0, pi)
+	 	0, // pow(+0, +inf)
+	 	nan(), // pow(+0, nan)
+	 	inf(1), // pow(1/2, -inf)
+	 	0, // pow(1/2, +inf)
+	 	1, // pow(1, -inf) IEEE 754-2008
+	 	1, // pow(1, +inf) IEEE 754-2008
+	 	1, // pow(1, nan) IEEE 754-2008
+	 	0, // pow(pi, -inf)
+	 	1, // pow(pi, -0)
+	 	1, // pow(pi, +0)
+	 	pi, // pow(pi, 1)
+	 	inf(1), // pow(pi, +inf)
+	 	nan(), // pow(pi, nan)
+	 	0, // pow(+inf, -pi)
+	 	1, // pow(+inf, -0)
+	 	1, // pow(+inf, +0)
+	 	inf(1), // pow(+inf, 1)
+	 	inf(1), // pow(+inf, pi)
+	 	nan(), // pow(+inf, nan)
+	 	nan(), // pow(nan, -pi)
+	 	1, // pow(nan, -0)
+	 	1, // pow(nan, +0)
+	 	nan(), // pow(nan, 1)
+	 	nan(), // pow(nan, pi)
+	 	nan(), // pow(nan, nan)
+	]
 	for i := 0; i < vfpow_sc_.len; i++ {
 		f := pow(vfpow_sc_[i][0], vfpow_sc_[i][1])
 		assert alike(pow_sc_[i], f)
@@ -793,14 +857,14 @@ fn test_round() {
 		assert alike(math.round_[i], f)
 	}
 	vfround_sc_ := [[f64(0), 0], [nan(), nan()], [inf(1), inf(1)]]
-	// vfround_even_sc_ := [[f64(0), 0], [f64(1.390671161567e-309), 0], /* denormal */
-	// 	[f64(0.49999999999999994), 0], /* 0.5-epsilon */ [f64(0.5), 0],
-	// 	[f64(0.5000000000000001), 1], /* 0.5+epsilon */ [f64(-1.5), -2],
+	// vfround_even_sc_ := [[f64(0), 0], [f64(1.390671161567e-309), 0], // denormal
+	// 	[f64(0.49999999999999994), 0], // 0.5-epsilon [f64(0.5), 0],
+	// 	[f64(0.5000000000000001), 1], // 0.5+epsilon [f64(-1.5), -2],
 	// 	[f64(-2.5), -2], [nan(), nan()], [inf(1), inf(1)],
 	// 	[f64(2251799813685249.5), 2251799813685250],
 	// 	// 1 bit fractian [f64(2251799813685250.5), 2251799813685250],
-	// 	[f64(4503599627370495.5), 4503599627370496], /* 1 bit fraction, rounding to 0 bit fractian */
-	// 	[f64(4503599627370497), 4503599627370497], /* large integer */
+	// 	[f64(4503599627370495.5), 4503599627370496], // 1 bit fraction, rounding to 0 bit fractian
+	// 	[f64(4503599627370497), 4503599627370497], // large integer
 	// ]
 	for i := 0; i < vfround_sc_.len; i++ {
 		f := round(vfround_sc_[i][0])

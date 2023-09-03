@@ -1609,10 +1609,11 @@ pub const (
 	// map register size -> register name
 	x86_no_number_register_list = {
 		8:  ['al', 'ah', 'bl', 'bh', 'cl', 'ch', 'dl', 'dh', 'bpl', 'sil', 'dil', 'spl']
-		16: ['ax', 'bx', 'cx', 'dx', 'bp', 'si', 'di', 'sp', /* segment registers */ 'cs', 'ss',
-			'ds', 'es', 'fs', 'gs', 'flags', 'ip', /* task registers */ 'gdtr', 'idtr', 'tr', 'ldtr',
-			// CSR register 'msw', /* FP core registers */ 'cw', 'sw', 'tw', 'fp_ip', 'fp_dp',
-			'fp_cs', 'fp_ds', 'fp_opc']
+		16: ['ax', 'bx', 'cx', 'dx', 'bp', 'si', 'di', 'sp',
+		// segment registers 'cs', 'ss', 'ds', 'es', 'fs', 'gs', 'flags', 'ip',
+		// task registers 'gdtr', 'idtr', 'tr', 'ldtr',
+		// CSR register 'msw', /* FP core registers */ 'cw', 'sw', 'tw', 'fp_ip', 'fp_dp', 'fp_cs',
+			'fp_ds', 'fp_opc']
 		32: [
 			'eax',
 			'ebx',
@@ -1623,8 +1624,8 @@ pub const (
 			'edi',
 			'esp',
 			'eflags',
-			'eip', /* CSR register */
-			'mxcsr' /* 32-bit FP core registers 'fp_dp', 'fp_ip' (TODO: why are there duplicates?) */,
+			'eip', // CSR register
+			'mxcsr', // 32-bit FP core registers 'fp_dp', 'fp_ip' (TODO: why are there duplicates?)
 		]
 		64: ['rax', 'rbx', 'rcx', 'rdx', 'rbp', 'rsi', 'rdi', 'rsp', 'rflags', 'rip']
 	}
@@ -1667,9 +1668,11 @@ pub const (
 
 // TODO: saved priviled registers for arm
 pub const (
-	arm_no_number_register_list   = ['fp' /* aka r11 */, /* not instruction pointer: */ 'ip' /* aka r12 */,
-		'sp' /* aka r13 */, 'lr' /* aka r14 */, /* this is instruction pointer ('program counter'): */
-		'pc' /* aka r15 */,
+	arm_no_number_register_list   = ['fp', // aka r11
+	 	'ip', // not instruction pointer: aka r12
+	 	'sp', // aka r13
+	 	'lr', // aka r14
+	 	'pc', // this is instruction pointer ('program counter'): aka r15
 	] // 'cpsr' and 'apsr' are special flags registers, but cannot be referred to directly
 	arm_with_number_register_list = {
 		'r#': 16

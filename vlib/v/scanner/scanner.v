@@ -1111,9 +1111,17 @@ fn (mut s Scanner) text_scan() token.Token {
 					}
 					s.pos++
 					if s.should_parse_comment() {
-						mut comment := s.text[start..(s.pos - 1)].trim(' ')
+						mut comment := s.text[start..(s.pos - 1)]
 						if !comment.contains('\n') {
-							comment = '\x01' + comment
+							comment_pos := token.Pos{
+								line_nr: start_line
+								len: comment.len + 4
+								pos: start
+								col: s.current_column() - comment.len - 4
+							}
+							s.error_with_pos('inline comment is deprecated, please use line comment',
+								comment_pos)
+							comment = '\x01' + comment.trim(' ')
 						}
 						return s.new_multiline_token(.comment, comment, comment.len + 4,
 							start_line)
