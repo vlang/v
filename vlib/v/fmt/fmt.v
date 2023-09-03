@@ -777,8 +777,10 @@ fn expr_is_single_line(expr ast.Expr) bool {
 			}
 		}
 		ast.ArrayInit {
-			if expr.exprs.len > 0 {
-				return expr_is_single_line(expr.exprs[0])
+			for e in expr.exprs {
+				if !expr_is_single_line(e) {
+					return false
+				}
 			}
 		}
 		ast.ConcatExpr {
@@ -1766,9 +1768,11 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 						}
 						f.write(' ')
 						f.comment(cmt)
+						if !line_break {
+							f.writeln('')
+						}
 					}
 				}
-				last_comment_was_inline = cmt.is_inline
 			}
 		} else if i == node.exprs.len - 1 && !line_break {
 			is_new_line = false

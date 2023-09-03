@@ -86,7 +86,7 @@ fn C.sapp_get_clipboard_string() &u8
 // set the window title (only on desktop platforms)
 fn C.sapp_set_window_title(&char)
 
-// /* set the window icon (only on Windows and Linux) */
+// set the window icon (only on Windows and Linux)
 // SOKOL_APP_API_DECL void sapp_set_icon(const sapp_icon_desc* icon_desc);
 
 // Get number of dropped files
@@ -104,10 +104,10 @@ fn C.sapp_gles2() bool
 // HTML5: enable or disable the hardwired "Leave Site?" dialog box
 fn C.sapp_html5_ask_leave_site(ask bool)
 
-// /* HTML5: get byte size of a dropped file */
+// HTML5: get byte size of a dropped file
 // SOKOL_APP_API_DECL uint32_t sapp_html5_get_dropped_file_size(int index);
 
-// /* HTML5: asynchronously load the content of a dropped file */
+// HTML5: asynchronously load the content of a dropped file
 // SOKOL_APP_API_DECL void sapp_html5_fetch_dropped_file(const sapp_html5_fetch_request* request);
 
 // Metal: get ARC-bridged pointer to Metal device object

@@ -85,13 +85,13 @@ const (
 	]
 	skip_test_files               = [
 		'do_not_remove',
-		'cmd/tools/vdoc/html_tag_escape_test.v', /* can't locate local module: markdown */
-		'cmd/tools/vdoc/tests/vdoc_file_test.v', /* fails on Windows; order of output is not as expected */
-		'vlib/context/deadline_test.v' /* sometimes blocks */,
-		'vlib/context/onecontext/onecontext_test.v' /* backtrace_symbols is missing. */,
-		'vlib/db/mysql/mysql_orm_test.v' /* mysql not installed */,
-		'vlib/db/mysql/mysql_test.v' /* mysql not installed */,
-		'vlib/db/pg/pg_orm_test.v' /* pg not installed */,
+		'cmd/tools/vdoc/html_tag_escape_test.v', // can't locate local module: markdown
+		'cmd/tools/vdoc/tests/vdoc_file_test.v', // fails on Windows; order of output is not as expected
+		'vlib/context/deadline_test.v', // sometimes blocks
+		'vlib/context/onecontext/onecontext_test.v', // backtrace_symbols is missing
+		'vlib/db/mysql/mysql_orm_test.v', // mysql not installed
+		'vlib/db/mysql/mysql_test.v', // mysql not installed
+		'vlib/db/pg/pg_orm_test.v', // pg not installed
 	]
 	// These tests are too slow to be run in the CI on each PR/commit
 	// in the sanitized modes:

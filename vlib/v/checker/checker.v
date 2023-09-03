@@ -1847,7 +1847,7 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 							c.ident(mut field.expr)
 						}
 						if field.expr.kind == .constant && field.expr.obj.typ.is_int() {
-							/* accepts int constants as enum value */
+							// accepts int constants as enum value
 							continue
 						}
 					}

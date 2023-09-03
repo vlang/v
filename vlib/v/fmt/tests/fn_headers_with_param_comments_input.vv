@@ -1,8 +1,0 @@
-fn foo(
-       // Foo
-       s string) {
-}
-
-fn bar(/*p1*/a string, /*p2*/b int) {
-	println('hello')
-}

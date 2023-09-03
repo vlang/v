@@ -6,7 +6,7 @@ import v.util
 
 const (
 	known_failing_exceptions = [
-		'vlib/crypto/aes/const.v' /* const array wrapped in too many lines */,
+		'vlib/crypto/aes/const.v', // const array wrapped in too many lines
 	]
 )
 

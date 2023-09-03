@@ -41,11 +41,11 @@ struct SomeStruct {
 mut:
 // 2
 // 3
-somefield /*4*/ /*5*/ int /*6*/ /*7*/ /*8*/ /*
+somefield int /*
 9
 10
 */
-somefield2 /*11*/ int // 12
+somefield2 int // 12
 pub:
 
 

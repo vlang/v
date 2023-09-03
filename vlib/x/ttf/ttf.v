@@ -1161,21 +1161,21 @@ fn tst() {
 	mut tf := TTF_File{}
 
 	tf.buf = [
-		u8(0xFF), /* 8  bit */
+		u8(0xFF), // 8  bit
 		0xF1,
-		0xF2, /* 16 bit */
+		0xF2, // 16 bit
 		0x81,
 		0x23,
 		0x45,
-		0x67, /* 32 bit */
+		0x67, // 32 bit
 		0x12,
 		0x34,
 		0x12,
-		0x34, /* get_2dot14 16 bit */
+		0x34, // get_2dot14 16 bit
 		0x12,
 		0x34,
 		0x12,
-		0x34 /* get_fixed 32 bit int */,
+		0x34, // get_fixed 32 bit int
 	]
 	assert tf.get_u8().hex() == 'ff'
 	assert tf.get_u16().hex() == 'f1f2'

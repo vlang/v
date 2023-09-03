@@ -286,7 +286,7 @@ fn init_cube_glsl_p(mut app App) {
 	vert_buffer_desc.@type = .vertexbuffer
 	vbuf := gfx.make_buffer(&vert_buffer_desc)
 
-	/* create an index buffer for the cube */
+	// create an index buffer for the cube
 	// vfmt off
 	indices := [
 /*
@@ -408,8 +408,8 @@ fn draw_cube_glsl_m(app App) {
 		ws.height * ratio, // x,y resolution to pass to FS
 		0,
 		0, // dont send mouse position
-		/* app.mouse_x,               // mouse x */
-		/* ws.height - app.mouse_y*2, // mouse y scaled */
+		// app.mouse_x,               // mouse x
+		// ws.height - app.mouse_y*2, // mouse y scaled
 		time_ticks,      // time as f32
 		app.frame_count, // frame count
 		0,

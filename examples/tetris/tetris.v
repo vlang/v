@@ -53,14 +53,14 @@ const (
 	]
 	// Each tetro has its unique color
 	colors           = [
-		gx.rgb(0, 0, 0), /* unused ? */
-		gx.rgb(255, 242, 0), /* yellow quad */
-		gx.rgb(174, 0, 255), /* purple triple */
-		gx.rgb(60, 255, 0), /* green short topright */
-		gx.rgb(255, 0, 0), /* red short topleft */
-		gx.rgb(255, 180, 31), /* orange long topleft */
-		gx.rgb(33, 66, 255), /* blue long topright */
-		gx.rgb(74, 198, 255), /* lightblue longest */
+		gx.rgb(0, 0, 0), // unused ?
+		gx.rgb(255, 242, 0), // yellow quad
+		gx.rgb(174, 0, 255), // purple triple
+		gx.rgb(60, 255, 0), // green short topright
+		gx.rgb(255, 0, 0), // red short topleft
+		gx.rgb(255, 180, 31), // orange long topleft
+		gx.rgb(33, 66, 255), // blue long topright
+		gx.rgb(74, 198, 255), // lightblue longest
 		gx.rgb(0, 170, 170),
 	]
 	background_color = gx.white
