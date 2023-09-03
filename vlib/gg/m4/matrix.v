@@ -551,10 +551,10 @@ pub fn rotate(angle f32, w Vec4) Mat4 {
 
 		// vfmt off
 		return Mat4{ e: [
-			/* [0][0] */  (ax * ax * cv) + cs      ,  /* [0][1] */ (ax * ay * cv) + az * sn ,  /* [0][2] */ (ax * az * cv) - ay * sn ,  /* [0][3] */ 0,
-			/* [1][0] */  (ay * ax * cv) - az * sn ,  /* [1][1] */ (ay * ay * cv) + cs      ,  /* [1][2] */ (ay * az * cv) + ax * sn ,  /* [1][3] */ 0,
-			/* [2][0] */  (az * ax * cv) + ay * sn ,  /* [2][1] */ (az * ay * cv) - ax * sn ,  /* [2][2] */ (az * az * cv) + cs      ,  /* [2][3] */ 0,
-			/* [3][0] */  0,                          /* [3][1] */ 0                        ,  /* [3][2] */ 0                        ,  /* [3][3] */ 1,
+			(ax * ax * cv) + cs,      (ax * ay * cv) + az * sn, (ax * az * cv) - ay * sn, 0,
+			(ay * ax * cv) - az * sn, (ay * ay * cv) + cs,      (ay * az * cv) + ax * sn, 0,
+			(az * ax * cv) + ay * sn, (az * ay * cv) - ax * sn, (az * az * cv) + cs,      0,
+			0,                        0,                        0,                        1,
 		]!}
 		// vfmt on
 	}
