@@ -2,16 +2,18 @@
 *3 September 2023*
 
 #### Improvements in the language
-- Do not allow uninitialized function pointers
-- Fix compiling V programs with latest clang 16 on windows (clang 16 is stricter than clang 14) (#19095)
-ast, checker, cgen: implement enum static `from_string(name string)` (#19156)
 - Pure `array.sorted()` and `array.sorted_with_compare()` methods, that do not modify their receivers (#19251)
 - UB overflow has been removed
+- Implement `Enum.from_string(name string)` for converting strings to enum values (#19156)
 - Disallow casting string to enum, suggest using Enum.from_string() instead (#19260)
+- Use autocasting in complex conditions (#18839)
+- Allow alias as fixed array on return (#18817)
+- Do not allow uninitialized function pointers
+- Fix compiling V programs with latest clang 16 on windows (clang 16 is stricter than clang 14) (#19095)
 - Fix anonymous struct with default expr (#19257)
-- log: improve the most common use case, it's no longer necessary to create a `Log` instance (#19242)
 - Allow using consts as enum values (#19193)
-- `@[attr]` syntax to replace `[attr]` (`[]` is used for too many things). Most likely to be replaced with `@attr()` in the futre.
+- `@[attr]` syntax to replace `[attr]` (`[]` is used for too many things). Most likely to be replaced with `@attr()` in the future.
+- Allow `none` for not first values on map initialization (#18821)
 - Make all .trace() methods generic on the type of the passed expression
 
 #### Breaking changes
@@ -47,26 +49,35 @@ ast, checker, cgen: implement enum static `from_string(name string)` (#19156)
 - Disallow an empty `chan` type (#19167)
 
 #### Parser improvements
-- parser: change warn to error, for const names with upper letter (fix #18838) (#18840)
-- parser: disallow declaring static functions as method receivers (#19007)
-- parser: disallow having builtin type as type names for `enum`, `sum type` and `alias` (#19043)
-- parser: support `const x := 123`, to make extracting locals as constants less annoying while prototyping
-- parser: fix struct field fn type with default value (fix #19099) (#19106)
-- parser, cgen: fix `for i++; i<10; i++ {` (fix #18445) (#19035)
-- parser, checker, cgen: fix fn return alias of fixed array (#19116)
-- Ast, parser, cgen: fix generic struct init (Stack[&Person]{}) (fix #19119) (#19122)
-- v.token: add inline next_to() and cleanup related calls (#19226)
+- Change warn to error, for const names with upper letter (fix #18838) (#18840)
+- Disallow declaring static functions as method receivers (#19007)
+- Disallow having builtin type as type names for `enum`, `sum type` and `alias` (#19043)
+- Support `const x := 123`, to make extracting locals as constants less annoying while prototyping
+- Fix struct field fn type with default value (fix #19099) (#19106)
+- Fix `for i++; i<10; i++ {` (fix #18445) (#19035)
+- Fix fn return alias of fixed array (#19116)
+- Fix generic struct init (Stack[&Person]{}) (fix #19119) (#19122)
 
 #### Compiler internals
+- pref: make -autofree work without -gc none
+- builder,pref: allow thirdparty objects compilation with CPP compiler (#19124)
 - scanner: fix string interpolation with nested string interpolation in inner quotes p. 3 (#19121)
 - scanner: error early on an unsupported escape sequence in a string, like `\_` (fix #19131) (#19134)
+- v.token: add inline next_to() and cleanup related calls (#19226)
 
 #### Standard library
+- eventbus: add generic support for event name (#18805)
+- readline: add support for ctlr+w and ctrl+u shortcuts (#18921)
+- strconv.atoi: fix string.int() returning numbers for non number characters (fix #18875) (#18925)
+- builtin: reduce the number of array allocations for consts in all V programs (#18889)
+- builtin: move array.data to the top of the struct
+- os.notify: implement the kqueue backend for notify.FdNotifier (#19057)
 - vlib: add a new module `builtin.wchar`, to ease dealing with C APIs that accept `wchar_t*` (#18794)
 - arrays: add more util functions and tests for them - find_first, find_last, join_to_string (#18784)
 - vlib: use sync.new_mutex() consistently for initialising all vlib structures containing mutex fields
 - crypto.pem: add a static method `Block.new`, to replace `new` (#18846)
 - crypto.pem: add decode_only and general improvements to decoding (#18908)
+- log: improve the most common use case, it's no longer necessary to create a `Log` instance (#19242)
 - crypto.sha512: make the new384/0, new512_256/0, new512_224/0 functions public
 - json: fix option alias support (#18801)
 - time: fix `parse_format` with `YY` (#18887)
@@ -90,6 +101,14 @@ ast, checker, cgen: implement enum static `from_string(name string)` (#19156)
 - toml: Add generic automatic decoding and encoding of simple structs, when they don't implement custom methods (#17970)
 
 #### Web
+- http: Request.host
+- net.ftp: fix dir() for file names, which contain spaces (fix #18800) (#18804)
+- net.http: make listener public, and add addr in Server struct (#18871)
+- net.http.chunked: return `!string` on decode (#18928)
+- net.conv: rename functions to match other langs, making them easier t… (#18937)
+- wasm: remove dependency on thirdparty/binaryen, webassembly backend rewrite (#18120)
+- wasm: add a -wasm-stack-top flag to compiler (#19157)
+- net.mbedtls: add SSLListener to allow creating SSL servers (#19022)
 - picoev, picohttparser: reimplement in V (#18506)
 - vweb: fix parsing of form fields, send with multipart/form-data (by JS fetch)
 - vweb: make vweb route paths case sensitive (#18973)
@@ -98,8 +117,8 @@ ast, checker, cgen: implement enum static `from_string(name string)` (#19156)
 - vweb: add a user_agent utility method to the vweb context (#19204)
 - vweb: avoid the controllers having to be defined in specific order (#19182)
 
-
 #### ORM
+- orm: fix inserting sequential values (id=0), in tables with an i64 primary field (#18791)
 - Add OR in where on update and delete (#19172)
 
 #### Database drivers
@@ -109,6 +128,7 @@ ast, checker, cgen: implement enum static `from_string(name string)` (#19156)
 - db.sqlite: make functions return results, breaking change (#19093)
 
 #### Native backend
+- native: move functions out of amd64.v (#18857)
 
 #### C backend
 - Fix selector code to use interface method table on closure when needed (#18736)
@@ -134,9 +154,9 @@ ast, checker, cgen: implement enum static `from_string(name string)` (#19156)
 - Fix comptime assign with generic result return type (#19192)
 - Fix match with comptime if expr in branch (#19189)
 
-#### Comptime
-
 #### Tools
+- ci: add v-analyzer builds (#18835)
+- ci: cleanup more the contents of the generated v_linux.zip, v_macos.zip, and v_windows.zip, use -skip-unused
 - tools: fix vcomplete for zsh (#18950)
 - tools: support a toc for projects, with single exposing module, in `v doc` (#19001)
 - Add support for `v should-compile-all -c examples/`, which will delete all the produced executables at the end
@@ -149,26 +169,6 @@ ast, checker, cgen: implement enum static `from_string(name string)` (#19156)
 - Help: add link to the TESTS.md at the bottom of `v help test`, run CI checks on help markdown files as well
 - v.builder: show the number of files, types, modules, when a program is compiled with -stats
 - Improve the output of parser_speed.v and scanner_speed.v
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 ## V 0.4
