@@ -2,6 +2,9 @@
 *3 September 2023*
 
 #### Improvements in the language
+- Do not allow uninitialized function pointers
+- Fix compiling V programs with latest clang 16 on windows (clang 16 is stricter than clang 14) (#19095)
+ast, checker, cgen: implement enum static `from_string(name string)` (#19156)
 - Pure `array.sorted()` and `array.sorted_with_compare()` methods, that do not modify their receivers (#19251)
 - UB overflow has been removed
 - Disallow casting string to enum, suggest using Enum.from_string() instead (#19260)
@@ -9,27 +12,87 @@
 - log: improve the most common use case, it's no longer necessary to create a `Log` instance (#19242)
 - Allow using consts as enum values (#19193)
 - `@[attr]` syntax to replace `[attr]` (`[]` is used for too many things). Most likely to be replaced with `@attr()` in the futre.
+- Make all .trace() methods generic on the type of the passed expression
 
-#### Breaking Changes
+#### Breaking changes
 - `arr[1..4]` now requires `unsafe` if the slice can modify the original immutable array.
 
 #### Checker improvements/fixes
+- Disallow assigning `nil` to struct fields (#18725)
+- Use autocasting in complex if conditions (#18753)
+- Disallow invalid prefix on left side of assign stmt (#18750)
+- Allow no return in compile_error else block (#18758)
+- Fix interface param resolution (#18780)
+- Add an error for `$tmpl` function type mismatches (#18826)
+- Disallow voidptr cast to struct (#18845)
+- Fix type checker on auto deref var (#18842)
+- Check generic sumtype declaration (fix #18741) (#18865)
+- Fix closure with inherited sumtype variable (#18894)
+- "v -line-info" for a quick run to fetch info about objects on one line
+- Make sure vweb actions return vweb.Result
+- Do not allow modifying immutable vars via arrays with refs
+- Support @STRUCT in static methods
+- Fix generic struct field init recursively (related #19014) (#19025)
+- Fix struct field fntype value call (#19067)
+- Explicitly disallow creating type aliases of `none`, i.e. `type Abc = none` (#19078)
+- Fix assigning an array slice (fix #19120) (#19137)
+- Fix assigning array slice in struct init (#19150)
+- Check enum static from_string arguments errors (#19163)
+- Disallow taking the address of consts with int literal values (#19160)
 - Check struct embed with wrong position (#19245)
 - Optimize out needless string interpolations from the most common case in `Checker.expr_or_block_err`
 - Check error for or_expr inside infix expression (#19213)
 - Disallow `thread` as var name (#19174)
 - Check error for sumtype in array (#19183)
+- Disallow an empty `chan` type (#19167)
 
 #### Parser improvements
+- parser: change warn to error, for const names with upper letter (fix #18838) (#18840)
+- parser: disallow declaring static functions as method receivers (#19007)
+- parser: disallow having builtin type as type names for `enum`, `sum type` and `alias` (#19043)
+- parser: support `const x := 123`, to make extracting locals as constants less annoying while prototyping
+- parser: fix struct field fn type with default value (fix #19099) (#19106)
+- parser, cgen: fix `for i++; i<10; i++ {` (fix #18445) (#19035)
+- parser, checker, cgen: fix fn return alias of fixed array (#19116)
+- Ast, parser, cgen: fix generic struct init (Stack[&Person]{}) (fix #19119) (#19122)
 - v.token: add inline next_to() and cleanup related calls (#19226)
 
+#### Compiler internals
+- scanner: fix string interpolation with nested string interpolation in inner quotes p. 3 (#19121)
+- scanner: error early on an unsupported escape sequence in a string, like `\_` (fix #19131) (#19134)
+
 #### Standard library
+- vlib: add a new module `builtin.wchar`, to ease dealing with C APIs that accept `wchar_t*` (#18794)
+- arrays: add more util functions and tests for them - find_first, find_last, join_to_string (#18784)
+- vlib: use sync.new_mutex() consistently for initialising all vlib structures containing mutex fields
+- crypto.pem: add a static method `Block.new`, to replace `new` (#18846)
+- crypto.pem: add decode_only and general improvements to decoding (#18908)
+- crypto.sha512: make the new384/0, new512_256/0, new512_224/0 functions public
+- json: fix option alias support (#18801)
+- time: fix `parse_format` with `YY` (#18887)
+- math.big: allow bitwise ops on negative signum (#18912)
+- math.big: make is_odd public and add test cases (#18916)
+- math.big: add checked division methods (#18924)
+- math.big: add `isqrt_checked` and standardize error format (#18939)
+- sokol: use GLCORE33 on linux
+- os,term.termios: add termios.set_state/2, state.disable_echo/0, use them in os.input_password, to fix `v -os wasm32_emscripten examples/2048/`
+- gg: implement Android specific APK asset loading for the `create_image` function (#19015)
+- sync: make sync.Direction public (#19047)
+- time: store time with nanosecond resolution in time.Time, deprecate Time.microsecond, add utility methods and tests (#19062)
+- time: add a format_rfc3339_nano() method to time.Time
+- time: add 'i', 'ii' in custom_format() for 12-hours clock(0-12-1-11) (#19083)
+- gg: expand the `-d show_fps` background, so fps>100 will not overflow it
+- Math.big: restore gdc_euclid, use it for smaller numbers, fix bench_euclid.v .
 - Add new generic `arrays.uniq, arrays.uniq_only, arrays.uniq_only_repeated, arrays.uniq_all_repeated, arrays.distinct`
 - builtin: add support for `-d bultin_writeln_should_write_at_once` and `-d bultin_write_buf_to_fd_should_use_c_write` (#19243)
 - builtin: always show the assert message, if it was defined in the source, in non test programs too (fix #19240)
 - time: check if a day is a valid day of its month (#19232)
+- toml: Add generic automatic decoding and encoding of simple structs, when they don't implement custom methods (#17970)
 
 #### Web
+- picoev, picohttparser: reimplement in V (#18506)
+- vweb: fix parsing of form fields, send with multipart/form-data (by JS fetch)
+- vweb: make vweb route paths case sensitive (#18973)
 - net.mbedtls: have shutdown close accepted connections too (#19164)
 - http: add support for stream connections, and custom .on_redirect, .on_progress, .on_finish callbacks to http.fetch() (#19184)
 - vweb: add a user_agent utility method to the vweb context (#19204)
@@ -40,10 +103,30 @@
 - Add OR in where on update and delete (#19172)
 
 #### Database drivers
+- vlib: remove deprecated `pg`, `mysql`, `sqlite`, `mssql` modules. Leave only the `db.` prefixed `db.pg`, `db.mysql` etc
+- db.mysql: add the exec family of methods (#19132)
+- db.sqlite: add exec_param_many and exec_param methods (#19071)
+- db.sqlite: make functions return results, breaking change (#19093)
 
 #### Native backend
 
 #### C backend
+- Fix selector code to use interface method table on closure when needed (#18736)
+- Fix nested or expr call (fix #18803) (#18807)
+- Ensure that `<<` and `>>` has higher precedence in the generated C code, than arithmetic operations (diff between C and V precedences) (#18814)
+- Fix cross assign with aliased array (#18830)
+- Fix generated code for returning generic result/option to comptime var (#18834)
+- Fix option map with fn type value (#18849)
+- Fix returning an option tuple - `fn f() ?(int,int) { return g() }` (#18851)
+- Fix printing multiple fixed array (fix #18866) (#18879)
+- Fix infix expr with number overflow (fix #18905) (#18936)
+- Remove \r for consistency (#18962)
+- Allow dump(unsafe{nil}) and dump(voidptr(123)) in the same program
+- Implement fixed array of threads wait() (#19032)
+- Fix an error with ptr interpolation (fix #19048) (#19049)
+- Fix spawn call fn struct field(fix #18862) (#19096)
+- Fix bootstrapping on older macOS Catalina
+- Fix alias of array method call(fix #19125) (#19129)
 - Simplifications and clean up.
 - Fix mixed fixed array and array initializing (#19246)
 - Fix array sort with fn call parameter (fix #19220) (#19221)
@@ -54,6 +137,8 @@
 #### Comptime
 
 #### Tools
+- tools: fix vcomplete for zsh (#18950)
+- tools: support a toc for projects, with single exposing module, in `v doc` (#19001)
 - Add support for `v should-compile-all -c examples/`, which will delete all the produced executables at the end
 - vgret: add install commands for ubuntu and arch to doc string (#19247)
 - fast.v: add favicon to the html produced by fast.v
