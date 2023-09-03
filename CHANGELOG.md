@@ -1,3 +1,91 @@
+## V 0.4.1
+*3 September 2023*
+
+#### Improvements in the language
+- Pure `array.sorted()` and `array.sorted_with_compare()` methods, that do not modify their receivers (#19251)
+- UB overflow has been removed
+- Disallow casting string to enum, suggest using Enum.from_string() instead (#19260)
+- Fix anonymous struct with default expr (#19257)
+- log: improve the most common use case, it's no longer necessary to create a `Log` instance (#19242)
+- Allow using consts as enum values (#19193)
+- `@[attr]` syntax to replace `[attr]` (`[]` is used for too many things). Most likely to be replaced with `@attr()` in the futre.
+
+#### Breaking Changes
+- `arr[1..4]` now requires `unsafe` if the slice can modify the original immutable array.
+
+#### Checker improvements/fixes
+- Check struct embed with wrong position (#19245)
+- Optimize out needless string interpolations from the most common case in `Checker.expr_or_block_err`
+- Check error for or_expr inside infix expression (#19213)
+- Disallow `thread` as var name (#19174)
+- Check error for sumtype in array (#19183)
+
+#### Parser improvements
+- v.token: add inline next_to() and cleanup related calls (#19226)
+
+#### Standard library
+- Add new generic `arrays.uniq, arrays.uniq_only, arrays.uniq_only_repeated, arrays.uniq_all_repeated, arrays.distinct`
+- builtin: add support for `-d bultin_writeln_should_write_at_once` and `-d bultin_write_buf_to_fd_should_use_c_write` (#19243)
+- builtin: always show the assert message, if it was defined in the source, in non test programs too (fix #19240)
+- time: check if a day is a valid day of its month (#19232)
+
+#### Web
+- net.mbedtls: have shutdown close accepted connections too (#19164)
+- http: add support for stream connections, and custom .on_redirect, .on_progress, .on_finish callbacks to http.fetch() (#19184)
+- vweb: add a user_agent utility method to the vweb context (#19204)
+- vweb: avoid the controllers having to be defined in specific order (#19182)
+
+
+#### ORM
+- Add OR in where on update and delete (#19172)
+
+#### Database drivers
+
+#### Native backend
+
+#### C backend
+- Simplifications and clean up.
+- Fix mixed fixed array and array initializing (#19246)
+- Fix array sort with fn call parameter (fix #19220) (#19221)
+- Fix generic struct with option fn field (#19218)
+- Fix comptime assign with generic result return type (#19192)
+- Fix match with comptime if expr in branch (#19189)
+
+#### Comptime
+
+#### Tools
+- Add support for `v should-compile-all -c examples/`, which will delete all the produced executables at the end
+- vgret: add install commands for ubuntu and arch to doc string (#19247)
+- fast.v: add favicon to the html produced by fast.v
+- vpm: implement multithreading (#19208)
+- Make performance_compare.v more robust and easier to use, by allowing `v run cmd/tools/performance_compare.v` too
+- Improve oldv windows support, make it use -municode for windows builds, make it support cmd.exe
+- Make repeated runs of `oldv SAME_COMMIT -c "./v file.v"`, not use the network at all
+- Help: add link to the TESTS.md at the bottom of `v help test`, run CI checks on help markdown files as well
+- v.builder: show the number of files, types, modules, when a program is compiled with -stats
+- Improve the output of parser_speed.v and scanner_speed.v
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ## V 0.4
 *1 July 2023*
 
