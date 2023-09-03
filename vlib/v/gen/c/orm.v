@@ -448,6 +448,7 @@ fn (mut g Gen) write_orm_expr_to_primitive(expr ast.Expr) {
 		ast.CallExpr {
 			g.write_orm_primitive(expr.return_type, expr)
 		}
+		ast.None {}
 		else {
 			eprintln(expr)
 			verror('V ORM: ${expr.type_name()} is not supported')
@@ -543,6 +544,8 @@ fn (mut g Gen) write_orm_where(where_expr ast.Expr) {
 			g.write(' ')
 		}
 		g.write('})')
+	} else {
+		g.write('0')
 	}
 	g.indent--
 	g.writeln('),')
@@ -626,6 +629,12 @@ fn (mut g Gen) write_orm_where_expr(expr ast.Expr, mut fields []string, mut pare
 				}
 				.key_like {
 					'orm__OperationKind__orm_like'
+				}
+				.key_is {
+					'orm__OperationKind__is'
+				}
+				.not_is {
+					'orm__OperationKind__is_not'
 				}
 				else {
 					''

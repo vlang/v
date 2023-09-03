@@ -639,9 +639,13 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					parent_left_type := left_sym.info.sum_type
 					left_sym = c.table.sym(parent_left_type)
 				}
-				if left_sym.kind !in [.interface_, .sum_type] {
+				if c.inside_sql {
+					if typ != ast.none_type_idx {
+						c.error('`${op}` can only be used to test for none in sql', node.pos)
+					}
+				} else if left_sym.kind !in [.interface_, .sum_type] {
 					c.error('`${op}` can only be used with interfaces and sum types',
-						node.pos)
+						node.pos) // can be used in sql too, but keep err simple
 				} else if mut left_sym.info is ast.SumType {
 					if typ !in left_sym.info.variants {
 						c.error('`${left_sym.name}` has no variant `${right_sym.name}`',

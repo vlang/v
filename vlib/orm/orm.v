@@ -60,6 +60,8 @@ pub enum OperationKind {
 	ge // >=
 	le // <=
 	orm_like // LIKE
+	@is // is
+	is_not // !is
 }
 
 pub enum MathOperationKind {
@@ -94,8 +96,14 @@ fn (kind OperationKind) to_str() string {
 		.ge { '>=' }
 		.le { '<=' }
 		.orm_like { 'LIKE' }
+		.@is { 'IS' }
+		.is_not { 'IS NOT' }
 	}
 	return str
+}
+
+fn (kind OperationKind) has_null_operand() bool {
+	return kind == .@is || kind == .is_not
 }
 
 fn (kind OrderType) to_str() string {
@@ -189,7 +197,7 @@ pub interface Connection {
 // Generates an sql stmt, from universal parameter
 // q - The quotes character, which can be different in every type, so it's variable
 // num - Stmt uses nums at prepared statements (? or ?1)
-// qm - Character for prepared statement, qm because of quotation mark like in sqlite
+// qm - Character for prepared statement (qm for question mark, as in sqlite)
 // start_pos - When num is true, it's the start position of the counter
 pub fn orm_stmt_gen(sql_dialect SQLDialect, table string, q string, kind StmtKind, num bool, qm string, start_pos int, data QueryData, where QueryData) (string, QueryData) {
 	mut str := ''
@@ -299,35 +307,9 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table string, q string, kind StmtKin
 			str += 'DELETE FROM ${q}${table}${q} WHERE '
 		}
 	}
+	// where
 	if kind == .update || kind == .delete {
-		for i, field in where.fields {
-			mut pre_par := false
-			mut post_par := false
-			for par in where.parentheses {
-				if i in par {
-					pre_par = par[0] == i
-					post_par = par[1] == i
-				}
-			}
-			if pre_par {
-				str += '('
-			}
-			str += '${q}${field}${q} ${where.kinds[i].to_str()} ${qm}'
-			if num {
-				str += '${c}'
-				c++
-			}
-			if post_par {
-				str += ')'
-			}
-			if i < where.fields.len - 1 {
-				if where.is_and[i] {
-					str += ' AND '
-				} else {
-					str += ' OR '
-				}
-			}
-		}
+		str += gen_where_clause(where, q, qm, num, mut &c)
 	}
 	str += ';'
 	$if trace_orm_stmt ? {
@@ -370,34 +352,7 @@ pub fn orm_select_gen(orm SelectConfig, q string, num bool, qm string, start_pos
 
 	if orm.has_where {
 		str += ' WHERE '
-		for i, field in where.fields {
-			mut pre_par := false
-			mut post_par := false
-			for par in where.parentheses {
-				if i in par {
-					pre_par = par[0] == i
-					post_par = par[1] == i
-				}
-			}
-			if pre_par {
-				str += '('
-			}
-			str += '${q}${field}${q} ${where.kinds[i].to_str()} ${qm}'
-			if num {
-				str += '${c}'
-				c++
-			}
-			if post_par {
-				str += ')'
-			}
-			if i < where.fields.len - 1 {
-				if where.is_and[i] {
-					str += ' AND '
-				} else {
-					str += ' OR '
-				}
-			}
-		}
+		str += gen_where_clause(where, q, qm, num, mut &c)
 	}
 
 	// Note: do not order, if the user did not want it explicitly,
@@ -430,6 +385,44 @@ pub fn orm_select_gen(orm SelectConfig, q string, num bool, qm string, start_pos
 	}
 	$if trace_orm ? {
 		eprintln('> orm: ${str}')
+	}
+	return str
+}
+
+fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) string {
+	mut str := ''
+	for i, field in where.fields {
+		mut pre_par := false
+		mut post_par := false
+		for par in where.parentheses {
+			if i in par {
+				pre_par = par[0] == i
+				post_par = par[1] == i
+			}
+		}
+		if pre_par {
+			str += '('
+		}
+		str += '${q}${field}${q} ${where.kinds[i].to_str()} '
+		if where.kinds[i].has_null_operand() {
+			str += 'NULL'
+		} else {
+			str += '${qm}'
+			if num {
+				str += '${c}'
+				c++
+			}
+		}
+		if post_par {
+			str += ')'
+		}
+		if i < where.fields.len - 1 {
+			if where.is_and[i] {
+				str += ' AND '
+			} else {
+				str += ' OR '
+			}
+		}
 	}
 	return str
 }
