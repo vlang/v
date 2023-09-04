@@ -80,6 +80,8 @@ pub fn pow(x f64, y f64) f64 {
 		return x
 	} else if is_nan(x) || is_nan(y) {
 		return nan()
+  } else if y == 2 {
+    return x * x
 	} else if x == 0 {
 		if y < 0 {
 			if is_odd_int(y) {
