@@ -38,6 +38,11 @@
 #define MBEDTLS_HAVE_X86_64
 #endif
 
+#if defined(__TINYC__)
+// TCC does not support the assembly instructions in aesni.c
+#undef MBEDTLS_HAVE_X86_64
+#endif
+
 #if defined(MBEDTLS_HAVE_X86_64)
 
 #ifdef __cplusplus
