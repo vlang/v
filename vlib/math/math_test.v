@@ -776,7 +776,8 @@ fn test_pow() {
 		[pi, nan()], [inf(1), -pi], [inf(1), -0.0], [inf(1), 0],
 		[inf(1), 1], [inf(1), pi], [inf(1), nan()], [nan(), -pi],
 		[nan(), -0.0], [nan(), 0], [nan(), 1], [nan(), pi], [nan(),
-			nan()]]
+			nan()],
+		[5.0, 2.0], [5.0, 3.0], [5.0, 10.0], [5.0, -2.0], [-5.0, -2.0]]
 	pow_sc_ := [f64(0), // pow(-inf, -pi)
 	 	-0.0, // pow(-inf, -3)
 	 	1, // pow(-inf, -0)
@@ -839,6 +840,11 @@ fn test_pow() {
 	 	nan(), // pow(nan, 1)
 	 	nan(), // pow(nan, pi)
 	 	nan(), // pow(nan, nan)
+	 	25, // pow(5, 2) => 5 * 5
+	 	125, // pow(5, 3) => 5 * 5 * 5
+	 	9765625, // pow(5, 10)
+	 	0.04, // pow(5, -2)
+	 	-0.04, // pow(-5, -2)
 	]
 	for i := 0; i < vfpow_sc_.len; i++ {
 		f := pow(vfpow_sc_[i][0], vfpow_sc_[i][1])
