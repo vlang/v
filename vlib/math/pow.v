@@ -70,7 +70,7 @@ pub fn powi(a i64, b i64) i64 {
 	return v
 }
 
-// pow returns base raised to the provided power.
+// pow returns the base x, raised to the provided power y. (float64)
 //
 // todo(playXE): make this function work on JS backend, probably problem of JS codegen that it does not work.
 pub fn pow(x f64, y f64) f64 {

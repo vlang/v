@@ -77,7 +77,7 @@ fn ilog_b_(x_ f64) int {
 	return int((f64_bits(x) >> shift) & mask) - bias + exp
 }
 
-// log returns the logarithm of x
+// log returns the natural logarithm of x
 //
 // Method :
 //   1. Argument Reduction: find k and f such that
