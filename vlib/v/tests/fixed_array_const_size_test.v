@@ -44,3 +44,18 @@ fn test_int_const_used_as_fixed_array_size() {
 	dump(bb.len)
 	assert aa.len == 10_000
 }
+
+const (
+	rows = 4
+	cols = 4
+)
+
+struct Matrix {
+	data [rows * cols]int
+}
+
+fn test_infix_const_expr_used_as_fixed_array_size() {
+	mat := Matrix{}
+	println(mat)
+	assert mat.data.len == 16
+}
