@@ -15,9 +15,10 @@ pub struct UnescapeConfig {
 }
 
 const (
-	escape_seq       = ['&', '&amp;', '<', '&lt;', '>', '&gt;']
-	escape_quote_seq = ['"', '&#34;', "'", '&#39;']
-	unescape_seq     = ['&amp;', '&', '&lt;', '<', '&gt;', '>', '&#34;', '"', '&#39;', "'"]
+	escape_seq         = ['&', '&amp;', '<', '&lt;', '>', '&gt;']
+	escape_quote_seq   = ['"', '&#34;', "'", '&#39;']
+	unescape_seq       = ['&amp;', '&', '&lt;', '<', '&gt;', '>']
+	unescape_quote_seq = ['&#34;', '"', '&#39;', "'"]
 )
 
 // escape converts special characters in the input, specifically "<", ">", and "&"
@@ -39,6 +40,8 @@ pub fn escape(input string, config EscapeConfig) string {
 pub fn unescape(input string, config UnescapeConfig) string {
 	return if config.all {
 		unescape_all(input)
+	} else if config.quote {
+		input.replace_each(html.unescape_seq).replace_each(html.unescape_quote_seq)
 	} else {
 		input.replace_each(html.unescape_seq)
 	}
