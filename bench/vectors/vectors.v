@@ -44,9 +44,8 @@ fn main() {
 			difference_y := position.y - other_position.y
 			difference_z := position.z - other_position.z
 
-			distance := math.sqrt(difference_x * difference_x +
-			difference_y * difference_y +
-			difference_z * difference_z)
+			distance := math.sqrt(difference_x * difference_x + difference_y * difference_y +
+				difference_z * difference_z)
 
 			if distance <= cohesion_distance {
 				close_boids_ids << other_boid_index
@@ -77,8 +76,10 @@ fn main() {
 				z: position.z - close_boid_position.z
 			}
 
-			difference_magnitude := math.sqrt(difference_from_closest.x * difference_from_closest.x +
-			difference_from_closest.y * difference_from_closest.y + difference_from_closest.z * difference_from_closest.z)
+			difference_magnitude := math.sqrt(
+				difference_from_closest.x * difference_from_closest.x +
+				difference_from_closest.y * difference_from_closest.y +
+				difference_from_closest.z * difference_from_closest.z)
 
 			if difference_magnitude <= separation_distance {
 				separation = Vector{
