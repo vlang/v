@@ -34,13 +34,9 @@
 
 #if defined(MBEDTLS_HAVE_ASM) && defined(__GNUC__) &&  \
     ( defined(__amd64__) || defined(__x86_64__) )   &&  \
-    ! defined(MBEDTLS_HAVE_X86_64)
+    ! defined(MBEDTLS_HAVE_X86_64) && \
+    ! defined(__TINYC__)
 #define MBEDTLS_HAVE_X86_64
-#endif
-
-#if defined(__TINYC__)
-// TCC does not support the assembly instructions in aesni.c
-#undef MBEDTLS_HAVE_X86_64
 #endif
 
 #if defined(MBEDTLS_HAVE_X86_64)
