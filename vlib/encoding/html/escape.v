@@ -10,6 +10,7 @@ pub struct EscapeConfig {
 
 [params]
 pub struct UnescapeConfig {
+	EscapeConfig
 	all bool
 }
 
