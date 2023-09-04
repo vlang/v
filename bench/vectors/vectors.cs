@@ -62,13 +62,11 @@ internal static class Program
                 var differenceY = position.Y - otherPosition.Y;
                 var differenceZ = position.Z - otherPosition.Z;
                 
-                var distance = Math.Sqrt(
-                    differenceX * differenceX +
+                var distance = differenceX * differenceX +
                     differenceY * differenceY +
-                    differenceZ * differenceZ
-                );
+                    differenceZ * differenceZ;
 
-                if (distance <= cohesionDistance)
+                if (distance <= cohesionDistance * cohesionDistance)
                 {
                     closeBoids.Add(otherBoidIndex);
                 }

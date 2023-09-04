@@ -44,10 +44,10 @@ fn main() {
 			difference_y := position.y - other_position.y
 			difference_z := position.z - other_position.z
 
-			distance := math.sqrt(difference_x * difference_x + difference_y * difference_y +
-				difference_z * difference_z)
+			distance := difference_x * difference_x + difference_y * difference_y +
+				difference_z * difference_z
 
-			if distance <= cohesion_distance {
+			if distance <= cohesion_distance * cohesion_distance {
 				close_boids_ids << other_boid_index
 			}
 		}
