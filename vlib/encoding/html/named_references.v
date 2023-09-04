@@ -1,7 +1,7 @@
 module html
 
 // Generated based on https://www.w3.org/TR/2011/WD-html5-20110525/named-character-references.html
-const html_named_references = {
+const named_references = {
 	'AElig':                           `Æ`
 	'AMP':                             `&`
 	'Aacute':                          `Á`

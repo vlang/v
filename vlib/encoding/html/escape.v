@@ -14,9 +14,9 @@ pub struct UnescapeConfig {
 }
 
 const (
-	html_escape_seq       = ['&', '&amp;', '<', '&lt;', '>', '&gt;']
-	html_quote_escape_seq = ['"', '&#34;', "'", '&#39;']
-	html_unescape_seq     = ['&amp;', '&', '&lt;', '<', '&gt;', '>', '&#34;', '"', '&#39;', "'"]
+	escape_seq       = ['&', '&amp;', '<', '&lt;', '>', '&gt;']
+	escape_quote_seq = ['"', '&#34;', "'", '&#39;']
+	unescape_seq     = ['&amp;', '&', '&lt;', '<', '&gt;', '>', '&#34;', '"', '&#39;', "'"]
 )
 
 // escape converts special characters in the input, specifically "<", ">", and "&"
@@ -26,9 +26,9 @@ const (
 // support through `string` is robust enough to deal with these cases.
 pub fn escape(input string, config EscapeConfig) string {
 	return if config.quote {
-		input.replace_each(html.html_escape_seq).replace_each(html.html_quote_escape_seq)
+		input.replace_each(html.escape_seq).replace_each(html.escape_quote_seq)
 	} else {
-		input.replace_each(html.html_escape_seq)
+		input.replace_each(html.escape_seq)
 	}
 }
 
@@ -39,7 +39,7 @@ pub fn unescape(input string, config UnescapeConfig) string {
 	return if config.all {
 		unescape_all(input)
 	} else {
-		input.replace_each(html.html_unescape_seq)
+		input.replace_each(html.unescape_seq)
 	}
 }
 
@@ -79,7 +79,7 @@ fn unescape_all(input string) string {
 			} else {
 				// Named entity (e.g., &lt;)
 				entity := runes[i + 1..j].string()
-				if v := html_named_references[entity] {
+				if v := named_references[entity] {
 					result << v
 				} else {
 					// Leave unknown entities unchanged
