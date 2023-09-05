@@ -557,7 +557,7 @@ fn test_cbrt() {
 fn test_exp() {
 	for i := 0; i < math.vf_.len; i++ {
 		f := exp(math.vf_[i])
-		assert veryclose(math.exp_[i], f)
+		assert veryclose(math.exp_[i], f), 'math.exp_[i]: ${math.exp_[i]:10}, ${f64_bits(math.exp_[i]):12} | f: ${f}, ${f64_bits(f):12}'
 	}
 	vfexp_sc_ := [inf(-1), -2000, 2000, inf(1), nan(), // smallest f64 that overflows Exp(x)
 	 	7.097827128933841e+02, 1.48852223e+09, 1.4885222e+09, 1, // near zero
