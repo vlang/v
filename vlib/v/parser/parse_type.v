@@ -65,7 +65,13 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 					if folded_expr is ast.IntegerLiteral {
 						fixed_size = folded_expr.val.int()
 					} else {
-						show_non_const_error = true
+						if p.pref.is_fmt {
+							// for vfmt purposes, pretend the constant does exist
+							// it may have been defined in another .v file:
+							fixed_size = 1
+						} else {
+							show_non_const_error = true
+						}
 					}
 					if show_non_const_error {
 						p.error_with_pos('fixed array size cannot use non-constant value',
