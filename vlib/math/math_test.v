@@ -216,6 +216,11 @@ fn soclose(a f64, b f64, e_ f64) bool {
 }
 
 fn test_nan() {
+	$if fast_math {
+		println('>> skipping ${@METHOD} with -fast-math')
+		return
+	}
+	// Note: these assertions do fail with `-cc gcc -cflags -ffast-math`:
 	nan_f64 := nan()
 	assert nan_f64 != nan_f64
 	nan_f32 := f32(nan_f64)
@@ -369,7 +374,10 @@ fn test_atan2() {
 	]
 	for i := 0; i < vfatan2_sc_.len; i++ {
 		f := atan2(vfatan2_sc_[i][0], vfatan2_sc_[i][1])
-		assert alike(atan2_sc_[i], f)
+		// Note: fails with `-cc gcc -cflags -ffast-math`
+		$if !fast_math {
+			assert alike(atan2_sc_[i], f), 'atan2_sc_[i]: ${atan2_sc_[i]:10}, f: ${f:10}'
+		}
 	}
 }
 
@@ -522,8 +530,11 @@ fn test_sign() {
 	assert sign(0.000000000001) == 1.0
 	assert sign(0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001) == 1.0
 	assert sign(0.0) == 1.0
-	assert is_nan(sign(nan()))
-	assert is_nan(sign(-nan()))
+	$if !fast_math {
+		// Note: these assertions fail with `-cc gcc -cflags -ffast-math`:
+		assert is_nan(sign(nan())), '${sign(nan()):20}, ${nan():20}'
+		assert is_nan(sign(-nan())), '${sign(-nan()):20}, ${-nan():20}'
+	}
 }
 
 fn test_mod() {
@@ -556,7 +567,7 @@ fn test_exp() {
 		inf(1), 2.718281828459045, 1.0000000037252903, 4.2e-322]
 	for i := 0; i < vfexp_sc_.len; i++ {
 		f := exp(vfexp_sc_[i])
-		assert alike(exp_sc_[i], f)
+		assert alike(exp_sc_[i], f), 'exp_sc_[i]: ${exp_sc_[i]:10}, ${f64_bits(exp_sc_[i]):12}, f: ${f:10}, ${f64_bits(f):12}'
 	}
 }
 
@@ -859,11 +870,6 @@ fn test_pow() {
 fn test_round() {
 	for i := 0; i < math.vf_.len; i++ {
 		f := round(math.vf_[i])
-		// @todo: Figure out why is this happening and fix it
-		if math.round_[i] == 0 {
-			// 0 compared to -0 with alike fails
-			continue
-		}
 		assert alike(math.round_[i], f)
 	}
 	vfround_sc_ := [[f64(0), 0], [nan(), nan()], [inf(1), inf(1)]]
