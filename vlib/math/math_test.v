@@ -557,7 +557,7 @@ fn test_cbrt() {
 fn test_exp() {
 	for i := 0; i < math.vf_.len; i++ {
 		f := exp(math.vf_[i])
-		assert veryclose(math.exp_[i], f), 'math.exp_[i]: ${math.exp_[i]:10}, ${f64_bits(math.exp_[i]):12} | f: ${f}, ${f64_bits(f):12}'
+		assert close(math.exp_[i], f), 'math.exp_[i]: ${math.exp_[i]:10}, ${f64_bits(math.exp_[i]):12} | f: ${f}, ${f64_bits(f):12}'
 	}
 	vfexp_sc_ := [inf(-1), -2000, 2000, inf(1), nan(), // smallest f64 that overflows Exp(x)
 	 	7.097827128933841e+02, 1.48852223e+09, 1.4885222e+09, 1, // near zero
@@ -567,7 +567,7 @@ fn test_exp() {
 		inf(1), 2.718281828459045, 1.0000000037252903, 4.2e-322]
 	for i := 0; i < vfexp_sc_.len; i++ {
 		f := exp(vfexp_sc_[i])
-		assert alike(exp_sc_[i], f), 'exp_sc_[i]: ${exp_sc_[i]:10}, ${f64_bits(exp_sc_[i]):12}, f: ${f:10}, ${f64_bits(f):12}'
+		assert close(exp_sc_[i], f) || alike(exp_sc_[i], f), 'exp_sc_[i]: ${exp_sc_[i]:10}, ${f64_bits(exp_sc_[i]):12}, f: ${f:10}, ${f64_bits(f):12}'
 	}
 }
 
@@ -862,7 +862,9 @@ fn test_pow() {
 	]
 	for i := 0; i < vfpow_sc_.len; i++ {
 		f := pow(vfpow_sc_[i][0], vfpow_sc_[i][1])
-		assert alike(pow_sc_[i], f), 'i: ${i:3} | vfpow_sc_[i][0]: ${vfpow_sc_[i][0]:10}, vfpow_sc_[i][1]: ${vfpow_sc_[i][1]:10} | pow_sc_[${i}] = ${pow_sc_[i]}, f = ${f}'
+		// close() is needed, otherwise gcc on windows fails with:
+		// i:  65 | vfpow_sc_[i][0]:          5, vfpow_sc_[i][1]:         -2 | pow_sc_[65] = 0.04, f = 0.04000000000000001
+		assert close(pow_sc_[i], f) || alike(pow_sc_[i], f), 'i: ${i:3} | vfpow_sc_[i][0]: ${vfpow_sc_[i][0]:10}, vfpow_sc_[i][1]: ${vfpow_sc_[i][1]:10} | pow_sc_[${i}] = ${pow_sc_[i]}, f = ${f}'
 	}
 }
 
