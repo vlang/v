@@ -51,11 +51,11 @@ const (
 )
 
 struct Matrix {
-	data [rows * cols + 1]int
+	data [rows * cols]int
 }
 
 fn test_infix_const_expr_used_as_fixed_array_size() {
 	mat := Matrix{}
 	println(mat)
-	assert mat.data.len == 7
+	assert mat.data.len == 6
 }
