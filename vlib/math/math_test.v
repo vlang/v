@@ -862,7 +862,7 @@ fn test_pow() {
 	]
 	for i := 0; i < vfpow_sc_.len; i++ {
 		f := pow(vfpow_sc_[i][0], vfpow_sc_[i][1])
-		// close() is needed, otherwise gcc on windows fails with:
+		// close() below is needed, otherwise gcc on windows fails with:
 		// i:  65 | vfpow_sc_[i][0]:          5, vfpow_sc_[i][1]:         -2 | pow_sc_[65] = 0.04, f = 0.04000000000000001
 		assert close(pow_sc_[i], f) || alike(pow_sc_[i], f), 'i: ${i:3} | vfpow_sc_[i][0]: ${vfpow_sc_[i][0]:10}, vfpow_sc_[i][1]: ${vfpow_sc_[i][1]:10} | pow_sc_[${i}] = ${pow_sc_[i]}, f = ${f}'
 	}
