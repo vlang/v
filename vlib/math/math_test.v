@@ -862,7 +862,6 @@ fn test_pow() {
 	]
 	for i := 0; i < vfpow_sc_.len; i++ {
 		f := pow(vfpow_sc_[i][0], vfpow_sc_[i][1])
-		eprintln('> i: ${i:3} | vfpow_sc_[i][0]: ${vfpow_sc_[i][0]:10}, vfpow_sc_[i][1]: ${vfpow_sc_[i][1]:10} | pow_sc_[${i}] = ${pow_sc_[i]}, f = ${f}')
 		assert alike(pow_sc_[i], f), 'i: ${i:3} | vfpow_sc_[i][0]: ${vfpow_sc_[i][0]:10}, vfpow_sc_[i][1]: ${vfpow_sc_[i][1]:10} | pow_sc_[${i}] = ${pow_sc_[i]}, f = ${f}'
 	}
 }
