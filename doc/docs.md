@@ -5613,7 +5613,7 @@ Full list of builtin options:
 | `mac`, `darwin`, `ios`,        | `clang`, `mingw` | `i386`, `arm32`               | `js`, `glibc`, `prealloc`                     |
 | `android`, `mach`, `dragonfly` | `msvc`           | `x64`, `x32`                  | `no_bounds_checking`, `freestanding`          |
 | `gnu`, `hpux`, `haiku`, `qnx`  | `cplusplus`      | `little_endian`, `big_endian` | `no_segfault_handler`, `no_backtrace`         |
-| `solaris`, `termux`            |                  |                               | `no_main`                                     |
+| `solaris`, `termux`            |                  |                               | `no_main`, 'fast_math'                        |
 
 #### `$embed_file`
 

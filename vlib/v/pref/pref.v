@@ -227,11 +227,13 @@ pub mut:
 	message_limit       int = 150 // the maximum amount of warnings/errors/notices that will be accumulated
 	nofloat             bool // for low level code, like kernels: replaces f32 with u32 and f64 with u64
 	use_coroutines      bool // experimental coroutines
+	fast_math           bool // -fast-math will pass either -ffast-math or /fp:fast (for msvc) to the C backend
 	// checker settings:
 	checker_match_exhaustive_cutoff_limit int = 12
 	thread_stack_size                     int = 8388608 // Change with `-thread-stack-size 4194304`. Note: on macos it was 524288, which is too small for more complex programs with many nested callexprs.
-	wasm_stack_top                        int = 1024 + (16 * 1024) // stack size for webassembly backend
-	wasm_validate                         bool // validate webassembly code, by calling `wasm-validate`
+	// wasm settings:
+	wasm_stack_top int = 1024 + (16 * 1024) // stack size for webassembly backend
+	wasm_validate  bool // validate webassembly code, by calling `wasm-validate`
 }
 
 pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
@@ -394,6 +396,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-nofloat' {
 				res.nofloat = true
 				res.compile_defines_all << 'nofloat' // so that `$if nofloat? {` works
+			}
+			'-fast-math' {
+				res.fast_math = true
 			}
 			'-e' {
 				res.is_eval_argument = true
@@ -903,7 +908,13 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		eprintln('Cannot save output binary in a .v file.')
 		exit(1)
 	}
-
+	if res.fast_math {
+		if res.ccompiler_type == .msvc {
+			res.cflags += ' /fp:fast'
+		} else {
+			res.cflags += ' -ffast-math'
+		}
+	}
 	if res.is_eval_argument {
 		// `v -e "println(2+5)"`
 		run_code_in_tmp_vfile_and_exit(args, mut res, '-e', 'vsh', res.eval_argument)

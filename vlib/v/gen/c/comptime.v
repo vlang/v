@@ -1157,6 +1157,14 @@ fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_option bool) !strin
 		'big_endian' {
 			return 'TARGET_ORDER_IS_BIG'
 		}
+		'fast_math' {
+			if g.pref.ccompiler_type == .msvc {
+				// turned on by: `-cflags /fp:fast`
+				return '_M_FP_FAST'
+			}
+			// turned on by: `-cflags -ffast-math`
+			return '__FAST_MATH__'
+		}
 		else {
 			if is_comptime_option
 				|| (g.pref.compile_defines_all.len > 0 && name in g.pref.compile_defines_all) {
