@@ -9,12 +9,14 @@ freebsd_task:
     echo 'Building V'
     git clone https://github.com/vlang/v
     cd v
+    cc --version
     make
     ##.github/workflows/freebsd_build_tcc.sh
     ##tcc -v -v
     echo 'Build cmd/tools/fast'
-    cd cmd/tools/fast && ../../../v fast.v && ./fast -clang
+    cd cmd/tools/fast && ../../../v fast.v ## && ./fast -clang
+    echo 'Diagnose vlib/math/math_test.v'
+    ./v vlib/math/math_test.v
     echo 'Run test-self'
     cd /tmp/cirrus-ci-build/v
-    ./v vlib/math/math_test.v
     VTEST_JUST_ESSENTIAL=1 ./v test-self
