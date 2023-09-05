@@ -1,13 +1,24 @@
 module html
 
+import encoding.hex
+import strconv
+
 [params]
 pub struct EscapeConfig {
 	quote bool = true
 }
 
+[params]
+pub struct UnescapeConfig {
+	EscapeConfig
+	all bool
+}
+
 const (
-	html_replacement_table       = ['&', '&amp;', '<', '&lt;', '>', '&gt;']
-	html_quote_replacement_table = ['"', '&#34;', "'", '&#39;'] // `'&#34;'` is shorter than `'&quot;'`
+	escape_seq         = ['&', '&amp;', '<', '&lt;', '>', '&gt;']
+	escape_quote_seq   = ['"', '&#34;', "'", '&#39;']
+	unescape_seq       = ['&amp;', '&', '&lt;', '<', '&gt;', '>']
+	unescape_quote_seq = ['&#34;', '"', '&#39;', "'"]
 )
 
 // escape converts special characters in the input, specifically "<", ">", and "&"
@@ -16,10 +27,74 @@ const (
 // **Note:** escape() supports funky accents by doing nothing about them. V's UTF-8
 // support through `string` is robust enough to deal with these cases.
 pub fn escape(input string, config EscapeConfig) string {
-	tag_free_input := input.replace_each(html.html_replacement_table)
 	return if config.quote {
-		tag_free_input.replace_each(html.html_quote_replacement_table)
+		input.replace_each(html.escape_seq).replace_each(html.escape_quote_seq)
 	} else {
-		tag_free_input
+		input.replace_each(html.escape_seq)
 	}
+}
+
+// unescape converts entities like "&lt;" to "<". By default it is the converse of `escape`.
+// If `all` is set to true, it handles named, numeric, and hex values - for example,
+// `'&apos;'`, `'&#39;'`, and `'&#x27;'` then unescape to "'".
+pub fn unescape(input string, config UnescapeConfig) string {
+	return if config.all {
+		unescape_all(input)
+	} else if config.quote {
+		input.replace_each(html.unescape_seq).replace_each(html.unescape_quote_seq)
+	} else {
+		input.replace_each(html.unescape_seq)
+	}
+}
+
+fn unescape_all(input string) string {
+	mut result := []rune{}
+	runes := input.runes()
+	mut i := 0
+	outer: for i < runes.len {
+		if runes[i] == `&` {
+			mut j := i + 1
+			for j < runes.len && runes[j] != `;` {
+				j++
+			}
+			if j < runes.len && runes[i + 1] == `#` {
+				// Numeric escape sequences (e.g., &#39; or &#x27;)
+				code := runes[i + 2..j].string()
+				if code[0] == `x` {
+					// Hexadecimal escape sequence
+					for c in code[1..] {
+						if !c.is_hex_digit() {
+							// Leave invalid sequences unchanged
+							result << runes[i..j + 1]
+							i = j + 1
+							continue outer
+						}
+					}
+					result << hex.decode(code[1..]) or { []u8{} }.bytestr().runes()
+				} else {
+					// Decimal escape sequence
+					if v := strconv.atoi(code) {
+						result << v
+					} else {
+						// Leave invalid sequences unchanged
+						result << runes[i..j + 1]
+					}
+				}
+			} else {
+				// Named entity (e.g., &lt;)
+				entity := runes[i + 1..j].string()
+				if v := named_references[entity] {
+					result << v
+				} else {
+					// Leave unknown entities unchanged
+					result << runes[i..j + 1]
+				}
+			}
+			i = j + 1
+		} else {
+			result << runes[i]
+			i++
+		}
+	}
+	return result.string()
 }
