@@ -19,39 +19,63 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 		if p.pref.is_fmt {
 			fixed_size = 987654321
 		} else {
-			mut show_non_const_error := false
-			mut trans := transformer.new_transformer(p.pref)
-			mut to_expr1 := trans.expr(mut size_expr)
+			match mut size_expr {
+				ast.IntegerLiteral {
+					fixed_size = size_expr.val.int()
+				}
+				ast.Ident {
+					mut show_non_const_error := false
+					if mut const_field := p.table.global_scope.find_const('${p.mod}.${size_expr.name}') {
+						if mut const_field.expr is ast.IntegerLiteral {
+							fixed_size = const_field.expr.val.int()
+						} else {
+							if mut const_field.expr is ast.InfixExpr {
+								// QUESTION: this should most likely no be done in the parser, right?
+								mut t := transformer.new_transformer(p.pref)
+								folded_expr := t.infix_expr(mut const_field.expr)
 
-			if mut to_expr1 is ast.IntegerLiteral {
-				fixed_size = to_expr1.val.int()
-			} else if mut to_expr1 is ast.Ident {
-				if mut obj := to_expr1.scope.find_const(to_expr1.mod + '.' + to_expr1.name) {
-					if mut obj.expr is ast.IntegerLiteral {
-						fixed_size = obj.expr.val.int()
-					} else if mut obj.expr is ast.InfixExpr {
-						to_expr2 := trans.infix_expr(mut obj.expr)
-						if to_expr2 is ast.IntegerLiteral {
-							fixed_size = to_expr2.val.int()
+								if folded_expr is ast.IntegerLiteral {
+									fixed_size = folded_expr.val.int()
+								} else {
+									show_non_const_error = true
+								}
+							} else {
+								show_non_const_error = true
+							}
+						}
+					} else {
+						if p.pref.is_fmt {
+							// for vfmt purposes, pretend the constant does exist
+							// it may have been defined in another .v file:
+							fixed_size = 1
 						} else {
 							show_non_const_error = true
 						}
+					}
+					if show_non_const_error {
+						p.error_with_pos('non-constant array bound `${size_expr.name}`',
+							size_expr.pos)
+					}
+				}
+				ast.InfixExpr {
+					mut show_non_const_error := false
+					mut t := transformer.new_transformer(p.pref)
+					folded_expr := t.infix_expr(mut size_expr)
+
+					if folded_expr is ast.IntegerLiteral {
+						fixed_size = folded_expr.val.int()
 					} else {
 						show_non_const_error = true
 					}
-				} else if p.pref.is_fmt {
-					// for vfmt purposes, pretend the constant does exist
-					// it may have been defined in another .v file:
-					fixed_size = 1
-				} else {
-					show_non_const_error = true
+					if show_non_const_error {
+						p.error_with_pos('fixed array size cannot use non-constant value',
+							size_expr.pos)
+					}
 				}
-			} else {
-				show_non_const_error = true
-			}
-
-			if show_non_const_error {
-				p.error_with_pos('fixed array size cannot use non-constant value', size_expr.pos())
+				else {
+					p.error_with_pos('fixed array size cannot use non-constant value',
+						size_expr.pos())
+				}
 			}
 		}
 		p.check(.rsbr)
