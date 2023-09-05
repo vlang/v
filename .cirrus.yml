@@ -10,13 +10,13 @@ freebsd_task:
     git clone https://github.com/vlang/v
     cd v
     cc --version
-    make
+    make CFLAGS=
     ##.github/workflows/freebsd_build_tcc.sh
     ##tcc -v -v
     echo 'Build cmd/tools/fast'
     cd cmd/tools/fast && ../../../v fast.v ## && ./fast -clang
     echo 'Diagnose vlib/math/math_test.v'
-    ./v vlib/math/math_test.v
+    ./v -stats vlib/math/math_test.v
     echo 'Run test-self'
     cd /tmp/cirrus-ci-build/v
     VTEST_JUST_ESSENTIAL=1 ./v test-self
