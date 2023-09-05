@@ -851,7 +851,7 @@ fn test_pow() {
 	]
 	for i := 0; i < vfpow_sc_.len; i++ {
 		f := pow(vfpow_sc_[i][0], vfpow_sc_[i][1])
-		assert alike(pow_sc_[i], f)
+		assert alike(pow_sc_[i], f), 'pow_sc_[${i}] = ${pow_sc_[i]}, f = ${f}'
 	}
 }
 
