@@ -39,15 +39,15 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 					} else {
 						show_non_const_error = true
 					}
-				}
-			} else {
-				if p.pref.is_fmt {
+				} else if p.pref.is_fmt {
 					// for vfmt purposes, pretend the constant does exist
 					// it may have been defined in another .v file:
 					fixed_size = 1
 				} else {
 					show_non_const_error = true
 				}
+			} else {
+				show_non_const_error = true
 			}
 
 			if show_non_const_error {
