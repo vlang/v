@@ -48,7 +48,7 @@ fn test_unescape_html() {
 fn test_unescape_all_html() {
 	// Test different formats
 	assert html.unescape('&#39;&#x27;&apos;', all: true) == "'''"
-	assert html.unescape('&#10836; = &#x02a54; = &#X02A54; = &Or;', all: true) == "⩔ = ⩔ = ⩔ = ⩔"
+	assert html.unescape('&#10836; = &#x02a54; = &#X02A54; = &Or;', all: true) == '⩔ = ⩔ = ⩔ = ⩔'
 	// Converse escape tests
 	assert html.unescape('&lt;&gt;&amp;', all: true) == '<>&'
 	assert html.unescape('No change', all: true) == 'No change'
