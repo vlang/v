@@ -22,6 +22,7 @@ const (
 	no_quotes_replacement       = [single_quote, '', double_quote, '']
 
 	html_tag_escape_replacement = ['<', '&lt;', '>', '&gt;']
+	html_tag_escape_re          = regex.regex_opt(r'`.+[(&lt;)(&gt;)].+`') or { panic(err) }
 )
 
 enum HighlightTokenTyp {
@@ -453,7 +454,7 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 
 fn html_tag_escape(str string) string {
 	escaped_string := str.replace_each(html_tag_escape_replacement)
-	mut re := regex.regex_opt(r'`.+[(&lt;)(&gt;)].+`') or { regex.RE{} }
+	mut re := html_tag_escape_re
 	if re.find_all_str(escaped_string).len > 0 {
 		return str
 	}
