@@ -71,13 +71,18 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 						}
 					}
 					if show_non_const_error {
-						p.error_with_pos('fixed array size cannot use non-constant value',
-							size_expr.pos)
+						p.error_with_pos('non-constant array bound `${size_expr}`', size_expr.pos)
 					}
 				}
 				else {
-					p.error_with_pos('fixed array size cannot use non-constant value',
-						size_expr.pos())
+					if p.pref.is_fmt {
+						// for vfmt purposes, pretend the constant does exist
+						// it may have been defined in another .v file:
+						fixed_size = 1
+					} else {
+						p.error_with_pos('fixed array size cannot use non-constant value',
+							size_expr.pos())
+					}
 				}
 			}
 		}
