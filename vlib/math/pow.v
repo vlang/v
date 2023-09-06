@@ -145,7 +145,7 @@ pub fn pow(x f64, y f64) f64 {
 		if y > 0 {
 			return result
 		}
-		return copysign(1, x) / abs(result)
+		return 1 / result
 	}
 
 	// ans = a1 * 2**ae (= 1 for now).
