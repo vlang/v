@@ -25,28 +25,28 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 				}
 				ast.Ident {
 					mut show_non_const_error := true
-					if mut const_field := p.table.global_scope.find_const('${p.mod}.${size_expr.name}') {
-						if mut const_field.expr is ast.IntegerLiteral {
-							fixed_size = const_field.expr.val.int()
-							show_non_const_error = false
-						} else {
-							if mut const_field.expr is ast.InfixExpr {
-								// QUESTION: this should most likely no be done in the parser, right?
-								mut t := transformer.new_transformer(p.pref)
-								folded_expr := t.infix_expr(mut const_field.expr)
+					if p.pref.is_fmt {
+						// for vfmt purposes, pretend the constant does exist
+						// it may have been defined in another .v file:
+						fixed_size = 1
+						show_non_const_error = false
+					} else {
+						if mut const_field := p.table.global_scope.find_const('${p.mod}.${size_expr.name}') {
+							if mut const_field.expr is ast.IntegerLiteral {
+								fixed_size = const_field.expr.val.int()
+								show_non_const_error = false
+							} else {
+								if mut const_field.expr is ast.InfixExpr {
+									// QUESTION: this should most likely no be done in the parser, right?
+									mut t := transformer.new_transformer(p.pref)
+									folded_expr := t.infix_expr(mut const_field.expr)
 
-								if folded_expr is ast.IntegerLiteral {
-									fixed_size = folded_expr.val.int()
-									show_non_const_error = false
+									if folded_expr is ast.IntegerLiteral {
+										fixed_size = folded_expr.val.int()
+										show_non_const_error = false
+									}
 								}
 							}
-						}
-					} else {
-						if p.pref.is_fmt {
-							// for vfmt purposes, pretend the constant does exist
-							// it may have been defined in another .v file:
-							fixed_size = 1
-							show_non_const_error = false
 						}
 					}
 					if show_non_const_error {
@@ -56,17 +56,17 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 				}
 				ast.InfixExpr {
 					mut show_non_const_error := true
-					mut t := transformer.new_transformer(p.pref)
-					folded_expr := t.infix_expr(mut size_expr)
-
-					if folded_expr is ast.IntegerLiteral {
-						fixed_size = folded_expr.val.int()
+					if p.pref.is_fmt {
+						// for vfmt purposes, pretend the constant does exist
+						// it may have been defined in another .v file:
+						fixed_size = 1
 						show_non_const_error = false
 					} else {
-						if p.pref.is_fmt {
-							// for vfmt purposes, pretend the constant does exist
-							// it may have been defined in another .v file:
-							fixed_size = 1
+						mut t := transformer.new_transformer(p.pref)
+						folded_expr := t.infix_expr(mut size_expr)
+
+						if folded_expr is ast.IntegerLiteral {
+							fixed_size = folded_expr.val.int()
 							show_non_const_error = false
 						}
 					}
