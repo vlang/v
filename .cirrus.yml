@@ -7,7 +7,7 @@ freebsd_instance:
 freebsd_task:
   name: FreeBSD Code CI
   timeout_in: 31m
-  skip: "!changesInclude('.cirrus.yml', '**.{v,vsh}')"
+  skip: "!changesInclude('.cirrus.yml', '**.{v,vsh}', '**.c', '**.h')"
   install_script: pkg install -y git
   diagnose_env_script: |
     ## env ## CIRRUS_WORKING_DIR is /tmp/cirrus-ci-build
@@ -29,6 +29,9 @@ freebsd_task:
   diagnose_math_script: |
     echo 'Diagnose vlib/math/math_test.v'
     ./v -stats vlib/math/math_test.v
+  test_zip_modules: |
+    echo 'Test modules using thirdparty/zip'
+    ./v test vlib/compress/ vlib/szip/
   test_self_script: |
     echo 'Run test-self'
     VTEST_JUST_ESSENTIAL=1 ./v test-self
