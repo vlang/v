@@ -28,4 +28,4 @@ freebsd_task:
     ./v -stats vlib/math/math_test.v
   test_self_script: |
     echo 'Run test-self'
-    VTEST_JUST_ESSENTIAL=1 ./v test-sel
+    VTEST_JUST_ESSENTIAL=1 ./v test-self
