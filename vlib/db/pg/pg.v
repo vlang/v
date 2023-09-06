@@ -153,8 +153,9 @@ pub fn connect(config Config) !DB {
 	return do_connect(conninfo)!
 }
 
-// connect makes a new connection to the database server using
-// the parameters from the `Config` structure, returning
+// connect_with_service makes a new connection to the database server using
+// the parameters from the service definition in `pg_service.conf` matching the name
+// in the `Service` structure, returning
 // a connection error when something goes wrong
 pub fn connect_with_service(service Service) !DB {
 	conninfo := 'service=${service.name}'
