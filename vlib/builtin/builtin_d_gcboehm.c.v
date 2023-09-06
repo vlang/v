@@ -27,7 +27,7 @@ $if dynamic_boehm ? {
 			}
 			$if freebsd {
 				#flag -lgc-threaded
-			} else {
+			} $else {
 				#flag -lgc
 			}
 		}
