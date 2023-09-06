@@ -6,6 +6,7 @@ freebsd_task:
   skip: "!changesInclude('.cirrus.yml', '**.{v,vsh}')"
   install_script: pkg install -y git
   script: |
+    env
     echo 'Building V'
     git clone https://github.com/vlang/v
     cd v
