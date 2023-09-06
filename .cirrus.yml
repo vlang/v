@@ -6,7 +6,8 @@ freebsd_instance:
   image_family: freebsd-13-0
 
 freebsd_task:
-  name: Code CI / freebsd
+  name: FreeBSD Code CI
+  timeout_in: 31m
   skip: "!changesInclude('.cirrus.yml', '**.{v,vsh}')"
   install_script: pkg install -y git
   diagnose_env_script: |
@@ -15,6 +16,8 @@ freebsd_task:
     ls -la
     whoami
     git log -n1
+    echo 'number of detected processors:'
+    getconf _NPROCESSORS_ONLN
   build_script: |
     echo 'Building local V'
     cc --version
