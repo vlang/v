@@ -4,6 +4,7 @@ env:
 freebsd_instance:
   image_family: freebsd-13-0
 
+## Note: all tasks should end with _script: here, otherwise they will not be picked up!
 freebsd_task:
   name: FreeBSD Code CI
   timeout_in: 31m
@@ -29,7 +30,7 @@ freebsd_task:
   diagnose_math_script: |
     echo 'Diagnose vlib/math/math_test.v'
     ./v -stats vlib/math/math_test.v
-  test_zip_modules: |
+  test_zip_modules_script: |
     echo 'Test modules using thirdparty/zip'
     ./v test vlib/compress/ vlib/szip/
   test_self_script: |
