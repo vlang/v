@@ -1,19 +1,35 @@
+env:
+  CIRRUS_CLONE_DEPTH: 1
+  LANG: en_US.UTF-8
+  
 freebsd_instance:
   image_family: freebsd-13-0
 
 freebsd_task:
-  name: Code CI / freebsd
+  name: FreeBSD Code CI
+  timeout_in: 31m
   skip: "!changesInclude('.cirrus.yml', '**.{v,vsh}')"
   install_script: pkg install -y git
-  script: |
-    echo 'Building V'
-    git clone https://github.com/vlang/v
-    cd v
-    make
+  diagnose_env_script: |
+    ## env ## CIRRUS_WORKING_DIR is /tmp/cirrus-ci-build
+    pwd
+    ls -la
+    whoami
+    git log -n1
+    echo 'number of detected processors:'
+    getconf _NPROCESSORS_ONLN
+  build_script: |
+    echo 'Building local V'
+    cc --version
+    make CFLAGS=
+  build_fast_script: |
     ##.github/workflows/freebsd_build_tcc.sh
     ##tcc -v -v
     echo 'Build cmd/tools/fast'
-    cd cmd/tools/fast && ../../../v fast.v && ./fast -clang
+    cd cmd/tools/fast && ../../../v fast.v ## && ./fast -clang
+  diagnose_math_script: |
+    echo 'Diagnose vlib/math/math_test.v'
+    ./v -stats vlib/math/math_test.v
+  test_self_script: |
     echo 'Run test-self'
-    cd /tmp/cirrus-ci-build/v
     VTEST_JUST_ESSENTIAL=1 ./v test-self

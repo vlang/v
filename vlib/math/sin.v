@@ -138,11 +138,17 @@ pub fn sinf(a f32) f32 {
 
 // sincos calculates the sine and cosine of the angle in radians
 pub fn sincos(x f64) (f64, f64) {
+	if is_nan(x) {
+		return x, x
+	}
 	p1 := 7.85398125648498535156e-1
 	p2 := 3.77489470793079817668e-8
 	p3 := 2.69515142907905952645e-15
 	sgn_x := if x < 0 { -1 } else { 1 }
 	abs_x := abs(x)
+	if is_inf(x, sgn_x) {
+		return nan(), nan()
+	}
 	if abs_x < internal.root4_f64_epsilon {
 		x2 := x * x
 		return x * (1.0 - x2 / 6.0), 1.0 - 0.5 * x2
