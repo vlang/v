@@ -38,7 +38,8 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 							} else {
 								if mut const_field.expr is ast.InfixExpr {
 									// QUESTION: this should most likely no be done in the parser, right?
-									mut t := transformer.new_transformer(p.pref)
+									mut t := transformer.new_transformer_with_table(p.table,
+										p.pref)
 									folded_expr := t.infix_expr(mut const_field.expr)
 
 									if folded_expr is ast.IntegerLiteral {
@@ -62,7 +63,7 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 						fixed_size = 1
 						show_non_const_error = false
 					} else {
-						mut t := transformer.new_transformer(p.pref)
+						mut t := transformer.new_transformer_with_table(p.table, p.pref)
 						folded_expr := t.infix_expr(mut size_expr)
 
 						if folded_expr is ast.IntegerLiteral {
@@ -71,18 +72,13 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 						}
 					}
 					if show_non_const_error {
-						p.error_with_pos('non-constant array bound `${size_expr}`', size_expr.pos)
+						p.error_with_pos('fixed array size cannot use non-constant eval value',
+							size_expr.pos)
 					}
 				}
 				else {
-					if p.pref.is_fmt {
-						// for vfmt purposes, pretend the constant does exist
-						// it may have been defined in another .v file:
-						fixed_size = 1
-					} else {
-						p.error_with_pos('fixed array size cannot use non-constant value',
-							size_expr.pos())
-					}
+					p.error_with_pos('fixed array size cannot use non-constant value',
+						size_expr.pos())
 				}
 			}
 		}

@@ -712,7 +712,7 @@ pub fn (mut t Transformer) call_expr(mut node ast.CallExpr) ast.Expr {
 fn (mut t Transformer) trans_const_value_to_literal(mut expr ast.Expr) {
 	mut expr_ := expr
 	if mut expr_ is ast.Ident {
-		if mut obj := expr_.scope.find_const(expr_.mod + '.' + expr_.name) {
+		if mut obj := t.table.global_scope.find_const(expr_.mod + '.' + expr_.name) {
 			if mut obj.expr is ast.BoolLiteral {
 				expr = obj.expr
 			} else if mut obj.expr is ast.IntegerLiteral {
