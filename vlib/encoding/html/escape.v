@@ -51,7 +51,7 @@ fn unescape_all(input string) string {
 	mut result := []rune{}
 	runes := input.runes()
 	mut i := 0
-	outer: for i < runes.len {
+	for i < runes.len {
 		if runes[i] == `&` {
 			mut j := i + 1
 			for j < runes.len && runes[j] != `;` {
@@ -59,21 +59,22 @@ fn unescape_all(input string) string {
 			}
 			if j < runes.len && runes[i + 1] == `#` {
 				// Numeric escape sequences (e.g., &#39; or &#x27;)
-				code := runes[i + 2..j].string()
-				if code[0] == `x` {
+				if runes[i + 2] == `x` || runes[i + 2] == `X` {
 					// Hexadecimal escape sequence
-					for c in code[1..] {
-						if !c.is_hex_digit() {
-							// Leave invalid sequences unchanged
-							result << runes[i..j + 1]
-							i = j + 1
-							continue outer
+					if v := hex.decode(runes[i + 3..j].string()) {
+						mut n := u16(0)
+						for x in v {
+							n = n * 256 + x
 						}
+						result << n
+					} else {
+						// Leave invalid sequences unchanged
+						result << runes[i..j + 1]
+						i = j + 1
 					}
-					result << hex.decode(code[1..]) or { []u8{} }.bytestr().runes()
 				} else {
 					// Decimal escape sequence
-					if v := strconv.atoi(code) {
+					if v := strconv.atoi(runes[i + 2..j].string()) {
 						result << v
 					} else {
 						// Leave invalid sequences unchanged
