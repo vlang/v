@@ -1578,7 +1578,19 @@ fn (mut s Scanner) inc_line_number() {
 	}
 }
 
+pub fn (mut s Scanner) current_pos() token.Pos {
+	return token.Pos{
+		line_nr: s.line_nr
+		pos: s.pos
+		col: s.current_column() - 1
+	}
+}
+
 pub fn (mut s Scanner) note(msg string) {
+	if s.pref.notes_are_errors {
+		s.error_with_pos(msg, s.current_pos())
+		return
+	}
 	pos := token.Pos{
 		line_nr: s.line_nr
 		pos: s.pos
@@ -1614,12 +1626,7 @@ fn (mut s Scanner) eat_details() string {
 }
 
 pub fn (mut s Scanner) warn(msg string) {
-	pos := token.Pos{
-		line_nr: s.line_nr
-		pos: s.pos
-		col: s.current_column() - 1
-	}
-	s.warn_with_pos(msg, pos)
+	s.warn_with_pos(msg, s.current_pos())
 }
 
 pub fn (mut s Scanner) warn_with_pos(msg string, pos token.Pos) {
@@ -1651,12 +1658,7 @@ pub fn (mut s Scanner) warn_with_pos(msg string, pos token.Pos) {
 }
 
 pub fn (mut s Scanner) error(msg string) {
-	pos := token.Pos{
-		line_nr: s.line_nr
-		pos: s.pos
-		col: s.current_column() - 1
-	}
-	s.error_with_pos(msg, pos)
+	s.error_with_pos(msg, s.current_pos())
 }
 
 pub fn (mut s Scanner) error_with_pos(msg string, pos token.Pos) {
@@ -1697,10 +1699,7 @@ fn (mut s Scanner) vet_error(msg string, fix vet.FixKind) {
 	ve := vet.Error{
 		message: msg
 		file_path: s.file_path
-		pos: token.Pos{
-			line_nr: s.line_nr
-			col: s.current_column() - 1
-		}
+		pos: s.current_pos()
 		kind: .error
 		fix: fix
 		typ: .default

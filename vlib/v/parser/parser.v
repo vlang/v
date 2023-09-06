@@ -2061,6 +2061,10 @@ fn (mut p Parser) note_with_pos(s string, pos token.Pos) {
 	if p.is_generated {
 		return
 	}
+	if p.pref.notes_are_errors {
+		p.error_with_pos(s, pos)
+		return
+	}
 	if p.pref.output_mode == .stdout && !p.pref.check_only {
 		util.show_compiler_message('notice:', pos: pos, file_path: p.file_name, message: s)
 	} else {

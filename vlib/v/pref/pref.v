@@ -206,6 +206,7 @@ pub mut:
 	skip_warnings    bool // like C's "-w", forces warnings to be ignored.
 	warn_impure_v    bool // -Wimpure-v, force a warning for JS.fn()/C.fn(), outside of .js.v/.c.v files. TODO: turn to an error by default
 	warns_are_errors bool // -W, like C's "-Werror", treat *every* warning is an error
+	notes_are_errors bool // -N, treat *every* notice as an error
 	fatal_errors     bool // unconditionally exit after the first error with exit(1)
 	reuse_tmpc       bool // do not use random names for .tmp.c and .tmp.c.rsp files, and do not remove them
 	no_rsp           bool // when true, pass C backend options directly on the CLI (do not use `.rsp` files for them, some older C compilers do not support them)
@@ -664,6 +665,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-W' {
 				res.warns_are_errors = true
+			}
+			'-N' {
+				res.notes_are_errors = true
 			}
 			'-no-rsp' {
 				res.no_rsp = true

@@ -4568,6 +4568,9 @@ fn (mut c Checker) note(message string, pos token.Pos) {
 	if c.is_generated {
 		return
 	}
+	if c.pref.notes_are_errors {
+		c.error(message, pos)
+	}
 	mut details := ''
 	if c.error_details.len > 0 {
 		details = c.error_details.join('\n')
