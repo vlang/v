@@ -1,3 +1,22 @@
+Running the C# example:
+```
+dotnet run
+```
+
+Running the V program:
+```
+v crun vectors.v
+```
+
+Running the V program, compiled with -prod:
+```
+v -prod crun vectors.v
+```
+
+Note: the `crun` will make sure that the compilation will happen just
+once at the start, and then the executable will be just reused by the
+subsequent commands with identical options.
+
 ```bash
 Benchmark 1: ./boids_test/bin/Release/net7.0/linux-x64/publish/boids_test
 Time (mean ± σ):     262.2 ms ±   5.7 ms    [User: 231.6 ms, System: 14.1 ms]
