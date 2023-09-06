@@ -15,7 +15,7 @@ const (
 pub struct FetchConfig {
 pub mut:
 	url        string
-	method     Method
+	method     Method = .get
 	header     Header
 	data       string
 	params     map[string]string
