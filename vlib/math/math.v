@@ -206,7 +206,10 @@ pub fn alike(a f64, b f64) bool {
 	if f64_bits(a) & 0xFFFF_FFFF_FFFF_FFFC == f64_bits(b) & 0xFFFF_FFFF_FFFF_FFFC {
 		return true
 	}
-	if (a == 0 || a == -0) && (b == 0 || b == -0) {
+	if a == -0 && b == 0 {
+		return true
+	}
+	if a == 0 && b == -0 {
 		return true
 	}
 	if is_nan(a) && is_nan(b) {
