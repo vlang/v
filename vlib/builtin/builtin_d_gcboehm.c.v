@@ -25,7 +25,11 @@ $if dynamic_boehm ? {
 				#flag -I/usr/local/include
 				#flag -L/usr/local/lib
 			}
-			#flag -lgc
+			$if freebsd {
+				#flag -lgc-threaded
+			} else {
+				#flag -lgc
+			}
 		}
 	}
 } $else {
@@ -53,8 +57,8 @@ $if dynamic_boehm ? {
 		}
 		$if tinyc {
 			#flag -I/usr/local/include
-			#flag $first_existing("/usr/local/lib/libgc.a", "/usr/lib/libgc.a")
-			#flag -lgc
+			#flag $first_existing("/usr/local/lib/libgc-threaded.a", "/usr/lib/libgc-threaded.a")
+			#flag -lgc-threaded
 		}
 		#flag -lpthread
 	} $else $if openbsd {
