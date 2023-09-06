@@ -184,12 +184,15 @@ pub mut:
 	output_es5       bool
 	prealloc         bool
 	vroot            string
-	out_name_c       string // full os.real_path to the generated .tmp.c file; set by builder.
+	vlib             string   // absolute path to the vlib/ folder
+	vmodules_paths   []string // absolute paths to the vmodules folders, by default ['/home/user/.vmodules'], can be overriden by setting VMODULES
+	out_name_c       string   // full os.real_path to the generated .tmp.c file; set by builder.
 	out_name         string
 	path             string // Path to file/folder to compile
 	line_info        string // `-line-info="file.v:28"`: for "mini VLS" (shows information about objects on provided line)
 	//
 	run_only []string // VTEST_ONLY_FN and -run-only accept comma separated glob patterns.
+	exclude  []string // glob patterns for excluding .v files from the list of .v files that otherwise would have been used for a compilation, example: `-exclude @vlib/math/*.c.v`
 	// Only test_ functions that match these patterns will be run. -run-only is valid only for _test.v files.
 	//
 	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another ? { will NOT get here }`
@@ -618,6 +621,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-run-only' {
 				res.run_only = cmdline.option(current_args, arg, os.getenv('VTEST_ONLY_FN')).split_any(',')
+				i++
+			}
+			'-exclude' {
+				patterns := cmdline.option(current_args, arg, '').split_any(',')
+				res.exclude << patterns
 				i++
 			}
 			'-test-runner' {

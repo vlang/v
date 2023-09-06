@@ -77,6 +77,17 @@ NB: the build flags are shared with the run command too:
       -path "/v/my_project_private_modules|@vlib|@vmodules"
     By default, -path is just "@vlib|@vmodules" .
 
+  -exclude
+    Specify an exclude pattern that will be applied as a filter over the full paths of the .v
+    files, that otherwise would have been selected for compilation.
+    Note:
+       @vroot is expanded to the location, where the v executable is.
+       @vlib is expanded do the location where your vlib/ folder is (next to your v executable).
+       @vmodules is expanded with the location of your ~/.vmodules/ folder.
+    Example:
+       `./v -exclude @vlib/math/*.c.v vlib/math/math_test.v`
+            ^ run the math test file, using only pure .v files, excluding the .c.v overrides.
+
   -prod
     Compile the executable in production mode, where most optimizations are enabled.
     Note that most V warnings turn to errors, if you pass -prod, so you will have
