@@ -676,6 +676,7 @@ fn (mut p Parser) check_js_name() string {
 }
 
 fn (mut p Parser) check_name() string {
+	pos := p.tok.pos()
 	name := p.tok.lit
 	if p.peek_tok.kind == .dot && name in p.imports {
 		p.register_used_import(name)
@@ -685,6 +686,9 @@ fn (mut p Parser) check_name() string {
 		.key_enum { p.check(.key_enum) }
 		.key_interface { p.check(.key_interface) }
 		else { p.check(.name) }
+	}
+	if name == 'sql' {
+		p.error_with_pos('unexpected keyword `sql`, expecting name', pos)
 	}
 	return name
 }
