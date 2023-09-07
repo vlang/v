@@ -144,6 +144,14 @@ fn C.PQfinish(conn &C.PGconn)
 // a connection error when something goes wrong
 pub fn connect(config Config) !DB {
 	conninfo := 'host=${config.host} port=${config.port} user=${config.user} dbname=${config.dbname} password=${config.password}'
+
+	return connect_with_conninfo(conninfo)!
+}
+
+// connect_with_conninfo makes a new connection to the database server using
+// the `conninfo` connection string, returning
+// a connection error when something goes wrong
+pub fn connect_with_conninfo(conninfo string) !DB {
 	conn := C.PQconnectdb(&char(conninfo.str))
 	if conn == 0 {
 		return error('libpq memory allocation error')
