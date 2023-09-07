@@ -5,6 +5,10 @@ import strings
 #include <sys/stat.h> // #include <signal.h>
 #include <errno.h>
 
+$if freebsd {
+	#include <sys/sysctl.h>
+}
+
 pub const (
 	args = []string{}
 )
