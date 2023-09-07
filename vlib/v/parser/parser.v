@@ -687,7 +687,7 @@ fn (mut p Parser) check_name() string {
 		.key_interface { p.check(.key_interface) }
 		else { p.check(.name) }
 	}
-	if name == 'sql' {
+	if name == 'sql' && !p.inside_orm {
 		p.error_with_pos('unexpected keyword `sql`, expecting name', pos)
 	}
 	return name
