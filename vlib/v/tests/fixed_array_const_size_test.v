@@ -46,8 +46,8 @@ fn test_int_const_used_as_fixed_array_size() {
 }
 
 const (
-	rows = 4
-	cols = 4
+	rows = 2
+	cols = 3
 )
 
 struct Matrix {
@@ -57,5 +57,5 @@ struct Matrix {
 fn test_infix_const_expr_used_as_fixed_array_size() {
 	mat := Matrix{}
 	println(mat)
-	assert mat.data.len == 16
+	assert mat.data.len == 6
 }
