@@ -171,7 +171,7 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 		// (node.is_variadic && i == node.params.len - 2)
 		pre_comments := param.comments.filter(it.pos.pos < param.pos.pos)
 		if pre_comments.len > 0 {
-			if i == 0 && !pre_comments.last().is_inline {
+			if i == 0 {
 				is_wrap_needed = true
 				f.write_string('\n\t')
 			}
@@ -235,28 +235,19 @@ fn (t &Table) stringify_fn_after_name(node &FnDecl, mut f strings.Builder, cur_m
 
 fn write_comments(comments []Comment, mut f strings.Builder) {
 	for i, c in comments {
-		if !f.last_n(1)[0].is_space() {
-			f.write_string(' ')
-		}
 		write_comment(c, mut f)
-		if c.is_inline && i < comments.len - 1 && !c.is_multi {
-			f.write_string(' ')
-		} else if (!c.is_inline || c.is_multi) && i < comments.len - 1 {
+		if i < comments.len - 1 {
 			f.writeln('')
 		}
 	}
 }
 
 fn write_comment(node Comment, mut f strings.Builder) {
-	if node.is_inline {
+	if node.is_multi {
 		x := node.text.trim_left('\x01').trim_space()
-		if x.contains('\n') {
-			f.writeln('/*')
-			f.writeln(x)
-			f.write_string('*/')
-		} else {
-			f.write_string('/* ${x} */')
-		}
+		f.writeln('/*')
+		f.writeln(x)
+		f.write_string('*/')
 	} else {
 		mut s := node.text.trim_left('\x01').trim_right(' ')
 		mut out_s := '//'

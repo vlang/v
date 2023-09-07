@@ -883,7 +883,6 @@ fn (mut p Parser) comment() ast.Comment {
 	text := p.tok.lit
 	num_newlines := text.count('\n')
 	is_multi := num_newlines > 0
-	is_inline := text.len + 4 == p.tok.len // 4: `/` `*` `*` `/`
 	pos.last_line = pos.line_nr + num_newlines
 	p.next()
 	// Filter out false positive space indent vet errors inside comments
@@ -894,7 +893,6 @@ fn (mut p Parser) comment() ast.Comment {
 	return ast.Comment{
 		text: text
 		is_multi: is_multi
-		is_inline: is_inline
 		pos: pos
 	}
 }

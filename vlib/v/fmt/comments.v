@@ -42,16 +42,7 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 	if options.level == .indent {
 		f.indent++
 	}
-	if node.is_inline && !node.is_multi {
-		x := node.text.trim_left('\x01').trim_space()
-		if x.contains('\n') {
-			f.writeln('/*')
-			f.writeln(x)
-			f.write('*/')
-		} else {
-			f.write('/* ${x} */')
-		}
-	} else if !node.text.contains('\n') {
+	if !node.text.contains('\n') {
 		is_separate_line := !options.inline || node.text.starts_with('\x01')
 		mut s := node.text.trim_left('\x01').trim_right(' ')
 		mut out_s := '//'
@@ -103,9 +94,7 @@ pub fn (mut f Fmt) comments(comments []ast.Comment, options CommentsOptions) {
 			f.write(' ')
 		}
 		f.comment(c, options)
-		if c.is_inline && i < comments.len - 1 && !c.is_multi {
-			f.write(' ')
-		} else if (!c.is_inline || c.is_multi) && (i < comments.len - 1 || options.has_nl) {
+		if i < comments.len - 1 || options.has_nl {
 			f.writeln('')
 		}
 		prev_line = c.pos.last_line

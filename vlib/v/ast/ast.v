@@ -1814,10 +1814,9 @@ pub mut:
 
 pub struct Comment {
 pub:
-	text      string
-	is_multi  bool // true only for /* comment */, that use many lines
-	is_inline bool // true for all /* comment */ comments
-	pos       token.Pos
+	text     string
+	is_multi bool // true only for /* comment */, that use many lines
+	pos      token.Pos
 }
 
 pub struct ConcatExpr {
