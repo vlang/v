@@ -479,7 +479,6 @@ fn (t Tree) comment(node ast.Comment) &Node {
 	obj.add_terse('ast_type', t.string_node('Comment'))
 	obj.add('text', t.string_node(node.text))
 	obj.add('is_multi', t.bool_node(node.is_multi))
-	obj.add('is_inline', t.bool_node(node.is_inline))
 	obj.add('pos', t.pos(node.pos))
 	return obj
 }

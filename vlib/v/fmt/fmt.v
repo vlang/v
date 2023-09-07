@@ -1747,30 +1747,14 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 					f.writeln('')
 					f.comment(cmt)
 				} else {
-					if cmt.is_inline {
-						f.write(' ')
-						f.comment(cmt)
-						if !set_comma && cmt.pos.line_nr == expr_pos.last_line
-							&& cmt.pos.pos < expr_pos.pos {
-							f.write(',')
-							set_comma = true
-						} else {
-							if !cmt.is_inline {
-								// a // comment, transformed to a /**/ one, needs a comma too
-								f.write(',')
-								set_comma = true
-							}
-						}
-					} else {
-						if !set_comma {
-							f.write(',')
-							set_comma = true
-						}
-						f.write(' ')
-						f.comment(cmt)
-						if !line_break {
-							f.writeln('')
-						}
+					if !set_comma {
+						f.write(',')
+						set_comma = true
+					}
+					f.write(' ')
+					f.comment(cmt)
+					if !line_break {
+						f.writeln('')
 					}
 				}
 			}
