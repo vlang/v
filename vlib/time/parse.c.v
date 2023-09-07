@@ -135,6 +135,7 @@ pub fn parse(s string) !Time {
 // YY - 2 digit year, 00..99
 // M - month, 1..12
 // MM - month, 2 digits, 01..12
+// MMM - month, three letters, Jan..Dec
 // MMMM - name of month
 // D - day of the month, 1..31
 // DD - day of the month, 01..31
