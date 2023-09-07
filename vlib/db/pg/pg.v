@@ -55,11 +55,6 @@ pub:
 	dbname   string
 }
 
-pub struct Service {
-pub:
-	name string
-}
-
 //
 
 struct C.pg_result {}
@@ -150,23 +145,13 @@ fn C.PQfinish(conn &C.PGconn)
 pub fn connect(config Config) !DB {
 	conninfo := 'host=${config.host} port=${config.port} user=${config.user} dbname=${config.dbname} password=${config.password}'
 
-	return do_connect(conninfo)!
+	return connect_with_conninfo(conninfo)!
 }
 
-// connect_with_service makes a new connection to the database server using
-// the parameters from the service definition in `pg_service.conf` matching the name
-// in the `Service` structure, returning
-// a connection error when something goes wrong
-pub fn connect_with_service(service Service) !DB {
-	conninfo := 'service=${service.name}'
-
-	return do_connect(conninfo)!
-}
-
-// do_connect makes a new connection to the database server using
+// connect_with_conninfo makes a new connection to the database server using
 // the `conninfo` connection string, returning
 // a connection error when something goes wrong
-fn do_connect(conninfo string) !DB {
+pub fn connect_with_conninfo(conninfo string) !DB {
 	conn := C.PQconnectdb(&char(conninfo.str))
 	if conn == 0 {
 		return error('libpq memory allocation error')
