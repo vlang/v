@@ -10,7 +10,7 @@ mut:
 
 fn (mut g Gen) past_tmp_var_new() PastTmpVar {
 	tmp_var := g.new_tmp_var()
-	mut s := g.go_before_stmt(0)
+	mut s := g.go_before_last_stmt()
 	s_ends_with_ln := s.ends_with('\n')
 	s = s.trim_space()
 	g.empty_line = true
@@ -27,7 +27,7 @@ fn (mut g Gen) past_tmp_var_from_var_name(var_name string) PastTmpVar {
 	if var_name.len != 0 {
 		tmp_var = var_name
 	} else {
-		s = g.go_before_stmt(0)
+		s = g.go_before_last_stmt()
 	}
 	s_ends_with_ln := s.ends_with('\n')
 	s = s.trim_space()
