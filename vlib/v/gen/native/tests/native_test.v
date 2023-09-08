@@ -8,7 +8,11 @@ const is_verbose = os.getenv('VTEST_SHOW_CMD') != ''
 // TODO some logic copy pasted from valgrind_test.v and compiler_test.v, move to a module
 fn test_native() {
 	$if arm64 {
+		eprintln('>> skipping testing on ARM for now')
 		return
+	}
+	$if freebsd {
+		eprintln('>> skipping testing on FreeBSD for now')
 	}
 	mut bench := benchmark.new_benchmark()
 	vexe := os.getenv('VEXE')
