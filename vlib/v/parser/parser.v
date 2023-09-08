@@ -65,6 +65,7 @@ mut:
 	inside_map_init           bool
 	inside_orm                bool
 	inside_chan_decl          bool
+	inside_attr_decl          bool
 	fixed_array_dim           int        // fixed array dim parsing level
 	or_is_handled             bool       // ignore `or` in this expression
 	builtin_mod               bool       // are we in the `builtin` module?
@@ -676,6 +677,7 @@ fn (mut p Parser) check_js_name() string {
 }
 
 fn (mut p Parser) check_name() string {
+	pos := p.tok.pos()
 	name := p.tok.lit
 	if p.peek_tok.kind == .dot && name in p.imports {
 		p.register_used_import(name)
@@ -685,6 +687,9 @@ fn (mut p Parser) check_name() string {
 		.key_enum { p.check(.key_enum) }
 		.key_interface { p.check(.key_interface) }
 		else { p.check(.name) }
+	}
+	if !p.inside_orm && !p.inside_attr_decl && name == 'sql' {
+		p.error_with_pos('unexpected keyword `sql`, expecting name', pos)
 	}
 	return name
 }
@@ -1826,6 +1831,10 @@ fn (mut p Parser) attributes() {
 
 fn (mut p Parser) parse_attr(is_at bool) ast.Attr {
 	mut kind := ast.AttrKind.plain
+	p.inside_attr_decl = true
+	defer {
+		p.inside_attr_decl = false
+	}
 	apos := p.prev_tok.pos()
 	if p.tok.kind == .key_unsafe {
 		p.next()
