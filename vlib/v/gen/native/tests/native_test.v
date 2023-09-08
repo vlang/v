@@ -1,4 +1,5 @@
 import os
+import time
 import benchmark
 import term
 
@@ -9,11 +10,6 @@ fn test_native() {
 	$if arm64 {
 		return
 	}
-	// some tests are running fine in macos
-	//	if os.user_os() != 'linux' && os.user_os() != 'macos' {
-	//		eprintln('native tests only run on Linux and macOS for now.')
-	//		exit(0)
-	//	}
 	mut bench := benchmark.new_benchmark()
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
@@ -41,12 +37,13 @@ fn test_native() {
 		exe_test_path := os.join_path(wrkdir, test_file_name + '.exe')
 		tmperrfile := os.join_path(dir, test + '.tmperr')
 		cmd := '${os.quoted_path(vexe)} -o ${os.quoted_path(exe_test_path)} -b native -skip-unused ${os.quoted_path(full_test_path)} -d custom_define 2> ${os.quoted_path(tmperrfile)}'
-
 		if is_verbose {
 			println(cmd)
 		}
 
+		sw_compile := time.new_stopwatch()
 		res_native := os.execute(cmd)
+		compile_time_ms := sw_compile.elapsed().milliseconds()
 		if res_native.exit_code != 0 {
 			bench.fail()
 			eprintln(bench.step_message_fail(cmd))
@@ -59,7 +56,9 @@ fn test_native() {
 			continue
 		}
 
+		sw_run := time.new_stopwatch()
 		res := os.execute('${os.quoted_path(exe_test_path)} 2> ${os.quoted_path(tmperrfile)}')
+		runtime_ms := sw_run.elapsed().milliseconds()
 		if res.exit_code != 0 {
 			bench.fail()
 			eprintln(bench.step_message_fail('${full_test_path} failed to run'))
@@ -102,7 +101,7 @@ fn test_native() {
 			continue
 		}
 		bench.ok()
-		eprintln(bench.step_message_ok(relative_test_path))
+		eprintln(bench.step_message_ok('${relative_test_path:-45} , took ${compile_time_ms:4}ms to compile, ${runtime_ms:4}ms to run'))
 	}
 	bench.stop()
 	eprintln(term.h_divider('-'))
