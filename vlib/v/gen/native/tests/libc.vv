@@ -28,7 +28,7 @@ fn charutil() {
 
 fn memory() {
 	// only linux and windows support linking right now
-	$if linux|| windows {
+	$if linux || windows {
 		// allocate some memory
 		buf := &int(C.malloc(100))
 		assert buf != unsafe { nil }
@@ -40,7 +40,6 @@ fn memory() {
 			*buf = 123456
 			*(buf + sizeof(int)) = 100
 		}
-
 		assert *buf == 123456
 		assert *(buf + sizeof(int)) == 100
 		C.free(voidptr(buf))
