@@ -1,6 +1,7 @@
 module net
 
 import io.util
+import net.conv
 import os
 
 union AddrData {
@@ -16,11 +17,17 @@ const (
 
 // new_ip6 creates a new Addr from the IP6 address family, based on the given port and addr
 pub fn new_ip6(port u16, addr [16]u8) Addr {
+	n_port := $if tinyc {
+		conv.hton16(port)
+	} $else {
+		u16(C.htons(port))
+	}
+
 	a := Addr{
 		f: u8(AddrFamily.ip6)
 		addr: AddrData{
 			Ip6: Ip6{
-				port: u16(C.htons(port))
+				port: n_port
 			}
 		}
 	}
@@ -32,11 +39,17 @@ pub fn new_ip6(port u16, addr [16]u8) Addr {
 
 // new_ip creates a new Addr from the IPv4 address family, based on the given port and addr
 pub fn new_ip(port u16, addr [4]u8) Addr {
+	n_port := $if tinyc {
+		conv.hton16(port)
+	} $else {
+		u16(C.htons(port))
+	}
+
 	a := Addr{
 		f: u8(AddrFamily.ip)
 		addr: AddrData{
 			Ip: Ip{
-				port: u16(C.htons(port))
+				port: n_port
 			}
 		}
 	}
@@ -79,7 +92,11 @@ pub fn (a Ip) str() string {
 	}
 
 	saddr := unsafe { cstring_to_vstring(&buf[0]) }
-	port := C.ntohs(a.port)
+	port := $if tinyc {
+		conv.hton16(a.port)
+	} $else {
+		C.ntohs(a.port)
+	}
 
 	return '${saddr}:${port}'
 }
@@ -95,7 +112,11 @@ pub fn (a Ip6) str() string {
 	}
 
 	saddr := unsafe { cstring_to_vstring(&buf[0]) }
-	port := C.ntohs(a.port)
+	port := $if tinyc {
+		conv.hton16(a.port)
+	} $else {
+		C.ntohs(a.port)
+	}
 
 	return '[${saddr}]:${port}'
 }
