@@ -11,8 +11,6 @@
 
 function setupScrollSpy() {
 	const mainContent = document.querySelector('#main-content');
-	// Ensure initial keyboard navigability
-	mainContent.focus();
 	const toc = mainContent.querySelector('.doc-toc');
 	const sections = mainContent.querySelectorAll('section');
 	const sectionPositions = Array.from(sections).map((section) => section.offsetTop);
@@ -168,6 +166,7 @@ function setupSearch() {
 
 function setupSearchKeymaps() {
 	const searchInput = document.querySelector('#search input');
+	const mainContent = document.querySelector('#main-content');
 	// Keyboard shortcut indicator
 	const searchKeys = document.createElement('div');
 	const modifierKeyPrefix = navigator.platform.includes('Mac') ? '⌘' : 'Ctrl';
@@ -190,7 +189,7 @@ function setupSearchKeymaps() {
 			results[selectedIdx].classList.remove('selected');
 		}
 		results[newIdx].classList.add('selected');
-		results[newIdx].scrollIntoView({ behavior: 'smooth', block: 'end', inline: 'nearest' });
+		results[newIdx].scrollIntoView({ behavior: 'instant', block: 'nearest', inline: 'nearest' });
 		selectedIdx = newIdx;
 	}
 	searchInput.addEventListener('keydown', (ev) => {
@@ -198,6 +197,7 @@ function setupSearchKeymaps() {
 		switch (ev.key) {
 			case 'Escape':
 				searchInput.blur();
+				mainContent.focus();
 				break;
 			case 'Enter':
 				if (!searchResults.length || selectedIdx === -1) break;
@@ -229,6 +229,8 @@ function setupSearchKeymaps() {
 				selectedIdx = -1;
 		}
 	});
+	// Ensure initial keyboard navigability
+	mainContent.focus();
 }
 
 function createSearchResult(data) {

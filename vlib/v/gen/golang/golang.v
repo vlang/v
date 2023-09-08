@@ -2283,12 +2283,6 @@ pub fn (mut f Gen) unsafe_expr(node ast.UnsafeExpr) {
 	f.write('}')
 }
 
-fn (mut f Gen) trace(fbase string, message string) {
-	// if f.file.path_base == fbase {
-	// println('> f.trace | ${fbase:-10s} | $message')
-	//}
-}
-
 pub fn (mut g Gen) error(s string) {
 	util.verror('golang backend error', s)
 }

@@ -2,7 +2,8 @@ Other less frequently used commands supported by V include:
 
   ast              Generate a json representation of the AST for a given .v file.
 
-  bug              Post an issue on the V's issue tracker, including the failing program, and some diagnostic information.
+  bug              Post an issue on the V's issue tracker, including the failing program,
+                   and some diagnostic information.
 
   bin2v            Convert a binary file to a v source file,
                    that can be later embedded in a module or program.
@@ -42,4 +43,5 @@ Other less frequently used commands supported by V include:
   test-self        Test if V is working properly by running all tests, including the compiler ones.
                    NB: this can take 1-2 minutes to run.
 
-  wipe-cache       Remove the V cache folder. Useful for cleaning the cache, and guaranteeing a clean build.
+  wipe-cache       Remove the V cache folder. Useful for cleaning the cache, and guaranteeing a 
+                   clean build.

@@ -21,7 +21,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 			gen_or := node.or_expr.kind != .absent || node.is_option
 			if gen_or {
 				tmp_opt := g.new_tmp_var()
-				cur_line := g.go_before_stmt(0)
+				cur_line := g.go_before_last_stmt()
 				g.out.write_string(util.tabs(g.indent))
 				opt_elem_type := g.typ(ast.u8_type.set_flag(.option))
 				g.write('${opt_elem_type} ${tmp_opt} = string_at_with_check(')
@@ -77,7 +77,7 @@ fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 		} else {
 			if gen_or {
 				tmp_opt = g.new_tmp_var()
-				cur_line = g.go_before_stmt(0)
+				cur_line = g.go_before_last_stmt()
 				g.out.write_string(util.tabs(g.indent))
 				opt_elem_type := g.typ(ast.string_type.set_flag(.result))
 				g.write('${opt_elem_type} ${tmp_opt} = string_substr_with_check(')
@@ -129,7 +129,7 @@ fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 		}
 		if node.left is ast.ArrayInit {
 			var := g.new_tmp_var()
-			line := g.go_before_stmt(0).trim_space()
+			line := g.go_before_last_stmt().trim_space()
 			styp := g.typ(node.left_type)
 			g.empty_line = true
 			g.write('${styp} ${var} = ')
@@ -266,7 +266,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			&& !g.is_assign_lhs
 		is_gen_or_and_assign_rhs := gen_or && !g.discard_or_result
 		cur_line := if is_gen_or_and_assign_rhs {
-			line := g.go_before_stmt(0)
+			line := g.go_before_last_stmt()
 			g.out.write_string(util.tabs(g.indent))
 			line
 		} else {
@@ -355,15 +355,12 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 	is_fn_index_call := g.is_fn_index_call && elem_sym.info is ast.FnType
 
 	if node.left is ast.ArrayInit {
-		tmp := g.new_tmp_var()
-		line := g.go_before_stmt(0).trim_space()
+		past := g.past_tmp_var_new()
 		styp := g.typ(node.left_type)
-		g.empty_line = true
-		g.write('${styp} ${tmp} = ')
+		g.write('${styp} ${past.tmp_var} = ')
 		g.expr(node.left)
 		g.writeln(';')
-		g.write(line)
-		g.write(tmp)
+		g.past_tmp_var_done(past)
 	} else {
 		if is_fn_index_call {
 			g.write('(*')
@@ -473,7 +470,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 		zero := g.type_default(info.value_type)
 		is_gen_or_and_assign_rhs := gen_or && !g.discard_or_result
 		cur_line := if is_gen_or_and_assign_rhs {
-			line := g.go_before_stmt(0)
+			line := g.go_before_last_stmt()
 			g.out.write_string(util.tabs(g.indent))
 			line
 		} else {

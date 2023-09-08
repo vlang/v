@@ -336,3 +336,11 @@ fn test_plus_equals_duration() {
 	d += time.second
 	assert d == 2 * time.second
 }
+
+fn test_parse_three_letters_month() {
+	tm := time.now()
+	format := 'MMM DD HH:mm:ss YYYY'
+	tm_s := tm.custom_format(format)
+	tm_tm := time.parse_format(tm_s, format)!
+	assert tm_tm.month == tm.month
+}

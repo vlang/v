@@ -40,8 +40,8 @@ fn (mut h HStmt) close() {
 }
 
 // exec executes a Sql statement. Result is stored in odbc driver, and not yet read.
-fn (h HStmt) exec(sql string) ! {
-	retcode := C.SQLExecDirect(h.hstmt, sql.str, C.SQLINTEGER(C.SQL_NTS))
+fn (h HStmt) exec(sql_ string) ! {
+	retcode := C.SQLExecDirect(h.hstmt, sql_.str, C.SQLINTEGER(C.SQL_NTS))
 	check_error(retcode, 'SQLExecDirect()', C.SQLHANDLE(h.hstmt), C.SQLSMALLINT(C.SQL_HANDLE_STMT))!
 }
 

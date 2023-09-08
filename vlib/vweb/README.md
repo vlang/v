@@ -403,7 +403,7 @@ can think of it as a chain.
 
 ### Context values
 
-You can store a value pair in vweb's context. It is especially usefull for passing variables
+You can store a value pair in vweb's context. It is especially useful for passing variables
 from a middleware function to the route handler.
 
 **Example**:
@@ -1194,6 +1194,19 @@ fn main() {
 ```
 
 ### Others
+
+#### -user_agent
+
+Returns the user-agent from the current user
+
+**Example:**
+
+```v ignore
+pub fn (mut app App) user_agent() vweb.Result {
+    ua := app.user_agent()
+    return app.text('User-Agent: $ua')
+}
+```
 
 #### -ip
 

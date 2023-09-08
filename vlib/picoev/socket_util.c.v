@@ -1,6 +1,7 @@
 module picoev
 
 import net
+import net.conv
 import picohttpparser
 
 #include <errno.h>
@@ -123,10 +124,23 @@ fn listen(config Config) int {
 	}
 
 	// addr settings
+
+	sin_port := $if tinyc {
+		conv.hton16(u16(config.port))
+	} $else {
+		C.htons(config.port)
+	}
+
+	sin_addr := $if tinyc {
+		conv.hton32(u32(C.INADDR_ANY))
+	} $else {
+		C.htonl(C.INADDR_ANY)
+	}
+
 	mut addr := C.sockaddr_in{
 		sin_family: u8(C.AF_INET)
-		sin_port: C.htons(config.port)
-		sin_addr: C.htonl(C.INADDR_ANY)
+		sin_port: sin_port
+		sin_addr: sin_addr
 	}
 	size := sizeof(C.sockaddr_in)
 	bind_res := C.bind(fd, voidptr(unsafe { &net.Addr(&addr) }), size)

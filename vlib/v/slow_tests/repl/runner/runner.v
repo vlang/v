@@ -122,7 +122,7 @@ pub fn new_options() RunnerOptions {
 	mut wd := os.getwd()
 	mut files := []string{}
 	if os.args.len > 1 {
-		files = os.args[1..]
+		files = os.args[1..].clone()
 	} else {
 		os.chdir(os.dir(vexec)) or {}
 		wd = os.getwd()
@@ -140,7 +140,7 @@ pub fn new_prod_options() RunnerOptions {
 	vexec := full_path_to_v(4)
 	mut files := []string{}
 	if os.args.len > 1 {
-		files = os.args[1..]
+		files = os.args[1..].clone()
 	} else {
 		files = os.walk_ext(wd, '.prod.v')
 	}

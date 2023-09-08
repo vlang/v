@@ -24,8 +24,9 @@ pub enum EventType {
 	resumed
 	quit_requested
 	clipboard_pasted
-	files_droped
+	files_dropped
 	num
+	files_droped  [deprecated: 'use files_dropped instead'; deprecated_after: '2023-08-21']
 }
 
 pub enum MouseButton {

@@ -252,15 +252,15 @@ fn json_parse(s string) &C.cJSON {
 
 // json_string := json_print(encode_User(user))
 [markused]
-fn json_print(json &C.cJSON) string {
-	s := C.cJSON_PrintUnformatted(json)
+fn json_print(data &C.cJSON) string {
+	s := C.cJSON_PrintUnformatted(data)
 	r := unsafe { tos_clone(&u8(s)) }
 	C.cJSON_free(s)
 	return r
 }
 
-fn json_print_pretty(json &C.cJSON) string {
-	s := C.cJSON_Print(json)
+fn json_print_pretty(data &C.cJSON) string {
+	s := C.cJSON_Print(data)
 	r := unsafe { tos_clone(&u8(s)) }
 	C.cJSON_free(s)
 	return r

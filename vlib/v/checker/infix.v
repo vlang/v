@@ -147,6 +147,12 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	match node.op {
 		// .eq, .ne, .gt, .lt, .ge, .le, .and, .logical_or, .dot, .key_as, .right_shift {}
 		.eq, .ne {
+			if node.left is ast.CallExpr && node.left.or_block.stmts.len > 0 {
+				c.check_expr_opt_call(node.left, left_type)
+			}
+			if node.right is ast.CallExpr && node.right.or_block.stmts.len > 0 {
+				c.check_expr_opt_call(node.right, right_type)
+			}
 			if left_type in ast.integer_type_idxs && right_type in ast.integer_type_idxs {
 				is_left_type_signed := left_type in ast.signed_integer_type_idxs
 				is_right_type_signed := right_type in ast.signed_integer_type_idxs
@@ -189,6 +195,12 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						if mut node.right is ast.ArrayInit {
 							for i, typ in node.right.expr_types {
 								c.ensure_type_exists(typ, node.right.exprs[i].pos())
+							}
+						} else {
+							elem_type := right_final_sym.array_info().elem_type
+							c.check_expected(left_type, elem_type) or {
+								c.error('left operand to `${node.op}` does not match the array element type: ${err.msg()}',
+									left_right_pos)
 							}
 						}
 					}

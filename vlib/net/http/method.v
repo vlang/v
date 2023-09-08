@@ -6,6 +6,11 @@ module http
 // The methods listed here are all of those on the list available at:
 // https://www.iana.org/assignments/http-methods/http-methods.xhtml
 pub enum Method { // as of 2023-06-20
+	get // Note: get ***should*** remain the first value here, to ensure that http.fetch() by default will use it
+	head
+	post
+	put
+	// uncommon ones:
 	acl
 	baseline_control
 	bind
@@ -14,8 +19,6 @@ pub enum Method { // as of 2023-06-20
 	connect
 	copy
 	delete
-	get
-	head
 	label
 	link
 	@lock
@@ -29,11 +32,9 @@ pub enum Method { // as of 2023-06-20
 	options
 	orderpatch
 	patch
-	post
 	pri
 	propfind
 	proppatch
-	put
 	rebind
 	report
 	search
@@ -53,6 +54,8 @@ pub fn (m Method) str() string {
 		.get { 'GET' }
 		.head { 'HEAD' }
 		.post { 'POST' }
+		.put { 'PUT' }
+		// uncommon ones:
 		.acl { 'ACL' }
 		.baseline_control { 'BASELINE-CONTROL' }
 		.bind { 'BIND' }
@@ -77,7 +80,6 @@ pub fn (m Method) str() string {
 		.pri { 'PRI' }
 		.propfind { 'PROPFIND' }
 		.proppatch { 'PROPPATCH' }
-		.put { 'PUT' }
 		.rebind { 'REBIND' }
 		.report { 'REPORT' }
 		.search { 'SEARCH' }
@@ -101,6 +103,8 @@ pub fn method_from_str(m string) Method {
 		'GET' { Method.get }
 		'HEAD' { Method.head }
 		'POST' { Method.post }
+		'PUT' { Method.put }
+		// uncommon ones:
 		'ACL' { Method.acl }
 		'BASELINE-CONTROL' { Method.baseline_control }
 		'BIND' { Method.bind }
@@ -125,7 +129,6 @@ pub fn method_from_str(m string) Method {
 		'PRI' { Method.pri }
 		'PROPFIND' { Method.propfind }
 		'PROPPATCH' { Method.proppatch }
-		'PUT' { Method.put }
 		'REBIND' { Method.rebind }
 		'REPORT' { Method.report }
 		'SEARCH' { Method.search }
@@ -137,6 +140,6 @@ pub fn method_from_str(m string) Method {
 		'UPDATE' { Method.update }
 		'UPDATEREDIRECTREF' { Method.updateredirectref }
 		'VERSION-CONTROL' { Method.version_control }
-		else { Method.get } // should we default to GET?
+		else { Method.get } // always default to .get, it is the safest
 	}
 }

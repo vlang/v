@@ -76,7 +76,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	} else {
 		line := if is_expr {
 			g.empty_line = true
-			g.go_before_stmt(0)
+			g.go_before_last_stmt()
 		} else {
 			''
 		}
@@ -89,7 +89,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	}
 	if need_tmp_var {
 		g.empty_line = true
-		cur_line = g.go_before_stmt(0).trim_left(' \t')
+		cur_line = g.go_before_last_stmt().trim_left(' \t')
 		tmp_var = g.new_tmp_var()
 		mut func_decl := ''
 		if g.table.final_sym(node.return_type).kind == .function {

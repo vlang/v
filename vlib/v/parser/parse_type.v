@@ -15,32 +15,31 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 	// fixed array
 	if p.tok.kind in [.number, .name] {
 		mut fixed_size := 0
-		size_expr := p.expr(0)
+		mut size_expr := p.expr(0)
 		if p.pref.is_fmt {
 			fixed_size = 987654321
 		} else {
-			match size_expr {
+			match mut size_expr {
 				ast.IntegerLiteral {
 					fixed_size = size_expr.val.int()
 				}
 				ast.Ident {
-					mut show_non_const_error := false
+					mut show_non_const_error := true
 					if mut const_field := p.table.global_scope.find_const('${p.mod}.${size_expr.name}') {
 						if mut const_field.expr is ast.IntegerLiteral {
 							fixed_size = const_field.expr.val.int()
+							show_non_const_error = false
 						} else {
 							if mut const_field.expr is ast.InfixExpr {
 								// QUESTION: this should most likely no be done in the parser, right?
-								mut t := transformer.new_transformer(p.pref)
+								mut t := transformer.new_transformer_with_table(p.table,
+									p.pref)
 								folded_expr := t.infix_expr(mut const_field.expr)
 
 								if folded_expr is ast.IntegerLiteral {
 									fixed_size = folded_expr.val.int()
-								} else {
-									show_non_const_error = true
+									show_non_const_error = false
 								}
-							} else {
-								show_non_const_error = true
 							}
 						}
 					} else {
@@ -48,12 +47,25 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 							// for vfmt purposes, pretend the constant does exist
 							// it may have been defined in another .v file:
 							fixed_size = 1
-						} else {
-							show_non_const_error = true
+							show_non_const_error = false
 						}
 					}
 					if show_non_const_error {
 						p.error_with_pos('non-constant array bound `${size_expr.name}`',
+							size_expr.pos)
+					}
+				}
+				ast.InfixExpr {
+					mut show_non_const_error := true
+					mut t := transformer.new_transformer_with_table(p.table, p.pref)
+					folded_expr := t.infix_expr(mut size_expr)
+
+					if folded_expr is ast.IntegerLiteral {
+						fixed_size = folded_expr.val.int()
+						show_non_const_error = false
+					}
+					if show_non_const_error {
+						p.error_with_pos('fixed array size cannot use non-constant eval value',
 							size_expr.pos)
 					}
 				}

@@ -262,6 +262,10 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					}
 				}
 			}
+			if param.name == node.mod && param.name != 'main' {
+				c.add_error_detail('Module name duplicates will become errors after 2023/10/31.')
+				c.note('duplicate of a module name `${param.name}`', param.pos)
+			}
 			// Check if parameter name is already registered as imported module symbol
 			if c.check_import_sym_conflict(param.name) {
 				c.error('duplicate of an import symbol `${param.name}`', param.pos)
@@ -855,6 +859,27 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					break
 				}
 			}
+		}
+		if fn_name.ends_with('from_string') {
+			enum_name := fn_name.all_before('__static__')
+			full_enum_name := if !enum_name.contains('.') {
+				c.mod + '.' + enum_name
+			} else {
+				enum_name
+			}
+			idx := c.table.type_idxs[full_enum_name]
+			ret_typ := ast.Type(idx).set_flag(.option)
+			if node.args.len != 1 {
+				c.error('expected 1 argument, but got ${node.args.len}', node.pos)
+			} else {
+				node.args[0].typ = c.expr(mut node.args[0].expr)
+				if node.args[0].typ != ast.string_type {
+					styp := c.table.type_to_str(node.args[0].typ)
+					c.error('expected `string` argument, but got `${styp}`', node.pos)
+				}
+			}
+			node.return_type = ret_typ
+			return ret_typ
 		}
 	}
 	mut is_native_builtin := false
@@ -2096,7 +2121,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				}
 			}
 		}
-		if left_sym.info is ast.Array && method_name == 'sort_with_compare' {
+		if left_sym.info is ast.Array && method_name in ['sort_with_compare', 'sorted_with_compare'] {
 			elem_typ := left_sym.info.elem_type
 			arg_sym := c.table.sym(arg.typ)
 			if arg_sym.kind == .function {
@@ -2105,13 +2130,13 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					if func_info.func.params[0].typ.nr_muls() != elem_typ.nr_muls() + 1 {
 						arg_typ_str := c.table.type_to_str(func_info.func.params[0].typ)
 						expected_typ_str := c.table.type_to_str(elem_typ.ref())
-						c.error('sort_with_compare callback function parameter `${func_info.func.params[0].name}` with type `${arg_typ_str}` should be `${expected_typ_str}`',
+						c.error('${method_name} callback function parameter `${func_info.func.params[0].name}` with type `${arg_typ_str}` should be `${expected_typ_str}`',
 							func_info.func.params[0].type_pos)
 					}
 					if func_info.func.params[1].typ.nr_muls() != elem_typ.nr_muls() + 1 {
 						arg_typ_str := c.table.type_to_str(func_info.func.params[1].typ)
 						expected_typ_str := c.table.type_to_str(elem_typ.ref())
-						c.error('sort_with_compare callback function parameter `${func_info.func.params[1].name}` with type `${arg_typ_str}` should be `${expected_typ_str}`',
+						c.error('${method_name} callback function parameter `${func_info.func.params[1].name}` with type `${arg_typ_str}` should be `${expected_typ_str}`',
 							func_info.func.params[1].type_pos)
 					}
 				}
@@ -2543,6 +2568,20 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type ast.
 	return node.return_type
 }
 
+// ensure_same_array_return_type makes sure, that the return type of .clone(), .sorted(), .sorted_with_compare() etc,
+// is `array_xxx`, instead of the plain `array` .
+fn (mut c Checker) ensure_same_array_return_type(mut node ast.CallExpr, left_type ast.Type) {
+	node.receiver_type = left_type.ref()
+	if node.left.is_auto_deref_var() {
+		node.return_type = left_type.deref()
+	} else {
+		node.return_type = node.receiver_type.set_nr_muls(0)
+	}
+	if node.return_type.has_flag(.shared_f) {
+		node.return_type = node.return_type.clear_flag(.shared_f)
+	}
+}
+
 fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type ast.Type, left_sym ast.TypeSymbol) ast.Type {
 	method_name := node.name
 	mut elem_typ := ast.void_type
@@ -2558,12 +2597,14 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 	if method_name in ['filter', 'map', 'any', 'all'] {
 		// position of `it` doesn't matter
 		scope_register_it(mut node.scope, node.pos, elem_typ)
-	} else if method_name == 'sort' {
-		if node.left is ast.CallExpr {
-			c.error('the `sort()` method can be called only on mutable receivers, but `${node.left}` is a call expression',
-				node.pos)
+	} else if method_name == 'sort' || method_name == 'sorted' {
+		if method_name == 'sort' {
+			if node.left is ast.CallExpr {
+				c.error('the `sort()` method can be called only on mutable receivers, but `${node.left}` is a call expression',
+					node.pos)
+			}
+			c.fail_if_immutable(mut node.left)
 		}
-		c.fail_if_immutable(mut node.left)
 		// position of `a` and `b` doesn't matter, they're the same
 		scope_register_a_b(mut node.scope, node.pos, elem_typ)
 
@@ -2572,25 +2613,26 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		} else if node.args.len == 1 {
 			if node.args[0].expr is ast.InfixExpr {
 				if node.args[0].expr.op !in [.gt, .lt] {
-					c.error('`.sort()` can only use `<` or `>` comparison', node.pos)
+					c.error('`.${method_name}()` can only use `<` or `>` comparison',
+						node.pos)
 				}
 				left_name := '${node.args[0].expr.left}'[0]
 				right_name := '${node.args[0].expr.right}'[0]
 				if left_name !in [`a`, `b`] || right_name !in [`a`, `b`] {
-					c.error('`.sort()` can only use `a` or `b` as argument, e.g. `arr.sort(a < b)`',
+					c.error('`.${method_name}()` can only use `a` or `b` as argument, e.g. `arr.${method_name}(a < b)`',
 						node.pos)
 				} else if left_name == right_name {
-					c.error('`.sort()` cannot use same argument', node.pos)
+					c.error('`.${method_name}()` cannot use same argument', node.pos)
 				}
 				if node.args[0].expr.left !in [ast.Ident, ast.SelectorExpr, ast.IndexExpr]
 					|| node.args[0].expr.right !in [ast.Ident, ast.SelectorExpr, ast.IndexExpr] {
-					c.error('`.sort()` can only use ident, index or selector as argument, \ne.g. `arr.sort(a < b)`, `arr.sort(a.id < b.id)`, `arr.sort(a[0] < b[0])`',
+					c.error('`.${method_name}()` can only use ident, index or selector as argument, \ne.g. `arr.${method_name}(a < b)`, `arr.${method_name}(a.id < b.id)`, `arr.${method_name}(a[0] < b[0])`',
 						node.pos)
 				}
 			} else {
 				c.error(
-					'`.sort()` requires a `<` or `>` comparison as the first and only argument' +
-					'\ne.g. `users.sort(a.id < b.id)`', node.pos)
+					'`.${method_name}()` requires a `<` or `>` comparison as the first and only argument' +
+					'\ne.g. `users.${method_name}(a.id < b.id)`', node.pos)
 			}
 		} else if !(c.table.sym(elem_typ).has_method('<')
 			|| c.table.unalias_num_type(elem_typ) in [ast.int_type, ast.int_type.ref(), ast.string_type, ast.string_type.ref(), ast.i8_type, ast.i16_type, ast.i64_type, ast.u8_type, ast.rune_type, ast.u16_type, ast.u32_type, ast.u64_type, ast.f32_type, ast.f64_type, ast.char_type, ast.bool_type, ast.float_literal_type, ast.int_literal_type]) {
@@ -2661,16 +2703,21 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		if node.args.len != 0 {
 			c.error('`.clone()` does not have any arguments', node.args[0].pos)
 		}
-		// need to return `array_xxx` instead of `array`
-		// in ['clone', 'str'] {
-		node.receiver_type = left_type.ref()
-		if node.left.is_auto_deref_var() {
-			node.return_type = left_type.deref()
-		} else {
-			node.return_type = node.receiver_type.set_nr_muls(0)
-		}
-		if node.return_type.has_flag(.shared_f) {
-			node.return_type = node.return_type.clear_flag(.shared_f)
+		c.ensure_same_array_return_type(mut node, left_type)
+	} else if method_name == 'sorted' {
+		c.ensure_same_array_return_type(mut node, left_type)
+	} else if method_name == 'sorted_with_compare' {
+		c.ensure_same_array_return_type(mut node, left_type)
+		// Inject a (voidptr) cast for the callback argument, to pass -cstrict, otherwise:
+		// error: incompatible function pointer types passing
+		//                            'int (string *, string *)'  (aka 'int (struct string *, struct string *)')
+		//       to parameter of type 'int (*)(voidptr, voidptr)' (aka 'int (*)(void *, void *)')
+		node.args[0].expr = ast.CastExpr{
+			expr: node.args[0].expr
+			typ: ast.voidptr_type
+			typname: 'voidptr'
+			expr_type: c.expr(mut node.args[0].expr)
+			pos: node.pos
 		}
 	} else if method_name == 'sort' {
 		node.return_type = ast.void_type

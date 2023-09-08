@@ -165,7 +165,8 @@ pub fn exit_0_status(cmd string) bool {
 
 pub fn tool_must_exist(toolcmd string) {
 	verbose_trace(modfn(@MOD, @FN), toolcmd)
-	if exit_0_status('type ${toolcmd}') {
+	where_is_cmd := if os.user_os() == 'windows' { 'where' } else { 'type' }
+	if exit_0_status('${where_is_cmd} ${toolcmd}') {
 		return
 	}
 	eprintln('Missing tool: ${toolcmd}')

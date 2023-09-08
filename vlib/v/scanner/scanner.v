@@ -183,11 +183,15 @@ fn (mut s Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Tok
 	cidx := s.tidx
 	s.tidx++
 	line_offset := if tok_kind == .hash { 0 } else { 1 }
+	mut max_column := s.current_column() - len + 1
+	if max_column < 1 {
+		max_column = 1
+	}
 	return token.Token{
 		kind: tok_kind
 		lit: lit
 		line_nr: s.line_nr + line_offset
-		col: mathutil.max(1, s.current_column() - len + 1)
+		col: max_column
 		pos: s.pos - len + 1
 		len: len
 		tidx: cidx
@@ -211,11 +215,15 @@ fn (s &Scanner) new_eof_token() token.Token {
 fn (mut s Scanner) new_multiline_token(tok_kind token.Kind, lit string, len int, start_line int) token.Token {
 	cidx := s.tidx
 	s.tidx++
+	mut max_column := s.current_column() - len + 1
+	if max_column < 1 {
+		max_column = 1
+	}
 	return token.Token{
 		kind: tok_kind
 		lit: lit
 		line_nr: start_line + 1
-		col: mathutil.max(1, s.current_column() - len + 1)
+		col: max_column
 		pos: s.pos - len + 1
 		len: len
 		tidx: cidx
@@ -886,6 +894,10 @@ fn (mut s Scanner) text_scan() token.Token {
 				return s.new_token(.comma, '', 1)
 			}
 			`@` {
+				// @[attr]
+				if s.text[s.pos + 1] == `[` {
+					return s.new_token(.at, '', 1)
+				}
 				mut name := ''
 				if nextc != `\0` {
 					s.pos++
@@ -1099,9 +1111,17 @@ fn (mut s Scanner) text_scan() token.Token {
 					}
 					s.pos++
 					if s.should_parse_comment() {
-						mut comment := s.text[start..(s.pos - 1)].trim(' ')
+						mut comment := s.text[start..(s.pos - 1)]
 						if !comment.contains('\n') {
-							comment = '\x01' + comment
+							comment_pos := token.Pos{
+								line_nr: start_line
+								len: comment.len + 4
+								pos: start
+								col: s.current_column() - comment.len - 4
+							}
+							s.error_with_pos('inline comment is deprecated, please use line comment',
+								comment_pos)
+							comment = '\x01' + comment.trim(' ')
 						}
 						return s.new_multiline_token(.comment, comment, comment.len + 4,
 							start_line)
@@ -1545,7 +1565,10 @@ fn (mut s Scanner) eat_to_end_of_line() {
 
 [inline]
 fn (mut s Scanner) inc_line_number() {
-	s.last_nl_pos = mathutil.min(s.text.len - 1, s.pos)
+	s.last_nl_pos = s.text.len - 1
+	if s.last_nl_pos > s.pos {
+		s.last_nl_pos = s.pos
+	}
 	if s.is_crlf {
 		s.last_nl_pos++
 	}
@@ -1555,7 +1578,19 @@ fn (mut s Scanner) inc_line_number() {
 	}
 }
 
+pub fn (mut s Scanner) current_pos() token.Pos {
+	return token.Pos{
+		line_nr: s.line_nr
+		pos: s.pos
+		col: s.current_column() - 1
+	}
+}
+
 pub fn (mut s Scanner) note(msg string) {
+	if s.pref.notes_are_errors {
+		s.error_with_pos(msg, s.current_pos())
+		return
+	}
 	pos := token.Pos{
 		line_nr: s.line_nr
 		pos: s.pos
@@ -1591,12 +1626,7 @@ fn (mut s Scanner) eat_details() string {
 }
 
 pub fn (mut s Scanner) warn(msg string) {
-	pos := token.Pos{
-		line_nr: s.line_nr
-		pos: s.pos
-		col: s.current_column() - 1
-	}
-	s.warn_with_pos(msg, pos)
+	s.warn_with_pos(msg, s.current_pos())
 }
 
 pub fn (mut s Scanner) warn_with_pos(msg string, pos token.Pos) {
@@ -1628,12 +1658,7 @@ pub fn (mut s Scanner) warn_with_pos(msg string, pos token.Pos) {
 }
 
 pub fn (mut s Scanner) error(msg string) {
-	pos := token.Pos{
-		line_nr: s.line_nr
-		pos: s.pos
-		col: s.current_column() - 1
-	}
-	s.error_with_pos(msg, pos)
+	s.error_with_pos(msg, s.current_pos())
 }
 
 pub fn (mut s Scanner) error_with_pos(msg string, pos token.Pos) {
@@ -1674,10 +1699,7 @@ fn (mut s Scanner) vet_error(msg string, fix vet.FixKind) {
 	ve := vet.Error{
 		message: msg
 		file_path: s.file_path
-		pos: token.Pos{
-			line_nr: s.line_nr
-			col: s.current_column() - 1
-		}
+		pos: s.current_pos()
 		kind: .error
 		fix: fix
 		typ: .default
@@ -1685,8 +1707,8 @@ fn (mut s Scanner) vet_error(msg string, fix vet.FixKind) {
 	s.vet_errors << ve
 }
 
-fn (mut s Scanner) trace(fbase string, message string) {
+fn (mut s Scanner) trace[T](fbase string, x &T) {
 	if s.file_base == fbase {
-		println('> s.trace | ${fbase:-10s} | ${message}')
+		println('> s.trace | ${fbase:-10s} | ${voidptr(x):16} | ${x}')
 	}
 }

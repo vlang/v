@@ -60,6 +60,8 @@ jobs:
           ./cmd/tools/test_if_v_test_system_works
       - name: All code is formatted
         run: ./v test-cleancode
+      - name: Test pure V math module
+        run: ./v -exclude @vlib/math/*.c.v test vlib/math/
       - name: Self tests
         run: ./v test-self
       # - name: Self tests (-cstrict)
@@ -212,6 +214,8 @@ jobs:
           ./cmd/tools/test_if_v_test_system_works
       - name: All code is formatted
         run: ./v test-cleancode
+      - name: Test pure V math module
+        run: ./v -exclude @vlib/math/*.c.v test vlib/math/
       - name: Self tests
         run: ./v test-self
       - name: Self tests (-prod)
@@ -315,6 +319,8 @@ jobs:
       - name: All code is formatted
         run: ./v test-cleancode
 
+      - name: Test pure V math module
+        run: ./v -exclude @vlib/math/*.c.v test vlib/math/
       - name: Self tests
         run: ./v test-self
       - name: Self tests (vprod)
