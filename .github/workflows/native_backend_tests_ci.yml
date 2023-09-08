@@ -75,5 +75,7 @@ jobs:
           make
           ./v symlink -githubci
 
-      - name: Test the native backend
-        run: v test vlib/v/gen/native/
+      - name: Run the native backend tests serially with more details
+        run: |
+          v -stats vlib/v/gen/native/macho_test.v
+          v -stats vlib/v/gen/native/tests/native_test.v
