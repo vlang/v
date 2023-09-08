@@ -1652,6 +1652,15 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 					field.expr.pos())
 			}
 		}
+		const_name := field.name.all_after_last('.')
+		if const_name == c.mod && const_name != 'main' {
+			name_pos := token.Pos{
+				...field.pos
+				len: util.no_cur_mod(field.name, c.mod).len
+			}
+			c.add_error_detail('Module name duplicates will become errors after 2023/10/31.')
+			c.note('duplicate of a module name `${field.name}`', name_pos)
+		}
 		c.const_names << field.name
 	}
 	for i, mut field in node.fields {

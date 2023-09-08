@@ -128,12 +128,12 @@ pub fn append[T](a []T, b []T) []T {
 //
 // NOTE: An error will be generated if the type annotation is omitted.
 // Example: arrays.group[int]([1, 2, 3], [4, 5, 6]) // => [[1, 4], [2, 5], [3, 6]]
-pub fn group[T](arrays ...[]T) [][]T {
-	mut length := if arrays.len > 0 { arrays[0].len } else { 0 }
+pub fn group[T](arrs ...[]T) [][]T {
+	mut length := if arrs.len > 0 { arrs[0].len } else { 0 }
 	// calculate length of output by finding shortest input array
-	for ndx in 1 .. arrays.len {
-		if arrays[ndx].len < length {
-			length = arrays[ndx].len
+	for ndx in 1 .. arrs.len {
+		if arrs[ndx].len < length {
+			length = arrs[ndx].len
 		}
 	}
 
@@ -141,10 +141,10 @@ pub fn group[T](arrays ...[]T) [][]T {
 		mut arr := [][]T{cap: length}
 		// append all combined arrays into the resultant array
 		for ndx in 0 .. length {
-			mut grouped := []T{cap: arrays.len}
+			mut grouped := []T{cap: arrs.len}
 			// combine each list item for the ndx position into one array
-			for arr_ndx in 0 .. arrays.len {
-				grouped << arrays[arr_ndx][ndx]
+			for arr_ndx in 0 .. arrs.len {
+				grouped << arrs[arr_ndx][ndx]
 			}
 			arr << grouped
 		}
