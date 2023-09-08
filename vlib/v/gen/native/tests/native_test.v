@@ -61,8 +61,16 @@ fn test_native() {
 		runtime_ms := sw_run.elapsed().milliseconds()
 		if res.exit_code != 0 {
 			bench.fail()
-			eprintln(bench.step_message_fail('${full_test_path} failed to run'))
+			eprintln(bench.step_message_fail('${full_test_path} failed to run, res.exit_code: ${res.exit_code} != 0 '))
+			eprintln('> The failed program, produced this output:')
+			eprintln('------------------------------------------------')
 			eprintln(res.output)
+			eprintln('------------------------------------------------')
+			eprintln('> tmperrfile: ${tmperrfile}, exists: ${os.exists(tmperrfile)}, content:')
+			errstr := os.read_file(tmperrfile) or { '' }
+			eprintln(errstr)
+			eprintln('------------------------------------------------')
+			eprintln('')
 			continue
 		}
 
