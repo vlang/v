@@ -1834,6 +1834,9 @@ fn (mut p Parser) attributes() {
 fn (mut p Parser) parse_attr(is_at bool) ast.Attr {
 	mut kind := ast.AttrKind.plain
 	p.inside_attr_decl = true
+	defer {
+		p.inside_attr_decl = false
+	}
 	apos := p.prev_tok.pos()
 	if p.tok.kind == .key_unsafe {
 		p.next()
