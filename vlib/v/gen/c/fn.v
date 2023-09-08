@@ -691,7 +691,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			tmp_var := g.new_tmp_var()
 			fn_type := g.fn_var_signature(node.left.decl.return_type, node.left.decl.params.map(it.typ),
 				tmp_var)
-			line := g.go_before_stmt(0).trim_space()
+			line := g.go_before_last_stmt().trim_space()
 			g.empty_line = true
 			g.write('${fn_type} = ')
 			g.expr(node.left)
@@ -713,7 +713,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			g.inside_curry_call = true
 			ret_typ := node.return_type
 
-			line := g.go_before_stmt(0)
+			line := g.go_before_last_stmt()
 			g.empty_line = true
 
 			tmp_res := g.new_tmp_var()
@@ -741,7 +741,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	mut cur_line := if !g.inside_curry_call && (is_gen_or_and_assign_rhs || gen_keep_alive) { // && !g.is_autofree {
 		// `x := foo() or { ...}`
 		// cut everything that has been generated to prepend option variable creation
-		line := g.go_before_stmt(0)
+		line := g.go_before_last_stmt()
 		g.out.write_string(util.tabs(g.indent))
 		line
 	} else {
@@ -767,7 +767,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		}
 		mut styp := g.typ(ret_typ)
 		if gen_or && !is_gen_or_and_assign_rhs {
-			cur_line = g.go_before_stmt(0)
+			cur_line = g.go_before_last_stmt()
 		}
 		if gen_or && g.infix_left_var_name.len > 0 {
 			g.writeln('${styp} ${tmp_opt};')
@@ -1561,7 +1561,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		g.is_json_fn = true
 		json_obj = g.new_tmp_var()
 		mut tmp2 := ''
-		cur_line := g.go_before_stmt(0)
+		cur_line := g.go_before_last_stmt()
 		if is_json_encode || is_json_encode_pretty {
 			g.gen_json_for_type(node.args[0].typ)
 			json_type_str = g.typ(node.args[0].typ)
@@ -1803,7 +1803,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			} else {
 				if node.is_keep_alive
 					&& g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt] {
-					cur_line := g.go_before_stmt(0)
+					cur_line := g.go_before_last_stmt()
 					tmp_cnt_save = g.keep_alive_call_pregen(node)
 					g.write(cur_line)
 					for i in 0 .. node.args.len {
