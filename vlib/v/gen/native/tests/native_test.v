@@ -13,6 +13,7 @@ fn test_native() {
 	}
 	$if freebsd {
 		eprintln('>> skipping testing on FreeBSD for now')
+		return
 	}
 	mut bench := benchmark.new_benchmark()
 	vexe := os.getenv('VEXE')
