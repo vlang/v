@@ -62,6 +62,8 @@ fn (b &Builder) exit_on_invalid_syntax() {
 	}
 }
 
+const vtest_just_compile = os.getenv('VTEST_JUST_COMPILE') != ''
+
 fn (mut b Builder) run_compiled_executable_and_exit() {
 	if b.pref.backend == .interpret {
 		// the interpreted code has already ran
@@ -79,7 +81,8 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	if b.pref.os == .ios {
 		panic('Running iOS apps is not supported yet.')
 	}
-	if !(b.pref.is_test || b.pref.is_run || b.pref.is_crun) {
+	if (builder.vtest_just_compile && b.pref.is_test) || !(b.pref.is_test
+		|| b.pref.is_run || b.pref.is_crun) {
 		exit(0)
 	}
 	mut compiled_file := b.pref.out_name
