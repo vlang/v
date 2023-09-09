@@ -105,7 +105,7 @@ pub fn read_cookies(h map[string][]string, filter string) []&Cookie {
 	return cookies
 }
 
-// Returns the serialization of the cookie for use in a Cookie header
+// str returns the serialization of the cookie for use in a Cookie header
 // (if only Name and Value are set) or a Set-Cookie response
 // header (if other fields are set).
 //

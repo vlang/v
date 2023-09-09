@@ -128,12 +128,12 @@ pub fn append[T](a []T, b []T) []T {
 //
 // NOTE: An error will be generated if the type annotation is omitted.
 // Example: arrays.group[int]([1, 2, 3], [4, 5, 6]) // => [[1, 4], [2, 5], [3, 6]]
-pub fn group[T](arrays ...[]T) [][]T {
-	mut length := if arrays.len > 0 { arrays[0].len } else { 0 }
+pub fn group[T](arrs ...[]T) [][]T {
+	mut length := if arrs.len > 0 { arrs[0].len } else { 0 }
 	// calculate length of output by finding shortest input array
-	for ndx in 1 .. arrays.len {
-		if arrays[ndx].len < length {
-			length = arrays[ndx].len
+	for ndx in 1 .. arrs.len {
+		if arrs[ndx].len < length {
+			length = arrs[ndx].len
 		}
 	}
 
@@ -141,10 +141,10 @@ pub fn group[T](arrays ...[]T) [][]T {
 		mut arr := [][]T{cap: length}
 		// append all combined arrays into the resultant array
 		for ndx in 0 .. length {
-			mut grouped := []T{cap: arrays.len}
+			mut grouped := []T{cap: arrs.len}
 			// combine each list item for the ndx position into one array
-			for arr_ndx in 0 .. arrays.len {
-				grouped << arrays[arr_ndx][ndx]
+			for arr_ndx in 0 .. arrs.len {
+				grouped << arrs[arr_ndx][ndx]
 			}
 			arr << grouped
 		}
@@ -679,8 +679,8 @@ pub fn carray_to_varray[T](c_array_data voidptr, items int) []T {
 	return v_array
 }
 
-// find_first returns the first element that matches the given predicate
-// returns `none`, if there is no match found
+// find_first returns the first element that matches the given predicate.
+// Returns `none` if no match is found.
 // Example: arrays.find_first([1, 2, 3, 4, 5], fn (i int) bool { return i == 3 })? // => 3
 pub fn find_first[T](array []T, predicate fn (elem T) bool) ?T {
 	if array.len == 0 {
@@ -694,8 +694,8 @@ pub fn find_first[T](array []T, predicate fn (elem T) bool) ?T {
 	return none
 }
 
-// find_last returns the last element that matches the given predicate
-// returns `none`, if there is no match found
+// find_last returns the last element that matches the given predicate.
+// Returns `none` if no match is found.
 // Example: arrays.find_last([1, 2, 3, 4, 5], fn (i int) bool { return i == 3})? // => 3
 pub fn find_last[T](array []T, predicate fn (elem T) bool) ?T {
 	if array.len == 0 {

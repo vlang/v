@@ -197,7 +197,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				&& (p.peek_tok.line_nr != p.tok.line_nr || p.peek_tok.kind !in [.name, .amp])
 				&& (p.peek_tok.kind != .lsbr || p.peek_token(2).kind != .rsbr))
 				|| p.peek_tok.kind == .dot) && language == .v && p.peek_tok.kind != .key_fn
-			is_on_top := ast_fields.len == 0 && !(is_field_mut || is_field_global)
+			is_on_top := ast_fields.len == 0 && !(is_field_pub || is_field_mut || is_field_global)
 			mut field_name := ''
 			mut typ := ast.Type(0)
 			mut type_pos := token.Pos{}
@@ -314,7 +314,6 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 					is_deprecated: is_field_deprecated
 					anon_struct_decl: p.anon_struct_decl
 				}
-				p.anon_struct_decl = ast.StructDecl{}
 			}
 			// save embeds as table fields too, it will be used in generation phase
 			fields << ast.StructField{
@@ -333,7 +332,9 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				is_global: is_field_global
 				is_volatile: is_field_volatile
 				is_deprecated: is_field_deprecated
+				anon_struct_decl: p.anon_struct_decl
 			}
+			p.anon_struct_decl = ast.StructDecl{}
 			p.attrs = prev_attrs
 			i++
 		}
@@ -586,7 +587,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		if p.tok.kind == .name && p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
 			&& (p.peek_tok.line_nr != p.tok.line_nr
 			|| p.peek_tok.kind !in [.name, .amp, .lsbr, .lpar]
-			|| (p.peek_tok.kind == .lsbr && p.peek_tok.pos - p.tok.pos == p.tok.len)) {
+			|| (p.peek_tok.kind == .lsbr && p.peek_tok.is_next_to(p.tok))) {
 			iface_pos := p.tok.pos()
 			mut iface_name := p.tok.lit
 			iface_type := p.parse_type()
@@ -641,7 +642,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			is_mut = true
 			mut_pos = fields.len
 		}
-		if p.peek_tok.kind in [.lt, .lsbr] && p.peek_tok.pos - p.tok.pos == p.tok.len {
+		if p.peek_tok.kind in [.lt, .lsbr] && p.peek_tok.is_next_to(p.tok) {
 			p.error_with_pos("no need to add generic type names in generic interface's method",
 				p.peek_tok.pos())
 			return ast.InterfaceDecl{}

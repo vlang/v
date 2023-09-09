@@ -411,9 +411,9 @@ fn draw_cube_glsl(app App) {
 		time_ticks := f32(time.ticks() - app.ticks) / 1000
 		mut text_res := [
 			f32(512),
-			512, /* x,y resolution to pass to FS */
-			time_ticks, /* time as f32 */
-			0 /* padding 4 Bytes == 1 f32 */,
+			512, // x,y resolution to pass to FS
+			time_ticks, // time as f32
+			0, // padding 4 Bytes == 1 f32
 		]!
 		fs_uniforms_range := gfx.Range{
 			ptr: unsafe { &text_res }

@@ -730,7 +730,7 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 	}
 
 	// drag&drop
-	if ev.typ == .files_droped {
+	if ev.typ == .files_dropped {
 		app.state = .scanning
 		// set logo texture during scanning
 		show_logo(mut app)

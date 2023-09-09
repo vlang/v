@@ -1,5 +1,6 @@
 fn main() {
-	filtered_links := text_processing.filter_links(links, /* unwanted_domains = */ [
+	filtered_links := text_processing.filter_links(links, // unwanted_domains
+	 [
 		'www.kickstarter.com',
 		'www.pepper.pl',
 		'tenor.com',

@@ -41,7 +41,7 @@ fn main() {
 
 fn my_event_manager(mut ev gg.Event, mut app App) {
 	// drag&drop event
-	if ev.typ == .files_droped {
+	if ev.typ == .files_dropped {
 		num_dropped := sapp.get_num_dropped_files()
 		app.dropped_file_list.clear()
 		for i in 0 .. num_dropped {

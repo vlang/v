@@ -7,7 +7,7 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 	mut files := files_.clone()
 	files.sort()
 	mut all_v_files := []string{}
-	for file in files {
+	files_loop: for file in files {
 		if !file.ends_with('.v') && !file.ends_with('.vh') {
 			continue
 		}
@@ -73,6 +73,14 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 			}
 			if !allowed {
 				continue
+			}
+		}
+		if prefs.exclude.len > 0 {
+			full_file_path := os.join_path(dir, file)
+			for epattern in prefs.exclude {
+				if full_file_path.match_glob(epattern) {
+					continue files_loop
+				}
 			}
 		}
 		all_v_files << os.join_path(dir, file)

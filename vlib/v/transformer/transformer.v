@@ -695,7 +695,8 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 				}
 				else {}
 			}
-		}*/
+		}
+		*/
 		else {}
 	}
 	return node
@@ -708,9 +709,41 @@ pub fn (mut t Transformer) call_expr(mut node ast.CallExpr) ast.Expr {
 	return node
 }
 
+fn (mut t Transformer) trans_const_value_to_literal(mut expr ast.Expr) {
+	mut expr_ := expr
+	if mut expr_ is ast.Ident {
+		if mut obj := t.table.global_scope.find_const(expr_.mod + '.' + expr_.name) {
+			if mut obj.expr is ast.BoolLiteral {
+				expr = obj.expr
+			} else if mut obj.expr is ast.IntegerLiteral {
+				expr = obj.expr
+			} else if mut obj.expr is ast.FloatLiteral {
+				expr = obj.expr
+			} else if mut obj.expr is ast.StringLiteral {
+				expr = obj.expr
+			} else if mut obj.expr is ast.InfixExpr {
+				folded_expr := t.infix_expr(mut obj.expr)
+				if folded_expr is ast.BoolLiteral {
+					expr = folded_expr
+				} else if folded_expr is ast.IntegerLiteral {
+					expr = folded_expr
+				} else if folded_expr is ast.FloatLiteral {
+					expr = folded_expr
+				} else if folded_expr is ast.StringLiteral {
+					expr = folded_expr
+				}
+			}
+		}
+	}
+}
+
 pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 	node.left = t.expr(mut node.left)
 	node.right = t.expr(mut node.right)
+	if !t.pref.translated {
+		t.trans_const_value_to_literal(mut node.left)
+		t.trans_const_value_to_literal(mut node.right)
+	}
 
 	mut pos := node.left.pos()
 	pos.extend(node.pos)

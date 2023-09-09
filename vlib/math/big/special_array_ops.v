@@ -119,8 +119,8 @@ fn karatsuba_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage 
 	mut b_l := []u32{}
 	mut b_h := []u32{}
 	if half <= operand_b.len {
-		b_l = operand_b[0..half]
-		b_h = operand_b[half..]
+		b_l = unsafe { operand_b[0..half] }
+		b_h = unsafe { operand_b[half..] }
 	} else {
 		b_l = unsafe { operand_b }
 		// b_h = []u32{}

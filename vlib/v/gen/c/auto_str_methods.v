@@ -851,7 +851,7 @@ fn (g &Gen) type_to_fmt(typ ast.Type) StrIntpType {
 	if typ.is_int_valptr() || typ.is_float_valptr() {
 		return .si_s
 	} else if sym.kind in [.struct_, .array, .array_fixed, .map, .bool, .enum_, .interface_,
-		.sum_type, .function, .alias, .chan] {
+		.sum_type, .function, .alias, .chan, .thread] {
 		return .si_s
 	} else if sym.kind == .string {
 		return .si_s
@@ -1087,6 +1087,8 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 		return '${fn_name}(${obj})', true
 	} else if sym.kind == .chan {
 		return '${fn_name}(${deref}it.${final_field_name}${sufix})', true
+	} else if sym.kind == .thread {
+		return '${fn_name}(${deref}it.${final_field_name}${sufix})', false
 	} else {
 		mut method_str := ''
 		if !field_type.is_ptr() && (field_type.has_flag(.option) || field_type.has_flag(.result)) {

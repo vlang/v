@@ -93,6 +93,10 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 					}
 				}
 			}
+			// check anon struct declaration
+			if field.anon_struct_decl.fields.len > 0 {
+				c.struct_decl(mut field.anon_struct_decl)
+			}
 		}
 		c.expected_type = old_expected_type
 		util.timing_measure_cumulative('Checker.struct setting default_expr_typ')

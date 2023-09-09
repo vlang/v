@@ -92,6 +92,7 @@ fn (c &Context) prepare_v(cdir string, commit string) {
 	}
 	vgit_context.compile_oldv_if_needed()
 	scripting.chdir(cdir)
+	scripting.run('${cdir}/v version')
 	println('Making a v compiler in ${cdir}')
 	scripting.run('./v -cc ${cc}       -o v     ${vgit_context.vvlocation}')
 	println('Making a vprod compiler in ${cdir}')
@@ -147,6 +148,7 @@ fn (c Context) compare_v_performance(label string, commands []string) string {
 	}
 	timestamp_a, _ := vgit.line_to_timestamp_and_commit(scripting.run('cd ${c.a}/ ; git rev-list -n1 --timestamp HEAD'))
 	timestamp_b, _ := vgit.line_to_timestamp_and_commit(scripting.run('cd ${c.b}/ ; git rev-list -n1 --timestamp HEAD'))
+	// 1570877641 is 065ce39 2019-10-12
 	debug_option_a := if timestamp_a > 1570877641 { '-cg    ' } else { '-debug ' }
 	debug_option_b := if timestamp_b > 1570877641 { '-cg    ' } else { '-debug ' }
 	mut hyperfine_commands_arguments := []string{}
@@ -185,6 +187,8 @@ fn (c Context) compare_v_performance(label string, commands []string) string {
 }
 
 fn main() {
+	// allow for `v run cmd/tools/performance_compare.v`, see oldv.v
+	os.setenv('VEXE', '', true)
 	scripting.used_tools_must_exist(['cp', 'rm', 'strip', 'make', 'git', 'upx', 'cc', 'wc', 'tail',
 		'find', 'xargs', 'hyperfine'])
 	mut context := new_context()
@@ -209,8 +213,7 @@ ${flag.space}--hyperfine_options "--prepare \'sync; echo 3 | sudo tee /proc/sys/
 	context.a = vgit.normalized_workpath_for_commit(context.vgo.workdir, context.commit_after)
 	context.vc = vgit.normalized_workpath_for_commit(context.vgo.workdir, 'vc')
 	if !os.is_dir(context.vgo.workdir) {
-		msg := 'Work folder: ' + context.vgo.workdir + ' , does not exist.'
-		eprintln(msg)
+		eprintln('Work folder: `{context.vgo.workdir}` , does not exist. Use `--workdir /some/path` to set it.')
 		exit(2)
 	}
 	context.compare_versions()

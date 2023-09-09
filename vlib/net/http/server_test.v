@@ -52,6 +52,7 @@ mut:
 	counter    int
 	oks        int
 	not_founds int
+	redirects  int
 }
 
 fn (mut handler MyHttpHandler) handle(req http.Request) http.Response {
@@ -63,6 +64,17 @@ fn (mut handler MyHttpHandler) handle(req http.Request) http.Response {
 	}
 	match req.url.all_before('?') {
 		'/endpoint', '/another/endpoint' {
+			r.set_status(.ok)
+			handler.oks++
+		}
+		'/redirect_to_big' {
+			r.header = http.new_header(key: .location, value: '/big')
+			r.status_msg = 'Moved permanently'
+			r.status_code = 301
+			handler.redirects++
+		}
+		'/big' {
+			r.body = 'xyz def '.repeat(10_000)
 			r.set_status(.ok)
 			handler.oks++
 		}
@@ -101,9 +113,56 @@ fn test_server_custom_handler() {
 	assert y.http_version == '1.1'
 	//
 	http.fetch(url: 'http://localhost:${cport}/something/else')!
+	//
+	big_url := 'http://localhost:${cport}/redirect_to_big'
+	mut progress_calls := &ProgressCalls{}
+	z := http.fetch(
+		url: big_url
+		user_ptr: progress_calls
+		on_redirect: fn (req &http.Request, nredirects int, new_url string) ! {
+			mut progress_calls := unsafe { &ProgressCalls(req.user_ptr) }
+			eprintln('>>>>>>>> on_redirect, req.url: ${req.url} | new_url: ${new_url} | nredirects: ${nredirects}')
+			progress_calls.redirected_to << new_url
+		}
+		on_progress: fn (req &http.Request, chunk []u8, read_so_far u64) ! {
+			mut progress_calls := unsafe { &ProgressCalls(req.user_ptr) }
+			eprintln('>>>>>>>> on_progress, req.url: ${req.url} | got chunk.len: ${chunk.len:5}, read_so_far: ${read_so_far:8}, chunk: ${chunk#[0..30].bytestr()}')
+			progress_calls.chunks << chunk
+			progress_calls.reads << read_so_far
+		}
+		on_finish: fn (req &http.Request, final_size u64) ! {
+			mut progress_calls := unsafe { &ProgressCalls(req.user_ptr) }
+			eprintln('>>>>>>>> on_finish, req.url: ${req.url}, final_size: ${final_size}')
+			progress_calls.finished_was_called = true
+			progress_calls.final_size = final_size
+		}
+	)!
+	assert z.status_code == 200
+	assert z.body.starts_with('xyz')
+	assert z.body.len > 10000
+	assert progress_calls.final_size > 80_000
+	assert progress_calls.finished_was_called
+	assert progress_calls.chunks.len > 1
+	assert progress_calls.reads.len > 1
+	assert progress_calls.chunks[0].bytestr().starts_with('HTTP/1.1 301 Moved permanently')
+	assert progress_calls.chunks[1].bytestr().starts_with('HTTP/1.1 200 OK')
+	assert progress_calls.chunks.last().bytestr().contains('xyz def')
+	assert progress_calls.redirected_to == ['http://localhost:8198/big']
+	//
 	server.stop()
 	t.wait()
-	assert handler.counter == 3
-	assert handler.oks == 2
+	//
+	assert handler.counter == 5
+	assert handler.oks == 3
 	assert handler.not_founds == 1
+	assert handler.redirects == 1
+}
+
+struct ProgressCalls {
+mut:
+	chunks              [][]u8
+	reads               []u64
+	finished_was_called bool
+	redirected_to       []string
+	final_size          u64
 }

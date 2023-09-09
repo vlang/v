@@ -94,7 +94,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		mut cur_line := ''
 
 		if !is_html {
-			cur_line = g.go_before_stmt(0)
+			cur_line = g.go_before_last_stmt()
 		}
 
 		for stmt in node.vweb_tmpl.stmts {
@@ -239,7 +239,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		if node.or_block.kind != .absent
 			&& (m.return_type.has_flag(.option) || m.return_type.has_flag(.result)) {
 			if !g.inside_assign {
-				cur_line := g.go_before_stmt(0)
+				cur_line := g.go_before_last_stmt()
 				tmp_var := g.new_tmp_var()
 				g.write('${g.typ(m.return_type)} ${tmp_var} = ')
 				g.write(cur_line)
@@ -326,7 +326,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 	tmp_var := g.new_tmp_var()
 	is_opt_or_result := node.typ.has_flag(.option) || node.typ.has_flag(.result)
 	line := if node.is_expr {
-		stmt_str := g.go_before_stmt(0)
+		stmt_str := g.go_before_last_stmt()
 		g.write(util.tabs(g.indent))
 		styp := g.typ(node.typ)
 		g.writeln('${styp} ${tmp_var};')
@@ -1156,6 +1156,14 @@ fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_option bool) !strin
 		}
 		'big_endian' {
 			return 'TARGET_ORDER_IS_BIG'
+		}
+		'fast_math' {
+			if g.pref.ccompiler_type == .msvc {
+				// turned on by: `-cflags /fp:fast`
+				return '_M_FP_FAST'
+			}
+			// turned on by: `-cflags -ffast-math`
+			return '__FAST_MATH__'
 		}
 		else {
 			if is_comptime_option

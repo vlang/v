@@ -145,6 +145,9 @@ will keep the existing source nice and clean.
 Ensure that all .md files in the project are formatted properly,
 and that the V code block examples in them can be compiled/formatted too.
 
+Note: if that command finds formatting errors, they can be fixed with:
+`VAUTOFIX=1 ./v check-md -hide-warnings file.md`
+
 ## `v test-self`
 
 Run `vlib` module tests, *including* the compiler tests.

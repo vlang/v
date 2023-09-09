@@ -1924,7 +1924,7 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 		panic('cgen: parameter `ret_typ` of function `expr_with_tmp_var()` must be an Option or Result')
 	}
 
-	stmt_str := g.go_before_stmt(0).trim_space()
+	stmt_str := g.go_before_last_stmt().trim_space()
 	mut styp := g.base_type(ret_typ)
 	g.empty_line = true
 
@@ -2474,7 +2474,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 				fname := g.get_sumtype_casting_fn(unwrapped_got_type, unwrapped_expected_type)
 
 				if expr is ast.ArrayInit && got_sym.kind == .array_fixed {
-					stmt_str := g.go_before_stmt(0).trim_space()
+					stmt_str := g.go_before_last_stmt().trim_space()
 					g.empty_line = true
 					tmp_var := g.new_tmp_var()
 					g.write('${got_styp} ${tmp_var} = ')
@@ -3368,7 +3368,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				g.expr(node.expr)
 				g.write(')')
 			} else if node.op == .question {
-				cur_line := g.go_before_stmt(0).trim_space()
+				cur_line := g.go_before_last_stmt().trim_space()
 				mut expr_str := ''
 				if mut node.expr is ast.ComptimeSelector && node.expr.left is ast.Ident {
 					// val.$(field.name)?
@@ -3409,7 +3409,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				elem_type := right_inf.elem_type
 				is_gen_or_and_assign_rhs := gen_or && !g.discard_or_result
 				cur_line := if is_gen_or_and_assign_rhs {
-					line := g.go_before_stmt(0)
+					line := g.go_before_last_stmt()
 					g.out.write_string(util.tabs(g.indent))
 					line
 				} else {
@@ -3608,8 +3608,8 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 
 	if node.or_block.kind != .absent && !g.is_assign_lhs && g.table.sym(node.typ).kind != .chan {
 		is_ptr := sym.kind in [.interface_, .sum_type]
-		stmt_str := g.go_before_stmt(0).trim_space()
-		styp := g.typ(node.typ)
+		stmt_str := g.go_before_last_stmt().trim_space()
+		styp := g.typ(g.unwrap_generic(node.typ))
 		g.empty_line = true
 		tmp_var := g.new_tmp_var()
 		g.write('${styp} ${tmp_var} = ')
@@ -3881,7 +3881,16 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 		if field.has_expr {
 			g.enum_typedefs.write_string(' = ')
 			expr_str := g.expr_string(field.expr)
-			g.enum_typedefs.write_string(expr_str)
+			if field.expr is ast.Ident && field.expr.kind == .constant {
+				const_def := g.global_const_defs[util.no_dots(field.expr.name)]
+				if const_def.def.starts_with('#define') {
+					g.enum_typedefs.write_string(const_def.def.all_after_last(' '))
+				} else {
+					g.enum_typedefs.write_string(expr_str)
+				}
+			} else {
+				g.enum_typedefs.write_string(expr_str)
+			}
 			cur_enum_expr = expr_str
 			cur_enum_offset = 0
 		} else if is_flag {
@@ -3932,7 +3941,7 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 	mut cur_line := ''
 	if node.is_expr {
 		styp := g.typ(node.typ)
-		cur_line = g.go_before_stmt(0)
+		cur_line = g.go_before_last_stmt()
 		g.writeln('${styp} ${tmp_result};')
 	}
 	mut mtxs := ''
@@ -4106,7 +4115,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 	is_expr := node.is_expr || g.inside_ternary > 0
 	cur_line := if is_expr {
 		g.empty_line = true
-		g.go_before_stmt(0)
+		g.go_before_last_stmt()
 	} else {
 		''
 	}
@@ -4321,7 +4330,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 				}
 				if node.or_expr.kind != .absent && !(g.inside_opt_or_res && g.inside_assign
 					&& !g.is_assign_lhs) {
-					stmt_str := g.go_before_stmt(0).trim_space()
+					stmt_str := g.go_before_last_stmt().trim_space()
 					g.empty_line = true
 					var_name := if !g.is_assign_lhs && is_auto_heap { '(*${name})' } else { name }
 					g.or_block(var_name, node.or_expr, comptime_type)
@@ -4365,7 +4374,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 			}
 			if node.or_expr.kind != .absent && !(g.inside_opt_or_res && g.inside_assign
 				&& !g.is_assign_lhs) {
-				stmt_str := g.go_before_stmt(0).trim_space()
+				stmt_str := g.go_before_last_stmt().trim_space()
 				g.empty_line = true
 				var_name := if !g.is_assign_lhs && is_auto_heap {
 					'(*${name})'
@@ -4462,7 +4471,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 		}
 	}
 	if node.or_expr.kind != .absent && !(g.inside_opt_or_res && g.inside_assign && !g.is_assign_lhs) {
-		stmt_str := g.go_before_stmt(0).trim_space()
+		stmt_str := g.go_before_last_stmt().trim_space()
 		g.empty_line = true
 		var_opt := if is_auto_heap { '(*${name})' } else { name }
 		g.or_block(var_opt, node.or_expr, node.obj.typ)
@@ -4525,7 +4534,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		} else if node.typ.has_flag(.option) {
 			if sym.kind == .alias {
 				if (sym.info as ast.Alias).parent_type.has_flag(.option) {
-					cur_stmt := g.go_before_stmt(0)
+					cur_stmt := g.go_before_last_stmt()
 					g.empty_line = true
 					parent_type := (sym.info as ast.Alias).parent_type
 					tmp_var := g.new_tmp_var()
@@ -4967,18 +4976,18 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				mut tmp := g.new_tmp_var()
 				if !call_expr.return_type.has_flag(.option)
 					&& !call_expr.return_type.has_flag(.result) {
-					line := g.go_before_stmt(0)
+					line := g.go_before_last_stmt()
 					expr_styp := g.typ(call_expr.return_type)
 					g.write('${expr_styp} ${tmp}=')
 					g.expr(expr)
 					g.writeln(';')
-					multi_unpack += g.go_before_stmt(0)
+					multi_unpack += g.go_before_last_stmt()
 					g.write(line)
 				} else {
-					line := g.go_before_stmt(0)
+					line := g.go_before_last_stmt()
 					g.tmp_count--
 					g.expr(expr)
-					multi_unpack += g.go_before_stmt(0)
+					multi_unpack += g.go_before_last_stmt()
 					g.write(line)
 					expr_styp := g.base_type(call_expr.return_type)
 					tmp = ('(*(${expr_styp}*)${tmp}.data)')

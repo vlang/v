@@ -151,7 +151,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 		has_attrs := field.attrs.len > 0
 		if has_attrs {
 			f.write(strings.repeat(` `, field_align.max_type_len - field_types[i].len))
-			f.single_line_attrs(field.attrs, inline: true)
+			f.single_line_attrs(field.attrs, same_line: true)
 		}
 		if field.has_default_expr {
 			if default_expr_aligns[default_expr_align_i].line_nr < field.pos.line_nr {
@@ -197,7 +197,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 		f.writeln('}')
 	}
 	if node.end_comments.len > 0 {
-		f.comments(node.end_comments, inline: true)
+		f.comments(node.end_comments, same_line: true)
 	}
 }
 
@@ -271,7 +271,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 			f.write('${name}{}')
 		} else {
 			f.writeln('${name}{')
-			f.comments(node.pre_comments, inline: true, has_nl: true, level: .indent)
+			f.comments(node.pre_comments, same_line: true, has_nl: true, level: .indent)
 			f.write('}')
 		}
 		f.mark_import_as_used(name)
@@ -320,7 +320,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 				f.writeln('')
 				f.indent++
 			}
-			f.comments(node.pre_comments, inline: true, has_nl: true, level: .keep)
+			f.comments(node.pre_comments, same_line: true, has_nl: true, level: .keep)
 			if node.has_update_expr {
 				f.write('...')
 				f.expr(node.update_expr)
@@ -331,12 +331,12 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 				} else {
 					f.writeln('')
 				}
-				f.comments(node.update_expr_comments, inline: true, has_nl: true, level: .keep)
+				f.comments(node.update_expr_comments, same_line: true, has_nl: true, level: .keep)
 			}
 			for i, init_field in node.init_fields {
 				f.write('${init_field.name}: ')
 				f.expr(init_field.expr)
-				f.comments(init_field.comments, inline: true, has_nl: false, level: .indent)
+				f.comments(init_field.comments, same_line: true, has_nl: false, level: .indent)
 				if single_line_fields {
 					if i < node.init_fields.len - 1 {
 						f.write(', ')
@@ -344,7 +344,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 				} else {
 					f.writeln('')
 				}
-				f.comments(init_field.next_comments, inline: false, has_nl: true, level: .keep)
+				f.comments(init_field.next_comments, has_nl: true, level: .keep)
 				if single_line_fields && (init_field.comments.len > 0
 					|| init_field.next_comments.len > 0
 					|| !expr_is_single_line(init_field.expr)

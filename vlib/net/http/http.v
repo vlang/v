@@ -15,12 +15,13 @@ const (
 pub struct FetchConfig {
 pub mut:
 	url        string
-	method     Method
+	method     Method = .get
 	header     Header
 	data       string
 	params     map[string]string
 	cookies    map[string]string
-	user_agent string = 'v.http'
+	user_agent string  = 'v.http'
+	user_ptr   voidptr = unsafe { nil }
 	verbose    bool
 	//
 	validate               bool   // set this to true, if you want to stop requests, when their certificates are found to be invalid
@@ -29,6 +30,10 @@ pub mut:
 	cert_key               string // the path to a key.pem file, containing private keys for the client certificate(s)
 	in_memory_verification bool   // if true, verify, cert, and cert_key are read from memory, not from a file
 	allow_redirect         bool = true // whether to allow redirect
+	// callbacks to allow custom reporting code to run, while the request is running
+	on_redirect RequestRedirectFn = unsafe { nil }
+	on_progress RequestProgressFn = unsafe { nil }
+	on_finish   RequestFinishFn   = unsafe { nil }
 }
 
 // new_request creates a new Request given the request `method`, `url_`, and
@@ -149,7 +154,7 @@ pub fn fetch(config FetchConfig) !Response {
 		header: config.header
 		cookies: config.cookies
 		user_agent: config.user_agent
-		user_ptr: 0
+		user_ptr: config.user_ptr
 		verbose: config.verbose
 		validate: config.validate
 		verify: config.verify
@@ -157,6 +162,9 @@ pub fn fetch(config FetchConfig) !Response {
 		cert_key: config.cert_key
 		in_memory_verification: config.in_memory_verification
 		allow_redirect: config.allow_redirect
+		on_progress: config.on_progress
+		on_redirect: config.on_redirect
+		on_finish: config.on_finish
 	}
 	res := req.do()!
 	return res
