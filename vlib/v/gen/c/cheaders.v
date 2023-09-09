@@ -447,7 +447,7 @@ const c_common_macros = '
 	#if defined(__GNUC__) && !defined(__clang__)
 		#define V_GCC_VERSION  (__GNUC__ * 10000L + __GNUC_MINOR__ * 100L + __GNUC_PATCHLEVEL__)
 		#if (V_GCC_VERSION >= 40500L) && !defined(__TINYC__)
-                	#define VUNREACHABLE()  do { __builtin_unreachable(); } while (0)
+			#define VUNREACHABLE()  do { __builtin_unreachable(); } while (0)
 		#endif
 	#endif
 	#if defined(__clang__) && defined(__has_builtin) && !defined(__TINYC__)
