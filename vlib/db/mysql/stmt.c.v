@@ -247,6 +247,13 @@ pub fn (mut stmt Stmt) bind_text(b string) {
 	stmt.bind(mysql.mysql_type_string, b.str, u32(b.len))
 }
 
+// bind_null binds a single NULL value to the statement `stmt`
+pub fn (mut stmt Stmt) bind_null() {
+	stmt.binds << C.MYSQL_BIND{
+		buffer_type: mysql.mysql_type_null
+	}
+}
+
 // bind binds a single value pointed by `buffer`, to the statement `stmt`. The buffer length must be passed as well in `buf_len`.
 // Note: it is more convenient to use one of the other bind_XYZ methods.
 pub fn (mut stmt Stmt) bind(typ int, buffer voidptr, buf_len u32) {

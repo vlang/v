@@ -145,6 +145,9 @@ fn bind(stmt Stmt, c &int, data orm.Primitive) int {
 		orm.InfixType {
 			err = bind(stmt, c, data.right)
 		}
+		orm.NullType {
+			err = stmt.bind_null(c)
+		}
 	}
 	return err
 }

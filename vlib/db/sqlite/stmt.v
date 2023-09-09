@@ -1,5 +1,6 @@
 module sqlite
 
+fn C.sqlite3_bind_null(&C.sqlite3_stmt, int) int
 fn C.sqlite3_bind_double(&C.sqlite3_stmt, int, f64) int
 fn C.sqlite3_bind_int(&C.sqlite3_stmt, int, int) int
 fn C.sqlite3_bind_int64(&C.sqlite3_stmt, int, i64) int
@@ -19,6 +20,10 @@ fn (db &DB) new_init_stmt(query string) !Stmt {
 		return db.error_message(err, query)
 	}
 	return Stmt{stmt, db}
+}
+
+fn (stmt &Stmt) bind_null(idx int) int {
+	return C.sqlite3_bind_null(stmt.stmt, idx)
 }
 
 fn (stmt &Stmt) bind_int(idx int, v int) int {

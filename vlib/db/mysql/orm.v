@@ -250,6 +250,9 @@ fn stmt_bind_primitive(mut stmt Stmt, data orm.Primitive) {
 		orm.InfixType {
 			stmt_bind_primitive(mut stmt, data.right)
 		}
+		orm.NullType {
+			stmt.bind_null()
+		}
 	}
 }
 

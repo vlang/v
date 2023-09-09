@@ -38,6 +38,7 @@ pub const (
 )
 
 pub type Primitive = InfixType
+	| NullType
 	| bool
 	| f32
 	| f64
@@ -51,6 +52,8 @@ pub type Primitive = InfixType
 	| u32
 	| u64
 	| u8
+
+pub struct NullType {}
 
 pub enum OperationKind {
 	neq // !=
@@ -144,10 +147,11 @@ pub struct TableField {
 pub:
 	name        string
 	typ         int
-	is_time     bool
+	nullable    bool
 	default_val string
-	is_arr      bool
 	attrs       []StructAttribute
+	is_time     bool
+	is_arr      bool
 }
 
 // table - Table name
@@ -228,20 +232,6 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table string, q string, kind StmtKin
 							}
 							else {}
 						}
-					}
-
-					match data.data[i].type_name() {
-						'string' {
-							if (data.data[i] as string).len == 0 {
-								continue
-							}
-						}
-						'time.Time' {
-							if (data.data[i] as time.Time).unix == 0 {
-								continue
-							}
-						}
-						else {}
 					}
 					data_data << data.data[i]
 				}
@@ -452,7 +442,7 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 			continue
 		}
 		mut default_val := field.default_val
-		mut no_null := false
+		mut nullable := field.nullable
 		mut is_unique := false
 		mut is_skip := false
 		mut unique_len := 0
@@ -486,23 +476,17 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 					is_unique = true
 				}
 				'nonull' {
-					no_null = true
+					eprintln('the [nonull] attribute has been deprecated (all regular fields are "not null" now), please use option fields in struct for nullable database fields')
 				}
 				'skip' {
 					is_skip = true
 				}
 				'sql_type' {
-					if attr.kind != .string {
-						return error("sql_type attribute needs to be string. Try [sql_type: '${attr.arg}'] instead of [sql_type: ${attr.arg}]")
-					}
-					ctyp = attr.arg
+					ctyp = attr.arg.str()
 				}
 				'default' {
-					if attr.kind != .string {
-						return error("default attribute needs to be string. Try [default: '${attr.arg}'] instead of [default: ${attr.arg}]")
-					}
 					if default_val == '' {
-						default_val = attr.arg
+						default_val = attr.arg.str()
 					}
 				}
 				else {}
@@ -519,7 +503,7 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 		if defaults && default_val != '' {
 			stmt += ' DEFAULT ${default_val}'
 		}
-		if no_null {
+		if !nullable {
 			stmt += ' NOT NULL'
 		}
 		if is_unique {
