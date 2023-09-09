@@ -23,6 +23,9 @@ pub fn decode[T](toml_txt string) !T {
 			return typ
 		}
 	}
+	$if T !is $struct {
+		return error('toml.decode: expected struct, found ${T.name}')
+	}
 	decode_struct[T](doc.to_any(), mut typ)
 	return typ
 }
