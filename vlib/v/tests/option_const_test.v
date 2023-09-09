@@ -5,6 +5,6 @@ fn get_var() ?string {
 }
 
 fn test_main() {
-	a := var
+	a := var or { 'default' }
 	assert dump(a) == 'default'
 }
