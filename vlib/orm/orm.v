@@ -475,9 +475,6 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 					}
 					is_unique = true
 				}
-				'nonull' {
-					eprintln('the [nonull] attribute has been deprecated (all regular fields are "not null" now), please use option fields in struct for nullable database fields')
-				}
 				'skip' {
 					is_skip = true
 				}

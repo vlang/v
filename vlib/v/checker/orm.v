@@ -222,6 +222,11 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	info := table_sym.info as ast.Struct
 	mut fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, table_sym.name,
 		ast.SqlExpr{})
+
+	for field in fields {
+		c.check_orm_struct_field_attrs(node, field)
+	}
+
 	mut sub_structs := map[int]ast.SqlStmtLine{}
 	non_primitive_fields := c.get_orm_non_primitive_fields(fields)
 
@@ -233,7 +238,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 			continue
 		}
 
-		c.check_orm_struct_field_attributes(field)
+		c.check_orm_non_primitive_struct_field_attrs(field)
 
 		typ := c.get_type_of_field_with_related_table(field)
 
@@ -287,7 +292,16 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	return ast.void_type
 }
 
-fn (mut c Checker) check_orm_struct_field_attributes(field ast.StructField) {
+fn (mut c Checker) check_orm_struct_field_attrs(node ast.SqlStmtLine, field ast.StructField) {
+	for attr in field.attrs {
+		if attr.name == 'nonull' {
+			c.warn('[nonull] attributes are deprecated (all regular fields are "not null"), please use option fields to represent nullable columns',
+				node.pos)
+		}
+	}
+}
+
+fn (mut c Checker) check_orm_non_primitive_struct_field_attrs(field ast.StructField) {
 	field_type := c.table.sym(field.typ)
 	mut has_fkey_attr := false
 
