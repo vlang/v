@@ -882,7 +882,6 @@ pub fn (mut g Gen) generate_elf_footer() {
 		// -5 is for "e8 00 00 00 00"
 		g.write32_at(g.code_start_pos + 1, int(g.main_fn_addr - g.code_start_pos) - 5)
 	}
-
 	g.create_executable()
 }
 

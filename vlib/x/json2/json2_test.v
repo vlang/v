@@ -123,10 +123,7 @@ fn test_struct_with_struct_to_map() {
 }
 
 fn test_maps() {
-	assert json.decode[map[string]string]('{"test":"abc"}') or {
-		dump(err)
-		assert false
-	} == {
+	assert json.decode[map[string]string]('{"test":"abc"}')! == {
 		'test': 'abc'
 	}
 

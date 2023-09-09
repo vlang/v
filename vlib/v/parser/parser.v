@@ -65,6 +65,7 @@ mut:
 	inside_map_init           bool
 	inside_orm                bool
 	inside_chan_decl          bool
+	inside_attr_decl          bool
 	fixed_array_dim           int        // fixed array dim parsing level
 	or_is_handled             bool       // ignore `or` in this expression
 	builtin_mod               bool       // are we in the `builtin` module?
@@ -676,6 +677,7 @@ fn (mut p Parser) check_js_name() string {
 }
 
 fn (mut p Parser) check_name() string {
+	pos := p.tok.pos()
 	name := p.tok.lit
 	if p.peek_tok.kind == .dot && name in p.imports {
 		p.register_used_import(name)
@@ -685,6 +687,9 @@ fn (mut p Parser) check_name() string {
 		.key_enum { p.check(.key_enum) }
 		.key_interface { p.check(.key_interface) }
 		else { p.check(.name) }
+	}
+	if !p.inside_orm && !p.inside_attr_decl && name == 'sql' {
+		p.error_with_pos('unexpected keyword `sql`, expecting name', pos)
 	}
 	return name
 }
@@ -883,7 +888,6 @@ fn (mut p Parser) comment() ast.Comment {
 	text := p.tok.lit
 	num_newlines := text.count('\n')
 	is_multi := num_newlines > 0
-	is_inline := text.len + 4 == p.tok.len // 4: `/` `*` `*` `/`
 	pos.last_line = pos.line_nr + num_newlines
 	p.next()
 	// Filter out false positive space indent vet errors inside comments
@@ -894,7 +898,6 @@ fn (mut p Parser) comment() ast.Comment {
 	return ast.Comment{
 		text: text
 		is_multi: is_multi
-		is_inline: is_inline
 		pos: pos
 	}
 }
@@ -1828,6 +1831,10 @@ fn (mut p Parser) attributes() {
 
 fn (mut p Parser) parse_attr(is_at bool) ast.Attr {
 	mut kind := ast.AttrKind.plain
+	p.inside_attr_decl = true
+	defer {
+		p.inside_attr_decl = false
+	}
 	apos := p.prev_tok.pos()
 	if p.tok.kind == .key_unsafe {
 		p.next()
@@ -2059,6 +2066,10 @@ fn (mut p Parser) note_with_pos(s string, pos token.Pos) {
 		return
 	}
 	if p.is_generated {
+		return
+	}
+	if p.pref.notes_are_errors {
+		p.error_with_pos(s, pos)
 		return
 	}
 	if p.pref.output_mode == .stdout && !p.pref.check_only {
@@ -2761,7 +2772,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 		return p.struct_init(p.mod + '.' + p.tok.lit, .normal, is_option) // short_syntax: false
 	} else if p.peek_tok.kind == .lcbr
 		&& ((p.inside_if && lit0_is_capital && p.tok.lit.len > 1 && !known_var && language == .v)
-		|| (p.inside_match_case && p.tok.kind == .name && p.peek_tok.pos - p.tok.pos == p.tok.len)) {
+		|| (p.inside_match_case && p.tok.kind == .name && p.peek_tok.is_next_to(p.tok))) {
 		// `if a == Foo{} {...}` or `match foo { Foo{} {...} }`
 		return p.struct_init(p.mod + '.' + p.tok.lit, .normal, is_option)
 	} else if p.peek_tok.kind == .dot && (lit0_is_capital && !known_var && language == .v) {
@@ -3099,7 +3110,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		p.name_error = true
 	}
 	is_filter := field_name in ['filter', 'map', 'any', 'all']
-	if is_filter || field_name == 'sort' {
+	if is_filter || field_name == 'sort' || field_name == 'sorted' {
 		p.open_scope()
 	}
 	// ! in mutable methods
@@ -3163,7 +3174,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			scope: p.scope
 			comments: comments
 		}
-		if is_filter || field_name == 'sort' {
+		if is_filter || field_name == 'sort' || field_name == 'sorted' {
 			p.close_scope()
 		}
 		return mcall_expr

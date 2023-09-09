@@ -578,7 +578,7 @@ fn (mut d DenseArray) delete(i int) {
 	}
 }
 
-// Removes the mapping of a particular key from the map.
+// delete removes the mapping of a particular key from the map.
 [unsafe]
 pub fn (mut m map) delete(key voidptr) {
 	mut index, mut meta := m.key_to_index(key)
@@ -618,7 +618,7 @@ pub fn (mut m map) delete(key voidptr) {
 	}
 }
 
-// Returns all keys in the map.
+// keys returns all keys in the map.
 pub fn (m &map) keys() array {
 	mut keys := __new_array(m.len, 0, m.key_bytes)
 	mut item := unsafe { &u8(keys.data) }
@@ -645,7 +645,7 @@ pub fn (m &map) keys() array {
 	return keys
 }
 
-// Returns all values in the map.
+// values returns all values in the map.
 pub fn (m &map) values() array {
 	mut values := __new_array(m.len, 0, m.value_bytes)
 	mut item := unsafe { &u8(values.data) }

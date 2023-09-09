@@ -23,7 +23,7 @@ fn C.dlclose(handle voidptr) int
 
 fn C.dlerror() &char
 
-// open loads the dynamic shared object.
+// open loads a given dynamic shared object.
 pub fn open(filename string, flags int) voidptr {
 	return C.dlopen(&char(filename.str), flags)
 }

@@ -46,6 +46,8 @@ jobs:
           ./cmd/tools/test_if_v_test_system_works
       - name: All code is formatted
         run: ./v test-cleancode
+      - name: Test pure V math module
+        run: ./v -exclude @vlib/math/*.c.v test vlib/math/
       - name: Self tests
         run: .\v.exe test-self
         #    - name: Test
@@ -111,6 +113,8 @@ jobs:
 ### TODO: test-cleancode fails with msvc. Investigate why???
 ##      - name: All code is formatted
 ##        run: ./v test-cleancode
+      - name: Test pure V math module
+        run: ./v -exclude @vlib/math/*.c.v test vlib/math/
       - name: Self tests
         run: |
           ./v -cg cmd\tools\vtest-self.v
@@ -166,6 +170,8 @@ jobs:
         run: ./v -W build-tools
       - name: All code is formatted
         run: ./v test-cleancode
+      - name: Test pure V math module
+        run: ./v -exclude @vlib/math/*.c.v test vlib/math/
       - name: Self tests
         run: ./v test-self
       - name: Test v->js

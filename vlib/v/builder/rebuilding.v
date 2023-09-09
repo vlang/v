@@ -341,9 +341,15 @@ pub fn (mut b Builder) rebuild(backend_cb FnBackend) {
 		}
 		mut sall_v_source_lines := all_v_source_lines.str()
 		mut sall_v_source_bytes := all_v_source_bytes.str()
+		mut sall_v_types := b.table.type_symbols.len.str()
+		mut sall_v_modules := b.table.modules.len.str()
+		mut sall_v_files := b.parsed_files.len.str()
 		sall_v_source_lines = util.bold('${sall_v_source_lines:10s}')
 		sall_v_source_bytes = util.bold('${sall_v_source_bytes:10s}')
-		println('        V  source  code size: ${sall_v_source_lines} lines, ${sall_v_source_bytes} bytes')
+		sall_v_types = util.bold('${sall_v_types:5s}')
+		sall_v_modules = util.bold('${sall_v_modules:5s}')
+		sall_v_files = util.bold('${sall_v_files:5s}')
+		println('        V  source  code size: ${sall_v_source_lines} lines, ${sall_v_source_bytes} bytes, ${sall_v_types} types, ${sall_v_modules} modules, ${sall_v_files} files')
 		//
 		mut slines := b.stats_lines.str()
 		mut sbytes := b.stats_bytes.str()

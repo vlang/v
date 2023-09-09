@@ -1,0 +1,6 @@
+fn foo(sql string) {
+	println(sql)
+}
+fn main() {
+	foo("hi")
+}

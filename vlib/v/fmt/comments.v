@@ -12,13 +12,13 @@ pub enum CommentsLevel {
 
 // CommentsOptions defines the way comments are going to be written
 // - has_nl: adds an newline at the end of a list of comments
-// - inline: line comments will be on the same line as the last statement
+// - same_line: line comments will be on the same line as the last statement
 // - level:  either .keep (don't indent), or .indent (increment indentation)
 // - prev_line: the line number of the previous token to save linebreaks
 [minify; params]
 pub struct CommentsOptions {
 	has_nl    bool = true
-	inline    bool
+	same_line bool
 	level     CommentsLevel
 	prev_line int = -1
 }
@@ -42,17 +42,8 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 	if options.level == .indent {
 		f.indent++
 	}
-	if node.is_inline && !node.is_multi {
-		x := node.text.trim_left('\x01').trim_space()
-		if x.contains('\n') {
-			f.writeln('/*')
-			f.writeln(x)
-			f.write('*/')
-		} else {
-			f.write('/* ${x} */')
-		}
-	} else if !node.text.contains('\n') {
-		is_separate_line := !options.inline || node.text.starts_with('\x01')
+	if !node.text.contains('\n') {
+		is_separate_line := !options.same_line || node.text.starts_with('\x01')
 		mut s := node.text.trim_left('\x01').trim_right(' ')
 		mut out_s := '//'
 		if s != '' {
@@ -99,13 +90,11 @@ pub fn (mut f Fmt) comments(comments []ast.Comment, options CommentsOptions) {
 			|| (c.pos.line_nr > prev_line + 1 && f.out.len > 2 && f.out.last_n(2) != '\n\n')) {
 			f.writeln('')
 		}
-		if f.out.len > 1 && !f.out.last_n(1)[0].is_space() {
+		if i == 0 && f.out.len > 1 && !f.out.last_n(1)[0].is_space() {
 			f.write(' ')
 		}
 		f.comment(c, options)
-		if c.is_inline && i < comments.len - 1 && !c.is_multi {
-			f.write(' ')
-		} else if (!c.is_inline || c.is_multi) && (i < comments.len - 1 || options.has_nl) {
+		if i < comments.len - 1 || options.has_nl {
 			f.writeln('')
 		}
 		prev_line = c.pos.last_line
@@ -121,7 +110,7 @@ pub fn (mut f Fmt) comments_after_last_field(comments []ast.Comment) {
 	for comment in comments {
 		f.indent++
 		f.empty_line = true
-		f.comment(comment, inline: true)
+		f.comment(comment, same_line: true)
 		f.writeln('')
 		f.indent--
 	}
@@ -131,7 +120,7 @@ pub fn (mut f Fmt) import_comments(comments []ast.Comment, options CommentsOptio
 	if comments.len == 0 {
 		return
 	}
-	if options.inline {
+	if options.same_line {
 		f.remove_new_line(imports_buffer: true)
 	}
 	for c in comments {
@@ -139,7 +128,7 @@ pub fn (mut f Fmt) import_comments(comments []ast.Comment, options CommentsOptio
 		if ctext == '' {
 			continue
 		}
-		mut out_s := if options.inline { ' ' } else { '' } + '//'
+		mut out_s := if options.same_line { ' ' } else { '' } + '//'
 		if is_char_alphanumeric(ctext[0]) {
 			out_s += ' '
 		}

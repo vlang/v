@@ -1,7 +1,5 @@
 module log
 
-import time
-
 fn log_mutable_statements(mut log Log) {
 	println(@FN + ' start')
 	log.info('info')
@@ -28,10 +26,6 @@ fn logger_mutable_statements(mut log Logger) {
 	log.debug('output for debug now')
 	log.info('output for info now')
 	println(@FN + ' end')
-}
-
-fn delay() {
-	time.sleep(1 * time.second)
 }
 
 // Note that Log and Logger methods requires a mutable instance
@@ -63,8 +57,8 @@ fn test_log_mutable_reference() {
 	println(@FN + ' start')
 	mut log := new_log()
 	assert typeof(log).name == '&log.Log'
-	spawn log_mutable_statements(mut log)
-	delay() // wait to finish
+	t := spawn log_mutable_statements(mut log)
+	t.wait()
 	assert true
 	println(@FN + ' end')
 }
@@ -75,8 +69,8 @@ fn test_logger_mutable_reference() {
 	mut logger := new_log_as_logger()
 	logger.set_level(.warn)
 	assert typeof(logger).name == '&log.Logger'
-	spawn logger_mutable_statements(mut logger)
-	delay() // wait to finish
+	t := spawn logger_mutable_statements(mut logger)
+	t.wait()
 	assert true
 	println(@FN + ' end')
 }

@@ -5,6 +5,10 @@ import strings
 #include <sys/stat.h> // #include <signal.h>
 #include <errno.h>
 
+$if freebsd {
+	#include <sys/sysctl.h>
+}
+
 pub const (
 	args = []string{}
 )
@@ -712,7 +716,10 @@ pub fn executable() string {
 	}
 	$if freebsd {
 		bufsize := usize(max_path_buffer_size)
-		mib := [1 /* CTL_KERN */, 14 /* KERN_PROC */, 12 /* KERN_PROC_PATHNAME */, -1]
+		mib := [1, // CTL_KERN
+		 		14, // KERN_PROC
+		 		12, // KERN_PROC_PATHNAME
+		 		-1]
 		unsafe { C.sysctl(mib.data, mib.len, &result[0], &bufsize, 0, 0) }
 		res := unsafe { tos_clone(&result[0]) }
 		return res
@@ -1001,7 +1008,8 @@ pub fn chown(path string, owner int, group int) ! {
 	}
 }
 
-// open_append opens `path` file for appending.
+// open_append tries to open a file from a given path.
+// If successfull, it and returns a `File` for appending.
 pub fn open_append(path string) !File {
 	mut file := File{}
 	$if windows {

@@ -29,7 +29,7 @@ enum SqlExprSide {
 // from the database, which is used by the `select` query.
 fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	// users :=
-	left := g.go_before_stmt(0)
+	left := g.go_before_last_stmt()
 	connection_var_name := g.new_tmp_var()
 
 	g.writeln('')

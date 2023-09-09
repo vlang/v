@@ -371,6 +371,11 @@ pub fn (t Kind) str() string {
 	return token.token_str[idx]
 }
 
+[inline]
+pub fn (t Token) is_next_to(pre_token Token) bool {
+	return t.pos - pre_token.pos == pre_token.len
+}
+
 pub fn (t Token) str() string {
 	mut s := t.kind.str()
 	if s.len == 0 {

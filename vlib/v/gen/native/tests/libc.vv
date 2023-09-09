@@ -11,8 +11,8 @@ fn main() {
 }
 
 fn charutil() {
-	// only linux supports linking right now
-	$if linux {
+	// only linux and windows support linking right now
+	$if linux || windows {
 		// ascii for `V`
 		v_is_alpha := C.isalpha(86)
 		assert v_is_alpha != 0
@@ -27,7 +27,8 @@ fn charutil() {
 }
 
 fn memory() {
-	$if linux {
+	// only linux and windows support linking right now
+	$if linux || windows {
 		// allocate some memory
 		buf := &int(C.malloc(100))
 		assert buf != unsafe { nil }
@@ -39,7 +40,6 @@ fn memory() {
 			*buf = 123456
 			*(buf + sizeof(int)) = 100
 		}
-
 		assert *buf == 123456
 		assert *(buf + sizeof(int)) == 100
 		C.free(voidptr(buf))

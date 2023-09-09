@@ -691,7 +691,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			tmp_var := g.new_tmp_var()
 			fn_type := g.fn_var_signature(node.left.decl.return_type, node.left.decl.params.map(it.typ),
 				tmp_var)
-			line := g.go_before_stmt(0).trim_space()
+			line := g.go_before_last_stmt().trim_space()
 			g.empty_line = true
 			g.write('${fn_type} = ')
 			g.expr(node.left)
@@ -713,7 +713,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			g.inside_curry_call = true
 			ret_typ := node.return_type
 
-			line := g.go_before_stmt(0)
+			line := g.go_before_last_stmt()
 			g.empty_line = true
 
 			tmp_res := g.new_tmp_var()
@@ -741,7 +741,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	mut cur_line := if !g.inside_curry_call && (is_gen_or_and_assign_rhs || gen_keep_alive) { // && !g.is_autofree {
 		// `x := foo() or { ...}`
 		// cut everything that has been generated to prepend option variable creation
-		line := g.go_before_stmt(0)
+		line := g.go_before_last_stmt()
 		g.out.write_string(util.tabs(g.indent))
 		line
 	} else {
@@ -767,7 +767,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		}
 		mut styp := g.typ(ret_typ)
 		if gen_or && !is_gen_or_and_assign_rhs {
-			cur_line = g.go_before_stmt(0)
+			cur_line = g.go_before_last_stmt()
 		}
 		if gen_or && g.infix_left_var_name.len > 0 {
 			g.writeln('${styp} ${tmp_opt};')
@@ -804,7 +804,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 				unwrapped_typ = unaliased_type.clear_flags(.option, .result)
 			}
 		}
-		unwrapped_styp := g.typ(unwrapped_typ)
+		mut unwrapped_styp := g.typ(unwrapped_typ)
 		if g.infix_left_var_name.len > 0 {
 			g.indent--
 			g.writeln('}')
@@ -814,6 +814,11 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			g.write('\n ${cur_line}')
 		} else if !g.inside_curry_call {
 			if !g.inside_const_opt_or_res {
+				if g.assign_ct_type != 0
+					&& node.or_block.kind in [.propagate_option, .propagate_result] {
+					unwrapped_styp = g.typ(g.assign_ct_type.derive(node.return_type).clear_flags(.option,
+						.result))
+				}
 				g.write('\n ${cur_line} (*(${unwrapped_styp}*)${tmp_opt}.data)')
 			} else {
 				g.write('\n ${cur_line} ${tmp_opt}')
@@ -890,6 +895,10 @@ fn (mut g Gen) gen_array_method_call(node ast.CallExpr, left_type ast.Type) bool
 		}
 		'sort' {
 			g.gen_array_sort(node)
+			return true
+		}
+		'sorted' {
+			g.gen_array_sorted(node)
 			return true
 		}
 		'insert' {
@@ -1298,7 +1307,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		receiver_type_name = 'map'
 	}
 	if final_left_sym.kind == .array && !(left_sym.kind == .alias && left_sym.has_method(node.name))
-		&& node.name in ['clear', 'repeat', 'sort_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice', 'pointers'] {
+		&& node.name in ['clear', 'repeat', 'sort_with_compare', 'sorted_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice', 'pointers'] {
 		if !(left_sym.info is ast.Alias && typ_sym.has_method(node.name)) {
 			// `array_Xyz_clone` => `array_clone`
 			receiver_type_name = 'array'
@@ -1552,7 +1561,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		g.is_json_fn = true
 		json_obj = g.new_tmp_var()
 		mut tmp2 := ''
-		cur_line := g.go_before_stmt(0)
+		cur_line := g.go_before_last_stmt()
 		if is_json_encode || is_json_encode_pretty {
 			g.gen_json_for_type(node.args[0].typ)
 			json_type_str = g.typ(node.args[0].typ)
@@ -1794,7 +1803,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			} else {
 				if node.is_keep_alive
 					&& g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt] {
-					cur_line := g.go_before_stmt(0)
+					cur_line := g.go_before_last_stmt()
 					tmp_cnt_save = g.keep_alive_call_pregen(node)
 					g.write(cur_line)
 					for i in 0 .. node.args.len {

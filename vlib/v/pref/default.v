@@ -6,9 +6,7 @@ module pref
 import os
 import v.vcache
 
-pub const (
-	default_module_path = os.vmodules_dir()
-)
+pub const default_module_path = os.vmodules_dir()
 
 pub fn new_preferences() &Preferences {
 	mut p := &Preferences{}
@@ -21,19 +19,38 @@ fn (mut p Preferences) expand_lookup_paths() {
 		// Location of all vlib files
 		p.vroot = os.dir(vexe_path())
 	}
-	vlib_path := os.join_path(p.vroot, 'vlib')
+	p.vlib = os.join_path(p.vroot, 'vlib')
+	p.vmodules_paths = os.vmodules_paths()
+	//
 	if p.lookup_path.len == 0 {
 		p.lookup_path = ['@vlib', '@vmodules']
 	}
 	mut expanded_paths := []string{}
 	for path in p.lookup_path {
 		match path {
-			'@vlib' { expanded_paths << vlib_path }
-			'@vmodules' { expanded_paths << os.vmodules_paths() }
+			'@vlib' { expanded_paths << p.vlib }
+			'@vmodules' { expanded_paths << p.vmodules_paths }
 			else { expanded_paths << path }
 		}
 	}
 	p.lookup_path = expanded_paths
+}
+
+fn (mut p Preferences) expand_exclude_paths() {
+	mut res := []string{}
+	static_replacement_list := ['@vroot', p.vroot, '@vlib', p.vlib]
+	for x in p.exclude {
+		y := x.replace_each(static_replacement_list)
+		if y.contains('@vmodules') {
+			// @vmodules is a list of paths, each of which should be expanded in the complete exclusion list:
+			for vmp in p.vmodules_paths {
+				res << y.replace('@vmodules', vmp)
+			}
+			continue
+		}
+		res << y
+	}
+	p.exclude = res
 }
 
 pub fn (mut p Preferences) fill_with_defaults() {
@@ -41,6 +58,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		p.arch = get_host_arch()
 	}
 	p.expand_lookup_paths()
+	p.expand_exclude_paths()
 	rpath := os.real_path(p.path)
 	if p.out_name == '' {
 		filename := os.file_name(rpath).trim_space()

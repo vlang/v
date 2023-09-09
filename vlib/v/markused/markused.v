@@ -26,8 +26,8 @@ pub fn mark_used(mut table ast.Table, pref_ &pref.Preferences, ast_files []&ast.
 			'__new_array_with_default',
 			'__new_array_with_multi_default',
 			'__new_array_with_array_default',
-			'init_global_allocator' /* needed for linux_bare and wasm_bare */,
-			'v_realloc' /* needed for _STR */,
+			'init_global_allocator', // needed for linux_bare and wasm_bare
+			'v_realloc', // needed for _STR
 			'malloc',
 			'malloc_noscan',
 			'vcalloc',
@@ -89,12 +89,12 @@ pub fn mark_used(mut table ast.Table, pref_ &pref.Preferences, ast_files []&ast.
 			'22.set',
 			'22.get_unsafe',
 			'22.set_unsafe',
-			'22.get_with_check' /* used for `x := a[i] or {}` */,
+			'22.get_with_check', // used for `x := a[i] or {}`
 			'22.clone_static_to_depth',
 			'22.clone_to_depth',
 			'22.first',
 			'22.last',
-			'22.pointers' /* TODO: handle generic methods calling array primitives more precisely in pool_test.v */,
+			'22.pointers', // TODO: handle generic methods calling array primitives more precisely in pool_test.v
 			'22.reverse',
 			'22.repeat_to_depth',
 			'22.slice',

@@ -84,9 +84,9 @@ fn __print_assert_failure(i &VAssertMetaInfo) {
 		} else {
 			eprintln('  right value: ${i.rlabel} = ${i.rvalue}')
 		}
-		if i.has_msg {
-			eprintln('      message: ${i.message}')
-		}
+	}
+	if i.has_msg {
+		eprintln('      message: ${i.message}')
 	}
 }
 

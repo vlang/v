@@ -380,10 +380,6 @@ fn (mut c Arm64) convert_rune_to_string(r Register, buffer int, var Var, config 
 	panic('Arm64.convert_rune_to_string() not implemented')
 }
 
-fn (mut c Arm64) apicall(call ApiCall) {
-	panic('Arm64.apicall() not implemented')
-}
-
 fn (mut c Arm64) trap() {
 	c.g.write32(0xcccccccc)
 	c.g.println('trap')

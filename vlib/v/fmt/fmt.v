@@ -354,7 +354,7 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 			f.import_comments(imp.next_comments)
 		} else {
 			f.out_imports.writeln(import_text)
-			f.import_comments(imp.comments, inline: true)
+			f.import_comments(imp.comments, same_line: true)
 			f.import_comments(imp.next_comments)
 		}
 		num_imports++
@@ -616,7 +616,7 @@ pub fn (mut f Fmt) expr(node_ ast.Expr) {
 			f.char_literal(node)
 		}
 		ast.Comment {
-			f.comment(node, inline: true)
+			f.comment(node, same_line: true)
 		}
 		ast.ComptimeCall {
 			f.comptime_call(node)
@@ -777,8 +777,10 @@ fn expr_is_single_line(expr ast.Expr) bool {
 			}
 		}
 		ast.ArrayInit {
-			if expr.exprs.len > 0 {
-				return expr_is_single_line(expr.exprs[0])
+			for e in expr.exprs {
+				if !expr_is_single_line(e) {
+					return false
+				}
 			}
 		}
 		ast.ConcatExpr {
@@ -840,7 +842,7 @@ pub fn (mut f Fmt) assign_stmt(node ast.AssignStmt) {
 			f.write(', ')
 		}
 	}
-	f.comments(node.end_comments, has_nl: false, inline: true, level: .keep)
+	f.comments(node.end_comments, has_nl: false, same_line: true, level: .keep)
 	if !f.single_line_if {
 		f.writeln('')
 	}
@@ -928,7 +930,7 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 			if f.should_insert_newline_before_node(ast.Expr(field.comments[0]), prev_field) {
 				f.writeln('')
 			}
-			f.comments(field.comments, inline: true)
+			f.comments(field.comments, same_line: true)
 			prev_field = ast.Expr(field.comments.last())
 		}
 		if node.is_block && f.should_insert_newline_before_node(field, prev_field) {
@@ -939,7 +941,7 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 		f.write(strings.repeat(` `, align_infos[align_idx].max - field.name.len))
 		f.write('= ')
 		f.expr(field.expr)
-		f.comments(field.end_comments, inline: true)
+		f.comments(field.end_comments, same_line: true)
 		if node.is_block && field.end_comments.len == 0 {
 			f.writeln('')
 		} else {
@@ -948,7 +950,7 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 			if node.end_comments.len > 0 && node.end_comments[0].text.contains('\n') {
 				f.writeln('\n')
 			}
-			f.comments(node.end_comments, inline: true)
+			f.comments(node.end_comments, same_line: true)
 		}
 		prev_field = field
 	}
@@ -999,7 +1001,7 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 		return
 	}
 	f.writeln('enum ${name} {')
-	f.comments(node.comments, inline: true, level: .indent)
+	f.comments(node.comments, same_line: true, level: .indent)
 	for field in node.fields {
 		f.write('\t${field.name}')
 		if field.has_expr {
@@ -1008,11 +1010,11 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 		}
 		if field.attrs.len > 0 {
 			f.write(' ')
-			f.single_line_attrs(field.attrs, inline: true)
+			f.single_line_attrs(field.attrs, same_line: true)
 		}
-		f.comments(field.comments, inline: true, has_nl: false, level: .indent)
+		f.comments(field.comments, same_line: true, has_nl: false, level: .indent)
 		f.writeln('')
-		f.comments(field.next_comments, inline: false, has_nl: true, level: .indent)
+		f.comments(field.next_comments, has_nl: true, level: .indent)
 	}
 	f.writeln('}\n')
 }
@@ -1059,7 +1061,7 @@ fn (mut f Fmt) fn_body(node ast.FnDecl) {
 			f.write(' {')
 			pre_comments := node.comments.filter(it.pos.pos < node.name_pos.pos)
 			body_comments := node.comments[pre_comments.len..]
-			f.comments(body_comments, inline: true)
+			f.comments(body_comments, same_line: true)
 			if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
 				if body_comments.len == 0 {
 					f.writeln('')
@@ -1235,7 +1237,7 @@ pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
 		}
 	}
 	for field in node.fields {
-		f.comments(field.comments, inline: true)
+		f.comments(field.comments, same_line: true)
 		if field.is_volatile {
 			f.write('volatile ')
 		}
@@ -1300,7 +1302,7 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 	f.comments_before_field(node.pre_comments)
 	for embed in node.embeds {
 		f.write('\t${embed.name}')
-		f.comments(embed.comments, inline: true, has_nl: false, level: .indent)
+		f.comments(embed.comments, same_line: true, has_nl: false, level: .indent)
 		f.writeln('')
 	}
 	immut_fields := if node.mut_pos < 0 { node.fields } else { node.fields[..node.mut_pos] }
@@ -1359,9 +1361,9 @@ pub fn (mut f Fmt) interface_method(method ast.FnDecl) {
 	}
 	f.write('\t')
 	f.write(f.table.stringify_fn_decl(&method, f.cur_mod, f.mod2alias).all_after_first('fn '))
-	f.comments(end_comments, inline: true, has_nl: false, level: .indent)
+	f.comments(end_comments, same_line: true, has_nl: false, level: .indent)
 	f.writeln('')
-	f.comments(method.next_comments, inline: false, has_nl: true, level: .indent)
+	f.comments(method.next_comments, level: .indent)
 	for param in method.params {
 		f.mark_types_import_as_used(param.typ)
 	}
@@ -1393,7 +1395,7 @@ pub fn (mut f Fmt) return_stmt(node ast.Return) {
 				f.comments(pre_comments)
 				f.write(' ')
 			}
-			if expr is ast.ParExpr {
+			if expr is ast.ParExpr && expr.comments.len == 0 {
 				f.expr(expr.expr)
 			} else {
 				f.expr(expr)
@@ -1745,30 +1747,16 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 					f.writeln('')
 					f.comment(cmt)
 				} else {
-					if cmt.is_inline {
-						f.write(' ')
-						f.comment(cmt)
-						if !set_comma && cmt.pos.line_nr == expr_pos.last_line
-							&& cmt.pos.pos < expr_pos.pos {
-							f.write(',')
-							set_comma = true
-						} else {
-							if !cmt.is_inline {
-								// a // comment, transformed to a /**/ one, needs a comma too
-								f.write(',')
-								set_comma = true
-							}
-						}
-					} else {
-						if !set_comma {
-							f.write(',')
-							set_comma = true
-						}
-						f.write(' ')
-						f.comment(cmt)
+					if !set_comma {
+						f.write(',')
+						set_comma = true
+					}
+					f.write(' ')
+					f.comment(cmt)
+					if !line_break {
+						f.writeln('')
 					}
 				}
-				last_comment_was_inline = cmt.is_inline
 			}
 		} else if i == node.exprs.len - 1 && !line_break {
 			is_new_line = false
@@ -2610,7 +2598,7 @@ fn (mut f Fmt) match_branch(branch ast.MatchBranch, single_line bool) {
 			f.writeln('}')
 		}
 	}
-	f.comments(branch.post_comments, inline: true)
+	f.comments(branch.post_comments, same_line: true)
 }
 
 pub fn (mut f Fmt) match_expr(node ast.MatchExpr) {
@@ -2698,12 +2686,22 @@ pub fn (mut f Fmt) par_expr(node ast.ParExpr) {
 	for mut expr is ast.ParExpr {
 		expr = expr.expr
 	}
-	requires_paren := expr !is ast.Ident
+	requires_paren := expr !is ast.Ident || node.comments.len > 0
 	if requires_paren {
 		f.par_level++
 		f.write('(')
 	}
+	pre_comments := node.comments.filter(it.pos.pos < expr.pos().pos)
+	post_comments := node.comments[pre_comments.len..]
+	if pre_comments.len > 0 {
+		f.comments(pre_comments)
+		f.write(' ')
+	}
 	f.expr(expr)
+	if post_comments.len > 0 {
+		f.comments(post_comments)
+		f.write(' ')
+	}
 	if requires_paren {
 		f.par_level--
 		f.write(')')
@@ -2762,7 +2760,7 @@ pub fn (mut f Fmt) select_expr(node ast.SelectExpr) {
 	f.indent++
 	for branch in node.branches {
 		if branch.comment.text != '' {
-			f.comment(branch.comment, inline: true)
+			f.comment(branch.comment, same_line: true)
 			f.writeln('')
 		}
 		if branch.is_else {
@@ -2782,7 +2780,7 @@ pub fn (mut f Fmt) select_expr(node ast.SelectExpr) {
 		}
 		f.writeln('}')
 		if branch.post_comments.len > 0 {
-			f.comments(branch.post_comments, inline: true)
+			f.comments(branch.post_comments, same_line: true)
 		}
 	}
 	f.indent--

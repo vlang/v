@@ -63,12 +63,14 @@ fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.
 	if expr_typ.idx() == ret_typ.idx() && g.table.sym(expr_typ).kind != .alias {
 		return g.expr_with_opt(expr, expr_typ, ret_typ)
 	} else {
-		stmt_str := g.go_before_stmt(0).trim_space()
+		past := g.past_tmp_var_new()
+		defer {
+			g.past_tmp_var_done(past)
+		}
+
 		styp := g.base_type(ret_typ)
 		decl_styp := g.typ(ret_typ).replace('*', '_ptr')
-		g.empty_line = true
-		tmp_var := g.new_tmp_var()
-		g.writeln('${decl_styp} ${tmp_var};')
+		g.writeln('${decl_styp} ${past.tmp_var};')
 		g.write('_option_ok(&(${styp}[]) {')
 
 		if expr is ast.CastExpr && expr_typ.has_flag(.option) {
@@ -81,10 +83,9 @@ fn (mut g Gen) expr_opt_with_cast(expr ast.Expr, expr_typ ast.Type, ret_typ ast.
 			g.expr_with_cast(expr, expr_typ, ret_typ)
 			g.inside_opt_or_res = old_inside_opt_or_res
 		}
-		g.writeln(' }, (${option_name}*)(&${tmp_var}), sizeof(${styp}));')
-		g.write(stmt_str)
-		g.write(tmp_var)
-		return tmp_var
+		g.writeln(' }, (${option_name}*)(&${past.tmp_var}), sizeof(${styp}));')
+
+		return past.tmp_var
 	}
 }
 

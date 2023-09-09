@@ -7,7 +7,8 @@ Commonly Used Commands:
   fmt      Formats the given V source files or recursively formats all files in the directory,
            then prints their formatted source to stdout.
 
-  missdoc  Prints all V functions in .v files under PATH/, that do not yet have documentation comments.
+  missdoc  Prints all V functions in .v files under PATH/, that do not yet have documentation
+           comments.
 
   repl     Run the V REPL
 

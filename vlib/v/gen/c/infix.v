@@ -755,7 +755,7 @@ fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 
 		mut right_var := ''
 		if node.right is ast.Ident && node.right.or_expr.kind != .absent {
-			cur_line := g.go_before_stmt(0).trim_space()
+			cur_line := g.go_before_last_stmt().trim_space()
 			right_var = g.new_tmp_var()
 			g.write('${g.typ(right.typ)} ${right_var} = ')
 			g.op_arg(node.right, method.params[1].typ, right.typ)
@@ -910,7 +910,7 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 		g.inside_ternary = 0
 		if g.need_tmp_var_in_if(node.right) {
 			tmp := g.new_tmp_var()
-			cur_line := g.go_before_stmt(0).trim_space()
+			cur_line := g.go_before_last_stmt().trim_space()
 			g.empty_line = true
 			g.write('bool ${tmp} = (')
 			g.expr(node.left)
@@ -930,7 +930,7 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 		g.inside_ternary = 0
 		if g.need_tmp_var_in_match(node.right) {
 			tmp := g.new_tmp_var()
-			cur_line := g.go_before_stmt(0).trim_space()
+			cur_line := g.go_before_last_stmt().trim_space()
 			g.empty_line = true
 			g.write('bool ${tmp} = (')
 			g.expr(node.left)
@@ -947,7 +947,7 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 	} else if g.need_tmp_var_in_array_call(node.right) {
 		// `if a == 0 || arr.any(it.is_letter()) {...}`
 		tmp := g.new_tmp_var()
-		cur_line := g.go_before_stmt(0).trim_space()
+		cur_line := g.go_before_last_stmt().trim_space()
 		g.empty_line = true
 		if g.infix_left_var_name.len > 0 {
 			g.write('bool ${tmp} = ((${g.infix_left_var_name}) ${node.op.str()} ')
@@ -967,7 +967,7 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 			prev_inside_ternary := g.inside_ternary
 			g.inside_ternary = 0
 			tmp := g.new_tmp_var()
-			cur_line := g.go_before_stmt(0).trim_space()
+			cur_line := g.go_before_last_stmt().trim_space()
 			g.empty_line = true
 			g.write('bool ${tmp} = (')
 			g.expr(node.left)
@@ -988,7 +988,7 @@ fn (mut g Gen) infix_expr_and_or_op(node ast.InfixExpr) {
 				prev_inside_ternary := g.inside_ternary
 				g.inside_ternary = 0
 				tmp := g.new_tmp_var()
-				cur_line := g.go_before_stmt(0).trim_space()
+				cur_line := g.go_before_last_stmt().trim_space()
 				g.empty_line = true
 				g.write('bool ${tmp} = (')
 				g.expr(node.left)
@@ -1014,7 +1014,7 @@ fn (mut g Gen) gen_is_none_check(node ast.InfixExpr) {
 		g.inside_opt_or_res = old_inside_opt_or_res
 		g.write('.state')
 	} else {
-		stmt_str := g.go_before_stmt(0).trim_space()
+		stmt_str := g.go_before_last_stmt().trim_space()
 		g.empty_line = true
 		left_var := g.expr_with_opt(node.left, node.left_type, node.left_type)
 		g.writeln(';')

@@ -70,7 +70,7 @@ pub fn powi(a i64, b i64) i64 {
 	return v
 }
 
-// pow returns base raised to the provided power.
+// pow returns the base x, raised to the provided power y. (float64)
 //
 // todo(playXE): make this function work on JS backend, probably problem of JS codegen that it does not work.
 pub fn pow(x f64, y f64) f64 {
@@ -80,6 +80,10 @@ pub fn pow(x f64, y f64) f64 {
 		return x
 	} else if is_nan(x) || is_nan(y) {
 		return nan()
+	} else if y == 2 {
+		return x * x
+	} else if y == 3 {
+		return x * x * x
 	} else if x == 0 {
 		if y < 0 {
 			if is_odd_int(y) {
@@ -131,6 +135,17 @@ pub fn pow(x f64, y f64) f64 {
 		} else {
 			return inf(1)
 		}
+	}
+
+	if yf == 0.0 {
+		mut result := x
+		for _ in 1 .. i64(yi) {
+			result *= x
+		}
+		if y > 0 {
+			return result
+		}
+		return 1 / result
 	}
 
 	// ans = a1 * 2**ae (= 1 for now).

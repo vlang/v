@@ -138,7 +138,7 @@ fn (mut m ObjPart) parse_floats(row string, start_index int) m4.Vec4 {
 }
 
 // read and manage all the faes from an .obj file data
-fn (mut p Part) parse_faces(row string, start_index int, obj ObjPart) {
+fn (mut p Part) parse_faces(row string, start_index int, obj_part ObjPart) {
 	mut i := start_index + 1
 	mut res := [][3]int{}
 	mut v := 0
@@ -171,15 +171,15 @@ fn (mut p Part) parse_faces(row string, start_index int, obj ObjPart) {
 		// manage negative indexes
 		// NOTE: not well suporeted now
 		if v < 0 {
-			// println("${obj.v.len} ${obj.v.len-c}")
-			v = obj.v.len - v + 1
+			// println("${obj_part.v.len} ${obj_part.v.len-c}")
+			v = obj_part.v.len - v + 1
 			// exit(0)
 		}
 		if n < 0 {
-			n = obj.vn.len - n + 1
+			n = obj_part.vn.len - n + 1
 		}
 		if t < 0 {
-			t = obj.vt.len - t + 1
+			t = obj_part.vt.len - t + 1
 		}
 		res << [v - 1, n - 1, t - 1]!
 	}

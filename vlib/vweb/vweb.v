@@ -1035,6 +1035,11 @@ pub fn (mut ctx Context) host_serve_static(host string, url string, file_path st
 	ctx.static_hosts[url] = host
 }
 
+// user_agent returns the user-agent header for the current client
+pub fn (ctx &Context) user_agent() string {
+	return ctx.req.header.get(.user_agent) or { '' }
+}
+
 // Returns the ip address from the current user
 pub fn (ctx &Context) ip() string {
 	mut ip := ctx.req.header.get(.x_forwarded_for) or { '' }

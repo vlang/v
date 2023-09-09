@@ -169,7 +169,7 @@ match too, finally test the token `c`.
 > Two char classes with an `OR` in the middle is a syntax error.
 
 That also means, that a query string like `abc|bde` is not equal to
-`(abc)|(bde)`, but instead to `ab(c|b)de.
+`(abc)|(bde)`, but instead to `ab(c|b)de`.
 The OR operation works only for `c|b`, not at char concatenation level.
 
 ### Groups

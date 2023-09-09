@@ -26,8 +26,7 @@ pub fn get_libname(libname string) string {
 	return '${libname}${dl.dl_ext}'
 }
 
-// open_opt - loads the dynamic shared object.
-// Unlike open, open_opt return an option.
+// open_opt tries to load a given dynamic shared object.
 pub fn open_opt(filename string, flags int) !voidptr {
 	shared_object_handle := open(filename, flags)
 	if shared_object_handle == 0 {

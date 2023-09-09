@@ -144,7 +144,7 @@ fn (mut f Fmt) asm_templates(templates []ast.AsmTemplate) {
 		if template.comments.len == 0 {
 			f.writeln('')
 		} else {
-			f.comments(template.comments, inline: false)
+			f.comments(template.comments)
 		}
 	}
 }
@@ -159,7 +159,7 @@ fn (mut f Fmt) asm_clobbered(clobbered []ast.AsmClobbered) {
 		if clob.comments.len == 0 {
 			f.writeln('')
 		} else {
-			f.comments(clob.comments, inline: false)
+			f.comments(clob.comments)
 		}
 	}
 }
@@ -183,7 +183,7 @@ fn (mut f Fmt) asm_ios(ios []ast.AsmIO) {
 		if io.comments.len == 0 {
 			f.writeln('')
 		} else {
-			f.comments(io.comments, inline: false)
+			f.comments(io.comments)
 		}
 	}
 }

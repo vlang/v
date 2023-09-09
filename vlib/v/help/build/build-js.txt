@@ -15,7 +15,8 @@ pick another:
 For more general build help, see also `v help build`.
 
 # Interfacing the Javascript Backend code generation, passing options to it:
-   -es5  Compile V to ES5 compatible code possibly shrinking output. Note that this flag might limit some types capabilities.
+   -es5  Compile V to ES5 compatible code possibly shrinking output.
+         Note that this flag might limit some types capabilities.
    -prod
       Do not create any JS Doc comments
 
