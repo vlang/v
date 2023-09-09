@@ -12,6 +12,7 @@ import v.util
 import v.util.version
 import v.errors
 import v.pkgconfig
+import v.transformer
 import strings
 
 const (
@@ -1830,10 +1831,56 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 				}
 				ast.InfixExpr {
 					// Handle `enum Foo { x = 1 + 2 }`
+					mut uval := u64(0)
+					mut ival := i64(0)
 					c.infix_expr(mut field.expr)
+					mut t := transformer.new_transformer_with_table(c.table, c.pref)
+					folded_expr := t.infix_expr(mut field.expr)
+
+					if folded_expr is ast.IntegerLiteral {
+						if signed {
+							ival = folded_expr.val.i64()
+						} else {
+							uval = folded_expr.val.u64()
+						}
+						if !c.pref.translated && !c.file.is_translated && !node.is_multi_allowed {
+							if (signed && ival in iseen) || (!signed && uval in useen) {
+								c.error('enum value `${folded_expr.val}` already exists',
+									field.expr.pos)
+							}
+						}
+						if signed {
+							iseen << ival
+						} else {
+							useen << uval
+						}
+					}
 				}
 				ast.ParExpr {
+					mut uval := u64(0)
+					mut ival := i64(0)
 					c.expr(mut field.expr.expr)
+					mut t := transformer.new_transformer_with_table(c.table, c.pref)
+					folded_expr := t.expr(mut field.expr.expr)
+
+					if folded_expr is ast.IntegerLiteral {
+						if signed {
+							ival = folded_expr.val.i64()
+						} else {
+							uval = folded_expr.val.u64()
+						}
+						if !c.pref.translated && !c.file.is_translated && !node.is_multi_allowed {
+							if (signed && ival in iseen) || (!signed && uval in useen) {
+								c.error('enum value `${folded_expr.val}` already exists',
+									field.expr.pos)
+							}
+						}
+						if signed {
+							iseen << ival
+						} else {
+							useen << uval
+						}
+					}
 				}
 				ast.CastExpr {
 					fe_type := c.cast_expr(mut field.expr)
