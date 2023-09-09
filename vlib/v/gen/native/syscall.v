@@ -3,13 +3,6 @@
 // that can be found in the LICENSE file.
 module native
 
-// windows apicall names
-enum ApiCall {
-	write_file
-	get_std_handle
-	exit_process
-}
-
 // unix syscall names
 enum SysCall {
 	write
@@ -47,7 +40,8 @@ fn (mut g Gen) nsyscall(syscall SysCall) int {
 			return g.nsyscall_macos(syscall)
 		}
 		else {
-			g.n_error('syscall is unsupported on platform ${g.pref.os}')
+			panic('syscall on windows :(')
+			// g.n_error('syscall is unsupported on platform ${g.pref.os}')
 		}
 	}
 	return 0

@@ -28,8 +28,6 @@ mut:
 	sect_header_name_pos int
 	offset               i64
 	file_size_pos        i64
-	elf_text_header_addr i64 = -1
-	elf_rela_section     Section
 	main_fn_addr         i64
 	main_fn_size         i64
 	start_symbol_addr    i64
@@ -58,9 +56,19 @@ mut:
 	eval                 eval.Eval
 	enum_vals            map[string]Enum
 	return_type          ast.Type
+	// elf specific
+	elf_text_header_addr i64 = -1
+	elf_rela_section     Section
 	// macho specific
 	macho_ncmds   int
 	macho_cmdsize int
+	// pe specific
+	pe_coff_hdr_pos    i64
+	pe_opt_hdr_pos     i64
+	pe_text_size_pos   i64
+	pe_data_dirs       PeDataDirs = get_pe_data_dirs()
+	pe_sections        []PeSection
+	pe_dll_relocations map[string]i64
 
 	requires_linking bool
 }
@@ -72,7 +80,6 @@ mut:
 	address_size() int
 	adr(r Arm64Register, delta int) // Note: Temporary!
 	allocate_var(name string, size int, initial_val int) int
-	apicall(call ApiCall) // winapi calls
 	assign_stmt(node ast.AssignStmt) // TODO: make platform-independant
 	builtin_decl(builtin BuiltinFn)
 	call_addr_at(addr int, at i64) i64
@@ -283,7 +290,7 @@ fn (mut g Gen) get_type_from_var(var Var) ast.Type {
 	}
 }
 
-fn get_backend(arch pref.Arch) !CodeGen {
+fn get_backend(arch pref.Arch, target_os pref.OS) !CodeGen {
 	match arch {
 		.arm64 {
 			return Arm64{
@@ -293,6 +300,8 @@ fn get_backend(arch pref.Arch) !CodeGen {
 		.amd64 {
 			return Amd64{
 				g: 0
+				fn_arg_registers: amd64_get_call_regs(target_os)
+				fn_arg_sse_registers: amd64_get_call_sseregs(target_os)
 			}
 		}
 		._auto {
@@ -327,7 +336,7 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref_ &pref.Pre
 		pref: pref_
 		files: files
 		// TODO: workaround, needs to support recursive init
-		code_gen: get_backend(pref_.arch) or {
+		code_gen: get_backend(pref_.arch, pref_.os) or {
 			eprintln('No available backend for this configuration. Use `-a arm64` or `-a amd64`.')
 			exit(1)
 		}
@@ -594,6 +603,18 @@ fn (mut g Gen) write16_at(at i64, n int) {
 	g.buf[at + 1] = u8(n >> 8)
 }
 
+fn (mut g Gen) read64_at(at i64) i64 {
+	return i64(u64(g.buf[at]) | u64(g.buf[at + 1]) << 8 | u64(g.buf[at + 2]) << 16 | u64(g.buf[at +
+		3]) << 24 | u64(g.buf[at + 4]) << 32 | u64(g.buf[at + 5]) << 40 | u64(g.buf[at + 6]) << 48 | u64(g.buf[
+		at + 7]) << 56)
+}
+
+pub fn (mut g Gen) zeroes(n int) {
+	for _ in 0 .. n {
+		g.buf << 0
+	}
+}
+
 fn (mut g Gen) write_string(s string) {
 	for c in s {
 		g.write8(int(c))
@@ -607,6 +628,19 @@ fn (mut g Gen) write_string_with_padding(s string, max int) {
 	}
 	for _ in 0 .. max - s.len {
 		g.write8(0)
+	}
+}
+
+fn (mut g Gen) pad_to(len int) {
+	for g.buf.len < len {
+		g.buf << u8(0)
+	}
+}
+
+fn (mut g Gen) align_to(align int) {
+	padded := (g.buf.len + align - 1) & ~(align - 1)
+	for g.buf.len < padded {
+		g.buf << u8(0)
 	}
 }
 
@@ -1056,6 +1090,10 @@ pub fn (mut g Gen) n_error(s string) {
 }
 
 pub fn (mut g Gen) warning(s string, pos token.Pos) {
+	if g.pref.skip_warnings {
+		return
+	}
+
 	if g.pref.output_mode == .stdout {
 		util.show_compiler_message('warning:', pos: pos, file_path: g.current_file.path, message: s)
 	} else {
@@ -1110,4 +1148,68 @@ fn (mut g Gen) gen_concat_expr(node ast.ConcatExpr) {
 	}
 	// store the multi return struct value
 	g.code_gen.lea_var_to_reg(main_reg, var.offset)
+}
+
+fn (mut g Gen) sym_string_table() int {
+	begin := g.buf.len
+	g.zeroes(1)
+	g.println('')
+	g.println('=== strings ===')
+
+	mut generated := map[string]int{}
+
+	for _, s in g.strs {
+		pos := generated[s.str] or { g.buf.len }
+
+		match s.typ {
+			.rel32 {
+				g.write32_at(s.pos, pos - s.pos - 4)
+			}
+			else {
+				if g.pref.os == .windows {
+					// that should be .rel32, not windows-specific
+					g.write32_at(s.pos, pos - s.pos - 4)
+				} else {
+					g.write64_at(s.pos, pos + base_addr)
+				}
+			}
+		}
+
+		if s.str !in generated {
+			generated[s.str] = pos
+			g.write_string(s.str)
+			if g.pref.is_verbose {
+				g.println('"${escape_string(s.str)}"')
+			}
+		}
+	}
+	return g.buf.len - begin
+}
+
+const escape_char = u8(`\\`)
+
+const escape_codes = {
+	u8(`\a`):    u8(`a`)
+	u8(`\b`):    u8(`b`)
+	u8(`\f`):    u8(`f`)
+	u8(`\n`):    u8(`n`)
+	u8(`\r`):    u8(`r`)
+	u8(`\t`):    u8(`t`)
+	u8(`\v`):    u8(`v`)
+	escape_char: escape_char
+	u8(`"`):     u8(`"`)
+}
+
+pub fn escape_string(s string) string {
+	mut out := []u8{cap: s.len}
+
+	for c in s {
+		if c in native.escape_codes {
+			out << native.escape_char
+			out << native.escape_codes[c]
+		} else {
+			out << c
+		}
+	}
+	return out.bytestr()
 }

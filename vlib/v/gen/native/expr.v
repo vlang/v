@@ -391,7 +391,17 @@ fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string) {
 			}
 		}
 		ast.StringInterLiteral {
-			g.n_error('Interlaced string literals are not yet supported in the native backend.') // , expr.pos)
+			printer := if fd == 1 { 'print' } else { 'eprint' }
+			for i, val in expr.vals {
+				g.code_gen.gen_print(val, fd)
+				if i < expr.exprs.len {
+					g.gen_print_from_expr(expr.exprs[i], expr.expr_types[i], printer)
+				}
+			}
+
+			if newline {
+				g.code_gen.gen_print('\n', fd)
+			}
 		}
 		ast.IfExpr {
 			if expr.is_comptime {
