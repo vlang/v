@@ -17,7 +17,9 @@ fn (mut g Gen) expr_with_opt_or_block(expr ast.Expr, expr_typ ast.Type, var_expr
 			g.write('))')
 		}
 		g.writeln(';')
-		expr_var := if expr is ast.Ident && expr.is_auto_heap() {
+		expr_var := if expr is ast.Ident && expr.kind == .constant {
+			g.get_const_name(expr)
+		} else if expr is ast.Ident && expr.is_auto_heap() {
 			'(*${expr.name})'
 		} else {
 			'${expr}'

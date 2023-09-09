@@ -3542,6 +3542,13 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					}
 					obj.typ = typ
 					node.obj = obj
+
+					if node.or_expr.kind != .absent {
+						unwrapped_typ := typ.clear_flags(.option, .result)
+						c.expected_or_type = unwrapped_typ
+						c.stmts_ending_with_expression(mut node.or_expr.stmts)
+						c.check_or_expr(node.or_expr, typ, c.expected_or_type, node)
+					}
 					return typ
 				}
 				else {}

@@ -4267,6 +4267,19 @@ pub fn (mut g Gen) is_comptime_var(node ast.Expr) bool {
 		&& (node.obj as ast.Var).ct_type_var != .no_comptime
 }
 
+fn (mut g Gen) get_const_name(node ast.Ident) string {
+	if g.pref.translated && !g.is_builtin_mod
+		&& !util.module_is_builtin(node.name.all_before_last('.')) {
+		mut x := util.no_dots(node.name)
+		if x.starts_with('main__') {
+			x = x['main__'.len..]
+		}
+		return x
+	} else {
+		return '_const_' + g.get_ternary_name(c_name(node.name))
+	}
+}
+
 fn (mut g Gen) ident(node ast.Ident) {
 	prevent_sum_type_unwrapping_once := g.prevent_sum_type_unwrapping_once
 	g.prevent_sum_type_unwrapping_once = false
@@ -4290,6 +4303,14 @@ fn (mut g Gen) ident(node ast.Ident) {
 			g.write(x)
 			return
 		} else {
+			if g.inside_opt_or_res && node.or_expr.kind != .absent && node.obj.typ.has_flag(.option) {
+				styp := g.base_type(node.obj.typ)
+				g.write('(*(${styp}*)')
+
+				defer {
+					g.write('.data)')
+				}
+			}
 			// TODO globals hack
 			g.write('_const_')
 		}
