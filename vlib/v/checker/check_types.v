@@ -276,7 +276,11 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 		if language != .v || expected.is_ptr() == got.is_ptr() || arg.is_mut
 			|| arg.expr.is_auto_deref_var() || got.has_flag(.shared_f)
 			|| c.table.sym(expected_).kind !in [.array, .map] {
-			return
+			if !expected.has_flag(.option) || !arg.is_mut
+				|| (arg.is_mut && expected.has_flag(.option)
+				&& (expected.has_flag(.option_mut_param_t) || (expected.is_ptr() && got.is_ptr()))) {
+				return
+			}
 		}
 	} else {
 		got_typ_sym := c.table.sym(c.unwrap_generic(got))
