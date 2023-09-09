@@ -33,7 +33,6 @@ fn cb_free(p voidptr) {
 #include "stb_image.h"
 #include "stb_image_write.h"
 #include "stb_image_resize.h"
-#include "stb_v_header.h"
 #flag @VEXEROOT/thirdparty/stb_image/stbi.o
 
 pub struct Image {
