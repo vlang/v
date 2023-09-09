@@ -1784,8 +1784,8 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 			match mut field.expr {
 				ast.IntegerLiteral {
 					c.check_enum_field_integer_literal(field.expr, signed, node.is_multi_allowed,
-						senum_type, mut useen, enum_umin, enum_umax, mut iseen, enum_imin,
-						enum_imax)
+						senum_type, field.expr.pos, mut useen, enum_umin, enum_umax, mut
+						iseen, enum_imin, enum_imax)
 				}
 				ast.InfixExpr {
 					// Handle `enum Foo { x = 1 + 2 }`
@@ -1795,8 +1795,8 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 
 					if folded_expr is ast.IntegerLiteral {
 						c.check_enum_field_integer_literal(folded_expr, signed, node.is_multi_allowed,
-							senum_type, mut useen, enum_umin, enum_umax, mut iseen, enum_imin,
-							enum_imax)
+							senum_type, field.expr.pos, mut useen, enum_umin, enum_umax, mut
+							iseen, enum_imin, enum_imax)
 					}
 				}
 				ast.ParExpr {
@@ -1806,8 +1806,8 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 
 					if folded_expr is ast.IntegerLiteral {
 						c.check_enum_field_integer_literal(folded_expr, signed, node.is_multi_allowed,
-							senum_type, mut useen, enum_umin, enum_umax, mut iseen, enum_imin,
-							enum_imax)
+							senum_type, field.expr.pos, mut useen, enum_umin, enum_umax, mut
+							iseen, enum_imin, enum_imax)
 					}
 				}
 				ast.CastExpr {
@@ -1876,7 +1876,7 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 	}
 }
 
-fn (mut c Checker) check_enum_field_integer_literal(expr ast.IntegerLiteral, is_signed bool, is_multi_allowed bool, styp string, mut useen []u64, umin u64, umax u64, mut iseen []i64, imin i64, imax i64) {
+fn (mut c Checker) check_enum_field_integer_literal(expr ast.IntegerLiteral, is_signed bool, is_multi_allowed bool, styp string, pos token.Pos, mut useen []u64, umin u64, umax u64, mut iseen []i64, imin i64, imax i64) {
 	mut overflows := false
 	mut uval := u64(0)
 	mut ival := i64(0)
@@ -1886,7 +1886,7 @@ fn (mut c Checker) check_enum_field_integer_literal(expr ast.IntegerLiteral, is_
 		ival = val
 		if val < imin || val >= imax {
 			c.error('enum value `${expr.val}` overflows the enum type `${styp}`, values of which have to be in [${imin}, ${imax}]',
-				expr.pos)
+				pos)
 			overflows = true
 		}
 	} else {
@@ -1907,13 +1907,13 @@ fn (mut c Checker) check_enum_field_integer_literal(expr ast.IntegerLiteral, is_
 			}
 			if overflows {
 				c.error('enum value `${expr.val}` overflows the enum type `${styp}`, values of which have to be in [${umin}, ${umax}]',
-					expr.pos)
+					pos)
 			}
 		}
 	}
 	if !overflows && !c.pref.translated && !c.file.is_translated && !is_multi_allowed {
 		if (is_signed && ival in iseen) || (!is_signed && uval in useen) {
-			c.error('enum value `${expr.val}` already exists', expr.pos)
+			c.error('enum value `${expr.val}` already exists', pos)
 		}
 	}
 	if is_signed {
