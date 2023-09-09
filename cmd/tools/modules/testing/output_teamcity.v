@@ -11,7 +11,7 @@ pub fn (r TeamcityReporter) session_start(message string, mut ts TestSession) {
 pub fn (r TeamcityReporter) session_stop(message string, mut ts TestSession) {
 }
 
-pub fn (r TeamcityReporter) report(index int, message LogMessage) {
+pub fn (r TeamcityReporter) report(index int, message &LogMessage) {
 	name := r.get_test_suite_name_by_file(message.file)
 	match message.kind {
 		.cmd_begin {
@@ -35,16 +35,16 @@ pub fn (r TeamcityReporter) get_test_suite_name_by_file(path string) string {
 pub fn (r TeamcityReporter) report_stop() {
 }
 
-pub fn (r TeamcityReporter) progress(index int, message string) {
+pub fn (r TeamcityReporter) progress(index int, message string, log_message &LogMessage) {
 }
 
-pub fn (r TeamcityReporter) update_last_line(index int, message string) {
+pub fn (r TeamcityReporter) update_last_line(index int, message string, log_message &LogMessage) {
 }
 
-pub fn (r TeamcityReporter) update_last_line_and_move_to_next(index int, message string) {
+pub fn (r TeamcityReporter) update_last_line_and_move_to_next(index int, message string, log_message &LogMessage) {
 }
 
-pub fn (r TeamcityReporter) message(index int, message string) {
+pub fn (r TeamcityReporter) message(index int, message string, log_message &LogMessage) {
 }
 
 pub fn (r TeamcityReporter) divider() {

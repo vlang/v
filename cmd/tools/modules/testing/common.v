@@ -40,6 +40,7 @@ fn get_all_processes() []string {
 	}
 }
 
+[heap]
 pub struct TestSession {
 pub mut:
 	files         []string
@@ -73,6 +74,7 @@ pub fn (mut ts TestSession) show_list_of_failed_tests() {
 	}
 }
 
+[heap]
 struct MessageThreadContext {
 mut:
 	file    string
@@ -119,9 +121,10 @@ pub fn (mut ts TestSession) print_messages() {
 		// first sent *all events* to the output reporter, so it can then process them however it wants:
 		ts.reporter.report(ts.nmessage_idx, rmessage)
 
-		if rmessage.kind in [.cmd_begin, .cmd_end] {
-			// The following events, are sent before the test framework has determined,
-			// what the full completion status is. They can also be repeated multiple times,
+		if rmessage.kind in [.cmd_begin, .cmd_end, .compilation_begin, .compilation_end, .run_begin,
+			.run_end] {
+			// These events, are sent before the test framework has determined, what the full completion status is.
+			// They can also be repeated multiple times,
 			// for tests that are flaky and need repeating.
 			continue
 		}
@@ -150,25 +153,25 @@ pub fn (mut ts TestSession) print_messages() {
 		is_ok := rmessage.kind == .ok
 		//
 		time_passed := print_msg_time.elapsed().seconds()
-		if time_passed > 10 && ts.silent_mode && is_ok {
+		if time_passed > 5 && ts.silent_mode && is_ok {
 			// Even if OK tests are suppressed,
-			// show *at least* 1 result every 10 seconds,
+			// show *at least* 1 result every 5 seconds,
 			// otherwise the CI can seem stuck ...
-			ts.reporter.progress(ts.nmessage_idx, msg)
+			ts.reporter.progress(ts.nmessage_idx, msg, rmessage)
 			print_msg_time.restart()
 			continue
 		}
 		if ts.progress_mode {
 			if is_ok && !ts.silent_mode {
-				ts.reporter.update_last_line(ts.nmessage_idx, msg)
+				ts.reporter.update_last_line(ts.nmessage_idx, msg, rmessage)
 			} else {
-				ts.reporter.update_last_line_and_move_to_next(ts.nmessage_idx, msg)
+				ts.reporter.update_last_line_and_move_to_next(ts.nmessage_idx, msg, rmessage)
 			}
 			continue
 		}
 		if !ts.silent_mode || !is_ok {
 			// normal expanded mode, or failures in -silent mode
-			ts.reporter.message(ts.nmessage_idx, msg)
+			ts.reporter.message(ts.nmessage_idx, msg, rmessage)
 			continue
 		}
 	}
@@ -278,6 +281,8 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 	if term.can_show_color_on_stderr() {
 		os.setenv('VCOLORS', 'always', true)
 	}
+	os.setenv('VTEST_JUST_COMPILE', '1', true)
+
 	mut ts := TestSession{
 		vexe: vexe
 		vroot: vroot
@@ -447,15 +452,20 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	} else {
 		fname.replace('.v', '')
 	}
-	generated_binary_fpath := os.join_path_single(tmpd, generated_binary_fname)
+	//
+	mut generated_binary_fpath := ''
 	if produces_file_output {
+		generated_binary_fpath = os.join_path_single(tmpd, generated_binary_fname)
 		if ts.rm_binaries {
 			os.rm(generated_binary_fpath) or {}
 		}
-
 		cmd_options << ' -o ${os.quoted_path(generated_binary_fpath)}'
+	} else {
+		generated_binary_fpath = os.join_path_single(os.dir(file), generated_binary_fname)
 	}
-	cmd := '${os.quoted_path(ts.vexe)} ' + cmd_options.join(' ') + ' ${os.quoted_path(file)}'
+
+	mut cmd := TestCommand.new(ts.vexe, cmd_options, file, generated_binary_fpath, run_js,
+		ts, mtc)
 	ts.benchmark.step()
 	tls_bench.step()
 	if relative_file.replace('\\', '/') in ts.skip_files {
@@ -470,10 +480,9 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	if ts.show_stats {
 		ts.reporter.divider()
 
-		ts.append_message(.cmd_begin, cmd, mtc)
-		d_cmd := time.new_stopwatch()
+		ts.append_message(.cmd_begin, cmd.compile_cmd, mtc)
 
-		mut res := os.execute(cmd)
+		mut res := cmd.execute()
 		if res.exit_code != 0 {
 			eprintln(res.output)
 		} else {
@@ -481,7 +490,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 		mut status := res.exit_code
 
-		mut cmd_duration := d_cmd.elapsed()
+		mut cmd_duration := cmd.total_duration
 		ts.append_message_with_duration(.cmd_end, '', cmd_duration, mtc)
 
 		if status != 0 {
@@ -492,9 +501,9 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 					mtc)
 				os.setenv('VTEST_RETRY', '${retry}', true)
 
-				ts.append_message(.cmd_begin, cmd, mtc)
+				ts.append_message(.cmd_begin, cmd.compile_cmd, mtc)
 				d_cmd_2 := time.new_stopwatch()
-				status = os.system(cmd)
+				status = cmd.system()
 				cmd_duration = d_cmd_2.elapsed()
 				ts.append_message_with_duration(.cmd_end, '', cmd_duration, mtc)
 
@@ -520,7 +529,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 
 			ts.benchmark.fail()
 			tls_bench.fail()
-			ts.add_failed_cmd(cmd)
+			ts.add_failed_cmd(cmd.compile_cmd)
 			return pool.no_result
 		} else {
 			test_passed_system:
@@ -532,10 +541,9 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.append_message(.info, '                 starting ${relative_file} ...',
 				mtc)
 		}
-		ts.append_message(.cmd_begin, cmd, mtc)
-		d_cmd := time.new_stopwatch()
-		mut r := os.execute(cmd)
-		mut cmd_duration := d_cmd.elapsed()
+		ts.append_message(.cmd_begin, cmd.compile_cmd, mtc)
+		mut r := cmd.execute()
+		mut cmd_duration := cmd.total_duration
 		ts.append_message_with_duration(.cmd_end, r.output, cmd_duration, mtc)
 
 		if r.exit_code < 0 {
@@ -543,7 +551,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			tls_bench.fail()
 			ts.append_message_with_duration(.fail, tls_bench.step_message_fail(normalised_relative_file),
 				cmd_duration, mtc)
-			ts.add_failed_cmd(cmd)
+			ts.add_failed_cmd(cmd.compile_cmd)
 			return pool.no_result
 		}
 		if r.exit_code != 0 {
@@ -554,9 +562,9 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 					mtc)
 				os.setenv('VTEST_RETRY', '${retry}', true)
 
-				ts.append_message(.cmd_begin, cmd, mtc)
+				ts.append_message(.cmd_begin, cmd.compile_cmd, mtc)
 				d_cmd_2 := time.new_stopwatch()
-				r = os.execute(cmd)
+				r = cmd.execute()
 				cmd_duration = d_cmd_2.elapsed()
 				ts.append_message_with_duration(.cmd_end, r.output, cmd_duration, mtc)
 
@@ -578,7 +586,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			ending_newline := if r.output.ends_with('\n') { '\n' } else { '' }
 			ts.append_message_with_duration(.fail, tls_bench.step_message_fail('${normalised_relative_file}\n${r.output.trim_space()}${ending_newline}'),
 				cmd_duration, mtc)
-			ts.add_failed_cmd(cmd)
+			ts.add_failed_cmd(cmd.compile_cmd)
 		} else {
 			test_passed_execute:
 			ts.benchmark.ok()

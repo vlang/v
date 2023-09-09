@@ -31,7 +31,7 @@ pub fn (r DumpReporter) session_stop(message string, mut ts TestSession) {
 
 //
 
-pub fn (r DumpReporter) report(index int, message LogMessage) {
+pub fn (r DumpReporter) report(index int, message &LogMessage) {
 	eprintln('> ${@METHOD} | index: ${index} | message: ${message}')
 }
 
@@ -39,19 +39,19 @@ pub fn (r DumpReporter) report_stop() {
 	eprintln('> ${@METHOD}')
 }
 
-pub fn (r DumpReporter) progress(index int, message string) {
+pub fn (r DumpReporter) progress(index int, message string, log_message &LogMessage) {
 	eprintln('> ${@METHOD} | index: ${index} | message: ${message}')
 }
 
-pub fn (r DumpReporter) update_last_line(index int, message string) {
+pub fn (r DumpReporter) update_last_line(index int, message string, log_message &LogMessage) {
 	eprintln('> ${@METHOD} | index: ${index} | message: ${message}')
 }
 
-pub fn (r DumpReporter) update_last_line_and_move_to_next(index int, message string) {
+pub fn (r DumpReporter) update_last_line_and_move_to_next(index int, message string, log_message &LogMessage) {
 	eprintln('> ${@METHOD} | index: ${index} | message: ${message}')
 }
 
-pub fn (r DumpReporter) message(index int, message string) {
+pub fn (r DumpReporter) message(index int, message string, log_message &LogMessage) {
 	eprintln('> ${@METHOD} | index: ${index} | message: ${message}')
 }
 
