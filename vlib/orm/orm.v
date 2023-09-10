@@ -105,10 +105,6 @@ fn (kind OperationKind) to_str() string {
 	return str
 }
 
-fn (kind OperationKind) has_null_operand() bool {
-	return kind == .@is || kind == .is_not
-}
-
 fn (kind OrderType) to_str() string {
 	return match kind {
 		.desc {
@@ -393,15 +389,10 @@ fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) 
 		if pre_par {
 			str += '('
 		}
-		str += '${q}${field}${q} ${where.kinds[i].to_str()} '
-		if where.kinds[i].has_null_operand() {
-			str += 'NULL'
-		} else {
-			str += '${qm}'
-			if num {
-				str += '${c}'
-				c++
-			}
+		str += '${q}${field}${q} ${where.kinds[i].to_str()} ${qm}'
+		if num {
+			str += '${c}'
+			c++
 		}
 		if post_par {
 			str += ')'

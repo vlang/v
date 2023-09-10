@@ -218,7 +218,7 @@ fn (mut g Gen) write_orm_update(node &ast.SqlStmtLine, table_name string, connec
 		g.writeln('_MOV((string[${node.updated_columns.len}]){')
 		g.indent++
 		for field in node.updated_columns {
-			g.writeln(' _SLIT("${field}"),')
+			g.writeln('_SLIT("${field}"),')
 		}
 		g.indent--
 		g.writeln('})')
@@ -238,8 +238,8 @@ fn (mut g Gen) write_orm_update(node &ast.SqlStmtLine, table_name string, connec
 			g.write_orm_expr_to_primitive(e)
 		}
 		g.indent--
-		g.indent--
 		g.writeln('})')
+		g.indent--
 	}
 
 	g.writeln('),')
@@ -318,9 +318,9 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 	g.indent++
 
 	if fields.len > 0 {
-		g.write('_MOV((string[${fields.len}]){ ')
+		g.writeln('_MOV((string[${fields.len}]){ ')
 		for f in fields {
-			g.write('_SLIT("${g.get_orm_column_name_from_struct_field(f)}"), ')
+			g.writeln('_SLIT("${g.get_orm_column_name_from_struct_field(f)}"),')
 		}
 		g.writeln('})')
 	} else {
@@ -345,17 +345,17 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 	g.indent++
 
 	if fields.len > 0 {
-		g.write('_MOV((orm__Primitive[${fields.len}]){ ')
+		g.writeln('_MOV((orm__Primitive[${fields.len}]){')
 		mut structs := 0
 		for field in fields {
 			if field.name == fkey {
-				g.write('${pid}, ')
+				g.writeln('${pid}, ')
 				continue
 			}
 			mut sym := g.table.sym(field.typ)
 			mut typ := sym.cname
 			if sym.kind == .struct_ && typ != 'time__Time' {
-				g.write('(*(orm__Primitive*) array_get(${last_ids_arr}, ${structs})),')
+				g.writeln('(*(orm__Primitive*) array_get(${last_ids_arr}, ${structs})),')
 				structs++
 				continue
 			}
@@ -365,9 +365,9 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			var := '${node.object_var_name}${member_access_type}${c_name(field.name)}'
 			if field.typ.has_flag(.option) {
 				null := '(orm__Primitive){ ._typ = ${g.table.find_type_idx('orm.NullType') /* orm.NullType */} }'
-				g.write('${var}.state == 2? ${null} : orm__${typ}_to_primitive(*(${typ}*)(${var}.data)), ')
+				g.writeln('${var}.state == 2? ${null} : orm__${typ}_to_primitive(*(${typ}*)(${var}.data)),')
 			} else {
-				g.write('orm__${typ}_to_primitive(${var}), ')
+				g.writeln('orm__${typ}_to_primitive(${var}),')
 			}
 		}
 		g.writeln('})')
@@ -451,7 +451,9 @@ fn (mut g Gen) write_orm_expr_to_primitive(expr ast.Expr) {
 		ast.CallExpr {
 			g.write_orm_primitive(expr.return_type, expr)
 		}
-		ast.None {}
+		ast.None {
+			g.write_orm_primitive(ast.none_type, expr)
+		}
 		else {
 			eprintln(expr)
 			verror('V ORM: ${expr.type_name()} is not supported')
@@ -466,7 +468,11 @@ fn (mut g Gen) write_orm_primitive(t ast.Type, expr ast.Expr) {
 	mut typ := sym.cname
 	if typ == 'orm__Primitive' {
 		g.expr(expr)
-		g.write(',')
+		g.writeln(',')
+		return
+	}
+	if typ == 'none' {
+		g.writeln('(orm__Primitive){ ._typ = ${g.table.find_type_idx('orm.NullType')} /* orm.NullType */ },')
 		return
 	}
 	if typ == 'time__Time' {
@@ -506,7 +512,7 @@ fn (mut g Gen) write_orm_primitive(t ast.Type, expr ast.Expr) {
 	} else {
 		g.expr(expr)
 	}
-	g.write('),')
+	g.writeln('),')
 }
 
 // write_orm_where writes C code that generates
@@ -691,6 +697,9 @@ fn (mut g Gen) write_orm_where_expr(expr ast.Expr, mut fields []string, mut pare
 		ast.CallExpr {
 			data << expr
 		}
+		ast.None {
+			data << expr
+		}
 		else {}
 	}
 }
@@ -765,7 +774,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, le
 				types << int(ast.int_type)
 				continue
 			}
-			types << int(field.typ)
+			types << int(field.typ.idx())
 		}
 		g.writeln(' })')
 	} else {

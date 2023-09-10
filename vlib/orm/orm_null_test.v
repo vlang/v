@@ -3,8 +3,9 @@ import db.sqlite
 
 struct State {
 mut:
-	last string
-	data []orm.Primitive
+	last  string
+	data  []orm.Primitive
+	where []orm.Primitive
 }
 
 struct MockDB {
@@ -23,6 +24,8 @@ fn MockDB.new() &MockDB {
 fn (db MockDB) @select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
 	mut st := db.st
 	st.last = orm.orm_select_gen(config, '`', false, '?', 5, where)
+	st.data = data.data
+	st.where = where.data
 	return db.db.@select(config, data, where)
 }
 
@@ -32,12 +35,15 @@ fn (db MockDB) insert(table string, data orm.QueryData) ! {
 		orm.QueryData{})
 	st.last = last
 	st.data = qdata.data
+	st.where = []orm.Primitive{}
 	return db.db.insert(table, data)
 }
 
 fn (db MockDB) update(table string, data orm.QueryData, where orm.QueryData) ! {
 	mut st := db.st
 	st.last, _ = orm.orm_stmt_gen(.sqlite, table, '`', .update, false, '?', 1, data, where)
+	st.data = data.data
+	st.where = where.data
 	return db.db.update(table, data, where)
 }
 
@@ -109,7 +115,7 @@ fn test_option_struct_fields_and_none() {
 	}!
 	assert db.st.last == 'CREATE TABLE IF NOT EXISTS `foo` (`id` u64-type NOT NULL, `a` string-type NOT NULL, `c` string-type, `d` string-type, `e` int-type NOT NULL, `g` int-type, `h` int-type, PRIMARY KEY(`id`));'
 
-	res := sql db {
+	_ := sql db {
 		select from Foo where e > 5 && c !is none && c is none && h == 2
 	}!
 	// assert db.st.last == 'SELECT `id`, `a`, `c`, `d`, `e`, `g` , `h` FROM `foo` WHERE `e` > ? AND `c` IS NULL AND `c` IS NOT NULL AND `h` = ?;'
@@ -122,4 +128,34 @@ fn test_option_struct_fields_and_none() {
 	assert db.st.data.len == 6
 	assert db.st.data == [orm.Primitive(string('')), orm.NullType{}, orm.Primitive(string('hi')),
 		int(0), orm.NullType{}, int(55)]
+	id := db.last_id()
+
+	sql db {
+		update Foo set c = 'yo', d = none, g = 44, h = none where id == id
+	}!
+	assert db.st.last == 'UPDATE `foo` SET `c` = ?, `d` = ?, `g` = ?, `h` = ? WHERE `id` = ?;'
+	assert db.st.data.len == 4
+	assert db.st.data == [orm.Primitive(string('yo')), orm.NullType{}, int(44), orm.NullType{}]
+	assert db.st.where.len == 1
+	assert db.st.where == [orm.Primitive(int(id))]
+
+	res := sql db {
+		select from Foo where id == id
+	}!
+	assert db.st.last == 'SELECT `id`, `a`, `c`, `d`, `e`, `g`, `h` FROM `foo` WHERE `id` = ?;'
+	println(db.st.data)
+	assert db.st.data.len == 0
+	assert db.st.where.len == 1
+	assert db.st.where == [orm.Primitive(int(id))]
+	assert res.len == 1
+	row := res[0]
+	assert row == Foo{
+		id: 1
+		a: ''
+		c: 'yo'
+		d: none
+		e: 0
+		g: 44
+		h: none
+	}
 }
