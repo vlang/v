@@ -12,6 +12,8 @@ pub mut:
 	// with `thread !`. And the return type on the corresponding
 	// function that is spawned.
 	extract_frames_thread thread string
+	frames                [][]u8
+	framerate             f64 = 24.0
 }
 
 enum FrameFormat {
