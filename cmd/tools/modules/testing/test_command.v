@@ -64,7 +64,15 @@ fn (mut tc TestCommand) compile() {
 	tc.exit_code = cres.exit_code
 	tc.output = cres.output
 	tc.compile_result = cres
-	tc.ts.append_message_with_duration(.compilation_end, '', tc.compile_duration, tc.mtc)
+	exe_size := os.file_size(tc.executable)
+	tc.ts.append(tc.mtc,
+		kind: .compilation_end
+		message: ''
+		took: tc.compile_duration
+		meta: {
+			'exe_size': exe_size.str()
+		}
+	)
 }
 
 //

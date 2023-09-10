@@ -22,7 +22,7 @@ pub enum MessageKind {
 	sentinel // send just once after all executions are done; it signals that the reporting/printing thread should stop the loop and exit
 }
 
-[heap]
+[heap; params]
 pub struct LogMessage {
 pub:
 	kind    MessageKind   // see the MessageKind declaration above
@@ -31,6 +31,8 @@ pub:
 	flow_id string        // the messages of each thread, producing LogMessage, will have all the same unique flowid. Messages by other threads will have other flowid. If you use VJOBS=1 to serialise the execution, then all messages will have the same flowid.
 	took    time.Duration // the duration of the event, that this message describes
 	message string        // the actual message text; the result of the event, that the message describes; most reporters could ignore this, since it could be reconstructed by the other fields
+	//
+	meta map[string]string // meta information about the message
 }
 
 pub interface Reporter {

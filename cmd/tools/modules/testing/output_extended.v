@@ -10,6 +10,7 @@ pub struct ExtendedReporter {
 mut:
 	compilation_duration map[string]time.Duration
 	run_duration         map[string]time.Duration
+	file_size            map[string]string
 }
 
 pub fn (r ExtendedReporter) session_start(message string, mut ts TestSession) {
@@ -26,6 +27,7 @@ pub fn (r ExtendedReporter) session_stop(message string, mut ts TestSession) {
 pub fn (mut r ExtendedReporter) report(index int, message &LogMessage) {
 	if message.kind == .compilation_end {
 		r.compilation_duration[message.file] = message.took
+		r.file_size[message.file] = message.meta['exe_size']
 	}
 	if message.kind == .run_end {
 		r.run_duration[message.file] = message.took
@@ -61,7 +63,7 @@ pub fn (r ExtendedReporter) message(index int, message string, log_message &LogM
 	cdur := r.compilation_duration[log_message.file]
 	rdur := r.run_duration[log_message.file]
 	// diff := time.Duration(log_message.took - (cdur + rdur))
-	nmessage := message.replace('] ', '] ${f64(cdur.microseconds()) / 1000.0:9} ms c.   ${f64(rdur.microseconds()) / 1000.0:8} ms r.  ')
+	nmessage := message.replace_each([' ms ', ' ms, ', ' [', ', [']).replace('] ', '], ${r.file_size[log_message.file]:8} B, ${f64(cdur.microseconds()) / 1000.0:9} ms c,   ${f64(rdur.microseconds()) / 1000.0:8} ms r, ')
 	eprintln(nmessage)
 }
 
