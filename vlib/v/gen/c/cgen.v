@@ -6302,7 +6302,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 		.string {
 			return '(string){.str=(byteptr)"", .is_lit=1}'
 		}
-		.interface_, .sum_type, .array_fixed, .multi_return {
+		.interface_, .sum_type, .array_fixed, .multi_return, .thread {
 			return '{0}'
 		}
 		.alias {
