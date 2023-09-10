@@ -1624,7 +1624,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 				return ast.int_type
 			}
 
-			c.error('`${unwrapped_sym.name}` 1has no property `${node.field_name}`', node.pos)
+			c.error('`${unwrapped_sym.name}` has no property `${node.field_name}`', node.pos)
 		}
 	} else {
 		if sym.info is ast.Struct {
