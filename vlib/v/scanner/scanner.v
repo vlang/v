@@ -113,7 +113,14 @@ pub fn new_scanner_file(file_path string, comments_mode CommentsMode, pref_ &pre
 	if !os.is_file(file_path) {
 		return error('${file_path} is not a .v file')
 	}
-	raw_text := util.read_file(file_path) or { return err }
+	mut raw_text := util.read_file(file_path) or { return err }
+	if pref_.line_info != '' {
+		// Add line info expr to the scanner text
+		abs_path := os.join_path(os.getwd(), file_path)
+		if pref_.linfo.path in [file_path, abs_path] {
+			raw_text = pref.add_line_info_expr_to_program_text(raw_text, pref_.linfo)
+		}
+	}
 	mut s := &Scanner{
 		pref: pref_
 		text: raw_text

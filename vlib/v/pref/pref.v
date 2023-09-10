@@ -190,6 +190,7 @@ pub mut:
 	out_name         string
 	path             string // Path to file/folder to compile
 	line_info        string // `-line-info="file.v:28"`: for "mini VLS" (shows information about objects on provided line)
+	linfo            LineInfo
 	//
 	run_only []string // VTEST_ONLY_FN and -run-only accept comma separated glob patterns.
 	exclude  []string // glob patterns for excluding .v files from the list of .v files that otherwise would have been used for a compilation, example: `-exclude @vlib/math/*.c.v`
@@ -238,6 +239,15 @@ pub mut:
 	// wasm settings:
 	wasm_stack_top int = 1024 + (16 * 1024) // stack size for webassembly backend
 	wasm_validate  bool // validate webassembly code, by calling `wasm-validate`
+}
+
+pub struct LineInfo {
+pub mut:
+	line_nr      int    // a quick single file run when called with v -line-info (contains line nr to inspect)
+	path         string // same, but stores the path being parsed
+	expr         string // "foo" or "foo.bar" V code (expression) which needs autocomplete
+	is_running   bool   // so that line info is fetched only on the second checker run
+	vars_printed map[string]bool // to avoid dups
 }
 
 pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
@@ -835,6 +845,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-line-info' {
 				res.line_info = cmdline.option(current_args, arg, '')
+				res.parse_line_info(res.line_info)
 				i++
 			}
 			'-use-coroutines' {

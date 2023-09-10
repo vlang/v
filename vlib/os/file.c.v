@@ -880,3 +880,4 @@ pub fn (f &File) tell() !i64 {
 	}
 	return pos
 }
+

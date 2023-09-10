@@ -42,6 +42,7 @@
 - [ ] 64/32 bit int depending on arch (will remove array.len limitation on 64 bit systems)
 - [ ] `copy()` builtin function (e.g. for easier conversion from `[]Foo` to `[4]Foo`)
 - [ ] Lambdas: `a.sort(|a, b| a > b)`
+- [ ] Custom attributes.
 
 ## [Version 1.0]
 

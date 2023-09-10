@@ -13,7 +13,6 @@ import v.util.version
 import v.errors
 import v.pkgconfig
 import v.transformer
-import strings
 
 const (
 	int_min                                        = int(0x80000000)
@@ -44,8 +43,9 @@ pub const (
 
 [heap; minify]
 pub struct Checker {
-	pref &pref.Preferences = unsafe { nil } // Preferences shared from V struct
 pub mut:
+	pref &pref.Preferences = unsafe { nil } // Preferences shared from V struct
+	//
 	table                      &ast.Table = unsafe { nil }
 	file                       &ast.File  = unsafe { nil }
 	nr_errors                  int
@@ -123,13 +123,13 @@ mut:
 	inside_decl_rhs                  bool
 	inside_if_guard                  bool // true inside the guard condition of `if x := opt() {}`
 	inside_assign                    bool
-	doing_line_info                  int    // a quick single file run when called with v -line-info (contains line nr to inspect)
-	doing_line_path                  string // same, but stores the path being parsed
-	is_index_assign                  bool
-	comptime_call_pos                int // needed for correctly checking use before decl for templates
-	goto_labels                      map[string]ast.GotoLabel // to check for unused goto labels
-	enum_data_type                   ast.Type
-	fn_return_type                   ast.Type
+	// doing_line_info                  int    // a quick single file run when called with v -line-info (contains line nr to inspect)
+	// doing_line_path                  string // same, but stores the path being parsed
+	is_index_assign   bool
+	comptime_call_pos int // needed for correctly checking use before decl for templates
+	goto_labels       map[string]ast.GotoLabel // to check for unused goto labels
+	enum_data_type    ast.Type
+	fn_return_type    ast.Type
 }
 
 pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
@@ -293,6 +293,7 @@ pub fn (mut c Checker) change_current_file(file &ast.File) {
 }
 
 pub fn (mut c Checker) check_files(ast_files []&ast.File) {
+	// println('check_files')
 	// c.files = ast_files
 	mut has_main_mod_file := false
 	mut has_main_fn := false
@@ -381,9 +382,27 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 			c.error('a _test.v file should have *at least* one `test_` function', token.Pos{})
 		}
 	}
-	// Print line info and exit
-	if c.pref.line_info != '' && c.doing_line_info == 0 {
-		c.do_line_info(c.pref.line_info, ast_files)
+	// After the main checker run, run the line info check, print line info, and exit (if it's present)
+	if c.pref.line_info != '' && !c.pref.linfo.is_running { //'' && c.pref.linfo.line_nr == 0 {
+		// c.do_line_info(c.pref.line_info, ast_files)
+		println('setting is_running=true,  pref.path=${c.pref.linfo.path} curdir' + os.getwd())
+		c.pref.linfo.is_running = true
+		for i, file in ast_files {
+			// println(file.path)
+			if file.path == c.pref.linfo.path {
+				println('running c.check_files')
+				c.check_files([ast_files[i]])
+				exit(0)
+			} else if file.path.starts_with('./') {
+				// Maybe it's a "./foo.v", linfo.path has an absolute path
+				abs_path := os.join_path(os.getwd(), file.path).replace('/./', '/') // TODO join_path shouldn't have /./
+				if abs_path == c.pref.linfo.path {
+					c.check_files([ast_files[i]])
+					exit(0)
+				}
+			}
+		}
+		println('failed to find file "${c.pref.linfo.path}"')
 		exit(0)
 	}
 	// Make sure fn main is defined in non lib builds
@@ -1605,7 +1624,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 				return ast.int_type
 			}
 
-			c.error('`${unwrapped_sym.name}` has no property `${node.field_name}`', node.pos)
+			c.error('`${unwrapped_sym.name}` 1has no property `${node.field_name}`', node.pos)
 		}
 	} else {
 		if sym.info is ast.Struct {
@@ -3362,34 +3381,9 @@ struct ACFieldMethod {
 }
 
 fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
-	if c.doing_line_info > 0 {
-		mut sb := strings.new_builder(10)
+	if c.pref.linfo.is_running {
 		// Mini LS hack (v -line-info "a.v:16")
-		// println('line_nr=${node.pos.line_nr} doing line nr=${c.doing_line_info}')
-		// println('Start line_nr=${node.pos.line_nr}  line2=${c.doing_line_info} file="${c.file.path}", pppp="${c.doing_line_path}"')
-		if node.pos.line_nr == c.doing_line_info && c.file.path == c.doing_line_path {
-			sb.writeln('===')
-			sym := c.table.sym(node.obj.typ)
-			sb.writeln('VAR ${node.name}:${sym.name}')
-			mut struct_info := sym.info as ast.Struct
-			mut fields := []ACFieldMethod{cap: struct_info.fields.len}
-			for field in struct_info.fields {
-				field_sym := c.table.sym(field.typ)
-				fields << ACFieldMethod{field.name, field_sym.name}
-			}
-			for method in sym.methods {
-				method_ret_type := c.table.sym(method.return_type)
-				fields << ACFieldMethod{method.name + '()', method_ret_type.name}
-			}
-			fields.sort(a.name < b.name)
-			for field in fields {
-				sb.writeln('${field.name}:${field.typ}')
-			}
-			res := sb.str().trim_space()
-			if res != '' {
-				println(res)
-			}
-		}
+		c.ident_autocomplete(node)
 	}
 	// TODO: move this
 	if c.const_deps.len > 0 {

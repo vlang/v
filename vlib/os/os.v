@@ -552,7 +552,12 @@ pub fn join_path(base string, dirs ...string) string {
 		sb.write_string(path_separator)
 		sb.write_string(d)
 	}
-	return sb.str()
+	mut res := sb.str()
+	if res.contains('/./') {
+		// Fix `join_path("/foo/bar", "./file.txt")` => `/foo/bar/./file.txt`
+		res = res.replace('/./', '/')
+	}
+	return res
 }
 
 // join_path_single appends the `elem` after `base`, using a platform specific
