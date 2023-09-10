@@ -10,9 +10,7 @@ module main
 import os
 import benchmark
 
-const (
-	inner_indent = '     '
-)
+const inner_indent = '     '
 
 struct BenchedTests {
 mut:
@@ -26,6 +24,7 @@ mut:
 
 // ///////////////////////////////////////////////////////////////////
 // Called at the start of the test program produced by `v -stats file_test.v`
+[markused]
 fn start_testing(total_number_of_tests int, vfilename string) BenchedTests {
 	mut benched_tests_res := BenchedTests{
 		bench: benchmark.new_benchmark()
@@ -37,6 +36,7 @@ fn start_testing(total_number_of_tests int, vfilename string) BenchedTests {
 }
 
 // Called before each test_ function, defined in file_test.v
+[markused]
 fn (mut b BenchedTests) testing_step_start(stepfunc string) {
 	b.step_func_name = stepfunc.replace('main.', '').replace('__', '.')
 	b.oks = test_runner.total_assert_passes
@@ -46,6 +46,7 @@ fn (mut b BenchedTests) testing_step_start(stepfunc string) {
 }
 
 // Called after each test_ function, defined in file_test.v
+[markused]
 fn (mut b BenchedTests) testing_step_end() {
 	ok_diff := int(test_runner.total_assert_passes - b.oks)
 	fail_diff := int(test_runner.total_assert_fails - b.fails)
@@ -76,11 +77,13 @@ fn (mut b BenchedTests) testing_step_end() {
 	}
 }
 
+[markused]
 fn (b &BenchedTests) fn_name() string {
 	return b.step_func_name + '()'
 }
 
 // Called at the end of the test program produced by `v -stats file_test.v`
+[markused]
 fn (mut b BenchedTests) end_testing() {
 	b.bench.stop()
 	fname := os.file_name(b.test_suit_file)

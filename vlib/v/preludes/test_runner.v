@@ -1,6 +1,7 @@
 [has_globals]
 module main
 
+[markused]
 __global test_runner TestRunner
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -43,6 +44,7 @@ struct VTestFileMetaInfo {
 
 // vtest_new_filemetainfo will be called right before .start(ntests),
 // to fill in the .file_test_info field of the runner interface.
+[markused]
 fn vtest_new_filemetainfo(file string, tests int) VTestFileMetaInfo {
 	return VTestFileMetaInfo{
 		file: file
@@ -67,6 +69,7 @@ struct VTestFnMetaInfo {
 }
 
 // vtest_new_metainfo will be called once per each test function.
+[markused]
 fn vtest_new_metainfo(name string, mod string, file string, line_nr int) VTestFnMetaInfo {
 	return VTestFnMetaInfo{
 		name: name
@@ -76,7 +79,7 @@ fn vtest_new_metainfo(name string, mod string, file string, line_nr int) VTestFn
 	}
 }
 
-[unsafe]
+[markused; unsafe]
 fn (i &VTestFnMetaInfo) free() {
 	unsafe {
 		i.name.free()
@@ -96,7 +99,7 @@ mut:
 // change_test_runner should be called by preludes that implement the
 // the TestRunner interface, in their vtest_init fn (see below), to
 // customize the way that V shows test results
-[manualfree]
+[manualfree; markused]
 pub fn change_test_runner(x &TestRunner) {
 	pobj := unsafe { &C.main__TestRunner(&test_runner)._object }
 	if pobj != 0 {
