@@ -2133,13 +2133,15 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 					const_name := vals.last()
 					if mod_prefix == 'main' {
 						f.write(const_name)
-						return
 					} else {
 						short := mod_prefix + '.' + const_name
 						f.write(short)
 						f.mark_import_as_used(short)
-						return
 					}
+					if node.or_expr.kind == .block {
+						f.or_expr(node.or_expr)
+					}
+					return
 				}
 			}
 		}
