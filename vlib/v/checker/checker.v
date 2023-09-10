@@ -1787,33 +1787,69 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 					mut ival := i64(0)
 
 					if signed {
-						val := field.expr.val.i64()
+						val := field.expr.val.parse_int(0, 64) or {
+							if err.msg().starts_with('common_parse_int: integer overflow') {
+								overflows = true
+								enum_imax
+							} else {
+								c.error('Some problems with parsing enum value `${field.expr.val}` - ${err}',
+									field.expr.pos)
+								0
+							}
+						}
+
 						ival = val
-						if val < enum_imin || val >= enum_imax {
+
+						if overflows {
 							c.error('enum value `${field.expr.val}` overflows the enum type `${senum_type}`, values of which have to be in [${enum_imin}, ${enum_imax}]',
 								field.expr.pos)
-							overflows = true
+						} else {
+							if val < enum_imin || val > enum_imax {
+								overflows = true
+							}
+						}
+
+						if overflows {
+							c.error('enum value `${field.expr.val}` overflows the enum type `${senum_type}`, values of which have to be in [${enum_imin}, ${enum_imax}]',
+								field.expr.pos)
 						}
 					} else {
-						val := field.expr.val.u64()
-						uval = val
-						if val >= enum_umax {
-							overflows = true
-							if val == enum_umax {
-								is_bin := field.expr.val.starts_with('0b')
-								is_oct := field.expr.val.starts_with('0o')
-								is_hex := field.expr.val.starts_with('0x')
+						val := field.expr.val.parse_uint(0, 64) or {
+							if err.msg().starts_with('common_parse_uint: integer overflow') {
+								overflows = true
+								enum_umax
+							} else {
+								c.error('Some problems with parsing enum value `${field.expr.val}` - ${err}',
+									field.expr.pos)
+								0
+							}
+						}
 
-								if is_hex {
-									overflows = val.hex() != enum_umax.hex()
-								} else if !is_bin && !is_oct && !is_hex {
-									overflows = field.expr.val.str() != enum_umax.str()
+						uval = val
+
+						if overflows {
+							c.error('enum value `${field.expr.val}` overflows the enum type `${senum_type}`, values of which have to be in [${enum_umin}, ${enum_umax}]',
+								field.expr.pos)
+						} else {
+							if val > enum_umax {
+								overflows = true
+								if val == enum_umax {
+									is_bin := field.expr.val.starts_with('0b')
+									is_oct := field.expr.val.starts_with('0o')
+									is_hex := field.expr.val.starts_with('0x')
+
+									if is_hex {
+										overflows = val.hex() != enum_umax.hex()
+									} else if !is_bin && !is_oct && !is_hex {
+										overflows = field.expr.val.str() != enum_umax.str()
+									}
 								}
 							}
-							if overflows {
-								c.error('enum value `${field.expr.val}` overflows the enum type `${senum_type}`, values of which have to be in [${enum_umin}, ${enum_umax}]',
-									field.expr.pos)
-							}
+						}
+
+						if overflows {
+							c.error('enum value `${field.expr.val}` overflows the enum type `${senum_type}`, values of which have to be in [${enum_umin}, ${enum_umax}]',
+								field.expr.pos)
 						}
 					}
 					if !overflows && !c.pref.translated && !c.file.is_translated

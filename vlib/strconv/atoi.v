@@ -193,8 +193,7 @@ pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit b
 	// TODO: check should u64(bit_size-1) be size of int (32)?
 	cutoff := u64(1) << u64(bit_size - 1)
 	if !neg && un >= cutoff {
-		// return error('parse_int: range error $s0')
-		return i64(cutoff - u64(1))
+		return error('common_parse_int: integer overflow ${s}')
 	}
 	if neg && un > cutoff {
 		// return error('parse_int: range error $s0')
