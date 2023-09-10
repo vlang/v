@@ -31,6 +31,8 @@ pub const is_node_present = os.execute('node --version').exit_code == 0
 
 pub const all_processes = get_all_processes()
 
+pub const empty = term.header(' ', ' ')
+
 fn get_all_processes() []string {
 	$if windows {
 		// TODO
@@ -281,7 +283,6 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 	if term.can_show_color_on_stderr() {
 		os.setenv('VCOLORS', 'always', true)
 	}
-	os.setenv('VTEST_JUST_COMPILE', '1', true)
 
 	mut ts := TestSession{
 		vexe: vexe
@@ -311,6 +312,9 @@ fn (mut ts TestSession) handle_test_runner_option() {
 	match test_runner {
 		'normal' {
 			// default, nothing to do
+		}
+		'extended' {
+			ts.reporter = ExtendedReporter{}
 		}
 		'dump' {
 			ts.reporter = DumpReporter{}
@@ -416,13 +420,15 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	tls_bench.no_cstep = true
 	tls_bench.njobs = ts.benchmark.njobs
 	mut relative_file := os.real_path(p.get_item[string](idx))
-	mut cmd_options := [ts.vargs]
-	mut run_js := false
+
+	mut cmd_options := ['-just-compile']
+	cmd_options << ts.vargs
 
 	is_fmt := ts.vargs.contains('fmt')
 	is_vet := ts.vargs.contains('vet')
 	produces_file_output := !(is_fmt || is_vet)
 
+	mut run_js := false
 	if relative_file.ends_with('js.v') {
 		if produces_file_output {
 			cmd_options << ' -b js'
@@ -482,7 +488,9 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 
 		ts.append_message(.cmd_begin, cmd.compile_cmd, mtc)
 
+		sw := time.new_stopwatch()
 		mut res := cmd.execute()
+		mut cmd_duration := sw.elapsed()
 		if res.exit_code != 0 {
 			eprintln(res.output)
 		} else {
@@ -490,7 +498,6 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 		mut status := res.exit_code
 
-		mut cmd_duration := cmd.total_duration
 		ts.append_message_with_duration(.cmd_end, '', cmd_duration, mtc)
 
 		if status != 0 {
@@ -542,8 +549,9 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				mtc)
 		}
 		ts.append_message(.cmd_begin, cmd.compile_cmd, mtc)
+		sw := time.new_stopwatch()
 		mut r := cmd.execute()
-		mut cmd_duration := cmd.total_duration
+		mut cmd_duration := sw.elapsed()
 		ts.append_message_with_duration(.cmd_end, r.output, cmd_duration, mtc)
 
 		if r.exit_code < 0 {

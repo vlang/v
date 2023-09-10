@@ -92,7 +92,7 @@ pub enum Arch {
 pub const list_of_flags_with_param = ['b', 'd', 'e', 'o', 'define', 'backend', 'cc', 'os', 'cflags',
 	'ldflags', 'path', 'arch']
 
-pub const supported_test_runners = ['normal', 'simple', 'tap', 'dump', 'teamcity']
+pub const supported_test_runners = ['normal', 'extended', 'simple', 'tap', 'dump', 'teamcity']
 
 [heap; minify]
 pub struct Preferences {
