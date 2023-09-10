@@ -178,12 +178,50 @@ times = [
 	assert toml.decode[Arrs](s)! == a
 }
 
+fn test_decode_doc() {
+	doc := toml.parse_text('name = "Peter"
+age = 28
+is_human = true
+salary = 100000.5
+title = 2')!
+	e := doc.decode[Employee]()!
+	assert e.name == 'Peter'
+	assert e.age == 28
+	assert e.salary == 100000.5
+	assert e.is_human == true
+	assert e.title == .manager
+}
+
 fn test_unsupported_type() {
 	s := 'name = "Peter"'
 	err_msg := 'toml.decode: expected struct, found '
-	toml.decode[string](s) or { assert err.msg() == err_msg + 'string' }
-	toml.decode[[]string](s) or { assert err.msg() == err_msg + '[]string' }
-	toml.decode[int](s) or { assert err.msg() == err_msg + 'int' }
-	toml.decode[[]f32](s) or { assert err.msg() == err_msg + '[]f32' }
+	if _ := toml.decode[string](s) {
+		assert false
+	} else {
+		assert err.msg() == err_msg + 'string'
+	}
+	if _ := toml.decode[[]string](s) {
+		assert false
+	} else {
+		assert err.msg() == err_msg + '[]string'
+	}
+	if _ := toml.decode[int](s) {
+		assert false
+	} else {
+		assert err.msg() == err_msg + 'int'
+	}
+	if _ := toml.decode[[]f32](s) {
+		assert false
+	} else {
+		assert err.msg() == err_msg + '[]f32'
+	}
 	// ...
+
+	doc := toml.parse_text('name = "Peter"')!
+	assert doc.value('name').string() == 'Peter'
+	if _ := doc.decode[string]() {
+		assert false
+	} else {
+		assert err.msg() == 'Doc.decode: expected struct, found string'
+	}
 }
