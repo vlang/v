@@ -132,6 +132,7 @@ pub mut:
 	is_apk             bool     // build as Android .apk format
 	is_help            bool     // -h, -help or --help was passed
 	is_cstrict         bool     // turn on more C warnings; slightly slower
+	is_just_compile    bool     // Used by `v test .`; The test runner uses `v -just-compile file_test.v` to compile each _test.v file, *without* running it first.
 	eval_argument      string   // `println(2+2)` on `v -e "println(2+2)"`. Note that this souce code, will be evaluated in vsh mode, so 'v -e 'println(ls(".")!)' is valid.
 	test_runner        string   // can be 'simple' (fastest, but much less detailed), 'tap', 'normal'
 	profile_file       string   // the profile results will be stored inside profile_file
@@ -795,6 +796,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-is_o' {
 				res.is_o = true
+			}
+			'-just-compile' {
+				res.is_just_compile = true
 			}
 			'-b', '-backend' {
 				sbackend := cmdline.option(current_args, arg, 'c')
