@@ -42,25 +42,40 @@ fn (stmt &Stmt) bind_text(idx int, s string) int {
 	return C.sqlite3_bind_text(stmt.stmt, idx, voidptr(s.str), s.len, 0)
 }
 
-fn (stmt &Stmt) get_int(idx int) int {
-	return C.sqlite3_column_int(stmt.stmt, idx)
-}
-
-fn (stmt &Stmt) get_i64(idx int) i64 {
-	return C.sqlite3_column_int64(stmt.stmt, idx)
-}
-
-fn (stmt &Stmt) get_f64(idx int) f64 {
-	return C.sqlite3_column_double(stmt.stmt, idx)
-}
-
-fn (stmt &Stmt) get_text(idx int) string {
-	b := &char(C.sqlite3_column_text(stmt.stmt, idx))
-
-	if b == &char(0) {
-		return ''
+fn (stmt &Stmt) get_int(idx int) ?int {
+	if C.sqlite3_column_type(stmt.stmt, idx) == C.SQLITE_NULL {
+		return none
+	} else {
+		return C.sqlite3_column_int(stmt.stmt, idx)
 	}
-	return unsafe { b.vstring() }
+}
+
+fn (stmt &Stmt) get_i64(idx int) ?i64 {
+	if C.sqlite3_column_type(stmt.stmt, idx) == C.SQLITE_NULL {
+		return none
+	} else {
+		return C.sqlite3_column_int64(stmt.stmt, idx)
+	}
+}
+
+fn (stmt &Stmt) get_f64(idx int) ?f64 {
+	if C.sqlite3_column_type(stmt.stmt, idx) == C.SQLITE_NULL {
+		return none
+	} else {
+		return C.sqlite3_column_double(stmt.stmt, idx)
+	}
+}
+
+fn (stmt &Stmt) get_text(idx int) ?string {
+	if C.sqlite3_column_type(stmt.stmt, idx) == C.SQLITE_NULL {
+		return none
+	} else {
+		b := &char(C.sqlite3_column_text(stmt.stmt, idx))
+		if b == &char(0) {
+			return ''
+		}
+		return unsafe { b.vstring() }
+	}
 }
 
 fn (stmt &Stmt) get_count() int {

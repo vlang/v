@@ -116,6 +116,8 @@ fn C.sqlite3_column_double(&C.sqlite3_stmt, int) f64
 
 fn C.sqlite3_column_count(&C.sqlite3_stmt) int
 
+fn C.sqlite3_column_type(&C.sqlite3_stmt, int) int
+
 //
 fn C.sqlite3_errstr(int) &char
 
