@@ -237,69 +237,73 @@ fn pg_type_from_v(typ int) !string {
 	return str
 }
 
-fn str_to_primitive(str string, typ int) !orm.Primitive {
-	match typ {
-		// bool
-		orm.type_idx['bool'] {
-			return orm.Primitive(str == 't')
-		}
-		// i8
-		orm.type_idx['i8'] {
-			return orm.Primitive(str.i8())
-		}
-		// i16
-		orm.type_idx['i16'] {
-			return orm.Primitive(str.i16())
-		}
-		// int
-		orm.type_idx['int'] {
-			return orm.Primitive(str.int())
-		}
-		// i64
-		orm.type_idx['i64'] {
-			return orm.Primitive(str.i64())
-		}
-		// u8
-		orm.type_idx['u8'] {
-			data := str.i8()
-			return orm.Primitive(*unsafe { &u8(&data) })
-		}
-		// u16
-		orm.type_idx['u16'] {
-			data := str.i16()
-			return orm.Primitive(*unsafe { &u16(&data) })
-		}
-		// u32
-		orm.type_idx['u32'] {
-			data := str.int()
-			return orm.Primitive(*unsafe { &u32(&data) })
-		}
-		// u64
-		orm.type_idx['u64'] {
-			data := str.i64()
-			return orm.Primitive(*unsafe { &u64(&data) })
-		}
-		// f32
-		orm.type_idx['f32'] {
-			return orm.Primitive(str.f32())
-		}
-		// f64
-		orm.type_idx['f64'] {
-			return orm.Primitive(str.f64())
-		}
-		orm.type_string {
-			return orm.Primitive(str)
-		}
-		orm.time {
-			if str.contains_any(' /:-') {
-				date_time_str := time.parse(str)!
-				return orm.Primitive(date_time_str)
-			}
+fn str_to_primitive(?val string, typ int) !orm.Primitive {
+    if str := val {
+	    match typ {
+		    // bool
+		    orm.type_idx['bool'] {
+			    return orm.Primitive(str == 't')
+		    }
+		    // i8
+		    orm.type_idx['i8'] {
+			    return orm.Primitive(str.i8())
+		    }
+		    // i16
+		    orm.type_idx['i16'] {
+			    return orm.Primitive(str.i16())
+		    }
+		    // int
+		    orm.type_idx['int'] {
+			    return orm.Primitive(str.int())
+		    }
+		    // i64
+		    orm.type_idx['i64'] {
+			    return orm.Primitive(str.i64())
+		    }
+		    // u8
+		    orm.type_idx['u8'] {
+			    data := str.i8()
+			    return orm.Primitive(*unsafe { &u8(&data) })
+		    }
+		    // u16
+		    orm.type_idx['u16'] {
+			    data := str.i16()
+			    return orm.Primitive(*unsafe { &u16(&data) })
+		    }
+		    // u32
+		    orm.type_idx['u32'] {
+			    data := str.int()
+			    return orm.Primitive(*unsafe { &u32(&data) })
+		    }
+		    // u64
+		    orm.type_idx['u64'] {
+			    data := str.i64()
+			    return orm.Primitive(*unsafe { &u64(&data) })
+		    }
+		    // f32
+		    orm.type_idx['f32'] {
+			    return orm.Primitive(str.f32())
+		    }
+		    // f64
+		    orm.type_idx['f64'] {
+			    return orm.Primitive(str.f64())
+		    }
+		    orm.type_string {
+			    return orm.Primitive(str)
+		    }
+		    orm.time {
+			    if str.contains_any(' /:-') {
+				    date_time_str := time.parse(str)!
+				    return orm.Primitive(date_time_str)
+			    }
 
-			timestamp := str.int()
-			return orm.Primitive(time.unix(timestamp))
-		}
-		else {}
-	}
-	return error('Unknown field type ${typ}')
+			    timestamp := str.int()
+			    return orm.Primitive(time.unix(timestamp))
+		    }
+		    else {}
+	    }
+	    return error('Unknown field type ${typ}')
+    } else {
+        return orm.NullType{}
+    }
 }
