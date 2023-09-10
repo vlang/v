@@ -177,3 +177,13 @@ times = [
 	assert toml.encode[Arrs](a) == s
 	assert toml.decode[Arrs](s)! == a
 }
+
+fn test_unsupported_type() {
+	s := 'name = "Peter"'
+	err_msg := 'toml.decode: expected struct, found '
+	toml.decode[string](s) or { assert err.msg() == err_msg + 'string' }
+	toml.decode[[]string](s) or { assert err.msg() == err_msg + '[]string' }
+	toml.decode[int](s) or { assert err.msg() == err_msg + 'int' }
+	toml.decode[[]f32](s) or { assert err.msg() == err_msg + '[]f32' }
+	// ...
+}
