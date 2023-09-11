@@ -39,9 +39,6 @@ The main differences can be summarized in the following points:
 - The **match operation stops at the end of the string**. It does *NOT* stop
   at new line characters.
 
-- The **match operation stops at the end of the string**. It does *NOT* stop
-  at new line characters.
-
 ## Tokens
 
 The tokens are the atomic units, used by this regex engine.
