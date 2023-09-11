@@ -1,7 +1,7 @@
 import orm
 import db.sqlite
 
-struct State {
+struct MockDBState {
 mut:
 	last  string
 	data  []orm.Primitive
@@ -10,13 +10,13 @@ mut:
 
 struct MockDB {
 	use_num bool
-	st      &State = unsafe { nil }
+	st      &MockDBState = unsafe { nil }
 	db      sqlite.DB
 }
 
 fn MockDB.new() &MockDB {
 	return &MockDB{
-		st: &State{}
+		st: &MockDBState{}
 		db: sqlite.connect(':memory:') or { panic(err) }
 	}
 }
@@ -93,6 +93,8 @@ fn (db MockDB) last_id() int {
 	return db.db.last_id()
 }
 
+// --
+
 [table: 'foo']
 struct Foo {
 mut:
@@ -116,9 +118,13 @@ fn test_option_struct_fields_and_none() {
 	assert db.st.last == 'CREATE TABLE IF NOT EXISTS `foo` (`id` u64-type NOT NULL, `a` string-type NOT NULL, `c` string-type, `d` string-type, `e` int-type NOT NULL, `g` int-type, `h` int-type, PRIMARY KEY(`id`));'
 
 	_ := sql db {
-		select from Foo where e > 5 && c !is none && c is none && h == 2
+		select from Foo where e > 5 && c is none && c !is none && h == 2
 	}!
-	// assert db.st.last == 'SELECT `id`, `a`, `c`, `d`, `e`, `g` , `h` FROM `foo` WHERE `e` > ? AND `c` IS NULL AND `c` IS NOT NULL AND `h` = ?;'
+	assert db.st.last == 'SELECT `id`, `a`, `c`, `d`, `e`, `g`, `h` FROM `foo` WHERE `e` > ? AND `c` IS ? AND `c` IS NOT ? AND `h` = ?;'
+	assert db.st.data.len == 0
+	assert db.st.where.len == 4
+	assert db.st.where == [orm.Primitive(int(5)), orm.NullType{},
+		orm.NullType{}, orm.Primitive(int(2))]
 
 	foo := Foo{}
 	sql db {
@@ -130,6 +136,24 @@ fn test_option_struct_fields_and_none() {
 		int(0), orm.NullType{}, int(55)]
 	id := db.last_id()
 
+	res1 := sql db {
+		select from Foo where id == id
+	}!
+	assert db.st.last == 'SELECT `id`, `a`, `c`, `d`, `e`, `g`, `h` FROM `foo` WHERE `id` = ?;'
+	assert db.st.data.len == 0
+	assert db.st.where.len == 1
+	assert db.st.where == [orm.Primitive(int(id))]
+	assert res1.len == 1
+	assert res1[0] == Foo{
+		id: 1
+		a: ''
+		c: none
+		d: 'hi'
+		e: 0
+		g: none
+		h: 55
+	}
+
 	sql db {
 		update Foo set c = 'yo', d = none, g = 44, h = none where id == id
 	}!
@@ -139,17 +163,15 @@ fn test_option_struct_fields_and_none() {
 	assert db.st.where.len == 1
 	assert db.st.where == [orm.Primitive(int(id))]
 
-	res := sql db {
+	res2 := sql db {
 		select from Foo where id == id
 	}!
 	assert db.st.last == 'SELECT `id`, `a`, `c`, `d`, `e`, `g`, `h` FROM `foo` WHERE `id` = ?;'
-	println(db.st.data)
 	assert db.st.data.len == 0
 	assert db.st.where.len == 1
 	assert db.st.where == [orm.Primitive(int(id))]
-	assert res.len == 1
-	row := res[0]
-	assert row == Foo{
+	assert res2.len == 1
+	assert res2[0] == Foo{
 		id: 1
 		a: ''
 		c: 'yo'
@@ -158,4 +180,41 @@ fn test_option_struct_fields_and_none() {
 		g: 44
 		h: none
 	}
+
+	assert sql db {
+		select count from Foo where a == 'yo'
+	}! == 0
+	assert sql db {
+		select count from Foo where d == 'yo'
+	}! == 0
+	assert sql db {
+		select count from Foo where c == 'yo'
+	}! == 1
+	assert sql db {
+		select count from Foo where a == ''
+	}! == 1
+	assert sql db {
+		select count from Foo where d == ''
+	}! == 0
+	assert sql db {
+		select count from Foo where c == ''
+	}! == 0
+	assert sql db {
+		select count from Foo where a is none
+	}! == 0
+	assert sql db {
+		select count from Foo where d is none
+	}! == 1
+	assert sql db {
+		select count from Foo where c is none
+	}! == 0
+	assert sql db {
+		select count from Foo where a !is none
+	}! == 1
+	assert sql db {
+		select count from Foo where d !is none
+	}! == 0
+	assert sql db {
+		select count from Foo where c !is none
+	}! == 1
 }
