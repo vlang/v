@@ -4,7 +4,7 @@ import io.util
 import net.conv
 import os
 
-union AddrData {
+pub union AddrData {
 	Unix
 	Ip
 	Ip6
