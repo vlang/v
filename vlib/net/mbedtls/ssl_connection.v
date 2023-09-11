@@ -405,6 +405,17 @@ pub fn (mut s SSLConn) dial(hostname string, port int) ! {
 	s.opened = true
 }
 
+pub fn (mut s SSLConn) peer_addr() !net.Addr {
+	mut addr := net.Addr{
+		addr: net.AddrData{
+			Ip6: net.Ip6{}
+		}
+	}
+	mut size := sizeof(net.Addr)
+	net.socket_error_message(C.getpeername(s.handle, voidptr(&addr), &size), 'peer_addr failed')!
+	return addr
+}
+
 // socket_read_into_ptr reads `len` bytes into `buf`
 pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 	mut res := 0
