@@ -14,7 +14,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	c.expected_type = left_type
 
 	// `if n is ast.Ident && n.is_mut { ... }`
-	if node.op == .and {
+	if !c.inside_sql && node.op == .and {
 		mut left_node := node.left
 		for mut left_node is ast.InfixExpr {
 			if left_node.op == .and && mut left_node.right is ast.InfixExpr {
