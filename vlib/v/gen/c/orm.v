@@ -984,7 +984,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, le
 				g.indent--
 				g.writeln('else')
 				g.indent++
-				g.writeln('_option_ok(${prim}->_${typ}, (_option *)&${tmp}.${sfield}, sizeof(${tmp}.${sfield}));')
+				g.writeln('_option_ok(${prim}->_${typ}, (_option *)&${tmp}.${sfield}, sizeof(${typ}));')
 				g.indent--
 			} else {
 				mut typ := sym.cname
