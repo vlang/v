@@ -5,16 +5,16 @@ import term
 
 ///////////////////////////////////////////////////////////
 // This file gets compiled as part of the main program, for
-// each _test.v file. It implements the default/normal test
+// each _test.v file. It implements the extended test
 // output for `v run file_test.v`
 // See also test_runner.v .
 ///////////////////////////////////////////////////////////
 
 fn vtest_init() {
-	change_test_runner(&TestRunner(new_normal_test_runner()))
+	change_test_runner(&TestRunner(ExtendedTestRunner.new()))
 }
 
-struct NormalTestRunner {
+struct ExtendedTestRunner {
 pub mut:
 	fname              string
 	use_color          bool
@@ -32,9 +32,9 @@ mut:
 	total_assert_fails  u64
 }
 
-fn new_normal_test_runner() &TestRunner {
+fn ExtendedTestRunner.new() &TestRunner {
 	unsafe {
-		mut tr := &NormalTestRunner{}
+		mut tr := &ExtendedTestRunner{}
 		tr.use_color = term.can_show_color_on_stderr()
 		tr.use_relative_paths = match os.getenv('VERROR_PATHS') {
 			'absolute' { false }
@@ -44,7 +44,7 @@ fn new_normal_test_runner() &TestRunner {
 	}
 }
 
-fn (mut runner NormalTestRunner) free() {
+fn (mut runner ExtendedTestRunner) free() {
 	unsafe {
 		runner.all_assertsions.free()
 		runner.fname.free()
@@ -57,16 +57,16 @@ fn normalise_fname(name string) string {
 	return 'fn ' + name.replace('__', '.').replace('main.', '')
 }
 
-fn (mut runner NormalTestRunner) start(ntests int) {
+fn (mut runner ExtendedTestRunner) start(ntests int) {
 	unsafe {
 		runner.all_assertsions = []&VAssertMetaInfo{cap: 1000}
 	}
 }
 
-fn (mut runner NormalTestRunner) finish() {
+fn (mut runner ExtendedTestRunner) finish() {
 }
 
-fn (mut runner NormalTestRunner) exit_code() int {
+fn (mut runner ExtendedTestRunner) exit_code() int {
 	if runner.fn_fails > 0 {
 		return 1
 	}
@@ -76,21 +76,21 @@ fn (mut runner NormalTestRunner) exit_code() int {
 	return 0
 }
 
-fn (mut runner NormalTestRunner) fn_start() bool {
+fn (mut runner ExtendedTestRunner) fn_start() bool {
 	runner.fn_assert_passes = 0
 	runner.fname = normalise_fname(runner.fn_test_info.name)
 	return true
 }
 
-fn (mut runner NormalTestRunner) fn_pass() {
+fn (mut runner ExtendedTestRunner) fn_pass() {
 	runner.fn_passes++
 }
 
-fn (mut runner NormalTestRunner) fn_fail() {
+fn (mut runner ExtendedTestRunner) fn_fail() {
 	runner.fn_fails++
 }
 
-fn (mut runner NormalTestRunner) fn_error(line_nr int, file string, mod string, fn_name string, errmsg string) {
+fn (mut runner ExtendedTestRunner) fn_error(line_nr int, file string, mod string, fn_name string, errmsg string) {
 	filepath := if runner.use_relative_paths { file.clone() } else { os.real_path(file) }
 	mut final_filepath := filepath + ':${line_nr}:'
 	if runner.use_color {
@@ -108,13 +108,13 @@ fn (mut runner NormalTestRunner) fn_error(line_nr int, file string, mod string, 
 	}
 }
 
-fn (mut runner NormalTestRunner) assert_pass(i &VAssertMetaInfo) {
+fn (mut runner ExtendedTestRunner) assert_pass(i &VAssertMetaInfo) {
 	runner.total_assert_passes++
 	runner.fn_assert_passes++
 	runner.all_assertsions << i
 }
 
-fn (mut runner NormalTestRunner) assert_fail(i &VAssertMetaInfo) {
+fn (mut runner ExtendedTestRunner) assert_fail(i &VAssertMetaInfo) {
 	runner.total_assert_fails++
 	filepath := if runner.use_relative_paths { i.fpath.clone() } else { os.real_path(i.fpath) }
 	mut final_filepath := filepath + ':${i.line_nr + 1}:'
