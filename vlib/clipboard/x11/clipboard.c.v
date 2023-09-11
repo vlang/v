@@ -126,16 +126,16 @@ const (
 // in the future, maybe we can extend this
 // to support other mime types
 enum AtomType {
-	xa_atom = 0 // value 4
-	xa_string = 1 // value 31
-	targets = 2
-	clipboard = 3
-	primary = 4
-	secondary = 5
-	text = 6
+	xa_atom     = 0 // value 4
+	xa_string   = 1 // value 31
+	targets     = 2
+	clipboard   = 3
+	primary     = 4
+	secondary   = 5
+	text        = 6
 	utf8_string = 7
-	text_plain = 8
-	text_html = 9
+	text_plain  = 8
+	text_html   = 9
 }
 
 [heap]

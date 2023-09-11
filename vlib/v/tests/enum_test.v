@@ -34,8 +34,8 @@ fn test_enum() {
 
 enum PowerDuration {
 	invulntics = 30 * 35
-	invistics = 60 * 35
-	infratics = 120 * 35
+	invistics  = 60 * 35
+	infratics  = 120 * 35
 }
 
 fn test_custom_values() {

@@ -18,17 +18,17 @@ pub const (
 
 // First argument to waitid:
 pub enum Wi_which {
-	p_all = 0
-	p_pid = 1
+	p_all  = 0
+	p_pid  = 1
 	p_pgid = 2
 }
 
 pub enum Wi_si_code {
-	cld_exited = 1 // child has exited
-	cld_killed = 2 // child was killed
-	cld_dumped = 3 // child terminated abnormally
-	cld_trapped = 4 // traced child has trapped
-	cld_stopped = 5 // child has stopped
+	cld_exited    = 1 // child has exited
+	cld_killed    = 2 // child was killed
+	cld_dumped    = 3 // child terminated abnormally
+	cld_trapped   = 4 // traced child has trapped
+	cld_stopped   = 5 // child has stopped
 	cld_continued = 6 // stopped child has continued
 }
 
@@ -66,45 +66,45 @@ Paraphrased from "man 2 waitid" on Linux
 */
 
 pub enum Sig_index {
-	si_signo = 0x00
-	si_code = 0x02
-	si_pid = 0x04
-	si_uid = 0x05
+	si_signo  = 0x00
+	si_code   = 0x02
+	si_pid    = 0x04
+	si_uid    = 0x05
 	si_status = 0x06
-	si_size = 0x80
+	si_size   = 0x80
 }
 
 pub enum Signo {
-	sighup = 1 // Hangup.
-	sigint = 2 // Interactive attention signal.
-	sigquit = 3 // Quit.
-	sigill = 4 // Illegal instruction.
-	sigtrap = 5 // Trace/breakpoint trap.
-	sigabrt = 6 // Abnormal termination.
-	sigbus = 7
-	sigfpe = 8 // Erroneous arithmetic operation.
-	sigkill = 9 // Killed.
-	sigusr1 = 10
-	sigsegv = 11 // Invalid access to storage.
-	sigusr2 = 12
-	sigpipe = 13 // Broken pipe.
-	sigalrm = 14 // Alarm clock.
-	sigterm = 15 // Termination request.
+	sighup    = 1 // Hangup.
+	sigint    = 2 // Interactive attention signal.
+	sigquit   = 3 // Quit.
+	sigill    = 4 // Illegal instruction.
+	sigtrap   = 5 // Trace/breakpoint trap.
+	sigabrt   = 6 // Abnormal termination.
+	sigbus    = 7
+	sigfpe    = 8 // Erroneous arithmetic operation.
+	sigkill   = 9 // Killed.
+	sigusr1   = 10
+	sigsegv   = 11 // Invalid access to storage.
+	sigusr2   = 12
+	sigpipe   = 13 // Broken pipe.
+	sigalrm   = 14 // Alarm clock.
+	sigterm   = 15 // Termination request.
 	sigstkflt = 16
-	sigchld = 17
-	sigcont = 18
-	sigstop = 19
-	sigtstp = 20
-	sigttin = 21 // Background read from control terminal.
-	sigttou = 22 // Background write to control terminal.
-	sigurg = 23
-	sigxcpu = 24 // CPU time limit exceeded.
-	sigxfsz = 25 // File size limit exceeded.
+	sigchld   = 17
+	sigcont   = 18
+	sigstop   = 19
+	sigtstp   = 20
+	sigttin   = 21 // Background read from control terminal.
+	sigttou   = 22 // Background write to control terminal.
+	sigurg    = 23
+	sigxcpu   = 24 // CPU time limit exceeded.
+	sigxfsz   = 25 // File size limit exceeded.
 	sigvtalrm = 26 // Virtual timer expired.
-	sigprof = 27 // Profiling timer expired.
-	sigwinch = 28
-	sigpoll = 29
-	sigsys = 31
+	sigprof   = 27 // Profiling timer expired.
+	sigwinch  = 28
+	sigpoll   = 29
+	sigsys    = 31
 }
 
 pub const (
@@ -168,61 +168,61 @@ pub const (
 
 pub enum Errno {
 	enoerror = 0x00000000
-	e2big = 0x00000007
-	eacces = 0x0000000d
-	eagain = 0x0000000b
-	ebadf = 0x00000009
-	ebusy = 0x00000010
-	echild = 0x0000000a
-	edom = 0x00000021
-	eexist = 0x00000011
-	efault = 0x0000000e
-	efbig = 0x0000001b
-	eintr = 0x00000004
-	einval = 0x00000016
-	eio = 0x00000005
-	eisdir = 0x00000015
-	emfile = 0x00000018
-	emlink = 0x0000001f
-	enfile = 0x00000017
-	enodev = 0x00000013
-	enoent = 0x00000002
-	enoexec = 0x00000008
-	enomem = 0x0000000c
-	enospc = 0x0000001c
-	enotblk = 0x0000000f
-	enotdir = 0x00000014
-	enotty = 0x00000019
-	enxio = 0x00000006
-	eperm = 0x00000001
-	epipe = 0x00000020
-	erange = 0x00000022
-	erofs = 0x0000001e
-	espipe = 0x0000001d
-	esrch = 0x00000003
-	etxtbsy = 0x0000001a
-	exdev = 0x00000012
+	e2big    = 0x00000007
+	eacces   = 0x0000000d
+	eagain   = 0x0000000b
+	ebadf    = 0x00000009
+	ebusy    = 0x00000010
+	echild   = 0x0000000a
+	edom     = 0x00000021
+	eexist   = 0x00000011
+	efault   = 0x0000000e
+	efbig    = 0x0000001b
+	eintr    = 0x00000004
+	einval   = 0x00000016
+	eio      = 0x00000005
+	eisdir   = 0x00000015
+	emfile   = 0x00000018
+	emlink   = 0x0000001f
+	enfile   = 0x00000017
+	enodev   = 0x00000013
+	enoent   = 0x00000002
+	enoexec  = 0x00000008
+	enomem   = 0x0000000c
+	enospc   = 0x0000001c
+	enotblk  = 0x0000000f
+	enotdir  = 0x00000014
+	enotty   = 0x00000019
+	enxio    = 0x00000006
+	eperm    = 0x00000001
+	epipe    = 0x00000020
+	erange   = 0x00000022
+	erofs    = 0x0000001e
+	espipe   = 0x0000001d
+	esrch    = 0x00000003
+	etxtbsy  = 0x0000001a
+	exdev    = 0x00000012
 }
 
 pub enum Mm_prot {
-	prot_read = 0x1
-	prot_write = 0x2
-	prot_exec = 0x4
-	prot_none = 0x0
+	prot_read      = 0x1
+	prot_write     = 0x2
+	prot_exec      = 0x4
+	prot_none      = 0x0
 	prot_growsdown = 0x01000000
-	prot_growsup = 0x02000000
+	prot_growsup   = 0x02000000
 }
 
 pub enum Map_flags {
-	map_shared = 0x01
-	map_private = 0x02
+	map_shared          = 0x01
+	map_private         = 0x02
 	map_shared_validate = 0x03
-	map_type = 0x0f
-	map_fixed = 0x10
-	map_file = 0x00
-	map_anonymous = 0x20
-	map_huge_shift = 26
-	map_huge_mask = 0x3f
+	map_type            = 0x0f
+	map_fixed           = 0x10
+	map_file            = 0x00
+	map_anonymous       = 0x20
+	map_huge_shift      = 26
+	map_huge_mask       = 0x3f
 }
 
 fn sys_call0(scn u64) u64 {

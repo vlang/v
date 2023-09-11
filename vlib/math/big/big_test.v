@@ -222,8 +222,8 @@ const div_mod_test_data = [
 // vfmt on
 
 enum Comparison {
-	less = -1
-	equal = 0
+	less    = -1
+	equal   = 0
 	greater = 1
 }
 

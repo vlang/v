@@ -68,34 +68,34 @@ pub struct C.PGresult {}
 pub struct C.PGconn {}
 
 pub enum ConnStatusType {
-	ok = C.CONNECTION_OK
-	bad = C.CONNECTION_BAD
+	ok                = C.CONNECTION_OK
+	bad               = C.CONNECTION_BAD
 	// Non-blocking mode only below here
 	// The existence of these should never be relied upon - they should only be used for user feedback or similar purposes.
-	started = C.CONNECTION_STARTED // Waiting for connection to be made.
-	made = C.CONNECTION_MADE // Connection OK; waiting to send.
+	started           = C.CONNECTION_STARTED // Waiting for connection to be made.
+	made              = C.CONNECTION_MADE // Connection OK; waiting to send.
 	awaiting_response = C.CONNECTION_AWAITING_RESPONSE // Waiting for a response from the postmaster.
-	auth_ok = C.CONNECTION_AUTH_OK // Received authentication; waiting for backend startup.
-	setenv = C.CONNECTION_SETENV // Negotiating environment.
-	ssl_startup = C.CONNECTION_SSL_STARTUP // Negotiating SSL.
-	needed = C.CONNECTION_NEEDED // Internal state: connect() needed . Available in PG 8
-	check_writable = C.CONNECTION_CHECK_WRITABLE // Check if we could make a writable connection. Available since PG 10
-	consume = C.CONNECTION_CONSUME // Wait for any pending message and consume them. Available since PG 10
-	gss_startup = C.CONNECTION_GSS_STARTUP // Negotiating GSSAPI; available since PG 12
+	auth_ok           = C.CONNECTION_AUTH_OK // Received authentication; waiting for backend startup.
+	setenv            = C.CONNECTION_SETENV // Negotiating environment.
+	ssl_startup       = C.CONNECTION_SSL_STARTUP // Negotiating SSL.
+	needed            = C.CONNECTION_NEEDED // Internal state: connect() needed . Available in PG 8
+	check_writable    = C.CONNECTION_CHECK_WRITABLE // Check if we could make a writable connection. Available since PG 10
+	consume           = C.CONNECTION_CONSUME // Wait for any pending message and consume them. Available since PG 10
+	gss_startup       = C.CONNECTION_GSS_STARTUP // Negotiating GSSAPI; available since PG 12
 }
 
 [typedef]
 pub enum ExecStatusType {
-	empty_query = C.PGRES_EMPTY_QUERY // empty query string was executed
-	command_ok = C.PGRES_COMMAND_OK // a query command that doesn't return anything was executed properly by the backend
-	tuples_ok = C.PGRES_TUPLES_OK // a query command that returns tuples was executed properly by the backend, PGresult contains the result tuples
-	copy_out = C.PGRES_COPY_OUT // Copy Out data transfer in progress
-	copy_in = C.PGRES_COPY_IN // Copy In data transfer in progress
-	bad_response = C.PGRES_BAD_RESPONSE // an unexpected response was recv'd from the backend
+	empty_query    = C.PGRES_EMPTY_QUERY // empty query string was executed
+	command_ok     = C.PGRES_COMMAND_OK // a query command that doesn't return anything was executed properly by the backend
+	tuples_ok      = C.PGRES_TUPLES_OK // a query command that returns tuples was executed properly by the backend, PGresult contains the result tuples
+	copy_out       = C.PGRES_COPY_OUT // Copy Out data transfer in progress
+	copy_in        = C.PGRES_COPY_IN // Copy In data transfer in progress
+	bad_response   = C.PGRES_BAD_RESPONSE // an unexpected response was recv'd from the backend
 	nonfatal_error = C.PGRES_NONFATAL_ERROR // notice or warning message
-	fatal_error = C.PGRES_FATAL_ERROR // query failed
-	copy_both = C.PGRES_COPY_BOTH // Copy In/Out data transfer in progress
-	single_tuple = C.PGRES_SINGLE_TUPLE // single tuple from larger resultset
+	fatal_error    = C.PGRES_FATAL_ERROR // query failed
+	copy_both      = C.PGRES_COPY_BOTH // Copy In/Out data transfer in progress
+	single_tuple   = C.PGRES_SINGLE_TUPLE // single tuple from larger resultset
 }
 
 //

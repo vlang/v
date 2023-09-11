@@ -2,17 +2,17 @@ import json
 
 [json_as_number]
 pub enum MessageType {
-	error = 1
+	error   = 1
 	warning = 2
-	info = 3
-	log = 4
+	info    = 3
+	log     = 4
 }
 
 pub enum MessageType2 {
-	error = 1
+	error   = 1
 	warning = 2
-	info = 3
-	log = 4
+	info    = 3
+	log     = 4
 }
 
 enum TestEnum {

@@ -28,16 +28,16 @@ enum Select {
 
 // SocketType are the available sockets
 pub enum SocketType {
-	udp = C.SOCK_DGRAM
-	tcp = C.SOCK_STREAM
+	udp       = C.SOCK_DGRAM
+	tcp       = C.SOCK_STREAM
 	seqpacket = C.SOCK_SEQPACKET
 }
 
 // AddrFamily are the available address families
 pub enum AddrFamily {
-	unix = C.AF_UNIX
-	ip = C.AF_INET
-	ip6 = C.AF_INET6
+	unix   = C.AF_UNIX
+	ip     = C.AF_INET
+	ip6    = C.AF_INET6
 	unspec = C.AF_UNSPEC
 }
 

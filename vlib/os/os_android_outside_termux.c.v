@@ -5,10 +5,10 @@ module os
 #include <android/native_activity.h>
 
 pub enum AssetMode {
-	buffer = C.AASSET_MODE_BUFFER // Caller plans to ask for a read-only buffer with all data.
-	random = C.AASSET_MODE_RANDOM // Read chunks, and seek forward and backward.
+	buffer    = C.AASSET_MODE_BUFFER // Caller plans to ask for a read-only buffer with all data.
+	random    = C.AASSET_MODE_RANDOM // Read chunks, and seek forward and backward.
 	streaming = C.AASSET_MODE_STREAMING // Read sequentially, with an occasional forward seek.
-	unknown = C.AASSET_MODE_UNKNOWN // No specific information about how data will be accessed.
+	unknown   = C.AASSET_MODE_UNKNOWN // No specific information about how data will be accessed.
 }
 
 // See https://developer.android.com/ndk/reference/struct/a-native-activity for more info.

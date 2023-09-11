@@ -17,10 +17,10 @@ const (
 )
 
 enum ReplyCode {
-	ready = 220
-	close = 221
-	auth_ok = 235
-	action_ok = 250
+	ready      = 220
+	close      = 221
+	auth_ok    = 235
+	action_ok  = 250
 	mail_start = 354
 }
 

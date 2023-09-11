@@ -281,13 +281,13 @@ pub enum BlendOp {
 
 pub enum ColorMask {
 	_default = 0 // value 0 reserved for default-init
-	@none = 0x10 // special value for 'all channels disabled
-	r = 1
-	g = 2
-	b = 4
-	a = 8
-	rgb = 0x7
-	rgba = 0xF
+	@none    = 0x10 // special value for 'all channels disabled
+	r        = 1
+	g        = 2
+	b        = 4
+	a        = 8
+	rgb      = 0x7
+	rgba     = 0xF
 }
 
 pub enum Action {
