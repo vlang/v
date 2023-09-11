@@ -90,6 +90,8 @@ pub enum SQLDialect {
 	sqlite
 }
 
+const null_instance = NullType{}
+
 fn (kind OperationKind) to_str() string {
 	str := match kind {
 		.neq { '!=' }

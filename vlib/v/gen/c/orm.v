@@ -364,7 +364,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			}
 			var := '${node.object_var_name}${member_access_type}${c_name(field.name)}'
 			if field.typ.has_flag(.option) {
-				null := '(orm__Primitive){ ._typ = ${g.table.find_type_idx('orm.NullType') /* orm.NullType */} }'
+				null := '(orm__Primitive){ ._typ = ${g.table.find_type_idx('orm.NullType')}, ._orm__NullType = &_const_orm__null_instance }'
 				g.writeln('${var}.state == 2? ${null} : orm__${typ}_to_primitive(*(${typ}*)(${var}.data)),')
 			} else {
 				g.writeln('orm__${typ}_to_primitive(${var}),')
@@ -472,7 +472,7 @@ fn (mut g Gen) write_orm_primitive(t ast.Type, expr ast.Expr) {
 		return
 	}
 	if typ == 'none' {
-		g.writeln('(orm__Primitive){ ._typ = ${g.table.find_type_idx('orm.NullType')} /* orm.NullType */ },')
+		g.writeln('(orm__Primitive){ ._typ = ${g.table.find_type_idx('orm.NullType')}, ._orm__NullType = &_const_orm__null_instance },')
 		return
 	}
 	if typ == 'time__Time' {
