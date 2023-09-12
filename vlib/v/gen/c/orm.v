@@ -299,7 +299,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 	}
 
 	fields := node.fields.filter(g.table.sym(it.typ).kind != .array)
-	primary_field_name := g.get_orm_struct_primary_field_name(fields) or { '' }
+	auto_fields := get_auto_fields(fields)
 
 	for sub in subs {
 		g.sql_stmt_line(sub, connection_var_name, or_expr)
@@ -378,7 +378,18 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 	g.indent--
 	g.writeln('),')
 	g.writeln('.types = __new_array_with_default_noscan(0, 0, sizeof(int), 0),')
-	g.writeln('.primary_column_name = _SLIT("${primary_field_name}"),')
+	if auto_fields.len > 0 {
+		g.writeln('.auto_fields = new_array_from_c_array(${auto_fields.len}, ${auto_fields.len}, sizeof(int),')
+		g.indent++
+		g.write('_MOV((int[${auto_fields.len}]){')
+		for i in auto_fields {
+			g.write(' ${i},')
+		}
+		g.writeln(' })),')
+		g.indent--
+	} else {
+		g.writeln('.auto_fields = __new_array_with_default_noscan(0, 0, sizeof(int), 0),')
+	}
 	g.writeln('.kinds = __new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
 	g.writeln('.is_and = __new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
 	g.indent--
@@ -1117,6 +1128,20 @@ fn (_ &Gen) get_orm_struct_primary_field_name(fields []ast.StructField) ?string 
 			}
 		}
 	}
-
 	return none
+}
+
+// return indexes of any auto-increment fields or fields with default values
+fn get_auto_fields(fields []ast.StructField) []int {
+	mut ret := []int{}
+	for i, field in fields {
+		for attr in field.attrs {
+			if attr.name == 'sql' && attr.arg.to_lower() == 'serial' {
+				ret << i
+			} else if attr.name == 'default' {
+				ret << i
+			}
+		}
+	}
+	return ret
 }

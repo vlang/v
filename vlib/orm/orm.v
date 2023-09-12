@@ -122,15 +122,16 @@ fn (kind OrderType) to_str() string {
 // Every field, data, type & kind of operation in the expr share the same index in the arrays
 // is_and defines how they're addicted to each other either and or or
 // parentheses defines which fields will be inside ()
+// auto_fields are indexes of fields where db should generate a value when absent in an insert
 pub struct QueryData {
 pub:
-	fields              []string
-	data                []Primitive
-	types               []int
-	parentheses         [][]int
-	kinds               []OperationKind
-	primary_column_name string
-	is_and              []bool
+	fields      []string
+	data        []Primitive
+	types       []int
+	parentheses [][]int
+	kinds       []OperationKind
+	auto_fields []int
+	is_and      []bool
 }
 
 pub struct InfixType {
@@ -212,23 +213,28 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table string, q string, kind StmtKin
 
 			for i in 0 .. data.fields.len {
 				column_name := data.fields[i]
-				is_primary_column := column_name == data.primary_column_name
+				is_auto_field := i in data.auto_fields
 
 				if data.data.len > 0 {
-					// Allow the database to insert an automatically generated primary key
-					// under the hood if it is not passed by the user.
-					tidx := data.data[i].type_idx()
-					if is_primary_column && (tidx in orm.nums || tidx in orm.num64) {
-						x := data.data[i]
-						match x {
-							i8, i16, int, i64, u8, u16, u32, u64 {
-								if i64(x) == 0 {
-									continue
-								}
-							}
-							else {}
+					// skip fields and allow the database to insert default and
+					// serial (auto-increment) values where a default (or no)
+					// value was provided
+					if is_auto_field {
+						mut x := data.data[i]
+						skip_auto_field := match mut x {
+							Null { true }
+							string { x == '' }
+							i8, i16, int, i64, u8, u16, u32, u64 { u64(x) == 0 }
+							f32, f64 { f64(x) == 0 }
+							time.Time { x == time.Time{} }
+							bool { !x }
+							else { false }
+						}
+						if skip_auto_field {
+							continue
 						}
 					}
+
 					data_data << data.data[i]
 				}
 				select_fields << '${q}${column_name}${q}'
