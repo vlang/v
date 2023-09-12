@@ -245,6 +245,9 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 		mut object_var_name := '${node.object_var_name}.${field.name}'
 		if typ != field.typ {
 			object_var_name = node.object_var_name
+		} else if typ.has_flag(.option) {
+			sym := c.table.sym(field.typ)
+			object_var_name = '(*(${sym.cname}*)&${object_var_name}.data)'
 		}
 
 		mut subquery_expr := ast.SqlStmtLine{

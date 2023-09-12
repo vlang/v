@@ -35,7 +35,7 @@ pub const (
 		'string': typeof[string]().idx
 	}
 	string_max_len = 2048
-	null_instance  = Null{}
+	null_primitive = Primitive(Null{})
 )
 
 pub type Primitive = InfixType
