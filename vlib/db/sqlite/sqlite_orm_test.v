@@ -16,9 +16,9 @@ struct TestCustomSqlType {
 struct TestDefaultAtribute {
 	id          string [primary; sql: serial]
 	name        string
-	created_at  string [default: 'CURRENT_TIME']
-	created_at1 string [default: 'CURRENT_DATE']
-	created_at2 string [default: 'CURRENT_TIMESTAMP']
+	created_at  ?string [default: 'CURRENT_TIME']
+	created_at1 ?string [default: 'CURRENT_DATE']
+	created_at2 ?string [default: 'CURRENT_TIMESTAMP']
 }
 
 struct EntityToTest {
@@ -153,12 +153,12 @@ fn test_sqlite_orm() {
 
 	result_test_default_atribute := test_default_atributes.first()
 	assert result_test_default_atribute.name == 'Hitalo'
-	assert test_default_atribute.created_at.len == 0
-	assert test_default_atribute.created_at1.len == 0
-	assert test_default_atribute.created_at2.len == 0
-	assert result_test_default_atribute.created_at.len == 8 // HH:MM:SS
-	assert result_test_default_atribute.created_at1.len == 10 // YYYY-MM-DD
-	assert result_test_default_atribute.created_at2.len == 19 // YYYY-MM-DD HH:MM:SS
+	assert test_default_atribute.created_at or {''} == ''
+	assert test_default_atribute.created_at1 or {''} == ''
+	assert test_default_atribute.created_at2 or {''} == ''
+	assert result_test_default_atribute.created_at or {''}.len == 8 // HH:MM:SS
+	assert result_test_default_atribute.created_at1 or {''}.len == 10 // YYYY-MM-DD
+	assert result_test_default_atribute.created_at2 or {''}.len == 19 // YYYY-MM-DD HH:MM:SS
 
 	sql db {
 		drop table TestDefaultAtribute

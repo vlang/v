@@ -152,6 +152,7 @@ fn test_orm_table_gen() {
 			name: 'id'
 			typ: typeof[int]().idx
 			default_val: '10'
+			nullable: true
 			attrs: [
 				StructAttribute{
 					name: 'primary'
@@ -167,10 +168,12 @@ fn test_orm_table_gen() {
 		orm.TableField{
 			name: 'test'
 			typ: typeof[string]().idx
+			nullable: true
 		},
 		orm.TableField{
 			name: 'abc'
 			typ: typeof[i64]().idx
+			nullable: true
 			default_val: '6754'
 		},
 	], sql_type_from_v, false) or { panic(err) }
@@ -180,6 +183,7 @@ fn test_orm_table_gen() {
 		orm.TableField{
 			name: 'id'
 			typ: typeof[int]().idx
+			nullable: true
 			default_val: '10'
 			attrs: [
 				StructAttribute{
@@ -196,10 +200,12 @@ fn test_orm_table_gen() {
 		orm.TableField{
 			name: 'test'
 			typ: typeof[string]().idx
+			nullable: true
 		},
 		orm.TableField{
 			name: 'abc'
 			typ: typeof[i64]().idx
+			nullable: true
 			default_val: '6754'
 		},
 	], sql_type_from_v, true) or { panic(err) }
@@ -209,6 +215,7 @@ fn test_orm_table_gen() {
 		orm.TableField{
 			name: 'id'
 			typ: typeof[int]().idx
+			nullable: true
 			default_val: '10'
 			attrs: [
 				StructAttribute{
@@ -237,12 +244,13 @@ fn test_orm_table_gen() {
 			default_val: '6754'
 		},
 	], sql_type_from_v, false) or { panic(err) }
-	assert unique_query == "CREATE TABLE IF NOT EXISTS 'test_table' ('id' SERIAL DEFAULT 10, 'test' TEXT, 'abc' INT64 DEFAULT 6754, PRIMARY KEY('id'), UNIQUE('test'));"
+	assert unique_query == "CREATE TABLE IF NOT EXISTS 'test_table' ('id' SERIAL DEFAULT 10, 'test' TEXT NOT NULL, 'abc' INT64 DEFAULT 6754 NOT NULL, PRIMARY KEY('id'), UNIQUE('test'));"
 
 	mult_unique_query := orm.orm_table_gen('test_table', "'", true, 0, [
 		orm.TableField{
 			name: 'id'
 			typ: typeof[int]().idx
+			nullable: true
 			default_val: '10'
 			attrs: [
 				StructAttribute{
@@ -259,6 +267,7 @@ fn test_orm_table_gen() {
 		orm.TableField{
 			name: 'test'
 			typ: typeof[string]().idx
+			nullable: true
 			attrs: [
 				StructAttribute{
 					name: 'unique'
@@ -271,6 +280,7 @@ fn test_orm_table_gen() {
 		orm.TableField{
 			name: 'abc'
 			typ: typeof[i64]().idx
+			nullable: true
 			default_val: '6754'
 			attrs: [
 				StructAttribute{
