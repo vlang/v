@@ -22,7 +22,7 @@ pub enum FieldType {
 	type_timestamp2
 	type_datetime2
 	type_time2
-	type_json = 245
+	type_json        = 245
 	type_newdecimal
 	type_enum
 	type_set

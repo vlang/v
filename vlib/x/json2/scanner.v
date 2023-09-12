@@ -24,10 +24,10 @@ enum TokenKind {
 	eof
 	comma = 44 // ,
 	colon = 58 // :
-	lsbr = 91 // [
-	rsbr = 93 // ]
-	lcbr = 123 // {
-	rcbr = 125 // }
+	lsbr  = 91 // [
+	rsbr  = 93 // ]
+	lcbr  = 123 // {
+	rcbr  = 125 // }
 }
 
 pub struct Token {

@@ -77,11 +77,11 @@ pub:
 // OPCode represents the supported websocket frame types
 pub enum OPCode {
 	continuation = 0x00
-	text_frame = 0x01
+	text_frame   = 0x01
 	binary_frame = 0x02
-	close = 0x08
-	ping = 0x09
-	pong = 0x0A
+	close        = 0x08
+	ping         = 0x09
+	pong         = 0x0A
 }
 
 [params]

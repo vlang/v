@@ -41,17 +41,17 @@ pub enum NumType as u8 {
 }
 
 pub enum ValType as u8 {
-	i32_t = 0x7f
-	i64_t = 0x7e
-	f32_t = 0x7d
-	f64_t = 0x7c
-	v128_t = 0x7b
-	funcref_t = 0x70
+	i32_t       = 0x7f
+	i64_t       = 0x7e
+	f32_t       = 0x7d
+	f64_t       = 0x7c
+	v128_t      = 0x7b
+	funcref_t   = 0x70
 	externref_t = 0x6f
 }
 
 pub enum RefType as u8 {
-	funcref_t = 0x70
+	funcref_t   = 0x70
 	externref_t = 0x6f
 }
 

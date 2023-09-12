@@ -1,9 +1,9 @@
 // see: https://discordapp.com/channels/592103645835821068/592114487759470596/762270244566728704
 enum WireType {
-	varint = 0
-	_64bit = 1
+	varint          = 0
+	_64bit          = 1
 	length_prefixed = 2
-	_32bit = 5
+	_32bit          = 5
 }
 
 fn pack_wire_type(w WireType) u8 {

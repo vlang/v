@@ -27,13 +27,13 @@ import os
 *
 ******************************************************************************/
 enum Item_type {
-	file = 0
+	file         = 0
 	folder
 	// archive format
-	zip = 16
+	zip          = 16
 	archive_file
 	// graphic format, MUST stay after the other types!!
-	bmp = 32
+	bmp          = 32
 	jpg
 	png
 	gif

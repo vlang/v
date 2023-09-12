@@ -1,7 +1,7 @@
 module builtin
 
 pub enum BTest_enum {
-	v0 = 0
+	v0  = 0
 	v1
 	v2
 	v3
