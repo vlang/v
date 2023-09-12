@@ -22,7 +22,7 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string)
 	$if trace_http_request ? {
 		eprintln('> ${sdata}')
 	}
-	length := C.request(&ctx, port, addr.to_wide(), sdata.str, &buff)
+	length := C.request(&ctx, port, addr.to_wide(), sdata.str, sdata.len, &buff)
 	C.vschannel_cleanup(&ctx)
 	response_text := unsafe { buff.vstring_with_len(length) }
 	if req.on_progress != unsafe { nil } {
