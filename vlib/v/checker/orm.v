@@ -98,7 +98,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 				scope: c.fn_scope
 				obj: ast.Var{}
 				mod: 'main'
-				name: pkey_field.name
+				name: 'id'
 				is_mut: false
 				kind: .unresolved
 				info: ast.IdentVar{}
@@ -111,13 +111,24 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 				is_mut: false
 				scope: c.fn_scope
 				info: ast.IdentVar{
-					typ: pkey_field.typ
+					typ: ast.int_type
 				}
 			}
-			left_type: pkey_field.typ
-			right_type: pkey_field.typ
+			left_type: ast.int_type
+			right_type: ast.int_type
 			auto_locked: ''
 			or_block: ast.OrExpr{}
+		}
+
+		if c.table.sym(field.typ).kind == .array {
+			mut where_expr := subquery_expr.where_expr as ast.InfixExpr
+			mut left := where_expr.left as ast.Ident
+			mut right := where_expr.right as ast.Ident
+
+			left.name = pkey_field.name
+			right.info.typ = pkey_field.typ
+			where_expr.left_type = pkey_field.typ
+			where_expr.right_type = pkey_field.typ
 		}
 
 		sub_structs[int(typ)] = subquery_expr

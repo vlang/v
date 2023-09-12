@@ -301,6 +301,18 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 		}
 	}
 
+	mut member_access_type := '.'
+
+	if node.scope != unsafe { nil } {
+		inserting_object := node.scope.find(node.object_var_name) or {
+			verror('`${node.object_var_name}` is not found in scope')
+		}
+
+		if inserting_object.typ.is_ptr() {
+			member_access_type = '->'
+		}
+	}
+
 	fields := node.fields.filter(g.table.sym(it.typ).kind != .array)
 	primary_field := g.get_orm_struct_primary_field(fields) or { ast.StructField{} }
 
@@ -313,8 +325,17 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 	is_serial = is_serial && primary_field.typ == ast.int_type
 
 	for sub in subs {
-		g.sql_stmt_line(sub, connection_var_name, or_expr)
-		g.writeln('array_push(&${last_ids_arr}, _MOV((orm__Primitive[]){orm__int_to_primitive(orm__Connection_name_table[${connection_var_name}._typ]._method_last_id(${connection_var_name}._object))}));')
+		if is_serial {
+			g.sql_stmt_line(sub, connection_var_name, or_expr)
+			g.writeln('array_push(&${last_ids_arr}, _MOV((orm__Primitive[]){orm__int_to_primitive(orm__Connection_name_table[${connection_var_name}._typ]._method_last_id(${connection_var_name}._object))}));')
+		} else {
+			mut sym := g.table.sym(primary_field.typ)
+			mut typ := sym.cname
+			if typ == 'time__Time' {
+				typ = 'time'
+			}
+			g.writeln('array_push(&${last_ids_arr}, _MOV((orm__Primitive[]){orm__${typ}_to_primitive(${sub.object_var_name}${member_access_type}${c_name(primary_field.name)})}));')
+		}
 	}
 
 	g.writeln('// sql { insert into `${table_name}` }')
@@ -339,18 +360,6 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 	g.indent--
 	g.writeln('),')
 
-	mut member_access_type := '.'
-
-	if node.scope != unsafe { nil } {
-		inserting_object := node.scope.find(node.object_var_name) or {
-			verror('`${node.object_var_name}` is not found in scope')
-		}
-
-		if inserting_object.typ.is_ptr() {
-			member_access_type = '->'
-		}
-	}
-
 	g.writeln('.data = new_array_from_c_array(${fields.len}, ${fields.len}, sizeof(orm__Primitive),')
 	g.indent++
 
@@ -358,9 +367,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 		g.write('_MOV((orm__Primitive[${fields.len}]){ ')
 		mut structs := 0
 		for field in fields {
-			// use last_insert_id if parent struct has `id int [primary; sql: serial]`
-			// else get the foreign key from the fetched rows
-			if field.name == fkey && pid != '' {
+			if field.name == fkey {
 				g.write('${pid}, ')
 				continue
 			}
@@ -393,11 +400,18 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 	g.writeln(');')
 
 	if arrs.len > 0 {
-		mut id_name := ''
-		// only use last_insert_id if current struct has `id int [primary; sql: serial]`
+		mut id_name := g.new_tmp_var()
 		if is_serial {
-			id_name = g.new_tmp_var()
+			// use last_insert_id if current struct has `int [primary; sql: serial]`
 			g.writeln('orm__Primitive ${id_name} = orm__int_to_primitive(orm__Connection_name_table[${connection_var_name}._typ]._method_last_id(${connection_var_name}._object));')
+		} else {
+			// else use the primary key value
+			mut sym := g.table.sym(primary_field.typ)
+			mut typ := sym.cname
+			if typ == 'time__Time' {
+				typ = 'time'
+			}
+			g.writeln('orm__Primitive ${id_name} = orm__${typ}_to_primitive(${node.object_var_name}${member_access_type}${c_name(primary_field.name)});')
 		}
 
 		for i, mut arr in arrs {

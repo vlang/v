@@ -210,11 +210,17 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table string, q string, kind StmtKin
 					// Allow the database to insert an automatically generated primary key
 					// under the hood if it is not passed by the user.
 					tidx := data.data[i].type_idx()
-					if is_primary_column && (tidx in orm.nums || tidx in orm.num64) {
+					if is_primary_column
+						&& (tidx in orm.nums || tidx in orm.num64 || tidx == orm.type_string) {
 						x := data.data[i]
 						match x {
 							i8, i16, int, i64, u8, u16, u32, u64 {
 								if i64(x) == 0 {
+									continue
+								}
+							}
+							string {
+								if x.str() == '' {
 									continue
 								}
 							}
@@ -453,6 +459,7 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 	mut unique_fields := []string{}
 	mut unique := map[string][]string{}
 	mut primary := ''
+	mut primary_typ := 0
 
 	for field in fields {
 		if field.is_arr {
@@ -466,7 +473,7 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 		mut field_name := sql_field_name(field)
 		mut ctyp := sql_from_v(sql_field_type(field)) or {
 			field_name = '${field_name}_id'
-			sql_from_v(7)!
+			sql_from_v(primary_typ)!
 		}
 		for attr in field.attrs {
 			match attr.name {
@@ -478,6 +485,7 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 				}
 				'primary' {
 					primary = field.name
+					primary_typ = field.typ
 				}
 				'unique' {
 					if attr.arg != '' {
