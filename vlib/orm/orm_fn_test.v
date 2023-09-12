@@ -294,7 +294,7 @@ fn sql_type_from_v(typ int) !string {
 		'DOUBLE'
 	} else if typ == orm.type_string {
 		'TEXT'
-	} else if typ == -1 {
+	} else if typ == orm.serial {
 		'SERIAL'
 	} else {
 		error('Unknown type ${typ}')

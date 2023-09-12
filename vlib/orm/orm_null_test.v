@@ -123,8 +123,8 @@ fn test_option_struct_fields_and_none() {
 	assert db.st.last == 'SELECT `id`, `a`, `c`, `d`, `e`, `g`, `h` FROM `foo` WHERE `e` > ? AND `c` IS ? AND `c` IS NOT ? AND `h` = ?;'
 	assert db.st.data.len == 0
 	assert db.st.where.len == 4
-	assert db.st.where == [orm.Primitive(int(5)), orm.NullType{},
-		orm.NullType{}, orm.Primitive(int(2))]
+	assert db.st.where == [orm.Primitive(int(5)), orm.Null{},
+		orm.Null{}, orm.Primitive(int(2))]
 
 	foo := Foo{}
 	sql db {
@@ -132,8 +132,8 @@ fn test_option_struct_fields_and_none() {
 	}!
 	assert db.st.last == 'INSERT INTO `foo` (`a`, `c`, `d`, `e`, `g`, `h`) VALUES (?, ?, ?, ?, ?, ?);'
 	assert db.st.data.len == 6
-	assert db.st.data == [orm.Primitive(string('')), orm.NullType{}, orm.Primitive(string('hi')),
-		int(0), orm.NullType{}, int(55)]
+	assert db.st.data == [orm.Primitive(string('')), orm.Null{}, orm.Primitive(string('hi')), int(0),
+		orm.Null{}, int(55)]
 	id := db.last_id()
 
 	res1 := sql db {
@@ -159,7 +159,7 @@ fn test_option_struct_fields_and_none() {
 	}!
 	assert db.st.last == 'UPDATE `foo` SET `c` = ?, `d` = ?, `g` = ?, `h` = ? WHERE `id` = ?;'
 	assert db.st.data.len == 4
-	assert db.st.data == [orm.Primitive(string('yo')), orm.NullType{}, int(44), orm.NullType{}]
+	assert db.st.data == [orm.Primitive(string('yo')), orm.Null{}, int(44), orm.Null{}]
 	assert db.st.where.len == 1
 	assert db.st.where == [orm.Primitive(int(id))]
 

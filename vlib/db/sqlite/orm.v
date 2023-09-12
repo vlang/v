@@ -145,7 +145,7 @@ fn bind(stmt Stmt, c &int, data orm.Primitive) int {
 		orm.InfixType {
 			err = bind(stmt, c, data.right)
 		}
-		orm.NullType {
+		orm.Null {
 			err = stmt.bind_null(c)
 		}
 	}
@@ -155,22 +155,22 @@ fn bind(stmt Stmt, c &int, data orm.Primitive) int {
 // Selects column in result and converts it to an orm.Primitive
 fn (stmt Stmt) sqlite_select_column(idx int, typ int) !orm.Primitive {
 	if typ in orm.nums || typ == -1 {
-		return stmt.get_int(idx) or { return orm.NullType{} }
+		return stmt.get_int(idx) or { return orm.Null{} }
 	} else if typ in orm.num64 {
-		return stmt.get_i64(idx) or { return orm.NullType{} }
+		return stmt.get_i64(idx) or { return orm.Null{} }
 	} else if typ in orm.float {
-		return stmt.get_f64(idx) or { return orm.NullType{} }
+		return stmt.get_f64(idx) or { return orm.Null{} }
 	} else if typ == orm.type_string {
 		if v := stmt.get_text(idx) {
 			return v.clone()
 		} else {
-			return orm.NullType{}
+			return orm.Null{}
 		}
 	} else if typ == orm.time {
 		if v := stmt.get_int(idx) {
 			return time.unix(v)
 		} else {
-			return orm.NullType{}
+			return orm.Null{}
 		}
 	} else {
 		return error('Unknown type ${typ}')
@@ -179,7 +179,7 @@ fn (stmt Stmt) sqlite_select_column(idx int, typ int) !orm.Primitive {
 
 // Convert type int to sql type string
 fn sqlite_type_from_v(typ int) !string {
-	return if typ in orm.nums || typ < 0 || typ in orm.num64 || typ == orm.time {
+	return if typ in orm.nums || typ == orm.serial || typ in orm.num64 || typ == orm.time {
 		'INTEGER'
 	} else if typ in orm.float {
 		'REAL'

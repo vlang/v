@@ -130,13 +130,12 @@ fn (mut g Gen) write_orm_create_table(node ast.SqlStmtLine, table_name string, c
 		for field in node.fields {
 			g.writeln('// `${table_name}`.`${field.name}`')
 			sym := g.table.sym(field.typ)
+			typ := if sym.name == 'time.Time' { '_const_orm__time' } else { field.typ.idx().str() }
 			g.writeln('(orm__TableField){')
 			g.indent++
 			g.writeln('.name = _SLIT("${field.name}"),')
-			typ := if sym.name == 'time.Time' { -2 } else { field.typ.idx() }
 			g.writeln('.typ = ${typ}, // `${sym.name}`')
 			g.writeln('.is_arr = ${sym.kind == .array}, ')
-			g.writeln('.is_time = ${g.table.get_type_name(field.typ) == 'time__Time'},')
 			g.writeln('.nullable = ${if field.typ.has_flag(.option) { 'true' } else { 'false' }},')
 			g.writeln('.default_val = (string){ .str = (byteptr) "${field.default_val}", .is_lit = 1 },')
 			g.writeln('.attrs = new_array_from_c_array(${field.attrs.len}, ${field.attrs.len}, sizeof(StructAttribute),')
@@ -346,6 +345,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 
 	if fields.len > 0 {
 		g.writeln('_MOV((orm__Primitive[${fields.len}]){')
+		g.indent++
 		mut structs := 0
 		for field in fields {
 			if field.name == fkey {
@@ -364,12 +364,13 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			}
 			var := '${node.object_var_name}${member_access_type}${c_name(field.name)}'
 			if field.typ.has_flag(.option) {
-				null := '(orm__Primitive){ ._typ = ${g.table.find_type_idx('orm.NullType')}, ._orm__NullType = &_const_orm__null_instance }'
+				null := '(orm__Primitive){ ._typ = ${g.table.find_type_idx('orm.Null')}, ._orm__Null = &_const_orm__null_instance }'
 				g.writeln('${var}.state == 2? ${null} : orm__${typ}_to_primitive(*(${typ}*)(${var}.data)),')
 			} else {
 				g.writeln('orm__${typ}_to_primitive(${var}),')
 			}
 		}
+		g.indent--
 		g.writeln('})')
 	} else {
 		g.write('NULL')
@@ -472,7 +473,7 @@ fn (mut g Gen) write_orm_primitive(t ast.Type, expr ast.Expr) {
 		return
 	}
 	if typ == 'none' {
-		g.writeln('(orm__Primitive){ ._typ = ${g.table.find_type_idx('orm.NullType')}, ._orm__NullType = &_const_orm__null_instance },')
+		g.writeln('(orm__Primitive){ ._typ = ${g.table.find_type_idx('orm.Null')}, ._orm__Null = &_const_orm__null_instance },')
 		return
 	}
 	if typ == 'time__Time' {
@@ -533,11 +534,13 @@ fn (mut g Gen) write_orm_where(where_expr ast.Expr) {
 	if fields.len > 0 {
 		g.writeln('.fields = new_array_from_c_array(${fields.len}, ${fields.len}, sizeof(string),')
 		g.indent++
-		g.write('_MOV((string[${fields.len}]){')
+		g.writeln('_MOV((string[${fields.len}]){')
+		g.indent++
 		for field in fields {
-			g.write(' _SLIT("${field}"),')
+			g.writeln('_SLIT("${field}"),')
 		}
-		g.writeln(' })')
+		g.indent--
+		g.writeln('})')
 		g.indent--
 	} else {
 		g.writeln('.fields = __new_array_with_default_noscan(${fields.len}, ${fields.len}, sizeof(string), 0')
@@ -547,14 +550,15 @@ fn (mut g Gen) write_orm_where(where_expr ast.Expr) {
 	g.writeln('.data = new_array_from_c_array(${data.len}, ${data.len}, sizeof(orm__Primitive),')
 	g.indent++
 	if data.len > 0 {
-		g.write('_MOV((orm__Primitive[${data.len}]){ ')
+		g.writeln('_MOV((orm__Primitive[${data.len}]){')
+		g.indent++
 		for e in data {
 			g.write_orm_expr_to_primitive(e)
-			g.write(' ')
 		}
-		g.write('})')
+		g.indent--
+		g.writeln('})')
 	} else {
-		g.write('0')
+		g.writeln('0')
 	}
 	g.indent--
 	g.writeln('),')
@@ -588,7 +592,7 @@ fn (mut g Gen) write_orm_where(where_expr ast.Expr) {
 			g.writeln('${k},')
 		}
 		g.indent--
-		g.write('})')
+		g.writeln('})')
 		g.indent--
 	} else {
 		g.write('.kinds = __new_array_with_default_noscan(${kinds.len}, ${kinds.len}, sizeof(orm__OperationKind), 0')
@@ -597,11 +601,15 @@ fn (mut g Gen) write_orm_where(where_expr ast.Expr) {
 
 	if is_ands.len > 0 {
 		g.write('.is_and = new_array_from_c_array(${is_ands.len}, ${is_ands.len}, sizeof(bool),')
-		g.write(' _MOV((bool[${is_ands.len}]){')
+		g.indent++
+		g.writeln('_MOV((bool[${is_ands.len}]){')
+		g.indent++
 		for is_and in is_ands {
-			g.write(' ${is_and}, ')
+			g.writeln('${is_and},')
 		}
+		g.indent--
 		g.write('})')
+		g.indent--
 	} else {
 		g.write('.is_and = __new_array_with_default_noscan(${is_ands.len}, ${is_ands.len}, sizeof(bool), 0')
 	}
@@ -760,23 +768,25 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, le
 	select_fields := fields.filter(g.table.sym(it.typ).kind != .array)
 	g.writeln('.fields = new_array_from_c_array(${select_fields.len}, ${select_fields.len}, sizeof(string),')
 	g.indent++
-	mut types := []int{}
+	mut types := []string{}
 	if select_fields.len > 0 {
-		g.write('_MOV((string[${select_fields.len}]){')
+		g.writeln('_MOV((string[${select_fields.len}]){')
+		g.indent++
 		for field in select_fields {
-			g.write(' _SLIT("${g.get_orm_column_name_from_struct_field(field)}"),')
+			g.writeln('_SLIT("${g.get_orm_column_name_from_struct_field(field)}"),')
 			sym := g.table.sym(field.typ)
 			if sym.name == 'time.Time' {
-				types << -2
+				types << '_const_orm__time'
 				continue
 			}
 			if sym.kind == .struct_ {
-				types << int(ast.int_type)
+				types << int(ast.int_type).str()
 				continue
 			}
-			types << int(field.typ.idx())
+			types << field.typ.idx().str()
 		}
-		g.writeln(' })')
+		g.indent--
+		g.writeln('})')
 	} else {
 		g.writeln('NULL')
 	}
@@ -977,7 +987,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, le
 				prim := g.new_tmp_var()
 				sfield := c_name(field.name)
 				g.writeln('orm__Primitive *${prim} = &${array_get_call_code};')
-				g.writeln('if (${prim}->_typ == ${g.table.find_type_idx('orm.NullType')})')
+				g.writeln('if (${prim}->_typ == ${g.table.find_type_idx('orm.Null')})')
 				g.indent++
 				g.writeln('${tmp}.${sfield} = (${styp}){ .state = 2, .err = _const_none__, .data = {EMPTY_STRUCT_INITIALIZATION} };')
 

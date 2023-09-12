@@ -35,10 +35,11 @@ pub const (
 		'string': typeof[string]().idx
 	}
 	string_max_len = 2048
+	null_instance  = Null{}
 )
 
 pub type Primitive = InfixType
-	| NullType
+	| Null
 	| bool
 	| f32
 	| f64
@@ -53,7 +54,7 @@ pub type Primitive = InfixType
 	| u64
 	| u8
 
-pub struct NullType {}
+pub struct Null {}
 
 pub enum OperationKind {
 	neq // !=
@@ -89,8 +90,6 @@ pub enum SQLDialect {
 	default
 	sqlite
 }
-
-const null_instance = NullType{}
 
 fn (kind OperationKind) to_str() string {
 	str := match kind {
@@ -148,7 +147,6 @@ pub:
 	nullable    bool
 	default_val string
 	attrs       []StructAttribute
-	is_time     bool
 	is_arr      bool
 }
 
@@ -440,7 +438,7 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 		mut is_skip := false
 		mut unique_len := 0
 		mut field_name := sql_field_name(field)
-		mut ctyp := sql_from_v(sql_field_type(field)) or {
+		mut col_typ := sql_from_v(sql_field_type(field)) or {
 			field_name = '${field_name}_id'
 			sql_from_v(7)!
 		}
@@ -472,7 +470,7 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 					is_skip = true
 				}
 				'sql_type' {
-					ctyp = attr.arg.str()
+					col_typ = attr.arg.str()
 				}
 				'default' {
 					if default_val == '' {
@@ -486,10 +484,10 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 			continue
 		}
 		mut stmt := ''
-		if ctyp == '' {
+		if col_typ == '' {
 			return error('Unknown type (${field.typ}) for field ${field.name} in struct ${table}')
 		}
-		stmt = '${q}${field_name}${q} ${ctyp}'
+		stmt = '${q}${field_name}${q} ${col_typ}'
 		if defaults && default_val != '' {
 			stmt += ' DEFAULT ${default_val}'
 		}
@@ -498,7 +496,7 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 		}
 		if is_unique {
 			mut f := 'UNIQUE(${q}${field_name}${q}'
-			if ctyp == 'TEXT' && def_unique_len > 0 {
+			if col_typ == 'TEXT' && def_unique_len > 0 {
 				if unique_len > 0 {
 					f += '(${unique_len})'
 				} else {
@@ -541,13 +539,10 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 // Get's the sql field type
 fn sql_field_type(field TableField) int {
 	mut typ := field.typ
-	if field.is_time {
-		return -2
-	}
 	for attr in field.attrs {
 		if attr.kind == .plain && attr.name == 'sql' && attr.arg != '' {
 			if attr.arg.to_lower() == 'serial' {
-				typ = -1
+				typ = orm.serial
 				break
 			}
 			typ = orm.type_idx[attr.arg]
