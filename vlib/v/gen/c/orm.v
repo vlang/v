@@ -863,8 +863,6 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, le
 	g.indent--
 	g.writeln(');')
 
-	unwrapped_typ := node.typ.clear_flag(.result)
-	unwrapped_c_typ := g.typ(unwrapped_typ)
 	c_typ := g.typ(node.typ)
 
 	mut non_orm_result_var_name := g.new_tmp_var()
@@ -873,6 +871,11 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, le
 	g.writeln('${non_orm_result_var_name}.err = ${select_result_var_name}.err;')
 	g.or_block(non_orm_result_var_name, node.or_expr, node.typ)
 
+	g.writeln('if (!${non_orm_result_var_name}.is_error) {')
+	g.indent++
+
+	unwrapped_typ := node.typ.clear_flag(.result)
+	unwrapped_c_typ := g.typ(unwrapped_typ)
 	select_unwrapped_result_var_name := g.new_tmp_var()
 
 	g.writeln('Array_Array_orm__Primitive ${select_unwrapped_result_var_name} = (*(Array_Array_orm__Primitive*)${select_result_var_name}.data);')
@@ -1019,15 +1022,19 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, le
 			g.writeln('}')
 		}
 
+		g.indent--
+		g.writeln('}')
+
 		g.write('*(${unwrapped_c_typ}*) ${non_orm_result_var_name}.data = ${tmp}')
 		if node.is_array {
 			g.write('_array')
 		}
 		g.writeln(';')
-
-		g.indent--
-		g.writeln('}')
 	}
+
+	g.indent--
+	g.writeln('}')
+
 	g.write('${left_expr_string.trim_space()} *(${unwrapped_c_typ}*) ${non_orm_result_var_name}.data')
 
 	if node.is_generated {
