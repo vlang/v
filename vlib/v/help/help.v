@@ -8,7 +8,7 @@ const (
 
 // print_and_exit Prints the help topic and exits
 pub fn print_and_exit(topic string) {
-	vexe := @VEXE
+	vexe := os.executable()
 	vroot := os.dir(vexe)
 	topicdir := os.join_path(vroot, 'vlib', 'v', 'help')
 
