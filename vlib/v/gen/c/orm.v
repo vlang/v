@@ -876,8 +876,10 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, le
 
 		g.writeln('if (${select_unwrapped_result_var_name}.len > 0) {')
 		g.indent++
-		for i, field in fields {
-			array_get_call_code := '(*(orm__Primitive*) array_get((*(Array_orm__Primitive*) array_get(${select_unwrapped_result_var_name}, ${idx})), ${i}))'
+
+		mut selected_fields_idx := 0
+		for field in fields {
+			array_get_call_code := '(*(orm__Primitive*) array_get((*(Array_orm__Primitive*) array_get(${select_unwrapped_result_var_name}, ${idx})), ${selected_fields_idx}))'
 			sym := g.table.sym(field.typ)
 			if sym.kind == .struct_ && sym.name != 'time.Time' {
 				mut sub := node.sub_structs[int(field.typ)]
@@ -897,6 +899,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, le
 
 				g.write_orm_select(sub, connection_var_name, '${tmp}.${c_name(field.name)} = ',
 					or_expr)
+				selected_fields_idx++
 			} else if sym.kind == .array {
 				mut fkey := ''
 				// TODO: move to the ORM checker
@@ -956,6 +959,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, le
 			} else {
 				mut typ := sym.cname
 				g.writeln('${tmp}.${c_name(field.name)} = *(${array_get_call_code}._${typ});')
+				selected_fields_idx++
 			}
 		}
 		g.indent--
