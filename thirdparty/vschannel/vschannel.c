@@ -149,7 +149,7 @@ INT request(TlsContext *tls_ctx, INT iport, LPWSTR host, CHAR *req, DWORD req_le
 	tls_ctx->p_pemote_cert_context = NULL;
 
 	// Request from server
-	if(https_make_request(tls_ctx, req, out, req_len, &resp_length)) {
+	if(https_make_request(tls_ctx, req, req_len, out, &resp_length)) {
 		vschannel_cleanup(tls_ctx);
 		return resp_length;
 	}
