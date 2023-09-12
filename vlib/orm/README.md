@@ -1,5 +1,10 @@
 # ORM
 
+## Null
+
+Use option fields in V structs for fields which can be NULL.  Regular,
+non-option fields are defied as NOT NULL when creating tables.
+
 ## Attributes
 
 ### Structs
@@ -11,12 +16,12 @@
 - `[primary]` sets the field as the primary key
 - `[unique]` sets the field as unique
 - `[unique: 'foo']` adds the field to a unique group
-- `[nonull]` set the field as not null
 - `[skip]` or `[sql: '-']` field will be skipped
-- `[sql: type]` where `type` is a V type such as `int` or `f64`, or special type `serial`
+- `[sql: type]` where `type` is a V type such as `int` or `f64`
+- `[sql: serial]` lets the DB backend choose a column type for a auto-increment field
 - `[sql: 'name']` sets a custom column name for the field
 - `[sql_type: 'SQL TYPE']` sets the sql type which is used in sql
-- `[default: 'sql defaults']` sets the default value or function when create a new table
+- `[default: 'raw_sql]` inserts `raw_sql` verbatim in a "DEFAULT" clause when create a new table, allowing for values like `CURRENT_TIME`
 - `[fkey: 'parent_id']` sets foreign key for an field which holds an array
 
 ## Usage
@@ -24,12 +29,13 @@
 ```v ignore
 import time
 
+[table: 'foos']
 struct Foo {
     id          int         [primary; sql: serial]
-    name        string      [nonull]
-    created_at  time.Time   [sql_type: 'DATETIME']
-    updated_at  string      [sql_type: 'DATETIME']
-    deleted_at  time.Time
+    name        string
+    created_at  time.Time   [default: 'CURRENT_TIME]
+    updated_at  ?string     [sql_type: 'TIMESTAMP]
+    deleted_at  ?time.Time
     children    []Child     [fkey: 'parent_id']
 }
 
@@ -62,8 +68,8 @@ sql db {
 foo := Foo{
     name:       'abc'
     created_at: time.now()
-    updated_at: time.now()
-    deleted_at: time.now()
+    // updated_at defaults to none
+    // deleted_at defaults to none
     children: [
         Child{
             name: 'abc'
@@ -79,13 +85,21 @@ sql db {
 }!
 ```
 
+When inserting, `[sql: serial]` fields, and fields with a `[default: 'raw_sql']`
+attribute are not sent to the database when the value being sent is the default
+for the V struct field (e.g., 0 int, or an empty string).  This allows the
+database to insert default values for auto-increment fields and where you have
+specified a default.
+
 ### Update
 
 ```v ignore
 sql db {
-    update Foo set name = 'cde', updated_at = time.now() where name == 'abc'
+    update Foo set updated_at = time.now() where name == 'abc' && updated_at is none
 }!
 ```
+
+Note that `is none` and `!is none` can be used to select for NULL fields.
 
 ### Delete
 ```v ignore
