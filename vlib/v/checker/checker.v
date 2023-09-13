@@ -1441,7 +1441,10 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	if node.expr.is_auto_deref_var() {
 		if mut node.expr is ast.Ident {
 			if mut node.expr.obj is ast.Var {
-				typ = node.expr.obj.typ
+				if node.expr.obj.orig_type == 0 || (node.expr.obj.orig_type != 0
+					&& c.table.sym(node.expr.obj.orig_type).kind != .interface_) {
+					typ = node.expr.obj.typ
+				}
 			}
 		}
 	}
@@ -3798,6 +3801,7 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 					is_used: true
 					is_mut: expr.is_mut
 					is_inherited: is_inherited
+					is_auto_deref: sym.kind == .interface_
 					smartcasts: smartcasts
 					orig_type: orig_type
 				})
