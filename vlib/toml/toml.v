@@ -108,7 +108,7 @@ fn encode_struct[T](typ T) map[string]Any {
 				} $else $if v is DateTime {
 					arr << Any(v)
 				} $else $if v is $struct {
-					arr << Any(encode_struct(v))
+					arr << Any(encode(v))
 				} $else {
 					arr << Any(v)
 				}
