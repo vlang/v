@@ -380,7 +380,7 @@ pub fn (c &TcpListener) addr() !Addr {
 	return c.sock.address()
 }
 
-pub struct TcpSocket {
+struct TcpSocket {
 	Socket
 }
 
