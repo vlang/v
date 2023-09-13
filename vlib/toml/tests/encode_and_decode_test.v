@@ -121,6 +121,34 @@ title = 2'
 	assert y.title == .worker
 }
 
+struct Example1 {
+	arr []Problem
+}
+
+struct Example2 {
+	arr []Problem
+}
+
+struct Problem {
+	x int
+}
+
+pub fn (example Example1) to_toml() string {
+	return '[This is Valid]'
+}
+
+pub fn (problem Problem) to_toml() string {
+	return 'a problem'
+}
+
+fn test_custom_encode_of_complex_struct() {
+	assert toml.encode(Example1{}) == '[This is Valid]'
+	assert toml.encode(Example2{[Problem{}, Problem{}]}) == 'arr = [
+  "a problem",
+  "a problem"
+]'
+}
+
 fn test_array_encode_decode() {
 	a := Arrs{
 		strs: ['foo', 'bar']

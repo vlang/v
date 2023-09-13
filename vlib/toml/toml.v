@@ -101,7 +101,17 @@ fn encode_struct[T](typ T) map[string]Any {
 		} $else $if field.is_array {
 			mut arr := []Any{}
 			for v in value {
-				arr << Any(v)
+				$if v is Date {
+					arr << Any(v)
+				} $else $if v is Time {
+					arr << Any(v)
+				} $else $if v is DateTime {
+					arr << Any(v)
+				} $else $if v is $struct {
+					arr << Any(encode(v))
+				} $else {
+					arr << Any(v)
+				}
 			}
 			mp[field.name] = arr
 		} $else {
