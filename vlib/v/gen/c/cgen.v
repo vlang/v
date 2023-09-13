@@ -2006,6 +2006,14 @@ fn (mut g Gen) write_v_source_line_info(pos token.Pos) {
 }
 
 fn (mut g Gen) stmt(node ast.Stmt) {
+	$if trace_cgen_stmt ? {
+		ntype := typeof(node).replace('v.ast.', '')
+		if g.file == unsafe { nil } {
+			eprintln('cgen: <nil> | pos: ${node.pos.line_str():-39} | node: ${ntype} | ${node}')
+		} else {
+			eprintln('cgen: ${g.file.path:-30} | pos: ${node.pos.line_str():-39} | node: ${ntype} | ${node}')
+		}
+	}
 	g.inside_call = false
 	if !g.skip_stmt_pos {
 		g.set_current_pos_as_last_stmt_pos()
