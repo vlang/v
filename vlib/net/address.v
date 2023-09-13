@@ -294,14 +294,24 @@ pub fn (a Addr) str() string {
 
 // addr_from_socket_handle returns an address, based on the given integer socket `handle`
 pub fn addr_from_socket_handle(handle int) Addr {
-	addr := Addr{
+	mut addr := Addr{
 		addr: AddrData{
 			Ip6: Ip6{}
 		}
 	}
-	size := sizeof(addr)
-
+	mut size := sizeof(addr)
 	C.getsockname(handle, voidptr(&addr), &size)
+	return addr
+}
 
+// peer_addr_from_socket_handle retrieves the ip address and port number, given a socket handle
+pub fn peer_addr_from_socket_handle(handle int) !Addr {
+	mut addr := Addr{
+		addr: AddrData{
+			Ip6: Ip6{}
+		}
+	}
+	mut size := sizeof(Addr)
+	socket_error_message(C.getpeername(handle, voidptr(&addr), &size), 'peer_addr_from_socket_handle failed')!
 	return addr
 }
