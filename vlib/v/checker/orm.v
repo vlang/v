@@ -54,7 +54,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 			pos: node.pos
 			has_where: true
 			where_expr: ast.None{}
-			typ: typ.set_flag(.result)
+			typ: typ.clear_flag(.option).set_flag(.result)
 			db_expr: node.db_expr
 			table_expr: ast.TypeNode{
 				pos: node.table_expr.pos
