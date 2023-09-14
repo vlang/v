@@ -463,6 +463,8 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 		mut is_unique := false
 		mut is_skip := false
 		mut unique_len := 0
+		mut references_table := ''
+		mut references_field := ''
 		mut field_name := sql_field_name(field)
 		mut ctyp := sql_from_v(sql_field_type(field)) or {
 			field_name = '${field_name}_id'
@@ -512,6 +514,31 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 						default_val = attr.arg
 					}
 				}
+				'references' {
+					if attr.arg == '' {
+						if field.name.ends_with('_id') {
+							references_table = field.name.trim_right('_id')
+							references_field = 'id'
+						} else {
+							return error("references attribute can only be implicit if the field name ends with '_id'")
+						}
+					} else {
+						if attr.arg.trim(' ') == '' {
+							return error("references attribute needs to be in the format [references], [references: 'tablename'], or [references: 'tablename(field_id)']")
+						}
+						if attr.arg.contains('(') {
+							ref_table, ref_field := attr.arg.split_once('(')
+							if !ref_field.ends_with(')') {
+								return error("explicit references attribute should be written as [references: 'tablename(field_id)']")
+							}
+							references_table = ref_table
+							references_field = ref_field[..ref_field.len - 1]
+						} else {
+							references_table = attr.arg
+							references_field = 'id'
+						}
+					}
+				}
 				else {}
 			}
 		}
@@ -540,6 +567,9 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 			}
 			f += ')'
 			unique_fields << f
+		}
+		if references_table != '' {
+			stmt += ' REFERENCES ${references_table} (${references_field})'
 		}
 		fs << stmt
 	}
