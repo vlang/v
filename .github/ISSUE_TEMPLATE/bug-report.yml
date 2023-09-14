@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        > [!IMPORTANT]
+        > **Note**
         > You can vote for this issue using the 👍 reaction. More votes increase the issue's priority
         > for developers.
         >
