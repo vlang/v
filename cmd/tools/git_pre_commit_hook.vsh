@@ -26,11 +26,23 @@ import term
 fn main() {
 	// This hook cares only about the changed V files, that will be commited, as reported by git itself:
 	changed := os.execute('git diff --cached --name-only --diff-filter=ACMR -- "*.v" "*.vsh" "*.vv"')
-	if changed.output == '' {
-		eprintln('>>> 0 changed V files found.')
+
+	all_changed_vfiles := changed.output.trim_space().split('\n')
+	// _input.vv files are NOT formatted on purpose.
+	// There is no point in verifying them, or ruining them over with `v fmt -w`.
+	// Just filter them out, but still report to the user, that they will not be formatted:
+	vfiles := all_changed_vfiles.filter(!it.ends_with('_input.vv'))
+	input_vfiles := all_changed_vfiles.filter(it.ends_with('_input.vv'))
+	if input_vfiles.len > 0 {
+		eprintln('>>> ${input_vfiles.len} `_input.vv` files found, that *will NOT be* formatted.')
+		for ifile in input_vfiles {
+			eprintln('     ${ifile}')
+		}
+	}
+	if changed.output == '' || vfiles.len == 0 {
+		eprintln('>>> 0 changed V files, that may need formatting found.')
 		exit(0)
 	}
-	vfiles := changed.output.trim_space().split('\n')
 	configured_stop_commiting := os.execute('git config --bool hooks.stopCommitOfNonVfmtedVFiles')
 	if configured_stop_commiting.output.trim_space().bool() {
 		verify_result := os.execute('v fmt -verify ${vfiles.join(' ')}')
