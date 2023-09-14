@@ -472,6 +472,9 @@ pub fn (mut f Gen) stmt(node ast.Stmt) {
 		ast.Return {
 			f.return_stmt(node)
 		}
+		ast.SemicolonStmt {
+			f.writeln(';')
+		}
 		ast.SqlStmt {
 			f.sql_stmt(node)
 		}

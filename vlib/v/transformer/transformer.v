@@ -281,6 +281,7 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
 				expr = t.expr(mut expr)
 			}
 		}
+		ast.SemicolonStmt {}
 		ast.SqlStmt {}
 		ast.StructDecl {
 			for mut field in node.fields {

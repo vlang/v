@@ -2179,6 +2179,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.Return {
 			g.return_stmt(node)
 		}
+		ast.SemicolonStmt {
+			g.writeln(';')
+		}
 		ast.SqlStmt {
 			g.sql_stmt(node)
 		}

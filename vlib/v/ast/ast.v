@@ -87,6 +87,7 @@ pub type Stmt = AsmStmt
 	| Module
 	| NodeError
 	| Return
+	| SemicolonStmt
 	| SqlStmt
 	| StructDecl
 	| TypeDecl
@@ -298,6 +299,11 @@ pub:
 	pos        token.Pos
 	name_pos   token.Pos // `name` in import name
 	is_skipped bool      // module main can be skipped in single file programs
+}
+
+pub struct SemicolonStmt {
+pub:
+	pos token.Pos
 }
 
 [minify]
