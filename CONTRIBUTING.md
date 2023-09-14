@@ -133,6 +133,60 @@ Git is very flexible, so there are other ways to accomplish the same thing.
 See the [GitHub flow](https://guides.github.com/introduction/git-handbook/#github), for more
 information.
 
+## Finding issues to contribute to
+
+If you're willing to contribute to V but don't know which issue to resolve 
+- you can go to [Issues](https://github.com/vlang/v/issues) tab
+in this repository. There you can see things logged by both users and developers
+that need to be discussed and/or resolved.
+
+It's recommended to filter issues by likes and labels to find an issue
+you are interested in.
+
+### Filtering by likes (recommended)
+
+Filtering by likes helps you identify high-impact issues.
+More likes mean more community interest.
+
+To apply this filter, navigate to [Issues](https://github.com/vlang/v/issues)
+tab, then paste the following in the "Filter" field:
+
+```
+is:open is:issue sort:reactions-+1-desc
+```
+
+This filter will return all open issues sorted by likes in descending order.
+
+### Filtering by labels
+
+The V repo has various labels to help navigate the extensive list of issues
+and help you find issues you're both interested in and capable of resolving.
+You can examine the list of labels [here](https://github.com/vlang/v/labels).
+
+The most common labels are:
+
+By issue type:
+- `Bug`
+- `Feature Request`
+
+By OS:
+- `OS: Linux`
+- `OS: Windows`
+- `OS: Mac`
+
+By status:
+- `Status: Confirmed`
+
+To apply this filter, navigate to [Issues](https://github.com/vlang/v/issues)
+tab, then paste the following in the "Filter" field:
+
+```
+is:open is:issue label:Bug label:"OS: Windows" label:"Status: Confirmed" 
+```
+
+This filter will return all open issues with the labels `Bug`, `OS: Windows`,
+and `Status: Confirmed`.
+
 ## Using Github's hub CLI tool
 
 You can download the `hub` tool from https://hub.github.com/ . Using
