@@ -729,7 +729,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						if op_overloaded {
 							g.op_arg(val, op_expected_right, val_type)
 						} else {
-							exp_type := if left.is_auto_deref_var() || var_type.has_flag(.shared_f) {
+							exp_type := if
+								(left.is_auto_deref_var() || var_type.has_flag(.shared_f))
+								&& var_type.is_ptr() {
 								var_type.deref()
 							} else {
 								var_type
