@@ -5019,7 +5019,14 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			}
 			g.write('.arg${arg_idx}=')
 			if expr.is_auto_deref_var() {
-				g.write('*')
+				if expr is ast.Ident {
+					if expr.obj is ast.Var {
+						if expr.obj.orig_type == 0
+							|| g.table.sym(expr.obj.orig_type).kind != .interface_ {
+							g.write('*')
+						}
+					}
+				}
 			}
 			if g.table.sym(mr_info.types[i]).kind in [.sum_type, .interface_] {
 				g.expr_with_cast(expr, node.types[i], mr_info.types[i])
