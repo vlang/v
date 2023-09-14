@@ -52,16 +52,17 @@ pub fn (mut s Server) listen_and_serve() {
 	}
 
 	mut l := s.listener.addr() or {
-		eprintln('Failed getting listener address')
+		eprintln('Failed getting listener address, err: ${err}')
 		return
 	}
+	listening_address := s.addr.clone()
 	if l.family() == net.AddrFamily.unspec {
-		s.listener = net.listen_tcp(.ip6, '${s.addr}') or {
-			eprintln('Listening on ${s.addr} failed')
+		s.listener = net.listen_tcp(.ip6, listening_address) or {
+			eprintln('Listening on ${s.addr} failed, err: ${err}')
 			return
 		}
 		l = s.listener.addr() or {
-			eprintln('Failed getting listener address')
+			eprintln('Failed getting listener address 2, err: ${err}')
 			return
 		}
 	}
@@ -77,7 +78,8 @@ pub fn (mut s Server) listen_and_serve() {
 		ws << new_handler_worker(wid, ch, s.handler)
 	}
 
-	eprintln('Listening on ${s.addr}')
+	println('Listening on http://${listening_address}/')
+	flush_stdout()
 	s.state = .running
 	for {
 		// break if we have a stop signal
@@ -162,7 +164,7 @@ fn (mut w HandlerWorker) handle_conn(mut conn net.TcpConn) {
 		return
 	}
 
-	remote_ip := conn.peer_ip() or { '' }
+	remote_ip := conn.peer_ip() or { '0.0.0.0' }
 	req.header.add_custom('Remote-Addr', remote_ip) or {}
 
 	mut resp := w.handler.handle(req)
