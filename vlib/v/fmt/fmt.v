@@ -90,9 +90,6 @@ pub fn fmt(file ast.File, table &ast.Table, pref_ &pref.Preferences, is_debug bo
 	}
 	source_for_imports := res[..f.import_pos] + f.out_imports.str()
 	source_after_imports := res[f.import_pos..]
-	if source_after_imports.starts_with(';') {
-		return source_for_imports.trim_space() + source_after_imports
-	}
 	return source_for_imports + source_after_imports
 }
 
@@ -558,10 +555,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 		ast.Return {
 			f.return_stmt(node)
 		}
-		ast.SemicolonStmt {
-			f.move_to_last_non_whitespace_place()
-			f.writeln(';')
-		}
+		ast.SemicolonStmt {}
 		ast.SqlStmt {
 			f.sql_stmt(node)
 		}
@@ -572,17 +566,6 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.type_decl(node)
 		}
 	}
-}
-
-fn (mut f Fmt) move_to_last_non_whitespace_place() {
-	mut buffer := unsafe { &f.out }
-	mut i := 0
-	for i = buffer.len - 1; i >= 0; i-- {
-		if !buffer.byte_at(i).is_space() {
-			break
-		}
-	}
-	buffer.go_back(buffer.len - i - 1)
 }
 
 fn stmt_is_single_line(stmt ast.Stmt) bool {

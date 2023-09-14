@@ -1,3 +1,0 @@
-import os;
-println(os.args);
-println('hello')
