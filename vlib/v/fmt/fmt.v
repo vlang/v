@@ -85,12 +85,12 @@ pub fn fmt(file ast.File, table &ast.Table, pref_ &pref.Preferences, is_debug bo
 		imp_str := f.out_imports.str().trim_space()
 		if imp_str.len > 0 {
 			return res + '\n' + imp_str + '\n'
-		} else {
-			return res
 		}
-	} else {
-		return res[..f.import_pos] + f.out_imports.str() + res[f.import_pos..]
+		return res
 	}
+	source_for_imports := res[..f.import_pos] + f.out_imports.str()
+	source_after_imports := res[f.import_pos..]
+	return source_for_imports + source_after_imports
 }
 
 pub fn (mut f Fmt) process_file_imports(file &ast.File) {
@@ -405,6 +405,9 @@ fn (f Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node) 
 					return true
 				}
 			}
+			ast.SemicolonStmt {
+				return false
+			}
 			// Force a newline after struct declarations
 			ast.StructDecl {
 				return true
@@ -552,6 +555,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 		ast.Return {
 			f.return_stmt(node)
 		}
+		ast.SemicolonStmt {}
 		ast.SqlStmt {
 			f.sql_stmt(node)
 		}
@@ -568,6 +572,7 @@ fn stmt_is_single_line(stmt ast.Stmt) bool {
 	return match stmt {
 		ast.ExprStmt, ast.AssertStmt { expr_is_single_line(stmt.expr) }
 		ast.Return, ast.AssignStmt, ast.BranchStmt { true }
+		ast.SemicolonStmt { true }
 		else { false }
 	}
 }

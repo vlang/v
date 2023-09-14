@@ -2099,6 +2099,7 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 			c.return_stmt(mut node)
 			c.scope_returns = true
 		}
+		ast.SemicolonStmt {}
 		ast.SqlStmt {
 			c.sql_stmt(mut node)
 		}

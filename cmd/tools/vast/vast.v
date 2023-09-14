@@ -435,6 +435,7 @@ fn (t Tree) stmt(node ast.Stmt) &Node {
 		ast.AssertStmt { return t.assert_stmt(node) }
 		ast.ExprStmt { return t.expr_stmt(node) }
 		ast.Block { return t.block(node) }
+		ast.SemicolonStmt { return t.semicolon_stmt(node) }
 		ast.SqlStmt { return t.sql_stmt(node) }
 		ast.AsmStmt { return t.asm_stmt(node) }
 		ast.NodeError { return t.node_error(node) }
@@ -1744,6 +1745,12 @@ fn (t Tree) sql_expr(node ast.SqlExpr) &Node {
 		sub_struct_map.add_terse(key.str(), t.sql_expr(val))
 	}
 	obj.add_terse('sub_structs', sub_struct_map)
+	return obj
+}
+
+fn (t Tree) semicolon_stmt(node ast.SemicolonStmt) &Node {
+	mut obj := new_object()
+	obj.add('pos', t.pos(node.pos))
 	return obj
 }
 

@@ -192,6 +192,7 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 		ast.HashStmt {}
 		ast.Import {}
 		ast.InterfaceDecl {}
+		ast.SemicolonStmt {}
 		ast.Module {}
 		ast.TypeDecl {}
 		ast.NodeError {}
