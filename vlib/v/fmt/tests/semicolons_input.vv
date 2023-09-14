@@ -1,4 +1,4 @@
-import os
+import os;
 
-println(os.args)
-println('hello')
+println(os.args);
+println('hello');
