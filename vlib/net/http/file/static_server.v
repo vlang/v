@@ -26,7 +26,7 @@ pub mut:
 // Another example: `v -e 'import net.http; http.serve(folder: "~/Projects", on: ":5002")` , expose all the files inside the ~/Projects folder, on http://localhost:5002/ .
 pub fn serve(params StaticServeParams) {
 	mut nparams := params
-	nparams.folder = os.real_path(params.folder)
+	nparams.folder = os.norm_path(os.real_path(params.folder))
 	mut server := &http.Server{
 		handler: StaticHttpHandler{
 			params: nparams
@@ -59,7 +59,15 @@ fn (mut h StaticHttpHandler) handle(req http.Request) http.Response {
 	defer {
 		log.info('took: ${sw.elapsed().microseconds():6} us, status: ${res.status_code}, size: ${res.body.len:6}, url: ${req.url}')
 	}
-	requested_file_path := os.join_path_single(h.params.folder, req.url.all_after_first('/'))
+	requested_file_path := os.norm_path(os.real_path(os.join_path_single(h.params.folder,
+		req.url.all_after_first('/'))))
+	if !requested_file_path.starts_with(h.params.folder) {
+		log.warn('forbidden request; base folder: ${h.params.folder}, requested_file_path: ${requested_file_path}, ')
+		res = http.new_response(body: '<h1>forbidden</h1>')
+		res.set_status(.forbidden)
+		res.header.add(.content_type, 'text/html; charset=utf-8')
+		return res
+	}
 	mut body := ''
 	if !os.exists(requested_file_path) {
 		res.set_status(.not_found)
