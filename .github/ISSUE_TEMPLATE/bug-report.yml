@@ -2,6 +2,15 @@ name: 🐛 Bug Report
 description: Report a bug
 labels: [Bug]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        > [!IMPORTANT]
+        > You can vote for this issue using the 👍 reaction. More votes increase the issue's priority
+        > for developers.
+        >
+        > Take into account that only the 👍 reaction counts as a vote.
+        > Only reactions to the issue itself will be counted as votes, not comments.
   - type: textarea
     id: description
     attributes:
