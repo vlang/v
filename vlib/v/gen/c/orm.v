@@ -281,16 +281,11 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			subs << node.sub_structs[int(field.typ)]
 			sub_opt_fields << if field.typ.has_flag(.option) { field.name } else { '' }
 		} else if sym.kind == .array {
-			mut f_key := ''
-			for attr in field.attrs {
-				if attr.name == 'fkey' && attr.has_arg {
-					f_key = attr.arg.str()
-				}
+			if attr := field.attrs.find_first('fkey') {
+				fkeys << attr.arg
+			} else {
+				verror('missing fkey attribute')
 			}
-			if f_key == '' {
-				verror('a field which holds an array, needs a `fkey` defined ("${sym.name}")')
-			}
-			fkeys << f_key
 			info := sym.array_info()
 			if info.nr_dims == 1 {
 				arrs << node.sub_structs[int(info.elem_type)]
@@ -302,7 +297,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 	}
 
 	fields := node.fields.filter(g.table.sym(it.typ).kind != .array)
-	auto_fields := get_auto_fields(fields)
+	auto_fields := get_auto_field_idxs(fields)
 
 	mut member_access_type := '.'
 	if node.scope != unsafe { nil } {
@@ -966,19 +961,10 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 				}
 			} else if sym.kind == .array {
 				mut fkey := ''
-				// TODO: move to the ORM checker
-				for attr in field.attrs {
-					if attr.name == 'fkey' && attr.has_arg {
-						if attr.kind == .string {
-							fkey = attr.arg
-						} else {
-							verror("`fkey` attribute need be string. Try [fkey: '${attr.arg}'] instead of [fkey: ${attr.arg}]")
-						}
-					}
-				}
-				// TODO: move to the ORM checker
-				if fkey == '' {
-					verror('a field which holds an array, needs a `fkey` defined ("${sym.name}")')
+				if attr := field.attrs.find_first('fkey') {
+					fkey = attr.arg
+				} else {
+					verror('missing fkey attribute')
 				}
 				info := sym.array_info()
 				arr_typ := info.elem_type
@@ -1064,26 +1050,16 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 // filter_struct_fields_by_orm_attrs filters struct fields taking into its attributes.
 // Used by non-create queries for skipping fields.
 fn (_ &Gen) filter_struct_fields_by_orm_attrs(fields []ast.StructField) []ast.StructField {
-	mut result := []ast.StructField{}
+	mut ret := []ast.StructField{}
 
 	for field in fields {
-		mut skip := false
-
-		for attr in field.attrs {
-			if attr.name == 'skip' {
-				skip = true
-			}
-			if attr.name == 'sql' && attr.arg == '-' {
-				skip = true
-			}
+		if field.attrs.contains('skip') || field.attrs.contains_arg('sql', '-') {
+			continue
 		}
-
-		if !skip {
-			result << field
-		}
+		ret << field
 	}
 
-	return result
+	return ret
 }
 
 // get_db_expr_type returns the database type from the database expression.
@@ -1101,13 +1077,12 @@ fn (g &Gen) get_db_expr_type(expr ast.Expr) ?ast.Type {
 
 // get_table_name_by_struct_type converts the struct type to a table name.
 fn (g &Gen) get_table_name_by_struct_type(typ ast.Type) string {
-	info := g.table.sym(typ).struct_info()
-	mut table_name := util.strip_mod_name(g.table.sym(typ).name)
+	sym := g.table.sym(typ)
+	info := sym.struct_info()
+	mut table_name := util.strip_mod_name(sym.name)
 
-	for attr in info.attrs {
-		if attr.kind == .string && attr.name == 'table' && attr.arg != '' {
-			return attr.arg
-		}
+	if attr := info.attrs.find_first('table') {
+		table_name = attr.arg
 	}
 
 	return table_name
@@ -1130,10 +1105,10 @@ fn (g &Gen) get_orm_current_table_field(name string) ast.StructField {
 fn (g &Gen) get_orm_column_name_from_struct_field(field ast.StructField) string {
 	mut name := field.name
 
-	for attr in field.attrs {
-		if attr.kind == .string && attr.name == 'sql' && attr.arg != '' {
+	if attr := field.attrs.find_first('sql') {
+		if attr.arg !in ['serial', 'i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32',
+			'f64', 'bool', 'string'] {
 			name = attr.arg
-			break
 		}
 	}
 
@@ -1148,23 +1123,21 @@ fn (g &Gen) get_orm_column_name_from_struct_field(field ast.StructField) string 
 // get_orm_struct_primary_field_name returns the table's primary column name.
 fn (_ &Gen) get_orm_struct_primary_field_name(fields []ast.StructField) ?string {
 	for field in fields {
-		for attr in field.attrs {
-			if attr.name == 'primary' {
-				return field.name
-			}
+		if _ := field.attrs.find_first('primary') {
+			return field.name
 		}
 	}
 	return none
 }
 
 // return indexes of any auto-increment fields or fields with default values
-fn get_auto_fields(fields []ast.StructField) []int {
+fn get_auto_field_idxs(fields []ast.StructField) []int {
 	mut ret := []int{}
 	for i, field in fields {
 		for attr in field.attrs {
-			if attr.name == 'sql' && attr.arg.to_lower() == 'serial' {
+			if attr.name == 'default' {
 				ret << i
-			} else if attr.name == 'default' {
+			} else if attr.name == 'sql' && attr.arg == 'serial' {
 				ret << i
 			}
 		}
