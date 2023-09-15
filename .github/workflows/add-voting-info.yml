@@ -1,0 +1,26 @@
+name: Add voting info to new issue
+
+on:
+  issues:
+    types:
+      - opened
+
+jobs:
+  add-voting-info:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Append voting info to issue body
+        uses: julien-deramond/update-issue-body@v1
+        with:
+          issue-number: ${{ github.event.issue.number }}
+          body: |
+            > [!IMPORTANT]
+            > You can vote for this issue using the 👍 reaction. More votes increase the issue's priority
+            > for developers.
+            >
+            > Take into account that only the 👍 reaction counts as a vote.
+            > Only reactions to the issue itself will be counted as votes, not comments.
+          edit-mode: append
+          append-separator: newline
