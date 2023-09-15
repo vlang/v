@@ -207,7 +207,7 @@ pub fn (db DB) q_int(query string) !int {
 		return 0
 	}
 	val := row.vals[0]
-	return val.int()
+	return val or { '0' }.int()
 }
 
 // q_string submit a command to the database server and
@@ -224,7 +224,7 @@ pub fn (db DB) q_string(query string) !string {
 		return ''
 	}
 	val := row.vals[0]
-	return val
+	return val or { '' }
 }
 
 // q_strings submit a command to the database server and
