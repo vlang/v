@@ -379,11 +379,11 @@ pub:
 	generic_types []Type
 	is_pub        bool
 	// _pos fields for vfmt
-	mut_pos      int // mut:
-	pub_pos      int // pub:
-	pub_mut_pos  int // pub mut:
-	global_pos   int // __global:
-	module_pos   int // module:
+	mut_pos      int = -1 // mut:
+	pub_pos      int = -1 // pub:
+	pub_mut_pos  int = -1 // pub mut:
+	global_pos   int = -1 // __global:
+	module_pos   int = -1 // module:
 	language     Language
 	is_union     bool
 	attrs        []Attr
