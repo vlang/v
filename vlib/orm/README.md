@@ -21,7 +21,8 @@ non-option fields are defied as NOT NULL when creating tables.
 - `[sql: serial]` lets the DB backend choose a column type for a auto-increment field
 - `[sql: 'name']` sets a custom column name for the field
 - `[sql_type: 'SQL TYPE']` sets the sql type which is used in sql
-- `[default: 'raw_sql]` inserts `raw_sql` verbatim in a "DEFAULT" clause when create a new table, allowing for values like `CURRENT_TIME`
+- `[default: 'raw_sql]` inserts `raw_sql` verbatim in a "DEFAULT" clause when
+  create a new table, allowing for values like `CURRENT_TIME`
 - `[fkey: 'parent_id']` sets foreign key for an field which holds an array
 
 ## Usage
