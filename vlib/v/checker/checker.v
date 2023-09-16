@@ -1957,7 +1957,7 @@ fn (mut c Checker) check_loop_label(label string, pos token.Pos) {
 
 fn (mut c Checker) stmt(mut node ast.Stmt) {
 	$if trace_checker ? {
-		ntype := typeof(node).replace('v.ast.', '')
+		ntype := typeof(*node).replace('v.ast.', '')
 		eprintln('checking: ${c.file.path:-30} | pos: ${node.pos.line_str():-39} | node: ${ntype} | ${node}')
 	}
 	c.expected_type = ast.void_type
