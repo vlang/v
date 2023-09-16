@@ -801,6 +801,9 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 			.comment {
 				return p.comment_stmt()
 			}
+			.semicolon {
+				return p.semicolon_stmt()
+			}
 			else {
 				return p.other_stmts(ast.empty_stmt)
 			}
@@ -3504,7 +3507,7 @@ fn (mut p Parser) module_decl() ast.Module {
 		// as it creates a wrong position when extended
 		// to module_pos
 		n_pos := p.tok.pos()
-		if module_pos.line_nr == n_pos.line_nr && p.tok.kind != .comment && p.tok.kind != .eof {
+		if module_pos.line_nr == n_pos.line_nr && p.tok.kind !in [.comment, .eof, .semicolon] {
 			if p.tok.kind == .name {
 				p.unexpected_with_pos(n_pos,
 					prepend_msg: '`module ${name}`, you can only declare one module,'
@@ -3531,6 +3534,9 @@ fn (mut p Parser) module_decl() ast.Module {
 		is_skipped: is_skipped
 		pos: module_pos
 		name_pos: name_pos
+	}
+	if p.tok.kind == .semicolon {
+		p.check(.semicolon)
 	}
 	if !is_skipped {
 		p.table.module_attrs[p.mod] = module_attrs
