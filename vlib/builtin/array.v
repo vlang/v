@@ -968,20 +968,6 @@ pub fn copy(mut dst []u8, src []u8) int {
 	return min
 }
 
-// reduce executes a given reducer function on each element of the array,
-// resulting in a single output value.
-// NOTE: It exists as a method on `[]int` types only.
-// See also `arrays.reduce` for same name or `arrays.fold` for same functionality.
-[deprecated: 'use arrays.fold instead, this function has less flexibility than arrays.fold']
-[deprecated_after: '2022-10-11']
-pub fn (a []int) reduce(iter fn (int, int) int, accum_start int) int {
-	mut accum_ := accum_start
-	for i in a {
-		accum_ = iter(accum_, i)
-	}
-	return accum_
-}
-
 // grow_cap grows the array's capacity by `amount` elements.
 // Internally, it does this by copying the entire array to
 // a new memory location (creating a clone).

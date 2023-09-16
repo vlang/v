@@ -147,12 +147,6 @@ pub fn (ctx &Context) set_text_cfg(cfg gx.TextCfg) {
 	ctx.ft.fons.vert_metrics(&ascender, &descender, &lh)
 }
 
-// set_cfg sets the current text configuration
-[deprecated: 'use set_text_cfg() instead']
-pub fn (ctx &Context) set_cfg(cfg gx.TextCfg) {
-	ctx.set_text_cfg(cfg)
-}
-
 // draw_text draws the string in `text_` starting at top-left position `x`,`y`.
 // Text settings can be provided with `cfg`.
 pub fn (ctx &Context) draw_text(x int, y int, text_ string, cfg gx.TextCfg) {
