@@ -1319,7 +1319,7 @@ fn (mut s Scanner) ident_string() string {
 						segment_idx = end_idx
 					}
 					if pos in h_escapes_pos {
-						end_idx, segment := decode_h_escape_single(string_so_far, segment_idx)
+						end_idx, segment := s.decode_h_escape_single(string_so_far, segment_idx)
 						str_segments << segment
 						segment_idx = end_idx
 					}
@@ -1343,50 +1343,60 @@ fn (mut s Scanner) ident_string() string {
 	return lit
 }
 
-fn decode_h_escape_single(str string, idx int) (int, string) {
+fn (mut s Scanner) decode_h_escape_single(str string, idx int) (int, string) {
 	end_idx := idx + 4 // "\xXX".len == 4
-
+	if idx + 2 > str.len || end_idx > str.len {
+		s.error_with_pos('unfinished single hex escape started at', s.current_pos())
+		return 0, ''
+	}
 	// notice this function doesn't do any decoding... it just replaces '\xc0' with the byte 0xc0
 	return end_idx, [u8(strconv.parse_uint(str[idx + 2..end_idx], 16, 8) or { 0 })].bytestr()
 }
 
 // only handle single-byte inline escapes like '\xc0'
-fn decode_h_escapes(s string, start int, escapes_pos []int) string {
+fn (mut s Scanner) decode_h_escapes(sinput string, start int, escapes_pos []int) string {
 	if escapes_pos.len == 0 {
-		return s
+		return sinput
 	}
 	mut ss := []string{cap: escapes_pos.len * 2 + 1}
-	ss << s[..escapes_pos.first() - start]
+	ss << sinput[..escapes_pos.first() - start]
 	for i, pos in escapes_pos {
 		idx := pos - start
-		end_idx, segment := decode_h_escape_single(s, idx)
+		end_idx, segment := s.decode_h_escape_single(sinput, idx)
+		if end_idx > sinput.len {
+			s.error_with_pos('unfinished hex escape started at', s.current_pos())
+			return ''
+		}
 		ss << segment
-
 		if i + 1 < escapes_pos.len {
-			ss << s[end_idx..escapes_pos[i + 1] - start]
+			ss << sinput[end_idx..escapes_pos[i + 1] - start]
 		} else {
-			ss << s[end_idx..]
+			ss << sinput[end_idx..]
 		}
 	}
 	return ss.join('')
 }
 
 // handle single-byte inline octal escapes like '\###'
-fn decode_o_escapes(s string, start int, escapes_pos []int) string {
+fn (mut s Scanner) decode_o_escapes(sinput string, start int, escapes_pos []int) string {
 	if escapes_pos.len == 0 {
-		return s
+		return sinput
 	}
 	mut ss := []string{cap: escapes_pos.len}
-	ss << s[..escapes_pos.first() - start] // everything before the first escape code position
+	ss << sinput[..escapes_pos.first() - start] // everything before the first escape code position
 	for i, pos in escapes_pos {
 		idx := pos - start
 		end_idx := idx + 4 // "\XXX".len == 4
+		if end_idx > sinput.len {
+			s.error_with_pos('unfinished octal escape started at', s.current_pos())
+			return ''
+		}
 		// notice this function doesn't do any decoding... it just replaces '\141' with the byte 0o141
-		ss << [u8(strconv.parse_uint(s[idx + 1..end_idx], 8, 8) or { 0 })].bytestr()
+		ss << [u8(strconv.parse_uint(sinput[idx + 1..end_idx], 8, 8) or { 0 })].bytestr()
 		if i + 1 < escapes_pos.len {
-			ss << s[end_idx..escapes_pos[i + 1] - start]
+			ss << sinput[end_idx..escapes_pos[i + 1] - start]
 		} else {
-			ss << s[end_idx..]
+			ss << sinput[end_idx..]
 		}
 	}
 	return ss.join('')
@@ -1508,9 +1518,9 @@ fn (mut s Scanner) ident_char() string {
 					}
 				}
 				if escaped_hex {
-					c = decode_h_escapes(c, 0, escapes_pos)
+					c = s.decode_h_escapes(c, 0, escapes_pos)
 				} else {
-					c = decode_o_escapes(c, 0, escapes_pos)
+					c = s.decode_o_escapes(c, 0, escapes_pos)
 				}
 			}
 		}
