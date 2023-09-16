@@ -301,18 +301,6 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 		}
 	}
 
-	mut member_access_type := '.'
-
-	if node.scope != unsafe { nil } {
-		inserting_object := node.scope.find(node.object_var_name) or {
-			verror('`${node.object_var_name}` is not found in scope')
-		}
-
-		if inserting_object.typ.is_ptr() {
-			member_access_type = '->'
-		}
-	}
-
 	fields := node.fields.filter(g.table.sym(it.typ).kind != .array)
 	primary_field := g.get_orm_struct_primary_field(fields) or { ast.StructField{} }
 
@@ -325,17 +313,8 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 	is_serial = is_serial && primary_field.typ == ast.int_type
 
 	for sub in subs {
-		if is_serial {
-			g.sql_stmt_line(sub, connection_var_name, or_expr)
-			g.writeln('array_push(&${last_ids_arr}, _MOV((orm__Primitive[]){orm__int_to_primitive(orm__Connection_name_table[${connection_var_name}._typ]._method_last_id(${connection_var_name}._object))}));')
-		} else {
-			mut sym := g.table.sym(primary_field.typ)
-			mut typ := sym.cname
-			if typ == 'time__Time' {
-				typ = 'time'
-			}
-			g.writeln('array_push(&${last_ids_arr}, _MOV((orm__Primitive[]){orm__${typ}_to_primitive(${sub.object_var_name}${member_access_type}${c_name(primary_field.name)})}));')
-		}
+		g.sql_stmt_line(sub, connection_var_name, or_expr)
+		g.writeln('array_push(&${last_ids_arr}, _MOV((orm__Primitive[]){orm__int_to_primitive(orm__Connection_name_table[${connection_var_name}._typ]._method_last_id(${connection_var_name}._object))}));')
 	}
 
 	g.writeln('// sql { insert into `${table_name}` }')
@@ -359,6 +338,18 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 	}
 	g.indent--
 	g.writeln('),')
+
+	mut member_access_type := '.'
+
+	if node.scope != unsafe { nil } {
+		inserting_object := node.scope.find(node.object_var_name) or {
+			verror('`${node.object_var_name}` is not found in scope')
+		}
+
+		if inserting_object.typ.is_ptr() {
+			member_access_type = '->'
+		}
+	}
 
 	g.writeln('.data = new_array_from_c_array(${fields.len}, ${fields.len}, sizeof(orm__Primitive),')
 	g.indent++
