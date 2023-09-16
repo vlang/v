@@ -1502,7 +1502,7 @@ pub fn (mut f Fmt) alias_type_decl(node ast.AliasTypeDecl) {
 	if node.is_pub {
 		f.write('pub ')
 	}
-	// aliases of anon struct: `type foo = struct {}`
+	// aliases of anon struct: `type Foo = struct {}`
 	sym := f.table.sym(node.parent_type)
 	if sym.info is ast.Struct {
 		if sym.info.is_anon {
