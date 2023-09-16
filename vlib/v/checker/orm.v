@@ -121,14 +121,24 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 		}
 
 		if c.table.sym(field.typ).kind == .array {
-			mut where_expr := subquery_expr.where_expr as ast.InfixExpr
-			mut left := where_expr.left as ast.Ident
-			mut right := where_expr.right as ast.Ident
+			mut where_expr := subquery_expr.where_expr
+			if mut where_expr is ast.InfixExpr {
+				where_expr.left_type = pkey_field.typ
+				where_expr.right_type = pkey_field.typ
 
-			left.name = pkey_field.name
-			right.info.typ = pkey_field.typ
-			where_expr.left_type = pkey_field.typ
-			where_expr.right_type = pkey_field.typ
+				mut left := where_expr.left
+				if mut left is ast.Ident {
+					left.name = pkey_field.name
+				}
+
+				mut right := where_expr.right
+				if mut right is ast.Ident {
+					mut right_info := right.info
+					if mut right_info is ast.IdentVar {
+						right_info.typ = pkey_field.typ
+					}
+				}
+			}
 		}
 
 		sub_structs[int(typ)] = subquery_expr
