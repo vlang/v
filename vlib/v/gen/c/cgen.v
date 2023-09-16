@@ -3269,16 +3269,22 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			}
 		}
 		ast.SpawnExpr {
+			old_is_arraymap_set := g.is_arraymap_set
+			g.is_arraymap_set = false
 			g.spawn_and_go_expr(node, .spawn_)
+			g.is_arraymap_set = old_is_arraymap_set
 		}
 		ast.GoExpr {
 			// XTODO this results in a cgen bug, order of fields is broken
 			// g.spawn_and_go_expr(ast.SpawnExpr{node.pos, node.call_expr, node.is_expr},
+			old_is_arraymap_set := g.is_arraymap_set
+			g.is_arraymap_set = false
 			g.spawn_and_go_expr(ast.SpawnExpr{
 				pos: node.pos
 				call_expr: node.call_expr
 				is_expr: node.is_expr
 			}, .go_)
+			g.is_arraymap_set = old_is_arraymap_set
 		}
 		ast.Ident {
 			g.ident(node)
