@@ -1507,7 +1507,7 @@ pub fn (mut f Fmt) alias_type_decl(node ast.AliasTypeDecl) {
 	if sym.info is ast.Struct {
 		if sym.info.is_anon {
 			f.write('type ${node.name} = ')
-			f.write_anon_struct_field_decl(node.parent_type, ast.StructDecl{ fields: sym.info.fields })
+			f.struct_decl(ast.StructDecl{ fields: sym.info.fields }, true)
 			f.comments(node.comments, has_nl: false)
 			f.mark_types_import_as_used(node.parent_type)
 			return
