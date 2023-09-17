@@ -123,7 +123,7 @@ jobs:
         run: |
           Xvfb $DISPLAY -screen 0 800x600x24 -fbdir /var/tmp/ &
           sleep 1; while [ ! -f /var/tmp/Xvfb_screen0 ]; do sleep 0.5; done # give xvfb time to start, even on slow CI runs
-          v gret -r ~/code/doom -t ./doom-regression-images/vgret.doom.toml -v ./doom-sample_images ./doom-regression-images
+          sleep 1; v gret -r ~/code/doom -t ./doom-regression-images/vgret.doom.toml -v ./doom-sample_images ./doom-regression-images
 
       - name: Upload regression to imgur
         if: steps.compare.outcome != 'success'
