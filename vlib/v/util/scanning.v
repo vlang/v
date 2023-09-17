@@ -43,9 +43,3 @@ pub fn is_generic_type_name(name string) bool {
 pub fn cescaped_path(s string) string {
 	return s.replace('\\', '\\\\')
 }
-
-[inline]
-pub fn is_escape_sequence(c char) bool {
-	return c in [`x`, `u`, `e`, `n`, `r`, `t`, `v`, `a`, `f`, `b`, `\\`, `\``, `$`, `@`, `?`, `{`,
-		`}`, `'`, `"`]
-}
