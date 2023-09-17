@@ -302,7 +302,15 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 	}
 
 	fields := node.fields.filter(g.table.sym(it.typ).kind != .array)
-	primary_field_name := g.get_orm_struct_primary_field_name(fields) or { '' }
+	primary_field := g.get_orm_struct_primary_field(fields) or { ast.StructField{} }
+
+	mut is_serial := false
+	for attr in primary_field.attrs {
+		if attr.kind == .plain && attr.name == 'sql' && attr.arg.to_lower() == 'serial' {
+			is_serial = true
+		}
+	}
+	is_serial = is_serial && primary_field.typ == ast.int_type
 
 	for sub in subs {
 		g.sql_stmt_line(sub, connection_var_name, or_expr)
@@ -374,7 +382,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 	g.indent--
 	g.writeln('),')
 	g.writeln('.types = __new_array_with_default_noscan(0, 0, sizeof(int), 0),')
-	g.writeln('.primary_column_name = _SLIT("${primary_field_name}"),')
+	g.writeln('.primary_column_name = _SLIT("${primary_field.name}"),')
 	g.writeln('.kinds = __new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
 	g.writeln('.is_and = __new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
 	g.indent--
@@ -384,7 +392,19 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 
 	if arrs.len > 0 {
 		mut id_name := g.new_tmp_var()
-		g.writeln('orm__Primitive ${id_name} = orm__int_to_primitive(orm__Connection_name_table[${connection_var_name}._typ]._method_last_id(${connection_var_name}._object));')
+		if is_serial {
+			// use last_insert_id if current struct has `int [primary; sql: serial]`
+			g.writeln('orm__Primitive ${id_name} = orm__int_to_primitive(orm__Connection_name_table[${connection_var_name}._typ]._method_last_id(${connection_var_name}._object));')
+		} else {
+			// else use the primary key value
+			mut sym := g.table.sym(primary_field.typ)
+			mut typ := sym.cname
+			if typ == 'time__Time' {
+				typ = 'time'
+			}
+			g.writeln('orm__Primitive ${id_name} = orm__${typ}_to_primitive(${node.object_var_name}${member_access_type}${c_name(primary_field.name)});')
+		}
+
 		for i, mut arr in arrs {
 			c_field_name := c_name(field_names[i])
 			idx := g.new_tmp_var()
@@ -656,7 +676,10 @@ fn (mut g Gen) write_orm_where_expr(expr ast.Expr, mut fields []string, mut pare
 		}
 		ast.Ident {
 			if g.sql_side == .left {
-				fields << g.get_orm_column_name_from_struct_field(g.get_orm_current_table_field(expr.name))
+				field := g.get_orm_current_table_field(expr.name) or {
+					verror('field "${expr.name}" does not exist on "${g.sql_table_name}"')
+				}
+				fields << g.get_orm_column_name_from_struct_field(field)
 			} else {
 				data << expr
 			}
@@ -686,7 +709,7 @@ fn (mut g Gen) write_orm_where_expr(expr ast.Expr, mut fields []string, mut pare
 // write_orm_select writes C code that calls ORM functions for selecting rows.
 fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, left_expr_string string, or_expr ast.OrExpr) {
 	mut fields := []ast.StructField{}
-	mut primary_field_name := g.get_orm_struct_primary_field_name(node.fields) or { '' }
+	mut primary_field := g.get_orm_struct_primary_field(node.fields) or { ast.StructField{} }
 
 	for field in node.fields {
 		mut skip := false
@@ -732,8 +755,8 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, le
 	g.writeln('.has_limit = ${node.has_limit},')
 	g.writeln('.has_offset = ${node.has_offset},')
 
-	if primary_field_name != '' {
-		g.writeln('.primary = _SLIT("${primary_field_name}"),')
+	if primary_field.name != '' {
+		g.writeln('.primary = _SLIT("${primary_field.name}"),')
 	}
 
 	select_fields := fields.filter(g.table.sym(it.typ).kind != .array)
@@ -927,11 +950,11 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, le
 				where_expr.left = left_where_expr
 				where_expr.right = ast.SelectorExpr{
 					pos: right_where_expr.pos
-					field_name: primary_field_name
+					field_name: primary_field.name
 					is_mut: false
 					expr: right_where_expr
 					expr_type: (right_where_expr.info as ast.IdentVar).typ
-					typ: ast.int_type
+					typ: (right_where_expr.info as ast.IdentVar).typ
 					scope: 0
 				}
 				mut sql_expr_select_array := ast.SqlExpr{
@@ -1040,7 +1063,7 @@ fn (g &Gen) get_table_name_by_struct_type(typ ast.Type) string {
 }
 
 // get_orm_current_table_field returns the current processing table's struct field by name.
-fn (g &Gen) get_orm_current_table_field(name string) ast.StructField {
+fn (g &Gen) get_orm_current_table_field(name string) ?ast.StructField {
 	info := g.table.sym(g.table.type_idxs[g.sql_table_name]).struct_info()
 
 	for field in info.fields {
@@ -1049,7 +1072,7 @@ fn (g &Gen) get_orm_current_table_field(name string) ast.StructField {
 		}
 	}
 
-	return ast.StructField{}
+	return none
 }
 
 // get_orm_column_name_from_struct_field converts the struct field to a table column name.
@@ -1071,12 +1094,12 @@ fn (g &Gen) get_orm_column_name_from_struct_field(field ast.StructField) string 
 	return name
 }
 
-// get_orm_struct_primary_field_name returns the table's primary column name.
-fn (_ &Gen) get_orm_struct_primary_field_name(fields []ast.StructField) ?string {
+// get_orm_struct_primary_field returns the table's primary column field.
+fn (_ &Gen) get_orm_struct_primary_field(fields []ast.StructField) ?ast.StructField {
 	for field in fields {
 		for attr in field.attrs {
 			if attr.name == 'primary' {
-				return field.name
+				return field
 			}
 		}
 	}

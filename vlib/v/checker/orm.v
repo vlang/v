@@ -9,6 +9,7 @@ import v.util
 const (
 	v_orm_prefix              = 'V ORM'
 	fkey_attr_name            = 'fkey'
+	pkey_attr_name            = 'primary'
 	connection_interface_name = 'orm.Connection'
 )
 
@@ -47,7 +48,28 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	non_primitive_fields := c.get_orm_non_primitive_fields(fields)
 	mut sub_structs := map[int]ast.SqlExpr{}
 
+	mut has_pkey_attr := false
+	mut pkey_field := ast.StructField{}
+	for field in fields {
+		for attr in field.attrs {
+			if attr.name == checker.pkey_attr_name {
+				if has_pkey_attr {
+					c.orm_error('a struct can only have one primary key', field.pos)
+				}
+				has_pkey_attr = true
+				pkey_field = field
+			}
+		}
+	}
+
 	for field in non_primitive_fields {
+		if c.table.sym(field.typ).kind == .array && !has_pkey_attr {
+			c.orm_error('a struct that has a field that holds an array must have a primary key',
+				field.pos)
+		}
+
+		c.check_orm_struct_field_attributes(field)
+
 		typ := c.get_type_of_field_with_related_table(field)
 
 		mut subquery_expr := ast.SqlExpr{
@@ -96,6 +118,27 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 			right_type: ast.int_type
 			auto_locked: ''
 			or_block: ast.OrExpr{}
+		}
+
+		if c.table.sym(field.typ).kind == .array {
+			mut where_expr := subquery_expr.where_expr
+			if mut where_expr is ast.InfixExpr {
+				where_expr.left_type = pkey_field.typ
+				where_expr.right_type = pkey_field.typ
+
+				mut left := where_expr.left
+				if mut left is ast.Ident {
+					left.name = pkey_field.name
+				}
+
+				mut right := where_expr.right
+				if mut right is ast.Ident {
+					mut right_info := right.info
+					if mut right_info is ast.IdentVar {
+						right_info.typ = pkey_field.typ
+					}
+				}
+			}
 		}
 
 		sub_structs[int(typ)] = subquery_expr

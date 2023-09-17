@@ -453,6 +453,7 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 	mut unique_fields := []string{}
 	mut unique := map[string][]string{}
 	mut primary := ''
+	mut primary_typ := 0
 
 	for field in fields {
 		if field.is_arr {
@@ -468,7 +469,7 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 		mut field_name := sql_field_name(field)
 		mut ctyp := sql_from_v(sql_field_type(field)) or {
 			field_name = '${field_name}_id'
-			sql_from_v(7)!
+			sql_from_v(primary_typ)!
 		}
 		for attr in field.attrs {
 			match attr.name {
@@ -480,6 +481,7 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 				}
 				'primary' {
 					primary = field.name
+					primary_typ = field.typ
 				}
 				'unique' {
 					if attr.arg != '' {
