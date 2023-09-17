@@ -1728,9 +1728,11 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 	}
 	if !print_auto_str {
-		g.inside_casting_to_str = true
-		defer {
-			g.inside_casting_to_str = false
+		if is_print {
+			g.inside_casting_to_str = true
+			defer {
+				g.inside_casting_to_str = false
+			}
 		}
 		if g.pref.is_debug && node.name == 'panic' {
 			paline, pafile, pamod, pafn := g.panic_debug_info(node.pos)
