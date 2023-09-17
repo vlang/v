@@ -1656,6 +1656,10 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	mut print_auto_str := false
 	if is_print && (node.args[0].typ != ast.string_type
 		|| g.comptime_for_method.len > 0 || g.is_comptime_var(node.args[0].expr)) {
+		g.inside_casting_to_str = true
+		defer {
+			g.inside_casting_to_str = false
+		}
 		mut typ := node.args[0].typ
 		if g.is_comptime_var(node.args[0].expr) {
 			ctyp := g.get_comptime_var_type(node.args[0].expr)
@@ -1724,6 +1728,10 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 	}
 	if !print_auto_str {
+		g.inside_casting_to_str = true
+		defer {
+			g.inside_casting_to_str = false
+		}
 		if g.pref.is_debug && node.name == 'panic' {
 			paline, pafile, pamod, pafn := g.panic_debug_info(node.pos)
 			g.write('panic_debug(${paline}, tos3("${pafile}"), tos3("${pamod}"), tos3("${pafn}"),  ')

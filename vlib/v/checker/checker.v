@@ -119,7 +119,7 @@ mut:
 	need_recheck_generic_fns         bool // need recheck generic fns because there are cascaded nested generic fn
 	inside_sql                       bool // to handle sql table fields pseudo variables
 	inside_selector_expr             bool
-	inside_println_arg               bool
+	inside_casting_to_str            bool
 	inside_decl_rhs                  bool
 	inside_if_guard                  bool // true inside the guard condition of `if x := opt() {}`
 	inside_assign                    bool
@@ -173,7 +173,7 @@ fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
 	c.loop_label = ''
 	c.using_new_err_struct = false
 	c.inside_selector_expr = false
-	c.inside_println_arg = false
+	c.inside_casting_to_str = false
 	c.inside_decl_rhs = false
 	c.inside_if_guard = false
 }
@@ -3527,6 +3527,11 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 						} else {
 							typ = c.expr(mut obj.expr)
 						}
+					}
+					if c.inside_casting_to_str && obj.orig_type != 0
+						&& c.table.sym(obj.orig_type).kind == .interface_
+						&& c.table.sym(obj.smartcasts.last()).kind != .interface_ {
+						typ = typ.deref()
 					}
 					is_option := typ.has_flag(.option) || typ.has_flag(.result)
 						|| node.or_expr.kind != .absent
