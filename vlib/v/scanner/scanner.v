@@ -1547,7 +1547,7 @@ fn (mut s Scanner) ident_char() string {
 	} else if c.len > len {
 		ch := c[c.len - 1]
 		if !util.is_escape_sequence(ch) && !ch.is_digit() {
-			s.error('`${c[c.len - 1].ascii_str()}` unknown escape sequence')
+			s.error('`${ch.ascii_str()}` unknown escape sequence')
 		}
 	}
 	// Escapes a `'` character
