@@ -146,6 +146,7 @@ mut:
 	inside_const_opt_or_res   bool
 	inside_lambda             bool
 	inside_cinit              bool
+	inside_casting_to_str     bool
 	last_tmp_call_var         []string
 	loop_depth                int
 	ternary_names             map[string]string
@@ -4435,6 +4436,10 @@ fn (mut g Gen) ident(node ast.Ident) {
 					for _ in node.obj.smartcasts {
 						g.write('(')
 						if obj_sym.kind == .sum_type && !is_auto_heap {
+							g.write('*')
+						} else if g.inside_casting_to_str && node.obj.orig_type != 0
+							&& g.table.sym(node.obj.orig_type).kind == .interface_
+							&& g.table.sym(node.obj.smartcasts.last()).kind != .interface_ {
 							g.write('*')
 						}
 					}
