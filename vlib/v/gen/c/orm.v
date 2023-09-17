@@ -139,6 +139,7 @@ fn (mut g Gen) write_orm_create_table(node ast.SqlStmtLine, table_name string, c
 			}
 			g.writeln('.typ = ${typ}, // `${sym.name}`')
 			g.writeln('.is_arr = ${sym.kind == .array}, ')
+			g.writeln('.is_enum = ${sym.kind == .enum_}, ')
 			g.writeln('.is_time = ${g.table.get_type_name(field.typ) == 'time__Time'},')
 			g.writeln('.default_val = (string){ .str = (byteptr) "${field.default_val}", .is_lit = 1 },')
 			g.writeln('.attrs = new_array_from_c_array(${field.attrs.len}, ${field.attrs.len}, sizeof(StructAttribute),')
@@ -368,6 +369,9 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 				g.write('(*(orm__Primitive*) array_get(${last_ids_arr}, ${structs})),')
 				structs++
 				continue
+			} else if sym.kind == .enum_ {
+				g.write('orm__i64_to_primitive(${node.object_var_name}${member_access_type}${c_name(field.name)}), ')
+				continue
 			}
 			if typ == 'time__Time' {
 				typ = 'time'
@@ -457,6 +461,9 @@ fn (mut g Gen) write_orm_expr_to_primitive(expr ast.Expr) {
 		}
 		ast.BoolLiteral {
 			g.write_orm_primitive(ast.bool_type, expr)
+		}
+		ast.EnumVal {
+			g.write_orm_primitive(ast.i64_type, expr)
 		}
 		ast.Ident {
 			info := expr.info as ast.IdentVar
@@ -699,6 +706,9 @@ fn (mut g Gen) write_orm_where_expr(expr ast.Expr, mut fields []string, mut pare
 		ast.BoolLiteral {
 			data << expr
 		}
+		ast.EnumVal {
+			data << expr
+		}
 		ast.CallExpr {
 			data << expr
 		}
@@ -774,6 +784,9 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, le
 			}
 			if sym.kind == .struct_ {
 				types << int(ast.int_type)
+				continue
+			} else if sym.kind == .enum_ {
+				types << int(ast.i64_type)
 				continue
 			}
 			types << int(field.typ)
@@ -979,6 +992,10 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, le
 
 				g.write_orm_select(sql_expr_select_array, connection_var_name, '${tmp}.${c_name(field.name)} = ',
 					or_expr)
+			} else if sym.kind == .enum_ {
+				mut typ := sym.cname
+				g.writeln('${tmp}.${c_name(field.name)} = (${typ}) (*(${array_get_call_code}._i64));')
+				selected_fields_idx++
 			} else {
 				mut typ := sym.cname
 				g.writeln('${tmp}.${c_name(field.name)} = *(${array_get_call_code}._${typ});')
