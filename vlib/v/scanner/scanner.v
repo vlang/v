@@ -1262,8 +1262,7 @@ fn (mut s Scanner) ident_string() string {
 				u_escapes_pos << s.pos - 1
 			}
 			// Unknown escape sequence
-			if c !in [`x`, `u`, `e`, `n`, `r`, `t`, `v`, `a`, `f`, `b`, `\\`, `\``, `$`, `@`, `?`, `{`, `}`, `'`, `"`]
-				&& !c.is_digit() {
+			if !util.is_escape_sequence(c) && !c.is_digit() {
 				s.error('`${c.ascii_str()}` unknown escape sequence')
 			}
 		}
@@ -1541,10 +1540,15 @@ fn (mut s Scanner) ident_char() string {
 					lspos)
 			}
 		}
-	} else if c == '\n' {
+	} else if c.ends_with('\n') {
 		s.add_error_detail_with_pos('use quotes for strings, backticks for characters',
 			lspos)
 		s.error_with_pos('invalid character literal, use \`\\n\` instead', lspos)
+	} else if c.len > len {
+		ch := c[c.len - 1]
+		if !util.is_escape_sequence(ch) && !ch.is_digit() {
+			s.error('`${c[c.len - 1].ascii_str()}` unknown escape sequence')
+		}
 	}
 	// Escapes a `'` character
 	if c == "'" {
