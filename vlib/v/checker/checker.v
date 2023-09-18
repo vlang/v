@@ -12,7 +12,7 @@ import v.util
 import v.util.version
 import v.errors
 import v.pkgconfig
-import strings
+import v.transformer
 
 const (
 	int_min                                        = int(0x80000000)
@@ -43,8 +43,9 @@ pub const (
 
 [heap; minify]
 pub struct Checker {
-	pref &pref.Preferences = unsafe { nil } // Preferences shared from V struct
 pub mut:
+	pref &pref.Preferences = unsafe { nil } // Preferences shared from V struct
+	//
 	table                      &ast.Table = unsafe { nil }
 	file                       &ast.File  = unsafe { nil }
 	nr_errors                  int
@@ -118,18 +119,18 @@ mut:
 	need_recheck_generic_fns         bool // need recheck generic fns because there are cascaded nested generic fn
 	inside_sql                       bool // to handle sql table fields pseudo variables
 	inside_selector_expr             bool
-	inside_println_arg               bool
+	inside_casting_to_str            bool
 	inside_decl_rhs                  bool
 	inside_if_guard                  bool // true inside the guard condition of `if x := opt() {}`
 	inside_assign                    bool
-	doing_line_info                  int    // a quick single file run when called with v -line-info (contains line nr to inspect)
-	doing_line_path                  string // same, but stores the path being parsed
-	is_index_assign                  bool
-	comptime_call_pos                int // needed for correctly checking use before decl for templates
-	goto_labels                      map[string]ast.GotoLabel // to check for unused goto labels
-	enum_data_type                   ast.Type
-	fn_return_type                   ast.Type
-	orm_table_fields                 map[string][]ast.StructField // known table structs
+	// doing_line_info                  int    // a quick single file run when called with v -line-info (contains line nr to inspect)
+	// doing_line_path                  string // same, but stores the path being parsed
+	is_index_assign   bool
+	comptime_call_pos int // needed for correctly checking use before decl for templates
+	goto_labels       map[string]ast.GotoLabel // to check for unused goto labels
+	enum_data_type    ast.Type
+	fn_return_type    ast.Type
+	orm_table_fields  map[string][]ast.StructField // known table structs
 }
 
 pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
@@ -173,7 +174,7 @@ fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
 	c.loop_label = ''
 	c.using_new_err_struct = false
 	c.inside_selector_expr = false
-	c.inside_println_arg = false
+	c.inside_casting_to_str = false
 	c.inside_decl_rhs = false
 	c.inside_if_guard = false
 }
@@ -293,6 +294,7 @@ pub fn (mut c Checker) change_current_file(file &ast.File) {
 }
 
 pub fn (mut c Checker) check_files(ast_files []&ast.File) {
+	// println('check_files')
 	// c.files = ast_files
 	mut has_main_mod_file := false
 	mut has_main_fn := false
@@ -381,9 +383,27 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 			c.error('a _test.v file should have *at least* one `test_` function', token.Pos{})
 		}
 	}
-	// Print line info and exit
-	if c.pref.line_info != '' && c.doing_line_info == 0 {
-		c.do_line_info(c.pref.line_info, ast_files)
+	// After the main checker run, run the line info check, print line info, and exit (if it's present)
+	if c.pref.line_info != '' && !c.pref.linfo.is_running { //'' && c.pref.linfo.line_nr == 0 {
+		// c.do_line_info(c.pref.line_info, ast_files)
+		println('setting is_running=true,  pref.path=${c.pref.linfo.path} curdir' + os.getwd())
+		c.pref.linfo.is_running = true
+		for i, file in ast_files {
+			// println(file.path)
+			if file.path == c.pref.linfo.path {
+				println('running c.check_files')
+				c.check_files([ast_files[i]])
+				exit(0)
+			} else if file.path.starts_with('./') {
+				// Maybe it's a "./foo.v", linfo.path has an absolute path
+				abs_path := os.join_path(os.getwd(), file.path).replace('/./', '/') // TODO join_path shouldn't have /./
+				if abs_path == c.pref.linfo.path {
+					c.check_files([ast_files[i]])
+					exit(0)
+				}
+			}
+		}
+		println('failed to find file "${c.pref.linfo.path}"')
 		exit(0)
 	}
 	// Make sure fn main is defined in non lib builds
@@ -439,7 +459,7 @@ fn (mut c Checker) check_valid_snake_case(name string, identifier string, pos to
 	if c.pref.translated || c.file.is_translated {
 		return
 	}
-	if !c.pref.is_vweb && name.len > 0 && (name[0] == `_` || name.contains('._')) {
+	if !c.pref.is_vweb && name.len > 1 && (name[0] == `_` || name.contains('._')) {
 		c.error('${identifier} `${name}` cannot start with `_`', pos)
 	}
 	if !c.pref.experimental && util.contains_capital(name) {
@@ -1653,6 +1673,15 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 					field.expr.pos())
 			}
 		}
+		const_name := field.name.all_after_last('.')
+		if const_name == c.mod && const_name != 'main' {
+			name_pos := token.Pos{
+				...field.pos
+				len: util.no_cur_mod(field.name, c.mod).len
+			}
+			c.add_error_detail('Module name duplicates will become errors after 2023/10/31.')
+			c.note('duplicate of a module name `${field.name}`', name_pos)
+		}
 		c.const_names << field.name
 	}
 	for i, mut field in node.fields {
@@ -1774,58 +1803,32 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 		if field.has_expr {
 			match mut field.expr {
 				ast.IntegerLiteral {
-					mut overflows := false
-					mut uval := u64(0)
-					mut ival := i64(0)
-
-					if signed {
-						val := field.expr.val.i64()
-						ival = val
-						if val < enum_imin || val >= enum_imax {
-							c.error('enum value `${field.expr.val}` overflows the enum type `${senum_type}`, values of which have to be in [${enum_imin}, ${enum_imax}]',
-								field.expr.pos)
-							overflows = true
-						}
-					} else {
-						val := field.expr.val.u64()
-						uval = val
-						if val >= enum_umax {
-							overflows = true
-							if val == enum_umax {
-								is_bin := field.expr.val.starts_with('0b')
-								is_oct := field.expr.val.starts_with('0o')
-								is_hex := field.expr.val.starts_with('0x')
-
-								if is_hex {
-									overflows = val.hex() != enum_umax.hex()
-								} else if !is_bin && !is_oct && !is_hex {
-									overflows = field.expr.val.str() != enum_umax.str()
-								}
-							}
-							if overflows {
-								c.error('enum value `${field.expr.val}` overflows the enum type `${senum_type}`, values of which have to be in [${enum_umin}, ${enum_umax}]',
-									field.expr.pos)
-							}
-						}
-					}
-					if !overflows && !c.pref.translated && !c.file.is_translated
-						&& !node.is_multi_allowed {
-						if (signed && ival in iseen) || (!signed && uval in useen) {
-							c.error('enum value `${field.expr.val}` already exists', field.expr.pos)
-						}
-					}
-					if signed {
-						iseen << ival
-					} else {
-						useen << uval
-					}
+					c.check_enum_field_integer_literal(field.expr, signed, node.is_multi_allowed,
+						senum_type, field.expr.pos, mut useen, enum_umin, enum_umax, mut
+						iseen, enum_imin, enum_imax)
 				}
 				ast.InfixExpr {
 					// Handle `enum Foo { x = 1 + 2 }`
 					c.infix_expr(mut field.expr)
+					mut t := transformer.new_transformer_with_table(c.table, c.pref)
+					folded_expr := t.infix_expr(mut field.expr)
+
+					if folded_expr is ast.IntegerLiteral {
+						c.check_enum_field_integer_literal(folded_expr, signed, node.is_multi_allowed,
+							senum_type, field.expr.pos, mut useen, enum_umin, enum_umax, mut
+							iseen, enum_imin, enum_imax)
+					}
 				}
 				ast.ParExpr {
 					c.expr(mut field.expr.expr)
+					mut t := transformer.new_transformer_with_table(c.table, c.pref)
+					folded_expr := t.expr(mut field.expr.expr)
+
+					if folded_expr is ast.IntegerLiteral {
+						c.check_enum_field_integer_literal(folded_expr, signed, node.is_multi_allowed,
+							senum_type, field.expr.pos, mut useen, enum_umin, enum_umax, mut
+							iseen, enum_imin, enum_imax)
+					}
 				}
 				ast.CastExpr {
 					fe_type := c.cast_expr(mut field.expr)
@@ -1848,7 +1851,7 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 							c.ident(mut field.expr)
 						}
 						if field.expr.kind == .constant && field.expr.obj.typ.is_int() {
-							/* accepts int constants as enum value */
+							// accepts int constants as enum value
 							continue
 						}
 					}
@@ -1893,6 +1896,53 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 	}
 }
 
+fn (mut c Checker) check_enum_field_integer_literal(expr ast.IntegerLiteral, is_signed bool, is_multi_allowed bool, styp string, pos token.Pos, mut useen []u64, umin u64, umax u64, mut iseen []i64, imin i64, imax i64) {
+	mut overflows := false
+	mut uval := u64(0)
+	mut ival := i64(0)
+
+	if is_signed {
+		val := expr.val.i64()
+		ival = val
+		if val < imin || val >= imax {
+			c.error('enum value `${expr.val}` overflows the enum type `${styp}`, values of which have to be in [${imin}, ${imax}]',
+				pos)
+			overflows = true
+		}
+	} else {
+		val := expr.val.u64()
+		uval = val
+		if val >= umax {
+			overflows = true
+			if val == umax {
+				is_bin := expr.val.starts_with('0b')
+				is_oct := expr.val.starts_with('0o')
+				is_hex := expr.val.starts_with('0x')
+
+				if is_hex {
+					overflows = val.hex() != umax.hex()
+				} else if !is_bin && !is_oct && !is_hex {
+					overflows = expr.val.str() != umax.str()
+				}
+			}
+			if overflows {
+				c.error('enum value `${expr.val}` overflows the enum type `${styp}`, values of which have to be in [${umin}, ${umax}]',
+					pos)
+			}
+		}
+	}
+	if !overflows && !c.pref.translated && !c.file.is_translated && !is_multi_allowed {
+		if (is_signed && ival in iseen) || (!is_signed && uval in useen) {
+			c.error('enum value `${expr.val}` already exists', pos)
+		}
+	}
+	if is_signed {
+		iseen << ival
+	} else {
+		useen << uval
+	}
+}
+
 [inline]
 fn (mut c Checker) check_loop_label(label string, pos token.Pos) {
 	if label.len == 0 {
@@ -1908,7 +1958,7 @@ fn (mut c Checker) check_loop_label(label string, pos token.Pos) {
 
 fn (mut c Checker) stmt(mut node ast.Stmt) {
 	$if trace_checker ? {
-		ntype := typeof(node).replace('v.ast.', '')
+		ntype := typeof(*node).replace('v.ast.', '')
 		eprintln('checking: ${c.file.path:-30} | pos: ${node.pos.line_str():-39} | node: ${ntype} | ${node}')
 	}
 	c.expected_type = ast.void_type
@@ -2050,6 +2100,7 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 			c.return_stmt(mut node)
 			c.scope_returns = true
 		}
+		ast.SemicolonStmt {}
 		ast.SqlStmt {
 			c.sql_stmt(mut node)
 		}
@@ -3128,6 +3179,10 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		c.error('casting a function value from one function signature, to another function signature, should be done inside `unsafe{}` blocks',
 			node.pos)
 	}
+	if to_type.is_ptr() && to_sym.kind == .alias && from_sym.kind == .map {
+		c.error('cannot cast to alias pointer `${c.table.type_to_str(to_type)}` because `${c.table.type_to_str(from_type)}` is a value',
+			node.pos)
+	}
 
 	if to_type == ast.string_type {
 		if from_type in [ast.u8_type, ast.bool_type] {
@@ -3232,7 +3287,6 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 				}
 			}
 		}
-		// don't allow casting `string` to `enum`, and suggest using `enum_name.type_to_string(str)` instead
 		if mut node.expr is ast.StringLiteral {
 			c.add_error_detail('use ${c.table.type_to_str(node.typ)}.from_string(\'${node.expr.val}\') instead')
 			c.error('cannot cast `string` to `enum`', node.pos)
@@ -3332,34 +3386,9 @@ struct ACFieldMethod {
 }
 
 fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
-	if c.doing_line_info > 0 {
-		mut sb := strings.new_builder(10)
+	if c.pref.linfo.is_running {
 		// Mini LS hack (v -line-info "a.v:16")
-		// println('line_nr=${node.pos.line_nr} doing line nr=${c.doing_line_info}')
-		// println('Start line_nr=${node.pos.line_nr}  line2=${c.doing_line_info} file="${c.file.path}", pppp="${c.doing_line_path}"')
-		if node.pos.line_nr == c.doing_line_info && c.file.path == c.doing_line_path {
-			sb.writeln('===')
-			sym := c.table.sym(node.obj.typ)
-			sb.writeln('VAR ${node.name}:${sym.name}')
-			mut struct_info := sym.info as ast.Struct
-			mut fields := []ACFieldMethod{cap: struct_info.fields.len}
-			for field in struct_info.fields {
-				field_sym := c.table.sym(field.typ)
-				fields << ACFieldMethod{field.name, field_sym.name}
-			}
-			for method in sym.methods {
-				method_ret_type := c.table.sym(method.return_type)
-				fields << ACFieldMethod{method.name + '()', method_ret_type.name}
-			}
-			fields.sort(a.name < b.name)
-			for field in fields {
-				sb.writeln('${field.name}:${field.typ}')
-			}
-			res := sb.str().trim_space()
-			if res != '' {
-				println(res)
-			}
-		}
+		c.ident_autocomplete(node)
 	}
 	// TODO: move this
 	if c.const_deps.len > 0 {
@@ -3500,6 +3529,11 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 							typ = c.expr(mut obj.expr)
 						}
 					}
+					if c.inside_casting_to_str && obj.orig_type != 0
+						&& c.table.sym(obj.orig_type).kind == .interface_
+						&& c.table.sym(obj.smartcasts.last()).kind != .interface_ {
+						typ = typ.deref()
+					}
 					is_option := typ.has_flag(.option) || typ.has_flag(.result)
 						|| node.or_expr.kind != .absent
 					node.kind = .variable
@@ -3580,6 +3614,13 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					}
 					obj.typ = typ
 					node.obj = obj
+
+					if node.or_expr.kind != .absent {
+						unwrapped_typ := typ.clear_flags(.option, .result)
+						c.expected_or_type = unwrapped_typ
+						c.stmts_ending_with_expression(mut node.or_expr.stmts)
+						c.check_or_expr(node.or_expr, typ, c.expected_or_type, node)
+					}
 					return typ
 				}
 				else {}
@@ -4568,6 +4609,9 @@ fn (mut c Checker) note(message string, pos token.Pos) {
 	}
 	if c.is_generated {
 		return
+	}
+	if c.pref.notes_are_errors {
+		c.error(message, pos)
 	}
 	mut details := ''
 	if c.error_details.len > 0 {

@@ -13,7 +13,7 @@ const (
 )
 
 enum BufferElemStat {
-	unused = 0
+	unused  = 0
 	writing
 	written
 	reading

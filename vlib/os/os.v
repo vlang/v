@@ -162,17 +162,37 @@ pub fn sigint_to_signal_name(si int) string {
 		match si {
 			// TODO dependent on platform
 			// works only on x86/ARM/most others
-			10 /* , 30, 16 */ { return 'SIGUSR1' }
-			12 /* , 31, 17 */ { return 'SIGUSR2' }
-			17 /* , 20, 18 */ { return 'SIGCHLD' }
-			18 /* , 19, 25 */ { return 'SIGCONT' }
-			19 /* , 17, 23 */ { return 'SIGSTOP' }
-			20 /* , 18, 24 */ { return 'SIGTSTP' }
-			21 /* , 26 */ { return 'SIGTTIN' }
-			22 /* , 27 */ { return 'SIGTTOU' }
+			10 { // , 30, 16
+				return 'SIGUSR1'
+			}
+			12 { // , 31, 17
+				return 'SIGUSR2'
+			}
+			17 { // , 20, 18
+				return 'SIGCHLD'
+			}
+			18 { // , 19, 25
+				return 'SIGCONT'
+			}
+			19 { // , 17, 23
+				return 'SIGSTOP'
+			}
+			20 { // , 18, 24
+				return 'SIGTSTP'
+			}
+			21 { // , 26
+				return 'SIGTTIN'
+			}
+			22 { // , 27
+				return 'SIGTTOU'
+			}
 			// /////////////////////////////
-			5 { return 'SIGTRAP' }
-			7 { return 'SIGBUS' }
+			5 {
+				return 'SIGTRAP'
+			}
+			7 {
+				return 'SIGBUS'
+			}
 			else {}
 		}
 	}
@@ -532,7 +552,12 @@ pub fn join_path(base string, dirs ...string) string {
 		sb.write_string(path_separator)
 		sb.write_string(d)
 	}
-	return sb.str()
+	mut res := sb.str()
+	if res.contains('/./') {
+		// Fix `join_path("/foo/bar", "./file.txt")` => `/foo/bar/./file.txt`
+		res = res.replace('/./', '/')
+	}
+	return res
 }
 
 // join_path_single appends the `elem` after `base`, using a platform specific
@@ -894,10 +919,4 @@ pub fn config_dir() !string {
 		}
 	}
 	return error('Cannot find config directory')
-}
-
-[deprecated: 'use os.ensure_folder_is_writable instead']
-pub fn is_writable_folder(folder string) !bool {
-	ensure_folder_is_writable(folder)!
-	return true
 }

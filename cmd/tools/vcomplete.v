@@ -155,6 +155,7 @@ const (
 		'-autofree',
 		'-compress',
 		'-freestanding',
+		'-no-builtin',
 		'-no-parallel',
 		'-no-preludes',
 		'-prof',

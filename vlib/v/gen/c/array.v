@@ -138,7 +138,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 	mut tmp_var := ''
 	if need_tmp_var {
 		tmp_var = g.new_tmp_var()
-		stmt_str = g.go_before_stmt(0)
+		stmt_str = g.go_before_last_stmt()
 		g.empty_line = true
 
 		ret_typ := g.typ(node.typ)
@@ -376,7 +376,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.write('}[0])')
 	} else if needs_more_defaults {
 		tmp := g.new_tmp_var()
-		line := g.go_before_stmt(0).trim_space()
+		line := g.go_before_last_stmt().trim_space()
 		g.empty_line = true
 
 		g.write('${elem_styp}* ${tmp} = (${elem_styp}*) _v_malloc((')

@@ -4,7 +4,7 @@ import time
 import io
 import strings
 
-const (
+pub const (
 	tcp_default_read_timeout  = 30 * time.second
 	tcp_default_write_timeout = 30 * time.second
 )
@@ -252,17 +252,12 @@ pub fn (mut c TcpConn) set_sock() ! {
 	}
 }
 
+// peer_addr retrieves the ip address and port number used by the peer
 pub fn (c &TcpConn) peer_addr() !Addr {
-	mut addr := Addr{
-		addr: AddrData{
-			Ip6: Ip6{}
-		}
-	}
-	mut size := sizeof(Addr)
-	socket_error_message(C.getpeername(c.sock.handle, voidptr(&addr), &size), 'peer_addr failed')!
-	return addr
+	return peer_addr_from_socket_handle(c.sock.handle)
 }
 
+// peer_ip retrieves the ip address used by the peer, and returns it as a string
 pub fn (c &TcpConn) peer_ip() !string {
 	return c.peer_addr()!.str()
 }

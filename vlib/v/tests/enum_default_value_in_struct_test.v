@@ -1,5 +1,5 @@
 enum MyEnum {
-	first = 20
+	first  = 20
 	second
 	third
 }

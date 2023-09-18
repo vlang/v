@@ -318,3 +318,11 @@ see also `v help build`.
       It may be decreased, to reduce the memory footprint of programs that launch
       hundreds/thousands of threads, but where each of the threads does not need
       a big stack.
+
+   -fast-math
+      When present, pass either -ffast-math or /fp:fast (for msvc) to the C compiler.
+      See https://en.wikipedia.org/wiki/Floating-point_arithmetic#%22Fast_math%22_optimization
+          https://learn.microsoft.com/en-us/cpp/build/reference/fp-specify-floating-point-behavior?view=msvc-170&redirectedfrom=MSDN
+          https://clang.llvm.org/docs/UsersManual.html#cmdoption-ffast-math
+          https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html#index-ffast-math
+   

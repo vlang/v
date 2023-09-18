@@ -405,6 +405,11 @@ pub fn (mut s SSLConn) dial(hostname string, port int) ! {
 	s.opened = true
 }
 
+// peer_addr retrieves the ip address and port number used by the peer
+pub fn (s &SSLConn) peer_addr() !net.Addr {
+	return net.peer_addr_from_socket_handle(s.handle)
+}
+
 // socket_read_into_ptr reads `len` bytes into `buf`
 pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 	mut res := 0

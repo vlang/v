@@ -140,6 +140,7 @@ pub fn clamp(x f64, a f64, b f64) f64 {
 // if n is not a number, its sign is nan too.
 [inline]
 pub fn sign(n f64) f64 {
+	// dump(n)
 	if is_nan(n) {
 		return nan()
 	}
@@ -200,9 +201,21 @@ pub fn veryclose(a f64, b f64) bool {
 
 // alike checks if a and b are equal
 pub fn alike(a f64, b f64) bool {
+	// eprintln('>>> a: ${f64_bits(a):20} | b: ${f64_bits(b):20} | a==b: ${a == b} | a: ${a:10} | b: ${b:10}')
+	// compare a and b, ignoring their last 2 bits:
+	if f64_bits(a) & 0xFFFF_FFFF_FFFF_FFFC == f64_bits(b) & 0xFFFF_FFFF_FFFF_FFFC {
+		return true
+	}
+	if a == -0 && b == 0 {
+		return true
+	}
+	if a == 0 && b == -0 {
+		return true
+	}
 	if is_nan(a) && is_nan(b) {
 		return true
-	} else if a == b {
+	}
+	if a == b {
 		return signbit(a) == signbit(b)
 	}
 	return false

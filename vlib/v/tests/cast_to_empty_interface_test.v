@@ -2,8 +2,8 @@ interface Any {}
 
 fn thing(any Any) string {
 	return match any {
-		int { 'int${*any:17}' }
-		f64 { 'f64${*any:20}' }
+		int { 'int${any:17}' }
+		f64 { 'f64${any:20}' }
 		else { 'literal type tag?${any:10}' }
 	}
 }

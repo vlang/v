@@ -14,7 +14,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		is_update_tmp_var = true
 
 		tmp_update_var = g.new_tmp_var()
-		s := g.go_before_stmt(0)
+		s := g.go_before_last_stmt()
 		g.empty_line = true
 
 		styp := g.typ(node.update_expr_type)

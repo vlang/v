@@ -57,11 +57,11 @@ fn cb_zip_extract(filename &&char, arg &&char) int {
 
 // CompressionLevel lists compression levels, see in "thirdparty/zip/miniz.h"
 pub enum CompressionLevel {
-	no_compression = 0
-	best_speed = 1
-	best_compression = 9
-	uber_compression = 10
-	default_level = 6
+	no_compression      = 0
+	best_speed          = 1
+	best_compression    = 9
+	uber_compression    = 10
+	default_level       = 6
 	default_compression = -1
 }
 

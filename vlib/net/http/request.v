@@ -21,7 +21,7 @@ pub type RequestFinishFn = fn (request &Request, final_size u64) !
 pub struct Request {
 pub mut:
 	version    Version = .v1_1
-	method     Method
+	method     Method  = .get
 	header     Header
 	host       string
 	cookies    map[string]string

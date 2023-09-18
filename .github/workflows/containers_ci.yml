@@ -42,11 +42,8 @@ jobs:
           echo "C Compiler:"
           gcc --version
 
-## TODO: fix the container thevlang/vlang:alpine-build, instead of using apk add here:
       - name: Add dependencies
         run: |
-          apk add libexecinfo-static
-          apk add libexecinfo-dev
           apk add libc6-compat
 
       - name: Build V

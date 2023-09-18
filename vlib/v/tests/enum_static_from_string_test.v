@@ -8,7 +8,7 @@ enum Color1 {
 enum Color2 as i64 {
 	unknown
 	red
-	blue = 123456789012345
+	blue    = 123456789012345
 	green
 }
 

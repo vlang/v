@@ -85,13 +85,13 @@ const (
 	]
 	skip_test_files               = [
 		'do_not_remove',
-		'cmd/tools/vdoc/html_tag_escape_test.v', /* can't locate local module: markdown */
-		'cmd/tools/vdoc/tests/vdoc_file_test.v', /* fails on Windows; order of output is not as expected */
-		'vlib/context/deadline_test.v' /* sometimes blocks */,
-		'vlib/context/onecontext/onecontext_test.v' /* backtrace_symbols is missing. */,
-		'vlib/db/mysql/mysql_orm_test.v' /* mysql not installed */,
-		'vlib/db/mysql/mysql_test.v' /* mysql not installed */,
-		'vlib/db/pg/pg_orm_test.v' /* pg not installed */,
+		'cmd/tools/vdoc/html_tag_escape_test.v', // can't locate local module: markdown
+		'cmd/tools/vdoc/tests/vdoc_file_test.v', // fails on Windows; order of output is not as expected
+		'vlib/context/deadline_test.v', // sometimes blocks
+		'vlib/context/onecontext/onecontext_test.v', // backtrace_symbols is missing
+		'vlib/db/mysql/mysql_orm_test.v', // mysql not installed
+		'vlib/db/mysql/mysql_test.v', // mysql not installed
+		'vlib/db/pg/pg_orm_test.v', // pg not installed
 	]
 	// These tests are too slow to be run in the CI on each PR/commit
 	// in the sanitized modes:
@@ -134,9 +134,12 @@ const (
 		'vlib/orm/orm_mut_db_test.v',
 		'vlib/orm/orm_result_test.v',
 		'vlib/orm/orm_custom_operators_test.v',
+		'vlib/orm/orm_fk_test.v',
+		'vlib/orm/orm_references_test.v',
 		'vlib/db/sqlite/sqlite_test.v',
 		'vlib/db/sqlite/sqlite_orm_test.v',
 		'vlib/db/sqlite/sqlite_vfs_lowlevel_test.v',
+		'vlib/v/tests/orm_enum_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
 		'vlib/v/tests/orm_joined_tables_select_test.v',
@@ -161,7 +164,9 @@ const (
 		'vlib/orm/orm_create_and_drop_test.v',
 		'vlib/orm/orm_insert_test.v',
 		'vlib/orm/orm_insert_reserved_name_test.v',
+		'vlib/orm/orm_references_test.v',
 		'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
+		'vlib/v/tests/orm_enum_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
 		'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
 	]
@@ -170,6 +175,8 @@ const (
 		'vlib/orm/orm_create_and_drop_test.v',
 		'vlib/orm/orm_insert_test.v',
 		'vlib/orm/orm_insert_reserved_name_test.v',
+		'vlib/orm/orm_references_test.v',
+		'vlib/v/tests/orm_enum_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
 		'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
 		'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.v', // fails compilation with: undefined reference to vtable for __cxxabiv1::__function_type_info'
@@ -213,6 +220,9 @@ const (
 		'vlib/orm/orm_mut_db_test.v',
 		'vlib/orm/orm_result_test.v',
 		'vlib/orm/orm_custom_operators_test.v',
+		'vlib/orm/orm_fk_test.v',
+		'vlib/orm/orm_references_test.v',
+		'vlib/v/tests/orm_enum_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
 		'vlib/v/tests/orm_joined_tables_select_test.v',

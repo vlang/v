@@ -101,6 +101,12 @@ fn get_all_commands() []Command {
 		runcmd: .execute
 		expect: '42'
 	}
+	res << Command{
+		line: '${vexe} -e "import os; import math; print(os.args#[1..]) print(math.sin(math.pi/2).str())" arg1 arg2'
+		okmsg: 'V can run code with `-e`, that use semicolons and several imports, and that accepts CLI parameters.'
+		runcmd: .execute
+		expect: "['arg1', 'arg2']1.0"
+	}
 	$if linux || macos {
 		res << Command{
 			line: '${vexe} run examples/hello_world.v'

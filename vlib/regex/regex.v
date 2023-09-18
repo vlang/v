@@ -1674,7 +1674,7 @@ fn (mut re RE) group_continuous_save(g_index int) {
 *
 ******************************************************************************/
 enum Match_state {
-	start = 0
+	start        = 0
 	stop
 	end
 	new_line

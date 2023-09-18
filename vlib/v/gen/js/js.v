@@ -739,6 +739,9 @@ fn (mut g JsGen) stmt_no_semi(node_ ast.Stmt) {
 			}
 			g.gen_return_stmt(node)
 		}
+		ast.SemicolonStmt {
+			g.writeln(';')
+		}
 		ast.SqlStmt {}
 		ast.StructDecl {
 			g.write_v_source_line_info(node.pos)
@@ -841,6 +844,9 @@ fn (mut g JsGen) stmt(node_ ast.Stmt) {
 				g.gen_defer_stmts()
 			}
 			g.gen_return_stmt(node)
+		}
+		ast.SemicolonStmt {
+			g.writeln(';')
 		}
 		ast.SqlStmt {}
 		ast.StructDecl {

@@ -33,16 +33,18 @@ fn (mut p Parser) array_init(is_option bool) ast.ArrayInit {
 			elem_type = p.parse_type()
 			// this is set here because it's a known type, others could be the
 			// result of expr so we do those in checker
-			idx := p.table.find_or_register_array(elem_type)
-			if elem_type.has_flag(.generic) {
-				array_type = ast.new_type(idx).set_flag(.generic)
-			} else {
-				array_type = ast.new_type(idx)
+			if elem_type != 0 {
+				idx := p.table.find_or_register_array(elem_type)
+				if elem_type.has_flag(.generic) {
+					array_type = ast.new_type(idx).set_flag(.generic)
+				} else {
+					array_type = ast.new_type(idx)
+				}
+				if is_option {
+					array_type = array_type.set_flag(.option)
+				}
+				has_type = true
 			}
-			if is_option {
-				array_type = array_type.set_flag(.option)
-			}
-			has_type = true
 		}
 		last_pos = p.tok.pos()
 	} else {

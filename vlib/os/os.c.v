@@ -5,6 +5,10 @@ import strings
 #include <sys/stat.h> // #include <signal.h>
 #include <errno.h>
 
+$if freebsd {
+	#include <sys/sysctl.h>
+}
+
 pub const (
 	args = []string{}
 )
@@ -712,7 +716,10 @@ pub fn executable() string {
 	}
 	$if freebsd {
 		bufsize := usize(max_path_buffer_size)
-		mib := [1 /* CTL_KERN */, 14 /* KERN_PROC */, 12 /* KERN_PROC_PATHNAME */, -1]
+		mib := [1, // CTL_KERN
+		 		14, // KERN_PROC
+		 		12, // KERN_PROC_PATHNAME
+		 		-1]
 		unsafe { C.sysctl(mib.data, mib.len, &result[0], &bufsize, 0, 0) }
 		res := unsafe { tos_clone(&result[0]) }
 		return res

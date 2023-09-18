@@ -6,10 +6,14 @@ module native
 import arrays
 import v.ast
 import v.token
+import v.pref
 
 pub struct Amd64 {
 mut:
 	g &Gen = unsafe { nil }
+
+	fn_arg_registers     []Amd64Register
+	fn_arg_sse_registers []Amd64SSERegister
 	// amd64 specific stuff for code generation
 	is_16bit_aligned bool
 }
@@ -59,17 +63,17 @@ enum Amd64SSERegister {
 }
 
 enum Amd64SetOp {
-	e = 0x940f
+	e  = 0x940f
 	ne = 0x950f
-	g = 0x9f0f
+	g  = 0x9f0f
 	ge = 0x9d0f
-	l = 0x9c0f
+	l  = 0x9c0f
 	le = 0x9e0f
-	a = 0x970f
+	a  = 0x970f
 	ae = 0x930f
-	b = 0x920f
+	b  = 0x920f
 	be = 0x960f
-	p = 0x9a0f
+	p  = 0x9a0f
 	np = 0x9b0f
 }
 
@@ -85,10 +89,38 @@ struct Amd64RegisterOption {
 }
 
 const (
-	fn_arg_registers     = [Amd64Register.rdi, .rsi, .rdx, .rcx, .r8, .r9]
-	fn_arg_sse_registers = [Amd64SSERegister.xmm0, .xmm1, .xmm2, .xmm3, .xmm4, .xmm5, .xmm6, .xmm7]
-	amd64_cpuregs        = ['eax', 'ecx', 'edx', 'ebx', 'esp', 'ebp', 'esi', 'edi']
+	amd64_system_v_call_regs    = [Amd64Register.rdi, .rsi, .rdx, .rcx, .r8, .r9]
+	amd64_system_v_call_sseregs = [Amd64SSERegister.xmm0, .xmm1, .xmm2, .xmm3, .xmm4, .xmm5, .xmm6,
+		.xmm7]
+
+	// reference: https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-170#parameter-passing
+	amd64_windows_call_regs     = [Amd64Register.rcx, .rdx, .r8, .r9]
+	amd64_windows_call_sseregs  = [Amd64SSERegister.xmm0, .xmm1, .xmm2, .xmm3]
+
+	amd64_cpuregs               = ['eax', 'ecx', 'edx', 'ebx', 'esp', 'ebp', 'esi', 'edi']
 )
+
+fn amd64_get_call_regs(os pref.OS) []Amd64Register {
+	return match os {
+		.windows {
+			native.amd64_windows_call_regs
+		}
+		else {
+			native.amd64_system_v_call_regs
+		}
+	}
+}
+
+fn amd64_get_call_sseregs(os pref.OS) []Amd64SSERegister {
+	return match os {
+		.windows {
+			native.amd64_windows_call_sseregs
+		}
+		else {
+			native.amd64_system_v_call_sseregs
+		}
+	}
+}
 
 fn (mut c Amd64) main_reg() Register {
 	return Amd64Register.rax
@@ -918,8 +950,22 @@ fn (mut c Amd64) extern_call(addr int) {
 			c.g.write32(0)
 			c.g.println('call *@GOTPCREL(%rip)')
 		}
+		.windows {
+			// TODO: handle others than dll imports
+			// c.g.write8(0xff)
+			// c.g.write8(0x14)
+			// c.g.write8(0x25)
+			// c.g.write32(addr)
+			////c.g.println('call QWORD PTR [rip + 0x${addr.hex()}] ; __declspec(dllimport)`')
+			// c.g.println('call QWORD [0x${addr.hex()}] ; __declspec(dllimport)')
+
+			c.g.write8(0xff)
+			c.g.write8(0x15)
+			c.g.write32(addr)
+			c.g.println('call QWORD [rip + 0xffffffff${addr.hex()}]')
+		}
 		else {
-			c.g.n_error('extern calls are not implemented for ${c.g.pref.os}')
+			c.g.n_error('extern calls not implemented for ${c.g.pref.os}')
 		}
 	}
 }
@@ -1220,40 +1266,42 @@ pub fn (mut c Amd64) inline_strlen(r Amd64Register) {
 	c.g.println('strlen rax, ${r}')
 }
 
-pub fn (mut c Amd64) apicall(call ApiCall) {
+pub fn (mut c Amd64) get_dllcall_addr(import_addr i64) i64 {
+	// TODO: handle imports from different DLLs
+	// +2 because of ff 05
+	// return int(-(0xe00 + c.g.pos() + 2) + import_addr)
+	// return int(c.g.code_start_pos + import_addr)
+	text_section := c.g.get_pe_section('.text') or { c.g.n_error('no .text section generated') }
+	return 0xfffffffa - (c.g.pos() - c.g.code_start_pos + text_section.header.virtual_address - import_addr)
+}
+
+pub fn (mut c Amd64) dllcall(symbol string) {
 	if c.g.pref.os != .windows {
-		c.g.n_error('apicalls are only for windows')
+		c.g.n_error('dllcalls are only for windows')
 	}
-	c.g.write8(0xff)
-	c.g.write8(0x15)
-	delta := match call {
-		.write_file {
-			-(0xbcc + c.g.buf.len)
-		}
-		.get_std_handle {
-			-(0xbcc + c.g.buf.len + 8)
-		}
-		.exit_process {
-			-(0xbcc + c.g.buf.len + 16)
-		}
+
+	import_addr := c.g.pe_dll_relocations[symbol] or {
+		c.g.n_error('could not find DLL import named `${symbol}`')
 	}
-	c.g.write32(delta)
+	call_addr := c.get_dllcall_addr(import_addr)
+	c.extern_call(int(call_addr))
 }
 
 fn (mut c Amd64) gen_print(s string, fd int) {
 	if c.g.pref.os == .windows {
 		c.sub(.rsp, 0x38)
-		c.mov(Amd64Register.rcx, -11)
-		c.apicall(.get_std_handle)
+		c.mov(Amd64Register.rcx, -10 - fd)
+		c.dllcall('GetStdHandle')
 		c.mov_reg(Amd64Register.rcx, Amd64Register.rax)
 		// c.mov64(Amd64Register.rdx, c.g.allocate_string(s, 3))
 		c.lea(.rdx, c.g.allocate_string(s, 3, .abs64))
 		c.mov(Amd64Register.r8, s.len) // string length
-		c.g.write([u8(0x4c), 0x8d, 0x4c, 0x24, 0x20]) // lea r9, [rsp+0x20]
+		c.g.write([u8(0x4c), 0x8d, 0x4c, 0x24, 0x20])
+		c.g.println('lea r9, [rsp + 0x20]')
 		c.g.write([u8(0x48), 0xc7, 0x44, 0x24, 0x20])
-		c.g.write32(0) // mov qword[rsp+0x20], 0
-		// c.mov(Amd64Register.r9, rsp+0x20)
-		c.apicall(.write_file)
+		c.g.write32(0)
+		c.g.println('mov QWORD [rsp + 0x20], 0')
+		c.dllcall('WriteFile')
 	} else {
 		c.mov(Amd64Register.eax, c.g.nsyscall(.write))
 		c.mov(Amd64Register.edi, fd)
@@ -1263,18 +1311,34 @@ fn (mut c Amd64) gen_print(s string, fd int) {
 	}
 }
 
-// TODO: strlen of string at runtime
 pub fn (mut c Amd64) gen_print_reg(r Register, n int, fd int) {
-	c.mov_reg(Amd64Register.rsi, r)
+	str_reg := if c.g.pref.os == .windows { Amd64Register.rdx } else { Amd64Register.rsi }
+	len_reg := if c.g.pref.os == .windows { Amd64Register.r8 } else { Amd64Register.rdx }
+	c.mov_reg(str_reg, r)
+
 	if n < 0 {
-		c.inline_strlen(.rsi)
-		c.mov_reg(Amd64Register.rdx, Amd64Register.rax)
+		c.inline_strlen(str_reg)
+		c.mov_reg(len_reg, Amd64Register.rax)
 	} else {
-		c.mov(Amd64Register.edx, n)
+		c.mov(len_reg, n)
 	}
-	c.mov(Amd64Register.eax, c.g.nsyscall(.write))
-	c.mov(Amd64Register.edi, fd)
-	c.syscall()
+
+	if c.g.pref.os == .windows {
+		c.sub(.rsp, 0x38)
+		c.mov(Amd64Register.rcx, -10 - fd)
+		c.dllcall('GetStdHandle')
+		c.mov_reg(Amd64Register.rcx, Amd64Register.rax)
+		c.g.write([u8(0x4c), 0x8d, 0x4c, 0x24, 0x20])
+		c.g.println('lea r9, [rsp + 0x20]')
+		c.g.write([u8(0x48), 0xc7, 0x44, 0x24, 0x20])
+		c.g.write32(0)
+		c.g.println('mov QWORD [rsp + 0x20], 0')
+		c.dllcall('WriteFile')
+	} else {
+		c.mov(Amd64Register.eax, c.g.nsyscall(.write))
+		c.mov(Amd64Register.edi, fd)
+		c.syscall()
+	}
 }
 
 pub fn (mut c Amd64) gen_exit(expr ast.Expr) {
@@ -1283,7 +1347,7 @@ pub fn (mut c Amd64) gen_exit(expr ast.Expr) {
 
 	if c.g.pref.os == .windows {
 		c.mov_reg(Amd64Register.rcx, Amd64Register.rdi)
-		c.apicall(.exit_process)
+		c.dllcall('ExitProcess')
 	} else {
 		c.mov(Amd64Register.rax, c.g.nsyscall(.exit))
 		c.syscall()
@@ -1395,6 +1459,11 @@ fn (mut c Amd64) clear_reg(reg Amd64Register) {
 			c.g.write8(0x48)
 			c.g.write8(0x31)
 			c.g.write8(0xf6)
+		}
+		.r8 {
+			c.g.write8(0x4d)
+			c.g.write8(0x31)
+			c.g.write8(0xc0)
 		}
 		.r12 {
 			c.g.write8(0x4d)
@@ -1682,8 +1751,8 @@ pub fn (mut c Amd64) call_fn(node ast.CallExpr) {
 	args_size := args.map(c.g.get_type_size(it.typ))
 	is_floats := args.map(it.typ.is_pure_float())
 
-	mut reg_left := 6 - reg_args.len
-	mut ssereg_left := 8
+	mut reg_left := c.fn_arg_registers.len - reg_args.len
+	mut ssereg_left := c.fn_arg_sse_registers.len
 	for i, size in args_size {
 		if is_floats[i] && ssereg_left > 0 {
 			ssereg_args << i
@@ -1774,15 +1843,23 @@ pub fn (mut c Amd64) call_fn(node ast.CallExpr) {
 		}
 	}
 	for i in 0 .. reg_size {
-		c.pop(native.fn_arg_registers[i])
+		c.pop(c.fn_arg_registers[i])
 	}
 	for i in 0 .. ssereg_args.len {
-		c.pop_sse(native.fn_arg_sse_registers[i])
+		c.pop_sse(c.fn_arg_sse_registers[i])
 	}
 	c.mov(Amd64Register.rax, ssereg_args.len)
 	if node.name in c.g.extern_symbols {
-		c.g.extern_fn_calls[c.g.pos()] = node.name
-		c.extern_call(int(addr))
+		if c.g.pref.os == .windows {
+			mut symbol := node.name
+			if symbol.starts_with('C.') {
+				symbol = symbol.bytes()[2..].bytestr()
+			}
+			c.dllcall(symbol)
+		} else {
+			c.g.extern_fn_calls[c.g.pos()] = node.name
+			c.extern_call(int(addr))
+		}
 	} else if addr == 0 {
 		c.g.delay_fn_call(n)
 		c.call(int(0))
@@ -3024,8 +3101,8 @@ fn (mut c Amd64) fn_decl(node ast.FnDecl) {
 	args_size := params.map(c.g.get_type_size(it.typ))
 	is_floats := params.map(it.typ.is_pure_float())
 
-	mut reg_left := 6
-	mut ssereg_left := 8
+	mut reg_left := c.fn_arg_registers.len
+	mut ssereg_left := c.fn_arg_sse_registers.len
 	for i, size in args_size {
 		if is_floats[i] && ssereg_left > 0 {
 			ssereg_args << i
@@ -3054,11 +3131,11 @@ fn (mut c Amd64) fn_decl(node ast.FnDecl) {
 		offset := c.g.allocate_by_type(name, params[i].typ)
 		// copy
 		c.mov_reg_to_var(LocalVar{ offset: offset, typ: ast.i64_type_idx, name: name },
-			native.fn_arg_registers[reg_idx])
+			c.fn_arg_registers[reg_idx])
 		reg_idx++
 		if args_size[i] > 8 {
 			c.mov_reg_to_var(LocalVar{ offset: offset, typ: ast.i64_type_idx, name: name },
-				native.fn_arg_registers[reg_idx],
+				c.fn_arg_registers[reg_idx],
 				offset: 8
 			)
 			reg_idx++
@@ -3069,7 +3146,7 @@ fn (mut c Amd64) fn_decl(node ast.FnDecl) {
 		name := params[i].name
 		offset := c.g.allocate_by_type(name, params[i].typ)
 		// copy
-		c.mov_ssereg_to_var(LocalVar{ offset: offset, typ: params[i].typ }, native.fn_arg_sse_registers[idx])
+		c.mov_ssereg_to_var(LocalVar{ offset: offset, typ: params[i].typ }, c.fn_arg_sse_registers[idx])
 	}
 	// define args on stack
 	mut offset := -2
@@ -3986,8 +4063,13 @@ fn (mut c Amd64) gen_cast_expr(expr ast.CastExpr) {
 }
 
 fn (mut c Amd64) cmp_to_stack_top(reg Register) {
-	c.pop(.rbx)
-	c.cmp_reg(.rbx, reg as Amd64Register)
+	second_reg := if reg as Amd64Register == Amd64Register.rbx {
+		Amd64Register.rax
+	} else {
+		Amd64Register.rbx
+	}
+	c.pop(second_reg)
+	c.cmp_reg(second_reg, reg as Amd64Register)
 }
 
 // Temporary!

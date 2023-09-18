@@ -280,6 +280,11 @@ fn (mut s SSLConn) complete_connect() ! {
 	}
 }
 
+// peer_addr retrieves the ip address and port number used by the peer
+pub fn (s &SSLConn) peer_addr() !net.Addr {
+	return net.peer_addr_from_socket_handle(s.handle)
+}
+
 pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 	mut res := 0
 	$if trace_ssl ? {

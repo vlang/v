@@ -19,7 +19,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 	} else {
 		g.writeln('/*go (coroutine) */')
 	}
-	line := g.go_before_stmt(0)
+	line := g.go_before_last_stmt()
 	mut handle := ''
 	tmp := g.new_tmp_var()
 	mut expr := node.call_expr

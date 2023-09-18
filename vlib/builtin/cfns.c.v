@@ -370,7 +370,7 @@ fn C.closesocket(int) int
 
 fn C.vschannel_init(&C.TlsContext)
 
-fn C.request(&C.TlsContext, int, &u16, &u8, &&u8) int
+fn C.request(&C.TlsContext, int, &u16, &u8, u32, &&u8) int
 
 fn C.vschannel_cleanup(&C.TlsContext)
 

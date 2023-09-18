@@ -201,7 +201,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			g.inside_if_result = true
 			styp = styp.replace('*', '_ptr')
 		}
-		cur_line = g.go_before_stmt(0)
+		cur_line = g.go_before_last_stmt()
 		g.empty_line = true
 		g.writeln('${styp} ${tmp}; /* if prepend */')
 		if g.infix_left_var_name.len > 0 {
@@ -340,7 +340,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		} else {
 			if i == 0 && node.branches.len > 1 && !needs_tmp_var && needs_conds_order {
 				cond_var_name := g.new_tmp_var()
-				line := g.go_before_stmt(0).trim_space()
+				line := g.go_before_last_stmt().trim_space()
 				g.empty_line = true
 				g.write('bool ${cond_var_name} = ')
 				g.expr(branch.cond)
@@ -351,7 +351,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				g.writeln('if (${cond_var_name}) {')
 			} else if i > 0 && branch_cond_var_names.len > 0 && !needs_tmp_var && needs_conds_order {
 				cond_var_name := g.new_tmp_var()
-				line := g.go_before_stmt(0)
+				line := g.go_before_last_stmt()
 				g.empty_line = true
 				g.writeln('bool ${cond_var_name};')
 				branch_cond := branch_cond_var_names.join(' || ')

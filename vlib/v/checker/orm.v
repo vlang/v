@@ -41,7 +41,27 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	non_primitive_fields := c.get_orm_non_primitive_fields(fields)
 	mut sub_structs := map[int]ast.SqlExpr{}
 
+	mut has_primary := false
+	mut primary_field := ast.StructField{}
+
+	for field in fields {
+		if field.attrs.contains('primary') {
+			if has_primary {
+				c.orm_error('a struct can only have one primary key', field.pos)
+			}
+			has_primary = true
+			primary_field = field
+		}
+	}
+
 	for field in non_primitive_fields {
+		if c.table.sym(field.typ).kind == .array && !has_primary {
+			c.orm_error('a struct that has a field that holds an array must have a primary key',
+				field.pos)
+		}
+
+		c.check_orm_non_primitive_struct_field_attrs(field)
+
 		typ := c.get_type_of_field_with_related_table(field)
 
 		mut subquery_expr := ast.SqlExpr{
@@ -90,6 +110,27 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 			right_type: ast.int_type
 			auto_locked: ''
 			or_block: ast.OrExpr{}
+		}
+
+		if c.table.sym(field.typ).kind == .array {
+			mut where_expr := subquery_expr.where_expr
+			if mut where_expr is ast.InfixExpr {
+				where_expr.left_type = primary_field.typ
+				where_expr.right_type = primary_field.typ
+
+				mut left := where_expr.left
+				if mut left is ast.Ident {
+					left.name = primary_field.name
+				}
+
+				mut right := where_expr.right
+				if mut right is ast.Ident {
+					mut right_info := right.info
+					if mut right_info is ast.IdentVar {
+						right_info.typ = primary_field.typ
+					}
+				}
+			}
 		}
 
 		sub_structs[int(typ)] = subquery_expr
@@ -277,7 +318,13 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	}
 
 	if node.kind == .update {
-		for mut expr in node.update_exprs {
+		for i, mut expr in node.update_exprs {
+			// set enum_col = .enum_val
+			if mut expr is ast.EnumVal {
+				column := node.updated_columns[i]
+				field := node.fields.filter(it.name == column)[0]
+				c.expected_type = field.typ
+			}
 			c.expr(mut expr)
 		}
 	}
@@ -341,7 +388,6 @@ fn (mut c Checker) fetch_and_check_orm_fields(info ast.Struct, pos token.Pos, ta
 	if cache := c.orm_table_fields[table_name] {
 		return cache
 	}
-	where_pos := c.orm_get_field_pos(sql_expr.where_expr)
 	mut fields := []ast.StructField{}
 	for field in info.fields {
 		if field.attrs.contains('skip') || field.attrs.contains_arg('sql', '-') {
@@ -351,19 +397,13 @@ fn (mut c Checker) fetch_and_check_orm_fields(info ast.Struct, pos token.Pos, ta
 		is_primitive := field.typ.is_string() || field.typ.is_bool() || field.typ.is_number()
 		is_struct := field_sym.kind == .struct_
 		is_array := field_sym.kind == .array
+		is_enum := field_sym.kind == .enum_
 		mut is_array_of_structs := false
 		if is_array {
 			array_info := field_sym.array_info()
 			elem_sym := c.table.sym(array_info.elem_type)
 			is_array_of_structs = elem_sym.kind == .struct_
 
-			if elem_sym.is_primitive() {
-				c.add_error_detail('')
-				c.add_error_detail(' field name: `${field.name}`')
-				c.add_error_detail(' data type: `${c.table.type_to_str(field.typ)}`')
-				c.orm_error('does not support array of primitive types', where_pos)
-				return []ast.StructField{}
-			}
 			if attr := field.attrs.find_first('fkey') {
 				if attr.arg == '' {
 					c.orm_error('fkey attribute must have an argument', attr.pos)
@@ -380,7 +420,7 @@ fn (mut c Checker) fetch_and_check_orm_fields(info ast.Struct, pos token.Pos, ta
 				c.orm_error('sql attribute must have an argument', attr.pos)
 			}
 		}
-		if is_primitive || is_struct || is_array_of_structs {
+		if is_primitive || is_struct || is_enum || is_array_of_structs {
 			fields << field
 		}
 	}

@@ -1,11 +1,12 @@
-struct User {
+
+   struct  User   {
 	name string // name
-	name2 []rune // name2
+name2 []rune // name2
 	very_long_field bool
 	age int // age
 	very_long_type_field1 very_looooog_type // long
 	very_long_type_field2 very_loooooooong_type // long
-}
+   }
 
 struct FamousUser {
 	User
@@ -41,11 +42,11 @@ struct SomeStruct {
 mut:
 // 2
 // 3
-somefield /*4*/ /*5*/ int /*6*/ /*7*/ /*8*/ /*
+somefield int /*
 9
 10
 */
-somefield2 /*11*/ int // 12
+somefield2 int // 12
 pub:
 
 

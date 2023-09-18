@@ -1,0 +1,3 @@
+struct flag__Flag {
+println(flag__FlagParser_usage(fs));
+void flag__FlagParser_footer(flag__FlagParser* fs, string footer) {

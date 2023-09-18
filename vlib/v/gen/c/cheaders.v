@@ -435,7 +435,7 @@ const c_common_macros = '
 	#endif
 	# if !defined(__TINYC__) && defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
 	#  define VNORETURN _Noreturn
-	# elif defined(__GNUC__) && __GNUC__ >= 2
+	# elif !defined(VNORETURN) && defined(__GNUC__) && __GNUC__ >= 2
 	#  define VNORETURN __attribute__((noreturn))
 	# endif
 	#ifndef VNORETURN
@@ -446,19 +446,16 @@ const c_common_macros = '
 #if !defined(VUNREACHABLE)
 	#if defined(__GNUC__) && !defined(__clang__)
 		#define V_GCC_VERSION  (__GNUC__ * 10000L + __GNUC_MINOR__ * 100L + __GNUC_PATCHLEVEL__)
-		#if (V_GCC_VERSION >= 40500L)
+		#if (V_GCC_VERSION >= 40500L) && !defined(__TINYC__)
 			#define VUNREACHABLE()  do { __builtin_unreachable(); } while (0)
 		#endif
 	#endif
-	#if defined(__clang__) && defined(__has_builtin)
+	#if defined(__clang__) && defined(__has_builtin) && !defined(__TINYC__)
 		#if __has_builtin(__builtin_unreachable)
 			#define VUNREACHABLE()  do { __builtin_unreachable(); } while (0)
 		#endif
 	#endif
 	#ifndef VUNREACHABLE
-		#define VUNREACHABLE() do { } while (0)
-	#endif
-	#if defined(__FreeBSD__) && defined(__TINYC__)
 		#define VUNREACHABLE() do { } while (0)
 	#endif
 #endif
@@ -803,7 +800,7 @@ static inline uint64_t _wymix(uint64_t A, uint64_t B){ _wymum(&A,&B); return A^B
 #if (WYHASH_LITTLE_ENDIAN)
 	static inline uint64_t _wyr8(const uint8_t *p) { uint64_t v; memcpy(&v, p, 8); return v;}
 	static inline uint64_t _wyr4(const uint8_t *p) { uint32_t v; memcpy(&v, p, 4); return v;}
-#elif defined(__GNUC__) || defined(__INTEL_COMPILER) || defined(__clang__)
+#elif !defined(__TINYC__) && (defined(__GNUC__) || defined(__INTEL_COMPILER) || defined(__clang__))
 	static inline uint64_t _wyr8(const uint8_t *p) { uint64_t v; memcpy(&v, p, 8); return __builtin_bswap64(v);}
 	static inline uint64_t _wyr4(const uint8_t *p) { uint32_t v; memcpy(&v, p, 4); return __builtin_bswap32(v);}
 #elif defined(_MSC_VER)

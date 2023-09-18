@@ -1,7 +1,0 @@
-module main
-
-fn main() {
-	println('Hello World!')
-}
-
-fn C.f( /* mut */ buff &char) i64

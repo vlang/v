@@ -121,6 +121,34 @@ title = 2'
 	assert y.title == .worker
 }
 
+struct Example1 {
+	arr []Problem
+}
+
+struct Example2 {
+	arr []Problem
+}
+
+struct Problem {
+	x int
+}
+
+pub fn (example Example1) to_toml() string {
+	return '[This is Valid]'
+}
+
+pub fn (problem Problem) to_toml() string {
+	return 'a problem'
+}
+
+fn test_custom_encode_of_complex_struct() {
+	assert toml.encode(Example1{}) == '[This is Valid]'
+	assert toml.encode(Example2{[Problem{}, Problem{}]}) == 'arr = [
+  "a problem",
+  "a problem"
+]'
+}
+
 fn test_array_encode_decode() {
 	a := Arrs{
 		strs: ['foo', 'bar']
@@ -176,4 +204,52 @@ times = [
 
 	assert toml.encode[Arrs](a) == s
 	assert toml.decode[Arrs](s)! == a
+}
+
+fn test_decode_doc() {
+	doc := toml.parse_text('name = "Peter"
+age = 28
+is_human = true
+salary = 100000.5
+title = 2')!
+	e := doc.decode[Employee]()!
+	assert e.name == 'Peter'
+	assert e.age == 28
+	assert e.salary == 100000.5
+	assert e.is_human == true
+	assert e.title == .manager
+}
+
+fn test_unsupported_type() {
+	s := 'name = "Peter"'
+	err_msg := 'toml.decode: expected struct, found '
+	if _ := toml.decode[string](s) {
+		assert false
+	} else {
+		assert err.msg() == err_msg + 'string'
+	}
+	if _ := toml.decode[[]string](s) {
+		assert false
+	} else {
+		assert err.msg() == err_msg + '[]string'
+	}
+	if _ := toml.decode[int](s) {
+		assert false
+	} else {
+		assert err.msg() == err_msg + 'int'
+	}
+	if _ := toml.decode[[]f32](s) {
+		assert false
+	} else {
+		assert err.msg() == err_msg + '[]f32'
+	}
+	// ...
+
+	doc := toml.parse_text('name = "Peter"')!
+	assert doc.value('name').string() == 'Peter'
+	if _ := doc.decode[string]() {
+		assert false
+	} else {
+		assert err.msg() == 'Doc.decode: expected struct, found string'
+	}
 }

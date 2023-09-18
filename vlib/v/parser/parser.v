@@ -65,6 +65,7 @@ mut:
 	inside_map_init           bool
 	inside_orm                bool
 	inside_chan_decl          bool
+	inside_attr_decl          bool
 	fixed_array_dim           int        // fixed array dim parsing level
 	or_is_handled             bool       // ignore `or` in this expression
 	builtin_mod               bool       // are we in the `builtin` module?
@@ -676,6 +677,7 @@ fn (mut p Parser) check_js_name() string {
 }
 
 fn (mut p Parser) check_name() string {
+	pos := p.tok.pos()
 	name := p.tok.lit
 	if p.peek_tok.kind == .dot && name in p.imports {
 		p.register_used_import(name)
@@ -685,6 +687,9 @@ fn (mut p Parser) check_name() string {
 		.key_enum { p.check(.key_enum) }
 		.key_interface { p.check(.key_interface) }
 		else { p.check(.name) }
+	}
+	if !p.inside_orm && !p.inside_attr_decl && name == 'sql' {
+		p.error_with_pos('unexpected keyword `sql`, expecting name', pos)
 	}
 	return name
 }
@@ -796,6 +801,9 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 			.comment {
 				return p.comment_stmt()
 			}
+			.semicolon {
+				return p.semicolon_stmt()
+			}
 			else {
 				return p.other_stmts(ast.empty_stmt)
 			}
@@ -883,7 +891,6 @@ fn (mut p Parser) comment() ast.Comment {
 	text := p.tok.lit
 	num_newlines := text.count('\n')
 	is_multi := num_newlines > 0
-	is_inline := text.len + 4 == p.tok.len // 4: `/` `*` `*` `/`
 	pos.last_line = pos.line_nr + num_newlines
 	p.next()
 	// Filter out false positive space indent vet errors inside comments
@@ -894,7 +901,6 @@ fn (mut p Parser) comment() ast.Comment {
 	return ast.Comment{
 		text: text
 		is_multi: is_multi
-		is_inline: is_inline
 		pos: pos
 	}
 }
@@ -1119,10 +1125,21 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		.key_asm {
 			return p.asm_stmt(false)
 		}
+		.semicolon {
+			return p.semicolon_stmt()
+		}
 		// literals, 'if', etc. in here
 		else {
 			return p.parse_multi_expr(is_top_level)
 		}
+	}
+}
+
+fn (mut p Parser) semicolon_stmt() ast.SemicolonStmt {
+	pos := p.tok.pos()
+	p.check(.semicolon)
+	return ast.SemicolonStmt{
+		pos: pos
 	}
 }
 
@@ -1828,6 +1845,10 @@ fn (mut p Parser) attributes() {
 
 fn (mut p Parser) parse_attr(is_at bool) ast.Attr {
 	mut kind := ast.AttrKind.plain
+	p.inside_attr_decl = true
+	defer {
+		p.inside_attr_decl = false
+	}
 	apos := p.prev_tok.pos()
 	if p.tok.kind == .key_unsafe {
 		p.next()
@@ -2059,6 +2080,10 @@ fn (mut p Parser) note_with_pos(s string, pos token.Pos) {
 		return
 	}
 	if p.is_generated {
+		return
+	}
+	if p.pref.notes_are_errors {
+		p.error_with_pos(s, pos)
 		return
 	}
 	if p.pref.output_mode == .stdout && !p.pref.check_only {
@@ -3482,7 +3507,7 @@ fn (mut p Parser) module_decl() ast.Module {
 		// as it creates a wrong position when extended
 		// to module_pos
 		n_pos := p.tok.pos()
-		if module_pos.line_nr == n_pos.line_nr && p.tok.kind != .comment && p.tok.kind != .eof {
+		if module_pos.line_nr == n_pos.line_nr && p.tok.kind !in [.comment, .eof, .semicolon] {
 			if p.tok.kind == .name {
 				p.unexpected_with_pos(n_pos,
 					prepend_msg: '`module ${name}`, you can only declare one module,'
@@ -3509,6 +3534,9 @@ fn (mut p Parser) module_decl() ast.Module {
 		is_skipped: is_skipped
 		pos: module_pos
 		name_pos: name_pos
+	}
+	if p.tok.kind == .semicolon {
+		p.check(.semicolon)
 	}
 	if !is_skipped {
 		p.table.module_attrs[p.mod] = module_attrs
@@ -3636,7 +3664,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 	}
 	pos_t := p.tok.pos()
 	if import_pos.line_nr == pos_t.line_nr {
-		if p.tok.kind !in [.lcbr, .eof, .comment] {
+		if p.tok.kind !in [.lcbr, .eof, .comment, .semicolon] {
 			p.error_with_pos('cannot import multiple modules at a time', pos_t)
 			return import_node
 		}
@@ -3644,6 +3672,9 @@ fn (mut p Parser) import_stmt() ast.Import {
 	import_node.comments = p.eat_comments(same_line: true)
 	import_node.next_comments = p.eat_comments(follow_up: true)
 	p.imports[mod_alias] = mod_name
+	if p.tok.kind == .semicolon {
+		p.check(.semicolon)
+	}
 	// if mod_name !in p.table.imports {
 	p.table.imports << mod_name
 	p.ast_imports << import_node

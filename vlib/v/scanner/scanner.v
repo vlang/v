@@ -113,7 +113,14 @@ pub fn new_scanner_file(file_path string, comments_mode CommentsMode, pref_ &pre
 	if !os.is_file(file_path) {
 		return error('${file_path} is not a .v file')
 	}
-	raw_text := util.read_file(file_path) or { return err }
+	mut raw_text := util.read_file(file_path) or { return err }
+	if pref_.line_info != '' {
+		// Add line info expr to the scanner text
+		abs_path := os.join_path(os.getwd(), file_path)
+		if pref_.linfo.path in [file_path, abs_path] {
+			raw_text = pref.add_line_info_expr_to_program_text(raw_text, pref_.linfo)
+		}
+	}
 	mut s := &Scanner{
 		pref: pref_
 		text: raw_text
@@ -1111,9 +1118,17 @@ fn (mut s Scanner) text_scan() token.Token {
 					}
 					s.pos++
 					if s.should_parse_comment() {
-						mut comment := s.text[start..(s.pos - 1)].trim(' ')
+						mut comment := s.text[start..(s.pos - 1)]
 						if !comment.contains('\n') {
-							comment = '\x01' + comment
+							comment_pos := token.Pos{
+								line_nr: start_line
+								len: comment.len + 4
+								pos: start
+								col: s.current_column() - comment.len - 4
+							}
+							s.error_with_pos('inline comment is deprecated, please use line comment',
+								comment_pos)
+							comment = '\x01' + comment.trim(' ')
 						}
 						return s.new_multiline_token(.comment, comment, comment.len + 4,
 							start_line)
@@ -1247,8 +1262,7 @@ fn (mut s Scanner) ident_string() string {
 				u_escapes_pos << s.pos - 1
 			}
 			// Unknown escape sequence
-			if c !in [`x`, `u`, `e`, `n`, `r`, `t`, `v`, `a`, `f`, `b`, `\\`, `\``, `$`, `@`, `?`, `{`, `}`, `'`, `"`]
-				&& !c.is_digit() {
+			if !is_escape_sequence(c) && !c.is_digit() {
 				s.error('`${c.ascii_str()}` unknown escape sequence')
 			}
 		}
@@ -1304,7 +1318,7 @@ fn (mut s Scanner) ident_string() string {
 						segment_idx = end_idx
 					}
 					if pos in h_escapes_pos {
-						end_idx, segment := decode_h_escape_single(string_so_far, segment_idx)
+						end_idx, segment := s.decode_h_escape_single(string_so_far, segment_idx)
 						str_segments << segment
 						segment_idx = end_idx
 					}
@@ -1328,50 +1342,60 @@ fn (mut s Scanner) ident_string() string {
 	return lit
 }
 
-fn decode_h_escape_single(str string, idx int) (int, string) {
+fn (mut s Scanner) decode_h_escape_single(str string, idx int) (int, string) {
 	end_idx := idx + 4 // "\xXX".len == 4
-
+	if idx + 2 > str.len || end_idx > str.len {
+		s.error_with_pos('unfinished single hex escape started at', s.current_pos())
+		return 0, ''
+	}
 	// notice this function doesn't do any decoding... it just replaces '\xc0' with the byte 0xc0
 	return end_idx, [u8(strconv.parse_uint(str[idx + 2..end_idx], 16, 8) or { 0 })].bytestr()
 }
 
 // only handle single-byte inline escapes like '\xc0'
-fn decode_h_escapes(s string, start int, escapes_pos []int) string {
+fn (mut s Scanner) decode_h_escapes(sinput string, start int, escapes_pos []int) string {
 	if escapes_pos.len == 0 {
-		return s
+		return sinput
 	}
 	mut ss := []string{cap: escapes_pos.len * 2 + 1}
-	ss << s[..escapes_pos.first() - start]
+	ss << sinput[..escapes_pos.first() - start]
 	for i, pos in escapes_pos {
 		idx := pos - start
-		end_idx, segment := decode_h_escape_single(s, idx)
+		end_idx, segment := s.decode_h_escape_single(sinput, idx)
+		if end_idx > sinput.len {
+			s.error_with_pos('unfinished hex escape started at', s.current_pos())
+			return ''
+		}
 		ss << segment
-
 		if i + 1 < escapes_pos.len {
-			ss << s[end_idx..escapes_pos[i + 1] - start]
+			ss << sinput[end_idx..escapes_pos[i + 1] - start]
 		} else {
-			ss << s[end_idx..]
+			ss << sinput[end_idx..]
 		}
 	}
 	return ss.join('')
 }
 
 // handle single-byte inline octal escapes like '\###'
-fn decode_o_escapes(s string, start int, escapes_pos []int) string {
+fn (mut s Scanner) decode_o_escapes(sinput string, start int, escapes_pos []int) string {
 	if escapes_pos.len == 0 {
-		return s
+		return sinput
 	}
 	mut ss := []string{cap: escapes_pos.len}
-	ss << s[..escapes_pos.first() - start] // everything before the first escape code position
+	ss << sinput[..escapes_pos.first() - start] // everything before the first escape code position
 	for i, pos in escapes_pos {
 		idx := pos - start
 		end_idx := idx + 4 // "\XXX".len == 4
+		if end_idx > sinput.len {
+			s.error_with_pos('unfinished octal escape started at', s.current_pos())
+			return ''
+		}
 		// notice this function doesn't do any decoding... it just replaces '\141' with the byte 0o141
-		ss << [u8(strconv.parse_uint(s[idx + 1..end_idx], 8, 8) or { 0 })].bytestr()
+		ss << [u8(strconv.parse_uint(sinput[idx + 1..end_idx], 8, 8) or { 0 })].bytestr()
 		if i + 1 < escapes_pos.len {
-			ss << s[end_idx..escapes_pos[i + 1] - start]
+			ss << sinput[end_idx..escapes_pos[i + 1] - start]
 		} else {
-			ss << s[end_idx..]
+			ss << sinput[end_idx..]
 		}
 	}
 	return ss.join('')
@@ -1421,6 +1445,12 @@ fn trim_slash_line_break(s string) string {
 		}
 	}
 	return ret_str
+}
+
+[inline]
+fn is_escape_sequence(c u8) bool {
+	return c in [`x`, `u`, `e`, `n`, `r`, `t`, `v`, `a`, `f`, `b`, `\\`, `\``, `$`, `@`, `?`, `{`,
+		`}`, `'`, `"`]
 }
 
 /// ident_char is called when a backtick "single-char" is parsed from the code
@@ -1493,9 +1523,9 @@ fn (mut s Scanner) ident_char() string {
 					}
 				}
 				if escaped_hex {
-					c = decode_h_escapes(c, 0, escapes_pos)
+					c = s.decode_h_escapes(c, 0, escapes_pos)
 				} else {
-					c = decode_o_escapes(c, 0, escapes_pos)
+					c = s.decode_o_escapes(c, 0, escapes_pos)
 				}
 			}
 		}
@@ -1516,10 +1546,15 @@ fn (mut s Scanner) ident_char() string {
 					lspos)
 			}
 		}
-	} else if c == '\n' {
+	} else if c.ends_with('\n') {
 		s.add_error_detail_with_pos('use quotes for strings, backticks for characters',
 			lspos)
 		s.error_with_pos('invalid character literal, use \`\\n\` instead', lspos)
+	} else if c.len > len {
+		ch := c[c.len - 1]
+		if !is_escape_sequence(ch) && !ch.is_digit() {
+			s.error('`${ch.ascii_str()}` unknown escape sequence')
+		}
 	}
 	// Escapes a `'` character
 	if c == "'" {
@@ -1570,7 +1605,19 @@ fn (mut s Scanner) inc_line_number() {
 	}
 }
 
+pub fn (mut s Scanner) current_pos() token.Pos {
+	return token.Pos{
+		line_nr: s.line_nr
+		pos: s.pos
+		col: s.current_column() - 1
+	}
+}
+
 pub fn (mut s Scanner) note(msg string) {
+	if s.pref.notes_are_errors {
+		s.error_with_pos(msg, s.current_pos())
+		return
+	}
 	pos := token.Pos{
 		line_nr: s.line_nr
 		pos: s.pos
@@ -1606,12 +1653,7 @@ fn (mut s Scanner) eat_details() string {
 }
 
 pub fn (mut s Scanner) warn(msg string) {
-	pos := token.Pos{
-		line_nr: s.line_nr
-		pos: s.pos
-		col: s.current_column() - 1
-	}
-	s.warn_with_pos(msg, pos)
+	s.warn_with_pos(msg, s.current_pos())
 }
 
 pub fn (mut s Scanner) warn_with_pos(msg string, pos token.Pos) {
@@ -1643,12 +1685,7 @@ pub fn (mut s Scanner) warn_with_pos(msg string, pos token.Pos) {
 }
 
 pub fn (mut s Scanner) error(msg string) {
-	pos := token.Pos{
-		line_nr: s.line_nr
-		pos: s.pos
-		col: s.current_column() - 1
-	}
-	s.error_with_pos(msg, pos)
+	s.error_with_pos(msg, s.current_pos())
 }
 
 pub fn (mut s Scanner) error_with_pos(msg string, pos token.Pos) {
@@ -1689,10 +1726,7 @@ fn (mut s Scanner) vet_error(msg string, fix vet.FixKind) {
 	ve := vet.Error{
 		message: msg
 		file_path: s.file_path
-		pos: token.Pos{
-			line_nr: s.line_nr
-			col: s.current_column() - 1
-		}
+		pos: s.current_pos()
 		kind: .error
 		fix: fix
 		typ: .default

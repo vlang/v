@@ -168,7 +168,6 @@ pub mut:
 	height      int
 	clear_pass  gfx.PassAction
 	window      sapp.Desc
-	timage_pip  sgl.Pipeline       [deprecated: 'Use `Context.pipeline.alpha` instead!']
 	pipeline    &PipelineContainer = unsafe { nil }
 	config      Config
 	user_data   voidptr
@@ -259,10 +258,6 @@ fn gg_init_sokol_window(user_data voidptr) {
 	ctx.pipeline = &PipelineContainer{}
 	ctx.pipeline.init_pipeline()
 
-	// Keep the old pipeline for now, cuz v ui used it.
-	ctx.timage_pip = ctx.pipeline.alpha
-
-	//
 	if ctx.config.init_fn != unsafe { nil } {
 		$if android {
 			// NOTE on Android sokol can emit resize events *before* the init function is

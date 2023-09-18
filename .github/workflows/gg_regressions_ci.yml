@@ -45,7 +45,7 @@ jobs:
         run: |
           Xvfb $DISPLAY -screen 0 1280x1024x24 -fbdir /var/tmp/ &
           sleep 1; while [ ! -f /var/tmp/Xvfb_screen0 ]; do sleep 0.5; done # give xvfb time to start, even on slow CI runs
-          ./v gret -t ./gg-regression-images/vgret.v_examples.toml -v ./gg-sample_images ./gg-regression-images
+          sleep 1; ./v gret -t ./gg-regression-images/vgret.v_examples.toml -v ./gg-sample_images ./gg-regression-images
 
       - name: Upload regression to imgur
         if: steps.compare.outcome != 'success'

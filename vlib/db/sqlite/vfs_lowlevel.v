@@ -128,17 +128,17 @@ fn C.sqlite3_open_v2(&char, &&C.sqlite3, int, &char) int
 
 // https://www.sqlite.org/c3ref/c_open_autoproxy.html
 pub enum OpenModeFlag {
-	readonly = 0x00000001
-	readwrite = 0x00000002
-	create = 0x00000004
-	uri = 0x00000040
-	memory = 0x00000080
-	nomutex = 0x00008000
-	fullmutex = 0x00010000
-	sharedcache = 0x00020000
+	readonly     = 0x00000001
+	readwrite    = 0x00000002
+	create       = 0x00000004
+	uri          = 0x00000040
+	memory       = 0x00000080
+	nomutex      = 0x00008000
+	fullmutex    = 0x00010000
+	sharedcache  = 0x00020000
 	privatecache = 0x00040000
-	exrescode = 0x02000000
-	nofollow = 0x01000000
+	exrescode    = 0x02000000
+	nofollow     = 0x01000000
 }
 
 // connect_full Opens connection to sqlite database. It gives more control than `open`.

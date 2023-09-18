@@ -613,6 +613,7 @@ fn test_join() {
 		assert os.join_path('v', 'vlib', 'os') == 'v\\vlib\\os'
 	} $else {
 		assert os.join_path('v', 'vlib', 'os') == 'v/vlib/os'
+		assert os.join_path('/foo/bar', './file.txt') == '/foo/bar/file.txt'
 	}
 }
 

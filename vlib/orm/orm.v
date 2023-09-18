@@ -18,8 +18,9 @@ pub const (
 		typeof[f64]().idx,
 	]
 	type_string = typeof[string]().idx
-	time        = -2
 	serial      = -1
+	time        = -2
+	enum        = -3
 	type_idx    = {
 		'i8':     typeof[i8]().idx
 		'i16':    typeof[i16]().idx
@@ -324,38 +325,38 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table string, q string, kind StmtKin
 // orm - See SelectConfig
 // q, num, qm, start_pos - see orm_stmt_gen
 // where - See QueryData
-pub fn orm_select_gen(orm SelectConfig, q string, num bool, qm string, start_pos int, where QueryData) string {
+pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos int, where QueryData) string {
 	mut str := 'SELECT '
 
-	if orm.is_count {
+	if cfg.is_count {
 		str += 'COUNT(*)'
 	} else {
-		for i, field in orm.fields {
+		for i, field in cfg.fields {
 			str += '${q}${field}${q}'
-			if i < orm.fields.len - 1 {
+			if i < cfg.fields.len - 1 {
 				str += ', '
 			}
 		}
 	}
 
-	str += ' FROM ${q}${orm.table}${q}'
+	str += ' FROM ${q}${cfg.table}${q}'
 
 	mut c := start_pos
 
-	if orm.has_where {
+	if cfg.has_where {
 		str += ' WHERE '
 		str += gen_where_clause(where, q, qm, num, mut &c)
 	}
 
 	// Note: do not order, if the user did not want it explicitly,
 	// ordering is *slow*, especially if there are no indexes!
-	if orm.has_order {
+	if cfg.has_order {
 		str += ' ORDER BY '
-		str += '${q}${orm.order}${q} '
-		str += orm.order_type.to_str()
+		str += '${q}${cfg.order}${q} '
+		str += cfg.order_type.to_str()
 	}
 
-	if orm.has_limit {
+	if cfg.has_limit {
 		str += ' LIMIT ${qm}'
 		if num {
 			str += '${c}'
@@ -363,7 +364,7 @@ pub fn orm_select_gen(orm SelectConfig, q string, num bool, qm string, start_pos
 		}
 	}
 
-	if orm.has_offset {
+	if cfg.has_offset {
 		str += ' OFFSET ${qm}'
 		if num {
 			str += '${c}'
@@ -433,6 +434,7 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 	mut unique_fields := []string{}
 	mut unique := map[string][]string{}
 	mut primary := ''
+	mut primary_typ := 0
 
 	for field in fields {
 		if field.is_arr {
@@ -443,10 +445,12 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 		mut is_unique := false
 		mut is_skip := false
 		mut unique_len := 0
+		mut references_table := ''
+		mut references_field := ''
 		mut field_name := sql_field_name(field)
 		mut col_typ := sql_from_v(sql_field_type(field)) or {
 			field_name = '${field_name}_id'
-			sql_from_v(7)!
+			sql_from_v(primary_typ)!
 		}
 		for attr in field.attrs {
 			match attr.name {
@@ -458,6 +462,7 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 				}
 				'primary' {
 					primary = field.name
+					primary_typ = field.typ
 				}
 				'unique' {
 					if attr.arg != '' {
@@ -481,6 +486,31 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 				'default' {
 					if default_val == '' {
 						default_val = attr.arg.str()
+					}
+				}
+				'references' {
+					if attr.arg == '' {
+						if field.name.ends_with('_id') {
+							references_table = field.name.trim_right('_id')
+							references_field = 'id'
+						} else {
+							return error("references attribute can only be implicit if the field name ends with '_id'")
+						}
+					} else {
+						if attr.arg.trim(' ') == '' {
+							return error("references attribute needs to be in the format [references], [references: 'tablename'], or [references: 'tablename(field_id)']")
+						}
+						if attr.arg.contains('(') {
+							ref_table, ref_field := attr.arg.split_once('(')
+							if !ref_field.ends_with(')') {
+								return error("explicit references attribute should be written as [references: 'tablename(field_id)']")
+							}
+							references_table = ref_table
+							references_field = ref_field[..ref_field.len - 1]
+						} else {
+							references_table = attr.arg
+							references_field = 'id'
+						}
 					}
 				}
 				else {}
@@ -511,6 +541,9 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 			}
 			f += ')'
 			unique_fields << f
+		}
+		if references_table != '' {
+			stmt += ' REFERENCES ${references_table} (${references_field})'
 		}
 		fs << stmt
 	}

@@ -1,7 +1,7 @@
 enum Foo {
 	zero
-	first = 1
-	third = 3
+	first  = 1
+	third  = 3
 	fourth
 }
 

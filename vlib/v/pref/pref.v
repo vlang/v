@@ -184,12 +184,16 @@ pub mut:
 	output_es5       bool
 	prealloc         bool
 	vroot            string
-	out_name_c       string // full os.real_path to the generated .tmp.c file; set by builder.
+	vlib             string   // absolute path to the vlib/ folder
+	vmodules_paths   []string // absolute paths to the vmodules folders, by default ['/home/user/.vmodules'], can be overriden by setting VMODULES
+	out_name_c       string   // full os.real_path to the generated .tmp.c file; set by builder.
 	out_name         string
 	path             string // Path to file/folder to compile
 	line_info        string // `-line-info="file.v:28"`: for "mini VLS" (shows information about objects on provided line)
+	linfo            LineInfo
 	//
 	run_only []string // VTEST_ONLY_FN and -run-only accept comma separated glob patterns.
+	exclude  []string // glob patterns for excluding .v files from the list of .v files that otherwise would have been used for a compilation, example: `-exclude @vlib/math/*.c.v`
 	// Only test_ functions that match these patterns will be run. -run-only is valid only for _test.v files.
 	//
 	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another ? { will NOT get here }`
@@ -206,6 +210,7 @@ pub mut:
 	skip_warnings    bool // like C's "-w", forces warnings to be ignored.
 	warn_impure_v    bool // -Wimpure-v, force a warning for JS.fn()/C.fn(), outside of .js.v/.c.v files. TODO: turn to an error by default
 	warns_are_errors bool // -W, like C's "-Werror", treat *every* warning is an error
+	notes_are_errors bool // -N, treat *every* notice as an error
 	fatal_errors     bool // unconditionally exit after the first error with exit(1)
 	reuse_tmpc       bool // do not use random names for .tmp.c and .tmp.c.rsp files, and do not remove them
 	no_rsp           bool // when true, pass C backend options directly on the CLI (do not use `.rsp` files for them, some older C compilers do not support them)
@@ -227,11 +232,22 @@ pub mut:
 	message_limit       int = 150 // the maximum amount of warnings/errors/notices that will be accumulated
 	nofloat             bool // for low level code, like kernels: replaces f32 with u32 and f64 with u64
 	use_coroutines      bool // experimental coroutines
+	fast_math           bool // -fast-math will pass either -ffast-math or /fp:fast (for msvc) to the C backend
 	// checker settings:
 	checker_match_exhaustive_cutoff_limit int = 12
 	thread_stack_size                     int = 8388608 // Change with `-thread-stack-size 4194304`. Note: on macos it was 524288, which is too small for more complex programs with many nested callexprs.
-	wasm_stack_top                        int = 1024 + (16 * 1024) // stack size for webassembly backend
-	wasm_validate                         bool // validate webassembly code, by calling `wasm-validate`
+	// wasm settings:
+	wasm_stack_top int = 1024 + (16 * 1024) // stack size for webassembly backend
+	wasm_validate  bool // validate webassembly code, by calling `wasm-validate`
+}
+
+pub struct LineInfo {
+pub mut:
+	line_nr      int    // a quick single file run when called with v -line-info (contains line nr to inspect)
+	path         string // same, but stores the path being parsed
+	expr         string // "foo" or "foo.bar" V code (expression) which needs autocomplete
+	is_running   bool   // so that line info is fetched only on the second checker run
+	vars_printed map[string]bool // to avoid dups
 }
 
 pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
@@ -394,6 +410,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-nofloat' {
 				res.nofloat = true
 				res.compile_defines_all << 'nofloat' // so that `$if nofloat? {` works
+			}
+			'-fast-math' {
+				res.fast_math = true
 			}
 			'-e' {
 				res.is_eval_argument = true
@@ -614,6 +633,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.run_only = cmdline.option(current_args, arg, os.getenv('VTEST_ONLY_FN')).split_any(',')
 				i++
 			}
+			'-exclude' {
+				patterns := cmdline.option(current_args, arg, '').split_any(',')
+				res.exclude << patterns
+				i++
+			}
 			'-test-runner' {
 				res.test_runner = cmdline.option(current_args, arg, res.test_runner)
 				i++
@@ -659,6 +683,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-W' {
 				res.warns_are_errors = true
+			}
+			'-N' {
+				res.notes_are_errors = true
 			}
 			'-no-rsp' {
 				res.no_rsp = true
@@ -818,6 +845,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-line-info' {
 				res.line_info = cmdline.option(current_args, arg, '')
+				res.parse_line_info(res.line_info)
 				i++
 			}
 			'-use-coroutines' {
@@ -903,7 +931,13 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		eprintln('Cannot save output binary in a .v file.')
 		exit(1)
 	}
-
+	if res.fast_math {
+		if res.ccompiler_type == .msvc {
+			res.cflags += ' /fp:fast'
+		} else {
+			res.cflags += ' -ffast-math'
+		}
+	}
 	if res.is_eval_argument {
 		// `v -e "println(2+5)"`
 		run_code_in_tmp_vfile_and_exit(args, mut res, '-e', 'vsh', res.eval_argument)

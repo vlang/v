@@ -12,7 +12,7 @@ This file contains the printf/sprintf functions
 import strings
 
 pub enum Align_text {
-	right = 0
+	right  = 0
 	left
 	center
 }

@@ -26,6 +26,7 @@ mut:
 	is_verbose bool
 	is_silent  bool // do not print any status/progress during processing, just failures.
 	is_linear  bool // print linear progress log, without trying to do term cursor up + \r msg. Easier to use in a CI job
+	show_src   bool // show the partial source, that cause the parser to panic/fault, when it happens.
 	timeout_ms int
 	myself     string   // path to this executable, so the supervisor can launch worker processes
 	all_paths  []string // all files given to the supervisor process
@@ -110,6 +111,7 @@ fn process_cli_args() &Context {
 	context.is_verbose = fp.bool('verbose', `v`, false, 'Be more verbose.')
 	context.is_silent = fp.bool('silent', `S`, false, 'Do not print progress at all.')
 	context.is_linear = fp.bool('linear', `L`, false, 'Print linear progress log. Suitable for CI.')
+	context.show_src = fp.bool('show_source', `E`, false, 'Print the partial source code that caused a fault/panic in the parser.')
 	context.period_ms = fp.int('progress_ms', `s`, 500, 'print a status report periodically, the period is given in milliseconds.')
 	context.is_worker = fp.bool('worker', `w`, false, 'worker specific flag - is this a worker process, that can crash/panic.')
 	context.cut_index = fp.int('cut_index', `c`, 1, 'worker specific flag - cut index in the source file, everything before that will be parsed, the rest - ignored.')
@@ -238,6 +240,14 @@ fn (mut context Context) process_whole_file_in_worker(path string) (int, int) {
 			println('\t${line} | ${err_line}')
 			println('')
 			eprintln(res.output)
+			eprintln('>>> failed command: ${cmd}')
+			if context.show_src {
+				eprintln('>>> source so far:')
+				eprintln('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
+				partial_source := source[..context.cut_index]
+				eprintln(partial_source)
+				eprintln('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
+			}
 		}
 	}
 	return fails, panics

@@ -358,6 +358,9 @@ body {
 }
 
 /* Main content */
+#main-content {
+	outline: none;
+}
 .doc-scrollview {
 	height: 100%;
 	overflow-y: scroll;

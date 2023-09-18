@@ -4982,7 +4982,7 @@ struct Customer {
 
 db := sqlite.connect('customers.db')!
 
-// you can create tables:
+// You can create tables from your struct declarations. For example the next query will issue SQL similar to this:
 // CREATE TABLE IF NOT EXISTS `Customer` (
 //      `id` INTEGER PRIMARY KEY,
 //      `name` TEXT NOT NULL,
@@ -4993,28 +4993,48 @@ sql db {
 	create table Customer
 }!
 
+// insert a new customer:
+new_customer := Customer{
+	name: 'Bob'
+	country: 'uk'
+	nr_orders: 10
+}
+sql db {
+	insert new_customer into Customer
+}!
+
+us_customer := Customer{
+	name: 'Martin'
+	country: 'us'
+	nr_orders: 5
+}
+sql db {
+	insert us_customer into Customer
+}!
+
+// update a customer:
+sql db {
+	update Customer set nr_orders = nr_orders + 1 where name == 'Bob'
+}!
+
 // select count(*) from customers
 nr_customers := sql db {
 	select count from Customer
 }!
 println('number of all customers: ${nr_customers}')
 
-// V syntax can be used to build queries
+// V's syntax can be used to build queries:
 uk_customers := sql db {
 	select from Customer where country == 'uk' && nr_orders > 0
 }!
-println(uk_customers.len)
+println('We found a total of ${uk_customers.len} customers, that match the query.')
 for customer in uk_customers {
-	println('${customer.id} - ${customer.name}')
+	println('customer: ${customer.id}, ${customer.name}, ${customer.country}, ${customer.nr_orders}')
 }
 
-// insert a new customer
-new_customer := Customer{
-	name: 'Bob'
-	nr_orders: 10
-}
+// delete a customer
 sql db {
-	insert new_customer into Customer
+	delete from Customer where name == 'Bob'
 }!
 ```
 
@@ -5613,7 +5633,7 @@ Full list of builtin options:
 | `mac`, `darwin`, `ios`,        | `clang`, `mingw` | `i386`, `arm32`               | `js`, `glibc`, `prealloc`                     |
 | `android`, `mach`, `dragonfly` | `msvc`           | `x64`, `x32`                  | `no_bounds_checking`, `freestanding`          |
 | `gnu`, `hpux`, `haiku`, `qnx`  | `cplusplus`      | `little_endian`, `big_endian` | `no_segfault_handler`, `no_backtrace`         |
-| `solaris`, `termux`            |                  |                               | `no_main`                                     |
+| `solaris`, `termux`            |                  |                               | `no_main`, 'fast_math'                        |
 
 #### `$embed_file`
 

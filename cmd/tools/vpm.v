@@ -73,7 +73,7 @@ fn main() {
 		exit(5)
 	}
 	vpm_command := params[0]
-	mut module_names := params[1..]
+	mut module_names := params[1..].clone()
 	ensure_vmodules_dir_exist()
 	// println('module names: ') println(module_names)
 	match vpm_command {
