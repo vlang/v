@@ -6734,11 +6734,21 @@ fn (mut g Gen) interface_table() string {
 							cast_struct.write_string('/*.... ast.voidptr_type */')
 						} else {
 							if st_sym.kind == .struct_ {
-								for embed_type in st_sym.struct_info().embeds {
-									embed_sym := g.table.sym(embed_type)
-									if _ := embed_sym.find_field(field.name) {
-										cast_struct.write_string(' + __offsetof_ptr(x, ${cctype}, ${embed_sym.embed_name()}) + __offsetof_ptr(x, ${embed_sym.cname}, ${cname})')
-										break
+								if _, embeds := g.table.find_field_from_embeds(st_sym,
+									field.name)
+								{
+									mut typ_name := ''
+									for i, embed in embeds {
+										esym := g.table.sym(embed)
+										if i == 0 {
+											cast_struct.write_string(' + __offsetof_ptr(x, ${cctype}, ${esym.embed_name()})')
+										} else {
+											cast_struct.write_string(' + __offsetof_ptr(x, ${typ_name}, ${esym.embed_name()})')
+										}
+										typ_name = esym.cname
+									}
+									if embeds.len > 0 {
+										cast_struct.write_string(' + __offsetof_ptr(x, ${typ_name}, ${cname})')
 									}
 								}
 							}
