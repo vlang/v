@@ -139,6 +139,7 @@ const (
 		'vlib/db/sqlite/sqlite_test.v',
 		'vlib/db/sqlite/sqlite_orm_test.v',
 		'vlib/db/sqlite/sqlite_vfs_lowlevel_test.v',
+		'vlib/v/tests/orm_enum_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
 		'vlib/v/tests/orm_joined_tables_select_test.v',
@@ -165,6 +166,7 @@ const (
 		'vlib/orm/orm_insert_reserved_name_test.v',
 		'vlib/orm/orm_references_test.v',
 		'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
+		'vlib/v/tests/orm_enum_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
 		'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
 	]
@@ -174,6 +176,7 @@ const (
 		'vlib/orm/orm_insert_test.v',
 		'vlib/orm/orm_insert_reserved_name_test.v',
 		'vlib/orm/orm_references_test.v',
+		'vlib/v/tests/orm_enum_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
 		'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
 		'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.v', // fails compilation with: undefined reference to vtable for __cxxabiv1::__function_type_info'
@@ -219,6 +222,7 @@ const (
 		'vlib/orm/orm_custom_operators_test.v',
 		'vlib/orm/orm_fk_test.v',
 		'vlib/orm/orm_references_test.v',
+		'vlib/v/tests/orm_enum_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
 		'vlib/v/tests/orm_joined_tables_select_test.v',
