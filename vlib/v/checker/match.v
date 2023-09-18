@@ -396,6 +396,9 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 						unhandled << '`.${v}`'
 					}
 				}
+				if cond_type_sym.info.is_flag {
+					is_exhaustive = false
+				}
 			}
 			else {
 				is_exhaustive = false
