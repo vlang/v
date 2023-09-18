@@ -318,7 +318,13 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	}
 
 	if node.kind == .update {
-		for mut expr in node.update_exprs {
+		for i, mut expr in node.update_exprs {
+			// set enum_col = .enum_val
+			if mut expr is ast.EnumVal {
+				column := node.updated_columns[i]
+				field := node.fields.filter(it.name == column)[0]
+				c.expected_type = field.typ
+			}
 			c.expr(mut expr)
 		}
 	}
@@ -384,6 +390,7 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Pos, t
 		fsym := c.table.sym(field.typ)
 		is_struct := fsym.kind == .struct_
 		is_array := fsym.kind == .array
+		is_enum := fsym.kind == .enum_
 		elem_sym := if is_array {
 			c.table.sym(fsym.array_info().elem_type)
 		} else {
@@ -394,7 +401,7 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Pos, t
 		if has_skip_attr {
 			continue
 		}
-		if is_primitive || is_struct || is_array_with_struct_elements {
+		if is_primitive || is_struct || is_enum || is_array_with_struct_elements {
 			fields << field
 		}
 		if is_array && elem_sym.is_primitive() {

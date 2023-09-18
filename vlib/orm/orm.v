@@ -139,6 +139,7 @@ pub:
 	is_time     bool
 	default_val string
 	is_arr      bool
+	is_enum     bool
 	attrs       []StructAttribute
 }
 
@@ -608,6 +609,8 @@ fn sql_field_type(field TableField) int {
 	mut typ := field.typ
 	if field.is_time {
 		return -2
+	} else if field.is_enum {
+		return typeof[i64]().idx
 	}
 	for attr in field.attrs {
 		if attr.kind == .plain && attr.name == 'sql' && attr.arg != '' {
