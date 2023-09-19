@@ -1042,6 +1042,9 @@ fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_option bool) !strin
 		'serenity' {
 			return '__serenity__'
 		}
+		'plan9' {
+			return '__plan9__'
+		}
 		'vinix' {
 			return '__vinix__'
 		}

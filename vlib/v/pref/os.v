@@ -23,6 +23,7 @@ pub enum OS {
 	solaris
 	qnx
 	serenity
+	plan9
 	vinix
 	haiku
 	wasm32
@@ -84,6 +85,9 @@ pub fn os_from_string(os_str string) !OS {
 		}
 		'serenity' {
 			return .serenity
+		}
+		'plan9' {
+			return .plan9
 		}
 		'vinix' {
 			return .vinix
@@ -154,6 +158,7 @@ pub fn (o OS) str() string {
 		.solaris { return 'Solaris' }
 		.qnx { return 'QNX' }
 		.serenity { return 'SerenityOS' }
+		.plan9 { return 'Plan9'}
 		.vinix { return 'Vinix' }
 		.haiku { return 'Haiku' }
 		.wasm32 { return 'WebAssembly' }
@@ -206,6 +211,9 @@ pub fn get_host_os() OS {
 	}
 	$if serenity {
 		return .serenity
+	}
+	$if plan9 {
+		return .plan9
 	}
 	$if vinix {
 		return .vinix

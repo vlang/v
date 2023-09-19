@@ -1,3 +1,11 @@
 module x
 
-pub const description = 'an empty module, used as a placeholder, for other modules'
+fn main() {
+    $if plan9 {
+        println('compiled for plan9')
+    } $else {
+        println('another os')
+    }
+    println('ok')
+}
+

@@ -328,10 +328,10 @@ const c_common_macros = '
 		#else
 			// On linux: int backtrace(void **__array, int __size);
 			// On BSD: size_t backtrace(void **, size_t);
-		#endif		
+		#endif
 	#endif
 #endif
-		      
+
 #ifdef __TINYC__
 	#define _Atomic volatile
 	#undef EMPTY_STRUCT_DECLARATION
@@ -556,6 +556,11 @@ voidptr memdup(voidptr src, int sz);
 #if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__) || defined(__vinix__) || defined(__serenity__) || defined(__sun)
 	#include <sys/types.h>
 	#include <sys/wait.h> // os__wait uses wait on nix
+#endif
+
+#if defined(__plan9__)
+	#include <u.h>
+	#include <libc.h>
 #endif
 
 #ifdef __OpenBSD__

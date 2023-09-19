@@ -125,6 +125,7 @@ see also `v help build`.
             `android`, `termux`,
             `freebsd`, `openbsd`, `netbsd`, `dragonfly`,
             `solaris`, `serenity`, `haiku`,
+            `plan9`,
             `wasm32`, `wasm32-wasi`, `wasm32-emscripten`
 
       Note that V has the concept of platform files, i.e. files ending
@@ -325,4 +326,4 @@ see also `v help build`.
           https://learn.microsoft.com/en-us/cpp/build/reference/fp-specify-floating-point-behavior?view=msvc-170&redirectedfrom=MSDN
           https://clang.llvm.org/docs/UsersManual.html#cmdoption-ffast-math
           https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html#index-ffast-math
-   
+

@@ -98,6 +98,9 @@ fn (mut g Gen) comptime_ident(name string, is_comptime_option bool) bool {
 		'serenity' {
 			g.pref.os == .serenity
 		}
+		'plan9' {
+			g.pref.os == .plan9
+		}
 		'vinix' {
 			g.pref.os == .vinix
 		}
