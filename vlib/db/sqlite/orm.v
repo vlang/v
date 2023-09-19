@@ -166,7 +166,9 @@ fn (stmt Stmt) sqlite_select_column(idx int, typ int) !orm.Primitive {
 		} else {
 			return orm.Null{}
 		}
-	} else if typ == orm.time {
+	} else if typ == orm.enum_ {
+		return stmt.get_i64(idx) or { return orm.Null{} }
+	} else if typ == orm.time_ {
 		if v := stmt.get_int(idx) {
 			return time.unix(v)
 		} else {
@@ -179,7 +181,7 @@ fn (stmt Stmt) sqlite_select_column(idx int, typ int) !orm.Primitive {
 
 // Convert type int to sql type string
 fn sqlite_type_from_v(typ int) !string {
-	return if typ in orm.nums || typ == orm.serial || typ in orm.num64 || typ == orm.time {
+	return if typ in orm.nums || typ in orm.num64 || typ in [orm.serial, orm.time_, orm.enum_] {
 		'INTEGER'
 	} else if typ in orm.float {
 		'REAL'

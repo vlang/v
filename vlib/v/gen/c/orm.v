@@ -136,8 +136,8 @@ fn (mut g Gen) write_orm_create_table(node ast.SqlStmtLine, table_name string, c
 			g.writeln('// `${table_name}`.`${field.name}`')
 			sym := g.table.sym(field.typ)
 			typ := match true {
-				sym.name == 'time.Time' { '_const_orm__time' }
-				sym.kind == .enum_ { '_const_orm__enum' }
+				sym.name == 'time.Time' { '_const_orm__time_' }
+				sym.kind == .enum_ { '_const_orm__enum_' }
 				else { field.typ.idx().str() }
 			}
 			g.writeln('(orm__TableField){')
@@ -830,14 +830,14 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 			g.writeln('_SLIT("${g.get_orm_column_name_from_struct_field(field)}"),')
 			sym := g.table.sym(field.typ)
 			if sym.name == 'time.Time' {
-				types << '_const_orm__time'
+				types << '_const_orm__time_'
 				continue
 			}
 			if sym.kind == .struct_ {
 				types << int(ast.int_type).str()
 				continue
 			} else if sym.kind == .enum_ {
-				types << '_const_orm__enum'
+				types << '_const_orm__enum_'
 				continue
 			}
 			types << field.typ.idx().str()

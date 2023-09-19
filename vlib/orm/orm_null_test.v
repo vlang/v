@@ -69,7 +69,8 @@ const (
 		typeof[string]().idx: 'string'
 		typeof[bool]().idx:   'bool'
 		orm.serial:           'serial'
-		orm.time:             'time'
+		orm.time_:            'time'
+		orm.enum_:            'enum'
 	}
 )
 

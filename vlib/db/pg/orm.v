@@ -208,8 +208,11 @@ fn pg_type_from_v(typ int) !string {
 		orm.type_idx['int'], orm.type_idx['u32'] {
 			'INT'
 		}
-		orm.time {
+		orm.time_ {
 			'TIMESTAMP'
+		}
+		orm.enum_ {
+			'BIGINT'
 		}
 		orm.type_idx['i64'], orm.type_idx['u64'] {
 			'BIGINT'
@@ -290,7 +293,7 @@ fn val_to_primitive(val ?string, typ int) !orm.Primitive {
 			orm.type_string {
 				return orm.Primitive(str)
 			}
-			orm.time {
+			orm.time_ {
 				if str.contains_any(' /:-') {
 					date_time_str := time.parse(str)!
 					return orm.Primitive(date_time_str)
@@ -298,6 +301,9 @@ fn val_to_primitive(val ?string, typ int) !orm.Primitive {
 
 				timestamp := str.int()
 				return orm.Primitive(time.unix(timestamp))
+			}
+			orm.enum_ {
+				return orm.Primitive(str.i64())
 			}
 			else {}
 		}

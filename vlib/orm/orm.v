@@ -19,8 +19,8 @@ pub const (
 	]
 	type_string = typeof[string]().idx
 	serial      = -1
-	time        = -2
-	enum        = -3
+	time_       = -2
+	enum_       = -3
 	type_idx    = {
 		'i8':     typeof[i8]().idx
 		'i16':    typeof[i16]().idx

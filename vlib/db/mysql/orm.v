@@ -75,7 +75,7 @@ pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.Qu
 			orm.type_string {
 				string_binds_map[i] = mysql_bind
 			}
-			orm.time {
+			orm.time_ {
 				match field_type {
 					.type_long {
 						mysql_bind.buffer_type = C.MYSQL_TYPE_LONG
@@ -300,7 +300,7 @@ fn data_pointers_to_primitives(data_pointers []&u8, types []int, field_types []F
 			orm.type_string {
 				primitive = unsafe { cstring_to_vstring(&char(data)) }
 			}
-			orm.time {
+			orm.time_ {
 				match field_types[i] {
 					.type_long {
 						timestamp := *(unsafe { &int(data) })
@@ -312,6 +312,9 @@ fn data_pointers_to_primitives(data_pointers []&u8, types []int, field_types []F
 					}
 					else {}
 				}
+			}
+			orm.enum_ {
+				primitive = *(unsafe { &i64(data) })
 			}
 			else {
 				return error('Unknown type ${types[i]}')
@@ -332,10 +335,10 @@ fn mysql_type_from_v(typ int) !string {
 		orm.type_idx['i16'], orm.type_idx['u16'] {
 			'SMALLINT'
 		}
-		orm.type_idx['int'], orm.type_idx['u32'], orm.time {
+		orm.type_idx['int'], orm.type_idx['u32'], orm.time_ {
 			'INT'
 		}
-		orm.type_idx['i64'], orm.type_idx['u64'] {
+		orm.type_idx['i64'], orm.type_idx['u64'], orm.enum_ {
 			'BIGINT'
 		}
 		orm.type_idx['f32'] {
