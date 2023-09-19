@@ -64,13 +64,15 @@ pub fn (eb &EventBus[T]) has_subscriber(name T) bool {
 	return eb.registry.check_subscriber(name)
 }
 
+const dedup_buffer_len = 20
+
 // publish publish an event with provided Params & name.
 fn (mut pb Publisher[T]) publish(name T, sender voidptr, args voidptr) {
 	// println('Publisher.publish(name=${name} sender=${sender} args=${args})')
-	mut handled_receivers := [20]voidptr{} // handle duplicate bugs TODO fix properly + perf
+	mut handled_receivers := unsafe { [eventbus.dedup_buffer_len]voidptr{} } // handle duplicate bugs TODO fix properly + perf
 	// is_key_down := name == 'on_key_down'
 	mut j := 0
-	for i, event in pb.registry.events {
+	for event in pb.registry.events {
 		if event.name == name {
 			// if is_key_down {
 			if event.receiver in handled_receivers {
@@ -81,7 +83,7 @@ fn (mut pb Publisher[T]) publish(name T, sender voidptr, args voidptr) {
 			event.handler(event.receiver, args, sender)
 			// handled_receivers << event.receiver
 			handled_receivers[j] = event.receiver
-			j++
+			j = (j + 1) % eventbus.dedup_buffer_len
 		}
 	}
 	pb.registry.events = pb.registry.events.filter(!(it.name == name && it.once))
