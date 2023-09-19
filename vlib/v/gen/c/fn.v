@@ -2252,7 +2252,8 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 					if atype.has_flag(.generic) {
 						atype = g.unwrap_generic(atype)
 					}
-					if atype.has_flag(.generic) || arg.expr is ast.StructInit {
+					if atype.has_flag(.generic) || arg.expr is ast.StructInit
+						|| arg_typ_sym.kind in [.sum_type, .interface_] {
 						g.write('(voidptr)&/*qq*/')
 					} else {
 						needs_closing = true
