@@ -178,6 +178,13 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			}
 			p.inside_unsafe = false
 		}
+		.pipe {
+			if nnn := p.lambda_expr() {
+				node = nnn
+			} else {
+				return error('unexpected lambda expression')
+			}
+		}
 		.key_lock, .key_rlock {
 			node = p.lock_expr()
 		}
@@ -248,51 +255,6 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 					pos: spos.extend(p.tok.pos())
 				}
 			}
-		}
-		.pipe {
-			mut pos := p.tok.pos()
-			p.next()
-			mut params := []ast.Ident{}
-			p.open_scope()
-
-			for {
-				if p.tok.kind == .eof {
-					break
-				}
-				ident := p.ident(ast.Language.v)
-				if p.scope.known_var(ident.name) {
-					p.error_with_pos('redefinition of parameter `${ident.name}`', ident.pos)
-				}
-				params << ident
-
-				p.scope.register(ast.Var{
-					name: ident.name
-					is_mut: ident.is_mut
-					is_stack_obj: true
-					pos: ident.pos
-					is_used: true
-					is_arg: true
-				})
-
-				if p.tok.kind == .pipe {
-					p.next()
-					break
-				}
-				p.check(.comma)
-			}
-			pos_expr := p.tok.pos()
-			e := p.expr(0)
-			pos_end := p.tok.pos()
-			node = ast.LambdaExpr{
-				pos: pos
-				pos_expr: pos_expr
-				pos_end: pos_end
-				params: params
-				expr: e
-				scope: p.scope
-			}
-
-			p.close_scope()
 		}
 		.key_sizeof, .key_isreftype {
 			is_reftype := p.tok.kind == .key_isreftype
@@ -506,6 +468,7 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			}
 		}
 	}
+
 	if inside_array_lit {
 		if p.tok.kind in [.minus, .mul, .amp, .arrow] && p.tok.pos + 1 == p.peek_tok.pos
 			&& p.prev_tok.pos + p.prev_tok.len + 1 != p.peek_tok.pos {
@@ -870,5 +833,63 @@ fn (mut p Parser) process_custom_orm_operators() {
 			...p.tok
 			kind: .key_like
 		}
+	}
+}
+
+fn (mut p Parser) lambda_expr() ?ast.LambdaExpr {
+	if !p.inside_call_args {
+		return none
+	}
+
+	if !(p.peek_token(1).kind == .pipe
+		|| (p.peek_token(1).kind == .name && p.peek_token(2).kind == .pipe)
+		|| (p.peek_token(1).kind == .name && p.peek_token(2).kind == .comma)) {
+		return none
+	}
+
+	mut pos := p.tok.pos()
+	p.check(.pipe)
+	mut params := []ast.Ident{}
+
+	p.open_scope()
+	defer {
+		p.close_scope()
+	}
+
+	for {
+		if p.tok.kind == .eof {
+			break
+		}
+		ident := p.ident(ast.Language.v)
+		if p.scope.known_var(ident.name) {
+			p.error_with_pos('redefinition of parameter `${ident.name}`', ident.pos)
+		}
+		params << ident
+
+		p.scope.register(ast.Var{
+			name: ident.name
+			is_mut: ident.is_mut
+			is_stack_obj: true
+			pos: ident.pos
+			is_used: true
+			is_arg: true
+		})
+
+		if p.tok.kind == .pipe {
+			p.next()
+			break
+		}
+		p.check(.comma)
+	}
+	pos_expr := p.tok.pos()
+	e := p.expr(0)
+	pos_end := p.tok.pos()
+	return ast.LambdaExpr{
+		pos: pos
+		pos_expr: pos_expr
+		pos_end: pos_end
+		params: params
+		expr: e
+		scope: p.scope
 	}
 }

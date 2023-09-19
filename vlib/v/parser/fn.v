@@ -97,6 +97,11 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 }
 
 fn (mut p Parser) call_args() []ast.CallArg {
+	prev_inside_call_args := true
+	p.inside_call_args = true
+	defer {
+		p.inside_call_args = prev_inside_call_args
+	}
 	mut args := []ast.CallArg{}
 	start_pos := p.tok.pos()
 	for p.tok.kind != .rpar {
