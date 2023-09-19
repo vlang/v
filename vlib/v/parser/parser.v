@@ -379,6 +379,7 @@ pub fn (mut p Parser) parse() &ast.File {
 		notices: notices
 		global_labels: p.global_labels
 		template_paths: p.template_paths
+		unique_prefix: p.unique_prefix
 	}
 }
 

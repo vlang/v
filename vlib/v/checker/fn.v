@@ -2597,6 +2597,10 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 	if method_name in ['filter', 'map', 'any', 'all'] {
 		// position of `it` doesn't matter
 		scope_register_it(mut node.scope, node.pos, elem_typ)
+	} else if method_name == 'sorted_with_compare' && node.args.len == 1 {
+		if mut node.args[0].expr is ast.LambdaExpr {
+			c.support_lambda_expr_in_sort(elem_typ.ref(), ast.int_type, mut node.args[0].expr)
+		}
 	} else if method_name == 'sort' || method_name == 'sorted' {
 		if method_name == 'sort' {
 			if node.left is ast.CallExpr {
@@ -2611,7 +2615,9 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		if node.args.len > 1 {
 			c.error('expected 0 or 1 argument, but got ${node.args.len}', node.pos)
 		} else if node.args.len == 1 {
-			if node.args[0].expr is ast.InfixExpr {
+			if mut node.args[0].expr is ast.LambdaExpr {
+				c.support_lambda_expr_in_sort(elem_typ.ref(), ast.bool_type, mut node.args[0].expr)
+			} else if node.args[0].expr is ast.InfixExpr {
 				if node.args[0].expr.op !in [.gt, .lt] {
 					c.error('`.${method_name}()` can only use `<` or `>` comparison',
 						node.pos)

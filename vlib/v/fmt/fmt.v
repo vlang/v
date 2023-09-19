@@ -671,6 +671,17 @@ pub fn (mut f Fmt) expr(node_ ast.Expr) {
 		ast.IntegerLiteral {
 			f.write(node.val)
 		}
+		ast.LambdaExpr {
+			f.write('|')
+			for i, x in node.params {
+				f.expr(x)
+				if i < node.params.len - 1 {
+					f.write(', ')
+				}
+			}
+			f.write('| ')
+			f.expr(node.expr)
+		}
 		ast.Likely {
 			f.likely(node)
 		}

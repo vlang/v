@@ -349,6 +349,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				}
 			}
 		}
+		ast.LambdaExpr {
+			w.expr(node.func)
+		}
 		ast.Likely {
 			w.expr(node.expr)
 		}

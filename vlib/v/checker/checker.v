@@ -2783,6 +2783,9 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 		ast.IntegerLiteral {
 			return c.int_lit(mut node)
 		}
+		ast.LambdaExpr {
+			return c.lambda_expr(mut node, c.expected_type)
+		}
 		ast.LockExpr {
 			return c.lock_expr(mut node)
 		}

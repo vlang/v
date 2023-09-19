@@ -249,6 +249,51 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 				}
 			}
 		}
+		.pipe {
+			mut pos := p.tok.pos()
+			p.next()
+			mut params := []ast.Ident{}
+			p.open_scope()
+
+			for {
+				if p.tok.kind == .eof {
+					break
+				}
+				ident := p.ident(ast.Language.v)
+				if p.scope.known_var(ident.name) {
+					p.error_with_pos('redefinition of parameter `${ident.name}`', ident.pos)
+				}
+				params << ident
+
+				p.scope.register(ast.Var{
+					name: ident.name
+					is_mut: ident.is_mut
+					is_stack_obj: true
+					pos: ident.pos
+					is_used: true
+					is_arg: true
+				})
+
+				if p.tok.kind == .pipe {
+					p.next()
+					break
+				}
+				p.check(.comma)
+			}
+			pos_expr := p.tok.pos()
+			e := p.expr(0)
+			pos_end := p.tok.pos()
+			node = ast.LambdaExpr{
+				pos: pos
+				pos_expr: pos_expr
+				pos_end: pos_end
+				params: params
+				expr: e
+				scope: p.scope
+			}
+
+			p.close_scope()
+		}
 		.key_sizeof, .key_isreftype {
 			is_reftype := p.tok.kind == .key_isreftype
 			p.next() // sizeof
