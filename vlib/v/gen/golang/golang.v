@@ -587,6 +587,9 @@ pub fn (mut f Gen) expr(node_ ast.Expr) {
 		ast.IntegerLiteral {
 			f.write(node.val)
 		}
+		ast.LambdaExpr {
+			eprintln('> TODO: implement ast.LambdaExpr in the Go backend')
+		}
 		ast.Likely {
 			f.likely(node)
 		}

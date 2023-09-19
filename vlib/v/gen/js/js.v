@@ -962,6 +962,9 @@ fn (mut g JsGen) expr(node_ ast.Expr) {
 		ast.IntegerLiteral {
 			g.gen_integer_literal_expr(node)
 		}
+		ast.LambdaExpr {
+			eprintln('> TODO: implement short lambda expressions in the JS backend')
+		}
 		ast.Likely {
 			g.write('(')
 			g.expr(node.expr)
