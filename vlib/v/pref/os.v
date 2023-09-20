@@ -158,7 +158,7 @@ pub fn (o OS) str() string {
 		.solaris { return 'Solaris' }
 		.qnx { return 'QNX' }
 		.serenity { return 'SerenityOS' }
-		.plan9 { return 'Plan9'}
+		.plan9 { return 'Plan9' }
 		.vinix { return 'Vinix' }
 		.haiku { return 'Haiku' }
 		.wasm32 { return 'WebAssembly' }
