@@ -15,6 +15,11 @@ pub fn (f &FnDecl) get_name() string {
 	}
 }
 
+// get_anon_fn_name returns the unique anonymous function name, based on the prefix, the func signature and its position in the source code
+pub fn (table &Table) get_anon_fn_name(prefix string, func &Fn, pos int) string {
+	return 'anon_fn_${prefix}_${table.fn_type_signature(func)}_${pos}'
+}
+
 // get_name returns the real name for the function calling
 pub fn (f &CallExpr) get_name() string {
 	if f.name != '' && f.name.all_after_last('.')[0].is_capital() && f.name.contains('__static__') {
@@ -608,6 +613,10 @@ pub fn (x Expr) str() string {
 				return 'typeof[${global_table.type_to_str(x.typ)}]()'
 			}
 			return 'typeof(${x.expr.str()})'
+		}
+		LambdaExpr {
+			ilist := x.params.map(it.name).join(', ')
+			return '|${ilist}| ${x.expr.str()}'
 		}
 		Likely {
 			return '_likely_(${x.expr.str()})'

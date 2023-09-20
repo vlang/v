@@ -3329,6 +3329,10 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			is_ref_type := g.contains_ptr(node_typ)
 			g.write('/*IsRefType*/ ${is_ref_type}')
 		}
+		ast.LambdaExpr {
+			g.gen_anon_fn(mut node.func)
+			// g.write('/* lambda expr: ${node_.str()} */')
+		}
 		ast.Likely {
 			if node.is_likely {
 				g.write('_likely_')
