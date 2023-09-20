@@ -93,7 +93,8 @@ V is constantly being updated. To update V, simply run:
 v up
 ```
 
-> **Note**
+> **Note:**
+> 
 > If you run into any trouble, or you have a different operating
 > system or Linux distribution that doesn't install or work immediately, please see
 > [Installation Issues](https://github.com/vlang/v/discussions/categories/installation-issues)
@@ -121,7 +122,8 @@ Otherwise, follow these instructions:
 
 ### Symlinking
 
-> **Note**
+> **Note:**
+> 
 > It is *highly recommended*, that you put V on your PATH. That saves
 > you the effort to type in the full path to your v executable every time.
 > V provides a convenience `v symlink` command to do that more easily.
@@ -147,7 +149,8 @@ v symlink
 That will make V available everywhere, by adding it to your PATH. Please restart your
 shell/editor after that, so that it can pick up the new PATH variable.
 
-> **Note**
+> **Note:**
+> 
 > There is no need to run `v symlink` more than once - v will still be available, even after
 > `v up`, restarts, and so on.  You only need to run it again if you decide to move the V repo
 > folder somewhere else.
