@@ -1,7 +1,7 @@
 module somemodule
 
-const name = "somemodule"
+const name = 'somemodule'
 
 pub fn name() string {
-	return name
+	return somemodule.name
 }
