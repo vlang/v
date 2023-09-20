@@ -206,7 +206,11 @@ pub fn (mut v Builder) set_module_lookup_paths() {
 	if v.pref.is_verbose {
 		println('x: "${x}"')
 	}
-	v.module_search_paths << os.join_path(v.compiled_dir, 'modules')
+	if os.exists(os.join_path(v.compiled_dir, 'src/modules')) {
+		v.module_search_paths << os.join_path(v.compiled_dir, 'src/modules')
+	} else {
+		v.module_search_paths << os.join_path(v.compiled_dir, 'modules')
+	}
 	v.module_search_paths << v.pref.lookup_path
 	if v.pref.is_verbose {
 		v.log('v.module_search_paths:')
