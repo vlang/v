@@ -80,13 +80,12 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 }
 
 fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name string) {
+	prev_inside_lambda := g.inside_lambda
+	g.inside_lambda = true
+	defer {
+		g.inside_lambda = prev_inside_lambda
+	}
 	if node.has_index {
-		prev_inside_lambda := g.inside_lambda
-		g.inside_lambda = true
-		defer {
-			g.inside_lambda = prev_inside_lambda
-		}
-
 		past := g.past_tmp_var_from_var_name(var_name)
 		defer {
 			g.past_tmp_var_done(past)
@@ -249,6 +248,11 @@ fn (mut g Gen) struct_has_array_or_map_field(elem_typ ast.Type) bool {
 
 // `[]int{len: 6, cap: 10, init: index * index}`
 fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp bool, shared_styp string, var_name string) {
+	prev_inside_lambda := g.inside_lambda
+	g.inside_lambda = true
+	defer {
+		g.inside_lambda = prev_inside_lambda
+	}
 	elem_styp := g.typ(elem_type.typ)
 	noscan := g.check_noscan(elem_type.typ)
 	is_default_array := elem_type.unaliased_sym.kind == .array && node.has_default
@@ -256,11 +260,6 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 	needs_more_defaults := node.has_len && (g.struct_has_array_or_map_field(elem_type.typ)
 		|| elem_type.unaliased_sym.kind in [.array, .map])
 	if node.has_index { // []int{len: 6, init: index * index} when variable it is used in init expression
-		prev_inside_lambda := g.inside_lambda
-		g.inside_lambda = true
-		defer {
-			g.inside_lambda = prev_inside_lambda
-		}
 
 		past := g.past_tmp_var_from_var_name(var_name)
 		defer {
