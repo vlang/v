@@ -178,7 +178,7 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			}
 			p.inside_unsafe = false
 		}
-		.pipe {
+		.pipe, .logical_or {
 			if nnn := p.lambda_expr() {
 				node = nnn
 			} else {
@@ -841,45 +841,50 @@ fn (mut p Parser) lambda_expr() ?ast.LambdaExpr {
 		return none
 	}
 
-	if !(p.peek_token(1).kind == .pipe
+	// a) `f(||expr)` for a callback lambda expression with 0 arguments
+	// b) `f(|a_1,...,a_n| expr_with_a_1_etc_till_a_n)` for a callback with several arguments
+	if !(p.tok.kind == .logical_or
 		|| (p.peek_token(1).kind == .name && p.peek_token(2).kind == .pipe)
 		|| (p.peek_token(1).kind == .name && p.peek_token(2).kind == .comma)) {
 		return none
 	}
-
-	mut pos := p.tok.pos()
-	p.check(.pipe)
-	mut params := []ast.Ident{}
 
 	p.open_scope()
 	defer {
 		p.close_scope()
 	}
 
-	for {
-		if p.tok.kind == .eof {
-			break
-		}
-		ident := p.ident(ast.Language.v)
-		if p.scope.known_var(ident.name) {
-			p.error_with_pos('redefinition of parameter `${ident.name}`', ident.pos)
-		}
-		params << ident
+	mut pos := p.tok.pos()
+	mut params := []ast.Ident{}
+	if p.tok.kind == .logical_or {
+		p.check(.logical_or)
+	} else {
+		p.check(.pipe)
+		for {
+			if p.tok.kind == .eof {
+				break
+			}
+			ident := p.ident(ast.Language.v)
+			if p.scope.known_var(ident.name) {
+				p.error_with_pos('redefinition of parameter `${ident.name}`', ident.pos)
+			}
+			params << ident
 
-		p.scope.register(ast.Var{
-			name: ident.name
-			is_mut: ident.is_mut
-			is_stack_obj: true
-			pos: ident.pos
-			is_used: true
-			is_arg: true
-		})
+			p.scope.register(ast.Var{
+				name: ident.name
+				is_mut: ident.is_mut
+				is_stack_obj: true
+				pos: ident.pos
+				is_used: true
+				is_arg: true
+			})
 
-		if p.tok.kind == .pipe {
-			p.next()
-			break
+			if p.tok.kind == .pipe {
+				p.next()
+				break
+			}
+			p.check(.comma)
 		}
-		p.check(.comma)
 	}
 	pos_expr := p.tok.pos()
 	e := p.expr(0)

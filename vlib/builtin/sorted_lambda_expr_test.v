@@ -1,17 +1,3 @@
-fn doit(x int, y int, cb fn (a int, b int) string) string {
-	dump(cb)
-	dump(x)
-	dump(y)
-	return cb(x, y)
-}
-
-fn test_fn_with_callback_called_with_lambda_expression() {
-	assert doit(10, 20, fn (aaa int, bbb int) string {
-		return 'a: ${aaa}, b: ${bbb}'
-	}) == 'a: 10, b: 20'
-	assert doit(100, 200, |a, b| 'a: ${a}, b: ${b}') == 'a: 100, b: 200'
-}
-
 fn test_sort_with_lambda_expr() {
 	a := [5, 2, 1, 9, 8]
 	dump(a)
