@@ -212,9 +212,9 @@ pub fn get_host_os() OS {
 	$if serenity {
 		return .serenity
 	}
-	$if plan9 {
-		return .plan9
-	}
+	//$if plan9 {
+	//	return .plan9
+	//}
 	$if vinix {
 		return .vinix
 	}
