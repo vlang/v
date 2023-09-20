@@ -42,6 +42,7 @@ pub enum Platform {
 	termux // like android, but note that termux is running on devices natively, not cross compiling from other platforms
 	solaris
 	serenity
+	plan9
 	vinix
 	haiku
 	raw
@@ -63,6 +64,7 @@ pub fn platform_from_string(platform_str string) !Platform {
 		'js' { return .js }
 		'solaris' { return .solaris }
 		'serenity' { return .serenity }
+		'plan9' {return .plan9}
 		'vinix' { return .vinix }
 		'android' { return .android }
 		'termux' { return .termux }
