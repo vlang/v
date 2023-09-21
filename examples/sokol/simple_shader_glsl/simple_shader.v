@@ -68,7 +68,7 @@ fn (mut a App) run() {
 }
 
 fn init(user_data voidptr) {
-	mut app := &App(user_data)
+	mut app := unsafe { &App(user_data) }
 	mut desc := sapp.create_desc()
 
 	gfx.setup(&desc)
@@ -142,7 +142,7 @@ fn cleanup(user_data voidptr) {
 }
 
 fn frame(user_data voidptr) {
-	mut app := &App(user_data)
+	mut app := unsafe { &App(user_data) }
 
 	gfx.begin_default_pass(&app.pass_action, sapp.width(), sapp.height())
 
