@@ -135,7 +135,7 @@ fn to_any[T](value T) Any {
 	} $else $if T is $map {
 		mut mmap := map[string]Any{}
 		for key, val in value {
-			mmap[encode(key)] = to_any(val)
+			mmap['${key}'] = to_any(val)
 		}
 		return mmap
 	} $else {
