@@ -9,4 +9,8 @@ fn test_fixed_array_of_option() {
 	a2[0] = 1
 	println(a2)
 	assert '${a2}' == '[Option(1), Option(none), Option(none)]'
+
+	a3 := [3]?int{init: ?int(index * 2)}
+	println(a3)
+	assert '${a3}' == '[Option(0), Option(2), Option(4)]'
 }

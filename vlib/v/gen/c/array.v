@@ -98,21 +98,19 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		}
 		g.write('{')
 		if node.has_val {
-			for i, expr in node.exprs {
-				if expr.is_auto_deref_var() {
-					g.write('*')
-				}
+			for i in 0 .. node.exprs.len {
 				g.write('0')
 				if i != node.exprs.len - 1 {
 					g.write(', ')
 				}
 			}
 		} else if node.has_default {
-			g.write('0')
 			info := array_type.unaliased_sym.info as ast.ArrayFixed
-			for _ in 1 .. info.size {
-				g.write(', ')
+			for i in 0 .. info.size {
 				g.write('0')
+				if i != info.size - 1 {
+					g.write(', ')
+				}
 			}
 		} else {
 			g.write('0')
@@ -124,6 +122,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		g.writeln('${elem_typ}* pelem = (${elem_typ}*)${past.tmp_var};')
 		g.writeln('int _len = (int)sizeof(${past.tmp_var}) / sizeof(${elem_typ});')
 		g.writeln('for (int index=0; index<_len; index++, pelem++) {')
+		g.set_current_pos_as_last_stmt_pos()
 		g.indent++
 		g.writeln('int it = index;') // FIXME: Remove this line when it is fully forbidden
 		g.write('*pelem = ')
@@ -133,6 +132,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		g.writeln('}')
 		g.indent--
 		g.writeln('}')
+		g.set_current_pos_as_last_stmt_pos()
 		return
 	}
 	need_tmp_var := g.inside_call && !g.inside_struct_init && node.exprs.len == 0
