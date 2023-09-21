@@ -123,7 +123,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		g.indent++
 		g.writeln('${elem_typ}* pelem = (${elem_typ}*)${past.tmp_var};')
 		g.writeln('int _len = (int)sizeof(${past.tmp_var}) / sizeof(${elem_typ});')
-		g.writeln('for(int index=0; index<_len; index++, pelem++) {')
+		g.writeln('for (int index=0; index<_len; index++, pelem++) {')
 		g.indent++
 		g.writeln('int it = index;') // FIXME: Remove this line when it is fully forbidden
 		g.write('*pelem = ')
@@ -165,11 +165,12 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 			}
 		}
 	} else if node.has_default {
-		g.expr(node.default_expr)
 		info := array_type.unaliased_sym.info as ast.ArrayFixed
-		for _ in 1 .. info.size {
-			g.write(', ')
+		for i in 0 .. info.size {
 			g.expr(node.default_expr)
+			if i != info.size - 1 {
+				g.write(', ')
+			}
 		}
 	} else {
 		elem_sym := g.table.final_sym(node.elem_type)
@@ -177,51 +178,54 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 			// fixed array for map -- [N]map[key_type]value_type
 			info := array_type.unaliased_sym.info as ast.ArrayFixed
 			map_info := elem_sym.map_info()
-			g.expr(ast.MapInit{
-				key_type: map_info.key_type
-				value_type: map_info.value_type
-			})
-			for _ in 1 .. info.size {
-				g.write(', ')
+			for i in 0 .. info.size {
 				g.expr(ast.MapInit{
 					key_type: map_info.key_type
 					value_type: map_info.value_type
 				})
+				if i != info.size - 1 {
+					g.write(', ')
+				}
 			}
 		} else if elem_sym.kind == .array_fixed {
 			// nested fixed array -- [N][N]type
 			info := array_type.unaliased_sym.info as ast.ArrayFixed
 			arr_info := elem_sym.array_fixed_info()
-			g.expr(ast.ArrayInit{
-				exprs: [ast.IntegerLiteral{}]
-				typ: node.elem_type
-				elem_type: arr_info.elem_type
-			})
-			for _ in 1 .. info.size {
-				g.write(', ')
+			for i in 0 .. info.size {
 				g.expr(ast.ArrayInit{
 					exprs: [ast.IntegerLiteral{}]
 					typ: node.elem_type
 					elem_type: arr_info.elem_type
 				})
+				if i != info.size - 1 {
+					g.write(', ')
+				}
 			}
 		} else if elem_sym.kind == .chan {
 			// fixed array for chan -- [N]chan
 			info := array_type.unaliased_sym.info as ast.ArrayFixed
 			chan_info := elem_sym.chan_info()
-			g.expr(ast.ChanInit{
-				typ: node.elem_type
-				elem_type: chan_info.elem_type
-			})
-			for _ in 1 .. info.size {
-				g.write(', ')
+			for i in 0 .. info.size {
 				g.expr(ast.ChanInit{
 					typ: node.elem_type
 					elem_type: chan_info.elem_type
 				})
+				if i != info.size - 1 {
+					g.write(', ')
+				}
 			}
 		} else {
-			g.write('0')
+			info := array_type.unaliased_sym.info as ast.ArrayFixed
+			for i in 0 .. info.size {
+				if node.elem_type.has_flag(.option) {
+					g.expr_with_opt(ast.None{}, ast.none_type, node.elem_type)
+				} else {
+					g.write(g.type_default(node.elem_type))
+				}
+				if i != info.size - 1 {
+					g.write(', ')
+				}
+			}
 		}
 	}
 	g.write('}')
@@ -259,8 +263,8 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 	is_default_map := elem_type.unaliased_sym.kind == .map && node.has_default
 	needs_more_defaults := node.has_len && (g.struct_has_array_or_map_field(elem_type.typ)
 		|| elem_type.unaliased_sym.kind in [.array, .map])
-	if node.has_index { // []int{len: 6, init: index * index} when variable it is used in init expression
-
+	if node.has_index {
+		// []int{len: 6, init: index * index} when variable it is used in init expression
 		past := g.past_tmp_var_from_var_name(var_name)
 		defer {
 			g.past_tmp_var_done(past)
@@ -325,7 +329,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.writeln('{')
 		g.indent++
 		g.writeln('${elem_typ}* pelem = (${elem_typ}*)${past.tmp_var}.data;')
-		g.writeln('for(int index=0; index<${past.tmp_var}.len; index++, pelem++) {')
+		g.writeln('for (int index=0; index<${past.tmp_var}.len; index++, pelem++) {')
 		g.set_current_pos_as_last_stmt_pos()
 		g.indent++
 		g.writeln('int it = index;') // FIXME: Remove this line when it is fully forbidden
