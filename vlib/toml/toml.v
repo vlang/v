@@ -93,32 +93,54 @@ pub fn encode[T](typ T) string {
 fn encode_struct[T](typ T) map[string]Any {
 	mut mp := map[string]Any{}
 	$for field in T.fields {
-		value := typ.$(field.name)
-		$if field.is_enum {
-			mp[field.name] = Any(int(value))
-		} $else $if field.is_struct {
-			mp[field.name] = encode_struct(value)
-		} $else $if field.is_array {
-			mut arr := []Any{}
-			for v in value {
-				$if v is Date {
-					arr << Any(v)
-				} $else $if v is Time {
-					arr << Any(v)
-				} $else $if v is DateTime {
-					arr << Any(v)
-				} $else $if v is $struct {
-					arr << Any(encode(v))
-				} $else {
-					arr << Any(v)
-				}
-			}
-			mp[field.name] = arr
-		} $else {
-			mp[field.name] = Any(value)
-		}
+		mp[field.name] = to_any(typ.$(field.name))
 	}
 	return mp
+}
+
+fn to_any[T](value T) Any {
+	$if T is $enum {
+		return Any(int(value))
+	} $else $if T is Date {
+		return Any(value)
+	} $else $if T is Time {
+		return Any(value)
+	} $else $if T is Null {
+		return Any(value)
+	} $else $if T is bool {
+		return Any(value)
+	} $else $if T is $float {
+		return Any(value)
+	} $else $if T is i64 {
+		return Any(value)
+	} $else $if T is int {
+		return Any(value)
+	} $else $if T is u64 {
+		return Any(value)
+	} $else $if T is DateTime {
+		return Any(value)
+	} $else $if T is $struct {
+		$for method in T.methods {
+			$if method.name == 'to_toml' {
+				return Any(value.$method())
+			}
+		}
+		return encode_struct(value)
+	} $else $if T is $array {
+		mut arr := []Any{cap: value.len}
+		for v in value {
+			arr << to_any(v)
+		}
+		return arr
+	} $else $if T is $map {
+		mut mmap := map[string]Any{}
+		for key, val in value {
+			mmap[encode(key)] = to_any(val)
+		}
+		return mmap
+	} $else {
+		return Any('${value}')
+	}
 }
 
 // DateTime is the representation of an RFC 3339 datetime string.
