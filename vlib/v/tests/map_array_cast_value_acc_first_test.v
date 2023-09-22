@@ -1,6 +1,6 @@
 const m = {
-	'foo': [u8(0xf0), 0x00]
-	'bar': [0xba, 0xaa]
+	'foo':    [u8(0xf0), 0x00]
+	'bar':    [0xba, 0xaa]
 	'foobar': [12, 45]
 }
 
@@ -15,4 +15,3 @@ fn test_get_elem() {
 	assert '${m['bar']}' == '[186, 170]'
 	assert '${m['foobar']}' == '[12, 45]'
 }
-
