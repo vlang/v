@@ -454,14 +454,15 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			if val_type == ast.none_type && val0_type.has_flag(.option) {
 				continue
 			}
-			if expecting_array_map {
+			if expecting_array_map && !use_expected_type {
 				arr_value := map_value_sym.info as ast.Array
 				if val_type_sym.kind == .array {
-					mut arr_value_2 := val_type_sym.info as ast.Array
-					arr_value_2 = ast.Array{
+					mut next_arr_value := val_type_sym.info as ast.Array
+					next_arr_value = ast.Array{
+						...next_arr_value
 						elem_type: arr_value.elem_type
 					}
-					val_type_sym.info = arr_value_2
+					val_type_sym.info = next_arr_value
 				} else {
 					msg := c.expected_msg(val_type, node.value_type)
 					c.error('invalid map value: ${msg}', val.pos())
