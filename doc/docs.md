@@ -5648,26 +5648,32 @@ fn main() {
 V can embed arbitrary files into the executable with the `$embed_file(<path>)`
 compile time call. Paths can be absolute or relative to the source file.
 
-When you do not use `-prod`, the file will not be embedded. Instead, it will
-be loaded *the first time* your program calls `embedded_file.data()` at runtime, making
-it easier to change in external editor programs, without needing to recompile
-your executable.
+Note that by default, using `$embed_file(file)`, will always embed the whole content
+of the file, but you can modify that behaviour by passing: `-d embed_only_metadata`
+when compiling your program. In that case, the file will not be embedded. Instead,
+it will be loaded *the first time* your program calls `embedded_file.data()` at runtime,
+making it easier to change in external editor programs, without needing to recompile
+your program.
 
-When you compile with `-prod`, the file *will be embedded inside* your
-executable, increasing your binary size, but making it more self contained
-and thus easier to distribute. In this case, `embedded_file.data()` will cause *no IO*,
+Embedding a file inside your executable, will increase its size, but
+it will make it more self contained and thus easier to distribute.
+When that happens (the default), `embedded_file.data()` will cause *no IO*,
 and it will always return the same data.
 
 `$embed_file` supports compression of the embedded file when compiling with `-prod`.
-Currently only one compression type is supported: `zlib`
+Currently only one compression type is supported: `zlib`.
 
 ```v ignore
 import os
 fn main() {
-	embedded_file := $embed_file('v.png', .zlib) // compressed using zlib
-	os.write_file('exported.png', embedded_file.to_string())!
+	embedded_file := $embed_file('x.css', .zlib) // compressed using zlib
+	os.write_file('exported.css', embedded_file.to_string())!
 }
 ```
+
+Note: compressing binary assets like png or zip files, usually will not gain you much,
+and in some cases may even take more space in the final executable, since they are 
+already compressed.
 
 `$embed_file` returns
 [EmbedFileData](https://modules.vlang.io/v.embed_file.html#EmbedFileData)
