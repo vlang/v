@@ -25,4 +25,7 @@ fn test_projects_should_run() {
 	}
 	res := vrun_ok('run', vroot_path('vlib/v/tests/testdata/enum_in_builtin') + os.path_separator)
 	assert res.trim_space() == 'v0'
+
+	res2 := vrun_ok('run', vroot_path('vlib/v/tests/testdata/modules_in_src/'))
+	assert res2.trim_space() == 'somemodule'
 }

@@ -43,6 +43,21 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	if node.op == .key_is {
 		c.inside_x_is_type = true
 	}
+	// `arr << if n > 0 { 10 } else { 11 }` set the right c.expected_type
+	if node.op == .left_shift && c.table.sym(left_type).kind == .array {
+		if mut node.right is ast.IfExpr {
+			if node.right.is_expr && node.right.branches.len > 0 {
+				mut last_stmt := node.right.branches[0].stmts.last()
+				if mut last_stmt is ast.ExprStmt {
+					expr_typ := c.expr(mut last_stmt.expr)
+					info := c.table.sym(left_type).array_info()
+					if expr_typ == info.elem_type {
+						c.expected_type = info.elem_type
+					}
+				}
+			}
+		}
+	}
 	mut right_type := c.expr(mut node.right)
 	if node.op == .key_is {
 		c.inside_x_is_type = false

@@ -231,7 +231,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			skip_files << 'vlib/net/mbedtls/mbedtls_compiles_test.v'
 			skip_files << 'vlib/net/ssl/ssl_compiles_test.v'
 		}
-		if testing.github_job != 'sokol-shaders-can-be-compiled' {
+		if testing.github_job != 'misc-tooling' {
 			// These examples need .h files that are produced from the supplied .glsl files,
 			// using by the shader compiler tools in https://github.com/floooh/sokol-tools-bin/archive/pre-feb2021-api-changes.tar.gz
 			skip_files << 'examples/sokol/simple_shader_glsl/simple_shader.v'
@@ -241,6 +241,10 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			skip_files << 'examples/sokol/05_instancing_glsl/rt_glsl.v'
 			// Skip obj_viewer code in the CI
 			skip_files << 'examples/sokol/06_obj_viewer/show_obj.v'
+			// skip the audio examples too on most CI jobs
+			skip_files << 'examples/sokol/sounds/melody.v'
+			skip_files << 'examples/sokol/sounds/wav_player.v'
+			skip_files << 'examples/sokol/sounds/simple_sin_tones.v'
 		}
 		if testing.github_job != 'ubuntu-tcc' {
 			skip_files << 'examples/c_interop_wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
@@ -249,11 +253,6 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			// the ttf_test.v is not interactive, but needs X11 headers to be installed, which is done only on ubuntu-tcc for now
 			skip_files << 'vlib/x/ttf/ttf_test.v'
 			skip_files << 'vlib/vweb/vweb_app_test.v' // imports the `sqlite` module, which in turn includes sqlite3.h
-		}
-		if testing.github_job != 'audio-examples' {
-			skip_files << 'examples/sokol/sounds/melody.v'
-			skip_files << 'examples/sokol/sounds/wav_player.v'
-			skip_files << 'examples/sokol/sounds/simple_sin_tones.v'
 		}
 		$if !macos {
 			skip_files << 'examples/macos_tray/tray.v'

@@ -415,6 +415,9 @@ pub fn user_os() string {
 	$if serenity {
 		return 'serenity'
 	}
+	//$if plan9 {
+	//	return 'plan9'
+	//}
 	$if vinix {
 		return 'vinix'
 	}

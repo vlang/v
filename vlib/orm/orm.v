@@ -543,7 +543,7 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 			unique_fields << f
 		}
 		if references_table != '' {
-			stmt += ' REFERENCES ${references_table} (${references_field})'
+			stmt += ' REFERENCES ${q}${references_table}${q}(${q}${references_field}${q})'
 		}
 		fs << stmt
 	}

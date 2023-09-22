@@ -149,6 +149,47 @@ fn test_custom_encode_of_complex_struct() {
 ]'
 }
 
+struct Example3 {
+	arr_arr [][]Problem
+}
+
+struct Example4 {
+	mp map[string]Problem
+}
+
+pub fn (example Example3) to_toml() string {
+	return '[This is Valid]'
+}
+
+pub fn (example Example4) to_toml() string {
+	return '[This is Valid]'
+}
+
+fn test_custom_encode_of_nested_complex_struct() {
+	assert toml.encode(Example3{}) == '[This is Valid]'
+	assert toml.encode(Example4{}) == '[This is Valid]'
+}
+
+struct Example5 {
+	mp map[string]Problem
+}
+
+fn test_map_encode_of_complex_struct() {
+	mut mp := map[string]Problem{}
+	mp['key_one'] = Problem{}
+	mp['key_two'] = Problem{}
+	assert toml.encode(Example5{ mp: mp }) == 'mp = { key_one = "a problem", key_two = "a problem" }'
+}
+
+struct Example6 {
+	ptr voidptr
+	r   rune
+}
+
+fn test_encode_for_exotic_types() {
+	assert toml.encode(Example6{ ptr: &voidptr(0), r: `🚀` }) == 'ptr = "0x0"\nr = "🚀"'
+}
+
 fn test_array_encode_decode() {
 	a := Arrs{
 		strs: ['foo', 'bar']

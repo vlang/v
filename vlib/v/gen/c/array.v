@@ -80,9 +80,12 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 }
 
 fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name string) {
+	prev_inside_lambda := g.inside_lambda
+	g.inside_lambda = true
+	defer {
+		g.inside_lambda = prev_inside_lambda
+	}
 	if node.has_index {
-		g.inside_lambda = true
-
 		past := g.past_tmp_var_from_var_name(var_name)
 		defer {
 			g.past_tmp_var_done(past)
@@ -95,21 +98,19 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		}
 		g.write('{')
 		if node.has_val {
-			for i, expr in node.exprs {
-				if expr.is_auto_deref_var() {
-					g.write('*')
-				}
+			for i in 0 .. node.exprs.len {
 				g.write('0')
 				if i != node.exprs.len - 1 {
 					g.write(', ')
 				}
 			}
 		} else if node.has_default {
-			g.write('0')
 			info := array_type.unaliased_sym.info as ast.ArrayFixed
-			for _ in 1 .. info.size {
-				g.write(', ')
+			for i in 0 .. info.size {
 				g.write('0')
+				if i != info.size - 1 {
+					g.write(', ')
+				}
 			}
 		} else {
 			g.write('0')
@@ -120,7 +121,8 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		g.indent++
 		g.writeln('${elem_typ}* pelem = (${elem_typ}*)${past.tmp_var};')
 		g.writeln('int _len = (int)sizeof(${past.tmp_var}) / sizeof(${elem_typ});')
-		g.writeln('for(int index=0; index<_len; index++, pelem++) {')
+		g.writeln('for (int index=0; index<_len; index++, pelem++) {')
+		g.set_current_pos_as_last_stmt_pos()
 		g.indent++
 		g.writeln('int it = index;') // FIXME: Remove this line when it is fully forbidden
 		g.write('*pelem = ')
@@ -130,7 +132,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		g.writeln('}')
 		g.indent--
 		g.writeln('}')
-		g.inside_lambda = false
+		g.set_current_pos_as_last_stmt_pos()
 		return
 	}
 	need_tmp_var := g.inside_call && !g.inside_struct_init && node.exprs.len == 0
@@ -163,11 +165,12 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 			}
 		}
 	} else if node.has_default {
-		g.expr(node.default_expr)
 		info := array_type.unaliased_sym.info as ast.ArrayFixed
-		for _ in 1 .. info.size {
-			g.write(', ')
+		for i in 0 .. info.size {
 			g.expr(node.default_expr)
+			if i != info.size - 1 {
+				g.write(', ')
+			}
 		}
 	} else {
 		elem_sym := g.table.final_sym(node.elem_type)
@@ -175,51 +178,54 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 			// fixed array for map -- [N]map[key_type]value_type
 			info := array_type.unaliased_sym.info as ast.ArrayFixed
 			map_info := elem_sym.map_info()
-			g.expr(ast.MapInit{
-				key_type: map_info.key_type
-				value_type: map_info.value_type
-			})
-			for _ in 1 .. info.size {
-				g.write(', ')
+			for i in 0 .. info.size {
 				g.expr(ast.MapInit{
 					key_type: map_info.key_type
 					value_type: map_info.value_type
 				})
+				if i != info.size - 1 {
+					g.write(', ')
+				}
 			}
 		} else if elem_sym.kind == .array_fixed {
 			// nested fixed array -- [N][N]type
 			info := array_type.unaliased_sym.info as ast.ArrayFixed
 			arr_info := elem_sym.array_fixed_info()
-			g.expr(ast.ArrayInit{
-				exprs: [ast.IntegerLiteral{}]
-				typ: node.elem_type
-				elem_type: arr_info.elem_type
-			})
-			for _ in 1 .. info.size {
-				g.write(', ')
+			for i in 0 .. info.size {
 				g.expr(ast.ArrayInit{
 					exprs: [ast.IntegerLiteral{}]
 					typ: node.elem_type
 					elem_type: arr_info.elem_type
 				})
+				if i != info.size - 1 {
+					g.write(', ')
+				}
 			}
 		} else if elem_sym.kind == .chan {
 			// fixed array for chan -- [N]chan
 			info := array_type.unaliased_sym.info as ast.ArrayFixed
 			chan_info := elem_sym.chan_info()
-			g.expr(ast.ChanInit{
-				typ: node.elem_type
-				elem_type: chan_info.elem_type
-			})
-			for _ in 1 .. info.size {
-				g.write(', ')
+			for i in 0 .. info.size {
 				g.expr(ast.ChanInit{
 					typ: node.elem_type
 					elem_type: chan_info.elem_type
 				})
+				if i != info.size - 1 {
+					g.write(', ')
+				}
 			}
 		} else {
-			g.write('0')
+			info := array_type.unaliased_sym.info as ast.ArrayFixed
+			for i in 0 .. info.size {
+				if node.elem_type.has_flag(.option) {
+					g.expr_with_opt(ast.None{}, ast.none_type, node.elem_type)
+				} else {
+					g.write(g.type_default(node.elem_type))
+				}
+				if i != info.size - 1 {
+					g.write(', ')
+				}
+			}
 		}
 	}
 	g.write('}')
@@ -246,15 +252,19 @@ fn (mut g Gen) struct_has_array_or_map_field(elem_typ ast.Type) bool {
 
 // `[]int{len: 6, cap: 10, init: index * index}`
 fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp bool, shared_styp string, var_name string) {
+	prev_inside_lambda := g.inside_lambda
+	g.inside_lambda = true
+	defer {
+		g.inside_lambda = prev_inside_lambda
+	}
 	elem_styp := g.typ(elem_type.typ)
 	noscan := g.check_noscan(elem_type.typ)
 	is_default_array := elem_type.unaliased_sym.kind == .array && node.has_default
 	is_default_map := elem_type.unaliased_sym.kind == .map && node.has_default
 	needs_more_defaults := node.has_len && (g.struct_has_array_or_map_field(elem_type.typ)
 		|| elem_type.unaliased_sym.kind in [.array, .map])
-	if node.has_index { // []int{len: 6, init: index * index} when variable it is used in init expression
-		g.inside_lambda = true
-
+	if node.has_index {
+		// []int{len: 6, init: index * index} when variable it is used in init expression
 		past := g.past_tmp_var_from_var_name(var_name)
 		defer {
 			g.past_tmp_var_done(past)
@@ -319,7 +329,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.writeln('{')
 		g.indent++
 		g.writeln('${elem_typ}* pelem = (${elem_typ}*)${past.tmp_var}.data;')
-		g.writeln('for(int index=0; index<${past.tmp_var}.len; index++, pelem++) {')
+		g.writeln('for (int index=0; index<${past.tmp_var}.len; index++, pelem++) {')
 		g.set_current_pos_as_last_stmt_pos()
 		g.indent++
 		g.writeln('int it = index;') // FIXME: Remove this line when it is fully forbidden
@@ -331,7 +341,6 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.indent--
 		g.writeln('}')
 		g.set_current_pos_as_last_stmt_pos()
-		g.inside_lambda = false
 		return
 	}
 	if is_default_array {
@@ -447,11 +456,15 @@ fn (mut g Gen) write_closure_fn(mut expr ast.AnonFn) {
 
 // `nums.map(it % 2 == 0)`
 fn (mut g Gen) gen_array_map(node ast.CallExpr) {
+	prev_inside_lambda := g.inside_lambda
 	g.inside_lambda = true
+	defer {
+		g.inside_lambda = prev_inside_lambda
+	}
+
 	past := g.past_tmp_var_new()
 	defer {
 		g.past_tmp_var_done(past)
-		g.inside_lambda = false
 	}
 
 	ret_typ := g.typ(node.return_type)
@@ -599,6 +612,8 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	mut compare_fn := 'compare_${g.unique_file_path_hash}_${elem_stype.replace('*', '_ptr')}'
 	mut comparison_type := g.unwrap(ast.void_type)
 	mut left_expr, mut right_expr := '', ''
+	mut use_lambda := false
+	mut lambda_fn_name := ''
 	// the only argument can only be an infix expression like `a < b` or `b.field > a.field`
 	if node.args.len == 0 {
 		comparison_type = g.unwrap(info.elem_type.set_nr_muls(0))
@@ -610,6 +625,12 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 		}
 		left_expr = '*a'
 		right_expr = '*b'
+	} else if node.args[0].expr is ast.LambdaExpr {
+		lambda_fn_name = node.args[0].expr.func.decl.name
+		compare_fn = '${lambda_fn_name}_lambda_wrapper'
+		use_lambda = true
+		mut lambda_node := unsafe { node.args[0].expr }
+		g.gen_anon_fn_decl(mut lambda_node.func)
 	} else {
 		infix_expr := node.args[0].expr as ast.InfixExpr
 		comparison_type = g.unwrap(infix_expr.left_type.set_nr_muls(0))
@@ -663,6 +684,8 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 		'${g.typ(comparison_type.typ)}__lt(${left_expr}, ${right_expr})'
 	} else if comparison_type.unaliased_sym.has_method('<') {
 		'${g.typ(comparison_type.unaliased)}__lt(${left_expr}, ${right_expr})'
+	} else if use_lambda {
+		'${lambda_fn_name}(a, b)'
 	} else {
 		'${left_expr} < ${right_expr}'
 	}

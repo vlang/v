@@ -44,6 +44,7 @@ mut:
 	inside_for                bool
 	inside_fn                 bool // true even with implicit main
 	inside_fn_return          bool
+	inside_call_args          bool // true inside f(  ....  )
 	inside_unsafe_fn          bool
 	inside_str_interp         bool
 	inside_array_lit          bool
@@ -379,6 +380,7 @@ pub fn (mut p Parser) parse() &ast.File {
 		notices: notices
 		global_labels: p.global_labels
 		template_paths: p.template_paths
+		unique_prefix: p.unique_prefix
 	}
 }
 

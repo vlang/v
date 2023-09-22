@@ -2784,6 +2784,9 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 		ast.IntegerLiteral {
 			return c.int_lit(mut node)
 		}
+		ast.LambdaExpr {
+			return c.lambda_expr(mut node, c.expected_type)
+		}
 		ast.LockExpr {
 			return c.lock_expr(mut node)
 		}
@@ -4180,12 +4183,10 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 			}
 		}
 	}
-	if node.op == .bit_not && !c.unwrap_generic(right_type).is_int() && !c.pref.translated
-		&& !c.file.is_translated {
+	if node.op == .bit_not && !right_sym.is_int() && !c.pref.translated && !c.file.is_translated {
 		c.type_error_for_operator('~', 'integer', right_sym.name, node.pos)
 	}
-	if node.op == .not && right_type != ast.bool_type_idx && !c.pref.translated
-		&& !c.file.is_translated {
+	if node.op == .not && right_sym.kind != .bool && !c.pref.translated && !c.file.is_translated {
 		c.type_error_for_operator('!', 'bool', right_sym.name, node.pos)
 	}
 	// FIXME
