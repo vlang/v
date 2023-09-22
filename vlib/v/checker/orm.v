@@ -339,7 +339,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 fn (mut c Checker) check_orm_struct_field_attrs(node ast.SqlStmtLine, field ast.StructField) {
 	for attr in field.attrs {
 		if attr.name == 'nonull' {
-			c.warn('[nonull] attributes are deprecated (all regular fields are now "not null"), use option fields for columns which can be null',
+			c.warn('`nonull` attribute is deprecated; non-optional fields are always "NOT NULL", use Option fields where they can be NULL',
 				node.pos)
 		}
 	}
@@ -483,7 +483,7 @@ fn (mut c Checker) check_sql_expr_type_is_int(expr &ast.Expr, sql_keyword string
 }
 
 fn (mut c Checker) orm_error(message string, pos token.Pos) {
-	c.error('orm: ${message}', pos)
+	c.error('ORM: ${message}', pos)
 }
 
 // check_expr_has_no_fn_calls_with_non_orm_return_type checks that an expression has no function calls
@@ -517,6 +517,13 @@ fn (mut c Checker) check_expr_has_no_fn_calls_with_non_orm_return_type(expr &ast
 	} else if expr is ast.InfixExpr {
 		c.check_expr_has_no_fn_calls_with_non_orm_return_type(expr.left)
 		c.check_expr_has_no_fn_calls_with_non_orm_return_type(expr.right)
+		if expr.right_type.has_flag(.option) && expr.op !in [.key_is, .not_is] {
+			c.warn('comparison with Option value probably isn\'t intended; use "is none" and "!is none" to select by NULL',
+				expr.pos)
+		} else if expr.right_type == ast.none_type && expr.op !in [.key_is, .not_is] {
+			c.warn('comparison with none probably isn\'t intended; use "is none" and "!is none" to select by NULL',
+				expr.pos)
+		}
 	}
 }
 
@@ -590,10 +597,10 @@ fn (mut c Checker) check_orm_or_expr(mut expr ORMExpr) {
 
 	if expr.or_expr.kind == .absent {
 		if c.inside_defer {
-			c.error('V ORM returns a result, so it should have an `or {}` block at the end',
+			c.error('ORM returns a result, so it should have an `or {}` block at the end',
 				expr.pos)
 		} else {
-			c.error('V ORM returns a result, so it should have either an `or {}` block, or `!` at the end',
+			c.error('ORM returns a result, so it should have either an `or {}` block, or `!` at the end',
 				expr.pos)
 		}
 	} else {
