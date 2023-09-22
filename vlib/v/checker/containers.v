@@ -407,6 +407,7 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		node.value_type = val0_type
 		map_value_sym := c.table.sym(node.value_type)
 		expecting_interface_map := map_value_sym.kind == .interface_
+		expecting_array_map := map_value_sym.kind == .array
 		//
 		mut same_key_type := true
 
@@ -424,7 +425,7 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			c.expected_type = val0_type
 			val_type := c.expr(mut val)
 			node.val_types << val_type
-			val_type_sym := c.table.sym(val_type)
+			mut val_type_sym := c.table.sym(val_type)
 			if !c.check_types(key_type, key0_type) || (i == 0 && key_type.is_number()
 				&& key0_type.is_number() && key0_type != ast.mktyp(key_type)) {
 				msg := c.expected_msg(key_type, key0_type)
@@ -452,6 +453,19 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			}
 			if val_type == ast.none_type && val0_type.has_flag(.option) {
 				continue
+			}
+			if expecting_array_map {
+				arr_value := map_value_sym.info as ast.Array
+				if val_type_sym.kind == .array {
+					mut arr_value_2 := val_type_sym.info as ast.Array
+					arr_value_2 = ast.Array{
+						elem_type: arr_value.elem_type
+					}
+					val_type_sym.info = arr_value_2
+				} else {
+					msg := c.expected_msg(val_type, node.value_type)
+					c.error('invalid map value: ${msg}', val.pos())
+				}
 			}
 			if !c.check_types(val_type, val0_type)
 				|| val0_type.has_flag(.option) != val_type.has_flag(.option)
