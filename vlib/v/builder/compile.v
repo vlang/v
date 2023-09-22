@@ -134,26 +134,34 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 		run_args << ['run', compiled_file]
 	}
 	run_args << b.pref.run_args
-	mut run_process := os.new_process(run_file)
-	run_process.set_args(run_args)
+
 	if b.pref.is_verbose {
-		println('running ${run_process.filename} with arguments ${run_process.args}')
+		println('running ${run_file} with arguments ${run_args.join(' ')}')
 	}
-	// Ignore sigint and sigquit while running the compiled file,
-	// so ^C doesn't prevent v from deleting the compiled file.
-	// See also https://git.musl-libc.org/cgit/musl/tree/src/process/system.c
-	prev_int_handler := os.signal_opt(.int, eshcb) or { serror('set .int', err) }
-	mut prev_quit_handler := os.SignalHandler(eshcb)
-	$if !windows { // There's no sigquit on windows
-		prev_quit_handler = os.signal_opt(.quit, eshcb) or { serror('set .quit', err) }
+	mut ret := 0
+	if b.pref.use_os_system_to_run {
+		command_to_run := run_file + ' ' + run_args.join(' ')
+		ret = os.system(command_to_run)
+		// eprintln('> ret: ${ret:5} | command_to_run: ${command_to_run}')
+	} else {
+		mut run_process := os.new_process(run_file)
+		run_process.set_args(run_args)
+		// Ignore sigint and sigquit while running the compiled file,
+		// so ^C doesn't prevent v from deleting the compiled file.
+		// See also https://git.musl-libc.org/cgit/musl/tree/src/process/system.c
+		prev_int_handler := os.signal_opt(.int, eshcb) or { serror('set .int', err) }
+		mut prev_quit_handler := os.SignalHandler(eshcb)
+		$if !windows { // There's no sigquit on windows
+			prev_quit_handler = os.signal_opt(.quit, eshcb) or { serror('set .quit', err) }
+		}
+		run_process.wait()
+		os.signal_opt(.int, prev_int_handler) or { serror('restore .int', err) }
+		$if !windows {
+			os.signal_opt(.quit, prev_quit_handler) or { serror('restore .quit', err) }
+		}
+		ret = run_process.code
+		run_process.close()
 	}
-	run_process.wait()
-	os.signal_opt(.int, prev_int_handler) or { serror('restore .int', err) }
-	$if !windows {
-		os.signal_opt(.quit, prev_quit_handler) or { serror('restore .quit', err) }
-	}
-	ret := run_process.code
-	run_process.close()
 	b.cleanup_run_executable_after_exit(compiled_file)
 	exit(ret)
 }
