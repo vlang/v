@@ -251,7 +251,7 @@ pub fn (mut stmt Stmt) bind_text(b string) {
 pub fn (mut stmt Stmt) bind_null() {
 	stmt.binds << C.MYSQL_BIND{
 		buffer_type: mysql.mysql_type_null
-        length: 0
+		length: 0
 	}
 }
 
