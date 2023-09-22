@@ -96,16 +96,14 @@ fn (mut g Gen) sql_stmt_line(stmt_line ast.SqlStmtLine, connection_var_name stri
 // write_orm_connection_init writes C code that saves the database connection
 // into a variable for later use in ORM queries.
 fn (mut g Gen) write_orm_connection_init(connection_var_name string, db_expr &ast.Expr) {
-	db_expr_type := g.get_db_expr_type(db_expr) or {
-		verror('V ORM: unknown db type for ${db_expr}')
-	}
+	db_expr_type := g.get_db_expr_type(db_expr) or { verror('ORM: unknown db type for ${db_expr}') }
 
 	mut db_ctype_name := g.typ(db_expr_type)
 	is_pointer := db_ctype_name.ends_with('*')
 	reference_sign := if is_pointer { '' } else { '&' }
 	db_ctype_name = db_ctype_name.trim_right('*')
 
-	g.writeln('// V ORM')
+	g.writeln('// ORM')
 	g.write('orm__Connection ${connection_var_name} = ')
 
 	if db_ctype_name == 'orm__Connection' {
@@ -145,7 +143,7 @@ fn (mut g Gen) write_orm_create_table(node ast.SqlStmtLine, table_name string, c
 			g.writeln('.name = _SLIT("${field.name}"),')
 			g.writeln('.typ = ${typ}, // `${sym.name}`')
 			g.writeln('.is_arr = ${sym.kind == .array}, ')
-			g.writeln('.nullable = ${if field.typ.has_flag(.option) { 'true' } else { 'false' }},')
+			g.writeln('.nullable = ${field.typ.has_flag(.option)},')
 			g.writeln('.default_val = (string){ .str = (byteptr) "${field.default_val}", .is_lit = 1 },')
 			g.writeln('.attrs = new_array_from_c_array(${field.attrs.len}, ${field.attrs.len}, sizeof(StructAttribute),')
 			g.indent++
@@ -295,7 +293,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 				arrs << node.sub_structs[int(info.elem_type)]
 				field_names << field.name
 			} else {
-				verror('V ORM only supports 1-dimensional arrays')
+				verror('ORM only supports 1-dimensional arrays')
 			}
 		}
 	}
@@ -504,7 +502,7 @@ fn (mut g Gen) write_orm_expr_to_primitive(expr ast.Expr) {
 		}
 		else {
 			eprintln(expr)
-			verror('V ORM: ${expr.type_name()} is not supported')
+			verror('ORM: ${expr.type_name()} is not supported')
 		}
 	}
 }
@@ -523,17 +521,11 @@ fn (mut g Gen) write_orm_primitive(t ast.Type, expr ast.Expr) {
 		g.writeln('_const_orm__null_primitive,')
 		return
 	}
-	if typ == 'time__Time' {
-		typ = 'time'
-	}
-	if typ == 'orm__InfixType' {
-		typ = 'infix'
-	}
 
-	g.write('orm__${typ}_to_primitive(')
 	if expr is ast.InfixExpr {
-		g.write('(orm__InfixType){')
-		g.write(' .name = _SLIT("${expr.left}"),')
+		g.writeln('orm__infix_to_primitive((orm__InfixType){')
+		g.indent++
+		g.write('.name = _SLIT("${expr.left}"),')
 		mut kind := match expr.op {
 			.plus {
 				'orm__MathOperationKind__add'
@@ -551,16 +543,28 @@ fn (mut g Gen) write_orm_primitive(t ast.Type, expr ast.Expr) {
 				''
 			}
 		}
-		g.write(' .operator = ${kind},')
+		g.writeln(' .operator = ${kind},')
 		g.write(' .right = ')
 		g.write_orm_expr_to_primitive(expr.right)
-		g.write(' }')
-	} else if expr is ast.CallExpr {
-		g.call_expr(expr)
+		g.indent--
+		g.writeln(' }),')
 	} else {
-		g.expr(expr)
+		if typ == 'time__Time' {
+			typ = 'time'
+		}
+
+		if t.has_flag(.option) {
+			typ = 'option_${typ}'
+		}
+		g.write('orm__${typ}_to_primitive(')
+		if expr is ast.CallExpr {
+			g.call_expr(expr)
+		} else {
+			g.left_is_opt = true
+			g.expr(expr)
+		}
+		g.writeln('),')
 	}
-	g.writeln('),')
 }
 
 // write_orm_where writes C code that generates
@@ -572,7 +576,8 @@ fn (mut g Gen) write_orm_where(where_expr ast.Expr) {
 	mut data := []ast.Expr{}
 	mut is_ands := []bool{}
 
-	g.writeln('// V ORM where')
+	g.writeln('// ORM where')
+
 	g.writeln('(orm__QueryData){')
 	g.indent++
 	g.write_orm_where_expr(where_expr, mut fields, mut parentheses, mut kinds, mut data, mut

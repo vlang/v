@@ -221,3 +221,87 @@ fn test_option_struct_fields_and_none() {
 		select count from Foo where c !is none
 	}! == 1
 }
+
+struct Bar {
+	id   u64     [primary; sql: serial]
+	name ?string
+	age  int
+}
+
+fn update_bar1(db MockDB, id u64, name ?string) ! {
+	foo := 66
+	sql db {
+		update Bar set name = name, age = age + 3 + foo where id == id
+	}!
+}
+
+fn update_bar2(db MockDB, name ?string, new_name ?string) ! {
+	sql db {
+		update Bar set name = new_name where name == name
+	}!
+}
+
+type NameFn = fn () ?string
+
+fn update_bar3(db MockDB, name_fn NameFn, new_name string) ! {
+	sql db {
+		update Bar set name = new_name where name == name_fn()
+	}!
+}
+
+fn test_inserting_passed_optionals() {
+	db := MockDB.new()
+
+	entry1 := Bar{}
+	entry2 := Bar{
+		name: 'Alice'
+		age: 55
+	}
+	entry3 := Bar{
+		name: 'Bob'
+		age: 66
+	}
+	sql db {
+		create table Bar
+		insert entry1 into Bar
+		insert entry2 into Bar
+		insert entry3 into Bar
+	}!
+
+	update_bar1(db, 2, none)!
+	update_bar1(db, 1, 'hi')!
+
+	res1 := sql db {
+		select from Bar
+	}!
+	assert res1.len == 3
+	assert res1[0].name or { '' } == 'hi'
+	assert res1[1].name == none
+	assert res1[2].name or { '' } == 'Bob'
+
+	update_bar2(db, none, 'xxx')! // no effect (select using "is none", not "== none")
+	update_bar2(db, 'hi', none)!
+
+	res2 := sql db {
+		select from Bar
+	}!
+	assert res2.len == 3
+	assert res2[0].name == none
+	assert res2[1].name == none
+	assert res2[2].name or { '' } == 'Bob'
+
+	update_bar3(db, fn () ?string {
+		return none // no effect (select using "is none", not "== none")
+	}, 'yyy')!
+	update_bar3(db, fn () ?string {
+		return 'Bob'
+	}, 'www')!
+
+	res3 := sql db {
+		select from Bar
+	}!
+	assert res3.len == 3
+	assert res3[0].name == none
+	assert res3[1].name == none
+	assert res3[2].name or { '' } == 'www'
+}

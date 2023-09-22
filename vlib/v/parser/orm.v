@@ -290,7 +290,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 
 fn (mut p Parser) check_sql_keyword(name string) ?bool {
 	if p.check_name() != name {
-		p.error('V ORM: expecting `${name}`')
+		p.error('ORM: expecting `${name}`')
 		return none
 	}
 	return true
