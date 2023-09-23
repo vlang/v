@@ -728,3 +728,18 @@ pub fn join_to_string[T](array []T, separator string, transform fn (elem T) stri
 	}
 	return sb.str()
 }
+
+// partition splits the original array into pair of lists,
+// where first list contains elements for which predicate yielded true,
+// while second list contains elements for which predicate yielded false
+pub fn partition[T](array []T, predicate fn (elem T) bool) ([]T, []T) {
+	mut matching, mut non_matching := []T{}, []T{}
+	for item in array {
+		if predicate(item) {
+			matching << item
+		} else {
+			non_matching << item
+		}
+	}
+	return matching, non_matching
+}

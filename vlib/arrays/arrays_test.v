@@ -481,3 +481,20 @@ fn test_join_to_string() {
 		return '1'
 	}) == ''
 }
+
+fn test_partition() {
+	a := [1, 2, 3, 4, 5, 6, 7, 8]
+	lower, upper := partition(a, fn (it int) bool {
+		return it < 5
+	})
+	assert lower.len == 4
+	assert upper.len == 4
+	assert lower == [1, 2, 3, 4]
+	assert upper == [5, 6, 7, 8]
+
+	lower2, upper2 := partition(a, fn (it int) bool {
+		return it < 1
+	})
+	assert lower2.len == 0
+	assert upper2.len == 8
+}
