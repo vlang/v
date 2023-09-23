@@ -1,0 +1,6 @@
+a := [4, 5]
+dump(a.map(it))
+dump(a.map(|| 5))
+dump(a.map(|x| 5 * x))
+dump(a.map(|x| x))
+dump(a.map(|x, y| x))
