@@ -359,8 +359,7 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 	if field.has_default_expr {
 		if sym.kind in [.sum_type, .interface_] {
 			if field.typ.has_flag(.option) {
-				g.expr_opt_with_cast(field.default_expr, field.default_expr_typ.set_flag(.option),
-					field.typ)
+				g.expr_with_opt(field.default_expr, field.default_expr_typ, field.typ)
 			} else {
 				g.expr_with_cast(field.default_expr, field.default_expr_typ, field.typ)
 			}
