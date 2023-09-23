@@ -33,17 +33,7 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 			eparam := exp_sym.info.func.params[idx]
 			eparam_type := eparam.typ
 			eparam_auto_deref := eparam.typ.is_ptr()
-			if mut v := node.scope.find(x.name) {
-				if mut v is ast.Var {
-					v.is_arg = true
-					v.typ = eparam_type
-					v.expr = ast.empty_expr
-					v.is_auto_deref = eparam_auto_deref
-				}
-			}
-			c.ident(mut x)
-			x.obj.typ = eparam_type
-
+			c.lambda_expr_fix_type_of_param(mut node, mut x, eparam_type)
 			params << ast.Param{
 				pos: x.pos
 				name: x.name
@@ -100,6 +90,19 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 	return exp_typ
 }
 
+pub fn (mut c Checker) lambda_expr_fix_type_of_param(mut node ast.LambdaExpr, mut pident ast.Ident, ptype ast.Type) {
+	if mut v := node.scope.find(pident.name) {
+		if mut v is ast.Var {
+			v.is_arg = true
+			v.typ = ptype
+			v.is_auto_deref = ptype.is_ptr()
+			v.expr = ast.empty_expr
+		}
+	}
+	c.ident(mut pident)
+	pident.obj.typ = ptype
+}
+
 pub fn (mut c Checker) support_lambda_expr_in_sort(param_type ast.Type, return_type ast.Type, mut expr ast.LambdaExpr) {
 	is_auto_rec := param_type.is_ptr()
 	mut expected_fn := ast.Fn{
@@ -119,5 +122,21 @@ pub fn (mut c Checker) support_lambda_expr_in_sort(param_type ast.Type, return_t
 	}
 	expected_fn_type := ast.new_type(c.table.find_or_register_fn_type(expected_fn, true,
 		false))
+	c.lambda_expr(mut expr, expected_fn_type)
+}
+
+pub fn (mut c Checker) support_lambda_expr_one_param(param_type ast.Type, return_type ast.Type, mut expr ast.LambdaExpr) {
+	mut expected_fn := ast.Fn{
+		params: [
+			ast.Param{
+				name: 'xx'
+				typ: param_type
+				is_auto_rec: param_type.is_ptr()
+			},
+		]
+		return_type: return_type
+	}
+	cb_type := c.table.find_or_register_fn_type(expected_fn, true, false)
+	expected_fn_type := ast.new_type(cb_type)
 	c.lambda_expr(mut expr, expected_fn_type)
 }

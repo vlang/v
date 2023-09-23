@@ -1786,9 +1786,9 @@ pub:
 
 pub struct LambdaExpr {
 pub:
-	pos    token.Pos
-	params []Ident
+	pos token.Pos
 pub mut:
+	params     []Ident
 	pos_expr   token.Pos
 	expr       Expr
 	pos_end    token.Pos
