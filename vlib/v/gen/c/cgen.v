@@ -2261,19 +2261,28 @@ struct SumtypeCastingFn {
 	got     ast.Type
 	exp     ast.Type
 }
-
 fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 	got, exp := got_.idx(), exp_.idx()
 	i := got | int(u32(exp) << 16)
-	got_cname, exp_cname := g.table.sym(got).cname, g.table.sym(exp).cname
+	exp_sym := g.table.sym(exp)
+	mut got_sym := g.table.sym(got)
+	got_cname, exp_cname := got_sym.cname, exp_sym.cname
 	fn_name := '${got_cname}_to_sumtype_${exp_cname}'
 	if got == exp || g.sumtype_definitions[i] {
 		return fn_name
 	}
+	if exp_sym.kind == .sum_type {
+		for {
+			if got_sym.idx in (exp_sym.info as ast.SumType).variants {
+				break
+			}
+			got_sym = g.table.sym(got_sym.parent_idx)
+		}
+	}
 	g.sumtype_definitions[i] = true
 	g.sumtype_casting_fns << SumtypeCastingFn{
 		fn_name: fn_name
-		got: g.table.final_sym(got).idx
+		got: got_sym.idx
 		exp: exp
 	}
 	return fn_name
