@@ -126,7 +126,11 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		g.indent++
 		g.writeln('int it = index;') // FIXME: Remove this line when it is fully forbidden
 		g.write('*pelem = ')
-		g.expr(node.default_expr)
+		if node.elem_type.has_flag(.option) {
+			g.expr_with_opt(node.default_expr, node.default_type, node.elem_type)
+		} else {
+			g.expr_with_cast(node.default_expr, node.default_type, node.elem_type)
+		}
 		g.writeln(';')
 		g.indent--
 		g.writeln('}')
@@ -167,7 +171,11 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 	} else if node.has_default {
 		info := array_type.unaliased_sym.info as ast.ArrayFixed
 		for i in 0 .. info.size {
-			g.expr(node.default_expr)
+			if info.elem_type.has_flag(.option) {
+				g.expr_with_opt(node.default_expr, node.default_type, info.elem_type)
+			} else {
+				g.expr_with_cast(node.default_expr, node.default_type, info.elem_type)
+			}
 			if i != info.size - 1 {
 				g.write(', ')
 			}
@@ -334,7 +342,11 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.indent++
 		g.writeln('int it = index;') // FIXME: Remove this line when it is fully forbidden
 		g.write('*pelem = ')
-		g.expr(node.default_expr)
+		if node.elem_type.has_flag(.option) {
+			g.expr_with_opt(node.default_expr, node.default_type, node.elem_type)
+		} else {
+			g.expr_with_cast(node.default_expr, node.default_type, node.elem_type)
+		}
 		g.writeln(';')
 		g.indent--
 		g.writeln('}')

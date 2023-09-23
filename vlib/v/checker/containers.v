@@ -304,7 +304,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			node.typ = ast.new_type(idx)
 		}
 		if node.has_default {
-			c.expr(mut node.default_expr)
+			node.default_type = c.expr(mut node.default_expr)
 		}
 	}
 	return node.typ
