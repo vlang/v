@@ -2273,7 +2273,7 @@ fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 	g.sumtype_definitions[i] = true
 	g.sumtype_casting_fns << SumtypeCastingFn{
 		fn_name: fn_name
-		got: got
+		got: g.table.final_sym(got).idx
 		exp: exp
 	}
 	return fn_name
