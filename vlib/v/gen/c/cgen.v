@@ -2261,6 +2261,7 @@ struct SumtypeCastingFn {
 	got     ast.Type
 	exp     ast.Type
 }
+
 fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 	got, exp := got_.idx(), exp_.idx()
 	i := got | int(u32(exp) << 16)
