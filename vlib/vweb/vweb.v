@@ -315,6 +315,7 @@ pub fn (mut ctx Context) redirect(url string) Result {
 
 // Send an not_found response
 pub fn (mut ctx Context) not_found() Result {
+	// TODO add a [must_be_returned] attribute, so that the caller is forced to use `return app.not_found()`
 	if ctx.done {
 		return Result{}
 	}
