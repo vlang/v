@@ -199,7 +199,7 @@ fn read_pe32plus_optional_header(mut file os.File, offset u64) !Pe32PlusOptional
 
 	return Pe32PlusOptionalHeaderRead{
 		magic: binary.little_endian_u16(buf)
-		number_of_rva_and_sizes: binary.little_endian_u32(buf[pe32_plus_optional_header_offsetof('number_of_rva_and_sizes')..])
+		number_of_rva_and_sizes: binary.little_endian_u32(buf[pe32_plus_optional_header_offsetof(.number_of_rva_and_sizes)..])
 	}
 }
 
@@ -222,9 +222,9 @@ fn read_pe_section_header(mut file os.File, offset u64) !PeSectionHeaderRead {
 	}
 
 	return PeSectionHeaderRead{
-		virtual_address: binary.little_endian_u32(buf[12..18])
-		size_of_raw_data: binary.little_endian_u32(buf[16..20])
-		pointer_to_raw_data: binary.little_endian_u32(buf[20..24])
+		virtual_address: binary.little_endian_u32(buf[pe_section_header_offsetof(.virtual_address)..])
+		size_of_raw_data: binary.little_endian_u32(buf[pe_section_header_offsetof(.size_of_raw_data)..20])
+		pointer_to_raw_data: binary.little_endian_u32(buf[pe_section_header_offsetof(.pointer_to_raw_data)..24])
 	}
 }
 
