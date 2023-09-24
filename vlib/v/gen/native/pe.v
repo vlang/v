@@ -20,8 +20,11 @@ const (
 	pe_section_align              = 0x1000
 	pe_file_align                 = 0x0200
 
+	pe_coff_hdr_size              = 0x18
 	pe_opt_hdr_size               = 0xf0
+	pe32_plus_opt_hdr_size        = 0x70
 	pe_header_size                = pe_file_align
+	pe_section_header_size        = 0x28
 	pe_stack_size                 = 0x200000 // gcc default on windows
 	pe_heap_size                  = 0x100000 // gcc default on windows
 	// tcc defaults
@@ -31,6 +34,9 @@ const (
 	pe_minor_os_version           = 0
 	pe_major_subsystem_version    = 4
 	pe_minor_subsystem_version    = 0
+
+	pe_header_machine_offset      = 4
+	pe_number_of_sections_offset  = 6
 
 	pe_num_data_dirs              = 0x10
 
@@ -160,7 +166,7 @@ pub fn (mut g Gen) gen_pe_header() {
 			0x16: '; mSizeOfOptionalHeader'
 			0x18: '; mCharacteristics'
 		}
-		assert 0x18 == pe_header.len * 2
+		assert native.pe_coff_hdr_size == pe_header.len * 2
 	}
 
 	g.pe_coff_hdr_pos = g.pos()
@@ -264,6 +270,9 @@ fn pe32_plus_optional_header_offsetof(field string) i64 {
 		}
 		'size_of_image' {
 			56
+		}
+		'number_of_rva_and_sizes' {
+			108
 		}
 		else {
 			panic('pe32_plus_optional_header_offsetof("${field}") not implemented')
@@ -623,33 +632,34 @@ fn (mut g Gen) gen_pe_idata() {
 	idata_pos := g.pos()
 	idata_section.set_pointer_to_raw_data(mut g, int(idata_pos))
 
-	mut imports := [
-		PeDllImport{
-			name: 'KERNEL32.DLL'
-			functions: [
-				'GetStdHandle',
-				'ExitProcess',
-				'WriteFile',
-				// winapi functions
-			]
-		},
-		PeDllImport{
-			name: 'USER32.DLL'
-		},
-		PeDllImport{
-			name: 'msvcrt.dll'
-			functions: [
-				'malloc',
-				'free',
-				'printf',
-				'puts',
-				'isdigit',
-				'isalpha',
-				'memset',
-				// etc...
-			]
-		},
+	dll_files := ['KERNEL32.DLL', 'USER32.DLL', 'msvcrt.dll']
+	mut dlls := dll_files
+		.map(lookup_system_dll(it) or { g.n_error('${it}: ${err}') })
+		.map(index_dll(it) or { g.n_error('${it}: ${err}') })
+
+	g.extern_symbols << [
+		'GetStdHandle',
+		'ExitProcess',
+		'WriteFile',
 	]
+
+	for symbol in g.extern_symbols {
+		sym := symbol.trim_left('C.')
+		mut found := false
+		for mut dll in dlls {
+			if sym in dll.exports {
+				found = true
+				dll.exports[sym] = true
+				break
+			}
+		}
+
+		if !found {
+			eprintln('could not find symbol `${sym}` in ${dll_files}')
+		}
+	}
+
+	mut imports := dlls.map(it.to_import())
 
 	// import directory table
 	for mut imp in imports {

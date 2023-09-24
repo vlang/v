@@ -3,6 +3,11 @@
 // that can be found in the LICENSE file.
 module native
 
+const (
+	dos_header_size          = 0x40
+	dos_header_lfanew_offset = 0x3c
+)
+
 pub fn (mut g Gen) gen_dos_header() {
 	dos_header := [
 		int(PeMagic.mz),
@@ -89,7 +94,7 @@ pub fn (mut g Gen) gen_dos_header() {
 			g.println('; ' + dos_header_description[i])
 		}
 	}
-	if g.pos() != 0x40 {
+	if g.pos() != native.dos_header_size {
 		g.n_error('Invalid dos header size')
 	}
 
