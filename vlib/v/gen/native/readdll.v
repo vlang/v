@@ -106,8 +106,6 @@ fn get_dllexports(mut file os.File) !map[string]bool {
 		}
 	}
 
-	println(export_data_dir)
-
 	for i in 0 .. pe_header.number_of_sections {
 		section_header := read_pe_section_header(mut file, sec_hdroffset +
 			i * pe_section_header_size)!
