@@ -78,21 +78,21 @@ const (
 )
 
 enum PeMachine as u16 {
-	i386 = 0x014c
+	i386  = 0x014c
 	amd64 = 0x8664
 	arm64 = 0xaa64
 }
 
 enum PeMagic as u16 {
-	mz = 0x5a4d // dos(mz)-header magic number
-	pe = 0x4550 // pe-header magic number
-	pe32 = 0x010b // PE32 optional header magic number
+	mz       = 0x5a4d // dos(mz)-header magic number
+	pe       = 0x4550 // pe-header magic number
+	pe32     = 0x010b // PE32 optional header magic number
 	pe32plus = 0x020b // PE32+ optional header magic number
 }
 
 // reference: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format?redirectedfrom=MSDN#windows-subsystem
 enum PeSubsystem as u16 {
-	unknown = 0
+	unknown                  = 0
 	native
 	windows_gui
 	windows_cui
@@ -110,16 +110,16 @@ enum PeSubsystem as u16 {
 
 // reference: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format?redirectedfrom=MSDN#dll-characteristics
 enum DllCharacteristics as u16 {
-	high_entropy_va = 0x0020
-	dynamic_base = 0x0040
-	force_integrity = 0x0080
-	nx_compat = 0x0100
-	no_isolation = 0x0200
-	no_seh = 0x0400
-	no_bind = 0x0800
-	appcontainer = 0x1000
-	wdm_driver = 0x2000
-	guard_cf = 0x4000
+	high_entropy_va       = 0x0020
+	dynamic_base          = 0x0040
+	force_integrity       = 0x0080
+	nx_compat             = 0x0100
+	no_isolation          = 0x0200
+	no_seh                = 0x0400
+	no_bind               = 0x0800
+	appcontainer          = 0x1000
+	wdm_driver            = 0x2000
+	guard_cf              = 0x4000
 	terminal_server_aware = 0x8000
 }
 
@@ -254,12 +254,12 @@ fn (mut g Gen) get_pe32_plus_optional_header() Pe32PlusOptionalHeader {
 }
 
 enum Pe32PlusOPtionalHeaderField {
-	size_of_code = 4
+	size_of_code             = 4
 	size_of_initialized_data = 8
-	address_of_entry_point = 16
-	base_of_code = 20
-	size_of_image = 56
-	number_of_rva_and_sizes = 108
+	address_of_entry_point   = 16
+	base_of_code             = 20
+	size_of_image            = 56
+	number_of_rva_and_sizes  = 108
 }
 
 // implemented because __offsetof() + [packed] structs wasn't consistend across OSs
@@ -443,9 +443,9 @@ mut:
 }
 
 enum PeSectionHeaderField {
-	virtual_size = 8
-	virtual_address = 12
-	size_of_raw_data = 16
+	virtual_size        = 8
+	virtual_address     = 12
+	size_of_raw_data    = 16
 	pointer_to_raw_data = 20
 }
 
@@ -556,7 +556,7 @@ mut:
 }
 
 enum PeImportDirectoryTableField {
-	name_rva = 12
+	name_rva                 = 12
 	import_address_table_rva = 16
 }
 
