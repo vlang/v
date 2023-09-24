@@ -2271,13 +2271,11 @@ fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 	if got == exp || g.sumtype_definitions[i] {
 		return fn_name
 	}
-	if exp_sym.kind == .sum_type {
-		for {
-			if got_sym.idx in (exp_sym.info as ast.SumType).variants {
-				break
-			}
-			got_sym = g.table.sym(got_sym.parent_idx)
+	for {
+		if got_sym.parent_idx == 0 || got_sym.idx in (exp_sym.info as ast.SumType).variants {
+			break
 		}
+		got_sym = g.table.sym(got_sym.parent_idx)
 	}
 	g.sumtype_definitions[i] = true
 	g.sumtype_casting_fns << SumtypeCastingFn{
