@@ -501,10 +501,9 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 					return if cond.op == .and { l && r } else { l || r }, d1 && d1 == d2
 				}
 				.key_is, .not_is {
-					left := cond.left
-					if left in [ast.TypeNode, ast.Ident, ast.SelectorExpr]
+					if cond.left in [ast.TypeNode, ast.Ident, ast.SelectorExpr]
 						&& cond.right in [ast.ComptimeType, ast.TypeNode] {
-						exp_type := g.get_expr_type(left)
+						exp_type := g.get_expr_type(cond.left)
 						if cond.right is ast.ComptimeType {
 							is_true := g.table.is_comptime_type(exp_type, cond.right)
 							if cond.op == .key_is {
@@ -652,28 +651,24 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 					}
 				}
 				.gt, .lt, .ge, .le {
-					if cond.left is ast.SelectorExpr && cond.right is ast.IntegerLiteral {
-						if g.is_comptime_selector_field_name(cond.left as ast.SelectorExpr,
-							'indirections')
-						{
-							is_true := match cond.op {
-								.gt { g.comptime_for_field_type.nr_muls() > cond.right.val.i64() }
-								.lt { g.comptime_for_field_type.nr_muls() < cond.right.val.i64() }
-								.ge { g.comptime_for_field_type.nr_muls() >= cond.right.val.i64() }
-								.le { g.comptime_for_field_type.nr_muls() <= cond.right.val.i64() }
-								else { false }
-							}
-							if is_true {
-								g.write('1')
-							} else {
-								g.write('0')
-							}
-							return is_true, true
-						} else {
-							return true, false
+					if cond.left is ast.SelectorExpr && cond.right is ast.IntegerLiteral
+						&& g.is_comptime_selector_field_name(cond.left, 'indirections') {
+						is_true := match cond.op {
+							.gt { g.comptime_for_field_type.nr_muls() > cond.right.val.i64() }
+							.lt { g.comptime_for_field_type.nr_muls() < cond.right.val.i64() }
+							.ge { g.comptime_for_field_type.nr_muls() >= cond.right.val.i64() }
+							.le { g.comptime_for_field_type.nr_muls() <= cond.right.val.i64() }
+							else { false }
 						}
+						if is_true {
+							g.write('1')
+						} else {
+							g.write('0')
+						}
+						return is_true, true
+					} else {
+						return true, false
 					}
-					return true, false
 				}
 				else {
 					return true, false
