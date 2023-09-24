@@ -41,8 +41,9 @@
 - [ ] -skip-unused on by default
 - [ ] 64/32 bit int depending on arch (will remove array.len limitation on 64 bit systems)
 - [ ] `copy()` builtin function (e.g. for easier conversion from `[]Foo` to `[4]Foo`)
-- [ ] Lambdas: `a.sort(|a, b| a > b)`
+- [x] Lambdas: `a.sort(|a, b| a > b)`
 - [ ] Custom attributes.
+- [ ] `arr.first() or { }` like `arr[0] or { }`
 
 ## [Version 1.0]
 
