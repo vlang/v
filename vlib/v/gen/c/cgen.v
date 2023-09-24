@@ -3637,7 +3637,22 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			g.write('*(')
 		}
 		g.expr(node.expr)
-		if node.expr_type.is_ptr() {
+		for i, embed in node.from_embed_types {
+			embed_sym := g.table.sym(embed)
+			embed_name := embed_sym.embed_name()
+			is_left_ptr := if i == 0 {
+				node.expr_type.is_ptr()
+			} else {
+				node.from_embed_types[i - 1].is_ptr()
+			}
+			if is_left_ptr {
+				g.write('->')
+			} else {
+				g.write('.')
+			}
+			g.write(embed_name)
+		}
+		if node.expr_type.is_ptr() && node.from_embed_types.len == 0 {
 			g.write('->')
 		} else {
 			g.write('.')
