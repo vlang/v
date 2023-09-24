@@ -126,11 +126,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		g.indent++
 		g.writeln('int it = index;') // FIXME: Remove this line when it is fully forbidden
 		g.write('*pelem = ')
-		if node.elem_type.has_flag(.option) {
-			g.expr_with_opt(node.default_expr, node.default_type, node.elem_type)
-		} else {
-			g.expr_with_cast(node.default_expr, node.default_type, node.elem_type)
-		}
+		g.expr_with_default(node)
 		g.writeln(';')
 		g.indent--
 		g.writeln('}')
@@ -171,11 +167,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 	} else if node.has_default {
 		info := array_type.unaliased_sym.info as ast.ArrayFixed
 		for i in 0 .. info.size {
-			if info.elem_type.has_flag(.option) {
-				g.expr_with_opt(node.default_expr, node.default_type, info.elem_type)
-			} else {
-				g.expr_with_cast(node.default_expr, node.default_type, info.elem_type)
-			}
+			g.expr_with_default(node)
 			if i != info.size - 1 {
 				g.write(', ')
 			}
@@ -241,6 +233,14 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		g.writeln(';')
 		g.write(stmt_str)
 		g.write(tmp_var)
+	}
+}
+
+fn (mut g Gen) expr_with_default(node ast.ArrayInit) {
+	if node.elem_type.has_flag(.option) {
+		g.expr_with_opt(node.default_expr, node.default_type, node.elem_type)
+	} else {
+		g.expr_with_cast(node.default_expr, node.default_type, node.elem_type)
 	}
 }
 
@@ -342,11 +342,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.indent++
 		g.writeln('int it = index;') // FIXME: Remove this line when it is fully forbidden
 		g.write('*pelem = ')
-		if node.elem_type.has_flag(.option) {
-			g.expr_with_opt(node.default_expr, node.default_type, node.elem_type)
-		} else {
-			g.expr_with_cast(node.default_expr, node.default_type, node.elem_type)
-		}
+		g.expr_with_default(node)
 		g.writeln(';')
 		g.indent--
 		g.writeln('}')
@@ -409,11 +405,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.writeln('; ${ind}++) {')
 		g.write('\t${tmp}[${ind}] = ')
 		if node.has_default {
-			if node.elem_type.has_flag(.option) {
-				g.expr_with_opt(node.default_expr, node.default_type, node.elem_type)
-			} else {
-				g.expr_with_cast(node.default_expr, node.default_type, node.elem_type)
-			}
+			g.expr_with_default(node)
 		} else {
 			if node.elem_type.has_flag(.option) {
 				g.expr_with_opt(ast.None{}, ast.none_type, node.elem_type)
@@ -427,11 +419,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.write(' (voidptr)${tmp})')
 	} else if node.has_default {
 		g.write('&(${elem_styp}[]){')
-		if node.elem_type.has_flag(.option) {
-			g.expr_with_opt(node.default_expr, node.default_type, node.elem_type)
-		} else {
-			g.expr_with_cast(node.default_expr, node.default_type, node.elem_type)
-		}
+		g.expr_with_default(node)
 		g.write('})')
 	} else if node.has_len && node.elem_type.has_flag(.option) {
 		g.write('&')
