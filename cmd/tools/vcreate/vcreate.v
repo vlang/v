@@ -69,17 +69,17 @@ fn new_project(args []string) {
 
 	if c.name == '' {
 		cerror('project name cannot be empty')
-		exit(1)
+		c.name = os.input('Input your project name: ')
 	}
 
 	if c.name.contains('-') {
 		cerror('"${c.name}" should not contain hyphens')
-		exit(1)
+		c.name = os.input('Input your project name: ')
 	}
 
 	if os.is_dir(c.name) {
 		cerror('${c.name} folder already exists')
-		exit(3)
+		c.name = os.input('Input your project name: ')
 	}
 
 	c.description = if args.len > 1 { args[1] } else { os.input('Input your project description: ') }
