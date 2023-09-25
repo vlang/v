@@ -837,8 +837,6 @@ fn (mut p Parser) process_custom_orm_operators() {
 }
 
 fn (mut p Parser) lambda_expr() ?ast.LambdaExpr {
-	
-
 	// a) `f(||expr)` for a callback lambda expression with 0 arguments
 	// b) `f(|a_1,...,a_n| expr_with_a_1_etc_till_a_n)` for a callback with several arguments
 	if !(p.tok.kind == .logical_or
