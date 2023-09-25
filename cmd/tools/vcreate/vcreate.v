@@ -62,24 +62,28 @@ fn main() {
 	println('Complete!')
 }
 
+fn ask_for_project_name() string {
+	return check_name(os.input('Input your project name: '))
+}
+
 fn new_project(args []string) {
 	mut c := Create{}
 
-	c.name = check_name(if args.len > 0 { args[0] } else { os.input('Input your project name: ') })
+	c.name = if args.len > 0 { check_name(args[0]) } else { ask_for_project_name() }
 
 	if c.name == '' {
 		cerror('project name cannot be empty')
-		c.name = os.input('Input your project name: ')
+		c.name = ask_for_project_name()
 	}
 
 	if c.name.contains('-') {
 		cerror('"${c.name}" should not contain hyphens')
-		c.name = os.input('Input your project name: ')
+		c.name = ask_for_project_name()
 	}
 
 	if os.is_dir(c.name) {
 		cerror('${c.name} folder already exists')
-		c.name = os.input('Input your project name: ')
+		c.name = ask_for_project_name()
 	}
 
 	c.description = if args.len > 1 { args[1] } else { os.input('Input your project description: ') }
