@@ -7,11 +7,6 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 	if node.is_checked {
 		return node.typ
 	}
-	if !c.inside_fn_arg {
-		c.error('lambda expressions are allowed only inside function or method callsites',
-			node.pos)
-		return ast.void_type
-	}
 	if exp_typ == 0 {
 		c.error('lambda expressions are allowed only in places expecting function callbacks',
 			node.pos)
