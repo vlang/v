@@ -36,7 +36,7 @@ fn main() {
 	match cmd {
 		'new' {
 			// list of models allowed
-			project_models := ['web', 'hello_world']
+			project_models := ['web', 'hello_world', 'lib']
 			if os.args.len == 4 {
 				// validation
 				if os.args.last() !in project_models {
@@ -100,6 +100,9 @@ fn new_project(args []string) {
 	// `v new abcde hello_world`
 	if args.len == 2 {
 		match os.args.last() {
+			'lib' {
+				c.set_lib_project_files()
+			}
 			'web' {
 				c.set_web_project_files()
 			}
@@ -293,6 +296,26 @@ fn (mut c Create) set_hello_world_project_files() {
 	c.files << ProjectFiles{
 		path: '${c.name}/src/main.v'
 		content: hello_world_content()
+
+fn (mut c Create) set_lib_project_files() {
+	c.files << ProjectFiles{
+		path: '${c.name}/src/${c.name}.v'
+		content: "module ${c.name}
+
+// quote returns the given string in double quotes.
+pub fn quote(s string) string {
+	return '\"\${s}\"'
+}
+"
+	}
+	c.files << ProjectFiles{
+		path: '${c.name}/src/${c.name}_test.v'
+		content: "module ${c.name}
+
+fn test_quote() {
+	assert quote('Hello, World!') == '\"Hello, World!\"'
+}
+"
 	}
 }
 
