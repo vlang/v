@@ -148,7 +148,9 @@ you are interested in.
 Filtering by likes helps you identify high-impact issues.
 More likes mean more community interest.
 
-To apply this filter, navigate to [Issues](https://github.com/vlang/v/issues)
+To quickly use this filter, click [there](https://github.com/vlang/v/issues?q=is%3Aopen+is%3Aissue+sort%3Areactions-%2B1-desc).
+
+To manually apply this filter, navigate to [Issues](https://github.com/vlang/v/issues)
 tab, then paste the following in the "Filter" field:
 
 ```
