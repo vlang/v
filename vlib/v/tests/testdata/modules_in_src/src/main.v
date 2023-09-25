@@ -1,7 +1,8 @@
 module main
 
 import somemodule
+import somemoduletwo
 
 fn main() {
-	println(somemodule.name())
+	println('${somemodule.name()} ${somemoduletwo.name()}')
 }
