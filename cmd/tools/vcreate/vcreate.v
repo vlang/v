@@ -36,7 +36,7 @@ fn main() {
 	match cmd {
 		'new' {
 			// list of models allowed
-			project_models := ['web', 'hello_world', 'lib']
+			project_models := ['bin', 'lib', 'web']
 			if os.args.len == 4 {
 				// validation
 				if os.args.last() !in project_models {
@@ -97,17 +97,17 @@ fn new_project(args []string) {
 	}
 
 	println('Initialising ...')
-	// `v new abcde hello_world`
 	if args.len == 2 {
+		// E.g.: `v new my_project lib`
 		match os.args.last() {
+			'bin' {
+				c.set_hello_world_project_files(true)
+			}
 			'lib' {
 				c.set_lib_project_files()
 			}
 			'web' {
 				c.set_web_project_files()
-			}
-			'hello_world' {
-				c.set_hello_world_project_files()
 			}
 			else {
 				eprintln('${os.args.last()} model not exist')
@@ -115,8 +115,8 @@ fn new_project(args []string) {
 			}
 		}
 	} else {
-		// `v new abc`
-		c.set_hello_world_project_files()
+		// E.g.: `v new my_project`
+		c.set_hello_world_project_files(true)
 	}
 
 	// gen project based in the `Create.files` info
@@ -137,10 +137,7 @@ fn init_project() {
 		println('Change the description of your project in `v.mod`')
 	}
 	if !os.exists('src/main.v') {
-		c.files << ProjectFiles{
-			path: 'src/main.v'
-			content: hello_world_content()
-		}
+		c.set_hello_world_project_files(false)
 	}
 	c.create_files_and_directories()
 	c.write_gitattributes(false)
@@ -180,15 +177,6 @@ fn vmod_content(c Create) string {
 	version: '${c.version}'
 	license: '${c.license}'
 	dependencies: []
-}
-"
-}
-
-fn hello_world_content() string {
-	return "module main
-
-fn main() {
-	println('Hello World!')
 }
 "
 }
@@ -290,12 +278,19 @@ fn (mut c Create) create_files_and_directories() {
 	}
 }
 
-// ####################################### PROJECTS CONTENT AND PATH #######################################
+// == Set Project Files =======================================================
 
-fn (mut c Create) set_hello_world_project_files() {
+fn (mut c Create) set_hello_world_project_files(new bool) {
 	c.files << ProjectFiles{
-		path: '${c.name}/src/main.v'
-		content: hello_world_content()
+		path: if new { '${c.name}/src/main.v' } else { 'src/main.v' }
+		content: "module main
+
+fn main() {
+	println('Hello World!')
+}
+"
+	}
+}
 
 fn (mut c Create) set_lib_project_files() {
 	c.files << ProjectFiles{
