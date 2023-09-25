@@ -1,5 +1,5 @@
 struct Foo {
-	sum fn(int, int) int
+	sum fn (int, int) int
 }
 
 fn test_lambda_as_struct_field_value() {
