@@ -59,7 +59,10 @@ struct Arrs {
 fn test_encode_and_decode() {
 	// *¹
 	// p := Pet{'Mr. Scratchy McEvilPaws', ['Freddy', 'Fred', 'Charles'], 8, -1, 0.8, true, .manager, Address{'1428 Elm Street', 'Springwood'}, Contact{'123-456-7890'}}
-	p := Pet{'Mr. Scratchy McEvilPaws', ['Freddy', 'Fred', 'Charles'], 8, -1, 0.8, true, .manager, Address{'1428 Elm Street', 'Springwood'}, {'bones': 2, 'kibble': 5}}
+	p := Pet{'Mr. Scratchy McEvilPaws', ['Freddy', 'Fred', 'Charles'], 8, -1, 0.8, true, .manager, Address{'1428 Elm Street', 'Springwood'}, {
+		'bones':  2
+		'kibble': 5
+	}}
 	s := 'name = "Mr. Scratchy McEvilPaws"
 nicknames = [
   "Freddy",
