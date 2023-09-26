@@ -8,6 +8,8 @@ import toml.input
 import toml.scanner
 import toml.parser
 
+import maps
+
 // Null is used in sumtype checks as a "default" value when nothing else is possible.
 pub struct Null {
 }
@@ -68,6 +70,24 @@ fn decode_struct[T](doc Any, mut typ T) {
 				'[]toml.DateTime' { typ.$(field.name) = arr.map(it.datetime()) }
 				'[]toml.Date' { typ.$(field.name) = arr.map(it.date()) }
 				'[]toml.Time' { typ.$(field.name) = arr.map(it.time()) }
+				else {}
+			}
+		} $else $if field.is_map {
+			mut mmap := value.as_map()
+			match typeof(typ.$(field.name)).name {
+				'map[string]string' { typ.$(field.name) = mmap.as_strings() }
+				// Should be cleaned up to use the more modern lambda syntax
+				// |k, v| k, v.int()
+				// Unfortunately lambdas have issues with multiple return at the time of writing
+				'map[string]int' { typ.$(field.name) = maps.to_map[string, Any, string, int](mmap, fn (k string, v Any) (string, int) { return k, v.int() }) }
+				'map[string]i64' { typ.$(field.name) = maps.to_map[string, Any, string, i64](mmap, fn (k string, v Any) (string, i64) { return k, v.i64() }) }
+				'map[string]u64' { typ.$(field.name) = maps.to_map[string, Any, string, u64](mmap, fn (k string, v Any) (string, u64) { return k, v.u64() }) }
+				'map[string]f32' { typ.$(field.name) = maps.to_map[string, Any, string, f32](mmap, fn (k string, v Any) (string, f32) { return k, v.f32() }) }
+				'map[string]f64' { typ.$(field.name) = maps.to_map[string, Any, string, f64](mmap, fn (k string, v Any) (string, f64) { return k, v.f64() }) }
+				'map[string]bool' { typ.$(field.name) = maps.to_map[string, Any, string, bool](mmap, fn (k string, v Any) (string, bool) { return k, v.bool() }) }
+				'map[string]toml.DateTime' { typ.$(field.name) = maps.to_map[string, Any, string, DateTime](mmap, fn (k string, v Any) (string, DateTime) {return  k, v.datetime() }) }
+				'map[string]toml.Date' { typ.$(field.name) = maps.to_map[string, Any, string, Date](mmap, fn (k string, v Any) (string, Date) { return k, v.date() }) }
+				'map[string]toml.Time' { typ.$(field.name) = maps.to_map[string, Any, string, Time](mmap, fn (k string, v Any) (string, Time) { return k, v.time() }) }
 				else {}
 			}
 		} $else $if field.is_struct {
