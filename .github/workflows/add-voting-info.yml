@@ -16,9 +16,9 @@ jobs:
         with:
           issue-number: ${{ github.event.issue.number }}
           body: |
-            > [!IMPORTANT]
+            > [!NOTE]
             > You can vote for this issue using the 👍 reaction. More votes increase the issue's priority
-            > for developers.
+            for developers.
             >
             > Take into account that only the 👍 reaction counts as a vote.
             > Only reactions to the issue itself will be counted as votes, not comments.
