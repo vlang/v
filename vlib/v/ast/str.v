@@ -732,6 +732,16 @@ pub fn (node Stmt) str() string {
 			}
 			return out
 		}
+		Block {
+			mut res := ''
+			res += '{'
+			for s in node.stmts {
+				res += s.str()
+				res += ';'
+			}
+			res += '}'
+			return res
+		}
 		BranchStmt {
 			return node.str()
 		}
@@ -739,14 +749,51 @@ pub fn (node Stmt) str() string {
 			fields := node.fields.map(field_to_string)
 			return 'const (${fields.join(' ')})'
 		}
+		DeferStmt {
+			mut res := ''
+			res += 'defer {'
+			for s in node.stmts {
+				res += s.str()
+				res += ';'
+			}
+			res += '}'
+			return res
+		}
+		EnumDecl {
+			return 'enum ${node.name} { ${node.fields.len} fields }'
+		}
 		ExprStmt {
 			return node.expr.str()
 		}
 		FnDecl {
 			return 'fn ${node.name}( ${node.params.len} params ) { ${node.stmts.len} stmts }'
 		}
-		EnumDecl {
-			return 'enum ${node.name} { ${node.fields.len} fields }'
+		ForInStmt {
+			mut res := ''
+			if node.label.len > 0 {
+				res += '${node.label}: '
+			}
+			res += 'for '
+			if node.key_var != '' {
+				res += node.key_var
+			}
+			if node.key_var != '' && node.val_var != '' {
+				res += ', '
+			}
+			if node.val_var != '' {
+				if node.val_is_mut {
+					res += 'mut '
+				}
+				res += node.val_var
+			}
+			res += ' in '
+			res += node.cond.str()
+			if node.is_range {
+				res += ' .. '
+				res += node.high.str()
+			}
+			res += ' {'
+			return res
 		}
 		ForStmt {
 			if node.is_inf {
@@ -754,8 +801,33 @@ pub fn (node Stmt) str() string {
 			}
 			return 'for ${node.cond} {'
 		}
-		Module {
-			return 'module ${node.name}'
+		GlobalDecl {
+			mut res := ''
+			if node.fields.len == 0 && node.pos.line_nr == node.pos.last_line {
+				return '__global ()'
+			}
+			res += '__global '
+			if node.is_block {
+				res += '( '
+			}
+			for field in node.fields {
+				if field.is_volatile {
+					res += 'volatile '
+				}
+				res += field.name
+				res += ' '
+				if field.has_expr {
+					res += '= '
+					res += field.expr.str()
+				} else {
+					res += global_table.type_to_str(field.typ)
+				}
+				res += ';'
+			}
+			if node.is_block {
+				res += ' )'
+			}
+			return res
 		}
 		Import {
 			mut out := 'import ${node.mod}'
@@ -763,6 +835,9 @@ pub fn (node Stmt) str() string {
 				out += ' as ${node.alias}'
 			}
 			return out
+		}
+		Module {
+			return 'module ${node.name}'
 		}
 		Return {
 			mut out := 'return'
