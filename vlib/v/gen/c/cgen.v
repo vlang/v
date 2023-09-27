@@ -1520,9 +1520,9 @@ pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
 	is_c_parent := parent.name.len > 2 && parent.name[0] == `C` && parent.name[1] == `.`
 	//mut is_typedef := false
 	mut is_fixed_array_of_non_builtin := false
-	if parent.info is ast.Struct {
+	/*if parent.info is ast.Struct {
 		is_typedef = parent.info.is_typedef
-	}
+	}*/
 	mut parent_styp := parent.cname
 	if is_c_parent {
 		if sym.info is ast.Alias {
