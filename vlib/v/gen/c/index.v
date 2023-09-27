@@ -69,7 +69,6 @@ fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 	mut tmp_opt := ''
 	mut cur_line := ''
 	mut gen_or := node.or_expr.kind != .absent || node.is_option
-	mut tmp_left := ''
 
 	if sym.kind == .string {
 		if node.is_gated {
@@ -90,15 +89,6 @@ fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 		}
 		g.expr(node.left)
 	} else if sym.kind == .array {
-		if !range.has_high {
-			tmp_left = g.new_tmp_var()
-			tmp_type := g.typ(node.left_type)
-			g.insert_before_stmt('${util.tabs(g.indent)}${tmp_type} ${tmp_left};')
-			// (tmp = expr, array_slice(...))
-			g.write('(${tmp_left} = ')
-			g.expr(node.left)
-			g.write(', ')
-		}
 		if node.is_gated {
 			g.write('array_slice_ni(')
 		} else {
@@ -107,11 +97,7 @@ fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 		if node.left_type.is_ptr() {
 			g.write('*')
 		}
-		if range.has_high {
-			g.expr(node.left)
-		} else {
-			g.write(tmp_left)
-		}
+		g.expr(node.left)
 	} else if sym.kind == .array_fixed {
 		// Convert a fixed array to V array when doing `fixed_arr[start..end]`
 		info := sym.info as ast.ArrayFixed
@@ -156,17 +142,8 @@ fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 	} else if sym.kind == .array_fixed {
 		info := sym.info as ast.ArrayFixed
 		g.write('${info.size}')
-	} else if sym.kind == .array {
-		if node.left_type.is_ptr() {
-			g.write('${tmp_left}->')
-		} else {
-			g.write('${tmp_left}.')
-		}
-		g.write('len)')
 	} else {
-		g.write('(')
-		g.expr(node.left)
-		g.write(').len')
+		g.write('2147483647') // max_int
 	}
 	g.write(')')
 
