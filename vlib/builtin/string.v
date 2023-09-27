@@ -1027,13 +1027,6 @@ pub fn (s string) split_into_lines() []string {
 	return res
 }
 
-// used internally for [2..4]
-[inline]
-fn (s string) substr2(start int, _end int, end_max bool) string {
-	end := if end_max { s.len } else { _end }
-	return s.substr(start, end)
-}
-
 // substr returns the string between index positions `start` and `end`.
 // Example: assert 'ABCD'.substr(1,3) == 'BC'
 [direct_array_access]
