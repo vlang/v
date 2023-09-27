@@ -168,10 +168,12 @@ fn get_all_commands() []Command {
 			okmsg: 'V compiles hello_world.v on the native backend for macos'
 			rmfile: 'hw.macos'
 		}
-		res << Command{
-			line: '${vexe} -os windows -experimental -b native -o hw.exe examples/hello_world.v'
-			okmsg: 'V compiles hello_world.v on the native backend for windows'
-			rmfile: 'hw.exe'
+		$if windows {
+			res << Command{
+				line: '${vexe} -os windows -experimental -b native -o hw.exe examples/hello_world.v'
+				okmsg: 'V compiles hello_world.v on the native backend for windows'
+				rmfile: 'hw.exe'
+			}
 		}
 		//
 		res << Command{
