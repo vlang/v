@@ -1525,10 +1525,14 @@ pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
 	}
 	mut parent_styp := parent.cname
 	if is_c_parent {
-		if !is_typedef {
-			parent_styp = 'struct ' + parent.cname[3..]
-		} else {
-			parent_styp = parent.cname[3..]
+		if sym.info is ast.Alias {
+			parent_styp = g.typ(sym.info.parent_type)
+			if !is_typedef {
+				parent_styp = parent_styp // same as `struct parent.cname` but includes ptrs
+			} else {
+				println(parent_styp)
+				parent_styp = 'struct ' + parent_styp // same as `parent.cname` but includes ptrs
+			}
 		}
 	} else {
 		if sym.info is ast.Alias {
