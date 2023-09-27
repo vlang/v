@@ -9,13 +9,12 @@ import os
 // makes the program structure in a _sub_ directory. Besides that, the
 // functionality is essentially the same.
 
-// Note: here are the currently supported invokations so far:
-// 1) `v init` -> create a new project in the current folder
-// 2) `v new abc` -> create a new project in the new folder `abc`, by default a "hello world" project.
-// 3) `v new abcd web` -> create a new project in the new folder `abcd`, using the vweb template.
-// 4) `v new abcde hello_world` -> create a new project in the new folder `abcde`, using the hello_world template.
-
-// Note: run `v cmd/tools/vcreate_test.v` after changes to this program, to avoid regressions.
+// Note: here are the currently supported invocations so far:
+// - `v init` -> initialize a new project in the current folder
+// - `v new` -> create a new project in the directory specified during setup, using the "bin" template by default.
+// - `v new my_bin_project bin` -> create a new project directory `my_bin_project`, using the bin template.
+// - `v new my_lib_project lib` -> create a new project directory `my_lib_project`, using the lib template.
+// - `v new my_web_project web` -> create a new project directory `my_web_project`, using the vweb template.
 
 struct Create {
 mut:
