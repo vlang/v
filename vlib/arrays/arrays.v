@@ -11,6 +11,7 @@ import strings
 // - window - get snapshots of the window of the given size sliding along array with the given step, where each snapshot is an array
 // - group - merge two arrays by interleaving e.g. arrays.group([1,3,5], [2,4,6]) => [[1,2],[3,4],[5,6]]
 // - flatten - reduce dimensionality of array by one. e.g. arrays.flatten([[1,2],[3,4],[5,6]]) => [1,2,3,4,5,6]
+// - each - call a callback fn, for each element of the array, similar to a.map(), but unlike it, the callback should not return anything
 
 // min returns the minimum value in the array
 // Example: arrays.min([1, 2, 3, 0, 9])! // => 0
@@ -742,4 +743,19 @@ pub fn partition[T](array []T, predicate fn (elem T) bool) ([]T, []T) {
 		}
 	}
 	return matching, non_matching
+}
+
+// each calls the callback fn `cb`, for each element of the given array `a`
+pub fn each[T](a []T, cb fn (elem T)) {
+	for item in a {
+		cb(item)
+	}
+}
+
+// each_indexed calls the callback fn `cb`, for each element of the given array `a`,
+// passing it both the index of the current element, and the element itself
+pub fn each_indexed[T](a []T, cb fn (i int, e T)) {
+	for idx, item in a {
+		cb(idx, item)
+	}
 }
