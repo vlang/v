@@ -33,3 +33,17 @@ fn test_all() {
 	assert !a.all(|x| x > 4)
 	assert a.all(|x| x < 40)
 }
+
+fn each(a []int, cb fn (x int)) {
+	for x in a {
+		cb(x)
+	}
+}
+
+fn test_using_lambda_expr_that_does_not_return_as_cb() {
+	each(a, fn (x int) {
+		println(x)
+	})
+	each(a, |x| println(x))
+	each(a, |x| dump(x))
+}

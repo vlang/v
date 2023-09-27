@@ -24,11 +24,15 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 			return ast.void_type
 		}
 		mut params := []ast.Param{}
+		mut generic_types := map[ast.Type]bool{}
 		for idx, mut x in node.params {
 			eparam := exp_sym.info.func.params[idx]
 			eparam_type := eparam.typ
 			eparam_auto_deref := eparam.typ.is_ptr()
 			c.lambda_expr_fix_type_of_param(mut node, mut x, eparam_type)
+			if eparam_type.has_flag(.generic) {
+				generic_types[eparam_type] = true
+			}
 			params << ast.Param{
 				pos: x.pos
 				name: x.name
@@ -37,16 +41,42 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 				is_auto_rec: eparam_auto_deref
 			}
 		}
-		/////
+
 		is_variadic := false
 		return_type := exp_sym.info.func.return_type
 		return_type_pos := node.pos
-		mut stmts := []ast.Stmt{}
-		mut return_stmt := ast.Return{
-			pos: node.pos
-			exprs: [node.expr]
+		if return_type.has_flag(.generic) {
+			generic_types[return_type] = true
 		}
-		stmts << return_stmt
+
+		mut generic_names := []string{}
+		for t, _ in generic_types {
+			gtnames := c.table.generic_type_names(t)
+			for x in gtnames {
+				if x !in generic_names {
+					generic_names << x
+				}
+			}
+		}
+		// dump(generic_types)
+		// dump(generic_names)
+
+		mut stmts := []ast.Stmt{}
+		mut has_return := false
+		if return_type == ast.void_type {
+			stmts << ast.ExprStmt{
+				pos: node.pos
+				expr: node.expr
+				is_expr: false
+				typ: return_type
+			}
+		} else {
+			stmts << ast.Return{
+				pos: node.pos
+				exprs: [node.expr]
+			}
+			has_return = true
+		}
 
 		mut func := ast.Fn{
 			params: params
@@ -64,6 +94,7 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 				short_name: ''
 				mod: c.file.mod.name
 				stmts: stmts
+				has_return: has_return
 				return_type: return_type
 				return_type_pos: return_type_pos
 				params: params
@@ -74,8 +105,12 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 				pos: node.pos.extend(node.pos_end)
 				file: c.file.path
 				scope: node.scope.parent
+				generic_names: generic_names
 			}
 			typ: typ
+		}
+		if node.func.decl.generic_names.len > 0 {
+			c.table.register_fn_generic_types(node.func.decl.fkey())
 		}
 		c.anon_fn(mut node.func)
 	}
