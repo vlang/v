@@ -99,7 +99,6 @@ pub fn mark_used(mut table ast.Table, pref_ &pref.Preferences, ast_files []&ast.
 			'22.repeat_to_depth',
 			'22.slice',
 			'22.slice_ni',
-			'22.slice2',
 			'61.get',
 			'61.set',
 			'65558.last',
