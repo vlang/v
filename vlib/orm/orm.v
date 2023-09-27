@@ -530,7 +530,7 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 							return error("references attribute needs to be in the format [references], [references: 'tablename'], or [references: 'tablename(field_id)']")
 						}
 						if attr.arg.contains('(') {
-							ref_table, ref_field := attr.arg.split_once('(')?
+							ref_table, ref_field := attr.arg.split_once('(')
 							if !ref_field.ends_with(')') {
 								return error("explicit references attribute should be written as [references: 'tablename(field_id)']")
 							}

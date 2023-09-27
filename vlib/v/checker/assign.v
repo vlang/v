@@ -47,11 +47,6 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				}
 				node.right_types = right_type_sym.mr_info().types
 				right_len = node.right_types.len
-				if mut right is ast.CallExpr {
-					if right.or_block.kind == .absent && right_type.has_flag(.option) {
-						c.error("cannot multi assign as Option isn't propagated", right.pos)
-					}
-				}
 			} else if right_type == ast.void_type {
 				right_len = 0
 			}

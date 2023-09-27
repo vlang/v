@@ -1,3 +1,0 @@
-a, b := 'fdf:df:'.split_once(',')
-println(a)
-println(b)
