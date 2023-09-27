@@ -1518,7 +1518,7 @@ static inline void __${sym.cname}_pushval(${sym.cname} ch, ${push_arg} val) {
 pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
 	parent := g.table.type_symbols[sym.parent_idx]
 	is_c_parent := parent.name.len > 2 && parent.name[0] == `C` && parent.name[1] == `.`
-	mut is_typedef := false
+	//mut is_typedef := false
 	mut is_fixed_array_of_non_builtin := false
 	if parent.info is ast.Struct {
 		is_typedef = parent.info.is_typedef
@@ -1527,12 +1527,6 @@ pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
 	if is_c_parent {
 		if sym.info is ast.Alias {
 			parent_styp = g.typ(sym.info.parent_type)
-			if !is_typedef {
-				parent_styp = parent_styp // same as `struct parent.cname` but includes ptrs
-			} else {
-				println(parent_styp)
-				parent_styp = 'struct ' + parent_styp // same as `parent.cname` but includes ptrs
-			}
 		}
 	} else {
 		if sym.info is ast.Alias {
