@@ -264,7 +264,11 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 				if elem_sym.info is ast.FnType {
 					g.write('((')
 					g.write_fn_ptr_decl(&elem_sym.info, '')
-					g.write(')(*(${elem_type_str}*)array_get(')
+					if is_direct_array_access {
+						g.write(')((${elem_type_str}*)')
+					} else {
+						g.write(')(*(${elem_type_str}*)array_get(')
+					}
 				}
 				if left_is_ptr && !node.left_type.has_flag(.shared_f) {
 					g.write('*')
@@ -296,6 +300,9 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			g.write('data)[')
 			g.expr(node.index)
 			g.write(']')
+			if g.is_fn_index_call {
+				g.write(')')
+			}
 		} else {
 			g.write(', ')
 			g.expr(node.index)
