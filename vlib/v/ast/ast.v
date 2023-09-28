@@ -2079,6 +2079,15 @@ pub fn (e &Expr) is_lockable() bool {
 	}
 }
 
+// returns if an expression has call expr`
+pub fn (e &Expr) has_fn_call() bool {
+	return match e {
+		CallExpr { true }
+		SelectorExpr { e.expr.has_fn_call() }
+		else { false }
+	}
+}
+
 // CTempVar is used in cgen only, to hold nodes for temporary variables
 pub struct CTempVar {
 pub:

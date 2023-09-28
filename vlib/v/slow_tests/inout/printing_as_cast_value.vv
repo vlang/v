@@ -1,0 +1,30 @@
+type Numbers = int | string
+
+struct Values {
+	value Numbers
+}
+
+struct Wrapper {
+	element []Values
+mut:
+	index int
+}
+
+fn (mut instance Wrapper) get() Values {
+	println('Gets called')
+	return instance.element[0]
+}
+
+fn main() {
+	mut wrapper := Wrapper{
+		element: [
+			Values{
+				value: 1
+			},
+			Values{
+				value: '2'
+			},
+		]
+	}
+	println(wrapper.get().value as int)
+}
