@@ -1,6 +1,5 @@
 // Author: CCS & KeitoTobi1
 // Backtracking Supported.
-
 import datatypes
 
 fn find_pattern(adj map[string][]string, start string, target string) [][]string {
