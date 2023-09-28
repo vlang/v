@@ -1385,6 +1385,8 @@ pub fn (mut f Fmt) interface_field(field ast.StructField) {
 		if sym.info.is_anon {
 			f.write('\t${field.name} ')
 			f.write_anon_struct_field_decl(field.typ, ast.StructDecl{ fields: sym.info.fields })
+		} else {
+			f.write('\t${field.name} ${ft}')
 		}
 	} else {
 		f.write('\t${field.name} ${ft}')
