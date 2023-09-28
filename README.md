@@ -41,23 +41,6 @@
 - C and JavaScript backends
 - Great for writing low-level software ([Vinix OS](https://github.com/vlang/vinix))
 
-## Stability guarantee and future changes
-
-Despite being at an early development stage, the V language is relatively stable and has
-backwards compatibility guarantee, meaning that the code you write today is guaranteed
-to work a month, a year, or five years from now.
-
-There still may be minor syntax changes before the 1.0 release, but they will be handled
-automatically via `vfmt`, as has been done in the past.
-
-The V core APIs (primarily the `os` module) will still have minor changes until
-they are stabilized in V 1.0. Of course the APIs will grow after that, but without breaking
-existing code.
-
-Unlike many other languages, V is not going to be always changing, with new features
-being introduced and old features modified. It is always going to be a small and simple
-language, very similar to the way it is right now.
-
 ## Installing V from source
 
 --> **_(this is the preferred method)_**
