@@ -255,8 +255,8 @@ const (
 		'do_not_remove',
 		'vlib/v/tests/const_fixed_array_containing_references_to_itself_test.v', // error C2099: initializer is not a constant
 		'vlib/v/tests/const_and_global_with_same_name_test.v', // error C2099: initializer is not a constant
-		'vlib/v/tests/sumtype_as_cast_test.v', // error: cannot support compound statement expression ({expr; expr; expr;})
-		'vlib/v/slow_tests/inout/printing_as_cast_value.vv', // error: cannot support compound statement expression ({expr; expr; expr;})
+		'vlib/v/tests/sumtype_as_cast_1_test.v', // error: cannot support compound statement expression ({expr; expr; expr;})
+		'vlib/v/tests/sumtype_as_cast_2_test.v', // error: cannot support compound statement expression ({expr; expr; expr;})
 		'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.v', // TODO
 	]
 	skip_on_windows               = [

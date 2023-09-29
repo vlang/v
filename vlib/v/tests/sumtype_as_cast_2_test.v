@@ -11,11 +11,11 @@ mut:
 }
 
 fn (mut instance Wrapper) get() Values {
-	println('Gets called')
+	instance.index++
 	return instance.element[0]
 }
 
-fn main() {
+fn test_sumtype_as_cast() {
 	mut wrapper := Wrapper{
 		element: [
 			Values{
@@ -27,4 +27,5 @@ fn main() {
 		]
 	}
 	println(wrapper.get().value as int)
+	assert wrapper.index == 1
 }
