@@ -1477,7 +1477,8 @@ println('Your OS is ${current_os}.')
 Any imported module name can be aliased using the `as` keyword:
 
 > **Note**
-> This example will not compile unless you have created `mymod/sha256.v`
+> This example will not compile unless you have created `mymod/sha256/somename.v`
+> (submodule names are determined by their path, not by the names of the .v file(s) in them).
 
 ```v failcompile
 import crypto.sha256
