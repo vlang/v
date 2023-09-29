@@ -429,10 +429,11 @@ pub fn system(cmd string) int {
 	}
 	$if !windows {
 		pret, is_signaled := posix_wait4_to_exit_status(ret)
+		ret = pret
 		if is_signaled {
 			eprintln('Terminated by signal ${pret:2d} (' + sigint_to_signal_name(pret) + ')')
+			ret = pret + 128
 		}
-		ret = pret + 128
 	}
 	return ret
 }
