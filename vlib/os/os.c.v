@@ -429,10 +429,11 @@ pub fn system(cmd string) int {
 	}
 	$if !windows {
 		pret, is_signaled := posix_wait4_to_exit_status(ret)
-		if is_signaled {
-			println('Terminated by signal ${ret:2d} (' + sigint_to_signal_name(pret) + ')')
-		}
 		ret = pret
+		if is_signaled {
+			eprintln('Terminated by signal ${pret:2d} (' + sigint_to_signal_name(pret) + ')')
+			ret = pret + 128
+		}
 	}
 	return ret
 }
@@ -541,7 +542,7 @@ pub fn rmdir(path string) ! {
 fn print_c_errno() {
 	e := C.errno
 	se := unsafe { tos_clone(&u8(C.strerror(e))) }
-	println('errno=${e} err=${se}')
+	eprintln('errno=${e} err=${se}')
 }
 
 // get_raw_line returns a one-line string from stdin along with '\n' if there is any.
