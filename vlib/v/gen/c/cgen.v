@@ -6564,7 +6564,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 	mut expr_type_sym := g.table.sym(g.unwrap_generic(node.expr_type))
 	if mut expr_type_sym.info is ast.SumType {
 		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
-		if node.expr is ast.CallExpr && !g.is_cc_msvc {
+		if node.expr.has_fn_call() && !g.is_cc_msvc {
 			tmp_var := g.new_tmp_var()
 			expr_styp := g.typ(node.expr_type)
 			g.write('({ ${expr_styp} ${tmp_var} = ')
