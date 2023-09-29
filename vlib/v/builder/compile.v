@@ -161,7 +161,7 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 		}
 		ret = run_process.code
 		if run_process.err != '' {
-			eprintln('> V run program error: ${run_process.err}')
+			eprintln(run_process.err)
 		}
 		run_process.close()
 	}
