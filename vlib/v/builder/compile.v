@@ -160,6 +160,9 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 			os.signal_opt(.quit, prev_quit_handler) or { serror('restore .quit', err) }
 		}
 		ret = run_process.code
+		if run_process.err != '' {
+			eprintln('> V run program error: ${run_process.err}')
+		}
 		run_process.close()
 	}
 	b.cleanup_run_executable_after_exit(compiled_file)
