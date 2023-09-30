@@ -16,14 +16,14 @@ fn try_numbers() ? {
 	}
 }
 
-fn error_if_even(num int) ?int {
+fn error_if_even(num int) !int {
 	if num % 2 == 0 {
 		return error('number is even')
 	}
 	return num
 }
 
-fn error_if_prime(num int) ?int {
+fn error_if_prime(num int) !int {
 	for i in 2 .. num {
 		if num % i == 0 {
 			return error('${num} is prime')

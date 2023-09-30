@@ -146,7 +146,7 @@ fn error_if_even(num int) !int {
 	return num
 }
 
-fn propagation() ? {
+fn propagation() ! {
 	println('Propagation test:')
 	return error('"Task failed successfully" - Windows XP')
 }
