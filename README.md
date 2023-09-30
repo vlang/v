@@ -41,20 +41,22 @@
 - C and JavaScript backends
 - Great for writing low-level software ([Vinix OS](https://github.com/vlang/vinix))
 
-## Stability guarantee and future changes
+## Stability, future changes, post 1.0 freeze
 
-Despite being at an early development stage, the V language is relatively stable and has
-backwards compatibility guarantee, meaning that the code you write today is guaranteed
-to work a month, a year, or five years from now.
+Despite being at an early development stage, the V language is relatively stable, and doesn't
+change often. But there will bechanges before 1.0.
+Most changes in the syntax are handled via vfmt automatically.
 
-There still may be minor syntax changes before the 1.0 release, but they will be handled
-automatically via `vfmt`, as has been done in the past.
-
-The V core APIs (primarily the `os` module) will still have minor changes until
+The V core APIs (primarily the `os` module) will also have minor changes until
 they are stabilized in V 1.0. Of course the APIs will grow after that, but without breaking
 existing code.
 
-Unlike many other languages, V is not going to be always changing, with new features
+After the 1.0 release V is going to be in the "feature freeze" mode. That means no breaking changes
+in the language, only bug fixes and performance improvements. Similar to Go.
+
+Will there be V 2.0? Not within a decade after 1.0, perhaps not ever.
+
+To sum it up, unlike many other languages, V is not going to be always changing, with new features
 being introduced and old features modified. It is always going to be a small and simple
 language, very similar to the way it is right now.
 
