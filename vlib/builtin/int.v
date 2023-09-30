@@ -12,6 +12,7 @@ type byte = u8
 type i32 = int
 
 // ptr_str returns the address of `ptr` as a `string`.
+[markused]
 pub fn ptr_str(ptr voidptr) string {
 	buf1 := u64(ptr).hex()
 	return buf1
@@ -570,7 +571,7 @@ pub fn (b []u8) byterune() !rune {
 // repeat returns a new string with `count` number of copies of the byte it was called on.
 pub fn (b u8) repeat(count int) string {
 	if count < 0 {
-		panic('byte.repeat: count is negative: ${count}')
+		panic('byte.repeat: count is negative: ' + count.str())
 	} else if count == 0 {
 		return ''
 	} else if count == 1 {

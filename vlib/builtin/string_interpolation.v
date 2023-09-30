@@ -678,30 +678,66 @@ pub fn str_intp(data_len int, input_base &StrIntpData) string {
 // They are used to substitute old _STR calls.
 // FIXME: this const is not released from memory => use a precalculated string const for now.
 // si_s_code = "0x" + int(StrIntpType.si_s).hex() // code for a simple string.
-pub const (
-	si_s_code   = '0xfe10'
-	si_g32_code = '0xfe0e'
-	si_g64_code = '0xfe0f'
-)
+pub const si_s_code = '0xfe10'
 
-[inline]
+pub const si_g32_code = '0xfe0e'
+
+pub const si_g64_code = '0xfe0f'
+
+[inline; manualfree]
 pub fn str_intp_sq(in_str string) string {
-	return 'str_intp(2, _MOV((StrIntpData[]){{_SLIT("\'"), ${si_s_code}, {.d_s = ${in_str}}},{_SLIT("\'"), 0, {.d_c = 0 }}}))'
+	mut sb := strings.new_builder(100)
+	defer {
+		unsafe { sb.free() }
+	}
+	sb.write_string('str_intp(2, _MOV((StrIntpData[]){{_SLIT("\'"), ')
+	sb.write_string(si_s_code)
+	sb.write_string(', {.d_s = ')
+	sb.write_string(in_str)
+	sb.write_string('}},{_SLIT("\'"), 0, {.d_c = 0 }}}))')
+	return sb.str()
 }
 
-[inline]
+[inline; manualfree]
 pub fn str_intp_rune(in_str string) string {
-	return 'str_intp(2, _MOV((StrIntpData[]){{_SLIT("\`"), ${si_s_code}, {.d_s = ${in_str}}},{_SLIT("\`"), 0, {.d_c = 0 }}}))'
+	mut sb := strings.new_builder(100)
+	defer {
+		unsafe { sb.free() }
+	}
+	sb.write_string('str_intp(2, _MOV((StrIntpData[]){{_SLIT("\`"), ')
+	sb.write_string(si_s_code)
+	sb.write_string(', {.d_s = ')
+	sb.write_string(in_str)
+	sb.write_string('}},{_SLIT("\`"), 0, {.d_c = 0 }}}))')
+	return sb.str()
 }
 
-[inline]
+[inline; manualfree]
 pub fn str_intp_g32(in_str string) string {
-	return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${si_g32_code}, {.d_f32 = ${in_str} }}}))'
+	mut sb := strings.new_builder(100)
+	defer {
+		unsafe { sb.free() }
+	}
+	sb.write_string('str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ')
+	sb.write_string(si_g32_code)
+	sb.write_string(', {.d_f32 = ')
+	sb.write_string(in_str)
+	sb.write_string('}}}))')
+	return sb.str()
 }
 
-[inline]
+[inline; manualfree]
 pub fn str_intp_g64(in_str string) string {
-	return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${si_g64_code}, {.d_f64 = ${in_str} }}}))'
+	mut sb := strings.new_builder(100)
+	defer {
+		unsafe { sb.free() }
+	}
+	sb.write_string('str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ')
+	sb.write_string(si_g64_code)
+	sb.write_string(', {.d_f64 = ')
+	sb.write_string(in_str)
+	sb.write_string('}}}))')
+	return sb.str()
 }
 
 // replace %% with the in_str
@@ -712,18 +748,35 @@ pub fn str_intp_sub(base_str string, in_str string) string {
 		exit(1)
 	}
 	// return base_str[..index] + in_str + base_str[index+2..]
-
+	mut sb := strings.new_builder(100)
+	defer {
+		unsafe { sb.free() }
+	}
 	unsafe {
 		st_str := base_str[..index]
 		if index + 2 < base_str.len {
 			en_str := base_str[index + 2..]
-			res_str := 'str_intp(2, _MOV((StrIntpData[]){{_SLIT("${st_str}"), ${si_s_code}, {.d_s = ${in_str} }},{_SLIT("${en_str}"), 0, {.d_c = 0}}}))'
+			sb.write_string('str_intp(2, _MOV((StrIntpData[]){{_SLIT("')
+			sb.write_string(st_str)
+			sb.write_string('"), ')
+			sb.write_string(si_s_code)
+			sb.write_string(', {.d_s = ')
+			sb.write_string(in_str)
+			sb.write_string(' }},{_SLIT("')
+			sb.write_string(en_str)
+			sb.write_string('"), 0, {.d_c = 0}}}))')
 			st_str.free()
 			en_str.free()
-			return res_str
+			return sb.str()
 		}
-		res2_str := 'str_intp(1, _MOV((StrIntpData[]){{_SLIT("${st_str}"), ${si_s_code}, {.d_s = ${in_str} }}}))'
+		sb.write_string('str_intp(1, _MOV((StrIntpData[]){{_SLIT("')
+		sb.write_string(st_str)
+		sb.write_string('"), ')
+		sb.write_string(si_s_code)
+		sb.write_string(', {.d_s = ')
+		sb.write_string(in_str)
+		sb.write_string(' }}}))')
 		st_str.free()
-		return res2_str
+		return sb.str()
 	}
 }

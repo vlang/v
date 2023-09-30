@@ -41,6 +41,9 @@ fn (mut c Checker) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 }
 
 fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
+	$if trace_string_interpolation ? {
+		c.note('string interpolation', node.pos)
+	}
 	inside_casting_to_str_save := c.inside_casting_to_str
 	c.inside_casting_to_str = true
 	for i, mut expr in node.exprs {

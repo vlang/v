@@ -1034,7 +1034,8 @@ pub fn (s string) substr(start int, _end int) string {
 	end := if _end == 2147483647 { s.len } else { _end } // max_int
 	$if !no_bounds_checking {
 		if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
-			panic('substr(${start}, ${end}) out of bounds (len=${s.len})')
+			panic('substr(' + start.str() + ', ' + end.str() + ') out of bounds (len=' +
+				s.len.str() + ')')
 		}
 	}
 	len := end - start
@@ -1058,7 +1059,8 @@ pub fn (s string) substr(start int, _end int) string {
 pub fn (s string) substr_with_check(start int, _end int) !string {
 	end := if _end == 2147483647 { s.len } else { _end } // max_int
 	if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
-		return error('substr(${start}, ${end}) out of bounds (len=${s.len})')
+		return error('substr(' + start.str() + ', ' + end.str() + ') out of bounds (len=' +
+			s.len.str() + ')')
 	}
 	len := end - start
 	if len == s.len {
@@ -1724,7 +1726,7 @@ pub fn (s string) str() string {
 fn (s string) at(idx int) byte {
 	$if !no_bounds_checking {
 		if idx < 0 || idx >= s.len {
-			panic('string index out of range: ${idx} / ${s.len}')
+			panic('string index out of range: ' + idx.str() + ' / ' + s.len.str())
 		}
 	}
 	unsafe {
@@ -2024,7 +2026,7 @@ pub fn (s string) bytes() []u8 {
 [direct_array_access]
 pub fn (s string) repeat(count int) string {
 	if count < 0 {
-		panic('string.repeat: count is negative: ${count}')
+		panic('string.repeat: count is negative: ' + count.str())
 	} else if count == 0 {
 		return ''
 	} else if count == 1 {
