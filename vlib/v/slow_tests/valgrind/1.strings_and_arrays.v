@@ -374,9 +374,13 @@ fn parse_header1(s string) !string {
 	return words[0]
 }
 
+// TODO: remove this [manualfree] tag
+[manualfree]
 fn advanced_options() {
 	s := parse_header0('foo:bar') or { return }
 	s2 := parse_header1('foo:bar') or { return }
+	// TODO: fix -autofree, so that it adds this free automatically:
+	unsafe { s2.free() }
 }
 
 fn main() {
