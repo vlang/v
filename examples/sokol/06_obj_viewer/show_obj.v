@@ -277,7 +277,8 @@ fn main() {
 		obj_part: 0
 	}
 
-	app.file_name = 'v.obj' // default object is the v logo
+	// app.file_name = 'v.obj' // default object is the v logo
+	app.file_name = 'utahTeapot.obj' // default object is the v logo
 
 	app.single_material_flag = false
 	$if !android {

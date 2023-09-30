@@ -1,3 +1,115 @@
+## V 0.4.2
+*30 September 2023*
+
+#### Improvements in the language
+- Short lambda expressions like `a.sorted(|x,y| x > y)` (#19390)
+- Support `-os plan9`, `$if plan9 {`, and `_plan9.c.v` (stage 1 for plan9) (#19389)
+- fmt: simplify the processing logic for removing inline comments (#19297)
+- Align the custom values of the enum fields (#19331)
+- Do not warn/error for `import flag as _`
+- Keep anon struct decl fields in interfaces (#19461)
+- Support -N, turning all notices into errors, to ease the process of finding places that may need attention/correction
+
+#### Breaking changes
+- Remove inline comments (#19263)
+
+#### Checker improvements/fixes
+- Disallow module name duplicates in local names (#18118)
+- Check enum fields with duplicate value (fix #19309) (#19310)
+- Disallow alias ptr cast of a map value (#19336)
+- Require `else` branch in `[flag]` enum match (#19375)
+- Disallow assigning pointer values to option struct fields (#19380)
+- Fix generic comparison for conditional assignment (#19401)
+- Allow using ! and ~ on aliased bool and integral types (#19403)
+- Warn -> error for uninitialized ref fields
+- Parser, checker: allow lambdas anywhere anonymous functions are expected (#19436)
+- Allow for `each(a, |x| println(x))`, i.e. using lambda expressions, when expecting `fn (x int)`
+- Check fixed array init with default expression (#19472)
+- Allow for `const source = $embed_file(@FILE).to_string()`
+- Fix C.type in imported modules
+
+#### Parser improvements
+- parser: fix fixed array with eval const size (#19269)
+- parser: disallow using `sql` as name (#19298)
+- parser: fix `;` support for `module x;`
+- parser: fix fixed array of option values (`_ := [10]?int{}`) (#19392)
+- parser: fix assigning with in another module sumtypes 2 (#19415)
+- v.ast: improve Stmt.str(), showing more details about ast.Block, ast.DeferStmt, ast.ForInStmt, ast.GlobalDecl
+
+#### Compiler internals
+- pref: support `-fast-math`, passing either -ffast-math or /fp:fast (for msvc) to the C backend, and `$if fast_math {` to detect it at comptime
+- parser, transformer: fix transformer.infix_expr() and cleanup parse_types.v (related #19269) (#19276)
+- pref,builder: support -use-os-system-to-run to workaround segfaults using not fully updated xcode command line tools
+- v.builder: fix compiling code, that imports modules from both `src/modules` and `modules` (#19437)
+- os, v.builder: show more details, when a program ran by `v run file.v`, exits by a signal (fix #19412) (#19471)
+
+#### Standard library
+- math: speedup the pure V math.pow implementation for non-fractional powers (#19270)
+- math: add more C. fn overrides, for the default C backend (speed up examples/path_tracing.v) (#19271)
+- time: add `MMM` support for parse_format() (#19284)
+- os: include sys/sysctl.h on FreeBSD to avoid implicit definition of sysctl function (#19293)
+- crypto.md5: change the Digest.write return type, from `?int` to `!int` (#19311)
+- v.help: use os.executable() instead of @VEXE as an anchor, so `v help` will work more robustly.
+- toml: fix custom `to_toml` for complex structs (#19338)
+- all: support `;` statements, allowing for oneliners like `./v -e 'import os; println( os.ls(os.args[1])!.sorted(a > b) )' vlib/math` (#19345)
+- vlib: add net.http.file, allowing for `v -e "import net.http.file; file.serve()"` (#19348)
+- vlib: remove functions and fields, deprecated before 2023-03-20
+- toml: fix toml encoding of complex types (#19408)
+- arrays: add a partition function, that splits a given array, based on a criteria, passed as a callback fn (#19417)
+- toml: add decoding for struct fields of type map[string]T (#19447)
+- arrays: add arrays.each, arrays.each_indexed, and tests for them
+- encoding.html: implement `unescape()` (#19267)
+
+#### Web
+- net.http: fix http.fetch(), without explicit method (default again to .get, not to .acl)
+- net.http: default explicitly to Method.get for http.Request and http.FetchConfig too
+- examples: add examples/fetch_ip.v, showing how to contact http://ifconfig.co/json and parse the result
+- net.http: fix post error with https on windows (#19334)
+- net.ssl: implement SSLConn.peer_addr() (#19333)
+
+#### ORM
+- orm: add `references` attribute to allow foreign key declarations on fields (#19349)
+- orm: support different foreign key types, not just an integer id (#19337)
+- orm: add support for V enum struct fields (#19374)
+- orm: quote table and field name in `[references]` (#19387)
+
+#### Database drivers
+- db.pg: allow postgres connection using service definitions (#19288)
+
+#### Native backend
+- native: make native tests pass on windows; refactor PE file generation (#19140)
+- native: parse dll files to resolve extern symbols (#19433)
+
+#### C backend
+- Fix printing struct with thread field (#19320)
+- Fix the logic around the definition of VNORETURN and VUNREACHABLE (less warnings on FreeBSD) (#19316)
+- Add support for `-d trace_cgen_stmt`, document it in CONTRIBUTING.md
+- Fix printing smartcast interface variable (fix #18886) (#19372)
+- Fix interface with multiple embedded fields (#19377)
+- Fix channel of interface (fix #19382) (#19383)
+- Fix fixed array of option type default (#19397)
+- Fix interface with option field (#19434)
+- Fix promoting an alias typed value, to a sumtype of the alias's base type (fix #19407) (#19423)
+- Remove the special plan9 support code, treat it instead as a posix system in cheaders.v (#19445)
+- Fix printing slice of fn call string (#19450)
+- Fix `type VType = &C.CType` (#19452)
+- Fix array of fns index call with direct_array_access mode (#19460)
+
+#### Tools
+- bench: a new bench/ directory for language benchmarks
+- ci: test the pure V math versions without .c.v overrides on the CI too (#19292)
+- github: add automatically info about voting to all new issues (#19351)
+- tools: add -E flag to `v test-parser`, that will show the partial source that caused the parser to fail with `-no-builtin -check-syntax file.v`
+- ci: bring back gitly
+- github: improve the voting message for issues (#19448)
+- vcreate: update templates, add `lib` (#19444)
+
+### Operating System support
+- builtin: use `libgc-threaded` on FreeBSD, to get the threaded version of libgc (#19294)
+
+#### Examples
+- examples: add more .obj files for 06_obj_viewer (#19406)
+
 ## V 0.4.1
 *3 September 2023*
 
