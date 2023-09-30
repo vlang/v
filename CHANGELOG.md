@@ -104,7 +104,7 @@
 - github: improve the voting message for issues (#19448)
 - vcreate: update templates, add `lib` (#19444)
 
-### Operating System support
+#### Operating System support
 - builtin: use `libgc-threaded` on FreeBSD, to get the threaded version of libgc (#19294)
 
 #### Examples
