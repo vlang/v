@@ -21,7 +21,7 @@ fn handle_conn(mut c net.TcpConn) {
 	}
 }
 
-fn one_shot_echo_server(mut l net.TcpListener, ch_started chan int) ? {
+fn one_shot_echo_server(mut l net.TcpListener, ch_started chan int) ! {
 	eprintln('> one_shot_echo_server')
 	ch_started <- 1
 	mut new_conn := l.accept() or { return error('could not accept') }
