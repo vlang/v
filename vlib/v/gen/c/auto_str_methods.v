@@ -678,27 +678,27 @@ fn (mut g Gen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_fn_
 				g.auto_str_funcs.writeln('\t\tif ( 0 == a[i] ) {')
 				g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write_string(&sb, _SLIT("0"));')
 				g.auto_str_funcs.writeln('\t\t}else{')
-				g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}( ${deref} a[i]) );')
+				g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}(${deref}a[i]));')
 				g.auto_str_funcs.writeln('\t\t}')
 			} else {
-				g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}( ${deref} a[i]) );')
+				g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}(${deref}a[i]));')
 			}
-		} else if sym.kind in [.f32, .f64] {
+		} else if sym.kind in [.f32, .f64] && !typ.has_flag(.option) {
 			if sym.kind == .f32 {
 				field_str := str_intp_g32('a[i]')
-				g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${field_str} );')
+				g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${field_str});')
 			} else {
 				field_str := str_intp_g64('a[i]')
-				g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${field_str} );')
+				g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${field_str});')
 			}
-		} else if sym.kind == .string {
+		} else if sym.kind == .string && !typ.has_flag(.option) {
 			field_str := str_intp_sq('a[i]')
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${field_str});')
-		} else if sym.kind == .rune {
-			tmp_str := str_intp_rune('${elem_str_fn_name}(  ${deref} a[i])')
+		} else if sym.kind == .rune && !typ.has_flag(.option) {
+			tmp_str := str_intp_rune('${elem_str_fn_name}(${deref}a[i])')
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${tmp_str});')
 		} else {
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}( ${deref} a[i]));')
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}(${deref}a[i]));')
 		}
 	}
 	g.auto_str_funcs.writeln('\t\tif (i < ${info.size - 1}) {')
