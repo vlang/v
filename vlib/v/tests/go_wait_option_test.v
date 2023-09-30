@@ -3,14 +3,14 @@
 
 fn f(n int) ?f64 {
 	if n < 0 {
-		return error('negative number')
+		return none
 	}
 	return n + f64(n) / 2
 }
 
 fn g(n int) ? {
 	if n % 2 == 0 {
-		return error('even number')
+		return none
 	} else {
 		return
 	}
@@ -86,7 +86,7 @@ fn get_only_a_option_return(return_none bool) ? {
 	if return_none {
 		return
 	}
-	return error('msg')
+	return none
 }
 
 fn get_only_a_result_return() ! {
