@@ -1639,6 +1639,6 @@ fn test_reset() {
 	unsafe { s.reset() }
 	for e in s {
 		assert e.str == unsafe { nil }
-		assert e.len == unsafe { nil }
+		assert e.len == 0
 	}
 }
