@@ -386,6 +386,19 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 		tmp_var := g.new_tmp_var()
 		g.expr_with_tmp_var(ast.None{}, ast.none_type, field.typ, tmp_var)
 		return true
+	} else if sym.info is ast.ArrayFixed {
+		g.write('{')
+		for i in 0 .. sym.info.size {
+			if sym.info.elem_type.has_flag(.option) {
+				g.expr_with_opt(ast.None{}, ast.none_type, sym.info.elem_type)
+			} else {
+				g.write(g.type_default(sym.info.elem_type))
+			}
+			if i != sym.info.size - 1 {
+				g.write(', ')
+			}
+		}
+		g.write('}')
 	} else {
 		g.write(g.type_default(field.typ))
 	}
