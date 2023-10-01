@@ -157,12 +157,12 @@ fn MyStruct.new() MyStruct {
 
 fn (s MyStruct) mymethod() {
 	assert @LOCATION.contains('comptime_at_test.v:')
-	assert @LOCATION.contains('main.MyStruct{}.mymethod')
+	assert @LOCATION.ends_with('main.MyStruct{}.mymethod')
 }
 
 fn test_at_location() {
 	abc()
 	MyStruct.new().mymethod()
-	assert @LOCATION.contains('main.test_at_location')
-	assert @LOCATION.contains('main.test_at_location')
+	assert @LOCATION.contains('comptime_at_test.v:')
+	assert @LOCATION.ends_with('main.test_at_location')
 }
