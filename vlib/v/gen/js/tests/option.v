@@ -4,15 +4,15 @@ fn main() {
 	try_propagation() or { println('captured: ${err}') }
 }
 
-fn try_propagation() ? {
-	try_numbers()?
+fn try_propagation() ! {
+	try_numbers()!
 }
 
-fn try_numbers() ? {
+fn try_numbers() ! {
 	for x in 1 .. 10 {
 		y := error_if_even(x) or { x + 1 }
 		println('${x} rounded to ${y}')
-		error_if_prime(y)?
+		error_if_prime(y)!
 	}
 }
 

@@ -34,6 +34,7 @@
 - parser: fix `;` support for `module x;`
 - parser: fix fixed array of option values (`_ := [10]?int{}`) (#19392)
 - parser: fix assigning with in another module sumtypes 2 (#19415)
+- Support `;` statements, allowing for oneliners like `./v -e 'import os; println( os.ls(os.args[1])!.sorted(a > b) )' vlib/math` (#19345)
 - v.ast: improve Stmt.str(), showing more details about ast.Block, ast.DeferStmt, ast.ForInStmt, ast.GlobalDecl
 
 #### Compiler internals
@@ -51,7 +52,6 @@
 - crypto.md5: change the Digest.write return type, from `?int` to `!int` (#19311)
 - v.help: use os.executable() instead of @VEXE as an anchor, so `v help` will work more robustly.
 - toml: fix custom `to_toml` for complex structs (#19338)
-- all: support `;` statements, allowing for oneliners like `./v -e 'import os; println( os.ls(os.args[1])!.sorted(a > b) )' vlib/math` (#19345)
 - vlib: add net.http.file, allowing for `v -e "import net.http.file; file.serve()"` (#19348)
 - vlib: remove functions and fields, deprecated before 2023-03-20
 - toml: fix toml encoding of complex types (#19408)

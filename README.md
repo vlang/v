@@ -44,7 +44,7 @@
 ## Stability, future changes, post 1.0 freeze
 
 Despite being at an early development stage, the V language is relatively stable, and doesn't
-change often. But there will bechanges before 1.0.
+change often. But there will be changes before 1.0.
 Most changes in the syntax are handled via vfmt automatically.
 
 The V core APIs (primarily the `os` module) will also have minor changes until

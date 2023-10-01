@@ -70,7 +70,7 @@ pub mut:
 
 pub type ColorState = C.sg_color_state
 
-struct C.sg_pipeline_desc {
+pub struct C.sg_pipeline_desc {
 pub mut:
 	_start_canary             u32
 	shader                    Shader
@@ -97,7 +97,7 @@ struct C.sg_pipeline_info {
 
 pub type PipelineInfo = C.sg_pipeline_info
 
-struct C.sg_pipeline {
+pub struct C.sg_pipeline {
 pub:
 	id u32
 }
@@ -304,7 +304,7 @@ pub mut:
 
 pub type Color = C.sg_color
 
-struct C.sg_shader {
+pub struct C.sg_shader {
 pub:
 	id u32
 }
@@ -332,7 +332,7 @@ struct C.sg_pass_info {
 
 pub type PassInfo = C.sg_pass_info
 
-struct C.sg_pass_action {
+pub struct C.sg_pass_action {
 pub mut:
 	_start_canary u32
 	colors        [4]ColorAttachmentAction
@@ -385,7 +385,7 @@ struct C.sg_buffer_info {
 
 pub type BufferInfo = C.sg_buffer_info
 
-struct C.sg_buffer {
+pub struct C.sg_buffer {
 	id u32
 }
 
