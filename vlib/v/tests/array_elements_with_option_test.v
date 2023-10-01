@@ -38,7 +38,7 @@ fn get_no_option() int {
 }
 
 fn test_option_non_fixed() {
-	x := get_has_option() or { 0 }
+	x := get_has_option()?
 	assert x == 0
 	assert get_no_option() == 0
 }
