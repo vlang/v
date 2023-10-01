@@ -178,6 +178,7 @@ pub enum AtKind {
 	vroot_path // obsolete
 	vexeroot_path
 	file_path_line_nr
+	location
 }
 
 pub const (
@@ -186,7 +187,7 @@ pub const (
 		.unsigned_right_shift_assign]
 
 	valid_at_tokens = ['@VROOT', '@VMODROOT', '@VEXEROOT', '@FN', '@METHOD', '@MOD', '@STRUCT',
-		'@VEXE', '@FILE', '@LINE', '@COLUMN', '@VHASH', '@VMOD_FILE', '@FILE_LINE']
+		'@VEXE', '@FILE', '@LINE', '@COLUMN', '@VHASH', '@VMOD_FILE', '@FILE_LINE', '@LOCATION']
 
 	token_str       = build_token_str()
 

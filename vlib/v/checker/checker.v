@@ -3346,6 +3346,21 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 		.column_nr {
 			node.val = (node.pos.col + 1).str()
 		}
+		.location {
+			mut mname := 'unknown'
+			if c.table.cur_fn != unsafe { nil } {
+				if c.table.cur_fn.is_method {
+					mname = c.table.type_to_str(c.table.cur_fn.receiver.typ) + '{}.' +
+						c.table.cur_fn.name.all_after_last('.')
+				} else {
+					mname = c.table.cur_fn.name
+				}
+				if c.table.cur_fn.is_static_type_method {
+					mname = mname.replace('__static__', '.') + ' (static)'
+				}
+			}
+			node.val = c.file.path + ':' + (node.pos.line_nr + 1).str() + ', ${mname}'
+		}
 		.vhash {
 			node.val = version.vhash()
 		}
