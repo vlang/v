@@ -2,7 +2,7 @@
 
 module datatypes
 
-// RingBuffer - public struct that represents the ringbuffer
+// RingBuffer represents a ring buffer also known as a circular buffer.
 pub struct RingBuffer[T] {
 mut:
 	reader  int // index of the tail where data is going to be read
@@ -10,14 +10,14 @@ mut:
 	content []T
 }
 
-// new_ringbuffer - creates an empty ringbuffer
+// new_ringbuffer creates an empty ring buffer of size `s`.
 pub fn new_ringbuffer[T](s int) RingBuffer[T] {
 	return RingBuffer[T]{
 		content: []T{len: s + 1, cap: s + 1}
 	} // increasing custom set size by one element in order to make ring flow possible, so that writer cannot equal reader before reader-index has been read.
 }
 
-// push - adds an element to the ringbuffer
+// push adds an element to the ring buffer.
 pub fn (mut rb RingBuffer[T]) push(element T) ! {
 	if rb.is_full() {
 		return error('Buffer overflow')
@@ -27,7 +27,7 @@ pub fn (mut rb RingBuffer[T]) push(element T) ! {
 	}
 }
 
-// pop - returns the oldest element of the buffer
+// pop returns the oldest element in the buffer.
 pub fn (mut rb RingBuffer[T]) pop() !T {
 	mut v := rb.content[rb.reader]
 	if rb.is_empty() {
@@ -38,14 +38,14 @@ pub fn (mut rb RingBuffer[T]) pop() !T {
 	return v
 }
 
-// push_many - pushes an array to the buffer
+// push_many pushes an array to the buffer.
 pub fn (mut rb RingBuffer[T]) push_many(elements []T) ! {
 	for v in elements {
 		rb.push(v) or { return err }
 	}
 }
 
-// pop_many - returns a given number(n) of elements of the buffer starting with the oldest one
+// pop_many returns `n` elements of the buffer starting with the oldest one.
 pub fn (mut rb RingBuffer[T]) pop_many(n u64) ![]T {
 	mut elements := []T{}
 	for _ in 0 .. n {
@@ -54,12 +54,12 @@ pub fn (mut rb RingBuffer[T]) pop_many(n u64) ![]T {
 	return elements
 }
 
-// is_empty - checks if the ringbuffer is empty
+// is_empty returns `true` if the ring buffer is empty, `false` otherwise.
 pub fn (rb RingBuffer[T]) is_empty() bool {
 	return rb.reader == rb.writer // if reader equals writer it means that no value to read has been written before. It follows that the buffer is empty.
 }
 
-// is_full - checks if the ringbuffer is full
+// is_full returns `true` if the ring buffer is full, `false` otherwise.
 pub fn (rb RingBuffer[T]) is_full() bool {
 	if rb.writer + 1 == rb.reader {
 		return true
@@ -70,19 +70,19 @@ pub fn (rb RingBuffer[T]) is_full() bool {
 	}
 }
 
-// capacity - returns the capacity of the ringbuffer
+// capacity returns the capacity of the ring buffer.
 pub fn (rb RingBuffer[T]) capacity() int {
 	return rb.content.cap - 1 // reduce by one because of the extra element explained in function `new_ringbuffer()`
 }
 
-// clear - emptys the ringbuffer and all pushed elements
+// clear empties the ring buffer and all pushed elements.
 pub fn (mut rb RingBuffer[T]) clear() {
 	rb = RingBuffer[T]{
 		content: []T{len: rb.content.len, cap: rb.content.cap}
 	}
 }
 
-// occupied - returns occupied capacity of the buffer.
+// occupied returns the occupied capacity of the buffer.
 pub fn (rb RingBuffer[T]) occupied() int {
 	mut reader := rb.reader
 	mut v := 0
@@ -102,7 +102,7 @@ pub fn (rb RingBuffer[T]) occupied() int {
 	return v
 }
 
-// remaining - returns remaining capacity of the buffer
+// remaining returns the remaining capacity of the buffer.
 pub fn (rb RingBuffer[T]) remaining() int {
 	return rb.capacity() - rb.occupied()
 }

@@ -3,7 +3,7 @@ module html
 import strings
 import datatypes
 
-enum CloseTagType {
+pub enum CloseTagType {
 	in_name
 	new_tag
 }

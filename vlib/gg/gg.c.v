@@ -117,12 +117,9 @@ fn (mut container PipelineContainer) init_pipeline() {
 	// FIXME(FireRedz): this looks kinda funny, find a better way to initialize pipeline.
 
 	// Alpha
-	mut alpha_pipdesc := gfx.PipelineDesc{
-		label: c'alpha-pipeline'
-	}
-
+	mut alpha_pipdesc := gfx.PipelineDesc{}
 	unsafe { vmemset(&alpha_pipdesc, 0, int(sizeof(alpha_pipdesc))) }
-
+	alpha_pipdesc.label = c'alpha-pipeline'
 	alpha_pipdesc.colors[0] = gfx.ColorState{
 		blend: gfx.BlendState{
 			enabled: true
@@ -130,16 +127,12 @@ fn (mut container PipelineContainer) init_pipeline() {
 			dst_factor_rgb: .one_minus_src_alpha
 		}
 	}
-
 	container.alpha = sgl.make_pipeline(&alpha_pipdesc)
 
 	// Add
-	mut add_pipdesc := gfx.PipelineDesc{
-		label: c'additive-pipeline'
-	}
-
+	mut add_pipdesc := gfx.PipelineDesc{}
 	unsafe { vmemset(&add_pipdesc, 0, int(sizeof(add_pipdesc))) }
-
+	add_pipdesc.label = c'additive-pipeline'
 	add_pipdesc.colors[0] = gfx.ColorState{
 		blend: gfx.BlendState{
 			enabled: true
@@ -147,7 +140,6 @@ fn (mut container PipelineContainer) init_pipeline() {
 			dst_factor_rgb: .one
 		}
 	}
-
 	container.add = sgl.make_pipeline(&add_pipdesc)
 }
 

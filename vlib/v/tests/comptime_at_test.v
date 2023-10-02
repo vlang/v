@@ -141,3 +141,28 @@ fn test_line_number_last_token() {
 	assert line1 == line2
 	assert line1 == line3
 }
+
+fn abc() {
+	assert @LOCATION.contains('comptime_at_test.v:')
+	assert @LOCATION.ends_with(', main.abc')
+}
+
+struct MyStruct {
+}
+
+fn MyStruct.new() MyStruct {
+	assert @LOCATION.ends_with('main.MyStruct.new (static)')
+	return MyStruct{}
+}
+
+fn (s MyStruct) mymethod() {
+	assert @LOCATION.contains('comptime_at_test.v:')
+	assert @LOCATION.ends_with('main.MyStruct{}.mymethod')
+}
+
+fn test_at_location() {
+	abc()
+	MyStruct.new().mymethod()
+	assert @LOCATION.contains('comptime_at_test.v:')
+	assert @LOCATION.ends_with('main.test_at_location')
+}

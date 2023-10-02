@@ -71,6 +71,11 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		if node.args.len == 1 {
 			embed_arg := node.args[0]
 			mut raw_path := ''
+			if embed_arg.expr is ast.AtExpr {
+				mut expr := embed_arg.expr
+				c.at_expr(mut expr)
+				raw_path = expr.val
+			}
 			if embed_arg.expr is ast.StringLiteral {
 				raw_path = embed_arg.expr.val
 			} else if embed_arg.expr is ast.Ident {

@@ -1,21 +1,14 @@
-vlib/v/checker/tests/void_fn_multiple_ret_err.vv:6:2: warning: Option and Result types have been split, use `?` to return none
-    4 | 
-    5 | fn foo_result_2() ! {
-    6 |     return none
-      |     ~~~~~~~~~~~
-    7 | }
-    8 |
 vlib/v/checker/tests/void_fn_multiple_ret_err.vv:2:9: error: functions with Result-only return types can only return an error
     1 | fn foo_result_1() ! {
     2 |     return none, 100
       |            ~~~~
     3 | }
     4 |
-vlib/v/checker/tests/void_fn_multiple_ret_err.vv:6:9: error: cannot use `none` as Result type in return argument
+vlib/v/checker/tests/void_fn_multiple_ret_err.vv:6:2: error: Option and Result types have been split, use `?` to return none
     4 | 
     5 | fn foo_result_2() ! {
     6 |     return none
-      |            ~~~~
+      |     ~~~~~~~~~~~
     7 | }
     8 |
 vlib/v/checker/tests/void_fn_multiple_ret_err.vv:14:9: error: cannot use `int literal` as Result type in return argument

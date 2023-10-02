@@ -1,0 +1,5 @@
+interface Foo {
+	field struct {
+		bar int
+	}
+}

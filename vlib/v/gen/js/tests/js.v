@@ -139,14 +139,14 @@ fn (it Companies) method() int {
 	return 0
 }
 
-fn error_if_even(num int) ?int {
+fn error_if_even(num int) !int {
 	if num % 2 == 0 {
 		return error('number is even')
 	}
 	return num
 }
 
-fn propagation() ? {
+fn propagation() ! {
 	println('Propagation test:')
 	return error('"Task failed successfully" - Windows XP')
 }

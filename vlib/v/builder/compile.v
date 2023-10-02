@@ -160,6 +160,9 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 			os.signal_opt(.quit, prev_quit_handler) or { serror('restore .quit', err) }
 		}
 		ret = run_process.code
+		if run_process.err != '' {
+			eprintln(run_process.err)
+		}
 		run_process.close()
 	}
 	b.cleanup_run_executable_after_exit(compiled_file)
@@ -214,11 +217,14 @@ pub fn (mut v Builder) set_module_lookup_paths() {
 	if v.pref.is_verbose {
 		println('x: "${x}"')
 	}
+
 	if os.exists(os.join_path(v.compiled_dir, 'src/modules')) {
 		v.module_search_paths << os.join_path(v.compiled_dir, 'src/modules')
-	} else {
+	}
+	if os.exists(os.join_path(v.compiled_dir, 'modules')) {
 		v.module_search_paths << os.join_path(v.compiled_dir, 'modules')
 	}
+
 	v.module_search_paths << v.pref.lookup_path
 	if v.pref.is_verbose {
 		v.log('v.module_search_paths:')

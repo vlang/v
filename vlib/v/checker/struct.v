@@ -716,7 +716,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				if field.typ.is_ptr() && !field.typ.has_flag(.shared_f)
 					&& !field.typ.has_flag(.option) && !node.has_update_expr && !c.pref.translated
 					&& !c.file.is_translated {
-					c.warn('reference field `${type_sym.name}.${field.name}` must be initialized',
+					c.error('reference field `${type_sym.name}.${field.name}` must be initialized',
 						node.pos)
 					continue
 				}
@@ -840,7 +840,7 @@ fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut 
 		}
 		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !field.typ.has_flag(.option)
 			&& !field.has_default_expr {
-			c.warn('reference field `${linked_name}.${field.name}` must be initialized (part of struct `${struct_sym.name}`)',
+			c.error('reference field `${linked_name}.${field.name}` must be initialized (part of struct `${struct_sym.name}`)',
 				node.pos)
 			continue
 		}

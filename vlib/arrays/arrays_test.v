@@ -481,3 +481,63 @@ fn test_join_to_string() {
 		return '1'
 	}) == ''
 }
+
+fn test_partition() {
+	a := [1, 2, 3, 4, 5, 6, 7, 8]
+	lower, upper := partition(a, fn (it int) bool {
+		return it < 5
+	})
+	assert lower.len == 4
+	assert upper.len == 4
+	assert lower == [1, 2, 3, 4]
+	assert upper == [5, 6, 7, 8]
+
+	lower2, upper2 := partition(a, fn (it int) bool {
+		return it < 1
+	})
+	assert lower2.len == 0
+	assert upper2.len == 8
+}
+
+fn test_each() {
+	a := [99, 1, 2, 3, 4, 5, 6, 7, 8, 1001]
+	mut control_sum := 0
+	for x in a {
+		control_sum += x
+	}
+	//
+	each(a, fn (x int) {
+		println(x)
+	})
+	mut sum := 0
+	mut psum := &sum
+	each(a, fn [mut psum] (x int) {
+		unsafe {
+			*psum += x
+		}
+	})
+	assert control_sum == sum
+}
+
+fn test_each_indexed() {
+	a := [99, 1, 2, 3, 4, 5, 6, 7, 8, 1001]
+	mut control_sum := 0
+	f := fn (idx int, x int) int {
+		return (idx + 1) * 1000_000 + x
+	}
+	for idx, x in a {
+		control_sum += f(idx, x)
+	}
+	//
+	each_indexed(a, fn (idx int, x int) {
+		println('idx: ${idx}, x: ${x}')
+	})
+	mut sum := 0
+	mut psum := &sum
+	each_indexed(a, fn [mut psum, f] (idx int, x int) {
+		unsafe {
+			*psum += f(idx, x)
+		}
+	})
+	assert control_sum == sum
+}

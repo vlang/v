@@ -20,8 +20,11 @@ const (
 	pe_section_align              = 0x1000
 	pe_file_align                 = 0x0200
 
+	pe_coff_hdr_size              = 0x18
 	pe_opt_hdr_size               = 0xf0
+	pe32_plus_opt_hdr_size        = 0x70
 	pe_header_size                = pe_file_align
+	pe_section_header_size        = 0x28
 	pe_stack_size                 = 0x200000 // gcc default on windows
 	pe_heap_size                  = 0x100000 // gcc default on windows
 	// tcc defaults
@@ -31,6 +34,9 @@ const (
 	pe_minor_os_version           = 0
 	pe_major_subsystem_version    = 4
 	pe_minor_subsystem_version    = 0
+
+	pe_header_machine_offset      = 4
+	pe_number_of_sections_offset  = 6
 
 	pe_num_data_dirs              = 0x10
 
@@ -160,7 +166,7 @@ pub fn (mut g Gen) gen_pe_header() {
 			0x16: '; mSizeOfOptionalHeader'
 			0x18: '; mCharacteristics'
 		}
-		assert 0x18 == pe_header.len * 2
+		assert native.pe_coff_hdr_size == pe_header.len * 2
 	}
 
 	g.pe_coff_hdr_pos = g.pos()
@@ -247,28 +253,19 @@ fn (mut g Gen) get_pe32_plus_optional_header() Pe32PlusOptionalHeader {
 	}
 }
 
+enum Pe32PlusOPtionalHeaderField {
+	size_of_code             = 4
+	size_of_initialized_data = 8
+	address_of_entry_point   = 16
+	base_of_code             = 20
+	size_of_image            = 56
+	number_of_rva_and_sizes  = 108
+}
+
 // implemented because __offsetof() + [packed] structs wasn't consistend across OSs
-fn pe32_plus_optional_header_offsetof(field string) i64 {
-	return match field {
-		'size_of_code' {
-			4
-		}
-		'size_of_initialized_data' {
-			8
-		}
-		'address_of_entry_point' {
-			16
-		}
-		'base_of_code' {
-			20
-		}
-		'size_of_image' {
-			56
-		}
-		else {
-			panic('pe32_plus_optional_header_offsetof("${field}") not implemented')
-		}
-	}
+[inline]
+fn pe32_plus_optional_header_offsetof(field Pe32PlusOPtionalHeaderField) i64 {
+	return i64(field)
 }
 
 // for later expandability
@@ -445,25 +442,17 @@ mut:
 	characteristics        int
 }
 
+enum PeSectionHeaderField {
+	virtual_size        = 8
+	virtual_address     = 12
+	size_of_raw_data    = 16
+	pointer_to_raw_data = 20
+}
+
 // implemented because __offsetof() + [packed] structs wasn't consistend across OSs
-fn pe_section_header_offsetof(field string) i64 {
-	return match field {
-		'virtual_size' {
-			8
-		}
-		'virtual_address' {
-			12
-		}
-		'size_of_raw_data' {
-			16
-		}
-		'pointer_to_raw_data' {
-			20
-		}
-		else {
-			panic('PeSectionHeader.offsetof("${field}") not implemented')
-		}
-	}
+[inline]
+fn pe_section_header_offsetof(field PeSectionHeaderField) i64 {
+	return i64(field)
 }
 
 struct PeSection {
@@ -475,7 +464,7 @@ mut:
 
 fn (mut s PeSection) set_pointer_to_raw_data(mut g Gen, pointer int) {
 	s.header.pointer_to_raw_data = pointer
-	g.write32_at(s.header_pos + pe_section_header_offsetof('pointer_to_raw_data'), pointer)
+	g.write32_at(s.header_pos + pe_section_header_offsetof(.pointer_to_raw_data), pointer)
 }
 
 fn (mut s PeSection) set_size_of_raw_data(mut g Gen, size int) {
@@ -484,21 +473,21 @@ fn (mut s PeSection) set_size_of_raw_data(mut g Gen, size int) {
 	}
 
 	s.header.pointer_to_raw_data = size
-	g.write32_at(s.header_pos + pe_section_header_offsetof('size_of_raw_data'), size)
+	g.write32_at(s.header_pos + pe_section_header_offsetof(.size_of_raw_data), size)
 }
 
 fn (mut s PeSection) set_virtual_address(mut g Gen, addr int) {
 	aligned := (addr + native.pe_section_align - 1) & ~(native.pe_section_align - 1)
 
 	s.header.virtual_address = aligned
-	g.write32_at(s.header_pos + pe_section_header_offsetof('virtual_address'), aligned)
+	g.write32_at(s.header_pos + pe_section_header_offsetof(.virtual_address), aligned)
 }
 
 fn (mut s PeSection) set_virtual_size(mut g Gen, size int) {
 	aligned := (size + native.pe_section_align - 1) & ~(native.pe_section_align - 1)
 
 	s.header.virtual_size = aligned
-	g.write32_at(s.header_pos + pe_section_header_offsetof('virtual_size'), aligned)
+	g.write32_at(s.header_pos + pe_section_header_offsetof(.virtual_size), aligned)
 }
 
 fn (mut g Gen) create_pe_section(name string, header PeSectionHeader) PeSection {
@@ -566,19 +555,15 @@ mut:
 	import_address_table_rva int
 }
 
+enum PeImportDirectoryTableField {
+	name_rva                 = 12
+	import_address_table_rva = 16
+}
+
 // implemented because __offsetof() + [packed] structs wasn't consistend across OSs
-fn pe_idt_offsetof(field string) i64 {
-	return match field {
-		'import_address_table_rva' {
-			16
-		}
-		'name_rva' {
-			12
-		}
-		else {
-			panic('pe_import_table_offsetof("${field}") not implemented')
-		}
-	}
+[inline]
+fn pe_idt_offsetof(field PeImportDirectoryTableField) i64 {
+	return i64(field)
 }
 
 fn default_pe_idt() PeImportDirectoryTable {
@@ -623,33 +608,34 @@ fn (mut g Gen) gen_pe_idata() {
 	idata_pos := g.pos()
 	idata_section.set_pointer_to_raw_data(mut g, int(idata_pos))
 
-	mut imports := [
-		PeDllImport{
-			name: 'KERNEL32.DLL'
-			functions: [
-				'GetStdHandle',
-				'ExitProcess',
-				'WriteFile',
-				// winapi functions
-			]
-		},
-		PeDllImport{
-			name: 'USER32.DLL'
-		},
-		PeDllImport{
-			name: 'msvcrt.dll'
-			functions: [
-				'malloc',
-				'free',
-				'printf',
-				'puts',
-				'isdigit',
-				'isalpha',
-				'memset',
-				// etc...
-			]
-		},
+	dll_files := ['KERNEL32.DLL', 'USER32.DLL', 'msvcrt.dll']
+	mut dlls := dll_files
+		.map(lookup_system_dll(it) or { g.n_error('${it}: ${err}') })
+		.map(index_dll(it) or { g.n_error('${it}: ${err}') })
+
+	g.extern_symbols << [
+		'GetStdHandle',
+		'ExitProcess',
+		'WriteFile',
 	]
+
+	for symbol in g.extern_symbols {
+		sym := symbol.trim_left('C.')
+		mut found := false
+		for mut dll in dlls {
+			if sym in dll.exports {
+				found = true
+				dll.exports[sym] = true
+				break
+			}
+		}
+
+		if !found {
+			eprintln('could not find symbol `${sym}` in ${dll_files}')
+		}
+	}
+
+	mut imports := dlls.map(it.to_import())
 
 	// import directory table
 	for mut imp in imports {
@@ -661,7 +647,7 @@ fn (mut g Gen) gen_pe_idata() {
 	g.gen_pe_idt(&PeImportDirectoryTable{}, 'null entry') // null entry
 
 	for imp in imports {
-		g.write32_at(imp.idt_pos + pe_idt_offsetof('import_address_table_rva'),
+		g.write32_at(imp.idt_pos + pe_idt_offsetof(.import_address_table_rva),
 			int(g.pos() - idata_pos) + idata_section.header.virtual_address + 4)
 
 		for func in imp.functions {
@@ -680,7 +666,7 @@ fn (mut g Gen) gen_pe_idata() {
 
 	// dll names	
 	for imp in imports {
-		g.write32_at(imp.idt_pos + pe_idt_offsetof('name_rva'), int(g.pos() - idata_pos) +
+		g.write32_at(imp.idt_pos + pe_idt_offsetof(.name_rva), int(g.pos() - idata_pos) +
 			idata_section.header.virtual_address)
 		g.write_string(imp.name)
 		g.println('"${imp.name}"')
@@ -761,10 +747,10 @@ fn (mut g Gen) patch_section_virtual_addrs() {
 
 		match section.name {
 			'.text' {
-				g.write32_at(g.pe_opt_hdr_pos + pe32_plus_optional_header_offsetof('base_of_code'),
+				g.write32_at(g.pe_opt_hdr_pos + pe32_plus_optional_header_offsetof(.base_of_code),
 					section.header.virtual_address)
 				g.write32_at(g.pe_opt_hdr_pos +
-					pe32_plus_optional_header_offsetof('address_of_entry_point'), section.header.virtual_address)
+					pe32_plus_optional_header_offsetof(.address_of_entry_point), section.header.virtual_address)
 			}
 			else {}
 		}
@@ -774,9 +760,9 @@ fn (mut g Gen) patch_section_virtual_addrs() {
 fn (mut g Gen) patch_pe_code_size() {
 	code_size := int(g.file_size_pos - g.code_start_pos)
 
-	g.write32_at(g.pe_opt_hdr_pos + pe32_plus_optional_header_offsetof('size_of_code'),
+	g.write32_at(g.pe_opt_hdr_pos + pe32_plus_optional_header_offsetof(.size_of_code),
 		code_size)
-	g.write32_at(g.pe_opt_hdr_pos + pe32_plus_optional_header_offsetof('size_of_initialized_data'),
+	g.write32_at(g.pe_opt_hdr_pos + pe32_plus_optional_header_offsetof(.size_of_initialized_data),
 		code_size)
 
 	text_section_index := g.get_pe_section_index('.text') or {
@@ -791,7 +777,7 @@ fn (mut g Gen) patch_pe_image_size() {
 	last_section := g.pe_sections.last()
 	image_size := (last_section.header.virtual_address + last_section.header.virtual_size +
 		native.pe_section_align - 1) & ~(native.pe_section_align - 1)
-	g.write32_at(g.pe_opt_hdr_pos + pe32_plus_optional_header_offsetof('size_of_image'),
+	g.write32_at(g.pe_opt_hdr_pos + pe32_plus_optional_header_offsetof(.size_of_image),
 		image_size)
 }
 

@@ -2,7 +2,7 @@ module main
 
 import os
 
-const git_log_cmd = 'git log --pretty=format:"%s" --simplify-merges'
+const git_log_cmd = 'git log -n 500 --pretty=format:"%s" --simplify-merges'
 
 enum Category {
 	checker
@@ -194,6 +194,7 @@ const category_map = {
 	.comptime:           '#### Comptime'
 	.tools:              '#### Tools'
 	.compiler_internals: '#### Compiler internals'
+	.examples:           '#### Examples'
 }
 
 fn (l Line) write_at_category(txt string) ?string {

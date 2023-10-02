@@ -2587,6 +2587,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 	mut elem_typ := ast.void_type
 	if method_name == 'slice' && !c.is_builtin_mod {
 		c.error('.slice() is a private method, use `x[start..end]` instead', node.pos)
+		return ast.void_type
 	}
 	array_info := if left_sym.info is ast.Array {
 		left_sym.info as ast.Array
@@ -2595,10 +2596,27 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 	}
 	elem_typ = array_info.elem_type
 	if method_name in ['filter', 'map', 'any', 'all'] {
-		// position of `it` doesn't matter
-		scope_register_it(mut node.scope, node.pos, elem_typ)
+		if node.args.len > 0 && mut node.args[0].expr is ast.LambdaExpr {
+			if node.args[0].expr.params.len != 1 {
+				c.error('lambda expressions used in the builtin array methods require exactly 1 parameter',
+					node.args[0].expr.pos)
+				return ast.void_type
+			}
+			if method_name == 'map' {
+				c.lambda_expr_fix_type_of_param(mut node.args[0].expr, mut node.args[0].expr.params[0],
+					elem_typ)
+				le_type := c.expr(mut node.args[0].expr.expr)
+				// eprintln('>>>>> node.args[0].expr: ${ast.Expr(node.args[0].expr)} | elem_typ: ${elem_typ} | etype: ${le_type}')
+				c.support_lambda_expr_one_param(elem_typ, le_type, mut node.args[0].expr)
+			} else {
+				c.support_lambda_expr_one_param(elem_typ, ast.bool_type, mut node.args[0].expr)
+			}
+		} else {
+			// position of `it` doesn't matter
+			scope_register_it(mut node.scope, node.pos, elem_typ)
+		}
 	} else if method_name == 'sorted_with_compare' && node.args.len == 1 {
-		if mut node.args[0].expr is ast.LambdaExpr {
+		if node.args.len > 0 && mut node.args[0].expr is ast.LambdaExpr {
 			c.support_lambda_expr_in_sort(elem_typ.ref(), ast.int_type, mut node.args[0].expr)
 		}
 	} else if method_name == 'sort' || method_name == 'sorted' {
@@ -2671,6 +2689,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		arg_type = c.check_expr_opt_call(arg.expr, c.expr(mut arg.expr))
 	}
 	if method_name == 'map' {
+		// eprintln('>>>>>>> map node.args[0].expr: ${node.args[0].expr}, left_type: ${left_type} | elem_typ: ${elem_typ} | arg_type: ${arg_type}')
 		// check fn
 		c.check_map_and_filter(true, elem_typ, node)
 		arg_sym := c.table.sym(arg_type)
@@ -2777,25 +2796,19 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 }
 
 fn scope_register_it(mut s ast.Scope, pos token.Pos, typ ast.Type) {
-	s.register(ast.Var{
-		name: 'it'
-		pos: pos
-		typ: typ
-		is_used: true
-	})
+	scope_register_var_name(mut s, pos, typ, 'it')
 }
 
 fn scope_register_a_b(mut s ast.Scope, pos token.Pos, typ ast.Type) {
+	scope_register_var_name(mut s, pos, typ.ref(), 'a')
+	scope_register_var_name(mut s, pos, typ.ref(), 'b')
+}
+
+fn scope_register_var_name(mut s ast.Scope, pos token.Pos, typ ast.Type, name string) {
 	s.register(ast.Var{
-		name: 'a'
+		name: name
 		pos: pos
-		typ: typ.ref()
-		is_used: true
-	})
-	s.register(ast.Var{
-		name: 'b'
-		pos: pos
-		typ: typ.ref()
+		typ: typ
 		is_used: true
 	})
 }

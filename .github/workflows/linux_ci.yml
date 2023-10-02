@@ -194,7 +194,7 @@ jobs:
       #    - name: Build Vorum
       #      run: git clone --depth 1 https://github.com/vlang/vorum && cd vorum && ../v . && cd ..
       - name: Build vpm
-        run: git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . || ../v cmd/vpm && cd ..
+        run: ./v install markdown && git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . || ../v cmd/vpm && cd ..
       - name: Freestanding
         run: ./v -freestanding run vlib/os/bare/bare_example_linux.v
       - name: V self compilation

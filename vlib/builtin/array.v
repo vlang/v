@@ -389,6 +389,16 @@ pub fn (mut a array) clear() {
 	a.len = 0
 }
 
+// reset quickly sets the bytes of all elements of the array to 0.
+// Useful mainly for numeric arrays. Note, that calling reset()
+// is not safe, when your array contains more complex elements,
+// like structs, maps, pointers etc, since setting them to 0,
+// can later lead to hard to find bugs.
+[unsafe]
+pub fn (mut a array) reset() {
+	unsafe { vmemset(a.data, 0, a.len * a.element_size) }
+}
+
 // trim trims the array length to `index` without modifying the allocated data.
 // If `index` is greater than `len` nothing will be changed.
 // Example: a.trim(3) // `a.len` is now <= 3
@@ -530,7 +540,7 @@ pub fn (mut a array) delete_last() {
 // Alternative: Slices can also be made with [start..end] notation
 // Alternative: `.slice_ni()` will always return an array.
 fn (a array) slice(start int, _end int) array {
-	mut end := _end
+	end := if _end == 2147483647 { a.len } else { _end } // max_int
 	$if !no_bounds_checking {
 		if start > end {
 			panic('array.slice: invalid slice index (${start} > ${end})')
@@ -565,7 +575,7 @@ fn (a array) slice(start int, _end int) array {
 // This function always return a valid array.
 fn (a array) slice_ni(_start int, _end int) array {
 	// a.flags.clear(.noslices)
-	mut end := _end
+	mut end := if _end == 2147483647 { a.len } else { _end } // max_int
 	mut start := _start
 
 	if start < 0 {
@@ -607,12 +617,6 @@ fn (a array) slice_ni(_start int, _end int) array {
 		cap: l
 	}
 	return res
-}
-
-// used internally for [2..4]
-fn (a array) slice2(start int, _end int, end_max bool) array {
-	end := if end_max { a.len } else { _end }
-	return a.slice(start, end)
 }
 
 // clone_static_to_depth() returns an independent copy of a given array.

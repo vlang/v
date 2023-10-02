@@ -62,15 +62,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			}
 		}
 		if node.has_default {
-			mut default_expr := node.default_expr
-			default_typ := c.check_expr_opt_call(default_expr, c.expr(mut default_expr))
-			node.default_type = default_typ
-			if !node.elem_type.has_flag(.option) && default_typ.has_flag(.option) {
-				c.error('cannot use unwrapped Option as initializer', default_expr.pos())
-			}
-			c.check_expected(default_typ, node.elem_type) or {
-				c.error(err.msg(), default_expr.pos())
-			}
+			c.check_array_init_default_expr(mut node)
 		}
 		if node.has_len {
 			len_typ := c.check_expr_opt_call(node.len_expr, c.expr(mut node.len_expr))
@@ -304,10 +296,20 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			node.typ = ast.new_type(idx)
 		}
 		if node.has_default {
-			c.expr(mut node.default_expr)
+			c.check_array_init_default_expr(mut node)
 		}
 	}
 	return node.typ
+}
+
+fn (mut c Checker) check_array_init_default_expr(mut node ast.ArrayInit) {
+	mut default_expr := node.default_expr
+	default_typ := c.check_expr_opt_call(default_expr, c.expr(mut default_expr))
+	node.default_type = default_typ
+	if !node.elem_type.has_flag(.option) && default_typ.has_flag(.option) {
+		c.error('cannot use unwrapped Option as initializer', default_expr.pos())
+	}
+	c.check_expected(default_typ, node.elem_type) or { c.error(err.msg(), default_expr.pos()) }
 }
 
 fn (mut c Checker) check_array_init_para_type(para string, mut expr ast.Expr, pos token.Pos) {

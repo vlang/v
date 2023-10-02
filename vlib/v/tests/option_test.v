@@ -1,5 +1,5 @@
 // TODO: remove this after the deprecation period for `?Type` representing both Result and Option passes.
-fn opt_err_with_code(code int) ?string {
+fn opt_err_with_code(code int) !string {
 	return error_with_code('hi', code)
 }
 
@@ -20,7 +20,7 @@ fn test_err_with_code() {
 	_ := v
 }
 
-fn opt_err() ?string {
+fn opt_err() !string {
 	return error('hi')
 }
 
@@ -33,7 +33,7 @@ fn test_err() {
 	println(v) // suppress not used error
 }
 
-fn err_call(ok bool) ?int {
+fn err_call(ok bool) !int {
 	if !ok {
 		return error('Not ok!')
 	}
@@ -79,7 +79,7 @@ fn test_if_else_opt() {
 	}
 }
 
-fn for_opt_default() ?string {
+fn for_opt_default() !string {
 	return error('awww')
 }
 
@@ -99,13 +99,13 @@ fn foo_str() ?string {
 	return 'something'
 }
 
-fn propagate_option(b bool) ?int {
-	a := err_call(b)?
+fn propagate_option(b bool) !int {
+	a := err_call(b)!
 	return a
 }
 
-fn propagate_different_type(b bool) ?bool {
-	err_call(b)?
+fn propagate_different_type(b bool) !bool {
+	err_call(b)!
 	return true
 }
 
@@ -137,7 +137,7 @@ fn or_return_val() int {
 	return a
 }
 
-fn or_return_error() ?int {
+fn or_return_error() !int {
 	a := ret_none() or { return error('Nope') }
 	return a
 }
@@ -282,7 +282,7 @@ fn test_option_val_with_empty_or() {
 }
 
 fn test_option_void_return_types_of_anon_fn() {
-	f := fn (i int) ? {
+	f := fn (i int) ! {
 		if i == 0 {
 			return error('0')
 		}
@@ -297,12 +297,12 @@ fn test_option_void_return_types_of_anon_fn() {
 }
 
 struct Foo {
-	f fn (int) ?
+	f fn (int) !
 }
 
 fn test_option_void_return_types_of_anon_fn_in_struct() {
 	foo := Foo{
-		f: fn (i int) ? {
+		f: fn (i int) ! {
 			if i == 0 {
 				return error('0')
 			}
@@ -327,7 +327,7 @@ struct CC {
 	str string
 }
 
-fn option_sum_type(a int) ?AA {
+fn option_sum_type(a int) !AA {
 	match a {
 		1 {
 			return BB{'Test'}

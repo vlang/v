@@ -164,7 +164,6 @@ fn (mut p Parser) array_init(is_option bool) ast.ArrayInit {
 		}
 	}
 	pos := first_pos.extend_with_last_line(last_pos, p.prev_tok.line_nr)
-	p.expr_mod = ''
 	return ast.ArrayInit{
 		is_fixed: is_fixed
 		has_val: has_val

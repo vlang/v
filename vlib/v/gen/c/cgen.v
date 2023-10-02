@@ -1518,17 +1518,11 @@ static inline void __${sym.cname}_pushval(${sym.cname} ch, ${push_arg} val) {
 pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
 	parent := g.table.type_symbols[sym.parent_idx]
 	is_c_parent := parent.name.len > 2 && parent.name[0] == `C` && parent.name[1] == `.`
-	mut is_typedef := false
 	mut is_fixed_array_of_non_builtin := false
-	if parent.info is ast.Struct {
-		is_typedef = parent.info.is_typedef
-	}
 	mut parent_styp := parent.cname
 	if is_c_parent {
-		if !is_typedef {
-			parent_styp = 'struct ' + parent.cname[3..]
-		} else {
-			parent_styp = parent.cname[3..]
+		if sym.info is ast.Alias {
+			parent_styp = g.typ(sym.info.parent_type)
 		}
 	} else {
 		if sym.info is ast.Alias {
@@ -1987,6 +1981,7 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 		} else {
 			g.writeln(' }, (${c.result_name}*)(&${tmp_var}), sizeof(${styp}));')
 		}
+		g.set_current_pos_as_last_stmt_pos()
 	}
 
 	g.write(stmt_str)
@@ -2265,15 +2260,19 @@ struct SumtypeCastingFn {
 fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 	got, exp := got_.idx(), exp_.idx()
 	i := got | int(u32(exp) << 16)
-	got_cname, exp_cname := g.table.sym(got).cname, g.table.sym(exp).cname
-	fn_name := '${got_cname}_to_sumtype_${exp_cname}'
+	exp_sym := g.table.sym(exp)
+	mut got_sym := g.table.sym(got)
+	fn_name := '${got_sym.cname}_to_sumtype_${exp_sym.cname}'
 	if got == exp || g.sumtype_definitions[i] {
 		return fn_name
+	}
+	for got_sym.parent_idx != 0 && got_sym.idx !in (exp_sym.info as ast.SumType).variants {
+		got_sym = g.table.sym(got_sym.parent_idx)
 	}
 	g.sumtype_definitions[i] = true
 	g.sumtype_casting_fns << SumtypeCastingFn{
 		fn_name: fn_name
-		got: got
+		got: got_sym.idx
 		exp: exp
 	}
 	return fn_name
@@ -3633,7 +3632,22 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			g.write('*(')
 		}
 		g.expr(node.expr)
-		if node.expr_type.is_ptr() {
+		for i, embed in node.from_embed_types {
+			embed_sym := g.table.sym(embed)
+			embed_name := embed_sym.embed_name()
+			is_left_ptr := if i == 0 {
+				node.expr_type.is_ptr()
+			} else {
+				node.from_embed_types[i - 1].is_ptr()
+			}
+			if is_left_ptr {
+				g.write('->')
+			} else {
+				g.write('.')
+			}
+			g.write(embed_name)
+		}
+		if node.expr_type.is_ptr() && node.from_embed_types.len == 0 {
 			g.write('->')
 		} else {
 			g.write('.')
@@ -6551,7 +6565,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 	mut expr_type_sym := g.table.sym(g.unwrap_generic(node.expr_type))
 	if mut expr_type_sym.info is ast.SumType {
 		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
-		if node.expr is ast.CallExpr && !g.is_cc_msvc {
+		if node.expr.has_fn_call() && !g.is_cc_msvc {
 			tmp_var := g.new_tmp_var()
 			expr_styp := g.typ(node.expr_type)
 			g.write('({ ${expr_styp} ${tmp_var} = ')

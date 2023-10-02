@@ -75,7 +75,7 @@ fn get_search_paths(cc string) []string {
 	return search_path.map(os.real_path(it.all_before('(').trim_space()))
 }
 
-fn find_file(search_paths []string, file string) ?string {
+fn find_file(search_paths []string, file string) !string {
 	for search_path in search_paths {
 		if os.exists(os.join_path(search_path, file)) {
 			return os.join_path(search_path, file)

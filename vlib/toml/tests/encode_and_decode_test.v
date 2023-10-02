@@ -7,14 +7,15 @@ enum JobTitle {
 }
 
 struct Pet {
-	name      string
-	nicknames []string
-	age       u64
-	income    int
-	height    f32
-	has_furr  bool
-	title     JobTitle
-	address   Address
+	name           string
+	nicknames      []string
+	age            u64
+	income         int
+	height         f32
+	has_furr       bool
+	title          JobTitle
+	address        Address
+	meal_frequency map[string]int
 	// *¹ Currently it is only possible to decode a single nested struct generically.
 	// As soon as we decode another nested struct (e.g. within this struct, like `contact` below)
 	// or only one nested struct within another struct, it results in wrong values or errors.
@@ -58,7 +59,10 @@ struct Arrs {
 fn test_encode_and_decode() {
 	// *¹
 	// p := Pet{'Mr. Scratchy McEvilPaws', ['Freddy', 'Fred', 'Charles'], 8, -1, 0.8, true, .manager, Address{'1428 Elm Street', 'Springwood'}, Contact{'123-456-7890'}}
-	p := Pet{'Mr. Scratchy McEvilPaws', ['Freddy', 'Fred', 'Charles'], 8, -1, 0.8, true, .manager, Address{'1428 Elm Street', 'Springwood'}}
+	p := Pet{'Mr. Scratchy McEvilPaws', ['Freddy', 'Fred', 'Charles'], 8, -1, 0.8, true, .manager, Address{'1428 Elm Street', 'Springwood'}, {
+		'bones':  2
+		'kibble': 5
+	}}
 	s := 'name = "Mr. Scratchy McEvilPaws"
 nicknames = [
   "Freddy",
@@ -70,7 +74,8 @@ income = -1
 height = 0.8
 has_furr = true
 title = 2
-address = { street = "1428 Elm Street", city = "Springwood" }'
+address = { street = "1428 Elm Street", city = "Springwood" }
+meal_frequency = { bones = 2, kibble = 5 }'
 	// contact = { phone = "123-456-7890" }' // *¹
 
 	assert toml.encode[Pet](p) == s

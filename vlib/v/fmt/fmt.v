@@ -1380,7 +1380,17 @@ pub fn (mut f Fmt) interface_field(field ast.StructField) {
 	if before_comments.len > 0 {
 		f.comments(before_comments, level: .indent)
 	}
-	f.write('\t${field.name} ${ft}')
+	sym := f.table.sym(field.typ)
+	if sym.info is ast.Struct {
+		if sym.info.is_anon {
+			f.write('\t${field.name} ')
+			f.write_anon_struct_field_decl(field.typ, ast.StructDecl{ fields: sym.info.fields })
+		} else {
+			f.write('\t${field.name} ${ft}')
+		}
+	} else {
+		f.write('\t${field.name} ${ft}')
+	}
 	if end_comments.len > 0 {
 		f.comments(end_comments, level: .indent)
 	} else {

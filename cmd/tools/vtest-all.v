@@ -16,6 +16,8 @@ const vargs = args_string.all_before('test-all')
 
 const vtest_nocleanup = os.getenv('VTEST_NOCLEANUP').bool()
 
+const hw_native_no_builtin_size_limit = 300
+
 fn main() {
 	mut commands := get_all_commands()
 	// summary
@@ -57,6 +59,8 @@ const ends_with_nothing = '<nothing>'
 
 const contains_nothing = '<nothing>'
 
+type FnCheck = fn () !
+
 struct Command {
 mut:
 	line        string
@@ -71,6 +75,8 @@ mut:
 	ends_with   string = ends_with_nothing
 	contains    string = contains_nothing
 	output      string
+	before_cb   FnCheck = unsafe { nil }
+	after_cb    FnCheck = unsafe { nil }
 }
 
 fn get_all_commands() []Command {
@@ -156,6 +162,20 @@ fn get_all_commands() []Command {
 				line: '${vexe} -experimental -b native run examples/native/hello_world.v > /dev/null'
 				okmsg: 'V compiles and runs examples/native/hello_world.v on the native backend for linux'
 			}
+			res << Command{
+				line: '${vexe} -no-builtin -experimental -b native examples/hello_world.v > /dev/null'
+				okmsg: 'V compiles examples/hello_world.v on the native backend for linux with `-no-builtin` & the executable is <= ${hw_native_no_builtin_size_limit} bytes'
+				rmfile: 'examples/hello_world'
+				after_cb: fn () ! {
+					file := 'examples/hello_world'
+					if !os.exists(file) {
+						return error('>> file ${file} does not exist')
+					}
+					if os.file_size(file) > hw_native_no_builtin_size_limit {
+						return error('>> file ${file} bigger than ${hw_native_no_builtin_size_limit} bytes')
+					}
+				}
+			}
 		}
 		// only compilation:
 		res << Command{
@@ -168,10 +188,12 @@ fn get_all_commands() []Command {
 			okmsg: 'V compiles hello_world.v on the native backend for macos'
 			rmfile: 'hw.macos'
 		}
-		res << Command{
-			line: '${vexe} -os windows -experimental -b native -o hw.exe examples/hello_world.v'
-			okmsg: 'V compiles hello_world.v on the native backend for windows'
-			rmfile: 'hw.exe'
+		$if windows {
+			res << Command{
+				line: '${vexe} -os windows -experimental -b native -o hw.exe examples/hello_world.v'
+				okmsg: 'V compiles hello_world.v on the native backend for windows'
+				rmfile: 'hw.exe'
+			}
 		}
 		//
 		res << Command{
@@ -327,6 +349,14 @@ fn (mut cmd Command) run() {
 	if cmd.label != '' {
 		println(term.header_left(cmd.label, '*'))
 	}
+	if cmd.before_cb != unsafe { nil } {
+		cmd.before_cb() or {
+			cmd.ecode = -1
+			cmd.errmsg = '> before_cb callback for "${cmd.line}" ${term.failed('FAILED')}\n${err}'
+			println(cmd.errmsg)
+			return
+		}
+	}
 	sw := time.new_stopwatch()
 	if cmd.runcmd == .system {
 		cmd.ecode = os.system(cmd.line)
@@ -338,6 +368,14 @@ fn (mut cmd Command) run() {
 		cmd.output = res.output
 	}
 	spent := sw.elapsed().milliseconds()
+	if cmd.after_cb != unsafe { nil } {
+		cmd.after_cb() or {
+			cmd.ecode = -1
+			cmd.errmsg = '> after_cb callback for "${cmd.line}" ${term.failed('FAILED')}\n${err}'
+			println(cmd.errmsg)
+			return
+		}
+	}
 	//
 	mut is_failed := false
 	mut is_failed_expected := false

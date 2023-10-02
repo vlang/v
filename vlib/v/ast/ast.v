@@ -1786,9 +1786,9 @@ pub:
 
 pub struct LambdaExpr {
 pub:
-	pos    token.Pos
-	params []Ident
+	pos token.Pos
 pub mut:
+	params     []Ident
 	pos_expr   token.Pos
 	expr       Expr
 	pos_end    token.Pos
@@ -2075,6 +2075,15 @@ pub fn (e &Expr) is_lockable() bool {
 	return match e {
 		Ident { true }
 		SelectorExpr { e.expr.is_lockable() }
+		else { false }
+	}
+}
+
+// returns if an expression has call expr`
+pub fn (e &Expr) has_fn_call() bool {
+	return match e {
+		CallExpr { true }
+		SelectorExpr { e.expr.has_fn_call() }
 		else { false }
 	}
 }

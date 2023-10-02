@@ -329,7 +329,7 @@ pub fn (a string) clone() string {
 	return b
 }
 
-// replace_once replaces the first occurence of `rep` with the string passed in `with`.
+// replace_once replaces the first occurrence of `rep` with the string passed in `with`.
 pub fn (s string) replace_once(rep string, with string) string {
 	idx := s.index_(rep)
 	if idx == -1 {
@@ -338,7 +338,7 @@ pub fn (s string) replace_once(rep string, with string) string {
 	return s.substr(0, idx) + with + s.substr(idx + rep.len, s.len)
 }
 
-// replace replaces all occurences of `rep` with the string passed in `with`.
+// replace replaces all occurrences of `rep` with the string passed in `with`.
 [direct_array_access]
 pub fn (s string) replace(rep string, with string) string {
 	if s.len == 0 || rep.len == 0 || rep.len > s.len {
@@ -406,7 +406,7 @@ struct RepIndex {
 	val_idx int
 }
 
-// replace_each replaces all occurences of the string pairs given in `vals`.
+// replace_each replaces all occurrences of the string pairs given in `vals`.
 // Example: assert 'ABCD'.replace_each(['B','C/','C','D','D','C']) == 'AC/DC'
 [direct_array_access]
 pub fn (s string) replace_each(vals []string) string {
@@ -496,7 +496,7 @@ pub fn (s string) replace_each(vals []string) string {
 	}
 }
 
-// replace_char replaces all occurences of the character `rep` multiple occurences of the character passed in `with` with respect to `repeat`.
+// replace_char replaces all occurrences of the character `rep` multiple occurrences of the character passed in `with` with respect to `repeat`.
 // Example: assert '\tHello!'.replace_char(`\t`,` `,8) == '        Hello!'
 [direct_array_access]
 pub fn (s string) replace_char(rep u8, with u8, repeat int) string {
@@ -900,7 +900,7 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 		}
 		else {
 			mut start := 0
-			// Take the left part for each delimiter occurence
+			// Take the left part for each delimiter occurrence
 			for i <= s.len {
 				is_delim := i + delim.len <= s.len && s.substr(i, i + delim.len) == delim
 				if is_delim {
@@ -1027,17 +1027,11 @@ pub fn (s string) split_into_lines() []string {
 	return res
 }
 
-// used internally for [2..4]
-[inline]
-fn (s string) substr2(start int, _end int, end_max bool) string {
-	end := if end_max { s.len } else { _end }
-	return s.substr(start, end)
-}
-
 // substr returns the string between index positions `start` and `end`.
 // Example: assert 'ABCD'.substr(1,3) == 'BC'
 [direct_array_access]
-pub fn (s string) substr(start int, end int) string {
+pub fn (s string) substr(start int, _end int) string {
+	end := if _end == 2147483647 { s.len } else { _end } // max_int
 	$if !no_bounds_checking {
 		if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
 			panic('substr(${start}, ${end}) out of bounds (len=${s.len})')
@@ -1061,7 +1055,8 @@ pub fn (s string) substr(start int, end int) string {
 // version of `substr()` that is used in `a[start..end] or {`
 // return an error when the index is out of range
 [direct_array_access]
-pub fn (s string) substr_with_check(start int, end int) !string {
+pub fn (s string) substr_with_check(start int, _end int) !string {
+	end := if _end == 2147483647 { s.len } else { _end } // max_int
 	if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
 		return error('substr(${start}, ${end}) out of bounds (len=${s.len})')
 	}
@@ -1085,7 +1080,7 @@ pub fn (s string) substr_with_check(start int, end int) !string {
 [direct_array_access]
 pub fn (s string) substr_ni(_start int, _end int) string {
 	mut start := _start
-	mut end := _end
+	mut end := if _end == 2147483647 { s.len } else { _end } // max_int
 
 	// borders math
 	if start < 0 {
@@ -1204,7 +1199,7 @@ pub fn (s string) index_any(chars string) int {
 	return -1
 }
 
-// last_index returns the position of the last occurence of the input string.
+// last_index returns the position of the last occurrence of the input string.
 [direct_array_access]
 fn (s string) last_index_(p string) int {
 	if p.len > s.len || p.len == 0 {
@@ -1224,7 +1219,7 @@ fn (s string) last_index_(p string) int {
 	return -1
 }
 
-// last_index returns the position of the last occurence of the input string.
+// last_index returns the position of the last occurrence of the input string.
 pub fn (s string) last_index(p string) ?int {
 	idx := s.last_index_(p)
 	if idx == -1 {
@@ -1274,7 +1269,7 @@ pub fn (s string) index_u8(c u8) int {
 	return -1
 }
 
-// last_index_byte returns the index of the last occurence of byte `c` if found in the string.
+// last_index_byte returns the index of the last occurrence of byte `c` if found in the string.
 // last_index_byte returns -1 if the byte is not found.
 [direct_array_access]
 pub fn (s string) last_index_u8(c u8) int {
@@ -1853,7 +1848,7 @@ pub fn (s string) all_before(sub string) string {
 	return s[..pos]
 }
 
-// all_before_last returns the contents before the last occurence of `sub` in the string.
+// all_before_last returns the contents before the last occurrence of `sub` in the string.
 // If the substring is not found, it returns the full input string.
 // Example: assert '23:34:45.234'.all_before_last(':') == '23:34'
 // Example: assert 'abcd'.all_before_last('.') == 'abcd'
@@ -1877,7 +1872,7 @@ pub fn (s string) all_after(sub string) string {
 	return s[pos + sub.len..]
 }
 
-// all_after_last returns the contents after the last occurence of `sub` in the string.
+// all_after_last returns the contents after the last occurrence of `sub` in the string.
 // If the substring is not found, it returns the full input string.
 // Example: assert '23:34:45.234'.all_after_last(':') == '45.234'
 // Example: assert 'abcd'.all_after_last('z') == 'abcd'
@@ -1889,7 +1884,7 @@ pub fn (s string) all_after_last(sub string) string {
 	return s[pos + sub.len..]
 }
 
-// all_after_first returns the contents after the first occurence of `sub` in the string.
+// all_after_first returns the contents after the first occurrence of `sub` in the string.
 // If the substring is not found, it returns the full input string.
 // Example: assert '23:34:45.234'.all_after_first(':') == '34:45.234'
 // Example: assert 'abcd'.all_after_first('z') == 'abcd'
@@ -1901,7 +1896,7 @@ pub fn (s string) all_after_first(sub string) string {
 	return s[pos + sub.len..]
 }
 
-// after returns the contents after the last occurence of `sub` in the string.
+// after returns the contents after the last occurrence of `sub` in the string.
 // If the substring is not found, it returns the full input string.
 // Example: assert '23:34:45.234'.after(':') == '45.234'
 // Example: assert 'abcd'.after('z') == 'abcd'
@@ -1911,7 +1906,7 @@ pub fn (s string) after(sub string) string {
 	return s.all_after_last(sub)
 }
 
-// after_char returns the contents after the first occurence of `sub` character in the string.
+// after_char returns the contents after the first occurrence of `sub` character in the string.
 // If the substring is not found, it returns the full input string.
 // Example: assert '23:34:45.234'.after_char(`:`) == '34:45.234'
 // Example: assert 'abcd'.after_char(`:`) == 'abcd'
