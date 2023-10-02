@@ -605,129 +605,129 @@ fn sql_field_name(field TableField) string {
 
 // needed for backend functions
 
-pub fn bool_to_primitive(b bool) Primitive {
+fn bool_to_primitive(b bool) Primitive {
 	return Primitive(b)
 }
 
-pub fn option_bool_to_primitive(b ?bool) Primitive {
+fn option_bool_to_primitive(b ?bool) Primitive {
 	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
 }
 
-pub fn f32_to_primitive(b f32) Primitive {
+fn f32_to_primitive(b f32) Primitive {
 	return Primitive(b)
 }
 
-pub fn option_f32_to_primitive(b ?f32) Primitive {
+fn option_f32_to_primitive(b ?f32) Primitive {
 	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
 }
 
-pub fn f64_to_primitive(b f64) Primitive {
+fn f64_to_primitive(b f64) Primitive {
 	return Primitive(b)
 }
 
-pub fn option_f64_to_primitive(b ?f64) Primitive {
+fn option_f64_to_primitive(b ?f64) Primitive {
 	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
 }
 
-pub fn i8_to_primitive(b i8) Primitive {
+fn i8_to_primitive(b i8) Primitive {
 	return Primitive(b)
 }
 
-pub fn option_i8_to_primitive(b ?i8) Primitive {
+fn option_i8_to_primitive(b ?i8) Primitive {
 	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
 }
 
-pub fn i16_to_primitive(b i16) Primitive {
+fn i16_to_primitive(b i16) Primitive {
 	return Primitive(b)
 }
 
-pub fn option_i16_to_primitive(b ?i16) Primitive {
+fn option_i16_to_primitive(b ?i16) Primitive {
 	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
 }
 
-pub fn int_to_primitive(b int) Primitive {
+fn int_to_primitive(b int) Primitive {
 	return Primitive(b)
 }
 
-pub fn option_int_to_primitive(b ?int) Primitive {
+fn option_int_to_primitive(b ?int) Primitive {
 	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
 }
 
 // int_literal_to_primitive handles int literal value
-pub fn int_literal_to_primitive(b int) Primitive {
+fn int_literal_to_primitive(b int) Primitive {
 	return Primitive(b)
 }
 
-pub fn option_int_literal_to_primitive(b ?int) Primitive {
+fn option_int_literal_to_primitive(b ?int) Primitive {
 	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
 }
 
 // float_literal_to_primitive handles float literal value
-pub fn float_literal_to_primitive(b f64) Primitive {
+fn float_literal_to_primitive(b f64) Primitive {
 	return Primitive(b)
 }
 
-pub fn option_float_literal_to_primitive(b ?f64) Primitive {
+fn option_float_literal_to_primitive(b ?f64) Primitive {
 	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
 }
 
-pub fn i64_to_primitive(b i64) Primitive {
+fn i64_to_primitive(b i64) Primitive {
 	return Primitive(b)
 }
 
-pub fn option_i64_to_primitive(b ?i64) Primitive {
+fn option_i64_to_primitive(b ?i64) Primitive {
 	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
 }
 
-pub fn u8_to_primitive(b u8) Primitive {
+fn u8_to_primitive(b u8) Primitive {
 	return Primitive(b)
 }
 
-pub fn option_u8_to_primitive(b ?u8) Primitive {
+fn option_u8_to_primitive(b ?u8) Primitive {
 	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
 }
 
-pub fn u16_to_primitive(b u16) Primitive {
+fn u16_to_primitive(b u16) Primitive {
 	return Primitive(b)
 }
 
-pub fn option_u16_to_primitive(b ?u16) Primitive {
+fn option_u16_to_primitive(b ?u16) Primitive {
 	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
 }
 
-pub fn u32_to_primitive(b u32) Primitive {
+fn u32_to_primitive(b u32) Primitive {
 	return Primitive(b)
 }
 
-pub fn option_u32_to_primitive(b ?u32) Primitive {
+fn option_u32_to_primitive(b ?u32) Primitive {
 	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
 }
 
-pub fn u64_to_primitive(b u64) Primitive {
+fn u64_to_primitive(b u64) Primitive {
 	return Primitive(b)
 }
 
-pub fn option_u64_to_primitive(b ?u64) Primitive {
+fn option_u64_to_primitive(b ?u64) Primitive {
 	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
 }
 
-pub fn string_to_primitive(b string) Primitive {
+fn string_to_primitive(b string) Primitive {
 	return Primitive(b)
 }
 
-pub fn option_string_to_primitive(b ?string) Primitive {
+fn option_string_to_primitive(b ?string) Primitive {
 	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
 }
 
-pub fn time_to_primitive(b time.Time) Primitive {
+fn time_to_primitive(b time.Time) Primitive {
 	return Primitive(b)
 }
 
-pub fn option_time_to_primitive(b ?time.Time) Primitive {
+fn option_time_to_primitive(b ?time.Time) Primitive {
 	return if b_ := b { Primitive(b_) } else { orm.null_primitive }
 }
 
-pub fn infix_to_primitive(b InfixType) Primitive {
+fn infix_to_primitive(b InfixType) Primitive {
 	return Primitive(b)
 }
 
