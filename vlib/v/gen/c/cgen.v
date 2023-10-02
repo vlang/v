@@ -1981,6 +1981,7 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 		} else {
 			g.writeln(' }, (${c.result_name}*)(&${tmp_var}), sizeof(${styp}));')
 		}
+		g.set_current_pos_as_last_stmt_pos()
 	}
 
 	g.write(stmt_str)
