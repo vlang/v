@@ -61,7 +61,7 @@ pub fn qualify_module(pref_ &pref.Preferences, mod string, file_path string) str
 	// TODO: find most stable solution & test with -usecache
 	//
 	// TODO 2022-01-30: Using os.getwd() here does not seem right *at all* imho.
-	// TODO 2022-01-30: That makes lookup dependent on fragile enviroment factors.
+	// TODO 2022-01-30: That makes lookup dependent on fragile environment factors.
 	// TODO 2022-01-30: The lookup should be relative to the folder, in which the current file is,
 	// TODO 2022-01-30: *NOT* to the working folder of the compiler, which can change easily.
 	if clean_file_path.replace(os.getwd() + os.path_separator, '') == mod {
