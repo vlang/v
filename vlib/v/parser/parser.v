@@ -2781,17 +2781,17 @@ fn (mut p Parser) name_expr() ast.Expr {
 				}
 			}
 		}
-	} else if (p.peek_tok.kind == .lcbr || is_generic_struct_init)
+	} else if !known_var && (p.peek_tok.kind == .lcbr || is_generic_struct_init)
 		&& (!p.inside_match || (p.inside_select && prev_tok_kind == .arrow && lit0_is_capital))
 		&& !p.inside_match_case && (!p.inside_if || p.inside_select)
-		&& (!p.inside_for || p.inside_select) && !known_var {
+		&& (!p.inside_for || p.inside_select) {
 		return p.struct_init(p.mod + '.' + p.tok.lit, .normal, is_option) // short_syntax: false
 	} else if p.peek_tok.kind == .lcbr
 		&& ((p.inside_if && lit0_is_capital && p.tok.lit.len > 1 && !known_var && language == .v)
 		|| (p.inside_match_case && p.tok.kind == .name && p.peek_tok.is_next_to(p.tok))) {
 		// `if a == Foo{} {...}` or `match foo { Foo{} {...} }`
 		return p.struct_init(p.mod + '.' + p.tok.lit, .normal, is_option)
-	} else if p.peek_tok.kind == .dot && (lit0_is_capital && !known_var && language == .v) {
+	} else if p.peek_tok.kind == .dot && lit0_is_capital && !known_var && language == .v {
 		// T.name
 		if p.is_generic_name() {
 			pos := p.tok.pos()
@@ -2815,7 +2815,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 				scope: p.scope
 			}
 		}
-		if p.peek_token(2).kind == .name && p.peek_token(3).kind == .lpar && !known_var {
+		if !known_var && p.peek_token(2).kind == .name && p.peek_token(3).kind == .lpar {
 			if lit0_is_capital && p.peek_tok.kind == .dot && language == .v {
 				// New static method call
 				p.expr_mod = ''
@@ -2860,7 +2860,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 				typ: typ
 				pos: type_pos
 			}
-		} else if !known_var && language == .v && (p.table.known_type(p.tok.lit) || lit0_is_capital)
+		} else if !known_var && language == .v && (lit0_is_capital || p.table.known_type(p.tok.lit))
 			&& p.peek_tok.kind == .pipe {
 			start_pos := p.tok.pos()
 			mut to_typ := p.parse_type()
