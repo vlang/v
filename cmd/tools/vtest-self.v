@@ -132,6 +132,7 @@ const (
 		'vlib/orm/orm_string_interpolation_in_where_test.v',
 		'vlib/orm/orm_interface_test.v',
 		'vlib/orm/orm_mut_db_test.v',
+		'vlib/orm/orm_null_test.v',
 		'vlib/orm/orm_result_test.v',
 		'vlib/orm/orm_custom_operators_test.v',
 		'vlib/orm/orm_fk_test.v',
