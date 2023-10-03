@@ -173,6 +173,9 @@ fn (mut g Gen) comptime_ident(name string, is_comptime_option bool) bool {
 		//
 		// Other
 		//
+		'native' {
+			true
+		}
 		'debug' {
 			g.pref.is_debug
 		}

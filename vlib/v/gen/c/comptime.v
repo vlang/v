@@ -1078,6 +1078,9 @@ fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_option bool) !strin
 		'wasm32_emscripten' {
 			return '__EMSCRIPTEN__'
 		}
+		'native' {
+			return '_VNATIVE' // when using the native backend, cgen is inactive
+		}
 		// compilers:
 		'gcc' {
 			return '__V_GCC__'
