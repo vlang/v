@@ -104,13 +104,19 @@ fn generate_code(mut start wasm.Function, bf_expr string) {
 
 @[noreturn]
 fn usage() {
-	eprintln('Usage: bf <expr> <outfile>')
+	eprintln('Usage: bf <expr> <outfile.wasm>')
+	eprintln('   or: bf <path/input.b> <outfile.wasm> (note the `.b` extension)')
 	exit(1)
 }
 
 fn main() {
-	bf_expr := os.args[1] or { usage() }
-
+	mut bf_expr := os.args[1] or { usage() }
+	if bf_expr.ends_with('.b') {
+		bf_expr = os.read_file(bf_expr) or {
+			eprintln('file ${bf_expr} could not be read, error: ${err}')
+			usage()
+		}
+	}
 	outfile := os.args[2] or { usage() }
 
 	mut m := wasm.Module{}
