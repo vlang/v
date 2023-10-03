@@ -16,7 +16,7 @@ pub fn aprox_sin(a f64) f64 {
 	return a0 + a * (a1 + a * (a2 + a * (a3 + a * (a4 + a * (a5 + a * (a6 + a * a7))))))
 }
 
-// aprox_cos returns an approximation of sin(a) made using lolremez
+// aprox_cos returns an approximation of cos(a) made using lolremez
 pub fn aprox_cos(a f64) f64 {
 	a0 := 9.9995999154986614e-1
 	a1 := 1.2548995793001028e-3
