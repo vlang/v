@@ -7,10 +7,6 @@ fn comptime_if() {
 		println('linux or windows or macos')
 	}
 
-	$if native {
-		println('using the native backend')
-	}
-
 	os := $if linux || windows || macos {
 		'linux or windows or macos'
 	} $else {

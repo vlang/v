@@ -608,12 +608,9 @@ fn (mut g Gen) gen_pe_idata() {
 	idata_pos := g.pos()
 	idata_section.set_pointer_to_raw_data(mut g, int(idata_pos))
 
-	g.linker_include_paths << '.'
-
-	mut dll_files := ['KERNEL32.DLL', 'USER32.DLL', 'msvcrt.dll']
-	dll_files << g.linker_libs.map(it + '.dll')
+	dll_files := ['KERNEL32.DLL', 'USER32.DLL', 'msvcrt.dll']
 	mut dlls := dll_files
-		.map(g.lookup_system_dll(it) or { g.n_error('${it}: ${err}') })
+		.map(lookup_system_dll(it) or { g.n_error('${it}: ${err}') })
 		.map(index_dll(it) or { g.n_error('${it}: ${err}') })
 
 	g.extern_symbols << [
@@ -623,7 +620,7 @@ fn (mut g Gen) gen_pe_idata() {
 	]
 
 	for symbol in g.extern_symbols {
-		sym := symbol.all_after('C.')
+		sym := symbol.trim_left('C.')
 		mut found := false
 		for mut dll in dlls {
 			if sym in dll.exports {

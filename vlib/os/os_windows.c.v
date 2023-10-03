@@ -222,7 +222,7 @@ pub fn get_module_filename(handle HANDLE) !string {
 					return string_from_wide2(buf, sz)
 				}
 				else {
-					// Must handled with GetLastError and converted by FormatMessageW
+					// Must handled with GetLastError and converted by FormatMessage
 					return error('Cannot get file name from handle')
 				}
 			}
@@ -231,7 +231,7 @@ pub fn get_module_filename(handle HANDLE) !string {
 	panic('this should be unreachable') // TODO remove unreachable after loop
 }
 
-// Ref - https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-FormatMessageWa#parameters
+// Ref - https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-formatmessagea#parameters
 const (
 	format_message_allocate_buffer = 0x00000100
 	format_message_argument_array  = 0x00002000
@@ -261,7 +261,7 @@ fn ptr_win_get_error_msg(code u32) voidptr {
 	if code > u32(os.max_error_code) {
 		return buf
 	}
-	C.FormatMessageW(os.format_message_allocate_buffer | os.format_message_from_system | os.format_message_ignore_inserts,
+	C.FormatMessage(os.format_message_allocate_buffer | os.format_message_from_system | os.format_message_ignore_inserts,
 		0, code, 0, voidptr(&buf), 0, 0)
 	return buf
 }

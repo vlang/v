@@ -21,17 +21,7 @@ struct SystemDll {
 fn C.SearchPathA(lp_path &char, lp_file_name &char, lp_extension &char, n_buffer_length u32, lp_buffer &char, lp_file_part &&char) u32
 fn C.GetLastError() u32
 
-fn (mut g Gen) lookup_system_dll(dll string) !SystemDll {
-	for path in g.linker_include_paths {
-		full_path := os.join_path(path, dll)
-		if os.exists(full_path) {
-			return SystemDll{
-				name: dll
-				full_path: full_path
-			}
-		}
-	}
-
+fn lookup_system_dll(dll string) !SystemDll {
 	$if windows {
 		unsafe {
 			buffer := malloc(1024)

@@ -6,10 +6,7 @@ module builtin
 // [if !nofloat]
 import strconv
 
-$if !native {
-	#include <float.h>
-}
-
+#include <float.h>
 /*
 -----------------------------------
 ----- f64 to string functions -----
@@ -188,18 +185,10 @@ fn f64_min(a f64, b f64) f64 {
 pub fn (a f32) eq_epsilon(b f32) bool {
 	hi := f32_max(f32_abs(a), f32_abs(b))
 	delta := f32_abs(a - b)
-	$if native {
-		if hi > f32(1.0) {
-			return delta <= hi * (4 * 1e-5)
-		} else {
-			return (1 / (4 * 1e-5)) * delta <= hi
-		}
-	} $else {
-		if hi > f32(1.0) {
-			return delta <= hi * (4 * f32(C.FLT_EPSILON))
-		} else {
-			return (1 / (4 * f32(C.FLT_EPSILON))) * delta <= hi
-		}
+	if hi > f32(1.0) {
+		return delta <= hi * (4 * f32(C.FLT_EPSILON))
+	} else {
+		return (1 / (4 * f32(C.FLT_EPSILON))) * delta <= hi
 	}
 }
 
@@ -210,17 +199,9 @@ pub fn (a f32) eq_epsilon(b f32) bool {
 pub fn (a f64) eq_epsilon(b f64) bool {
 	hi := f64_max(f64_abs(a), f64_abs(b))
 	delta := f64_abs(a - b)
-	$if native {
-		if hi > 1.0 {
-			return delta <= hi * (4 * 1e-9)
-		} else {
-			return (1 / (4 * 1e-9)) * delta <= hi
-		}
-	} $else {
-		if hi > 1.0 {
-			return delta <= hi * (4 * f64(C.DBL_EPSILON))
-		} else {
-			return (1 / (4 * f64(C.DBL_EPSILON))) * delta <= hi
-		}
+	if hi > 1.0 {
+		return delta <= hi * (4 * f64(C.DBL_EPSILON))
+	} else {
+		return (1 / (4 * f64(C.DBL_EPSILON))) * delta <= hi
 	}
 }

@@ -9,7 +9,7 @@ fn (mut g Gen) comptime_at(node ast.AtExpr) string {
 	return node.val
 }
 
-fn (mut g Gen) comptime_conditional(node ast.IfExpr) ?ast.IfBranch {
+fn (mut g Gen) comptime_conditional(node ast.IfExpr) ?[]ast.Stmt {
 	if node.branches.len == 0 {
 		return none
 	}
@@ -17,23 +17,11 @@ fn (mut g Gen) comptime_conditional(node ast.IfExpr) ?ast.IfBranch {
 	for i, branch in node.branches {
 		// handle $else branch, which does not have a condition
 		if (node.has_else && i + 1 == node.branches.len) || g.comptime_is_truthy(branch.cond) {
-			return branch
+			return branch.stmts
 		}
 	}
 
 	return none
-}
-
-fn (mut g Gen) should_emit_hash_stmt(node ast.HashStmt) bool {
-	if node.ct_conds.len == 0 {
-		return true
-	}
-
-	mut emit := true
-	for cond in node.ct_conds {
-		emit = emit && g.comptime_is_truthy(cond)
-	}
-	return emit
 }
 
 fn (mut g Gen) comptime_is_truthy(cond ast.Expr) bool {
@@ -185,9 +173,6 @@ fn (mut g Gen) comptime_ident(name string, is_comptime_option bool) bool {
 		//
 		// Other
 		//
-		'native' {
-			true
-		}
 		'debug' {
 			g.pref.is_debug
 		}

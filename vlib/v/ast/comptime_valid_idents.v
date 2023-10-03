@@ -9,8 +9,7 @@ pub const (
 	valid_comptime_if_cpu_features   = ['x64', 'x32', 'little_endian', 'big_endian']
 	valid_comptime_if_other          = ['apk', 'js', 'debug', 'prod', 'test', 'glibc', 'prealloc',
 		'no_bounds_checking', 'freestanding', 'threads', 'js_node', 'js_browser', 'js_freestanding',
-		'interpreter', 'es5', 'profile', 'wasm32', 'wasm32_emscripten', 'wasm32_wasi', 'fast_math',
-		'native']
+		'interpreter', 'es5', 'profile', 'wasm32', 'wasm32_emscripten', 'wasm32_wasi', 'fast_math']
 	valid_comptime_not_user_defined  = all_valid_comptime_idents()
 	valid_comptime_compression_types = ['none', 'zlib']
 )

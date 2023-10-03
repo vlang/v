@@ -2125,9 +2125,9 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, n
 		}
 		ast.IfExpr {
 			if right.is_comptime {
-				if branch := c.g.comptime_conditional(right) {
-					for j, stmt in branch.stmts {
-						if j + 1 != branch.stmts.len {
+				if stmts := c.g.comptime_conditional(right) {
+					for j, stmt in stmts {
+						if j + 1 != stmts.len {
 							c.g.stmt(stmt)
 							continue
 						}

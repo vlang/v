@@ -56,9 +56,7 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 		eprintln('     file: ${file}:${line_no}')
 		eprintln('   v hash: ${vcommithash()}')
 		eprintln('=========================================')
-		$if native {
-			C.exit(1) // TODO: native backtraces
-		} $else $if exit_after_panic_message ? {
+		$if exit_after_panic_message ? {
 			C.exit(1)
 		} $else $if no_backtrace ? {
 			C.exit(1)
@@ -109,9 +107,7 @@ pub fn panic(s string) {
 		eprint('V panic: ')
 		eprintln(s)
 		eprintln('v hash: ${vcommithash()}')
-		$if native {
-			C.exit(1) // TODO: native backtraces
-		} $else $if exit_after_panic_message ? {
+		$if exit_after_panic_message ? {
 			C.exit(1)
 		} $else $if no_backtrace ? {
 			C.exit(1)
