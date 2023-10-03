@@ -62,17 +62,17 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 
 		c.check_orm_non_primitive_struct_field_attrs(field)
 
-		typ := c.get_type_of_field_with_related_table(field)
+		foreign_typ := c.get_field_foreign_table_type(field)
 
 		mut subquery_expr := ast.SqlExpr{
 			pos: node.pos
 			has_where: true
 			where_expr: ast.None{}
-			typ: typ.clear_flag(.option).set_flag(.result)
+			typ: field.typ.clear_flag(.option).set_flag(.result)
 			db_expr: node.db_expr
 			table_expr: ast.TypeNode{
 				pos: node.table_expr.pos
-				typ: typ
+				typ: foreign_typ
 			}
 			is_generated: true
 		}
@@ -133,7 +133,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 			}
 		}
 
-		sub_structs[int(typ)] = subquery_expr
+		sub_structs[int(field.typ)] = subquery_expr
 	}
 
 	if node.is_count {
@@ -227,7 +227,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 		c.cur_orm_ts = old_ts
 	}
 
-	inserting_object_name := node.object_var_name
+	inserting_object_name := node.object_var
 
 	if node.kind == .insert && !node.is_generated {
 		inserting_object := node.scope.find(inserting_object_name) or {
@@ -275,31 +275,23 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 
 		c.check_orm_non_primitive_struct_field_attrs(field)
 
-		typ := c.get_type_of_field_with_related_table(field)
-
-		mut object_var_name := '${node.object_var_name}.${field.name}'
-		if typ != field.typ {
-			object_var_name = node.object_var_name
-		} else if typ.has_flag(.option) {
-			sym := c.table.sym(field.typ)
-			object_var_name = '(*(${sym.cname}*)&${object_var_name}.data)'
-		}
+		foreign_typ := c.get_field_foreign_table_type(field)
 
 		mut subquery_expr := ast.SqlStmtLine{
 			pos: node.pos
 			kind: node.kind
 			table_expr: ast.TypeNode{
 				pos: node.table_expr.pos
-				typ: typ
+				typ: foreign_typ
 			}
-			object_var_name: object_var_name
+			object_var: field.name
 			is_generated: true
 		}
 
 		tmp_inside_sql := c.inside_sql
 		c.sql_stmt_line(mut subquery_expr)
 		c.inside_sql = tmp_inside_sql
-		sub_structs[typ] = subquery_expr
+		sub_structs[field.typ] = subquery_expr
 	}
 
 	node.fields = fields
@@ -654,10 +646,10 @@ fn (mut c Checker) check_orm_table_expr_type(type_node &ast.TypeNode) bool {
 	return true
 }
 
-// get_type_of_field_with_related_table gets the type of table in which
-// the primary key is used as the foreign key in the current table.
-// For example, if you are using `[]Child`, the related table type would be `Child`.
-fn (c &Checker) get_type_of_field_with_related_table(table_field &ast.StructField) ast.Type {
+// get_field_foreign_table_type gets the type of table in which the primary key
+// is referred to by the provided field.  For example, the `[]Child` field
+// refers to the foreign table `Child`.
+fn (c &Checker) get_field_foreign_table_type(table_field &ast.StructField) ast.Type {
 	if c.table.sym(table_field.typ).kind == .struct_ {
 		return table_field.typ
 	} else if c.table.sym(table_field.typ).kind == .array {
@@ -697,7 +689,7 @@ fn (c &Checker) get_orm_non_primitive_fields(fields []ast.StructField) []ast.Str
 // ```
 // TODO: rewrite it, move to runtime.
 fn (_ &Checker) check_field_of_inserting_struct_is_uninitialized(node &ast.SqlStmtLine, field_name string) bool {
-	struct_scope := node.scope.find_var(node.object_var_name) or { return false }
+	struct_scope := node.scope.find_var(node.object_var) or { return false }
 
 	if struct_scope.expr is ast.StructInit {
 		return struct_scope.expr.init_fields.filter(it.name == field_name).len == 0

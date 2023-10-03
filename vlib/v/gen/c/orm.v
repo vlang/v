@@ -272,7 +272,7 @@ fn (mut g Gen) write_orm_delete(node &ast.SqlStmtLine, table_name string, connec
 // inserting a struct into a table, saving inserted `id` into a passed variable.
 fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_var_name string, table_name string, last_ids_arr string, res string, pid string, fkey string, or_expr ast.OrExpr) {
 	mut subs := []ast.SqlStmtLine{}
-	mut sub_opt_fields := []string{}
+	mut subs_unwrapped_c_typ := []string{}
 	mut arrs := []ast.SqlStmtLine{}
 	mut fkeys := []string{}
 	mut field_names := []string{}
@@ -281,20 +281,16 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 		sym := g.table.sym(field.typ)
 		if sym.kind == .struct_ && sym.name != 'time.Time' {
 			subs << node.sub_structs[int(field.typ)]
-			sub_opt_fields << if field.typ.has_flag(.option) { field.name } else { '' }
+			unwrapped_c_typ := g.typ(field.typ.clear_flag(.option))
+			subs_unwrapped_c_typ << if field.typ.has_flag(.option) { unwrapped_c_typ } else { '' }
 		} else if sym.kind == .array {
 			if attr := field.attrs.find_first('fkey') {
 				fkeys << attr.arg
 			} else {
 				verror('missing fkey attribute')
 			}
-			info := sym.array_info()
-			if info.nr_dims == 1 {
-				arrs << node.sub_structs[int(info.elem_type)]
-				field_names << field.name
-			} else {
-				verror('ORM only supports 1-dimensional arrays')
-			}
+			arrs << node.sub_structs[int(field.typ)]
+			field_names << field.name
 		}
 	}
 
@@ -308,24 +304,27 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 
 	mut member_access_type := '.'
 	if node.scope != unsafe { nil } {
-		inserting_object := node.scope.find(node.object_var_name) or {
-			verror('`${node.object_var_name}` is not found in scope')
+		inserting_object := node.scope.find(node.object_var) or {
+			verror('`${node.object_var}` is not found in scope')
 		}
 		if inserting_object.typ.is_ptr() {
 			member_access_type = '->'
 		}
 	}
 
-	for i, sub in subs {
-		if sub_opt_fields[i].len > 0 {
-			var := '${node.object_var_name}${member_access_type}${c_name(sub_opt_fields[i])}'
+	for i, mut sub in subs {
+		if subs_unwrapped_c_typ[i].len > 0 {
+			var := '${node.object_var}${member_access_type}${sub.object_var}'
 			g.writeln('if(${var}.state == 0) {')
 			g.indent++
+			sub.object_var = '(*(${subs_unwrapped_c_typ[i]}*)${node.object_var}${member_access_type}${sub.object_var}.data)'
+		} else {
+			sub.object_var = '${node.object_var}${member_access_type}${sub.object_var}'
 		}
 		g.sql_stmt_line(sub, connection_var_name, or_expr)
 		g.writeln('array_push(&${last_ids_arr}, _MOV((orm__Primitive[1]){')
 		g.writeln('\torm__int_to_primitive(orm__Connection_name_table[${connection_var_name}._typ]._method_last_id(${connection_var_name}._object))}));')
-		if sub_opt_fields[i].len > 0 {
+		if subs_unwrapped_c_typ[i].len > 0 {
 			g.indent--
 			g.writeln('} else {')
 			g.writeln('\tarray_push(&${last_ids_arr}, _MOV((orm__Primitive[1]){ _const_orm__null_primitive }));')
@@ -382,7 +381,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			} else if sym.kind == .enum_ {
 				typ = 'i64'
 			}
-			var := '${node.object_var_name}${member_access_type}${c_name(field.name)}'
+			var := '${node.object_var}${member_access_type}${c_name(field.name)}'
 			if field.typ.has_flag(.option) {
 				g.writeln('${var}.state == 2? _const_orm__null_primitive : orm__${typ}_to_primitive(*(${typ}*)(${var}.data)),')
 			} else {
@@ -428,19 +427,18 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			if typ == 'time__Time' {
 				typ = 'time'
 			}
-			g.writeln('orm__Primitive ${id_name} = orm__${typ}_to_primitive(${node.object_var_name}${member_access_type}${c_name(primary_field.name)});')
+			g.writeln('orm__Primitive ${id_name} = orm__${typ}_to_primitive(${node.object_var}${member_access_type}${c_name(primary_field.name)});')
 		}
-
 		for i, mut arr in arrs {
-			c_field_name := c_name(field_names[i])
 			idx := g.new_tmp_var()
-			g.writeln('for (int ${idx} = 0; ${idx} < ${arr.object_var_name}${member_access_type}${c_field_name}.len; ${idx}++) {')
+			g.writeln('for (int ${idx} = 0; ${idx} < ${node.object_var}${member_access_type}${arr.object_var}.len; ${idx}++) {')
+			g.indent++
 			last_ids := g.new_tmp_var()
 			res_ := g.new_tmp_var()
 			tmp_var := g.new_tmp_var()
 			ctyp := g.typ(arr.table_expr.typ)
-			g.writeln('${ctyp} ${tmp_var} = (*(${ctyp}*)array_get(${arr.object_var_name}${member_access_type}${c_field_name}, ${idx}));')
-			arr.object_var_name = tmp_var
+			g.writeln('${ctyp} ${tmp_var} = (*(${ctyp}*)array_get(${node.object_var}${member_access_type}${arr.object_var}, ${idx}));')
+			arr.object_var = tmp_var
 			mut fff := []ast.StructField{}
 			for f in arr.fields {
 				mut skip := false
@@ -460,6 +458,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			unsafe { fff.free() }
 			g.write_orm_insert_with_last_ids(arr, connection_var_name, g.get_table_name_by_struct_type(arr.table_expr.typ),
 				last_ids, res_, id_name, fkeys[i], or_expr)
+			g.indent--
 			g.writeln('}')
 		}
 	}
@@ -1010,9 +1009,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 				} else {
 					verror('missing fkey attribute')
 				}
-				info := sym.array_info()
-				arr_typ := info.elem_type
-				sub := node.sub_structs[int(arr_typ)]
+				sub := node.sub_structs[field.typ]
 				mut where_expr := sub.where_expr as ast.InfixExpr
 				mut left_where_expr := where_expr.left as ast.Ident
 				mut right_where_expr := where_expr.right as ast.Ident
