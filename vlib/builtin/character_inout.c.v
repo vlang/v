@@ -3,6 +3,7 @@ module builtin
 // input_character gives back a single character, read from the standard input.
 // It returns -1 on error (when the input is finished (EOF), on a broken pipe etc).
 pub fn input_character() int {
+	mut ch := 0
 	$if freestanding {
 		// TODO
 		return -1
@@ -10,12 +11,12 @@ pub fn input_character() int {
 		// TODO
 		return -1
 	} $else {
-		ch := C.getchar()
+		ch = C.getchar()
 		if ch == C.EOF {
 			return -1
 		}
-		return ch
 	}
+	return ch
 }
 
 // print_character writes the single character `ch` to the standard output.
