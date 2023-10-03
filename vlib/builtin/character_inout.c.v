@@ -1,6 +1,6 @@
 module builtin
 
-// input_character gives back a single character, read from the standart input.
+// input_character gives back a single character, read from the standard input.
 // It returns -1 on error (when the input is finished (EOF), on a broken pipe etc).
 pub fn input_character() int {
 	$if freestanding {
@@ -18,7 +18,7 @@ pub fn input_character() int {
 	}
 }
 
-// print_character writes the single character `ch` to the standart output.
+// print_character writes the single character `ch` to the standard output.
 // It returns -1 on error (when the output is closed, on a broken pipe, etc).
 // Note: this function does not allocate memory, unlike `print(ch.ascii_str())`
 // which does, and is thus cheaper to call, which is important, if you have
