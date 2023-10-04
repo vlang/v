@@ -194,6 +194,38 @@ pub fn (mut e Eval) register_symbol_stmts(stmts []ast.Stmt, mod string, file str
 	}
 }
 
+pub fn (mut e Eval) comptime_cond(cond ast.Expr) bool {
+	match cond {
+		ast.Ident {
+			match cond.name {
+				'native' {
+					return false
+				}
+				'windows' {
+					return e.pref.os == .windows
+				}
+				else {
+					e.error('unknown compile time if')
+				}
+			}
+		}
+		ast.PrefixExpr {
+			match cond.op {
+				.not {
+					return !e.comptime_cond(cond.right)
+				}
+				else {
+					e.error('unsupported prefix expression')
+				}
+			}
+		}
+		else {
+			e.error('unsupported expression')
+		}
+	}
+	return false
+}
+
 pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 	match stmt {
 		ast.Module {
@@ -226,28 +258,9 @@ pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 						e.error('only comptime ifs are allowed in top level')
 					}
 					for i, branch in x.branches {
-						mut do_if := false
-						println('branch:${branch}')
-						cond := branch.cond
-						match cond {
-							ast.Ident {
-								match cond.name {
-									'windows' {
-										do_if = e.pref.os == .windows
-									}
-									else {
-										e.error('unknown compile time if')
-									}
-								}
-								do_if = do_if || x.branches.len == i + 1
-								if do_if {
-									e.register_symbol_stmts(branch.stmts, mod, file)
-									break
-								}
-							}
-							else {
-								e.error('unsupported expression')
-							}
+						if e.comptime_cond(branch.cond) || x.branches.len == i + 1 {
+							e.register_symbol_stmts(branch.stmts, mod, file)
+							break
 						}
 					}
 				}
