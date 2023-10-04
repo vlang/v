@@ -75,12 +75,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 
 			match node.kind {
 				'include', 'preinclude', 'define', 'insert' {
-					g.warning('#${node.kind} is not supported with the native backend',
+					g.v_error('#${node.kind} is not supported with the native backend',
 						node.pos)
-					// TODO: replace with error once issues with builtin are resolved
 				}
 				'flag' {
-					// flags are already handled when dispatching extern dependencies
+					// do nothing; flags are already handled when dispatching extern dependencies
 				}
 				else {
 					g.gen_native_hash_stmt(node)

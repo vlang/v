@@ -10,30 +10,12 @@ fn (mut g Gen) comptime_at(node ast.AtExpr) string {
 }
 
 fn (mut g Gen) comptime_conditional(node ast.IfExpr) ?ast.IfBranch {
-	if node.branches.len == 0 {
-		return none
-	}
-
-	for i, branch in node.branches {
-		// handle $else branch, which does not have a condition
-		if (node.has_else && i + 1 == node.branches.len) || g.comptime_is_truthy(branch.cond) {
-			return branch
-		}
-	}
-
-	return none
+	return node.branches.filter((node.has_else && it == node.branches.last())
+		|| g.comptime_is_truthy(it.cond))[0] or { return none }
 }
 
 fn (mut g Gen) should_emit_hash_stmt(node ast.HashStmt) bool {
-	if node.ct_conds.len == 0 {
-		return true
-	}
-
-	mut emit := true
-	for cond in node.ct_conds {
-		emit = emit && g.comptime_is_truthy(cond)
-	}
-	return emit
+	return node.ct_conds.all(g.comptime_is_truthy(it))
 }
 
 fn (mut g Gen) comptime_is_truthy(cond ast.Expr) bool {
