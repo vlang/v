@@ -580,6 +580,8 @@ fn (mut c Checker) builtin_args(mut node ast.CallExpr, fn_name string, func ast.
 	} else if arg.typ == ast.char_type && arg.typ.nr_muls() == 0 {
 		c.error('`${fn_name}` cannot print type `char` directly, print its address or cast it to an integer instead',
 			node.pos)
+	} else if arg.expr is ast.ArrayDecompose {
+		c.error('`${fn_name}` cannot print variadic values', node.pos)
 	}
 	c.fail_if_unreadable(arg.expr, arg.typ, 'argument to print')
 	c.inside_casting_to_str = false
