@@ -55,7 +55,7 @@ pub fn (c rune) repeat(count int) string {
 	return res.repeat(count)
 }
 
-// bytes converts a rune to array of bytes
+// bytes converts a rune to an array of bytes
 [manualfree]
 pub fn (c rune) bytes() []u8 {
 	mut res := []u8{cap: 5}

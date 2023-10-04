@@ -36,7 +36,7 @@ pub fn copysign(x f64, y f64) f64 {
 	return f64_from_bits((f64_bits(x) & ~sign_mask) | (f64_bits(y) & sign_mask))
 }
 
-// degrees converts angle from radians to degrees.
+// degrees converts an angle in radians to a corresponding angle in degrees.
 [inline]
 pub fn degrees(radians f64) f64 {
 	return radians * (180.0 / pi)
@@ -153,7 +153,7 @@ pub fn signi(n f64) int {
 	return int(copysign(1.0, n))
 }
 
-// radians converts angle from degrees to radians.
+// radians converts an angle in degrees to a corresponding angle in radians.
 [inline]
 pub fn radians(degrees f64) f64 {
 	return degrees * (pi / 180.0)
