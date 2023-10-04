@@ -16,7 +16,7 @@ pub fn aprox_sin(a f64) f64 {
 	return a0 + a * (a1 + a * (a2 + a * (a3 + a * (a4 + a * (a5 + a * (a6 + a * a7))))))
 }
 
-// aprox_cos returns an approximation of sin(a) made using lolremez
+// aprox_cos returns an approximation of cos(a) made using lolremez
 pub fn aprox_cos(a f64) f64 {
 	a0 := 9.9995999154986614e-1
 	a1 := 1.2548995793001028e-3
@@ -36,7 +36,7 @@ pub fn copysign(x f64, y f64) f64 {
 	return f64_from_bits((f64_bits(x) & ~sign_mask) | (f64_bits(y) & sign_mask))
 }
 
-// degrees converts from radians to degrees.
+// degrees converts angle from radians to degrees.
 [inline]
 pub fn degrees(radians f64) f64 {
 	return radians * (180.0 / pi)
@@ -153,7 +153,7 @@ pub fn signi(n f64) int {
 	return int(copysign(1.0, n))
 }
 
-// radians converts from degrees to radians.
+// radians converts angle from degrees to radians.
 [inline]
 pub fn radians(degrees f64) f64 {
 	return degrees * (pi / 180.0)
