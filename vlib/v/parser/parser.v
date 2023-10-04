@@ -2843,6 +2843,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 					info: ast.IdentFn{
 						typ: fn_type
 					}
+					pos: pos
 					scope: p.scope
 				}
 			}
