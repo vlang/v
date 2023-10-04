@@ -156,8 +156,8 @@ fn (mut g Gen) condition(expr ast.Expr, neg bool) int {
 
 fn (mut g Gen) if_expr(node ast.IfExpr) {
 	if node.is_comptime {
-		if stmts := g.comptime_conditional(node) {
-			g.stmts(stmts)
+		if branch := g.comptime_conditional(node) {
+			g.stmts(branch.stmts)
 		}
 		return
 	}
@@ -405,9 +405,9 @@ fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string) {
 		}
 		ast.IfExpr {
 			if expr.is_comptime {
-				if stmts := g.comptime_conditional(expr) {
-					for i, stmt in stmts {
-						if i + 1 == stmts.len && stmt is ast.ExprStmt {
+				if branch := g.comptime_conditional(expr) {
+					for i, stmt in branch.stmts {
+						if i + 1 == branch.stmts.len && stmt is ast.ExprStmt {
 							g.gen_print_from_expr(stmt.expr, stmt.typ, name)
 						} else {
 							g.stmt(stmt)
