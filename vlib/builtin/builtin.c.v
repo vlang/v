@@ -32,10 +32,6 @@ pub fn exit(code int) {
 	C.exit(code)
 }
 
-fn vcommithash() string {
-	return unsafe { tos5(&char(C.V_CURRENT_COMMIT_HASH)) }
-}
-
 // panic_debug private function that V uses for panics, -cg/-g is passed
 // recent versions of tcc print nicer backtraces automatically
 // Note: the duplication here is because tcc_backtrace should be called directly
@@ -54,7 +50,7 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 		eprintln(' function: ${fn_name}()')
 		eprintln('  message: ${s}')
 		eprintln('     file: ${file}:${line_no}')
-		eprintln('   v hash: ${vcommithash()}')
+		eprintln('   v hash: ${@VHASH}')
 		eprintln('=========================================')
 		$if native {
 			C.exit(1) // TODO: native backtraces
@@ -108,7 +104,7 @@ pub fn panic(s string) {
 	} $else {
 		eprint('V panic: ')
 		eprintln(s)
-		eprintln('v hash: ${vcommithash()}')
+		eprintln('v hash: ${@VHASH}')
 		$if native {
 			C.exit(1) // TODO: native backtraces
 		} $else $if exit_after_panic_message ? {
