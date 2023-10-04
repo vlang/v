@@ -7,9 +7,7 @@ fn Foo.bar() string {
 }
 
 fn test_assign_static_method_to_anon_fn() {
-	// vfmt off
 	anon_fn := Foo.bar
-	// vfmt on
 	ret := anon_fn()
 	assert ret == 'bar'
 }
