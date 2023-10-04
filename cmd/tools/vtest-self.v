@@ -215,6 +215,7 @@ const (
 		'vlib/orm/orm_insert_test.v',
 		'vlib/orm/orm_insert_reserved_name_test.v',
 		'vlib/orm/orm_fn_calls_test.v',
+		'vlib/orm/orm_null_test.v',
 		'vlib/orm/orm_last_id_test.v',
 		'vlib/orm/orm_string_interpolation_in_where_test.v',
 		'vlib/orm/orm_interface_test.v',
