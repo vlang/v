@@ -74,7 +74,34 @@ pub fn (mut b Builder) write_byte(data byte) {
 	b << data
 }
 
-// write implements the Writer interface
+// write_decimal appends a decimal representation of the number `n` into the builder `b`,
+// without dynamic allocation. The higher order digits come first, i.e. 6123 will be written
+// with the digit `6` first, then `1`, then `2` and `3` last.
+[direct_array_access]
+pub fn (mut b Builder) write_decimal(n i64) {
+	if n == 0 {
+		b.write_u8(0x30)
+		return
+	}
+	mut buf := [25]u8{}
+	mut x := if n < 0 { -n } else { n }
+	mut i := 24
+	for x != 0 {
+		nextx := x / 10
+		r := x % 10
+		buf[i] = u8(r) + 0x30
+		x = nextx
+		i--
+	}
+	if n < 0 {
+		buf[i] = `-`
+		i--
+	}
+	unsafe { b.write_ptr(&buf[i + 1], 24 - i) }
+}
+
+// write implements the io.Writer interface, that is why it
+// it returns how many bytes were written to the string builder.
 pub fn (mut b Builder) write(data []u8) !int {
 	if data.len == 0 {
 		return 0

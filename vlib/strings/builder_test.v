@@ -144,3 +144,25 @@ fn test_drain_builder() {
 	assert target_sb.len == 3
 	assert target_sb.str() == 'abc'
 }
+
+[manualfree]
+fn sb_i64_str(n i64) string {
+	mut sb := strings.new_builder(24)
+	defer {
+		unsafe { sb.free() }
+	}
+	sb.write_decimal(n)
+	return sb.str()
+}
+
+fn test_write_decimal() {
+	assert sb_i64_str(0) == '0'
+	assert sb_i64_str(1) == '1'
+	assert sb_i64_str(-1) == '-1'
+	assert sb_i64_str(1001) == '1001'
+	assert sb_i64_str(-1001) == '-1001'
+	assert sb_i64_str(1234567890) == '1234567890'
+	assert sb_i64_str(-1234567890) == '-1234567890'
+	assert sb_i64_str(9223372036854775807) == '9223372036854775807'
+	assert sb_i64_str(-9223372036854775807) == '-9223372036854775807'
+}
