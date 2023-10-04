@@ -11,7 +11,9 @@ pub fn print_backtrace() {
 		$if freestanding {
 			println(bare_backtrace())
 		} $else {
-			$if tinyc {
+			$if native {
+				// TODO: native backtrace solution
+			} $else $if tinyc {
 				C.tcc_backtrace(c'Backtrace')
 			} $else {
 				// NOTE: TCC doesn't have the unwind library

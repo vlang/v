@@ -7,7 +7,7 @@ module builtin
 // g_original_codepage - used to restore the original windows console code page when exiting
 __global g_original_codepage = u32(0)
 
-// utf8 to stdout needs C.SetConsoleOutputCP(C.CP_UTF8)
+// utf8 to stdout needs C.SetConsoleOutputCP(cp_utf8)
 fn C.GetConsoleOutputCP() u32
 
 fn C.SetConsoleOutputCP(wCodePageID u32) bool
@@ -23,13 +23,21 @@ fn is_terminal(fd int) int {
 	return int(mode)
 }
 
+const (
+	std_output_handle                  = -11
+	std_error_handle                   = -12
+	enable_processed_output            = 1
+	enable_wrap_at_eol_output          = 2
+	evable_virtual_terminal_processing = 4
+)
+
 fn builtin_init() {
 	g_original_codepage = C.GetConsoleOutputCP()
-	C.SetConsoleOutputCP(C.CP_UTF8)
+	C.SetConsoleOutputCP(cp_utf8)
 	C.atexit(restore_codepage)
 	if is_terminal(1) > 0 {
-		C.SetConsoleMode(C.GetStdHandle(C.STD_OUTPUT_HANDLE), C.ENABLE_PROCESSED_OUTPUT | C.ENABLE_WRAP_AT_EOL_OUTPUT | 0x0004) // enable_virtual_terminal_processing
-		C.SetConsoleMode(C.GetStdHandle(C.STD_ERROR_HANDLE), C.ENABLE_PROCESSED_OUTPUT | C.ENABLE_WRAP_AT_EOL_OUTPUT | 0x0004) // enable_virtual_terminal_processing
+		C.SetConsoleMode(C.GetStdHandle(std_output_handle), enable_processed_output | enable_wrap_at_eol_output | evable_virtual_terminal_processing)
+		C.SetConsoleMode(C.GetStdHandle(std_error_handle), enable_processed_output | enable_wrap_at_eol_output | evable_virtual_terminal_processing)
 		unsafe {
 			C.setbuf(C.stdout, 0)
 			C.setbuf(C.stderr, 0)
@@ -110,15 +118,24 @@ fn break_if_debugger_attached() {
 	}
 }
 
+const (
+	format_message_allocate_buffer = 0x00000100
+	format_message_argument_array  = 0x00002000
+	format_message_from_hmodule    = 0x00000800
+	format_message_from_string     = 0x00000400
+	format_message_from_system     = 0x00001000
+	format_message_ignore_inserts  = 0x00000200
+)
+
 // return an error message generated from WinAPI's `LastError`
 pub fn winapi_lasterr_str() string {
 	err_msg_id := C.GetLastError()
 	if err_msg_id == 8 {
-		// handle this case special since `FormatMessage()` might not work anymore
+		// handle this case special since `FormatMessageW()` might not work anymore
 		return 'insufficient memory'
 	}
 	mut msgbuf := &u16(0)
-	res := C.FormatMessage(C.FORMAT_MESSAGE_ALLOCATE_BUFFER | C.FORMAT_MESSAGE_FROM_SYSTEM | C.FORMAT_MESSAGE_IGNORE_INSERTS,
+	res := C.FormatMessageW(format_message_allocate_buffer | format_message_from_system | format_message_ignore_inserts,
 		0, err_msg_id, 0, voidptr(&msgbuf), 0, 0)
 	err_msg := if res == 0 {
 		'Win-API error ${err_msg_id}'

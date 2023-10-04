@@ -919,7 +919,7 @@ pub fn (mut g Gen) find_o_path(fname string) string {
 }
 
 pub fn (mut g Gen) get_lpaths() string {
-	lpaths := match g.pref.arch {
+	mut lpaths := match g.pref.arch {
 		.amd64 {
 			g.prepend_vobjpath(['/usr/lib/x86_64-linux-gnu', '/usr/lib64', '/lib64', '/usr/lib',
 				'/lib'])
@@ -932,6 +932,7 @@ pub fn (mut g Gen) get_lpaths() string {
 			['/dev/null']
 		}
 	}
+	lpaths << g.linker_include_paths
 	return lpaths.map('-L${it}').join(' ')
 }
 
@@ -960,7 +961,7 @@ pub fn (mut g Gen) link_elf_file(obj_file string) {
 		else { '/dev/null' }
 	}
 
-	linker_args := [
+	mut linker_args := [
 		'-v',
 		lpaths,
 		'-m ${arch}',
@@ -975,6 +976,7 @@ pub fn (mut g Gen) link_elf_file(obj_file string) {
 		'${obj_file}',
 		'-o ${g.out_name}',
 	]
+	linker_args << g.linker_libs
 	slinker_args := linker_args.join(' ')
 
 	mut ld := 'ld'

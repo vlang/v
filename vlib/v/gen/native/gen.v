@@ -22,40 +22,43 @@ pub struct Gen {
 	pref     &pref.Preferences = unsafe { nil } // Preferences shared from V struct
 	files    []&ast.File
 mut:
-	code_gen             CodeGen
-	table                &ast.Table = unsafe { nil }
-	buf                  []u8
-	sect_header_name_pos int
-	offset               i64
-	file_size_pos        i64
-	main_fn_addr         i64
-	main_fn_size         i64
-	start_symbol_addr    i64
-	code_start_pos       i64 // location of the start of the assembly instructions
-	symbol_table         []SymbolTableSection
-	extern_symbols       []string
-	extern_fn_calls      map[i64]string
-	fn_addr              map[string]i64
-	var_offset           map[string]int // local var stack offset
-	var_alloc_size       map[string]int // local var allocation size
-	stack_var_pos        int
-	stack_depth          int
-	debug_pos            int
-	current_file         &ast.File = unsafe { nil }
-	errors               []errors.Error
-	warnings             []errors.Warning
-	syms                 []Symbol
-	size_pos             []int
-	nlines               int
-	callpatches          []CallPatch
-	strs                 []String
-	labels               &LabelTable = unsafe { nil }
-	defer_stmts          []ast.DeferStmt
-	builtins             map[Builtin]BuiltinFn
-	structs              []Struct
-	eval                 eval.Eval
-	enum_vals            map[string]Enum
-	return_type          ast.Type
+	code_gen                  CodeGen
+	table                     &ast.Table = unsafe { nil }
+	buf                       []u8
+	sect_header_name_pos      int
+	offset                    i64
+	file_size_pos             i64
+	main_fn_addr              i64
+	main_fn_size              i64
+	start_symbol_addr         i64
+	code_start_pos            i64 // location of the start of the assembly instructions
+	symbol_table              []SymbolTableSection
+	extern_symbols            []string
+	linker_include_paths      []string
+	linker_libs               []string
+	extern_fn_calls           map[i64]string
+	fn_addr                   map[string]i64
+	var_offset                map[string]int // local var stack offset
+	var_alloc_size            map[string]int // local var allocation size
+	stack_var_pos             int
+	stack_depth               int
+	debug_pos                 int
+	current_file              &ast.File = unsafe { nil }
+	errors                    []errors.Error
+	warnings                  []errors.Warning
+	syms                      []Symbol
+	size_pos                  []int
+	nlines                    int
+	callpatches               []CallPatch
+	strs                      []String
+	labels                    &LabelTable = unsafe { nil }
+	defer_stmts               []ast.DeferStmt
+	builtins                  map[Builtin]BuiltinFn
+	structs                   []Struct
+	eval                      eval.Eval
+	enum_vals                 map[string]Enum
+	return_type               ast.Type
+	comptime_omitted_branches []ast.IfBranch
 	// elf specific
 	elf_text_header_addr i64 = -1
 	elf_rela_section     Section
@@ -387,30 +390,55 @@ pub fn (mut g Gen) typ(a int) &ast.TypeSymbol {
 	return g.table.type_symbols[a]
 }
 
-pub fn (mut g Gen) ast_has_external_functions() bool {
-	for file in g.files {
-		walker.inspect(file, unsafe { &mut g }, fn (node &ast.Node, data voidptr) bool {
-			if node is ast.Expr && (node as ast.Expr) is ast.CallExpr
-				&& ((node as ast.Expr) as ast.CallExpr).language != .v {
-				call := node as ast.CallExpr
-				unsafe {
-					mut g := &Gen(data)
-					if call.name !in g.extern_symbols {
-						g.extern_symbols << call.name
-					}
-				}
-				return true
+fn node_fetch_external_deps(node &ast.Node, data voidptr) bool {
+	mut g := unsafe { &Gen(data) }
+
+	if node is ast.Expr {
+		if node is ast.IfExpr && (node as ast.IfExpr).is_comptime {
+			eval_branch := g.comptime_conditional(node) or {
+				g.comptime_omitted_branches << node.branches
+				return false
 			}
 
-			return true
-		})
+			g.comptime_omitted_branches << node.branches.filter(it != eval_branch)
+		} else if node is ast.CallExpr && (node as ast.CallExpr).language != .v {
+			call := node as ast.CallExpr
+			if call.name !in g.extern_symbols {
+				g.extern_symbols << call.name
+			}
+		} else if node is ast.Ident && (node as ast.Ident).language != .v {
+			ident := node as ast.Ident
+			if ident.name !in g.extern_symbols {
+				g.extern_symbols << ident.name
+			}
+		}
+	} else if node is ast.Stmt && (node as ast.Stmt) is ast.HashStmt {
+		hash_stmt := node as ast.HashStmt
+		if hash_stmt.kind == 'flag' && g.should_emit_hash_stmt(hash_stmt) {
+			g.gen_flag_hash_stmt(hash_stmt)
+		}
+	} else if node is ast.IfBranch {
+		return node !in g.comptime_omitted_branches
 	}
 
+	return true
+}
+
+pub fn (mut g Gen) has_external_deps() bool {
 	return g.extern_symbols.len != 0
 }
 
+pub fn (mut g Gen) ast_fetch_external_deps() bool {
+	for file in g.files {
+		g.current_file = file
+		walker.inspect(file, unsafe { &mut g }, node_fetch_external_deps)
+	}
+
+	return g.has_external_deps()
+}
+
 pub fn (mut g Gen) generate_header() {
-	g.requires_linking = g.ast_has_external_functions()
+	g.requires_linking = g.ast_fetch_external_deps()
 
 	match g.pref.os {
 		.macos {
@@ -1112,11 +1140,11 @@ pub fn (mut g Gen) v_error(s string, pos token.Pos) {
 	// of guessed from the pref.path ...
 	mut kind := 'error:'
 	if g.pref.output_mode == .stdout {
-		util.show_compiler_message(kind, pos: pos, file_path: g.pref.path, message: s)
+		util.show_compiler_message(kind, pos: pos, file_path: g.current_file.path, message: s)
 		exit(1)
 	} else {
 		g.errors << errors.Error{
-			file_path: g.pref.path
+			file_path: g.current_file.path
 			pos: pos
 			reporter: .gen
 			message: s
