@@ -127,6 +127,7 @@ mut:
 	mov(r Register, val int)
 	mov64(r Register, val i64)
 	movabs(reg Register, val i64)
+	patch_relative_jmp(pos int, addr i64)
 	prefix_expr(node ast.PrefixExpr)
 	push(r Register)
 	ret()
@@ -428,17 +429,17 @@ pub fn (mut g Gen) has_external_deps() bool {
 	return g.extern_symbols.len != 0
 }
 
-pub fn (mut g Gen) ast_fetch_external_deps() bool {
+pub fn (mut g Gen) ast_fetch_external_deps() {
 	for file in g.files {
 		g.current_file = file
 		walker.inspect(file, unsafe { &mut g }, node_fetch_external_deps)
 	}
 
-	return g.has_external_deps()
+	g.requires_linking = g.has_external_deps()
 }
 
 pub fn (mut g Gen) generate_header() {
-	g.requires_linking = g.ast_fetch_external_deps()
+	g.ast_fetch_external_deps()
 
 	match g.pref.os {
 		.macos {
@@ -482,13 +483,7 @@ pub fn (mut g Gen) create_executable() {
 	os.write_file_array(obj_name, g.buf) or { panic(err) }
 
 	if g.requires_linking {
-		match g.pref.os {
-			// TEMPORARY
-			.linux { // TEMPORARY
-				g.link(obj_name)
-			} // TEMPORARY
-			else {} // TEMPORARY
-		} // TEMPORARY
+		g.link(obj_name)
 	}
 
 	os.chmod(g.out_name, 0o775) or { panic(err) } // make it executable
@@ -523,6 +518,12 @@ pub fn (mut g Gen) link(obj_name string) {
 	match g.pref.os {
 		.linux {
 			g.link_elf_file(obj_name)
+		}
+		.windows {
+			// windows linking is alredy done before codegen
+		}
+		.macos {
+			// TODO: implement linking for macos!
 		}
 		else {
 			g.n_error('native linking is not implemented for ${g.pref.os}')
@@ -564,9 +565,7 @@ pub fn (g &Gen) pos() i64 {
 }
 
 fn (mut g Gen) write(bytes []u8) {
-	for _, b in bytes {
-		g.buf << b
-	}
+	g.buf << bytes
 }
 
 fn (mut g Gen) write8(n int) {
@@ -1034,10 +1033,8 @@ fn (mut g Gen) patch_labels() {
 			g.n_error('label addr = 0')
 			return
 		}
-		// Update jmp or cjmp address.
-		// The value is the relative address, difference between current position and the location
-		// after `jxx 00 00 00 00`
-		g.write32_at(label.pos, int(addr - label.pos - 4))
+
+		g.code_gen.patch_relative_jmp(label.pos, addr)
 	}
 }
 
