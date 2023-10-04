@@ -323,6 +323,11 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 }
 
 fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
+	old_inside_cast_in_heap := g.inside_cast_in_heap
+	g.inside_cast_in_heap = 0
+	defer {
+		g.inside_cast_in_heap = old_inside_cast_in_heap
+	}
 	sym := g.table.sym(field.typ)
 	field_name := if sym.language == .v { c_name(field.name) } else { field.name }
 	if sym.info is ast.Struct {
