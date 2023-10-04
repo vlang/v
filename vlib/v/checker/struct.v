@@ -572,7 +572,8 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				}
 				if exp_type_sym.kind == .voidptr && got_type_sym.kind == .struct_
 					&& !got_type.is_ptr() {
-					c.error('allocate on the heap for use in other functions', init_field.pos)
+					c.error('allocate `${got_type_sym.name}` on the heap for use in other functions',
+						init_field.pos)
 				}
 				if exp_type_sym.kind == .array && got_type_sym.kind == .array {
 					if init_field.expr is ast.IndexExpr

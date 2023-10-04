@@ -2825,6 +2825,28 @@ fn (mut p Parser) name_expr() ast.Expr {
 					p.tok.pos())
 			}
 		}
+		// `anon_fn := Foo.bar` assign static method
+		if !known_var && lit0_is_capital && p.peek_tok.kind == .dot && language == .v
+			&& p.peek_token(2).kind == .name {
+			if func := p.table.find_fn(p.prepend_mod(p.tok.lit) + '__static__' + p.peek_token(2).lit) {
+				fn_type := ast.new_type(p.table.find_or_register_fn_type(func, false,
+					true))
+				pos := p.tok.pos()
+				typ_name := p.check_name()
+				p.check(.dot)
+				field_name := p.check_name()
+				pos.extend(p.tok.pos())
+				return ast.Ident{
+					name: p.prepend_mod(typ_name) + '__static__' + field_name
+					mod: p.mod
+					kind: .function
+					info: ast.IdentFn{
+						typ: fn_type
+					}
+					scope: p.scope
+				}
+			}
+		}
 		// `Color.green`
 		mut enum_name := p.check_name()
 		enum_name_pos := p.prev_tok.pos()
