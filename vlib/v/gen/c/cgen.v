@@ -748,7 +748,6 @@ pub fn (mut g Gen) gen_file() {
 
 pub fn (g &Gen) hashes() string {
 	mut res := c_commit_hash_default.replace('@@@', version.vhash())
-	res += c_current_commit_hash_default.replace('@@@', version.githash(g.pref.building_v))
 	return res
 }
 

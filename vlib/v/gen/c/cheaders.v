@@ -14,13 +14,6 @@ const c_commit_hash_default = '
 #endif
 '
 
-// V_CURRENT_COMMIT_HASH is updated, when V is rebuilt inside a git repo.
-const c_current_commit_hash_default = '
-#ifndef V_CURRENT_COMMIT_HASH
-	#define V_CURRENT_COMMIT_HASH "@@@"
-#endif
-'
-
 const c_concurrency_helpers = '
 typedef struct __shared_map __shared_map;
 struct __shared_map {
