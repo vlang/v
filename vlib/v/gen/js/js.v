@@ -5,7 +5,6 @@ import v.ast
 import v.token
 import v.pref
 import v.util
-import v.util.version
 import v.depgraph
 import encoding.base64
 import v.gen.js.sourcemap
@@ -247,7 +246,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) string 
 	// deps_resolved := graph.resolve()
 	// nodes := deps_resolved.nodes
 
-	mut out := g.definitions.str() + g.hashes()
+	mut out := g.definitions.str()
 	if !g.pref.output_es5 {
 		out += '\nlet wasmExportObject;\n'
 
@@ -489,12 +488,6 @@ pub fn (mut g JsGen) init() {
 	g.definitions.writeln('function BreakException() {}')
 	g.definitions.writeln('function ContinueException() {}')
 	g.definitions.writeln('function ReturnException(val) { this.val = val; }')
-}
-
-pub fn (g JsGen) hashes() string {
-	mut res := '// V_COMMIT_HASH ${version.vhash()}\n'
-	res += '// V_CURRENT_COMMIT_HASH ${version.githash(g.pref.building_v)}\n'
-	return res
 }
 
 [noreturn]

@@ -8,6 +8,9 @@ import v.util
 
 fn (mut g Gen) expr(node ast.Expr) {
 	match node {
+		ast.AtExpr {
+			g.allocate_string(g.comptime_at(node), 3, .rel32)
+		}
 		ast.ParExpr {
 			g.expr(node.expr)
 		}

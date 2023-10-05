@@ -282,9 +282,8 @@ fn (e Eval) error(msg string) {
 }
 
 fn (e Eval) panic(s string) {
-	commithash := unsafe { tos5(&char(C.V_CURRENT_COMMIT_HASH)) }
 	eprintln('V panic: ${s}')
-	eprintln('V hash: ${commithash}')
+	eprintln('V hash: ${@VCURRENTHASH}')
 	e.print_backtrace()
 	exit(1)
 }
