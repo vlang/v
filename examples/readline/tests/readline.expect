@@ -1,0 +1,20 @@
+#!/usr/bin/expect
+
+set timeout 3
+set v_root [exec sh -c "git rev-parse --show-toplevel"]
+
+proc expect_then_send {send_ expect_} {
+	send $send_
+	expect $expect_ {} timeout {
+		puts "!= $expect_"
+		exit 1
+	}
+}
+
+spawn $v_root/v run $v_root/examples/readline/readline.v
+
+expect_then_send "a" "got 97"
+expect_then_send "1" "got 49"
+expect_then_send "q" "Goodbye."
+
+expect ekf
