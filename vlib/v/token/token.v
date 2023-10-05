@@ -188,7 +188,8 @@ pub const (
 		.unsigned_right_shift_assign]
 
 	valid_at_tokens = ['@VROOT', '@VMODROOT', '@VEXEROOT', '@FN', '@METHOD', '@MOD', '@STRUCT',
-		'@VEXE', '@FILE', '@LINE', '@COLUMN', '@VHASH', '@VCURRENTHASH', '@VMOD_FILE', '@FILE_LINE', '@LOCATION']
+		'@VEXE', '@FILE', '@LINE', '@COLUMN', '@VHASH', '@VCURRENTHASH', '@VMOD_FILE', '@FILE_LINE',
+		'@LOCATION']
 
 	token_str       = build_token_str()
 
