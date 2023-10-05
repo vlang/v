@@ -1,4 +1,4 @@
-vlib/v/checker/tests/orm_empty_struct.vv:9:15: error: V ORM: select: empty fields in `Person`
+vlib/v/checker/tests/orm_empty_struct.vv:9:15: error: ORM: select: empty fields in `Person`
     7 |     db := sqlite.connect(':memory:')!
     8 |     _ := sql db {
     9 |         select from Person

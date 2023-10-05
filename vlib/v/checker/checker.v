@@ -133,7 +133,8 @@ mut:
 	goto_labels       map[string]ast.GotoLabel // to check for unused goto labels
 	enum_data_type    ast.Type
 	fn_return_type    ast.Type
-
+	orm_table_fields  map[string][]ast.StructField // known table structs
+	//
 	v_current_commit_hash string // same as V_CURRENT_COMMIT_HASH
 }
 

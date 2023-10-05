@@ -1919,7 +1919,7 @@ pub:
 	is_generated bool
 	scope        &Scope = unsafe { nil }
 pub mut:
-	object_var_name string   // `user`
+	object_var      string   // `user`
 	updated_columns []string // for `update set x=y`
 	table_expr      TypeNode
 	fields          []StructField

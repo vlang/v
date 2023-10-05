@@ -29,7 +29,13 @@ struct Account {
 struct Package {
 	id     int    [primary; sql: serial]
 	name   string [unique]
-	author User   [fkey: 'id']
+	author User   [fkey: 'id'] // mandatory user
+}
+
+struct Delivery {
+	id     int    [primary; sql: serial]
+	name   string [unique]
+	author ?User  [fkey: 'id'] // optional user
 }
 
 struct User {
@@ -138,7 +144,7 @@ fn test_float_primary_key() {
 	assert entities.first() == entity
 }
 
-fn test_does_not_insert_uninitialized_field() {
+fn test_does_not_insert_uninitialized_mandatory_field() {
 	db := sqlite.connect(':memory:')!
 
 	sql db {
@@ -151,9 +157,13 @@ fn test_does_not_insert_uninitialized_field() {
 		// author
 	}
 
+	mut query_successful := true
+
 	sql db {
 		insert package into Package
-	}!
+	} or { query_successful = false }
+
+	assert !query_successful
 
 	users := sql db {
 		select from User
@@ -163,7 +173,7 @@ fn test_does_not_insert_uninitialized_field() {
 	assert users.len == 0
 }
 
-fn test_insert_empty_field() {
+fn test_insert_empty_mandatory_field() {
 	db := sqlite.connect(':memory:')!
 
 	sql db {
@@ -185,6 +195,54 @@ fn test_insert_empty_field() {
 	}!
 
 	assert users.len == 1
+}
+
+fn test_does_insert_uninitialized_optional_field() {
+	db := sqlite.connect(':memory:')!
+
+	sql db {
+		create table User
+		create table Delivery
+	}!
+
+	package := Delivery{
+		name: 'wow'
+		// author
+	}
+
+	sql db {
+		insert package into Delivery
+	}!
+
+	users := sql db {
+		select from User
+	}!
+
+	assert users.len == 0 // no user added
+}
+
+fn test_insert_empty_optional_field() {
+	db := sqlite.connect(':memory:')!
+
+	sql db {
+		create table User
+		create table Delivery
+	}!
+
+	package := Delivery{
+		name: 'bob'
+		author: User{}
+	}
+
+	sql db {
+		insert package into Delivery
+	}!
+
+	users := sql db {
+		select from User
+	}!
+
+	assert users.len == 1 // user was added
 }
 
 fn test_insert_empty_object() {

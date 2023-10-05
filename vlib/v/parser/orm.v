@@ -216,7 +216,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 			scope: p.scope
 		}
 	}
-	mut inserted_var_name := ''
+	mut inserted_var := ''
 	mut table_type := ast.Type(0)
 	if kind != .delete {
 		if kind == .update {
@@ -224,7 +224,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 		} else if kind == .insert {
 			expr := p.expr(0)
 			if expr is ast.Ident {
-				inserted_var_name = expr.name
+				inserted_var = expr.name
 			} else {
 				p.error('can only insert variables')
 				return ast.SqlStmtLine{}
@@ -277,7 +277,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 			typ: table_type
 			pos: table_pos
 		}
-		object_var_name: inserted_var_name
+		object_var: inserted_var
 		pos: pos
 		updated_columns: updated_columns
 		update_exprs: update_exprs
@@ -290,7 +290,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 
 fn (mut p Parser) check_sql_keyword(name string) ?bool {
 	if p.check_name() != name {
-		p.error('V ORM: expecting `${name}`')
+		p.error('ORM: expecting `${name}`')
 		return none
 	}
 	return true
