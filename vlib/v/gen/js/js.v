@@ -5,7 +5,6 @@ import v.ast
 import v.token
 import v.pref
 import v.util
-import v.util.version
 import v.depgraph
 import encoding.base64
 import v.gen.js.sourcemap
