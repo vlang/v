@@ -58,3 +58,9 @@ vlib/v/checker/tests/import_symbol_private_err.vv:13:6: error: struct `io.Reader
    13 |     _ = ReaderWriterImpl{}
       |         ~~~~~~~~~~~~~~~~~~
    14 | }
+vlib/v/checker/tests/import_symbol_private_err.vv:13:6: error: type `io.ReaderWriterImpl` is private
+   11 |         'h': 2
+   12 |     }.exists('h')
+   13 |     _ = ReaderWriterImpl{}
+      |         ~~~~~~~~~~~~~~~~~~
+   14 | }

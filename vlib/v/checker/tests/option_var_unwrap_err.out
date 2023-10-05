@@ -12,3 +12,10 @@ Details: vlib/v/checker/tests/option_var_unwrap_err.vv:4:21: details: prepend ? 
       |                     ~~~~~~
     5 |     return a?
     6 | }
+vlib/v/checker/tests/option_var_unwrap_err.vv:5:2: error: should not unwrap option var on return, it could be none
+    3 | 
+    4 | fn abc_2(a ?string) string {
+    5 |     return a?
+      |     ~~~~~~~~
+    6 | }
+    7 |

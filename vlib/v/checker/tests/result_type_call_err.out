@@ -4,3 +4,15 @@ vlib/v/checker/tests/result_type_call_err.vv:12:2: error: new_foo() returns a Re
    12 |     new_foo().foo()
       |     ~~~~~~~~~
    13 | }
+vlib/v/checker/tests/result_type_call_err.vv:12:2: error: Result type cannot be called directly
+   10 | 
+   11 | fn main() {
+   12 |     new_foo().foo()
+      |     ~~~~~~~~~
+   13 | }
+vlib/v/checker/tests/result_type_call_err.vv:12:12: error: foo() returns a Result, so it should have either an `or {}` block, or `!` at the end
+   10 | 
+   11 | fn main() {
+   12 |     new_foo().foo()
+      |               ~~~~~
+   13 | }

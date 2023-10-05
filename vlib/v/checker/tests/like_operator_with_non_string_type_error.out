@@ -12,3 +12,17 @@ vlib/v/checker/tests/like_operator_with_non_string_type_error.vv:16:26: error: t
       |                                ~~
    17 |     }!)
    18 | }
+vlib/v/checker/tests/like_operator_with_non_string_type_error.vv:16:34: error: the right operand of the `like` operator must be a string type
+   14 | 
+   15 |     println(sql db {
+   16 |         select from User where 10 like true
+      |                                        ~~~~
+   17 |     }!)
+   18 | }
+vlib/v/checker/tests/like_operator_with_non_string_type_error.vv:16:26: error: V ORM: left side of the `like` expression must be one of the `User`'s fields
+   14 | 
+   15 |     println(sql db {
+   16 |         select from User where 10 like true
+      |                                ~~
+   17 |     }!)
+   18 | }
