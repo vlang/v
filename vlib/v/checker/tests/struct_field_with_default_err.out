@@ -4,3 +4,9 @@ vlib/v/checker/tests/struct_field_with_default_err.vv:2:22: error: unknown struc
       |                         ~~~
     3 | }
     4 |
+vlib/v/checker/tests/struct_field_with_default_err.vv:2:22: error: incompatible initializer for field `arbitrary_field`: expected `T`, not `void`
+    1 | struct Dummy[T] {
+    2 |     arbitrary_field T = T{}
+      |                         ~~~
+    3 | }
+    4 |

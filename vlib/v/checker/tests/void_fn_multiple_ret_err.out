@@ -11,6 +11,13 @@ vlib/v/checker/tests/void_fn_multiple_ret_err.vv:6:2: error: Option and Result t
       |     ~~~~~~~~~~~
     7 | }
     8 |
+vlib/v/checker/tests/void_fn_multiple_ret_err.vv:6:9: error: cannot use `none` as Result type in return argument
+    4 | 
+    5 | fn foo_result_2() ! {
+    6 |     return none
+      |            ~~~~
+    7 | }
+    8 |
 vlib/v/checker/tests/void_fn_multiple_ret_err.vv:14:9: error: cannot use `int literal` as Result type in return argument
    12 | 
    13 | fn foo_result_4() ! {

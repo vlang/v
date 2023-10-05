@@ -5,3 +5,9 @@ Did you mean `math.max`?
     4 |     println(math.max_i64())
       |                  ~~~~~~~~~
     5 | }
+vlib/v/checker/tests/unknown_function.vv:4:2: error: `println` can not print void expressions
+    2 | 
+    3 | fn main() {
+    4 |     println(math.max_i64())
+      |     ~~~~~~~~~~~~~~~~~~~~~~~
+    5 | }

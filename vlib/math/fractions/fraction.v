@@ -14,7 +14,7 @@ import math.bits
 // not be reduced automatically.
 // 2. d cannot be set to zero. The factory function will panic.
 // 3. If provided d is negative, it will be made positive. n will change as well.
-struct Fraction {
+pub struct Fraction {
 pub:
 	n          i64
 	d          i64

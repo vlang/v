@@ -12,6 +12,13 @@ vlib/v/checker/tests/cast_string_err.vv:18:9: error: cannot cast sumtype `Sumtyp
       |            ~~~~~~~~~~
    19 |     println(sst)
    20 |     //
+vlib/v/checker/tests/cast_string_err.vv:18:9: error: cannot cast `Sumtype` sum type value to `string`, use `st as string` instead
+   16 |     //
+   17 |     st := Sumtype(int(456))
+   18 |     sst := string(st)
+      |            ~~~~~~~~~~
+   19 |     println(sst)
+   20 |     //
 vlib/v/checker/tests/cast_string_err.vv:22:10: error: cannot cast struct `Abc` to `string`
    20 |     //
    21 |     abc := Abc{}

@@ -46,7 +46,10 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 		eprintln('Some libc implementations like musl simply do not provide it.')
 		return false
 	}
-	$if no_backtrace ? {
+	$if native {
+		eprintln('native backend does not support backtraces yet.')
+		return false
+	} $else $if no_backtrace ? {
 		return false
 	} $else {
 		$if linux && !freestanding {

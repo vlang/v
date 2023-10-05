@@ -19,33 +19,6 @@ const (
 
 const c_verror_message_marker = 'VERROR_MESSAGE '
 
-const c_error_info = '
-==================
-C error. This should never happen.
-
-This is a compiler bug, please report it using `v bug file.v`.
-
-https://github.com/vlang/v/issues/new/choose
-
-You can also use #help on Discord: https://discord.gg/vlang
-'
-
-pub const no_compiler_error = '
-==================
-Error: no C compiler detected.
-
-You can find instructions on how to install one in the V wiki:
-https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows
-
-If you think you have one installed, make sure it is in your PATH.
-If you do have one in your PATH, please raise an issue on GitHub:
-https://github.com/vlang/v/issues/new/choose
-
-You can also use `v doctor`, to see what V knows about your current environment.
-
-You can also seek #help on Discord: https://discord.gg/vlang
-'
-
 fn (mut v Builder) show_c_compiler_output(res os.Result) {
 	println('======== C Compiler output ========')
 	println(res.output)
@@ -91,7 +64,19 @@ fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
 			println('(Use `v -cg` to print the entire error message)\n')
 		}
 	}
-	verror(builder.c_error_info)
+	if os.getenv('V_NO_C_ERROR_INFO') != '' {
+		exit(1)
+	}
+	verror('
+==================
+C error. This should never happen.
+
+This is a compiler bug, please report it using `v bug file.v`.
+
+https://github.com/vlang/v/issues/new/choose
+
+You can also use #help on Discord: https://discord.gg/vlang
+')
 }
 
 fn (mut v Builder) show_cc(cmd string, response_file string, response_file_content string) {

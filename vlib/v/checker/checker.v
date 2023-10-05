@@ -3,7 +3,6 @@
 module checker
 
 import os
-import time
 import v.ast
 import v.vmod
 import v.token
@@ -46,15 +45,21 @@ pub struct Checker {
 pub mut:
 	pref &pref.Preferences = unsafe { nil } // Preferences shared from V struct
 	//
-	table                      &ast.Table = unsafe { nil }
-	file                       &ast.File  = unsafe { nil }
-	nr_errors                  int
-	nr_warnings                int
-	nr_notices                 int
-	errors                     []errors.Error
-	warnings                   []errors.Warning
-	notices                    []errors.Notice
-	error_lines                []int // to avoid printing multiple errors for the same line
+	table &ast.Table = unsafe { nil }
+	file  &ast.File  = unsafe { nil }
+	//
+	nr_errors     int
+	nr_warnings   int
+	nr_notices    int
+	errors        []errors.Error
+	warnings      []errors.Warning
+	notices       []errors.Notice
+	error_lines   map[string]bool // dedup errors
+	warning_lines map[string]bool // dedup warns
+	notice_lines  map[string]bool // dedup notices
+	error_details []string
+	should_abort  bool // when too many errors/warnings/notices are accumulated, .should_abort becomes true. It is checked in statement/expression loops, so the checker can return early, instead of wasting time.
+	//
 	expected_type              ast.Type
 	expected_or_type           ast.Type        // fn() or { 'this type' } eg. string. expected or block type
 	expected_expr_type         ast.Type        // if/match is_expr: expected_type
@@ -66,7 +71,6 @@ pub mut:
 	locked_names               []string // vars that are currently locked
 	rlocked_names              []string // vars that are currently read-locked
 	in_for_count               int      // if checker is currently in a for loop
-	should_abort               bool     // when too many errors/warnings/notices are accumulated, .should_abort becomes true. It is checked in statement/expression loops, so the checker can return early, instead of wasting time.
 	returns                    bool
 	scope_returns              bool
 	is_builtin_mod             bool // true inside the 'builtin', 'os' or 'strconv' modules; TODO: remove the need for special casing this
@@ -100,7 +104,6 @@ mut:
 	ensure_generic_type_level        int // to avoid infinite recursion segfaults in ensure_generic_type_specify_type_names
 	cur_orm_ts                       ast.TypeSymbol
 	cur_anon_fn                      &ast.AnonFn = unsafe { nil }
-	error_details                    []string
 	vmod_file_content                string     // needed for @VMOD_FILE, contents of the file, *NOT its path**
 	loop_label                       string     // set when inside a labelled for loop
 	vweb_gen_types                   []ast.Type // vweb route checks
@@ -131,6 +134,8 @@ mut:
 	enum_data_type    ast.Type
 	fn_return_type    ast.Type
 	orm_table_fields  map[string][]ast.StructField // known table structs
+	//
+	v_current_commit_hash string // same as V_CURRENT_COMMIT_HASH
 }
 
 pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
@@ -143,6 +148,7 @@ pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
 		pref: pref_
 		timers: util.new_timers(should_print: timers_should_print, label: 'checker')
 		match_exhaustive_cutoff_limit: pref_.checker_match_exhaustive_cutoff_limit
+		v_current_commit_hash: version.githash(pref_.building_v)
 	}
 }
 
@@ -177,6 +183,7 @@ fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
 	c.inside_casting_to_str = false
 	c.inside_decl_rhs = false
 	c.inside_if_guard = false
+	c.error_details.clear()
 }
 
 pub fn (mut c Checker) check(mut ast_file ast.File) {
@@ -3365,6 +3372,9 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 		.vhash {
 			node.val = version.vhash()
 		}
+		.v_current_hash {
+			node.val = c.v_current_commit_hash
+		}
 		.vmod_file {
 			// cache the vmod content, do not read it many times
 			if c.vmod_file_content.len == 0 {
@@ -4532,47 +4542,6 @@ fn (mut c Checker) check_dup_keys(node &ast.MapInit, i int) {
 	}
 }
 
-// call this *before* calling error or warn
-fn (mut c Checker) add_error_detail(s string) {
-	c.error_details << s
-}
-
-fn (mut c Checker) add_error_detail_with_pos(msg string, pos token.Pos) {
-	c.add_error_detail(util.formatted_error('details:', msg, c.file.path, pos))
-}
-
-fn (mut c Checker) add_instruction_for_option_type() {
-	c.add_error_detail_with_pos('prepend ? before the declaration of the return type of `${c.table.cur_fn.name}`',
-		c.table.cur_fn.return_type_pos)
-}
-
-fn (mut c Checker) add_instruction_for_result_type() {
-	c.add_error_detail_with_pos('prepend ! before the declaration of the return type of `${c.table.cur_fn.name}`',
-		c.table.cur_fn.return_type_pos)
-}
-
-fn (mut c Checker) warn(s string, pos token.Pos) {
-	allow_warnings := !(c.pref.is_prod || c.pref.warns_are_errors) // allow warnings only in dev builds
-	c.warn_or_error(s, pos, allow_warnings)
-}
-
-fn (mut c Checker) error(message string, pos token.Pos) {
-	$if checker_exit_on_first_error ? {
-		eprintln('\n\n>> checker error: ${message}, pos: ${pos}')
-		print_backtrace()
-		exit(1)
-	}
-	if (c.pref.translated || c.file.is_translated) && message.starts_with('mismatched types') {
-		// TODO move this
-		return
-	}
-	if c.pref.is_verbose {
-		print_backtrace()
-	}
-	msg := message.replace('`Array_', '`[]')
-	c.warn_or_error(msg, pos, false)
-}
-
 fn (c &Checker) check_struct_signature_init_fields(from ast.Struct, to ast.Struct, node ast.StructInit) bool {
 	if node.init_fields.len == 0 {
 		return from.fields.len == to.fields.len
@@ -4618,96 +4587,6 @@ fn (c &Checker) check_struct_signature(from ast.Struct, to ast.Struct) bool {
 	return true
 }
 
-fn (mut c Checker) note(message string, pos token.Pos) {
-	if c.pref.message_limit >= 0 && c.nr_notices >= c.pref.message_limit {
-		c.should_abort = true
-		return
-	}
-	if c.is_generated {
-		return
-	}
-	if c.pref.notes_are_errors {
-		c.error(message, pos)
-	}
-	mut details := ''
-	if c.error_details.len > 0 {
-		details = c.error_details.join('\n')
-		c.error_details = []
-	}
-	wrn := errors.Notice{
-		reporter: errors.Reporter.checker
-		pos: pos
-		file_path: c.file.path
-		message: message
-		details: details
-	}
-	c.file.notices << wrn
-	c.notices << wrn
-	c.nr_notices++
-}
-
-fn (mut c Checker) warn_or_error(message string, pos token.Pos, warn bool) {
-	// add backtrace to issue struct, how?
-	// if c.pref.is_verbose {
-	// print_backtrace()
-	// }
-	mut details := ''
-	if c.error_details.len > 0 {
-		details = c.error_details.join('\n')
-		c.error_details = []
-	}
-	if warn && !c.pref.skip_warnings {
-		c.nr_warnings++
-		if c.pref.message_limit >= 0 && c.nr_warnings >= c.pref.message_limit {
-			c.should_abort = true
-			return
-		}
-		wrn := errors.Warning{
-			reporter: errors.Reporter.checker
-			pos: pos
-			file_path: c.file.path
-			message: message
-			details: details
-		}
-		c.file.warnings << wrn
-		c.warnings << wrn
-		return
-	}
-	if !warn {
-		if c.pref.fatal_errors {
-			util.show_compiler_message('error:', errors.CompilerMessage{
-				pos: pos
-				file_path: c.file.path
-				message: message
-				details: details
-			})
-			exit(1)
-		}
-		c.nr_errors++
-		if c.pref.message_limit >= 0 && c.errors.len >= c.pref.message_limit {
-			c.should_abort = true
-			return
-		}
-		if pos.line_nr !in c.error_lines {
-			err := errors.Error{
-				reporter: errors.Reporter.checker
-				pos: pos
-				file_path: c.file.path
-				message: message
-				details: details
-			}
-			c.file.errors << err
-			c.errors << err
-			c.error_lines << pos.line_nr
-		}
-	}
-}
-
-// for debugging only
-fn (c &Checker) fileis(s string) bool {
-	return c.file.path.contains(s)
-}
-
 fn (mut c Checker) fetch_field_name(field ast.StructField) string {
 	mut name := field.name
 	for attr in field.attrs {
@@ -4721,12 +4600,6 @@ fn (mut c Checker) fetch_field_name(field ast.StructField) string {
 		name = '${name}_id'
 	}
 	return name
-}
-
-fn (mut c Checker) trace[T](fbase string, x &T) {
-	if c.file.path_base == fbase {
-		println('> c.trace | ${fbase:-10s} | ${x}')
-	}
 }
 
 fn (mut c Checker) ensure_generic_type_specify_type_names(typ ast.Type, pos token.Pos) bool {
@@ -5012,45 +4885,6 @@ fn (mut c Checker) check_unused_labels() {
 			c.goto_labels[name].is_used = true // so that this warning is not shown again
 		}
 	}
-}
-
-fn (mut c Checker) deprecate(kind string, name string, attrs []ast.Attr, pos token.Pos) {
-	mut deprecation_message := ''
-	now := time.now()
-	mut after_time := now
-	for attr in attrs {
-		if attr.name == 'deprecated' && attr.arg != '' {
-			deprecation_message = attr.arg
-		}
-		if attr.name == 'deprecated_after' && attr.arg != '' {
-			after_time = time.parse_iso8601(attr.arg) or {
-				c.error('invalid time format', attr.pos)
-				now
-			}
-		}
-	}
-	start_message := '${kind} `${name}`'
-	error_time := after_time.add_days(180)
-	if error_time < now {
-		c.error(semicolonize('${start_message} has been deprecated since ${after_time.ymmdd()}',
-			deprecation_message), pos)
-	} else if after_time < now {
-		c.warn(semicolonize('${start_message} has been deprecated since ${after_time.ymmdd()}, it will be an error after ${error_time.ymmdd()}',
-			deprecation_message), pos)
-	} else if after_time == now {
-		c.warn(semicolonize('${start_message} has been deprecated', deprecation_message),
-			pos)
-	} else {
-		c.note(semicolonize('${start_message} will be deprecated after ${after_time.ymmdd()}, and will become an error after ${error_time.ymmdd()}',
-			deprecation_message), pos)
-	}
-}
-
-fn semicolonize(main string, details string) string {
-	if details == '' {
-		return main
-	}
-	return '${main}; ${details}'
 }
 
 fn (mut c Checker) deprecate_old_isreftype_and_sizeof_of_a_guessed_type(is_guessed_type bool, typ ast.Type, pos token.Pos, label string) {

@@ -16,3 +16,9 @@ vlib/v/checker/tests/assign_to_typeless_variable_err.vv:3:3: error: `val` is imm
     3 |   val = 1
       |   ~~~
     4 | }
+vlib/v/checker/tests/assign_to_typeless_variable_err.vv:3:9: error: cannot assign to `val`: expected `void`, not `int literal`
+    1 | fn main() {
+    2 |   val := {}
+    3 |   val = 1
+      |         ^
+    4 | }
