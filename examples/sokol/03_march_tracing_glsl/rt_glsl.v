@@ -60,11 +60,11 @@ fn create_texture(w int, h int, buf &byte) gfx.Image {
 		width: w
 		height: h
 		num_mipmaps: 0
-		min_filter: .linear
-		mag_filter: .linear
+		//		min_filter: .linear
+		//		mag_filter: .linear
 		// usage: .dynamic
-		wrap_u: .clamp_to_edge
-		wrap_v: .clamp_to_edge
+		//		wrap_u: .clamp_to_edge
+		//		wrap_v: .clamp_to_edge
 		label: &u8(0)
 		d3d11_texture: 0
 	}
@@ -223,7 +223,7 @@ fn init_cube_glsl(mut app App) {
 
 	app.cube_bind.vertex_buffers[0] = vbuf
 	app.cube_bind.index_buffer = ibuf
-	app.cube_bind.fs_images[C.SLOT_tex] = app.texture
+	app.cube_bind.fs.images[C.SLOT_tex] = app.texture
 	app.cube_pip_glsl = gfx.make_pipeline(&pipdesc)
 	println('GLSL init DONE!')
 }
@@ -312,8 +312,8 @@ fn frame(mut app App) {
 
 	// clear
 	mut color_action := gfx.ColorAttachmentAction{
-		action: .clear
-		value: gfx.Color{
+		load_action: .clear
+		clear_value: gfx.Color{
 			r: 0.0
 			g: 0.0
 			b: 0.0

@@ -121,11 +121,11 @@ fn create_texture(w int, h int, buf &u8) gfx.Image {
 		width: w
 		height: h
 		num_mipmaps: 0
-		min_filter: .linear
-		mag_filter: .linear
+		//		min_filter: .linear
+		//		mag_filter: .linear
 		// usage: .dynamic
-		wrap_u: .clamp_to_edge
-		wrap_v: .clamp_to_edge
+		//		wrap_u: .clamp_to_edge
+		//		wrap_v: .clamp_to_edge
 		label: &u8(0)
 		d3d11_texture: 0
 	}

@@ -12,7 +12,7 @@ pub mut:
 	context_pool_size    int
 	uniform_buffer_size  int
 	staging_buffer_size  int
-	sampler_cache_size   int
+	sampler_pool_size    int
 	max_commit_listeners int
 	disable_validation   bool // disable validation layer even in debug mode, useful for tests
 	//
@@ -61,14 +61,14 @@ struct C.sg_d3d11_context_desc {
 
 pub type D3D11ContextDesc = C.sg_d3d11_context_desc
 
-struct C.sg_color_state {
+struct C.sg_color_target_state {
 pub mut:
 	pixel_format PixelFormat
 	write_mask   ColorMask
 	blend        BlendState
 }
 
-pub type ColorState = C.sg_color_state
+pub type ColorState = C.sg_color_target_state
 
 pub struct C.sg_pipeline_desc {
 pub mut:
@@ -115,19 +115,26 @@ pub mut:
 	vertex_buffer_offsets [8]int
 	index_buffer          Buffer
 	index_buffer_offset   int
-	vs_images             [8]Image
-	fs_images             [8]Image
-	_end_canary           u32
+	vs                    C.sg_stage_bindings
+	fs                    C.sg_stage_bindings
+	// vs_images             [8]Image // old
+	// fs_images             [8]Image // old
+	_end_canary u32
+}
+
+pub struct C.sg_stage_bindings {
+pub mut:
+	images [12]Image
 }
 
 pub type Bindings = C.sg_bindings
 
 pub fn (mut b Bindings) set_vert_image(index int, img Image) {
-	b.vs_images[index] = img
+	b.vs.images[index] = img
 }
 
 pub fn (mut b Bindings) set_frag_image(index int, img Image) {
-	b.fs_images[index] = img
+	b.fs.images[index] = img
 }
 
 pub fn (b &Bindings) update_vert_buffer(index int, data voidptr, element_size int, element_count int) {
@@ -186,13 +193,13 @@ pub fn (mut desc C.sg_shader_desc) set_frag_src(src string) &ShaderDesc {
 }
 
 pub fn (mut desc C.sg_shader_desc) set_vert_image(index int, name string) &ShaderDesc {
-	desc.vs.images[index].name = &char(name.str)
+	// desc.vs.images[index].name = &char(name.str)
 	desc.vs.images[index].image_type = ._2d
 	return desc
 }
 
 pub fn (mut desc C.sg_shader_desc) set_frag_image(index int, name string) &ShaderDesc {
-	desc.fs.images[index].name = &char(name.str)
+	// desc.fs.images[index].name = &char(name.str)
 	desc.fs.images[index].image_type = ._2d
 	return desc
 }
@@ -244,7 +251,7 @@ pub mut:
 pub type ShaderStageDesc = C.sg_shader_stage_desc
 
 pub fn (mut desc ShaderStageDesc) set_image(index int, name string) ShaderStageDesc {
-	desc.images[index].name = &char(name.str)
+	// desc.images[index].name = &char(name.str)
 	desc.images[index].image_type = ._2d
 	return *desc
 }
@@ -269,7 +276,9 @@ pub type ShaderUniformDesc = C.sg_shader_uniform_desc
 
 struct C.sg_shader_image_desc {
 pub mut:
-	name       &char
+	used         bool
+	multisampled bool
+	// name         &char
 	image_type ImageType
 }
 
@@ -397,27 +406,27 @@ pub fn (mut b Buffer) free() {
 
 pub struct C.sg_image_desc {
 pub mut:
-	_start_canary  u32
-	@type          ImageType
-	render_target  bool
-	width          int
-	height         int
-	num_slices     int
-	num_mipmaps    int
-	usage          Usage
-	pixel_format   PixelFormat
-	sample_count   int
-	min_filter     Filter
-	mag_filter     Filter
-	wrap_u         Wrap
-	wrap_v         Wrap
-	wrap_w         Wrap
-	border_color   BorderColor
-	max_anisotropy u32
-	min_lod        f32
-	max_lod        f32
-	data           ImageData
-	label          &char
+	_start_canary u32
+	@type         ImageType
+	render_target bool
+	width         int
+	height        int
+	num_slices    int
+	num_mipmaps   int
+	usage         Usage
+	pixel_format  PixelFormat
+	sample_count  int
+	// min_filter    Filter
+	// mag_filter    Filter
+	// wrap_u        Wrap
+	// wrap_v        Wrap
+	// wrap_w         Wrap
+	// border_color   BorderColor
+	// max_anisotropy u32
+	// min_lod        f32
+	// max_lod        f32
+	data  ImageData
+	label &char
 	// GL specific
 	gl_textures       [2]u32
 	gl_texture_target u32
@@ -432,6 +441,18 @@ pub mut:
 }
 
 pub type ImageDesc = C.sg_image_desc
+
+pub struct C.sg_sampler_desc {
+	min_filter     Filter
+	mag_filter     Filter
+	wrap_u         Wrap
+	wrap_v         Wrap
+	wrap_w         Wrap
+	min_lod        f32
+	max_lod        f32
+	border_color   BorderColor
+	max_anisotropy u32
+}
 
 pub struct C.sg_image_info {
 pub mut:
@@ -453,6 +474,8 @@ pub type Image = C.sg_image
 pub fn (mut i Image) free() {
 	C.sg_destroy_image(*i)
 }
+
+pub struct C.sg_sampler {}
 
 pub const sg_cubeface_num = 6
 
@@ -492,31 +515,31 @@ pub:
 
 pub type Limits = C.sg_limits
 
-pub struct C.sg_layout_desc {
+pub struct C.sg_vertex_layout_state {
 pub mut:
 	buffers [8]BufferLayoutDesc
 	attrs   [16]VertexAttrDesc
 }
 
-pub type LayoutDesc = C.sg_layout_desc
+pub type LayoutDesc = C.sg_vertex_layout_state
 
-pub struct C.sg_buffer_layout_desc {
+pub struct C.sg_vertex_buffer_layout_state {
 pub mut:
 	stride    int
 	step_func VertexStep
 	step_rate int
 }
 
-pub type BufferLayoutDesc = C.sg_buffer_layout_desc
+pub type BufferLayoutDesc = C.sg_vertex_buffer_layout_state
 
-pub struct C.sg_vertex_attr_desc {
+pub struct C.sg_vertex_attr_state {
 pub mut:
 	buffer_index int
 	offset       int
 	format       VertexFormat
 }
 
-pub type VertexAttrDesc = C.sg_vertex_attr_desc
+pub type VertexAttrDesc = C.sg_vertex_attr_state
 
 struct C.sg_stencil_state {
 	enabled    bool
@@ -564,8 +587,8 @@ pub type BlendState = C.sg_blend_state
 
 struct C.sg_color_attachment_action {
 pub mut:
-	action Action
-	value  Color
+	load_action Action
+	clear_value Color
 }
 
 pub type ColorAttachmentAction = C.sg_color_attachment_action

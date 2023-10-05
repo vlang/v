@@ -9,16 +9,16 @@ pub const used_import = c.used_import
 
 // setup initialises the SOKOL's gfx library, based on the information passed in `desc`
 pub fn setup(desc &Desc) {
-	if desc.allocator.alloc == unsafe { nil } && desc.allocator.free == unsafe { nil } {
+	if desc.allocator.alloc_fn == unsafe { nil } && desc.allocator.free_fn == unsafe { nil } {
 		unsafe {
-			desc.allocator.alloc = memory.salloc
-			desc.allocator.free = memory.sfree
+			desc.allocator.alloc_fn = memory.salloc
+			desc.allocator.free_fn = memory.sfree
 			desc.allocator.user_data = voidptr(0x1006fec5)
 		}
 	}
-	if desc.logger.log_cb == unsafe { nil } {
+	if desc.logger.func == unsafe { nil } {
 		unsafe {
-			desc.logger.log_cb = memory.slog
+			desc.logger.func = memory.slog
 		}
 	}
 	C.sg_setup(desc)

@@ -98,9 +98,6 @@ fn C.sapp_get_dropped_file_path(int) &u8
 // special run-function for SOKOL_NO_ENTRY (in standard mode this is an empty stub)
 fn C.sapp_run(desc &Desc) int
 
-// GL: return true when GLES2 fallback is active (to detect fallback from GLES3)
-fn C.sapp_gles2() bool
-
 // HTML5: enable or disable the hardwired "Leave Site?" dialog box
 fn C.sapp_html5_ask_leave_site(ask bool)
 

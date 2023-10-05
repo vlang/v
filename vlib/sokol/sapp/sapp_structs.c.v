@@ -42,14 +42,14 @@ pub:
 	frame_cb   fn ()       = unsafe { nil }
 	cleanup_cb fn ()       = unsafe { nil }
 	event_cb   fn (&Event) = unsafe { nil } // &sapp_event
-	fail_cb    fn (&u8)    = unsafe { nil }
+	// fail_cb    fn (&u8)    = unsafe { nil }
 
 	user_data           voidptr // these are the user-provided callbacks with user data
 	init_userdata_cb    fn (voidptr) = unsafe { nil }
 	frame_userdata_cb   fn (voidptr) = unsafe { nil }
 	cleanup_userdata_cb fn (voidptr) = unsafe { nil }
 	event_userdata_cb   fn (&Event, voidptr) = unsafe { nil }
-	fail_userdata_cb    fn (&char, voidptr)  = unsafe { nil }
+	// fail_userdata_cb    fn (&char, voidptr)  = unsafe { nil }
 
 	width                        int      // the preferred width of the window / canvas
 	height                       int      // the preferred height of the window / canvas
@@ -66,7 +66,6 @@ pub:
 	max_dropped_file_path_length int      // max length in bytes of a dropped UTF-8 file path (default: 2048)
 	icon                         IconDesc // the initial window icon to set
 	// backend-specific options
-	gl_force_gles2                bool  // if true, setup GLES2/WebGL even if GLES3/WebGL2 is available
 	win32_console_utf8            bool  // if true, set the output console codepage to UTF-8
 	win32_console_create          bool  // if true, attach stdout/stderr to a new console window
 	win32_console_attach          bool  // if true, attach stdout/stderr to parent process

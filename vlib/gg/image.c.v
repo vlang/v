@@ -89,8 +89,8 @@ pub fn (mut img Image) init_sokol_image() &Image {
 		width: img.width
 		height: img.height
 		num_mipmaps: 0
-		wrap_u: .clamp_to_edge
-		wrap_v: .clamp_to_edge
+		// wrap_u: .clamp_to_edge // XTODO SAMPLER
+		// wrap_v: .clamp_to_edge
 		label: img.path.str
 		d3d11_texture: 0
 	}
@@ -142,10 +142,10 @@ pub fn (mut ctx Context) new_streaming_image(w int, h int, channels int, sicfg S
 		num_slices: 1
 		num_mipmaps: 1
 		usage: .stream
-		wrap_u: sicfg.wrap_u
-		wrap_v: sicfg.wrap_v
-		min_filter: sicfg.min_filter
-		mag_filter: sicfg.mag_filter
+		// wrap_u: sicfg.wrap_u // SAMPLER
+		// wrap_v: sicfg.wrap_v
+		// min_filter: sicfg.min_filter
+		// mag_filter: sicfg.mag_filter
 		label: img.path.str
 	}
 	// Sokol requires that streamed images have NO .ptr/.size initially:

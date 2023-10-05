@@ -452,7 +452,7 @@ pub fn new_context(cfg Config) &Context {
 			init_userdata_cb: gg_init_sokol_window
 			frame_userdata_cb: gg_frame_fn
 			event_userdata_cb: gg_event_fn
-			fail_userdata_cb: gg_fail_fn
+			// fail_userdata_cb: gg_fail_fn
 			cleanup_userdata_cb: gg_cleanup_fn
 			window_title: &char(cfg.window_title.str)
 			html5_canvas_name: &char(cfg.html5_canvas_name.str)
@@ -533,20 +533,20 @@ pub struct EndOptions {
 const dontcare_pass = gfx.PassAction{
 	colors: [
 		gfx.ColorAttachmentAction{
-			action: .dontcare
-			value: gfx.Color{1.0, 1.0, 1.0, 1.0}
+			load_action: .dontcare
+			clear_value: gfx.Color{1.0, 1.0, 1.0, 1.0}
 		},
 		gfx.ColorAttachmentAction{
-			action: .dontcare
-			value: gfx.Color{1.0, 1.0, 1.0, 1.0}
+			load_action: .dontcare
+			clear_value: gfx.Color{1.0, 1.0, 1.0, 1.0}
 		},
 		gfx.ColorAttachmentAction{
-			action: .dontcare
-			value: gfx.Color{1.0, 1.0, 1.0, 1.0}
+			load_action: .dontcare
+			clear_value: gfx.Color{1.0, 1.0, 1.0, 1.0}
 		},
 		gfx.ColorAttachmentAction{
-			action: .dontcare
-			value: gfx.Color{1.0, 1.0, 1.0, 1.0}
+			load_action: .dontcare
+			clear_value: gfx.Color{1.0, 1.0, 1.0, 1.0}
 		},
 	]!
 }

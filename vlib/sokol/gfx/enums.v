@@ -2,12 +2,12 @@ module gfx
 
 pub enum Backend {
 	glcore33
-	gles2
 	gles3
 	d3d11
 	metal_ios
 	metal_macos
 	metal_simulator
+	wgpu
 	dummy
 }
 
@@ -37,6 +37,7 @@ pub enum PixelFormat {
 	rg16si
 	rg16f
 	rgba8
+	srgb8a8
 	rgba8sn
 	rgba8ui
 	rgba8si

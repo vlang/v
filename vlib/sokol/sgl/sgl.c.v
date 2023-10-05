@@ -9,16 +9,16 @@ pub const context = Context{0x00010001} // C.SGL_DEFAULT_CONTEXT = { 0x00010001 
 
 // setup/shutdown/misc
 pub fn setup(desc &Desc) {
-	if desc.allocator.alloc == unsafe { nil } && desc.allocator.free == unsafe { nil } {
+	if desc.allocator.alloc_fn == unsafe { nil } && desc.allocator.free_fn == unsafe { nil } {
 		unsafe {
-			desc.allocator.alloc = memory.salloc
-			desc.allocator.free = memory.sfree
+			desc.allocator.alloc_fn = memory.salloc
+			desc.allocator.free_fn = memory.sfree
 			desc.allocator.user_data = voidptr(0x10000561)
 		}
 	}
-	if desc.logger.log_cb == unsafe { nil } {
+	if desc.logger.func == unsafe { nil } {
 		unsafe {
-			desc.logger.log_cb = memory.slog
+			desc.logger.func = memory.slog
 		}
 	}
 	C.sgl_setup(desc)
@@ -123,7 +123,7 @@ pub fn disable_texture() {
 
 [inline]
 pub fn texture(img gfx.Image) {
-	C.sgl_texture(img)
+	C.sgl_texture(img, C.sg_sampler{}) // TODO need to pass SG_INVALID_ID ?
 }
 
 // pipeline stack functions
