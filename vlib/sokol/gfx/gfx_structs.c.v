@@ -603,16 +603,16 @@ pub fn (mut action C.sg_color_attachment_action) set_color_values(r, g, b, a f32
 */
 pub struct C.sg_depth_attachment_action {
 pub mut:
-	action Action
-	value  f32
+	load_action Action
+	clear_value f32
 }
 
 pub type DepthAttachmentAction = C.sg_depth_attachment_action
 
 pub struct C.sg_stencil_attachment_action {
 pub mut:
-	action Action
-	value  u8
+	load_action Action
+	clear_value u8
 }
 
 pub type StencilAttachmentAction = C.sg_stencil_attachment_action
