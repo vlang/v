@@ -5533,7 +5533,7 @@ that are substituted at compile time:
 - `@VEXEROOT`  => will be substituted with the *folder*,
   where the V executable is (as a string).
 - `@VHASH`  => replaced with the shortened commit hash of the V compiler (as a string).
-- `@VCURRENTHASH` => replaced with the shortened commot hash of the V compiler (as a string). This hash changes, when `./v self` is called.
+- `@VCURRENTHASH` => Similar to `@VHASH`, except this changes, when `./v self` is called.
 - `@VMOD_FILE` => replaced with the contents of the nearest v.mod file (as a string).
 - `@VMODROOT` => will be substituted with the *folder*,
   where the nearest v.mod file is (as a string).
