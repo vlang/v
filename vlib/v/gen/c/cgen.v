@@ -4582,7 +4582,11 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		if sym.kind != .alias
 			|| (!(sym.info as ast.Alias).parent_type.has_flag(.option)
 			&& (sym.info as ast.Alias).parent_type !in [expr_type, ast.string_type]) {
-			cast_label = '(${styp})'
+			if sym.kind == .string && !node.typ.is_ptr() {
+				cast_label = '*(string*)&'
+			} else {
+				cast_label = '(${styp})'
+			}
 		}
 		if node.typ.has_flag(.option) && node.expr is ast.None {
 			g.gen_option_error(node.typ, node.expr)
