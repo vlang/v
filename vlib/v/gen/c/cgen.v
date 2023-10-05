@@ -747,8 +747,7 @@ pub fn (mut g Gen) gen_file() {
 }
 
 pub fn (g &Gen) hashes() string {
-	mut res := c_commit_hash_default.replace('@@@', version.vhash())
-	return res
+	return c_commit_hash_default.replace('@@@', version.vhash())
 }
 
 pub fn (mut g Gen) init() {
