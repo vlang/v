@@ -44,6 +44,7 @@
 - [x] Lambdas: `a.sort(|a, b| a > b)`
 - [ ] Custom attributes.
 - [ ] `arr.first() or { }` like `arr[0] or { }`
+- [ ]  64/32 bit int depending on arch (will remove array.len limitation on 64 bit systems)
 
 ## [Version 1.0]
 
