@@ -5,7 +5,7 @@ set timeout 10
 set v_root [lindex $argv 0]
 set project_name [lindex $argv 1]
 
-proc assert {expect_ {send_ ""}} {
+proc expect_then_send {expect_ {send_ ""}} {
 	expect $expect_ {
 		if {$send_ != ""} {
 			send $send_
@@ -18,11 +18,11 @@ proc assert {expect_ {send_ ""}} {
 
 spawn $v_root/v run $v_root/cmd/tools/vcreate/ new
 
-assert "Input your project name: " "$project_name\r"
-assert "Input your project description: " "My awesome V project.\r"
-assert "Input your project version: (0.0.0) " "0.1.0\r"
-assert "Input your project license: (MIT) " "GPL\r"
-assert "Initialising ..."
-assert "Complete!"
+expect_then_send "Input your project name: " "$project_name\r"
+expect_then_send "Input your project description: " "My awesome V project.\r"
+expect_then_send "Input your project version: (0.0.0) " "0.1.0\r"
+expect_then_send "Input your project license: (MIT) " "GPL\r"
+expect_then_send "Initialising ..."
+expect_then_send "Complete!"
 
 expect eof
