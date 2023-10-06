@@ -10,7 +10,7 @@ vlib/sokol/audio/audio.v:122:19: error: struct `C.saudio_desc` was declared as p
   121 | // setup - setup sokol-audio
   122 | pub fn setup(desc &C.saudio_desc) {
       |                   ~~~~~~~~~~~~~~
-  123 |     if desc.allocator.alloc == unsafe { nil } && desc.allocator.free == unsafe { nil } {
+  123 |     if desc.allocator.alloc_fn == unsafe { nil } && desc.allocator.free_fn == unsafe { nil } {
   124 |         unsafe {
 vlib/sokol/audio/audio.v:154:16: error: struct `C.saudio_desc` was declared as private to module `module_with_redeclaration`, so it can not be used inside module `sokol.audio`
   152 |
