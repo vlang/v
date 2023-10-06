@@ -31,6 +31,8 @@ pub fn (c Complex) abs() f64 {
 	return math.hypot(c.re, c.im)
 }
 
+// Returns the modulus value of the complex number
+// mod(x + iy) = √( x^2 + y^2 )
 pub fn (c Complex) mod() f64 {
 	return c.abs()
 }
