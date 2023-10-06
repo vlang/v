@@ -1,0 +1,28 @@
+#!/usr/bin/expect
+
+set timeout 10
+# Pass v_root as arg, since we chdir into a temp directoy during testing and create a project there.
+set v_root [lindex $argv 0]
+set project_name [lindex $argv 1]
+
+proc assert {expect_ {send_ ""}} {
+	expect $expect_ {
+		if {$send_ != ""} {
+			send $send_
+		}
+	} timeout {
+		puts "!= $expect_"
+		exit 1
+	}
+}
+
+spawn $v_root/v run $v_root/cmd/tools/vcreate/ new
+
+assert "Input your project name: " "$project_name\r"
+assert "Input your project description: " "My awesome V project.\r"
+assert "Input your project version: (0.0.0) " "0.1.0\r"
+assert "Input your project license: (MIT) " "GPL\r"
+assert "Initialising ..."
+assert "Complete!"
+
+expect eof

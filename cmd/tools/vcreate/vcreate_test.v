@@ -1,4 +1,5 @@
 import os
+import v.vmod
 
 // Note: the following uses `test_vcreate` and NOT `vcreate_test` deliberately,
 // to both avoid confusions with the name of the current test itself, and to
@@ -137,6 +138,31 @@ indent_style = tab
 
 	assert os.read_file('.gitattributes')! == git_attributes_content
 	assert os.read_file('.editorconfig')! == editor_config_content
+}
+
+fn test_input() {
+	$if windows {
+		eprintln('Input test for windows are not yet implemented.')
+		return
+	}
+	expect_path := os.join_path(@VMODROOT, 'cmd', 'tools', 'vcreate')
+	project_name := 'my_project'
+	new_no_arg := os.execute(os.join_path(expect_path, 'new_no_arg.expect ${@VMODROOT} ${project_name}'))
+	if new_no_arg.exit_code != 0 {
+		assert false, new_no_arg.output
+	}
+	mod := vmod.decode(os.read_file(os.join_path(test_path, project_name, 'v.mod')) or {
+		assert false, 'Failed reading v.mod of ${project_name}'
+		return
+	}) or {
+		assert false, err.str()
+		return
+	}
+	// Assert module data set in ./new_no_arg.expect
+	assert mod.name == 'my_project'
+	assert mod.description == 'My awesome V project.'
+	assert mod.version == '0.1.0'
+	assert mod.license == 'GPL'
 }
 
 fn testsuite_end() {
