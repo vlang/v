@@ -134,11 +134,13 @@ pub fn gamma(a f64) f64 {
 // log_gamma(-integer) = +inf
 // log_gamma(-inf) = -inf
 // log_gamma(nan) = nan
+// uses log_gamma_sign internally
 pub fn log_gamma(x f64) f64 {
 	y, _ := log_gamma_sign(x)
 	return y
 }
 
+// log_gamma_sign returns the natural logarithm and sign (-1 or +1) of Gamma(x)
 pub fn log_gamma_sign(a f64) (f64, int) {
 	mut x := a
 	ymin := 1.461632144968362245

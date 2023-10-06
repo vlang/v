@@ -12,6 +12,7 @@ pub mut:
 	im f64
 }
 
+// Return a Complex Struct with re and im
 pub fn complex(re f64, im f64) Complex {
 	return Complex{re, im}
 }
