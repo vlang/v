@@ -143,7 +143,7 @@ pub fn apply_bindings(bindings &Bindings) {
 
 [inline]
 pub fn apply_uniforms(stage ShaderStage, ub_index int, data &Range) {
-	C.sg_apply_uniforms(int(stage), ub_index, data)
+	C.sg_apply_uniforms(stage, ub_index, data)
 }
 
 [inline]

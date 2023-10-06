@@ -7,6 +7,7 @@ const (
 	max_iconimages   = 8
 )
 
+// sapp_range is a general pointer/size-pair struct for passing binary blobs into sokol_app.h
 [typedef]
 pub struct C.sapp_range {
 pub:

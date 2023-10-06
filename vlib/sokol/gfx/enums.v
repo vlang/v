@@ -12,13 +12,15 @@ pub enum Backend {
 }
 
 // PixelFormat is C.sg_pixel_format
-pub enum PixelFormat {
+pub enum PixelFormat as u32 {
 	_default // value 0 reserved for default-init
 	@none
+	//
 	r8
 	r8sn
 	r8ui
 	r8si
+	//
 	r16
 	r16sn
 	r16ui
@@ -28,6 +30,7 @@ pub enum PixelFormat {
 	rg8sn
 	rg8ui
 	rg8si
+	//
 	r32ui
 	r32si
 	r32f
@@ -44,6 +47,7 @@ pub enum PixelFormat {
 	bgra8
 	rgb10a2
 	rg11b10f
+	//
 	rg32ui
 	rg32si
 	rg32f
@@ -52,11 +56,14 @@ pub enum PixelFormat {
 	rgba16ui
 	rgba16si
 	rgba16f
+	//
 	rgba32ui
 	rgba32si
 	rgba32f
+	//
 	depth
 	depth_stencil
+	//
 	bc1_rgba
 	bc2_rgba
 	bc3_rgba
@@ -76,47 +83,74 @@ pub enum PixelFormat {
 	etc2_rgba8
 	etc2_rg11
 	etc2_rg11sn
+	//
+	rgb9e5
+	//
 	_num
+	_force_u32      = 0x7FFFFFFF
 }
 
-pub enum ResourceState {
+pub enum ResourceState as u32 {
 	initial
 	alloc
 	valid
 	failed
 	invalid
+	_force_u32 = 0x7FFFFFFF
 }
 
-pub enum Usage {
+pub enum Usage as u32 {
 	_default // value 0 reserved for default-init
 	immutable
 	dynamic
 	stream
 	_num
+	_force_u32 = 0x7FFFFFFF
 }
 
-pub enum BufferType {
+pub enum BufferType as u32 {
 	_default // value 0 reserved for default-init
 	vertexbuffer
 	indexbuffer
 	_num
+	_force_u32   = 0x7FFFFFFF
 }
 
-pub enum IndexType {
+pub enum IndexType as u32 {
 	_default // value 0 reserved for default-init
 	@none
 	uint16
 	uint32
 	_num
+	_force_u32 = 0x7FFFFFFF
 }
 
-pub enum ImageType {
+pub enum ImageType as u32 {
 	_default // value 0 reserved for default-init
 	_2d
 	cube
 	_3d
 	array
 	_num
+	_force_u32 = 0x7FFFFFFF
+}
+
+pub enum ImageSampleType as u32 {
+	_default // value 0 reserved for default-init
+	float
+	depth
+	sint
+	uint
+	_num
+	_force_u32 = 0x7FFFFFFF
+}
+
+pub enum SamplerType as u32 {
+	_default
+	sample
+	compare
+	_num
+	_force_u32 = 0x7FFFFFFF
 }
 
 pub enum CubeFace as u32 {
@@ -130,12 +164,13 @@ pub enum CubeFace as u32 {
 	_force_u32 = 0x7fffffff
 }
 
-pub enum ShaderStage {
+pub enum ShaderStage as u32 {
 	vs
 	fs
+	_force_u32 = 0x7FFFFFFF
 }
 
-pub enum PrimitiveType {
+pub enum PrimitiveType as u32 {
 	_default // value 0 reserved for default-init
 	points
 	lines
@@ -143,37 +178,38 @@ pub enum PrimitiveType {
 	triangles
 	triangle_strip
 	_num
+	_force_u32     = 0x7FFFFFFF
 }
 
-pub enum Filter {
+pub enum Filter as u32 {
 	_default // value 0 reserved for default-init
+	@none
 	nearest
 	linear
-	nearest_mipmap_nearest
-	nearest_mipmap_linear
-	linear_mipmap_nearest
-	linear_mipmap_linear
 	_num
+	_force_u32 = 0x7fffffff
 }
 
-pub enum Wrap {
+pub enum Wrap as u32 {
 	_default // value 0 reserved for default-init
-	repeat
+	repeat // The default wrap mode.
 	clamp_to_edge
-	clamp_to_border
+	clamp_to_border // not supported on all backends and platforms. To check for support, call sg_query_features(), and check the "clamp_to_border" boolean in the returned sg_features struct. Platforms which don't support SG_WRAP_CLAMP_TO_BORDER will silently fall back to clamp_to_edge without a validation error.
 	mirrored_repeat
 	_num
+	_force_u32      = 0x7FFFFFFF
 }
 
-pub enum BorderColor {
+pub enum BorderColor as u32 {
 	_default // value 0 reserved for default-init
 	transparent_black
 	opaque_black
 	opaque_white
 	_num
+	_force_u32        = 0x7FFFFFFF
 }
 
-pub enum VertexFormat {
+pub enum VertexFormat as u32 {
 	invalid
 	float
 	float2
@@ -190,43 +226,54 @@ pub enum VertexFormat {
 	short4n
 	ushort4n
 	uint10_n2
+	half2
+	half4
 	_num
+	_force_u32 = 0x7FFFFFFF
 }
 
-pub enum VertexStep {
+pub enum VertexStep as u32 {
 	_default // value 0 reserved for default-init
 	per_vertex
 	per_instance
 	_num
+	_force_u32   = 0x7FFFFFFF
 }
 
-pub enum UniformType {
+pub enum UniformType as u32 {
 	invalid
 	float
 	float2
 	float3
 	float4
+	int
+	int2
+	int3
+	int4
 	mat4
 	_num
+	_force_u32 = 0x7FFFFFFF
 }
 
-pub enum CullMode {
+pub enum CullMode as u32 {
 	_default // value 0 reserved for default-init
 	@none
 	front
 	back
 	_num
+	_force_u32 = 0x7FFFFFFF
 }
 
 // FaceWindin is C.sg_face_winding
-pub enum FaceWinding {
+pub enum FaceWinding as u32 {
 	_facewinding_default // value 0 reserved for default-init
 	facewinding_ccw
 	facewinding_cw
 	_facewinding_num
+	_force_u32           = 0x7FFFFFFF
 }
 
-pub enum CompareFunc {
+pub enum CompareFunc as u32 {
 	_default // value 0 reserved for default-init
 	never
 	less
@@ -237,9 +284,10 @@ pub enum CompareFunc {
 	greater_equal
 	always
 	_num
+	_force_u32    = 0x7FFFFFFF
 }
 
-pub enum StencilOp {
+pub enum StencilOp as u32 {
 	_default // value 0 reserved for default-init
 	keep
 	zero
@@ -250,9 +298,10 @@ pub enum StencilOp {
 	incr_wrap
 	decr_wrap
 	_num
+	_force_u32 = 0x7FFFFFFF
 }
 
-pub enum BlendFactor {
+pub enum BlendFactor as u32 {
 	_default // value 0 reserved for default-init
 	zero
 	one
@@ -270,38 +319,58 @@ pub enum BlendFactor {
 	blend_alpha
 	one_minus_blend_alpha
 	_num
+	_force_u32            = 0x7FFFFFFF
 }
 
-pub enum BlendOp {
+pub enum BlendOp as u32 {
 	_default // value 0 reserved for default-init
 	add
 	subtract
 	reverse_subtract
 	_num
+	_force_u32       = 0x7FFFFFFF
 }
 
-pub enum ColorMask {
-	_default = 0 // value 0 reserved for default-init
-	@none    = 0x10 // special value for 'all channels disabled
-	r        = 1
-	g        = 2
-	b        = 4
-	a        = 8
-	rgb      = 0x7
-	rgba     = 0xF
+pub enum ColorMask as u32 {
+	_default   = 0 // value 0 reserved for default-init
+	@none      = 0x10 // special value for 'all channels disabled
+	r          = 1
+	g          = 2
+	rg         = 3
+	b          = 4
+	rb         = 5
+	gb         = 6
+	rgb        = 7
+	a          = 8
+	ra         = 9
+	ga         = 0xa
+	rga        = 0xb
+	ba         = 0xc
+	rba        = 0xd
+	gba        = 0xe
+	rgba       = 0xf
+	_force_u32 = 0x7FFFFFFF
 }
 
-pub enum Action {
+pub enum LoadAction as u32 {
 	_default
 	clear
 	load
 	dontcare
-	_num
+	_force_u32 = 0x7FFFFFFF
 }
 
-pub enum UniformLayout {
+pub enum StoreAction as u32 {
+	_default
+	store
+	dontcare
+	_force_u32 = 0x7FFFFFFF
+}
+
+pub enum UniformLayout as u32 {
 	uniformlayout_default = 0 // value 0 reserved for default-init
 	uniformlayout_native // default: layout depends on currently active backend
 	uniformlayout_std140 // std140: memory layout according to std140
 	_num
+	_force_u32            = 0x7FFFFFFF
 }
