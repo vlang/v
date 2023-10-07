@@ -1669,20 +1669,20 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		if node.has_len {
 			f.write('len: ')
 			f.expr(node.len_expr)
-			if node.has_cap || node.has_default {
+			if node.has_cap || node.has_init {
 				f.write(', ')
 			}
 		}
 		if node.has_cap {
 			f.write('cap: ')
 			f.expr(node.cap_expr)
-			if node.has_default {
+			if node.has_init {
 				f.write(', ')
 			}
 		}
-		if node.has_default {
+		if node.has_init {
 			f.write('init: ')
-			f.expr(node.default_expr)
+			f.expr(node.init_expr)
 		}
 		f.write('}')
 		return
@@ -1851,9 +1851,9 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 			return
 		}
 		f.write(f.table.type_to_str_using_aliases(node.elem_type, f.mod2alias))
-		if node.has_default {
+		if node.has_init {
 			f.write('{init: ')
-			f.expr(node.default_expr)
+			f.expr(node.init_expr)
 			f.write('}')
 		} else {
 			f.write('{}')

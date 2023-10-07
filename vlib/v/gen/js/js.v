@@ -2122,8 +2122,8 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 		g.writeln('; it++) {')
 		g.inc_indent()
 		g.write('${t1}.push(')
-		if it.has_default {
-			g.expr(it.default_expr)
+		if it.has_init {
+			g.expr(it.init_expr)
 		} else {
 			// Fill the array with the default values for its type
 			t := g.to_js_typ_val(it.elem_type)
@@ -2154,8 +2154,8 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 		g.writeln('; ${t2}++) {')
 		g.inc_indent()
 		g.write('${t1}.push(')
-		if it.has_default {
-			g.expr(it.default_expr)
+		if it.has_init {
+			g.expr(it.init_expr)
 		} else {
 			// Fill the array with the default values for its type
 			t := g.to_js_typ_val(it.elem_type)

@@ -2339,7 +2339,7 @@ pub fn (t &Table) dependent_names_in_expr(expr Expr) []string {
 			}
 			names << t.dependent_names_in_expr(expr.len_expr)
 			names << t.dependent_names_in_expr(expr.cap_expr)
-			names << t.dependent_names_in_expr(expr.default_expr)
+			names << t.dependent_names_in_expr(expr.init_expr)
 		}
 		CallExpr {
 			for arg in expr.args {

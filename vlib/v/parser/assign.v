@@ -44,8 +44,8 @@ fn (mut p Parser) check_undefined_variables(names []string, val ast.Expr) ! {
 			if val.has_len {
 				p.check_undefined_variables(names, val.len_expr)!
 			}
-			if val.has_default {
-				p.check_undefined_variables(names, val.default_expr)!
+			if val.has_init {
+				p.check_undefined_variables(names, val.init_expr)!
 			}
 			for expr in val.exprs {
 				p.check_undefined_variables(names, expr)!
