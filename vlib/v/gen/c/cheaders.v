@@ -718,7 +718,7 @@ void _vcleanup();
 #define _ARR_LEN(a) ( (sizeof(a)) / (sizeof(a[0])) )
 
 void v_free(voidptr ptr);
-voidptr memdup(voidptr src, int sz);
+voidptr memdup(voidptr src, isize size);
 
 '
 
