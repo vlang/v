@@ -50,7 +50,7 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 		eprintln(' function: ${fn_name}()')
 		eprintln('  message: ${s}')
 		eprintln('     file: ${file}:${line_no}')
-		eprintln('   v hash: ${@VHASH}') // TODO: use @VCURRENTHASH when bootstrapped
+		eprintln('   v hash: ${@VCURRENTHASH}')
 		eprintln('=========================================')
 		$if native {
 			C.exit(1) // TODO: native backtraces
@@ -104,7 +104,7 @@ pub fn panic(s string) {
 	} $else {
 		eprint('V panic: ')
 		eprintln(s)
-		eprintln('v hash: ${@VHASH}') // TODO: use @VCURRENTHASH when bootstrapped
+		eprintln('v hash: ${@VCURRENTHASH}')
 		$if native {
 			C.exit(1) // TODO: native backtraces
 		} $else $if exit_after_panic_message ? {
