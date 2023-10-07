@@ -51,6 +51,11 @@ pub fn make_image(desc &ImageDesc) Image {
 }
 
 [inline]
+pub fn make_sampler(desc &SamplerDesc) Sampler {
+	return C.sg_make_sampler(desc)
+}
+
+[inline]
 pub fn make_shader(desc &ShaderDesc) Shader {
 	return C.sg_make_shader(desc)
 }
@@ -73,6 +78,11 @@ pub fn destroy_buffer(buf Buffer) {
 [inline]
 pub fn destroy_image(img Image) {
 	C.sg_destroy_image(img)
+}
+
+[inline]
+pub fn destroy_sampler(smp Sampler) {
+	C.sg_destroy_sampler(smp)
 }
 
 [inline]

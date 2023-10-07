@@ -40,6 +40,7 @@ struct App {
 mut:
 	gg          &gg.Context = unsafe { nil }
 	texture     gfx.Image
+	sampler     gfx.Sampler
 	init_flag   bool
 	frame_count int
 	mouse_x     int = -1
@@ -57,7 +58,7 @@ mut:
 /******************************************************************************
 * Texture functions
 ******************************************************************************/
-fn create_texture(w int, h int, buf byteptr) gfx.Image {
+fn create_texture(w int, h int, buf byteptr) (gfx.Image, gfx.Sampler) {
 	sz := w * h * 4
 	mut img_desc := gfx.ImageDesc{
 		width: w
@@ -78,11 +79,16 @@ fn create_texture(w int, h int, buf byteptr) gfx.Image {
 	}
 
 	sg_img := gfx.make_image(&img_desc)
-	return sg_img
-}
 
-fn destroy_texture(sg_img gfx.Image) {
-	gfx.destroy_image(sg_img)
+	mut smp_desc := gfx.SamplerDesc{
+		min_filter: .linear
+		mag_filter: .linear
+		wrap_u: .clamp_to_edge
+		wrap_v: .clamp_to_edge
+	}
+
+	sg_smp := gfx.make_sampler(&smp_desc)
+	return sg_img, sg_smp
 }
 
 // Use only if usage: .dynamic is enabled
@@ -228,6 +234,7 @@ fn init_cube_glsl_m(mut app App) {
 	bind.vertex_buffers[0] = vbuf
 	bind.index_buffer = ibuf
 	bind.fs.images[C.SLOT_tex] = app.texture
+	bind.fs.samplers[C.SLOT_smp] = app.sampler
 	app.bind['march'] = bind
 
 	app.pipe['march'] = gfx.make_pipeline(&pipdesc)
@@ -343,6 +350,7 @@ fn init_cube_glsl_p(mut app App) {
 	bind.vertex_buffers[0] = vbuf
 	bind.index_buffer = ibuf
 	bind.fs.images[C.SLOT_tex] = app.texture
+	bind.fs.samplers[C.SLOT_smp] = app.sampler
 	app.bind['puppy'] = bind
 
 	app.pipe['puppy'] = gfx.make_pipeline(&pipdesc)
@@ -574,7 +582,7 @@ fn my_init(mut app App) {
 			i += 4
 		}
 	}
-	app.texture = create_texture(w, h, tmp_txt)
+	app.texture, app.sampler = create_texture(w, h, tmp_txt)
 	unsafe { free(tmp_txt) }
 
 	// glsl

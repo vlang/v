@@ -21,6 +21,7 @@ pub mut:
 	ext         string
 	simg_ok     bool
 	simg        gfx.Image
+	ssmp        gfx.Sampler
 	path        string
 }
 
@@ -112,6 +113,16 @@ pub fn (mut img Image) init_sokol_image() &Image {
 		size: img_size
 	}
 	img.simg = gfx.make_image(&img_desc)
+
+	mut smp_desc := gfx.SamplerDesc{
+		min_filter: .linear
+		mag_filter: .linear
+		wrap_u: .clamp_to_edge
+		wrap_v: .clamp_to_edge
+	}
+
+	img.ssmp = gfx.make_sampler(&smp_desc)
+
 	img.simg_ok = true
 	img.ok = true
 	return img
@@ -142,10 +153,6 @@ pub fn (mut ctx Context) new_streaming_image(w int, h int, channels int, sicfg S
 		num_slices: 1
 		num_mipmaps: 1
 		usage: .stream
-		// wrap_u: sicfg.wrap_u // SAMPLER
-		// wrap_v: sicfg.wrap_v
-		// min_filter: sicfg.min_filter
-		// mag_filter: sicfg.mag_filter
 		label: img.path.str
 	}
 	// Sokol requires that streamed images have NO .ptr/.size initially:
@@ -154,6 +161,15 @@ pub fn (mut ctx Context) new_streaming_image(w int, h int, channels int, sicfg S
 		size: usize(0)
 	}
 	img.simg = gfx.make_image(&img_desc)
+
+	mut smp_desc := gfx.SamplerDesc{
+		wrap_u: sicfg.wrap_u // SAMPLER
+		wrap_v: sicfg.wrap_v
+		min_filter: sicfg.min_filter
+		mag_filter: sicfg.mag_filter
+	}
+
+	img.ssmp = gfx.make_sampler(&smp_desc)
 	img.simg_ok = true
 	img.ok = true
 	img_idx := ctx.cache_image(img)
@@ -359,7 +375,7 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 	}
 
 	sgl.enable_texture()
-	sgl.texture(img.simg)
+	sgl.texture(img.simg, img.ssmp)
 
 	if config.rotate != 0 {
 		width := img_rect.width * ctx.scale

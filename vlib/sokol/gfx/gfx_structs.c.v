@@ -113,16 +113,10 @@ pub mut:
 	vertex_buffer_offsets [8]int
 	index_buffer          Buffer
 	index_buffer_offset   int
-	vs                    C.sg_stage_bindings
-	fs                    C.sg_stage_bindings
+	vs                    StageBindings
+	fs                    StageBindings
 	// vs_images             [8]Image // old
 	// fs_images             [8]Image // old
-}
-
-pub struct C.sg_stage_bindings {
-pub mut:
-	images   [12]Image
-	samplers [8]Sampler
 }
 
 pub type Bindings = C.sg_bindings
@@ -166,6 +160,14 @@ pub fn (b &Bindings) append_index_buffer(data voidptr, element_size int, element
 	}
 	return C.sg_append_buffer(b.index_buffer, &range)
 }
+
+pub struct C.sg_stage_bindings {
+pub mut:
+	images   [12]Image
+	samplers [8]Sampler
+}
+
+pub type StageBindings = C.sg_stage_bindings
 
 [heap]
 struct C.sg_shader_desc {
@@ -478,6 +480,8 @@ pub struct C.sg_sampler_desc {
 	d3d11_sampler voidptr
 	wgpu_sampler  voidptr
 }
+
+pub type SamplerDesc = C.sg_sampler_desc
 
 pub struct C.sg_image_info {
 pub mut:
