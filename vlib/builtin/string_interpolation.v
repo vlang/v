@@ -69,7 +69,7 @@ pub mut:
 	d_u16 u16
 	d_i16 i16
 	d_u32 u32
-	d_i32 i32
+	d_i32 int
 	d_u64 u64
 	d_i64 i64
 	d_f32 f32

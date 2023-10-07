@@ -266,6 +266,7 @@ pub fn (t Type) atomic_typename() string {
 	match idx {
 		ast.u32_type_idx { return 'atomic_uint' }
 		ast.int_type_idx { return '_Atomic int' }
+		ast.i32_type_idx { return '_Atomic int' }
 		ast.u64_type_idx { return 'atomic_ullong' }
 		ast.i64_type_idx { return 'atomic_llong' }
 		else { return 'unknown_atomic' }
@@ -589,6 +590,7 @@ pub const (
 	thread_type_idx        = 28
 	error_type_idx         = 29
 	nil_type_idx           = 30
+	i32_type_idx           = 31
 )
 
 // Note: builtin_type_names must be in the same order as the idx consts above
@@ -710,6 +712,7 @@ pub enum Kind {
 	charptr
 	i8
 	i16
+	i32
 	int
 	i64
 	isize
@@ -914,45 +917,45 @@ pub fn (t &TypeSymbol) is_array_fixed_ret() bool {
 pub fn (mut t Table) register_builtin_type_symbols() {
 	// reserve index 0 so nothing can go there
 	// save index check, 0 will mean not found
+	// THE ORDER MUST BE THE SAME AS xxx_type_idx CONSTS EARLIER IN THIS FILE
 	t.register_sym(kind: .placeholder, name: 'reserved_0')
-	t.register_sym(kind: .void, name: 'void', cname: 'void', mod: 'builtin')
-	t.register_sym(kind: .voidptr, name: 'voidptr', cname: 'voidptr', mod: 'builtin')
-	t.register_sym(kind: .byteptr, name: 'byteptr', cname: 'byteptr', mod: 'builtin')
-	t.register_sym(kind: .charptr, name: 'charptr', cname: 'charptr', mod: 'builtin')
-	t.register_sym(kind: .i8, name: 'i8', cname: 'i8', mod: 'builtin')
-	t.register_sym(kind: .i16, name: 'i16', cname: 'i16', mod: 'builtin')
-	// t.register_sym(kind: .i64, name: 'i32', cname: 'i32', mod: 'builtin')
-	t.register_sym(kind: .int, name: 'int', cname: int_type_name, mod: 'builtin')
-	t.register_sym(kind: .i64, name: 'i64', cname: 'i64', mod: 'builtin')
-	t.register_sym(kind: .isize, name: 'isize', cname: 'isize', mod: 'builtin')
-	t.register_sym(kind: .u8, name: 'u8', cname: 'u8', mod: 'builtin')
-	t.register_sym(kind: .u16, name: 'u16', cname: 'u16', mod: 'builtin')
-	t.register_sym(kind: .u32, name: 'u32', cname: 'u32', mod: 'builtin')
-	t.register_sym(kind: .u64, name: 'u64', cname: 'u64', mod: 'builtin')
-	t.register_sym(kind: .usize, name: 'usize', cname: 'usize', mod: 'builtin')
-	t.register_sym(kind: .f32, name: 'f32', cname: 'f32', mod: 'builtin')
-	t.register_sym(kind: .f64, name: 'f64', cname: 'f64', mod: 'builtin')
-	t.register_sym(kind: .char, name: 'char', cname: 'char', mod: 'builtin')
-	t.register_sym(kind: .bool, name: 'bool', cname: 'bool', mod: 'builtin')
-	t.register_sym(kind: .none_, name: 'none', cname: 'none', mod: 'builtin')
-	t.register_sym(kind: .string, name: 'string', cname: 'string', mod: 'builtin')
-	t.register_sym(kind: .rune, name: 'rune', cname: 'rune', mod: 'builtin')
-	t.register_sym(kind: .array, name: 'array', cname: 'array', mod: 'builtin')
-	t.register_sym(kind: .map, name: 'map', cname: 'map', mod: 'builtin')
-	t.register_sym(kind: .chan, name: 'chan', cname: 'chan', mod: 'builtin')
-	t.register_sym(kind: .any, name: 'any', cname: 'any', mod: 'builtin')
+	t.register_sym(kind: .void, name: 'void', cname: 'void', mod: 'builtin') // 1
+	t.register_sym(kind: .voidptr, name: 'voidptr', cname: 'voidptr', mod: 'builtin') // 2
+	t.register_sym(kind: .byteptr, name: 'byteptr', cname: 'byteptr', mod: 'builtin') // 3
+	t.register_sym(kind: .charptr, name: 'charptr', cname: 'charptr', mod: 'builtin') // 4
+	t.register_sym(kind: .i8, name: 'i8', cname: 'i8', mod: 'builtin') // 5
+	t.register_sym(kind: .i16, name: 'i16', cname: 'i16', mod: 'builtin') // 6
+	t.register_sym(kind: .int, name: 'int', cname: int_type_name, mod: 'builtin') // 7
+	t.register_sym(kind: .i64, name: 'i64', cname: 'i64', mod: 'builtin') // 8
+	t.register_sym(kind: .isize, name: 'isize', cname: 'isize', mod: 'builtin') // 9
+	t.register_sym(kind: .u8, name: 'u8', cname: 'u8', mod: 'builtin') // 10
+	t.register_sym(kind: .u16, name: 'u16', cname: 'u16', mod: 'builtin') // 11
+	t.register_sym(kind: .u32, name: 'u32', cname: 'u32', mod: 'builtin') // 12
+	t.register_sym(kind: .u64, name: 'u64', cname: 'u64', mod: 'builtin') // 13
+	t.register_sym(kind: .usize, name: 'usize', cname: 'usize', mod: 'builtin') // 14
+	t.register_sym(kind: .f32, name: 'f32', cname: 'f32', mod: 'builtin') // 15
+	t.register_sym(kind: .f64, name: 'f64', cname: 'f64', mod: 'builtin') // 16
+	t.register_sym(kind: .char, name: 'char', cname: 'char', mod: 'builtin') // 17
+	t.register_sym(kind: .bool, name: 'bool', cname: 'bool', mod: 'builtin') // 18
+	t.register_sym(kind: .none_, name: 'none', cname: 'none', mod: 'builtin') // 19
+	t.register_sym(kind: .string, name: 'string', cname: 'string', mod: 'builtin') // 20
+	t.register_sym(kind: .rune, name: 'rune', cname: 'rune', mod: 'builtin') // 21
+	t.register_sym(kind: .array, name: 'array', cname: 'array', mod: 'builtin') // 22
+	t.register_sym(kind: .map, name: 'map', cname: 'map', mod: 'builtin') // 23
+	t.register_sym(kind: .chan, name: 'chan', cname: 'chan', mod: 'builtin') // 24
+	t.register_sym(kind: .any, name: 'any', cname: 'any', mod: 'builtin') // 25
 	t.register_sym(
 		kind: .float_literal
 		name: 'float literal'
 		cname: 'float_literal'
 		mod: 'builtin'
-	)
+	) // 26
 	t.register_sym(
 		kind: .int_literal
 		name: 'int literal'
 		cname: 'int_literal'
 		mod: 'builtin'
-	)
+	) // 27
 	t.register_sym(
 		kind: .thread
 		name: 'thread'
@@ -961,9 +964,10 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		info: Thread{
 			return_type: ast.void_type
 		}
-	)
-	t.register_sym(kind: .interface_, name: 'IError', cname: 'IError', mod: 'builtin')
-	t.register_sym(kind: .voidptr, name: 'nil', cname: 'voidptr', mod: 'builtin')
+	) // 28
+	t.register_sym(kind: .interface_, name: 'IError', cname: 'IError', mod: 'builtin') // 29
+	t.register_sym(kind: .voidptr, name: 'nil', cname: 'voidptr', mod: 'builtin') // 30
+	t.register_sym(kind: .i32, name: 'i32', cname: 'i32', mod: 'builtin') // 31
 }
 
 [inline]
@@ -1039,7 +1043,7 @@ pub fn (t &Table) type_size(typ Type) (int, int) {
 			size = 2
 			align = 2
 		}
-		.int, .u32, .rune, .f32, .enum_ {
+		.int, .i32, .u32, .rune, .f32, .enum_ {
 			size = 4
 			align = 4
 		}
@@ -1127,6 +1131,7 @@ pub fn (k Kind) str() string {
 		.int { 'int' }
 		.i8 { 'i8' }
 		.i16 { 'i16' }
+		.i32 { 'i32' }
 		.i64 { 'i64' }
 		.isize { 'isize' }
 		.u8 { 'u8' }
@@ -1245,8 +1250,8 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 	// explicitly.
 	match sym.kind {
 		.int_literal, .float_literal {}
-		.i8, .i16, .int, .i64, .isize, .u8, .u16, .u32, .u64, .usize, .f32, .f64, .char, .rune,
-		.string, .bool, .none_, .voidptr, .byteptr, .charptr {
+		.i8, .i16, .i32, .int, .i64, .isize, .u8, .u16, .u32, .u64, .usize, .f32, .f64, .char,
+		.rune, .string, .bool, .none_, .voidptr, .byteptr, .charptr {
 			// primitive types
 			res = sym.kind.str()
 		}
