@@ -12,7 +12,7 @@ pub mut:
 	im f64
 }
 
-// Return a Complex Struct with re and im
+// complex returns a Complex Struct with the given `re` and `im`
 pub fn complex(re f64, im f64) Complex {
 	return Complex{re, im}
 }
@@ -31,8 +31,7 @@ pub fn (c Complex) abs() f64 {
 	return math.hypot(c.re, c.im)
 }
 
-// Returns the modulus value of the complex number
-// mod(x + iy) = √( x^2 + y^2 )
+// mod returns the modulus value of `c`
 pub fn (c Complex) mod() f64 {
 	return c.abs()
 }
