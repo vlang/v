@@ -125,6 +125,14 @@ pub fn (n int) str() string {
 	return n.str_l(12)
 }
 
+// str returns the value of the `int` as a `string`.
+// Example: assert int(-2020).str() == '-2020'
+/*
+pub fn int_str(n int) string {
+	return i64(n).str()
+}
+*/
+
 // str returns the value of the `u32` as a `string`.
 // Example: assert u32(20000).str() == '20000'
 [direct_array_access; inline]

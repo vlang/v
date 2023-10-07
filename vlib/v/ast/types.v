@@ -981,8 +981,8 @@ pub fn (t &TypeSymbol) is_pointer() bool {
 
 [inline]
 pub fn (t &TypeSymbol) is_int() bool {
-	res := t.kind in [.i8, .i16, .int, .i64, .isize, .u8, .u16, .u32, .u64, .usize, .int_literal,
-		.rune]
+	res := t.kind in [.i8, .i16, .int, .i64, .i32, .isize, .u8, .u16, .u32, .u64, .usize,
+		.int_literal, .rune]
 	if !res && t.kind == .alias {
 		return (t.info as Alias).parent_type.is_number()
 	}
@@ -1047,9 +1047,23 @@ pub fn (t &Table) type_size(typ Type) (int, int) {
 			size = 2
 			align = 2
 		}
-		.int, .i32, .u32, .rune, .f32, .enum_ {
+		.i32, .u32, .rune, .f32, .enum_ {
 			size = 4
 			align = 4
+		}
+		.int {
+			$if new_int ? {
+				$if arm64 || amd64 {
+					size = 8
+					align = 8
+				} $else {
+					size = 4
+					align = 4
+				}
+			} $else {
+				size = 4
+				align = 4
+			}
 		}
 		.i64, .u64, .int_literal, .f64, .float_literal {
 			size = 8
