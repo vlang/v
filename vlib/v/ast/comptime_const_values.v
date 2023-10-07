@@ -4,9 +4,9 @@ pub type ComptTimeConstValue = EmptyExpr
 	| f32
 	| f64
 	| i16
+	| i32
 	| i64
 	| i8
-	| i32
 	| rune
 	| string
 	| u16
@@ -14,7 +14,8 @@ pub type ComptTimeConstValue = EmptyExpr
 	| u64
 	| u8
 	| voidptr
-	//| int
+
+//| int
 
 pub fn empty_comptime_const_expr() ComptTimeConstValue {
 	return EmptyExpr(0)
