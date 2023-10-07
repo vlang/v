@@ -9,13 +9,13 @@ fn (mut p Parser) assign_stmt() ast.Stmt {
 	mut defer_vars := p.defer_vars.clone()
 	p.defer_vars = []ast.Ident{}
 
-	exprs, comments := p.expr_list()
+	exprs := p.expr_list()
 
 	if !(p.inside_defer && p.tok.kind == .decl_assign) {
 		defer_vars << p.defer_vars
 	}
 	p.defer_vars = defer_vars
-	return p.partial_assign_stmt(exprs, comments)
+	return p.partial_assign_stmt(exprs)
 }
 
 const max_expr_level = 100
@@ -184,18 +184,13 @@ fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
 	return false
 }
 
-fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comment) ast.Stmt {
+fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 	p.is_stmt_ident = false
 	op := p.tok.kind
 	mut pos := p.tok.pos()
 	p.next()
-	mut comments := []ast.Comment{cap: 2 * left_comments.len + 1}
-	comments << left_comments
-	comments << p.eat_comments()
-	mut right_comments := []ast.Comment{}
 	mut right := []ast.Expr{cap: left.len}
-	right, right_comments = p.expr_list()
-	comments << right_comments
+	right = p.expr_list()
 	end_comments := p.eat_comments(same_line: true)
 	mut has_cross_var := false
 	mut is_static := false
@@ -291,7 +286,6 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 		op: op
 		left: left
 		right: right
-		comments: comments
 		end_comments: end_comments
 		pos: pos
 		has_cross_var: has_cross_var

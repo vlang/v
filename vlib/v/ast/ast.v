@@ -1261,7 +1261,6 @@ pub struct AssignStmt {
 pub:
 	op           token.Kind // include: =,:=,+=,-=,*=,/= and so on; for a list of all the assign operators, see vlib/token/token.v
 	pos          token.Pos
-	comments     []Comment
 	end_comments []Comment
 pub mut:
 	right         []Expr

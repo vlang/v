@@ -1754,14 +1754,11 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 	return res
 }
 
-fn (mut p Parser) expr_list() ([]ast.Expr, []ast.Comment) {
+fn (mut p Parser) expr_list() []ast.Expr {
 	mut exprs := []ast.Expr{}
-	mut comments := []ast.Comment{}
 	for {
 		expr := p.expr(0)
-		if expr is ast.Comment {
-			comments << expr
-		} else {
+		if expr !is ast.Comment {
 			exprs << expr
 			if p.tok.kind != .comma {
 				break
@@ -1769,7 +1766,7 @@ fn (mut p Parser) expr_list() ([]ast.Expr, []ast.Comment) {
 			p.next()
 		}
 	}
-	return exprs, comments
+	return exprs
 }
 
 fn (mut p Parser) is_attributes() bool {
@@ -2139,7 +2136,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	mut defer_vars := p.defer_vars.clone()
 	p.defer_vars = []ast.Ident{}
 
-	left, left_comments := p.expr_list()
+	left := p.expr_list()
 
 	if !(p.inside_defer && p.tok.kind == .decl_assign) {
 		defer_vars << p.defer_vars
@@ -2157,7 +2154,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	}
 	// TODO remove translated
 	if p.tok.kind in [.assign, .decl_assign] || p.tok.kind.is_assign() {
-		return p.partial_assign_stmt(left, left_comments)
+		return p.partial_assign_stmt(left)
 	} else if !p.pref.translated && !p.is_translated && !p.pref.is_fmt && !p.pref.is_vet
 		&& tok.kind !in [.key_if, .key_match, .key_lock, .key_rlock, .key_select] {
 		for node in left {
@@ -2176,7 +2173,6 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 		return ast.ExprStmt{
 			expr: left0
 			pos: left0.pos()
-			comments: left_comments
 			is_expr: p.inside_for
 		}
 	}
@@ -2186,7 +2182,6 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 			pos: tok.pos()
 		}
 		pos: pos
-		comments: left_comments
 	}
 }
 
@@ -3861,8 +3856,7 @@ fn (mut p Parser) return_stmt() ast.Return {
 		}
 	}
 	// return exprs
-	exprs, comments2 := p.expr_list()
-	comments << comments2
+	exprs := p.expr_list()
 	end_pos := exprs.last().pos()
 	return ast.Return{
 		exprs: exprs

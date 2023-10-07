@@ -831,14 +831,7 @@ pub fn (mut f Fmt) assert_stmt(node ast.AssertStmt) {
 }
 
 pub fn (mut f Fmt) assign_stmt(node ast.AssignStmt) {
-	mut sum_len := 0
 	for i, left in node.left {
-		pre_comments := node.comments[sum_len..].filter(it.pos.pos < left.pos().pos)
-		sum_len += pre_comments.len
-		if pre_comments.len > 0 {
-			f.comments(pre_comments)
-			f.write(' ')
-		}
 		f.expr(left)
 		if i < node.left.len - 1 {
 			f.write(', ')
@@ -847,12 +840,6 @@ pub fn (mut f Fmt) assign_stmt(node ast.AssignStmt) {
 	f.is_assign = true
 	f.write(' ${node.op.str()} ')
 	for i, val in node.right {
-		pre_comments := node.comments[sum_len..].filter(it.pos.pos < val.pos().pos)
-		sum_len += pre_comments.len
-		if pre_comments.len > 0 {
-			f.comments(pre_comments)
-			f.write(' ')
-		}
 		f.expr(val)
 		if i < node.right.len - 1 {
 			f.write(', ')
