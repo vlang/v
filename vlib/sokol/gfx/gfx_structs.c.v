@@ -490,7 +490,7 @@ pub mut:
 pub type ImageInfo = C.sg_image_info
 
 pub struct C.sg_image {
-pub:
+pub mut:
 	id u32
 }
 
@@ -501,7 +501,7 @@ pub fn (mut i Image) free() {
 }
 
 pub struct C.sg_sampler {
-pub:
+pub mut:
 	id u32
 }
 
