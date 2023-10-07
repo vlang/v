@@ -568,23 +568,23 @@ fn (mut g Gen) write(bytes []u8) {
 	g.buf << bytes
 }
 
-fn (mut g Gen) write8(n int) {
+fn (mut g Gen) write8(n i32) {
 	// write 1 byte
 	g.buf << u8(n)
 }
 
-fn (mut g Gen) write16(n int) {
+fn (mut g Gen) write16(n i32) {
 	// write 2 bytes
 	g.buf << u8(n)
 	g.buf << u8(n >> 8)
 }
 
-fn (mut g Gen) read32_at(at int) int {
+fn (mut g Gen) read32_at(at i32) int {
 	return int(u32(g.buf[at]) | (u32(g.buf[at + 1]) << 8) | (u32(g.buf[at + 2]) << 16) | (u32(g.buf[
 		at + 3]) << 24))
 }
 
-fn (mut g Gen) write32(n int) {
+fn (mut g Gen) write32(n i32) {
 	// write 4 bytes
 	g.buf << u8(n)
 	g.buf << u8(n >> 8)

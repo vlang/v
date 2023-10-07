@@ -95,7 +95,7 @@ fn (mut c Arm64) neg_regs(a Arm64Register, b Arm64Register) {
 	}
 }
 
-fn (mut c Arm64) sub_sp(v int) {
+fn (mut c Arm64) sub_sp(v i32) {
 	if c.g.pref.arch != .arm64 {
 		c.g.n_error('sub_sp is arm64-specifig')
 		return
