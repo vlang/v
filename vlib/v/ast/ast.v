@@ -10,10 +10,10 @@ import v.pref
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
 pub const int_type_name = $if amd64 || arm64 {
-	'i32'
+	'int'
 	//'i64'
 } $else {
-	'i32'
+	'int'
 }
 
 pub type Expr = AnonFn

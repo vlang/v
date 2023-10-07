@@ -2270,7 +2270,9 @@ fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 	i := got | int(u32(exp) << 16)
 	exp_sym := g.table.sym(exp)
 	mut got_sym := g.table.sym(got)
-	fn_name := '${got_sym.cname}_to_sumtype_${exp_sym.cname}'
+	cname := if exp == ast.int_type_idx { ast.int_type_name } else { exp_sym.cname }
+	// fn_name := '${got_sym.cname}_to_sumtype_${exp_sym.cname}'
+	fn_name := '${got_sym.cname}_to_sumtype_${cname}/*KEK*/'
 	if got == exp || g.sumtype_definitions[i] {
 		return fn_name
 	}

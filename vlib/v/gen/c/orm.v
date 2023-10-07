@@ -215,7 +215,7 @@ fn (mut g Gen) write_orm_update(node &ast.SqlStmtLine, table_name string, connec
 	g.indent++
 	g.writeln('.kinds = __new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
 	g.writeln('.is_and = __new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
-	g.writeln('.types = __new_array_with_default_noscan(0, 0, sizeof(int), 0),')
+	g.writeln('.types = __new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
 	g.writeln('.parentheses = __new_array_with_default_noscan(0, 0, sizeof(Array_int), 0),')
 
 	if node.updated_columns.len > 0 {
@@ -395,9 +395,9 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 	}
 	g.indent--
 	g.writeln('),')
-	g.writeln('.types = __new_array_with_default_noscan(0, 0, sizeof(int), 0),')
+	g.writeln('.types = __new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
 	if auto_fields.len > 0 {
-		g.writeln('.auto_fields = new_array_from_c_array(${auto_fields.len}, ${auto_fields.len}, sizeof(int),')
+		g.writeln('.auto_fields = new_array_from_c_array(${auto_fields.len}, ${auto_fields.len}, sizeof(${ast.int_type_name}),')
 		g.indent++
 		g.write('_MOV((int[${auto_fields.len}]){')
 		for i in auto_fields {
@@ -406,7 +406,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 		g.writeln(' })),')
 		g.indent--
 	} else {
-		g.writeln('.auto_fields = __new_array_with_default_noscan(0, 0, sizeof(int), 0),')
+		g.writeln('.auto_fields = __new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
 	}
 	g.writeln('.kinds = __new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
 	g.writeln('.is_and = __new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
@@ -581,7 +581,7 @@ fn (mut g Gen) write_orm_where(where_expr ast.Expr) {
 	g.indent++
 	g.write_orm_where_expr(where_expr, mut fields, mut parentheses, mut kinds, mut data, mut
 		is_ands)
-	g.writeln('.types = __new_array_with_default_noscan(0, 0, sizeof(int), 0),')
+	g.writeln('.types = __new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
 	if fields.len > 0 {
 		g.writeln('.fields = new_array_from_c_array(${fields.len}, ${fields.len}, sizeof(string),')
 		g.indent++
@@ -619,13 +619,13 @@ fn (mut g Gen) write_orm_where(where_expr ast.Expr) {
 		g.write('new_array_from_c_array(${parentheses.len}, ${parentheses.len}, sizeof(Array_int), _MOV((Array_int[${parentheses.len}]){')
 		for par in parentheses {
 			if par.len > 0 {
-				g.write('new_array_from_c_array(${par.len}, ${par.len}, sizeof(int), _MOV((int[${par.len}]){')
+				g.write('new_array_from_c_array(${par.len}, ${par.len}, sizeof(${ast.int_type_name}), _MOV((int[${par.len}]){')
 				for val in par {
 					g.write('${val},')
 				}
 				g.write('})),')
 			} else {
-				g.write('__new_array_with_default_noscan(0, 0, sizeof(int), 0),')
+				g.write('__new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
 			}
 		}
 		g.write('}))')
@@ -853,7 +853,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 	}
 	g.indent--
 	g.writeln('),')
-	g.writeln('.types = new_array_from_c_array(${types.len}, ${types.len}, sizeof(int),')
+	g.writeln('.types = new_array_from_c_array(${types.len}, ${types.len}, sizeof(${ast.int_type_name}),')
 	g.indent++
 
 	if types.len > 0 {
@@ -880,7 +880,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 
 	g.writeln('(orm__QueryData) {')
 	g.indent++
-	g.writeln('.types = __new_array_with_default_noscan(0, 0, sizeof(int), 0),')
+	g.writeln('.types = __new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
 	g.writeln('.kinds = __new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
 	g.writeln('.is_and = __new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
 	g.writeln('.parentheses = __new_array_with_default_noscan(0, 0, sizeof(Array_int), 0),')
@@ -902,7 +902,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 	} else {
 		g.writeln('(orm__QueryData) {')
 		g.indent++
-		g.writeln('.types = __new_array_with_default_noscan(0, 0, sizeof(int), 0),')
+		g.writeln('.types = __new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
 		g.writeln('.kinds = __new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
 		g.writeln('.is_and = __new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
 		g.writeln('.parentheses = __new_array_with_default_noscan(0, 0, sizeof(Array_int), 0),')
