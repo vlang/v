@@ -605,6 +605,7 @@ pub fn free(ptr voidptr) {
 // returns a pointer to the newly allocated space.
 [unsafe]
 pub fn memdup(src voidptr, sz int) voidptr {
+	// pub fn memdup(src voidptr, sz isize) voidptr {
 	$if trace_memdup ? {
 		C.fprintf(C.stderr, c'memdup size: %10d\n', sz)
 	}
@@ -619,6 +620,7 @@ pub fn memdup(src voidptr, sz int) voidptr {
 
 [unsafe]
 pub fn memdup_noscan(src voidptr, sz int) voidptr {
+	// pub fn memdup_noscan(src voidptr, sz isize) voidptr {
 	$if trace_memdup ? {
 		C.fprintf(C.stderr, c'memdup_noscan size: %10d\n', sz)
 	}
@@ -636,7 +638,7 @@ pub fn memdup_noscan(src voidptr, sz int) voidptr {
 // memdup_uncollectable then copies the contents of `src` into the allocated
 // space and returns a pointer to the newly allocated space.
 [unsafe]
-pub fn memdup_uncollectable(src voidptr, sz int) voidptr {
+pub fn memdup_uncollectable(src voidptr, sz isize) voidptr {
 	$if trace_memdup ? {
 		C.fprintf(C.stderr, c'memdup_uncollectable size: %10d\n', sz)
 	}
