@@ -68,19 +68,19 @@ pub fn encode_u32(value u32) []u8 {
 
 // decode_i32 decodes an i32 and returns the number of bytes used from the given leb128 encoded array `value`
 pub fn decode_i32(value []u8) (i32, int) {
-	mut result := int(0)
+	mut result := u32(0)
 	mut shift := 0
 	for b in value {
-		result |= b & 0x7f << shift
+		result |= u32(b & 0x7f) << shift
 		shift += 7
 		if b & 0x80 == 0 {
 			if shift < 32 && b & 0x40 != 0 {
-				result |= ~0 << shift
+				result |= u32(~0) << shift
 			}
 			break
 		}
 	}
-	return result, shift / 7
+	return i32(result), shift / 7
 }
 
 // decode_i64 decodes an i64 and returns the number of bytes used from the given leb128 encoded array `value`

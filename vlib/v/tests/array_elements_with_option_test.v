@@ -13,8 +13,8 @@ fn get_no_option_fixed() int {
 	return foo.arr2[0]
 }
 
-fn test_option_fixed() ? {
-	x := get_has_option_fixed()?
+fn test_option_fixed() {
+	x := get_has_option_fixed() or { 0 }
 	assert x == 0
 	assert get_no_option_fixed() == 0
 }
@@ -37,7 +37,7 @@ fn get_no_option() int {
 	return foo.arr2[0]
 }
 
-fn test_option_non_fixed() ? {
+fn test_option_non_fixed() {
 	x := get_has_option()?
 	assert x == 0
 	assert get_no_option() == 0

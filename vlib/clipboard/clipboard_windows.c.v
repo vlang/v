@@ -136,14 +136,16 @@ pub fn (mut cb Clipboard) free() {
 	cb.foo = 0
 }
 
+const cp_utf8 = 65001
+
 // the string.to_wide doesn't work with SetClipboardData, don't know why
 fn to_wide(text string) C.HGLOBAL {
-	len_required := C.MultiByteToWideChar(C.CP_UTF8, C.MB_ERR_INVALID_CHARS, text.str,
+	len_required := C.MultiByteToWideChar(clipboard.cp_utf8, C.MB_ERR_INVALID_CHARS, text.str,
 		text.len + 1, C.NULL, 0)
 	buf := C.GlobalAlloc(C.GMEM_MOVEABLE, i64(sizeof(u16)) * len_required)
 	if buf != C.HGLOBAL(C.NULL) {
 		mut locked := &u16(C.GlobalLock(buf))
-		C.MultiByteToWideChar(C.CP_UTF8, C.MB_ERR_INVALID_CHARS, text.str, text.len + 1,
+		C.MultiByteToWideChar(clipboard.cp_utf8, C.MB_ERR_INVALID_CHARS, text.str, text.len + 1,
 			locked, len_required)
 		unsafe {
 			locked[len_required - 1] = u16(0)

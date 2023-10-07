@@ -13,13 +13,14 @@
 // The shader language used is, as described on the overview page linked above, an 'annotated GLSL'
 // and 'modern GLSL' (v450) shader language format.
 import os
+import time
 import io.util
 import flag
 import net.http
 
 const (
-	shdc_full_hash   = '33d2e4cc26088c6c28eaef5467990f8940d15aab'
-	tool_version     = '0.0.1'
+	shdc_full_hash   = '6040b18d39649d56dbae2ae1aed59fb755b26369'
+	tool_version     = '0.0.2'
 	tool_description = "Compile shaders in sokol's annotated GLSL format to C headers for use with sokol based apps"
 	tool_name        = os.file_name(os.executable())
 	cache_dir        = os.join_path(os.cache_dir(), 'v', tool_name)
@@ -29,15 +30,15 @@ const (
 const (
 	supported_hosts  = ['linux', 'macos', 'windows']
 	supported_slangs = [
-		'glsl330', // desktop GL
-		'glsl100', // GLES2 / WebGL
-		'glsl300es', // GLES3 / WebGL2
-		'hlsl4', // D3D11
-		'hlsl5', // D3D11
-		'metal_macos', // Metal on macOS
-		'metal_ios', // Metal on iOS device
-		'metal_sim', // Metal on iOS simulator
-		'wgpu', // WebGPU
+		'glsl330', // desktop OpenGL backend (SOKOL_GLCORE33)
+		'glsl100', // OpenGLES2 and WebGL (SOKOL_GLES3)
+		'glsl300es', // OpenGLES3 and WebGL2 (SOKOL_GLES3)
+		'hlsl4', // Direct3D11 with HLSL4 (SOKOL_D3D11)
+		'hlsl5', // Direct3D11 with HLSL5 (SOKOL_D3D11)
+		'metal_macos', // Metal on macOS (SOKOL_METAL)
+		'metal_ios', // Metal on iOS devices (SOKOL_METAL)
+		'metal_sim', // Metal on iOS simulator (SOKOL_METAL)
+		'wgsl', // WebGPU (SOKOL_WGPU)
 	]
 	default_slangs   = [
 		'glsl330',
@@ -48,7 +49,7 @@ const (
 		'metal_macos',
 		'metal_ios',
 		'metal_sim',
-		'wgpu',
+		'wgsl',
 	]
 
 	shdc_version     = shdc_full_hash[0..8]
@@ -56,6 +57,7 @@ const (
 		'windows': 'https://github.com/floooh/sokol-tools-bin/raw/${shdc_full_hash}/bin/win32/sokol-shdc.exe'
 		'macos':   'https://github.com/floooh/sokol-tools-bin/raw/${shdc_full_hash}/bin/osx/sokol-shdc'
 		'linux':   'https://github.com/floooh/sokol-tools-bin/raw/${shdc_full_hash}/bin/linux/sokol-shdc'
+		'osx_a64': 'https://github.com/floooh/sokol-tools-bin/raw/${shdc_full_hash}/bin/osx_arm64/sokol-shdc'
 	}
 	shdc_version_file = os.join_path(cache_dir, 'sokol-shdc.version')
 	shdc              = shdc_exe()
@@ -242,11 +244,20 @@ fn ensure_external_tools(opt Options) ! {
 
 	is_shdc_available := os.is_file(shdc)
 	is_shdc_executable := os.is_executable(shdc)
-	if is_shdc_available && is_shdc_executable {
-		if opt.verbose {
-			version := os.read_file(shdc_version_file) or { 'unknown' }
-			eprintln('${tool_name} using sokol-shdc version ${version} at "${shdc}"')
+	if opt.verbose {
+		eprintln('reading version from ${shdc_version_file} ...')
+		version := os.read_file(shdc_version_file) or { 'unknown' }
+		eprintln('${tool_name} using sokol-shdc version ${version} at "${shdc}"')
+		eprintln('executable: ${is_shdc_executable}')
+		eprintln(' available: ${is_shdc_available}')
+		if is_shdc_available {
+			eprintln(' file path: ${shdc}')
+			eprintln(' file size: ${os.file_size(shdc)}')
+			eprintln(' file time: ${time.unix_microsecond(os.file_last_mod_unix(shdc),
+				0)}')
 		}
+	}
+	if is_shdc_available && is_shdc_executable {
 		return
 	}
 
@@ -263,15 +274,24 @@ fn shdc_exe() string {
 // download_shdc downloads the `sokol-shdc` tool to an OS specific cache directory.
 fn download_shdc(opt Options) ! {
 	// We want to use the same, runtime, OS type as this tool is invoked on.
-	download_url := shdc_urls[runtime_os] or { '' }
+	mut download_url := shdc_urls[runtime_os] or { '' }
+	$if arm64 && macos {
+		download_url = shdc_urls['osx_a64']
+	}
 	if download_url == '' {
 		return error('${tool_name} failed to download an external dependency "sokol-shdc" for ${runtime_os}.\nThe supported host platforms for shader compilation is ${supported_hosts}')
 	}
+	if opt.verbose {
+		eprintln('> reading version from ${shdc_version_file} ...')
+	}
 	update_to_shdc_version := os.read_file(shdc_version_file) or { shdc_version }
+	if opt.verbose {
+		eprintln('> update_to_shdc_version: ${update_to_shdc_version} | shdc_version: ${shdc_version}')
+	}
 	file := shdc_exe()
 	if opt.verbose {
 		if shdc_version != update_to_shdc_version && os.exists(file) {
-			eprintln('${tool_name} updating sokol-shdc to version ${update_to_shdc_version} ...')
+			eprintln('${tool_name} updating sokol-shdc to version ${shdc_version} ...')
 		} else {
 			eprintln('${tool_name} installing sokol-shdc version ${update_to_shdc_version} ...')
 		}
@@ -298,5 +318,5 @@ fn download_shdc(opt Options) ! {
 		os.mv(file, shdc)!
 	}
 	// Update internal version file
-	os.write_file(shdc_version_file, update_to_shdc_version)!
+	os.write_file(shdc_version_file, shdc_version)!
 }

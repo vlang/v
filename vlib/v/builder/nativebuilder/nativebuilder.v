@@ -16,7 +16,10 @@ pub fn compile_native(mut b builder.Builder) {
 	if b.pref.is_verbose {
 		println('all .v files before:')
 	}
-	mut files := b.get_builtin_files()
+	mut files := []string{}
+	if !b.pref.no_builtin {
+		files << b.get_builtin_files()
+	}
 	files << b.get_user_files()
 	b.set_module_lookup_paths()
 	if b.pref.is_verbose {

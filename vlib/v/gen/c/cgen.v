@@ -747,9 +747,7 @@ pub fn (mut g Gen) gen_file() {
 }
 
 pub fn (g &Gen) hashes() string {
-	mut res := c_commit_hash_default.replace('@@@', version.vhash())
-	res += c_current_commit_hash_default.replace('@@@', version.githash(g.pref.building_v))
-	return res
+	return c_commit_hash_default.replace('@@@', version.vhash())
 }
 
 pub fn (mut g Gen) init() {
@@ -1004,6 +1002,14 @@ fn (mut g Gen) base_type(_t ast.Type) string {
 			return 'u64'
 		}
 	}
+	/*
+	// On 64 bit systems int is an i64
+	$if amd64 || arm64 {
+		if g.pref.use_64_int && t == ast.int_type {
+			return 'i64'
+		}
+	}
+	*/
 	share := t.share()
 	mut styp := if share == .atomic_t { t.atomic_typename() } else { g.cc_type(t, true) }
 	if t.has_flag(.shared_f) {
@@ -1109,6 +1115,8 @@ fn (g Gen) option_type_text(styp string, base string) string {
 	// replace void with something else
 	size := if base == 'void' {
 		'u8'
+	} else if base == 'int' {
+		ast.int_type_name
 	} else if base.starts_with('anon_fn') {
 		'void*'
 	} else if base.starts_with('_option_') {
@@ -1128,6 +1136,8 @@ fn (g Gen) result_type_text(styp string, base string) string {
 	// replace void with something else
 	size := if base == 'void' {
 		'u8'
+	} else if base == 'int' {
+		ast.int_type_name
 	} else if base.starts_with('anon_fn') {
 		'void*'
 	} else if base.starts_with('_option_') {
@@ -1985,6 +1995,7 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 		} else {
 			g.writeln(' }, (${c.result_name}*)(&${tmp_var}), sizeof(${styp}));')
 		}
+		g.set_current_pos_as_last_stmt_pos()
 	}
 
 	g.write(stmt_str)
@@ -2265,7 +2276,9 @@ fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 	i := got | int(u32(exp) << 16)
 	exp_sym := g.table.sym(exp)
 	mut got_sym := g.table.sym(got)
-	fn_name := '${got_sym.cname}_to_sumtype_${exp_sym.cname}'
+	cname := if exp == ast.int_type_idx { ast.int_type_name } else { exp_sym.cname }
+	// fn_name := '${got_sym.cname}_to_sumtype_${exp_sym.cname}'
+	fn_name := '${got_sym.cname}_to_sumtype_${cname}/*KEK*/'
 	if got == exp || g.sumtype_definitions[i] {
 		return fn_name
 	}
@@ -4585,7 +4598,11 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		if sym.kind != .alias
 			|| (!(sym.info as ast.Alias).parent_type.has_flag(.option)
 			&& (sym.info as ast.Alias).parent_type !in [expr_type, ast.string_type]) {
-			cast_label = '(${styp})'
+			if sym.kind == .string && !node.typ.is_ptr() {
+				cast_label = '*(string*)&'
+			} else {
+				cast_label = '(${styp})'
+			}
 		}
 		if node.typ.has_flag(.option) && node.expr is ast.None {
 			g.gen_option_error(node.typ, node.expr)
@@ -5374,7 +5391,7 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, field_name string
 		i16 {
 			g.const_decl_write_precomputed(mod, styp, cname, field_name, ct_value.str())
 		}
-		int {
+		i32 {
 			g.const_decl_write_precomputed(mod, styp, cname, field_name, ct_value.str())
 		}
 		i64 {

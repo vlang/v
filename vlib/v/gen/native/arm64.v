@@ -530,3 +530,7 @@ pub fn (mut c Arm64) add(r Register, val int) {
 fn (mut c Arm64) mov_deref(reg Register, regptr Register, typ ast.Type) {
 	panic('Arm64.mov_deref() not implemented')
 }
+
+fn (mut c Arm64) patch_relative_jmp(pos int, addr i64) {
+	panic('Arm64.patch_relative_jmp() not implemented')
+}

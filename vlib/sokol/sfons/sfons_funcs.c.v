@@ -6,8 +6,8 @@ import sokol.memory
 [typedef]
 pub struct C.sfons_allocator_t {
 pub:
-	alloc     memory.FnAllocatorAlloc = unsafe { nil }
-	free      memory.FnAllocatorFree  = unsafe { nil }
+	alloc_fn  memory.FnAllocatorAlloc = unsafe { nil }
+	free_fn   memory.FnAllocatorFree  = unsafe { nil }
 	user_data voidptr
 }
 

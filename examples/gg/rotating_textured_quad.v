@@ -24,7 +24,7 @@ pub fn (mut window Window) draw() {
 	sgl.rotate(angle, 0.0, 0.0, 1.0) // rotate around the Z axis pointing towards the camera
 
 	sgl.enable_texture()
-	sgl.texture(window.img.simg)
+	sgl.texture(window.img.simg, window.img.ssmp)
 	sgl.begin_quads()
 	sgl.c4b(255, 255, 255, 255)
 	sgl.v3f_t2f(200, 200, 0, 1.0, 1.0)

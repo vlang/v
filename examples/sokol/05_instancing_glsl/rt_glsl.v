@@ -32,6 +32,7 @@ struct App {
 mut:
 	gg          &gg.Context = unsafe { nil }
 	texture     gfx.Image
+	sampler     gfx.Sampler
 	init_flag   bool
 	frame_count int
 
@@ -64,18 +65,18 @@ fn C.instancing_shader_desc(gfx.Backend) &gfx.ShaderDesc
 /******************************************************************************
 * Texture functions
 ******************************************************************************/
-fn create_texture(w int, h int, buf byteptr) gfx.Image {
+fn create_texture(w int, h int, buf byteptr) (gfx.Image, gfx.Sampler) {
 	sz := w * h * 4
 	// vfmt off
 	mut img_desc := gfx.ImageDesc{
 		width:         w
 		height:        h
 		num_mipmaps:   0
-		min_filter:    .linear
-		mag_filter:    .linear
+//		min_filter:    .linear
+//		mag_filter:    .linear
 		//usage: .dynamic
-		wrap_u:        .clamp_to_edge
-		wrap_v:        .clamp_to_edge
+//		wrap_u:        .clamp_to_edge
+//		wrap_v:        .clamp_to_edge
 		label:         &u8(0)
 		d3d11_texture: 0
 	}
@@ -87,7 +88,16 @@ fn create_texture(w int, h int, buf byteptr) gfx.Image {
 	}
 
 	sg_img := gfx.make_image(&img_desc)
-	return sg_img
+
+	mut smp_desc := gfx.SamplerDesc{
+		min_filter: .linear
+		mag_filter: .linear
+		wrap_u: .clamp_to_edge
+		wrap_v: .clamp_to_edge
+	}
+
+	sg_smp := gfx.make_sampler(&smp_desc)
+	return sg_img, sg_smp
 }
 
 fn destroy_texture(sg_img gfx.Image) {
@@ -257,7 +267,8 @@ fn init_cube_glsl_i(mut app App) {
 	bind.vertex_buffers[0] = vbuf // vertex buffer
 	bind.vertex_buffers[1] = inst_buf // instance buffer
 	bind.index_buffer = ibuf
-	bind.fs_images[C.SLOT_tex] = app.texture
+	bind.fs.images[C.SLOT_tex] = app.texture
+	bind.fs.samplers[C.SLOT_smp] = app.sampler
 	app.bind['inst'] = bind
 	app.pipe['inst'] = gfx.make_pipeline(&pipdesc)
 
@@ -384,8 +395,8 @@ fn frame(mut app App) {
 
 	// clear
 	mut color_action := gfx.ColorAttachmentAction{
-		action: .clear
-		value: gfx.Color{
+		load_action: .clear
+		clear_value: gfx.Color{
 			r: 0.0
 			g: 0.0
 			b: 0.0
@@ -440,7 +451,7 @@ fn my_init(mut app App) {
 		}
 	}
 	unsafe {
-		app.texture = create_texture(w, h, tmp_txt)
+		app.texture, app.sampler = create_texture(w, h, tmp_txt)
 		free(tmp_txt)
 	}
 	// glsl

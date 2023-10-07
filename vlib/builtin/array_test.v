@@ -1622,3 +1622,23 @@ fn test_array_of_struct_with_map_field() {
 		2: 2
 	}
 }
+
+fn test_reset() {
+	mut a := []int{len: 5, init: index * 10}
+	assert a == [0, 10, 20, 30, 40]
+	unsafe { a.reset() }
+	assert a == [0, 0, 0, 0, 0]
+
+	mut b := []f64{len: 5, init: f64(index) / 10.0}
+	assert b == [0.0, 0.1, 0.2, 0.3, 0.4]
+	unsafe { b.reset() }
+	assert b == [0.0, 0.0, 0.0, 0.0, 0.0]
+
+	mut s := []string{len: 5, init: index.str()}
+	assert s == ['0', '1', '2', '3', '4']
+	unsafe { s.reset() }
+	for e in s {
+		assert e.str == unsafe { nil }
+		assert e.len == 0
+	}
+}

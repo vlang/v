@@ -1770,7 +1770,7 @@ fn (t Tree) sql_stmt_line(node ast.SqlStmtLine) &Node {
 	obj.add_terse('ast_type', t.string_node('SqlStmtLine'))
 	obj.add_terse('kind', t.enum_node(node.kind))
 	obj.add_terse('table_expr', t.type_expr(node.table_expr))
-	obj.add_terse('object_var_name', t.string_node(node.object_var_name))
+	obj.add_terse('object_var', t.string_node(node.object_var))
 	obj.add_terse('where_expr', t.expr(node.where_expr))
 	obj.add_terse('fields', t.array_node_struct_field(node.fields))
 	obj.add_terse('updated_columns', t.array_node_string(node.updated_columns))

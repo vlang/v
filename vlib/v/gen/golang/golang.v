@@ -1186,7 +1186,7 @@ pub fn (mut f Gen) sql_stmt_line(node ast.SqlStmtLine) {
 	f.write('\t')
 	match node.kind {
 		.insert {
-			f.writeln('insert ${node.object_var_name} into ${table_name}')
+			f.writeln('insert ${node.object_var} into ${table_name}')
 		}
 		.update {
 			f.write('update ${table_name} set ')

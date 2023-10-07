@@ -3,24 +3,23 @@ module gfx
 // C.sg_desc describes
 pub struct C.sg_desc {
 pub mut:
-	_start_canary        u32
-	buffer_pool_size     int
-	image_pool_size      int
-	shader_pool_size     int
-	pipeline_pool_size   int
-	pass_pool_size       int
-	context_pool_size    int
-	uniform_buffer_size  int
-	staging_buffer_size  int
-	sampler_cache_size   int
-	max_commit_listeners int
-	disable_validation   bool // disable validation layer even in debug mode, useful for tests
+	buffer_pool_size               int
+	image_pool_size                int
+	sampler_pool_size              int
+	shader_pool_size               int
+	pipeline_pool_size             int
+	pass_pool_size                 int
+	context_pool_size              int
+	uniform_buffer_size            int
+	staging_buffer_size            int
+	max_commit_listeners           int
+	disable_validation             bool // disable validation layer even in debug mode, useful for tests
+	mtl_force_managed_storage_mode bool // for debugging: use Metal managed storage mode for resources even with UMA
 	//
 	allocator C.sg_allocator
 	logger    C.sg_logger
 	//
-	context     ContextDesc
-	_end_canary u32
+	context C.sg_context_desc
 }
 
 pub type Desc = C.sg_desc
@@ -61,18 +60,17 @@ struct C.sg_d3d11_context_desc {
 
 pub type D3D11ContextDesc = C.sg_d3d11_context_desc
 
-struct C.sg_color_state {
+struct C.sg_color_target_state {
 pub mut:
 	pixel_format PixelFormat
 	write_mask   ColorMask
 	blend        BlendState
 }
 
-pub type ColorState = C.sg_color_state
+pub type ColorState = C.sg_color_target_state
 
-struct C.sg_pipeline_desc {
+pub struct C.sg_pipeline_desc {
 pub mut:
-	_start_canary             u32
 	shader                    Shader
 	layout                    LayoutDesc
 	depth                     DepthState
@@ -87,17 +85,18 @@ pub mut:
 	blend_color               Color
 	alpha_to_coverage_enabled bool
 	label                     &char = &char(0)
-	_end_canary               u32
 }
 
 pub type PipelineDesc = C.sg_pipeline_desc
 
-struct C.sg_pipeline_info {
+pub struct C.sg_pipeline_info {
+pub:
+	slot SlotInfo
 }
 
 pub type PipelineInfo = C.sg_pipeline_info
 
-struct C.sg_pipeline {
+pub struct C.sg_pipeline {
 pub:
 	id u32
 }
@@ -110,24 +109,24 @@ pub fn (mut p C.sg_pipeline) free() {
 
 struct C.sg_bindings {
 pub mut:
-	_start_canary         u32
 	vertex_buffers        [8]Buffer
 	vertex_buffer_offsets [8]int
 	index_buffer          Buffer
 	index_buffer_offset   int
-	vs_images             [8]Image
-	fs_images             [8]Image
-	_end_canary           u32
+	vs                    StageBindings
+	fs                    StageBindings
+	// vs_images             [8]Image // old
+	// fs_images             [8]Image // old
 }
 
 pub type Bindings = C.sg_bindings
 
 pub fn (mut b Bindings) set_vert_image(index int, img Image) {
-	b.vs_images[index] = img
+	b.vs.images[index] = img
 }
 
 pub fn (mut b Bindings) set_frag_image(index int, img Image) {
-	b.fs_images[index] = img
+	b.fs.images[index] = img
 }
 
 pub fn (b &Bindings) update_vert_buffer(index int, data voidptr, element_size int, element_count int) {
@@ -162,15 +161,21 @@ pub fn (b &Bindings) append_index_buffer(data voidptr, element_size int, element
 	return C.sg_append_buffer(b.index_buffer, &range)
 }
 
+pub struct C.sg_stage_bindings {
+pub mut:
+	images   [12]Image
+	samplers [8]Sampler
+}
+
+pub type StageBindings = C.sg_stage_bindings
+
 [heap]
 struct C.sg_shader_desc {
 pub mut:
-	_start_canary u32
-	attrs         [16]ShaderAttrDesc
-	vs            ShaderStageDesc
-	fs            ShaderStageDesc
-	label         &char
-	_end_canary   u32
+	attrs [16]ShaderAttrDesc
+	vs    ShaderStageDesc
+	fs    ShaderStageDesc
+	label &char
 }
 
 pub type ShaderDesc = C.sg_shader_desc
@@ -186,13 +191,13 @@ pub fn (mut desc C.sg_shader_desc) set_frag_src(src string) &ShaderDesc {
 }
 
 pub fn (mut desc C.sg_shader_desc) set_vert_image(index int, name string) &ShaderDesc {
-	desc.vs.images[index].name = &char(name.str)
+	// desc.vs.images[index].name = &char(name.str)
 	desc.vs.images[index].image_type = ._2d
 	return desc
 }
 
 pub fn (mut desc C.sg_shader_desc) set_frag_image(index int, name string) &ShaderDesc {
-	desc.fs.images[index].name = &char(name.str)
+	// desc.fs.images[index].name = &char(name.str)
 	desc.fs.images[index].image_type = ._2d
 	return desc
 }
@@ -234,17 +239,20 @@ pub type ShaderAttrDesc = C.sg_shader_attr_desc
 
 struct C.sg_shader_stage_desc {
 pub mut:
-	source         &char
-	bytecode       Range
-	entry          &char
-	uniform_blocks [4]ShaderUniformBlockDesc
-	images         [12]ShaderImageDesc
+	source              &char
+	bytecode            Range
+	entry               &char
+	d3d11_target        &char
+	uniform_blocks      [4]ShaderUniformBlockDesc
+	images              [12]ShaderImageDesc
+	samplers            [8]ShaderSamplerDesc
+	image_sampler_pairs [12]ShaderImageSamplerPairDesc
 }
 
 pub type ShaderStageDesc = C.sg_shader_stage_desc
 
 pub fn (mut desc ShaderStageDesc) set_image(index int, name string) ShaderStageDesc {
-	desc.images[index].name = &char(name.str)
+	// desc.images[index].name = &char(name.str)
 	desc.images[index].image_type = ._2d
 	return *desc
 }
@@ -269,18 +277,42 @@ pub type ShaderUniformDesc = C.sg_shader_uniform_desc
 
 struct C.sg_shader_image_desc {
 pub mut:
-	name       &char
-	image_type ImageType
+	used         bool
+	multisampled bool
+	// name         &char
+	image_type  ImageType
+	sample_type ImageSampleType
 }
 
 pub type ShaderImageDesc = C.sg_shader_image_desc
 
-struct C.sg_shader_info {
+pub struct C.sg_shader_sampler_desc {
+pub mut:
+	used         bool
+	sampler_type SamplerType
+}
+
+pub type ShaderSamplerDesc = C.sg_shader_sampler_desc
+
+pub struct C.sg_shader_image_sampler_pair_desc {
+pub mut:
+	used         bool
+	image_slot   int
+	sampler_slot int
+	glsl_name    &char
+}
+
+pub type ShaderImageSamplerPairDesc = C.sg_shader_image_sampler_pair_desc
+
+pub struct C.sg_shader_info {
+pub:
+	slot SlotInfo
 }
 
 pub type ShaderInfo = C.sg_shader_info
 
-struct C.sg_context {
+pub struct C.sg_context {
+pub:
 	id u32
 }
 
@@ -304,7 +336,7 @@ pub mut:
 
 pub type Color = C.sg_color
 
-struct C.sg_shader {
+pub struct C.sg_shader {
 pub:
 	id u32
 }
@@ -317,11 +349,9 @@ pub fn (mut s Shader) free() {
 
 struct C.sg_pass_desc {
 pub mut:
-	_start_canary            u32
 	color_attachments        [4]PassAttachmentDesc
 	depth_stencil_attachment PassAttachmentDesc
 	label                    &char
-	_end_canary              u32
 }
 
 pub type PassDesc = C.sg_pass_desc
@@ -332,13 +362,11 @@ struct C.sg_pass_info {
 
 pub type PassInfo = C.sg_pass_info
 
-struct C.sg_pass_action {
+pub struct C.sg_pass_action {
 pub mut:
-	_start_canary u32
-	colors        [4]ColorAttachmentAction
-	depth         DepthAttachmentAction
-	stencil       StencilAttachmentAction
-	_end_canary   u32
+	colors  [4]ColorAttachmentAction
+	depth   DepthAttachmentAction
+	stencil StencilAttachmentAction
 }
 
 pub type PassAction = C.sg_pass_action
@@ -355,19 +383,16 @@ pub fn (mut p Pass) free() {
 
 struct C.sg_buffer_desc {
 pub mut:
-	_start_canary u32
-	size          usize
-	@type         BufferType
-	usage         Usage
-	data          Range
-	label         &char
-	// GL specific
-	gl_buffers [2]u32
-	// Metal specific
-	mtl_buffers [2]voidptr
-	// D3D11 specific
+	size  usize
+	@type BufferType
+	usage Usage
+	data  Range
+	label &char
+	// backend-specific resources
+	gl_buffers   [2]u32
+	mtl_buffers  [2]voidptr
 	d3d11_buffer voidptr
-	_end_canary  u32
+	wgpu_buffer  voidptr
 }
 
 pub type BufferDesc = C.sg_buffer_desc
@@ -380,12 +405,20 @@ struct C.sg_slot_info {
 
 pub type SlotInfo = C.sg_slot_info
 
-struct C.sg_buffer_info {
+pub struct C.sg_buffer_info {
+pub:
+	slot               SlotInfo
+	update_frame_index u32
+	append_frame_index u32
+	append_pos         int
+	append_overflow    bool
+	num_slots          int
+	active_slot        int
 }
 
 pub type BufferInfo = C.sg_buffer_info
 
-struct C.sg_buffer {
+pub struct C.sg_buffer {
 	id u32
 }
 
@@ -397,41 +430,58 @@ pub fn (mut b Buffer) free() {
 
 pub struct C.sg_image_desc {
 pub mut:
-	_start_canary  u32
-	@type          ImageType
-	render_target  bool
-	width          int
-	height         int
-	num_slices     int
-	num_mipmaps    int
-	usage          Usage
-	pixel_format   PixelFormat
-	sample_count   int
-	min_filter     Filter
-	mag_filter     Filter
-	wrap_u         Wrap
-	wrap_v         Wrap
-	wrap_w         Wrap
-	border_color   BorderColor
-	max_anisotropy u32
-	min_lod        f32
-	max_lod        f32
-	data           ImageData
-	label          &char
-	// GL specific
-	gl_textures       [2]u32
-	gl_texture_target u32
-	// Metal specific
-	mtl_textures [2]voidptr
-	// D3D11 specific
+	@type         ImageType
+	render_target bool
+	width         int
+	height        int
+	num_slices    int
+	num_mipmaps   int
+	usage         Usage
+	pixel_format  PixelFormat
+	sample_count  int
+	// min_filter    Filter
+	// mag_filter    Filter
+	// wrap_u        Wrap
+	// wrap_v        Wrap
+	// wrap_w         Wrap
+	// border_color   BorderColor
+	// max_anisotropy u32
+	// min_lod        f32
+	// max_lod        f32
+	data  ImageData
+	label &char
+	// backend-specific resources
+	gl_textures                [2]u32
+	gl_texture_target          u32
+	mtl_textures               [2]voidptr
 	d3d11_texture              voidptr
 	d3d11_shader_resource_view voidptr
-	// WebGPU specific
-	wgpu_texture voidptr
-	_end_canary  u32
+	wgpu_texture               voidptr
 }
 
 pub type ImageDesc = C.sg_image_desc
+
+pub struct C.sg_sampler_desc {
+	min_filter     Filter
+	mag_filter     Filter
+	mipmap_filter  Filter
+	wrap_u         Wrap
+	wrap_v         Wrap
+	wrap_w         Wrap
+	min_lod        f32
+	max_lod        f32
+	border_color   BorderColor
+	compare        CompareFunc
+	max_anisotropy u32
+	label          &char
+	// backend-specific resources
+	gl_sampler    u32
+	mtl_sampler   voidptr
+	d3d11_sampler voidptr
+	wgpu_sampler  voidptr
+}
+
+pub type SamplerDesc = C.sg_sampler_desc
 
 pub struct C.sg_image_info {
 pub mut:
@@ -444,7 +494,7 @@ pub mut:
 pub type ImageInfo = C.sg_image_info
 
 pub struct C.sg_image {
-pub:
+pub mut:
 	id u32
 }
 
@@ -453,6 +503,13 @@ pub type Image = C.sg_image
 pub fn (mut i Image) free() {
 	C.sg_destroy_image(*i)
 }
+
+pub struct C.sg_sampler {
+pub mut:
+	id u32
+}
+
+pub type Sampler = C.sg_sampler
 
 pub const sg_cubeface_num = 6
 
@@ -467,56 +524,58 @@ pub type ImageData = C.sg_image_data
 
 struct C.sg_features {
 pub:
-	instancing                  bool // hardware instancing supported
 	origin_top_left             bool // framebuffer and texture origin is in top left corner
-	multiple_render_targets     bool // offscreen render passes can have multiple render targets attached
-	msaa_render_targets         bool // offscreen render passes support MSAA antialiasing
-	imagetype_3d                bool // creation of SG_IMAGETYPE_3D images is supported
-	imagetype_array             bool // creation of SG_IMAGETYPE_ARRAY images is supported
 	image_clamp_to_border       bool // border color and clamp-to-border UV-wrap mode is supported
 	mrt_independent_blend_state bool // multiple-render-target rendering can use per-render-target blend state
 	mrt_independent_write_mask  bool // multiple-render-target rendering can use per-render-target color write masks
+	//	instancing                  bool // hardware instancing supported
+	//	multiple_render_targets     bool // offscreen render passes can have multiple render targets attached
+	//	msaa_render_targets         bool // offscreen render passes support MSAA antialiasing
+	//	imagetype_3d                bool // creation of SG_IMAGETYPE_3D images is supported
+	//	imagetype_array             bool // creation of SG_IMAGETYPE_ARRAY images is supported
 }
 
 pub type Features = C.sg_features
 
 pub struct C.sg_limits {
 pub:
-	max_image_size_2d      u32 // max width/height of SG_IMAGETYPE_2D images
-	max_image_size_cube    u32 // max width/height of SG_IMAGETYPE_CUBE images
-	max_image_size_3d      u32 // max width/height/depth of SG_IMAGETYPE_3D images
-	max_image_size_array   u32 // max width/height pf SG_IMAGETYPE_ARRAY images
-	max_image_array_layers u32 // max number of layers in SG_IMAGETYPE_ARRAY images
-	max_vertex_attrs       u32 // <= SG_MAX_VERTEX_ATTRIBUTES (only on some GLES2 impls)
+	max_image_size_2d                   int // max width/height of SG_IMAGETYPE_2D images
+	max_image_size_cube                 int // max width/height of SG_IMAGETYPE_CUBE images
+	max_image_size_3d                   int // max width/height/depth of SG_IMAGETYPE_3D images
+	max_image_size_array                int // max width/height pf SG_IMAGETYPE_ARRAY images
+	max_image_array_layers              int // max number of layers in SG_IMAGETYPE_ARRAY images
+	max_vertex_attrs                    int // <= SG_MAX_VERTEX_ATTRIBUTES (only on some GLES2 impls)
+	gl_max_vertex_uniform_vectors       int // <= GL_MAX_VERTEX_UNIFORM_VECTORS (only on GL backends)
+	gl_max_combined_texture_image_units int // <= GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS (only on GL backends)
 }
 
 pub type Limits = C.sg_limits
 
-pub struct C.sg_layout_desc {
+pub struct C.sg_vertex_layout_state {
 pub mut:
 	buffers [8]BufferLayoutDesc
 	attrs   [16]VertexAttrDesc
 }
 
-pub type LayoutDesc = C.sg_layout_desc
+pub type LayoutDesc = C.sg_vertex_layout_state
 
-pub struct C.sg_buffer_layout_desc {
+pub struct C.sg_vertex_buffer_layout_state {
 pub mut:
 	stride    int
 	step_func VertexStep
 	step_rate int
 }
 
-pub type BufferLayoutDesc = C.sg_buffer_layout_desc
+pub type BufferLayoutDesc = C.sg_vertex_buffer_layout_state
 
-pub struct C.sg_vertex_attr_desc {
+pub struct C.sg_vertex_attr_state {
 pub mut:
 	buffer_index int
 	offset       int
 	format       VertexFormat
 }
 
-pub type VertexAttrDesc = C.sg_vertex_attr_desc
+pub type VertexAttrDesc = C.sg_vertex_attr_state
 
 struct C.sg_stencil_state {
 	enabled    bool
@@ -541,10 +600,10 @@ struct C.sg_depth_state {
 pub type DepthState = C.sg_depth_state
 
 struct C.sg_stencil_face_state {
+	compare       CompareFunc
 	fail_op       StencilOp
 	depth_fail_op StencilOp
 	pass_op       StencilOp
-	compare_func  CompareFunc
 }
 
 pub type StencilFaceState = C.sg_stencil_face_state
@@ -564,8 +623,9 @@ pub type BlendState = C.sg_blend_state
 
 struct C.sg_color_attachment_action {
 pub mut:
-	action Action
-	value  Color
+	load_action  LoadAction
+	store_action StoreAction
+	clear_value  Color
 }
 
 pub type ColorAttachmentAction = C.sg_color_attachment_action
@@ -580,16 +640,18 @@ pub fn (mut action C.sg_color_attachment_action) set_color_values(r, g, b, a f32
 */
 pub struct C.sg_depth_attachment_action {
 pub mut:
-	action Action
-	value  f32
+	load_action  LoadAction
+	store_action StoreAction
+	clear_value  f32
 }
 
 pub type DepthAttachmentAction = C.sg_depth_attachment_action
 
 pub struct C.sg_stencil_attachment_action {
 pub mut:
-	action Action
-	value  u8
+	load_action  LoadAction
+	store_action StoreAction
+	clear_value  u8
 }
 
 pub type StencilAttachmentAction = C.sg_stencil_attachment_action
@@ -621,3 +683,15 @@ pub mut:
 }
 
 pub type PassAttachmentDesc = C.sg_pass_attachment_desc
+
+// C.sg_commit_listener is used with sg_add_commit_listener, to add a callback,
+// which will be called in sg_commit(). This is useful for libraries building
+// on top of sokol-gfx to be notified about when a frame ends (instead of having
+// to guess, or add a manual 'new-frame' function).
+pub struct C.sg_commit_listener {
+pub:
+	func      fn (user_data voidptr)
+	user_data voidptr
+}
+
+pub type CommitListener = C.sg_commit_listener

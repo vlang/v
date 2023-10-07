@@ -942,6 +942,13 @@ fn (mut c Amd64) call(addr int) i64 {
 	return c_addr
 }
 
+fn (mut c Amd64) patch_relative_jmp(pos int, addr i64) {
+	// Update jmp or cjmp address.
+	// The value is the relative address, difference between current position and the location
+	// after `jxx 00 00 00 00`
+	c.g.write32_at(pos, int(addr - pos - 4))
+}
+
 fn (mut c Amd64) extern_call(addr int) {
 	match c.g.pref.os {
 		.linux {
@@ -2125,9 +2132,9 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, n
 		}
 		ast.IfExpr {
 			if right.is_comptime {
-				if stmts := c.g.comptime_conditional(right) {
-					for j, stmt in stmts {
-						if j + 1 != stmts.len {
+				if branch := c.g.comptime_conditional(right) {
+					for j, stmt in branch.stmts {
+						if j + 1 != branch.stmts.len {
 							c.g.stmt(stmt)
 							continue
 						}

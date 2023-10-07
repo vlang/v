@@ -99,13 +99,13 @@ fn foo_str() ?string {
 	return 'something'
 }
 
-fn propagate_option(b bool) ?int {
-	a := err_call(b)?
+fn propagate_option(b bool) !int {
+	a := err_call(b)!
 	return a
 }
 
-fn propagate_different_type(b bool) ?bool {
-	err_call(b)?
+fn propagate_different_type(b bool) !bool {
+	err_call(b)!
 	return true
 }
 

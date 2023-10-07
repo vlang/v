@@ -11,9 +11,29 @@ vlib/v/checker/tests/ambiguous_field_method_err.vv:22:4: error: ambiguous method
       |       ~~~~~~
    23 |     n := b.name
    24 | }
+vlib/v/checker/tests/ambiguous_field_method_err.vv:22:4: error: unknown method or field: `Bar.test`
+   20 | fn main() {
+   21 |     b := Bar{}
+   22 |     b.test()
+      |       ~~~~~~
+   23 |     n := b.name
+   24 | }
 vlib/v/checker/tests/ambiguous_field_method_err.vv:23:9: error: ambiguous field `name`
    21 |     b := Bar{}
    22 |     b.test()
    23 |     n := b.name
       |            ~~~~
+   24 | }
+vlib/v/checker/tests/ambiguous_field_method_err.vv:23:9: error: type `Bar` has no field named `name`.
+2 possibilities: `Foo2`, `Foo`.
+   21 |     b := Bar{}
+   22 |     b.test()
+   23 |     n := b.name
+      |            ~~~~
+   24 | }
+vlib/v/checker/tests/ambiguous_field_method_err.vv:23:4: error: assignment mismatch: 1 variable(s) 0 value(s)
+   21 |     b := Bar{}
+   22 |     b.test()
+   23 |     n := b.name
+      |       ~~
    24 | }

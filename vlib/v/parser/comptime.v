@@ -350,7 +350,9 @@ fn (mut p Parser) at() ast.AtExpr {
 		'@FILE' { token.AtKind.file_path }
 		'@LINE' { token.AtKind.line_nr }
 		'@FILE_LINE' { token.AtKind.file_path_line_nr }
+		'@LOCATION' { token.AtKind.location }
 		'@COLUMN' { token.AtKind.column_nr }
+		'@VCURRENTHASH' { token.AtKind.v_current_hash }
 		'@VHASH' { token.AtKind.vhash }
 		'@VMOD_FILE' { token.AtKind.vmod_file }
 		'@VEXE' { token.AtKind.vexe_path }

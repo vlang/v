@@ -28,7 +28,7 @@ fn C.sgl_scissor_rect(x int, y int, w int, h int, origin_top_left bool)
 fn C.sgl_scissor_rectf(x f32, y f32, w f32, h f32, origin_top_left bool)
 fn C.sgl_enable_texture()
 fn C.sgl_disable_texture()
-fn C.sgl_texture(img C.sg_image)
+fn C.sgl_texture(img C.sg_image, sampler C.sg_sampler)
 
 // pipeline stack functions
 fn C.sgl_load_default_pipeline()

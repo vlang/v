@@ -171,7 +171,7 @@ fn (mut s SSLConn) init() ! {
 		}
 
 		preferred_ciphers := 'HIGH:!aNULL:!kRSA:!PSK:!SRP:!MD5:!RC4'
-		res = C.SSL_set_cipher_list(voidptr(s.ssl), preferred_ciphers.str)
+		res = C.SSL_set_cipher_list(voidptr(s.ssl), &char(preferred_ciphers.str))
 		if s.config.validate && res != 1 {
 			println('net.openssl: set cipher failed')
 		}

@@ -2455,8 +2455,9 @@ user := User.new()
 This is an alternative to factory functions like `fn new_user() User {}` and should be used
 instead.
 
-Note, that these are not constructors, but simple functions. V doesn't have constructors or
-classes.
+> **Note**
+> Note, that these are not constructors, but simple functions. V doesn't have constructors or
+> classes.
 
 ### `[noinit]` structs
 
@@ -5519,18 +5520,22 @@ fn main() {
 V also gives your code access to a set of pseudo string variables,
 that are substituted at compile time:
 
-- `@FN` => replaced with the name of the current V function
-- `@METHOD` => replaced with ReceiverType.MethodName
-- `@MOD` => replaced with the name of the current V module
-- `@STRUCT` => replaced with the name of the current V struct
-- `@FILE` => replaced with the absolute path of the V source file
+- `@FN` => replaced with the name of the current V function.
+- `@METHOD` => replaced with ReceiverType.MethodName.
+- `@MOD` => replaced with the name of the current V module.
+- `@STRUCT` => replaced with the name of the current V struct.
+- `@FILE` => replaced with the absolute path of the V source file.
 - `@LINE` => replaced with the V line number where it appears (as a string).
-- `@FILE_LINE` => like `@FILE:@LINE`, but the file part is a relative path
+- `@FILE_LINE` => like `@FILE:@LINE`, but the file part is a relative path.
+- `@LOCATION` => file, line and name of the current type + method; suitable for logging.
 - `@COLUMN` => replaced with the column where it appears (as a string).
-- `@VEXE` => replaced with the path to the V compiler
+- `@VEXE` => replaced with the path to the V compiler.
 - `@VEXEROOT`  => will be substituted with the *folder*,
   where the V executable is (as a string).
 - `@VHASH`  => replaced with the shortened commit hash of the V compiler (as a string).
+- `@VCURRENTHASH` => Similar to `@VHASH`, but changes when the compiler is
+  recompiled on a different commit (after local modifications, or after 
+  using git bisect etc).
 - `@VMOD_FILE` => replaced with the contents of the nearest v.mod file (as a string).
 - `@VMODROOT` => will be substituted with the *folder*,
   where the nearest v.mod file is (as a string).
@@ -5538,7 +5543,7 @@ that are substituted at compile time:
 That allows you to do the following example, useful while debugging/logging/tracing your code:
 
 ```v
-eprintln('file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @MOD + '.' + @FN)
+eprintln(@LOCATION)
 ```
 
 Another example, is if you want to embed the version/name from v.mod *inside* your executable:
@@ -5548,6 +5553,18 @@ import v.vmod
 vm := vmod.decode( @VMOD_FILE ) or { panic(err) }
 eprintln('${vm.name} ${vm.version}\n ${vm.description}')
 ```
+
+A program that prints its own source code (a quine):
+```v
+print($embed_file(@FILE).to_string())
+```
+
+> **Note**
+> you can have arbitrary source code in the file, without problems, since the full file
+> will be embeded into the executable, produced by compiling it. Also note that printing
+> is done with `print` and not `println`, to not add another new line, missing in the
+> source code.
+
 
 ### Compile time reflection
 

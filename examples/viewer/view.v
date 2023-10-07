@@ -63,6 +63,7 @@ mut:
 	gg          &gg.Context = unsafe { nil }
 	pip_viewer  sgl.Pipeline
 	texture     gfx.Image
+	sampler     gfx.Sampler
 	init_flag   bool
 	frame_count int
 	mouse_x     int = -1
@@ -103,6 +104,7 @@ mut:
 	// logo
 	logo_path    string // path of the temp font logo
 	logo_texture gfx.Image
+	logo_sampler gfx.Sampler
 	logo_w       int
 	logo_h       int
 	logo_ratio   f32 = 1.0
@@ -115,17 +117,13 @@ mut:
 * Texture functions
 *
 ******************************************************************************/
-fn create_texture(w int, h int, buf &u8) gfx.Image {
+fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {
 	sz := w * h * 4
 	mut img_desc := gfx.ImageDesc{
 		width: w
 		height: h
 		num_mipmaps: 0
-		min_filter: .linear
-		mag_filter: .linear
 		// usage: .dynamic
-		wrap_u: .clamp_to_edge
-		wrap_v: .clamp_to_edge
 		label: &u8(0)
 		d3d11_texture: 0
 	}
@@ -136,7 +134,16 @@ fn create_texture(w int, h int, buf &u8) gfx.Image {
 	}
 
 	sg_img := gfx.make_image(&img_desc)
-	return sg_img
+
+	mut smp_desc := gfx.SamplerDesc{
+		min_filter: .linear
+		mag_filter: .linear
+		wrap_u: .clamp_to_edge
+		wrap_v: .clamp_to_edge
+	}
+
+	sg_smp := gfx.make_sampler(&smp_desc)
+	return sg_img, sg_smp
 }
 
 fn destroy_texture(sg_img gfx.Image) {
@@ -225,22 +232,22 @@ pub fn read_bytes_from_file(file_path string) []u8 {
 	return buffer
 }
 
-fn (mut app App) load_texture_from_buffer(buf voidptr, buf_len int) (gfx.Image, int, int) {
+fn (mut app App) load_texture_from_buffer(buf voidptr, buf_len int) (gfx.Image, gfx.Sampler, int, int) {
 	// load image
 	stbi.set_flip_vertically_on_load(true)
 	img := stbi.load_from_memory(buf, buf_len) or {
 		eprintln('ERROR: Can not load image from buffer, file: [${app.item_list.lst[app.item_list.item_index]}].')
-		return app.logo_texture, app.logo_w, app.logo_h
+		return app.logo_texture, app.sampler, app.logo_w, app.logo_h
 		// exit(1)
 	}
-	res := create_texture(int(img.width), int(img.height), img.data)
+	sg_img, sg_smp := create_texture(int(img.width), int(img.height), img.data)
 	unsafe {
 		img.free()
 	}
-	return res, int(img.width), int(img.height)
+	return sg_img, sg_smp, int(img.width), int(img.height)
 }
 
-pub fn (mut app App) load_texture_from_file(file_name string) (gfx.Image, int, int) {
+pub fn (mut app App) load_texture_from_file(file_name string) (gfx.Image, gfx.Sampler, int, int) {
 	app.read_bytes(file_name)
 	return app.load_texture_from_buffer(app.mem_buf, app.mem_buf_size)
 }
@@ -249,8 +256,10 @@ pub fn show_logo(mut app App) {
 	clear_modifier_params(mut app)
 	if app.texture != app.logo_texture {
 		destroy_texture(app.texture)
+		gfx.destroy_sampler(app.sampler)
 	}
 	app.texture = app.logo_texture
+	app.sampler = app.logo_sampler
 	app.img_w = app.logo_w
 	app.img_h = app.logo_h
 	app.img_ratio = f32(app.img_w) / f32(app.img_h)
@@ -268,11 +277,12 @@ pub fn load_image(mut app App) {
 	// destroy the texture, avoid to destroy the logo
 	if app.texture != app.logo_texture {
 		destroy_texture(app.texture)
+		gfx.destroy_sampler(app.sampler)
 	}
 
 	// load from .ZIP file
 	if app.item_list.is_inside_a_container() == true {
-		app.texture, app.img_w, app.img_h = app.load_texture_from_zip() or {
+		app.texture, app.sampler, app.img_w, app.img_h = app.load_texture_from_zip() or {
 			eprintln('ERROR: Can not load image from .ZIP file [${app.item_list.lst[app.item_list.item_index]}].')
 			show_logo(mut app)
 			app.state = .show
@@ -293,11 +303,12 @@ pub fn load_image(mut app App) {
 	file_path := app.item_list.get_file_path()
 	if file_path.len > 0 {
 		// println("${app.item_list.lst[app.item_list.item_index]} $file_path ${app.item_list.lst.len}")
-		app.texture, app.img_w, app.img_h = app.load_texture_from_file(file_path)
+		app.texture, app.sampler, app.img_w, app.img_h = app.load_texture_from_file(file_path)
 		app.img_ratio = f32(app.img_w) / f32(app.img_h)
 		// println("texture: [${app.img_w},${app.img_h}] ratio: ${app.img_ratio}")
 	} else {
 		app.texture = app.logo_texture
+		app.sampler = app.logo_sampler
 		app.img_w = app.logo_w
 		app.img_h = app.logo_h
 		app.img_ratio = f32(app.img_w) / f32(app.img_h)
@@ -335,13 +346,14 @@ fn app_init(mut app App) {
 	app.pip_viewer = sgl.make_pipeline(&pipdesc)
 
 	// load logo
-	app.logo_texture, app.logo_w, app.logo_h = app.load_texture_from_file(app.logo_path)
+	app.logo_texture, app.logo_sampler, app.logo_w, app.logo_h = app.load_texture_from_file(app.logo_path)
 	app.logo_ratio = f32(app.img_w) / f32(app.img_h)
 
 	app.img_w = app.logo_w
 	app.img_h = app.logo_h
 	app.img_ratio = app.logo_ratio
 	app.texture = app.logo_texture
+	app.sampler = app.logo_sampler
 
 	println('INIT DONE!')
 
@@ -383,7 +395,7 @@ fn frame(mut app App) {
 	// enable our pipeline
 	sgl.load_pipeline(app.pip_viewer)
 	sgl.enable_texture()
-	sgl.texture(app.texture)
+	sgl.texture(app.texture, app.sampler)
 
 	// translation
 	tr_x := app.tr_x / app.img_w

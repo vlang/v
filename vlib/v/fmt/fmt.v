@@ -1478,7 +1478,7 @@ pub fn (mut f Fmt) sql_stmt_line(node ast.SqlStmtLine) {
 	f.write('\t')
 	match node.kind {
 		.insert {
-			f.writeln('insert ${node.object_var_name} into ${table_name}')
+			f.writeln('insert ${node.object_var} into ${table_name}')
 		}
 		.update {
 			f.write('update ${table_name} set ')
@@ -1885,6 +1885,16 @@ pub fn (mut f Fmt) at_expr(node ast.AtExpr) {
 	f.write(node.name)
 }
 
+fn (mut f Fmt) write_static_method(name string, short_name string) {
+	f.mark_import_as_used(name.split('__static__')[0])
+	if short_name.contains('.') {
+		indx := short_name.index('.') or { -1 } + 1
+		f.write(short_name[0..indx] + short_name[indx..].replace('__static__', '.').capitalize())
+	} else {
+		f.write(short_name.replace('__static__', '.').capitalize())
+	}
+}
+
 pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	mut is_method_newline := false
 	if node.is_method {
@@ -1922,13 +1932,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		} else {
 			name := f.short_module(node.name)
 			if node.name.contains('__static__') {
-				f.mark_import_as_used(node.name.split('__static__')[0])
-				if name.contains('.') {
-					indx := name.index('.') or { -1 } + 1
-					f.write(name[0..indx] + name[indx..].replace('__static__', '.').capitalize())
-				} else {
-					f.write(name.replace('__static__', '.').capitalize())
-				}
+				f.write_static_method(node.name, name)
 			} else {
 				f.mark_import_as_used(name)
 				f.write(name)
@@ -2203,7 +2207,12 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 			}
 		}
 		name := f.short_module(node.name)
-		f.write(name)
+		if node.name.contains('__static__') {
+			f.write_static_method(node.name, name)
+		} else {
+			f.mark_import_as_used(name)
+			f.write(name)
+		}
 		if node.concrete_types.len > 0 {
 			f.write('[')
 			for i, concrete_type in node.concrete_types {

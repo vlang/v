@@ -166,6 +166,14 @@ NB: the build flags are shared with the run command too:
   -translated
     Enable features that are discouraged in regular V code but required for translated V code.
 
+  -q
+    Tell V to be quieter, and to not show many otherwise helpful messages, that only get in your
+    way once you have read them a few dozen times. One example is the notice message, usually
+    shown for `v -prod run file.v`, that says that -prod should not be used with run .
+    Note, this option *does not affect* errors/warnings/notices, just messages that V prints in 
+    order to be more user friendly, in common situations, that are error prone for new users, and
+    that just needlessly take vertical space, once you are well aware of them.
+
   -v
     Enable verbosity in the V compiler while compiling
 

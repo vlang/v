@@ -430,7 +430,7 @@ pub fn (x Expr) str() string {
 			return '${x.expr.str()} as ${global_table.type_to_str(x.typ)}'
 		}
 		AtExpr {
-			return '${x.val}'
+			return '${x.name}'
 		}
 		CTempVar {
 			return x.orig.str()

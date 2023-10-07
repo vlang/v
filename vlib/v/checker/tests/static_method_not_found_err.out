@@ -5,6 +5,13 @@ vlib/v/checker/tests/static_method_not_found_err.vv:10:9: error: unknown functio
       |            ~~~~~~~~~~~~~~~~~~~~~~~~~~
    11 |     println(val)
    12 | }
+vlib/v/checker/tests/static_method_not_found_err.vv:10:6: error: assignment mismatch: 1 variable(s) but `TestStruct.static_method()` returns 0 value(s)
+    8 | 
+    9 | fn main() {
+   10 |     val := TestStruct.static_method()
+      |         ~~
+   11 |     println(val)
+   12 | }
 vlib/v/checker/tests/static_method_not_found_err.vv:11:2: error: `println` can not print void expressions
     9 | fn main() {
    10 |     val := TestStruct.static_method()

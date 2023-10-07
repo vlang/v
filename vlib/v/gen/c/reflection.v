@@ -120,9 +120,9 @@ fn (g Gen) gen_fields_array(fields []ast.StructField) string {
 [inline]
 fn (g Gen) gen_type_array(types []ast.Type) string {
 	if types.len == 0 {
-		return g.gen_empty_array('int')
+		return g.gen_empty_array(ast.int_type_name)
 	}
-	return 'new_array_from_c_array(${types.len},${types.len},sizeof(int),_MOV((int[${types.len}]){${types.map(int(it).str()).join(',')}}))'
+	return 'new_array_from_c_array(${types.len},${types.len},sizeof(${ast.int_type_name}),_MOV((int[${types.len}]){${types.map(int(it).str()).join(',')}}))'
 }
 
 // gen_string_array generates C code for []string

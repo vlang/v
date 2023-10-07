@@ -12,6 +12,13 @@ vlib/v/checker/tests/free_method_errors.vv:7:23: error: `.free()` methods should
       |                       ~~~
     8 | 
     9 | struct Error3 {}
+vlib/v/checker/tests/free_method_errors.vv:7:1: error: missing return at end of function `free`
+    5 | struct Error2 {}
+    6 | 
+    7 | fn (a &Error2) free() f64 {}
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~
+    8 | 
+    9 | struct Error3 {}
 vlib/v/checker/tests/free_method_errors.vv:11:1: error: `.free()` methods should have 0 arguments
     9 | struct Error3 {}
    10 | 

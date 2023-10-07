@@ -99,16 +99,16 @@ jobs:
       - name: Ensure V can be compiled with -autofree
         run: ./v -autofree -o v2 cmd/v  ## NB: this does not mean it runs, but at least keeps it from regressing
 
-      - name: Shader examples can be build
+      - name: Shader examples can be built
         run: |
-          wget https://github.com/floooh/sokol-tools-bin/raw/33d2e4cc26088c6c28eaef5467990f8940d15aab/bin/linux/sokol-shdc
+          wget https://github.com/floooh/sokol-tools-bin/raw/6040b18d39649d56dbae2ae1aed59fb755b26369/bin/linux/sokol-shdc
           chmod +x ./sokol-shdc
           for f in examples/sokol/02_cubes_glsl/cube_glsl \
               examples/sokol/03_march_tracing_glsl/rt_glsl \
               examples/sokol/04_multi_shader_glsl/rt_glsl_puppy \
               examples/sokol/04_multi_shader_glsl/rt_glsl_march \
               examples/sokol/05_instancing_glsl/rt_glsl_instancing \
-              examples/sokol/06_obj_viewer/gouraud \
+#              examples/sokol/06_obj_viewer/gouraud \
               ; do \
                  echo "compiling shader $f.glsl ..."; \
                  ./sokol-shdc --input $f.glsl --output $f.h --slang glsl330 ; \

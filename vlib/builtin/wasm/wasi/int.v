@@ -1,7 +1,8 @@
 module builtin
 
 type byte = u8
-type i32 = int
+
+// type i32 = int
 
 const (
 	// digit pairs in reverse order

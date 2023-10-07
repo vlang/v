@@ -389,6 +389,16 @@ pub fn (mut a array) clear() {
 	a.len = 0
 }
 
+// reset quickly sets the bytes of all elements of the array to 0.
+// Useful mainly for numeric arrays. Note, that calling reset()
+// is not safe, when your array contains more complex elements,
+// like structs, maps, pointers etc, since setting them to 0,
+// can later lead to hard to find bugs.
+[unsafe]
+pub fn (mut a array) reset() {
+	unsafe { vmemset(a.data, 0, a.len * a.element_size) }
+}
+
 // trim trims the array length to `index` without modifying the allocated data.
 // If `index` is greater than `len` nothing will be changed.
 // Example: a.trim(3) // `a.len` is now <= 3
