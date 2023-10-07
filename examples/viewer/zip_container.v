@@ -47,7 +47,7 @@ fn (mut il Item_list) scan_zip(path string, in_index int) ! {
 	zp.close()
 }
 
-fn (mut app App) load_texture_from_zip() !(gfx.Image, int, int) {
+fn (mut app App) load_texture_from_zip() !(gfx.Image, gfx.Sampler, int, int) {
 	item := app.item_list.lst[app.item_list.item_index]
 	// println("Load from zip [${item.path}]")
 

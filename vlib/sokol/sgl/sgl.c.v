@@ -122,8 +122,8 @@ pub fn disable_texture() {
 }
 
 [inline]
-pub fn texture(img gfx.Image) {
-	C.sgl_texture(img, C.sg_sampler{}) // TODO need to pass SG_INVALID_ID ?
+pub fn texture(img gfx.Image, smp gfx.Sampler) {
+	C.sgl_texture(img, smp)
 }
 
 // pipeline stack functions

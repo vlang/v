@@ -48,7 +48,6 @@ jobs:
           sleep 1; ./v gret -t ./gg-regression-images/vgret.v_examples.toml -v ./gg-sample_images ./gg-regression-images
 
       - name: Upload regression to imgur
-        continue-on-error: true
         if: steps.compare.outcome != 'success'
         run: |
           ./imgur.sh /tmp/fail.png

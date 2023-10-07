@@ -28,6 +28,7 @@ mut:
 	gg          &gg.Context = unsafe { nil }
 	pip_3d      sgl.Pipeline
 	texture     gfx.Image
+	sampler     gfx.Sampler
 	init_flag   bool
 	frame_count int
 	mouse_x     int = -1
@@ -39,17 +40,13 @@ mut:
 * Texture functions
 *
 ******************************************************************************/
-fn create_texture(w int, h int, buf &u8) gfx.Image {
+fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {
 	sz := w * h * 4
 	mut img_desc := gfx.ImageDesc{
 		width: w
 		height: h
 		num_mipmaps: 0
-		//		min_filter: .linear
-		//		mag_filter: .linear
 		// usage: .dynamic
-		//		wrap_u: .clamp_to_edge
-		//		wrap_v: .clamp_to_edge
 		label: &u8(0)
 		d3d11_texture: 0
 	}
@@ -60,7 +57,16 @@ fn create_texture(w int, h int, buf &u8) gfx.Image {
 	}
 
 	sg_img := gfx.make_image(&img_desc)
-	return sg_img
+
+	mut smp_desc := gfx.SamplerDesc{
+		min_filter: .linear
+		mag_filter: .linear
+		wrap_u: .clamp_to_edge
+		wrap_v: .clamp_to_edge
+	}
+
+	sg_smp := gfx.make_sampler(&smp_desc)
+	return sg_img, sg_smp
 }
 
 fn destroy_texture(sg_img gfx.Image) {
@@ -205,7 +211,7 @@ fn draw_texture_cubes(app App) {
 	sgl.load_pipeline(app.pip_3d)
 
 	sgl.enable_texture()
-	sgl.texture(app.texture)
+	sgl.texture(app.texture, app.sampler)
 
 	sgl.matrix_mode_projection()
 	sgl.perspective(sgl.rad(45.0), 1.0, 0.1, 100.0)
@@ -242,7 +248,7 @@ fn cube_field(app App) {
 	sgl.load_pipeline(app.pip_3d)
 
 	sgl.enable_texture()
-	sgl.texture(app.texture)
+	sgl.texture(app.texture, app.sampler)
 
 	sgl.matrix_mode_projection()
 	sgl.perspective(sgl.rad(45.0), 1.0, 0.1, 200.0)
@@ -373,7 +379,7 @@ fn my_init(mut app App) {
 		}
 	}
 	unsafe {
-		app.texture = create_texture(w, h, tmp_txt)
+		app.texture, app.sampler = create_texture(w, h, tmp_txt)
 		free(tmp_txt)
 	}
 }
