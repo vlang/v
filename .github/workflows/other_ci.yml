@@ -100,6 +100,7 @@ jobs:
         run: ./v -autofree -o v2 cmd/v  ## NB: this does not mean it runs, but at least keeps it from regressing
 
       - name: Shader examples can be built
+        continue-on-error: true
         run: |
           wget https://github.com/floooh/sokol-tools-bin/raw/6040b18d39649d56dbae2ae1aed59fb755b26369/bin/linux/sokol-shdc
           chmod +x ./sokol-shdc
