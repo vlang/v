@@ -1006,8 +1006,8 @@ fn (mut g Gen) base_type(_t ast.Type) string {
 	}
 	// On 64 bit systems int is an i64
 	$if amd64 || arm64 {
-		if t == ast.int_type {
-			// return 'i64'
+		if g.pref.use_64_int && t == ast.int_type {
+			return 'i64'
 		}
 	}
 	share := t.share()
@@ -1115,6 +1115,8 @@ fn (g Gen) option_type_text(styp string, base string) string {
 	// replace void with something else
 	size := if base == 'void' {
 		'u8'
+	} else if base == 'int' {
+		ast.int_type_name
 	} else if base.starts_with('anon_fn') {
 		'void*'
 	} else if base.starts_with('_option_') {
@@ -1134,6 +1136,8 @@ fn (g Gen) result_type_text(styp string, base string) string {
 	// replace void with something else
 	size := if base == 'void' {
 		'u8'
+	} else if base == 'int' {
+		ast.int_type_name
 	} else if base.starts_with('anon_fn') {
 		'void*'
 	} else if base.starts_with('_option_') {

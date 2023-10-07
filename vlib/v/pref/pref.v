@@ -241,6 +241,8 @@ pub mut:
 	// wasm settings:
 	wasm_stack_top int = 1024 + (16 * 1024) // stack size for webassembly backend
 	wasm_validate  bool // validate webassembly code, by calling `wasm-validate`
+	// temp
+	use_64_int bool
 }
 
 pub struct LineInfo {
@@ -406,6 +408,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-progress' {
 				// processed by testing tools in cmd/tools/modules/testing/common.v
 				continue
+			}
+			'-i64' {
+				res.use_64_int = true
 			}
 			'-Wimpure-v' {
 				res.warn_impure_v = true
