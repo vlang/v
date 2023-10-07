@@ -324,7 +324,7 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 		}
 		ast.SizeOf {
 			s, _ := c.table.type_size(expr.typ)
-			return s
+			return i64(s)
 		}
 		ast.FloatLiteral {
 			x := expr.val.f64()
@@ -361,8 +361,8 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 			if expr.typ == ast.i16_type {
 				return cast_expr_value.i16() or { return none }
 			}
-			if expr.typ == ast.int_type {
-				return cast_expr_value.int() or { return none }
+			if expr.typ == ast.i32_type {
+				return cast_expr_value.i32() or { return none }
 			}
 			if expr.typ == ast.i64_type {
 				return cast_expr_value.i64() or { return none }

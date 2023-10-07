@@ -6,7 +6,7 @@ pub type ComptTimeConstValue = EmptyExpr
 	| i16
 	| i64
 	| i8
-	| int
+	| i32
 	| rune
 	| string
 	| u16
@@ -14,6 +14,7 @@ pub type ComptTimeConstValue = EmptyExpr
 	| u64
 	| u8
 	| voidptr
+	//| int
 
 pub fn empty_comptime_const_expr() ComptTimeConstValue {
 	return EmptyExpr(0)
@@ -43,9 +44,17 @@ pub fn (val ComptTimeConstValue) int() ?int {
 	return none
 }
 
+pub fn (val ComptTimeConstValue) i32() ?i32 {
+	x := val.i64()?
+	if x > -2147483649 && x < 2147483648 {
+		return i32(x)
+	}
+	return none
+}
+
 pub fn (val ComptTimeConstValue) voidptr() ?voidptr {
 	match val {
-		i8, i16, int, i64 { return voidptr(i64(val)) }
+		i8, i16, i32, i64 { return voidptr(i64(val)) }
 		u8, u16, u32, u64 { return voidptr(u64(val)) }
 		rune { return voidptr(u64(val)) }
 		voidptr { return val }
@@ -62,7 +71,7 @@ pub fn (val ComptTimeConstValue) i64() ?i64 {
 		i16 {
 			return i64(val)
 		}
-		int {
+		i32 {
 			return i64(val)
 		}
 		i64 {
@@ -144,7 +153,7 @@ pub fn (val ComptTimeConstValue) u64() ?u64 {
 				return u64(val)
 			}
 		}
-		int {
+		i32 {
 			if val >= 0 {
 				return u64(val)
 			}
@@ -201,7 +210,7 @@ pub fn (val ComptTimeConstValue) f64() ?f64 {
 		i16 {
 			return f64(val)
 		}
-		int {
+		i32 {
 			return f64(val)
 		}
 		i64 {
@@ -243,7 +252,7 @@ pub fn (val ComptTimeConstValue) string() ?string {
 		i16 {
 			return val.str()
 		}
-		int {
+		i32 {
 			return val.str()
 		}
 		i64 {

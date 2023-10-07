@@ -5387,7 +5387,7 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, field_name string
 		i16 {
 			g.const_decl_write_precomputed(mod, styp, cname, field_name, ct_value.str())
 		}
-		int {
+		i32 {
 			g.const_decl_write_precomputed(mod, styp, cname, field_name, ct_value.str())
 		}
 		i64 {

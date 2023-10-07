@@ -125,6 +125,10 @@ pub fn (n int) str() string {
 	return n.str_l(12)
 }
 
+pub fn (n i32) str() string {
+	return int(n).str_l(12)
+}
+
 // str returns the value of the `int` as a `string`.
 // Example: assert int(-2020).str() == '-2020'
 /*

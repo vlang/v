@@ -9,9 +9,10 @@ import v.pref
 
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
-pub const int_type_name = $if amd64 || arm64 {
-	'int'
-	//'i64'
+// pub const int_type_name = $if amd64 || arm64 {
+pub const int_type_name = $if new_int ? {
+	//'int'
+	'i64'
 } $else {
 	'int'
 }
