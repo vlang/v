@@ -65,6 +65,10 @@ fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
 		}
 	}
 	if os.getenv('V_NO_C_ERROR_INFO') != '' {
+		eprintln('> V_NO_C_ERROR_INFO is obsoleted by either setting VQUIET to 1, or by passing `-q` on the command line')
+		exit(1)
+	}
+	if v.pref.is_quiet {
 		exit(1)
 	}
 	verror('
