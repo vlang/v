@@ -360,7 +360,7 @@ const c_common_macros = '
 
 // for __offset_of
 #ifndef __offsetof
-	#define __offsetof(PTYPE,FIELDNAME) ((size_t)((char *)&((PTYPE *)0)->FIELDNAME - (char *)0))
+	#define __offsetof(PTYPE,FIELDNAME) ((size_t)(&((PTYPE *)0)->FIELDNAME))
 #endif
 
 #define OPTION_CAST(x) (x)
