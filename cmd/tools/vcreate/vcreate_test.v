@@ -145,12 +145,15 @@ fn test_input() {
 		eprintln('Input test for windows are not yet implemented.')
 		return
 	}
-	expect_path := os.join_path(@VMODROOT, 'cmd', 'tools', 'vcreate')
+	expect_tests_path := os.join_path(@VMODROOT, 'cmd', 'tools', 'vcreate', 'tests')
+
+	// The expect script will create a new project in the temporary `test_path` directory.
 	project_name := 'my_project'
-	new_no_arg := os.execute(os.join_path(expect_path, 'new_no_arg.expect ${@VMODROOT} ${project_name}'))
+	new_no_arg := os.execute('${os.join_path(expect_tests_path, 'new_no_arg.expect')} ${@VMODROOT} ${project_name}')
 	if new_no_arg.exit_code != 0 {
 		assert false, new_no_arg.output
 	}
+	// Assert mod data set in `new_no_arg.expect`.
 	mod := vmod.decode(os.read_file(os.join_path(test_path, project_name, 'v.mod')) or {
 		assert false, 'Failed reading v.mod of ${project_name}'
 		return
@@ -158,7 +161,6 @@ fn test_input() {
 		assert false, err.str()
 		return
 	}
-	// Assert module data set in ./new_no_arg.expect
 	assert mod.name == 'my_project'
 	assert mod.description == 'My awesome V project.'
 	assert mod.version == '0.1.0'
