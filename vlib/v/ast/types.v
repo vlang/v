@@ -528,6 +528,7 @@ pub fn (typ Type) flip_signedness() Type {
 		ast.i8_type { ast.u8_type }
 		ast.i16_type { ast.u16_type }
 		ast.int_type { ast.u32_type }
+		ast.i32_type { ast.u32_type }
 		ast.isize_type { ast.usize_type }
 		ast.i64_type { ast.u64_type }
 		ast.u8_type { ast.i8_type }
@@ -596,24 +597,26 @@ pub const (
 // Note: builtin_type_names must be in the same order as the idx consts above
 pub const builtin_type_names = ['void', 'voidptr', 'byteptr', 'charptr', 'i8', 'i16', 'int', 'i64',
 	'isize', 'u8', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64', 'char', 'bool', 'none', 'string',
-	'rune', 'array', 'map', 'chan', 'any', 'float_literal', 'int_literal', 'thread', 'Error', 'nil']
+	'rune', 'array', 'map', 'chan', 'any', 'float_literal', 'int_literal', 'thread', 'Error', 'nil',
+	'i32']
 
 pub const builtin_type_names_matcher = token.new_keywords_matcher_from_array_trie(builtin_type_names)
 
 pub const (
 	integer_type_idxs          = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, u8_type_idx,
 		u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx, usize_type_idx,
-		int_literal_type_idx, rune_type_idx]
+		int_literal_type_idx, rune_type_idx, i32_type_idx]
 	signed_integer_type_idxs   = [char_type_idx, i8_type_idx, i16_type_idx, int_type_idx,
-		i64_type_idx, isize_type_idx]
+		i64_type_idx, i32_type_idx, isize_type_idx]
 	unsigned_integer_type_idxs = [u8_type_idx, u16_type_idx, u32_type_idx, u64_type_idx,
-		usize_type_idx]
+		usize_type_idx, i32_type_idx]
 	// C will promote any type smaller than int to int in an expression
 	int_promoted_type_idxs     = [char_type_idx, i8_type_idx, i16_type_idx, u8_type_idx, u16_type_idx]
 	float_type_idxs            = [f32_type_idx, f64_type_idx, float_literal_type_idx]
-	number_type_idxs           = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, u8_type_idx,
-		char_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx, usize_type_idx,
-		f32_type_idx, f64_type_idx, int_literal_type_idx, float_literal_type_idx, rune_type_idx]
+	number_type_idxs           = [i8_type_idx, i16_type_idx, int_type_idx, i32_type_idx, i64_type_idx,
+		u8_type_idx, char_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx,
+		usize_type_idx, f32_type_idx, f64_type_idx, int_literal_type_idx, float_literal_type_idx,
+		rune_type_idx]
 	pointer_type_idxs          = [voidptr_type_idx, byteptr_type_idx, charptr_type_idx, nil_type_idx]
 )
 
@@ -654,6 +657,7 @@ pub const (
 	voidptr_types      = new_voidptr_types()
 	cptr_types         = merge_types(voidptr_types, byteptr_types, charptr_types)
 	nil_type           = new_type(nil_type_idx)
+	i32_type           = new_type(i32_type_idx)
 )
 
 fn new_charptr_types() []Type {
