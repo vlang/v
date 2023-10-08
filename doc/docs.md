@@ -6114,7 +6114,7 @@ which decreases the overall memory footprint of the structure.
 **When to Avoid**
 
 - On CPU architectures that do not support unaligned memory access or when high-speed memory access
-- is needed.
+is needed.
 
 #### `[minify]`
 
