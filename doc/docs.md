@@ -6175,7 +6175,7 @@ This flag enables optimizations that disregard strict compliance with the IEEE s
 floating-point arithmetic. While this could lead to faster code, it may produce incorrect or
 less accurate mathematical results.
 
-The full specter of math operations that `-fast-math` affects can be found [here](https://clang.llvm.org/docs/UsersManual.html#cmdoption-ffast-math)
+The full specter of math operations that `-fast-math` affects can be found [here](https://clang.llvm.org/docs/UsersManual.html#cmdoption-ffast-math).
 
 **When to Use**
 
