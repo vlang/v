@@ -6082,7 +6082,7 @@ cases, may be beneficial for performance, but may impact the size of your execut
 
 #### `[direct_array_access]`
 
-In functions tagged with `[direct_array_access]` the compiler will translate array operations
+If functions tagged with `[direct_array_access]` the compiler will translate array operations
 directly into C array operations - omitting bounds checking. This may save a lot of time in a
 function that iterates over an array but at the cost of making the function unsafe - unless the
 boundaries will be checked by the user.
