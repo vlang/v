@@ -116,7 +116,7 @@ pub fn (mut ctx Context) run() ! {
 		}
 		if !ctx.paused {
 			sw.restart()
-			if ctx.cfg.event_fn != unsafe { nil } {
+			if ctx.cfg.event_fn != none {
 				ctx.parse_events()
 			}
 			ctx.frame()
