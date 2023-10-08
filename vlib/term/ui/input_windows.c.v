@@ -9,7 +9,7 @@ import time
 
 const buf_size = 64
 
-__global ctx_ptr = &Context(unsafe { nil })
+const ctx_ptr = &Context{}
 
 __global stdin_at_startup = u32(0)
 
@@ -22,14 +22,14 @@ mut:
 }
 
 fn restore_terminal_state() {
-	if unsafe { ctx_ptr != 0 } {
-		if ctx_ptr.cfg.use_alternate_buffer {
+	if unsafe { ui.ctx_ptr != 0 } {
+		if ui.ctx_ptr.cfg.use_alternate_buffer {
 			// clear the terminal and set the cursor to the origin
 			print('\x1b[2J\x1b[3J')
 			print('\x1b[?1049l')
 			flush_stdout()
 		}
-		C.SetConsoleMode(ctx_ptr.stdin_handle, stdin_at_startup)
+		C.SetConsoleMode(ui.ctx_ptr.stdin_handle, stdin_at_startup)
 	}
 	load_title()
 	os.flush()
@@ -37,7 +37,7 @@ fn restore_terminal_state() {
 
 // init initializes the context of a windows console given the `cfg`.
 pub fn init(cfg Config) &Context {
-	mut ctx := &Context{
+	mut ctx := Context{
 		cfg: cfg
 	}
 	// get the standard input handle
@@ -81,11 +81,13 @@ pub fn init(cfg Config) &Context {
 		flush_stdout()
 	}
 
-	ctx_ptr = ctx
+	unsafe {
+		*ui.ctx_ptr = ctx
+	}
 	C.atexit(restore_terminal_state)
 	for code in ctx.cfg.reset {
 		os.signal_opt(code, fn (_ os.Signal) {
-			mut c := ctx_ptr
+			mut c := unsafe { ui.ctx_ptr }
 			if unsafe { c != 0 } {
 				c.cleanup()
 			}
