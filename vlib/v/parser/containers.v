@@ -19,9 +19,9 @@ fn (mut p Parser) array_init(is_option bool) ast.ArrayInit {
 	mut is_fixed := false
 	mut has_val := false
 	mut has_type := false
-	mut has_default := false
+	mut has_init := false
 	mut has_index := false
-	mut default_expr := ast.empty_expr
+	mut init_expr := ast.empty_expr
 	if p.tok.kind == .rsbr {
 		last_pos = p.tok.pos()
 		// []typ => `[]` and `typ` must be on the same line
@@ -89,8 +89,8 @@ fn (mut p Parser) array_init(is_option bool) ast.ArrayInit {
 						return ast.ArrayInit{}
 					}
 					p.check(.colon)
-					has_default = true
-					has_index = p.handle_index_variable(mut default_expr)
+					has_init = true
+					has_index = p.handle_index_variable(mut init_expr)
 				}
 				last_pos = p.tok.pos()
 				p.check(.rcbr)
@@ -145,8 +145,8 @@ fn (mut p Parser) array_init(is_option bool) ast.ArrayInit {
 					cap_expr = p.expr(0)
 				}
 				'init' {
-					has_default = true
-					has_index = p.handle_index_variable(mut default_expr)
+					has_init = true
+					has_index = p.handle_index_variable(mut init_expr)
 				}
 				else {
 					p.error('wrong field `${key}`, expecting `len`, `cap`, or `init`')
@@ -158,7 +158,7 @@ fn (mut p Parser) array_init(is_option bool) ast.ArrayInit {
 			}
 		}
 		p.check(.rcbr)
-		if has_default && !has_len {
+		if has_init && !has_len {
 			p.error_with_pos('cannot use `init` attribute unless `len` attribute is also provided',
 				attr_pos)
 		}
@@ -178,10 +178,10 @@ fn (mut p Parser) array_init(is_option bool) ast.ArrayInit {
 		has_len: has_len
 		len_expr: len_expr
 		has_cap: has_cap
-		has_default: has_default
+		has_init: has_init
 		has_index: has_index
 		cap_expr: cap_expr
-		default_expr: default_expr
+		init_expr: init_expr
 	}
 }
 

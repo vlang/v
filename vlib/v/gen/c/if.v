@@ -115,7 +115,7 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 			if g.need_tmp_var_in_expr(expr.cap_expr) {
 				return true
 			}
-			if g.need_tmp_var_in_expr(expr.default_expr) {
+			if g.need_tmp_var_in_expr(expr.init_expr) {
 				return true
 			}
 			for elem_expr in expr.exprs {

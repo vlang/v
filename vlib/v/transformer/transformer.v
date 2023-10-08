@@ -539,7 +539,7 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 			}
 			node.len_expr = t.expr(mut node.len_expr)
 			node.cap_expr = t.expr(mut node.cap_expr)
-			node.default_expr = t.expr(mut node.default_expr)
+			node.init_expr = t.expr(mut node.init_expr)
 		}
 		ast.AsCast {
 			node.expr = t.expr(mut node.expr)
