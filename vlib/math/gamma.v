@@ -139,6 +139,7 @@ pub fn log_gamma(x f64) f64 {
 	return y
 }
 
+// log_gamma_sign returns the natural logarithm and sign (-1 or +1) of Gamma(x)
 pub fn log_gamma_sign(a f64) (f64, int) {
 	mut x := a
 	ymin := 1.461632144968362245
