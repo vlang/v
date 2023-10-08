@@ -5390,6 +5390,10 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, field_name string
 		i32 {
 			g.const_decl_write_precomputed(mod, styp, cname, field_name, ct_value.str())
 		}
+		int {
+			// XTODO int64
+			g.const_decl_write_precomputed(mod, styp, cname, field_name, ct_value.str())
+		}
 		i64 {
 			if typ == ast.i64_type {
 				return false
