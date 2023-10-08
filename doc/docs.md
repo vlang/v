@@ -6050,18 +6050,18 @@ performance, memory usage, or size.
 > Use these options only after profiling your code and confirming their benefits.
 > Predicting performance without empirical data can be misleading.
 
-| Tuning Operation         | Benefits                        | Drawbacks                                 |
-|--------------------------|---------------------------------|-------------------------------------------|
-| `[inline]`               | Performance                     | Increased executable size                 |
-| `[direct_array_access]`  | Performance                     | Safety risks                              |
-| `[packed]`               | Memory usage                    | Potential performance loss                |
-| `[minify]`               | Performance, Memory usage       | May break binary serialization/reflection |
-| `_likely_/_unlikely_`    | Performance                     | Risk of negative performance impact       |
-| `-skip-unused`           | Performance, Compile time, Size | Potential instability                     |
-| `-fast-math`             | Performance                     | Incorrect mathematical operations results |
-| `-d no_segfault_handler` | Compile time, Size              | Loss of segfault trace                    |
-| `-cflags -march=native`  | Performance                     | Reduced CPU compatibility                 |
-| `PGO`                    | Performance, Size               | Usage complexity                          |
+| Tuning Operation         | Benefits                        | Drawbacks                                         |
+|--------------------------|---------------------------------|---------------------------------------------------|
+| `[inline]`               | Performance                     | Increased executable size                         |
+| `[direct_array_access]`  | Performance                     | Safety risks                                      |
+| `[packed]`               | Memory usage                    | Potential performance loss                        |
+| `[minify]`               | Performance, Memory usage       | May break binary serialization/reflection         |
+| `_likely_/_unlikely_`    | Performance                     | Risk of negative performance impact               |
+| `-skip-unused`           | Performance, Compile time, Size | Potential instability                             |
+| `-fast-math`             | Performance                     | Risk of incorrect mathematical operations results |
+| `-d no_segfault_handler` | Compile time, Size              | Loss of segfault trace                            |
+| `-cflags -march=native`  | Performance                     | Risk of reduced CPU compatibility                 |
+| `PGO`                    | Performance, Size               | Usage complexity                                  |
 
 ### Tuning operations details
 
