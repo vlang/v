@@ -6046,9 +6046,11 @@ When compiled with `-prod`, V's generated C code usually performs well. However,
 scenarios, additional compiler flags and attributes can further optimize the executable for
 performance, memory usage, or size.
 
-> [!WARNING]
-> Use these options only after profiling your code and confirming their benefits.
-> Predicting performance without empirical data can be misleading.
+> [!NOTE]
+> These are *rarely* needed, and should not be used unless you
+> *profile your code*, and then see that there are significant benefits for them.
+> To cite GCC's documentation: "Programmers are notoriously bad at predicting
+> how their programs actually perform".
 
 | Tuning Operation         | Benefits                        | Drawbacks                                         |
 |--------------------------|---------------------------------|---------------------------------------------------|
