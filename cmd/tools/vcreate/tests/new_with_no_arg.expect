@@ -6,7 +6,7 @@ set timeout 1
 set v_root [lindex $argv 0]
 set project_name [lindex $argv 1]
 
-spawn $v_root/v run $v_root/cmd/tools/vcreate/ new
+spawn $v_root/v new
 
 expect "Input your project name: " { send "$project_name\r" } timeout { exit 1 }
 expect "Input your project description: " { send "My Awesome V Project.\r" } timeout { exit 1 }
