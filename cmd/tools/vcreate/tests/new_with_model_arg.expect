@@ -4,6 +4,7 @@ set timeout 10
 # Pass v_root as arg, since we chdir into a temp directoy during testing and create a project there.
 set v_root [lindex $argv 0]
 set project_name [lindex $argv 1]
+set model [lindex $argv 2]
 
 proc expect_then_send {expect_ {send_ ""}} {
 	expect $expect_ {
@@ -16,12 +17,10 @@ proc expect_then_send {expect_ {send_ ""}} {
 	}
 }
 
-spawn $v_root/v run $v_root/cmd/tools/vcreate/ new
+spawn $v_root/v run $v_root/cmd/tools/vcreate/ new $project_name $model
 
-expect_then_send "Input your project name: " "$project_name\r"
-expect_then_send "Input your project description: " "My awesome V project.\r"
-expect_then_send "Input your project version: (0.0.0) " "0.1.0\r"
-expect_then_send "Input your project license: (MIT) " "GPL\r"
+expect_then_send "Input your project version: (0.0.0) " "0.0.1\r"
+expect_then_send "Input your project license: (MIT) " "\r"
 expect_then_send "Initialising ..."
 expect_then_send "Complete!"
 
