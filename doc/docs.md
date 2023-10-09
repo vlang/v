@@ -6100,13 +6100,8 @@ sure that the access index will be valid.
 #### `[packed]`
 
 The `[packed]` attribute can be added to a structure to create an unaligned memory layout,
-which decreases the overall memory footprint of the structure.
-
-> [!WARNING]
-> Using the `[packed]` attribute may negatively impact performance
-> or even be prohibited on certain CPU architectures.
-> Only use this attribute if minimizing memory usage is crucial for your program
-> and you're willing to sacrifice performance.
+which decreases the overall memory footprint of the structure. Using the `[packed]` attribute
+may negatively impact performance or even be prohibited on certain CPU architectures.
 
 **When to Use**
 
@@ -6120,11 +6115,9 @@ is needed.
 #### `[minify]`
 
 The `[minify]` attribute can be added to a struct, allowing the compiler to reorder the fields in
-a way that minimizes internal gaps while maintaining alignment.
-
-> [!WARNING]
-> Using the `[minify]` attribute may cause issues with binary serialization or reflection.
-> Be mindful of these potential side effects when using this attribute.
+a way that minimizes internal gaps while maintaining alignment. Using the `[minify]` attribute may
+cause issues with binary serialization or reflection. Be mindful of these potential side effects
+when using this attribute.
 
 **When to Use**
 
