@@ -68,13 +68,13 @@ pub fn (mut g Gen) generate_builtins() {
 
 		// patch all call addresses where this builtin gets called
 		for call in builtin.calls {
-			rel := g.code_gen.call_addr_at(int(call_addr), call)
-			g.write32_at(call + 1, int(rel))
+			rel := g.code_gen.call_addr_at(i32(call_addr), call)
+			g.write32_at(call + 1, i32(rel))
 		}
 	}
 }
 
-pub fn (mut g Gen) get_builtin_arg_reg(name Builtin, index int) Register {
+pub fn (mut g Gen) get_builtin_arg_reg(name Builtin, index i32) Register {
 	builtin := g.builtins[name] or { panic('undefined builtin function ${name}') }
 	if index >= builtin.arg_regs.len {
 		g.n_error('builtin ${name} does only have ${builtin.arg_regs.len} arguments, requested ${index}')

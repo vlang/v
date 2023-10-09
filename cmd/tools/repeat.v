@@ -87,8 +87,8 @@ fn new_aints(ovals []int, extreme_mins int, extreme_maxs int) Aints {
 		nmaxs: extreme_maxs
 	}
 	mut sum := i64(0)
-	mut imin := math.max_i32
-	mut imax := -math.max_i32
+	mut imin := int(math.max_i32)
+	mut imax := int(-math.max_i32)
 	// discard the extremes:
 	mut vals := []int{}
 	for x in ovals {

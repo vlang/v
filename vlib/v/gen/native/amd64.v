@@ -126,7 +126,7 @@ fn (mut c Amd64) main_reg() Register {
 	return Amd64Register.rax
 }
 
-fn (mut c Amd64) address_size() int {
+fn (mut c Amd64) address_size() i32 {
 	return 8
 }
 
@@ -298,7 +298,7 @@ fn (mut c Amd64) cmp_var_reg(var Var, reg Register, config VarConfig) {
 			c.g.write8(0x39)
 			offset := var.offset - config.offset
 			is_far_var := offset > 0x80 || offset < -0x7f
-			c.g.write8(if is_far_var { 0x85 } else { 0x45 })
+			c.g.write8(if is_far_var { i32(0x85) } else { i32(0x45) })
 			if is_far_var {
 				c.g.write32(i32((0xffffffff - i64(offset) + 1) % 0x100000000))
 			} else {
@@ -312,7 +312,7 @@ fn (mut c Amd64) cmp_var_reg(var Var, reg Register, config VarConfig) {
 	}
 }
 
-fn (mut c Amd64) cmp_var(var Var, val int, config VarConfig) {
+fn (mut c Amd64) cmp_var(var Var, val i32, config VarConfig) {
 	match var {
 		ast.Ident {
 			var_object := c.g.get_var_from_ident(var)
@@ -334,7 +334,7 @@ fn (mut c Amd64) cmp_var(var Var, val int, config VarConfig) {
 			c.g.write8(0x81) // 83 for 1 byte?
 			offset := var.offset - config.offset
 			is_far_var := offset > 0x80 || offset < -0x7f
-			c.g.write8(if is_far_var { 0xbd } else { 0x7d })
+			c.g.write8(if is_far_var { i32(0xbd) } else { i32(0x7d) })
 			if is_far_var {
 				c.g.write32(i32((0xffffffff - i64(offset) + 1) % 0x100000000))
 			} else {
@@ -372,7 +372,7 @@ fn (mut c Amd64) dec_var(var Var, config VarConfig) {
 			c.g.write8(0x81) // 83 for 1 byte
 			offset := var.offset - config.offset
 			is_far_var := offset > 0x80 || offset < -0x7f
-			c.g.write8(if is_far_var { 0xad } else { 0x6d })
+			c.g.write8(if is_far_var { i32(0xad) } else { i32(0x6d) })
 			if is_far_var {
 				c.g.write32(i32((0xffffffff - i64(offset) + 1) % 0x100000000))
 			} else {
@@ -410,7 +410,7 @@ fn (mut c Amd64) inc_var(var Var, config VarConfig) {
 			c.g.write8(0x81) // 83 for 1 byte
 			offset := var.offset - config.offset
 			is_far_var := offset > 0x80 || offset < -0x7f
-			c.g.write8(if is_far_var { 0x85 } else { 0x45 })
+			c.g.write8(if is_far_var { i32(0x85) } else { i32(0x45) })
 			if is_far_var {
 				c.g.write32(i32((0xffffffff - i64(offset) + 1) % 0x100000000))
 			} else {
@@ -454,7 +454,7 @@ fn (op JumpOp) amd64() u16 {
 	}
 }
 
-fn (mut c Amd64) cjmp(op JumpOp) int {
+fn (mut c Amd64) cjmp(op JumpOp) i32 {
 	c.g.write16(op.amd64())
 	pos := c.g.pos()
 	c.g.write32(placeholder)
@@ -462,7 +462,7 @@ fn (mut c Amd64) cjmp(op JumpOp) int {
 	return i32(pos)
 }
 
-fn (mut c Amd64) jmp(addr int) i32 {
+fn (mut c Amd64) jmp(addr i32) i32 {
 	c.g.write8(0xe9)
 	pos := c.g.pos()
 	c.g.write32(addr) // 0xffffff
@@ -566,7 +566,7 @@ fn (mut c Amd64) mov_deref(r Register, rptr Register, typ ast.Type) {
 	reg := r as Amd64Register
 	regptr := rptr as Amd64Register
 	size := c.g.get_type_size(typ)
-	if size !in [1, 2, 4, 8] {
+	if int(size) !in [1, 2, 4, 8] {
 		c.g.n_error('Invalid size on dereferencing')
 	}
 	is_signed := !typ.is_any_kind_of_pointer() && typ.is_signed()
@@ -601,7 +601,7 @@ fn (mut c Amd64) mov_store(regptr Amd64Register, reg Amd64Register, size Size) {
 	if size == ._64 {
 		c.g.write8(0x48 + i32(reg) / 8 * 4 + i32(regptr) / 8)
 	}
-	c.g.write8(if size == ._8 { 0x88 } else { 0x89 })
+	c.g.write8(if size == ._8 { i32(0x88) } else { i32(0x89) })
 	c.g.write8(i32(reg) % 8 * 8 + i32(regptr) % 8)
 	c.g.println('mov [${regptr}], ${reg}')
 }
@@ -634,13 +634,13 @@ fn (mut c Amd64) mov_reg_to_var(var Var, r Register, config VarConfig) {
 				&& i32(reg) <= i32(Amd64Register.r15)
 
 			if raw_type.is_any_kind_of_pointer() || typ.is_any_kind_of_pointer() {
-				c.g.write16(0x8948 + if is_extended_register { 4 } else { 0 })
+				c.g.write16(0x8948 + if is_extended_register { i32(4) } else { i32(0) })
 				size_str = 'QWORD'
 			} else {
 				match typ {
 					ast.i64_type_idx, ast.u64_type_idx, ast.isize_type_idx, ast.usize_type_idx,
 					ast.int_literal_type_idx {
-						c.g.write16(0x8948 + if is_extended_register { 4 } else { 0 })
+						c.g.write16(0x8948 + if is_extended_register { i32(4) } else { i32(0) })
 						size_str = 'QWORD'
 					}
 					ast.int_type_idx, ast.u32_type_idx, ast.rune_type_idx {
@@ -679,7 +679,7 @@ fn (mut c Amd64) mov_reg_to_var(var Var, r Register, config VarConfig) {
 					}
 				}
 			}
-			far_var_offset := if is_far_var { 0x40 } else { 0 }
+			far_var_offset := if is_far_var { i32(0x40) } else { i32(0) }
 			match reg {
 				.eax, .rax, .r8 { c.g.write8(0x45 + far_var_offset) }
 				.rbx { c.g.write8(0x5d + far_var_offset) }
@@ -694,7 +694,7 @@ fn (mut c Amd64) mov_reg_to_var(var Var, r Register, config VarConfig) {
 			} else {
 				c.g.write8((0xff - offset + 1) % 0x100)
 			}
-			c.g.println('mov ${size_str} PTR [rbp-${offset.hex2()}],${reg}')
+			c.g.println('mov ${size_str} PTR [rbp-${int(offset).hex2()}],${reg}')
 		}
 		GlobalVar {
 			// TODO
@@ -702,7 +702,7 @@ fn (mut c Amd64) mov_reg_to_var(var Var, r Register, config VarConfig) {
 	}
 }
 
-fn (mut c Amd64) mov_int_to_var(var Var, integer int, config VarConfig) {
+fn (mut c Amd64) mov_int_to_var(var Var, integer i32, config VarConfig) {
 	match var {
 		ast.Ident {
 			var_object := c.g.get_var_from_ident(var)
@@ -726,52 +726,52 @@ fn (mut c Amd64) mov_int_to_var(var Var, integer int, config VarConfig) {
 			match typ {
 				ast.i8_type_idx, ast.u8_type_idx, ast.char_type_idx {
 					c.g.write8(0xc6)
-					c.g.write8(if is_far_var { 0x85 } else { 0x45 })
+					c.g.write8(if is_far_var { i32(0x85) } else { i32(0x45) })
 					if is_far_var {
 						c.g.write32(i32((0xffffffff - i64(offset) + 1) % 0x100000000))
 					} else {
 						c.g.write8((0xff - offset + 1) % 0x100)
 					}
 					c.g.write8(u8(integer))
-					c.g.println('mov BYTE PTR[rbp-${offset.hex2()}], ${integer}')
+					c.g.println('mov BYTE PTR[rbp-${int(offset).hex2()}], ${integer}')
 				}
 				ast.i16_type_idx, ast.u16_type_idx {
 					c.g.write16(0xc766)
-					c.g.write8(if is_far_var { 0x85 } else { 0x45 })
+					c.g.write8(if is_far_var { i32(0x85) } else { i32(0x45) })
 					if is_far_var {
 						c.g.write32(i32((0xffffffff - i64(offset) + 1) % 0x100000000))
 					} else {
 						c.g.write8((0xff - offset + 1) % 0x100)
 					}
 					c.g.write16(u16(integer))
-					c.g.println('mov WORD PTR[rbp-${offset.hex2()}], ${integer}')
+					c.g.println('mov WORD PTR[rbp-${int(offset).hex2()}], ${integer}')
 				}
 				ast.int_type_idx, ast.u32_type_idx, ast.rune_type_idx {
 					c.g.write8(0xc7)
-					c.g.write8(if is_far_var { 0x85 } else { 0x45 })
+					c.g.write8(if is_far_var { i32(0x85) } else { i32(0x45) })
 					if is_far_var {
 						c.g.write32(i32((0xffffffff - i64(offset) + 1) % 0x100000000))
 					} else {
 						c.g.write8((0xff - offset + 1) % 0x100)
 					}
 					c.g.write32(integer)
-					c.g.println('mov DWORD PTR[rbp-${offset.hex2()}], ${integer}')
+					c.g.println('mov DWORD PTR[rbp-${int(offset).hex2()}], ${integer}')
 				}
 				ast.i64_type_idx, ast.u64_type_idx, ast.isize_type_idx, ast.usize_type_idx,
 				ast.int_literal_type_idx {
 					c.g.write8(0x48)
 					c.g.write8(0xc7)
-					c.g.write8(if is_far_var { 0x85 } else { 0x45 })
+					c.g.write8(if is_far_var { i32(0x85) } else { i32(0x45) })
 					if is_far_var {
 						c.g.write32(i32((0xffffffff - i64(offset) + 1) % 0x100000000))
 					} else {
 						c.g.write8((0xff - offset + 1) % 0x100)
 					}
 					c.g.write32(integer)
-					c.g.println('mov QWORD PTR[rbp-${offset.hex2()}], ${integer}')
+					c.g.println('mov QWORD PTR[rbp-${int(offset).hex2()}], ${integer}')
 				}
 				else {
-					c.g.n_error('unhandled mov int type: ${typ}')
+					c.g.n_error('unhandled mov i32 type: ${typ}')
 				}
 			}
 		}
@@ -781,7 +781,7 @@ fn (mut c Amd64) mov_int_to_var(var Var, integer int, config VarConfig) {
 	}
 }
 
-fn (mut c Amd64) lea_var_to_reg(r Register, var_offset int) {
+fn (mut c Amd64) lea_var_to_reg(r Register, var_offset i32) {
 	reg := r as Amd64Register
 
 	is_far_var := var_offset > 0x80 || var_offset < -0x7f
@@ -792,7 +792,7 @@ fn (mut c Amd64) lea_var_to_reg(r Register, var_offset int) {
 		else {}
 	}
 	c.g.write8(0x8d)
-	far_var_offset := if is_far_var { 0x40 } else { 0 }
+	far_var_offset := if is_far_var { i32(0x40) } else { i32(0) }
 	match reg {
 		.eax, .rax { c.g.write8(0x45 + far_var_offset) }
 		.edi, .rdi { c.g.write8(0x7d + far_var_offset) }
@@ -807,7 +807,7 @@ fn (mut c Amd64) lea_var_to_reg(r Register, var_offset int) {
 	} else {
 		c.g.write8((0xff - var_offset + 1) % 0x100)
 	}
-	c.g.println('lea ${reg}, [rbp-${var_offset.hex2()}]')
+	c.g.println('lea ${reg}, [rbp-${int(var_offset).hex2()}]')
 }
 
 fn (mut c Amd64) mov_var_to_reg(reg Register, var Var, config VarConfig) {
@@ -870,7 +870,7 @@ fn (mut c Amd64) mov_var_to_reg(reg Register, var Var, config VarConfig) {
 					'mov', 'QWORD'
 				}
 			}
-			far_var_offset := if is_far_var { 0x40 } else { 0 }
+			far_var_offset := if is_far_var { i32(0x40) } else { i32(0) }
 			match reg as Amd64Register {
 				.eax, .rax { c.g.write8(0x45 + far_var_offset) }
 				.edi, .rdi { c.g.write8(0x7d + far_var_offset) }
@@ -885,7 +885,7 @@ fn (mut c Amd64) mov_var_to_reg(reg Register, var Var, config VarConfig) {
 			} else {
 				c.g.write8((0xff - offset + 1) % 0x100)
 			}
-			c.g.println('${instruction} ${reg}, ${size_str} PTR [rbp-${offset.hex2()}]')
+			c.g.println('${instruction} ${reg}, ${size_str} PTR [rbp-${int(offset).hex2()}]')
 		}
 		GlobalVar {
 			// TODO
@@ -897,15 +897,15 @@ fn (mut c Amd64) mov_extend_reg(a Amd64Register, b Amd64Register, typ ast.Type) 
 	size := c.g.get_type_size(typ)
 	is_signed := !typ.is_any_kind_of_pointer() && typ.is_signed()
 
-	if size in [1, 2, 4] {
+	if int(size) in [1, 2, 4] {
 		if size == 4 && !is_signed {
-			c.g.write8(0x40 + if i32(a) >= i32(Amd64Register.r8) { 1 } else { 0 } +
-				if i32(b) >= i32(Amd64Register.r8) { 4 } else { 0 })
+			c.g.write8(0x40 + if i32(a) >= i32(Amd64Register.r8) { i32(1) } else { i32(0) } +
+				if i32(b) >= i32(Amd64Register.r8) { i32(4) } else { i32(0) })
 			c.g.write8(0x89)
 		} else {
-			c.g.write8(0x48 + if i32(a) >= i32(Amd64Register.r8) { 1 } else { 0 } +
-				if i32(b) >= i32(Amd64Register.r8) { 4 } else { 0 })
-			if size in [1, 2] {
+			c.g.write8(0x48 + if i32(a) >= i32(Amd64Register.r8) { i32(1) } else { i32(0) } +
+				if i32(b) >= i32(Amd64Register.r8) { i32(4) } else { i32(0) })
+			if int(size) in [1, 2] {
 				c.g.write8(0x0f)
 			}
 			c.g.write8(match true {
@@ -922,15 +922,15 @@ fn (mut c Amd64) mov_extend_reg(a Amd64Register, b Amd64Register, typ ast.Type) 
 	}
 }
 
-fn (mut c Amd64) call_addr_at(addr int, at i64) i64 {
+fn (mut c Amd64) call_addr_at(addr i32, at i64) i64 {
 	// Need to calculate the difference between current position (position after the e8 call)
 	// and the function to call.f
 	// +5 is to get the posistion "e8 xx xx xx xx"
 	// Not sure about the -1.
-	return 0xffffffff - (at + 5 - addr - 1)
+	return 0xffffffff - (at + 5 - i64(addr) - 1)
 }
 
-fn (mut c Amd64) call(addr int) i64 {
+fn (mut c Amd64) call(addr i32) i64 {
 	rel := c.call_addr_at(addr, c.g.pos())
 	c_addr := c.g.pos()
 	// println('call addr=$addr.hex2() rel_addr=$rel.hex2() pos=$g.buf.len')
@@ -942,14 +942,14 @@ fn (mut c Amd64) call(addr int) i64 {
 	return c_addr
 }
 
-fn (mut c Amd64) patch_relative_jmp(pos int, addr i64) {
+fn (mut c Amd64) patch_relative_jmp(pos i32, addr i64) {
 	// Update jmp or cjmp address.
 	// The value is the relative address, difference between current position and the location
 	// after `jxx 00 00 00 00`
-	c.g.write32_at(pos, i32(addr - pos - 4))
+	c.g.write32_at(i64(pos), i32(addr) - pos - 4)
 }
 
-fn (mut c Amd64) extern_call(addr int) {
+fn (mut c Amd64) extern_call(addr i32) {
 	match c.g.pref.os {
 		.linux {
 			c.g.write8(0xff)
@@ -969,7 +969,7 @@ fn (mut c Amd64) extern_call(addr int) {
 			c.g.write8(0xff)
 			c.g.write8(0x15)
 			c.g.write32(addr)
-			c.g.println('call QWORD [rip + 0xffffffff${addr.hex()}]')
+			c.g.println('call QWORD [rip + 0xffffffff${int(addr).hex()}]')
 		}
 		else {
 			c.g.n_error('extern calls not implemented for ${c.g.pref.os}')
@@ -988,10 +988,10 @@ fn (mut c Amd64) gen_syscall(node ast.CallExpr) {
 		}
 		match expr {
 			ast.IntegerLiteral {
-				c.mov(ra[i], expr.val.int())
+				c.mov(ra[i], i32(expr.val.int()))
 			}
 			ast.BoolLiteral {
-				c.mov(ra[i], if expr.val { 1 } else { 0 })
+				c.mov(ra[i], if expr.val { i32(1) } else { i32(0) })
 			}
 			ast.SelectorExpr {
 				mut done := false
@@ -1073,15 +1073,15 @@ pub fn (mut c Amd64) pop(reg Amd64Register) {
 	c.g.stack_depth--
 }
 
-pub fn (mut c Amd64) sub8(reg Amd64Register, val int) {
+pub fn (mut c Amd64) sub8(reg Amd64Register, val i32) {
 	c.g.write8(0x48)
 	c.g.write8(0x83)
 	c.g.write8(0xe8 + i32(reg)) // TODO rax is different?
 	c.g.write8(val)
-	c.g.println('sub8 ${reg},${val.hex2()}')
+	c.g.println('sub8 ${reg},${int(val).hex2()}')
 }
 
-pub fn (mut c Amd64) sub(reg Amd64Register, val int) {
+pub fn (mut c Amd64) sub(reg Amd64Register, val i32) {
 	c.g.write8(0x48)
 	if reg == .rax {
 		c.g.write8(0x2d)
@@ -1090,10 +1090,10 @@ pub fn (mut c Amd64) sub(reg Amd64Register, val int) {
 		c.g.write8(0xe8 + i32(reg))
 	}
 	c.g.write32(val)
-	c.g.println('sub ${reg},${val.hex2()}')
+	c.g.println('sub ${reg},${int(val).hex2()}')
 }
 
-pub fn (mut c Amd64) add(r Register, val int) {
+pub fn (mut c Amd64) add(r Register, val i32) {
 	reg := r as Amd64Register
 	c.g.write8(0x48)
 	if reg == .rax {
@@ -1103,43 +1103,43 @@ pub fn (mut c Amd64) add(r Register, val int) {
 		c.g.write8(0xc0 + i32(reg))
 	}
 	c.g.write32(val)
-	c.g.println('add ${reg},${val.hex2()}')
+	c.g.println('add ${reg},${int(val).hex2()}')
 }
 
-pub fn (mut c Amd64) add8(reg Amd64Register, val int) {
+pub fn (mut c Amd64) add8(reg Amd64Register, val i32) {
 	c.g.write8(0x48)
 	c.g.write8(0x83)
 	c.g.write8(0xc0 + i32(reg))
 	c.g.write8(val)
-	c.g.println('add8 ${reg},${val.hex2()}')
+	c.g.println('add8 ${reg},${int(val).hex2()}')
 }
 
 fn (mut c Amd64) bitand_reg(a Amd64Register, b Amd64Register) {
-	c.g.write8(0x48 + if i32(a) >= i32(Amd64Register.r8) { 1 } else { 0 } +
-		if i32(b) >= i32(Amd64Register.r8) { 4 } else { 0 })
+	c.g.write8(0x48 + if i32(a) >= i32(Amd64Register.r8) { i32(1) } else { i32(0) } +
+		if i32(b) >= i32(Amd64Register.r8) { i32(4) } else { i32(0) })
 	c.g.write8(0x21)
 	c.g.write8(0xc0 + i32(a) % 8 + i32(b) % 8 * 8)
 	c.g.println('and ${a}, ${b}')
 }
 
 fn (mut c Amd64) bitor_reg(a Amd64Register, b Amd64Register) {
-	c.g.write8(0x48 + if i32(a) >= i32(Amd64Register.r8) { 1 } else { 0 } +
-		if i32(b) >= i32(Amd64Register.r8) { 4 } else { 0 })
+	c.g.write8(0x48 + if i32(a) >= i32(Amd64Register.r8) { i32(1) } else { i32(0) } +
+		if i32(b) >= i32(Amd64Register.r8) { i32(4) } else { i32(0) })
 	c.g.write8(0x09)
 	c.g.write8(0xc0 + i32(a) % 8 + i32(b) % 8 * 8)
 	c.g.println('or ${a}, ${b}')
 }
 
 fn (mut c Amd64) bitxor_reg(a Amd64Register, b Amd64Register) {
-	c.g.write8(0x48 + if i32(a) >= i32(Amd64Register.r8) { 1 } else { 0 } +
-		if i32(b) >= i32(Amd64Register.r8) { 4 } else { 0 })
+	c.g.write8(0x48 + if i32(a) >= i32(Amd64Register.r8) { i32(1) } else { i32(0) } +
+		if i32(b) >= i32(Amd64Register.r8) { i32(4) } else { i32(0) })
 	c.g.write8(0x31)
 	c.g.write8(0xc0 + i32(a) % 8 + i32(b) % 8 * 8)
 	c.g.println('xor ${a}, ${b}')
 }
 
 fn (mut c Amd64) bitnot_reg(a Amd64Register) {
-	c.g.write8(0x48 + if i32(a) >= i32(Amd64Register.r8) { 1 } else { 0 })
+	c.g.write8(0x48 + if i32(a) >= i32(Amd64Register.r8) { i32(1) } else { i32(0) })
 	c.g.write8(0xf7)
 	c.g.write8(0xd0 + i32(a) % 8)
 	c.g.println('not ${a}')
@@ -1149,7 +1149,7 @@ fn (mut c Amd64) shl_reg(a Amd64Register, b Amd64Register) {
 	if b != .rcx {
 		c.mov_reg(Amd64Register.rcx, b)
 	}
-	c.g.write8(if i32(a) >= i32(Amd64Register.r8) { 0x49 } else { 0x48 })
+	c.g.write8(if i32(a) >= i32(Amd64Register.r8) { i32(0x49) } else { i32(0x48) })
 	c.g.write8(0xd3)
 	c.g.write8(0xe0 + i32(a) % 8)
 	c.g.println('shl ${a}, ${b}')
@@ -1159,7 +1159,7 @@ fn (mut c Amd64) sar_reg(a Amd64Register, b Amd64Register) {
 	if b != .rcx {
 		c.mov_reg(Amd64Register.rcx, b)
 	}
-	c.g.write8(if i32(a) > 7 { 0x49 } else { 0x48 })
+	c.g.write8(if i32(a) > 7 { i32(0x49) } else { i32(0x48) })
 	c.g.write8(0xd3)
 	c.g.write8(0xf8 + i32(a) % 8)
 	c.g.println('sar ${a}, ${b}')
@@ -1169,7 +1169,7 @@ fn (mut c Amd64) shr_reg(a Amd64Register, b Amd64Register) {
 	if b != .rcx {
 		c.mov_reg(Amd64Register.rcx, b)
 	}
-	c.g.write8(if i32(a) > 7 { 0x49 } else { 0x48 })
+	c.g.write8(if i32(a) > 7 { i32(0x49) } else { i32(0x48) })
 	c.g.write8(0xd3)
 	c.g.write8(0xe8 + i32(a) % 8)
 	c.g.println('shr ${a}, ${b}')
@@ -1202,7 +1202,7 @@ fn (mut c Amd64) leave() {
 }
 
 // not used?
-pub fn (mut c Amd64) var_zero(vo int, size int) {
+pub fn (mut c Amd64) var_zero(vo i32, size i32) {
 	c.mov32(.rcx, size)
 	c.lea_var_to_reg(Amd64Register.rdi, vo)
 	c.g.write8(0xb0)
@@ -1234,7 +1234,7 @@ pub fn (mut c Amd64) cld_repne_scasb() {
 	c.g.println('repne scasb')
 }
 
-pub fn (mut c Amd64) xor(r Amd64Register, v int) {
+pub fn (mut c Amd64) xor(r Amd64Register, v i32) {
 	if v == -1 {
 		match r {
 			.rcx {
@@ -1254,8 +1254,8 @@ pub fn (mut c Amd64) xor(r Amd64Register, v int) {
 }
 
 pub fn (mut c Amd64) test_reg(r Amd64Register) {
-	c.g.write8(0x48 + if i32(r) >= i32(Amd64Register.r8) { 1 } else { 0 } +
-		if i32(r) >= i32(Amd64Register.r8) { 4 } else { 0 })
+	c.g.write8(0x48 + if i32(r) >= i32(Amd64Register.r8) { i32(1) } else { i32(0) } +
+		if i32(r) >= i32(Amd64Register.r8) { i32(4) } else { i32(0) })
 	c.g.write8(0x85)
 	c.g.write8(0xc0 + i32(r) % 8 + i32(r) % 8 * 8)
 	c.g.println('test ${r}, ${r}')
@@ -1279,7 +1279,8 @@ pub fn (mut c Amd64) get_dllcall_addr(import_addr i64) i64 {
 	// return i32(-(0xe00 + c.g.pos() + 2) + import_addr)
 	// return i32(c.g.code_start_pos + import_addr)
 	text_section := c.g.get_pe_section('.text') or { c.g.n_error('no .text section generated') }
-	return 0xfffffffa - (c.g.pos() - c.g.code_start_pos + text_section.header.virtual_address - import_addr)
+	return 0xfffffffa - (i64(c.g.pos()) - i64(c.g.code_start_pos) +
+		i64(text_section.header.virtual_address) - import_addr)
 }
 
 pub fn (mut c Amd64) dllcall(symbol string) {
@@ -1294,7 +1295,7 @@ pub fn (mut c Amd64) dllcall(symbol string) {
 	c.extern_call(i32(call_addr))
 }
 
-fn (mut c Amd64) gen_print(s string, fd int) {
+fn (mut c Amd64) gen_print(s string, fd i32) {
 	if c.g.pref.os == .windows {
 		c.sub(.rsp, 0x38)
 		c.mov(Amd64Register.rcx, -10 - fd)
@@ -1302,7 +1303,7 @@ fn (mut c Amd64) gen_print(s string, fd int) {
 		c.mov_reg(Amd64Register.rcx, Amd64Register.rax)
 		// c.mov64(Amd64Register.rdx, c.g.allocate_string(s, 3))
 		c.lea(.rdx, c.g.allocate_string(s, 3, .abs64))
-		c.mov(Amd64Register.r8, s.len) // string length
+		c.mov(Amd64Register.r8, i32(s.len)) // string length
 		c.g.write([u8(0x4c), 0x8d, 0x4c, 0x24, 0x20])
 		c.g.println('lea r9, [rsp + 0x20]')
 		c.g.write([u8(0x48), 0xc7, 0x44, 0x24, 0x20])
@@ -1313,12 +1314,12 @@ fn (mut c Amd64) gen_print(s string, fd int) {
 		c.mov(Amd64Register.eax, c.g.nsyscall(.write))
 		c.mov(Amd64Register.edi, fd)
 		c.learel(Amd64Register.rsi, c.g.allocate_string(s, 3, .rel32)) // for rsi its 2
-		c.mov(Amd64Register.edx, s.len) // len
+		c.mov(Amd64Register.edx, i32(s.len)) // len
 		c.syscall()
 	}
 }
 
-pub fn (mut c Amd64) gen_print_reg(r Register, n int, fd int) {
+pub fn (mut c Amd64) gen_print_reg(r Register, n i32, fd i32) {
 	str_reg := if c.g.pref.os == .windows { Amd64Register.rdx } else { Amd64Register.rsi }
 	len_reg := if c.g.pref.os == .windows { Amd64Register.r8 } else { Amd64Register.rdx }
 	c.mov_reg(str_reg, r)
@@ -1387,7 +1388,7 @@ fn (mut c Amd64) relpc(dst Amd64Register, src Amd64Register) {
 	}
 }
 
-fn (mut c Amd64) learel(reg Register, val int) {
+fn (mut c Amd64) learel(reg Register, val i32) {
 	c.g.write8(0x48)
 	c.g.write8(0x8d)
 	match reg as Amd64Register {
@@ -1408,7 +1409,7 @@ fn (mut c Amd64) learel(reg Register, val int) {
 	c.g.println('lea ${reg}, rip + ${val}')
 }
 
-fn (mut c Amd64) lea(reg Amd64Register, val int) {
+fn (mut c Amd64) lea(reg Amd64Register, val i32) {
 	c.g.write8(0x48)
 	c.g.write8(0x8d)
 	c.g.write8(0x15)
@@ -1484,7 +1485,7 @@ fn (mut c Amd64) clear_reg(reg Amd64Register) {
 	c.g.println('xor ${reg}, ${reg}')
 }
 
-fn (mut c Amd64) mov(r Register, val int) {
+fn (mut c Amd64) mov(r Register, val i32) {
 	reg := r as Amd64Register
 	match val {
 		-1 {
@@ -1613,8 +1614,8 @@ fn (mut c Amd64) mod_reg(a Amd64Register, b Amd64Register) {
 
 fn (mut c Amd64) sub_reg(a Amd64Register, b Amd64Register) {
 	if i32(a) <= i32(Amd64Register.r15) && i32(b) <= i32(Amd64Register.r15) {
-		c.g.write8(0x48 + if i32(a) >= i32(Amd64Register.r8) { 1 } else { 0 } +
-			if i32(b) >= i32(Amd64Register.r8) { 4 } else { 0 })
+		c.g.write8(0x48 + if i32(a) >= i32(Amd64Register.r8) { i32(1) } else { i32(0) } +
+			if i32(b) >= i32(Amd64Register.r8) { i32(4) } else { i32(0) })
 		c.g.write8(0x29)
 		c.g.write8(0xc0 + i32(a) % 8 + i32(b) % 8 * 8)
 	} else {
@@ -1625,8 +1626,8 @@ fn (mut c Amd64) sub_reg(a Amd64Register, b Amd64Register) {
 
 fn (mut c Amd64) add_reg(a Amd64Register, b Amd64Register) {
 	if i32(a) <= i32(Amd64Register.r15) && i32(b) <= i32(Amd64Register.r15) {
-		c.g.write8(0x48 + if i32(a) >= i32(Amd64Register.r8) { 1 } else { 0 } +
-			if i32(b) >= i32(Amd64Register.r8) { 4 } else { 0 })
+		c.g.write8(0x48 + if i32(a) >= i32(Amd64Register.r8) { i32(1) } else { i32(0) } +
+			if i32(b) >= i32(Amd64Register.r8) { i32(4) } else { i32(0) })
 		c.g.write8(0x01)
 		c.g.write8(0xc0 + i32(a) % 8 + i32(b) % 8 * 8)
 	} else {
@@ -1639,8 +1640,8 @@ fn (mut c Amd64) mov_reg(a_reg Register, b_reg Register) {
 	a := a_reg as Amd64Register
 	b := b_reg as Amd64Register
 	if i32(a) <= i32(Amd64Register.r15) && i32(b) <= i32(Amd64Register.r15) {
-		c.g.write8(0x48 + if i32(a) >= i32(Amd64Register.r8) { 1 } else { 0 } +
-			if i32(b) >= i32(Amd64Register.r8) { 4 } else { 0 })
+		c.g.write8(0x48 + if i32(a) >= i32(Amd64Register.r8) { i32(1) } else { i32(0) } +
+			if i32(b) >= i32(Amd64Register.r8) { i32(4) } else { i32(0) })
 		c.g.write8(0x89)
 		c.g.write8(0xc0 + i32(a) % 8 + i32(b) % 8 * 8)
 	} else {
@@ -1656,7 +1657,7 @@ fn (mut c Amd64) add_store(a Amd64Register, b Amd64Register, size Size) {
 	if size == ._64 {
 		c.g.write8(0x48 + i32(b) / 8 * 4 + i32(a) / 8)
 	}
-	c.g.write8(if size == ._8 { 0x00 } else { 0x01 })
+	c.g.write8(if size == ._8 { i32(0x00) } else { i32(0x01) })
 	c.g.write8(i32(b) % 8 * 8 + i32(a) % 8)
 	c.g.println('add [${a}], ${b}')
 }
@@ -1668,7 +1669,7 @@ fn (mut c Amd64) sub_store(a Amd64Register, b Amd64Register, size Size) {
 	if size == ._64 {
 		c.g.write8(0x48 + i32(b) / 8 * 4 + i32(a) / 8)
 	}
-	c.g.write8(if size == ._8 { 0x28 } else { 0x29 })
+	c.g.write8(if size == ._8 { i32(0x28) } else { i32(0x29) })
 	c.g.write8(i32(b) % 8 * 8 + i32(a) % 8)
 	c.g.println('sub [${a}], ${b}')
 }
@@ -1683,7 +1684,7 @@ fn (mut c Amd64) mul_store(a Amd64Register, b Amd64Register, size Size) {
 			c.g.write8(0x48 + i32(b) / 8 * 4 + i32(a) / 8)
 		}
 		c.g.write16(0xaf0f)
-		c.g.write8(int(b) % 8 * 8 + int(a) % 8)
+		c.g.write8(i32(b) % 8 * 8 + i32(a) % 8)
 		c.g.println('imul ${b}, [${a}]')
 		c.mov_store(a, b, size)
 	}
@@ -1719,14 +1720,14 @@ pub fn (mut c Amd64) call_fn(node ast.CallExpr) {
 	}
 	addr := c.g.fn_addr[n]
 
-	mut reg_args := []int{}
-	mut ssereg_args := []int{}
-	mut stack_args := []int{}
+	mut reg_args := []i32{}
+	mut ssereg_args := []i32{}
+	mut stack_args := []i32{}
 	mut args := []ast.CallArg{cap: node.args.len + 2}
 
 	ts := c.g.table.sym(node.return_type)
 	return_size := c.g.get_type_size(node.return_type)
-	mut return_pos := -1
+	mut return_pos := i32(-1)
 	mut is_struct_return := false
 	if ts.kind in [.struct_, .multi_return] {
 		return_pos = c.g.allocate_by_type('', node.return_type)
@@ -1762,28 +1763,28 @@ pub fn (mut c Amd64) call_fn(node ast.CallExpr) {
 	mut ssereg_left := c.fn_arg_sse_registers.len
 	for i, size in args_size {
 		if is_floats[i] && ssereg_left > 0 {
-			ssereg_args << i
+			ssereg_args << i32(i)
 			ssereg_left--
 			continue
 		}
 		if reg_left > 0 {
 			if size <= 8 {
-				reg_args << i
+				reg_args << i32(i)
 				reg_left--
 				continue
 			} else if size <= 16 && reg_left > 1 {
-				reg_args << i
+				reg_args << i32(i)
 				reg_left -= 2
 				continue
 			}
 		}
-		stack_args << i
+		stack_args << i32(i)
 	}
-	reg_size := arrays.fold(reg_args.map((args_size[it] + 7) / 8), 0, fn (acc int, elem int) int {
-		return acc + elem
+	reg_size := arrays.fold(reg_args.map((args_size[it] + 7) / 8), 0, fn (acc int, elem i32) int {
+		return acc + int(elem)
 	})
-	stack_size := arrays.fold(stack_args.map((args_size[it] + 7) / 8), 0, fn (acc int, elem int) int {
-		return acc + elem
+	stack_size := arrays.fold(stack_args.map((args_size[it] + 7) / 8), 0, fn (acc int, elem i32) int {
+		return acc + int(elem)
 	})
 
 	// not aligned now XOR pushed args will be odd
@@ -1824,7 +1825,8 @@ pub fn (mut c Amd64) call_fn(node ast.CallExpr) {
 			}
 		}
 		if is_floats[i] {
-			if args_size[i] == 8 && node.expected_arg_types[i + args_offset] == ast.f32_type_idx {
+			if args_size[i] == 8
+				&& node.expected_arg_types[int(i) + args_offset] == ast.f32_type_idx {
 				c.g.write32(0xc05a0ff2)
 				c.g.println('cvtsd2ss xmm0, xmm0')
 			}
@@ -1855,7 +1857,7 @@ pub fn (mut c Amd64) call_fn(node ast.CallExpr) {
 	for i in 0 .. ssereg_args.len {
 		c.pop_sse(c.fn_arg_sse_registers[i])
 	}
-	c.mov(Amd64Register.rax, ssereg_args.len)
+	c.mov(Amd64Register.rax, i32(ssereg_args.len))
 	if node.name in c.g.extern_symbols {
 		if c.g.pref.os == .windows {
 			mut symbol := node.name
@@ -1940,7 +1942,7 @@ fn (mut c Amd64) call_builtin(name Builtin) i64 {
 	return call_addr
 }
 
-fn (mut c Amd64) assign_struct_var(ident_var IdentVar, typ ast.Type, s int) {
+fn (mut c Amd64) assign_struct_var(ident_var IdentVar, typ ast.Type, s i32) {
 	// struct types bigger are passed around as a pointer in rax.
 	// we need to dereference and copy the contents one after the other
 	if ident_var !is LocalVar {
@@ -1951,7 +1953,7 @@ fn (mut c Amd64) assign_struct_var(ident_var IdentVar, typ ast.Type, s int) {
 
 	mut size := s
 
-	mut offset := 0
+	mut offset := i32(0)
 	for size >= 8 {
 		c.mov_deref(Amd64Register.rbx, Amd64Register.rax, ast.u64_type_idx)
 		c.mov_reg_to_var(var, Amd64Register.rbx,
@@ -2017,7 +2019,7 @@ fn (mut c Amd64) assign_var(var IdentVar, raw_type ast.Type) {
 	} else if info is ast.Struct && !typ.is_any_kind_of_pointer()
 		&& !raw_type.is_any_kind_of_pointer() {
 		c.assign_struct_var(var, typ, size)
-	} else if size in [1, 2, 4, 8] {
+	} else if int(size) in [1, 2, 4, 8] {
 		match var {
 			LocalVar { c.mov_reg_to_var(var as LocalVar, Amd64Register.rax) }
 			GlobalVar { c.mov_reg_to_var(var as GlobalVar, Amd64Register.rax) }
@@ -2028,37 +2030,37 @@ fn (mut c Amd64) assign_var(var IdentVar, raw_type ast.Type) {
 	}
 }
 
-fn (mut c Amd64) assign_int(node ast.AssignStmt, i int, name string, ident ast.Ident, int_lit ast.IntegerLiteral) {
+fn (mut c Amd64) assign_int(node ast.AssignStmt, i i32, name string, ident ast.Ident, int_lit ast.IntegerLiteral) {
 	match node.op {
 		.plus_assign {
 			c.mov_var_to_reg(Amd64Register.rax, ident)
-			c.add(Amd64Register.rax, int_lit.val.int())
+			c.add(Amd64Register.rax, i32(int_lit.val.int()))
 			c.mov_reg_to_var(ident, Amd64Register.rax)
 		}
 		.minus_assign {
 			c.mov_var_to_reg(Amd64Register.rax, ident)
-			c.sub(.rax, int_lit.val.int())
+			c.sub(.rax, i32(int_lit.val.int()))
 			c.mov_reg_to_var(ident, Amd64Register.rax)
 		}
 		.mult_assign {
 			c.mov_var_to_reg(Amd64Register.rax, ident)
-			c.mov64(Amd64Register.rdx, int_lit.val.int())
+			c.mov64(Amd64Register.rdx, i64(int_lit.val.int()))
 			c.mul_reg(.rax, .rdx)
 			c.mov_reg_to_var(ident, Amd64Register.rax)
 		}
 		.div_assign {
 			c.mov_var_to_reg(Amd64Register.rax, ident)
-			c.mov64(Amd64Register.rdx, int_lit.val.int())
+			c.mov64(Amd64Register.rdx, i64(int_lit.val.int()))
 			c.div_reg(.rax, .rdx)
 			c.mov_reg_to_var(ident, Amd64Register.rax)
 		}
 		.decl_assign {
-			c.allocate_var(name, 8, int_lit.val.int())
+			c.allocate_var(name, 8, i32(int_lit.val.int()))
 		}
 		.assign {
 			match node.left[i] {
 				ast.Ident {
-					c.mov(Amd64Register.rax, int_lit.val.int())
+					c.mov(Amd64Register.rax, i32(int_lit.val.int()))
 					c.mov_reg_to_var(ident, Amd64Register.rax)
 				}
 				else {
@@ -2074,7 +2076,7 @@ fn (mut c Amd64) assign_int(node ast.AssignStmt, i int, name string, ident ast.I
 	}
 }
 
-fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, name string, ident ast.Ident) {
+fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i i32, right ast.Expr, name string, ident ast.Ident) {
 	match right {
 		ast.IntegerLiteral {
 			c.assign_int(node, i, name, ident, right)
@@ -2184,7 +2186,7 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, n
 			.minus_assign { c.sub_reg(.rbx, .rax) }
 			.div_assign { c.div_reg(.rbx, .rax) }
 			.mult_assign { c.mul_reg(.rbx, .rax) }
-			else { c.g.n_error('unexpected assignment operator ${node.op} for int') }
+			else { c.g.n_error('unexpected assignment operator ${node.op} for i32') }
 		}
 
 		c.mov_reg_to_var(ident, Amd64Register.rbx)
@@ -2203,7 +2205,7 @@ fn (mut c Amd64) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, n
 			dest := c.g.get_var_offset(var.name)
 			if ie.index is ast.IntegerLiteral {
 				index := ie.index
-				ie_offset := index.val.int() * 8
+				ie_offset := index.val.i32() * 8
 				c.mov_var_to_reg(Amd64Register.rax, var,
 					typ: ast.i64_type_idx
 					offset: ie_offset
@@ -2240,14 +2242,14 @@ fn (mut c Amd64) gen_type_promotion(from ast.Type, to ast.Type, option Amd64Regi
 			}
 			// if castee is in the range of i64
 			prefix, inst := if c.g.get_type_size(to) == 4 {
-				0xf3, 's'
+				i32(0xf3), 's'
 			} else {
-				0xf2, 'd'
+				i32(0xf2), 'd'
 			}
 			c.g.write8(prefix)
-			c.g.write8(0x48 + i32(option.ssereg) / 8 * 4 + i32(option.reg) / 8)
+			c.g.write8(i32(0x48) + i32(option.ssereg) / 8 * 4 + i32(option.reg) / 8)
 			c.g.write16(0x2a0f)
-			c.g.write8(0xc0 + i32(option.ssereg) % 8 * 8 + i32(option.reg) % 8)
+			c.g.write8(i32(0xc0) + i32(option.ssereg) % 8 * 8 + i32(option.reg) % 8)
 			c.g.println('cvtsi2s${inst} ${option.ssereg}, ${option.reg}')
 			addr2 := c.jmp(0)
 			c.g.labels.patches << LabelPatch{
@@ -2263,17 +2265,17 @@ fn (mut c Amd64) gen_type_promotion(from ast.Type, to ast.Type, option Amd64Regi
 			c.g.println('and ebx, 0x1')
 			c.bitor_reg(.rax, .rbx)
 			c.g.write8(prefix)
-			c.g.write8(0x48 + i32(option.ssereg) / 8 * 4 + i32(option.reg) / 8)
+			c.g.write8(i32(0x48) + i32(option.ssereg) / 8 * 4 + i32(option.reg) / 8)
 			c.g.write16(0x2a0f)
-			c.g.write8(0xc0 + i32(option.ssereg) % 8 * 8 + i32(option.reg) % 8)
+			c.g.write8(i32(0xc0) + i32(option.ssereg) % 8 * 8 + i32(option.reg) % 8)
 			c.g.println('cvtsi2s${inst} ${option.ssereg}, ${option.reg}')
 			c.add_sse(option.ssereg, option.ssereg, to)
 			c.g.labels.addrs[label2] = c.g.pos()
 		} else {
 			prefix, inst := if c.g.get_type_size(to) == 4 {
-				0xf3, 's'
+				i32(0xf3), 's'
 			} else {
-				0xf2, 'd'
+				i32(0xf2), 'd'
 			}
 			c.g.write8(prefix)
 			c.g.write8(0x48 + i32(option.ssereg) / 8 * 4 + i32(option.reg) / 8)
@@ -2302,7 +2304,7 @@ fn (mut c Amd64) return_stmt(node ast.Return) {
 			ast.StringLiteral {
 				s = c.g.eval_str_lit_escape_codes(node.exprs[0] as ast.StringLiteral)
 				c.g.expr(node.exprs[0])
-				c.mov64(Amd64Register.rax, c.g.allocate_string(s, 2, .abs64))
+				c.mov64(Amd64Register.rax, i64(c.g.allocate_string(s, 2, .abs64)))
 			}
 			else {
 				c.g.expr(node.exprs[0])
@@ -2433,7 +2435,7 @@ fn (mut c Amd64) return_stmt(node ast.Return) {
 	}
 
 	// jump to return label
-	label := 0
+	label := i32(0)
 	pos := c.jmp(0)
 	c.g.labels.patches << LabelPatch{
 		id: label
@@ -2471,7 +2473,7 @@ fn (mut c Amd64) multi_assign_stmt(node ast.AssignStmt) {
 	}
 	c.mov_reg(Amd64Register.rdx, Amd64Register.rax)
 
-	mut current_offset := 0
+	mut current_offset := i32(0)
 	for i, offset in multi_return.offsets {
 		if node.left[i] is ast.Ident {
 			name := (node.left[i] as ast.Ident).name
@@ -2564,7 +2566,7 @@ fn (mut c Amd64) assign_stmt(node ast.AssignStmt) {
 		// this branch would be removed, but left for compatibility
 		if left is ast.Ident && !typ.is_pure_float() {
 			ident := left as ast.Ident
-			c.assign_right_expr(node, i, right, ident.name, ident)
+			c.assign_right_expr(node, i32(i), right, ident.name, ident)
 			continue
 		}
 		if left is ast.Ident && node.op == .decl_assign {
@@ -2764,7 +2766,7 @@ fn (mut c Amd64) fp_infix_expr(node ast.InfixExpr, left_type ast.Type) {
 	match node.op {
 		.eq, .ne {
 			c.g.write32(0xc1c20ff3)
-			c.g.write8(if node.op == .eq { 0x00 } else { 0x04 })
+			c.g.write8(if node.op == .eq { i32(0x00) } else { i32(0x04) })
 			inst := if node.op == .eq { 'cmpeqss' } else { 'cmpneqss' }
 			c.g.println('${inst} xmm0, xmm1')
 			c.mov_ssereg_to_reg(.rax, .xmm0, ast.f32_type_idx)
@@ -2928,8 +2930,8 @@ fn (mut c Amd64) trap() {
 fn (mut c Amd64) gen_asm_stmt(asm_node ast.AsmStmt) {
 	// inline assembly using vasm
 	c.g.println('// asm inline')
-	mut reg := 0
-	mut imm := 0
+	mut reg := i32(0)
+	mut imm := i32(0)
 	mut regname := ''
 	// dump(asm_node)
 	for t in asm_node.templates {
@@ -2944,20 +2946,20 @@ fn (mut c Amd64) gen_asm_stmt(asm_node ast.AsmStmt) {
 			match a {
 				ast.AsmRegister {
 					regname = a.name
-					reg = native.amd64_cpuregs.index(regname)
+					reg = i32(native.amd64_cpuregs.index(regname))
 					line += a.typ.str()
 				}
 				ast.IntegerLiteral {
 					line += a.val
-					imm = a.val.int()
+					imm = i32(a.val.int())
 				}
 				ast.BoolLiteral {
 					line += a.val.str()
-					imm = if a.val { 1 } else { 0 }
+					imm = if a.val { i32(1) } else { i32(0) }
 				}
 				ast.CharLiteral {
 					line += a.val.str()
-					imm = a.val.int()
+					imm = i32(a.val.int())
 				}
 				/*
 				ast.AsmAddressing {
@@ -3024,7 +3026,7 @@ fn (mut c Amd64) gen_asm_stmt(asm_node ast.AsmStmt) {
 				c.g.write8(byt(imm, 1))
 				c.g.write8(byt(imm, 2))
 				c.g.write8(byt(imm, 3))
-				c.g.println('mov ${reg}, ${imm}')
+				c.g.println('mov ${int(reg)}, ${int(imm)}')
 			}
 			else {
 				c.g.v_error('unsupported instruction ${t.name}', asm_node.pos)
@@ -3033,7 +3035,7 @@ fn (mut c Amd64) gen_asm_stmt(asm_node ast.AsmStmt) {
 	}
 }
 
-fn (mut c Amd64) cjmp_notop(op token.Kind) int {
+fn (mut c Amd64) cjmp_notop(op token.Kind) i32 {
 	return match op {
 		.gt {
 			c.cjmp(.jle)
@@ -3053,7 +3055,7 @@ fn (mut c Amd64) cjmp_notop(op token.Kind) int {
 	}
 }
 
-fn (mut c Amd64) cjmp_op(op token.Kind) int {
+fn (mut c Amd64) cjmp_op(op token.Kind) i32 {
 	return match op {
 		.gt {
 			c.cjmp(.jg)
@@ -3086,9 +3088,9 @@ fn (mut c Amd64) fn_decl(node ast.FnDecl) {
 	c.sub(.rsp, 0)
 
 	// Copy values from registers to local vars (calling convention)
-	mut reg_args := []int{}
-	mut ssereg_args := []int{}
-	mut stack_args := []int{}
+	mut reg_args := []i32{}
+	mut ssereg_args := []i32{}
+	mut stack_args := []i32{}
 	mut params := []ast.Param{cap: node.params.len + 2}
 
 	// The first parameter is an address of returned struct if size > 16
@@ -3112,22 +3114,22 @@ fn (mut c Amd64) fn_decl(node ast.FnDecl) {
 	mut ssereg_left := c.fn_arg_sse_registers.len
 	for i, size in args_size {
 		if is_floats[i] && ssereg_left > 0 {
-			ssereg_args << i
+			ssereg_args << i32(i)
 			ssereg_left--
 			continue
 		}
 		if reg_left > 0 {
 			if size <= 8 {
-				reg_args << i
+				reg_args << i32(i)
 				reg_left--
 				continue
 			} else if size <= 16 && reg_left > 1 {
-				reg_args << i
+				reg_args << i32(i)
 				reg_left -= 2
 				continue
 			}
 		}
-		stack_args << i
+		stack_args << i32(i)
 	}
 
 	// define and copy args on register
@@ -3156,7 +3158,7 @@ fn (mut c Amd64) fn_decl(node ast.FnDecl) {
 		c.mov_ssereg_to_var(LocalVar{ offset: offset, typ: params[i].typ }, c.fn_arg_sse_registers[idx])
 	}
 	// define args on stack
-	mut offset := -2
+	mut offset := i32(-2)
 	for i in stack_args {
 		name := params[i].name
 		c.g.var_offset[name] = offset * 8
@@ -3206,13 +3208,13 @@ pub fn (mut c Amd64) builtin_decl(builtin BuiltinFn) {
 	c.leave()
 }
 
-pub fn (mut c Amd64) allocate_var_two_step(name string, size int, initial_val int) int {
-	// TODO: replace int by i64 or bigger
+pub fn (mut c Amd64) allocate_var_two_step(name string, size i32, initial_val i32) i32 {
+	// TODO: replace i32 by i64 or bigger
 	c.allocate_var(name, size - 8, 0)
 	return c.allocate_var(name, 8, initial_val)
 }
 
-pub fn (mut c Amd64) allocate_var(name string, size int, initial_val int) int {
+pub fn (mut c Amd64) allocate_var(name string, size i32, initial_val i32) i32 {
 	if size > 8 {
 		return c.allocate_var_two_step(name, size, initial_val)
 	}
@@ -3220,40 +3222,40 @@ pub fn (mut c Amd64) allocate_var(name string, size int, initial_val int) int {
 	padding := (size - c.g.stack_var_pos % size) % size
 	n := c.g.stack_var_pos + size + padding
 	is_far_var := n > 0x80 || n < -0x7f
-	far_var_offset := if is_far_var { 0x40 } else { 0 }
+	far_var_offset := if is_far_var { i32(0x40) } else { i32(0) }
 	// `a := 3`  => `mov DWORD [rbp-0x4],0x3`
 	match size {
 		1 {
 			// BYTE
 			c.g.write8(0xc6)
-			c.g.write8(0x45 + far_var_offset)
+			c.g.write8(i32(0x45) + far_var_offset)
 		}
 		2 {
 			// WORD
 			c.g.write8(0x66)
 			c.g.write8(0xc7)
-			c.g.write8(0x45 + far_var_offset)
+			c.g.write8(i32(0x45) + far_var_offset)
 		}
 		4 {
 			// DWORD
 			c.g.write8(0xc7)
-			c.g.write8(0x45 + far_var_offset)
+			c.g.write8(i32(0x45) + far_var_offset)
 		}
 		8 {
 			// QWORD
 			c.g.write8(0x48)
 			c.g.write8(0xc7)
-			c.g.write8(0x45 + far_var_offset)
+			c.g.write8(i32(0x45) + far_var_offset)
 		}
 		else {
-			c.g.n_error('allocate_var: bad size ${size}')
+			c.g.n_error('allocate_var: bad size ${int(size)}')
 		}
 	}
 	// Generate N in `[rbp-N]`
 	if is_far_var {
 		c.g.write32(i32((0xffffffff - i64(n) + 1) % 0x100000000))
 	} else {
-		c.g.write8((0xff - n + 1) % 0x100)
+		c.g.write8(i32((0xff - n + 1) % 0x100))
 	}
 	c.g.stack_var_pos += size + padding
 	c.g.var_offset[name] = c.g.stack_var_pos
@@ -3274,16 +3276,16 @@ pub fn (mut c Amd64) allocate_var(name string, size int, initial_val int) int {
 			c.g.write32(initial_val) // fixme: 64-bit segfaulting
 		}
 		else {
-			c.g.n_error('allocate_var: bad size ${size}')
+			c.g.n_error('allocate_var: bad size ${int(size)}')
 		}
 	}
 
 	// println('allocate_var(size=$size, initial_val=$initial_val)')
-	c.g.println('mov [rbp-${n.hex2()}], ${initial_val} ; Allocate var `${name}`')
+	c.g.println('mov [rbp-${int(n).hex2()}], ${initial_val} ; Allocate var `${name}`')
 	return c.g.stack_var_pos
 }
 
-fn (mut c Amd64) zero_fill(size int, var LocalVar) {
+fn (mut c Amd64) zero_fill(size i32, var LocalVar) {
 	mut left := if size >= 16 {
 		c.mov(Amd64Register.rax, 0)
 		c.mov(Amd64Register.rcx, size / 8)
@@ -3426,7 +3428,7 @@ fn (mut c Amd64) convert_bool_to_string(r Register) {
 	c.g.println('; label ${end_label}')
 }
 
-fn (mut c Amd64) convert_rune_to_string(reg Register, buffer int, var Var, config VarConfig) {
+fn (mut c Amd64) convert_rune_to_string(reg Register, buffer i32, var Var, config VarConfig) {
 	c.lea_var_to_reg(reg, buffer)
 
 	match reg as Amd64Register {
@@ -3608,7 +3610,7 @@ fn (mut c Amd64) reverse_string(r Register) {
 }
 
 fn (mut c Amd64) gen_match_expr(expr ast.MatchExpr) {
-	branch_labels := []int{len: expr.branches.len, init: c.g.labels.new_label() + index * 0} // call new_label for all elements in the array
+	branch_labels := []i32{len: expr.branches.len, init: c.g.labels.new_label() + i32(index * 0)} // call new_label for all elements in the array
 	end_label := c.g.labels.new_label()
 
 	if expr.is_sum_type {
@@ -3618,10 +3620,10 @@ fn (mut c Amd64) gen_match_expr(expr ast.MatchExpr) {
 	}
 	c.push(Amd64Register.rax)
 
-	mut else_label := 0
+	mut else_label := i32(0)
 	for i, branch in expr.branches {
 		if branch.is_else {
-			else_label = branch_labels[i]
+			else_label = branch_labels[int(i)]
 		} else {
 			for cond in branch.exprs {
 				match cond {
@@ -3641,7 +3643,7 @@ fn (mut c Amd64) gen_match_expr(expr ast.MatchExpr) {
 						c.g.println('test bl, bl')
 						then_addr := c.cjmp(.jne)
 						c.g.labels.patches << LabelPatch{
-							id: branch_labels[i]
+							id: branch_labels[int(i)]
 							pos: then_addr
 						}
 						c.push(Amd64Register.rdx)
@@ -3652,7 +3654,7 @@ fn (mut c Amd64) gen_match_expr(expr ast.MatchExpr) {
 						c.cmp_reg(.rax, .rdx)
 						then_addr := c.cjmp(.je)
 						c.g.labels.patches << LabelPatch{
-							id: branch_labels[i]
+							id: branch_labels[int(i)]
 							pos: then_addr
 						}
 						c.push(Amd64Register.rdx)
@@ -3699,20 +3701,20 @@ fn (mut c Amd64) mov_ssereg_to_var(var Var, reg Amd64SSERegister, config VarConf
 			is_far_var := offset > 0x80 || offset < -0x7f
 			typ := c.g.unwrap(if config.typ == 0 { var.typ } else { config.typ })
 
-			far_var_offset := if is_far_var { 0x40 } else { 0 }
-			c.g.write8(if typ == ast.f32_type_idx { 0xf3 } else { 0xf2 })
+			far_var_offset := if is_far_var { i32(0x40) } else { i32(0) }
+			c.g.write8(if typ == ast.f32_type_idx { i32(0xf3) } else { i32(0xf2) })
 			if i32(reg) >= i32(Amd64SSERegister.xmm8) {
 				c.g.write8(0x44)
 			}
 			c.g.write16(0x110f)
-			c.g.write8(0x45 + i32(reg) % 8 * 8 + far_var_offset)
+			c.g.write8(i32(0x45) + i32(reg) % 8 * 8 + far_var_offset)
 			if is_far_var {
 				c.g.write32(i32((0xffffffff - i64(offset) + 1) % 0x100000000))
 			} else {
-				c.g.write8((0xff - offset + 1) % 0x100)
+				c.g.write8(i32((0xff - offset + 1) % 0x100))
 			}
 			inst := if typ == ast.f32_type_idx { 'movss' } else { 'movsd' }
-			c.g.println('${inst} [rbp-${offset.hex2()}], ${reg}')
+			c.g.println('${inst} [rbp-${int(offset).hex2()}], ${reg}')
 		}
 		GlobalVar {
 			// TODO
@@ -3743,20 +3745,20 @@ fn (mut c Amd64) mov_var_to_ssereg(reg Amd64SSERegister, var Var, config VarConf
 			is_far_var := offset > 0x80 || offset < -0x7f
 			typ := c.g.unwrap(if config.typ == 0 { var.typ } else { config.typ })
 
-			far_var_offset := if is_far_var { 0x40 } else { 0 }
-			c.g.write8(if typ == ast.f32_type_idx { 0xf3 } else { 0xf2 })
+			far_var_offset := if is_far_var { i32(0x40) } else { i32(0) }
+			c.g.write8(if typ == ast.f32_type_idx { i32(0xf3) } else { i32(0xf2) })
 			if i32(reg) >= i32(Amd64SSERegister.xmm8) {
 				c.g.write8(0x44)
 			}
 			c.g.write16(0x100f)
-			c.g.write8(0x45 + i32(reg) % 8 * 8 + far_var_offset)
+			c.g.write8(i32(0x45) + i32(reg) % 8 * 8 + far_var_offset)
 			if is_far_var {
 				c.g.write32(i32((0xffffffff - i64(offset) + 1) % 0x100000000))
 			} else {
-				c.g.write8((0xff - offset + 1) % 0x100)
+				c.g.write8(i32((0xff - offset + 1) % 0x100))
 			}
 			inst := if typ == ast.f32_type_idx { 'movss' } else { 'movsd' }
-			c.g.println('${inst} ${reg}, [rbp-${offset.hex2()}]')
+			c.g.println('${inst} ${reg}, [rbp-${int(offset).hex2()}]')
 		}
 		GlobalVar {
 			// TODO
@@ -3767,25 +3769,25 @@ fn (mut c Amd64) mov_var_to_ssereg(reg Amd64SSERegister, var Var, config VarConf
 fn (mut c Amd64) mov_ssereg(a Amd64SSERegister, b Amd64SSERegister) {
 	c.g.write8(0xf2)
 	if i32(a) >= i32(Amd64SSERegister.xmm8) || i32(b) >= i32(Amd64SSERegister.xmm8) {
-		c.g.write8(0x40 + i32(a) / 8 * 4 + i32(b) / 8)
+		c.g.write8(i32(0x40) + i32(a) / 8 * 4 + i32(b) / 8)
 	}
 	c.g.write16(0x100f)
-	c.g.write8(0xc0 + i32(a) % 8 * 8 + i32(b) % 8)
+	c.g.write8(i32(0xc0) + i32(a) % 8 * 8 + i32(b) % 8)
 	c.g.println('movsd ${a}, ${b}')
 }
 
 fn (mut c Amd64) mov_ssereg_to_reg(a Amd64Register, b Amd64SSERegister, typ ast.Type) {
 	c.g.write8(0x66)
 	rex_base, inst := if typ == ast.f32_type_idx {
-		0x40, 'movd'
+		i32(0x40), 'movd'
 	} else {
-		0x48, 'movq'
+		i32(0x48), 'movq'
 	}
 	if rex_base == 0x48 || i32(a) >= i32(Amd64Register.r8) || i32(b) >= i32(Amd64SSERegister.xmm8) {
 		c.g.write8(rex_base + i32(a) / 8 * 4 + i32(b) / 8)
 	}
 	c.g.write16(0x7e0f)
-	c.g.write8(0xc0 + i32(a) % 8 * 8 + i32(b) % 8)
+	c.g.write8(i32(0xc0) + i32(a) % 8 * 8 + i32(b) % 8)
 	c.g.println('${inst} ${a}, ${b}')
 }
 
@@ -3803,27 +3805,27 @@ fn (mut c Amd64) load_fp(f f64) {
 fn (mut c Amd64) mov_reg_to_ssereg(a Amd64SSERegister, b Amd64Register, typ ast.Type) {
 	c.g.write8(0x66)
 	rex_base, inst := if typ == ast.f32_type_idx {
-		0x40, 'movd'
+		i32(0x40), 'movd'
 	} else {
-		0x48, 'movq'
+		i32(0x48), 'movq'
 	}
 	if rex_base == 0x48 || i32(a) >= i32(Amd64SSERegister.xmm8) || i32(b) >= i32(Amd64Register.r8) {
 		c.g.write8(rex_base + i32(a) / 8 * 4 + i32(b) / 8)
 	}
 	c.g.write16(0x6e0f)
-	c.g.write8(0xc0 + i32(a) % 8 * 8 + i32(b) % 8)
+	c.g.write8(i32(0xc0) + i32(a) % 8 * 8 + i32(b) % 8)
 	c.g.println('${inst} ${a}, ${b}')
 }
 
 fn (mut c Amd64) mov_deref_sse(a Amd64SSERegister, b Amd64Register, typ ast.Type) {
 	op, inst, len := if typ == ast.f32_type_idx {
-		0xf3, 'movss', 'DWORD'
+		i32(0xf3), 'movss', 'DWORD'
 	} else {
-		0xf2, 'movsd', 'QWORD'
+		i32(0xf2), 'movsd', 'QWORD'
 	}
 	c.g.write8(op)
 	if i32(a) >= i32(Amd64SSERegister.xmm8) || i32(b) >= i32(Amd64Register.r8) {
-		c.g.write8(0x40 + i32(a) / 8 * 4 + i32(b) / 8)
+		c.g.write8(i32(0x40) + i32(a) / 8 * 4 + i32(b) / 8)
 	}
 	c.g.write16(0x100f)
 	c.g.write8(i32(a) % 8 * 8 + i32(b) % 8)
@@ -3831,45 +3833,45 @@ fn (mut c Amd64) mov_deref_sse(a Amd64SSERegister, b Amd64Register, typ ast.Type
 }
 
 fn (mut c Amd64) add_sse(a Amd64SSERegister, b Amd64SSERegister, typ ast.Type) {
-	c.g.write8(if typ == ast.f32_type_idx { 0xf3 } else { 0xf2 })
+	c.g.write8(if typ == ast.f32_type_idx { i32(0xf3) } else { i32(0xf2) })
 	if i32(a) >= i32(Amd64SSERegister.xmm8) || i32(b) >= i32(Amd64SSERegister.xmm8) {
-		c.g.write8(0x40 + i32(a) / 8 * 4 + i32(b) / 8)
+		c.g.write8(i32(0x40) + i32(a) / 8 * 4 + i32(b) / 8)
 	}
 	c.g.write16(0x580f)
-	c.g.write8(0xc0 + i32(a) % 8 * 8 + i32(b) % 8)
+	c.g.write8(i32(0xc0) + i32(a) % 8 * 8 + i32(b) % 8)
 	inst := if typ == ast.f32_type_idx { 'addss' } else { 'addsd' }
 	c.g.println('${inst} ${a}, ${b}')
 }
 
 fn (mut c Amd64) sub_sse(a Amd64SSERegister, b Amd64SSERegister, typ ast.Type) {
-	c.g.write8(if typ == ast.f32_type_idx { 0xf3 } else { 0xf2 })
+	c.g.write8(if typ == ast.f32_type_idx { i32(0xf3) } else { i32(0xf2) })
 	if i32(a) >= i32(Amd64SSERegister.xmm8) || i32(b) >= i32(Amd64SSERegister.xmm8) {
-		c.g.write8(0x40 + i32(a) / 8 * 4 + i32(b) / 8)
+		c.g.write8(i32(0x40) + i32(a) / 8 * 4 + i32(b) / 8)
 	}
 	c.g.write16(0x5c0f)
-	c.g.write8(0xc0 + i32(a) % 8 * 8 + i32(b) % 8)
+	c.g.write8(i32(0xc0) + i32(a) % 8 * 8 + i32(b) % 8)
 	inst := if typ == ast.f32_type_idx { 'subss' } else { 'subsd' }
 	c.g.println('${inst} ${a}, ${b}')
 }
 
 fn (mut c Amd64) mul_sse(a Amd64SSERegister, b Amd64SSERegister, typ ast.Type) {
-	c.g.write8(if typ == ast.f32_type_idx { 0xf3 } else { 0xf2 })
+	c.g.write8(if typ == ast.f32_type_idx { i32(0xf3) } else { i32(0xf2) })
 	if i32(a) >= i32(Amd64SSERegister.xmm8) || i32(b) >= i32(Amd64SSERegister.xmm8) {
-		c.g.write8(0x40 + i32(a) / 8 * 4 + i32(b) / 8)
+		c.g.write8(i32(0x40) + i32(a) / 8 * 4 + i32(b) / 8)
 	}
 	c.g.write16(0x590f)
-	c.g.write8(0xc0 + i32(a) % 8 * 8 + i32(b) % 8)
+	c.g.write8(i32(0xc0) + i32(a) % 8 * 8 + i32(b) % 8)
 	inst := if typ == ast.f32_type_idx { 'mulss' } else { 'mulsd' }
 	c.g.println('${inst} ${a}, ${b}')
 }
 
 fn (mut c Amd64) div_sse(a Amd64SSERegister, b Amd64SSERegister, typ ast.Type) {
-	c.g.write8(if typ == ast.f32_type_idx { 0xf3 } else { 0xf2 })
+	c.g.write8(if typ == ast.f32_type_idx { i32(0xf3) } else { i32(0xf2) })
 	if i32(a) >= i32(Amd64SSERegister.xmm8) || i32(b) >= i32(Amd64SSERegister.xmm8) {
-		c.g.write8(0x40 + i32(a) / 8 * 4 + i32(b) / 8)
+		c.g.write8(i32(0x40) + i32(a) / 8 * 4 + i32(b) / 8)
 	}
 	c.g.write16(0x5e0f)
-	c.g.write8(0xc0 + i32(a) % 8 * 8 + i32(b) % 8)
+	c.g.write8(i32(0xc0) + i32(a) % 8 * 8 + i32(b) % 8)
 	inst := if typ == ast.f32_type_idx { 'divss' } else { 'divsd' }
 	c.g.println('${inst} ${a}, ${b}')
 }
@@ -3879,10 +3881,10 @@ fn (mut c Amd64) cmp_sse(a Amd64SSERegister, b Amd64SSERegister, typ ast.Type) {
 		c.g.write8(0x66)
 	}
 	if i32(a) >= i32(Amd64SSERegister.xmm8) || i32(b) >= i32(Amd64SSERegister.xmm8) {
-		c.g.write8(0x40 + i32(a) / 8 * 4 + i32(b) / 8)
+		c.g.write8(i32(0x40) + i32(a) / 8 * 4 + i32(b) / 8)
 	}
 	c.g.write16(0x2e0f)
-	c.g.write8(0xc0 + i32(a) % 8 * 8 + i32(b) % 8)
+	c.g.write8(i32(0xc0) + i32(a) % 8 * 8 + i32(b) % 8)
 	inst := if typ == ast.f32_type_idx { 'ucomiss' } else { 'ucomisd' }
 	c.g.println('${inst} ${a}, ${b}')
 }
@@ -3895,7 +3897,7 @@ fn (mut c Amd64) push_sse(reg Amd64SSERegister) {
 		c.g.write8(0x44)
 	}
 	c.g.write16(0x110f)
-	c.g.write8(0x04 + i32(reg) % 8 * 8)
+	c.g.write8(i32(0x04) + i32(reg) % 8 * 8)
 	c.g.write8(0x24)
 	c.g.println('movsd [rsp], ${reg}')
 	c.is_16bit_aligned = !c.is_16bit_aligned
@@ -3909,7 +3911,7 @@ fn (mut c Amd64) pop_sse(reg Amd64SSERegister) {
 		c.g.write8(0x44)
 	}
 	c.g.write16(0x100f)
-	c.g.write8(0x04 + i32(reg) % 8 * 8)
+	c.g.write8(i32(0x04) + i32(reg) % 8 * 8)
 	c.g.write8(0x24)
 	c.g.println('movsd ${reg}, [rsp]')
 	c.g.write32(0x08c48348)
@@ -4080,6 +4082,6 @@ fn (mut c Amd64) cmp_to_stack_top(reg Register) {
 }
 
 // Temporary!
-fn (mut c Amd64) adr(r Arm64Register, delta int) {
+fn (mut c Amd64) adr(r Arm64Register, delta i32) {
 	panic('`adr` instruction not supported with amd64')
 }

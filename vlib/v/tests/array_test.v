@@ -5,7 +5,7 @@ enum Foo {
 	fourth
 }
 
-const enum_size = int(Foo.third)
+const enum_size = i32(Foo.third)
 
 fn test_enum_val_as_fixed_array_size() {
 	arr1 := [int(Foo.first)]int{}
@@ -44,7 +44,7 @@ fn test_for_in_shared_array_named_array() {
 
 fn test_fixed_array_to_dynamic_array() {
 	y := [1, 2, 3]!
-	mut x := y[..]
+	mut x := unsafe { y[..] }
 	x << 4
 	assert x.len == 4
 }
