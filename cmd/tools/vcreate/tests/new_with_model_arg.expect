@@ -7,7 +7,7 @@ set v_root [lindex $argv 0]
 set project_name [lindex $argv 1]
 set model [lindex $argv 2]
 
-spawn $v_root/v run $v_root/cmd/tools/vcreate/ new $project_name $model
+spawn $v_root/v new $project_name $model
 
 expect "Input your project version: (0.0.0) " { send "0.0.1\r" } timeout { exit 1 }
 expect "Input your project license: (MIT) " { send "\r" } timeout { exit 1 }
