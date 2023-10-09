@@ -14,6 +14,7 @@ fn C.photon_init_default() int
 fn C.photon_thread_create(f voidptr, arg voidptr)
 fn C.photon_sleep_s(n int)
 fn C.photon_sleep_ms(n int)
+fn C.set_photon_thread_stack_allocator(fn (voidptr, int) voidptr, fn (voidptr, voidptr, int))
 
 // sleep is coroutine-safe version of time.sleep()
 pub fn sleep(duration time.Duration) {
@@ -21,6 +22,20 @@ pub fn sleep(duration time.Duration) {
 }
 
 fn init() {
+	alloc := fn (_ voidptr, stack_size int) voidptr {
+		unsafe {
+			stack_ptr := malloc(stack_size)
+			C.GC_add_roots(stack_ptr, charptr(stack_ptr) + stack_size)
+			return stack_ptr
+		}
+	}
+	dealloc := fn (_ voidptr, stack_ptr voidptr, stack_size int) {
+		unsafe {
+			C.GC_add_roots(stack_ptr, charptr(stack_ptr) + stack_size)
+			free(stack_ptr)
+		}
+	}
+	C.set_photon_thread_stack_allocator(alloc, dealloc)
 	ret := C.photon_init_default()
 	if ret < 0 {
 		panic('failed to initialize coroutines via photon (ret=${ret})')

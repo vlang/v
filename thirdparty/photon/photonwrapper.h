@@ -24,8 +24,10 @@ int photon_init_default();
 void photon_thread_create(void* (* f)(void*), void* arg);
 void photon_sleep_s(int n);
 void photon_sleep_ms(int n);
-
-
+void set_photon_thread_stack_allocator(
+    void* (*alloc_func)(void*, size_t),
+    void (*dealloc_func)(void*, void*, size_t)
+);
 
 #ifdef __cplusplus
 }
