@@ -609,7 +609,7 @@ pub const (
 	signed_integer_type_idxs   = [char_type_idx, i8_type_idx, i16_type_idx, int_type_idx,
 		i64_type_idx, i32_type_idx, isize_type_idx]
 	unsigned_integer_type_idxs = [u8_type_idx, u16_type_idx, u32_type_idx, u64_type_idx,
-		usize_type_idx, i32_type_idx]
+		usize_type_idx]
 	// C will promote any type smaller than int to int in an expression
 	int_promoted_type_idxs     = [char_type_idx, i8_type_idx, i16_type_idx, u8_type_idx, u16_type_idx]
 	float_type_idxs            = [f32_type_idx, f64_type_idx, float_literal_type_idx]

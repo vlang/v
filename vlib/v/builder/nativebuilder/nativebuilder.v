@@ -58,6 +58,8 @@ pub fn build_native(mut b builder.Builder, v_files []string, out_file string) {
 			eprintln('Error: Only arm64 and amd64 are supported by V')
 		}
 	}
-	b.stats_lines, b.stats_bytes = native.gen(b.parsed_files, b.table, out_file, b.pref)
+	stats_lines, stats_bytes := native.gen(b.parsed_files, b.table, out_file, b.pref)
+	b.stats_lines = int(stats_lines)
+	b.stats_bytes = int(stats_bytes)
 	util.timing_measure('Native GEN')
 }

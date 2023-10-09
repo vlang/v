@@ -12,7 +12,7 @@ pub fn constexpr_value[T](v T) ConstExpression {
 	$if T is i64 {
 		expr.i64_const(v)
 	} $else $if T is $int {
-		expr.i32_const(v)
+		expr.i32_const(i32(v))
 	} $else $if T is f32 {
 		expr.f32_const(v)
 	} $else $if T is f64 {
