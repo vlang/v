@@ -6214,7 +6214,7 @@ with identical hardware.
 
 **When to Avoid**
 
-- When distributing the software to users with potentially different CPU architectures.
+- When distributing the software to users with potentially older CPUs.
 
 #### PGO (Profile-Guided Optimization)
 
