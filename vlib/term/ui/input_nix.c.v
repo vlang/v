@@ -12,18 +12,16 @@ mut:
 	read_all_bytes bool = true
 }
 
-const ctx_ptr = &Context{}
+__global ctx_ptr = &Context(unsafe { nil })
 
 // init initializes the terminal console with Config `cfg`.
 pub fn init(cfg Config) &Context {
-	mut ctx := Context{
+	mut ctx := &Context{
 		cfg: cfg
 	}
 	ctx.read_buf = []u8{cap: cfg.buffer_size}
 
-	unsafe {
-		*ui.ctx_ptr = ctx
-	}
+	ctx_ptr = ctx
 	return ctx
 }
 
