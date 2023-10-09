@@ -6205,7 +6205,7 @@ information, making debugging more challenging.
 #### `-cflags -march=native`
 
 This flag directs the C compiler to generate instructions optimized for the host CPU. This can
-improve performance but may produce an executable incompatible with other/older CPUs.
+improve performance but will produce an executable incompatible with other/older CPUs.
 
 **When to Use**
 
