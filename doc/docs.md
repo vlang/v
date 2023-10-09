@@ -6075,7 +6075,6 @@ cases, may be beneficial for performance, but may impact the size of your execut
 **When to Use**
 
 - Functions that are called frequently in performance-critical loops.
-- Functions that are called only once.
 
 **When to Avoid**
 
