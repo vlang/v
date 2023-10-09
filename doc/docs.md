@@ -6155,7 +6155,7 @@ misprediction.
 
 This flag tells the V compiler to omit code that is not needed in the final executable to run your
 program correctly. This will remove unneeded `const` arrays allocations and unused functions
-from your code and the `vlib` in the output executable.
+from the code in the generated executable.
 
 This flag will be on by default in the future when its implementation will be stabilized and all
 severe bugs will be found.
