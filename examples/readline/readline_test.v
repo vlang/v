@@ -12,9 +12,7 @@ const (
 
 fn test_password_input() {
 	correct := os.execute(os.join_path(expect_tests_path, 'readline.expect'))
-	if correct.exit_code != 0 {
-		assert false, correct.output
-	}
+	assert correct.exit_code == 0, correct.output
 
 	send_a := 'a'
 	expect_a := 'got 97' // readline output for `a`
