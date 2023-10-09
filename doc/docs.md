@@ -6095,7 +6095,7 @@ sure that the access index will be valid.
 
 **When to Avoid**
 
-- When safety is a concern and bounds checks are required.
+- Everywhere else.
 
 #### `[packed]`
 
