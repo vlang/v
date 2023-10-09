@@ -327,7 +327,7 @@ pub fn (mut g Gen) get(v Var) {
 	if v.is_address && g.is_pure_type(v.typ) {
 		g.load(v.typ, v.offset)
 	} else if v.is_address && v.offset != 0 {
-		g.func.i32_const(v.offset)
+		g.func.i32_const(i32(v.offset))
 		g.func.add(.i32_t)
 	}
 }
@@ -345,7 +345,7 @@ pub fn (mut g Gen) mov(to Var, v Var) {
 	if size > 16 {
 		g.ref(to)
 		g.ref(v)
-		g.func.i32_const(size)
+		g.func.i32_const(i32(size))
 		g.func.memory_copy()
 		return
 	}
@@ -465,7 +465,7 @@ pub fn (mut g Gen) ref(v Var) {
 	g.ref_ignore_offset(v)
 
 	if v.offset != 0 {
-		g.func.i32_const(v.offset)
+		g.func.i32_const(i32(v.offset))
 		g.func.add(.i32_t)
 	}
 }
@@ -534,7 +534,7 @@ pub fn (mut g Gen) zero_fill(v Var, size i32) {
 	if size > 16 {
 		g.ref(v)
 		g.func.i32_const(0)
-		g.func.i32_const(size)
+		g.func.i32_const(i32(size))
 		g.func.memory_fill()
 		return
 	}

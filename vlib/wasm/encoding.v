@@ -314,7 +314,7 @@ pub fn (mut mod Module) compile() []u8 {
 					mod.buf << 0x00 // active
 					// constant expr
 					mod.buf << 0x41 // i32.const
-					mod.buf << leb128.encode_i32(idx)
+					mod.buf << leb128.encode_i32(i32(idx))
 					mod.buf << 0x0B // END expression opcode
 				} else {
 					mod.buf << 0x01 // passive

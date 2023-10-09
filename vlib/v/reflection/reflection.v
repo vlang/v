@@ -50,8 +50,9 @@ pub enum VKind {
 	charptr
 	i8
 	i16
-	int
+	i32
 	i64
+	int
 	isize
 	u8
 	u16

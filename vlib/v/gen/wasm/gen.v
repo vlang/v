@@ -318,7 +318,7 @@ pub fn (mut g Gen) bare_function_frame(func_start wasm.PatchPos) {
 		prolouge := g.func.patch_pos()
 		{
 			g.func.global_get(g.sp())
-			g.func.i32_const(g.stack_frame)
+			g.func.i32_const(i32(g.stack_frame))
 			g.func.sub(.i32_t)
 			if !g.is_leaf_function {
 				g.func.local_tee(g.bp())
@@ -330,7 +330,7 @@ pub fn (mut g Gen) bare_function_frame(func_start wasm.PatchPos) {
 		g.func.patch(func_start, prolouge)
 		if !g.is_leaf_function {
 			g.func.global_get(g.sp())
-			g.func.i32_const(g.stack_frame)
+			g.func.i32_const(i32(g.stack_frame))
 			g.func.add(.i32_t)
 			g.func.global_set(g.sp())
 		}
@@ -396,7 +396,7 @@ pub fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected
 pub fn (mut g Gen) handle_ptr_arithmetic(typ ast.Type) {
 	if typ.is_ptr() {
 		size, _ := g.pool.type_size(typ)
-		g.func.i32_const(size)
+		g.func.i32_const(i32(size))
 		g.func.mul(.i32_t)
 	}
 }
@@ -734,7 +734,7 @@ pub fn (mut g Gen) get_field_offset(typ ast.Type, name string) i32 {
 pub fn (mut g Gen) field_offset(typ ast.Type, name string) {
 	offset := g.get_field_offset(typ, name)
 	if offset != 0 {
-		g.func.i32_const(offset)
+		g.func.i32_const(i32(offset))
 		g.func.add(.i32_t)
 	}
 }
@@ -944,7 +944,7 @@ pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 		}
 		ast.CharLiteral {
 			rns := serialise.eval_escape_codes_raw(node.val) or { panic('unreachable') }.runes()[0]
-			g.func.i32_const(rns)
+			g.func.i32_const(i32(rns))
 		}
 		ast.Ident {
 			v := g.get_var_from_ident(node)
