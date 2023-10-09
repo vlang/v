@@ -6139,7 +6139,7 @@ a way that minimizes internal gaps while maintaining alignment.
 very likely to be true, so it can generate assembly code, with less chance of branch misprediction.
 In the JS backend, that does nothing.
 
-`if _unlikely_(bool expression) {` similar to `_likely_(x)`, but it hints that the boolean
+`if _unlikely_(bool expression) {` is similar to `_likely_(x)`, but it hints that the boolean
 expression is highly improbable. In the JS backend, that does nothing.
 
 **When to Use**
