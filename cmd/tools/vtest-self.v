@@ -85,6 +85,7 @@ const (
 	]
 	skip_test_files               = [
 		'do_not_remove',
+		'cmd/tools/vcreate/vcreate_input_test.v', // it's not given that expect is installed on all systems.
 		'cmd/tools/vdoc/html_tag_escape_test.v', // can't locate local module: markdown
 		'cmd/tools/vdoc/tests/vdoc_file_test.v', // fails on Windows; order of output is not as expected
 		'vlib/context/deadline_test.v', // sometimes blocks

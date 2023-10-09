@@ -98,6 +98,8 @@ jobs:
           ./v2 -o v3 -usecache cmd/v
           ./v3 version
           ./v3 -o tetris  -usecache examples/tetris/tetris.v
+      - name: Test module creation
+        run: ./v test cmd/tools/vcreate/vcreate_input_test.v
       - name: Test password input
         run: |
           ./v examples/password
