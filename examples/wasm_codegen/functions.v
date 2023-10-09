@@ -6,11 +6,11 @@ fn main() {
 		.f32_t,
 	])
 	{
-		pyth.local_get(0)
-		pyth.local_get(0)
+		pyth.local_get(i32(0))
+		pyth.local_get(i32(0))
 		pyth.mul(.f32_t)
-		pyth.local_get(1)
-		pyth.local_get(1)
+		pyth.local_get(i32(1))
+		pyth.local_get(i32(1))
 		pyth.mul(.f32_t)
 		pyth.add(.f32_t)
 		pyth.sqrt(.f32_t)
@@ -19,7 +19,7 @@ fn main() {
 	m.commit(pyth, true)
 	mut test := m.new_function('test', [.f32_t], [.f64_t])
 	{
-		test.local_get(0)
+		test.local_get(i32(0))
 		test.f32_const(10.0)
 		test.call('pythagoras')
 		test.cast(.f32_t, true, .f64_t)

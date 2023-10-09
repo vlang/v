@@ -92,7 +92,7 @@ struct GlobalImport {
 struct FunctionImport {
 	mod  string
 	name string
-	tidx int
+	tidx i32
 }
 
 struct Memory {
@@ -103,15 +103,15 @@ struct Memory {
 }
 
 struct DataSegment {
-	idx  ?int
+	idx  ?i32
 	data []u8
 	name ?string
 }
 
-pub type LocalIndex = int
-pub type GlobalIndex = int
-pub type GlobalImportIndex = int
-pub type DataSegmentIndex = int
+pub type LocalIndex = i32
+pub type GlobalIndex = i32
+pub type GlobalImportIndex = i32
+pub type DataSegmentIndex = i32
 
 pub struct FuncType {
 pub:
@@ -120,7 +120,7 @@ pub:
 	name       ?string
 }
 
-fn (mut mod Module) new_functype(ft FuncType) int {
+fn (mut mod Module) new_functype(ft FuncType) i32 {
 	// interns existing types
 	mut idx := mod.functypes.index(ft)
 
@@ -129,14 +129,14 @@ fn (mut mod Module) new_functype(ft FuncType) int {
 		mod.functypes << ft
 	}
 
-	return idx
+	return i32(idx)
 }
 
 // new_function creates a function struct.
 pub fn (mut mod Module) new_function(name string, parameters []ValType, results []ValType) Function {
 	assert name !in mod.functions.keys()
 
-	idx := mod.functions.len
+	idx := i32(mod.functions.len)
 	tidx := mod.new_functype(FuncType{parameters, results, none})
 
 	return Function{
@@ -160,7 +160,7 @@ pub fn (mut mod Module) new_debug_function(name string, typ FuncType, argument_n
 	return Function{
 		name: name
 		tidx: tidx
-		idx: idx
+		idx: i32(idx)
 		mod: mod
 		locals: argument_names.map(FunctionLocal{ name: it }) // specifying it's ValType doesn't matter
 	}
@@ -225,14 +225,14 @@ pub fn (mut mod Module) commit(func Function, export bool) {
 
 // new_data_segment inserts a new data segment at the memory index `pos`.
 // `name` is optional, it is used for debug info.
-pub fn (mut mod Module) new_data_segment(name ?string, pos int, data []u8) DataSegmentIndex {
+pub fn (mut mod Module) new_data_segment(name ?string, pos i32, data []u8) DataSegmentIndex {
 	len := mod.segments.len
 	mod.segments << DataSegment{
-		idx: pos
+		idx: i32(pos)
 		data: data
 		name: name
 	}
-	return len
+	return i32(len)
 }
 
 // new_passive_data_segment inserts a new passive data segment.
@@ -255,7 +255,7 @@ pub fn (mut mod Module) new_global(name string, export bool, typ ValType, is_mut
 		export: export
 		init: init
 	}
-	return len
+	return i32(len)
 }
 
 // new_global_import imports a new global into the current module and returns it's index.
@@ -270,7 +270,7 @@ pub fn (mut mod Module) new_global_import(modn string, name string, typ ValType,
 		typ: typ
 		is_mut: is_mut
 	}
-	return len
+	return i32(len)
 }
 
 // assign_global_init assigns a global with the constant expression `init`.

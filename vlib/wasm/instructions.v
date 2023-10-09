@@ -25,11 +25,11 @@ fn (mut func Function) blocktype(typ FuncType) {
 	func.code << leb128.encode_i32(tidx)
 }
 
-pub type PatchPos = int
+pub type PatchPos = i32
 
 // patch_pos returns a `PatchPos` for use with `patch`.
 pub fn (func Function) patch_pos() PatchPos {
-	return func.code.len
+	return i32(func.code.len)
 }
 
 // patch "patches" the code generated starting from the last `patch_pos` call in `begin` to `loc`.
@@ -54,14 +54,14 @@ pub fn (mut func Function) patch(loc PatchPos, begin PatchPos) {
 	assert loc < begin
 
 	v := func.code[begin..].clone()
-	func.code.trim(begin)
+	func.code.trim(int(begin))
 	func.code.insert(int(loc), v)
 
 	for mut patch in func.patches {
 		if patch.pos >= begin {
 			patch.pos -= begin - loc
 		} else if patch.pos >= loc {
-			patch.pos += func.code.len - begin
+			patch.pos += i32(func.code.len) - begin
 		}
 	}
 
@@ -92,7 +92,7 @@ pub fn (mut func Function) new_local(v ValType) LocalIndex {
 	func.locals << FunctionLocal{
 		typ: v
 	}
-	return ret
+	return i32(ret)
 }
 
 // new_local_named creates a function local with a name and returns it's index.
@@ -104,7 +104,7 @@ pub fn (mut func Function) new_local_named(v ValType, name string) LocalIndex {
 		typ: v
 		name: name
 	}
-	return ret
+	return i32(ret)
 }
 
 // i32_const places a constant i32 value on the stack.
@@ -166,7 +166,7 @@ pub fn (mut func Function) global_get(global GlobalIndices) {
 		GlobalIndex {
 			func.patches << FunctionGlobalPatch{
 				idx: global
-				pos: func.code.len
+				pos: i32(func.code.len)
 			}
 		}
 		GlobalImportIndex {
@@ -183,7 +183,7 @@ pub fn (mut func Function) global_set(global GlobalIndices) {
 		GlobalIndex {
 			func.patches << FunctionGlobalPatch{
 				idx: global
-				pos: func.code.len
+				pos: i32(func.code.len)
 			}
 		}
 		GlobalImportIndex {
@@ -884,7 +884,7 @@ pub fn (mut func Function) nop() {
 	func.code << 0x01
 }
 
-pub type LabelIndex = int
+pub type LabelIndex = i32
 
 // c_block creates a label that can later be branched out of with `c_br` and `c_br_if`.
 // Blocks are strongly typed, you must supply a list of types for `parameters` and `results`.
@@ -963,7 +963,7 @@ pub fn (mut func Function) call(name string) {
 	func.code << 0x10 // call
 	func.patches << CallPatch(FunctionCallPatch{
 		name: name
-		pos: func.code.len
+		pos: i32(func.code.len)
 	})
 }
 
@@ -975,13 +975,13 @@ pub fn (mut func Function) call_import(mod string, name string) {
 	func.patches << CallPatch(ImportCallPatch{
 		mod: mod
 		name: name
-		pos: func.code.len
+		pos: i32(func.code.len)
 	})
 }
 
 // load loads a value with type `typ` from memory.
 // WebAssembly instruction: `i32|i64|f32|f64.load`.
-pub fn (mut func Function) load(typ NumType, align int, offset int) {
+pub fn (mut func Function) load(typ NumType, align i32, offset i32) {
 	match typ {
 		.i32_t { func.code << 0x28 } // i32.load
 		.i64_t { func.code << 0x29 } // i64.load
@@ -994,7 +994,7 @@ pub fn (mut func Function) load(typ NumType, align int, offset int) {
 
 // load8 loads a 8-bit value with type `typ` with respect to `is_signed` from memory.
 // WebAssembly instructions: `i32|i64.load8_s`, `i32|i64.load8_u`.
-pub fn (mut func Function) load8(typ NumType, is_signed bool, align int, offset int) {
+pub fn (mut func Function) load8(typ NumType, is_signed bool, align i32, offset i32) {
 	assert typ in [.i32_t, .i64_t]
 
 	match typ {
@@ -1020,7 +1020,7 @@ pub fn (mut func Function) load8(typ NumType, is_signed bool, align int, offset 
 
 // load16 loads a 16-bit value with type `typ` with respect to `is_signed` from memory.
 // WebAssembly instructions: `i32|i64.load16_s`, `i32|i64.load16_u`.
-pub fn (mut func Function) load16(typ NumType, is_signed bool, align int, offset int) {
+pub fn (mut func Function) load16(typ NumType, is_signed bool, align i32, offset i32) {
 	assert typ in [.i32_t, .i64_t]
 
 	match typ {
@@ -1046,7 +1046,7 @@ pub fn (mut func Function) load16(typ NumType, is_signed bool, align int, offset
 
 // load32_i64 loads a 32-bit value of type i64 with respect to `is_signed` from memory.
 // WebAssembly instructions: `i64.load32_s`, `i64.load32_u`.
-pub fn (mut func Function) load32_i64(is_signed bool, align int, offset int) {
+pub fn (mut func Function) load32_i64(is_signed bool, align i32, offset i32) {
 	if is_signed {
 		func.code << 0x34 // i64.load32_s
 	} else {
@@ -1058,7 +1058,7 @@ pub fn (mut func Function) load32_i64(is_signed bool, align int, offset int) {
 
 // store stores a value with type `typ` into memory.
 // WebAssembly instruction: `i32|i64|f32|f64.store`.
-pub fn (mut func Function) store(typ NumType, align int, offset int) {
+pub fn (mut func Function) store(typ NumType, align i32, offset i32) {
 	match typ {
 		.i32_t { func.code << 0x36 } // i32.store
 		.i64_t { func.code << 0x37 } // i64.store
@@ -1071,7 +1071,7 @@ pub fn (mut func Function) store(typ NumType, align int, offset int) {
 
 // store8 stores a 8-bit value with type `typ` into memory.
 // WebAssembly instruction: `i32|i64.store8`.
-pub fn (mut func Function) store8(typ NumType, align int, offset int) {
+pub fn (mut func Function) store8(typ NumType, align i32, offset i32) {
 	assert typ in [.i32_t, .i64_t]
 
 	match typ {
@@ -1085,7 +1085,7 @@ pub fn (mut func Function) store8(typ NumType, align int, offset int) {
 
 // store16 stores a 16-bit value with type `typ` into memory.
 // WebAssembly instruction: `i32|i64.store16`.
-pub fn (mut func Function) store16(typ NumType, align int, offset int) {
+pub fn (mut func Function) store16(typ NumType, align i32, offset i32) {
 	assert typ in [.i32_t, .i64_t]
 
 	match typ {
@@ -1099,7 +1099,7 @@ pub fn (mut func Function) store16(typ NumType, align int, offset int) {
 
 // store16 stores a 32-bit value of type i64 into memory.
 // WebAssembly instruction: `i64.store32`.
-pub fn (mut func Function) store32_i64(align int, offset int) {
+pub fn (mut func Function) store32_i64(align i32, offset i32) {
 	func.code << 0x3E // i64.store32
 	func.u32(u32(align))
 	func.u32(u32(offset))
@@ -1170,7 +1170,7 @@ pub fn (mut func Function) ref_func(name string) {
 	func.code << 0xD2 // ref.func
 	func.patches << CallPatch(FunctionCallPatch{
 		name: name
-		pos: func.code.len
+		pos: i32(func.code.len)
 	})
 }
 
@@ -1182,6 +1182,6 @@ pub fn (mut func Function) ref_func_import(mod string, name string) {
 	func.patches << CallPatch(ImportCallPatch{
 		mod: mod
 		name: name
-		pos: func.code.len
+		pos: i32(func.code.len)
 	})
 }

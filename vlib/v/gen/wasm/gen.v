@@ -35,16 +35,16 @@ mut:
 	ret                    ast.Type
 	ret_types              []ast.Type
 	ret_br                 wasm.LabelIndex
-	bp_idx                 wasm.LocalIndex = -1 // Base pointer temporary's index for function, if needed (-1 for none)
+	bp_idx                 wasm.LocalIndex = i32(-1) // Base pointer temporary's index for function, if needed (-1 for none)
 	sp_global              ?wasm.GlobalIndex
 	heap_base              ?wasm.GlobalIndex
-	fn_local_idx_end       int
+	fn_local_idx_end       i32
 	fn_name                string
-	stack_frame            int             // Size of the current stack frame, if needed
+	stack_frame            i32             // Size of the current stack frame, if needed
 	is_leaf_function       bool = true
 	loop_breakpoint_stack  []LoopBreakpoint
-	stack_top              int // position in linear memory
-	data_base              int // position in linear memory
+	stack_top              i32 // position in linear memory
+	data_base              i32 // position in linear memory
 	needs_address          bool
 	defer_vars             []Var
 	is_direct_array_access bool // inside a `[direct_array_access]` function
@@ -220,7 +220,7 @@ pub fn (mut g Gen) fn_decl(node ast.FnDecl) {
 					paraml << wtyp
 					g.ret_rvars << Var{
 						typ: t
-						idx: g.ret_rvars.len
+						idx: i32(g.ret_rvars.len)
 						is_address: true
 					}
 				} else {
@@ -263,7 +263,7 @@ pub fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		g.local_vars << Var{
 			name: p.name
 			typ: ntyp
-			idx: g.local_vars.len + g.ret_rvars.len
+			idx: i32(g.local_vars.len + g.ret_rvars.len)
 			is_address: !g.is_pure_type(p.typ)
 		}
 		paramdbg << g.dbg_type_name(p.name, p.typ)
@@ -273,7 +273,7 @@ pub fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	// bottom scope
 
 	g.is_direct_array_access = node.is_direct_arr || g.pref.no_bounds_checking
-	g.fn_local_idx_end = (g.local_vars.len + g.ret_rvars.len)
+	g.fn_local_idx_end = i32(g.local_vars.len + g.ret_rvars.len)
 	g.fn_name = name
 
 	mut should_export := g.pref.os == .browser && node.is_pub && node.mod == 'main'
@@ -342,7 +342,7 @@ pub fn (mut g Gen) bare_function_end() {
 	g.ret_rvars.clear()
 	g.ret_types.clear()
 	g.defer_vars.clear()
-	g.bp_idx = -1
+	g.bp_idx = i32(-1)
 	g.stack_frame = 0
 	g.is_leaf_function = true
 	g.is_direct_array_access = false
@@ -351,7 +351,7 @@ pub fn (mut g Gen) bare_function_end() {
 
 pub fn (mut g Gen) literalint(val i64, expected ast.Type) {
 	match g.get_wasm_type(expected) {
-		.i32_t { g.func.i32_const(val) }
+		.i32_t { g.func.i32_const(i32(val)) }
 		.i64_t { g.func.i64_const(val) }
 		.f32_t { g.func.f32_const(f32(val)) }
 		.f64_t { g.func.f64_const(f64(val)) }
@@ -361,7 +361,7 @@ pub fn (mut g Gen) literalint(val i64, expected ast.Type) {
 
 pub fn (mut g Gen) literal(val string, expected ast.Type) {
 	match g.get_wasm_type(expected) {
-		.i32_t { g.func.i32_const(val.int()) }
+		.i32_t { g.func.i32_const(i32(val.int())) }
 		.i64_t { g.func.i64_const(val.i64()) }
 		.f32_t { g.func.f32_const(val.f32()) }
 		.f64_t { g.func.f64_const(val.f64()) }
@@ -550,7 +550,7 @@ pub fn (mut g Gen) prefix_expr(node ast.PrefixExpr, expected ast.Type) {
 	}
 }
 
-pub fn (mut g Gen) if_branch(ifexpr ast.IfExpr, expected ast.Type, unpacked_params []wasm.ValType, idx int, existing_rvars []Var) {
+pub fn (mut g Gen) if_branch(ifexpr ast.IfExpr, expected ast.Type, unpacked_params []wasm.ValType, idx i32, existing_rvars []Var) {
 	curr := ifexpr.branches[idx]
 
 	g.expr(curr.cond, ast.bool_type)
@@ -724,7 +724,7 @@ pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvar
 	}
 }
 
-pub fn (mut g Gen) get_field_offset(typ ast.Type, name string) int {
+pub fn (mut g Gen) get_field_offset(typ ast.Type, name string) i32 {
 	ts := g.table.sym(typ)
 	field := ts.find_field(name) or { g.w_error('could not find field `${name}` on init') }
 	si := g.pool.type_struct_info(typ) or { panic('unreachable') }
@@ -816,7 +816,7 @@ pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 					g.func.local_get(tmp_voidptr_var)
 					g.load_field(ast.string_type, ast.int_type, 'len')
 				} else if ts.info is ast.ArrayFixed {
-					g.func.i32_const(ts.info.size)
+					g.func.i32_const(i32(ts.info.size))
 				} else {
 					panic('unreachable')
 				}
@@ -837,7 +837,7 @@ pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			}
 
 			if size > 1 {
-				g.literalint(size, ast.int_type)
+				g.literalint(i64(size), ast.int_type)
 				g.func.mul(.i32_t)
 			}
 
@@ -897,14 +897,14 @@ pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 				g.v_error('__offsetof expects a struct Type as first argument', node.pos)
 			}
 			off := g.get_field_offset(node.struct_type, node.field)
-			g.literalint(off, ast.u32_type)
+			g.literalint(i64(off), ast.u32_type)
 		}
 		ast.SizeOf {
 			if !g.table.known_type_idx(node.typ) {
 				g.v_error('unknown type `${*g.table.sym(node.typ)}`', node.pos)
 			}
 			size, _ := g.pool.type_size(node.typ)
-			g.literalint(size, ast.u32_type)
+			g.literalint(i64(size), ast.u32_type)
 		}
 		ast.BoolLiteral {
 			g.func.i32_const(i32(node.val))
@@ -915,7 +915,7 @@ pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 				str_pos := g.pool.append_string(val)
 
 				// c'str'
-				g.literalint(g.data_base + str_pos, ast.voidptr_type)
+				g.literalint(i64(g.data_base + str_pos), ast.voidptr_type)
 				return
 			}
 
@@ -1321,7 +1321,7 @@ pub fn (mut g Gen) calculate_enum_fields() {
 }
 
 pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Preferences) {
-	stack_top := w_pref.wasm_stack_top
+	stack_top := i32(w_pref.wasm_stack_top)
 	mut g := &Gen{
 		table: table
 		pref: w_pref

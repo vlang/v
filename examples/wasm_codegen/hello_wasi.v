@@ -17,7 +17,7 @@ fn main() {
 		func.i32_const(1) // stdout
 		func.i32_const(0) // *iovs
 		func.i32_const(1) // 1 iov
-		func.i32_const(-1) // *retptrs
+		func.i32_const(i32(-1)) // *retptrs
 		func.call_import('wasi_unstable', 'fd_write')
 		func.drop()
 		func.i32_const(0)

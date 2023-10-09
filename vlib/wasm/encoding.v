@@ -63,20 +63,20 @@ fn push_f64(mut buf []u8, v f64) {
 	buf << u8(rv >> u32(56))
 }
 
-fn (mod &Module) get_function_idx(patch CallPatch) int {
-	mut idx := -1
+fn (mod &Module) get_function_idx(patch CallPatch) i32 {
+	mut idx := i32(-1)
 
 	match patch {
 		FunctionCallPatch {
 			ftt := mod.functions[patch.name] or {
 				panic('called function ${patch.name} does not exist')
 			}
-			idx = ftt.idx + mod.fn_imports.len
+			idx = ftt.idx + i32(mod.fn_imports.len)
 		}
 		ImportCallPatch {
 			for fnidx, c in mod.fn_imports {
 				if c.mod == patch.mod && c.name == patch.name {
-					idx = fnidx
+					idx = i32(fnidx)
 					break
 				}
 			}
@@ -93,18 +93,18 @@ fn (mut mod Module) patch(ft Function) {
 	mut ptr := 0
 
 	for patch in ft.patches {
-		mut idx := 0
+		mut idx := i32(0)
 		match patch {
 			CallPatch {
 				idx = mod.get_function_idx(patch)
 			}
 			FunctionGlobalPatch {
-				idx = mod.global_imports.len + patch.idx
+				idx = i32(mod.global_imports.len) + patch.idx
 			}
 		}
 		mod.buf << ft.code[ptr..patch.pos]
 		mod.u32(u32(idx))
-		ptr = patch.pos
+		ptr = int(patch.pos)
 	}
 
 	mod.buf << ft.code[ptr..]
@@ -215,7 +215,7 @@ pub fn (mut mod Module) compile() []u8 {
 
 						mod.buf << gt.init.code[ptr..patch.pos]
 						mod.u32(u32(idx))
-						ptr = patch.pos
+						ptr = int(patch.pos)
 					}
 					mod.buf << gt.init.code[ptr..]
 				}
@@ -238,7 +238,7 @@ pub fn (mut mod Module) compile() []u8 {
 				lsz++
 				mod.name(ft.export_name or { ft.name })
 				mod.buf << 0x00 // function
-				mod.u32(u32(ft.idx + mod.fn_imports.len))
+				mod.u32(u32(ft.idx + i32(mod.fn_imports.len)))
 			}
 			if memory := mod.memory {
 				if memory.export {
@@ -267,7 +267,7 @@ pub fn (mut mod Module) compile() []u8 {
 		ftt := mod.functions[start] or { panic('start function ${start} does not exist') }
 		tpatch := mod.start_section(.start_section)
 		{
-			mod.u32(u32(ftt.idx + mod.fn_imports.len))
+			mod.u32(u32(ftt.idx + i32(mod.fn_imports.len)))
 		}
 		mod.end_section(tpatch)
 	}

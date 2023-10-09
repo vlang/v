@@ -13,7 +13,7 @@ fn main() {
 		blk := bif.c_block([], [])
 		{
 			// if argument[0], break
-			bif.local_get(0)
+			bif.local_get(i32(0))
 			bif.c_br_if(blk)
 			// loc = i32.const 11
 			bif.i32_const(11)
@@ -27,7 +27,7 @@ fn main() {
 	m.commit(bif, true)
 	mut ifexpr := m.new_function('if_expr', [.i32_t], [.i64_t])
 	{
-		ifexpr.local_get(0)
+		ifexpr.local_get(i32(0))
 		if_blk := ifexpr.c_if([], [.i64_t])
 		{
 			ifexpr.i64_const(5000)

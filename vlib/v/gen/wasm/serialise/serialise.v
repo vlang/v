@@ -22,23 +22,23 @@ pub:
 pub mut:
 	buf               []u8
 	relocs            []Reloc
-	highest_alignment int
+	highest_alignment i32
 }
 
 struct StringInfo {
-	pos int
-	len int
+	pos i32
+	len i32
 }
 
 pub struct StructInfo {
 pub mut:
-	offsets []int
+	offsets []i32
 }
 
 pub struct Reloc {
 pub:
-	pos    int
-	offset int
+	pos    i32
+	offset i32
 }
 
 pub fn (mut p Pool) type_struct_info(typ ast.Type) ?StructInfo {
@@ -57,18 +57,20 @@ pub fn (mut p Pool) type_struct_info(typ ast.Type) ?StructInfo {
 	return p.structs[typ.idx()]
 }
 
-pub fn (mut p Pool) type_size(typ ast.Type) (int, int) {
+pub fn (mut p Pool) type_size(typ ast.Type) (i32, i32) {
 	ts := p.table.sym(typ)
 	if ts.size != -1 && typ.idx() in p.structs {
-		return ts.size, ts.align
+		return i32(ts.size), i32(ts.align)
 	}
 
 	if ts.info is ast.Enum {
-		return p.table.type_size(ts.info.typ)
+		s, a := p.table.type_size(ts.info.typ)
+		return i32(s), i32(a)
 	}
 
 	if ts.info !is ast.Struct {
-		return p.table.type_size(typ)
+		s, a := p.table.type_size(typ)
+		return i32(s), i32(a)
 	}
 
 	ti := ts.info as ast.Struct
@@ -76,8 +78,8 @@ pub fn (mut p Pool) type_size(typ ast.Type) (int, int) {
 	// code borrowed from native, inserted in wasm, and now here!
 
 	mut strc := StructInfo{}
-	mut size := 0
-	mut align := 1
+	mut size := i32(0)
+	mut align := i32(1)
 	for f in ti.fields {
 		f_size, f_align := p.type_size(f.typ)
 		if f_size == 0 {
@@ -95,8 +97,8 @@ pub fn (mut p Pool) type_size(typ ast.Type) (int, int) {
 	p.structs[typ.idx()] = strc
 
 	mut ts_ := p.table.sym(typ)
-	ts_.size = size
-	ts_.align = align
+	ts_.size = int(size)
+	ts_.align = int(align)
 
 	return size, align
 }
@@ -125,18 +127,18 @@ fn (mut p Pool) zero_fill(size int) {
 	}
 }
 
-fn (mut p Pool) alignment(align int) int {
+fn (mut p Pool) alignment(align i32) int {
 	if align > p.highest_alignment {
 		p.highest_alignment = align
 	}
-	padding := (align - p.buf.len % align) % align
-	p.zero_fill(padding)
+	padding := (align - i32(p.buf.len) % align) % align
+	p.zero_fill(int(padding))
 	pos := p.buf.len
 	return pos
 }
 
 /*
-fn (mut p Pool) append_struct(init ast.StructInit) ?int {
+fn (mut p Pool) append_struct(init ast.StructInit) ?i32 {
 	old_len := p.buf.len
 
 	size, align := p.type_size(v.typ)
@@ -268,7 +270,7 @@ pub fn eval_escape_codes(str_lit ast.StringLiteral) !string {
 	return eval_escape_codes_raw(str_lit.val)
 }
 
-pub fn (mut p Pool) append_string(val string) int {
+pub fn (mut p Pool) append_string(val string) i32 {
 	data := val.bytes()
 
 	if p.intern_strings {
@@ -278,7 +280,7 @@ pub fn (mut p Pool) append_string(val string) int {
 			}
 
 			// TODO: aggressive string interning if `p.null_terminated`
-			if p.buf[str.pos..str.pos + data.len] == data {
+			if p.buf[str.pos..str.pos + i32(data.len)] == data {
 				return str.pos
 			}
 		}
@@ -291,11 +293,11 @@ pub fn (mut p Pool) append_string(val string) int {
 	}
 
 	p.strings << StringInfo{
-		pos: pos
-		len: data.len
+		pos: i32(pos)
+		len: i32(data.len)
 	}
 
-	return pos
+	return i32(pos)
 }
 
 pub fn (mut p Pool) append(init ast.Expr, typ ast.Type) (int, bool) {
@@ -323,7 +325,7 @@ pub fn (mut p Pool) append(init ast.Expr, typ ast.Type) (int, bool) {
 			assert typ.is_pure_int()
 
 			size, align := p.table.type_size(typ)
-			pos := p.alignment(align)
+			pos := p.alignment(i32(align))
 
 			match size {
 				1 {
@@ -357,7 +359,7 @@ pub fn (mut p Pool) append(init ast.Expr, typ ast.Type) (int, bool) {
 
 			if typ != ast.string_type {
 				// c'str'
-				return str_pos, true
+				return int(str_pos), true
 			}
 
 			_, align := p.type_size(ast.string_type)
@@ -367,7 +369,7 @@ pub fn (mut p Pool) append(init ast.Expr, typ ast.Type) (int, bool) {
 			for field in tss.fields {
 				match field.name {
 					'str' {
-						p.ptr(str_pos)
+						p.ptr(int(str_pos))
 					}
 					'len' {
 						p.u32(u32(val.len))
@@ -386,7 +388,7 @@ pub fn (mut p Pool) append(init ast.Expr, typ ast.Type) (int, bool) {
 		else {
 			size, align := p.type_size(typ)
 			pos := p.alignment(align)
-			p.zero_fill(size)
+			p.zero_fill(int(size))
 			return pos, false
 		}
 	}
@@ -425,8 +427,8 @@ fn (mut p Pool) ptr(offset int) int {
 
 	if p.store_relocs {
 		p.relocs << Reloc{
-			pos: pos
-			offset: offset
+			pos: i32(pos)
+			offset: i32(offset)
 		}
 	}
 

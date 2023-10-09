@@ -7,13 +7,13 @@ struct ImportCallPatch {
 	mod  string
 	name string
 mut:
-	pos int
+	pos i32
 }
 
 struct FunctionCallPatch {
 	name string
 mut:
-	pos int
+	pos i32
 }
 
 type CallPatch = FunctionCallPatch | ImportCallPatch
@@ -21,7 +21,7 @@ type CallPatch = FunctionCallPatch | ImportCallPatch
 struct FunctionGlobalPatch {
 	idx GlobalIndex
 mut:
-	pos int
+	pos i32
 }
 
 type FunctionPatch = CallPatch | FunctionGlobalPatch
@@ -32,11 +32,11 @@ struct FunctionLocal {
 }
 
 pub struct Function {
-	tidx int
-	idx  int
+	tidx i32
+	idx  i32
 mut:
 	patches []FunctionPatch // sorted
-	label   int
+	label   i32
 	export  bool
 	mod     &Module = unsafe { nil }
 	code    []u8

@@ -16,7 +16,7 @@ mut:
 	is_address bool
 	is_global  bool
 	g_idx      wasm.GlobalIndex
-	offset     int
+	offset     i32
 }
 
 pub fn (mut g Gen) get_var_from_ident(ident ast.Ident) Var {
@@ -112,7 +112,7 @@ pub fn (mut g Gen) get_var_or_make_from_expr(node ast.Expr, typ ast.Type) Var {
 }
 
 pub fn (mut g Gen) bp() wasm.LocalIndex {
-	if g.bp_idx == -1 {
+	if g.bp_idx == i32(-1) {
 		g.bp_idx = g.func.new_local_named(.i32_t, '__vbp')
 	}
 	return g.bp_idx
@@ -239,7 +239,7 @@ pub fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr, is_glob
 				// ... AND wait for init in `_vinit`
 				init_expr = init
 			}
-			wasm.constexpr_value(g.data_base + pos)
+			wasm.constexpr_value(g.data_base + i32(pos))
 		} else {
 			// ... wait for init in `_vinit`
 			init_expr = init
@@ -285,7 +285,7 @@ pub fn (g Gen) is_pure_type(typ ast.Type) bool {
 	return false
 }
 
-pub fn log2(size int) int {
+pub fn log2(size i32) i32 {
 	return match size {
 		1 { 0 }
 		2 { 1 }
@@ -295,7 +295,7 @@ pub fn log2(size int) int {
 	}
 }
 
-pub fn (mut g Gen) load(typ ast.Type, offset int) {
+pub fn (mut g Gen) load(typ ast.Type, offset i32) {
 	size, align := g.pool.type_size(typ)
 	wtyp := g.as_numtype(g.get_wasm_type(typ))
 
@@ -306,7 +306,7 @@ pub fn (mut g Gen) load(typ ast.Type, offset int) {
 	}
 }
 
-pub fn (mut g Gen) store(typ ast.Type, offset int) {
+pub fn (mut g Gen) store(typ ast.Type, offset i32) {
 	size, align := g.pool.type_size(typ)
 	wtyp := g.as_numtype(g.get_wasm_type(typ))
 
@@ -351,7 +351,7 @@ pub fn (mut g Gen) mov(to Var, v Var) {
 	}
 
 	mut sz := size
-	mut oz := 0
+	mut oz := i32(0)
 	for sz > 0 {
 		g.ref_ignore_offset(to)
 		g.ref_ignore_offset(v)
@@ -483,7 +483,7 @@ pub fn (mut g Gen) ref_ignore_offset(v Var) {
 }
 
 // creates a new pointer variable with the offset `offset` and type `typ`
-pub fn (mut g Gen) offset(v Var, typ ast.Type, offset int) Var {
+pub fn (mut g Gen) offset(v Var, typ ast.Type, offset i32) Var {
 	if !v.is_address {
 		panic('unreachable')
 	}
@@ -497,7 +497,7 @@ pub fn (mut g Gen) offset(v Var, typ ast.Type, offset int) Var {
 	return nv
 }
 
-pub fn (mut g Gen) zero_fill(v Var, size int) {
+pub fn (mut g Gen) zero_fill(v Var, size i32) {
 	assert size > 0
 
 	// TODO: support coalescing `zero_fill` calls together.
@@ -540,7 +540,7 @@ pub fn (mut g Gen) zero_fill(v Var, size int) {
 	}
 
 	mut sz := size
-	mut oz := 0
+	mut oz := i32(0)
 	for sz > 0 {
 		g.ref_ignore_offset(v)
 		if sz - 8 >= 0 {
@@ -671,7 +671,7 @@ pub fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 				// c'str'
 				g.set_prepare(v)
 				{
-					g.literalint(g.data_base + str_pos, ast.voidptr_type)
+					g.literalint(i64(g.data_base + str_pos), ast.voidptr_type)
 				}
 				g.set_set(v)
 				return
@@ -680,7 +680,7 @@ pub fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 			// init struct
 			// fields: str, len
 			g.ref(v)
-			g.literalint(g.data_base + str_pos, ast.voidptr_type)
+			g.literalint(i64(g.data_base + str_pos), ast.voidptr_type)
 			g.store_field(ast.string_type, ast.voidptr_type, 'str')
 			g.ref(v)
 			g.literalint(val.len, ast.int_type)
@@ -759,14 +759,14 @@ pub fn (mut g Gen) set_with_expr(init ast.Expr, v Var) {
 	}
 }
 
-pub fn calc_padding(value int, alignment int) int {
+pub fn calc_padding(value i32, alignment i32) i32 {
 	if alignment == 0 {
 		return value
 	}
 	return (alignment - value % alignment) % alignment
 }
 
-pub fn calc_align(value int, alignment int) int {
+pub fn calc_align(value i32, alignment i32) i32 {
 	if alignment == 0 {
 		return value
 	}
@@ -804,8 +804,8 @@ pub fn (mut g Gen) make_vinit() {
 pub fn (mut g Gen) housekeeping() {
 	g.make_vinit()
 
-	heap_base := calc_align(g.data_base + g.pool.buf.len, 16) // 16?
-	page_boundary := calc_align(g.data_base + g.pool.buf.len, 64 * 1024)
+	heap_base := calc_align(g.data_base + i32(g.pool.buf.len), 16) // 16?
+	page_boundary := calc_align(g.data_base + i32(g.pool.buf.len), 64 * 1024)
 	preallocated_pages := page_boundary / (64 * 1024)
 
 	if g.pref.is_verbose {
@@ -824,7 +824,7 @@ pub fn (mut g Gen) housekeeping() {
 
 			for reloc in g.pool.relocs {
 				binary.little_endian_put_u32_at(mut buf, u32(g.data_base + reloc.offset),
-					reloc.pos)
+					int(reloc.pos))
 			}
 			g.mod.new_data_segment(none, g.data_base, buf)
 		}
