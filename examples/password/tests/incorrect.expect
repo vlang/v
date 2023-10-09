@@ -1,23 +1,12 @@
 #!/usr/bin/expect
 
-set timeout 3
+set timeout 1
 set v_root [exec sh -c "git rev-parse --show-toplevel"]
-
-proc expect_then_send {expect_ {send_ ""}} {
-	expect $expect_ {
-		if {$send_ != ""} {
-			send $send_
-		}
-	} timeout {
-		puts "!= $expect_"
-		exit 1
-	}
-}
 
 spawn $v_root/v run $v_root/examples/password/password.v
 
-expect_then_send "Enter your password : " "Sample123\r"
-expect_then_send "Confirm password : " "Sample234\r"
-expect_then_send "Passwords do not match ."
+expect "Enter your password : " { send "Sample123\r" } timeout { exit 1 }
+expect "Confirm password : " { send "Sample234\r" } timeout { exit 1 }
+expect "Passwords do not match ." {} timeout { exit 1 }
 
 expect eof

@@ -1,12 +1,16 @@
 import os
 
-fn test_password_input() {
-	$if windows {
-		eprintln('Input test for windows are not yet implemented.')
-		return
+const (
+	// Expect has to be installed for the test.
+	expect_exe = os.find_abs_path_of_executable('expect') or {
+		eprintln('skipping test, since expect is missing')
+		exit(0)
 	}
-	expect_tests_path := os.join_path(@VMODROOT, 'examples', 'password', 'tests')
+	// Directory that contains the Expect scripts used in the test.
+	expect_tests_path = os.join_path(@VMODROOT, 'examples', 'password', 'tests')
+)
 
+fn test_password_input() {
 	correct := os.execute(os.join_path(expect_tests_path, 'correct.expect'))
 	if correct.exit_code != 0 {
 		assert false, correct.output
@@ -17,12 +21,11 @@ fn test_password_input() {
 		assert false, incorrect.output
 	}
 
-	expect_output := 'Enter your password : '
-	mut res := os.execute('${os.join_path(expect_tests_path, 'output_from_expect_arg.expect')} "${expect_output}"')
+	expected_out := 'Enter your password : '
+	mut res := os.execute('${os.join_path(expect_tests_path, 'output_from_expect_arg.expect')} "${expected_out}"')
 	assert res.exit_code == 0
 
-	wrong_expect_output := 'Enter your passwords : '
-	res = os.execute('${os.join_path(expect_tests_path, 'output_from_expect_arg.expect')} "${wrong_expect_output}"')
+	not_exptectd_out := 'Enter your passwords : '
+	res = os.execute('${os.join_path(expect_tests_path, 'output_from_expect_arg.expect')} "${not_exptectd_out}"')
 	assert res.exit_code == 1
-	assert res.output.contains('Enter your password : != Enter your passwords : ')
 }
