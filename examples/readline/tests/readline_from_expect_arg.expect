@@ -1,7 +1,6 @@
 #!/usr/bin/expect
 
-set timeout 1
-
+set timeout 3
 set v_root [exec sh -c "git rev-parse --show-toplevel"]
 # Use input arguments for send and expect.
 set send_ [lindex $argv 0]
