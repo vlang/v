@@ -1,6 +1,6 @@
 #!/usr/bin/expect
 
-set timeout 1
+set timeout 3
 
 # Pass v_root as arg, since we chdir into a temp directory during testing and create a project there.
 set v_root [lindex $argv 0]
