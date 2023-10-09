@@ -5,14 +5,14 @@ import v.vmod
 // to both avoid confusions with the name of the current test itself, and to
 // avoid clashes with the postfix `_test.v`, that V uses for its own test files.
 const (
-	// The test requires that `expect` is installed.
+	// Expect has to be installed for the test.
 	expect_exe = os.find_abs_path_of_executable('expect') or {
 		eprintln('skipping test, since expect is missing')
 		exit(0)
 	}
-	// The expect scripts will create projects in the temporary `test_module_path` directory.
+	// Directory where the Expect scripts will create projects.
 	test_module_path  = os.join_path(os.vtmp_dir(), 'v', 'test_vcreate_input')
-	// Path of the expect scripts used for in the test.
+	// Directory that contains the Expect scripts used in the test.
 	expect_tests_path = os.join_path(@VMODROOT, 'cmd', 'tools', 'vcreate', 'tests')
 )
 

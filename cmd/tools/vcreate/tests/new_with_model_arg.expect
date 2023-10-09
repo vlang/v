@@ -2,7 +2,7 @@
 
 set timeout 1
 
-# Pass v_root as arg, since we chdir into a temp directoy during testing and create a project there.
+# Pass v_root as arg, since we chdir into a temp directory during testing and create a project there.
 set v_root [lindex $argv 0]
 set project_name [lindex $argv 1]
 set model [lindex $argv 2]
