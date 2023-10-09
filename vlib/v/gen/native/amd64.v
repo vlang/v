@@ -1279,7 +1279,8 @@ pub fn (mut c Amd64) get_dllcall_addr(import_addr i64) i64 {
 	// return i32(-(0xe00 + c.g.pos() + 2) + import_addr)
 	// return i32(c.g.code_start_pos + import_addr)
 	text_section := c.g.get_pe_section('.text') or { c.g.n_error('no .text section generated') }
-	return 0xfffffffa - (i64(c.g.pos()) - i64(c.g.code_start_pos) + i64(text_section.header.virtual_address) - import_addr)
+	return 0xfffffffa - (i64(c.g.pos()) - i64(c.g.code_start_pos) +
+		i64(text_section.header.virtual_address) - import_addr)
 }
 
 pub fn (mut c Amd64) dllcall(symbol string) {
@@ -1824,7 +1825,8 @@ pub fn (mut c Amd64) call_fn(node ast.CallExpr) {
 			}
 		}
 		if is_floats[i] {
-			if args_size[i] == 8 && node.expected_arg_types[int(i) + args_offset] == ast.f32_type_idx {
+			if args_size[i] == 8
+				&& node.expected_arg_types[int(i) + args_offset] == ast.f32_type_idx {
 				c.g.write32(0xc05a0ff2)
 				c.g.println('cvtsd2ss xmm0, xmm0')
 			}
