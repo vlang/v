@@ -180,7 +180,7 @@ by using any of the following commands in a terminal:
     * [Structs with reference fields](#structs-with-reference-fields)
     * [sizeof and __offsetof](#sizeof-and-__offsetof)
     * [Limited operator overloading](#limited-operator-overloading)
-    * [Tuning](#tuning)
+    * [Performance tuning](#performance-tuning)
     * [Atomics](#atomics)
     * [Global Variables](#global-variables)
     * [Cross compilation](#cross-compilation)
@@ -6040,7 +6040,7 @@ To improve safety and maintainability, operator overloading is limited.
 - Arguments cannot be changed inside overloads.
 - Calling other functions inside operator functions is not allowed (**planned**).
 
-## Tuning
+## Performance tuning
 
 When compiled with `-prod`, V's generated C code usually performs well. However, in specialized
 scenarios, additional compiler flags and attributes can further optimize the executable for
