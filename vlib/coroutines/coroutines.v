@@ -31,7 +31,7 @@ fn init() {
 	}
 	dealloc := fn (_ voidptr, stack_ptr voidptr, stack_size int) {
 		unsafe {
-			C.GC_add_roots(stack_ptr, charptr(stack_ptr) + stack_size)
+			C.GC_remove_roots(stack_ptr, charptr(stack_ptr) + stack_size)
 			free(stack_ptr)
 		}
 	}
