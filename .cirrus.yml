@@ -1,6 +1,6 @@
 env:
   LANG: en_US.UTF-8
-  
+
 freebsd_instance:
   image_family: freebsd-13-0
 

@@ -1,0 +1,33 @@
+name: Code CI
+
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/platform_ci.yml'
+      - '!**/linux_ci.yml'
+      - '!**/macos_ci.yml'
+      - '!**/windows_ci.yml'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - '**.yml'
+      - '!**/platform_ci.yml'
+      - '!**/linux_ci.yml'
+      - '!**/macos_ci.yml'
+      - '!**/windows_ci.yml'
+
+concurrency:
+  group: platform-ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    uses: ./.github/workflows/linux_ci.yml
+
+  macos:
+    uses: ./.github/workflows/macos_ci.yml
+
+  windows:
+    uses: ./.github/workflows/windows_ci.yml
