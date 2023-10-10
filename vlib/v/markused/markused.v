@@ -18,6 +18,13 @@ pub fn mark_used(mut table ast.Table, pref_ &pref.Preferences, ast_files []&ast.
 		// Note: this is temporary, until the native backend supports more features!
 		['main.main']
 	} else {
+		byteptr_idx_str := '${ast.byteptr_type_idx}'
+		charptr_idx_str := '${ast.charptr_type_idx}'
+		u8_idx_str := '${ast.u8_type_idx}'
+		string_idx_str := '${ast.string_type_idx}'
+		array_idx_str := '${ast.array_type_idx}'
+		map_idx_str := '${ast.map_type_idx}'
+		ref_array_idx_str := '${int(ast.array_type.ref())}'
 		[
 			'main.main',
 			'__new_array',
@@ -55,62 +62,62 @@ pub fn mark_used(mut table ast.Table, pref_ &pref.Preferences, ast_files []&ast.
 			'compare_strings_reverse',
 			'builtin_init',
 			// byteptr and charptr
-			'3.vstring',
-			'3.vstring_with_len',
-			'3.vstring_literal',
-			'4.vstring',
-			'4.vstring_with_len',
-			'4.vstring_literal',
+			byteptr_idx_str + '.vstring',
+			byteptr_idx_str + '.vstring_with_len',
+			byteptr_idx_str + '.vstring_literal',
+			charptr_idx_str + '.vstring',
+			charptr_idx_str + '.vstring_with_len',
+			charptr_idx_str + '.vstring_literal',
 			// byte. methods
-			'11.str_escaped',
+			u8_idx_str + '.str_escaped',
 			// string. methods
-			'21.add',
-			'21.trim_space',
-			'21.repeat',
-			'21.replace',
-			'21.clone',
-			'21.clone_static',
-			'21.trim',
-			'21.substr',
-			'21.substr_ni',
-			'21.at',
-			'21.at_with_check',
-			'21.index_kmp',
+			string_idx_str + '.add',
+			string_idx_str + '.trim_space',
+			string_idx_str + '.repeat',
+			string_idx_str + '.replace',
+			string_idx_str + '.clone',
+			string_idx_str + '.clone_static',
+			string_idx_str + '.trim',
+			string_idx_str + '.substr',
+			string_idx_str + '.substr_ni',
+			string_idx_str + '.at',
+			string_idx_str + '.at_with_check',
+			string_idx_str + '.index_kmp',
 			// string. ==, !=, etc...
-			'21.eq',
-			'21.ne',
-			'21.lt',
-			'21.gt',
-			'21.le',
-			'21.ge',
+			string_idx_str + '.eq',
+			string_idx_str + '.ne',
+			string_idx_str + '.lt',
+			string_idx_str + '.gt',
+			string_idx_str + '.le',
+			string_idx_str + '.ge',
 			'fast_string_eq',
 			// other array methods
-			'23.get',
-			'23.set',
-			'23.get_unsafe',
-			'23.set_unsafe',
-			'23.get_with_check', // used for `x := a[i] or {}`
-			'23.clone_static_to_depth',
-			'23.clone_to_depth',
-			'23.first',
-			'23.last',
-			'23.pointers', // TODO: handle generic methods calling array primitives more precisely in pool_test.v
-			'23.reverse',
-			'23.repeat_to_depth',
-			'23.slice',
-			'23.slice_ni',
+			array_idx_str + '.get',
+			array_idx_str + '.set',
+			array_idx_str + '.get_unsafe',
+			array_idx_str + '.set_unsafe',
+			array_idx_str + '.get_with_check', // used for `x := a[i] or {}`
+			array_idx_str + '.clone_static_to_depth',
+			array_idx_str + '.clone_to_depth',
+			array_idx_str + '.first',
+			array_idx_str + '.last',
+			array_idx_str + '.pointers', // TODO: handle generic methods calling array primitives more precisely in pool_test.v
+			array_idx_str + '.reverse',
+			array_idx_str + '.repeat_to_depth',
+			array_idx_str + '.slice',
+			array_idx_str + '.slice_ni',
 			// map methods
-			'24.get',
-			'24.set',
+			map_idx_str + '.get',
+			map_idx_str + '.set',
 			// reference array methods
-			'65559.last',
-			'65559.pop',
-			'65559.push',
-			'65559.insert_many',
-			'65559.prepend_many',
-			'65559.reverse',
-			'65559.set',
-			'65559.set_unsafe',
+			ref_array_idx_str + '.last',
+			ref_array_idx_str + '.pop',
+			ref_array_idx_str + '.push',
+			ref_array_idx_str + '.insert_many',
+			ref_array_idx_str + '.prepend_many',
+			ref_array_idx_str + '.reverse',
+			ref_array_idx_str + '.set',
+			ref_array_idx_str + '.set_unsafe',
 			// TODO: process the _vinit const initializations automatically too
 			'json.decode_string',
 			'json.decode_int',
