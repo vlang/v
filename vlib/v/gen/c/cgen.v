@@ -476,14 +476,14 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) (string
 	// to make sure type idx's are the same in cached mods
 	if g.pref.build_mode == .build_module {
 		for idx, sym in g.table.type_symbols {
-			if idx in [0, 30] {
+			if idx in [0, 31] {
 				continue
 			}
 			g.definitions.writeln('int _v_type_idx_${sym.cname}();')
 		}
 	} else if g.pref.use_cache {
 		for idx, sym in g.table.type_symbols {
-			if idx in [0, 30] {
+			if idx in [0, 31] {
 				continue
 			}
 			g.definitions.writeln('int _v_type_idx_${sym.cname}() { return ${idx}; };')
