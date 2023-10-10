@@ -99,9 +99,8 @@ jobs:
           echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
-      # TODO: test-cleancode fails with msvc. Investigate why???
-      # - name: All code is formatted
-      #   run: ./v test-cleancode
+      - name: All code is formatted
+        run: ./v test-cleancode
       - name: Test pure V math module
         run: ./v -exclude @vlib/math/*.c.v test vlib/math/
       - name: Self tests
