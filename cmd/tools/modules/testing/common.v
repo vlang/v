@@ -227,7 +227,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 				skip_files << 'vlib/net/ssl/ssl_compiles_test.v'
 			}
 		}
-		if testing.runner_os != 'Linux' && testing.github_job != 'tcc' {
+		if testing.runner_os != 'Linux' || testing.github_job != 'tcc' {
 			skip_files << 'examples/c_interop_wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
 			skip_files << 'examples/call_v_from_python/test.v' // the example only makes sense to be compiled, when python is installed
 			skip_files << 'examples/call_v_from_ruby/test.v' // the example only makes sense to be compiled, when ruby is installed
