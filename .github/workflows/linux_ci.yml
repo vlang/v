@@ -1,21 +1,10 @@
-name: Code CI Linux
+name: CI Linux
 
 on:
-  push:
-    paths-ignore:
-      - "**.md"
-      - "**.yml"
-  pull_request:
-    paths-ignore:
-      - "**.md"
-      - "**.yml"
-
-concurrency:
-  group: build-ci-linux-${{ github.event.pull_request.number || github.sha }}
-  cancel-in-progress: true
+  workflow_call:
 
 jobs:
-  ubuntu-tcc:
+  tcc:
     runs-on: ubuntu-20.04
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
@@ -28,7 +17,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
-          ## The following is needed for examples/wkhtmltopdf.v
+          # The following is needed for examples/wkhtmltopdf.v
           wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
           sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
           sudo apt-get install --quiet -y expect
@@ -46,7 +35,7 @@ jobs:
         run: |
           thirdparty/tcc/tcc.exe -version
           ./v -cg -o v cmd/v # Make sure vtcc can build itself twice
-      #        ./v test-all
+          # ./v test-all
       - name: v self compilation
         run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
       - name: v self compilation with -skip-unused
@@ -103,7 +92,7 @@ jobs:
       - name: Test readline
         run: ./v test examples/readline/
 
-  ubuntu-tcc-boehm-gc:
+  tcc-boehm-gc:
     runs-on: ubuntu-20.04
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
@@ -117,7 +106,7 @@ jobs:
           sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
           sudo apt-get install --quiet -y libgc-dev
-          ## The following is needed for examples/wkhtmltopdf.v
+          # The following is needed for examples/wkhtmltopdf.v
           wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
           sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
           sudo dpkg -i wkhtmltox_0.12.6-1.focal_amd64.deb
@@ -160,7 +149,7 @@ jobs:
           ./testcase_leak 2>leaks.txt
           [ "$(stat -c %s leaks.txt)" = "0" ]
 
-  ubuntu:
+  gcc:
     runs-on: ubuntu-20.04
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
@@ -181,14 +170,14 @@ jobs:
           ./v -o v3 cmd/v -cflags "-fsanitize=undefined -fno-sanitize=alignment"
           UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v
           UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v3 -o v.c cmd/v
-      #    - name: Test V
-      #      run: ./v test-all
-      #    - name: Test v binaries
-      #      run: ./v build-vbinaries
-      ##    - name: Test v->js
-      ##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
-      #    - name: Build Vorum
-      #      run: git clone --depth 1 https://github.com/vlang/vorum && cd vorum && ../v . && cd ..
+      # - name: Test V
+      #   run: ./v test-all
+      # - name: Test v binaries
+      #   run: ./v build-vbinaries
+      # - name: Test v->js
+      #   run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+      # - name: Build Vorum
+      #   run: git clone --depth 1 https://github.com/vlang/vorum && cd vorum && ../v . && cd ..
       - name: Build vpm
         run: ./v install markdown && git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . || ../v cmd/vpm && cd ..
       - name: Freestanding
@@ -255,21 +244,20 @@ jobs:
           echo "Building it..."
           ../../vprod -backend native -o 1m 1m.v
           echo "Running it..."
+          # ./1m
           ls
       - name: compile vdoctor.v with -skip-unused and -prod
         run: ./v -showcc -skip-unused -cc gcc -prod cmd/tools/vdoctor.v
       - name: compile vup.v with -skip-unused and -prod
         run: ./v -showcc -skip-unused -cc gcc -prod cmd/tools/vup.v
 
+      # - run: cd examples/native && ../../v -native hello_world.v && ./hello_world
+      # - name: Coveralls GitHub Action
+      #   uses: coverallsapp/github-action@v1.0.1
+      #   with:
+      #     github-token: ${{ secrets.GITHUB_TOKEN }}
 
-  #        ./1m
-  # run: echo "TODO" #cd examples/native && ../../v -native hello_world.v && ./hello_world
-  #    - name: Coveralls GitHub Action
-  #      uses: coverallsapp/github-action@v1.0.1
-  #      with:
-  #        github-token: ${{ secrets.GITHUB_TOKEN }}
-
-  ubuntu-clang:
+  clang:
     runs-on: ubuntu-20.04
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
@@ -359,40 +347,38 @@ jobs:
           echo "Running it..."
           ls
 
+  # autofree-selfcompile:
+  #   runs-on: ubuntu-20.04
+  #   if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+  #   timeout-minutes: 121
+  #   env:
+  #     VFLAGS: -cc gcc
+  #   steps:
+  #   - uses: actions/checkout@v3
+  #   - name: Build V
+  #     run: make -j4
+  #   - name: V self compilation with -autofree
+  #     run: ./v -o v2 -autofree cmd/v && ./v2 -o v3 -autofree cmd/v && ./v3 -o v4 -autofree cmd/v
 
-#  ubuntu-autofree-selfcompile:
-#    runs-on: ubuntu-20.04
-#    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
-#    timeout-minutes: 121
-#    env:
-#      VFLAGS: -cc gcc
-#    steps:
-#    - uses: actions/checkout@v3
-#    - name: Build V
-#      run: make -j4
-#    - name: V self compilation with -autofree
-#      run: ./v -o v2 -autofree cmd/v && ./v2 -o v3 -autofree cmd/v && ./v3 -o v4 -autofree cmd/v
-
-
-#   ubuntu-musl:
-#     runs-on: ubuntu-20.04
-#    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
-#     timeout-minutes: 121
-#     env:
-#       VFLAGS: -cc musl-gcc
-#       V_CI_MUSL: 1
-#     steps:
-#     - uses: actions/checkout@v3
-#     - name: Install dependencies
-#       run: |
-#          sudo apt-get install --quiet -y musl musl-tools libssl-dev sqlite3 libsqlite3-dev valgrind
-#     - name: Build v
-#       run: echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
-# #    - name: Test v binaries
-# #      run: ./v build-vbinaries
-# ##    - name: Test v->js
-# ##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
-#     - name: quick debug
-#       run: ./v -stats vlib/strconv/format_test.v
-#     - name: Self tests
-#       run: ./v test-self
+  # musl:
+  #   runs-on: ubuntu-20.04
+  #   if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+  #   timeout-minutes: 121
+  #   env:
+  #     VFLAGS: -cc musl-gcc
+  #     V_CI_MUSL: 1
+  #   steps:
+  #   - uses: actions/checkout@v3
+  #   - name: Install dependencies
+  #     run: |
+  #        sudo apt-get install --quiet -y musl musl-tools libssl-dev sqlite3 libsqlite3-dev valgrind
+  #   - name: Build v
+  #     run: echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
+  #   # - name: Test v binaries
+  #   #   run: ./v build-vbinaries
+  #   # - name: Test v->js
+  #   #   run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+  #   - name: quick debug
+  #     run: ./v -stats vlib/strconv/format_test.v
+  #   - name: Self tests
+  #     run: ./v test-self
