@@ -113,10 +113,6 @@ jobs:
         run: |
           ./v -o v2 -parallel-cc cmd/v
       - name: Test password input
-        run: |
-          ./v examples/password
-          ./v examples/password/password_ci.vsh
+        run: ./v test examples/password/
       - name: Test readline
-        run: |
-          ./v examples/readline/readline_ci.v
-          ./v examples/readline/readline.vsh
+        run: ./v test examples/readline/
