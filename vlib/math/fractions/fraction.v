@@ -240,6 +240,7 @@ pub fn (f1 Fraction) equals(f2 Fraction) bool {
 	return cmp(f1, f2) == 0
 }
 
+// return true if f1 == f2
 pub fn (f1 Fraction) == (f2 Fraction) bool {
 	return cmp(f1, f2) == 0
 }
@@ -268,6 +269,7 @@ pub fn (f1 Fraction) lt(f2 Fraction) bool {
 	return cmp(f1, f2) < 0
 }
 
+// return true if f1 < f2
 pub fn (f1 Fraction) < (f2 Fraction) bool {
 	return cmp(f1, f2) < 0
 }
