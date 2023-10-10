@@ -571,6 +571,11 @@ pub fn (mut g Gen) if_branch(ifexpr ast.IfExpr, expected ast.Type, unpacked_para
 }
 
 pub fn (mut g Gen) if_expr(ifexpr ast.IfExpr, expected ast.Type, existing_rvars []Var) {
+	if ifexpr.is_comptime {
+		g.comptime_if_expr(ifexpr, expected, existing_rvars)
+		return
+	}
+	
 	params := if expected == ast.void_type {
 		[]wasm.ValType{}
 	} else if existing_rvars.len == 0 {

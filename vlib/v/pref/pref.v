@@ -818,6 +818,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				if b.is_js() {
 					res.output_cross_c = true
 				}
+				if b == .wasm {
+					res.compile_defines << 'wasm'
+					res.compile_defines_all << 'wasm'
+				}
 				res.backend = b
 				i++
 			}
