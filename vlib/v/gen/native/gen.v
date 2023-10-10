@@ -327,7 +327,7 @@ fn get_backend(arch pref.Arch, target_os pref.OS) !CodeGen {
 	return error('unsupported architecture')
 }
 
-pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref_ &pref.Preferences) (i32, i32) {
+pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref_ &pref.Preferences) (int, int) {
 	exe_name := if pref_.os == .windows && !out_name.ends_with('.exe') {
 		out_name + '.exe'
 	} else {
@@ -369,7 +369,7 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref_ &pref.Pre
 	g.generate_builtins()
 	g.generate_footer()
 
-	return g.nlines, i32(g.buf.len)
+	return g.nlines, g.buf.len
 }
 
 // used in macho_test.v
