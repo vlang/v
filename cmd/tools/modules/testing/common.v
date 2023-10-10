@@ -238,6 +238,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		}
 		if testing.github_job == 'ubuntu-docker-musl' {
 			skip_files << 'vlib/net/openssl/openssl_compiles_test.v'
+			skip_files << 'vlib/x/ttf/ttf_test.v'
 		}
 		if testing.github_job == 'tests-sanitize-memory-clang' {
 			skip_files << 'vlib/net/openssl/openssl_compiles_test.v'
