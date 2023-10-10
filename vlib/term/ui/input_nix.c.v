@@ -1,6 +1,7 @@
 // Copyright (c) 2020-2021 Raúl Hernández. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+[has_globals]
 module ui
 
 struct ExtraContext {
@@ -11,7 +12,7 @@ mut:
 	read_all_bytes bool = true
 }
 
-const ctx_ptr = &Context(unsafe { nil })
+__global ctx_ptr = &Context(unsafe { nil })
 
 // init initializes the terminal console with Config `cfg`.
 pub fn init(cfg Config) &Context {
@@ -20,12 +21,7 @@ pub fn init(cfg Config) &Context {
 	}
 	ctx.read_buf = []u8{cap: cfg.buffer_size}
 
-	// lmao
-	unsafe {
-		x := &ui.ctx_ptr
-		*x = ctx
-		_ = x
-	}
+	ctx_ptr = ctx
 	return ctx
 }
 
