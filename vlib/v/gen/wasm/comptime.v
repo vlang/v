@@ -3,7 +3,6 @@
 // that can be found in the LICENSE file.
 module wasm
 
-import wasm
 import v.ast
 
 pub fn (mut g Gen) comptime_cond(cond ast.Expr, pkg_exists bool) bool {
@@ -22,16 +21,20 @@ pub fn (mut g Gen) comptime_cond(cond ast.Expr, pkg_exists bool) bool {
 		ast.InfixExpr {
 			match cond.op {
 				.and {
-					return g.comptime_cond(cond.left, pkg_exists) && g.comptime_cond(cond.right, pkg_exists)
+					return g.comptime_cond(cond.left, pkg_exists)
+						&& g.comptime_cond(cond.right, pkg_exists)
 				}
 				.logical_or {
-					return g.comptime_cond(cond.left, pkg_exists) || g.comptime_cond(cond.right, pkg_exists)
+					return g.comptime_cond(cond.left, pkg_exists)
+						|| g.comptime_cond(cond.right, pkg_exists)
 				}
 				.eq {
-					return g.comptime_cond(cond.left, pkg_exists) == g.comptime_cond(cond.right, pkg_exists)
+					return g.comptime_cond(cond.left, pkg_exists) == g.comptime_cond(cond.right,
+						pkg_exists)
 				}
 				.ne {
-					return g.comptime_cond(cond.left, pkg_exists) != g.comptime_cond(cond.right, pkg_exists)
+					return g.comptime_cond(cond.left, pkg_exists) != g.comptime_cond(cond.right,
+						pkg_exists)
 				}
 				// wasm doesn't support generics
 				// .key_is, .not_is
@@ -57,8 +60,10 @@ pub fn (mut g Gen) comptime_if_expr(node ast.IfExpr, expected ast.Type, existing
 		}
 	}
 
-	for branch in node.branches {
-		if node.is_expr && !g.comptime_cond(branch.cond, branch.pkg_exist) {
+	for i, branch in node.branches {
+		has_expr := !(node.has_else && i + 1 >= node.branches.len)
+
+		if has_expr && !g.comptime_cond(branch.cond, branch.pkg_exist) {
 			continue
 		}
 		// !node.is_expr || cond
@@ -71,7 +76,10 @@ pub fn (mut g Gen) comptime_if_expr(node ast.IfExpr, expected ast.Type, existing
 pub fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_option bool) bool {
 	match name {
 		// platforms/os-es/compilers:
-		'windows', 'ios', 'macos', 'mach', 'darwin', 'linux', 'freebsd', 'openbsd', 'bsd', 'android', 'solaris', 'js_node', 'js_freestanding', 'js_browser', 'es5', 'js', 'native', 'glibc', 'gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus', 'gcboehm', 'prealloc', 'freestanding', 'amd64', 'aarch64', 'arm64' {
+		'windows', 'ios', 'macos', 'mach', 'darwin', 'linux', 'freebsd', 'openbsd', 'bsd',
+		'android', 'solaris', 'js_node', 'js_freestanding', 'js_browser', 'es5', 'js', 'native',
+		'glibc', 'gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus', 'gcboehm', 'prealloc',
+		'freestanding', 'amd64', 'aarch64', 'arm64' {
 			return false
 		}
 		'wasm' {
@@ -88,6 +96,7 @@ pub fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_option bool) bo
 		'test' {
 			return false
 		}
+		// wasm doesn't support threads
 		'threads' {
 			return false
 		}
@@ -110,11 +119,13 @@ pub fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_option bool) bo
 		}
 		else {
 			// taken from JS: what does it do??
-			/* if is_comptime_option
+			/*
+			if is_comptime_option
 				|| (g.pref.compile_defines_all.len > 0 && name in g.pref.compile_defines_all) {
 				return 'checkDefine("CUSTOM_DEFINE_${name}")'
 			}
-			return error('bad os ifdef name "${name}"') */
+			return error('bad os ifdef name "${name}"')
+			*/
 		}
 	}
 	g.w_error('wasm.comptime_if_to_ifdef(): unhandled `${name}`, is_comptime_option: ${is_comptime_option}')

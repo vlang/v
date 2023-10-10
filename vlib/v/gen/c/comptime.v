@@ -1041,7 +1041,7 @@ fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_option bool) !strin
 			return '__plan9__'
 		}
 		'vinix' {
-			return '__vinix__'>
+			return '__vinix__'
 		}
 		'freebsd' {
 			return '__FreeBSD__'
