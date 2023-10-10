@@ -99,8 +99,10 @@ pub fn mark_used(mut table ast.Table, pref_ &pref.Preferences, ast_files []&ast.
 			'23.repeat_to_depth',
 			'23.slice',
 			'23.slice_ni',
-			'61.get',
-			'61.set',
+			// map methods
+			'24.get',
+			'24.set',
+			// reference array methods
 			'65559.last',
 			'65559.pop',
 			'65559.push',
