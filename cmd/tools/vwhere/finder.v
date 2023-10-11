@@ -41,13 +41,13 @@ fn (mut fdr Finder) configure_from_arguments(args []string) {
 			}
 			fdr.visib.set_from_str(cmdline.option(args, '-vis', '${Visibility.all}'))
 			if fdr.symbol == .var && fdr.visib != .all {
-				make_and_print_error('-vis ${fdr.visib} just can be setted with symbol_type:',
+				make_and_print_error('-vis ${fdr.visib} just can be set with symbol_type:',
 					['fn', 'method', 'const', 'struct', 'enum', 'interface', 'regexp'],
 					'${fdr.symbol}')
 			}
 			fdr.mutab.set_from_str(cmdline.option(args, '-mut', '${Mutability.any}'))
 			if fdr.symbol != .var && fdr.mutab != .any {
-				make_and_print_error('-mut ${fdr.mutab} just can be setted with symbol_type:',
+				make_and_print_error('-mut ${fdr.mutab} just can be set with symbol_type:',
 					['var'], '${fdr.symbol}')
 			}
 			fdr.modul = cmdline.option(args, '-mod', '')
@@ -89,7 +89,7 @@ fn (mut fdr Finder) search_for_matches() {
 	// 	println(f)
 	// }
 
-	// Auxiliar rgx
+	// Auxiliary rgx
 	sp := r'\s*'
 	op := r'\('
 	cp := r'\)'

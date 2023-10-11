@@ -321,7 +321,7 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 			if final_module_path != minfo.final_module_path {
 				println('Relocating module from "${name}" to "${vmod_.name}" ( "${minfo.final_module_path}" ) ...')
 				if os.exists(minfo.final_module_path) {
-					eprintln('Warning module "${minfo.final_module_path}" already exsits!')
+					eprintln('Warning module "${minfo.final_module_path}" already exists!')
 					eprintln('Removing module "${minfo.final_module_path}" ...')
 					os.rmdir_all(minfo.final_module_path) or {
 						errors++

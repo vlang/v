@@ -60,7 +60,7 @@ interface Myinterfacer {
 	sub(int, int) int
 }
 
-// main funciton
+// main function
 fn main() {
 	add(1, 3)
 	println(add(1, 2))

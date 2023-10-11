@@ -207,7 +207,7 @@ fn (mut gen_vc GenVC) generate() {
 	if !os.is_dir(gen_vc.options.work_dir) {
 		// try create
 		os.mkdir(gen_vc.options.work_dir) or { panic(err) }
-		// still dosen't exist... we have a problem
+		// still doesn't exist... we have a problem
 		if !os.is_dir(gen_vc.options.work_dir) {
 			gen_vc.logger.error('error creating directory: ${gen_vc.options.work_dir}')
 			gen_vc.gen_error = true
@@ -219,7 +219,7 @@ fn (mut gen_vc GenVC) generate() {
 	// if we are not running with the --serve flag (webhook server)
 	// rather than deleting and re-downloading the repo each time
 	// first check to see if the local v repo is behind master
-	// if it isn't behind theres no point continuing further
+	// if it isn't behind there's no point continuing further
 	if !gen_vc.options.serve && os.is_dir(git_repo_dir_v) {
 		gen_vc.cmd_exec('git -C ${git_repo_dir_v} checkout master')
 		// fetch the remote repo just in case there are newer commits there

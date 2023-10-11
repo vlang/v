@@ -1,9 +1,0 @@
-#!/usr/bin/expect
-spawn ./readline_ci
-send "a"
-expect "got 97"
-send "1"
-expect "got 49"
-send "q"
-expect "Goodbye."
-expect eof

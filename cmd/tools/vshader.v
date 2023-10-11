@@ -181,7 +181,7 @@ fn compile_shaders(opt Options, input_path string) ! {
 // compile_shader compiles `shader_file` to a C header file.
 fn compile_shader(opt CompileOptions, shader_file string) ! {
 	path := opt.invoke_path
-	// The output convetion, for now, is to use the name of the .glsl file
+	// The output convention, for now, is to use the name of the .glsl file
 	mut out_file := os.file_name(shader_file).all_before_last('.') + '.h'
 	out_file = os.join_path(path, out_file)
 
