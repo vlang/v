@@ -343,11 +343,11 @@ pub fn (ctx &Context) draw_rounded_rect_empty(x f32, y f32, w f32, h f32, radius
 	sgl.v2f(rtx + r, rty)
 	sgl.v2f(rtx + r, rby)
 	// bottom
-	sgl.v2f(lbx, lby + r)
-	sgl.v2f(rbx, rby + r)
+	sgl.v2f(lbx, lby + r - 1)
+	sgl.v2f(rbx, rby + r - 1)
 	// left
-	sgl.v2f(sx, lty)
-	sgl.v2f(sx, lby)
+	sgl.v2f(sx + 1, lty)
+	sgl.v2f(sx + 1, lby)
 	sgl.end()
 }
 
