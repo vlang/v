@@ -276,9 +276,9 @@ fn (mut context Context) run() {
 					eprintln('${i:10} non 0 exit code for cmd: ${cmd}')
 					continue
 				}
-				trimed_output := res.output.trim_right('\r\n')
-				trimed_normalized := trimed_output.replace('\r\n', '\n')
-				lines := trimed_normalized.split('\n')
+				trimmed_output := res.output.trim_right('\r\n')
+				trimmed_normalized := trimmed_output.replace('\r\n', '\n')
+				lines := trimmed_normalized.split('\n')
 				for line in lines {
 					context.results[icmd].outputs << line
 				}

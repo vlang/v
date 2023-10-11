@@ -723,7 +723,7 @@ pub fn setup_new_vtmp_folder() string {
 pub struct TestDetails {
 pub mut:
 	retry int
-	flaky bool // when flaky tests fail, the whole run is still considered successfull, unless VTEST_FAIL_FLAKY is 1
+	flaky bool // when flaky tests fail, the whole run is still considered successful, unless VTEST_FAIL_FLAKY is 1
 }
 
 pub fn get_test_details(file string) TestDetails {
