@@ -81,7 +81,7 @@ fn test_new_with_model_arg_input() {
 		return
 	}
 	assert mod.name == project_name
-	assert mod.description == model
+	assert mod.description == 'My Awesome V Project.'
 	assert mod.version == '0.0.1'
 	assert mod.license == 'MIT'
 }

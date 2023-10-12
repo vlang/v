@@ -9,6 +9,7 @@ set model [lindex $argv 2]
 
 spawn $v_root/v new $project_name $model
 
+expect "Input your project description: " { send "My Awesome V Project.\r" } timeout { exit 1 }
 expect "Input your project version: (0.0.0) " { send "0.0.1\r" } timeout { exit 1 }
 expect "Input your project license: (MIT) " { send "\r" } timeout { exit 1 }
 expect "Initialising ..." {} timeout { exit 1 }
