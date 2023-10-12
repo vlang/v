@@ -984,7 +984,7 @@ pub fn (t &TypeSymbol) is_int() bool {
 	res := t.kind in [.i8, .i16, .int, .i64, .i32, .isize, .u8, .u16, .u32, .u64, .usize,
 		.int_literal, .rune]
 	if !res && t.kind == .alias {
-		return (t.info as Alias).parent_type.is_number()
+		return (t.info as Alias).parent_type.is_int()
 	}
 	return res
 }
