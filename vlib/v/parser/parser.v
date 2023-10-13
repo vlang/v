@@ -1162,6 +1162,11 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 
 	p.check(.key_asm)
 	mut arch := pref.arch_from_string(p.tok.lit) or { pref.Arch._auto }
+
+	if is_top_level && arch == .wasm32 {
+		p.error("wasm doesn't support toplevel assembly")
+	}
+
 	mut is_volatile := false
 	mut is_goto := false
 	if p.tok.kind == .key_volatile {
@@ -1175,7 +1180,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 	}
 	if arch == ._auto && !p.pref.is_fmt {
 		if p.tok.lit == '' {
-			p.error('missing assembly architecture. Try i386, amd64 or arm64.')
+			p.error('missing assembly architecture. Try i386, amd64, arm64, or wasm.')
 		}
 		p.error('unknown assembly architecture')
 	}
@@ -1227,13 +1232,19 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 			name += p.tok.lit
 			p.check(.name)
 		}
-		// dots are part of instructions for some riscv extensions
-		if arch in [.rv32, .rv64] {
+		// dots are part of instructions for some riscv extensions and webassembly
+		if arch in [.rv32, .rv64, .wasm32] {
 			for p.tok.kind == .dot {
 				name += '.'
 				p.next()
-				name += p.tok.lit
-				p.check(.name)
+				// wasm: i32.const
+				if arch == .wasm32 && p.tok.kind == .key_const {
+					name += 'const'
+					p.next()
+				} else {
+					name += p.tok.lit
+					p.check(.name)
+				}
 			}
 		}
 		mut is_label := false
@@ -1293,6 +1304,9 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 						break
 					}
 					.lsbr {
+						if arch == .wasm32 {
+							p.error("wasm doesn't have addressing operands")
+						}
 						mut addressing := p.asm_addressing()
 						addressing.segment = segment
 						args << addressing

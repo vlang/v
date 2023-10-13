@@ -1252,6 +1252,10 @@ pub fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 				}
 			}
 		}
+		ast.AsmStmt {
+			// assumed expected == void
+			g.asm_stmt(node)
+		}
 		else {
 			g.w_error('wasm.expr_stmt(): unhandled node: ' + node.type_name())
 		}

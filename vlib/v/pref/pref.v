@@ -821,6 +821,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				if b == .wasm {
 					res.compile_defines << 'wasm'
 					res.compile_defines_all << 'wasm'
+					res.arch = .wasm32
 				}
 				res.backend = b
 				i++
@@ -1083,7 +1084,7 @@ pub fn arch_from_string(arch_str string) !Arch {
 		'js_freestanding' {
 			return .js_freestanding
 		}
-		'wasm32' {
+		'wasm32', 'wasm' {
 			return .wasm32
 		}
 		'' {
