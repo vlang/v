@@ -129,8 +129,12 @@ pub fn (mut b Benchmark) measure(label string) i64 {
 	return res
 }
 
-// step_measure pushes the current time spent doing `label` to `measured_steps`, since the benchmark was started, or since its last call
-pub fn (mut b Benchmark) step_measure(label string) i64 {
+// record_measure stores the current time doing `label`, since the benchmark 
+// was started, or since the last call to `b.record_measure`.
+// It is similar to `b.measure`, but unlike it, will not print the measurement
+// immediately, just record it for later. You can call `b.all_recorded_measures` 
+// to retrieve all measures stored by `b.record_measure` calls.
+pub fn (mut b Benchmark) record_measure(label string) i64 {
 	b.ok()
 	res := b.step_timer.elapsed().microseconds()
 	b.measured_steps << b.step_message_with_label(benchmark.b_spent, 'in ${label}')
@@ -223,8 +227,9 @@ pub fn (b &Benchmark) total_message(msg string) string {
 	return tmsg
 }
 
-// total_measured_message returns a string with all the recorded measures with step_measure
-pub fn (b &Benchmark) total_measured_message() string {
+// all_recorded_measures returns a string, that contains all the recorded 
+// measure messages, done by individual calls to `b.record_measure`.
+pub fn (b &Benchmark) all_recorded_measures() string {
 	return b.measured_steps.join_lines()
 }
 
