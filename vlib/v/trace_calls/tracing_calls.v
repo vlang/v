@@ -20,7 +20,7 @@ fn C.pthread_self() u64
 
 // windows:
 fn C.GetCurrentThreadId() u32
-fn C.QueryPerformanceCounter(&u64) bool
+fn C.QueryPerformanceCounter(&u64) C.BOOL
 
 [markused]
 pub fn on_call(fname string) {

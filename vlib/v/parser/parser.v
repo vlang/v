@@ -4135,7 +4135,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			name = 'C.' + p.check_name()
 			language = .c
 		} else {
-			p.error_with_pos('1single letter capital names are reserved for generic template types',
+			p.error_with_pos('single letter capital names are reserved for generic template types',
 				name_pos)
 			return ast.FnTypeDecl{}
 		}
