@@ -760,8 +760,10 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							c.error('enums can only be assigned `int` values', right.pos())
 						}
 					} else {
-						if !var_option || (var_option && right_type_unwrapped != ast.none_type) {
-							c.error('cannot assign to `${left}`: ${err.msg()}', right.pos())
+						if right_type_unwrapped != ast.void_type {
+							if !var_option || (var_option && right_type_unwrapped != ast.none_type) {
+								c.error('cannot assign to `${left}`: ${err.msg()}', right.pos())
+							}
 						}
 					}
 				}

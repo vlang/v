@@ -3,8 +3,8 @@ module sgl
 // setup/shutdown/misc
 fn C.sgl_setup(desc &C.sgl_desc_t)
 fn C.sgl_shutdown()
-fn C.sgl_error() C.sgl_error_t
-fn C.sgl_context_error(ctx C.sgl_context) C.sgl_error_t
+fn C.sgl_error() SglError
+fn C.sgl_context_error(ctx C.sgl_context) SglError
 fn C.sgl_rad(deg f32) f32
 fn C.sgl_deg(rad f32) f32
 

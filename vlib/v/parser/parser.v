@@ -4127,11 +4127,18 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	if p.disallow_declarations_in_script_mode() {
 		return ast.SumTypeDecl{}
 	}
-	name := p.check_name()
+	mut name := p.check_name()
+	mut language := ast.Language.v
 	if name.len == 1 && name[0].is_capital() {
-		p.error_with_pos('single letter capital names are reserved for generic template types',
-			name_pos)
-		return ast.FnTypeDecl{}
+		if name == 'C' && p.tok.kind == .dot {
+			p.next() // .
+			name = 'C.' + p.check_name()
+			language = .c
+		} else {
+			p.error_with_pos('1single letter capital names are reserved for generic template types',
+				name_pos)
+			return ast.FnTypeDecl{}
+		}
 	}
 	if name in p.imported_symbols {
 		p.error_with_pos('cannot register alias `${name}`, this type was already imported',
@@ -4216,7 +4223,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	parent_sym := p.table.sym(parent_type)
 	pidx := parent_type.idx()
 	p.check_for_impure_v(parent_sym.language, decl_pos)
-	prepend_mod_name := p.prepend_mod(name)
+	prepend_mod_name := if language == .v { p.prepend_mod(name) } else { name } // `C.time_t`, not `time.C.time_t`
 	idx := p.table.register_sym(ast.TypeSymbol{
 		kind: .alias
 		name: prepend_mod_name

@@ -54,9 +54,9 @@ struct C.timespec {
 	tv_nsec i64
 }
 
-fn C.QueryPerformanceCounter(&u64) C.BOOL
+fn C.QueryPerformanceCounter(&u64) bool
 
-fn C.QueryPerformanceFrequency(&u64) C.BOOL
+fn C.QueryPerformanceFrequency(&u64) bool
 
 fn make_unix_time(t C.tm) i64 {
 	return portable_timegm(&t)

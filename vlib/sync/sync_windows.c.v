@@ -22,9 +22,16 @@ type MHANDLE = voidptr
 // Semaphore HANDLE
 type SHANDLE = voidptr
 
+[typedef]
+struct C.SRWLOCK {}
+
+[typedef]
+struct C.CONDITION_VARIABLE {}
+
 //[init_with=new_mutex] // TODO: implement support for this struct attribute, and disallow Mutex{} from outside the sync.new_mutex() function.
 
-// `SRWLOCK` is much more performant that `Mutex` on Windows, so use that in both cases since we don't want to share with other processes
+// `SRWLOCK` is much more performant that `Mutex` on Windows, so use that in both cases since we don't
+// want to share with other processes
 [heap]
 pub struct Mutex {
 mut:

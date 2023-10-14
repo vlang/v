@@ -216,7 +216,7 @@ pub enum VertexFormat as u32 {
 	float3
 	float4
 	byte4
-	byte4n
+	byte4n // normalized
 	ubyte4
 	ubyte4n
 	short2
@@ -266,11 +266,11 @@ pub enum CullMode as u32 {
 
 // FaceWindin is C.sg_face_winding
 pub enum FaceWinding as u32 {
-	_facewinding_default // value 0 reserved for default-init
-	facewinding_ccw
-	facewinding_cw
-	_facewinding_num
-	_force_u32           = 0x7FFFFFFF
+	default // value 0 reserved for default-init
+	ccw
+	cw
+	num
+	force_u32 = 0x7FFFFFFF
 }
 
 pub enum CompareFunc as u32 {

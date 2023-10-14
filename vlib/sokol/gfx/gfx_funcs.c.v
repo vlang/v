@@ -52,12 +52,12 @@ fn C.sg_query_limits() C.sg_limits
 fn C.sg_query_pixelformat(fmt PixelFormat) C.sg_pixelformat_info
 
 // get current state of a resource (INITIAL, ALLOC, VALID, FAILED, INVALID)
-fn C.sg_query_buffer_state(buf C.sg_buffer) C.sg_resource_state
-fn C.sg_query_image_state(img C.sg_image) C.sg_resource_state
-fn C.sg_query_sampler_state(smp C.sg_sampler) C.sg_sampler_state
-fn C.sg_query_shader_state(shd C.sg_shader) C.sg_resource_state
-fn C.sg_query_pipeline_state(pip C.sg_pipeline) C.sg_resource_state
-fn C.sg_query_pass_state(pass C.sg_pass) C.sg_resource_state
+fn C.sg_query_buffer_state(buf C.sg_buffer) ResourceState
+fn C.sg_query_image_state(img C.sg_image) ResourceState
+fn C.sg_query_sampler_state(smp C.sg_sampler) ResourceState
+fn C.sg_query_shader_state(shd C.sg_shader) ResourceState
+fn C.sg_query_pipeline_state(pip C.sg_pipeline) ResourceState
+fn C.sg_query_pass_state(pass C.sg_pass) ResourceState
 
 // get runtime information about a resource
 fn C.sg_query_buffer_info(buf C.sg_buffer) C.sg_buffer_info

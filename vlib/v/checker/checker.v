@@ -500,9 +500,9 @@ fn (mut c Checker) type_decl(node ast.TypeDecl) {
 
 fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 	// TODO Remove when `u8` isn't an alias in builtin anymore
-	if c.file.mod.name != 'builtin' {
-		c.check_valid_pascal_case(node.name, 'type alias', node.pos)
-	}
+	// if c.file.mod.name != 'builtin' {
+	// c.check_valid_pascal_case(node.name, 'type alias', node.pos)
+	//}
 	if !c.ensure_type_exists(node.parent_type, node.type_pos) {
 		return
 	}
@@ -4700,10 +4700,23 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) bool {
 	}
 	match sym.kind {
 		.placeholder {
-			if sym.language == .v && !sym.name.starts_with('C.') {
+			if sym.language == .c && sym.name == 'C.time_t' {
+				// TODO temporary hack until we can define C aliases
+				return true
+			}
+			// if sym.language == .v && !sym.name.starts_with('C.') {
+			// if sym.language in [.v, .c] {
+			if sym.language == .v {
 				c.error(util.new_suggestion(sym.name, c.table.known_type_names()).say('unknown type `${sym.name}`'),
 					pos)
 				return false
+			} else if sym.language == .c {
+				c.warn(util.new_suggestion(sym.name, c.table.known_type_names()).say('unknown type `${sym.name}` (all virtual C types must be defined, this will be an error soon)'),
+					pos)
+				// dump(sym)
+				// for _, t in c.table.type_symbols {
+				// println(t.name)
+				//}
 			}
 		}
 		.int_literal, .float_literal {

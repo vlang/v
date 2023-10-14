@@ -31,6 +31,9 @@ pub enum Direction {
 	push
 }
 
+[typedef]
+struct C.atomic_uintptr_t {}
+
 pub struct Channel {
 	ringbuf   &u8 = unsafe { nil } // queue for buffered channels
 	statusbuf &u8 = unsafe { nil } // flags to synchronize write/read in ringbuf

@@ -335,7 +335,7 @@ pub fn fileno(cfile voidptr) int {
 	$if windows {
 		return C._fileno(cfile)
 	} $else {
-		mut cfile_casted := &C.FILE(0) // FILE* cfile_casted = 0;
+		mut cfile_casted := &C.FILE(unsafe { nil }) // FILE* cfile_casted = 0;
 		cfile_casted = cfile
 		// Required on FreeBSD/OpenBSD/NetBSD as stdio.h defines fileno(..) with a macro
 		// that performs a field access on its argument without casting from void*.

@@ -1,6 +1,7 @@
 module builtin
 
-// struct C.FILE {}
+[typedef]
+pub struct C.FILE {}
 
 // <string.h>
 fn C.memcpy(dest voidptr, const_src voidptr, n usize) voidptr
@@ -225,6 +226,8 @@ fn C.sysctl(name &int, namelen u32, oldp voidptr, oldlenp voidptr, newp voidptr,
 
 [trusted]
 fn C._fileno(int) int
+
+struct C.intptr_t {}
 
 fn C._get_osfhandle(fd int) C.intptr_t
 
