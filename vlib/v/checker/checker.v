@@ -4700,10 +4700,10 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) bool {
 	}
 	match sym.kind {
 		.placeholder {
-			if sym.language == .c && sym.name == 'C.time_t' {
-				// TODO temporary hack until we can define C aliases
-				return true
-			}
+			// if sym.language == .c && sym.name == 'C.time_t' {
+			// TODO temporary hack until we can define C aliases
+			// return true
+			//}
 			// if sym.language == .v && !sym.name.starts_with('C.') {
 			// if sym.language in [.v, .c] {
 			if sym.language == .v {

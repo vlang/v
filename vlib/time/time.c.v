@@ -16,7 +16,7 @@ fn C.localtime_r(t &C.time_t, tm &C.tm)
 
 // struct C.time_t {}
 
-// type C.time_t = i64
+type C.time_t = i64
 
 fn C.time(t &C.time_t) C.time_t
 
