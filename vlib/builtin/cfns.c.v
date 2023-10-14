@@ -227,7 +227,7 @@ fn C.sysctl(name &int, namelen u32, oldp voidptr, oldlenp voidptr, newp voidptr,
 [trusted]
 fn C._fileno(int) int
 
-struct C.intptr_t {}
+type C.intptr_t = voidptr
 
 fn C._get_osfhandle(fd int) C.intptr_t
 

@@ -499,10 +499,9 @@ fn (mut c Checker) type_decl(node ast.TypeDecl) {
 }
 
 fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
-	// TODO Remove when `u8` isn't an alias in builtin anymore
-	// if c.file.mod.name != 'builtin' {
-	// c.check_valid_pascal_case(node.name, 'type alias', node.pos)
-	//}
+	if c.file.mod.name != 'builtin' && c.file.mod.name != 'time' {
+		c.check_valid_pascal_case(node.name, 'type alias', node.pos)
+	}
 	if !c.ensure_type_exists(node.parent_type, node.type_pos) {
 		return
 	}
