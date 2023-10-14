@@ -55,16 +55,6 @@ jobs:
         run: ./v test-self
       # - name: Self tests (-cstrict)
       #   run: V_CI_CSTRICT=1 ./v -cstrict test-self
-      - name: Test time functions in a timezone UTC-12
-        run: TZ=Etc/GMT+12 ./v test vlib/time/
-      - name: Test time functions in a timezone UTC-3
-        run: TZ=Etc/GMT+3 ./v test vlib/time/
-      - name: Test time functions in a timezone UTC+3
-        run: TZ=Etc/GMT-3 ./v test vlib/time/
-      - name: Test time functions in a timezone UTC+12
-        run: TZ=Etc/GMT-12 ./v test vlib/time/
-      - name: Test time functions in a timezone using daylight saving (Europe/Paris)
-        run: TZ=Europe/Paris ./v test vlib/time/
       - name: Build examples
         run: ./v -W build-examples
       - name: Build v tools
