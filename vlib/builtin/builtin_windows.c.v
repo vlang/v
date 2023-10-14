@@ -7,6 +7,8 @@ module builtin
 // g_original_codepage - used to restore the original windows console code page when exiting
 __global g_original_codepage = u32(0)
 
+type C.BOOL = bool
+
 // utf8 to stdout needs C.SetConsoleOutputCP(cp_utf8)
 fn C.GetConsoleOutputCP() u32
 
