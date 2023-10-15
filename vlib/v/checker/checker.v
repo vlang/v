@@ -499,7 +499,7 @@ fn (mut c Checker) type_decl(node ast.TypeDecl) {
 }
 
 fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
-	if c.file.mod.name != 'builtin' && c.file.mod.name != 'time' {
+	if c.file.mod.name != 'builtin' && !node.name.starts_with('C.') {
 		c.check_valid_pascal_case(node.name, 'type alias', node.pos)
 	}
 	if !c.ensure_type_exists(node.parent_type, node.type_pos) {
