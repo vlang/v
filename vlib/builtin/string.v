@@ -5,6 +5,8 @@ module builtin
 
 import strconv
 
+#include <string.h>
+
 /*
 Note: A V string should be/is immutable from the point of view of
     V user programs after it is first created. A V string is
@@ -331,10 +333,7 @@ pub fn (a string) clone() string {
 
 // replace_once replaces the first occurrence of `rep` with the string passed in `with`.
 pub fn (s string) replace_once(rep string, with string) string {
-	idx := s.index_(rep)
-	if idx == -1 {
-		return s.clone()
-	}
+	idx := s.index(rep) or { return s.clone() }
 	return s.substr(0, idx) + with + s.substr(idx + rep.len, s.len)
 }
 
@@ -1118,73 +1117,19 @@ pub fn (s string) substr_ni(_start int, _end int) string {
 	return res
 }
 
-// index returns the position of the first character of the input string.
-// It will return `-1` if the input string can't be found.
-[direct_array_access]
-fn (s string) index_(p string) int {
-	if p.len > s.len || p.len == 0 {
-		return -1
-	}
-	if p.len > 2 {
-		return s.index_kmp(p)
-	}
-	mut i := 0
-	for i < s.len {
-		mut j := 0
-		for j < p.len && unsafe { s.str[i + j] == p.str[j] } {
-			j++
-		}
-		if j == p.len {
-			return i
-		}
-		i++
-	}
-	return -1
+fn C.strstr(str &char, substr &char) &char
+
+[inline]
+fn index_(str &char, substr &char) ?int {
+	res := unsafe { C.strstr(str, substr) }
+	if res == 0 { return none }
+	return unsafe { res - str }
 }
 
 // index returns the position of the first character of the input string.
 // It will return `none` if the input string can't be found.
-pub fn (s string) index(p string) ?int {
-	idx := s.index_(p)
-	if idx == -1 {
-		return none
-	}
-	return idx
-}
-
-// index_kmp does KMP search.
-[direct_array_access; manualfree]
-fn (s string) index_kmp(p string) int {
-	if p.len > s.len {
-		return -1
-	}
-	mut prefix := []int{len: p.len}
-	defer {
-		unsafe { prefix.free() }
-	}
-	mut j := 0
-	for i := 1; i < p.len; i++ {
-		for unsafe { p.str[j] != p.str[i] } && j > 0 {
-			j = prefix[j - 1]
-		}
-		if unsafe { p.str[j] == p.str[i] } {
-			j++
-		}
-		prefix[i] = j
-	}
-	j = 0
-	for i in 0 .. s.len {
-		for unsafe { p.str[j] != s.str[i] } && j > 0 {
-			j = prefix[j - 1]
-		}
-		if unsafe { p.str[j] == s.str[i] } {
-			j++
-		}
-		if j == p.len {
-			return i - p.len + 1
-		}
-	}
-	return -1
+pub fn (s string) index(substr string) ?int {
+	return index_(s.str, substr.str)
 }
 
 // index_any returns the position of any of the characters in the input string - if found.
@@ -1230,31 +1175,11 @@ pub fn (s string) last_index(p string) ?int {
 
 // index_after returns the position of the input string, starting search from `start` position.
 [direct_array_access]
-pub fn (s string) index_after(p string, start int) int {
-	if p.len > s.len {
-		return -1
-	}
-	mut strt := start
-	if start < 0 {
-		strt = 0
-	}
-	if start >= s.len {
-		return -1
-	}
-	mut i := strt
-	for i < s.len {
-		mut j := 0
-		mut ii := i
-		for j < p.len && unsafe { s.str[ii] == p.str[j] } {
-			j++
-			ii++
-		}
-		if j == p.len {
-			return i
-		}
-		i++
-	}
-	return -1
+pub fn (s string) index_after(substr string, start int) int {
+	if start > s.len { return -1 }
+	if start <= 0 { return s.index(substr) or { -1 } }
+
+	return index_(unsafe { (s.str + start) }, substr.str) or { -1 }
 }
 
 // index_u8 returns the index of byte `c` if found in the string.
@@ -1331,14 +1256,9 @@ pub fn (s string) contains_u8(x u8) bool {
 
 // contains returns `true` if the string contains `substr`.
 // See also: [`string.index`](#string.index)
+[inline]
 pub fn (s string) contains(substr string) bool {
-	if substr.len == 0 {
-		return true
-	}
-	if substr.len == 1 {
-		return s.contains_u8(unsafe { substr.str[0] })
-	}
-	return s.index_(substr) != -1
+	return unsafe { C.strstr(s.str, substr.str) != 0 }
 }
 
 // contains_any returns `true` if the string contains any chars in `chars`.
@@ -1562,16 +1482,10 @@ pub fn (s string) is_title() bool {
 // find_between returns the string found between `start` string and `end` string.
 // Example: assert 'hey [man] how you doin'.find_between('[', ']') == 'man'
 pub fn (s string) find_between(start string, end string) string {
-	start_pos := s.index_(start)
-	if start_pos == -1 {
-		return ''
-	}
+	start_pos := s.index(start) or { return '' }
 	// First get everything to the right of 'start'
 	val := s[start_pos + start.len..]
-	end_pos := val.index_(end)
-	if end_pos == -1 {
-		return val
-	}
+	end_pos := val.index(end) or { return val }
 	return val[..end_pos]
 }
 
@@ -1846,10 +1760,7 @@ pub fn (s &string) free() {
 // Example: assert 'abcd'.before('.') == 'abcd'
 // TODO: deprecate and remove either .before or .all_before
 pub fn (s string) before(sub string) string {
-	pos := s.index_(sub)
-	if pos == -1 {
-		return s.clone()
-	}
+	pos := s.index(sub) or { return s.clone() }
 	return s[..pos]
 }
 
@@ -1859,10 +1770,7 @@ pub fn (s string) before(sub string) string {
 // Example: assert 'abcd'.all_before('.') == 'abcd'
 pub fn (s string) all_before(sub string) string {
 	// TODO remove dup method
-	pos := s.index_(sub)
-	if pos == -1 {
-		return s.clone()
-	}
+	pos := s.index(sub) or { return s.clone() }
 	return s[..pos]
 }
 
@@ -1883,10 +1791,7 @@ pub fn (s string) all_before_last(sub string) string {
 // Example: assert '23:34:45.234'.all_after('.') == '234'
 // Example: assert 'abcd'.all_after('z') == 'abcd'
 pub fn (s string) all_after(sub string) string {
-	pos := s.index_(sub)
-	if pos == -1 {
-		return s.clone()
-	}
+	pos := s.index(sub) or { return s.clone() }
 	return s[pos + sub.len..]
 }
 
@@ -1907,10 +1812,7 @@ pub fn (s string) all_after_last(sub string) string {
 // Example: assert '23:34:45.234'.all_after_first(':') == '34:45.234'
 // Example: assert 'abcd'.all_after_first('z') == 'abcd'
 pub fn (s string) all_after_first(sub string) string {
-	pos := s.index_(sub)
-	if pos == -1 {
-		return s.clone()
-	}
+	pos := s.index(sub) or { return s.clone() }
 	return s[pos + sub.len..]
 }
 
