@@ -101,11 +101,10 @@ pub fn ntoh16(net u16) u16 {
 	return hton16(net)
 }
 
-// variable length unsigned integer encoding from rfc9000 sec.16
-// short version -> len in [1,2,4,8] and first two msbs encodes the log2(len) of n
-// can represent 0..1<<62
-
-// takes a u64 where n < 2^62 and returns a byte array
+// u64tovarint converts the given 64 bit number `n`, where n < 2^62 to a byte array,
+// using the variable length unsigned integer encoding from:
+// https://datatracker.ietf.org/doc/html/rfc9000#section-16 .
+// The returned array length .len, will be in [1,2,4,8] .
 pub fn u64tovarint(n u64) ![]u8 {
 	if n > u64(1) << 62 {
 		return error('cannnot encode more than 2^62-1')
@@ -136,7 +135,9 @@ pub fn u64tovarint(n u64) ![]u8 {
 	return result.reverse()
 }
 
-// parses a variable length uint from start of the byte array, returns the number and len in bytes
+// varinttou64 parses a variable length number from the start of the
+// given byte array `b`. If it succeeds, it returns the decoded number,
+// and the length of the parsed byte span.
 pub fn varinttou64(b []u8) !(u64, u8) {
 	if b.len == 0 {
 		return error('cannot parse vluint from empty byte array')
