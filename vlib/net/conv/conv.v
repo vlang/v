@@ -124,15 +124,15 @@ pub fn u64tovarint(n u64) ![]u8 {
 		}
 	}
 	len := 1 << msb
-	mut result := []u8{len: len, cap: len}
+	mut result := []u8{len: len}
 	mut tn := n
 	for i in 0 .. len {
-		result[i] = u8(tn % 256)
+		result[len - 1 - i] = u8(tn % 256)
 		tn /= 256
 	}
-	result[len - 1] |= msb << 6
+	result[0] |= msb << 6
 
-	return result.reverse()
+	return result
 }
 
 // varinttou64 parses a variable length number from the start of the
