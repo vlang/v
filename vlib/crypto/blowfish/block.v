@@ -18,30 +18,25 @@ pub fn expand_key(key []u8, mut bf Blowfish) {
 	mut l := u32(0)
 	mut r := u32(0)
 	for i := 0; i < 18; i += 2 {
-		arr := setup_tables(l, r, mut bf)
-		bf.p[i], bf.p[i + 1] = arr[0], arr[1]
-		l, r = arr[0], arr[1]
+		l, r = setup_tables(l, r, mut bf)
+		bf.p[i], bf.p[i + 1] = l, r
 	}
 
 	for i := 0; i < 256; i += 2 {
-		arr := setup_tables(l, r, mut bf)
-		bf.s[0][i], bf.s[0][i + 1] = arr[0], arr[1]
-		l, r = arr[0], arr[1]
+		l, r = setup_tables(l, r, mut bf)
+		bf.s[0][i], bf.s[0][i + 1] = l, r
 	}
 	for i := 0; i < 256; i += 2 {
-		arr := setup_tables(l, r, mut bf)
-		bf.s[1][i], bf.s[1][i + 1] = arr[0], arr[1]
-		l, r = arr[0], arr[1]
+		l, r = setup_tables(l, r, mut bf)
+		bf.s[1][i], bf.s[1][i + 1] = l, r
 	}
 	for i := 0; i < 256; i += 2 {
-		arr := setup_tables(l, r, mut bf)
-		bf.s[2][i], bf.s[2][i + 1] = arr[0], arr[1]
-		l, r = arr[0], arr[1]
+		l, r = setup_tables(l, r, mut bf)
+		bf.s[2][i], bf.s[2][i + 1] = l, r
 	}
 	for i := 0; i < 256; i += 2 {
-		arr := setup_tables(l, r, mut bf)
-		bf.s[3][i], bf.s[3][i + 1] = arr[0], arr[1]
-		l, r = arr[0], arr[1]
+		l, r = setup_tables(l, r, mut bf)
+		bf.s[3][i], bf.s[3][i + 1] = l, r
 	}
 }
 
@@ -59,43 +54,38 @@ pub fn expand_key_with_salt(key []u8, salt []u8, mut bf Blowfish) {
 	for i := 0; i < 18; i += 2 {
 		l ^= get_next_word(salt, &j)
 		r ^= get_next_word(salt, &j)
-		arr := setup_tables(l, r, mut bf)
-		bf.p[i], bf.p[i + 1] = arr[0], arr[1]
-		l, r = arr[0], arr[1]
+		l, r = setup_tables(l, r, mut bf)
+		bf.p[i], bf.p[i + 1] = l, r
 	}
 
 	for i := 0; i < 256; i += 2 {
 		l ^= get_next_word(salt, &j)
 		r ^= get_next_word(salt, &j)
-		arr := setup_tables(l, r, mut bf)
-		bf.s[0][i], bf.s[0][i + 1] = arr[0], arr[1]
-		l, r = arr[0], arr[1]
+		l, r = setup_tables(l, r, mut bf)
+		bf.s[0][i], bf.s[0][i + 1] = l, r
 	}
 	for i := 0; i < 256; i += 2 {
 		l ^= get_next_word(salt, &j)
 		r ^= get_next_word(salt, &j)
-		arr := setup_tables(l, r, mut bf)
-		bf.s[1][i], bf.s[1][i + 1] = arr[0], arr[1]
-		l, r = arr[0], arr[1]
+		l, r = setup_tables(l, r, mut bf)
+		bf.s[1][i], bf.s[1][i + 1] = l, r
 	}
 	for i := 0; i < 256; i += 2 {
 		l ^= get_next_word(salt, &j)
 		r ^= get_next_word(salt, &j)
-		arr := setup_tables(l, r, mut bf)
-		bf.s[2][i], bf.s[2][i + 1] = arr[0], arr[1]
-		l, r = arr[0], arr[1]
+		l, r = setup_tables(l, r, mut bf)
+		bf.s[2][i], bf.s[2][i + 1] = l, r
 	}
 	for i := 0; i < 256; i += 2 {
 		l ^= get_next_word(salt, &j)
 		r ^= get_next_word(salt, &j)
-		arr := setup_tables(l, r, mut bf)
-		bf.s[3][i], bf.s[3][i + 1] = arr[0], arr[1]
-		l, r = arr[0], arr[1]
+		l, r = setup_tables(l, r, mut bf)
+		bf.s[3][i], bf.s[3][i + 1] = l, r
 	}
 }
 
 // setup_tables sets up the Blowfish cipher's pi and substitution tables.
-fn setup_tables(l u32, r u32, mut bf Blowfish) []u32 {
+fn setup_tables(l u32, r u32, mut bf Blowfish) (u32, u32) {
 	mut xl := l
 	mut xr := r
 	xl ^= bf.p[0]
@@ -116,8 +106,7 @@ fn setup_tables(l u32, r u32, mut bf Blowfish) []u32 {
 	xr ^= ((bf.s[0][u8(xl >> 24)] + bf.s[1][u8(xl >> 16)]) ^ bf.s[2][u8(xl >> 8)]) + bf.s[3][u8(xl)] ^ bf.p[15]
 	xl ^= ((bf.s[0][u8(xr >> 24)] + bf.s[1][u8(xr >> 16)]) ^ bf.s[2][u8(xr >> 8)]) + bf.s[3][u8(xr)] ^ bf.p[16]
 	xr ^= bf.p[17]
-	res := [xr, xl]
-	return res
+	return xr, xl
 }
 
 // get_next_word returns the next big-endian u32 value from the byte
