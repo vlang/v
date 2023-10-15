@@ -44,9 +44,9 @@ fn test_hton16_ntoh16() {
 }
 
 fn test_varinttou64_u64tovarint() {
-	b0 := conv2.u64tovarint(0) or { panic(err) }
+	b0 := conv.u64tovarint(0) or { panic(err) }
 	assert b0 == [u8(0)]
-	b1 := conv2.u64tovarint(1) or { panic(err) }
+	b1 := conv.u64tovarint(1) or { panic(err) }
 	assert b1 == [u8(1)]
 	mp := {
 		u64(128):         [u8(0b01000000), 0b10000000]
@@ -56,9 +56,9 @@ fn test_varinttou64_u64tovarint() {
 	}
 	for k, v in mp {
 		println('${k:b}:${v}')
-		n, len := conv2.varinttou64(v) or { panic(err) }
+		n, len := conv.varinttou64(v) or { panic(err) }
 		assert n == k
-		rn := conv2.u64tovarint(k) or { panic(err) }
+		rn := conv.u64tovarint(k) or { panic(err) }
 		assert rn == v
 	}
 }
