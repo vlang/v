@@ -123,8 +123,8 @@ fn (mut p Process) win_spawn_process() int {
 		to_be_freed << work_folder_ptr
 	}
 
-	create_process_ok := C.CreateProcessW(0, voidptr(&wdata.command_line[0]), 0, 0, C.TRUE, creation_flags,
-		0, work_folder_ptr, voidptr(&start_info), voidptr(&wdata.proc_info))
+	create_process_ok := C.CreateProcessW(0, voidptr(&wdata.command_line[0]), 0, 0, C.TRUE,
+		creation_flags, 0, work_folder_ptr, voidptr(&start_info), voidptr(&wdata.proc_info))
 	failed_cfn_report_error(create_process_ok, 'CreateProcess')
 	if p.use_stdio_ctl {
 		close_valid_handle(&wdata.child_stdout_write)
