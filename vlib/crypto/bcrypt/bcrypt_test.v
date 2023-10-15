@@ -1,7 +1,6 @@
 import crypto.bcrypt
 
 fn test_crypto_bcrypt() {
-
 	bcrypt.compare_hash_and_password('123456'.bytes(), '$2y$13$7j2kgHgrEiI9kYmiXZuiyu3IJFWXEH.sZN6ai82XNCd9SZ7UwdlTW'.bytes()) or {
 		panic(err)
 	}
