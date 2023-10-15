@@ -1122,7 +1122,9 @@ fn C.strstr(str &char, substr &char) &char
 [inline]
 fn index_(str &char, substr &char) ?int {
 	res := unsafe { C.strstr(str, substr) }
-	if res == 0 { return none }
+	if res == 0 {
+		return none
+	}
 	return unsafe { res - str }
 }
 
@@ -1145,41 +1147,32 @@ pub fn (s string) index_any(chars string) int {
 }
 
 // last_index returns the position of the last occurrence of the input string.
-[direct_array_access]
-fn (s string) last_index_(p string) int {
-	if p.len > s.len || p.len == 0 {
-		return -1
-	}
-	mut i := s.len - p.len
-	for i >= 0 {
-		mut j := 0
-		for j < p.len && unsafe { s.str[i + j] == p.str[j] } {
-			j++
-		}
-		if j == p.len {
-			return i
-		}
-		i--
-	}
-	return -1
-}
 
 // last_index returns the position of the last occurrence of the input string.
 pub fn (s string) last_index(p string) ?int {
-	idx := s.last_index_(p)
-	if idx == -1 {
+	mut t := -1
+	for {
+		t = s.index_after_(p, t) or { return if t == -1 { none } else { t } }
+	}
+	return t
+}
+
+// index_after returns the position of the input string, starting search from `start` position.
+[direct_array_access; inline]
+fn (s string) index_after_(substr string, start int) ?int {
+	if _unlikely_(start > s.len) {
 		return none
 	}
-	return idx
+	if _unlikely_(start <= 0) {
+		return index_(s.str, substr.str)
+	}
+	return index_(unsafe { (s.str + start) }, substr.str)
 }
 
 // index_after returns the position of the input string, starting search from `start` position.
 [direct_array_access]
 pub fn (s string) index_after(substr string, start int) int {
-	if start > s.len { return -1 }
-	if start <= 0 { return s.index(substr) or { -1 } }
-
-	return index_(unsafe { (s.str + start) }, substr.str) or { -1 }
+	return s.index_after_(substr, start) or { -1 }
 }
 
 // index_u8 returns the index of byte `c` if found in the string.
@@ -1779,10 +1772,7 @@ pub fn (s string) all_before(sub string) string {
 // Example: assert '23:34:45.234'.all_before_last(':') == '23:34'
 // Example: assert 'abcd'.all_before_last('.') == 'abcd'
 pub fn (s string) all_before_last(sub string) string {
-	pos := s.last_index_(sub)
-	if pos == -1 {
-		return s.clone()
-	}
+	pos := s.last_index(sub) or { return s.clone() }
 	return s[..pos]
 }
 
@@ -1800,10 +1790,7 @@ pub fn (s string) all_after(sub string) string {
 // Example: assert '23:34:45.234'.all_after_last(':') == '45.234'
 // Example: assert 'abcd'.all_after_last('z') == 'abcd'
 pub fn (s string) all_after_last(sub string) string {
-	pos := s.last_index_(sub)
-	if pos == -1 {
-		return s.clone()
-	}
+	pos := s.last_index(sub) or { return s.clone() }
 	return s[pos + sub.len..]
 }
 
