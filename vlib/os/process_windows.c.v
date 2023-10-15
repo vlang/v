@@ -8,14 +8,14 @@ fn C.GetProcAddress(handle voidptr, procname &u8) voidptr
 fn C.TerminateProcess(process HANDLE, exit_code u32) bool
 fn C.PeekNamedPipe(hNamedPipe voidptr, lpBuffer voidptr, nBufferSize int, lpBytesRead voidptr, lpTotalBytesAvail voidptr, lpBytesLeftThisMessage voidptr) bool
 
-type FN_NTSuspendResume = fn (voidptr)
+type FN_NTSuspendResume = fn (voidptr) u64
 
-fn ntdll_fn(name &u8) FN_NTSuspendResume {
+fn ntdll_fn(name &char) FN_NTSuspendResume {
 	ntdll := C.GetModuleHandleA(c'NTDLL')
 	if ntdll == 0 {
 		return FN_NTSuspendResume(0)
 	}
-	the_fn := FN_NTSuspendResume(C.GetProcAddress(ntdll, name))
+	the_fn := FN_NTSuspendResume(C.GetProcAddress(ntdll, voidptr(name)))
 	return the_fn
 }
 
@@ -123,7 +123,7 @@ fn (mut p Process) win_spawn_process() int {
 		to_be_freed << work_folder_ptr
 	}
 
-	create_process_ok := C.CreateProcessW(0, &wdata.command_line[0], 0, 0, C.TRUE, creation_flags,
+	create_process_ok := C.CreateProcessW(0, voidptr(&wdata.command_line[0]), 0, 0, C.TRUE, creation_flags,
 		0, work_folder_ptr, voidptr(&start_info), voidptr(&wdata.proc_info))
 	failed_cfn_report_error(create_process_ok, 'CreateProcess')
 	if p.use_stdio_ctl {
@@ -212,7 +212,7 @@ fn (mut p Process) win_read_string(idx int, maxbytes int) (string, int) {
 		return '', 0
 	}
 	mut bytes_avail := int(0)
-	if !C.PeekNamedPipe(rhandle, unsafe { nil }, int(0), unsafe { nil }, &bytes_avail,
+	if !C.PeekNamedPipe(rhandle, unsafe { nil }, int(0), unsafe { nil }, voidptr(&bytes_avail),
 		unsafe { nil }) {
 		return '', 0
 	}
