@@ -106,8 +106,8 @@ pub fn ntoh16(net u16) u16 {
 // can represent 0..1<<62
 
 // takes a u64 where n < 2^62 and returns a byte array
-pub fn u64tovlu62(n u64) ![]u8 {
-	if n < 1 << 62 {
+pub fn u64tovarint(n u64) ![]u8 {
+	if n > u64(1) << 62 {
 		return error('cannnot encode more than 2^62-1')
 	}
 	msb := match true {
@@ -137,7 +137,7 @@ pub fn u64tovlu62(n u64) ![]u8 {
 }
 
 // parses a variable length uint from start of the byte array, returns the number and len in bytes
-pub fn vlu62tou64(b []u8) !(u64, u8) {
+pub fn varinttou64(b []u8) !(u64, u8) {
 	if b.len == 0 {
 		return error('cannot parse vluint from empty byte array')
 	}

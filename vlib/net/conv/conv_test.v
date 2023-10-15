@@ -43,10 +43,22 @@ fn test_hton16_ntoh16() {
 	}
 }
 
-// TODO: write tests ! v cannot find the new functions when trying to run tests
-// fn test_u64tovlu62_vlu62tou64() {
-// 	assert [u8(0)] == conv.u64tovlu62(0)
-// 	assert [u8(1)] == conv.u64tovlu62(1)
-// 	assert (0, 1) == conv.vlu62tou64([u8(0)])
-// 	assert (1, 1) == conv.vlu62tou64([u8(1)])
-// }
+fn test_varinttou64_u64tovarint() {
+	b0 := conv2.u64tovarint(0) or { panic(err) }
+	assert b0 == [u8(0)]
+	b1 := conv2.u64tovarint(1) or { panic(err) }
+	assert b1 == [u8(1)]
+	mp := {
+		u64(128):         [u8(0b01000000), 0b10000000]
+		1024:             [u8(0b01000100), 0b00000000]
+		0xffff:           [u8(0b10000000), 0, 0xff, 0xff]
+		u64(1) << 62 - 1: [u8(0xff), 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]
+	}
+	for k, v in mp {
+		println('${k:b}:${v}')
+		n, len := conv2.varinttou64(v) or { panic(err) }
+		assert n == k
+		rn := conv2.u64tovarint(k) or { panic(err) }
+		assert rn == v
+	}
+}
