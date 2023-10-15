@@ -42,3 +42,11 @@ fn test_hton16_ntoh16() {
 		check(conv.hton16, conv.ntoh16, x)
 	}
 }
+
+// TODO: write tests ! v cannot find the new functions when trying to run tests
+// fn test_u64tovlu62_vlu62tou64() {
+// 	assert [u8(0)] == conv.u64tovlu62(0)
+// 	assert [u8(1)] == conv.u64tovlu62(1)
+// 	assert (0, 1) == conv.vlu62tou64([u8(0)])
+// 	assert (1, 1) == conv.vlu62tou64([u8(1)])
+// }

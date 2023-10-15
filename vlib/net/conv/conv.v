@@ -100,3 +100,56 @@ pub fn nth16(net u16) u16 {
 pub fn ntoh16(net u16) u16 {
 	return hton16(net)
 }
+
+// variable length unsigned integer encoding from rfc9000 sec.16
+// short version -> len in [1,2,4,8] and first two msbs encodes the log2(len) of n
+// can represent 0..1<<62
+
+// takes a u64 where n < 2^62 and returns a byte array
+pub fn u64tovlu62(n u64) ![]u8 {
+	if n < 1 << 62 {
+		return error('cannnot encode more than 2^62-1')
+	}
+	msb := match true {
+		n < 64 {
+			u8(0b00)
+		}
+		n < 16384 {
+			u8(0b01)
+		}
+		n < 1073741824 {
+			u8(0b10)
+		}
+		else {
+			u8(0b11)
+		}
+	}
+	len := 1 << msb
+	mut result := []u8{len: len, cap: len}
+	mut tn := n
+	for i in 0 .. len {
+		result[i] = u8(tn % 256)
+		tn /= 256
+	}
+	result[len - 1] |= msb << 6
+
+	return result.reverse()
+}
+
+// parses a variable length uint from start of the byte array, returns the number and len in bytes
+pub fn vlu62tou64(b []u8) !(u64, u8) {
+	if b.len == 0 {
+		return error('cannot parse vluint from empty byte array')
+	}
+	msb := b[0] >> 6
+	len := u8(1 << msb)
+	if len > b.len {
+		return error('expected ${len} bytes but got ${b.len} bytes')
+	}
+	mut n := u64(b[0] & 0b00111111)
+
+	for i in 1 .. len {
+		n = n * 256 + b[i]
+	}
+	return n, len
+}
