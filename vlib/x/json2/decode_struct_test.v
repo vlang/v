@@ -31,6 +31,10 @@ mut:
 	val T
 }
 
+struct StructTypeSub {
+	test string
+}
+
 struct StructTypeOption[T] {
 mut:
 	val ?T
@@ -92,6 +96,13 @@ fn test_types() {
 		assert false
 	} else {
 		// dump(err)
+		assert true
+	}
+
+	assert json.decode[StructType[StructTypeSub]]('{"val": {"test": "test"}}')!.val.test == 'test'
+	if x := json.decode[StructType[StructTypeSub]]('{"val": {"invalid_field": "test"}}') {
+		assert false
+	} else {
 		assert true
 	}
 }
