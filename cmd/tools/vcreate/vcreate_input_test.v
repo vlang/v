@@ -16,6 +16,12 @@ const (
 	expect_tests_path = os.join_path(@VMODROOT, 'cmd', 'tools', 'vcreate', 'tests')
 )
 
+fn testsuite_begin() {
+	dump(expect_exe)
+	dump(test_module_path)
+	dump(expect_tests_path)
+}
+
 fn prepare_test_path() ! {
 	os.rmdir_all(test_module_path) or {}
 	os.mkdir_all(test_module_path) or {}
@@ -25,7 +31,8 @@ fn prepare_test_path() ! {
 fn test_new_with_no_arg_input() {
 	prepare_test_path()!
 	project_name := 'my_project'
-	res := os.execute('${os.join_path(expect_tests_path, 'new_with_no_arg.expect')} ${@VMODROOT} ${project_name}')
+	res := os.execute('${os.quoted_path(expect_exe)} ${os.join_path(expect_tests_path,
+		'new_with_no_arg.expect')} ${@VMODROOT} ${project_name}')
 	if res.exit_code != 0 {
 		assert false, res.output
 	}
@@ -46,7 +53,8 @@ fn test_new_with_no_arg_input() {
 fn test_new_with_name_arg_input() {
 	prepare_test_path()!
 	project_name := 'my_other_project'
-	res := os.execute('${os.join_path(expect_tests_path, 'new_with_name_arg.expect')} ${@VMODROOT} ${project_name}')
+	res := os.execute('${os.quoted_path(expect_exe)} ${os.join_path(expect_tests_path,
+		'new_with_name_arg.expect')} ${@VMODROOT} ${project_name}')
 	if res.exit_code != 0 {
 		assert false, res.output
 	}
@@ -68,7 +76,8 @@ fn test_new_with_model_arg_input() {
 	prepare_test_path()!
 	project_name := 'my_lib'
 	model := 'lib'
-	res := os.execute('${os.join_path(expect_tests_path, 'new_with_model_arg.expect')} ${@VMODROOT} ${project_name} ${model}')
+	res := os.execute('${os.quoted_path(expect_exe)} ${os.join_path(expect_tests_path,
+		'new_with_model_arg.expect')} ${@VMODROOT} ${project_name} ${model}')
 	if res.exit_code != 0 {
 		assert false, res.output
 	}
