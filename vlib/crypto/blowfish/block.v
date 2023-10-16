@@ -52,33 +52,33 @@ pub fn expand_key_with_salt(key []u8, salt []u8, mut bf Blowfish) {
 	mut l := u32(0)
 	mut r := u32(0)
 	for i := 0; i < 18; i += 2 {
-		l ^= get_next_word(key, &j)
-		r ^= get_next_word(key, &j)
+		l ^= get_next_word(salt, &j)
+		r ^= get_next_word(salt, &j)
 		l, r = setup_tables(l, r, mut bf)
 		bf.p[i], bf.p[i + 1] = l, r
 	}
 
 	for i := 0; i < 256; i += 2 {
-		l ^= get_next_word(key, &j)
-		r ^= get_next_word(key, &j)
+		l ^= get_next_word(salt, &j)
+		r ^= get_next_word(salt, &j)
 		l, r = setup_tables(l, r, mut bf)
 		bf.s[0][i], bf.s[0][i + 1] = l, r
 	}
 	for i := 0; i < 256; i += 2 {
-		l ^= get_next_word(key, &j)
-		r ^= get_next_word(key, &j)
+		l ^= get_next_word(salt, &j)
+		r ^= get_next_word(salt, &j)
 		l, r = setup_tables(l, r, mut bf)
 		bf.s[1][i], bf.s[1][i + 1] = l, r
 	}
 	for i := 0; i < 256; i += 2 {
-		l ^= get_next_word(key, &j)
-		r ^= get_next_word(key, &j)
+		l ^= get_next_word(salt, &j)
+		r ^= get_next_word(salt, &j)
 		l, r = setup_tables(l, r, mut bf)
 		bf.s[2][i], bf.s[2][i + 1] = l, r
 	}
 	for i := 0; i < 256; i += 2 {
-		l ^= get_next_word(key, &j)
-		r ^= get_next_word(key, &j)
+		l ^= get_next_word(salt, &j)
+		r ^= get_next_word(salt, &j)
 		l, r = setup_tables(l, r, mut bf)
 		bf.s[3][i], bf.s[3][i + 1] = l, r
 	}
