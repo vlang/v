@@ -24,3 +24,14 @@ fn dump_list(file_path string, list []string) {
 		}
 	}
 }
+
+pub fn (b &Builder) dump_defines() {
+	mut res := []string{}
+	for k, v in b.checker.ct_system_defines {
+		res << 'system,${k},${v}'
+	}
+	for k, v in b.checker.ct_user_defines {
+		res << 'user,${k},${v}'
+	}
+	dump_list(b.pref.dump_defines, res)
+}

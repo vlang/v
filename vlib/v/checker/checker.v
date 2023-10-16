@@ -93,6 +93,8 @@ pub mut:
 	smartcast_mut_pos          token.Pos // match mut foo, if mut foo is Foo
 	smartcast_cond_pos         token.Pos // match cond
 	ct_cond_stack              []ast.Expr
+	ct_user_defines            map[string]ComptimeBranchSkipState
+	ct_system_defines          map[string]ComptimeBranchSkipState
 mut:
 	stmt_level int // the nesting level inside each stmts list;
 	// .stmt_level is used to check for `evaluated but not used` ExprStmts like `1 << 1`

@@ -621,6 +621,18 @@ enum ComptimeBranchSkipState {
 // comptime_if_branch checks the condition of a compile-time `if` branch. It returns `true`
 // if that branch's contents should be skipped (targets a different os for example)
 fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) ComptimeBranchSkipState {
+	mut should_record_ident := false
+	mut is_user_ident := false
+	mut ident_name := ''
+	defer {
+		if should_record_ident {
+			if is_user_ident {
+				c.ct_user_defines[ident_name] = $res()
+			} else {
+				c.ct_system_defines[ident_name] = $res()
+			}
+		}
+	}
 	// TODO: better error messages here
 	match mut cond {
 		ast.BoolLiteral {
@@ -646,6 +658,9 @@ fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) Comptime
 			if cond.op != .question {
 				c.error('invalid \$if postfix operator', cond.pos)
 			} else if mut cond.expr is ast.Ident {
+				should_record_ident = true
+				is_user_ident = true
+				ident_name = cond.expr.name
 				return if cond.expr.name in c.pref.compile_defines_all { .eval } else { .skip }
 			} else {
 				c.error('invalid `\$if` condition', cond.pos)
@@ -779,6 +794,9 @@ fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) Comptime
 		}
 		ast.Ident {
 			cname := cond.name
+			should_record_ident = true
+			is_user_ident = false
+			ident_name = cname
 			if cname in ast.valid_comptime_if_os {
 				mut is_os_target_equal := true
 				if !c.pref.output_cross_c {
