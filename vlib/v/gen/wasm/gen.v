@@ -62,18 +62,21 @@ pub struct LoopBreakpoint {
 	name       string
 }
 
+[noreturn]
 pub fn (mut g Gen) v_error(s string, pos token.Pos) {
-	if g.pref.output_mode == .stdout {
+	util.show_compiler_message('error:', pos: pos, file_path: g.file_path, message: s)
+	exit(1)
+	/* if g.pref.output_mode == .stdout {
 		util.show_compiler_message('error:', pos: pos, file_path: g.file_path, message: s)
 		exit(1)
 	} else {
 		g.errors << errors.Error{
 			file_path: g.file_path
 			pos: pos
-			reporter: .gen
+			reporter: .gen			
 			message: s
 		}
-	}
+	} */
 }
 
 pub fn (mut g Gen) warning(s string, pos token.Pos) {

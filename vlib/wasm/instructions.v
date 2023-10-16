@@ -831,30 +831,59 @@ pub fn (mut func Function) cast(a NumType, is_signed bool, b NumType) {
 // - See function `cast` for the rest.
 pub fn (mut func Function) cast_trapping(a NumType, is_signed bool, b NumType) {
 	if a in [.f32_t, .f64_t] {
-		if a == .f32_t {
-			match b {
-				.i32_t {
-					func.code << 0xA8 // i32.trunc_f32_s
-					return
+		if is_signed {
+			if a == .f32_t {
+				match b {
+					.i32_t {
+						func.code << 0xA8 // i32.trunc_f32_s
+						return
+					}
+					.i64_t {
+						func.code << 0xAE // i64.trunc_f32_s
+						return
+					}
+					else {}
 				}
-				.i64_t {
-					func.code << 0xAE // i64.trunc_f32_s
-					return
+			} else {
+				match b {
+					.i32_t {
+						func.code << 0xAA // i32.trunc_f64_s
+						return
+					}
+					.i64_t {
+						func.code << 0xB0 // i64.trunc_f64_s
+						return
+					}
+					else {}
 				}
-				else {}
 			}
 		} else {
-			match b {
-				.i32_t {
-					func.code << 0xAA // i32.trunc_f64_s
-					return
+			if a == .f32_t {
+				match b {
+					.i32_t {
+						func.code << 0xA9 // i32.trunc_f32_u
+						return
+					}
+					.i64_t {
+						func.code << 0xAF // i64.trunc_f32_u
+						return
+					}
+					else {}
 				}
-				.i64_t {
-					func.code << 0xB0 // i64.trunc_f64_s
-					return
+			} else {
+				match b {
+					.i32_t {
+						func.code << 0xAB // i32.trunc_f64_u
+						return
+					}
+					.i64_t {
+						func.code << 0xB1 // i64.trunc_f64_u
+						return
+					}
+					else {}
 				}
-				else {}
 			}
+			
 		}
 	}
 
