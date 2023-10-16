@@ -42,3 +42,23 @@ fn test_hton16_ntoh16() {
 		check(conv.hton16, conv.ntoh16, x)
 	}
 }
+
+fn test_varinttou64_u64tovarint() {
+	b0 := conv.u64tovarint(0)!
+	assert b0 == [u8(0)]
+	b1 := conv.u64tovarint(1)!
+	assert b1 == [u8(1)]
+	mp := {
+		u64(128):         [u8(0b01000000), 0b10000000]
+		1024:             [u8(0b01000100), 0b00000000]
+		0xffff:           [u8(0b10000000), 0, 0xff, 0xff]
+		u64(1) << 62 - 1: [u8(0xff), 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]
+	}
+	for k, v in mp {
+		println('${k:b}:${v}')
+		n, len := conv.varinttou64(v)!
+		assert n == k
+		rn := conv.u64tovarint(k)!
+		assert rn == v
+	}
+}
