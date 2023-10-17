@@ -783,3 +783,21 @@ fn test_set_bit() {
 	a.set_bit(100, false)
 	assert a == b
 }
+
+fn test_div_with_neg_num() {
+	r1 := big.integer_from_int(1234) / big.integer_from_int(10)
+	println(r1)
+	assert '${r1}' == '123'
+
+	r2 := big.integer_from_int(-1234) / big.integer_from_int(10)
+	println(r2)
+	assert '${r2}' == '-123'
+
+	r3 := big.integer_from_int(1234) / big.integer_from_int(-10)
+	println(r3)
+	assert '${r3}' == '-123'
+
+	r4 := big.integer_from_int(-1234) / big.integer_from_int(-10)
+	println(r4)
+	assert '${r4}' == '123'
+}

@@ -391,11 +391,7 @@ fn (dividend Integer) div_mod_internal(divisor Integer) (Integer, Integer) {
 	}
 	if dividend.signum == -1 {
 		q, r := dividend.neg().div_mod_internal(divisor)
-		if r.signum == 0 {
-			return q.neg(), zero_int
-		} else {
-			return q.neg() - one_int, divisor - r
-		}
+		return q.neg(), r
 	}
 	// Division for positive integers
 	mut q := []u32{cap: dividend.digits.len - divisor.digits.len + 1}
