@@ -486,7 +486,7 @@ pub fn uname() Uname {
 pub fn hostname() !string {
 	hostname := [255]u16{}
 	size := u32(255)
-	res := C.GetComputerNameW(&hostname[0], &size)
+	res := C.GetComputerNameW(&hostname[0], voidptr(&size))
 	if !res {
 		return error(get_error_msg(int(C.GetLastError())))
 	}
@@ -496,7 +496,7 @@ pub fn hostname() !string {
 pub fn loginname() !string {
 	loginname := [255]u16{}
 	size := u32(255)
-	res := C.GetUserNameW(&loginname[0], &size)
+	res := C.GetUserNameW(&loginname[0], voidptr(&size))
 	if !res {
 		return error(get_error_msg(int(C.GetLastError())))
 	}

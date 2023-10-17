@@ -119,12 +119,6 @@ pub fn (n u16) str() string {
 	return int(n).str_l(7)
 }
 
-// str returns the value of the `int` as a `string`.
-// Example: assert int(-2020).str() == '-2020'
-pub fn (n int) str() string {
-	return n.str_l(12)
-}
-
 pub fn (n i32) str() string {
 	return int(n).str_l(12)
 }
@@ -136,6 +130,16 @@ pub fn int_str(n int) string {
 	return i64(n).str()
 }
 */
+
+pub fn (nn int) hex_full() string {
+	return u64_to_hex(u64(nn), 8)
+}
+
+// str returns the value of the `int` as a `string`.
+// Example: assert int(-2020).str() == '-2020'
+pub fn (n int) str() string {
+	return n.str_l(12)
+}
 
 // str returns the value of the `u32` as a `string`.
 // Example: assert u32(20000).str() == '20000'
@@ -446,10 +450,6 @@ pub fn (nn i16) hex_full() string {
 }
 
 pub fn (nn u32) hex_full() string {
-	return u64_to_hex(u64(nn), 8)
-}
-
-pub fn (nn int) hex_full() string {
 	return u64_to_hex(u64(nn), 8)
 }
 

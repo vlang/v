@@ -120,7 +120,7 @@ fn (mut container PipelineContainer) init_pipeline() {
 	mut alpha_pipdesc := gfx.PipelineDesc{}
 	unsafe { vmemset(&alpha_pipdesc, 0, int(sizeof(alpha_pipdesc))) }
 	alpha_pipdesc.label = c'alpha-pipeline'
-	alpha_pipdesc.colors[0] = gfx.ColorState{
+	alpha_pipdesc.colors[0] = gfx.ColorTargetState{
 		blend: gfx.BlendState{
 			enabled: true
 			src_factor_rgb: .src_alpha
@@ -133,7 +133,7 @@ fn (mut container PipelineContainer) init_pipeline() {
 	mut add_pipdesc := gfx.PipelineDesc{}
 	unsafe { vmemset(&add_pipdesc, 0, int(sizeof(add_pipdesc))) }
 	add_pipdesc.label = c'additive-pipeline'
-	add_pipdesc.colors[0] = gfx.ColorState{
+	add_pipdesc.colors[0] = gfx.ColorTargetState{
 		blend: gfx.BlendState{
 			enabled: true
 			src_factor_rgb: .src_alpha

@@ -61,6 +61,9 @@ struct RwMutexAttr {
 	attr C.pthread_rwlockattr_t
 }
 
+[typedef]
+struct C.pthread_condattr_t {}
+
 struct CondAttr {
 	attr C.pthread_condattr_t
 }

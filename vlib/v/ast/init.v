@@ -6,10 +6,10 @@ pub fn (t &Table) resolve_init(node StructInit, typ Type) Expr {
 		Array {
 			mut has_len := false
 			mut has_cap := false
-			mut has_default := false
+			mut has_init := false
 			mut len_expr := empty_expr
 			mut cap_expr := empty_expr
-			mut default_expr := empty_expr
+			mut init_expr := empty_expr
 			mut exprs := []Expr{}
 			for field in node.init_fields {
 				match field.name {
@@ -22,8 +22,8 @@ pub fn (t &Table) resolve_init(node StructInit, typ Type) Expr {
 						cap_expr = field.expr
 					}
 					'init' {
-						has_default = true
-						default_expr = field.expr
+						has_init = true
+						init_expr = field.expr
 					}
 					else {
 						exprs << field.expr
@@ -38,10 +38,10 @@ pub fn (t &Table) resolve_init(node StructInit, typ Type) Expr {
 				elem_type: sym.info.elem_type
 				has_len: has_len
 				has_cap: has_cap
-				has_default: has_default
+				has_init: has_init
 				len_expr: len_expr
 				cap_expr: cap_expr
-				default_expr: default_expr
+				init_expr: init_expr
 				exprs: exprs
 			}
 		}

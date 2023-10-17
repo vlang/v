@@ -350,11 +350,10 @@ fn main() {
 		tsession.skip_files << 'vlib/db/pg/pg_orm_test.v'
 	}
 
-	if github_job == 'windows-tcc' {
-		tsession.skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.v'
-		// TODO: fix these ASAP
-		tsession.skip_files << 'vlib/net/tcp_test.v'
-		tsession.skip_files << 'vlib/net/udp_test.v'
+	$if windows {
+		if github_job == 'tcc' {
+			tsession.skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.v'
+		}
 	}
 
 	if !os.exists('cmd/tools/builders/wasm_builder') {

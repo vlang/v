@@ -25,7 +25,7 @@ mut:
 	code_gen                  CodeGen
 	table                     &ast.Table = unsafe { nil }
 	buf                       []u8
-	sect_header_name_pos      int
+	sect_header_name_pos      i32
 	offset                    i64
 	file_size_pos             i64
 	main_fn_addr              i64
@@ -38,17 +38,17 @@ mut:
 	linker_libs               []string
 	extern_fn_calls           map[i64]string
 	fn_addr                   map[string]i64
-	var_offset                map[string]int // local var stack offset
-	var_alloc_size            map[string]int // local var allocation size
-	stack_var_pos             int
-	stack_depth               int
-	debug_pos                 int
+	var_offset                map[string]i32 // local var stack offset
+	var_alloc_size            map[string]i32 // local var allocation size
+	stack_var_pos             i32
+	stack_depth               i32
+	debug_pos                 i32
 	current_file              &ast.File = unsafe { nil }
 	errors                    []errors.Error
 	warnings                  []errors.Warning
 	syms                      []Symbol
-	size_pos                  []int
-	nlines                    int
+	size_pos                  []i32
+	nlines                    i32
 	callpatches               []CallPatch
 	strs                      []String
 	labels                    &LabelTable = unsafe { nil }
@@ -63,8 +63,8 @@ mut:
 	elf_text_header_addr i64 = -1
 	elf_rela_section     Section
 	// macho specific
-	macho_ncmds   int
-	macho_cmdsize int
+	macho_ncmds   i32
+	macho_cmdsize i32
 	// pe specific
 	pe_coff_hdr_pos    i64
 	pe_opt_hdr_pos     i64
@@ -79,32 +79,32 @@ mut:
 interface CodeGen {
 mut:
 	g &Gen
-	add(r Register, val int)
-	address_size() int
-	adr(r Arm64Register, delta int) // Note: Temporary!
-	allocate_var(name string, size int, initial_val int) int
+	add(r Register, val i32)
+	address_size() i32
+	adr(r Arm64Register, delta i32) // Note: Temporary!
+	allocate_var(name string, size i32, initial_val i32) i32
 	assign_stmt(node ast.AssignStmt) // TODO: make platform-independant
 	builtin_decl(builtin BuiltinFn)
-	call_addr_at(addr int, at i64) i64
+	call_addr_at(addr i32, at i64) i64
 	call_builtin(name Builtin) i64
 	call_fn(node ast.CallExpr)
-	call(addr int) i64
-	cjmp(op JumpOp) int
+	call(addr i32) i64
+	cjmp(op JumpOp) i32
 	cmp_to_stack_top(r Register)
 	cmp_var_reg(var Var, reg Register, config VarConfig)
-	cmp_var(var Var, val int, config VarConfig)
+	cmp_var(var Var, val i32, config VarConfig)
 	cmp_zero(reg Register)
 	convert_bool_to_string(r Register)
 	convert_int_to_string(a Register, b Register)
-	convert_rune_to_string(r Register, buffer int, var Var, config VarConfig)
+	convert_rune_to_string(r Register, buffer i32, var Var, config VarConfig)
 	dec_var(var Var, config VarConfig)
 	fn_decl(node ast.FnDecl)
 	gen_asm_stmt(asm_node ast.AsmStmt)
 	gen_cast_expr(expr ast.CastExpr)
 	gen_exit(expr ast.Expr)
 	gen_match_expr(expr ast.MatchExpr)
-	gen_print_reg(r Register, n int, fd int)
-	gen_print(s string, fd int)
+	gen_print_reg(r Register, n i32, fd i32)
+	gen_print(s string, fd i32)
 	gen_syscall(node ast.CallExpr)
 	inc_var(var Var, config VarConfig)
 	infix_expr(node ast.InfixExpr) // TODO: make platform-independant
@@ -112,22 +112,22 @@ mut:
 	init_struct(var Var, init ast.StructInit)
 	init_array(var Var, init ast.ArrayInit)
 	jmp_back(start i64)
-	jmp(addr int) int
-	lea_var_to_reg(r Register, var_offset int)
-	learel(reg Register, val int)
+	jmp(addr i32) i32
+	lea_var_to_reg(r Register, var_offset i32)
+	learel(reg Register, val i32)
 	leave()
 	load_fp_var(var Var, config VarConfig)
 	load_fp(val f64)
 	main_reg() Register
 	mov_deref(reg Register, regptr Register, typ ast.Type)
-	mov_int_to_var(var Var, integer int, config VarConfig)
+	mov_int_to_var(var Var, integer i32, config VarConfig)
 	mov_reg_to_var(var Var, reg Register, config VarConfig)
 	mov_reg(r1 Register, r2 Register)
 	mov_var_to_reg(reg Register, var Var, config VarConfig)
-	mov(r Register, val int)
+	mov(r Register, val i32)
 	mov64(r Register, val i64)
 	movabs(reg Register, val i64)
-	patch_relative_jmp(pos int, addr i64)
+	patch_relative_jmp(pos i32, addr i64)
 	prefix_expr(node ast.PrefixExpr)
 	push(r Register)
 	ret()
@@ -136,7 +136,7 @@ mut:
 	svc()
 	syscall() // unix syscalls
 	trap()
-	zero_fill(size int, var LocalVar)
+	zero_fill(size i32, var LocalVar)
 }
 
 type Register = Amd64Register | Arm64Register
@@ -162,35 +162,35 @@ enum RelocType {
 
 struct String {
 	str string
-	pos int
+	pos i32
 	typ RelocType
 }
 
 struct CallPatch {
 	name string
-	pos  int
+	pos  i32
 }
 
 struct LabelTable {
 mut:
-	label_id int
+	label_id i32
 	addrs    []i64 = [i64(0)] // register address of label here
 	patches  []LabelPatch // push placeholders
 	branches []BranchLabel
 }
 
 struct LabelPatch {
-	id  int
-	pos int
+	id  i32
+	pos i32
 }
 
 struct BranchLabel {
 	name  string
-	start int
-	end   int
+	start i32
+	end   i32
 }
 
-fn (mut l LabelTable) new_label() int {
+fn (mut l LabelTable) new_label() i32 {
 	l.label_id++
 	l.addrs << 0
 	return l.label_id
@@ -198,19 +198,19 @@ fn (mut l LabelTable) new_label() int {
 
 struct Struct {
 mut:
-	offsets []int
+	offsets []i32
 }
 
 struct Enum {
 mut:
-	fields map[string]int
+	fields map[string]i32
 }
 
 struct MultiReturn {
 mut:
-	offsets []int
-	size    int
-	align   int
+	offsets []i32
+	size    i32
+	align   i32
 }
 
 enum Size {
@@ -222,7 +222,7 @@ enum Size {
 
 // you can use these structs manually if you don't have ast.Ident
 struct LocalVar {
-	offset int // offset from the base pointer
+	offset i32 // offset from the base pointer
 	typ    ast.Type
 	name   string
 }
@@ -231,7 +231,7 @@ struct GlobalVar {}
 
 [params]
 struct VarConfig {
-	offset int      // offset from the variable
+	offset i32      // offset from the variable
 	typ    ast.Type // type of the value you want to process e.g. struct fields.
 }
 
@@ -256,7 +256,7 @@ union F64I64 {
 }
 
 [inline]
-fn byt(n int, s int) u8 {
+fn byt(n i32, s i32) u8 {
 	return u8((n >> (s * 8)) & 0xff)
 }
 
@@ -387,7 +387,7 @@ pub fn macho_test_new_gen(p &pref.Preferences, out_name string) &Gen {
 	return &mut g
 }
 
-pub fn (mut g Gen) typ(a int) &ast.TypeSymbol {
+pub fn (mut g Gen) typ(a i32) &ast.TypeSymbol {
 	return g.table.type_symbols[a]
 }
 
@@ -536,18 +536,18 @@ pub fn (mut g Gen) calculate_all_size_align() {
 		if ts.idx == 0 {
 			continue
 		}
-		ts.size = g.get_type_size(ast.new_type(ts.idx))
-		ts.align = g.get_type_align(ast.new_type(ts.idx))
+		ts.size = int(g.get_type_size(ast.new_type(ts.idx)))
+		ts.align = int(g.get_type_align(ast.new_type(ts.idx)))
 	}
 }
 
 pub fn (mut g Gen) calculate_enum_fields() {
 	for name, decl in g.table.enum_decls {
 		mut enum_vals := Enum{}
-		mut value := if decl.is_flag { 1 } else { 0 }
+		mut value := if decl.is_flag { i32(1) } else { i32(0) }
 		for field in decl.fields {
 			if field.has_expr {
-				value = int(g.eval.expr(field.expr, ast.int_type_idx).int_val())
+				value = i32(g.eval.expr(field.expr, ast.int_type_idx).int_val())
 			}
 			enum_vals.fields[field.name] = value
 			if decl.is_flag {
@@ -568,23 +568,23 @@ fn (mut g Gen) write(bytes []u8) {
 	g.buf << bytes
 }
 
-fn (mut g Gen) write8(n int) {
+fn (mut g Gen) write8(n i32) {
 	// write 1 byte
 	g.buf << u8(n)
 }
 
-fn (mut g Gen) write16(n int) {
+fn (mut g Gen) write16(n i32) {
 	// write 2 bytes
 	g.buf << u8(n)
 	g.buf << u8(n >> 8)
 }
 
-fn (mut g Gen) read32_at(at int) int {
-	return int(u32(g.buf[at]) | (u32(g.buf[at + 1]) << 8) | (u32(g.buf[at + 2]) << 16) | (u32(g.buf[
+fn (mut g Gen) read32_at(at i32) i32 {
+	return i32(u32(g.buf[at]) | (u32(g.buf[at + 1]) << 8) | (u32(g.buf[at + 2]) << 16) | (u32(g.buf[
 		at + 3]) << 24))
 }
 
-fn (mut g Gen) write32(n int) {
+fn (mut g Gen) write32(n i32) {
 	// write 4 bytes
 	g.buf << u8(n)
 	g.buf << u8(n >> 8)
@@ -616,7 +616,7 @@ fn (mut g Gen) write64_at(at i64, n i64) {
 	g.buf[at + 7] = u8(n >> 56)
 }
 
-fn (mut g Gen) write32_at(at i64, n int) {
+fn (mut g Gen) write32_at(at i64, n i32) {
 	// write 4 bytes
 	g.buf[at] = u8(n)
 	g.buf[at + 1] = u8(n >> 8)
@@ -624,7 +624,7 @@ fn (mut g Gen) write32_at(at i64, n int) {
 	g.buf[at + 3] = u8(n >> 24)
 }
 
-fn (mut g Gen) write16_at(at i64, n int) {
+fn (mut g Gen) write16_at(at i64, n i32) {
 	// write 2 bytes
 	g.buf[at] = u8(n)
 	g.buf[at + 1] = u8(n >> 8)
@@ -636,7 +636,7 @@ fn (mut g Gen) read64_at(at i64) i64 {
 		at + 7]) << 56)
 }
 
-pub fn (mut g Gen) zeroes(n int) {
+pub fn (mut g Gen) zeroes(n i32) {
 	for _ in 0 .. n {
 		g.buf << 0
 	}
@@ -644,38 +644,38 @@ pub fn (mut g Gen) zeroes(n int) {
 
 fn (mut g Gen) write_string(s string) {
 	for c in s {
-		g.write8(int(c))
+		g.write8(i32(c))
 	}
 	g.zeroes(1)
 }
 
-fn (mut g Gen) write_string_with_padding(s string, max int) {
+fn (mut g Gen) write_string_with_padding(s string, max i32) {
 	for c in s {
-		g.write8(int(c))
+		g.write8(i32(c))
 	}
-	for _ in 0 .. max - s.len {
+	for _ in 0 .. int(max) - s.len {
 		g.write8(0)
 	}
 }
 
-fn (mut g Gen) pad_to(len int) {
+fn (mut g Gen) pad_to(len i32) {
 	for g.buf.len < len {
 		g.buf << u8(0)
 	}
 }
 
-fn (mut g Gen) align_to(align int) {
-	padded := (g.buf.len + align - 1) & ~(align - 1)
+fn (mut g Gen) align_to(align i32) {
+	padded := (i32(g.buf.len) + align - 1) & ~(align - 1)
 	for g.buf.len < padded {
 		g.buf << u8(0)
 	}
 }
 
-fn (g &Gen) abs_to_rel_addr(addr i64) int {
-	return int(mu.abs(addr - g.buf.len)) - 1
+fn (g &Gen) abs_to_rel_addr(addr i64) i32 {
+	return i32(mu.abs(addr - g.buf.len)) - 1
 }
 
-fn (mut g Gen) try_var_offset(var_name string) int {
+fn (mut g Gen) try_var_offset(var_name string) i32 {
 	offset := g.var_offset[var_name] or { return -1 }
 	if offset == 0 {
 		return -1
@@ -683,7 +683,7 @@ fn (mut g Gen) try_var_offset(var_name string) int {
 	return offset
 }
 
-fn (mut g Gen) get_var_offset(var_name string) int {
+fn (mut g Gen) get_var_offset(var_name string) i32 {
 	r := g.try_var_offset(var_name)
 	if r == -1 {
 		g.n_error('unknown variable `${var_name}`')
@@ -691,7 +691,7 @@ fn (mut g Gen) get_var_offset(var_name string) int {
 	return r
 }
 
-fn (mut g Gen) get_field_offset(in_type ast.Type, name string) int {
+fn (mut g Gen) get_field_offset(in_type ast.Type, name string) i32 {
 	typ := g.unwrap(in_type)
 	ts := g.table.sym(typ)
 	field := ts.find_field(name) or { g.n_error('Could not find field `${name}` on init') }
@@ -704,7 +704,7 @@ fn (mut g Gen) unwrap(typ ast.Type) ast.Type {
 }
 
 // get type size, and calculate size and align and store them to the cache when the type is struct
-fn (mut g Gen) get_type_size(raw_type ast.Type) int {
+fn (mut g Gen) get_type_size(raw_type ast.Type) i32 {
 	// TODO type flags
 	typ := g.unwrap(raw_type)
 	if raw_type.is_any_kind_of_pointer() || typ.is_any_kind_of_pointer() {
@@ -736,10 +736,10 @@ fn (mut g Gen) get_type_size(raw_type ast.Type) int {
 	}
 	ts := g.table.sym(typ)
 	if ts.size != -1 {
-		return ts.size
+		return i32(ts.size)
 	}
-	mut size := 0
-	mut align := 1
+	mut size := i32(0)
+	mut align := i32(1)
 	mut strc := Struct{}
 	match ts.info {
 		ast.Struct {
@@ -776,13 +776,13 @@ fn (mut g Gen) get_type_size(raw_type ast.Type) int {
 		else {}
 	}
 	mut ts_ := g.table.sym(typ)
-	ts_.size = size
-	ts_.align = align
+	ts_.size = int(size)
+	ts_.align = int(align)
 	// g.n_error('unknown type size')
 	return size
 }
 
-fn (mut g Gen) get_type_align(typ ast.Type) int {
+fn (mut g Gen) get_type_align(typ ast.Type) i32 {
 	// also calculate align of a struct
 	size := g.get_type_size(typ)
 	if g.is_register_type(typ) || typ.is_pure_float() {
@@ -790,17 +790,17 @@ fn (mut g Gen) get_type_align(typ ast.Type) int {
 	}
 	ts := g.table.sym(g.unwrap(typ))
 	if ts.align != -1 {
-		return ts.align
+		return i32(ts.align)
 	}
 	// g.n_error('unknown type align')
 	return 0
 }
 
 fn (mut g Gen) get_multi_return(types []ast.Type) MultiReturn {
-	mut size := 0
-	mut align := 1
+	mut size := i32(0)
+	mut align := i32(1)
 	mut ret := MultiReturn{
-		offsets: []int{cap: types.len}
+		offsets: []i32{cap: types.len}
 	}
 	for t in types {
 		t_size := g.get_type_size(t)
@@ -828,7 +828,7 @@ fn (mut g Gen) is_fp_type(typ ast.Type) bool {
 		|| (g.table.sym(typ).info is ast.Alias && g.is_fp_type(g.unwrap(typ)))
 }
 
-fn (mut g Gen) get_sizeof_ident(ident ast.Ident) int {
+fn (mut g Gen) get_sizeof_ident(ident ast.Ident) i32 {
 	typ := match ident.obj {
 		ast.AsmRegister { ast.i64_type_idx }
 		ast.ConstField { ident.obj.typ }
@@ -845,7 +845,7 @@ fn (mut g Gen) get_sizeof_ident(ident ast.Ident) int {
 	return size
 }
 
-fn (mut g Gen) allocate_by_type(name string, typ ast.Type) int {
+fn (mut g Gen) allocate_by_type(name string, typ ast.Type) i32 {
 	size := g.get_type_size(typ)
 	align := g.get_type_align(typ)
 	padding := (align - g.stack_var_pos % align) % align
@@ -856,13 +856,13 @@ fn (mut g Gen) allocate_by_type(name string, typ ast.Type) int {
 	return g.stack_var_pos
 }
 
-fn (mut g Gen) allocate_string(s string, opsize int, typ RelocType) int {
-	str_pos := g.buf.len + opsize
+fn (mut g Gen) allocate_string(s string, opsize i32, typ RelocType) i32 {
+	str_pos := i32(g.buf.len) + opsize
 	g.strs << String{s, str_pos, typ}
 	return str_pos
 }
 
-fn (mut g Gen) allocate_array(name string, size int, items int) int {
+fn (mut g Gen) allocate_array(name string, size i32, items i32) i32 {
 	pos := g.code_gen.allocate_var(name, size, items)
 	g.stack_var_pos += (size * items)
 	return pos
@@ -1014,14 +1014,14 @@ fn (mut g Gen) patch_calls() {
 			g.n_error('fn addr of `${c.name}` = 0')
 			return
 		}
-		last := g.buf.len
-		g.code_gen.call(int(addr + last - c.pos))
+		last := i32(g.buf.len)
+		g.code_gen.call(i32(i32(addr) + last - c.pos))
 		mut patch := []u8{}
 		for last < g.buf.len {
 			patch << g.buf.pop()
 		}
 		for i := 0; i < patch.len; i++ {
-			g.buf[c.pos + i] = patch[patch.len - i - 1]
+			g.buf[int(c.pos) + i] = patch[patch.len - i - 1]
 		}
 	}
 }
@@ -1039,7 +1039,7 @@ fn (mut g Gen) patch_labels() {
 }
 
 fn (mut g Gen) delay_fn_call(name string) {
-	pos := g.buf.len
+	pos := i32(g.buf.len)
 	g.callpatches << CallPatch{name, pos}
 	// do nothing for now
 }
@@ -1087,7 +1087,7 @@ fn (mut g Gen) println(comment string) {
 	if !g.pref.is_verbose {
 		return
 	}
-	addr := g.debug_pos.hex()
+	addr := int(g.debug_pos).hex()
 	mut sb := strings.new_builder(80)
 	// println('$g.debug_pos "$addr"')
 	sb.write_string(term.red(strings.repeat(`0`, 6 - addr.len) + addr + '  '))
@@ -1100,7 +1100,7 @@ fn (mut g Gen) println(comment string) {
 		hexstr := term.blue(gbihex) + ' '
 		sb.write_string(hexstr)
 	}
-	g.debug_pos = g.buf.len
+	g.debug_pos = i32(g.buf.len)
 	//
 	colored := sb.str()
 	plain := term.strip_ansi(colored)
@@ -1175,27 +1175,27 @@ fn (mut g Gen) gen_concat_expr(node ast.ConcatExpr) {
 	g.code_gen.lea_var_to_reg(main_reg, var.offset)
 }
 
-fn (mut g Gen) sym_string_table() int {
-	begin := g.buf.len
+fn (mut g Gen) sym_string_table() i32 {
+	begin := i32(g.buf.len)
 	g.zeroes(1)
 	g.println('')
 	g.println('=== strings ===')
 
-	mut generated := map[string]int{}
+	mut generated := map[string]i32{}
 
 	for _, s in g.strs {
-		pos := generated[s.str] or { g.buf.len }
+		pos := generated[s.str] or { i32(g.buf.len) }
 
 		match s.typ {
 			.rel32 {
-				g.write32_at(s.pos, pos - s.pos - 4)
+				g.write32_at(i64(s.pos), pos - s.pos - 4)
 			}
 			else {
 				if g.pref.os == .windows {
 					// that should be .rel32, not windows-specific
-					g.write32_at(s.pos, pos - s.pos - 4)
+					g.write32_at(i64(s.pos), pos - s.pos - 4)
 				} else {
-					g.write64_at(s.pos, pos + base_addr)
+					g.write64_at(i64(s.pos), i64(pos) + base_addr)
 				}
 			}
 		}
@@ -1208,7 +1208,7 @@ fn (mut g Gen) sym_string_table() int {
 			}
 		}
 	}
-	return g.buf.len - begin
+	return i32(g.buf.len) - begin
 }
 
 const escape_char = u8(`\\`)

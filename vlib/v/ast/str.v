@@ -408,8 +408,8 @@ pub fn (x Expr) str() string {
 			if x.has_cap {
 				fields << 'cap: ${x.cap_expr.str()}'
 			}
-			if x.has_default {
-				fields << 'init: ${x.default_expr.str()}'
+			if x.has_init {
+				fields << 'init: ${x.init_expr.str()}'
 			}
 			typ_str := global_table.type_to_str(x.elem_type)
 			if fields.len > 0 {

@@ -120,7 +120,7 @@ pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader gfx.Shader, 
 	// pipdesc.layout.attrs[C.ATTR_vs_a_Texcoord0].format  = .short2n  // u,v as u16
 	pipdesc.index_type = .uint32
 
-	color_state := gfx.ColorState{
+	color_state := gfx.ColorTargetState{
 		blend: gfx.BlendState{
 			enabled: true
 			src_factor_rgb: .src_alpha

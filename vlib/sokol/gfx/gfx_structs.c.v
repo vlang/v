@@ -67,16 +67,16 @@ pub mut:
 	blend        BlendState
 }
 
-pub type ColorState = C.sg_color_target_state
+pub type ColorTargetState = C.sg_color_target_state
 
 pub struct C.sg_pipeline_desc {
 pub mut:
 	shader                    Shader
-	layout                    LayoutDesc
+	layout                    VertexLayoutState
 	depth                     DepthState
 	stencil                   StencilState
 	color_count               int
-	colors                    [4]ColorState // C.SG_MAX_COLOR_ATTACHMENTS
+	colors                    [4]ColorTargetState // C.SG_MAX_COLOR_ATTACHMENTS
 	primitive_type            PrimitiveType
 	index_type                IndexType
 	cull_mode                 CullMode
@@ -109,12 +109,14 @@ pub fn (mut p C.sg_pipeline) free() {
 
 struct C.sg_bindings {
 pub mut:
+	_start_canary         u32
 	vertex_buffers        [8]Buffer
 	vertex_buffer_offsets [8]int
 	index_buffer          Buffer
 	index_buffer_offset   int
 	vs                    StageBindings
 	fs                    StageBindings
+	_end_canary           u32
 	// vs_images             [8]Image // old
 	// fs_images             [8]Image // old
 }
@@ -553,11 +555,11 @@ pub type Limits = C.sg_limits
 
 pub struct C.sg_vertex_layout_state {
 pub mut:
-	buffers [8]BufferLayoutDesc
+	buffers [8]VertexBufferLayoutState
 	attrs   [16]VertexAttrDesc
 }
 
-pub type LayoutDesc = C.sg_vertex_layout_state
+pub type VertexLayoutState = C.sg_vertex_layout_state
 
 pub struct C.sg_vertex_buffer_layout_state {
 pub mut:
@@ -566,7 +568,7 @@ pub mut:
 	step_rate int
 }
 
-pub type BufferLayoutDesc = C.sg_vertex_buffer_layout_state
+pub type VertexBufferLayoutState = C.sg_vertex_buffer_layout_state
 
 pub struct C.sg_vertex_attr_state {
 pub mut:
@@ -695,3 +697,8 @@ pub:
 }
 
 pub type CommitListener = C.sg_commit_listener
+
+pub struct C.sg_trace_hooks {}
+
+// pub struct C.sg_resource_state {} enum
+pub struct C.sg_sampler_info {}

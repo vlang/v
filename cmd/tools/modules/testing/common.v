@@ -13,6 +13,8 @@ import runtime
 
 pub const github_job = os.getenv('GITHUB_JOB')
 
+pub const runner_os = os.getenv('RUNNER_OS') // GitHub runner OS
+
 pub const show_start = os.getenv('VTEST_SHOW_START') == '1'
 
 pub const hide_skips = os.getenv('VTEST_HIDE_SKIP') == '1'
@@ -219,17 +221,27 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			skip_files << 'examples/pendulum-simulation/parallel.v'
 			skip_files << 'examples/pendulum-simulation/parallel_with_iw.v'
 			skip_files << 'examples/pendulum-simulation/sequential.v'
+			if testing.github_job == 'tcc' {
+				// TODO: fix these by adding declarations for the missing functions in the prebuilt tcc
+				skip_files << 'vlib/net/mbedtls/mbedtls_compiles_test.v'
+				skip_files << 'vlib/net/ssl/ssl_compiles_test.v'
+			}
+		}
+		if testing.runner_os != 'Linux' || testing.github_job != 'tcc' {
+			skip_files << 'examples/c_interop_wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
+			skip_files << 'examples/call_v_from_python/test.v' // the example only makes sense to be compiled, when python is installed
+			skip_files << 'examples/call_v_from_ruby/test.v' // the example only makes sense to be compiled, when ruby is installed
+			skip_files << 'vlib/vweb/vweb_app_test.v' // imports the `sqlite` module, which in turn includes sqlite3.h
+		}
+		$if !macos {
+			skip_files << 'examples/macos_tray/tray.v'
 		}
 		if testing.github_job == 'ubuntu-docker-musl' {
 			skip_files << 'vlib/net/openssl/openssl_compiles_test.v'
+			skip_files << 'vlib/x/ttf/ttf_test.v'
 		}
 		if testing.github_job == 'tests-sanitize-memory-clang' {
 			skip_files << 'vlib/net/openssl/openssl_compiles_test.v'
-		}
-		if testing.github_job == 'windows-tcc' {
-			// TODO: fix these by adding declarations for the missing functions in the prebuilt tcc
-			skip_files << 'vlib/net/mbedtls/mbedtls_compiles_test.v'
-			skip_files << 'vlib/net/ssl/ssl_compiles_test.v'
 		}
 		if testing.github_job != 'misc-tooling' {
 			// These examples need .h files that are produced from the supplied .glsl files,
@@ -245,17 +257,6 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			skip_files << 'examples/sokol/sounds/melody.v'
 			skip_files << 'examples/sokol/sounds/wav_player.v'
 			skip_files << 'examples/sokol/sounds/simple_sin_tones.v'
-		}
-		if testing.github_job != 'ubuntu-tcc' {
-			skip_files << 'examples/c_interop_wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
-			skip_files << 'examples/call_v_from_python/test.v' // the example only makes sense to be compiled, when python is installed
-			skip_files << 'examples/call_v_from_ruby/test.v' // the example only makes sense to be compiled, when ruby is installed
-			// the ttf_test.v is not interactive, but needs X11 headers to be installed, which is done only on ubuntu-tcc for now
-			skip_files << 'vlib/x/ttf/ttf_test.v'
-			skip_files << 'vlib/vweb/vweb_app_test.v' // imports the `sqlite` module, which in turn includes sqlite3.h
-		}
-		$if !macos {
-			skip_files << 'examples/macos_tray/tray.v'
 		}
 		// examples/wasm/mandelbrot/mandelbrot.v requires special compilation flags: `-b wasm -os browser`, skip it for now:
 		skip_files << 'examples/wasm/mandelbrot/mandelbrot.v'
@@ -722,7 +723,7 @@ pub fn setup_new_vtmp_folder() string {
 pub struct TestDetails {
 pub mut:
 	retry int
-	flaky bool // when flaky tests fail, the whole run is still considered successfull, unless VTEST_FAIL_FLAKY is 1
+	flaky bool // when flaky tests fail, the whole run is still considered successful, unless VTEST_FAIL_FLAKY is 1
 }
 
 pub fn get_test_details(file string) TestDetails {

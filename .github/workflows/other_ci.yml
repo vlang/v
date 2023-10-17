@@ -3,10 +3,10 @@ name: Other CI
 on:
   push:
     paths-ignore:
-      - "**.md"
+      - '**.md'
   pull_request:
     paths-ignore:
-      - "**.md"
+      - '**.md'
 
 concurrency:
   group: build-other-${{ github.event.pull_request.number || github.sha }}
@@ -97,7 +97,7 @@ jobs:
         run: ./v -cc g++-11 -no-std -cflags -std=c++20 -o v2 cmd/v && ./v2 -cc g++-11 -no-std -cflags -std=c++20 -o v3 cmd/v
 
       - name: Ensure V can be compiled with -autofree
-        run: ./v -autofree -o v2 cmd/v  ## NB: this does not mean it runs, but at least keeps it from regressing
+        run: ./v -autofree -o v2 cmd/v # NB: this does not mean it runs, but at least keeps it from regressing
 
       - name: Shader examples can be built
         run: |
@@ -108,10 +108,10 @@ jobs:
               examples/sokol/04_multi_shader_glsl/rt_glsl_puppy \
               examples/sokol/04_multi_shader_glsl/rt_glsl_march \
               examples/sokol/05_instancing_glsl/rt_glsl_instancing \
-#              examples/sokol/06_obj_viewer/gouraud \
+              examples/sokol/06_obj_viewer/gouraud \
               ; do \
-                 echo "compiling shader $f.glsl ..."; \
-                 ./sokol-shdc --input $f.glsl --output $f.h --slang glsl330 ; \
+              echo "compiling shader $f.glsl ..."; \
+              ./sokol-shdc --input $f.glsl --output $f.h --slang glsl330 ; \
           done
           ./v should-compile-all examples/sokol/*.v examples/sokol/0?*/*.v
 

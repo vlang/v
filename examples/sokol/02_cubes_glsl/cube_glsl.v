@@ -529,7 +529,7 @@ fn my_init(mut app App) {
 	mut pipdesc := gfx.PipelineDesc{}
 	unsafe { vmemset(&pipdesc, 0, int(sizeof(pipdesc))) }
 
-	color_state := gfx.ColorState{
+	color_state := gfx.ColorTargetState{
 		blend: gfx.BlendState{
 			enabled: true
 			src_factor_rgb: .src_alpha

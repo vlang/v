@@ -1,6 +1,5 @@
 module bcrypt
 
-import encoding.base64
 import crypto.rand
 import crypto.blowfish
 
@@ -55,7 +54,6 @@ pub fn compare_hash_and_password(password []u8, hashed_password []u8) ! {
 	p.salt << `=`
 	p.salt << `=`
 	other_hash := bcrypt(password, p.cost, p.salt) or { return error('err') }
-
 	mut other_p := Hashed{
 		hash: other_hash
 		salt: p.salt
@@ -91,7 +89,7 @@ fn new_from_password(password []u8, cost int) !&Hashed {
 	p.cost = cost_
 
 	salt := generate_salt().bytes()
-	p.salt = base64.encode(salt).bytes()
+	p.salt = base64_encode(salt).bytes()
 	hash := bcrypt(password, p.cost, p.salt) or { return err }
 	p.hash = hash
 	return p
@@ -119,9 +117,7 @@ fn new_from_hash(hashed_secret []u8) !&Hashed {
 
 // bcrypt hashing passwords.
 fn bcrypt(password []u8, cost int, salt []u8) ![]u8 {
-	mut cipher_data := []u8{len: 72 - bcrypt.magic_cipher_data.len, init: 0}
-	cipher_data << bcrypt.magic_cipher_data
-
+	mut cipher_data := bcrypt.magic_cipher_data.clone()
 	mut bf := expensive_blowfish_setup(password, u32(cost), salt) or { return err }
 
 	for i := 0; i < 24; i += 8 {
@@ -129,14 +125,13 @@ fn bcrypt(password []u8, cost int, salt []u8) ![]u8 {
 			bf.encrypt(mut cipher_data[i..i + 8], cipher_data[i..i + 8])
 		}
 	}
-
-	hash := base64.encode(cipher_data[..bcrypt.max_crypted_hash_size])
+	hash := base64_encode(cipher_data[..bcrypt.max_crypted_hash_size])
 	return hash.bytes()
 }
 
 // expensive_blowfish_setup generate a Blowfish cipher, given key, cost and salt.
 fn expensive_blowfish_setup(key []u8, cost u32, salt []u8) !&blowfish.Blowfish {
-	csalt := base64.decode(salt.bytestr())
+	csalt := base64_decode(salt.bytestr())
 	// Bug compatibility with C bcrypt implementations, which use the trailing NULL in the key string during expansion.
 	// See https://cs.opensource.google/go/x/crypto/+/master:bcrypt/bcrypt.go;l=226
 	mut ckey := key.clone()

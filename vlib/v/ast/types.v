@@ -567,31 +567,31 @@ pub const (
 	charptr_type_idx       = 4
 	i8_type_idx            = 5
 	i16_type_idx           = 6
-	int_type_idx           = 7
-	i64_type_idx           = 8
-	isize_type_idx         = 9
-	u8_type_idx            = 10
-	u16_type_idx           = 11
-	u32_type_idx           = 12
-	u64_type_idx           = 13
-	usize_type_idx         = 14
-	f32_type_idx           = 15
-	f64_type_idx           = 16
-	char_type_idx          = 17
-	bool_type_idx          = 18
-	none_type_idx          = 19
-	string_type_idx        = 20
-	rune_type_idx          = 21
-	array_type_idx         = 22
-	map_type_idx           = 23
-	chan_type_idx          = 24
-	any_type_idx           = 25
-	float_literal_type_idx = 26
-	int_literal_type_idx   = 27
-	thread_type_idx        = 28
-	error_type_idx         = 29
-	nil_type_idx           = 30
-	i32_type_idx           = 31
+	i32_type_idx           = 7
+	int_type_idx           = 8
+	i64_type_idx           = 9
+	isize_type_idx         = 10
+	u8_type_idx            = 11
+	u16_type_idx           = 12
+	u32_type_idx           = 13
+	u64_type_idx           = 14
+	usize_type_idx         = 15
+	f32_type_idx           = 16
+	f64_type_idx           = 17
+	char_type_idx          = 18
+	bool_type_idx          = 19
+	none_type_idx          = 20
+	string_type_idx        = 21
+	rune_type_idx          = 22
+	array_type_idx         = 23
+	map_type_idx           = 24
+	chan_type_idx          = 25
+	any_type_idx           = 26
+	float_literal_type_idx = 27
+	int_literal_type_idx   = 28
+	thread_type_idx        = 29
+	error_type_idx         = 30
+	nil_type_idx           = 31
 )
 
 // Note: builtin_type_names must be in the same order as the idx consts above
@@ -609,7 +609,7 @@ pub const (
 	signed_integer_type_idxs   = [char_type_idx, i8_type_idx, i16_type_idx, int_type_idx,
 		i64_type_idx, i32_type_idx, isize_type_idx]
 	unsigned_integer_type_idxs = [u8_type_idx, u16_type_idx, u32_type_idx, u64_type_idx,
-		usize_type_idx, i32_type_idx]
+		usize_type_idx]
 	// C will promote any type smaller than int to int in an expression
 	int_promoted_type_idxs     = [char_type_idx, i8_type_idx, i16_type_idx, u8_type_idx, u16_type_idx]
 	float_type_idxs            = [f32_type_idx, f64_type_idx, float_literal_type_idx]
@@ -628,8 +628,9 @@ pub const (
 	byteptr_type       = new_type(byteptr_type_idx)
 	charptr_type       = new_type(charptr_type_idx)
 	i8_type            = new_type(i8_type_idx)
-	int_type           = new_type(int_type_idx)
 	i16_type           = new_type(i16_type_idx)
+	i32_type           = new_type(i32_type_idx)
+	int_type           = new_type(int_type_idx)
 	i64_type           = new_type(i64_type_idx)
 	isize_type         = new_type(isize_type_idx)
 	u8_type            = new_type(u8_type_idx)
@@ -657,7 +658,6 @@ pub const (
 	voidptr_types      = new_voidptr_types()
 	cptr_types         = merge_types(voidptr_types, byteptr_types, charptr_types)
 	nil_type           = new_type(nil_type_idx)
-	i32_type           = new_type(i32_type_idx)
 )
 
 fn new_charptr_types() []Type {
@@ -929,37 +929,38 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	t.register_sym(kind: .charptr, name: 'charptr', cname: 'charptr', mod: 'builtin') // 4
 	t.register_sym(kind: .i8, name: 'i8', cname: 'i8', mod: 'builtin') // 5
 	t.register_sym(kind: .i16, name: 'i16', cname: 'i16', mod: 'builtin') // 6
-	t.register_sym(kind: .int, name: 'int', cname: int_type_name, mod: 'builtin') // 7
-	t.register_sym(kind: .i64, name: 'i64', cname: 'i64', mod: 'builtin') // 8
-	t.register_sym(kind: .isize, name: 'isize', cname: 'isize', mod: 'builtin') // 9
-	t.register_sym(kind: .u8, name: 'u8', cname: 'u8', mod: 'builtin') // 10
-	t.register_sym(kind: .u16, name: 'u16', cname: 'u16', mod: 'builtin') // 11
-	t.register_sym(kind: .u32, name: 'u32', cname: 'u32', mod: 'builtin') // 12
-	t.register_sym(kind: .u64, name: 'u64', cname: 'u64', mod: 'builtin') // 13
-	t.register_sym(kind: .usize, name: 'usize', cname: 'usize', mod: 'builtin') // 14
-	t.register_sym(kind: .f32, name: 'f32', cname: 'f32', mod: 'builtin') // 15
-	t.register_sym(kind: .f64, name: 'f64', cname: 'f64', mod: 'builtin') // 16
-	t.register_sym(kind: .char, name: 'char', cname: 'char', mod: 'builtin') // 17
-	t.register_sym(kind: .bool, name: 'bool', cname: 'bool', mod: 'builtin') // 18
-	t.register_sym(kind: .none_, name: 'none', cname: 'none', mod: 'builtin') // 19
-	t.register_sym(kind: .string, name: 'string', cname: 'string', mod: 'builtin') // 20
-	t.register_sym(kind: .rune, name: 'rune', cname: 'rune', mod: 'builtin') // 21
-	t.register_sym(kind: .array, name: 'array', cname: 'array', mod: 'builtin') // 22
-	t.register_sym(kind: .map, name: 'map', cname: 'map', mod: 'builtin') // 23
-	t.register_sym(kind: .chan, name: 'chan', cname: 'chan', mod: 'builtin') // 24
-	t.register_sym(kind: .any, name: 'any', cname: 'any', mod: 'builtin') // 25
+	t.register_sym(kind: .i32, name: 'i32', cname: 'i32', mod: 'builtin') // 7
+	t.register_sym(kind: .int, name: 'int', cname: int_type_name, mod: 'builtin') // 8
+	t.register_sym(kind: .i64, name: 'i64', cname: 'i64', mod: 'builtin') // 9
+	t.register_sym(kind: .isize, name: 'isize', cname: 'isize', mod: 'builtin') // 10
+	t.register_sym(kind: .u8, name: 'u8', cname: 'u8', mod: 'builtin') // 11
+	t.register_sym(kind: .u16, name: 'u16', cname: 'u16', mod: 'builtin') // 12
+	t.register_sym(kind: .u32, name: 'u32', cname: 'u32', mod: 'builtin') // 13
+	t.register_sym(kind: .u64, name: 'u64', cname: 'u64', mod: 'builtin') // 14
+	t.register_sym(kind: .usize, name: 'usize', cname: 'usize', mod: 'builtin') // 15
+	t.register_sym(kind: .f32, name: 'f32', cname: 'f32', mod: 'builtin') // 16
+	t.register_sym(kind: .f64, name: 'f64', cname: 'f64', mod: 'builtin') // 17
+	t.register_sym(kind: .char, name: 'char', cname: 'char', mod: 'builtin') // 18
+	t.register_sym(kind: .bool, name: 'bool', cname: 'bool', mod: 'builtin') // 19
+	t.register_sym(kind: .none_, name: 'none', cname: 'none', mod: 'builtin') // 20
+	t.register_sym(kind: .string, name: 'string', cname: 'string', mod: 'builtin') // 21
+	t.register_sym(kind: .rune, name: 'rune', cname: 'rune', mod: 'builtin') // 22
+	t.register_sym(kind: .array, name: 'array', cname: 'array', mod: 'builtin') // 23
+	t.register_sym(kind: .map, name: 'map', cname: 'map', mod: 'builtin') // 24
+	t.register_sym(kind: .chan, name: 'chan', cname: 'chan', mod: 'builtin') // 25
+	t.register_sym(kind: .any, name: 'any', cname: 'any', mod: 'builtin') // 26
 	t.register_sym(
 		kind: .float_literal
 		name: 'float literal'
 		cname: 'float_literal'
 		mod: 'builtin'
-	) // 26
+	) // 27
 	t.register_sym(
 		kind: .int_literal
 		name: 'int literal'
 		cname: 'int_literal'
 		mod: 'builtin'
-	) // 27
+	) // 28
 	t.register_sym(
 		kind: .thread
 		name: 'thread'
@@ -968,10 +969,9 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		info: Thread{
 			return_type: ast.void_type
 		}
-	) // 28
-	t.register_sym(kind: .interface_, name: 'IError', cname: 'IError', mod: 'builtin') // 29
-	t.register_sym(kind: .voidptr, name: 'nil', cname: 'voidptr', mod: 'builtin') // 30
-	t.register_sym(kind: .i32, name: 'i32', cname: 'i32', mod: 'builtin') // 31
+	) // 29
+	t.register_sym(kind: .interface_, name: 'IError', cname: 'IError', mod: 'builtin') // 30
+	t.register_sym(kind: .voidptr, name: 'nil', cname: 'voidptr', mod: 'builtin') // 31
 }
 
 [inline]
@@ -984,7 +984,7 @@ pub fn (t &TypeSymbol) is_int() bool {
 	res := t.kind in [.i8, .i16, .int, .i64, .i32, .isize, .u8, .u16, .u32, .u64, .usize,
 		.int_literal, .rune]
 	if !res && t.kind == .alias {
-		return (t.info as Alias).parent_type.is_number()
+		return (t.info as Alias).parent_type.is_int()
 	}
 	return res
 }

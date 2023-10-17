@@ -476,14 +476,14 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) (string
 	// to make sure type idx's are the same in cached mods
 	if g.pref.build_mode == .build_module {
 		for idx, sym in g.table.type_symbols {
-			if idx in [0, 30] {
+			if idx in [0, 31] {
 				continue
 			}
 			g.definitions.writeln('int _v_type_idx_${sym.cname}();')
 		}
 	} else if g.pref.use_cache {
 		for idx, sym in g.table.type_symbols {
-			if idx in [0, 30] {
+			if idx in [0, 31] {
 				continue
 			}
 			g.definitions.writeln('int _v_type_idx_${sym.cname}() { return ${idx}; };')
@@ -3111,7 +3111,8 @@ fn (mut g Gen) map_fn_ptrs(key_typ ast.TypeSymbol) (string, string, string, stri
 			key_eq_fn = '&map_eq_int_2'
 			clone_fn = '&map_clone_int_2'
 		}
-		.int, .u32, .rune, .f32, .enum_ {
+		.int, .i32, .u32, .rune, .f32, .enum_ {
+			// XTODO i64
 			hash_fn = '&map_hash_int_4'
 			key_eq_fn = '&map_eq_int_4'
 			clone_fn = '&map_clone_int_4'
@@ -3136,7 +3137,7 @@ fn (mut g Gen) map_fn_ptrs(key_typ ast.TypeSymbol) (string, string, string, stri
 			free_fn = '&map_free_string'
 		}
 		else {
-			verror('map key type not supported')
+			verror('map key type `${key_typ.name}` not supported')
 		}
 	}
 	return hash_fn, key_eq_fn, clone_fn, free_fn
@@ -5392,6 +5393,10 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, field_name string
 			g.const_decl_write_precomputed(mod, styp, cname, field_name, ct_value.str())
 		}
 		i32 {
+			g.const_decl_write_precomputed(mod, styp, cname, field_name, ct_value.str())
+		}
+		int {
+			// XTODO int64
 			g.const_decl_write_precomputed(mod, styp, cname, field_name, ct_value.str())
 		}
 		i64 {

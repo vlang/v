@@ -21,11 +21,11 @@ pub mut:
 	name string
 	// Like short option
 	abbrev string
-	// Desciption of flag
+	// Description of flag
 	description string
 	// If the flag is added to this command and to all subcommands
 	global bool
-	// If flag is requierd
+	// If flag is required
 	required bool
 	// Default value if no value provide by command line
 	default_value []string = []
