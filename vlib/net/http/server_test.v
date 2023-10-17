@@ -1,13 +1,24 @@
+import log
 import net
 import net.http
 import time
 
+const atimeout = 200 * time.millisecond
+
+fn testsuite_begin() {
+	log.info(@FN)
+}
+
+fn testsuite_end() {
+	log.info(@FN)
+}
+
 fn test_server_stop() {
 	mut server := &http.Server{
-		accept_timeout: 1 * time.second
+		accept_timeout: atimeout
 	}
 	t := spawn server.listen_and_serve()
-	time.sleep(250 * time.millisecond)
+	server.wait_till_running()
 	mut watch := time.new_stopwatch()
 	server.stop()
 	assert server.status() == .stopped
@@ -18,11 +29,12 @@ fn test_server_stop() {
 
 fn test_server_close() {
 	mut server := &http.Server{
-		accept_timeout: 1 * time.second
+		accept_timeout: atimeout
 		handler: MyHttpHandler{}
+		show_startup_message: false
 	}
 	t := spawn server.listen_and_serve()
-	time.sleep(250 * time.millisecond)
+	server.wait_till_running()
 	mut watch := time.new_stopwatch()
 	server.close()
 	assert server.status() == .closed
@@ -34,11 +46,12 @@ fn test_server_close() {
 fn test_server_custom_listener() {
 	listener := net.listen_tcp(.ip6, ':8081')!
 	mut server := &http.Server{
-		accept_timeout: 1 * time.second
+		accept_timeout: atimeout
 		listener: listener
+		show_startup_message: false
 	}
 	t := spawn server.listen_and_serve()
-	time.sleep(250 * time.millisecond)
+	server.wait_till_running()
 	mut watch := time.new_stopwatch()
 	server.close()
 	assert server.status() == .closed
@@ -92,14 +105,13 @@ const cport = 8198
 fn test_server_custom_handler() {
 	mut handler := MyHttpHandler{}
 	mut server := &http.Server{
-		accept_timeout: 1 * time.second
+		accept_timeout: atimeout
 		handler: handler
 		port: cport
+		show_startup_message: false
 	}
 	t := spawn server.listen_and_serve()
-	for server.status() != .running {
-		time.sleep(10 * time.millisecond)
-	}
+	server.wait_till_running()
 	x := http.fetch(url: 'http://localhost:${cport}/endpoint?abc=xyz', data: 'my data')!
 	assert x.body == 'my data, /endpoint?abc=xyz'
 	assert x.status_code == 200
@@ -165,4 +177,56 @@ mut:
 	finished_was_called bool
 	redirected_to       []string
 	final_size          u64
+}
+
+//
+
+struct MyCountingHandler {
+mut:
+	counter int
+}
+
+fn (mut handler MyCountingHandler) handle(req http.Request) http.Response {
+	handler.counter++
+	mut r := http.Response{
+		body: req.data + ', ${req.url}, counter: ${handler.counter}'
+		header: req.header
+	}
+	match req.url.all_before('?') {
+		'/count' {
+			r.set_status(.ok)
+		}
+		else {
+			r.set_status(.not_found)
+		}
+	}
+	r.set_version(req.version)
+	return r
+}
+
+fn test_my_counting_handler_on_random_port() {
+	mut server := &http.Server{
+		show_startup_message: false
+		port: 0
+		accept_timeout: atimeout
+		handler: MyCountingHandler{}
+		on_running: fn (mut server http.Server) {
+			spawn fn (mut server http.Server) {
+				log.warn('server started')
+				url := 'http://${server.addr}/count'
+				log.info('fetching from url: ${url}')
+				for _ in 0 .. 5 {
+					x := http.fetch(url: url, data: 'my data') or { panic(err) }
+					log.info(x.body)
+				}
+				server.stop()
+				log.warn('server stopped')
+			}(mut server)
+		}
+	}
+	server.listen_and_serve()
+	if mut server.handler is MyCountingHandler {
+		dump(server.handler.counter)
+		assert server.handler.counter == 5
+	}
 }
