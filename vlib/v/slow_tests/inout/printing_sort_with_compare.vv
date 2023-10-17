@@ -1,0 +1,44 @@
+module main
+
+pub struct PageObject {
+	key []u8
+}
+
+fn compare_bytes(a []u8, b []u8) int {
+	return a[0] - b[0]
+}
+
+fn sort_and_print(mut objects []PageObject) {
+	objects.sort_with_compare(fn (a &PageObject, b &PageObject) int {
+		return compare_bytes(a.key, b.key)
+	})
+
+	for object in objects {
+		print('${object.key.bytestr()} ')
+	}
+	println('')
+}
+
+fn main() {
+	a := PageObject{
+		key: 'A'.bytes()
+	}
+	b := PageObject{
+		key: 'B'.bytes()
+	}
+	c := PageObject{
+		key: 'C'.bytes()
+	}
+
+	// CORRECT: (A, B)
+	mut objects1 := [b, a]
+	sort_and_print(mut objects1)
+
+	// INCORRECT: (B, A)
+	mut objects2 := [a, b]
+	sort_and_print(mut objects2)
+
+	// INCORRECT: (C, B, A)
+	mut objects3 := [a, b, c]
+	sort_and_print(mut objects3)
+}
