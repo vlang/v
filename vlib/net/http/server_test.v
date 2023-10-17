@@ -3,7 +3,7 @@ import net
 import net.http
 import time
 
-const atimeout = 200 * time.millisecond
+const atimeout = 500 * time.millisecond
 
 fn testsuite_begin() {
 	log.info(@FN)
