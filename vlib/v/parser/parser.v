@@ -1222,7 +1222,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 		if is_directive {
 			p.next()
 		}
-		if p.tok.kind in [.key_in, .key_lock, .key_orelse] { // `in`, `lock`, `or` are v keywords that are also x86/arm/riscv instructions.
+		if p.tok.kind in [.key_in, .key_lock, .key_orelse, .key_select, .key_return] { // `in`, `lock`, `or`, `select`, `return` are v keywords that are also x86/arm/riscv/wasm instructions.
 			name += p.tok.kind.str()
 			p.next()
 		} else if p.tok.kind == .number {
@@ -1264,6 +1264,11 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 				match p.tok.kind {
 					.name {
 						args << p.reg_or_alias()
+					}
+					.string {
+						// wasm: call 'wasi_unstable' 'proc_exit'
+						args << p.tok.lit
+						p.next()
 					}
 					.number {
 						number_lit := p.parse_number_literal()

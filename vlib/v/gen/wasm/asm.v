@@ -5,6 +5,41 @@ module wasm
 
 import v.ast
 
+pub fn (mut g Gen) asm_call(node ast.AsmTemplate) {
+	// call 'main.test'
+	// call 'main.Struct.+'
+	//
+	// call 'wasi_unstable' 'proc_exit'
+	// call 'console' 'log'
+
+	if node.args.len !in [1, 2] {
+		g.v_error('incorrect number of arguments to `${node.name}`', node.pos)
+	}
+
+	arg0 := node.args[0]
+	sarg0 := if arg0 is string {
+		arg0
+	} else if node.args.len == 1 {
+		g.v_error('`${node.name}` must accept a string to call', node.pos)
+	} else {
+		g.v_error('`${node.name}` must accept a namespace for call', node.pos)
+	}
+
+	if node.args.len == 1 {
+		g.func.call(sarg0)
+		return
+	}
+
+	arg1 := node.args[1]
+	sarg1 := if arg1 is string {
+		arg1
+	} else {
+		g.v_error('`${node.name}` must accept a string for call', node.pos)
+	}
+
+	g.func.call_import(sarg0, sarg1)
+}
+
 pub fn (mut g Gen) asm_literal_arg(node ast.AsmTemplate) {
 	// i32.const
 	// i64.const
@@ -12,7 +47,7 @@ pub fn (mut g Gen) asm_literal_arg(node ast.AsmTemplate) {
 	// f64.const
 
 	if node.args.len != 1 {
-		g.v_error('too many arguments to `${node.name}`', node.pos)
+		g.v_error('incorrect number of arguments to `${node.name}`', node.pos)
 	}
 
 	is_float := node.name[0] == `f`
@@ -91,6 +126,24 @@ pub fn (mut g Gen) asm_template(parent ast.AsmStmt, node ast.AsmTemplate) {
 		}
 		'f64.const' {
 			g.asm_literal_arg(node)
+		}
+		'call' {
+			g.asm_call(node)
+		}
+		'drop' {
+			g.func.drop()
+		}
+		'select' {
+			g.func.c_select()
+		}
+		'return' {
+			g.func.c_return()
+		}
+		'nop' {
+			g.func.nop()
+		}
+		'unreachable' {
+			g.func.unreachable()
 		}
 		'i32.add' {
 			g.func.add(.i32_t)
@@ -417,59 +470,103 @@ pub fn (mut g Gen) asm_template(parent ast.AsmStmt, node ast.AsmTemplate) {
 			g.func.cast_trapping(.f64_t, false, .i64_t)
 		}
 		'f32.convert_i32_s' {
-			g.func.cast()
+			g.func.cast_trapping(.i32_t, true, .f32_t)
 		}
 		'f32.convert_i32_u' {
-			g.func.cast()
+			g.func.cast_trapping(.i32_t, false, .f32_t)
 		}
 		'f32.convert_i64_s' {
-			g.func.cast()
+			g.func.cast_trapping(.i64_t, true, .f32_t)
 		}
 		'f32.convert_i64_u' {
-			g.func.cast()
+			g.func.cast_trapping(.i64_t, false, .f32_t)
 		}
 		'f32.demote_f64' {
-			g.func.cast()
+			g.func.cast_trapping(.f64_t, true, .f32_t)
 		}
 		'f64.convert_i32_s' {
-			g.func.cast()
+			g.func.cast_trapping(.i32_t, true, .f64_t)
 		}
 		'f64.convert_i32_u' {
-			g.func.cast()
+			g.func.cast_trapping(.i32_t, false, .f64_t)
 		}
 		'f64.convert_i64_s' {
-			g.func.cast()
+			g.func.cast_trapping(.i64_t, true, .f64_t)
 		}
 		'f64.convert_i64_u' {
-			g.func.cast()
+			g.func.cast_trapping(.i64_t, false, .f64_t)
 		}
 		'f64.promote_f32' {
-			g.func.cast()
+			g.func.cast_trapping(.f32_t, true, .f64_t)
 		}
 		'i32.reinterpret_f32' {
-			g.func.cast()
+			g.func.reinterpret(.f32_t)
 		}
 		'i64.reinterpret_f64' {
-			g.func.cast()
+			g.func.reinterpret(.f64_t)
 		}
 		'f32.reinterpret_i32' {
-			g.func.cast()
+			g.func.reinterpret(.i32_t)
 		}
 		'f64.reinterpret_i64' {
-			g.func.cast()
+			g.func.reinterpret(.i64_t)
 		}
 		'i32.extend8_s' {
-			g.func.cast()
+			g.func.sign_extend8(.i64_t)
 		}
 		'i32.extend16_s' {
-			g.func.cast()
+			g.func.sign_extend16(.i32_t)
 		}
 		'i64.extend8_s' {
-			g.func.cast()
+			g.func.sign_extend8(.i64_t)
+		}
+		'i64.extend16_s' {
+			g.func.sign_extend16(.i64_t)
 		}
 		'i64.extend32_s' {
-			g.func.cast()
+			g.func.sign_extend32()
 		}
+		'i32.trunc_sat_f32_s' {
+			g.func.cast(.f32_t, true, .i32_t)
+		}
+		'i32.trunc_sat_f32_u' {
+			g.func.cast(.f32_t, false, .i32_t)
+		}
+		'i32.trunc_sat_f64_s' {
+			g.func.cast(.f64_t, true, .i32_t)
+		}
+		'i32.trunc_sat_f64_u' {
+			g.func.cast(.f64_t, false, .i32_t)
+		}
+		'i64.trunc_sat_f32_s' {
+			g.func.cast(.f32_t, true, .i64_t)
+		}
+		'i64.trunc_sat_f32_u' {
+			g.func.cast(.f32_t, false, .i64_t)
+		}
+		'i64.trunc_sat_f64_s' {
+			g.func.cast(.f64_t, true, .i64_t)
+		}
+		'i64.trunc_sat_f64_u' {
+			g.func.cast(.f64_t, false, .i64_t)
+		}
+		'memory.size' {
+			g.func.memory_size()
+		}
+		'memory.grow' {
+			g.func.memory_grow()
+		}
+		'memory.copy' {
+			g.func.memory_copy()
+		}
+		'memory.fill' {
+			g.func.memory_fill()
+		}
+
+		// TODO: impl later
+		/* 'ref.null' {
+			g.func.ref_null()
+		} */
 		else {
 			g.v_error('unknown opcode', node.pos)
 		}
