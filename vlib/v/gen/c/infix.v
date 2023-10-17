@@ -1032,9 +1032,9 @@ fn (mut g Gen) gen_is_none_check(node ast.InfixExpr) {
 // It handles auto dereferencing of variables, as well as automatic casting
 // (see Gen.expr_with_cast for more details)
 fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
-	needs_cast := node.left_type.is_number() && node.right_type.is_number() && !g.inside_return
-		&& node.op in [.plus, .minus, .mul, .div, .mod] && !(g.pref.translated
-		|| g.file.is_translated)
+	needs_cast := node.left_type.is_number() && node.right_type.is_number() && !(g.inside_return
+		|| g.inside_casting_to_int) && node.op in [.plus, .minus, .mul, .div, .mod]
+		&& !(g.pref.translated || g.file.is_translated)
 	if needs_cast {
 		typ_str := g.typ(node.promoted_type)
 		g.write('(${typ_str})(')

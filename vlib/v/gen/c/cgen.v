@@ -147,6 +147,7 @@ mut:
 	inside_lambda             bool
 	inside_cinit              bool
 	inside_casting_to_str     bool
+	inside_casting_to_int     bool
 	last_tmp_call_var         []string
 	loop_depth                int
 	ternary_names             map[string]string
@@ -4637,7 +4638,13 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 					g.write('&'.repeat(ptr_cnt))
 				}
 			}
-			g.expr(node.expr)
+			if g.table.unaliased_type(node.typ).is_int() {
+				g.inside_casting_to_int = true
+				g.expr(node.expr)
+				g.inside_casting_to_int = false
+			} else {
+				g.expr(node.expr)
+			}
 			if node.expr is ast.IntegerLiteral {
 				if node_typ in [ast.u64_type, ast.u32_type, ast.u16_type] {
 					if !node.expr.val.starts_with('-') {

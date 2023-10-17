@@ -4,13 +4,29 @@ pub struct PageObject {
 	key []u8
 }
 
-fn compare_bytes(a []u8, b []u8) int {
+fn compare_bytes1(a []u8, b []u8) int {
 	return a[0] - b[0]
 }
 
-fn sort_and_print(mut objects []PageObject) {
+fn compare_bytes2(a []u8, b []u8) int {
+	x := int(a[0] - b[0])
+	return x
+}
+
+fn sort_and_print1(mut objects []PageObject) {
 	objects.sort_with_compare(fn (a &PageObject, b &PageObject) int {
-		return compare_bytes(a.key, b.key)
+		return compare_bytes1(a.key, b.key)
+	})
+
+	for object in objects {
+		print('${object.key.bytestr()} ')
+	}
+	println('')
+}
+
+fn sort_and_print2(mut objects []PageObject) {
+	objects.sort_with_compare(fn (a &PageObject, b &PageObject) int {
+		return compare_bytes2(a.key, b.key)
 	})
 
 	for object in objects {
@@ -30,15 +46,22 @@ fn main() {
 		key: 'C'.bytes()
 	}
 
-	// CORRECT: (A, B)
-	mut objects1 := [b, a]
-	sort_and_print(mut objects1)
+	mut objects11 := [b, a]
+	sort_and_print1(mut objects11)
 
-	// INCORRECT: (B, A)
-	mut objects2 := [a, b]
-	sort_and_print(mut objects2)
+	mut objects12 := [a, b]
+	sort_and_print1(mut objects12)
 
-	// INCORRECT: (C, B, A)
-	mut objects3 := [a, b, c]
-	sort_and_print(mut objects3)
+	mut objects13 := [a, b, c]
+	sort_and_print1(mut objects13)
+
+	mut objects21 := [b, a]
+	sort_and_print2(mut objects21)
+
+	mut objects22 := [a, b]
+	sort_and_print2(mut objects22)
+
+	mut objects23 := [a, b, c]
+	sort_and_print2(mut objects23)
+
 }
