@@ -440,6 +440,10 @@ pub fn (dividend Integer) div_mod_checked(divisor Integer) !(Integer, Integer) {
 // refer to `div_checked`.
 [inline]
 pub fn (dividend Integer) / (divisor Integer) Integer {
+	if dividend.signum == -1 {
+		q, _ := dividend.neg().div_mod(divisor)
+		return q.neg()
+	}
 	q, _ := dividend.div_mod(divisor)
 	return q
 }
