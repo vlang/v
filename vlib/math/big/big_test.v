@@ -222,9 +222,9 @@ const div_mod_test_data = [
 // vfmt on
 
 struct DivTest {
-	dividend  TestInteger
-	divisor   TestInteger
-	quotient  TestInteger
+	dividend TestInteger
+	divisor  TestInteger
+	quotient TestInteger
 }
 
 // vfmt off
