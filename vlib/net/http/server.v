@@ -61,9 +61,16 @@ pub fn (mut s Server) listen_and_serve() {
 		eprintln('Failed getting listener address, err: ${err}')
 		return
 	}
-	listening_address := s.addr.clone()
+	mut listening_address := s.addr.clone()
 	if l.family() == net.AddrFamily.unspec {
-		s.listener = net.listen_tcp(.ip6, listening_address) or {
+		if listening_address == ':0' {
+			listening_address = 'localhost:0'
+		}
+		mut listen_family := net.AddrFamily.ip
+		//		$if !windows {
+		//			listen_family = net.AddrFamily.ip6
+		//		}
+		s.listener = net.listen_tcp(listen_family, listening_address) or {
 			eprintln('Listening on ${s.addr} failed, err: ${err}')
 			return
 		}
