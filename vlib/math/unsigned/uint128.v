@@ -69,7 +69,7 @@ pub fn (u Uint128) and(v Uint128) Uint128 {
 	return Uint128{u.lo & v.lo, u.hi & v.hi}
 }
 
-// and_64 rreturns u & v
+// and_64 returns u & v
 pub fn (u Uint128) and_64(v u64) Uint128 {
 	return Uint128{u.lo & v, u.hi & 0}
 }
@@ -101,6 +101,7 @@ pub fn (u Uint128) add(v Uint128) Uint128 {
 	return Uint128{lo, hi}
 }
 
+// add_128 return u + v and the carry
 pub fn add_128(x Uint128, y Uint128, carry u64) (Uint128, u64) {
 	mut sum := Uint128{}
 	mut carry_out := u64(0)
@@ -109,6 +110,7 @@ pub fn add_128(x Uint128, y Uint128, carry u64) (Uint128, u64) {
 	return sum, carry_out
 }
 
+// sub_128 returns u - v and the borrow
 pub fn sub_128(x Uint128, y Uint128, borrow u64) (Uint128, u64) {
 	mut diff := Uint128{}
 	mut borrow_out := u64(0)
@@ -117,6 +119,7 @@ pub fn sub_128(x Uint128, y Uint128, borrow u64) (Uint128, u64) {
 	return diff, borrow_out
 }
 
+// mul_128 returns u x v
 pub fn mul_128(x Uint128, y Uint128) (Uint128, Uint128) {
 	mut lo := Uint128{}
 	mut hi := Uint128{}
@@ -135,6 +138,7 @@ pub fn mul_128(x Uint128, y Uint128) (Uint128, Uint128) {
 	return hi, lo
 }
 
+// div_128 returns u / v
 pub fn div_128(hi Uint128, lo Uint128, y_ Uint128) (Uint128, Uint128) {
 	mut y := y_
 	if y.is_zero() {
@@ -211,6 +215,7 @@ pub fn (u Uint128) mul_64(v u64) Uint128 {
 	return Uint128{lo, hi}
 }
 
+// overflowing_mul_64 returns u x v even if result size > 64
 pub fn (u Uint128) overflowing_mul_64(v u64) (Uint128, bool) {
 	hi, lo := bits.mul_64(u.lo, v)
 	p0, p1 := bits.mul_64(u.hi, v)
@@ -219,6 +224,7 @@ pub fn (u Uint128) overflowing_mul_64(v u64) (Uint128, bool) {
 	return Uint128{lo, hi2}, p0 != 0 || c0 != 0
 }
 
+// overflowing_add_64 returns u = v even if result size > 64
 pub fn (u Uint128) overflowing_add_64(v u64) (Uint128, u64) {
 	lo, carry := bits.add_64(u.lo, v, 0)
 	hi, carry2 := bits.add_64(u.hi, 0, carry)
@@ -366,6 +372,7 @@ pub fn (u Uint128) reverse_bytes() Uint128 {
 	return Uint128{bits.reverse_bytes_64(u.hi), bits.reverse_bytes_64(u.lo)}
 }
 
+// not
 pub fn (u Uint128) not() Uint128 {
 	return Uint128{~u.lo, ~u.hi}
 }
@@ -413,10 +420,12 @@ pub fn uint128_from_64(v u64) Uint128 {
 	return uint128_new(v, 0)
 }
 
+// uint128_new creates new Uint128 with given `lo` and `hi`
 pub fn uint128_new(lo u64, hi u64) Uint128 {
 	return Uint128{lo, hi}
 }
 
+// unint_from_dec_str returns an error or new Uint128 from given string
 pub fn uint128_from_dec_str(value string) !Uint128 {
 	mut res := unsigned.uint128_zero
 	for b_ in value.bytes() {
@@ -441,26 +450,32 @@ pub fn uint128_from_dec_str(value string) !Uint128 {
 	return res
 }
 
+// / -> returns u / v
 pub fn (u Uint128) / (v Uint128) Uint128 {
 	return u.div(v)
 }
 
+// % -> returns u % v
 pub fn (u Uint128) % (v Uint128) Uint128 {
 	return u.mod(v)
 }
 
+// + -> returns u + v
 pub fn (u Uint128) + (v Uint128) Uint128 {
 	return u.add(v)
 }
 
+// - -> returns u - v
 pub fn (u Uint128) - (v Uint128) Uint128 {
 	return u.sub(v)
 }
 
+// * -> returns u * v
 pub fn (u Uint128) * (v Uint128) Uint128 {
 	return u.mul(v)
 }
 
+// < -> returns true if u < v
 pub fn (u Uint128) < (v Uint128) bool {
 	return u.cmp(v) == -1
 }
