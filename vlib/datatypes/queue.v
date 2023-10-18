@@ -49,3 +49,8 @@ pub fn (queue Queue[T]) str() string {
 pub fn (queue Queue[T]) array() []T {
 	return queue.elements.array()
 }
+
+// clear clears all items in the queue
+pub fn (queue Queue[T]) clear() {
+	queue.elements.clear()
+}

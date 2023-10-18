@@ -76,3 +76,12 @@ fn test_array() {
 	queue.push(2)
 	assert queue.array() == [1, 2]
 }
+
+fn test_clear() {
+	mut queue := Queue[int]{}
+	queue.push(1)
+	queue.push(2)
+	queue.push(3)
+	queue.clear()
+	assert queue.len() == 0
+}
