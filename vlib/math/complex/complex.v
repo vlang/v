@@ -12,7 +12,7 @@ pub mut:
 	im f64
 }
 
-// complex returns a complex struct with the given `re` and `im`
+// complex returns a complex struct with the given `re`al and `im`aginary parts
 pub fn complex(re f64, im f64) Complex {
 	return Complex{re, im}
 }
