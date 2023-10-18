@@ -160,7 +160,7 @@ pub:
 // (when the server is running in another thread).
 // It returns an error, after params.max_retries * params.retry_period_ms
 // milliseconds have passed, without that expected server transition.
-pub fn (mut s Server) wait_till_running(params WaitTillRunningParams) ! {
+pub fn (mut s Server) wait_till_running(params WaitTillRunningParams) !int {
 	mut i := 0
 	for s.status() != .running && i < params.max_retries {
 		time.sleep(params.retry_period_ms * time.millisecond)
@@ -169,6 +169,8 @@ pub fn (mut s Server) wait_till_running(params WaitTillRunningParams) ! {
 	if i >= params.max_retries {
 		return error('maximum retries reached')
 	}
+	time.sleep(params.retry_period_ms)
+	return i
 }
 
 struct HandlerWorker {

@@ -100,7 +100,7 @@ fn (mut handler MyHttpHandler) handle(req http.Request) http.Response {
 	return r
 }
 
-const cport = 8198
+const cport = 18197
 
 fn test_server_custom_handler() {
 	mut handler := MyHttpHandler{}
@@ -159,7 +159,7 @@ fn test_server_custom_handler() {
 	assert progress_calls.chunks[0].bytestr().starts_with('HTTP/1.1 301 Moved permanently')
 	assert progress_calls.chunks[1].bytestr().starts_with('HTTP/1.1 200 OK')
 	assert progress_calls.chunks.last().bytestr().contains('xyz def')
-	assert progress_calls.redirected_to == ['http://localhost:8198/big']
+	assert progress_calls.redirected_to == ['http://localhost:${cport}/big']
 	//
 	server.stop()
 	t.wait()
