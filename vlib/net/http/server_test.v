@@ -18,7 +18,7 @@ fn test_server_stop() {
 		accept_timeout: atimeout
 	}
 	t := spawn server.listen_and_serve()
-	server.wait_till_running()
+	server.wait_till_running()!
 	mut watch := time.new_stopwatch()
 	server.stop()
 	assert server.status() == .stopped
@@ -34,7 +34,7 @@ fn test_server_close() {
 		show_startup_message: false
 	}
 	t := spawn server.listen_and_serve()
-	server.wait_till_running()
+	server.wait_till_running()!
 	mut watch := time.new_stopwatch()
 	server.close()
 	assert server.status() == .closed
@@ -51,7 +51,7 @@ fn test_server_custom_listener() {
 		show_startup_message: false
 	}
 	t := spawn server.listen_and_serve()
-	server.wait_till_running()
+	server.wait_till_running()!
 	mut watch := time.new_stopwatch()
 	server.close()
 	assert server.status() == .closed
@@ -111,7 +111,7 @@ fn test_server_custom_handler() {
 		show_startup_message: false
 	}
 	t := spawn server.listen_and_serve()
-	server.wait_till_running()
+	server.wait_till_running()!
 	x := http.fetch(url: 'http://localhost:${cport}/endpoint?abc=xyz', data: 'my data')!
 	assert x.body == 'my data, /endpoint?abc=xyz'
 	assert x.status_code == 200

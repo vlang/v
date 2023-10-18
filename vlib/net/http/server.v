@@ -96,6 +96,7 @@ pub fn (mut s Server) listen_and_serve() {
 		flush_stdout()
 	}
 
+	time.sleep(20 * time.millisecond)
 	s.state = .running
 	if s.on_running != unsafe { nil } {
 		s.on_running(mut s)
@@ -147,11 +148,26 @@ pub fn (s &Server) status() ServerStatus {
 	return s.state
 }
 
+// WaitTillRunningParams allows for parametrising the calls to s.wait_till_running()
+[params]
+pub struct WaitTillRunningParams {
+pub:
+	max_retries     int = 100 // how many times to check for the status, for each single s.wait_till_running() call
+	retry_period_ms int = 10 // how much time to wait between each check for the status, in milliseconds
+}
+
 // wait_till_running allows you to synchronise your calling (main) thread, with the state of the server
 // (when the server is running in another thread).
-pub fn (mut s Server) wait_till_running() {
-	for s.status() != .running {
-		time.sleep(10 * time.millisecond)
+// It returns an error, after params.max_retries * params.retry_period_ms
+// milliseconds have passed, without that expected server transition.
+pub fn (mut s Server) wait_till_running(params WaitTillRunningParams) ! {
+	mut i := 0
+	for s.status() != .running && i < params.max_retries {
+		time.sleep(params.retry_period_ms * time.millisecond)
+		i++
+	}
+	if i >= params.max_retries {
+		return error('maximum retries reached')
 	}
 }
 
