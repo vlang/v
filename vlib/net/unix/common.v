@@ -57,7 +57,7 @@ fn @select(handle int, test Select, timeout time.Duration) !bool {
 		}
 	}
 
-	return C.FD_ISSET(handle, &set)
+	return C.FD_ISSET(handle, &set) != 0
 }
 
 // wait_for_common wraps the common wait code

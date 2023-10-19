@@ -460,5 +460,5 @@ fn @select(handle int, test Select, timeout time.Duration) !bool {
 	$if trace_ssl ? {
 		eprintln('${@METHOD} ---> res: ${res}')
 	}
-	return res
+	return res != 0
 }

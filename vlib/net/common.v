@@ -85,7 +85,7 @@ fn @select(handle int, test Select, timeout time.Duration) !bool {
 		}
 	}
 
-	return C.FD_ISSET(handle, &set)
+	return C.FD_ISSET(handle, &set) != 0
 }
 
 [inline]
@@ -108,7 +108,7 @@ fn select_deadline(handle int, test Select, deadline time.Time) !bool {
 	}
 
 	// Deadline elapsed
-	return false
+	return err_timed_out
 }
 
 // wait_for_common wraps the common wait code

@@ -7,7 +7,7 @@ module builtin
 // g_original_codepage - used to restore the original windows console code page when exiting
 __global g_original_codepage = u32(0)
 
-pub type C.BOOL = bool
+pub type C.BOOL = int
 
 pub type C.HINSTANCE = voidptr
 
