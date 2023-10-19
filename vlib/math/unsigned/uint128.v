@@ -372,7 +372,7 @@ pub fn (u Uint128) reverse_bytes() Uint128 {
 	return Uint128{bits.reverse_bytes_64(u.hi), bits.reverse_bytes_64(u.lo)}
 }
 
-// not
+// not returns a binary negation Uint128 value
 pub fn (u Uint128) not() Uint128 {
 	return Uint128{~u.lo, ~u.hi}
 }
