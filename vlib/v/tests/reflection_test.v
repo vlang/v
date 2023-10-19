@@ -86,3 +86,10 @@ fn test_get_string_by_idx() {
 	file_idx := reflection.get_funcs().filter(it.name == 'all_after_last')[0].file_idx
 	assert reflection.get_string_by_idx(file_idx).ends_with('string.v')
 }
+
+fn test_ref() {
+	cstr := c'abc' // &u8
+	assert reflection.type_of(cstr).str().contains("name: 'u8'")
+	ptr_user := &User{}
+	assert reflection.type_of(ptr_user).str().contains("name: 'User'")
+}
