@@ -109,7 +109,7 @@ fn C.FD_ZERO(fdset &C.fd_set)
 
 fn C.FD_SET(fd int, fdset &C.fd_set)
 
-fn C.FD_ISSET(fd int, fdset &C.fd_set) bool
+fn C.FD_ISSET(fd int, fdset &C.fd_set) int
 
 fn C.inet_pton(family AddrFamily, saddr &char, addr voidptr) int
 
