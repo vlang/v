@@ -2,8 +2,8 @@ module gfx
 
 pub fn create_clear_pass(r f32, g f32, b f32, a f32) PassAction {
 	mut color_action := ColorAttachmentAction{
-		action: unsafe { Action(C.SG_ACTION_CLEAR) }
-		value: Color{
+		load_action: .clear // unsafe { Action(C.SG_ACTION_CLEAR) }
+		clear_value: Color{
 			r: r
 			g: g
 			b: b

@@ -21,7 +21,7 @@ fn test_stringified_usize_field_should_be_always_positive() {
 	sa := a.str()
 	assert sa.contains('f_isize: -1')
 	assert sa.contains('f_i64: -1')
-	assert sa.contains('f_i32:     i32(-1)')
+	assert sa.contains('f_i32: -1')
 	i := sa.split_into_lines().filter(it.contains('isize'))[0]
 	assert i.contains('-'), 'all `i` fields should be negative, but ${i} != ${a.f_isize}'
 	//

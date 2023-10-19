@@ -217,14 +217,14 @@ pub fn stderr() File {
 
 // eof returns true, when the end of file has been reached
 pub fn (f &File) eof() bool {
-	cfile := &C.FILE(f.cfile)
+	cfile := unsafe { &C.FILE(f.cfile) }
 	return C.feof(cfile) != 0
 }
 
 // reopen allows a `File` to be reused. It is mostly useful for reopening standard input and output.
 pub fn (mut f File) reopen(path string, mode string) ! {
 	p := fix_windows_path(path)
-	mut cfile := &C.FILE(0)
+	mut cfile := &C.FILE(unsafe { nil })
 	$if windows {
 		cfile = C._wfreopen(p.to_wide(), mode.to_wide(), f.cfile)
 	} $else {
@@ -242,13 +242,13 @@ pub fn (f &File) read(mut buf []u8) !int {
 		return Eof{}
 	}
 	// the following is needed, because on FreeBSD, C.feof is a macro:
-	nbytes := int(C.fread(buf.data, 1, buf.len, &C.FILE(f.cfile)))
+	nbytes := int(C.fread(buf.data, 1, buf.len, unsafe { &C.FILE(f.cfile) }))
 	// if no bytes were read, check for errors and end-of-file.
 	if nbytes <= 0 {
-		if C.feof(&C.FILE(f.cfile)) != 0 {
+		if C.feof(unsafe { &C.FILE(f.cfile) }) != 0 {
 			return Eof{}
 		}
-		if C.ferror(&C.FILE(f.cfile)) != 0 {
+		if C.ferror(unsafe { &C.FILE(f.cfile) }) != 0 {
 			return NotExpected{
 				cause: 'unexpected error from fread'
 				code: -1
@@ -466,7 +466,7 @@ pub fn (f &File) read_bytes_into_newline(mut buf []u8) !int {
 	mut buf_ptr := 0
 	mut nbytes := 0
 
-	stream := &C.FILE(f.cfile)
+	stream := unsafe { &C.FILE(f.cfile) }
 	for (buf_ptr < buf.len) {
 		c = C.getc(stream)
 		match c {

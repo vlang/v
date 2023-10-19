@@ -12,7 +12,7 @@ struct Module {
 	name         string
 	nr_downloads int
 	test_id      u64
-	user         User
+	user         ?User
 	created      time.Time
 }
 

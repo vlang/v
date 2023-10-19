@@ -19,3 +19,10 @@ vlib/v/checker/tests/match_expr_else.vv:34:3: error: `else` must be the last bra
       |         ~~~~
    35 |             'else'
    36 |         }
+vlib/v/checker/tests/match_expr_else.vv:34:3: error: match expression is exhaustive, `else` is unnecessary
+   32 |             'string'
+   33 |         }
+   34 |         else {
+      |         ~~~~
+   35 |             'else'
+   36 |         }

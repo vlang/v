@@ -19,3 +19,10 @@ vlib/v/checker/tests/incorrect_smartcast_err.vv:11:19: error: type `IExample` ha
       |                         ~~~~~
    12 |     }
    13 | }
+vlib/v/checker/tests/incorrect_smartcast_err.vv:11:3: error: `println` can not print void expressions
+    9 |     mut example := IExample(Example{field:"test"})
+   10 |     if example is Example{
+   11 |         println(example.field)
+      |         ~~~~~~~~~~~~~~~~~~~~~~
+   12 |     }
+   13 | }

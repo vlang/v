@@ -145,35 +145,43 @@ fn bind(stmt Stmt, c &int, data orm.Primitive) int {
 		orm.InfixType {
 			err = bind(stmt, c, data.right)
 		}
+		orm.Null {
+			err = stmt.bind_null(c)
+		}
 	}
 	return err
 }
 
 // Selects column in result and converts it to an orm.Primitive
 fn (stmt Stmt) sqlite_select_column(idx int, typ int) !orm.Primitive {
-	mut primitive := orm.Primitive(0)
-
 	if typ in orm.nums || typ == -1 {
-		primitive = stmt.get_int(idx)
+		return stmt.get_int(idx) or { return orm.Null{} }
 	} else if typ in orm.num64 {
-		primitive = stmt.get_i64(idx)
+		return stmt.get_i64(idx) or { return orm.Null{} }
 	} else if typ in orm.float {
-		primitive = stmt.get_f64(idx)
+		return stmt.get_f64(idx) or { return orm.Null{} }
 	} else if typ == orm.type_string {
-		primitive = stmt.get_text(idx).clone()
-	} else if typ == orm.time {
-		d := stmt.get_int(idx)
-		primitive = time.unix(d)
+		if v := stmt.get_text(idx) {
+			return v.clone()
+		} else {
+			return orm.Null{}
+		}
+	} else if typ == orm.enum_ {
+		return stmt.get_i64(idx) or { return orm.Null{} }
+	} else if typ == orm.time_ {
+		if v := stmt.get_int(idx) {
+			return time.unix(v)
+		} else {
+			return orm.Null{}
+		}
 	} else {
 		return error('Unknown type ${typ}')
 	}
-
-	return primitive
 }
 
 // Convert type int to sql type string
 fn sqlite_type_from_v(typ int) !string {
-	return if typ in orm.nums || typ < 0 || typ in orm.num64 || typ == orm.time {
+	return if typ in orm.nums || typ in orm.num64 || typ in [orm.serial, orm.time_, orm.enum_] {
 		'INTEGER'
 	} else if typ in orm.float {
 		'REAL'

@@ -35,9 +35,16 @@ vlib/v/checker/tests/struct_field_type_err.vv:16:3: error: cannot assign to fiel
       |         ~~~~~~~~~~
    17 |     }
    18 |
-vlib/v/checker/tests/struct_field_type_err.vv:19:11: error: cannot assign to `data.n`: expected `int`, not `bool`
+vlib/v/checker/tests/struct_field_type_err.vv:16:3: error: reference field must be initialized with reference
+   14 |         f1: fn (v ...voidptr) {}
+   15 |         f2: fn (v voidptr) {}
+   16 |         data: true
+      |         ~~~~~~~~~~
    17 |     }
    18 |
+vlib/v/checker/tests/struct_field_type_err.vv:19:11: error: cannot assign to `data.n`: expected `int`, not `bool`
+   17 |     }
+   18 | 
    19 |     data.n = true
       |              ~~~~
    20 | }

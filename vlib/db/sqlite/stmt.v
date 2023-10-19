@@ -1,5 +1,6 @@
 module sqlite
 
+fn C.sqlite3_bind_null(&C.sqlite3_stmt, int) int
 fn C.sqlite3_bind_double(&C.sqlite3_stmt, int, f64) int
 fn C.sqlite3_bind_int(&C.sqlite3_stmt, int, int) int
 fn C.sqlite3_bind_int64(&C.sqlite3_stmt, int, i64) int
@@ -21,6 +22,10 @@ fn (db &DB) new_init_stmt(query string) !Stmt {
 	return Stmt{stmt, db}
 }
 
+fn (stmt &Stmt) bind_null(idx int) int {
+	return C.sqlite3_bind_null(stmt.stmt, idx)
+}
+
 fn (stmt &Stmt) bind_int(idx int, v int) int {
 	return C.sqlite3_bind_int(stmt.stmt, idx, v)
 }
@@ -37,25 +42,40 @@ fn (stmt &Stmt) bind_text(idx int, s string) int {
 	return C.sqlite3_bind_text(stmt.stmt, idx, voidptr(s.str), s.len, 0)
 }
 
-fn (stmt &Stmt) get_int(idx int) int {
-	return C.sqlite3_column_int(stmt.stmt, idx)
-}
-
-fn (stmt &Stmt) get_i64(idx int) i64 {
-	return C.sqlite3_column_int64(stmt.stmt, idx)
-}
-
-fn (stmt &Stmt) get_f64(idx int) f64 {
-	return C.sqlite3_column_double(stmt.stmt, idx)
-}
-
-fn (stmt &Stmt) get_text(idx int) string {
-	b := &char(C.sqlite3_column_text(stmt.stmt, idx))
-
-	if b == &char(0) {
-		return ''
+fn (stmt &Stmt) get_int(idx int) ?int {
+	if C.sqlite3_column_type(stmt.stmt, idx) == C.SQLITE_NULL {
+		return none
+	} else {
+		return C.sqlite3_column_int(stmt.stmt, idx)
 	}
-	return unsafe { b.vstring() }
+}
+
+fn (stmt &Stmt) get_i64(idx int) ?i64 {
+	if C.sqlite3_column_type(stmt.stmt, idx) == C.SQLITE_NULL {
+		return none
+	} else {
+		return C.sqlite3_column_int64(stmt.stmt, idx)
+	}
+}
+
+fn (stmt &Stmt) get_f64(idx int) ?f64 {
+	if C.sqlite3_column_type(stmt.stmt, idx) == C.SQLITE_NULL {
+		return none
+	} else {
+		return C.sqlite3_column_double(stmt.stmt, idx)
+	}
+}
+
+fn (stmt &Stmt) get_text(idx int) ?string {
+	if C.sqlite3_column_type(stmt.stmt, idx) == C.SQLITE_NULL {
+		return none
+	} else {
+		b := &char(C.sqlite3_column_text(stmt.stmt, idx))
+		if b == &char(0) {
+			return ''
+		}
+		return unsafe { b.vstring() }
+	}
 }
 
 fn (stmt &Stmt) get_count() int {

@@ -14,6 +14,13 @@ Did you mean `translate`?
       |            ~~~~~~~~~~~~
    28 |     println('p: $p')
    29 |     println('v: $v')
+vlib/v/checker/tests/unknown_method_suggest_name.vv:27:4: error: assignment mismatch: 1 variable(s) but `tranzlate()` returns 0 value(s)
+   25 |     p := Point{1, 2, 3}
+   26 |     v := Vector{x: 5, y: 5, z: 10}
+   27 |     z := p.tranzlate(v)
+      |       ~~
+   28 |     println('p: $p')
+   29 |     println('v: $v')
 vlib/v/checker/tests/unknown_method_suggest_name.vv:30:15: error: expression does not return a value
    28 |     println('p: $p')
    29 |     println('v: $v')

@@ -36,7 +36,7 @@ fn restore_terminal_state_signal(_ os.Signal) {
 
 fn restore_terminal_state() {
 	termios_reset()
-	mut c := unsafe { ctx_ptr }
+	mut c := ctx_ptr
 	if unsafe { c != 0 } {
 		c.paused = true
 		load_title()
@@ -118,7 +118,7 @@ fn (mut ctx Context) termios_setup() ! {
 	C.atexit(restore_terminal_state)
 	os.signal_opt(.tstp, restore_terminal_state_signal) or {}
 	os.signal_opt(.cont, fn (_ os.Signal) {
-		mut c := unsafe { ctx_ptr }
+		mut c := ctx_ptr
 		if unsafe { c != 0 } {
 			c.termios_setup() or { panic(err) }
 			c.window_height, c.window_width = get_terminal_size()
@@ -133,7 +133,7 @@ fn (mut ctx Context) termios_setup() ! {
 	}) or {}
 	for code in ctx.cfg.reset {
 		os.signal_opt(code, fn (_ os.Signal) {
-			mut c := unsafe { ctx_ptr }
+			mut c := ctx_ptr
 			if unsafe { c != 0 } {
 				c.cleanup()
 			}
@@ -142,7 +142,7 @@ fn (mut ctx Context) termios_setup() ! {
 	}
 
 	os.signal_opt(.winch, fn (_ os.Signal) {
-		mut c := unsafe { ctx_ptr }
+		mut c := ctx_ptr
 		if unsafe { c != 0 } {
 			c.window_height, c.window_width = get_terminal_size()
 
@@ -227,7 +227,7 @@ fn (mut ctx Context) termios_loop() {
 		}
 		if !ctx.paused {
 			sw.restart()
-			if ctx.cfg.event_fn != unsafe { nil } {
+			if ctx.cfg.event_fn != none {
 				unsafe {
 					len := C.read(C.STDIN_FILENO, &u8(ctx.read_buf.data) + ctx.read_buf.len,
 						ctx.read_buf.cap - ctx.read_buf.len)
@@ -427,7 +427,7 @@ fn escape_sequence(buf_ string) (&Event, int) {
 		lo := typ & 0b00011
 		hi := typ & 0b11100
 
-		mut modifiers := Modifiers.ctrl
+		mut modifiers := unsafe { Modifiers(0) }
 		if hi & 4 != 0 {
 			modifiers.set(.shift)
 		}
@@ -497,7 +497,7 @@ fn escape_sequence(buf_ string) (&Event, int) {
 	// ----------------------------
 
 	mut code := KeyCode.null
-	mut modifiers := Modifiers.ctrl
+	mut modifiers := unsafe { Modifiers(0) }
 	match buf {
 		'[A', 'OA' { code = .up }
 		'[B', 'OB' { code = .down }

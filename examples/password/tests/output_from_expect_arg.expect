@@ -1,0 +1,12 @@
+#!/usr/bin/env expect
+
+set timeout 3
+set v_root [exec sh -c "git rev-parse --show-toplevel"]
+# Send expected output as arg to re-use the script for testing incorrect values.
+set expect_ [lindex $argv 0]
+
+spawn $v_root/v run $v_root/examples/password/password.v
+
+expect $expect_ {} timeout {  exit 1 }
+
+expect eof

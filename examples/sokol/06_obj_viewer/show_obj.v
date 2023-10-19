@@ -47,6 +47,7 @@ struct App {
 mut:
 	gg          &gg.Context = unsafe { nil }
 	texture     gfx.Image
+	sampler     gfx.Sampler
 	init_flag   bool
 	frame_count int
 
@@ -150,8 +151,8 @@ fn frame(mut app App) {
 
 	// clear
 	mut color_action := gfx.ColorAttachmentAction{
-		action: .clear
-		value: gfx.Color{
+		load_action: .clear
+		clear_value: gfx.Color{
 			r: 0.0
 			g: 0.0
 			b: 0.0
@@ -224,11 +225,11 @@ fn my_init(mut app App) {
 		tmp_txt[1] = u8(0xFF)
 		tmp_txt[2] = u8(0xFF)
 		tmp_txt[3] = u8(0xFF)
-		app.texture = obj.create_texture(1, 1, tmp_txt)
+		app.texture, app.sampler = obj.create_texture(1, 1, tmp_txt)
 		free(tmp_txt)
 	}
 	// glsl
-	app.obj_part.init_render_data(app.texture)
+	app.obj_part.init_render_data(app.texture, app.sampler)
 	app.init_flag = true
 }
 

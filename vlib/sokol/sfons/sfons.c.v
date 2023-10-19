@@ -13,8 +13,8 @@ pub fn create(width int, height int, flags int) &fontstash.Context {
 	assert is_power_of_two(width)
 	assert is_power_of_two(height)
 	allocator := C.sfons_allocator_t{
-		alloc: memory.salloc
-		free: memory.sfree
+		alloc_fn: memory.salloc
+		free_fn: memory.sfree
 		user_data: voidptr(0x100005f0)
 	}
 	desc := C.sfons_desc_t{

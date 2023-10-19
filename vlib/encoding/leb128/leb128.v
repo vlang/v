@@ -80,7 +80,7 @@ pub fn decode_i32(value []u8) (i32, int) {
 			break
 		}
 	}
-	return int(result), shift / 7
+	return i32(result), shift / 7
 }
 
 // decode_i64 decodes an i64 and returns the number of bytes used from the given leb128 encoded array `value`

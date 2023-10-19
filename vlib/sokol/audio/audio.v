@@ -58,15 +58,15 @@ pub fn (x FnStreamingCBWithUserData) str() string {
 [typedef]
 pub struct C.saudio_allocator {
 pub mut:
-	alloc     memory.FnAllocatorAlloc
-	free      memory.FnAllocatorFree
+	alloc_fn  memory.FnAllocatorAlloc
+	free_fn   memory.FnAllocatorFree
 	user_data voidptr
 }
 
 [typedef]
 pub struct C.saudio_logger {
 pub mut:
-	log_cb    memory.FnLogCb
+	func      memory.FnLogCb
 	user_data voidptr
 }
 
@@ -120,16 +120,16 @@ fn C.saudio_push(frames &f32, num_frames int) int
 
 // setup - setup sokol-audio
 pub fn setup(desc &C.saudio_desc) {
-	if desc.allocator.alloc == unsafe { nil } && desc.allocator.free == unsafe { nil } {
+	if desc.allocator.alloc_fn == unsafe { nil } && desc.allocator.free_fn == unsafe { nil } {
 		unsafe {
-			desc.allocator.alloc = memory.salloc
-			desc.allocator.free = memory.sfree
+			desc.allocator.alloc_fn = memory.salloc
+			desc.allocator.free_fn = memory.sfree
 			desc.allocator.user_data = voidptr(0x100a0d10)
 		}
 	}
-	if desc.logger.log_cb == unsafe { nil } {
+	if desc.logger.func == unsafe { nil } {
 		unsafe {
-			desc.logger.log_cb = memory.slog
+			desc.logger.func = memory.slog
 		}
 	}
 	C.saudio_setup(desc)

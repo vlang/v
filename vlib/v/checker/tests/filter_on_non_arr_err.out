@@ -3,3 +3,8 @@ vlib/v/checker/tests/filter_on_non_arr_err.vv:2:14: error: unknown method or fie
     2 |     _ := 'test'.filter(it == `t`)
       |                 ~~~~~~~~~~~~~~~~~
     3 | }
+vlib/v/checker/tests/filter_on_non_arr_err.vv:2:4: error: assignment mismatch: 1 variable(s) but `filter()` returns 0 value(s)
+    1 | fn main() {
+    2 |     _ := 'test'.filter(it == `t`)
+      |       ~~
+    3 | }

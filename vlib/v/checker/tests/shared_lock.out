@@ -12,7 +12,21 @@ vlib/v/checker/tests/shared_lock.vv:20:7: error: method with `shared` arguments 
       |             ^
    21 |         f(0, x)
    22 |     }
+vlib/v/checker/tests/shared_lock.vv:20:7: error: method `m` parameter `x` is `shared`, so use `shared x` instead
+   18 |     lock x {
+   19 |         x.r(x)
+   20 |         x.m(x)
+      |             ^
+   21 |         f(0, x)
+   22 |     }
 vlib/v/checker/tests/shared_lock.vv:21:8: error: function with `shared` arguments cannot be called inside `lock`/`rlock` block
+   19 |         x.r(x)
+   20 |         x.m(x)
+   21 |         f(0, x)
+      |              ^
+   22 |     }
+   23 | }
+vlib/v/checker/tests/shared_lock.vv:21:8: error: function `f` parameter `x` is `shared`, so use `shared x` instead
    19 |         x.r(x)
    20 |         x.m(x)
    21 |         f(0, x)

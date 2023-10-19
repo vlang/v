@@ -531,7 +531,8 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 			if arg.typ != ast.string_type {
 				continue
 			}
-			if arg.expr in [ast.Ident, ast.StringLiteral, ast.SelectorExpr] {
+			if arg.expr in [ast.Ident, ast.StringLiteral, ast.SelectorExpr]
+				|| (arg.expr is ast.CallExpr && arg.expr.or_block.kind != .absent) {
 				// Simple expressions like variables, string literals, selector expressions
 				// (`x.field`) can't result in allocations and don't need to be assigned to
 				// temporary vars.

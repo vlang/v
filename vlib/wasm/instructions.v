@@ -22,7 +22,7 @@ fn (mut func Function) blocktype(typ FuncType) {
 
 	// encode full type
 	tidx := func.mod.new_functype(typ)
-	func.code << leb128.encode_i32(tidx)
+	func.code << leb128.encode_i32(i32(tidx))
 }
 
 pub type PatchPos = int

@@ -1,7 +1,6 @@
 module net
 
 import time
-import io
 import strings
 
 pub const (
@@ -22,7 +21,17 @@ mut:
 	is_blocking    bool
 }
 
-pub fn dial_tcp(address string) !&TcpConn {
+pub fn dial_tcp(oaddress string) !&TcpConn {
+	mut address := oaddress
+	$if windows {
+		// resolving 0.0.0.0 to localhost, works on linux and macos, but not on windows, so try to emulate it:
+		if address.starts_with(':::') {
+			address = address.replace_once(':::', 'localhost:')
+		}
+		if address.starts_with('0.0.0.0:') {
+			address = address.replace_once('0.0.0.0:', 'localhost:')
+		}
+	}
 	addrs := resolve_addrs_fuzzy(address, .tcp) or {
 		return error('${err.msg()}; could not resolve address ${address} in dial_tcp')
 	}
@@ -137,12 +146,7 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 }
 
 pub fn (c TcpConn) read(mut buf []u8) !int {
-	return c.read_ptr(buf.data, buf.len) or {
-		return io.NotExpected{
-			cause: 'unexpected error in `read_ptr` function'
-			code: -1
-		}
-	}
+	return c.read_ptr(buf.data, buf.len)!
 }
 
 pub fn (mut c TcpConn) read_deadline() !time.Time {

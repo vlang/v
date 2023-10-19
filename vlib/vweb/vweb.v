@@ -87,6 +87,7 @@ pub const (
 		'.js':     'text/javascript'
 		'.json':   'application/json'
 		'.jsonld': 'application/ld+json'
+		'.md':     'text/markdown'
 		'.mid':    'audio/midi audio/x-midi'
 		'.midi':   'audio/midi audio/x-midi'
 		'.mjs':    'text/javascript'
@@ -1107,10 +1108,10 @@ fn new_worker[T](ch chan &RequestParams, id int) thread {
 		id: id
 		ch: ch
 	}
-	return spawn w.process_incomming_requests[T]()
+	return spawn w.process_incoming_requests[T]()
 }
 
-fn (mut w Worker[T]) process_incomming_requests() {
+fn (mut w Worker[T]) process_incoming_requests() {
 	sid := '[vweb] tid: ${w.id:03d} received request'
 	for {
 		mut params := <-w.ch or { break }

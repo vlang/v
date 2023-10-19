@@ -18,17 +18,17 @@ import stbi
 /******************************************************************************
 * Texture functions
 ******************************************************************************/
-pub fn create_texture(w int, h int, buf &u8) gfx.Image {
+pub fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {
 	sz := w * h * 4
 	mut img_desc := gfx.ImageDesc{
 		width: w
 		height: h
 		num_mipmaps: 0
-		min_filter: .linear
-		mag_filter: .linear
+		// min_filter: .linear
+		// mag_filter: .linear
 		// usage: .dynamic
-		wrap_u: .clamp_to_edge
-		wrap_v: .clamp_to_edge
+		// wrap_u: .clamp_to_edge
+		// wrap_v: .clamp_to_edge
 		label: &u8(0)
 		d3d11_texture: 0
 	}
@@ -39,29 +39,38 @@ pub fn create_texture(w int, h int, buf &u8) gfx.Image {
 	}
 
 	sg_img := gfx.make_image(&img_desc)
-	return sg_img
+
+	mut smp_desc := gfx.SamplerDesc{
+		min_filter: .linear
+		mag_filter: .linear
+		wrap_u: .clamp_to_edge
+		wrap_v: .clamp_to_edge
+	}
+
+	sg_smp := gfx.make_sampler(&smp_desc)
+	return sg_img, sg_smp
 }
 
 pub fn destroy_texture(sg_img gfx.Image) {
 	gfx.destroy_image(sg_img)
 }
 
-pub fn load_texture(file_name string) gfx.Image {
+pub fn load_texture(file_name string) (gfx.Image, gfx.Sampler) {
 	buffer := read_bytes_from_file(file_name)
 	stbi.set_flip_vertically_on_load(true)
 	img := stbi.load_from_memory(buffer.data, buffer.len) or {
 		eprintln('Texure file: [${file_name}] ERROR!')
 		exit(0)
 	}
-	res := create_texture(int(img.width), int(img.height), img.data)
+	sg_img, sg_smp := create_texture(int(img.width), int(img.height), img.data)
 	img.free()
-	return res
+	return sg_img, sg_smp
 }
 
 /******************************************************************************
 * Pipeline
 ******************************************************************************/
-pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader gfx.Shader, texture gfx.Image) Render_data {
+pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader gfx.Shader, texture gfx.Image, sampler gfx.Sampler) Render_data {
 	mut res := Render_data{}
 	obj_buf := obj_part.get_buffer(in_part)
 	res.n_vert = obj_buf.n_vertex
@@ -111,7 +120,7 @@ pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader gfx.Shader, 
 	// pipdesc.layout.attrs[C.ATTR_vs_a_Texcoord0].format  = .short2n  // u,v as u16
 	pipdesc.index_type = .uint32
 
-	color_state := gfx.ColorState{
+	color_state := gfx.ColorTargetState{
 		blend: gfx.BlendState{
 			enabled: true
 			src_factor_rgb: .src_alpha
@@ -133,7 +142,8 @@ pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader gfx.Shader, 
 
 	res.bind.vertex_buffers[0] = vbuf
 	res.bind.index_buffer = ibuf
-	res.bind.fs_images[C.SLOT_tex] = texture
+	res.bind.fs.images[C.SLOT_tex] = texture
+	res.bind.fs.samplers[C.SLOT_smp] = sampler
 	res.pipeline = gfx.make_pipeline(&pipdesc)
 	// println('Buffers part [$in_part] init done!')
 
@@ -144,7 +154,7 @@ pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader gfx.Shader, 
 * Render functions
 ******************************************************************************/
 // aggregate all the part by materials
-pub fn (mut obj_part ObjPart) init_render_data(texture gfx.Image) {
+pub fn (mut obj_part ObjPart) init_render_data(texture gfx.Image, sampler gfx.Sampler) {
 	// create shader
 	// One shader for all the model
 	shader := gfx.make_shader(C.gouraud_shader_desc(gfx.query_backend()))
@@ -162,6 +172,7 @@ pub fn (mut obj_part ObjPart) init_render_data(texture gfx.Image) {
 		// println("$k => Parts $v")
 
 		mut txt := texture
+		mut smp := sampler
 
 		if k in obj_part.mat_map {
 			mat_map := obj_part.mat[obj_part.mat_map[k]]
@@ -171,15 +182,16 @@ pub fn (mut obj_part ObjPart) init_render_data(texture gfx.Image) {
 					txt = obj_part.texture[file_name]
 					// println("Texture [${file_name}] => from CACHE")
 				} else {
-					txt = load_texture(file_name)
+					txt, smp = load_texture(file_name)
 					obj_part.texture[file_name] = txt
+					obj_part.sampler[file_name] = smp
 					// println("Texture [${file_name}] => LOADED")
 				}
 			}
 		}
 		// key := obj_part.texture.keys()[0]
 		// obj_part.rend_data << obj_part.create_pipeline(v, shader, obj_part.texture[key])
-		obj_part.rend_data << obj_part.create_pipeline(v, shader, txt)
+		obj_part.rend_data << obj_part.create_pipeline(v, shader, txt, smp)
 	}
 	// println("Texture array len: ${obj_part.texture.len}")
 	// println("Calc bounding box.")

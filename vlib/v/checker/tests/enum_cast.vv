@@ -20,4 +20,5 @@ fn main() {
 	println(unsafe { Permissions(0b101) })
 	println(unsafe { Permissions(0b1010) })
 	println(unsafe { Permissions(-1) })
+	println(unsafe { Permissions(0) })
 }

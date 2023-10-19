@@ -4,3 +4,15 @@ vlib/v/checker/tests/option_type_call_err.vv:4:5: error: os.ls() returns a Resul
     4 |     os.ls('.').filter(it.ends_with('.v')) or { return }
       |        ~~~~~~~
     5 | }
+vlib/v/checker/tests/option_type_call_err.vv:4:5: error: Result type cannot be called directly
+    2 | 
+    3 | fn main() {
+    4 |     os.ls('.').filter(it.ends_with('.v')) or { return }
+      |        ~~~~~~~
+    5 | }
+vlib/v/checker/tests/option_type_call_err.vv:4:40: error: unexpected `or` block, the function `filter` does not return an Option or a Result
+    2 | 
+    3 | fn main() {
+    4 |     os.ls('.').filter(it.ends_with('.v')) or { return }
+      |                                           ~~~~~~~~~~~~~
+    5 | }

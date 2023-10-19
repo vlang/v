@@ -1,5 +1,5 @@
 vlib/v/checker/tests/struct_field_assign_internal_types_nil_err.vv:15:8: error: cannot assign `nil` to struct field `name` with type `string`
-   13 |
+   13 | 
    14 | a := &Foo{
    15 |     name: unsafe { nil }
       |           ~~~~~~~~~~~~

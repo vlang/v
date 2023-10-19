@@ -1,28 +1,56 @@
 vlib/v/checker/tests/top_level_fn_builtin_decl_err.vv:3:1: error: top level declaration cannot shadow builtin type
-    1 |
+    1 | 
     2 | [inline]
     3 | fn char(ch byte) fn (string) !(byte, string) {
       | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     4 |     return fn [ch] (input string) !(byte, string) {
     5 |         return if input[0] == ch {
 vlib/v/checker/tests/top_level_fn_builtin_decl_err.vv:19:18: error: unknown function: a_char
-   17 |
+   17 | 
    18 |     for i, input in inputs {
    19 |         got, remain := a_char(input)!
       |                        ~~~~~~~~~~~~~
-   20 |
+   20 | 
+   21 |         assert got == 'a'[0]
+vlib/v/checker/tests/top_level_fn_builtin_decl_err.vv:19:31: error: unexpected `!`, the function `a_char` does not return a Result
+   17 | 
+   18 |     for i, input in inputs {
+   19 |         got, remain := a_char(input)!
+      |                                     ^
+   20 | 
+   21 |         assert got == 'a'[0]
+vlib/v/checker/tests/top_level_fn_builtin_decl_err.vv:19:15: error: assignment mismatch: 2 variable(s) but `a_char()` returns 0 value(s)
+   17 | 
+   18 |     for i, input in inputs {
+   19 |         got, remain := a_char(input)!
+      |                     ~~
+   20 | 
    21 |         assert got == 'a'[0]
 vlib/v/checker/tests/top_level_fn_builtin_decl_err.vv:21:10: error: invalid variable `got`
    19 |         got, remain := a_char(input)!
-   20 |
+   20 | 
    21 |         assert got == 'a'[0]
       |                ~~~
    22 |         assert remain == remains[i]
    23 |     }
+vlib/v/checker/tests/top_level_fn_builtin_decl_err.vv:21:10: error: assert can be used only with `bool` expressions, but found `void` instead
+   19 |         got, remain := a_char(input)!
+   20 | 
+   21 |         assert got == 'a'[0]
+      |                ~~~~~~~~~~~~~
+   22 |         assert remain == remains[i]
+   23 |     }
 vlib/v/checker/tests/top_level_fn_builtin_decl_err.vv:22:10: error: invalid variable `remain`
-   20 |
+   20 | 
    21 |         assert got == 'a'[0]
    22 |         assert remain == remains[i]
       |                ~~~~~~
+   23 |     }
+   24 | }
+vlib/v/checker/tests/top_level_fn_builtin_decl_err.vv:22:10: error: assert can be used only with `bool` expressions, but found `void` instead
+   20 | 
+   21 |         assert got == 'a'[0]
+   22 |         assert remain == remains[i]
+      |                ~~~~~~~~~~~~~~~~~~~~
    23 |     }
    24 | }

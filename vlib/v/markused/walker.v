@@ -237,7 +237,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		ast.ArrayInit {
 			w.expr(node.len_expr)
 			w.expr(node.cap_expr)
-			w.expr(node.default_expr)
+			w.expr(node.init_expr)
 			w.exprs(node.exprs)
 		}
 		ast.Assoc {

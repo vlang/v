@@ -28,7 +28,7 @@ pub fn close(handle voidptr) bool {
 
 // sym returns an address of an exported function or variable from a given module.
 pub fn sym(handle voidptr, symbol string) voidptr {
-	return C.GetProcAddress(handle, symbol.str)
+	return C.GetProcAddress(handle, voidptr(symbol.str))
 }
 
 // dlerror provides a text error diagnostic message for functions in `dl`

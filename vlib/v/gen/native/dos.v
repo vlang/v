@@ -10,7 +10,7 @@ const (
 
 pub fn (mut g Gen) gen_dos_header() {
 	dos_header := [
-		int(PeMagic.mz),
+		i32(PeMagic.mz),
 		// signature
 		0x80,
 		// bytes on last page of file

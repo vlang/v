@@ -115,7 +115,7 @@ mut:
 	// gg context for drawing
 	gg          &gg.Context = unsafe { nil }
 	font_loaded bool
-	show_ghost  bool = true
+	show_ghost  bool
 	// frame/time counters:
 	frame     int
 	frame_old int
@@ -159,9 +159,7 @@ fn frame(mut game Game) {
 }
 
 fn main() {
-	mut game := &Game{
-		gg: 0
-	}
+	mut game := &Game{}
 	mut fpath := os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'RobotoMono-Regular.ttf'))
 	$if android {
 		fpath = 'fonts/RobotoMono-Regular.ttf'
@@ -322,7 +320,6 @@ fn (mut g Game) get_tetro() {
 	g.tetro = g.tetros_cache[idx..idx + tetro_size].clone()
 }
 
-// TODO mut
 fn (mut g Game) drop_tetro() {
 	for i in 0 .. tetro_size {
 		tetro := g.tetro[i]

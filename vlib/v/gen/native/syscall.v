@@ -9,7 +9,7 @@ enum SysCall {
 	exit
 }
 
-fn (mut g Gen) nsyscall_macos(syscall SysCall) int {
+fn (mut g Gen) nsyscall_macos(syscall SysCall) i32 {
 	return match syscall {
 		.write {
 			0x2000004
@@ -20,7 +20,7 @@ fn (mut g Gen) nsyscall_macos(syscall SysCall) int {
 	}
 }
 
-fn (mut g Gen) nsyscall_linux(syscall SysCall) int {
+fn (mut g Gen) nsyscall_linux(syscall SysCall) i32 {
 	return match syscall {
 		.write {
 			1
@@ -31,7 +31,7 @@ fn (mut g Gen) nsyscall_linux(syscall SysCall) int {
 	}
 }
 
-fn (mut g Gen) nsyscall(syscall SysCall) int {
+fn (mut g Gen) nsyscall(syscall SysCall) i32 {
 	match g.pref.os {
 		.linux {
 			return g.nsyscall_linux(syscall)

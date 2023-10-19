@@ -5,7 +5,7 @@ module native
 
 import v.ast
 
-fn C.strtol(str &char, endptr &&char, base int) int
+fn C.strtol(str &char, endptr &&char, base i32) i32
 
 pub fn (mut g Gen) stmts(stmts []ast.Stmt) {
 	for stmt in stmts {
@@ -75,12 +75,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 
 			match node.kind {
 				'include', 'preinclude', 'define', 'insert' {
-					g.warning('#${node.kind} is not supported with the native backend',
+					g.v_error('#${node.kind} is not supported with the native backend',
 						node.pos)
-					// TODO: replace with error once issues with builtin are resolved
 				}
 				'flag' {
-					// flags are already handled when dispatching extern dependencies
+					// do nothing; flags are already handled when dispatching extern dependencies
 				}
 				else {
 					g.gen_native_hash_stmt(node)
@@ -119,7 +118,7 @@ fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
 	}
 	start := g.pos()
 	start_label := g.labels.new_label()
-	mut jump_addr := i64(0)
+	mut jump_addr := i32(0)
 	if node.has_cond {
 		cond := node.cond
 		match cond {
@@ -127,7 +126,7 @@ fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
 				match cond.left {
 					ast.Ident {
 						lit := cond.right as ast.IntegerLiteral
-						g.code_gen.cmp_var(cond.left as ast.Ident, lit.val.int())
+						g.code_gen.cmp_var(cond.left as ast.Ident, i32(lit.val.int()))
 						match cond.op {
 							.gt {
 								jump_addr = g.code_gen.cjmp(.jle)
@@ -159,7 +158,7 @@ fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
 	end_label := g.labels.new_label()
 	g.labels.patches << LabelPatch{
 		id: end_label
-		pos: int(jump_addr)
+		pos: jump_addr
 	}
 	g.println('; jump to label ${end_label}')
 	g.labels.branches << BranchLabel{
@@ -207,7 +206,7 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 		return
 	}
 	infix_expr := node.cond as ast.InfixExpr
-	mut jump_addr := 0 // location of `jne *00 00 00 00*`
+	mut jump_addr := i32(0) // location of `jne *00 00 00 00*`
 	start := g.pos()
 	start_label := g.labels.new_label()
 	g.labels.addrs[start_label] = start
@@ -222,7 +221,7 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 				}
 				ast.IntegerLiteral {
 					lit := infix_expr.right as ast.IntegerLiteral
-					g.code_gen.cmp_var(infix_expr.left as ast.Ident, lit.val.int())
+					g.code_gen.cmp_var(infix_expr.left as ast.Ident, i32(lit.val.int()))
 				}
 				else {
 					g.n_error('unhandled expression type')
@@ -327,7 +326,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) { // Work on that
 }
 
 fn (mut g Gen) gen_assert(assert_node ast.AssertStmt) {
-	mut cjmp_addr := 0
+	mut cjmp_addr := i32(0)
 	ane := assert_node.expr
 	label := g.labels.new_label()
 	cjmp_addr = g.condition(ane, true)

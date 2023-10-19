@@ -1,6 +1,7 @@
 // Copyright (c) 2020-2021 Raúl Hernández. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+[has_globals]
 module ui
 
 import os
@@ -8,9 +9,9 @@ import time
 
 const buf_size = 64
 
-const ctx_ptr = &Context(unsafe { nil })
+__global ctx_ptr = &Context(unsafe { nil })
 
-const stdin_at_startup = u32(0)
+__global stdin_at_startup = u32(0)
 
 struct ExtraContext {
 mut:
@@ -21,14 +22,14 @@ mut:
 }
 
 fn restore_terminal_state() {
-	if unsafe { ui.ctx_ptr != 0 } {
-		if ui.ctx_ptr.cfg.use_alternate_buffer {
+	if unsafe { ctx_ptr != 0 } {
+		if ctx_ptr.cfg.use_alternate_buffer {
 			// clear the terminal and set the cursor to the origin
 			print('\x1b[2J\x1b[3J')
 			print('\x1b[?1049l')
 			flush_stdout()
 		}
-		C.SetConsoleMode(ui.ctx_ptr.stdin_handle, ui.stdin_at_startup)
+		C.SetConsoleMode(ctx_ptr.stdin_handle, stdin_at_startup)
 	}
 	load_title()
 	os.flush()
@@ -46,7 +47,7 @@ pub fn init(cfg Config) &Context {
 		panic('could not get stdin handle')
 	}
 	// save the current input mode, to be restored on exit
-	if !C.GetConsoleMode(stdin_handle, &ui.stdin_at_startup) {
+	if !C.GetConsoleMode(stdin_handle, &stdin_at_startup) {
 		panic('could not get stdin console mode')
 	}
 
@@ -80,14 +81,11 @@ pub fn init(cfg Config) &Context {
 		flush_stdout()
 	}
 
-	unsafe {
-		x := &ui.ctx_ptr
-		*x = ctx
-	}
+	ctx_ptr = ctx
 	C.atexit(restore_terminal_state)
 	for code in ctx.cfg.reset {
 		os.signal_opt(code, fn (_ os.Signal) {
-			mut c := unsafe { ui.ctx_ptr }
+			mut c := ctx_ptr
 			if unsafe { c != 0 } {
 				c.cleanup()
 			}
@@ -116,7 +114,7 @@ pub fn (mut ctx Context) run() ! {
 		}
 		if !ctx.paused {
 			sw.restart()
-			if ctx.cfg.event_fn != unsafe { nil } {
+			if ctx.cfg.event_fn != none {
 				ctx.parse_events()
 			}
 			ctx.frame()
@@ -174,7 +172,7 @@ fn (mut ctx Context) parse_events() {
 					else { unsafe { KeyCode(ascii) } }
 				}
 
-				mut modifiers := Modifiers.ctrl
+				mut modifiers := unsafe { Modifiers(0) }
 				if e.dwControlKeyState & (0x1 | 0x2) != 0 {
 					modifiers.set(.alt)
 				}
@@ -204,7 +202,7 @@ fn (mut ctx Context) parse_events() {
 				}
 				x := e.dwMousePosition.X + 1
 				y := int(e.dwMousePosition.Y) - sb_info.srWindow.Top + 1
-				mut modifiers := Modifiers.ctrl
+				mut modifiers := unsafe { Modifiers(0) }
 				if e.dwControlKeyState & (0x1 | 0x2) != 0 {
 					modifiers.set(.alt)
 				}
