@@ -410,55 +410,60 @@ pub fn (mut s SSLConn) write_string(str string) !int {
 	return s.write_ptr(str.str, str.len)
 }
 
-/*
-This is basically a copy of Emily socket implementation of select.
-	This have to be consolidated into common net lib features
-	when merging this to V
-*/
-// [typedef]
-// pub struct C.fd_set {
-// }
-
 // Select waits for an io operation (specified by parameter `test`) to be available
 fn @select(handle int, test Select, timeout time.Duration) !bool {
 	$if trace_ssl ? {
 		eprintln('${@METHOD} handle: ${handle}, timeout: ${timeout}')
 	}
 	set := C.fd_set{}
-
 	C.FD_ZERO(&set)
 	C.FD_SET(handle, &set)
 
-	seconds := timeout.milliseconds() / 1000
-	microseconds := timeout - (seconds * time.second)
-	mut tt := C.timeval{
-		tv_sec: u64(seconds)
-		tv_usec: u64(microseconds)
-	}
+	deadline := time.now().add(timeout)
+	mut remaining_time := timeout.milliseconds()
+	for remaining_time > 0 {
+		seconds := remaining_time / 1000
+		microseconds := (remaining_time % 1000) * 1000
 
-	mut timeval_timeout := &tt
-
-	// infinite timeout is signaled by passing null as the timeout to
-	// select
-	if timeout == net.infinite_timeout {
-		timeval_timeout = &C.timeval(unsafe { nil })
-	}
-
-	match test {
-		.read {
-			net.socket_error(C.@select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout))!
+		tt := C.timeval{
+			tv_sec: u64(seconds)
+			tv_usec: u64(microseconds)
 		}
-		.write {
-			net.socket_error(C.@select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout))!
+		timeval_timeout := if timeout < 0 {
+			&C.timeval(unsafe { nil })
+		} else {
+			&tt
 		}
-		.except {
-			net.socket_error(C.@select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout))!
+
+		mut res := -1
+		match test {
+			.read {
+				res = net.socket_error(C.@select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout))!
+			}
+			.write {
+				res = net.socket_error(C.@select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout))!
+			}
+			.except {
+				res = net.socket_error(C.@select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout))!
+			}
 		}
+		if res < 0 {
+			if C.errno == C.EINTR {
+				// errno is 4, Spurious wakeup from signal, keep waiting
+				remaining_time = (deadline - time.now()).milliseconds()
+				continue
+			}
+			return error_with_code('Select failed: ${res}', C.errno)
+		} else if res == 0 {
+			return net.err_timed_out
+		}
+
+		res = C.FD_ISSET(handle, &set)
+		$if trace_ssl ? {
+			eprintln('${@METHOD} ---> res: ${res}')
+		}
+		return res != 0
 	}
 
-	res := C.FD_ISSET(handle, &set)
-	$if trace_ssl ? {
-		eprintln('${@METHOD} ---> res: ${res}')
-	}
-	return res != 0
+	return net.err_timed_out
 }
