@@ -127,7 +127,6 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Res
 		res := req.http_do('${host_name}:${nport}', method, path)!
 		return res
 	} else if req.proxy != unsafe { nil } {
-		println('we are proxy')
 		res := req.proxy.http_do(host_name, method, path, req)!
 		return res
 	}

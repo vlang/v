@@ -148,7 +148,7 @@ pub fn fetch(config FetchConfig) !Response {
 		return error('http.fetch: empty url')
 	}
 	url := build_url_from_fetch(config) or { return error('http.fetch: invalid url ${config.url}') }
-	mut req := Request{
+	req := Request{
 		method: config.method
 		url: url
 		data: config.data
