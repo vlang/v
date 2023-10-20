@@ -5933,7 +5933,7 @@ cause a panic.
 
 ```v
 struct Node {
-	a &Node
+	a &Node = unsafe { nil } // Auto-initialized to nil, use with caution!
 	b &Node = unsafe { nil } // Auto-initialized to nil, use with caution!
 }
 
