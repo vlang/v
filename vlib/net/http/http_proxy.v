@@ -5,6 +5,7 @@ import encoding.base64
 import net
 
 [heap]
+[heap]
 struct HttpProxy {
 mut:
 	scheme   string
