@@ -128,3 +128,5 @@ vls.log
 .idea/
 /*.iml
 wasm.v
+TAGS
+tags
