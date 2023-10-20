@@ -15,6 +15,7 @@ mut:
 	url      string
 }
 
+// new_http_proxy creates a new HttpProxy instance, from the given http proxy url in `raw_url`
 pub fn new_http_proxy(raw_url string) !HttpProxy {
 	mut url := urllib.parse(raw_url) or { return error('malformed proxy url') }
 	scheme := url.scheme
