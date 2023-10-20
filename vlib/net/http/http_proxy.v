@@ -57,7 +57,7 @@ pub fn new_http_proxy(raw_url string) !&HttpProxy {
 	}
 }
 
-fn (proxy HttpProxy) build_proxy_headers(request &Request, host string, path string) string {
+fn (proxy &HttpProxy) build_proxy_headers(request &Request, host string, path string) string {
 	ua := request.user_agent
 	mut uheaders := []string{}
 
