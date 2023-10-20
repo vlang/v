@@ -686,7 +686,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				if field.name in inited_fields {
 					continue
 				}
-				sym := c.table.sym(field.typ)
+				sym := c.table.final_sym(field.typ)
 				if field.name.len > 0 && field.name[0].is_capital() && sym.info is ast.Struct
 					&& sym.language == .v {
 					// struct embeds
@@ -712,6 +712,10 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							}
 						}
 					}
+					if sym.kind == .struct_ {
+						c.check_ref_fields_initialized(sym, mut checked_types, '${type_sym.name}.${field.name}',
+							node)
+					}
 					continue
 				}
 				if field.typ.is_ptr() && !field.typ.has_flag(.shared_f)
@@ -724,12 +728,6 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				if sym.kind == .struct_ {
 					c.check_ref_fields_initialized(sym, mut checked_types, '${type_sym.name}.${field.name}',
 						node)
-				} else if sym.kind == .alias {
-					parent_sym := c.table.sym((sym.info as ast.Alias).parent_type)
-					if parent_sym.kind == .struct_ {
-						c.check_ref_fields_initialized(parent_sym, mut checked_types,
-							'${type_sym.name}.${field.name}', node)
-					}
 				}
 				// Do not allow empty uninitialized interfaces
 				mut has_noinit := false
@@ -858,6 +856,9 @@ fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut 
 		} else if sym.kind == .alias {
 			psym := c.table.sym((sym.info as ast.Alias).parent_type)
 			if psym.kind == .struct_ {
+				if field.typ in checked_types {
+					continue
+				}
 				checked_types << field.typ
 				c.check_ref_fields_initialized(psym, mut checked_types, '${linked_name}.${field.name}',
 					node)

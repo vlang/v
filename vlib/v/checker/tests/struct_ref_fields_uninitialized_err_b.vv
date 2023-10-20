@@ -1,0 +1,14 @@
+struct Viewport {
+mut:
+	parent &Window
+}
+
+pub struct Window {
+mut:
+	desktop_viewport ?&Viewport = none
+	phone_viewport   ?&Viewport = none
+}
+
+fn main() {
+	_ := &Window{}
+}

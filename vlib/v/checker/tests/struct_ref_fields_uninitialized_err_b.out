@@ -1,0 +1,26 @@
+vlib/v/checker/tests/struct_ref_fields_uninitialized_err_b.vv:8:32: warning: unnecessary default value of `none`: struct fields are zeroed by default
+    6 | pub struct Window {
+    7 | mut:
+    8 |     desktop_viewport ?&Viewport = none
+      |                                   ~~~~
+    9 |     phone_viewport   ?&Viewport = none
+   10 | }
+vlib/v/checker/tests/struct_ref_fields_uninitialized_err_b.vv:9:32: warning: unnecessary default value of `none`: struct fields are zeroed by default
+    7 | mut:
+    8 |     desktop_viewport ?&Viewport = none
+    9 |     phone_viewport   ?&Viewport = none
+      |                                   ~~~~
+   10 | }
+   11 |
+vlib/v/checker/tests/struct_ref_fields_uninitialized_err_b.vv:13:8: error: reference field `Window.desktop_viewport.parent` must be initialized (part of struct `Viewport`)
+   11 |
+   12 | fn main() {
+   13 |     _ := &Window{}
+      |           ~~~~~~~~
+   14 | }
+vlib/v/checker/tests/struct_ref_fields_uninitialized_err_b.vv:13:8: error: reference field `Window.phone_viewport.parent` must be initialized (part of struct `Viewport`)
+   11 |
+   12 | fn main() {
+   13 |     _ := &Window{}
+      |           ~~~~~~~~
+   14 | }
