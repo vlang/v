@@ -518,14 +518,14 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 	}
 
 	listen_address := '${params.host}:${params.port}'
-	// eprintln('>> vweb listen_address: `${listen_address}` | params.family: ${params.family}')
 	mut l := net.listen_tcp(params.family, listen_address) or {
 		ecode := err.code()
 		return error('failed to listen ${ecode} ${err}')
 	}
+	// eprintln('>> vweb listen_address: `${listen_address}` | params.family: ${params.family} | l.addr: ${l.addr()} | params: $params')
 
 	routes := generate_routes(global_app)!
-	controllers_sorted := check_duplicate_routes_in_controllers[T](routes)!
+	controllers_sorted := check_duplicate_routes_in_controllers[T](global_app, routes)!
 
 	host := if params.host == '' { 'localhost' } else { params.host }
 	if params.show_startup_message {
@@ -559,7 +559,7 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 	}
 }
 
-fn check_duplicate_routes_in_controllers[T](routes map[string]Route) ![]&ControllerPath {
+fn check_duplicate_routes_in_controllers[T](global_app &T, routes map[string]Route) ![]&ControllerPath {
 	mut controllers_sorted := []&ControllerPath{}
 	$if T is ControllerInterface {
 		mut paths := []string{}
