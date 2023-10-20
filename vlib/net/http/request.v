@@ -198,6 +198,7 @@ fn (req &Request) read_all_from_client_connection(r &net.TcpConn) ![]u8 {
 	mut read := i64(0)
 	mut b := []u8{len: 32768}
 	for {
+		r.wait_for_read()!
 		old_read := read
 		new_read := r.read(mut b[read..]) or { break }
 		read += new_read
