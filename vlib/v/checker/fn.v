@@ -18,7 +18,10 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			rec_sym := c.table.sym(node.receiver.typ)
 			if rec_sym.kind == .struct_ {
 				if _ := c.table.find_field_with_embeds(rec_sym, 'Context') {
-					c.note('generic method routes of vweb will be skipped', node.pos)
+					// there is no point in the message here, for methods that are not public; since they will not be available as routes anyway
+					if node.is_pub {
+						c.note('generic method routes of vweb will be skipped', node.pos)
+					}
 				}
 			}
 		}
