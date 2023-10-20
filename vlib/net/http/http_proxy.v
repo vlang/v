@@ -5,7 +5,6 @@ import encoding.base64
 import net
 
 [heap]
-[heap]
 struct HttpProxy {
 mut:
 	scheme   string
@@ -46,7 +45,7 @@ pub fn new_http_proxy(raw_url string) !&HttpProxy {
 		host += ':' + port.str()
 	}
 
-	return HttpProxy{
+	return &HttpProxy{
 		scheme: scheme
 		username: url.user.username
 		password: url.user.password
