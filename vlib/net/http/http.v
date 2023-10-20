@@ -23,7 +23,7 @@ pub mut:
 	user_agent string  = 'v.http'
 	user_ptr   voidptr = unsafe { nil }
 	verbose    bool
-	proxy      string
+	proxy      &HttpProxy = unsafe { nil }
 	//
 	validate               bool   // set this to true, if you want to stop requests, when their certificates are found to be invalid
 	verify                 string // the path to a rootca.pem file, containing trusted CA certificate(s)
@@ -160,16 +160,13 @@ pub fn fetch(config FetchConfig) !Response {
 		validate: config.validate
 		verify: config.verify
 		cert: config.cert
+		proxy: config.proxy
 		cert_key: config.cert_key
 		in_memory_verification: config.in_memory_verification
 		allow_redirect: config.allow_redirect
 		on_progress: config.on_progress
 		on_redirect: config.on_redirect
 		on_finish: config.on_finish
-	}
-	if config.proxy.len > 0 {
-		req.proxy = new_http_proxy(config.proxy)!
-		req.use_proxy = true
 	}
 	res := req.do()!
 	return res
