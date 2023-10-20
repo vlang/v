@@ -4,6 +4,7 @@ import net.urllib
 import encoding.base64
 import net
 
+[heap]
 struct HttpProxy {
 mut:
 	scheme   string
