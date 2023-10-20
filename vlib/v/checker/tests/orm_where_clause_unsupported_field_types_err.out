@@ -1,20 +1,7 @@
-vlib/v/checker/tests/orm_where_clause_unsupported_field_types_err.vv:15:29: error: V ORM: does not support array of primitive types
-   13 |     bytes := [u8(0)]
-   14 |     e := sql db {
-   15 |         select from Example where example == bytes
-      |                                   ~~~~~~~
-   16 |     }!
-   17 |     f := sql db {
-Details: 
- field name: `example`
- data type: `[]u8`
-vlib/v/checker/tests/orm_where_clause_unsupported_field_types_err.vv:18:30: error: V ORM: does not support array of primitive types
-   16 |     }!
-   17 |     f := sql db {
-   18 |         select from Example where (example == bytes)
-      |                                    ~~~~~~~
-   19 |     }!
-   20 |     print(e)
-Details: 
- field name: `example`
- data type: `[]u8`
+vlib/v/checker/tests/orm_where_clause_unsupported_field_types_err.vv:8:2: error: ORM: array fields must have an fkey attribute
+    6 | pub struct Example {
+    7 |     id      int  [primary; sql: serial]
+    8 |     example []u8 [sql_type: 'bytea'; unique]
+      |     ~~~~~~~~~~~~
+    9 | }
+   10 |

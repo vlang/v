@@ -13,7 +13,7 @@ pub enum Public {
 
 enum Private {
 	storable
-	donwloadable
+	downloadable
 }
 
 interface Drinker {

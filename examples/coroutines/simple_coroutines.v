@@ -1,5 +1,5 @@
 // Build with
-// v -gc none -use-coroutines simple_coroutines.v
+// v -use-coroutines simple_coroutines.v
 //
 import coroutines
 import time

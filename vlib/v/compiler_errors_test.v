@@ -19,6 +19,7 @@ const skip_on_cstrict = [
 const skip_on_ubuntu_musl = [
 	'vlib/v/checker/tests/vweb_tmpl_used_var.vv',
 	'vlib/v/checker/tests/vweb_routing_checks.vv',
+	'vlib/v/checker/tests/orm_op_with_option_and_none.vv',
 	'vlib/v/tests/skip_unused/gg_code.vv',
 ]
 

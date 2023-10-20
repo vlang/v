@@ -6,7 +6,7 @@ module native
 /*
 import v.ast
 
-fn (mut g Gen) allocate_raw_array(name string, size int, items int) int {
+fn (mut g Gen) allocate_raw_array(name string, size i32, items i32) i32 {
 	pos := g.code_gen.allocate_var(name, size, items)
 	g.stack_var_pos += (size * items)
 	return pos
@@ -38,7 +38,7 @@ fn (mut g Gen) array_init(var Var, node ast.ArrayInit) {
 	if ts.kind == .array_fixed {
 		g.array_init_fixed(var)
 	} else if len == 0 {
-		// `[]int{len: 6, cap: 10, init: 22}`
+		// `[]i32{len: 6, cap: 10, init: 22}`
 		g.array_init_with_fields(var, node, elem_type)
 	} else {
 		// `[1, 2, 3]`
@@ -50,9 +50,9 @@ fn (mut g Gen) array_init_fixed(var Var) {
 	g.n_error('fixed array initialization not implemented yet')
 }
 
-// `[]int{len: 6, cap: 10, init: 22}`
+// `[]i32{len: 6, cap: 10, init: 22}`
 fn (mut g Gen) array_init_with_fields(var Var, node ast.ArrayInit, elem_type ast.Type) {
-	if node.has_index { // `[]int{len: 5, init: index * index}`
+	if node.has_index { // `[]i32{len: 5, init: index * index}`
 		g.n_error('array initialization with `index` variable not supported')
 	}
 

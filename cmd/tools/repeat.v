@@ -87,8 +87,8 @@ fn new_aints(ovals []int, extreme_mins int, extreme_maxs int) Aints {
 		nmaxs: extreme_maxs
 	}
 	mut sum := i64(0)
-	mut imin := math.max_i32
-	mut imax := -math.max_i32
+	mut imin := int(math.max_i32)
+	mut imax := int(-math.max_i32)
 	// discard the extremes:
 	mut vals := []int{}
 	for x in ovals {
@@ -276,9 +276,9 @@ fn (mut context Context) run() {
 					eprintln('${i:10} non 0 exit code for cmd: ${cmd}')
 					continue
 				}
-				trimed_output := res.output.trim_right('\r\n')
-				trimed_normalized := trimed_output.replace('\r\n', '\n')
-				lines := trimed_normalized.split('\n')
+				trimmed_output := res.output.trim_right('\r\n')
+				trimmed_normalized := trimmed_output.replace('\r\n', '\n')
+				lines := trimmed_normalized.split('\n')
 				for line in lines {
 					context.results[icmd].outputs << line
 				}

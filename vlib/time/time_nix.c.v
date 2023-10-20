@@ -26,7 +26,7 @@ fn C.timegm(&C.tm) C.time_t
 fn C.localtime_r(t &C.time_t, tm &C.tm)
 
 fn make_unix_time(t C.tm) i64 {
-	return i64(C.timegm(&t))
+	return unsafe { i64(C.timegm(&t)) }
 }
 
 // local returns t with the location set to local time.

@@ -5,11 +5,25 @@ vlib/v/checker/tests/infix_err.vv:7:5: error: mismatched types `string` and `?st
       |     ~~~~~~~~
     8 | _ = f() + ''
     9 | _ = f() + f()
+vlib/v/checker/tests/infix_err.vv:7:10: error: unwrapped Option cannot be used in an infix expression
+    5 |     return none
+    6 | }
+    7 | _ = '' + f()
+      |          ~~~
+    8 | _ = f() + ''
+    9 | _ = f() + f()
 vlib/v/checker/tests/infix_err.vv:8:5: error: mismatched types `?string` and `string`
     6 | }
     7 | _ = '' + f()
     8 | _ = f() + ''
       |     ~~~~~~~~
+    9 | _ = f() + f()
+   10 |
+vlib/v/checker/tests/infix_err.vv:8:5: error: unwrapped Option cannot be used in an infix expression
+    6 | }
+    7 | _ = '' + f()
+    8 | _ = f() + ''
+      |     ~~~
     9 | _ = f() + f()
    10 |
 vlib/v/checker/tests/infix_err.vv:9:9: error: `+` cannot be used with `?string`
@@ -19,11 +33,25 @@ vlib/v/checker/tests/infix_err.vv:9:9: error: `+` cannot be used with `?string`
       |         ^
    10 | 
    11 | _ = 4 + g()
+vlib/v/checker/tests/infix_err.vv:9:5: error: unwrapped Option cannot be used in an infix expression
+    7 | _ = '' + f()
+    8 | _ = f() + ''
+    9 | _ = f() + f()
+      |     ~~~
+   10 | 
+   11 | _ = 4 + g()
 vlib/v/checker/tests/infix_err.vv:11:7: error: `+` cannot be used with `?int`
     9 | _ = f() + f()
    10 | 
    11 | _ = 4 + g()
       |       ^
+   12 | _ = int(0) + g() // FIXME not detected
+   13 | _ = g() + int(3)
+vlib/v/checker/tests/infix_err.vv:11:9: error: unwrapped Option cannot be used in an infix expression
+    9 | _ = f() + f()
+   10 | 
+   11 | _ = 4 + g()
+      |         ~~~
    12 | _ = int(0) + g() // FIXME not detected
    13 | _ = g() + int(3)
 vlib/v/checker/tests/infix_err.vv:12:14: error: unwrapped Option cannot be used in an infix expression
@@ -40,11 +68,25 @@ vlib/v/checker/tests/infix_err.vv:13:9: error: `+` cannot be used with `?int`
       |         ^
    14 | _ = g() + 3
    15 |
+vlib/v/checker/tests/infix_err.vv:13:5: error: unwrapped Option cannot be used in an infix expression
+   11 | _ = 4 + g()
+   12 | _ = int(0) + g() // FIXME not detected
+   13 | _ = g() + int(3)
+      |     ~~~
+   14 | _ = g() + 3
+   15 |
 vlib/v/checker/tests/infix_err.vv:14:9: error: `+` cannot be used with `?int`
    12 | _ = int(0) + g() // FIXME not detected
    13 | _ = g() + int(3)
    14 | _ = g() + 3
       |         ^
+   15 | 
+   16 | // binary operands
+vlib/v/checker/tests/infix_err.vv:14:5: error: unwrapped Option cannot be used in an infix expression
+   12 | _ = int(0) + g() // FIXME not detected
+   13 | _ = g() + int(3)
+   14 | _ = g() + 3
+      |     ~~~
    15 | 
    16 | // binary operands
 vlib/v/checker/tests/infix_err.vv:17:5: error: left operand for `&&` is not a boolean
@@ -54,11 +96,25 @@ vlib/v/checker/tests/infix_err.vv:17:5: error: left operand for `&&` is not a bo
       |     ^
    18 | _ = true || 2
    19 |
+vlib/v/checker/tests/infix_err.vv:17:10: error: right operand for `&&` is not a boolean
+   15 | 
+   16 | // binary operands
+   17 | _ = 1 && 2
+      |          ^
+   18 | _ = true || 2
+   19 |
 vlib/v/checker/tests/infix_err.vv:18:13: error: right operand for `||` is not a boolean
    16 | // binary operands
    17 | _ = 1 && 2
    18 | _ = true || 2
       |             ^
+   19 | 
+   20 | // boolean expressions
+vlib/v/checker/tests/infix_err.vv:18:5: error: infix expr: cannot use `int literal` (right expression) as `bool`
+   16 | // binary operands
+   17 | _ = 1 && 2
+   18 | _ = true || 2
+      |     ~~~~~~~~~
    19 | 
    20 | // boolean expressions
 vlib/v/checker/tests/infix_err.vv:21:22: error: ambiguous boolean expression. use `()` to ensure correct order of operations

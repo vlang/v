@@ -120,7 +120,7 @@ fn (mut container PipelineContainer) init_pipeline() {
 	mut alpha_pipdesc := gfx.PipelineDesc{}
 	unsafe { vmemset(&alpha_pipdesc, 0, int(sizeof(alpha_pipdesc))) }
 	alpha_pipdesc.label = c'alpha-pipeline'
-	alpha_pipdesc.colors[0] = gfx.ColorState{
+	alpha_pipdesc.colors[0] = gfx.ColorTargetState{
 		blend: gfx.BlendState{
 			enabled: true
 			src_factor_rgb: .src_alpha
@@ -133,7 +133,7 @@ fn (mut container PipelineContainer) init_pipeline() {
 	mut add_pipdesc := gfx.PipelineDesc{}
 	unsafe { vmemset(&add_pipdesc, 0, int(sizeof(add_pipdesc))) }
 	add_pipdesc.label = c'additive-pipeline'
-	add_pipdesc.colors[0] = gfx.ColorState{
+	add_pipdesc.colors[0] = gfx.ColorTargetState{
 		blend: gfx.BlendState{
 			enabled: true
 			src_factor_rgb: .src_alpha
@@ -452,7 +452,7 @@ pub fn new_context(cfg Config) &Context {
 			init_userdata_cb: gg_init_sokol_window
 			frame_userdata_cb: gg_frame_fn
 			event_userdata_cb: gg_event_fn
-			fail_userdata_cb: gg_fail_fn
+			// fail_userdata_cb: gg_fail_fn
 			cleanup_userdata_cb: gg_cleanup_fn
 			window_title: &char(cfg.window_title.str)
 			html5_canvas_name: &char(cfg.html5_canvas_name.str)
@@ -533,20 +533,20 @@ pub struct EndOptions {
 const dontcare_pass = gfx.PassAction{
 	colors: [
 		gfx.ColorAttachmentAction{
-			action: .dontcare
-			value: gfx.Color{1.0, 1.0, 1.0, 1.0}
+			load_action: .dontcare
+			clear_value: gfx.Color{1.0, 1.0, 1.0, 1.0}
 		},
 		gfx.ColorAttachmentAction{
-			action: .dontcare
-			value: gfx.Color{1.0, 1.0, 1.0, 1.0}
+			load_action: .dontcare
+			clear_value: gfx.Color{1.0, 1.0, 1.0, 1.0}
 		},
 		gfx.ColorAttachmentAction{
-			action: .dontcare
-			value: gfx.Color{1.0, 1.0, 1.0, 1.0}
+			load_action: .dontcare
+			clear_value: gfx.Color{1.0, 1.0, 1.0, 1.0}
 		},
 		gfx.ColorAttachmentAction{
-			action: .dontcare
-			value: gfx.Color{1.0, 1.0, 1.0, 1.0}
+			load_action: .dontcare
+			clear_value: gfx.Color{1.0, 1.0, 1.0, 1.0}
 		},
 	]!
 }

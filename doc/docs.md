@@ -5533,6 +5533,9 @@ that are substituted at compile time:
 - `@VEXEROOT`  => will be substituted with the *folder*,
   where the V executable is (as a string).
 - `@VHASH`  => replaced with the shortened commit hash of the V compiler (as a string).
+- `@VCURRENTHASH` => Similar to `@VHASH`, but changes when the compiler is
+  recompiled on a different commit (after local modifications, or after 
+  using git bisect etc).
 - `@VMOD_FILE` => replaced with the contents of the nearest v.mod file (as a string).
 - `@VMODROOT` => will be substituted with the *folder*,
   where the nearest v.mod file is (as a string).
@@ -6039,63 +6042,222 @@ To improve safety and maintainability, operator overloading is limited.
 
 ## Performance tuning
 
-The generated C code is usually fast enough, when you compile your code
-with `-prod`. There are some situations though, where you may want to give
-additional hints to the compiler, so that it can further optimize some
-blocks of code.
+When compiled with `-prod`, V's generated C code usually performs well. However, in specialized
+scenarios, additional compiler flags and attributes can further optimize the executable for
+performance, memory usage, or size.
 
-> **Note**
-> These are *rarely* needed, and should not be used, unless you
+> [!NOTE]
+> These are *rarely* needed, and should not be used unless you
 > *profile your code*, and then see that there are significant benefits for them.
-> To cite gcc's documentation: "programmers are notoriously bad at predicting
+> To cite GCC's documentation: "Programmers are notoriously bad at predicting
 > how their programs actually perform".
 
-`[inline]` - you can tag functions with `[inline]`, so the C compiler will
-try to inline them, which in some cases, may be beneficial for performance,
-but may impact the size of your executable.
+| Tuning Operation         | Benefits                        | Drawbacks                                         |
+|--------------------------|---------------------------------|---------------------------------------------------|
+| `[inline]`               | Performance                     | Increased executable size                         |
+| `[direct_array_access]`  | Performance                     | Safety risks                                      |
+| `[packed]`               | Memory usage                    | Potential performance loss                        |
+| `[minify]`               | Performance, Memory usage       | May break binary serialization/reflection         |
+| `_likely_/_unlikely_`    | Performance                     | Risk of negative performance impact               |
+| `-skip-unused`           | Performance, Compile time, Size | Potential instability                             |
+| `-fast-math`             | Performance                     | Risk of incorrect mathematical operations results |
+| `-d no_segfault_handler` | Compile time, Size              | Loss of segfault trace                            |
+| `-cflags -march=native`  | Performance                     | Risk of reduced CPU compatibility                 |
+| `PGO`                    | Performance, Size               | Usage complexity                                  |
 
-`[direct_array_access]` - in functions tagged with `[direct_array_access]`
-the compiler will translate array operations directly into C array operations -
-omitting bounds checking. This may save a lot of time in a function that iterates
-over an array but at the cost of making the function unsafe - unless
-the boundaries will be checked by the user.
+### Tuning operations details
 
-`if _likely_(bool expression) {` this hints the C compiler, that the passed
-boolean expression is very likely to be true, so it can generate assembly
-code, with less chance of branch misprediction. In the JS backend,
-that does nothing.
+#### `[inline]`
 
-`if _unlikely_(bool expression) {` similar to `_likely_(x)`, but it hints that
-the boolean expression is highly improbable. In the JS backend, that does nothing.
+You can tag functions with `[inline]`, so the C compiler will try to inline them, which in some
+cases, may be beneficial for performance, but may impact the size of your executable.
 
-<a id='Reflection via codegen'>
+**When to Use**
 
-### Memory usage optimization
+- Functions that are called frequently in performance-critical loops.
 
-V offers these attributes related to memory usage
-that can be applied to a structure type: `[packed]` and `[minify]`.
-These attributes affect memory layout of a structure, potentially leading to reduced
-cache/memory usage and improved performance.
+**When to Avoid**
+
+- Large functions, as it might cause code bloat and actually decrease performance.
+- Large functions in `if` expressions - may have negative impact on instructions cache.
+
+#### `[direct_array_access]`
+
+In functions tagged with `[direct_array_access]` the compiler will translate array operations
+directly into C array operations - omitting bounds checking. This may save a lot of time in a
+function that iterates over an array but at the cost of making the function unsafe - unless the
+boundaries will be checked by the user.
+
+**When to Use**
+
+- In tight loops that access array elements, where bounds have been manually verified or you are
+sure that the access index will be valid.
+
+**When to Avoid**
+
+- Everywhere else.
 
 #### `[packed]`
 
 The `[packed]` attribute can be added to a structure to create an unaligned memory layout,
-which decreases the overall memory footprint of the structure.
+which decreases the overall memory footprint of the structure. Using the `[packed]` attribute
+may negatively impact performance or even be prohibited on certain CPU architectures.
 
-> **Note**
-> Using the [packed] attribute may negatively impact performance
-> or even be prohibited on certain CPU architectures.
-> Only use this attribute if minimizing memory usage is crucial for your program
-> and you're willing to sacrifice performance.
+**When to Use**
+
+- When memory usage is more critical than performance, e.g., in embedded systems.
+
+**When to Avoid**
+
+- On CPU architectures that do not support unaligned memory access or when high-speed memory access
+is needed.
 
 #### `[minify]`
 
-The `[minify]` attribute can be added to a struct, allowing the compiler to reorder the fields
-in a way that minimizes internal gaps while maintaining alignment.
+The `[minify]` attribute can be added to a struct, allowing the compiler to reorder the fields in
+a way that minimizes internal gaps while maintaining alignment. Using the `[minify]` attribute may
+cause issues with binary serialization or reflection. Be mindful of these potential side effects
+when using this attribute.
 
-> **Note**
-> Using the `[minify]` attribute may cause issues with binary serialization or reflection.
-> Be mindful of these potential side effects when using this attribute.
+**When to Use**
+
+- When you want to minimize memory usage and you're not using binary serialization or reflection.
+
+**When to Avoid**
+
+- When using binary serialization or reflection, as it may cause unexpected behavior.
+
+#### `_likely_/_unlikely_`
+
+`if _likely_(bool expression) {` - hints to the C compiler, that the passed boolean expression is
+very likely to be true, so it can generate assembly code, with less chance of branch misprediction.
+In the JS backend, that does nothing.
+
+`if _unlikely_(bool expression) {` is similar to `_likely_(x)`, but it hints that the boolean
+expression is highly improbable. In the JS backend, that does nothing.
+
+**When to Use**
+
+- In conditional statements where one branch is clearly more frequently executed than the other.
+
+**When to Avoid**
+
+- When the prediction can be wrong, as it might cause a performance penalty due to branch
+misprediction.
+
+#### `-skip-unused`
+
+This flag tells the V compiler to omit code that is not needed in the final executable to run your
+program correctly. This will remove unneeded `const` arrays allocations and unused functions
+from the code in the generated executable.
+
+This flag will be on by default in the future when its implementation will be stabilized and all
+severe bugs will be found.
+
+**When to Use**
+
+- For production builds where you want to reduce the executable size and improve runtime
+performance.
+
+**When to Avoid**
+
+- Where it doesn't work for you.
+
+#### `-fast-math`
+
+This flag enables optimizations that disregard strict compliance with the IEEE standard for
+floating-point arithmetic. While this could lead to faster code, it may produce incorrect or
+less accurate mathematical results.
+
+The full specter of math operations that `-fast-math` affects can be found
+[here](https://clang.llvm.org/docs/UsersManual.html#cmdoption-ffast-math).
+
+**When to Use**
+
+- In applications where performance is more critical than precision, like certain graphics
+rendering tasks.
+
+**When to Avoid**
+
+- In applications requiring strict mathematical accuracy, such as scientific simulations or
+financial calculations.
+
+#### `-d no_segfault_handler`
+
+Using this flag omits the segfault handler, reducing the executable size and potentially improving
+compile time. However, in the case of a segmentation fault, the output will not contain stack trace
+information, making debugging more challenging.
+
+**When to Use**
+
+- In small, well-tested utilities where a stack trace is not essential for debugging.
+
+**When to Avoid**
+
+- In large-scale, complex applications where robust debugging is required.
+
+#### `-cflags -march=native`
+
+This flag directs the C compiler to generate instructions optimized for the host CPU. This can
+improve performance but will produce an executable incompatible with other/older CPUs.
+
+**When to Use**
+
+- When the software is intended to run only on the build machine or in a controlled environment
+with identical hardware.
+
+**When to Avoid**
+
+- When distributing the software to users with potentially older CPUs.
+
+#### PGO (Profile-Guided Optimization)
+
+PGO allows the compiler to optimize code based on its behavior during sample runs. This can improve
+performance and reduce the size of the output executable, but it adds complexity to the build
+process.
+
+**When to Use**
+
+- For performance-critical applications where the added build complexity is justifiable.
+
+**When to Avoid**
+
+- For small, short-lived, or rapidly-changing projects where the added build complexity isn't
+justified.
+
+**PGO with Clang**
+
+This is an example bash script you can use to optimize your CLI V program without user interactions.
+In most cases, you will need to change this script to make it suitable for your particular program.
+
+```bash
+#!/bin/bash
+
+# Get the full path to the current directory
+CUR_DIR=$(pwd)
+
+# Remove existing PGO data
+rm -f *.profraw
+rm -f default.profdata
+
+# Initial build with PGO instrumentation
+v -cc clang -skip-unused -prod -cflags -fprofile-generate -o pgo_gen .
+
+# Run the instrumented executable 10 times
+for i in {1..10}; do
+    ./pgo_gen
+done
+
+# Merge the collected data
+llvm-profdata merge -o default.profdata *.profraw
+
+# Compile the optimized version using the PGO data
+v -cc clang -skip-unused -prod -cflags "-fprofile-use=${CUR_DIR}/default.profdata" -o optimized_program .
+
+# Remove PGO data and instrumented executable
+rm *.profraw
+rm pgo_gen
+```
 
 ## Atomics
 

@@ -39,6 +39,18 @@ pub struct C.SSL {
 }
 
 [typedef]
+pub struct C.BIO {
+}
+
+[typedef]
+pub struct C.SSL_METHOD {
+}
+
+[typedef]
+pub struct C.X509 {
+}
+
+[typedef]
 pub struct C.SSL_CTX {
 }
 

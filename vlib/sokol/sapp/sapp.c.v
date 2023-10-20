@@ -182,26 +182,20 @@ pub fn get_clipboard_string() &char {
 
 // special run-function for SOKOL_NO_ENTRY (in standard mode this is an empty stub)
 pub fn run(desc &Desc) {
-	if desc.allocator.alloc == unsafe { nil } && desc.allocator.free == unsafe { nil } {
+	if desc.allocator.alloc_fn == unsafe { nil } && desc.allocator.free_fn == unsafe { nil } {
 		unsafe {
-			desc.allocator.alloc = memory.salloc
-			desc.allocator.free = memory.sfree
+			desc.allocator.alloc_fn = memory.salloc
+			desc.allocator.free_fn = memory.sfree
 			desc.allocator.user_data = voidptr(0x10005a44)
 		}
 	}
-	if desc.logger.log_cb == unsafe { nil } {
+	if desc.logger.func == unsafe { nil } {
 		unsafe {
-			desc.logger.log_cb = memory.slog
+			desc.logger.func = memory.slog
 		}
 	}
 	g_desc = *desc
 	C.sapp_run(desc)
-}
-
-// GL: return true when GLES2 fallback is active (to detect fallback from GLES3)
-[inline]
-pub fn gles2() bool {
-	return C.sapp_gles2()
 }
 
 // HTML5: enable or disable the hardwired "Leave Site?" dialog box

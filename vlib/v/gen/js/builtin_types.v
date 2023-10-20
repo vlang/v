@@ -161,8 +161,8 @@ pub fn (mut g JsGen) doc_typ(t ast.Type) string {
 		.byteptr, .charptr {
 			styp = '${g.sym_to_js_typ(sym)}'
 		}
-		.i8, .i16, .int, .i64, .isize, .u8, .u16, .u32, .u64, .usize, .f32, .f64, .int_literal,
-		.float_literal {
+		.i8, .i16, .i32, .int, .i64, .isize, .u8, .u16, .u32, .u64, .usize, .f32, .f64,
+		.int_literal, .float_literal {
 			styp = '${g.sym_to_js_typ(sym)}'
 		}
 		.bool {

@@ -1,5 +1,5 @@
 vlib/v/checker/tests/enum_op_flag_err.vv:9:24: error: only `==`, `!=`, `|` and `&` are defined on `[flag]` tagged `enum`, use an explicit cast to `int` if needed
-    7 |
+    7 | 
     8 | fn main() {
     9 |     println(FilePerm.read > FilePerm.write)
       |                           ^
@@ -17,4 +17,16 @@ vlib/v/checker/tests/enum_op_flag_err.vv:11:10: error: left operand for `&&` is 
    10 |     println(FilePerm.write + FilePerm.exec)
    11 |     println(FilePerm.write && FilePerm.exec)
       |             ~~~~~~~~~~~~~~
+   12 | }
+vlib/v/checker/tests/enum_op_flag_err.vv:11:28: error: right operand for `&&` is not a boolean
+    9 |     println(FilePerm.read > FilePerm.write)
+   10 |     println(FilePerm.write + FilePerm.exec)
+   11 |     println(FilePerm.write && FilePerm.exec)
+      |                               ~~~~~~~~~~~~~
+   12 | }
+vlib/v/checker/tests/enum_op_flag_err.vv:11:25: error: only `==`, `!=`, `|` and `&` are defined on `[flag]` tagged `enum`, use an explicit cast to `int` if needed
+    9 |     println(FilePerm.read > FilePerm.write)
+   10 |     println(FilePerm.write + FilePerm.exec)
+   11 |     println(FilePerm.write && FilePerm.exec)
+      |                            ~~
    12 | }

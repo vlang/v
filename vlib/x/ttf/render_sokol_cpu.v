@@ -21,7 +21,8 @@ pub struct TTF_render_Sokol {
 pub mut:
 	bmp &BitMap = unsafe { nil } // Base bitmap render
 	// rendering fields
-	sg_img       gfx.Image // sokol image
+	sg_img       gfx.Image   // sokol image
+	sg_smp       gfx.Sampler // sokol sampler
 	scale_reduct f32 = 2.0 // scale of the cpu texture for filtering
 	device_dpi   int = 72 // device DPI
 }
@@ -123,11 +124,7 @@ pub fn (mut tf_skl TTF_render_Sokol) create_texture() {
 		width: w
 		height: h
 		num_mipmaps: 0
-		min_filter: .linear
-		mag_filter: .linear
 		// usage: .dynamic
-		wrap_u: .clamp_to_edge
-		wrap_v: .clamp_to_edge
 		label: &char(0)
 		d3d11_texture: 0
 	}
@@ -139,11 +136,23 @@ pub fn (mut tf_skl TTF_render_Sokol) create_texture() {
 
 	simg := gfx.make_image(&img_desc)
 	// free(tf_skl.bmp.buf)  // DONT FREE IF Dynamic
+
+	mut smp_desc := gfx.SamplerDesc{
+		min_filter: .linear
+		mag_filter: .linear
+		wrap_u: .clamp_to_edge
+		wrap_v: .clamp_to_edge
+	}
+
+	ssmp := gfx.make_sampler(&smp_desc)
+
 	tf_skl.sg_img = simg
+	tf_skl.sg_smp = ssmp
 }
 
 pub fn (tf_skl TTF_render_Sokol) destroy_texture() {
 	gfx.destroy_image(tf_skl.sg_img)
+	gfx.destroy_sampler(tf_skl.sg_smp)
 }
 
 // Use only if usage: .dynamic
@@ -198,7 +207,7 @@ pub fn (tf_skl TTF_render_Sokol) draw_text_bmp(ctx &gg.Context, x f32, y f32) {
 	//
 	sgl.load_pipeline(ctx.pipeline.alpha)
 	sgl.enable_texture()
-	sgl.texture(tf_skl.sg_img)
+	sgl.texture(tf_skl.sg_img, tf_skl.sg_smp)
 	sgl.begin_quads()
 	sgl.c4b(255, 255, 255, 255)
 	sgl.v2f_t2f(x0, y0, u0, v0)

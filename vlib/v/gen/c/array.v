@@ -104,7 +104,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 					g.write(', ')
 				}
 			}
-		} else if node.has_default {
+		} else if node.has_init {
 			info := array_type.unaliased_sym.info as ast.ArrayFixed
 			for i in 0 .. info.size {
 				g.write('0')
@@ -126,7 +126,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		g.indent++
 		g.writeln('int it = index;') // FIXME: Remove this line when it is fully forbidden
 		g.write('*pelem = ')
-		g.expr_with_default(node)
+		g.expr_with_init(node)
 		g.writeln(';')
 		g.indent--
 		g.writeln('}')
@@ -164,10 +164,10 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 				g.write(', ')
 			}
 		}
-	} else if node.has_default {
+	} else if node.has_init {
 		info := array_type.unaliased_sym.info as ast.ArrayFixed
 		for i in 0 .. info.size {
-			g.expr_with_default(node)
+			g.expr_with_init(node)
 			if i != info.size - 1 {
 				g.write(', ')
 			}
@@ -236,11 +236,11 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 	}
 }
 
-fn (mut g Gen) expr_with_default(node ast.ArrayInit) {
+fn (mut g Gen) expr_with_init(node ast.ArrayInit) {
 	if node.elem_type.has_flag(.option) {
-		g.expr_with_opt(node.default_expr, node.default_type, node.elem_type)
+		g.expr_with_opt(node.init_expr, node.init_type, node.elem_type)
 	} else {
-		g.expr_with_cast(node.default_expr, node.default_type, node.elem_type)
+		g.expr_with_cast(node.init_expr, node.init_type, node.elem_type)
 	}
 }
 
@@ -267,8 +267,8 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 	}
 	elem_styp := g.typ(elem_type.typ)
 	noscan := g.check_noscan(elem_type.typ)
-	is_default_array := elem_type.unaliased_sym.kind == .array && node.has_default
-	is_default_map := elem_type.unaliased_sym.kind == .map && node.has_default
+	is_default_array := elem_type.unaliased_sym.kind == .array && node.has_init
+	is_default_map := elem_type.unaliased_sym.kind == .map && node.has_init
 	needs_more_defaults := node.has_len && (g.struct_has_array_or_map_field(elem_type.typ)
 		|| elem_type.unaliased_sym.kind in [.array, .map])
 	if node.has_index {
@@ -342,7 +342,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.indent++
 		g.writeln('int it = index;') // FIXME: Remove this line when it is fully forbidden
 		g.write('*pelem = ')
-		g.expr_with_default(node)
+		g.expr_with_init(node)
 		g.writeln(';')
 		g.indent--
 		g.writeln('}')
@@ -385,11 +385,11 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 			0
 		}
 		g.write('(${elem_styp}[]){')
-		g.expr(node.default_expr)
+		g.expr(node.init_expr)
 		g.write('}[0], ${depth})')
 	} else if is_default_map {
 		g.write('(${elem_styp}[]){')
-		g.expr(node.default_expr)
+		g.expr(node.init_expr)
 		g.write('}[0])')
 	} else if needs_more_defaults {
 		tmp := g.new_tmp_var()
@@ -404,8 +404,8 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.expr(node.len_expr)
 		g.writeln('; ${ind}++) {')
 		g.write('\t${tmp}[${ind}] = ')
-		if node.has_default {
-			g.expr_with_default(node)
+		if node.has_init {
+			g.expr_with_init(node)
 		} else {
 			if node.elem_type.has_flag(.option) {
 				g.expr_with_opt(ast.None{}, ast.none_type, node.elem_type)
@@ -417,9 +417,9 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.writeln('}')
 		g.write(line)
 		g.write(' (voidptr)${tmp})')
-	} else if node.has_default {
+	} else if node.has_init {
 		g.write('&(${elem_styp}[]){')
-		g.expr_with_default(node)
+		g.expr_with_init(node)
 		g.write('})')
 	} else if node.has_len && node.elem_type.has_flag(.option) {
 		g.write('&')

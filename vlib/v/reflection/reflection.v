@@ -50,8 +50,9 @@ pub enum VKind {
 	charptr
 	i8
 	i16
-	int
+	i32
 	i64
+	int
 	isize
 	u8
 	u16
@@ -241,7 +242,7 @@ pub fn get_string_by_idx(idx int) string {
 
 // type_of returns the type info of the passed value
 pub fn type_of[T](val T) Type {
-	return g_reflection.types.filter(it.idx == typeof[T]().idx)[0]
+	return g_reflection.types.filter(it.idx == typeof[T]().idx & 0xff00ffff)[0]
 }
 
 // get_modules returns the module name built with V source

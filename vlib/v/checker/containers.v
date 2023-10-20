@@ -61,7 +61,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				c.check_array_init_para_type('len', mut node.len_expr, node.pos)
 			}
 		}
-		if node.has_default {
+		if node.has_init {
 			c.check_array_init_default_expr(mut node)
 		}
 		if node.has_len {
@@ -69,7 +69,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			if len_typ.has_flag(.option) {
 				c.error('cannot use unwrapped Option as length', node.len_expr.pos())
 			}
-			if node.has_len && !node.has_default {
+			if node.has_len && !node.has_init {
 				elem_type_sym := c.table.sym(node.elem_type)
 				if elem_type_sym.kind == .interface_ {
 					c.error('cannot instantiate an array of interfaces without also giving a default `init:` value',
@@ -295,7 +295,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		} else {
 			node.typ = ast.new_type(idx)
 		}
-		if node.has_default {
+		if node.has_init {
 			c.check_array_init_default_expr(mut node)
 		}
 	}
@@ -303,13 +303,13 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 }
 
 fn (mut c Checker) check_array_init_default_expr(mut node ast.ArrayInit) {
-	mut default_expr := node.default_expr
-	default_typ := c.check_expr_opt_call(default_expr, c.expr(mut default_expr))
-	node.default_type = default_typ
-	if !node.elem_type.has_flag(.option) && default_typ.has_flag(.option) {
-		c.error('cannot use unwrapped Option as initializer', default_expr.pos())
+	mut init_expr := node.init_expr
+	init_typ := c.check_expr_opt_call(init_expr, c.expr(mut init_expr))
+	node.init_type = init_typ
+	if !node.elem_type.has_flag(.option) && init_typ.has_flag(.option) {
+		c.error('cannot use unwrapped Option as initializer', init_expr.pos())
 	}
-	c.check_expected(default_typ, node.elem_type) or { c.error(err.msg(), default_expr.pos()) }
+	c.check_expected(init_typ, node.elem_type) or { c.error(err.msg(), init_expr.pos()) }
 }
 
 fn (mut c Checker) check_array_init_para_type(para string, mut expr ast.Expr, pos token.Pos) {
@@ -321,7 +321,7 @@ fn (mut c Checker) check_array_init_para_type(para string, mut expr ast.Expr, po
 
 fn (mut c Checker) ensure_sumtype_array_has_default_value(node ast.ArrayInit) {
 	sym := c.table.sym(node.elem_type)
-	if sym.kind == .sum_type && !node.has_default {
+	if sym.kind == .sum_type && !node.has_init {
 		c.error('cannot initialize sum type array without default value', node.pos)
 	}
 }

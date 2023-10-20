@@ -140,11 +140,11 @@ mut:
 	ident_abiversion i8  // Further specification of the ABI version.
 	typ              i16 // Object file type.
 	machine          i16 // Target instruction set architecture.
-	version          int // ELF version.
+	version          i32 // ELF version.
 	entry            i64 // Memory address of the entry point.
 	phoff            i64 // Pointer to the start of the program header table.
 	shoff            i64 // Pointer to the start of the section header table.
-	flags            int // Flags.
+	flags            i32 // Flags.
 	ehsize           i16 // Header size.
 	phentsize        i16 // Size of program headers.
 	phnum            i16 // Number of program headers.
@@ -179,11 +179,11 @@ fn (mut g Gen) default_elf_header() ElfHeader {
 fn (mut g Gen) gen_elf_header(h ElfHeader) {
 	g.write('\x7fELF'.bytes())
 	g.println('; \\x7fELF')
-	g.write8(h.ident_class)
-	g.write8(h.ident_data)
-	g.write8(h.ident_version)
-	g.write8(h.ident_osabi)
-	g.write8(h.ident_abiversion)
+	g.write8(i32(h.ident_class))
+	g.write8(i32(h.ident_data))
+	g.write8(i32(h.ident_version))
+	g.write8(i32(h.ident_osabi))
+	g.write8(i32(h.ident_abiversion))
 
 	// padding
 	for _ in 0 .. 7 {
@@ -191,9 +191,9 @@ fn (mut g Gen) gen_elf_header(h ElfHeader) {
 	}
 	g.println('; e_ident')
 
-	g.write16(h.typ)
+	g.write16(i32(h.typ))
 	g.println('; e_type')
-	g.write16(h.machine)
+	g.write16(i32(h.machine))
 	g.println('; e_machine')
 	g.write32(h.version)
 	g.println('; e_version')
@@ -205,17 +205,17 @@ fn (mut g Gen) gen_elf_header(h ElfHeader) {
 	g.println('; e_shoff')
 	g.write32(h.flags)
 	g.println('; e_flags')
-	g.write16(h.ehsize)
+	g.write16(i32(h.ehsize))
 	g.println('; e_ehsize')
-	g.write16(h.phentsize)
+	g.write16(i32(h.phentsize))
 	g.println('; e_phentsize')
-	g.write16(h.phnum)
+	g.write16(i32(h.phnum))
 	g.println('; e_phnum')
-	g.write16(h.shentsize)
+	g.write16(i32(h.shentsize))
 	g.println('; e_shentsize')
-	g.write16(h.shnum)
+	g.write16(i32(h.shnum))
 	g.println('; e_shnum')
-	g.write16(h.shstrndx)
+	g.write16(i32(h.shstrndx))
 	g.println('; e_shstrndx')
 
 	g.println('^^^ ELF header (64)')
@@ -223,8 +223,8 @@ fn (mut g Gen) gen_elf_header(h ElfHeader) {
 
 struct ProgramHeader {
 mut:
-	typ    int // Program header type.
-	flags  int // Segment-independent flags.
+	typ    i32 // Program header type.
+	flags  i32 // Segment-independent flags.
 	offset i64 // Offset of the segment in the file image.
 	vaddr  i64 // Virtual segment address.
 	paddr  i64 // Physical segment address.
@@ -233,7 +233,7 @@ mut:
 	align  i64 // Segment alignment.
 }
 
-fn (mut g Gen) create_program_header(typ int, flags int, align i64) ProgramHeader {
+fn (mut g Gen) create_program_header(typ i32, flags i32, align i64) ProgramHeader {
 	return ProgramHeader{
 		typ: typ
 		flags: flags
@@ -279,14 +279,14 @@ fn (mut g Gen) gen_program_header(p ProgramHeader) {
 
 struct SectionHeader {
 mut:
-	name      int // Offset to name string in .shstrtab.
-	typ       int // Section type.
+	name      i32 // Offset to name string in .shstrtab.
+	typ       i32 // Section type.
 	flags     i64 // Section attributes.
 	addr      i64 // Section address.
 	offset    i64 // Section address offset.
 	size      i64 // Section size.
-	link      int // Section index for associated section types.
-	info      int // Extra section information.
+	link      i32 // Section index for associated section types.
+	info      i32 // Extra section information.
 	addralign i64 // Section Alignment (must be power of two).
 	entsize   i64 // Section entry size.
 
@@ -296,7 +296,7 @@ mut:
 struct SymbolTableSection {
 	str_name string // string name (not generated)
 mut:
-	name  int // Index to name in .strtab.
+	name  i32 // Index to name in .strtab.
 	info  i8  // symbol type and binding attribute.
 	other i8  // Symbol visibility.
 	shndx i16 // Related section header table index.
@@ -341,7 +341,7 @@ mut:
 	addend i64 // Constant addent for computing the value of the relocation field.
 }
 
-fn (mut g Gen) create_rela_section(name string, offset i64, sym int, typ u32, addend i64) RelASection {
+fn (mut g Gen) create_rela_section(name string, offset i64, sym i32, typ u32, addend i64) RelASection {
 	return RelASection{
 		name: name
 		offset: offset
@@ -370,18 +370,18 @@ fn (mut g Gen) create_dynamic_section(tag i64, val i64) DynamicSection {
 
 struct NoteSection {
 mut:
-	namesz int // Length of the name field in bytes.
-	descsz int // Length of the descriptor field in bytes.
-	typ    int // Type of the node
+	namesz i32 // Length of the name field in bytes.
+	descsz i32 // Length of the descriptor field in bytes.
+	typ    i32 // Type of the node
 
 	name []u8 // Name string of the note.
 	desc []u8 // Descripition string of the node, must be aligned by 4 bytes
 }
 
-fn (mut g Gen) create_note_section(typ int, name string, desc string) NoteSection {
+fn (mut g Gen) create_note_section(typ i32, name string, desc string) NoteSection {
 	return NoteSection{
-		namesz: name.len
-		descsz: desc.len
+		namesz: i32(name.len)
+		descsz: i32(desc.len)
 		typ: typ
 		name: name.bytes()
 		desc: desc.bytes()
@@ -446,7 +446,7 @@ mut:
 	data   SectionData = DynSymSection{}
 }
 
-fn (mut g Gen) create_section(name string, typ int, link int, info int, addralign i64, entsize i64, data SectionData) Section {
+fn (mut g Gen) create_section(name string, typ i32, link i32, info i32, addralign i64, entsize i64, data SectionData) Section {
 	return Section{
 		name: name
 		header: SectionHeader{
@@ -462,12 +462,12 @@ fn (mut g Gen) create_section(name string, typ int, link int, info int, addralig
 
 fn (mut g Gen) create_shstrtab(mut sections []Section) {
 	mut names := []string{len: sections.len + 1}
-	mut offset := 1
+	mut offset := i32(1)
 
 	for i, mut section in sections {
 		names[i] = section.name
 		section.header.name = offset
-		offset += section.name.len + 1
+		offset += i32(section.name.len) + 1
 	}
 
 	names[sections.len] = '.shstrtab'
@@ -481,8 +481,8 @@ fn (mut g Gen) create_shstrtab(mut sections []Section) {
 
 fn (mut g Gen) create_symtab(mut sections []Section, mut table []SymbolTableSection) {
 	mut names := []string{len: table.len}
-	mut offset := 1
-	mut local_symbols := 0
+	mut offset := i32(1)
+	mut local_symbols := i32(0)
 
 	for i, mut entry in table {
 		names[i] = entry.str_name
@@ -493,13 +493,13 @@ fn (mut g Gen) create_symtab(mut sections []Section, mut table []SymbolTableSect
 			local_symbols++
 		}
 
-		offset += entry.str_name.len + 1
+		offset += i32(entry.str_name.len + 1)
 	}
 
 	sections << g.create_section('.strtab', native.elf_sht_strtab, 0, 0, 1, 0, g.create_string_table_section(names))
 
 	sections << // index of .strtab
-	g.create_section('.symtab', native.elf_sht_symtab, sections.len - 1, local_symbols,
+	g.create_section('.symtab', native.elf_sht_symtab, i32(sections.len - 1), local_symbols,
 		native.elf_sh_symtab_align, native.elf_sh_symtab_entsize, table)
 }
 
@@ -518,10 +518,10 @@ fn (mut g Gen) create_progbits(name string, flags u64, data []u8) Section {
 	return section
 }
 
-fn (mut g Gen) find_section_header(name string, sections []Section) int {
+fn (mut g Gen) find_section_header(name string, sections []Section) i32 {
 	for i, section in sections {
 		if name == section.name {
-			return i
+			return i32(i)
 		}
 	}
 	return 0
@@ -571,9 +571,9 @@ fn (mut g Gen) gen_symtab_data(section Section, data []SymbolTableSection) {
 		}
 
 		g.write32(symbol.name)
-		g.write8(symbol.info)
-		g.write8(symbol.other)
-		g.write16(symbol.shndx)
+		g.write8(i32(symbol.info))
+		g.write8(i32(symbol.other))
+		g.write16(i32(symbol.shndx))
 		g.write64(symbol.value)
 		g.write64(symbol.size)
 		g.println('; SHT_SYMTAB ${symbol.str_name}')
@@ -683,10 +683,10 @@ fn (mut g Gen) gen_section_data(sections []Section) {
 	}
 }
 
-pub fn (mut g Gen) symtab_get_index(symbols []SymbolTableSection, name string) int {
+pub fn (mut g Gen) symtab_get_index(symbols []SymbolTableSection, name string) i32 {
 	for i, sym in symbols {
 		if sym.str_name == name {
-			return i
+			return i32(i)
 		}
 	}
 	return 0
@@ -751,7 +751,7 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 	}
 
 	g.code_start_pos = g.pos()
-	g.debug_pos = int(g.pos())
+	g.debug_pos = i32(g.pos())
 	// if g.start_symbol_addr > 0 {
 	//	g.write64_at(g.start_symbol_addr + native.elf_symtab_size - 16, g.code_start_pos)
 	//}
@@ -766,7 +766,7 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 	g.code_gen.ret()
 	g.println('; return 0')
 
-	g.debug_pos = g.buf.len
+	g.debug_pos = i32(g.buf.len)
 }
 
 pub fn (mut g Gen) generate_simple_elf_header() {
@@ -796,7 +796,7 @@ pub fn (mut g Gen) generate_simple_elf_header() {
 	}
 
 	g.code_start_pos = g.pos()
-	g.debug_pos = int(g.pos())
+	g.debug_pos = i32(g.pos())
 
 	g.code_gen.call(native.placeholder)
 	g.println('; call main.main')
@@ -820,17 +820,17 @@ pub fn (mut g Gen) generate_simple_elf_header() {
 }
 
 pub fn (mut g Gen) elf_string_table() {
-	mut generated := map[string]int{}
+	mut generated := map[string]i32{}
 
 	for _, s in g.strs {
-		pos := generated[s.str] or { g.buf.len }
+		pos := generated[s.str] or { i32(g.buf.len) }
 
 		match s.typ {
 			.abs64 {
-				g.write64_at(s.pos, pos)
+				g.write64_at(i64(s.pos), i64(pos))
 			}
 			.rel32 {
-				g.write32_at(s.pos, pos - s.pos - 4)
+				g.write32_at(i64(s.pos), pos - s.pos - 4)
 			}
 			else {
 				g.n_error('unsupported string reloc type')
@@ -872,7 +872,7 @@ pub fn (mut g Gen) generate_elf_footer() {
 	g.write64_at(g.file_size_pos + 8, file_size)
 	if g.pref.arch == .arm64 {
 		bl_next := u32(0x94000001)
-		g.write32_at(g.code_start_pos, int(bl_next))
+		g.write32_at(g.code_start_pos, i32(bl_next))
 	} else {
 		// amd64
 		// call main function, it's not guaranteed to be the first
@@ -880,7 +880,7 @@ pub fn (mut g Gen) generate_elf_footer() {
 		// now need to replace "0" with a relative address of the main function
 		// +1 is for "e8"
 		// -5 is for "e8 00 00 00 00"
-		g.write32_at(g.code_start_pos + 1, int(g.main_fn_addr - g.code_start_pos) - 5)
+		g.write32_at(g.code_start_pos + 1, i32(g.main_fn_addr - g.code_start_pos) - 5)
 	}
 	g.create_executable()
 }

@@ -190,9 +190,9 @@ pub fn (a f32) eq_epsilon(b f32) bool {
 	delta := f32_abs(a - b)
 	$if native {
 		if hi > f32(1.0) {
-			return delta <= hi * (4 * 1e-5)
+			return delta <= hi * (4 * 1.19209290e-7)
 		} else {
-			return (1 / (4 * 1e-5)) * delta <= hi
+			return (1 / (4 * 1.19209290e-7)) * delta <= hi
 		}
 	} $else {
 		if hi > f32(1.0) {
@@ -212,9 +212,9 @@ pub fn (a f64) eq_epsilon(b f64) bool {
 	delta := f64_abs(a - b)
 	$if native {
 		if hi > 1.0 {
-			return delta <= hi * (4 * 1e-9)
+			return delta <= hi * (4 * 2.2204460492503131e-16)
 		} else {
-			return (1 / (4 * 1e-9)) * delta <= hi
+			return (1 / (4 * 2.2204460492503131e-16)) * delta <= hi
 		}
 	} $else {
 		if hi > 1.0 {

@@ -5,6 +5,13 @@ vlib/v/checker/tests/chan_mut.vv:8:8: error: `v` is immutable, declare it with `
       |           ^
     9 |     mut w := St{}
    10 |     ch <- w
+vlib/v/checker/tests/chan_mut.vv:8:8: error: cannot push non-reference `St` on `chan mut St`
+    6 | fn f(ch chan mut St) {
+    7 |     v := St{}
+    8 |     ch <- v
+      |           ^
+    9 |     mut w := St{}
+   10 |     ch <- w
 vlib/v/checker/tests/chan_mut.vv:10:8: error: cannot push non-reference `St` on `chan mut St`
     8 |     ch <- v
     9 |     mut w := St{}

@@ -42,6 +42,10 @@ on:
       - 'vlib/v/gen/native/**.v'
       - 'vlib/v/gen/native/tests/**.v'
 
+concurrency:
+  group: native-backend-ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
 jobs:
   native-backend:
     strategy:
@@ -52,6 +56,7 @@ jobs:
           windows-2019
         ]
     runs-on: ${{ matrix.os }}
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     steps:
       - uses: actions/checkout@v3
 

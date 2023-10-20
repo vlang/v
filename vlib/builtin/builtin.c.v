@@ -32,10 +32,6 @@ pub fn exit(code int) {
 	C.exit(code)
 }
 
-fn vcommithash() string {
-	return unsafe { tos5(&char(C.V_CURRENT_COMMIT_HASH)) }
-}
-
 // panic_debug private function that V uses for panics, -cg/-g is passed
 // recent versions of tcc print nicer backtraces automatically
 // Note: the duplication here is because tcc_backtrace should be called directly
@@ -54,7 +50,7 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 		eprintln(' function: ${fn_name}()')
 		eprintln('  message: ${s}')
 		eprintln('     file: ${file}:${line_no}')
-		eprintln('   v hash: ${vcommithash()}')
+		eprintln('   v hash: ${@VCURRENTHASH}')
 		eprintln('=========================================')
 		$if native {
 			C.exit(1) // TODO: native backtraces
@@ -108,7 +104,7 @@ pub fn panic(s string) {
 	} $else {
 		eprint('V panic: ')
 		eprintln(s)
-		eprintln('v hash: ${vcommithash()}')
+		eprintln('v hash: ${@VCURRENTHASH}')
 		$if native {
 			C.exit(1) // TODO: native backtraces
 		} $else $if exit_after_panic_message ? {
@@ -607,8 +603,9 @@ pub fn free(ptr voidptr) {
 // memdup dynamically allocates a `sz` bytes block of memory on the heap
 // memdup then copies the contents of `src` into the allocated space and
 // returns a pointer to the newly allocated space.
+
 [unsafe]
-pub fn memdup(src voidptr, sz int) voidptr {
+pub fn memdup(src voidptr, sz isize) voidptr {
 	$if trace_memdup ? {
 		C.fprintf(C.stderr, c'memdup size: %10d\n', sz)
 	}
@@ -622,7 +619,7 @@ pub fn memdup(src voidptr, sz int) voidptr {
 }
 
 [unsafe]
-pub fn memdup_noscan(src voidptr, sz int) voidptr {
+pub fn memdup_noscan(src voidptr, sz isize) voidptr {
 	$if trace_memdup ? {
 		C.fprintf(C.stderr, c'memdup_noscan size: %10d\n', sz)
 	}
@@ -640,7 +637,7 @@ pub fn memdup_noscan(src voidptr, sz int) voidptr {
 // memdup_uncollectable then copies the contents of `src` into the allocated
 // space and returns a pointer to the newly allocated space.
 [unsafe]
-pub fn memdup_uncollectable(src voidptr, sz int) voidptr {
+pub fn memdup_uncollectable(src voidptr, sz isize) voidptr {
 	$if trace_memdup ? {
 		C.fprintf(C.stderr, c'memdup_uncollectable size: %10d\n', sz)
 	}

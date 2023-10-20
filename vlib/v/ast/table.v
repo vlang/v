@@ -1378,8 +1378,8 @@ pub fn (t &Table) has_deep_child_no_ref(ts &TypeSymbol, name string) bool {
 	if ts.info is Struct {
 		for field in ts.info.fields {
 			sym := t.sym(field.typ)
-			if !field.typ.is_ptr() && ((sym.name == name && !field.typ.has_flag(.option))
-				|| t.has_deep_child_no_ref(sym, name)) {
+			if !field.typ.is_ptr() && !field.typ.has_flag(.option)
+				&& (sym.name == name || t.has_deep_child_no_ref(sym, name)) {
 				return true
 			}
 		}
@@ -2339,9 +2339,12 @@ pub fn (t &Table) dependent_names_in_expr(expr Expr) []string {
 			}
 			names << t.dependent_names_in_expr(expr.len_expr)
 			names << t.dependent_names_in_expr(expr.cap_expr)
-			names << t.dependent_names_in_expr(expr.default_expr)
+			names << t.dependent_names_in_expr(expr.init_expr)
 		}
 		CallExpr {
+			if expr.is_method {
+				names << t.dependent_names_in_expr(expr.left)
+			}
 			for arg in expr.args {
 				names << t.dependent_names_in_expr(arg.expr)
 			}

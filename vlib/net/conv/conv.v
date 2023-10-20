@@ -100,3 +100,57 @@ pub fn nth16(net u16) u16 {
 pub fn ntoh16(net u16) u16 {
 	return hton16(net)
 }
+
+// u64tovarint converts the given 64 bit number `n`, where n < 2^62 to a byte array,
+// using the variable length unsigned integer encoding from:
+// https://datatracker.ietf.org/doc/html/rfc9000#section-16 .
+// The returned array length .len, will be in [1,2,4,8] .
+pub fn u64tovarint(n u64) ![]u8 {
+	if n > u64(1) << 62 {
+		return error('cannnot encode more than 2^62-1')
+	}
+	msb := match true {
+		n < 64 {
+			u8(0b00)
+		}
+		n < 16384 {
+			u8(0b01)
+		}
+		n < 1073741824 {
+			u8(0b10)
+		}
+		else {
+			u8(0b11)
+		}
+	}
+	len := 1 << msb
+	mut result := []u8{len: len}
+	mut tn := n
+	for i in 0 .. len {
+		result[len - 1 - i] = u8(tn % 256)
+		tn /= 256
+	}
+	result[0] |= msb << 6
+
+	return result
+}
+
+// varinttou64 parses a variable length number from the start of the
+// given byte array `b`. If it succeeds, it returns the decoded number,
+// and the length of the parsed byte span.
+pub fn varinttou64(b []u8) !(u64, u8) {
+	if b.len == 0 {
+		return error('cannot parse vluint from empty byte array')
+	}
+	msb := b[0] >> 6
+	len := u8(1 << msb)
+	if len > b.len {
+		return error('expected ${len} bytes but got ${b.len} bytes')
+	}
+	mut n := u64(b[0] & 0b00111111)
+
+	for i in 1 .. len {
+		n = n * 256 + b[i]
+	}
+	return n, len
+}

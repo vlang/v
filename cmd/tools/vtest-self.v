@@ -132,6 +132,7 @@ const (
 		'vlib/orm/orm_string_interpolation_in_where_test.v',
 		'vlib/orm/orm_interface_test.v',
 		'vlib/orm/orm_mut_db_test.v',
+		'vlib/orm/orm_null_test.v',
 		'vlib/orm/orm_result_test.v',
 		'vlib/orm/orm_custom_operators_test.v',
 		'vlib/orm/orm_fk_test.v',
@@ -214,6 +215,7 @@ const (
 		'vlib/orm/orm_insert_test.v',
 		'vlib/orm/orm_insert_reserved_name_test.v',
 		'vlib/orm/orm_fn_calls_test.v',
+		'vlib/orm/orm_null_test.v',
 		'vlib/orm/orm_last_id_test.v',
 		'vlib/orm/orm_string_interpolation_in_where_test.v',
 		'vlib/orm/orm_interface_test.v',
@@ -348,11 +350,10 @@ fn main() {
 		tsession.skip_files << 'vlib/db/pg/pg_orm_test.v'
 	}
 
-	if github_job == 'windows-tcc' {
-		tsession.skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.v'
-		// TODO: fix these ASAP
-		tsession.skip_files << 'vlib/net/tcp_test.v'
-		tsession.skip_files << 'vlib/net/udp_test.v'
+	$if windows {
+		if github_job == 'tcc' {
+			tsession.skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.v'
+		}
 	}
 
 	if !os.exists('cmd/tools/builders/wasm_builder') {

@@ -8,14 +8,14 @@ import net
 import time
 import runtime
 // ServerStatus is the current status of the server.
-// .running means that the server is active and serving.
-// .stopped means that the server is not active but still listening.
-// .closed means that the server is completely inactive.
+// .closed means that the server is completely inactive (the default on creation, and after calling .close()).
+// .running means that the server is active and serving (after .listen_and_serve()).
+// .stopped means that the server is not active but still listening (after .stop() ).
 
 pub enum ServerStatus {
+	closed
 	running
 	stopped
-	closed
 }
 
 interface Handler {
@@ -36,6 +36,12 @@ pub mut:
 	pool_channel_slots int = 1024
 	worker_num         int = runtime.nr_jobs()
 	listener           net.TcpListener
+	//
+	on_running fn (mut s Server) = unsafe { nil } // Blocking cb. If set, ran by the web server on transitions to its .running state.
+	on_stopped fn (mut s Server) = unsafe { nil } // Blocking cb. If set, ran by the web server on transitions to its .stopped state.
+	on_closed  fn (mut s Server) = unsafe { nil } // Blocking cb. If set, ran by the web server on transitions to its .closed state.
+	//
+	show_startup_message bool = true // set to false, to remove the default `Listening on ...` message.
 }
 
 // listen_and_serve listens on the server port `s.port` over TCP network and
@@ -55,9 +61,16 @@ pub fn (mut s Server) listen_and_serve() {
 		eprintln('Failed getting listener address, err: ${err}')
 		return
 	}
-	listening_address := s.addr.clone()
+	mut listening_address := s.addr.clone()
 	if l.family() == net.AddrFamily.unspec {
-		s.listener = net.listen_tcp(.ip6, listening_address) or {
+		if listening_address == ':0' {
+			listening_address = 'localhost:0'
+		}
+		mut listen_family := net.AddrFamily.ip
+		//		$if !windows {
+		//			listen_family = net.AddrFamily.ip6
+		//		}
+		s.listener = net.listen_tcp(listen_family, listening_address) or {
 			eprintln('Listening on ${s.addr} failed, err: ${err}')
 			return
 		}
@@ -78,9 +91,16 @@ pub fn (mut s Server) listen_and_serve() {
 		ws << new_handler_worker(wid, ch, s.handler)
 	}
 
-	println('Listening on http://${listening_address}/')
-	flush_stdout()
+	if s.show_startup_message {
+		println('Listening on http://${s.addr}/')
+		flush_stdout()
+	}
+
+	time.sleep(20 * time.millisecond)
 	s.state = .running
+	if s.on_running != unsafe { nil } {
+		s.on_running(mut s)
+	}
 	for {
 		// break if we have a stop signal
 		if s.state != .running {
@@ -107,6 +127,9 @@ pub fn (mut s Server) listen_and_serve() {
 [inline]
 pub fn (mut s Server) stop() {
 	s.state = .stopped
+	if s.on_stopped != unsafe { nil } {
+		s.on_stopped(mut s)
+	}
 }
 
 // close immediately closes the port and signals the server that it has been closed.
@@ -114,12 +137,40 @@ pub fn (mut s Server) stop() {
 pub fn (mut s Server) close() {
 	s.state = .closed
 	s.listener.close() or { return }
+	if s.on_closed != unsafe { nil } {
+		s.on_closed(mut s)
+	}
 }
 
 // status indicates whether the server is running, stopped, or closed.
 [inline]
 pub fn (s &Server) status() ServerStatus {
 	return s.state
+}
+
+// WaitTillRunningParams allows for parametrising the calls to s.wait_till_running()
+[params]
+pub struct WaitTillRunningParams {
+pub:
+	max_retries     int = 100 // how many times to check for the status, for each single s.wait_till_running() call
+	retry_period_ms int = 10 // how much time to wait between each check for the status, in milliseconds
+}
+
+// wait_till_running allows you to synchronise your calling (main) thread, with the state of the server
+// (when the server is running in another thread).
+// It returns an error, after params.max_retries * params.retry_period_ms
+// milliseconds have passed, without that expected server transition.
+pub fn (mut s Server) wait_till_running(params WaitTillRunningParams) !int {
+	mut i := 0
+	for s.status() != .running && i < params.max_retries {
+		time.sleep(params.retry_period_ms * time.millisecond)
+		i++
+	}
+	if i >= params.max_retries {
+		return error('maximum retries reached')
+	}
+	time.sleep(params.retry_period_ms)
+	return i
 }
 
 struct HandlerWorker {

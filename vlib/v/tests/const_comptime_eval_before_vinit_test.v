@@ -4,7 +4,7 @@ const zzz_an_i8_const = i8(0x28)
 
 const zzz_an_i16_const = i16(0x30)
 
-const zzz_an_int_const = int(89)
+const zzz_an_i32_const = i32(89)
 
 const zzz_an_i64_const = i64(123)
 
@@ -26,7 +26,7 @@ const zzz_an_i8_const_1 = zzz_an_i8_const + i8(1)
 
 const zzz_an_i16_const_1 = zzz_an_i16_const + i16(1)
 
-const zzz_an_int_const_1 = zzz_an_int_const + int(1)
+const zzz_an_i32_const_1 = zzz_an_i32_const + i32(1)
 
 const zzz_an_i64_const_1 = zzz_an_i64_const + i64(1)
 
@@ -76,7 +76,7 @@ fn pre_main() {
 	unsafe {
 		static_storage(0, int(zzz_an_i8_const))
 		static_storage(1, int(zzz_an_i16_const))
-		static_storage(2, int(zzz_an_int_const))
+		static_storage(2, int(zzz_an_i32_const))
 		static_storage(3, int(zzz_an_i64_const))
 		//
 		static_storage(4, int(zzz_an_byte_const))
@@ -89,7 +89,7 @@ fn pre_main() {
 
 		static_storage(20, int(zzz_an_i8_const_1))
 		static_storage(21, int(zzz_an_i16_const_1))
-		static_storage(22, int(zzz_an_int_const_1))
+		static_storage(22, int(zzz_an_i32_const_1))
 		static_storage(23, int(zzz_an_i64_const_1))
 		//
 		static_storage(24, int(zzz_an_byte_const_1))
@@ -106,7 +106,7 @@ fn do_check() {
 	unsafe {
 		assert static_storage(0, -1) == u8(zzz_an_i8_const)
 		assert static_storage(1, -1) == u8(zzz_an_i16_const)
-		assert static_storage(2, -1) == u8(zzz_an_int_const)
+		assert static_storage(2, -1) == u8(zzz_an_i32_const)
 		// TODO: this should also be initialised, but is not for now,
 		// since V has problems with `-9223372036854775808.str()`,
 		// The generating code for i64 consts is present, but is disabled

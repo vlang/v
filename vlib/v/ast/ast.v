@@ -9,6 +9,14 @@ import v.pref
 
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
+// pub const int_type_name = $if amd64 || arm64 {
+pub const int_type_name = $if new_int ? {
+	//'int'
+	'i64'
+} $else {
+	'int'
+}
+
 pub type Expr = AnonFn
 	| ArrayDecompose
 	| ArrayInit
@@ -1261,7 +1269,6 @@ pub struct AssignStmt {
 pub:
 	op           token.Kind // include: =,:=,+=,-=,*=,/= and so on; for a list of all the assign operators, see vlib/token/token.v
 	pos          token.Pos
-	comments     []Comment
 	end_comments []Comment
 pub mut:
 	right         []Expr
@@ -1428,17 +1435,17 @@ pub:
 	mod           string
 	has_len       bool
 	has_cap       bool
-	has_default   bool
+	has_init      bool
 	has_index     bool // true if temp variable index is used
 pub mut:
-	exprs        []Expr // `[expr, expr]` or `[expr]Type{}` for fixed array
-	len_expr     Expr   // len: expr
-	cap_expr     Expr   // cap: expr
-	default_expr Expr   // init: expr
-	expr_types   []Type // [Dog, Cat] // also used for interface_types
-	elem_type    Type   // element type
-	default_type Type   // default value type
-	typ          Type   // array type
+	exprs      []Expr // `[expr, expr]` or `[expr]Type{}` for fixed array
+	len_expr   Expr   // len: expr
+	cap_expr   Expr   // cap: expr
+	init_expr  Expr   // init: expr
+	expr_types []Type // [Dog, Cat] // also used for interface_types
+	elem_type  Type   // element type
+	init_type  Type   // init: value type
+	typ        Type   // array type
 }
 
 pub struct ArrayDecompose {
@@ -1919,7 +1926,7 @@ pub:
 	is_generated bool
 	scope        &Scope = unsafe { nil }
 pub mut:
-	object_var_name string   // `user`
+	object_var      string   // `user`
 	updated_columns []string // for `update set x=y`
 	table_expr      TypeNode
 	fields          []StructField

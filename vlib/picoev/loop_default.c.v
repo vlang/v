@@ -74,9 +74,9 @@ fn (mut pv Picoev) poll_once(max_wait int) int {
 			if target.loop_id == pv.loop.id {
 				// vfmt off
 				read_events := (
-					(if C.FD_ISSET(target.fd, &readfds) { picoev_read } else { 0 })
+					(if C.FD_ISSET(target.fd, &readfds) != 0 { picoev_read } else { 0 })
 						|
-					(if C.FD_ISSET(target.fd, &writefds) { picoev_write } else { 0 })
+					(if C.FD_ISSET(target.fd, &writefds) != 0 { picoev_write } else { 0 })
 				)
 				// vfmt on
 				if read_events != 0 {

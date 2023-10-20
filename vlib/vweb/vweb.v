@@ -87,6 +87,7 @@ pub const (
 		'.js':     'text/javascript'
 		'.json':   'application/json'
 		'.jsonld': 'application/ld+json'
+		'.md':     'text/markdown'
 		'.mid':    'audio/midi audio/x-midi'
 		'.midi':   'audio/midi audio/x-midi'
 		'.mjs':    'text/javascript'
@@ -516,34 +517,15 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 		return error('invalid nr_workers `${params.nr_workers}`, it should be above 0')
 	}
 
-	mut l := net.listen_tcp(params.family, '${params.host}:${params.port}') or {
+	listen_address := '${params.host}:${params.port}'
+	mut l := net.listen_tcp(params.family, listen_address) or {
 		ecode := err.code()
 		return error('failed to listen ${ecode} ${err}')
 	}
+	// eprintln('>> vweb listen_address: `${listen_address}` | params.family: ${params.family} | l.addr: ${l.addr()} | params: $params')
 
 	routes := generate_routes(global_app)!
-	// check duplicate routes in controllers
-	mut controllers_sorted := []&ControllerPath{}
-	$if T is ControllerInterface {
-		mut paths := []string{}
-		controllers_sorted = global_app.controllers.clone()
-		controllers_sorted.sort(a.path.len > b.path.len)
-		for controller in controllers_sorted {
-			if controller.host == '' {
-				if controller.path in paths {
-					return error('conflicting paths: duplicate controller handling the route "${controller.path}"')
-				}
-				paths << controller.path
-			}
-		}
-		for method_name, route in routes {
-			for controller_path in paths {
-				if route.path.starts_with(controller_path) {
-					return error('conflicting paths: method "${method_name}" with route "${route.path}" should be handled by the Controller of path "${controller_path}"')
-				}
-			}
-		}
-	}
+	controllers_sorted := check_duplicate_routes_in_controllers[T](global_app, routes)!
 
 	host := if params.host == '' { 'localhost' } else { params.host }
 	if params.show_startup_message {
@@ -575,6 +557,31 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 			routes: &routes
 		}
 	}
+}
+
+fn check_duplicate_routes_in_controllers[T](global_app &T, routes map[string]Route) ![]&ControllerPath {
+	mut controllers_sorted := []&ControllerPath{}
+	$if T is ControllerInterface {
+		mut paths := []string{}
+		controllers_sorted = global_app.controllers.clone()
+		controllers_sorted.sort(a.path.len > b.path.len)
+		for controller in controllers_sorted {
+			if controller.host == '' {
+				if controller.path in paths {
+					return error('conflicting paths: duplicate controller handling the route "${controller.path}"')
+				}
+				paths << controller.path
+			}
+		}
+		for method_name, route in routes {
+			for controller_path in paths {
+				if route.path.starts_with(controller_path) {
+					return error('conflicting paths: method "${method_name}" with route "${route.path}" should be handled by the Controller of path "${controller_path}"')
+				}
+			}
+		}
+	}
+	return controllers_sorted
 }
 
 fn new_request_app[T](global_app &T, ctx Context, tid int) &T {
@@ -1107,10 +1114,10 @@ fn new_worker[T](ch chan &RequestParams, id int) thread {
 		id: id
 		ch: ch
 	}
-	return spawn w.process_incomming_requests[T]()
+	return spawn w.process_incoming_requests[T]()
 }
 
-fn (mut w Worker[T]) process_incomming_requests() {
+fn (mut w Worker[T]) process_incoming_requests() {
 	sid := '[vweb] tid: ${w.id:03d} received request'
 	for {
 		mut params := <-w.ch or { break }

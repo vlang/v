@@ -184,11 +184,11 @@ pub mut:
 
 pub struct Config {
 	user_data  voidptr
-	init_fn    fn (voidptr)
-	frame_fn   fn (voidptr)
-	cleanup_fn fn (voidptr)
-	event_fn   fn (&Event, voidptr)
-	fail_fn    fn (string)
+	init_fn    ?fn (voidptr)
+	frame_fn   ?fn (voidptr)
+	cleanup_fn ?fn (voidptr)
+	event_fn   ?fn (&Event, voidptr)
+	fail_fn    ?fn (string)
 
 	buffer_size int = 256
 	frame_rate  int = 30
@@ -206,35 +206,30 @@ pub struct Config {
 
 [inline]
 fn (ctx &Context) init() {
-	if ctx.cfg.init_fn != unsafe { nil } {
-		ctx.cfg.init_fn(ctx.cfg.user_data)
-	}
+	f := ctx.cfg.init_fn or { return }
+	f(ctx.cfg.user_data)
 }
 
 [inline]
 fn (ctx &Context) frame() {
-	if ctx.cfg.frame_fn != unsafe { nil } {
-		ctx.cfg.frame_fn(ctx.cfg.user_data)
-	}
+	f := ctx.cfg.frame_fn or { return }
+	f(ctx.cfg.user_data)
 }
 
 [inline]
 fn (ctx &Context) cleanup() {
-	if ctx.cfg.cleanup_fn != unsafe { nil } {
-		ctx.cfg.cleanup_fn(ctx.cfg.user_data)
-	}
+	f := ctx.cfg.cleanup_fn or { return }
+	f(ctx.cfg.user_data)
 }
 
 [inline]
 fn (ctx &Context) fail(error string) {
-	if ctx.cfg.fail_fn != unsafe { nil } {
-		ctx.cfg.fail_fn(error)
-	}
+	f := ctx.cfg.fail_fn or { return }
+	f(error)
 }
 
 [inline]
 fn (ctx &Context) event(event &Event) {
-	if ctx.cfg.event_fn != unsafe { nil } {
-		ctx.cfg.event_fn(event, ctx.cfg.user_data)
-	}
+	f := ctx.cfg.event_fn or { return }
+	f(event, ctx.cfg.user_data)
 }

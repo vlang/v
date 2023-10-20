@@ -12,6 +12,10 @@ pub const used_import = 1
 #flag openbsd -L/usr/X11R6/lib -lX11 -lGL -lXcursor -lXi
 #flag windows -lgdi32
 
+$if windows {
+	#flag windows -lopengl32
+}
+
 // Note that -lm is needed *only* for sokol_gl.h's usage of sqrtf(),
 // but without -lm, this fails:
 // `v -cc gcc ~/.vmodules/sdl/examples/sdl_opengl_and_sokol/`
@@ -36,7 +40,7 @@ $if ios {
 }
 
 $if emscripten ? {
-	#flag -DSOKOL_GLES2
+	#flag -DSOKOL_GLES3
 	#flag -DSOKOL_NO_ENTRY
 	#flag -s ERROR_ON_UNDEFINED_SYMBOLS=0
 	#flag -s ASSERTIONS=1

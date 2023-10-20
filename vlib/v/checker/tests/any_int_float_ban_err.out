@@ -3,14 +3,19 @@ vlib/v/checker/tests/any_int_float_ban_err.vv:1:12: error: unknown type `int_lit
       |            ~~~~~~~~~~~
     2 | type Fo2 = int_literal
     3 |
+vlib/v/checker/tests/any_int_float_ban_err.vv:1:26: error: unknown type `float_literal`
+    1 | type Foo = int_literal | float_literal
+      |                          ~~~~~~~~~~~~~
+    2 | type Fo2 = int_literal
+    3 |
 vlib/v/checker/tests/any_int_float_ban_err.vv:2:12: error: unknown type `int_literal`
     1 | type Foo = int_literal | float_literal
     2 | type Fo2 = int_literal
       |            ~~~~~~~~~~~
-    3 |
+    3 | 
     4 | struct Int {
 vlib/v/checker/tests/any_int_float_ban_err.vv:5:7: error: unknown type `int_literal`
-    3 |
+    3 | 
     4 | struct Int {
     5 |     i int_literal
       |       ~~~~~~~~~~~
@@ -25,14 +30,14 @@ vlib/v/checker/tests/any_int_float_ban_err.vv:6:7: error: unknown type `float_li
     8 |
 vlib/v/checker/tests/any_int_float_ban_err.vv:9:10: error: unknown type `int_literal`
     7 | }
-    8 |
+    8 | 
     9 | fn foo(i int_literal) int_literal {
       |          ~~~~~~~~~~~
    10 |     return i
    11 | }
 vlib/v/checker/tests/any_int_float_ban_err.vv:13:11: error: unknown type `int_literal`
    11 | }
-   12 |
+   12 | 
    13 | fn foo2() int_literal {
       |           ~~~~~~~~~~~
    14 |     return 1

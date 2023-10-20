@@ -278,6 +278,17 @@ see also `v help build`.
       Write all used V file paths used by the program in `file.txt`, one module per line.
       If `file.txt` is `-`, write to stdout instead.
 
+   -dump-defines file.txt
+      Write all system and user defines, that V knows about for the current program, one per line.
+      If `file.txt` is `-`, write to stdout instead.
+      Example sample of the content of that file:
+          system,linux,eval
+          system,amd64,eval
+          system,solaris,skip		  
+          system,solaris,skip		  
+          user,gcboehm,eval
+          user,gg_record_trace,skip
+
    -no-rsp
       By default, V passes all C compiler options to the backend C compiler
       in so called "response files" (https://gcc.gnu.org/wiki/Response_Files).
