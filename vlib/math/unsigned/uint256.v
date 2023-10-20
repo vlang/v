@@ -398,22 +398,27 @@ pub fn uint256_from_dec_str(value string) !Uint256 {
 	return res
 }
 
+// / -> returns u / v
 pub fn (u Uint256) / (v Uint256) Uint256 {
 	return u.div(v)
 }
 
+// % -> returns u % v
 pub fn (u Uint256) % (v Uint256) Uint256 {
 	return u.mod(v)
 }
 
+// + -> returns u + v
 pub fn (u Uint256) + (v Uint256) Uint256 {
 	return u.add(v)
 }
 
+// - -> returns u - v
 pub fn (u Uint256) - (v Uint256) Uint256 {
 	return u.sub(v)
 }
 
+// * -> returns u * v
 pub fn (u Uint256) * (v Uint256) Uint256 {
 	return u.mul(v)
 }
