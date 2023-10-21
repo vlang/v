@@ -129,7 +129,7 @@ fn new_project(args []string) {
 
 fn init_project() {
 	mut c := Create{}
-	c.name = check_name(os.file_name(os.getwd()))
+	c.name = check_name(os.file_name(os.getwd()).replace('-', '_'))
 	if !os.exists('v.mod') {
 		c.description = ''
 		c.write_vmod(false)
