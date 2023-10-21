@@ -469,6 +469,9 @@ pub fn skew_mean_stddev[T](data []T, mean T, sd T) T {
 	return skew
 }
 
+// quantile calculate the quantile points
+// for more reference 
+// https://en.wikipedia.org/wiki/Quantile
 pub fn quantile[T](sorted_data []T, f T) T {
 	if sorted_data.len == 0 {
 		return T(0)

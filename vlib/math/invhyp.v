@@ -1,8 +1,8 @@
 module math
 
 import math.internal
-// acosh returns the non negative area hyperbolic cosine of x
 
+// acosh returns the non negative area hyperbolic cosine of x
 pub fn acosh(x f64) f64 {
 	if x == 0.0 {
 		return 0.0
