@@ -157,6 +157,7 @@ pub mut:
 	use_cache              bool   // when set, use cached modules to speed up subsequent compilations, at the cost of slower initial ones (while the modules are cached)
 	retry_compilation      bool = true // retry the compilation with another C compiler, if tcc fails.
 	use_os_system_to_run   bool   // when set, use os.system() to run the produced executable, instead of os.new_process; works around segfaults on macos, that may happen when xcode is updated
+	macosx_version_min     string = '10.7' // relevant only for macos and ios targets
 	// TODO Convert this into a []string
 	cflags  string // Additional options which will be passed to the C compiler *before* other options.
 	ldflags string // Additional options which will be passed to the C compiler *after* everything else.
@@ -685,6 +686,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-use-os-system-to-run' {
 				res.use_os_system_to_run = true
 			}
+			'-macosx-version-min' {
+				res.macosx_version_min = cmdline.option(current_args, arg, res.macosx_version_min)
+				i++
+				res.build_options << '${arg} ${res.macosx_version_min}'
+			}
 			'-nocache' {
 				res.use_cache = false
 			}
@@ -694,10 +700,12 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-no-parallel' {
 				res.no_parallel = true
+				res.build_options << arg
 			}
 			'-parallel-cc' {
 				res.parallel_cc = true
 				res.no_parallel = true // TODO: see how to make both work
+				res.build_options << arg
 			}
 			'-native' {
 				res.backend = .native
