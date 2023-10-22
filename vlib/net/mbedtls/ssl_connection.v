@@ -55,8 +55,8 @@ mut:
 	conf      C.mbedtls_ssl_config
 	certs     &SSLCerts = unsafe { nil }
 	opened    bool
-	// handle	  int
-	// timeout	  time.Duration
+	// handle		int
+	// duration	time.Duration
 }
 
 // create a new SSLListener binding to `saddr`
