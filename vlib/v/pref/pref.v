@@ -227,7 +227,7 @@ pub mut:
 	skip_unused       bool // skip generating C code for functions, that are not used
 	//
 	use_color           ColorOutput // whether the warnings/errors should use ANSI color escapes.
-	cleanup_files       []string    // list of temporary *.tmp.c and *.tmp.c.rsp files. Cleaned up on successfull builds.
+	cleanup_files       []string    // list of temporary *.tmp.c and *.tmp.c.rsp files. Cleaned up on successful builds.
 	build_options       []string    // list of options, that should be passed down to `build-module`, if needed for -usecache
 	cache_manager       vcache.CacheManager
 	gc_mode             GarbageCollectionMode = .unknown // .no_gc, .boehm, .boehm_leak, ...
