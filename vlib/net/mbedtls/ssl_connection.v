@@ -39,7 +39,7 @@ mut:
 	conf      C.mbedtls_ssl_config
 	certs     &SSLCerts = unsafe { nil }
 	handle    int
-	timeout   time.Duration
+	duration  time.Duration
 	opened    bool
 
 	owns_socket bool
@@ -349,7 +349,7 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 		return error('ssl connection already open')
 	}
 	s.handle = tcp_conn.sock.handle
-	s.timeout = 30 * time.second
+	s.duration = 30 * time.second
 
 	mut ret := C.mbedtls_ssl_set_hostname(&s.ssl, &char(hostname.str))
 	if ret != 0 {
@@ -378,7 +378,7 @@ pub fn (mut s SSLConn) dial(hostname string, port int) ! {
 	if s.opened {
 		return error('ssl connection already open')
 	}
-	s.timeout = 30 * time.second
+	s.duration = 30 * time.second
 
 	mut ret := C.mbedtls_ssl_set_hostname(&s.ssl, &char(hostname.str))
 	if ret != 0 {
@@ -421,7 +421,7 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 		}
 	}
 
-	deadline := time.now().add(s.timeout)
+	deadline := time.now().add(s.duration)
 	// s.wait_for_read(deadline - time.now())!
 	for {
 		res = C.mbedtls_ssl_read(&s.ssl, buf_ptr, len)
@@ -487,7 +487,7 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 		}
 	}
 
-	deadline := time.now().add(s.timeout)
+	deadline := time.now().add(s.duration)
 	unsafe {
 		mut ptr_base := bytes
 		for total_sent < len {

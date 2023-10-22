@@ -9,10 +9,10 @@ import os
 pub struct SSLConn {
 	config SSLConnectConfig
 mut:
-	sslctx  &C.SSL_CTX = unsafe { nil }
-	ssl     &C.SSL     = unsafe { nil }
-	handle  int
-	timeout time.Duration
+	sslctx   &C.SSL_CTX = unsafe { nil }
+	ssl      &C.SSL     = unsafe { nil }
+	handle   int
+	duration time.Duration
 
 	owns_socket bool
 }
@@ -56,7 +56,7 @@ pub fn (mut s SSLConn) shutdown() ! {
 	}
 
 	if s.ssl != 0 {
-		deadline := time.now().add(s.timeout)
+		deadline := time.now().add(s.duration)
 		for {
 			mut res := C.SSL_shutdown(voidptr(s.ssl))
 			if res == 1 {
@@ -167,7 +167,7 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 		eprintln('${@METHOD} hostname: ${hostname}')
 	}
 	s.handle = tcp_conn.sock.handle
-	s.timeout = tcp_conn.read_timeout()
+	s.duration = tcp_conn.read_timeout()
 
 	mut res := C.SSL_set_tlsext_host_name(voidptr(s.ssl), voidptr(hostname.str))
 	if res != 1 {
@@ -196,7 +196,7 @@ fn (mut s SSLConn) complete_connect() ! {
 		eprintln(@METHOD)
 	}
 
-	deadline := time.now().add(s.timeout)
+	deadline := time.now().add(s.duration)
 	for {
 		mut res := C.SSL_connect(voidptr(s.ssl))
 		if res == 1 {
@@ -260,7 +260,7 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 		}
 	}
 
-	deadline := time.now().add(s.timeout)
+	deadline := time.now().add(s.duration)
 	// s.wait_for_read(deadline - time.now())!
 	for {
 		res = C.SSL_read(voidptr(s.ssl), buf_ptr, len)
@@ -326,7 +326,7 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 		}
 	}
 
-	deadline := time.now().add(s.timeout)
+	deadline := time.now().add(s.duration)
 	unsafe {
 		mut ptr_base := bytes
 		for total_sent < len {
