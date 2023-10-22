@@ -589,9 +589,9 @@ fn @select(handle int, test Select, timeout time.Duration) !bool {
 	return net.err_timed_out
 }
 
-// wait_common wraps the common wait code
-fn wait_common(handle int, test Select, timeout time.Duration) ! {
-	ready := @select(handle, test, timeout)!
+// wait_for wraps the common wait code
+fn wait_for(handle int, what Select, timeout time.Duration) ! {
+	ready := @select(handle, what, timeout)!
 	if ready {
 		return
 	}
@@ -600,11 +600,11 @@ fn wait_common(handle int, test Select, timeout time.Duration) ! {
 }
 
 // wait_for_write waits for a write io operation to be available
-pub fn (mut s SSLConn) wait_for_write(timeout time.Duration) ! {
-	return wait_common(s.handle, .write, timeout)
+fn (mut s SSLConn) wait_for_write(timeout time.Duration) ! {
+	return wait_for(s.handle, .write, timeout)
 }
 
 // wait_for_read waits for a read io operation to be available
-pub fn (mut s SSLConn) wait_for_read(timeout time.Duration) ! {
-	return wait_common(s.handle, .read, timeout)
+fn (mut s SSLConn) wait_for_read(timeout time.Duration) ! {
+	return wait_for(s.handle, .read, timeout)
 }
