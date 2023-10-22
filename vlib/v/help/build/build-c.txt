@@ -155,6 +155,11 @@ see also `v help build`.
       that V will use (`x86_64-w64-mingw32-gcc` for targeting Windows, and
       `clang` for targeting Linux from other operating systems).
 
+   -macosx-version-min 10.7
+      Only relevant on macos. It will be passed as -mmacosx-version-min=10.7 to
+      the C backend compiler clang . It is 10.7 on macos by default. If you
+      pass `-macosx-version-min 0`, then that flag will not be passed at all.
+
    -sanitize
       Pass flags related to sanitization to the C compiler.
 
