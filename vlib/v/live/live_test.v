@@ -37,7 +37,7 @@ const (
 	main_source_file    = os.join_path(vtmp_folder, 'main.v')
 	tmp_file            = os.join_path(vtmp_folder, 'mymodule', 'generated_live_module.tmp')
 	source_file         = os.join_path(vtmp_folder, 'mymodule', 'mymodule.v')
-	genexe_file         = os.join_path(vtmp_folder, 'generated_live_program')
+	genexe_file         = os.join_path(vtmp_folder, 'generated_live_program.exe')
 	output_file         = os.join_path(vtmp_folder, 'generated_live_program.output.txt')
 	res_original_file   = os.join_path(vtmp_folder, 'ORIGINAL.txt')
 	res_changed_file    = os.join_path(vtmp_folder, 'CHANGED.txt')
@@ -48,7 +48,14 @@ const (
 
 fn get_source_template() string {
 	src := os.read_file(os.join_path(os.dir(@FILE), 'live_test_template.vv')) or { panic(err) }
-	return src.replace('#OUTPUT_FILE#', output_file)
+	safe_output_file := output_file.replace('\\', '/')
+	_ := output_file + ''
+	dump(output_file)
+	output_source := src.replace_once('#OUTPUT_FILE#', safe_output_file)
+	// dump( output_source )
+	dump(safe_output_file)
+	dump(output_file)
+	return output_source
 }
 
 fn atomic_write_source(source string) {
