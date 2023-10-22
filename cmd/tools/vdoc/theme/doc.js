@@ -56,7 +56,7 @@ function setupScrollSpy() {
 			a.classList.add('active');
 			lastActive = a;
 			clickedScroll = true;
-		})
+		}),
 	);
 }
 
