@@ -33,29 +33,24 @@ TODO: Cleanup this when/if v has better process control/communication primitives
 */
 const (
 	vexe                = os.getenv('VEXE')
+	live_test_tmpl_file = os.join_path(os.dir(@FILE), 'live_test_template.vv')
 	vtmp_folder         = os.join_path(os.vtmp_dir(), 'v', 'tests', 'live')
 	main_source_file    = os.join_path(vtmp_folder, 'main.v')
 	tmp_file            = os.join_path(vtmp_folder, 'mymodule', 'generated_live_module.tmp')
 	source_file         = os.join_path(vtmp_folder, 'mymodule', 'mymodule.v')
 	genexe_file         = os.join_path(vtmp_folder, 'generated_live_program.exe')
-	output_file         = os.join_path(vtmp_folder, 'generated_live_program.output.txt')
+	output_file         = os.join_path(vtmp_folder, 'generated_live_program.output.txt').replace('\\',
+		'/')
 	res_original_file   = os.join_path(vtmp_folder, 'ORIGINAL.txt')
 	res_changed_file    = os.join_path(vtmp_folder, 'CHANGED.txt')
 	res_another_file    = os.join_path(vtmp_folder, 'ANOTHER.txt')
 	res_stop_file       = os.join_path(vtmp_folder, 'STOP.txt')
-	live_program_source = get_source_template()
+	live_program_source = get_source_template() or { panic(err) }
 )
 
-fn get_source_template() string {
-	src := os.read_file(os.join_path(os.dir(@FILE), 'live_test_template.vv')) or { panic(err) }
-	safe_output_file := output_file.replace('\\', '/')
-	_ := output_file + ''
-	dump(output_file)
-	output_source := src.replace_once('#OUTPUT_FILE#', safe_output_file)
-	// dump( output_source )
-	dump(safe_output_file)
-	dump(output_file)
-	return output_source
+fn get_source_template() !string {
+	src := os.read_file(live_test_tmpl_file)!
+	return src.replace_once('#OUTPUT_FILE#', output_file)
 }
 
 fn atomic_write_source(source string) {
