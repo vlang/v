@@ -11,13 +11,14 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			eprintln('>>> post processing node.name: ${node.name:-30} | ${node.generic_names} <=> ${c.table.cur_concrete_types}')
 		}
 	}
-	// notice vweb route methods (non-generic method)
-	if node.generic_names.len > 0 {
+	// record the vweb route methods (public non-generic methods):
+	if node.generic_names.len > 0 && node.is_pub {
 		typ_vweb_result := c.table.find_type_idx('vweb.Result')
 		if node.return_type == typ_vweb_result {
 			rec_sym := c.table.sym(node.receiver.typ)
 			if rec_sym.kind == .struct_ {
 				if _ := c.table.find_field_with_embeds(rec_sym, 'Context') {
+					// there is no point in the message here, for methods that are not public; since they will not be available as routes anyway
 					c.note('generic method routes of vweb will be skipped', node.pos)
 				}
 			}
@@ -531,7 +532,8 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 			if arg.typ != ast.string_type {
 				continue
 			}
-			if arg.expr in [ast.Ident, ast.StringLiteral, ast.SelectorExpr] {
+			if arg.expr in [ast.Ident, ast.StringLiteral, ast.SelectorExpr]
+				|| (arg.expr is ast.CallExpr && arg.expr.or_block.kind != .absent) {
 				// Simple expressions like variables, string literals, selector expressions
 				// (`x.field`) can't result in allocations and don't need to be assigned to
 				// temporary vars.

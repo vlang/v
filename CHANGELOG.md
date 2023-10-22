@@ -207,7 +207,7 @@
 - gg: expand the `-d show_fps` background, so fps>100 will not overflow it
 - Math.big: restore gdc_euclid, use it for smaller numbers, fix bench_euclid.v .
 - Add new generic `arrays.uniq, arrays.uniq_only, arrays.uniq_only_repeated, arrays.uniq_all_repeated, arrays.distinct`
-- builtin: add support for `-d bultin_writeln_should_write_at_once` and `-d bultin_write_buf_to_fd_should_use_c_write` (#19243)
+- builtin: add support for `-d builtin_writeln_should_write_at_once` and `-d builtin_write_buf_to_fd_should_use_c_write` (#19243)
 - builtin: always show the assert message, if it was defined in the source, in non test programs too (fix #19240)
 - time: check if a day is a valid day of its month (#19232)
 - toml: Add generic automatic decoding and encoding of simple structs, when they don't implement custom methods (#17970)

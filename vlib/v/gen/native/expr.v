@@ -8,16 +8,19 @@ import v.util
 
 fn (mut g Gen) expr(node ast.Expr) {
 	match node {
+		ast.AtExpr {
+			g.allocate_string(g.comptime_at(node), 3, .rel32)
+		}
 		ast.ParExpr {
 			g.expr(node.expr)
 		}
 		ast.ArrayInit {
-			pos := g.allocate_array('_anonarray', 8, node.exprs.len)
+			pos := g.allocate_array('_anonarray', 8, i32(node.exprs.len))
 			g.code_gen.init_array(LocalVar{ offset: pos, typ: node.typ }, node)
 			g.code_gen.lea_var_to_reg(g.code_gen.main_reg(), pos)
 		}
 		ast.BoolLiteral {
-			g.code_gen.mov64(g.code_gen.main_reg(), int(node.val))
+			g.code_gen.mov64(g.code_gen.main_reg(), i64(node.val))
 		}
 		ast.CallExpr {
 			match node.name {
@@ -148,7 +151,7 @@ fn (mut g Gen) local_var_ident(ident ast.Ident, var LocalVar) {
 	}
 }
 
-fn (mut g Gen) condition(expr ast.Expr, neg bool) int {
+fn (mut g Gen) condition(expr ast.Expr, neg bool) i32 {
 	g.expr(expr)
 	g.code_gen.cmp_zero(g.code_gen.main_reg())
 	return g.code_gen.cjmp(if neg { .jne } else { .je })
@@ -164,7 +167,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	if node.branches.len == 0 {
 		return
 	}
-	mut endif_label := 0
+	mut endif_label := i32(0)
 	has_endif := node.branches.len > 1
 	if has_endif {
 		endif_label = g.labels.new_label()
@@ -195,7 +198,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 					id: endif_label
 					pos: jump_addr
 				}
-				g.println('; jump to label ${endif_label}')
+				g.println('; jump to label ${int(endif_label)}')
 			}
 			// println('after if g.pos=$g.pos() jneaddr=$cjmp_addr')
 			g.labels.addrs[label] = g.pos()
@@ -203,8 +206,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		}
 	}
 	if has_endif {
-		g.labels.addrs[endif_label] = g.pos()
-		g.println('; label ${endif_label}')
+		g.labels.addrs[int(endif_label)] = g.pos()
+		g.println('; label ${int(endif_label)}')
 	}
 }
 
@@ -291,12 +294,12 @@ fn (mut g Gen) gen_sizeof_expr(node ast.SizeOf) {
 	if ts.language == .v && ts.kind in [.placeholder, .any] {
 		g.v_error('unknown type `${ts.name}`', node.pos)
 	}
-	g.code_gen.mov64(g.code_gen.main_reg(), g.get_type_size(node.typ))
+	g.code_gen.mov64(g.code_gen.main_reg(), i64(g.get_type_size(node.typ)))
 }
 
 fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string) {
 	newline := name in ['println', 'eprintln']
-	fd := if name in ['eprint', 'eprintln'] { 2 } else { 1 }
+	fd := if name in ['eprint', 'eprintln'] { i32(2) } else { i32(1) }
 	match expr {
 		ast.StringLiteral {
 			str := g.eval_str_lit_escape_codes(expr)

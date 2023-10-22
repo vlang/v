@@ -159,7 +159,7 @@ fn (mut kn KqueueNotifier) close() ! {
 // event_mask_to_flag is a helper function that converts a bitmask
 // returned by kevent() wait to FdEventType
 fn event_mask_to_flag(filter i16, flags u16) FdEventType {
-	mut res := FdEventType.read
+	mut res := unsafe { FdEventType(0) }
 
 	if filter & notify.kqueue_read != 0 {
 		res.set(.read)

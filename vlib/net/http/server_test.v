@@ -1,13 +1,28 @@
+import log
 import net
 import net.http
 import time
 
+const atimeout = 500 * time.millisecond
+
+fn testsuite_begin() {
+	log.info(@FN)
+}
+
+fn testsuite_end() {
+	log.info(@FN)
+}
+
 fn test_server_stop() {
+	log.warn('${@FN} started')
+	defer {
+		log.warn('${@FN} finished')
+	}
 	mut server := &http.Server{
-		accept_timeout: 1 * time.second
+		accept_timeout: atimeout
 	}
 	t := spawn server.listen_and_serve()
-	time.sleep(250 * time.millisecond)
+	server.wait_till_running()!
 	mut watch := time.new_stopwatch()
 	server.stop()
 	assert server.status() == .stopped
@@ -17,12 +32,17 @@ fn test_server_stop() {
 }
 
 fn test_server_close() {
+	log.warn('${@FN} started')
+	defer {
+		log.warn('${@FN} finished')
+	}
 	mut server := &http.Server{
-		accept_timeout: 1 * time.second
+		accept_timeout: atimeout
 		handler: MyHttpHandler{}
+		show_startup_message: false
 	}
 	t := spawn server.listen_and_serve()
-	time.sleep(250 * time.millisecond)
+	server.wait_till_running()!
 	mut watch := time.new_stopwatch()
 	server.close()
 	assert server.status() == .closed
@@ -32,13 +52,18 @@ fn test_server_close() {
 }
 
 fn test_server_custom_listener() {
+	log.warn('${@FN} started')
+	defer {
+		log.warn('${@FN} finished')
+	}
 	listener := net.listen_tcp(.ip6, ':8081')!
 	mut server := &http.Server{
-		accept_timeout: 1 * time.second
+		accept_timeout: atimeout
 		listener: listener
+		show_startup_message: false
 	}
 	t := spawn server.listen_and_serve()
-	time.sleep(250 * time.millisecond)
+	server.wait_till_running()!
 	mut watch := time.new_stopwatch()
 	server.close()
 	assert server.status() == .closed
@@ -74,7 +99,7 @@ fn (mut handler MyHttpHandler) handle(req http.Request) http.Response {
 			handler.redirects++
 		}
 		'/big' {
-			r.body = 'xyz def '.repeat(10_000)
+			r.body = 'xyz def '.repeat(5_000)
 			r.set_status(.ok)
 			handler.oks++
 		}
@@ -87,34 +112,36 @@ fn (mut handler MyHttpHandler) handle(req http.Request) http.Response {
 	return r
 }
 
-const cport = 8198
+const cport = 18197
 
 fn test_server_custom_handler() {
+	log.warn('${@FN} started')
+	defer {
+		log.warn('${@FN} finished')
+	}
 	mut handler := MyHttpHandler{}
 	mut server := &http.Server{
-		accept_timeout: 1 * time.second
+		accept_timeout: atimeout
 		handler: handler
 		port: cport
 	}
 	t := spawn server.listen_and_serve()
-	for server.status() != .running {
-		time.sleep(10 * time.millisecond)
-	}
-	x := http.fetch(url: 'http://localhost:${cport}/endpoint?abc=xyz', data: 'my data')!
+	server.wait_till_running()!
+	x := http.fetch(url: 'http://${server.addr}/endpoint?abc=xyz', data: 'my data')!
 	assert x.body == 'my data, /endpoint?abc=xyz'
 	assert x.status_code == 200
 	assert x.status_msg == 'OK'
 	assert x.http_version == '1.1'
-	y := http.fetch(url: 'http://localhost:${cport}/another/endpoint', data: 'abcde')!
+	y := http.fetch(url: 'http://${server.addr}/another/endpoint', data: 'abcde')!
 	assert y.body == 'abcde, /another/endpoint'
 	assert y.status_code == 200
 	assert x.status_msg == 'OK'
 	assert y.status() == .ok
 	assert y.http_version == '1.1'
 	//
-	http.fetch(url: 'http://localhost:${cport}/something/else')!
+	http.fetch(url: 'http://${server.addr}/something/else')!
 	//
-	big_url := 'http://localhost:${cport}/redirect_to_big'
+	big_url := 'http://${server.addr}/redirect_to_big'
 	mut progress_calls := &ProgressCalls{}
 	z := http.fetch(
 		url: big_url
@@ -140,14 +167,14 @@ fn test_server_custom_handler() {
 	assert z.status_code == 200
 	assert z.body.starts_with('xyz')
 	assert z.body.len > 10000
-	assert progress_calls.final_size > 80_000
+	assert progress_calls.final_size > 40_000
 	assert progress_calls.finished_was_called
 	assert progress_calls.chunks.len > 1
 	assert progress_calls.reads.len > 1
 	assert progress_calls.chunks[0].bytestr().starts_with('HTTP/1.1 301 Moved permanently')
 	assert progress_calls.chunks[1].bytestr().starts_with('HTTP/1.1 200 OK')
 	assert progress_calls.chunks.last().bytestr().contains('xyz def')
-	assert progress_calls.redirected_to == ['http://localhost:8198/big']
+	assert progress_calls.redirected_to == ['http://${server.addr}/big']
 	//
 	server.stop()
 	t.wait()
@@ -165,4 +192,61 @@ mut:
 	finished_was_called bool
 	redirected_to       []string
 	final_size          u64
+}
+
+//
+
+struct MyCountingHandler {
+mut:
+	counter int
+}
+
+fn (mut handler MyCountingHandler) handle(req http.Request) http.Response {
+	handler.counter++
+	mut r := http.Response{
+		body: req.data + ', ${req.url}, counter: ${handler.counter}'
+		header: req.header
+	}
+	match req.url.all_before('?') {
+		'/count' {
+			r.set_status(.ok)
+		}
+		else {
+			r.set_status(.not_found)
+		}
+	}
+	r.set_version(req.version)
+	return r
+}
+
+fn test_my_counting_handler_on_random_port() {
+	log.warn('${@FN} started')
+	defer {
+		log.warn('${@FN} finished')
+	}
+	mut server := &http.Server{
+		show_startup_message: false
+		port: 0
+		accept_timeout: atimeout
+		handler: MyCountingHandler{}
+		on_running: fn (mut server http.Server) {
+			spawn fn (mut server http.Server) {
+				log.warn('server started')
+				url := 'http://${server.addr}/count'
+				log.info('fetching from url: ${url}')
+				for _ in 0 .. 5 {
+					x := http.fetch(url: url, data: 'my data') or { panic(err) }
+					log.info(x.body)
+				}
+				server.stop()
+				log.warn('server stopped')
+			}(mut server)
+		}
+	}
+	server.listen_and_serve()
+	if mut server.handler is MyCountingHandler {
+		dump(server.handler.counter)
+		assert server.handler.counter == 5
+	}
+	assert true
 }

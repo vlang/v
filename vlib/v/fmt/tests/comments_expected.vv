@@ -10,8 +10,7 @@ fn fun() int {
 }
 
 fn mr_fun() (int, int) {
-	return 1, // one comment
-	 2 // another comment
+	return 1, 2 // another comment
 }
 
 fn single_line_blocks() {

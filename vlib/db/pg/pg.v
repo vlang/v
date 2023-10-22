@@ -43,7 +43,7 @@ mut:
 
 pub struct Row {
 pub mut:
-	vals []string
+	vals []?string
 }
 
 pub struct Config {
@@ -109,6 +109,8 @@ fn C.PQerrorMessage(const_conn &C.PGconn) &char
 fn C.PQexec(res &C.PGconn, const_query &char) &C.PGresult
 
 //
+
+fn C.PQgetisnull(const_res &C.PGresult, int, int) int
 
 fn C.PQgetvalue(const_res &C.PGresult, int, int) &char
 
@@ -179,9 +181,13 @@ fn res_to_rows(res voidptr) []Row {
 	for i in 0 .. nr_rows {
 		mut row := Row{}
 		for j in 0 .. nr_cols {
-			val := C.PQgetvalue(res, i, j)
-			sval := unsafe { val.vstring() }
-			row.vals << sval
+			if C.PQgetisnull(res, i, j) != 0 {
+				row.vals << none
+			} else {
+				val := C.PQgetvalue(res, i, j)
+				sval := unsafe { val.vstring() }
+				row.vals << sval
+			}
 		}
 		rows << row
 	}
@@ -209,7 +215,7 @@ pub fn (db DB) q_int(query string) !int {
 		return 0
 	}
 	val := row.vals[0]
-	return val.int()
+	return val or { '0' }.int()
 }
 
 // q_string submit a command to the database server and
@@ -226,7 +232,7 @@ pub fn (db DB) q_string(query string) !string {
 		return ''
 	}
 	val := row.vals[0]
-	return val
+	return val or { '' }
 }
 
 // q_strings submit a command to the database server and

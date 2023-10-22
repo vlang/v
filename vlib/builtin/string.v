@@ -1488,6 +1488,24 @@ pub fn (s string) capitalize() string {
 	return res
 }
 
+// uncapitalize returns the string with the first character uncapitalized.
+// Example: assert 'Hello, Bob!'.uncapitalize() == 'hello, Bob!'
+[direct_array_access]
+pub fn (s string) uncapitalize() string {
+	if s.len == 0 {
+		return ''
+	}
+	s0 := s[0]
+	letter := s0.ascii_str()
+	uletter := letter.to_lower()
+	if s.len == 1 {
+		return uletter
+	}
+	srest := s[1..]
+	res := uletter + srest
+	return res
+}
+
 // is_capital returns `true`, if the first character in the string `s`,
 // is a capital letter, and the rest are NOT.
 // Example: assert 'Hello'.is_capital() == true

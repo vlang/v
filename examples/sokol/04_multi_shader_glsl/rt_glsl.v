@@ -40,6 +40,7 @@ struct App {
 mut:
 	gg          &gg.Context = unsafe { nil }
 	texture     gfx.Image
+	sampler     gfx.Sampler
 	init_flag   bool
 	frame_count int
 	mouse_x     int = -1
@@ -57,17 +58,17 @@ mut:
 /******************************************************************************
 * Texture functions
 ******************************************************************************/
-fn create_texture(w int, h int, buf byteptr) gfx.Image {
+fn create_texture(w int, h int, buf byteptr) (gfx.Image, gfx.Sampler) {
 	sz := w * h * 4
 	mut img_desc := gfx.ImageDesc{
 		width: w
 		height: h
 		num_mipmaps: 0
-		min_filter: .linear
-		mag_filter: .linear
+		//		min_filter: .linear
+		//		mag_filter: .linear
 		// usage: .dynamic
-		wrap_u: .clamp_to_edge
-		wrap_v: .clamp_to_edge
+		//		wrap_u: .clamp_to_edge
+		//		wrap_v: .clamp_to_edge
 		label: &u8(0)
 		d3d11_texture: 0
 	}
@@ -78,11 +79,16 @@ fn create_texture(w int, h int, buf byteptr) gfx.Image {
 	}
 
 	sg_img := gfx.make_image(&img_desc)
-	return sg_img
-}
 
-fn destroy_texture(sg_img gfx.Image) {
-	gfx.destroy_image(sg_img)
+	mut smp_desc := gfx.SamplerDesc{
+		min_filter: .linear
+		mag_filter: .linear
+		wrap_u: .clamp_to_edge
+		wrap_v: .clamp_to_edge
+	}
+
+	sg_smp := gfx.make_sampler(&smp_desc)
+	return sg_img, sg_smp
 }
 
 // Use only if usage: .dynamic is enabled
@@ -227,7 +233,8 @@ fn init_cube_glsl_m(mut app App) {
 	unsafe { vmemset(&bind, 0, int(sizeof(bind))) }
 	bind.vertex_buffers[0] = vbuf
 	bind.index_buffer = ibuf
-	bind.fs_images[C.SLOT_tex] = app.texture
+	bind.fs.images[C.SLOT_tex] = app.texture
+	bind.fs.samplers[C.SLOT_smp] = app.sampler
 	app.bind['march'] = bind
 
 	app.pipe['march'] = gfx.make_pipeline(&pipdesc)
@@ -342,7 +349,8 @@ fn init_cube_glsl_p(mut app App) {
 	unsafe { vmemset(&bind, 0, int(sizeof(bind))) }
 	bind.vertex_buffers[0] = vbuf
 	bind.index_buffer = ibuf
-	bind.fs_images[C.SLOT_tex] = app.texture
+	bind.fs.images[C.SLOT_tex] = app.texture
+	bind.fs.samplers[C.SLOT_smp] = app.sampler
 	app.bind['puppy'] = bind
 
 	app.pipe['puppy'] = gfx.make_pipeline(&pipdesc)
@@ -501,8 +509,8 @@ fn frame(mut app App) {
 
 	// clear
 	mut color_action := gfx.ColorAttachmentAction{
-		action: .clear
-		value: gfx.Color{
+		load_action: .clear
+		clear_value: gfx.Color{
 			r: 0.0
 			g: 0.0
 			b: 0.0
@@ -574,7 +582,7 @@ fn my_init(mut app App) {
 			i += 4
 		}
 	}
-	app.texture = create_texture(w, h, tmp_txt)
+	app.texture, app.sampler = create_texture(w, h, tmp_txt)
 	unsafe { free(tmp_txt) }
 
 	// glsl

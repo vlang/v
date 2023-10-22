@@ -81,7 +81,7 @@ fn new_project(args []string) {
 		exit(3)
 	}
 
-	c.description = if args.len > 1 { args[1] } else { os.input('Input your project description: ') }
+	c.description = os.input('Input your project description: ')
 
 	default_version := '0.0.0'
 	c.version = os.input('Input your project version: (${default_version}) ')

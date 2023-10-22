@@ -149,6 +149,9 @@ pub fn (mut b Builder) middle_stages() ! {
 	if b.pref.show_callgraph {
 		callgraph.show(mut b.table, b.pref, b.parsed_files)
 	}
+	if b.pref.dump_defines != '' {
+		b.dump_defines()
+	}
 }
 
 pub fn (mut b Builder) front_and_middle_stages(v_files []string) ! {

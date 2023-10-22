@@ -154,7 +154,7 @@ fn get_all_commands() []Command {
 			line: '${vexe} run examples/v_script.vsh > /dev/null'
 			okmsg: 'V can run the .VSH script file examples/v_script.vsh'
 		}
-		// Note: -experimental is used here, just to suppress the warningss,
+		// Note: -experimental is used here, just to suppress the warnings,
 		// that are otherwise printed by the native backend,
 		// until globals and hash statements *are implemented*:
 		$if linux {

@@ -5,7 +5,7 @@ module builtin
 
 // Option is the base of V's internal option return system.
 struct Option {
-	state u8
+	state u8 // 0 - ok; 2 - none; 1 - ?
 	err   IError = none__
 	// Data is trailing after err
 	// and is not included in here but in the

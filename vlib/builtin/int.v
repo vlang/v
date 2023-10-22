@@ -9,7 +9,8 @@ module builtin
 
 // type u8 = byte
 type byte = u8
-type i32 = int
+
+// type i32 = int
 
 // ptr_str returns the address of `ptr` as a `string`.
 pub fn ptr_str(ptr voidptr) string {
@@ -116,6 +117,22 @@ pub fn (n i16) str() string {
 // Example: assert u16(20).str() == '20'
 pub fn (n u16) str() string {
 	return int(n).str_l(7)
+}
+
+pub fn (n i32) str() string {
+	return int(n).str_l(12)
+}
+
+// str returns the value of the `int` as a `string`.
+// Example: assert int(-2020).str() == '-2020'
+/*
+pub fn int_str(n int) string {
+	return i64(n).str()
+}
+*/
+
+pub fn (nn int) hex_full() string {
+	return u64_to_hex(u64(nn), 8)
 }
 
 // str returns the value of the `int` as a `string`.
@@ -433,10 +450,6 @@ pub fn (nn i16) hex_full() string {
 }
 
 pub fn (nn u32) hex_full() string {
-	return u64_to_hex(u64(nn), 8)
-}
-
-pub fn (nn int) hex_full() string {
 	return u64_to_hex(u64(nn), 8)
 }
 

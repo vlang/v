@@ -45,12 +45,12 @@ mut:
 	// arm64 specific stuff for code generation
 }
 
-fn (mut x Arm64) allocate_var(name string, size int, initial_val int) int {
+fn (mut x Arm64) allocate_var(name string, size i32, initial_val i32) i32 {
 	eprintln('TODO: allocating var on arm64 (${name}) = ${size} = ${initial_val}')
 	return 0
 }
 
-fn (mut c Arm64) mov(reg Register, val int) {
+fn (mut c Arm64) mov(reg Register, val i32) {
 	c.mov_arm(reg as Arm64Register, u64(val))
 }
 
@@ -61,9 +61,9 @@ fn (mut c Arm64) mov_arm(reg Arm64Register, val u64) {
 	// println(x & ~m)
 	// println(x & ~(m << 16))
 	// g.write32(0x777777)
-	r := int(reg)
+	r := i32(reg)
 	if r >= 0 && r <= 16 {
-		c.g.write32(int(u32(0xd2800000 + u32(r) + (u32(val) << 5))))
+		c.g.write32(i32(u32(0xd2800000 + u32(r) + (u32(val) << 5))))
 		c.g.println('mov x${r}, ${val}')
 	} else {
 		c.g.n_error('mov_arm unsupported values')
@@ -71,11 +71,11 @@ fn (mut c Arm64) mov_arm(reg Arm64Register, val u64) {
 	/*
 	if 1 ^ (x & ~m) != 0 {
 		// println('yep')
-		g.write32(int(u64(0x52800000) | u64(r) | x << 5))
+		g.write32(i32(u64(0x52800000) | u64(r) | x << 5))
 		g.write32(0x88888888)
-		g.write32(int(u64(0x52800000) | u64(r) | x >> 11))
+		g.write32(i32(u64(0x52800000) | u64(r) | x >> 11))
 	} else if 1 ^ (x & ~(m << 16)) != 0 {
-		// g.write32(int(u64(0x52800000) | u64(r) | x >> 11))
+		// g.write32(i32(u64(0x52800000) | u64(r) | x >> 11))
 		// println('yep2')
 		// g.write32(0x52a00000 | r | val >> 11)
 	}
@@ -88,14 +88,14 @@ fn (mut c Arm64) neg(r Arm64Register) {
 
 fn (mut c Arm64) neg_regs(a Arm64Register, b Arm64Register) {
 	if u32(a) < 0x0f && u32(b) < 0x0f {
-		c.g.write32(int(0xe2600000 | (u32(a) << 16) | u32(b) << 12))
+		c.g.write32(i32(0xe2600000 | (u32(a) << 16) | u32(b) << 12))
 		c.g.println('neg ${a}, ${b}')
 	} else {
 		c.g.n_error('unhandled neg ${a}, ${b}')
 	}
 }
 
-fn (mut c Arm64) sub_sp(v int) {
+fn (mut c Arm64) sub_sp(v i32) {
 	if c.g.pref.arch != .arm64 {
 		c.g.n_error('sub_sp is arm64-specifig')
 		return
@@ -203,7 +203,7 @@ pub fn (mut c Arm64) call_fn(node ast.CallExpr) {
 		match expr {
 			ast.IntegerLiteral {
 				// `foo(2)` => `mov edi,0x2`
-				// c.mov_arm(native.fn_arg_registers[i], expr.val.int())
+				// c.mov_arm(native.fn_arg_registers[i], i32(expr.val.int()))
 			}
 			/*
 			ast.Ident {
@@ -211,7 +211,7 @@ pub fn (mut c Arm64) call_fn(node ast.CallExpr) {
 				var_offset := c.g.get_var_offset(expr.name)
 				if c.g.pref.is_verbose {
 					println('i=$i fn name= $name offset=$var_offset')
-					println(int(native.fn_arg_registers[i]))
+					println(i32(native.fn_arg_registers[i]))
 				}
 				c.g.code_gen.mov_var_to_reg(native.fn_arg_registers[i], var_offset)
 			}
@@ -224,7 +224,7 @@ pub fn (mut c Arm64) call_fn(node ast.CallExpr) {
 	if node.args.len > 6 {
 		c.g.n_error('more than 6 args not allowed for now')
 	}
-	c.call(int(addr))
+	c.call(i32(addr))
 	c.g.println('fn call `${name}()`')
 	// println('call $name $addr')
 }
@@ -255,8 +255,8 @@ fn (mut g Gen) gen_arm64_helloworld() {
 	g.write8(0)
 }
 
-fn (mut c Arm64) adr(r Arm64Register, delta int) {
-	c.g.write32(int(0x10000000 | int(r) | int(u32(delta) << 4)))
+fn (mut c Arm64) adr(r Arm64Register, delta i32) {
+	c.g.write32(i32(0x10000000 | i32(r) | i32(u32(delta) << 4)))
 	c.g.println('adr ${r}, ${delta}')
 }
 
@@ -320,15 +320,15 @@ pub fn (mut c Arm64) gen_arm64_exit(expr ast.Expr) {
 	c.svc()
 }
 
-fn (mut c Arm64) address_size() int {
+fn (mut c Arm64) address_size() i32 {
 	return 8
 }
 
-fn (mut c Arm64) gen_print(s string, fd int) {
+fn (mut c Arm64) gen_print(s string, fd i32) {
 	panic('Arm64.gen_print() is not implemented')
 }
 
-fn (mut c Arm64) gen_print_reg(r Register, n int, fd int) {
+fn (mut c Arm64) gen_print_reg(r Register, n i32, fd i32) {
 	panic('Arm64.gen_print_reg() is not implemented')
 }
 
@@ -336,11 +336,11 @@ fn (mut g Gen) gen_asm_stmt_arm64(asm_node ast.AsmStmt) {
 	g.v_error('The asm statement for arm64 not yet implemented', asm_node.pos)
 }
 
-fn (mut c Arm64) learel(reg Register, val int) {
+fn (mut c Arm64) learel(reg Register, val i32) {
 	panic('Arm64.learel() not implemented')
 }
 
-fn (mut c Arm64) lea_var_to_reg(reg Register, var_offset int) {
+fn (mut c Arm64) lea_var_to_reg(reg Register, var_offset i32) {
 	panic('Arm64.lea_var_to_reg() not implemented')
 }
 
@@ -376,7 +376,7 @@ fn (mut c Arm64) mov64(r Register, val i64) {
 	panic('Arm64.mov64() not implemented')
 }
 
-fn (mut c Arm64) convert_rune_to_string(r Register, buffer int, var Var, config VarConfig) {
+fn (mut c Arm64) convert_rune_to_string(r Register, buffer i32, var Var, config VarConfig) {
 	panic('Arm64.convert_rune_to_string() not implemented')
 }
 
@@ -463,7 +463,7 @@ fn (mut c Arm64) cmp_var_reg(var Var, reg Register, config VarConfig) {
 	panic('Arm64.cmp_var_reg() not implemented')
 }
 
-fn (mut c Arm64) cmp_var(var Var, val int, config VarConfig) {
+fn (mut c Arm64) cmp_var(var Var, val i32, config VarConfig) {
 	panic('Arm64.cmp_var() not implemented')
 }
 
@@ -475,11 +475,11 @@ fn (mut c Arm64) inc_var(var Var, config VarConfig) {
 	panic('Arm64.inc_var() not implemented')
 }
 
-fn (mut c Arm64) cjmp(op JumpOp) int {
+fn (mut c Arm64) cjmp(op JumpOp) i32 {
 	panic('Arm64.cjmp() not implemented')
 }
 
-fn (mut c Arm64) jmp(addr int) int {
+fn (mut c Arm64) jmp(addr i32) i32 {
 	panic('Arm64.jmp() not implemented')
 }
 
@@ -499,19 +499,19 @@ fn (mut c Arm64) mov_reg_to_var(var Var, reg Register, config VarConfig) {
 	panic('Arm64.mov_reg_to_var() not implemented')
 }
 
-fn (mut c Arm64) mov_int_to_var(var Var, integer int, config VarConfig) {
+fn (mut c Arm64) mov_int_to_var(var Var, integer i32, config VarConfig) {
 	panic('Arm64.mov_int_to_var() not implemented')
 }
 
-fn (mut c Arm64) call(addr int) i64 {
+fn (mut c Arm64) call(addr i32) i64 {
 	panic('Arm64.call() not implemented')
 }
 
-fn (mut c Arm64) zero_fill(size int, var LocalVar) {
+fn (mut c Arm64) zero_fill(size i32, var LocalVar) {
 	panic('Arm64.zero_fill() not implemented')
 }
 
-fn (mut c Arm64) call_addr_at(addr int, at i64) i64 {
+fn (mut c Arm64) call_addr_at(addr i32, at i64) i64 {
 	panic('Arm64.call_addr_at() not implemented')
 }
 
@@ -523,10 +523,14 @@ fn (mut c Arm64) push(r Register) {
 	panic('Arm64.push() not implemented')
 }
 
-pub fn (mut c Arm64) add(r Register, val int) {
+pub fn (mut c Arm64) add(r Register, val i32) {
 	panic('Arm64.add() not implemented')
 }
 
 fn (mut c Arm64) mov_deref(reg Register, regptr Register, typ ast.Type) {
 	panic('Arm64.mov_deref() not implemented')
+}
+
+fn (mut c Arm64) patch_relative_jmp(pos i32, addr i64) {
+	panic('Arm64.patch_relative_jmp() not implemented')
 }

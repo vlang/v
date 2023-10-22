@@ -125,18 +125,8 @@ fn listen(config Config) int {
 
 	// addr settings
 
-	sin_port := $if tinyc {
-		conv.hton16(u16(config.port))
-	} $else {
-		C.htons(config.port)
-	}
-
-	sin_addr := $if tinyc {
-		conv.hton32(u32(C.INADDR_ANY))
-	} $else {
-		C.htonl(C.INADDR_ANY)
-	}
-
+	sin_port := conv.hton16(u16(config.port))
+	sin_addr := conv.hton32(u32(C.INADDR_ANY))
 	mut addr := C.sockaddr_in{
 		sin_family: u8(C.AF_INET)
 		sin_port: sin_port

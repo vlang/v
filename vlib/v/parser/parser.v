@@ -1754,14 +1754,11 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 	return res
 }
 
-fn (mut p Parser) expr_list() ([]ast.Expr, []ast.Comment) {
+fn (mut p Parser) expr_list() []ast.Expr {
 	mut exprs := []ast.Expr{}
-	mut comments := []ast.Comment{}
 	for {
 		expr := p.expr(0)
-		if expr is ast.Comment {
-			comments << expr
-		} else {
+		if expr !is ast.Comment {
 			exprs << expr
 			if p.tok.kind != .comma {
 				break
@@ -1769,7 +1766,7 @@ fn (mut p Parser) expr_list() ([]ast.Expr, []ast.Comment) {
 			p.next()
 		}
 	}
-	return exprs, comments
+	return exprs
 }
 
 fn (mut p Parser) is_attributes() bool {
@@ -2139,7 +2136,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	mut defer_vars := p.defer_vars.clone()
 	p.defer_vars = []ast.Ident{}
 
-	left, left_comments := p.expr_list()
+	left := p.expr_list()
 
 	if !(p.inside_defer && p.tok.kind == .decl_assign) {
 		defer_vars << p.defer_vars
@@ -2157,7 +2154,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	}
 	// TODO remove translated
 	if p.tok.kind in [.assign, .decl_assign] || p.tok.kind.is_assign() {
-		return p.partial_assign_stmt(left, left_comments)
+		return p.partial_assign_stmt(left)
 	} else if !p.pref.translated && !p.is_translated && !p.pref.is_fmt && !p.pref.is_vet
 		&& tok.kind !in [.key_if, .key_match, .key_lock, .key_rlock, .key_select] {
 		for node in left {
@@ -2176,7 +2173,6 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 		return ast.ExprStmt{
 			expr: left0
 			pos: left0.pos()
-			comments: left_comments
 			is_expr: p.inside_for
 		}
 	}
@@ -2186,7 +2182,6 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 			pos: tok.pos()
 		}
 		pos: pos
-		comments: left_comments
 	}
 }
 
@@ -3861,8 +3856,7 @@ fn (mut p Parser) return_stmt() ast.Return {
 		}
 	}
 	// return exprs
-	exprs, comments2 := p.expr_list()
-	comments << comments2
+	exprs := p.expr_list()
 	end_pos := exprs.last().pos()
 	return ast.Return{
 		exprs: exprs
@@ -4133,11 +4127,18 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	if p.disallow_declarations_in_script_mode() {
 		return ast.SumTypeDecl{}
 	}
-	name := p.check_name()
+	mut name := p.check_name()
+	mut language := ast.Language.v
 	if name.len == 1 && name[0].is_capital() {
-		p.error_with_pos('single letter capital names are reserved for generic template types',
-			name_pos)
-		return ast.FnTypeDecl{}
+		if name == 'C' && p.tok.kind == .dot {
+			p.next() // .
+			name = 'C.' + p.check_name()
+			language = .c
+		} else {
+			p.error_with_pos('single letter capital names are reserved for generic template types',
+				name_pos)
+			return ast.FnTypeDecl{}
+		}
 	}
 	if name in p.imported_symbols {
 		p.error_with_pos('cannot register alias `${name}`, this type was already imported',
@@ -4222,7 +4223,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	parent_sym := p.table.sym(parent_type)
 	pidx := parent_type.idx()
 	p.check_for_impure_v(parent_sym.language, decl_pos)
-	prepend_mod_name := p.prepend_mod(name)
+	prepend_mod_name := if language == .v { p.prepend_mod(name) } else { name } // `C.time_t`, not `time.C.time_t`
 	idx := p.table.register_sym(ast.TypeSymbol{
 		kind: .alias
 		name: prepend_mod_name

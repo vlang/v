@@ -401,13 +401,13 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 			}
 			p.inside_match = true
 			p.inside_select = true
-			exprs, comments := p.expr_list()
+			exprs := p.expr_list()
 			if exprs.len != 1 {
 				p.error('only one expression allowed as `select` key')
 				return ast.SelectExpr{}
 			}
 			if p.tok.kind in [.assign, .decl_assign] {
-				stmt = p.partial_assign_stmt(exprs, comments)
+				stmt = p.partial_assign_stmt(exprs)
 			} else {
 				stmt = ast.ExprStmt{
 					expr: exprs[0]
