@@ -246,11 +246,9 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				p.inside_struct_field_decl = true
 				if p.tok.kind == .key_struct {
 					// Anon structs
-					if p.tok.kind == .key_struct {
-						p.anon_struct_decl = p.struct_decl(true)
-						// Find the registered anon struct type, it was registered above in `p.struct_decl()`
-						typ = p.table.find_type_idx(p.anon_struct_decl.name)
-					}
+					p.anon_struct_decl = p.struct_decl(true)
+					// Find the registered anon struct type, it was registered above in `p.struct_decl()`
+					typ = p.table.find_type_idx(p.anon_struct_decl.name)
 				} else {
 					start_type_pos := p.tok.pos()
 					typ = p.parse_type()
