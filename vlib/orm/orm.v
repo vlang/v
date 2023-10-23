@@ -65,8 +65,8 @@ pub enum OperationKind {
 	ge // >=
 	le // <=
 	orm_like // LIKE
-	@is // is
-	is_not // !is
+	is_null // IS NULL
+	is_not_null // IS NOT NULL
 }
 
 pub enum MathOperationKind {
@@ -101,10 +101,14 @@ fn (kind OperationKind) to_str() string {
 		.ge { '>=' }
 		.le { '<=' }
 		.orm_like { 'LIKE' }
-		.@is { 'IS' }
-		.is_not { 'IS NOT' }
+		.is_null { 'IS NULL' }
+		.is_not_null { 'IS NOT NULL' }
 	}
 	return str
+}
+
+fn (kind OperationKind) is_unary() bool {
+	return kind in [.is_null, .is_not_null]
 }
 
 fn (kind OrderType) to_str() string {
@@ -396,10 +400,13 @@ fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) 
 		if pre_par {
 			str += '('
 		}
-		str += '${q}${field}${q} ${where.kinds[i].to_str()} ${qm}'
-		if num {
-			str += '${c}'
-			c++
+		str += '${q}${field}${q} ${where.kinds[i].to_str()}'
+		if !where.kinds[i].is_unary() {
+			str += ' ${qm}'
+			if num {
+				str += '${c}'
+				c++
+			}
 		}
 		if post_par {
 			str += ')'

@@ -123,11 +123,10 @@ fn test_option_struct_fields_and_none() {
 	_ := sql db {
 		select from Foo where e > 5 && c is none && c !is none && h == 2
 	}!
-	assert db.st.last == 'SELECT `id`, `a`, `c`, `d`, `e`, `g`, `h` FROM `foo` WHERE `e` > ? AND `c` IS ? AND `c` IS NOT ? AND `h` = ?;'
+	assert db.st.last == 'SELECT `id`, `a`, `c`, `d`, `e`, `g`, `h` FROM `foo` WHERE `e` > ? AND `c` IS NULL AND `c` IS NOT NULL AND `h` = ?;'
 	assert db.st.data.len == 0
-	assert db.st.where.len == 4
-	assert db.st.where == [orm.Primitive(int(5)), orm.Null{},
-		orm.Null{}, orm.Primitive(int(2))]
+	assert db.st.where.len == 2
+	assert db.st.where == [orm.Primitive(int(5)), orm.Primitive(int(2))]
 
 	foo := Foo{}
 	sql db {
