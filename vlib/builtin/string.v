@@ -77,7 +77,7 @@ pub fn (s string) runes() []rune {
 // cstring_to_vstring creates a new V string copy of the C style string,
 // pointed by `s`. This function is most likely what you want to use when
 // working with C style pointers to 0 terminated strings (i.e. `char*`).
-// It is recomended to use it, unless you *do* understand the implications of
+// It is recommended to use it, unless you *do* understand the implications of
 // tos/tos2/tos3/tos4/tos5 in terms of memory management and interactions with
 // -autofree and `[manualfree]`.
 // It will panic, if the pointer `s` is 0.
@@ -745,7 +745,7 @@ pub fn (s string) split_any(delim string) []string {
 	mut i := 0
 	// check empty source string
 	if s.len > 0 {
-		// if empty delimiter string using defautl split
+		// if empty delimiter string using default split
 		if delim.len <= 0 {
 			return s.split('')
 		}
@@ -813,7 +813,7 @@ pub fn (s string) rsplit(delim string) []string {
 	return s.rsplit_nth(delim, 0)
 }
 
-// split_once devides string into pair of string by `delim`.
+// split_once divides string into pair of string by `delim`.
 // Example:
 // ```v
 // path, ext := 'file.ts.dts'.splice_once('.')?
@@ -832,7 +832,7 @@ pub fn (s string) split_once(delim string) ?(string, string) {
 	return result[0], result[1]
 }
 
-// rsplit_once devides string into pair of string by `delim`.
+// rsplit_once divides string into pair of string by `delim`.
 // Example:
 // ```v
 // path, ext := 'file.ts.dts'.splice_once('.')?
@@ -1592,7 +1592,7 @@ pub fn (s string) trim(cutset string) string {
 	return s.substr(left, right)
 }
 
-// trim_indexes gets the new start and end indicies of a string when any of the characters given in `cutset` were stripped from the start and end of the string. Should be used as an input to `substr()`. If the string contains only the characters in `cutset`, both values returned are zero.
+// trim_indexes gets the new start and end indices of a string when any of the characters given in `cutset` were stripped from the start and end of the string. Should be used as an input to `substr()`. If the string contains only the characters in `cutset`, both values returned are zero.
 // Example: left, right := '-hi-'.trim_indexes('-')
 [direct_array_access]
 pub fn (s string) trim_indexes(cutset string) (int, int) {
@@ -1719,7 +1719,7 @@ fn compare_lower_strings(a &string, b &string) int {
 	return compare_strings(&aa, &bb)
 }
 
-// sort_ignore_case sorts the string array using case insesitive comparing.
+// sort_ignore_case sorts the string array using case insensitive comparing.
 [inline]
 pub fn (mut s []string) sort_ignore_case() {
 	s.sort_with_compare(compare_lower_strings)
@@ -2096,7 +2096,7 @@ pub fn (s string) fields() []string {
 }
 
 // strip_margin allows multi-line strings to be formatted in a way that removes white-space
-// before a delimeter. by default `|` is used.
+// before a delimiter. By default `|` is used.
 // Note: the delimiter has to be a byte at this time. That means surrounding
 // the value in ``.
 //

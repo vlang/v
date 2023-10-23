@@ -203,7 +203,7 @@ fn (mut a array) ensure_cap(required int) {
 }
 
 // repeat returns a new array with the given array elements repeated given times.
-// `cgen` will replace this with an apropriate call to `repeat_to_depth()`
+// `cgen` will replace this with an appropriate call to `repeat_to_depth()`
 //
 // This is a dummy placeholder that will be overridden by `cgen` with an appropriate
 // call to `repeat_to_depth()`. However the `checker` needs it here.
@@ -627,7 +627,7 @@ fn (a array) clone_static_to_depth(depth int) array {
 }
 
 // clone returns an independent copy of a given array.
-// this will be overwritten by `cgen` with an apropriate call to `.clone_to_depth()`
+// this will be overwritten by `cgen` with an appropriate call to `.clone_to_depth()`
 // However the `checker` needs it here.
 pub fn (a &array) clone() array {
 	return unsafe { a.clone_to_depth(0) }
@@ -827,7 +827,7 @@ pub fn (a array) map(callback fn (voidptr) voidptr) array
 // being compared.
 //
 // Example: array.sort() // will sort the array in ascending order
-// Example: array.sort(b < a) // will sort the array in decending order
+// Example: array.sort(b < a) // will sort the array in descending order
 // Example: array.sort(b.name < a.name) // will sort descending by the .name field
 pub fn (mut a array) sort(callback fn (voidptr, voidptr) int)
 

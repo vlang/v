@@ -148,7 +148,7 @@ pub fn (c &Cookie) str() string {
 		b.write_string('; expires=')
 		b.write_string(time_str)
 	}
-	// TODO: Fix this. Techically a max age of 0 or less should be 0
+	// TODO: Fix this. Technically a max age of 0 or less should be 0
 	// We need a way to not have a max age.
 	if c.max_age > 0 {
 		b.write_string('; Max-Age=')

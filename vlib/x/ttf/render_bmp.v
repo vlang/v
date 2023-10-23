@@ -32,11 +32,11 @@ pub mut:
 	angle    f32 = 0.0 // angle of rotation of the bitmap
 	// spaces
 	space_cw   f32 = 1.0 // width of the space glyph internal usage!!
-	space_mult f32 = f32(0.0) // 1.0/16.0  // space between letter, is a multiplier for a standrd space ax
+	space_mult f32 = f32(0.0) // 1.0/16.0  // space between letter, is a multiplier for a standard space ax
 	// used only by internal text rendering!!
 	tr_matrix          []f32      = [f32(1), 0, 0, 0, 1, 0, 0, 0, 0] // transformation matrix
 	ch_matrix          []f32      = [f32(1), 0, 0, 0, 1, 0, 0, 0, 0] // character matrix
-	style              Style      = .filled // default syle
+	style              Style      = .filled // default style
 	align              Text_align = .left // default text align
 	justify            bool // justify text flag, default deactivated
 	justify_fill_ratio f32 = 0.5 // justify fill ratio, if the ratio of the filled row is >= of this then justify the text
@@ -70,7 +70,7 @@ pub fn (bmp &BitMap) trf_ch(p &Point) (int, int) {
 		p.x * bmp.ch_matrix[1] + p.y * bmp.ch_matrix[4] + bmp.ch_matrix[7])
 }
 
-// set draw postion in the buffer
+// set draw position in the buffer
 pub fn (mut bmp BitMap) set_pos(x f32, y f32) {
 	bmp.tr_matrix[6] = x
 	bmp.tr_matrix[7] = y
@@ -340,7 +340,7 @@ pub fn (mut bmp BitMap) line(in_x0 int, in_y0 int, in_x1 int, in_y1 int, c u32) 
 	dy := -math.abs(y1 - y0)
 	sy := if y0 < y1 { 1 } else { -1 }
 
-	// verical line
+	// vertical line
 	if dx == 0 {
 		if y0 < y1 {
 			for yt in y0 .. y1 + 1 {

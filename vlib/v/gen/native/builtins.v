@@ -19,7 +19,7 @@ mut:
 	calls []i64 // call addresses
 }
 
-pub const inline_builtins = ['assert', 'print', 'eprint', 'println', 'eprintln', 'exit', 'C.syscall'] // classic V builtin functios accessible to the user get inlined
+pub const inline_builtins = ['assert', 'print', 'eprint', 'println', 'eprintln', 'exit', 'C.syscall'] // classic V builtin functions accessible to the user get inlined
 
 pub fn (mut g Gen) init_builtins() {
 	g.builtins = {

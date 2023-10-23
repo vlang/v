@@ -2018,7 +2018,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			}
 		}
 	}
-	// only v variadic, C variadic args will be appeneded like normal args
+	// only v variadic, C variadic args will be appended like normal args
 	is_variadic := expected_types.len > 0 && expected_types.last().has_flag(.variadic)
 		&& node.language == .v
 	for i, arg in args {

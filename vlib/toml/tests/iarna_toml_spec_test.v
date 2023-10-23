@@ -178,7 +178,7 @@ fn test_iarna_toml_spec_tests() {
 							"'import sys, yaml, json; json.dump(yaml.load(sys.stdin, Loader=yaml.FullLoader), sys.stdout, indent=4)'",
 							'<', iarna_yaml_path, '>', converted_json_path]) or {
 							contents := os.read_file(iarna_yaml_path)!
-							// NOTE there's known errors with the python convertion method.
+							// NOTE there's known errors with the python convention method.
 							// For now we just ignore them as it's a broken tool - not a wrong test-case.
 							// Uncomment this print to see/check them.
 							// eprintln(err.msg() + '\n$contents')

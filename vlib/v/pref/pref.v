@@ -29,9 +29,9 @@ pub enum GarbageCollectionMode {
 	unknown
 	no_gc
 	boehm_full // full garbage collection mode
-	boehm_incr // incremental garbage colletion mode
+	boehm_incr // incremental garbage collection mode
 	boehm_full_opt // full garbage collection mode
-	boehm_incr_opt // incremental garbage colletion mode
+	boehm_incr_opt // incremental garbage collection mode
 	boehm_leak // leak detection mode (makes `gc_check_leaks()` work)
 }
 
@@ -133,7 +133,7 @@ pub mut:
 	is_help            bool     // -h, -help or --help was passed
 	is_quiet           bool     // do not show the repetitive explanatory messages like the one for `v -prod run file.v` .
 	is_cstrict         bool     // turn on more C warnings; slightly slower
-	eval_argument      string   // `println(2+2)` on `v -e "println(2+2)"`. Note that this souce code, will be evaluated in vsh mode, so 'v -e 'println(ls(".")!)' is valid.
+	eval_argument      string   // `println(2+2)` on `v -e "println(2+2)"`. Note that this source code, will be evaluated in vsh mode, so 'v -e 'println(ls(".")!)' is valid.
 	test_runner        string   // can be 'simple' (fastest, but much less detailed), 'tap', 'normal'
 	profile_file       string   // the profile results will be stored inside profile_file
 	profile_no_inline  bool     // when true, [inline] functions would not be profiled
@@ -151,7 +151,7 @@ pub mut:
 	show_callgraph         bool   // -show-callgraph, print the program callgraph, in a Graphviz DOT format to stdout
 	show_depgraph          bool   // -show-depgraph, print the program module dependency graph, in a Graphviz DOT format to stdout
 	dump_c_flags           string // `-dump-c-flags file.txt` - let V store all C flags, passed to the backend C compiler in `file.txt`, one C flag/value per line.
-	dump_modules           string // `-dump-modules modules.txt` - let V store all V modules, that were used by the compiled program in `modules.txt`, one module per line.	
+	dump_modules           string // `-dump-modules modules.txt` - let V store all V modules, that were used by the compiled program in `modules.txt`, one module per line.
 	dump_files             string // `-dump-files files.txt` - let V store all V or .template file paths, that were used by the compiled program in `files.txt`, one path per line.
 	dump_defines           string // `-dump-defines defines.txt` - let V store all the defines that affect the current program and their values, one define per line + `,` + its value.
 	use_cache              bool   // when set, use cached modules to speed up subsequent compilations, at the cost of slower initial ones (while the modules are cached)
@@ -189,7 +189,7 @@ pub mut:
 	prealloc         bool
 	vroot            string
 	vlib             string   // absolute path to the vlib/ folder
-	vmodules_paths   []string // absolute paths to the vmodules folders, by default ['/home/user/.vmodules'], can be overriden by setting VMODULES
+	vmodules_paths   []string // absolute paths to the vmodules folders, by default ['/home/user/.vmodules'], can be overridden by setting VMODULES
 	out_name_c       string   // full os.real_path to the generated .tmp.c file; set by builder.
 	out_name         string
 	path             string // Path to file/folder to compile

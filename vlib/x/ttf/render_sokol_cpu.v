@@ -42,7 +42,7 @@ pub fn (mut tf_skl TTF_render_Sokol) create_text(in_txt string, in_font_size f32
 	font_size := in_font_size //* scale_reduct
 
 	// Formula: (font_size * device dpi) / (72dpi * em_unit)
-	// scale := ((1.0  * devide_dpi )/ f32(72 * tf_skl.bmp.tf.units_per_em))* font_size
+	// scale := ((1.0  * device_dpi )/ f32(72 * tf_skl.bmp.tf.units_per_em))* font_size
 	scale := f32(font_size * device_dpi) / f32(72 * int(tf_skl.bmp.tf.units_per_em))
 	// dprintln("Scale: $scale")
 
@@ -77,7 +77,7 @@ pub fn (mut tf_skl TTF_render_Sokol) create_text_block(in_txt string, in_w int, 
 	device_dpi := tf_skl.device_dpi
 	font_size := in_font_size //* scale_reduct
 	// Formula: (font_size * device dpi) / (72dpi * em_unit)
-	// scale := ((1.0  * devide_dpi )/ f32(72 * tf_skl.bmp.tf.units_per_em))* font_size
+	// scale := ((1.0  * device_dpi )/ f32(72 * tf_skl.bmp.tf.units_per_em))* font_size
 	scale := f32(font_size * device_dpi) / f32(72 * int(tf_skl.bmp.tf.units_per_em))
 	// dprintln("Scale: $scale")
 

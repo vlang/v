@@ -764,7 +764,7 @@ fn test_posix_set_bit() {
 		}
 		mode = u32(s.st_mode) & 0o0777
 		assert mode == 0o0777
-		// Note: setting the sticky bit is platform dependend
+		// Note: setting the sticky bit is platform dependent
 		// `chmod -s -g -t`
 		os.posix_set_permission_bit(fpath, os.s_isuid, false)
 		os.posix_set_permission_bit(fpath, os.s_isgid, false)

@@ -21,7 +21,7 @@ struct C.tm {
 
 fn C.timegm(&C.tm) C.time_t
 
-// prefering localtime_r over the localtime because
+// preferring localtime_r over the localtime because
 // from docs localtime_r is thread safe,
 fn C.localtime_r(t &C.time_t, tm &C.tm)
 

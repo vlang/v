@@ -312,19 +312,19 @@ fn test_levels() {
 	}
 }
 
-// Struct where an inizialized field is after a non-initilized field.
+// Struct where an initialized field is after a non-initialized field.
 struct StructWithDefaultValues1 {
 	field_uninitialized int
 	field_initialized   int = 5
 }
 
-// Struct where an inizialized field is before a non-initilized field.
+// Struct where an initialized field is before a non-initialized field.
 struct StructWithDefaultValues2 {
 	field_initialized   int = 3
 	field_uninitialized int
 }
 
-// Struct where an inizialized field is before several non-initilized fields.
+// Struct where an initialized field is before several non-initialized fields.
 struct StructWithDefaultValues3 {
 	field_initialized       int = 2
 	field_uninitialized     int

@@ -1011,7 +1011,7 @@ pub fn chown(path string, owner int, group int) ! {
 }
 
 // open_append tries to open a file from a given path.
-// If successfull, it and returns a `File` for appending.
+// If successful, it and returns a `File` for appending.
 pub fn open_append(path string) !File {
 	mut file := File{}
 	$if windows {
@@ -1036,7 +1036,7 @@ pub fn open_append(path string) !File {
 // execvp - loads and executes a new child process, *in place* of the current process.
 // The child process executable is located in `cmdpath`.
 // The arguments, that will be passed to it are in `args`.
-// Note: this function will NOT return when successfull, since
+// Note: this function will NOT return when successful, since
 // the child process will take control over execution.
 pub fn execvp(cmdpath string, cmdargs []string) ! {
 	mut cargs := []&char{}
@@ -1063,7 +1063,7 @@ pub fn execvp(cmdpath string, cmdargs []string) ! {
 // The child process executable is located in `cmdpath`.
 // The arguments, that will be passed to it are in `args`.
 // You can pass environment variables to through `envs`.
-// Note: this function will NOT return when successfull, since
+// Note: this function will NOT return when successful, since
 // the child process will take control over execution.
 pub fn execve(cmdpath string, cmdargs []string, envs []string) ! {
 	mut cargv := []&char{}

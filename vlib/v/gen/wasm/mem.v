@@ -423,7 +423,7 @@ pub fn (mut g Gen) set_set(v Var) {
 // set pointers with value, get local, store value
 // set value, set local
 // -- set works with a single value present on the stack beforehand
-// -- not optimial for copying stack memory or shuffling structs
+// -- not optimal for copying stack memory or shuffling structs
 // -- use mov instead
 pub fn (mut g Gen) set(v Var) {
 	if !v.is_address {

@@ -3,7 +3,7 @@ struct MyHeapStruct {
 	name string
 }
 
-// make sure dereferencing of heap stucts works in selector expr (in tmpl),
+// make sure dereferencing of heap structs works in selector expr (in tmpl),
 fn test_heap_struct_dereferencing_in_selector_expr() {
 	a := MyHeapStruct{
 		name: 'my_heap_struct_a'

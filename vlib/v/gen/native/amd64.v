@@ -925,7 +925,7 @@ fn (mut c Amd64) mov_extend_reg(a Amd64Register, b Amd64Register, typ ast.Type) 
 fn (mut c Amd64) call_addr_at(addr i32, at i64) i64 {
 	// Need to calculate the difference between current position (position after the e8 call)
 	// and the function to call.f
-	// +5 is to get the posistion "e8 xx xx xx xx"
+	// +5 is to get the position "e8 xx xx xx xx"
 	// Not sure about the -1.
 	return 0xffffffff - (at + 5 - i64(addr) - 1)
 }
@@ -3466,7 +3466,7 @@ fn (mut c Amd64) convert_int_to_string(a Register, b Register) {
 	}
 	c.g.println('; jump to label ${skip_zero_label}')
 
-	// handle zeros seperately
+	// handle zeros separately
 	// c.mov_int_to_var(LocalVar{buffer, ast.u8_type_idx, ''}, '0'[0])
 
 	c.g.write8(0xc6)

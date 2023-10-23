@@ -35,7 +35,7 @@ fn (mut p Process) unix_spawn_process() int {
 		C.setpgid(0, 0)
 	}
 	if p.use_stdio_ctl {
-		// Redirect the child standart in/out/err to the pipes that
+		// Redirect the child standard in/out/err to the pipes that
 		// were created in the parent.
 		// Close the parent's pipe fds, the child do not need them:
 		fd_close(pipeset[1])

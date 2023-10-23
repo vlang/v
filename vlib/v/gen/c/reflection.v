@@ -202,7 +202,7 @@ fn (mut g Gen) gen_reflection_sym_info(tsym ast.TypeSymbol) string {
 	}
 }
 
-// gen_reflection_data generates code to initilized V reflection metadata
+// gen_reflection_data generates code to initialized V reflection metadata
 fn (mut g Gen) gen_reflection_data() {
 	// modules declaration
 	for mod_name in g.table.modules {
