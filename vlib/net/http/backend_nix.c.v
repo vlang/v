@@ -36,6 +36,9 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string)
 			eprintln(unsafe { tos(bp, len) })
 			eprintln('-'.repeat(20))
 		}
+		if len <= 0 {
+			break
+		}
 		unsafe { content.write_ptr(bp, len) }
 		if req.on_progress != unsafe { nil } {
 			req.on_progress(req, content[content.len - len..], u64(content.len))!
