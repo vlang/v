@@ -3,7 +3,7 @@ module builtin
 // vstrlen returns the V length of the C string `s` (0 terminator is not counted).
 // The C string is expected to be a &byte pointer.
 [inline; unsafe]
-pub fn vstrlen(s &byte) int {
+pub fn vstrlen(s &u8) int {
 	return unsafe { C.strlen(&char(s)) }
 }
 

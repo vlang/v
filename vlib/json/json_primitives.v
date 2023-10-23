@@ -194,8 +194,8 @@ fn encode_i64(val i64) &C.cJSON {
 
 // TODO: remove when `byte` is removed
 [markused]
-fn encode_byte(root byte) &C.cJSON {
-	return encode_u8(u8(root))
+fn encode_byte(root u8) &C.cJSON {
+	return encode_u8(root)
 }
 
 [markused]

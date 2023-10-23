@@ -188,7 +188,7 @@ pub fn (mut stmt Stmt) bind_bool(b &bool) {
 }
 
 // bind_byte binds a single byte value to the statement `stmt`
-pub fn (mut stmt Stmt) bind_byte(b &byte) {
+pub fn (mut stmt Stmt) bind_byte(b &u8) {
 	stmt.bind(mysql.mysql_type_tiny, b, 0)
 }
 
