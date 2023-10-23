@@ -366,7 +366,7 @@ fn (mut tf TTF_File) read_simple_glyph(mut in_glyph Glyph) {
 		in_glyph.contour_ends << tf.get_u16()
 	}
 
-	// skip over intructions
+	// skip over instructions
 	tf.pos = tf.get_u16() + tf.pos
 
 	mut num_points := 0
@@ -1106,7 +1106,7 @@ fn (mut tf TTF_File) read_panose_table() {
 	// dprintln('READING! PANOSE offset:${tf.tables['OS/2']}')
 	version := tf.get_u16()
 	dprintln('Panose version: ${version:04x}')
-	tf.pos += 2 * 14 // move to Panose class + 10 byte array	
+	tf.pos += 2 * 14 // move to Panose class + 10 byte array
 	mut count := 0
 
 	// get family

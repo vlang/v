@@ -3507,7 +3507,7 @@ fn (mut g JsGen) gen_typeof_expr(it ast.TypeOf) {
 }
 
 fn (mut g JsGen) gen_cast_tmp(tmp string, typ_ ast.Type) {
-	// Skip cast if type is the same as the parrent caster
+	// Skip cast if type is the same as the parent caster
 	tsym := g.table.final_sym(typ_)
 	if !g.pref.output_es5 && (tsym.kind == .i64 || tsym.kind == .u64) {
 		g.write('new ')
@@ -3586,7 +3586,7 @@ fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
 		return
 	}
 
-	// Skip cast if type is the same as the parrent caster
+	// Skip cast if type is the same as the parent caster
 	tsym := to_type_sym
 	if tsym.kind == .sum_type {
 		g.expr(it.expr)
@@ -3651,7 +3651,7 @@ fn (mut g JsGen) gen_integer_literal_expr(it ast.IntegerLiteral) {
 		}
 	}
 
-	// Skip cast if type is the same as the parrent caster
+	// Skip cast if type is the same as the parent caster
 	if g.cast_stack.len > 0 {
 		if g.cast_stack.last() in ast.integer_type_idxs {
 			g.write('new ')
@@ -3688,7 +3688,7 @@ fn (mut g JsGen) gen_float_literal_expr(it ast.FloatLiteral) {
 		}
 	}
 
-	// Skip cast if type is the same as the parrent caster
+	// Skip cast if type is the same as the parent caster
 	if g.cast_stack.len > 0 {
 		if g.cast_stack.last() in ast.float_type_idxs {
 			g.write('new f32(${it.val})')

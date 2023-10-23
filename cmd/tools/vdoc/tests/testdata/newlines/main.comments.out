@@ -15,7 +15,7 @@ fn funky()
     - bar
     # test
     ########### deep test
-    #a shouldnt have a newline test
+    #a shouldn't have a newline test
     
     | foo bar   |  yes   |
     |-----------|--------|

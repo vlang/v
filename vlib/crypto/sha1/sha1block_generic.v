@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 // This is the generic version with no architecture optimizations.
 // In its own file so that an architecture
-// optimized verision can be substituted
+// optimized version can be substituted
 module sha1
 
 import math.bits

@@ -893,7 +893,7 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 	if url_words.len == route_words.len {
 		for i in 0 .. url_words.len {
 			if route_words[i].starts_with(':') {
-				// We found a path paramater
+				// We found a path parameter
 				params << url_words[i]
 			} else if route_words[i] != url_words[i] {
 				// This url does not match the route
@@ -910,7 +910,7 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 
 	for i in 0 .. route_words.len - 1 {
 		if route_words[i].starts_with(':') {
-			// We found a path paramater
+			// We found a path parameter
 			params << url_words[i]
 		} else if route_words[i] != url_words[i] {
 			// This url does not match the route
@@ -992,7 +992,7 @@ pub fn (mut ctx Context) host_handle_static(host string, directory_path string, 
 	dir_path := directory_path.trim_space().trim_right('/')
 	mut mount_path := ''
 	if dir_path != '.' && os.is_dir(dir_path) && !root {
-		// Mount point hygene, "./assets" => "/assets".
+		// Mount point hygiene, "./assets" => "/assets".
 		mount_path = '/' + dir_path.trim_left('.').trim('/')
 	}
 	ctx.scan_static_directory(dir_path, mount_path, host)

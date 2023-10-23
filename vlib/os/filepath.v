@@ -203,7 +203,7 @@ fn clean_path(path string) string {
 			}
 			continue
 		}
-		// turn foward slash into a back slash on a Windows system
+		// turn forward slash into a back slash on a Windows system
 		$if windows {
 			if curr == os.fslash {
 				sb.write_u8(os.bslash)

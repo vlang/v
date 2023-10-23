@@ -603,7 +603,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 }
 
 // infix_expr_in_optimization optimizes `<var> in <array>` expressions,
-// and transform them in a serie of equality comparison
+// and transform them in a series of equality comparison
 // i.e. `a in [1,2,3]` => `a == 1 || a == 2 || a == 3`
 fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, right ast.ArrayInit) {
 	mut elem_sym := g.table.sym(right.elem_type)

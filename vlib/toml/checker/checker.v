@@ -559,11 +559,11 @@ pub fn (c Checker) check_comment(comment ast.Comment) ! {
 			break
 		}
 		ch_byte := u8(ch)
-		// Check for carrige return
+		// Check for carriage return
 		if ch_byte == 0x0D {
 			st := s.state()
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
-				' carrige return character `${ch_byte.hex()}` is not allowed in comments (${st.line_nr},${st.col}).')
+				' carriage return character `${ch_byte.hex()}` is not allowed in comments (${st.line_nr},${st.col}).')
 		}
 		// Check for control characters (allow TAB)
 		if util.is_illegal_ascii_control_character(ch_byte) {

@@ -7,7 +7,7 @@ import os
 // The comment above, should make it try re-running the same test,
 // a maximum of 2 times. It will fail for all, but the last retry.
 // This is useful for reducing false positives on the CI, due to
-// flakyness of specific tests like `vlib/v/live/live_test.v` for example.
+// flakiness of specific tests like `vlib/v/live/live_test.v` for example.
 
 // Note: this test is supposed to be run with `v test retry_test.v`.
 // Running just `v retry_test.v` WILL fail.

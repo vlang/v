@@ -154,7 +154,7 @@ endif
 fresh_tcc:
 	rm -rf $(TMPTCC)
 ifndef local
-# Check wether a TCC branch exists for the user's system configuration.
+# Check whether a TCC branch exists for the user's system configuration.
 ifneq (,$(findstring thirdparty-$(TCCOS)-$(TCCARCH), $(shell git ls-remote --heads $(TCCREPO) | sed 's/^[a-z0-9]*\trefs.heads.//')))
 	$(GITFASTCLONE) --branch thirdparty-$(TCCOS)-$(TCCARCH) $(TCCREPO) $(TMPTCC)
 	@$(MAKE) --quiet check_for_working_tcc 2> /dev/null

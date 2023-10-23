@@ -1216,7 +1216,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		// ... but 2. disallow passing non-pointers - that is very rarely what the user wanted,
 		// it can lead to codegen errors (except for 'magic' functions like `json.encode` that,
 		// the compiler has special codegen support for), so it should be opt in, that is it
-		// shoould require an explicit voidptr(x) cast (and probably unsafe{} ?) .
+		// should require an explicit voidptr(x) cast (and probably unsafe{} ?) .
 		if call_arg.typ != param.typ && (param.typ == ast.voidptr_type
 			|| final_param_sym.idx == ast.voidptr_type_idx
 			|| param.typ == ast.nil_type || final_param_sym.idx == ast.nil_type_idx)

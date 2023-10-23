@@ -39,7 +39,7 @@ fn test_str_methods() {
 	assert charptr(1).str() == '0x1'
 }
 
-fn test_and_precendence() {
+fn test_and_precedence() {
 	assert (2 & 0 == 0) == ((2 & 0) == 0)
 	assert (2 & 0 != 0) == ((2 & 0) != 0)
 	assert (0 & 0 >= 0) == ((0 & 0) >= 0)
@@ -48,7 +48,7 @@ fn test_and_precendence() {
 	assert (1 & 2 > 0) == ((1 & 2) > 0)
 }
 
-fn test_or_precendence() {
+fn test_or_precedence() {
 	assert (1 | 0 == 0) == ((1 | 0) == 0)
 	assert (1 | 0 != 1) == ((1 | 0) != 1)
 	assert (1 | 0 >= 2) == ((1 | 0) >= 2)
@@ -57,7 +57,7 @@ fn test_or_precendence() {
 	assert (1 | 0 > 1) == ((1 | 0) > 1)
 }
 
-fn test_xor_precendence() {
+fn test_xor_precedence() {
 	assert (1 ^ 0 == 2) == ((1 ^ 0) == 2)
 	assert (1 ^ 0 != 2) == ((1 ^ 0) != 2)
 	assert (1 ^ 0 >= 0) == ((1 ^ 0) >= 0)
@@ -66,12 +66,12 @@ fn test_xor_precendence() {
 	assert (1 ^ 0 > 1) == ((1 ^ 0) > 1)
 }
 
-fn test_left_shift_precendence() {
+fn test_left_shift_precedence() {
 	assert (2 << 4 | 3) == ((2 << 4) | 3)
 	assert (2 << 4 | 3) != (2 << (4 | 3))
 }
 
-fn test_right_shift_precendence() {
+fn test_right_shift_precedence() {
 	assert (256 >> 4 | 3) == ((256 >> 4) | 3)
 	assert (256 >> 4 | 3) != (256 >> (4 | 3))
 }

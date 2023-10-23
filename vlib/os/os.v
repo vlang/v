@@ -55,8 +55,8 @@ fn executable_fallback() string {
 		}
 	}
 	if !is_abs_path(exepath) {
-		other_seperator := if path_separator == '/' { '\\' } else { '/' }
-		rexepath := exepath.replace(other_seperator, path_separator)
+		other_separator := if path_separator == '/' { '\\' } else { '/' }
+		rexepath := exepath.replace(other_separator, path_separator)
 		if rexepath.contains(path_separator) {
 			exepath = join_path_single(os.wd_at_startup, exepath)
 		} else {
@@ -227,7 +227,7 @@ pub fn is_dir_empty(path string) bool {
 	return res
 }
 
-// file_ext will return the part after the last occurence of `.` in `path`.
+// file_ext will return the part after the last occurrence of `.` in `path`.
 // The `.` is included.
 // Examples:
 // ```v
@@ -256,8 +256,8 @@ pub fn dir(opath string) string {
 	if opath == '' {
 		return '.'
 	}
-	other_seperator := if path_separator == '/' { '\\' } else { '/' }
-	path := opath.replace(other_seperator, path_separator)
+	other_separator := if path_separator == '/' { '\\' } else { '/' }
+	path := opath.replace(other_separator, path_separator)
 	pos := path.last_index(path_separator) or { return '.' }
 	if pos == 0 && path_separator == '/' {
 		return '/'
@@ -273,8 +273,8 @@ pub fn base(opath string) string {
 	if opath == '' {
 		return '.'
 	}
-	other_seperator := if path_separator == '/' { '\\' } else { '/' }
-	path := opath.replace(other_seperator, path_separator)
+	other_separator := if path_separator == '/' { '\\' } else { '/' }
+	path := opath.replace(other_separator, path_separator)
 	if path == path_separator {
 		return path_separator
 	}
@@ -287,11 +287,11 @@ pub fn base(opath string) string {
 	return path[pos + 1..]
 }
 
-// file_name will return all characters found after the last occurence of `path_separator`.
+// file_name will return all characters found after the last occurrence of `path_separator`.
 // file extension is included.
 pub fn file_name(opath string) string {
-	other_seperator := if path_separator == '/' { '\\' } else { '/' }
-	path := opath.replace(other_seperator, path_separator)
+	other_separator := if path_separator == '/' { '\\' } else { '/' }
+	path := opath.replace(other_separator, path_separator)
 	return path.all_after_last(path_separator)
 }
 
@@ -610,7 +610,7 @@ fn impl_walk_ext(path string, ext string, mut out []string) {
 }
 
 // walk traverses the given directory `path`.
-// When a file is encountred, it will call the callback `f` with current file as argument.
+// When a file is encountered, it will call the callback `f` with current file as argument.
 // Note: walk can be called even for deeply nested folders,
 // since it does not recurse, but processes them iteratively.
 pub fn walk(path string, f fn (string)) {
@@ -645,7 +645,7 @@ pub fn walk(path string, f fn (string)) {
 pub type FnWalkContextCB = fn (voidptr, string)
 
 // walk_with_context traverses the given directory `path`.
-// For each encountred file *and* directory, it will call your `fcb` callback,
+// For each encountered file *and* directory, it will call your `fcb` callback,
 // passing it the arbitrary `context` in its first parameter,
 // and the path to the file in its second parameter.
 // Note: walk_with_context can be called even for deeply nested folders,
@@ -695,8 +695,8 @@ pub struct MkdirParams {
 
 // mkdir_all will create a valid full path of all directories given in `path`.
 pub fn mkdir_all(opath string, params MkdirParams) ! {
-	other_seperator := if path_separator == '/' { '\\' } else { '/' }
-	path := opath.replace(other_seperator, path_separator)
+	other_separator := if path_separator == '/' { '\\' } else { '/' }
+	path := opath.replace(other_separator, path_separator)
 	mut p := if path.starts_with(path_separator) { path_separator } else { '' }
 	path_parts := path.trim_left(path_separator).split(path_separator)
 	for subdir in path_parts {

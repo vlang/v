@@ -348,7 +348,7 @@ fn (mut g Gen) gen_print_from_expr(expr ast.Expr, typ ast.Type, name string) {
 		}
 		ast.BoolLiteral {
 			// register 'true' and 'false' strings // g.expr(expr)
-			// XXX mov64 shuoldnt be used for addressing
+			// XXX mov64 shouldn't be used for addressing
 			nl := if newline { '\n' } else { '' }
 
 			if expr.val {

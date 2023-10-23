@@ -147,7 +147,7 @@ pub fn get_str_intp_u32_format(fmt_type StrIntpType, in_width int, in_precision 
 	return res
 }
 
-// convert from struct to formated string
+// convert from struct to formatted string
 [manualfree]
 fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 	x := data.fmt

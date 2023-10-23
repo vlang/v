@@ -38,7 +38,7 @@ fn (mut v ProjLookupTable) from_p3(q Point) {
 	for i := 0; i < 7; i++ {
 		// Compute (i+1)*Q as Q + i*Q and convert to a ProjCached
 		// This is needlessly complicated because the API has explicit
-		// recievers instead of creating stack objects and relying on RVO
+		// receivers instead of creating stack objects and relying on RVO
 		v.points[i + 1].from_p3(tmp_p3.from_p1(tmp_p1.add(q, v.points[i])))
 	}
 }

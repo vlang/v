@@ -70,7 +70,7 @@ fn (mut i IndexState) safe_access(key string, new int) bool {
 	return true
 }
 
-// safe_offset returns for a previvous array what was the highest
+// safe_offset returns for a previous array what was the highest
 // offset we ever accessed for that identifier
 fn (mut i IndexState) safe_offset(key string) int {
 	$if no_bounds_checking {

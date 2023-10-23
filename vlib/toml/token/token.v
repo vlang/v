@@ -8,8 +8,8 @@ pub struct Token {
 pub:
 	kind    Kind   // the token number/enum; for quick comparisons
 	lit     string // literal representation of the token
-	col     int    // the column in the source where the token occured
-	line_nr int    // the line number in the source where the token occured
+	col     int    // the column in the source where the token occurred
+	line_nr int    // the line number in the source where the token occurred
 	pos     int    // the position of the token in scanner text
 	len     int    // length of the literal
 }
@@ -34,7 +34,7 @@ pub enum Kind {
 	lsbr // [
 	rsbr // ]
 	nl // \n linefeed / newline character
-	cr // \r carrige return
+	cr // \r carriage return
 	tab // \t character
 	whitespace // ` `
 	period // .

@@ -375,7 +375,7 @@ mut:
 	typ    i32 // Type of the node
 
 	name []u8 // Name string of the note.
-	desc []u8 // Descripition string of the node, must be aligned by 4 bytes
+	desc []u8 // Description string of the node, must be aligned by 4 bytes
 }
 
 fn (mut g Gen) create_note_section(typ i32, name string, desc string) NoteSection {

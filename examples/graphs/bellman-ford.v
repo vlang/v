@@ -11,7 +11,7 @@ http://rascunhointeligente.blogspot.com/2010/10/o-algoritmo-de-bellman-ford-um.h
 code by CCS
 */
 
-const large = 999999 // almost inifinity
+const large = 999999 // almost infinity
 
 // a structure to represent a weighted edge in graph
 struct EDGE {
