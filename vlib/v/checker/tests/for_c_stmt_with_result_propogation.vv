@@ -1,0 +1,11 @@
+fn foo() !int {
+	return 5
+}
+
+fn main() {
+	mut pos := 0
+
+	for ; pos > 10; pos = foo()! {
+		println(pos)
+	}
+}

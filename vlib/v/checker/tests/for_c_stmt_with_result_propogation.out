@@ -1,0 +1,7 @@
+vlib/v/checker/tests/for_c_stmt_with_result_propogation.vv:8:24: error: propogating errors in `for statement increment` is not allowed (yet)
+    6 |     mut pos := 0
+    7 |
+    8 |     for ; pos > 10; pos = foo()! {
+      |                           ~~~~~
+    9 |         println(pos)
+   10 |     }
