@@ -873,7 +873,7 @@ fn (mut p Parser) other_stmts(cur_stmt ast.Stmt) ast.Stmt {
 			scope: p.scope
 			label_names: p.label_names
 		}
-	} else if p.pref.is_fmt {
+	} else if p.pref.is_fmt || p.pref.is_vet {
 		return p.stmt(false)
 	} else {
 		return p.error('bad top level statement ' + p.tok.str())
