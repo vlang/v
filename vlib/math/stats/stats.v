@@ -470,7 +470,7 @@ pub fn skew_mean_stddev[T](data []T, mean T, sd T) T {
 }
 
 // quantile calculates quantile points
-// for more reference 
+// for more reference
 // https://en.wikipedia.org/wiki/Quantile
 pub fn quantile[T](sorted_data []T, f T) T {
 	if sorted_data.len == 0 {
