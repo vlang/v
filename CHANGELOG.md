@@ -6,7 +6,7 @@
 - Support `-os plan9`, `$if plan9 {`, and `_plan9.c.v` (stage 1 for plan9) (#19389)
 - fmt: simplify the processing logic for removing inline comments (#19297)
 - Align the custom values of the enum fields (#19331)
-- Do not warn/error for `import flag as _`
+- Do not warn/ throw error for `import flag as _`
 - Keep anon struct decl fields in interfaces (#19461)
 - Support -N, turning all notices into errors, to ease the process of finding places that may need attention/correction
 
@@ -20,7 +20,7 @@
 - Require `else` branch in `[flag]` enum match (#19375)
 - Disallow assigning pointer values to option struct fields (#19380)
 - Fix generic comparison for conditional assignment (#19401)
-- Allow using ! and ~ on aliased bool and integral types (#19403)
+- Allow usage of ! and ~ on aliased bool and integral types (#19403)
 - Warn -> error for uninitialized ref fields
 - Parser, checker: allow lambdas anywhere anonymous functions are expected (#19436)
 - Allow for `each(a, |x| println(x))`, i.e. using lambda expressions, when expecting `fn (x int)`
