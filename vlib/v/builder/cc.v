@@ -19,6 +19,8 @@ const (
 
 const c_verror_message_marker = 'VERROR_MESSAGE '
 
+const current_os = os.user_os()
+
 fn (mut v Builder) show_c_compiler_output(res os.Result) {
 	println('======== C Compiler output ========')
 	println(res.output)
@@ -298,7 +300,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		ccoptions.args << '-Wl,--export-all'
 		ccoptions.args << '-Wl,--no-entry'
 	}
-	if ccoptions.debug_mode && os.user_os() != 'windows' && v.pref.build_mode != .build_module {
+	if ccoptions.debug_mode && builder.current_os != 'windows' && v.pref.build_mode != .build_module {
 		ccoptions.linker_flags << '-rdynamic' // needed for nicer symbolic backtraces
 	}
 	if v.pref.os == .freebsd {
@@ -320,10 +322,10 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		ccoptions.wargs << '-Wno-write-strings'
 	}
 	if v.pref.is_liveshared || v.pref.is_livemain {
-		if (v.pref.os == .linux || os.user_os() == 'linux') && v.pref.build_mode != .build_module {
+		if v.pref.os == .linux && v.pref.build_mode != .build_module {
 			ccoptions.linker_flags << '-rdynamic'
 		}
-		if v.pref.os == .macos || os.user_os() == 'macos' {
+		if v.pref.os == .macos {
 			ccoptions.args << '-flat_namespace'
 		}
 	}
@@ -349,14 +351,18 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	}
 	// Min macos version is mandatory I think?
 	if v.pref.os == .macos {
-		ccoptions.post_args << '-mmacosx-version-min=10.7'
-	} else if v.pref.os == .ios {
+		if v.pref.macosx_version_min != '0' {
+			ccoptions.post_args << '-mmacosx-version-min=${v.pref.macosx_version_min}'
+		}
+	}
+	if v.pref.os == .ios {
 		if v.pref.is_ios_simulator {
 			ccoptions.post_args << '-miphonesimulator-version-min=10.0'
 		} else {
 			ccoptions.post_args << '-miphoneos-version-min=10.0'
 		}
-	} else if v.pref.os == .windows {
+	}
+	if v.pref.os == .windows {
 		ccoptions.post_args << '-municode'
 	}
 	cflags := v.get_os_cflags()
@@ -382,7 +388,6 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		ccoptions.post_args << '-bt25'
 	}
 	// Without these libs compilation will fail on Linux
-	// || os.user_os() == 'linux'
 	if !v.pref.is_bare && v.pref.build_mode != .build_module
 		&& v.pref.os in [.linux, .freebsd, .openbsd, .netbsd, .dragonfly, .solaris, .haiku] {
 		if v.pref.os in [.freebsd, .netbsd] {
@@ -472,7 +477,7 @@ fn (v &Builder) thirdparty_object_args(ccoptions CcompilerOptions, middle []stri
 }
 
 fn (mut v Builder) setup_output_name() {
-	if !v.pref.is_shared && v.pref.build_mode != .build_module && os.user_os() == 'windows'
+	if !v.pref.is_shared && v.pref.build_mode != .build_module && v.pref.os == .windows
 		&& !v.pref.out_name.ends_with('.exe') {
 		v.pref.out_name += '.exe'
 	}
@@ -860,8 +865,8 @@ fn (mut c Builder) cc_windows_cross() {
 	} else {
 		args << cflags.c_options_after_target()
 	}
-	if os.user_os() !in ['macos', 'linux', 'termux'] {
-		println(os.user_os())
+	if builder.current_os !in ['macos', 'linux', 'termux'] {
+		println(builder.current_os)
 		panic('your platform is not supported yet')
 	}
 	//

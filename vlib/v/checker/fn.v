@@ -272,24 +272,24 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				c.error('duplicate of an import symbol `${param.name}`', param.pos)
 			}
 		}
-		// Check if function name is already registered as imported module symbol
-		if !node.is_method && c.check_import_sym_conflict(node.short_name) {
-			c.error('duplicate of an import symbol `${node.short_name}`', node.pos)
+		if !node.is_method {
+			// Check if function name is already registered as imported module symbol
+			if c.check_import_sym_conflict(node.short_name) {
+				c.error('duplicate of an import symbol `${node.short_name}`', node.pos)
+			}
+			if node.params.len == 0 && node.name.after_char(`.`) == 'init' {
+				if node.is_pub {
+					c.error('fn `init` must not be public', node.pos)
+				}
+				if node.return_type != ast.void_type {
+					c.error('fn `init` cannot have a return type', node.pos)
+				}
+			}
+			if !c.is_builtin_mod && node.mod == 'main'
+				&& node.name.after_char(`.`) in reserved_type_names {
+				c.error('top level declaration cannot shadow builtin type', node.pos)
+			}
 		}
-	}
-	if node.language == .v && node.name.after_char(`.`) == 'init' && !node.is_method
-		&& node.params.len == 0 {
-		if node.is_pub {
-			c.error('fn `init` must not be public', node.pos)
-		}
-		if node.return_type != ast.void_type {
-			c.error('fn `init` cannot have a return type', node.pos)
-		}
-	}
-
-	if node.language == .v && node.mod == 'main' && node.name.after_char(`.`) in reserved_type_names
-		&& !node.is_method && !c.is_builtin_mod {
-		c.error('top level declaration cannot shadow builtin type', node.pos)
 	}
 	if node.return_type != ast.Type(0) {
 		if !c.ensure_type_exists(node.return_type, node.return_type_pos) {
