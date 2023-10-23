@@ -197,9 +197,11 @@ fn (req &Request) read_all_from_client_connection(r &net.TcpConn) ![]u8 {
 	mut read := i64(0)
 	mut b := []u8{len: 32768}
 	for {
-		r.wait_for_read()!
 		old_read := read
 		new_read := r.read(mut b[read..]) or { break }
+		if new_read <= 0 {
+			break
+		}
 		read += new_read
 		if req.on_progress != unsafe { nil } {
 			req.on_progress(req, b[old_read..read], u64(read))!

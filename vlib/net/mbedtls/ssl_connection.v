@@ -420,6 +420,9 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 			}
 		}
 	}
+
+	deadline := time.now().add(s.duration)
+	// s.wait_for_read(deadline - time.now())!
 	for {
 		res = C.mbedtls_ssl_read(&s.ssl, buf_ptr, len)
 		if res > 0 {
@@ -432,25 +435,26 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 		} else {
 			match res {
 				C.MBEDTLS_ERR_SSL_WANT_READ {
-					ready := @select(s.handle, .read, s.duration)!
-					if !ready {
+					s.wait_for_read(deadline - time.now()) or {
 						$if trace_ssl ? {
-							eprintln('${@METHOD} ---> res: net.err_timed_out, C.MBEDTLS_ERR_SSL_WANT_READ')
+							eprintln('${@METHOD} ---> res: ${err}, C.MBEDTLS_ERR_SSL_WANT_READ')
 						}
-						return net.err_timed_out
+						return err
 					}
 				}
 				C.MBEDTLS_ERR_SSL_WANT_WRITE {
-					ready := @select(s.handle, .write, s.duration)!
-					if !ready {
+					s.wait_for_write(deadline - time.now()) or {
 						$if trace_ssl ? {
-							eprintln('${@METHOD} ---> res: net.err_timed_out, C.MBEDTLS_ERR_SSL_WANT_WRITE')
+							eprintln('${@METHOD} ---> res: ${err}, C.MBEDTLS_ERR_SSL_WANT_WRITE')
 						}
-						return net.err_timed_out
+						return err
 					}
 				}
 				C.MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY {
-					break
+					$if trace_ssl ? {
+						eprintln('${@METHOD} ---> res: 0 C.MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY')
+					}
+					return 0
 				}
 				else {
 					$if trace_ssl ? {
@@ -461,7 +465,9 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 			}
 		}
 	}
-	return res
+
+	// Dead code, for the compiler to pass
+	return error('Unknown error')
 }
 
 // read reads data from the ssl connection into `buffer`
@@ -480,6 +486,8 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 			eprintln('${@METHOD} total_sent: ${total_sent}, bytes: ${voidptr(bytes):x}, len: ${len}, hex: ${unsafe { bytes.vbytes(len).hex() }}, data:-=-=-=-\n${unsafe { bytes.vstring_with_len(len) }}\n-=-=-=-')
 		}
 	}
+
+	deadline := time.now().add(s.duration)
 	unsafe {
 		mut ptr_base := bytes
 		for total_sent < len {
@@ -489,21 +497,11 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 			if sent <= 0 {
 				match sent {
 					C.MBEDTLS_ERR_SSL_WANT_READ {
-						for {
-							ready := @select(s.handle, .read, s.duration)!
-							if ready {
-								break
-							}
-						}
+						s.wait_for_read(deadline - time.now())!
 						continue
 					}
 					C.MBEDTLS_ERR_SSL_WANT_WRITE {
-						for {
-							ready := @select(s.handle, .write, s.duration)!
-							if ready {
-								break
-							}
-						}
+						s.wait_for_write(deadline - time.now())!
 						continue
 					}
 					else {
@@ -532,12 +530,6 @@ pub fn (mut s SSLConn) write_string(str string) !int {
 	}
 	return s.write_ptr(str.str, str.len)
 }
-
-/*
-This is basically a copy of Emily socket implementation of select.
-	This have to be consolidated into common net lib features
-	when merging this to V
-*/
 
 // Select waits for an io operation (specified by parameter `test`) to be available
 fn @select(handle int, test Select, timeout time.Duration) !bool {
@@ -595,4 +587,24 @@ fn @select(handle int, test Select, timeout time.Duration) !bool {
 	}
 
 	return net.err_timed_out
+}
+
+// wait_for wraps the common wait code
+fn wait_for(handle int, what Select, timeout time.Duration) ! {
+	ready := @select(handle, what, timeout)!
+	if ready {
+		return
+	}
+
+	return net.err_timed_out
+}
+
+// wait_for_write waits for a write io operation to be available
+fn (mut s SSLConn) wait_for_write(timeout time.Duration) ! {
+	return wait_for(s.handle, .write, timeout)
+}
+
+// wait_for_read waits for a read io operation to be available
+fn (mut s SSLConn) wait_for_read(timeout time.Duration) ! {
+	return wait_for(s.handle, .read, timeout)
 }
