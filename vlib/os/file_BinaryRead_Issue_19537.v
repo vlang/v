@@ -7,9 +7,15 @@ import sync
 import os
 
 pub struct ByteOrder {
-    pub fn uint16(b []byte) u16
-    pub fn uint32(b []byte) u32
-    pub fn uint64(b []byte) u64
+    pub fn uint16(b []byte) u16 {
+        return 0
+    }
+    pub fn uint32(b []byte) u32 {
+        return 0
+    }
+    pub fn uint64(b []byte) u64 {
+        return 0
+    }
 }
 
 struct littleEndian {
