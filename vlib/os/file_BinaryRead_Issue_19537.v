@@ -1,12 +1,10 @@
 // This is the code that is converted from the source code provided in the issue which is converted from Golang to Vlang
-import(
-    'errors'
-    'io'
-    'math'
-    'reflect'
-    'sync'
-    'os'
-)
+import errors
+import io
+import math
+import reflect
+import sync
+import os
 
 pub struct ByteOrder {
     pub fn uint16(b []byte) u16
@@ -146,7 +144,7 @@ fn read(r io.Reader, order ByteOrder, data interface{}) ?error {
         }
     }
     if size < 0 {
-        return errors.new('Read: invalid type ' + reflect.type_of(data).string())
+        return errors.new("Read: invalid type " + reflect.type_of(data).string())
     }
     mut d := &decoder{order: order, buf: []byte{0} * size}
     if _, err := io.read_full(r, d.buf)?; err != null {
