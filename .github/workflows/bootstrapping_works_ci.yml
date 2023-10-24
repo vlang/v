@@ -32,6 +32,15 @@ jobs:
           ./v_from_vc_produced_native_v run examples/hello_world.v
           make local=1
           ls -la v vc/v.c v_from_vc v_from_vc_produced_native_v
+          ./v_from_vc_produced_native_v -os cross -o vc/v.c cmd/v
+          clang $B_CFLAGS -o v_from_vc2 vc/v.c $B_LFLAGS
+          ls -lart v_from_vc2
+          ./v_from_vc2 version
+          ./v_from_vc2 run examples/hello_world.v
+          ./v_from_vc2 -o v_from_vc_produced_native_v2 cmd/v
+          ./v_from_vc_produced_native_v2 run examples/hello_world.v
+          make local=1
+          ls -la v vc/v.c v_from_vc v_from_vc_produced_native_v v_from_vc2 v_from_vc_produced_native_v2
 
       - name: Ensure v up works
         run: |
@@ -73,3 +82,12 @@ jobs:
           ### using this commit
           make local=1
           ls -la v vc/v.c v_from_vc v_from_vc_produced_native_v
+          ./v_from_vc_produced_native_v -os cross -o vc/v.c cmd/v
+          cc $B_CFLAGS -o v_from_vc2 vc/v.c $B_LFLAGS
+          ls -lart v_from_vc2
+          ./v_from_vc2 version
+          ./v_from_vc2 run examples/hello_world.v
+          ./v_from_vc2 -o v_from_vc_produced_native_v2 cmd/v
+          ./v_from_vc_produced_native_v2 run examples/hello_world.v
+          make local=1
+          ls -la v vc/v.c v_from_vc v_from_vc_produced_native_v v_from_vc2 v_from_vc_produced_native_v2
