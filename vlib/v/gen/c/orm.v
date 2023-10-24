@@ -699,10 +699,10 @@ fn (mut g Gen) write_orm_where_expr(expr ast.Expr, mut fields []string, mut pare
 					'orm__OperationKind__orm_like'
 				}
 				.key_is {
-					'orm__OperationKind__is'
+					'orm__OperationKind__is_null'
 				}
 				.not_is {
-					'orm__OperationKind__is_not'
+					'orm__OperationKind__is_not_null'
 				}
 				else {
 					''
@@ -720,9 +720,11 @@ fn (mut g Gen) write_orm_where_expr(expr ast.Expr, mut fields []string, mut pare
 			if expr.left !is ast.InfixExpr && expr.right !is ast.InfixExpr && kind != '' {
 				kinds << kind
 			}
-			g.sql_side = .right
-			g.write_orm_where_expr(expr.right, mut fields, mut parentheses, mut kinds, mut
-				data, mut is_and)
+			if expr.op !in [.key_is, .not_is] { // ignore rhs for unary ops
+				g.sql_side = .right
+				g.write_orm_where_expr(expr.right, mut fields, mut parentheses, mut kinds, mut
+					data, mut is_and)
+			}
 		}
 		ast.ParExpr {
 			mut par := [fields.len]
