@@ -836,7 +836,7 @@ pub fn (s string) split_once(delim string) ?(string, string) {
 // assert path == 'file.ts'
 // assert ext == 'dts'
 // ```
-// Note that rsplit_once returns remaining string as first part of pair.
+// NOTE: rsplit_once returns the string at the left side of the delimiter as first part of the pair.
 pub fn (s string) rsplit_once(delim string) ?(string, string) {
 	result := s.rsplit_nth(delim, 2)
 
