@@ -33,15 +33,3 @@ fn test_signal_opt_return_former_handler() {
 	// this should work, but makes the CI fail because of a bug in clang -fsanitize=memory
 	// assert func2 == former_handler
 }
-
-fn signal_ignore_in_background_thread() {
-	os.signal_ignore(.pipe, .urg)
-	assert true
-}
-
-fn test_signal_ignore() {
-	os.signal_ignore(.pipe, .urg)
-	assert true
-	t := spawn signal_ignore_in_background_thread()
-	t.wait()
-}

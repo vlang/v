@@ -41,7 +41,3 @@ pub enum Signal {
 }
 
 pub type SignalHandler = fn (Signal)
-
-// An empty system signal handler (callback function) used to mask the specified system signal.
-fn ignore_signal_handler(signal Signal) {
-}
