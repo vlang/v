@@ -19,15 +19,6 @@ fn (mut c Checker) for_c_stmt(mut node ast.ForCStmt) {
 			if assign.op == .decl_assign {
 				c.error('for loop post statement cannot be a variable declaration', assign.pos)
 			}
-
-			for right in assign.right {
-				if right is ast.CallExpr {
-					if right.or_block.stmts.len > 0 {
-						c.error('options are not allowed in `for statement increment` (yet)',
-							right.pos)
-					}
-				}
-			}
 		}
 		c.stmt(mut node.inc)
 	}
