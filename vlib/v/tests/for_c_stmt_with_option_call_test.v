@@ -20,7 +20,7 @@ fn avg(n int) f64 {
 	return f64(sum) / tests
 }
 
-fn main() {
+fn test_for_c_stmt_with_option_call() {
 	println(' N   average   analytical   (error)')
 	println('=== ========= ============ =========')
 	for n in 1 .. nmax + 1 {
@@ -28,4 +28,5 @@ fn main() {
 		b := ana(n)
 		println('${n:3} ${a:9.4f} ${b:12.4f} (${(abs(a - b) / b * 100):6.2f}%)')
 	}
+	assert true
 }
