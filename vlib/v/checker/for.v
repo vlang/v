@@ -30,11 +30,11 @@ fn (mut c Checker) for_c_stmt(mut node ast.ForCStmt) {
 							}
 						}
 						.propagate_result {
-							c.error('propogating errors in `for statement increment` is not allowed (yet)',
+							c.error('propagating errors in `for statement increment` is not allowed (yet)',
 								right.pos)
 						}
 						.propagate_option {
-							c.error('propogating options in `for statement increment` is not allowed (yet)',
+							c.error('propagating options in `for statement increment` is not allowed (yet)',
 								right.pos)
 						}
 						.absent {}
