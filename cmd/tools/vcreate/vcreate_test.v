@@ -1,4 +1,5 @@
 import os
+import v.vmod
 
 // Note: the following uses `test_vcreate` and NOT `vcreate_test` deliberately,
 // to both avoid confusions with the name of the current test itself, and to
@@ -137,6 +138,22 @@ indent_style = tab
 
 	assert os.read_file('.gitattributes')! == git_attributes_content
 	assert os.read_file('.editorconfig')! == editor_config_content
+}
+
+fn test_v_init_in_dir_with_invalid_name() {
+	// A project with a directory name with hyphens, which is invalid for a module name.
+	proj_path := os.join_path(os.vtmp_dir(), 'v', 'test-vcreate')
+	os.mkdir_all(proj_path) or {}
+	os.chdir(proj_path)!
+	os.execute_or_exit(os.quoted_path(@VEXE) + ' init')
+	mod := vmod.decode(os.read_file(os.join_path(proj_path, 'v.mod')) or {
+		assert false, 'Failed reading v.mod of ${proj_path}'
+		return
+	}) or {
+		assert false, err.str()
+		return
+	}
+	assert mod.name == 'test_vcreate'
 }
 
 fn testsuite_end() {
