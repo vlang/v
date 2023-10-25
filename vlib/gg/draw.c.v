@@ -923,7 +923,7 @@ pub fn (ctx &Context) draw_ellipse_empty(x f32, y f32, rw f32, rh f32, c gx.Colo
 	sgl.end()
 }
 
-// draw_ellipse_filled draws an opaque elipse.
+// draw_ellipse_filled draws an opaque ellipse.
 // `x`,`y` defines the center of the ellipse.
 // `rw` defines the *width* radius of the ellipse.
 // `rh` defines the *height* radius of the ellipse.

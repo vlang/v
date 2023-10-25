@@ -7,7 +7,7 @@ import stbi
 import sokol.gfx
 import sokol.sgl
 
-// Image holds the fileds and data needed to
+// Image holds the fields and data needed to
 // represent a bitmap/pixel based image in memory.
 [heap]
 pub struct Image {
