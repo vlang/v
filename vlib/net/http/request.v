@@ -30,6 +30,7 @@ pub mut:
 	user_agent string = 'v.http'
 	verbose    bool
 	user_ptr   voidptr
+	proxy      &HttpProxy = unsafe { nil }
 	// NOT implemented for ssl connections
 	// time = -1 for no timeout
 	read_timeout  i64 = 30 * time.second
@@ -117,13 +118,16 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Res
 		}
 	}
 	// println('fetch $method, $scheme, $host_name, $nport, $path ')
-	if scheme == 'https' {
+	if scheme == 'https' && req.proxy == unsafe { nil } {
 		// println('ssl_do( $nport, $method, $host_name, $path )')
 		res := req.ssl_do(nport, method, host_name, path)!
 		return res
-	} else if scheme == 'http' {
+	} else if scheme == 'http' && req.proxy == unsafe { nil } {
 		// println('http_do( $nport, $method, $host_name, $path )')
 		res := req.http_do('${host_name}:${nport}', method, path)!
+		return res
+	} else if req.proxy != unsafe { nil } {
+		res := req.proxy.http_do(host_name, method, path, req)!
 		return res
 	}
 	return error('http.request.method_and_url_to_response: unsupported scheme: "${scheme}"')
