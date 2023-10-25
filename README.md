@@ -43,7 +43,7 @@
 
 ## Stability, future changes, post 1.0 freeze
 
-Despite being at an early development stage, the V language is relatively stable, and doesn't
+Despite being at an early development stage, the V language is relatively stable and doesn't
 change often. But there will be changes before 1.0.
 Most changes in the syntax are handled via vfmt automatically.
 
@@ -107,9 +107,9 @@ v up
 ### C compiler
 
 The [Tiny C Compiler (tcc)](https://repo.or.cz/w/tinycc.git) is downloaded for you by `make` if
-there is a compatible version for your system, and installed under the V `thirdparty` directory.
+there is a compatible version for your system and installed under the V `thirdparty` directory.
 
-This compiler is very fast, but does almost no optimizations. It is best for development builds.
+This compiler is very fast but does almost no optimizations. It is best for development builds.
 
 For production builds (using the `-prod` option to V), it's recommended to use clang, gcc, or
 Microsoft Visual C++. If you are doing development, you most likely already have one of those
@@ -260,7 +260,7 @@ you will need additional development libraries for your system.
 
 The net.http module, the net.websocket module, and the `v install` command may all use SSL.
 V comes with a version of mbedtls, which should work on all systems. If you find a need to
-use OpenSSL instead, you will need to make sure that it is installed on your system, then
+use OpenSSL instead, you will need to make sure that it is installed on your system, and then
 use the `-d use_openssl` switch when you compile.
 
 To install OpenSSL on non-Windows systems:
