@@ -29,7 +29,7 @@ const (
 	pe_heap_size                  = 0x100000 // gcc default on windows
 	// tcc defaults
 	pe_major_linker_version       = 6
-	pe_minor_linker_verion        = 0
+	pe_minor_linker_version       = 0
 	pe_major_os_version           = 4
 	pe_minor_os_version           = 0
 	pe_major_subsystem_version    = 4
@@ -236,7 +236,7 @@ fn (mut g Gen) get_pe32_plus_optional_header() Pe32PlusOptionalHeader {
 	return Pe32PlusOptionalHeader{
 		magic: .pe32plus
 		major_linker_version: native.pe_major_linker_version
-		minor_linker_version: native.pe_minor_linker_verion
+		minor_linker_version: native.pe_minor_linker_version
 		image_base: native.image_base
 		section_alignment: native.pe_section_align
 		file_alignment: native.pe_file_align
@@ -262,7 +262,7 @@ enum Pe32PlusOPtionalHeaderField {
 	number_of_rva_and_sizes  = 108
 }
 
-// implemented because __offsetof() + [packed] structs wasn't consistend across OSs
+// implemented because __offsetof() + [packed] structs wasn't consistent across OSs
 [inline]
 fn pe32_plus_optional_header_offsetof(field Pe32PlusOPtionalHeaderField) i64 {
 	return i64(field)
@@ -449,7 +449,7 @@ enum PeSectionHeaderField {
 	pointer_to_raw_data = 20
 }
 
-// implemented because __offsetof() + [packed] structs wasn't consistend across OSs
+// implemented because __offsetof() + [packed] structs wasn't consistent across OSs
 [inline]
 fn pe_section_header_offsetof(field PeSectionHeaderField) i64 {
 	return i64(field)
@@ -560,7 +560,7 @@ enum PeImportDirectoryTableField {
 	import_address_table_rva = 16
 }
 
-// implemented because __offsetof() + [packed] structs wasn't consistend across OSs
+// implemented because __offsetof() + [packed] structs wasn't consistent across OSs
 [inline]
 fn pe_idt_offsetof(field PeImportDirectoryTableField) i64 {
 	return i64(field)
@@ -667,7 +667,7 @@ fn (mut g Gen) gen_pe_idata() {
 	g.zeroes(4)
 	g.println('; null entry')
 
-	// dll names	
+	// dll names
 	for imp in imports {
 		g.write32_at(imp.idt_pos + pe_idt_offsetof(.name_rva), i32(g.pos() - idata_pos) +
 			idata_section.header.virtual_address)

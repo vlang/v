@@ -12,8 +12,8 @@ jobs:
   lint-module-docs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Check Formatting
-        uses: actionsx/prettier@v2
+        uses: creyD/prettier_action@v4.3
         with:
-          args: --check cmd/tools/vdoc/theme
+          prettier_options: --check cmd/tools/vdoc/theme

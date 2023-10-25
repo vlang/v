@@ -83,7 +83,7 @@ fn test_self_slice_push() {
 fn test_slice_push_child() {
 	mut a := [1.0, 2.0625, 3.5, -7.75, 7.125, 8.4375, 0.5]
 	mut b := unsafe { a[2..6] } // `b` is initially created as reference
-	mut c := unsafe { b[1..3] } // `c` is initiall reference to `a` and `b`
+	mut c := unsafe { b[1..3] } // `c` is initially created as references to `a` and `b`
 	b << -2.25 // `b` should be reallocated, so `a` doesn't change
 	c[1] = -13.5 // this should change `c` and `a` but not `b`
 	assert c == [-7.75, -13.5]

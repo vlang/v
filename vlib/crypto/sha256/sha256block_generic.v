@@ -4,7 +4,7 @@
 // SHA256 block step.
 // This is the generic version with no architecture optimizations.
 // In its own file so that an architecture
-// optimized verision can be substituted
+// optimized version can be substituted
 module sha256
 
 import math.bits

@@ -48,7 +48,7 @@ fn (mut g Gen) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 
 fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, string) {
 	mut base := 0 // numeric base
-	mut upper_case := false // set upercase for the result string
+	mut upper_case := false // set uppercase for the result string
 	mut typ := g.unwrap_generic(node.expr_types[i])
 	if node.exprs[i].is_auto_deref_var() {
 		typ = typ.deref()

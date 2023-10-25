@@ -67,7 +67,7 @@ pub fn (a &Asset) get_length() int {
 fn C.AAsset_getLength64(&C.AAsset) i64
 
 // get_length_64 returns the total size of the asset data using
-// a 64-bit number insted of 32-bit as `get_length`.
+// a 64-bit number instead of 32-bit as `get_length`.
 pub fn (a &Asset) get_length_64() i64 {
 	return C.AAsset_getLength64(a)
 }

@@ -54,20 +54,20 @@ fn parse_headers(block string) ?(map[string][]string, string) {
 		return map[string][]string{}, block
 	}
 
-	// seperate lines instead of iterating over them,
+	// separate lines instead of iterating over them,
 	// so that we can manually index them
-	headers_seperated := headers_str.split_into_lines()
+	headers_separated := headers_str.split_into_lines()
 
 	// index the key/value separator ':', otherwise
 	// return none because it should exist
 	// the initialisation of this function already tells us headers are present
-	mut colon_index := headers_seperated[0].index(colon) or { return none }
+	mut colon_index := headers_separated[0].index(colon) or { return none }
 
 	mut headers := map[string][]string{}
 	mut index := 0
 
-	for index < headers_seperated.len - 1 {
-		line := headers_seperated[index]
+	for index < headers_separated.len - 1 {
+		line := headers_separated[index]
 		if line.len == 0 {
 			break
 		}
@@ -75,10 +75,10 @@ fn parse_headers(block string) ?(map[string][]string, string) {
 		key := line[..colon_index].trim_space()
 		mut val := line[colon_index + 1..].trim_space()
 
-		for colon_index = 0; index < headers_seperated.len - 1 && colon_index == 0; {
+		for colon_index = 0; index < headers_separated.len - 1 && colon_index == 0; {
 			index++
-			colon_index = headers_seperated[index].index(colon) or {
-				val += headers_seperated[index].trim_space()
+			colon_index = headers_separated[index].index(colon) or {
+				val += headers_separated[index].trim_space()
 				0
 			}
 		}

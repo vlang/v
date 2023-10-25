@@ -56,6 +56,8 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 		if node.label.len > 0 {
 			g.writeln('${node.label}:')
 		}
+		g.set_current_pos_as_last_stmt_pos()
+		g.skip_stmt_pos = true
 		g.write('for (')
 		if !node.has_init {
 			g.write('; ')
@@ -93,6 +95,7 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 			}
 		}
 		g.writeln(') {')
+		g.skip_stmt_pos = false
 		g.is_vlines_enabled = true
 		g.inside_for_c_stmt = false
 		g.stmts(node.stmts)

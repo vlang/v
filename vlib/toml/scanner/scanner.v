@@ -13,7 +13,7 @@ pub const (
 )
 
 // Scanner contains the necessary fields for the state of the scan process.
-// the task the scanner does is also refered to as "lexing" or "tokenizing".
+// the task the scanner does is also referred to as "lexing" or "tokenizing".
 // The Scanner methods are based on much of the work in `vlib/strings/textscanner`.
 pub struct Scanner {
 pub:

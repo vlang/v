@@ -33,8 +33,8 @@ enum TokenKind {
 pub struct Token {
 	lit  []u8      // literal representation of the token
 	kind TokenKind // the token number/enum; for quick comparisons
-	line int       // the line in the source where the token occured
-	col  int       // the column in the source where the token occured
+	line int       // the line in the source where the token occurred
+	col  int       // the column in the source where the token occurred
 }
 
 // full_col returns the full column information which includes the length

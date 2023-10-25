@@ -70,7 +70,7 @@ pub fn (mut b Builder) write_u8(data u8) {
 }
 
 // write_byte appends a single `data` byte to the accumulated buffer
-pub fn (mut b Builder) write_byte(data byte) {
+pub fn (mut b Builder) write_byte(data u8) {
 	b << data
 }
 

@@ -85,10 +85,10 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 						// 		// }
 						// 	}
 						// 	// println((e.local_vars['s'].val as string).str == voidptr_args[1])
-						// 	println('helo?$voidptr_args')
+						// 	println('hello?$voidptr_args')
 						// 	// println((byteptr(voidptr_args[1])[0]))
 						// 	x := strconv.v_sprintf(args[0] as string, ...voidptr_args)
-						// 	// println('helo!')
+						// 	// println('hello!')
 						// 	// println(x.len)
 						// 	y := C.write(1, x.str, x.len)
 						// 	println('aft')

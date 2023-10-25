@@ -1,7 +1,7 @@
 module stdatomic
 
 // Implement the atomic operations. For now TCC does not support the atomic
-// versions on nix so it uses locks to simulate the same behavor.
+// versions on nix so it uses locks to simulate the same behavior.
 //
 // On windows tcc can simulate with other atomic operations.
 //

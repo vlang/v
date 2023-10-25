@@ -108,8 +108,8 @@ pub fn change_test_runner(x &TestRunner) {
 	test_runner = *x
 }
 
-// vtest_init will be caled *before* the normal _vinit() function,
-// to give a chance to the test runner implemenation to change the
+// vtest_init will be called *before* the normal _vinit() function,
+// to give a chance to the test runner implementation to change the
 // test_runner global variable. The reason vtest_init is called before
 // _vinit, is because a _test.v file can define consts, and they in turn
 // may use function calls in their declaration, which may do assertions.

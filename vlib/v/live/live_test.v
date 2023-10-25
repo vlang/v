@@ -22,7 +22,7 @@ If everything works fine, the output of the generated program would have changed
 which then is detected by the test program (the histogram checks).
 
 Since this test program is sensitive to coordination (or lack of) of several processes,
-it tries to sidestep the coordination issue by polling the file system for the existance
+it tries to sidestep the coordination issue by polling the file system for the existence
 of files, ORIGINAL.txt ... STOP.txt , which are appended to by the generated program.
 
 Note: That approach of monitoring the state of the running generated program, is clearly not ideal,

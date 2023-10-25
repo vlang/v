@@ -30,7 +30,7 @@ fn test_example_compilation() {
 			println('activate -sourcemap creation')
 			v_options_file += ' -sourcemap' // activate souremap generation
 
-			println('add node option: --enable-source-maps') // requieres node >=12.12.0
+			println('add node option: --enable-source-maps') // requires node >=12.12.0
 			node_options_file += ' --enable-source-maps' // activate souremap generation
 		}
 		jsfile := os.join_path_single(output_dir, '${file}.js')

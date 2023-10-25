@@ -12,7 +12,7 @@
 // - bar
 // # test
 // ########### deep test
-// #a shouldnt have a newline
+// #a shouldn't have a newline
 // test
 //
 // | foo bar   |  yes   |

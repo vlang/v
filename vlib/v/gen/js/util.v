@@ -7,7 +7,7 @@ struct Type {
 	typ ast.Type        [required]
 	sym &ast.TypeSymbol [required] = unsafe { nil }
 	// unaliased is `typ` once aliased have been resolved
-	// it may not contain informations such as flags and nr_muls
+	// it may not contain information such as flags and nr_muls
 	unaliased     ast.Type        [required]
 	unaliased_sym &ast.TypeSymbol [required] = unsafe { nil }
 }

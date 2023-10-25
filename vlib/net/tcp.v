@@ -398,7 +398,7 @@ fn new_tcp_socket(family AddrFamily) !TcpSocket {
 	}
 
 	// TODO(emily):
-	// we shouldnt be using ioctlsocket in the 21st century
+	// we shouldn't be using ioctlsocket in the 21st century
 	// use the non-blocking socket option instead please :)
 
 	// TODO(emily):

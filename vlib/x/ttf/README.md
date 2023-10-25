@@ -1,6 +1,9 @@
 # TTF font utility
+
 ## introduction
+
 This module is designed to perform two main task
+
 - Load the font file
 - Render text using a TTF font
 
@@ -8,10 +11,12 @@ The render system can be single or multiple, for example it is possible to have 
 render and a HW accelerated render.
 
 ## TTF loader
+
 This part of the module do a simple task, load a TTF file and preprocess all the loaded data
 in order to simplify the rendering phase.
 
 Let's start with a simple snippet of code that load a font from the disk:
+
 ```v ignore
 mut ttf_font := ttf.TTF_File{}
 ttf_font.buf = os.read_bytes("arial.ttf") or { panic(err) }
@@ -28,7 +33,9 @@ We can get some quick info on the font as string using the `get_info_string` fun
 ```v oksyntax
 println(ttf_font.get_info_string())
 ```
+
 produces an output like this:
+
 ```
 ----- Font Info -----
 font_family     : Arial
@@ -52,10 +59,12 @@ At high level no more action are required to use the loaded font.
 Multiple fonts can be loaded without problems at the same time.
 
 ## TTF Bitmap render
+
 In this module it is possible to have different renders running at the same time.
 At the present time all the rendering are made on the CPU, sokol is used only to draw the
 rendered text to the screen.
 Let's start with a simple snippet of code:
+
 ```v oksyntax
 import os
 import x.ttf
@@ -68,11 +77,14 @@ fn main() {
 	println(ttf_font.get_info_string())
 }
 ```
+
 This simple code load a TTF font and display its basic information.
 
 ### draw_text
+
 The draw text function draw simple strings without indentation or other imagination tasks.
 At this point we can render a simple text:
+
 ```v oksyntax
 import os
 import x.ttf
@@ -85,10 +97,10 @@ fn main() {
 	println(ttf_font.get_info_string())
 
 	bmp_width := 200
-	bmp_heigth := 64
+	bmp_height := 64
 	bmp_layers := 4 // number of planes for an RGBA buffer
 	// memory size of the buffer
-	bmp_size := bmp_width * bmp_heigth * bmp_layers
+	bmp_size := bmp_width * bmp_height * bmp_layers
 
 	font_size := 32 // font size in points
 	device_dpi := 72 // default screen DPI
@@ -104,7 +116,7 @@ fn main() {
 		buf: malloc(bmp_size)
 		buf_size: bmp_size
 		width: bmp_width
-		height: bmp_heigth
+		height: bmp_height
 		bp: bmp_layers
 		color: 0x000000_FF // RGBA black
 		scale: scale
@@ -116,6 +128,7 @@ fn main() {
 	bmp.save_as_ppm('test.ppm')
 }
 ```
+
 This is the low level render that draw the text on a bitmap and save the bitmap on a disk as
 `.ppm` file.
 
@@ -126,6 +139,7 @@ Using the low level rendering you need to manage all the amenities like allocate
 memory and other tasks like calc the character dimensions.
 
 You can specify the style for the text rendering in the `BitMap` struct::
+
 ```v
 enum Style {
 	outline
@@ -134,10 +148,13 @@ enum Style {
 	raw
 }
 ```
+
 Use this level only if you want achieve particular result on text rendering.
 
 ### draw_text_block
+
 Draw text block draw a justified and indented block of multiline text in the bitmap.
+
 ```v oksyntax
 import os
 import x.ttf
@@ -150,10 +167,10 @@ fn main() {
 	println(ttf_font.get_info_string())
 
 	bmp_width := 200
-	bmp_heigth := 200
+	bmp_height := 200
 	bmp_layers := 4 // number of planes for an RGBA buffer
 	// memory size of the buffer
-	bmp_size := bmp_width * bmp_heigth * bmp_layers
+	bmp_size := bmp_width * bmp_height * bmp_layers
 
 	font_size := 32 // font size in points
 	device_dpi := 72 // default screen DPI
@@ -174,7 +191,7 @@ But Vwill prevail for sure, V is the way!!
 		buf: malloc(bmp_size)
 		buf_size: bmp_size
 		width: bmp_width
-		height: bmp_heigth
+		height: bmp_height
 		bp: bmp_layers
 		color: 0x000000_FF // RGBA black
 		scale: scale
@@ -183,12 +200,14 @@ But Vwill prevail for sure, V is the way!!
 	bmp.clear()
 	bmp.justify = true
 	bmp.align = .left
-	bmp.draw_text_block(text, x: 0, y: 0, w: bmp_width - 20, h: bmp_heigth)
+	bmp.draw_text_block(text, x: 0, y: 0, w: bmp_width - 20, h: bmp_height)
 	bmp.save_as_ppm('test.ppm')
 }
 ```
+
 This is the low level render that draw text block on the bitmap.
 A text block is defined from a `Text_block` struct:
+
 ```v
 struct Text_block {
 	x         int  // x position of the left high corner
@@ -198,7 +217,9 @@ struct Text_block {
 	cut_lines bool = true // force to cut the line if the length is over the text block width
 }
 ```
+
 and use the following bitmap fields:
+
 ```v ignore
 	style              Style      = .filled // default style
 	align              Text_align = .left   // default text align
@@ -210,11 +231,13 @@ and use the following bitmap fields:
 It is possible to modify these parameters to obtain the desired effect on the text rendering.
 
 ## TTF Sokol render
-The sokol render use the  bitmap render to create the text and the `gg` functions to render
+
+The sokol render use the bitmap render to create the text and the `gg` functions to render
 the text to the screen.
 It is simpler to use in a `gg app` than the raw bitmap render.
 Each single text rendered need its own reder to be declared, after you can modify it.
 Here a simple example of the usage:
+
 ```v oksyntax
 import gg
 import gx

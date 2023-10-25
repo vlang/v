@@ -494,7 +494,7 @@ pub fn (mut t Transformer) for_stmt(mut node ast.ForStmt) ast.Stmt {
 	node.cond = t.expr(mut node.cond)
 	match node.cond {
 		ast.BoolLiteral {
-			if !(node.cond as ast.BoolLiteral).val { // for false { ... } should be eleminated
+			if !(node.cond as ast.BoolLiteral).val { // for false { ... } should be eliminated
 				return ast.empty_stmt
 			}
 		}

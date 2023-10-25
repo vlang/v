@@ -61,7 +61,7 @@ fn (mut bmp BitMap) format_texture() {
 	b_b := u8((bmp.bg_color >> 8) & 0xFF)
 	b_a := u8(bmp.bg_color & 0xFF)
 
-	// trasform buffer in a texture
+	// transform buffer in a texture
 	x := bmp.buf
 	unsafe {
 		mut i := 0

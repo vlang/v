@@ -4,7 +4,7 @@
 
 // This is the generic version with no architecture optimizations.
 // In its own file so that an architecture
-// optimized verision can be substituted
+// optimized version can be substituted
 
 module md5
 

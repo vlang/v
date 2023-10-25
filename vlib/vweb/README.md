@@ -441,7 +441,7 @@ struct User {
 }
 
 fn get_session(mut ctx vweb.Context) bool {
-	// impelement your own logic to get the user
+	// implement your own logic to get the user
 	user := User{
 		session_id: '123456'
 		name: 'Vweb'

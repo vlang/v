@@ -53,7 +53,7 @@ fn test_propagate() {
 	assert z == 31.0
 }
 
-fn test_array_void_interate() {
+fn test_array_void_iter() {
 	mut r := []thread ?{}
 	for i in 0 .. 3 {
 		r << spawn g(i)
@@ -67,7 +67,7 @@ fn test_array_void_interate() {
 	assert res[2] == 2
 }
 
-fn test_array_val_interate() {
+fn test_array_val_iter() {
 	mut r := []thread ?f64{}
 	for i in -1 .. 2 {
 		r << spawn f(i)
