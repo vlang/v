@@ -6,7 +6,7 @@ import v.vmod
 // avoid clashes with the postfix `_test.v`, that V uses for its own test files.
 const (
 	// Expect has to be installed for the test.
-	expect_exe = os.quoted_path(os.find_abs_path_of_executable('expect') or {
+	expect_exe        = os.quoted_path(os.find_abs_path_of_executable('expect') or {
 		eprintln('skipping test, since expect is missing')
 		exit(0)
 	})
@@ -31,8 +31,7 @@ fn prepare_test_path() ! {
 fn test_new_with_no_arg_input() {
 	prepare_test_path()!
 	project_name := 'my_project'
-	res := os.execute('${expect_exe} ${os.join_path(expect_tests_path,
-		'new_with_no_arg.expect')} ${@VMODROOT} ${project_name}')
+	res := os.execute('${expect_exe} ${os.join_path(expect_tests_path, 'new_with_no_arg.expect')} ${@VMODROOT} ${project_name}')
 	if res.exit_code != 0 {
 		assert false, res.output
 	}
@@ -53,8 +52,7 @@ fn test_new_with_no_arg_input() {
 fn test_new_with_name_arg_input() {
 	prepare_test_path()!
 	project_name := 'my_other_project'
-	res := os.execute('${expect_exe} ${os.join_path(expect_tests_path,
-		'new_with_name_arg.expect')} ${@VMODROOT} ${project_name}')
+	res := os.execute('${expect_exe} ${os.join_path(expect_tests_path, 'new_with_name_arg.expect')} ${@VMODROOT} ${project_name}')
 	if res.exit_code != 0 {
 		assert false, res.output
 	}
@@ -76,8 +74,7 @@ fn test_new_with_model_arg_input() {
 	prepare_test_path()!
 	project_name := 'my_lib'
 	model := 'lib'
-	res := os.execute('${expect_exe} ${os.join_path(expect_tests_path,
-		'new_with_model_arg.expect')} ${@VMODROOT} ${project_name} ${model}')
+	res := os.execute('${expect_exe} ${os.join_path(expect_tests_path, 'new_with_model_arg.expect')} ${@VMODROOT} ${project_name} ${model}')
 	if res.exit_code != 0 {
 		assert false, res.output
 	}
@@ -102,8 +99,7 @@ fn test_v_init_in_dir_with_invalid_mod_name() {
 	proj_path := os.join_path(os.vtmp_dir(), 'v', dir_name_with_invalid_mod_name)
 	os.mkdir_all(proj_path) or {}
 	os.chdir(proj_path)!
-	res := os.execute('${expect_exe} ${os.join_path(expect_tests_path,
-		'init_in_dir_with_invalid_mod_name.expect')} ${@VMODROOT} ${dir_name_with_invalid_mod_name} ${corrected_mod_name}')
+	res := os.execute('${expect_exe} ${os.join_path(expect_tests_path, 'init_in_dir_with_invalid_mod_name.expect')} ${@VMODROOT} ${dir_name_with_invalid_mod_name} ${corrected_mod_name}')
 	if res.exit_code != 0 {
 		assert false, res.output
 	}
