@@ -43,7 +43,7 @@ pub fn signal_ignore(args ...Signal) {
 			}
 			C.sigprocmask(C.SIG_BLOCK, &mask1, unsafe { nil })
 		}
-		$if !windows && !macos {
+		$if !windows && !macos && !andorid {
 			mask1 := C.sigset_t{}
 			C.sigemptyset(&mask1)
 			for arg in args {
