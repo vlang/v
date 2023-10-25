@@ -91,8 +91,9 @@ fn main() {
 			}
 
 			if '--once' in options {
-				module_names = vpm_once_filter(module_names)
-
+				// TODO: --once should also work for external modules.
+				installed_modules := get_installed_modules()
+				module_names = module_names.filter(it !in installed_modules)
 				if module_names.len == 0 {
 					return
 				}
@@ -106,13 +107,8 @@ fn main() {
 			}
 
 			if external_module_names.len > 0 {
-				mut external_source := Source.git
-
-				if '--hg' in options {
-					external_source = Source.hg
-				}
-
-				vpm_install(external_module_names, external_source)
+				source := if '--hg' in options { Source.hg } else { Source.git }
+				vpm_install(external_module_names, source)
 			}
 		}
 		'update' {
@@ -197,6 +193,18 @@ fn vpm_search(keywords []string) {
 	}
 }
 
+fn install_module(vcs string, name string, url string, final_module_path string) ! {
+	vcs_install_cmd := '${vcs} ${supported_vcs_install_cmds[vcs]}'
+	cmd := '${vcs_install_cmd} "${url}" "${final_module_path}"'
+	verbose_println('      command: ${cmd}')
+	println('Installing module "${name}" from "${url}" to "${final_module_path}" ...')
+	cmdres := os.execute(cmd)
+	if cmdres.exit_code != 0 {
+		print_failed_cmd(cmd, cmdres)
+		return error('Failed installing module "${name}" to "${final_module_path}" .')
+	}
+}
+
 fn vpm_install_from_vpm(module_names []string) {
 	mut errors := 0
 	for n in module_names {
@@ -207,10 +215,7 @@ fn vpm_install_from_vpm(module_names []string) {
 			eprintln(err)
 			continue
 		}
-		mut vcs := mod.vcs
-		if vcs == '' {
-			vcs = supported_vcs_systems[0]
-		}
+		vcs := if mod.vcs != '' { mod.vcs } else { supported_vcs_systems[0] }
 		if vcs !in supported_vcs_systems {
 			errors++
 			eprintln('Skipping module "${name}", since it uses an unsupported VCS {${vcs}} .')
@@ -221,26 +226,19 @@ fn vpm_install_from_vpm(module_names []string) {
 			eprintln('VPM needs `${vcs}` to be installed.')
 			continue
 		}
-		//
 		minfo := mod_name_info(mod.name)
 		if os.exists(minfo.final_module_path) {
 			vpm_update([name])
 			continue
 		}
-		println('Installing module "${name}" from "${mod.url}" to "${minfo.final_module_path}" ...')
+		install_module(vcs, name, mod.url, minfo.final_module_path) or {
+			errors++
+			eprintln(err)
+			continue
+		}
 		increment_module_download_count(name) or {
 			errors++
 			eprintln('Errors while incrementing the download count for ${name}:')
-		}
-		vcs_install_cmd := '${vcs} ${supported_vcs_install_cmds[vcs]}'
-		cmd := '${vcs_install_cmd} "${mod.url}" "${minfo.final_module_path}"'
-		verbose_println('      command: ${cmd}')
-		cmdres := os.execute(cmd)
-		if cmdres.exit_code != 0 {
-			errors++
-			eprintln('Failed installing module "${name}" to "${minfo.final_module_path}" .')
-			print_failed_cmd(cmd, cmdres)
-			continue
 		}
 		resolve_dependencies(name, minfo.final_module_path, module_names)
 	}
@@ -265,7 +263,7 @@ fn ensure_vcs_is_installed(vcs string) bool {
 	return res
 }
 
-fn vpm_install_from_vcs(module_names []string, vcs_key string) {
+fn vpm_install_from_vcs(module_names []string, vcs string) {
 	mut errors := 0
 	for n in module_names {
 		url := n.trim_space()
@@ -294,20 +292,14 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 			vpm_update([name.replace('-', '_')])
 			continue
 		}
-		if !ensure_vcs_is_installed(vcs_key) {
+		if !ensure_vcs_is_installed(vcs) {
 			errors++
-			eprintln('VPM needs `${vcs_key}` to be installed.')
+			eprintln('VPM needs `${vcs}` to be installed.')
 			continue
 		}
-		println('Installing module "${name}" from "${url}" to "${final_module_path}" ...')
-		vcs_install_cmd := '${vcs_key} ${supported_vcs_install_cmds[vcs_key]}'
-		cmd := '${vcs_install_cmd} "${url}" "${final_module_path}"'
-		verbose_println('      command: ${cmd}')
-		cmdres := os.execute(cmd)
-		if cmdres.exit_code != 0 {
+		install_module(vcs, name, url, final_module_path) or {
 			errors++
-			eprintln('Failed installing module "${name}" to "${final_module_path}" .')
-			print_failed_cmd(cmd, cmdres)
+			eprintln(err)
 			continue
 		}
 		vmod_path := os.join_path(final_module_path, 'v.mod')
@@ -362,17 +354,6 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 	}
 }
 
-fn vpm_once_filter(module_names []string) []string {
-	installed_modules := get_installed_modules()
-	mut toinstall := []string{}
-	for mn in module_names {
-		if mn !in installed_modules {
-			toinstall << mn
-		}
-	}
-	return toinstall
-}
-
 fn vpm_install(module_names []string, source Source) {
 	if settings.is_help {
 		help.print_and_exit('install')
@@ -386,11 +367,8 @@ fn vpm_install(module_names []string, source Source) {
 		.vpm {
 			vpm_install_from_vpm(module_names)
 		}
-		.git {
-			vpm_install_from_vcs(module_names, 'git')
-		}
-		.hg {
-			vpm_install_from_vcs(module_names, 'hg')
+		else {
+			vpm_install_from_vcs(module_names, source.str())
 		}
 	}
 }
@@ -504,13 +482,13 @@ fn get_mod_date_info(mut pp pool.PoolProcessor, idx int, wid int) &ModDateInfo {
 		name: pp.get_item[string](idx)
 	}
 	final_module_path := valid_final_path_of_existing_module(result.name) or { return result }
-	vcs := vcs_used_in_dir(final_module_path) or { return result }
-	is_hg := vcs[0] == 'hg'
-	vcs_cmd_steps := supported_vcs_outdated_steps[vcs[0]]
+	vcs := vcs_used_in_dir(final_module_path) or { return result }[0]
+	is_hg := vcs == 'hg'
+	vcs_cmd_steps := supported_vcs_outdated_steps[vcs]
 	mut outputs := []string{}
 	for step in vcs_cmd_steps {
 		path_flag := if is_hg { '-R' } else { '-C' }
-		cmd := '${vcs[0]} ${path_flag} "${final_module_path}" ${step}'
+		cmd := '${vcs} ${path_flag} "${final_module_path}" ${step}'
 		res := os.execute('${cmd}')
 		if res.exit_code < 0 {
 			verbose_println('Error command: ${cmd}')
@@ -527,7 +505,7 @@ fn get_mod_date_info(mut pp pool.PoolProcessor, idx int, wid int) &ModDateInfo {
 			outputs << res.output
 		}
 	}
-	// vcs[0] == 'git'
+	// vcs == 'git'
 	if !is_hg && outputs[1] != outputs[2] {
 		result.outdated = true
 	}
@@ -643,13 +621,9 @@ fn vpm_help() {
 }
 
 fn vcs_used_in_dir(dir string) ?[]string {
-	mut vcs := []string{}
-	for repo_subfolder in supported_vcs_folders {
-		checked_folder := os.real_path(os.join_path(dir, repo_subfolder))
-		if os.is_dir(checked_folder) {
-			vcs << repo_subfolder.replace('.', '')
-		}
-	}
+	vcs := supported_vcs_folders.filter(fn [dir] (repo_sub_folder string) bool {
+		return os.is_dir(os.real_path(os.join_path(dir, repo_sub_folder)))
+	})
 	if vcs.len == 0 {
 		return none
 	}
