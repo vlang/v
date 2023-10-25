@@ -48,7 +48,7 @@ change often. But there will be changes before 1.0.
 Most changes in the syntax are handled via vfmt automatically.
 
 The V core APIs (primarily the `os` module) will also have minor changes until
-they are stabilized in V 1.0. Of course the APIs will grow after that, but without breaking
+they are stabilized in V 1.0. Of course, the APIs will grow after that, but without breaking
 existing code.
 
 After the 1.0 release V is going to be in the "feature freeze" mode. That means no breaking changes
@@ -57,7 +57,7 @@ in the language, only bug fixes and performance improvements. Similar to Go.
 Will there be V 2.0? Not within a decade after 1.0, perhaps not ever.
 
 To sum it up, unlike many other languages, V is not going to be always changing, with new features
-being introduced and old features modified. It is always going to be a small and simple
+being introduced and old features being modified. It is always going to be a small and simple
 language, very similar to the way it is right now.
 
 ## Installing V from source
