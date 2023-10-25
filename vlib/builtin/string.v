@@ -795,7 +795,7 @@ pub fn (s string) rsplit_any(delim string) []string {
 	return res
 }
 
-// split splits the string to an array by `delim`.
+// split splits the string into an array of strings at the given delimiter.
 // Example: assert 'A B C'.split(' ') == ['A','B','C']
 // If `delim` is empty the string is split by it's characters.
 // Example: assert 'DEF'.split('') == ['D','E','F']
@@ -804,7 +804,7 @@ pub fn (s string) split(delim string) []string {
 	return s.split_nth(delim, 0)
 }
 
-// rsplit splits the string to an array by `delim` in reverse order.
+// rsplit splits the string into an array of strings at the given delimiter, starting from the right.
 // Example: assert 'A B C'.rsplit(' ') == ['C','B','A']
 // If `delim` is empty the string is split by it's characters.
 // Example: assert 'DEF'.rsplit('') == ['F','E','D']
@@ -813,15 +813,12 @@ pub fn (s string) rsplit(delim string) []string {
 	return s.rsplit_nth(delim, 0)
 }
 
-// split_once divides string into pair of string by `delim`.
+// split_once splits the string into a pair of strings at the given delimiter.
 // Example:
 // ```v
-// path, ext := 'file.ts.dts'.splice_once('.')?
+// path, ext := 'file.ts.dts'.split_once('.')?
 // assert path == 'file'
 // assert ext == 'ts.dts'
-// ```
-// Note that rsplit_once returns splitted string string as first part of pair,
-// and returns remaining as second part of pair.
 pub fn (s string) split_once(delim string) ?(string, string) {
 	result := s.split_nth(delim, 2)
 
@@ -832,15 +829,14 @@ pub fn (s string) split_once(delim string) ?(string, string) {
 	return result[0], result[1]
 }
 
-// rsplit_once divides string into pair of string by `delim`.
+// rsplit_once splits the string into a pair of strings at the given delimiter, starting from the right.
 // Example:
 // ```v
-// path, ext := 'file.ts.dts'.splice_once('.')?
+// path, ext := 'file.ts.dts'.rsplit_once('.')?
 // assert path == 'file.ts'
 // assert ext == 'dts'
 // ```
-// Note that rsplit_once returns remaining string as first part of pair,
-// and returns splitted string as second part of pair.
+// NOTE: rsplit_once returns the string at the left side of the delimiter as first part of the pair.
 pub fn (s string) rsplit_once(delim string) ?(string, string) {
 	result := s.rsplit_nth(delim, 2)
 
