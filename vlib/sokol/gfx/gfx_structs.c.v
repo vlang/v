@@ -24,7 +24,7 @@ pub mut:
 
 pub type Desc = C.sg_desc
 
-struct C.sg_context_desc {
+pub struct C.sg_context_desc {
 pub mut:
 	color_format PixelFormat
 	depth_format PixelFormat
@@ -37,13 +37,13 @@ pub mut:
 
 pub type ContextDesc = C.sg_context_desc
 
-struct C.sg_gl_context_desc {
+pub struct C.sg_gl_context_desc {
 	force_gles2 bool
 }
 
 pub type GLContextDesc = C.sg_gl_context_desc
 
-struct C.sg_metal_context_desc {
+pub struct C.sg_metal_context_desc {
 	device                   voidptr
 	renderpass_descriptor_cb fn () voidptr = unsafe { nil }
 	drawable_cb              fn () voidptr = unsafe { nil }
@@ -51,7 +51,7 @@ struct C.sg_metal_context_desc {
 
 pub type MetalContextDesc = C.sg_metal_context_desc
 
-struct C.sg_d3d11_context_desc {
+pub struct C.sg_d3d11_context_desc {
 	device                voidptr
 	device_context        voidptr
 	render_target_view_cb fn () voidptr = unsafe { nil }
@@ -60,7 +60,7 @@ struct C.sg_d3d11_context_desc {
 
 pub type D3D11ContextDesc = C.sg_d3d11_context_desc
 
-struct C.sg_color_target_state {
+pub struct C.sg_color_target_state {
 pub mut:
 	pixel_format PixelFormat
 	write_mask   ColorMask
@@ -107,7 +107,7 @@ pub fn (mut p C.sg_pipeline) free() {
 	C.sg_destroy_pipeline(*p)
 }
 
-struct C.sg_bindings {
+pub struct C.sg_bindings {
 pub mut:
 	_start_canary         u32
 	vertex_buffers        [8]Buffer
@@ -172,7 +172,7 @@ pub mut:
 pub type StageBindings = C.sg_stage_bindings
 
 [heap]
-struct C.sg_shader_desc {
+pub struct C.sg_shader_desc {
 pub mut:
 	attrs [16]ShaderAttrDesc
 	vs    ShaderStageDesc
@@ -230,7 +230,7 @@ pub fn (desc &ShaderDesc) make_shader() Shader {
 	return C.sg_make_shader(desc)
 }
 
-struct C.sg_shader_attr_desc {
+pub struct C.sg_shader_attr_desc {
 pub mut:
 	name      &char // GLSL vertex attribute name (only required for GLES2)
 	sem_name  &char // HLSL semantic name
@@ -239,7 +239,7 @@ pub mut:
 
 pub type ShaderAttrDesc = C.sg_shader_attr_desc
 
-struct C.sg_shader_stage_desc {
+pub struct C.sg_shader_stage_desc {
 pub mut:
 	source              &char
 	bytecode            Range
@@ -259,7 +259,7 @@ pub fn (mut desc ShaderStageDesc) set_image(index int, name string) ShaderStageD
 	return *desc
 }
 
-struct C.sg_shader_uniform_block_desc {
+pub struct C.sg_shader_uniform_block_desc {
 pub mut:
 	size     usize
 	layout   UniformLayout
@@ -268,7 +268,7 @@ pub mut:
 
 pub type ShaderUniformBlockDesc = C.sg_shader_uniform_block_desc
 
-struct C.sg_shader_uniform_desc {
+pub struct C.sg_shader_uniform_desc {
 pub mut:
 	name        &char
 	@type       UniformType
@@ -277,7 +277,7 @@ pub mut:
 
 pub type ShaderUniformDesc = C.sg_shader_uniform_desc
 
-struct C.sg_shader_image_desc {
+pub struct C.sg_shader_image_desc {
 pub mut:
 	used         bool
 	multisampled bool
@@ -328,7 +328,7 @@ pub mut:
 
 pub type Range = C.sg_range
 
-struct C.sg_color {
+pub struct C.sg_color {
 pub mut:
 	r f32
 	g f32
@@ -349,7 +349,7 @@ pub fn (mut s Shader) free() {
 	C.sg_destroy_shader(*s)
 }
 
-struct C.sg_pass_desc {
+pub struct C.sg_pass_desc {
 pub mut:
 	color_attachments        [4]PassAttachmentDesc
 	depth_stencil_attachment PassAttachmentDesc
@@ -358,7 +358,7 @@ pub mut:
 
 pub type PassDesc = C.sg_pass_desc
 
-struct C.sg_pass_info {
+pub struct C.sg_pass_info {
 	info SlotInfo
 }
 
@@ -373,7 +373,7 @@ pub mut:
 
 pub type PassAction = C.sg_pass_action
 
-struct C.sg_pass {
+pub struct C.sg_pass {
 	id u32
 }
 
@@ -383,7 +383,7 @@ pub fn (mut p Pass) free() {
 	C.sg_destroy_pass(*p)
 }
 
-struct C.sg_buffer_desc {
+pub struct C.sg_buffer_desc {
 pub mut:
 	size  usize
 	@type BufferType
@@ -399,7 +399,7 @@ pub mut:
 
 pub type BufferDesc = C.sg_buffer_desc
 
-struct C.sg_slot_info {
+pub struct C.sg_slot_info {
 	state  ResourceState
 	res_id u32
 	ctx_id u32
@@ -524,7 +524,7 @@ pub mut:
 
 pub type ImageData = C.sg_image_data
 
-struct C.sg_features {
+pub struct C.sg_features {
 pub:
 	origin_top_left             bool // framebuffer and texture origin is in top left corner
 	image_clamp_to_border       bool // border color and clamp-to-border UV-wrap mode is supported
@@ -579,7 +579,7 @@ pub mut:
 
 pub type VertexAttrDesc = C.sg_vertex_attr_state
 
-struct C.sg_stencil_state {
+pub struct C.sg_stencil_state {
 	enabled    bool
 	front      StencilFaceState
 	back       StencilFaceState
@@ -590,7 +590,7 @@ struct C.sg_stencil_state {
 
 pub type StencilState = C.sg_stencil_state
 
-struct C.sg_depth_state {
+pub struct C.sg_depth_state {
 	pixel_format     PixelFormat
 	compare          CompareFunc
 	write_enabled    bool
@@ -601,7 +601,7 @@ struct C.sg_depth_state {
 
 pub type DepthState = C.sg_depth_state
 
-struct C.sg_stencil_face_state {
+pub struct C.sg_stencil_face_state {
 	compare       CompareFunc
 	fail_op       StencilOp
 	depth_fail_op StencilOp
@@ -610,7 +610,7 @@ struct C.sg_stencil_face_state {
 
 pub type StencilFaceState = C.sg_stencil_face_state
 
-struct C.sg_blend_state {
+pub struct C.sg_blend_state {
 pub mut:
 	enabled          bool
 	src_factor_rgb   BlendFactor
@@ -623,7 +623,7 @@ pub mut:
 
 pub type BlendState = C.sg_blend_state
 
-struct C.sg_color_attachment_action {
+pub struct C.sg_color_attachment_action {
 pub mut:
 	load_action  LoadAction
 	store_action StoreAction
@@ -670,7 +670,7 @@ pub:
 
 pub type PixelFormatInfo = C.sg_pixelformat_info
 
-struct C.sg_pass_attachment_desc {
+pub struct C.sg_pass_attachment_desc {
 pub mut:
 	image     Image
 	mip_level int

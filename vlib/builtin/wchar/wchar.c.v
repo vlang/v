@@ -5,7 +5,7 @@ import strings
 #include <wchar.h>
 
 [typedef]
-struct C.wchar_t {}
+pub struct C.wchar_t {}
 
 // Character is a type, that eases working with the platform dependent C.wchar_t type.
 // Note: the size of C.wchar_t varies between platforms, it is 2 bytes on windows,

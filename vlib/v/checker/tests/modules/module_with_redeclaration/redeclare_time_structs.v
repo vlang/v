@@ -19,7 +19,7 @@ pub mut:
 	user_data voidptr
 }
 
-struct C.saudio_desc {
+pub struct C.saudio_desc {
 pub mut:
 	user_data voidptr
 	allocator C.saudio_allocator

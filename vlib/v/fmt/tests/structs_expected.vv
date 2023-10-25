@@ -56,4 +56,4 @@ pub:
 	*/
 }
 
-struct C.Foo {}
+pub struct C.Foo {}

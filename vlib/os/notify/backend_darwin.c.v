@@ -5,7 +5,7 @@ import os
 
 #insert "@VEXEROOT/vlib/os/notify/kqueue.h"
 
-struct C.kevent {
+pub struct C.kevent {
 mut:
 	ident  u32
 	filter i16

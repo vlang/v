@@ -11,7 +11,7 @@ $if gcboehm ? {
 #flag -l ws2_32 -l crypt32 -l secur32 -l user32
 #include "vschannel.c"
 
-struct C.TlsContext {}
+pub struct C.TlsContext {}
 
 fn C.new_tls_context() C.TlsContext
 

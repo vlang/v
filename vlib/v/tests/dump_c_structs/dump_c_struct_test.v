@@ -20,7 +20,7 @@ struct Epoll {
 	ev C.epoll_event
 }
 
-struct C.hostent {
+pub struct C.hostent {
 	h_name      &char
 	h_aliases   &&char
 	h_addrtype  int

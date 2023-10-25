@@ -5,7 +5,7 @@ import os
 
 #insert "@VEXEROOT/vlib/os/notify/epoll.h"
 
-struct C.epoll_event {
+pub struct C.epoll_event {
 	events u32
 	data   C.epoll_data_t
 }

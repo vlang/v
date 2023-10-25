@@ -5,7 +5,7 @@ module mod1
 
 #include "header.h"
 
-struct C.MyStruct {
+pub struct C.MyStruct {
 	UppercaseField int
 }
 

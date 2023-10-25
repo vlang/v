@@ -761,7 +761,7 @@ fn error_code() int {
 	return C.WSAGetLastError()
 }
 
-struct C.WSAData {
+pub struct C.WSAData {
 mut:
 	wVersion       u16
 	wHighVersion   u16

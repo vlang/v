@@ -88,7 +88,7 @@ fn (i &VTestFnMetaInfo) free() {
 //
 
 [typedef]
-struct C.main__TestRunner {
+pub struct C.main__TestRunner {
 mut:
 	_object voidptr
 }

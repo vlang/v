@@ -12,7 +12,7 @@ fn h() {}
 
 const z = 6
 [typedef]
-struct C.Foo{}
+pub struct C.Foo{}
 
 a := [3]
 _ := a[0]

@@ -7,7 +7,7 @@ module time
 #include <time.h>
 #include <errno.h>
 
-struct C.tm {
+pub struct C.tm {
 	tm_sec   int
 	tm_min   int
 	tm_hour  int

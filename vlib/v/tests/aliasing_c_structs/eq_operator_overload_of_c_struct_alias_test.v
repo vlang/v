@@ -1,11 +1,11 @@
 #include "@VMODROOT/cstructs.h"
 
-struct C.__mpz_struct1 {
+pub struct C.__mpz_struct1 {
 	x int
 }
 
 [typedef]
-struct C.__mpz_struct_typedef {
+pub struct C.__mpz_struct_typedef {
 	x int
 }
 

@@ -6,7 +6,7 @@ module time
 #include <time.h>
 // #include <sysinfoapi.h>
 
-struct C.tm {
+pub struct C.tm {
 	tm_year int
 	tm_mon  int
 	tm_mday int
@@ -49,7 +49,7 @@ const (
 )
 
 // in most systems, these are __quad_t, which is an i64
-struct C.timespec {
+pub struct C.timespec {
 	tv_sec  i64
 	tv_nsec i64
 }

@@ -5489,7 +5489,7 @@ fn custom_allocations() {
 
 // For C interop only, tells V that the following struct is defined with `typedef struct` in C
 [typedef]
-struct C.Foo {
+pub struct C.Foo {
 }
 
 // Used to add a custom calling convention to a function, available calling convention: stdcall, fastcall and cdecl.
@@ -6508,10 +6508,10 @@ For all supported options check the latest help:
 #flag -lsqlite3
 #include "sqlite3.h"
 // See also the example from https://www.sqlite.org/quickstart.html
-struct C.sqlite3 {
+pub struct C.sqlite3 {
 }
 
-struct C.sqlite3_stmt {
+pub struct C.sqlite3_stmt {
 }
 
 type FnSqlite3Callback = fn (voidptr, int, &&char, &&char) int
@@ -6744,7 +6744,7 @@ struct SomeCStruct {
 members of sub-data-structures may be directly declared in the containing struct as below:
 
 ```v
-struct C.SomeCStruct {
+pub struct C.SomeCStruct {
 	implTraits  u8
 	memPoolData u16
 	// These members are part of sub data structures that can't currently be represented in V.

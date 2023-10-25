@@ -89,7 +89,7 @@ mut:
 	b_inherit_handle       bool
 }
 
-struct C._utimbuf {
+pub struct C._utimbuf {
 	actime  int
 	modtime int
 }

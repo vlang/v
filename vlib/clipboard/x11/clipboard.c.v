@@ -18,7 +18,7 @@ $if freebsd {
 #include <X11/Xlib.h> # Please install a package with the X11 development headers, for example: `apt-get install libx11-dev`
 // X11
 [typedef]
-struct C.Display {
+pub struct C.Display {
 }
 
 type Window = u64
@@ -69,7 +69,7 @@ fn C.XFree(data voidptr)
 fn todo_del() {}
 
 [typedef]
-struct C.XSelectionRequestEvent {
+pub struct C.XSelectionRequestEvent {
 mut:
 	display   &C.Display = unsafe { nil } // Display the event was read from
 	owner     Window
@@ -81,7 +81,7 @@ mut:
 }
 
 [typedef]
-struct C.XSelectionEvent {
+pub struct C.XSelectionEvent {
 mut:
 	@type     int
 	display   &C.Display = unsafe { nil } // Display the event was read from
@@ -93,14 +93,14 @@ mut:
 }
 
 [typedef]
-struct C.XSelectionClearEvent {
+pub struct C.XSelectionClearEvent {
 mut:
 	window    Window
 	selection Atom
 }
 
 [typedef]
-struct C.XDestroyWindowEvent {
+pub struct C.XDestroyWindowEvent {
 mut:
 	window Window
 }
