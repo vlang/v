@@ -279,7 +279,7 @@ pub fn (db DB) exec_param_many(query string, params []string) ![]Row {
 	}
 }
 
-// exec_param2 executes a query with 1 parameter ($1), and returns either an error on failure, or the full result set on success
+// exec_param executes a query with 1 parameter ($1), and returns either an error on failure, or the full result set on success
 pub fn (db DB) exec_param(query string, param string) ![]Row {
 	return db.exec_param_many(query, [param])
 }

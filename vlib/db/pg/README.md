@@ -45,7 +45,7 @@ gem install pg -- --with-pg-config=/opt/local/lib/postgresql[version number]/bin
 
 **ArchLinux**: `pacman -S postgresql-libs`
 
-##Getting Started with [PostgreSQL](https://www.postgresqltutorial.com/postgresql-getting-started)
+## Getting Started with [PostgreSQL](https://www.postgresqltutorial.com/postgresql-getting-started)
 
 Read this section to learn how to install and connect to PostgreSQL
 [*Windows*](https://www.postgresqltutorial.com/install-postgresql);
