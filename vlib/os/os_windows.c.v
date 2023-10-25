@@ -174,6 +174,10 @@ pub fn ls(path string) ![]string {
 	// NOTE:TODO: once we have a way to convert utf16 wide character to utf8
 	// we should use FindFirstFileW and FindNextFileW
 	h_find_files := C.FindFirstFile(path_files.to_wide(), voidptr(&find_file_data))
+	// Handle cases where files cannot be opened. for example:"System Volume Information"
+	if h_find_files == C.INVALID_HANDLE_VALUE {
+		return error('ls(): Could not get a file handle: ' + get_error_msg(int(C.GetLastError())))
+	}
 	first_filename := unsafe { string_from_wide(&find_file_data.c_file_name[0]) }
 	if first_filename != '.' && first_filename != '..' {
 		dir_files << first_filename
