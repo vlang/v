@@ -86,7 +86,7 @@ pub mut:
 	positive     bool = true // mandatory: the sign of the number passed
 	sign_flag    bool       // flag for print sign as prefix in padding
 	align        Align_text = .right // alignment of the string
-	allign       Align_text [deprecated: 'use align instead'; deprecated_after: '2023-11-31'] = .right
+	allign       Align_text [deprecated: 'use align instead'; deprecated_after: '2023-11-30'] = .right
 	rm_tail_zero bool // remove the tail zeros from floats
 }
 
