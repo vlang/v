@@ -12,3 +12,7 @@ __global g_main_thread_id = u64(C.GetCurrentThreadId())
 pub fn is_main_thread() bool {
 	return g_main_thread_id == u64(C.GetCurrentThreadId())
 }
+
+// The windows platform does not need to be handled.
+fn signal_ignore_internal(args ...Signal) {
+}

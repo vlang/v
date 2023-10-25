@@ -35,21 +35,6 @@ pub fn signal_ignore(args ...Signal) {
 		}
 	} else {
 		// for background threads.
-		$if macos {
-			mask1 := u32(0)
-			C.sigemptyset(&mask1)
-			for arg in args {
-				C.sigaddset(&mask1, int(arg))
-			}
-			C.sigprocmask(C.SIG_BLOCK, &mask1, unsafe { nil })
-		}
-		$if !windows && !macos && !android {
-			mask1 := C.sigset_t{}
-			C.sigemptyset(&mask1)
-			for arg in args {
-				C.sigaddset(&mask1, int(arg))
-			}
-			C.sigprocmask(C.SIG_BLOCK, &mask1, unsafe { nil })
-		}
+		signal_ignore_internal(...args)
 	}
 }

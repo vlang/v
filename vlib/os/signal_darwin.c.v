@@ -19,3 +19,12 @@ pub fn is_main_thread() bool {
 fn C.sigaddset(set &u32, signum int) int
 fn C.sigemptyset(set &u32)
 fn C.sigprocmask(how int, set &u32, oldset &u32) int
+
+fn signal_ignore_internal(args ...Signal) {
+	mask1 := u32(0)
+	C.sigemptyset(&mask1)
+	for arg in args {
+		C.sigaddset(&mask1, int(arg))
+	}
+	C.sigprocmask(C.SIG_BLOCK, &mask1, unsafe { nil })
+}
