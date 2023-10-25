@@ -24,7 +24,7 @@ fn C.sigemptyset(set &C.sigset_t)
 fn C.sigprocmask(how int, set &C.sigset_t, oldset &C.sigset_t) int
 
 fn signal_ignore_internal(args ...Signal) {
-	$if !android {
+	$if !android && !macos {
 		mask1 := C.sigset_t{}
 		C.sigemptyset(&mask1)
 		for arg in args {
