@@ -224,12 +224,12 @@ fn fooo() {
 
 /*
 [typedef]
-struct C.fixed {
+pub struct C.fixed {
 	points [10]C.point
 }
 
 [typedef]
-struct C.point {
+pub struct C.point {
 	x int
 	y int
 }

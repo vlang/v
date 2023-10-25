@@ -2,7 +2,7 @@
 
 const the_string = 'the string'
 
-struct C.Abc {
+pub struct C.Abc {
 	char_pointer_field &char
 }
 

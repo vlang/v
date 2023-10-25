@@ -4,7 +4,7 @@ module modc
 #flag @VMODROOT/modc/impl.o
 #include "header.h"
 
-struct C.Atype {
+pub struct C.Atype {
 }
 
 // Note: [trusted] below, means that the C function, can be safely called outside unsafe{} blocks.

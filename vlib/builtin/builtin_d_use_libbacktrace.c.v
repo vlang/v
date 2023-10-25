@@ -6,7 +6,7 @@ module builtin
 #include <backtrace.h>
 
 // NOTE: Don't mark this as a [typedef] or it may cause compiler errors!
-struct C.backtrace_state {
+pub struct C.backtrace_state {
 	// filename &char
 }
 

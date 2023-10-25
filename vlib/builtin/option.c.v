@@ -1,7 +1,7 @@
 module builtin
 
 [typedef]
-struct C.IError {
+pub struct C.IError {
 	_object voidptr
 }
 

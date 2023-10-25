@@ -1,15 +1,15 @@
 module mysql
 
 [typedef]
-struct C.MYSQL {
+pub struct C.MYSQL {
 }
 
 [typedef]
-struct C.MYSQL_RES {
+pub struct C.MYSQL_RES {
 }
 
 [typedef]
-struct C.MYSQL_FIELD {
+pub struct C.MYSQL_FIELD {
 	name             &u8 // Name of column
 	org_name         &u8 // Original column name, if an alias
 	table            &u8 // Table of column if column was a field

@@ -10,7 +10,7 @@ pub struct ZipFolderOptions {
 	omit_empty_folders bool
 }
 
-struct C.zip_t {
+pub struct C.zip_t {
 }
 
 type Zip = C.zip_t

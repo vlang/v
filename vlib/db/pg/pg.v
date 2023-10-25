@@ -57,9 +57,9 @@ pub:
 
 //
 
-struct C.pg_result {}
+pub struct C.pg_result {}
 
-struct C.pg_conn {}
+pub struct C.pg_conn {}
 
 [typedef]
 pub struct C.PGresult {}

@@ -12,7 +12,7 @@ pub enum AssetMode {
 }
 
 // See https://developer.android.com/ndk/reference/struct/a-native-activity for more info.
-struct C.ANativeActivity {
+pub struct C.ANativeActivity {
 pub:
 	assetManager     &AssetManager = unsafe { nil } // Pointer to the Asset Manager instance for the application.
 	clazz            voidptr       // (jobject) The NativeActivity object handle.
@@ -28,7 +28,7 @@ pub:
 // NativeActivity defines the native side of an android.app.NativeActivity.
 pub type NativeActivity = C.ANativeActivity
 
-struct C.AAssetManager {
+pub struct C.AAssetManager {
 }
 
 // AssetManager provides access to an application's raw assets by creating Asset objects.
@@ -45,7 +45,7 @@ pub fn (am &AssetManager) open(filename string, mode AssetMode) !&Asset {
 	return asset
 }
 
-struct C.AAsset {
+pub struct C.AAsset {
 }
 
 pub type Asset = C.AAsset
