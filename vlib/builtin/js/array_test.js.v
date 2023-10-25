@@ -1052,7 +1052,7 @@ fn test_hex() {
 	assert st1.hex() == '41'.repeat(100)
 }*/
 
-fn test_left_shift_precendence() {
+fn test_left_shift_precedence() {
 	mut arr := []int{}
 	arr << 1 + 1
 	arr << 1 - 1

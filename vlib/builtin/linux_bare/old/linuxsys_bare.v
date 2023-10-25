@@ -669,7 +669,7 @@ https://blog.rchapman.org/posts/Linux_System_Call_Table_for_x86_64/
 239 sys_get_mempolicy int *policy unsigned long *nmask  unsigned long maxnode unsigned long addr  unsigned long flags
 240 sys_mq_open const char *u_name  int oflag mode_t mode struct mq_attr *u_attr
 241 sys_mq_unlink const char *u_name
-242 sys_mq_timedsend  mqd_t mqdes const char *u_msg_ptr size_t msg_len  unsigned int msg_prio const stuct timespec *u_abs_timeout
+242 sys_mq_timedsend  mqd_t mqdes const char *u_msg_ptr size_t msg_len  unsigned int msg_prio const struct timespec *u_abs_timeout
 243 sys_mq_timedreceive mqd_t mqdes char *u_msg_ptr size_t msg_len  unsigned int *u_msg_prio  const struct timespec *u_abs_timeout
 244 sys_mq_notify mqd_t mqdes const struct sigevent *u_notification
 245 sys_mq_getsetattr mqd_t mqdes const struct mq_attr *u_mqstat  struct mq_attr *u_omqstat

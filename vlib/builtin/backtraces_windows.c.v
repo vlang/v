@@ -11,7 +11,7 @@ pub mut:
 	f_reserved       [2]u64
 	f_index          u32
 	f_size           u32
-	f_mod_base       u64 // Base Address of module comtaining this symbol
+	f_mod_base       u64 // Base Address of module containing this symbol
 	f_flags          u32
 	f_value          u64 // Value of symbol, ValuePresent should be 1
 	f_address        u64 // Address of symbol including base address of module

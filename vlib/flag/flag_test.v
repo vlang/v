@@ -236,7 +236,7 @@ fn test_could_expect_no_free_args() {
 	assert args.len < 0 // expect an error and need to use args
 }
 
-fn test_allow_abreviations() {
+fn test_allow_abbreviations() {
 	mut fp := flag.new_flag_parser(['-v', '-o', 'some_file', '-i', '42', '-f', '2.0'])
 	v := fp.bool('version', `v`, false, '')
 	o := fp.string('output', `o`, 'empty', '')
