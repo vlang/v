@@ -401,9 +401,7 @@ fn new_tcp_socket(family AddrFamily) !TcpSocket {
 	// we shouldn't be using ioctlsocket in the 21st century
 	// use the non-blocking socket option instead please :)
 
-	// TODO(emily):
-	// Move this to its own function on the socket
-	s.set_option_int(.reuse_addr, 1)!
+	s.set_default_options()!
 
 	$if !net_blocking_sockets ? {
 		$if windows {
@@ -423,11 +421,12 @@ fn tcp_socket_from_handle(sockfd int) !TcpSocket {
 	$if trace_tcp ? {
 		eprintln('    tcp_socket_from_handle | s.handle: ${s.handle:6}')
 	}
-	// s.set_option_bool(.reuse_addr, true)?
-	s.set_option_int(.reuse_addr, 1)!
+
 	s.set_dualstack(true) or {
 		// Not ipv6, we dont care
 	}
+	s.set_default_options()!
+
 	$if !net_blocking_sockets ? {
 		$if windows {
 			t := u32(1) // true
@@ -450,6 +449,10 @@ pub fn tcp_socket_from_handle_raw(sockfd int) TcpSocket {
 	return s
 }
 
+fn (mut s TcpSocket) set_option(level int, opt int, value int) ! {
+	socket_error(C.setsockopt(s.handle, level, opt, &value, sizeof(int)))!
+}
+
 pub fn (mut s TcpSocket) set_option_bool(opt SocketOption, value bool) ! {
 	// TODO reenable when this `in` operation works again
 	// if opt !in opts_can_set {
@@ -459,17 +462,30 @@ pub fn (mut s TcpSocket) set_option_bool(opt SocketOption, value bool) ! {
 	// 	return err_option_wrong_type
 	// }
 	x := int(value)
-	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &x, sizeof(int)))!
+	s.set_option(C.SOL_SOCKET, int(opt), &x)!
+}
+
+pub fn (mut s TcpSocket) set_option_int(opt SocketOption, value int) ! {
+	s.set_option(C.SOL_SOCKET, int(opt), value)!
 }
 
 pub fn (mut s TcpSocket) set_dualstack(on bool) ! {
 	x := int(!on)
-	socket_error(C.setsockopt(s.handle, C.IPPROTO_IPV6, int(SocketOption.ipv6_only), &x,
-		sizeof(int)))!
+	s.set_option(C.IPPROTO_IPV6, int(SocketOption.ipv6_only), &x)!
 }
 
-pub fn (mut s TcpSocket) set_option_int(opt SocketOption, value int) ! {
-	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &value, sizeof(int)))!
+fn (mut s TcpSocket) set_default_options() ! {
+	s.set_option_int(.reuse_addr, 1)!
+
+	// At the socket level to ignore the exception signal (usually SIGNPIPE).
+	// In Linux, instead of using set_option(), specify the C.MSG_NOSIGNAL flag in c.send().
+	// In Windows, there is no need to process this signal.
+	$if macos {
+		s.set_option(C.SOL_SOCKET, C.SO_NOSIGPIPE, 1)!
+	}
+
+	// Enable the NODELAY option by default.
+	s.set_option(C.IPPROTO_TCP, C.TCP_NODELAY, 1)!
 }
 
 // bind a local rddress for TcpSocket

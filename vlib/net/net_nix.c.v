@@ -7,6 +7,7 @@ module net
 #include <netdb.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <netinet/tcp.h>
 
 #flag solaris -lsocket
 
