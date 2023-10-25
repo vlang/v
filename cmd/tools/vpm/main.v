@@ -1,0 +1,213 @@
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+module main
+
+import os
+import os.cmdline
+import rand
+import v.help
+import v.vmod
+
+struct VpmSettings {
+mut:
+	is_help       bool
+	is_verbose    bool
+	server_urls   []string
+	vmodules_path string
+}
+
+struct VCS {
+	cmd            string
+	dir            string
+	update_arg     string
+	install_arg    string
+	outdated_steps []string
+}
+
+const (
+	settings                = &VpmSettings{}
+	default_vpm_server_urls = ['https://vpm.vlang.io', 'https://vpm.url4e.com']
+	vpm_server_urls         = rand.shuffle_clone(default_vpm_server_urls) or { [] } // ensure that all queries are distributed fairly
+	valid_vpm_commands      = ['help', 'search', 'install', 'update', 'upgrade', 'outdated', 'list',
+		'remove', 'show']
+	excluded_dirs           = ['cache', 'vlib']
+	supported_vcs           = {
+		'git': VCS{
+			cmd: 'git'
+			dir: '.git'
+			update_arg: 'pull --recurse-submodules' // pulling with `--depth=1` leads to conflicts, when the upstream is more than 1 commit newer
+			install_arg: 'clone --depth=1 --recursive --shallow-submodules'
+			outdated_steps: ['fetch', 'rev-parse @', 'rev-parse @{u}']
+		}
+		'hg':  VCS{
+			cmd: 'hg'
+			dir: '.hg'
+			update_arg: 'pull --update'
+			install_arg: 'clone'
+			outdated_steps: ['incoming']
+		}
+	}
+)
+
+fn main() {
+	init_settings()
+	// This tool is intended to be launched by the v frontend,
+	// which provides the path to V inside os.getenv('VEXE')
+	// args are: vpm [options] SUBCOMMAND module names
+	params := cmdline.only_non_options(os.args[1..])
+	options := cmdline.only_options(os.args[1..])
+	verbose_println('cli params: ${params}')
+	if params.len < 1 {
+		vpm_help()
+		exit(5)
+	}
+	vpm_command := params[0]
+	mut module_names := params[1..].clone()
+	ensure_vmodules_dir_exist()
+	// println('module names: ') println(module_names)
+	match vpm_command {
+		'help' {
+			vpm_help()
+		}
+		'search' {
+			vpm_search(module_names)
+		}
+		'install' {
+			install(module_names, options)
+		}
+		'update' {
+			vpm_update(module_names)
+		}
+		'upgrade' {
+			vpm_upgrade()
+		}
+		'outdated' {
+			vpm_outdated()
+		}
+		'list' {
+			vpm_list()
+		}
+		'remove' {
+			vpm_remove(module_names)
+		}
+		'show' {
+			vpm_show(module_names)
+		}
+		else {
+			eprintln('Error: you tried to run "v ${vpm_command}"')
+			eprintln('... but the v package management tool vpm only knows about these commands:')
+			for validcmd in valid_vpm_commands {
+				eprintln('    v ${validcmd}')
+			}
+			exit(3)
+		}
+	}
+}
+
+fn init_settings() {
+	mut s := &VpmSettings(unsafe { nil })
+	unsafe {
+		s = settings
+	}
+	s.is_help = '-h' in os.args || '--help' in os.args || 'help' in os.args
+	s.is_verbose = '-v' in os.args
+	s.server_urls = cmdline.options(os.args, '-server-url')
+	s.vmodules_path = os.vmodules_dir()
+}
+
+fn vpm_help() {
+	help.print_and_exit('vpm')
+}
+
+fn vpm_upgrade() {
+	outdated := get_outdated() or { exit(1) }
+	if outdated.len > 0 {
+		vpm_update(outdated)
+	} else {
+		println('Modules are up to date.')
+	}
+}
+
+fn vpm_outdated() {
+	outdated := get_outdated() or { exit(1) }
+	if outdated.len > 0 {
+		eprintln('Outdated modules:')
+		for m in outdated {
+			eprintln('  ${m}')
+		}
+	} else {
+		println('Modules are up to date.')
+	}
+}
+
+fn vpm_list() {
+	module_names := get_installed_modules()
+	if module_names.len == 0 {
+		eprintln('You have no modules installed.')
+		exit(0)
+	}
+	for mod in module_names {
+		println(mod)
+	}
+}
+
+fn vpm_remove(module_names []string) {
+	if settings.is_help {
+		help.print_and_exit('remove')
+		exit(0)
+	}
+	if module_names.len == 0 {
+		eprintln('´v remove´ requires *at least one* module name.')
+		exit(2)
+	}
+	for name in module_names {
+		final_module_path := valid_final_path_of_existing_module(name) or { continue }
+		eprintln('Removing module "${name}" ...')
+		verbose_println('removing folder ${final_module_path}')
+		os.rmdir_all(final_module_path) or {
+			verbose_println('error while removing "${final_module_path}": ${err.msg()}')
+		}
+		// delete author directory if it is empty
+		author := name.split('.')[0]
+		author_dir := os.real_path(os.join_path(settings.vmodules_path, author))
+		if !os.exists(author_dir) {
+			continue
+		}
+		if os.is_dir_empty(author_dir) {
+			verbose_println('removing author folder ${author_dir}')
+			os.rmdir(author_dir) or {
+				verbose_println('error while removing "${author_dir}": ${err.msg()}')
+			}
+		}
+	}
+}
+
+fn vpm_show(module_names []string) {
+	installed_modules := get_installed_modules()
+	for module_name in module_names {
+		if module_name !in installed_modules {
+			module_meta_info := get_module_meta_info(module_name) or { continue }
+			print('
+Name: ${module_meta_info.name}
+Homepage: ${module_meta_info.url}
+Downloads: ${module_meta_info.nr_downloads}
+Installed: False
+--------
+')
+			continue
+		}
+		path := os.join_path(os.vmodules_dir(), module_name.replace('.', os.path_separator))
+		mod := vmod.from_file(os.join_path(path, 'v.mod')) or { continue }
+		print('Name: ${mod.name}
+Version: ${mod.version}
+Description: ${mod.description}
+Homepage: ${mod.repo_url}
+Author: ${mod.author}
+License: ${mod.license}
+Location: ${path}
+Requires: ${mod.dependencies.join(', ')}
+--------
+')
+	}
+}
