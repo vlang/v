@@ -804,7 +804,7 @@ pub fn (s string) split(delim string) []string {
 	return s.split_nth(delim, 0)
 }
 
-// rsplit splits a string into an array of strings at the given delimiter starting from the right.
+// rsplit splits a string into an array of strings at the given delimiter, starting from the right.
 // Example: assert 'A B C'.rsplit(' ') == ['C','B','A']
 // If `delim` is empty the string is split by it's characters.
 // Example: assert 'DEF'.rsplit('') == ['F','E','D']
@@ -829,7 +829,7 @@ pub fn (s string) split_once(delim string) ?(string, string) {
 	return result[0], result[1]
 }
 
-// rsplit_once splits a string into a pair of strings at the given delimiter starting from the right.
+// rsplit_once splits a string into a pair of strings at the given delimiter, starting from the right.
 // Example:
 // ```v
 // path, ext := 'file.ts.dts'.rsplit_once('.')?
