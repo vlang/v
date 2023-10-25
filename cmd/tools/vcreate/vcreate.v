@@ -129,10 +129,15 @@ fn new_project(args []string) {
 
 fn init_project() {
 	mut c := Create{}
-	c.name = check_name(os.file_name(os.getwd()))
+	dir_name := check_name(os.file_name(os.getwd()))
 	if !os.exists('v.mod') {
 		c.description = ''
+		mod_dir_has_hyphens := dir_name.contains('-')
+		c.name = if mod_dir_has_hyphens { dir_name.replace('-', '_') } else { dir_name }
 		c.write_vmod(false)
+		if mod_dir_has_hyphens {
+			println('The directory name `${dir_name}` is invalid as a module name. The module name in `v.mod` was set to `${c.name}`')
+		}
 		println('Change the description of your project in `v.mod`')
 	}
 	if !os.exists('src/main.v') {

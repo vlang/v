@@ -1,4 +1,5 @@
 import os
+import v.vmod
 
 // Note: the following uses `test_vcreate` and NOT `vcreate_test` deliberately,
 // to both avoid confusions with the name of the current test itself, and to
