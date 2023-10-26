@@ -15,42 +15,49 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			if node.typ.has_flag(.option) && (node.has_cap || node.has_len) {
 				c.error('Option array `${elem_sym.name}` cannot have initializers', node.pos)
 			}
-			if elem_sym.kind == .struct_ {
-				elem_info := elem_sym.info as ast.Struct
-				if elem_info.generic_types.len > 0 && elem_info.concrete_types.len == 0
-					&& !node.elem_type.has_flag(.generic) {
-					if c.table.cur_concrete_types.len == 0 {
-						c.error('generic struct `${elem_sym.name}` must specify type parameter, e.g. ${elem_sym.name}[int]',
-							node.elem_type_pos)
-					} else {
-						c.error('generic struct `${elem_sym.name}` must specify type parameter, e.g. ${elem_sym.name}[T]',
-							node.elem_type_pos)
+			match elem_sym.info {
+				ast.Struct {
+					if elem_sym.info.generic_types.len > 0 && elem_sym.info.concrete_types.len == 0
+						&& !node.elem_type.has_flag(.generic) {
+						if c.table.cur_concrete_types.len == 0 {
+							c.error('generic struct `${elem_sym.name}` must specify type parameter, e.g. ${elem_sym.name}[int]',
+								node.elem_type_pos)
+						} else {
+							c.error('generic struct `${elem_sym.name}` must specify type parameter, e.g. ${elem_sym.name}[T]',
+								node.elem_type_pos)
+						}
 					}
 				}
-			} else if elem_sym.kind == .interface_ {
-				elem_info := elem_sym.info as ast.Interface
-				if elem_info.generic_types.len > 0 && elem_info.concrete_types.len == 0
-					&& !node.elem_type.has_flag(.generic) {
-					if c.table.cur_concrete_types.len == 0 {
-						c.error('generic interface `${elem_sym.name}` must specify type parameter, e.g. ${elem_sym.name}[int]',
-							node.elem_type_pos)
-					} else {
-						c.error('generic interface `${elem_sym.name}` must specify type parameter, e.g. ${elem_sym.name}[T]',
-							node.elem_type_pos)
+				ast.Interface {
+					if elem_sym.info.generic_types.len > 0 && elem_sym.info.concrete_types.len == 0
+						&& !node.elem_type.has_flag(.generic) {
+						if c.table.cur_concrete_types.len == 0 {
+							c.error('generic interface `${elem_sym.name}` must specify type parameter, e.g. ${elem_sym.name}[int]',
+								node.elem_type_pos)
+						} else {
+							c.error('generic interface `${elem_sym.name}` must specify type parameter, e.g. ${elem_sym.name}[T]',
+								node.elem_type_pos)
+						}
 					}
 				}
-			} else if elem_sym.kind == .sum_type {
-				elem_info := elem_sym.info as ast.SumType
-				if elem_info.generic_types.len > 0 && elem_info.concrete_types.len == 0
-					&& !node.elem_type.has_flag(.generic) {
-					if c.table.cur_concrete_types.len == 0 {
-						c.error('generic sumtype `${elem_sym.name}` must specify type parameter, e.g. ${elem_sym.name}[int]',
-							node.elem_type_pos)
-					} else {
-						c.error('generic sumtype `${elem_sym.name}` must specify type parameter, e.g. ${elem_sym.name}[T]',
-							node.elem_type_pos)
+				ast.SumType {
+					if elem_sym.info.generic_types.len > 0 && elem_sym.info.concrete_types.len == 0
+						&& !node.elem_type.has_flag(.generic) {
+						if c.table.cur_concrete_types.len == 0 {
+							c.error('generic sumtype `${elem_sym.name}` must specify type parameter, e.g. ${elem_sym.name}[int]',
+								node.elem_type_pos)
+						} else {
+							c.error('generic sumtype `${elem_sym.name}` must specify type parameter, e.g. ${elem_sym.name}[T]',
+								node.elem_type_pos)
+						}
 					}
 				}
+				ast.Alias {
+					if elem_sym.name == 'byte' {
+						c.warn('byte is deprecated, use u8 instead', node.elem_type_pos)
+					}
+				}
+				else {}
 			}
 		}
 		if node.exprs.len == 0 {
