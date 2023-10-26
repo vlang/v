@@ -265,6 +265,20 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 						if !init_expr.obj.expr.typ.is_pure_int() {
 							c.error('only integer types are allowed', init_expr.pos)
 						}
+						if init_expr.obj.expr.expr is ast.IntegerLiteral {
+							if comptime_value := c.eval_comptime_const_expr(init_expr.obj.expr.expr,
+								0)
+							{
+								fixed_size = comptime_value.i64() or { fixed_size }
+							}
+						}
+						if init_expr.obj.expr.expr is ast.InfixExpr {
+							if comptime_value := c.eval_comptime_const_expr(init_expr.obj.expr.expr,
+								0)
+							{
+								fixed_size = comptime_value.i64() or { fixed_size }
+							}
+						}
 					}
 					if comptime_value := c.eval_comptime_const_expr(init_expr.obj.expr,
 						0)
