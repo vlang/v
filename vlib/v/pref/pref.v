@@ -184,7 +184,7 @@ pub mut:
 	custom_prelude   string // Contents of custom V prelude that will be prepended before code in resulting .c files
 	cmain            string // The name of the generated C main function. Useful with framework like code, that uses macros to re-define `main`, like SDL2 does. When set, V will always generate `int THE_NAME(int ___argc, char** ___argv){`, *no matter* the platform.
 	lookup_path      []string
-	output_cross_c   bool // true, when the user passed `-os cross`
+	output_cross_c   bool // true, when the user passed `-os cross` or `-cross`
 	output_es5       bool
 	prealloc         bool
 	vroot            string
@@ -740,6 +740,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-print-watched-files' {
 				res.print_watched_files = true
+			}
+			'-cross' {
+				res.output_cross_c = true
+				res.build_options << '${arg}'
 			}
 			'-os' {
 				target_os := cmdline.option(current_args, '-os', '')

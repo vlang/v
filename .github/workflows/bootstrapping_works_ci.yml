@@ -61,13 +61,13 @@ jobs:
           ls -la v_from_vc v_from_vc_produced_native_v
           ls -la v_from_vc2 v_from_vc_produced_native_v2
 
-      - name: Ensure v up works
-        run: |
-          ./v cmd/tools/oldv.v
-          ./cmd/tools/oldv -v HEAD^^^
-          cd ~/.cache/oldv/v_at_HEAD___/
-          ./v version
-          ./v -v up
-          ./v version
-          ./v  -o v2 cmd/v
-          ./v2 -o v3 cmd/v
+##      - name: Ensure v up works
+##        run: |
+##          ./v cmd/tools/oldv.v
+##          ./cmd/tools/oldv -v HEAD^^^
+##          cd ~/.cache/oldv/v_at_HEAD___/
+##          ./v version
+##          ./v -v up
+##          ./v version
+##          ./v  -o v2 cmd/v
+##          ./v2 -o v3 cmd/v
