@@ -86,8 +86,8 @@ fn decode_i64(root &C.cJSON) i64 {
 
 // TODO: remove when `byte` is removed
 [markused]
-fn decode_byte(root &C.cJSON) u8 {
-	return decode_u8(root)
+fn decode_byte(root &C.cJSON) byte {
+	return byte(decode_u8(root))
 }
 
 [markused]

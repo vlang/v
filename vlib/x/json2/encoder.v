@@ -238,7 +238,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 						typeof[u16]().idx, typeof[u32]().idx, typeof[u64]().idx {
 							wr.write(value.str().bytes())!
 						}
-						typeof[[]int]().idx {
+						typeof[[]byte]().idx, typeof[[]int]().idx {
 							// FIXME - error: could not infer generic type `U` in call to `encode_array`
 							// e.encode_array(value, level, mut wr)!
 						}
