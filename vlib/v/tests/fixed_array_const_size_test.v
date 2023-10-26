@@ -1,6 +1,7 @@
 const (
 	size     = 5
 	u64_size = u64(5)
+	int_size = int(1)
 )
 
 struct Foo {
@@ -13,6 +14,10 @@ fn test_fixed_array_const_size() {
 	assert a == Foo{
 		bar: [u8(0), 0, 0, 0, 0]!
 	}
+
+	b := [int_size]int{}
+	assert b.len == 1
+	assert b == [0]!
 }
 
 fn test_fixed_array_const_u64_size() {
