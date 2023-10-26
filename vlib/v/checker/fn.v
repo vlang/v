@@ -271,6 +271,9 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			if c.check_import_sym_conflict(param.name) {
 				c.error('duplicate of an import symbol `${param.name}`', param.pos)
 			}
+			if arg_typ_sym.kind == .alias && arg_typ_sym.name == 'byte' {
+				c.warn('byte is deprecated, use u8 instead', param.type_pos)
+			}
 		}
 		if !node.is_method {
 			// Check if function name is already registered as imported module symbol

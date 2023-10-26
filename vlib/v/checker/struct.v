@@ -156,6 +156,11 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 						c.error('cannot use Result type as map value type', field.type_pos)
 					}
 				}
+				.alias {
+					if sym.name == 'byte' {
+						c.warn('byte is deprecated, use u8 instead', field.type_pos)
+					}
+				}
 				else {}
 			}
 

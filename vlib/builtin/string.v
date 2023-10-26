@@ -1739,7 +1739,7 @@ pub fn (s string) str() string {
 
 // at returns the byte at index `idx`.
 // Example: assert 'ABC'.at(1) == u8(`B`)
-fn (s string) at(idx int) u8 {
+fn (s string) at(idx int) byte {
 	$if !no_bounds_checking {
 		if idx < 0 || idx >= s.len {
 			panic('string index out of range: ${idx} / ${s.len}')
