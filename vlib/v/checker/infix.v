@@ -514,7 +514,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			return c.check_like_operator(node)
 		}
 		.left_shift {
-			if left_final_sym.kind == .array {
+			if left_final_sym.kind == .array
+				|| c.table.sym(c.unwrap_generic(left_type)).kind == .array {
 				if !node.is_stmt {
 					c.error('array append cannot be used in an expression', node.pos)
 				}

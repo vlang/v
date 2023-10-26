@@ -2057,7 +2057,8 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 				if mut node.expr is ast.InfixExpr {
 					if node.expr.op == .left_shift {
 						left_sym := c.table.final_sym(node.expr.left_type)
-						if left_sym.kind != .array {
+						if left_sym.kind != .array
+							&& c.table.final_sym(c.unwrap_generic(node.expr.left_type)).kind != .array {
 							c.error('unused expression', node.pos)
 						}
 					}
