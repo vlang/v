@@ -46,7 +46,7 @@ pub enum Platform {
 	vinix
 	haiku
 	raw
-	cross // TODO: add functionality for v doc -os cross whenever possible
+	cross // TODO: add functionality for v doc -cross whenever possible
 }
 
 // copy of pref.os_from_string

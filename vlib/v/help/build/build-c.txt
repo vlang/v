@@ -109,11 +109,13 @@ see also `v help build`.
          The module declaration should be `builtin`. The default Linux
          implementation can be found in `vlib/builtin/linux_bare`.
 
+   -cross
+      With `-cross`, V will attempt to output cross-platform C code.
+
    -os <os>, -target-os <os>
       Change the target OS that V tries to compile for.
       By default, the target OS is the host system.
-      When OS is `cross`, V will attempt to output cross-platform C code.
-
+	  
       Here is a list of the operating systems, supported by V:
       (CI tests runs on every commit/PR for each of these):
             `windows`, `linux`, `macos`
@@ -142,7 +144,7 @@ see also `v help build`.
       If you compile with `-os freebsd`, then x_default.c.v will be used.
       If you compile with `-os linux`, then x_linux.c.v will be used.
       If you compile with `-os windows`, then x_windows.c.v will be used.
-      If you compile with `-os cross`, then all, *except x_default.c.v*
+      If you compile with `-cross`, then all, *except x_default.c.v*
       will be used, wrapped in conditional compilation guards, so that
       the generated C source code will be larger, but will compile on all
       explicitly supported platforms without source changes.
