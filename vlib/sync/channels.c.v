@@ -550,7 +550,7 @@ fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
 //               -2 if all channels are closed
 
 pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []voidptr, timeout time.Duration) int {
-	$if debug {
+	$if debug_channels ? {
 		assert channels.len == dir.len
 		assert dir.len == objrefs.len
 	}
