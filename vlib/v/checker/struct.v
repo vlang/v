@@ -42,7 +42,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				}
 			}
 		}
-		if struct_sym.info.is_minify {
+		if struct_sym.info.is_minify && !c.pref.output_cross_c {
 			node.fields.sort_with_compare(minify_sort_fn)
 			struct_sym.info.fields.sort_with_compare(minify_sort_fn)
 		}
