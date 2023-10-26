@@ -47,13 +47,6 @@ struct Mod {
 	vcs          string
 }
 
-struct Vmod {
-mut:
-	name    string
-	version string
-	deps    []string
-}
-
 enum Source {
 	git
 	hg
@@ -312,14 +305,13 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 		}
 		vmod_path := os.join_path(final_module_path, 'v.mod')
 		if os.exists(vmod_path) {
-			data := os.read_file(vmod_path) or { return }
-			vmod_ := parse_vmod(data) or {
+			manifest := vmod.from_file(vmod_path) or {
 				eprintln(err)
 				return
 			}
-			minfo := mod_name_info(vmod_.name)
+			minfo := mod_name_info(manifest.name)
 			if final_module_path != minfo.final_module_path {
-				println('Relocating module from "${name}" to "${vmod_.name}" ( "${minfo.final_module_path}" ) ...')
+				println('Relocating module from "${name}" to "${manifest.name}" ( "${minfo.final_module_path}" ) ...')
 				if os.exists(minfo.final_module_path) {
 					eprintln('Warning module "${minfo.final_module_path}" already exists!')
 					eprintln('Removing module "${minfo.final_module_path}" ...')
@@ -342,7 +334,7 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 					}
 					continue
 				}
-				println('Module "${name}" relocated to "${vmod_.name}" successfully.')
+				println('Module "${name}" relocated to "${manifest.name}" successfully.')
 				publisher_dir := final_module_path.all_before_last(os.path_separator)
 				if os.is_dir_empty(publisher_dir) {
 					os.rmdir(publisher_dir) or {
@@ -353,7 +345,7 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 				}
 				final_module_path = minfo.final_module_path
 			}
-			name = vmod_.name
+			name = manifest.name
 		}
 		resolve_dependencies(name, final_module_path, module_names)
 	}
@@ -750,32 +742,17 @@ fn resolve_dependencies(name string, module_path string, module_names []string) 
 	if !os.exists(vmod_path) {
 		return
 	}
-	data := os.read_file(vmod_path) or { return }
-	vmod_ := parse_vmod(data) or {
+	manifest := vmod.from_file(vmod_path) or {
 		eprintln(err)
 		return
 	}
-	mut deps := []string{}
 	// filter out dependencies that were already specified by the user
-	for d in vmod_.deps {
-		if d !in module_names {
-			deps << d
-		}
-	}
+	deps := manifest.dependencies.filter(it !in module_names)
 	if deps.len > 0 {
 		println('Resolving ${deps.len} dependencies for module "${name}" ...')
 		verbose_println('Found dependencies: ${deps}')
 		vpm_install(deps, Source.vpm)
 	}
-}
-
-fn parse_vmod(data string) !Vmod {
-	manifest := vmod.decode(data) or { return error('Parsing v.mod file failed, ${err}') }
-	mut vmod_ := Vmod{}
-	vmod_.name = manifest.name
-	vmod_.version = manifest.version
-	vmod_.deps = manifest.dependencies
-	return vmod_
 }
 
 fn get_working_server_url() string {
