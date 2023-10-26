@@ -16,6 +16,18 @@ pub fn is_main_thread() bool {
 	return g_main_thread_id == u64(C.pthread_self())
 }
 
-// Not supported yet
+[typedef]
+struct C.sigset_t {}
+
+fn C.sigaddset(set &C.sigset_t, signum int) int
+fn C.sigemptyset(set &C.sigset_t)
+fn C.sigprocmask(how int, set &C.sigset_t, oldset &C.sigset_t) int
+
 fn signal_ignore_internal(args ...Signal) {
+	mask1 := C.sigset_t{}
+	C.sigemptyset(&mask1)
+	for arg in args {
+		C.sigaddset(&mask1, int(arg))
+	}
+	C.sigprocmask(C.SIG_BLOCK, &mask1, unsafe { nil })
 }
