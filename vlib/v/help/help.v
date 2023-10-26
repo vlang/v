@@ -2,80 +2,52 @@ module help
 
 import os
 
-const (
-	unknown_topic = '`v help`: unknown help topic provided. Use `v help` for usage information.'
-)
+const help_dir = os.join_path(@VEXEROOT, 'vlib', 'v', 'help')
 
-// print_and_exit Prints the help topic and exits
+// print_and_exit prints the help topic and exits.
 pub fn print_and_exit(topic string) {
-	vexe := os.executable()
-	vroot := os.dir(vexe)
-	topicdir := os.join_path(vroot, 'vlib', 'v', 'help')
-
-	for b in topic {
-		if (b >= `a` && b <= `z`) || b == `-` || (b >= `0` && b <= `9`) {
-			continue
-		}
-		eprintln(help.unknown_topic)
-		exit(1)
-	}
-
-	mut path_to := topic
-	mut topics := os.walk_ext(topicdir, '.txt')
-	mut items := [][]string{}
-
-	mut item_rev := []string{}
-	mut delim := ''
-
-	// Getting the directory, splitting at `/`, trimming to only indexes 0 and 1,
-	// and reversing that into the items array
-	for mut item in topics {
-		$if windows {
-			delim = '\\'
-		} $else {
-			delim = '/'
-		}
-		item_rev = item.split(delim).reverse()
-		item_rev.trim(2)
-		items << item_rev.reverse()
-	}
-
-	// Getting the path to the help topic text file
-	for cmds in items {
-		if '${topic}.txt' in cmds {
-			path_to = '${cmds[0]}/${cmds[1].replace('.txt', '')}'
-			break
-		}
-	}
-
-	topic_dir := if topic == 'default' {
-		os.join_path(topicdir, 'default.txt')
-	} else {
-		os.join_path(topicdir, '${path_to}.txt')
-	}
-
 	if topic == 'topics' {
-		println(known_topics(topicdir))
+		print_known_topics()
 		exit(0)
 	}
 
-	content := os.read_file(topic_dir) or {
-		eprintln(help.unknown_topic)
-		eprintln(known_topics(topicdir))
+	for c in topic {
+		if !c.is_letter() && !c.is_digit() && c != `-` {
+			print_topic_unkown(topic)
+			exit(1)
+		}
+	}
+
+	mut topic_path := ''
+	for t in os.walk_ext(help.help_dir, '.txt') {
+		if topic == t.all_after_last(os.path_separator)#[..-4] {
+			topic_path = t
+			break
+		}
+	}
+	if topic_path == '' {
+		print_topic_unkown(topic)
+		print_known_topics()
 		exit(1)
 	}
-	println(content)
+
+	println(os.read_file(topic_path) or {
+		eprintln('error: failed reading topic file: ${err}')
+		exit(1)
+	})
 	exit(0)
 }
 
-// known_topics Getting topics known to V
-fn known_topics(topicdir string) string {
-	mut res := []string{}
-	res << 'Known help topics: '
+fn print_topic_unkown(topic string) {
+	eprintln('error: unknown help topic "${topic}". Use `v help` for usage information.')
+}
 
-	mut topics := os.walk_ext(topicdir, '.txt').map(os.file_name(it).replace('.txt', ''))
-	topics.sort()
-	res << topics.join(', ')
-	res << '.'
-	return res.join('').replace('default, ', '')
+fn print_known_topics() {
+	mut res := 'Known help topics: '
+	for t in os.walk_ext(help.help_dir, '.txt') {
+		if t != 'default.txt' {
+			res += os.file_name(t).replace('.txt', '') + ', '
+		}
+	}
+	println(res#[..-2] + '.')
 }
