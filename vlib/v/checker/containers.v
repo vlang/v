@@ -272,6 +272,13 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 								fixed_size = comptime_value.i64() or { fixed_size }
 							}
 						}
+						if init_expr.obj.expr.expr is ast.InfixExpr {
+							if comptime_value := c.eval_comptime_const_expr(init_expr.obj.expr.expr,
+								0)
+							{
+								fixed_size = comptime_value.i64() or { fixed_size }
+							}
+						}
 					}
 					if comptime_value := c.eval_comptime_const_expr(init_expr.obj.expr,
 						0)
