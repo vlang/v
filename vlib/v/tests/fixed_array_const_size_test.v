@@ -1,8 +1,8 @@
 const (
-	size     = 5
-	u64_size = u64(5)
-	int_size = int(1)
-	infix_cast_size = int(100/50)
+	size            = 5
+	u64_size        = u64(5)
+	int_size        = int(1)
+	infix_cast_size = int(100 / 50)
 )
 
 struct Foo {
