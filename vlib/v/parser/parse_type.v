@@ -531,6 +531,12 @@ If you need to modify an array in a function, use a mutable argument instead: `f
 			return 0
 		}
 	}
+	if nr_amps == 0 {
+		sym := p.table.sym(typ)
+		if sym.kind == .alias && sym.name == 'byte' {
+			p.warn_with_pos('byte is deprecated, use u8 instead', pos)
+		}
+	}
 	return typ
 }
 
