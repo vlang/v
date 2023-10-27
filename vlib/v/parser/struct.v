@@ -267,7 +267,8 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 			// Comments after type (same line)
 			prev_attrs := p.attrs
 			p.attrs = []
-			if p.tok.kind == .lsbr || p.tok.kind == .at {
+			// TODO: remove once old syntax is no longer supported
+			if p.tok.kind == .lsbr {
 				p.inside_struct_attr_decl = true
 				// attrs are stored in `p.attrs`
 				p.attributes()
@@ -293,6 +294,17 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 					}
 					has_default_expr = true
 					comments << p.eat_comments()
+				}
+				if p.tok.kind == .at {
+					p.inside_struct_attr_decl = true
+					// attrs are stored in `p.attrs`
+					p.attributes()
+					for fa in p.attrs {
+						if fa.name == 'deprecated' {
+							is_field_deprecated = true
+						}
+					}
+					p.inside_struct_attr_decl = false
 				}
 				ast_fields << ast.StructField{
 					name: field_name
