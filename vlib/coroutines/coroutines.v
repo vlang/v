@@ -25,7 +25,7 @@ fn init() {
 	alloc := fn (_ voidptr, stack_size int) voidptr {
 		unsafe {
 			stack_ptr := malloc(stack_size)
-			$if gcboehm {
+			$if gcboehm ? {
 				C.GC_add_roots(stack_ptr, charptr(stack_ptr) + stack_size)
 			}
 			return stack_ptr
@@ -33,7 +33,7 @@ fn init() {
 	}
 	dealloc := fn (_ voidptr, stack_ptr voidptr, stack_size int) {
 		unsafe {
-			$if gcboehm {
+			$if gcboehm ? {
 				C.GC_remove_roots(stack_ptr, charptr(stack_ptr) + stack_size)
 			}
 			free(stack_ptr)
