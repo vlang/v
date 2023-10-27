@@ -42,6 +42,7 @@ pub mut:
 	cert_key               string
 	in_memory_verification bool // if true, verify, cert, and cert_key are read from memory, not from a file
 	allow_redirect         bool = true // whether to allow redirect
+	max_retries            int  = 5 // maximum number of retries required when an underlying socket error occurs
 	// callbacks to allow custom reporting code to run, while the request is running
 	on_redirect RequestRedirectFn = unsafe { nil }
 	on_progress RequestProgressFn = unsafe { nil }
@@ -120,15 +121,42 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Res
 	// println('fetch $method, $scheme, $host_name, $nport, $path ')
 	if scheme == 'https' && req.proxy == unsafe { nil } {
 		// println('ssl_do( $nport, $method, $host_name, $path )')
-		res := req.ssl_do(nport, method, host_name, path)!
-		return res
+		mut retries := 0
+		for {
+			res := req.ssl_do(nport, method, host_name, path) or {
+				retries++
+				if is_no_need_retry_error(err.code()) || retries >= req.max_retries {
+					return err
+				}
+				continue
+			}
+			return res
+		}
 	} else if scheme == 'http' && req.proxy == unsafe { nil } {
 		// println('http_do( $nport, $method, $host_name, $path )')
-		res := req.http_do('${host_name}:${nport}', method, path)!
-		return res
+		mut retries := 0
+		for {
+			res := req.http_do('${host_name}:${nport}', method, path) or {
+				retries++
+				if is_no_need_retry_error(err.code()) || retries >= req.max_retries {
+					return err
+				}
+				continue
+			}
+			return res
+		}
 	} else if req.proxy != unsafe { nil } {
-		res := req.proxy.http_do(host_name, method, path, req)!
-		return res
+		mut retries := 0
+		for {
+			res := req.proxy.http_do(host_name, method, path, req) or {
+				retries++
+				if is_no_need_retry_error(err.code()) || retries >= req.max_retries {
+					return err
+				}
+				continue
+			}
+			return res
+		}
 	}
 	return error('http.request.method_and_url_to_response: unsupported scheme: "${scheme}"')
 }
@@ -469,4 +497,13 @@ fn parse_disposition(line string) map[string]string {
 		}
 	}
 	return data
+}
+
+fn is_no_need_retry_error(err_code int) bool {
+	return err_code in [
+		net.err_port_out_of_range.code(),
+		net.err_no_udp_remote.code(),
+		net.err_connect_timed_out.code(),
+		net.err_timed_out_code,
+	]
 }
