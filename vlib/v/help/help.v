@@ -19,9 +19,9 @@ pub fn print_and_exit(topic string) {
 	}
 
 	mut topic_path := ''
-	for t in os.walk_ext(help.help_dir, '.txt') {
-		if topic == t.all_after_last(os.path_separator)#[..-4] {
-			topic_path = t
+	for path in os.walk_ext(help.help_dir, '.txt') {
+		if topic == os.file_name(path).all_before('.txt') {
+			topic_path = path
 			break
 		}
 	}
@@ -44,10 +44,12 @@ fn print_topic_unkown(topic string) {
 
 fn print_known_topics() {
 	mut res := 'Known help topics: '
-	for t in os.walk_ext(help.help_dir, '.txt') {
-		if t != 'default.txt' {
-			res += os.file_name(t).replace('.txt', '') + ', '
+	topic_paths := os.walk_ext(help.help_dir, '.txt')
+	for i, path in topic_paths {
+		topic := os.file_name(path).all_before('.txt')
+		if topic != 'default' {
+			res += topic + if i != topic_paths.len - 1 { ', ' } else { '.' }
 		}
 	}
-	println(res#[..-2] + '.')
+	println(res)
 }
