@@ -39,3 +39,27 @@ fn test_any_called_with_opt_bool_fn() ? {
 	_ := [1, 2, 3].any(opt_bool_fn()?)
 	assert true
 }
+
+interface Args {}
+
+const some_strings = ['one', 'two', 'three']
+
+fn array_contains_method_with_interface(args ...Args) bool {
+	arg := args[0]
+	match arg {
+		string {
+			if arg in some_strings {
+				return true
+			} else {
+				return false
+			}
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn test_array_contains_method_with_interface() {
+	assert array_contains_method_with_interface('one')
+}

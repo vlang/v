@@ -979,7 +979,7 @@ fn (mut g Gen) gen_array_contains(left_type ast.Type, left ast.Expr, right_type 
 		g.write('->val')
 	}
 	g.write(', ')
-	if right.is_auto_deref_var() {
+	if right.is_auto_deref_var() || right_type.is_ptr() {
 		g.write('*')
 	}
 	left_sym := g.table.final_sym(left_type)
