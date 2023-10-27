@@ -112,7 +112,11 @@ pub fn (mut c TcpConn) close() ! {
 }
 
 pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
-	mut res := wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0))!
+	mut res := $if is_coroutine ? {
+		wrap_read_result(C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout))!
+	} $else {
+		wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0))!
+	}
 	$if trace_tcp ? {
 		eprintln('<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} len: ${len} | res: ${res}')
 	}
@@ -127,7 +131,11 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 	code := error_code()
 	if code == int(error_ewouldblock) {
 		c.wait_for_read()!
-		res = wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0))!
+		res = $if is_coroutine ? {
+			wrap_read_result(C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout))!
+		} $else {
+			wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0))!
+		}
 		$if trace_tcp ? {
 			eprintln('<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} len: ${len} | res: ${res}')
 		}
@@ -177,7 +185,11 @@ pub fn (mut c TcpConn) write_ptr(b &u8, len int) !int {
 		for total_sent < len {
 			ptr := ptr_base + total_sent
 			remaining := len - total_sent
-			mut sent := C.send(c.sock.handle, ptr, remaining, msg_nosignal)
+			mut sent := $if is_coroutine ? {
+				C.photon_send(c.sock.handle, ptr, remaining, msg_nosignal, c.write_timeout)
+			} $else {
+				C.send(c.sock.handle, ptr, remaining, msg_nosignal)
+			}
 			$if trace_tcp_data_write ? {
 				eprintln('>>> TcpConn.write_ptr | data chunk, total_sent: ${total_sent:6}, remaining: ${remaining:6}, ptr: ${voidptr(ptr):x} => sent: ${sent:6}')
 			}
@@ -337,10 +349,18 @@ pub fn (mut l TcpListener) accept_only() !&TcpConn {
 		eprintln('    TcpListener.accept | l.sock.handle: ${l.sock.handle:6}')
 	}
 
-	mut new_handle := C.accept(l.sock.handle, 0, 0)
+	mut new_handle := $if is_coroutine ? {
+		C.photon_accept(l.sock.handle, 0, 0, net.tcp_default_read_timeout)
+	} $else {
+		C.accept(l.sock.handle, 0, 0)
+	}
 	if new_handle <= 0 {
 		l.wait_for_accept()!
-		new_handle = C.accept(l.sock.handle, 0, 0)
+		new_handle = $if is_coroutine ? {
+			C.photon_accept(l.sock.handle, 0, 0, net.tcp_default_read_timeout)
+		} $else {
+			C.accept(l.sock.handle, 0, 0)
+		}
 		if new_handle == -1 || new_handle == 0 {
 			return error('accept failed')
 		}
@@ -389,7 +409,11 @@ struct TcpSocket {
 }
 
 fn new_tcp_socket(family AddrFamily) !TcpSocket {
-	handle := socket_error(C.socket(family, SocketType.tcp, 0))!
+	handle := $if is_coroutine ? {
+		socket_error(C.photon_socket(family, SocketType.tcp, 0))!
+	} $else {
+		socket_error(C.socket(family, SocketType.tcp, 0))!
+	}
 	mut s := TcpSocket{
 		handle: handle
 	}
@@ -519,7 +543,13 @@ const (
 
 fn (mut s TcpSocket) connect(a Addr) ! {
 	$if !net_blocking_sockets ? {
-		res := C.connect(s.handle, voidptr(&a), a.len())
+		println('## CONNECT: before')
+		res := $if is_coroutine ? {
+			C.photon_connect(s.handle, voidptr(&a), a.len(), net.tcp_default_read_timeout)
+		} $else {
+			C.connect(s.handle, voidptr(&a), a.len())
+		}
+		println('## CONNECT: after')
 		if res == 0 {
 			return
 		}
@@ -555,7 +585,11 @@ fn (mut s TcpSocket) connect(a Addr) ! {
 		wrap_error(ecode)!
 		return
 	} $else {
-		x := C.connect(s.handle, voidptr(&a), a.len())
+		x := $if is_coroutine ? {
+			C.photon_connect(s.handle, voidptr(&a), a.len(), net.tcp_default_read_timeout)
+		} $else {
+			C.connect(s.handle, voidptr(&a), a.len())
+		}
 		socket_error(x)!
 	}
 }
