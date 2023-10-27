@@ -2225,7 +2225,8 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 	f.inside_comptime_if = node.is_comptime
 	mut is_ternary := node.branches.len == 2 && node.has_else
 		&& branch_is_single_line(node.branches[0]) && branch_is_single_line(node.branches[1])
-		&& (node.is_expr || f.is_assign || f.is_struct_init || f.single_line_fields)
+		&& (node.is_expr || f.is_assign || f.inside_const || f.is_struct_init
+		|| f.single_line_fields)
 	f.single_line_if = is_ternary
 	start_pos := f.out.len
 	start_len := f.line_len
