@@ -4,7 +4,7 @@ module builtin
 // Shitty `sbrk` basic `malloc` and `free` impl
 // TODO: implement pure V `walloc` later
 
-__global g_heap_base = usize(__heap_base())
+__global g_heap_base = usize(vwasm_heap_base())
 
 // malloc dynamically allocates a `n` bytes block of memory on the heap.
 // malloc returns a `byteptr` pointing to the memory address of the allocated space.
