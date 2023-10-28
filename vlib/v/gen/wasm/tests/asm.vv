@@ -63,7 +63,7 @@ fn literals() (int, i64, f32, f64) {
 	mut l2 := i64(0)
 	mut l3 := f32(0.0)
 	mut l4 := 0.0
-	
+
 	asm wasm {
 		i32.const 999
 		i64.const 999
@@ -73,7 +73,10 @@ fn literals() (int, i64, f32, f64) {
 		local.set l3
 		local.set l2
 		local.set l1
-		; =r(l1) =r(l2) =r(l3) =r(l4)
+		; =r (l1)
+		  =r (l2)
+		  =r (l3)
+		  =r (l4)
 	}
 
 	return l1, l2, l3, l4
@@ -81,7 +84,7 @@ fn literals() (int, i64, f32, f64) {
 
 fn reinterpret_asm() string {
 	mut reinterp := 0
-	
+
 	// reinterpret int value into f32, convert back
 	asm wasm {
 		i32.const 0x44424000 // 777.0
@@ -97,7 +100,7 @@ fn reinterpret_asm() string {
 	asm wasm {
 		local.get lit
 		local.get reinterp
-		call "int.str"
+		call int.str
 		; =r (lit)
 		; r (reinterp)
 	}

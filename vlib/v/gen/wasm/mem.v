@@ -474,7 +474,7 @@ pub fn (mut g Gen) set(v Var) {
 // never used by actual codegen
 pub fn (mut g Gen) tee(v Var) {
 	assert !v.is_global
-	
+
 	if !v.is_address {
 		g.func.local_tee(v.idx)
 		return

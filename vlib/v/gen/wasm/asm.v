@@ -56,11 +56,11 @@ pub fn (mut g Gen) asm_local_get_set_or_tee(node ast.AsmTemplate, vars AsmVars) 
 	}
 
 	target_var := if alias.name == '__vbp' {
-		Var{ idx: g.bp() }
-	} else {
-		var := vars[alias.name] or {
-			g.v_error('unknown identifier', alias.pos)
+		Var{
+			idx: g.bp()
 		}
+	} else {
+		var := vars[alias.name] or { g.v_error('unknown identifier', alias.pos) }
 		var
 	}
 	// -- doesn't work, cgen error
@@ -104,13 +104,17 @@ pub fn (mut g Gen) asm_global_get_or_set(node ast.AsmTemplate, vars AsmVars) {
 	}
 
 	target_var := if alias.name == '__vsp' {
-		Var{ g_idx: g.sp() is_global: true }
-	} else if alias.name == '__heap_base' {
-		Var{ g_idx: g.hp() is_global: true }
-	} else {
-		var := vars[alias.name] or {
-			g.v_error('unknown identifier', alias.pos)
+		Var{
+			g_idx: g.sp()
+			is_global: true
 		}
+	} else if alias.name == '__heap_base' {
+		Var{
+			g_idx: g.hp()
+			is_global: true
+		}
+	} else {
+		var := vars[alias.name] or { g.v_error('unknown identifier', alias.pos) }
 		var
 	}
 
@@ -207,7 +211,7 @@ pub fn (mut g Gen) asm_parse_align_offset(node ast.AsmTemplate) (int, int) {
 	if node.args.len != 2 {
 		g.v_error('incorrect number of arguments to `${node.name}`', node.pos)
 	}
-	
+
 	arg0 := node.args[0]
 	arg1 := node.args[1]
 
@@ -848,11 +852,12 @@ pub fn (mut g Gen) asm_template(parent ast.AsmStmt, node ast.AsmTemplate, vars A
 		'memory.fill' {
 			g.func.memory_fill()
 		}
-
 		// TODO: impl later
-		/* 'ref.null' {
+		/*
+		'ref.null' {
 			g.func.ref_null()
-		} */
+		}
+		*/
 		else {
 			g.v_error('unknown opcode', node.pos)
 		}

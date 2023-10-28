@@ -12,7 +12,12 @@ fn (mut f Fmt) asm_stmt(stmt ast.AsmStmt) {
 	} else if stmt.is_goto {
 		f.write('goto ')
 	}
-	f.writeln('${stmt.arch} {')
+	lit_arch := if stmt.arch == .wasm32 {
+		'wasm'
+	} else {
+		stmt.arch.str()
+	}
+	f.writeln('${lit_arch} {')
 	f.indent++
 
 	f.asm_templates(stmt.templates)
