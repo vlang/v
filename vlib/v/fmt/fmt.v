@@ -2339,6 +2339,7 @@ pub fn (mut f Fmt) index_expr(node ast.IndexExpr) {
 	f.write('[')
 	f.expr(node.index)
 	f.write(']')
+	f.is_index_expr = false
 	if node.or_expr.kind != .absent {
 		f.or_expr(node.or_expr)
 	}
