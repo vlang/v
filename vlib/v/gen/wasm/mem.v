@@ -219,7 +219,7 @@ pub fn (mut g Gen) literal_to_constant_expression(typ_ ast.Type, init ast.Expr) 
 }
 
 pub fn (mut g Gen) new_global(name string, typ_ ast.Type, init ast.Expr, is_global_mut bool) Global {
-	mut typ := typ_
+	mut typ := ast.mktyp(typ_)
 	ts := g.table.sym(typ)
 
 	match ts.info {
