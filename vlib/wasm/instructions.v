@@ -707,9 +707,9 @@ pub fn (mut func Function) sign_extend16(typ ValType) {
 }
 
 // sign_extend32_i64 extends the value of a 32-bit integer of type i64.
-// WebAssembly instruction: `i64.extend64_s`.
-pub fn (mut func Function) sign_extend32_i64() {
-	func.code << 0xC4 // i64.extend64_s
+// WebAssembly instruction: `i64.extend32_s`.
+pub fn (mut func Function) sign_extend32() {
+	func.code << 0xC4 // i64.extend32_s
 }
 
 // cast casts a value of type `a` with respect to `is_signed`, to type `b`.
