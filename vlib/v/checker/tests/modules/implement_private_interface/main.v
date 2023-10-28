@@ -1,4 +1,5 @@
 module main
+
 import baz
 
 fn main() {
