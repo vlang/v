@@ -100,7 +100,7 @@ fn reinterpret_asm() string {
 	asm wasm {
 		local.get lit
 		local.get reinterp
-		call int.str
+		call 'int.str'
 		; =r (lit)
 		; r (reinterp)
 	}

@@ -59,7 +59,7 @@ fn (mut f Fmt) asm_arg(arg ast.AsmArg) {
 			f.write(arg.val.str())
 		}
 		string {
-			f.write(arg)
+			f.string_literal(ast.StringLiteral{ val: arg })
 		}
 		ast.AsmAddressing {
 			if arg.segment != '' {
