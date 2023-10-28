@@ -14,7 +14,7 @@
 [![Sponsor][SponsorBadge]][SponsorUrl]
 [![Patreon][PatreonBadge]][PatreonUrl]
 [![Discord][DiscordBadge]][DiscordUrl]
-[![Twitter][XBadge]][XUrl]
+[![X][XBadge]][XUrl]
 [![Modules][ModulesBadge]][ModulesUrl]
 </div>
 
