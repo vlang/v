@@ -1,0 +1,7 @@
+vlib/v/checker/tests/modules/implement_private_interface/main.v:6:16: error: `Bar` cannot implement private interface `baz.Foo` of other module
+    4 | fn main() {
+    5 |     b := Bar{10}
+    6 |     baz.print_foo(b) // prints 10
+      |                   ^
+    7 | }
+    8 |

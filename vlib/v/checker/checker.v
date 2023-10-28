@@ -958,8 +958,14 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 		eprintln('> type_implements typ: ${typ.debug()} (`${c.table.type_to_str(typ)}`) | inter_typ: ${interface_type.debug()} (`${c.table.type_to_str(interface_type)}`)')
 	}
 	utyp := c.unwrap_generic(typ)
+	styp := c.table.type_to_str(utyp)
 	typ_sym := c.table.sym(utyp)
 	mut inter_sym := c.table.sym(interface_type)
+	if inter_sym.mod !in [typ_sym.mod, c.mod] && !inter_sym.is_pub && typ_sym.mod != 'builtin' {
+		c.error('`${styp}` cannot implement private interface `${inter_sym.name}` of other module',
+			pos)
+		return false
+	}
 
 	// small hack for JS.Any type. Since `any` in regular V is getting deprecated we have our own JS.Any type for JS backend.
 	if typ_sym.name == 'JS.Any' {
@@ -1006,7 +1012,6 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 		// `none` "implements" the Error interface
 		return true
 	}
-	styp := c.table.type_to_str(utyp)
 	if typ_sym.kind == .interface_ && inter_sym.kind == .interface_ && !styp.starts_with('JS.')
 		&& !inter_sym.name.starts_with('JS.') {
 		c.error('cannot implement interface `${inter_sym.name}` with a different interface `${styp}`',
