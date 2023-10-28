@@ -141,16 +141,18 @@ pub enum ImageSampleType as u32 {
 	depth
 	sint
 	uint
+	unfilterable_float
 	_num
-	_force_u32 = 0x7FFFFFFF
+	_force_u32         = 0x7FFFFFFF
 }
 
 pub enum SamplerType as u32 {
 	_default
-	sample
-	compare
+	filtering
+	nonfiltering
+	comparison
 	_num
-	_force_u32 = 0x7FFFFFFF
+	_force_u32   = 0x7FFFFFFF
 }
 
 pub enum CubeFace as u32 {

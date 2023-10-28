@@ -290,3 +290,29 @@ pub fn activate_context(ctx_id Context) {
 pub fn discard_context(ctx_id Context) {
 	C.sg_discard_context(ctx_id)
 }
+
+// frame stats
+
+// enable_frame_stats enables the sokol frame statistics.
+[inline]
+pub fn enable_frame_stats() {
+	C.sg_enable_frame_stats()
+}
+
+// disable_frame_stats disables the sokol frame statistics.
+[inline]
+pub fn disable_frame_stats() {
+	C.sg_disable_frame_stats()
+}
+
+// frame_stats_enabled returns `true` if the sokol frame statistics is enabled.
+[inline]
+pub fn frame_stats_enabled() bool {
+	return C.sg_frame_stats_enabled()
+}
+
+// query_frame_stats returns the sokol frame statistics for the current frame.
+[inline]
+pub fn query_frame_stats() FrameStats {
+	return C.sg_query_frame_stats()
+}
