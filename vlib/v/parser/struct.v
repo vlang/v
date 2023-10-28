@@ -295,7 +295,9 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 					has_default_expr = true
 					comments << p.eat_comments()
 				}
+				mut has_at := false // TODO: remove in next stage
 				if p.tok.kind == .at {
+					has_at = true
 					p.inside_struct_attr_decl = true
 					// attrs are stored in `p.attrs`
 					p.attributes()
@@ -316,6 +318,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 					i: i
 					default_expr: default_expr
 					has_default_expr: has_default_expr
+					attrs_has_at: has_at
 					attrs: p.attrs
 					is_pub: is_embed || is_field_pub
 					is_mut: is_embed || is_field_mut
