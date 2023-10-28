@@ -203,6 +203,114 @@ pub fn (mut g Gen) asm_literal_arg(node ast.AsmTemplate) {
 	}
 }
 
+pub fn (mut g Gen) asm_parse_align_offset(node ast.AsmTemplate) (int, int) {
+	if node.args.len != 2 {
+		g.v_error('incorrect number of arguments to `${node.name}`', node.pos)
+	}
+	
+	arg0 := node.args[0]
+	arg1 := node.args[1]
+
+	align := match arg0 {
+		ast.IntegerLiteral {
+			arg0.val.int()
+		}
+		else {
+			g.v_error('must supply integer value to align', node.pos)
+		}
+	}
+
+	offset := match arg1 {
+		ast.IntegerLiteral {
+			arg1.val.int()
+		}
+		else {
+			g.v_error('must supply integer value to offset', node.pos)
+		}
+	}
+
+	return align, offset
+}
+
+pub fn (mut g Gen) asm_load_or_store(node ast.AsmTemplate) {
+	align, offset := g.asm_parse_align_offset(node)
+
+	match node.name {
+		'i32.load' {
+			g.func.load(.i32_t, align, offset)
+		}
+		'i64.load' {
+			g.func.load(.i64_t, align, offset)
+		}
+		'f32.load' {
+			g.func.load(.f32_t, align, offset)
+		}
+		'f64.load' {
+			g.func.load(.f64_t, align, offset)
+		}
+		'i32.store' {
+			g.func.store(.i32_t, align, offset)
+		}
+		'i64.store' {
+			g.func.store(.i64_t, align, offset)
+		}
+		'f32.store' {
+			g.func.store(.f32_t, align, offset)
+		}
+		'f64.store' {
+			g.func.store(.f64_t, align, offset)
+		}
+		'i32.load8_s' {
+			g.func.load8(.i32_t, true, align, offset)
+		}
+		'i64.load8_s' {
+			g.func.load8(.i64_t, true, align, offset)
+		}
+		'i32.load8_u' {
+			g.func.load8(.i32_t, false, align, offset)
+		}
+		'i64.load8_u' {
+			g.func.load8(.i64_t, false, align, offset)
+		}
+		'i32.load16_s' {
+			g.func.load16(.i32_t, true, align, offset)
+		}
+		'i64.load16_s' {
+			g.func.load16(.i64_t, true, align, offset)
+		}
+		'i32.load16_u' {
+			g.func.load16(.i32_t, false, align, offset)
+		}
+		'i64.load16_u' {
+			g.func.load16(.i64_t, false, align, offset)
+		}
+		'i64.load32_s' {
+			g.func.load32_i64(true, align, offset)
+		}
+		'i64.load32_u' {
+			g.func.load32_i64(false, align, offset)
+		}
+		'i32.store8' {
+			g.func.store8(.i32_t, align, offset)
+		}
+		'i64.store8' {
+			g.func.store8(.i64_t, align, offset)
+		}
+		'i32.store16' {
+			g.func.store16(.i32_t, align, offset)
+		}
+		'i64.store16' {
+			g.func.store16(.i64_t, align, offset)
+		}
+		'i64.store32' {
+			g.func.store32_i64(align, offset)
+		}
+		else {
+			panic('unreachable')
+		}
+	}
+}
+
 pub fn (mut g Gen) asm_template(parent ast.AsmStmt, node ast.AsmTemplate, vars AsmVars) {
 	if node.is_label || node.is_directive {
 		g.v_error("`asm wasm` doesn't support labels or directives", node.pos)
@@ -250,6 +358,75 @@ pub fn (mut g Gen) asm_template(parent ast.AsmStmt, node ast.AsmTemplate, vars A
 		}
 		'global.set' {
 			g.asm_global_get_or_set(node, vars)
+		}
+		'i32.load' {
+			g.asm_load_or_store(node)
+		}
+		'i64.load' {
+			g.asm_load_or_store(node)
+		}
+		'f32.load' {
+			g.asm_load_or_store(node)
+		}
+		'f64.load' {
+			g.asm_load_or_store(node)
+		}
+		'i32.store' {
+			g.asm_load_or_store(node)
+		}
+		'i64.store' {
+			g.asm_load_or_store(node)
+		}
+		'f32.store' {
+			g.asm_load_or_store(node)
+		}
+		'f64.store' {
+			g.asm_load_or_store(node)
+		}
+		'i32.load8_s' {
+			g.asm_load_or_store(node)
+		}
+		'i64.load8_s' {
+			g.asm_load_or_store(node)
+		}
+		'i32.load8_u' {
+			g.asm_load_or_store(node)
+		}
+		'i64.load8_u' {
+			g.asm_load_or_store(node)
+		}
+		'i32.load16_s' {
+			g.asm_load_or_store(node)
+		}
+		'i64.load16_s' {
+			g.asm_load_or_store(node)
+		}
+		'i32.load16_u' {
+			g.asm_load_or_store(node)
+		}
+		'i64.load16_u' {
+			g.asm_load_or_store(node)
+		}
+		'i64.load32_s' {
+			g.asm_load_or_store(node)
+		}
+		'i64.load32_u' {
+			g.asm_load_or_store(node)
+		}
+		'i32.store8' {
+			g.asm_load_or_store(node)
+		}
+		'i64.store8' {
+			g.asm_load_or_store(node)
+		}
+		'i32.store16' {
+			g.asm_load_or_store(node)
+		}
+		'i64.store16' {
+			g.asm_load_or_store(node)
+		}
+		'i64.store32' {
+			g.asm_load_or_store(node)
 		}
 		'call' {
 			g.asm_call(node)

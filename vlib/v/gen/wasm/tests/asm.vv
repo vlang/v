@@ -105,6 +105,30 @@ fn reinterpret_asm() string {
 	return lit
 }
 
+fn malloc_ptr() {
+	mut v := unsafe { &int(malloc(sizeof(int))) }
+
+	asm wasm {
+		local.get v
+		i32.const 42
+		i32.store 2, 0 // log2(sizeof(int)) == 2
+		; =r (v)
+	}
+
+	println(*v)
+
+	mut readp := 0
+	asm wasm {
+		local.get v
+		i32.load 2, 0 // log2(sizeof(int)) == 2
+		local.set readp
+		; =r (readp)
+		; r (v)
+	}
+
+	println(readp)
+}
+
 fn main() {
 	println(int(add_int(1.0, 2))) // no f64.str()
 	println(add_f64(1, 2.0))
@@ -119,4 +143,5 @@ fn main() {
 
 	seven_seven_seven := reinterpret_asm()
 	println(seven_seven_seven)
+	malloc_ptr()
 }
