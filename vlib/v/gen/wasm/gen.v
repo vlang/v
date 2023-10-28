@@ -449,45 +449,6 @@ pub fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) {
 	g.func.cast(g.as_numtype(g.get_wasm_type(res_typ)), res_typ.is_signed(), g.as_numtype(g.get_wasm_type(expected)))
 }
 
-pub fn (mut g Gen) wasm_builtin(name string, node ast.CallExpr) {
-	for idx, arg in node.args {
-		g.expr(arg.expr, node.expected_arg_types[idx])
-	}
-
-	match name {
-		'__memory_grow' {
-			g.func.memory_grow()
-		}
-		'__memory_fill' {
-			g.func.memory_fill()
-		}
-		'__memory_copy' {
-			g.func.memory_copy()
-		}
-		'__memory_size' {
-			g.func.memory_size()
-		}
-		'__heap_base' {
-			g.func.global_get(g.hp())
-		}
-		'__reinterpret_f32_u32' {
-			g.func.reinterpret(.f32_t)
-		}
-		'__reinterpret_u32_f32' {
-			g.func.reinterpret(.i32_t)
-		}
-		'__reinterpret_f64_u64' {
-			g.func.reinterpret(.f64_t)
-		}
-		'__reinterpret_u64_f64' {
-			g.func.reinterpret(.i64_t)
-		}
-		else {
-			panic('unreachable')
-		}
-	}
-}
-
 pub fn (mut g Gen) prefix_expr(node ast.PrefixExpr, expected ast.Type) {
 	match node.op {
 		.minus {
@@ -591,13 +552,6 @@ pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvar
 	mut name := node.name
 
 	is_print := name in ['panic', 'println', 'print', 'eprintln', 'eprint']
-
-	if name in ['__memory_grow', '__memory_fill', '__memory_copy', '__memory_size', '__heap_base',
-		'__reinterpret_f32_u32', '__reinterpret_u32_f32', '__reinterpret_f64_u64',
-		'__reinterpret_u64_f64'] {
-		g.wasm_builtin(node.name, node)
-		return
-	}
 
 	if node.is_method {
 		name = '${g.table.get_type_name(node.receiver_type)}.${node.name}'
