@@ -128,6 +128,15 @@ pub fn (mut g Gen) sp() wasm.GlobalIndex {
 	return g.sp()
 }
 
+pub fn (mut g Gen) hp() wasm.GlobalIndex {
+	if hp := g.heap_base {
+		return hp
+	}
+	hp := g.mod.new_global('__heap_base', false, .i32_t, false, wasm.constexpr_value(0))
+	g.heap_base = hp
+	return hp
+}
+
 pub fn (mut g Gen) new_local(name string, typ_ ast.Type) Var {
 	mut typ := typ_
 	ts := g.table.sym(typ)
@@ -458,6 +467,36 @@ pub fn (mut g Gen) set(v Var) {
 	}
 
 	g.func.local_set(from.idx)
+	g.mov(v, from)
+}
+
+// to satisfy inline assembly needs
+// never used by actual codegen
+pub fn (mut g Gen) tee(v Var) {
+	assert !v.is_global
+	
+	if !v.is_address {
+		g.func.local_tee(v.idx)
+		return
+	}
+
+	if g.is_pure_type(v.typ) {
+		l := g.new_local('__tmp', v.typ)
+		g.func.local_tee(l.idx) // tee here, leave on stack
+
+		g.func.local_get(v.idx)
+		g.func.local_get(l.idx)
+		g.store(v.typ, v.offset)
+		return
+	}
+
+	from := Var{
+		typ: v.typ
+		idx: g.func.new_local_named(.i32_t, '__tmp<voidptr>')
+		is_address: v.is_address
+	}
+
+	g.func.local_tee(from.idx) // tee here, leave on stack
 	g.mov(v, from)
 }
 

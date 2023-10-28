@@ -40,6 +40,97 @@ pub fn (mut g Gen) asm_call(node ast.AsmTemplate) {
 	g.func.call_import(sarg0, sarg1)
 }
 
+pub fn (mut g Gen) asm_local_get_set_or_tee(node ast.AsmTemplate, vars AsmVars) {
+	if node.args.len != 1 {
+		g.v_error('incorrect number of arguments to `${node.name}`', node.pos)
+	}
+
+	arg0 := node.args[0]
+	alias := match arg0 {
+		ast.AsmAlias {
+			arg0
+		}
+		else {
+			g.v_error('must reference local by identifier', node.pos)
+		}
+	}
+
+	target_var := if alias.name == '__vbp' {
+		Var{ idx: g.bp() }
+	} else {
+		var := vars[alias.name] or {
+			g.v_error('unknown identifier', alias.pos)
+		}
+		var
+	}
+	// -- doesn't work, cgen error
+	// else if var := vars[alias.name] {
+	//     var
+	// }
+
+	if target_var.is_global {
+		g.v_error('`${alias.name}` is global, cannot use with this instruction', alias.pos)
+	}
+
+	match node.name {
+		'local.get' {
+			g.get(target_var)
+		}
+		'local.set' {
+			g.set(target_var)
+		}
+		'local.tee' {
+			g.tee(target_var)
+		}
+		else {
+			panic('unreachable')
+		}
+	}
+}
+
+pub fn (mut g Gen) asm_global_get_or_set(node ast.AsmTemplate, vars AsmVars) {
+	if node.args.len != 1 {
+		g.v_error('incorrect number of arguments to `${node.name}`', node.pos)
+	}
+
+	arg0 := node.args[0]
+	alias := match arg0 {
+		ast.AsmAlias {
+			arg0
+		}
+		else {
+			g.v_error('must reference global by identifier', node.pos)
+		}
+	}
+
+	target_var := if alias.name == '__vsp' {
+		Var{ g_idx: g.sp() is_global: true }
+	} else if alias.name == '__heap_base' {
+		Var{ g_idx: g.hp() is_global: true }
+	} else {
+		var := vars[alias.name] or {
+			g.v_error('unknown identifier', alias.pos)
+		}
+		var
+	}
+
+	if !target_var.is_global {
+		g.v_error('`${alias.name}` is a local, cannot use with this instruction', alias.pos)
+	}
+
+	match node.name {
+		'global.get' {
+			g.get(target_var)
+		}
+		'global.set' {
+			g.set(target_var)
+		}
+		else {
+			panic('unreachable')
+		}
+	}
+}
+
 pub fn (mut g Gen) asm_literal_arg(node ast.AsmTemplate) {
 	// i32.const
 	// i64.const
@@ -109,7 +200,7 @@ pub fn (mut g Gen) asm_literal_arg(node ast.AsmTemplate) {
 	}
 }
 
-pub fn (mut g Gen) asm_template(parent ast.AsmStmt, node ast.AsmTemplate) {
+pub fn (mut g Gen) asm_template(parent ast.AsmStmt, node ast.AsmTemplate, vars AsmVars) {
 	if node.is_label || node.is_directive {
 		g.v_error("`asm wasm` doesn't support labels or directives", node.pos)
 	}
@@ -127,6 +218,9 @@ pub fn (mut g Gen) asm_template(parent ast.AsmStmt, node ast.AsmTemplate) {
 		'return' {
 			g.func.c_return()
 		}
+		'select' {
+			g.func.c_select()
+		}
 		'i32.const' {
 			g.asm_literal_arg(node)
 		}
@@ -139,23 +233,23 @@ pub fn (mut g Gen) asm_template(parent ast.AsmStmt, node ast.AsmTemplate) {
 		'f64.const' {
 			g.asm_literal_arg(node)
 		}
+		'local.get' {
+			g.asm_local_get_set_or_tee(node, vars)
+		}
+		'local.set' {
+			g.asm_local_get_set_or_tee(node, vars)
+		}
+		'local.tee' {
+			g.asm_local_get_set_or_tee(node, vars)
+		}
+		'global.get' {
+			g.asm_global_get_or_set(node, vars)
+		}
+		'global.set' {
+			g.asm_global_get_or_set(node, vars)
+		}
 		'call' {
 			g.asm_call(node)
-		}
-		'drop' {
-			g.func.drop()
-		}
-		'select' {
-			g.func.c_select()
-		}
-		'return' {
-			g.func.c_return()
-		}
-		'nop' {
-			g.func.nop()
-		}
-		'unreachable' {
-			g.func.unreachable()
 		}
 		'i32.add' {
 			g.func.add(.i32_t)
@@ -585,8 +679,26 @@ pub fn (mut g Gen) asm_template(parent ast.AsmStmt, node ast.AsmTemplate) {
 	}
 }
 
+type AsmVars = map[string]Var
+
 pub fn (mut g Gen) asm_stmt(node ast.AsmStmt) {
+	mut vars := AsmVars(map[string]Var{})
+
+	for var_expr in node.output {
+		vars[var_expr.alias] = g.get_var_or_make_from_expr(var_expr.expr, var_expr.typ)
+	}
+	for var_expr in node.input {
+		vars[var_expr.alias] = g.get_var_or_make_from_expr(var_expr.expr, var_expr.typ)
+	}
+
+	if node.clobbered.len != 0 {
+		g.v_error('wasm does not support clobber lists', node.pos)
+	}
+	if node.global_labels.len != 0 || node.local_labels.len != 0 {
+		g.v_error('wasm does not support labels', node.pos)
+	}
+
 	for tmpl in node.templates {
-		g.asm_template(node, tmpl)
+		g.asm_template(node, tmpl, vars)
 	}
 }

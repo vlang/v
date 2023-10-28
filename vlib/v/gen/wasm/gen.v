@@ -466,12 +466,7 @@ pub fn (mut g Gen) wasm_builtin(name string, node ast.CallExpr) {
 			g.func.memory_size()
 		}
 		'__heap_base' {
-			if hp := g.heap_base {
-				g.func.global_get(hp)
-			}
-			hp := g.mod.new_global('__heap_base', false, .i32_t, false, wasm.constexpr_value(0))
-			g.func.global_get(hp)
-			g.heap_base = hp
+			g.func.global_get(g.hp())
 		}
 		'__reinterpret_f32_u32' {
 			g.func.reinterpret(.f32_t)
