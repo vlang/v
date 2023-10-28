@@ -2,7 +2,7 @@ module builtin
 
 // vwasm_heap_base returns the base address of the heap.
 pub fn vwasm_heap_base() voidptr {
-	mut rval := voidptr(0)
+	mut rval := unsafe { nil }
 	asm wasm {
 		global.get __heap_base
 		local.set rval
@@ -55,8 +55,7 @@ pub fn vcalloc(n isize) &u8 {
 		i32.const 0x0
 		local.get n
 		memory.fill
-		;
-		; r (res)
+		; ; r (res)
 		  r (n)
 	}
 
@@ -78,8 +77,7 @@ pub fn vmemcpy(dest voidptr, const_src voidptr, n isize) voidptr {
 		local.get const_src
 		local.get n
 		memory.copy
-		;
-		; r (dest)
+		; ; r (dest)
 		  r (const_src)
 		  r (n)
 	}
@@ -95,8 +93,7 @@ pub fn vmemmove(dest voidptr, const_src voidptr, n isize) voidptr {
 		local.get const_src
 		local.get n
 		memory.copy
-		;
-		; r (dest)
+		; ; r (dest)
 		  r (const_src)
 		  r (n)
 	}
@@ -112,8 +109,7 @@ pub fn vmemset(s voidptr, c int, n isize) voidptr {
 		local.get c
 		local.get n
 		memory.fill
-		;
-		; r (s)
+		; ; r (s)
 		  r (c)
 		  r (n)
 	}

@@ -883,7 +883,6 @@ pub fn (mut func Function) cast_trapping(a NumType, is_signed bool, b NumType) {
 					else {}
 				}
 			}
-			
 		}
 	}
 
