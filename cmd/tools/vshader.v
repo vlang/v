@@ -19,8 +19,8 @@ import flag
 import net.http
 
 const (
-	shdc_full_hash   = '6040b18d39649d56dbae2ae1aed59fb755b26369'
-	tool_version     = '0.0.2'
+	shdc_full_hash   = '6b84ea387a323db9e8e17f5abed2b254a6e409fe'
+	tool_version     = '0.0.3'
 	tool_description = "Compile shaders in sokol's annotated GLSL format to C headers for use with sokol based apps"
 	tool_name        = os.file_name(os.executable())
 	cache_dir        = os.join_path(os.cache_dir(), 'v', tool_name)
