@@ -979,14 +979,17 @@ fn (mut g Gen) gen_array_contains(left_type ast.Type, left ast.Expr, right_type 
 		g.write('->val')
 	}
 	g.write(', ')
-	if right.is_auto_deref_var() {
-		g.write('*')
-	}
 	left_sym := g.table.final_sym(left_type)
 	elem_typ := if left_sym.kind == .array {
 		left_sym.array_info().elem_type
 	} else {
 		left_sym.array_fixed_info().elem_type
+	}
+	if right.is_auto_deref_var()
+		|| (g.table.sym(elem_typ).kind !in [.interface_, .sum_type, .struct_] && right is ast.Ident
+		&& right.info is ast.IdentVar
+		&& g.table.sym(right.obj.typ).kind in [.interface_, .sum_type]) {
+		g.write('*')
 	}
 	if g.table.sym(elem_typ).kind in [.interface_, .sum_type] {
 		g.expr_with_cast(right, right_type, elem_typ)

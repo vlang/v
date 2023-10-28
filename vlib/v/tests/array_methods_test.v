@@ -39,3 +39,44 @@ fn test_any_called_with_opt_bool_fn() ? {
 	_ := [1, 2, 3].any(opt_bool_fn()?)
 	assert true
 }
+
+interface Args {}
+
+const some_strings = ['one', 'two', 'three']
+
+// For test `gen array contains method`
+// When `arg` comes from arguments, cgen generates code by `array contains event`
+fn array_contains_method_with_interface(args ...Args) {
+	arg := args[0]
+	match arg {
+		string {
+			if arg in some_strings {
+				assert true
+				return
+			}
+		}
+		else {}
+	}
+	assert false
+}
+
+// For test `gen string_eq method`
+// The cgen of static arrays containing events is optimized, which involves the string_eq event.
+fn string_eq_method_with_interface() {
+	arg := Args('three')
+	match arg {
+		string {
+			if arg in some_strings {
+				assert true
+				return
+			}
+		}
+		else {}
+	}
+	assert false
+}
+
+fn test_array_contains_method_with_interface() {
+	array_contains_method_with_interface('one')
+	string_eq_method_with_interface()
+}
