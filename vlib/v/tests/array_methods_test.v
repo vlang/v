@@ -45,9 +45,8 @@ interface Args {}
 const some_strings = ['one', 'two', 'three']
 
 // For test `gen array contains method`
-// When `arg` comes from arguments, cgen generates code by `array contains event`
-fn array_contains_method_with_interface(args ...Args) {
-	arg := args[0]
+fn test_array_contains_method_with_interface() {
+	arg := Args('one')
 	match arg {
 		string {
 			if arg in some_strings {
@@ -61,12 +60,11 @@ fn array_contains_method_with_interface(args ...Args) {
 }
 
 // For test `gen string_eq method`
-// The cgen of static arrays containing events is optimized, which involves the string_eq event.
-fn string_eq_method_with_interface() {
+fn test_string_eq_method_with_interface() {
 	arg := Args('three')
 	match arg {
 		string {
-			if arg in some_strings {
+			if arg in ['one', 'two', 'three'] {
 				assert true
 				return
 			}
@@ -74,9 +72,4 @@ fn string_eq_method_with_interface() {
 		else {}
 	}
 	assert false
-}
-
-fn test_array_contains_method_with_interface() {
-	array_contains_method_with_interface('one')
-	string_eq_method_with_interface()
 }
