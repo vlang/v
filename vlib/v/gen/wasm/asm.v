@@ -80,6 +80,18 @@ pub fn (mut g Gen) asm_template(parent ast.AsmStmt, node ast.AsmTemplate) {
 	}
 
 	match node.name {
+		'unreachable' {
+			g.func.unreachable()
+		}
+		'nop' {
+			g.func.nop()
+		}
+		'drop' {
+			g.func.drop()
+		}
+		'return' {
+			g.func.c_return()
+		}
 		'i32.const' {
 			g.asm_literal_arg(node)
 		}
@@ -399,10 +411,10 @@ pub fn (mut g Gen) asm_template(parent ast.AsmStmt, node ast.AsmTemplate) {
 			g.func.cast_trapping(.f64_t, false, .i32_t)
 		}
 		'i64.extend_i32_s' {
-			g.func.cast_trapping(.i32_t, true, .i64_t)
+			g.func.cast(.i32_t, true, .i64_t)
 		}
 		'i64.extend_i32_u' {
-			g.func.cast_trapping(.i32_t, false, .i64_t)
+			g.func.cast(.i32_t, false, .i64_t)
 		}
 		'i64.trunc_f32_s' {
 			g.func.cast_trapping(.f32_t, true, .i64_t)
@@ -417,58 +429,58 @@ pub fn (mut g Gen) asm_template(parent ast.AsmStmt, node ast.AsmTemplate) {
 			g.func.cast_trapping(.f64_t, false, .i64_t)
 		}
 		'f32.convert_i32_s' {
-			g.func.cast()
+			g.func.cast(.i32_t, true, .f32_t)
 		}
 		'f32.convert_i32_u' {
-			g.func.cast()
+			g.func.cast(.i32_t, false, .f32_t)
 		}
 		'f32.convert_i64_s' {
-			g.func.cast()
+			g.func.cast(.i64_t, true, .f32_t)
 		}
 		'f32.convert_i64_u' {
-			g.func.cast()
+			g.func.cast(.i64_t, false, .f32_t)
 		}
 		'f32.demote_f64' {
-			g.func.cast()
+			g.func.cast(.f64_t, true, .f32_t)
 		}
 		'f64.convert_i32_s' {
-			g.func.cast()
+			g.func.cast(.i32_t, true, .f64_t)
 		}
 		'f64.convert_i32_u' {
-			g.func.cast()
+			g.func.cast(.i32_t, false, .f64_t)
 		}
 		'f64.convert_i64_s' {
-			g.func.cast()
+			g.func.cast(.i64_t, true, .f64_t)
 		}
 		'f64.convert_i64_u' {
-			g.func.cast()
+			g.func.cast(.i64_t, false, .f64_t)
 		}
 		'f64.promote_f32' {
-			g.func.cast()
+			g.func.cast(.f32_t, true, .f64_t)
 		}
 		'i32.reinterpret_f32' {
-			g.func.cast()
+			g.func.reinterpret(.f32_t)
 		}
 		'i64.reinterpret_f64' {
-			g.func.cast()
+			g.func.reinterpret(.f64_t)
 		}
 		'f32.reinterpret_i32' {
-			g.func.cast()
+			g.func.reinterpret(.i32_t)
 		}
 		'f64.reinterpret_i64' {
-			g.func.cast()
+			g.func.reinterpret(.i64_t)
 		}
 		'i32.extend8_s' {
-			g.func.cast()
+			g.func.sign_extend8(.i32_t)
 		}
 		'i32.extend16_s' {
-			g.func.cast()
+			g.func.sign_extend16(.i32_t)
 		}
 		'i64.extend8_s' {
-			g.func.cast()
+			g.func.sign_extend8(.i64_t)
 		}
 		'i64.extend32_s' {
-			g.func.cast()
+			g.func.sign_extend32_i64()
 		}
 		else {
 			g.v_error('unknown opcode', node.pos)
