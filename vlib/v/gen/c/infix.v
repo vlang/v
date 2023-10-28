@@ -96,8 +96,18 @@ fn (mut g Gen) infix_expr_arrow_op(node ast.InfixExpr) {
 
 // infix_expr_eq_op generates code for `==` and `!=`
 fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
-	left := g.unwrap(node.left_type)
-	right := g.unwrap(node.right_type)
+	left_type := if node.left is ast.ComptimeSelector {
+		g.get_comptime_var_type(node.left)
+	} else {
+		node.left_type
+	}
+	right_type := if node.right is ast.ComptimeSelector {
+		g.get_comptime_var_type(node.right)
+	} else {
+		node.right_type
+	}
+	left := g.unwrap(left_type)
+	right := g.unwrap(right_type)
 	mut has_defined_eq_operator := false
 	mut eq_operator_expects_ptr := false
 	if m := g.table.find_method(left.sym, '==') {
@@ -110,7 +120,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		g.gen_plain_infix_expr(node)
 		return
 	}
-	is_none_check := node.left_type.has_flag(.option) && node.right is ast.None
+	is_none_check := left_type.has_flag(.option) && node.right is ast.None
 	if is_none_check {
 		g.gen_is_none_check(node)
 	} else if (left.typ.is_ptr() && right.typ.is_int())
