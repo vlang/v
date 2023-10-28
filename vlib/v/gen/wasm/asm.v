@@ -149,6 +149,9 @@ pub fn (mut g Gen) asm_literal_arg(node ast.AsmTemplate) {
 			ast.FloatLiteral {
 				arg.val
 			}
+			ast.IntegerLiteral {
+				arg.val
+			}
 			else {
 				g.v_error('must supply float value to `${node.name}`', node.pos)
 			}
