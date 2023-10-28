@@ -324,6 +324,7 @@ pub:
 	comments         []Comment
 	i                int
 	has_default_expr bool
+	attrs_has_at     bool // TODO: remove in next stage
 	attrs            []Attr
 	is_pub           bool
 	default_val      string
