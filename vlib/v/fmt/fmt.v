@@ -2335,11 +2335,12 @@ pub fn (mut f Fmt) index_expr(node ast.IndexExpr) {
 			f.write('#')
 		}
 	}
+	last_index_expr_state := f.is_index_expr
 	f.is_index_expr = true
 	f.write('[')
 	f.expr(node.index)
 	f.write(']')
-	f.is_index_expr = false
+	f.is_index_expr = last_index_expr_state
 	if node.or_expr.kind != .absent {
 		f.or_expr(node.or_expr)
 	}
