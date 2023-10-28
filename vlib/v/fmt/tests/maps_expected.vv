@@ -25,3 +25,9 @@ headers := http.new_header_from_map({
 	.content_type:  'application/json'
 	.authorization: 'Bearer abcdef'
 })
+
+utf8_keys := {
+	'ß':        's'
+	'В начале': 'В начале'
+	'最初有道': '最初有道'
+}
