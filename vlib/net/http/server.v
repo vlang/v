@@ -18,7 +18,7 @@ pub enum ServerStatus {
 	stopped
 }
 
-interface Handler {
+pub interface Handler {
 mut:
 	handle(Request) Response
 }
