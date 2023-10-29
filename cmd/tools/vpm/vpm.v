@@ -262,6 +262,7 @@ fn vpm_install_from_vcs(modules []string, vcs_key string) {
 	mut errors := 0
 	for raw_url in modules {
 		url := urllib.parse(raw_url) or {
+			errors++
 			eprintln('error: failed parsing module url "${raw_url}"')
 			continue
 		}
