@@ -126,6 +126,9 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				c.table.find_or_register_array_fixed(parent_sym.info.elem_type, parent_sym.info.size,
 					parent_sym.info.size_expr, true)
 			}
+			if return_sym.name == 'byte' {
+				c.warn('byte is deprecated, use u8 instead', node.return_type_pos)
+			}
 		}
 		final_return_sym := c.table.final_sym(node.return_type)
 		if final_return_sym.info is ast.MultiReturn {
