@@ -263,13 +263,18 @@ fn vpm_install_from_vcs(modules []string, vcs_key string) {
 	for raw_url in modules {
 		url := urllib.parse(raw_url) or {
 			errors++
-			eprintln('error: failed parsing module url "${raw_url}"')
+			eprintln('Errors while parsing module url "${raw_url}" : ${err}')
 			continue
 		}
 
 		// Module identifier based on URL.
 		// E.g.: `https://github.com/owner/awesome-v-project` -> `owner/awesome_v_project`
-		mut ident := url.path.replace('-', '_')
+		mut ident := url.path[1..].replace('-', '_')
+		owner, repo_name := ident.split_once('/') or {
+			errors++
+			eprintln('Errors while retrieving module name for: "${url}"')
+			continue
+		}
 		mut final_module_path := os.real_path(os.join_path(settings.vmodules_path, ident.to_lower()))
 
 		if os.exists(final_module_path) {
@@ -283,14 +288,14 @@ fn vpm_install_from_vcs(modules []string, vcs_key string) {
 			continue
 		}
 
-		println('Installing module "${ident}" from "${url}" to "${final_module_path}" ...')
+		println('Installing module "${repo_name}" from "${url}" to "${final_module_path}" ...')
 		vcs_install_cmd := '${vcs_key} ${supported_vcs_install_cmds[vcs_key]}'
 		cmd := '${vcs_install_cmd} "${url}" "${final_module_path}"'
 		verbose_println('      command: ${cmd}')
 		cmdres := os.execute(cmd)
 		if cmdres.exit_code != 0 {
 			errors++
-			eprintln('Failed installing module "${ident}" to "${final_module_path}" .')
+			eprintln('Failed installing module "${repo_name}" to "${final_module_path}" .')
 			print_failed_cmd(cmd, cmdres)
 			continue
 		}
@@ -302,7 +307,7 @@ fn vpm_install_from_vcs(modules []string, vcs_key string) {
 			}
 			minfo := mod_name_info(manifest.name)
 			if final_module_path != minfo.final_module_path {
-				println('Relocating module from "${ident}" to "${manifest.name}" ( "${minfo.final_module_path}" ) ...')
+				println('Relocating module from "${ident}" to "${manifest.name}" ("${minfo.final_module_path}") ...')
 				if os.exists(minfo.final_module_path) {
 					eprintln('Warning module "${minfo.final_module_path}" already exists!')
 					eprintln('Removing module "${minfo.final_module_path}" ...')
@@ -315,7 +320,7 @@ fn vpm_install_from_vcs(modules []string, vcs_key string) {
 				}
 				os.mv(final_module_path, minfo.final_module_path) or {
 					errors++
-					eprintln('Errors while relocating module "${ident}" :')
+					eprintln('Errors while relocating module "${repo_name}" :')
 					eprintln(err)
 					os.rmdir_all(final_module_path) or {
 						errors++
@@ -325,7 +330,7 @@ fn vpm_install_from_vcs(modules []string, vcs_key string) {
 					}
 					continue
 				}
-				println('Module "${ident}" relocated to "${manifest.name}" successfully.')
+				println('Module "${repo_name}" relocated to "${manifest.name}" successfully.')
 				publisher_dir := final_module_path.all_before_last(os.path_separator)
 				if os.is_dir_empty(publisher_dir) {
 					os.rmdir(publisher_dir) or {
