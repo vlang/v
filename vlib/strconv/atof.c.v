@@ -334,7 +334,7 @@ fn converter(mut pn PrepNumber) u64 {
 	*/
 
 	// C.printf(c"mantissa before rounding: %08x%08x%08x binexp: %d \n", s2,s1,s0,binexp)
-	// s1 => 0xFFFFFFxx only F are rapresented
+	// s1 => 0xFFFFFFxx only F are represented
 	nbit := 7
 	check_round_bit := u32(1) << u32(nbit)
 	check_round_mask := u32(0xFFFFFFFF) << u32(nbit)

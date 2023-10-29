@@ -180,7 +180,7 @@ fn supports_truecolor() bool {
 	if os.getenv('COLORTERM') in ['truecolor', '24bit'] {
 		return true
 	}
-	// set the bg color to some arbirtrary value (#010203), assumed not to be the default
+	// set the bg color to some arbitrary value (#010203), assumed not to be the default
 	print('\x1b[48:2:1:2:3m')
 	flush_stdout()
 	// andquery the current color

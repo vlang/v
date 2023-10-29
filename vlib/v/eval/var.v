@@ -49,7 +49,7 @@ pub fn (mut e Eval) set(expr ast.Expr, val Object, init bool, typ ast.Type) {
 			// }
 		}
 		else {
-			panic('unknown left value to assign statment: ${expr.type_name()}')
+			panic('unknown left value to assign statement: ${expr.type_name()}')
 		}
 	}
 }
@@ -62,7 +62,7 @@ pub fn (mut e Eval) add(expr ast.Expr, val Object) {
 				.plus, e.local_vars[expr.name].typ)
 		}
 		else {
-			panic('unknown left value to add statment: ${expr.type_name()}')
+			panic('unknown left value to add statement: ${expr.type_name()}')
 		}
 	}
 }

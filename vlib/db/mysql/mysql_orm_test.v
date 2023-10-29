@@ -29,7 +29,7 @@ mut:
 	deleted_at time.Time
 }
 
-struct TestDefaultAtribute {
+struct TestDefaultAttribute {
 	id         string [primary; sql: serial]
 	name       string
 	created_at string [default: 'CURRENT_TIMESTAMP'; sql_type: 'TIMESTAMP']
@@ -205,13 +205,13 @@ fn test_mysql_orm() {
 	/** test default attribute
 	*/
 	sql db {
-		create table TestDefaultAtribute
+		create table TestDefaultAttribute
 	}!
 
 	mut result_defaults := db.query("
 		SELECT COLUMN_DEFAULT
 		FROM INFORMATION_SCHEMA.COLUMNS
-		WHERE TABLE_NAME = 'TestDefaultAtribute'
+		WHERE TABLE_NAME = 'TestDefaultAttribute'
 		ORDER BY ORDINAL_POSITION
 	") or {
 		println(err)
@@ -220,7 +220,7 @@ fn test_mysql_orm() {
 	mut information_schema_defaults_results := []string{}
 
 	sql db {
-		drop table TestDefaultAtribute
+		drop table TestDefaultAttribute
 	}!
 
 	information_schema_column_default_sql := [{

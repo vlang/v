@@ -1,4 +1,5 @@
 ## [Version 0.3]
+
 - [x] gc option
 - [x] channels
 - [x] lock{}
@@ -50,7 +51,7 @@
 - [ ] Cross compilation of C
 - [ ] Big remaining bugs fixed
 - [ ] More powerful comptime
-- [ ] Constraits for generics
+- [ ] Constrains for generics
 - [ ] Coroutines on Windows
 - [ ] Autofree memory management option ready for production
 - [ ] C2V supporting entire C99 standard

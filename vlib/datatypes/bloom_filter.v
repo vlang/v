@@ -38,7 +38,7 @@ fn (b &BloomFilter[T]) free() {
 	}
 }
 
-// new_bloom_filter_fast create a new bloom_filter. `table_size` is 16384 , and `num_functions` is 4
+// new_bloom_filter_fast creates a new bloom_filter. `table_size` is 16384, and `num_functions` is 4.
 pub fn new_bloom_filter_fast[T](hash_func fn (T) u32) &BloomFilter[T] {
 	return &BloomFilter[T]{
 		hash_func: hash_func
@@ -48,7 +48,7 @@ pub fn new_bloom_filter_fast[T](hash_func fn (T) u32) &BloomFilter[T] {
 	}
 }
 
-// new_bloom_filter create a new bloom_filter. `table_size` should greate than 0 , and `num_functions` should be 1~16
+// new_bloom_filter creates a new bloom_filter. `table_size` should be greater than 0, and `num_functions` should be 1~16.
 pub fn new_bloom_filter[T](hash_func fn (T) u32, table_size int, num_functions int) !&BloomFilter[T] {
 	if table_size <= 0 {
 		return error('table_size should great that 0')

@@ -191,8 +191,8 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 					continue
 				}
 			}
-			if already_initalised_node_field_index := inited_fields[field.name] {
-				mut sfield := node.init_fields[already_initalised_node_field_index]
+			if already_inited_node_field_index := inited_fields[field.name] {
+				mut sfield := node.init_fields[already_inited_node_field_index]
 				if sfield.typ == 0 {
 					continue
 				}
@@ -231,7 +231,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 				if node.no_keys && sym.kind == .struct_ {
 					sym_info := sym.info as ast.Struct
 					if sym_info.fields.len == node.init_fields.len {
-						sfield.name = sym_info.fields[already_initalised_node_field_index].name
+						sfield.name = sym_info.fields[already_inited_node_field_index].name
 					}
 				}
 				g.struct_init_field(sfield, sym.language)

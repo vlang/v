@@ -99,7 +99,7 @@ fn fatal_socket_error(fd int) bool {
 	return true
 }
 
-// listen creates a listening tcp socket and returns its file decriptor
+// listen creates a listening tcp socket and returns its file descriptor
 fn listen(config Config) int {
 	// not using the `net` modules sockets, because not all socket options are defined
 	fd := C.socket(net.AddrFamily.ip, net.SocketType.tcp, 0)
