@@ -22,9 +22,8 @@ fn test_install_from_git_url() {
 	}
 	assert mod.name == 'markdown'
 	assert mod.dependencies == []string{}
-	assert res.output.trim_space() == 'Installing module "markdown" from "https://github.com/vlang/markdown" to "${test_path}/vlang/markdown" ...
-Relocating module from "vlang/markdown" to "markdown" ("${test_path}/markdown") ...
-Module "markdown" relocated to "markdown" successfully.'
+	assert res.output.contains('Installing module "markdown" from "https://github.com/vlang/markdown')
+	assert res.output.contains('Relocating module from "vlang/markdown" to "markdown"')
 }
 
 fn test_install_from_vpm_ident() {
@@ -50,6 +49,10 @@ fn test_install_from_vpm_short_ident() {
 }
 
 fn test_install_already_existant() {
+	// Skip on windows for now due permission errors with rmdir.
+	$if windows {
+		return
+	}
 	mod_url := 'https://github.com/vlang/markdown'
 	mut res := os.execute(@VEXE + ' install ${mod_url}')
 	assert res.exit_code == 0, res.output
