@@ -1,10 +1,17 @@
 import os
-import v.vmod
 
-// Note: the following uses `test_vcreate` and NOT `vcreate_test` deliberately,
-// to both avoid confusions with the name of the current test itself, and to
-// avoid clashes with the postfix `_test.v`, that V uses for its own test files.
-const test_path = os.join_path(os.vtmp_dir(), 'v', 'test_vcreate')
+const (
+	test_project_dir_name = 'test_project'
+	// Running tests appends a tsession path to VTMP, which is automatically cleaned up after the test.
+	// The following will result in e.g. `$VTMP/tsession_7fe8e93bd740_1612958707536/test_project/`.
+	// Note: The following uses `test_vcreate` deliberately and NOT `vcreate_test`.
+	// This avoids clashes with the `_test` postfix, which V also uses for test file binaries.
+	test_path             = os.join_path(os.vtmp_dir(), test_project_dir_name)
+)
+
+fn testsuite_end() {
+	os.rmdir_all(test_path) or {}
+}
 
 fn init_and_check() ! {
 	os.chdir(test_path)!
@@ -35,7 +42,7 @@ fn init_and_check() ! {
 
 	assert os.read_file('v.mod')! == [
 		'Module {',
-		"	name: 'test_vcreate'",
+		"	name: '${test_project_dir_name}'",
 		"	description: ''",
 		"	version: ''",
 		"	license: ''",
@@ -47,7 +54,7 @@ fn init_and_check() ! {
 	assert os.read_file('.gitignore')! == [
 		'# Binaries for programs and plugins',
 		'main',
-		'test_vcreate',
+		'${test_project_dir_name}',
 		'*.exe',
 		'*.exe~',
 		'*.so',
@@ -138,8 +145,4 @@ indent_style = tab
 
 	assert os.read_file('.gitattributes')! == git_attributes_content
 	assert os.read_file('.editorconfig')! == editor_config_content
-}
-
-fn testsuite_end() {
-	os.rmdir_all(test_path) or {}
 }
