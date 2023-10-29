@@ -62,7 +62,11 @@ pub struct LoopBreakpoint {
 	name       string
 }
 
+[noreturn]
 pub fn (mut g Gen) v_error(s string, pos token.Pos) {
+	util.show_compiler_message('error:', pos: pos, file_path: g.file_path, message: s)
+	exit(1)
+	/*
 	if g.pref.output_mode == .stdout {
 		util.show_compiler_message('error:', pos: pos, file_path: g.file_path, message: s)
 		exit(1)
@@ -70,10 +74,11 @@ pub fn (mut g Gen) v_error(s string, pos token.Pos) {
 		g.errors << errors.Error{
 			file_path: g.file_path
 			pos: pos
-			reporter: .gen
+			reporter: .gen			
 			message: s
 		}
 	}
+	*/
 }
 
 pub fn (mut g Gen) warning(s string, pos token.Pos) {
@@ -444,50 +449,6 @@ pub fn (mut g Gen) infix_expr(node ast.InfixExpr, expected ast.Type) {
 	g.func.cast(g.as_numtype(g.get_wasm_type(res_typ)), res_typ.is_signed(), g.as_numtype(g.get_wasm_type(expected)))
 }
 
-pub fn (mut g Gen) wasm_builtin(name string, node ast.CallExpr) {
-	for idx, arg in node.args {
-		g.expr(arg.expr, node.expected_arg_types[idx])
-	}
-
-	match name {
-		'__memory_grow' {
-			g.func.memory_grow()
-		}
-		'__memory_fill' {
-			g.func.memory_fill()
-		}
-		'__memory_copy' {
-			g.func.memory_copy()
-		}
-		'__memory_size' {
-			g.func.memory_size()
-		}
-		'__heap_base' {
-			if hp := g.heap_base {
-				g.func.global_get(hp)
-			}
-			hp := g.mod.new_global('__heap_base', false, .i32_t, false, wasm.constexpr_value(0))
-			g.func.global_get(hp)
-			g.heap_base = hp
-		}
-		'__reinterpret_f32_u32' {
-			g.func.reinterpret(.f32_t)
-		}
-		'__reinterpret_u32_f32' {
-			g.func.reinterpret(.i32_t)
-		}
-		'__reinterpret_f64_u64' {
-			g.func.reinterpret(.f64_t)
-		}
-		'__reinterpret_u64_f64' {
-			g.func.reinterpret(.i64_t)
-		}
-		else {
-			panic('unreachable')
-		}
-	}
-}
-
 pub fn (mut g Gen) prefix_expr(node ast.PrefixExpr, expected ast.Type) {
 	match node.op {
 		.minus {
@@ -571,6 +532,11 @@ pub fn (mut g Gen) if_branch(ifexpr ast.IfExpr, expected ast.Type, unpacked_para
 }
 
 pub fn (mut g Gen) if_expr(ifexpr ast.IfExpr, expected ast.Type, existing_rvars []Var) {
+	if ifexpr.is_comptime {
+		g.comptime_if_expr(ifexpr, expected, existing_rvars)
+		return
+	}
+
 	params := if expected == ast.void_type {
 		[]wasm.ValType{}
 	} else if existing_rvars.len == 0 {
@@ -586,13 +552,6 @@ pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvar
 	mut name := node.name
 
 	is_print := name in ['panic', 'println', 'print', 'eprintln', 'eprint']
-
-	if name in ['__memory_grow', '__memory_fill', '__memory_copy', '__memory_size', '__heap_base',
-		'__reinterpret_f32_u32', '__reinterpret_u32_f32', '__reinterpret_f64_u64',
-		'__reinterpret_u64_f64'] {
-		g.wasm_builtin(node.name, node)
-		return
-	}
 
 	if node.is_method {
 		name = '${g.table.get_type_name(node.receiver_type)}.${node.name}'
@@ -1246,6 +1205,10 @@ pub fn (mut g Gen) expr_stmt(node ast.Stmt, expected ast.Type) {
 					g.set(v)
 				}
 			}
+		}
+		ast.AsmStmt {
+			// assumed expected == void
+			g.asm_stmt(node)
 		}
 		else {
 			g.w_error('wasm.expr_stmt(): unhandled node: ' + node.type_name())

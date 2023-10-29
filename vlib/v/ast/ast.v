@@ -2411,6 +2411,9 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 				res[k] = v
 			}
 		}
+		.wasm32 {
+			// no registers
+		}
 		else { // TODO
 			panic('all_registers: unhandled arch')
 		}
