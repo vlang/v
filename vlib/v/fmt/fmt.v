@@ -788,7 +788,8 @@ fn expr_is_single_line(expr ast.Expr) bool {
 			}
 		}
 		ast.CallExpr {
-			if expr.or_block.stmts.len > 1 {
+			if expr.or_block.stmts.len > 1 || expr.args.any(it.expr is ast.CallExpr
+				&& it.expr.or_block.stmts.len > 1) {
 				return false
 			}
 		}
