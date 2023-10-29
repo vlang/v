@@ -269,7 +269,7 @@ fn vpm_install_from_vcs(modules []string, vcs_key string) {
 
 		// Module identifier based on URL.
 		// E.g.: `https://github.com/owner/awesome-v-project` -> `owner/awesome_v_project`
-		mut ident := url.path[1..].replace('-', '_')
+		mut ident := url.path#[1..].replace('-', '_')
 		owner, repo_name := ident.split_once('/') or {
 			errors++
 			eprintln('Errors while retrieving module name for: "${url}"')
