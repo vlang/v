@@ -4,17 +4,23 @@ import os
 
 const help_dir = os.join_path(@VEXEROOT, 'vlib', 'v', 'help')
 
+[params]
+struct ExitOptions {
+	success_code int // The exit code to use after the specified topic was printed successfully.
+	fail_code    int = 1 // The exit code to use after the specified topic could not be printed (e.g., if it is unknown).
+}
+
 // print_and_exit prints the help topic and exits.
-pub fn print_and_exit(topic string) {
+pub fn print_and_exit(topic string, exit_opts ExitOptions) {
 	if topic == 'topics' {
 		print_known_topics()
-		exit(0)
+		exit(exit_opts.success_code)
 	}
 
 	for c in topic {
 		if !c.is_letter() && !c.is_digit() && c != `-` {
 			print_topic_unkown(topic)
-			exit(1)
+			exit(exit_opts.fail_code)
 		}
 	}
 
@@ -28,14 +34,14 @@ pub fn print_and_exit(topic string) {
 	if topic_path == '' {
 		print_topic_unkown(topic)
 		print_known_topics()
-		exit(1)
+		exit(exit_opts.fail_code)
 	}
 
 	println(os.read_file(topic_path) or {
 		eprintln('error: failed reading topic file: ${err}')
-		exit(1)
+		exit(exit_opts.fail_code)
 	})
-	exit(0)
+	exit(exit_opts.success_code)
 }
 
 fn print_topic_unkown(topic string) {
