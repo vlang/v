@@ -91,6 +91,14 @@ pub fn (mut d Digest) reset() {
 	d.len = 0
 }
 
+fn (d &Digest) clone() &Digest {
+	return &Digest{
+		...d
+		h: d.h.clone()
+		x: d.x.clone()
+	}
+}
+
 // new returns a new Digest (implementing hash.Hash) computing the SHA256 checksum.
 pub fn new() &Digest {
 	mut d := &Digest{}
@@ -144,7 +152,7 @@ pub fn (mut d Digest) write(p_ []u8) !int {
 // sum returns the SHA256 or SHA224 checksum of digest with the data.
 pub fn (d &Digest) sum(b_in []u8) []u8 {
 	// Make a copy of d so that caller can keep writing and summing.
-	mut d0 := *d
+	mut d0 := d.clone()
 	hash := d0.checksum()
 	mut b_out := b_in.clone()
 	if d0.is224 {

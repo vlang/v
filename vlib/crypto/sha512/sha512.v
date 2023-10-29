@@ -136,6 +136,14 @@ pub fn (mut d Digest) reset() {
 	d.len = 0
 }
 
+fn (d &Digest) clone() &Digest {
+	return &Digest{
+		...d
+		h: d.h.clone()
+		x: d.x.clone()
+	}
+}
+
 // internal
 fn new_digest(hash crypto.Hash) &Digest {
 	mut d := &Digest{
@@ -203,7 +211,7 @@ pub fn (mut d Digest) write(p_ []u8) !int {
 // sum returns the SHA512 or SHA384 checksum of digest with the data bytes in `b_in`
 pub fn (d &Digest) sum(b_in []u8) []u8 {
 	// Make a copy of d so that caller can keep writing and summing.
-	mut d0 := *d
+	mut d0 := d.clone()
 	hash := d0.checksum()
 	mut b_out := b_in.clone()
 	match d0.function {
