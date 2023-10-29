@@ -1,4 +1,5 @@
-# Running the C# program:
+Running the C# program:
+====================================
 
 ```
 dotnet run
@@ -15,7 +16,8 @@ The generated executable will be in
 Its size is ~64MB . After stripping, the executable shrinks to just 11MB,
 but unfortunately it also stops running after stripping :-| .
 
-## Compiling and running the V program:
+Compiling and running the V program:
+====================================
 
 ```
 v crun vectors.v
@@ -34,11 +36,12 @@ After stripping, the executable shrinks to 157KB. It can still run after
 stripping.
 
 Note: using `crun` will make sure that the compilation will happen just
-once at the start, and then the executable will be reused by the subsequent
-commands with identical options. It will also ensure that the compiled
-executable will not be removed, unlike `run` .
+once at the start, and then the executable will be just reused by the
+subsequent commands with identical options. It will also ensure that
+the compiled executable will not be removed, unlike `run` .
 
-## Some measurements and comparisons
+Some measurements and comparisons
+====================================
 
 Note: the following was done on Intel(R) Core(TM) i3-3225, 16GB RAM:
 

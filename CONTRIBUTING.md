@@ -123,7 +123,7 @@ accordingly in the steps below.)
       with the updated version of your changes.
 
 The point of doing the above steps, is to never directly push to the main V
-repository, _only to your own fork_. Since your local `master` branch tracks the
+repository, *only to your own fork*. Since your local `master` branch tracks the
 main V repository's master, then `git checkout master`, as well as
 `git pull --rebase origin master` will continue to work as expected
 (these are actually used by `v up`) and git can always do it cleanly.
@@ -204,7 +204,7 @@ command.
 
 ### Preparation:
 
-(steps 1..3 need to be done just _once_):
+(steps 1..3 need to be done just *once*):
 
 1. `hub clone vlang/v my_v`
 2. `cd my_v`
@@ -216,8 +216,8 @@ command.
    ```
 3. `hub fork --remote-name pullrequest`
 
-4. `git checkout -b my_cool_feature` # Step 4 is better done _once per each new
-   feature/bugfix_ that you make.
+4. `git checkout -b my_cool_feature` # Step 4 is better done *once per each new
+   feature/bugfix* that you make.
 
 ### Improve V by making commits:
 
@@ -257,22 +257,22 @@ V allows you to pass custom flags using `-d my_flag` that can then be checked
 at compile time (see the documentation about
 [compile-time if](https://github.com/vlang/v/blob/master/doc/docs.md#compile-time-if)).
 
-Since the compiler is _also_ an ordinary V program, there are numerous flags that can be
+Since the compiler is *also* an ordinary V program, there are numerous flags that can be
 passed when building the compiler itself with `v self`, or when creating a copy of the
 compiler, that will help you when debugging the compiler.
 
-Note: beware that the flags below must be passed, when building the compiler, _not the program_,
+Note: beware that the flags below must be passed, when building the compiler, *not the program*,
 so do for example:
 `./v -o w -d time_parsing cmd/v`
 or
 `./v -o w -d trace_checker self`
 ... then use `./w file.v`, instead of `./v file.v`, to compile your program.
 
-Note: some of the flags can make the compiler _very verbose_, so it is recommended to create
+Note: some of the flags can make the compiler *very verbose*, so it is recommended to create
 a copy of the compiler rather than replacing it with `v self`.
 
 | Flag                              | Usage                                                                                                               |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+|-----------------------------------|---------------------------------------------------------------------------------------------------------------------|
 | `debugscanner`                    | Prints debug information during the scanning phase                                                                  |
 | `debug_codegen`                   | Prints automatically generated V code during the scanning phase                                                     |
 | `debug_interface_table`           | Prints generated interfaces during C generation                                                                     |
@@ -288,9 +288,9 @@ a copy of the compiler rather than replacing it with `v self`.
 |                                   |                                                                                                                     |
 | `trace_gen`                       | Prints all the strings written to the generated C file. Very verbose.                                               |
 | `trace_cgen_stmt`                 | Prints details about the statements that are being processed by cgen.                                               |
-|                                   | Use it for panics in cgen, to see the closest input V source line, that caused the panic.                           |
-|                                   | Note: you need `v -no-parallel -d trace_cgen_stmt -o w cmd/v` to make sense of the output of that,                  |
-|                                   | otherwise by default cgen uses several threads, and the lines that are printed are out of order.                    |
+|                                   |        Use it for panics in cgen, to see the closest input V source line, that caused the panic.                    |
+|                                   |        Note: you need `v -no-parallel -d trace_cgen_stmt -o w cmd/v` to make sense of the output of that,           |
+|                                   |        otherwise by default cgen uses several threads, and the lines that are printed are out of order.             |
 |                                   |                                                                                                                     |
 | `trace_autofree`                  | Prints details about how/when -autofree puts free() calls                                                           |
 | `trace_autostr`                   | Prints details about `.str()` method auto-generated by the compiler during C generation                             |
@@ -298,4 +298,4 @@ a copy of the compiler rather than replacing it with `v self`.
 | `trace_thirdparty_obj_files`      | Prints details about built thirdparty obj files                                                                     |
 | `trace_usecache`                  | Prints details when -usecache is used                                                                               |
 | `trace_embed_file`                | Prints details when $embed_file is used                                                                             |
-| `embed_only_metadata`             | Embed only the metadata for the file(s) with `$embed_file('somefile')`; faster; for development, _not_ distribution |
+| `embed_only_metadata`             | Embed only the metadata for the file(s) with `$embed_file('somefile')`; faster; for development, *not* distribution |
