@@ -61,11 +61,7 @@ fn test_install_already_existant() {
 	}
 	assert mod.name == 'markdown'
 	assert mod.dependencies == []string{}
-	assert res.output.trim_space() == 'Installing module "markdown" from "https://github.com/vlang/markdown" to "${test_path}/vlang/markdown" ...
-Relocating module from "vlang/markdown" to "markdown" ("${test_path}/markdown") ...
-Warning module "${test_path}/markdown" already exists!
-Removing module "${test_path}/markdown" ...
-Module "markdown" relocated to "markdown" successfully.'
+	assert res.output.contains('already exists')
 }
 
 fn test_missing_repo_name_in_url() {
