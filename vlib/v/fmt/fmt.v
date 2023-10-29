@@ -33,8 +33,6 @@ pub mut:
 	single_line_if     bool
 	cur_mod            string
 	did_imports        bool
-	is_assign          bool
-	is_struct_init     bool
 	auto_imports       []string          // automatically inserted imports that the user forgot to specify
 	import_pos         int               // position of the imports in the resulting string for later autoimports insertion
 	used_imports       []string          // to remove unused imports
@@ -48,7 +46,10 @@ pub mut:
 	inside_const       bool
 	inside_unsafe      bool
 	inside_comptime_if bool
+	is_assign          bool
+	is_index_expr      bool
 	is_mbranch_expr    bool // match a { x...y { } }
+	is_struct_init     bool
 	fn_scope           &ast.Scope = unsafe { nil }
 	wsinfix_depth      int
 	format_state       FormatState
@@ -2336,9 +2337,12 @@ pub fn (mut f Fmt) index_expr(node ast.IndexExpr) {
 			f.write('#')
 		}
 	}
+	last_index_expr_state := f.is_index_expr
+	f.is_index_expr = true
 	f.write('[')
 	f.expr(node.index)
 	f.write(']')
+	f.is_index_expr = last_index_expr_state
 	if node.or_expr.kind != .absent {
 		f.or_expr(node.or_expr)
 	}
@@ -2804,7 +2808,7 @@ pub fn (mut f Fmt) prefix_expr(node ast.PrefixExpr) {
 
 pub fn (mut f Fmt) range_expr(node ast.RangeExpr) {
 	f.expr(node.low)
-	if f.is_mbranch_expr {
+	if f.is_mbranch_expr && !f.is_index_expr {
 		f.write('...')
 	} else {
 		f.write('..')
