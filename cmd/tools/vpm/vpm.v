@@ -275,7 +275,8 @@ fn vpm_install_from_vcs(modules []string, vcs_key string) {
 			eprintln('Errors while retrieving module name for: "${url}"')
 			continue
 		}
-		mut final_module_path := os.real_path(os.join_path(settings.vmodules_path, ident.to_lower()))
+		mut final_module_path := os.real_path(os.join_path(settings.vmodules_path, owner.to_lower(),
+			repo_name.to_lower()))
 
 		if os.exists(final_module_path) {
 			vpm_update([ident])
