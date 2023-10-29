@@ -622,6 +622,10 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, right ast.ArrayInit) {
 			.string, .alias, .sum_type, .map, .interface_, .array, .struct_ {
 				if elem_sym.kind == .string {
 					g.write('string__eq(')
+					if left.is_auto_deref_var() || (left is ast.Ident && left.info is ast.IdentVar
+						&& g.table.sym(left.obj.typ).kind in [.interface_, .sum_type]) {
+						g.write('*')
+					}
 				} else {
 					ptr_typ := g.equality_fn(right.elem_type)
 					if elem_sym.kind == .alias {
