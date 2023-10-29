@@ -5,7 +5,7 @@ import os
 const help_dir = os.join_path(@VEXEROOT, 'vlib', 'v', 'help')
 
 [params]
-struct ExitOptions {
+pub struct ExitOptions {
 	success_code int // The exit code to use after the specified topic was printed successfully.
 	fail_code    int = 1 // The exit code to use after the specified topic could not be printed (e.g., if it is unknown).
 }
