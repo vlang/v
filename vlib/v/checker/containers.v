@@ -331,7 +331,7 @@ fn (mut c Checker) check_array_init_para_type(para string, mut expr ast.Expr, po
 	if sym.kind !in [.int, .int_literal] {
 		c.error('array ${para} needs to be an int', pos)
 	}
-	if sym.kind == .int_literal && expr is ast.IntegerLiteral {
+	if expr is ast.IntegerLiteral {
 		lit := expr as ast.IntegerLiteral
 		if lit.val.int() < 0 {
 			c.error('array ${para} can not be negative', lit.pos)
