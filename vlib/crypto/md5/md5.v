@@ -58,6 +58,14 @@ pub fn (mut d Digest) reset() {
 	d.len = 0
 }
 
+fn (d &Digest) clone() &Digest {
+	return &Digest{
+		...d
+		s: d.s.clone()
+		x: d.x.clone()
+	}
+}
+
 // new returns a new Digest (implementing hash.Hash) computing the MD5 checksum.
 pub fn new() &Digest {
 	mut d := &Digest{}
@@ -103,7 +111,7 @@ pub fn (mut d Digest) write(p_ []u8) !int {
 // sum returns the md5 sum of the bytes in `b_in`.
 pub fn (d &Digest) sum(b_in []u8) []u8 {
 	// Make a copy of d so that caller can keep writing and summing.
-	mut d0 := *d
+	mut d0 := d.clone()
 	hash := d0.checksum()
 	mut b_out := b_in.clone()
 	for b in hash {
@@ -112,7 +120,10 @@ pub fn (d &Digest) sum(b_in []u8) []u8 {
 	return b_out
 }
 
-// checksum returns the byte checksum of the `Digest`.
+// checksum returns the byte checksum of the `Digest`,
+// it is an internal method and is not recommended because its results are not idempotent.
+[deprecated: 'checksum() will be changed to a private method, use sum() instead']
+[deprecated_after: '2024-04-30']
 pub fn (mut d Digest) checksum() []u8 {
 	// Append 0x80 to the end of the message and then append zeros
 	// until the length is a multiple of 56 bytes. Finally append
