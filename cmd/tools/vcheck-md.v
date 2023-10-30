@@ -44,7 +44,6 @@ fn (v1 CheckResult) + (v2 CheckResult) CheckResult {
 fn main() {
 	if non_option_args.len == 0 || '-help' in os.args {
 		help.print_and_exit('check-md')
-		exit(0)
 	}
 	if '-all' in os.args {
 		println('´-all´ flag is deprecated. Please use ´v check-md .´ instead.')
