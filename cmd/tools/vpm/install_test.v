@@ -48,8 +48,9 @@ fn test_install_from_git_url() {
 	assert mod.dependencies == []string{}
 }
 
-fn test_install_already_existant() {
-	// Skip on windows for now due permission errors with rmdir.
+fn test_install_already_existent() {
+	// FIXME: Skip this for now on Windows, as `rmdir_all` results in permission
+	// errors when vpm tries to remove existing modules.
 	$if windows {
 		return
 	}
@@ -66,8 +67,14 @@ fn test_install_already_existant() {
 
 fn test_install_once() {
 	// Start with a clean test path.
-	os.rmdir_all(test_path) or {}
+	$if windows {
+		// FIXME: Workaround for failing `rmdir` commands on Windows.
+		os.system('rd /s /q ${test_path}')
+	} $else {
+		os.rmdir_all(test_path) or {}
+	}
 	os.mkdir_all(test_path) or {}
+
 	// Install markdown module.
 	mut res := os.execute(@VEXE + ' install markdown')
 	assert res.exit_code == 0, res.output
