@@ -108,31 +108,35 @@ fn main() {
 }
 
 fn vpm_install_(requested_modules []string, opts []string) {
-	mut modules := requested_modules.clone()
 	if settings.is_help {
 		help.print_and_exit('vpm')
 	}
 
-	if modules.len == 0 {
+	modules := if requested_modules.len == 0 {
+		// Run `v install` in a directory of another V module without passing modules as arguments
+		// to install its dependencies.
 		if os.exists('./v.mod') {
 			println('Detected v.mod file inside the project directory. Using it...')
 			manifest := vmod.from_file('./v.mod') or { panic(err) }
-			modules = manifest.dependencies.clone()
-			if modules.len == 0 {
+			if manifest.dependencies.len == 0 {
 				println('Nothing to install.')
 				exit(0)
 			}
+			manifest.dependencies.clone()
 		} else {
 			eprintln('Specify a module for installation.')
 			help.print_and_exit('vpm')
+			return
 		}
+	} else {
+		requested_modules.clone()
 	}
 
 	mut external_modules := modules.filter(it.starts_with('https://'))
 	mut vpm_modules := modules.filter(it !in external_modules)
+	installed_modules := get_installed_modules()
 
-	if '--once' in opts {
-		installed_modules := get_installed_modules()
+	if installed_modules.len > 0 && '--once' in opts {
 		mut already_installed := []string{}
 		if external_modules.len > 0 {
 			// Clone required, since we delete already installed modules from `external_modules` in the loop.
@@ -147,19 +151,22 @@ fn vpm_install_(requested_modules []string, opts []string) {
 				if mod_name in installed_modules {
 					already_installed << mod_name
 					external_modules.delete(i)
-					// Do not increment `i` because we have deleted an element and the iterated array lost length.
-					// Otherwise, other already-installed modules might get skipped.
+					// Don't increment `i` because we deleted an element and the array lost length.
+					// Otherwise, other modules that are already installed might get skipped.
 					continue
 				}
 				i++
 			}
 		}
 		if vpm_modules.len > 0 {
-			for i, mod_name in vpm_modules {
+			mut i := 0
+			for mod_name in vpm_modules.clone() {
 				if mod_name in installed_modules {
 					already_installed << mod_name
 					vpm_modules.delete(i)
+					continue
 				}
+				i++
 			}
 		}
 		if already_installed.len > 0 {

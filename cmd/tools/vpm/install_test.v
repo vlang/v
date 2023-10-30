@@ -75,7 +75,7 @@ fn test_install_once() {
 	md_last_modified := os.file_last_mod_unix(os.join_path(test_path, 'markdown', 'v.mod'))
 
 	install_cmd := '${@VEXE} install https://github.com/vlang/markdown https://github.com/vlang/pcre --once -v'
-	// Try install two modules, where one is already installed.
+	// Try installing two modules, one of which is already installed.
 	res = os.execute(install_cmd)
 	assert res.exit_code == 0, res.output
 	assert res.output.contains("Already installed modules: ['markdown']")
@@ -89,7 +89,7 @@ fn test_install_once() {
 	assert md_last_modified == os.file_last_mod_unix(os.join_path(test_path, 'markdown',
 		'v.mod'))
 
-	// Try install two modules, where both are already installed.
+	// Try installing two modules that are both already installed.
 	res = os.execute(install_cmd)
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('All modules are already installed.')
