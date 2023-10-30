@@ -11,7 +11,9 @@ fn test_crypto_sha1_writer() {
 	mut digest := sha1.new()
 	digest.write('This is a'.bytes()) or { assert false }
 	digest.write(' sha1 checksum.'.bytes()) or { assert false }
-	sum := digest.sum([])
+	mut sum := digest.sum([])
+	assert sum.hex() == 'e100d74442faa5dcd59463b808983c810a8eb5a1'
+	sum = digest.sum([])
 	assert sum.hex() == 'e100d74442faa5dcd59463b808983c810a8eb5a1'
 }
 
