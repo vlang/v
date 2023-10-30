@@ -18,13 +18,19 @@ fn C.new_tls_context() C.TlsContext
 fn (req &Request) ssl_do(port int, method Method, host_name string, path string) !Response {
 	mut ctx := C.new_tls_context()
 	C.vschannel_init(&ctx)
-	mut buff := unsafe { malloc_noscan(C.vsc_init_resp_buff_size) }
-	addr := host_name
 	sdata := req.build_request_headers(method, host_name, path)
 	$if trace_http_request ? {
 		eprintln('> ${sdata}')
 	}
-	length := C.request(&ctx, port, addr.to_wide(), sdata.str, sdata.len, &buff)
+
+	return req.do_request(sdata)!
+}
+
+fn (req &Request) do_request(req_headers string) !Response {
+	mut buff := unsafe { malloc_noscan(C.vsc_init_resp_buff_size) }
+	addr := host_name
+	length := C.request(&ctx, port, addr.to_wide(), req_headers.str, req_headers.len,
+		&buff)
 	C.vschannel_cleanup(&ctx)
 	response_text := unsafe { buff.vstring_with_len(length) }
 	if req.on_progress != unsafe { nil } {

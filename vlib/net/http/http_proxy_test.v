@@ -33,22 +33,18 @@ fn test_proxy_fields() ? {
 
 fn test_proxy_headers() ? {
 	sample_proxy := new_http_proxy(http.sample_proxy_url)!
-	headers := sample_proxy.build_proxy_headers(http.sample_request, http.sample_host,
-		http.sample_path)
+	headers := sample_proxy.build_proxy_headers(http.sample_host)
 
-	assert headers == 'GET ${http.sample_request.url}${http.sample_path} HTTP/1.1\r\n' +
-		'Host: ${http.sample_host}\r\n' + 'User-Agent: ${http.sample_request.user_agent}\r\n' +
-		'Upgrade-Insecure-Requests: 1\r\n\r\n'
+	assert headers == 'CONNECT 127.0.0.1:1337 HTTP/1.1\r\n' + 'Host: 127.0.0.1\r\n' +
+		'Proxy-Connection: Keep-Alive\r\n\r\n'
 }
 
 fn test_proxy_headers_authenticated() ? {
 	sample_proxy := new_http_proxy(http.sample_auth_proxy_url)!
-	headers := sample_proxy.build_proxy_headers(http.sample_request, http.sample_host,
-		http.sample_path)
+	headers := sample_proxy.build_proxy_headers(http.sample_host)
 
 	auth_token := base64.encode(('${sample_proxy.username}:' + '${sample_proxy.password}').bytes())
 
-	assert headers == 'GET ${http.sample_request.url}${http.sample_path} HTTP/1.1\r\n' +
-		'Host: ${http.sample_host}\r\n' + 'User-Agent: ${http.sample_request.user_agent}\r\n' +
-		'Upgrade-Insecure-Requests: 1\r\n' + 'Proxy-Authorization: Basic ${auth_token}\r\n\r\n'
+	assert headers == 'CONNECT 127.0.0.1:1337 HTTP/1.1\r\n' + 'Host: 127.0.0.1\r\n' +
+		'Proxy-Connection: Keep-Alive\r\nProxy-Authorization: Basic ${auth_token}\r\n\r\n'
 }
