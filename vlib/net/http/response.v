@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module http
 
+import net
 import net.http.chunked
 import strconv
 
@@ -34,14 +35,51 @@ pub fn (resp Response) bytestr() string {
 }
 
 // Parse a raw HTTP response into a Response object
+// It hides parsing errors due to incomplete response bodies, which can be tracked with the `-d debug_http` compilation option.
 pub fn parse_response(resp string) !Response {
-	version, status_code, status_msg := parse_status_line(resp.all_before('\r\n'))!
+	// The error details are hidden for the following reasons:
+	// 1. We've prevented related network errors in net/net.tcp/ssl.
+	// 2. When the inevitable socket error occurs, we've retried as it should.
+	// 3. If the fetch() flow made it here, we've done our best, but if the response body from the network is incomplete,
+	//    it's almost always a "timeout".
+	// 4. Exposing the "timeout" error is easier for the user to understand, because the underlying reason is the "timeout",
+	//    rather than exposing the response body parsing error to the user, causing confusion to the user.
+	//    E.g.:
+	//      response does not start with HTTP/, line: ``
+	//      invalid chunksize
+	//      ...
+
+	version, status_code, status_msg := parse_status_line(resp.all_before('\r\n')) or {
+		$if debug_http ? {
+			return err
+		} $else {
+			return net.err_timed_out
+		}
+	}
 	// Build resp header map and separate the body
-	start_idx, end_idx := find_headers_range(resp)!
-	header := parse_headers(resp.substr(start_idx, end_idx))!
+	start_idx, end_idx := find_headers_range(resp) or {
+		$if debug_http ? {
+			return err
+		} $else {
+			return net.err_timed_out
+		}
+	}
+	header := parse_headers(resp.substr(start_idx, end_idx)) or {
+		$if debug_http ? {
+			return err
+		} $else {
+			return net.err_timed_out
+		}
+	}
 	mut body := resp.substr(end_idx, resp.len)
 	if header.get(.transfer_encoding) or { '' } == 'chunked' {
-		body = chunked.decode(body)!
+		body = chunked.decode(body) or {
+			$if debug_http ? {
+				return err
+			} $else {
+				return net.err_timed_out
+			}
+		}
 	}
 	return Response{
 		http_version: version
