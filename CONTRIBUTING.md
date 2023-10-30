@@ -28,11 +28,11 @@ The main files are:
 
 1. `cmd/v/v.v` The entry point.
 
-    - V figures out the build mode.
-    - Constructs the compiler object (`struct V`).
-    - Creates a list of .v files that need to be parsed.
-    - Creates a parser object for each file and runs `parse()` on them.
-    - The correct backend is called (C, JS, native), and a binary is compiled.
+   - V figures out the build mode.
+   - Constructs the compiler object (`struct V`).
+   - Creates a list of .v files that need to be parsed.
+   - Creates a parser object for each file and runs `parse()` on them.
+   - The correct backend is called (C, JS, native), and a binary is compiled.
 
 2. `vlib/v/scanner` The scanner's job is to parse a list of characters and convert
    them to tokens.
@@ -84,9 +84,9 @@ accordingly in the steps below.)
    `https://github.com/YOUR_GITHUB_USERNAME/v` .
 2. Clone the main v repository https://github.com/vlang/v to a local folder on
    your computer, say named nv/ (`git clone https://github.com/vlang/v nv`)
-3. `cd nv`   
-3.1 (optional) Run these commands, which ensure that all your code will be 
-   automatically formatted, before commiting:
+3. `cd nv`
+   3.1 (optional) Run these commands, which ensure that all your code will be
+   automatically formatted, before committing:
    ```
    cp cmd/tools/git_pre_commit_hook.vsh .git/hooks/pre-commit
    chmod 755 .git/hooks/pre-commit
@@ -99,10 +99,9 @@ accordingly in the steps below.)
    `git pull` `git status` and so on.
 
 5. When finished with a feature/bugfix/change, you can:
-`git checkout -b fix_alabala`
+   `git checkout -b fix_alabala`
    - Don't forget to keep formatting standards, run `v fmt -w YOUR_MODIFIED_FILES`
-   before committing (if you have not run the commands from 3.1)
-   
+     before committing (if you have not run the commands from 3.1)
 6. `git push pullrequest` Note: The `pullrequest` remote was setup on step 4
 
 7. On GitHub's web interface, go to: https://github.com/vlang/v/pulls
@@ -118,10 +117,10 @@ accordingly in the steps below.)
 9. If there are merge conflicts, or a branch lags too much behind V's master,
    you can do the following:
 
-    1. `git pull --rebase origin master` # solve conflicts and do
-       `git rebase --continue`
-    2. `git push pullrequest -f` # this will overwrite your current remote branch
-       with the updated version of your changes.
+   1. `git pull --rebase origin master` # solve conflicts and do
+      `git rebase --continue`
+   2. `git push pullrequest -f` # this will overwrite your current remote branch
+      with the updated version of your changes.
 
 The point of doing the above steps, is to never directly push to the main V
 repository, *only to your own fork*. Since your local `master` branch tracks the
@@ -135,10 +134,11 @@ information.
 
 ## Finding issues to contribute to
 
-If you're willing to contribute to V but don't know which issue to resolve 
+If you're willing to contribute to V but don't know which issue to resolve
+
 - you can go to [Issues](https://github.com/vlang/v/issues) tab
-in this repository. There you can see things logged by both users and developers
-that need to be discussed and/or resolved.
+  in this repository. There you can see things logged by both users and developers
+  that need to be discussed and/or resolved.
 
 It's recommended to filter issues by likes and labels to find an issue
 you are interested in.
@@ -168,22 +168,25 @@ You can examine the list of labels [here](https://github.com/vlang/v/labels).
 The most common labels are:
 
 By issue type:
+
 - `Bug`
 - `Feature Request`
 
 By OS:
+
 - `OS: Linux`
 - `OS: Windows`
 - `OS: Mac`
 
 By status:
+
 - `Status: Confirmed`
 
 To apply this filter, navigate to [Issues](https://github.com/vlang/v/issues)
 tab, then paste the following in the "Filter" field:
 
 ```
-is:open is:issue label:Bug label:"OS: Windows" label:"Status: Confirmed" 
+is:open is:issue label:Bug label:"OS: Windows" label:"Status: Confirmed"
 ```
 
 This filter will return all open issues with the labels `Bug`, `OS: Windows`,
@@ -205,8 +208,8 @@ command.
 
 1. `hub clone vlang/v my_v`
 2. `cd my_v`
-2.1 (optional) Run these commands, which ensure that all your code will be 
-   automatically formatted, before commiting:
+   2.1 (optional) Run these commands, which ensure that all your code will be
+   automatically formatted, before committing:
    ```
    cp cmd/tools/git_pre_commit_hook.vsh .git/hooks/pre-commit
    chmod 755 .git/hooks/pre-commit

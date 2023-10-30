@@ -13,7 +13,7 @@ struct TestCustomSqlType {
 	custom6 time.Time
 }
 
-struct TestDefaultAtribute {
+struct TestDefaultAttribute {
 	id          string  [primary; sql: serial]
 	name        string
 	created_at  ?string [default: 'CURRENT_TIME']
@@ -124,11 +124,11 @@ fn test_sqlite_orm() {
 	*/
 
 	sql db {
-		create table TestDefaultAtribute
+		create table TestDefaultAttribute
 	}!
 
 	mut result_default_sql := db.exec('
-			pragma table_info(TestDefaultAtribute);
+			pragma table_info(TestDefaultAttribute);
 		')!
 
 	mut information_schema_data_types_results := []string{}
@@ -139,29 +139,29 @@ fn test_sqlite_orm() {
 	}
 	assert information_schema_data_types_results == information_schema_default_sql
 
-	test_default_atribute := TestDefaultAtribute{
+	test_default_attribute := TestDefaultAttribute{
 		name: 'Hitalo'
 	}
 
 	sql db {
-		insert test_default_atribute into TestDefaultAtribute
+		insert test_default_attribute into TestDefaultAttribute
 	}!
 
-	test_default_atributes := sql db {
-		select from TestDefaultAtribute limit 1
+	test_default_attributes := sql db {
+		select from TestDefaultAttribute limit 1
 	}!
 
-	result_test_default_atribute := test_default_atributes.first()
-	assert result_test_default_atribute.name == 'Hitalo'
-	assert test_default_atribute.created_at or { '' } == ''
-	assert test_default_atribute.created_at1 or { '' } == ''
-	assert test_default_atribute.created_at2 or { '' } == ''
-	assert result_test_default_atribute.created_at or { '' }.len == 8 // HH:MM:SS
-	assert result_test_default_atribute.created_at1 or { '' }.len == 10 // YYYY-MM-DD
-	assert result_test_default_atribute.created_at2 or { '' }.len == 19 // YYYY-MM-DD HH:MM:SS
+	result_test_default_attribute := test_default_attributes.first()
+	assert result_test_default_attribute.name == 'Hitalo'
+	assert test_default_attribute.created_at or { '' } == ''
+	assert test_default_attribute.created_at1 or { '' } == ''
+	assert test_default_attribute.created_at2 or { '' } == ''
+	assert result_test_default_attribute.created_at or { '' }.len == 8 // HH:MM:SS
+	assert result_test_default_attribute.created_at1 or { '' }.len == 10 // YYYY-MM-DD
+	assert result_test_default_attribute.created_at2 or { '' }.len == 19 // YYYY-MM-DD HH:MM:SS
 
 	sql db {
-		drop table TestDefaultAtribute
+		drop table TestDefaultAttribute
 	}!
 }
 

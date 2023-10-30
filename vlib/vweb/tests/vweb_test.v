@@ -316,7 +316,7 @@ fn simple_tcp_client(config SimpleTcpClientConfig) !string {
 		break
 	}
 	if client == unsafe { nil } {
-		eprintln('coult not create a tcp client connection to ${localserver} after ${config.retries} retries')
+		eprintln('could not create a tcp client connection to ${localserver} after ${config.retries} retries')
 		exit(1)
 	}
 	client.set_read_timeout(tcp_r_timeout)

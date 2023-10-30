@@ -276,7 +276,7 @@ pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 }
 
 fn (e Eval) error(msg string) {
-	eprintln('> V interpeter backtrace:')
+	eprintln('> V interpreter backtrace:')
 	e.print_backtrace()
 	util.verror('interpreter', msg)
 }

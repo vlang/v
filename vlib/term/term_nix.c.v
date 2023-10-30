@@ -15,7 +15,7 @@ pub:
 
 fn C.ioctl(fd int, request u64, arg voidptr) int
 
-// get_terminal_size returns a number of colums and rows of terminal window.
+// get_terminal_size returns a number of columns and rows of terminal window.
 pub fn get_terminal_size() (int, int) {
 	if os.is_atty(1) <= 0 || os.getenv('TERM') == 'dumb' {
 		return default_columns_size, default_rows_size

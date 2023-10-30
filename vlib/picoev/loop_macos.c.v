@@ -4,7 +4,7 @@ module picoev
 #include <sys/types.h>
 #include <sys/event.h>
 
-fn C.kevent(int, changelist voidptr, nchanges int, eventlist voidptr, nevents int, timout &C.timespec) int
+fn C.kevent(int, changelist voidptr, nchanges int, eventlist voidptr, nevents int, timeout &C.timespec) int
 fn C.kqueue() int
 fn C.EV_SET(kev voidptr, ident int, filter i16, flags u16, fflags u32, data voidptr, udata voidptr)
 

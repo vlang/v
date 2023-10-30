@@ -275,12 +275,12 @@ pub fn (mut app App) shutdown() vweb.Result {
 	if session_key != 'superman' {
 		return app.not_found()
 	}
-	spawn app.gracefull_exit()
+	spawn app.exit_gracefully()
 	return app.ok('good bye')
 }
 
-fn (mut app App) gracefull_exit() {
-	eprintln('>> webserver: gracefull_exit')
+fn (mut app App) exit_gracefully() {
+	eprintln('>> webserver: exit_gracefully')
 	time.sleep(100 * time.millisecond)
 	exit(0)
 }

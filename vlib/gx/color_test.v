@@ -80,7 +80,7 @@ fn test_over() {
 	semi_r := gx.Color{255, 0, 0, 128}
 	semi_g := gx.Color{0, 255, 0, 128}
 	semi_b := gx.Color{0, 0, 255, 128}
-	// fully opaque colors, should be preserved when layed *over* any others:
+	// fully opaque colors, should be preserved when laid *over* any others:
 	assert b.over(g) == b
 	assert r.over(g) == r
 	assert y.over(r) == y

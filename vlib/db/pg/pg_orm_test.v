@@ -29,7 +29,7 @@ mut:
 	deleted_at time.Time
 }
 
-struct TestDefaultAtribute {
+struct TestDefaultAttribute {
 	id         string [default: 'gen_random_uuid()'; primary; sql_type: 'uuid']
 	name       string
 	created_at string [default: 'CURRENT_TIMESTAMP'; sql_type: 'TIMESTAMP']
@@ -202,13 +202,13 @@ fn test_pg_orm() {
 	/** test default attribute
 	*/
 	sql db {
-		create table TestDefaultAtribute
+		create table TestDefaultAttribute
 	}!
 
 	mut result_defaults := db.exec("
 		SELECT column_default
 		FROM INFORMATION_SCHEMA.COLUMNS
-		WHERE TABLE_NAME = 'TestDefaultAtribute'
+		WHERE TABLE_NAME = 'TestDefaultAttribute'
 		ORDER BY ORDINAL_POSITION
 	") or {
 		println(err)
@@ -220,7 +220,7 @@ fn test_pg_orm() {
 		information_schema_defaults_results << defaults.vals[0]
 	}
 	sql db {
-		drop table TestDefaultAtribute
+		drop table TestDefaultAttribute
 	}!
 	assert ['gen_random_uuid()', '', 'CURRENT_TIMESTAMP'] == information_schema_defaults_results
 }

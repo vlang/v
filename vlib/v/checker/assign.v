@@ -490,7 +490,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 								if r is ast.Ident {
 									obj := r.obj
 									if obj is ast.Var && !obj.is_mut {
-										c.warn('cannot add a referenece to an immutable object to a mutable array',
+										c.warn('cannot add a reference to an immutable object to a mutable array',
 											elem_expr.pos)
 									}
 								}
@@ -553,7 +553,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 		if left_sym.kind == .function && right_sym.info is ast.FnType {
 			return_sym := c.table.sym(right_sym.info.func.return_type)
 			if return_sym.kind == .placeholder {
-				c.error('unkown return type: cannot assign `${right}` as a function variable',
+				c.error('unknown return type: cannot assign `${right}` as a function variable',
 					right.pos())
 			} else if (!right_sym.info.is_anon && return_sym.kind == .any)
 				|| (return_sym.info is ast.Struct && return_sym.info.is_generic) {
