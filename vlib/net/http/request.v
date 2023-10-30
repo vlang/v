@@ -24,7 +24,6 @@ pub mut:
 	method     Method  = .get
 	header     Header
 	host       string
-	port       u64
 	cookies    map[string]string
 	data       string
 	url        string
