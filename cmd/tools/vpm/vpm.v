@@ -139,34 +139,33 @@ fn vpm_install_(requested_modules []string, opts []string) {
 	if installed_modules.len > 0 && '--once' in opts {
 		mut already_installed := []string{}
 		if external_modules.len > 0 {
-			// Clone required, since we delete already installed modules from `external_modules` in the loop.
-			mut i := 0
-			for raw_url in external_modules.clone() {
+			mut i_deleted := []int{}
+			for i, raw_url in external_modules {
 				url := urllib.parse(raw_url) or {
 					eprintln('Errors while parsing module url "${raw_url}" : ${err}')
-					i++
 					continue
 				}
 				mod_name := url.path.all_after_last('/')
 				if mod_name in installed_modules {
 					already_installed << mod_name
-					external_modules.delete(i)
-					// Don't increment `i` because we deleted an element and the array lost length.
-					// Otherwise, other modules that are already installed might get skipped.
-					continue
+					i_deleted << i
 				}
-				i++
+			}
+			for i in i_deleted.reverse() {
+				external_modules.delete(i)
 			}
 		}
 		if vpm_modules.len > 0 {
-			mut i := 0
-			for mod_name in vpm_modules.clone() {
+			mut i_deleted := []int{}
+			for i, mod_name in vpm_modules {
 				if mod_name in installed_modules {
 					already_installed << mod_name
-					vpm_modules.delete(i)
+					i_deleted << i
 					continue
 				}
-				i++
+			}
+			for i in i_deleted.reverse() {
+				vpm_modules.delete(i)
 			}
 		}
 		if already_installed.len > 0 {
