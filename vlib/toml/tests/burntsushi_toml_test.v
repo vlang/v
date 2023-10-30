@@ -27,7 +27,7 @@ const (
 	//'integer/long.toml', // TODO https://github.com/vlang/v/issues/9507
 
 	jq                     = os.find_abs_path_of_executable('jq') or { '' }
-	compare_work_dir_root  = os.join_path(os.vtmp_dir(), 'v', 'toml', 'burntsushi')
+	compare_work_dir_root  = os.join_path(os.vtmp_dir(), 'toml', 'burntsushi')
 	// From: https://stackoverflow.com/a/38266731/1904615
 	jq_normalize           = r'# Apply f to composite entities recursively using keys[], and to atoms
 def sorted_walk(f):
