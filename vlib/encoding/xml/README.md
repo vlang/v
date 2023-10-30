@@ -20,7 +20,7 @@ There are three different ways to parse an XML Document:
 ```v
 import encoding.xml
 
-...
+//...
 doc := xml.XMLDocument.from_file('test/sample.xml')!
 ```
 
@@ -40,4 +40,5 @@ text and not the escaped version of the text.
 
 When the XML document is serialized (using `str` or `pretty_str`), all text nodes are escaped.
 
-The escaping and un-escaping can also be done manually using the `escape_text` and `unescape_text` methods.
+The escaping and un-escaping can also be done manually using the `escape_text` and
+`unescape_text` methods.
