@@ -435,7 +435,7 @@ fn parse_children(name string, attributes map[string]string, mut reader io.Reade
 						collected_contents := inner_contents.str().trim_space()
 						if collected_contents.len > 0 {
 							// We have some inner text
-							children << collected_contents
+							children << collected_contents.replace('\r\n', '\n')
 						}
 						return XMLNode{
 							name: name
@@ -454,7 +454,7 @@ fn parse_children(name string, attributes map[string]string, mut reader io.Reade
 						}
 						text := inner_contents.str().trim_space()
 						if text.len > 0 {
-							children << text
+							children << text.replace('\r\n', '\n')
 						}
 						children << child
 					}
