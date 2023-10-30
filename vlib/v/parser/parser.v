@@ -4056,13 +4056,15 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			enum_attrs[val] = attrs
 			p.attrs = []
 		}
+		comments := p.eat_comments(same_line: true)
+		next_comments := p.eat_comments()
 		fields << ast.EnumField{
 			name: val
 			pos: pos
 			expr: expr
 			has_expr: has_expr
-			comments: p.eat_comments(same_line: true)
-			next_comments: p.eat_comments()
+			comments: comments
+			next_comments: next_comments
 			attrs: attrs
 		}
 	}
