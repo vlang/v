@@ -13,19 +13,6 @@ fn testsuite_end() {
 	os.rmdir_all(test_path) or {}
 }
 
-fn test_install_from_git_url() {
-	res := os.execute(@VEXE + ' install https://github.com/vlang/markdown')
-	assert res.exit_code == 0, res.output
-	mod := vmod.from_file(os.join_path(test_path, 'markdown', 'v.mod')) or {
-		assert false, err.str()
-		return
-	}
-	assert mod.name == 'markdown'
-	assert mod.dependencies == []string{}
-	assert res.output.contains('Installing module "markdown" from "https://github.com/vlang/markdown')
-	assert res.output.contains('Relocating module from "vlang/markdown" to "markdown"')
-}
-
 fn test_install_from_vpm_ident() {
 	res := os.execute(@VEXE + ' install nedpals.args')
 	assert res.exit_code == 0, res.output
@@ -48,23 +35,66 @@ fn test_install_from_vpm_short_ident() {
 	assert mod.description == 'A simple regex library for V.'
 }
 
-fn test_install_already_existant() {
-	// Skip on windows for now due permission errors with rmdir.
-	$if windows {
-		return
-	}
-	mod_url := 'https://github.com/vlang/markdown'
-	mut res := os.execute(@VEXE + ' install ${mod_url}')
+fn test_install_from_git_url() {
+	res := os.execute(@VEXE + ' install https://github.com/vlang/markdown')
 	assert res.exit_code == 0, res.output
-	res = os.execute(@VEXE + ' install ${mod_url}')
-	assert res.exit_code == 0, res.output
+	assert res.output.contains('Installing module "markdown" from "https://github.com/vlang/markdown')
+	assert res.output.contains('Relocating module from "vlang/markdown" to "markdown"')
 	mod := vmod.from_file(os.join_path(test_path, 'markdown', 'v.mod')) or {
 		assert false, err.str()
 		return
 	}
 	assert mod.name == 'markdown'
 	assert mod.dependencies == []string{}
+}
+
+fn test_install_already_existant() {
+	// Skip on windows for now due permission errors with rmdir.
+	$if windows {
+		return
+	}
+	mut res := os.execute(@VEXE + ' install https://github.com/vlang/markdown')
+	assert res.exit_code == 0, res.output
 	assert res.output.contains('already exists')
+	mod := vmod.from_file(os.join_path(test_path, 'markdown', 'v.mod')) or {
+		assert false, err.str()
+		return
+	}
+	assert mod.name == 'markdown'
+	assert mod.dependencies == []string{}
+}
+
+fn test_install_once() {
+	// Start with a clean test path.
+	os.rmdir_all(test_path) or {}
+	os.mkdir_all(test_path) or {}
+	// Install markdown module.
+	mut res := os.execute(@VEXE + ' install markdown')
+	assert res.exit_code == 0, res.output
+	// Keep track of the last modified state of the v.mod file of the installed markdown module.
+	md_last_modified := os.file_last_mod_unix(os.join_path(test_path, 'markdown', 'v.mod'))
+
+	install_cmd := '${@VEXE} install https://github.com/vlang/markdown https://github.com/vlang/pcre --once -v'
+	// Try install two modules, where one is already installed.
+	res = os.execute(install_cmd)
+	assert res.exit_code == 0, res.output
+	assert res.output.contains("Already installed modules: ['markdown']")
+	mod := vmod.from_file(os.join_path(test_path, 'pcre', 'v.mod')) or {
+		assert false, err.str()
+		return
+	}
+	assert mod.name == 'pcre'
+	assert mod.description == 'A simple regex library for V.'
+	// Ensure the before installed markdown module wasn't modified.
+	assert md_last_modified == os.file_last_mod_unix(os.join_path(test_path, 'markdown',
+		'v.mod'))
+
+	// Try install two modules, where both are already installed.
+	res = os.execute(install_cmd)
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('All modules are already installed.')
+	assert md_last_modified == os.file_last_mod_unix(os.join_path(test_path, 'markdown',
+		'v.mod'))
 }
 
 fn test_missing_repo_name_in_url() {
