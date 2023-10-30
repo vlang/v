@@ -239,7 +239,10 @@ pub fn (d &Digest) sum(b_in []u8) []u8 {
 	return b_out
 }
 
-// checksum returns the current byte checksum of the Digest.
+// checksum returns the current byte checksum of the Digest,
+// it is an internal method and is not recommended because its results are not idempotent.
+[deprecated: 'checksum() will be changed to a private method, use sum() instead']
+[deprecated_after: '2024-04-30']
 pub fn (mut d Digest) checksum() []u8 {
 	// Padding. Add a 1 bit and 0 bits until 112 bytes mod 128.
 	mut len := d.len
