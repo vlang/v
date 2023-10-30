@@ -1,7 +1,7 @@
 module main
 
 import os
-import xml
+import encoding.xml
 
 fn test_valid_parsing() {
 	path := os.join_path(os.dir(@FILE), 'entity.xml')

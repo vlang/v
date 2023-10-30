@@ -1,6 +1,6 @@
 module main
 
-import xml
+import encoding.xml
 
 fn test_escape() {
 	assert xml.escape_text(content: 'Normal string') == 'Normal string'

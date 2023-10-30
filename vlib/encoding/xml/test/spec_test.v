@@ -1,7 +1,7 @@
 module main
 
 import os
-import xml
+import encoding.xml
 
 // All the XML files in the spec directory obtained recursively
 const spec_files = os.walk_ext(os.join_path(os.dir(@FILE), 'local'), 'xml')

@@ -1,6 +1,6 @@
 module main
 
-import xml
+import encoding.xml
 import os
 
 fn test_large_gtk_file() ! {
