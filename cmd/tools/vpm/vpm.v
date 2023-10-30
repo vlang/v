@@ -62,8 +62,7 @@ fn main() {
 	options := cmdline.only_options(os.args[1..])
 	verbose_println('cli params: ${params}')
 	if params.len < 1 {
-		vpm_help()
-		exit(5)
+		help.print_and_exit('vpm', exit_code: 5)
 	}
 	vpm_command := params[0]
 	mut module_names := params[1..].clone()
@@ -71,7 +70,7 @@ fn main() {
 	// println('module names: ') println(module_names)
 	match vpm_command {
 		'help' {
-			vpm_help()
+			help.print_and_exit('vpm')
 		}
 		'search' {
 			vpm_search(module_names)
@@ -141,7 +140,6 @@ fn vpm_search(keywords []string) {
 	search_keys := keywords.map(it.replace('_', '-'))
 	if settings.is_help {
 		help.print_and_exit('search')
-		exit(0)
 	}
 	if search_keys.len == 0 {
 		eprintln('´v search´ requires *at least one* keyword.')
@@ -365,7 +363,6 @@ fn vpm_once_filter(module_names []string) []string {
 fn vpm_install(module_names []string, source Source) {
 	if settings.is_help {
 		help.print_and_exit('install')
-		exit(0)
 	}
 	if module_names.len == 0 {
 		eprintln('´v install´ requires *at least one* module name.')
@@ -427,7 +424,6 @@ fn vpm_update(m []string) {
 	mut module_names := m.clone()
 	if settings.is_help {
 		help.print_and_exit('update')
-		exit(0)
 	}
 	if module_names.len == 0 {
 		module_names = get_installed_modules()
@@ -574,7 +570,6 @@ fn vpm_list() {
 fn vpm_remove(module_names []string) {
 	if settings.is_help {
 		help.print_and_exit('remove')
-		exit(0)
 	}
 	if module_names.len == 0 {
 		eprintln('´v remove´ requires *at least one* module name.')
@@ -625,10 +620,6 @@ fn ensure_vmodules_dir_exist() {
 		println('Creating "${settings.vmodules_path}/" ...')
 		os.mkdir(settings.vmodules_path) or { panic(err) }
 	}
-}
-
-fn vpm_help() {
-	help.print_and_exit('vpm')
 }
 
 fn vcs_used_in_dir(dir string) ?[]string {
