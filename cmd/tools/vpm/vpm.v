@@ -65,50 +65,21 @@ fn main() {
 		help.print_and_exit('vpm', exit_code: 5)
 	}
 	vpm_command := params[0]
-	mut module_names := params[1..].clone()
+	mut requested_modules := params[1..].clone()
 	ensure_vmodules_dir_exist()
-	// println('module names: ') println(module_names)
+	// println('module names: ') println(requested_modules)
 	match vpm_command {
 		'help' {
 			help.print_and_exit('vpm')
 		}
 		'search' {
-			vpm_search(module_names)
+			vpm_search(requested_modules)
 		}
 		'install' {
-			if module_names.len == 0 && os.exists('./v.mod') {
-				println('Detected v.mod file inside the project directory. Using it...')
-				manifest := vmod.from_file('./v.mod') or { panic(err) }
-				module_names = manifest.dependencies.clone()
-			}
-
-			if '--once' in options {
-				module_names = vpm_once_filter(module_names)
-
-				if module_names.len == 0 {
-					return
-				}
-			}
-
-			external_module_names := module_names.filter(it.starts_with('https://'))
-			vpm_module_names := module_names.filter(it !in external_module_names)
-
-			if vpm_module_names.len > 0 {
-				vpm_install(vpm_module_names, Source.vpm)
-			}
-
-			if external_module_names.len > 0 {
-				mut external_source := Source.git
-
-				if '--hg' in options {
-					external_source = Source.hg
-				}
-
-				vpm_install(external_module_names, external_source)
-			}
+			vpm_install_(requested_modules, options)
 		}
 		'update' {
-			vpm_update(module_names)
+			vpm_update(requested_modules)
 		}
 		'upgrade' {
 			vpm_upgrade()
@@ -120,10 +91,10 @@ fn main() {
 			vpm_list()
 		}
 		'remove' {
-			vpm_remove(module_names)
+			vpm_remove(requested_modules)
 		}
 		'show' {
-			vpm_show(module_names)
+			vpm_show(requested_modules)
 		}
 		else {
 			eprintln('Error: you tried to run "v ${vpm_command}"')
@@ -133,6 +104,85 @@ fn main() {
 			}
 			exit(3)
 		}
+	}
+}
+
+fn vpm_install_(requested_modules []string, opts []string) {
+	if settings.is_help {
+		help.print_and_exit('vpm')
+	}
+
+	modules := if requested_modules.len == 0 {
+		// Run `v install` in a directory of another V module without passing modules as arguments
+		// to install its dependencies.
+		if os.exists('./v.mod') {
+			println('Detected v.mod file inside the project directory. Using it...')
+			manifest := vmod.from_file('./v.mod') or { panic(err) }
+			if manifest.dependencies.len == 0 {
+				println('Nothing to install.')
+				exit(0)
+			}
+			manifest.dependencies.clone()
+		} else {
+			eprintln('Specify a module for installation.')
+			help.print_and_exit('vpm')
+			return
+		}
+	} else {
+		requested_modules.clone()
+	}
+
+	mut external_modules := modules.filter(it.starts_with('https://'))
+	mut vpm_modules := modules.filter(it !in external_modules)
+	installed_modules := get_installed_modules()
+
+	if installed_modules.len > 0 && '--once' in opts {
+		mut already_installed := []string{}
+		if external_modules.len > 0 {
+			mut i_deleted := []int{}
+			for i, raw_url in external_modules {
+				url := urllib.parse(raw_url) or {
+					eprintln('Errors while parsing module url "${raw_url}" : ${err}')
+					continue
+				}
+				mod_name := url.path.all_after_last('/')
+				if mod_name in installed_modules {
+					already_installed << mod_name
+					i_deleted << i
+				}
+			}
+			for i in i_deleted.reverse() {
+				external_modules.delete(i)
+			}
+		}
+		if vpm_modules.len > 0 {
+			mut i_deleted := []int{}
+			for i, mod_name in vpm_modules {
+				if mod_name in installed_modules {
+					already_installed << mod_name
+					i_deleted << i
+					continue
+				}
+			}
+			for i in i_deleted.reverse() {
+				vpm_modules.delete(i)
+			}
+		}
+		if already_installed.len > 0 {
+			verbose_println('Already installed modules: ${already_installed}')
+			if already_installed.len == modules.len {
+				verbose_println('All modules are already installed.')
+				exit(0)
+			}
+		}
+	}
+
+	if vpm_modules.len > 0 {
+		vpm_install(vpm_modules, Source.vpm)
+	}
+	if external_modules.len > 0 {
+		source := if '--hg' in opts { Source.hg } else { Source.git }
+		vpm_install(external_modules, source)
 	}
 }
 
@@ -347,17 +397,6 @@ fn vpm_install_from_vcs(modules []string, vcs_key string) {
 	if errors > 0 {
 		exit(1)
 	}
-}
-
-fn vpm_once_filter(module_names []string) []string {
-	installed_modules := get_installed_modules()
-	mut toinstall := []string{}
-	for mn in module_names {
-		if mn !in installed_modules {
-			toinstall << mn
-		}
-	}
-	return toinstall
 }
 
 fn vpm_install(module_names []string, source Source) {
