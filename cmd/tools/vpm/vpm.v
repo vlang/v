@@ -242,9 +242,9 @@ fn install_module(vcs string, name string, url string, final_module_path string)
 	cmd := '${vcs} ${supported_vcs_install_cmds[vcs]} "${url}" "${final_module_path}"'
 	verbose_println('      command: ${cmd}')
 	println('Installing module "${name}" from "${url}" to "${final_module_path}" ...')
-	cmdres := os.execute(cmd)
-	if cmdres.exit_code != 0 {
-		print_failed_cmd(cmd, cmdres)
+	res := os.execute(cmd)
+	if res.exit_code != 0 {
+		verbose_println('      command output: ${res.output}')
 		return error('Failed installing module "${name}" to "${final_module_path}" .')
 	}
 }
@@ -268,9 +268,9 @@ fn vpm_install_from_vpm(module_names []string) {
 			eprintln('Skipping module "${name}", since it uses an unsupported VCS {${vcs}} .')
 			continue
 		}
-		if !ensure_vcs_is_installed(vcs) {
+		ensure_vcs_is_installed(vcs) or {
 			errors++
-			eprintln('VPM needs `${vcs}` to be installed.')
+			eprintln(err)
 			continue
 		}
 		minfo := mod_name_info(mod.name)
@@ -294,20 +294,14 @@ fn vpm_install_from_vpm(module_names []string) {
 	}
 }
 
-fn print_failed_cmd(cmd string, cmdres os.Result) {
-	verbose_println('Failed command: ${cmd}')
-	verbose_println('Failed command output:\n${cmdres.output}')
-}
-
-fn ensure_vcs_is_installed(vcs string) bool {
-	mut res := true
+fn ensure_vcs_is_installed(vcs string) ! {
 	cmd := '${vcs} ${supported_vcs_version_cmds[vcs]}'
-	cmdres := os.execute(cmd)
-	if cmdres.exit_code != 0 {
-		print_failed_cmd(cmd, cmdres)
-		res = false
+	verbose_println('      command: ${cmd}')
+	res := os.execute(cmd)
+	if res.exit_code != 0 {
+		verbose_println('      command output: ${res.output}')
+		return error('VPM needs `${vcs}` to be installed.')
 	}
-	return res
 }
 
 fn vpm_install_from_vcs(modules []string, vcs_key Source) {
@@ -333,9 +327,9 @@ fn vpm_install_from_vcs(modules []string, vcs_key Source) {
 			vpm_update([ident])
 			continue
 		}
-		if !ensure_vcs_is_installed(vcs) {
+		ensure_vcs_is_installed(vcs) or {
 			errors++
-			eprintln('VPM needs `${vcs}` to be installed.')
+			eprintln(err)
 			continue
 		}
 		install_module(vcs, repo_name, url.str(), final_module_path) or {
@@ -375,7 +369,7 @@ fn vpm_install_from_vcs(modules []string, vcs_key Source) {
 					continue
 				}
 				println('Module "${repo_name}" relocated to "${manifest.name}" successfully.')
-				publisher_dir := final_module_path.all_before_last(os.path_separator)
+				publisher_dir := os.dir(final_module_path)
 				if os.is_dir_empty(publisher_dir) {
 					os.rmdir(publisher_dir) or {
 						errors++
@@ -408,27 +402,26 @@ fn update_module(mut pp pool.PoolProcessor, idx int, wid int) &ModUpdateInfo {
 	zname := url_to_module_name(result.name)
 	result.final_path = valid_final_path_of_existing_module(result.name) or { return result }
 	println('Updating module "${zname}" in "${result.final_path}" ...')
-	vcs := vcs_used_in_dir(result.final_path) or { return result }
-	if !ensure_vcs_is_installed(vcs[0]) {
+	vcs := vcs_used_in_dir(result.final_path) or { return result }[0]
+	ensure_vcs_is_installed(vcs) or {
 		result.has_err = true
-		println('VPM needs `${vcs}` to be installed.')
+		eprintln(err)
 		return result
 	}
-	path_flag := if vcs[0] == 'hg' { '-R' } else { '-C' }
-	vcs_cmd := '${vcs[0]} ${path_flag} "${result.final_path}" ${supported_vcs_update_cmds[vcs[0]]}'
-	verbose_println('    command: ${vcs_cmd}')
-	vcs_res := os.execute('${vcs_cmd}')
-	if vcs_res.exit_code != 0 {
+	path_flag := if vcs == 'hg' { '-R' } else { '-C' }
+	cmd := '${vcs} ${path_flag} "${result.final_path}" ${supported_vcs_update_cmds[vcs]}'
+	verbose_println('    command: ${cmd}')
+	res := os.execute('${cmd}')
+	if res.exit_code != 0 {
 		result.has_err = true
 		println('Failed updating module "${zname}" in "${result.final_path}".')
-		print_failed_cmd(vcs_cmd, vcs_res)
+		verbose_println('      command output: ${res.output}')
 		return result
-	} else {
-		verbose_println('    ${vcs_res.output.trim_space()}')
-		increment_module_download_count(zname) or {
-			result.has_err = true
-			eprintln('Errors while incrementing the download count for ${zname}:')
-		}
+	}
+	verbose_println('    ${res.output.trim_space()}')
+	increment_module_download_count(zname) or {
+		result.has_err = true
+		eprintln('Errors while incrementing the download count for ${zname}:')
 	}
 	return result
 }
@@ -461,27 +454,26 @@ fn vpm_update_verbose(module_names []string) {
 		zname := url_to_module_name(name)
 		final_module_path := valid_final_path_of_existing_module(name) or { continue }
 		println('Updating module "${zname}" in "${final_module_path}" ...')
-		vcs := vcs_used_in_dir(final_module_path) or { continue }
-		if !ensure_vcs_is_installed(vcs[0]) {
+		vcs := vcs_used_in_dir(final_module_path) or { continue }[0]
+		ensure_vcs_is_installed(vcs) or {
 			errors++
-			println('VPM needs `${vcs}` to be installed.')
+			eprintln(err)
 			continue
 		}
-		path_flag := if vcs[0] == 'hg' { '-R' } else { '-C' }
-		vcs_cmd := '${vcs[0]} ${path_flag} "${final_module_path}" ${supported_vcs_update_cmds[vcs[0]]}'
-		verbose_println('    command: ${vcs_cmd}')
-		vcs_res := os.execute('${vcs_cmd}')
-		if vcs_res.exit_code != 0 {
+		path_flag := if vcs == 'hg' { '-R' } else { '-C' }
+		cmd := '${vcs} ${path_flag} "${final_module_path}" ${supported_vcs_update_cmds[vcs]}'
+		verbose_println('    command: ${cmd}')
+		res := os.execute('${cmd}')
+		if res.exit_code != 0 {
 			errors++
 			println('Failed updating module "${zname}" in "${final_module_path}" .')
-			print_failed_cmd(vcs_cmd, vcs_res)
+			verbose_println('      command output: ${res.output}')
 			continue
-		} else {
-			verbose_println('    ${vcs_res.output.trim_space()}')
-			increment_module_download_count(zname) or {
-				errors++
-				eprintln('Errors while incrementing the download count for ${zname}:')
-			}
+		}
+		verbose_println('    ${res.output.trim_space()}')
+		increment_module_download_count(zname) or {
+			errors++
+			eprintln('Errors while incrementing the download count for ${zname}:')
 		}
 		resolve_dependencies(name, final_module_path, module_names)
 	}
@@ -516,14 +508,11 @@ fn get_mod_date_info(mut pp pool.PoolProcessor, idx int, wid int) &ModDateInfo {
 			result.exec_err = true
 			return result
 		}
-		if is_hg {
-			if res.exit_code == 1 {
-				result.outdated = true
-				return result
-			}
-		} else {
-			outputs << res.output
+		if is_hg && res.exit_code == 1 {
+			result.outdated = true
+			return result
 		}
+		outputs << res.output
 	}
 	// vcs[0] == 'git'
 	if !is_hg && outputs[1] != outputs[2] {
