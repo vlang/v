@@ -76,7 +76,7 @@ fn main() {
 			vpm_search(requested_modules)
 		}
 		'install' {
-			vpm_install_(requested_modules, options)
+			vpm_install(requested_modules, options)
 		}
 		'update' {
 			vpm_update(requested_modules)
@@ -107,7 +107,7 @@ fn main() {
 	}
 }
 
-fn vpm_install_(requested_modules []string, opts []string) {
+fn vpm_install(requested_modules []string, opts []string) {
 	if settings.is_help {
 		help.print_and_exit('vpm')
 	}
@@ -178,11 +178,11 @@ fn vpm_install_(requested_modules []string, opts []string) {
 	}
 
 	if vpm_modules.len > 0 {
-		vpm_install(vpm_modules, Source.vpm)
+		vpm_install_from_vpm(vpm_modules)
 	}
 	if external_modules.len > 0 {
 		source := if '--hg' in opts { Source.hg } else { Source.git }
-		vpm_install(external_modules, source)
+		vpm_install_from_vcs(external_modules, source)
 	}
 }
 
@@ -238,6 +238,17 @@ fn vpm_search(keywords []string) {
 	}
 }
 
+fn install_module(vcs string, name string, url string, final_module_path string) ! {
+	cmd := '${vcs} ${supported_vcs_install_cmds[vcs]} "${url}" "${final_module_path}"'
+	verbose_println('      command: ${cmd}')
+	println('Installing module "${name}" from "${url}" to "${final_module_path}" ...')
+	cmdres := os.execute(cmd)
+	if cmdres.exit_code != 0 {
+		print_failed_cmd(cmd, cmdres)
+		return error('Failed installing module "${name}" to "${final_module_path}" .')
+	}
+}
+
 fn vpm_install_from_vpm(module_names []string) {
 	mut errors := 0
 	for n in module_names {
@@ -262,26 +273,19 @@ fn vpm_install_from_vpm(module_names []string) {
 			eprintln('VPM needs `${vcs}` to be installed.')
 			continue
 		}
-		//
 		minfo := mod_name_info(mod.name)
 		if os.exists(minfo.final_module_path) {
 			vpm_update([name])
 			continue
 		}
-		println('Installing module "${name}" from "${mod.url}" to "${minfo.final_module_path}" ...')
+		install_module(vcs, name, mod.url, minfo.final_module_path) or {
+			errors++
+			eprintln(err)
+			continue
+		}
 		increment_module_download_count(name) or {
 			errors++
 			eprintln('Errors while incrementing the download count for ${name}:')
-		}
-		vcs_install_cmd := '${vcs} ${supported_vcs_install_cmds[vcs]}'
-		cmd := '${vcs_install_cmd} "${mod.url}" "${minfo.final_module_path}"'
-		verbose_println('      command: ${cmd}')
-		cmdres := os.execute(cmd)
-		if cmdres.exit_code != 0 {
-			errors++
-			eprintln('Failed installing module "${name}" to "${minfo.final_module_path}" .')
-			print_failed_cmd(cmd, cmdres)
-			continue
 		}
 		resolve_dependencies(name, minfo.final_module_path, module_names)
 	}
@@ -306,7 +310,8 @@ fn ensure_vcs_is_installed(vcs string) bool {
 	return res
 }
 
-fn vpm_install_from_vcs(modules []string, vcs_key string) {
+fn vpm_install_from_vcs(modules []string, vcs_key Source) {
+	vcs := vcs_key.str()
 	mut errors := 0
 	for raw_url in modules {
 		url := urllib.parse(raw_url) or {
@@ -314,7 +319,6 @@ fn vpm_install_from_vcs(modules []string, vcs_key string) {
 			eprintln('Errors while parsing module url "${raw_url}" : ${err}')
 			continue
 		}
-
 		// Module identifier based on URL.
 		// E.g.: `https://github.com/owner/awesome-v-project` -> `owner/awesome_v_project`
 		mut ident := url.path#[1..].replace('-', '_')
@@ -325,27 +329,18 @@ fn vpm_install_from_vcs(modules []string, vcs_key string) {
 		}
 		mut final_module_path := os.real_path(os.join_path(settings.vmodules_path, owner.to_lower(),
 			repo_name.to_lower()))
-
 		if os.exists(final_module_path) {
 			vpm_update([ident])
 			continue
 		}
-
-		if !ensure_vcs_is_installed(vcs_key) {
+		if !ensure_vcs_is_installed(vcs) {
 			errors++
-			eprintln('VPM needs `${vcs_key}` to be installed.')
+			eprintln('VPM needs `${vcs}` to be installed.')
 			continue
 		}
-
-		println('Installing module "${repo_name}" from "${url}" to "${final_module_path}" ...')
-		vcs_install_cmd := '${vcs_key} ${supported_vcs_install_cmds[vcs_key]}'
-		cmd := '${vcs_install_cmd} "${url}" "${final_module_path}"'
-		verbose_println('      command: ${cmd}')
-		cmdres := os.execute(cmd)
-		if cmdres.exit_code != 0 {
+		install_module(vcs, repo_name, url.str(), final_module_path) or {
 			errors++
-			eprintln('Failed installing module "${repo_name}" to "${final_module_path}" .')
-			print_failed_cmd(cmd, cmdres)
+			eprintln(err)
 			continue
 		}
 		vmod_path := os.join_path(final_module_path, 'v.mod')
@@ -396,27 +391,6 @@ fn vpm_install_from_vcs(modules []string, vcs_key string) {
 	}
 	if errors > 0 {
 		exit(1)
-	}
-}
-
-fn vpm_install(module_names []string, source Source) {
-	if settings.is_help {
-		help.print_and_exit('install')
-	}
-	if module_names.len == 0 {
-		eprintln('´v install´ requires *at least one* module name.')
-		exit(2)
-	}
-	match source {
-		.vpm {
-			vpm_install_from_vpm(module_names)
-		}
-		.git {
-			vpm_install_from_vcs(module_names, 'git')
-		}
-		.hg {
-			vpm_install_from_vcs(module_names, 'hg')
-		}
 	}
 }
 
@@ -778,7 +752,7 @@ fn resolve_dependencies(name string, module_path string, module_names []string) 
 	if deps.len > 0 {
 		println('Resolving ${deps.len} dependencies for module "${name}" ...')
 		verbose_println('Found dependencies: ${deps}')
-		vpm_install(deps, Source.vpm)
+		vpm_install_from_vpm(deps)
 	}
 }
 
