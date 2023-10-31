@@ -24,7 +24,7 @@ mut:
 	family string   [json: '-'] // this field will be skipped
 	age    int
 	salary f32
-	title  JobTitle [json: 'ETitle'] // the key for this field will be 'MyTitle', not 'title'
+	title  JobTitle [json: 'ETitle'] // the key for this field will be 'ETitle', not 'title'
 }
 
 fn main() {
