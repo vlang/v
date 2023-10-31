@@ -264,11 +264,11 @@ pub fn (mut ws Client) write_ptr(bytes &u8, payload_len int, code OPCode) !int {
 		} else if payload_len > 125 && payload_len <= 0xffff {
 			len16 := conv.hton16(u16(payload_len))
 			header[1] = 126
-			unsafe { C.memcpy(&header[2], &len16, 2) }
+			unsafe { vmemcpy(&header[2], &len16, 2) }
 		} else if payload_len > 0xffff && payload_len <= 0x7fffffff {
 			len_bytes := htonl64(u64(payload_len))
 			header[1] = 127
-			unsafe { C.memcpy(&header[2], len_bytes.data, 8) }
+			unsafe { vmemcpy(&header[2], len_bytes.data, 8) }
 		}
 	} else {
 		if payload_len <= 125 {
@@ -280,7 +280,7 @@ pub fn (mut ws Client) write_ptr(bytes &u8, payload_len int, code OPCode) !int {
 		} else if payload_len > 125 && payload_len <= 0xffff {
 			len16 := conv.hton16(u16(payload_len))
 			header[1] = (126 | 0x80)
-			unsafe { C.memcpy(&header[2], &len16, 2) }
+			unsafe { vmemcpy(&header[2], &len16, 2) }
 			header[4] = masking_key[0]
 			header[5] = masking_key[1]
 			header[6] = masking_key[2]
@@ -288,7 +288,7 @@ pub fn (mut ws Client) write_ptr(bytes &u8, payload_len int, code OPCode) !int {
 		} else if payload_len > 0xffff && payload_len <= 0x7fffffff {
 			len64 := htonl64(u64(payload_len))
 			header[1] = (127 | 0x80)
-			unsafe { C.memcpy(&header[2], len64.data, 8) }
+			unsafe { vmemcpy(&header[2], len64.data, 8) }
 			header[10] = masking_key[0]
 			header[11] = masking_key[1]
 			header[12] = masking_key[2]
@@ -301,9 +301,9 @@ pub fn (mut ws Client) write_ptr(bytes &u8, payload_len int, code OPCode) !int {
 	len := header.len + payload_len
 	mut frame_buf := []u8{len: len}
 	unsafe {
-		C.memcpy(&frame_buf[0], &u8(header.data), header.len)
+		vmemcpy(&frame_buf[0], &u8(header.data), header.len)
 		if payload_len > 0 {
-			C.memcpy(&frame_buf[header.len], bytes, payload_len)
+			vmemcpy(&frame_buf[header.len], bytes, payload_len)
 		}
 	}
 	if !ws.is_server {
@@ -396,14 +396,14 @@ fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []u
 		if payload.len >= 2 {
 			if !ws.is_server {
 				mut parsed_payload := []u8{len: payload.len + 1}
-				unsafe { C.memcpy(parsed_payload.data, &payload[0], payload.len) }
+				unsafe { vmemcpy(parsed_payload.data, &payload[0], payload.len) }
 				parsed_payload[payload.len] = `\0`
 				for i in 0 .. payload.len {
 					control_frame[6 + i] = (parsed_payload[i] ^ masking_key[i % 4]) & 0xff
 				}
 				unsafe { parsed_payload.free() }
 			} else {
-				unsafe { C.memcpy(&control_frame[2], &payload[0], payload.len) }
+				unsafe { vmemcpy(&control_frame[2], &payload[0], payload.len) }
 			}
 		}
 	} else {
@@ -415,7 +415,7 @@ fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []u
 			}
 		} else {
 			if payload.len > 0 {
-				unsafe { C.memcpy(&control_frame[2], &payload[0], payload.len) }
+				unsafe { vmemcpy(&control_frame[2], &payload[0], payload.len) }
 			}
 		}
 	}
