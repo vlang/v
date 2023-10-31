@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module coroutines
 
+import v.util
 import time
 
 #flag -I @VEXEROOT/thirdparty/photon
@@ -10,8 +11,13 @@ import time
 
 #include "photonwrapper.h"
 
-fn C.photon_init_default() int
+// struct C.WorkPool {}
+// fn C.new_photon_work_pool) C.WorkPool
+fn C.init_photon_work_pool(int)
+
+// fn C.photon_thread_create_and_migrate_to_work_pool(f voidptr, arg voidptr)
 fn C.photon_thread_create(f voidptr, arg voidptr)
+fn C.photon_init_default() int
 fn C.photon_sleep_s(n int)
 fn C.photon_sleep_ms(n int)
 fn C.set_photon_thread_stack_allocator(fn (voidptr, int) voidptr, fn (voidptr, voidptr, int))
@@ -41,6 +47,9 @@ fn init() {
 	}
 	C.set_photon_thread_stack_allocator(alloc, dealloc)
 	ret := C.photon_init_default()
+	if util.nr_jobs > 0 {
+		C.init_photon_work_pool(util.nr_jobs)
+	}
 	if ret < 0 {
 		panic('failed to initialize coroutines via photon (ret=${ret})')
 	}
