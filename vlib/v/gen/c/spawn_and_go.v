@@ -161,7 +161,11 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			}
 		}
 	} else if is_go {
-		g.writeln('photon_thread_create((void*)${wrapper_fn_name}, &${arg_tmp_var});')
+		if util.nr_jobs > 0 {
+			g.writeln('photon_thread_create_and_migrate_to_work_pool((void*)${wrapper_fn_name}, &${arg_tmp_var});')
+		} else {
+			g.writeln('photon_thread_create((void*)${wrapper_fn_name}, &${arg_tmp_var});')
+		}
 	}
 	g.writeln('// end go')
 	if node.is_expr {

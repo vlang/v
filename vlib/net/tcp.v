@@ -543,13 +543,11 @@ const (
 
 fn (mut s TcpSocket) connect(a Addr) ! {
 	$if !net_blocking_sockets ? {
-		println('## CONNECT: before')
 		res := $if is_coroutine ? {
 			C.photon_connect(s.handle, voidptr(&a), a.len(), net.tcp_default_read_timeout)
 		} $else {
 			C.connect(s.handle, voidptr(&a), a.len())
 		}
-		println('## CONNECT: after')
 		if res == 0 {
 			return
 		}

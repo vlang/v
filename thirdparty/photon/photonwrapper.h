@@ -1,8 +1,8 @@
 #ifndef C_PHOTONWRAPPER_H_
 #define C_PHOTONWRAPPER_H_
 
-
 #include <sys/socket.h>
+
 
 #ifdef __cplusplus
 
@@ -15,12 +15,21 @@
 #include <photon/fs/localfs.h>
 #include <photon/net/socket.h>
 #include <photon/net/basic_socket.h>
+#include <photon/thread/workerpool.h>
 #include <iostream>
 
 extern "C" {
+// using namespace photon;
+// WorkPool* work_pool;
+// WorkPool* new_photon_work_pool();
+photon::WorkPool* work_pool;
 #else
 #endif
 
+// custom v functions
+void init_photon_work_pool(size_t);
+void photon_thread_create_and_migrate_to_work_pool(void* (* f)(void*), void* arg);
+// direct wrappers to photon functions
 int photon_init_default();
 void photon_thread_create(void* (* f)(void*), void* arg);
 void photon_sleep_s(int n);
