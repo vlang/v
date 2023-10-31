@@ -444,8 +444,6 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	fname := os.file_name(file)
 	generated_binary_fname := if os.user_os() == 'windows' && !run_js {
 		'${fname.all_before_last('.v')}_${ts.hash}.exe'
-	} else if !run_js {
-		'${fname.all_before_last('.v')}_${ts.hash}'
 	} else {
 		'${fname.all_before_last('.v')}_${ts.hash}'
 	}
