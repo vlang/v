@@ -26,7 +26,7 @@ fn get_vexe_path() string {
 }
 
 fn new_tdir() string {
-	dir := os.join_path(os.vtmp_dir(), 'v', rand.ulid())
+	dir := os.join_path(os.vtmp_dir(), rand.ulid())
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(dir) or { panic(err) }
 	C.atexit(cleanup_tdir)
