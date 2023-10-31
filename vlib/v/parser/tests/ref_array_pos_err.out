@@ -1,0 +1,8 @@
+vlib/v/parser/tests/ref_array_pos_err.vv:2:5: error: V arrays are already references behind the scenes,
+there is no need to use a reference to an array (e.g. use `[]string` instead of `&[]string`).
+If you need to modify an array in a function, use a mutable argument instead: `fn foo(mut s []string) {}`.
+    1 | struct Foo {
+    2 |     b &[]u8
+      |        ^
+    3 |     n int
+    4 | }

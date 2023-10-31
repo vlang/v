@@ -7,13 +7,13 @@ fn (mut t Test) zz_exit() {
 	exit(0)
 }
 
-fn optional() ?int {
+fn option() !int {
 	return error('oh no')
 }
 
 fn main() {
 	mut test := Test{}
-	a := optional() or { test.zz_exit() }
+	a := option() or { test.zz_exit() }
 	println(a)
 	exit(1)
 }

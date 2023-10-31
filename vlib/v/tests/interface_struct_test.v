@@ -8,7 +8,7 @@ struct Boss {
 }
 
 fn (b Boss) say_hello() string {
-	return 'Hello, My name is $b.name and I\'m the bawz'
+	return 'Hello, My name is ${b.name} and I\'m the bawz'
 }
 
 fn (b Boss) speak(msg string) {
@@ -21,11 +21,11 @@ struct Cat {
 }
 
 fn (c Cat) say_hello() string {
-	return 'Meow meow $c.name the $c.breed meow'
+	return 'Meow meow ${c.name} the ${c.breed} meow'
 }
 
 fn (c Cat) speak(msg string) {
-	println('Meow $msg')
+	println('Meow ${msg}')
 }
 
 struct Baz {
@@ -85,8 +85,6 @@ fn test_interface_struct_from_array() {
 	assert bazs[1].sp.say_hello() == "Hello, My name is Bob and I'm the bawz"
 }
 
-/*
-// TODO: fix this too; currently with V 0.1.30 7426544 produces: `V panic: as cast: cannot cast 200 to 197`
 fn test_interface_struct_from_mut_array() {
 	mut bazs := [
 		Baz{
@@ -99,7 +97,7 @@ fn test_interface_struct_from_mut_array() {
 			sp: Boss{
 				name: 'Bob'
 			}
-		}
+		},
 	]
 
 	bazs[0].sp = Boss{
@@ -111,7 +109,6 @@ fn test_interface_struct_from_mut_array() {
 		breed: 'Doggy Doo'
 	}
 
-	assert bazs[0].sp.say_hello() == 'Hello, My name is Ross and I\'m the bawz'
+	assert bazs[0].sp.say_hello() == "Hello, My name is Ross and I'm the bawz"
 	assert bazs[1].sp.say_hello() == 'Meow meow Doggy the Doggy Doo meow'
 }
-*/

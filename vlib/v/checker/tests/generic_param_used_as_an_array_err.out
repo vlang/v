@@ -1,6 +1,0 @@
-vlib/v/checker/tests/generic_param_used_as_an_array_err.vv:2:10: error: generic type T does not support indexing, pass an array, or a reference instead, e.g. []T or &T
-    1 | fn test<T>(arr T) {
-    2 |     a := arr[1]
-      |             ~~~
-    3 |     println(a)
-    4 | }

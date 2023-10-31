@@ -29,7 +29,7 @@ pub fn compile_js(mut b builder.Builder) {
 
 pub fn build_js(mut b builder.Builder, v_files []string, out_file string) {
 	b.out_name_js = out_file
-	b.info('build_js($out_file)')
+	b.info('build_js(${out_file})')
 	output := gen_js(mut b, v_files)
 	os.write_file(out_file, output) or { panic(err) }
 	if b.pref.is_stats {

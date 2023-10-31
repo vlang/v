@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module math
@@ -29,6 +29,11 @@ pub fn nan() f64 {
 
 // is_nan reports whether f is an IEEE 754 ``not-a-number'' value.
 pub fn is_nan(f f64) bool {
+	$if fast_math {
+		if f64_bits(f) == math.uvnan {
+			return true
+		}
+	}
 	// IEEE 754 says that only NaNs satisfy f != f.
 	// To avoid the floating-point hardware, could use:
 	// x := f64_bits(f);
@@ -48,6 +53,7 @@ pub fn is_inf(f f64, sign int) bool {
 	return (sign >= 0 && f > max_f64) || (sign <= 0 && f < -max_f64)
 }
 
+// is_finite returns true if f is finite
 pub fn is_finite(f f64) bool {
 	return !is_nan(f) && !is_inf(f, 0)
 }

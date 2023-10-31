@@ -1,0 +1,123 @@
+name: wasm backend CI
+
+on:
+  push:
+    paths:
+      - '!**'
+      - '!**.md'
+      - 'cmd/tools/builders/**.v'
+      - 'vlib/builtin/**.v'
+      - 'vlib/v/ast/**.v'
+      - 'vlib/v/scanner/**.v'
+      - 'vlib/v/parser/**.v'
+      - 'vlib/v/checker/**.v'
+      - 'vlib/v/gen/c/**.v'
+      - 'vlib/v/builder/**.v'
+      - 'vlib/v/cflag/**.v'
+      - 'vlib/v/live/**.v'
+      - 'vlib/v/util/**.v'
+      - 'vlib/v/markused/**.v'
+      - 'vlib/v/preludes/**.v'
+      - 'vlib/v/gen/wasm/**.v'
+      - 'vlib/v/gen/wasm/tests/**.v'
+  pull_request:
+    paths:
+      - '!**'
+      - '!**.md'
+      - 'cmd/tools/builders/**.v'
+      - 'vlib/builtin/**.v'
+      - 'vlib/v/ast/**.v'
+      - 'vlib/v/scanner/**.v'
+      - 'vlib/v/parser/**.v'
+      - 'vlib/v/checker/**.v'
+      - 'vlib/v/gen/c/**.v'
+      - 'vlib/v/builder/**.v'
+      - 'vlib/v/cflag/**.v'
+      - 'vlib/v/live/**.v'
+      - 'vlib/v/util/**.v'
+      - 'vlib/v/markused/**.v'
+      - 'vlib/v/preludes/**.v'
+      - 'vlib/v/gen/wasm/**.v'
+      - 'vlib/v/gen/wasm/tests/**.v'
+
+concurrency:
+  group: wasm-backend-ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  wasm-backend-ubuntu:
+    runs-on: ubuntu-22.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    timeout-minutes: 121
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --quiet -y clang gcc
+
+      - name: Build V
+        run: make -j4 && ./v symlink -githubci
+
+      - name: Install wasmer to execute WASM modules
+        run: |
+          curl https://get.wasmer.io -sSfL | sh
+          sudo ln -s ~/.wasmer/bin/wasmer /usr/local/bin
+
+      - name: Build the V WASM backend
+        run: ./v -cc clang -showcc -v cmd/tools/builders/wasm_builder.v
+
+      - name: Test the WASM backend
+        run: ./v test vlib/v/gen/wasm/tests/
+
+      - name: Build examples
+        run: VTEST_ONLY=wasm ./v build-examples
+
+  wasm-backend-macos:
+    runs-on: macOS-12
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    timeout-minutes: 121
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Build V
+        run: make -j4 && ./v symlink -githubci
+
+      - name: Install wasmer to execute WASM modules
+        run: |
+          curl https://get.wasmer.io -sSfL | sh
+          sudo ln -s ~/.wasmer/bin/wasmer /usr/local/bin
+
+      - name: Build the V WASM backend
+        run: ./v -cc clang -showcc -v cmd/tools/builders/wasm_builder.v
+
+      - name: Test the WASM backend
+        run: ./v test vlib/v/gen/wasm/tests/
+
+      - name: Build examples
+        run: VTEST_ONLY=wasm ./v build-examples
+
+#  wasm-backend-windows:
+#    runs-on: windows-2022
+#    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+#    timeout-minutes: 121
+#    steps:
+#      - uses: actions/checkout@v3
+#
+#      - name: Build V
+#        run: .\make.bat -msvc
+#      - name: Symlink V
+#        run: .\v.exe symlink -githubci
+#
+#      - name: Install binaryen as build dependency for the V WASM backend
+#        run: v cmd/tools/install_binaryen.vsh
+#
+#      - name: Build the V WASM backend
+#        run: v -cc msvc -showcc -v cmd/tools/builders/wasm_builder.v
+#
+#      - name: Test the WASM backend
+#        run: v -stats test vlib/v/gen/wasm/tests/
+#
+#      - name: Build examples
+#        run: $env:VTEST_ONLY='wasm'; v build-examples

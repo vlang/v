@@ -1,9 +1,9 @@
 module term
 
 import os
+import term.termios
 
 #include <sys/ioctl.h>
-#include <termios.h> // TIOCGWINSZ
 
 pub struct C.winsize {
 pub:
@@ -13,13 +13,9 @@ pub:
 	ws_ypixel u16
 }
 
-fn C.tcgetattr(fd int, ptr &C.termios) int
-
-fn C.tcsetattr(fd int, action int, const_ptr &C.termios)
-
 fn C.ioctl(fd int, request u64, arg voidptr) int
 
-// get_terminal_size returns a number of colums and rows of terminal window.
+// get_terminal_size returns a number of columns and rows of terminal window.
 pub fn get_terminal_size() (int, int) {
 	if os.is_atty(1) <= 0 || os.getenv('TERM') == 'dumb' {
 		return default_columns_size, default_rows_size
@@ -30,32 +26,34 @@ pub fn get_terminal_size() (int, int) {
 }
 
 // get_cursor_position returns a Coord containing the current cursor position
-pub fn get_cursor_position() ?Coord {
+pub fn get_cursor_position() !Coord {
 	if os.is_atty(1) <= 0 || os.getenv('TERM') == 'dumb' {
 		return Coord{0, 0}
 	}
 
-	old_state := C.termios{}
-	if unsafe { C.tcgetattr(0, &old_state) } != 0 {
+	mut old_state := termios.Termios{}
+	if termios.tcgetattr(0, mut old_state) != 0 {
 		return os.last_error()
 	}
 	defer {
 		// restore the old terminal state:
-		unsafe { C.tcsetattr(0, C.TCSANOW, &old_state) }
+		termios.tcsetattr(0, C.TCSANOW, mut old_state)
 	}
 
-	mut state := C.termios{}
-	if unsafe { C.tcgetattr(0, &state) } != 0 {
+	mut state := termios.Termios{}
+	if termios.tcgetattr(0, mut state) != 0 {
 		return os.last_error()
 	}
-	state.c_lflag &= int(~(u32(C.ICANON) | u32(C.ECHO)))
-	unsafe { C.tcsetattr(0, C.TCSANOW, &state) }
+
+	state.c_lflag &= termios.invert(u32(C.ICANON) | u32(C.ECHO))
+	termios.tcsetattr(0, C.TCSANOW, mut state)
 
 	print('\e[6n')
+	flush_stdout()
 
 	mut x := 0
 	mut y := 0
-	mut stage := byte(0)
+	mut stage := u8(0)
 
 	// ESC [ YYY `;` XXX `R`
 
@@ -79,19 +77,37 @@ pub fn get_cursor_position() ?Coord {
 	return Coord{x, y}
 }
 
-// set_terminal_title change the terminal title
+// set_terminal_title change the terminal title (usually that is the containing terminal window title)
 pub fn set_terminal_title(title string) bool {
 	if os.is_atty(1) <= 0 || os.getenv('TERM') == 'dumb' {
-		return true
+		return false
 	}
-	print('\033]0')
+	print('\033]0;')
 	print(title)
 	print('\007')
+	flush_stdout()
+	return true
+}
+
+// set_tab_title changes the terminal *tab title*, for terminal emulators like Konsole, that support several tabs
+pub fn set_tab_title(title string) bool {
+	if os.is_atty(1) <= 0 || os.getenv('TERM') == 'dumb' {
+		return false
+	}
+	print('\033]30;')
+	print(title)
+	print('\007')
+	flush_stdout()
 	return true
 }
 
 // clear clears current terminal screen.
-pub fn clear() {
+pub fn clear() bool {
+	if os.is_atty(1) <= 0 || os.getenv('TERM') == 'dumb' {
+		return false
+	}
 	print('\x1b[2J')
 	print('\x1b[H')
+	flush_stdout()
+	return true
 }

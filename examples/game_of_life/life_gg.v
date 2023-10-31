@@ -26,7 +26,7 @@ fn print_automaton(app &App) {
 
 struct App {
 mut:
-	gg &gg.Context
+	gg &gg.Context = unsafe { nil }
 	a  automaton.Automaton
 }
 

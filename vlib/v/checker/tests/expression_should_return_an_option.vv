@@ -1,4 +1,4 @@
-fn return_optional(fail bool) ?string {
+fn return_option(fail bool) !string {
 	if fail {
 		return error('nope')
 	}
@@ -11,21 +11,19 @@ fn return_string() string {
 
 fn main() {
 	// works
-	if r := return_optional(false) {
+	if r := return_option(false) {
 		println(r)
 	}
 	// works
-	if r := return_optional(false) {
+	if r := return_option(false) {
 		println(r)
 	} else {
 		println(err)
 	}
 	// works
-	return_optional(true) or {
-		println(err)
-	}
+	return_option(true) or { println(err) }
 	// should be an checker error:
 	if x := return_string() {
-		println('x: $x')
+		println('x: ${x}')
 	}
 }

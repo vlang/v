@@ -23,7 +23,7 @@ fn map_hash_string(pkey voidptr) u64 {
 }
 
 fn map_hash_int_1(pkey voidptr) u64 {
-	return C.wyhash64(*unsafe { &byte(pkey) }, 0)
+	return C.wyhash64(*unsafe { &u8(pkey) }, 0)
 }
 
 fn map_hash_int_2(pkey voidptr) u64 {

@@ -53,7 +53,7 @@ fn test_defer_early_exit() {
 	for i in 0 .. 10 {
 		set_num(i, mut sum)
 	}
-	println('sum: $sum.val')
+	println('sum: ${sum.val}')
 	assert sum.val == 15
 }
 
@@ -71,7 +71,7 @@ fn test_defer_with_anon_fn() {
 		assert f.add(1) == 111
 	}
 
-	go fn () {
+	spawn fn () {
 		defer {
 			println('deferred 1')
 		}
@@ -153,4 +153,39 @@ fn num() int {
 		ret = 20
 	}
 	return ret
+}
+
+fn close(i int) {
+	eprintln('Close ${i}')
+}
+
+fn test_defer_with_reserved_words() {
+	if 1 == 1 {
+		single := 1
+		defer {
+			close(single)
+		}
+	}
+	if 2 == 2 {
+		double := 9
+		defer {
+			close(double)
+		}
+	}
+	eprintln('Done')
+	assert true
+}
+
+fn test_defer_inside_comptime_if_else() {
+	$if false {
+	} $else {
+		defer {
+		}
+	}
+	$if true {
+		defer {
+		}
+	} $else {
+	}
+	assert true
 }

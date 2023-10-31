@@ -1,0 +1,14 @@
+fn opt() ?int {
+	return 42
+}
+
+fn result() !int {
+	return 42
+}
+
+fn main() {
+	o := opt()?
+	r := result()!
+	println(o)
+	println(r)
+}

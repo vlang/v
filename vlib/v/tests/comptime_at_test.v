@@ -19,6 +19,11 @@ fn (mut t TestStruct) test_struct_w_high_order(cb fn (int) string) string {
 	return 'test' + cb(2)
 }
 
+fn TestStruct.static_method() string {
+	assert @STRUCT == 'TestStruct'
+	return @STRUCT
+}
+
 struct Abc {
 }
 
@@ -71,6 +76,12 @@ fn test_at_file() {
 	assert f == 'comptime_at_test.v'
 }
 
+fn test_at_file_len() {
+	// Test @FILE_LINE
+	line1, line2 := '${@LINE}', '${@FILE_LINE}'
+	assert os.file_name(@FILE) + ':' + line1.str() == line2
+}
+
 fn test_at_fn() {
 	// Test @FN
 	assert @FN == 'test_at_fn'
@@ -106,6 +117,8 @@ fn test_at_struct() {
 	})
 	assert r1 == 'test'
 	assert r2 == 'test2'
+	assert TestStruct.static_method() == 'TestStruct'
+	assert @STRUCT == ''
 }
 
 fn test_vmod_file() {
@@ -119,4 +132,37 @@ fn test_vmod_file() {
 
 fn test_comptime_at() {
 	assert @VEXE == pref.vexe_path()
+}
+
+// Reasons for assertions that are not literal:
+// to prevent assertion invalidation due to "line" changes in subsequent code changes
+fn test_line_number_last_token() {
+	line1, line2, line3 := @LINE, @LINE, @LINE
+	assert line1 == line2
+	assert line1 == line3
+}
+
+fn abc() {
+	assert @LOCATION.contains('comptime_at_test.v:')
+	assert @LOCATION.ends_with(', main.abc')
+}
+
+struct MyStruct {
+}
+
+fn MyStruct.new() MyStruct {
+	assert @LOCATION.ends_with('main.MyStruct.new (static)')
+	return MyStruct{}
+}
+
+fn (s MyStruct) mymethod() {
+	assert @LOCATION.contains('comptime_at_test.v:')
+	assert @LOCATION.ends_with('main.MyStruct{}.mymethod')
+}
+
+fn test_at_location() {
+	abc()
+	MyStruct.new().mymethod()
+	assert @LOCATION.contains('comptime_at_test.v:')
+	assert @LOCATION.ends_with('main.test_at_location')
 }

@@ -1,5 +1,7 @@
 module builtin
 
+type byte = u8
+
 pub fn (i i8) str() string {
 	mut res := ''
 	#res.str = i.val.toString()
@@ -133,7 +135,7 @@ pub fn (x int_literal) hex() string {
 	return res
 }
 
-pub fn (x byte) hex() string {
+pub fn (x u8) hex() string {
 	res := ''
 	#res.str = x.val.toString(16)
 
@@ -142,7 +144,7 @@ pub fn (x byte) hex() string {
 
 // hex returns a string with the hexadecimal representation
 // of the byte elements of the array.
-pub fn (b []byte) hex() string {
+pub fn (b []u8) hex() string {
 	mut hex := ''
 	for i in b {
 		mut z := i
@@ -172,7 +174,7 @@ pub fn (i i64) hex2() string {
 	return '0x' + i.hex()
 }
 
-pub fn (i byte) hex2() string {
+pub fn (i u8) hex2() string {
 	return '0x' + i.hex()
 }
 

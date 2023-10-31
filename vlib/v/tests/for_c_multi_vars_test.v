@@ -5,8 +5,8 @@ fn test_for_c_multi_init_vars() {
 			continue
 		}
 		b = a + 1
-		println('$a, $b')
-		rets << '$a, $b'
+		println('${a}, ${b}')
+		rets << '${a}, ${b}'
 	}
 	println(rets)
 	assert rets[0] == '0, 1'
@@ -22,8 +22,8 @@ fn test_for_c_multi_inc_vars() {
 		if a in [2, 3] {
 			continue
 		}
-		println('$a, $b')
-		rets << '$a, $b'
+		println('${a}, ${b}')
+		rets << '${a}, ${b}'
 	}
 	println(rets)
 	assert rets[0] == '0, 1'

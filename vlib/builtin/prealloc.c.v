@@ -21,20 +21,21 @@ __global g_memory_block &VMemoryBlock
 struct VMemoryBlock {
 mut:
 	id        int
-	cap       int
-	start     &byte = 0
+	cap       isize
+	start     &u8 = 0
 	previous  &VMemoryBlock = 0
-	remaining int
-	current   &byte = 0
+	remaining isize
+	current   &u8 = 0
 	mallocs   int
 }
 
 [unsafe]
-fn vmemory_block_new(prev &VMemoryBlock, at_least int) &VMemoryBlock {
+fn vmemory_block_new(prev &VMemoryBlock, at_least isize) &VMemoryBlock {
 	mut v := unsafe { &VMemoryBlock(C.calloc(1, sizeof(VMemoryBlock))) }
-	if prev != 0 {
+	if unsafe { prev != 0 } {
 		v.id = prev.id + 1
 	}
+
 	v.previous = prev
 	block_size := if at_least < prealloc_block_size { prealloc_block_size } else { at_least }
 	v.start = unsafe { C.malloc(block_size) }
@@ -45,12 +46,12 @@ fn vmemory_block_new(prev &VMemoryBlock, at_least int) &VMemoryBlock {
 }
 
 [unsafe]
-fn vmemory_block_malloc(n int) &byte {
+fn vmemory_block_malloc(n isize) &u8 {
 	unsafe {
 		if g_memory_block.remaining < n {
 			g_memory_block = vmemory_block_new(g_memory_block, n)
 		}
-		mut res := &byte(0)
+		mut res := &u8(0)
 		res = g_memory_block.current
 		g_memory_block.remaining -= n
 		g_memory_block.mallocs++
@@ -64,7 +65,7 @@ fn vmemory_block_malloc(n int) &byte {
 [unsafe]
 fn prealloc_vinit() {
 	unsafe {
-		g_memory_block = vmemory_block_new(voidptr(0), prealloc_block_size)
+		g_memory_block = vmemory_block_new(nil, prealloc_block_size)
 		$if !freestanding {
 			C.atexit(prealloc_vcleanup)
 		}
@@ -79,12 +80,12 @@ fn prealloc_vcleanup() {
 		// The second loop however should *not* allocate at all.
 		mut nr_mallocs := i64(0)
 		mut mb := g_memory_block
-		for mb != 0 {
+		for unsafe { mb != 0 } {
 			nr_mallocs += mb.mallocs
-			eprintln('> freeing mb.id: ${mb.id:3} | cap: ${mb.cap:7} | rem: ${mb.remaining:7} | start: ${voidptr(mb.start)} | current: ${voidptr(mb.current)} | diff: ${u64(mb.current) - u64(mb.start):7} bytes | mallocs: $mb.mallocs')
+			eprintln('> freeing mb.id: ${mb.id:3} | cap: ${mb.cap:7} | rem: ${mb.remaining:7} | start: ${voidptr(mb.start)} | current: ${voidptr(mb.current)} | diff: ${u64(mb.current) - u64(mb.start):7} bytes | mallocs: ${mb.mallocs}')
 			mb = mb.previous
 		}
-		eprintln('> nr_mallocs: $nr_mallocs')
+		eprintln('> nr_mallocs: ${nr_mallocs}')
 	}
 	unsafe {
 		for g_memory_block != 0 {
@@ -95,12 +96,12 @@ fn prealloc_vcleanup() {
 }
 
 [unsafe]
-fn prealloc_malloc(n int) &byte {
+fn prealloc_malloc(n isize) &u8 {
 	return unsafe { vmemory_block_malloc(n) }
 }
 
 [unsafe]
-fn prealloc_realloc(old_data &byte, old_size int, new_size int) &byte {
+fn prealloc_realloc(old_data &u8, old_size isize, new_size isize) &u8 {
 	new_ptr := unsafe { vmemory_block_malloc(new_size) }
 	min_size := if old_size < new_size { old_size } else { new_size }
 	unsafe { C.memcpy(new_ptr, old_data, min_size) }
@@ -108,7 +109,7 @@ fn prealloc_realloc(old_data &byte, old_size int, new_size int) &byte {
 }
 
 [unsafe]
-fn prealloc_calloc(n int) &byte {
+fn prealloc_calloc(n isize) &u8 {
 	new_ptr := unsafe { vmemory_block_malloc(n) }
 	unsafe { C.memset(new_ptr, 0, n) }
 	return new_ptr

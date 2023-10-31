@@ -1,7 +1,7 @@
 /*
 regex 1.0 alpha
 
-Copyright (c) 2019-2022 Dario Deledda. All rights reserved.
+Copyright (c) 2019-2023 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
 that can be found in the LICENSE file.
 */
@@ -14,7 +14,8 @@ import strings
 * Inits
 *
 ******************************************************************************/
-// regex create a regex object from the query string, retunr RE object and errors as re_err, err_pos
+// regex_base returns a regex object (`RE`) generated from `pattern` string and
+// detailed information in re_err, err_pos, if an error occurred.
 pub fn regex_base(pattern string) (RE, int, int) {
 	// init regex
 	mut re := RE{}
@@ -123,29 +124,31 @@ pub fn (re RE) get_group_list() []Re_group {
 ******************************************************************************/
 // match_string Match the pattern with the in_txt string
 [direct_array_access]
-pub fn (mut re RE) match_string(in_txt string) (int, int) {
-	start, mut end := re.match_base(in_txt.str, in_txt.len + 1)
-	if end > in_txt.len {
-		end = in_txt.len
-	}
-
-	if start >= 0 && end > start {
-		if (re.flag & f_ms) != 0 && start > 0 {
-			return no_match_found, 0
+pub fn (re &RE) match_string(in_txt string) (int, int) {
+	unsafe {
+		start, mut end := re.match_base(in_txt.str, in_txt.len + 1)
+		if end > in_txt.len {
+			end = in_txt.len
 		}
-		if (re.flag & f_me) != 0 && end < in_txt.len {
-			if in_txt[end] in new_line_list {
-				return start, end
+
+		if start >= 0 && end > start {
+			if (re.flag & f_ms) != 0 && start > 0 {
+				return no_match_found, 0
 			}
-			return no_match_found, 0
+			if (re.flag & f_me) != 0 && end < in_txt.len {
+				if in_txt[end] in new_line_list {
+					return start, end
+				}
+				return no_match_found, 0
+			}
+			return start, end
 		}
 		return start, end
 	}
-	return start, end
 }
 
 // matches_string Checks if the pattern matches the in_txt string
-pub fn (mut re RE) matches_string(in_txt string) bool {
+pub fn (re &RE) matches_string(in_txt string) bool {
 	start, _ := re.match_string(in_txt)
 	return start != no_match_found
 }
@@ -199,6 +202,14 @@ pub fn (mut re RE) find(in_txt string) (int, int) {
 					re.groups[gi] += i
 					gi++
 				}
+				// when ^ (f_ms) is used, it must match on beginning of string
+				if (re.flag & f_ms) != 0 && s > 0 {
+					break
+				}
+				// when $ (f_me) is used, it must match on ending of string
+				if (re.flag & f_me) != 0 && i + e < in_txt.len {
+					break
+				}
 				return i + s, i + e
 			}
 			i++
@@ -248,7 +259,14 @@ pub fn (mut re RE) find_from(in_txt string, start int) (int, int) {
 	return -1, -1
 }
 
-// find_all find all the non overlapping occurrences of the match pattern
+// find_all find all the non overlapping occurrences of the match pattern and return the start and end index of the match
+//
+// Usage:
+// ```v
+// blurb := 'foobar boo steelbar toolbox foot tooooot'
+// mut re := regex.regex_opt('f|t[eo]+')?
+// res := re.find_all(blurb) // [0, 3, 12, 15, 20, 23, 28, 31, 33, 39]
+// ```
 [direct_array_access]
 pub fn (mut re RE) find_all(in_txt string) []int {
 	// old_flag := re.flag
@@ -283,6 +301,38 @@ pub fn (mut re RE) find_all(in_txt string) []int {
 	}
 	// re.flag = old_flag
 	return res
+}
+
+// split returns the sections of string around the regex
+//
+// Usage:
+// ```v
+// blurb := 'foobar boo steelbar toolbox foot tooooot'
+// mut re := regex.regex_opt('f|t[eo]+')?
+// res := re.split(blurb) // ['bar boo s', 'lbar ', 'lbox ', 't ', 't']
+// ```
+pub fn (mut re RE) split(in_txt string) []string {
+	pos := re.find_all(in_txt)
+
+	mut sections := []string{cap: pos.len / 2 + 1}
+
+	if pos.len == 0 {
+		return [in_txt]
+	}
+	for i := 0; i < pos.len; i += 2 {
+		if pos[i] == 0 {
+			continue
+		}
+		if i == 0 {
+			sections << in_txt[..pos[i]]
+		} else {
+			sections << in_txt[pos[i - 1]..pos[i]]
+		}
+	}
+	if pos[pos.len - 1] != in_txt.len {
+		sections << in_txt[pos[pos.len - 1]..]
+	}
+	return sections
 }
 
 // find_all_str find all the non overlapping occurrences of the match pattern, return a string list
@@ -412,7 +462,7 @@ fn (re RE) parsed_replace_string(in_txt string, repl string) string {
 			group_id := int(tmp[0] - `0`)
 			group := re.get_group_by_id(in_txt, group_id)
 			// println("group: $group_id [$group]")
-			res += '$group${tmp[1..]}'
+			res += '${group}${tmp[1..]}'
 		} else {
 			res += '\\' + tmp
 		}
@@ -476,9 +526,9 @@ pub fn (mut re RE) replace_n(in_txt string, repl_str string, count int) string {
 	mut lst := re.find_all(in_txt)
 
 	if count < 0 { // start from the right of the string
-		lst = lst#[count * 2..] // limitate the number of substitions
+		lst = unsafe { lst#[count * 2..] } // limitate the number of substitions
 	} else if count > 0 { // start from the left of the string
-		lst = lst#[..count * 2] // limitate the number of substitions
+		lst = unsafe { lst#[..count * 2] } // limitate the number of substitions
 	} else if count == 0 { // no replace
 		return in_txt
 	}

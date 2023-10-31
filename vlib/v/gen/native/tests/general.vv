@@ -3,6 +3,8 @@ fn cast_test() {
 	assert a == 1
 	b := u64(2)
 	assert b == 2
+	c := int(u8(i64(u64(i16(4)))))
+	assert c == 4
 }
 
 fn if_test() {

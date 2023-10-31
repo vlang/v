@@ -1,0 +1,4 @@
+fn main() {
+	a := [1, 2]
+	println(a[0]?)
+}

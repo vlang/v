@@ -1,0 +1,374 @@
+name: CI Linux
+
+on:
+  workflow_call:
+
+jobs:
+  tcc:
+    runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    timeout-minutes: 121
+    env:
+      VFLAGS: -cc tcc -no-retry-compilation
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
+          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
+          # The following is needed for examples/wkhtmltopdf.v
+          wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
+          sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
+          sudo apt-get install --quiet -y expect
+          sudo dpkg -i wkhtmltox_0.12.6-1.focal_amd64.deb
+      - name: Build v
+        run: |
+          echo $VFLAGS
+          make
+          ./v test-cleancode
+          ./v -d debug_malloc -d debug_realloc -o v cmd/v
+          ./v -cg -cstrict -o v cmd/v
+          # Test v -realloc arena allocation
+          ./v -o vrealloc -prealloc cmd/v && ./vrealloc -o v3 cmd/v && ./v3 -o v4 cmd/v
+      - name: Test v->c
+        run: |
+          thirdparty/tcc/tcc.exe -version
+          ./v -cg -o v cmd/v # Make sure vtcc can build itself twice
+          # ./v test-all
+      - name: v self compilation
+        run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
+      - name: v self compilation with -skip-unused
+        run: ./v -skip-unused -o v2 cmd/v && ./v2 -skip-unused -o v3 cmd/v && ./v3 -skip-unused -o v4 cmd/v
+      - name: v doctor
+        run: ./v doctor
+      - name: Verify `v test` works
+        run: |
+          echo $VFLAGS
+          ./v cmd/tools/test_if_v_test_system_works.v
+          ./cmd/tools/test_if_v_test_system_works
+      - name: All code is formatted
+        run: ./v test-cleancode
+      - name: Test pure V math module
+        run: ./v -exclude @vlib/math/*.c.v test vlib/math/
+      - name: Self tests
+        run: ./v test-self
+      # - name: Self tests (-cstrict)
+      #   run: V_CI_CSTRICT=1 ./v -cstrict test-self
+      - name: Build examples
+        run: ./v -W build-examples
+      - name: Build v tools
+        run: ./v -W build-tools
+      - name: Build v binaries
+        run: ./v build-vbinaries
+      - name: Build benches
+        run: ./v should-compile-all vlib/v/tests/bench/
+      - name: Run a VSH script
+        run: ./v run examples/v_script.vsh
+      - name: Test v tutorials
+        run: ./v tutorials/building_a_simple_web_blog_with_vweb/code/blog
+      - name: Build cmd/tools/fast
+        run: cd cmd/tools/fast && ../../../v fast.v && ./fast
+      - name: V self compilation with -usecache
+        run: |
+          unset VFLAGS
+          ./v -usecache examples/hello_world.v && examples/hello_world
+          ./v  -o v2 -usecache cmd/v
+          ./v2 -o v3 -usecache cmd/v
+          ./v3 version
+          ./v3 -o tetris  -usecache examples/tetris/tetris.v
+      - name: Test password input
+        run: ./v test examples/password/
+      - name: Test readline
+        run: ./v test examples/readline/
+
+  tcc-boehm-gc:
+    runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    timeout-minutes: 121
+    env:
+      VFLAGS: -cc tcc -no-retry-compilation
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
+          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
+          sudo apt-get install --quiet -y libgc-dev
+          # The following is needed for examples/wkhtmltopdf.v
+          wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
+          sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
+          sudo dpkg -i wkhtmltox_0.12.6-1.focal_amd64.deb
+      - name: Build v
+        run: |
+          echo $VFLAGS
+          make
+      - name: Test v->c
+        run: |
+          thirdparty/tcc/tcc.exe -version
+          ./v -cg -o v cmd/v # Make sure vtcc can build itself twice
+      - name: v self compilation with -gc boehm
+        run: |
+          ./v -gc boehm -o v2 cmd/v && ./v2 -gc boehm -o v3 cmd/v && ./v3 -gc boehm -o v4 cmd/v
+          mv v4 v
+      - name: v doctor
+        run: |
+          ./v doctor
+      - name: Verify `v -gc boehm test` works
+        run: |
+          ./v -gc boehm cmd/tools/test_if_v_test_system_works.v
+          ./cmd/tools/test_if_v_test_system_works
+      - name: All code is formatted
+        run: ./v test-cleancode
+      - name: Self tests with `-gc boehm` with V compiler using Boehm-GC itself
+        run: ./v -gc boehm test-self
+      - name: Test leak detector
+        run: |
+          ./v -gc boehm_leak -o testcase_leak vlib/v/tests/testcase_leak.vv
+          ./testcase_leak 2>leaks.txt
+          grep "Found 1 leaked object" leaks.txt && grep -P ", sz=\s?1000," leaks.txt
+      - name: Test leak detector not being active for `-gc boehm`
+        run: |
+          ./v -gc boehm -o testcase_leak vlib/v/tests/testcase_leak.vv
+          ./testcase_leak 2>leaks.txt
+          [ "$(stat -c %s leaks.txt)" = "0" ]
+      - name: Test leak detector not being active for normal compile
+        run: |
+          ./v -o testcase_leak vlib/v/tests/testcase_leak.vv
+          ./testcase_leak 2>leaks.txt
+          [ "$(stat -c %s leaks.txt)" = "0" ]
+
+  gcc:
+    runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    timeout-minutes: 121
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
+      - name: Build V
+        run: make -j4 && ./v -cc gcc -cg -cstrict -o v cmd/v
+      - name: Valgrind v.c
+        run: valgrind --error-exitcode=1 ./v -o v.c cmd/v
+      - name: Run sanitizers
+        run: |
+          ./v -o v2 cmd/v -cflags -fsanitize=thread
+          ./v -o v3 cmd/v -cflags "-fsanitize=undefined -fno-sanitize=alignment"
+          UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v
+          UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v3 -o v.c cmd/v
+      # - name: Test V
+      #   run: ./v test-all
+      # - name: Test v binaries
+      #   run: ./v build-vbinaries
+      # - name: Test v->js
+      #   run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+      # - name: Build Vorum
+      #   run: git clone --depth 1 https://github.com/vlang/vorum && cd vorum && ../v . && cd ..
+      - name: Build vpm
+        run: ./v install markdown && git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . || ../v cmd/vpm && cd ..
+      - name: Freestanding
+        run: ./v -freestanding run vlib/os/bare/bare_example_linux.v
+      - name: V self compilation
+        run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
+      - name: V self compilation with -usecache
+        run: |
+          unset VFLAGS
+          ./v -usecache examples/hello_world.v && examples/hello_world
+          ./v  -o v2     -usecache cmd/v
+          ./v2 -o v3     -usecache cmd/v
+          ./v3 version
+          ./v3 -o tetris -usecache examples/tetris/tetris.v
+      - name: Verify `v test` works
+        run: |
+          echo $VFLAGS
+          ./v cmd/tools/test_if_v_test_system_works.v
+          ./cmd/tools/test_if_v_test_system_works
+      - name: All code is formatted
+        run: ./v test-cleancode
+      - name: Test pure V math module
+        run: ./v -exclude @vlib/math/*.c.v test vlib/math/
+      - name: Self tests
+        run: ./v test-self
+      - name: Self tests (-prod)
+        run: ./v -o vprod -prod cmd/v && ./vprod test-self
+      - name: Self tests (-cstrict)
+        run: VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 ./v -cc gcc -cstrict test-self
+      - name: Build examples
+        run: ./v build-examples
+      - name: Build tetris with -autofree
+        run: ./v -autofree -o tetris examples/tetris/tetris.v
+      - name: Build blog tutorial with -autofree
+        run: ./v -autofree -o blog tutorials/building_a_simple_web_blog_with_vweb/code/blog
+      - name: Build option_test.v with -autofree
+        run: ./v -autofree vlib/v/tests/option_test.v
+      - name: V self compilation with -parallel-cc
+        run: |
+          ./v -o v2 -parallel-cc cmd/v
+      - name: Build modules
+        run: |
+          ./v build-module vlib/os
+          ./v build-module vlib/builtin
+          ./v build-module vlib/strconv
+          ./v build-module vlib/time
+          ./v build-module vlib/term
+          ./v build-module vlib/math
+          ./v build-module vlib/strings
+          ./v build-module vlib/v/token
+          ./v build-module vlib/v/ast
+          ./v build-module vlib/v/parser
+          ./v build-module vlib/v/gen/c
+          ./v build-module vlib/v/depgraph
+          ./v build-module vlib/os/cmdline
+      - name: native machine code generation
+        run: |
+          exit
+          ./v -o vprod -prod cmd/v
+          cd cmd/tools
+          echo "Generating a 1m line V file..."
+          ../../vprod gen1m.v
+          ./gen1m > 1m.v
+          echo "Building it..."
+          ../../vprod -backend native -o 1m 1m.v
+          echo "Running it..."
+          # ./1m
+          ls
+      - name: compile vdoctor.v with -skip-unused and -prod
+        run: ./v -showcc -skip-unused -cc gcc -prod cmd/tools/vdoctor.v
+      - name: compile vup.v with -skip-unused and -prod
+        run: ./v -showcc -skip-unused -cc gcc -prod cmd/tools/vup.v
+
+      # - run: cd examples/native && ../../v -native hello_world.v && ./hello_world
+      # - name: Coveralls GitHub Action
+      #   uses: coverallsapp/github-action@v1.0.1
+      #   with:
+      #     github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  clang:
+    runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    timeout-minutes: 121
+    env:
+      VFLAGS: -cc clang
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
+          sudo apt-get install --quiet -y clang
+      - name: Build V
+        run: make -j4 && ./v -cc clang -cg -cstrict -o v cmd/v
+      - name: Valgrind
+        run: valgrind --error-exitcode=1 ./v -o v.c cmd/v
+      - name: Run sanitizers
+        run: |
+          ./v -o v2 cmd/v -cflags -fsanitize=memory
+          ./v -o v3 cmd/v -cflags -fsanitize=thread
+          ./v -o v4 cmd/v -cflags -fsanitize=undefined
+          ./v -o v5 cmd/v -cflags -fsanitize=address,pointer-compare,pointer-subtract
+          UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v
+          UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v3 -o v.c cmd/v
+          UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v4 -o v.c cmd/v
+          ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v5 -o v.c cmd/v
+      - name: v self compilation
+        run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
+      - name: v self compilation with -usecache
+        run: |
+          unset VFLAGS
+          ./v -usecache examples/hello_world.v && examples/hello_world
+          ./v  -o v2     -usecache cmd/v
+          ./v2 -o v3     -usecache cmd/v
+          ./v3 version
+          ./v3 -o tetris -usecache examples/tetris/tetris.v
+      - name: Verify `v test` works
+        run: |
+          echo $VFLAGS
+          ./v cmd/tools/test_if_v_test_system_works.v
+          ./cmd/tools/test_if_v_test_system_works
+      - name: All code is formatted
+        run: ./v test-cleancode
+
+      - name: Test pure V math module
+        run: ./v -exclude @vlib/math/*.c.v test vlib/math/
+      - name: Self tests
+        run: ./v test-self
+      - name: Self tests (vprod)
+        run: |
+          ./v -o vprod -prod cmd/v
+          ./vprod test-self
+      - name: Self tests (-cstrict)
+        run: VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 ./vprod -cstrict test-self
+
+      - name: Build examples
+        run: ./v build-examples
+      - name: Build examples with -autofree
+        run: |
+          ./v -autofree -experimental -o tetris examples/tetris/tetris.v
+      - name: Build modules
+        run: |
+          ./v build-module vlib/os
+          ./v build-module vlib/builtin
+          ./v build-module vlib/strconv
+          ./v build-module vlib/time
+          ./v build-module vlib/term
+          ./v build-module vlib/math
+          ./v build-module vlib/strings
+          ./v build-module vlib/v/token
+          ./v build-module vlib/v/ast
+          ./v build-module vlib/v/parser
+          ./v build-module vlib/v/gen/c
+          ./v build-module vlib/v/depgraph
+          ./v build-module vlib/os/cmdline
+      - name: native machine code generation
+        run: |
+          exit
+          ./v -o vprod -prod cmd/v
+          cd cmd/tools
+          echo "Generating a 1m line V file..."
+          ../../vprod gen1m.v
+          ./gen1m > 1m.v
+          echo "Building it..."
+          ../../vprod -backend native -o 1m 1m.v
+          echo "Running it..."
+          ls
+
+  # autofree-selfcompile:
+  #   runs-on: ubuntu-20.04
+  #   if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+  #   timeout-minutes: 121
+  #   env:
+  #     VFLAGS: -cc gcc
+  #   steps:
+  #   - uses: actions/checkout@v3
+  #   - name: Build V
+  #     run: make -j4
+  #   - name: V self compilation with -autofree
+  #     run: ./v -o v2 -autofree cmd/v && ./v2 -o v3 -autofree cmd/v && ./v3 -o v4 -autofree cmd/v
+
+  # musl:
+  #   runs-on: ubuntu-20.04
+  #   if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+  #   timeout-minutes: 121
+  #   env:
+  #     VFLAGS: -cc musl-gcc
+  #     V_CI_MUSL: 1
+  #   steps:
+  #   - uses: actions/checkout@v3
+  #   - name: Install dependencies
+  #     run: |
+  #        sudo apt-get install --quiet -y musl musl-tools libssl-dev sqlite3 libsqlite3-dev valgrind
+  #   - name: Build v
+  #     run: echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
+  #   # - name: Test v binaries
+  #   #   run: ./v build-vbinaries
+  #   # - name: Test v->js
+  #   #   run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+  #   - name: quick debug
+  #     run: ./v -stats vlib/strconv/format_test.v
+  #   - name: Self tests
+  #     run: ./v test-self

@@ -1,3 +1,10 @@
+vlib/v/checker/tests/shared_element_lock.vv:43:11: warning: arrays of references need to be initialized right away, therefore `len:` cannot be used (unless inside `unsafe`)
+   41 |     shared g := Pro{}
+   42 |     g.pers.age = 42
+   43 |     mut h := []shared Pro{len: 3}
+      |              ~~~~~~~~~~~~~
+   44 |     h[2].pers.age = 42
+   45 |     println(h[2].pers.age)
 vlib/v/checker/tests/shared_element_lock.vv:36:5: error: `pr.pe` is `shared` and needs explicit lock for `v.ast.SelectorExpr`
    34 |         }
    35 |     }

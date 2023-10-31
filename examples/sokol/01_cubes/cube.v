@@ -8,7 +8,7 @@
 *
 * TODO:
 * - add instancing
-* - add an exampel with shaders
+* - add an example with shaders
 **********************************************************************/
 import gg
 import gx
@@ -25,9 +25,10 @@ const (
 
 struct App {
 mut:
-	gg          &gg.Context
+	gg          &gg.Context = unsafe { nil }
 	pip_3d      sgl.Pipeline
 	texture     gfx.Image
+	sampler     gfx.Sampler
 	init_flag   bool
 	frame_count int
 	mouse_x     int = -1
@@ -39,28 +40,33 @@ mut:
 * Texture functions
 *
 ******************************************************************************/
-fn create_texture(w int, h int, buf &u8) gfx.Image {
+fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {
 	sz := w * h * 4
 	mut img_desc := gfx.ImageDesc{
 		width: w
 		height: h
 		num_mipmaps: 0
-		min_filter: .linear
-		mag_filter: .linear
 		// usage: .dynamic
-		wrap_u: .clamp_to_edge
-		wrap_v: .clamp_to_edge
-		label: &byte(0)
+		label: &u8(0)
 		d3d11_texture: 0
 	}
-	// commen if .dynamic is enabled
+	// comment, if .dynamic is enabled
 	img_desc.data.subimage[0][0] = gfx.Range{
 		ptr: buf
 		size: usize(sz)
 	}
 
 	sg_img := gfx.make_image(&img_desc)
-	return sg_img
+
+	mut smp_desc := gfx.SamplerDesc{
+		min_filter: .linear
+		mag_filter: .linear
+		wrap_u: .clamp_to_edge
+		wrap_v: .clamp_to_edge
+	}
+
+	sg_smp := gfx.make_sampler(&smp_desc)
+	return sg_img, sg_smp
 }
 
 fn destroy_texture(sg_img gfx.Image) {
@@ -68,7 +74,7 @@ fn destroy_texture(sg_img gfx.Image) {
 }
 
 // Use only if usage: .dynamic is enabled
-fn update_text_texture(sg_img gfx.Image, w int, h int, buf &byte) {
+fn update_text_texture(sg_img gfx.Image, w int, h int, buf &u8) {
 	sz := w * h * 4
 	mut tmp_sbc := gfx.ImageData{}
 	tmp_sbc.subimage[0][0] = gfx.Range{
@@ -133,7 +139,6 @@ fn cube() {
 
 fn draw_cubes(app App) {
 	rot := [f32(1.0) * (app.frame_count % 360), 0.5 * f32(app.frame_count % 360)]
-	// rot := [f32(app.mouse_x), f32(app.mouse_y)]
 
 	sgl.defaults()
 	sgl.load_pipeline(app.pip_3d)
@@ -206,7 +211,7 @@ fn draw_texture_cubes(app App) {
 	sgl.load_pipeline(app.pip_3d)
 
 	sgl.enable_texture()
-	sgl.texture(app.texture)
+	sgl.texture(app.texture, app.sampler)
 
 	sgl.matrix_mode_projection()
 	sgl.perspective(sgl.rad(45.0), 1.0, 0.1, 100.0)
@@ -243,7 +248,7 @@ fn cube_field(app App) {
 	sgl.load_pipeline(app.pip_3d)
 
 	sgl.enable_texture()
-	sgl.texture(app.texture)
+	sgl.texture(app.texture, app.sampler)
 
 	sgl.matrix_mode_projection()
 	sgl.perspective(sgl.rad(45.0), 1.0, 0.1, 200.0)
@@ -324,7 +329,7 @@ fn my_init(mut app App) {
 	mut pipdesc := gfx.PipelineDesc{}
 	unsafe { vmemset(&pipdesc, 0, int(sizeof(pipdesc))) }
 
-	color_state := gfx.ColorState{
+	color_state := gfx.ColorTargetState{
 		blend: gfx.BlendState{
 			enabled: true
 			src_factor_rgb: .src_alpha
@@ -352,29 +357,29 @@ fn my_init(mut app App) {
 			x := (i & 0xFF) >> 5 // 8 cell
 			// upper left corner
 			if x == 0 && y == 0 {
-				tmp_txt[i] = byte(0xFF)
-				tmp_txt[i + 1] = byte(0)
-				tmp_txt[i + 2] = byte(0)
-				tmp_txt[i + 3] = byte(0xFF)
+				tmp_txt[i] = u8(0xFF)
+				tmp_txt[i + 1] = u8(0)
+				tmp_txt[i + 2] = u8(0)
+				tmp_txt[i + 3] = u8(0xFF)
 			}
 			// low right corner
 			else if x == 7 && y == 7 {
-				tmp_txt[i] = byte(0)
-				tmp_txt[i + 1] = byte(0xFF)
-				tmp_txt[i + 2] = byte(0)
-				tmp_txt[i + 3] = byte(0xFF)
+				tmp_txt[i] = u8(0)
+				tmp_txt[i + 1] = u8(0xFF)
+				tmp_txt[i + 2] = u8(0)
+				tmp_txt[i + 3] = u8(0xFF)
 			} else {
 				col := if ((x + y) & 1) == 1 { 0xFF } else { 0 }
-				tmp_txt[i] = byte(col) // red
-				tmp_txt[i + 1] = byte(col) // green
-				tmp_txt[i + 2] = byte(col) // blue
-				tmp_txt[i + 3] = byte(0xFF) // alpha
+				tmp_txt[i] = u8(col) // red
+				tmp_txt[i + 1] = u8(col) // green
+				tmp_txt[i + 2] = u8(col) // blue
+				tmp_txt[i + 3] = u8(0xFF) // alpha
 			}
 			i += 4
 		}
 	}
 	unsafe {
-		app.texture = create_texture(w, h, tmp_txt)
+		app.texture, app.sampler = create_texture(w, h, tmp_txt)
 		free(tmp_txt)
 	}
 }
@@ -403,8 +408,6 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 * Main
 *
 ******************************************************************************/
-// is needed for easier diagnostics on windows
-[console]
 fn main() {
 	// App init
 	mut app := &App{

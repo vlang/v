@@ -1,0 +1,9 @@
+fn func1() (i64, i64) {
+	return i64(1), i64(2)
+}
+
+fn func2() (int, int) {
+	return func1()
+}
+
+fn main() {}

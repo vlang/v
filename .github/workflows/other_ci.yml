@@ -3,10 +3,10 @@ name: Other CI
 on:
   push:
     paths-ignore:
-      - "**.md"
+      - '**.md'
   pull_request:
     paths-ignore:
-      - "**.md"
+      - '**.md'
 
 concurrency:
   group: build-other-${{ github.event.pull_request.number || github.sha }}
@@ -15,20 +15,22 @@ concurrency:
 jobs:
   no-gpl-by-accident:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: No GPL licensed code, should be added accidentally
         run: |
           ! grep -r --exclude="*.yml" "a GPL license" .
 
   code-formatting:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 15
     env:
       VFLAGS: -cc gcc
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Environment info
         run: echo $VFLAGS $GITHUB_SHA $GITHUB_REF
       - name: Build local v
@@ -40,11 +42,12 @@ jobs:
 
   performance-regressions:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 15
     env:
       VFLAGS: -cc gcc
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Environment info
         run: echo $VFLAGS $GITHUB_SHA $GITHUB_REF
       - name: Build local v
@@ -60,15 +63,16 @@ jobs:
       - name: Repeat -o hw.c examples/hello_world.v
         run: cmd/tools/repeat --max_time 251 --series 3 --count 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o hw.c examples/hello_world.v' . ./vmaster
       - name: Repeat -o v.c cmd/v
-        run: cmd/tools/repeat --max_time 1501 --series 3 --count 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o v.c cmd/v' . ./vmaster
+        run: cmd/tools/repeat --max_time 1731 --series 3 --count 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o v.c cmd/v' . ./vmaster
 
   misc-tooling:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     env:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           fetch-depth: 10
 
@@ -77,24 +81,27 @@ jobs:
           sudo apt-get update
           sudo apt-get install --quiet -y libsodium-dev libssl-dev sqlite3 libsqlite3-dev postgresql libpq-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
-          sudo apt-get install --quiet -y g++-9
+          sudo apt-get install --quiet -y g++-9 g++-11
 
       - name: Build v
         run: make
 
-      - name: g++ version
+      - name: g++-9 version
         run: g++-9 --version
-      - name: V self compilation with g++
+      - name: V self compilation with g++ and -std=c++11
         run: ./v -cc g++-9 -no-std -cflags -std=c++11 -o v2 cmd/v && ./v2 -cc g++-9 -no-std -cflags -std=c++11 -o v3 cmd/v
-        ##    - name: Running tests with g++
-        ##      run: ./v -cc g++-9 test-self
+
+      - name: g++-11 version
+        run: g++-11 --version
+      - name: V self compilation with g++ and -std=c++20
+        run: ./v -cc g++-11 -no-std -cflags -std=c++20 -o v2 cmd/v && ./v2 -cc g++-11 -no-std -cflags -std=c++20 -o v3 cmd/v
 
       - name: Ensure V can be compiled with -autofree
-        run: ./v -autofree -o v2 cmd/v  ## NB: this does not mean it runs, but at least keeps it from regressing
+        run: ./v -autofree -o v2 cmd/v # NB: this does not mean it runs, but at least keeps it from regressing
 
-      - name: Shader examples can be build
+      - name: Shader examples can be built
         run: |
-          wget https://github.com/floooh/sokol-tools-bin/raw/33d2e4cc26088c6c28eaef5467990f8940d15aab/bin/linux/sokol-shdc
+          wget https://github.com/floooh/sokol-tools-bin/raw/6b84ea387a323db9e8e17f5abed2b254a6e409fe/bin/linux/sokol-shdc
           chmod +x ./sokol-shdc
           for f in examples/sokol/02_cubes_glsl/cube_glsl \
               examples/sokol/03_march_tracing_glsl/rt_glsl \
@@ -103,16 +110,17 @@ jobs:
               examples/sokol/05_instancing_glsl/rt_glsl_instancing \
               examples/sokol/06_obj_viewer/gouraud \
               ; do \
-                 echo "compiling shader $f.glsl ..."; \
-                 ./sokol-shdc --input $f.glsl --output $f.h --slang glsl330 ; \
+              echo "compiling shader $f.glsl ..."; \
+              ./sokol-shdc --input $f.glsl --output $f.h --slang glsl330 ; \
           done
           ./v should-compile-all examples/sokol/*.v examples/sokol/0?*/*.v
 
   parser-silent:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Install zzuf
         run: sudo apt install -qq zzuf
       - name: Build local v
@@ -145,117 +153,3 @@ jobs:
           ./v test-parser -S examples/cli_fuzz.v
           ./v test-parser -S examples/regex_example_fuzz.v
           ./v test-parser -S examples/2048/2048_fuzz.v
-
-  v-apps-compile:
-    runs-on: ubuntu-20.04
-    timeout-minutes: 121
-    steps:
-      - uses: actions/checkout@v2
-      - name: Build V
-        run: make && sudo ./v symlink
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --quiet -y libgc-dev
-          sudo apt-get install --quiet -y libsodium-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
-          sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
-
-      ## vls
-      - name: Clone VLS
-        run: git clone --depth 1 https://github.com/vlang/vls
-      - name: Build VLS
-        run: pushd vls; v cmd/vls ; popd
-      - name: Build VLS with -prod
-        run: pushd vls; v -prod cmd/vls; popd
-      - name: Build VLS with -gc boehm -skip-unused
-        run: pushd vls; v -gc boehm -skip-unused cmd/vls; popd
-
-      ## vsl
-      - name: Clone VSL
-        run: git clone --depth 1 https://github.com/vlang/vsl ~/.vmodules/vsl
-      - name: Install dependencies
-        run: sudo apt-get install --quiet -y --no-install-recommends gfortran liblapacke-dev libopenblas-dev libgc-dev
-      - name: Execute Tests using Pure V Backend
-        run: ~/.vmodules/vsl/bin/test
-      - name: Execute Tests using Pure V Backend with Pure V Math
-        run: ~/.vmodules/vsl/bin/test --use-cblas
-      - name: Execute Tests using Pure V Backend and Garbage Collection enabled
-        run: ~/.vmodules/vsl/bin/test --use-gc boehm
-      - name: Execute Tests using Pure V Backend with Pure V Math and Garbage Collection enabled
-        run: ~/.vmodules/vsl/bin/test --use-cblas --use-gc boehm
-
-      ## vtl
-      - name: Clone VTL
-        run: git clone --depth 1 https://github.com/vlang/vtl ~/.vmodules/vtl
-      - name: Install dependencies
-        run: sudo apt-get install --quiet -y --no-install-recommends gfortran liblapacke-dev libopenblas-dev libgc-dev
-      - name: Execute Tests using Pure V Backend
-        run: ~/.vmodules/vtl/bin/test
-      - name: Execute Tests using Pure V Backend with Pure V Math
-        run: ~/.vmodules/vtl/bin/test --use-cblas
-      - name: Execute Tests using Pure V Backend and Garbage Collection enabled
-        run: ~/.vmodules/vtl/bin/test --use-gc boehm
-      - name: Execute Tests using Pure V Backend with Pure V Math and Garbage Collection enabled
-        run: ~/.vmodules/vtl/bin/test --use-cblas --use-gc boehm
-
-      ## vab
-      - name: Clone vab
-        run: git clone --depth 1 https://github.com/vlang/vab
-      - name: Build vab
-        run: cd vab; ../v ./vab.v ; cd ..
-      - name: Build vab with -gc boehm -skip-unused
-        run: cd vab; ../v -gc boehm -skip-unused ./vab.v ; cd ..
-
-      ## gitly
-      - name: Install markdown
-        run: ./v install markdown
-      - name: Build Gitly
-        run: |
-          git clone --depth 1 https://github.com/vlang/gitly
-          cd gitly
-          ../v .
-          # ./gitly -ci_run
-          ../v -autofree .
-          ../v -o x tests/first_run.v
-          ./x
-          cd ..
-
-      ## vex
-      - name: Install Vex dependencies
-        run: sudo apt-get install --quiet -y libsodium-dev libssl-dev sqlite3 libsqlite3-dev
-      - name: Install Vex
-        run: mkdir -p ~/.vmodules/nedpals; git clone https://github.com/nedpals/vex ~/.vmodules/nedpals/vex
-      - name: Compile all of the Vex examples
-        run: ./v should-compile-all ~/.vmodules/nedpals/vex/examples
-      - name: Compile the simple Vex example with -gc boehm -skip-unused
-        run: ./v -gc boehm -skip-unused ~/.vmodules/nedpals/vex/examples/simple_example.v
-      - name: Run Vex Tests
-        run: ./v test ~/.vmodules/nedpals/vex
-
-      ## vpm modules
-      - name: Install UI through VPM
-        run: ./v install ui
-
-      ## libsodium
-      - name: Install libsodium-dev package
-        run: sudo apt-get install --quiet -y libsodium-dev
-      - name: Installl the libsodium wrapper through VPM
-        run: ./v install libsodium
-      - name: Test libsodium
-        run: VJOBS=1 ./v -stats test ~/.vmodules/libsodium
-
-      ## Go2V
-      - name: Clone & Build go2v
-        run: git clone --depth=1 https://github.com/vlang/go2v go2v/
-      - name: Build go2v
-        run: ./v go2v/
-      - name: Run tests for go2v
-        run: VJOBS=1 ./v -stats test go2v/
-
-      ## vlang/pdf
-      - name: Clone & Build vlang/pdf
-        run: git clone --depth=1 https://github.com/vlang/pdf ~/.vmodules/pdf/
-      - name: PDF examples should compile
-        run: ./v should-compile-all ~/.vmodules/pdf/examples

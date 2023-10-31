@@ -1,14 +1,14 @@
-vlib/v/checker/tests/cast_to_byte_err.vv:10:7: error: cannot cast type `string` to `byte`
+vlib/v/checker/tests/cast_to_byte_err.vv:10:7: error: cannot cast type `string` to `u8`
     8 | fn main() {
     9 |     // should be errors:
-   10 |     _ := byte('hello')
-      |          ~~~~~~~~~~~~~
-   11 |     _ := byte(SAlias('hello'))
+   10 |     _ := u8('hello')
+      |          ~~~~~~~~~~~
+   11 |     _ := u8(SAlias('hello'))
    12 |
-vlib/v/checker/tests/cast_to_byte_err.vv:11:7: error: cannot cast type `SAlias` to `byte`
+vlib/v/checker/tests/cast_to_byte_err.vv:11:7: error: cannot cast type `SAlias` to `u8`
     9 |     // should be errors:
-   10 |     _ := byte('hello')
-   11 |     _ := byte(SAlias('hello'))
-      |          ~~~~~~~~~~~~~~~~~~~~~
-   12 |
+   10 |     _ := u8('hello')
+   11 |     _ := u8(SAlias('hello'))
+      |          ~~~~~~~~~~~~~~~~~~~
+   12 | 
    13 |     // should be allowed:

@@ -1,0 +1,16 @@
+fn test_option(fail bool) !string {
+	if fail {
+		return error('false')
+	}
+	return 'fff'
+}
+
+fn main() {
+	// a := test_option(false) or { println(err) }
+	test_option(true) or {
+		// must be of the same type of the return
+		// type of the `test_option` function
+		123
+		// 'I break things'
+	}
+}

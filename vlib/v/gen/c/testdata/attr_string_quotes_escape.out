@@ -1,0 +1,7 @@
+FunctionData{
+    name: 'sample_method'
+    attrs: ['option: "1"']
+    args: []
+    return_type: 1
+    typ: 0
+}

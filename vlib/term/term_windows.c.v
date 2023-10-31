@@ -3,14 +3,14 @@ module term
 import os
 
 [typedef]
-struct C.COORD {
+pub struct C.COORD {
 mut:
 	X i16
 	Y i16
 }
 
 [typedef]
-struct C.SMALL_RECT {
+pub struct C.SMALL_RECT {
 mut:
 	Left   u16
 	Top    u16
@@ -21,7 +21,7 @@ mut:
 // win: CONSOLE_SCREEN_BUFFER_INFO
 // https://docs.microsoft.com/en-us/windows/console/console-screen-buffer-info-str
 [typedef]
-struct C.CONSOLE_SCREEN_BUFFER_INFO {
+pub struct C.CONSOLE_SCREEN_BUFFER_INFO {
 mut:
 	dwSize              C.COORD
 	dwCursorPosition    C.COORD
@@ -30,14 +30,14 @@ mut:
 	dwMaximumWindowSize C.COORD
 }
 
-union C.uChar {
+pub union C.uChar {
 mut:
 	UnicodeChar rune
-	AsciiChar   byte
+	AsciiChar   u8
 }
 
 [typedef]
-struct C.CHAR_INFO {
+pub struct C.CHAR_INFO {
 mut:
 	Char       C.uChar
 	Attributes u16
@@ -55,7 +55,7 @@ fn C.SetConsoleCursorPosition(handle C.HANDLE, coord C.COORD) bool
 // ref - https://docs.microsoft.com/en-us/windows/console/scrollconsolescreenbuffer
 fn C.ScrollConsoleScreenBuffer(output C.HANDLE, scroll_rect &C.SMALL_RECT, clip_rect &C.SMALL_RECT, des C.COORD, fill &C.CHAR_INFO) bool
 
-// get_terminal_size returns a number of colums and rows of terminal window.
+// get_terminal_size returns a number of columns and rows of terminal window.
 pub fn get_terminal_size() (int, int) {
 	if os.is_atty(1) > 0 && os.getenv('TERM') != 'dumb' {
 		info := C.CONSOLE_SCREEN_BUFFER_INFO{}
@@ -69,7 +69,7 @@ pub fn get_terminal_size() (int, int) {
 }
 
 // get_cursor_position returns a Coord containing the current cursor position
-pub fn get_cursor_position() ?Coord {
+pub fn get_cursor_position() !Coord {
 	mut res := Coord{}
 	if os.is_atty(1) > 0 && os.getenv('TERM') != 'dumb' {
 		info := C.CONSOLE_SCREEN_BUFFER_INFO{}
@@ -83,15 +83,21 @@ pub fn get_cursor_position() ?Coord {
 	return res
 }
 
-// set_terminal_title change the terminal title
+// set_terminal_title changes the terminal title
 pub fn set_terminal_title(title string) bool {
-	title_change := C.SetConsoleTitle(title.to_wide())
-	return title_change
+	wide_title := title.to_wide()
+	return C.SetConsoleTitle(wide_title)
+}
+
+// set_tab_title changes the terminal *tab title*, for terminal emulators that do support several tabs
+pub fn set_tab_title(title string) bool {
+	// TODO: investigate, whether there is an API for changing just the tab title on windows yet.
+	return set_terminal_title(title)
 }
 
 // clear clears current terminal screen.
 // Implementation taken from https://docs.microsoft.com/en-us/windows/console/clearing-the-screen#example-2.
-pub fn clear() {
+pub fn clear() bool {
 	hconsole := C.GetStdHandle(C.STD_OUTPUT_HANDLE)
 	mut csbi := C.CONSOLE_SCREEN_BUFFER_INFO{}
 	mut scrollrect := C.SMALL_RECT{}
@@ -100,7 +106,7 @@ pub fn clear() {
 
 	// Get the number of character cells in the current buffer.
 	if !C.GetConsoleScreenBufferInfo(hconsole, &csbi) {
-		return
+		return false
 	}
 	// Scroll the rectangle of the entire buffer.
 	scrollrect.Left = 0
@@ -124,4 +130,5 @@ pub fn clear() {
 	csbi.dwCursorPosition.Y = 0
 
 	C.SetConsoleCursorPosition(hconsole, csbi.dwCursorPosition)
+	return true
 }

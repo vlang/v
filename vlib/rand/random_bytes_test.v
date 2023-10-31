@@ -1,9 +1,9 @@
 import rand
 
-fn test_rand_bytes() ? {
+fn test_rand_bytes() {
 	mut randoms := []string{}
 	for i in 0 .. 100 {
-		x := rand.bytes(i) ?.hex()
+		x := rand.bytes(i)!.hex()
 		if x.len > 0 {
 			randoms << x
 		}
@@ -21,11 +21,11 @@ fn test_rand_bytes() ? {
 	dump(differences)
 }
 
-fn test_prng_rand_bytes() ? {
+fn test_prng_rand_bytes() {
 	mut randoms := []string{}
 	mut rng := rand.get_current_rng()
 	for i in 0 .. 100 {
-		x := rng.bytes(i) ?.hex()
+		x := rng.bytes(i)!.hex()
 		if x.len > 0 {
 			randoms << x
 		}
@@ -43,9 +43,9 @@ fn test_prng_rand_bytes() ? {
 	dump(differences)
 }
 
-fn test_rand_read() ? {
+fn test_rand_read() {
 	max := 50
-	mut a := []byte{len: max}
+	mut a := []u8{len: max}
 	mut differences := 0
 	for j in 1 .. max {
 		start := '00'.repeat(j)
@@ -72,9 +72,9 @@ fn test_rand_read() ? {
 	assert differences > 11700 // normally around 11758
 }
 
-fn test_prng_rand_read() ? {
+fn test_prng_rand_read() {
 	max := 50
-	mut a := []byte{len: max}
+	mut a := []u8{len: max}
 	mut differences := 0
 	mut rng := rand.get_current_rng()
 	for j in 1 .. max {

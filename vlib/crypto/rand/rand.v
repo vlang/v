@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -18,6 +18,6 @@ pub fn (err ReadError) msg() string {
 // See also rand.bytes(), if you do not need really random bytes,
 // but instead pseudo random ones, from a pseudo random generator
 // that can be seeded, and that is usually faster.
-pub fn bytes(bytes_needed int) ?[]byte {
+pub fn bytes(bytes_needed int) ![]u8 {
 	return read(bytes_needed)
 }

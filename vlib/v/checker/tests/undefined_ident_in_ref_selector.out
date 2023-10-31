@@ -1,0 +1,25 @@
+vlib/v/checker/tests/undefined_ident_in_ref_selector.vv:6:10: error: undefined ident: `line`
+    4 | 
+    5 | fn read() int {
+    6 |     return &line.len
+      |             ~~~~
+    7 | }
+vlib/v/checker/tests/undefined_ident_in_ref_selector.vv:6:15: error: `line` does not return a value
+    4 | 
+    5 | fn read() int {
+    6 |     return &line.len
+      |                  ~~~
+    7 | }
+vlib/v/checker/tests/undefined_ident_in_ref_selector.vv:6:9: error: cannot use `void` as type `int` in return argument
+    4 | 
+    5 | fn read() int {
+    6 |     return &line.len
+      |            ^
+    7 | }
+vlib/v/checker/tests/undefined_ident_in_ref_selector.vv:6:9: error: fn `read` expects you to return a non reference type `int`, but you are returning `void` instead
+    4 | 
+    5 | fn read() int {
+    6 |     return &line.len
+      |            ^
+    7 | }
+Details: use `return *pointer` instead of `return pointer`, and just `return value` instead of `return &value`

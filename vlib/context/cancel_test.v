@@ -1,3 +1,4 @@
+// vtest flaky: true
 // vtest retry: 3
 import context
 
@@ -12,7 +13,7 @@ fn test_with_cancel() {
 	// the internal routine started by gen.
 	gen := fn (mut ctx context.Context) chan int {
 		dst := chan int{}
-		go fn (mut ctx context.Context, dst chan int) {
+		spawn fn (mut ctx context.Context, dst chan int) {
 			mut v := 0
 			ch := ctx.done()
 			for {
@@ -31,7 +32,7 @@ fn test_with_cancel() {
 	}
 
 	mut background := context.background()
-	mut ctx, cancel := context.with_cancel(mut &background)
+	mut ctx, cancel := context.with_cancel(mut background)
 	defer {
 		cancel()
 	}

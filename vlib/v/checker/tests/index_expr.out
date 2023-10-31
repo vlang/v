@@ -67,3 +67,9 @@ vlib/v/checker/tests/index_expr.vv:20:8: error: negative index `-1`
    20 |     _ = a[-1..-2]
       |           ~~
    21 | }
+vlib/v/checker/tests/index_expr.vv:20:12: error: negative index `-2`
+   18 |     _ = a[-1..]
+   19 |     _ = a[..-1]
+   20 |     _ = a[-1..-2]
+      |               ~~
+   21 | }

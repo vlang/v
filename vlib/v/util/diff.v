@@ -4,7 +4,7 @@ import v.util.diff
 
 // iterates through a list of known diff cli commands
 // and returns it with basic options
-pub fn find_working_diff_command() ?string {
+pub fn find_working_diff_command() !string {
 	return diff.find_working_diff_command()
 }
 

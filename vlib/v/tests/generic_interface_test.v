@@ -1,43 +1,43 @@
-interface Gettable<T> {
+interface Gettable[T] {
 	get() T
 }
 
-struct Animal<T> {
+struct Animal[T] {
 	metadata T
 }
 
-fn (a Animal<T>) get<T>() T {
+fn (a Animal[T]) get[T]() T {
 	return a.metadata
 }
 
 // different struct implementing the same interface:
-struct Mineral<T> {
+struct Mineral[T] {
 	value T
 }
 
-fn (m Mineral<T>) get<T>() T {
+fn (m Mineral[T]) get[T]() T {
 	return m.value
 }
 
 ////
 
-fn extract<T>(xs []Gettable<T>) []T {
+fn extract[T](xs []Gettable[T]) []T {
 	return xs.map(it.get())
 }
 
-fn extract_basic<T>(xs Gettable<T>) T {
+fn extract_basic[T](xs Gettable[T]) T {
 	return xs.get()
 }
 
 fn test_extract() {
-	a := Animal<int>{123}
-	b := Animal<int>{456}
-	c := Mineral<int>{789}
+	a := Animal[int]{123}
+	b := Animal[int]{456}
+	c := Mineral[int]{789}
 
-	arr := [Gettable<int>(a), Gettable<int>(b), Gettable<int>(c)]
-	assert typeof(arr).name == '[]Gettable<int>'
+	arr := [Gettable[int](a), Gettable[int](b), Gettable[int](c)]
+	assert typeof(arr).name == '[]Gettable[int]'
 
-	x := extract<int>(arr)
+	x := extract[int](arr)
 	assert x == [123, 456, 789]
 }
 
@@ -54,29 +54,29 @@ fn test_extract() {
 // }
 
 fn test_extract_basic() {
-	a := Animal<int>{123}
-	b := Animal<int>{456}
-	c := Mineral<int>{789}
+	a := Animal[int]{123}
+	b := Animal[int]{456}
+	c := Mineral[int]{789}
 
 	aa := extract_basic(a)
 	bb := extract_basic(b)
 	cc := extract_basic(c)
-	assert '$aa | $bb | $cc' == '123 | 456 | 789'
+	assert '${aa} | ${bb} | ${cc}' == '123 | 456 | 789'
 }
 
 //////
-interface Iterator<T> {
+interface Iterator[T] {
 mut:
 	next() ?T
 }
 
-struct NumberIterator<T> {
+struct NumberIterator[T] {
 	limit T
 mut:
 	val T
 }
 
-fn (mut i NumberIterator<T>) next<T>() ?T {
+fn (mut i NumberIterator[T]) next[T]() ?T {
 	if i.val >= i.limit {
 		return none
 	}
@@ -85,7 +85,7 @@ fn (mut i NumberIterator<T>) next<T>() ?T {
 }
 
 fn test_iterator_implementation() {
-	mut i := Iterator<int>(NumberIterator<int>{
+	mut i := Iterator[int](NumberIterator[int]{
 		limit: 10
 	})
 	for {

@@ -119,3 +119,22 @@ fn test_for_in_fixed_array() {
 	arr := [1, 2, 3]!
 	calc_size(arr)
 }
+
+//
+
+fn print_fixed_arr(a [2]int) {
+	println('a: ${a}')
+	assert a == [1, 2]!
+	tmp := a
+	println('tmp: ${tmp}')
+	assert tmp == [1, 2]!
+}
+
+fn test_assignment_of_a_fixed_array_passed_as_parameter() {
+	arr := [1, 2]!
+	assert arr == [1, 2]!
+	tmp := arr
+	assert tmp == [1, 2]!
+	println(tmp) // [1, 2]
+	print_fixed_arr(arr)
+}

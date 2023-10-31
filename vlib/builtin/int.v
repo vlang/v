@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builtin
@@ -7,8 +7,10 @@ module builtin
 // ----- value to string functions -----
 //
 
-type u8 = byte
-type i32 = int
+// type u8 = byte
+type byte = u8
+
+// type i32 = int
 
 // ptr_str returns the address of `ptr` as a `string`.
 pub fn ptr_str(ptr voidptr) string {
@@ -16,14 +18,21 @@ pub fn ptr_str(ptr voidptr) string {
 	return buf1
 }
 
+// pub fn nil_str(x voidptr) string {
+// return 'nil'
+//}
+
+// str returns string equivalent of x
 pub fn (x isize) str() string {
 	return i64(x).str()
 }
 
+// str returns string equivalent of x
 pub fn (x usize) str() string {
 	return u64(x).str()
 }
 
+// str returns string equivalent of cptr
 pub fn (cptr &char) str() string {
 	return u64(cptr).hex()
 }
@@ -76,7 +85,7 @@ fn (nn int) str_l(max int) string {
 			buf[index] = `-`
 		}
 		diff := max - index
-		vmemmove(buf, buf + index, diff + 1)
+		vmemmove(buf, voidptr(buf + index), diff + 1)
 		/*
 		// === manual memory move for bare metal ===
 		mut c:= 0
@@ -108,6 +117,22 @@ pub fn (n i16) str() string {
 // Example: assert u16(20).str() == '20'
 pub fn (n u16) str() string {
 	return int(n).str_l(7)
+}
+
+pub fn (n i32) str() string {
+	return int(n).str_l(12)
+}
+
+// str returns the value of the `int` as a `string`.
+// Example: assert int(-2020).str() == '-2020'
+/*
+pub fn int_str(n int) string {
+	return i64(n).str()
+}
+*/
+
+pub fn (nn int) hex_full() string {
+	return u64_to_hex(u64(nn), 8)
 }
 
 // str returns the value of the `int` as a `string`.
@@ -147,7 +172,7 @@ pub fn (nn u32) str() string {
 			index++
 		}
 		diff := max - index
-		vmemmove(buf, buf + index, diff + 1)
+		vmemmove(buf, voidptr(buf + index), diff + 1)
 		return tos(buf, diff)
 
 		// return tos(memdup(&buf[0] + index, (max - index)), (max - index))
@@ -169,6 +194,9 @@ pub fn (nn i64) str() string {
 		mut d := i64(0)
 		if n == 0 {
 			return '0'
+		} else if n == i64(-9223372036854775807 - 1) {
+			// math.min_i64
+			return '-9223372036854775808'
 		}
 		max := 20
 		mut buf := malloc_noscan(max + 1)
@@ -201,7 +229,7 @@ pub fn (nn i64) str() string {
 			buf[index] = `-`
 		}
 		diff := max - index
-		vmemmove(buf, buf + index, diff + 1)
+		vmemmove(buf, voidptr(buf + index), diff + 1)
 		return tos(buf, diff)
 		// return tos(memdup(&buf[0] + index, (max - index)), (max - index))
 	}
@@ -238,7 +266,7 @@ pub fn (nn u64) str() string {
 			index++
 		}
 		diff := max - index
-		vmemmove(buf, buf + index, diff + 1)
+		vmemmove(buf, voidptr(buf + index), diff + 1)
 		return tos(buf, diff)
 		// return tos(memdup(&buf[0] + index, (max - index)), (max - index))
 	}
@@ -259,13 +287,13 @@ pub fn (b bool) str() string {
 
 // u64_to_hex converts the number `nn` to a (zero padded if necessary) hexadecimal `string`.
 [direct_array_access; inline]
-fn u64_to_hex(nn u64, len byte) string {
+fn u64_to_hex(nn u64, len u8) string {
 	mut n := nn
-	mut buf := [17]byte{}
+	mut buf := [17]u8{}
 	buf[len] = 0
 	mut i := 0
 	for i = len - 1; i >= 0; i-- {
-		d := byte(n & 0xF)
+		d := u8(n & 0xF)
 		buf[i] = if d < 10 { d + `0` } else { d + 87 }
 		n = n >> 4
 	}
@@ -274,13 +302,13 @@ fn u64_to_hex(nn u64, len byte) string {
 
 // u64_to_hex_no_leading_zeros converts the number `nn` to hexadecimal `string`.
 [direct_array_access; inline]
-fn u64_to_hex_no_leading_zeros(nn u64, len byte) string {
+fn u64_to_hex_no_leading_zeros(nn u64, len u8) string {
 	mut n := nn
-	mut buf := [17]byte{}
+	mut buf := [17]u8{}
 	buf[len] = 0
 	mut i := 0
 	for i = len - 1; i >= 0; i-- {
-		d := byte(n & 0xF)
+		d := u8(n & 0xF)
 		buf[i] = if d < 10 { d + `0` } else { d + 87 }
 		n = n >> 4
 		if n == 0 {
@@ -293,10 +321,10 @@ fn u64_to_hex_no_leading_zeros(nn u64, len byte) string {
 
 // hex returns the value of the `byte` as a hexadecimal `string`.
 // Note that the output is zero padded for values below 16.
-// Example: assert byte(2).hex() == '02'
-// Example: assert byte(15).hex() == '0f'
-// Example: assert byte(255).hex() == 'ff'
-pub fn (nn byte) hex() string {
+// Example: assert u8(2).hex() == '02'
+// Example: assert u8(15).hex() == '0f'
+// Example: assert u8(255).hex() == 'ff'
+pub fn (nn u8) hex() string {
 	if nn == 0 {
 		return '00'
 	}
@@ -405,7 +433,7 @@ pub fn (nn charptr) str() string {
 	return '0x' + u64(nn).hex()
 }
 
-pub fn (nn byte) hex_full() string {
+pub fn (nn u8) hex_full() string {
 	return u64_to_hex(u64(nn), 2)
 }
 
@@ -422,10 +450,6 @@ pub fn (nn i16) hex_full() string {
 }
 
 pub fn (nn u32) hex_full() string {
-	return u64_to_hex(u64(nn), 8)
-}
-
-pub fn (nn int) hex_full() string {
 	return u64_to_hex(u64(nn), 8)
 }
 
@@ -450,14 +474,14 @@ pub fn (nn u64) hex_full() string {
 
 // str returns the contents of `byte` as a zero terminated `string`.
 // See also: [`byte.ascii_str`](#byte.ascii_str)
-// Example: assert byte(111).str() == '111'
-pub fn (b byte) str() string {
+// Example: assert u8(111).str() == '111'
+pub fn (b u8) str() string {
 	return int(b).str_l(7)
 }
 
 // ascii_str returns the contents of `byte` as a zero terminated ASCII `string` character.
-// Example: assert byte(97).ascii_str() == 'a'
-pub fn (b byte) ascii_str() string {
+// Example: assert u8(97).ascii_str() == 'a'
+pub fn (b u8) ascii_str() string {
 	mut str := string{
 		str: unsafe { malloc_noscan(2) }
 		len: 1
@@ -471,9 +495,9 @@ pub fn (b byte) ascii_str() string {
 }
 
 // str_escaped returns the contents of `byte` as an escaped `string`.
-// Example: assert byte(0).str_escaped() == r'`\0`'
+// Example: assert u8(0).str_escaped() == r'`\0`'
 [manualfree]
-pub fn (b byte) str_escaped() string {
+pub fn (b u8) str_escaped() string {
 	str := match b {
 		0 {
 			r'`\0`'
@@ -519,14 +543,14 @@ pub fn (b byte) str_escaped() string {
 // Example: assert `H`.is_capital() == true
 // Example: assert `h`.is_capital() == false
 [inline]
-pub fn (c byte) is_capital() bool {
+pub fn (c u8) is_capital() bool {
 	return c >= `A` && c <= `Z`
 }
 
 // clone clones the byte array, and returns the newly created copy.
-pub fn (b []byte) clone() []byte {
-	mut res := []byte{len: b.len}
-	// mut res := make([]byte, {repeat:b.len})
+pub fn (b []u8) clone() []u8 {
+	mut res := []u8{len: b.len}
+	// mut res := make([]u8, {repeat:b.len})
 	for i in 0 .. b.len {
 		res[i] = b[i]
 	}
@@ -537,8 +561,8 @@ pub fn (b []byte) clone() []byte {
 // Note: the returned string will have .len equal to the array.len,
 // even when some of the array bytes were `0`.
 // If you want to get a V string, that contains only the bytes till
-// the first `0` byte, use `tos_clone(&byte(array.data))` instead.
-pub fn (b []byte) bytestr() string {
+// the first `0` byte, use `tos_clone(&u8(array.data))` instead.
+pub fn (b []u8) bytestr() string {
 	unsafe {
 		buf := malloc_noscan(b.len + 1)
 		vmemcpy(buf, b.data, b.len)
@@ -551,15 +575,15 @@ pub fn (b []byte) bytestr() string {
 // from utf8 to utf32 and return the result as a rune
 // it will produce an error if there are more than
 // four bytes in the array.
-pub fn (b []byte) byterune() ?rune {
-	r := b.utf8_to_utf32() ?
+pub fn (b []u8) byterune() !rune {
+	r := b.utf8_to_utf32()!
 	return rune(r)
 }
 
 // repeat returns a new string with `count` number of copies of the byte it was called on.
-pub fn (b byte) repeat(count int) string {
+pub fn (b u8) repeat(count int) string {
 	if count < 0 {
-		panic('byte.repeat: count is negative: $count')
+		panic('byte.repeat: count is negative: ${count}')
 	} else if count == 0 {
 		return ''
 	} else if count == 1 {
@@ -576,4 +600,9 @@ pub fn (b byte) repeat(count int) string {
 		ret[new_len] = 0
 	}
 	return unsafe { ret.vstring_with_len(new_len) }
+}
+
+// for atomic ints, internal
+fn _Atomic__int_str(x int) string {
+	return x.str()
 }

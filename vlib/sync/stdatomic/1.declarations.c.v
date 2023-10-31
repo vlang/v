@@ -5,8 +5,10 @@ module stdatomic
 
 $if windows {
 	#flag -I @VEXEROOT/thirdparty/stdatomic/win
+	#insert "@VEXEROOT/thirdparty/stdatomic/win/atomic.h"
 } $else {
 	#flag -I @VEXEROOT/thirdparty/stdatomic/nix
+	#insert "@VEXEROOT/thirdparty/stdatomic/nix/atomic.h"
 }
 
 $if linux {
@@ -48,7 +50,6 @@ $if linux {
 	}
 }
 
-#include <atomic.h>
 // The following functions are actually generic in C
 fn C.atomic_load_ptr(voidptr) voidptr
 fn C.atomic_store_ptr(voidptr, voidptr)

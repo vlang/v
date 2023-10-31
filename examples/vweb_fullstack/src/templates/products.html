@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<head>
+    <!--Let browser know website is optimized for mobile-->
+    <meta charset="UTF-8" name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- Compiled and minified CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+
+    <!-- Compiled and minified JavaScript -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+    
+    <!-- Material UI icons -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+
+    <title>Login</title>
+    @css 'src/templates/products.css'
+</head>
+<body>
+    <div>@include 'header_component.html'</div>
+    <h1 class="title">Hi, ${user.username}! you are online</h1>
+    <!-- <button onclick="document.location.reload(true)">Lala</button> -->
+      <form id="product_form" method='post' action=''>
+        <div class="row">
+            <div class="input-field col s2">
+              <input id="product_name" name='product_name'  type="text" class="validate">
+              <label class="active" for="product_name">product name</label>
+            </div>
+            <div style="margin-top: 10px;">
+               <input class="waves-effect waves-light btn-small" type='submit' onclick="addProduct()" formaction="javascript:void(0);" value='Register' required autofocus>
+            </div>
+          </div>
+         <!-- <div style="width: 20; height: 300;">
+            <input type='text' name='product_name' placeholder='product name' required autofocus>
+         </div> -->
+      </form>
+      <script type="text/javascript">
+        function getCookie(cookieName) {
+            let cookie = {};
+            document.cookie.split(';').forEach(function(el) {
+                let [key,value] = el.split('=');
+                cookie[key.trim()] = value;
+            })
+            return cookie[cookieName];
+        }
+         async function addProduct() {
+            const form = document.querySelector('#product_form');
+            const formData = new FormData(form);
+            console.log(getCookie("token"));
+            await fetch('/controller/product/create', {
+                 method: 'POST',
+                 body: formData,
+                 headers :{
+                    token: getCookie("token")
+                 }
+             })                
+             .then( async (response) => {
+                 if (response.status != 201) {
+                     throw await response.text()
+                 }
+                 return await response.text()
+             })
+             .then((data) => {
+                //  alert("User created successfully")
+                 document.location.reload(true)
+             })
+             .catch((error) => {
+                 alert(error);
+             });
+         }
+      </script>
+    <div class="products-table card-panel">
+        <table class="highlight striped responsive-table">
+            <thead>
+            <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Created date</th>
+            </tr>
+            </thead>
+
+            <tbody>
+                @for product in user.products
+                <tr>
+                    <td>${product.id}</td>
+                    <td>${product.name}</td>
+                    <td>${product.created_at}</td>
+                </tr>
+                @end
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>

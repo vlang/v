@@ -1,0 +1,15 @@
+type Expr = fn (int) int | int
+
+fn id(n int) int {
+	return n
+}
+
+fn f() Expr {
+	return id
+}
+
+fn main() {
+	mut m := map[string]Expr{}
+
+	m['f'] = f
+}

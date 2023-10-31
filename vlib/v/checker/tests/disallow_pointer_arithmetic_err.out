@@ -1,3 +1,16 @@
+vlib/v/checker/tests/disallow_pointer_arithmetic_err.vv:7:7: warning: pointer arithmetic is only allowed in `unsafe` blocks
+    5 |     _ := p * p //should be error
+    6 |     _ := p * 2 //should be error
+    7 |     _ := p + 5 //OK but only in unsafe block, r is *int
+      |          ~~~~~
+    8 |     _ := p - p //OK even in safe code, but n should be isize
+    9 | }
+vlib/v/checker/tests/disallow_pointer_arithmetic_err.vv:8:7: warning: pointer arithmetic is only allowed in `unsafe` blocks
+    6 |     _ := p * 2 //should be error
+    7 |     _ := p + 5 //OK but only in unsafe block, r is *int
+    8 |     _ := p - p //OK even in safe code, but n should be isize
+      |          ~~~~~
+    9 | }
 vlib/v/checker/tests/disallow_pointer_arithmetic_err.vv:4:7: error: invalid operator `+` to `&int` and `&int`
     2 |     x := 5
     3 |     p := &x
@@ -19,16 +32,3 @@ vlib/v/checker/tests/disallow_pointer_arithmetic_err.vv:6:7: error: invalid oper
       |          ~~~~~
     7 |     _ := p + 5 //OK but only in unsafe block, r is *int
     8 |     _ := p - p //OK even in safe code, but n should be isize
-vlib/v/checker/tests/disallow_pointer_arithmetic_err.vv:7:7: error: pointer arithmetic is only allowed in `unsafe` blocks
-    5 |     _ := p * p //should be error
-    6 |     _ := p * 2 //should be error
-    7 |     _ := p + 5 //OK but only in unsafe block, r is *int
-      |          ~~~~~
-    8 |     _ := p - p //OK even in safe code, but n should be isize
-    9 | }
-vlib/v/checker/tests/disallow_pointer_arithmetic_err.vv:8:7: error: pointer arithmetic is only allowed in `unsafe` blocks
-    6 |     _ := p * 2 //should be error
-    7 |     _ := p + 5 //OK but only in unsafe block, r is *int
-    8 |     _ := p - p //OK even in safe code, but n should be isize
-      |          ~~~~~
-    9 | }

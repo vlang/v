@@ -1,7 +1,7 @@
 [unsafe]
 fn memcpy(mut dest voidptr, src voidptr, len u32) voidptr {
-	mut d := unsafe { &byte(dest) }
-	s := unsafe { &byte(src) }
+	mut d := unsafe { &u8(dest) }
+	s := unsafe { &u8(src) }
 	mut l := len
 	for l > 0 {
 		l--

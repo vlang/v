@@ -1,7 +1,7 @@
-vlib/v/parser/tests/defer_propagate.vv:9:15: error: error propagation not allowed inside `defer` blocks
+vlib/v/parser/tests/defer_propagate.vv:9:14: error: error propagation not allowed inside `defer` blocks
     7 |     mut a := 0
     8 |     defer {
-    9 |         a = test1() ?
-      |                     ^
+    9 |         a = test1()?
+      |                    ^
    10 |     }
    11 |     return a

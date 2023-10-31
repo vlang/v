@@ -1,0 +1,9 @@
+fn main() {
+	a := 4 // comment1
+	 + 6 // comment2
+
+	b := 5 + // comment2
+	 6
+
+	c := 4 + 6 // comment3
+}

@@ -33,8 +33,8 @@ fn test_typeof_aggregate() {
 				rets << 'The type of `a` is `${typeof(a).name}`'
 			}
 			Bar, Baz, Bazaar {
-				println('The type of `a` is `${typeof(a).name}` and its text says $a.text')
-				rets << 'The type of `a` is `${typeof(a).name}` and its text says $a.text'
+				println('The type of `a` is `${typeof(a).name}` and its text says ${a.text}')
+				rets << 'The type of `a` is `${typeof(a).name}` and its text says ${a.text}'
 			}
 		}
 	}

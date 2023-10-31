@@ -4,7 +4,7 @@ struct Vec {
 }
 
 pub fn (a Vec) str() string {
-	return '{$a.x, $a.y}'
+	return '{${a.x}, ${a.y}}'
 }
 
 fn (a Vec) + (b Vec) Vec {

@@ -23,11 +23,11 @@ fn do_send(ch chan int) {
 fn test_channel_close_buffered_multi() {
 	ch := chan int{cap: 10}
 	resch := chan i64{}
-	go do_rec(ch, resch)
-	go do_rec(ch, resch)
-	go do_rec(ch, resch)
-	go do_rec(ch, resch)
-	go do_send(ch)
+	spawn do_rec(ch, resch)
+	spawn do_rec(ch, resch)
+	spawn do_rec(ch, resch)
+	spawn do_rec(ch, resch)
+	spawn do_send(ch)
 	mut sum := i64(0)
 	for _ in 0 .. 4 {
 		sum += <-resch
@@ -38,11 +38,11 @@ fn test_channel_close_buffered_multi() {
 fn test_channel_close_unbuffered_multi() {
 	ch := chan int{}
 	resch := chan i64{}
-	go do_rec(ch, resch)
-	go do_rec(ch, resch)
-	go do_rec(ch, resch)
-	go do_rec(ch, resch)
-	go do_send(ch)
+	spawn do_rec(ch, resch)
+	spawn do_rec(ch, resch)
+	spawn do_rec(ch, resch)
+	spawn do_rec(ch, resch)
+	spawn do_send(ch)
 	mut sum := i64(0)
 	for _ in 0 .. 4 {
 		sum += <-resch
@@ -53,8 +53,8 @@ fn test_channel_close_unbuffered_multi() {
 fn test_channel_close_buffered() {
 	ch := chan int{cap: 100}
 	resch := chan i64{}
-	go do_rec(ch, resch)
-	go do_send(ch)
+	spawn do_rec(ch, resch)
+	spawn do_send(ch)
 	mut sum := i64(0)
 	sum += <-resch
 	assert sum == i64(8000) * (8000 - 1) / 2
@@ -63,8 +63,8 @@ fn test_channel_close_buffered() {
 fn test_channel_close_unbuffered() {
 	ch := chan int{}
 	resch := chan i64{cap: 100}
-	go do_rec(ch, resch)
-	go do_send(ch)
+	spawn do_rec(ch, resch)
+	spawn do_send(ch)
 	mut sum := i64(0)
 	sum += <-resch
 	assert sum == i64(8000) * (8000 - 1) / 2
@@ -72,7 +72,7 @@ fn test_channel_close_unbuffered() {
 
 fn test_channel_send_close_buffered() {
 	ch := chan int{cap: 1}
-	t := go fn (ch chan int) {
+	t := spawn fn (ch chan int) {
 		ch <- 31
 		mut x := 45
 		ch <- 17 or { x = -133 }
@@ -90,7 +90,7 @@ fn test_channel_send_close_buffered() {
 fn test_channel_send_close_unbuffered() {
 	time.sleep(1 * time.second)
 	ch := chan int{}
-	t := go fn (ch chan int) {
+	t := spawn fn (ch chan int) {
 		mut x := 31
 		ch <- 177 or { x = -71 }
 

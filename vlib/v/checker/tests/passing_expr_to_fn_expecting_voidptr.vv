@@ -1,3 +1,5 @@
-import strconv
+fn myprintf(s string, x voidptr) {
 
-strconv.v_printf('%02.02f\n', 1.1)
+}
+
+myprintf('%02.02f\n', 1.1)

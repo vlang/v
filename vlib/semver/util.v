@@ -8,10 +8,9 @@ fn is_version_valid(input string) bool {
 }
 
 [inline]
-fn coerce_version(input string) ?Version {
+fn coerce_version(input string) !Version {
 	raw_ver := parse(input)
-	ver := raw_ver.coerce() or { return error('Invalid version for input "$input"') }
-	return ver
+	return raw_ver.coerce() or { return error('Invalid version for input "${input}"') }
 }
 
 [inline]

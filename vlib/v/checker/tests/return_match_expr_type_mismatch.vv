@@ -1,0 +1,34 @@
+struct Poss1 {}
+
+struct Poss2 {}
+
+type Possibilities = Poss1 | Poss2
+
+struct PossOwner {
+	pos Possibilities
+}
+
+struct SomeTuple {
+	p PossOwner
+	f Poss1
+}
+
+fn get_file(item PossOwner) ?SomeTuple {
+	return match item.pos {
+		Poss1 { item.pos }
+		else { error('not poss1') }
+	}
+}
+
+fn main() {
+	item := PossOwner{
+		pos: Poss1{}
+	}
+
+	r := get_file(item) or {
+		println('err=$err')
+		return
+	}
+
+	println('got $r')
+}

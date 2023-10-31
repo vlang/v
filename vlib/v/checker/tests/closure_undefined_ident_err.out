@@ -1,0 +1,14 @@
+vlib/v/checker/tests/closure_undefined_ident_err.vv:25:7: warning: unused variable: `method`
+   23 |     c := Custom{'noname'}
+   24 |
+   25 |     $for method in MyInterface.methods {
+      |          ~~~~~~
+   26 |         z := fn [c] () {
+   27 |             c.$method()
+vlib/v/checker/tests/closure_undefined_ident_err.vv:27:6: error: undefined ident `method` in the anonymous function
+   25 |     $for method in MyInterface.methods {
+   26 |         z := fn [c] () {
+   27 |             c.$method()
+      |               ~~~~~~~~~
+   28 |         }
+   29 |         z()

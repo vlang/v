@@ -10,7 +10,7 @@ struct Point {
 }
 
 fn (p Point) draw() string {
-	return 'Point($p.x,$p.y)'
+	return 'Point(${p.x},${p.y})'
 }
 
 fn to_string(d Drawer) {
@@ -21,7 +21,7 @@ interface Drawer {
 	draw() string
 }
 
-fn to_string_generic<T>(t T) {
+fn to_string_generic[T](t T) {
 	to_string(t)
 }
 

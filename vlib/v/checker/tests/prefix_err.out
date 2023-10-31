@@ -68,7 +68,7 @@ vlib/v/checker/tests/prefix_err.vv:14:6: error: cannot take the address of 1 + 2
       |      ^
    15 | _ := 12.3
    16 |
-vlib/v/checker/tests/prefix_err.vv:18:5: error: invalid indirect of `int`
+vlib/v/checker/tests/prefix_err.vv:18:5: error: invalid indirect of `int`, the type `int` is not a pointer
    16 | 
    17 | a := 1
    18 | _ = *a
@@ -82,13 +82,13 @@ vlib/v/checker/tests/prefix_err.vv:19:1: error: cannot push on non-channel `int`
       | ^
    20 | 
    21 | _ = ~true
-vlib/v/checker/tests/prefix_err.vv:21:5: error: operator ~ only defined on int types
+vlib/v/checker/tests/prefix_err.vv:21:5: error: operator `~` can only be used with integer types, but the value after `~` is of type `bool` instead
    19 | a <- 4
    20 | 
    21 | _ = ~true
       |     ^
    22 | _ = !4
-vlib/v/checker/tests/prefix_err.vv:22:5: error: ! operator can only be used with bool types
+vlib/v/checker/tests/prefix_err.vv:22:5: error: operator `!` can only be used with bool types, but the value after `!` is of type `int literal` instead
    20 | 
    21 | _ = ~true
    22 | _ = !4

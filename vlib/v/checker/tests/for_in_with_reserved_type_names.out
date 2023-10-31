@@ -1,0 +1,13 @@
+vlib/v/checker/tests/for_in_with_reserved_type_names.vv:2:6: error: invalid use of reserved type `rune` as value name
+    1 | fn main() {
+    2 |     for rune in 'runes' {
+      |         ~~~~
+    3 |         println(rune)
+    4 |     }
+vlib/v/checker/tests/for_in_with_reserved_type_names.vv:6:6: error: invalid use of reserved type `char` as key name
+    4 |     }
+    5 | 
+    6 |     for char, c in 'runes' {
+      |         ~~~~
+    7 |         println(c)
+    8 |         println(char)

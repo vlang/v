@@ -19,11 +19,11 @@ const (
 [heap]
 struct App {
 mut:
-	tui    &ui.Context = 0
+	tui    &ui.Context = unsafe { nil }
 	mode   Mode        = Mode.menu
 	width  int
 	height int
-	game   &Game = 0
+	game   &Game = unsafe { nil }
 	dt     f32
 	ticks  i64
 }
@@ -191,7 +191,7 @@ fn (mut a App) draw_game() {
 
 struct Player {
 mut:
-	game        &Game
+	game        &Game = unsafe { nil }
 	pos         Vec
 	racket_size int = 4
 	score       int
@@ -242,7 +242,7 @@ fn (mut b Ball) update(dt f32) {
 [heap]
 struct Game {
 mut:
-	app     &App = 0
+	app     &App = unsafe { nil }
 	players []Player
 	ball    Ball
 }
@@ -458,27 +458,25 @@ fn (mut g Game) free() {
 }
 
 // TODO Remove these wrapper functions when we can assign methods as callbacks
-fn init(x voidptr) {
-	mut app := &App(x)
+fn init(mut app App) {
 	app.init()
 }
 
-fn frame(x voidptr) {
-	mut app := &App(x)
+fn frame(mut app App) {
 	app.frame()
 }
 
-fn cleanup(x voidptr) {
-	mut app := &App(x)
-	app.free()
+fn cleanup(mut app App) {
+	unsafe {
+		app.free()
+	}
 }
 
 fn fail(error string) {
 	eprintln(error)
 }
 
-fn event(e &ui.Event, x voidptr) {
-	mut app := &App(x)
+fn event(e &ui.Event, mut app App) {
 	app.event(e)
 }
 
@@ -495,5 +493,5 @@ fn main() {
 		hide_cursor: true
 		frame_rate: 60
 	)
-	app.tui.run() ?
+	app.tui.run()!
 }

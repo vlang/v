@@ -1,0 +1,7 @@
+> sample.value:   1.0000000000000000 | sample.literal:   1.0000000000000000 | equal: true
+> sample.value:   0.3333333333333333 | sample.literal:   0.3333333333333300 | equal: true
+> sample.value:   2.5000000000000000 | sample.literal:   2.5000000000000000 | equal: true
+> sample.value:   0.6666666666666666 | sample.literal:   0.6666666666666600 | equal: true
+> sample.value:   0.1000000000000000 | sample.literal:   0.1000000000000000 | equal: true
+> sample.value:   3.1415926535897930 | sample.literal:   3.1415926535897930 | equal: true
+> FAILS: 0 .

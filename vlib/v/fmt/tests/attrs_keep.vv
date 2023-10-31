@@ -1,4 +1,4 @@
-struct AttrsWithEscpaedStringArgs {
+struct AttrsWithEscapedStringArgs {
 	dollar    string [foo: '\$var']
 	double_bs string [bar: '\\baz']
 }
@@ -27,6 +27,6 @@ struct User {
 
 [_allow_multiple_values]
 enum Example {
-	value1 = 1
+	value1       = 1
 	value1_again = 1
 }

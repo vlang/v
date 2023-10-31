@@ -1,0 +1,12 @@
+vlib/v/parser/tests/invalid_struct_decl_script_err.vv:1:1: notice: script mode started here
+    1 | mynum := 10
+      | ~~~~~
+    2 | 
+    3 | struct Abc {
+vlib/v/parser/tests/invalid_struct_decl_script_err.vv:3:1: error: all definitions must occur before code in script mode
+    1 | mynum := 10
+    2 | 
+    3 | struct Abc {
+      | ~~~~~~
+    4 |     x int
+    5 | }

@@ -11,11 +11,11 @@ struct Dog {
 }
 
 pub fn (cat Cat) say(message string) ? {
-	println('$message, meow')
+	println('${message}, meow')
 }
 
 pub fn (dog Dog) say(message string) ? {
-	println('$message, wooff')
+	println('${message}, wooff')
 }
 
 fn test_map_assign_array_of_interface() {

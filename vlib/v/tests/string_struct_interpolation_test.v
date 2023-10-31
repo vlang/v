@@ -10,7 +10,7 @@ fn (f Foo) baz() string {
 
 fn test_string_method_interpolation() {
 	foo := Foo{}
-	s := 'baz=$foo.baz()'
+	s := 'baz=${foo.baz()}'
 	assert s == 'baz=baz'
 }
 
@@ -32,7 +32,7 @@ fn test_map_of_ref_struct_string() {
 	mut ar := map[string]&MyStruct{}
 	ar['a'] = &MyStruct{}
 	println(ar)
-	assert '$ar'.contains('MyStruct')
+	assert '${ar}'.contains('MyStruct')
 	assert ('b' in ar) == false
 	assert ('a' in ar) == true
 	assert 'a' in ar

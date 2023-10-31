@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module builtin
 
@@ -6,7 +6,10 @@ module builtin
 // [if !nofloat]
 import strconv
 
-#include <float.h>
+$if !native {
+	#include <float.h>
+}
+
 /*
 -----------------------------------
 ----- f64 to string functions -----
@@ -19,10 +22,10 @@ pub fn (x f64) str() string {
 			f: x
 		}
 		if f.u == strconv.double_minus_zero {
-			return '-0'
+			return '-0.0'
 		}
 		if f.u == strconv.double_plus_zero {
-			return '0'
+			return '0.0'
 		}
 	}
 	abs_x := f64_abs(x)
@@ -37,11 +40,11 @@ pub fn (x f64) str() string {
 [inline]
 pub fn (x f64) strg() string {
 	if x == 0 {
-		return '0'
+		return '0.0'
 	}
 	abs_x := f64_abs(x)
 	if abs_x >= 0.0001 && abs_x < 1.0e6 {
-		return strconv.f64_to_str_l_no_dot(x)
+		return strconv.f64_to_str_l_with_dot(x)
 	} else {
 		return strconv.ftoa_64(x)
 	}
@@ -85,10 +88,10 @@ pub fn (x f32) str() string {
 			f: x
 		}
 		if f.u == strconv.single_minus_zero {
-			return '-0'
+			return '-0.0'
 		}
 		if f.u == strconv.single_plus_zero {
-			return '0'
+			return '0.0'
 		}
 	}
 	abs_x := f32_abs(x)
@@ -103,17 +106,17 @@ pub fn (x f32) str() string {
 [inline]
 pub fn (x f32) strg() string {
 	if x == 0 {
-		return '0'
+		return '0.0'
 	}
 	abs_x := f32_abs(x)
 	if abs_x >= 0.0001 && abs_x < 1.0e6 {
-		return strconv.f32_to_str_l_no_dot(x)
+		return strconv.f32_to_str_l_with_dot(x)
 	} else {
 		return strconv.ftoa_32(x)
 	}
 }
 
-// strsci returns the `f32` as a `string` in scientific notation with `digit_num` deciamals displayed, max 8 digits.
+// strsci returns the `f32` as a `string` in scientific notation with `digit_num` decimals displayed, max 8 digits.
 // Example: assert f32(1.234).strsci(3) == '1.234e+00'
 [inline]
 pub fn (x f32) strsci(digit_num int) string {
@@ -185,10 +188,18 @@ fn f64_min(a f64, b f64) f64 {
 pub fn (a f32) eq_epsilon(b f32) bool {
 	hi := f32_max(f32_abs(a), f32_abs(b))
 	delta := f32_abs(a - b)
-	if hi > f32(1.0) {
-		return delta <= hi * (4 * f32(C.FLT_EPSILON))
-	} else {
-		return (1 / (4 * f32(C.FLT_EPSILON))) * delta <= hi
+	$if native {
+		if hi > f32(1.0) {
+			return delta <= hi * (4 * 1.19209290e-7)
+		} else {
+			return (1 / (4 * 1.19209290e-7)) * delta <= hi
+		}
+	} $else {
+		if hi > f32(1.0) {
+			return delta <= hi * (4 * f32(C.FLT_EPSILON))
+		} else {
+			return (1 / (4 * f32(C.FLT_EPSILON))) * delta <= hi
+		}
 	}
 }
 
@@ -199,9 +210,17 @@ pub fn (a f32) eq_epsilon(b f32) bool {
 pub fn (a f64) eq_epsilon(b f64) bool {
 	hi := f64_max(f64_abs(a), f64_abs(b))
 	delta := f64_abs(a - b)
-	if hi > 1.0 {
-		return delta <= hi * (4 * f64(C.DBL_EPSILON))
-	} else {
-		return (1 / (4 * f64(C.DBL_EPSILON))) * delta <= hi
+	$if native {
+		if hi > 1.0 {
+			return delta <= hi * (4 * 2.2204460492503131e-16)
+		} else {
+			return (1 / (4 * 2.2204460492503131e-16)) * delta <= hi
+		}
+	} $else {
+		if hi > 1.0 {
+			return delta <= hi * (4 * f64(C.DBL_EPSILON))
+		} else {
+			return (1 / (4 * f64(C.DBL_EPSILON))) * delta <= hi
+		}
 	}
 }

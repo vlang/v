@@ -1,6 +1,6 @@
 module openssl
 
-// On Linux, prefer a localy built openssl, because it is
+// On Linux, prefer a locally built openssl, because it is
 // much more likely for it to be newer, than the system
 // openssl from libssl-dev. If there is no local openssl,
 // the next #pkgconfig flag is harmless, since it will still
@@ -8,25 +8,28 @@ module openssl
 #flag linux -I/usr/local/include/openssl
 #flag linux -L/usr/local/lib
 $if $pkgconfig('openssl') {
-	#pkgconfig openssl
+	#pkgconfig --cflags --libs openssl
+} $else {
+	#flag windows -l libssl -l libcrypto
+	#flag -lssl -lcrypto
+	#flag linux -ldl -lpthread
+	// MacPorts
+	#flag darwin -I/opt/local/include
+	#flag darwin -L/opt/local/lib
+	// Brew
+	#flag darwin -I/usr/local/opt/openssl/include
+	#flag darwin -L/usr/local/opt/openssl/lib
+	// brew on macos-12 (ci runner)
+	#flag darwin -I/usr/local/opt/openssl@3/include
+	#flag darwin -L/usr/local/opt/openssl@3/lib
+	// Brew arm64
+	#flag darwin -I /opt/homebrew/opt/openssl/include
+	#flag darwin -L /opt/homebrew/opt/openssl/lib
+	// Procursus
+	#flag darwin -I/opt/procursus/include
+	#flag darwin -L/opt/procursus/lib
 }
 
-#flag windows -l libssl -l libcrypto
-#flag -lssl -lcrypto
-#flag linux -ldl -lpthread
-// MacPorts
-#flag darwin -I/opt/local/include
-#flag darwin -L/opt/local/lib
-// Brew
-#flag darwin -I/usr/local/opt/openssl/include
-#flag darwin -L/usr/local/opt/openssl/lib
-// Brew arm64
-#flag darwin -I /opt/homebrew/opt/openssl/include
-#flag darwin -L /opt/homebrew/opt/openssl/lib
-// Procursus
-#flag darwin -I/opt/procursus/include
-#flag darwin -L/opt/procursus/lib
-//
 #include <openssl/rand.h> # Please install OpenSSL development headers
 #include <openssl/ssl.h>
 #include <openssl/err.h>
@@ -35,16 +38,32 @@ $if $pkgconfig('openssl') {
 pub struct C.SSL {
 }
 
-pub struct SSL_CTX {
+[typedef]
+pub struct C.BIO {
 }
 
-pub struct SSL {
+[typedef]
+pub struct C.SSL_METHOD {
 }
 
-pub struct SSL_METHOD {
+[typedef]
+pub struct C.X509 {
 }
 
-pub struct OPENSSL_INIT_SETTINGS {
+[typedef]
+pub struct C.SSL_CTX {
+}
+
+// The above C structs, have incomplete declarations in the OpenSSL headers.
+// For this reason, we have to prevent the automatic str() generation for them,
+// by adding manual implementations of their .str() methods, that are defined on
+// pointers to them:
+fn (s &C.SSL) str() string {
+	return 'C.SSL(0x${voidptr(s)})'
+}
+
+fn (c &C.SSL_CTX) str() string {
+	return 'C.SSL_CTX(0x${voidptr(c)})'
 }
 
 fn C.BIO_new_ssl_connect(ctx &C.SSL_CTX) &C.BIO
@@ -85,6 +104,8 @@ fn C.SSL_new(&C.SSL_CTX) &C.SSL
 fn C.SSL_set_fd(ssl &C.SSL, fd int) int
 
 fn C.SSL_connect(&C.SSL) int
+
+fn C.SSL_do_handshake(&C.SSL) int
 
 fn C.SSL_set_cipher_list(ctx &SSL, str &char) int
 

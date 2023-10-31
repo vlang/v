@@ -23,7 +23,7 @@ fn feistel(ll u32, rr u32, k0 u64, k1 u64) (u32, u32) {
 	return l, r
 }
 
-fn crypt_block(subkeys []u64, mut dst []byte, src []byte, decrypt bool) {
+fn crypt_block(subkeys []u64, mut dst []u8, src []u8, decrypt bool) {
 	mut b := binary.big_endian_u64(src)
 	b = permute_initial_block(b)
 
@@ -51,17 +51,17 @@ fn crypt_block(subkeys []u64, mut dst []byte, src []byte, decrypt bool) {
 }
 
 // Encrypt one block from src into dst, using the subkeys.
-pub fn encrypt_block(subkeys []u64, mut dst []byte, src []byte) {
+pub fn encrypt_block(subkeys []u64, mut dst []u8, src []u8) {
 	crypt_block(subkeys, mut dst, src, false)
 }
 
 // Decrypt one block from src into dst, using the subkeys.
-fn decrypt_block(subkeys []u64, mut dst []byte, src []byte) {
+fn decrypt_block(subkeys []u64, mut dst []u8, src []u8) {
 	crypt_block(subkeys, mut dst, src, true)
 }
 
 // general purpose function to perform DES block permutations
-fn permute_block(src u64, permutation []byte) u64 {
+fn permute_block(src u64, permutation []u8) u64 {
 	mut block := u64(0)
 	for position, n in permutation {
 		bit := (src >> u64(u8(n))) & 1

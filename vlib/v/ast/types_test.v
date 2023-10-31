@@ -37,30 +37,30 @@ fn test_flags() {
 	mut t := ast.new_type(ast.void_type_idx)
 	idx := t.idx()
 	nr_muls := t.nr_muls()
-	t = t.set_flag(ast.TypeFlag.optional)
-	assert t.has_flag(ast.TypeFlag.optional) == true
+	t = t.set_flag(ast.TypeFlag.option)
+	assert t.has_flag(ast.TypeFlag.option) == true
 	assert t.has_flag(ast.TypeFlag.variadic) == false
 	assert t.has_flag(ast.TypeFlag.generic) == false
 	t = t.set_flag(ast.TypeFlag.variadic)
-	assert t.has_flag(ast.TypeFlag.optional) == true
+	assert t.has_flag(ast.TypeFlag.option) == true
 	assert t.has_flag(ast.TypeFlag.variadic) == true
 	assert t.has_flag(ast.TypeFlag.generic) == false
 	t = t.set_flag(ast.TypeFlag.generic)
-	assert t.has_flag(ast.TypeFlag.optional) == true
+	assert t.has_flag(ast.TypeFlag.option) == true
 	assert t.has_flag(ast.TypeFlag.variadic) == true
 	assert t.has_flag(ast.TypeFlag.generic) == true
 	assert t.idx() == idx
 	assert t.nr_muls() == nr_muls
-	t = t.clear_flag(ast.TypeFlag.optional)
-	assert t.has_flag(ast.TypeFlag.optional) == false
+	t = t.clear_flag(ast.TypeFlag.option)
+	assert t.has_flag(ast.TypeFlag.option) == false
 	assert t.has_flag(ast.TypeFlag.variadic) == true
 	assert t.has_flag(ast.TypeFlag.generic) == true
 	t = t.clear_flag(ast.TypeFlag.variadic)
-	assert t.has_flag(ast.TypeFlag.optional) == false
+	assert t.has_flag(ast.TypeFlag.option) == false
 	assert t.has_flag(ast.TypeFlag.variadic) == false
 	assert t.has_flag(ast.TypeFlag.generic) == true
 	t = t.clear_flag(ast.TypeFlag.generic)
-	assert t.has_flag(ast.TypeFlag.optional) == false
+	assert t.has_flag(ast.TypeFlag.option) == false
 	assert t.has_flag(ast.TypeFlag.variadic) == false
 	assert t.has_flag(ast.TypeFlag.generic) == false
 	assert t.idx() == idx
@@ -74,8 +74,14 @@ fn test_derive() {
 	t = t.set_nr_muls(10)
 	mut t2 := ast.new_type(ast.i16_type_idx)
 	t2 = t2.derive(t)
-	assert t2.has_flag(ast.TypeFlag.optional) == false
+	assert t2.has_flag(ast.TypeFlag.option) == false
 	assert t2.has_flag(ast.TypeFlag.variadic) == true
 	assert t2.has_flag(ast.TypeFlag.generic) == true
 	assert t2.nr_muls() == 10
+}
+
+fn test_flip_signedness() {
+	assert ast.i8_type.flip_signedness() == ast.u8_type
+	assert ast.u16_type.flip_signedness() == ast.i16_type
+	assert ast.isize_type.flip_signedness() == ast.usize_type
 }

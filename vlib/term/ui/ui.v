@@ -7,13 +7,14 @@ import strings
 
 pub struct Color {
 pub:
-	r byte
-	g byte
-	b byte
+	r u8
+	g u8
+	b u8
 }
 
+// hex returns `c`'s RGB color in hex format.
 pub fn (c Color) hex() string {
-	return '#$c.r.hex()$c.g.hex()$c.b.hex()'
+	return '#${c.r.hex()}${c.g.hex()}${c.b.hex()}'
 }
 
 // Synchronized Updates spec, designed to avoid tearing during renders
@@ -54,7 +55,7 @@ pub fn (mut ctx Context) bold() {
 // set_cursor_position positions the cusor at the given coordinates `x`,`y`.
 [inline]
 pub fn (mut ctx Context) set_cursor_position(x int, y int) {
-	ctx.write('\x1b[$y;${x}H')
+	ctx.write('\x1b[${y};${x}H')
 }
 
 // show_cursor will make the cursor appear if it is not already visible
@@ -107,6 +108,7 @@ pub fn (mut ctx Context) reset() {
 	ctx.write('\x1b[0m')
 }
 
+// clear erases the entire terminal window and any saved lines.
 [inline]
 pub fn (mut ctx Context) clear() {
 	ctx.write('\x1b[2J\x1b[3J')
@@ -115,7 +117,8 @@ pub fn (mut ctx Context) clear() {
 // set_window_title sets the string `s` as the window title.
 [inline]
 pub fn (mut ctx Context) set_window_title(s string) {
-	print('\x1b]0;$s\x07')
+	print('\x1b]0;${s}\x07')
+	flush_stdout()
 }
 
 // draw_point draws a point at position `x`,`y`.

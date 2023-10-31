@@ -8,7 +8,7 @@ const base_digits = '0123456789abcdefghijklmnopqrstuvwxyz'
 pub fn format_int(n i64, radix int) string {
 	unsafe {
 		if radix < 2 || radix > 36 {
-			panic('invalid radix: $radix . It should be => 2 and <= 36')
+			panic('invalid radix: ${radix} . It should be => 2 and <= 36')
 		}
 		if n == 0 {
 			return '0'
@@ -41,11 +41,11 @@ pub fn format_int(n i64, radix int) string {
 
 // format_uint returns the string representation of the number n in base `radix`
 // for digit values > 10, this function uses the small latin leters a-z.
-[manualfree]
+[direct_array_access; manualfree]
 pub fn format_uint(n u64, radix int) string {
 	unsafe {
 		if radix < 2 || radix > 36 {
-			panic('invalid radix: $radix . It should be => 2 and <= 36')
+			panic('invalid radix: ${radix} . It should be => 2 and <= 36')
 		}
 		if n == 0 {
 			return '0'

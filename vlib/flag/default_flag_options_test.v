@@ -19,7 +19,7 @@ fn testsuite_end() {
 
 fn check_program(opts string, extension string) {
 	result := source.replace('.v', extension)
-	res := os.execute('${os.quoted_path(simple_flag_app_executable)} $opts')
+	res := os.execute('${os.quoted_path(simple_flag_app_executable)} ${opts}')
 	lines := os.read_lines(result) or { panic(err) }
 	assert res.exit_code == 0
 	assert res.output.split_into_lines() == lines

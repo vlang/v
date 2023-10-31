@@ -23,9 +23,9 @@ fn do_send_int(mut ch Channel) {
 	ch.close()
 }
 
-fn do_send_byte(mut ch Channel) {
+fn do_send_u8(mut ch Channel) {
 	for i in 0 .. 300 {
-		ii := byte(i)
+		ii := u8(i)
 		ch.push(&ii)
 	}
 	ch.close()
@@ -40,20 +40,20 @@ fn do_send_i64(mut ch Channel) {
 }
 
 fn test_select() {
-	mut chi := new_channel<int>(0)
-	mut chl := new_channel<i64>(1)
-	mut chb := new_channel<byte>(10)
-	mut recch := new_channel<i64>(0)
-	go do_rec_i64(mut recch)
-	go do_send_int(mut chi)
-	go do_send_byte(mut chb)
-	go do_send_i64(mut chl)
+	mut chi := new_channel[int](0)
+	mut chl := new_channel[i64](1)
+	mut chb := new_channel[u8](10)
+	mut recch := new_channel[i64](0)
+	spawn do_rec_i64(mut recch)
+	spawn do_send_int(mut chi)
+	spawn do_send_u8(mut chb)
+	spawn do_send_i64(mut chl)
 	mut channels := [chi, recch, chl, chb]
 	directions := [Direction.pop, .push, .pop, .pop]
 	mut sum := i64(0)
 	mut rl := i64(0)
 	mut ri := int(0)
-	mut rb := byte(0)
+	mut rb := u8(0)
 	mut sl := i64(0)
 	mut objs := [voidptr(&ri), &sl, &rl, &rb]
 	for j in 0 .. 1101 {
@@ -76,7 +76,7 @@ fn test_select() {
 				assert j == 1100
 			}
 			else {
-				println('got $idx (timeout)')
+				println('got ${idx} (timeout)')
 				assert false
 			}
 		}

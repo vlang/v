@@ -1,0 +1,7 @@
+fn f[T](v T) {
+	println(v)
+}
+
+fn main() {
+	f(none)
+}

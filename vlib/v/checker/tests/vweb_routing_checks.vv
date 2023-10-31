@@ -15,13 +15,13 @@ pub fn (mut app App) foo(a string) vweb.Result {
 	return app.html('works')
 }
 
-// segfault because path taks 0 vars and fcn takes 1 arg
+// segfault because path takes 0 vars and fcn takes 1 arg
 ['/bar']
 pub fn (mut app App) bar(a string) vweb.Result {
 	return app.html('works')
 }
 
-// no segfault, but it shouldnt compile
+// no segfault, but it shouldn't compile
 ['/cow/:low']
 pub fn (mut app App) cow() vweb.Result {
 	return app.html('works')

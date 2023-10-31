@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 import os
@@ -50,7 +50,7 @@ fn test_fmt() {
 		opath := ipath
 		expected_ocontent := os.read_file(opath) or {
 			fmt_bench.fail()
-			eprintln(fmt_bench.step_message_fail('cannot read from $vrelpath'))
+			eprintln(fmt_bench.step_message_fail('cannot read from ${vrelpath}'))
 			continue
 		}
 		table := ast.new_table()
@@ -58,7 +58,7 @@ fn test_fmt() {
 		result_ocontent := fmt.fmt(file_ast, table, fpref, false)
 		if expected_ocontent != result_ocontent {
 			fmt_bench.fail()
-			eprintln(fmt_bench.step_message_fail('file $vrelpath after formatting, does not look as expected.'))
+			eprintln(fmt_bench.step_message_fail('file ${vrelpath} after formatting, does not look as expected.'))
 			if ipath.ends_with(b2v_keep_path) {
 				continue
 			}
@@ -66,7 +66,7 @@ fn test_fmt() {
 				eprintln('>> sorry, but no working "diff" CLI command can be found')
 				continue
 			}
-			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_$ifilename')
+			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_${ifilename}')
 			os.write_file(vfmt_result_file, result_ocontent) or { panic(err) }
 			eprintln(diff.color_compare_files(diff_cmd, opath, vfmt_result_file))
 			continue
@@ -75,7 +75,7 @@ fn test_fmt() {
 		eprintln(fmt_bench.step_message_ok(vrelpath))
 	}
 	restore_bin2v_placeholder() or {
-		eprintln('failed restoring vbin2v_keep.vv placeholder: $err.msg()')
+		eprintln('failed restoring vbin2v_keep.vv placeholder: ${err.msg()}')
 	}
 	fmt_bench.stop()
 	eprintln(term.h_divider('-'))
@@ -90,17 +90,20 @@ fn prepare_bin2v_file(mut fmt_bench benchmark.Benchmark) {
 	fmt_bench.step()
 	write_bin2v_keep_content() or {
 		fmt_bench.fail()
-		eprintln(fmt_bench.step_message_fail('Failed preparing bin2v_keep.vv: $err.msg()'))
+		eprintln(fmt_bench.step_message_fail('Failed preparing bin2v_keep.vv: ${err.msg()}'))
 		return
 	}
 	fmt_bench.ok()
 	eprintln(fmt_bench.step_message_ok('Prepared bin2v_keep.vv'))
 }
 
-fn write_bin2v_keep_content() ? {
+fn write_bin2v_keep_content() ! {
+	// Note: do not put large files here; the goal of this particular test is
+	// just to guarantee that the output of `v bin2v` is invariant to vfmt, not
+	// to stress out bin2v or vfmt...
 	img0 := os.join_path('vlib', 'v', 'embed_file', 'tests', 'v.png')
-	img1 := os.join_path('tutorials', 'building_a_simple_web_blog_with_vweb', 'img', 'time.png')
-	os.rm(b2v_keep_path) ?
+	img1 := os.join_path('examples', 'assets', 'logo.png')
+	os.rm(b2v_keep_path)!
 	res := os.execute('${os.quoted_path(vexe)} bin2v -w ${os.quoted_path(b2v_keep_path)} ${os.quoted_path(img0)} ${os.quoted_path(img1)}')
 	if res.exit_code != 0 {
 		restore_bin2v_placeholder() or {}
@@ -108,8 +111,8 @@ fn write_bin2v_keep_content() ? {
 	}
 }
 
-fn restore_bin2v_placeholder() ? {
+fn restore_bin2v_placeholder() ! {
 	text := '// This is a placeholder file which will be filled with bin2v output before the test.
 // HINT: do NOT delete, move or rename this file!\n'
-	os.write_file(b2v_keep_path, text) ?
+	os.write_file(b2v_keep_path, text)!
 }

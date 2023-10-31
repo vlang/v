@@ -1,0 +1,10 @@
+fn main() {
+	i := 42
+	dump(i)
+	ir := &i
+	dump(ir)
+	irr := &ir
+	dump(irr)
+	irrr := &irr
+	dump(irrr)
+}

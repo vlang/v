@@ -1,0 +1,6 @@
+type A = int | string
+
+fn main() {
+	a := A(11)
+	println(a)
+}

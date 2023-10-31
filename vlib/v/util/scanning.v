@@ -1,12 +1,12 @@
 module util
 
 [inline]
-pub fn is_name_char(c byte) bool {
+pub fn is_name_char(c u8) bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_`
 }
 
 [inline]
-pub fn is_func_char(c byte) bool {
+pub fn is_func_char(c u8) bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_` || (c >= `0` && c <= `9`)
 }
 

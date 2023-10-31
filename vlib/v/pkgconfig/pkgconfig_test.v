@@ -38,7 +38,7 @@ fn test_samples() {
 			if pcname == 'dep-resolution-fail' {
 				continue
 			}
-			println('>>> err: $err')
+			println('>>> err: ${err}')
 			assert false
 			return
 		}

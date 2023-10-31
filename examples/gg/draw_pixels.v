@@ -5,7 +5,7 @@ import gx
 
 struct App {
 mut:
-	gg     &gg.Context
+	gg     &gg.Context = unsafe { nil }
 	pixels []f32
 }
 

@@ -9,11 +9,11 @@ fn vroot_path(relpath string) string {
 }
 
 fn vrun_ok(options string, path string) string {
-	cmd := '${os.quoted_path(@VEXE)} $options ${os.quoted_path(path)}'
+	cmd := '${os.quoted_path(@VEXE)} ${options} ${os.quoted_path(path)}'
 	res := os.execute(cmd)
 	if res.exit_code != 0 {
-		eprintln('> failing vrun cmd: $cmd')
-		eprintln('> output:\n$res.output')
+		eprintln('> failing vrun cmd: ${cmd}')
+		eprintln('> output:\n${res.output}')
 		assert res.exit_code == 0
 	}
 	return res.output
@@ -25,4 +25,7 @@ fn test_projects_should_run() {
 	}
 	res := vrun_ok('run', vroot_path('vlib/v/tests/testdata/enum_in_builtin') + os.path_separator)
 	assert res.trim_space() == 'v0'
+
+	res2 := vrun_ok('run', vroot_path('vlib/v/tests/testdata/modules_in_src/'))
+	assert res2.trim_space() == 'somemodule somemoduletwo'
 }

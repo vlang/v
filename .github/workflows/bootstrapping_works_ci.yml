@@ -1,0 +1,73 @@
+name: Bootstrapping works
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  push:
+    paths-ignore:
+      - "**.md"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+
+concurrency:
+  group: bootstrapping-works-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  bootstrapping-works:
+    if: >
+        github.event_name != 'push'
+        || github.event.ref == 'refs/heads/master'
+        || github.event.repository.full_name != 'vlang/v'
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      VFLAGS: -cc clang -no-parallel
+      B_CFLAGS: -g
+      B_LFLAGS: -lm -lpthread
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 10
+      - name: Build v
+        run: make
+      - name: v.c can be compiled and run with -os cross (bootstrapping works)
+        run: |
+          ls -la v vc/v.c
+          ./v -os cross -o vc/v.c cmd/v
+          cc $B_CFLAGS -o v_from_vc vc/v.c $B_LFLAGS
+          ls -lart v_from_vc
+          ./v_from_vc version
+          ./v_from_vc run examples/hello_world.v
+          ./v_from_vc -o v_from_vc_produced_native_v cmd/v
+          ./v_from_vc_produced_native_v run examples/hello_world.v
+          ### the next make invocation will simulate building V from scratch
+          make local=1
+          ls -la v vc/v.c v_from_vc v_from_vc_produced_native_v
+          ./v_from_vc_produced_native_v -os cross -o vc/v.c cmd/v
+          ### do it a second time, just in case:
+          clang $B_CFLAGS -o v_from_vc2 vc/v.c $B_LFLAGS
+          ls -lart v_from_vc2
+          ./v_from_vc2 version
+          ./v_from_vc2 run examples/hello_world.v
+          ./v_from_vc2 -o v_from_vc_produced_native_v2 cmd/v
+          ./v_from_vc_produced_native_v2 run examples/hello_world.v
+          make local=1
+          ls -la v vc/v.c
+          ls -la v_from_vc v_from_vc_produced_native_v
+          ls -la v_from_vc2 v_from_vc_produced_native_v2
+
+##      - name: Ensure v up works
+##        run: |
+##          ./v cmd/tools/oldv.v
+##          ./cmd/tools/oldv -v HEAD^^^
+##          cd ~/.cache/oldv/v_at_HEAD___/
+##          ./v version
+##          ./v -v up
+##          ./v version
+##          ./v  -o v2 cmd/v
+##          ./v2 -o v3 cmd/v

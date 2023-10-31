@@ -1,13 +1,7 @@
-module main
-
 interface Speaker {
 	say() string
 }
 
-fn test_todo() {}
-
-/*
-// QTODO
 struct ChatRoom {
 mut:
 	talkers map[string]Speaker
@@ -15,7 +9,7 @@ mut:
 
 fn new_room() &ChatRoom {
 	return &ChatRoom{
-		talkers: map[string]Speaker
+		talkers: map[string]Speaker{}
 	}
 }
 
@@ -25,11 +19,11 @@ fn (mut r ChatRoom) add(name string, s Speaker) {
 
 fn test_using_a_map_of_speaker_interfaces() {
 	mut room := new_room()
-	room.add('my cat', Cat{name: 'Tigga'} )
-	room.add('my dog', Dog{name: 'Pirin'} )
-	room.add('stray dog', Dog{name: 'Anoni'} )
-	room.add('me', Human{name: 'Bilbo'} )
-	room.add('she', Human{name: 'Maria'} )
+	room.add('my cat', Cat{ name: 'Tigga' })
+	room.add('my dog', Dog{ name: 'Pirin' })
+	room.add('stray dog', Dog{ name: 'Anoni' })
+	room.add('me', Human{ name: 'Bilbo' })
+	room.add('she', Human{ name: 'Maria' })
 	mut text := ''
 	for name, subject in room.talkers {
 		line := '${name:12s}: ${subject.say()}'
@@ -41,14 +35,26 @@ fn test_using_a_map_of_speaker_interfaces() {
 	assert text.contains(' says ')
 }
 
-//
+struct Cat {
+	name string
+}
 
-struct Cat { name string }
-fn (c &Cat) say() string { return '${c.name} meows "MEOW!"' }
+fn (c &Cat) say() string {
+	return '${c.name} meows "MEOW!"'
+}
 
-struct Dog { name string }
-fn (d &Dog) say() string { return '${d.name} barks "Bau Bau!"' }
+struct Dog {
+	name string
+}
 
-struct Human { name string }
-fn (h &Human) say() string { return '${h.name} says "Hello"' }
-*/
+fn (d &Dog) say() string {
+	return '${d.name} barks "Bau Bau!"'
+}
+
+struct Human {
+	name string
+}
+
+fn (h &Human) say() string {
+	return '${h.name} says "Hello"'
+}

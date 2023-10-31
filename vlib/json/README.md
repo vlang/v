@@ -25,10 +25,10 @@ fn main() {
 	println(x)
 	//
 	s := json.encode(x)
-	println('Employee x: $s')
-	assert s == '{"name":"Peter","age":28,"salary":95000.5,"title":2}'
+	println('Employee x: ${s}')
+	assert s == '{"name":"Peter","age":28,"salary":95000.5,"title":"worker"}'
 	//
-	y := json.decode(Employee, s) ?
+	y := json.decode(Employee, s)!
 	//
 	println(y)
 	assert y == x

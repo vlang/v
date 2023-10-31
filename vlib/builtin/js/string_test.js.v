@@ -1,6 +1,6 @@
 // import strings
 
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -404,6 +404,13 @@ fn test_contains_any() {
 	assert !''.contains_any('')
 }
 
+fn test_contains_only() {
+	assert '23885'.contains_only('0123456789')
+	assert '23gg885'.contains_only('01g23456789')
+	assert !'hello;'.contains_only('hello')
+	assert !''.contains_only('')
+}
+
 fn test_contains_any_substr() {
 	s := 'Some random text'
 	assert s.contains_any_substr(['false', 'not', 'rand'])
@@ -422,7 +429,7 @@ fn test_arr_contains() {
 fn test_to_num() {
 	s := '7'
 	assert s.int() == 7
-	assert s.byte() == 7
+	assert s.u8() == 7
 	assert s.u64() == 7
 	f := '71.5 hasdf'
 	// QTODO
@@ -713,7 +720,7 @@ fn test_raw() {
 	lines := raw.split('\n')
 	println(lines)
 	assert lines.len == 1
-	println('raw string: "$raw"')
+	println('raw string: "${raw}"')
 
 	raw2 := r'Hello V\0'
 	assert raw2[7] == `\\`
@@ -736,7 +743,7 @@ fn test_raw_with_quotes() {
 
 fn test_escape() {
 	a := 10
-	println("\"$a")
+	println("\"${a}")
 	// assert "\"$a" == '"10'
 }
 
@@ -761,9 +768,9 @@ fn test_raw_inter() {
 fn test_c_r() {
 	// This used to break because of r'' and c''
 	c := 42
-	println('$c')
+	println('${c}')
 	r := 50
-	println('$r')
+	println('${r}')
 }
 
 fn test_inter_before_comptime_if() {
@@ -778,23 +785,31 @@ fn test_inter_before_comptime_if() {
 fn test_double_quote_inter() {
 	a := 1
 	b := 2
-	println('$a $b')
-	assert '$a $b' == '1 2'
-	assert '$a $b' == '1 2'
+	println('${a} ${b}')
+	assert '${a} ${b}' == '1 2'
+	assert '${a} ${b}' == '1 2'
 }
 
-fn foo(b byte) byte {
+fn foo(b u8) u8 {
 	return b - 10
 }
 
-fn filter(b byte) bool {
+fn filter(b u8) bool {
 	return b != `a`
 }
 
-/*
 fn test_split_into_lines() {
-	line_content := 'Line'
-	text_crlf := '$line_content\r\n$line_content\r\n$line_content'
+	line_content := 'line content'
+
+	text_cr := '${line_content}\r${line_content}\r${line_content}'
+	lines_cr := text_cr.split_into_lines()
+
+	assert lines_cr.len == 3
+	for line in lines_cr {
+		assert line == line_content
+	}
+
+	text_crlf := '${line_content}\r\n${line_content}\r\n${line_content}'
 	lines_crlf := text_crlf.split_into_lines()
 
 	assert lines_crlf.len == 3
@@ -802,15 +817,31 @@ fn test_split_into_lines() {
 		assert line == line_content
 	}
 
-	text_lf := '$line_content\n$line_content\n$line_content'
+	text_lf := '${line_content}\n${line_content}\n${line_content}'
 	lines_lf := text_lf.split_into_lines()
 
 	assert lines_lf.len == 3
 	for line in lines_lf {
 		assert line == line_content
 	}
+
+	text_mixed := '${line_content}\n${line_content}\r${line_content}'
+	lines_mixed := text_mixed.split_into_lines()
+
+	assert lines_mixed.len == 3
+	for line in lines_mixed {
+		assert line == line_content
+	}
+
+	text_mixed_trailers := '${line_content}\n${line_content}\r${line_content}\r\r\r\n\n\n\r\r'
+	lines_mixed_trailers := text_mixed_trailers.split_into_lines()
+
+	assert lines_mixed_trailers.len == 9
+	for line in lines_mixed_trailers {
+		assert line == line_content || line == ''
+	}
 }
-*/
+
 fn test_string_literal_with_backslash() {
 	a := 'HelloWorld'
 	assert a == 'HelloWorld'

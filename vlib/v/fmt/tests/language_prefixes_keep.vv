@@ -8,6 +8,6 @@ fn main() {
 	JS.Math.abs(0)
 }
 
-fn object_ref_optional() ?&C.File {
+fn object_ref_option() ?&C.File {
 	return error('')
 }

@@ -13,36 +13,49 @@ import crypto.internal.subtle
 struct Cfb {
 mut:
 	b        Block
-	next     []byte
-	out      []byte
+	next     []u8
+	out      []u8
 	out_used int
 
 	decrypt bool
 }
 
+// free the resources taken by the Cfb `x`
+[unsafe]
+pub fn (mut x Cfb) free() {
+	$if prealloc {
+		return
+	}
+	unsafe {
+		// x.b.free() TODO add?
+		x.out.free()
+		x.next.free()
+	}
+}
+
 // new_cfb_encrypter returns a `Cfb` which encrypts with cipher feedback mode,
 // using the given Block. The iv must be the same length as the Block's block
 // size
-pub fn new_cfb_encrypter(b Block, iv []byte) Cfb {
+pub fn new_cfb_encrypter(b Block, iv []u8) Cfb {
 	return new_cfb(b, iv, false)
 }
 
 // new_cfb_decrypter returns a `Cfb` which decrypts with cipher feedback mode,
 // using the given Block. The iv must be the same length as the Block's block
 // size
-pub fn new_cfb_decrypter(b Block, iv []byte) Cfb {
+pub fn new_cfb_decrypter(b Block, iv []u8) Cfb {
 	return new_cfb(b, iv, true)
 }
 
-fn new_cfb(b Block, iv []byte, decrypt bool) Cfb {
+fn new_cfb(b Block, iv []u8, decrypt bool) Cfb {
 	block_size := b.block_size
 	if iv.len != block_size {
 		panic('cipher.new_cfb: IV length must be equal block size')
 	}
 	mut x := Cfb{
 		b: b
-		out: []byte{len: b.block_size}
-		next: []byte{len: b.block_size}
+		out: []u8{len: b.block_size}
+		next: []u8{len: b.block_size}
 		out_used: block_size
 		decrypt: decrypt
 	}
@@ -50,7 +63,7 @@ fn new_cfb(b Block, iv []byte, decrypt bool) Cfb {
 	return x
 }
 
-pub fn (mut x Cfb) xor_key_stream(mut dst_ []byte, src_ []byte) {
+pub fn (mut x Cfb) xor_key_stream(mut dst_ []u8, src_ []u8) {
 	unsafe {
 		mut dst := *dst_
 		mut src := src_

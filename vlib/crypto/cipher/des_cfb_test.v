@@ -29,25 +29,25 @@ fn test_des_cfb() {
 	println('test_des_cfb ok')
 }
 
-fn des_cfb_en(mut src []byte, key []byte, iv []byte) {
+fn des_cfb_en(mut src []u8, key []u8, iv []u8) {
 	block := des.new_cipher(key)
 	mut mode := cipher.new_cfb_encrypter(block, iv)
 	mode.xor_key_stream(mut src, src.clone())
 }
 
-fn des_cfb_de(mut src []byte, key []byte, iv []byte) {
+fn des_cfb_de(mut src []u8, key []u8, iv []u8) {
 	block := des.new_cipher(key)
 	mut mode := cipher.new_cfb_decrypter(block, iv)
 	mode.xor_key_stream(mut src, src.clone())
 }
 
-fn triple_des_cfb_en(mut src []byte, key []byte, iv []byte) {
+fn triple_des_cfb_en(mut src []u8, key []u8, iv []u8) {
 	block := des.new_triple_des_cipher(key)
 	mut mode := cipher.new_cfb_encrypter(block, iv)
 	mode.xor_key_stream(mut src, src.clone())
 }
 
-fn triple_des_cfb_de(mut src []byte, key []byte, iv []byte) {
+fn triple_des_cfb_de(mut src []u8, key []u8, iv []u8) {
 	block := des.new_triple_des_cipher(key)
 	mut mode := cipher.new_cfb_decrypter(block, iv)
 	mode.xor_key_stream(mut src, src.clone())

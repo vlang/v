@@ -18,12 +18,12 @@ fn test_const() {
 	assert d == (e / 2) + 7
 }
 
-// const optional test
+// const option test
 struct Foo {
 	name string = 'foo'
 }
 
-fn foo_decode(name string) ?Foo {
+fn foo_decode(name string) !Foo {
 	if name == 'baz' {
 		return error('baz is not allowed')
 	}
@@ -32,7 +32,7 @@ fn foo_decode(name string) ?Foo {
 
 pub const (
 	def = foo_decode('baz') or { Foo{} }
-	bar = foo_decode('bar') ?
+	bar = foo_decode('bar')!
 )
 
 fn test_opt_const() {

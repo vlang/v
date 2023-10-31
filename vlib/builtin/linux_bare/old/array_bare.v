@@ -27,7 +27,7 @@ fn (a array) get(i int) voidptr {
 	return a.data + i * a.element_size
 }
 
-// Private function. Used to implement assigment to the array element.
+// Private function. Used to implement assignment to the array element.
 fn (mut a array) set(i int, val voidptr) {
 	if i < 0 || i >= a.len {
 		panic('array.set: index out of range') // FIXME: (i == $i, a.len == $a.len)')

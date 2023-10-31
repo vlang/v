@@ -1,4 +1,4 @@
-vlib/v/checker/tests/struct_field_init_with_nobody_anon_fn_err.vv:7:7: error: cannot initialize the fn field with anonymous fn that does not have a body
+vlib/v/checker/tests/struct_field_init_with_nobody_anon_fn_err.vv:7:7: error: anonymous function must declare a body
     5 | fn main() {
     6 |     _ = App{
     7 |         cb: fn(x int)  // Note the missing `{}` (the function body) here

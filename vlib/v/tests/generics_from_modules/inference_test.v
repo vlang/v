@@ -3,10 +3,10 @@ module main
 import v.tests.generics_from_modules.genericmodule
 
 fn test_generic_function_from_another_module() {
-	v1 := genericmodule.take<int>(true, 10, 20)
+	v1 := genericmodule.take[int](true, 10, 20)
 	assert typeof(v1).name == 'int'
 	assert v1 == 10
-	v2 := genericmodule.take<int>(false, 10, 20)
+	v2 := genericmodule.take[int](false, 10, 20)
 	assert v2 == 20
 }
 

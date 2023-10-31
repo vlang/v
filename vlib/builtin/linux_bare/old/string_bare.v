@@ -64,8 +64,8 @@ pub fn tos3(s &char) string {
 		panic('tos3: nil string')
 	}
 	return string{
-		str: &byte(s)
-		len: strlen(&byte(s))
+		str: &u8(s)
+		len: strlen(&u8(s))
 	}
 }
 
@@ -133,7 +133,7 @@ pub fn i64_str(n0 i64, base int) string {
 }
 
 pub fn ptr_str(ptr voidptr) string {
-	buf := [16]byte{}
+	buf := [16]u8{}
 	hex := i64_tos(buf, 15, i64(ptr), 16)
 	res := '0x' + hex
 	return res

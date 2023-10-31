@@ -1,0 +1,19 @@
+type Flag = bool | f64 | int | string
+
+fn parse_percent(value string) f64 {
+	f_val := value.f64()
+	if f_val >= 0 && f_val <= 100 {
+		return f_val
+	} else {
+		return 0
+	}
+}
+
+fn parse_option(str string, validator fn (string) ?Flag) ?Flag {
+	return validator(str)
+}
+
+fn main() {
+	t := parse_option('45', parse_percent)?
+	println(t)
+}

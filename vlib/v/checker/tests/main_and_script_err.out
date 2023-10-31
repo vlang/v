@@ -1,5 +1,0 @@
-vlib/v/checker/tests/main_and_script_err.vv:1:1: error: function `main` is already defined
-    1 | fn main() {
-      | ^
-    2 |     println('main')
-    3 | }

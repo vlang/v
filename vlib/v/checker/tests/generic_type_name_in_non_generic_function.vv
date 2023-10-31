@@ -1,0 +1,8 @@
+fn main() {
+	c := u8(`D`)
+	if c >= A && c <= Z {
+		println('yes')
+	} else {
+		println('no')
+	}
+}

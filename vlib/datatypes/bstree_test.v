@@ -3,7 +3,7 @@ module datatypes
 // Make an insert of one element and check if
 // the bst is able to fin it.
 fn test_insert_into_bst_one() {
-	mut bst := BSTree<int>{}
+	mut bst := BSTree[int]{}
 	assert bst.insert(10) == true
 	assert bst.contains(10) == true
 	assert bst.contains(20) == false
@@ -12,7 +12,7 @@ fn test_insert_into_bst_one() {
 // Make the insert of more element inside the BST
 // and check if the BST is able to find all the values
 fn test_insert_into_bst_two() {
-	mut bst := BSTree<int>{}
+	mut bst := BSTree[int]{}
 	assert bst.insert(10)
 	assert bst.insert(20)
 	assert bst.insert(9)
@@ -26,7 +26,7 @@ fn test_insert_into_bst_two() {
 // Test if the in_order_traversals list return the correct
 // result array
 fn test_in_order_bst_visit_one() {
-	mut bst := BSTree<int>{}
+	mut bst := BSTree[int]{}
 	assert bst.insert(10)
 	assert bst.insert(20)
 	assert bst.insert(21)
@@ -38,7 +38,7 @@ fn test_in_order_bst_visit_one() {
 // Test if the post_order_bst_visit return the correct
 // result array
 fn test_post_order_bst_visit_one() {
-	mut bst := BSTree<int>{}
+	mut bst := BSTree[int]{}
 	assert bst.insert(10)
 	assert bst.insert(20)
 	assert bst.insert(21)
@@ -49,7 +49,7 @@ fn test_post_order_bst_visit_one() {
 
 // Test if the pre_order_traversal return the correct result array
 fn test_pre_order_bst_visit_one() {
-	mut bst := BSTree<int>{}
+	mut bst := BSTree[int]{}
 	assert bst.insert(10)
 	assert bst.insert(20)
 	assert bst.insert(21)
@@ -61,7 +61,7 @@ fn test_pre_order_bst_visit_one() {
 // After many insert check if we are abe to get the correct
 // right and left value of the root.
 fn test_get_left_root() {
-	mut bst := BSTree<int>{}
+	mut bst := BSTree[int]{}
 	assert bst.insert(10)
 	assert bst.insert(20)
 	assert bst.insert(21)
@@ -76,7 +76,7 @@ fn test_get_left_root() {
 
 // Check if BST panic if we call some operation on an empty BST.
 fn test_get_left_on_empty_bst() {
-	mut bst := BSTree<int>{}
+	mut bst := BSTree[int]{}
 
 	left_val := bst.to_left(10) or { -1 }
 	assert left_val == -1
@@ -86,9 +86,9 @@ fn test_get_left_on_empty_bst() {
 }
 
 // Check the remove operation if it is able to remove
-// all elements required, and mantains the BST propriety.
+// all elements required, and maintains the BST propriety.
 fn test_remove_from_bst_one() {
-	mut bst := BSTree<int>{}
+	mut bst := BSTree[int]{}
 	assert bst.insert(10)
 	assert bst.insert(20)
 	assert bst.insert(21)
@@ -102,7 +102,7 @@ fn test_remove_from_bst_one() {
 // Another test n the remove BST, this remove an intermidia node
 // that it is a triky operation.
 fn test_remove_from_bst_two() {
-	mut bst := BSTree<int>{}
+	mut bst := BSTree[int]{}
 	assert bst.insert(10)
 	assert bst.insert(20)
 	assert bst.insert(21)
@@ -115,7 +115,8 @@ fn test_remove_from_bst_two() {
 
 // check if we are able to get the max from the BST.
 fn test_get_max_in_bst() {
-	mut bst := BSTree<int>{}
+	mut bst := BSTree[int]{}
+	assert (bst.max() or { -1 }) == -1
 	assert bst.insert(10)
 	assert bst.insert(20)
 	assert bst.insert(21)
@@ -126,7 +127,8 @@ fn test_get_max_in_bst() {
 
 // check if we are able to get the min from the BST.
 fn test_get_min_in_bst() {
-	mut bst := BSTree<int>{}
+	mut bst := BSTree[int]{}
+	assert (bst.min() or { -1 }) == -1
 	assert bst.insert(10)
 	assert bst.insert(20)
 	assert bst.insert(21)

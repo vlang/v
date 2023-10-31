@@ -1,4 +1,4 @@
-vlib/v/parser/tests/closure_not_used.vv:3:11: error: unused variable: `a`
+vlib/v/parser/tests/closure_not_used.vv:3:11: warning: unused variable: `a`
     1 | fn my_fn() {
     2 |     a := 1
     3 |     f := fn [a] () {

@@ -1,0 +1,16 @@
+type AnonOptionalFun = fn () !
+
+// do_test is used to test functionality
+pub fn do_test(cb AnonOptionalFun) {
+	cb() or { panic(err) }
+}
+
+fn foo () ! {
+}
+
+fn main() {
+	test := fn () {
+		foo() or { return }
+	}
+	do_test(test)
+}

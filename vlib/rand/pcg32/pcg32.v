@@ -1,9 +1,10 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module pcg32
 
 import rand.seed
+import rand.buffer
 
 pub const seed_len = 4
 
@@ -11,11 +12,10 @@ pub const seed_len = 4
 // https://github.com/imneme/pcg-c-basic/blob/master/pcg_basic.c, and
 // https://github.com/imneme/pcg-c-basic/blob/master/pcg_basic.h
 pub struct PCG32RNG {
+	buffer.PRNGBuffer
 mut:
-	state      u64 = u64(0x853c49e6748fea9b) ^ seed.time_seed_64()
-	inc        u64 = u64(0xda3e39cb94b95bdb) ^ seed.time_seed_64()
-	bytes_left int
-	buffer     u32
+	state u64 = u64(0x853c49e6748fea9b) ^ seed.time_seed_64()
+	inc   u64 = u64(0xda3e39cb94b95bdb) ^ seed.time_seed_64()
 }
 
 // seed seeds the PCG32RNG with 4 `u32` values.
@@ -39,16 +39,16 @@ pub fn (mut rng PCG32RNG) seed(seed_data []u32) {
 
 // byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
 [inline]
-fn (mut rng PCG32RNG) byte() byte {
+pub fn (mut rng PCG32RNG) u8() u8 {
 	if rng.bytes_left >= 1 {
 		rng.bytes_left -= 1
-		value := byte(rng.buffer)
+		value := u8(rng.buffer)
 		rng.buffer >>= 8
 		return value
 	}
 	rng.buffer = rng.u32()
 	rng.bytes_left = 3
-	value := byte(rng.buffer)
+	value := u8(rng.buffer)
 	rng.buffer >>= 8
 	return value
 }
@@ -70,7 +70,7 @@ pub fn (mut rng PCG32RNG) u16() u16 {
 
 // u32 returns a pseudorandom unsigned `u32`.
 [inline]
-fn (mut rng PCG32RNG) u32() u32 {
+pub fn (mut rng PCG32RNG) u32() u32 {
 	oldstate := rng.state
 	rng.state = oldstate * (6364136223846793005) + rng.inc
 	xorshifted := u32(((oldstate >> u64(18)) ^ oldstate) >> u64(27))

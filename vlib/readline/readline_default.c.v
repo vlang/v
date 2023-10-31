@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
@@ -9,6 +9,12 @@
 module readline
 
 import os
+
+// termios definitions
+// https://github.com/openbsd/src/blob/master/sys/sys/termios.h
+// https://github.com/vocho/openqnx/blob/master/trunk/lib/c/public/termios.h
+// https://github.com/omniti-labs/illumos-omnios/blob/master/usr/src/uts/common/sys/termios.h
+// https://github.com/torvalds/linux/blob/master/include/uapi/asm-generic/termbits.h
 
 struct Termios {
 }
@@ -23,7 +29,7 @@ struct Termios {
 // an error if the line is empty.
 // The `prompt` `string` is output as a prefix text for the input capturing.
 // read_line_utf8 is the main method of the `readline` module and `Readline` struct.
-pub fn (mut r Readline) read_line_utf8(prompt string) ?[]rune {
+pub fn (mut r Readline) read_line_utf8(prompt string) ![]rune {
 	r.current = []rune{}
 	r.cursor = 0
 	r.prompt = prompt
@@ -49,8 +55,8 @@ pub fn (mut r Readline) read_line_utf8(prompt string) ?[]rune {
 
 // read_line does the same as `read_line_utf8` but returns user input as a `string`.
 // (As opposed to `[]rune` returned by `read_line_utf8`).
-pub fn (mut r Readline) read_line(prompt string) ?string {
-	s := r.read_line_utf8(prompt) ?
+pub fn (mut r Readline) read_line(prompt string) !string {
+	s := r.read_line_utf8(prompt)!
 	return s.string()
 }
 
@@ -63,9 +69,9 @@ pub fn (mut r Readline) read_line(prompt string) ?string {
 // read_line_utf8 is the main method of the `readline` module and `Readline` struct.
 // NOTE that this version of `read_line_utf8` is a standalone function without
 // persistent functionalities (e.g. history).
-pub fn read_line_utf8(prompt string) ?[]rune {
+pub fn read_line_utf8(prompt string) ![]rune {
 	mut r := Readline{}
-	s := r.read_line_utf8(prompt) ?
+	s := r.read_line_utf8(prompt)!
 	return s
 }
 
@@ -73,8 +79,8 @@ pub fn read_line_utf8(prompt string) ?[]rune {
 // (As opposed to `[]rune` as returned by `read_line_utf8`).
 // NOTE that this version of `read_line` is a standalone function without
 // persistent functionalities (e.g. history).
-pub fn read_line(prompt string) ?string {
+pub fn read_line(prompt string) !string {
 	mut r := Readline{}
-	s := r.read_line(prompt) ?
+	s := r.read_line(prompt)!
 	return s
 }

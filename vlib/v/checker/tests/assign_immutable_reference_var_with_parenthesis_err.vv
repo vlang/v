@@ -1,0 +1,16 @@
+struct MyChar {
+	c string
+}
+
+const a_char = MyChar{
+	c: 'a'
+}
+
+fn foo() {
+	mut a := &(a_char)
+	mut b := &((a_char))
+	mut c := &((((a_char))))
+	println(a)
+	println(b)
+	println(c)
+}

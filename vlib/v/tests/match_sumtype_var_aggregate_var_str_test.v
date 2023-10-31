@@ -15,8 +15,8 @@ fn test_match_sumtype_var_aggregate_print_var() {
 	ret2 := match f2 {
 		u64, i64 {
 			println(f2)
-			println('$f2')
-			'$f2'
+			println('${f2}')
+			'${f2}'
 		}
 	}
 	assert ret2 == '-18'

@@ -1,0 +1,31 @@
+Tool for bridging autocompletion between various shells and v
+
+Usage:
+  v complete [options] [SUBCMD] QUERY...
+
+Supported shells:
+  bash, fish, zsh, powershell
+
+Examples:
+  Echo auto-detected shell install script to STDOUT
+    v complete
+  Echo specific shell install script to STDOUT
+    v complete setup bash
+  Auto complete input `v tes`*USER PUSHES TAB* (in Bash compatible format).
+  This is not meant for manual invocation - it's called by the relevant
+  shell via the script installed with `v complete` or `v complete setup SHELL`.
+    v complete bash v tes
+
+Options:
+  -h, --help                Show this help text.
+
+SUBCMD:
+  setup     : setup [SHELL]  Returns the code for completion setup for SHELL
+  bash      : [QUERY]        Returns Bash compatible completion code with
+                             completions computed from QUERY
+  fish      : [QUERY]        Returns Fish compatible completion code with
+                             completions computed from QUERY
+  zsh       : [QUERY]        Returns ZSH  compatible completion code with
+                             completions computed from QUERY
+  powershell: [QUERY]        Returns PowerShell compatible completion code with
+                             completions computed from QUERY

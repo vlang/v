@@ -1,5 +1,7 @@
 module audio
 
+import sokol.memory
+
 $if linux {
 	// provide a nicer error for the user that does not have ALSA installed
 	#include <alsa/asoundlib.h> # Please install the `libasound2-dev` package
@@ -53,6 +55,21 @@ pub fn (x FnStreamingCBWithUserData) str() string {
 	return '&FnStreamingCBWithUserData{ ${ptr_str(x)} }'
 }
 
+[typedef]
+pub struct C.saudio_allocator {
+pub mut:
+	alloc_fn  memory.FnAllocatorAlloc
+	free_fn   memory.FnAllocatorFree
+	user_data voidptr
+}
+
+[typedef]
+pub struct C.saudio_logger {
+pub mut:
+	func      memory.FnLogCb
+	user_data voidptr
+}
+
 // only one of `stream_cb` or `stream_userdata_cb` should be used
 //
 // default values (internal to sokol C library):
@@ -64,6 +81,7 @@ pub fn (x FnStreamingCBWithUserData) str() string {
 // | buffer_frames | 2048     | buffer size in frames, larger is more latency, smaller means higher CPU |
 // | packet_frames | 128      | push model only, number of frames that will be pushed in each packet |
 // | num_packets   | 64       | for push model only, number of packets in the backend ringbuffer |
+[typedef]
 pub struct C.saudio_desc {
 	sample_rate        int
 	num_channels       int
@@ -72,7 +90,10 @@ pub struct C.saudio_desc {
 	num_packets        int
 	stream_cb          FNStreamingCB
 	stream_userdata_cb FnStreamingCBWithUserData
-	user_data          voidptr
+pub mut:
+	user_data voidptr
+	allocator C.saudio_allocator
+	logger    C.saudio_logger
 }
 
 fn C.saudio_setup(desc &C.saudio_desc)
@@ -98,8 +119,20 @@ fn C.saudio_expect() int
 fn C.saudio_push(frames &f32, num_frames int) int
 
 // setup - setup sokol-audio
-pub fn setup(desc C.saudio_desc) {
-	C.saudio_setup(&desc)
+pub fn setup(desc &C.saudio_desc) {
+	if desc.allocator.alloc_fn == unsafe { nil } && desc.allocator.free_fn == unsafe { nil } {
+		unsafe {
+			desc.allocator.alloc_fn = memory.salloc
+			desc.allocator.free_fn = memory.sfree
+			desc.allocator.user_data = voidptr(0x100a0d10)
+		}
+	}
+	if desc.logger.func == unsafe { nil } {
+		unsafe {
+			desc.logger.func = memory.slog
+		}
+	}
+	C.saudio_setup(desc)
 }
 
 // shutdown - shutdown sokol-audio

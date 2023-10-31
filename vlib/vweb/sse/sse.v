@@ -24,7 +24,7 @@ import strings
 pub struct SSEConnection {
 pub mut:
 	headers       map[string]string
-	conn          &net.TcpConn
+	conn          &net.TcpConn  = unsafe { nil }
 	write_timeout time.Duration = 600 * time.second
 }
 
@@ -42,7 +42,7 @@ pub fn new_connection(conn &net.TcpConn) &SSEConnection {
 }
 
 // sse_start is used to send the start of a Server Side Event response.
-pub fn (mut sse SSEConnection) start() ? {
+pub fn (mut sse SSEConnection) start() ! {
 	sse.conn.set_write_timeout(sse.write_timeout)
 	mut start_sb := strings.new_builder(512)
 	start_sb.write_string('HTTP/1.1 200')
@@ -50,7 +50,7 @@ pub fn (mut sse SSEConnection) start() ? {
 	start_sb.write_string('\r\nCache-Control: no-cache')
 	start_sb.write_string('\r\nContent-Type: text/event-stream')
 	for k, v in sse.headers {
-		start_sb.write_string('\r\n$k: $v')
+		start_sb.write_string('\r\n${k}: ${v}')
 	}
 	start_sb.write_string('\r\n')
 	sse.conn.write(start_sb) or { return error('could not start sse response') }
@@ -58,20 +58,20 @@ pub fn (mut sse SSEConnection) start() ? {
 
 // send_message sends a single message to the http client that listens for SSE.
 // It does not close the connection, so you can use it many times in a loop.
-pub fn (mut sse SSEConnection) send_message(message SSEMessage) ? {
+pub fn (mut sse SSEConnection) send_message(message SSEMessage) ! {
 	mut sb := strings.new_builder(512)
 	if message.id != '' {
-		sb.write_string('id: $message.id\n')
+		sb.write_string('id: ${message.id}\n')
 	}
 	if message.event != '' {
-		sb.write_string('event: $message.event\n')
+		sb.write_string('event: ${message.event}\n')
 	}
 	if message.data != '' {
-		sb.write_string('data: $message.data\n')
+		sb.write_string('data: ${message.data}\n')
 	}
 	if message.retry != 0 {
-		sb.write_string('retry: $message.retry\n')
+		sb.write_string('retry: ${message.retry}\n')
 	}
 	sb.write_string('\n')
-	sse.conn.write(sb) ?
+	sse.conn.write(sb)!
 }

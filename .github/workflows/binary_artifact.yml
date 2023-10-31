@@ -17,15 +17,17 @@ jobs:
       - uses: actions/checkout@v1
       - name: Compile
         run: |
-          make -j4
-          ./v -cc $CC -prod -o v cmd/v
-          ./v -cc $CC -prod cmd/tools/vup.v
-          ./v -cc $CC -prod cmd/tools/vdoctor.v
+          make
+          ./v -skip-unused -cc $CC -prod -o v cmd/v
+          ./v -skip-unused -cc $CC -prod cmd/tools/vup.v
+          ./v -skip-unused -cc $CC -prod cmd/tools/vdoctor.v
       - name: Remove excluded
         run: |
-           rm -rf .git
+           rm -rf .git/
+           rm -rf thirdparty/tcc/.git/
            rm -rf vc/
            rm -rf v_old
+           rm -rf vlib/v/tests/bench/gcboehm/*.svg
       - name: Create ZIP archive
         run: |
            cd ..
@@ -33,7 +35,7 @@ jobs:
            mv $ZIPNAME v/
            cd v/
       - name: Create artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: linux
           path: v_linux.zip
@@ -47,15 +49,17 @@ jobs:
       - uses: actions/checkout@v1
       - name: Compile
         run: |
-          make -j4
-          ./v -cc $CC -prod -o v cmd/v
-          ./v -cc $CC -prod cmd/tools/vup.v
-          ./v -cc $CC -prod cmd/tools/vdoctor.v
+          make
+          ./v -skip-unused -cc $CC -prod -o v cmd/v
+          ./v -skip-unused -cc $CC -prod cmd/tools/vup.v
+          ./v -skip-unused -cc $CC -prod cmd/tools/vdoctor.v
       - name: Remove excluded
         run: |
-           rm -rf .git
+           rm -rf .git/
+           rm -rf thirdparty/tcc/.git/
            rm -rf vc/
            rm -rf v_old
+           rm -rf vlib/v/tests/bench/gcboehm/*.svg
       - name: Create ZIP archive
         run: |
            cd ..
@@ -63,7 +67,7 @@ jobs:
            mv $ZIPNAME v/
            cd v/
       - name: Create artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: macos
           path: v_macos.zip
@@ -76,17 +80,22 @@ jobs:
     steps:
       - uses: actions/checkout@v1
       - uses: msys2/setup-msys2@v2
-      - name: Compile
+      - name: Compile needed executables with -prod
         run: |
-          .\make.bat -tcc
-          .\v.exe cmd\tools\vup.v
-          .\v.exe cmd\tools\vdoctor.v
+          .\make.bat -msvc
+          .\v.exe -skip-unused -prod -cc msvc -o cmd/vprod.exe cmd/v
+          del *.exe
+          move cmd\vprod.exe v.exe
+          .\v.exe -skip-unused -prod -cc msvc cmd\tools\vup.v
+          .\v.exe -skip-unused -prod -cc msvc cmd\tools\vdoctor.v
       - name: Remove excluded
         shell: msys2 {0}
         run: |
-           rm -rf .git
+           rm -rf .git/
+           rm -rf thirdparty/tcc/.git/
            rm -rf vc/
            rm -rf v_old.exe
+           rm -rf vlib/v/tests/bench/gcboehm/*.svg
       - name: Create archive
         shell: msys2 {0}
         run: |
@@ -98,7 +107,7 @@ jobs:
 # https://superuser.com/a/1336434/194881
 # It is needed, because `zip` is not installed by default :-|
       - name: Create artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: windows
           path: v_windows.zip

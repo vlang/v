@@ -28,6 +28,8 @@ mut:
 	target     Target
 	omode      Target
 	is_verbose bool
+	show_wd    bool
+	show_env   bool
 }
 
 fn (mut ctx Context) println(s string) {
@@ -35,10 +37,10 @@ fn (mut ctx Context) println(s string) {
 		ctx.omode = if ctx.omode == .stderr { Target.stdout } else { Target.stderr }
 	}
 	if ctx.target in [.both, .stdout] || ctx.omode == .stdout {
-		println('stdout, $s')
+		println('stdout, ${s}')
 	}
 	if ctx.target in [.both, .stderr] || ctx.omode == .stderr {
-		eprintln('stderr, $s')
+		eprintln('stderr, ${s}')
 	}
 }
 
@@ -53,16 +55,18 @@ fn main() {
 	args := os.args[1..]
 	if '-h' in args || '--help' in args {
 		println("Usage:
-	test_os_process [-v] [-h] [-target stderr/stdout/both/alternate] [-exitcode 0] [-timeout_ms 200] [-period_ms 50]
+	test_os_process [-v] [-h] [-target stderr/stdout/both/alternate] [-show_wd] [-show_env] [-exitcode 0] [-timeout_ms 200] [-period_ms 50]
 		Prints lines periodically (-period_ms), to stdout/stderr (-target).
 		After a while (-timeout_ms), exit with (-exitcode).
 		This program is useful for platform independent testing
-		of child process/standart input/output control.
+		of child process/standard input/output control.
 		It is used in V's `os` module tests.
 ")
 		return
 	}
 	ctx.is_verbose = '-v' in args
+	ctx.show_wd = '-show_wd' in args
+	ctx.show_env = '-show_env' in args
 	ctx.target = s2target(cmdline.option(args, '-target', 'both'))
 	ctx.exitcode = cmdline.option(args, '-exitcode', '0').int()
 	ctx.timeout_ms = cmdline.option(args, '-timeout_ms', '200').int()
@@ -71,11 +75,20 @@ fn main() {
 		ctx.omode = .stdout
 	}
 	if ctx.is_verbose {
-		eprintln('> args: $args | context: $ctx')
+		eprintln('> args: ${args} | context: ${ctx}')
 	}
-	go do_timeout(&ctx)
+	if ctx.show_wd {
+		ctx.println('WORK_DIR=${os.getwd()}')
+	}
+	if ctx.show_env {
+		all := os.environ()
+		for k, v in all {
+			ctx.println('${k}=${v}')
+		}
+	}
+	spawn do_timeout(&ctx)
 	for i := 1; true; i++ {
-		ctx.println('$i')
+		ctx.println('${i}')
 		time.sleep(ctx.period_ms * time.millisecond)
 	}
 	time.sleep(100 * time.second)

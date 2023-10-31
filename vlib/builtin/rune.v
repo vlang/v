@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module builtin
 
@@ -9,19 +9,20 @@ import strings
 // updated. if you uncomment it you will see the issue
 // type rune = int
 
+// str converts a rune to string
 pub fn (c rune) str() string {
 	return utf32_to_str(u32(c))
 	/*
 	unsafe {
 		fst_byte := int(c)>>8 * 3 & 0xff
-		len := utf8_char_len(byte(fst_byte))
+		len := utf8_char_len(u8(fst_byte))
 		println('len=$len')
 		mut str := string{
 			len: len
 			str: malloc_noscan(len + 1)
 		}
 		for i in 0..len {
-			str.str[i] = byte(int(c)>>8 * (3 - i) & 0xff)
+			str.str[i] = u8(int(c)>>8 * (3 - i) & 0xff)
 		}
 		str.str[len] = `\0`
 		println(str)
@@ -43,21 +44,22 @@ pub fn (ra []rune) string() string {
 // repeat returns a new string with `count` number of copies of the rune it was called on.
 pub fn (c rune) repeat(count int) string {
 	if count < 0 {
-		panic('rune.repeat: count is negative: $count')
+		panic('rune.repeat: count is negative: ${count}')
 	} else if count == 0 {
 		return ''
 	} else if count == 1 {
 		return c.str()
 	}
-	mut buffer := [5]byte{}
+	mut buffer := [5]u8{}
 	res := unsafe { utf32_to_str_no_malloc(u32(c), &buffer[0]) }
 	return res.repeat(count)
 }
 
+// bytes converts a rune to an array of bytes
 [manualfree]
-pub fn (c rune) bytes() []byte {
-	mut res := []byte{cap: 5}
-	res.len = unsafe { utf32_decode_to_buffer(u32(c), &byte(res.data)) }
+pub fn (c rune) bytes() []u8 {
+	mut res := []u8{cap: 5}
+	res.len = unsafe { utf32_decode_to_buffer(u32(c), &u8(res.data)) }
 	return res
 }
 

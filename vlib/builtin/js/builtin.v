@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -8,7 +8,7 @@ fn (a any) toString()
 
 [noreturn]
 pub fn panic(s string) {
-	eprintln('V panic: $s\n$js_stacktrace()')
+	eprintln('V panic: ${s}\n${js_stacktrace()}')
 	exit(1)
 }
 
@@ -22,6 +22,7 @@ pub interface IError {
 	code() int
 }
 
+// str returns the message of IError
 pub fn (err IError) str() string {
 	return match err {
 		None__ {
@@ -38,10 +39,10 @@ pub fn (err IError) str() string {
 			// TODO: remove once deprecation period for `IError` methods has ended
 			old_error_style := unsafe { voidptr(&err.msg) != voidptr(&err.code) } // if fields are not defined (new style) they don't have an offset between them
 			if old_error_style {
-				'$err.type_name(): $err.msg'
+				'${err.type_name()}: ${err.msg}'
 			} else {
 				// <<
-				'$err.type_name(): $err.msg()'
+				'${err.type_name()}: ${err.msg()}'
 			}
 		}
 	}
@@ -50,10 +51,12 @@ pub fn (err IError) str() string {
 // Error is the empty default implementation of `IError`.
 pub struct Error {}
 
+// msg returns the message of Error
 pub fn (err Error) msg() string {
 	return ''
 }
 
+// code returns the code of Error
 pub fn (err Error) code() int {
 	return 0
 }
@@ -65,10 +68,12 @@ pub:
 	code int
 }
 
+// msg returns the message of the MessageError
 pub fn (err MessageError) msg() string {
 	return err.msg
 }
 
+// code returns the code of MessageError
 pub fn (err MessageError) code() int {
 	return err.code
 }
@@ -84,10 +89,11 @@ fn (_ None__) str() string {
 }
 
 pub struct Option {
-	state byte
+	state u8
 	err   IError = none__
 }
 
+// str returns the Option type: ok, none, or error
 pub fn (o Option) str() string {
 	if o.state == 0 {
 		return 'Option{ ok }'
@@ -95,12 +101,28 @@ pub fn (o Option) str() string {
 	if o.state == 1 {
 		return 'Option{ none }'
 	}
-	return 'Option{ error: "$o.err" }'
+	return 'Option{ error: "${o.err}" }'
+}
+
+pub struct _option {
+	state u8
+	err   IError = none__
+}
+
+// str returns the Option type: ok, none, or error
+pub fn (o _option) str() string {
+	if o.state == 0 {
+		return 'Option{ ok }'
+	}
+	if o.state == 1 {
+		return 'Option{ none }'
+	}
+	return 'Option{ error: "${o.err}" }'
 }
 
 // trace_error prints to stderr a string and a backtrace of the error
 fn trace_error(x string) {
-	eprintln('> ${@FN} | $x')
+	eprintln('> ${@FN} | ${x}')
 }
 
 // error returns a default error instance containing the error given in `message`.

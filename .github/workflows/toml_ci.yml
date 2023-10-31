@@ -10,7 +10,8 @@ on:
 
 jobs:
   toml-module-pass-external-test-suites:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 30
     env:
       TOML_BS_TESTS_PATH: vlib/toml/tests/testdata/burntsushi/toml-test
@@ -23,7 +24,7 @@ jobs:
       VTEST_TOML_DO_YAML_CONVERSION: 1
     steps:
 
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -44,7 +45,7 @@ jobs:
           git -C $TOML_BS_TESTS_PATH checkout $TOML_BS_TESTS_PINNED_COMMIT
 
       - name: Run BurntSushi TOML tests
-        run: ./v vlib/toml/tests/burntsushi.toml-test_test.v
+        run: ./v vlib/toml/tests/burntsushi_toml_test.v
 
         # Tests found at gist
       - name: Get large_toml_file_test.toml
@@ -60,7 +61,7 @@ jobs:
           git -C $TOML_IARNA_TESTS_PATH checkout $TOML_IARNA_TESTS_PINNED_COMMIT
 
       - name: Run iarna TOML tests
-        run: ./v -gc boehm vlib/toml/tests/iarna.toml-spec-tests_test.v
+        run: ./v -gc boehm vlib/toml/tests/iarna_toml_spec_test.v
 
         # Tests found at https://github.com/alexcrichton/toml-rs
       - name: Clone alexcrichton/toml-rs
@@ -69,4 +70,4 @@ jobs:
           git -C $TOML_AC_TESTS_PATH checkout $TOML_AC_TESTS_PINNED_COMMIT
 
       - name: Run alexcrichton TOML tests
-        run: ./v vlib/toml/tests/alexcrichton.toml-rs-tests_test.v
+        run: ./v vlib/toml/tests/alexcrichton_toml_rs_test.v

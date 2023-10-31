@@ -45,7 +45,7 @@ interface PopView {
 [heap]
 pub struct Button {
 mut:
-	window &Window = voidptr(0)
+	window &Window = unsafe { nil }
 }
 
 pub fn (mut b Button) init(window &Window) {

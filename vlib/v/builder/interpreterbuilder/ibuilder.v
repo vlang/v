@@ -16,9 +16,8 @@ pub fn interpret_v(mut b builder.Builder) {
 	files << b.get_user_files()
 	b.set_module_lookup_paths()
 	b.front_and_middle_stages(files) or { return }
-
 	util.timing_start('INTERPRET')
 	mut e := eval.new_eval(b.table, b.pref)
-	e.eval(b.parsed_files)
+	e.eval(mut b.parsed_files)
 	util.timing_measure('INTERPRET')
 }

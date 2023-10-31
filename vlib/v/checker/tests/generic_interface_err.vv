@@ -1,8 +1,8 @@
-struct Struct<T> {
+struct Struct[T] {
 	value int
 }
 
-interface Interface<T> {
+interface Interface[T] {
 	method() T
 }
 

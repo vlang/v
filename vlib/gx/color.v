@@ -116,23 +116,24 @@ pub const (
 // Color represents a 32 bit color value in sRGB format
 pub struct Color {
 pub mut:
-	r byte
-	g byte
-	b byte
-	a byte = 255
+	r u8
+	g u8
+	b u8
+	a u8 = 255
 }
 
 // hex takes in a 32 bit integer and splits it into 4 byte values
 pub fn hex(color int) Color {
 	return Color{
-		r: byte((color >> 24) & 0xFF)
-		g: byte((color >> 16) & 0xFF)
-		b: byte((color >> 8) & 0xFF)
-		a: byte(color & 0xFF)
+		r: u8((color >> 24) & 0xFF)
+		g: u8((color >> 16) & 0xFF)
+		b: u8((color >> 8) & 0xFF)
+		a: u8(color & 0xFF)
 	}
 }
 
-pub fn rgb(r byte, g byte, b byte) Color {
+// rgb builds a Color instance from given r, g, b values
+pub fn rgb(r u8, g u8, b u8) Color {
 	return Color{
 		r: r
 		g: g
@@ -140,7 +141,8 @@ pub fn rgb(r byte, g byte, b byte) Color {
 	}
 }
 
-pub fn rgba(r byte, g byte, b byte, a byte) Color {
+// rgba builds a Color instance from given r, g, b, a values
+pub fn rgba(r u8, g u8, b u8, a u8) Color {
 	return Color{
 		r: r
 		g: g
@@ -168,10 +170,10 @@ pub fn (a Color) + (b Color) Color {
 		nb = 255
 	}
 	return Color{
-		r: byte(nr)
-		g: byte(ng)
-		b: byte(nb)
-		a: byte(na)
+		r: u8(nr)
+		g: u8(ng)
+		b: u8(nb)
+		a: u8(na)
 	}
 }
 
@@ -194,13 +196,14 @@ pub fn (a Color) - (b Color) Color {
 		nb = 0
 	}
 	return Color{
-		r: byte(nr)
-		g: byte(ng)
-		b: byte(nb)
-		a: byte(na)
+		r: u8(nr)
+		g: u8(ng)
+		b: u8(nb)
+		a: u8(na)
 	}
 }
 
+// * multiplies Color `c` and `c2` keeping channel values in [0, 255] range
 pub fn (c Color) * (c2 Color) Color {
 	return Color{
 		r: c.r * c2.r
@@ -210,6 +213,7 @@ pub fn (c Color) * (c2 Color) Color {
 	}
 }
 
+// / divides `c` by `c2` and converts each channel's value to u8(int)
 pub fn (c Color) / (c2 Color) Color {
 	return Color{
 		r: c.r / c2.r
@@ -219,7 +223,7 @@ pub fn (c Color) / (c2 Color) Color {
 	}
 }
 
-// over - implements an `a` over `b` operation.
+// over implements an `a` over `b` operation.
 // see https://keithp.com/~keithp/porterduff/p253-porter.pdf
 pub fn (a Color) over(b Color) Color {
 	aa := f32(a.a) / 255
@@ -230,36 +234,38 @@ pub fn (a Color) over(b Color) Color {
 	gr := (f32(a.g) * aa + f32(b.g) * ab * (1 - aa)) / ar
 	br := (f32(a.b) * aa + f32(b.b) * ab * (1 - aa)) / ar
 	return Color{
-		r: byte(rr)
-		g: byte(gr)
-		b: byte(br)
-		a: byte(ar * 255)
+		r: u8(rr)
+		g: u8(gr)
+		b: u8(br)
+		a: u8(ar * 255)
 	}
 }
 
+// eq checks if color `c` and `c2` are equal in every channel
 pub fn (c Color) eq(c2 Color) bool {
 	return c.r == c2.r && c.g == c2.g && c.b == c2.b && c.a == c2.a
 }
 
+// str returns a string representation of the Color `c`
 pub fn (c Color) str() string {
-	return 'Color{$c.r, $c.g, $c.b, $c.a}'
+	return 'Color{${c.r}, ${c.g}, ${c.b}, ${c.a}}'
 }
 
-// rgba8 - convert a color value to an int in the RGBA8 order.
+// rgba8 converts a color value to an int in the RGBA8 order.
 // see https://developer.apple.com/documentation/coreimage/ciformat
 [inline]
 pub fn (c Color) rgba8() int {
 	return int(u32(c.r) << 24 | u32(c.g) << 16 | u32(c.b) << 8 | u32(c.a))
 }
 
-// bgra8 - convert a color value to an int in the BGRA8 order.
+// bgra8 converts a color value to an int in the BGRA8 order.
 // see https://developer.apple.com/documentation/coreimage/ciformat
 [inline]
 pub fn (c Color) bgra8() int {
 	return int(u32(c.b) << 24 | u32(c.g) << 16 | u32(c.r) << 8 | u32(c.a))
 }
 
-// abgr8 - convert a color value to an int in the ABGR8 order.
+// abgr8 converts a color value to an int in the ABGR8 order.
 // see https://developer.apple.com/documentation/coreimage/ciformat
 [inline]
 pub fn (c Color) abgr8() int {
@@ -291,10 +297,13 @@ const (
 	}
 )
 
+// color_from_string returns a Color, corresponding to the given string
+// or black Color if string is not found in lookup table
 pub fn color_from_string(s string) Color {
 	return gx.string_colors[s]
 }
 
+// to_css_string returns a CSS compatible string e.g. `rgba(10,11,12,13)` of the color `c`.
 pub fn (c Color) to_css_string() string {
-	return 'rgba($c.r,$c.g,$c.b,$c.a)'
+	return 'rgba(${c.r},${c.g},${c.b},${c.a})'
 }

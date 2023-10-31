@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module vet
 
@@ -7,6 +7,7 @@ import v.token
 pub enum ErrorKind {
 	error
 	warning
+	notice
 }
 
 pub enum FixKind {
@@ -22,6 +23,7 @@ pub enum ErrorType {
 	trailing_space
 }
 
+[minify]
 pub struct Error {
 pub mut:
 	kind ErrorKind [required]

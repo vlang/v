@@ -74,16 +74,16 @@ fn test_unsafe_if_stmt() {
 	assert x == 4
 }
 
-const fixedbytes = [100]byte{}
+const fixedbytes = [100]u8{}
 
 fn test_unsafe_pointers() {
 	fsize := fixedbytes.len
 	src := &fixedbytes[0]
 	//
-	b := []byte{}
-	eprintln('b.data before: $b.data')
-	eprintln('b.len before: $b.len')
-	eprintln('b.cap before: $b.cap')
+	b := []u8{}
+	eprintln('b.data before: ${b.data}')
+	eprintln('b.len before: ${b.len}')
+	eprintln('b.cap before: ${b.cap}')
 	assert b.len == 0
 	unsafe {
 		// here b will be setup to work with the mmaped region
@@ -98,7 +98,7 @@ fn test_unsafe_pointers() {
 	assert b.len == 100
 	assert b.cap == 100
 	assert b.data == src
-	eprintln('b.data after: $b.data')
-	eprintln('b.len after: $b.len')
-	eprintln('b.cap after: $b.cap')
+	eprintln('b.data after: ${b.data}')
+	eprintln('b.len after: ${b.len}')
+	eprintln('b.cap after: ${b.cap}')
 }

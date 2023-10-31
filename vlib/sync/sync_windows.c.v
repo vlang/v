@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module sync
@@ -22,9 +22,16 @@ type MHANDLE = voidptr
 // Semaphore HANDLE
 type SHANDLE = voidptr
 
+[typedef]
+pub struct C.SRWLOCK {}
+
+[typedef]
+pub struct C.CONDITION_VARIABLE {}
+
 //[init_with=new_mutex] // TODO: implement support for this struct attribute, and disallow Mutex{} from outside the sync.new_mutex() function.
 
-// `SRWLOCK` is much more performant that `Mutex` on Windows, so use that in both cases since we don't want to share with other processes
+// `SRWLOCK` is much more performant that `Mutex` on Windows, so use that in both cases since we don't
+// want to share with other processes
 [heap]
 pub struct Mutex {
 mut:
@@ -38,7 +45,7 @@ mut:
 }
 
 [heap]
-struct Semaphore {
+pub struct Semaphore {
 	mtx  C.SRWLOCK
 	cond C.CONDITION_VARIABLE
 mut:
@@ -90,10 +97,6 @@ pub fn (mut m RwMutex) runlock() {
 
 pub fn (mut m RwMutex) unlock() {
 	C.ReleaseSRWLockExclusive(&m.mx)
-}
-
-pub fn (mut m Mutex) destroy() {
-	// nothing to do
 }
 
 [inline]
@@ -176,7 +179,7 @@ pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 	C.GetSystemTimeAsFileTime(&ft_start)
 	time_end := ((u64(ft_start.dwHighDateTime) << 32) | ft_start.dwLowDateTime) +
 		u64(timeout / (100 * time.nanosecond))
-	mut t_ms := timeout.sys_milliseconds()
+	mut t_ms := u32(timeout.sys_milliseconds())
 	C.AcquireSRWLockExclusive(&sem.mtx)
 	mut res := 0
 	c = C.atomic_load_u32(&sem.count)
@@ -208,5 +211,14 @@ pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 	return res != 0
 }
 
+pub fn (mut m RwMutex) destroy() {
+	// nothing to do
+}
+
+pub fn (mut m Mutex) destroy() {
+	// nothing to do
+}
+
 pub fn (s Semaphore) destroy() {
+	// nothing to do
 }

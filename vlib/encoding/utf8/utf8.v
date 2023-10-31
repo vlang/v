@@ -7,11 +7,13 @@ mut:
 	failed   bool
 }
 
+// validate_str reports if str consists of valid UTF-8 runes
 pub fn validate_str(str string) bool {
 	return validate(str.str, str.len)
 }
 
-pub fn validate(data &byte, len int) bool {
+// validate reports if data consists of valid UTF-8 runes
+pub fn validate(data &u8, len int) bool {
 	mut state := Utf8State{}
 	for i := 0; i < len; i++ {
 		s := unsafe { data[i] }
@@ -46,7 +48,7 @@ fn (mut s Utf8State) seq(r0 bool, r1 bool, is_tail bool) bool {
 	return false
 }
 
-fn (mut s Utf8State) next_state(c byte) {
+fn (mut s Utf8State) next_state(c u8) {
 	// sequence 1
 	if s.index == 0 {
 		if (c >= 0x00 + 1 && c <= 0x7F) || c == 0x00 {

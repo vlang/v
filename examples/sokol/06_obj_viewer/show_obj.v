@@ -45,8 +45,9 @@ const (
 
 struct App {
 mut:
-	gg          &gg.Context
+	gg          &gg.Context = unsafe { nil }
 	texture     gfx.Image
+	sampler     gfx.Sampler
 	init_flag   bool
 	frame_count int
 
@@ -133,7 +134,7 @@ fn draw_model(app App, model_pos m4.Vec4) u32 {
 	z_light := f32(math.sin(time_ticks) * radius_light)
 
 	mut tmp_fs_params := obj.Tmp_fs_param{}
-	tmp_fs_params.ligth = m4.vec3(x_light, radius_light, z_light)
+	tmp_fs_params.light = m4.vec3(x_light, radius_light, z_light)
 
 	sd := obj.Shader_data{
 		vs_data: unsafe { &tmp_vs_param }
@@ -150,8 +151,8 @@ fn frame(mut app App) {
 
 	// clear
 	mut color_action := gfx.ColorAttachmentAction{
-		action: .clear
-		value: gfx.Color{
+		load_action: .clear
+		clear_value: gfx.Color{
 			r: 0.0
 			g: 0.0
 			b: 0.0
@@ -166,7 +167,7 @@ fn frame(mut app App) {
 	// render the data
 	draw_start_glsl(app)
 	draw_model(app, m4.Vec4{})
-	// uncoment if you want a raw benchmark mode
+	// uncomment if you want a raw benchmark mode
 	/*
 	mut n_vertex_drawn := u32(0)
 	n_x_obj := 20
@@ -220,15 +221,15 @@ fn my_init(mut app App) {
 	// 1x1 pixel white, default texture
 	unsafe {
 		tmp_txt := malloc(4)
-		tmp_txt[0] = byte(0xFF)
-		tmp_txt[1] = byte(0xFF)
-		tmp_txt[2] = byte(0xFF)
-		tmp_txt[3] = byte(0xFF)
-		app.texture = obj.create_texture(1, 1, tmp_txt)
+		tmp_txt[0] = u8(0xFF)
+		tmp_txt[1] = u8(0xFF)
+		tmp_txt[2] = u8(0xFF)
+		tmp_txt[3] = u8(0xFF)
+		app.texture, app.sampler = obj.create_texture(1, 1, tmp_txt)
 		free(tmp_txt)
 	}
 	// glsl
-	app.obj_part.init_render_data(app.texture)
+	app.obj_part.init_render_data(app.texture, app.sampler)
 	app.init_flag = true
 }
 
@@ -265,8 +266,6 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 /******************************************************************************
 * Main
 ******************************************************************************/
-// is needed for easier diagnostics on windows
-[console]
 fn main() {
 	/*
 	obj.tst()
@@ -279,7 +278,8 @@ fn main() {
 		obj_part: 0
 	}
 
-	app.file_name = 'v.obj_' // default object is the v logo
+	// app.file_name = 'v.obj' // default object is the v logo
+	app.file_name = 'utahTeapot.obj' // default object is the v logo
 
 	app.single_material_flag = false
 	$if !android {
@@ -298,8 +298,8 @@ fn main() {
 		if os.args.len >= 3 {
 			app.single_material_flag = os.args[2].bool()
 		}
-		println('Loading model: $app.file_name')
-		println('Using single material: $app.single_material_flag')
+		println('Loading model: ${app.file_name}')
+		println('Using single material: ${app.single_material_flag}')
 	}
 
 	app.gg = gg.new_context(

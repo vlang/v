@@ -11,10 +11,10 @@ fn find_diff_cmd() string {
 	return res
 }
 
-fn test_vet() ? {
+fn test_vet() {
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
-	os.chdir(vroot) ?
+	os.chdir(vroot)!
 	test_dir := 'cmd/tools/vvet/tests'
 	tests := get_tests_in_dir(test_dir)
 	fails := check_path(vexe, test_dir, tests)
@@ -52,7 +52,7 @@ fn check_path(vexe string, dir string, tests []string) int {
 			println(found)
 			println('============\n')
 			println('diff:')
-			println(diff.color_compare_strings(diff_cmd, rand.ulid(), found, expected))
+			println(diff.color_compare_strings(diff_cmd, rand.ulid(), expected, found))
 			println('============\n')
 			nb_fail++
 		} else {

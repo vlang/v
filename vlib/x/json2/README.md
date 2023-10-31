@@ -4,24 +4,103 @@
 `x.json2` is an experimental JSON parser written from scratch on V.
 
 ## Usage
-```v oksyntax
+#### encode[T]
+
+```v
+import x.json2
+import time
+
+struct Person {
+mut:
+	name     string
+	age      ?int = 20
+	birthday time.Time
+	deathday ?time.Time
+}
+
+fn main() {
+	mut person := Person{
+		name: 'Bob'
+		birthday: time.now()
+	}
+	person_json := json2.encode[Person](person)
+	// person_json == {"name": "Bob", "age": 20, "birthday": "2022-03-11T13:54:25.000Z"}
+}
+```
+
+#### decode[T]
+
+```v
+import x.json2
+import time
+
+struct Person {
+mut:
+	name     string
+	age      ?int = 20
+	birthday time.Time
+	deathday ?time.Time
+}
+
+fn main() {
+	resp := '{"name": "Bob", "age": 20, "birthday": "${time.now()}"}'
+	person := json2.decode[Person](resp)!
+	/*
+	struct Person {
+      mut:
+          name "Bob"
+          age  20
+          birthday "2022-03-11 13:54:25"
+      }
+	*/
+}
+```
+decode[T] is smart and can auto-convert the types of struct fields - this means
+examples below will have the same result
+
+```v ignore
+json2.decode[Person]('{"name": "Bob", "age": 20, "birthday": "2022-03-11T13:54:25.000Z"}')!
+json2.decode[Person]('{"name": "Bob", "age": 20, "birthday": "2022-03-11 13:54:25.000"}')!
+json2.decode[Person]('{"name": "Bob", "age": "20", "birthday": 1647006865}')!
+json2.decode[Person]('{"name": "Bob", "age": "20", "birthday": "1647006865"}}')!
+```
+
+#### raw decode
+
+```v
 import x.json2
 import net.http
 
 fn main() {
-	// Decoding
-	resp := http.get('https://example.com') ?
+	resp := http.get('https://reqres.in/api/products/1')!
 
-	// raw decode
-	raw_person := json2.raw_decode(resp.text) ?
+	// This returns an Any type
+	raw_product := json2.raw_decode(resp.body)!
+}
+```
+#### Casting `Any` type / Navigating
+```v
+import x.json2
+import net.http
 
-	// Casting `Any` type / Navigating
-	person := raw_person.as_map()
-	name := person['name'].str() // Bob
-	age := person['age'].int() // 19
-	pi := person['pi'].f64() // 3.14....
+fn main() {
+	resp := http.get('https://reqres.in/api/products/1')!
 
-	// Constructing an `Any` type
+	raw_product := json2.raw_decode(resp.body)!
+
+	product := raw_product.as_map()
+	data := product['data'] as map[string]json2.Any
+
+	id := data['id'].int() // 1
+	name := data['name'].str() // cerulean
+	year := data['year'].int() // 2000
+}
+```
+#### Constructing an `Any` type
+```v
+import x.json2
+
+fn main() {
 	mut me := map[string]json2.Any{}
 	me['name'] = 'Bob'
 	me['age'] = 18
@@ -46,89 +125,11 @@ fn main() {
 	//   "interests":["rock","papers","scissors",null,12],
 	//   "pets":{"Sam":"Maltese"}
 	//}
-
-	// Encode a struct/type to JSON
-	encoded_json := json2.encode<Person>(person2)
 }
 ```
-## Using `decode<T>` and `encode<T>`
-> Codegen for this feature is still WIP.
-> You need to manually define the methods before using the module to structs.
-
-In order to use the `decode<T>` and `encode<T>` function, you need to explicitly define
-two methods: `from_json` and `to_json`. `from_json` accepts a `json2.Any` argument
-and inside of it you need to map the fields you're going to put into the type.
-As for `to_json` method, you just need to map the values into `json2.Any`
-and turn it into a string.
-
-```v ignore
-struct Person {
-mut:
-    name string
-    age  int = 20
-    pets []string
-}
-
-fn (mut p Person) from_json(f json2.Any) {
-    obj := f.as_map()
-    for k, v in obj {
-        match k {
-            'name' { p.name = v.str() }
-            'age' { p.age = v.int() }
-            'pets' { p.pets = v.arr().map(it.str()) }
-            else {}
-        }
-    }
-}
-
-fn (p Person) to_json() string {
-    mut obj := map[string]json2.Any
-    obj['name'] = p.name
-    obj['age'] = p.age
-    obj['pets'] = p.pets
-    return obj.str()
-}
-
-fn main() {
-    resp := os.read_file('./person.json')?
-    person := json2.decode<Person>(resp)?
-    println(person) // Person{name: 'Bob', age: 28, pets: ['Floof']}
-    person_json := json2.encode<Person>(person)
-    println(person_json) // {"name": "Bob", "age": 28, "pets": ["Floof"]}
-}
-```
-
-## Using struct tags
-`x.json2` can access and use the struct field tags similar to the
-`json` module by using the comp-time `$for` for structs.
-
-```v ignore
-fn (mut p Person) from_json(f json2.Any) {
-    mp := an.as_map()
-	mut js_field_name := ''
-    $for field in Person.fields {
-        js_field_name = field.name
-
-        for attr in field.attrs {
-			if attr.starts_with('json:') {
-				js_field_name = attr.all_after('json:').trim_left(' ')
-				break
-			}
-		}
-
-        match field.name {
-            'name' { p.name = mp[js_field_name].str() }
-			'age' { u.age = mp[js_field_name].int() }
-			'pets' { u.pets = mp[js_field_name].arr().map(it.str()) }
-			else {}
-		}
-    }
-}
-```
-
 ### Null Values
-`x.json2` has a separate `null` type for differentiating an undefined value and a null value.
-To verify that the field you're accessing is a `null`, use `<typ> is json2.Null`.
+`x.json2` has a separate `Null` type for differentiating an undefined value and a null value.
+To verify that the field you're accessing is a `Null`, use `[typ] is json2.Null`.
 
 ```v ignore
 fn (mut p Person) from_json(f json2.Any) {
@@ -139,30 +140,6 @@ fn (mut p Person) from_json(f json2.Any) {
     }
 }
 ```
-
-### Custom field names
-Aside from using struct tags, you can also just simply cast the base field into a map (`as_map()`)
-and access the field you wish to put into the struct/type.
-
-```v ignore
-fn (mut p Person) from_json(f json2.Any) {
-    obj := f.as_map()
-    p.name = obj['nickname'].str()
-}
-```
-
-```v oksyntax
-fn (mut p Person) to_json() string {
-	obj := f.as_map()
-	obj['nickname'] = p.name
-	return obj.str()
-}
-```
-
-### Undefined Values
-Getting undefined values has the same behavior as regular V types.
-If you're casting a base field into `map[string]json2.Any` and fetch an undefined entry/value,
-it simply returns empty. As for the `[]json2.Any`, it returns an index error.
 
 ## Casting a value to an incompatible type
 `x.json2` provides methods for turning `Any` types into usable types.

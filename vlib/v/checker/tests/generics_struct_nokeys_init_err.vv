@@ -1,0 +1,12 @@
+struct Am {
+	inner int
+}
+
+fn convert[T](num int) T {
+	return T{num, 1}
+}
+
+fn main() {
+	println(convert[Am](3).inner)
+	assert convert[Am](3).inner == 3
+}

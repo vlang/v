@@ -3,16 +3,23 @@ module main
 import os
 import testing
 
-const vroot = @VMODROOT
+const vroot = os.dir(os.real_path(os.getenv_opt('VEXE') or { @VEXE }))
 
+// build as a project folder
 const efolders = [
 	'examples/viewer',
+	'examples/vweb_orm_jwt',
+	'examples/vweb_fullstack',
 ]
+
+pub fn normalised_vroot_path(path string) string {
+	return os.real_path(os.join_path_single(vroot, path)).replace('\\', '/')
+}
 
 fn main() {
 	args_string := os.args[1..].join(' ')
 	params := args_string.all_before('build-examples')
-	skip_prefixes := efolders.map(os.real_path(os.join_path_single(vroot, it)))
+	mut skip_prefixes := efolders.map(normalised_vroot_path(it))
 	res := testing.v_build_failing_skipped(params, 'examples', skip_prefixes, fn (mut session testing.TestSession) {
 		for x in efolders {
 			pathsegments := x.split_any('/')

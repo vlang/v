@@ -1,4 +1,4 @@
-vlib/v/checker/tests/arrow_op_wrong_right_type_err_b.vv:3:9: error: <- operator can only be used with `chan` types
+vlib/v/checker/tests/arrow_op_wrong_right_type_err_b.vv:3:9: error: operator `<-` can only be used with `chan` types, but the value after `<-` is of type `i64` instead
     1 | fn main() {
     2 |     ch := i64(3)
     3 |     obj := <-ch

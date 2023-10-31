@@ -153,9 +153,9 @@ fn test_finalize_returns_error_for_unknown_flags_short() {
 	assert finalized.len < 0 // expect error to be returned
 }
 
-fn test_allow_to_build_usage_message() ? {
+fn test_allow_to_build_usage_message() {
 	mut fp := flag.new_flag_parser([])
-	fp.limit_free_args(1, 4) ?
+	fp.limit_free_args(1, 4)!
 	fp.application('flag_tool')
 	fp.version('v0.0.0')
 	fp.description('some short information about this tool')
@@ -172,7 +172,7 @@ fn test_allow_to_build_usage_message() ? {
 		'The arguments should be at least 1 and at most 4 in number.', 'Usage', 'Options:',
 		'Description:', 'some short information about this tool'] {
 		if !usage.contains(s) {
-			eprintln(" missing '$s' in usage message")
+			eprintln(" missing '${s}' in usage message")
 			all_strings_found = false
 		}
 	}
@@ -194,9 +194,9 @@ fn test_if_no_options_given_usage_message_does_not_contain_options() {
 	assert !fp.usage().contains('Options:')
 }
 
-fn test_free_args_could_be_limited() ? {
+fn test_free_args_could_be_limited() {
 	mut fp1 := flag.new_flag_parser(['a', 'b', 'c'])
-	fp1.limit_free_args(1, 4) ?
+	fp1.limit_free_args(1, 4)!
 	args := fp1.finalize() or {
 		assert false
 		return
@@ -206,9 +206,9 @@ fn test_free_args_could_be_limited() ? {
 	assert args[2] == 'c'
 }
 
-fn test_error_for_to_few_free_args() ? {
+fn test_error_for_to_few_free_args() {
 	mut fp1 := flag.new_flag_parser(['a', 'b', 'c'])
-	fp1.limit_free_args(5, 6) ?
+	fp1.limit_free_args(5, 6)!
 	args := fp1.finalize() or {
 		assert err.msg().starts_with('Expected at least 5 arguments')
 		return
@@ -216,9 +216,9 @@ fn test_error_for_to_few_free_args() ? {
 	assert args.len < 0 // expect an error and need to use args
 }
 
-fn test_error_for_to_much_free_args() ? {
+fn test_error_for_to_much_free_args() {
 	mut fp1 := flag.new_flag_parser(['a', 'b', 'c'])
-	fp1.limit_free_args(1, 2) ?
+	fp1.limit_free_args(1, 2)!
 	args := fp1.finalize() or {
 		assert err.msg().starts_with('Expected at most 2 arguments')
 		return
@@ -226,9 +226,9 @@ fn test_error_for_to_much_free_args() ? {
 	assert args.len < 0 // expect an error and need to use args
 }
 
-fn test_could_expect_no_free_args() ? {
+fn test_could_expect_no_free_args() {
 	mut fp1 := flag.new_flag_parser(['a'])
-	fp1.limit_free_args(0, 0) ?
+	fp1.limit_free_args(0, 0)!
 	args := fp1.finalize() or {
 		assert err.msg().starts_with('Expected no arguments')
 		return
@@ -236,7 +236,7 @@ fn test_could_expect_no_free_args() ? {
 	assert args.len < 0 // expect an error and need to use args
 }
 
-fn test_allow_abreviations() {
+fn test_allow_abbreviations() {
 	mut fp := flag.new_flag_parser(['-v', '-o', 'some_file', '-i', '42', '-f', '2.0'])
 	v := fp.bool('version', `v`, false, '')
 	o := fp.string('output', `o`, 'empty', '')
@@ -383,7 +383,7 @@ fn test_optional_flags() {
 	assert b == 'some_default_value'
 }
 
-fn test_dashdash_acts_as_parser_full_stop() ? {
+fn test_dashdash_acts_as_parser_full_stop() {
 	mut fp := flag.new_flag_parser(['-b', '5', '--', '-d', '-x', '-b', '4', '-a', '-c', 'hello',
 		'some', 'other', 'parameters'])
 	a := fp.bool_opt('a-bool-flag', `a`, '') or { false }
@@ -392,21 +392,34 @@ fn test_dashdash_acts_as_parser_full_stop() ? {
 	assert a == false
 	assert b == 5
 	assert c == 'default'
-	args := fp.finalize() ?
+	args := fp.finalize()!
 	assert args.len > 0
 	assert args[0] != '--'
 	assert args == ['-d', '-x', '-b', '4', '-a', '-c', 'hello', 'some', 'other', 'parameters']
 }
 
-fn test_dashdash_acts_as_parser_full_stop_dashdash_at_end() ? {
+fn test_dashdash_acts_as_parser_full_stop_dashdash_at_end() {
 	mut fp := flag.new_flag_parser(['-b', '5', '-b', '4', 'other', 'params', '--'])
 	b := fp.int_multi('an-int-flag', `b`, '')
 	assert b == [5, 4]
-	args := fp.finalize() ?
+	args := fp.finalize()!
 	assert args.len > 0
 }
 
 fn test_empty_string_with_flag() {
 	mut fp := flag.new_flag_parser([''])
 	s := fp.string('something', `s`, 'default', 'Hey parse me')
+}
+
+fn test_finalize_with_multi_shortargs() {
+	mut fp := flag.new_flag_parser(['-ab', '-c'])
+	a_bool := fp.bool('a_bool', `a`, false, '')
+	assert a_bool
+	b_bool := fp.bool('b_bool', `b`, false, '')
+	assert b_bool
+	c_bool := fp.bool('c_bool', `c`, false, '')
+	assert c_bool
+	additional_args := fp.finalize()!
+	println(additional_args.join_lines())
+	assert additional_args == []
 }

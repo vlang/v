@@ -11,7 +11,7 @@ mut:
 	count u8
 }
 
-fn (mut self App) next<T>(input T) string {
+fn (mut self App) next[T](input T) string {
 	$if T is Something {
 		return 'Something'
 	} $else $if T is f64 {

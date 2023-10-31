@@ -1,3 +1,4 @@
+// vtest flaky: true
 // vtest retry: 8
 import net
 import os
@@ -8,7 +9,7 @@ const (
 
 fn handle_conn(mut c net.TcpConn) {
 	for {
-		mut buf := []byte{len: 100, init: 0}
+		mut buf := []u8{len: 100, init: 0}
 		read := c.read(mut buf) or {
 			println('Server: connection dropped')
 			return
@@ -20,39 +21,39 @@ fn handle_conn(mut c net.TcpConn) {
 	}
 }
 
-fn one_shot_echo_server(mut l net.TcpListener, ch_started chan int) ? {
+fn one_shot_echo_server(mut l net.TcpListener, ch_started chan int) ! {
 	eprintln('> one_shot_echo_server')
 	ch_started <- 1
 	mut new_conn := l.accept() or { return error('could not accept') }
-	eprintln('    > new_conn: $new_conn')
+	eprintln('    > new_conn: ${new_conn}')
 	handle_conn(mut new_conn)
 	new_conn.close() or {}
 }
 
-fn echo(address string) ? {
-	mut c := net.dial_tcp(address) ?
+fn echo(address string) ! {
+	mut c := net.dial_tcp(address)!
 	defer {
 		c.close() or {}
 	}
 
-	println('local: ' + c.addr() ?.str())
-	println(' peer: ' + c.peer_addr() ?.str())
+	println('local: ' + c.addr()!.str())
+	println(' peer: ' + c.peer_addr()!.str())
 
 	data := 'Hello from vlib/net!'
-	c.write_string(data) ?
-	mut buf := []byte{len: 4096}
-	read := c.read(mut buf) ?
+	c.write_string(data)!
+	mut buf := []u8{len: 4096}
+	read := c.read(mut buf) or { panic(err) }
 	assert read == data.len
 	for i := 0; i < read; i++ {
 		assert buf[i] == data[i]
 	}
-	println('Got "$buf.bytestr()"')
+	println('Got "${buf.bytestr()}"')
 }
 
 fn test_tcp_ip6() {
 	eprintln('\n>>> ${@FN}')
-	address := 'localhost:$test_port'
-	mut l := net.listen_tcp(.ip6, ':$test_port') or { panic(err) }
+	address := 'localhost:${test_port}'
+	mut l := net.listen_tcp(.ip6, ':${test_port}') or { panic(err) }
 	dump(l)
 	start_echo_server(mut l)
 	echo(address) or { panic(err) }
@@ -63,13 +64,13 @@ fn test_tcp_ip6() {
 
 fn start_echo_server(mut l net.TcpListener) {
 	ch_server_started := chan int{}
-	go one_shot_echo_server(mut l, ch_server_started)
+	spawn one_shot_echo_server(mut l, ch_server_started)
 	_ := <-ch_server_started
 }
 
 fn test_tcp_ip() {
 	eprintln('\n>>> ${@FN}')
-	address := 'localhost:$test_port'
+	address := 'localhost:${test_port}'
 	mut l := net.listen_tcp(.ip, address) or { panic(err) }
 	dump(l)
 	start_echo_server(mut l)
@@ -85,7 +86,7 @@ fn test_tcp_unix() {
 	$if !windows {
 		address := os.real_path('tcp-test.sock')
 		// address := 'tcp-test.sock'
-		println('$address')
+		println('${address}')
 
 		mut l := net.listen_tcp(.unix, address) or { panic(err) }
 		start_echo_server(mut l)
@@ -98,4 +99,12 @@ fn test_tcp_unix() {
 
 fn testsuite_end() {
 	eprintln('\ndone')
+}
+
+fn test_bind() {
+	$if !network ? {
+		return
+	}
+	mut conn := net.dial_tcp_with_bind('vlang.io:80', '127.0.0.1:0')!
+	conn.close()!
 }

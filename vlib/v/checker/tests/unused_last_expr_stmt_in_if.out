@@ -1,0 +1,7 @@
+vlib/v/checker/tests/unused_last_expr_stmt_in_if.vv:16:5: error: expression evaluated but not used
+   14 |     if a.mode == .zz {
+   15 |         println('hello')
+   16 |         a.mode == .yy
+      |           ~~~~~~~~~~~
+   17 |     }
+   18 | }

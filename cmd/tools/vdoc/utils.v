@@ -20,7 +20,7 @@ fn escape(str string) string {
 
 fn get_sym_name(dn doc.DocNode) string {
 	sym_name := if dn.parent_name.len > 0 && dn.parent_name != 'void' {
-		'($dn.parent_name) $dn.name'
+		'(${dn.parent_name}) ${dn.name}'
 	} else {
 		dn.name
 	}
@@ -29,7 +29,7 @@ fn get_sym_name(dn doc.DocNode) string {
 
 fn get_node_id(dn doc.DocNode) string {
 	tag := if dn.parent_name.len > 0 && dn.parent_name != 'void' {
-		'${dn.parent_name}.$dn.name'
+		'${dn.parent_name}.${dn.name}'
 	} else {
 		dn.name
 	}
@@ -37,7 +37,7 @@ fn get_node_id(dn doc.DocNode) string {
 }
 
 fn is_module_readme(dn doc.DocNode) bool {
-	if dn.comments.len > 0 && dn.content == 'module $dn.name' {
+	if dn.comments.len > 0 && dn.content == 'module ${dn.name}' {
 		return true
 	}
 	return false
@@ -70,7 +70,7 @@ fn set_output_type_from_str(format string) OutputType {
 	return output_type
 }
 
-fn get_ignore_paths(path string) ?[]string {
+fn get_ignore_paths(path string) ![]string {
 	ignore_file_path := os.join_path(path, '.vdocignore')
 	ignore_content := os.read_file(ignore_file_path) or {
 		return error_with_code('ignore file not found.', 1)
@@ -133,13 +133,13 @@ fn gen_footer_text(d &doc.Doc, include_timestamp bool) string {
 		return footer_text
 	}
 	generated_time := d.time_generated
-	time_str := '$generated_time.day $generated_time.smonth() $generated_time.year $generated_time.hhmmss()'
-	return '$footer_text Generated on: $time_str'
+	time_str := '${generated_time.day} ${generated_time.smonth()} ${generated_time.year} ${generated_time.hhmmss()}'
+	return '${footer_text} Generated on: ${time_str}'
 }
 
 fn color_highlight(code string, tb &ast.Table) string {
-	builtin := ['bool', 'string', 'i8', 'i16', 'int', 'i64', 'i128', 'byte', 'u16', 'u32', 'u64',
-		'u128', 'rune', 'f32', 'f64', 'int_literal', 'float_literal', 'byteptr', 'voidptr', 'any']
+	builtin := ['bool', 'string', 'i8', 'i16', 'int', 'i64', 'i128', 'isize', 'byte', 'u8', 'u16',
+		'u32', 'u64', 'usize', 'u128', 'rune', 'f32', 'f64', 'byteptr', 'voidptr', 'any']
 	highlight_code := fn (tok token.Token, typ HighlightTokenTyp) string {
 		mut lit := ''
 		match typ {
@@ -152,17 +152,21 @@ fn color_highlight(code string, tb &ast.Table) string {
 					'"'])
 				if use_double_quote {
 					s := unescaped_val.replace_each(['\x01', '\\\\', '"', '\\"'])
-					lit = term.yellow('"$s"')
+					lit = term.yellow('"${s}"')
 				} else {
 					s := unescaped_val.replace_each(['\x01', '\\\\', "'", "\\'"])
-					lit = term.yellow("'$s'")
+					lit = term.yellow("'${s}'")
 				}
 			}
 			.char {
-				lit = term.yellow('`$tok.lit`')
+				lit = term.yellow('`${tok.lit}`')
 			}
 			.comment {
-				lit = if tok.lit[0] == 1 { '//${tok.lit[1..]}' } else { '//$tok.lit' }
+				lit = if tok.lit != '' && tok.lit[0] == 1 {
+					term.gray('//${tok.lit[1..]}')
+				} else {
+					term.gray('//${tok.lit}')
+				}
 			}
 			.keyword {
 				lit = term.bright_blue(tok.lit)
@@ -207,18 +211,21 @@ fn color_highlight(code string, tb &ast.Table) string {
 						&& (next_tok.kind != .lpar || prev.kind !in [.key_fn, .rpar]) {
 						tok_typ = .builtin
 					} else if
-						next_tok.kind in [.lcbr, .rpar, .eof, .comma, .pipe, .name, .rcbr, .assign, .key_pub, .key_mut, .pipe, .comma]
-						&& prev.kind in [.name, .amp, .rsbr, .key_type, .assign, .dot, .question, .rpar, .key_struct, .key_enum, .pipe, .key_interface]
-						&& (tok.lit[0].is_capital() || prev_prev.lit in ['C', 'JS']) {
+						(next_tok.kind in [.lcbr, .rpar, .eof, .comma, .pipe, .name, .rcbr, .assign, .key_pub, .key_mut, .pipe, .comma, .comment, .lt, .lsbr]
+						&& next_tok.lit !in builtin)
+						&& (prev.kind in [.name, .amp, .lcbr, .rsbr, .key_type, .assign, .dot, .question, .rpar, .key_struct, .key_enum, .pipe, .key_interface, .comment, .ellipsis]
+						&& prev.lit !in builtin) && ((tok.lit != '' && tok.lit[0].is_capital())
+						|| prev_prev.lit in ['C', 'JS']) {
 						tok_typ = .symbol
-					} else if next_tok.kind == .lpar || (!tok.lit[0].is_capital()
-						&& next_tok.kind == .lt && next_tok.pos == tok.pos + tok.lit.len) {
+					} else if next_tok.kind == .lpar
+						|| (!(tok.lit != '' && tok.lit[0].is_capital())
+						&& next_tok.kind in [.lt, .lsbr] && next_tok.pos == tok.pos + tok.lit.len) {
 						tok_typ = .function
 					} else if next_tok.kind == .dot {
 						if tok.lit in ['C', 'JS'] {
 							tok_typ = .prefix
 						} else {
-							if tok.lit[0].is_capital() {
+							if tok.lit != '' && tok.lit[0].is_capital() {
 								tok_typ = .symbol
 							} else {
 								tok_typ = .module_
@@ -271,7 +278,7 @@ fn color_highlight(code string, tb &ast.Table) string {
 			tok = next_tok
 			next_tok = s.scan()
 		} else {
-			buf.write_byte(code[i])
+			buf.write_u8(code[i])
 			i++
 		}
 	}

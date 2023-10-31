@@ -1,4 +1,4 @@
-struct Array<T> {
+struct Array[T] {
 pub mut:
 	elements []T
 }
@@ -18,7 +18,7 @@ pub fn (s1 String) equals(s2 IObject) bool {
 	return false
 }
 
-pub fn (mut m Array<T>) contains(e T) bool {
+pub fn (mut m Array[T]) contains(e T) bool {
 	for mut element in m.elements {
 		if element.equals(e) {
 			return true
@@ -29,7 +29,7 @@ pub fn (mut m Array<T>) contains(e T) bool {
 
 fn test_generic_array_of_interface_method_call() {
 	s := String{'hello'}
-	mut a := Array<IObject>{[s]}
+	mut a := Array[IObject]{[s]}
 	ret := a.contains(IObject(s))
 	println(ret)
 	assert ret

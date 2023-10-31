@@ -1,4 +1,4 @@
-vlib/v/checker/tests/redundant_parentheses_warning.vv:3:7: error: redundant parentheses are used
+vlib/v/checker/tests/redundant_parentheses_warning.vv:3:7: warning: redundant parentheses are used
     1 | fn main() {
     2 |     a := 2
     3 |     b := ((a + 2))

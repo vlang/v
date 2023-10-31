@@ -42,7 +42,7 @@ const (
 	// name
 	app_name             = 'gen_vc'
 	// version
-	app_version          = '0.1.2'
+	app_version          = '0.1.3'
 	// description
 	app_description      = "This tool regenerates V's bootstrap .c files every time the V master branch is updated."
 	// assume something went wrong if file size less than this
@@ -64,7 +64,7 @@ const (
 	// server port
 	server_port = 7171
 	// log file
-	log_file    = '$work_dir/log.txt'
+	log_file    = '${work_dir}/log.txt'
 	// log_to is either 'file' or 'terminal'
 	log_to      = 'terminal'
 )
@@ -82,7 +82,7 @@ struct GenVC {
 	// flag options
 	options FlagOptions
 mut:
-	logger &log.Log
+	logger &log.Log = unsafe { nil }
 	// true if error was experienced running generate
 	gen_error bool
 }
@@ -91,7 +91,7 @@ mut:
 struct WebhookServer {
 	vweb.Context
 mut:
-	gen_vc &GenVC = 0 // initialized in init_server
+	gen_vc &GenVC = unsafe { nil } // initialized in init_server
 }
 
 // storage for flag options
@@ -125,7 +125,7 @@ fn main() {
 	}
 	// webhook server mode
 	if flag_options.serve {
-		vweb.run<WebhookServer>(&WebhookServer{}, flag_options.port)
+		vweb.run[WebhookServer](&WebhookServer{}, flag_options.port)
 	} else {
 		// cmd mode
 		mut gen_vc := new_gen_vc(flag_options)
@@ -207,9 +207,9 @@ fn (mut gen_vc GenVC) generate() {
 	if !os.is_dir(gen_vc.options.work_dir) {
 		// try create
 		os.mkdir(gen_vc.options.work_dir) or { panic(err) }
-		// still dosen't exist... we have a problem
+		// still doesn't exist... we have a problem
 		if !os.is_dir(gen_vc.options.work_dir) {
-			gen_vc.logger.error('error creating directory: $gen_vc.options.work_dir')
+			gen_vc.logger.error('error creating directory: ${gen_vc.options.work_dir}')
 			gen_vc.gen_error = true
 			return
 		}
@@ -219,12 +219,12 @@ fn (mut gen_vc GenVC) generate() {
 	// if we are not running with the --serve flag (webhook server)
 	// rather than deleting and re-downloading the repo each time
 	// first check to see if the local v repo is behind master
-	// if it isn't behind theres no point continuing further
+	// if it isn't behind there's no point continuing further
 	if !gen_vc.options.serve && os.is_dir(git_repo_dir_v) {
-		gen_vc.cmd_exec('git -C $git_repo_dir_v checkout master')
+		gen_vc.cmd_exec('git -C ${git_repo_dir_v} checkout master')
 		// fetch the remote repo just in case there are newer commits there
-		gen_vc.cmd_exec('git -C $git_repo_dir_v fetch')
-		git_status := gen_vc.cmd_exec('git -C $git_repo_dir_v status')
+		gen_vc.cmd_exec('git -C ${git_repo_dir_v} fetch')
+		git_status := gen_vc.cmd_exec('git -C ${git_repo_dir_v} status')
 		if !git_status.contains('behind') && !gen_vc.options.force {
 			gen_vc.logger.warn('v repository is already up to date.')
 			return
@@ -233,11 +233,11 @@ fn (mut gen_vc GenVC) generate() {
 	// delete repos
 	gen_vc.purge_repos()
 	// clone repos
-	gen_vc.cmd_exec('git clone --depth 1 https://$git_repo_v $git_repo_dir_v')
-	gen_vc.cmd_exec('git clone --depth 1 https://$git_repo_vc $git_repo_dir_vc')
+	gen_vc.cmd_exec('git clone --filter=blob:none https://${git_repo_v} ${git_repo_dir_v}')
+	gen_vc.cmd_exec('git clone --filter=blob:none https://${git_repo_vc} ${git_repo_dir_vc}')
 	// get output of git log -1 (last commit)
-	git_log_v := gen_vc.cmd_exec('git -C $git_repo_dir_v log -1 --format="commit %H%nDate: %ci%nDate Unix: %ct%nSubject: %s"')
-	git_log_vc := gen_vc.cmd_exec('git -C $git_repo_dir_vc log -1 --format="Commit %H%nDate: %ci%nDate Unix: %ct%nSubject: %s"')
+	git_log_v := gen_vc.cmd_exec('git -C ${git_repo_dir_v} log -1 --format="commit %H%nDate: %ci%nDate Unix: %ct%nSubject: %s"')
+	git_log_vc := gen_vc.cmd_exec('git -C ${git_repo_dir_vc} log -1 --format="Commit %H%nDate: %ci%nDate Unix: %ct%nSubject: %s"')
 	// date of last commit in each repo
 	ts_v := git_log_v.find_between('Date:', '\n').trim_space()
 	ts_vc := git_log_vc.find_between('Date:', '\n').trim_space()
@@ -255,45 +255,45 @@ fn (mut gen_vc GenVC) generate() {
 	last_commit_subject := git_log_v.find_between('Subject:', '\n').trim_space().replace("'",
 		'"')
 	// log some info
-	gen_vc.logger.debug('last commit time ($git_repo_v): ' + last_commit_time_v.format_ss())
-	gen_vc.logger.debug('last commit time ($git_repo_vc): ' + last_commit_time_vc.format_ss())
-	gen_vc.logger.debug('last commit hash ($git_repo_v): $last_commit_hash_v')
-	gen_vc.logger.debug('last commit subject ($git_repo_v): $last_commit_subject')
+	gen_vc.logger.debug('last commit time (${git_repo_v}): ' + last_commit_time_v.format_ss())
+	gen_vc.logger.debug('last commit time (${git_repo_vc}): ' + last_commit_time_vc.format_ss())
+	gen_vc.logger.debug('last commit hash (${git_repo_v}): ${last_commit_hash_v}')
+	gen_vc.logger.debug('last commit subject (${git_repo_v}): ${last_commit_subject}')
 	// if vc repo already has a newer commit than the v repo, assume it's up to date
 	if t_unix_vc >= t_unix_v && !gen_vc.options.force {
 		gen_vc.logger.warn('vc repository is already up to date.')
 		return
 	}
 	// try build v for current os (linux in this case)
-	gen_vc.cmd_exec('make -C $git_repo_dir_v')
-	v_exec := '$git_repo_dir_v/v'
+	gen_vc.cmd_exec('make -C ${git_repo_dir_v}')
+	v_exec := '${git_repo_dir_v}/v'
 	// check if make was successful
 	gen_vc.assert_file_exists_and_is_not_too_short(v_exec, err_msg_make)
 	// build v.c for each os
 	for os_name in vc_build_oses {
 		c_file := if os_name == 'nix' { 'v.c' } else { 'v_win.c' }
-		v_flags := if os_name == 'nix' { '-os cross' } else { '-os $os_name' }
+		v_flags := if os_name == 'nix' { '-os cross' } else { '-os ${os_name}' }
 		// try generate .c file
-		gen_vc.cmd_exec('$v_exec $v_flags -o $c_file $git_repo_dir_v/cmd/v')
+		gen_vc.cmd_exec('${v_exec} ${v_flags} -o ${c_file} ${git_repo_dir_v}/cmd/v')
 		// check if the c file seems ok
 		gen_vc.assert_file_exists_and_is_not_too_short(c_file, err_msg_gen_c)
 		// embed the latest v commit hash into the c file
-		gen_vc.cmd_exec('sed -i \'1s/^/#define V_COMMIT_HASH "$last_commit_hash_v_short"\\n/\' $c_file')
+		gen_vc.cmd_exec('sed -i \'1s/^/#define V_COMMIT_HASH "${last_commit_hash_v_short}"\\n/\' ${c_file}')
 		// move to vc repo
-		gen_vc.cmd_exec('mv $c_file $git_repo_dir_vc/$c_file')
+		gen_vc.cmd_exec('mv ${c_file} ${git_repo_dir_vc}/${c_file}')
 		// add new .c file to local vc repo
-		gen_vc.cmd_exec('git -C $git_repo_dir_vc add $c_file')
+		gen_vc.cmd_exec('git -C ${git_repo_dir_vc} add ${c_file}')
 	}
 	// check if the vc repo actually changed
-	git_status := gen_vc.cmd_exec('git -C $git_repo_dir_vc status')
+	git_status := gen_vc.cmd_exec('git -C ${git_repo_dir_vc} status')
 	if git_status.contains('nothing to commit') {
 		gen_vc.logger.error('no changes to vc repo: something went wrong.')
 		gen_vc.gen_error = true
 	}
 	// commit changes to local vc repo
-	gen_vc.cmd_exec_safe("git -C $git_repo_dir_vc commit -m '[v:master] $last_commit_hash_v_short - $last_commit_subject'")
+	gen_vc.cmd_exec_safe("git -C ${git_repo_dir_vc} commit -m '[v:master] ${last_commit_hash_v_short} - ${last_commit_subject}'")
 	// push changes to remote vc repo
-	gen_vc.cmd_exec_safe('git -C $git_repo_dir_vc push https://${urllib.query_escape(git_username)}:${urllib.query_escape(git_password)}@$git_repo_vc master')
+	gen_vc.cmd_exec_safe('git -C ${git_repo_dir_vc} push https://${urllib.query_escape(git_username)}:${urllib.query_escape(git_password)}@${git_repo_vc} master')
 }
 
 // only execute when dry_run option is false, otherwise just log
@@ -312,10 +312,10 @@ fn (mut gen_vc GenVC) command_execute(cmd string, dry bool) string {
 	if dry {
 		return gen_vc.command_execute_dry(cmd)
 	}
-	gen_vc.logger.info('cmd: $cmd')
+	gen_vc.logger.info('cmd: ${cmd}')
 	r := os.execute(cmd)
 	if r.exit_code < 0 {
-		gen_vc.logger.error('$err_msg_cmd_x: "$cmd" could not start.')
+		gen_vc.logger.error('${err_msg_cmd_x}: "${cmd}" could not start.')
 		gen_vc.logger.error(r.output)
 		// something went wrong, better start fresh next time
 		gen_vc.purge_repos()
@@ -323,7 +323,7 @@ fn (mut gen_vc GenVC) command_execute(cmd string, dry bool) string {
 		return ''
 	}
 	if r.exit_code != 0 {
-		gen_vc.logger.error('$err_msg_cmd_x: "$cmd" failed.')
+		gen_vc.logger.error('${err_msg_cmd_x}: "${cmd}" failed.')
 		gen_vc.logger.error(r.output)
 		// something went wrong, better start fresh next time
 		gen_vc.purge_repos()
@@ -335,35 +335,35 @@ fn (mut gen_vc GenVC) command_execute(cmd string, dry bool) string {
 
 // just log cmd, dont execute
 fn (mut gen_vc GenVC) command_execute_dry(cmd string) string {
-	gen_vc.logger.info('cmd (dry): "$cmd"')
+	gen_vc.logger.info('cmd (dry): "${cmd}"')
 	return ''
 }
 
 // delete repo directories
 fn (mut gen_vc GenVC) purge_repos() {
 	// delete old repos (better to be fully explicit here, since these are destructive operations)
-	mut repo_dir := '$gen_vc.options.work_dir/$git_repo_dir_v'
+	mut repo_dir := '${gen_vc.options.work_dir}/${git_repo_dir_v}'
 	if os.is_dir(repo_dir) {
-		gen_vc.logger.info('purging local repo: "$repo_dir"')
-		gen_vc.cmd_exec('rm -rf $repo_dir')
+		gen_vc.logger.info('purging local repo: "${repo_dir}"')
+		gen_vc.cmd_exec('rm -rf ${repo_dir}')
 	}
-	repo_dir = '$gen_vc.options.work_dir/$git_repo_dir_vc'
+	repo_dir = '${gen_vc.options.work_dir}/${git_repo_dir_vc}'
 	if os.is_dir(repo_dir) {
-		gen_vc.logger.info('purging local repo: "$repo_dir"')
-		gen_vc.cmd_exec('rm -rf $repo_dir')
+		gen_vc.logger.info('purging local repo: "${repo_dir}"')
+		gen_vc.cmd_exec('rm -rf ${repo_dir}')
 	}
 }
 
 // check if file size is too short
 fn (mut gen_vc GenVC) assert_file_exists_and_is_not_too_short(f string, emsg string) {
 	if !os.exists(f) {
-		gen_vc.logger.error('$err_msg_build: $emsg .')
+		gen_vc.logger.error('${err_msg_build}: ${emsg} .')
 		gen_vc.gen_error = true
 		return
 	}
 	fsize := os.file_size(f)
 	if fsize < too_short_file_limit {
-		gen_vc.logger.error('$err_msg_build: $f exists, but is too short: only $fsize bytes.')
+		gen_vc.logger.error('${err_msg_build}: ${f} exists, but is too short: only ${fsize} bytes.')
 		gen_vc.gen_error = true
 		return
 	}

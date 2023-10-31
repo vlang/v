@@ -1,4 +1,4 @@
-struct Something aaa = (struct Something){.fint = 0,.ff32 = 0,.fchar = 0,};
-struct Something bbb = (struct Something){.fint = 0,.ff32 = 0,.fchar = 0,};
+struct Something aaa = ((struct Something){.fint = 0,.ff32 = 0,.fchar = 0,});
+struct Something bbb = ((struct Something){.fint = 0,.ff32 = 0,.fchar = 0,});
 if (Something_struct_eq(aaa, bbb)) {
 

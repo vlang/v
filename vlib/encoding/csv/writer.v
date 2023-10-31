@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module csv
@@ -6,24 +6,31 @@ module csv
 import strings
 
 struct Writer {
+	use_crlf  bool
+	delimiter u8
 mut:
 	sb strings.Builder
-pub mut:
-	use_crlf  bool
-	delimiter byte
 }
 
-pub fn new_writer() &Writer {
+[params]
+pub struct WriterConfig {
+	use_crlf  bool
+	delimiter u8 = `,`
+}
+
+// new_writer returns a reference to a Writer
+pub fn new_writer(config WriterConfig) &Writer {
 	return &Writer{
-		delimiter: `,`
 		sb: strings.new_builder(200)
+		use_crlf: config.use_crlf
+		delimiter: config.delimiter
 	}
 }
 
 // write writes a single record
-pub fn (mut w Writer) write(record []string) ?bool {
+pub fn (mut w Writer) write(record []string) !bool {
 	if !valid_delim(w.delimiter) {
-		return IError(&InvalidDelimiterError{})
+		return &InvalidDelimiterError{}
 	}
 	le := if w.use_crlf { '\r\n' } else { '\n' }
 	for n, field_ in record {
@@ -69,12 +76,13 @@ fn (w &Writer) field_needs_quotes(field string) bool {
 	if field == '' {
 		return false
 	}
-	if field.contains(w.delimiter.ascii_str()) || (field.index_any('"\r\n') != -1) {
+	if field.contains(w.delimiter.ascii_str()) || field.index_any('"\r\n') != -1 {
 		return true
 	}
 	return false
 }
 
+// str returns the writer contents
 pub fn (mut w Writer) str() string {
 	return w.sb.str()
 }

@@ -3,6 +3,6 @@ fn ret_ten() int {
 }
 
 fn test_thread_str() {
-	th := go ret_ten()
+	th := spawn ret_ten()
 	assert th.str() == 'thread(int)'
 }

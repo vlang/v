@@ -90,7 +90,7 @@ const (
 
 struct App {
 mut:
-	ui                  &ui.Context = 0
+	ui                  &ui.Context = unsafe { nil }
 	header_text         []string
 	mouse_pos           Point
 	msg                 string
@@ -125,11 +125,10 @@ fn main() {
 	app.mouse_pos.x = 40
 	app.mouse_pos.y = 15
 	app.ui.clear()
-	app.ui.run() ?
+	app.ui.run()!
 }
 
-fn frame(x voidptr) {
-	mut app := &App(x)
+fn frame(mut app App) {
 	mut redraw := app.should_redraw
 	if app.msg != '' && app.ui.frame_count >= app.msg_hide_tick {
 		app.msg = ''
@@ -141,8 +140,7 @@ fn frame(x voidptr) {
 	}
 }
 
-fn event(event &ui.Event, x voidptr) {
-	mut app := &App(x)
+fn event(event &ui.Event, mut app App) {
 	match event.typ {
 		.mouse_down {
 			app.is_dragging = true
@@ -319,7 +317,7 @@ fn (mut app App) select_color(primary bool, idx int) {
 		app.secondary_color = color
 	}
 	c_str := if primary { 'primary' } else { 'secondary' }
-	app.show_msg('set $c_str color idx: $idx', 1)
+	app.show_msg('set ${c_str} color idx: ${idx}', 1)
 }
 
 fn (mut app App) set_pixel(x_ int, y_ int, c ui.Color) {
@@ -420,11 +418,11 @@ fn (mut app App) draw_header() {
 			g: 220
 			b: 220
 		)
-		app.ui.draw_text(0, 0, ' $app.msg ')
+		app.ui.draw_text(0, 0, ' ${app.msg} ')
 		app.ui.reset()
 	}
 	//'tick: $app.ui.frame_count | ' +
-	app.ui.draw_text(3, 2, 'terminal size: ($app.ui.window_width, $app.ui.window_height) | primary color: $app.primary_color.hex() | secondary color: $app.secondary_color.hex()')
+	app.ui.draw_text(3, 2, 'terminal size: (${app.ui.window_width}, ${app.ui.window_height}) | primary color: ${app.primary_color.hex()} | secondary color: ${app.secondary_color.hex()}')
 	app.ui.horizontal_separator(3)
 }
 
@@ -452,7 +450,7 @@ fn (mut app App) draw_footer() {
 	app.ui.reset_bg_color()
 	app.ui.draw_text(3, wh - 3, select_color)
 	app.ui.bold()
-	app.ui.draw_text(3, wh - 1, '$select_size $app.size')
+	app.ui.draw_text(3, wh - 1, '${select_size} ${app.size}')
 	app.ui.reset()
 
 	// TODO: help button
@@ -468,7 +466,7 @@ fn (mut app App) inc_size() {
 	if app.size < 30 {
 		app.size++
 	}
-	app.show_msg('inc. size: $app.size', 1)
+	app.show_msg('inc. size: ${app.size}', 1)
 }
 
 [inline]
@@ -476,7 +474,7 @@ fn (mut app App) dec_size() {
 	if app.size > 1 {
 		app.size--
 	}
-	app.show_msg('dec. size: $app.size', 1)
+	app.show_msg('dec. size: ${app.size}', 1)
 }
 
 fn (mut app App) footer_click(event &ui.Event) {

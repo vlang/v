@@ -1,0 +1,7 @@
+vlib/v/checker/tests/struct_non_ptr_field_nil_default_value_err.vv:4:7: error: cannot assign `nil` to a non-pointer field
+    2 | 
+    3 | struct Foo {
+    4 |   bar SomeInterface = unsafe{ nil }
+      |       ~~~~~~~~~~~~~
+    5 | }
+    6 | fn main() {

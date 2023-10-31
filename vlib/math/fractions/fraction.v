@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module fractions
@@ -14,7 +14,7 @@ import math.bits
 // not be reduced automatically.
 // 2. d cannot be set to zero. The factory function will panic.
 // 3. If provided d is negative, it will be made positive. n will change as well.
-struct Fraction {
+pub struct Fraction {
 pub:
 	n          i64
 	d          i64
@@ -42,7 +42,7 @@ pub fn fraction(n i64, d i64) Fraction {
 
 // To String method
 pub fn (f Fraction) str() string {
-	return '$f.n/$f.d'
+	return '${f.n}/${f.d}'
 }
 
 //
@@ -233,27 +233,43 @@ fn cmp(f1 Fraction, f2 Fraction) int {
 // +-----------------------------+
 // | Public comparison functions |
 // +-----------------------------+
+
 // equals returns true if both the Fractions are equal
+[deprecated: 'use f1 == f2 instead']
 pub fn (f1 Fraction) equals(f2 Fraction) bool {
 	return cmp(f1, f2) == 0
 }
 
+// return true if f1 == f2
+pub fn (f1 Fraction) == (f2 Fraction) bool {
+	return cmp(f1, f2) == 0
+}
+
 // ge returns true if f1 >= f2
+[deprecated: 'use f1 >= f2 instead']
 pub fn (f1 Fraction) ge(f2 Fraction) bool {
 	return cmp(f1, f2) >= 0
 }
 
 // gt returns true if f1 > f2
+[deprecated: 'use f1 > f2 instead']
 pub fn (f1 Fraction) gt(f2 Fraction) bool {
 	return cmp(f1, f2) > 0
 }
 
 // le returns true if f1 <= f2
+[deprecated: 'use f1 <= f2 instead']
 pub fn (f1 Fraction) le(f2 Fraction) bool {
 	return cmp(f1, f2) <= 0
 }
 
 // lt returns true if f1 < f2
+[deprecated: 'use f1 < f2 instead']
 pub fn (f1 Fraction) lt(f2 Fraction) bool {
+	return cmp(f1, f2) < 0
+}
+
+// return true if f1 < f2
+pub fn (f1 Fraction) < (f2 Fraction) bool {
 	return cmp(f1, f2) < 0
 }

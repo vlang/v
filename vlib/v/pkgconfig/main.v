@@ -3,9 +3,9 @@ module pkgconfig
 import flag
 import strings
 
-struct Main {
+pub struct Main {
 pub mut:
-	opt         &MainOptions
+	opt         &MainOptions = unsafe { nil }
 	res         string
 	has_actions bool
 }
@@ -34,7 +34,7 @@ struct MainOptions {
 	args              []string
 }
 
-fn desc(mod string) ?string {
+fn desc(mod string) !string {
 	options := Options{
 		only_description: true
 	}
@@ -42,7 +42,7 @@ fn desc(mod string) ?string {
 	return pc.description
 }
 
-pub fn main(args []string) ?&Main {
+pub fn main(args []string) !&Main {
 	mut fp := flag.new_flag_parser(args)
 	fp.application('pkgconfig')
 	fp.version(version)
@@ -61,7 +61,7 @@ pub fn main(args []string) ?&Main {
 			for mod in modules {
 				d := desc(mod) or { continue }
 				pad := strings.repeat(` `, 20 - mod.len)
-				m.res += '$mod $pad $d\n'
+				m.res += '${mod} ${pad} ${d}\n'
 			}
 		} else {
 			m.res = modules.join('\n')
@@ -72,13 +72,13 @@ pub fn main(args []string) ?&Main {
 	return m
 }
 
-pub fn (mut m Main) run() ?string {
+pub fn (mut m Main) run() !string {
 	options := Options{
 		debug: m.opt.debug
 	}
 	// m.opt = options
 	opt := m.opt
-	mut pc := &PkgConfig(0)
+	mut pc := &PkgConfig(unsafe { nil })
 	mut res := m.res
 	for arg in opt.args {
 		mut pcdep := load(arg, options) or {
@@ -93,8 +93,8 @@ pub fn (mut m Main) run() ?string {
 			}
 			res += pcdep.description
 		}
-		if pc != 0 {
-			pc.extend(pcdep) ?
+		if unsafe { pc != 0 } {
+			pc.extend(pcdep)!
 		} else {
 			pc = pcdep
 		}
@@ -163,13 +163,13 @@ fn filter(libs []string, prefix string, prefix2 string) string {
 	if prefix2 != '' {
 		for lib in libs {
 			if !lib.starts_with(prefix) && !lib.starts_with(prefix2) {
-				res += ' $lib'
+				res += ' ${lib}'
 			}
 		}
 	} else {
 		for lib in libs {
 			if lib.starts_with(prefix) {
-				res += ' $lib'
+				res += ' ${lib}'
 			}
 		}
 	}
@@ -182,9 +182,9 @@ fn parse_options(mut fp flag.FlagParser) &MainOptions {
 		modversion: fp.bool('modversion', `V`, false, 'show version of module')
 		help: fp.bool('help', `h`, false, 'show this help message')
 		debug: fp.bool('debug', `D`, false, 'show debug information')
-		listall: fp.bool('list-all', `l`, false, 'list all pkgmodules')
+		listall: fp.bool('list-all', `p`, false, 'list all pkgmodules')
 		exists: fp.bool('exists', `e`, false, 'return 0 if pkg exists')
-		variables: fp.bool('print-variables', `V`, false, 'display variable names')
+		variables: fp.bool('print-variables', `P`, false, 'display variable names')
 		requires: fp.bool('print-requires', `r`, false, 'display requires of the module')
 		atleast: fp.string('atleast-version', `a`, '', 'return 0 if pkg version is at least the given one')
 		atleastpc: fp.string('atleast-pkgconfig-version', `A`, '', 'return 0 if pkgconfig version is at least the given one')

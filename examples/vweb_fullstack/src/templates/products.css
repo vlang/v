@@ -1,0 +1,11 @@
+h1.title {
+    font-family: Arial, Helvetica, sans-serif;
+    color: #3b7bbf;
+}
+
+div.products-table {
+    border: 1px solid; 
+    max-width: 720px;
+    padding: 10px;
+    margin: 10px;
+}

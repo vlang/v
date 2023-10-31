@@ -22,14 +22,14 @@ pub fn (mut con TcpConn) get_blocking() bool {
 // when state is true, or non blocking (false).
 // The default for `net` tcp connections is the non blocking mode.
 // Calling .read_line will set the connection to blocking mode.
-pub fn (mut con TcpConn) set_blocking(state bool) ? {
+pub fn (mut con TcpConn) set_blocking(state bool) ! {
 	con.is_blocking = state
 	$if windows {
 		mut t := u32(0)
 		if !con.is_blocking {
 			t = 1
 		}
-		socket_error(C.ioctlsocket(con.sock.handle, fionbio, &t)) ?
+		socket_error(C.ioctlsocket(con.sock.handle, fionbio, &t))!
 	} $else {
 		mut flags := C.fcntl(con.sock.handle, C.F_GETFL, 0)
 		if state {
@@ -37,7 +37,7 @@ pub fn (mut con TcpConn) set_blocking(state bool) ? {
 		} else {
 			flags |= C.O_NONBLOCK
 		}
-		socket_error(C.fcntl(con.sock.handle, C.F_SETFL, flags)) ?
+		socket_error(C.fcntl(con.sock.handle, C.F_SETFL, flags))!
 	}
 }
 
@@ -57,7 +57,7 @@ pub fn (mut con TcpConn) read_line_max(max_line_len int) string {
 	if !con.is_blocking {
 		con.set_blocking(true) or {}
 	}
-	mut buf := [net.max_read]byte{} // where C.recv will store the network data
+	mut buf := [net.max_read]u8{} // where C.recv will store the network data
 	mut res := strings.new_builder(net.max_read) // The final result, including the ending \n.
 	defer {
 		unsafe { res.free() }

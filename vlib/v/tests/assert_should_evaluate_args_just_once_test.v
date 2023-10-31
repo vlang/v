@@ -6,7 +6,7 @@ struct Abc {
 fn fn_that_should_be_called_just_once_array() []int {
 	mut static ncalls := 0
 	ncalls++
-	println('${@FN} calls: $ncalls')
+	println('${@FN} calls: ${ncalls}')
 	if ncalls > 1 {
 		assert false
 	}
@@ -17,7 +17,7 @@ fn fn_that_should_be_called_just_once_array() []int {
 fn fn_that_should_be_called_just_once_struct() Abc {
 	mut static ncalls := 0
 	ncalls++
-	println('${@FN} calls: $ncalls')
+	println('${@FN} calls: ${ncalls}')
 	if ncalls > 1 {
 		assert false
 	}

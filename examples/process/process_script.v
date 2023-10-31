@@ -17,19 +17,13 @@ fn exec(path string, redirect bool) {
 
 	cmd.set_redirect_stdio()
 	cmd.run()
-	if cmd.is_alive() {
-		for {
-			line = cmd.stdout_read()
-			println('STDOUT: $line')
+	for cmd.is_alive() {
+		line = cmd.stdout_read()
+		println('STDOUT: ${line}')
 
-			if !redirect {
-				line_err = cmd.stderr_read()
-				println('STDERR: $line_err')
-			}
-
-			if !cmd.is_alive() {
-				break
-			}
+		if !redirect {
+			line_err = cmd.stderr_read()
+			println('STDERR: ${line_err}')
 		}
 	}
 	if cmd.code > 0 {

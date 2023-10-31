@@ -4,21 +4,21 @@ fn test_comptime_generic() {
 }
 
 [inline]
-pub fn func1<T>(t &T) {
-	func2<T>(t)
+pub fn func1[T](t &T) {
+	func2[T](t)
 }
 
 [inline]
-pub fn func2<T>(t &T) {
-	$if T is $Array {
+pub fn func2[T](t &T) {
+	$if T is $array {
 		unsafe {
 			for i in 0 .. t.len {
 				func2(&t[i])
 			}
 		}
-	} $else $if T is $Map {
+	} $else $if T is $map {
 		// fake_map(t, df)
-	} $else $if T is $Struct {
+	} $else $if T is $struct {
 		$for f in T.fields {
 			$if f.typ is string {
 			}

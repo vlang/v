@@ -1,0 +1,11 @@
+vlib/v/checker/tests/import_sym_builtin_override_err.vv:1:15: error: cannot import or override builtin type
+    1 | import rand { f64 }
+      |               ~~~
+    2 | 
+    3 | type Dot = [3]f64
+vlib/v/checker/tests/import_sym_builtin_override_err.vv:3:12: error: unknown type `rand.f64`.
+Did you mean `rand.PRNG`?
+    1 | import rand { f64 }
+    2 | 
+    3 | type Dot = [3]f64
+      |            ~~~~~~

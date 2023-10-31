@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module http
@@ -7,18 +7,18 @@ import os
 
 // download_file retrieves a document from the URL `url`,
 // and saves it in the output file path `out_file_path`.
-pub fn download_file(url string, out_file_path string) ? {
+pub fn download_file(url string, out_file_path string) ! {
 	$if debug_http ? {
-		println('http.download_file url=$url out_file_path=$out_file_path')
+		println('http.download_file url=${url} out_file_path=${out_file_path}')
 	}
 	s := get(url) or { return err }
 	if s.status() != .ok {
-		return error('received http code $s.status_code')
+		return error('received http code ${s.status_code}')
 	}
 	$if debug_http ? {
-		println('http.download_file saving $s.text.len bytes')
+		println('http.download_file saving ${s.body.len} bytes')
 	}
-	os.write_file(out_file_path, s.text) ?
+	os.write_file(out_file_path, s.body)!
 }
 
 // TODO: implement download_file_with_progress

@@ -6,8 +6,8 @@ import rand
 
 struct App {
 mut:
-	gg      &gg.Context       = 0
-	ui      &objects.UIParams = 0
+	gg      &gg.Context       = unsafe { nil }
+	ui      &objects.UIParams = unsafe { nil }
 	rockets []objects.Rocket
 	frames  [][]objects.Rocket
 	// i thought about using a fixed fifo queue for the frames but the array
@@ -25,7 +25,7 @@ fn on_frame(mut app App) {
 	for mut frame in app.frames {
 		for mut rocket in frame {
 			if !rocket.exploded {
-				rocket.color.a = byte(f32_max(rocket.color.a - 8, 0))
+				rocket.color.a = u8(f32_max(rocket.color.a - 8, 0))
 				rocket.draw(mut app.gg)
 			}
 		}
@@ -93,8 +93,6 @@ fn (mut app App) resize() {
 	app.ui.height = size.height
 }
 
-// is needed for easier diagnostics on windows
-[console]
 fn main() {
 	mut font_path := os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'RobotoMono-Regular.ttf'))
 	$if android {

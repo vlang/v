@@ -7,7 +7,7 @@ WORKDIR /opt/vlang
 ARG USE_LOCAL
 
 RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gcc clang make git && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gcc clang make git binutils && \
     apt-get clean && rm -rf /var/cache/apt/archives/* && \
     rm -rf /var/lib/apt/lists/*
 

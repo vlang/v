@@ -1,0 +1,24 @@
+module main
+
+fn f2() bool {
+	println('f2')
+	return false
+}
+
+fn f3() !bool {
+	println('f3')
+	return false
+}
+
+fn test() ! {
+	println('test')
+	if f2() && f3()! {
+		println('-> 02')
+	} else {
+		println('-> 03')
+	}
+}
+
+fn main() {
+	test() or { panic(err) }
+}

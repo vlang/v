@@ -19,7 +19,7 @@ pub fn (particle Particle) draw(mut ctx gg.Context) {
 
 pub fn (mut particle Particle) tick(mut rocket Rocket, mut ctx gg.Context) {
 	particle.lifespan -= get_params().age_rate
-	particle.color.a = byte(particle.lifespan)
+	particle.color.a = u8(particle.lifespan)
 
 	if particle.lifespan <= 0 {
 		rocket.dead = true

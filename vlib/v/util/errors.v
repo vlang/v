@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 [has_globals]
@@ -7,6 +7,7 @@ module util
 import os
 import strings
 import term
+import v.errors
 import v.token
 import v.mathutil as mu
 
@@ -56,7 +57,7 @@ pub fn bold(msg string) string {
 	return term.bold(msg)
 }
 
-fn color(kind string, msg string) string {
+pub fn color(kind string, msg string) string {
 	if !util.emanager.support_color {
 		return msg
 	}
@@ -66,35 +67,63 @@ fn color(kind string, msg string) string {
 	if kind.contains('notice') {
 		return term.yellow(msg)
 	}
+	if kind.contains('details') {
+		return term.bright_blue(msg)
+	}
 	return term.magenta(msg)
 }
 
 const normalised_workdir = os.wd_at_startup.replace('\\', '/') + '/'
 
+const verror_paths_absolute = os.getenv('VERROR_PATHS') == 'absolute'
+
+// path_styled_for_error_messages converts the given file `path`, into one suitable for displaying
+// in error messages, produced by the V compiler.
+//
+// When the file path is prefixed by the working folder, usually that means, that the resulting
+// path, will be relative to the current working folder. Relative paths are shorter and stabler,
+// because they only depend on the project, and not on the parent folders.
+// If the current working folder of the compiler is NOT a prefix of the given path, then this
+// function will return an absolute path instead. Absolute paths are longer, and also platform/user
+// dependent, but they have the advantage of being more easily processible by tools on the same
+// machine.
+//
+// The V user can opt out of that relativisation, by setting the environment variable VERROR_PATHS,
+// to `absolute`. That is useful for starting the V compiler from an IDE or another program, where
+// the concept of a "current working folder", is not as clear as working manually with the compiler
+// in a shell. By setting VERROR_PATHS=absolute, the IDE/editor can ensure, that the produced error
+// messages will have file locations that are easy to find and jump to locally.
+//
+// NOTE: path_styled_for_error_messages will *always* use `/` in the error paths, no matter the OS,
+// to ensure stable compiler error output in the tests.
+pub fn path_styled_for_error_messages(path string) string {
+	mut rpath := os.real_path(path)
+	rpath = rpath.replace('\\', '/')
+	if util.verror_paths_absolute {
+		return rpath
+	}
+	if rpath.starts_with(util.normalised_workdir) {
+		rpath = rpath.replace_once(util.normalised_workdir, '')
+	}
+	return rpath
+}
+
 // formatted_error - `kind` may be 'error' or 'warn'
 pub fn formatted_error(kind string, omsg string, filepath string, pos token.Pos) string {
 	emsg := omsg.replace('main.', '')
-	mut path := filepath
-	verror_paths_override := os.getenv('VERROR_PATHS')
-	if verror_paths_override == 'absolute' {
-		path = os.real_path(path)
+	path := path_styled_for_error_messages(filepath)
+	position := if filepath.len > 0 {
+		'${path}:${pos.line_nr + 1}:${mu.max(1, pos.col + 1)}:'
 	} else {
-		// always use `/` in the error paths, to ensure the compiler output does not vary in the tests:
-		path = path.replace('\\', '/')
-		if path.starts_with(util.normalised_workdir) {
-			// Get a relative path to the compiler's workdir, when possible:
-			path = path.replace_once(util.normalised_workdir, '')
-		}
+		''
 	}
-	//
-	position := '$path:${pos.line_nr + 1}:${mu.max(1, pos.col + 1)}:'
 	scontext := source_file_context(kind, filepath, pos).join('\n')
 	final_position := bold(position)
 	final_kind := bold(color(kind, kind))
 	final_msg := emsg
-	final_context := if scontext.len > 0 { '\n$scontext' } else { '' }
-	//
-	return '$final_position $final_kind $final_msg$final_context'.trim_space()
+	final_context := if scontext.len > 0 { '\n${scontext}' } else { '' }
+
+	return '${final_position} ${final_kind} ${final_msg}${final_context}'.trim_space()
 }
 
 [heap]
@@ -150,7 +179,7 @@ pub fn source_file_context(kind string, filepath string, pos token.Pos) []string
 			mut pointerline_builder := strings.new_builder(sline.len)
 			for i := 0; i < start_column; {
 				if sline[i].is_space() {
-					pointerline_builder.write_byte(sline[i])
+					pointerline_builder.write_u8(sline[i])
 					i++
 				} else {
 					char_len := utf8_char_len(sline[i])
@@ -171,7 +200,7 @@ pub fn source_file_context(kind string, filepath string, pos token.Pos) []string
 [noreturn]
 pub fn verror(kind string, s string) {
 	final_kind := bold(color(kind, kind))
-	eprintln('$final_kind: $s')
+	eprintln('${final_kind}: ${s}')
 	exit(1)
 }
 
@@ -184,4 +213,12 @@ pub fn vlines_escape_path(path string, ccompiler string) string {
 		return '../../../../../..' + cescaped_path(os.real_path(path))
 	}
 	return cescaped_path(os.real_path(path))
+}
+
+pub fn show_compiler_message(kind string, err errors.CompilerMessage) {
+	ferror := formatted_error(kind, err.message, err.file_path, err.pos)
+	eprintln(ferror)
+	if err.details.len > 0 {
+		eprintln(bold('Details: ') + color('details', err.details))
+	}
 }

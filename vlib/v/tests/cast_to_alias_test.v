@@ -1,5 +1,3 @@
-module main
-
 type CEnum = int
 
 enum Enum {
@@ -7,11 +5,11 @@ enum Enum {
 }
 
 fn foo(n int) string {
-	return '$n'
+	return '${n}'
 }
 
 fn bar(n CEnum) string {
-	return '$n'
+	return '${n}'
 }
 
 fn test_cast_to_alias() {
@@ -43,11 +41,11 @@ struct Foo {
 type Alias = Foo
 
 fn test_cast_to_alias_of_ref_struct() {
-	foo := &Foo(0)
+	foo := &Foo(unsafe { nil })
 	println(typeof(foo).name)
 	assert typeof(foo).name == '&Foo'
 
-	bar := &Alias(0)
+	bar := &Alias(unsafe { nil })
 	println(typeof(bar).name)
 	assert typeof(bar).name == '&Alias'
 }

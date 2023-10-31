@@ -1,0 +1,13 @@
+struct Dumb {
+mut:
+	v []int
+}
+
+fn main() {
+	a := Dumb{[1, 2, 3]}
+	mut b := a.v // I expect a compiler error
+	for _ in 0 .. 100 {
+		b << [4, 5, 6]
+	}
+	println(a) // prints [4,5,6] in this case, but I've also seen crashes
+}

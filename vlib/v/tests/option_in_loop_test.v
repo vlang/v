@@ -1,6 +1,6 @@
 fn opt_0_10_20(x int) ?int {
 	if x < 0 || (x >= 10 && x <= 20) {
-		return error('invalid')
+		return none
 	}
 	return x
 }

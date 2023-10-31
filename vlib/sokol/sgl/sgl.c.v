@@ -1,31 +1,41 @@
 module sgl
 
 import sokol.gfx
+import sokol.memory
 
-pub const (
-	version = gfx.version + 1
-	context = Context{0x00010001} // C.SGL_DEFAULT_CONTEXT = { 0x00010001 }
-)
+pub const version = gfx.version + 1
+
+pub const context = Context{0x00010001} // C.SGL_DEFAULT_CONTEXT = { 0x00010001 }
 
 // setup/shutdown/misc
-[inline]
 pub fn setup(desc &Desc) {
+	if desc.allocator.alloc_fn == unsafe { nil } && desc.allocator.free_fn == unsafe { nil } {
+		unsafe {
+			desc.allocator.alloc_fn = memory.salloc
+			desc.allocator.free_fn = memory.sfree
+			desc.allocator.user_data = voidptr(0x10000561)
+		}
+	}
+	if desc.logger.func == unsafe { nil } {
+		unsafe {
+			desc.logger.func = memory.slog
+		}
+	}
 	C.sgl_setup(desc)
 }
 
-[inline]
 pub fn shutdown() {
 	C.sgl_shutdown()
 }
 
 [inline]
 pub fn error() SglError {
-	return SglError(int(C.sgl_error()))
+	return unsafe { SglError(int(C.sgl_error())) }
 }
 
 [inline]
 pub fn context_error(ctx Context) SglError {
-	return SglError(int(C.sgl_context_error(ctx)))
+	return unsafe { SglError(int(C.sgl_context_error(ctx))) }
 }
 
 [inline]
@@ -97,6 +107,11 @@ pub fn scissor_rect(x int, y int, w int, h int, origin_top_left bool) {
 }
 
 [inline]
+pub fn scissor_rectf(x f32, y f32, w f32, h f32, origin_top_left bool) {
+	C.sgl_scissor_rectf(x, y, w, h, origin_top_left)
+}
+
+[inline]
 pub fn enable_texture() {
 	C.sgl_enable_texture()
 }
@@ -107,8 +122,8 @@ pub fn disable_texture() {
 }
 
 [inline]
-pub fn texture(img gfx.Image) {
-	C.sgl_texture(img)
+pub fn texture(img gfx.Image, smp gfx.Sampler) {
+	C.sgl_texture(img, smp)
 }
 
 // pipeline stack functions
@@ -240,12 +255,12 @@ pub fn c4f(r f32, g f32, b f32, a f32) {
 }
 
 [inline]
-pub fn c3b(r byte, g byte, b byte) {
+pub fn c3b(r u8, g u8, b u8) {
 	C.sgl_c3b(r, g, b)
 }
 
 [inline]
-pub fn c4b(r byte, g byte, b byte, a byte) {
+pub fn c4b(r u8, g u8, b u8, a u8) {
 	C.sgl_c4b(r, g, b, a)
 }
 
@@ -316,7 +331,7 @@ pub fn v2f_c3f(x f32, y f32, r f32, g f32, b f32) {
 }
 
 [inline]
-pub fn v2f_c3b(x f32, y f32, r byte, g byte, b byte) {
+pub fn v2f_c3b(x f32, y f32, r u8, g u8, b u8) {
 	C.sgl_v2f_c3b(x, y, r, g, b)
 }
 
@@ -326,7 +341,7 @@ pub fn v2f_c4f(x f32, y f32, r f32, g f32, b f32, a f32) {
 }
 
 [inline]
-pub fn v2f_c4b(x f32, y f32, r byte, g byte, b byte, a byte) {
+pub fn v2f_c4b(x f32, y f32, r u8, g u8, b u8, a u8) {
 	C.sgl_v2f_c4b(x, y, r, g, b, a)
 }
 
@@ -341,7 +356,7 @@ pub fn v3f_c3f(x f32, y f32, z f32, r f32, g f32, b f32) {
 }
 
 [inline]
-pub fn v3f_c3b(x f32, y f32, z f32, r byte, g byte, b byte) {
+pub fn v3f_c3b(x f32, y f32, z f32, r u8, g u8, b u8) {
 	C.sgl_v3f_c3b(x, y, z, r, g, b)
 }
 
@@ -351,7 +366,7 @@ pub fn v3f_c4f(x f32, y f32, z f32, r f32, g f32, b f32, a f32) {
 }
 
 [inline]
-pub fn v3f_c4b(x f32, y f32, z f32, r byte, g byte, b byte, a byte) {
+pub fn v3f_c4b(x f32, y f32, z f32, r u8, g u8, b u8, a u8) {
 	C.sgl_v3f_c4b(x, y, z, r, g, b, a)
 }
 
@@ -366,7 +381,7 @@ pub fn v2f_t2f_c3f(x f32, y f32, u f32, v f32, r f32, g f32, b f32) {
 }
 
 [inline]
-pub fn v2f_t2f_c3b(x f32, y f32, u f32, v f32, r byte, g byte, b byte) {
+pub fn v2f_t2f_c3b(x f32, y f32, u f32, v f32, r u8, g u8, b u8) {
 	C.sgl_v2f_t2f_c3b(x, y, u, v, r, g, b)
 }
 
@@ -376,7 +391,7 @@ pub fn v2f_t2f_c4f(x f32, y f32, u f32, v f32, r f32, g f32, b f32, a f32) {
 }
 
 [inline]
-pub fn v2f_t2f_c4b(x f32, y f32, u f32, v f32, r byte, g byte, b byte, a byte) {
+pub fn v2f_t2f_c4b(x f32, y f32, u f32, v f32, r u8, g u8, b u8, a u8) {
 	C.sgl_v2f_t2f_c4b(x, y, u, v, r, g, b, a)
 }
 
@@ -391,7 +406,7 @@ pub fn v3f_t2f_c3f(x f32, y f32, z f32, u f32, v f32, r f32, g f32, b f32) {
 }
 
 [inline]
-pub fn v3f_t2f_c3b(x f32, y f32, z f32, u f32, v f32, r byte, g byte, b byte) {
+pub fn v3f_t2f_c3b(x f32, y f32, z f32, u f32, v f32, r u8, g u8, b u8) {
 	C.sgl_v3f_t2f_c3b(x, y, z, u, v, r, g, b)
 }
 
@@ -401,7 +416,7 @@ pub fn v3f_t2f_c4f(x f32, y f32, z f32, u f32, v f32, r f32, g f32, b f32, a f32
 }
 
 [inline]
-pub fn v3f_t2f_c4b(x f32, y f32, z f32, u f32, v f32, r byte, g byte, b byte, a byte) {
+pub fn v3f_t2f_c4b(x f32, y f32, z f32, u f32, v f32, r u8, g u8, b u8, a u8) {
 	C.sgl_v3f_t2f_c4b(x, y, z, u, v, r, g, b, a)
 }
 

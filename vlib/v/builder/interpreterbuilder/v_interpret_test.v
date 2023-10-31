@@ -5,11 +5,11 @@ import term
 const vexe = @VEXE
 
 fn interpreter_wrap(a string) string {
-	return 'fn main() {$a}'
+	return 'fn main() {${a}}'
 }
 
-fn interp_test(expression string, expected string) ? {
-	tmpdir := os.join_path(os.temp_dir(), 'v_interpret_test_$rand.ulid()')
+fn interp_test(expression string, expected string) ! {
+	tmpdir := os.join_path(os.vtmp_dir(), 'interpret_test_${rand.ulid()}')
 	os.mkdir_all(tmpdir) or {}
 	defer {
 		os.rmdir_all(tmpdir) or {}
@@ -17,18 +17,18 @@ fn interp_test(expression string, expected string) ? {
 	//
 	tmpfile := os.join_path(tmpdir, 'input.v')
 	outfile := os.join_path(tmpdir, 'output.txt')
-	os.write_file(tmpfile, interpreter_wrap(expression)) ?
+	os.write_file(tmpfile, interpreter_wrap(expression))!
 	if os.system('${os.quoted_path(vexe)} interpret ${os.quoted_path(tmpfile)} > ${os.quoted_path(outfile)}') != 0 {
-		eprintln('>>> Failed to interpret V expression: |$expression|')
+		eprintln('>>> Failed to interpret V expression: |${expression}|')
 		return error('v interp')
 	}
-	res := os.read_file(outfile) ?
+	res := os.read_file(outfile)!
 	output := res.trim_space()
 	if output != expected {
 		eprintln('>>> The output of the V expression, is not the same as the expected one')
-		eprintln(' V expression: $expression')
-		eprintln('       output: |$output|')
-		eprintln('     expected: |$expected|')
+		eprintln(' V expression: ${expression}')
+		eprintln('       output: |${output}|')
+		eprintln('     expected: |${expected}|')
 		return error('test')
 	}
 	println('${term.colorize(term.green, 'OK')} ${term.colorize(term.bright_blue, expression.replace('\n',
@@ -41,15 +41,17 @@ struct InterpTest {
 	output string
 }
 
-fn test_interpreter() ? {
+fn test_interpreter() {
 	mut tests := []InterpTest{}
 	tests << InterpTest{'println(3+3)', '6'}
 	tests << InterpTest{'println(3)', '3'}
 	tests << InterpTest{'println(3-4)', '-1'}
 	tests << InterpTest{'println(3*3)', '9'}
 	tests << InterpTest{'a := 3\nprintln(a*3)', '9'}
+	tests << InterpTest{'arr := [10,20,30]\nprintln(arr[1])', '20'}
+	tests << InterpTest{'fa := [10,20,30]!\nprintln(fa[2])', '30'}
 	for test in tests {
-		interp_test(test.input, test.output) ?
+		interp_test(test.input, test.output)!
 		assert true
 	}
 }

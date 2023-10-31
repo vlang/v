@@ -8,9 +8,9 @@ mut:
 	place int
 }
 
-fn (mut s StringReader) read(mut buf []byte) ?int {
+fn (mut s StringReader) read(mut buf []u8) !int {
 	if s.place >= s.text.len {
-		return none
+		return io.Eof{}
 	}
 	max_bytes := 100
 	end := if s.place + max_bytes >= s.text.len { s.text.len } else { s.place + max_bytes }
@@ -35,7 +35,7 @@ fn test_parse_request_not_http() {
 
 fn test_parse_request_no_headers() {
 	mut reader_ := reader('GET / HTTP/1.1\r\n\r\n')
-	req := parse_request(mut reader_) or { panic('did not parse: $err') }
+	req := parse_request(mut reader_) or { panic('did not parse: ${err}') }
 	assert req.method == .get
 	assert req.url == '/'
 	assert req.version == .v1_1
@@ -43,27 +43,27 @@ fn test_parse_request_no_headers() {
 
 fn test_parse_request_two_headers() {
 	mut reader_ := reader('GET / HTTP/1.1\r\nTest1: a\r\nTest2:  B\r\n\r\n')
-	req := parse_request(mut reader_) or { panic('did not parse: $err') }
+	req := parse_request(mut reader_) or { panic('did not parse: ${err}') }
 	assert req.header.custom_values('Test1') == ['a']
 	assert req.header.custom_values('Test2') == ['B']
 }
 
 fn test_parse_request_two_header_values() {
 	mut reader_ := reader('GET / HTTP/1.1\r\nTest1: a; b\r\nTest2: c\r\nTest2: d\r\n\r\n')
-	req := parse_request(mut reader_) or { panic('did not parse: $err') }
+	req := parse_request(mut reader_) or { panic('did not parse: ${err}') }
 	assert req.header.custom_values('Test1') == ['a; b']
 	assert req.header.custom_values('Test2') == ['c', 'd']
 }
 
 fn test_parse_request_body() {
 	mut reader_ := reader('GET / HTTP/1.1\r\nTest1: a\r\nTest2: b\r\nContent-Length: 4\r\n\r\nbodyabc')
-	req := parse_request(mut reader_) or { panic('did not parse: $err') }
+	req := parse_request(mut reader_) or { panic('did not parse: ${err}') }
 	assert req.data == 'body'
 }
 
 fn test_parse_request_line() {
 	method, target, version := parse_request_line('GET /target HTTP/1.1') or {
-		panic('did not parse: $err')
+		panic('did not parse: ${err}')
 	}
 	assert method == .get
 	assert target.str() == '/target'
@@ -95,6 +95,30 @@ fn test_parse_form() {
 		'a': 'b'
 		'c': ' d '
 	}
+	assert parse_form('{json}') == {
+		'json': '{json}'
+	}
+	assert parse_form('{
+    "_id": "76c",
+    "friends": [
+      {
+        "id": 0,
+        "name": "Mason Luna"
+      }
+    ],
+    "greeting": "Hello."
+  }') == {
+		'json': '{
+    "_id": "76c",
+    "friends": [
+      {
+        "id": 0,
+        "name": "Mason Luna"
+      }
+    ],
+    "greeting": "Hello."
+  }'
+	}
 }
 
 fn test_parse_multipart_form() {
@@ -103,16 +127,16 @@ fn test_parse_multipart_form() {
 	file := 'bar.v'
 	ct := 'application/octet-stream'
 	contents := ['baz', 'buzz']
-	data := "--$boundary
-Content-Disposition: form-data; name=\"${names[0]}\"; filename=\"$file\"\r
-Content-Type: $ct\r
+	data := "--${boundary}
+Content-Disposition: form-data; name=\"${names[0]}\"; filename=\"${file}\"\r
+Content-Type: ${ct}\r
 \r
 ${contents[0]}\r
---$boundary\r
+--${boundary}\r
 Content-Disposition: form-data; name=\"${names[1]}\"\r
 \r
 ${contents[1]}\r
---$boundary--\r
+--${boundary}--\r
 "
 	form, files := parse_multipart_form(data, boundary)
 	assert files == {
@@ -128,6 +152,28 @@ ${contents[1]}\r
 	assert form == {
 		names[1]: contents[1]
 	}
+}
+
+fn test_parse_multipart_form2() {
+	boundary := '---------------------------27472781931927549291906391339'
+	data := '--${boundary}\r
+Content-Disposition: form-data; name="username"\r
+\r
+admin\r
+--${boundary}\r
+Content-Disposition: form-data; name="password"\r
+\r	
+admin123\r
+--${boundary}--\r
+'
+	form, files := parse_multipart_form(data, boundary)
+	for k, v in form {
+		eprintln('> k: ${k} | v: ${v}')
+		eprintln('>> k.bytes(): ${k.bytes()}')
+		eprintln('>> v.bytes(): ${v.bytes()}')
+	}
+	assert form['username'] == 'admin'
+	assert form['password'] == 'admin123'
 }
 
 fn test_multipart_form_body() {
@@ -150,11 +196,11 @@ fn test_multipart_form_body() {
 	assert parsed_form == form
 }
 
-fn test_parse_large_body() ? {
-	body := 'A'.repeat(101) // greater than max_bytes
-	req := 'GET / HTTP/1.1\r\nContent-Length: $body.len\r\n\r\n$body'
+fn test_parse_large_body() {
+	body := 'A'.repeat(10_001) // greater than max_bytes
+	req := 'GET / HTTP/1.1\r\nContent-Length: ${body.len}\r\n\r\n${body}'
 	mut reader_ := reader(req)
-	result := parse_request(mut reader_) ?
+	result := parse_request(mut reader_)!
 	assert result.data.len == body.len
 	assert result.data == body
 }

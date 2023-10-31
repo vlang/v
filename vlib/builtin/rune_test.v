@@ -38,5 +38,5 @@ fn test_length_in_bytes() {
 
 fn test_bytes() {
 	r1 := `★`
-	assert r1.bytes() == [byte(0xe2), 0x98, 0x85]
+	assert r1.bytes() == [u8(0xe2), 0x98, 0x85]
 }

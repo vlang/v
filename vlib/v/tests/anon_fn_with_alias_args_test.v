@@ -10,7 +10,7 @@ struct S2 {
 }
 
 fn get_string(a int) MyString {
-	return '$a'
+	return '${a}'
 }
 
 fn get_int(a int) MyInt {

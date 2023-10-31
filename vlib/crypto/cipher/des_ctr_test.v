@@ -29,25 +29,25 @@ fn test_des_ctr() {
 	println('test_des_ctr ok')
 }
 
-fn des_ctr_en(mut src []byte, key []byte, iv []byte) {
+fn des_ctr_en(mut src []u8, key []u8, iv []u8) {
 	block := des.new_cipher(key)
 	mode := cipher.new_ctr(block, iv)
 	mode.xor_key_stream(mut src, src.clone())
 }
 
-fn des_ctr_de(mut src []byte, key []byte, iv []byte) {
+fn des_ctr_de(mut src []u8, key []u8, iv []u8) {
 	block := des.new_cipher(key)
 	mode := cipher.new_ctr(block, iv)
 	mode.xor_key_stream(mut src, src.clone())
 }
 
-fn triple_des_ctr_en(mut src []byte, key []byte, iv []byte) {
+fn triple_des_ctr_en(mut src []u8, key []u8, iv []u8) {
 	block := des.new_triple_des_cipher(key)
 	mode := cipher.new_ctr(block, iv)
 	mode.xor_key_stream(mut src, src.clone())
 }
 
-fn triple_des_ctr_de(mut src []byte, key []byte, iv []byte) {
+fn triple_des_ctr_de(mut src []u8, key []u8, iv []u8) {
 	block := des.new_triple_des_cipher(key)
 	mode := cipher.new_ctr(block, iv)
 	mode.xor_key_stream(mut src, src.clone())

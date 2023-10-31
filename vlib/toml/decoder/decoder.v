@@ -16,27 +16,27 @@ const (
 
 // Decoder decode special sequences in a tree of TOML `ast.Value`'s.
 pub struct Decoder {
-	scanner &scanner.Scanner
+	scanner &scanner.Scanner = unsafe { nil }
 }
 
 // decode decodes certain `ast.Value`'s and all it's children.
-pub fn (d Decoder) decode(mut n ast.Value) ? {
-	walker.walk_and_modify(d, mut n) ?
+pub fn (d Decoder) decode(mut n ast.Value) ! {
+	walker.walk_and_modify(d, mut n)!
 }
 
-fn (d Decoder) modify(mut value ast.Value) ? {
+fn (d Decoder) modify(mut value ast.Value) ! {
 	match value {
 		ast.Quoted {
 			mut v := &(value as ast.Quoted)
-			d.decode_quoted(mut v) ?
+			d.decode_quoted(mut v)!
 		}
 		ast.Number {
 			mut v := &(value as ast.Number)
-			d.decode_number(mut v) ?
+			d.decode_number(mut v)!
 		}
 		ast.DateTime {
 			mut v := &(value as ast.DateTime)
-			d.decode_date_time(mut v) ?
+			d.decode_date_time(mut v)!
 		}
 		else {}
 	}
@@ -48,12 +48,12 @@ fn (d Decoder) excerpt(tp token.Pos) string {
 }
 
 // decode_quoted returns an error if `q` is not a valid quoted TOML string.
-fn (d Decoder) decode_quoted(mut q ast.Quoted) ? {
-	decode_quoted_escapes(mut q) ?
+fn (d Decoder) decode_quoted(mut q ast.Quoted) ! {
+	decode_quoted_escapes(mut q)!
 }
 
 // decode_number decodes the `n ast.Number` into valid TOML.
-fn (d Decoder) decode_number(mut n ast.Number) ? {
+fn (d Decoder) decode_number(mut n ast.Number) ! {
 	if n.text == '-nan' || n.text == '+nan' {
 		n.text = 'nan'
 	}
@@ -73,7 +73,7 @@ fn (d Decoder) decode_number(mut n ast.Number) ? {
 // \\         - backslash       (U+005C)
 // \uXXXX     - Unicode         (U+XXXX)
 // \UXXXXXXXX - Unicode         (U+XXXXXXXX)
-pub fn decode_quoted_escapes(mut q ast.Quoted) ? {
+pub fn decode_quoted_escapes(mut q ast.Quoted) ! {
 	// Setup a scanner in stack memory for easier navigation.
 	mut eat_whitespace := false
 	// TODO use string builder
@@ -84,7 +84,7 @@ pub fn decode_quoted_escapes(mut q ast.Quoted) ? {
 		return
 	}
 
-	mut s := scanner.new_simple_text(q.text) ?
+	mut s := scanner.new_simple_text(q.text)!
 	q.text = q.text.replace('\\"', '"')
 
 	for {
@@ -92,7 +92,7 @@ pub fn decode_quoted_escapes(mut q ast.Quoted) ? {
 		if ch == scanner.end_of_text {
 			break
 		}
-		ch_byte := byte(ch)
+		ch_byte := u8(ch)
 
 		if eat_whitespace && ch_byte.is_space() {
 			continue
@@ -101,7 +101,7 @@ pub fn decode_quoted_escapes(mut q ast.Quoted) ? {
 
 		if ch == `\\` {
 			ch_next := s.at()
-			ch_next_byte := byte(ch_next)
+			ch_next_byte := u8(ch_next)
 
 			if ch_next == `\\` {
 				decoded_s += ch_next_byte.ascii_str()
@@ -155,13 +155,12 @@ pub fn decode_quoted_escapes(mut q ast.Quoted) ? {
 			escape := ch_byte.ascii_str() + ch_next_byte.ascii_str()
 			// Decode unicode escapes
 			if escape.to_lower() == '\\u' {
-				is_valid_short := byte(s.peek(1)).is_hex_digit() && byte(s.peek(2)).is_hex_digit()
-					&& byte(s.peek(3)).is_hex_digit() && byte(s.peek(4)).is_hex_digit()
+				is_valid_short := u8(s.peek(1)).is_hex_digit() && u8(s.peek(2)).is_hex_digit()
+					&& u8(s.peek(3)).is_hex_digit() && u8(s.peek(4)).is_hex_digit()
 
 				if is_valid_short {
-					is_valid_long := byte(s.peek(5)).is_hex_digit()
-						&& byte(s.peek(6)).is_hex_digit() && byte(s.peek(7)).is_hex_digit()
-						&& byte(s.peek(8)).is_hex_digit()
+					is_valid_long := u8(s.peek(5)).is_hex_digit() && u8(s.peek(6)).is_hex_digit()
+						&& u8(s.peek(7)).is_hex_digit() && u8(s.peek(8)).is_hex_digit()
 					// If it's a long type Unicode (\UXXXXXXXX) with a maximum of 10 chars: '\' + 'U' + 8 hex characters
 					// we pass in 10 characters from the `u`/`U` which is the longest possible sequence
 					// of 9 chars plus one extra.
@@ -215,7 +214,7 @@ pub fn decode_quoted_escapes(mut q ast.Quoted) ? {
 // The sequence is expected to be prefixed with either `u` or `U`.
 // decode_unicode_escape returns the decoded rune as
 // a string, it's integer value and it's length.
-fn decode_unicode_escape(esc_unicode string) ?(string, int, int) {
+fn decode_unicode_escape(esc_unicode string) !(string, int, int) {
 	is_long_esc_type := esc_unicode.starts_with('U')
 	mut sequence := esc_unicode[1..]
 	hex_digits_len := if is_long_esc_type { 8 } else { 4 }
@@ -227,13 +226,13 @@ fn decode_unicode_escape(esc_unicode string) ?(string, int, int) {
 	if unicode_point.len < 8 {
 		unicode_point = '0'.repeat(8 - unicode_point.len) + unicode_point
 	}
-	i64_val := strconv.parse_int(unicode_point, 16, 0) ?
+	i64_val := strconv.parse_int(unicode_point, 16, 0)!
 	rn := rune(i64_val)
-	return '$rn', int(i64_val), sequence_len
+	return '${rn}', int(i64_val), sequence_len
 }
 
 // decode_date_time decodes the `dt ast.DateTime`.
-fn (d Decoder) decode_date_time(mut dt ast.DateTime) ? {
+fn (d Decoder) decode_date_time(mut dt ast.DateTime) ! {
 	// Expand milliseconds that are only 1 char
 	if dt.text.contains('.') {
 		yymmddhhmmss := dt.text.all_before('.')

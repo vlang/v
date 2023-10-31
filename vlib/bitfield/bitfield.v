@@ -26,10 +26,10 @@ const (
 
 // from_bytes converts a byte array into a bitfield.
 // [0x0F, 0x01] => 0000 1111 0000 0001
-pub fn from_bytes(input []byte) BitField {
+pub fn from_bytes(input []u8) BitField {
 	mut output := new(input.len * 8)
 	for i, b in input {
-		mut ob := byte(0)
+		mut ob := u8(0)
 		if b & 0b10000000 > 0 {
 			ob |= 0b00000001
 		}
@@ -61,7 +61,7 @@ pub fn from_bytes(input []byte) BitField {
 
 // from_bytes_lowest_bits_first converts a byte array into a bitfield
 // [0x0F, 0x01] => 1111 0000 1000 0000
-pub fn from_bytes_lowest_bits_first(input []byte) BitField {
+pub fn from_bytes_lowest_bits_first(input []u8) BitField {
 	mut output := new(input.len * 8)
 	for i, b in input {
 		output.field[i / 4] |= u32(b) << ((i % 4) * 8)
@@ -114,6 +114,7 @@ pub fn (instance &BitField) free() {
 }
 
 // get_bit returns the value (0 or 1) of bit number 'bit_nr' (count from 0).
+[inline]
 pub fn (instance BitField) get_bit(bitnr int) int {
 	if bitnr >= instance.size {
 		return 0
@@ -122,6 +123,7 @@ pub fn (instance BitField) get_bit(bitnr int) int {
 }
 
 // set_bit sets bit number 'bit_nr' to 1 (count from 0).
+[inline]
 pub fn (mut instance BitField) set_bit(bitnr int) {
 	if bitnr >= instance.size {
 		return
@@ -130,6 +132,7 @@ pub fn (mut instance BitField) set_bit(bitnr int) {
 }
 
 // clear_bit clears (sets to zero) bit number 'bit_nr' (count from 0).
+[inline]
 pub fn (mut instance BitField) clear_bit(bitnr int) {
 	if bitnr >= instance.size {
 		return
@@ -155,7 +158,7 @@ pub fn (instance BitField) extract(start int, len int) u64 {
 // insert sets bit numbers from 'start' to 'len' length with
 // the value converted from the number 'value'.
 // 0000 (1, 2, 0b10) => 0100
-pub fn (mut instance BitField) insert<T>(start int, len int, _value T) {
+pub fn (mut instance BitField) insert[T](start int, len int, _value T) {
 	// panic?
 	if start < 0 {
 		return
@@ -190,7 +193,7 @@ pub fn (instance BitField) extract_lowest_bits_first(start int, len int) u64 {
 // insert sets bit numbers from 'start' to 'len' length with
 // the value converted from the number 'value'.
 // 0000 (1, 2, 0b10) => 0010
-pub fn (mut instance BitField) insert_lowest_bits_first<T>(start int, len int, _value T) {
+pub fn (mut instance BitField) insert_lowest_bits_first[T](start int, len int, _value T) {
 	// panic?
 	if start < 0 {
 		return
@@ -209,7 +212,7 @@ pub fn (mut instance BitField) insert_lowest_bits_first<T>(start int, len int, _
 // set_all sets all bits in the array to 1.
 pub fn (mut instance BitField) set_all() {
 	for i in 0 .. zbitnslots(instance.size) {
-		instance.field[i] = u32(-1)
+		instance.field[i] = u32(0xFFFF_FFFF)
 	}
 	instance.clear_tail()
 }
@@ -223,6 +226,7 @@ pub fn (mut instance BitField) clear_all() {
 
 // toggle_bit changes the value (from 0 to 1 or from 1 to 0) of bit
 // number 'bit_nr'.
+[inline]
 pub fn (mut instance BitField) toggle_bit(bitnr int) {
 	if bitnr >= instance.size {
 		return
@@ -324,6 +328,7 @@ pub fn join(input1 BitField, input2 BitField) BitField {
 }
 
 // get_size returns the number of bits the array can hold.
+[inline]
 pub fn (instance BitField) get_size() int {
 	return instance.size
 }
@@ -373,6 +378,7 @@ pub fn (instance BitField) pop_count() int {
 }
 
 // hamming computes the Hamming distance between two bit arrays.
+[inline]
 pub fn hamming(input1 BitField, input2 BitField) int {
 	input_xored := bf_xor(input1, input2)
 	return input_xored.pop_count()
@@ -519,6 +525,7 @@ pub fn (instance BitField) rotate(offset int) BitField {
 
 // Internal functions
 // clear_tail clears the extra bits that are not part of the bitfield, but yet are allocated
+[inline]
 fn (mut instance BitField) clear_tail() {
 	tail := instance.size % bitfield.slot_size
 	if tail != 0 {
@@ -530,16 +537,19 @@ fn (mut instance BitField) clear_tail() {
 }
 
 // bitmask is the bitmask needed to access a particular bit at offset bitnr
+[inline]
 fn bitmask(bitnr int) u32 {
 	return u32(u32(1) << u32(bitnr % bitfield.slot_size))
 }
 
 // bitslot is the slot index (i.e. the integer) where a particular bit is located
+[inline]
 fn bitslot(size int) int {
 	return size / bitfield.slot_size
 }
 
 // min returns the minimum of 2 integers; it is here to avoid importing math just for that
+[inline]
 fn min(input1 int, input2 int) int {
 	if input1 < input2 {
 		return input1
@@ -549,6 +559,7 @@ fn min(input1 int, input2 int) int {
 }
 
 // zbitnslots returns the minimum number of whole integers, needed to represent a bitfield of size length
+[inline]
 fn zbitnslots(length int) int {
 	return (length - 1) / bitfield.slot_size + 1
 }

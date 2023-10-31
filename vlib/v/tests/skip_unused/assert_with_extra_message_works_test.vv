@@ -1,0 +1,9 @@
+fn my_failure_message(i int) string {
+	return 'the assert failed :-|, i: $i'
+}
+
+fn test_interpolation_with_assert_that_has_extra_message() {
+	for i in 0 .. 100 {
+		assert 'abc$i' != 'abc77', my_failure_message(i)
+	}
+}

@@ -10,7 +10,7 @@ fn test_waitgroup_reuse() {
 
 	wg.add(1)
 	mut executed := false
-	go fn (mut wg WaitGroup, executed voidptr) {
+	spawn fn (mut wg WaitGroup, executed voidptr) {
 		defer {
 			wg.done()
 		}
@@ -28,7 +28,7 @@ fn test_waitgroup_reuse() {
 
 fn test_waitgroup_no_use() {
 	mut done := false
-	go fn (done voidptr) {
+	spawn fn (done voidptr) {
 		time.sleep(1 * time.second)
 		if *(&bool(done)) == false {
 			panic('test_waitgroup_no_use did not complete in time')

@@ -19,9 +19,9 @@ pub fn mm_alloc(size u64) (&byte, Errno) {
 	if e == .enoerror {
 		mut ap := &int(a)
 		*ap = pages
-		return &byte(a + 4), e
+		return &u8(a + 4), e
 	}
-	return &byte(0), e
+	return &u8(0), e
 }
 
 pub fn mm_free(addr &byte) Errno {
@@ -31,9 +31,9 @@ pub fn mm_free(addr &byte) Errno {
 	return sys_munmap(ap, size)
 }
 
-pub fn mem_copy(dest0 voidptr, src0 voidptr, n int) voidptr {
-	mut dest := &byte(dest0)
-	src := &byte(src0)
+pub fn mem_copy(dest0 voidptr, src0 voidptr, n isize) voidptr {
+	mut dest := &u8(dest0)
+	src := &u8(src0)
 	for i in 0 .. n {
 		dest[i] = src[i]
 	}
@@ -41,7 +41,7 @@ pub fn mem_copy(dest0 voidptr, src0 voidptr, n int) voidptr {
 }
 
 [unsafe]
-pub fn malloc(n int) &byte {
+pub fn malloc(n isize) &byte {
 	if n < 0 {
 		panic('malloc(<0)')
 	}

@@ -1,20 +1,20 @@
-pub struct Node<T> {
+pub struct Node[T] {
 	value     T
-	points_to []&Node<T>
+	points_to []&Node[T]
 }
 
 fn test_generics_with_recursive_generics_struct() {
-	mid := &Node<string>{
+	mid := &Node[string]{
 		value: 'Middle'
 	}
-	finish := &Node<string>{
+	finish := &Node[string]{
 		value: 'Finish'
 	}
 
-	graph := &Node<string>{
+	graph := &Node[string]{
 		value: 'Start'
 		points_to: [
-			&Node<string>{
+			&Node[string]{
 				value: 'TopLeft'
 				points_to: [
 					finish,

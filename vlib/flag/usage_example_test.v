@@ -21,7 +21,7 @@ fn normalise_lines(lines []string) string {
 
 fn check_program(opts string, extension string) {
 	result := the_source.replace('.v', extension)
-	res := os.execute('${os.quoted_path(the_executable)} $opts')
+	res := os.execute('${os.quoted_path(the_executable)} ${opts}')
 	assert res.exit_code == 0
 	assert normalise_lines(res.output.split_into_lines()) == normalise_lines(os.read_lines(result) or {
 		panic(err)

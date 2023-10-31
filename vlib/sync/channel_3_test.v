@@ -16,14 +16,14 @@ fn do_send(ch chan int) {
 fn test_channel_multi_unbuffered() {
 	ch := chan int{}
 	resch := chan i64{}
-	go do_rec(ch, resch)
-	go do_rec(ch, resch)
-	go do_rec(ch, resch)
-	go do_rec(ch, resch)
-	go do_send(ch)
-	go do_send(ch)
-	go do_send(ch)
-	go do_send(ch)
+	spawn do_rec(ch, resch)
+	spawn do_rec(ch, resch)
+	spawn do_rec(ch, resch)
+	spawn do_rec(ch, resch)
+	spawn do_send(ch)
+	spawn do_send(ch)
+	spawn do_send(ch)
+	spawn do_send(ch)
 	mut sum := i64(0)
 	for _ in 0 .. 4 {
 		sum += <-resch

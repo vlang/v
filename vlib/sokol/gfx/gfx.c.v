@@ -1,19 +1,30 @@
 module gfx
 
 import sokol.c
+import sokol.memory
 
-pub const (
-	version     = 1
-	used_import = c.used_import
-)
+pub const version = 1
 
-// setup and misc functions
-[inline]
+pub const used_import = c.used_import
+
+// setup initialises the SOKOL's gfx library, based on the information passed in `desc`
 pub fn setup(desc &Desc) {
+	if desc.allocator.alloc_fn == unsafe { nil } && desc.allocator.free_fn == unsafe { nil } {
+		unsafe {
+			desc.allocator.alloc_fn = memory.salloc
+			desc.allocator.free_fn = memory.sfree
+			desc.allocator.user_data = voidptr(0x1006fec5)
+		}
+	}
+	if desc.logger.func == unsafe { nil } {
+		unsafe {
+			desc.logger.func = memory.slog
+		}
+	}
 	C.sg_setup(desc)
 }
 
-[inline]
+// shutdown tells the SOKOL's gfx library to shutdown, and release the resources it is using
 pub fn shutdown() {
 	C.sg_shutdown()
 }
@@ -40,6 +51,11 @@ pub fn make_image(desc &ImageDesc) Image {
 }
 
 [inline]
+pub fn make_sampler(desc &SamplerDesc) Sampler {
+	return C.sg_make_sampler(desc)
+}
+
+[inline]
 pub fn make_shader(desc &ShaderDesc) Shader {
 	return C.sg_make_shader(desc)
 }
@@ -62,6 +78,11 @@ pub fn destroy_buffer(buf Buffer) {
 [inline]
 pub fn destroy_image(img Image) {
 	C.sg_destroy_image(img)
+}
+
+[inline]
+pub fn destroy_sampler(smp Sampler) {
+	C.sg_destroy_sampler(smp)
 }
 
 [inline]
@@ -132,7 +153,7 @@ pub fn apply_bindings(bindings &Bindings) {
 
 [inline]
 pub fn apply_uniforms(stage ShaderStage, ub_index int, data &Range) {
-	C.sg_apply_uniforms(int(stage), ub_index, data)
+	C.sg_apply_uniforms(stage, ub_index, data)
 }
 
 [inline]
@@ -268,4 +289,30 @@ pub fn activate_context(ctx_id Context) {
 [inline]
 pub fn discard_context(ctx_id Context) {
 	C.sg_discard_context(ctx_id)
+}
+
+// frame stats
+
+// enable_frame_stats enables the sokol frame statistics.
+[inline]
+pub fn enable_frame_stats() {
+	C.sg_enable_frame_stats()
+}
+
+// disable_frame_stats disables the sokol frame statistics.
+[inline]
+pub fn disable_frame_stats() {
+	C.sg_disable_frame_stats()
+}
+
+// frame_stats_enabled returns `true` if the sokol frame statistics is enabled.
+[inline]
+pub fn frame_stats_enabled() bool {
+	return C.sg_frame_stats_enabled()
+}
+
+// query_frame_stats returns the sokol frame statistics for the current frame.
+[inline]
+pub fn query_frame_stats() FrameStats {
+	return C.sg_query_frame_stats()
 }

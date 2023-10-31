@@ -1,0 +1,18 @@
+fn (mut a [][]f32) str() string {
+	return a.map(it.str()).join('\n')
+}
+
+fn identity(n int) [][]f32 {
+	mut res := [][]f32{len: n, init: []f32{len: n, init: 0.0}}
+	for i in 0 .. n {
+		res[i][i] = 1.0
+	}
+
+	return res
+}
+
+fn main() {
+	a := identity(3)
+
+	println(a)
+}

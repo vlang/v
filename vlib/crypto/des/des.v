@@ -25,7 +25,7 @@ mut:
 }
 
 // NewCipher creates and returns a new cipher.Block.
-pub fn new_cipher(key []byte) cipher.Block {
+pub fn new_cipher(key []u8) cipher.Block {
 	if key.len != 8 {
 		panic('crypto.aes: invalid key size')
 	}
@@ -36,7 +36,7 @@ pub fn new_cipher(key []byte) cipher.Block {
 }
 
 // creates 16 56-bit subkeys from the original key
-fn (mut c DesCipher) generate_subkeys(key_bytes []byte) {
+fn (mut c DesCipher) generate_subkeys(key_bytes []u8) {
 	// feistel_box_once.do(initFeistel_box)
 
 	// apply PC1 permutation to key
@@ -56,7 +56,7 @@ fn (mut c DesCipher) generate_subkeys(key_bytes []byte) {
 	}
 }
 
-pub fn (c &DesCipher) encrypt(mut dst []byte, src []byte) {
+pub fn (c &DesCipher) encrypt(mut dst []u8, src []u8) {
 	if src.len < des.block_size {
 		panic('crypto/des: input not full block')
 	}
@@ -69,7 +69,7 @@ pub fn (c &DesCipher) encrypt(mut dst []byte, src []byte) {
 	encrypt_block(c.subkeys[..], mut dst, src)
 }
 
-pub fn (c &DesCipher) decrypt(mut dst []byte, src []byte) {
+pub fn (c &DesCipher) decrypt(mut dst []u8, src []u8) {
 	if src.len < des.block_size {
 		panic('crypto/des: input not full block')
 	}
@@ -83,7 +83,7 @@ pub fn (c &DesCipher) decrypt(mut dst []byte, src []byte) {
 }
 
 // NewTripleDesCipher creates and returns a new cipher.Block.
-pub fn new_triple_des_cipher(key []byte) cipher.Block {
+pub fn new_triple_des_cipher(key []u8) cipher.Block {
 	if key.len != 24 {
 		panic('crypto.des: invalid key size')
 	}
@@ -94,7 +94,7 @@ pub fn new_triple_des_cipher(key []byte) cipher.Block {
 	return c
 }
 
-pub fn (c &TripleDesCipher) encrypt(mut dst []byte, src []byte) {
+pub fn (c &TripleDesCipher) encrypt(mut dst []u8, src []u8) {
 	if src.len < des.block_size {
 		panic('crypto/des: input not full block')
 	}
@@ -130,7 +130,7 @@ pub fn (c &TripleDesCipher) encrypt(mut dst []byte, src []byte) {
 	binary.big_endian_put_u64(mut dst, permute_final_block(pre_output))
 }
 
-pub fn (c &TripleDesCipher) decrypt(mut dst []byte, src []byte) {
+pub fn (c &TripleDesCipher) decrypt(mut dst []u8, src []u8) {
 	if src.len < des.block_size {
 		panic('crypto/des: input not full block')
 	}

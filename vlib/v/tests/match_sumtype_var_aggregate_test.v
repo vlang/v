@@ -17,5 +17,5 @@ fn test_match_sumtype_var_aggregate() {
 	a := Foo{}
 	ret := foo(a)
 	println(ret)
-	assert '$ret' == 'Sum(Foo{})'
+	assert '${ret}' == 'Sum(Foo{})'
 }

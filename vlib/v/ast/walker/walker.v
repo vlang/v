@@ -5,18 +5,22 @@ import v.ast
 // Visitor defines a visit method which is invoked by the walker in each node it encounters.
 pub interface Visitor {
 mut:
-	visit(node &ast.Node) ?
+	visit(node &ast.Node) !
 }
 
 pub type InspectorFn = fn (node &ast.Node, data voidptr) bool
 
+fn empty_callback(node &ast.Node, data voidptr) bool {
+	panic('empty ast.walker')
+}
+
 struct Inspector {
-	inspector_callback InspectorFn
+	inspector_callback InspectorFn = empty_callback
 mut:
 	data voidptr
 }
 
-pub fn (i &Inspector) visit(node &ast.Node) ? {
+pub fn (i &Inspector) visit(node &ast.Node) ! {
 	if i.inspector_callback(node, i.data) {
 		return
 	}

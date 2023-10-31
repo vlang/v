@@ -11,7 +11,7 @@ fn (h ExampleHandler) handle(req Request) Response {
 		})
 	}
 	mut status_code := 200
-	res.text = match req.url {
+	res.body = match req.url {
 		'/foo' {
 			'bar\n'
 		}
@@ -34,5 +34,5 @@ fn main() {
 	mut server := Server{
 		handler: ExampleHandler{}
 	}
-	server.listen_and_serve() ?
+	server.listen_and_serve()
 }

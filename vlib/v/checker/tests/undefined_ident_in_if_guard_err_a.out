@@ -1,0 +1,7 @@
+vlib/v/checker/tests/undefined_ident_in_if_guard_err_a.vv:6:11: error: undefined variable: `re`
+    4 |
+    5 | fn main() {
+    6 |     if re := re.regex_opt('a') {
+      |              ~~
+    7 |         print('Hooray')
+    8 |     }

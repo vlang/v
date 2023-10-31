@@ -1,0 +1,20 @@
+module main
+
+import os
+
+fn f1() {
+	f2()
+}
+
+fn f2() {
+	f3()
+}
+
+fn f3() {
+	_ := os.join_path('1', '2', '3')
+}
+
+fn main() {
+	f1()
+	eprintln('end')
+}

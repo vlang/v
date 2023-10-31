@@ -1,0 +1,9 @@
+
+// normalize_vector Normalizes a vector
+//
+// Example:
+// ```v
+// vector := Vector{3, 4}
+// normalize_vector(vector) // Vector{0.6, 0.8}
+// ```
+pub fn normalize_vector(vector f32) {}

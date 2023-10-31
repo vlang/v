@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module c
 
@@ -58,20 +58,21 @@ fn (mut g Gen) gen_free_method(typ ast.Type) string {
 		}
 		else {
 			println(g.table.type_str(typ))
-			verror("could not generate free method '$fn_name' for type '$styp'")
+			verror("could not generate free method '${fn_name}' for type '${styp}'")
 		}
 	}
 	return fn_name
 }
 
 fn (mut g Gen) gen_free_for_struct(info ast.Struct, styp string, fn_name string) {
-	g.definitions.writeln('void ${fn_name}($styp* it); // auto')
+	g.definitions.writeln('${g.static_modifier} void ${fn_name}(${styp}* it); // auto')
 	mut fn_builder := strings.new_builder(128)
 	defer {
 		g.auto_fn_definitions << fn_builder.str()
 	}
-	fn_builder.writeln('void ${fn_name}($styp* it) {')
+	fn_builder.writeln('${g.static_modifier} void ${fn_name}(${styp}* it) {')
 	for field in info.fields {
+		field_name := c_name(field.name)
 		sym := g.table.sym(g.unwrap_generic(field.typ))
 
 		if sym.kind !in [.string, .array, .map, .struct_] {
@@ -88,21 +89,21 @@ fn (mut g Gen) gen_free_for_struct(info ast.Struct, styp string, fn_name string)
 			g.gen_free_method(field.typ)
 		}
 		if is_shared {
-			fn_builder.writeln('\t${field_styp_fn_name}(&(it->$field.name->val));')
+			fn_builder.writeln('\t${field_styp_fn_name}(&(it->${field_name}->val));')
 		} else {
-			fn_builder.writeln('\t${field_styp_fn_name}(&(it->$field.name));')
+			fn_builder.writeln('\t${field_styp_fn_name}(&(it->${field_name}));')
 		}
 	}
 	fn_builder.writeln('}')
 }
 
 fn (mut g Gen) gen_free_for_array(info ast.Array, styp string, fn_name string) {
-	g.definitions.writeln('void ${fn_name}($styp* it); // auto')
+	g.definitions.writeln('${g.static_modifier} void ${fn_name}(${styp}* it); // auto')
 	mut fn_builder := strings.new_builder(128)
 	defer {
 		g.auto_fn_definitions << fn_builder.str()
 	}
-	fn_builder.writeln('void ${fn_name}($styp* it) {')
+	fn_builder.writeln('${g.static_modifier} void ${fn_name}(${styp}* it) {')
 
 	sym := g.table.sym(g.unwrap_generic(info.elem_type))
 	if sym.kind in [.string, .array, .map, .struct_] {
@@ -114,7 +115,7 @@ fn (mut g Gen) gen_free_for_array(info ast.Array, styp string, fn_name string) {
 		} else {
 			g.gen_free_method(info.elem_type)
 		}
-		fn_builder.writeln('\t\t${elem_styp_fn_name}(&((($elem_styp*)it->data)[i]));')
+		fn_builder.writeln('\t\t${elem_styp_fn_name}(&(((${elem_styp}*)it->data)[i]));')
 		fn_builder.writeln('\t}')
 	}
 	fn_builder.writeln('\tarray_free(it);')
@@ -122,12 +123,12 @@ fn (mut g Gen) gen_free_for_array(info ast.Array, styp string, fn_name string) {
 }
 
 fn (mut g Gen) gen_free_for_map(info ast.Map, styp string, fn_name string) {
-	g.definitions.writeln('void ${fn_name}($styp* it); // auto')
+	g.definitions.writeln('${g.static_modifier} void ${fn_name}(${styp}* it); // auto')
 	mut fn_builder := strings.new_builder(128)
 	defer {
 		g.auto_fn_definitions << fn_builder.str()
 	}
-	fn_builder.writeln('void ${fn_name}($styp* it) {')
+	fn_builder.writeln('${g.static_modifier} void ${fn_name}(${styp}* it) {')
 
 	fn_builder.writeln('\tmap_free(it);')
 	fn_builder.writeln('}')

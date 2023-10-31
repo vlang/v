@@ -1,0 +1,31 @@
+module main
+
+struct Custom {
+	name string
+}
+
+interface MyInterface {
+	some_function()
+}
+
+fn (c Custom) some_function() {
+	println('hello $c.name from ${@METHOD}')
+}
+
+fn main() {
+	a := Custom{'rabbit'}
+	x := a.some_function
+	x()
+	b := Custom{'horse'}
+	y := b.some_function
+	y()
+
+	c := Custom{'noname'}
+
+	$for method in MyInterface.methods {
+		z := fn [c] () {
+			c.$method()
+		}
+		z()
+	}
+}

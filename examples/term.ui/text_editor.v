@@ -57,8 +57,8 @@ pub:
 
 struct App {
 mut:
-	tui           &tui.Context = 0
-	ed            &Buffer      = 0
+	tui           &tui.Context = unsafe { nil }
+	ed            &Buffer      = unsafe { nil }
 	current_file  int
 	files         []string
 	status        string
@@ -119,7 +119,7 @@ fn (mut a App) footer() {
 	finfo := if a.cfile().len > 0 { ' (' + os.file_name(a.cfile()) + ')' } else { '' }
 	mut status := a.status
 	a.tui.draw_text(0, h - 1, '─'.repeat(w))
-	footer := '$finfo Line ${b.cursor.pos_y + 1:4}/${b.lines.len:-4}, Column ${b.cursor.pos_x + 1:3}/${b.cur_line().len:-3} index: ${b.cursor_index():5} (ESC = quit, Ctrl+s = save)'
+	footer := '${finfo} Line ${b.cursor.pos_y + 1:4}/${b.lines.len:-4}, Column ${b.cursor.pos_x + 1:3}/${b.cur_line().len:-3} index: ${b.cursor_index():5} (ESC = quit, Ctrl+s = save)'
 	if footer.len < w {
 		a.tui.draw_text((w - footer.len) / 2, h, footer)
 	} else if footer.len == w {
@@ -140,7 +140,7 @@ fn (mut a App) footer() {
 			g: 0
 			b: 0
 		)
-		a.tui.draw_text((w + 4 - status.len) / 2, h - 1, ' $status ')
+		a.tui.draw_text((w + 4 - status.len) / 2, h - 1, ' ${status} ')
 		a.tui.reset()
 		a.t -= 33
 	}
@@ -243,7 +243,7 @@ fn (mut b Buffer) put(s string) {
 	}
 	$if debug {
 		flat := s.replace('\n', r'\n')
-		eprintln(@MOD + '.' + @STRUCT + '::' + @FN + ' "$flat"')
+		eprintln(@MOD + '.' + @STRUCT + '::' + @FN + ' "${flat}"')
 	}
 }
 
@@ -349,7 +349,7 @@ fn (mut b Buffer) del(amount int) string {
 	}
 	$if debug {
 		flat := removed.replace('\n', r'\n')
-		eprintln(@MOD + '.' + @STRUCT + '::' + @FN + ' "$flat"')
+		eprintln(@MOD + '.' + @STRUCT + '::' + @FN + ' "${flat}"')
 	}
 	return removed
 }
@@ -473,9 +473,8 @@ fn (c Cursor) xy() (int, int) {
 }
 
 // App callbacks
-fn init(x voidptr) {
-	mut a := &App(x)
-	a.init_file()
+fn init(mut app App) {
+	app.init_file()
 }
 
 fn (mut a App) init_file() {
@@ -523,8 +522,7 @@ fn (mut a App) magnet_cursor_x() {
 	}
 }
 
-fn frame(x voidptr) {
-	mut a := &App(x)
+fn frame(mut a App) {
 	mut ed := a.ed
 	a.tui.clear()
 	scroll_limit := a.view_height()
@@ -551,8 +549,7 @@ fn frame(x voidptr) {
 	a.tui.flush()
 }
 
-fn event(e &tui.Event, x voidptr) {
-	mut a := &App(x)
+fn event(e &tui.Event, mut a App) {
 	mut buffer := a.ed
 	if e.typ == .key_down {
 		match e.code {
@@ -649,5 +646,5 @@ fn main() {
 		event_fn: event
 		capture_events: true
 	)
-	a.tui.run() ?
+	a.tui.run()!
 }

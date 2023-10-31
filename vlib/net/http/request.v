@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module http
@@ -10,19 +10,27 @@ import rand
 import strings
 import time
 
+pub type RequestRedirectFn = fn (request &Request, nredirects int, new_url string) !
+
+pub type RequestProgressFn = fn (request &Request, chunk []u8, read_so_far u64) !
+
+pub type RequestFinishFn = fn (request &Request, final_size u64) !
+
 // Request holds information about an HTTP request (either received by
 // a server or to be sent by a client)
 pub struct Request {
 pub mut:
 	version    Version = .v1_1
-	method     Method
+	method     Method  = .get
 	header     Header
+	host       string
 	cookies    map[string]string
 	data       string
 	url        string
 	user_agent string = 'v.http'
 	verbose    bool
 	user_ptr   voidptr
+	proxy      &HttpProxy = unsafe { nil }
 	// NOT implemented for ssl connections
 	// time = -1 for no timeout
 	read_timeout  i64 = 30 * time.second
@@ -34,6 +42,11 @@ pub mut:
 	cert_key               string
 	in_memory_verification bool // if true, verify, cert, and cert_key are read from memory, not from a file
 	allow_redirect         bool = true // whether to allow redirect
+	max_retries            int  = 5 // maximum number of retries required when an underlying socket error occurs
+	// callbacks to allow custom reporting code to run, while the request is running
+	on_redirect RequestRedirectFn = unsafe { nil }
+	on_progress RequestProgressFn = unsafe { nil }
+	on_finish   RequestFinishFn   = unsafe { nil }
 }
 
 fn (mut req Request) free() {
@@ -48,21 +61,21 @@ pub fn (mut req Request) add_header(key CommonHeader, val string) {
 
 // add_custom_header adds the key and value of an HTTP request header
 // This method may fail if the key contains characters that are not permitted
-pub fn (mut req Request) add_custom_header(key string, val string) ? {
+pub fn (mut req Request) add_custom_header(key string, val string) ! {
 	return req.header.add_custom(key, val)
 }
 
-// do will send the HTTP request and returns `http.Response` as soon as the response is recevied
-pub fn (req &Request) do() ?Response {
-	mut url := urllib.parse(req.url) or { return error('http.Request.do: invalid url $req.url') }
+// do will send the HTTP request and returns `http.Response` as soon as the response is received
+pub fn (req &Request) do() !Response {
+	mut url := urllib.parse(req.url) or { return error('http.Request.do: invalid url ${req.url}') }
 	mut rurl := url
 	mut resp := Response{}
-	mut no_redirects := 0
+	mut nredirects := 0
 	for {
-		if no_redirects == max_redirects {
-			return error('http.request.do: maximum number of redirects reached ($max_redirects)')
+		if nredirects == max_redirects {
+			return error('http.request.do: maximum number of redirects reached (${max_redirects})')
 		}
-		qresp := req.method_and_url_to_response(req.method, rurl) ?
+		qresp := req.method_and_url_to_response(req.method, rurl)!
 		resp = qresp
 		if !req.allow_redirect {
 			break
@@ -75,24 +88,27 @@ pub fn (req &Request) do() ?Response {
 		mut redirect_url := resp.header.get(.location) or { '' }
 		if redirect_url.len > 0 && redirect_url[0] == `/` {
 			url.set_path(redirect_url) or {
-				return error('http.request.do: invalid path in redirect: "$redirect_url"')
+				return error('http.request.do: invalid path in redirect: "${redirect_url}"')
 			}
 			redirect_url = url.str()
 		}
+		if req.on_redirect != unsafe { nil } {
+			req.on_redirect(req, nredirects, redirect_url)!
+		}
 		qrurl := urllib.parse(redirect_url) or {
-			return error('http.request.do: invalid URL in redirect "$redirect_url"')
+			return error('http.request.do: invalid URL in redirect "${redirect_url}"')
 		}
 		rurl = qrurl
-		no_redirects++
+		nredirects++
 	}
 	return resp
 }
 
-fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) ?Response {
+fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Response {
 	host_name := url.hostname()
 	scheme := url.scheme
 	p := url.escaped_path().trim_left('/')
-	path := if url.query().len > 0 { '/$p?$url.query().encode()' } else { '/$p' }
+	path := if url.query().len > 0 { '/${p}?${url.query().encode()}' } else { '/${p}' }
 	mut nport := url.port().int()
 	if nport == 0 {
 		if scheme == 'http' {
@@ -103,40 +119,71 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) ?Res
 		}
 	}
 	// println('fetch $method, $scheme, $host_name, $nport, $path ')
-	if scheme == 'https' {
+	if scheme == 'https' && req.proxy == unsafe { nil } {
 		// println('ssl_do( $nport, $method, $host_name, $path )')
-		res := req.ssl_do(nport, method, host_name, path) ?
-		return res
-	} else if scheme == 'http' {
+		mut retries := 0
+		for {
+			res := req.ssl_do(nport, method, host_name, path) or {
+				retries++
+				if is_no_need_retry_error(err.code()) || retries >= req.max_retries {
+					return err
+				}
+				continue
+			}
+			return res
+		}
+	} else if scheme == 'http' && req.proxy == unsafe { nil } {
 		// println('http_do( $nport, $method, $host_name, $path )')
-		res := req.http_do('$host_name:$nport', method, path) ?
-		return res
+		mut retries := 0
+		for {
+			res := req.http_do('${host_name}:${nport}', method, path) or {
+				retries++
+				if is_no_need_retry_error(err.code()) || retries >= req.max_retries {
+					return err
+				}
+				continue
+			}
+			return res
+		}
+	} else if req.proxy != unsafe { nil } {
+		mut retries := 0
+		for {
+			res := req.proxy.http_do(host_name, method, path, req) or {
+				retries++
+				if is_no_need_retry_error(err.code()) || retries >= req.max_retries {
+					return err
+				}
+				continue
+			}
+			return res
+		}
 	}
-	return error('http.request.method_and_url_to_response: unsupported scheme: "$scheme"')
+	return error('http.request.method_and_url_to_response: unsupported scheme: "${scheme}"')
 }
 
 fn (req &Request) build_request_headers(method Method, host_name string, path string) string {
 	ua := req.user_agent
 	mut uheaders := []string{}
 	if !req.header.contains(.host) {
-		uheaders << 'Host: $host_name\r\n'
+		uheaders << 'Host: ${host_name}\r\n'
 	}
 	if !req.header.contains(.user_agent) {
-		uheaders << 'User-Agent: $ua\r\n'
+		uheaders << 'User-Agent: ${ua}\r\n'
 	}
 	if req.data.len > 0 && !req.header.contains(.content_length) {
-		uheaders << 'Content-Length: $req.data.len\r\n'
+		uheaders << 'Content-Length: ${req.data.len}\r\n'
 	}
 	for key in req.header.keys() {
 		if key == CommonHeader.cookie.str() {
 			continue
 		}
 		val := req.header.custom_values(key).join('; ')
-		uheaders << '$key: $val\r\n'
+		uheaders << '${key}: ${val}\r\n'
 	}
 	uheaders << req.build_request_cookies_header()
 	version := if req.version == .unknown { Version.v1_1 } else { req.version }
-	return '$method $path $version\r\n' + uheaders.join('') + 'Connection: close\r\n\r\n' + req.data
+	return '${method} ${path} ${version}\r\n' + uheaders.join('') + 'Connection: close\r\n\r\n' +
+		req.data
 }
 
 fn (req &Request) build_request_cookies_header() string {
@@ -145,30 +192,53 @@ fn (req &Request) build_request_cookies_header() string {
 	}
 	mut cookie := []string{}
 	for key, val in req.cookies {
-		cookie << '$key=$val'
+		cookie << '${key}=${val}'
 	}
 	cookie << req.header.values(.cookie)
 	return 'Cookie: ' + cookie.join('; ') + '\r\n'
 }
 
-fn (req &Request) http_do(host string, method Method, path string) ?Response {
-	host_name, _ := net.split_address(host) ?
+fn (req &Request) http_do(host string, method Method, path string) !Response {
+	host_name, _ := net.split_address(host)!
 	s := req.build_request_headers(method, host_name, path)
-	mut client := net.dial_tcp(host) ?
+	mut client := net.dial_tcp(host)!
 	client.set_read_timeout(req.read_timeout)
 	client.set_write_timeout(req.write_timeout)
 	// TODO this really needs to be exposed somehow
-	client.write(s.bytes()) ?
+	client.write(s.bytes())!
 	$if trace_http_request ? {
-		eprintln('> $s')
+		eprintln('> ${s}')
 	}
-	mut bytes := io.read_all(reader: client) ?
-	client.close() ?
+	mut bytes := req.read_all_from_client_connection(client)!
+	client.close()!
 	response_text := bytes.bytestr()
 	$if trace_http_response ? {
-		eprintln('< $response_text')
+		eprintln('< ${response_text}')
+	}
+	if req.on_finish != unsafe { nil } {
+		req.on_finish(req, u64(response_text.len))!
 	}
 	return parse_response(response_text)
+}
+
+fn (req &Request) read_all_from_client_connection(r &net.TcpConn) ![]u8 {
+	mut read := i64(0)
+	mut b := []u8{len: 32768}
+	for {
+		old_read := read
+		new_read := r.read(mut b[read..]) or { break }
+		if new_read <= 0 {
+			break
+		}
+		read += new_read
+		if req.on_progress != unsafe { nil } {
+			req.on_progress(req, b[old_read..read], u64(read))!
+		}
+		for b.len <= read {
+			unsafe { b.grow_len(4096) }
+		}
+	}
+	return b[..read]
 }
 
 // referer returns 'Referer' header value of the given request
@@ -176,28 +246,17 @@ pub fn (req &Request) referer() string {
 	return req.header.get(.referer) or { '' }
 }
 
-// Parse a raw HTTP request into a Request object
-pub fn parse_request(mut reader io.BufferedReader) ?Request {
-	// request line
-	mut line := reader.read_line() ?
-	method, target, version := parse_request_line(line) ?
-
-	// headers
-	mut header := new_header()
-	line = reader.read_line() ?
-	for line != '' {
-		key, value := parse_header(line) ?
-		header.add_custom(key, value) ?
-		line = reader.read_line() ?
-	}
-	header.coerce(canonicalize: true)
+// parse_request parses a raw HTTP request into a Request object.
+// See also: `parse_request_head`, which parses only the headers.
+pub fn parse_request(mut reader io.BufferedReader) !Request {
+	mut request := parse_request_head(mut reader)!
 
 	// body
-	mut body := []byte{}
-	if length := header.get(.content_length) {
+	mut body := []u8{}
+	if length := request.header.get(.content_length) {
 		n := length.int()
 		if n > 0 {
-			body = []byte{len: n}
+			body = []u8{len: n}
 			mut count := 0
 			for count < body.len {
 				count += reader.read(mut body[count..]) or { break }
@@ -205,22 +264,48 @@ pub fn parse_request(mut reader io.BufferedReader) ?Request {
 		}
 	}
 
+	request.data = body.bytestr()
+	return request
+}
+
+// parse_request_head parses *only* the header of a raw HTTP request into a Request object
+pub fn parse_request_head(mut reader io.BufferedReader) !Request {
+	// request line
+	mut line := reader.read_line()!
+	method, target, version := parse_request_line(line)!
+
+	// headers
+	mut header := new_header()
+	line = reader.read_line()!
+	for line != '' {
+		key, value := parse_header(line)!
+		header.add_custom(key, value)!
+		line = reader.read_line()!
+	}
+	header.coerce(canonicalize: true)
+
+	mut request_cookies := map[string]string{}
+	for _, cookie in read_cookies(header.data, '') {
+		request_cookies[cookie.name] = cookie.value
+	}
+
 	return Request{
 		method: method
 		url: target.str()
 		header: header
-		data: body.bytestr()
+		host: header.get(.host) or { '' }
 		version: version
+		cookies: request_cookies
 	}
 }
 
-fn parse_request_line(s string) ?(Method, urllib.URL, Version) {
+fn parse_request_line(s string) !(Method, urllib.URL, Version) {
 	words := s.split(' ')
 	if words.len != 3 {
 		return error('malformed request line')
 	}
 	method := method_from_str(words[0])
-	target := urllib.parse(words[1]) ?
+	target := urllib.parse(words[1])!
 	version := version_from_str(words[2])
 	if version == .unknown {
 		return error('unsupported version')
@@ -236,16 +321,22 @@ fn parse_request_line(s string) ?(Method, urllib.URL, Version) {
 //
 // a possible solution is to use the a list of QueryValue
 pub fn parse_form(body string) map[string]string {
-	words := body.split('&')
 	mut form := map[string]string{}
-	for word in words {
-		kv := word.split_nth('=', 2)
-		if kv.len != 2 {
-			continue
+
+	if body.match_glob('{*}') {
+		form['json'] = body
+	} else {
+		words := body.split('&')
+
+		for word in words {
+			kv := word.split_nth('=', 2)
+			if kv.len != 2 {
+				continue
+			}
+			key := urllib.query_unescape(kv[0]) or { continue }
+			val := urllib.query_unescape(kv[1]) or { continue }
+			form[key] = val
 		}
-		key := urllib.query_unescape(kv[0]) or { continue }
-		val := urllib.query_unescape(kv[1]) or { continue }
-		form[key] = val
 	}
 	return form
 	// }
@@ -266,7 +357,7 @@ pub struct UnexpectedExtraAttributeError {
 }
 
 pub fn (err UnexpectedExtraAttributeError) msg() string {
-	return 'Encountered unexpected extra attributes: $err.attributes'
+	return 'Encountered unexpected extra attributes: ${err.attributes}'
 }
 
 pub struct MultiplePathAttributesError {
@@ -282,13 +373,11 @@ pub fn (err MultiplePathAttributesError) msg() string {
 // (body, boundary).
 // Note: Form keys should not contain quotes
 fn multipart_form_body(form map[string]string, files map[string][]FileData) (string, string) {
-	alpha_numeric := 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-	boundary := rand.string_from_set(alpha_numeric, 64)
-
+	rboundary := rand.ulid()
 	mut sb := strings.new_builder(1024)
 	for name, value in form {
 		sb.write_string('\r\n--')
-		sb.write_string(boundary)
+		sb.write_string(rboundary)
 		sb.write_string('\r\nContent-Disposition: form-data; name="')
 		sb.write_string(name)
 		sb.write_string('"\r\n\r\n')
@@ -297,7 +386,7 @@ fn multipart_form_body(form map[string]string, files map[string][]FileData) (str
 	for name, fs in files {
 		for f in fs {
 			sb.write_string('\r\n--')
-			sb.write_string(boundary)
+			sb.write_string(rboundary)
 			sb.write_string('\r\nContent-Disposition: form-data; name="')
 			sb.write_string(name)
 			sb.write_string('"; filename="')
@@ -309,9 +398,9 @@ fn multipart_form_body(form map[string]string, files map[string][]FileData) (str
 		}
 	}
 	sb.write_string('\r\n--')
-	sb.write_string(boundary)
+	sb.write_string(rboundary)
 	sb.write_string('--')
-	return sb.str(), boundary
+	return sb.str(), rboundary
 }
 
 struct LineSegmentIndexes {
@@ -390,7 +479,7 @@ pub fn parse_multipart_form(body string, boundary string) (map[string]string, ma
 	return form, files
 }
 
-// Parse the Content-Disposition header of a multipart form
+// parse_disposition parses the Content-Disposition header of a multipart form.
 // Returns a map of the key="value" pairs
 // Example: assert parse_disposition('Content-Disposition: form-data; name="a"; filename="b"') == {'name': 'a', 'filename': 'b'}
 fn parse_disposition(line string) map[string]string {
@@ -408,4 +497,13 @@ fn parse_disposition(line string) map[string]string {
 		}
 	}
 	return data
+}
+
+fn is_no_need_retry_error(err_code int) bool {
+	return err_code in [
+		net.err_port_out_of_range.code(),
+		net.err_no_udp_remote.code(),
+		net.err_connect_timed_out.code(),
+		net.err_timed_out_code,
+	]
 }

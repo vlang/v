@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 import net.http
@@ -10,17 +10,17 @@ struct Story {
 	url   string
 }
 
-fn worker_fetch(p &pool.PoolProcessor, cursor int, worker_id int) voidptr {
-	id := p.get_item<int>(cursor)
+fn worker_fetch(mut p pool.PoolProcessor, cursor int, worker_id int) voidptr {
+	id := p.get_item[int](cursor)
 	resp := http.get('https://hacker-news.firebaseio.com/v0/item/${id}.json') or {
 		println('failed to fetch data from /v0/item/${id}.json')
 		return pool.no_result
 	}
-	story := json.decode(Story, resp.text) or {
+	story := json.decode(Story, resp.body) or {
 		println('failed to decode a story')
 		return pool.no_result
 	}
-	println('# $cursor) $story.title | $story.url')
+	println('# ${cursor}) ${story.title} | ${story.url}')
 	return pool.no_result
 }
 
@@ -30,13 +30,10 @@ fn main() {
 		println('failed to fetch data from /v0/topstories.json')
 		return
 	}
-	mut ids := json.decode([]int, resp.text) or {
+	ids := json.decode([]int, resp.body) or {
 		println('failed to decode topstories.json')
 		return
-	}
-	if ids.len > 10 {
-		ids = ids[0..10]
-	}
+	}#[0..10]
 	mut fetcher_pool := pool.new_pool_processor(
 		callback: worker_fetch
 	)

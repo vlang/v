@@ -1,5 +1,6 @@
 module math
 
+// log_n returns log base b of x
 pub fn log_n(x f64, b f64) f64 {
 	y := log(x)
 	z := log(b)
@@ -24,6 +25,7 @@ pub fn log2(x f64) f64 {
 	return log(frac) * (1.0 / ln2) + f64(exp)
 }
 
+// log1p returns log(1+x)
 pub fn log1p(x f64) f64 {
 	y := 1.0 + x
 	z := y - 1.0
@@ -57,13 +59,13 @@ pub fn log_b(x f64) f64 {
 // ilog_b(nan) = max_i32
 pub fn ilog_b(x f64) int {
 	if x == 0 {
-		return min_i32
+		return int(min_i32)
 	}
 	if is_nan(x) {
-		return max_i32
+		return int(max_i32)
 	}
 	if is_inf(x, 0) {
-		return max_i32
+		return int(max_i32)
 	}
 	return ilog_b_(x)
 }
@@ -75,7 +77,7 @@ fn ilog_b_(x_ f64) int {
 	return int((f64_bits(x) >> shift) & mask) - bias + exp
 }
 
-// log returns the logarithm of x
+// log returns the natural logarithm of x
 //
 // Method :
 //   1. Argument Reduction: find k and f such that

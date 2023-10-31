@@ -1,9 +1,9 @@
 module time
 
-// parse returns time from a date string.
+// parse returns the time from a date string.
 //
 // TODO(playX): JS Date expects iso8061 format of strings and other formats
-// are implementation dependant, we probably want to implement parsing in JS.
+// are implementation dependent, we probably want to implement parsing in JS.
 pub fn parse(s string) Time {
 	mut res := Time{}
 	#let date = new Date(s.str)
@@ -19,6 +19,6 @@ pub fn parse(s string) Time {
 	return res
 }
 
-pub fn parse_iso8601(s string) ?Time {
+pub fn parse_iso8601(s string) !Time {
 	return parse(s)
 }

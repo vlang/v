@@ -29,25 +29,25 @@ fn test_des_cbc() {
 	println('test_des_cbc ok')
 }
 
-fn des_cbc_en(mut src []byte, key []byte, iv []byte) {
+fn des_cbc_en(mut src []u8, key []u8, iv []u8) {
 	block := des.new_cipher(key)
 	mut mode := cipher.new_cbc(block, iv)
 	mode.encrypt_blocks(mut src, src.clone())
 }
 
-fn des_cbc_de(mut src []byte, key []byte, iv []byte) {
+fn des_cbc_de(mut src []u8, key []u8, iv []u8) {
 	block := des.new_cipher(key)
 	mut mode := cipher.new_cbc(block, iv)
 	mode.decrypt_blocks(mut src, src.clone())
 }
 
-fn triple_des_cbc_en(mut src []byte, key []byte, iv []byte) {
+fn triple_des_cbc_en(mut src []u8, key []u8, iv []u8) {
 	block := des.new_triple_des_cipher(key)
 	mut mode := cipher.new_cbc(block, iv)
 	mode.encrypt_blocks(mut src, src.clone())
 }
 
-fn triple_des_cbc_de(mut src []byte, key []byte, iv []byte) {
+fn triple_des_cbc_de(mut src []u8, key []u8, iv []u8) {
 	block := des.new_triple_des_cipher(key)
 	mut mode := cipher.new_cbc(block, iv)
 	mode.decrypt_blocks(mut src, src.clone())

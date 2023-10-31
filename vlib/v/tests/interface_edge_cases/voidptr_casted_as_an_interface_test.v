@@ -11,11 +11,11 @@ struct Abc {
 fn (a Abc) xyz() {}
 
 fn f(i &IAbc) string {
-	return '$i'
+	return '${i}'
 }
 
 fn test_voidptr_casted_as_an_interface_reference() {
-	mut pi := &IAbc(voidptr(0))
+	mut pi := &IAbc(unsafe { voidptr(u64(0)) })
 	dump(pi)
 	assert f(pi) == '&IAbc(0x0)'
 	//

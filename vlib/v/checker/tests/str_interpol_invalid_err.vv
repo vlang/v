@@ -1,0 +1,16 @@
+struct Foo {}
+
+type Alias = Foo
+
+type SumType = Alias | int
+
+fn main() {
+	_ = '${[1]:x}'
+	_ = '${[1]!:x}'
+	_ = '${Foo{}:x}'
+	_ = '${[1]:f}'
+	_ := '${none:F}'
+	_ = '${{"a": "b"}:x}'
+	_ = '${Alias(Foo{}):x}'
+	_ = '${SumType(int(5)):o}'
+}

@@ -1,0 +1,5 @@
+Abc{
+    a: [struct {
+        b: 'this is b'
+    }]
+}

@@ -5,22 +5,22 @@ fn g(n int) ? { }
 
 fn main() {
 	tg := [
-		go d(0)
-		go d(1)
+		spawn d(0)
+		spawn d(1)
 	]
-	r := tg.wait() ?
+	r := tg.wait()?
 	println(r)
 	s := tg[0].wait() or { panic('problem') }
 	println(s)
 	tg2 := [
-		go e(0)
-		go e(1)
+		spawn e(0)
+		spawn e(1)
 	]
 	tg2.wait() or { panic('problem') }
-	tg2[0].wait() ?
+	tg2[0].wait()?
 	tg3 := [
-		go f(0)
-		go f(1)
+		spawn f(0)
+		spawn f(1)
 	]
 	tg3.wait() or { panic('problem') }
 	for t in tg3 {
@@ -32,10 +32,10 @@ fn main() {
 		println(a)
 	}
 	tg4 := [
-		go g(0)
-		go g(1)
+		spawn g(0)
+		spawn g(1)
 	]
 	tg4.wait()
 	tg4[0].wait()
-	go g(3) or { panic('problem') }
+	spawn g(3) or { panic('problem') }
 }

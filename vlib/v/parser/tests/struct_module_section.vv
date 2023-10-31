@@ -1,6 +1,6 @@
 struct S1 {
 pub mut:
-	v byte
+	v u8
 module:
 	i int
 }
@@ -9,7 +9,7 @@ struct S2 {
 module:
 	j int
 mut:
-	v byte
+	v u8
 }
 
 mut s := S1{}

@@ -15,7 +15,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 						Float { return left.val > right.val }
 						i64 { return left.val > right }
 						f64 { return left.val > right }
-						else { e.error('invalid operands to >: Int and $right.type_name()') }
+						else { e.error('invalid operands to >: Int and ${right.type_name()}') }
 					}
 				}
 				Uint {
@@ -25,7 +25,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 						Float { return left.val > right.val }
 						i64 { return left.val > right }
 						f64 { return left.val > right }
-						else { e.error('invalid operands to >: Uint and $right.type_name()') }
+						else { e.error('invalid operands to >: Uint and ${right.type_name()}') }
 					}
 				}
 				Float {
@@ -35,7 +35,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 						Float { return left.val > right.val }
 						i64 { return left.val > right }
 						f64 { return left.val > right }
-						else { e.error('invalid operands to >: Float and $right.type_name()') }
+						else { e.error('invalid operands to >: Float and ${right.type_name()}') }
 					}
 				}
 				i64 {
@@ -45,7 +45,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 						Float { return left > right.val }
 						i64 { return left > right }
 						f64 { return left > right }
-						else { e.error('invalid operands to >: int literal and $right.type_name()') }
+						else { e.error('invalid operands to >: int literal and ${right.type_name()}') }
 					}
 				}
 				f64 {
@@ -55,11 +55,11 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 						Float { return left > right.val }
 						i64 { return left > right }
 						f64 { return left > right }
-						else { e.error('invalid operands to >: float literal and $right.type_name()') }
+						else { e.error('invalid operands to >: float literal and ${right.type_name()}') }
 					}
 				}
 				else {
-					e.error('invalid operands to >: $left.type_name() and $right.type_name()')
+					e.error('invalid operands to >: ${left.type_name()} and ${right.type_name()}')
 				}
 			}
 		}
@@ -72,7 +72,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 						Float { return left.val < right.val }
 						i64 { return left.val < right }
 						f64 { return left.val < right }
-						else { e.error('invalid operands to <: Int and $right.type_name()') }
+						else { e.error('invalid operands to <: Int and ${right.type_name()}') }
 					}
 				}
 				Uint {
@@ -82,7 +82,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 						Float { return left.val < right.val }
 						i64 { return left.val < right }
 						f64 { return left.val < right }
-						else { e.error('invalid operands to <: Uint and $right.type_name()') }
+						else { e.error('invalid operands to <: Uint and ${right.type_name()}') }
 					}
 				}
 				Float {
@@ -92,7 +92,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 						Float { return left.val < right.val }
 						i64 { return left.val < right }
 						f64 { return left.val < right }
-						else { e.error('invalid operands to <: Float and $right.type_name()') }
+						else { e.error('invalid operands to <: Float and ${right.type_name()}') }
 					}
 				}
 				i64 {
@@ -102,7 +102,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 						Float { return left < right.val }
 						i64 { return left < right }
 						f64 { return left < right }
-						else { e.error('invalid operands to <: int literal and $right.type_name()') }
+						else { e.error('invalid operands to <: int literal and ${right.type_name()}') }
 					}
 				}
 				f64 {
@@ -112,11 +112,11 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 						Float { return left < right.val }
 						i64 { return left < right }
 						f64 { return left < right }
-						else { e.error('invalid operands to <: float literal and $right.type_name()') }
+						else { e.error('invalid operands to <: float literal and ${right.type_name()}') }
 					}
 				}
 				else {
-					e.error('invalid operands to <: $left.type_name() and $right.type_name()')
+					e.error('invalid operands to <: ${left.type_name()} and ${right.type_name()}')
 				}
 			}
 		}
@@ -129,7 +129,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 						Float { return left.val == right.val }
 						i64 { return left.val == right }
 						f64 { return left.val == right }
-						else { e.error('invalid operands to ==: Int and $right.type_name()') }
+						else { e.error('invalid operands to ==: Int and ${right.type_name()}') }
 					}
 				}
 				Uint {
@@ -139,7 +139,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 						Float { return left.val == right.val }
 						i64 { return left.val == right }
 						f64 { return left.val == right }
-						else { e.error('invalid operands to ==: Uint and $right.type_name()') }
+						else { e.error('invalid operands to ==: Uint and ${right.type_name()}') }
 					}
 				}
 				Float {
@@ -149,7 +149,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 						Float { return left.val == right.val }
 						i64 { return left.val == right }
 						f64 { return left.val == right }
-						else { e.error('invalid operands to ==: Float and $right.type_name()') }
+						else { e.error('invalid operands to ==: Float and ${right.type_name()}') }
 					}
 				}
 				i64 {
@@ -159,7 +159,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 						Float { return left == right.val }
 						i64 { return left == right }
 						f64 { return left == right }
-						else { e.error('invalid operands to ==: int literal and $right.type_name()') }
+						else { e.error('invalid operands to ==: int literal and ${right.type_name()}') }
 					}
 				}
 				f64 {
@@ -169,17 +169,17 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 						Float { return left == right.val }
 						i64 { return left == right }
 						f64 { return left == right }
-						else { e.error('invalid operands to ==: float literal and $right.type_name()') }
+						else { e.error('invalid operands to ==: float literal and ${right.type_name()}') }
 					}
 				}
 				string {
 					match right {
 						string { return left == right }
-						else { e.error('invalid operands to ==: string and $right.type_name()') }
+						else { e.error('invalid operands to ==: string and ${right.type_name()}') }
 					}
 				}
 				else {
-					e.error('invalid operands to ==: $left.type_name() and $right.type_name()')
+					e.error('invalid operands to ==: ${left.type_name()} and ${right.type_name()}')
 				}
 			}
 		}
@@ -192,7 +192,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 						Float { return left.val != right.val }
 						i64 { return left.val != right }
 						f64 { return left.val != right }
-						else { e.error('invalid operands to !=: Int and $right.type_name()') }
+						else { e.error('invalid operands to !=: Int and ${right.type_name()}') }
 					}
 				}
 				Uint {
@@ -202,7 +202,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 						Float { return left.val != right.val }
 						i64 { return left.val != right }
 						f64 { return left.val != right }
-						else { e.error('invalid operands to !=: Uint and $right.type_name()') }
+						else { e.error('invalid operands to !=: Uint and ${right.type_name()}') }
 					}
 				}
 				Float {
@@ -212,7 +212,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 						Float { return left.val != right.val }
 						i64 { return left.val != right }
 						f64 { return left.val != right }
-						else { e.error('invalid operands to !=: Float and $right.type_name()') }
+						else { e.error('invalid operands to !=: Float and ${right.type_name()}') }
 					}
 				}
 				i64 {
@@ -222,7 +222,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 						Float { return left != right.val }
 						i64 { return left != right }
 						f64 { return left != right }
-						else { e.error('invalid operands to !=: int literal and $right.type_name()') }
+						else { e.error('invalid operands to !=: int literal and ${right.type_name()}') }
 					}
 				}
 				f64 {
@@ -232,17 +232,17 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 						Float { return left != right.val }
 						i64 { return left != right }
 						f64 { return left != right }
-						else { e.error('invalid operands to !=: float literal and $right.type_name()') }
+						else { e.error('invalid operands to !=: float literal and ${right.type_name()}') }
 					}
 				}
 				string {
 					match right {
 						string { return left != right }
-						else { e.error('invalid operands to !=: string and $right.type_name()') }
+						else { e.error('invalid operands to !=: string and ${right.type_name()}') }
 					}
 				}
 				else {
-					e.error('invalid operands to !=: $left.type_name() and $right.type_name()')
+					e.error('invalid operands to !=: ${left.type_name()} and ${right.type_name()}')
 				}
 			}
 		}
@@ -326,7 +326,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							}
 						}
 						else {
-							e.error('invalid operands to +: Int and $right.type_name()')
+							e.error('invalid operands to +: Int and ${right.type_name()}')
 						}
 					}
 				}
@@ -408,7 +408,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							}
 						}
 						else {
-							e.error('invalid operands to +: Uint and $right.type_name()')
+							e.error('invalid operands to +: Uint and ${right.type_name()}')
 						}
 					}
 				}
@@ -490,7 +490,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							}
 						}
 						else {
-							e.error('invalid operands to +: Float and $right.type_name()')
+							e.error('invalid operands to +: Float and ${right.type_name()}')
 						}
 					}
 				}
@@ -572,7 +572,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							}
 						}
 						else {
-							e.error('invalid operands to +: int literal and $right.type_name()')
+							e.error('invalid operands to +: int literal and ${right.type_name()}')
 						}
 					}
 				}
@@ -654,12 +654,12 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							}
 						}
 						else {
-							e.error('invalid operands to +: float literal and $right.type_name()')
+							e.error('invalid operands to +: float literal and ${right.type_name()}')
 						}
 					}
 				}
 				else {
-					e.error('invalid operands to +: $left.type_name() and $right.type_name()')
+					e.error('invalid operands to +: ${left.type_name()} and ${right.type_name()}')
 				}
 			}
 		}
@@ -743,7 +743,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							}
 						}
 						else {
-							e.error('invalid operands to -: Int and $right.type_name()')
+							e.error('invalid operands to -: Int and ${right.type_name()}')
 						}
 					}
 				}
@@ -825,7 +825,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							}
 						}
 						else {
-							e.error('invalid operands to -: Uint and $right.type_name()')
+							e.error('invalid operands to -: Uint and ${right.type_name()}')
 						}
 					}
 				}
@@ -907,7 +907,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							}
 						}
 						else {
-							e.error('invalid operands to -: Float and $right.type_name()')
+							e.error('invalid operands to -: Float and ${right.type_name()}')
 						}
 					}
 				}
@@ -989,7 +989,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							}
 						}
 						else {
-							e.error('invalid operands to -: int literal and $right.type_name()')
+							e.error('invalid operands to -: int literal and ${right.type_name()}')
 						}
 					}
 				}
@@ -1071,12 +1071,12 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							}
 						}
 						else {
-							e.error('invalid operands to -: float literal and $right.type_name()')
+							e.error('invalid operands to -: float literal and ${right.type_name()}')
 						}
 					}
 				}
 				else {
-					e.error('invalid operands to -: $left.type_name() and $right.type_name()')
+					e.error('invalid operands to -: ${left.type_name()} and ${right.type_name()}')
 				}
 			}
 		}
@@ -1160,7 +1160,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							}
 						}
 						else {
-							e.error('invalid operands to *: Int and $right.type_name()')
+							e.error('invalid operands to *: Int and ${right.type_name()}')
 						}
 					}
 				}
@@ -1242,7 +1242,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							}
 						}
 						else {
-							e.error('invalid operands to *: Uint and $right.type_name()')
+							e.error('invalid operands to *: Uint and ${right.type_name()}')
 						}
 					}
 				}
@@ -1324,7 +1324,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							}
 						}
 						else {
-							e.error('invalid operands to *: Float and $right.type_name()')
+							e.error('invalid operands to *: Float and ${right.type_name()}')
 						}
 					}
 				}
@@ -1406,7 +1406,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							}
 						}
 						else {
-							e.error('invalid operands to *: int literal and $right.type_name()')
+							e.error('invalid operands to *: int literal and ${right.type_name()}')
 						}
 					}
 				}
@@ -1488,12 +1488,12 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							}
 						}
 						else {
-							e.error('invalid operands to *: float literal and $right.type_name()')
+							e.error('invalid operands to *: float literal and ${right.type_name()}')
 						}
 					}
 				}
 				else {
-					e.error('invalid operands to *: $left.type_name() and $right.type_name()')
+					e.error('invalid operands to *: ${left.type_name()} and ${right.type_name()}')
 				}
 			}
 		}
@@ -1577,7 +1577,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							}
 						}
 						else {
-							e.error('invalid operands to /: Int and $right.type_name()')
+							e.error('invalid operands to /: Int and ${right.type_name()}')
 						}
 					}
 				}
@@ -1659,7 +1659,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							}
 						}
 						else {
-							e.error('invalid operands to /: Uint and $right.type_name()')
+							e.error('invalid operands to /: Uint and ${right.type_name()}')
 						}
 					}
 				}
@@ -1741,7 +1741,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							}
 						}
 						else {
-							e.error('invalid operands to /: Float and $right.type_name()')
+							e.error('invalid operands to /: Float and ${right.type_name()}')
 						}
 					}
 				}
@@ -1823,7 +1823,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							}
 						}
 						else {
-							e.error('invalid operands to /: int literal and $right.type_name()')
+							e.error('invalid operands to /: int literal and ${right.type_name()}')
 						}
 					}
 				}
@@ -1905,12 +1905,12 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							}
 						}
 						else {
-							e.error('invalid operands to /: float literal and $right.type_name()')
+							e.error('invalid operands to /: float literal and ${right.type_name()}')
 						}
 					}
 				}
 				else {
-					e.error('invalid operands to /: $left.type_name() and $right.type_name()')
+					e.error('invalid operands to /: ${left.type_name()} and ${right.type_name()}')
 				}
 			}
 		}
@@ -1958,7 +1958,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							}
 						}
 						else {
-							e.error('invalid operands to >>: Int and $right.type_name()')
+							e.error('invalid operands to >>: Int and ${right.type_name()}')
 						}
 					}
 				}
@@ -2004,7 +2004,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							}
 						}
 						else {
-							e.error('invalid operands to >>: Uint and $right.type_name()')
+							e.error('invalid operands to >>: Uint and ${right.type_name()}')
 						}
 					}
 				}
@@ -2050,12 +2050,12 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							}
 						}
 						else {
-							e.error('invalid operands to >>: int literal and $right.type_name()')
+							e.error('invalid operands to >>: int literal and ${right.type_name()}')
 						}
 					}
 				}
 				else {
-					e.error('invalid operands to >>: $left.type_name() and $right.type_name()')
+					e.error('invalid operands to >>: ${left.type_name()} and ${right.type_name()}')
 				}
 			}
 		}
@@ -2103,7 +2103,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							}
 						}
 						else {
-							e.error('invalid operands to <<: Int and $right.type_name()')
+							e.error('invalid operands to <<: Int and ${right.type_name()}')
 						}
 					}
 				}
@@ -2149,7 +2149,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							}
 						}
 						else {
-							e.error('invalid operands to <<: Uint and $right.type_name()')
+							e.error('invalid operands to <<: Uint and ${right.type_name()}')
 						}
 					}
 				}
@@ -2195,17 +2195,17 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							}
 						}
 						else {
-							e.error('invalid operands to <<: int literal and $right.type_name()')
+							e.error('invalid operands to <<: int literal and ${right.type_name()}')
 						}
 					}
 				}
 				else {
-					e.error('invalid operands to <<: $left.type_name() and $right.type_name()')
+					e.error('invalid operands to <<: ${left.type_name()} and ${right.type_name()}')
 				}
 			}
 		}
 		else {
-			e.error('unknown infix expression: $op')
+			e.error('unknown infix expression: ${op}')
 		}
 	}
 	return empty // should e.error before this anyway

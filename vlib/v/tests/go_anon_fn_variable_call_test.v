@@ -1,10 +1,13 @@
+// vtest flaky: true
+// vtest retry: 3
+
 fn sum1(a int, b int) int {
 	sum_func1 := fn (a int, b int) int {
 		return a + b
 	}
 	sum_func2 := sum_func1
 
-	g := go sum_func2(a, b)
+	g := spawn sum_func2(a, b)
 
 	result := g.wait()
 	return result
@@ -18,7 +21,7 @@ fn sum2(a int, b int) int {
 	sum_func1 := add
 	sum_func2 := sum_func1
 
-	g := go sum_func2(a, b)
+	g := spawn sum_func2(a, b)
 
 	result := g.wait()
 	return result

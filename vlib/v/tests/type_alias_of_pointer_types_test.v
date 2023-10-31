@@ -72,3 +72,24 @@ fn mut_alias(mut ps PZZMyStructInt) int {
 	//	dump(ptr_str(voidptr(ps)))
 	return 123
 }
+
+type HANDLE = voidptr
+
+fn example(arg voidptr) {
+	println('Handle value in function is: ${arg}')
+	assert '${arg}' == '0'
+}
+
+fn test_alias_of_pointer() {
+	handle := get_handle()
+
+	println('Actual handle value is: ${handle}')
+	println('Memory address of handle is: ${&handle}')
+
+	example(handle)
+	assert '${handle}' == '0'
+}
+
+fn get_handle() HANDLE {
+	return unsafe { nil }
+}

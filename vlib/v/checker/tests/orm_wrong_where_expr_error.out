@@ -1,0 +1,7 @@
+vlib/v/checker/tests/orm_wrong_where_expr_error.vv:15:26: error: ORM: `where` expression must have at least one comparison for filtering rows
+   13 | 
+   14 |     users := sql db {
+   15 |         select from User where 3
+      |                                ^
+   16 |     }!
+   17 |

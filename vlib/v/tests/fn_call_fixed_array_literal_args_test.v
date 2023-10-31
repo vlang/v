@@ -5,5 +5,5 @@ fn test_fn_call_fixed_array_literal_args() {
 
 fn get_str(t [1]int) string {
 	println(t)
-	return '$t'
+	return '${t}'
 }

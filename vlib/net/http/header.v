@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module http
@@ -6,7 +6,6 @@ module http
 import strings
 
 // Header represents the key-value pairs in an HTTP header
-[noinit]
 pub struct Header {
 mut:
 	data map[string][]string
@@ -363,9 +362,9 @@ pub fn new_header_from_map(kvs map[CommonHeader]string) Header {
 }
 
 // new_custom_header_from_map creates a Header from string key value pairs
-pub fn new_custom_header_from_map(kvs map[string]string) ?Header {
+pub fn new_custom_header_from_map(kvs map[string]string) !Header {
 	mut h := new_header()
-	h.add_custom_map(kvs) ?
+	h.add_custom_map(kvs)!
 	return h
 }
 
@@ -378,8 +377,8 @@ pub fn (mut h Header) add(key CommonHeader, value string) {
 
 // add_custom appends a value to a custom header key. This function will
 // return an error if the key contains invalid header characters.
-pub fn (mut h Header) add_custom(key string, value string) ? {
-	is_valid(key) ?
+pub fn (mut h Header) add_custom(key string, value string) ! {
+	is_valid(key)!
 	h.data[key] << value
 	h.add_key(key)
 }
@@ -392,9 +391,9 @@ pub fn (mut h Header) add_map(kvs map[CommonHeader]string) {
 }
 
 // add_custom_map appends the value for each custom header key.
-pub fn (mut h Header) add_custom_map(kvs map[string]string) ? {
+pub fn (mut h Header) add_custom_map(kvs map[string]string) ! {
 	for k, v in kvs {
-		h.add_custom(k, v) ?
+		h.add_custom(k, v)!
 	}
 }
 
@@ -410,8 +409,8 @@ pub fn (mut h Header) set(key CommonHeader, value string) {
 // function will clear any other values that exist for the header. This
 // function will return an error if the key contains invalid header
 // characters.
-pub fn (mut h Header) set_custom(key string, value string) ? {
-	is_valid(key) ?
+pub fn (mut h Header) set_custom(key string, value string) ! {
+	is_valid(key)!
 	h.data[key] = [value]
 	h.add_key(key)
 }
@@ -479,37 +478,37 @@ pub fn (h Header) contains_custom(key string, flags HeaderQueryConfig) bool {
 
 // get gets the first value for the CommonHeader, or none if the key
 // does not exist.
-pub fn (h Header) get(key CommonHeader) ?string {
+pub fn (h Header) get(key CommonHeader) !string {
 	return h.get_custom(key.str())
 }
 
 // get_custom gets the first value for the custom header, or none if
 // the key does not exist.
-pub fn (h Header) get_custom(key string, flags HeaderQueryConfig) ?string {
+pub fn (h Header) get_custom(key string, flags HeaderQueryConfig) !string {
 	mut data_key := key
 	if !flags.exact {
 		// get the first key from key metadata
 		k := key.to_lower()
 		if h.keys[k].len == 0 {
-			return none
+			return error('none')
 		}
 		data_key = h.keys[k][0]
 	}
 	if h.data[data_key].len == 0 {
-		return none
+		return error('none')
 	}
 	return h.data[data_key][0]
 }
 
 // starting_with gets the first header starting with key, or none if
 // the key does not exist.
-pub fn (h Header) starting_with(key string) ?string {
+pub fn (h Header) starting_with(key string) !string {
 	for k, _ in h.data {
 		if k.starts_with(key) {
 			return k
 		}
 	}
-	return none
+	return error('none')
 }
 
 // values gets all values for the CommonHeader.
@@ -598,7 +597,7 @@ pub fn (h Header) join(other Header) Header {
 		for v in other.custom_values(k, exact: true) {
 			combined.add_custom(k, v) or {
 				// panic because this should never fail
-				panic('unexpected error: $err')
+				panic('unexpected error: ${err}')
 			}
 		}
 	}
@@ -630,11 +629,11 @@ struct HeaderKeyError {
 	Error
 	code         int
 	header       string
-	invalid_char byte
+	invalid_char u8
 }
 
 pub fn (err HeaderKeyError) msg() string {
-	return "Invalid header key: '$err.header'"
+	return "Invalid header key: '${err.header}'"
 }
 
 pub fn (err HeaderKeyError) code() int {
@@ -642,27 +641,27 @@ pub fn (err HeaderKeyError) code() int {
 }
 
 // is_valid checks if the header token contains all valid bytes
-fn is_valid(header string) ? {
+fn is_valid(header string) ! {
 	for _, c in header {
 		if int(c) >= 128 || !is_token(c) {
-			return IError(HeaderKeyError{
+			return HeaderKeyError{
 				code: 1
 				header: header
 				invalid_char: c
-			})
+			}
 		}
 	}
 	if header.len == 0 {
-		return IError(HeaderKeyError{
+		return HeaderKeyError{
 			code: 2
 			header: header
 			invalid_char: 0
-		})
+		}
 	}
 }
 
 // is_token checks if the byte is valid for a header token
-fn is_token(b byte) bool {
+fn is_token(b u8) bool {
 	return match b {
 		33, 35...39, 42, 43, 45, 46, 48...57, 65...90, 94...122, 124, 126 { true }
 		else { false }
@@ -676,7 +675,7 @@ pub fn (h Header) str() string {
 }
 
 // parse_headers parses a newline delimited string into a Header struct
-fn parse_headers(s string) ?Header {
+fn parse_headers(s string) !Header {
 	mut h := new_header()
 	mut last_key := ''
 	mut last_value := ''
@@ -689,15 +688,15 @@ fn parse_headers(s string) ?Header {
 			last_value += ' ${line.trim(' \t')}'
 			continue
 		} else if last_key != '' {
-			h.add_custom(last_key, last_value) ?
+			h.add_custom(last_key, last_value)!
 		}
-		last_key, last_value = parse_header(line) ?
+		last_key, last_value = parse_header(line)!
 	}
-	h.add_custom(last_key, last_value) ?
+	h.add_custom(last_key, last_value)!
 	return h
 }
 
-fn parse_header(s string) ?(string, string) {
+fn parse_header(s string) !(string, string) {
 	if !s.contains(':') {
 		return error('missing colon in header')
 	}

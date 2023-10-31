@@ -5,7 +5,7 @@ fn grouped_cond_single_line() {
 }
 
 fn unwrap_grouped_conds() {
-	// ...but sometimes they have to be splitted
+	// ...but sometimes they have to be split
 	_ := one_condition && before_condition && (conds_inside_paren
 		|| are_kept_together || if_possible || but_this_is_really_too_much
 		|| for_one_line)
@@ -22,12 +22,20 @@ fn main() {
 	{
 		{
 			{
-				// Indent this much to force a break after the assign (`:=`).
-				// Check that the trailing space is removed
-				should_cast :=
-					(g.table.type_kind(stmt.left_types.first()) in js.shallow_equatables)
-					&& (g.cast_stack.len <= 0 || stmt.left_types.first() != g.cast_stack.last())
+				{
+					// Indent this much to force a break after the assign (`:=`).
+					// Check that the trailing space is removed
+					should_cast :=
+						g.table.type_kind(stmt.left_types.first()) in js.shallow_equatables
+						&& (g.cast_stack.len <= 0 || stmt.left_types.first() != g.cast_stack.last())
+				}
 			}
 		}
 	}
+}
+
+if c.table.final_sym(typ).kind in [.array, .array_fixed, .struct_, .interface_, .none_, .map, .sum_type]
+	&& fmt in [`E`, `F`, `G`, `e`, `f`, `g`, `d`, `u`, `x`, `X`, `o`, `c`, `p`, `b`] {
+	c.error('illegal format specifier `${fmt:c}` for type `${c.table.get_type_name(ftyp)}`',
+		node.fmt_poss[i])
 }

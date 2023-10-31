@@ -5,15 +5,16 @@ and before submitting PRs.
 
 Tip: use `v -cc tcc` when compiling tests, because TCC is much faster,
 compared to most other C compilers like clang/gcc/msvc. Most test commands
-will use the V compiler and the V tools many times, potentially 
+will use the V compiler and the V tools many times, potentially
 hundreds/thousands of times.
 
 ## `v test-all`
 
-Test and build *everything*. Usefull to verify *locally*, that the CI will
+Test and build *everything*. Useful to verify *locally*, that the CI will
 most likely pass. Slowest, but most comprehensive.
 
 It works, by running these in succession:
+
 * `v test-cleancode`
 * `v test-self`
 * `v test-fmt`
@@ -23,10 +24,12 @@ It works, by running these in succession:
 * `v install nedpals.args`
 
 # Details:
+
 In the `v` repo there are many tests. The main types are:
 
 ## `_test.v` tests - these are the normal V test files.
-All `test_` functions in these files, will be ran automatically by 
+
+All `test_` functions in these files, will be ran automatically by
 V's test framework.
 
 NB 1: You can run test files one by one, with:
@@ -44,22 +47,22 @@ recursively.
 `v -stats test folder` - same, but will also produce timing reports
 about how fast each test_ function in each _test.v file ran.
 
-
 ## `v test vlib/v/tests`:
 
 This folder contains _test.v files, testing the different features of the V
 compiler. Each of them will be compiled, and all the features in them have
 to work (verified by assertions).
 
-## `v vlib/v/tests/inout/compiler_test.v`
+## `v vlib/v/slow_tests/inout/compiler_test.v`
 
 This is a *test runner*, that checks whether the output of running a V program,
 matches an expected .out file. You can also check for code that does panic
 using this test runner - just paste the start of the `panic()` output in the
 corresponding .out file.
 
-NB: these tests, expect to find a pair of `.vv` and `.out` files, in the folder:
-vlib/v/tests/inout
+> **Note**
+> These tests, expect to find a pair of `.vv` and `.out` files, in the folder:
+> vlib/v/slow_tests/inout
 
 The test runner will run each `.vv` file, and will check that its output, matches
 the contents of the `.out` file with the same base name. This is particularly useful
@@ -77,14 +80,17 @@ Each `.c.must_have` file, consists of multiple lines. Each of these
 lines, *should* be present *at least once* in the output, when the .vv
 file is compiled with `-o -` .
 
-## `v vlib/v/tests/run_project_folders_test.v`
+## `v vlib/v/slow_tests/run_project_folders_test.v`
+
 This *test runner*, checks whether whole project folders, can be compiled, and run.
 
-NB: Each project in these folders, should finish with an exit code of 0,
-and it should output `OK` as its last stdout line.
+> **Note**
+> Each project in these folders, should finish with an exit code of 0,
+> and it should output `OK` as its last stdout line.
 
 ## `v vlib/v/tests/known_errors/known_errors_test.v`
-This *test runner*, checks whether a known program, that was expected to compile, 
+
+This *test runner*, checks whether a known program, that was expected to compile,
 but did NOT, due to a buggy checker, parser or cgen, continues to fail.
 The negative programs are collected in the `vlib/v/tests/known_errors/testdata/` folder.
 Each of them should FAIL to compile, due to a known/confirmed compiler bug/limitation.
@@ -95,7 +101,6 @@ track, whether they were not fixed incidentally, due to an unrelated
 change/improvement. For example, code that triggers generating invalid C code can go here,
 and later when a bug is fixed, can be moved to a proper _test.v or .vv/.out pair, outside of
 the `vlib/v/tests/known_errors/testdata/` folder.
-
 
 ## Test building of actual V programs (examples, tools, V itself)
 
@@ -140,6 +145,9 @@ will keep the existing source nice and clean.
 Ensure that all .md files in the project are formatted properly,
 and that the V code block examples in them can be compiled/formatted too.
 
+Note: if that command finds formatting errors, they can be fixed with:
+`VAUTOFIX=1 ./v check-md -hide-warnings file.md`
+
 ## `v test-self`
 
 Run `vlib` module tests, *including* the compiler tests.
@@ -147,21 +155,23 @@ Run `vlib` module tests, *including* the compiler tests.
 ## `v vlib/v/compiler_errors_test.v`
 
 This runs tests for:
+
 * `vlib/v/scanner/tests/*.vv`
 * `vlib/v/checker/tests/*.vv`
 * `vlib/v/parser/tests/*.vv`
 
-NB: there are special folders, that compiler_errors_test.v will try to
-run/compile with specific options:
+> **Note**
+> There are special folders, that compiler_errors_test.v will try to
+> run/compile with specific options:
 
-vlib/v/checker/tests/globals_run/ - `-enable-globals run`; 
+vlib/v/checker/tests/globals_run/ - `-enable-globals run`;
 results stored in `.run.out` files, matching the .vv ones.
 
 NB 2: in case you need to modify many .out files, run *twice* in a row:
-`VAUTOFIX=1 ./v vlib/v/compiler_errors_test.v` 
+`VAUTOFIX=1 ./v vlib/v/compiler_errors_test.v`
 This will fail the first time, but it will record the new output for each
 .vv file, and store it into the corresponding .out file. The second run
-should be now successfull, and so you can inspect the difference, and 
+should be now successful, and so you can inspect the difference, and
 commit the new .out files with minimum manual effort.
 
 NB 3: To run only some of the tests, use:

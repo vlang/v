@@ -14,7 +14,7 @@ struct array_buffer {
 
 fn (mut a array_buffer) make_copy() {
 	if a.index_start != 0 || a.has_slice {
-		mut new_arr := JS.makeEmtpyJSArray()
+		mut new_arr := JS.makeEmptyJSArray()
 		for i in 0 .. a.len {
 			#new_arr.push(a.val.get(i))
 
@@ -31,7 +31,7 @@ fn (mut a array_buffer) make_copy() {
 #array_buffer.prototype.make_copy = function() { return array_buffer_make_copy(this) }
 // TODO(playX): Should this be implemented fully in JS, use generics or just voidptr?
 fn (a array_buffer) get(ix int) voidptr {
-	mut res := voidptr(0)
+	mut res := unsafe { nil }
 	#res = a.arr[a.index_start.val + ix.val];
 
 	return res
@@ -108,7 +108,7 @@ pub fn (mut a array) trim(index int) {
 [unsafe]
 pub fn (a array) repeat_to_depth(count int, depth int) array {
 	if count < 0 {
-		panic('array.repeat: count is negative: $count')
+		panic('array.repeat: count is negative: ${count}')
 	}
 	mut arr := empty_array()
 
@@ -128,14 +128,14 @@ pub fn (a array) repeat_to_depth(count int, depth int) array {
 
 // last returns the last element of the array.
 pub fn (a array) last() voidptr {
-	mut res := voidptr(0)
+	mut res := unsafe { nil }
 	#res = a.arr.get(new int(a.len-1));
 
 	return res
 }
 
 fn (a array) get(ix int) voidptr {
-	mut result := voidptr(0)
+	mut result := unsafe { nil }
 	#result = a.arr.get(ix)
 
 	return result
@@ -148,10 +148,10 @@ pub fn (a array) repeat(count int) array {
 }
 
 #function makeEmptyArray() { return new array(new array_buffer({ arr: [], len: new int(0), index_start: new int(0), cap: new int(0) })); }
-#function makeEmtpyJSArray() { return new Array(); }
+#function makeEmptyJSArray() { return new Array(); }
 
 fn JS.makeEmptyArray() array
-fn JS.makeEmtpyJSArray() JS.Array
+fn JS.makeEmptyJSArray() JS.Array
 fn empty_array() array {
 	return JS.makeEmptyArray()
 }
@@ -222,13 +222,13 @@ fn v_filter(arr array, callback fn (voidptr) bool) array {
 }
 
 fn v_map(arr array, callback fn (voidptr) voidptr) array {
-	mut maped := empty_array()
+	mut mapped := empty_array()
 
 	for i := 0; i < arr.arr.len; i++ {
-		maped.push(callback(arr.arr.get(i)))
+		mapped.push(callback(arr.arr.get(i)))
 	}
 
-	return maped
+	return mapped
 }
 
 struct array_iterator {
@@ -335,7 +335,7 @@ pub fn (a array) reduce(iter fn (int, int) int, accum_start int) int {
 }
 
 pub fn (mut a array) pop() voidptr {
-	mut res := voidptr(0)
+	mut res := unsafe { nil }
 	#a.val.arr.make_copy()
 	#res = a.val.arr.arr.pop()
 	#a.val.arr.len.val -= 1
@@ -344,7 +344,7 @@ pub fn (mut a array) pop() voidptr {
 }
 
 pub fn (a array) first() voidptr {
-	mut res := voidptr(0)
+	mut res := unsafe { nil }
 	#res = a.arr.get(new int(0))
 
 	return res
@@ -373,7 +373,7 @@ pub fn (mut a array) delete_last() {
 pub fn (a &array) free() {
 }
 
-// todo: once (a []byte) will work rewrite this
+// todo: once (a []u8) will work rewrite this
 pub fn (a array) bytestr() string {
 	res := ''
 	#for (let i = 0;i < a.arr.len.valueOf();i++) res.str += String.fromCharCode(a.arr.get(new int(i)))
@@ -487,7 +487,7 @@ pub interface JS.Float64Array {
 	every(JS.EveryFn) JS.Boolean
 }
 
-pub fn uint8_array(arr []byte) JS.Uint8Array {
+pub fn uint8_array(arr []u8) JS.Uint8Array {
 	#let tmp = new Array();
 
 	for elem in arr {

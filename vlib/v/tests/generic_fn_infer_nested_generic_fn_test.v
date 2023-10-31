@@ -9,12 +9,12 @@ fn test_generics_fn_infer_nested_generic_fn() {
 }
 
 fn load_item_spawns(mut spawns []ItemSpawn) {
-	walk<ItemSpawn>('./data/items/spawns/', mut spawns)
+	walk[ItemSpawn]('./data/items/spawns/', mut spawns)
 }
 
-fn parse_json<T>(file string, mut array []T) {
+fn parse_json[T](file string, mut array []T) {
 	data := os.read_file(file) or {
-		panic('error reading file $file')
+		panic('error reading file ${file}')
 		return
 	}
 	decoded_data := json.decode([]T, data) or {
@@ -26,7 +26,7 @@ fn parse_json<T>(file string, mut array []T) {
 	}
 }
 
-fn walk<T>(path string, mut array []T) {
+fn walk[T](path string, mut array []T) {
 	if !os.is_dir(path) {
 		return
 	}

@@ -9,8 +9,8 @@ _ = if true {
 
 // void results
 _ = match 4 {
-	1 {println('')}
-	else {exit(0)}
+	1 { println('') }
+	else { exit(0) }
 }
 _ = if true {
 	println('')

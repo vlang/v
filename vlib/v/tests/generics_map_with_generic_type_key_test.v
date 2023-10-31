@@ -1,4 +1,4 @@
-fn counts<T>(variables []T) map[T]int {
+fn counts[T](variables []T) map[T]int {
 	mut tally := map[T]int{}
 	for var in variables {
 		tally[var]++

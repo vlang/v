@@ -22,11 +22,12 @@ pub mut:
 * Utility
 *
 *********************************************************************/
+// str returns a `string` representation of `Vec4`.
 pub fn (x Vec4) str() string {
 	return '|${x.e[0]:-6.3},${x.e[1]:-6.3},${x.e[2]:-6.3},${x.e[3]:-6.3}|'
 }
 
-// create a Vec4 function passing x,y,z as parameteres. w is set to 1
+// create a Vec4 function passing x,y,z as parameters. w is set to 1
 pub fn vec3(x f32, y f32, z f32) Vec4 {
 	return Vec4{
 		e: [x, y, z, 1]!

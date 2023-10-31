@@ -1,1 +1,1 @@
-fn C.PQgetvalue(voidptr, int, int) &byte
+fn C.PQgetvalue(voidptr, int, int) &u8

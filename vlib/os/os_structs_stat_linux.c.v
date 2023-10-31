@@ -1,6 +1,6 @@
 module os
 
-struct C.stat {
+pub struct C.stat {
 	st_dev     u64 // 8
 	st_ino     u64 // 8
 	st_nlink   u64 // 8
@@ -16,7 +16,7 @@ struct C.stat {
 	st_ctime   i64 // 8
 }
 
-struct C.__stat64 {
+pub struct C.__stat64 {
 	st_mode  u32
 	st_size  u64
 	st_mtime u64

@@ -53,24 +53,24 @@ fn (mut i IndexState) safe_access(key string, new int) bool {
 		return false
 	}
 	old := i.max_index[key] or {
-		debug_bounds_checking('$i.level ${key}.len = $new')
+		debug_bounds_checking('${i.level} ${key}.len = ${new}')
 		i.max_index[key] = new
 		return false
 	}
 	if new > old {
 		if old < -1 {
-			debug_bounds_checking('$i.level $key[$new] unsafe (mut array)')
+			debug_bounds_checking('${i.level} ${key}[${new}] unsafe (mut array)')
 			return false
 		}
-		debug_bounds_checking('$i.level $key[$new] unsafe (index was $old)')
+		debug_bounds_checking('${i.level} ${key}[${new}] unsafe (index was ${old})')
 		i.max_index[key] = new
 		return false
 	}
-	debug_bounds_checking('$i.level $key[$new] safe (index is $old)')
+	debug_bounds_checking('${i.level} ${key}[${new}] safe (index is ${old})')
 	return true
 }
 
-// safe_offset returns for a previvous array what was the highest
+// safe_offset returns for a previous array what was the highest
 // offset we ever accessed for that identifier
 fn (mut i IndexState) safe_offset(key string) int {
 	$if no_bounds_checking {

@@ -1,5 +1,5 @@
 import time
-import sqlite
+import db.sqlite
 
 struct User {
 	id         int       [primary; sql: serial]
@@ -11,16 +11,16 @@ struct User {
 }
 
 fn main() {
-	db := sqlite.connect(':memory:') ?
+	db := sqlite.connect(':memory:')!
 	sql db {
 		create table User
-	}
+	}!
 	m := User{}
 	sql db {
 		insert m into User
-	}
+	}!
 
 	_ := sql db {
 		select from User where email == email
-	}
+	}!
 }

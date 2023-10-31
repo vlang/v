@@ -9,7 +9,7 @@ struct Man {
 }
 
 fn my_variadic_function(x ...Man) string {
-	return '$x' // this interpolation should generate .str() methods for Man
+	return '${x}' // this interpolation should generate .str() methods for Man
 }
 
 fn test_vargs_string_interpolation() {
@@ -31,11 +31,11 @@ fn test_vargs_string_interpolation() {
 }
 
 fn variadic_int(x ...int) string {
-	return '$x'
+	return '${x}'
 }
 
 fn variadic_bool(x ...bool) string {
-	return '$x'
+	return '${x}'
 }
 
 fn test_variadic_interpolation() {

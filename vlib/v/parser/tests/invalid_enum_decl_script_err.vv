@@ -1,0 +1,7 @@
+mynum := 10
+
+enum MyEnum {
+	aa
+	bb
+	cc
+}

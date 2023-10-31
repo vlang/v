@@ -1,5 +1,3 @@
-module main
-
 fn test_mark_as_referenced() {
 	if true {
 		a := Type{}
@@ -20,5 +18,5 @@ interface Interface {
 }
 
 fn f(b Interface) string {
-	return '$b'
+	return '${b}'
 }

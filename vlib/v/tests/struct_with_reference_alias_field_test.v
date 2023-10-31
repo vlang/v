@@ -9,5 +9,5 @@ fn test_struct_with_reference_alias_fields() {
 		data: &SS('hi')
 	}
 	println(val.data)
-	assert '$val.data' == 'hi'
+	assert '${val.data}' == 'hi'
 }

@@ -1,0 +1,25 @@
+
+*/node_modules/**/*
+/node_modules/**/*
+node_modules/**/*
+/node_modules/
+node_modules/
+node_modules
+
+# Ignore built ts files
+*/dist/**/*
+/dist/**/*
+dist/**/*
+/dist/
+dist/
+dist
+
+temp/*
+temp/
+*/temp/**/*
+
+package-lock.json
+
+# Not ignore built js or ts files
+!*.js
+!*.ts

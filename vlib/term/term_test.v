@@ -57,9 +57,9 @@ fn test_header() {
 	assert term_width == term.header('1234', '_-/\\/\\').len
 }
 
-fn test_get_cursor_position() ? {
-	original_position := term.get_cursor_position() ?
-	cursor_position_1 := term.get_cursor_position() ?
+fn test_get_cursor_position() {
+	original_position := term.get_cursor_position()!
+	cursor_position_1 := term.get_cursor_position()!
 	assert original_position.x == cursor_position_1.x
 	assert original_position.y == cursor_position_1.y
 	//
@@ -67,18 +67,18 @@ fn test_get_cursor_position() ? {
 		x: 10
 		y: 11
 	)
-	cursor_position_2 := term.get_cursor_position() ?
+	cursor_position_2 := term.get_cursor_position()!
 	//
 	term.set_cursor_position(
 		x: 5
 		y: 6
 	)
-	cursor_position_3 := term.get_cursor_position() ?
+	cursor_position_3 := term.get_cursor_position()!
 	//
 	term.set_cursor_position(original_position)
-	eprintln('original_position: $original_position')
-	eprintln('cursor_position_2: $cursor_position_2')
-	eprintln('cursor_position_3: $cursor_position_3')
+	eprintln('original_position: ${original_position}')
+	eprintln('cursor_position_2: ${cursor_position_2}')
+	eprintln('cursor_position_3: ${cursor_position_3}')
 	// 0,0 is returned on dumb terminals
 	if cursor_position_2.x == 0 && cursor_position_2.y == 0 {
 		return
@@ -97,8 +97,19 @@ fn test_set_terminal_title() {
 	if os.getenv('CI') != 'true' {
 		return
 	}
-	title_change := term.set_terminal_title('v is awesome!')
-	assert title_change == true
+	term.set_terminal_title('v is awesome!')
+	dump(@FILE)
+	assert true
+}
+
+fn test_set_tab_title() {
+	// do not change the current terminal tab title outside of CI:
+	if os.getenv('CI') != 'true' {
+		return
+	}
+	term.set_tab_title('v is awesome!')
+	dump(@FILE)
+	assert true
 }
 
 fn test_strip_ansi() {

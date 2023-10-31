@@ -1,0 +1,7 @@
+vlib/v/checker/tests/struct_field_init_fntype_mismatch.vv:13:3: error: cannot assign to field `foo_fn`: expected `fn (mut Foo)`, not `fn (&Foo)`
+   11 | fn main(){
+   12 |     srv := Server{
+   13 |         foo_fn: foo
+      |         ~~~~~~~~~~~
+   14 |     }
+   15 |     dump(isnil(srv.foo_fn))

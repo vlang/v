@@ -4,7 +4,7 @@ import os
 import flag
 import scripting
 
-pub fn check_v_commit_timestamp_before_self_rebuilding(v_timestamp int) {
+pub fn check_v_commit_timestamp_before_self_rebuilding(v_timestamp u64) {
 	if v_timestamp >= 1561805697 {
 		return
 	}
@@ -22,16 +22,16 @@ pub fn validate_commit_exists(commit string) {
 	if commit.len == 0 {
 		return
 	}
-	cmd := "git cat-file -t '$commit' "
+	cmd := 'git cat-file -t "${commit}" ' // windows's cmd.exe does not support ' for quoting
 	if !scripting.exit_0_status(cmd) {
-		eprintln('Commit: "$commit" does not exist in the current repository.')
+		eprintln('Commit: "${commit}" does not exist in the current repository.')
 		exit(3)
 	}
 }
 
-pub fn line_to_timestamp_and_commit(line string) (int, string) {
+pub fn line_to_timestamp_and_commit(line string) (u64, string) {
 	parts := line.split(' ')
-	return parts[0].int(), parts[1]
+	return parts[0].u64(), parts[1]
 }
 
 pub fn normalized_workpath_for_commit(workdir string, commit string) string {
@@ -45,44 +45,77 @@ fn get_current_folder_commit_hash() string {
 	return v_commithash
 }
 
-pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string, string) {
+pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string, string, u64) {
 	scripting.chdir(cdir)
 	// Building a historic v with the latest vc is not always possible ...
 	// It is more likely, that the vc *at the time of the v commit*,
 	// or slightly before that time will be able to build the historic v:
-	vline := scripting.run('git rev-list -n1 --timestamp "$commit" ')
+	vline := scripting.run('git rev-list -n1 --timestamp "${commit}" ')
 	v_timestamp, v_commithash := line_to_timestamp_and_commit(vline)
-	scripting.verbose_trace(@FN, 'v_timestamp: $v_timestamp | v_commithash: $v_commithash')
+	scripting.verbose_trace(@FN, 'v_timestamp: ${v_timestamp} | v_commithash: ${v_commithash}')
 	check_v_commit_timestamp_before_self_rebuilding(v_timestamp)
 	scripting.chdir(vcdir)
 	scripting.run('git checkout --quiet master')
 	//
 	mut vccommit := ''
-	vcbefore_subject_match := scripting.run('git rev-list HEAD -n1 --timestamp --grep=${v_commithash[0..7]} ')
-	scripting.verbose_trace(@FN, 'vcbefore_subject_match: $vcbefore_subject_match')
+	mut partial_hash := v_commithash[0..7]
+	if '5b7a1e8'.starts_with(partial_hash) {
+		// we need the following, otherwise --grep= below would find a93ef6e, which does include 5b7a1e8 in the commit message ... 🤦‍♂️
+		partial_hash = '5b7a1e84a4d283071d12cb86dc17aeda9b5306a8'
+	}
+	vcbefore_subject_match := scripting.run('git rev-list HEAD -n1 --timestamp --grep=${partial_hash} ')
+	scripting.verbose_trace(@FN, 'vcbefore_subject_match: ${vcbefore_subject_match}')
 	if vcbefore_subject_match.len > 3 {
 		_, vccommit = line_to_timestamp_and_commit(vcbefore_subject_match)
 	} else {
 		scripting.verbose_trace(@FN, 'the v commit did not match anything in the vc log; try --timestamp instead.')
-		vcbefore := scripting.run('git rev-list HEAD -n1 --timestamp --before=$v_timestamp ')
+		vcbefore := scripting.run('git rev-list HEAD -n1 --timestamp --before=${v_timestamp} ')
 		_, vccommit = line_to_timestamp_and_commit(vcbefore)
 	}
-	scripting.verbose_trace(@FN, 'vccommit: $vccommit')
-	scripting.run('git checkout --quiet "$vccommit" ')
+	scripting.verbose_trace(@FN, 'vccommit: ${vccommit}')
+	scripting.run('git checkout --quiet "${vccommit}" ')
 	scripting.run('wc *.c')
 	scripting.chdir(cdir)
-	return v_commithash, vccommit
+	return v_commithash, vccommit, v_timestamp
 }
 
 pub fn clone_or_pull(remote_git_url string, local_worktree_path string) {
 	// Note: after clone_or_pull, the current repo branch is === HEAD === master
 	if os.is_dir(local_worktree_path) && os.is_dir(os.join_path_single(local_worktree_path, '.git')) {
 		// Already existing ... Just pulling in this case is faster usually.
-		scripting.run('git -C "$local_worktree_path"  checkout --quiet master')
-		scripting.run('git -C "$local_worktree_path"  pull     --quiet ')
+		scripting.run('git -C "${local_worktree_path}"  checkout --quiet master')
+		scripting.run('git -C "${local_worktree_path}"  pull     --quiet ')
 	} else {
-		// Clone a fresh
-		scripting.run('git clone --quiet "$remote_git_url"  "$local_worktree_path" ')
+		// Clone a fresh local tree.
+		if remote_git_url.starts_with('http') {
+			// cloning an https remote with --filter=blob:none is usually much less bandwidth intensive, at the
+			// expense of doing small network ops later when using checkouts.
+			scripting.run('git clone --filter=blob:none --quiet "${remote_git_url}"  "${local_worktree_path}" ')
+			return
+		}
+		mut is_blobless_clone := false
+		remote_git_config_path := os.join_path(remote_git_url, '.git', 'config')
+		if os.is_dir(remote_git_url) && os.is_file(remote_git_config_path) {
+			lines := os.read_lines(remote_git_config_path) or { [] }
+			is_blobless_clone = lines.filter(it.contains('partialclonefilter = blob:none')).len > 0
+		}
+		if is_blobless_clone {
+			// Note:
+			// 1) cloning a *local folder* with `--filter=blob:none`, that *itself* was cloned with `--filter=blob:none`
+			// leads to *extremely* slow checkouts for older commits later. It takes hours instead of milliseconds, for a commit
+			// that is just several thousands of commits old :( .
+			//
+			// 2) Cloning it *without* the `--filter=blob:none`, leads to `error: unable to read sha1 file of`, later,
+			// when checking out the older commits, depending on the local git client version (tested with git version 2.41.0).
+			//
+			// 3) => instead of cloning, it is much faster, and *bug free*, to just rsync the local repo directly,
+			// at the expense of a little more space usage, which will make the new tree in local_worktree_path,
+			// exactly 1:1 the same, as the one in remote_git_url, just independent from it .
+			copy_cmd := if os.user_os() == 'windows' { 'robocopy /MIR' } else { 'rsync -a' }
+			scripting.run('${copy_cmd} "${remote_git_url}/"  "${local_worktree_path}/"')
+			return
+		}
+		scripting.run('git clone --quiet "${remote_git_url}"  "${local_worktree_path}" ')
 	}
 }
 
@@ -99,6 +132,7 @@ pub mut:
 	// these will be filled by vgitcontext.compile_oldv_if_needed()
 	commit_v__hash string // the git commit of the v repo that should be prepared
 	commit_vc_hash string // the git commit of the vc repo, corresponding to commit_v__hash
+	commit_v__ts   u64    // unix timestamp, that corresponds to commit_v__hash; filled by prepare_vc_source
 	vexename       string // v or v.exe
 	vexepath       string // the full absolute path to the prepared v/v.exe
 	vvlocation     string // v.v or compiler/ or cmd/v, depending on v version
@@ -108,28 +142,25 @@ pub mut:
 pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	vgit_context.vexename = if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
 	vgit_context.vexepath = os.real_path(os.join_path_single(vgit_context.path_v, vgit_context.vexename))
-	mut command_for_building_v_from_c_source := ''
-	mut command_for_selfbuilding := ''
-	if 'windows' == os.user_os() {
-		command_for_building_v_from_c_source = '$vgit_context.cc -std=c99 -I ./thirdparty/stdatomic/win -municode -w -o cv.exe  "$vgit_context.path_vc/v_win.c" '
-		command_for_selfbuilding = './cv.exe -o $vgit_context.vexename {SOURCE}'
-	} else {
-		command_for_building_v_from_c_source = '$vgit_context.cc -std=gnu11 -I ./thirdparty/stdatomic/nix -w -o cv "$vgit_context.path_vc/v.c"  -lm -lpthread'
-		command_for_selfbuilding = './cv -o $vgit_context.vexename {SOURCE}'
+	if os.is_dir(vgit_context.path_v) && os.is_executable(vgit_context.vexepath) {
+		// already compiled, no need to compile that specific v executable again
+		vgit_context.commit_v__hash = get_current_folder_commit_hash()
+		return
 	}
 	scripting.chdir(vgit_context.workdir)
 	clone_or_pull(vgit_context.v_repo_url, vgit_context.path_v)
 	clone_or_pull(vgit_context.vc_repo_url, vgit_context.path_vc)
 	scripting.chdir(vgit_context.path_v)
-	scripting.run('git checkout --quiet $vgit_context.commit_v')
+	scripting.run('git checkout --quiet ${vgit_context.commit_v}')
 	if os.is_dir(vgit_context.path_v) && os.exists(vgit_context.vexepath) {
 		// already compiled, so no need to compile v again
 		vgit_context.commit_v__hash = get_current_folder_commit_hash()
 		return
 	}
-	v_commithash, vccommit_before := prepare_vc_source(vgit_context.path_vc, vgit_context.path_v,
-		'HEAD')
+	v_commithash, vccommit_before, v_timestamp := prepare_vc_source(vgit_context.path_vc,
+		vgit_context.path_v, 'HEAD')
 	vgit_context.commit_v__hash = v_commithash
+	vgit_context.commit_v__ts = v_timestamp
 	vgit_context.commit_vc_hash = vccommit_before
 	if os.exists('cmd/v') {
 		vgit_context.vvlocation = 'cmd/v'
@@ -140,11 +171,40 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 		// already compiled, so no need to compile v again
 		return
 	}
+
+	scripting.chdir(vgit_context.path_v)
 	// Recompilation is needed. Just to be sure, clean up everything first.
 	scripting.run('git clean -xf')
 	if vgit_context.make_fresh_tcc {
 		scripting.run('make fresh_tcc')
 	}
+
+	// compiling the C sources with a C compiler:
+	mut command_for_building_v_from_c_source := ''
+	mut command_for_selfbuilding := ''
+	mut c_flags := '-std=gnu11 -I ./thirdparty/stdatomic/nix -w'
+	mut c_ldflags := '-lm -lpthread'
+	mut vc_source_file_location := os.join_path_single(vgit_context.path_vc, 'v.c')
+	if 'windows' == os.user_os() {
+		c_flags = '-std=c99 -I ./thirdparty/stdatomic/win -w'
+		c_ldflags = ''
+		v_win_c_location := os.join_path_single(vgit_context.path_vc, 'v_win.c')
+		if os.exists(v_win_c_location) {
+			vc_source_file_location = v_win_c_location
+		}
+	}
+	if 'windows' == os.user_os() {
+		if vgit_context.commit_v__ts >= 1589793086 && vgit_context.cc.contains('gcc') {
+			// after 53ffee1 2020-05-18, gcc builds on windows do need `-municode`
+			c_flags += '-municode'
+		}
+		command_for_building_v_from_c_source = '${vgit_context.cc} ${c_flags} -o cv.exe  "${vc_source_file_location}" ${c_ldflags}'
+		command_for_selfbuilding = '.\\cv.exe -o ${vgit_context.vexename} {SOURCE}'
+	} else {
+		command_for_building_v_from_c_source = '${vgit_context.cc} ${c_flags} -o cv "${vc_source_file_location}"  ${c_ldflags}'
+		command_for_selfbuilding = './cv -o ${vgit_context.vexename} {SOURCE}'
+	}
+
 	scripting.run(command_for_building_v_from_c_source)
 	build_cmd := command_for_selfbuilding.replace('{SOURCE}', vgit_context.vvlocation)
 	scripting.run(build_cmd)
@@ -154,7 +214,7 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 
 pub struct VGitOptions {
 pub mut:
-	workdir     string // the working folder (typically /tmp), where the tool will write
+	workdir     string = os.temp_dir() // the working folder (typically /tmp), where the tool will write
 	v_repo_url  string // the url of the V repository. It can be a local folder path, if you want to eliminate network operations...
 	vc_repo_url string // the url of the vc repository. It can be a local folder path, if you want to eliminate network operations...
 	show_help   bool   // whether to show the usage screen
@@ -162,8 +222,7 @@ pub mut:
 }
 
 pub fn add_common_tool_options(mut context VGitOptions, mut fp flag.FlagParser) []string {
-	tdir := os.temp_dir()
-	context.workdir = os.real_path(fp.string('workdir', `w`, context.workdir, 'A writable base folder. Default: $tdir'))
+	context.workdir = os.real_path(fp.string('workdir', `w`, context.workdir, 'A writable base folder. Default: ${context.workdir}'))
 	context.v_repo_url = fp.string('vrepo', 0, context.v_repo_url, 'The url of the V repository. You can clone it locally too. See also --vcrepo below.')
 	context.vc_repo_url = fp.string('vcrepo', 0, context.vc_repo_url, 'The url of the vc repository. You can clone it
 ${flag.space}beforehand, and then just give the local folder
@@ -187,7 +246,7 @@ ${flag.space}to script it/run it in a restrictive vps/docker.
 		context.vc_repo_url = os.real_path(context.vc_repo_url)
 	}
 	commits := fp.finalize() or {
-		eprintln('Error: $err')
+		eprintln('Error: ${err}')
 		exit(1)
 	}
 	for commit in commits {

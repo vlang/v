@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module os
@@ -16,8 +16,8 @@ pub fn getenv(key string) string {
 	return getenv_opt(key) or { '' }
 }
 
-// `getenv_opt` returns the value of the environment variable named by the key
-// If there is not one found, it returns `none`.
+// `getenv_opt` returns the value of a given environment variable.
+// Returns `none` if the environment variable does not exist.
 [manualfree]
 pub fn getenv_opt(key string) ?string {
 	unsafe {
@@ -33,7 +33,7 @@ pub fn getenv_opt(key string) ?string {
 			return string_from_wide(s)
 		} $else {
 			s := C.getenv(&char(key.str))
-			if s == voidptr(0) {
+			if s == nil {
 				return none
 			}
 			// Note: C.getenv *requires* that the result be copied.
@@ -45,7 +45,7 @@ pub fn getenv_opt(key string) ?string {
 // os.setenv sets the value of an environment variable with `name` to `value`.
 pub fn setenv(name string, value string, overwrite bool) int {
 	$if windows {
-		format := '$name=$value'
+		format := '${name}=${value}'
 		if overwrite {
 			unsafe {
 				return C._putenv(&char(format.str))
@@ -68,7 +68,7 @@ pub fn setenv(name string, value string, overwrite bool) int {
 // os.unsetenv clears an environment variable with `name`.
 pub fn unsetenv(name string) int {
 	$if windows {
-		format := '$name='
+		format := '${name}='
 		return C._putenv(&char(format.str))
 	} $else {
 		return C.unsetenv(&char(name.str))
@@ -79,11 +79,6 @@ pub fn unsetenv(name string) int {
 // See: https://docs.microsoft.com/bg-bg/windows/win32/api/processenv/nf-processenv-getenvironmentstrings
 // os.environ returns a map of all the current environment variables
 
-fn unix_environ() &&char {
-	// TODO: remove this helper function, when `&&char(C.environ)` works properly
-	return voidptr(C.environ)
-}
-
 pub fn environ() map[string]string {
 	mut res := map[string]string{}
 	$if windows {
@@ -91,7 +86,7 @@ pub fn environ() map[string]string {
 		mut eline := ''
 		for c := estrings; *c != 0; {
 			eline = unsafe { string_from_wide(c) }
-			eq_index := eline.index_byte(`=`)
+			eq_index := eline.index_u8(`=`)
 			if eq_index > 0 {
 				res[eline[0..eq_index]] = eline[eq_index + 1..]
 			}
@@ -101,7 +96,7 @@ pub fn environ() map[string]string {
 		}
 		C.FreeEnvironmentStringsW(estrings)
 	} $else {
-		start := unix_environ()
+		start := &&char(C.environ)
 		mut i := 0
 		for {
 			x := unsafe { start[i] }
@@ -109,7 +104,7 @@ pub fn environ() map[string]string {
 				break
 			}
 			eline := unsafe { cstring_to_vstring(x) }
-			eq_index := eline.index_byte(`=`)
+			eq_index := eline.index_u8(`=`)
 			if eq_index > 0 {
 				res[eline[0..eq_index]] = eline[eq_index + 1..]
 			}

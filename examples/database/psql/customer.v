@@ -1,6 +1,6 @@
 module main
 
-import pg
+import db.pg
 
 const dash = '----------------------------------------------------------------'
 

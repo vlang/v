@@ -2,9 +2,9 @@ module builtin
 
 // Note: this file will be removed soon
 
-// byteptr.vbytes() - makes a V []byte structure from a C style memory buffer. Note: the data is reused, NOT copied!
+// byteptr.vbytes() - makes a V []u8 structure from a C style memory buffer. Note: the data is reused, NOT copied!
 [unsafe]
-pub fn (data byteptr) vbytes(len int) []byte {
+pub fn (data byteptr) vbytes(len int) []u8 {
 	return unsafe { voidptr(data).vbytes(len) }
 }
 

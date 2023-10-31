@@ -1,6 +1,6 @@
 vlib/v/checker/tests/field_can_not_be_from_the_same_type_as_containing_struct.vv:5:9: error: field `field` is part of `Bar`, they can not both have the same type
     3 | struct Bar {
-    4 |     pfield &Foo = 0
+    4 |     pfield &Foo = unsafe { 0 }
     5 |     field  Foo  = Bar{}
       |            ~~~
     6 | }

@@ -8,7 +8,7 @@ fn (f Foo) print() {
 	println('test')
 }
 
-fn test<T>() {
+fn test[T]() {
 	mut t := T{}
 	t.name = '2'
 	$for f in T.fields {
@@ -19,5 +19,5 @@ fn test<T>() {
 }
 
 fn main() {
-	test<Foo>()
+	test[Foo]()
 }

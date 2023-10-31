@@ -1,6 +1,6 @@
-struct Flag<T> {}
+struct Flag[T] {}
 
-fn (f Flag<T>) verify() {
+fn (f Flag[T]) verify() {
 	if T.name == 'int' {
 		println('It is an int!')
 		assert true
@@ -8,6 +8,6 @@ fn (f Flag<T>) verify() {
 }
 
 fn test_generic_type_name_in_if() {
-	flag := Flag<int>{}
+	flag := Flag[int]{}
 	flag.verify()
 }

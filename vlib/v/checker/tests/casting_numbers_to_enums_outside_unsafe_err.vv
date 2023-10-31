@@ -1,0 +1,8 @@
+enum Abc {
+	a
+	b
+	c
+}
+
+a := Abc(1)
+println(a)

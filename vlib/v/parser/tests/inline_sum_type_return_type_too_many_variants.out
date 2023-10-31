@@ -1,20 +1,41 @@
+vlib/v/parser/tests/inline_sum_type_return_type_too_many_variants.vv:4:6: warning: inline sum types have been deprecated and will be removed on January 1, 2023 due to complicating the language and the compiler too much; define named sum types with `type Foo = Bar | Baz` instead
+    2 | 
+    3 | struct Foo {
+    4 |     bar int | string | token.Pos | bool | u32
+      |         ~~~
+    5 | }
+    6 |
 vlib/v/parser/tests/inline_sum_type_return_type_too_many_variants.vv:4:6: warning: an inline sum type expects a maximum of 3 types (5 were given)
-    2 |
+    2 | 
     3 | struct Foo {
     4 |     bar int | string | token.Pos | bool | u32
       |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     5 | }
     6 |
+vlib/v/parser/tests/inline_sum_type_return_type_too_many_variants.vv:7:12: warning: inline sum types have been deprecated and will be removed on January 1, 2023 due to complicating the language and the compiler too much; define named sum types with `type Foo = Bar | Baz` instead
+    5 | }
+    6 | 
+    7 | fn foo(arg int | string | token.Pos | bool | u32) int | string | token.Pos | bool | u32 {
+      |            ~~~
+    8 |     return 1
+    9 | }
 vlib/v/parser/tests/inline_sum_type_return_type_too_many_variants.vv:7:12: warning: an inline sum type expects a maximum of 3 types (5 were given)
     5 | }
-    6 |
+    6 | 
     7 | fn foo(arg int | string | token.Pos | bool | u32) int | string | token.Pos | bool | u32 {
       |            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     8 |     return 1
     9 | }
+vlib/v/parser/tests/inline_sum_type_return_type_too_many_variants.vv:7:51: warning: inline sum types have been deprecated and will be removed on January 1, 2023 due to complicating the language and the compiler too much; define named sum types with `type Foo = Bar | Baz` instead
+    5 | }
+    6 | 
+    7 | fn foo(arg int | string | token.Pos | bool | u32) int | string | token.Pos | bool | u32 {
+      |                                                   ~~~
+    8 |     return 1
+    9 | }
 vlib/v/parser/tests/inline_sum_type_return_type_too_many_variants.vv:7:51: warning: an inline sum type expects a maximum of 3 types (5 were given)
     5 | }
-    6 |
+    6 | 
     7 | fn foo(arg int | string | token.Pos | bool | u32) int | string | token.Pos | bool | u32 {
       |                                                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     8 |     return 1

@@ -1,4 +1,4 @@
-fn main() {
+fn simple_for_test() {
 	mut i := 0
 	for i = 0; i < 3; i++ {
 		println('loop0')
@@ -23,4 +23,65 @@ fn main() {
 		println('loop5')
 		i--
 	}
+
+}
+
+fn break_continue_test() {
+	mut i := 0
+	for i = 0; i < 3; i++ {
+		if i == 2 {
+			break
+		}
+		println('loop1')
+	}
+	i = 0
+	for i < 3 {
+		if i == 2 {
+			break
+		}
+		println('loop2')
+		i++
+	}
+	for j in 0 .. 3 {
+		if j == 2 {
+			break
+		}
+		println('loop3')
+	}
+	for i = 0; i < 3; i++ {
+		if i < 1 {
+			continue
+		}
+		println('loop4')
+	}
+	i = 0
+	for i < 3 {
+		if i < 1 {
+			i++
+			continue
+		}
+		println('loop5')
+		i++
+	}
+	for j in 0 .. 3 {
+		if j < 1 {
+			continue
+		}
+		println('loop6')
+	}
+	outer: for j in 0 .. 3 {
+		for k in 0 .. 3 {
+			println('loop7')
+			if j == 1 {
+				if k == 1 {
+					break outer
+				}
+			}
+		}
+	}
+}
+
+fn main() {
+	simple_for_test()
+	break_continue_test()
 }

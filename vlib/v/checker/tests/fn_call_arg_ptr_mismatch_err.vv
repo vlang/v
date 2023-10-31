@@ -1,0 +1,40 @@
+interface ISomething {
+	value int
+	get_value_implemented(s &ISomething) int
+}
+
+struct SomethingImplemented {
+	value int
+}
+
+fn (s SomethingImplemented) get_value_implemented(s_ &ISomething) int {
+	return s.value
+}
+
+fn get_value_implemented(s &ISomething) int {
+	return s.value
+}
+
+struct SomethingNotImplemented {
+	value int
+}
+
+fn get_value_not_implemented(s &SomethingNotImplemented) int {
+	return s.value
+}
+
+fn main() {
+	s1 := &SomethingImplemented{
+		value: 1
+	}
+	// fn call
+	_ := get_value_implemented(&s1)
+	// method call
+	_ := s1.get_value_implemented(&s1)
+
+	s2 := &SomethingNotImplemented{
+		value: 1
+	}
+	// fn call
+	_ := get_value_not_implemented(&s2)
+}

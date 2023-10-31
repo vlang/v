@@ -7,11 +7,11 @@ struct User {
 
 fn main() {
 	data := 'name=Alice\nage=18'
-	user := decode<User>(data)
+	user := decode[User](data)
 	println(user)
 }
 
-fn decode<T>(data string) T {
+fn decode[T](data string) T {
 	mut result := T{}
 	// compile-time `for` loop
 	// T.fields gives an array of a field metadata type

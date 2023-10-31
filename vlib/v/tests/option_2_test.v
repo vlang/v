@@ -1,6 +1,6 @@
 fn f(n int) ?int {
 	if n < 0 {
-		return error('negative arg')
+		return none
 	}
 	return n
 }
@@ -41,9 +41,9 @@ fn test_channel_push() {
 
 fn test_thread_wait() {
 	thrs := [
-		go f(3),
-		go f(-7),
-		go f(12),
+		spawn f(3),
+		spawn f(-7),
+		spawn f(12),
 	]
 	mut res := []int{cap: 3}
 	for t in thrs {
@@ -61,6 +61,6 @@ fn foo() ?string {
 	return 'hi'
 }
 
-fn test_opt_subexp_field() ? {
-	assert foo() ?.len == 2
+fn test_opt_subexp_field() {
+	assert foo()?.len == 2
 }

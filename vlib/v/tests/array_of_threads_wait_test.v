@@ -26,7 +26,7 @@ fn test_array_of_threads_wait() {
 	println('Async')
 	mut results := []thread f64{len: 16, cap: 16}
 	for num in 0 .. 15 {
-		results << go async(size, init_val + num)
+		results << spawn async(size, init_val + num)
 	}
 	waited_results := results.wait()
 

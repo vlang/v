@@ -1,0 +1,6 @@
+fn main() {
+	mut a := unsafe { voidptr(u64(0)) }
+	mut b := 123
+	a = &b
+	println(*a)
+}

@@ -1,0 +1,4 @@
+import encoding.hex as z
+z.decode('AB09CD')!.hex()
+===output===
+ab09cd

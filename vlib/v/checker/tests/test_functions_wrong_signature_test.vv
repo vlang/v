@@ -10,8 +10,8 @@ fn test_returning_int() int {
 }
 
 // NB: this is allowed explicitly now, to allow for shorter tests
-// of functions returning optionals.
-fn test_returning_opt() ? {
+// of functions returning options.
+fn test_returning_opt() {
 	assert true
 }
 

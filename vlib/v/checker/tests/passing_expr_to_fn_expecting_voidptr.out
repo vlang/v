@@ -1,5 +1,5 @@
-vlib/v/checker/tests/passing_expr_to_fn_expecting_voidptr.vv:3:31: error: expression cannot be passed as `voidptr`
-    1 | import strconv
-    2 | 
-    3 | strconv.v_printf('%02.02f\n', 1.1)
-      |                               ~~~
+vlib/v/checker/tests/passing_expr_to_fn_expecting_voidptr.vv:5:23: error: expression cannot be passed as `voidptr`
+    3 | }
+    4 | 
+    5 | myprintf('%02.02f\n', 1.1)
+      |                       ~~~

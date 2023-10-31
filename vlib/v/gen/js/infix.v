@@ -17,7 +17,7 @@ fn (mut g JsGen) gen_plain_infix_expr(node ast.InfixExpr) {
 		g.expr(node.left)
 		g.gen_deref_ptr(node.left_type)
 		g.write('.valueOf())')
-		g.write(' $node.op.str() ')
+		g.write(' ${node.op.str()} ')
 		g.write('BigInt(')
 		g.expr(node.right)
 		g.gen_deref_ptr(node.left_type)
@@ -26,7 +26,7 @@ fn (mut g JsGen) gen_plain_infix_expr(node ast.InfixExpr) {
 		g.expr(node.left)
 		g.gen_deref_ptr(node.left_type)
 		g.write('.valueOf()')
-		g.write(' $node.op.str() ')
+		g.write(' ${node.op.str()} ')
 		g.expr(node.right)
 		g.gen_deref_ptr(node.left_type)
 		g.write('.valueOf()')
@@ -199,7 +199,7 @@ fn (mut g JsGen) infix_expr_eq_op(node ast.InfixExpr) {
 	} else {
 		g.expr(node.left)
 		g.gen_deref_ptr(node.left_type)
-		g.write('.valueOf() $node.op.str() ')
+		g.write('.valueOf() ${node.op.str()} ')
 		g.expr(node.right)
 		g.gen_deref_ptr(node.right_type)
 		g.write('.valueOf()')
@@ -239,7 +239,7 @@ fn (mut g JsGen) infix_expr_cmp_op(node ast.InfixExpr) {
 	} else {
 		g.expr(node.left)
 		g.gen_deref_ptr(node.left_type)
-		g.write('.valueOf() $node.op.str() ')
+		g.write('.valueOf() ${node.op.str()} ')
 		g.expr(node.right)
 		g.gen_deref_ptr(node.right_type)
 		g.write('.valueOf()')
@@ -282,7 +282,7 @@ fn (mut g JsGen) infix_in_not_in_op(node ast.InfixExpr) {
 	if node.op == .not_in {
 		g.write('!')
 	}
-	if r_sym.unaliased_sym.kind == .array {
+	if r_sym.unaliased_sym.kind in [.array, .array_fixed] {
 		fn_name := g.gen_array_contains_method(node.right_type)
 		g.write('(${fn_name}(')
 		g.expr(node.right)

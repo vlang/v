@@ -16,11 +16,12 @@ jobs:
 
   space-paths-linux:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 30
     env:
       MY_V_PATH: '你好 my $path, @с интервали'
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           path: ${{env.MY_V_PATH}}
       - name: Build V
@@ -41,11 +42,12 @@ jobs:
 
   space-paths-macos:
     runs-on: macOS-latest
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 30
     env:
       MY_V_PATH: '你好 my $path, @с интервали'
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           path: ${{env.MY_V_PATH}}
       - name: Build V
@@ -69,6 +71,7 @@ jobs:
 
   space-paths-windows:
     runs-on: windows-2022
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 30
     env:
       MY_V_PATH: 'path with some $punctuation, and some spaces'
@@ -84,7 +87,7 @@ jobs:
       ## and that happens even for gcc builds, not just tcc ones
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           path: ${{env.MY_V_PATH}}
       - name: Build V

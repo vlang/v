@@ -1,0 +1,21 @@
+vlib/v/checker/tests/array_filter_arg_mismatch_err.vv:17:20: error: type mismatch, should use e.g. `filter(it > 2)`
+   15 |     }]
+   16 |
+   17 |     a1 := list.filter('it.value > 2')
+      |                       ~~~~~~~~~~~~~~
+   18 |     println(a1)
+   19 |
+vlib/v/checker/tests/array_filter_arg_mismatch_err.vv:20:17: error: type mismatch, should use e.g. `any(it > 2)`
+   18 |     println(a1)
+   19 |
+   20 |     a2 := list.any('it.value > 2')
+      |                    ~~~~~~~~~~~~~~
+   21 |     println(a2)
+   22 |
+vlib/v/checker/tests/array_filter_arg_mismatch_err.vv:23:17: error: type mismatch, should use e.g. `all(it > 2)`
+   21 |     println(a2)
+   22 |
+   23 |     a3 := list.all('it.value > 2')
+      |                    ~~~~~~~~~~~~~~
+   24 |     println(a3)
+   25 | }

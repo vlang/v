@@ -2,7 +2,7 @@ type IoS = int | string
 
 fn sum() {
 	match IoS(1) {
-		byte {
+		u8 {
 			println('not cool')
 		}
 	}

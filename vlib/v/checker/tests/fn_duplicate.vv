@@ -1,7 +1,5 @@
 fn f() {
-	
 }
 
 fn f(i int) {
-	
 }

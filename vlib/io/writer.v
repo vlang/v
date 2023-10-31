@@ -1,13 +1,14 @@
 module io
 
-// Writer represents a stream of data that can be wrote to
+// Writer is the interface that wraps the `write` method, which
+// writes `buf.len` bytes to the underlying data stream.
 pub interface Writer {
 mut:
-	write(buf []byte) ?int
+	write(buf []u8) !int
 }
 
-// RandomWriter represents a stream of data that can be wrote to
-// at a random pos
+// RandomWriter is the interface that wraps the `write_to` method,
+// which writes `buf.len` bytes to the underlying data stream at a random `pos`.
 pub interface RandomWriter {
-	write_to(pos u64, buf []byte) ?int
+	write_to(pos u64, buf []u8) !int
 }

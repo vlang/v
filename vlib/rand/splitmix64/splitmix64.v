@@ -1,14 +1,16 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module splitmix64
 
 import rand.seed
+import rand.buffer
 
 pub const seed_len = 2
 
 // SplitMix64RNG ported from http://xoshiro.di.unimi.it/splitmix64.c
 pub struct SplitMix64RNG {
+	buffer.PRNGBuffer
 mut:
 	state      u64 = seed.time_seed_64()
 	bytes_left int
@@ -29,16 +31,16 @@ pub fn (mut rng SplitMix64RNG) seed(seed_data []u32) {
 
 // byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
 [inline]
-pub fn (mut rng SplitMix64RNG) byte() byte {
+pub fn (mut rng SplitMix64RNG) u8() u8 {
 	if rng.bytes_left >= 1 {
 		rng.bytes_left -= 1
-		value := byte(rng.buffer)
+		value := u8(rng.buffer)
 		rng.buffer >>= 8
 		return value
 	}
 	rng.buffer = rng.u64()
 	rng.bytes_left = 7
-	value := byte(rng.buffer)
+	value := u8(rng.buffer)
 	rng.buffer >>= 8
 	return value
 }

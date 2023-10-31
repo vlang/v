@@ -6,9 +6,12 @@ end_of_line = lf
 insert_final_newline = true
 trim_trailing_whitespace = true
 
-[*.v]
+[*.{v,js,css}]
 indent_style = tab
-indent_size = 4
+
+[*.{bat,cmd}]
+# BAT/CMD ~ DOS/Win requires BAT/CMD files to have CRLF EOLNs
+end_of_line = crlf
 
 [*.{yml,yaml}]
 indent_style = space

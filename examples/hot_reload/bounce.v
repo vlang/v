@@ -8,7 +8,7 @@ import time
 
 struct Game {
 mut:
-	gg      &gg.Context
+	gg      &gg.Context = unsafe { nil }
 	x       int
 	y       int
 	dy      int
@@ -45,7 +45,7 @@ fn main() {
 	)
 	// window.onkeydown(key_down)
 	println('Starting the game loop...')
-	go game.run()
+	spawn game.run()
 	game.gg.run()
 }
 

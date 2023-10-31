@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module fmt
@@ -12,7 +12,12 @@ fn (mut f Fmt) asm_stmt(stmt ast.AsmStmt) {
 	} else if stmt.is_goto {
 		f.write('goto ')
 	}
-	f.writeln('$stmt.arch {')
+	lit_arch := if stmt.arch == .wasm32 {
+		'wasm'
+	} else {
+		stmt.arch.str()
+	}
+	f.writeln('${lit_arch} {')
 	f.indent++
 
 	f.asm_templates(stmt.templates)
@@ -45,7 +50,7 @@ fn (mut f Fmt) asm_arg(arg ast.AsmArg) {
 			f.asm_reg(arg)
 		}
 		ast.AsmAlias {
-			f.write('$arg.name')
+			f.write('${arg.name}')
 		}
 		ast.IntegerLiteral, ast.FloatLiteral, ast.CharLiteral {
 			f.write(arg.val)
@@ -54,7 +59,7 @@ fn (mut f Fmt) asm_arg(arg ast.AsmArg) {
 			f.write(arg.val.str())
 		}
 		string {
-			f.write(arg)
+			f.string_literal(ast.StringLiteral{ val: arg })
 		}
 		ast.AsmAddressing {
 			if arg.segment != '' {
@@ -80,7 +85,7 @@ fn (mut f Fmt) asm_arg(arg ast.AsmArg) {
 				}
 				.index_times_scale_plus_displacement {
 					f.asm_arg(index)
-					f.write(' * $scale + ')
+					f.write(' * ${scale} + ')
 					f.asm_arg(displacement)
 				}
 				.base_plus_index_plus_displacement {
@@ -94,7 +99,7 @@ fn (mut f Fmt) asm_arg(arg ast.AsmArg) {
 					f.asm_arg(base)
 					f.write(' + ')
 					f.asm_arg(index)
-					f.write(' * $scale + ')
+					f.write(' * ${scale} + ')
 					f.asm_arg(displacement)
 				}
 				.rip_plus_displacement {
@@ -129,7 +134,7 @@ fn (mut f Fmt) asm_templates(templates []ast.AsmTemplate) {
 		if template.is_directive {
 			f.write('.')
 		}
-		f.write('$template.name')
+		f.write('${template.name}')
 		if template.is_label {
 			f.write(':')
 		} else if template.args.len > 0 {
@@ -144,7 +149,7 @@ fn (mut f Fmt) asm_templates(templates []ast.AsmTemplate) {
 		if template.comments.len == 0 {
 			f.writeln('')
 		} else {
-			f.comments(template.comments, inline: false)
+			f.comments(template.comments)
 		}
 	}
 }
@@ -159,7 +164,7 @@ fn (mut f Fmt) asm_clobbered(clobbered []ast.AsmClobbered) {
 		if clob.comments.len == 0 {
 			f.writeln('')
 		} else {
-			f.comments(clob.comments, inline: false)
+			f.comments(clob.comments)
 		}
 	}
 }
@@ -170,7 +175,7 @@ fn (mut f Fmt) asm_ios(ios []ast.AsmIO) {
 			f.write('  ')
 		}
 
-		f.write('$io.constraint ($io.expr)')
+		f.write('${io.constraint} (${io.expr})')
 		mut as_block := true
 		if io.expr is ast.Ident {
 			if io.expr.name == io.alias {
@@ -178,12 +183,12 @@ fn (mut f Fmt) asm_ios(ios []ast.AsmIO) {
 			}
 		}
 		if as_block && io.alias != '' {
-			f.write(' as $io.alias')
+			f.write(' as ${io.alias}')
 		}
 		if io.comments.len == 0 {
 			f.writeln('')
 		} else {
-			f.comments(io.comments, inline: false)
+			f.comments(io.comments)
 		}
 	}
 }

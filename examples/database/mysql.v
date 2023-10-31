@@ -1,15 +1,14 @@
-import mysql
+import db.mysql
 
 fn main() {
-	mut conn := mysql.Connection{
+	mut conn := mysql.connect(
 		host: 'localhost'
 		port: 3306
 		username: 'root'
 		password: ''
 		dbname: 'mysql'
-	}
-	conn.connect() ?
-	res := conn.query('show tables') ?
+	)!
+	res := conn.query('show tables')!
 	for row in res.rows() {
 		println(row.vals.join(', '))
 	}

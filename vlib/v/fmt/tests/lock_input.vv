@@ -1,0 +1,52 @@
+fn simple_lock() {
+	a := 100
+	b := 100
+
+	lock  {
+	}
+
+	lock       {         }
+
+	lock    a     {
+
+	}
+
+	lock    a  , b    {
+
+	}
+}
+
+fn lock_with_statements() {
+	shared a := []int{}
+	lock  {
+		a << 1
+		a << 2
+	}
+
+	lock   a   {
+		a << 1
+		a << 2
+	}
+}
+
+fn simple_rlock() {
+	a := 100
+
+	rlock  {
+	}
+
+	rlock    a     {
+
+	}
+}
+
+fn rlock_with_statements() {
+	shared a := [1]
+	rlock  {
+		println(a[0])
+	}
+
+	rlock  a     {
+		println(a[0])
+	}
+}

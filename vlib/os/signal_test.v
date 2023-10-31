@@ -20,8 +20,8 @@ fn test_signal_opt_invalid_argument() {
 		assert false
 	}
 	os.signal_opt(.kill, default_handler) or {
-		assert err.msg() == 'Invalid argument'
-		assert err.code == 22
+		assert err.msg() == 'Invalid argument; code: 22'
+		assert err.code() == 22
 	}
 }
 
@@ -32,4 +32,16 @@ fn test_signal_opt_return_former_handler() {
 	assert !isnil(func2)
 	// this should work, but makes the CI fail because of a bug in clang -fsanitize=memory
 	// assert func2 == former_handler
+}
+
+fn signal_ignore_in_background_thread() {
+	os.signal_ignore(.pipe, .urg)
+	assert true
+}
+
+fn test_signal_ignore() {
+	os.signal_ignore(.pipe, .urg)
+	assert true
+	t := spawn signal_ignore_in_background_thread()
+	t.wait()
 }

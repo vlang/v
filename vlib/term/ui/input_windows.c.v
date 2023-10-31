@@ -1,6 +1,7 @@
 // Copyright (c) 2020-2021 Raúl Hernández. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+[has_globals]
 module ui
 
 import os
@@ -8,9 +9,9 @@ import time
 
 const buf_size = 64
 
-const ctx_ptr = &Context(0)
+__global ctx_ptr = &Context(unsafe { nil })
 
-const stdin_at_startup = u32(0)
+__global stdin_at_startup = u32(0)
 
 struct ExtraContext {
 mut:
@@ -21,18 +22,20 @@ mut:
 }
 
 fn restore_terminal_state() {
-	if ui.ctx_ptr != 0 {
-		if ui.ctx_ptr.cfg.use_alternate_buffer {
+	if unsafe { ctx_ptr != 0 } {
+		if ctx_ptr.cfg.use_alternate_buffer {
 			// clear the terminal and set the cursor to the origin
 			print('\x1b[2J\x1b[3J')
 			print('\x1b[?1049l')
+			flush_stdout()
 		}
-		C.SetConsoleMode(ui.ctx_ptr.stdin_handle, ui.stdin_at_startup)
+		C.SetConsoleMode(ctx_ptr.stdin_handle, stdin_at_startup)
 	}
 	load_title()
 	os.flush()
 }
 
+// init initializes the context of a windows console given the `cfg`.
 pub fn init(cfg Config) &Context {
 	mut ctx := &Context{
 		cfg: cfg
@@ -44,17 +47,17 @@ pub fn init(cfg Config) &Context {
 		panic('could not get stdin handle')
 	}
 	// save the current input mode, to be restored on exit
-	if C.GetConsoleMode(stdin_handle, &ui.stdin_at_startup) == 0 {
+	if !C.GetConsoleMode(stdin_handle, &stdin_at_startup) {
 		panic('could not get stdin console mode')
 	}
 
 	// enable extended input flags (see https://stackoverflow.com/a/46802726)
 	// 0x80 == C.ENABLE_EXTENDED_FLAGS
-	if C.SetConsoleMode(stdin_handle, 0x80) == 0 {
+	if !C.SetConsoleMode(stdin_handle, 0x80) {
 		panic('could not set raw input mode')
 	}
 	// enable window and mouse input events.
-	if C.SetConsoleMode(stdin_handle, C.ENABLE_WINDOW_INPUT | C.ENABLE_MOUSE_INPUT) == 0 {
+	if !C.SetConsoleMode(stdin_handle, C.ENABLE_WINDOW_INPUT | C.ENABLE_MOUSE_INPUT) {
 		panic('could not set raw input mode')
 	}
 	// store the current title, so restore_terminal_state can get it back
@@ -65,6 +68,7 @@ pub fn init(cfg Config) &Context {
 		print('\x1b[?1049h')
 		// clear the terminal and set the cursor to the origin
 		print('\x1b[2J\x1b[3J\x1b[1;1H')
+		flush_stdout()
 	}
 
 	if ctx.cfg.hide_cursor {
@@ -73,18 +77,16 @@ pub fn init(cfg Config) &Context {
 	}
 
 	if ctx.cfg.window_title != '' {
-		print('\x1b]0;$ctx.cfg.window_title\x07')
+		print('\x1b]0;${ctx.cfg.window_title}\x07')
+		flush_stdout()
 	}
 
-	unsafe {
-		x := &ui.ctx_ptr
-		*x = ctx
-	}
+	ctx_ptr = ctx
 	C.atexit(restore_terminal_state)
 	for code in ctx.cfg.reset {
 		os.signal_opt(code, fn (_ os.Signal) {
-			mut c := ui.ctx_ptr
-			if c != 0 {
+			mut c := ctx_ptr
+			if unsafe { c != 0 } {
 				c.cleanup()
 			}
 			exit(0)
@@ -96,7 +98,8 @@ pub fn init(cfg Config) &Context {
 	return ctx
 }
 
-pub fn (mut ctx Context) run() ? {
+// run starts the windows console or restarts if it was paused.
+pub fn (mut ctx Context) run() ! {
 	frame_time := 1_000_000 / ctx.cfg.frame_rate
 	mut init_called := false
 	mut sw := time.new_stopwatch(auto_start: false)
@@ -111,7 +114,7 @@ pub fn (mut ctx Context) run() ? {
 		}
 		if !ctx.paused {
 			sw.restart()
-			if ctx.cfg.event_fn != voidptr(0) {
+			if ctx.cfg.event_fn != none {
 				ctx.parse_events()
 			}
 			ctx.frame()
@@ -162,14 +165,14 @@ fn (mut ctx Context) parse_events() {
 					C.VK_DOWN { KeyCode.down }
 					C.VK_INSERT { KeyCode.insert }
 					C.VK_DELETE { KeyCode.delete }
-					65...90 { KeyCode(ch + 32) } // letters
+					65...90 { unsafe { KeyCode(ch + 32) } } // letters
 					91...93 { KeyCode.null } // special keys
-					96...105 { KeyCode(ch - 48) } // numpad numbers
-					112...135 { KeyCode(ch + 178) } // f1 - f24
-					else { KeyCode(ascii) }
+					96...105 { unsafe { KeyCode(ch - 48) } } // numpad numbers
+					112...135 { unsafe { KeyCode(ch + 178) } } // f1 - f24
+					else { unsafe { KeyCode(ascii) } }
 				}
 
-				mut modifiers := Modifiers{}
+				mut modifiers := unsafe { Modifiers(0) }
 				if e.dwControlKeyState & (0x1 | 0x2) != 0 {
 					modifiers.set(.alt)
 				}
@@ -199,7 +202,7 @@ fn (mut ctx Context) parse_events() {
 				}
 				x := e.dwMousePosition.X + 1
 				y := int(e.dwMousePosition.Y) - sb_info.srWindow.Top + 1
-				mut modifiers := Modifiers{}
+				mut modifiers := unsafe { Modifiers(0) }
 				if e.dwControlKeyState & (0x1 | 0x2) != 0 {
 					modifiers.set(.alt)
 				}
@@ -250,7 +253,7 @@ fn (mut ctx Context) parse_events() {
 							modifiers: modifiers
 						})
 					}
-					0x0008 /* C.MOUSE_HWHEELED */ {
+					0x0008 { // C.MOUSE_HWHEELED
 						ctx.event(&Event{
 							typ: .mouse_scroll
 							direction: if i16(e.dwButtonState >> 16) < 0 {
@@ -263,7 +266,7 @@ fn (mut ctx Context) parse_events() {
 							modifiers: modifiers
 						})
 					}
-					0 /* CLICK */, C.DOUBLE_CLICK {
+					0, C.DOUBLE_CLICK {
 						button := match int(e.dwButtonState) {
 							0 { ctx.mouse_down }
 							1 { MouseButton.left }
@@ -290,7 +293,7 @@ fn (mut ctx Context) parse_events() {
 				}
 				w := sb.srWindow.Right - sb.srWindow.Left + 1
 				h := sb.srWindow.Bottom - sb.srWindow.Top + 1
-				utf8 := '($ctx.window_width, $ctx.window_height) -> ($w, $h)'
+				utf8 := '(${ctx.window_width}, ${ctx.window_height}) -> (${w}, ${h})'
 				if w != ctx.window_width || h != ctx.window_height {
 					ctx.window_width, ctx.window_height = w, h
 					mut event := &Event{
@@ -317,10 +320,12 @@ fn (mut ctx Context) parse_events() {
 fn save_title() {
 	// restore the previously saved terminal title
 	print('\x1b[22;0t')
+	flush_stdout()
 }
 
 [inline]
 fn load_title() {
 	// restore the previously saved terminal title
 	print('\x1b[23;0t')
+	flush_stdout()
 }

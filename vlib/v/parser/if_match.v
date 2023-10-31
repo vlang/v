@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -27,6 +27,9 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 	mut prev_guard := false
 	for p.tok.kind in [.key_if, .key_else] {
 		p.inside_if = true
+		if is_comptime {
+			p.inside_comptime_if = true
+		}
 		start_pos := if is_comptime { p.prev_tok.pos().extend(p.tok.pos()) } else { p.tok.pos() }
 		if p.tok.kind == .key_else {
 			comments << p.eat_comments()
@@ -40,6 +43,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 				// else {
 				has_else = true
 				p.inside_if = false
+				p.inside_comptime_if = false
 				end_pos := p.prev_tok.pos()
 				body_pos := p.tok.pos()
 				p.open_scope()
@@ -75,7 +79,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			return ast.IfExpr{}
 		}
 		comments << p.eat_comments()
-		mut cond := ast.empty_expr()
+		mut cond := ast.empty_expr
 		mut is_guard := false
 
 		// if guard `if x,y := opt() {`
@@ -83,6 +87,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			p.open_scope()
 			is_guard = true
 			mut vars := []ast.IfGuardVar{}
+			mut var_names := []string{}
 			for {
 				mut var := ast.IfGuardVar{}
 				mut is_mut := false
@@ -93,9 +98,10 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 				var.is_mut = is_mut
 				var.pos = p.tok.pos()
 				var.name = p.check_name()
+				var_names << var.name
 
 				if p.scope.known_var(var.name) {
-					p.error_with_pos('redefinition of `$var.name`', var.pos)
+					p.error_with_pos('redefinition of `${var.name}`', var.pos)
 				}
 				vars << var
 				if p.tok.kind != .comma {
@@ -107,11 +113,14 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			p.check(.decl_assign)
 			comments << p.eat_comments()
 			expr := p.expr(0)
-			if expr !in [ast.CallExpr, ast.IndexExpr, ast.PrefixExpr] {
-				p.error_with_pos('if guard condition expression is illegal, it should return optional',
+			if expr !in [ast.CallExpr, ast.IndexExpr, ast.PrefixExpr, ast.SelectorExpr, ast.Ident] {
+				p.error_with_pos('if guard condition expression is illegal, it should return an Option',
 					expr.pos())
 			}
-
+			p.check_undefined_variables(var_names, expr) or {
+				p.error_with_pos(err.msg(), pos)
+				break
+			}
 			cond = ast.IfGuardExpr{
 				vars: vars
 				expr: expr
@@ -128,13 +137,20 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		} else {
 			prev_guard = false
 			p.comptime_if_cond = true
+			p.inside_if_cond = true
 			cond = p.expr(0)
+			p.inside_if_cond = false
+			if p.if_cond_comments.len > 0 {
+				comments << p.if_cond_comments
+				p.if_cond_comments = []
+			}
 			p.comptime_if_cond = false
 		}
 		comments << p.eat_comments()
 		end_pos := p.prev_tok.pos()
 		body_pos := p.tok.pos()
 		p.inside_if = false
+		p.inside_comptime_if = false
 		p.open_scope()
 		stmts := p.parse_block_no_scope(false)
 		branches << ast.IfBranch{
@@ -197,6 +213,7 @@ fn (mut p Parser) is_only_array_type() bool {
 
 fn (mut p Parser) match_expr() ast.MatchExpr {
 	match_first_pos := p.tok.pos()
+	mut else_count := 0
 	p.inside_match = true
 	p.check(.key_match)
 	mut is_sum_type := false
@@ -217,11 +234,14 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		mut is_else := false
 		if p.tok.kind == .key_else {
 			is_else = true
+			else_count += 1
 			p.next()
 		} else if (p.tok.kind == .name && !(p.tok.lit == 'C' && p.peek_tok.kind == .dot)
-			&& (((ast.builtin_type_names_matcher.find(p.tok.lit) > 0 || p.tok.lit[0].is_capital())
+			&& (((ast.builtin_type_names_matcher.matches(p.tok.lit) || p.tok.lit[0].is_capital())
 			&& p.peek_tok.kind != .lpar) || (p.peek_tok.kind == .dot && p.peek_token(2).lit.len > 0
-			&& p.peek_token(2).lit[0].is_capital()))) || p.is_only_array_type() {
+			&& p.peek_token(2).lit[0].is_capital()))) || p.is_only_array_type()
+			|| p.tok.kind == .key_fn
+			|| (p.tok.kind == .lsbr && p.peek_token(2).kind == .amp) {
 			mut types := []ast.Type{}
 			for {
 				// Sum type match
@@ -250,6 +270,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			// Expression match
 			for {
 				p.inside_match_case = true
+				mut range_pos := p.tok.pos()
 				expr := p.expr(0)
 				ecmnts << p.eat_comments()
 				p.inside_match_case = false
@@ -259,13 +280,15 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 					return ast.MatchExpr{}
 				} else if p.tok.kind == .ellipsis {
 					p.next()
+					p.inside_match_case = true
 					expr2 := p.expr(0)
+					p.inside_match_case = false
 					exprs << ast.RangeExpr{
 						low: expr
 						high: expr2
 						has_low: true
 						has_high: true
-						pos: p.tok.pos()
+						pos: range_pos.extend(p.prev_tok.pos())
 					}
 				} else {
 					exprs << expr
@@ -307,6 +330,9 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		}
 		if is_else && branches.len == 1 {
 			p.error_with_pos('`match` must have at least one non `else` branch', pos)
+		}
+		if else_count > 1 {
+			p.error_with_pos('`match` can have only one `else` branch', pos)
 		}
 		if p.tok.kind == .rcbr || (is_else && no_lcbr) {
 			break
@@ -350,7 +376,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 		// final else
 		mut is_else := false
 		mut is_timeout := false
-		mut stmt := ast.empty_stmt()
+		mut stmt := ast.empty_stmt
 		if p.tok.kind == .key_else {
 			if has_timeout {
 				p.error_with_pos('timeout `> t` and `else` are mutually exclusive `select` keys',
@@ -375,13 +401,13 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 			}
 			p.inside_match = true
 			p.inside_select = true
-			exprs, comments := p.expr_list()
+			exprs := p.expr_list()
 			if exprs.len != 1 {
 				p.error('only one expression allowed as `select` key')
 				return ast.SelectExpr{}
 			}
 			if p.tok.kind in [.assign, .decl_assign] {
-				stmt = p.partial_assign_stmt(exprs, comments)
+				stmt = p.partial_assign_stmt(exprs)
 			} else {
 				stmt = ast.ExprStmt{
 					expr: exprs[0]
@@ -454,6 +480,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 		}
 		branch_last_pos := p.tok.pos()
 		p.inside_match_body = true
+		p.inside_for = false
 		stmts := p.parse_block_no_scope(false)
 		p.close_scope()
 		p.inside_match_body = false

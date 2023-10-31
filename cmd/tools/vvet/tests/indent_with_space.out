@@ -3,4 +3,4 @@ cmd/tools/vvet/tests/indent_with_space.vv:10: error: Looks like you are using sp
 cmd/tools/vvet/tests/indent_with_space.vv:17: error: Looks like you are using spaces for indentation.
 cmd/tools/vvet/tests/indent_with_space.vv:20: error: Looks like you are using spaces for indentation.
 cmd/tools/vvet/tests/indent_with_space.vv:22: error: Looks like you are using spaces for indentation.
-NB: You can run `v fmt -w file.v` to fix these errors automatically
+Note: You can run `v fmt -w file.v` to fix these errors automatically

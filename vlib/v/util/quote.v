@@ -23,9 +23,8 @@ pub fn smart_quote(str string, raw bool) string {
 	if len < 256 {
 		mut is_pure := true
 		for i := 0; i < len; i++ {
-			ch := byte(str[i])
-			if (ch >= 37 && ch <= 90) || (ch >= 95 && ch <= 126)
-				|| (ch in [` `, `!`, `#`, `[`, `]`]) {
+			ch := u8(str[i])
+			if (ch >= 37 && ch <= 90) || (ch >= 95 && ch <= 126) || ch in [` `, `!`, `#`, `[`, `]`] {
 				// safe punctuation + digits + big latin letters,
 				// small latin letters + more safe punctuation,
 				// important punctuation exceptions, that are not
@@ -43,9 +42,9 @@ pub fn smart_quote(str string, raw bool) string {
 	// ensure there is enough space for the potential expansion of several \\ or \n
 	mut result := strings.new_builder(len + 10)
 	mut pos := -1
-	mut last := byte(0)
-	mut current := byte(0)
-	mut next := byte(0)
+	mut last := u8(0)
+	mut current := u8(0)
+	mut next := u8(0)
 	mut skip_next := false
 	for {
 		pos++
@@ -65,8 +64,8 @@ pub fn smart_quote(str string, raw bool) string {
 		}
 		if current == util.double_quote {
 			current = 0
-			result.write_byte(util.backslash)
-			result.write_byte(util.double_quote)
+			result.write_u8(util.backslash)
+			result.write_u8(util.double_quote)
 			continue
 		}
 		if current == util.backslash {
@@ -76,6 +75,7 @@ pub fn smart_quote(str string, raw bool) string {
 			}
 			if next == util.backslash {
 				// escaped backslash - keep as is
+				current = 0
 				skip_next = true
 				result.write_string(util.double_escape)
 				continue
@@ -87,27 +87,29 @@ pub fn smart_quote(str string, raw bool) string {
 					continue
 				}
 				if next in util.invalid_escapes {
+					current = 0
 					skip_next = true
-					result.write_byte(next)
+					result.write_u8(next)
 					continue
 				}
 				// keep all valid escape sequences
 				skip_next = true
-				result.write_byte(current)
-				result.write_byte(next)
+				result.write_u8(current)
+				result.write_u8(next)
+				current = 0
 				continue
 			}
 		}
 		if current == util.backslash_n {
 			// keep newlines in string
 			current = 0
-			result.write_byte(util.backslash)
-			result.write_byte(`n`)
+			result.write_u8(util.backslash)
+			result.write_u8(`n`)
 			continue
 		}
 		if current == util.backslash_r && next == util.backslash_n {
-			result.write_byte(current)
-			result.write_byte(next)
+			result.write_u8(current)
+			result.write_u8(next)
 			current = 0
 			skip_next = true
 			continue
@@ -115,20 +117,13 @@ pub fn smart_quote(str string, raw bool) string {
 		if !raw {
 			if current == `$` {
 				if last == util.backslash {
-					result.write_byte(last)
-					result.write_byte(current)
+					result.write_u8(last)
+					result.write_u8(current)
 					continue
 				}
 			}
-			if current == util.backslash_r && next == util.backslash_n {
-				// Windows style new line \r\n
-				skip_next = true
-				result.write_byte(util.backslash)
-				result.write_byte(`n`)
-				continue
-			}
 		}
-		result.write_byte(current)
+		result.write_u8(current)
 	}
 	return result.str()
 }

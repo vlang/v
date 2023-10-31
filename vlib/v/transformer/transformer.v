@@ -8,14 +8,22 @@ pub struct Transformer {
 	pref &pref.Preferences
 pub mut:
 	index &IndexState
-	table &ast.Table = 0
+	table &ast.Table = unsafe { nil }
+	file  &ast.File  = unsafe { nil }
 mut:
-	is_assert bool
+	is_assert   bool
+	inside_dump bool
 }
 
-pub fn new_transformer(pref &pref.Preferences) &Transformer {
+fn (mut t Transformer) trace[T](fbase string, x &T) {
+	if t.file.path_base == fbase {
+		println('> t.trace | ${fbase:-10s} | ${voidptr(x):16} | ${x}')
+	}
+}
+
+pub fn new_transformer(pref_ &pref.Preferences) &Transformer {
 	return &Transformer{
-		pref: pref
+		pref: pref_
 		index: &IndexState{
 			saved_key_vals: [][]KeyVal{cap: 1000}
 			saved_disabled: []bool{cap: 1000}
@@ -23,8 +31,8 @@ pub fn new_transformer(pref &pref.Preferences) &Transformer {
 	}
 }
 
-pub fn new_transformer_with_table(table &ast.Table, pref &pref.Preferences) &Transformer {
-	mut transformer := new_transformer(pref)
+pub fn new_transformer_with_table(table &ast.Table, pref_ &pref.Preferences) &Transformer {
+	mut transformer := new_transformer(pref_)
 	transformer.table = table
 	return transformer
 }
@@ -37,6 +45,7 @@ pub fn (mut t Transformer) transform_files(ast_files []&ast.File) {
 }
 
 pub fn (mut t Transformer) transform(mut ast_file ast.File) {
+	t.file = ast_file
 	for mut stmt in ast_file.stmts {
 		stmt = t.stmt(mut stmt)
 	}
@@ -155,7 +164,7 @@ pub fn (mut t Transformer) check_safe_array(mut node ast.IndexExpr) {
 			}
 		}
 		ast.EnumVal {
-			debug_bounds_checking('? $name[.$index.val] safe?: no-idea (yet)!')
+			debug_bounds_checking('? ${name}[.${index.val}] safe?: no-idea (yet)!')
 		}
 		ast.Ident {
 			// we may be able to track const value in simple cases
@@ -226,6 +235,7 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
 			}
 		}
 		ast.FnDecl {
+			t.fn_decl(mut node)
 			t.index.indent(true)
 			for mut stmt in node.stmts {
 				stmt = t.stmt(mut stmt)
@@ -271,6 +281,7 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
 				expr = t.expr(mut expr)
 			}
 		}
+		ast.SemicolonStmt {}
 		ast.SqlStmt {}
 		ast.StructDecl {
 			for mut field in node.fields {
@@ -374,7 +385,7 @@ pub fn (mut t Transformer) expr_stmt_if_expr(mut node ast.IfExpr) ast.Expr {
 	/*
 	FIXME: optimization causes cgen error `g.expr(): unhandled EmptyExpr`
 	if original.branches.len == 0 { // no remain branches to walk through
-		return ast.EmptyExpr{}
+		return ast.empty_expr
 	}*/
 	if node.branches.len == 1 && node.branches[0].cond.type_name() == 'unknown v.ast.Expr' {
 		node.branches[0].cond = ast.BoolLiteral{
@@ -403,8 +414,8 @@ pub fn (mut t Transformer) expr_stmt_match_expr(mut node ast.MatchExpr) ast.Expr
 
 			match cond {
 				ast.BoolLiteral {
-					if expr is ast.BoolLiteral {
-						if cond.val == (expr as ast.BoolLiteral).val {
+					if mut expr is ast.BoolLiteral {
+						if cond.val == expr.val {
 							branch.exprs = [expr]
 							node.branches = [branch]
 							terminate = true
@@ -412,8 +423,8 @@ pub fn (mut t Transformer) expr_stmt_match_expr(mut node ast.MatchExpr) ast.Expr
 					}
 				}
 				ast.IntegerLiteral {
-					if expr is ast.IntegerLiteral {
-						if cond.val.int() == (expr as ast.IntegerLiteral).val.int() {
+					if mut expr is ast.IntegerLiteral {
+						if cond.val.int() == expr.val.int() {
 							branch.exprs = [expr]
 							node.branches = [branch]
 							terminate = true
@@ -421,8 +432,8 @@ pub fn (mut t Transformer) expr_stmt_match_expr(mut node ast.MatchExpr) ast.Expr
 					}
 				}
 				ast.FloatLiteral {
-					if expr is ast.FloatLiteral {
-						if cond.val.f32() == (expr as ast.FloatLiteral).val.f32() {
+					if mut expr is ast.FloatLiteral {
+						if cond.val.f32() == expr.val.f32() {
 							branch.exprs = [expr]
 							node.branches = [branch]
 							terminate = true
@@ -430,8 +441,8 @@ pub fn (mut t Transformer) expr_stmt_match_expr(mut node ast.MatchExpr) ast.Expr
 					}
 				}
 				ast.StringLiteral {
-					if expr is ast.StringLiteral {
-						if cond.val == (expr as ast.StringLiteral).val {
+					if mut expr is ast.StringLiteral {
+						if cond.val == expr.val {
 							branch.exprs = [expr]
 							node.branches = [branch]
 							terminate = true
@@ -483,8 +494,8 @@ pub fn (mut t Transformer) for_stmt(mut node ast.ForStmt) ast.Stmt {
 	node.cond = t.expr(mut node.cond)
 	match node.cond {
 		ast.BoolLiteral {
-			if !(node.cond as ast.BoolLiteral).val { // for false { ... } should be eleminated
-				return ast.EmptyStmt{}
+			if !(node.cond as ast.BoolLiteral).val { // for false { ... } should be eliminated
+				return ast.empty_stmt
 			}
 		}
 		else {
@@ -512,6 +523,9 @@ pub fn (mut t Transformer) interface_decl(mut node ast.InterfaceDecl) ast.Stmt {
 }
 
 pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
+	if t.inside_dump {
+		return node
+	}
 	match mut node {
 		ast.AnonFn {
 			node.decl = t.stmt(mut node.decl) as ast.FnDecl
@@ -525,7 +539,7 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 			}
 			node.len_expr = t.expr(mut node.len_expr)
 			node.cap_expr = t.expr(mut node.cap_expr)
-			node.default_expr = t.expr(mut node.default_expr)
+			node.init_expr = t.expr(mut node.init_expr)
 		}
 		ast.AsCast {
 			node.expr = t.expr(mut node.expr)
@@ -562,7 +576,10 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 			}
 		}
 		ast.DumpExpr {
+			old_inside_dump := t.inside_dump
+			t.inside_dump = true
 			node.expr = t.expr(mut node.expr)
+			t.inside_dump = old_inside_dump
 		}
 		ast.GoExpr {
 			node.call_expr = t.expr(mut node.call_expr) as ast.CallExpr
@@ -636,6 +653,14 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 		}
 		ast.SelectorExpr {
 			node.expr = t.expr(mut node.expr)
+			if mut node.expr is ast.StringLiteral && node.field_name == 'len' {
+				if !node.expr.val.contains('\\') || node.expr.is_raw {
+					return ast.IntegerLiteral{
+						val: node.expr.val.len.str()
+						pos: node.pos
+					}
+				}
+			}
 		}
 		ast.SizeOf {
 			node.expr = t.expr(mut node.expr)
@@ -650,16 +675,29 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 		}
 		ast.StructInit {
 			node.update_expr = t.expr(mut node.update_expr)
-			for mut field in node.fields {
-				field.expr = t.expr(mut field.expr)
-			}
-			for mut embed in node.embeds {
-				embed.expr = t.expr(mut embed.expr)
+			for mut init_field in node.init_fields {
+				init_field.expr = t.expr(mut init_field.expr)
 			}
 		}
 		ast.UnsafeExpr {
 			node.expr = t.expr(mut node.expr)
 		}
+		// segfaults with vlib/v/tests/const_fixed_array_containing_references_to_itself_test.v
+		/*
+		ast.Ident {
+			mut obj := node.obj
+			if obj !in [ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister] {
+				obj = node.scope.find(node.name) or { return node }
+			}
+
+			match mut obj {
+				ast.ConstField {
+					obj.expr = t.expr(mut obj.expr)
+				}
+				else {}
+			}
+		}
+		*/
 		else {}
 	}
 	return node
@@ -672,9 +710,41 @@ pub fn (mut t Transformer) call_expr(mut node ast.CallExpr) ast.Expr {
 	return node
 }
 
+fn (mut t Transformer) trans_const_value_to_literal(mut expr ast.Expr) {
+	mut expr_ := expr
+	if mut expr_ is ast.Ident {
+		if mut obj := t.table.global_scope.find_const(expr_.mod + '.' + expr_.name) {
+			if mut obj.expr is ast.BoolLiteral {
+				expr = obj.expr
+			} else if mut obj.expr is ast.IntegerLiteral {
+				expr = obj.expr
+			} else if mut obj.expr is ast.FloatLiteral {
+				expr = obj.expr
+			} else if mut obj.expr is ast.StringLiteral {
+				expr = obj.expr
+			} else if mut obj.expr is ast.InfixExpr {
+				folded_expr := t.infix_expr(mut obj.expr)
+				if folded_expr is ast.BoolLiteral {
+					expr = folded_expr
+				} else if folded_expr is ast.IntegerLiteral {
+					expr = folded_expr
+				} else if folded_expr is ast.FloatLiteral {
+					expr = folded_expr
+				} else if folded_expr is ast.StringLiteral {
+					expr = folded_expr
+				}
+			}
+		}
+	}
+}
+
 pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 	node.left = t.expr(mut node.left)
 	node.right = t.expr(mut node.right)
+	if !t.pref.translated {
+		t.trans_const_value_to_literal(mut node.left)
+		t.trans_const_value_to_literal(mut node.right)
+	}
 
 	mut pos := node.left.pos()
 	pos.extend(node.pos)
@@ -857,8 +927,8 @@ pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 			ast.FloatLiteral {
 				match mut node.right {
 					ast.FloatLiteral {
-						left_val := node.left.val.f32()
-						right_val := node.right.val.f32()
+						left_val := node.left.val.f64()
+						right_val := node.right.val.f64()
 						match node.op {
 							.eq {
 								return ast.BoolLiteral{
@@ -1025,4 +1095,45 @@ pub fn (mut t Transformer) sql_expr(mut node ast.SqlExpr) ast.Expr {
 		sub_struct = t.expr(mut sub_struct) as ast.SqlExpr
 	}
 	return node
+}
+
+// fn_decl mutates `node`.
+// if `pref.trace_calls` is true ast Nodes for `eprintln(...)` is prepended to the `FnDecl`'s
+// stmts list to let the gen backend generate the target specific code for the print.
+pub fn (mut t Transformer) fn_decl(mut node ast.FnDecl) {
+	if t.pref.trace_calls {
+		if node.no_body {
+			// Skip `C.fn()` calls
+			return
+		}
+		if node.name.starts_with('v.trace_calls.') {
+			// do not instrument the tracing functions, to avoid infinite regress
+			return
+		}
+		fname := if node.is_method {
+			receiver_name := global_table.type_to_str(node.receiver.typ)
+			'${node.mod} ${receiver_name}.${node.name}/${node.params.len}'
+		} else {
+			'${node.mod} ${node.name}/${node.params.len}'
+		}
+
+		expr_stmt := ast.ExprStmt{
+			expr: ast.CallExpr{
+				mod: node.mod
+				pos: node.pos
+				language: .v
+				scope: node.scope
+				name: 'v.trace_calls.on_call'
+				args: [
+					ast.CallArg{
+						expr: ast.StringLiteral{
+							val: fname
+						}
+						typ: ast.string_type_idx
+					},
+				]
+			}
+		}
+		node.stmts.prepend(expr_stmt)
+	}
 }

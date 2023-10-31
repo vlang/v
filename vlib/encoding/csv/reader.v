@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module csv
@@ -42,18 +42,18 @@ struct Reader {
 	// not used yet
 	// has_header        bool
 	// headings          []string
-	data string
-pub mut:
-	delimiter         byte
-	comment           byte
+	data      string
+	delimiter u8
+	comment   u8
+mut:
 	is_mac_pre_osx_le bool
 	row_pos           int
 }
 
 [params]
 pub struct ReaderConfig {
-	delimiter byte = `,`
-	comment   byte = `#`
+	delimiter u8 = `,`
+	comment   u8 = `#`
 }
 
 // new_reader initializes a Reader with string data to parse and,
@@ -68,8 +68,8 @@ pub fn new_reader(data string, config ReaderConfig) &Reader {
 
 // read reads a row from the CSV data.
 // If successful, the result holds an array of each column's data.
-pub fn (mut r Reader) read() ?[]string {
-	l := r.read_record() ?
+pub fn (mut r Reader) read() ![]string {
+	l := r.read_record()!
 	return l
 }
 
@@ -88,10 +88,10 @@ pub fn (mut r Reader) read() ?[]string {
 // 	}
 // 	return records
 // }
-fn (mut r Reader) read_line() ?string {
+fn (mut r Reader) read_line() !string {
 	// last record
 	if r.row_pos == r.data.len {
-		return IError(&EndOfFileError{})
+		return &EndOfFileError{}
 	}
 	le := if r.is_mac_pre_osx_le { '\r' } else { '\n' }
 	mut i := r.data.index_after(le, r.row_pos)
@@ -103,7 +103,7 @@ fn (mut r Reader) read_line() ?string {
 				r.is_mac_pre_osx_le = true
 			} else {
 				// no valid line endings found
-				return IError(&InvalidLineEndingError{})
+				return &InvalidLineEndingError{}
 			}
 		} else {
 			// No line ending on file
@@ -119,12 +119,12 @@ fn (mut r Reader) read_line() ?string {
 	return line
 }
 
-fn (mut r Reader) read_record() ?[]string {
+fn (mut r Reader) read_record() ![]string {
 	if r.delimiter == r.comment {
-		return IError(&CommentIsDelimiterError{})
+		return &CommentIsDelimiterError{}
 	}
 	if !valid_delim(r.delimiter) {
-		return IError(&InvalidDelimiterError{})
+		return &InvalidDelimiterError{}
 	}
 	mut need_read := true
 	mut keep_raw := false
@@ -133,7 +133,7 @@ fn (mut r Reader) read_record() ?[]string {
 	mut i := -1
 	for {
 		if need_read {
-			l := r.read_line() ?
+			l := r.read_line()!
 			if l.len <= 0 {
 				if keep_raw {
 					line += '\n'
@@ -204,12 +204,12 @@ fn (mut r Reader) read_record() ?[]string {
 			}
 		}
 		if i <= -1 && fields.len == 0 {
-			return IError(&InvalidDelimiterError{})
+			return &InvalidDelimiterError{}
 		}
 	}
 	return fields
 }
 
-fn valid_delim(b byte) bool {
+fn valid_delim(b u8) bool {
 	return b != 0 && b != `"` && b != `\r` && b != `\n`
 }

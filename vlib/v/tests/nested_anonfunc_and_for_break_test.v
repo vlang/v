@@ -8,7 +8,7 @@ fn test_anon_functions_can_have_loops_with_breaks() {
 			}
 			return 3
 		}()
-		println('$x')
+		println('${x}')
 		res = x
 		break
 	}

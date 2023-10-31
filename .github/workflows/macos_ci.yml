@@ -1,0 +1,99 @@
+name: CI macOS
+
+on:
+  workflow_call:
+
+jobs:
+  clang:
+    runs-on: macOS-12
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    timeout-minutes: 121
+    env:
+      VFLAGS: -cc clang
+      PKG_CONFIG_PATH: /usr/local/opt/pkgconfig:/usr/local/opt/libpq/lib/pkgconfig:/usr/local/opt/openssl@3/lib/pkgconfig:/opt/homebrew/lib/pkgconfig:/opt/homebrew/opt/libpq/lib/pkgconfig:/opt/homebrew/opt/openssl@3/lib/pkgconfig
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install dependencies
+        run: |
+          echo "PKG_CONFIG_PATH is '$PKG_CONFIG_PATH'"
+          brew install libpq openssl
+          export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
+          echo "LIBRARY_PATH is '$LIBRARY_PATH'"
+      - name: Build V
+        run: make -j4 && ./v -cg -cstrict -o v cmd/v
+      - name: Run sanitizers
+        run: |
+          ./v -o v2 cmd/v -cflags -fsanitize=undefined
+          UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v
+      - name: Build V using V
+        run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v
+      - name: Test symlink
+        run: ./v symlink
+      - name: Build vpm
+        run: ./v install markdown && git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . || ../v cmd/vpm && cd ..
+      # - name: Set up pg database
+      #   run: |
+      #     pg_ctl -D /usr/local/var/postgres -l /usr/local/var/postgres/server.log start
+      #     psql -d postgres -c 'select rolname from pg_roles'
+      #     psql -d postgres -c 'create database customerdb;'
+      #     psql -d customerdb -f examples/database/pg/mydb.sql
+      # - name: Test v->c
+      #   run: ./v test-all
+      # - name: Test v binaries
+      #   run: ./v build-vbinaries
+      # - name: Test v->js
+      #   run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+      - name: Verify `v test` works
+        run: |
+          echo $VFLAGS
+          ./v cmd/tools/test_if_v_test_system_works.v
+          ./cmd/tools/test_if_v_test_system_works
+      - name: All code is formatted
+        run: VJOBS=1 ./v test-cleancode
+      - name: Test pure V math module
+        run: ./v -exclude @vlib/math/*.c.v test vlib/math/
+      - name: Self tests
+        run: VJOBS=1 ./v test-self
+      - name: Build examples
+        run: ./v build-examples
+      - name: Build tetris with -autofree
+        run: ./v -autofree -o tetris examples/tetris/tetris.v
+      - name: Build blog tutorial with -autofree
+        run: ./v -autofree -o blog tutorials/building_a_simple_web_blog_with_vweb/code/blog
+      - name: Build examples with -prod
+        run: |
+          ./v -prod examples/news_fetcher.v
+      - name: v doctor
+        run: |
+          ./v doctor
+      - name: Test ved
+        run: |
+          git clone --depth 1 https://github.com/vlang/ved
+          cd ved && ../v -o ved .
+          ../v -autofree .
+          ../v -prod .
+          cd ..
+      - name: Build V UI examples
+        run: |
+          git clone --depth 1 https://github.com/vlang/ui
+          cd ui
+          mkdir -p ~/.vmodules
+          ln -s $(pwd) ~/.vmodules/ui
+          ../v examples/rectangles.v
+          ../v examples/users.v
+          ## ../v run examples/build_examples.vsh
+      - name: V self compilation with -usecache
+        run: |
+          unset VFLAGS
+          ./v -usecache examples/hello_world.v && examples/hello_world
+          ./v  -o v2 -usecache cmd/v
+          ./v2 -o v3 -usecache cmd/v
+          ./v3 version
+          ./v3 -o tetris  -usecache examples/tetris/tetris.v
+      - name: V self compilation with -parallel-cc
+        run: |
+          ./v -o v2 -parallel-cc cmd/v
+      - name: Test password input
+        run: ./v test examples/password/
+      - name: Test readline
+        run: ./v test examples/readline/

@@ -3,3 +3,67 @@ enum Color {
 	green = 2147483648
 	blue
 }
+
+enum ColorString as string {
+	red
+	green = 'abc'
+	blue
+}
+
+enum ColorI8 as i8 {
+	red
+	green = 128
+	blue
+}
+
+enum ColorI16 as i16 {
+	red
+	green = 32769
+	blue
+}
+
+enum ColorI32 {
+	red
+	green = 2147483648
+	blue
+}
+
+enum ColorI64 as i64 {
+	red
+	green = 9223372036854775808
+	blue
+}
+
+// These should work however, since the type is unsigned:
+enum ColorU8ShouldWork as u8 {
+	green = 128
+}
+
+enum ColorU16ShouldWork as u16 {
+	green = 32769
+}
+
+enum ColorU32ShouldWork as u32 {
+	green = 2147483648
+}
+
+enum ColorU64ShouldWork as u64 {
+	green = 9223372036854775808
+}
+
+// These should work however, since the type is unsigned:
+enum ColorU8ShouldFail as u8 {
+	green = 256
+}
+
+enum ColorU16ShouldFail as u16 {
+	green = 65536
+}
+
+enum ColorU32ShouldFail as u32 {
+	green = 4294967296
+}
+
+enum ColorU64ShouldFail as u64 {
+	green = 18446744073709551616
+}

@@ -12,7 +12,7 @@ fn main() {
 			  r (b)
 		}
 	}
-	println('a: $a') // 100
-	println('b: $b') // 20
-	println('c: $c') // 120
+	println('a: ${a}') // 100
+	println('b: ${b}') // 20
+	println('c: ${c}') // 120
 }

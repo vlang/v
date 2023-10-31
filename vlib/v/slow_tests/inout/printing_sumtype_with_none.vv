@@ -1,0 +1,35 @@
+module main
+
+struct None {}
+
+struct MyStruct {
+	my_first_field  string|none
+	my_second_field string|none
+	my_third_field  string|None
+}
+
+fn main() {
+	s := MyStruct{
+		my_first_field: 'blah'
+		my_second_field: none
+		my_third_field: None{}
+	}
+
+	println(if s.my_first_field is string {
+		'first field is a string'
+	} else {
+		'first field is none'
+	})
+
+	println(if s.my_second_field is none {
+		'second field is none'
+	} else {
+		'second field is a string'
+	})
+
+	println(if s.my_third_field is None {
+		'third field is None'
+	} else {
+		'third field is a string'
+	})
+}

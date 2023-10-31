@@ -1,15 +1,15 @@
-interface Iter<T> {
+interface Iter[T] {
 mut:
 	next() ?T
 }
 
-struct ArrayIter<T> {
+struct ArrayIter[T] {
 	data []T
 mut:
 	index int
 }
 
-fn (mut i ArrayIter<T>) next<T>() ?T {
+fn (mut i ArrayIter[T]) next[T]() ?T {
 	if i.data.len == 0 {
 		return none
 	}
@@ -17,8 +17,8 @@ fn (mut i ArrayIter<T>) next<T>() ?T {
 	return i.data[i.index]
 }
 
-fn iter<T>(arr []T) Iter<T> {
-	return ArrayIter<T>{
+fn iter[T](arr []T) Iter[T] {
+	return ArrayIter[T]{
 		data: arr
 		index: 0
 	}

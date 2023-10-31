@@ -28,8 +28,9 @@ pub enum DOMEventType {
 	update_cursor
 	quit_requested
 	clipboard_pasted
-	files_droped
+	files_dropped
 	num
+	files_droped  [deprecated: 'use files_dropped instead'; deprecated_after: '2023-08-21']
 }
 
 pub struct Event {
@@ -58,143 +59,143 @@ pub mut:
 
 pub enum DOMMouseButton {
 	invalid = -1
-	left = 0
-	right = 1
-	middle = 2
+	left    = 0
+	right   = 1
+	middle  = 2
 }
 
 pub enum DOMModifier {
 	shift = 1 //(1<<0)
-	ctrl = 2 //(1<<1)
-	alt = 4 //(1<<2)
+	ctrl  = 2 //(1<<1)
+	alt   = 4 //(1<<2)
 	super = 8 //(1<<3)
-	lmb = 0x100
-	rmb = 0x200
-	mmb = 0x400
+	lmb   = 0x100
+	rmb   = 0x200
+	mmb   = 0x400
 }
 
 pub enum DOMKeyCode {
-	invalid = 0
-	space = 32
-	apostrophe = 39 //'
-	comma = 44 //,
-	minus = 45 //-
-	period = 46 //.
-	slash = 47 ///
-	_0 = 48
-	_1 = 49
-	_2 = 50
-	_3 = 51
-	_4 = 52
-	_5 = 53
-	_6 = 54
-	_7 = 55
-	_8 = 56
-	_9 = 57
-	semicolon = 59 //;
-	equal = 61 //=
-	a = 65
-	b = 66
-	c = 67
-	d = 68
-	e = 69
-	f = 70
-	g = 71
-	h = 72
-	i = 73
-	j = 74
-	k = 75
-	l = 76
-	m = 77
-	n = 78
-	o = 79
-	p = 80
-	q = 81
-	r = 82
-	s = 83
-	t = 84
-	u = 85
-	v = 86
-	w = 87
-	x = 88
-	y = 89
-	z = 90
-	left_bracket = 91 //[
-	backslash = 92 //\
+	invalid       = 0
+	space         = 32
+	apostrophe    = 39 //'
+	comma         = 44 //,
+	minus         = 45 //-
+	period        = 46 //.
+	slash         = 47 ///
+	_0            = 48
+	_1            = 49
+	_2            = 50
+	_3            = 51
+	_4            = 52
+	_5            = 53
+	_6            = 54
+	_7            = 55
+	_8            = 56
+	_9            = 57
+	semicolon     = 59 //;
+	equal         = 61 //=
+	a             = 65
+	b             = 66
+	c             = 67
+	d             = 68
+	e             = 69
+	f             = 70
+	g             = 71
+	h             = 72
+	i             = 73
+	j             = 74
+	k             = 75
+	l             = 76
+	m             = 77
+	n             = 78
+	o             = 79
+	p             = 80
+	q             = 81
+	r             = 82
+	s             = 83
+	t             = 84
+	u             = 85
+	v             = 86
+	w             = 87
+	x             = 88
+	y             = 89
+	z             = 90
+	left_bracket  = 91 //[
+	backslash     = 92 //\
 	right_bracket = 93 //]
-	grave_accent = 96 //`
-	world_1 = 161 // non-us #1
-	world_2 = 162 // non-us #2
-	escape = 256
-	enter = 257
-	tab = 258
-	backspace = 259
-	insert = 260
-	delete = 261
-	right = 262
-	left = 263
-	down = 264
-	up = 265
-	page_up = 266
-	page_down = 267
-	home = 268
-	end = 269
-	caps_lock = 280
-	scroll_lock = 281
-	num_lock = 282
-	print_screen = 283
-	pause = 284
-	f1 = 290
-	f2 = 291
-	f3 = 292
-	f4 = 293
-	f5 = 294
-	f6 = 295
-	f7 = 296
-	f8 = 297
-	f9 = 298
-	f10 = 299
-	f11 = 300
-	f12 = 301
-	f13 = 302
-	f14 = 303
-	f15 = 304
-	f16 = 305
-	f17 = 306
-	f18 = 307
-	f19 = 308
-	f20 = 309
-	f21 = 310
-	f22 = 311
-	f23 = 312
-	f24 = 313
-	f25 = 314
-	kp_0 = 320
-	kp_1 = 321
-	kp_2 = 322
-	kp_3 = 323
-	kp_4 = 324
-	kp_5 = 325
-	kp_6 = 326
-	kp_7 = 327
-	kp_8 = 328
-	kp_9 = 329
-	kp_decimal = 330
-	kp_divide = 331
-	kp_multiply = 332
-	kp_subtract = 333
-	kp_add = 334
-	kp_enter = 335
-	kp_equal = 336
-	left_shift = 340
-	left_control = 341
-	left_alt = 342
-	left_super = 343
-	right_shift = 344
+	grave_accent  = 96 //`
+	world_1       = 161 // non-us #1
+	world_2       = 162 // non-us #2
+	escape        = 256
+	enter         = 257
+	tab           = 258
+	backspace     = 259
+	insert        = 260
+	delete        = 261
+	right         = 262
+	left          = 263
+	down          = 264
+	up            = 265
+	page_up       = 266
+	page_down     = 267
+	home          = 268
+	end           = 269
+	caps_lock     = 280
+	scroll_lock   = 281
+	num_lock      = 282
+	print_screen  = 283
+	pause         = 284
+	f1            = 290
+	f2            = 291
+	f3            = 292
+	f4            = 293
+	f5            = 294
+	f6            = 295
+	f7            = 296
+	f8            = 297
+	f9            = 298
+	f10           = 299
+	f11           = 300
+	f12           = 301
+	f13           = 302
+	f14           = 303
+	f15           = 304
+	f16           = 305
+	f17           = 306
+	f18           = 307
+	f19           = 308
+	f20           = 309
+	f21           = 310
+	f22           = 311
+	f23           = 312
+	f24           = 313
+	f25           = 314
+	kp_0          = 320
+	kp_1          = 321
+	kp_2          = 322
+	kp_3          = 323
+	kp_4          = 324
+	kp_5          = 325
+	kp_6          = 326
+	kp_7          = 327
+	kp_8          = 328
+	kp_9          = 329
+	kp_decimal    = 330
+	kp_divide     = 331
+	kp_multiply   = 332
+	kp_subtract   = 333
+	kp_add        = 334
+	kp_enter      = 335
+	kp_equal      = 336
+	left_shift    = 340
+	left_control  = 341
+	left_alt      = 342
+	left_super    = 343
+	right_shift   = 344
 	right_control = 345
-	right_alt = 346
-	right_super = 347
-	menu = 348
+	right_alt     = 346
+	right_super   = 347
+	menu          = 348
 }
 
 pub struct Config {
@@ -212,26 +213,26 @@ pub:
 	borderless_window bool
 	always_on_top     bool
 	bg_color          gx.Color
-	init_fn           FNCb   = voidptr(0)
-	frame_fn          FNCb   = voidptr(0)
-	native_frame_fn   FNCb   = voidptr(0)
-	cleanup_fn        FNCb   = voidptr(0)
-	fail_fn           FNFail = voidptr(0)
+	init_fn           FNCb   = unsafe { nil }
+	frame_fn          FNCb   = unsafe { nil }
+	native_frame_fn   FNCb   = unsafe { nil }
+	cleanup_fn        FNCb   = unsafe { nil }
+	fail_fn           FNFail = unsafe { nil }
 	//
-	event_fn FNEvent = voidptr(0)
-	quit_fn  FNEvent = voidptr(0)
+	event_fn FNEvent = unsafe { nil }
+	quit_fn  FNEvent = unsafe { nil }
 	//
-	keydown_fn FNKeyDown = voidptr(0)
-	keyup_fn   FNKeyUp   = voidptr(0)
-	char_fn    FNChar    = voidptr(0)
+	keydown_fn FNKeyDown = unsafe { nil }
+	keyup_fn   FNKeyUp   = unsafe { nil }
+	char_fn    FNChar    = unsafe { nil }
 	//
-	move_fn    FNMove    = voidptr(0)
-	click_fn   FNClick   = voidptr(0)
-	unclick_fn FNUnClick = voidptr(0)
-	leave_fn   FNEvent   = voidptr(0)
-	enter_fn   FNEvent   = voidptr(0)
-	resized_fn FNEvent   = voidptr(0)
-	scroll_fn  FNEvent   = voidptr(0)
+	move_fn    FNMove    = unsafe { nil }
+	click_fn   FNClick   = unsafe { nil }
+	unclick_fn FNUnClick = unsafe { nil }
+	leave_fn   FNEvent   = unsafe { nil }
+	enter_fn   FNEvent   = unsafe { nil }
+	resized_fn FNEvent   = unsafe { nil }
+	scroll_fn  FNEvent   = unsafe { nil }
 	// wait_events       bool // set this to true for UIs, to save power
 	fullscreen    bool
 	scale         f32 = 1.0
@@ -243,16 +244,16 @@ pub:
 	custom_bold_font_path string
 	ui_mode               bool // refreshes only on events to save CPU usage
 	// font bytes for embedding
-	font_bytes_normal []byte
-	font_bytes_bold   []byte
-	font_bytes_mono   []byte
-	font_bytes_italic []byte
+	font_bytes_normal []u8
+	font_bytes_bold   []u8
+	font_bytes_mono   []u8
+	font_bytes_italic []u8
 	native_rendering  bool // Cocoa on macOS/iOS, GDI+ on Windows
 	// drag&drop
 	enable_dragndrop             bool // enable file dropping (drag'n'drop), default is false
-	max_dropped_files            int = 1 // max number of dropped files to process (default: 1)
-	max_dropped_file_path_length int = 2048 // max length in bytes of a dropped UTF-8 file path (default: 2048)
-	canvas                       string
+	max_dropped_files            int    = 1 // max number of dropped files to process (default: 1)
+	max_dropped_file_path_length int    = 2048 // max length in bytes of a dropped UTF-8 file path (default: 2048)
+	html5_canvas_name            string = 'canvas' // the id/name of the canvas element, that will be used to render GG apps
 }
 
 const size = Size{0, 0}
@@ -276,7 +277,7 @@ pub mut:
 	user_data     voidptr
 	ui_mode       bool
 	frame         u64
-	mbtn_mask     byte
+	mbtn_mask     u8
 	mouse_buttons MouseButtons
 	mouse_pos_x   int
 	mouse_pos_y   int
@@ -294,7 +295,7 @@ pub mut:
 	// *before* the current event was different
 }
 
-fn get_canvas(elem JS.HTMLElement) &JS.HTMLCanvasElement {
+fn get_canvas(elem JS.HTMLElement) JS.HTMLCanvasElement {
 	match elem {
 		JS.HTMLCanvasElement {
 			return elem
@@ -328,13 +329,10 @@ pub fn new_context(cfg Config) &Context {
 	sz.height = g.height
 	sz.width = g.width
 	g.config = cfg
-	if isnil(cfg.user_data) {
-		g.user_data = g
-	}
 	g.window = dom.window()
 	document := dom.document
-	canvas_elem := document.getElementById(cfg.canvas.str) or {
-		panic('gg: cannot get canvas element')
+	canvas_elem := document.getElementById(cfg.html5_canvas_name.str) or {
+		panic('gg: cannot get canvas element from cfg.html5_canvas_name.str')
 	}
 	canvas := get_canvas(canvas_elem)
 	g.canvas = canvas
@@ -453,6 +451,11 @@ pub fn new_context(cfg Config) &Context {
 }
 
 pub fn (mut ctx Context) run() {
+	// set context late, in case it changed (e.g., due to embedding)
+	if isnil(ctx.user_data) {
+		ctx.user_data = ctx
+	}
+
 	gg_animation_frame_fn(mut ctx)
 }
 
@@ -524,7 +527,7 @@ fn (mut g Context) handle_mouse_event(event JS.MouseEvent, typ DOMEventType) Eve
 	e.mouse_dx = int(event.movementX)
 	e.mouse_dy = int(event.movementY)
 	bitplace := int(event.button)
-	g.mbtn_mask |= byte(1 << bitplace)
+	g.mbtn_mask |= u8(1 << bitplace)
 	// g.mouse_buttons = MouseButtons(g.mbtn_mask)
 
 	g.mouse_pos_x = int(event.offsetX)

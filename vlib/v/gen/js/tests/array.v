@@ -1,5 +1,5 @@
 fn map_cb(s string) string {
-	return 'CB: $s'
+	return 'CB: ${s}'
 }
 
 fn filter_cb(n int) bool {
@@ -24,9 +24,9 @@ fn main() {
 	mut arr2 := [1, 2, 3, 4, 5]
 
 	// Array slices
-	slice1 := arr1[1..3]
-	slice2 := arr2[..3]
-	slice3 := arr2[3..]
+	slice1 := unsafe { arr1[1..3] }
+	slice2 := unsafe { arr2[..3] }
+	slice3 := unsafe { arr2[3..] }
 
 	// Array indexes
 	idx1 := slice1[1]
@@ -45,7 +45,7 @@ fn main() {
 	println('\n\n')
 
 	// String slices
-	mut slice4 := idx1[..4]
+	mut slice4 := unsafe { idx1[..4] }
 	print('Back\t=> ')
 	println(slice4) // 'Back'
 
@@ -90,11 +90,11 @@ fn main() {
 	println('\n\n')
 
 	// map
-	a := arr1.map('VAL: $it')
+	a := arr1.map('VAL: ${it}')
 	b := arr1.map(map_cb)
 	c := arr1.map(map_cb(it))
 	d := arr1.map(fn (a string) string {
-		return 'ANON: $a'
+		return 'ANON: ${a}'
 	})
 	// I don't know when this would ever be used,
 	// but it's what the C backend does ¯\_(ツ)_/¯
@@ -129,8 +129,8 @@ fn main() {
 	f4 := [u64(0xffffffffffffffff), 0xdeadface]!
 
 	println('
-$f1
-$f2
-$f3
-$f4')
+${f1}
+${f2}
+${f3}
+${f4}')
 }

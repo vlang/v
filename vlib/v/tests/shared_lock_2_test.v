@@ -28,7 +28,7 @@ fn test_shared_receiver_lock() {
 	shared z := &St{
 		a: 1
 	}
-	go x.f(shared y, shared z)
+	spawn x.f(shared y, shared z)
 	for _ in 0 .. 100 {
 		lock x, y {
 			tmp := x.a

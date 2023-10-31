@@ -1,6 +1,10 @@
 module doc
 
-pub fn (nodes []DocNode) find(symname string) ?DocNode {
+import os
+
+pub const should_sort = os.getenv_opt('VDOC_SORT') or { 'true' }.bool()
+
+pub fn (nodes []DocNode) find(symname string) !DocNode {
 	for node in nodes {
 		if node.name != symname {
 			continue
@@ -12,12 +16,16 @@ pub fn (nodes []DocNode) find(symname string) ?DocNode {
 
 // sort_by_name sorts the array based on the symbol names.
 pub fn (mut nodes []DocNode) sort_by_name() {
-	nodes.sort_with_compare(compare_nodes_by_name)
+	if doc.should_sort {
+		nodes.sort_with_compare(compare_nodes_by_name)
+	}
 }
 
 // sort_by_kind sorts the array based on the symbol kind.
 pub fn (mut nodes []DocNode) sort_by_kind() {
-	nodes.sort_with_compare(compare_nodes_by_kind)
+	if doc.should_sort {
+		nodes.sort_with_compare(compare_nodes_by_kind)
+	}
 }
 
 fn compare_nodes_by_kind(a &DocNode, b &DocNode) int {
@@ -62,13 +70,12 @@ pub fn (dc DocNode) merge_comments_without_examples() string {
 		if dc.comments[i].is_multi_line_example() {
 			i++
 			if i == dc.comments.len || !dc.comments[i].has_triple_backtick() {
-				eprintln('$dc.file_path:$dc.pos.line_nr: Expected code block after empty example line:')
+				eprintln('${dc.file_path}:${dc.pos.line_nr}: warning: expected code block after empty example line:')
 				eprintln('// ```')
 				if i < dc.comments.len {
 					eprintln('Found:')
 					eprintln('//' + dc.comments[i].text[1..])
 				}
-				exit(1)
 			}
 			i++
 			for i < dc.comments.len && !dc.comments[i].has_triple_backtick() {

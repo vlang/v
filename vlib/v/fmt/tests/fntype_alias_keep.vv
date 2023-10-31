@@ -17,10 +17,10 @@ pub type MouseMoveFn = fn (e MouseMoveEvent, func voidptr)
 [heap]
 pub struct Window {
 pub mut:
-	ui            &UI = voidptr(0)
+	ui            &UI = unsafe { nil }
 	children      []Widget
-	child_window  &Window = voidptr(0)
-	parent_window &Window = voidptr(0)
+	child_window  &Window = unsafe { nil }
+	parent_window &Window = unsafe { nil }
 	has_textbox   bool // for initial focus
 	tab_index     int
 	just_tabbed   bool

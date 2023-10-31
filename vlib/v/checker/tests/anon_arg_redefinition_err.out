@@ -1,0 +1,6 @@
+vlib/v/checker/tests/anon_arg_redefinition_err.vv:2:18: error: redefinition of parameter `a`
+    1 | fn main() {
+    2 |     a := fn (a int, a int) {
+      |                     ^
+    3 |     }
+    4 | }

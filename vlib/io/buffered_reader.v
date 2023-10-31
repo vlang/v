@@ -1,10 +1,10 @@
 module io
 
-// BufferedReader provides a buffered interface for a reader
-struct BufferedReader {
+// BufferedReader provides a buffered interface for a reader.
+pub struct BufferedReader {
 mut:
 	reader Reader
-	buf    []byte
+	buf    []u8
 	offset int // current offset in the buffer
 	len    int
 	fails  int // how many times fill_buffer has read 0 bytes in a row
@@ -13,14 +13,14 @@ pub mut:
 	end_of_stream bool // whether we reached the end of the upstream reader
 }
 
-// BufferedReaderConfig are options that can be given to a reader
+// BufferedReaderConfig are options that can be given to a buffered reader.
 pub struct BufferedReaderConfig {
 	reader  Reader
 	cap     int = 128 * 1024 // large for fast reading of big(ish) files
 	retries int = 2 // how many times to retry before assuming the stream ended
 }
 
-// new_buffered_reader creates new BufferedReader
+// new_buffered_reader creates a new BufferedReader.
 pub fn new_buffered_reader(o BufferedReaderConfig) &BufferedReader {
 	if o.cap <= 0 {
 		panic('new_buffered_reader should be called with a positive `cap`')
@@ -28,33 +28,37 @@ pub fn new_buffered_reader(o BufferedReaderConfig) &BufferedReader {
 	// create
 	r := &BufferedReader{
 		reader: o.reader
-		buf: []byte{len: o.cap, cap: o.cap}
+		buf: []u8{len: o.cap, cap: o.cap}
 		offset: 0
 		mfails: o.retries
 	}
 	return r
 }
 
-// read fufills the Reader interface
-pub fn (mut r BufferedReader) read(mut buf []byte) ?int {
+// read fufills the Reader interface.
+pub fn (mut r BufferedReader) read(mut buf []u8) !int {
 	if r.end_of_stream {
-		return none
+		return Eof{}
 	}
 	// read data out of the buffer if we dont have any
 	if r.needs_fill() {
 		if !r.fill_buffer() {
 			// end of stream
-			return none
+			return Eof{}
 		}
 	}
 	read := copy(mut buf, r.buf[r.offset..r.len])
 	if read == 0 {
-		return none
+		return NotExpected{
+			cause: 'invalid copy of buffer'
+			code: -1
+		}
 	}
 	r.offset += read
 	return read
 }
 
+// free deallocates the memory for a buffered reader's internal buffer.
 pub fn (mut r BufferedReader) free() {
 	unsafe {
 		r.buf.free()
@@ -62,7 +66,7 @@ pub fn (mut r BufferedReader) free() {
 }
 
 // fill_buffer attempts to refill the internal buffer
-// and returns whether it got any data
+// and returns whether it got any data.
 fn (mut r BufferedReader) fill_buffer() bool {
 	if r.end_of_stream {
 		// we know we have already reached the end of stream
@@ -91,24 +95,24 @@ fn (mut r BufferedReader) fill_buffer() bool {
 	return true
 }
 
-// needs_fill returns whether the buffer needs refilling
+// needs_fill returns whether the buffer needs refilling.
 fn (r BufferedReader) needs_fill() bool {
 	return r.offset >= r.len
 }
 
-// end_of_stream returns whether the end of the stream was reached
+// end_of_stream returns whether the end of the stream was reached.
 pub fn (r BufferedReader) end_of_stream() bool {
 	return r.end_of_stream
 }
 
 // read_line attempts to read a line from the buffered reader
 // it will read until it finds a new line character (\n) or
-// the end of stream
-pub fn (mut r BufferedReader) read_line() ?string {
+// the end of stream.
+pub fn (mut r BufferedReader) read_line() !string {
 	if r.end_of_stream {
-		return none
+		return error('none')
 	}
-	mut line := []byte{}
+	mut line := []u8{}
 	for {
 		if r.needs_fill() {
 			// go fetch some new data
@@ -116,7 +120,7 @@ pub fn (mut r BufferedReader) read_line() ?string {
 				// We are at the end of the stream
 				if line.len == 0 {
 					// we had nothing so return nothing
-					return none
+					return error('none')
 				}
 				return line.bytestr()
 			}
@@ -141,5 +145,5 @@ pub fn (mut r BufferedReader) read_line() ?string {
 		line << r.buf[r.offset..i]
 		r.offset = i
 	}
-	return none
+	return error('none')
 }

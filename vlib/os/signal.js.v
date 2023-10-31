@@ -2,7 +2,7 @@ module os
 
 fn signal_str(signal Signal) string {
 	mut result := signal.str().to_upper()
-	result = 'SIG$result'
+	result = 'SIG${result}'
 	return result
 }
 
@@ -103,7 +103,7 @@ fn signal_from_str(str JS.String) Signal {
 			Signal.sys
 		}
 		else {
-			panic('unknown signal: $s')
+			panic('unknown signal: ${s}')
 		}
 	}
 }
@@ -115,7 +115,7 @@ fn signal_from_str(str JS.String) Signal {
 // - Browser: Will use `window.addEventListener` for handling signal
 //
 // TODO: Add signal events implementation for browser backend
-pub fn signal_opt(signum Signal, handler SignalHandler) ?SignalHandler {
+pub fn signal_opt(signum Signal, handler SignalHandler) !SignalHandler {
 	signame := signal_str(signum)
 	_ := signame
 	$if js_node {

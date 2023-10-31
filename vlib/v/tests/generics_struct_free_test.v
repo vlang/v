@@ -1,28 +1,28 @@
-struct List<T> {
+struct List[T] {
 pub mut:
-	head &ListNode<T> = 0
+	head &ListNode[T] = unsafe { nil }
 }
 
-struct ListNode<T> {
+struct ListNode[T] {
 pub mut:
 	value T
-	next  &ListNode<T> = 0
+	next  &ListNode[T] = unsafe { nil }
 }
 
-fn list_new<T>() List<T> {
-	return List<T>{}
+fn list_new[T]() List[T] {
+	return List[T]{}
 }
 
-fn listnode_new<T>() &ListNode<T> {
-	return &ListNode<T>{0, 0}
+fn listnode_new[T]() &ListNode[T] {
+	return &ListNode[T]{0, 0}
 }
 
-fn (mut l List<T>) free() {
+fn (mut l List[T]) free() {
 	//
 }
 
 fn test_generic_struct_free() {
-	mut list := list_new<string>()
+	mut list := list_new[string]()
 	println(list)
 	list.free()
 	assert true

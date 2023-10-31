@@ -12,6 +12,6 @@ pub fn utf8_str_len(s string) int {
 	return s.len
 }
 
-pub fn utf8_char_len(b byte) int {
+pub fn utf8_char_len(b u8) int {
 	return ((0xe5000000 >> ((b >> 3) & 0x1e)) & 3) + 1
 }

@@ -18,10 +18,10 @@ fn test_shared_array() {
 		foo['q'] = 20
 	}
 	mut sem := sync.new_semaphore()
-	go incr(shared foo, 'p', mut sem)
-	go incr(shared foo, 'q', mut sem)
-	go incr(shared foo, 'p', mut sem)
-	go incr(shared foo, 'q', mut sem)
+	spawn incr(shared foo, 'p', mut sem)
+	spawn incr(shared foo, 'q', mut sem)
+	spawn incr(shared foo, 'p', mut sem)
+	spawn incr(shared foo, 'q', mut sem)
 	for _ in 0 .. 50000 {
 		lock foo {
 			foo['p'] -= 2

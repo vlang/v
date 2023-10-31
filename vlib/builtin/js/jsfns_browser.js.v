@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -40,7 +40,7 @@ fn JS.moveBy(int, int)
 fn JS.moveTo(int, int)
 fn JS.msWriteProfilerMark(string)
 
-// fn JS.open(string, string, string, bool) ?Window
+// fn JS.open(string, string, string, bool)?Window
 // fn JS.postMessage(any, string, []Transferable)
 fn JS.print()
 fn JS.prompt(string, string) ?string

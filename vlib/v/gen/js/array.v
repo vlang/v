@@ -269,13 +269,13 @@ fn (mut g JsGen) gen_array_sort(node ast.CallExpr) {
 
 	g.definitions.writeln('function ${compare_fn}(a,b) {')
 	c_condition := if comparison_type.sym.has_method('<') {
-		'${g.typ(comparison_type.typ)}__lt($left_expr, $right_expr)'
+		'${g.typ(comparison_type.typ)}__lt(${left_expr}, ${right_expr})'
 	} else if comparison_type.unaliased_sym.has_method('<') {
-		'${g.typ(comparison_type.unaliased)}__lt($left_expr, $right_expr)'
+		'${g.typ(comparison_type.unaliased)}__lt(${left_expr}, ${right_expr})'
 	} else {
 		'${left_expr}.valueOf() < ${right_expr}.valueOf()'
 	}
-	g.definitions.writeln('\tif ($c_condition) return -1;')
+	g.definitions.writeln('\tif (${c_condition}) return -1;')
 	g.definitions.writeln('\telse return 1;')
 	g.definitions.writeln('}\n')
 
@@ -287,5 +287,5 @@ fn (mut g JsGen) gen_array_sort_call(node ast.CallExpr, compare_fn string) {
 	g.write('v_sort(')
 	g.expr(node.left)
 	g.gen_deref_ptr(node.left_type)
-	g.write(',$compare_fn)')
+	g.write(',${compare_fn})')
 }

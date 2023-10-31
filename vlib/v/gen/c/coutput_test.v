@@ -14,35 +14,40 @@ const diff_cmd = diff.find_working_diff_command() or { '' }
 
 const show_compilation_output = os.getenv('VTEST_SHOW_COMPILATION_OUTPUT').int() == 1
 
+const user_os = os.user_os()
+
 fn mm(s string) string {
 	return term.colorize(term.magenta, s)
 }
 
-fn test_out_files() ? {
+fn test_out_files() {
 	println(term.colorize(term.green, '> testing whether .out files match:'))
 	os.chdir(vroot) or {}
-	output_path := os.join_path(os.temp_dir(), 'coutput', 'out')
-	os.mkdir_all(output_path) ?
+	output_path := os.join_path(os.vtmp_dir(), 'coutput', 'out')
+	os.mkdir_all(output_path)!
 	defer {
 		os.rmdir_all(output_path) or {}
 	}
 	files := os.ls(testdata_folder) or { [] }
 	tests := files.filter(it.ends_with('.out'))
 	if tests.len == 0 {
-		eprintln('no `.out` tests found in $testdata_folder')
+		eprintln('no `.out` tests found in ${testdata_folder}')
 		return
 	}
 	paths := vtest.filter_vtest_only(tests, basepath: testdata_folder)
 	mut total_errors := 0
 	for out_path in paths {
 		basename, path, relpath, out_relpath := target2paths(out_path, '.out')
+		if should_skip(relpath) {
+			continue
+		}
 		pexe := os.join_path(output_path, '${basename}.exe')
 		//
 		file_options := get_file_options(path)
-		alloptions := '-o ${os.quoted_path(pexe)} $file_options.vflags'
-		print(mm('v $alloptions run $relpath') + ' == ${mm(out_relpath)} ')
+		alloptions := '-o ${os.quoted_path(pexe)} ${file_options.vflags}'
+		print(mm('v ${alloptions} run ${relpath}') + ' == ${mm(out_relpath)} ')
 		//
-		compilation := os.execute('${os.quoted_path(vexe)} $alloptions ${os.quoted_path(path)}')
+		compilation := os.execute('${os.quoted_path(vexe)} ${alloptions} ${os.quoted_path(path)}')
 		ensure_compilation_succeeded(compilation)
 		res := os.execute(os.quoted_path(pexe))
 		if res.exit_code < 0 {
@@ -50,7 +55,7 @@ fn test_out_files() ? {
 			panic(res.output)
 		}
 		mut found := res.output.trim_right('\r\n').replace('\r\n', '\n')
-		mut expected := os.read_file(out_path) ?
+		mut expected := os.read_file(out_path)!
 		expected = expected.trim_right('\r\n').replace('\r\n', '\n')
 		if expected.contains('================ V panic ================') {
 			// panic include backtraces and absolute file paths, so can't do char by char comparison
@@ -89,18 +94,18 @@ fn test_out_files() ? {
 	assert total_errors == 0
 }
 
-fn test_c_must_have_files() ? {
+fn test_c_must_have_files() {
 	println(term.colorize(term.green, '> testing whether `.c.must_have` files match:'))
 	os.chdir(vroot) or {}
-	output_path := os.join_path(os.temp_dir(), 'coutput', 'c_must_have')
-	os.mkdir_all(output_path) ?
+	output_path := os.join_path(os.vtmp_dir(), 'coutput', 'c_must_have')
+	os.mkdir_all(output_path)!
 	defer {
 		os.rmdir_all(output_path) or {}
 	}
 	files := os.ls(testdata_folder) or { [] }
 	tests := files.filter(it.ends_with('.c.must_have'))
 	if tests.len == 0 {
-		eprintln('no `.c.must_have` files found in $testdata_folder')
+		eprintln('no `.c.must_have` files found in ${testdata_folder}')
 		return
 	}
 	paths := vtest.filter_vtest_only(tests, basepath: testdata_folder)
@@ -108,12 +113,15 @@ fn test_c_must_have_files() ? {
 	mut failed_descriptions := []string{cap: paths.len}
 	for must_have_path in paths {
 		basename, path, relpath, must_have_relpath := target2paths(must_have_path, '.c.must_have')
+		if should_skip(relpath) {
+			continue
+		}
 		file_options := get_file_options(path)
-		alloptions := '-o - $file_options.vflags'
-		description := mm('v $alloptions $relpath') +
+		alloptions := '-o - ${file_options.vflags}'
+		description := mm('v ${alloptions} ${relpath}') +
 			' matches all line patterns in ${mm(must_have_relpath)} '
 		print(description)
-		cmd := '${os.quoted_path(vexe)} $alloptions ${os.quoted_path(path)}'
+		cmd := '${os.quoted_path(vexe)} ${alloptions} ${os.quoted_path(path)}'
 		compilation := os.execute(cmd)
 		ensure_compilation_succeeded(compilation)
 		expected_lines := os.read_lines(must_have_path) or { [] }
@@ -127,8 +135,8 @@ fn test_c_must_have_files() ? {
 			} else {
 				failed_patterns << eline
 				println(term.red('FAIL'))
-				eprintln('$must_have_path:${idx_expected_line + 1}: expected match error:')
-				eprintln('`$cmd` did NOT produce expected line:')
+				eprintln('${must_have_path}:${idx_expected_line + 1}: expected match error:')
+				eprintln('`${cmd}` did NOT produce expected line:')
 				eprintln(term.colorize(term.red, eline))
 				if description !in failed_descriptions {
 					failed_descriptions << description
@@ -154,7 +162,7 @@ fn test_c_must_have_files() ? {
 	if failed_descriptions.len > 0 {
 		eprintln('--------- failed commands: -------------------------------------------')
 		for fd in failed_descriptions {
-			eprintln('  > $fd')
+			eprintln('  > ${fd}')
 		}
 		eprintln('----------------------------------------------------------------------')
 	}
@@ -193,7 +201,7 @@ fn ensure_compilation_succeeded(compilation os.Result) {
 		panic(compilation.output)
 	}
 	if compilation.exit_code != 0 {
-		panic('compilation failed: $compilation.output')
+		panic('compilation failed: ${compilation.output}')
 	}
 }
 
@@ -220,4 +228,19 @@ pub fn get_file_options(file string) FileOptions {
 		}
 	}
 	return res
+}
+
+fn should_skip(relpath string) bool {
+	if user_os == 'windows' {
+		if relpath.contains('_nix.vv') {
+			eprintln('> skipping ${relpath} on windows')
+			return true
+		}
+	} else {
+		if relpath.contains('_windows.vv') {
+			eprintln('> skipping ${relpath} on !windows')
+			return true
+		}
+	}
+	return false
 }

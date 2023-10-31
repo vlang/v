@@ -4,10 +4,10 @@ vlib/v/checker/tests/generics_fn_called_multi_args_mismatch.vv:3:13: error: cann
     3 |     foo_str(1, x)
       |                ^
     4 |
-    5 |     foo := Foo<int>{}
-vlib/v/checker/tests/generics_fn_called_multi_args_mismatch.vv:6:11: error: cannot use `[]rune` as `string` in argument 1 to `Foo<int>.info`
+    5 |     foo := Foo[int]{}
+vlib/v/checker/tests/generics_fn_called_multi_args_mismatch.vv:6:11: error: cannot use `[]rune` as `string` in argument 1 to `Foo[int].info`
     4 |
-    5 |     foo := Foo<int>{}
+    5 |     foo := Foo[int]{}
     6 |     foo.info(x)
       |              ^
     7 | }

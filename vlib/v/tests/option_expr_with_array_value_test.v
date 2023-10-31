@@ -8,7 +8,7 @@ fn print_error() ?[]Empty {
 		empty: 'Test'
 	}
 	if test[0].empty != '' {
-		return error('Not empty')
+		return none
 	}
 	return test
 }
@@ -19,5 +19,5 @@ fn test_option_expr_with_array_value() {
 		[]Empty{}
 	}
 	println(test_error)
-	assert '$test_error' == '[]'
+	assert '${test_error}' == '[]'
 }

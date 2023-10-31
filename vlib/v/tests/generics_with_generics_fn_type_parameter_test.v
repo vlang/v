@@ -8,13 +8,13 @@ fn indirect_call(func fn (int) int, a int) int {
 	return func(a)
 }
 
-fn generic_call<T>(func T, a int) int {
+fn generic_call[T](func T, a int) int {
 	println(T.name)
 	assert T.name == typeof(neg).name
 	return func(a)
 }
 
-fn generic_indirect_call<T>(func T, a int) int {
+fn generic_indirect_call[T](func T, a int) int {
 	println(T.name)
 	assert T.name == typeof(neg).name
 	return indirect_call(func, a)
@@ -26,13 +26,13 @@ fn indirect_call_v2(func fn (int) int, a int) int {
 	return f(a)
 }
 
-fn generic_call_v2<T>(func T, a int) int {
+fn generic_call_v2[T](func T, a int) int {
 	f := func
 	assert typeof(f).name == typeof(neg).name
 	return f(a)
 }
 
-fn generic_indirect_call_v2<T>(func T, a int) int {
+fn generic_indirect_call_v2[T](func T, a int) int {
 	f := func
 	assert typeof(f).name == typeof(neg).name
 	return indirect_call_v2(f, a)

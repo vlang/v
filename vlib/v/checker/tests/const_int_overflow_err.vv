@@ -1,0 +1,6 @@
+const c = 2847238432
+
+fn main() {
+    i := c
+    assert i == c
+}

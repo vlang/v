@@ -1,0 +1,27 @@
+struct Foo {
+}
+
+fn (f Foo) no_ref() int {
+	return 1
+}
+
+fn (f &Foo) ref() int {
+	return 1
+}
+
+[heap]
+struct Bar {
+}
+
+fn (f &Bar) ref() int {
+	return 1
+}
+
+fn main() {
+	f := Foo{}
+	_ := f.no_ref // no error
+	_ := f.ref // error
+
+	b := Bar{}
+	_ := b.ref // no error
+}

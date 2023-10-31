@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module main
@@ -52,14 +52,14 @@ const (
 	]
 	// Each tetro has its unique color
 	colors           = [
-		gx.rgb(0, 0, 0), /* unused ? */
-		gx.rgb(255, 242, 0), /* yellow quad */
-		gx.rgb(174, 0, 255), /* purple triple */
-		gx.rgb(60, 255, 0), /* green short topright */
-		gx.rgb(255, 0, 0), /* red short topleft */
-		gx.rgb(255, 180, 31), /* orange long topleft */
-		gx.rgb(33, 66, 255), /* blue long topright */
-		gx.rgb(74, 198, 255), /* lightblue longest */
+		gx.rgb(0, 0, 0), // unused ?
+		gx.rgb(255, 242, 0), // yellow quad
+		gx.rgb(174, 0, 255), // purple triple
+		gx.rgb(60, 255, 0), // green short topright
+		gx.rgb(255, 0, 0), // red short topleft
+		gx.rgb(255, 180, 31), // orange long topleft
+		gx.rgb(33, 66, 255), // blue long topright
+		gx.rgb(74, 198, 255), // lightblue longest
 		gx.rgb(0, 170, 170),
 	]
 	background_color = gx.white
@@ -112,7 +112,7 @@ mut:
 	// Index of the rotation (0-3)
 	rotation_idx int
 	// gg context for drawing
-	gg          &gg.Context = voidptr(0)
+	gg          &gg.Context = unsafe { nil }
 	font_loaded bool
 	show_ghost  bool = true
 	// frame/time counters:
@@ -171,7 +171,7 @@ fn main() {
 		user_data: game
 		frame_fn: frame
 		event_fn: on_event
-		canvas: 'canvas'
+		html5_canvas_name: 'canvas'
 	)
 	game.init_game()
 	game.gg.run() // Run the render loop in the main thread

@@ -1,0 +1,18 @@
+enum MyEnum {
+	xx
+	yy
+	zz
+}
+
+struct Abc {
+mut:
+	mode MyEnum
+}
+
+fn main() {
+	a := Abc{}
+	if a.mode == .zz {
+		println('hello')
+		a.mode == .yy
+	}
+}

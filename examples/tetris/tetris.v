@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module main
@@ -53,14 +53,14 @@ const (
 	]
 	// Each tetro has its unique color
 	colors           = [
-		gx.rgb(0, 0, 0), /* unused ? */
-		gx.rgb(255, 242, 0), /* yellow quad */
-		gx.rgb(174, 0, 255), /* purple triple */
-		gx.rgb(60, 255, 0), /* green short topright */
-		gx.rgb(255, 0, 0), /* red short topleft */
-		gx.rgb(255, 180, 31), /* orange long topleft */
-		gx.rgb(33, 66, 255), /* blue long topright */
-		gx.rgb(74, 198, 255), /* lightblue longest */
+		gx.rgb(0, 0, 0), // unused ?
+		gx.rgb(255, 242, 0), // yellow quad
+		gx.rgb(174, 0, 255), // purple triple
+		gx.rgb(60, 255, 0), // green short topright
+		gx.rgb(255, 0, 0), // red short topleft
+		gx.rgb(255, 180, 31), // orange long topleft
+		gx.rgb(33, 66, 255), // blue long topright
+		gx.rgb(74, 198, 255), // lightblue longest
 		gx.rgb(0, 170, 170),
 	]
 	background_color = gx.white
@@ -113,9 +113,9 @@ mut:
 	// Index of the rotation (0-3)
 	rotation_idx int
 	// gg context for drawing
-	gg          &gg.Context = voidptr(0)
+	gg          &gg.Context = unsafe { nil }
 	font_loaded bool
-	show_ghost  bool = true
+	show_ghost  bool
 	// frame/time counters:
 	frame     int
 	frame_old int
@@ -159,9 +159,7 @@ fn frame(mut game Game) {
 }
 
 fn main() {
-	mut game := &Game{
-		gg: 0
-	}
+	mut game := &Game{}
 	mut fpath := os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'RobotoMono-Regular.ttf'))
 	$if android {
 		fpath = 'fonts/RobotoMono-Regular.ttf'
@@ -171,7 +169,7 @@ fn main() {
 		width: win_width
 		height: win_height
 		create_window: true
-		window_title: 'V Tetris' //
+		window_title: 'V Tetris'
 		user_data: game
 		frame_fn: frame
 		event_fn: on_event
@@ -322,7 +320,6 @@ fn (mut g Game) get_tetro() {
 	g.tetro = g.tetros_cache[idx..idx + tetro_size].clone()
 }
 
-// TODO mut
 fn (mut g Game) drop_tetro() {
 	for i in 0 .. tetro_size {
 		tetro := g.tetro[i]

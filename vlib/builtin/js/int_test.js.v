@@ -32,7 +32,7 @@ fn test_str_methods() {
 	// assert u64(-1).str() == '18446744073709551615'
 }
 
-fn test_and_precendence() {
+fn test_and_precedence() {
 	assert (2 & 0 == 0) == ((2 & 0) == 0)
 	assert (2 & 0 != 0) == ((2 & 0) != 0)
 	assert (0 & 0 >= 0) == ((0 & 0) >= 0)
@@ -41,7 +41,7 @@ fn test_and_precendence() {
 	assert (1 & 2 > 0) == ((1 & 2) > 0)
 }
 
-fn test_or_precendence() {
+fn test_or_precedence() {
 	assert (1 | 0 == 0) == ((1 | 0) == 0)
 	assert (1 | 0 != 1) == ((1 | 0) != 1)
 	assert (1 | 0 >= 2) == ((1 | 0) >= 2)
@@ -50,7 +50,7 @@ fn test_or_precendence() {
 	assert (1 | 0 > 1) == ((1 | 0) > 1)
 }
 
-fn test_xor_precendence() {
+fn test_xor_precedence() {
 	assert (1 ^ 0 == 2) == ((1 ^ 0) == 2)
 	assert (1 ^ 0 != 2) == ((1 ^ 0) != 2)
 	assert (1 ^ 0 >= 0) == ((1 ^ 0) >= 0)
@@ -59,12 +59,12 @@ fn test_xor_precendence() {
 	assert (1 ^ 0 > 1) == ((1 ^ 0) > 1)
 }
 
-fn test_left_shift_precendence() {
+fn test_left_shift_precedence() {
 	assert (2 << 4 | 3) == ((2 << 4) | 3)
 	assert (2 << 4 | 3) != (2 << (4 | 3))
 }
 
-fn test_right_shift_precendence() {
+fn test_right_shift_precedence() {
 	assert (256 >> 4 | 3) == ((256 >> 4) | 3)
 	assert (256 >> 4 | 3) != (256 >> (4 | 3))
 }
@@ -124,7 +124,7 @@ fn test_bin() {
 	assert x3 == -1
 	x4 := 0b11111111
 	assert x4 == 255
-	x5 := byte(0b11111111)
+	x5 := u8(0b11111111)
 	assert x5 == 255
 	x6 := char(0b11111111)
 	assert int(x6) == -1
@@ -196,21 +196,21 @@ fn test_int_decl() {
 fn test_int_to_hex() {
 	// array hex
 	/*
-	st := [byte(`V`), `L`, `A`, `N`, `G`]
+	st := [u8(`V`), `L`, `A`, `N`, `G`]
 	assert st.hex() == '564c414e47'
 	assert st.hex().len == 10
-	st1 := [byte(0x41)].repeat(100)
+	st1 := [u8(0x41)].repeat(100)
 	assert st1.hex() == '41'.repeat(100)*/
 	// --- int to hex tests
 	c0 := 12
 	// 8Bit
-	assert byte(0).hex() == '0'
-	assert byte(c0).hex() == 'c'
+	assert u8(0).hex() == '0'
+	assert u8(c0).hex() == 'c'
 	assert i8(c0).hex() == 'c'
-	assert byte(127).hex() == '7f'
+	assert u8(127).hex() == '7f'
 	assert i8(127).hex() == '7f'
-	assert byte(255).hex() == 'ff'
-	// assert byte(-1).hex() == 'ff'
+	assert u8(255).hex() == 'ff'
+	// assert u8(-1).hex() == 'ff'
 	// 16bit
 	assert u16(0).hex() == '0'
 	assert i16(c0).hex() == 'c'
@@ -238,7 +238,7 @@ fn test_int_to_hex() {
 }
 
 fn test_repeat() {
-	b := byte(`V`)
+	b := u8(`V`)
 	assert b.repeat(5) == 'VVVVV'
 	assert b.repeat(1) == b.ascii_str()
 	assert b.repeat(0) == ''

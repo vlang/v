@@ -1,3 +1,9 @@
+vlib/v/checker/tests/filter_func_return_nonbool_err.vv:2:2: warning: unused variable: `list`
+    1 | fn main() {
+    2 |     list := [1,2,3].filter(stringsss(it))
+      |     ~~~~
+    3 | }
+    4 |
 vlib/v/checker/tests/filter_func_return_nonbool_err.vv:2:25: error: type mismatch, `stringsss` must return a bool
     1 | fn main() {
     2 |     list := [1,2,3].filter(stringsss(it))

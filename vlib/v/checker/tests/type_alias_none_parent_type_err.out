@@ -1,0 +1,3 @@
+vlib/v/checker/tests/type_alias_none_parent_type_err.vv:1:13: error: cannot create a type alias of `none` as it is a value
+    1 | type None = none
+      |             ~~~~

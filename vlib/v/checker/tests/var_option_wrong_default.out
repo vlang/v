@@ -1,0 +1,7 @@
+vlib/v/checker/tests/var_option_wrong_default.vv:4:19: error: `or` block must provide a value of type `int`, not `?int`
+    2 | 
+    3 | var2 := var1 or { var1? }
+    4 | var3 := var1 or { var1 }
+      |                   ~~~~
+    5 | 
+    6 | println(var2)

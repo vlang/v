@@ -1,0 +1,5 @@
+vlib/v/checker/tests/unwrapped_option_infix.vv:5:9: error: unwrapped Option cannot be used in an infix expression
+    3 | }
+    4 | 
+    5 | println(test() == '')
+      |         ~~~~~~

@@ -13,7 +13,7 @@ fn internal_uuid_v4(mut rng PRNG) string {
 	mut buf := unsafe { malloc_noscan(37) }
 	mut i_buf := 0
 	mut x := u64(0)
-	mut d := byte(0)
+	mut d := u8(0)
 	for i_buf < buflen {
 		mut c := 0
 		x = rng.u64()
@@ -22,7 +22,7 @@ fn internal_uuid_v4(mut rng PRNG) string {
 		x += 0x3030303030303030
 		// write the ASCII codes to the buffer:
 		for c < 8 && i_buf < buflen {
-			d = byte(x)
+			d = u8(x)
 			unsafe {
 				buf[i_buf] = if d > 0x39 { d + 0x27 } else { d }
 			}
@@ -33,7 +33,7 @@ fn internal_uuid_v4(mut rng PRNG) string {
 	}
 	// there are still some random bits in x:
 	x = x >> 8
-	d = byte(x)
+	d = u8(x)
 	unsafe {
 		// From https://www.ietf.org/rfc/rfc4122.txt :
 		// >> Set the two most significant bits (bits 6 and 7) of the clock_seq_hi_and_reserved
@@ -122,7 +122,7 @@ fn init() {
 	C.atexit(deinit)
 }
 
-fn read_32(mut rng PRNG, mut buf []byte) {
+fn read_32(mut rng PRNG, mut buf []u8) {
 	p32 := unsafe { &u32(buf.data) }
 	u32s := buf.len / 4
 	for i in 0 .. u32s {
@@ -131,11 +131,11 @@ fn read_32(mut rng PRNG, mut buf []byte) {
 		}
 	}
 	for i in u32s * 4 .. buf.len {
-		buf[i] = rng.byte()
+		buf[i] = rng.u8()
 	}
 }
 
-fn read_64(mut rng PRNG, mut buf []byte) {
+fn read_64(mut rng PRNG, mut buf []u8) {
 	p64 := unsafe { &u64(buf.data) }
 	u64s := buf.len / 8
 	for i in 0 .. u64s {
@@ -144,11 +144,11 @@ fn read_64(mut rng PRNG, mut buf []byte) {
 		}
 	}
 	for i in u64s * 8 .. buf.len {
-		buf[i] = rng.byte()
+		buf[i] = rng.u8()
 	}
 }
 
-fn read_internal(mut rng PRNG, mut buf []byte) {
+fn read_internal(mut rng PRNG, mut buf []u8) {
 	match rng.block_size() {
 		32 {
 			read_32(mut rng, mut buf)
@@ -158,7 +158,7 @@ fn read_internal(mut rng PRNG, mut buf []byte) {
 		}
 		else {
 			for i in 0 .. buf.len {
-				buf[i] = rng.byte()
+				buf[i] = rng.u8()
 			}
 		}
 	}

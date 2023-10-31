@@ -8,7 +8,7 @@ fn f(st Abc) {
 
 fn test_chan_init() {
 	st := Abc{}
-	go f(st)
+	spawn f(st)
 	i := <-st.ch
 	assert i == 47
 }

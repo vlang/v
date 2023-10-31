@@ -3,7 +3,7 @@ module abcde
 pub struct Builder {
 pub mut:
 	// inline before field
-	buf          []byte
+	buf          []u8
 	str_calls    int
 	len          int
 	initial_size int = 1
@@ -12,7 +12,7 @@ pub mut:
 pub fn new_builder(initial_size int) Builder {
 	return Builder{
 		// buf: make(0, initial_size)
-		buf: []byte{cap: initial_size}
+		buf: []u8{cap: initial_size}
 		str_calls: 0 // after str_calls
 		len: 0 // after len
 		initial_size: initial_size // final

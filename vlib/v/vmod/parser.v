@@ -52,7 +52,7 @@ struct Token {
 	line int
 }
 
-pub fn from_file(vmod_path string) ?Manifest {
+pub fn from_file(vmod_path string) !Manifest {
 	if !os.exists(vmod_path) {
 		return error('v.mod: v.mod file not found.')
 	}
@@ -60,7 +60,7 @@ pub fn from_file(vmod_path string) ?Manifest {
 	return decode(contents)
 }
 
-pub fn decode(contents string) ?Manifest {
+pub fn decode(contents string) !Manifest {
 	mut parser := Parser{
 		scanner: Scanner{
 			pos: 0
@@ -80,11 +80,11 @@ fn (mut s Scanner) skip_whitespace() {
 	}
 }
 
-fn is_name_alpha(chr byte) bool {
+fn is_name_alpha(chr u8) bool {
 	return chr.is_letter() || chr == `_`
 }
 
-fn (mut s Scanner) create_string(q byte) string {
+fn (mut s Scanner) create_string(q u8) string {
 	mut str := ''
 	for s.pos < s.text.len && s.text[s.pos] != q {
 		if s.text[s.pos] == `\\` && s.text[s.pos + 1] == q {
@@ -107,7 +107,7 @@ fn (mut s Scanner) create_ident() string {
 	return text
 }
 
-fn (s Scanner) peek_char(c byte) bool {
+fn (s Scanner) peek_char(c u8) bool {
 	return s.pos - 1 < s.text.len && s.text[s.pos - 1] == c
 }
 
@@ -158,11 +158,11 @@ fn (mut s Scanner) scan_all() {
 	s.tokenize(.eof, 'eof')
 }
 
-fn get_array_content(tokens []Token, st_idx int) ?([]string, int) {
+fn get_array_content(tokens []Token, st_idx int) !([]string, int) {
 	mut vals := []string{}
 	mut idx := st_idx
 	if tokens[idx].typ != .labr {
-		return error('$vmod.err_label not a valid array, at line ${tokens[idx].line}')
+		return error('${vmod.err_label} not a valid array, at line ${tokens[idx].line}')
 	}
 	idx++
 	for {
@@ -171,7 +171,7 @@ fn get_array_content(tokens []Token, st_idx int) ?([]string, int) {
 			.str {
 				vals << tok.val
 				if tokens[idx + 1].typ !in [.comma, .rabr] {
-					return error('$vmod.err_label invalid separator "${tokens[idx + 1].val}", at line $tok.line')
+					return error('${vmod.err_label} invalid separator "${tokens[idx + 1].val}", at line ${tok.line}')
 				}
 				idx += if tokens[idx + 1].typ == .comma { 2 } else { 1 }
 			}
@@ -180,22 +180,22 @@ fn get_array_content(tokens []Token, st_idx int) ?([]string, int) {
 				break
 			}
 			else {
-				return error('$vmod.err_label invalid token "$tok.val", at line $tok.line')
+				return error('${vmod.err_label} invalid token "${tok.val}", at line ${tok.line}')
 			}
 		}
 	}
 	return vals, idx
 }
 
-fn (mut p Parser) parse() ?Manifest {
+fn (mut p Parser) parse() !Manifest {
 	if p.scanner.text.len == 0 {
-		return error('$vmod.err_label no content.')
+		return error('${vmod.err_label} no content.')
 	}
 	p.scanner.scan_all()
 	tokens := p.scanner.tokens
 	mut mn := Manifest{}
 	if tokens[0].typ != .module_keyword {
-		return error('$vmod.err_label v.mod files should start with Module, at line ${tokens[0].line}')
+		return error('${vmod.err_label} v.mod files should start with Module, at line ${tokens[0].line}')
 	}
 	mut i := 1
 	for i < tokens.len {
@@ -203,7 +203,7 @@ fn (mut p Parser) parse() ?Manifest {
 		match tok.typ {
 			.lcbr {
 				if tokens[i + 1].typ !in [.field_key, .rcbr] {
-					return error('$vmod.err_label invalid content after opening brace, at line $tok.line')
+					return error('${vmod.err_label} invalid content after opening brace, at line ${tok.line}')
 				}
 				i++
 				continue
@@ -214,7 +214,7 @@ fn (mut p Parser) parse() ?Manifest {
 			.field_key {
 				field_name := tok.val.trim_right(':')
 				if tokens[i + 1].typ !in [.str, .labr] {
-					return error('$vmod.err_label value of field "$field_name" must be either string or an array of strings, at line $tok.line')
+					return error('${vmod.err_label} value of field "${field_name}" must be either string or an array of strings, at line ${tok.line}')
 				}
 				field_value := tokens[i + 1].val
 				match field_name {
@@ -237,14 +237,14 @@ fn (mut p Parser) parse() ?Manifest {
 						mn.author = field_value
 					}
 					'dependencies' {
-						deps, idx := get_array_content(tokens, i + 1) ?
+						deps, idx := get_array_content(tokens, i + 1)!
 						mn.dependencies = deps
 						i = idx
 						continue
 					}
 					else {
 						if tokens[i + 1].typ == .labr {
-							vals, idx := get_array_content(tokens, i + 1) ?
+							vals, idx := get_array_content(tokens, i + 1)!
 							mn.unknown[field_name] = vals
 							i = idx
 							continue
@@ -257,13 +257,13 @@ fn (mut p Parser) parse() ?Manifest {
 			}
 			.comma {
 				if tokens[i - 1].typ !in [.str, .rabr] || tokens[i + 1].typ != .field_key {
-					return error('$vmod.err_label invalid comma placement, at line $tok.line')
+					return error('${vmod.err_label} invalid comma placement, at line ${tok.line}')
 				}
 				i++
 				continue
 			}
 			else {
-				return error('$vmod.err_label invalid token "$tok.val", at line $tok.line')
+				return error('${vmod.err_label} invalid token "${tok.val}", at line ${tok.line}')
 			}
 		}
 	}

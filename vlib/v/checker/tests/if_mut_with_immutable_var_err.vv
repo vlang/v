@@ -1,10 +1,10 @@
-type Int = byte | int
+type Int = int | u8
 
 fn main() {
 	i := Int(0)
 	if mut i is int {
 		i = 1
-	} else if mut i is byte {
+	} else if mut i is u8 {
 		i = 2
 	}
 	println(i)

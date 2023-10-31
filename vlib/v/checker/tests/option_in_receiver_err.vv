@@ -1,0 +1,12 @@
+struct Foo {
+mut:
+	name string
+}
+
+fn (mut f Foo) t0(arr ?[]int) ?string {
+	return arr?.len.str()
+}
+
+fn (mut f ?Foo) t1(arr ?[]int) ?string {
+	return arr?.len.str()
+}

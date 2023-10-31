@@ -1,35 +1,36 @@
 module datatypes
 
-struct DoublyListNode<T> {
+struct DoublyListNode[T] {
 mut:
 	data T
-	next &DoublyListNode<T> = 0
-	prev &DoublyListNode<T> = 0
+	next &DoublyListNode[T] = unsafe { 0 }
+	prev &DoublyListNode[T] = unsafe { 0 }
 }
 
-pub struct DoublyLinkedList<T> {
+// DoublyLinkedList[T] represents a generic doubly linked list of elements, each of type T.
+pub struct DoublyLinkedList[T] {
 mut:
-	head &DoublyListNode<T> = 0
-	tail &DoublyListNode<T> = 0
+	head &DoublyListNode[T] = unsafe { 0 }
+	tail &DoublyListNode[T] = unsafe { 0 }
 	// Internal iter pointer for allowing safe modification
 	// of the list while iterating. TODO: use an option
 	// instead of a pointer to determine it is initialized.
-	iter &DoublyListIter<T> = 0
+	iter &DoublyListIter[T] = unsafe { 0 }
 	len  int
 }
 
 // is_empty checks if the linked list is empty
-pub fn (list DoublyLinkedList<T>) is_empty() bool {
+pub fn (list DoublyLinkedList[T]) is_empty() bool {
 	return list.len == 0
 }
 
 // len returns the length of the linked list
-pub fn (list DoublyLinkedList<T>) len() int {
+pub fn (list DoublyLinkedList[T]) len() int {
 	return list.len
 }
 
 // first returns the first element of the linked list
-pub fn (list DoublyLinkedList<T>) first() ?T {
+pub fn (list DoublyLinkedList[T]) first() !T {
 	if list.is_empty() {
 		return error('Linked list is empty')
 	}
@@ -37,7 +38,7 @@ pub fn (list DoublyLinkedList<T>) first() ?T {
 }
 
 // last returns the last element of the linked list
-pub fn (list DoublyLinkedList<T>) last() ?T {
+pub fn (list DoublyLinkedList[T]) last() !T {
 	if list.is_empty() {
 		return error('Linked list is empty')
 	}
@@ -45,8 +46,8 @@ pub fn (list DoublyLinkedList<T>) last() ?T {
 }
 
 // push_back adds an element to the end of the linked list
-pub fn (mut list DoublyLinkedList<T>) push_back(item T) {
-	mut new_node := &DoublyListNode<T>{
+pub fn (mut list DoublyLinkedList[T]) push_back(item T) {
+	mut new_node := &DoublyListNode[T]{
 		data: item
 	}
 	if list.is_empty() {
@@ -62,8 +63,8 @@ pub fn (mut list DoublyLinkedList<T>) push_back(item T) {
 }
 
 // push_front adds an element to the beginning of the linked list
-pub fn (mut list DoublyLinkedList<T>) push_front(item T) {
-	mut new_node := &DoublyListNode<T>{
+pub fn (mut list DoublyLinkedList[T]) push_front(item T) {
+	mut new_node := &DoublyListNode[T]{
 		data: item
 	}
 	if list.is_empty() {
@@ -79,7 +80,7 @@ pub fn (mut list DoublyLinkedList<T>) push_front(item T) {
 }
 
 // pop_back removes the last element of the linked list
-pub fn (mut list DoublyLinkedList<T>) pop_back() ?T {
+pub fn (mut list DoublyLinkedList[T]) pop_back() !T {
 	if list.is_empty() {
 		return error('Linked list is empty')
 	}
@@ -89,18 +90,18 @@ pub fn (mut list DoublyLinkedList<T>) pop_back() ?T {
 	if list.len == 1 {
 		// head == tail
 		value := list.tail.data
-		list.head = voidptr(0)
-		list.tail = voidptr(0)
+		list.head = unsafe { nil }
+		list.tail = unsafe { nil }
 		return value
 	}
 	value := list.tail.data
-	list.tail.prev.next = voidptr(0) // unlink tail
+	list.tail.prev.next = unsafe { nil } // unlink tail
 	list.tail = list.tail.prev
 	return value
 }
 
 // pop_front removes the last element of the linked list
-pub fn (mut list DoublyLinkedList<T>) pop_front() ?T {
+pub fn (mut list DoublyLinkedList[T]) pop_front() !T {
 	if list.is_empty() {
 		return error('Linked list is empty')
 	}
@@ -110,20 +111,20 @@ pub fn (mut list DoublyLinkedList<T>) pop_front() ?T {
 	if list.len == 1 {
 		// head == tail
 		value := list.head.data
-		list.head = voidptr(0)
-		list.tail = voidptr(0)
+		list.head = unsafe { nil }
+		list.tail = unsafe { nil }
 		return value
 	}
 	value := list.head.data
-	list.head.next.prev = voidptr(0) // unlink head
+	list.head.next.prev = unsafe { nil } // unlink head
 	list.head = list.head.next
 	return value
 }
 
 // insert adds an element to the linked list at the given index
-pub fn (mut list DoublyLinkedList<T>) insert(idx int, item T) ? {
+pub fn (mut list DoublyLinkedList[T]) insert(idx int, item T) ! {
 	if idx < 0 || idx > list.len {
-		return error('Index out of bounds')
+		return error('Index ${idx} out of bounds [0..${list.len}]')
 	} else if idx == 0 {
 		// new head
 		list.push_front(item)
@@ -141,7 +142,7 @@ pub fn (mut list DoublyLinkedList<T>) insert(idx int, item T) ? {
 // (determined from the forward index). This function should be called
 // when idx > list.len/2. This helper function assumes idx bounds have
 // already been checked and idx is not at the edges.
-fn (mut list DoublyLinkedList<T>) insert_back(idx int, item T) {
+fn (mut list DoublyLinkedList[T]) insert_back(idx int, item T) {
 	mut node := list.node(idx + 1)
 	mut prev := node.prev
 	//   prev       node
@@ -149,7 +150,7 @@ fn (mut list DoublyLinkedList<T>) insert_back(idx int, item T) {
 	//  |next|---->|next|
 	//  |prev|<----|prev|
 	//  ------     ------
-	new := &DoublyListNode<T>{
+	new := &DoublyListNode[T]{
 		data: item
 		next: node
 		prev: prev
@@ -168,7 +169,7 @@ fn (mut list DoublyLinkedList<T>) insert_back(idx int, item T) {
 // (determined from the forward index). This function should be called
 // when idx <= list.len/2. This helper function assumes idx bounds have
 // already been checked and idx is not at the edges.
-fn (mut list DoublyLinkedList<T>) insert_front(idx int, item T) {
+fn (mut list DoublyLinkedList[T]) insert_front(idx int, item T) {
 	mut node := list.node(idx - 1)
 	mut next := node.next
 	//   node       next
@@ -176,7 +177,7 @@ fn (mut list DoublyLinkedList<T>) insert_front(idx int, item T) {
 	//  |next|---->|next|
 	//  |prev|<----|prev|
 	//  ------     ------
-	new := &DoublyListNode<T>{
+	new := &DoublyListNode[T]{
 		data: item
 		next: next
 		prev: node
@@ -194,7 +195,7 @@ fn (mut list DoublyLinkedList<T>) insert_front(idx int, item T) {
 // node walks from the head or tail and finds the node at index idx.
 // This helper function assumes the list is not empty and idx is in
 // bounds.
-fn (list &DoublyLinkedList<T>) node(idx int) &DoublyListNode<T> {
+fn (list &DoublyLinkedList[T]) node(idx int) &DoublyListNode[T] {
 	if idx <= list.len / 2 {
 		mut node := list.head
 		for h := 0; h < idx; h += 1 {
@@ -211,7 +212,7 @@ fn (list &DoublyLinkedList<T>) node(idx int) &DoublyListNode<T> {
 
 // index searches the linked list for item and returns the forward index
 // or none if not found.
-pub fn (list &DoublyLinkedList<T>) index(item T) ?int {
+pub fn (list &DoublyLinkedList[T]) index(item T) !int {
 	mut hn := list.head
 	mut tn := list.tail
 	for h, t := 0, list.len - 1; h <= t; {
@@ -225,12 +226,12 @@ pub fn (list &DoublyLinkedList<T>) index(item T) ?int {
 		t -= 1
 		tn = tn.prev
 	}
-	return none
+	return error('none')
 }
 
 // delete removes index idx from the linked list and is safe to call
 // for any idx.
-pub fn (mut list DoublyLinkedList<T>) delete(idx int) {
+pub fn (mut list DoublyLinkedList[T]) delete(idx int) {
 	if idx < 0 || idx >= list.len {
 		return
 	} else if idx == 0 {
@@ -248,28 +249,33 @@ pub fn (mut list DoublyLinkedList<T>) delete(idx int) {
 }
 
 // str returns a string representation of the linked list
-pub fn (list DoublyLinkedList<T>) str() string {
-	mut result_array := []T{}
+pub fn (list DoublyLinkedList[T]) str() string {
+	return list.array().str()
+}
+
+// array returns a array representation of the linked list
+pub fn (list DoublyLinkedList[T]) array() []T {
+	mut result_array := []T{cap: list.len}
 	mut node := list.head
-	for node != 0 {
+	for unsafe { node != 0 } {
 		result_array << node.data
 		node = node.next
 	}
-	return result_array.str()
+	return result_array
 }
 
 // next implements the iter interface to use DoublyLinkedList with
-// V's for loop syntax.
-pub fn (mut list DoublyLinkedList<T>) next() ?T {
-	if list.iter == voidptr(0) {
+// V's `for x in list {` loop syntax.
+pub fn (mut list DoublyLinkedList[T]) next() ?T {
+	if list.iter == unsafe { nil } {
 		// initialize new iter object
-		list.iter = &DoublyListIter<T>{
+		list.iter = &DoublyListIter[T]{
 			node: list.head
 		}
 		return list.next()
 	}
-	if list.iter.node == voidptr(0) {
-		list.iter = voidptr(0)
+	if list.iter.node == unsafe { nil } {
+		list.iter = unsafe { nil }
 		return none
 	}
 	defer {
@@ -278,7 +284,58 @@ pub fn (mut list DoublyLinkedList<T>) next() ?T {
 	return list.iter.node.data
 }
 
-struct DoublyListIter<T> {
+// iterator returns a new iterator instance for the `list`.
+pub fn (mut list DoublyLinkedList[T]) iterator() DoublyListIter[T] {
+	return DoublyListIter[T]{
+		node: list.head
+	}
+}
+
+// back_iterator returns a new backwards iterator instance for the `list`.
+pub fn (mut list DoublyLinkedList[T]) back_iterator() DoublyListIterBack[T] {
+	return DoublyListIterBack[T]{
+		node: list.tail
+	}
+}
+
+// DoublyListIter[T] is an iterator for DoublyLinkedList.
+// It starts from *the start* and moves forwards to *the end* of the list.
+// It can be used with V's `for x in iter {` construct.
+// One list can have multiple independent iterators, pointing to different positions/places in the list.
+// A DoublyListIter iterator instance always traverses the list from *start to finish*.
+pub struct DoublyListIter[T] {
 mut:
-	node &DoublyListNode<T> = 0
+	node &DoublyListNode[T] = unsafe { 0 }
+}
+
+// next returns *the next* element of the list, or `none` when the end of the list is reached.
+// It is called by V's `for x in iter{` on each iteration.
+pub fn (mut iter DoublyListIter[T]) next() ?T {
+	if iter.node == unsafe { nil } {
+		return none
+	}
+	res := iter.node.data
+	iter.node = iter.node.next
+	return res
+}
+
+// DoublyListIterBack[T] is an iterator for DoublyLinkedList.
+// It starts from *the end* and moves backwards to *the start* of the list.
+// It can be used with V's `for x in iter {` construct.
+// One list can have multiple independent iterators, pointing to different positions/places in the list.
+// A DoublyListIterBack iterator instance always traverses the list from *finish to start*.
+pub struct DoublyListIterBack[T] {
+mut:
+	node &DoublyListNode[T] = unsafe { 0 }
+}
+
+// next returns *the previous* element of the list, or `none` when the start of the list is reached.
+// It is called by V's `for x in iter{` on each iteration.
+pub fn (mut iter DoublyListIterBack[T]) next() ?T {
+	if iter.node == unsafe { nil } {
+		return none
+	}
+	res := iter.node.data
+	iter.node = iter.node.prev
+	return res
 }

@@ -1,6 +1,6 @@
 struct Data {}
 
-fn (_ Data) func<T>() T {
+fn (_ Data) func[T]() T {
 	return T{}
 }
 

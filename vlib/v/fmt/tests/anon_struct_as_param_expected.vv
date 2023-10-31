@@ -1,0 +1,9 @@
+fn func(arg struct { foo string = 'bar' }) {
+	println(arg.foo)
+}
+
+fn main() {
+	func(struct {
+		foo: 'foo'
+	})
+}

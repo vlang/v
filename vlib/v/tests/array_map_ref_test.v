@@ -35,8 +35,8 @@ fn test_array_map_ref() {
 		a_ref[1] = 17
 	}
 	assert a_ref.len == 5
-	t1 := go mod_map(shared m_shared)
-	t2 := go mod_array(shared a_shared)
+	t1 := spawn mod_map(shared m_shared)
+	t2 := spawn mod_array(shared a_shared)
 	lock m_shared, a_shared {
 		a_shared[4] = -12.25
 		m_shared['tz'] = 73.75

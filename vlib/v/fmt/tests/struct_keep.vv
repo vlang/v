@@ -44,3 +44,10 @@ struct KeepMultiLineDefaultExprsIndent {
 		text: 'M5'
 	}]
 }
+
+[typedef]
+pub struct C.some_t {
+	@type int
+	data  struct {}
+
+}

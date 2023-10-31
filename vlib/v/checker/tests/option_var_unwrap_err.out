@@ -1,0 +1,21 @@
+vlib/v/checker/tests/option_var_unwrap_err.vv:5:9: error: to propagate the Option, `abc_2` must return an Option type
+    3 | 
+    4 | fn abc_2(a ?string) string {
+    5 |     return a?
+      |            ^
+    6 | }
+    7 |
+Details: vlib/v/checker/tests/option_var_unwrap_err.vv:4:21: details: prepend ? before the declaration of the return type of `abc_2`
+    2 | }
+    3 | 
+    4 | fn abc_2(a ?string) string {
+      |                     ~~~~~~
+    5 |     return a?
+    6 | }
+vlib/v/checker/tests/option_var_unwrap_err.vv:5:2: error: should not unwrap option var on return, it could be none
+    3 | 
+    4 | fn abc_2(a ?string) string {
+    5 |     return a?
+      |     ~~~~~~~~
+    6 | }
+    7 |

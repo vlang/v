@@ -1,0 +1,12 @@
+struct Foo {
+mut:
+	n u32 = -1
+}
+
+fn main() {
+	mut foo := Foo{
+		n: -1
+	}
+
+	foo.n = -1
+}

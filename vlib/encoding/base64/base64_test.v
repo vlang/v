@@ -44,7 +44,7 @@ fn test_decode() {
 	for i, p in pairs {
 		got := base64.decode(p.encoded)
 		if got != p.decoded.bytes() {
-			eprintln('pairs[$i]: expected = $p.decoded, got = $got')
+			eprintln('pairs[${i}]: expected = ${p.decoded}, got = ${got}')
 			assert false
 		}
 	}
@@ -61,7 +61,7 @@ fn test_decode_str() {
 	for i, p in pairs {
 		got := base64.decode_str(p.encoded)
 		if got != p.decoded {
-			eprintln('pairs[$i]: expected = $p.decoded, got = $got')
+			eprintln('pairs[${i}]: expected = ${p.decoded}, got = ${got}')
 			assert false
 		}
 	}
@@ -73,7 +73,7 @@ fn test_encode() {
 	for i, p in pairs {
 		got := base64.encode(p.decoded.bytes())
 		if got != p.encoded {
-			eprintln('pairs[$i]: expected = $p.encoded, got = $got')
+			eprintln('pairs[${i}]: expected = ${p.encoded}, got = ${got}')
 			assert false
 		}
 	}
@@ -85,7 +85,7 @@ fn test_encode_str() {
 	for i, p in pairs {
 		got := base64.encode_str(p.decoded)
 		if got != p.encoded {
-			eprintln('pairs[$i]: expected = $p.encoded, got = $got')
+			eprintln('pairs[${i}]: expected = ${p.encoded}, got = ${got}')
 			assert false
 		}
 	}
@@ -111,23 +111,23 @@ fn test_url_decode_str() {
 	assert test == 'Hello Base64Url encoding!'
 }
 
-fn test_encode_null_byte() {
-	assert base64.encode([byte(`A`), 0, `C`]) == 'QQBD'
+fn test_encode_null_u8() {
+	assert base64.encode([u8(`A`), 0, `C`]) == 'QQBD'
 }
 
 fn test_encode_null_byte_str() {
 	// While this works, bytestr() does a memcpy
-	s := [byte(`A`), 0, `C`].bytestr()
+	s := [u8(`A`), 0, `C`].bytestr()
 	assert base64.encode_str(s) == 'QQBD'
 }
 
-fn test_decode_null_byte() {
-	assert base64.decode('QQBD') == [byte(`A`), 0, `C`]
+fn test_decode_null_u8() {
+	assert base64.decode('QQBD') == [u8(`A`), 0, `C`]
 }
 
 fn test_decode_null_byte_str() {
 	// While this works, bytestr() does a memcpy
-	s := [byte(`A`), 0, `C`].bytestr()
+	s := [u8(`A`), 0, `C`].bytestr()
 	assert base64.decode_str('QQBD') == s
 }
 
@@ -137,9 +137,9 @@ fn test_decode_in_buffer_bytes() {
 		TestPair{'fooba', 'Zm9vYmE='},
 		TestPair{'foobar', 'Zm9vYmFy'},
 	]
-	mut src_dec_buf := []byte{len: 8}
-	mut src_enc_buf := []byte{len: 8}
-	mut out_buf := []byte{len: 8}
+	mut src_dec_buf := []u8{len: 8}
+	mut src_enc_buf := []u8{len: 8}
+	mut out_buf := []u8{len: 8}
 
 	for p in rfc4648_pairs {
 		src_dec_buf = p.decoded.bytes()

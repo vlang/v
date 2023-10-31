@@ -18,16 +18,14 @@ struct Point {
 
 struct App {
 mut:
-	tui       &tui.Context = 0
+	tui       &tui.Context = unsafe { nil }
 	points    []Point
 	color     tui.Color = colors[0]
 	color_idx int
 	cut_rate  f64 = 5
 }
 
-fn frame(x voidptr) {
-	mut app := &App(x)
-
+fn frame(mut app App) {
 	app.tui.clear()
 
 	if app.points.len > 0 {
@@ -55,9 +53,7 @@ fn frame(x voidptr) {
 	app.tui.flush()
 }
 
-fn event(e &tui.Event, x voidptr) {
-	mut app := &App(x)
-
+fn event(e &tui.Event, mut app App) {
 	match e.typ {
 		.key_down {
 			match e.code {
@@ -96,5 +92,5 @@ fn main() {
 		event_fn: event
 		hide_cursor: true
 	)
-	app.tui.run() ?
+	app.tui.run()!
 }

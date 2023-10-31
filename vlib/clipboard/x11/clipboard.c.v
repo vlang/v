@@ -18,7 +18,7 @@ $if freebsd {
 #include <X11/Xlib.h> # Please install a package with the X11 development headers, for example: `apt-get install libx11-dev`
 // X11
 [typedef]
-struct C.Display {
+pub struct C.Display {
 }
 
 type Window = u64
@@ -42,17 +42,17 @@ fn C.XChangeProperty(d &C.Display, requestor Window, property Atom, typ Atom, fo
 
 fn C.XSendEvent(d &C.Display, requestor Window, propogate int, mask i64, event &C.XEvent)
 
-fn C.XInternAtom(d &C.Display, typ &byte, only_if_exists int) Atom
+fn C.XInternAtom(d &C.Display, typ &u8, only_if_exists int) Atom
 
 fn C.XCreateSimpleWindow(d &C.Display, root Window, x int, y int, width u32, height u32, border_width u32, border u64, background u64) Window
 
-fn C.XOpenDisplay(name &byte) &C.Display
+fn C.XOpenDisplay(name &u8) &C.Display
 
 fn C.XConvertSelection(d &C.Display, selection Atom, target Atom, property Atom, requestor Window, time int) int
 
 fn C.XSync(d &C.Display, discard int) int
 
-fn C.XGetWindowProperty(d &C.Display, w Window, property Atom, offset i64, length i64, delete int, req_type Atom, actual_type_return &Atom, actual_format_return &int, nitems &u64, bytes_after_return &u64, prop_return &&byte) int
+fn C.XGetWindowProperty(d &C.Display, w Window, property Atom, offset i64, length i64, delete int, req_type Atom, actual_type_return &Atom, actual_format_return &int, nitems &u64, bytes_after_return &u64, prop_return &&u8) int
 
 fn C.XDeleteProperty(d &C.Display, w Window, property Atom) int
 
@@ -69,9 +69,9 @@ fn C.XFree(data voidptr)
 fn todo_del() {}
 
 [typedef]
-struct C.XSelectionRequestEvent {
+pub struct C.XSelectionRequestEvent {
 mut:
-	display   &C.Display // Display the event was read from
+	display   &C.Display = unsafe { nil } // Display the event was read from
 	owner     Window
 	requestor Window
 	selection Atom
@@ -81,10 +81,10 @@ mut:
 }
 
 [typedef]
-struct C.XSelectionEvent {
+pub struct C.XSelectionEvent {
 mut:
 	@type     int
-	display   &C.Display // Display the event was read from
+	display   &C.Display = unsafe { nil } // Display the event was read from
 	requestor Window
 	selection Atom
 	target    Atom
@@ -93,14 +93,14 @@ mut:
 }
 
 [typedef]
-struct C.XSelectionClearEvent {
+pub struct C.XSelectionClearEvent {
 mut:
 	window    Window
 	selection Atom
 }
 
 [typedef]
-struct C.XDestroyWindowEvent {
+pub struct C.XDestroyWindowEvent {
 mut:
 	window Window
 }
@@ -126,25 +126,26 @@ const (
 // in the future, maybe we can extend this
 // to support other mime types
 enum AtomType {
-	xa_atom = 0 // value 4
-	xa_string = 1 // value 31
-	targets = 2
-	clipboard = 3
-	primary = 4
-	secondary = 5
-	text = 6
+	xa_atom     = 0 // value 4
+	xa_string   = 1 // value 31
+	targets     = 2
+	clipboard   = 3
+	primary     = 4
+	secondary   = 5
+	text        = 6
 	utf8_string = 7
-	text_plain = 8
-	text_html = 9
+	text_plain  = 8
+	text_html   = 9
 }
 
+[heap]
 pub struct Clipboard {
-	display &C.Display
+	display &C.Display = unsafe { nil }
 mut:
 	selection Atom // the selection atom
 	window    Window
 	atoms     []Atom
-	mutex     &sync.Mutex
+	mutex     &sync.Mutex = sync.new_mutex()
 	text      string // text data sent or received
 	got_text  bool   // used to confirm that we have got the text
 	is_owner  bool   // to save selection owner state
@@ -154,7 +155,7 @@ struct Property {
 	actual_type   Atom
 	actual_format int
 	nitems        u64
-	data          &byte
+	data          &u8 = unsafe { nil }
 }
 
 // new_clipboard returns a new `Clipboard` instance allocated on the heap.
@@ -194,7 +195,7 @@ fn new_x11_clipboard(selection AtomType) &Clipboard {
 	cb.selection = cb.get_atom(selection)
 	// start the listener on another thread or
 	// we will be locked and will have to hard exit
-	go cb.start_listener()
+	spawn cb.start_listener()
 	return cb
 }
 
@@ -291,6 +292,7 @@ fn (mut cb Clipboard) start_listener() {
 	mut sent_request := false
 	mut to_be_requested := Atom(0)
 	for {
+		time.sleep(1 * time.millisecond)
 		C.XNextEvent(cb.display, &event)
 		if unsafe { event.@type == 0 } {
 			println('error')
@@ -330,7 +332,7 @@ fn (mut cb Clipboard) start_listener() {
 						property: xsre.property
 					}
 					if !cb.transmit_selection(&xse) {
-						xse.property = new_atom(0)
+						xse.property = Atom(0)
 					}
 					C.XSendEvent(cb.display, xse.requestor, 0, C.PropertyChangeMask, voidptr(&xse))
 					C.XFlush(cb.display)
@@ -398,7 +400,7 @@ fn read_property(d &C.Display, w Window, p Atom) Property {
 	actual_format := 0
 	nitems := u64(0)
 	bytes_after := u64(0)
-	ret := &byte(0)
+	ret := &u8(0)
 	mut read_bytes := 1024
 	for {
 		if ret != 0 {
@@ -431,7 +433,7 @@ fn (cb &Clipboard) pick_target(prop Property) Atom {
 		mut to_be_requested := Atom(0)
 
 		// This is higher than the maximum priority.
-		mut priority := math.max_i32
+		mut priority := int(math.max_i32)
 
 		for i in 0 .. prop.nitems {
 			// See if this data type is allowed and of higher priority (closer to zero)
@@ -477,10 +479,6 @@ fn (cb &Clipboard) get_target_index(target Atom) int {
 
 fn (cb &Clipboard) get_supported_targets() []Atom {
 	return cb.get_atoms(AtomType.utf8_string, .xa_string, .text, .text_plain, .text_html)
-}
-
-fn new_atom(value int) &Atom {
-	return unsafe { &Atom(&u64(u64(value))) }
 }
 
 fn create_xwindow(display &C.Display) Window {

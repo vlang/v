@@ -31,3 +31,9 @@ fn test_duration_str() {
 	assert time.Duration(1 * time.hour + 5 * time.second).str() == '1:00:05'
 	assert time.Duration(168 * time.hour + 5 * time.minute + 7 * time.second).str() == '168:05:07'
 }
+
+fn test_duration_debug() {
+	assert time.Duration(1 * time.nanosecond).debug() == 'Duration: 1ns'
+	assert time.Duration(169 * time.hour + 5 * time.minute + 7 * time.second).debug() == 'Duration: 7days, 1h, 5m, 7s'
+	assert (-time.Duration(169 * time.hour + 5 * time.minute + 7 * time.second)).debug() == 'Duration: - 7days, 1h, 5m, 7s'
+}

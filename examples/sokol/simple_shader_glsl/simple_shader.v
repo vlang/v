@@ -68,7 +68,7 @@ fn (mut a App) run() {
 }
 
 fn init(user_data voidptr) {
-	mut app := &App(user_data)
+	mut app := unsafe { &App(user_data) }
 	mut desc := sapp.create_desc()
 
 	gfx.setup(&desc)
@@ -125,7 +125,7 @@ fn init(user_data voidptr) {
 	// in vec4 position;
 	// in vec4 color0;
 	// ```
-	// Also note the naming of the C.ATTR_* used as indicies.
+	// Also note the naming of the C.ATTR_* used as indices.
 	// They are the prefixed versions of the names of the input variables in the shader code.
 	// If they change in the shader code they will also change here.
 	pipeline_desc.layout.attrs[C.ATTR_vs_position].format = .float3 // x,y,z as f32
@@ -142,7 +142,7 @@ fn cleanup(user_data voidptr) {
 }
 
 fn frame(user_data voidptr) {
-	mut app := &App(user_data)
+	mut app := unsafe { &App(user_data) }
 
 	gfx.begin_default_pass(&app.pass_action, sapp.width(), sapp.height())
 

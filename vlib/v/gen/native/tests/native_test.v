@@ -1,4 +1,5 @@
 import os
+import time
 import benchmark
 import term
 
@@ -7,21 +8,24 @@ const is_verbose = os.getenv('VTEST_SHOW_CMD') != ''
 // TODO some logic copy pasted from valgrind_test.v and compiler_test.v, move to a module
 fn test_native() {
 	$if arm64 {
+		eprintln('>> skipping testing on ARM for now')
 		return
 	}
-	// some tests are running fine in macos
-	if os.user_os() != 'linux' && os.user_os() != 'macos' {
-		eprintln('native tests only run on Linux and macOS for now.')
-		exit(0)
+	$if freebsd {
+		eprintln('>> skipping testing on FreeBSD for now')
+		return
 	}
 	mut bench := benchmark.new_benchmark()
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
-	dir := os.join_path(vroot, 'vlib/v/gen/native/tests')
+	dir := os.join_path(vroot, 'vlib', 'v', 'gen', 'native', 'tests')
 	files := os.ls(dir) or { panic(err) }
 	//
-	wrkdir := os.join_path(os.temp_dir(), 'vtests', 'native')
+	wrkdir := os.join_path(os.vtmp_dir(), 'tests', 'native')
 	os.mkdir_all(wrkdir) or { panic(err) }
+	defer {
+		os.rmdir_all(wrkdir) or {}
+	}
 	os.chdir(wrkdir) or {}
 	tests := files.filter(it.ends_with('.vv'))
 	if tests.len == 0 {
@@ -34,39 +38,62 @@ fn test_native() {
 		full_test_path := os.real_path(os.join_path(dir, test))
 		test_file_name := os.file_name(test)
 		relative_test_path := full_test_path.replace(vroot + '/', '')
-		work_test_path := '$wrkdir/$test_file_name'
-		exe_test_path := '$wrkdir/${test_file_name}.exe'
-		cmd := '${os.quoted_path(vexe)} -o ${os.quoted_path(exe_test_path)} -b native ${os.quoted_path(full_test_path)}'
+		work_test_path := os.join_path(wrkdir, test_file_name)
+		exe_test_path := os.join_path(wrkdir, test_file_name + '.exe')
+		tmperrfile := os.join_path(dir, test + '.tmperr')
+		cmd := '${os.quoted_path(vexe)} -o ${os.quoted_path(exe_test_path)} -b native -skip-unused ${os.quoted_path(full_test_path)} -d no_backtrace -d custom_define 2> ${os.quoted_path(tmperrfile)}'
 		if is_verbose {
 			println(cmd)
 		}
+
+		sw_compile := time.new_stopwatch()
 		res_native := os.execute(cmd)
+		compile_time_ms := sw_compile.elapsed().milliseconds()
 		if res_native.exit_code != 0 {
 			bench.fail()
 			eprintln(bench.step_message_fail(cmd))
+
+			if os.exists(tmperrfile) {
+				err := os.read_file(tmperrfile) or { panic(err) }
+				eprintln(err)
+			}
+
 			continue
 		}
-		tmperrfile := '$dir/${test}.tmperr'
+
+		sw_run := time.new_stopwatch()
 		res := os.execute('${os.quoted_path(exe_test_path)} 2> ${os.quoted_path(tmperrfile)}')
+		runtime_ms := sw_run.elapsed().milliseconds()
 		if res.exit_code != 0 {
 			bench.fail()
-			eprintln(bench.step_message_fail('$full_test_path failed to run'))
+			eprintln(bench.step_message_fail('${full_test_path} failed to run, res.exit_code: ${res.exit_code} != 0 '))
+			eprintln('> The failed program, produced this output:')
+			eprintln('------------------------------------------------')
 			eprintln(res.output)
+			eprintln('------------------------------------------------')
+			eprintln('> tmperrfile: ${tmperrfile}, exists: ${os.exists(tmperrfile)}, content:')
+			errstr := os.read_file(tmperrfile) or { '' }
+			eprintln(errstr)
+			eprintln('------------------------------------------------')
+			eprintln('')
 			continue
 		}
-		mut expected := os.read_file('$dir/${test}.out') or { panic(err) }
-		errfile := '$dir/${test}.err'
+
+		mut expected := os.read_file(os.join_path(dir, test + '.out')) or { panic(err) }
+		errfile := os.join_path(dir, test + '.err')
 		if os.exists(errfile) {
-			mut err_expected := os.read_file('$dir/${test}.err') or { panic(err) }
+			mut err_expected := os.read_file(errfile) or { panic(err) }
 			err_expected = err_expected.trim_right('\r\n').replace('\r\n', '\n')
-			errstr := os.read_file(tmperrfile) or { panic(err) }
+			errstr := os.read_file(tmperrfile) or {
+				panic('${err}: ${os.quoted_path(exe_test_path)} 2> ${os.quoted_path(tmperrfile)}')
+			}
 			mut err_found := errstr.trim_right('\r\n').replace('\r\n', '\n')
 			if err_expected != err_found {
 				println(term.red('FAIL'))
 				println('============')
-				println('stderr expected: "$err_expected" len=$err_expected.len')
+				println('stderr expected: "${err_expected}" len=${err_expected.len}')
 				println('============')
-				println('stderr found:"$err_found" len=$err_found.len')
+				println('stderr found:"${err_found}" len=${err_found.len}')
 				println('============\n')
 				bench.fail()
 				continue
@@ -79,15 +106,15 @@ fn test_native() {
 		if expected != found {
 			println(term.red('FAIL'))
 			println('============')
-			println('expected: "$expected" len=$expected.len')
+			println('expected: "${expected}" len=${expected.len}')
 			println('============')
-			println('found:"$found" len=$found.len')
+			println('found:"${found}" len=${found.len}')
 			println('============\n')
 			bench.fail()
 			continue
 		}
 		bench.ok()
-		eprintln(bench.step_message_ok(relative_test_path))
+		eprintln(bench.step_message_ok('${relative_test_path:-45} , took ${compile_time_ms:4}ms to compile, ${runtime_ms:4}ms to run'))
 	}
 	bench.stop()
 	eprintln(term.h_divider('-'))

@@ -343,7 +343,7 @@ pub const (
 )
 
 pub fn window() JS.Window {
-	mut x := JS.Any(voidptr(0))
+	mut x := JS.Any(unsafe { voidptr(u64(0)) })
 	#x = window;
 
 	return x
@@ -359,7 +359,7 @@ pub type EventCallback = fn (JS.Event)
 // that is EventTarget. When you need access only to Event itself you can just use `fn (JS.Event)` as listener.
 pub fn event_listener(callback fn (JS.EventTarget, JS.Event)) EventCallback {
 	return fn [callback] (event JS.Event) {
-		mut target := JS.EventTarget(voidptr(0))
+		mut target := JS.EventTarget(unsafe { voidptr(u64(0)) })
 		#target = this;
 		callback(target, event)
 	}
@@ -490,7 +490,7 @@ pub type OnDeviceOrientation = fn (ev JS.DeviceOrientationEvent) JS.Any
 
 pub fn on_device_motion(cb fn (win JS.Window, ev JS.DeviceMotionEvent) JS.Any) OnDeviceMotion {
 	clos := fn [cb] (ev JS.DeviceMotionEvent) JS.Any {
-		mut win := JS.Any(voidptr(0))
+		mut win := JS.Any(unsafe { voidptr(u64(0)) })
 		#win = this;
 
 		return cb(win, ev)
@@ -500,7 +500,7 @@ pub fn on_device_motion(cb fn (win JS.Window, ev JS.DeviceMotionEvent) JS.Any) O
 
 pub fn on_device_orientation(cb fn (win JS.Window, ev JS.DeviceOrientationEvent) JS.Any) OnDeviceOrientation {
 	clos := fn [cb] (ev JS.DeviceOrientationEvent) JS.Any {
-		mut win := JS.Any(voidptr(0))
+		mut win := JS.Any(unsafe { voidptr(u64(0)) })
 		#win = this;
 
 		return cb(win, ev)
@@ -837,7 +837,7 @@ pub fn event_type(ev JS.Event) string {
 }
 
 pub fn create_event(typ string, bubbles bool, cancelable bool, composed bool) JS.Event {
-	mut ev := JS.Event(voidptr(0))
+	mut ev := JS.Event(unsafe { voidptr(u64(0)) })
 	#ev = new Event(typ.str,bubbles.val,cancelable.val,composed.val);
 
 	return ev

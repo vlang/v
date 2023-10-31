@@ -2,23 +2,88 @@ fn v() {
 	return 3
 }
 
-fn f() int
-{
+fn f() int {
 	return
 }
 
-fn g() (int, string)
-{
+fn g() (int, string) {
 	return
 }
 
-fn ff() int
-{
+fn ff() int {
 	return 2, ''
 }
 
-fn gg() (int, string)
-{
+fn gg() (int, string) {
 	return 3
 }
 
+fn test0_1() {
+	return 1
+}
+
+fn test0_2() {
+	return 1, 2
+}
+
+fn test0_3() {
+	return 1, 2, 3
+}
+
+fn test0_4() {
+	return 1, 2, 3, 4
+}
+
+///
+
+fn test1_1() int {
+	return 1
+}
+
+fn test1_2() int {
+	return 1, 2
+}
+
+fn test1_3() int {
+	return 1, 2, 3
+}
+
+fn test1_4() int {
+	return 1, 2, 3, 4
+}
+
+///
+
+fn test2_1() (int, int) {
+	return 1
+}
+
+fn test2_2() (int, int) {
+	return 1, 2
+}
+
+fn test2_3() (int, int) {
+	return 1, 2, 3
+}
+
+fn test2_4() (int, int) {
+	return 1, 2, 3, 4
+}
+
+///
+
+fn test3_1() (int, int, int) {
+	return 1
+}
+
+fn test3_2() (int, int, int) {
+	return 1, 2
+}
+
+fn test3_3() (int, int, int) {
+	return 1, 2, 3
+}
+
+fn test3_4() (int, int, int) {
+	return 1, 2, 3, 4
+}

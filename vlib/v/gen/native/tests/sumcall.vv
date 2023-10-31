@@ -7,12 +7,22 @@ fn sumcall2(a int, b int) int {
 	return a + b
 }
 
+fn sumcall7(a int, b int, c int, d int, e int, f int, g int) int {
+	return a + b + c + d + e + f + g
+}
+
 fn main() {
 	r := sumcall (1,2)
 	assert r == 3
 
 	s := sumcall2 (1,2)
 	assert s == 3
+
+	a := sumcall7(1,2,s,4,5,6,7)
+	assert a == 28
+
+	b := sumcall7(sumcall7(1, 2, 3, 4, 5, 6, 7), 8, 9, sumcall7(10, 11, 12, 13, 14, 15, 16), 17, 18, sumcall7(19, 20, 21, 22, 23, 24, 25))
+	assert b == 325
 
 	exit(0)
 }

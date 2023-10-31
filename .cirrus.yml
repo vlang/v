@@ -1,15 +1,41 @@
+env:
+  LANG: en_US.UTF-8
+
 freebsd_instance:
   image_family: freebsd-13-0
 
+## Note: all tasks should end with _script: here, otherwise they will not be picked up!
 freebsd_task:
-  name: Code CI / freebsd
+  name: FreeBSD Code CI
+  timeout_in: 31m
+  skip: "!changesInclude('.cirrus.yml', '**.{v,vsh}', '**.c', '**.h')"
   install_script: pkg install -y git
-  script: |
-    echo 'Building V'
-    git clone https://github.com/vlang/v
-    cd v
-    make
+  diagnose_env_script: |
+    ## env ## CIRRUS_WORKING_DIR is /tmp/cirrus-ci-build
+    pwd
+    ls -la
+    whoami
+    git log -n1
+    echo 'number of detected processors:'
+    getconf _NPROCESSORS_ONLN
+  build_script: |
+    echo 'Building local V'
+    cc --version
+    make CFLAGS=
+  build_fast_script: |
     ##.github/workflows/freebsd_build_tcc.sh
     ##tcc -v -v
     echo 'Build cmd/tools/fast'
-    cd cmd/tools/fast && ../../../v fast.v && ./fast -clang
+    cd cmd/tools/fast && ../../../v fast.v ## && ./fast -clang
+  test_math_script: |
+    echo 'Test the math module'
+    ./v test vlib/math
+  test_math_pure_v_script: |
+    echo 'Test the math module, using only the pure V versions, without the .c.v overrides'
+    ./v -exclude @vlib/math/*.c.v test vlib/math
+  test_zip_modules_script: |
+    echo 'Test modules using thirdparty/zip'
+    ./v test vlib/compress/ vlib/szip/
+  test_self_script: |
+    echo 'Run test-self'
+    VTEST_JUST_ESSENTIAL=1 ./v test-self

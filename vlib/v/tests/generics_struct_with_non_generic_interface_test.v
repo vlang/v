@@ -2,12 +2,12 @@ interface Box {
 	transform(input int) int
 }
 
-struct Test<T> {
+struct Test[T] {
 	data T
 	salt int
 }
 
-fn (t Test<T>) transform(input int) int {
+fn (t Test[T]) transform(input int) int {
 	return input + t.salt
 }
 
@@ -16,7 +16,7 @@ fn box_transform(b Box) int {
 }
 
 fn test_generic_struct_with_non_generic_interface() {
-	ret := box_transform(Test<string>{
+	ret := box_transform(Test[string]{
 		data: 'hello'
 		salt: 6
 	})
@@ -24,8 +24,8 @@ fn test_generic_struct_with_non_generic_interface() {
 	assert ret == 106
 }
 
-fn run<T>(data T) {
-	t := Test<T>{
+fn run[T](data T) {
+	t := Test[T]{
 		data: data
 		salt: 6
 	}

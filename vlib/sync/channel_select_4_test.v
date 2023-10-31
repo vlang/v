@@ -16,8 +16,8 @@ fn test_select() {
 	chi := chan int{cap: 10}
 	recch := chan i64{cap: 10}
 	chsum := chan i64{}
-	go do_rec_i64(recch, chsum)
-	go do_send_int(chi)
+	spawn do_rec_i64(recch, chsum)
+	spawn do_send_int(chi)
 	mut sum := i64(0)
 	mut sl := i64(0)
 	for _ in 0 .. 60000 + recch.cap {

@@ -2,6 +2,7 @@
 module sapp
 
 import sokol.gfx
+import sokol.memory
 
 pub const used_import = gfx.used_import
 
@@ -97,6 +98,12 @@ pub fn show_mouse(visible bool) {
 	C.sapp_show_mouse(visible)
 }
 
+// set mouse cursor
+[inline]
+pub fn set_mouse_cursor(cursor MouseCursor) {
+	C.sapp_set_mouse_cursor(cursor)
+}
+
 // show or hide the mouse cursor
 [inline]
 pub fn mouse_shown() bool {
@@ -163,7 +170,7 @@ pub fn frame_duration() f64 {
 
 // write string into clipboard
 [inline]
-pub fn set_clipboard_string(str &char) {
+pub fn set_clipboard_string(str &u8) {
 	C.sapp_set_clipboard_string(str)
 }
 
@@ -174,16 +181,21 @@ pub fn get_clipboard_string() &char {
 }
 
 // special run-function for SOKOL_NO_ENTRY (in standard mode this is an empty stub)
-[inline]
 pub fn run(desc &Desc) {
+	if desc.allocator.alloc_fn == unsafe { nil } && desc.allocator.free_fn == unsafe { nil } {
+		unsafe {
+			desc.allocator.alloc_fn = memory.salloc
+			desc.allocator.free_fn = memory.sfree
+			desc.allocator.user_data = voidptr(0x10005a44)
+		}
+	}
+	if desc.logger.func == unsafe { nil } {
+		unsafe {
+			desc.logger.func = memory.slog
+		}
+	}
 	g_desc = *desc
 	C.sapp_run(desc)
-}
-
-// GL: return true when GLES2 fallback is active (to detect fallback from GLES3)
-[inline]
-pub fn gles2() bool {
-	return C.sapp_gles2()
 }
 
 // HTML5: enable or disable the hardwired "Leave Site?" dialog box

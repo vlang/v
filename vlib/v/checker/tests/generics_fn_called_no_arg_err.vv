@@ -1,9 +1,9 @@
-struct Queue<T>{
+struct Queue[T]{
     buffer []T
 }
 
-fn new_queue<T>() Queue<T> {
-    q := Queue<T>{
+fn new_queue[T]() Queue[T] {
+    q := Queue[T]{
         buffer: []T{cap: 1024}
     }
     return q

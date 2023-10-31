@@ -6,23 +6,23 @@ fn mm_alloc(size u64) (&byte, Errno) {
 	// BEGIN CONSTS
 	// the constants need to be here, since the initialization of other constants,
 	// which happen before these ones would, require malloc
-	mem_prot := MemProt(int(MemProt.prot_read) | int(MemProt.prot_write))
-	map_flags := MapFlags(int(MapFlags.map_private) | int(MapFlags.map_anonymous))
+	mem_prot := unsafe { MemProt(int(MemProt.prot_read) | int(MemProt.prot_write)) }
+	map_flags := unsafe { MapFlags(int(MapFlags.map_private) | int(MapFlags.map_anonymous)) }
 	// END CONSTS
 
-	a, e := sys_mmap(&byte(0), size + sizeof(u64), mem_prot, map_flags, -1, 0)
+	a, e := sys_mmap(&u8(0), size + sizeof(u64), mem_prot, map_flags, -1, 0)
 	if e == .enoerror {
 		unsafe {
 			mut ap := &u64(a)
 			*ap = size
-			x2 := &byte(a + sizeof(u64))
+			x2 := &u8(a + sizeof(u64))
 			return x2, e
 		}
 	}
-	return &byte(0), e
+	return &u8(0), e
 }
 
-fn mm_free(addr &byte) Errno {
+fn mm_free(addr &u8) Errno {
 	unsafe {
 		ap := &u64(addr - sizeof(u64))
 		size := *ap
@@ -34,20 +34,20 @@ fn system_alloc(_ voidptr, size usize) (voidptr, usize, u32) {
 	// BEGIN CONSTS
 	// the constants need to be here, since the initialization of other constants,
 	// which happen before these ones would, require malloc
-	mem_prot := MemProt(int(MemProt.prot_read) | int(MemProt.prot_write))
-	map_flags := MapFlags(int(MapFlags.map_private) | int(MapFlags.map_anonymous))
+	mem_prot := unsafe { MemProt(int(MemProt.prot_read) | int(MemProt.prot_write)) }
+	map_flags := unsafe { MapFlags(int(MapFlags.map_private) | int(MapFlags.map_anonymous)) }
 	// END CONSTS
 
-	a, e := sys_mmap(&byte(0), u64(size), mem_prot, map_flags, -1, 0)
+	a, e := sys_mmap(&u8(0), u64(size), mem_prot, map_flags, -1, 0)
 
 	if e == .enoerror {
 		return a, size, 0
 	}
-	return voidptr(0), 0, 0
+	return unsafe { nil }, 0, 0
 }
 
 fn system_remap(_ voidptr, ptr voidptr, oldsize usize, newsize usize, can_move bool) voidptr {
-	return voidptr(0)
+	return unsafe { nil }
 }
 
 fn system_free_part(_ voidptr, ptr voidptr, oldsize usize, newsize usize) bool {
@@ -87,6 +87,6 @@ fn get_linux_allocator() dlmalloc.Allocator {
 		can_release_part: system_can_release_part
 		allocates_zeros: system_allocates_zeros
 		page_size: system_page_size
-		data: voidptr(0)
+		data: unsafe { nil }
 	}
 }

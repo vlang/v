@@ -9,5 +9,5 @@ fn test_option_empty_map() {
 	}
 
 	dump(x)
-	assert '$x' == '{}'
+	assert '${x}' == '{}'
 }

@@ -1,0 +1,8 @@
+fn f1[T](x T, i int) T {
+	return x
+}
+
+fn main() {
+	ff1 := f1 // <-- missing e.g. `[int]`
+	// ff1 := f1[int] <-- is a valid usage with generic return types that are not generic structs
+}

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Subhomoy Haldar. All rights reserved.
+// Copyright (c) 2019-2023 Subhomoy Haldar. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module main
 
@@ -9,7 +9,7 @@ import semver
 
 const (
 	tool_name        = os.file_name(os.executable())
-	tool_version     = '0.0.1'
+	tool_version     = '0.1.0'
 	tool_description = '\n  Bump the semantic version of the v.mod and/or specified files.
 
   The first instance of a version number is replaced with the new version.
@@ -20,7 +20,12 @@ const (
     tool_version = \'1.2.1\'
     version: \'0.2.42\'
     VERSION = "1.23.8"
-  
+
+  If certain lines need to be skipped, use the --skip option. For instance,
+  the following command will skip lines containing "tool-version":
+
+    v bump --patch --skip "tool-version" [files...]
+
 Examples:
   Bump the patch version in v.mod if it exists
     v bump --patch
@@ -37,6 +42,7 @@ struct Options {
 	major     bool
 	minor     bool
 	patch     bool
+	skip      string
 }
 
 type ReplacementFunction = fn (re regex.RE, input string, start int, end int) string
@@ -67,10 +73,10 @@ fn get_replacement_function(options Options) ReplacementFunction {
 	return replace_with_increased_patch_version
 }
 
-fn process_file(input_file string, options Options) {
-	lines := os.read_lines(input_file) or { panic('Failed to read file: $input_file') }
+fn process_file(input_file string, options Options) ! {
+	lines := os.read_lines(input_file) or { return error('Failed to read file: ${input_file}') }
 
-	mut re := regex.regex_opt(semver_query) or { panic('Could not create a RegEx parser.') }
+	mut re := regex.regex_opt(semver_query) or { return error('Could not create a RegEx parser.') }
 
 	repl_fn := get_replacement_function(options)
 
@@ -85,7 +91,8 @@ fn process_file(input_file string, options Options) {
 		}
 
 		// Check if replacement is necessary
-		updated_line := if line.to_lower().contains('version') {
+		updated_line := if line.to_lower().contains('version') && !(options.skip != ''
+			&& line.contains(options.skip)) {
 			replacement_complete = true
 			re.replace_by_fn(line, repl_fn)
 		} else {
@@ -103,28 +110,28 @@ fn process_file(input_file string, options Options) {
 	os.rm(backup_file) or {}
 
 	// Rename the original to the backup.
-	os.mv(input_file, backup_file) or { panic('Failed to copy file: $input_file') }
+	os.mv(input_file, backup_file) or { return error('Failed to copy file: ${input_file}') }
 
 	// Process the old file and write it back to the original.
 	os.write_file(input_file, new_lines.join_lines()) or {
-		panic('Failed to write file: $input_file')
+		return error('Failed to write file: ${input_file}')
 	}
 
 	// Remove the backup file.
 	os.rm(backup_file) or {}
 
 	if replacement_complete {
-		println('Bumped version in $input_file')
+		println('Bumped version in ${input_file}')
 	} else {
-		println('No changes made in $input_file')
+		println('No changes made in ${input_file}')
 	}
 }
 
 fn main() {
 	if os.args.len < 2 {
-		println('Usage: $tool_name [options] [file1 file2 ...]
-$tool_description
-Try $tool_name -h for more help...')
+		eprintln('Usage: ${tool_name} [options] [file1 file2 ...]
+${tool_description}
+Try ${tool_name} -h for more help...')
 		exit(1)
 	}
 
@@ -141,6 +148,12 @@ Try $tool_name -h for more help...')
 		patch: fp.bool('patch', `p`, false, 'Bump the patch version.')
 		minor: fp.bool('minor', `n`, false, 'Bump the minor version.')
 		major: fp.bool('major', `m`, false, 'Bump the major version.')
+		skip: fp.string('skip', `s`, '', 'Skip lines matching this substring.').trim_space()
+	}
+
+	remaining := fp.finalize() or {
+		eprintln(fp.usage())
+		exit(1)
 	}
 
 	if options.show_help {
@@ -148,28 +161,37 @@ Try $tool_name -h for more help...')
 		exit(0)
 	}
 
-	validate_options(options) or { panic(err) }
+	validate_options(options) or {
+		eprintln(fp.usage())
+		exit(1)
+	}
 
-	files := os.args[3..]
+	files := remaining[1..]
 
 	if files.len == 0 {
 		if !os.exists('v.mod') {
-			println('v.mod does not exist. You can create one using "v init".')
+			eprintln('v.mod does not exist. You can create one using "v init".')
 			exit(1)
 		}
-		process_file('v.mod', options)
+		process_file('v.mod', options) or {
+			eprintln('Failed to process v.mod: ${err}')
+			exit(1)
+		}
 	}
 
 	for input_file in files {
 		if !os.exists(input_file) {
-			println('File not found: $input_file')
+			eprintln('File not found: ${input_file}')
 			exit(1)
 		}
-		process_file(input_file, options)
+		process_file(input_file, options) or {
+			eprintln('Failed to process ${input_file}: ${err}')
+			exit(1)
+		}
 	}
 }
 
-fn validate_options(options Options) ? {
+fn validate_options(options Options) ! {
 	if options.patch && options.major {
 		return error('Cannot specify both --patch and --major.')
 	}

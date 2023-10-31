@@ -1,4 +1,4 @@
-pub fn str_escaped(b byte) string {
+pub fn str_escaped(b u8) string {
 	str := match b {
 		0 { '`\\' + '0`' } // Bug is preventing \\0 in a literal
 		7 { '`\\a`' }
@@ -12,4 +12,12 @@ pub fn str_escaped(b byte) string {
 		else { '0x' + b.hex() }
 	}
 	return str
+}
+
+fn match_index_range_expr(var string) {
+	println(match true {
+		var.len < 3 { 'i#' + var }
+		var[1..2].contains('#') { var }
+		else { 'i#' + var }
+	})
 }

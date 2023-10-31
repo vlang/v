@@ -1,0 +1,20 @@
+vlib/v/checker/tests/fn_call_arg_ptr_mismatch_err.vv:31:29: error: cannot use `&&SomethingImplemented` as `&ISomething` in argument 1 to `get_value_implemented`
+   29 |     }
+   30 |     // fn call
+   31 |     _ := get_value_implemented(&s1)
+      |                                ~~~
+   32 |     // method call
+   33 |     _ := s1.get_value_implemented(&s1)
+vlib/v/checker/tests/fn_call_arg_ptr_mismatch_err.vv:33:32: error: cannot use `&&SomethingImplemented` as `&ISomething` in argument 1 to `get_value_implemented`
+   31 |     _ := get_value_implemented(&s1)
+   32 |     // method call
+   33 |     _ := s1.get_value_implemented(&s1)
+      |                                   ~~~
+   34 | 
+   35 |     s2 := &SomethingNotImplemented{
+vlib/v/checker/tests/fn_call_arg_ptr_mismatch_err.vv:39:33: error: cannot use `&&SomethingNotImplemented` as `&SomethingNotImplemented` in argument 1 to `get_value_not_implemented`
+   37 |     }
+   38 |     // fn call
+   39 |     _ := get_value_not_implemented(&s2)
+      |                                    ~~~
+   40 | }

@@ -7,8 +7,8 @@ const rate = f32(1) / 60 * 10
 
 struct App {
 mut:
-	gg   &gg.Context
-	anim &Anim
+	gg   &gg.Context = unsafe { nil }
+	anim &Anim       = unsafe { nil }
 }
 
 struct Anim {

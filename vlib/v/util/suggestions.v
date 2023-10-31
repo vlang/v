@@ -88,7 +88,7 @@ pub fn (s Suggestion) say(msg string) string {
 				res += '.\n1 possibility: ${values[0]}.'
 			} else if values.len < 25 {
 				// it is hard to read/use too many suggestions
-				res += '.\n$values.len possibilities: ' + values.join(', ') + '.'
+				res += '.\n${values.len} possibilities: ' + values.join(', ') + '.'
 			}
 		}
 	}
@@ -106,12 +106,12 @@ pub fn short_module_name(name string) string {
 		return name
 	}
 	mname := vals[vals.len - 2]
-	symname := vals[vals.len - 1]
-	return '${mname}.$symname'
+	symname := vals.last()
+	return '${mname}.${symname}'
 }
 
 // highlight_suggestion returns a colorfull/highlighted version of `message`,
-// but only if the standart error output allows for color messages, otherwise
+// but only if the standard error output allows for color messages, otherwise
 // the plain message will be returned.
 pub fn highlight_suggestion(message string) string {
 	return term.ecolorize(term.bright_blue, message)

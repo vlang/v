@@ -1,0 +1,7 @@
+vlib/v/checker/tests/comptime_call_method_void_err.vv:17:20: cgen error: method `sample1()` (no value) used as value
+   15 |     $for method in Dummy.methods {
+   16 |         if os.args.len >= 1 {
+   17 |             println(Dummy{}.$method(os.args[0]))
+      |                             ~~~~~~~~~~~~~~~~~~~
+   18 |         }
+   19 |     }

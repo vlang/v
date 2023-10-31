@@ -50,7 +50,7 @@ fn (mut h HighScore) load() {
 
 struct App {
 mut:
-	gg         &gg.Context
+	gg         &gg.Context = unsafe { nil }
 	score      int
 	best       HighScore
 	snake      []Pos
@@ -167,13 +167,13 @@ fn on_frame(mut app App) {
 
 	// drawing top
 	app.gg.draw_rect_filled(0, 0, canvas_size, top_height, gx.black)
-	app.gg.draw_text(150, top_height / 2, 'Score: $app.score', gx.TextCfg{
+	app.gg.draw_text(150, top_height / 2, 'Score: ${app.score}', gx.TextCfg{
 		color: gx.white
 		align: .center
 		vertical_align: .middle
 		size: 65
 	})
-	app.gg.draw_text(canvas_size - 150, top_height / 2, 'Best: $app.best', gx.TextCfg{
+	app.gg.draw_text(canvas_size - 150, top_height / 2, 'Best: ${app.best}', gx.TextCfg{
 		color: gx.white
 		align: .center
 		vertical_align: .middle

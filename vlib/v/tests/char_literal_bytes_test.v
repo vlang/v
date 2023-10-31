@@ -1,515 +1,515 @@
 fn test_all_byte_char_literals() {
 	mut a := ` `
 	a = `\x00`
-	assert byte(a) == byte(0)
+	assert u8(a) == u8(0)
 	a = `\x01`
-	assert byte(a) == byte(1)
+	assert u8(a) == u8(1)
 	a = `\x02`
-	assert byte(a) == byte(2)
+	assert u8(a) == u8(2)
 	a = `\x03`
-	assert byte(a) == byte(3)
+	assert u8(a) == u8(3)
 	a = `\x04`
-	assert byte(a) == byte(4)
+	assert u8(a) == u8(4)
 	a = `\x05`
-	assert byte(a) == byte(5)
+	assert u8(a) == u8(5)
 	a = `\x06`
-	assert byte(a) == byte(6)
+	assert u8(a) == u8(6)
 	a = `\x07`
-	assert byte(a) == byte(7)
+	assert u8(a) == u8(7)
 	a = `\x08`
-	assert byte(a) == byte(8)
+	assert u8(a) == u8(8)
 	a = `\x09`
-	assert byte(a) == byte(9)
+	assert u8(a) == u8(9)
 	a = `\x0a`
-	assert byte(a) == byte(10)
+	assert u8(a) == u8(10)
 	a = `\x0b`
-	assert byte(a) == byte(11)
+	assert u8(a) == u8(11)
 	a = `\x0c`
-	assert byte(a) == byte(12)
+	assert u8(a) == u8(12)
 	a = `\x0d`
-	assert byte(a) == byte(13)
+	assert u8(a) == u8(13)
 	a = `\x0e`
-	assert byte(a) == byte(14)
+	assert u8(a) == u8(14)
 	a = `\x0f`
-	assert byte(a) == byte(15)
+	assert u8(a) == u8(15)
 	a = `\x10`
-	assert byte(a) == byte(16)
+	assert u8(a) == u8(16)
 	a = `\x11`
-	assert byte(a) == byte(17)
+	assert u8(a) == u8(17)
 	a = `\x12`
-	assert byte(a) == byte(18)
+	assert u8(a) == u8(18)
 	a = `\x13`
-	assert byte(a) == byte(19)
+	assert u8(a) == u8(19)
 	a = `\x14`
-	assert byte(a) == byte(20)
+	assert u8(a) == u8(20)
 	a = `\x15`
-	assert byte(a) == byte(21)
+	assert u8(a) == u8(21)
 	a = `\x16`
-	assert byte(a) == byte(22)
+	assert u8(a) == u8(22)
 	a = `\x17`
-	assert byte(a) == byte(23)
+	assert u8(a) == u8(23)
 	a = `\x18`
-	assert byte(a) == byte(24)
+	assert u8(a) == u8(24)
 	a = `\x19`
-	assert byte(a) == byte(25)
+	assert u8(a) == u8(25)
 	a = `\x1a`
-	assert byte(a) == byte(26)
+	assert u8(a) == u8(26)
 	a = `\x1b`
-	assert byte(a) == byte(27)
+	assert u8(a) == u8(27)
 	a = `\x1c`
-	assert byte(a) == byte(28)
+	assert u8(a) == u8(28)
 	a = `\x1d`
-	assert byte(a) == byte(29)
+	assert u8(a) == u8(29)
 	a = `\x1e`
-	assert byte(a) == byte(30)
+	assert u8(a) == u8(30)
 	a = `\x1f`
-	assert byte(a) == byte(31)
+	assert u8(a) == u8(31)
 	a = `\x20`
-	assert byte(a) == byte(32)
+	assert u8(a) == u8(32)
 	a = `\x21`
-	assert byte(a) == byte(33)
+	assert u8(a) == u8(33)
 	a = `\x22`
-	assert byte(a) == byte(34)
+	assert u8(a) == u8(34)
 	a = `\x23`
-	assert byte(a) == byte(35)
+	assert u8(a) == u8(35)
 	a = `\x24`
-	assert byte(a) == byte(36)
+	assert u8(a) == u8(36)
 	a = `\x25`
-	assert byte(a) == byte(37)
+	assert u8(a) == u8(37)
 	a = `\x26`
-	assert byte(a) == byte(38)
+	assert u8(a) == u8(38)
 	a = `\x27`
-	assert byte(a) == byte(39)
+	assert u8(a) == u8(39)
 	a = `\x28`
-	assert byte(a) == byte(40)
+	assert u8(a) == u8(40)
 	a = `\x29`
-	assert byte(a) == byte(41)
+	assert u8(a) == u8(41)
 	a = `\x2a`
-	assert byte(a) == byte(42)
+	assert u8(a) == u8(42)
 	a = `\x2b`
-	assert byte(a) == byte(43)
+	assert u8(a) == u8(43)
 	a = `\x2c`
-	assert byte(a) == byte(44)
+	assert u8(a) == u8(44)
 	a = `\x2d`
-	assert byte(a) == byte(45)
+	assert u8(a) == u8(45)
 	a = `\x2e`
-	assert byte(a) == byte(46)
+	assert u8(a) == u8(46)
 	a = `\x2f`
-	assert byte(a) == byte(47)
+	assert u8(a) == u8(47)
 	a = `\x30`
-	assert byte(a) == byte(48)
+	assert u8(a) == u8(48)
 	a = `\x31`
-	assert byte(a) == byte(49)
+	assert u8(a) == u8(49)
 	a = `\x32`
-	assert byte(a) == byte(50)
+	assert u8(a) == u8(50)
 	a = `\x33`
-	assert byte(a) == byte(51)
+	assert u8(a) == u8(51)
 	a = `\x34`
-	assert byte(a) == byte(52)
+	assert u8(a) == u8(52)
 	a = `\x35`
-	assert byte(a) == byte(53)
+	assert u8(a) == u8(53)
 	a = `\x36`
-	assert byte(a) == byte(54)
+	assert u8(a) == u8(54)
 	a = `\x37`
-	assert byte(a) == byte(55)
+	assert u8(a) == u8(55)
 	a = `\x38`
-	assert byte(a) == byte(56)
+	assert u8(a) == u8(56)
 	a = `\x39`
-	assert byte(a) == byte(57)
+	assert u8(a) == u8(57)
 	a = `\x3a`
-	assert byte(a) == byte(58)
+	assert u8(a) == u8(58)
 	a = `\x3b`
-	assert byte(a) == byte(59)
+	assert u8(a) == u8(59)
 	a = `\x3c`
-	assert byte(a) == byte(60)
+	assert u8(a) == u8(60)
 	a = `\x3d`
-	assert byte(a) == byte(61)
+	assert u8(a) == u8(61)
 	a = `\x3e`
-	assert byte(a) == byte(62)
+	assert u8(a) == u8(62)
 	a = `\x3f`
-	assert byte(a) == byte(63)
+	assert u8(a) == u8(63)
 	a = `\x40`
-	assert byte(a) == byte(64)
+	assert u8(a) == u8(64)
 	a = `\x41`
-	assert byte(a) == byte(65)
+	assert u8(a) == u8(65)
 	a = `\x42`
-	assert byte(a) == byte(66)
+	assert u8(a) == u8(66)
 	a = `\x43`
-	assert byte(a) == byte(67)
+	assert u8(a) == u8(67)
 	a = `\x44`
-	assert byte(a) == byte(68)
+	assert u8(a) == u8(68)
 	a = `\x45`
-	assert byte(a) == byte(69)
+	assert u8(a) == u8(69)
 	a = `\x46`
-	assert byte(a) == byte(70)
+	assert u8(a) == u8(70)
 	a = `\x47`
-	assert byte(a) == byte(71)
+	assert u8(a) == u8(71)
 	a = `\x48`
-	assert byte(a) == byte(72)
+	assert u8(a) == u8(72)
 	a = `\x49`
-	assert byte(a) == byte(73)
+	assert u8(a) == u8(73)
 	a = `\x4a`
-	assert byte(a) == byte(74)
+	assert u8(a) == u8(74)
 	a = `\x4b`
-	assert byte(a) == byte(75)
+	assert u8(a) == u8(75)
 	a = `\x4c`
-	assert byte(a) == byte(76)
+	assert u8(a) == u8(76)
 	a = `\x4d`
-	assert byte(a) == byte(77)
+	assert u8(a) == u8(77)
 	a = `\x4e`
-	assert byte(a) == byte(78)
+	assert u8(a) == u8(78)
 	a = `\x4f`
-	assert byte(a) == byte(79)
+	assert u8(a) == u8(79)
 	a = `\x50`
-	assert byte(a) == byte(80)
+	assert u8(a) == u8(80)
 	a = `\x51`
-	assert byte(a) == byte(81)
+	assert u8(a) == u8(81)
 	a = `\x52`
-	assert byte(a) == byte(82)
+	assert u8(a) == u8(82)
 	a = `\x53`
-	assert byte(a) == byte(83)
+	assert u8(a) == u8(83)
 	a = `\x54`
-	assert byte(a) == byte(84)
+	assert u8(a) == u8(84)
 	a = `\x55`
-	assert byte(a) == byte(85)
+	assert u8(a) == u8(85)
 	a = `\x56`
-	assert byte(a) == byte(86)
+	assert u8(a) == u8(86)
 	a = `\x57`
-	assert byte(a) == byte(87)
+	assert u8(a) == u8(87)
 	a = `\x58`
-	assert byte(a) == byte(88)
+	assert u8(a) == u8(88)
 	a = `\x59`
-	assert byte(a) == byte(89)
+	assert u8(a) == u8(89)
 	a = `\x5a`
-	assert byte(a) == byte(90)
+	assert u8(a) == u8(90)
 	a = `\x5b`
-	assert byte(a) == byte(91)
+	assert u8(a) == u8(91)
 	a = `\x5c`
-	assert byte(a) == byte(92)
+	assert u8(a) == u8(92)
 	a = `\x5d`
-	assert byte(a) == byte(93)
+	assert u8(a) == u8(93)
 	a = `\x5e`
-	assert byte(a) == byte(94)
+	assert u8(a) == u8(94)
 	a = `\x5f`
-	assert byte(a) == byte(95)
+	assert u8(a) == u8(95)
 	a = `\x60`
-	assert byte(a) == byte(96)
+	assert u8(a) == u8(96)
 	a = `\x61`
-	assert byte(a) == byte(97)
+	assert u8(a) == u8(97)
 	a = `\x62`
-	assert byte(a) == byte(98)
+	assert u8(a) == u8(98)
 	a = `\x63`
-	assert byte(a) == byte(99)
+	assert u8(a) == u8(99)
 	a = `\x64`
-	assert byte(a) == byte(100)
+	assert u8(a) == u8(100)
 	a = `\x65`
-	assert byte(a) == byte(101)
+	assert u8(a) == u8(101)
 	a = `\x66`
-	assert byte(a) == byte(102)
+	assert u8(a) == u8(102)
 	a = `\x67`
-	assert byte(a) == byte(103)
+	assert u8(a) == u8(103)
 	a = `\x68`
-	assert byte(a) == byte(104)
+	assert u8(a) == u8(104)
 	a = `\x69`
-	assert byte(a) == byte(105)
+	assert u8(a) == u8(105)
 	a = `\x6a`
-	assert byte(a) == byte(106)
+	assert u8(a) == u8(106)
 	a = `\x6b`
-	assert byte(a) == byte(107)
+	assert u8(a) == u8(107)
 	a = `\x6c`
-	assert byte(a) == byte(108)
+	assert u8(a) == u8(108)
 	a = `\x6d`
-	assert byte(a) == byte(109)
+	assert u8(a) == u8(109)
 	a = `\x6e`
-	assert byte(a) == byte(110)
+	assert u8(a) == u8(110)
 	a = `\x6f`
-	assert byte(a) == byte(111)
+	assert u8(a) == u8(111)
 	a = `\x70`
-	assert byte(a) == byte(112)
+	assert u8(a) == u8(112)
 	a = `\x71`
-	assert byte(a) == byte(113)
+	assert u8(a) == u8(113)
 	a = `\x72`
-	assert byte(a) == byte(114)
+	assert u8(a) == u8(114)
 	a = `\x73`
-	assert byte(a) == byte(115)
+	assert u8(a) == u8(115)
 	a = `\x74`
-	assert byte(a) == byte(116)
+	assert u8(a) == u8(116)
 	a = `\x75`
-	assert byte(a) == byte(117)
+	assert u8(a) == u8(117)
 	a = `\x76`
-	assert byte(a) == byte(118)
+	assert u8(a) == u8(118)
 	a = `\x77`
-	assert byte(a) == byte(119)
+	assert u8(a) == u8(119)
 	a = `\x78`
-	assert byte(a) == byte(120)
+	assert u8(a) == u8(120)
 	a = `\x79`
-	assert byte(a) == byte(121)
+	assert u8(a) == u8(121)
 	a = `\x7a`
-	assert byte(a) == byte(122)
+	assert u8(a) == u8(122)
 	a = `\x7b`
-	assert byte(a) == byte(123)
+	assert u8(a) == u8(123)
 	a = `\x7c`
-	assert byte(a) == byte(124)
+	assert u8(a) == u8(124)
 	a = `\x7d`
-	assert byte(a) == byte(125)
+	assert u8(a) == u8(125)
 	a = `\x7e`
-	assert byte(a) == byte(126)
+	assert u8(a) == u8(126)
 	a = `\x7f`
-	assert byte(a) == byte(127)
+	assert u8(a) == u8(127)
 	a = `\x80`
-	assert byte(a) == byte(128)
+	assert u8(a) == u8(128)
 	a = `\x81`
-	assert byte(a) == byte(129)
+	assert u8(a) == u8(129)
 	a = `\x82`
-	assert byte(a) == byte(130)
+	assert u8(a) == u8(130)
 	a = `\x83`
-	assert byte(a) == byte(131)
+	assert u8(a) == u8(131)
 	a = `\x84`
-	assert byte(a) == byte(132)
+	assert u8(a) == u8(132)
 	a = `\x85`
-	assert byte(a) == byte(133)
+	assert u8(a) == u8(133)
 	a = `\x86`
-	assert byte(a) == byte(134)
+	assert u8(a) == u8(134)
 	a = `\x87`
-	assert byte(a) == byte(135)
+	assert u8(a) == u8(135)
 	a = `\x88`
-	assert byte(a) == byte(136)
+	assert u8(a) == u8(136)
 	a = `\x89`
-	assert byte(a) == byte(137)
+	assert u8(a) == u8(137)
 	a = `\x8a`
-	assert byte(a) == byte(138)
+	assert u8(a) == u8(138)
 	a = `\x8b`
-	assert byte(a) == byte(139)
+	assert u8(a) == u8(139)
 	a = `\x8c`
-	assert byte(a) == byte(140)
+	assert u8(a) == u8(140)
 	a = `\x8d`
-	assert byte(a) == byte(141)
+	assert u8(a) == u8(141)
 	a = `\x8e`
-	assert byte(a) == byte(142)
+	assert u8(a) == u8(142)
 	a = `\x8f`
-	assert byte(a) == byte(143)
+	assert u8(a) == u8(143)
 	a = `\x90`
-	assert byte(a) == byte(144)
+	assert u8(a) == u8(144)
 	a = `\x91`
-	assert byte(a) == byte(145)
+	assert u8(a) == u8(145)
 	a = `\x92`
-	assert byte(a) == byte(146)
+	assert u8(a) == u8(146)
 	a = `\x93`
-	assert byte(a) == byte(147)
+	assert u8(a) == u8(147)
 	a = `\x94`
-	assert byte(a) == byte(148)
+	assert u8(a) == u8(148)
 	a = `\x95`
-	assert byte(a) == byte(149)
+	assert u8(a) == u8(149)
 	a = `\x96`
-	assert byte(a) == byte(150)
+	assert u8(a) == u8(150)
 	a = `\x97`
-	assert byte(a) == byte(151)
+	assert u8(a) == u8(151)
 	a = `\x98`
-	assert byte(a) == byte(152)
+	assert u8(a) == u8(152)
 	a = `\x99`
-	assert byte(a) == byte(153)
+	assert u8(a) == u8(153)
 	a = `\x9a`
-	assert byte(a) == byte(154)
+	assert u8(a) == u8(154)
 	a = `\x9b`
-	assert byte(a) == byte(155)
+	assert u8(a) == u8(155)
 	a = `\x9c`
-	assert byte(a) == byte(156)
+	assert u8(a) == u8(156)
 	a = `\x9d`
-	assert byte(a) == byte(157)
+	assert u8(a) == u8(157)
 	a = `\x9e`
-	assert byte(a) == byte(158)
+	assert u8(a) == u8(158)
 	a = `\x9f`
-	assert byte(a) == byte(159)
+	assert u8(a) == u8(159)
 	a = `\xa0`
-	assert byte(a) == byte(160)
+	assert u8(a) == u8(160)
 	a = `\xa1`
-	assert byte(a) == byte(161)
+	assert u8(a) == u8(161)
 	a = `\xa2`
-	assert byte(a) == byte(162)
+	assert u8(a) == u8(162)
 	a = `\xa3`
-	assert byte(a) == byte(163)
+	assert u8(a) == u8(163)
 	a = `\xa4`
-	assert byte(a) == byte(164)
+	assert u8(a) == u8(164)
 	a = `\xa5`
-	assert byte(a) == byte(165)
+	assert u8(a) == u8(165)
 	a = `\xa6`
-	assert byte(a) == byte(166)
+	assert u8(a) == u8(166)
 	a = `\xa7`
-	assert byte(a) == byte(167)
+	assert u8(a) == u8(167)
 	a = `\xa8`
-	assert byte(a) == byte(168)
+	assert u8(a) == u8(168)
 	a = `\xa9`
-	assert byte(a) == byte(169)
+	assert u8(a) == u8(169)
 	a = `\xaa`
-	assert byte(a) == byte(170)
+	assert u8(a) == u8(170)
 	a = `\xab`
-	assert byte(a) == byte(171)
+	assert u8(a) == u8(171)
 	a = `\xac`
-	assert byte(a) == byte(172)
+	assert u8(a) == u8(172)
 	a = `\xad`
-	assert byte(a) == byte(173)
+	assert u8(a) == u8(173)
 	a = `\xae`
-	assert byte(a) == byte(174)
+	assert u8(a) == u8(174)
 	a = `\xaf`
-	assert byte(a) == byte(175)
+	assert u8(a) == u8(175)
 	a = `\xb0`
-	assert byte(a) == byte(176)
+	assert u8(a) == u8(176)
 	a = `\xb1`
-	assert byte(a) == byte(177)
+	assert u8(a) == u8(177)
 	a = `\xb2`
-	assert byte(a) == byte(178)
+	assert u8(a) == u8(178)
 	a = `\xb3`
-	assert byte(a) == byte(179)
+	assert u8(a) == u8(179)
 	a = `\xb4`
-	assert byte(a) == byte(180)
+	assert u8(a) == u8(180)
 	a = `\xb5`
-	assert byte(a) == byte(181)
+	assert u8(a) == u8(181)
 	a = `\xb6`
-	assert byte(a) == byte(182)
+	assert u8(a) == u8(182)
 	a = `\xb7`
-	assert byte(a) == byte(183)
+	assert u8(a) == u8(183)
 	a = `\xb8`
-	assert byte(a) == byte(184)
+	assert u8(a) == u8(184)
 	a = `\xb9`
-	assert byte(a) == byte(185)
+	assert u8(a) == u8(185)
 	a = `\xba`
-	assert byte(a) == byte(186)
+	assert u8(a) == u8(186)
 	a = `\xbb`
-	assert byte(a) == byte(187)
+	assert u8(a) == u8(187)
 	a = `\xbc`
-	assert byte(a) == byte(188)
+	assert u8(a) == u8(188)
 	a = `\xbd`
-	assert byte(a) == byte(189)
+	assert u8(a) == u8(189)
 	a = `\xbe`
-	assert byte(a) == byte(190)
+	assert u8(a) == u8(190)
 	a = `\xbf`
-	assert byte(a) == byte(191)
+	assert u8(a) == u8(191)
 	a = `\xc0`
-	assert byte(a) == byte(192)
+	assert u8(a) == u8(192)
 	a = `\xc1`
-	assert byte(a) == byte(193)
+	assert u8(a) == u8(193)
 	a = `\xc2`
-	assert byte(a) == byte(194)
+	assert u8(a) == u8(194)
 	a = `\xc3`
-	assert byte(a) == byte(195)
+	assert u8(a) == u8(195)
 	a = `\xc4`
-	assert byte(a) == byte(196)
+	assert u8(a) == u8(196)
 	a = `\xc5`
-	assert byte(a) == byte(197)
+	assert u8(a) == u8(197)
 	a = `\xc6`
-	assert byte(a) == byte(198)
+	assert u8(a) == u8(198)
 	a = `\xc7`
-	assert byte(a) == byte(199)
+	assert u8(a) == u8(199)
 	a = `\xc8`
-	assert byte(a) == byte(200)
+	assert u8(a) == u8(200)
 	a = `\xc9`
-	assert byte(a) == byte(201)
+	assert u8(a) == u8(201)
 	a = `\xca`
-	assert byte(a) == byte(202)
+	assert u8(a) == u8(202)
 	a = `\xcb`
-	assert byte(a) == byte(203)
+	assert u8(a) == u8(203)
 	a = `\xcc`
-	assert byte(a) == byte(204)
+	assert u8(a) == u8(204)
 	a = `\xcd`
-	assert byte(a) == byte(205)
+	assert u8(a) == u8(205)
 	a = `\xce`
-	assert byte(a) == byte(206)
+	assert u8(a) == u8(206)
 	a = `\xcf`
-	assert byte(a) == byte(207)
+	assert u8(a) == u8(207)
 	a = `\xd0`
-	assert byte(a) == byte(208)
+	assert u8(a) == u8(208)
 	a = `\xd1`
-	assert byte(a) == byte(209)
+	assert u8(a) == u8(209)
 	a = `\xd2`
-	assert byte(a) == byte(210)
+	assert u8(a) == u8(210)
 	a = `\xd3`
-	assert byte(a) == byte(211)
+	assert u8(a) == u8(211)
 	a = `\xd4`
-	assert byte(a) == byte(212)
+	assert u8(a) == u8(212)
 	a = `\xd5`
-	assert byte(a) == byte(213)
+	assert u8(a) == u8(213)
 	a = `\xd6`
-	assert byte(a) == byte(214)
+	assert u8(a) == u8(214)
 	a = `\xd7`
-	assert byte(a) == byte(215)
+	assert u8(a) == u8(215)
 	a = `\xd8`
-	assert byte(a) == byte(216)
+	assert u8(a) == u8(216)
 	a = `\xd9`
-	assert byte(a) == byte(217)
+	assert u8(a) == u8(217)
 	a = `\xda`
-	assert byte(a) == byte(218)
+	assert u8(a) == u8(218)
 	a = `\xdb`
-	assert byte(a) == byte(219)
+	assert u8(a) == u8(219)
 	a = `\xdc`
-	assert byte(a) == byte(220)
+	assert u8(a) == u8(220)
 	a = `\xdd`
-	assert byte(a) == byte(221)
+	assert u8(a) == u8(221)
 	a = `\xde`
-	assert byte(a) == byte(222)
+	assert u8(a) == u8(222)
 	a = `\xdf`
-	assert byte(a) == byte(223)
+	assert u8(a) == u8(223)
 	a = `\xe0`
-	assert byte(a) == byte(224)
+	assert u8(a) == u8(224)
 	a = `\xe1`
-	assert byte(a) == byte(225)
+	assert u8(a) == u8(225)
 	a = `\xe2`
-	assert byte(a) == byte(226)
+	assert u8(a) == u8(226)
 	a = `\xe3`
-	assert byte(a) == byte(227)
+	assert u8(a) == u8(227)
 	a = `\xe4`
-	assert byte(a) == byte(228)
+	assert u8(a) == u8(228)
 	a = `\xe5`
-	assert byte(a) == byte(229)
+	assert u8(a) == u8(229)
 	a = `\xe6`
-	assert byte(a) == byte(230)
+	assert u8(a) == u8(230)
 	a = `\xe7`
-	assert byte(a) == byte(231)
+	assert u8(a) == u8(231)
 	a = `\xe8`
-	assert byte(a) == byte(232)
+	assert u8(a) == u8(232)
 	a = `\xe9`
-	assert byte(a) == byte(233)
+	assert u8(a) == u8(233)
 	a = `\xea`
-	assert byte(a) == byte(234)
+	assert u8(a) == u8(234)
 	a = `\xeb`
-	assert byte(a) == byte(235)
+	assert u8(a) == u8(235)
 	a = `\xec`
-	assert byte(a) == byte(236)
+	assert u8(a) == u8(236)
 	a = `\xed`
-	assert byte(a) == byte(237)
+	assert u8(a) == u8(237)
 	a = `\xee`
-	assert byte(a) == byte(238)
+	assert u8(a) == u8(238)
 	a = `\xef`
-	assert byte(a) == byte(239)
+	assert u8(a) == u8(239)
 	a = `\xf0`
-	assert byte(a) == byte(240)
+	assert u8(a) == u8(240)
 	a = `\xf1`
-	assert byte(a) == byte(241)
+	assert u8(a) == u8(241)
 	a = `\xf2`
-	assert byte(a) == byte(242)
+	assert u8(a) == u8(242)
 	a = `\xf3`
-	assert byte(a) == byte(243)
+	assert u8(a) == u8(243)
 	a = `\xf4`
-	assert byte(a) == byte(244)
+	assert u8(a) == u8(244)
 	a = `\xf5`
-	assert byte(a) == byte(245)
+	assert u8(a) == u8(245)
 	a = `\xf6`
-	assert byte(a) == byte(246)
+	assert u8(a) == u8(246)
 	a = `\xf7`
-	assert byte(a) == byte(247)
+	assert u8(a) == u8(247)
 	a = `\xf8`
-	assert byte(a) == byte(248)
+	assert u8(a) == u8(248)
 	a = `\xf9`
-	assert byte(a) == byte(249)
+	assert u8(a) == u8(249)
 	a = `\xfa`
-	assert byte(a) == byte(250)
+	assert u8(a) == u8(250)
 	a = `\xfb`
-	assert byte(a) == byte(251)
+	assert u8(a) == u8(251)
 	a = `\xfc`
-	assert byte(a) == byte(252)
+	assert u8(a) == u8(252)
 	a = `\xfd`
-	assert byte(a) == byte(253)
+	assert u8(a) == u8(253)
 	a = `\xfe`
-	assert byte(a) == byte(254)
+	assert u8(a) == u8(254)
 	a = `\xff`
-	assert byte(a) == byte(255)
+	assert u8(a) == u8(255)
 }

@@ -1,1 +1,1 @@
-type Pointer<T> = &T
+type Pointer[T] = &T

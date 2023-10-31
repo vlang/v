@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module time
@@ -30,13 +30,13 @@ pub fn new_stopwatch(opts StopWatchOptions) StopWatch {
 	}
 }
 
-// start starts the stopwatch. If the timer was paused, restarts counting.
+// start starts the stopwatch. If the timer was paused, it continues counting.
 pub fn (mut t StopWatch) start() {
 	t.start = sys_mono_now()
 	t.end = 0
 }
 
-// restart restarts the stopwatch. If the timer was paused, restarts counting.
+// restart restarts the stopwatch. If the timer was paused, it restarts counting.
 pub fn (mut t StopWatch) restart() {
 	t.start = sys_mono_now()
 	t.end = 0

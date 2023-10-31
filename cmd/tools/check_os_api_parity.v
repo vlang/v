@@ -12,7 +12,7 @@ import term
 
 const (
 	base_os      = 'linux'
-	os_names     = ['linux', 'macos', 'windows']
+	os_names     = ['linux', 'macos', 'windows', 'freebsd', 'openbsd', 'solaris', 'termux']
 	skip_modules = [
 		'builtin.bare',
 		'builtin.linux_bare.old',
@@ -24,8 +24,6 @@ const (
 		'crypto.rand',
 		'os.bare',
 		'os2',
-		'picohttpparser',
-		'picoev',
 		'szip',
 		'v.eval',
 	]
@@ -40,10 +38,10 @@ mut:
 }
 
 fn main() {
-	vexe := pref.vexe_path()
+	vexe := os.real_path(os.getenv_opt('VEXE') or { @VEXE })
 	vroot := os.dir(vexe)
 	util.set_vroot_folder(vroot)
-	os.chdir(vroot) ?
+	os.chdir(vroot)!
 	cmd := diff.find_working_diff_command() or { '' }
 	mut app := App{
 		diff_cmd: cmd
@@ -52,7 +50,7 @@ fn main() {
 	}
 	for mname in app.modules {
 		if !app.is_verbose {
-			eprintln('Checking module: $mname ...')
+			eprintln('Checking module: ${mname} ...')
 		}
 		api_base := app.gen_api_for_module_in_os(mname, base_os)
 		for oname in os_names {
@@ -65,9 +63,9 @@ fn main() {
 	}
 	howmany := app.api_differences.len
 	if howmany > 0 {
-		eprintln(term.header('Found $howmany modules with different APIs', '='))
+		eprintln(term.header('Found ${howmany} modules with different APIs', '='))
 		for m in app.api_differences.keys() {
-			eprintln('Module: $m')
+			eprintln('Module: ${m}')
 		}
 		exit(1)
 	}
@@ -105,10 +103,10 @@ fn (app App) gen_api_for_module_in_os(mod_name string, os_name string) string {
 		for s in f.stmts {
 			if s is ast.FnDecl {
 				if s.is_pub {
-					fn_signature := s.stringify(b.table, mod_name, map[string]string{})
+					fn_signature := b.table.stringify_fn_decl(&s, mod_name, map[string]string{})
 					fn_mod := s.modname()
 					if fn_mod == mod_name {
-						fline := '$fn_mod: $fn_signature'
+						fline := '${fn_mod}: ${fn_signature}'
 						res << fline
 					}
 				}
@@ -122,7 +120,7 @@ fn (app App) gen_api_for_module_in_os(mod_name string, os_name string) string {
 fn (mut app App) compare_api(api_base string, api_os string, mod_name string, os_base string, os_target string) {
 	res := diff.color_compare_strings(app.diff_cmd, rand.ulid(), api_base, api_os)
 	if res.len > 0 {
-		summary := 'Different APIs found for module: `$mod_name`, between OS base: `$os_base` and OS: `$os_target`'
+		summary := 'Different APIs found for module: `${mod_name}`, between OS base: `${os_base}` and OS: `${os_target}`'
 		eprintln(term.header(summary, '-'))
 		eprintln(res)
 		eprintln(term.h_divider('-'))

@@ -4,18 +4,25 @@ on:
   push:
     paths-ignore:
       - "**.md"
+      - "**.yml"
   pull_request:
     paths-ignore:
       - "**.md"
+      - "**.yml"
+
+concurrency:
+  group: sdl-ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
 
 jobs:
   v-compiles-sdl-examples:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 30
     env:
       VFLAGS: -cc tcc
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Build V
         run: make && sudo ./v symlink
 
@@ -41,7 +48,4 @@ jobs:
       - name: Build sdl examples
         run: |
           v shader sdl/examples/sdl_opengl_and_sokol
-          for example in sdl/examples/*; do
-              echo "v $example"
-              v "$example";
-          done
+          v should-compile-all sdl/examples/

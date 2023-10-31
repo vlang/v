@@ -1,0 +1,6 @@
+vlib/v/checker/tests/voidptr_dereference_err.vv:5:10: error: cannot dereference to void
+    3 |     mut b := 123
+    4 |     a = &b
+    5 |     println(*a)
+      |             ^
+    6 | }

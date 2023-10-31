@@ -6,6 +6,6 @@ pub:
 }
 
 // address gets the address of a socket
-pub fn (s &Socket) address() ?Addr {
+pub fn (s &Socket) address() !Addr {
 	return addr_from_socket_handle(s.handle)
 }

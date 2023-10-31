@@ -18,13 +18,13 @@ fn test_aes_ofb() {
 	println('test_aes_ofb ok')
 }
 
-fn aes_ofb_en(mut src []byte, key []byte, iv []byte) {
+fn aes_ofb_en(mut src []u8, key []u8, iv []u8) {
 	block := aes.new_cipher(key)
 	mut mode := cipher.new_ofb(block, iv)
 	mode.xor_key_stream(mut src, src.clone())
 }
 
-fn aes_ofb_de(mut src []byte, key []byte, iv []byte) {
+fn aes_ofb_de(mut src []u8, key []u8, iv []u8) {
 	block := aes.new_cipher(key)
 	mut mode := cipher.new_ofb(block, iv)
 	mode.xor_key_stream(mut src, src.clone())

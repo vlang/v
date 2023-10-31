@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module fractions
@@ -84,7 +84,7 @@ pub fn approximate_with_eps(val f64, eps f64) Fraction {
 	if eps < 0.0 {
 		panic('Epsilon value cannot be negative.')
 	}
-	if math.fabs(val) > math.max_i64 {
+	if math.abs(val) > math.max_i64 {
 		panic('Value out of range.')
 	}
 	// The integer part is separated first. Then we process the fractional
@@ -110,7 +110,7 @@ pub fn approximate_with_eps(val f64, eps f64) Fraction {
 		// eval_cf is called often so it needs to be performant
 		partial = eval_cf(whole, d)
 		// Check if we're done
-		if math.fabs(val - partial.f64()) < eps {
+		if math.abs(val - partial.f64()) < eps {
 			return partial
 		}
 		frac -= f64(den)

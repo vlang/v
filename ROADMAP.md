@@ -1,34 +1,72 @@
-## [Version 0.3](https://github.com/vlang/v/projects/5)
-- [ ] [make `-autofree` the default](https://github.com/vlang/v/issues/6989)
-- [x] [gc option]
-- [ ] [coroutines](https://github.com/vlang/v/discussions/11582)
+## [Version 0.3]
+
+- [x] gc option
 - [x] channels
 - [x] lock{}
 - [x] thread safe arrays
-- [ ] [thread safe maps](https://github.com/vlang/v/discussions/11729)
-- [ ] [C2V translator](https://github.com/vlang/v/issues/6985)
-- [ ] doom.v
 - [x] rune type
 - [x] replace `ustring` with `[]rune`
 - [x] fix `byte.str()`
 - [x] maps with non-string keys
 - [x] iOS/Android support
-- [ ] parallel parser
-- [ ] parallel checker
 - [x] parallel cgen
-- [ ] parallel C compilation
-- [ ] `recover()` from panics
 - [x] IO streams
 - [x] struct embedding
 - [x] interface embedding
 - [x] interfaces: allow struct fields (not just methods)
-- [ ] vfmt: fix common errors automatically (make vars mutable and vice versa, add missing imports)
-- [ ] method expressions with an explicit receiver as the first argument
 - [x] short generics syntax (`foo(5)` instead of `foo<int>(5)`)
-- [ ] fix all remaining generics issues
-- [ ] merge v.c and v_win.c
 - [x] more advanced errors, not just `error('message')`
-- [ ] VLS for autocomplete, refactoring, go to definition etc
-- [ ] Recursive structs via optionals: `struct Node { next ?Node }`
-- [ ] Remove `foo = 0` for `&Foo`
-- [ ] Handle function pointers safely, remove `if function == 0 {`
+
+## [Version 0.4]
+
+- [x] [Coroutines](https://github.com/vlang/v/discussions/11582)
+- [x] vfmt: add missing imports (like goimports)
+- [x] Recursive structs via options: `struct Node { next ?Node }`
+- [x] First class Option type
+- [x] Optional function struct fields
+- [x] Handle function pointers safely, remove `if function == 0 {`
+- [x] Bundle OpenSSL like GC
+- [x] Anonymous structs
+- [x] Improve vweb: allow separation of logic via "controllers", lots of other fixes
+- [x] New VPM site
+
+## [Version 0.5]
+
+- [ ] [Thread safe maps](https://github.com/vlang/v/discussions/11729)
+- [ ] Parallel parser
+- [ ] Parallel checker
+- [ ] Parallel C compilation
+- [ ] Direct C/C++ interop without generating wrappers
+- [ ] `recover()` from panics
+- [ ] -usecache on by default
+- [ ] -skip-unused on by default
+- [ ] 64/32 bit int depending on arch (will remove array.len limitation on 64 bit systems)
+- [ ] `copy()` builtin function (e.g. for easier conversion from `[]Foo` to `[4]Foo`)
+- [x] Lambdas: `a.sort(|a, b| a > b)`
+- [ ] Custom attributes.
+- [ ] `arr.first() or { }` like `arr[0] or { }`
+
+## [Version 1.0]
+
+- [ ] Cross compilation of C
+- [ ] Big remaining bugs fixed
+- [ ] More powerful comptime
+- [ ] Constrains for generics
+- [ ] Coroutines on Windows
+- [ ] Autofree memory management option ready for production
+- [ ] C2V supporting entire C99 standard
+
+### Tooling
+
+- [ ] More stable VLS
+- [ ] Profiler improvements
+  - [ ] Basic interactive shell with search, sort, filter, etc.
+- [ ] VPM
+  - [x] New VPM site
+  - [ ] Package versioning
+- [ ] A better documentation platform
+
+### Web
+
+- [ ] Site that brings everything together in a single style
+- [ ] Interactive educational platform (learning to program for beginners)

@@ -1,0 +1,15 @@
+struct S1 {}
+
+struct S2 {}
+
+type T1 = S1 | S2
+
+struct Ptr {
+	ptr1 &T1 = unsafe { nil }
+	ptr2 &map[int]int = unsafe { nil }
+}
+
+fn main() {
+	ptr := Ptr{}
+	println(ptr)
+}

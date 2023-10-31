@@ -47,7 +47,7 @@ fn test_can_compile_and_use_library_with_skip_unused() {
 }
 
 fn v_compile(vopts string) os.Result {
-	cmd := '${os.quoted_path(vexe)} -showcc $vopts'
+	cmd := '${os.quoted_path(vexe)} -showcc ${vopts}'
 	// dump(cmd)
 	res := os.execute_or_exit(cmd)
 	// dump(res)

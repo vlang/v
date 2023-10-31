@@ -190,11 +190,11 @@ fn test_signed_cast() {
 		mut u := strconv.Float64u{
 			u: strconv.double_plus_zero
 		}
-		assert '${u.f:g}' == '0'
-		assert '${u.f:G}' == '0'
+		assert '${u.f:g}' == '0.0'
+		assert '${u.f:G}' == '0.0'
 		u.u = strconv.double_minus_zero
-		assert '${u.f:g}' == '0'
-		assert '${u.f:G}' == '0'
+		assert '${u.f:g}' == '0.0'
+		assert '${u.f:G}' == '0.0'
 		u.u = strconv.double_plus_infinity
 		assert '${u.f:g}' == '+inf'
 		assert '${u.f:G}' == '+INF'
@@ -206,11 +206,11 @@ fn test_signed_cast() {
 		mut u := strconv.Float32u{
 			u: strconv.single_plus_zero
 		}
-		assert '${u.f:g}' == '0'
-		assert '${u.f:G}' == '0'
+		assert '${u.f:g}' == '0.0'
+		assert '${u.f:G}' == '0.0'
 		u.u = strconv.single_minus_zero
-		assert '${u.f:g}' == '0'
-		assert '${u.f:G}' == '0'
+		assert '${u.f:g}' == '0.0'
+		assert '${u.f:G}' == '0.0'
 		u.u = strconv.single_plus_infinity
 		assert '${u.f:g}' == '+inf'
 		assert '${u.f:G}' == '+INF'
@@ -332,4 +332,21 @@ fn test_parse() {
 	assert u64(1) == '1'.parse_uint(8, 8) or { 0 }
 	assert u64(1) == '1'.parse_uint(10, 8) or { 0 }
 	assert u64(1) == '1'.parse_uint(16, 8) or { 0 }
+}
+
+fn test_interpolate_binary_literals() {
+	assert ' 1 ${i64(0b1000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000)}' == ' 1 -9223372036854775808'
+	assert ' 2 ${i64(0b1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111)}' == ' 2 -1'
+	assert ' 3 ${i64(0b0111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111)}' == ' 3 9223372036854775807'
+	assert ' 4 ${u64(0b1000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000)}' == ' 4 9223372036854775808'
+	assert ' 5 ${u64(0b1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111)}' == ' 5 18446744073709551615'
+	assert ' 6 ${u64(0b0111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111)}' == ' 6 9223372036854775807'
+	assert ' 7 ${u32(0b111_1111_1111_1111_1111)}' == ' 7 524287'
+}
+
+fn test_interpolate_literal_limits() {
+	assert ' 8 ${u32(2147483648)}' == ' 8 2147483648'
+	assert ' 9 ${u64(0xFF_FF_FF_FF_FF_FF_FF_FF)}' == ' 9 18446744073709551615'
+	assert '10 ${u32(0o377777_77777)}' == '10 4294967295'
+	assert '11 ${i64(-2147483647)}' == '11 -2147483647'
 }

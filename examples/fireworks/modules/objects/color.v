@@ -5,8 +5,8 @@ import rand
 
 pub fn random_color() gx.Color {
 	return gx.Color{
-		r: rand.byte()
-		g: rand.byte()
-		b: rand.byte()
+		r: rand.u8()
+		g: rand.u8()
+		b: rand.u8()
 	}
 }

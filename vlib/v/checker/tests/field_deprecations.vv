@@ -1,0 +1,36 @@
+import v.checker.tests.module_with_structs_with_deprecated_fields as m
+
+struct Abc {
+mut:
+	x int
+	d int [deprecated]
+	z int
+}
+
+fn use_m_externally() {
+	x := m.Xyz{}
+	dump(x)
+}
+
+fn use_m_externally_and_use_deprecated_fields() {
+	mut x := m.Xyz{}
+	dump(x.a)
+	x.a = 123
+	dump(x.b)
+	x.b = 456
+	dump(x.c)
+	x.c = 11
+	dump(x.d)
+	x.d = 45
+}
+
+fn main() {
+	mut a := Abc{}
+	a.x = 1
+	a.d = 1
+	a.z = 1
+	dump(a)
+	println(a.d)
+	x := a.d + 1
+	dump(x)
+}

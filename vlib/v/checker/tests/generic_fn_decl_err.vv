@@ -1,0 +1,37 @@
+module main
+
+struct Db {}
+struct User {}
+struct Post {}
+
+fn main() {
+	r := Db{}
+	u := User{}
+	p := Post{}
+
+	r.create1(u, p)
+	r.create2(u, &p)
+	r.create3(u, [p])
+	r.create4(u)
+	r.create5(u)
+}
+
+fn (r Db) create1<U>(u U, p P) {
+	println('Yo')
+}
+
+fn (r Db) create2<U>(u U, p &P) {
+	println('Yo')
+}
+
+fn (r Db) create3<U>(u U, p []P) {
+	println('Yo')
+}
+
+fn (r Db) create4<U>(u U) P {
+	return P{}
+}
+
+fn (r Db) create5<U>(u U) []P {
+	return [P{}]
+}

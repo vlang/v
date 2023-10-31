@@ -22,9 +22,9 @@ pub fn random(n int) string {
 // amount of `end` marks in the `input`. An empty string is returned otherwise.
 // Using two identical marks as `start` and `end` results in undefined output behavior.
 // find_between_pair_byte is the fastest in the find_between_pair_* family of functions.
-// Example: assert strings.find_between_pair_byte('(V) (NOT V)',`(`,`)`) == 'V'
-// Example: assert strings.find_between_pair_byte('s {X{Y}} s',`{`,`}`) == 'X{Y}'
-pub fn find_between_pair_byte(input string, start byte, end byte) string {
+// Example: assert strings.find_between_pair_u8('(V) (NOT V)',`(`,`)`) == 'V'
+// Example: assert strings.find_between_pair_u8('s {X{Y}} s',`{`,`}`) == 'X{Y}'
+pub fn find_between_pair_u8(input string, start u8, end u8) string {
 	mut marks := 0
 	mut start_index := -1
 	for i, b in input {
@@ -125,4 +125,25 @@ pub fn find_between_pair_string(input string, start string, end string) string {
 		}
 	}
 	return ''
+}
+
+// split_capital returns an array containing the contents of `s` split by capital letters.
+// Example: assert strings.split_capital('XYZ') == ['X', 'Y', 'Z']
+// Example: assert strings.split_capital('XYStar') == ['X', 'Y', 'Star']
+pub fn split_capital(s string) []string {
+	mut res := []string{}
+	mut word_start := 0
+	for idx, c in s {
+		if c >= `A` && c <= `Z` {
+			if word_start != idx {
+				res << s#[word_start..idx]
+			}
+			word_start = idx
+			continue
+		}
+	}
+	if word_start != s.len {
+		res << s#[word_start..]
+	}
+	return res
 }

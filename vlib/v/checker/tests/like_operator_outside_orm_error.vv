@@ -1,0 +1,5 @@
+fn main() {
+	name := 'Luke'
+
+	println(name like 'L%')
+}

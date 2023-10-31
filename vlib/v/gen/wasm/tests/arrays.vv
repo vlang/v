@@ -1,0 +1,67 @@
+struct TEST {
+	a int
+	b i64
+}
+
+fn static_arrays() (int, int, i64) {
+	a := [8]int{}
+	b := [10, 12, 150]!
+	c := [TEST{}, TEST{
+		b: 10
+	}]!
+
+	return a[2], b[1], c[1].b
+}
+
+fn index_expression() {
+	b := [10, 12, 150]!
+
+	a := b[2]
+	c := 'hello'[4]
+	d := unsafe { c'hello'[2] }
+
+	println(a)
+	println(c)
+	println(d)
+}
+
+fn test_this(index int) int {
+	a := 'hello'
+	if index < a.len && index >= 0 {
+		return a[index]
+	}
+	return 10
+}
+
+struct AA {
+	a [10]&int
+}
+
+fn test_stuff() &int {
+	a := AA{}
+
+	mut b := &int(0)
+	b = a.a[2]
+
+	return b
+}
+
+fn main() {
+	println('--- static_arrays()')
+	a, b, c := static_arrays()
+	println(a)
+	println(b)
+	println(c)
+
+	println('--- index_expression()')
+	index_expression()
+
+	println('--- test_this()')
+	println(test_this(2))
+	println(test_this(10))
+	println(test_this(-1))
+
+	println('--- test_stuff()')
+	v := test_stuff()
+	println(v)
+}

@@ -1,10 +1,10 @@
-type Int = byte | int
+type Int = int | u8
 
 fn main() {
 	i := Int(0)
 	match mut i {
 		int { i = 1 }
-		byte { i = 2 }
+		u8 { i = 2 }
 	}
 	println(i)
 }

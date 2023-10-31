@@ -1,6 +1,4 @@
 import os
-import v.pref
-import v.util
 
 $if windows {
 	$if tinyc {
@@ -16,11 +14,9 @@ fn main() {
 		print('usage: v symlink [OPTIONS]')
 		exit(1)
 	}
+	vexe := os.real_path(os.getenv_opt('VEXE') or { @VEXE })
 
-	ci_mode := '-githubci' in os.args
-
-	vexe := os.real_path(pref.vexe_path())
-	if ci_mode {
+	if '-githubci' in os.args {
 		setup_symlink_github()
 	} else {
 		$if windows {
@@ -32,7 +28,7 @@ fn main() {
 }
 
 fn cleanup_vtmp_folder() {
-	os.rmdir_all(util.get_vtmp_folder()) or {}
+	os.rmdir_all(os.vtmp_dir()) or {}
 }
 
 fn setup_symlink_github() {
@@ -45,7 +41,7 @@ fn setup_symlink_github() {
 	mut content := os.read_file(os.getenv('GITHUB_PATH')) or {
 		panic('Failed to read GITHUB_PATH.')
 	}
-	content += '\n$os.getwd()\n'
+	content += '\n${os.getwd()}\n'
 	os.write_file(os.getenv('GITHUB_PATH'), content) or { panic('Failed to write to GITHUB_PATH.') }
 }
 
@@ -60,7 +56,7 @@ fn setup_symlink_unix(vexe string) {
 	}
 	os.rm(link_path) or {}
 	os.symlink(vexe, link_path) or {
-		eprintln('Failed to create symlink "$link_path". Try again with sudo.')
+		eprintln('Failed to create symlink "${link_path}". Try again with sudo.')
 		exit(1)
 	}
 }
@@ -88,25 +84,25 @@ fn setup_symlink_windows(vexe string) {
 			}
 		}
 		// First, try to create a native symlink at .\.bin\v.exe
-		os.symlink(vsymlink, vexe) or {
+		os.symlink(vexe, vsymlink) or {
 			// typically only fails if you're on a network drive (VirtualBox)
 			// do batch file creation instead
-			eprintln('Could not create a native symlink: $err')
+			eprintln('Could not create a native symlink: ${err}')
 			eprintln('Creating a batch file instead...')
 			vsymlink = os.join_path(vsymlinkdir, 'v.bat')
 			if os.exists(vsymlink) {
 				os.rm(vsymlink) or { panic(err) }
 			}
-			os.write_file(vsymlink, '@echo off\n"$vexe" %*') or { panic(err) }
-			eprintln('$vsymlink file written.')
+			os.write_file(vsymlink, '@echo off\n"${vexe}" %*') or { panic(err) }
+			eprintln('${vsymlink} file written.')
 		}
 		if !os.exists(vsymlink) {
-			warn_and_exit('Could not create $vsymlink')
+			warn_and_exit('Could not create ${vsymlink}')
 		}
-		println('Symlink $vsymlink to $vexe created.')
+		println('Symlink ${vsymlink} to ${vexe} created.')
 		println('Checking system %PATH%...')
 		reg_sys_env_handle := get_reg_sys_env_handle() or {
-			warn_and_exit(err.msg)
+			warn_and_exit(err.msg())
 			return
 		}
 		// TODO: Fix defers inside ifs
@@ -115,7 +111,7 @@ fn setup_symlink_windows(vexe string) {
 		// }
 		// if the above succeeded, and we cannot get the value, it may simply be empty
 		sys_env_path := get_reg_value(reg_sys_env_handle, 'Path') or { '' }
-		current_sys_paths := sys_env_path.split(os.path_delimiter).map(it.trim('/$os.path_separator'))
+		current_sys_paths := sys_env_path.split(os.path_delimiter).map(it.trim('/${os.path_separator}'))
 		mut new_paths := [vsymlinkdir]
 		for p in current_sys_paths {
 			if p == '' {
@@ -125,7 +121,7 @@ fn setup_symlink_windows(vexe string) {
 				new_paths << p
 			}
 		}
-		new_sys_env_path := new_paths.join(';')
+		new_sys_env_path := new_paths.join(os.path_delimiter)
 		if new_sys_env_path == sys_env_path {
 			println('System %PATH% was already configured.')
 		} else {
@@ -133,7 +129,7 @@ fn setup_symlink_windows(vexe string) {
 			println('Adding symlink directory to system %PATH%...')
 			set_reg_value(reg_sys_env_handle, 'Path', new_sys_env_path) or {
 				C.RegCloseKey(reg_sys_env_handle)
-				warn_and_exit(err.msg)
+				warn_and_exit(err.msg())
 			}
 			println('Done.')
 		}
@@ -156,13 +152,13 @@ fn warn_and_exit(err string) {
 }
 
 // get the system environment registry handle
-fn get_reg_sys_env_handle() ?voidptr {
+fn get_reg_sys_env_handle() !voidptr {
 	$if windows { // wrap for cross-compile compat
 		// open the registry key
 		reg_key_path := 'Environment'
-		reg_env_key := voidptr(0) // or HKEY (HANDLE)
+		reg_env_key := unsafe { nil } // or HKEY (HANDLE)
 		if C.RegOpenKeyEx(os.hkey_current_user, reg_key_path.to_wide(), 0, 1 | 2, &reg_env_key) != 0 {
-			return error('Could not open "$reg_key_path" in the registry')
+			return error('Could not open "${reg_key_path}" in the registry')
 		}
 		return reg_env_key
 	}
@@ -170,13 +166,13 @@ fn get_reg_sys_env_handle() ?voidptr {
 }
 
 // get a value from a given $key
-fn get_reg_value(reg_env_key voidptr, key string) ?string {
+fn get_reg_value(reg_env_key voidptr, key string) !string {
 	$if windows {
 		// query the value (shortcut the sizing step)
 		reg_value_size := u32(4095) // this is the max length (not for the registry, but for the system %PATH%)
 		mut reg_value := unsafe { &u16(malloc(int(reg_value_size))) }
 		if C.RegQueryValueExW(reg_env_key, key.to_wide(), 0, 0, reg_value, &reg_value_size) != 0 {
-			return error('Unable to get registry value for "$key".')
+			return error('Unable to get registry value for "${key}".')
 		}
 		return unsafe { string_from_wide(reg_value) }
 	}
@@ -184,11 +180,11 @@ fn get_reg_value(reg_env_key voidptr, key string) ?string {
 }
 
 // sets the value for the given $key to the given  $value
-fn set_reg_value(reg_key voidptr, key string, value string) ?bool {
+fn set_reg_value(reg_key voidptr, key string, value string) !bool {
 	$if windows {
 		if C.RegSetValueExW(reg_key, key.to_wide(), 0, C.REG_EXPAND_SZ, value.to_wide(),
 			value.len * 2) != 0 {
-			return error('Unable to set registry value for "$key". %PATH% may be too long.')
+			return error('Unable to set registry value for "${key}". %PATH% may be too long.')
 		}
 		return true
 	}
@@ -197,7 +193,7 @@ fn set_reg_value(reg_key voidptr, key string, value string) ?bool {
 
 // Broadcasts a message to all listening windows (explorer.exe in particular)
 // letting them know that the system environment has changed and should be reloaded
-fn send_setting_change_msg(message_data string) ?bool {
+fn send_setting_change_msg(message_data string) !bool {
 	$if windows {
 		if C.SendMessageTimeoutW(os.hwnd_broadcast, os.wm_settingchange, 0, unsafe { &u32(message_data.to_wide()) },
 			os.smto_abortifhung, 5000, 0) == 0 {

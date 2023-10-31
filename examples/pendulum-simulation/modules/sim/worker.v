@@ -36,7 +36,7 @@ pub fn sim_worker(id int, request_chan chan &SimRequest, result_channels []chan 
 		bmark.ok()
 	}
 	bmark.stop()
-	println(bmark.total_message(@FN + ': worker $id'))
+	println(bmark.total_message(@FN + ': worker ${id}'))
 }
 
 pub fn compute_result(request SimRequest) &SimResult {

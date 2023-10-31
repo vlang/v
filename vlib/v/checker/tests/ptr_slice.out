@@ -1,11 +1,11 @@
-vlib/v/checker/tests/ptr_slice.vv:9:17: error: type `&Foo` does not support slicing
+vlib/v/checker/tests/ptr_slice.vv:9:14: error: type `&Foo` does not support slicing
     7 | 
     8 | fn main() {
     9 |     fs := jeje()[1..]
       |                 ~~~~~
    10 |     println(fs)
    11 |     vs := byteptr(0)[..3]
-vlib/v/checker/tests/ptr_slice.vv:11:21: error: type `byteptr` does not support slicing
+vlib/v/checker/tests/ptr_slice.vv:11:18: error: type `byteptr` does not support slicing
     9 |     fs := jeje()[1..]
    10 |     println(fs)
    11 |     vs := byteptr(0)[..3]

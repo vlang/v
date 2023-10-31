@@ -1,8 +1,8 @@
-pub type Result<S> = Ok<S> | string
+pub type Result[S] = Ok[S] | string
 
-pub fn (x Result<S>) unwrap<S>() ?S {
+pub fn (x Result[S]) unwrap[S]() !S {
 	match x {
-		Ok<S> {
+		Ok[S] {
 			return x.value
 		}
 		string {
@@ -11,16 +11,16 @@ pub fn (x Result<S>) unwrap<S>() ?S {
 	}
 }
 
-struct Ok<S> {
+struct Ok[S] {
 	value S
 }
 
-pub fn ok<S>(value S) Result<S> {
-	return Ok<S>{value}
+pub fn ok[S](value S) Result[S] {
+	return Ok[S]{value}
 }
 
 fn test_generic_symtype_init_in_generic_fn_call() {
-	x := ok<int>(42)
+	x := ok[int](42)
 	ret := x.unwrap() or { 0 }
 
 	println(ret)

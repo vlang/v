@@ -28,7 +28,7 @@ pub fn (s string) after(dot string) string {
 	return string(s.str.slice(JS.Number(int(s.str.lastIndexOf(dot.str)) + 1), s.str.length))
 }
 
-pub fn (s string) after_char(dot byte) string {
+pub fn (s string) after_char(dot u8) string {
 	// TODO: Implement after byte
 	return s
 }
@@ -85,13 +85,13 @@ pub fn (s string) split(dot string) []string {
 	return arr
 }
 
-pub fn (s string) bytes() []byte {
+pub fn (s string) bytes() []u8 {
 	sep := ''
 	tmparr := s.str.split(sep.str).map(fn (it JS.Any) JS.Any {
-		return JS.Any(byte(JS.String(it).charCodeAt(JS.Number(0))))
+		return JS.Any(u8(JS.String(it).charCodeAt(JS.Number(0))))
 	})
 	_ := tmparr
-	mut arr := []byte{}
+	mut arr := []u8{}
 	#arr = new array(new array_buffer({arr: tmparr,index_start: new int(0),len: new int(tmparr.length)}))
 
 	return arr
@@ -106,10 +106,13 @@ pub fn (s string) clone() string {
 	return string(s.str)
 }
 
+// contains returns `true` if the string contains `substr`.
+// See also: [`string.index`](#string.index)
 pub fn (s string) contains(substr string) bool {
 	return bool(s.str.includes(substr.str))
 }
 
+// contains_any returns `true` if the string contains any chars in `chars`.
 pub fn (s string) contains_any(chars string) bool {
 	sep := ''
 	res := chars.str.split(sep.str)
@@ -119,6 +122,26 @@ pub fn (s string) contains_any(chars string) bool {
 		}
 	}
 	return false
+}
+
+// contains_only returns `true`, if the string contains only the characters in `chars`.
+pub fn (s string) contains_only(chars string) bool {
+	if chars.len == 0 {
+		return false
+	}
+	for ch in s {
+		mut res := 0
+		for c in chars {
+			if ch == c {
+				res++
+				break
+			}
+		}
+		if res == 0 {
+			return false
+		}
+	}
+	return true
 }
 
 pub fn (s string) contains_any_substr(chars []string) bool {
@@ -205,7 +228,11 @@ pub fn (s string) hash() int {
 
 // int returns the value of the string as an integer `'1'.int() == 1`.
 pub fn (s string) int() int {
-	return int(JS.parseInt(s.str))
+	res := int(0)
+	#if (typeof(s) == "string") { res.val = parseInt(s) }
+	#else { res.val = parseInt(s.str) }
+
+	return res
 }
 
 // i64 returns the value of the string as i64 `'1'.i64() == i64(1)`.
@@ -249,9 +276,9 @@ pub fn (s string) u64() u64 {
 	return u64(JS.parseInt(s.str))
 }
 
-pub fn (s string) byte() u64 {
-	res := byte(0)
-	#res.val = byte(JS.parseInt(s.str))
+pub fn (s string) u8() u64 {
+	res := u8(0)
+	#res.val = u8(JS.parseInt(s.str))
 
 	return res
 }
@@ -327,22 +354,6 @@ pub fn (s string) trim_string_right(str string) string {
 	return s.clone()
 }
 
-// trim_prefix strips `str` from the start of the string.
-// Example: assert 'WorldHello V'.trim_prefix('World') == 'Hello V'
-[deprecated: 'use s.trim_string_left(x) instead']
-[deprecated_after: '2022-01-19']
-pub fn (s string) trim_prefix(str string) string {
-	return s.trim_string_left(str)
-}
-
-// trim_suffix strips `str` from the end of the string.
-// Example: assert 'Hello VWorld'.trim_suffix('World') == 'Hello V'
-[deprecated: 'use s.trim_string_right(x) instead']
-[deprecated_after: '2022-01-19']
-pub fn (s string) trim_suffix(str string) string {
-	return s.trim_string_right(str)
-}
-
 // compare_strings returns `-1` if `a < b`, `1` if `a > b` else `0`.
 pub fn compare_strings(a &string, b &string) int {
 	if a < b {
@@ -384,10 +395,10 @@ fn compare_lower_strings(a &string, b &string) int {
 }
 
 // at returns the byte at index `idx`.
-// Example: assert 'ABC'.at(1) == byte(`B`)
-fn (s string) at(idx int) byte {
-	mut result := byte(0)
-	#result = new byte(s.str.charCodeAt(result))
+// Example: assert 'ABC'.at(1) == u8(`B`)
+fn (s string) at(idx int) u8 {
+	mut result := u8(0)
+	#result = new u8(s.str.charCodeAt(result))
 
 	return result
 }
@@ -421,7 +432,7 @@ pub fn (mut s []string) sort() {
 	s.sort_with_compare(compare_strings)
 }
 
-// sort_ignore_case sorts the string array using case insesitive comparing.
+// sort_ignore_case sorts the string array using case insensitive comparing.
 pub fn (mut s []string) sort_ignore_case() {
 	s.sort_with_compare(compare_lower_strings)
 }
@@ -443,7 +454,7 @@ pub fn (s string) repeat(count int) string {
 	return result
 }
 
-// TODO(playX): Use this iterator instead of using .split('').map(c => byte(c))
+// TODO(playX): Use this iterator instead of using .split('').map(c => u8(c))
 #function string_iterator(string) { this.stringIteratorFieldIndex = 0; this.stringIteratorIteratedString = string.str; }
 #string_iterator.prototype.next = function next() {
 #var done = true;
@@ -458,9 +469,9 @@ pub fn (s string) repeat(count int) string {
 #done = false;
 #var first = string.charCodeAt(position);
 #if (first < 0xD800 || first > 0xDBFF || position + 1 === length)
-#value = new byte(string[position]);
+#value = new u8(string[position]);
 #else {
-#value = new byte(string[position]+string[position+1])
+#value = new u8(string[position]+string[position+1])
 #}
 #this.stringIteratorFieldIndex = position + value.length;
 #}
@@ -473,7 +484,7 @@ pub fn (s string) repeat(count int) string {
 
 // TODO: Make these functions actually work.
 // strip_margin allows multi-line strings to be formatted in a way that removes white-space
-// before a delimeter. by default `|` is used.
+// before a delimiter. By default `|` is used.
 // Note: the delimiter has to be a byte at this time. That means surrounding
 // the value in ``.
 //
@@ -491,7 +502,7 @@ pub fn (s string) strip_margin() string {
 
 // strip_margin_custom does the same as `strip_margin` but will use `del` as delimiter instead of `|`
 [direct_array_access]
-pub fn (s string) strip_margin_custom(del byte) string {
+pub fn (s string) strip_margin_custom(del u8) string {
 	mut sep := del
 	if sep.is_space() {
 		eprintln('Warning: `strip_margin` cannot use white-space as a delimiter')
@@ -500,7 +511,7 @@ pub fn (s string) strip_margin_custom(del byte) string {
 	}
 	// don't know how much space the resulting string will be, but the max it
 	// can be is this big
-	mut ret := []byte{}
+	mut ret := []u8{}
 	#ret = new array()
 
 	mut count := 0
@@ -591,7 +602,7 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 		}
 		else {
 			mut start := 0
-			// Take the left part for each delimiter occurence
+			// Take the left part for each delimiter occurrence
 			for i <= s.len {
 				is_delim := i + delim.len <= s.len && s[i..i + delim.len] == delim
 				if is_delim {
@@ -621,7 +632,7 @@ struct RepIndex {
 	val_idx int
 }
 
-// replace_each replaces all occurences of the string pairs given in `vals`.
+// replace_each replaces all occurrences of the string pairs given in `vals`.
 // Example: assert 'ABCD'.replace_each(['B','C/','C','D','D','C']) == 'AC/DC'
 [direct_array_access]
 pub fn (s string) replace_each(vals []string) string {
@@ -718,7 +729,7 @@ pub fn (s string) replace_each(vals []string) string {
 	return b
 }
 
-// last_index returns the position of the last occurence of the input string.
+// last_index returns the position of the last occurrence of the input string.
 fn (s string) last_index_(p string) int {
 	if p.len > s.len || p.len == 0 {
 		return -1
@@ -737,7 +748,7 @@ fn (s string) last_index_(p string) int {
 	return -1
 }
 
-// last_index returns the position of the last occurence of the input string.
+// last_index returns the position of the last occurrence of the input string.
 pub fn (s string) last_index(p string) ?int {
 	idx := s.last_index_(p)
 	if idx == -1 {
@@ -788,7 +799,7 @@ pub fn (s string) split_into_lines() []string {
 	if s.len == 0 {
 		return res
 	}
-	#res.arr.arr = s.str.split("\n")
+	#res.arr.arr = s.str.split(/\r?\n|\r/)
 	#if (res.arr.arr[res.arr.arr.length-1] == "") res.arr.arr.pop();
 	#res.arr.len = new int(res.arr.arr.length);
 	#res.arr.cap = new int(res.arr.arr.length);
@@ -796,7 +807,7 @@ pub fn (s string) split_into_lines() []string {
 	return res
 }
 
-// replace_once replaces the first occurence of `rep` with the string passed in `with`.
+// replace_once replaces the first occurrence of `rep` with the string passed in `with`.
 pub fn (s string) replace_once(rep string, with_ string) string {
 	s2 := ''
 	#s2.val = s.str.replace(rep.str,with_.str)

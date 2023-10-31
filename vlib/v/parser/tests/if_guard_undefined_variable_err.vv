@@ -1,0 +1,6 @@
+module main
+
+fn main() {
+	if f := f.g.x() {
+	}
+}

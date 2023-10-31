@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 // Directed acyclic graph
@@ -9,14 +9,16 @@ import v.dotgraph
 
 struct DepGraphNode {
 pub mut:
-	name string
-	deps []string
+	name  string
+	value i64
+	deps  []string
 }
 
-struct DepGraph {
+pub struct DepGraph {
 pub mut:
 	acyclic bool
 	nodes   []DepGraphNode
+	values  map[string]i64
 }
 
 struct OrderedDepMap {
@@ -43,7 +45,6 @@ pub fn (mut o OrderedDepMap) add(name string, deps []string) {
 	for dep in deps {
 		if dep !in d {
 			d << dep
-		} else {
 		}
 	}
 	o.set(name, d)
@@ -56,7 +57,7 @@ pub fn (o &OrderedDepMap) get(name string) []string {
 
 pub fn (mut o OrderedDepMap) delete(name string) {
 	if name !in o.data {
-		panic('delete: no such key: $name')
+		panic('delete: no such key: ${name}')
 	}
 	for i, _ in o.keys {
 		if o.keys[i] == name {
@@ -95,6 +96,17 @@ pub fn (mut graph DepGraph) add(mod string, deps []string) {
 		deps: deps.clone()
 	}
 	graph.nodes << new_node
+	graph.values[mod] = 0
+}
+
+pub fn (mut graph DepGraph) add_with_value(mod string, deps []string, value i64) {
+	new_node := DepGraphNode{
+		name: mod
+		value: value
+		deps: deps.clone()
+	}
+	graph.nodes << new_node
+	graph.values[mod] = value
 }
 
 pub fn (graph &DepGraph) resolve() &DepGraph {
@@ -119,14 +131,14 @@ pub fn (graph &DepGraph) resolve() &DepGraph {
 			mut g := new_dep_graph()
 			g.acyclic = false
 			for name in node_deps.keys {
-				g.add(name, node_names.get(name))
+				g.add_with_value(name, node_names.get(name), graph.values[name])
 			}
 			return g
 		}
 		for name in ready_set {
 			node_deps.delete(name)
 			resolved_deps := node_names.get(name)
-			resolved.add(name, resolved_deps)
+			resolved.add_with_value(name, resolved_deps, graph.values[name])
 		}
 		for name in node_deps.keys {
 			node_deps.apply_diff(name, ready_set)
@@ -136,14 +148,14 @@ pub fn (graph &DepGraph) resolve() &DepGraph {
 }
 
 pub fn (graph &DepGraph) last_node() DepGraphNode {
-	return graph.nodes[graph.nodes.len - 1]
+	return graph.nodes.last()
 }
 
 pub fn (graph &DepGraph) display() string {
 	mut out := []string{}
 	for node in graph.nodes {
 		for dep in node.deps {
-			out << ' * $node.name -> $dep'
+			out << ' * ${node.name} -> ${dep}'
 		}
 	}
 	return out.join('\n')
@@ -207,7 +219,7 @@ fn (mut nn NodeNames) is_part_of_cycle(name string, already_seen []string) (bool
 }
 
 pub fn show(graph &DepGraph, path string) {
-	mut dg := dotgraph.new('ModGraph', 'ModGraph for $path', 'blue')
+	mut dg := dotgraph.new('ModGraph', 'ModGraph for ${path}', 'blue')
 	mbuiltin := 'builtin'
 	for node in graph.nodes {
 		is_main := node.name == 'main'

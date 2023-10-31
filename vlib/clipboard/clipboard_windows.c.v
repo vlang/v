@@ -15,16 +15,16 @@ struct WndClassEx {
 	h_icon          C.HICON
 	h_cursor        C.HCURSOR
 	hbr_background  C.HBRUSH
-	lpsz_menu_name  &u16 // LPCWSTR
-	lpsz_class_name &u16
-	h_icon_sm       &u16
+	lpsz_menu_name  &u16 = unsafe { nil } // LPCWSTR
+	lpsz_class_name &u16 = unsafe { nil }
+	h_icon_sm       &u16 = unsafe { nil }
 }
 
 fn C.RegisterClassEx(class &WndClassEx) int
 
-fn C.GetClipboardOwner() &C.HWND
+fn C.GetClipboardOwner() C.HWND
 
-fn C.CreateWindowEx(dwExStyle i64, lpClassName &u16, lpWindowName &u16, dwStyle i64, x int, y int, nWidth int, nHeight int, hWndParent i64, hMenu voidptr, h_instance voidptr, lpParam voidptr) &C.HWND
+fn C.CreateWindowEx(dwExStyle i64, lpClassName &u16, lpWindowName &u16, dwStyle i64, x int, y int, nWidth int, nHeight int, hWndParent i64, hMenu voidptr, h_instance voidptr, lpParam voidptr) C.HWND
 
 // fn C.MultiByteToWideChar(CodePage u32, dw_flags u16, lpMultiByteStr byteptr, cbMultiByte int, lpWideCharStr u16, cchWideChar int) int
 fn C.EmptyClipboard()
@@ -51,11 +51,15 @@ fn C.OpenClipboard(hwnd C.HWND) int
 
 fn C.DestroyWindow(hwnd C.HWND)
 
-struct Clipboard {
+// Clipboard represents a system clipboard.
+//
+// System "copy" and "paste" actions utilize the clipboard for temporary storage.
+[heap]
+pub struct Clipboard {
 	max_retries int
 	retry_delay int
 mut:
-	hwnd C.HWND
+	hwnd voidptr
 	foo  int // TODO remove
 }
 
@@ -92,26 +96,31 @@ fn new_clipboard() &Clipboard {
 		lpsz_menu_name: 0
 		h_icon_sm: 0
 	}
-	if C.RegisterClassEx(&wndclass) == 0 && C.GetLastError() != u32(C.ERROR_CLASS_ALREADY_EXISTS) {
+	if C.RegisterClassEx(voidptr(&wndclass)) == 0
+		&& C.GetLastError() != u32(C.ERROR_CLASS_ALREADY_EXISTS) {
 		println('Failed registering class.')
 	}
 	hwnd := C.CreateWindowEx(0, wndclass.lpsz_class_name, wndclass.lpsz_class_name, 0,
 		0, 0, 0, 0, C.HWND_MESSAGE, C.NULL, C.NULL, C.NULL)
-	if hwnd == C.NULL {
+	if hwnd == unsafe { nil } {
 		println('Error creating window!')
 	}
-	cb.hwnd = hwnd
+	cb.hwnd = voidptr(hwnd)
 	return cb
 }
 
+// check_availability returns true if the clipboard is ready to be used.
 pub fn (cb &Clipboard) check_availability() bool {
-	return cb.hwnd != C.HWND(C.NULL)
+	return cb.hwnd != unsafe { nil }
 }
 
+// has_ownership returns true if the contents of
+// the clipboard were created by this clipboard instance.
 pub fn (cb &Clipboard) has_ownership() bool {
-	return C.GetClipboardOwner() == cb.hwnd
+	return voidptr(C.GetClipboardOwner()) == cb.hwnd
 }
 
+// clear empties the clipboard contents.
 pub fn (mut cb Clipboard) clear() {
 	if !cb.get_clipboard_lock() {
 		return
@@ -121,20 +130,24 @@ pub fn (mut cb Clipboard) clear() {
 	cb.foo = 0
 }
 
+// free releases all memory associated with the clipboard
+// instance.
 pub fn (mut cb Clipboard) free() {
 	C.DestroyWindow(cb.hwnd)
 	cb.foo = 0
 }
 
+const cp_utf8 = 65001
+
 // the string.to_wide doesn't work with SetClipboardData, don't know why
 fn to_wide(text string) C.HGLOBAL {
-	len_required := C.MultiByteToWideChar(C.CP_UTF8, C.MB_ERR_INVALID_CHARS, text.str,
+	len_required := C.MultiByteToWideChar(clipboard.cp_utf8, C.MB_ERR_INVALID_CHARS, voidptr(text.str),
 		text.len + 1, C.NULL, 0)
 	buf := C.GlobalAlloc(C.GMEM_MOVEABLE, i64(sizeof(u16)) * len_required)
-	if buf != C.HGLOBAL(C.NULL) {
+	if buf != unsafe { nil } {
 		mut locked := &u16(C.GlobalLock(buf))
-		C.MultiByteToWideChar(C.CP_UTF8, C.MB_ERR_INVALID_CHARS, text.str, text.len + 1,
-			locked, len_required)
+		C.MultiByteToWideChar(clipboard.cp_utf8, C.MB_ERR_INVALID_CHARS, voidptr(text.str),
+			text.len + 1, locked, len_required)
 		unsafe {
 			locked[len_required - 1] = u16(0)
 		}
@@ -143,6 +156,8 @@ fn to_wide(text string) C.HGLOBAL {
 	return buf
 }
 
+// set_text transfers `text` to the system clipboard.
+// This is often associated with a *copy* action (`Ctrl` + `C`).
 pub fn (mut cb Clipboard) set_text(text string) bool {
 	cb.foo = 0
 	buf := to_wide(text)
@@ -152,7 +167,7 @@ pub fn (mut cb Clipboard) set_text(text string) bool {
 	} else {
 		// EmptyClipboard must be called to properly update clipboard ownership
 		C.EmptyClipboard()
-		if C.SetClipboardData(C.CF_UNICODETEXT, buf) == C.HANDLE(C.NULL) {
+		if C.SetClipboardData(C.CF_UNICODETEXT, buf) == unsafe { nil } {
 			println('SetClipboardData: Failed.')
 			C.CloseClipboard()
 			C.GlobalFree(buf)
@@ -164,13 +179,16 @@ pub fn (mut cb Clipboard) set_text(text string) bool {
 	return true
 }
 
+// get_text retrieves the contents of the system clipboard
+// as a `string`.
+// This is often associated with a *paste* action (`Ctrl` + `V`).
 pub fn (mut cb Clipboard) get_text() string {
 	cb.foo = 0
 	if !cb.get_clipboard_lock() {
 		return ''
 	}
 	h_data := C.GetClipboardData(C.CF_UNICODETEXT)
-	if h_data == C.HANDLE(C.NULL) {
+	if h_data == unsafe { nil } {
 		C.CloseClipboard()
 		return ''
 	}

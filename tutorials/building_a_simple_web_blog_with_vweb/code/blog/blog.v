@@ -2,7 +2,7 @@ module main
 
 import vweb
 import time
-import sqlite
+import db.sqlite
 import json
 
 struct App {
@@ -18,7 +18,7 @@ fn main() {
 	}
 	sql app.db {
 		create table Article
-	}
+	}!
 	vweb.run(app, 8081)
 }
 
@@ -49,9 +49,7 @@ pub fn (mut app App) new() vweb.Result {
 }
 
 ['/new_article'; post]
-pub fn (mut app App) new_article() vweb.Result {
-	title := app.form['title']
-	text := app.form['text']
+pub fn (mut app App) new_article(title string, text string) vweb.Result {
 	if title == '' || text == '' {
 		return app.text('Empty text/title')
 	}
@@ -63,7 +61,7 @@ pub fn (mut app App) new_article() vweb.Result {
 	println(article)
 	sql app.db {
 		insert article into Article
-	}
+	} or {}
 
 	return app.redirect('/')
 }

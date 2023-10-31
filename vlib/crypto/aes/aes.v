@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 // Based off:   https://github.com/golang/go/blob/master/src/crypto/aes
@@ -24,11 +24,23 @@ mut:
 	dec []u32
 }
 
+// free the resources taken by the AesCipher `c`
+[unsafe]
+pub fn (mut c AesCipher) free() {
+	$if prealloc {
+		return
+	}
+	unsafe {
+		c.enc.free()
+		c.dec.free()
+	}
+}
+
 // new_cipher creates and returns a new [[AesCipher](#AesCipher)].
 // The key argument should be the AES key,
 // either 16, 24, or 32 bytes to select
 // AES-128, AES-192, or AES-256.
-pub fn new_cipher(key []byte) cipher.Block {
+pub fn new_cipher(key []u8) cipher.Block {
 	k := key.len
 	match k {
 		16, 24, 32 {
@@ -52,7 +64,7 @@ pub fn (c &AesCipher) block_size() int {
 // NOTE: `dst` and `src` are both mutable for performance reasons.
 // NOTE: `dst` and `src` must both be pre-allocated to the correct length.
 // NOTE: `dst` and `src` may be the same (overlapping entirely).
-pub fn (c &AesCipher) encrypt(mut dst []byte, src []byte) {
+pub fn (c &AesCipher) encrypt(mut dst []u8, src []u8) {
 	if src.len < aes.block_size {
 		panic('crypto.aes: input not full block')
 	}
@@ -71,7 +83,7 @@ pub fn (c &AesCipher) encrypt(mut dst []byte, src []byte) {
 // NOTE: `dst` and `src` are both mutable for performance reasons.
 // NOTE: `dst` and `src` must both be pre-allocated to the correct length.
 // NOTE: `dst` and `src` may be the same (overlapping entirely).
-pub fn (c &AesCipher) decrypt(mut dst []byte, src []byte) {
+pub fn (c &AesCipher) decrypt(mut dst []u8, src []u8) {
 	if src.len < aes.block_size {
 		panic('crypto.aes: input not full block')
 	}

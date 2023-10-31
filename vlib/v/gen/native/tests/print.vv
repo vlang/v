@@ -29,9 +29,88 @@ fn test_stderr() {
 	eprintln('2(World)')
 }
 
+fn test_idents() {
+	// signed integer
+
+	x := 0
+	println(x)
+
+	y := 5
+	println(y)
+
+	z := -8
+	println(z)
+
+	a := 123
+	println(a)
+
+	b := -456
+	println(b)
+
+	// booleans
+
+	bool_true := true
+	println(bool_true)
+
+	bool_false := false
+	println(bool_false)
+
+	// strings
+
+	str := 'string blah blah blah'
+	println(str)
+
+	unicode := '😀😆😎💻🌎'
+	println(unicode)
+
+	cjk := 'こんにちは'
+	println(cjk)
+
+	// raw string
+	println(r'hello\tworld\n')
+}
+
+fn test_exprs() {
+	t := true
+	print(t == false)
+	print(' ')
+	println(t == true)
+
+	i := 123
+	println(i + 456)
+
+	j := 2
+	println(j + j * j)
+
+	println(none)
+}
+
+fn test_sizeof() {
+	i := 0
+
+	print('sizeof: ')
+	print(sizeof(i))
+	print(', ')
+	println(sizeof(Foo))
+}
+
+fn test_interpolated() {
+	article := 'an'
+	datatype := 'string'
+	println('this is ${article} interpolated ${datatype}')
+
+	num := 42
+	boool := true
+	println('num: ${num}; bool: ${boool}')
+}
+
 fn main() {
 	test_stdout()
 	test_stderr()
 	test_numbers()
 	test_oof()
+	test_idents()
+	test_exprs()
+	test_sizeof()
+	test_interpolated()
 }

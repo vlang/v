@@ -1,0 +1,34 @@
+vlib/v/checker/tests/const_match_invalid_type_range_err.vv:6:2: error: the range type and the match condition type should match
+    4 | 
+    5 | match 5 {
+    6 |     start...end {
+      |     ~~~~~~~~~~~
+    7 |         println(start)
+    8 |     }
+Details: 
+match condition type: int
+          range type: rune
+vlib/v/checker/tests/const_match_invalid_type_range_err.vv:6:2: error: the start value `97` should be lower than the end value `2`
+    4 | 
+    5 | match 5 {
+    6 |     start...end {
+      |     ~~~~~~~~~~~
+    7 |         println(start)
+    8 |     }
+vlib/v/checker/tests/const_match_invalid_type_range_err.vv:13:2: error: the range type and the match condition type should match
+   11 | 
+   12 | b := match 5 {
+   13 |     start...end {
+      |     ~~~~~~~~~~~
+   14 |         3
+   15 |     }
+Details: 
+match condition type: int
+          range type: rune
+vlib/v/checker/tests/const_match_invalid_type_range_err.vv:13:2: error: the start value `97` should be lower than the end value `2`
+   11 | 
+   12 | b := match 5 {
+   13 |     start...end {
+      |     ~~~~~~~~~~~
+   14 |         3
+   15 |     }

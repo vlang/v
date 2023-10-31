@@ -33,22 +33,19 @@ struct InvalidVersionFormatError {
 }
 
 pub fn (err InvalidVersionFormatError) msg() string {
-	return 'Invalid version format for input "$err.input"'
+	return 'Invalid version format for input "${err.input}"'
 }
 
 // * Constructor.
 // from returns a `Version` structure parsed from `input` `string`.
-pub fn from(input string) ?Version {
+pub fn from(input string) !Version {
 	if input.len == 0 {
-		return IError(&EmptyInputError{})
+		return &EmptyInputError{}
 	}
 	raw_version := parse(input)
-	version := raw_version.validate() or {
-		return IError(&InvalidVersionFormatError{
-			input: input
-		})
-	}
-	return version
+	return raw_version.validate() or { return &InvalidVersionFormatError{
+		input: input
+	} }
 }
 
 // build returns a `Version` structure with given `major`, `minor` and `patch` versions.
@@ -99,15 +96,15 @@ pub fn (v1 Version) le(v2 Version) bool {
 
 // str returns the `string` representation of the `Version`.
 pub fn (ver Version) str() string {
-	common_string := '${ver.major}.${ver.minor}.$ver.patch'
+	common_string := '${ver.major}.${ver.minor}.${ver.patch}'
 
-	prerelease_string := if ver.prerelease.len > 0 { '-$ver.prerelease' } else { '' }
-	metadata_string := if ver.metadata.len > 0 { '+$ver.metadata' } else { '' }
+	prerelease_string := if ver.prerelease.len > 0 { '-${ver.prerelease}' } else { '' }
+	metadata_string := if ver.metadata.len > 0 { '+${ver.metadata}' } else { '' }
 
-	return '$common_string$prerelease_string$metadata_string'
+	return '${common_string}${prerelease_string}${metadata_string}'
 }
 
-// * Utilites.
+// * Utilities.
 // coerce converts the `input` version to a `Version` struct.
 // coerce will strip any contents *after* the parsed version string:
 /*
@@ -116,7 +113,7 @@ import semver
 v := semver.coerce('1.3-RC1-b2') or { semver.Version{} }
 assert v.satisfies('>1.0 <2.0') == true // 1.3.0
 */
-pub fn coerce(input string) ?Version {
+pub fn coerce(input string) !Version {
 	return coerce_version(input)
 }
 

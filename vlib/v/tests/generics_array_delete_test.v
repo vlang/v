@@ -1,9 +1,9 @@
-struct Set<T> {
+struct Set[T] {
 mut:
 	field []T
 }
 
-fn (mut s Set<T>) add<T>(value T) bool {
+fn (mut s Set[T]) add[T](value T) bool {
 	mut result := false
 
 	if value !in s.field {
@@ -14,7 +14,7 @@ fn (mut s Set<T>) add<T>(value T) bool {
 	return result
 }
 
-fn (mut s Set<T>) remove<T>(value T) bool {
+fn (mut s Set[T]) remove[T](value T) bool {
 	mut result := false
 
 	if value in s.field {
@@ -28,7 +28,7 @@ fn (mut s Set<T>) remove<T>(value T) bool {
 
 fn test_generics_array_delete() {
 	// int
-	mut set1 := Set<int>{}
+	mut set1 := Set[int]{}
 
 	mut added := set1.add(4)
 	println(added)
@@ -48,7 +48,7 @@ fn test_generics_array_delete() {
 	assert removed
 
 	// f64
-	mut set2 := Set<f64>{}
+	mut set2 := Set[f64]{}
 
 	added = set2.add(4.4)
 	println(added)
@@ -68,7 +68,7 @@ fn test_generics_array_delete() {
 	assert removed
 
 	// string
-	mut set3 := Set<string>{}
+	mut set3 := Set[string]{}
 
 	added = set3.add('aaa')
 	println(added)

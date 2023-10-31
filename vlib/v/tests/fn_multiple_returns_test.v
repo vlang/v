@@ -9,7 +9,7 @@ fn test_fn_multiple_returns() {
 	assert groups[0] == 'admins'
 	assert groups[1] == 'users'
 	assert data.test == 'Test Data'
-	println('name: $name | age: $age | groups: ' + groups.join(',') + ' | data: $data.test')
+	println('name: ${name} | age: ${age} | groups: ' + groups.join(',') + ' | data: ${data.test}')
 }
 
 fn fn_mr_get_user() (string, int, []string, UserData) {
@@ -20,10 +20,10 @@ fn fn_mr_get_user() (string, int, []string, UserData) {
 	return 'joe', 34, groups, data
 }
 
-fn split_to_two(s string) ?(string, string) {
+fn split_to_two(s string) !(string, string) {
 	mut tokens := s.split_nth(' ', 2)
 	if s.len == 0 {
-		return none
+		return error('error')
 	}
 	if tokens.len != 2 {
 		return error('error')
@@ -51,7 +51,7 @@ fn test_multiple_ret() {
 	// none case
 	wrapper1 := fn () (string, string) {
 		res2_1, res2_2 := split_to_two('') or {
-			assert err.msg() == ''
+			assert err.msg() == 'error'
 			return 'replaced', 'val'
 		}
 		return res2_1, res2_2

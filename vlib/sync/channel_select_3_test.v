@@ -79,7 +79,7 @@ fn test_select_blocks() {
 	}
 	assert r == true
 	assert t == true
-	go f2(ch2, ch3, mut sem)
+	spawn f2(ch2, ch3, mut sem)
 	n := <-ch3
 	assert n == 23
 	ch2 <- St{
@@ -87,7 +87,7 @@ fn test_select_blocks() {
 	}
 	sem.wait()
 	stopwatch := time.new_stopwatch()
-	go f1(ch1, ch2, ch3, ch4, ch5, mut sem)
+	spawn f1(ch1, ch2, ch3, ch4, ch5, mut sem)
 	sem.wait()
 	elapsed_ms := f64(stopwatch.elapsed()) / time.millisecond
 	// https://docs.microsoft.com/en-us/windows-hardware/drivers/kernel/high-resolution-timers

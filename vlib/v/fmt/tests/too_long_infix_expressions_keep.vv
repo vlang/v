@@ -1,0 +1,40 @@
+module main
+
+struct Abc {
+pub mut:
+	x     int
+	y     int
+	angle int
+}
+
+fn s_adjustsoundparams(listener &Abc, source &Abc, vol &int, sep &int) int {
+	approx_dist := 0
+	adx := 0
+	ady := 0
+	angle := 0
+	adx = C.abs(listener.x - source.x)
+	ady = C.abs(listener.y - source.y)
+	approx_dist = adx + ady - ((if adx < ady { adx } else { ady }) >> 1)
+	if gamemap != 8 && approx_dist > (1200 * (1 << 16)) {
+		return 0
+	}
+	angle = r_pointtoangle2(listener.x, listener.y, source.x, source.y)
+	if angle > listener.angle {
+		angle = angle - listener.angle
+	} else {
+		angle = angle + (4294967295 - listener.angle)
+	}
+	angle >>= 19
+	*sep = 128 - (fixedmul((96 * (1 << 16)), finesine[angle]) >> 16)
+	if approx_dist < (200 * (1 << 16)) {
+		*vol = snd_SfxVolume
+	} else if gamemap == 8 {
+		if approx_dist > (1200 * (1 << 16)) {
+			approx_dist = (1200 * (1 << 16))
+		}
+		*vol = 15 +((snd_SfxVolume - 15) * (((1200 * (1 << 16)) - approx_dist) >> 16)) / (((1200 * (1 << 16)) - (200 * (1 << 16))) >> 16)
+	} else {
+		*vol = (snd_SfxVolume * (((1200 * (1 << 16)) - approx_dist) >> 16)) / (((1200 * (1 << 16)) - (200 * (1 << 16))) >> 16)
+	}
+	return *vol > 0
+}

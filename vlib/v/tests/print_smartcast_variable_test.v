@@ -27,7 +27,7 @@ fn test_print_smartcast_variable() {
 		println(point)
 		assert point.str().contains('x: 2')
 		assert point.str().contains('y: 5')
-		assert '$point'.contains('x: 2')
-		assert '$point'.contains('y: 5')
+		assert '${point}'.contains('x: 2')
+		assert '${point}'.contains('y: 5')
 	}
 }

@@ -1,9 +1,9 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module time
 
-// unix returns a time struct from Unix time.
+// unix returns a time struct from an Unix timestamp (number of seconds since 1970-01-01)
 pub fn unix(abs i64) Time {
 	// Split into day and time
 	mut day_offset := abs / seconds_per_day
@@ -24,8 +24,20 @@ pub fn unix(abs i64) Time {
 	}
 }
 
-// unix2 returns a time struct from Unix time and microsecond value
+// unix2 returns a Time struct, given an Unix timestamp in seconds, and a microsecond value
+[deprecated: 'use unix_microsecond(unix_ts, us) instead']
+[deprecated_after: '2023-09-05']
 pub fn unix2(abs i64, microsecond int) Time {
+	return unix_nanosecond(abs, microsecond * 1000)
+}
+
+// unix_microsecond returns a Time struct, given an Unix timestamp in seconds, and a microsecond value
+pub fn unix_microsecond(abs i64, microsecond int) Time {
+	return unix_nanosecond(abs, microsecond * 1000)
+}
+
+// unix_nanosecond returns a Time struct, given an Unix timestamp in seconds, and a nanosecond value
+pub fn unix_nanosecond(abs i64, nanosecond int) Time {
 	// Split into day and time
 	mut day_offset := abs / seconds_per_day
 	if abs % seconds_per_day < 0 {
@@ -41,74 +53,46 @@ pub fn unix2(abs i64, microsecond int) Time {
 		hour: hr
 		minute: min
 		second: sec
-		microsecond: microsecond
+		nanosecond: nanosecond
 		unix: abs
 	}
 }
 
 fn calculate_date_from_offset(day_offset_ i64) (int, int, int) {
 	mut day_offset := day_offset_
-	// Move offset to year 2001 as it's the start of a new 400-year cycle
-	// Code below this rely on the fact that the day_offset is lined up with the 400-year cycle
-	// 1970-2000 (inclusive) has 31 years (8 of which are leap years)
-	mut year := 2001
-	day_offset -= 31 * 365 + 8
-	// Account for 400 year cycle
-	year += int(day_offset / days_per_400_years) * 400
-	day_offset %= days_per_400_years
-	// Account for 100 year cycle
-	if day_offset == days_per_100_years * 4 {
-		year += 300
-		day_offset -= days_per_100_years * 3
+
+	// source: http://howardhinnant.github.io/date_algorithms.html#civil_from_days
+
+	// shift from 1970-01-01 to 0000-03-01
+	day_offset += 719468 // int(days_per_400_years * 1970 / 400 - (28+31))
+
+	mut era := 0
+	if day_offset >= 0 {
+		era = int(day_offset / days_per_400_years)
 	} else {
-		year += int(day_offset / days_per_100_years) * 100
-		day_offset %= days_per_100_years
+		era = int((day_offset - days_per_400_years - 1) / days_per_400_years)
 	}
-	// Account for 4 year cycle
-	if day_offset == days_per_4_years * 25 {
-		year += 96
-		day_offset -= days_per_4_years * 24
+	// doe(day of era) [0, 146096]
+	doe := day_offset - era * days_per_400_years
+	// yoe(year of era) [0, 399]
+	yoe := (doe - doe / (days_per_4_years - 1) + doe / days_per_100_years - doe / (days_per_400_years - 1)) / days_in_year
+	// year number
+	mut y := int(yoe + era * 400)
+	// doy (day of year), with year beginning Mar 1 [0, 365]
+	doy := doe - (days_in_year * yoe + yoe / 4 - yoe / 100)
+
+	mp := (5 * doy + 2) / 153
+	d := int(doy - (153 * mp + 2) / 5 + 1)
+	mut m := int(mp)
+	if mp < 10 {
+		m += 3
 	} else {
-		year += int(day_offset / days_per_4_years) * 4
-		day_offset %= days_per_4_years
+		m -= 9
 	}
-	// Account for every year
-	if day_offset == 365 * 4 {
-		year += 3
-		day_offset -= 365 * 3
-	} else {
-		year += int(day_offset / 365)
-		day_offset %= 365
+	if m <= 2 {
+		y += 1
 	}
-	if day_offset < 0 {
-		year--
-		if is_leap_year(year) {
-			day_offset += 366
-		} else {
-			day_offset += 365
-		}
-	}
-	if is_leap_year(year) {
-		if day_offset > 31 + 29 - 1 {
-			// After leap day; pretend it wasn't there.
-			day_offset--
-		} else if day_offset == 31 + 29 - 1 {
-			// Leap day.
-			return year, 2, 29
-		}
-	}
-	mut estimated_month := day_offset / 31
-	for day_offset >= days_before[estimated_month + 1] {
-		estimated_month++
-	}
-	for day_offset < days_before[estimated_month] {
-		if estimated_month == 0 {
-			break
-		}
-		estimated_month--
-	}
-	day_offset -= days_before[estimated_month]
-	return year, int(estimated_month + 1), int(day_offset + 1)
+	return y, m, d
 }
 
 fn calculate_time_from_offset(second_offset_ i64) (int, int, int) {

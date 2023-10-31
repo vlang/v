@@ -1,0 +1,5 @@
+mut sum := 0
+for a in 0..10 {
+	sum += a
+}
+println(sum)

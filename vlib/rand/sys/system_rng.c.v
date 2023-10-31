@@ -1,9 +1,10 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module sys
 
 import math.bits
+import rand.buffer
 import rand.seed
 
 // Implementation note:
@@ -28,18 +29,17 @@ const (
 	u64_iter_count = calculate_iterations_for(64)
 )
 
-fn calculate_iterations_for(bits int) int {
-	base := bits / sys.rand_bitsize
-	extra := if bits % sys.rand_bitsize == 0 { 0 } else { 1 }
+fn calculate_iterations_for(bits_ int) int {
+	base := bits_ / sys.rand_bitsize
+	extra := if bits_ % sys.rand_bitsize == 0 { 0 } else { 1 }
 	return base + extra
 }
 
 // SysRNG is the PRNG provided by default in the libc implementiation that V uses.
 pub struct SysRNG {
+	buffer.PRNGBuffer
 mut:
-	seed       u32 = seed.time_seed_32()
-	buffer     int
-	bytes_left int
+	seed u32 = seed.time_seed_32()
 }
 
 // r.seed() sets the seed of the accepting SysRNG to the given data.
@@ -64,16 +64,16 @@ pub fn (r SysRNG) default_rand() int {
 
 // byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
 [inline]
-pub fn (mut r SysRNG) byte() byte {
+pub fn (mut r SysRNG) u8() u8 {
 	if r.bytes_left >= 1 {
 		r.bytes_left -= 1
-		value := byte(r.buffer)
+		value := u8(r.buffer)
 		r.buffer >>= 8
 		return value
 	}
-	r.buffer = r.default_rand()
+	r.buffer = u64(r.default_rand())
 	r.bytes_left = sys.rand_bytesize - 1
-	value := byte(r.buffer)
+	value := u8(r.buffer)
 	r.buffer >>= 8
 	return value
 }

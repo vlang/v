@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 // Package md5 implements the MD5 hash algorithm as defined in RFC 1321.
@@ -19,8 +19,8 @@ pub const (
 
 const (
 	init0 = 0x67452301
-	init1 = 0xEFCDAB89
-	init2 = 0x98BADCFE
+	init1 = u32(0xEFCDAB89)
+	init2 = u32(0x98BADCFE)
 	init3 = 0x10325476
 )
 
@@ -28,14 +28,28 @@ const (
 struct Digest {
 mut:
 	s   []u32
-	x   []byte
+	x   []u8
 	nx  int
 	len u64
 }
 
-fn (mut d Digest) reset() {
+// free the resources taken by the Digest `d`
+[unsafe]
+pub fn (mut d Digest) free() {
+	$if prealloc {
+		return
+	}
+	unsafe { d.x.free() }
+}
+
+fn (mut d Digest) init() {
 	d.s = []u32{len: (4)}
-	d.x = []byte{len: md5.block_size}
+	d.x = []u8{len: md5.block_size}
+	d.reset()
+}
+
+// reset the state of the Digest `d`
+pub fn (mut d Digest) reset() {
 	d.s[0] = u32(md5.init0)
 	d.s[1] = u32(md5.init1)
 	d.s[2] = u32(md5.init2)
@@ -44,15 +58,23 @@ fn (mut d Digest) reset() {
 	d.len = 0
 }
 
+fn (d &Digest) clone() &Digest {
+	return &Digest{
+		...d
+		s: d.s.clone()
+		x: d.x.clone()
+	}
+}
+
 // new returns a new Digest (implementing hash.Hash) computing the MD5 checksum.
 pub fn new() &Digest {
 	mut d := &Digest{}
-	d.reset()
+	d.init()
 	return d
 }
 
 // write writes the contents of `p_` to the internal hash representation.
-pub fn (mut d Digest) write(p_ []byte) ?int {
+pub fn (mut d Digest) write(p_ []u8) !int {
 	unsafe {
 		mut p := p_
 		nn := p.len
@@ -87,10 +109,10 @@ pub fn (mut d Digest) write(p_ []byte) ?int {
 }
 
 // sum returns the md5 sum of the bytes in `b_in`.
-pub fn (d &Digest) sum(b_in []byte) []byte {
+pub fn (d &Digest) sum(b_in []u8) []u8 {
 	// Make a copy of d so that caller can keep writing and summing.
-	mut d0 := *d
-	hash := d0.checksum()
+	mut d0 := d.clone()
+	hash := d0.checksum_internal()
 	mut b_out := b_in.clone()
 	for b in hash {
 		b_out << b
@@ -98,15 +120,16 @@ pub fn (d &Digest) sum(b_in []byte) []byte {
 	return b_out
 }
 
-// checksum returns the byte checksum of the `Digest`.
-pub fn (mut d Digest) checksum() []byte {
+// TODO:
+// When the deprecated "checksum()" is finally removed, restore this function name as: "checksum()"
+fn (mut d Digest) checksum_internal() []u8 {
 	// Append 0x80 to the end of the message and then append zeros
 	// until the length is a multiple of 56 bytes. Finally append
 	// 8 bytes representing the message length in bits.
 	//
 	// 1 byte end marker :: 0-63 padding bytes :: 8 byte length
-	// tmp := [1 + 63 + 8]byte{0x80}
-	mut tmp := []byte{len: (1 + 63 + 8)}
+	// tmp := [1 + 63 + 8]u8{0x80}
+	mut tmp := []u8{len: (1 + 63 + 8)}
 	tmp[0] = 0x80
 	pad := ((55 - d.len) % 64) // calculate number of padding bytes
 	binary.little_endian_put_u64(mut tmp[1 + pad..], d.len << 3) // append length in bits
@@ -116,7 +139,7 @@ pub fn (mut d Digest) checksum() []byte {
 	if d.nx != 0 {
 		panic('d.nx != 0')
 	}
-	mut digest := []byte{len: md5.size}
+	mut digest := []u8{len: md5.size}
 	binary.little_endian_put_u32(mut digest, d.s[0])
 	binary.little_endian_put_u32(mut digest[4..], d.s[1])
 	binary.little_endian_put_u32(mut digest[8..], d.s[2])
@@ -124,14 +147,22 @@ pub fn (mut d Digest) checksum() []byte {
 	return digest
 }
 
-// sum returns the MD5 checksum of the data.
-pub fn sum(data []byte) []byte {
-	mut d := new()
-	d.write(data) or { panic(err) }
-	return d.checksum()
+// checksum returns the byte checksum of the `Digest`,
+// it is an internal method and is not recommended because its results are not idempotent.
+[deprecated: 'checksum() will be changed to a private method, use sum() instead']
+[deprecated_after: '2024-04-30']
+pub fn (mut d Digest) checksum() []u8 {
+	return d.checksum_internal()
 }
 
-fn block(mut dig Digest, p []byte) {
+// sum returns the MD5 checksum of the data.
+pub fn sum(data []u8) []u8 {
+	mut d := new()
+	d.write(data) or { panic(err) }
+	return d.checksum_internal()
+}
+
+fn block(mut dig Digest, p []u8) {
 	// For now just use block_generic until we have specific
 	// architecture optimized versions
 	block_generic(mut dig, p)

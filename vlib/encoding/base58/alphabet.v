@@ -1,37 +1,38 @@
 module base58
 
-// alphabets is a map of common base58 alphabets
-pub const alphabets = init_alphabets()
+const impossible = 'this should never happen'
 
-// init_alphabet instantiates the preconfigured `Alphabet`s and returns them as `map[string]Alphabet`.
-// This is a temporary function. Setting const alphabets to the value returned in this function
-// causes a C error right now.
-fn init_alphabets() map[string]Alphabet {
-	return {
-		'btc':    new_alphabet('123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz') or {
-			panic(@MOD + '.' + @FN + ': this should never happen')
-		}
-		'flickr': new_alphabet('123456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ') or {
-			panic(@MOD + '.' + @FN + ': this should never happen')
-		}
-		'ripple': new_alphabet('rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz') or {
-			panic(@MOD + '.' + @FN + ': this should never happen')
-		}
-	}
+pub const btc_alphabet = new_alphabet('123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz') or {
+	panic(impossible)
+}
+
+pub const flickr_alphabet = new_alphabet('123456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ') or {
+	panic(impossible)
+}
+
+pub const ripple_alphabet = new_alphabet('rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz') or {
+	panic(impossible)
+}
+
+// alphabets is a map of common base58 alphabets:
+pub const alphabets = {
+	'btc':    btc_alphabet
+	'flickr': flickr_alphabet
+	'ripple': ripple_alphabet
 }
 
 // Alphabet is the series of characters that an input
 // will be encoded to and a decode table.
 struct Alphabet {
 mut:
-	decode []i8   = []i8{len: 128, init: -1}
-	encode []byte = []byte{len: 58}
+	decode []i8 = []i8{len: 128, init: -1}
+	encode []u8 = []u8{len: 58}
 }
 
 // str returns an Alphabet encode table byte array as a string
 pub fn (alphabet Alphabet) str() string {
 	// i guess i had a brain fart here. Why would I actually use this code?!
-	// mut str := []byte{}
+	// mut str := []u8{}
 	// for entry in alphabet.encode {
 	// 	str << entry
 	// }
@@ -41,7 +42,7 @@ pub fn (alphabet Alphabet) str() string {
 
 // new_alphabet instantiates an Alphabet object based on
 // the provided characters
-pub fn new_alphabet(str string) ?Alphabet {
+pub fn new_alphabet(str string) !Alphabet {
 	if str.len != 58 {
 		return error(@MOD + '.' + @FN + ': string must be 58 characters in length')
 	}

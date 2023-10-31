@@ -5,7 +5,7 @@ const (
 	// tfolder will contain all the temporary files/subfolders made by
 	// the different tests. It would be removed in testsuite_end(), so
 	// individual os tests do not need to clean up after themselves.
-	tfolder = os.join_path(os.temp_dir(), 'v', 'tests', 'os_test')
+	tfolder = os.join_path(os.vtmp_dir(), 'tests', 'os_test')
 )
 
 // os.args has to be *already initialized* with the program's argc/argv at this point
@@ -13,7 +13,7 @@ const (
 const args_at_start = os.args.clone()
 
 fn testsuite_begin() {
-	eprintln('testsuite_begin, tfolder = $tfolder')
+	eprintln('testsuite_begin, tfolder = ${tfolder}')
 	os.rmdir_all(tfolder) or {}
 	assert !os.is_dir(tfolder)
 	os.mkdir_all(tfolder) or { panic(err) }
@@ -27,7 +27,7 @@ fn testsuite_begin() {
 fn testsuite_end() {
 	os.chdir(os.wd_at_startup) or {}
 	os.rmdir_all(tfolder) or {}
-	assert !os.is_dir(tfolder)
+	// assert !os.is_dir(tfolder)
 	// eprintln('testsuite_end  , tfolder = $tfolder removed.')
 }
 
@@ -41,10 +41,33 @@ fn test_open_file() {
 	mut file := os.open_file(filename, 'w+', 0o666) or { panic(err) }
 	file.write_string(hello) or { panic(err) }
 	file.close()
-	assert hello.len == os.file_size(filename)
-	read_hello := os.read_file(filename) or { panic('error reading file $filename') }
+	assert u64(hello.len) == os.file_size(filename)
+	read_hello := os.read_file(filename) or { panic('error reading file ${filename}') }
 	assert hello == read_hello
 	os.rm(filename) or { panic(err) }
+}
+
+fn test_read_file_from_virtual_filesystem() {
+	$if linux {
+		mounts := os.read_file('/proc/mounts')!
+
+		// it is not empty, contains some mounting such as root filesystem: /dev/x / ext4 rw 0 0
+		assert mounts.len > 20
+		assert mounts.contains('/')
+		assert mounts.contains(' ')
+	}
+}
+
+fn test_read_binary_from_virtual_filesystem() {
+	$if linux {
+		mounts_raw := os.read_bytes('/proc/mounts')!
+		mounts := mounts_raw.bytestr()
+
+		// it is not empty, contains some mounting such as root filesystem: /dev/x / ext4 rw 0 0
+		assert mounts.len > 20
+		assert mounts.contains('/')
+		assert mounts.contains(' ')
+	}
 }
 
 fn test_open_file_binary() {
@@ -58,8 +81,8 @@ fn test_open_file_binary() {
 	bytes := hello.bytes()
 	unsafe { file.write_ptr(bytes.data, bytes.len) }
 	file.close()
-	assert hello.len == os.file_size(filename)
-	read_hello := os.read_bytes(filename) or { panic('error reading file $filename') }
+	assert u64(hello.len) == os.file_size(filename)
+	read_hello := os.read_bytes(filename) or { panic('error reading file ${filename}') }
 	assert bytes == read_hello
 	os.rm(filename) or { panic(err) }
 }
@@ -85,28 +108,28 @@ fn test_open_file_binary() {
 // 	assert line2 == 'line 2'
 // }
 
-fn create_file(fpath string) ? {
-	mut f := os.create(fpath) ?
+fn create_file(fpath string) ! {
+	mut f := os.create(fpath)!
 	f.close()
 }
 
-fn create_and_write_to_file(fpath string, content string) ? {
-	mut f := os.create(fpath) ?
-	f.write_string(content) ?
+fn create_and_write_to_file(fpath string, content string) ! {
+	mut f := os.create(fpath)!
+	f.write_string(content)!
 	f.close()
 }
 
-fn test_create_file() ? {
+fn test_create_file() {
 	filename := './test1.txt'
 	hello := 'hello world!'
-	create_and_write_to_file(filename, hello) ?
-	assert hello.len == os.file_size(filename)
+	create_and_write_to_file(filename, hello)!
+	assert u64(hello.len) == os.file_size(filename)
 	os.rm(filename) or { panic(err) }
 }
 
 fn test_is_file() {
 	// Setup
-	work_dir := os.join_path_single(os.getwd(), 'is_file_test')
+	work_dir := os.join_path_single(tfolder, 'is_file_test')
 	os.mkdir_all(work_dir) or { panic(err) }
 	tfile := os.join_path_single(work_dir, 'tmp_file')
 	// Test things that shouldn't be a file
@@ -138,28 +161,29 @@ fn test_write_and_read_string_to_file() {
 	filename := './test1.txt'
 	hello := 'hello world!'
 	os.write_file(filename, hello) or { panic(err) }
-	assert hello.len == os.file_size(filename)
-	read_hello := os.read_file(filename) or { panic('error reading file $filename') }
+	assert u64(hello.len) == os.file_size(filename)
+	read_hello := os.read_file(filename) or { panic('error reading file ${filename}') }
 	assert hello == read_hello
 	os.rm(filename) or { panic(err) }
 }
 
 // test_write_and_read_bytes checks for regressions made in the functions
 // read_bytes, read_bytes_at and write_bytes.
+
 fn test_write_and_read_bytes() {
 	file_name := './byte_reader_writer.tst'
-	payload := [byte(`I`), `D`, `D`, `Q`, `D`]
+	payload := [u8(`I`), `D`, `D`, `Q`, `D`]
 	mut file_write := os.create(os.real_path(file_name)) or {
-		eprintln('failed to create file $file_name')
+		eprintln('failed to create file ${file_name}')
 		return
 	}
 	// We use the standard write_bytes function to write the payload and
 	// compare the length of the array with the file size (have to match).
 	unsafe { file_write.write_ptr(payload.data, 5) }
 	file_write.close()
-	assert payload.len == os.file_size(file_name)
+	assert u64(payload.len) == os.file_size(file_name)
 	mut file_read := os.open(os.real_path(file_name)) or {
-		eprintln('failed to open file $file_name')
+		eprintln('failed to open file ${file_name}')
 		return
 	}
 	// We only need to test read_bytes because this function calls
@@ -169,9 +193,9 @@ fn test_write_and_read_bytes() {
 	// eprintln('payload: $payload')
 	assert rbytes == payload
 	// check that trying to read data from EOF doesn't error and returns 0
-	mut a := []byte{len: 5}
+	mut a := []u8{len: 5}
 	nread := file_read.read_bytes_into(5, mut a) or {
-		n := if err is none {
+		n := if err is os.Eof {
 			int(0)
 		} else {
 			eprintln(err)
@@ -198,22 +222,22 @@ fn test_ls() {
 	}
 }
 
-fn create_tree() ? {
-	os.mkdir_all('myfolder/f1/f2/f3') ?
-	os.mkdir_all('myfolder/a1/a2/a3') ?
+fn create_tree() ! {
+	os.mkdir_all('myfolder/f1/f2/f3')!
+	os.mkdir_all('myfolder/a1/a2/a3', mode: 0o700)!
 	f3 := os.real_path('myfolder/f1/f2/f3')
 	assert os.is_dir(f3)
-	create_file('myfolder/f1/f2/f3/a.txt') ?
-	create_file('myfolder/f1/f2/f3/b.txt') ?
-	create_file('myfolder/f1/f2/f3/c.txt') ?
-	create_file('myfolder/f1/f2/f3/d.md') ?
-	create_file('myfolder/f1/0.txt') ?
-	create_file('myfolder/another.md') ?
-	create_file('myfolder/a1/a2/a3/x.txt') ?
-	create_file('myfolder/a1/a2/a3/y.txt') ?
-	create_file('myfolder/a1/a2/a3/z.txt') ?
-	create_file('myfolder/a1/1.txt') ?
-	create_file('myfolder/xyz.ini') ?
+	create_file('myfolder/f1/f2/f3/a.txt')!
+	create_file('myfolder/f1/f2/f3/b.txt')!
+	create_file('myfolder/f1/f2/f3/c.txt')!
+	create_file('myfolder/f1/f2/f3/d.md')!
+	create_file('myfolder/f1/0.txt')!
+	create_file('myfolder/another.md')!
+	create_file('myfolder/a1/a2/a3/x.txt')!
+	create_file('myfolder/a1/a2/a3/y.txt')!
+	create_file('myfolder/a1/a2/a3/z.txt')!
+	create_file('myfolder/a1/1.txt')!
+	create_file('myfolder/xyz.ini')!
 }
 
 fn remove_tree() {
@@ -226,8 +250,8 @@ fn normalise_paths(paths []string) []string {
 	return res
 }
 
-fn test_walk_ext() ? {
-	create_tree() ?
+fn test_walk_ext() {
+	create_tree()!
 	defer {
 		remove_tree()
 	}
@@ -254,8 +278,8 @@ fn test_walk_ext() ? {
 	assert mds == ['myfolder/another.md', 'myfolder/f1/f2/f3/d.md']
 }
 
-fn test_walk_with_context() ? {
-	create_tree() ?
+fn test_walk_with_context() {
+	create_tree()!
 	defer {
 		remove_tree()
 	}
@@ -300,7 +324,7 @@ fn test_cp() {
 	old_file_name := 'cp_example.txt'
 	new_file_name := 'cp_new_example.txt'
 	os.write_file(old_file_name, 'Test data 1 2 3, V is awesome #$%^[]!~⭐') or { panic(err) }
-	os.cp(old_file_name, new_file_name) or { panic('$err') }
+	os.cp(old_file_name, new_file_name) or { panic('${err}') }
 	old_file := os.read_file(old_file_name) or { panic(err) }
 	new_file := os.read_file(new_file_name) or { panic(err) }
 	assert old_file == new_file
@@ -309,7 +333,7 @@ fn test_cp() {
 }
 
 fn test_mv() {
-	work_dir := os.join_path_single(os.getwd(), 'mv_test')
+	work_dir := os.join_path_single(tfolder, 'mv_test')
 	os.mkdir_all(work_dir) or { panic(err) }
 	// Setup test files
 	tfile1 := os.join_path_single(work_dir, 'file')
@@ -355,6 +379,12 @@ fn test_mv() {
 	assert !os.is_dir(expected)
 }
 
+fn test_is_dir_empty() {
+	// Test that is_dir_empty returns true on
+	// non-existent directories ***as stated in it's doc string***
+	assert os.is_dir_empty('dir that does not exist at all')
+}
+
 fn test_cp_all() {
 	// fileX -> dir/fileX
 	// Note: clean up of the files happens inside the cleanup_leftovers function
@@ -398,7 +428,7 @@ fn test_realpath_non_existing() {
 
 fn test_realpath_existing() {
 	existing_file_name := 'existing_file.txt'
-	existing_file := os.join_path_single(os.temp_dir(), existing_file_name)
+	existing_file := os.join_path_single(tfolder, existing_file_name)
 	os.rm(existing_file) or {}
 	os.write_file(existing_file, 'abc') or {}
 	assert os.exists(existing_file)
@@ -428,6 +458,7 @@ fn test_realpath_absolutizes_existing_relative_paths() {
 }
 
 // TODO: think much more about whether this is desirable:
+
 fn test_realpath_does_not_absolutize_non_existing_relative_paths() {
 	relative_path := os.join_path('one', 'nonexisting_folder', '..', 'something')
 	$if !windows {
@@ -436,39 +467,17 @@ fn test_realpath_does_not_absolutize_non_existing_relative_paths() {
 	}
 }
 
-fn test_realpath_absolutepath_symlink() ? {
+fn test_realpath_absolutepath_symlink() {
 	file_name := 'tolink_file.txt'
 	symlink_name := 'symlink.txt'
-	create_file(file_name) ?
-	assert os.symlink(file_name, symlink_name) ?
+	create_file(file_name)!
+	os.symlink(file_name, symlink_name)!
 	rpath := os.real_path(symlink_name)
 	println(rpath)
 	assert os.is_abs_path(rpath)
 	assert rpath.ends_with(file_name)
 	os.rm(symlink_name) or {}
 	os.rm(file_name) or {}
-}
-
-fn test_tmpdir() {
-	t := os.temp_dir()
-	assert t.len > 0
-	assert os.is_dir(t)
-	tfile := t + os.path_separator + 'tmpfile.txt'
-	os.rm(tfile) or {} // just in case
-	tfile_content := 'this is a temporary file'
-	os.write_file(tfile, tfile_content) or { panic(err) }
-	tfile_content_read := os.read_file(tfile) or { panic(err) }
-	assert tfile_content_read == tfile_content
-	os.rm(tfile) or { panic(err) }
-}
-
-fn test_is_writable_folder() {
-	tmp := os.temp_dir()
-	f := os.is_writable_folder(tmp) or {
-		eprintln('err: $err')
-		false
-	}
-	assert f
 }
 
 fn test_make_symlink_check_is_link_and_remove_symlink() {
@@ -498,12 +507,12 @@ fn test_make_symlink_check_is_link_and_remove_symlink() {
 	assert symlink_exists == false
 }
 
-fn test_make_symlink_check_is_link_and_remove_symlink_with_file() ? {
+fn test_make_symlink_check_is_link_and_remove_symlink_with_file() {
 	file := 'tfile'
 	symlink := 'tsymlink'
 	os.rm(symlink) or {}
 	os.rm(file) or {}
-	create_file(file) ?
+	create_file(file)!
 	os.symlink(file, symlink) or { panic(err) }
 	assert os.is_link(symlink)
 	os.rm(symlink) or { panic(err) }
@@ -512,12 +521,12 @@ fn test_make_symlink_check_is_link_and_remove_symlink_with_file() ? {
 	assert symlink_exists == false
 }
 
-fn test_make_hardlink_check_is_link_and_remove_hardlink_with_file() ? {
+fn test_make_hardlink_check_is_link_and_remove_hardlink_with_file() {
 	file := 'tfile'
 	symlink := 'tsymlink'
 	os.rm(symlink) or {}
 	os.rm(file) or {}
-	create_file(file) ?
+	create_file(file)!
 	os.link(file, symlink) or { panic(err) }
 	assert os.exists(symlink)
 	os.rm(symlink) or { panic(err) }
@@ -547,6 +556,7 @@ fn test_make_hardlink_check_is_link_and_remove_hardlink_with_file() ? {
 // println(cpid)
 // }
 // }
+
 fn test_symlink() {
 	os.mkdir('symlink') or { panic(err) }
 	os.symlink('symlink', 'symlink2') or { panic(err) }
@@ -560,9 +570,9 @@ fn test_symlink() {
 	}
 }
 
-fn test_is_executable_writable_readable() ? {
+fn test_is_executable_writable_readable() {
 	file_name := 'rwxfile.exe'
-	create_file(file_name) ?
+	create_file(file_name)!
 	$if !windows {
 		os.chmod(file_name, 0o600) or {} // mark as readable && writable, but NOT executable
 		assert os.is_writable(file_name)
@@ -579,17 +589,23 @@ fn test_is_executable_writable_readable() ? {
 	os.rm(file_name) or { panic(err) }
 }
 
-fn test_ext() {
+fn test_file_ext() {
 	assert os.file_ext('file.v') == '.v'
+	assert os.file_ext('file.js.v') == '.v'
+	assert os.file_ext('file.ext1.ext2.ext3') == '.ext3'
+	assert os.file_ext('.ignore_me.v') == '.v'
 	assert os.file_ext('file') == ''
-}
-
-fn test_is_abs() {
-	assert os.is_abs_path('/home/user')
-	assert os.is_abs_path('v/vlib') == false
-	$if windows {
-		assert os.is_abs_path('C:\\Windows\\')
-	}
+	assert os.file_ext('.git') == ''
+	assert os.file_ext('file.') == ''
+	assert os.file_ext('.') == ''
+	assert os.file_ext('..') == ''
+	assert os.file_ext('file...') == ''
+	assert os.file_ext('.file.') == ''
+	assert os.file_ext('..file..') == ''
+	assert os.file_ext('./.git') == ''
+	assert os.file_ext('./.git/') == ''
+	assert os.file_ext('\\.git') == ''
+	assert os.file_ext('\\.git\\') == ''
 }
 
 fn test_join() {
@@ -597,6 +613,7 @@ fn test_join() {
 		assert os.join_path('v', 'vlib', 'os') == 'v\\vlib\\os'
 	} $else {
 		assert os.join_path('v', 'vlib', 'os') == 'v/vlib/os'
+		assert os.join_path('/foo/bar', './file.txt') == '/foo/bar/file.txt'
 	}
 }
 
@@ -669,10 +686,8 @@ fn test_uname() {
 	assert u.machine.len > 0
 }
 
-// tests for write_file_array and read_file_array<T>:
-const (
-	maxn = 3
-)
+// tests for write_file_array and read_file_array[T]:
+const maxn = 3
 
 struct IntPoint {
 	x int
@@ -681,9 +696,9 @@ struct IntPoint {
 
 fn test_write_file_array_bytes() {
 	fpath := './abytes.bin'
-	mut arr := []byte{len: maxn}
+	mut arr := []u8{len: maxn}
 	for i in 0 .. maxn {
-		arr[i] = 65 + byte(i)
+		arr[i] = 65 + u8(i)
 	}
 	os.write_file_array(fpath, arr) or { panic(err) }
 	rarr := os.read_bytes(fpath) or { panic(err) }
@@ -699,7 +714,7 @@ fn test_write_file_array_structs() {
 		arr[i] = IntPoint{65 + i, 65 + i + 10}
 	}
 	os.write_file_array(fpath, arr) or { panic(err) }
-	rarr := os.read_file_array<IntPoint>(fpath)
+	rarr := os.read_file_array[IntPoint](fpath)
 	assert rarr == arr
 	assert rarr.len == maxn
 	// eprintln( rarr.str().replace('\n', ' ').replace('},', '},\n'))
@@ -720,12 +735,12 @@ cmd.close()
 	*/
 }
 
-fn test_posix_set_bit() ? {
+fn test_posix_set_bit() {
 	$if windows {
 		assert true
 	} $else {
 		fpath := 'permtest'
-		create_file(fpath) ?
+		create_file(fpath)!
 		os.chmod(fpath, 0o0777) or { panic(err) }
 		c_fpath := &char(fpath.str)
 		mut s := C.stat{}
@@ -749,7 +764,7 @@ fn test_posix_set_bit() ? {
 		}
 		mode = u32(s.st_mode) & 0o0777
 		assert mode == 0o0777
-		// Note: setting the sticky bit is platform dependend
+		// Note: setting the sticky bit is platform dependent
 		// `chmod -s -g -t`
 		os.posix_set_permission_bit(fpath, os.s_isuid, false)
 		os.posix_set_permission_bit(fpath, os.s_isgid, false)
@@ -780,13 +795,13 @@ fn test_exists_in_system_path() {
 	assert os.exists_in_system_path('ls')
 }
 
-fn test_truncate() ? {
+fn test_truncate() {
 	filename := './test_trunc.txt'
 	hello := 'hello world!'
-	mut f := os.create(filename) ?
-	f.write_string(hello) ?
+	mut f := os.create(filename)!
+	f.write_string(hello)!
 	f.close()
-	assert hello.len == os.file_size(filename)
+	assert u64(hello.len) == os.file_size(filename)
 	newlen := u64(40000)
 	os.truncate(filename, newlen) or { panic(err) }
 	assert newlen == os.file_size(filename)
@@ -794,17 +809,23 @@ fn test_truncate() ? {
 }
 
 fn test_hostname() {
-	assert os.hostname().len > 2
+	hostname := os.hostname() or { '' }
+	assert hostname.len > 2
 }
 
-fn test_glob() ? {
+// fn test_loginname() {
+// loginname := os.loginname() or { '' }
+// assert loginname.len > 2
+//}
+
+fn test_glob() {
 	os.mkdir('test_dir') or { panic(err) }
 	for i in 0 .. 4 {
 		if i == 3 {
-			create_file('test_dir/test0_another') ?
-			create_file('test_dir/test') ?
+			create_file('test_dir/test0_another')!
+			create_file('test_dir/test')!
 		} else {
-			create_file('test_dir/test' + i.str()) ?
+			create_file('test_dir/test' + i.str())!
 		}
 	}
 	files := os.glob('test_dir/t*') or { panic(err) }
@@ -834,20 +855,12 @@ fn test_utime() {
 	assert os.file_last_mod_unix(filename) == mtime
 }
 
-fn test_expand_tilde_to_home() {
-	home_test := os.join_path(os.home_dir(), 'test', 'tilde', 'expansion')
-	home_expansion_test := os.expand_tilde_to_home(os.join_path('~', 'test', 'tilde',
-		'expansion'))
-	assert home_test == home_expansion_test
-	assert os.expand_tilde_to_home('~') == os.home_dir()
-}
-
-fn test_execute() ? {
+fn test_execute() {
 	print0script := os.join_path_single(tfolder, 'print0.v')
 	// The output of the next command contains a 0 byte in the middle.
 	// Nevertheless, the execute function *should* return a string that
 	// contains it.
-	os.write_file(print0script, 'C.printf(c"start%cMIDDLE%cfinish\nxx", 0, 0)\n') ?
+	os.write_file(print0script, 'C.printf(c"start%cMIDDLE%cfinish\nxx", 0, 0)\n')!
 	defer {
 		os.rm(print0script) or {}
 	}
@@ -860,6 +873,18 @@ fn test_execute() ? {
 	assert result.exit_code == 0
 	assert hexresult.starts_with('7374617274004d4944444c450066696e697368')
 	assert hexresult.ends_with('0a7878')
+}
+
+fn test_execute_with_stderr_redirection() {
+	result := os.execute('${os.quoted_path(@VEXE)} wrong_command')
+	assert result.exit_code == 1
+	assert result.output.contains('unknown command `wrong_command`')
+
+	stderr_path := os.join_path_single(tfolder, 'stderr.txt')
+	result2 := os.execute('${os.quoted_path(@VEXE)} wrong_command 2> ${os.quoted_path(stderr_path)}')
+	assert result2.exit_code == 1
+	assert result2.output == ''
+	assert os.exists(stderr_path)
 }
 
 fn test_command() {
@@ -895,9 +920,95 @@ fn test_command() {
 	assert cmd_to_fail.exit_code != 0 // 2 on linux, 1 on macos
 }
 
-fn test_config_dir() {
-	cdir := os.config_dir() or { panic(err) }
-	adir := '$cdir/test-v-config'
-	os.mkdir_all(adir) or { panic(err) }
-	os.rmdir(adir) or { panic(err) }
+fn test_reading_from_proc_cpuinfo() {
+	// This test is only for plain linux systems (they have a /proc virtual filesystem).
+	$if android {
+		assert true
+		return
+	}
+	$if !linux {
+		assert true
+		return
+	}
+	info := os.read_file('/proc/cpuinfo')!
+	assert info.len > 0
+	assert info.contains('processor')
+	assert info.ends_with('\n\n')
+
+	info_bytes := os.read_bytes('/proc/cpuinfo')!
+	assert info_bytes.len > 0
+	assert info.len == info_bytes.len
+}
+
+fn test_reading_from_empty_file() {
+	empty_file := os.join_path_single(tfolder, 'empty_file.txt')
+	os.rm(empty_file) or {}
+	assert !os.exists(empty_file)
+	os.write_file(empty_file, '')!
+	assert os.exists(empty_file)
+	content := os.read_file(empty_file)!
+	assert content.len == 0
+	content_bytes := os.read_bytes(empty_file)!
+	assert content_bytes.len == 0
+	os.rm(empty_file)!
+}
+
+fn move_across_partitions_using_function(f fn (src string, dst string) !) ! {
+	bindfs := os.find_abs_path_of_executable('bindfs') or {
+		eprintln('skipping test_mv_by_cp, because bindfs was not present')
+		return
+	}
+	// eprintln('>> $bindfs')
+	pfolder := os.join_path(tfolder, 'parent')
+	cfolder := os.join_path(pfolder, 'child')
+	mfolder := os.join_path(pfolder, 'mountpoint')
+	cdeepfolder := os.join_path(cfolder, 'deep', 'folder')
+	os.mkdir_all(mfolder)!
+	os.mkdir_all(cfolder)!
+	os.mkdir_all(cdeepfolder)!
+	//
+	original_path := os.join_path(pfolder, 'original.txt')
+	target_path := os.join_path(cdeepfolder, 'target.txt')
+	os.write_file(original_path, 'text')!
+	os.write_file(os.join_path(cdeepfolder, 'x.txt'), 'some text')!
+	// os.system('tree $pfolder')
+	/*
+	/tmp/v_1000/v/tests/os_test/parent
+	├── child
+	│   └── deep
+	│       └── folder
+	│           └── x.txt
+	├── mountpoint
+	└── original.txt
+	*/
+	os.system('${bindfs} --no-allow-other ${cfolder} ${mfolder}')
+	defer {
+		os.system('sync; umount ${mfolder}')
+	}
+	// os.system('tree $pfolder')
+	/*
+	/tmp/v_1000/v/tests/os_test/parent
+	├── child
+	│   └── deep
+	│       └── folder
+	│           └── x.txt
+	├── mountpoint
+	│   └── deep
+	│       └── folder
+	│           └── x.txt
+	└── original.txt
+	*/
+
+	f(original_path, target_path)!
+
+	assert os.exists(target_path)
+	assert !os.exists(original_path)
+}
+
+fn test_mv_by_cp_across_partitions() {
+	move_across_partitions_using_function(os.mv_by_cp)!
+}
+
+fn test_mv_across_partitions() {
+	move_across_partitions_using_function(os.mv)!
 }

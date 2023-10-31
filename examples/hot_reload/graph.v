@@ -12,7 +12,7 @@ const (
 
 struct Context {
 mut:
-	gg &gg.Context
+	gg &gg.Context = unsafe { nil }
 }
 
 fn main() {

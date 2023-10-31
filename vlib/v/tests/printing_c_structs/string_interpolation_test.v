@@ -2,7 +2,7 @@
 
 const the_string = 'the string'
 
-struct C.Abc {
+pub struct C.Abc {
 	char_pointer_field &char
 }
 
@@ -19,7 +19,7 @@ fn test_interpolation_of_v_structs_containing_c_structs() {
 	}
 	sxxx := xxx.str()
 	assert sxxx == 'VStruct{
-    a_c_struct: struct Abc{
+    a_c_struct: C.Abc{
         char_pointer_field: &C"the string"
     }
 }'

@@ -14,7 +14,7 @@ struct MyImplementor {
 fn (m MyImplementor) foo() string {
 	// Can read member properties:
 	num := m.num
-	return 'Hello World $num!'
+	return 'Hello World ${num}!'
 }
 
 fn test_shared_interface_lock_1() {
@@ -77,5 +77,5 @@ struct MyOtherImplementor {
 
 fn (m MyOtherImplementor) foo() string {
 	// Different implementation:
-	return 'Hello World ($m.x, $m.y, $m.s)!'
+	return 'Hello World (${m.x}, ${m.y}, ${m.s})!'
 }

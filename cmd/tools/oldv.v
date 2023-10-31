@@ -4,7 +4,7 @@ import scripting
 import vgit
 
 const (
-	tool_version     = '0.0.3'
+	tool_version     = '0.0.4'
 	tool_description = '  Checkout an old V and compile it as it was on specific commit.
 |     This tool is useful, when you want to discover when something broke.
 |     It is also useful, when you just want to experiment with an older historic V.
@@ -72,7 +72,7 @@ const cache_oldv_folder_vc = os.join_path(cache_oldv_folder, 'vc')
 fn sync_cache() {
 	scripting.verbose_trace(@FN, 'start')
 	if !os.exists(cache_oldv_folder) {
-		scripting.verbose_trace(@FN, 'creating $cache_oldv_folder')
+		scripting.verbose_trace(@FN, 'creating ${cache_oldv_folder}')
 		scripting.mkdir_all(cache_oldv_folder) or {
 			scripting.verbose_trace(@FN, '## failed.')
 			exit(1)
@@ -82,16 +82,20 @@ fn sync_cache() {
 	for reponame in ['v', 'vc'] {
 		repofolder := os.join_path(cache_oldv_folder, reponame)
 		if !os.exists(repofolder) {
-			scripting.verbose_trace(@FN, 'cloning to $repofolder')
-			scripting.exec('git clone --quiet https://github.com/vlang/$reponame $repofolder') or {
-				scripting.verbose_trace(@FN, '## error during clone: $err')
+			scripting.verbose_trace(@FN, 'cloning to ${repofolder}')
+			mut repo_options := ''
+			if reponame == 'vc' {
+				repo_options = '--filter=blob:none'
+			}
+			scripting.exec('git clone ${repo_options} --quiet https://github.com/vlang/${reponame} ${repofolder}') or {
+				scripting.verbose_trace(@FN, '## error during clone: ${err}')
 				exit(1)
 			}
 		}
 		scripting.chdir(repofolder)
 		scripting.exec('git pull --quiet') or {
-			scripting.verbose_trace(@FN, 'pulling to $repofolder')
-			scripting.verbose_trace(@FN, '## error during pull: $err')
+			scripting.verbose_trace(@FN, 'pulling to ${repofolder}')
+			scripting.verbose_trace(@FN, '## error during pull: ${err}')
 			exit(1)
 		}
 	}
@@ -99,7 +103,7 @@ fn sync_cache() {
 }
 
 fn main() {
-	scripting.used_tools_must_exist(['git', 'cc'])
+	scripting.used_tools_must_exist(['git'])
 	//
 	// Resetting VEXE here allows for `v run cmd/tools/oldv.v'.
 	// the parent V would have set VEXE, which later will
@@ -125,7 +129,7 @@ fn main() {
 	should_sync := fp.bool('cache-sync', `s`, false, 'Update the local cache')
 	context.is_bisect = fp.bool('bisect', `b`, false, 'Bisect mode. Use the current commit in the repo where oldv is.')
 	if !should_sync && !context.is_bisect {
-		fp.limit_free_args(1, 1) ?
+		fp.limit_free_args(1, 1)!
 	}
 	////
 	context.cleanup = fp.bool('clean', 0, false, 'Clean before running (slower).')
@@ -150,11 +154,11 @@ fn main() {
 	} else {
 		context.commit_v = scripting.run('git rev-list -n1 HEAD')
 	}
-	scripting.cprintln('#################  context.commit_v: $context.commit_v #####################')
+	scripting.cprintln('#################  context.commit_v: ${context.commit_v} #####################')
 	context.path_v = vgit.normalized_workpath_for_commit(context.vgo.workdir, context.commit_v)
 	context.path_vc = vgit.normalized_workpath_for_commit(context.vgo.workdir, 'vc')
 	if !os.is_dir(context.vgo.workdir) {
-		eprintln('Work folder: $context.vgo.workdir , does not exist.')
+		eprintln('Work folder: ${context.vgo.workdir} , does not exist.')
 		exit(2)
 	}
 	ecc := os.getenv('CC')
@@ -168,7 +172,7 @@ fn main() {
 	context.compile_oldv_if_needed()
 	scripting.chdir(context.path_v)
 	shorter_hash := context.commit_v_hash[0..10]
-	scripting.cprintln('#     v commit hash: $shorter_hash | folder: $context.path_v')
+	scripting.cprintln('#     v commit hash: ${shorter_hash} | folder: ${context.path_v}')
 	if context.cmd_to_run.len > 0 {
 		scripting.cprintln_strong('#           command: ${context.cmd_to_run:-34s}')
 		cmdres := os.execute_or_exit(context.cmd_to_run)

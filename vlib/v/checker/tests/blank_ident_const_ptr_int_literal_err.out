@@ -1,0 +1,8 @@
+vlib/v/checker/tests/blank_ident_const_ptr_int_literal_err.vv:4:8: error: cannot assign a pointer to a constant with an integer literal value
+    2 | 
+    3 | fn main() {
+    4 |     _ := &a
+      |           ^
+    5 | }
+Details: Specify the type for the constant value. Example:
+         `const a = int(3)`

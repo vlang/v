@@ -1,0 +1,9 @@
+fn main() {
+	mut x := 1
+	$if glibc {
+		x = 2
+	} $else {
+		x = 3
+	}
+	println('done')
+}

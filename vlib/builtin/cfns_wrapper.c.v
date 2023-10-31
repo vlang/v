@@ -3,7 +3,7 @@ module builtin
 // vstrlen returns the V length of the C string `s` (0 terminator is not counted).
 // The C string is expected to be a &byte pointer.
 [inline; unsafe]
-pub fn vstrlen(s &byte) int {
+pub fn vstrlen(s &u8) int {
 	return unsafe { C.strlen(&char(s)) }
 }
 
@@ -18,7 +18,10 @@ pub fn vstrlen_char(s &char) int {
 // The memory areas *MUST NOT OVERLAP*.  Use vmemmove, if the memory
 // areas do overlap. vmemcpy returns a pointer to `dest`.
 [inline; unsafe]
-pub fn vmemcpy(dest voidptr, const_src voidptr, n int) voidptr {
+pub fn vmemcpy(dest voidptr, const_src voidptr, n isize) voidptr {
+	$if trace_vmemcpy ? {
+		C.fprintf(C.stderr, c'vmemcpy dest: %p src: %p n: %6ld\n', dest, const_src, n)
+	}
 	unsafe {
 		return C.memcpy(dest, const_src, n)
 	}
@@ -30,7 +33,10 @@ pub fn vmemcpy(dest voidptr, const_src voidptr, n int) voidptr {
 // `src` or `dest`, and the bytes are then copied from the temporary array
 // to `dest`. vmemmove returns a pointer to `dest`.
 [inline; unsafe]
-pub fn vmemmove(dest voidptr, const_src voidptr, n int) voidptr {
+pub fn vmemmove(dest voidptr, const_src voidptr, n isize) voidptr {
+	$if trace_vmemmove ? {
+		C.fprintf(C.stderr, c'vmemmove dest: %p src: %p n: %6ld\n', dest, const_src, n)
+	}
 	unsafe {
 		return C.memmove(dest, const_src, n)
 	}
@@ -49,7 +55,10 @@ pub fn vmemmove(dest voidptr, const_src voidptr, n int) voidptr {
 // You should use a function that performs comparisons in constant time for
 // this.
 [inline; unsafe]
-pub fn vmemcmp(const_s1 voidptr, const_s2 voidptr, n int) int {
+pub fn vmemcmp(const_s1 voidptr, const_s2 voidptr, n isize) int {
+	$if trace_vmemcmp ? {
+		C.fprintf(C.stderr, c'vmemcmp s1: %p s2: %p n: %6ld\n', const_s1, const_s2, n)
+	}
 	unsafe {
 		return C.memcmp(const_s1, const_s2, n)
 	}
@@ -58,7 +67,10 @@ pub fn vmemcmp(const_s1 voidptr, const_s2 voidptr, n int) int {
 // vmemset fills the first `n` bytes of the memory area pointed to by `s`,
 // with the constant byte `c`. It returns a pointer to the memory area `s`.
 [inline; unsafe]
-pub fn vmemset(s voidptr, c int, n int) voidptr {
+pub fn vmemset(s voidptr, c int, n isize) voidptr {
+	$if trace_vmemset ? {
+		C.fprintf(C.stderr, c'vmemset s: %p c: %d n: %6ld\n', s, c, n)
+	}
 	unsafe {
 		return C.memset(s, c, n)
 	}

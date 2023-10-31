@@ -4,31 +4,121 @@ vlib/v/checker/tests/return_count_mismatch.vv:2:9: error: unexpected argument, c
       |            ^
     3 | }
     4 |
-vlib/v/checker/tests/return_count_mismatch.vv:7:2: error: expected `int` argument
-    5 | fn f() int
-    6 | {
-    7 |     return
+vlib/v/checker/tests/return_count_mismatch.vv:6:2: error: expected `int` argument
+    4 | 
+    5 | fn f() int {
+    6 |     return
       |     ~~~~~~
-    8 | }
-    9 |
-vlib/v/checker/tests/return_count_mismatch.vv:12:2: error: expected `(int, string)` arguments
-   10 | fn g() (int, string)
-   11 | {
-   12 |     return
+    7 | }
+    8 |
+vlib/v/checker/tests/return_count_mismatch.vv:10:2: error: expected `(int, string)` arguments
+    8 | 
+    9 | fn g() (int, string) {
+   10 |     return
       |     ~~~~~~
-   13 | }
-   14 |
-vlib/v/checker/tests/return_count_mismatch.vv:17:2: error: expected 1 argument, but got 2
-   15 | fn ff() int
-   16 | {
-   17 |     return 2, ''
-      |     ~~~~~~~~~~~~
-   18 | }
-   19 |
-vlib/v/checker/tests/return_count_mismatch.vv:22:2: error: expected 2 arguments, but got 1
-   20 | fn gg() (int, string)
-   21 | {
-   22 |     return 3
-      |     ~~~~~~~~
+   11 | }
+   12 |
+vlib/v/checker/tests/return_count_mismatch.vv:14:12: error: expected 1 argument, but got 2
+   12 | 
+   13 | fn ff() int {
+   14 |     return 2, ''
+      |               ~~
+   15 | }
+   16 |
+vlib/v/checker/tests/return_count_mismatch.vv:18:9: error: expected 2 arguments, but got 1
+   16 | 
+   17 | fn gg() (int, string) {
+   18 |     return 3
+      |            ^
+   19 | }
+   20 |
+vlib/v/checker/tests/return_count_mismatch.vv:22:9: error: unexpected argument, current function does not return anything
+   20 | 
+   21 | fn test0_1() {
+   22 |     return 1
+      |            ^
    23 | }
    24 |
+vlib/v/checker/tests/return_count_mismatch.vv:26:9: error: unexpected argument, current function does not return anything
+   24 | 
+   25 | fn test0_2() {
+   26 |     return 1, 2
+      |            ^
+   27 | }
+   28 |
+vlib/v/checker/tests/return_count_mismatch.vv:30:9: error: unexpected argument, current function does not return anything
+   28 | 
+   29 | fn test0_3() {
+   30 |     return 1, 2, 3
+      |            ^
+   31 | }
+   32 |
+vlib/v/checker/tests/return_count_mismatch.vv:34:9: error: unexpected argument, current function does not return anything
+   32 | 
+   33 | fn test0_4() {
+   34 |     return 1, 2, 3, 4
+      |            ^
+   35 | }
+   36 |
+vlib/v/checker/tests/return_count_mismatch.vv:44:12: error: expected 1 argument, but got 2
+   42 | 
+   43 | fn test1_2() int {
+   44 |     return 1, 2
+      |               ^
+   45 | }
+   46 |
+vlib/v/checker/tests/return_count_mismatch.vv:48:12: error: expected 1 argument, but got 3
+   46 | 
+   47 | fn test1_3() int {
+   48 |     return 1, 2, 3
+      |               ^
+   49 | }
+   50 |
+vlib/v/checker/tests/return_count_mismatch.vv:52:12: error: expected 1 argument, but got 4
+   50 | 
+   51 | fn test1_4() int {
+   52 |     return 1, 2, 3, 4
+      |               ^
+   53 | }
+   54 |
+vlib/v/checker/tests/return_count_mismatch.vv:58:9: error: expected 2 arguments, but got 1
+   56 | 
+   57 | fn test2_1() (int, int) {
+   58 |     return 1
+      |            ^
+   59 | }
+   60 |
+vlib/v/checker/tests/return_count_mismatch.vv:66:15: error: expected 2 arguments, but got 3
+   64 | 
+   65 | fn test2_3() (int, int) {
+   66 |     return 1, 2, 3
+      |                  ^
+   67 | }
+   68 |
+vlib/v/checker/tests/return_count_mismatch.vv:70:15: error: expected 2 arguments, but got 4
+   68 | 
+   69 | fn test2_4() (int, int) {
+   70 |     return 1, 2, 3, 4
+      |                  ^
+   71 | }
+   72 |
+vlib/v/checker/tests/return_count_mismatch.vv:76:9: error: expected 3 arguments, but got 1
+   74 | 
+   75 | fn test3_1() (int, int, int) {
+   76 |     return 1
+      |            ^
+   77 | }
+   78 |
+vlib/v/checker/tests/return_count_mismatch.vv:80:12: error: expected 3 arguments, but got 2
+   78 | 
+   79 | fn test3_2() (int, int, int) {
+   80 |     return 1, 2
+      |               ^
+   81 | }
+   82 |
+vlib/v/checker/tests/return_count_mismatch.vv:88:18: error: expected 3 arguments, but got 4
+   86 | 
+   87 | fn test3_4() (int, int, int) {
+   88 |     return 1, 2, 3, 4
+      |                     ^
+   89 | }

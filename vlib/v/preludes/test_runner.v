@@ -88,7 +88,7 @@ fn (i &VTestFnMetaInfo) free() {
 //
 
 [typedef]
-struct C.main__TestRunner {
+pub struct C.main__TestRunner {
 mut:
 	_object voidptr
 }
@@ -100,16 +100,16 @@ mut:
 pub fn change_test_runner(x &TestRunner) {
 	pobj := unsafe { &C.main__TestRunner(&test_runner)._object }
 	if pobj != 0 {
-		test_runner.free()
 		unsafe {
-			(&C.main__TestRunner(&test_runner))._object = voidptr(0)
+			test_runner.free()
+			(&C.main__TestRunner(&test_runner))._object = nil
 		}
 	}
 	test_runner = *x
 }
 
-// vtest_init will be caled *before* the normal _vinit() function,
-// to give a chance to the test runner implemenation to change the
+// vtest_init will be called *before* the normal _vinit() function,
+// to give a chance to the test runner implementation to change the
 // test_runner global variable. The reason vtest_init is called before
 // _vinit, is because a _test.v file can define consts, and they in turn
 // may use function calls in their declaration, which may do assertions.
@@ -119,7 +119,7 @@ pub fn change_test_runner(x &TestRunner) {
 
 // TODO: remove vtest_option_cludge, it is only here so that
 // `vlib/sync/channel_close_test.v` compiles with simpler runners,
-// that do not `import os` (which has other `fn() ?`). Without it,
+// that do not `import os` (which has other `fn()?`). Without it,
 // the C `Option_void` type is undefined -> C compilation error.
-fn vtest_option_cludge() ? {
+fn vtest_option_cludge() ! {
 }

@@ -2,6 +2,10 @@ fn create() ?(int, string, bool) {
 	return 5, 'aa', true
 }
 
+fn maybe() ?(int, int) {
+	return 1, 2
+}
+
 fn main() {
 	if r1 := create() {
 		println(r1)
@@ -12,5 +16,9 @@ fn main() {
 		println(r2)
 		println(r3)
 		println(r4)
+	}
+
+	if x := maybe() {
+		println('$x')
 	}
 }

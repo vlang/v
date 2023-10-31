@@ -1,8 +1,8 @@
+// vtest flaky: true
+// vtest retry: 3
 import os
 
-const (
-	test = @VROOT + '/vlib/v/tests/testdata/test_array_bound.v'
-)
+const test = @VROOT + '/vlib/v/tests/testdata/test_array_bound.v'
 
 fn direct(line string) {
 	if !line.contains('\tmain__direct(') {
@@ -10,7 +10,7 @@ fn direct(line string) {
 	}
 	trimmed := line.trim_space()
 	if trimmed.contains('array_get') {
-		assert trimmed == 'this should have been a direct access in $test line $line'
+		assert trimmed == 'this should have been a direct access in ${test} line ${line}'
 	}
 }
 
@@ -20,7 +20,7 @@ fn access(line string) {
 	}
 	trimmed := line.trim_space()
 	if !trimmed.contains('array_get') {
-		assert trimmed == 'this should have been an array access in $test line $line'
+		assert trimmed == 'this should have been an array access in ${test} line ${line}'
 	}
 }
 
@@ -39,7 +39,12 @@ fn test_array_optimisation() {
 	p.wait()
 	p.close()
 
-	assert stdout.contains('// THE END.')
+	ending := '// THE END.'
+	it_ends_properly := stdout.contains(ending)
+	if !it_ends_properly {
+		dump(stdout)
+	}
+	assert it_ends_properly
 
 	for line in stdout.split('\n') {
 		direct(line)

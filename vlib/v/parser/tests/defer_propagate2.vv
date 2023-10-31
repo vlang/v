@@ -13,11 +13,11 @@ fn opt2() ?int {
 	mut s := Abc{}
 	dump(s.x)
 	defer {
-		s.close() ?
+		s.close()?
 	}
 	return s.x
 }
 
 fn main() {
-	println(opt2() ?)
+	println(opt2()?)
 }

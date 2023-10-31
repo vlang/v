@@ -11,8 +11,8 @@ const (
 
 struct App {
 mut:
-	gg    &gg.Context
-	image gg.Image
+	gg    &gg.Context = unsafe { nil }
+	image int // gg.Image
 }
 
 fn main() {
@@ -30,7 +30,7 @@ fn main() {
 		init_fn: init_images
 	)
 	mut logo_path := os.resource_abs_path(os.join_path('..', 'assets', 'logo.png'))
-	app.image = app.gg.create_image(logo_path)
+	app.image = app.gg.create_image(logo_path)!.id
 	app.gg.run()
 }
 
@@ -49,5 +49,5 @@ fn (app &App) draw() {
 	// app.gg.draw_text_def(300,300, 'привет')
 	app.gg.draw_rect_filled(10, 10, 100, 30, gx.blue)
 	app.gg.draw_rect_empty(110, 150, 80, 40, gx.black)
-	app.gg.draw_image(230, 30, app.image.width, app.image.height, app.image)
+	app.gg.draw_image_by_id(230, 30, 200, 200, app.image)
 }

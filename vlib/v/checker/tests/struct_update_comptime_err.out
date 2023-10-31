@@ -1,0 +1,7 @@
+vlib/v/checker/tests/struct_update_comptime_err.vv:18:4: error: cannot use struct update syntax in compile time expressions
+   16 |     $for field in U.fields {
+   17 |         _ = struct {
+   18 |             ...val.$(field.name)
+      |             ~~~
+   19 |         }
+   20 |     }

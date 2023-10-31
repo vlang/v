@@ -1,6 +1,6 @@
-vlib/v/checker/tests/overload_return_type.vv:14:11: error: cannot assign to `two`: expected `Point`, not `int`
-   12 |     mut one := Point {x:1, y:2}
-   13 |     mut two := Point {x:5, y:1}
-   14 |     two = one + two
+vlib/v/checker/tests/overload_return_type.vv:20:8: error: cannot assign to `two`: expected `Point`, not `int`
+   18 |         y: 1
+   19 |     }
+   20 |     two = one + two
       |           ~~~~~~~~~
-   15 | }
+   21 | }

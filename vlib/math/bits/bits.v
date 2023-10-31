@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module bits
@@ -6,13 +6,12 @@ module bits
 const (
 	// See http://supertech.csail.mit.edu/papers/debruijn.pdf
 	de_bruijn32    = u32(0x077CB531)
-	de_bruijn32tab = [byte(0), 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8, 31, 27, 13,
-		23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9]
+	de_bruijn32tab = [u8(0), 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8, 31, 27, 13,
+		23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9]!
 	de_bruijn64    = u64(0x03f79d71b4ca8b09)
-	de_bruijn64tab = [byte(0), 1, 56, 2, 57, 49, 28, 3, 61, 58, 42, 50, 38, 29, 17, 4, 62, 47,
-		59, 36, 45, 43, 51, 22, 53, 39, 33, 30, 24, 18, 12, 5, 63, 55, 48, 27, 60, 41, 37, 16,
-		46, 35, 44, 21, 52, 32, 23, 11, 54, 26, 40, 15, 34, 20, 31, 10, 25, 14, 19, 9, 13, 8, 7,
-		6]
+	de_bruijn64tab = [u8(0), 1, 56, 2, 57, 49, 28, 3, 61, 58, 42, 50, 38, 29, 17, 4, 62, 47, 59,
+		36, 45, 43, 51, 22, 53, 39, 33, 30, 24, 18, 12, 5, 63, 55, 48, 27, 60, 41, 37, 16, 46,
+		35, 44, 21, 52, 32, 23, 11, 54, 26, 40, 15, 34, 20, 31, 10, 25, 14, 19, 9, 13, 8, 7, 6]!
 )
 
 const (
@@ -31,7 +30,7 @@ const (
 
 // --- LeadingZeros ---
 // leading_zeros_8 returns the number of leading zero bits in x; the result is 8 for x == 0.
-pub fn leading_zeros_8(x byte) int {
+pub fn leading_zeros_8(x u8) int {
 	return 8 - len_8(x)
 }
 
@@ -52,7 +51,7 @@ pub fn leading_zeros_64(x u64) int {
 
 // --- TrailingZeros ---
 // trailing_zeros_8 returns the number of trailing zero bits in x; the result is 8 for x == 0.
-pub fn trailing_zeros_8(x byte) int {
+pub fn trailing_zeros_8(x u8) int {
 	return int(ntz_8_tab[x])
 }
 
@@ -95,7 +94,7 @@ pub fn trailing_zeros_64(x u64) int {
 
 // --- OnesCount ---
 // ones_count_8 returns the number of one bits ("population count") in x.
-pub fn ones_count_8(x byte) int {
+pub fn ones_count_8(x u8) int {
 	return int(pop_8_tab[x])
 }
 
@@ -140,16 +139,22 @@ pub fn ones_count_64(x u64) int {
 	return int(y) & ((1 << 7) - 1)
 }
 
+const (
+	n8  = u8(8)
+	n16 = u16(16)
+	n32 = u32(32)
+	n64 = u64(64)
+)
+
 // --- RotateLeft ---
 // rotate_left_8 returns the value of x rotated left by (k mod 8) bits.
 // To rotate x right by k bits, call rotate_left_8(x, -k).
 //
 // This function's execution time does not depend on the inputs.
 [inline]
-pub fn rotate_left_8(x byte, k int) byte {
-	n := byte(8)
-	s := byte(k) & (n - byte(1))
-	return (x << s) | (x >> (n - s))
+pub fn rotate_left_8(x u8, k int) u8 {
+	s := u8(k) & (bits.n8 - u8(1))
+	return (x << s) | (x >> (bits.n8 - s))
 }
 
 // rotate_left_16 returns the value of x rotated left by (k mod 16) bits.
@@ -158,9 +163,8 @@ pub fn rotate_left_8(x byte, k int) byte {
 // This function's execution time does not depend on the inputs.
 [inline]
 pub fn rotate_left_16(x u16, k int) u16 {
-	n := u16(16)
-	s := u16(k) & (n - u16(1))
-	return (x << s) | (x >> (n - s))
+	s := u16(k) & (bits.n16 - u16(1))
+	return (x << s) | (x >> (bits.n16 - s))
 }
 
 // rotate_left_32 returns the value of x rotated left by (k mod 32) bits.
@@ -169,9 +173,8 @@ pub fn rotate_left_16(x u16, k int) u16 {
 // This function's execution time does not depend on the inputs.
 [inline]
 pub fn rotate_left_32(x u32, k int) u32 {
-	n := u32(32)
-	s := u32(k) & (n - u32(1))
-	return (x << s) | (x >> (n - s))
+	s := u32(k) & (bits.n32 - u32(1))
+	return (x << s) | (x >> (bits.n32 - s))
 }
 
 // rotate_left_64 returns the value of x rotated left by (k mod 64) bits.
@@ -180,15 +183,14 @@ pub fn rotate_left_32(x u32, k int) u32 {
 // This function's execution time does not depend on the inputs.
 [inline]
 pub fn rotate_left_64(x u64, k int) u64 {
-	n := u64(64)
-	s := u64(k) & (n - u64(1))
-	return (x << s) | (x >> (n - s))
+	s := u64(k) & (bits.n64 - u64(1))
+	return (x << s) | (x >> (bits.n64 - s))
 }
 
 // --- Reverse ---
 // reverse_8 returns the value of x with its bits in reversed order.
 [inline]
-pub fn reverse_8(x byte) byte {
+pub fn reverse_8(x u8) u8 {
 	return rev_8_tab[x]
 }
 
@@ -246,7 +248,7 @@ pub fn reverse_bytes_64(x u64) u64 {
 
 // --- Len ---
 // len_8 returns the minimum number of bits required to represent x; the result is 0 for x == 0.
-pub fn len_8(x byte) int {
+pub fn len_8(x u8) int {
 	return int(len_8_tab[x])
 }
 
@@ -454,7 +456,7 @@ pub fn div_64(hi u64, lo u64, y1 u64) (u64, u64) {
 	un0 := un10 & bits.mask32
 	mut q1 := un32 / yn1
 	mut rhat := un32 - (q1 * yn1)
-	for (q1 >= bits.two32) || (q1 * yn0) > ((bits.two32 * rhat) + un1) {
+	for q1 >= bits.two32 || (q1 * yn0) > ((bits.two32 * rhat) + un1) {
 		q1--
 		rhat += yn1
 		if rhat >= bits.two32 {
@@ -464,7 +466,7 @@ pub fn div_64(hi u64, lo u64, y1 u64) (u64, u64) {
 	un21 := (un32 * bits.two32) + (un1 - (q1 * y))
 	mut q0 := un21 / yn1
 	rhat = un21 - q0 * yn1
-	for (q0 >= bits.two32) || (q0 * yn0) > ((bits.two32 * rhat) + un0) {
+	for q0 >= bits.two32 || (q0 * yn0) > ((bits.two32 * rhat) + un0) {
 		q0--
 		rhat += yn1
 		if rhat >= bits.two32 {

@@ -1,0 +1,6 @@
+vlib/v/checker/tests/return_result_fn_mismatch.vv:15:10: error: cannot use `fn ()` as `fn () !` in argument 1 to `do_test`
+   13 |         foo() or { return }
+   14 |     }
+   15 |     do_test(test)
+      |             ~~~~
+   16 | }

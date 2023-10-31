@@ -32,7 +32,7 @@ fn test_shared_lock() {
 		a: read_threads
 	}
 	for _ in 0 .. read_threads {
-		go f(shared x, shared z)
+		spawn f(shared x, shared z)
 	}
 	for i in 0 .. writes {
 		lock x { // wait for ongoing reads to finish, don't start new ones

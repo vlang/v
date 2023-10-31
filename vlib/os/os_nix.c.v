@@ -8,14 +8,13 @@ import strings
 #include <sys/utsname.h>
 #include <sys/types.h>
 #include <utime.h>
-$if !solaris && !haiku {
-	#include <sys/ptrace.h>
-}
 
 pub const (
 	path_separator = '/'
 	path_delimiter = ':'
 )
+
+const executable_suffixes = ['']
 
 const (
 	stdin_value  = 0
@@ -62,8 +61,6 @@ fn C.getgid() int
 
 fn C.getegid() int
 
-fn C.ptrace(u32, u32, voidptr, int) u64
-
 enum GlobMatch {
 	exact
 	ends_with
@@ -85,8 +82,8 @@ fn glob_match(dir string, pattern string, next_pattern string, mut matches []str
 		mode = GlobMatch.any
 		if next_pattern != pattern && next_pattern != '' {
 			for file in files {
-				if is_dir('$dir/$file') {
-					subdirs << '$dir/$file'
+				if is_dir('${dir}/${file}') {
+					subdirs << '${dir}/${file}'
 				}
 			}
 			return subdirs
@@ -113,7 +110,7 @@ fn glob_match(dir string, pattern string, next_pattern string, mut matches []str
 			pathwalk := file.split(os.path_separator)
 			pathwalk[pathwalk.len - 1]
 		} else {
-			fpath = if dir == '.' { file } else { '$dir/$file' }
+			fpath = if dir == '.' { file } else { '${dir}/${file}' }
 			file
 		}
 		if f in ['.', '..'] || f == '' {
@@ -144,7 +141,7 @@ fn glob_match(dir string, pattern string, next_pattern string, mut matches []str
 			if is_dir(fpath) {
 				subdirs << fpath
 				if next_pattern == pattern && next_pattern != '' {
-					matches << '$fpath$os.path_separator'
+					matches << '${fpath}${os.path_separator}'
 				}
 			} else {
 				matches << fpath
@@ -154,7 +151,7 @@ fn glob_match(dir string, pattern string, next_pattern string, mut matches []str
 	return subdirs
 }
 
-fn native_glob_pattern(pattern string, mut matches []string) ? {
+fn native_glob_pattern(pattern string, mut matches []string) ! {
 	steps := pattern.split(os.path_separator)
 	mut cwd := if pattern.starts_with(os.path_separator) { os.path_separator } else { '.' }
 	mut subdirs := [cwd]
@@ -164,14 +161,14 @@ fn native_glob_pattern(pattern string, mut matches []string) ? {
 		if step == '' {
 			continue
 		}
-		if is_dir('$cwd$os.path_separator$step') {
+		if is_dir('${cwd}${os.path_separator}${step}') {
 			dd := if cwd == '/' {
 				step
 			} else {
 				if cwd == '.' || cwd == '' {
 					step
 				} else {
-					if step == '.' || step == '/' { cwd } else { '$cwd/$step' }
+					if step == '.' || step == '/' { cwd } else { '${cwd}/${step}' }
 				}
 			}
 			if i + 1 != steps.len {
@@ -188,7 +185,7 @@ fn native_glob_pattern(pattern string, mut matches []string) ? {
 				if cwd == '.' || cwd == '' {
 					sd
 				} else {
-					if sd == '.' || sd == '/' { cwd } else { '$cwd/$sd' }
+					if sd == '.' || sd == '/' { cwd } else { '${cwd}/${sd}' }
 				}
 			}
 			subs << glob_match(d.replace('//', '/'), step, step2, mut matches)
@@ -197,13 +194,29 @@ fn native_glob_pattern(pattern string, mut matches []string) ? {
 	}
 }
 
-pub fn utime(path string, actime int, modtime int) ? {
+pub fn utime(path string, actime int, modtime int) ! {
 	mut u := C.utimbuf{actime, modtime}
 	if C.utime(&char(path.str), voidptr(&u)) != 0 {
 		return error_with_code(posix_get_error_msg(C.errno), C.errno)
 	}
 }
 
+// uname returns information about the platform on which the program is running
+// For example:
+// os.Uname{
+//    sysname: 'Linux'
+//    nodename: 'nemesis'
+//    release: '5.15.0-57-generic'
+//    version: '#63~20.04.1-Ubuntu SMP Wed Nov 30 13:40:16 UTC 2022'
+//    machine: 'x86_64'
+// }
+// where the fields have the following meaning:
+//    sysname is the name of this implementation of the operating system
+//    nodename is the name of this node within an implementation-dependent communications network
+//    release is the current release level of this implementation
+//    version is the current version level of this release
+//    machine is the name of the hardware type, on which the system is running
+// See also https://pubs.opengroup.org/onlinepubs/7908799/xsh/sysutsname.h.html
 pub fn uname() Uname {
 	mut u := Uname{}
 	utsize := sizeof(C.utsname)
@@ -222,7 +235,7 @@ pub fn uname() Uname {
 	return u
 }
 
-pub fn hostname() string {
+pub fn hostname() !string {
 	mut hstnme := ''
 	size := 256
 	mut buf := unsafe { &char(malloc_noscan(size)) }
@@ -231,18 +244,18 @@ pub fn hostname() string {
 		unsafe { free(buf) }
 		return hstnme
 	}
-	return ''
+	return error(posix_get_error_msg(C.errno))
 }
 
-pub fn loginname() string {
+pub fn loginname() !string {
 	x := C.getlogin()
 	if !isnil(x) {
 		return unsafe { cstring_to_vstring(x) }
 	}
-	return ''
+	return error(posix_get_error_msg(C.errno))
 }
 
-fn init_os_args(argc int, argv &&byte) []string {
+fn init_os_args(argc int, argv &&u8) []string {
 	mut args_ := []string{len: argc}
 	for i in 0 .. argc {
 		args_[i] = unsafe { tos_clone(argv[i]) }
@@ -250,16 +263,16 @@ fn init_os_args(argc int, argv &&byte) []string {
 	return args_
 }
 
-pub fn ls(path string) ?[]string {
+pub fn ls(path string) ![]string {
 	if path.len == 0 {
 		return error('ls() expects a folder, not an empty string')
 	}
 	mut res := []string{cap: 50}
 	dir := unsafe { C.opendir(&char(path.str)) }
 	if isnil(dir) {
-		return error('ls() couldnt open dir "$path"')
+		return error('ls() couldnt open dir "${path}"')
 	}
-	mut ent := &C.dirent(0)
+	mut ent := &C.dirent(unsafe { nil })
 	// mut ent := &C.dirent{!}
 	for {
 		ent = C.readdir(dir)
@@ -267,7 +280,7 @@ pub fn ls(path string) ?[]string {
 			break
 		}
 		unsafe {
-			bptr := &byte(&ent.d_name[0])
+			bptr := &u8(&ent.d_name[0])
 			if bptr[0] == 0 || (bptr[0] == `.` && bptr[1] == 0)
 				|| (bptr[0] == `.` && bptr[1] == `.` && bptr[2] == 0) {
 				continue
@@ -279,51 +292,16 @@ pub fn ls(path string) ?[]string {
 	return res
 }
 
-/*
-pub fn is_dir(path string) bool {
-	//$if linux {
-		//C.syscall(4, path.str) // sys_newstat
-	//}
-	dir := C.opendir(path.str)
-	res := !isnil(dir)
-	if res {
-		C.closedir(dir)
-	}
-	return res
-}
-*/
-
 // mkdir creates a new directory with the specified path.
-pub fn mkdir(path string) ?bool {
+pub fn mkdir(path string, params MkdirParams) ! {
 	if path == '.' {
-		return true
+		return
 	}
-	/*
-	mut k := 0
-	defer {
-		k = 1
-	}
-	*/
 	apath := real_path(path)
-	// defer {
-	// apath.free()
-	//}
-	/*
-	$if linux {
-		$if !android {
-			ret := C.syscall(sys_mkdir, apath.str, 511)
-			if ret == -1 {
-				return error(posix_get_error_msg(C.errno))
-			}
-			return true
-		}
-	}
-	*/
-	r := unsafe { C.mkdir(&char(apath.str), 511) }
+	r := unsafe { C.mkdir(&char(apath.str), params.mode) }
 	if r == -1 {
 		return error(posix_get_error_msg(C.errno))
 	}
-	return true
 }
 
 // execute starts the specified command, waits for it to complete, and returns its output.
@@ -332,12 +310,15 @@ pub fn execute(cmd string) Result {
 	// if cmd.contains(';') || cmd.contains('&&') || cmd.contains('||') || cmd.contains('\n') {
 	// return Result{ exit_code: -1, output: ';, &&, || and \\n are not allowed in shell commands' }
 	// }
-	pcmd := if cmd.contains('2>') { cmd } else { '$cmd 2>&1' }
+	pcmd := if cmd.contains('2>') { cmd.clone() } else { '${cmd} 2>&1' }
+	defer {
+		unsafe { pcmd.free() }
+	}
 	f := vpopen(pcmd)
 	if isnil(f) {
 		return Result{
 			exit_code: -1
-			output: 'exec("$cmd") failed'
+			output: 'exec("${cmd}") failed'
 		}
 	}
 	fd := fileno(f)
@@ -345,7 +326,7 @@ pub fn execute(cmd string) Result {
 	defer {
 		unsafe { res.free() }
 	}
-	buf := [4096]byte{}
+	buf := [4096]u8{}
 	unsafe {
 		pbuf := &buf[0]
 		for {
@@ -364,21 +345,30 @@ pub fn execute(cmd string) Result {
 	}
 }
 
+// raw_execute does the same as `execute` on Unix platforms.
+// On Windows raw_execute starts the specified command, waits for it to complete, and returns its output.
+// It's marked as `unsafe` to help emphasize the problems that may arise by allowing, for example,
+// user provided escape sequences.
+[unsafe]
+pub fn raw_execute(cmd string) Result {
+	return execute(cmd)
+}
+
 [manualfree]
-pub fn (mut c Command) start() ? {
+pub fn (mut c Command) start() ! {
 	pcmd := c.path + ' 2>&1'
 	defer {
 		unsafe { pcmd.free() }
 	}
 	c.f = vpopen(pcmd)
 	if isnil(c.f) {
-		return error('exec("$c.path") failed')
+		return error('exec("${c.path}") failed')
 	}
 }
 
 [manualfree]
 pub fn (mut c Command) read_line() string {
-	buf := [4096]byte{}
+	buf := [4096]u8{}
 	mut res := strings.new_builder(1024)
 	defer {
 		unsafe { res.free() }
@@ -402,25 +392,25 @@ pub fn (mut c Command) read_line() string {
 	return final
 }
 
-pub fn (mut c Command) close() ? {
+pub fn (mut c Command) close() ! {
 	c.exit_code = vpclose(c.f)
 	if c.exit_code == 127 {
 		return error_with_code('error', 127)
 	}
 }
 
-pub fn symlink(origin string, target string) ?bool {
+pub fn symlink(origin string, target string) ! {
 	res := C.symlink(&char(origin.str), &char(target.str))
 	if res == 0 {
-		return true
+		return
 	}
 	return error(posix_get_error_msg(C.errno))
 }
 
-pub fn link(origin string, target string) ?bool {
+pub fn link(origin string, target string) ! {
 	res := C.link(&char(origin.str), &char(target.str))
 	if res == 0 {
-		return true
+		return
 	}
 	return error(posix_get_error_msg(C.errno))
 }
@@ -435,40 +425,21 @@ pub fn (mut f File) close() {
 		return
 	}
 	f.is_opened = false
-	/*
-	$if linux {
-		$if !android {
-			C.syscall(sys_close, f.fd)
-			return
-		}
-	}
-	*/
 	C.fflush(f.cfile)
 	C.fclose(f.cfile)
 }
 
-[inline]
-pub fn debugger_present() bool {
-	// check if the parent could trace its process,
-	// if not a debugger must be present
-	$if linux {
-		return C.ptrace(C.PTRACE_TRACEME, 0, 1, 0) == -1
-	} $else $if macos {
-		return C.ptrace(C.PT_TRACE_ME, 0, voidptr(1), 0) == -1
-	}
-	return false
-}
+fn C.mkstemp(stemplate &u8) int
 
-fn C.mkstemp(stemplate &byte) int
-
-// `is_writable_folder` - `folder` exists and is writable to the process
+// ensure_folder_is_writable checks that `folder` exists, and is writable to the process
+// by creating an empty file in it, then deleting it.
 [manualfree]
-pub fn is_writable_folder(folder string) ?bool {
+pub fn ensure_folder_is_writable(folder string) ! {
 	if !exists(folder) {
-		return error('`$folder` does not exist')
+		return error_with_code('`${folder}` does not exist', 1)
 	}
 	if !is_dir(folder) {
-		return error('`folder` is not a folder')
+		return error_with_code('`${folder}` is not a folder', 2)
 	}
 	tmp_perm_check := join_path_single(folder, 'XXXXXX')
 	defer {
@@ -477,12 +448,11 @@ pub fn is_writable_folder(folder string) ?bool {
 	unsafe {
 		x := C.mkstemp(&char(tmp_perm_check.str))
 		if -1 == x {
-			return error('folder `$folder` is not writable')
+			return error_with_code('folder `${folder}` is not writable', 3)
 		}
 		C.close(x)
 	}
-	rm(tmp_perm_check) ?
-	return true
+	rm(tmp_perm_check)!
 }
 
 [inline]
@@ -529,4 +499,10 @@ pub fn posix_set_permission_bit(path_s string, mode u32, enable bool) {
 		false { new_mode &= (0o7777 - mode) }
 	}
 	C.chmod(path, int(new_mode))
+}
+
+// get_long_path has no meaning for *nix, but has for windows, where `c:\folder\some~1` for example
+// can be the equivalent of `c:\folder\some spa ces`. On *nix, it just returns a copy of the input path.
+fn get_long_path(path string) !string {
+	return path
 }

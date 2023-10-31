@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module time
@@ -14,13 +14,17 @@ pub struct C.timeval {
 fn C.localtime(t &C.time_t) &C.tm
 fn C.localtime_r(t &C.time_t, tm &C.tm)
 
+// struct C.time_t {}
+
+type C.time_t = i64
+
 fn C.time(t &C.time_t) C.time_t
 
 fn C.gmtime(t &C.time_t) &C.tm
 fn C.gmtime_r(t &C.time_t, res &C.tm) &C.tm
-fn C.strftime(buf &C.char, maxsize C.size_t, fmt &C.char, tm &C.tm) C.size_t
+fn C.strftime(buf &char, maxsize usize, const_format &char, const_tm &C.tm) usize
 
-// now returns current local time.
+// now returns the current local time.
 pub fn now() Time {
 	$if macos {
 		return darwin_now()
@@ -31,14 +35,14 @@ pub fn now() Time {
 	$if solaris {
 		return solaris_now()
 	}
-	$if linux || android {
-		return linux_now()
-	}
+	return linux_now()
+	/*
 	// defaults to most common feature, the microsecond precision is not available
 	// in this API call
 	t := C.time(0)
 	now := C.localtime(&t)
 	return convert_ctime(*now, 0)
+	*/
 }
 
 // utc returns the current UTC time.
@@ -52,17 +56,10 @@ pub fn utc() Time {
 	$if solaris {
 		return solaris_utc()
 	}
-	$if linux || android {
-		return linux_utc()
-	}
-	// defaults to most common feature, the microsecond precision is not available
-	// in this API call
-	t := C.time(0)
-	_ = C.time(&t)
-	return unix2(i64(t), 0)
+	return linux_utc()
 }
 
-// new_time returns a time struct with calculated Unix time.
+// new_time returns a time struct with the calculated Unix time.
 pub fn new_time(t Time) Time {
 	if t.unix != 0 {
 		return t
@@ -82,29 +79,22 @@ pub fn new_time(t Time) Time {
 	}
 }
 
-// ticks returns a number of milliseconds elapsed since system start.
+// ticks returns the number of milliseconds since the UNIX epoch.
+// On Windows ticks returns the number of milliseconds elapsed since system start.
 pub fn ticks() i64 {
 	$if windows {
 		return C.GetTickCount()
 	} $else {
 		ts := C.timeval{}
 		C.gettimeofday(&ts, 0)
-		return i64(ts.tv_sec * u64(1000) + (ts.tv_usec / u64(1000)))
+		return i64(ts.tv_sec * u64(1000) + (ts.tv_usec / u64(1_000)))
 	}
 	// t := i64(C.mach_absolute_time())
 	// # Nanoseconds elapsedNano = AbsoluteToNanoseconds( *(AbsoluteTime *) &t );
 	// # return (double)(* (uint64_t *) &elapsedNano) / 1000000;
 }
 
-/*
-// sleep makes the calling thread sleep for a given number of seconds.
-[deprecated: 'call time.sleep(n * time.second)']
-pub fn sleep(seconds int) {
-	wait(seconds * time.second)
-}
-*/
-
-// str returns time in the same format as `parse` expects ("YYYY-MM-DD HH:MM:SS").
+// str returns the time in the same format as `parse` expects ("YYYY-MM-DD HH:mm:ss").
 pub fn (t Time) str() string {
 	// TODO Define common default format for
 	// `str` and `parse` and use it in both ways
@@ -112,7 +102,7 @@ pub fn (t Time) str() string {
 }
 
 // convert_ctime converts a C time to V time.
-fn convert_ctime(t C.tm, microsecond int) Time {
+fn convert_ctime(t C.tm, nanosecond int) Time {
 	return Time{
 		year: t.tm_year + 1900
 		month: t.tm_mon + 1
@@ -120,7 +110,7 @@ fn convert_ctime(t C.tm, microsecond int) Time {
 		hour: t.tm_hour
 		minute: t.tm_min
 		second: t.tm_sec
-		microsecond: microsecond
+		nanosecond: nanosecond
 		unix: make_unix_time(t)
 		// for the actual code base when we
 		// call convert_ctime, it is always
@@ -137,8 +127,20 @@ pub fn (t Time) strftime(fmt string) string {
 	} $else {
 		C.gmtime_r(voidptr(&t.unix), tm)
 	}
-	mut buf := [1024]C.char{}
-	fmt_c := unsafe { &C.char(fmt.str) }
-	C.strftime(&buf[0], C.size_t(sizeof(buf)), fmt_c, tm)
+	mut buf := [1024]char{}
+	fmt_c := unsafe { &char(fmt.str) }
+	C.strftime(&buf[0], usize(sizeof(buf)), fmt_c, tm)
 	return unsafe { cstring_to_vstring(&char(&buf[0])) }
+}
+
+// some *nix system functions (e.g. `C.poll()`, C.epoll_wait()) accept an `int`
+// value as *timeout in milliseconds* with the special value `-1` meaning "infinite"
+pub fn (d Duration) sys_milliseconds() int {
+	if d > 2147483647 * millisecond { // treat 2147483647000001 .. C.INT64_MAX as "infinite"
+		return -1
+	} else if d <= 0 {
+		return 0 // treat negative timeouts as 0 - consistent with Unix behaviour
+	} else {
+		return int(d / millisecond)
+	}
 }

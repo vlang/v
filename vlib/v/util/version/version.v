@@ -2,11 +2,11 @@ module version
 
 import os
 
-pub const v_version = '0.2.4'
+pub const v_version = '0.4.2'
 
 // vhash() returns the build string C.V_COMMIT_HASH . See cmd/tools/gen_vc.v .
 pub fn vhash() string {
-	mut buf := [50]byte{}
+	mut buf := [50]u8{}
 	buf[0] = 0
 	unsafe {
 		bp := &buf[0]
@@ -21,16 +21,16 @@ pub fn full_hash() string {
 	if build_hash == current_hash {
 		return build_hash
 	}
-	return '${build_hash}.$current_hash'
+	return '${build_hash}.${current_hash}'
 }
 
 // full_v_version() returns the full version of the V compiler
 pub fn full_v_version(is_verbose bool) string {
 	if is_verbose {
-		return 'V $version.v_version $full_hash()'
+		return 'V ${version.v_version} ${full_hash()}'
 	}
 	hash := githash(false)
-	return 'V $version.v_version $hash'
+	return 'V ${version.v_version} ${hash}'
 }
 
 // githash(x) returns the current git commit hash.
@@ -75,11 +75,6 @@ pub fn githash(should_get_from_filesystem bool) string {
 		}
 		break
 	}
-	mut buf := [50]byte{}
-	buf[0] = 0
-	unsafe {
-		bp := &buf[0]
-		C.snprintf(&char(bp), 50, c'%s', C.V_CURRENT_COMMIT_HASH)
-		return tos_clone(bp)
-	}
+
+	return @VCURRENTHASH
 }

@@ -36,7 +36,7 @@ enum Direction {
 
 struct App {
 mut:
-	gg         &gg.Context
+	gg         &gg.Context = unsafe { nil }
 	score      int
 	snake      []Pos
 	dir        Direction
@@ -153,7 +153,7 @@ fn on_frame(mut app App) {
 
 	// drawing top
 	app.gg.draw_rect(0, 0, canvas_size, top_height, gx.black)
-	app.gg.draw_text(350, top_height / 2, 'Score: $app.score', gx.TextCfg{
+	app.gg.draw_text(350, top_height / 2, 'Score: ${app.score}', gx.TextCfg{
 		color: gx.white
 		align: .center
 		vertical_align: .middle
@@ -190,7 +190,7 @@ fn main() {
 		create_window: true
 		resizable: false
 		window_title: 'snek'
-		canvas: 'canvas'
+		html5_canvas_name: 'canvas'
 	)
 
 	app.gg.run()

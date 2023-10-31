@@ -13,10 +13,10 @@ fn incr(shared foo []int, index int) {
 
 fn test_shared_array() {
 	shared foo := &[10, 20, 0]
-	go incr(shared foo, 0)
-	go incr(shared foo, 1)
-	go incr(shared foo, 0)
-	go incr(shared foo, 1)
+	spawn incr(shared foo, 0)
+	spawn incr(shared foo, 1)
+	spawn incr(shared foo, 0)
+	spawn incr(shared foo, 1)
 	for _ in 0 .. 50000 {
 		lock foo {
 			foo[0] -= 2

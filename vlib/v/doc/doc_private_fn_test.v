@@ -25,23 +25,23 @@ fn test_get_parent_mod_current_folder() {
 	// }
 }
 
-fn test_get_parent_mod_on_temp_dir() ? {
+fn test_get_parent_mod_on_temp_dir() {
 	// TODO: fix this on windows
 	$if !windows {
-		assert get_parent_mod(os.temp_dir()) ? == ''
+		assert get_parent_mod(os.temp_dir())? == ''
 	}
 }
 
-fn test_get_parent_mod_normal_cases() ? {
+fn test_get_parent_mod_normal_cases() {
 	assert '---' == get_parent_mod(os.join_path(@VMODROOT, 'vlib/v')) or {
 		assert err.msg() == 'No V files found.'
 		'---'
 	}
 	// TODO: WTF?
-	// assert get_parent_mod(os.join_path(@VMODROOT, 'vlib', 'v', 'doc', 'doc.v')) ? == 'v.v.doc'
-	assert get_parent_mod(os.join_path(@VMODROOT, 'vlib', 'v', 'doc')) ? == 'v'
-	assert get_parent_mod(os.join_path(@VMODROOT, 'vlib', 'os', 'os.v')) ? == 'os'
-	assert get_parent_mod(os.join_path(@VMODROOT, 'cmd')) ? == ''
+	// assert get_parent_mod(os.join_path(@VMODROOT, 'vlib', 'v', 'doc', 'doc.v'))? == 'v.v.doc'
+	assert get_parent_mod(os.join_path(@VMODROOT, 'vlib', 'v', 'doc'))? == 'v'
+	assert get_parent_mod(os.join_path(@VMODROOT, 'vlib', 'os', 'os.v'))? == 'os'
+	assert get_parent_mod(os.join_path(@VMODROOT, 'cmd'))? == ''
 	assert get_parent_mod(os.join_path(@VMODROOT, 'cmd', 'tools', 'modules', 'testing',
-		'common.v')) ? == 'testing'
+		'common.v'))? == 'testing'
 }

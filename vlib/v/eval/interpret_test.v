@@ -4,13 +4,13 @@ import term
 
 const is_verbose = os.getenv('VTEST_SHOW_CMD') != ''
 
-fn test_interpret() ? {
+fn test_interpret() {
 	mut bench := benchmark.new_benchmark()
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
-	os.chdir(vroot) ?
+	os.chdir(vroot)!
 	dir := os.join_path(vroot, 'vlib/v/eval/testdata')
-	files := os.ls(dir) ?
+	files := os.ls(dir)!
 	//
 	tests := files.filter(it.ends_with('.vv'))
 	if tests.len == 0 {
@@ -31,19 +31,19 @@ fn test_interpret() ? {
 		res := os.execute(cmd)
 		if res.exit_code != 0 {
 			bench.fail()
-			eprintln(bench.step_message_fail('$full_test_path failed to run'))
+			eprintln(bench.step_message_fail('${full_test_path} failed to run'))
 			eprintln(res.output)
 			continue
 		}
-		mut expected := os.read_file('$dir/${test_name_without_postfix}.out') ?
+		mut expected := os.read_file('${dir}/${test_name_without_postfix}.out')!
 		expected = normalise_line_endings(expected)
 		mut found := normalise_line_endings(res.output)
 		found = found.trim_space()
 		if expected != found {
 			println(term.red('FAIL'))
 			println('========================================================\n')
-			println('============ expected len=$expected.len: "$expected"')
-			println('============ found    len=$found.len: "$found"')
+			println('============ expected len=${expected.len}: "${expected}"')
+			println('============ found    len=${found.len}: "${found}"')
 			println('========================================================\n')
 			bench.fail()
 			continue

@@ -1,7 +1,6 @@
 /*
-    Compability header for stdatomic.h that works for all compilers supported
-    by V. For TCC libatomic from the operating system is used
-
+    Compatibility header for stdatomic.h that works for all compilers supported by V.
+    For TCC, we use libatomic from the OS.
 */
 #ifndef __ATOMIC_H
 #define __ATOMIC_H

@@ -18,7 +18,7 @@ mut:
 
 fn (mut s StructsRowIterator) next() ?[]int {
 	if s.position >= s.array.len {
-		return error('out of range')
+		return none
 	}
 	defer {
 		s.position++
@@ -37,7 +37,7 @@ fn test_for_in_mut_struct_val() {
 	mut rets := []string{}
 	for mut row in si {
 		println(row)
-		rets << '$row'
+		rets << '${row}'
 	}
 	assert rets.len == 2
 	assert rets[0] == '[1, 2, 3]'

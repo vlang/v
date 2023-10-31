@@ -2,8 +2,8 @@ struct Data {
 mut:
 	n    int
 	b    bool
-	f1   fn (voidptr)
-	f2   fn (...voidptr)
+	f1   fn (voidptr) [required]
+	f2   fn (...voidptr) [required]
 	data &Data
 }
 

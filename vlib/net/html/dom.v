@@ -9,7 +9,7 @@ import os
 // https://www.w3.org/TR/WD-DOM/introduction.html
 pub struct DocumentObjectModel {
 mut:
-	root           &Tag
+	root           &Tag = unsafe { nil }
 	constructed    bool
 	btree          BTree
 	all_tags       []&Tag
@@ -21,12 +21,15 @@ mut:
 	debug_file     os.File
 }
 
-[if debug]
+[params]
+pub struct GetTagsOptions {
+	name string
+}
+
+[if debug_html ?]
 fn (mut dom DocumentObjectModel) print_debug(data string) {
-	$if debug {
-		if data.len > 0 {
-			dom.debug_file.writeln(data) or { eprintln(err) }
-		}
+	if data.len > 0 {
+		dom.debug_file.writeln(data) or { eprintln(err) }
 	}
 }
 
@@ -98,6 +101,12 @@ fn (mut dom DocumentObjectModel) add_tag_by_attribute(tag &Tag) {
 
 fn (mut dom DocumentObjectModel) construct(tag_list []&Tag) {
 	dom.constructed = true
+
+	// If there are no tags, accessing `tag_list` below does panic.
+	if tag_list.len == 0 {
+		return
+	}
+
 	mut temp_map := map[string]int{}
 	mut temp_int := null_element
 	mut temp_string := ''
@@ -108,6 +117,7 @@ fn (mut dom DocumentObjectModel) construct(tag_list []&Tag) {
 	temp_map['0'] = dom.btree.add_children(tag_list[0])
 	stack.push(0)
 	root_index := 0
+
 	for index := 1; index < tag_list.len; index++ {
 		mut tag := tag_list[index]
 		dom.print_debug(tag.str())
@@ -143,8 +153,8 @@ fn (mut dom DocumentObjectModel) construct(tag_list []&Tag) {
 				dom.print_debug("Added ${tag.name} as child of '" + tag_list[temp_int].name +
 					"' which now has ${dom.btree.get_children().len} childrens")
 				*/
-				dom.print_debug("Added $tag.name as child of '" + temp_tag.name +
-					"' which now has $temp_tag.children.len childrens")
+				dom.print_debug("Added ${tag.name} as child of '" + temp_tag.name +
+					"' which now has ${temp_tag.children.len} childrens")
 			} else { // dom.new_root(tag)
 				stack.push(root_index)
 			}
@@ -158,8 +168,43 @@ fn (mut dom DocumentObjectModel) construct(tag_list []&Tag) {
 	dom.root = tag_list[0]
 }
 
-// get_tag_by_attribute_value retrieves all the tags in the document that has the given attribute name and value.
-pub fn (mut dom DocumentObjectModel) get_tag_by_attribute_value(name string, value string) []&Tag {
+// get_root returns the root of the document.
+pub fn (dom DocumentObjectModel) get_root() &Tag {
+	return dom.root
+}
+
+// get_tag retrieves all tags in the document that have the given tag name.
+[deprecated: 'use get_tags instead']
+pub fn (dom DocumentObjectModel) get_tag(name string) []&Tag {
+	return if name in dom.tag_type { dom.tag_type[name] } else { []&Tag{} }
+}
+
+// get_tags returns all tags stored in the document.
+pub fn (dom DocumentObjectModel) get_tags(options GetTagsOptions) []&Tag {
+	if options.name != '' {
+		return if options.name in dom.tag_type { dom.tag_type[options.name] } else { []&Tag{} }
+	}
+	return dom.all_tags
+}
+
+// get_tags_by_class_name retrieves all tags recursively in the document root that have the given class name(s).
+pub fn (dom DocumentObjectModel) get_tags_by_class_name(names ...string) []&Tag {
+	return dom.root.get_tags_by_class_name(...names)
+}
+
+// get_tag_by_attribute retrieves all tags in the document that have the given attribute name.
+[deprecated: 'use get_tags_by_attribute instead']
+pub fn (dom DocumentObjectModel) get_tag_by_attribute(name string) []&Tag {
+	return if name in dom.all_attributes { dom.all_attributes[name] } else { []&Tag{} }
+}
+
+// get_tags_by_attribute retrieves all tags in the document that have the given attribute name.
+pub fn (dom DocumentObjectModel) get_tags_by_attribute(name string) []&Tag {
+	return if name in dom.all_attributes { dom.all_attributes[name] } else { []&Tag{} }
+}
+
+// get_tags_by_attribute_value retrieves all tags in the document that have the given attribute name and value.
+pub fn (mut dom DocumentObjectModel) get_tags_by_attribute_value(name string, value string) []&Tag {
 	location := dom.where_is(value, name)
 	return if dom.tag_attributes[name].len > location {
 		dom.tag_attributes[name][location]
@@ -168,22 +213,13 @@ pub fn (mut dom DocumentObjectModel) get_tag_by_attribute_value(name string, val
 	}
 }
 
-// get_tag retrieves all the tags in the document that has the given tag name.
-pub fn (dom DocumentObjectModel) get_tag(name string) []&Tag {
-	return if name in dom.tag_type { dom.tag_type[name] } else { []&Tag{} }
-}
-
-// get_tag_by_attribute retrieves all the tags in the document that has the given attribute name.
-pub fn (dom DocumentObjectModel) get_tag_by_attribute(name string) []&Tag {
-	return if name in dom.all_attributes { dom.all_attributes[name] } else { []&Tag{} }
-}
-
-// get_root returns the root of the document.
-pub fn (dom DocumentObjectModel) get_root() &Tag {
-	return dom.root
-}
-
-// get_tags returns all of the tags stored in the document.
-pub fn (dom DocumentObjectModel) get_tags() []&Tag {
-	return dom.all_tags
+// get_tag_by_attribute_value retrieves all tags in the document that have the given attribute name and value.
+[deprecated: 'use get_tags_by_attribute_value instead']
+pub fn (mut dom DocumentObjectModel) get_tag_by_attribute_value(name string, value string) []&Tag {
+	location := dom.where_is(value, name)
+	return if dom.tag_attributes[name].len > location {
+		dom.tag_attributes[name][location]
+	} else {
+		[]&Tag{}
+	}
 }

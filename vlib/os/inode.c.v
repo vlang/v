@@ -1,9 +1,9 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module os
 
-enum FileType {
+pub enum FileType {
 	regular
 	directory
 	character_device
@@ -36,7 +36,7 @@ pub fn (p FilePermission) bitmask() u32 {
 	return mask
 }
 
-struct FileMode {
+pub struct FileMode {
 pub:
 	typ    FileType
 	owner  FilePermission

@@ -1,0 +1,16 @@
+module main
+
+__global (
+	number	int
+)
+
+fn init() {
+	number = 123
+}
+
+fn main() {
+	f1 := fn() {
+		println(number)
+	}
+	f1()
+}

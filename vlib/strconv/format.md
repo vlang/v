@@ -2,7 +2,8 @@
 
 These are v implementations of the C language `printf` and `sprintf` functions.
 
-***Note: These functions are platform dependent in C, but in V they are platform independent.***
+> **Note**
+> These functions are deprecated and will be removed soon. Use string interpolation instead.
 
 ### v_sprintf
 
@@ -42,15 +43,15 @@ The syntax for a format specifier is:
 
 The Flags field may be zero or more (in any order) of:
 
-| Character   | Description                                                  |
-| ----------- | ------------------------------------------------------------ |
-| `-` (minus) | Left-align the output of this specifier. (The default is to right-align the output.) |
-| `+` (plus)  | Prepends a plus for positive signed-numeric types. positive = `+`, negative = `-`. (The default doesn't prepend anything to positive numbers.) |
+| Character   | Description                                                                                                                                                                                      |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `-` (minus) | Left-align the output of this specifier. (The default is to right-align the output.)                                                                                                             |
+| `+` (plus)  | Prepends a plus for positive signed-numeric types. positive = `+`, negative = `-`. (The default doesn't prepend anything to positive numbers.)                                                   |
 | `0` (zero)  | When the 'width' option is specified, prepends zeros for numeric types. (The default prepends spaces.) For example, `printf("%4X",3)` produces `   3`, while `printf("%04X",3)` produces `0003`. |
 
 #### Width field
 
-The Width field specifies a *maximum* number of characters to output,
+The Width field specifies a _maximum_ number of characters to output,
 and is typically used to pad fixed-width fields in tabulated output,
 it causes truncation of oversized fields.
 
@@ -63,31 +64,31 @@ with a total width of 5 characters.
 
 The Length field can be omitted or be any of:
 
-| Character | Description                                                  |
-| --------- | ------------------------------------------------------------ |
-| `hh`      | For integer types, causes `printf` to expect an `byte` or `i8` argument. |
+| Character | Description                                                                |
+| --------- | -------------------------------------------------------------------------- |
+| `hh`      | For integer types, causes `printf` to expect an `byte` or `i8` argument.   |
 | `h`       | For integer types, causes `printf` to expect an `int16` or `u16` argument. |
-| `l`       | For integer types, causes `printf` to expect an `i64` or `u64` argument. |
-| `ll`      | For integer types, causes `printf` to expect an `i64` or `u64` argument. |
-|           |                                                              |
-|           |                                                              |
+| `l`       | For integer types, causes `printf` to expect an `i64` or `u64` argument.   |
+| `ll`      | For integer types, causes `printf` to expect an `i64` or `u64` argument.   |
+|           |                                                                            |
+|           |                                                                            |
 
 #### Type field
 
 The Type field can be any of:
 
-| Character | Description                                                  |
-| --------- | ------------------------------------------------------------ |
-| `%`       | Prints a literal `%` character (this type doesn't accept any flags, width, precision, length fields). |
+| Character | Description                                                                                                                 |
+| --------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `%`       | Prints a literal `%` character (this type doesn't accept any flags, width, precision, length fields).                       |
 | `d`, `i`  | `int` as a signed `int` `%d` and `%i` are synonymous for output. The size of the argument is specified by the length field. |
-| `u`       | `unsigned int`. The size of the argument is specified by the length field. |
-| `f`, `F`  | `double` in normal notation. `f` and `F` only differs in how the strings are printed: lowercase or uppercase. |
-| `e`, `E`  | `double` in scientific notation.`e` and `E` only differs in how the strings are printed: lowercase or uppercase. |
-| `g`, `G`  | `double` in automatic notation.`g` and `G` only differs in how the strings are printed: lowercase or uppercase. |
-| `x`, `X`  | `unsigned int` as a hexadecimal number. `x` uses lower-case letters and `X` uses upper-case. |
-| `s`       | string                                                       |
-| `p`       | `void *` (pointer to void) in an implementation-defined format. |
-| `c`       | `char` (character).                                          |
+| `u`       | `unsigned int`. The size of the argument is specified by the length field.                                                  |
+| `f`, `F`  | `double` in normal notation. `f` and `F` only differs in how the strings are printed: lowercase or uppercase.               |
+| `e`, `E`  | `double` in scientific notation.`e` and `E` only differs in how the strings are printed: lowercase or uppercase.            |
+| `g`, `G`  | `double` in automatic notation.`g` and `G` only differs in how the strings are printed: lowercase or uppercase.             |
+| `x`, `X`  | `unsigned int` as a hexadecimal number. `x` uses lower-case letters and `X` uses upper-case.                                |
+| `s`       | string                                                                                                                      |
+| `p`       | `void *` (pointer to void) in an implementation-defined format.                                                             |
+| `c`       | `char` (character).                                                                                                         |
 
 ## Examples
 
@@ -209,7 +210,7 @@ mut x := 0
 sc8 := '[%20g][%20G]|'
 for x < 12 {
 	temp_s := strconv.v_sprintf(sc8, ft, ft)
-	println('$temp_s\n')
+	println('${temp_s}\n')
 	ft = ft * 10.0
 	x++
 }
@@ -243,7 +244,7 @@ struct BF_param {
   len1         int        = 6       // number of decimal digits, if needed
   positive     bool       = true    // mandatory: the sign of the number passed
   sign_flag    bool       = false   // flag for print sign as prefix in padding
-  allign       Align_text = .right  // alignment of the string
+  align        Align_text = .right  // alignment of the string
   rm_tail_zero bool       = false   // remove the tail zeros from floats
 }
 

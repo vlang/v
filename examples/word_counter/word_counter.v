@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 import os
@@ -7,12 +7,12 @@ fn main() {
 	mut path := 'cinderella.txt'
 	if os.args.len != 2 {
 		println('usage: word_counter [text_file]')
-		println('using $path')
+		println('using ${path}')
 	} else {
 		path = os.args[1]
 	}
 	contents := os.read_file(path.trim_space()) or {
-		println('failed to open $path')
+		println('failed to open ${path}')
 		return
 	}
 	mut m := map[string]int{}
@@ -25,23 +25,23 @@ fn main() {
 	// Print the map
 	for key in keys {
 		val := m[key]
-		println('$key => $val')
+		println('${key} => ${val}')
 	}
 }
 
 // Creates an array of words from a given string
 fn extract_words(contents string) []string {
-	mut splitted := []string{}
-	for space_splitted in contents.to_lower().split(' ') {
-		if space_splitted.contains('\n') {
-			splitted << space_splitted.split('\n')
+	mut splits := []string{}
+	for space_split in contents.to_lower().split(' ') {
+		if space_split.contains('\n') {
+			splits << space_split.split('\n')
 		} else {
-			splitted << space_splitted
+			splits << space_split
 		}
 	}
 
 	mut results := []string{}
-	for s in splitted {
+	for s in splits {
 		result := filter_word(s)
 		if result == '' {
 			continue

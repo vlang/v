@@ -11,8 +11,8 @@ fn main() {
 		exit(1)
 	}
 	cc_type, cc_version, cc_os := get_cc_info(cc)
-	triple := '$cc_type-$cc_version-$cc_os'
-	println('compiler: $triple')
+	triple := '${cc_type}-${cc_version}-${cc_os}'
+	println('compiler: ${triple}')
 
 	search_paths := get_search_paths(cc)
 	atomic_path := find_file(search_paths, 'atomic') or {
@@ -40,7 +40,7 @@ fn main() {
 		}
 	}
 
-	println('$atomic_path:::$bitsatomicbase_path')
+	println('${atomic_path}:::${bitsatomicbase_path}')
 }
 
 fn get_cc_info(cc string) (string, string, string) {
@@ -57,7 +57,7 @@ fn get_cc_info(cc string) (string, string, string) {
 	lines := os.execute('${os.quoted_path(cc)} -v').output.split('\n')
 
 	// gcc and clang both have the same way way to say what version they have and what the host target triple is
-	cc_version := lines.filter(it.contains('$cc_type version '))[0].all_after('$cc_type version ').all_before('.')
+	cc_version := lines.filter(it.contains('${cc_type} version '))[0].all_after('${cc_type} version ').all_before('.')
 
 	cc_os := lines.filter(it.starts_with('Target: '))[0].all_after('Target: ').split('-')[2]
 
@@ -75,25 +75,25 @@ fn get_search_paths(cc string) []string {
 	return search_path.map(os.real_path(it.all_before('(').trim_space()))
 }
 
-fn find_file(search_paths []string, file string) ?string {
+fn find_file(search_paths []string, file string) !string {
 	for search_path in search_paths {
 		if os.exists(os.join_path(search_path, file)) {
 			return os.join_path(search_path, file)
 		}
 	}
-	return error('$file not found')
+	return error('${file} not found')
 }
 
-fn patch_atomic(outfile string, infile string) ? {
-	lines := os.read_file(infile) ?.split('\n')
+fn patch_atomic(outfile string, infile string) ! {
+	lines := os.read_file(infile)!.split('\n')
 	outlines := lines.filter(!it.contains('atomic(const atomic&) = delete;'))
 	outtext := outlines.join('\n').replace('#include <bits/atomic_base.h>', '#include "bitsatomicbase.h"')
-	os.write_file(outfile, outtext) ?
+	os.write_file(outfile, outtext)!
 }
 
-fn patch_bitsatomicbase(outfile string, infile string) ? {
-	lines := os.read_file(infile) ?.split('\n')
+fn patch_bitsatomicbase(outfile string, infile string) ! {
+	lines := os.read_file(infile)!.split('\n')
 	outlines := lines.filter(!it.contains('__atomic_base(const __atomic_base&) = delete;'))
 	outtext := outlines.join('\n').replace('#include <bits/atomic_base.h>', '#include "bitsatomicbase.h"')
-	os.write_file(outfile, outtext) ?
+	os.write_file(outfile, outtext)!
 }

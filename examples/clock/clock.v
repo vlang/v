@@ -32,8 +32,7 @@ const (
 
 struct App {
 	minutes_tic []f32 = [f32(center - tw), tp, center + tw, tp, center + tw, tp, center + tw,
-	tp +
-	1 * th, center - tw, tp + 1 * th]
+	tp + 1 * th, center - tw, tp + 1 * th]
 	hours_tic []f32 = [f32(center - tw), tp, center + tw, tp, center + tw, tp, center + tw, tp + 2 * th,
 	center - tw, tp + 2 * th]
 	hours3_tic []f32 = [f32(center - tw), tp, center + tw, tp, center + tw, tp, center + tw, tp + 3 * th,
@@ -43,7 +42,7 @@ struct App {
 	minute_hand []f32 = [f32(334.25), 40.25, 350, 24.5, 365.75, 40.25, 365.75, 427, 334.25, 427]
 	second_hand []f32 = [f32(345.8), 38.5, 350, 34.3, 354.2000, 38.5, 358.75, 427, 341.25, 427]
 mut:
-	gg        &gg.Context = 0
+	gg        &gg.Context = unsafe { nil }
 	draw_flag bool        = true
 	dpi_scale f32 = 1.0
 }
@@ -75,12 +74,12 @@ fn on_frame(mut app App) {
 	// draw minute hand
 	mut j := f32(n.minute)
 	if n.second == 59 { // make minute hand move smoothly
-		j += f32(math.sin(f32(n.microsecond) / 1e6 * math.pi / 2.0))
+		j += f32(math.sin(f32(n.nanosecond) / 1e9 * math.pi / 2.0))
 	}
 	draw_convex_poly_rotate(mut app.gg, app.dpi_scale, app.minute_hand, hand_color, j * 6)
 
 	// draw second hand with smooth transition
-	k := f32(n.second) + f32(math.sin(f32(n.microsecond) / 1e6 * math.pi / 2.0))
+	k := f32(n.second) + f32(math.sin(f32(n.nanosecond) / 1e9 * math.pi / 2.0))
 	draw_convex_poly_rotate(mut app.gg, app.dpi_scale, app.second_hand, second_hand_color,
 		0 + k * 6)
 
@@ -148,8 +147,6 @@ fn on_init(mut app App) {
 	app.resize()
 }
 
-// is needed for easier diagnostics on windows
-[console]
 fn main() {
 	println("Press 'q' to quit.")
 	mut font_path := os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'RobotoMono-Regular.ttf'))

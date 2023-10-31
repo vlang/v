@@ -1,18 +1,12 @@
 import os
 import v.gen.native
 import v.pref
-import v.ast
 
 fn test_macho() {
 	os.chdir(os.temp_dir()) or {}
-	mut g := native.Gen{
-		pref: &pref.Preferences{}
-		out_name: 'test.bin'
-		table: ast.new_table()
-		code_gen: native.Amd64{
-			g: 0
-		}
-	}
+	mut g := native.macho_test_new_gen(&pref.Preferences{
+		arch: .amd64
+	}, 'test.bin')
 	g.generate_macho_header()
 	g.generate_macho_footer()
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module hash
@@ -6,7 +6,7 @@ module hash
 interface Hasher {
 	// Sum appends the current hash to b and returns the resulting array.
 	// It does not change the underlying hash state.
-	sum(b []byte) []byte
+	sum(b []u8) []u8
 	size() int
 	block_size() int
 }

@@ -1,5 +1,3 @@
-module main
-
 struct S1 {}
 
 fn test_comptime_for_method_call_str() {

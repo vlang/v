@@ -4,19 +4,19 @@ module flag
 pub struct Flag {
 pub:
 	name     string // name as it appears on command line
-	abbr     byte   // shortcut
+	abbr     u8     // shortcut
 	usage    string // help message
 	val_desc string // something like '<arg>' that appears in usage,
 	// and also the default value, when the flag is not given
 }
 
-struct UnkownFlagError {
+struct UnknownFlagError {
 	Error
 	flag string
 }
 
-fn (err UnkownFlagError) msg() string {
-	return 'Unknown flag `$err.flag`'
+fn (err UnknownFlagError) msg() string {
+	return 'Unknown flag `${err.flag}`'
 }
 
 struct ArgsCountError {
@@ -27,11 +27,11 @@ struct ArgsCountError {
 
 fn (err ArgsCountError) msg() string {
 	if err.want == 0 {
-		return 'Expected no arguments, but got $err.got'
+		return 'Expected no arguments, but got ${err.got}'
 	} else if err.got > err.want {
-		return 'Expected at most $err.want arguments, but got $err.got'
+		return 'Expected at most ${err.want} arguments, but got ${err.got}'
 	} else {
-		return 'Expected at least $err.want arguments, but got $err.got'
+		return 'Expected at least ${err.want} arguments, but got ${err.got}'
 	}
 }
 
@@ -51,9 +51,9 @@ fn (mut f Flag) free() {
 
 // str returns a string representation of the given Flag
 pub fn (f Flag) str() string {
-	return '' + '    flag:\n' + '            name: $f.name\n' +
-		'            abbr: `$f.abbr.ascii_str()`\n' + '            usag: $f.usage\n' +
-		'            desc: $f.val_desc'
+	return '' + '    flag:\n' + '            name: ${f.name}\n' +
+		'            abbr: `${f.abbr.ascii_str()}`\n' + '            usage: ${f.usage}\n' +
+		'            desc: ${f.val_desc}'
 }
 
 // str returns a string representation of the given array of Flags
@@ -71,7 +71,7 @@ pub fn (af []Flag) str() string {
 // That structure is created with `mut parser := flag.new_flag_parser(os.args)`,
 // The returned instance can be further customised by calling various methods,
 // for specifying the accepted options and their values. The user should finally
-// call `rest := parser.finalize() ?` to get the rest of the non optional arguments
+// call `rest := parser.finalize()!` to get the rest of the non optional arguments
 // (if there are any left).
 pub struct FlagParser {
 pub:
@@ -123,7 +123,7 @@ fn (mut f FlagParser) free() {
 }
 
 pub const (
-	// used for formating usage message
+	// used for formatting usage message
 	space           = '                            '
 	underline       = '-----------------------------------------------'
 	max_args_number = 4048
@@ -138,7 +138,7 @@ pub fn new_flag_parser(args []string) &FlagParser {
 	if idx_dashdash >= 0 {
 		all_before_dashdash.trim(idx_dashdash)
 		if idx_dashdash < original_args.len {
-			all_after_dashdash = original_args[idx_dashdash + 1..]
+			all_after_dashdash = unsafe { original_args[idx_dashdash + 1..] }
 		}
 	}
 	return &FlagParser{
@@ -181,7 +181,7 @@ pub fn (mut fs FlagParser) description(desc string) {
 	if fs.application_description.len == 0 {
 		fs.application_description = desc
 	} else {
-		fs.application_description += '\n$desc'
+		fs.application_description += '\n${desc}'
 	}
 }
 
@@ -200,7 +200,7 @@ pub fn (mut fs FlagParser) allow_unknown_args() {
 
 // private helper to register a flag
 // This version supports abbreviations.
-fn (mut fs FlagParser) add_flag(name string, abbr byte, usage string, desc string) {
+fn (mut fs FlagParser) add_flag(name string, abbr u8, usage string, desc string) {
 	fs.flags << Flag{
 		name: name
 		abbr: abbr
@@ -219,8 +219,8 @@ fn (mut fs FlagParser) add_flag(name string, abbr byte, usage string, desc strin
 // - the name, usage are registered
 // - found arguments and corresponding values are removed from args list
 [manualfree]
-fn (mut fs FlagParser) parse_value(longhand string, shorthand byte) []string {
-	full := '--$longhand'
+fn (mut fs FlagParser) parse_value(longhand string, shorthand u8) []string {
+	full := '--${longhand}'
 	defer {
 		unsafe { full.free() }
 	}
@@ -259,14 +259,14 @@ fn (mut fs FlagParser) parse_value(longhand string, shorthand byte) []string {
 			should_skip_one = true
 			continue
 		}
-		if arg.len > full.len + 1 && arg[..full.len + 1] == '$full=' {
+		if arg.len > full.len + 1 && arg[..full.len + 1] == '${full}=' {
 			found_entries << arg[full.len + 1..]
 			to_delete << i
 			continue
 		}
 	}
 	for i, del in to_delete {
-		// i entrys are deleted so it's shifted left i times.
+		// i entries are deleted so it's shifted left i times.
 		fs.args.delete(del - i)
 	}
 	return found_entries
@@ -278,62 +278,57 @@ fn (mut fs FlagParser) parse_value(longhand string, shorthand byte) []string {
 // special: it is allowed to define bool flags without value
 // -> '--flag' is parsed as true
 // -> '--flag' is equal to '--flag=true'
-fn (mut fs FlagParser) parse_bool_value(longhand string, shorthand byte) ?string {
-	{
-		full := '--$longhand'
-		for i, arg in fs.args {
-			if arg.len == 0 {
-				continue
-			}
-			if arg[0] != `-` {
-				continue
-			}
-			if (arg.len == 2 && arg[0] == `-` && arg[1] == shorthand) || arg == full {
-				if fs.args.len > i + 1 && (fs.args[i + 1] in ['true', 'false']) {
-					val := fs.args[i + 1]
-					fs.args.delete(i + 1)
-					fs.args.delete(i)
-					return val
-				} else {
-					fs.args.delete(i)
-					return 'true'
-				}
-			}
-			if arg.len > full.len + 1 && arg[..full.len + 1] == '$full=' {
-				// Flag abc=true
-				val := arg[full.len + 1..]
+fn (mut fs FlagParser) parse_bool_value(longhand string, shorthand u8) !string {
+	full := '--${longhand}'
+	for i, arg in fs.args {
+		if arg.len == 0 {
+			continue
+		}
+		if arg[0] != `-` {
+			continue
+		}
+		if (arg.len == 2 && arg[0] == `-` && arg[1] == shorthand) || arg == full {
+			if fs.args.len > i + 1 && fs.args[i + 1] in ['true', 'false'] {
+				val := fs.args[i + 1]
+				fs.args.delete(i + 1)
 				fs.args.delete(i)
 				return val
-			}
-			if arg.len > 1 && arg[0] == `-` && arg[1] != `-` && arg.index_byte(shorthand) != -1 {
-				// -abc is equivalent to -a -b -c
+			} else {
+				fs.args.delete(i)
 				return 'true'
 			}
 		}
+		if arg.len > full.len + 1 && arg[..full.len + 1] == '${full}=' {
+			// Flag abc=true
+			val := arg[full.len + 1..]
+			fs.args.delete(i)
+			return val
+		}
+		if arg.len > 1 && arg[0] == `-` && arg[1] != `-` && arg.index_u8(shorthand) != -1 {
+			// -abc is equivalent to -a -b -c
+			fs.args[i] = arg.replace(shorthand.ascii_str(), '') // -abc -> -bc
+			return 'true'
+		}
 	}
-	return error("parameter '$longhand' not found")
+	return error("parameter '${longhand}' not found")
 }
 
 // bool_opt returns an option with the bool value of the given command line flag, named `name`.
 // It returns an error, when the flag is not given by the user.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) bool_opt(name string, abbr byte, usage string) ?bool {
-	mut res := false
-	{
-		fs.add_flag(name, abbr, usage, '<bool>')
-		parsed := fs.parse_bool_value(name, abbr) or {
-			return error("parameter '$name' not provided")
-		}
-		res = parsed == 'true'
+pub fn (mut fs FlagParser) bool_opt(name string, abbr u8, usage string) !bool {
+	fs.add_flag(name, abbr, usage, '<bool>')
+	parsed := fs.parse_bool_value(name, abbr) or {
+		return error("parameter '${name}' not provided")
 	}
-	return res
+	return parsed == 'true'
 }
 
 // bool defines and parses a string flag/option named `name`.
 // If that flag is given by the user, then it returns its parsed bool value.
 // When it is not, it returns the default value in `bdefault`.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) bool(name string, abbr byte, bdefault bool, usage string) bool {
+pub fn (mut fs FlagParser) bool(name string, abbr u8, bdefault bool, usage string) bool {
 	value := fs.bool_opt(name, abbr, usage) or { return bdefault }
 	return value
 }
@@ -341,7 +336,7 @@ pub fn (mut fs FlagParser) bool(name string, abbr byte, bdefault bool, usage str
 // int_multi returns all values associated with the provided flag in `name`.
 // When that flag has no values, it returns an empty array.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) int_multi(name string, abbr byte, usage string) []int {
+pub fn (mut fs FlagParser) int_multi(name string, abbr u8, usage string) []int {
 	fs.add_flag(name, abbr, usage, '<multiple ints>')
 	parsed := fs.parse_value(name, abbr)
 	mut value := []int{}
@@ -354,25 +349,21 @@ pub fn (mut fs FlagParser) int_multi(name string, abbr byte, usage string) []int
 // int_opt returns an option with the integer value, associated with the flag in `name`.
 // When the flag is not given by the user, it returns an error.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) int_opt(name string, abbr byte, usage string) ?int {
-	mut res := 0
-	{
-		fs.add_flag(name, abbr, usage, '<int>')
-		parsed := fs.parse_value(name, abbr)
-		if parsed.len == 0 {
-			return error("parameter '$name' not provided")
-		}
-		parsed0 := parsed[0]
-		res = parsed0.int()
+pub fn (mut fs FlagParser) int_opt(name string, abbr u8, usage string) !int {
+	fs.add_flag(name, abbr, usage, '<int>')
+	parsed := fs.parse_value(name, abbr)
+	if parsed.len == 0 {
+		return error("parameter '${name}' not provided")
 	}
-	return res
+	parsed0 := parsed[0]
+	return parsed0.int()
 }
 
 // int defines and parses an integer flag, named `name`.
 // When the flag is given by the user, it returns its parsed integer value.
 // When it is not, it returns the integer value in `idefault`.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) int(name string, abbr byte, idefault int, usage string) int {
+pub fn (mut fs FlagParser) int(name string, abbr u8, idefault int, usage string) int {
 	value := fs.int_opt(name, abbr, usage) or { return idefault }
 	return value
 }
@@ -380,7 +371,7 @@ pub fn (mut fs FlagParser) int(name string, abbr byte, idefault int, usage strin
 // float_multi returns all floating point values, associated with the flag named `name`.
 // When no values for that flag are found, it returns an empty array.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) float_multi(name string, abbr byte, usage string) []f64 {
+pub fn (mut fs FlagParser) float_multi(name string, abbr u8, usage string) []f64 {
 	fs.add_flag(name, abbr, usage, '<multiple floats>')
 	parsed := fs.parse_value(name, abbr)
 	mut value := []f64{}
@@ -393,24 +384,20 @@ pub fn (mut fs FlagParser) float_multi(name string, abbr byte, usage string) []f
 // float_opt returns an option with the floating point value, associated with the flag in `name`.
 // When the flag is not given by the user, it returns an error.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) float_opt(name string, abbr byte, usage string) ?f64 {
-	mut res := 0.0
-	{
-		fs.add_flag(name, abbr, usage, '<float>')
-		parsed := fs.parse_value(name, abbr)
-		if parsed.len == 0 {
-			return error("parameter '$name' not provided")
-		}
-		res = parsed[0].f64()
+pub fn (mut fs FlagParser) float_opt(name string, abbr u8, usage string) !f64 {
+	fs.add_flag(name, abbr, usage, '<float>')
+	parsed := fs.parse_value(name, abbr)
+	if parsed.len == 0 {
+		return error("parameter '${name}' not provided")
 	}
-	return res
+	return parsed[0].f64()
 }
 
 // float defines and parses a floating point flag, named `name`.
 // When the flag is given by the user, it returns its parsed floating point value.
 // When it is not, it returns the value in `fdefault`.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) float(name string, abbr byte, fdefault f64, usage string) f64 {
+pub fn (mut fs FlagParser) float(name string, abbr u8, fdefault f64, usage string) f64 {
 	value := fs.float_opt(name, abbr, usage) or { return fdefault }
 	return value
 }
@@ -418,7 +405,7 @@ pub fn (mut fs FlagParser) float(name string, abbr byte, fdefault f64, usage str
 // string_multi returns all string values, associated with the flag named `name`.
 // When no values for that flag are found, it returns an empty array.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) string_multi(name string, abbr byte, usage string) []string {
+pub fn (mut fs FlagParser) string_multi(name string, abbr u8, usage string) []string {
 	fs.add_flag(name, abbr, usage, '<multiple strings>')
 	return fs.parse_value(name, abbr)
 }
@@ -426,24 +413,20 @@ pub fn (mut fs FlagParser) string_multi(name string, abbr byte, usage string) []
 // string_opt returns an option with the string value, associated with the flag in `name`.
 // When the flag is not given by the user, it returns an error.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) string_opt(name string, abbr byte, usage string) ?string {
-	mut res := ''
-	{
-		fs.add_flag(name, abbr, usage, '<string>')
-		parsed := fs.parse_value(name, abbr)
-		if parsed.len == 0 {
-			return error("parameter '$name' not provided")
-		}
-		res = parsed[0]
+pub fn (mut fs FlagParser) string_opt(name string, abbr u8, usage string) !string {
+	fs.add_flag(name, abbr, usage, '<string>')
+	parsed := fs.parse_value(name, abbr)
+	if parsed.len == 0 {
+		return error("parameter '${name}' not provided")
 	}
-	return res
+	return parsed[0]
 }
 
 // string defines and parses a string flag/option, named `name`.
 // If that flag is given as an option, then its parsed value is returned as a string.
 // When it is not, it returns the default string value in `sdefault`.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) string(name string, abbr byte, sdefault string, usage string) string {
+pub fn (mut fs FlagParser) string(name string, abbr u8, sdefault string, usage string) string {
 	value := fs.string_opt(name, abbr, usage) or { return sdefault }
 	return value
 }
@@ -451,9 +434,9 @@ pub fn (mut fs FlagParser) string(name string, abbr byte, sdefault string, usage
 // limit_free_args_to_at_least restricts the list of free arguments (non options) to be
 // at least `n` in length. If the user gives less free arguments to the program,
 // the parser will return an error.
-pub fn (mut fs FlagParser) limit_free_args_to_at_least(n int) ? {
+pub fn (mut fs FlagParser) limit_free_args_to_at_least(n int) ! {
 	if n > flag.max_args_number {
-		return error('flag.limit_free_args_to_at_least expect n to be smaller than $flag.max_args_number')
+		return error('flag.limit_free_args_to_at_least expect n to be smaller than ${flag.max_args_number}')
 	}
 	if n <= 0 {
 		return error('flag.limit_free_args_to_at_least expect n to be a positive number')
@@ -464,9 +447,9 @@ pub fn (mut fs FlagParser) limit_free_args_to_at_least(n int) ? {
 // limit_free_args_to_exactly restricts the list of free arguments (non options) to be
 // at exactly `n` in length. If the user gives more or less free arguments to the program,
 // the parser will return an error.
-pub fn (mut fs FlagParser) limit_free_args_to_exactly(n int) ? {
+pub fn (mut fs FlagParser) limit_free_args_to_exactly(n int) ! {
 	if n > flag.max_args_number {
-		return error('flag.limit_free_args_to_exactly expect n to be smaller than $flag.max_args_number')
+		return error('flag.limit_free_args_to_exactly expect n to be smaller than ${flag.max_args_number}')
 	}
 	if n < 0 {
 		return error('flag.limit_free_args_to_exactly expect n to be a non negative number')
@@ -478,9 +461,9 @@ pub fn (mut fs FlagParser) limit_free_args_to_exactly(n int) ? {
 // limit_free_args restricts the list of free arguments (non options) to be between
 // `min` and `max` in length. If the user gives more or less free arguments to the program,
 // the parser will return an error.
-pub fn (mut fs FlagParser) limit_free_args(min int, max int) ? {
+pub fn (mut fs FlagParser) limit_free_args(min int, max int) ! {
 	if min > max {
-		return error('flag.limit_free_args expect min < max, got $min >= $max')
+		return error('flag.limit_free_args expect min < max, got ${min} >= ${max}')
 	}
 	fs.min_free_args = min
 	fs.max_free_args = max
@@ -505,23 +488,23 @@ pub fn (fs FlagParser) usage() string {
 	}
 	mut use := []string{}
 	if fs.application_version != '' {
-		use << '$fs.application_name $fs.application_version'
-		use << '$flag.underline'
+		use << '${fs.application_name} ${fs.application_version}'
+		use << '${flag.underline}'
 	}
 	if fs.usage_examples.len == 0 {
-		use << 'Usage: $fs.application_name [options] $adesc'
+		use << 'Usage: ${fs.application_name} [options] ${adesc}'
 	} else {
 		for i, example in fs.usage_examples {
 			if i == 0 {
-				use << 'Usage: $fs.application_name $example'
+				use << 'Usage: ${fs.application_name} ${example}'
 			} else {
-				use << '   or: $fs.application_name $example'
+				use << '   or: ${fs.application_name} ${example}'
 			}
 		}
 	}
 	use << ''
 	if fs.application_description != '' {
-		use << 'Description: $fs.application_description'
+		use << 'Description: ${fs.application_description}'
 		use << ''
 	}
 	// show a message about the [ARGS]:
@@ -532,16 +515,16 @@ pub fn (fs FlagParser) usage() string {
 		} else {
 			mut s := []string{}
 			if positive_min_arg {
-				s << 'at least $fs.min_free_args'
+				s << 'at least ${fs.min_free_args}'
 			}
 			if positive_max_arg {
-				s << 'at most $fs.max_free_args'
+				s << 'at most ${fs.max_free_args}'
 			}
 			if positive_min_arg && positive_max_arg && fs.min_free_args == fs.max_free_args {
-				s = ['exactly $fs.min_free_args']
+				s = ['exactly ${fs.min_free_args}']
 			}
 			sargs := s.join(' and ')
-			use << 'The arguments should be $sargs in number.'
+			use << 'The arguments should be ${sargs} in number.'
 			use << ''
 		}
 	}
@@ -550,23 +533,23 @@ pub fn (fs FlagParser) usage() string {
 		for f in fs.flags {
 			mut onames := []string{}
 			if f.abbr != 0 {
-				onames << '-$f.abbr.ascii_str()'
+				onames << '-${f.abbr.ascii_str()}'
 			}
 			if f.name != '' {
 				if !f.val_desc.contains('<bool>') {
-					onames << '--$f.name $f.val_desc'
+					onames << '--${f.name} ${f.val_desc}'
 				} else {
-					onames << '--$f.name'
+					onames << '--${f.name}'
 				}
 			}
 			option_names := '  ' + onames.join(', ')
 			mut xspace := ''
 			if option_names.len > flag.space.len - 2 {
-				xspace = '\n$flag.space'
+				xspace = '\n${flag.space}'
 			} else {
 				xspace = flag.space[option_names.len..]
 			}
-			fdesc := '$option_names$xspace$f.usage'
+			fdesc := '${option_names}${xspace}${f.usage}'
 			use << fdesc
 		}
 	}
@@ -578,7 +561,7 @@ pub fn (fs FlagParser) usage() string {
 
 // find_existing_flag looks up the given flag by name, and returns
 // it, if it was found in the FlagParser. If it was not, it returns an error.
-fn (mut fs FlagParser) find_existing_flag(fname string) ?Flag {
+fn (mut fs FlagParser) find_existing_flag(fname string) !Flag {
 	for f in fs.flags {
 		if f.name == fname {
 			return f
@@ -604,7 +587,7 @@ fn (mut fs FlagParser) handle_builtin_options() {
 		exit(0)
 	}
 	if show_version {
-		println('$fs.application_name $fs.application_version')
+		println('${fs.application_name} ${fs.application_version}')
 		exit(0)
 	}
 }
@@ -614,35 +597,35 @@ fn (mut fs FlagParser) handle_builtin_options() {
 // The remaining arguments are returned in the same order they are
 // defined on the command line. If additional flags are found, i.e.
 // (things starting with '--' or '-'), it returns an error.
-pub fn (mut fs FlagParser) finalize() ?[]string {
+pub fn (mut fs FlagParser) finalize() ![]string {
 	fs.handle_builtin_options()
 	mut remaining := fs.args.clone()
 	if !fs.allow_unknown_args {
 		for a in remaining {
 			if (a.len >= 2 && a[..2] == '--') || (a.len == 2 && a[0] == `-`) {
-				return IError(&UnkownFlagError{
+				return &UnknownFlagError{
 					flag: a
-				})
+				}
 			}
 		}
 	}
 	if remaining.len < fs.min_free_args && fs.min_free_args > 0 {
-		return IError(&ArgsCountError{
+		return &ArgsCountError{
 			want: fs.min_free_args
 			got: remaining.len
-		})
+		}
 	}
 	if remaining.len > fs.max_free_args && fs.max_free_args > 0 {
-		return IError(&ArgsCountError{
+		return &ArgsCountError{
 			want: fs.max_free_args
 			got: remaining.len
-		})
+		}
 	}
 	if remaining.len > 0 && fs.max_free_args == 0 && fs.min_free_args == 0 {
-		return IError(&ArgsCountError{
+		return &ArgsCountError{
 			want: 0
 			got: remaining.len
-		})
+		}
 	}
 	remaining << fs.all_after_dashdash
 	return remaining

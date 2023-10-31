@@ -17,29 +17,16 @@ mut:
 	done() chan int
 }
 
-[deprecated]
-pub fn cancel(mut ctx Context) {
-	match mut ctx {
-		CancelContext {
-			ctx.cancel(true, canceled)
-		}
-		TimerContext {
-			ctx.cancel(true, canceled)
-		}
-		else {}
-	}
-}
-
 // A CancelContext can be canceled. When canceled, it also cancels any children
 // that implement Canceler.
 pub struct CancelContext {
 	id string
 mut:
 	context  Context
-	mutex    &sync.Mutex
+	mutex    &sync.Mutex = sync.new_mutex()
 	done     chan int
 	children map[string]Canceler
-	err      IError
+	err      IError = none
 }
 
 // with_cancel returns a copy of parent with a new done channel. The returned
@@ -141,7 +128,7 @@ fn propagate_cancel(mut parent Context, mut child Canceler) {
 		}
 	}
 	mut p := parent_cancel_context(mut parent) or {
-		go fn (mut parent Context, mut child Canceler) {
+		spawn fn (mut parent Context, mut child Canceler) {
 			pdone := parent.done()
 			select {
 				_ := <-pdone {
@@ -171,7 +158,7 @@ fn parent_cancel_context(mut parent Context) ?&CancelContext {
 	if done.closed {
 		return none
 	}
-	mut p := parent.value(cancel_context_key) ?
+	mut p := parent.value(cancel_context_key)?
 	match mut p {
 		CancelContext {
 			pdone := p.done()

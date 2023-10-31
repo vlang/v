@@ -1,0 +1,16 @@
+fn test[T](val T) string {
+	$if val is string {
+		return val
+	} $else $if val in [i32, u32] {
+		return '32-bit number'
+	} $else {
+		return 'this is an else block'
+	}
+}
+
+fn main() {
+	println(test('str'))
+	println(test(7))
+	println(test(u32(7)))
+	println(test(i32(7)))
+}

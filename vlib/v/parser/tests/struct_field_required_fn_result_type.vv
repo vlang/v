@@ -1,0 +1,8 @@
+struct Foo {
+	foo fn() ! [required]
+}
+
+fn main() {
+	f := Foo{}
+	println(f)
+}

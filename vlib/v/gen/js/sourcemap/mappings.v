@@ -34,9 +34,9 @@ struct Mapping {
 
 struct Mappings {
 mut:
-	sorted bool
-	last   Mapping
-	values []Mapping
+	is_sorted bool
+	last      Mapping
+	values    []Mapping
 }
 
 fn new_mappings() Mappings {
@@ -47,7 +47,7 @@ fn new_mappings() Mappings {
 				gen_line: 0
 			}
 		}
-		sorted: true
+		is_sorted: true
 	}
 }
 
@@ -55,7 +55,7 @@ fn new_mappings() Mappings {
 fn (mut m Mappings) add_mapping(gen_line u32, gen_column u32, sources_ind u32, source_position SourcePositionType, names_ind NameIndexType) {
 	if !(gen_line > m.last.gen_line
 		|| (gen_line == m.last.gen_line && gen_column >= m.last.gen_column)) {
-		m.sorted = false
+		m.is_sorted = false
 	}
 	m.values << Mapping{
 		GenPosition: GenPosition{
@@ -71,13 +71,13 @@ fn (mut m Mappings) add_mapping(gen_line u32, gen_column u32, sources_ind u32, s
 // Returns the flat, sorted array of mappings. The mappings are sorted by generated position.
 
 fn (mut m Mappings) get_sorted_array() []Mapping {
-	if !m.sorted {
+	if !m.is_sorted {
 		panic('not implemented')
 	}
 	return m.values
 }
 
-fn (mut m Mappings) export_mappings(mut output io.Writer) ? {
+fn (mut m Mappings) export_mappings(mut output io.Writer) ! {
 	mut previous_generated_line := u32(1)
 	mut previous_generated_column := u32(0)
 	mut previous_source_index := i64(0)
@@ -109,25 +109,25 @@ fn (mut m Mappings) export_mappings(mut output io.Writer) ? {
 			}
 		}
 
-		vlq.encode(i64(mapping.gen_column - previous_generated_column), mut &output) ?
+		vlq.encode(i64(mapping.gen_column - previous_generated_column), mut &output)!
 		previous_generated_column = mapping.gen_column
 		match mapping.source_position {
 			Empty {}
 			SourcePosition {
-				vlq.encode(i64(mapping.sources_ind - previous_source_index), mut &output) ?
+				vlq.encode(i64(mapping.sources_ind - previous_source_index), mut &output)!
 				previous_source_index = mapping.sources_ind
 				// lines are stored 0-based in SourceMap spec version 3
 				vlq.encode(i64(mapping.source_position.source_line - 1 - previous_source_line), mut
-					output) ?
+					output)!
 				previous_source_line = mapping.source_position.source_line - 1
 				vlq.encode(i64(mapping.source_position.source_column - previous_source_column), mut
-					output) ?
+					output)!
 				previous_source_column = mapping.source_position.source_column
 
 				match mapping.names_ind {
 					Empty {}
 					IndexNumber {
-						vlq.encode(i64(mapping.names_ind - previous_name_index), mut &output) ?
+						vlq.encode(i64(mapping.names_ind - previous_name_index), mut &output)!
 						previous_name_index = mapping.names_ind
 					}
 				}

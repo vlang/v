@@ -5,6 +5,7 @@ so_file="./test.so"
 if os.name=="nt":
   so_file="./test.dll"
 lib = CDLL(so_file)
+print("lib.square(10) result is", lib.square(10))
 assert lib.square(10) == 100, "Cannot validate V square()."
 
 lib.sqrt_of_sum_of_squares.restype = c_double

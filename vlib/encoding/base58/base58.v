@@ -5,17 +5,17 @@ module base58
 import math
 
 // encode_int encodes any integer type to base58 string with Bitcoin alphabet
-pub fn encode_int(input int) ?string {
-	return encode_int_walpha(input, alphabets['btc'])
+pub fn encode_int(input int) !string {
+	return encode_int_walpha(input, btc_alphabet)
 }
 
 // encode_int_walpha any integer type to base58 string with custom alphabet
-pub fn encode_int_walpha(input int, alphabet Alphabet) ?string {
+pub fn encode_int_walpha(input int, alphabet Alphabet) !string {
 	if input <= 0 {
 		return error(@MOD + '.' + @FN + ': input must be greater than zero')
 	}
 
-	mut buffer := []byte{}
+	mut buffer := []u8{}
 
 	mut i := input
 	for i > 0 {
@@ -30,22 +30,34 @@ pub fn encode_int_walpha(input int, alphabet Alphabet) ?string {
 	return buffer.reverse().bytestr()
 }
 
-// encode encodes byte array to base58 with Bitcoin alphabet
+// encode encodes the input string to base58 with the Bitcoin alphabet
 pub fn encode(input string) string {
-	return encode_walpha(input, alphabets['btc'])
+	return encode_walpha(input, btc_alphabet)
 }
 
-// encode_walpha encodes byte array to base58 with custom aplhabet
+// encode_bytes encodes the input array to base58, with the Bitcoin alphabet
+pub fn encode_bytes(input []u8) []u8 {
+	return encode_walpha_bytes(input, btc_alphabet)
+}
+
+// encode_walpha encodes the input string to base58 with a custom aplhabet
 pub fn encode_walpha(input string, alphabet Alphabet) string {
 	if input.len == 0 {
 		return ''
 	}
-
 	bin := input.bytes()
-	mut sz := bin.len
+	return encode_walpha_bytes(bin, alphabet).bytestr()
+}
+
+// encode_walpha encodes the input array to base58 with a custom aplhabet
+pub fn encode_walpha_bytes(input []u8, alphabet Alphabet) []u8 {
+	if input.len == 0 {
+		return []
+	}
+	mut sz := input.len
 
 	mut zcount := 0
-	for zcount < sz && bin[zcount] == 0 {
+	for zcount < sz && input[zcount] == 0 {
 		zcount++
 	}
 
@@ -55,17 +67,17 @@ pub fn encode_walpha(input string, alphabet Alphabet) string {
 	// integer simplification of
 	// ceil(log(256)/log(58))
 
-	mut out := []byte{len: sz}
+	mut out := []u8{len: sz}
 	mut i := 0
 	mut high := 0
 	mut carry := u32(0)
 
 	high = sz - 1
-	for b in bin {
+	for b in input {
 		i = sz - 1
 		for carry = u32(b); i > high || carry != 0; i-- {
 			carry = carry + 256 * u32(out[i])
-			out[i] = byte(carry % 58)
+			out[i] = u8(carry % 58)
 			carry /= 58
 		}
 		high = 1
@@ -81,20 +93,20 @@ pub fn encode_walpha(input string, alphabet Alphabet) string {
 		out[i] = alphabet.encode[val[i]]
 	}
 
-	return out[..sz].bytestr()
+	return out[..sz]
 }
 
 // decode_int decodes base58 string to an integer with Bitcoin alphabet
-pub fn decode_int(input string) ?int {
-	return decode_int_walpha(input, alphabets['btc'])
+pub fn decode_int(input string) !int {
+	return decode_int_walpha(input, btc_alphabet)
 }
 
 // decode_int_walpha decodes base58 string to an integer with custom alphabet
-pub fn decode_int_walpha(input string, alphabet Alphabet) ?int {
+pub fn decode_int_walpha(input string, alphabet Alphabet) !int {
 	mut total := 0 // to hold the results
 	b58 := input.reverse()
 	for i, ch in b58 {
-		ch_i := alphabet.encode.bytestr().index_byte(ch)
+		ch_i := alphabet.encode.bytestr().index_u8(ch)
 		if ch_i == -1 {
 			return error(@MOD + '.' + @FN +
 				': input string contains values not found in the provided alphabet')
@@ -108,22 +120,37 @@ pub fn decode_int_walpha(input string, alphabet Alphabet) ?int {
 	return total
 }
 
-// decode decodes base58 string using the Bitcoin alphabet
-pub fn decode(str string) ?string {
-	return decode_walpha(str, alphabets['btc'])
+// decode decodes the base58 input string, using the Bitcoin alphabet
+pub fn decode(str string) !string {
+	return decode_walpha(str, btc_alphabet)
 }
 
-// decode_walpha decodes base58 string using custom alphabet
-pub fn decode_walpha(str string, alphabet Alphabet) ?string {
-	if str.len == 0 {
+// decode_bytes decodes the base58 encoded input array, using the Bitcoin alphabet
+pub fn decode_bytes(input []u8) ![]u8 {
+	return decode_walpha_bytes(input, btc_alphabet)
+}
+
+// decode_walpha decodes the base58 encoded input string, using custom alphabet
+pub fn decode_walpha(input string, alphabet Alphabet) !string {
+	if input.len == 0 {
 		return ''
+	}
+	bin := input.bytes()
+	res := decode_walpha_bytes(bin, alphabet)!
+	return res.bytestr()
+}
+
+// decode_walpha_bytes decodes the base58 encoded input array using a custom alphabet
+pub fn decode_walpha_bytes(input []u8, alphabet Alphabet) ![]u8 {
+	if input.len == 0 {
+		return []
 	}
 
 	zero := alphabet.encode[0]
-	b58sz := str.len
+	b58sz := input.len
 
 	mut zcount := 0
-	for i := 0; i < b58sz && str[i] == zero; i++ {
+	for i := 0; i < b58sz && input[i] == zero; i++ {
 		zcount++
 	}
 
@@ -131,16 +158,16 @@ pub fn decode_walpha(str string, alphabet Alphabet) ?string {
 	mut c := u64(0)
 
 	// the 32-bit algorithm stretches the result up to 2x
-	mut binu := []byte{len: 2 * ((b58sz * 406 / 555) + 1)}
+	mut binu := []u8{len: 2 * ((b58sz * 406 / 555) + 1)}
 	mut outi := []u32{len: (b58sz + 3) / 4}
 
-	for _, r in str {
+	for _, r in input {
 		if r > 127 {
 			panic(@MOD + '.' + @FN +
-				': high-bit set on invalid digit; outside of ascii range ($r). This should never happen.')
+				': high-bit set on invalid digit; outside of ascii range (${r}). This should never happen.')
 		}
 		if alphabet.decode[r] == -1 {
-			return error(@MOD + '.' + @FN + ': invalid base58 digit ($r)')
+			return error(@MOD + '.' + @FN + ': invalid base58 digit (${r})')
 		}
 
 		c = u64(alphabet.decode[r])
@@ -162,7 +189,7 @@ pub fn decode_walpha(str string, alphabet Alphabet) ?string {
 	mut out_len := 0
 	for j := 0; j < outi.len; j++ {
 		for mask < 32 {
-			binu[out_len] = byte(outi[j] >> mask)
+			binu[out_len] = u8(outi[j] >> mask)
 			mask -= 8
 			out_len++
 		}
@@ -172,10 +199,10 @@ pub fn decode_walpha(str string, alphabet Alphabet) ?string {
 	// find the most significant byte post-decode, if any
 	for msb := zcount; msb < binu.len; msb++ { // loop relies on u32 overflow
 		if binu[msb] > 0 {
-			return binu[msb - zcount..out_len].bytestr()
+			return binu[msb - zcount..out_len]
 		}
 	}
 
 	// it's all zeroes
-	return binu[..out_len].bytestr()
+	return binu[..out_len]
 }

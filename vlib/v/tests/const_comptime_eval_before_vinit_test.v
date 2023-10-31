@@ -4,12 +4,12 @@ const zzz_an_i8_const = i8(0x28)
 
 const zzz_an_i16_const = i16(0x30)
 
-const zzz_an_int_const = int(89)
+const zzz_an_i32_const = i32(89)
 
 const zzz_an_i64_const = i64(123)
 
 //
-const zzz_an_byte_const = byte(0x4b)
+const zzz_an_byte_const = u8(0x4b)
 
 const zzz_an_u16_const = u16(0x53)
 
@@ -26,12 +26,12 @@ const zzz_an_i8_const_1 = zzz_an_i8_const + i8(1)
 
 const zzz_an_i16_const_1 = zzz_an_i16_const + i16(1)
 
-const zzz_an_int_const_1 = zzz_an_int_const + int(1)
+const zzz_an_i32_const_1 = zzz_an_i32_const + i32(1)
 
 const zzz_an_i64_const_1 = zzz_an_i64_const + i64(1)
 
 //
-const zzz_an_byte_const_1 = zzz_an_byte_const + byte(1)
+const zzz_an_byte_const_1 = zzz_an_byte_const + u8(1)
 
 const zzz_an_u16_const_1 = zzz_an_u16_const + u16(1)
 
@@ -58,13 +58,13 @@ const zzz_an_f64_const_1 = zzz_an_f64_const + f64(1.0)
 // values will be the same.
 
 [unsafe]
-fn static_storage(idx int, value int) byte {
-	mut static storage := [256]byte{}
+fn static_storage(idx int, value int) u8 {
+	mut static storage := [256]u8{}
 	if value == -1 {
 		return storage[idx]
 	}
 	prev := storage[idx]
-	storage[idx] = byte(value)
+	storage[idx] = u8(value)
 	return prev
 }
 
@@ -76,7 +76,7 @@ fn pre_main() {
 	unsafe {
 		static_storage(0, int(zzz_an_i8_const))
 		static_storage(1, int(zzz_an_i16_const))
-		static_storage(2, int(zzz_an_int_const))
+		static_storage(2, int(zzz_an_i32_const))
 		static_storage(3, int(zzz_an_i64_const))
 		//
 		static_storage(4, int(zzz_an_byte_const))
@@ -89,7 +89,7 @@ fn pre_main() {
 
 		static_storage(20, int(zzz_an_i8_const_1))
 		static_storage(21, int(zzz_an_i16_const_1))
-		static_storage(22, int(zzz_an_int_const_1))
+		static_storage(22, int(zzz_an_i32_const_1))
 		static_storage(23, int(zzz_an_i64_const_1))
 		//
 		static_storage(24, int(zzz_an_byte_const_1))
@@ -104,34 +104,34 @@ fn pre_main() {
 
 fn do_check() {
 	unsafe {
-		assert static_storage(0, -1) == byte(zzz_an_i8_const)
-		assert static_storage(1, -1) == byte(zzz_an_i16_const)
-		assert static_storage(2, -1) == byte(zzz_an_int_const)
+		assert static_storage(0, -1) == u8(zzz_an_i8_const)
+		assert static_storage(1, -1) == u8(zzz_an_i16_const)
+		assert static_storage(2, -1) == u8(zzz_an_i32_const)
 		// TODO: this should also be initialised, but is not for now,
 		// since V has problems with `-9223372036854775808.str()`,
 		// The generating code for i64 consts is present, but is disabled
 		// for now, so they are still computed/assigned in the _vinit
 		// function at runtime.
-		//      assert static_storage(3, -1) == byte(zzz_an_i64_const)
+		//      assert static_storage(3, -1) == u8(zzz_an_i64_const)
 		//
-		assert static_storage(4, -1) == byte(zzz_an_byte_const)
-		assert static_storage(5, -1) == byte(zzz_an_u16_const)
-		assert static_storage(6, -1) == byte(zzz_an_u32_const)
-		assert static_storage(7, -1) == byte(zzz_an_u64_const)
+		assert static_storage(4, -1) == u8(zzz_an_byte_const)
+		assert static_storage(5, -1) == u8(zzz_an_u16_const)
+		assert static_storage(6, -1) == u8(zzz_an_u32_const)
+		assert static_storage(7, -1) == u8(zzz_an_u64_const)
 		// TODO: ensure these work too:
-		//      assert static_storage(8, -1) == byte(zzz_an_f32_const)
-		//      assert static_storage(9, -1) == byte(zzz_an_f64_const)
+		//      assert static_storage(8, -1) == u8(zzz_an_f32_const)
+		//      assert static_storage(9, -1) == u8(zzz_an_f64_const)
 		//
-		//		assert static_storage(20, -1) == byte(zzz_an_i8_const_1)
-		//		assert static_storage(21, -1) == byte(zzz_an_i16_const_1)
-		//		assert static_storage(22, -1) == byte(zzz_an_int_const_1)
-		//		assert static_storage(23, -1) == byte(zzz_an_i64_const_1)
-		assert static_storage(24, -1) == byte(zzz_an_byte_const_1)
-		//		assert static_storage(25, -1) == byte(zzz_an_u16_const_1)
-		//		assert static_storage(26, -1) == byte(zzz_an_u32_const_1)
-		assert static_storage(27, -1) == byte(zzz_an_u64_const_1)
-		//      assert static_storage(28, -1) == byte(zzz_an_f32_const_1)
-		//      assert static_storage(29, -1) == byte(zzz_an_f64_const_1)
+		//		assert static_storage(20, -1) == u8(zzz_an_i8_const_1)
+		//		assert static_storage(21, -1) == u8(zzz_an_i16_const_1)
+		//		assert static_storage(22, -1) == u8(zzz_an_int_const_1)
+		//		assert static_storage(23, -1) == u8(zzz_an_i64_const_1)
+		assert static_storage(24, -1) == u8(zzz_an_byte_const_1)
+		//		assert static_storage(25, -1) == u8(zzz_an_u16_const_1)
+		//		assert static_storage(26, -1) == u8(zzz_an_u32_const_1)
+		assert static_storage(27, -1) == u8(zzz_an_u64_const_1)
+		//      assert static_storage(28, -1) == u8(zzz_an_f32_const_1)
+		//      assert static_storage(29, -1) == u8(zzz_an_f64_const_1)
 	}
 }
 

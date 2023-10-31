@@ -1,3 +1,7 @@
+struct TestInt {
+	i int
+}
+
 __global x = bool(true)
 __global y f32
 __global ()
@@ -6,5 +10,8 @@ __global (
 	foo  = int(5)
 )
 __global (
-	a int
+	a        int
+	volatile test_int = TestInt{
+		i: 0
+	}
 )

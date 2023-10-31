@@ -1,9 +1,9 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builtin
 
-pub fn utf8_char_len(b byte) int {
+pub fn utf8_char_len(b u8) int {
 	return ((0xe5000000 >> ((b >> 3) & 0x1e)) & 3) + 1
 }
 
@@ -22,7 +22,7 @@ pub fn utf32_to_str(code u32) string {
 }
 
 [manualfree; unsafe]
-pub fn utf32_to_str_no_malloc(code u32, buf &byte) string {
+pub fn utf32_to_str_no_malloc(code u32, buf &u8) string {
 	unsafe {
 		len := utf32_decode_to_buffer(code, buf)
 		if len == 0 {
@@ -34,32 +34,32 @@ pub fn utf32_to_str_no_malloc(code u32, buf &byte) string {
 }
 
 [manualfree; unsafe]
-pub fn utf32_decode_to_buffer(code u32, buf &byte) int {
+pub fn utf32_decode_to_buffer(code u32, buf &u8) int {
 	unsafe {
 		icode := int(code) // Prevents doing casts everywhere
-		mut buffer := &byte(buf)
+		mut buffer := &u8(buf)
 		if icode <= 127 {
 			// 0x7F
-			buffer[0] = byte(icode)
+			buffer[0] = u8(icode)
 			return 1
 		} else if icode <= 2047 {
 			// 0x7FF
-			buffer[0] = 192 | byte(icode >> 6) // 0xC0 - 110xxxxx
-			buffer[1] = 128 | byte(icode & 63) // 0x80 - 0x3F - 10xxxxxx
+			buffer[0] = 192 | u8(icode >> 6) // 0xC0 - 110xxxxx
+			buffer[1] = 128 | u8(icode & 63) // 0x80 - 0x3F - 10xxxxxx
 			return 2
 		} else if icode <= 65535 {
 			// 0xFFFF
-			buffer[0] = 224 | byte(icode >> 12) // 0xE0 - 1110xxxx
-			buffer[1] = 128 | (byte(icode >> 6) & 63) // 0x80 - 0x3F - 10xxxxxx
-			buffer[2] = 128 | byte(icode & 63) // 0x80 - 0x3F - 10xxxxxx
+			buffer[0] = 224 | u8(icode >> 12) // 0xE0 - 1110xxxx
+			buffer[1] = 128 | (u8(icode >> 6) & 63) // 0x80 - 0x3F - 10xxxxxx
+			buffer[2] = 128 | u8(icode & 63) // 0x80 - 0x3F - 10xxxxxx
 			return 3
 		}
 		// 0x10FFFF
 		else if icode <= 1114111 {
-			buffer[0] = 240 | byte(icode >> 18) // 0xF0 - 11110xxx
-			buffer[1] = 128 | (byte(icode >> 12) & 63) // 0x80 - 0x3F - 10xxxxxx
-			buffer[2] = 128 | (byte(icode >> 6) & 63) // 0x80 - 0x3F - 10xxxxxx
-			buffer[3] = 128 | byte(icode & 63) // 0x80 - 0x3F - 10xxxxxx
+			buffer[0] = 240 | u8(icode >> 18) // 0xF0 - 11110xxx
+			buffer[1] = 128 | (u8(icode >> 12) & 63) // 0x80 - 0x3F - 10xxxxxx
+			buffer[2] = 128 | (u8(icode >> 6) & 63) // 0x80 - 0x3F - 10xxxxxx
+			buffer[3] = 128 | u8(icode & 63) // 0x80 - 0x3F - 10xxxxxx
 			return 4
 		}
 	}
@@ -71,7 +71,7 @@ pub fn utf32_decode_to_buffer(code u32, buf &byte) int {
 // valid utf8 in the string, and could result in
 // values greater than the utf32 spec
 // it has been replaced by `utf8_to_utf32` which
-// has an optional return type.
+// has an option return type.
 //
 // this function is left for backward compatibility
 // it is used in vlib/builtin/string.v,
@@ -85,7 +85,7 @@ pub fn (_rune string) utf32_code() int {
 
 // convert array of utf8 bytes to single utf32 value
 // will error if more than 4 bytes are submitted
-pub fn (_bytes []byte) utf8_to_utf32() ?rune {
+pub fn (_bytes []u8) utf8_to_utf32() !rune {
 	if _bytes.len == 0 {
 		return 0
 	}
@@ -97,7 +97,7 @@ pub fn (_bytes []byte) utf8_to_utf32() ?rune {
 		return error('attempted to decode too many bytes, utf-8 is limited to four bytes maximum')
 	}
 
-	mut b := byte(int(_bytes[0]))
+	mut b := u8(int(_bytes[0]))
 
 	b = b << _bytes.len
 	mut res := rune(b)
@@ -109,40 +109,6 @@ pub fn (_bytes []byte) utf8_to_utf32() ?rune {
 		shift = 6
 	}
 	return res
-}
-
-// Calculate length to read from the first byte
-fn utf8_len(c byte) int {
-	mut b := 0
-	mut x := c
-	if (x & 240) != 0 {
-		// 0xF0
-		x >>= 4
-	} else {
-		b += 4
-	}
-	if (x & 12) != 0 {
-		// 0x0C
-		x >>= 2
-	} else {
-		b += 2
-	}
-	if (x & 2) == 0 {
-		// 0x02
-		b++
-	}
-	return b
-}
-
-// Calculate string length for in number of codepoints
-pub fn utf8_str_len(s string) int {
-	mut l := 0
-	mut i := 0
-	for i < s.len {
-		l++
-		i += ((0xe5000000 >> ((unsafe { s.str[i] } >> 3) & 0x1e)) & 3) + 1
-	}
-	return l
 }
 
 // Calculate string length for formatting, i.e. number of "characters"

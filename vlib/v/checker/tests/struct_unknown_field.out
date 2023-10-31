@@ -1,4 +1,5 @@
-vlib/v/checker/tests/struct_unknown_field.vv:8:3: error: unknown field `bar` in struct literal of type `Test`
+vlib/v/checker/tests/struct_unknown_field.vv:8:3: error: unknown field `bar` in struct literal of type `Test`.
+1 possibility: `foo`.
     6 |     t := Test{
     7 |         foo: true
     8 |         bar: false

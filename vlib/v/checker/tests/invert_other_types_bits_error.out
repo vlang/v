@@ -1,24 +1,24 @@
-vlib/v/checker/tests/invert_other_types_bits_error.vv:2:13: error: operator ~ only defined on int types
+vlib/v/checker/tests/invert_other_types_bits_error.vv:2:13: error: operator `~` can only be used with integer types, but the value after `~` is of type `float literal` instead
     1 | fn main() {
     2 |     println(~3.0)
       |             ^
     3 |     println(~10.5)
     4 |     println(~'2')
-vlib/v/checker/tests/invert_other_types_bits_error.vv:3:13: error: operator ~ only defined on int types
+vlib/v/checker/tests/invert_other_types_bits_error.vv:3:13: error: operator `~` can only be used with integer types, but the value after `~` is of type `float literal` instead
     1 | fn main() {
     2 |     println(~3.0)
     3 |     println(~10.5)
       |             ^
     4 |     println(~'2')
     5 |     println(~[2, 4, 6])
-vlib/v/checker/tests/invert_other_types_bits_error.vv:4:13: error: operator ~ only defined on int types
+vlib/v/checker/tests/invert_other_types_bits_error.vv:4:13: error: operator `~` can only be used with integer types, but the value after `~` is of type `string` instead
     2 |     println(~3.0)
     3 |     println(~10.5)
     4 |     println(~'2')
       |             ^
     5 |     println(~[2, 4, 6])
     6 | }
-vlib/v/checker/tests/invert_other_types_bits_error.vv:5:13: error: operator ~ only defined on int types
+vlib/v/checker/tests/invert_other_types_bits_error.vv:5:13: error: operator `~` can only be used with integer types, but the value after `~` is of type `[]int` instead
     3 |     println(~10.5)
     4 |     println(~'2')
     5 |     println(~[2, 4, 6])

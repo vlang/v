@@ -3,7 +3,7 @@ import sync
 fn test_go_anon_fn() {
 	mut wg := sync.new_waitgroup()
 	wg.add(1)
-	go fn (mut wg sync.WaitGroup) {
+	spawn fn (mut wg sync.WaitGroup) {
 		wg.done()
 	}(mut wg)
 	wg.wait()
@@ -20,4 +20,24 @@ fn test_anon_assign_struct() {
 		return true
 	}
 	assert w.fn_()
+}
+
+//
+
+fn fnormal(mut acc []string, e int) []string {
+	acc << e.str()
+	return acc
+}
+
+fn test_anon_fn_returning_a_mut_parameter_should_act_the_same_as_normal_fn_returning_a_mut_parameter() {
+	fanon := fn (mut acc []string, e int) []string {
+		acc << e.str()
+		return acc
+	}
+	assert '${fanon}' == '${fnormal}'
+	mut a := ['a', 'b', 'c']
+	mut b := a.clone()
+	x := fanon(mut a, 123)
+	y := fnormal(mut b, 123)
+	assert a == b
 }

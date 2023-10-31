@@ -1,0 +1,77 @@
+enum Color {
+	red
+	blue
+	green
+}
+
+fn enum_test() {
+	assert Color.red == .red
+	assert Color.blue == .blue
+	assert Color.green == .green
+	assert Color.red != .blue
+	assert Color.red != .green
+	assert Color.blue != .green
+	mut color := Color.red
+	assert color == .red
+	color = .green
+	assert color == .green
+}
+
+fn match_test() {
+	color := Color.green
+	num := 3
+	match color {
+		.red {
+			assert false
+		}
+		.green {
+			assert true
+		}
+		else {
+			assert false
+		}
+	}
+	//	println(color)
+	assert num == 3
+}
+
+enum Bar {
+	baz
+}
+
+fn (_ Bar) baz() {}
+
+fn test_enum_variant_and_method_name_clash() {
+	x := Bar.baz
+	//	println(x)
+	x.baz()
+}
+
+enum Value {
+	a
+	b
+	c = 5 * 3
+	d
+	e = 3
+}
+
+fn value_test() {
+	assert int(Value.a) == 0
+	assert int(Value.b) == 1
+	assert int(Value.c) == 15
+	assert int(Value.d) == 16
+	assert int(Value.e) == 3
+	assert Value.a == unsafe { Value(0) }
+	assert Value.b == unsafe { Value(1) }
+	assert Value.c == unsafe { Value(15) }
+	assert Value.d == unsafe { Value(16) }
+	assert Value.e == unsafe { Value(3) }
+}
+
+fn main() {
+	enum_test()
+	match_test()
+	test_enum_variant_and_method_name_clash()
+	value_test()
+	println('OK')
+}

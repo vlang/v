@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 // Package sha1 implements the SHA-1 hash algorithm as defined in RFC 3174.
@@ -20,24 +20,41 @@ pub const (
 const (
 	chunk = 64
 	init0 = 0x67452301
-	init1 = 0xEFCDAB89
-	init2 = 0x98BADCFE
+	init1 = u32(0xEFCDAB89)
+	init2 = u32(0x98BADCFE)
 	init3 = 0x10325476
-	init4 = 0xC3D2E1F0
+	init4 = u32(0xC3D2E1F0)
 )
 
 // digest represents the partial evaluation of a checksum.
 struct Digest {
 mut:
 	h   []u32
-	x   []byte
+	x   []u8
 	nx  int
 	len u64
 }
 
-fn (mut d Digest) reset() {
-	d.x = []byte{len: sha1.chunk}
+// free the resources taken by the Digest `d`
+[unsafe]
+pub fn (mut d Digest) free() {
+	$if prealloc {
+		return
+	}
+	unsafe {
+		d.x.free()
+		d.h.free()
+	}
+}
+
+fn (mut d Digest) init() {
+	d.x = []u8{len: sha1.chunk}
 	d.h = []u32{len: (5)}
+	d.reset()
+}
+
+// reset the state of the Digest `d`
+pub fn (mut d Digest) reset() {
 	d.h[0] = u32(sha1.init0)
 	d.h[1] = u32(sha1.init1)
 	d.h[2] = u32(sha1.init2)
@@ -47,16 +64,24 @@ fn (mut d Digest) reset() {
 	d.len = 0
 }
 
+fn (d &Digest) clone() &Digest {
+	return &Digest{
+		...d
+		h: d.h.clone()
+		x: d.x.clone()
+	}
+}
+
 // new returns a new Digest (implementing hash.Hash) computing the SHA1 checksum.
 pub fn new() &Digest {
 	mut d := &Digest{}
-	d.reset()
+	d.init()
 	return d
 }
 
 // write writes the contents of `p_` to the internal hash representation.
 [manualfree]
-pub fn (mut d Digest) write(p_ []byte) ?int {
+pub fn (mut d Digest) write(p_ []u8) !int {
 	nn := p_.len
 	unsafe {
 		mut p := p_
@@ -91,10 +116,10 @@ pub fn (mut d Digest) write(p_ []byte) ?int {
 }
 
 // sum returns a copy of the generated sum of the bytes in `b_in`.
-pub fn (d &Digest) sum(b_in []byte) []byte {
+pub fn (d &Digest) sum(b_in []u8) []u8 {
 	// Make a copy of d so that caller can keep writing and summing.
-	mut d0 := *d
-	hash := d0.checksum()
+	mut d0 := d.clone()
+	hash := d0.checksum_internal()
 	mut b_out := b_in.clone()
 	for b in hash {
 		b_out << b
@@ -102,11 +127,12 @@ pub fn (d &Digest) sum(b_in []byte) []byte {
 	return b_out
 }
 
-// checksum returns the byte checksum of the `Digest`.
-fn (mut d Digest) checksum() []byte {
+// TODO:
+// When the deprecated "checksum()" is finally removed, restore this function name as: "checksum()"
+fn (mut d Digest) checksum_internal() []u8 {
 	mut len := d.len
 	// Padding.  Add a 1 bit and 0 bits until 56 bytes mod 64.
-	mut tmp := []byte{len: (64)}
+	mut tmp := []u8{len: (64)}
 	tmp[0] = 0x80
 	if int(len) % 64 < 56 {
 		d.write(tmp[..56 - int(len) % 64]) or { panic(err) }
@@ -117,7 +143,7 @@ fn (mut d Digest) checksum() []byte {
 	len <<= 3
 	binary.big_endian_put_u64(mut tmp, len)
 	d.write(tmp[..8]) or { panic(err) }
-	mut digest := []byte{len: sha1.size}
+	mut digest := []u8{len: sha1.size}
 	binary.big_endian_put_u32(mut digest, d.h[0])
 	binary.big_endian_put_u32(mut digest[4..], d.h[1])
 	binary.big_endian_put_u32(mut digest[8..], d.h[2])
@@ -126,14 +152,22 @@ fn (mut d Digest) checksum() []byte {
 	return digest
 }
 
-// sum returns the SHA-1 checksum of the bytes passed in `data`.
-pub fn sum(data []byte) []byte {
-	mut d := new()
-	d.write(data) or { panic(err) }
-	return d.checksum()
+// checksum returns the current byte checksum of the `Digest`,
+// it is an internal method and is not recommended because its results are not idempotent.
+[deprecated: 'checksum() will be changed to a private method, use sum() instead']
+[deprecated_after: '2024-04-30']
+pub fn (mut d Digest) checksum() []u8 {
+	return d.checksum_internal()
 }
 
-fn block(mut dig Digest, p []byte) {
+// sum returns the SHA-1 checksum of the bytes passed in `data`.
+pub fn sum(data []u8) []u8 {
+	mut d := new()
+	d.write(data) or { panic(err) }
+	return d.checksum_internal()
+}
+
+fn block(mut dig Digest, p []u8) {
 	// For now just use block_generic until we have specific
 	// architecture optimized versions
 	block_generic(mut dig, p)

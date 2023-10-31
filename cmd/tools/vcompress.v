@@ -24,13 +24,13 @@ fn main() {
 	}
 	path := os.args[3]
 	content := os.read_bytes(path) or {
-		eprintln('unable to read "$path": $err')
+		eprintln('unable to read "${path}": ${err}')
 		exit(1)
 	}
 	compressed := match compression_type {
 		.zlib {
 			zlib.compress(content) or {
-				eprintln('compression error: $err')
+				eprintln('compression error: ${err}')
 				exit(1)
 			}
 		}
@@ -38,7 +38,7 @@ fn main() {
 	out_path := os.args[4]
 
 	os.write_file_array(out_path, compressed) or {
-		eprintln('failed to write "$out_path": $err')
+		eprintln('failed to write "${out_path}": ${err}')
 		exit(1)
 	}
 }

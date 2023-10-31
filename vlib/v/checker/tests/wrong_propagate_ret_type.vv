@@ -2,7 +2,16 @@ fn ret_none() ?int {
 	return none
 }
 
+fn ret_bool() bool {
+	return true
+}
+
 fn opt_call() int {
 	a := ret_none()?
+	return a
+}
+
+fn res_call() bool {
+	a := ret_bool()!
 	return a
 }

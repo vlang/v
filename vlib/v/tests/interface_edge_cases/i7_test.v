@@ -14,7 +14,7 @@ struct Point {
 }
 
 fn (p Point) draw() string {
-	return 'Point($p.x,$p.y)'
+	return 'Point(${p.x},${p.y})'
 }
 
 // Note: this helper function forced the compiler to generate an

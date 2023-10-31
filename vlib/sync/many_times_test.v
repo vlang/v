@@ -24,7 +24,7 @@ fn test_many_times_once() {
 
 	// It is executed 10 times, but only once actually.
 	for i := 0; i < n; i++ {
-		go run(mut m, mut co, c)
+		spawn run(mut m, mut co, c)
 	}
 	for i := 0; i < n; i++ {
 		<-c
@@ -40,7 +40,7 @@ fn test_many_times_fifth() {
 
 	// It is executed 10 times, but only 5 times actually.
 	for i := 0; i < n; i++ {
-		go run(mut m, mut co, c)
+		spawn run(mut m, mut co, c)
 	}
 	for i := 0; i < n; i++ {
 		<-c

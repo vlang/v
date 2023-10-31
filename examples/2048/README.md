@@ -23,3 +23,31 @@ UP,LEFT,DOWN,RIGHT / W,A,S,D / touchscreen swipes - move the tiles
 ## Running instructions:
 Compile & run the game with `./v run examples/2048`
 
+## Compiling to WASM:
+
+1. Install Emscripten from https://emscripten.org/docs/getting_started/downloads.html
+
+2. Make sure that the environment in your shell is setup correctly,
+i.e. that `emcc --version` works.
+```sh
+. /opt/emsdk/emsdk_env.sh
+emcc --version
+```
+
+3. Compile the game to WASM:
+```sh
+v -skip-unused -prod -os wasm32_emscripten examples/2048/`
+```
+
+4. Copy the 2048 file to `index.js` (can be done once; this step will be removed soon):
+```sh
+cp examples/2048/2048 examples/2048/index.js
+```
+
+5. Run/test the game:
+```sh
+emrun examples/2048/index.html
+```
+
+Once you have run the game, you can make changes,
+then just recompile (step 3), and refresh the game in your browser.

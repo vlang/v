@@ -77,12 +77,12 @@ fn test_defer_opt_return() {
 	assert y.n == 1
 }
 
-fn option_return_err(mut a Qwe) ?Qwe {
+fn option_return_err(mut a Qwe) !Qwe {
 	defer {
 		a.n += 5
 	}
 	a.n += 2
-	return error('Error: $a.n')
+	return error('Error: ${a.n}')
 }
 
 fn test_defer_err_return() {
@@ -91,7 +91,7 @@ fn test_defer_err_return() {
 	}
 	mut e_msg := ''
 	y := option_return_err(mut x) or {
-		e_msg = '$err'
+		e_msg = '${err}'
 		Qwe{
 			n: -119
 		}

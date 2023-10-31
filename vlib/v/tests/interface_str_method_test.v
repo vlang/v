@@ -10,7 +10,7 @@ fn (s St) str() string {
 
 fn printer(s Str) string {
 	println(s)
-	return '$s'
+	return '${s}'
 }
 
 fn test_interface_str_method() {

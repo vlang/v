@@ -13,13 +13,13 @@ struct Pixel {
 	color gx.Color
 }
 
-struct App {
+pub struct App {
 pub:
 	args         simargs.ParallelArgs
 	request_chan chan &sim.SimRequest
 	result_chan  chan &sim.SimResult
 pub mut:
-	gg     &gg.Context = 0
+	gg     &gg.Context = unsafe { nil }
 	iidx   int
 	pixels []u32
 }
@@ -47,8 +47,9 @@ pub fn new_app(args simargs.ParallelArgs) &App {
 
 fn init(mut app App) {
 	app.iidx = app.gg.new_streaming_image(app.args.grid.width, app.args.grid.height, 4,
-		pixel_format: .rgba8)
-	go pixels_worker(mut app)
+		pixel_format: .rgba8
+	)
+	spawn pixels_worker(mut app)
 }
 
 fn frame(mut app App) {
@@ -59,6 +60,6 @@ fn frame(mut app App) {
 
 fn (mut app App) draw() {
 	mut istream_image := app.gg.get_cached_image_by_idx(app.iidx)
-	istream_image.update_pixel_data(&app.pixels[0])
+	istream_image.update_pixel_data(unsafe { &u8(&app.pixels[0]) })
 	app.gg.draw_image(0, 0, app.args.grid.width, app.args.grid.height, istream_image)
 }

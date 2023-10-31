@@ -38,15 +38,15 @@ fn test_if_guard_good() {
 	assert res == '1'
 }
 
-fn get_propagate(s string, i int) ?string {
-	c := s[i] ?
+fn get_propagate(s string, i int) !string {
+	c := s[i]!
 	return 'got `${c:c}`'
 }
 
 fn test_propagation() {
 	s := 'abcd'
-	x := get_propagate(s, 2) or { '$err' }
-	y := get_propagate(s, 5) or { '$err' }
+	x := get_propagate(s, 2) or { '${err}' }
+	y := get_propagate(s, 5) or { '${err}' }
 	assert x == 'got `c`'
-	assert y == 'string index out of range'
+	assert y == 'none'
 }

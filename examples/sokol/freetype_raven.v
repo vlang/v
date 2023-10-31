@@ -56,16 +56,15 @@ Let my heart be still a moment and this mystery explore;—
 struct AppState {
 mut:
 	pass_action gfx.PassAction
-	fons        &fontstash.Context
+	fons        &fontstash.Context = unsafe { nil }
 	font_normal int
 	inited      bool
 }
 
-[console]
 fn main() {
 	mut color_action := gfx.ColorAttachmentAction{
-		action: .clear
-		value: gfx.Color{
+		load_action: .clear
+		clear_value: gfx.Color{
 			r: 1.0
 			g: 1.0
 			b: 1.0
@@ -76,7 +75,7 @@ fn main() {
 	pass_action.colors[0] = color_action
 	state := &AppState{
 		pass_action: pass_action
-		fons: voidptr(0) // &fontstash.Context(0)
+		fons: unsafe { nil } // &fontstash.Context(0)
 	}
 	title := 'V Metal/GL Text Rendering'
 	desc := sapp.Desc{
@@ -92,24 +91,22 @@ fn main() {
 	sapp.run(&desc)
 }
 
-fn init(user_data voidptr) {
-	mut state := &AppState(user_data)
+fn init(mut state AppState) {
 	desc := sapp.create_desc()
 	gfx.setup(&desc)
 	s := &sgl.Desc{}
-	C.sgl_setup(s)
+	sgl.setup(s)
 	state.fons = sfons.create(512, 512, 1)
 	// or use DroidSerif-Regular.ttf
 	if bytes := os.read_bytes(os.resource_abs_path(os.join_path('..', 'assets', 'fonts',
 		'RobotoMono-Regular.ttf')))
 	{
-		println('loaded font: $bytes.len')
+		println('loaded font: ${bytes.len}')
 		state.font_normal = state.fons.add_font_mem('sans', bytes, false)
 	}
 }
 
-fn frame(user_data voidptr) {
-	mut state := &AppState(user_data)
+fn frame(mut state AppState) {
 	state.render_font()
 	gfx.begin_default_pass(&state.pass_action, sapp.width(), sapp.height())
 	sgl.draw()

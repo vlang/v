@@ -1,7 +1,0 @@
-vlib/v/checker/tests/fn_call_arg_mismatch.vv:7:9: error: cannot use `&[]int` as `[]int` in argument 1 to `abc`
-    5 | fn main() {
-    6 |     a := [1, 2, 3]
-    7 |     go abc(&a)
-      |            ~~
-    8 |     println('done')
-    9 | }

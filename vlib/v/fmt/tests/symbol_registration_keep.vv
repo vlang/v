@@ -14,7 +14,7 @@ mut:
 	store       &Store = &Store(0)
 	cursor      TreeCursor
 	module_name string
-	src_text    []byte
+	src_text    []u8
 	// skips the local scopes and registers only
 	// the top-level ones regardless of its
 	// visibility

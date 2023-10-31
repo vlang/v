@@ -7,18 +7,16 @@
 module builtin
 
 [inline]
+fn __malloc_at_least_one(how_many_bytes u64, noscan bool) &u8 {
+	if noscan {
+		return unsafe { malloc_noscan(__at_least_one(how_many_bytes)) }
+	}
+	return unsafe { malloc(__at_least_one(how_many_bytes)) }
+}
+
+[inline]
 fn new_dense_array_noscan(key_bytes int, key_noscan bool, value_bytes int, value_noscan bool) DenseArray {
 	cap := 8
-	keys := if key_noscan {
-		unsafe { malloc_noscan(cap * key_bytes) }
-	} else {
-		unsafe { malloc(cap * key_bytes) }
-	}
-	values := if value_noscan {
-		unsafe { malloc_noscan(cap * value_bytes) }
-	} else {
-		unsafe { malloc(cap * value_bytes) }
-	}
 	return DenseArray{
 		key_bytes: key_bytes
 		value_bytes: value_bytes
@@ -26,8 +24,8 @@ fn new_dense_array_noscan(key_bytes int, key_noscan bool, value_bytes int, value
 		len: 0
 		deletes: 0
 		all_deleted: 0
-		keys: keys
-		values: values
+		keys: __malloc_at_least_one(u64(cap) * u64(key_bytes), key_noscan)
+		values: __malloc_at_least_one(u64(cap) * u64(value_bytes), value_noscan)
 	}
 }
 
@@ -101,8 +99,8 @@ fn new_map_init_noscan_key(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapClo
 	mut out := new_map_noscan_key(key_bytes, value_bytes, hash_fn, key_eq_fn, clone_fn,
 		free_fn)
 	// TODO pre-allocate n slots
-	mut pkey := &byte(keys)
-	mut pval := &byte(values)
+	mut pkey := &u8(keys)
+	mut pval := &u8(values)
 	for _ in 0 .. n {
 		unsafe {
 			out.set(pkey, pval)
@@ -117,8 +115,8 @@ fn new_map_init_noscan_value(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapC
 	mut out := new_map_noscan_value(key_bytes, value_bytes, hash_fn, key_eq_fn, clone_fn,
 		free_fn)
 	// TODO pre-allocate n slots
-	mut pkey := &byte(keys)
-	mut pval := &byte(values)
+	mut pkey := &u8(keys)
+	mut pval := &u8(values)
 	for _ in 0 .. n {
 		unsafe {
 			out.set(pkey, pval)
@@ -133,8 +131,8 @@ fn new_map_init_noscan_key_value(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn 
 	mut out := new_map_noscan_key_value(key_bytes, value_bytes, hash_fn, key_eq_fn, clone_fn,
 		free_fn)
 	// TODO pre-allocate n slots
-	mut pkey := &byte(keys)
-	mut pval := &byte(values)
+	mut pkey := &u8(keys)
+	mut pval := &u8(values)
 	for _ in 0 .. n {
 		unsafe {
 			out.set(pkey, pval)

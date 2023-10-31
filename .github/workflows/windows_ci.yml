@@ -1,0 +1,197 @@
+name: CI Windows
+
+on:
+  workflow_call:
+
+jobs:
+  gcc:
+    runs-on: windows-2019
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    timeout-minutes: 181
+    env:
+      VFLAGS: -cc gcc
+      VERBOSE_MAKE: 1
+    steps:
+      - uses: actions/checkout@v3
+      - name: Build
+        run: |
+          gcc --version
+          .\make.bat -gcc
+      - name: Test new v.c
+        run: |
+          .\v.exe -o v.c cmd/v
+          gcc -Werror -municode -w v.c
+      - name: Install dependencies
+        run: |
+          .\v.exe setup-freetype
+          .\.github\workflows\windows-install-sqlite.bat
+      - name: v doctor
+        run: |
+          ./v doctor
+      - name: Verify `v test` works
+        run: |
+          echo $VFLAGS
+          ./v cmd/tools/test_if_v_test_system_works.v
+          ./cmd/tools/test_if_v_test_system_works
+      - name: All code is formatted
+        run: ./v test-cleancode
+      - name: Test pure V math module
+        run: ./v -exclude @vlib/math/*.c.v test vlib/math/
+      - name: Self tests
+        run: .\v.exe test-self
+      # - name: Test
+      #   run: .\v.exe test-all
+      - name: Build option_test.v with -autofree
+        run: .\v.exe -autofree vlib/v/tests/option_test.v
+      - name: Test v->js
+        run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+      - name: Test v binaries
+        run: ./v build-vbinaries
+      - name: Build examples
+        run: ./v build-examples
+      - name: v2 self compilation
+        run: ./v -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
+      - name: compile vdoctor.v with -skip-unused and -prod
+        run: ./v -showcc -skip-unused -prod cmd/tools/vdoctor.v
+      - name: compile vup.v with -skip-unused and -prod
+        run: ./v -showcc -skip-unused -prod cmd/tools/vup.v
+
+  msvc:
+    runs-on: windows-2019
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    timeout-minutes: 181
+    env:
+      VFLAGS: -cc msvc
+      VERBOSE_MAKE: 1
+    steps:
+      - uses: actions/checkout@v3
+      - name: Build
+        run: |
+          echo %VFLAGS%
+          echo $VFLAGS
+          .\make.bat -msvc
+          .\v.exe -cflags /WX self
+      - name: Install dependencies
+        run: |
+          .\v.exe setup-freetype
+          .\.github\workflows\windows-install-sqlite.bat
+      - name: v doctor
+        run: |
+          ./v doctor
+      - name: Verify `v test` works
+        run: |
+          echo $VFLAGS
+          ./v cmd/tools/test_if_v_test_system_works.v
+          ./cmd/tools/test_if_v_test_system_works
+      - name: All code is formatted
+        run: ./v test-cleancode
+      - name: Test pure V math module
+        run: ./v -exclude @vlib/math/*.c.v test vlib/math/
+      - name: Self tests
+        run: |
+          ./v -cg cmd\tools\vtest-self.v
+          ./v test-self
+      # - name: Test
+      #   run: .\v.exe test-all
+      - name: Test v->js
+        run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+      - name: Test v binaries
+        run: ./v build-vbinaries
+      - name: Build examples
+        run: ./v build-examples
+      - name: v2 self compilation
+        run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
+
+  tcc:
+    runs-on: windows-2019
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    timeout-minutes: 121
+    env:
+      VFLAGS: -cc tcc -no-retry-compilation
+      VJOBS: 1
+      VTEST_SHOW_START: 1
+      VERBOSE_MAKE: 1
+    steps:
+      - uses: actions/checkout@v3
+      - name: Build with make.bat -tcc
+        run: |
+          .\make.bat -tcc
+      - name: Test new v.c
+        run: |
+          .\v.exe -o v.c cmd/v
+          .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -bt10 v.c
+      - name: Install dependencies
+        run: |
+          .\v.exe setup-freetype
+          .\.github\workflows\windows-install-sqlite.bat
+      - name: v doctor
+        run: |
+          ./v doctor
+      - name: Verify `v test` works
+        run: |
+          .\v.exe cmd/tools/test_if_v_test_system_works.v
+          .\cmd\tools\test_if_v_test_system_works.exe
+      - name: Verify `v vlib/v/gen/c/coutput_test.v` works
+        run: .\v.exe vlib/v/gen/c/coutput_test.v
+      - name: Make sure running TCC64 instead of TCC32
+        run: ./v test .github\workflows\make_sure_ci_run_with_64bit_compiler_test.v
+      - name: Test ./v doc -v clipboard *BEFORE building tools*
+        run: ./v doc -v clipboard
+      - name: Test v build-tools
+        run: ./v -W build-tools
+      - name: All code is formatted
+        run: ./v test-cleancode
+      - name: Test pure V math module
+        run: ./v -exclude @vlib/math/*.c.v test vlib/math/
+      - name: Self tests
+        run: ./v test-self
+      - name: Test v->js
+        run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+      - name: Test v binaries
+        run: ./v build-vbinaries
+      - name: Build examples
+        run: ./v build-examples
+      - name: v2 self compilation
+        run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v && .\v3.exe -o v4.exe cmd/v
+      - name: v2 self compilation with -gc boehm
+        run: .\v.exe -o v2.exe -gc boehm cmd/v && .\v2.exe -o v3.exe -gc boehm cmd/v && .\v3.exe -o v4.exe -gc boehm cmd/v
+
+      ## tcc32
+      # - name: Build with make.bat -tcc32
+      #   run: |
+      #     Remove-Item -Recurse -Force .\thirdparty\tcc
+      #     .\v.exe wipe-cache
+      #     .\make.bat -tcc32
+      # - name: Test new v.c
+      #   run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -Werror -g -w -ladvapi32 -bt10 v.c
+      # - name: v doctor
+      #   run: ./v doctor
+      #
+      # - name: Verify `v test` works
+      #   run: |
+      #     .\v.exe cmd/tools/test_if_v_test_system_works.v
+      #     .\cmd\tools\test_if_v_test_system_works.exe
+      #
+      # - name: Verify `v vlib/v/gen/c/coutput_test.v` works
+      #   run: |
+      #     .\v.exe vlib/v/gen/c/coutput_test.v
+      #
+      # - name: Make sure running TCC32 instead of TCC64
+      #   run: ./v -stats .github\workflows\make_sure_ci_run_with_32bit_compiler_test.v
+      #
+      # - name: Test v build-tools
+      #   run: ./v -W build-tools
+      #
+      # - name: Test ./v doc clipboard
+      #   run: ./v doc clipboard
+      #
+      # - name: Self tests
+      #   run: ./v test-self
+      # - name: Test v->js
+      #   run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+      # - name: Test v binaries
+      #   run: ./v build-vbinaries
+      # - name: Build examples
+      #   run: ./v build-examples
+      # - name: v2 self compilation
+      #   run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v

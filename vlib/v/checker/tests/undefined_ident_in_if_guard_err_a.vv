@@ -1,0 +1,9 @@
+module main
+
+import regex
+
+fn main() {
+	if re := re.regex_opt('a') {
+		print('Hooray')
+	}
+}

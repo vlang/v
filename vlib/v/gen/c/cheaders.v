@@ -14,13 +14,6 @@ const c_commit_hash_default = '
 #endif
 '
 
-// V_CURRENT_COMMIT_HASH is updated, when V is rebuilt inside a git repo.
-const c_current_commit_hash_default = '
-#ifndef V_CURRENT_COMMIT_HASH
-	#define V_CURRENT_COMMIT_HASH "@@@"
-#endif
-'
-
 const c_concurrency_helpers = '
 typedef struct __shared_map __shared_map;
 struct __shared_map {
@@ -58,201 +51,196 @@ static inline void __sort_ptr(uintptr_t a[], bool b[], int l) {
 }
 '
 
-fn arm64_bytes(nargs int) string {
-	// start:
-	// ldr  x16,    start-0x08
-	// ldr  x<REG>, start-0x10
-	// br  x16
-	bytes := '0xd0, 0xff, 0xff, 0x58, 0x6<REG>, 0xff, 0xff, 0x58, 0x00, 0x02, 0x1f, 0xd6'
-	return bytes.replace('<REG>', nargs.str())
-}
-
-fn arm32_bytes(nargs int) string {
-	// start:
-	// ldr  r9,     start-0x4
-	// ldr  r<REG>, start-0x8
-	// bx   r9
-	bytes := '0x0c, 0x90, 0x1f, 0xe5, 0x14, 0x<REG>0, 0x1f, 0xe5, 0x19, 0xff, 0x2f, 0xe1'
-	return bytes.replace('<REG>', nargs.str())
-}
-
-// gen_amd64_bytecode generates the amd64 bytecode a closure with `nargs` parameters.
-// Note: `nargs` includes the last `userdata` parameter that will be passed to the original
-// function, and as such nargs must always be > 0
-fn amd64_bytes(nargs int) string {
-	match nargs {
-		1 {
-			return '0x48, 0x8b, 0x3d, 0xe9, 0xff, 0xff, 0xff, 0xff, 0x25, 0xeb, 0xff, 0xff, 0xff'
-		}
-		2 {
-			return '0x48, 0x8b, 0x35, 0xe9, 0xff, 0xff, 0xff, 0xff, 0x25, 0xeb, 0xff, 0xff, 0xff'
-		}
-		3 {
-			return '0x48, 0x8b, 0x15, 0xe9, 0xff, 0xff, 0xff, 0xff, 0x25, 0xeb, 0xff, 0xff, 0xff'
-		}
-		4 {
-			return '0x48, 0x8b, 0x0d, 0xe9, 0xff, 0xff, 0xff, 0xff, 0x25, 0xeb, 0xff, 0xff, 0xff'
-		}
-		5 {
-			return '0x4C, 0x8b, 0x05, 0xe9, 0xff, 0xff, 0xff, 0xff, 0x25, 0xeb, 0xff, 0xff, 0xff'
-		}
-		6 {
-			return '0x4C, 0x8b, 0x0d, 0xe9, 0xff, 0xff, 0xff, 0xff, 0x25, 0xeb, 0xff, 0xff, 0xff'
-		}
-		else {
-			// see https://godbolt.org/z/64e5TEf5n for similar assembly
-			mut sb := strings.new_builder(256)
-			s := (((byte(nargs) & 1) + 1) << 3).hex()
-			sb.write_string('0x48, 0x83, 0xec, 0x$s, ') // sub rsp,0x8  <OR>  sub rsp,0x10
-			sb.write_string('0xff, 0x35, 0xe6, 0xff, 0xff, 0xff, ') // push QWORD PTR [rip+0xffffffffffffffe6]
-
-			rsp_offset := byte(0x18 + ((byte(nargs - 7) >> 1) << 4)).hex()
-			for _ in 0 .. nargs - 7 {
-				sb.write_string('0xff, 0xb4, 0x24, 0x$rsp_offset, 0x00, 0x00, 0x00, ') // push QWORD PTR [rsp+$rsp_offset]
-			}
-			sb.write_string('0xff, 0x15, 0x${byte(256 - sb.len / 6 - 6 - 8).hex()}, 0xff, 0xff, 0xff, ') // call   QWORD PTR [rip+OFFSET]
-			sb.write_string('0x48, 0x81, 0xc4, 0x$rsp_offset, 0x00, 0x00, 0x00, ') // add rsp,$rsp_offset
-			sb.write_string('0xc3') // ret
-
-			return sb.str()
-		}
-	}
-}
-
-// Heavily based on Chris Wellons's work
+// Inspired from Chris Wellons's work
 // https://nullprogram.com/blog/2017/01/08/
 
-fn c_closure_helpers(pref &pref.Preferences) string {
-	if pref.os == .windows {
-		verror('closures are not implemented on Windows yet')
-	}
-	if pref.arch !in [.amd64, .arm64, .arm32] {
-		verror('closures are not implemented on this architecture yet: $pref.arch')
-	}
+fn c_closure_helpers(pref_ &pref.Preferences) string {
 	mut builder := strings.new_builder(2048)
-	if pref.os != .windows {
+	if pref_.os != .windows {
 		builder.writeln('#include <sys/mman.h>')
 	}
-	// TODO: support additional arguments by pushing them onto the stack
-	// https://en.wikipedia.org/wiki/Calling_convention
-	if pref.arch == .amd64 {
-		// TODO: the `amd64_bytes()` function above should work for an arbitrary* number of arguments,
-		// so we should just remove the table and call the function directly at runtime
-		builder.write_string('
-static unsigned char __closure_thunk[32][${amd64_bytes(31).len / 6 +
-			2}] = {
-	{ ${amd64_bytes(1)} },
-	{ ${amd64_bytes(2)} },
-	{ ${amd64_bytes(3)} },
-	{ ${amd64_bytes(4)} },
-	{ ${amd64_bytes(5)} },
-	{ ${amd64_bytes(6)} },
-	{ ${amd64_bytes(7)} },
-	{ ${amd64_bytes(8)} },
-	{ ${amd64_bytes(9)} },
-	{ ${amd64_bytes(10)} },
-	{ ${amd64_bytes(11)} },
-	{ ${amd64_bytes(12)} },
-	{ ${amd64_bytes(13)} },
-	{ ${amd64_bytes(14)} },
-	{ ${amd64_bytes(15)} },
-	{ ${amd64_bytes(16)} },
-	{ ${amd64_bytes(17)} },
-	{ ${amd64_bytes(18)} },
-	{ ${amd64_bytes(19)} },
-	{ ${amd64_bytes(20)} },
-	{ ${amd64_bytes(21)} },
-	{ ${amd64_bytes(22)} },
-	{ ${amd64_bytes(23)} },
-	{ ${amd64_bytes(24)} },
-	{ ${amd64_bytes(25)} },
-	{ ${amd64_bytes(26)} },
-	{ ${amd64_bytes(27)} },
-	{ ${amd64_bytes(28)} },
-	{ ${amd64_bytes(29)} },
-	{ ${amd64_bytes(30)} },
-	{ ${amd64_bytes(31)} },
-};
-')
-	} else if pref.arch == .arm64 {
-		builder.write_string('
-static unsigned char __closure_thunk[8][12] = {
-    {
-        ${arm64_bytes(0)}
-    }, {
-        ${arm64_bytes(1)}
-    }, {
-        ${arm64_bytes(2)}
-    }, {
-        ${arm64_bytes(3)}
-    }, {
-        ${arm64_bytes(4)}
-    }, {
-        ${arm64_bytes(5)}
-    }, {
-        ${arm64_bytes(6)}
-    }, {
-        ${arm64_bytes(7)}
-    },
-};
-')
-	} else if pref.arch == .arm32 {
-		builder.write_string('
-static unsigned char __closure_thunk[4][12] = {
-    {
-        ${arm32_bytes(0)}
-    }, {
-        ${arm32_bytes(1)}
-    }, {
-        ${arm32_bytes(2)}
-    }, {
-        ${arm32_bytes(3)}
-    },
-};
-')
-	}
+
 	builder.write_string('
-static void __closure_set_data(void *closure, void *data) {
-    void **p = closure;
-    p[-2] = data;
+#ifdef _MSC_VER
+	#define __RETURN_ADDRESS() ((char*)_ReturnAddress())
+#elif defined(__TINYC__) && defined(_WIN32)
+	#define __RETURN_ADDRESS() ((char*)__builtin_return_address(0))
+#else
+	#define __RETURN_ADDRESS() ((char*)__builtin_extract_return_addr(__builtin_return_address(0)))
+#endif
+
+static int _V_page_size = 0x4000; // 16K
+#define ASSUMED_PAGE_SIZE 0x4000
+#define _CLOSURE_SIZE (((2*sizeof(void*) > sizeof(__closure_thunk) ? 2*sizeof(void*) : sizeof(__closure_thunk)) + sizeof(void*) - 1) & ~(sizeof(void*) - 1))
+// equal to `max(2*sizeof(void*), sizeof(__closure_thunk))`, rounded up to the next multiple of `sizeof(void*)`
+
+// refer to https://godbolt.org/z/r7P3EYv6c for a complete assembly
+#ifdef __V_amd64
+static const char __closure_thunk[] = {
+	0xF3, 0x44, 0x0F, 0x7E, 0x3D, 0xF7, 0xBF, 0xFF, 0xFF,  // movq  xmm15, QWORD PTR [rip - userdata]
+	0xFF, 0x25, 0xF9, 0xBF, 0xFF, 0xFF                     // jmp  QWORD PTR [rip - fn]
+};
+static char __CLOSURE_GET_DATA_BYTES[] = {
+	0x66, 0x4C, 0x0F, 0x7E, 0xF8,  // movq rax, xmm15
+	0xC3                           // ret
+};
+#elif defined(__V_x86)
+static char __closure_thunk[] = {
+	0xe8, 0x00, 0x00, 0x00, 0x00,        // call here
+	                                     // here:
+	0x59,                                // pop  ecx
+	0x66, 0x0F, 0x6E, 0xF9,              // movd xmm7, ecx
+	0xff, 0xA1, 0xff, 0xbf, 0xff, 0xff,  // jmp  DWORD PTR [ecx - 0x4001] # <fn>
+};
+
+static char __CLOSURE_GET_DATA_BYTES[] = {
+	0x66, 0x0F, 0x7E, 0xF8,              // movd eax, xmm7
+	0x8B, 0x80, 0xFB, 0xBF, 0xFF, 0xFF,  // mov eax, DWORD PTR [eax - 0x4005]
+	0xc3                                 // ret
+};
+
+#elif defined(__V_arm64)
+static char __closure_thunk[] = {
+	0x11, 0x00, 0xFE, 0x58,  // ldr x17, userdata
+	0x30, 0x00, 0xFE, 0x58,  // ldr x16, fn
+	0x00, 0x02, 0x1F, 0xD6   // br  x16
+};
+static char __CLOSURE_GET_DATA_BYTES[] = {
+	0xE0, 0x03, 0x11, 0xAA,  // mov x0, x17
+	0xC0, 0x03, 0x5F, 0xD6   // ret
+};
+#elif defined(__V_arm32)
+static char __closure_thunk[] = {
+	0x04, 0xC0, 0x4F, 0xE2,  // adr ip, here
+                             // here:
+	0x01, 0xC9, 0x4C, 0xE2,  // sub  ip, ip, #4000
+	0x90, 0xCA, 0x07, 0xEE,  // vmov s15, ip
+	0x00, 0xC0, 0x9C, 0xE5,  // ldr  ip, [ip, 0]
+	0x1C, 0xFF, 0x2F, 0xE1   // bx   ip
+};
+static char __CLOSURE_GET_DATA_BYTES[] = {
+	0x90, 0x0A, 0x17, 0xEE,
+	0x04, 0x00, 0x10, 0xE5,
+	0x1E, 0xFF, 0x2F, 0xE1
+};
+#elif defined (__V_rv64)
+static char __closure_thunk[] = {
+	0x97, 0xCF, 0xFF, 0xFF,  // auipc t6, 0xffffc
+	0x03, 0xBF, 0x8F, 0x00,  // ld    t5, 8(t6)
+	0x67, 0x00, 0x0F, 0x00   // jr    t5
+};
+static char __CLOSURE_GET_DATA_BYTES[] = {
+	0x03, 0xb5, 0x0f, 0x00,  // ld    a0, 0(t6)
+	0x67, 0x80, 0x00, 0x00   // ret
+};
+#elif defined (__V_rv32)
+static char __closure_thunk[] = {
+	0x97, 0xCF, 0xFF, 0xFF,  // auipc t6, 0xffffc
+	0x03, 0xAF, 0x4F, 0x00,  // lw    t5, 4(t6)
+	0x67, 0x00, 0x0F, 0x00   // jr    t5
+};
+static char __CLOSURE_GET_DATA_BYTES[] = {
+	0x03, 0xA5, 0x0F, 0x00,  // lw    a0, 0(t6)
+	0x67, 0x80, 0x00, 0x00   // ret
+};
+#endif
+
+static void*(*__CLOSURE_GET_DATA)(void) = 0;
+
+static inline void __closure_set_data(char* closure, void* data) {
+	void** p = (void**)(closure - ASSUMED_PAGE_SIZE);
+	p[0] = data;
 }
 
-static void __closure_set_function(void *closure, void *f) {
-    void **p = closure;
-    p[-1] = f;
+static inline void __closure_set_function(char* closure, void* f) {
+	void** p = (void**)(closure - ASSUMED_PAGE_SIZE);
+	p[1] = f;
 }
 
-static inline int __closure_check_nargs(int nargs) {
-	if (nargs > (int)_ARR_LEN(__closure_thunk)) {
-		_v_panic(_SLIT("Closure too large. Reduce the number of parameters, or pass the parameters by reference."));
-		VUNREACHABLE();
+#ifdef _WIN32
+#include <synchapi.h>
+static SRWLOCK _closure_mtx;
+#define _closure_mtx_init() InitializeSRWLock(&_closure_mtx)
+#define _closure_mtx_lock() AcquireSRWLockExclusive(&_closure_mtx)
+#define _closure_mtx_unlock() ReleaseSRWLockExclusive(&_closure_mtx)
+#else
+static pthread_mutex_t _closure_mtx;
+#define _closure_mtx_init() pthread_mutex_init(&_closure_mtx, 0)
+#define _closure_mtx_lock() pthread_mutex_lock(&_closure_mtx)
+#define _closure_mtx_unlock() pthread_mutex_unlock(&_closure_mtx)
+#endif
+static char* _closure_ptr = 0;
+static int _closure_cap = 0;
+
+static void __closure_alloc(void) {
+#ifdef _WIN32
+	char* p = VirtualAlloc(NULL, _V_page_size * 2, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+	if (p == NULL) return;
+#else
+	char* p = mmap(0, _V_page_size * 2, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+	if (p == MAP_FAILED) return;
+#endif
+	char* x = p + _V_page_size;
+	int remaining = _V_page_size / _CLOSURE_SIZE;
+	_closure_ptr = x;
+	_closure_cap = remaining;
+	while (remaining > 0) {
+		memcpy(x, __closure_thunk, sizeof(__closure_thunk));
+		remaining--;
+		x += _CLOSURE_SIZE;
 	}
-	return nargs;
+#ifdef _WIN32
+	DWORD _tmp;
+	VirtualProtect(_closure_ptr, _V_page_size, PAGE_EXECUTE_READ, &_tmp);
+#else
+	mprotect(_closure_ptr, _V_page_size, PROT_READ | PROT_EXEC);
+#endif
+}
+
+#ifdef _WIN32
+void __closure_init() {
+	SYSTEM_INFO si;
+	GetNativeSystemInfo(&si);
+	uint32_t page_size = si.dwPageSize * (((ASSUMED_PAGE_SIZE - 1) / si.dwPageSize) + 1);
+	_V_page_size = page_size;
+	__closure_alloc();
+	DWORD _tmp;
+	VirtualProtect(_closure_ptr, page_size, PAGE_READWRITE, &_tmp);
+	memcpy(_closure_ptr, __CLOSURE_GET_DATA_BYTES, sizeof(__CLOSURE_GET_DATA_BYTES));
+	VirtualProtect(_closure_ptr, page_size, PAGE_EXECUTE_READ, &_tmp);
+	__CLOSURE_GET_DATA = (void*)_closure_ptr;
+	_closure_ptr += _CLOSURE_SIZE;
+	_closure_cap--;
+}
+#else
+void __closure_init() {
+	uint32_t page_size = sysconf(_SC_PAGESIZE);
+	page_size = page_size * (((ASSUMED_PAGE_SIZE - 1) / page_size) + 1);
+	_V_page_size = page_size;
+	__closure_alloc();
+	mprotect(_closure_ptr, page_size, PROT_READ | PROT_WRITE);
+	memcpy(_closure_ptr, __CLOSURE_GET_DATA_BYTES, sizeof(__CLOSURE_GET_DATA_BYTES));
+	mprotect(_closure_ptr, page_size, PROT_READ | PROT_EXEC);
+	__CLOSURE_GET_DATA = (void*)_closure_ptr;
+	_closure_ptr += _CLOSURE_SIZE;
+	_closure_cap--;
+}
+#endif
+
+static void* __closure_create(void* fn, void* data) {
+	_closure_mtx_lock();
+	if (_closure_cap == 0) {
+		__closure_alloc();
+	}
+	_closure_cap--;
+	void* closure = _closure_ptr;
+	_closure_ptr += _CLOSURE_SIZE;
+	__closure_set_data(closure, data);
+	__closure_set_function(closure, fn);
+	_closure_mtx_unlock();
+	return closure;
 }
 ')
-	if pref.os != .windows {
-		builder.write_string('
-static void * __closure_create(void *f, int nargs, void *userdata) {
-    long page_size = sysconf(_SC_PAGESIZE);
-    int prot = PROT_READ | PROT_WRITE;
-    int flags = MAP_ANONYMOUS | MAP_PRIVATE;
-    char *p = mmap(0, page_size * 2, prot, flags, -1, 0);
-    if (p == MAP_FAILED)
-        return 0;
-    void *closure = p + page_size;
-    memcpy(closure, __closure_thunk[nargs - 1], sizeof(__closure_thunk[0]));
-    mprotect(closure, page_size, PROT_READ | PROT_EXEC);
-    __closure_set_function(closure, f);
-    __closure_set_data(closure, userdata);
-    return closure;
-}
-
-static void __closure_destroy(void *closure) {
-    long page_size = sysconf(_SC_PAGESIZE);
-    munmap((char *)closure - page_size, page_size * 2);
-}
-')
-	}
 	return builder.str()
 }
 
@@ -268,16 +256,40 @@ const c_common_macros = '
 #define __IRQHANDLER __attribute__((interrupt))
 
 #define __V_architecture 0
-#if defined(__x86_64__)
+#if defined(__x86_64__) || defined(_M_AMD64)
 	#define __V_amd64  1
 	#undef __V_architecture
 	#define __V_architecture 1
 #endif
 
-#if defined(__aarch64__) || defined(__arm64__)
+#if defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64)
 	#define __V_arm64  1
 	#undef __V_architecture
 	#define __V_architecture 2
+#endif
+
+#if defined(__arm__) || defined(_M_ARM)
+	#define __V_arm32  1
+	#undef __V_architecture
+	#define __V_architecture 3
+#endif
+
+#if defined(__riscv) && __riscv_xlen == 64
+	#define __V_rv64  1
+	#undef __V_architecture
+	#define __V_architecture 4
+#endif
+
+#if defined(__riscv) && __riscv_xlen == 32
+	#define __V_rv32  1
+	#undef __V_architecture
+	#define __V_architecture 5
+#endif
+
+#if defined(__i386__) || defined(_M_IX86)
+	#define __V_x86    1
+	#undef __V_architecture
+	#define __V_architecture 6
 #endif
 
 // Using just __GNUC__ for detecting gcc, is not reliable because other compilers define it too:
@@ -293,15 +305,32 @@ const c_common_macros = '
 #ifdef __clang__
 	#undef __V_GCC__
 #endif
+
 #ifdef _MSC_VER
 	#undef __V_GCC__
+	#undef EMPTY_STRUCT_DECLARATION
 	#undef EMPTY_STRUCT_INITIALIZATION
+	#define EMPTY_STRUCT_DECLARATION unsigned char _dummy_pad
 	#define EMPTY_STRUCT_INITIALIZATION 0
 #endif
 
+#ifndef _WIN32
+	#if defined __has_include
+		#if __has_include (<execinfo.h>)
+			#include <execinfo.h>
+		#else
+			// On linux: int backtrace(void **__array, int __size);
+			// On BSD: size_t backtrace(void **, size_t);
+		#endif
+	#endif
+#endif
+
 #ifdef __TINYC__
+	#define _Atomic volatile
 	#undef EMPTY_STRUCT_DECLARATION
-	#define EMPTY_STRUCT_DECLARATION char _dummy
+	#undef EMPTY_STRUCT_INITIALIZATION
+	#define EMPTY_STRUCT_DECLARATION unsigned char _dummy_pad
+	#define EMPTY_STRUCT_INITIALIZATION 0
 	#undef EMPTY_ARRAY_OF_ELEMS
 	#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[n])
 	#undef __NOINLINE
@@ -313,7 +342,6 @@ const c_common_macros = '
 	#define TCCSKIP(x)
 	// #include <byteswap.h>
 	#ifndef _WIN32
-		#include <execinfo.h>
 		int tcc_backtrace(const char *fmt, ...);
 	#endif
 #endif
@@ -325,13 +353,8 @@ const c_common_macros = '
 
 // for __offset_of
 #ifndef __offsetof
-	#define __offsetof(PTYPE,FIELDNAME) ((size_t)((char *)&((PTYPE *)0)->FIELDNAME - (char *)0))
+	#define __offsetof(PTYPE,FIELDNAME) ((size_t)(&((PTYPE *)0)->FIELDNAME))
 #endif
-
-// returns the number of CPU registers that TYPE takes up
-#define _REG_WIDTH(T) (((sizeof(T) + sizeof(void*) - 1) & ~(sizeof(void*) - 1)) / sizeof(void*))
-// parameters of size <= 2 registers are spilled across those two registers; larger types are passed as one pointer to some stack location
-#define _REG_WIDTH_BOUNDED(T) (_REG_WIDTH(T) <= 2 ? _REG_WIDTH(T) : 1)
 
 #define OPTION_CAST(x) (x)
 
@@ -392,6 +415,10 @@ const c_common_macros = '
 		#undef VWEAK
 		#define VWEAK
 	#endif
+	#if defined(__MINGW32__) || defined(__MINGW64__)
+		#undef VWEAK
+		#define VWEAK
+	#endif
 #endif
 
 #if !defined(VNORETURN)
@@ -401,7 +428,7 @@ const c_common_macros = '
 	#endif
 	# if !defined(__TINYC__) && defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
 	#  define VNORETURN _Noreturn
-	# elif defined(__GNUC__) && __GNUC__ >= 2
+	# elif !defined(VNORETURN) && defined(__GNUC__) && __GNUC__ >= 2
 	#  define VNORETURN __attribute__((noreturn))
 	# endif
 	#ifndef VNORETURN
@@ -412,19 +439,16 @@ const c_common_macros = '
 #if !defined(VUNREACHABLE)
 	#if defined(__GNUC__) && !defined(__clang__)
 		#define V_GCC_VERSION  (__GNUC__ * 10000L + __GNUC_MINOR__ * 100L + __GNUC_PATCHLEVEL__)
-		#if (V_GCC_VERSION >= 40500L)
+		#if (V_GCC_VERSION >= 40500L) && !defined(__TINYC__)
 			#define VUNREACHABLE()  do { __builtin_unreachable(); } while (0)
 		#endif
 	#endif
-	#if defined(__clang__) && defined(__has_builtin)
+	#if defined(__clang__) && defined(__has_builtin) && !defined(__TINYC__)
 		#if __has_builtin(__builtin_unreachable)
 			#define VUNREACHABLE()  do { __builtin_unreachable(); } while (0)
 		#endif
 	#endif
 	#ifndef VUNREACHABLE
-		#define VUNREACHABLE() do { } while (0)
-	#endif
-	#if defined(__FreeBSD__) && defined(__TINYC__)
 		#define VUNREACHABLE() do { } while (0)
 	#endif
 #endif
@@ -482,19 +506,6 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 #include <stdlib.h>
 #include <string.h>
 
-#ifndef _WIN32
-	#if defined __has_include
-		#if __has_include (<execinfo.h>)
-			#include <execinfo.h>
-		#else
-			// Most probably musl OR __ANDROID__ ...
-			int backtrace (void **__array, int __size) { return 0; }
-			char **backtrace_symbols (void *const *__array, int __size){ return 0; }
-			void backtrace_symbols_fd (void *const *__array, int __size, int __fd){}
-		#endif
-	#endif
-#endif
-
 #include <stdarg.h> // for va_list
 
 //================================== GLOBALS =================================*/
@@ -505,7 +516,7 @@ void _vcleanup(void);
 #define _ARR_LEN(a) ( (sizeof(a)) / (sizeof(a[0])) )
 
 void v_free(voidptr ptr);
-voidptr memdup(voidptr src, int sz);
+//voidptr memdup(voidptr src, isize sz);
 
 #if INTPTR_MAX == INT32_MAX
 	#define TARGET_IS_32BIT 1
@@ -535,7 +546,7 @@ voidptr memdup(voidptr src, int sz);
 	#error Cygwin is not supported, please use MinGW or Visual Studio.
 #endif
 
-#if defined(__linux__) || defined(__FreeBSD__) || defined(__DragonFly__) || defined(__vinix__) || defined(__serenity__) || defined(__sun)
+#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__) || defined(__vinix__) || defined(__serenity__) || defined(__sun) || defined(__plan9__)
 	#include <sys/types.h>
 	#include <sys/wait.h> // os__wait uses wait on nix
 #endif
@@ -569,17 +580,16 @@ voidptr memdup(voidptr src, int sz);
 
 	#include <io.h> // _waccess
 	#include <direct.h> // _wgetcwd
+	#ifdef V_USE_SIGNAL_H
 	#include <signal.h> // signal and SIGSEGV for segmentation fault handler
+	#endif
 
 	#ifdef _MSC_VER
 		// On MSVC these are the same (as long as /volatile:ms is passed)
 		#define _Atomic volatile
 
 		// MSVC cannot parse some things properly
-		#undef EMPTY_STRUCT_DECLARATION
 		#undef OPTION_CAST
-
-		#define EMPTY_STRUCT_DECLARATION char __pad
 		#define OPTION_CAST(x)
 		#undef __NOINLINE
 		#undef __IRQHANDLER
@@ -629,11 +639,12 @@ typedef uint64_t u64;
 typedef uint32_t u32;
 typedef uint8_t u8;
 typedef uint16_t u16;
-typedef uint8_t byte;
+typedef u8 byte;
+typedef int32_t i32;
 typedef uint32_t rune;
 typedef size_t usize;
 typedef ptrdiff_t isize;
-#ifndef VNOFLOAT 
+#ifndef VNOFLOAT
 typedef float f32;
 typedef double f64;
 #else
@@ -649,7 +660,7 @@ typedef int64_t float_literal;
 typedef unsigned char* byteptr;
 typedef void* voidptr;
 typedef char* charptr;
-typedef byte array_fixed_byte_300 [300];
+typedef u8 array_fixed_byte_300 [300];
 
 typedef struct sync__Channel* chan;
 
@@ -658,7 +669,7 @@ typedef struct sync__Channel* chan;
 		#ifdef CUSTOM_DEFINE_4bytebool
 			typedef int bool;
 		#else
-			typedef byte bool;
+			typedef u8 bool;
 		#endif
 		#define true 1
 		#define false 0
@@ -700,7 +711,7 @@ void _vcleanup();
 #define _ARR_LEN(a) ( (sizeof(a)) / (sizeof(a[0])) )
 
 void v_free(voidptr ptr);
-voidptr memdup(voidptr src, int sz);
+voidptr memdup(voidptr src, isize size);
 
 '
 
@@ -782,7 +793,7 @@ static inline uint64_t _wymix(uint64_t A, uint64_t B){ _wymum(&A,&B); return A^B
 #if (WYHASH_LITTLE_ENDIAN)
 	static inline uint64_t _wyr8(const uint8_t *p) { uint64_t v; memcpy(&v, p, 8); return v;}
 	static inline uint64_t _wyr4(const uint8_t *p) { uint32_t v; memcpy(&v, p, 4); return v;}
-#elif defined(__GNUC__) || defined(__INTEL_COMPILER) || defined(__clang__)
+#elif !defined(__TINYC__) && (defined(__GNUC__) || defined(__INTEL_COMPILER) || defined(__clang__))
 	static inline uint64_t _wyr8(const uint8_t *p) { uint64_t v; memcpy(&v, p, 8); return __builtin_bswap64(v);}
 	static inline uint64_t _wyr4(const uint8_t *p) { uint32_t v; memcpy(&v, p, 4); return __builtin_bswap32(v);}
 #elif defined(_MSC_VER)

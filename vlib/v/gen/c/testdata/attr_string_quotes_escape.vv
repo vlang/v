@@ -1,0 +1,11 @@
+struct Dummy {}
+
+['option: "1"']
+fn (d Dummy) sample_method() {
+}
+
+fn main() {
+	$for method in Dummy.methods {
+		println(method)
+	}
+}

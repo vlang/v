@@ -12,6 +12,26 @@ vlib/v/checker/tests/deprecations.vv:67:4: notice: method `Abc.future` will be d
       |       ~~~~~~~~
    68 |     a.past()
    69 |     a.simply_deprecated()
+vlib/v/checker/tests/deprecations.vv:62:2: warning: function `simply_deprecated` has been deprecated; custom message 7
+   60 |     future()
+   61 |     past()
+   62 |     simply_deprecated()
+      |     ~~~~~~~~~~~~~~~~~~~
+   63 |     just_deprecated()
+   64 |     ancient()
+vlib/v/checker/tests/deprecations.vv:63:2: warning: function `just_deprecated` has been deprecated
+   61 |     past()
+   62 |     simply_deprecated()
+   63 |     just_deprecated()
+      |     ~~~~~~~~~~~~~~~~~
+   64 |     ancient()
+   65 |     //
+vlib/v/checker/tests/deprecations.vv:69:4: warning: method `Abc.simply_deprecated` has been deprecated; custom message 3
+   67 |     a.future()
+   68 |     a.past()
+   69 |     a.simply_deprecated()
+      |       ~~~~~~~~~~~~~~~~~~~
+   70 | }
 vlib/v/checker/tests/deprecations.vv:61:2: error: function `past` has been deprecated since 2021-03-01; custom message 5
    59 | fn main() {
    60 |     future()
@@ -19,20 +39,6 @@ vlib/v/checker/tests/deprecations.vv:61:2: error: function `past` has been depre
       |     ~~~~~~
    62 |     simply_deprecated()
    63 |     just_deprecated()
-vlib/v/checker/tests/deprecations.vv:62:2: error: function `simply_deprecated` has been deprecated; custom message 7
-   60 |     future()
-   61 |     past()
-   62 |     simply_deprecated()
-      |     ~~~~~~~~~~~~~~~~~~~
-   63 |     just_deprecated()
-   64 |     ancient()
-vlib/v/checker/tests/deprecations.vv:63:2: error: function `just_deprecated` has been deprecated
-   61 |     past()
-   62 |     simply_deprecated()
-   63 |     just_deprecated()
-      |     ~~~~~~~~~~~~~~~~~
-   64 |     ancient()
-   65 |     //
 vlib/v/checker/tests/deprecations.vv:64:2: error: function `ancient` has been deprecated since 1990-03-01; custom message 6
    62 |     simply_deprecated()
    63 |     just_deprecated()
@@ -46,10 +52,4 @@ vlib/v/checker/tests/deprecations.vv:68:4: error: method `Abc.past` has been dep
    68 |     a.past()
       |       ~~~~~~
    69 |     a.simply_deprecated()
-   70 | }
-vlib/v/checker/tests/deprecations.vv:69:4: error: method `Abc.simply_deprecated` has been deprecated; custom message 3
-   67 |     a.future()
-   68 |     a.past()
-   69 |     a.simply_deprecated()
-      |       ~~~~~~~~~~~~~~~~~~~
    70 | }

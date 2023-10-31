@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module util
@@ -8,6 +8,7 @@ import time
 import v.pref
 import v.vmod
 import v.util.recompilation
+import runtime
 
 // math.bits is needed by strconv.ftoa
 pub const (
@@ -33,15 +34,14 @@ const (
 		'\t\t\t\t\t\t\t',
 		'\t\t\t\t\t\t\t\t',
 		'\t\t\t\t\t\t\t\t\t',
+		'\t\t\t\t\t\t\t\t\t\t',
 	]
 )
 
-const builtin_module_names = ['builtin', 'strconv', 'strings', 'dlmalloc']
+pub const nr_jobs = runtime.nr_jobs()
 
 pub fn module_is_builtin(mod string) bool {
-	// NOTE: using util.builtin_module_parts here breaks -usecache on macos
-	return mod in util.builtin_module_names
-	// return mod in util.builtin_module_parts
+	return mod in util.builtin_module_parts
 }
 
 pub fn tabs(n int) string {
@@ -62,12 +62,12 @@ pub fn set_vroot_folder(vroot_path string) {
 	os.setenv('VCHILD', 'true', true)
 }
 
-pub fn resolve_vmodroot(str string, dir string) ?string {
+pub fn resolve_vmodroot(str string, dir string) !string {
 	mut mcache := vmod.get_cache()
 	vmod_file_location := mcache.get_by_folder(dir)
 	if vmod_file_location.vmod_file.len == 0 {
 		// There was no actual v.mod file found.
-		return error('To use @VMODROOT, you need to have a "v.mod" file in $dir, or in one of its parent folders.')
+		return error('To use @VMODROOT, you need to have a "v.mod" file in ${dir}, or in one of its parent folders.')
 	}
 	vmod_path := vmod_file_location.vmod_folder
 	return str.replace('@VMODROOT', os.real_path(vmod_path))
@@ -75,15 +75,15 @@ pub fn resolve_vmodroot(str string, dir string) ?string {
 
 // resolve_env_value replaces all occurrences of `$env('ENV_VAR_NAME')`
 // in `str` with the value of the env variable `$ENV_VAR_NAME`.
-pub fn resolve_env_value(str string, check_for_presence bool) ?string {
+pub fn resolve_env_value(str string, check_for_presence bool) !string {
 	env_ident := "\$env('"
 	at := str.index(env_ident) or {
-		return error('no "$env_ident' + '...\')" could be found in "$str".')
+		return error('no "${env_ident}' + '...\')" could be found in "${str}".')
 	}
-	mut ch := byte(`.`)
+	mut ch := u8(`.`)
 	mut env_lit := ''
 	for i := at + env_ident.len; i < str.len && ch != `)`; i++ {
-		ch = byte(str[i])
+		ch = u8(str[i])
 		if ch.is_letter() || ch.is_digit() || ch == `_` {
 			env_lit += ch.ascii_str()
 		} else {
@@ -91,7 +91,7 @@ pub fn resolve_env_value(str string, check_for_presence bool) ?string {
 				if ch == `$` {
 					return error('cannot use string interpolation in compile time \$env() expression')
 				}
-				return error('invalid environment variable name in "$str", invalid character "$ch.ascii_str()"')
+				return error('invalid environment variable name in "${str}", invalid character "${ch.ascii_str()}"')
 			}
 		}
 	}
@@ -101,10 +101,10 @@ pub fn resolve_env_value(str string, check_for_presence bool) ?string {
 	mut env_value := ''
 	if check_for_presence {
 		env_value = os.environ()[env_lit] or {
-			return error('the environment variable "$env_lit" does not exist.')
+			return error('the environment variable "${env_lit}" does not exist.')
 		}
 		if env_value == '' {
-			return error('the environment variable "$env_lit" is empty.')
+			return error('the environment variable "${env_lit}" is empty.')
 		}
 	} else {
 		env_value = os.getenv(env_lit)
@@ -145,25 +145,25 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		tool_source = tool_basename + '.v'
 	}
 	if is_verbose {
-		println('launch_tool vexe        : $vexe')
-		println('launch_tool vroot       : $vroot')
-		println('launch_tool tool_source : $tool_source')
-		println('launch_tool tool_exe    : $tool_exe')
-		println('launch_tool tool_args   : $tool_args')
+		println('launch_tool vexe        : ${vexe}')
+		println('launch_tool vroot       : ${vroot}')
+		println('launch_tool tool_source : ${tool_source}')
+		println('launch_tool tool_exe    : ${tool_exe}')
+		println('launch_tool tool_args   : ${tool_args}')
 	}
 	disabling_file := recompilation.disabling_file(vroot)
 	is_recompilation_disabled := os.exists(disabling_file)
 	should_compile := !is_recompilation_disabled
 		&& should_recompile_tool(vexe, tool_source, tool_name, tool_exe)
 	if is_verbose {
-		println('launch_tool should_compile: $should_compile')
+		println('launch_tool should_compile: ${should_compile}')
 	}
 	if should_compile {
 		emodules := util.external_module_dependencies_for_tool[tool_name]
 		for emodule in emodules {
 			check_module_is_installed(emodule, is_verbose) or { panic(err) }
 		}
-		mut compilation_command := '${os.quoted_path(vexe)} -skip-unused '
+		mut compilation_command := '${os.quoted_path(vexe)} '
 		if tool_name in ['vself', 'vup', 'vdoctor', 'vsymlink'] {
 			// These tools will be called by users in cases where there
 			// is high chance of there being a problem somewhere. Thus
@@ -172,21 +172,37 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 			// .v line numbers, to ease diagnostic in #bugs and issues.
 			compilation_command += ' -g '
 		}
+		if tool_name == 'vfmt' {
+			compilation_command += ' -d vfmt '
+		}
 		compilation_command += os.quoted_path(tool_source)
 		if is_verbose {
-			println('Compiling $tool_name with: "$compilation_command"')
+			println('Compiling ${tool_name} with: "${compilation_command}"')
 		}
-		tool_compilation := os.execute_or_exit(compilation_command)
-		if tool_compilation.exit_code != 0 {
-			eprintln('cannot compile `$tool_source`: \n$tool_compilation.output')
-			exit(1)
+
+		current_work_dir := os.getwd()
+		retry_max_count := 3
+		for i in 0 .. retry_max_count {
+			// ensure a stable and known working folder, when compiling V's tools, to avoid module lookup problems:
+			os.chdir(vroot) or {}
+			tool_compilation := os.execute(compilation_command)
+			os.chdir(current_work_dir) or {}
+			if tool_compilation.exit_code == 0 {
+				break
+			} else {
+				if i == retry_max_count - 1 {
+					eprintln('cannot compile `${tool_source}`: \n${tool_compilation.output}')
+					exit(1)
+				}
+				time.sleep(20 * time.millisecond)
+			}
 		}
 	}
 	$if windows {
-		exit(os.system('${os.quoted_path(tool_exe)} $tool_args'))
+		exit(os.system('${os.quoted_path(tool_exe)} ${tool_args}'))
 	} $else $if js {
 		// no way to implement os.execvp in JS backend
-		exit(os.system('$tool_exe $tool_args'))
+		exit(os.system('${tool_exe} ${tool_args}'))
 	} $else {
 		os.execvp(tool_exe, args) or { panic(err) }
 	}
@@ -284,26 +300,35 @@ mut:
 }
 
 [unsafe]
-pub fn cached_read_source_file(path string) ?string {
-	mut static cache := &SourceCache(0)
-	if isnil(cache) {
+pub fn cached_read_source_file(path string) !string {
+	mut static cache := &SourceCache(unsafe { nil })
+	if cache == unsafe { nil } {
 		cache = &SourceCache{}
 	}
 
+	$if trace_cached_read_source_file ? {
+		println('cached_read_source_file            ${path}')
+	}
 	if path.len == 0 {
 		unsafe { cache.sources.free() }
 		unsafe { free(cache) }
-		cache = &SourceCache(0)
+		cache = &SourceCache(unsafe { nil })
 		return error('memory source file cache cleared')
 	}
 
 	// eprintln('>> cached_read_source_file path: $path')
 	if res := cache.sources[path] {
 		// eprintln('>> cached')
+		$if trace_cached_read_source_file_cached ? {
+			println('cached_read_source_file     cached ${path}')
+		}
 		return res
 	}
 	// eprintln('>> not cached | cache.sources.len: $cache.sources.len')
-	raw_text := os.read_file(path) or { return error('failed to open $path') }
+	$if trace_cached_read_source_file_not_cached ? {
+		println('cached_read_source_file not cached ${path}')
+	}
+	raw_text := os.read_file(path) or { return error('failed to open ${path}') }
 	res := skip_bom(raw_text)
 	cache.sources[path] = res
 	return res
@@ -345,29 +370,29 @@ fn non_empty(arg []string) []string {
 	return arg.filter(it != '')
 }
 
-pub fn check_module_is_installed(modulename string, is_verbose bool) ?bool {
+pub fn check_module_is_installed(modulename string, is_verbose bool) !bool {
 	mpath := os.join_path_single(os.vmodules_dir(), modulename)
 	mod_v_file := os.join_path_single(mpath, 'v.mod')
-	murl := 'https://github.com/vlang/$modulename'
+	murl := 'https://github.com/vlang/${modulename}'
 	if is_verbose {
-		eprintln('check_module_is_installed: mpath: $mpath')
-		eprintln('check_module_is_installed: mod_v_file: $mod_v_file')
-		eprintln('check_module_is_installed: murl: $murl')
+		eprintln('check_module_is_installed: mpath: ${mpath}')
+		eprintln('check_module_is_installed: mod_v_file: ${mod_v_file}')
+		eprintln('check_module_is_installed: murl: ${murl}')
 	}
 	if os.exists(mod_v_file) {
 		vexe := pref.vexe_path()
-		update_cmd := "${os.quoted_path(vexe)} update '$modulename'"
+		update_cmd := "${os.quoted_path(vexe)} update '${modulename}'"
 		if is_verbose {
-			eprintln('check_module_is_installed: updating with $update_cmd ...')
+			eprintln('check_module_is_installed: updating with ${update_cmd} ...')
 		}
 		update_res := os.execute(update_cmd)
 		if update_res.exit_code < 0 {
-			return error('can not start $update_cmd, error: $update_res.output')
+			return error('can not start ${update_cmd}, error: ${update_res.output}')
 		}
 		if update_res.exit_code != 0 {
-			eprintln('Warning: `$modulename` exists, but is not updated.
+			eprintln('Warning: `${modulename}` exists, but is not updated.
 V will continue, since updates can fail due to temporary network problems,
-and the existing module `$modulename` may still work.')
+and the existing module `${modulename}` may still work.')
 			if is_verbose {
 				eprintln('Details:')
 				eprintln(update_res.output)
@@ -377,17 +402,17 @@ and the existing module `$modulename` may still work.')
 		return true
 	}
 	if is_verbose {
-		eprintln('check_module_is_installed: cloning from $murl ...')
+		eprintln('check_module_is_installed: cloning from ${murl} ...')
 	}
 	cloning_res := os.execute('git clone ${os.quoted_path(murl)} ${os.quoted_path(mpath)}')
 	if cloning_res.exit_code < 0 {
-		return error_with_code('git is not installed, error: $cloning_res.output', cloning_res.exit_code)
+		return error_with_code('git is not installed, error: ${cloning_res.output}', cloning_res.exit_code)
 	}
 	if cloning_res.exit_code != 0 {
-		return error_with_code('cloning failed, details: $cloning_res.output', cloning_res.exit_code)
+		return error_with_code('cloning failed, details: ${cloning_res.output}', cloning_res.exit_code)
 	}
 	if !os.exists(mod_v_file) {
-		return error('even after cloning, $mod_v_file is still missing')
+		return error('even after cloning, ${mod_v_file} is still missing')
 	}
 	if is_verbose {
 		eprintln('check_module_is_installed: done')
@@ -398,7 +423,7 @@ and the existing module `$modulename` may still work.')
 pub fn ensure_modules_for_all_tools_are_installed(is_verbose bool) {
 	for tool_name, tool_modules in util.external_module_dependencies_for_tool {
 		if is_verbose {
-			eprintln('Installing modules for tool: $tool_name ...')
+			eprintln('Installing modules for tool: ${tool_name} ...')
 		}
 		for emodule in tool_modules {
 			check_module_is_installed(emodule, is_verbose) or { panic(err) }
@@ -458,27 +483,19 @@ pub fn prepare_tool_when_needed(source_name string) {
 pub fn recompile_file(vexe string, file string) {
 	cmd := '${os.quoted_path(vexe)} ${os.quoted_path(file)}'
 	$if trace_recompilation ? {
-		println('recompilation command: $cmd')
+		println('recompilation command: ${cmd}')
 	}
 	recompile_result := os.system(cmd)
 	if recompile_result != 0 {
-		eprintln('could not recompile $file')
+		eprintln('could not recompile ${file}')
 		exit(2)
 	}
 }
 
+// get_vtmp_folder returns the path to a folder, that is writable to V programs,
+// and specific to the user. It can be overridden by setting the env variable `VTMP`.
 pub fn get_vtmp_folder() string {
-	mut vtmp := os.getenv('VTMP')
-	if vtmp.len > 0 {
-		return vtmp
-	}
-	uid := os.getuid()
-	vtmp = os.join_path_single(os.temp_dir(), 'v_$uid')
-	if !os.exists(vtmp) || !os.is_dir(vtmp) {
-		os.mkdir_all(vtmp) or { panic(err) }
-	}
-	os.setenv('VTMP', vtmp, true)
-	return vtmp
+	return os.vtmp_dir()
 }
 
 pub fn should_bundle_module(mod string) bool {
@@ -489,7 +506,7 @@ pub fn should_bundle_module(mod string) bool {
 // find_all_v_files - given a list of files/folders, finds all .v/.vsh files
 // if some of the files/folders on the list does not exist, or a file is not
 // a .v or .vsh file, returns an error instead.
-pub fn find_all_v_files(roots []string) ?[]string {
+pub fn find_all_v_files(roots []string) ![]string {
 	mut files := []string{}
 	for file in roots {
 		if os.is_dir(file) {
@@ -498,10 +515,10 @@ pub fn find_all_v_files(roots []string) ?[]string {
 			continue
 		}
 		if !file.ends_with('.v') && !file.ends_with('.vv') && !file.ends_with('.vsh') {
-			return error('v fmt can only be used on .v files.\nOffending file: "$file"')
+			return error('v fmt can only be used on .v files.\nOffending file: "${file}"')
 		}
 		if !os.exists(file) {
-			return error('"$file" does not exist')
+			return error('"${file}" does not exist')
 		}
 		files << file
 	}
@@ -518,6 +535,6 @@ pub fn free_caches() {
 	}
 }
 
-pub fn read_file(file_path string) ?string {
+pub fn read_file(file_path string) !string {
 	return unsafe { cached_read_source_file(file_path) }
 }

@@ -16,7 +16,7 @@ fn test_nested_or() {
 }
 
 fn xx_prop() ?string {
-	s := ret(raise() ?)
+	s := ret(raise()?)
 	return s
 }
 
@@ -31,7 +31,7 @@ mut:
 }
 
 fn (mut s St) raise() ?f64 {
-	return error('some error')
+	return none
 }
 
 fn retf(f f64) f64 {
@@ -53,7 +53,7 @@ fn test_nested_or_method_call() {
 }
 
 fn (mut s St) aa_propagate() ? {
-	f := retf(s.raise() ?)
+	f := retf(s.raise()?)
 	s.z = 7.5
 	println(f)
 }

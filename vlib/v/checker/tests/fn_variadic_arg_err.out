@@ -1,0 +1,7 @@
+vlib/v/checker/tests/fn_variadic_arg_err.vv:5:2: error: to pass `a` ([]u8) to `varg_fn_a` (which accepts type `...u8`), use `...a`
+    3 | fn main() {
+    4 |     a := [u8(1), 2, 3, 4]
+    5 |     varg_fn_a(a)
+      |     ~~~~~~~~~~~~
+    6 | }
+    7 |

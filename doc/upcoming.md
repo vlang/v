@@ -8,11 +8,11 @@ for the current state of V***
 
 * [Concurrency](#concurrency)
     * [Variable Declarations](#variable-declarations)
-	* [Strengths](#strengths)
-	* [Weaknesses](#weaknesses)
-	* [Compatibility](#compatibility)
-	* [Automatic Lock](#automatic-lock)
-	* [Channels](#channels)
+    * [Strengths](#strengths)
+    * [Weaknesses](#weaknesses)
+    * [Compatibility](#compatibility)
+    * [Automatic Lock](#automatic-lock)
+    * [Channels](#channels)
 
 ## Concurrency
 
@@ -47,7 +47,7 @@ atomic d := ...
       ...
   }
   ```
-  
+
   ```v ignore
   rlock c {
       // read c
@@ -65,46 +65,56 @@ atomic d := ...
 To help making the correct decision the following table summarizes the
 different capabilities:
 
-|                           | *default* | `mut` | `shared` | `atomic` |
-| :---                      |   :---:   | :---: |  :---:   |  :---:   |
-| write access              |           |   +   |     +    |    +     |
-| concurrent access         |     +     |       |     +    |    +     |
-| performance               |    ++     |  ++   |          |    +     |
-| sophisticated operations  |     +     |   +   |     +    |          |
-| structured data types     |     +     |   +   |     +    |          |
+|                          | *default* | `mut` | `shared` | `atomic` |
+|:-------------------------|:---------:|:-----:|:--------:|:--------:|
+| write access             |           |   +   |    +     |    +     |
+| concurrent access        |     +     |       |    +     |    +     |
+| performance              |    ++     |  ++   |          |    +     |
+| sophisticated operations |     +     |   +   |    +     |          |
+| structured data types    |     +     |   +   |    +     |          |
 
 ### Strengths
+
 **default**
+
 - very fast
 - unlimited access from different coroutines
 - easy to handle
 
 **`mut`**
+
 - very fast
 - easy to handle
 
 **`shared`**
+
 - concurrent access from different coroutines
 - data type may be complex structure
 - sophisticated access possible (several statements within one `lock`
   block)
 
 **`atomic`**
+
 - concurrent access from different coroutines
 - reasonably fast
 
 ### Weaknesses
+
 **default**
+
 - read only
 
 **`mut`**
+
 - access only from one coroutine at a time
 
 **`shared`**
+
 - lock/unlock are slow
 - moderately difficult to handle (needs `lock` block)
 
 **`atomic`**
+
 - limited to single (max. 64 bit) integers (and pointers)
 - only a small set of predefined operations possible
 - very difficult to handle correctly
@@ -118,6 +128,7 @@ allocation would be an unnecessary overhead. Instead the compiler
 creates a global.
 
 ### Compatibility
+
 Outside of `lock`/`rlock` blocks function arguments must in general
 match - with the familiar exception that objects declared `mut` can be
 used to call functions expecting immutable arguments:
@@ -134,7 +145,7 @@ f(a)
 mut b := St{...}
 f(b)
 go g(mut b)
-// `b` should not be accessed here any more
+// `b` should not be accessed here anymore
 
 shared c := St{...}
 h(shared c)
@@ -145,6 +156,7 @@ i(atomic d)
 
 Inside a `lock c {...}` block `c` behaves like a `mut`,
 inside an `rlock c {...}` block like an immutable:
+
 ```v ignore
 shared c := St{...}
 lock c {
@@ -160,6 +172,7 @@ rlock c {
 ```
 
 ### Automatic Lock
+
 In general the compiler will generate an error message when a `shared`
 object is accessed outside of any corresponding `lock`/`rlock`
 block. However in simple and obvious cases the necessary lock/unlock
@@ -177,11 +190,11 @@ shared b := map[string]int{}
 go h3(shared b)
 b['apple'] = 3
 c['plume'] = 7
-y := b['apple'] // not necesarily `3`
+y := b['apple'] // not necessarily `3`
 
 // iteration over elements
 for k, v in b {
-    // concurrently changed k/v pairs may or my not be included
+    // concurrently changed k/v pairs may or may not be included
 }
 ```
 

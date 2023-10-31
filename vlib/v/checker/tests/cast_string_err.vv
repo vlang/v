@@ -26,7 +26,7 @@ fn main() {
 	sm := string(mm)
 	println(sm)
 	//
-	arr := []byte{}
+	arr := []u8{}
 	sa := string(arr)
 	println(sa)
 	//

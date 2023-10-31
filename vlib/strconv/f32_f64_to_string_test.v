@@ -138,7 +138,7 @@ fn test_float_to_str() {
 
 	// test f32
 	for c, x in test_cases_f32 {
-		println(x)
+		// println(x)
 		s := strconv.f32_to_str(x, 8)
 		s1 := exp_result_f32[c]
 		// println("$s1 $s")
@@ -154,10 +154,13 @@ fn test_float_to_str() {
 	}
 
 	// test long format
-	for exp := 1; exp < 120; exp++ {
+	assert strconv.f64_to_str_l('1e1'.f64()).len == 4 // '10.0'
+	assert strconv.f64_to_str_l('1e-1'.f64()).len == 3 // '0.1'
+
+	for exp := 2; exp < 120; exp++ {
 		a := strconv.f64_to_str_l(('1e' + exp.str()).f64())
 		// println(a)
-		assert a.len == exp + 1
+		assert a.len == exp + 3
 
 		b := strconv.f64_to_str_l(('1e-' + exp.str()).f64())
 		// println(b)

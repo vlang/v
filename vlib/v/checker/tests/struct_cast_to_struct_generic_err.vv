@@ -1,4 +1,4 @@
-struct Abc<T> {
+struct Abc[T] {
 	name T
 }
 
@@ -7,6 +7,6 @@ struct Xyz {
 }
 
 fn main() {
-	abc := Abc<int>{}
+	abc := Abc[int]{}
 	_ := Xyz(abc)
 }

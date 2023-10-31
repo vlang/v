@@ -1,13 +1,13 @@
 struct Abc {
-	a byte
-	b byte
+	a u8
+	b u8
 	c int
 }
 
-fn decode<T>() T {
+fn decode[T]() T {
 	mut x := T{}
 	$for field in T.fields {
-		$if field.typ is byte {
+		$if field.typ is u8 {
 			x.$(field.name) = 1
 		} $else {
 			x.$(field.name) = 3
@@ -20,7 +20,7 @@ fn decode<T>() T {
 }
 
 fn test_decode() {
-	abc := decode<Abc>()
+	abc := decode[Abc]()
 	assert abc.a == 5
 	assert abc.b == 5
 	assert abc.c == 3
@@ -28,15 +28,15 @@ fn test_decode() {
 
 struct Abc2 {
 	an_int   int
-	a_byte   byte
+	a_byte   u8
 	a_string string
 }
 
-fn decode2<T>() T {
+fn decode2[T]() T {
 	mut x := T{}
 	$for field in T.fields {
-		$if field.typ is byte {
-			x.$(field.name) = byte(-1)
+		$if field.typ is u8 {
+			x.$(field.name) = u8(-1)
 		} $else $if field.typ is int {
 			x.$(field.name) = int(-1)
 		} $else $if field.typ is string {
@@ -47,7 +47,7 @@ fn decode2<T>() T {
 }
 
 fn test_decode2() {
-	abc := decode2<Abc2>()
+	abc := decode2[Abc2]()
 	assert abc.an_int == -1
 	assert abc.a_byte == 0xff
 	assert abc.a_string == 'hi'

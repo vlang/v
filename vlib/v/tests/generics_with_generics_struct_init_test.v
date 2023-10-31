@@ -1,23 +1,23 @@
-struct List<T> {
+struct List[T] {
 mut:
 	count u32
-	first &ListNode<T>
-	last  &ListNode<T>
+	first &ListNode[T]
+	last  &ListNode[T]
 }
 
-struct ListNode<T> {
+struct ListNode[T] {
 mut:
 	val  T
-	next &ListNode<T> = 0
+	next &ListNode[T] = unsafe { nil }
 }
 
-fn create<T>(arr []T) &List<T> {
+fn create[T](arr []T) &List[T] {
 	assert arr.len > 0
-	mut n := &ListNode<T>{
+	mut n := &ListNode[T]{
 		val: arr[0]
 		next: 0
 	}
-	mut l := &List<T>{
+	mut l := &List[T]{
 		first: n
 		last: n
 		count: 1

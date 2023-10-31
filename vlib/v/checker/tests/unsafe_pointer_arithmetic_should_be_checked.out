@@ -1,25 +1,25 @@
-vlib/v/checker/tests/unsafe_pointer_arithmetic_should_be_checked.vv:4:6: error: pointer arithmetic is only allowed in `unsafe` blocks
+vlib/v/checker/tests/unsafe_pointer_arithmetic_should_be_checked.vv:4:6: warning: pointer arithmetic is only allowed in `unsafe` blocks
     2 |     mut v := 5
     3 |     mut p := &v
     4 |     p++
       |      ~~
     5 |     p += 2
     6 |     _ := v
-vlib/v/checker/tests/unsafe_pointer_arithmetic_should_be_checked.vv:5:7: error: pointer arithmetic is only allowed in `unsafe` blocks
+vlib/v/checker/tests/unsafe_pointer_arithmetic_should_be_checked.vv:5:7: warning: pointer arithmetic is only allowed in `unsafe` blocks
     3 |     mut p := &v
     4 |     p++
     5 |     p += 2
       |       ~~
     6 |     _ := v
     7 | }
-vlib/v/checker/tests/unsafe_pointer_arithmetic_should_be_checked.vv:11:14: error: pointer arithmetic is only allowed in `unsafe` blocks
+vlib/v/checker/tests/unsafe_pointer_arithmetic_should_be_checked.vv:11:14: warning: pointer arithmetic is only allowed in `unsafe` blocks
     9 | fn test_ptr_infix() {
    10 |     v := 4
    11 |     mut q := &v - 1
       |              ~~~~~~
    12 |     q = q + 3
    13 |     _ := q
-vlib/v/checker/tests/unsafe_pointer_arithmetic_should_be_checked.vv:12:9: error: pointer arithmetic is only allowed in `unsafe` blocks
+vlib/v/checker/tests/unsafe_pointer_arithmetic_should_be_checked.vv:12:9: warning: pointer arithmetic is only allowed in `unsafe` blocks
    10 |     v := 4
    11 |     mut q := &v - 1
    12 |     q = q + 3

@@ -9,7 +9,7 @@ const pbytes = 4
 
 struct AppState {
 mut:
-	gg          &gg.Context = 0
+	gg          &gg.Context = unsafe { nil }
 	istream_idx int
 	pixels      [pheight][pwidth]u32
 }
@@ -30,7 +30,7 @@ fn (mut state AppState) update() {
 
 fn (mut state AppState) draw() {
 	mut istream_image := state.gg.get_cached_image_by_idx(state.istream_idx)
-	istream_image.update_pixel_data(&state.pixels)
+	istream_image.update_pixel_data(unsafe { &u8(&state.pixels) })
 	size := gg.window_size()
 	state.gg.draw_image(0, 0, size.width, size.height, istream_image)
 }
@@ -58,6 +58,6 @@ fn main() {
 		frame_fn: graphics_frame
 		user_data: state
 	)
-	go state.update()
+	spawn state.update()
 	state.gg.run()
 }

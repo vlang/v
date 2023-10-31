@@ -1,28 +1,28 @@
-struct Left<E> {
+struct Left[E] {
 	error E
 }
 
-struct Right<T> {
+struct Right[T] {
 	inner T
 }
 
-type Either<T, E> =
-	Left<E> |
-	Right<T>
+type Either[T, E] =
+	Left[E] |
+	Right[T]
 
-fn works(v []Either<int, int>) {
+fn works(v []Either[int, int]) {
 	first := v[0]
 	match first {
-		Left<int> {
+		Left[int] {
 			println(first.error)
 		}
 		else {}
 	}
 }
 
-fn doesntwork(v []Either<int, int>) {
+fn doesntwork(v []Either[int, int]) {
 	match v[0] {
-		Left<int> {
+		Left[int] {
 			println(v[0].error)
 		}
 		else {}

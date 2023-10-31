@@ -1,5 +1,8 @@
 module builtin
 
+[typedef]
+pub struct C.FILE {}
+
 // <string.h>
 fn C.memcpy(dest voidptr, const_src voidptr, n usize) voidptr
 
@@ -10,11 +13,13 @@ fn C.memmove(dest voidptr, const_src voidptr, n usize) voidptr
 fn C.memset(str voidptr, c int, n usize) voidptr
 
 [trusted]
-fn C.calloc(int, int) &byte
+fn C.calloc(int, int) &u8
 
-fn C.malloc(int) &byte
+fn C.atoi(&char) int
 
-fn C.realloc(a &byte, b int) &byte
+fn C.malloc(int) &u8
+
+fn C.realloc(a &u8, b int) &u8
 
 fn C.free(ptr voidptr)
 
@@ -27,20 +32,13 @@ fn C.sprintf(a ...voidptr) int
 
 fn C.strlen(s &char) int
 
-fn C.sscanf(&byte, &byte, ...&byte) int
+fn C.sscanf(&u8, &u8, ...&u8) int
 
 [trusted]
 fn C.isdigit(c int) bool
 
 // stdio.h
 fn C.popen(c &char, t &char) voidptr
-
-// <execinfo.h>
-fn C.backtrace(a &voidptr, size int) int
-
-fn C.backtrace_symbols(a &voidptr, size int) &&char
-
-fn C.backtrace_symbols_fd(a &voidptr, size int, fd int)
 
 // <libproc.h>
 pub fn proc_pidpath(int, voidptr, int) int
@@ -52,7 +50,10 @@ fn C.chmod(&char, u32) int
 
 fn C.printf(&char, ...voidptr) int
 
+fn C.scanf(&char, ...voidptr) int
+
 fn C.puts(&char) int
+fn C.abs(f64) f64
 
 fn C.fputs(str &char, stream &C.FILE) int
 
@@ -72,6 +73,9 @@ fn C.fwrite(ptr voidptr, item_size usize, items usize, stream &C.FILE) usize
 fn C.fclose(stream &C.FILE) int
 
 fn C.pclose(stream &C.FILE) int
+
+fn C.strrchr(s &char, c int) &char
+fn C.strchr(s &char, c int) &char
 
 // process execution, os.process:
 [trusted]
@@ -94,6 +98,8 @@ fn C.execvp(cmd_path &char, args &&char) int
 fn C._execve(cmd_path &char, args voidptr, envs voidptr) int
 
 fn C._execvp(cmd_path &char, args &&char) int
+
+fn C.strcmp(s1 &char, s2 &char) int
 
 [trusted]
 fn C.fork() int
@@ -118,6 +124,8 @@ fn C.rmdir(path &char) int
 fn C.chdir(path &char) int
 
 fn C.rewind(stream &C.FILE) int
+
+fn C.ftell(&C.FILE) isize
 
 fn C.stat(&char, voidptr) int
 
@@ -145,7 +153,7 @@ fn C.sleep(seconds u32) u32
 fn C.usleep(usec u32) int
 
 [typedef]
-struct C.DIR {
+pub struct C.DIR {
 }
 
 fn C.opendir(&char) &C.DIR
@@ -178,6 +186,9 @@ fn C.strchr(s &char, c int) &char
 
 [trusted]
 fn C.getchar() int
+
+[trusted]
+fn C.putchar(int) int
 
 fn C.strdup(s &char) &char
 
@@ -216,17 +227,19 @@ fn C.sysctl(name &int, namelen u32, oldp voidptr, oldlenp voidptr, newp voidptr,
 [trusted]
 fn C._fileno(int) int
 
+type C.intptr_t = voidptr
+
 fn C._get_osfhandle(fd int) C.intptr_t
 
-fn C.GetModuleFileName(hModule voidptr, lpFilename &u16, nSize u32) int
+fn C.GetModuleFileName(hModule voidptr, lpFilename &u16, nSize u32) u32
 
 fn C.GetModuleFileNameW(hModule voidptr, lpFilename &u16, nSize u32) u32
 
 fn C.CreateFile(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes &u16, dwCreationDisposition u32, dwFlagsAndAttributes u32, hTemplateFile voidptr) voidptr
 
-fn C.CreateFileW(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes &u16, dwCreationDisposition u32, dwFlagsAndAttributes u32, hTemplateFile voidptr) u32
+fn C.CreateFileW(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes &u16, dwCreationDisposition u32, dwFlagsAndAttributes u32, hTemplateFile voidptr) voidptr
 
-fn C.GetFinalPathNameByHandleW(hFile voidptr, lpFilePath &u16, nSize u32, dwFlags u32) int
+fn C.GetFinalPathNameByHandleW(hFile voidptr, lpFilePath &u16, nSize u32, dwFlags u32) u32
 
 fn C.CreatePipe(hReadPipe &voidptr, hWritePipe &voidptr, lpPipeAttributes voidptr, nSize u32) bool
 
@@ -239,43 +252,42 @@ fn C.GetComputerNameW(&u16, &u32) bool
 fn C.GetUserNameW(&u16, &u32) bool
 
 [trusted]
-fn C.SendMessageTimeout() u32
+fn C.SendMessageTimeout() isize
 
-fn C.SendMessageTimeoutW(hWnd voidptr, msg u32, wParam &u16, lParam &u32, fuFlags u32, uTimeout u32, lpdwResult &u64) u32
+fn C.SendMessageTimeoutW(hWnd voidptr, msg u32, wParam &u16, lParam &u32, fuFlags u32, uTimeout u32, lpdwResult &u64) isize
 
 fn C.CreateProcessW(lpApplicationName &u16, lpCommandLine &u16, lpProcessAttributes voidptr, lpThreadAttributes voidptr, bInheritHandles bool, dwCreationFlags u32, lpEnvironment voidptr, lpCurrentDirectory &u16, lpStartupInfo voidptr, lpProcessInformation voidptr) bool
 
-fn C.ReadFile(hFile voidptr, lpBuffer voidptr, nNumberOfBytesToRead u32, lpNumberOfBytesRead C.LPDWORD, lpOverlapped voidptr) bool
+fn C.ReadFile(hFile voidptr, lpBuffer voidptr, nNumberOfBytesToRead u32, lpNumberOfBytesRead &u32, lpOverlapped voidptr) bool
 
-fn C.GetFileAttributesW(lpFileName &byte) u32
+fn C.GetFileAttributesW(lpFileName &u8) u32
 
-fn C.RegQueryValueEx(hKey voidptr, lpValueName &u16, lp_reserved &u32, lpType &u32, lpData &byte, lpcbData &u32) voidptr
+fn C.RegQueryValueEx(hKey voidptr, lpValueName &u16, lp_reserved &u32, lpType &u32, lpData &u8, lpcbData &u32) int
 
-fn C.RegQueryValueExW(hKey voidptr, lpValueName &u16, lp_reserved &u32, lpType &u32, lpData &byte, lpcbData &u32) int
+fn C.RegQueryValueExW(hKey voidptr, lpValueName &u16, lp_reserved &u32, lpType &u32, lpData &u8, lpcbData &u32) int
 
-fn C.RegOpenKeyEx(hKey voidptr, lpSubKey &u16, ulOptions u32, samDesired u32, phkResult voidptr) voidptr
+fn C.RegOpenKeyEx(hKey voidptr, lpSubKey &u16, ulOptions u32, samDesired u32, phkResult voidptr) int
 
 fn C.RegOpenKeyExW(hKey voidptr, lpSubKey &u16, ulOptions u32, samDesired u32, phkResult voidptr) int
 
-fn C.RegSetValueEx() voidptr
+fn C.RegSetValueEx(hKey voidptr, lpValueName &u16, dwType u32, lpData &u16, cbData u32) int
 
-fn C.RegSetValueExW(hKey voidptr, lpValueName &u16, reserved u32, dwType u32, lpData &byte, lpcbData u32) int
+fn C.RegSetValueExW(hKey voidptr, lpValueName &u16, reserved u32, dwType u32, const_lpData &u8, cbData u32) int
 
-fn C.RegCloseKey(hKey voidptr)
+fn C.RegCloseKey(hKey voidptr) int
 
-fn C.RemoveDirectory(lpPathName &u16) int
+fn C.RemoveDirectory(lpPathName &u16) bool
 
-// fn C.GetStdHandle() voidptr
+fn C.RemoveDirectoryW(lpPathName &u16) bool
+
 fn C.GetStdHandle(u32) voidptr
 
-// fn C.SetConsoleMode()
-fn C.SetConsoleMode(voidptr, u32) int
+fn C.SetConsoleMode(voidptr, u32) bool
 
-// fn C.GetConsoleMode() int
-fn C.GetConsoleMode(voidptr, &u32) int
+fn C.GetConsoleMode(voidptr, &u32) bool
 
 [trusted]
-fn C.GetCurrentProcessId() int
+fn C.GetCurrentProcessId() u32
 
 fn C.wprintf()
 
@@ -286,7 +298,7 @@ fn C.SymCleanup(hProcess voidptr)
 
 fn C.MultiByteToWideChar(codePage u32, dwFlags u32, lpMultiMyteStr &char, cbMultiByte int, lpWideCharStr &u16, cchWideChar int) int
 
-fn C.wcslen(str &u16) int
+fn C.wcslen(str voidptr) usize
 
 fn C.WideCharToMultiByte(codePage u32, dwFlags u32, lpWideCharStr &u16, cchWideChar int, lpMultiByteStr &char, cbMultiByte int, lpDefaultChar &char, lpUsedDefaultChar &int) int
 
@@ -316,7 +328,7 @@ fn C.WriteConsole() voidptr
 
 fn C.WriteFile() voidptr
 
-fn C._wchdir(dirname &u16)
+fn C._wchdir(dirname &u16) int
 
 fn C._wgetcwd(buffer &u16, maxlen int) int
 
@@ -331,7 +343,7 @@ fn C.LocalFree()
 
 fn C.FindFirstFileW(lpFileName &u16, lpFindFileData voidptr) voidptr
 
-fn C.FindFirstFile(lpFileName &byte, lpFindFileData voidptr) voidptr
+fn C.FindFirstFile(lpFileName &u8, lpFindFileData voidptr) voidptr
 
 fn C.FindNextFile(hFindFile voidptr, lpFindFileData voidptr) int
 
@@ -340,7 +352,7 @@ fn C.FindClose(hFindFile voidptr)
 // macro
 fn C.MAKELANGID(lgid voidptr, srtid voidptr) int
 
-fn C.FormatMessage(dwFlags u32, lpSource voidptr, dwMessageId u32, dwLanguageId u32, lpBuffer voidptr, nSize int, arguments ...voidptr) voidptr
+fn C.FormatMessageW(dwFlags u32, lpSource voidptr, dwMessageId u32, dwLanguageId u32, lpBuffer voidptr, nSize u32, arguments ...voidptr) u32
 
 fn C.CloseHandle(voidptr) int
 
@@ -361,7 +373,7 @@ fn C.closesocket(int) int
 
 fn C.vschannel_init(&C.TlsContext)
 
-fn C.request(&C.TlsContext, int, &u16, &byte, &&byte) int
+fn C.request(&C.TlsContext, int, &u16, &u8, u32, &&u8) int
 
 fn C.vschannel_cleanup(&C.TlsContext)
 
@@ -370,19 +382,19 @@ fn C.URLDownloadToFile(int, &u16, &u16, int, int)
 [trusted]
 fn C.GetLastError() u32
 
-fn C.CreateDirectory(&byte, int) bool
+fn C.CreateDirectory(&u8, int) bool
 
 // win crypto
 fn C.BCryptGenRandom(int, voidptr, int, int) int
 
 // win synchronization
-fn C.CreateMutex(int, bool, &byte) voidptr
+fn C.CreateMutex(int, bool, &u8) voidptr
 
 fn C.WaitForSingleObject(voidptr, int) int
 
 fn C.ReleaseMutex(voidptr) bool
 
-fn C.CreateEvent(int, bool, bool, &byte) voidptr
+fn C.CreateEvent(int, bool, bool, &u8) voidptr
 
 fn C.SetEvent(voidptr) int
 
@@ -480,4 +492,10 @@ fn C.dup2(oldfd int, newfd int) int
 fn C.glTexImage2D()
 
 // used by ios for println
-fn C.WrappedNSLog(str &byte)
+fn C.WrappedNSLog(str &u8)
+
+// used by Android for (e)println to output to the Android log system / logcat
+pub fn C.android_print(voidptr, &char, ...voidptr)
+
+// absolute value
+fn C.abs(number int) int

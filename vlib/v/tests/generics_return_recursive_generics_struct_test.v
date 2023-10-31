@@ -1,11 +1,11 @@
-struct Node<T> {
+struct Node[T] {
 mut:
 	val  T
-	next &Node<T>
+	next &Node[T]
 }
 
-fn make_node<T>(val []T) Node<T> {
-	return Node<T>{
+fn make_node[T](val []T) Node[T] {
+	return Node[T]{
 		val: val[0]
 		next: 0
 	}

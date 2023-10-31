@@ -71,26 +71,37 @@ const expected_string_outputs = [
 
 fn test_find_between_pair_family() {
 	assert strings.find_between_pair_rune('xx♡ok❦yy', `♡`, `❦`) == 'ok'
-	assert strings.find_between_pair_byte('xx{ok}yy', `{`, `}`) == 'ok'
+	assert strings.find_between_pair_u8('xx{ok}yy', `{`, `}`) == 'ok'
 	assert strings.find_between_pair_string('xx/*ok*/yy', '/*', '*/') == 'ok'
-	assert strings.find_between_pair_byte('xx{ok}yy', `{`, `}`) == 'ok'
+	assert strings.find_between_pair_u8('xx{ok}yy', `{`, `}`) == 'ok'
 	assert strings.find_between_pair_string('xxxxokyyyy', 'xxx', 'yyy') == 'xok'
 
 	for i, tstr in test_rune_and_byte {
 		e1 := strings.find_between_pair_rune(tstr, `[`, `]`)
 		e2 := expected_rune_and_byte_outputs[i]
-		assert '$e1' == '$e2'
+		assert '${e1}' == '${e2}'
 	}
 
 	for i, tstr in test_rune_and_byte {
-		e1 := strings.find_between_pair_byte(tstr, `[`, `]`)
+		e1 := strings.find_between_pair_u8(tstr, `[`, `]`)
 		e2 := expected_rune_and_byte_outputs[i]
-		assert '$e1' == '$e2'
+		assert '${e1}' == '${e2}'
 	}
 
 	for i, tstr in test_strings {
 		e1 := strings.find_between_pair_string(tstr, '/*', '*/')
 		e2 := expected_string_outputs[i]
-		assert '$e1' == '$e2'
+		assert '${e1}' == '${e2}'
 	}
+}
+
+fn test_split_capital() {
+	assert strings.split_capital('') == []
+	assert strings.split_capital('abc') == ['abc']
+	assert strings.split_capital('X') == ['X']
+	assert strings.split_capital('XX') == ['X', 'X']
+	assert strings.split_capital('XYZ') == ['X', 'Y', 'Z']
+	assert strings.split_capital('JohnWilliams') == ['John', 'Williams']
+	assert strings.split_capital('JDStar') == ['J', 'D', 'Star']
+	assert strings.split_capital('cpDumpRotarySpring') == ['cp', 'Dump', 'Rotary', 'Spring']
 }

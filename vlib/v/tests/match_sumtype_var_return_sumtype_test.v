@@ -1,5 +1,3 @@
-module main
-
 type Sum = Struct | int
 
 struct Struct {
@@ -24,7 +22,7 @@ fn test_match_sumtype_var_return_sumtype() {
 	})
 	s = sum(mut s)
 	dump(s)
-	ret := '$s'
+	ret := '${s}'
 	assert ret.contains('Sum(Struct{')
 	assert ret.contains('value: 42')
 }

@@ -1,0 +1,22 @@
+fn test[T](val T) {
+	$if val is u64 {
+		println('u64: ${val == u64(0)}')
+	} $else $if val is []u64 {
+		println('u64 array: ${val.len}')
+	} $else $if val is $int {
+		println('other int: ${val == 0}')
+	} $else $if val is $array {
+		println('other array: ${val.len}')
+	} $else {
+		println('unknown type')
+	}
+}
+
+fn main() {
+	test(u64(0))
+	test([]u64{})
+	test(['string'])
+	test([]u32{})
+	test(int(12))
+	test('string')
+}

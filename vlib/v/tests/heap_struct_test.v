@@ -45,7 +45,7 @@ fn get_ref_structs() (&Abc, &St, &Qwe) {
 	return aa, bb, xx
 }
 
-fn owerwrite_stack() f64 {
+fn overwrite_stack() f64 {
 	a := 12.5
 	b := 3.5
 	c := a + b
@@ -54,7 +54,7 @@ fn owerwrite_stack() f64 {
 
 fn test_ref_struct() {
 	u, v, w := get_ref_structs()
-	d := owerwrite_stack()
+	d := overwrite_stack()
 	assert u.n == 3
 	assert v.n == 7
 	assert w.a.n == 23
@@ -74,7 +74,7 @@ fn test_value_ref_heap_struct() {
 	}
 	y := return_heap_obj_value_as_ref(x)
 	x.f = 22.0625
-	d := owerwrite_stack()
+	d := overwrite_stack()
 	assert typeof(y).name == '&Qwe'
 	assert x.f == 22.0625
 	assert x.a.n == -129
@@ -98,7 +98,7 @@ fn test_value_ref_struct() {
 	}
 	y := return_struct_value_as_ref(x)
 	x.f = 91.0625
-	d := owerwrite_stack()
+	d := overwrite_stack()
 	assert typeof(y).name == '&NotHeap'
 	assert y.f == -17.125
 	assert x.f == 91.0625
@@ -113,7 +113,7 @@ fn get_int_ref() &int {
 fn test_int_ref() {
 	iptr := get_int_ref()
 	assert typeof(iptr).name == '&int'
-	d := owerwrite_stack()
+	d := overwrite_stack()
 	assert *iptr == 49154
 	assert d == 16.0
 }
@@ -127,7 +127,7 @@ fn test_value_as_ref() {
 	y := pass_f64_as_ref(x)
 	assert typeof(y).name == '&f64'
 	x = 23.0625
-	d := owerwrite_stack()
+	d := overwrite_stack()
 	assert x == 23.0625
 	assert *y == -31.75
 	assert d == 16.0

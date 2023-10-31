@@ -6,14 +6,11 @@ comment
 */
 
 fn fun() int {
-	// comment zero
 	return 0 // another comment
 }
 
 fn mr_fun() (int, int) {
-	// one comment
-	// another comment
-	return 1, 2
+	return 1, 2 // another comment
 }
 
 fn single_line_blocks() {
@@ -38,38 +35,15 @@ fn main() {
 	/*
 	block3
 	*/
-	// this is a comment
-	a := 1
-	// and another comment
-	// just to make it worse
-	b, c := a, 2
+	a := 1 // this is a comment
 	d := c // and an extra one
 	e := c
 	// more comments = more good
 	arr := [
-		// block foo bar
+		//   block foo bar
 		//   inline foo bar
 		0,
 	]
-	// before arg comment
-	// after arg comment
-	println('this is a test')
-	// before if expr
-	// after if expr
-	if true {
-		println('if')
-	}
-	// before else if
-	// between else if
-	else if false {
-		println('else if')
-	}
-	// before else
-	// after else
-	else {
-		println('else')
-	}
-	// empty return
 	return
 }
 
@@ -102,4 +76,19 @@ fn between_if_branches() {
 	// remove the empty line below
 	else {
 	}
+}
+
+for // comments
+{
+	break
+}
+
+for i := 0; i < 1; i++ // comments
+{
+	break
+}
+
+for _ in [1, 2] // comments
+{
+	break
 }

@@ -7,8 +7,11 @@ module net
 #include <netdb.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <netinet/tcp.h>
 
 #flag solaris -lsocket
+
+const is_windows = false
 
 fn error_code() int {
 	return C.errno
@@ -23,4 +26,5 @@ pub const (
 
 const (
 	error_ewouldblock = C.EWOULDBLOCK
+	error_einprogress = C.EINPROGRESS
 )

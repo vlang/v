@@ -6,15 +6,15 @@ pub struct C.FONSparams {
 	flags   char
 	userPtr voidptr
 	// int (*renderCreate)(void* uptr, int width, int height)
-	renderCreate fn (uptr voidptr, width int, height int) int
+	renderCreate fn (uptr voidptr, width int, height int) int = unsafe { nil }
 	// int (*renderResize)(void* uptr, int width, int height)
-	renderResize fn (uptr voidptr, width int, height int) int
+	renderResize fn (uptr voidptr, width int, height int) int = unsafe { nil }
 	// void (*renderUpdate)(void* uptr, int* rect, const unsigned char* data)
-	renderUpdate fn (uptr voidptr, rect &int, data &byte)
+	renderUpdate fn (uptr voidptr, rect &int, data &u8) = unsafe { nil }
 	// void (*renderDraw)(void* uptr, const float* verts, const float* tcoords, const unsigned int* colors, int nverts)
-	renderDraw fn (uptr voidptr, verts &f32, tcoords &f32, colors &u32, nverts int)
+	renderDraw fn (uptr voidptr, verts &f32, tcoords &f32, colors &u32, nverts int) = unsafe { nil }
 	// void (*renderDelete)(void* uptr)
-	renderDelete fn (uptr voidptr)
+	renderDelete fn (uptr voidptr) = unsafe { nil }
 }
 
 pub struct C.FONSquad {
@@ -38,11 +38,11 @@ pub struct C.FONStextIter {
 	codepoint      u32
 	isize          i16
 	iblur          i16
-	font           &C.FONSfont
+	font           &C.FONSfont = unsafe { nil }
 	prevGlyphIndex int
-	str            &byte
-	next           &byte
-	end            &byte
+	str            &u8
+	next           &u8
+	end            &u8
 	utf8state      u32
 }
 

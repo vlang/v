@@ -5,7 +5,21 @@ vlib/v/checker/tests/add_op_wrong_type_err.vv:3:13: error: mismatched types `Aaa
       |             ~~~~~~~~~~
     4 |     println(10 + Aaa{})
     5 |     println([1,2,3] + 10)
+vlib/v/checker/tests/add_op_wrong_type_err.vv:3:13: error: infix expr: cannot use `int literal` (right expression) as `Aaa`
+    1 | struct Aaa{}
+    2 | fn main() {
+    3 |     println(Aaa{} + 10)
+      |             ~~~~~~~~~~
+    4 |     println(10 + Aaa{})
+    5 |     println([1,2,3] + 10)
 vlib/v/checker/tests/add_op_wrong_type_err.vv:4:13: error: mismatched types `int literal` and `Aaa`
+    2 | fn main() {
+    3 |     println(Aaa{} + 10)
+    4 |     println(10 + Aaa{})
+      |             ~~~~~~~~~~
+    5 |     println([1,2,3] + 10)
+    6 |     println(10 + [1,2,3])
+vlib/v/checker/tests/add_op_wrong_type_err.vv:4:13: error: infix expr: cannot use `Aaa` (right expression) as `int literal`
     2 | fn main() {
     3 |     println(Aaa{} + 10)
     4 |     println(10 + Aaa{})
@@ -19,7 +33,21 @@ vlib/v/checker/tests/add_op_wrong_type_err.vv:5:13: error: mismatched types `[]i
       |             ~~~~~~~~~~~~
     6 |     println(10 + [1,2,3])
     7 |     a := map[string]int
+vlib/v/checker/tests/add_op_wrong_type_err.vv:5:13: error: infix expr: cannot use `int literal` (right expression) as `[]int`
+    3 |     println(Aaa{} + 10)
+    4 |     println(10 + Aaa{})
+    5 |     println([1,2,3] + 10)
+      |             ~~~~~~~~~~~~
+    6 |     println(10 + [1,2,3])
+    7 |     a := map[string]int
 vlib/v/checker/tests/add_op_wrong_type_err.vv:6:13: error: mismatched types `int literal` and `[]int`
+    4 |     println(10 + Aaa{})
+    5 |     println([1,2,3] + 10)
+    6 |     println(10 + [1,2,3])
+      |             ~~~~~~~~~~~~
+    7 |     a := map[string]int
+    8 |     println(a + 10)
+vlib/v/checker/tests/add_op_wrong_type_err.vv:6:13: error: infix expr: cannot use `[]int` (right expression) as `int literal`
     4 |     println(10 + Aaa{})
     5 |     println([1,2,3] + 10)
     6 |     println(10 + [1,2,3])
@@ -33,10 +61,22 @@ vlib/v/checker/tests/add_op_wrong_type_err.vv:8:13: error: mismatched types `map
       |             ~~~~~~
     9 |     println(10 + a)
    10 | }
+vlib/v/checker/tests/add_op_wrong_type_err.vv:8:13: error: infix expr: cannot use `int literal` (right expression) as `map[string]int`
+    6 |     println(10 + [1,2,3])
+    7 |     a := map[string]int
+    8 |     println(a + 10)
+      |             ~~~~~~
+    9 |     println(10 + a)
+   10 | }
 vlib/v/checker/tests/add_op_wrong_type_err.vv:9:13: error: mismatched types `int literal` and `map[string]int`
     7 |     a := map[string]int
     8 |     println(a + 10)
     9 |     println(10 + a)
       |             ~~~~~~
    10 | }
-
+vlib/v/checker/tests/add_op_wrong_type_err.vv:9:13: error: infix expr: cannot use `map[string]int` (right expression) as `int literal`
+    7 |     a := map[string]int
+    8 |     println(a + 10)
+    9 |     println(10 + a)
+      |             ~~~~~~
+   10 | }

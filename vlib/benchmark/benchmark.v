@@ -25,6 +25,7 @@ pub mut:
 	cstep           int
 	bok             string
 	bfail           string
+	measured_steps  []string
 }
 
 // new_benchmark returns a `Benchmark` instance on the stack.
@@ -119,11 +120,24 @@ pub fn start() Benchmark {
 	return b
 }
 
-// measure prints the current time spent doing `label`, since the benchmark was started.
+// measure prints the current time spent doing `label`, since the benchmark was started, or since its last call
 pub fn (mut b Benchmark) measure(label string) i64 {
 	b.ok()
 	res := b.step_timer.elapsed().microseconds()
-	println(b.step_message_with_label(benchmark.b_spent, 'in $label'))
+	println(b.step_message_with_label(benchmark.b_spent, 'in ${label}'))
+	b.step()
+	return res
+}
+
+// record_measure stores the current time doing `label`, since the benchmark
+// was started, or since the last call to `b.record_measure`.
+// It is similar to `b.measure`, but unlike it, will not print the measurement
+// immediately, just record it for later. You can call `b.all_recorded_measures`
+// to retrieve all measures stored by `b.record_measure` calls.
+pub fn (mut b Benchmark) record_measure(label string) i64 {
+	b.ok()
+	res := b.step_timer.elapsed().microseconds()
+	b.measured_steps << b.step_message_with_label(benchmark.b_spent, 'in ${label}')
 	b.step()
 	return res
 }
@@ -158,9 +172,9 @@ pub fn (b &Benchmark) step_message_with_label_and_duration(label string, msg str
 				'${b.cstep:4d}/${b.nexpected_steps:4d}'
 			}
 		}
-		return '${label:-5s} [$sprogress] $timed_line'
+		return '${label:-5s} [${sprogress}] ${timed_line}'
 	}
-	return '${label:-5s}$timed_line'
+	return '${label:-5s}${timed_line}'
 }
 
 // step_message_with_label returns a string describing the current step using current time as duration.
@@ -191,15 +205,15 @@ pub fn (b &Benchmark) step_message_skip(msg string) string {
 // total_message returns a string with total summary of the benchmark run.
 pub fn (b &Benchmark) total_message(msg string) string {
 	the_label := term.colorize(term.gray, msg)
-	mut tmsg := '${term.colorize(term.bold, 'Summary for $the_label:')} '
+	mut tmsg := term.colorize(term.bold, 'Summary for ${the_label}:') + ' '
 	if b.nfail > 0 {
-		tmsg += term.colorize(term.bold, term.colorize(term.red, '$b.nfail failed')) + ', '
+		tmsg += term.colorize(term.bold, term.colorize(term.red, '${b.nfail} failed')) + ', '
 	}
 	if b.nok > 0 {
-		tmsg += term.colorize(term.bold, term.colorize(term.green, '$b.nok passed')) + ', '
+		tmsg += term.colorize(term.bold, term.colorize(term.green, '${b.nok} passed')) + ', '
 	}
 	if b.nskip > 0 {
-		tmsg += term.colorize(term.bold, term.colorize(term.yellow, '$b.nskip skipped')) + ', '
+		tmsg += term.colorize(term.bold, term.colorize(term.yellow, '${b.nskip} skipped')) + ', '
 	}
 	mut njobs_label := ''
 	if b.njobs > 0 {
@@ -209,8 +223,14 @@ pub fn (b &Benchmark) total_message(msg string) string {
 			njobs_label = ', on ${term.colorize(term.bold, b.njobs.str())} parallel jobs'
 		}
 	}
-	tmsg += '$b.ntotal total. ${term.colorize(term.bold, 'Runtime:')} ${b.bench_timer.elapsed().microseconds() / 1000} ms${njobs_label}.\n'
+	tmsg += '${b.ntotal} total. ${term.colorize(term.bold, 'Runtime:')} ${b.bench_timer.elapsed().microseconds() / 1000} ms${njobs_label}.\n'
 	return tmsg
+}
+
+// all_recorded_measures returns a string, that contains all the recorded
+// measure messages, done by individual calls to `b.record_measure`.
+pub fn (b &Benchmark) all_recorded_measures() string {
+	return b.measured_steps.join_lines()
 }
 
 // total_duration returns the duration in ms.
@@ -221,7 +241,7 @@ pub fn (b &Benchmark) total_duration() i64 {
 // tdiff_in_ms prefixes `s` with a time difference calculation.
 fn (b &Benchmark) tdiff_in_ms(s string, tdiff i64) string {
 	if b.verbose {
-		return '${f64(tdiff) / 1000.0:9.3f} ms $s'
+		return '${f64(tdiff) / 1000.0:9.3f} ms ${s}'
 	}
 	return s
 }

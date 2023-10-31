@@ -4,14 +4,16 @@ import net.urllib
 import net.http
 
 // Parsing function attributes for methods and path.
-fn parse_attrs(name string, attrs []string) ?([]http.Method, string) {
+fn parse_attrs(name string, attrs []string) !([]http.Method, string, string, string) {
 	if attrs.len == 0 {
-		return [http.Method.get], '/$name'
+		return [http.Method.get], '/${name}', '', ''
 	}
 
 	mut x := attrs.clone()
 	mut methods := []http.Method{}
+	mut middleware := ''
 	mut path := ''
+	mut host := ''
 
 	for i := 0; i < x.len; {
 		attr := x[i]
@@ -24,27 +26,37 @@ fn parse_attrs(name string, attrs []string) ?([]http.Method, string) {
 		}
 		if attr.starts_with('/') {
 			if path != '' {
-				return IError(http.MultiplePathAttributesError{})
+				return http.MultiplePathAttributesError{}
 			}
 			path = attr
+			x.delete(i)
+			continue
+		}
+		if attr.starts_with('middleware:') {
+			middleware = attr.all_after('middleware:').trim_space()
+			x.delete(i)
+			continue
+		}
+		if attr.starts_with('host:') {
+			host = attr.all_after('host:').trim_space()
 			x.delete(i)
 			continue
 		}
 		i++
 	}
 	if x.len > 0 {
-		return IError(http.UnexpectedExtraAttributeError{
+		return http.UnexpectedExtraAttributeError{
 			attributes: x
-		})
+		}
 	}
 	if methods.len == 0 {
 		methods = [http.Method.get]
 	}
 	if path == '' {
-		path = '/$name'
+		path = '/${name}'
 	}
-	// Make path lowercase for case-insensitive comparisons
-	return methods, path.to_lower()
+	// Make host lowercase for case-insensitive comparisons
+	return methods, path, middleware, host.to_lower()
 }
 
 fn parse_query_from_url(url urllib.URL) map[string]string {
@@ -55,20 +67,25 @@ fn parse_query_from_url(url urllib.URL) map[string]string {
 	return query
 }
 
-fn parse_form_from_request(request http.Request) ?(map[string]string, map[string][]http.FileData) {
-	mut form := map[string]string{}
-	mut files := map[string][]http.FileData{}
-	if request.method in methods_with_form {
-		ct := request.header.get(.content_type) or { '' }.split(';').map(it.trim_left(' \t'))
-		if 'multipart/form-data' in ct {
-			boundary := ct.filter(it.starts_with('boundary='))
-			if boundary.len != 1 {
-				return error('detected more that one form-data boundary')
-			}
-			form, files = http.parse_multipart_form(request.data, boundary[0][9..])
-		} else {
-			form = http.parse_form(request.data)
-		}
+const boundary_start = 'boundary='
+
+fn parse_form_from_request(request http.Request) !(map[string]string, map[string][]http.FileData) {
+	if request.method !in [http.Method.post, .put, .patch] {
+		return map[string]string{}, map[string][]http.FileData{}
 	}
-	return form, files
+	ct := request.header.get(.content_type) or { '' }.split(';').map(it.trim_left(' \t'))
+	if 'multipart/form-data' in ct {
+		boundaries := ct.filter(it.starts_with(vweb.boundary_start))
+		if boundaries.len != 1 {
+			return error('detected more that one form-data boundary')
+		}
+		boundary := boundaries[0].all_after(vweb.boundary_start)
+		if boundary.len > 0 && boundary[0] == `"` {
+			// quotes are send by our http.post_multipart_form/2:
+			return http.parse_multipart_form(request.data, boundary.trim('"'))
+		}
+		// Firefox and other browsers, do not use quotes around the boundary:
+		return http.parse_multipart_form(request.data, boundary)
+	}
+	return http.parse_form(request.data), map[string][]http.FileData{}
 }

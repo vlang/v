@@ -1,14 +1,14 @@
 fn func(mut a []int) {
 	a = [1, 2, 3, 4]
-	println('inside fn: $a')
-	assert '$a' == '[1, 2, 3, 4]'
+	println('inside fn: ${a}')
+	assert '${a}' == '[1, 2, 3, 4]'
 }
 
 fn test_fn_mut_args_of_array() {
 	mut a := [1, 2, 3]
 	func(mut a)
-	println('inside main: $a')
-	assert '$a' == '[1, 2, 3, 4]'
+	println('inside main: ${a}')
+	assert '${a}' == '[1, 2, 3, 4]'
 }
 
 fn init_map(mut n map[string]int) {
@@ -76,7 +76,7 @@ interface File {
 
 fn b(parent File) {
 	println(parent)
-	assert '$parent' == 'File(LinuxFile{})'
+	assert '${parent}' == 'File(LinuxFile{})'
 }
 
 fn a(mut parent File) {

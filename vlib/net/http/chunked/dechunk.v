@@ -31,7 +31,7 @@ fn (mut s ChunkScanner) read_chunk_size() u32 {
 	return n
 }
 
-fn unhex(c byte) byte {
+fn unhex(c u8) u8 {
 	if `0` <= c && c <= `9` {
 		return c - `0`
 	} else if `a` <= c && c <= `f` {
@@ -46,13 +46,16 @@ fn (mut s ChunkScanner) skip_crlf() {
 	s.pos += 2
 }
 
-fn (mut s ChunkScanner) read_chunk(chunksize u32) string {
+fn (mut s ChunkScanner) read_chunk(chunksize u32) !string {
 	startpos := s.pos
 	s.pos += int(chunksize)
+	if s.pos > s.text.len {
+		return error('invalid chunksize')
+	}
 	return s.text[startpos..s.pos]
 }
 
-pub fn decode(text string) string {
+pub fn decode(text string) !string {
 	mut sb := strings.new_builder(100)
 	mut cscanner := ChunkScanner{
 		pos: 0
@@ -64,7 +67,8 @@ pub fn decode(text string) string {
 			break
 		}
 		cscanner.skip_crlf()
-		sb.write_string(cscanner.read_chunk(csize))
+		ch := cscanner.read_chunk(csize)!
+		sb.write_string(ch)
 		cscanner.skip_crlf()
 	}
 	cscanner.skip_crlf()

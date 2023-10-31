@@ -4,5 +4,5 @@ fn test_reference_var_followed_block_expr() {
 	{
 	}
 	println(c)
-	assert '$c' == '&[5, 6, 7]'
+	assert '${c}' == '&[5, 6, 7]'
 }

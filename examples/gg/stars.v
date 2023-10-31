@@ -37,7 +37,7 @@ mut:
 
 struct App {
 mut:
-	gg        &gg.Context
+	gg        &gg.Context = unsafe { nil }
 	image     gg.Image
 	stars     []Star
 	v_letters []VLetter
@@ -82,7 +82,7 @@ fn main() {
 
 fn init_images(mut app App) {
 	mut logo_path := os.resource_abs_path(os.join_path('..', 'assets', 'logo.png'))
-	app.image = app.gg.create_image(logo_path)
+	app.image = app.gg.create_image(logo_path) or { panic(err) }
 }
 
 fn frame(mut app App) {

@@ -27,7 +27,7 @@ fn test_for_match() {
 fn test_for_select() {
 	ch1 := chan int{}
 	ch2 := chan f64{}
-	go do_send(ch1, ch2)
+	spawn do_send(ch1, ch2)
 	mut a := 0
 	mut b := 0
 	for select {

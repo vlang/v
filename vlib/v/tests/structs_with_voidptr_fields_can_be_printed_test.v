@@ -1,8 +1,8 @@
 struct Abc {
 mut:
 	vptr    voidptr
-	vptrptr &voidptr = 0
-	bptr    &byte    = 0
+	vptrptr &voidptr = unsafe { nil }
+	bptr    &u8      = unsafe { nil }
 	cptr    &char    = c'abcdef'
 }
 

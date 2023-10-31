@@ -8,7 +8,7 @@ interface In1 {
 
 fn test_go_wait_with_fn_of_interface_type() {
 	mut var := &St1{}
-	(go fn1(mut var)).wait()
+	(spawn fn1(mut var)).wait()
 }
 
 fn fn1(mut v In1) {

@@ -8,3 +8,13 @@ fn main() {
 	println('I\'m out of idea "_"')
 	println('Definitely out ":\'("')
 }
+
+arr := ['a', 'b']
+_ := "<font color=\\\"warning\\\">message</font>\\n>${arr.join('\\n>')}"
+_ := "<font color=\\\"warning\\\">message</font>\\n>${arr.join('\\n>')}"
+_ := '<font color=\\"warning\\">message</font>\\n>'
+_ := '<font color=\\"warning\\">message</font>\\n>'
+_ := 'values: ${arr.join('\\n')}'
+_ := 'values: ${arr.join('\\n')}'
+_ := 'values: ${arr.join('\\n')}'
+_ := 'values: ${arr.join('\\n')}'

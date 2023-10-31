@@ -1,24 +1,24 @@
-import x.json2
+import x.json2 as json
 
 const (
 	sample_data = {
-		'int':  json2.Any(int(1))
-		'i64':  json2.Any(i64(128))
-		'f32':  json2.Any(f32(2.0))
-		'f64':  json2.Any(f64(1.283))
-		'bool': json2.Any(false)
-		'str':  json2.Any('test')
-		'null': json2.Any(json2.null)
-		'arr':  json2.Any([json2.Any('lol')])
-		'obj':  json2.Any({
-			'foo': json2.Any(10)
+		'int':  json.Any(int(1))
+		'i64':  json.Any(i64(128))
+		'f32':  json.Any(f32(2.0))
+		'f64':  json.Any(f64(1.283))
+		'bool': json.Any(false)
+		'str':  json.Any('test')
+		'null': json.Any(json.null)
+		'arr':  json.Any([json.Any('lol')])
+		'obj':  json.Any({
+			'foo': json.Any(10)
 		})
 	}
 )
 
-fn is_null(f json2.Any) bool {
+fn is_null(f json.Any) bool {
 	match f {
-		json2.Null { return true }
+		json.Null { return true }
 		else { return false }
 	}
 }
@@ -57,9 +57,9 @@ fn test_int() {
 	assert sample_data['i64'] or { 0 }.int() == 128
 	assert sample_data['f32'] or { 0 }.int() == 2
 	assert sample_data['f64'] or { 0 }.int() == 1
-	assert json2.Any(true).int() == 1
+	assert json.Any(true).int() == 1
+	assert json.Any('123').int() == 123
 	// invalid conversions
-	assert json2.Any('123').int() == 0
 	assert sample_data['null'] or { 0 }.int() == 0
 	assert sample_data['arr'] or { 0 }.int() == 0
 	assert sample_data['obj'] or { 0 }.int() == 0
@@ -71,9 +71,9 @@ fn test_i64() {
 	assert sample_data['i64'] or { 0 }.i64() == 128
 	assert sample_data['f32'] or { 0 }.i64() == 2
 	assert sample_data['f64'] or { 0 }.i64() == 1
-	assert json2.Any(true).i64() == 1
+	assert json.Any(true).i64() == 1
+	assert json.Any('123').i64() == 123
 	// invalid conversions
-	assert json2.Any('123').i64() == 0
 	assert sample_data['null'] or { 0 }.i64() == 0
 	assert sample_data['arr'] or { 0 }.i64() == 0
 	assert sample_data['obj'] or { 0 }.i64() == 0
@@ -106,12 +106,12 @@ fn test_arr() {
 fn test_bool() {
 	// valid conversions
 	assert sample_data['bool'] or { 0 }.bool() == false
-	assert json2.Any('true').bool() == true
+	assert json.Any('true').bool() == true
+	assert sample_data['int'] or { 0 }.bool() == true
+	assert sample_data['i64'] or { 0 }.bool() == true
+	assert sample_data['f32'] or { 0 }.bool() == true
+	assert sample_data['f64'] or { 0 }.bool() == true
 	// invalid conversions
-	assert sample_data['int'] or { 0 }.bool() == false
-	assert sample_data['i64'] or { 0 }.bool() == false
-	assert sample_data['f32'] or { 0 }.bool() == false
-	assert sample_data['f64'] or { 0 }.bool() == false
 	assert sample_data['null'] or { 0 }.bool() == false
 	assert sample_data['arr'] or { 0 }.bool() == false
 	assert sample_data['obj'] or { 0 }.bool() == false

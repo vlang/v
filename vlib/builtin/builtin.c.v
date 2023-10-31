@@ -11,14 +11,25 @@ fn vhalt() {
 	for {}
 }
 
+[markused]
+fn v_segmentation_fault_handler(signal_number int) {
+	$if freestanding {
+		eprintln('signal 11: segmentation fault')
+	} $else {
+		C.fprintf(C.stderr, c'signal %d: segmentation fault\n', signal_number)
+	}
+	$if use_libbacktrace ? {
+		eprint_libbacktrace(1)
+	} $else {
+		print_backtrace()
+	}
+	exit(128 + signal_number)
+}
+
 // exit terminates execution immediately and returns exit `code` to the shell.
 [noreturn]
 pub fn exit(code int) {
 	C.exit(code)
-}
-
-fn vcommithash() string {
-	return unsafe { tos5(&char(C.V_CURRENT_COMMIT_HASH)) }
 }
 
 // panic_debug private function that V uses for panics, -cg/-g is passed
@@ -35,13 +46,15 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 		bare_panic(s)
 	} $else {
 		eprintln('================ V panic ================')
-		eprintln('   module: $mod')
+		eprintln('   module: ${mod}')
 		eprintln(' function: ${fn_name}()')
-		eprintln('  message: $s')
-		eprintln('     file: $file:$line_no')
-		eprintln('   v hash: $vcommithash()')
+		eprintln('  message: ${s}')
+		eprintln('     file: ${file}:${line_no}')
+		eprintln('   v hash: ${@VCURRENTHASH}')
 		eprintln('=========================================')
-		$if exit_after_panic_message ? {
+		$if native {
+			C.exit(1) // TODO: native backtraces
+		} $else $if exit_after_panic_message ? {
 			C.exit(1)
 		} $else $if no_backtrace ? {
 			C.exit(1)
@@ -54,7 +67,11 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 				}
 				C.exit(1)
 			}
-			print_backtrace_skipping_top_frames(1)
+			$if use_libbacktrace ? {
+				eprint_libbacktrace(1)
+			} $else {
+				print_backtrace_skipping_top_frames(1)
+			}
 			$if panics_break_into_debugger ? {
 				break_if_debugger_attached()
 			}
@@ -64,9 +81,18 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 	vhalt()
 }
 
+// panic_option_not_set is called by V, when you use option error propagation in your main function.
+// It ends the program with a panic.
 [noreturn]
-pub fn panic_optional_not_set(s string) {
-	panic('optional not set ($s)')
+pub fn panic_option_not_set(s string) {
+	panic('option not set (${s})')
+}
+
+// panic_result_not_set is called by V, when you use result error propagation in your main function
+// It ends the program with a panic.
+[noreturn]
+pub fn panic_result_not_set(s string) {
+	panic('result not set (${s})')
 }
 
 // panic prints a nice error message, then exits the process with exit code of 1.
@@ -78,8 +104,10 @@ pub fn panic(s string) {
 	} $else {
 		eprint('V panic: ')
 		eprintln(s)
-		eprintln('v hash: $vcommithash()')
-		$if exit_after_panic_message ? {
+		eprintln('v hash: ${@VCURRENTHASH}')
+		$if native {
+			C.exit(1) // TODO: native backtraces
+		} $else $if exit_after_panic_message ? {
 			C.exit(1)
 		} $else $if no_backtrace ? {
 			C.exit(1)
@@ -92,7 +120,11 @@ pub fn panic(s string) {
 				}
 				C.exit(1)
 			}
-			print_backtrace_skipping_top_frames(1)
+			$if use_libbacktrace ? {
+				eprint_libbacktrace(1)
+			} $else {
+				print_backtrace_skipping_top_frames(1)
+			}
 			$if panics_break_into_debugger ? {
 				break_if_debugger_attached()
 			}
@@ -106,12 +138,12 @@ pub fn panic(s string) {
 pub fn c_error_number_str(errnum int) string {
 	mut err_msg := ''
 	$if freestanding {
-		err_msg = 'error $errnum'
+		err_msg = 'error ${errnum}'
 	} $else {
 		$if !vinix {
 			c_msg := C.strerror(errnum)
 			err_msg = string{
-				str: &byte(c_msg)
+				str: &u8(c_msg)
 				len: unsafe { C.strlen(c_msg) }
 				is_lit: 1
 			}
@@ -142,8 +174,8 @@ pub fn eprintln(s string) {
 		C.fflush(C.stdout)
 		C.fflush(C.stderr)
 		// eprintln is used in panics, so it should not fail at all
-		$if android {
-			C.fprintf(C.stderr, c'%.*s\n', s.len, s.str)
+		$if android && !termux {
+			C.android_print(C.stderr, c'%.*s\n', s.len, s.str)
 		}
 		_writeln_to_fd(2, s)
 		C.fflush(C.stderr)
@@ -165,8 +197,8 @@ pub fn eprint(s string) {
 	} $else {
 		C.fflush(C.stdout)
 		C.fflush(C.stderr)
-		$if android {
-			C.fprintf(C.stderr, c'%.*s', s.len, s.str)
+		$if android && !termux {
+			C.android_print(C.stderr, c'%.*s', s.len, s.str)
 		}
 		_write_buf_to_fd(2, s.str, s.len)
 		C.fflush(C.stderr)
@@ -191,14 +223,12 @@ pub fn flush_stderr() {
 	}
 }
 
-// print prints a message to stdout. Unlike `println` stdout is not automatically flushed.
+// print prints a message to stdout. Note that unlike `eprint`, stdout is not automatically flushed.
 [manualfree]
 pub fn print(s string) {
-	$if android {
-		C.fprintf(C.stdout, c'%.*s', s.len, s.str) // logcat
-	}
-	// no else if for android termux support
-	$if ios {
+	$if android && !termux {
+		C.android_print(C.stdout, c'%.*s\n', s.len, s.str)
+	} $else $if ios {
 		// TODO: Implement a buffer as NSLog doesn't have a "print"
 		C.WrappedNSLog(s.str)
 	} $else $if freestanding {
@@ -208,19 +238,17 @@ pub fn print(s string) {
 	}
 }
 
-// println prints a message with a line end, to stdout. stdout is flushed.
+// println prints a message with a line end, to stdout. Note that unlike `eprintln`, stdout is not automatically flushed.
 [manualfree]
 pub fn println(s string) {
 	if s.str == 0 {
 		println('println(NIL)')
 		return
 	}
-	$if android {
-		C.fprintf(C.stdout, c'%.*s\n', s.len, s.str) // logcat
+	$if android && !termux {
+		C.android_print(C.stdout, c'%.*s\n', s.len, s.str)
 		return
-	}
-	// no else if for android termux support
-	$if ios {
+	} $else $if ios {
 		C.WrappedNSLog(s.str)
 		return
 	} $else $if freestanding {
@@ -234,6 +262,12 @@ pub fn println(s string) {
 
 [manualfree]
 fn _writeln_to_fd(fd int, s string) {
+	$if !builtin_writeln_should_write_at_once ? {
+		lf := u8(`\n`)
+		_write_buf_to_fd(fd, s.str, s.len)
+		_write_buf_to_fd(fd, &lf, 1)
+		return
+	}
 	unsafe {
 		buf_len := s.len + 1 // space for \n
 		mut buf := malloc(buf_len)
@@ -247,17 +281,32 @@ fn _writeln_to_fd(fd int, s string) {
 }
 
 [manualfree]
-fn _write_buf_to_fd(fd int, buf &byte, buf_len int) {
+fn _write_buf_to_fd(fd int, buf &u8, buf_len int) {
 	if buf_len <= 0 {
 		return
 	}
-	unsafe {
-		mut ptr := buf
-		mut remaining_bytes := buf_len
-		for remaining_bytes > 0 {
-			x := C.write(fd, ptr, remaining_bytes)
-			ptr += x
-			remaining_bytes -= x
+	mut ptr := unsafe { buf }
+	mut remaining_bytes := isize(buf_len)
+	mut x := isize(0)
+	$if freestanding || vinix || builtin_write_buf_to_fd_should_use_c_write ? {
+		unsafe {
+			for remaining_bytes > 0 {
+				x = C.write(fd, ptr, remaining_bytes)
+				ptr += x
+				remaining_bytes -= x
+			}
+		}
+	} $else {
+		mut stream := voidptr(C.stdout)
+		if fd == 2 {
+			stream = voidptr(C.stderr)
+		}
+		unsafe {
+			for remaining_bytes > 0 {
+				x = isize(C.fwrite(ptr, 1, remaining_bytes, stream))
+				ptr += x
+				remaining_bytes -= x
+			}
 		}
 	}
 }
@@ -267,9 +316,14 @@ __global total_m = i64(0)
 // malloc returns a `byteptr` pointing to the memory address of the allocated space.
 // unlike the `calloc` family of functions - malloc will not zero the memory block.
 [unsafe]
-pub fn malloc(n int) &byte {
-	if n <= 0 {
-		panic('malloc($n <= 0)')
+pub fn malloc(n isize) &u8 {
+	$if trace_malloc ? {
+		total_m += n
+		C.fprintf(C.stderr, c'_v_malloc %6d total %10d\n', n, total_m)
+		// print_backtrace()
+	}
+	if n < 0 {
+		panic('malloc(${n} < 0)')
 	}
 	$if vplayground ? {
 		if n > 10000 {
@@ -279,12 +333,7 @@ pub fn malloc(n int) &byte {
 			panic('allocating more than 50 MB is not allowed in the V playground')
 		}
 	}
-	$if trace_malloc ? {
-		total_m += n
-		C.fprintf(C.stderr, c'_v_malloc %6d total %10d\n', n, total_m)
-		// print_backtrace()
-	}
-	mut res := &byte(0)
+	mut res := &u8(0)
 	$if prealloc {
 		return unsafe { prealloc_malloc(n) }
 	} $else $if gcboehm ? {
@@ -299,7 +348,7 @@ pub fn malloc(n int) &byte {
 		res = unsafe { C.malloc(n) }
 	}
 	if res == 0 {
-		panic('malloc($n) failed')
+		panic('malloc(${n}) failed')
 	}
 	$if debug_malloc ? {
 		// Fill in the memory with something != 0 i.e. `M`, so it is easier to spot
@@ -310,9 +359,14 @@ pub fn malloc(n int) &byte {
 }
 
 [unsafe]
-pub fn malloc_noscan(n int) &byte {
-	if n <= 0 {
-		panic('malloc_noscan($n <= 0)')
+pub fn malloc_noscan(n isize) &u8 {
+	$if trace_malloc ? {
+		total_m += n
+		C.fprintf(C.stderr, c'malloc_noscan %6d total %10d\n', n, total_m)
+		// print_backtrace()
+	}
+	if n < 0 {
+		panic('malloc_noscan(${n} < 0)')
 	}
 	$if vplayground ? {
 		if n > 10000 {
@@ -322,12 +376,7 @@ pub fn malloc_noscan(n int) &byte {
 			panic('allocating more than 50 MB is not allowed in the V playground')
 		}
 	}
-	$if trace_malloc ? {
-		total_m += n
-		C.fprintf(C.stderr, c'malloc_noscan %6d total %10d\n', n, total_m)
-		// print_backtrace()
-	}
-	mut res := &byte(0)
+	mut res := &u8(0)
 	$if prealloc {
 		return unsafe { prealloc_malloc(n) }
 	} $else $if gcboehm ? {
@@ -346,7 +395,60 @@ pub fn malloc_noscan(n int) &byte {
 		res = unsafe { C.malloc(n) }
 	}
 	if res == 0 {
-		panic('malloc_noscan($n) failed')
+		panic('malloc_noscan(${n}) failed')
+	}
+	$if debug_malloc ? {
+		// Fill in the memory with something != 0 i.e. `M`, so it is easier to spot
+		// when the calling code wrongly relies on it being zeroed.
+		unsafe { C.memset(res, 0x4D, n) }
+	}
+	return res
+}
+
+[inline]
+fn __at_least_one(how_many u64) u64 {
+	// handle the case for allocating memory for empty structs, which have sizeof(EmptyStruct) == 0
+	// in this case, just allocate a single byte, avoiding the panic for malloc(0)
+	if how_many == 0 {
+		return 1
+	}
+	return how_many
+}
+
+// malloc_uncollectable dynamically allocates a `n` bytes block of memory
+// on the heap, which will NOT be garbage-collected (but its contents will).
+[unsafe]
+pub fn malloc_uncollectable(n isize) &u8 {
+	$if trace_malloc ? {
+		total_m += n
+		C.fprintf(C.stderr, c'malloc_uncollectable %6d total %10d\n', n, total_m)
+		// print_backtrace()
+	}
+	if n < 0 {
+		panic('malloc_uncollectable(${n} < 0)')
+	}
+	$if vplayground ? {
+		if n > 10000 {
+			panic('allocating more than 10 KB at once is not allowed in the V playground')
+		}
+		if total_m > 50 * 1024 * 1024 {
+			panic('allocating more than 50 MB is not allowed in the V playground')
+		}
+	}
+	mut res := &u8(0)
+	$if prealloc {
+		return unsafe { prealloc_malloc(n) }
+	} $else $if gcboehm ? {
+		unsafe {
+			res = C.GC_MALLOC_UNCOLLECTABLE(n)
+		}
+	} $else $if freestanding {
+		res = unsafe { __malloc(usize(n)) }
+	} $else {
+		res = unsafe { C.malloc(n) }
+	}
+	if res == 0 {
+		panic('malloc_uncollectable(${n}) failed')
 	}
 	$if debug_malloc ? {
 		// Fill in the memory with something != 0 i.e. `M`, so it is easier to spot
@@ -361,11 +463,11 @@ pub fn malloc_noscan(n int) &byte {
 // previously allocated with `malloc`, `v_calloc` or `vcalloc`.
 // Please, see also realloc_data, and use it instead if possible.
 [unsafe]
-pub fn v_realloc(b &byte, n int) &byte {
+pub fn v_realloc(b &u8, n isize) &u8 {
 	$if trace_realloc ? {
 		C.fprintf(C.stderr, c'v_realloc %6d\n', n)
 	}
-	mut new_ptr := &byte(0)
+	mut new_ptr := &u8(0)
 	$if prealloc {
 		unsafe {
 			new_ptr = malloc(n)
@@ -378,7 +480,7 @@ pub fn v_realloc(b &byte, n int) &byte {
 		new_ptr = unsafe { C.realloc(b, n) }
 	}
 	if new_ptr == 0 {
-		panic('realloc($n) failed')
+		panic('realloc(${n}) failed')
 	}
 	return new_ptr
 }
@@ -392,7 +494,7 @@ pub fn v_realloc(b &byte, n int) &byte {
 // can make debugging easier, when you compile your program with
 // `-d debug_realloc`.
 [unsafe]
-pub fn realloc_data(old_data &byte, old_size int, new_size int) &byte {
+pub fn realloc_data(old_data &u8, old_size int, new_size int) &u8 {
 	$if trace_realloc ? {
 		C.fprintf(C.stderr, c'realloc_data old_size: %6d new_size: %6d\n', old_size, new_size)
 	}
@@ -417,14 +519,14 @@ pub fn realloc_data(old_data &byte, old_size int, new_size int) &byte {
 			return new_ptr
 		}
 	}
-	mut nptr := &byte(0)
+	mut nptr := &u8(0)
 	$if gcboehm ? {
 		nptr = unsafe { C.GC_REALLOC(old_data, new_size) }
 	} $else {
 		nptr = unsafe { C.realloc(old_data, new_size) }
 	}
 	if nptr == 0 {
-		panic('realloc_data($old_data, $old_size, $new_size) failed')
+		panic('realloc_data(${old_data}, ${old_size}, ${new_size}) failed')
 	}
 	return nptr
 }
@@ -432,20 +534,20 @@ pub fn realloc_data(old_data &byte, old_size int, new_size int) &byte {
 // vcalloc dynamically allocates a zeroed `n` bytes block of memory on the heap.
 // vcalloc returns a `byteptr` pointing to the memory address of the allocated space.
 // Unlike `v_calloc` vcalloc checks for negative values given in `n`.
-pub fn vcalloc(n int) &byte {
-	if n < 0 {
-		panic('calloc($n < 0)')
-	} else if n == 0 {
-		return &byte(0)
-	}
+pub fn vcalloc(n isize) &u8 {
 	$if trace_vcalloc ? {
 		total_m += n
 		C.fprintf(C.stderr, c'vcalloc %6d total %10d\n', n, total_m)
 	}
+	if n < 0 {
+		panic('calloc(${n} < 0)')
+	} else if n == 0 {
+		return &u8(0)
+	}
 	$if prealloc {
 		return unsafe { prealloc_calloc(n) }
 	} $else $if gcboehm ? {
-		return unsafe { &byte(C.GC_MALLOC(n)) }
+		return unsafe { &u8(C.GC_MALLOC(n)) }
 	} $else {
 		return unsafe { C.calloc(1, n) }
 	}
@@ -453,7 +555,7 @@ pub fn vcalloc(n int) &byte {
 
 // special versions of the above that allocate memory which is not scanned
 // for pointers (but is collected) when the Boehm garbage collection is used
-pub fn vcalloc_noscan(n int) &byte {
+pub fn vcalloc_noscan(n isize) &u8 {
 	$if trace_vcalloc ? {
 		total_m += n
 		C.fprintf(C.stderr, c'vcalloc_noscan %6d total %10d\n', n, total_m)
@@ -467,12 +569,12 @@ pub fn vcalloc_noscan(n int) &byte {
 			}
 		}
 		if n < 0 {
-			panic('calloc_noscan($n < 0)')
+			panic('calloc_noscan(${n} < 0)')
 		}
 		return $if gcboehm_opt ? {
-			unsafe { &byte(C.memset(C.GC_MALLOC_ATOMIC(n), 0, n)) }
+			unsafe { &u8(C.memset(C.GC_MALLOC_ATOMIC(n), 0, n)) }
 		} $else {
-			unsafe { &byte(C.GC_MALLOC(n)) }
+			unsafe { &u8(C.GC_MALLOC(n)) }
 		}
 	} $else {
 		return unsafe { vcalloc(n) }
@@ -501,8 +603,12 @@ pub fn free(ptr voidptr) {
 // memdup dynamically allocates a `sz` bytes block of memory on the heap
 // memdup then copies the contents of `src` into the allocated space and
 // returns a pointer to the newly allocated space.
+
 [unsafe]
-pub fn memdup(src voidptr, sz int) voidptr {
+pub fn memdup(src voidptr, sz isize) voidptr {
+	$if trace_memdup ? {
+		C.fprintf(C.stderr, c'memdup size: %10d\n', sz)
+	}
 	if sz == 0 {
 		return vcalloc(1)
 	}
@@ -513,7 +619,10 @@ pub fn memdup(src voidptr, sz int) voidptr {
 }
 
 [unsafe]
-pub fn memdup_noscan(src voidptr, sz int) voidptr {
+pub fn memdup_noscan(src voidptr, sz isize) voidptr {
+	$if trace_memdup ? {
+		C.fprintf(C.stderr, c'memdup_noscan size: %10d\n', sz)
+	}
 	if sz == 0 {
 		return vcalloc_noscan(1)
 	}
@@ -523,33 +632,71 @@ pub fn memdup_noscan(src voidptr, sz int) voidptr {
 	}
 }
 
+// memdup_uncollectable dynamically allocates a `sz` bytes block of memory
+// on the heap, which will NOT be garbage-collected (but its contents will).
+// memdup_uncollectable then copies the contents of `src` into the allocated
+// space and returns a pointer to the newly allocated space.
+[unsafe]
+pub fn memdup_uncollectable(src voidptr, sz isize) voidptr {
+	$if trace_memdup ? {
+		C.fprintf(C.stderr, c'memdup_uncollectable size: %10d\n', sz)
+	}
+	if sz == 0 {
+		return vcalloc(1)
+	}
+	unsafe {
+		mem := malloc_uncollectable(sz)
+		return C.memcpy(mem, src, sz)
+	}
+}
+
+pub struct GCHeapUsage {
+pub:
+	heap_size      usize
+	free_bytes     usize
+	total_bytes    usize
+	unmapped_bytes usize
+	bytes_since_gc usize
+}
+
+// gc_heap_usage returns the info about heap usage
+pub fn gc_heap_usage() GCHeapUsage {
+	$if gcboehm ? {
+		mut res := GCHeapUsage{}
+		C.GC_get_heap_usage_safe(&res.heap_size, &res.free_bytes, &res.unmapped_bytes,
+			&res.bytes_since_gc, &res.total_bytes)
+		return res
+	} $else {
+		return GCHeapUsage{}
+	}
+}
+
+// gc_memory_use returns the total memory use in bytes by all allocated blocks
+pub fn gc_memory_use() usize {
+	$if gcboehm ? {
+		return C.GC_get_memory_use()
+	} $else {
+		return 0
+	}
+}
+
 [inline]
 fn v_fixed_index(i int, len int) int {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking {
 		if i < 0 || i >= len {
-			s := 'fixed array index out of range (index: $i, len: $len)'
+			s := 'fixed array index out of range (index: ${i}, len: ${len})'
 			panic(s)
 		}
 	}
 	return i
 }
 
-// print_backtrace shows a backtrace of the current call stack on stdout
-pub fn print_backtrace() {
-	// At the time of backtrace_symbols_fd call, the C stack would look something like this:
-	// * print_backtrace_skipping_top_frames
-	// * print_backtrace itself
-	// * the rest of the backtrace frames
-	// => top 2 frames should be skipped, since they will not be informative to the developer
-	$if !no_backtrace ? {
-		$if freestanding {
-			println(bare_backtrace())
-		} $else {
-			$if tinyc {
-				C.tcc_backtrace(c'Backtrace')
-			} $else {
-				print_backtrace_skipping_top_frames(2)
-			}
-		}
-	}
-}
+// NOTE: g_main_argc and g_main_argv are filled in right after C's main start.
+// They are used internally by V's builtin; for user code, it is much
+// more convenient to just use `os.args` instead.
+
+[markused]
+__global g_main_argc = int(0)
+
+[markused]
+__global g_main_argv = unsafe { nil }

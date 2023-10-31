@@ -1,7 +1,7 @@
 module stdatomic
 
 // Implement the atomic operations. For now TCC does not support the atomic
-// versions on nix so it uses locks to simulate the same behavor.
+// versions on nix so it uses locks to simulate the same behavior.
 //
 // On windows tcc can simulate with other atomic operations.
 //
@@ -9,27 +9,27 @@ module stdatomic
 // much more.
 
 // add_u64 adds provided delta as an atomic operation
-pub fn add_u64(ptr &u64, delta int) bool {
-	res := C.atomic_fetch_add_u64(voidptr(ptr), delta)
-	return res == 0
+pub fn add_u64(ptr &u64, delta int) u64 {
+	C.atomic_fetch_add_u64(voidptr(ptr), delta)
+	return *ptr
 }
 
 // sub_u64 subtracts provided delta as an atomic operation
-pub fn sub_u64(ptr &u64, delta int) bool {
-	res := C.atomic_fetch_sub_u64(voidptr(ptr), delta)
-	return res == 0
+pub fn sub_u64(ptr &u64, delta int) u64 {
+	C.atomic_fetch_sub_u64(voidptr(ptr), delta)
+	return *ptr
 }
 
 // add_i64 adds provided delta as an atomic operation
-pub fn add_i64(ptr &i64, delta int) bool {
-	res := C.atomic_fetch_add_u64(voidptr(ptr), delta)
-	return res == 0
+pub fn add_i64(ptr &i64, delta int) i64 {
+	C.atomic_fetch_add_u64(voidptr(ptr), delta)
+	return *ptr
 }
 
 // add_i64 subtracts provided delta as an atomic operation
-pub fn sub_i64(ptr &i64, delta int) bool {
-	res := C.atomic_fetch_sub_u64(voidptr(ptr), delta)
-	return res == 0
+pub fn sub_i64(ptr &i64, delta int) i64 {
+	C.atomic_fetch_sub_u64(voidptr(ptr), delta)
+	return *ptr
 }
 
 // atomic store/load operations have to be used when there might be another concurrent access

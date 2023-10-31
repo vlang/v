@@ -67,12 +67,12 @@ fn test_deleting() {
 
 fn test_slice_delete() {
 	mut a := [1.5, 2.5, 3.25, 4.5, 5.75]
-	b := a[2..4]
+	b := unsafe { a[2..4] }
 	a.delete(0)
 	assert a == [2.5, 3.25, 4.5, 5.75]
 	assert b == [3.25, 4.5]
 	a = [3.75, 4.25, -1.5, 2.25, 6.0]
-	c := a[..3]
+	c := unsafe { a[..3] }
 	a.delete(2)
 	assert a == [3.75, 4.25, 2.25, 6.0]
 	assert c == [3.75, 4.25, -1.5]
@@ -80,11 +80,11 @@ fn test_slice_delete() {
 
 fn test_delete_many() {
 	mut a := [1, 2, 3, 4, 5, 6, 7, 8, 9]
-	b := a[2..6]
+	b := unsafe { a[2..6] }
 	a.delete_many(4, 3)
 	assert a == [1, 2, 3, 4, 8, 9]
 	assert b == [3, 4, 5, 6]
-	c := a[..a.len]
+	c := unsafe { a[..a.len] }
 	a.delete_many(2, 0) // this should just clone
 	a[1] = 17
 	assert a == [1, 17, 3, 4, 8, 9]
@@ -209,61 +209,82 @@ fn test_compare_ints() {
     assert compare_ints(a, a) == 0
 }
 */
-fn test_repeat() {
-	{
-		a := [0].repeat(5)
-		assert a.len == 5
-		assert a[0] == 0 && a[1] == 0 && a[2] == 0 && a[3] == 0 && a[4] == 0
+
+fn test_repeat_int() {
+	a := [1234].repeat(5)
+	// dump(a)
+	assert a.len == 5
+	for x in a {
+		assert x == 1234
 	}
-	{
-		a := [1.1].repeat(10)
-		assert a[0] == 1.1
-		assert a[5] == 1.1
-		assert a[9] == 1.1
-	}
-	{
-		a := [i64(-123)].repeat(10)
-		assert a[0] == -123
-		assert a[5] == -123
-		assert a[9] == -123
-	}
-	{
-		a := [u64(123)].repeat(10)
-		assert a[0] == 123
-		assert a[5] == 123
-		assert a[9] == 123
-	}
-	{
-		a := [1.1].repeat(10)
-		assert a[0] == 1.1
-		assert a[5] == 1.1
-		assert a[9] == 1.1
-	}
-	{
-		a := [1, 2].repeat(2)
-		assert a[0] == 1
-		assert a[1] == 2
-		assert a[2] == 1
-		assert a[3] == 2
-	}
-	{
-		a := ['1', 'abc'].repeat(2)
-		assert a[0] == '1'
-		assert a[1] == 'abc'
-		assert a[2] == '1'
-		assert a[3] == 'abc'
-	}
-	{
-		mut a := ['1', 'abc'].repeat(0)
-		assert a.len == 0
-		a << 'abc'
-		assert a[0] == 'abc'
-	}
+}
+
+fn test_repeat_f64() {
+	a := [1.1].repeat(10)
+	// dump(a)
+	assert a.len == 10
+	assert a[0] == 1.1
+	assert a[5] == 1.1
+	assert a[9] == 1.1
+}
+
+fn test_repeat_f32() {
+	a := [f32(1.1)].repeat(10)
+	// dump(a)
+	assert a.len == 10
+	assert a[0] == f32(1.1)
+	assert a[5] == f32(1.1)
+	assert a[9] == f32(1.1)
+}
+
+fn test_repeat_i64() {
+	a := [i64(-123)].repeat(10)
+	// dump(a)
+	assert a.len == 10
+	assert a[0] == -123
+	assert a[5] == -123
+	assert a[9] == -123
+}
+
+fn test_repeat_u64() {
+	a := [u64(123)].repeat(10)
+	assert a[0] == 123
+	assert a[5] == 123
+	assert a[9] == 123
+}
+
+fn test_repeat_several_ints() {
+	a := [1, 2].repeat(2)
+	// dump(a)
+	assert a.len == 4
+	assert a[0] == 1
+	assert a[1] == 2
+	assert a[2] == 1
+	assert a[3] == 2
+}
+
+fn test_repeat_several_strings_2() {
+	a := ['1', 'abc'].repeat(2)
+	// dump(a)
+	assert a.len == 4
+	assert a[0] == '1'
+	assert a[1] == 'abc'
+	assert a[2] == '1'
+	assert a[3] == 'abc'
+}
+
+fn test_repeat_several_strings_0() {
+	mut a := ['1', 'abc'].repeat(0)
+	// dump(a)
+	assert a.len == 0
+	a << 'abc'
+	assert a[0] == 'abc'
 }
 
 fn test_deep_repeat() {
 	mut a3 := [[[1, 1], [2, 2], [3, 3]], [[4, 4], [5, 5], [6, 6]]]
 	r := a3.repeat(3)
+	// dump(r)
 	a3[1][1][0] = 17
 	assert r == [
 		[[1, 1], [2, 2], [3, 3]],
@@ -477,11 +498,11 @@ fn (ta []Test2) str() string {
 }
 
 fn (t Test2) str() string {
-	return '{$t.one $t.two}'
+	return '{${t.one} ${t.two}}'
 }
 
 fn (t Test) str() string {
-	return '{$t.a $t.b}'
+	return '{${t.a} ${t.b}}'
 }
 
 fn test_struct_print() {
@@ -567,21 +588,6 @@ fn sub(prev int, curr int) int {
 	return prev - curr
 }
 
-fn test_reduce() {
-	a := [1, 2, 3, 4, 5]
-	b := a.reduce(sum, 0)
-	c := a.reduce(sum, 5)
-	d := a.reduce(sum, -1)
-	assert b == 15
-	assert c == 20
-	assert d == 14
-	e := [1, 2, 3]
-	f := e.reduce(sub, 0)
-	g := e.reduce(sub, -1)
-	assert f == -6
-	assert g == -7
-}
-
 fn filter_test_helper_1(a int) bool {
 	return a > 3
 }
@@ -650,7 +656,7 @@ fn test_map() {
 	// type switch
 	assert nums.map(it * 10) == [10, 20, 30, 40, 50, 60]
 	assert nums.map(it * it) == [1, 4, 9, 16, 25, 36]
-	assert nums.map('$it') == ['1', '2', '3', '4', '5', '6']
+	assert nums.map('${it}') == ['1', '2', '3', '4', '5', '6']
 	assert nums.map(it % 2 == 0) == [false, true, false, true, false, true]
 	assert strs.map(it.to_upper()) == ['V', 'IS', 'AWESOME']
 	assert strs.map(it == 'awesome') == [false, false, true]
@@ -664,13 +670,13 @@ fn test_map() {
 	assert []int{len: 0}.map(it * 2) == []
 	// nested maps (where it is of same type)
 	assert nums.map(strs.map(int(7)) == [7, 7, 7]) == [true, true, true, true, true, true]
-	assert nums.map('$it' + strs.map('a')[0]) == ['1a', '2a', '3a', '4a', '5a', '6a']
+	assert nums.map('${it}' + strs.map('a')[0]) == ['1a', '2a', '3a', '4a', '5a', '6a']
 	assert nums.map(it + strs.map(int(7))[0]) == [8, 9, 10, 11, 12, 13]
 	assert nums.map(it + strs.map(it.len)[0]) == [2, 3, 4, 5, 6, 7]
 	assert strs.map(it.len + strs.map(it.len)[0]) == [2, 3, 8]
 	// nested (different it types)
-	assert strs.map(it[nums.map(it - it)[0]]) == [byte(`v`), `i`, `a`]
-	assert nums[0..3].map('$it' + strs.map(it)[it - 1]) == ['1v', '2is', '3awesome']
+	assert strs.map(it[nums.map(it - it)[0]]) == [u8(`v`), `i`, `a`]
+	assert nums[0..3].map('${it}' + strs.map(it)[it - 1]) == ['1v', '2is', '3awesome']
 	assert nums.map(map_test_helper_1) == [1, 4, 9, 16, 25, 36]
 	assert [1, 5, 10].map(map_test_helper_1) == [1, 25, 100]
 	assert nums == [1, 2, 3, 4, 5, 6]
@@ -1082,14 +1088,14 @@ fn test_drop() {
 
 fn test_hex() {
 	// array hex
-	st := [byte(`V`), `L`, `A`, `N`, `G`]
+	st := [u8(`V`), `L`, `A`, `N`, `G`]
 	assert st.hex() == '564c414e47'
 	assert st.hex().len == 10
-	st1 := [byte(0x41)].repeat(100)
+	st1 := [u8(0x41)].repeat(100)
 	assert st1.hex() == '41'.repeat(100)
 }
 
-fn test_left_shift_precendence() {
+fn test_left_shift_precedence() {
 	mut arr := []int{}
 	arr << 1 + 1
 	arr << 1 - 1
@@ -1113,10 +1119,10 @@ fn test_array_with_cap() {
 fn test_multi_array_index() {
 	mut a := [][]int{len: 2, init: []int{len: 3, init: 0}}
 	a[0][0] = 1
-	assert '$a' == '[[1, 0, 0], [0, 0, 0]]'
+	assert '${a}' == '[[1, 0, 0], [0, 0, 0]]'
 	mut b := [[0].repeat(3)].repeat(2)
 	b[0][0] = 1
-	assert '$b' == '[[1, 0, 0], [0, 0, 0]]'
+	assert '${b}' == '[[1, 0, 0], [0, 0, 0]]'
 }
 
 fn test_plus_assign_string() {
@@ -1449,7 +1455,7 @@ fn test_array_struct_contains() {
 	coords << coord_1
 	exists := coord_1 in coords
 	not_exists := coord_1 !in coords
-	println('`exists`: $exists and `not exists`: $not_exists')
+	println('`exists`: ${exists} and `not exists`: ${not_exists}')
 	assert exists == true
 	assert not_exists == false
 }
@@ -1484,7 +1490,7 @@ fn test_array_of_array_append() {
 	println(x) // OK
 	x[2] << 123 // RTE
 	println(x)
-	assert '$x' == '[[], [], [123], []]'
+	assert '${x}' == '[[], [], [123], []]'
 }
 
 fn test_array_of_map_insert() {
@@ -1492,12 +1498,12 @@ fn test_array_of_map_insert() {
 	println(x) // OK
 	x[2]['123'] = 123 // RTE
 	println(x)
-	assert '$x' == "[{}, {}, {'123': 123}, {}]"
+	assert '${x}' == "[{}, {}, {'123': 123}, {}]"
 }
 
 fn test_multi_fixed_array_init() {
 	a := [3][3]int{}
-	assert '$a' == '[[0, 0, 0], [0, 0, 0], [0, 0, 0]]'
+	assert '${a}' == '[[0, 0, 0], [0, 0, 0], [0, 0, 0]]'
 }
 
 struct Numbers {
@@ -1549,11 +1555,90 @@ fn test_clone_of_same_elem_size_array() {
 	assert arr2 == [Abc{1, 2, 3}, Abc{2, 3, 4}]
 }
 
-pub fn example<T>(mut arr []T) []T {
+pub fn example[T](mut arr []T) []T {
 	return arr.clone()
 }
 
 fn test_generic_mutable_arrays() {
 	mut arr := [1, 2, 3]
 	assert example(mut arr) == [1, 2, 3]
+}
+
+struct Ok {}
+
+fn test_inline_array_element_access() {
+	println([Ok{}][0])
+	a1 := [Ok{}][0]
+	assert a1 == Ok{}
+
+	println([1][0])
+	a2 := [1][0]
+	assert a2 == 1
+}
+
+//
+
+fn f(x int, y int) []int {
+	return [x, y]
+}
+
+fn test_2d_array_init_with_it() {
+	a := [][]int{len: 6, init: f(index, 2 * index)}
+	assert a == [[0, 0], [1, 2], [2, 4], [3, 6], [4, 8], [5, 10]]
+}
+
+fn test_using_array_name_variable() {
+	array := []int{len: 4, init: index}
+	println(array)
+	assert array == [0, 1, 2, 3]
+}
+
+struct Data {
+mut:
+	sub_map map[int]int
+}
+
+fn test_array_of_struct_with_map_field() {
+	n := 3
+	mut arr := []Data{len: n}
+	for i, mut a in arr {
+		arr[i].sub_map[i] = 1
+		a.sub_map[i] += 1
+	}
+	println(arr)
+	// Note: test_array_of_struct_with_map_field fails sporadically on windows with the default `-gc boehm_full_opt`,
+	// but it *does not* with any other `-gc` setting. The compiler does not matter; tested with tcc, gcc, clang .
+	// The failure is from: `assert arr[0].sub_map == { 0: 2 }`, and it seems to also depend on the previous dump() calls
+	// in this test file. If all of them are commented, it succeeds.
+	// Tested with: rm vlib/builtin/array_test ; xtime v -keepc vlib/builtin/array_test.v ; for((i=0;i<100;i++)); do echo ">>>>>>>>>>>>>>>>>>>>>>>> $i"; ./vlib/builtin/array_test || break ; echo "done with $i"; done
+	// executed in a git bash shell. It usually fails after the first 3-5 iterations.
+	assert arr[0].sub_map == {
+		0: 2
+	}
+	assert arr[1].sub_map == {
+		1: 2
+	}
+	assert arr[2].sub_map == {
+		2: 2
+	}
+}
+
+fn test_reset() {
+	mut a := []int{len: 5, init: index * 10}
+	assert a == [0, 10, 20, 30, 40]
+	unsafe { a.reset() }
+	assert a == [0, 0, 0, 0, 0]
+
+	mut b := []f64{len: 5, init: f64(index) / 10.0}
+	assert b == [0.0, 0.1, 0.2, 0.3, 0.4]
+	unsafe { b.reset() }
+	assert b == [0.0, 0.0, 0.0, 0.0, 0.0]
+
+	mut s := []string{len: 5, init: index.str()}
+	assert s == ['0', '1', '2', '3', '4']
+	unsafe { s.reset() }
+	for e in s {
+		assert e.str == unsafe { nil }
+		assert e.len == 0
+	}
 }

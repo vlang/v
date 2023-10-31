@@ -60,13 +60,13 @@ struct TestEmbedFromModule {
 	flag.Flag
 }
 
-struct BarGeneric<T> {
+struct BarGeneric[T] {
 pub:
 	foo T
 }
 
 struct BarGenericContainer {
-	BarGeneric<int>
+	BarGeneric[int]
 }
 
 fn test_generic_embed() {
@@ -138,7 +138,7 @@ struct App {
 	Context
 }
 
-fn embed_field_access_generic<T>(mut app T) {
+fn embed_field_access_generic[T](mut app T) {
 	app.Context = Context{
 		static_files: app.static_files
 	}
@@ -149,7 +149,7 @@ fn test_embed_field_access_generic() {
 	embed_field_access_generic(mut app)
 }
 
-fn embed_method_generic<T>(app T) bool {
+fn embed_method_generic[T](app T) bool {
 	return app.test()
 }
 
@@ -161,8 +161,8 @@ fn test_embed_method_generic() {
 type Piece = King | Queen
 
 struct Pos {
-	x byte
-	y byte
+	x u8
+	y u8
 }
 
 enum TeamEnum {

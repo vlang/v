@@ -1,0 +1,5 @@
+vlib/v/checker/tests/chan_elem_type_unknown.vv:2:12: error: unknown type `NonExistingType`
+    1 | fn main() {
+    2 |     _ := chan NonExistingType{}
+      |               ~~~~~~~~~~~~~~~
+    3 | }

@@ -1,0 +1,5 @@
+vlib/v/checker/tests/sumtype_define_recursively.vv:1:13: error: sum type `Expr` cannot be defined recursively
+    1 | type Expr = fn ([]Expr) Expr | int
+      |             ~~~~~~~~~~~~~~~~
+    2 | 
+    3 | fn f(exprs []Expr) Expr {

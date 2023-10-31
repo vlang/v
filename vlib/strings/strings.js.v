@@ -1,6 +1,6 @@
 module strings
 
-pub fn repeat(c byte, n int) string {
+pub fn repeat(c u8, n int) string {
 	if n <= 0 {
 		return ''
 	}

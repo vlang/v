@@ -13,14 +13,14 @@ module ttf
 * TODO:
 **********************************************************************/
 pub struct Text_block {
-	x         int  // x postion of the left high corner
-	y         int  // y postion of the left high corner
+	x         int  // x position of the left high corner
+	y         int  // y position of the left high corner
 	w         int  // width of the text block
-	h         int  // heigth of the text block
+	h         int  // height of the text block
 	cut_lines bool = true // force to cut the line if the length is over the text block width
 }
 
-fn (mut dev BitMap) get_justify_space_cw(txt string, w int, block_w int, space_cw int) f32 {
+pub fn (mut dev BitMap) get_justify_space_cw(txt string, w int, block_w int, space_cw int) f32 {
 	num_spaces := txt.count(' ')
 	if num_spaces < 1 {
 		return 0
@@ -103,7 +103,7 @@ pub fn (mut bmp BitMap) draw_text_block(text string, block Text_block) {
 					// bmp.box(x + left_offset,y + y_base - int((bmp.tf.y_min)*bmp.scale), x + txt_w + left_offset, y + y_base - int((bmp.tf.y_max) * bmp.scale), u32(0x00ff_0000) )
 					//---------------
 					y += y_base
-					txt1 = txt1[c..]
+					txt1 = unsafe { txt1[c..] }
 					c = txt1.len
 					//---- DEBUG ----
 					// txt2 := txt1.join(' ')

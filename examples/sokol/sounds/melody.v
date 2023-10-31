@@ -9,7 +9,7 @@ mut:
 	gframe  int         // the current graphical frame
 	frame_0 int         // offset of the current audio frames, relative to the start of the music
 	frames  [2048]f32   // a copy of the last rendered audio frames
-	gg      &gg.Context // used for drawing
+	gg      &gg.Context = unsafe { nil } // used for drawing
 }
 
 fn my_audio_stream_callback(buffer &f32, num_frames int, num_channels int, mut acontext AppState) {
@@ -22,7 +22,7 @@ fn my_audio_stream_callback(buffer &f32, num_frames int, num_channels int, mut a
 		for ch := 0; ch < num_channels; ch++ {
 			idx := frame * num_channels + ch
 			unsafe {
-				a := f32(byte(y) - 127) / 255.0
+				a := f32(u8(y) - 127) / 255.0
 				soundbuffer[idx] = a
 				acontext.frames[idx & 2047] = a
 			}
@@ -61,8 +61,8 @@ fn graphics_frame(mut state AppState) {
 }
 
 [inline]
-fn (mut state AppState) bsample(idx int) byte {
-	return byte(127 + state.frames[(state.gframe + idx) & 2047] * 128)
+fn (mut state AppState) bsample(idx int) u8 {
+	return u8(127 + state.frames[(state.gframe + idx) & 2047] * 128)
 }
 
 fn (mut state AppState) draw() {

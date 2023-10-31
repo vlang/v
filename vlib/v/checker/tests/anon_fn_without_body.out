@@ -1,0 +1,7 @@
+vlib/v/checker/tests/anon_fn_without_body.vv:4:10: error: anonymous function must declare a body
+    2 |
+    3 | fn main() {
+    4 |     func := fn () int
+      |             ~~~~~~~~~
+    5 |
+    6 |     println(func())

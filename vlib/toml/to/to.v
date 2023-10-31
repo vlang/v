@@ -60,7 +60,7 @@ fn any_to_json(a toml.Any) string {
 			mut str := '{'
 			for key, val in a {
 				json_key := json2.Any(key)
-				str += ' $json_key.json_str(): ${any_to_json(val)},'
+				str += ' ${json_key.json_str()}: ${any_to_json(val)},'
 			}
 			str = str.trim_right(',')
 			str += ' }'

@@ -33,7 +33,7 @@ fn (mut s Scalar) pow2k(k int) {
 // If the coordinates are invalid or don't represent a valid point on the curve,
 // set_extended_coordinates returns an error and the receiver is
 // unchanged. Otherwise, set_extended_coordinates returns v.
-fn (mut v Point) set_extended_coordinates(x Element, y Element, z Element, t Element) ?Point {
+fn (mut v Point) set_extended_coordinates(x Element, y Element, z Element, t Element) !Point {
 	if !is_on_curve(x, y, z, t) {
 		return error('edwards25519: invalid point coordinates')
 	}
@@ -86,14 +86,14 @@ fn is_on_curve(x Element, y Element, z Element, t Element) bool {
 // Note that bytes_montgomery only encodes the u-coordinate, so v and -v encode
 // to the same value. If v is the identity point, bytes_montgomery returns 32
 // zero bytes, analogously to the X25519 function.
-pub fn (mut v Point) bytes_montgomery() []byte {
+pub fn (mut v Point) bytes_montgomery() []u8 {
 	// This function is outlined to make the allocations inline in the caller
 	// rather than happen on the heap.
-	mut buf := [32]byte{}
+	mut buf := [32]u8{}
 	return v.bytes_montgomery_generic(mut buf)
 }
 
-fn (mut v Point) bytes_montgomery_generic(mut buf [32]byte) []byte {
+fn (mut v Point) bytes_montgomery_generic(mut buf [32]u8) []u8 {
 	check_initialized(v)
 
 	// RFC 7748, Section 4.1 provides the bilinear map to calculate the
@@ -326,7 +326,7 @@ pub fn (mut v Point) vartime_multiscalar_mult(scalars []Scalar, points []Point) 
 	// at each iteration and checking whether there is a nonzero
 	// coefficient to look up a multiple of.
 	//
-	// Skip trying to find the first nonzero coefficent, because
+	// Skip trying to find the first nonzero coefficient, because
 	// searching might be more work than a few extra doublings.
 	// k == i, l == j
 	for k := 255; k >= 0; k-- {

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
@@ -76,7 +76,7 @@ SUBCMD:
 
 // Snooped from cmd/v/v.v, vlib/v/pref/pref.v
 const (
-	auto_complete_commands     = [
+	auto_complete_commands      = [
 		// simple_cmd
 		'ast',
 		'doc',
@@ -95,6 +95,7 @@ const (
 		'doctor',
 		'fmt',
 		'gret',
+		'ls',
 		'repl',
 		'self',
 		'setup-freetype',
@@ -114,7 +115,6 @@ const (
 		'help',
 		'new',
 		'init',
-		'complete',
 		'translate',
 		'self',
 		'search',
@@ -130,8 +130,13 @@ const (
 		'run',
 		'build',
 		'build-module',
+		'missdoc',
 	]
-	auto_complete_flags        = [
+	// Entries in the flag arrays below should be entered as is:
+	// * Short flags, e.g.: "-v", should be entered: '-v'
+	// * Long flags, e.g.: "--version", should be entered: '--version'
+	// * Single-dash flags, e.g.: "-version", should be entered: '-version'
+	auto_complete_flags         = [
 		'-apk',
 		'-show-timings',
 		'-check-syntax',
@@ -150,6 +155,8 @@ const (
 		'-autofree',
 		'-compress',
 		'-freestanding',
+		'-no-builtin',
+		'-no-parallel',
 		'-no-preludes',
 		'-prof',
 		'-profile',
@@ -190,7 +197,7 @@ const (
 		'-version',
 		'--version',
 	]
-	auto_complete_flags_doc    = [
+	auto_complete_flags_doc     = [
 		'-all',
 		'-f',
 		'-h',
@@ -209,7 +216,7 @@ const (
 		'-s',
 		'-l',
 	]
-	auto_complete_flags_fmt    = [
+	auto_complete_flags_fmt     = [
 		'-c',
 		'-diff',
 		'-l',
@@ -217,7 +224,7 @@ const (
 		'-debug',
 		'-verify',
 	]
-	auto_complete_flags_bin2v  = [
+	auto_complete_flags_bin2v   = [
 		'-h',
 		'--help',
 		'-m',
@@ -227,22 +234,46 @@ const (
 		'-w',
 		'--write',
 	]
-	auto_complete_flags_shader = [
-		'help',
-		'h',
-		'force-update',
-		'u',
-		'verbose',
-		'v',
-		'slang',
-		'l',
-		'output',
-		'o',
+	auto_complete_flags_shader  = [
+		'--help',
+		'-h',
+		'--force-update',
+		'-u',
+		'--verbose',
+		'-v',
+		'--slang',
+		'-l',
+		'--output',
+		'-o',
 	]
-	auto_complete_flags_self   = [
+	auto_complete_flags_missdoc = [
+		'--help',
+		'-h',
+		'--tags',
+		'-t',
+		'--deprecated',
+		'-d',
+		'--private',
+		'-p',
+		'--no-line-numbers',
+		'-n',
+		'--exclude',
+		'-e',
+		'--relative-paths',
+		'-r',
+		'--js',
+		'--verify',
+		'--diff',
+	]
+	auto_complete_flags_bump    = [
+		'--patch',
+		'--minor',
+		'--major',
+	]
+	auto_complete_flags_self    = [
 		'-prod',
 	]
-	auto_complete_compilers    = [
+	auto_complete_compilers     = [
 		'cc',
 		'gcc',
 		'tcc',
@@ -265,12 +296,12 @@ fn auto_complete(args []string) {
 					println(setup_for_shell(shell_name))
 					exit(0)
 				}
-				eprintln('Unknown shell ${shell_name}. Supported shells are: $auto_complete_shells')
+				eprintln('Unknown shell ${shell_name}. Supported shells are: ${auto_complete_shells}')
 				exit(1)
 			}
 			eprintln('auto completion require arguments to work.')
 		} else {
-			eprintln('auto completion failed for "$args".')
+			eprintln('auto completion failed for "${args}".')
 		}
 		exit(1)
 	}
@@ -279,7 +310,7 @@ fn auto_complete(args []string) {
 	match sub {
 		'setup' {
 			if sub_args.len <= 1 || sub_args[1] !in auto_complete_shells {
-				eprintln('please specify a shell to setup auto completion for ($auto_complete_shells).')
+				eprintln('please specify a shell to setup auto completion for (${auto_complete_shells}).')
 				exit(1)
 			}
 			shell := sub_args[1]
@@ -292,7 +323,7 @@ fn auto_complete(args []string) {
 			mut lines := []string{}
 			list := auto_complete_request(sub_args[1..])
 			for entry in list {
-				lines << "COMPREPLY+=('$entry')"
+				lines << "COMPREPLY+=('${entry}')"
 			}
 			println(lines.join('\n'))
 		}
@@ -303,7 +334,7 @@ fn auto_complete(args []string) {
 			mut lines := []string{}
 			list := auto_complete_request(sub_args[1..])
 			for entry in list {
-				lines << '$entry'
+				lines << '${entry}'
 			}
 			println(lines.join('\n'))
 		}
@@ -312,11 +343,19 @@ fn auto_complete(args []string) {
 				exit(0)
 			}
 			mut lines := []string{}
+			mut dirs := []string{}
+			mut files := []string{}
 			list := auto_complete_request(sub_args[1..])
 			for entry in list {
-				lines << 'compadd -U -S' + '""' + ' -- ' + "'$entry';"
+				match true {
+					os.is_dir(entry) { dirs << entry }
+					os.is_file(entry) { files << entry }
+					else { lines << entry }
+				}
 			}
-			println(lines.join('\n'))
+			println('compadd -q -- ${lines.join(' ')}')
+			println('compadd -J "dirs" -X "directory" -d -- ${dirs.join(' ')}')
+			println('compadd -J "files" -X "file" -f -- ${files.join(' ')}')
 		}
 		'-h', '--help' {
 			println(help_text)
@@ -326,8 +365,8 @@ fn auto_complete(args []string) {
 	exit(0)
 }
 
-// append_separator_if_dir is a utility function.that returns the input `path` appended an
-// OS dependant path separator if the `path` is a directory.
+// append_separator_if_dir returns the input `path` with an appended
+// `/` or `\`, depending on the platform, when `path` is a directory.
 fn append_separator_if_dir(path string) string {
 	if os.is_dir(path) && !path.ends_with(os.path_separator) {
 		return path + os.path_separator
@@ -348,7 +387,7 @@ fn nearest_path_or_root(path string) string {
 	return fixed_path
 }
 
-// auto_complete_request retuns a list of completions resolved from a full argument list.
+// auto_complete_request returns a list of completions resolved from a full argument list.
 fn auto_complete_request(args []string) []string {
 	// Using space will ensure a uniform input in cases where the shell
 	// returns the completion input as a string (['v','run'] vs. ['v run']).
@@ -372,12 +411,17 @@ fn auto_complete_request(args []string) []string {
 			parent_command = parts[i]
 			break
 		}
-		get_flags := fn (base []string, flag string) []string {
-			if flag.len == 1 { return base
-			 } else { return base.filter(it.starts_with(flag))
-			 }
-		}
-		if part.starts_with('-') { // 'v -<tab>' -> flags.
+		if part.starts_with('-') { // 'v [subcmd] -<tab>' or 'v [subcmd] --<tab>'-> flags.
+			get_flags := fn (base []string, flag string) []string {
+				mut results := []string{}
+				for entry in base {
+					if entry.starts_with(flag) {
+						results << entry
+					}
+				}
+				return results
+			}
+
 			match parent_command {
 				'bin2v' { // 'v bin2v -<tab>'
 					list = get_flags(auto_complete_flags_bin2v, part)
@@ -397,6 +441,12 @@ fn auto_complete_request(args []string) []string {
 				'shader' { // 'v shader -<tab>' -> flags.
 					list = get_flags(auto_complete_flags_shader, part)
 				}
+				'missdoc' { // 'v missdoc -<tab>' -> flags.
+					list = get_flags(auto_complete_flags_missdoc, part)
+				}
+				'bump' { // 'v bump -<tab>' -> flags.
+					list = get_flags(auto_complete_flags_bump, part)
+				}
 				else {
 					for flag in auto_complete_flags {
 						if flag == part {
@@ -413,6 +463,11 @@ fn auto_complete_request(args []string) []string {
 						}
 					}
 				}
+			}
+			// Clear the list if the result is identical to the part examined
+			// (the flag must have already been completed)
+			if list.len == 1 && part == list[0] {
+				list.clear()
 			}
 		} else {
 			match part {
@@ -472,6 +527,17 @@ fn auto_complete_request(args []string) []string {
 					}
 				}
 			} else {
+				// Handle special case, where there is only one file in the directory
+				// being completed - if it can be resolved we return that since
+				// handling it in the generalized logic below will result in
+				// more complexity.
+				if entries.len == 1 && os.is_file(os.join_path(ls_path, entries[0])) {
+					mut keep_input_path_format := ls_path
+					if !part.starts_with('./') && ls_path.starts_with('./') {
+						keep_input_path_format = keep_input_path_format.all_after('./')
+					}
+					return [os.join_path(keep_input_path_format, entries[0])]
+				}
 				for entry in entries {
 					if collect_all || entry.starts_with(last) {
 						list << append_separator_if_dir(entry)
@@ -496,7 +562,7 @@ _v_completions() {
 	local limit
 	# Send all words up to the word the cursor is currently on
 	let limit=1+\$COMP_CWORD
-	src=\$($vexe complete bash \$(printf "%s\\n" \${COMP_WORDS[@]: 0:\$limit}))
+	src=\$(${vexe} complete bash \$(printf "%s\\n" \${COMP_WORDS[@]: 0:\$limit}))
 	if [[ \$? == 0 ]]; then
 		eval \${src}
 		#echo \${src}
@@ -510,7 +576,7 @@ complete -o nospace -F _v_completions v
 			setup = '
 function __v_completions
 	# Send all words up to the one before the cursor
-	$vexe complete fish (commandline -cop)
+	${vexe} complete fish (commandline -cop)
 end
 complete -f -c v -a "(__v_completions)"
 '
@@ -521,7 +587,7 @@ complete -f -c v -a "(__v_completions)"
 _v() {
 	local src
 	# Send all words up to the word the cursor is currently on
-	src=\$($vexe complete zsh \$(printf "%s\\n" \${(@)words[1,\$CURRENT]}))
+	src=\$(${vexe} complete zsh \$(printf "%s\\n" \${(@)words[1,\$CURRENT]}))
 	if [[ \$? == 0 ]]; then
 		eval \${src}
 		#echo \${src}
@@ -534,7 +600,7 @@ compdef _v v
 			setup = '
 Register-ArgumentCompleter -Native -CommandName v -ScriptBlock {
 	param(\$commandName, \$wordToComplete, \$cursorPosition)
-		$vexe complete powershell "\$wordToComplete" | ForEach-Object {
+		${vexe} complete powershell "\$wordToComplete" | ForEach-Object {
 			[System.Management.Automation.CompletionResult]::new(\$_, \$_, \'ParameterValue\', \$_)
 		}
 }

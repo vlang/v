@@ -13,7 +13,7 @@ import v.pref
 // Note: calling this is expensive, so keep the result, instead of recomputing it.
 // TODO: turn this to a Doc method, so that the new_vdoc_preferences call here can
 // be removed.
-fn get_parent_mod(input_dir string) ?string {
+fn get_parent_mod(input_dir string) !string {
 	// windows root path is C: or D:
 	if input_dir.len == 2 && input_dir[1] == `:` {
 		return error('root folder reached')
@@ -49,14 +49,14 @@ fn get_parent_mod(input_dir string) ?string {
 	}
 	parent_mod := get_parent_mod(base_dir) or { return input_dir_name }
 	if parent_mod.len > 0 {
-		return '${parent_mod}.$file_ast.mod.name'
+		return '${parent_mod}.${file_ast.mod.name}'
 	}
 	return file_ast.mod.name
 }
 
 // lookup_module_with_path looks up the path of a given module name.
 // Throws an error if the module was not found.
-pub fn lookup_module_with_path(mod string, base_path string) ?string {
+pub fn lookup_module_with_path(mod string, base_path string) !string {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
 	mod_path := mod.replace('.', os.path_separator)
@@ -74,17 +74,17 @@ pub fn lookup_module_with_path(mod string, base_path string) ?string {
 		}
 		return path
 	}
-	return error('module "$mod" not found.')
+	return error('module "${mod}" not found.')
 }
 
 // lookup_module returns the result of the `lookup_module_with_path`
 // but with the current directory as the provided base lookup path.
-pub fn lookup_module(mod string) ?string {
+pub fn lookup_module(mod string) !string {
 	return lookup_module_with_path(mod, os.dir('.'))
 }
 
 // generate_from_mod generates a documentation from a specific module.
-pub fn generate_from_mod(module_name string, pub_only bool, with_comments bool) ?Doc {
-	mod_path := lookup_module(module_name) ?
+pub fn generate_from_mod(module_name string, pub_only bool, with_comments bool) !Doc {
+	mod_path := lookup_module(module_name)!
 	return generate(mod_path, pub_only, with_comments, .auto)
 }

@@ -26,9 +26,9 @@ const (
 )
 
 fn error_msg(message string, val string) string {
-	mut msg := 'net.urllib.$message'
+	mut msg := 'net.urllib.${message}'
 	if val != '' {
-		msg = '$msg ($val)'
+		msg = '${msg} (${val})'
 	}
 	return msg
 }
@@ -38,7 +38,7 @@ fn error_msg(message string, val string) string {
 //
 // Please be informed that for now should_escape does not check all
 // reserved characters correctly. See golang.org/issue/5684.
-fn should_escape(c byte, mode EncodingMode) bool {
+fn should_escape(c u8, mode EncodingMode) bool {
 	// §2.3 Unreserved characters (alphanum)
 	if (`a` <= c && c <= `z`) || (`A` <= c && c <= `Z`) || (`0` <= c && c <= `9`) {
 		return false
@@ -127,7 +127,7 @@ fn should_escape(c byte, mode EncodingMode) bool {
 // hex-decoded byte 0xAB.
 // It returns an error if any % is not followed by two hexadecimal
 // digits.
-pub fn query_unescape(s string) ?string {
+pub fn query_unescape(s string) !string {
 	return unescape(s, .encode_query_component)
 }
 
@@ -138,13 +138,13 @@ pub fn query_unescape(s string) ?string {
 //
 // path_unescape is identical to query_unescape except that it does not
 // unescape '+' to ' ' (space).
-pub fn path_unescape(s string) ?string {
+pub fn path_unescape(s string) !string {
 	return unescape(s, .encode_path_segment)
 }
 
 // unescape unescapes a string; the mode specifies
 // which section of the URL string is being unescaped.
-fn unescape(s_ string, mode EncodingMode) ?string {
+fn unescape(s_ string, mode EncodingMode) !string {
 	mut s := s_
 	// Count %, check that they're well-formed.
 	mut n := 0
@@ -190,7 +190,7 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 					if i + 3 >= s.len {
 						return error(error_msg('unescape: invalid escape sequence', ''))
 					}
-					v := ((unhex(s[i + 1]) << byte(4)) | unhex(s[i + 2]))
+					v := ((unhex(s[i + 1]) << u8(4)) | unhex(s[i + 2]))
 					if s[i..i + 3] != '%25' && v != ` ` && should_escape(v, .encode_host) {
 						error(error_msg(urllib.err_msg_escape, s[i..i + 3]))
 					}
@@ -211,7 +211,7 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 		}
 	}
 	if n == 0 && !has_plus {
-		return '$s' // TODO `return s` once an autofree bug is fixed
+		return '${s}' // TODO `return s` once an autofree bug is fixed
 	}
 	if s.len < 2 * n {
 		return error(error_msg('unescape: invalid escape sequence', ''))
@@ -224,7 +224,7 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 				if i + 2 >= s.len {
 					return error(error_msg('unescape: invalid escape sequence', ''))
 				}
-				t.write_string(((unhex(s[i + 1]) << byte(4)) | unhex(s[i + 2])).ascii_str())
+				t.write_string(((unhex(s[i + 1]) << u8(4)) | unhex(s[i + 2])).ascii_str())
 				i += 2
 			}
 			`+` {
@@ -257,7 +257,7 @@ pub fn path_escape(s string) string {
 fn escape(s string, mode EncodingMode) string {
 	mut space_count := 0
 	mut hex_count := 0
-	mut c := byte(0)
+	mut c := u8(0)
 	for i in 0 .. s.len {
 		c = s[i]
 		if should_escape(c, mode) {
@@ -272,7 +272,7 @@ fn escape(s string, mode EncodingMode) string {
 		return s
 	}
 	required := s.len + 2 * hex_count
-	mut t := []byte{len: required}
+	mut t := []u8{len: required}
 	if hex_count == 0 {
 		copy(mut t, s.bytes())
 		for i in 0 .. s.len {
@@ -303,13 +303,9 @@ fn escape(s string, mode EncodingMode) string {
 }
 
 // A URL represents a parsed URL (technically, a URI reference).
-//
 // The general form represented is:
-//
 // [scheme:][//[userinfo@]host][/]path[?query][#fragment]
-//
 // URLs that do not start with a slash after the scheme are interpreted as:
-//
 // scheme:opaque[?query][#fragment]
 //
 // Note that the path field is stored in decoded form: /%47%6f%2f becomes /Go/.
@@ -324,13 +320,18 @@ pub struct URL {
 pub mut:
 	scheme      string
 	opaque      string    // encoded opaque data
-	user        &Userinfo // username and password information
+	user        &Userinfo = unsafe { nil } // username and password information
 	host        string    // host or host:port
 	path        string    // path (relative paths may omit leading slash)
 	raw_path    string    // encoded path hint (see escaped_path method)
 	force_query bool      // append a query ('?') even if raw_query is empty
 	raw_query   string    // encoded query values, without '?'
 	fragment    string    // fragment for references, without '#'
+}
+
+// debug returns a string representation of *ALL* the fields of the given URL
+pub fn (url &URL) debug() string {
+	return 'URL{\n  scheme: ${url.scheme}\n  opaque: ${url.opaque}\n  user: ${url.user}\n  host: ${url.host}\n  path: ${url.path}\n  raw_path: ${url.raw_path}\n  force_query: ${url.force_query}\n  raw_query: ${url.raw_query}\n  fragment: ${url.fragment}\n}'
 }
 
 // user returns a Userinfo containing the provided username
@@ -386,7 +387,7 @@ fn (u &Userinfo) str() string {
 // Maybe rawurl is of the form scheme:path.
 // (scheme must be [a-zA-Z][a-zA-Z0-9+-.]*)
 // If so, return [scheme, path]; else return ['', rawurl]
-fn split_by_scheme(rawurl string) ?[]string {
+fn split_by_scheme(rawurl string) ![]string {
 	for i in 0 .. rawurl.len {
 		c := rawurl[i]
 		if (`a` <= c && c <= `z`) || (`A` <= c && c <= `Z`) {
@@ -409,16 +410,16 @@ fn split_by_scheme(rawurl string) ?[]string {
 	return ['', rawurl]
 }
 
-fn get_scheme(rawurl string) ?string {
+fn get_scheme(rawurl string) !string {
 	split := split_by_scheme(rawurl) or { return err.msg() }
 	return split[0]
 }
 
-// split slices s into two substrings separated by the first occurence of
+// split slices s into two substrings separated by the first occurrence of
 // sep. If cutc is true then sep is included with the second substring.
 // If sep does not occur in s then s and the empty string is returned.
-fn split(s string, sep byte, cutc bool) (string, string) {
-	i := s.index_byte(sep)
+fn split(s string, sep u8, cutc bool) (string, string) {
+	i := s.index_u8(sep)
 	if i < 0 {
 		return s, ''
 	}
@@ -434,7 +435,7 @@ fn split(s string, sep byte, cutc bool) (string, string) {
 // (starting with a scheme). Trying to parse a hostname and path
 // without a scheme is invalid but may not necessarily return an
 // error, due to parsing ambiguities.
-pub fn parse(rawurl string) ?URL {
+pub fn parse(rawurl string) !URL {
 	// Cut off #frag
 	u, frag := split(rawurl, `#`, true)
 	mut url := parse_url(u, false) or { return error(error_msg(urllib.err_msg_parse, u)) }
@@ -452,7 +453,7 @@ pub fn parse(rawurl string) ?URL {
 // only as an absolute URI or an absolute path.
 // The string rawurl is assumed not to have a #fragment suffix.
 // (Web browsers strip #fragment before sending the URL to a web server.)
-fn parse_request_uri(rawurl string) ?URL {
+fn parse_request_uri(rawurl string) !URL {
 	return parse_url(rawurl, true)
 }
 
@@ -461,8 +462,8 @@ fn parse_request_uri(rawurl string) ?URL {
 // in which case only absolute URLs or path-absolute relative URLs are allowed.
 // If via_request is false, all forms of relative URLs are allowed.
 [manualfree]
-fn parse_url(rawurl string, via_request bool) ?URL {
-	if string_contains_ctl_byte(rawurl) {
+fn parse_url(rawurl string, via_request bool) !URL {
+	if string_contains_ctl_u8(rawurl) {
 		return error(error_msg('parse_url: invalid control character in URL', rawurl))
 	}
 	if rawurl == '' && via_request {
@@ -477,7 +478,7 @@ fn parse_url(rawurl string, via_request bool) ?URL {
 	}
 	// Split off possible leading 'http:', 'mailto:', etc.
 	// Cannot contain escaped characters.
-	p := split_by_scheme(rawurl) ?
+	p := split_by_scheme(rawurl)!
 	url.scheme = p[0]
 	mut rest := p[1]
 	url.scheme = url.scheme.to_lower()
@@ -516,7 +517,7 @@ fn parse_url(rawurl string, via_request bool) ?URL {
 	if ((url.scheme != '' || !via_request) && !rest.starts_with('///')) && rest.starts_with('//') {
 		authority, r := split(rest[2..], `/`, false)
 		rest = r
-		a := parse_authority(authority) ?
+		a := parse_authority(authority)!
 		url.user = a.user
 		url.host = a.host
 	}
@@ -524,24 +525,24 @@ fn parse_url(rawurl string, via_request bool) ?URL {
 	// raw_path is a hint of the encoding of path. We don't want to set it if
 	// the default escaping of path is equivalent, to help make sure that people
 	// don't rely on it in general.
-	url.set_path(rest) ?
+	url.set_path(rest)!
 	return url
 }
 
 struct ParseAuthorityRes {
-	user &Userinfo
+	user &Userinfo = unsafe { nil }
 	host string
 }
 
-fn parse_authority(authority string) ?ParseAuthorityRes {
+fn parse_authority(authority string) !ParseAuthorityRes {
 	i := authority.last_index('@') or { -1 }
 	mut host := ''
 	mut zuser := user('')
 	if i < 0 {
-		h := parse_host(authority) ?
+		h := parse_host(authority)!
 		host = h
 	} else {
-		h := parse_host(authority[i + 1..]) ?
+		h := parse_host(authority[i + 1..])!
 		host = h
 	}
 	if i < 0 {
@@ -555,14 +556,14 @@ fn parse_authority(authority string) ?ParseAuthorityRes {
 		return error(error_msg('parse_authority: invalid userinfo', ''))
 	}
 	if !userinfo.contains(':') {
-		u := unescape(userinfo, .encode_user_password) ?
+		u := unescape(userinfo, .encode_user_password)!
 		userinfo = u
 		zuser = user(userinfo)
 	} else {
 		mut username, mut password := split(userinfo, `:`, true)
-		u := unescape(username, .encode_user_password) ?
+		u := unescape(username, .encode_user_password)!
 		username = u
-		p := unescape(password, .encode_user_password) ?
+		p := unescape(password, .encode_user_password)!
 		password = p
 		zuser = user_password(username, password)
 	}
@@ -574,7 +575,7 @@ fn parse_authority(authority string) ?ParseAuthorityRes {
 
 // parse_host parses host as an authority without user
 // information. That is, as host[:port].
-fn parse_host(host string) ?string {
+fn parse_host(host string) !string {
 	if host.starts_with('[') {
 		// parse an IP-Literal in RFC 3986 and RFC 6874.
 		// E.g., '[fe80::1]', '[fe80::1%25en0]', '[fe80::1]:80'.
@@ -583,7 +584,7 @@ fn parse_host(host string) ?string {
 		}
 		mut colon_port := host[i + 1..]
 		if !valid_optional_port(colon_port) {
-			return error(error_msg('parse_host: invalid port $colon_port after host ',
+			return error(error_msg('parse_host: invalid port ${colon_port} after host ',
 				''))
 		}
 		// RFC 6874 defines that %25 (%-encoded percent) introduces
@@ -598,12 +599,11 @@ fn parse_host(host string) ?string {
 			host3 := unescape(host[i..], .encode_host) or { return err.msg() }
 			return host1 + host2 + host3
 		}
-		if idx := host.last_index(':') {
-			colon_port = host[idx..]
-			if !valid_optional_port(colon_port) {
-				return error(error_msg('parse_host: invalid port $colon_port after host ',
-					''))
-			}
+	} else if i := host.last_index(':') {
+		colon_port := host[i..]
+		if !valid_optional_port(colon_port) {
+			return error(error_msg('parse_host: invalid port ${colon_port} after host ',
+				''))
 		}
 	}
 	h := unescape(host, .encode_host) or { return err.msg() }
@@ -620,8 +620,8 @@ fn parse_host(host string) ?string {
 // - set_path('/foo%2fbar') will set path='/foo/bar' and raw_path='/foo%2fbar'
 // set_path will return an error only if the provided path contains an invalid
 // escaping.
-pub fn (mut u URL) set_path(p string) ?bool {
-	u.path = unescape(p, .encode_path) ?
+pub fn (mut u URL) set_path(p string) !bool {
+	u.path = unescape(p, .encode_path)!
 	u.raw_path = if p == escape(u.path, .encode_path) { '' } else { p }
 	return true
 }
@@ -746,11 +746,11 @@ pub fn (u URL) str() string {
 			// it would be mistaken for a scheme name. Such a segment must be
 			// preceded by a dot-segment (e.g., './this:that') to make a relative-
 			// path reference.
-			i := path.index_byte(`:`)
+			i := path.index_u8(`:`)
 			if i > -1 {
 				// TODO remove this when autofree handles tmp
 				// expressions like this
-				if i > -1 && path[..i].index_byte(`/`) == -1 {
+				if i > -1 && path[..i].index_u8(`/`) == -1 {
 					buf.write_string('./')
 				}
 			}
@@ -781,9 +781,9 @@ pub fn (u URL) str() string {
 // Query is expected to be a list of key=value settings separated by
 // ampersands or semicolons. A setting without an equals sign is
 // interpreted as a key set to an empty value.
-pub fn parse_query(query string) ?Values {
+pub fn parse_query(query string) !Values {
 	mut m := new_values()
-	parse_query_values(mut m, query) ?
+	parse_query_values(mut m, query)!
 	return m
 }
 
@@ -795,7 +795,7 @@ fn parse_query_silent(query string) Values {
 	return m
 }
 
-fn parse_query_values(mut m Values, query string) ?bool {
+fn parse_query_values(mut m Values, query string) !bool {
 	mut had_error := false
 	mut q := query
 	for q != '' {
@@ -889,7 +889,7 @@ fn resolve_path(base string, ref string) string {
 			}
 			'..' {
 				if dst.len > 0 {
-					dst = dst[..dst.len - 1]
+					dst = unsafe { dst[..dst.len - 1] }
 				}
 			}
 			else {
@@ -914,8 +914,8 @@ pub fn (u &URL) is_abs() bool {
 // parse parses a URL in the context of the receiver. The provided URL
 // may be relative or absolute. parse returns nil, err on parse
 // failure, otherwise its return value is the same as resolve_reference.
-pub fn (u &URL) parse(ref string) ?URL {
-	refurl := parse(ref) ?
+pub fn (u &URL) parse(ref string) !URL {
+	refurl := parse(ref)!
 	return u.resolve_reference(refurl)
 }
 
@@ -925,7 +925,7 @@ pub fn (u &URL) parse(ref string) ?URL {
 // URL instance, even if the returned URL is identical to either the
 // base or reference. If ref is an absolute URL, then resolve_reference
 // ignores base and returns a copy of ref.
-pub fn (u &URL) resolve_reference(ref &URL) ?URL {
+pub fn (u &URL) resolve_reference(ref &URL) !URL {
 	mut url := *ref
 	if ref.scheme == '' {
 		url.scheme = u.scheme
@@ -934,7 +934,7 @@ pub fn (u &URL) resolve_reference(ref &URL) ?URL {
 		// The 'absoluteURI' or 'net_path' cases.
 		// We can ignore the error from set_path since we know we provided a
 		// validly-escaped path.
-		url.set_path(resolve_path(ref.escaped_path(), '')) ?
+		url.set_path(resolve_path(ref.escaped_path(), ''))!
 		return url
 	}
 	if ref.opaque != '' {
@@ -952,7 +952,7 @@ pub fn (u &URL) resolve_reference(ref &URL) ?URL {
 	// The 'abs_path' or 'rel_path' cases.
 	url.host = u.host
 	url.user = u.user
-	url.set_path(resolve_path(u.escaped_path(), ref.escaped_path())) ?
+	url.set_path(resolve_path(u.escaped_path(), ref.escaped_path()))!
 	return url
 }
 
@@ -1003,10 +1003,10 @@ pub fn (u &URL) port() string {
 // split_host_port separates host and port. If the port is not valid, it returns
 // the entire input as host, and it doesn't check the validity of the host.
 // Per RFC 3986, it requires ports to be numeric.
-fn split_host_port(hostport string) (string, string) {
+pub fn split_host_port(hostport string) (string, string) {
 	mut host := hostport
 	mut port := ''
-	colon := host.last_index_byte(`:`)
+	colon := host.last_index_u8(`:`)
 	if colon != -1 {
 		if valid_optional_port(host[colon..]) {
 			port = host[colon + 1..]
@@ -1052,7 +1052,7 @@ pub fn valid_userinfo(s string) bool {
 }
 
 // string_contains_ctl_byte reports whether s contains any ASCII control character.
-fn string_contains_ctl_byte(s string) bool {
+fn string_contains_ctl_u8(s string) bool {
 	for i in 0 .. s.len {
 		b := s[i]
 		if b < ` ` || b == 0x7f {
@@ -1062,7 +1062,7 @@ fn string_contains_ctl_byte(s string) bool {
 	return false
 }
 
-pub fn ishex(c byte) bool {
+pub fn ishex(c u8) bool {
 	if `0` <= c && c <= `9` {
 		return true
 	} else if `a` <= c && c <= `f` {
@@ -1073,7 +1073,7 @@ pub fn ishex(c byte) bool {
 	return false
 }
 
-fn unhex(c byte) byte {
+fn unhex(c u8) u8 {
 	if `0` <= c && c <= `9` {
 		return c - `0`
 	} else if `a` <= c && c <= `f` {

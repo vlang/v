@@ -7,7 +7,7 @@ import v.ast
 import v.pref
 
 const (
-	vexe          = pref.vexe_path()
+	vexe          = os.real_path(os.getenv_opt('VEXE') or { @VEXE })
 	vroot         = os.dir(vexe)
 	support_color = term.can_show_color_on_stderr() && term.can_show_color_on_stdout()
 	ecode_timeout = 101
@@ -26,6 +26,7 @@ mut:
 	is_verbose bool
 	is_silent  bool // do not print any status/progress during processing, just failures.
 	is_linear  bool // print linear progress log, without trying to do term cursor up + \r msg. Easier to use in a CI job
+	show_src   bool // show the partial source, that cause the parser to panic/fault, when it happens.
 	timeout_ms int
 	myself     string   // path to this executable, so the supervisor can launch worker processes
 	all_paths  []string // all files given to the supervisor process
@@ -35,7 +36,7 @@ mut:
 	// parser context in the worker processes:
 	table      ast.Table
 	scope      ast.Scope
-	pref       &pref.Preferences
+	pref       &pref.Preferences = unsafe { nil }
 	period_ms  int  // print periodic progress
 	stop_print bool // stop printing the periodic progress
 }
@@ -44,7 +45,7 @@ fn main() {
 	mut context := process_cli_args()
 	if context.is_worker {
 		pid := os.getpid()
-		context.log('> worker ${pid:5} starts parsing at cut_index: ${context.cut_index:5} | $context.path')
+		context.log('> worker ${pid:5} starts parsing at cut_index: ${context.cut_index:5} | ${context.path}')
 		// A worker's process job is to try to parse a single given file in context.path.
 		// It can crash/panic freely.
 		context.table = ast.new_table()
@@ -54,15 +55,15 @@ fn main() {
 		context.pref = &pref.Preferences{
 			output_mode: .silent
 		}
-		mut source := os.read_file(context.path) ?
+		mut source := os.read_file(context.path)!
 		source = source[..context.cut_index]
 
-		go fn (ms int) {
+		spawn fn (ms int) {
 			time.sleep(ms * time.millisecond)
 			exit(ecode_timeout)
 		}(context.timeout_ms)
 		_ := parser.parse_text(source, context.path, context.table, .skip_comments, context.pref)
-		context.log('> worker ${pid:5} finished parsing $context.path')
+		context.log('> worker ${pid:5} finished parsing ${context.path}')
 		exit(0)
 	} else {
 		// The process supervisor should NOT crash/panic, unlike the workers.
@@ -110,6 +111,7 @@ fn process_cli_args() &Context {
 	context.is_verbose = fp.bool('verbose', `v`, false, 'Be more verbose.')
 	context.is_silent = fp.bool('silent', `S`, false, 'Do not print progress at all.')
 	context.is_linear = fp.bool('linear', `L`, false, 'Print linear progress log. Suitable for CI.')
+	context.show_src = fp.bool('show_source', `E`, false, 'Print the partial source code that caused a fault/panic in the parser.')
 	context.period_ms = fp.int('progress_ms', `s`, 500, 'print a status report periodically, the period is given in milliseconds.')
 	context.is_worker = fp.bool('worker', `w`, false, 'worker specific flag - is this a worker process, that can crash/panic.')
 	context.cut_index = fp.int('cut_index', `c`, 1, 'worker specific flag - cut index in the source file, everything before that will be parsed, the rest - ignored.')
@@ -121,7 +123,7 @@ fn process_cli_args() &Context {
 		exit(0)
 	}
 	context.all_paths = fp.finalize() or {
-		context.error(err.msg)
+		context.error(err.msg())
 		exit(1)
 	}
 	if !context.is_worker && context.all_paths.len == 0 {
@@ -161,17 +163,17 @@ fn (mut context Context) log(msg string) {
 	if context.is_verbose {
 		label := yellow('info')
 		ts := time.now().format_ss_micro()
-		eprintln('$label: $ts | $msg')
+		eprintln('${label}: ${ts} | ${msg}')
 	}
 }
 
 fn (mut context Context) error(msg string) {
 	label := red('error')
-	eprintln('$label: $msg')
+	eprintln('${label}: ${msg}')
 }
 
 fn (mut context Context) expand_all_paths() {
-	context.log('> context.all_paths before: $context.all_paths')
+	context.log('> context.all_paths before: ${context.all_paths}')
 	mut files := []string{}
 	for path in context.all_paths {
 		if os.is_dir(path) {
@@ -180,24 +182,24 @@ fn (mut context Context) expand_all_paths() {
 			continue
 		}
 		if !path.ends_with('.v') && !path.ends_with('.vv') && !path.ends_with('.vsh') {
-			context.error('`v test-parser` can only be used on .v/.vv/.vsh files.\nOffending file: "$path".')
+			context.error('`v test-parser` can only be used on .v/.vv/.vsh files.\nOffending file: "${path}".')
 			continue
 		}
 		if !os.exists(path) {
-			context.error('"$path" does not exist.')
+			context.error('"${path}" does not exist.')
 			continue
 		}
 		files << path
 	}
 	context.all_paths = files
-	context.log('> context.all_paths after: $context.all_paths')
+	context.log('> context.all_paths after: ${context.all_paths}')
 }
 
 fn (mut context Context) process_whole_file_in_worker(path string) (int, int) {
 	context.path = path // needed for the progress bar
-	context.log('> context.process_whole_file_in_worker path: $path')
+	context.log('> context.process_whole_file_in_worker path: ${path}')
 	if !(os.is_file(path) && os.is_readable(path)) {
-		context.error('$path is not readable')
+		context.error('${path} is not readable')
 		return 1, 0
 	}
 	source := os.read_file(path) or { '' }
@@ -212,10 +214,10 @@ fn (mut context Context) process_whole_file_in_worker(path string) (int, int) {
 	for i in 0 .. len {
 		verbosity := if context.is_verbose { '-v' } else { '' }
 		context.cut_index = i // needed for the progress bar
-		cmd := '${os.quoted_path(context.myself)} $verbosity --worker --timeout_ms ${context.timeout_ms:5} --cut_index ${i:5} --path ${os.quoted_path(path)} '
+		cmd := '${os.quoted_path(context.myself)} ${verbosity} --worker --timeout_ms ${context.timeout_ms:5} --cut_index ${i:5} --path ${os.quoted_path(path)} '
 		context.log(cmd)
 		mut res := os.execute(cmd)
-		context.log('worker exit_code: $res.exit_code | worker output:\n$res.output')
+		context.log('worker exit_code: ${res.exit_code} | worker output:\n${res.output}')
 		if res.exit_code != 0 {
 			fails++
 			mut is_panic := false
@@ -232,12 +234,20 @@ fn (mut context Context) process_whole_file_in_worker(path string) (int, int) {
 			} else {
 				red('parser failure: crash, ${ecode_details[res.exit_code]}')
 			}
-			path_to_line := bold('$path:$line:$col:')
+			path_to_line := bold('${path}:${line}:${col}:')
 			err_line := last_line.trim_left('\t')
-			println('$path_to_line $err')
-			println('\t$line | $err_line')
+			println('${path_to_line} ${err}')
+			println('\t${line} | ${err_line}')
 			println('')
 			eprintln(res.output)
+			eprintln('>>> failed command: ${cmd}')
+			if context.show_src {
+				eprintln('>>> source so far:')
+				eprintln('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
+				partial_source := source[..context.cut_index]
+				eprintln(partial_source)
+				eprintln('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
+			}
 		}
 	}
 	return fails, panics
@@ -248,7 +258,7 @@ fn (mut context Context) start_printing() {
 	if !context.is_linear && !context.is_silent {
 		println('\n')
 	}
-	go context.print_periodic_status()
+	spawn context.print_periodic_status()
 }
 
 fn (mut context Context) stop_printing() {
@@ -260,7 +270,7 @@ fn (mut context Context) print_status() {
 	if context.is_silent {
 		return
 	}
-	if (context.cut_index == 1) && (context.max_index == 0) {
+	if context.cut_index == 1 && context.max_index == 0 {
 		return
 	}
 	msg := '>   ${context.path:-30} | index: ${context.cut_index:5}/${context.max_index - 1:5}'
@@ -269,7 +279,7 @@ fn (mut context Context) print_status() {
 		return
 	}
 	term.cursor_up(1)
-	eprint('\r  $msg\n')
+	eprint('\r  ${msg}\n')
 }
 
 fn (mut context Context) print_periodic_status() {

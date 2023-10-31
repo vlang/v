@@ -39,16 +39,18 @@ pub enum Platform {
 	dragonfly
 	js // for interoperability in prefs.OS
 	android
+	termux // like android, but note that termux is running on devices natively, not cross compiling from other platforms
 	solaris
 	serenity
+	plan9
 	vinix
 	haiku
 	raw
-	cross // TODO: add functionality for v doc -os cross whenever possible
+	cross // TODO: add functionality for v doc -cross whenever possible
 }
 
 // copy of pref.os_from_string
-pub fn platform_from_string(platform_str string) ?Platform {
+pub fn platform_from_string(platform_str string) !Platform {
 	match platform_str {
 		'all', 'cross' { return .cross }
 		'linux' { return .linux }
@@ -62,12 +64,14 @@ pub fn platform_from_string(platform_str string) ?Platform {
 		'js' { return .js }
 		'solaris' { return .solaris }
 		'serenity' { return .serenity }
+		'plan9' { return .plan9 }
 		'vinix' { return .vinix }
 		'android' { return .android }
+		'termux' { return .termux }
 		'haiku' { return .haiku }
 		'nix' { return .linux }
 		'' { return .auto }
-		else { return error('vdoc: invalid platform `$platform_str`') }
+		else { return error('vdoc: invalid platform `${platform_str}`') }
 	}
 }
 
@@ -92,6 +96,7 @@ pub fn (sk SymbolKind) str() string {
 	}
 }
 
+[minify]
 pub struct Doc {
 pub mut:
 	prefs     &pref.Preferences = new_vdoc_preferences()
@@ -121,6 +126,7 @@ pub mut:
 	platform            Platform
 }
 
+[minify]
 pub struct DocNode {
 pub mut:
 	name        string
@@ -143,12 +149,12 @@ pub mut:
 pub fn new_vdoc_preferences() &pref.Preferences {
 	// vdoc should be able to parse as much user code as possible
 	// so its preferences should be permissive:
-	mut pref := &pref.Preferences{
+	mut pref_ := &pref.Preferences{
 		enable_globals: true
 		is_fmt: true
 	}
-	pref.fill_with_defaults()
-	return pref
+	pref_.fill_with_defaults()
+	return pref_
 }
 
 // new creates a new instance of a `Doc` struct.
@@ -173,7 +179,7 @@ pub fn new(input_path string) Doc {
 // stmt reads the data of an `ast.Stmt` node and returns a `DocNode`.
 // An option error is thrown if the symbol is not exposed to the public
 // (when `pub_only` is enabled) or the content's of the AST node is empty.
-pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
+pub fn (mut d Doc) stmt(mut stmt ast.Stmt, filename string) !DocNode {
 	mut name := d.stmt_name(stmt)
 	if name in d.common_symbols {
 		return error('already documented')
@@ -190,7 +196,7 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 		platform: platform_from_filename(filename)
 	}
 	if (!node.is_pub && d.pub_only) || stmt is ast.GlobalDecl {
-		return error('symbol $node.name not public')
+		return error('symbol ${node.name} not public')
 	}
 	if node.name.starts_with(d.orig_mod_name + '.') {
 		node.name = node.name.all_after(d.orig_mod_name + '.')
@@ -198,14 +204,14 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 	if node.name.len == 0 && node.comments.len == 0 && node.content.len == 0 {
 		return error('empty stmt')
 	}
-	match stmt {
+	match mut stmt {
 		ast.ConstDecl {
 			node.kind = .const_group
 			node.parent_name = 'Constants'
 			if d.extract_vars {
-				for field in stmt.fields {
+				for mut field in stmt.fields {
 					ret_type := if field.typ == 0 {
-						d.expr_typ_to_string(field.expr)
+						d.expr_typ_to_string(mut field.expr)
 					} else {
 						d.type_to_str(field.typ)
 					}
@@ -221,8 +227,12 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 		ast.EnumDecl {
 			node.kind = .enum_
 			if d.extract_vars {
-				for field in stmt.fields {
-					ret_type := if field.has_expr { d.expr_typ_to_string(field.expr) } else { 'int' }
+				for mut field in stmt.fields {
+					ret_type := if field.has_expr {
+						d.expr_typ_to_string(mut field.expr)
+					} else {
+						'int'
+					}
 					node.children << DocNode{
 						name: field.name
 						kind: .enum_field
@@ -239,9 +249,9 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 		ast.StructDecl {
 			node.kind = .struct_
 			if d.extract_vars {
-				for field in stmt.fields {
+				for mut field in stmt.fields {
 					ret_type := if field.typ == 0 && field.has_default_expr {
-						d.expr_typ_to_string(field.default_expr)
+						d.expr_typ_to_string(mut field.default_expr)
 					} else {
 						d.type_to_str(field.typ)
 					}
@@ -306,41 +316,40 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 }
 
 // file_ast reads the contents of `ast.File` and returns a map of `DocNode`s.
-pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
+pub fn (mut d Doc) file_ast(mut file_ast ast.File) map[string]DocNode {
 	mut contents := map[string]DocNode{}
-	stmts := file_ast.stmts
 	d.fmt.file = file_ast
 	d.fmt.set_current_module_name(d.orig_mod_name)
 	d.fmt.process_file_imports(file_ast)
 	mut last_import_stmt_idx := 0
-	for sidx, stmt in stmts {
+	for sidx, stmt in file_ast.stmts {
 		if stmt is ast.Import {
 			last_import_stmt_idx = sidx
 		}
 	}
-	mut preceeding_comments := []DocComment{}
+	mut preceding_comments := []DocComment{}
 	// mut imports_section := true
-	for sidx, stmt in stmts {
-		if stmt is ast.ExprStmt {
+	for sidx, mut stmt in file_ast.stmts {
+		if mut stmt is ast.ExprStmt {
 			// Collect comments
-			if stmt.expr is ast.Comment {
-				preceeding_comments << ast_comment_to_doc_comment(stmt.expr)
+			if mut stmt.expr is ast.Comment {
+				preceding_comments << ast_comment_to_doc_comment(stmt.expr)
 				continue
 			}
 		}
 		// TODO: Fetch head comment once
-		if stmt is ast.Module {
+		if mut stmt is ast.Module {
 			if !d.with_head {
 				continue
 			}
 			// the previous comments were probably a copyright/license one
-			module_comment := merge_doc_comments(preceeding_comments)
-			preceeding_comments = []
+			module_comment := merge_doc_comments(preceding_comments)
+			preceding_comments = []
 			if !d.is_vlib && !module_comment.starts_with('Copyright (c)') {
 				if module_comment == '' {
 					continue
 				}
-				d.head.comments << preceeding_comments
+				d.head.comments << preceding_comments
 			}
 			continue
 		}
@@ -348,16 +357,16 @@ pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
 			// the accumulated comments were interspersed before/between the imports;
 			// just add them all to the module comments:
 			if d.with_head {
-				d.head.comments << preceeding_comments
+				d.head.comments << preceding_comments
 			}
-			preceeding_comments = []
+			preceding_comments = []
 			// imports_section = false
 		}
 		if stmt is ast.Import {
 			continue
 		}
-		mut node := d.stmt(stmt, os.base(file_ast.path)) or {
-			preceeding_comments = []
+		mut node := d.stmt(mut stmt, os.base(file_ast.path)) or {
+			preceding_comments = []
 			continue
 		}
 		if node.parent_name !in contents {
@@ -371,10 +380,10 @@ pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
 				kind: parent_node_kind
 			}
 		}
-		if d.with_comments && (preceeding_comments.len > 0) {
-			node.comments << preceeding_comments
+		if d.with_comments && preceding_comments.len > 0 {
+			node.comments << preceding_comments
 		}
-		preceeding_comments = []
+		preceding_comments = []
 		if node.parent_name.len > 0 {
 			parent_name := node.parent_name
 			if node.parent_name == 'Constants' {
@@ -394,21 +403,21 @@ pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
 
 // file_ast_with_pos has the same function as the `file_ast` but
 // instead returns a list of variables in a given offset-based position.
-pub fn (mut d Doc) file_ast_with_pos(file_ast ast.File, pos int) map[string]DocNode {
+pub fn (mut d Doc) file_ast_with_pos(mut file_ast ast.File, pos int) map[string]DocNode {
 	lscope := file_ast.scope.innermost(pos)
 	mut contents := map[string]DocNode{}
 	for name, val in lscope.objects {
 		if val !is ast.Var {
 			continue
 		}
-		vr_data := val as ast.Var
+		mut vr_data := val as ast.Var
 		l_node := DocNode{
 			name: name
 			pos: vr_data.pos
 			file_path: file_ast.path
 			from_scope: true
 			kind: .variable
-			return_type: d.expr_typ_to_string(vr_data.expr)
+			return_type: d.expr_typ_to_string(mut vr_data.expr)
 		}
 		contents[l_node.name] = l_node
 	}
@@ -417,7 +426,7 @@ pub fn (mut d Doc) file_ast_with_pos(file_ast ast.File, pos int) map[string]DocN
 
 // generate is a `Doc` method that will start documentation
 // process based on a file path provided.
-pub fn (mut d Doc) generate() ? {
+pub fn (mut d Doc) generate() ! {
 	// get all files
 	d.base_path = if os.is_dir(d.base_path) {
 		d.base_path
@@ -442,15 +451,15 @@ pub fn (mut d Doc) generate() ? {
 		}
 		file_asts << parser.parse_file(file_path, d.table, comments_mode, d.prefs)
 	}
-	return d.file_asts(file_asts)
+	return d.file_asts(mut file_asts)
 }
 
 // file_asts has the same function as the `file_ast` function but
 // accepts an array of `ast.File` and throws an error if necessary.
-pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
+pub fn (mut d Doc) file_asts(mut file_asts []ast.File) ! {
 	mut fname_has_set := false
 	d.orig_mod_name = file_asts[0].mod.name
-	for i, file_ast in file_asts {
+	for i, mut file_ast in file_asts {
 		if d.filename.len > 0 && file_ast.path.contains(d.filename) && !fname_has_set {
 			d.filename = file_ast.path
 			fname_has_set = true
@@ -462,17 +471,17 @@ pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
 			// }
 			d.head = DocNode{
 				name: module_name
-				content: 'module $module_name'
+				content: 'module ${module_name}'
 				kind: .none_
 			}
 		} else if file_ast.mod.name != d.orig_mod_name {
 			continue
 		}
 		if file_ast.path == d.filename {
-			d.checker.check(file_ast)
-			d.scoped_contents = d.file_ast_with_pos(file_ast, d.pos)
+			d.checker.check(mut file_ast)
+			d.scoped_contents = d.file_ast_with_pos(mut file_ast, d.pos)
 		}
-		contents := d.file_ast(file_ast)
+		contents := d.file_ast(mut file_ast)
 		for name, node in contents {
 			if name !in d.contents {
 				d.contents[name] = node
@@ -493,7 +502,7 @@ pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
 	if d.filter_symbol_names.len != 0 && d.contents.len != 0 {
 		for filter_name in d.filter_symbol_names {
 			if filter_name !in d.contents {
-				return error('vdoc: `$filter_name` symbol in module `$d.orig_mod_name` not found')
+				return error('vdoc: `${filter_name}` symbol in module `${d.orig_mod_name}` not found')
 			}
 		}
 	}
@@ -502,28 +511,32 @@ pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
 
 // generate documents a certain file directory and returns an
 // instance of `Doc` if it is successful. Otherwise, it will  throw an error.
-pub fn generate(input_path string, pub_only bool, with_comments bool, platform Platform, filter_symbol_names ...string) ?Doc {
+pub fn generate(input_path string, pub_only bool, with_comments bool, platform Platform, filter_symbol_names ...string) !Doc {
 	if platform == .js {
-		return error('vdoc: Platform `$platform` is not supported.')
+		return error('vdoc: Platform `${platform}` is not supported.')
 	}
 	mut doc := new(input_path)
 	doc.pub_only = pub_only
 	doc.with_comments = with_comments
 	doc.filter_symbol_names = filter_symbol_names.filter(it.len != 0)
-	doc.prefs.os = if platform == .auto { pref.get_host_os() } else { pref.OS(int(platform)) }
-	doc.generate() ?
+	doc.prefs.os = if platform == .auto {
+		pref.get_host_os()
+	} else {
+		unsafe { pref.OS(int(platform)) }
+	}
+	doc.generate()!
 	return doc
 }
 
 // generate_with_pos has the same function as the `generate` function but
 // accepts an offset-based position and enables the comments by default.
-pub fn generate_with_pos(input_path string, filename string, pos int) ?Doc {
+pub fn generate_with_pos(input_path string, filename string, pos int) !Doc {
 	mut doc := new(input_path)
 	doc.pub_only = false
 	doc.with_comments = true
 	doc.with_pos = true
 	doc.filename = filename
 	doc.pos = pos
-	doc.generate() ?
+	doc.generate()!
 	return doc
 }

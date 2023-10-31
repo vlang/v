@@ -1,5 +1,5 @@
 mynum := 10
 
-fn main() {
+fn my_function() {
 	println(mynum)
 }

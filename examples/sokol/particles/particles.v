@@ -47,7 +47,9 @@ fn (mut a App) init() {
 }
 
 fn (mut a App) cleanup() {
-	a.ps.free()
+	unsafe {
+		a.ps.free()
+	}
 }
 
 fn (mut a App) run() {
@@ -71,8 +73,7 @@ fn (a App) draw() {
 	a.ps.draw()
 }
 
-fn init(user_data voidptr) {
-	mut app := &App(user_data)
+fn init(mut app App) {
 	desc := sapp.create_desc()
 	gfx.setup(&desc)
 	sgl_desc := sgl.Desc{
@@ -82,7 +83,7 @@ fn init(user_data voidptr) {
 	mut pipdesc := gfx.PipelineDesc{}
 	unsafe { vmemset(&pipdesc, 0, int(sizeof(pipdesc))) }
 
-	color_state := gfx.ColorState{
+	color_state := gfx.ColorTargetState{
 		blend: gfx.BlendState{
 			enabled: true
 			src_factor_rgb: .src_alpha
@@ -94,14 +95,12 @@ fn init(user_data voidptr) {
 	app.alpha_pip = sgl.make_pipeline(&pipdesc)
 }
 
-fn cleanup(user_data voidptr) {
-	mut app := &App(user_data)
+fn cleanup(mut app App) {
 	app.cleanup()
 	gfx.shutdown()
 }
 
-fn frame(user_data voidptr) {
-	mut app := &App(user_data)
+fn frame(mut app App) {
 	app.width = sapp.width()
 	app.height = sapp.height()
 	t := time.ticks()

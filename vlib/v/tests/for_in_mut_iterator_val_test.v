@@ -11,7 +11,7 @@ const (
 
 struct Packet {
 	pid        int
-	handle     fn () string
+	handle     fn () string = unsafe { nil }
 	restricted bool
 }
 
@@ -24,14 +24,14 @@ mut:
 
 fn (mut p Reader) next() ?&Packet {
 	if p.index + 1 > packets.len {
-		return error('')
+		return none
 	}
 	if p.index !in packets {
-		return error('')
+		return none
 	}
 
 	p.index++
-	return packets[p.index - 1]
+	return unsafe { packets[p.index - 1] }
 }
 
 fn test_for_in_mut_interator_val() {
@@ -40,7 +40,7 @@ fn test_for_in_mut_interator_val() {
 
 	for mut packet in r {
 		println(packet.pid)
-		rets << '$packet.pid'
+		rets << '${packet.pid}'
 	}
 
 	println(rets)

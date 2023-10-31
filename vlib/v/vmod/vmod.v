@@ -51,7 +51,7 @@ pub fn (mcache &ModFileCacher) debug() {
 		}
 		eprintln('	 ModFileCacher.folder_files:')
 		for k, v in mcache.folder_files {
-			eprintln('	 K: ${k:-32s} | V: $v.str()')
+			eprintln('	 K: ${k:-32s} | V: ${v.str()}')
 		}
 	}
 }

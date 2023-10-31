@@ -2,18 +2,17 @@ import term.ui as tui
 
 struct App {
 mut:
-	tui &tui.Context = 0
+	tui &tui.Context = unsafe { nil }
 }
 
-fn event(e &tui.Event, x voidptr) {
-	mut app := &App(x)
+fn event(e &tui.Event, mut app App) {
 	app.tui.clear()
 	app.tui.set_cursor_position(0, 0)
 	app.tui.write('V term.input event viewer (press `esc` to exit)\n\n')
-	app.tui.write('$e')
-	app.tui.write('\n\nRaw event bytes: "$e.utf8.bytes().hex()" = $e.utf8.bytes()')
+	app.tui.write('${e}')
+	app.tui.write('\n\nRaw event bytes: "${e.utf8.bytes().hex()}" = ${e.utf8.bytes()}')
 	if !e.modifiers.is_empty() {
-		app.tui.write('\nModifiers: $e.modifiers = ')
+		app.tui.write('\nModifiers: ${e.modifiers} = ')
 		if e.modifiers.has(.ctrl) {
 			app.tui.write('ctrl. ')
 		}
@@ -43,5 +42,5 @@ fn main() {
 		use_alternate_buffer: false
 	)
 	println('V term.ui event viewer (press `esc` to exit)\n\n')
-	app.tui.run() ?
+	app.tui.run()!
 }
