@@ -152,10 +152,16 @@ fn parse_cdata(mut reader io.Reader) !XMLCData {
 fn parse_entity(contents string) !(DTDEntity, string) {
 	// We find the nearest '>' to the start of the ENTITY
 	entity_end := contents.index('>') or { return error('Entity declaration not closed.') }
-	entity_contents := contents[9..entity_end]
+	entity_contents := contents['<!ENTITY'.len..entity_end]
 
 	name := entity_contents.trim_left(' \t\n').all_before(' ')
+	if name.len == 0 {
+		return error('Entity is missing name.')
+	}
 	value := entity_contents.all_after_first(name).trim_space().trim('"\'')
+	if value.len == 0 {
+		return error('Entity is missing value.')
+	}
 
 	// TODO: Add support for SYSTEM and PUBLIC entities
 
@@ -165,9 +171,12 @@ fn parse_entity(contents string) !(DTDEntity, string) {
 fn parse_element(contents string) !(DTDElement, string) {
 	// We find the nearest '>' to the start of the ELEMENT
 	element_end := contents.index('>') or { return error('Element declaration not closed.') }
-	element_contents := contents[9..element_end]
+	element_contents := contents['<!ELEMENT'.len..element_end]
 
 	name := element_contents.trim_left(' \t\n').all_before(' ')
+	if name.len == 0 {
+		return error('Element is missing name.')
+	}
 	definition_string := element_contents.all_after_first(name).trim_space().trim('"\'')
 
 	definition := if definition_string.starts_with('(') {
