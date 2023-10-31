@@ -78,6 +78,17 @@ fn test_enum_bitfield_has_vs_all_methods_with_combined_flags_2() {
 	assert c.has(.read | .other)
 }
 
+fn test_enum_bitfield_set_all() {
+	mut a := BfFile{}
+
+	a.perm.set_all()
+
+	assert a.perm.has(.read)
+	assert a.perm.has(.execute)
+	assert a.perm.has(.write)
+	assert a.perm.has(.other)
+}
+
 fn test_enum_bitfield_clear_all() {
 	mut a := BfFile{}
 
