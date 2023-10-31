@@ -61,6 +61,7 @@ pub mut:
 	nmessage_idx  int // currently printed message index
 	failed_cmds   shared []string
 	reporter      Reporter = Reporter(NormalReporter{})
+	hash          string // used during testing in temporary directory and file names to prevent collisions when files and directories are created in a test file.
 }
 
 pub fn (mut ts TestSession) add_failed_cmd(cmd string) {
@@ -274,7 +275,8 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 	vargs := _vargs.replace('-progress', '')
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
-	new_vtmp_dir := setup_new_vtmp_folder()
+	hash := '${sync.thread_id().hex()}_${time.sys_mono_now()}'
+	new_vtmp_dir := setup_new_vtmp_folder(hash)
 	if term.can_show_color_on_stderr() {
 		os.setenv('VCOLORS', 'always', true)
 	}
@@ -286,6 +288,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		show_stats: '-stats' in vargs.split(' ')
 		vargs: vargs
 		vtmp_dir: new_vtmp_dir
+		hash: hash
 		silent_mode: _vargs.contains('-silent')
 		progress_mode: _vargs.contains('-progress')
 	}
@@ -400,7 +403,6 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			return pool.no_result
 		}
 	}
-	tmpd := ts.vtmp_dir
 	// tls_bench is used to format the step messages/timings
 	mut tls_bench := unsafe { &benchmark.Benchmark(p.get_thread_context(idx)) }
 	if isnil(tls_bench) {
@@ -441,13 +443,11 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	// Remove them after a test passes/fails.
 	fname := os.file_name(file)
 	generated_binary_fname := if os.user_os() == 'windows' && !run_js {
-		fname.replace('.v', '.exe')
-	} else if !run_js {
-		fname.replace('.v', '')
+		'${fname.all_before_last('.v')}_${ts.hash}.exe'
 	} else {
-		fname.replace('.v', '')
+		'${fname.all_before_last('.v')}_${ts.hash}'
 	}
-	generated_binary_fpath := os.join_path_single(tmpd, generated_binary_fname)
+	generated_binary_fpath := os.join_path_single(ts.vtmp_dir, generated_binary_fname)
 	if produces_file_output {
 		if ts.rm_binaries {
 			os.rm(generated_binary_fpath) or {}
@@ -455,7 +455,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 
 		cmd_options << ' -o ${os.quoted_path(generated_binary_fpath)}'
 	}
-	cmd := '${os.quoted_path(ts.vexe)} ' + cmd_options.join(' ') + ' ${os.quoted_path(file)}'
+	cmd := '${os.quoted_path(ts.vexe)} ${cmd_options.join(' ')} ${os.quoted_path(file)}'
 	ts.benchmark.step()
 	tls_bench.step()
 	if relative_file.replace('\\', '/') in ts.skip_files {
@@ -712,9 +712,8 @@ pub fn building_any_v_binaries_failed() bool {
 // setup_new_vtmp_folder creates a new nested folder inside VTMP, then resets VTMP to it,
 // so that V programs/tests will write their temporary files to new location.
 // The new nested folder, and its contents, will get removed after all tests/programs succeed.
-pub fn setup_new_vtmp_folder() string {
-	now := time.sys_mono_now()
-	new_vtmp_dir := os.join_path(os.vtmp_dir(), 'tsession_${sync.thread_id().hex()}_${now}')
+pub fn setup_new_vtmp_folder(hash string) string {
+	new_vtmp_dir := os.join_path(os.vtmp_dir(), 'tsession_${hash}')
 	os.mkdir_all(new_vtmp_dir) or { panic(err) }
 	os.setenv('VTMP', new_vtmp_dir, true)
 	return new_vtmp_dir
