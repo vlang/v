@@ -87,6 +87,12 @@ fn test_enum_bitfield_set_all() {
 	assert a.perm.has(.execute)
 	assert a.perm.has(.write)
 	assert a.perm.has(.other)
+
+	mut b := BfFile{}
+	b.perm.set(.read | .execute | .write | .other)
+	println(b.perm)
+	println(a.perm)
+	assert a.perm == b.perm, '.set_all() should be equivalent to using .set() with all the bit names'
 }
 
 fn test_enum_bitfield_clear_all() {
