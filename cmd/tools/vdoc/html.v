@@ -316,7 +316,7 @@ fn html_highlight(code string, tb &ast.Table) string {
 		}
 		return '<span class="token ${typ}">${lit}</span>'
 	}
-	mut s := scanner.new_scanner(code, .parse_comments, &pref.Preferences{})
+	mut s := scanner.new_scanner(code, .parse_comments, &pref.Preferences{ output_mode: .silent })
 	mut tok := s.scan()
 	mut next_tok := s.scan()
 	mut buf := strings.new_builder(200)
