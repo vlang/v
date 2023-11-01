@@ -119,7 +119,7 @@ fn vpm_install_from_vpm(module_names []string) {
 			eprintln(err)
 			continue
 		}
-		minfo := mod_name_info(mod.name)
+		minfo := get_mod_name_info(mod.name)
 		if os.exists(minfo.final_module_path) {
 			vpm_update([name])
 			continue
@@ -179,7 +179,7 @@ fn vpm_install_from_vcs(modules []string, vcs_key Source) {
 				eprintln(err)
 				return
 			}
-			minfo := mod_name_info(manifest.name)
+			minfo := get_mod_name_info(manifest.name)
 			if final_module_path != minfo.final_module_path {
 				println('Relocating module from "${ident}" to "${manifest.name}" ("${minfo.final_module_path}") ...')
 				if os.exists(minfo.final_module_path) {
