@@ -881,6 +881,7 @@ pub fn execute_or_exit(cmd string) Result {
 	return res
 }
 
+// execute_opt returns the os.Result of executing `cmd`, or an error on failure.
 pub fn execute_opt(cmd string) !Result {
 	res := execute(cmd)
 	if res.exit_code != 0 {
