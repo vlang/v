@@ -46,18 +46,18 @@ pub fn new_log_as_logger() &Logger {
 
 fn test_log_mutable() {
 	println(@FN + ' start')
-	mut log := Log{}
-	log.set_level(.info)
-	log_mutable_statements(mut log)
+	mut l := Log{}
+	l.set_level(.info)
+	log_mutable_statements(mut l)
 	assert true
 	println(@FN + ' end')
 }
 
 fn test_log_mutable_reference() {
 	println(@FN + ' start')
-	mut log := new_log()
-	assert typeof(log).name == '&log.Log'
-	t := spawn log_mutable_statements(mut log)
+	mut l := new_log()
+	assert typeof(l).name == '&log.Log'
+	t := spawn log_mutable_statements(mut l)
 	t.wait()
 	assert true
 	println(@FN + ' end')
