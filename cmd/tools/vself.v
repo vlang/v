@@ -54,12 +54,8 @@ fn main() {
 
 fn compile(vroot string, cmd string) {
 	result := os.execute_or_exit(cmd)
-	if result.exit_code != 0 {
-		eprintln('cannot compile to `${vroot}`: \n${result.output}')
-		exit(1)
-	}
-	if result.output.len > 0 {
-		println(result.output.trim_space())
+	if result.len > 0 {
+		println(result.trim_space())
 	}
 }
 

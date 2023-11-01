@@ -35,7 +35,7 @@ fn lsystem(cmd string) int {
 
 fn lexec(cmd string) string {
 	elog('  lexec: ${cmd}')
-	return os.execute_or_exit(cmd).output.trim_right('\r\n')
+	return os.execute_or_exit(cmd).trim_right('\r\n')
 }
 
 fn main() {
@@ -217,7 +217,7 @@ fn measure_steps_one_sample(vdir string) (int, int, int, int, int, string) {
 	resp := os.execute_or_exit(cmd)
 
 	mut scan, mut parse, mut check, mut cgen, mut vlines := 0, 0, 0, 0, 0
-	lines := resp.output.split_into_lines()
+	lines := resp.split_into_lines()
 	if lines.len == 3 {
 		parse = lines[0].before('.').int()
 		check = lines[1].before('.').int()

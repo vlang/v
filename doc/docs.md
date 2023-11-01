@@ -6958,7 +6958,7 @@ An example `deploy.vsh`:
 // print command then execute it
 fn sh(cmd string) {
 	println('❯ ${cmd}')
-	print(execute_or_exit(cmd).output)
+	print(execute_or_exit(cmd))
 }
 
 // Remove if build/ exits, ignore any errors if it doesn't

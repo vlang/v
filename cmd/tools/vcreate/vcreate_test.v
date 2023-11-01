@@ -23,8 +23,7 @@ fn init_and_check() ! {
 	os.execute_or_exit('${os.quoted_path(@VEXE)} init')
 
 	x := os.execute_or_exit('${os.quoted_path(@VEXE)} run .')
-	assert x.exit_code == 0
-	assert x.output.trim_space() == 'Hello World!'
+	assert x.trim_space() == 'Hello World!'
 
 	if is_main_file_preexisting == true {
 		assert main_last_modified_time == os.file_last_mod_unix('src/main.v')

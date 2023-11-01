@@ -248,7 +248,7 @@ pub fn (mut p Preferences) default_c_compiler() {
 		$if !ios {
 			ios_sdk := if p.is_ios_simulator { 'iphonesimulator' } else { 'iphoneos' }
 			ios_sdk_path_res := os.execute_or_exit('xcrun --sdk ${ios_sdk} --show-sdk-path')
-			mut isysroot := ios_sdk_path_res.output.replace('\n', '')
+			mut isysroot := ios_sdk_path_res.replace('\n', '')
 			arch := if p.is_ios_simulator {
 				'-arch x86_64 -arch arm64'
 			} else {

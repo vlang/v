@@ -61,7 +61,7 @@ fn test_can_compile_and_use_library_with_skip_unused_location1_dir() {
 fn v_compile(vopts string) os.Result {
 	cmd := '${os.quoted_path(vexe)} -showcc ${vopts}'
 	// dump(cmd)
-	res := os.execute_or_exit(cmd)
+	res := os.execute(cmd)
 	// dump(res)
 	assert res.exit_code == 0
 	return res
