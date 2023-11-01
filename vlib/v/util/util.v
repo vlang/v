@@ -143,6 +143,9 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	} else {
 		tool_exe = path_of_executable(tool_basename)
 		tool_source = tool_basename + '.v'
+		if !os.exists(tool_source) {
+			tool_source = tool_basename + '.c.v'
+		}
 	}
 	if is_verbose {
 		println('launch_tool vexe        : ${vexe}')
