@@ -202,7 +202,7 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 	} // write head
 	// write css
 	mut version := if vd.manifest.version.len != 0 { vd.manifest.version } else { '' }
-	version = [version, @VHASH].join(' ')
+	version = [version, @VCURRENTHASH].join(' ')
 	header_name := if cfg.is_multi && vd.docs.len > 1 {
 		os.file_name(os.real_path(cfg.input_path))
 	} else {
