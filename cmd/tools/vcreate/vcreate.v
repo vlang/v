@@ -140,7 +140,7 @@ fn init_project() {
 		}
 		println('Change the description of your project in `v.mod`')
 	}
-	if !os.exists('src/main.c.v') {
+	if !os.exists('src/main.v') {
 		c.set_bin_project_files(false)
 	}
 	c.create_files_and_directories()
