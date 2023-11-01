@@ -860,34 +860,41 @@ pub mut:
 	machine  string
 }
 
-pub fn execute_or_panic(cmd string) Result {
+[params]
+pub struct ExitOptions {
+	exit_code ?int
+}
+
+// execute_or_exit executes the given `cmd` and returns it's output, or exits on failure.
+pub fn execute_or_exit(cmd string, opts ExitOptions) string {
+	res := execute(cmd)
+	if res.exit_code != 0 {
+		eprintln('failed    cmd: ${cmd}')
+		eprintln('failed   code: ${res.exit_code}')
+		eprintln(res.output)
+		exit(opts.exit_code or { res.exit_code })
+	}
+	return res.output
+}
+
+// execute_or_panic executes the given `cmd` and returns it's output, or panics on failure.
+pub fn execute_or_panic(cmd string) string {
 	res := execute(cmd)
 	if res.exit_code != 0 {
 		eprintln('failed    cmd: ${cmd}')
 		eprintln('failed   code: ${res.exit_code}')
 		panic(res.output)
 	}
-	return res
+	return res.output
 }
 
-pub fn execute_or_exit(cmd string) Result {
-	res := execute(cmd)
-	if res.exit_code != 0 {
-		eprintln('failed    cmd: ${cmd}')
-		eprintln('failed   code: ${res.exit_code}')
-		eprintln(res.output)
-		exit(1)
-	}
-	return res
-}
-
-// execute_opt returns the os.Result of executing `cmd`, or an error on failure.
-pub fn execute_opt(cmd string) !Result {
+// execute_opt executes the given `cmd` and returns it's output, or an error on failure.
+pub fn execute_opt(cmd string) !string {
 	res := execute(cmd)
 	if res.exit_code != 0 {
 		return error(res.output)
 	}
-	return res
+	return res.output
 }
 
 // quoted path - return a quoted version of the path, depending on the platform.
