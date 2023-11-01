@@ -523,7 +523,7 @@ fn no_quotes(s string) string {
 struct MdHtmlCodeHighlighter {
 mut:
 	language string
-	table &ast.Table
+	table    &ast.Table
 }
 
 fn (f &MdHtmlCodeHighlighter) transform_attribute(p markdown.ParentType, name string, value string) string {
