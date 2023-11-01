@@ -240,8 +240,8 @@ fn print_welcome_screen() {
 	cmd_list := highlight_repl_command('list')
 	cmd_help := highlight_repl_command('help')
 	cmd_v_help := highlight_console_command('v help')
-	cmd_v_run := highlight_console_command('v run main.c.v')
-	file_main := highlight_console_command('main.c.v')
+	cmd_v_run := highlight_console_command('v run main.v')
+	file_main := highlight_console_command('main.v')
 	vbar := term.bright_green('|')
 	width, _ := term.get_terminal_size() // get the size of the terminal
 	vlogo := [
