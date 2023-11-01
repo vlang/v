@@ -345,7 +345,7 @@ fn auth_verify(token string) bool {
 "
 	}
 	c.files << ProjectFiles{
-		path: '${c.name}/src/main.v'
+		path: '${c.name}/src/main.c.v'
 		content: "module main
 
 import vweb

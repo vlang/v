@@ -16,9 +16,9 @@ fn init_and_check() ! {
 
 	// if main file already exist we should not tamper it
 	mut main_last_modified_time := i64(0)
-	is_main_file_preexisting := os.exists('src/main.v')
+	is_main_file_preexisting := os.exists('src/main.c.v')
 	if is_main_file_preexisting == true {
-		main_last_modified_time = os.file_last_mod_unix('src/main.v')
+		main_last_modified_time = os.file_last_mod_unix('src/main.c.v')
 	}
 	os.execute_or_exit('${os.quoted_path(@VEXE)} init')
 
@@ -27,9 +27,9 @@ fn init_and_check() ! {
 	assert x.output.trim_space() == 'Hello World!'
 
 	if is_main_file_preexisting == true {
-		assert main_last_modified_time == os.file_last_mod_unix('src/main.v')
+		assert main_last_modified_time == os.file_last_mod_unix('src/main.c.v')
 	} else {
-		assert os.read_file('src/main.v')! == [
+		assert os.read_file('src/main.c.v')! == [
 			'module main\n',
 			'fn main() {',
 			"	println('Hello World!')",

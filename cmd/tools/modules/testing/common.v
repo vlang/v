@@ -191,7 +191,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		skip_files << 'examples/coroutines/coroutines_bench.v'
 		$if msvc {
 			skip_files << 'vlib/v/tests/const_comptime_eval_before_vinit_test.v' // _constructor used
-			skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.v'
+			skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v'
 		}
 		$if solaris {
 			skip_files << 'examples/gg/gg2.v'
@@ -230,31 +230,31 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			}
 		}
 		if testing.runner_os != 'Linux' || testing.github_job != 'tcc' {
-			skip_files << 'examples/c_interop_wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
+			skip_files << 'examples/c_interop_wkhtmltopdf.c.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
 			skip_files << 'examples/call_v_from_python/test.v' // the example only makes sense to be compiled, when python is installed
 			skip_files << 'examples/call_v_from_ruby/test.v' // the example only makes sense to be compiled, when ruby is installed
 			skip_files << 'vlib/vweb/vweb_app_test.v' // imports the `sqlite` module, which in turn includes sqlite3.h
 		}
 		$if !macos {
-			skip_files << 'examples/macos_tray/tray.v'
+			skip_files << 'examples/macos_tray/tray.c.v'
 		}
 		if testing.github_job == 'ubuntu-docker-musl' {
-			skip_files << 'vlib/net/openssl/openssl_compiles_test.v'
+			skip_files << 'vlib/net/openssl/openssl_compiles_test.c.v'
 			skip_files << 'vlib/x/ttf/ttf_test.v'
 		}
 		if testing.github_job == 'tests-sanitize-memory-clang' {
-			skip_files << 'vlib/net/openssl/openssl_compiles_test.v'
+			skip_files << 'vlib/net/openssl/openssl_compiles_test.c.v'
 		}
 		if testing.github_job != 'misc-tooling' {
 			// These examples need .h files that are produced from the supplied .glsl files,
 			// using by the shader compiler tools in https://github.com/floooh/sokol-tools-bin/archive/pre-feb2021-api-changes.tar.gz
-			skip_files << 'examples/sokol/simple_shader_glsl/simple_shader.v'
-			skip_files << 'examples/sokol/02_cubes_glsl/cube_glsl.v'
-			skip_files << 'examples/sokol/03_march_tracing_glsl/rt_glsl.v'
-			skip_files << 'examples/sokol/04_multi_shader_glsl/rt_glsl.v'
-			skip_files << 'examples/sokol/05_instancing_glsl/rt_glsl.v'
+			skip_files << 'examples/sokol/simple_shader_glsl/simple_shader.c.v'
+			skip_files << 'examples/sokol/02_cubes_glsl/cube_glsl.c.v'
+			skip_files << 'examples/sokol/03_march_tracing_glsl/rt_glsl.c.v'
+			skip_files << 'examples/sokol/04_multi_shader_glsl/rt_glsl.c.v'
+			skip_files << 'examples/sokol/05_instancing_glsl/rt_glsl.c.v'
 			// Skip obj_viewer code in the CI
-			skip_files << 'examples/sokol/06_obj_viewer/show_obj.v'
+			skip_files << 'examples/sokol/06_obj_viewer/show_obj.c.v'
 			// skip the audio examples too on most CI jobs
 			skip_files << 'examples/sokol/sounds/melody.v'
 			skip_files << 'examples/sokol/sounds/wav_player.v'

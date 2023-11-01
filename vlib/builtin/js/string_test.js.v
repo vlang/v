@@ -388,7 +388,7 @@ fn test_runes() {
 }
 
 fn test_contains() {
-	s := 'view.v'
+	s := 'view.c.v'
 	assert s.contains('vi')
 	assert !s.contains('random')
 	assert ''.contains('')

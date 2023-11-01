@@ -34,7 +34,7 @@ TODO: Cleanup this when/if v has better process control/communication primitives
 const (
 	vexe                = os.getenv('VEXE')
 	vtmp_folder         = os.join_path(os.vtmp_dir(), 'tests', 'live')
-	main_source_file    = os.join_path(vtmp_folder, 'main.v')
+	main_source_file    = os.join_path(vtmp_folder, 'main.c.v')
 	tmp_file            = os.join_path(vtmp_folder, 'mymodule', 'generated_live_module.tmp')
 	source_file         = os.join_path(vtmp_folder, 'mymodule', 'mymodule.v')
 	genexe_file         = os.join_path(vtmp_folder, 'generated_live_program')
@@ -65,7 +65,7 @@ fn testsuite_begin() {
 	os.mkdir_all(vtmp_folder) or {}
 	os.mkdir_all(os.join_path(vtmp_folder, 'mymodule'))!
 	os.write_file(os.join_path(vtmp_folder, 'v.mod'), '')!
-	os.write_file(os.join_path(vtmp_folder, 'main.v'), '
+	os.write_file(os.join_path(vtmp_folder, 'main.c.v'), '
 import mymodule
 fn main() {
 	mymodule.mymain()

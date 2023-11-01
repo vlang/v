@@ -67,8 +67,8 @@
 # 'examples/hot_reload/graph.v'         // Inaccurate captures
 # 'examples/ttf_font/example_ttf.v',    // OK
 # 'examples/sokol/01_cubes/cube.v',     // Can pass with a warning and diff at around 1.2%
-# 'examples/sokol/02_cubes_glsl/cube_glsl.v',       // Inaccurate captures
-# 'examples/sokol/03_march_tracing_glsl/rt_glsl.v', // Inaccurate captures
-# 'examples/sokol/04_multi_shader_glsl/rt_glsl.v',  // Inaccurate captures
-# 'examples/sokol/05_instancing_glsl/rt_glsl.v',    // Inaccurate captures
-# 'examples/sokol/06_obj_viewer/show_obj.v',        // Inaccurate captures
+# 'examples/sokol/02_cubes_glsl/cube_glsl.c.v',       // Inaccurate captures
+# 'examples/sokol/03_march_tracing_glsl/rt_glsl.c.v', // Inaccurate captures
+# 'examples/sokol/04_multi_shader_glsl/rt_glsl.c.v',  // Inaccurate captures
+# 'examples/sokol/05_instancing_glsl/rt_glsl.c.v',    // Inaccurate captures
+# 'examples/sokol/06_obj_viewer/show_obj.c.v',        // Inaccurate captures

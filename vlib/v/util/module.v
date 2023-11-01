@@ -42,9 +42,9 @@ pub fn qualify_import(pref_ &pref.Preferences, mod string, file_path string) str
 	}
 	trace_qualify(@FN, mod, file_path, 'import_res 3', mod, '---, mod_path: ${mod_path}')
 	// >  qualify_import: server | file_path: cmd/vls/host.v | =>   import_res 3: server ; ---
-	// >  qualify_import: cli    | file_path: cmd/vls/main.v | =>   import_res 1: cli    ; /v/cleanv/vlib/cli
-	// >  qualify_import: server | file_path: cmd/vls/main.v | =>   import_res 3: server ; ---
-	// >  qualify_import: os     | file_path: cmd/vls/main.v | =>   import_res 1: os     ; /v/cleanv/vlib/os
+	// >  qualify_import: cli    | file_path: cmd/vls/main.c.v | =>   import_res 1: cli    ; /v/cleanv/vlib/cli
+	// >  qualify_import: server | file_path: cmd/vls/main.c.v | =>   import_res 3: server ; ---
+	// >  qualify_import: os     | file_path: cmd/vls/main.c.v | =>   import_res 1: os     ; /v/cleanv/vlib/os
 	return mod
 }
 

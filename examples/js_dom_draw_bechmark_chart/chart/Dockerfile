@@ -4,4 +4,4 @@ WORKDIR /app
 
 COPY . .
 
-RUN v up && v -prod main.v
+RUN v up && v -prod main.c.v

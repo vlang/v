@@ -25,7 +25,7 @@ pub fn compile(command string, pref_ &pref.Preferences, backend_cb FnBackend) {
 
 fn check_if_output_folder_is_writable(pref_ &pref.Preferences) {
 	odir := os.dir(pref_.out_name)
-	// When pref.out_name is just the name of an executable, i.e. `./v -o executable main.v`
+	// When pref.out_name is just the name of an executable, i.e. `./v -o executable main.c.v`
 	// without a folder component, just use the current folder instead:
 	mut output_folder := odir
 	if odir.len == pref_.out_name.len {
@@ -308,7 +308,7 @@ pub fn (v &Builder) get_user_files() []string {
 		user_files << os.join_path(preludes_path, 'live_shared.v')
 	}
 	if v.pref.is_test {
-		user_files << os.join_path(preludes_path, 'test_runner.v')
+		user_files << os.join_path(preludes_path, 'test_runner.c.v')
 		//
 		mut v_test_runner_prelude := os.getenv('VTEST_RUNNER')
 		if v.pref.test_runner != '' {

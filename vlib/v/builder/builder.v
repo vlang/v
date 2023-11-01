@@ -467,7 +467,7 @@ pub fn (b &Builder) show_total_warns_and_errors_stats() {
 	if b.checker.nr_errors > 0 && b.pref.path.ends_with('.v') && os.is_file(b.pref.path) {
 		for err in b.checker.errors {
 			if err.message.starts_with('unknown ') {
-				// Sometimes users try to `v main.v`, when they have several .v files in their project.
+				// Sometimes users try to `v main.c.v`, when they have several .v files in their project.
 				// Then, they encounter puzzling errors about missing or unknown types. In this case,
 				// the intended command may have been `v .` instead, so just suggest that:
 				old_cmd := util.bold('v ${b.pref.path}')

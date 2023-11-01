@@ -41,8 +41,8 @@ jobs:
         run: .\v.exe test-self
       # - name: Test
       #   run: .\v.exe test-all
-      - name: Build option_test.v with -autofree
-        run: .\v.exe -autofree vlib/v/tests/option_test.v
+      - name: Build option_test.c.v with -autofree
+        run: .\v.exe -autofree vlib/v/tests/option_test.c.v
       - name: Test v->js
         run: ./v -o hi.js examples/hello_v_js.v && node hi.js
       - name: Test v binaries

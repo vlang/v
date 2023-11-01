@@ -91,9 +91,9 @@ fn clean_line_endings(s string) string {
 
 [params]
 struct CheckOutputParams {
-	program       string = 'some/dir/main.v'
+	program       string = 'some/dir/main.c.v'
 	cmd           string = 'v doc'
-	main_filename string = 'main.v'
+	main_filename string = 'main.c.v'
 	out_filename  string = 'main.out'
 	should_sort   bool   = true
 }
