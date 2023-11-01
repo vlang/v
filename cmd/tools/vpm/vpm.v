@@ -9,7 +9,22 @@ import rand
 import v.help
 import v.vmod
 
+struct VpmSettings {
+mut:
+	is_help       bool
+	is_verbose    bool
+	server_urls   []string
+	vmodules_path string
+}
+
+enum Source {
+	git
+	hg
+	vpm
+}
+
 const (
+	settings                  = &VpmSettings{}
 	default_vpm_server_urls   = ['https://vpm.vlang.io', 'https://vpm.url4e.com']
 	vpm_server_urls           = rand.shuffle_clone(default_vpm_server_urls) or { [] } // ensure that all queries are distributed fairly
 	valid_vpm_commands        = ['help', 'search', 'install', 'update', 'upgrade', 'outdated',
@@ -34,12 +49,6 @@ const (
 		'hg':  'version'
 	}
 )
-
-enum Source {
-	git
-	hg
-	vpm
-}
 
 fn main() {
 	init_settings()
@@ -93,6 +102,17 @@ fn main() {
 			exit(3)
 		}
 	}
+}
+
+fn init_settings() {
+	mut s := &VpmSettings(unsafe { nil })
+	unsafe {
+		s = settings
+	}
+	s.is_help = '-h' in os.args || '--help' in os.args || 'help' in os.args
+	s.is_verbose = '-v' in os.args
+	s.server_urls = cmdline.options(os.args, '-server-url')
+	s.vmodules_path = os.vmodules_dir()
 }
 
 fn vpm_upgrade() {
@@ -155,30 +175,6 @@ fn vpm_remove(module_names []string) {
 			}
 		}
 	}
-}
-
-// settings context:
-struct VpmSettings {
-mut:
-	is_help       bool
-	is_verbose    bool
-	server_urls   []string
-	vmodules_path string
-}
-
-const (
-	settings = &VpmSettings{}
-)
-
-fn init_settings() {
-	mut s := &VpmSettings(unsafe { nil })
-	unsafe {
-		s = settings
-	}
-	s.is_help = '-h' in os.args || '--help' in os.args || 'help' in os.args
-	s.is_verbose = '-v' in os.args
-	s.server_urls = cmdline.options(os.args, '-server-url')
-	s.vmodules_path = os.vmodules_dir()
 }
 
 fn vpm_show(module_names []string) {
