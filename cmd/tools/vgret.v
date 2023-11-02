@@ -58,7 +58,7 @@ Examples:
   Compare screenshots in `/tmp/src` to existing screenshots in `/tmp/dst`
     v gret --compare-only /tmp/src /tmp/dst
 '
-	tmp_dir    = os.join_path(os.vtmp_dir(), 'v', tool_name)
+	tmp_dir    = os.join_path(os.vtmp_dir(), tool_name)
 	runtime_os = os.user_os()
 	v_root     = os.real_path(@VMODROOT)
 )

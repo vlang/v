@@ -1,11 +1,11 @@
 import os
 import time
 
-const crun_folder = os.join_path(os.vtmp_dir(), 'v', 'crun_folder')
-
-const vprogram_file = os.join_path(crun_folder, 'vprogram.vv')
-
-const vexe = os.getenv('VEXE')
+const (
+	vexe          = os.getenv('VEXE')
+	crun_folder   = os.join_path(os.vtmp_dir(), 'crun_folder')
+	vprogram_file = os.join_path(crun_folder, 'vprogram.vv')
+)
 
 fn testsuite_begin() {
 	os.setenv('VCACHE', crun_folder, true)

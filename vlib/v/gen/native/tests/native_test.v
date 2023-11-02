@@ -21,7 +21,7 @@ fn test_native() {
 	dir := os.join_path(vroot, 'vlib', 'v', 'gen', 'native', 'tests')
 	files := os.ls(dir) or { panic(err) }
 	//
-	wrkdir := os.join_path(os.vtmp_dir(), 'v', 'tests', 'native')
+	wrkdir := os.join_path(os.vtmp_dir(), 'tests', 'native')
 	os.mkdir_all(wrkdir) or { panic(err) }
 	defer {
 		os.rmdir_all(wrkdir) or {}

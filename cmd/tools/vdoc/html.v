@@ -202,7 +202,7 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 	} // write head
 	// write css
 	mut version := if vd.manifest.version.len != 0 { vd.manifest.version } else { '' }
-	version = [version, @VHASH].join(' ')
+	version = [version, @VCURRENTHASH].join(' ')
 	header_name := if cfg.is_multi && vd.docs.len > 1 {
 		os.file_name(os.real_path(cfg.input_path))
 	} else {
@@ -316,7 +316,7 @@ fn html_highlight(code string, tb &ast.Table) string {
 		}
 		return '<span class="token ${typ}">${lit}</span>'
 	}
-	mut s := scanner.new_scanner(code, .parse_comments, &pref.Preferences{})
+	mut s := scanner.new_scanner(code, .parse_comments, &pref.Preferences{ output_mode: .silent })
 	mut tok := s.scan()
 	mut next_tok := s.scan()
 	mut buf := strings.new_builder(200)
@@ -393,7 +393,12 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 	} else {
 		html_tag_escape(comments)
 	}
-	md_content := markdown.to_html(escaped_html)
+	mut renderer := markdown.HtmlRenderer{
+		transformer: &MdHtmlCodeHighlighter{
+			table: tb
+		}
+	}
+	md_content := markdown.render(escaped_html, mut renderer) or { '' }
 	highlighted_code := html_highlight(dn.content, tb)
 	node_class := if dn.kind == .const_group { ' const' } else { '' }
 	sym_name := get_sym_name(dn)
@@ -513,4 +518,29 @@ fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
 
 fn no_quotes(s string) string {
 	return s.replace_each(no_quotes_replacement)
+}
+
+struct MdHtmlCodeHighlighter {
+mut:
+	language string
+	table    &ast.Table
+}
+
+fn (f &MdHtmlCodeHighlighter) transform_attribute(p markdown.ParentType, name string, value string) string {
+	return markdown.default_html_transformer.transform_attribute(p, name, value)
+}
+
+fn (f &MdHtmlCodeHighlighter) transform_content(parent markdown.ParentType, text string) string {
+	if parent is markdown.MD_BLOCKTYPE && parent == .md_block_code {
+		if f.language == 'v' || f.language == 'vlang' {
+			return html_highlight(text, f.table)
+		}
+	}
+	return markdown.default_html_transformer.transform_content(parent, text)
+}
+
+fn (mut f MdHtmlCodeHighlighter) config_set(key string, val string) {
+	if key == 'code_language' {
+		f.language = val
+	}
 }

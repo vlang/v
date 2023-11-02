@@ -267,8 +267,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				}
 			}
 			if param.name == node.mod && param.name != 'main' {
-				c.add_error_detail('Module name duplicates will become errors after 2023/10/31.')
-				c.note('duplicate of a module name `${param.name}`', param.pos)
+				c.error('duplicate of a module name `${param.name}`', param.pos)
 			}
 			// Check if parameter name is already registered as imported module symbol
 			if c.check_import_sym_conflict(param.name) {

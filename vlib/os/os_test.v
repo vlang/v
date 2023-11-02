@@ -5,7 +5,7 @@ const (
 	// tfolder will contain all the temporary files/subfolders made by
 	// the different tests. It would be removed in testsuite_end(), so
 	// individual os tests do not need to clean up after themselves.
-	tfolder = os.join_path(os.vtmp_dir(), 'v', 'tests', 'os_test')
+	tfolder = os.join_path(os.vtmp_dir(), 'tests', 'os_test')
 )
 
 // os.args has to be *already initialized* with the program's argc/argv at this point

@@ -1,8 +1,9 @@
 import os
 
-const vexe = @VEXE
-
-const tfolder = os.join_path(os.vtmp_dir(), 'v', 'vbump')
+const (
+	vexe    = @VEXE
+	tfolder = os.join_path(os.vtmp_dir(), 'vbump')
+)
 
 fn testsuite_begin() {
 	os.mkdir_all(tfolder) or {}

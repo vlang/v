@@ -35,7 +35,7 @@ const (
 	is_stdin_a_pipe = os.is_atty(0) == 0
 	vexe            = os.getenv('VEXE')
 	vstartup        = os.getenv('VSTARTUP')
-	repl_folder     = os.join_path(os.vtmp_dir(), 'v', 'repl')
+	repl_folder     = os.join_path(os.vtmp_dir(), 'repl')
 )
 
 enum FnType {
