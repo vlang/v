@@ -7,7 +7,7 @@ import term
 // This file gets compiled as part of the main program, for
 // each _test.v file. It implements the default/normal test
 // output for `v run file_test.v`
-// See also test_runner.c.v .
+// See also test_runner.v .
 ///////////////////////////////////////////////////////////
 
 fn vtest_init() {
