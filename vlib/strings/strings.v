@@ -4,7 +4,7 @@ module strings
 // random returns a random string with `n` characters
 /*
 pub fn random(n int) string {
-	buf := vmalloc(n)
+	buf := v_malloc(n)
 	for i in 0..n {
 		buf[i] = rand.next()
 	}

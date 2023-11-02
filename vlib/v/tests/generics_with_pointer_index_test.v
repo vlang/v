@@ -12,7 +12,7 @@ mut:
 }
 
 pub fn with_cap[T](cap int) Vec[T] {
-	new_data := unsafe { vmalloc(cap * int(sizeof(T))) }
+	new_data := unsafe { v_malloc(cap * int(sizeof(T))) }
 	unsafe { vmemset(new_data, 0, cap * int(sizeof(T))) }
 
 	return Vec[T]{
