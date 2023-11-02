@@ -534,10 +534,10 @@ fn (f &MdHtmlCodeHighlighter) transform_attribute(p markdown.ParentType, name st
 fn (f &MdHtmlCodeHighlighter) transform_content(parent markdown.ParentType, text string) string {
 	if parent is markdown.MD_BLOCKTYPE && parent == .md_block_code {
 		if f.language == 'v' || f.language == 'vlang' {
-			return html_highlight(text, f.table)
+			return html_highlight(html_tag_escape(text), f.table)
 		}
 	}
-	return markdown.default_html_transformer.transform_content(parent, text)
+	return markdown.default_html_transformer.transform_content(parent, html_tag_escape(text))
 }
 
 fn (mut f MdHtmlCodeHighlighter) config_set(key string, val string) {
