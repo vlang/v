@@ -3699,7 +3699,6 @@ fn (mut p Parser) import_stmt() ast.Import {
 			syms_pos: initial_syms_pos
 			pos: import_node.pos.extend(initial_syms_pos)
 		}
-		p.register_used_import(mod_alias) // no `unused import` msg for parent
 	}
 	pos_t := p.tok.pos()
 	if import_pos.line_nr == pos_t.line_nr {

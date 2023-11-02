@@ -73,6 +73,7 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	}
 	if fn_name in p.imported_symbols {
 		fn_name = p.imported_symbols[fn_name]
+		p.register_used_import(fn_name.all_before('.'))
 	}
 	comments := p.eat_comments(same_line: true)
 	pos.update_last_line(p.prev_tok.line_nr)

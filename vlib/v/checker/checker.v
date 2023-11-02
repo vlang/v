@@ -2489,9 +2489,6 @@ fn (mut c Checker) import_stmt(node ast.Import) {
 			if !func.is_pub {
 				c.error('module `${node.mod}` function `${sym.name}()` is private', sym.pos)
 			}
-			if func.usages != 1 {
-				c.warn('module `${node.mod}` function `${sym.name}()` is unused', sym.pos)
-			}
 			continue
 		}
 		if _ := c.file.global_scope.find_const(name) {
