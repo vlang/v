@@ -28,7 +28,7 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string)
 
 fn (req &Request) do_request(req_headers string) !Response {
 	mut buff := unsafe { malloc_noscan(C.vsc_init_resp_buff_size) }
-	addr := host_name
+	addr := req.host
 	length := C.request(&ctx, port, addr.to_wide(), req_headers.str, req_headers.len,
 		&buff)
 	C.vschannel_cleanup(&ctx)
