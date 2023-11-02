@@ -6,11 +6,25 @@ import strings
 // the node is at, the depth of the node in the tree, and a map of reverse entities to use when
 // escaping text.
 pub fn (node XMLNode) pretty_str(original_indent string, depth int, reverse_entities map[string]string) string {
+	// Create the proper indentation first
+	mut indent_builder := strings.new_builder(original_indent.len * depth)
+	for _ in 0 .. depth {
+		indent_builder.write_string(original_indent)
+	}
+	indent := indent_builder.str()
+
+	// Now we can stringify the node
 	mut builder := strings.new_builder(1024)
-	indent := original_indent.repeat(depth)
-	builder.write_string('${indent}<${node.name}')
+	builder.write_string(indent)
+	builder.write_u8(`<`)
+	builder.write_string(node.name)
+
 	for key, value in node.attributes {
-		builder.write_string(' ${key}="${value}"')
+		builder.write_u8(` `)
+		builder.write_string(key)
+		builder.write_string('="')
+		builder.write_string(value)
+		builder.write_u8(`"`)
 	}
 	builder.write_string('>\n')
 	for child in node.children {
@@ -40,7 +54,10 @@ pub fn (node XMLNode) pretty_str(original_indent string, depth int, reverse_enti
 		}
 		builder.write_u8(`\n`)
 	}
-	builder.write_string('${indent}</${node.name}>')
+	builder.write_string(indent)
+	builder.write_string('</')
+	builder.write_string(node.name)
+	builder.write_u8(`>`)
 	return builder.str()
 }
 
@@ -98,21 +115,30 @@ fn (doctype DocumentType) pretty_str(indent string) string {
 // pretty_str returns a pretty-printed version of the XML document. It requires the string used to
 // indent each level of the document.
 pub fn (doc XMLDocument) pretty_str(indent string) string {
+	mut document_builder := strings.new_builder(1024)
+
 	prolog := '<?xml version="${doc.version}" encoding="${doc.encoding}"?>'
 	comments := if doc.comments.len > 0 {
-		mut buffer := strings.new_builder(512)
+		mut comments_buffer := strings.new_builder(512)
 		for comment in doc.comments {
-			buffer.write_string('<!--')
-			buffer.write_string(comment.text)
-			buffer.write_string('-->')
-			buffer.write_u8(`\n`)
+			comments_buffer.write_string('<!--')
+			comments_buffer.write_string(comment.text)
+			comments_buffer.write_string('-->')
+			comments_buffer.write_u8(`\n`)
 		}
-		buffer.str()
+		comments_buffer.str()
 	} else {
 		''
 	}
-	return '${prolog}\n${doc.doctype.pretty_str(indent)}${comments}${doc.root.pretty_str(indent,
-		0, doc.parsed_reverse_entities)}'
+
+	document_builder.write_string(prolog)
+	document_builder.write_u8(`\n`)
+	document_builder.write_string(doc.doctype.pretty_str(indent))
+	document_builder.write_u8(`\n`)
+	document_builder.write_string(comments)
+	document_builder.write_string(doc.root.pretty_str(indent, 0, doc.parsed_reverse_entities))
+
+	return document_builder.str()
 }
 
 // str returns a string representation of the XML document. It uses a 2-space indentation
