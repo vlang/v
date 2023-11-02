@@ -7,6 +7,8 @@ import strings
 import v.ast
 import v.util
 
+const c_fn_name_escape_seq = ['[', '_T_', ']', '']
+
 fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
 	mut is_used_by_main := true
 	if g.pref.skip_unused {
@@ -449,7 +451,7 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) string {
 		unwrapped_rec_typ := g.unwrap_generic(node.receiver.typ)
 		name = g.cc_type(unwrapped_rec_typ, false) + '_' + name
 		if g.table.sym(unwrapped_rec_typ).kind == .placeholder {
-			name = name.replace_each(['[', '_T_', ']', ''])
+			name = name.replace_each(c.c_fn_name_escape_seq)
 		}
 	}
 	if node.language == .c {
@@ -613,7 +615,7 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 			typ = g.table.sym(typ).array_info().elem_type.set_flag(.variadic)
 		}
 		param_type_sym := g.table.sym(typ)
-		mut param_type_name := g.typ(typ).replace_each(['[', '_T_', ']', ''])
+		mut param_type_name := g.typ(typ).replace_each(c.c_fn_name_escape_seq)
 		if param_type_sym.kind == .function && !typ.has_flag(.option) {
 			info := param_type_sym.info as ast.FnType
 			func := info.func
