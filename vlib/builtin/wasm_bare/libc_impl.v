@@ -5,12 +5,12 @@ module builtin
 [unsafe]
 pub fn __malloc(size usize) voidptr {
 	unsafe {
-		return C.malloc(int(size))
+		return global_allocator.malloc(size)
 	}
 }
 
 [unsafe]
-pub fn memcpy(dest &C.void, src &C.void, n usize) &C.void {
+pub fn memcpy(dest voidptr, src voidptr, n usize) voidptr {
 	dest_ := unsafe { &u8(dest) }
 	src_ := unsafe { &u8(src) }
 	unsafe {
@@ -22,7 +22,7 @@ pub fn memcpy(dest &C.void, src &C.void, n usize) &C.void {
 }
 
 [unsafe]
-fn strlen(_s &C.void) usize {
+fn strlen(_s voidptr) usize {
 	s := unsafe { &u8(_s) }
 	mut i := 0
 	for ; unsafe { s[i] } != 0; i++ {}
@@ -30,7 +30,7 @@ fn strlen(_s &C.void) usize {
 }
 
 [unsafe]
-fn realloc(old_area &C.void, new_size usize) &C.void {
+fn realloc(old_area voidptr, new_size usize) voidptr {
 	if old_area == 0 {
 		return unsafe { malloc(int(new_size)) }
 	}
@@ -50,7 +50,7 @@ fn realloc(old_area &C.void, new_size usize) &C.void {
 }
 
 [unsafe]
-fn memset(s &C.void, c int, n usize) &C.void {
+fn memset(s voidptr, c int, n usize) voidptr {
 	mut s_ := unsafe { &char(s) }
 	for i in 0 .. int(n) {
 		unsafe {
@@ -61,7 +61,7 @@ fn memset(s &C.void, c int, n usize) &C.void {
 }
 
 [unsafe]
-fn memmove(dest &C.void, src &C.void, n usize) &C.void {
+fn memmove(dest voidptr, src voidptr, n usize) voidptr {
 	dest_ := unsafe { &u8(dest) }
 	src_ := unsafe { &u8(src) }
 	mut temp_buf := unsafe { malloc(int(n)) }
@@ -82,7 +82,7 @@ fn memmove(dest &C.void, src &C.void, n usize) &C.void {
 
 [export: 'calloc']
 [unsafe]
-fn __calloc(nmemb usize, size usize) &C.void {
+fn __calloc(nmemb usize, size usize) voidptr {
 	new_area := unsafe { malloc(int(nmemb) * int(size)) }
 	unsafe { memset(new_area, 0, nmemb * size) }
 	return new_area
@@ -92,7 +92,7 @@ fn getchar() int {
 	return 0
 }
 
-fn memcmp(a &C.void, b &C.void, n usize) int {
+fn memcmp(a voidptr, b voidptr, n usize) int {
 	a_ := unsafe { &u8(a) }
 	b_ := unsafe { &u8(b) }
 	for i in 0 .. int(n) {
@@ -105,11 +105,11 @@ fn memcmp(a &C.void, b &C.void, n usize) int {
 	return 0
 }
 
-fn vsprintf(str &char, format &char, ap &byte) int {
+fn vsprintf(str &char, format &char, ap &u8) int {
 	panic('vsprintf(): string interpolation is not supported in `-freestanding`')
 }
 
-fn vsnprintf(str &char, size usize, format &char, ap &byte) int {
+fn vsnprintf(str &char, size usize, format &char, ap &u8) int {
 	panic('vsnprintf(): string interpolation is not supported in `-freestanding`')
 }
 
@@ -119,17 +119,17 @@ enum Errno {
 }
 
 // not really needed
-fn bare_read(buf &byte, count u64) (i64, Errno) {
+fn bare_read(buf &u8, count u64) (i64, Errno) {
 	return 0, Errno.eerror
 }
 
-pub fn bare_print(buf &byte, len u64) {
+pub fn bare_print(buf &u8, len u64) {
 }
 
-fn bare_eprint(buf &byte, len u64) {
+fn bare_eprint(buf &u8, len u64) {
 }
 
-pub fn write(_fd i64, _buf &byte, _count u64) i64 {
+pub fn write(_fd i64, _buf &u8, _count u64) i64 {
 	return -1
 }
 

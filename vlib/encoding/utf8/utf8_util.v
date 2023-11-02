@@ -429,11 +429,13 @@ fn up_low(s string, upper_flag bool) string {
 		if ch_len == 1 {
 			if upper_flag == true {
 				unsafe {
-					str_res[index] = u8(C.toupper(s.str[index]))
+					c := s.str[index]
+					str_res[index] = if c >= `a` && c <= `z` { c - 0x20 } else { c }
 				}
 			} else {
 				unsafe {
-					str_res[index] = u8(C.tolower(s.str[index]))
+					c := s.str[index]
+					str_res[index] = if c >= `A` && c <= `Z` { c + 0x20 } else { c }
 				}
 			}
 		} else if ch_len > 1 && ch_len < 5 {

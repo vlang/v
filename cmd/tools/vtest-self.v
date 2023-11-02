@@ -19,7 +19,7 @@ const (
 		'vlib/builtin/float_test.v',
 		'vlib/builtin/byte_test.v',
 		'vlib/builtin/rune_test.v',
-		'vlib/builtin/builtin_test.v',
+		'vlib/builtin/builtin_test.c.v',
 		'vlib/builtin/map_of_floats_test.v',
 		'vlib/builtin/string_int_test.v',
 		'vlib/builtin/utf8_test.v',
@@ -38,7 +38,7 @@ const (
 		'vlib/encoding/base64/base64_test.v',
 		'vlib/encoding/utf8/encoding_utf8_test.v',
 		'vlib/encoding/utf8/utf8_util_test.v',
-		'vlib/flag/flag_test.v',
+		'vlib/flag/flag_test.c.v',
 		'vlib/json/json_decode_test.v',
 		'vlib/math/math_test.v',
 		'vlib/net/tcp_test.v',
@@ -49,11 +49,11 @@ const (
 		'vlib/io/os_file_reader_test.v',
 		'vlib/os/process_test.v',
 		'vlib/os/file_test.v',
-		'vlib/os/notify/notify_test.v',
+		'vlib/os/notify/notify_test.c.v',
 		'vlib/os/filepath_test.v',
 		'vlib/os/environment_test.v',
 		'vlib/os/glob_test.v',
-		'vlib/os/os_test.v',
+		'vlib/os/os_test.c.v',
 		'vlib/rand/random_numbers_test.v',
 		'vlib/rand/wyrand/wyrand_test.v',
 		'vlib/runtime/runtime_test.v',
@@ -63,7 +63,7 @@ const (
 		'vlib/sync/waitgroup_test.v',
 		'vlib/sync/pool/pool_test.v',
 		'vlib/strings/builder_test.v',
-		'vlib/strconv/atof_test.v',
+		'vlib/strconv/atof_test.c.v',
 		'vlib/strconv/atoi_test.v',
 		'vlib/strconv/f32_f64_to_string_test.v',
 		'vlib/strconv/format_test.v',
@@ -180,7 +180,7 @@ const (
 		'vlib/v/tests/orm_enum_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
 		'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
-		'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.v', // fails compilation with: undefined reference to vtable for __cxxabiv1::__function_type_info'
+		'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v', // fails compilation with: undefined reference to vtable for __cxxabiv1::__function_type_info'
 	]
 	skip_with_werror              = [
 		'do_not_remove',
@@ -259,7 +259,7 @@ const (
 		'vlib/v/tests/const_and_global_with_same_name_test.v', // error C2099: initializer is not a constant
 		'vlib/v/tests/sumtype_as_cast_1_test.v', // error: cannot support compound statement expression ({expr; expr; expr;})
 		'vlib/v/tests/sumtype_as_cast_2_test.v', // error: cannot support compound statement expression ({expr; expr; expr;})
-		'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.v', // TODO
+		'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v', // TODO
 	]
 	skip_on_windows               = [
 		'do_not_remove',
@@ -271,7 +271,7 @@ const (
 		'vlib/net/unix/unix_test.v',
 		'vlib/net/unix/use_net_and_net_unix_together_test.v',
 		'vlib/net/websocket/websocket_test.v',
-		'vlib/net/openssl/openssl_compiles_test.v',
+		'vlib/net/openssl/openssl_compiles_test.c.v',
 		'vlib/net/http/request_test.v',
 		'vlib/net/smtp/smtp_test.v',
 		'vlib/net/ssl/ssl_compiles_test.v',
@@ -352,7 +352,7 @@ fn main() {
 
 	$if windows {
 		if github_job == 'tcc' {
-			tsession.skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.v'
+			tsession.skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v'
 		}
 	}
 

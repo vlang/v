@@ -191,7 +191,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		skip_files << 'examples/coroutines/coroutines_bench.v'
 		$if msvc {
 			skip_files << 'vlib/v/tests/const_comptime_eval_before_vinit_test.v' // _constructor used
-			skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.v'
+			skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v'
 		}
 		$if solaris {
 			skip_files << 'examples/gg/gg2.v'
@@ -239,11 +239,11 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			skip_files << 'examples/macos_tray/tray.v'
 		}
 		if testing.github_job == 'ubuntu-docker-musl' {
-			skip_files << 'vlib/net/openssl/openssl_compiles_test.v'
+			skip_files << 'vlib/net/openssl/openssl_compiles_test.c.v'
 			skip_files << 'vlib/x/ttf/ttf_test.v'
 		}
 		if testing.github_job == 'tests-sanitize-memory-clang' {
-			skip_files << 'vlib/net/openssl/openssl_compiles_test.v'
+			skip_files << 'vlib/net/openssl/openssl_compiles_test.c.v'
 		}
 		if testing.github_job != 'misc-tooling' {
 			// These examples need .h files that are produced from the supplied .glsl files,

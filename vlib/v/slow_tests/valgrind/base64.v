@@ -21,7 +21,7 @@ fn main() {
 	//
 	encoded_size := base64.encode_in_buffer(s_original, ebuffer)
 	mut encoded_in_buf := []u8{len: encoded_size}
-	unsafe { C.memcpy(encoded_in_buf.data, ebuffer, encoded_size) }
+	unsafe { vmemcpy(encoded_in_buf.data, ebuffer, encoded_size) }
 	assert input_size * 4 / 3 == encoded_size
 	assert encoded_in_buf[0] == `Y`
 	assert encoded_in_buf[1] == `W`
@@ -38,7 +38,7 @@ fn main() {
 	decoded_size := base64.decode_in_buffer(s_encoded, dbuffer)
 	assert decoded_size == input_size
 	mut decoded_in_buf := []u8{len: decoded_size}
-	unsafe { C.memcpy(decoded_in_buf.data, dbuffer, decoded_size) }
+	unsafe { vmemcpy(decoded_in_buf.data, dbuffer, decoded_size) }
 	assert decoded_in_buf == s_original
 
 	mut s := 0

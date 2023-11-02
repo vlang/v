@@ -3,7 +3,7 @@ module term
 // utf8_getchar returns an utf8 rune from standard input
 pub fn utf8_getchar() ?rune {
 	c := getchar()
-	if c == C.EOF {
+	if c == -1 {
 		return none
 	}
 	len := utf8_len(u8(~c))
