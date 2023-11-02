@@ -891,7 +891,13 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 			ast.Ident {
 				left_typ := node.left_types[i]
 				left_sym := g.table.sym(left_typ)
-				anon_ctx := if g.anon_fn { '${closure_ctx}->' } else { '' }
+				mut anon_ctx := ''
+				if g.anon_fn {
+					obj := left.scope.find(left.name)
+					if obj is ast.Var && obj.is_inherited {
+						anon_ctx = '${closure_ctx}->'
+					}
+				}
 				if left_sym.kind == .function {
 					g.write_fn_ptr_decl(left_sym.info as ast.FnType, '_var_${left.pos.pos}')
 					g.writeln(' = ${anon_ctx}${c_name(left.name)};')
