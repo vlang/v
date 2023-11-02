@@ -119,7 +119,7 @@ pub fn (mut d Digest) write(p_ []u8) !int {
 pub fn (d &Digest) sum(b_in []u8) []u8 {
 	// Make a copy of d so that caller can keep writing and summing.
 	mut d0 := d.clone()
-	hash := d0.checksum()
+	hash := d0.checksum_internal()
 	mut b_out := b_in.clone()
 	for b in hash {
 		b_out << b
@@ -127,11 +127,9 @@ pub fn (d &Digest) sum(b_in []u8) []u8 {
 	return b_out
 }
 
-// checksum returns the current byte checksum of the `Digest`,
-// it is an internal method and is not recommended because its results are not idempotent.
-[deprecated: 'checksum() will be changed to a private method, use sum() instead']
-[deprecated_after: '2024-04-30']
-pub fn (mut d Digest) checksum() []u8 {
+// TODO:
+// When the deprecated "checksum()" is finally removed, restore this function name as: "checksum()"
+fn (mut d Digest) checksum_internal() []u8 {
 	mut len := d.len
 	// Padding.  Add a 1 bit and 0 bits until 56 bytes mod 64.
 	mut tmp := []u8{len: (64)}
@@ -154,11 +152,19 @@ pub fn (mut d Digest) checksum() []u8 {
 	return digest
 }
 
+// checksum returns the current byte checksum of the `Digest`,
+// it is an internal method and is not recommended because its results are not idempotent.
+[deprecated: 'checksum() will be changed to a private method, use sum() instead']
+[deprecated_after: '2024-04-30']
+pub fn (mut d Digest) checksum() []u8 {
+	return d.checksum_internal()
+}
+
 // sum returns the SHA-1 checksum of the bytes passed in `data`.
 pub fn sum(data []u8) []u8 {
 	mut d := new()
 	d.write(data) or { panic(err) }
-	return d.checksum()
+	return d.checksum_internal()
 }
 
 fn block(mut dig Digest, p []u8) {

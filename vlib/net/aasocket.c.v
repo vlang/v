@@ -113,5 +113,11 @@ fn C.FD_ISSET(fd int, fdset &C.fd_set) int
 
 fn C.inet_pton(family AddrFamily, saddr &char, addr voidptr) int
 
+fn C.photon_socket(domain AddrFamily, typ SocketType, protocol int) int
+fn C.photon_connect(int, &Addr, u32, timeout u64) int
+fn C.photon_accept(int, voidptr, int, timeout u64) int
+fn C.photon_send(int, voidptr, int, int, timeout u64) int
+fn C.photon_recv(int, voidptr, int, int, timeout u64) int
+
 [typedef]
 pub struct C.fd_set {}

@@ -43,7 +43,7 @@ const (
 
 	jq                     = os.find_abs_path_of_executable('jq') or { '' }
 	python                 = os.find_abs_path_of_executable('python') or { '' }
-	compare_work_dir_root  = os.join_path(os.vtmp_dir(), 'v', 'toml', 'iarna')
+	compare_work_dir_root  = os.join_path(os.vtmp_dir(), 'toml', 'iarna')
 	// From: https://stackoverflow.com/a/38266731/1904615
 	jq_normalize           = r'# Apply f to composite entities recursively using keys[], and to atoms
 def sorted_walk(f):

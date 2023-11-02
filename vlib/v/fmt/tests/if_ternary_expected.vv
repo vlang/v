@@ -1,5 +1,6 @@
 const (
 	spacing_error = if true { true } else { false }
+	// Multiline result should not align with the next multiline result.
 	too_long_line = if b.no_cstep {
 		'TMP1/${b.nexpected_steps:1d}'
 	} else {
@@ -12,6 +13,12 @@ const (
 	} else {
 		false
 	}
+)
+
+const (
+	align                = if true { 'a' } else { 'b' }
+	some_longer_variable = 'foo'
+	another_var          = 'bar'
 )
 
 fn main() {

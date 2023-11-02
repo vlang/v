@@ -10,10 +10,6 @@ on:
     paths-ignore:
       - "**.md"
 
-concurrency:
-  group: bootstrapping-works-${{ github.event.pull_request.number || github.sha }}
-  cancel-in-progress: true
-
 jobs:
   bootstrapping-works:
     if: >
