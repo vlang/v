@@ -33,12 +33,12 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		if expected == ast.voidptr_type || expected == ast.nil_type {
 			return true
 		}
-		if (expected == ast.bool_type && (got.is_any_kind_of_pointer() || got_is_int))
-			|| ((expected.is_any_kind_of_pointer() || exp_is_int) && got == ast.bool_type) {
+		if (expected == ast.bool_type && (got_is_int || got.is_any_kind_of_pointer()))
+			|| ((exp_is_int || expected.is_any_kind_of_pointer()) && got == ast.bool_type) {
 			return true
 		}
 
-		if expected.is_any_kind_of_pointer() { //&& !got.is_any_kind_of_pointer() {
+		if expected.is_any_kind_of_pointer() {
 			// Allow `int` as `&i8` etc in C code.
 			deref := expected.deref()
 			// deref := expected.set_nr_muls(0)
@@ -56,17 +56,17 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		expected_sym := c.table.sym(expected)
 
 		// Allow `[N]anyptr` as `[N]anyptr`
-		if got_sym.kind == .array && expected_sym.kind == .array {
-			if (got_sym.info as ast.Array).elem_type.is_any_kind_of_pointer()
-				&& (expected_sym.info as ast.Array).elem_type.is_any_kind_of_pointer() {
+		if got_sym.info is ast.Array && expected_sym.info is ast.Array {
+			if got_sym.info.elem_type.is_any_kind_of_pointer()
+				&& expected_sym.info.elem_type.is_any_kind_of_pointer() {
 				return true
 			}
-		} else if got_sym.kind == .array_fixed && expected_sym.kind == .array_fixed {
-			if (got_sym.info as ast.ArrayFixed).elem_type.is_any_kind_of_pointer()
-				&& (expected_sym.info as ast.ArrayFixed).elem_type.is_any_kind_of_pointer() {
+		} else if got_sym.info is ast.ArrayFixed && expected_sym.info is ast.ArrayFixed {
+			if got_sym.info.elem_type.is_any_kind_of_pointer()
+				&& expected_sym.info.elem_type.is_any_kind_of_pointer() {
 				return true
 			}
-			if c.check_types((got_sym.info as ast.ArrayFixed).elem_type, (expected_sym.info as ast.ArrayFixed).elem_type) {
+			if c.check_types(got_sym.info.elem_type, expected_sym.info.elem_type) {
 				return true
 			}
 		}
