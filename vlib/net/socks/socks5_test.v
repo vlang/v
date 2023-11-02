@@ -1,13 +1,13 @@
 module socks
 
 fn ipv4_socks() ! {
-	mut v := socks5_dial('127.0.0.1:9150', '1.1.1.1:80','','')!
+	mut v := socks5_dial('127.0.0.1:9150', '1.1.1.1:80', '', '')!
 	assert v != unsafe { nil }
 	v.close()!
 }
 
 fn domain_socks() ! {
-	mut v := socks5_dial('127.0.0.1:9150', 'ifconfig.info:80','','')!
+	mut v := socks5_dial('127.0.0.1:9150', 'ifconfig.info:80', '', '')!
 	assert v != unsafe { nil }
 	v.close()!
 }
