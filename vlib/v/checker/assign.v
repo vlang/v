@@ -421,6 +421,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						}
 					}
 				}
+				if left_type.has_flag(.option) && right is ast.UnsafeExpr {
+					c.error('cannot assign `nil` to option value', right.pos())
+				}
 			}
 			else {
 				if mut left is ast.IndexExpr {
