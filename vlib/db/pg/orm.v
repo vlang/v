@@ -73,22 +73,6 @@ pub fn (db DB) drop(table string) ! {
 
 // utils
 
-fn pg_stmt_worker(db DB, query string, data orm.QueryData, where orm.QueryData) ![]Row {
-	mut param_types := []u32{}
-	mut param_vals := []&char{}
-	mut param_lens := []int{}
-	mut param_formats := []int{}
-
-	pg_stmt_binder(mut param_types, mut param_vals, mut param_lens, mut param_formats,
-		data)
-	pg_stmt_binder(mut param_types, mut param_vals, mut param_lens, mut param_formats,
-		where)
-
-	res := C.PQexecParams(db.conn, &char(query.str), param_vals.len, param_types.data,
-		param_vals.data, param_lens.data, param_formats.data, 0) // here, the last 0 means require text results, 1 - binary results
-	return db.handle_error_or_result(res, 'orm_stmt_worker')
-}
-
 fn pg_stmt_binder(mut types []u32, mut vals []&char, mut lens []int, mut formats []int, d orm.QueryData) {
 	for data in d.data {
 		pg_stmt_match(mut types, mut vals, mut lens, mut formats, data)
