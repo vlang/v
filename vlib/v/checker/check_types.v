@@ -13,18 +13,17 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	}
 	got_is_ptr := got.is_ptr()
 	exp_is_ptr := expected.is_ptr()
-	got_is_int := got.is_int()
-	exp_is_int := expected.is_int()
 
-	exp_is_pure_int := expected.is_pure_int()
-	got_is_pure_int := got.is_pure_int()
 	// allow int literals where any kind of real integers are expected:
-	if (exp_is_pure_int && got == ast.int_literal_type)
-		|| (got_is_pure_int && expected == ast.int_literal_type) {
+	if (got == ast.int_literal_type && expected.is_pure_int())
+		|| (expected == ast.int_literal_type && got.is_pure_int()) {
 		return true
 	}
 
 	if c.pref.translated {
+		got_is_int := got.is_int()
+		exp_is_int := expected.is_int()
+
 		if exp_is_int && got_is_int {
 			return true
 		}
@@ -125,7 +124,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	}
 	if exp_idx == ast.voidptr_type_idx || exp_idx == ast.nil_type_idx
 		|| exp_idx == ast.byteptr_type_idx
-		|| (expected.is_ptr() && expected.deref().idx() == ast.u8_type_idx) {
+		|| (exp_is_ptr && expected.deref().idx() == ast.u8_type_idx) {
 		if got.is_any_kind_of_pointer() {
 			return true
 		}
@@ -139,7 +138,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	}
 	if got_idx == ast.voidptr_type_idx || got_idx == ast.nil_type_idx
 		|| got_idx == ast.byteptr_type_idx
-		|| (got_idx == ast.u8_type_idx && got.is_ptr()) {
+		|| (got_idx == ast.u8_type_idx && got_is_ptr) {
 		if expected.is_any_kind_of_pointer() {
 			return true
 		}
