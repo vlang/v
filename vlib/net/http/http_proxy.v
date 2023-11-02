@@ -133,7 +133,7 @@ fn (pr &HttpProxy) dial(host string) !&net.TcpConn {
 		tcp.read(mut bf)!
 		return tcp
 	} else if pr.scheme == 'socks5' {
-		return socks.socks5_dial(pr.host, host)!
+		return socks.socks5_dial(pr.host, host, pr.username, pr.password)!
 	} else {
 		return error('http_proxy dial: invalid proxy scheme')
 	}
@@ -159,7 +159,7 @@ fn (pr &HttpProxy) ssl_dial(host string) !&ssl.SSLConn {
 		ssl_conn.connect(mut tcp, host.all_before_last(':'))!
 		return ssl_conn
 	} else if pr.scheme == 'socks5' {
-		return socks.socks5_ssl_dial(pr.host, host)!
+		return socks.socks5_ssl_dial(pr.host, host, pr.username, pr.password)!
 	} else {
 		return error('http_proxy ssl_dial: invalid proxy scheme')
 	}

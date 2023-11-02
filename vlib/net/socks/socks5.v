@@ -11,16 +11,18 @@ const addr_type_fqdn = u8(3)
 
 const addr_type_ipv6 = u8(4)
 
-const no_auth = u8(1)
+const no_auth = u8(0)
+
+const auth_user_password = u8(2)
 
 // socks5_dial create new instance of &net.TcpConn
-pub fn socks5_dial(proxy_url string, host string) !&net.TcpConn {
+pub fn socks5_dial(proxy_url string, host string, username string, password string) !&net.TcpConn {
 	mut con := net.dial_tcp(proxy_url)!
-	return handshake(mut con, host)!
+	return handshake(mut con, host, username, password)!
 }
 
 // socks5_ssl_dial create new instance of &ssl.SSLConn
-pub fn socks5_ssl_dial(proxy_url string, host string) !&ssl.SSLConn {
+pub fn socks5_ssl_dial(proxy_url string, host string, username string, password string) !&ssl.SSLConn {
 	mut ssl_conn := ssl.new_ssl_conn(
 		verify: ''
 		cert: ''
@@ -28,13 +30,18 @@ pub fn socks5_ssl_dial(proxy_url string, host string) !&ssl.SSLConn {
 		validate: false
 		in_memory_verification: false
 	)!
-	mut con := socks5_dial(proxy_url, host)!
+	mut con := socks5_dial(proxy_url, host, username, password)!
 	ssl_conn.connect(mut con, host.all_before_last(':')) or { panic(err) }
 	return ssl_conn
 }
 
-fn handshake(mut con net.TcpConn, host string) !&net.TcpConn {
-	mut v := [socks.socks_version5, socks.no_auth, 0]
+fn handshake(mut con net.TcpConn, host string, username string, password string) !&net.TcpConn {
+	mut v := [socks.socks_version5, 1]
+	if username.len > 0 {
+		v << socks.auth_user_password
+	} else {
+		v << socks.no_auth
+	}
 
 	con.write(v)!
 	mut bf := []u8{len: 2}
@@ -44,19 +51,41 @@ fn handshake(mut con net.TcpConn, host string) !&net.TcpConn {
 		con.close()!
 		return error('unexpected protocol version ${bf[0]}')
 	}
-
-	if bf[1] != 0 {
-		con.close()!
-		return error(reply(bf[1]))
+	if username.len == 0 {
+		if bf[1] != 0 {
+			con.close()!
+			return error(reply(bf[1]))
+		}
 	}
+	if username.len > 0 {
+		v.clear()
+		v << u8(1)
+		v << u8(username.len)
+		v << username.bytes()
+		v << u8(password.len)
+		v << password.bytes()
+
+		con.write(v)!
+		mut resp := []u8{len: 2}
+		con.read(mut resp)!
+
+		if resp[0] != 1 {
+			con.close()!
+			return error('server does not support user/password version 1')
+		} else if resp[1] != 0 {
+			con.close()!
+			return error('user/password login failed')
+		}
+	}
+	v.clear()
+	v = [socks.socks_version5, 1, 0]
 
 	mut port := host.all_after_last(':').u64()
 	if port == 0 {
 		port = u64(80)
 	}
 	address := host.all_before_last(':')
-	println(address)
-	println(port)
+
 	if address.contains_only('.1234567890') { // ipv4
 		v << socks.addr_type_ipv4
 		v << parse_ipv4(address)!
@@ -78,7 +107,7 @@ fn handshake(mut con net.TcpConn, host string) !&net.TcpConn {
 
 	con.write(v)!
 
-	mut bff := []u8{len: 16}
+	mut bff := []u8{len: v.len}
 
 	con.read(mut bff)!
 	if bff[1] != 0 {
@@ -128,9 +157,6 @@ fn parse_ipv4(addr string) ![]u8 {
 	for part in addr.split('.') {
 		ip << part.u8()
 	}
-	// if ip.len != 4 {
-	// 	return error('Ip address not valid')
-	// }
 
 	return ip
 }
