@@ -87,12 +87,13 @@ fn parse_attributes(all_attributes string) !map[string]string {
 fn parse_comment(mut reader io.Reader) !XMLComment {
 	mut comment_buffer := strings.new_builder(xml.default_string_builder_cap)
 
+	mut local_buf := [u8(0)]
 	for {
-		ch := next_char(mut reader)!
+		ch := next_char(mut reader, mut local_buf)!
 		match ch {
 			`-` {
-				if next_char(mut reader)! == `-` {
-					if next_char(mut reader)! == `>` {
+				if next_char(mut reader, mut local_buf)! == `-` {
+					if next_char(mut reader, mut local_buf)! == `>` {
 						break
 					}
 					return error('XML Comment not closed. Expected ">".')
@@ -114,8 +115,10 @@ fn parse_cdata(mut reader io.Reader) !XMLCData {
 	mut contents_buf := strings.new_builder(xml.default_string_builder_cap)
 	mut found_bracket := false
 	mut found_double_bracket := false
+	mut local_buf := [u8(0)]
+
 	for {
-		ch := next_char(mut reader)!
+		ch := next_char(mut reader, mut local_buf)!
 		contents_buf.write_u8(ch)
 		match ch {
 			`]` {
@@ -202,9 +205,9 @@ fn parse_doctype(mut reader io.Reader) !DocumentType {
 	// We may have more < in the doctype so keep count
 	mut depth := 1
 	mut doctype_buffer := strings.new_builder(xml.default_string_builder_cap)
-
+	mut local_buf := [u8(0)]
 	for {
-		ch := next_char(mut reader)!
+		ch := next_char(mut reader, mut local_buf)!
 		doctype_buffer.write_u8(ch)
 		match ch {
 			`<` {
@@ -252,11 +255,12 @@ fn parse_doctype(mut reader io.Reader) !DocumentType {
 
 fn parse_prolog(mut reader io.Reader) !(Prolog, u8) {
 	// Trim trailing whitespace
-	mut ch := next_char(mut reader)!
+	mut local_buf := [u8(0)]
+	mut ch := next_char(mut reader, mut local_buf)!
 	for {
 		match ch {
 			` `, `\t`, `\n` {
-				ch = next_char(mut reader)!
+				ch = next_char(mut reader, mut local_buf)!
 				continue
 			}
 			`<` {
@@ -268,22 +272,22 @@ fn parse_prolog(mut reader io.Reader) !(Prolog, u8) {
 		}
 	}
 
-	ch = next_char(mut reader)!
+	ch = next_char(mut reader, mut local_buf)!
 	if ch != `?` {
 		return Prolog{}, ch
 	}
 
-	ch = next_char(mut reader)!
+	ch = next_char(mut reader, mut local_buf)!
 	if ch != `x` {
 		return error('Expecting a prolog starting with "<?x".')
 	}
 
-	ch = next_char(mut reader)!
+	ch = next_char(mut reader, mut local_buf)!
 	if ch != `m` {
 		return error('Expecting a prolog starting with "<?xm".')
 	}
 
-	ch = next_char(mut reader)!
+	ch = next_char(mut reader, mut local_buf)!
 	if ch != `l` {
 		return error('Expecting a prolog starting with "<?xml".')
 	}
@@ -294,7 +298,7 @@ fn parse_prolog(mut reader io.Reader) !(Prolog, u8) {
 	mut found_question_mark := false
 
 	for {
-		ch = next_char(mut reader)!
+		ch = next_char(mut reader, mut local_buf)!
 		match ch {
 			`?` {
 				if found_question_mark {
@@ -335,23 +339,22 @@ fn parse_prolog(mut reader io.Reader) !(Prolog, u8) {
 		dtd: ''
 	}
 	mut found_doctype := false
-
 	for {
-		ch = next_char(mut reader)!
+		ch = next_char(mut reader, mut local_buf)!
 		match ch {
 			` `, `\t`, `\n` {
 				continue
 			}
 			`<` {
 				// We have a comment, DOCTYPE, or root node
-				ch = next_char(mut reader)!
+				ch = next_char(mut reader, mut local_buf)!
 				match ch {
 					`!` {
 						// A comment or DOCTYPE
-						match next_char(mut reader)! {
+						match next_char(mut reader, mut local_buf)! {
 							`-` {
 								// A comment
-								if next_char(mut reader)! != `-` {
+								if next_char(mut reader, mut local_buf)! != `-` {
 									return error('Invalid comment.')
 								}
 								comments << parse_comment(mut reader)!
@@ -398,12 +401,13 @@ fn parse_children(name string, attributes map[string]string, mut reader io.Reade
 	mut inner_contents := strings.new_builder(xml.default_string_builder_cap)
 
 	mut children := []XMLNodeContents{}
+	mut local_buf := [u8(0)]
 
 	for {
-		ch := next_char(mut reader)!
+		ch := next_char(mut reader, mut local_buf)!
 		match ch {
 			`<` {
-				second_char := next_char(mut reader)!
+				second_char := next_char(mut reader, mut local_buf)!
 				match second_char {
 					`!` {
 						// Comment, CDATA
@@ -478,7 +482,8 @@ fn parse_children(name string, attributes map[string]string, mut reader io.Reade
 }
 
 fn parse_single_node(first_char u8, mut reader io.Reader) !XMLNode {
-	mut ch := next_char(mut reader)!
+	mut local_buf := [u8(0)]
+	mut ch := next_char(mut reader, mut local_buf)!
 	mut contents := strings.new_builder(xml.default_string_builder_cap)
 	// We're expecting an opening tag
 	if ch == `/` {
@@ -487,7 +492,7 @@ fn parse_single_node(first_char u8, mut reader io.Reader) !XMLNode {
 	contents.write_u8(ch)
 
 	for {
-		ch = next_char(mut reader)!
+		ch = next_char(mut reader, mut local_buf)!
 		if ch == `>` {
 			break
 		}
