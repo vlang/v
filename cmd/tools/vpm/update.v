@@ -27,11 +27,10 @@ fn update_module(mut pp pool.PoolProcessor, idx int, wid int) &ModUpdateInfo {
 	path_flag := if vcs == 'hg' { '-R' } else { '-C' }
 	cmd := '${vcs} ${path_flag} "${result.final_path}" ${supported_vcs_update_cmds[vcs]}'
 	verbose_println('    command: ${cmd}')
-	res := os.execute('${cmd}')
-	if res.exit_code != 0 {
+	res := os.execute_opt('${cmd}') or {
 		result.has_err = true
 		println('Failed updating module "${zname}" in "${result.final_path}".')
-		verbose_println('      command output: ${res.output}')
+		verbose_println('      command output: ${err}')
 		return result
 	}
 	verbose_println('    ${res.output.trim_space()}')
@@ -79,11 +78,10 @@ fn vpm_update_verbose(module_names []string) {
 		path_flag := if vcs == 'hg' { '-R' } else { '-C' }
 		cmd := '${vcs} ${path_flag} "${final_module_path}" ${supported_vcs_update_cmds[vcs]}'
 		verbose_println('    command: ${cmd}')
-		res := os.execute('${cmd}')
-		if res.exit_code != 0 {
+		res := os.execute_opt('${cmd}') or {
 			errors++
 			println('Failed updating module "${zname}" in "${final_module_path}" .')
-			verbose_println('      command output: ${res.output}')
+			verbose_println('      command output: ${err}')
 			continue
 		}
 		verbose_println('    ${res.output.trim_space()}')
