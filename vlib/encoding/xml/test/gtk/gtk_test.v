@@ -4,7 +4,15 @@ import encoding.xml
 import os
 
 fn test_large_gtk_file() ! {
+	// Note: If you are contributing to this project, you should download the
+	// GIR file from https://raw.githubusercontent.com/gtk-rs/gir-files/master/Gtk-4.0.gir
+	// and place it in the same directory as this file.
 	path := os.join_path(os.dir(@FILE), 'Gtk-4.0.gir')
+	if !os.exists(path) {
+		println('Skipping test_large_gtk_file because file does not exist.')
+		return
+	}
+	
 	actual := xml.XMLDocument.from_file(path) or {
 		return error('Failed to parse large GTK XML file')
 	}
