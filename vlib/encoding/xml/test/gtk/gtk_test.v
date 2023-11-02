@@ -12,7 +12,7 @@ fn test_large_gtk_file() ! {
 		println('Skipping test_large_gtk_file because file does not exist.')
 		return
 	}
-	
+
 	actual := xml.XMLDocument.from_file(path) or {
 		return error('Failed to parse large GTK XML file')
 	}

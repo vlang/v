@@ -23,7 +23,7 @@ fn (node XMLNode) validate(elements map[string]DTDElement, entities map[string]s
 				children << child.validate(elements, entities)!
 			}
 			string {
-				children << unescape_text(content: child, entities: entities)!
+				children << unescape_text(child, entities: entities)!
 			}
 			else {
 				// Ignore other nodes
