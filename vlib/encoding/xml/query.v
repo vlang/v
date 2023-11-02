@@ -2,8 +2,10 @@ module xml
 
 fn (node XMLNode) get_element_by_id(id string) ?XMLNode {
 	// Is this the node we're looking for?
-	if 'id' in node.attributes && node.attributes['id'] == id {
-		return node
+	if attribute_id := node.attributes['id'] {
+		if attribute_id == id {
+			return node
+		}
 	}
 
 	if node.children.len == 0 {
@@ -14,14 +16,11 @@ fn (node XMLNode) get_element_by_id(id string) ?XMLNode {
 	for child in node.children {
 		match child {
 			XMLNode {
-				result := child.get_element_by_id(id)
-				if result != none {
+				if result := child.get_element_by_id(id) {
 					return result
 				}
 			}
-			else {
-				// Ignore
-			}
+			else {}
 		}
 	}
 
@@ -41,13 +40,8 @@ fn (node XMLNode) get_elements_by_tag(tag string) []XMLNode {
 
 	// Recurse into children
 	for child in node.children {
-		match child {
-			XMLNode {
-				result << child.get_elements_by_tag(tag)
-			}
-			else {
-				// Ignore
-			}
+		if child is XMLNode {
+			result << child.get_elements_by_tag(tag)
 		}
 	}
 
