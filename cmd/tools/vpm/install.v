@@ -79,13 +79,13 @@ fn vpm_install(requested_modules []string, opts []string) {
 		vpm_install_from_vpm(vpm_modules)
 	}
 	if external_modules.len > 0 {
-		source := if '--hg' in opts { Source.hg } else { Source.git }
-		vpm_install_from_vcs(external_modules, source)
+		vcs := if '--hg' in opts { supported_vcs['hd'] } else { supported_vcs['git'] }
+		vpm_install_from_vcs(external_modules, vcs)
 	}
 }
 
-fn install_module(vcs string, name string, url string, final_module_path string) ! {
-	cmd := '${vcs} ${supported_vcs_install_cmds[vcs]} "${url}" "${final_module_path}"'
+fn install_module(vcs &VCS, name string, url string, final_module_path string) ! {
+	cmd := '${vcs.cmd} ${vcs.install_arg} "${url}" "${final_module_path}"'
 	verbose_println('      command: ${cmd}')
 	println('Installing module "${name}" from "${url}" to "${final_module_path}" ...')
 	res := os.execute(cmd)
@@ -105,14 +105,14 @@ fn vpm_install_from_vpm(module_names []string) {
 			eprintln(err)
 			continue
 		}
-		mut vcs := mod.vcs
-		if vcs == '' {
-			vcs = supported_vcs_systems[0]
-		}
-		if vcs !in supported_vcs_systems {
-			errors++
-			eprintln('Skipping module "${name}", since it uses an unsupported VCS {${vcs}} .')
-			continue
+		vcs := if mod.vcs != '' {
+			supported_vcs[mod.vcs] or {
+				errors++
+				eprintln('Skipping module "${name}", since it uses an unsupported VCS {${mod.vcs}} .')
+				continue
+			}
+		} else {
+			supported_vcs['git']
 		}
 		ensure_vcs_is_installed(vcs) or {
 			errors++
@@ -140,8 +140,7 @@ fn vpm_install_from_vpm(module_names []string) {
 	}
 }
 
-fn vpm_install_from_vcs(modules []string, vcs_key Source) {
-	vcs := vcs_key.str()
+fn vpm_install_from_vcs(modules []string, vcs &VCS) {
 	mut errors := 0
 	for raw_url in modules {
 		url := urllib.parse(raw_url) or {

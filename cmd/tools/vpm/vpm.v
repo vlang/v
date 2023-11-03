@@ -17,36 +17,36 @@ mut:
 	vmodules_path string
 }
 
-enum Source {
-	git
-	hg
-	vpm
+struct VCS {
+	cmd            string
+	dir            string
+	update_arg     string
+	install_arg    string
+	outdated_steps []string
 }
 
 const (
-	settings                  = &VpmSettings{}
-	default_vpm_server_urls   = ['https://vpm.vlang.io', 'https://vpm.url4e.com']
-	vpm_server_urls           = rand.shuffle_clone(default_vpm_server_urls) or { [] } // ensure that all queries are distributed fairly
-	valid_vpm_commands        = ['help', 'search', 'install', 'update', 'upgrade', 'outdated',
-		'list', 'remove', 'show']
-	excluded_dirs             = ['cache', 'vlib']
-	supported_vcs_systems     = ['git', 'hg']
-	supported_vcs_folders     = ['.git', '.hg']
-	supported_vcs_update_cmds = {
-		'git': 'pull --recurse-submodules' // pulling with `--depth=1` leads to conflicts, when the upstream is more than 1 commit newer
-		'hg':  'pull --update'
-	}
-	supported_vcs_install_cmds = {
-		'git': 'clone --depth=1 --recursive --shallow-submodules'
-		'hg':  'clone'
-	}
-	supported_vcs_outdated_steps = {
-		'git': ['fetch', 'rev-parse @', 'rev-parse @{u}']
-		'hg':  ['incoming']
-	}
-	supported_vcs_version_cmds = {
-		'git': 'version'
-		'hg':  'version'
+	settings                = &VpmSettings{}
+	default_vpm_server_urls = ['https://vpm.vlang.io', 'https://vpm.url4e.com']
+	vpm_server_urls         = rand.shuffle_clone(default_vpm_server_urls) or { [] } // ensure that all queries are distributed fairly
+	valid_vpm_commands      = ['help', 'search', 'install', 'update', 'upgrade', 'outdated', 'list',
+		'remove', 'show']
+	excluded_dirs           = ['cache', 'vlib']
+	supported_vcs           = {
+		'git': VCS{
+			cmd: 'git'
+			dir: '.git'
+			update_arg: 'pull --recurse-submodules' // pulling with `--depth=1` leads to conflicts, when the upstream is more than 1 commit newer
+			install_arg: 'clone --depth=1 --recursive --shallow-submodules'
+			outdated_steps: ['fetch', 'rev-parse @', 'rev-parse @{u}']
+		}
+		'hg':  VCS{
+			cmd: 'hg'
+			dir: '.hg'
+			update_arg: 'pull --update'
+			install_arg: 'clone'
+			outdated_steps: ['incoming']
+		}
 	}
 )
 
