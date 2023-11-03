@@ -34,7 +34,7 @@ fn init_and_check() ! {
 	x := os.execute_or_exit('${vexe} run .')
 	assert x.output.trim_space() == 'Hello World!'
 
-	if main_exists == true {
+	if main_exists {
 		assert main_last_modified == os.file_last_mod_unix('src/main.v')
 	} else {
 		assert os.read_file('src/main.v')! == [
