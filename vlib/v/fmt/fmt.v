@@ -2066,16 +2066,21 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 		if node.method_name == 'html' {
 			f.write('\$vweb.html()')
 		} else {
-			f.write('\$tmpl(${node.args[0].expr})')
+			f.write('\$tmpl($')
+			f.expr(node.args[0].expr)
+			f.write(')')
 		}
 	} else {
 		match true {
 			node.is_embed {
+				f.write('\$embed_file(')
 				if node.embed_file.compression_type == 'none' {
-					f.write('\$embed_file(${node.args[0].expr})')
+					f.expr(node.args[0].expr)
 				} else {
-					f.write('\$embed_file(${node.args[0].expr}, .${node.embed_file.compression_type})')
+					f.expr(node.args[0].expr)
+					f.write(', .${node.embed_file.compression_type}')
 				}
+				f.write(')')
 			}
 			node.is_env {
 				f.write("\$env('${node.args_var}')")
