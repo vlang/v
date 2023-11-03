@@ -6,7 +6,7 @@ module http
 import net.urllib
 
 const (
-	max_redirects        = 4
+	max_redirects        = 16 // safari max - other browsers allow up to 20
 	content_type_default = 'text/plain'
 	bufsize              = 1536
 )
