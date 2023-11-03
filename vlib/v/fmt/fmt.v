@@ -2066,7 +2066,7 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 		if node.method_name == 'html' {
 			f.write('\$vweb.html()')
 		} else {
-			f.write('\$tmpl($')
+			f.write('\$tmpl(')
 			f.expr(node.args[0].expr)
 			f.write(')')
 		}
