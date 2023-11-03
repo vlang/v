@@ -2074,10 +2074,8 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 		match true {
 			node.is_embed {
 				f.write('\$embed_file(')
-				if node.embed_file.compression_type == 'none' {
-					f.expr(node.args[0].expr)
-				} else {
-					f.expr(node.args[0].expr)
+				f.expr(node.args[0].expr)
+				if node.embed_file.compression_type != 'none' {
 					f.write(', .${node.embed_file.compression_type}')
 				}
 				f.write(')')
