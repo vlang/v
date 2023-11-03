@@ -37,7 +37,7 @@ jobs:
           echo "Build vab"
           v ~/.vmodules/vab
           echo "Build vab with -gc boehm -skip-unused"
-          v -gc boehm -skip-unused ~/.vmodules/vab
+          v -g -gc boehm -skip-unused ~/.vmodules/vab
 
       - name: Build vlang/ved
         run: |
