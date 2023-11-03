@@ -1,9 +1,8 @@
 import os
 import v.vmod
 
-
 const (
-	vroot = @VEXEROOT
+	vroot      = @VEXEROOT
 	// Expect has to be installed for the test.
 	expect_exe = os.quoted_path(os.find_abs_path_of_executable('expect') or {
 		eprintln('skipping test, since expect is missing')
