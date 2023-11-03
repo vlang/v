@@ -11,6 +11,69 @@ const (
 	max_u64  = u64(18446744073709551615) // as u64, use this until we add support
 )
 
+// atoi is equivalent to parse_int(s, 10, 0), converted to type int.
+[direct_array_access]
+pub fn atoi(string_value string) !int {
+	if string_value == '' || string_value.len == 0 {
+		return error('Cannot convert empty string to int')
+	}
+
+	return try_convert_to_int(string_value)!
+}
+
+fn try_convert_to_int(string_value string) !int {
+	if can_do_fast_conversion(string_value) {
+		number_sign, parsing_start_idx := parse_number_sign(string_value)
+		check_parsing_start_index(string_value, parsing_start_idx)!
+
+		parsed_number := try_parse_number(parsing_start_idx, string_value)!
+
+		return parsed_number * number_sign
+	}
+
+	int64 := parse_int(string_value, 10, 0)!
+	return int(int64)
+}
+
+fn can_do_fast_conversion(string_value string) bool {
+	return string_value.len < 10
+}
+
+fn parse_number_sign(string_value string) (int, int) {
+	mut parsing_start_idx := 0
+
+	return match string_value[0] {
+		`-` { -1, parsing_start_idx + 1 }
+		`+` { 1, parsing_start_idx + 1 }
+		else { 1, parsing_start_idx }
+	}
+}
+
+fn check_parsing_start_index(string_value string, parsing_start_idx int) ! {
+	if string_value.len == parsing_start_idx {
+		return error('Cannot convert string ${string_value} to int - no digits found')
+	}
+}
+
+fn try_parse_number(parsing_start_idx int, string_value string) !int {
+	mut parsed_number := 0
+
+	for parsing_idx in parsing_start_idx .. string_value.len {
+		digit_char := string_value[parsing_idx] - `0`
+		rise_error_if_char_is_not_digit(digit_char, string_value)!
+
+		parsed_number = parsed_number * 10 + int(digit_char)
+	}
+
+	return parsed_number
+}
+
+fn rise_error_if_char_is_not_digit(char_to_check u8, string_value string) ! {
+	if char_to_check > 9 {
+		return error('Cannot convert string ${string_value} to int - invalid digit ${char_to_check}')
+	}
+}
+
 // common_parse_uint is called by parse_uint and allows the parsing
 // to stop on non or invalid digit characters and return with an error
 pub fn common_parse_uint(s string, _base int, _bit_size int, error_on_non_digit bool, error_on_high_digit bool) !u64 {
@@ -65,7 +128,6 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 					start_index++
 				}
 			}
-
 			// manage leading zeros in decimal base's numbers
 			// otherwise it is an octal for C compatibility
 			// TODO: Check if this behaviour is logically right
@@ -225,46 +287,4 @@ pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit b
 // If bitSize is below 0 or above 64, an error is returned.
 pub fn parse_int(_s string, base int, _bit_size int) !i64 {
 	return common_parse_int(_s, base, _bit_size, true, true)
-}
-
-// atoi is equivalent to parse_int(s, 10, 0), converted to type int.
-[direct_array_access]
-pub fn atoi(s string) !int {
-	if s == '' {
-		return error('strconv.atoi: parsing "": invalid syntax')
-	}
-
-	if (strconv.int_size == 32 && (0 < s.len && s.len < 10))
-		|| (strconv.int_size == 64 && (0 < s.len && s.len < 19)) {
-		// Fast path for small integers that fit int type.
-		mut start_idx := 0
-
-		if s[0] == `-` || s[0] == `+` {
-			start_idx++
-
-			if s.len - start_idx < 1 {
-				// return 0, &NumError{fnAtoi, s0, ErrSyntax}
-				return error('strconv.atoi: parsing "${s}": invalid syntax')
-			}
-		}
-
-		mut n := 0
-
-		for i in start_idx .. s.len {
-			ch := s[i] - `0`
-
-			if ch > 9 {
-				// return 0, &NumError{fnAtoi, s0, ErrSyntax}
-				return error('strconv.atoi: parsing "${s}": invalid syntax')
-			}
-
-			n = n * 10 + int(ch)
-		}
-
-		return if s[0] == `-` { -n } else { n }
-	}
-
-	// Slow path for invalid, big, or underscored integers.
-	int64 := parse_int(s, 10, 0)!
-	return int(int64)
 }
