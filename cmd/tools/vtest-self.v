@@ -19,7 +19,7 @@ const (
 		'vlib/builtin/float_test.v',
 		'vlib/builtin/byte_test.v',
 		'vlib/builtin/rune_test.v',
-		'vlib/builtin/builtin_test.v',
+		'vlib/builtin/builtin_test.c.v',
 		'vlib/builtin/map_of_floats_test.v',
 		'vlib/builtin/string_int_test.v',
 		'vlib/builtin/utf8_test.v',
