@@ -26,7 +26,7 @@ struct VCS {
 }
 
 const (
-	settings                = &VpmSettings{}
+	settings                = init_settings()
 	default_vpm_server_urls = ['https://vpm.vlang.io', 'https://vpm.url4e.com']
 	vpm_server_urls         = rand.shuffle_clone(default_vpm_server_urls) or { [] } // ensure that all queries are distributed fairly
 	valid_vpm_commands      = ['help', 'search', 'install', 'update', 'upgrade', 'outdated', 'list',
@@ -51,7 +51,6 @@ const (
 )
 
 fn main() {
-	init_settings()
 	// This tool is intended to be launched by the v frontend,
 	// which provides the path to V inside os.getenv('VEXE')
 	// args are: vpm [options] SUBCOMMAND module names
@@ -104,15 +103,13 @@ fn main() {
 	}
 }
 
-fn init_settings() {
-	mut s := &VpmSettings(unsafe { nil })
-	unsafe {
-		s = settings
+fn init_settings() VpmSettings {
+	return VpmSettings{
+		is_help: '-h' in os.args || '--help' in os.args || 'help' in os.args
+		is_verbose: '-v' in os.args
+		server_urls: cmdline.options(os.args, '-server-url')
+		vmodules_path: os.vmodules_dir()
 	}
-	s.is_help = '-h' in os.args || '--help' in os.args || 'help' in os.args
-	s.is_verbose = '-v' in os.args
-	s.server_urls = cmdline.options(os.args, '-server-url')
-	s.vmodules_path = os.vmodules_dir()
 }
 
 fn vpm_upgrade() {
