@@ -92,6 +92,7 @@ fn (pr &HttpProxy) http_do(host urllib.URL, method Method, path string, req &Req
 		mut client := pr.ssl_dial('${host.host}:443')!
 
 		$if windows {
+			return error('Windows Not SUPPORTED') //todo windows ssl
 			response_text := req.do_request(req.build_request_headers(req.method, host_name,
 				path))!
 			client.shutdown()!
