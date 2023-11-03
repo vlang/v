@@ -62,7 +62,10 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	rpath := os.real_path(p.path)
 	if p.out_name == '' {
 		filename := os.file_name(rpath).trim_space()
-		mut base := filename.all_before_last('.').replace('.', '_')
+		mut base := filename.all_before_last('.')
+		if os.file_ext(base) in ['.c', '.js', '.wasm'] {
+			base = base.all_before_last('.')
+		}
 		if base == '' {
 			// The file name is just `.v` or `.vsh` or `.*`
 			base = filename
