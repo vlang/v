@@ -25,7 +25,6 @@ struct VCS {
 		path     string // the flag used to specify a path. E.g., used to explictly work on a path during multithreaded updating.
 		update   string
 		outdated []string
-		version  string
 	}
 }
 
@@ -45,7 +44,6 @@ const (
 				update: 'pull --recurse-submodules' // pulling with `--depth=1` leads to conflicts, when the upstream is more than 1 commit newer
 				path: '-C'
 				outdated: ['fetch', 'rev-parse @', 'rev-parse @{u}']
-				version: '--version'
 			}
 		}
 		'hg':  VCS{
@@ -55,7 +53,6 @@ const (
 				install: 'clone'
 				update: 'pull --update'
 				path: '-R'
-				version: '--version'
 				outdated: ['incoming']
 			}
 		}

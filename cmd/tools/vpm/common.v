@@ -228,11 +228,7 @@ fn ensure_vmodules_dir_exist() {
 }
 
 fn ensure_vcs_is_installed(vcs &VCS) ! {
-	cmd := '${vcs.cmd} ${vcs.args.version}'
-	verbose_println('      command: ${cmd}')
-	res := os.execute(cmd)
-	if res.exit_code != 0 {
-		verbose_println('      command output: ${res.output}')
+	os.find_abs_path_of_executable(vcs.cmd) or {
 		return error('VPM needs `${vcs}` to be installed.')
 	}
 }
