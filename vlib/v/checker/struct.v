@@ -206,8 +206,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 							field.default_expr.pos)
 					}
 					if field.typ.has_flag(.option) && field.default_expr.is_nil() {
-						c.error('cannot assign `nil` to option value',
-							field.default_expr.pos())
+						c.error('cannot assign `nil` to option value', field.default_expr.pos())
 					}
 					continue
 				}
