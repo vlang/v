@@ -69,7 +69,7 @@ fn vpm_install(requested_modules []string, opts []string) {
 		if already_installed.len > 0 {
 			verbose_println('Already installed modules: ${already_installed}')
 			if already_installed.len == modules.len {
-				verbose_println('All modules are already installed.')
+				println('All modules are already installed.')
 				exit(0)
 			}
 		}

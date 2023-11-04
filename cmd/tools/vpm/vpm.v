@@ -67,14 +67,13 @@ fn main() {
 	// args are: vpm [options] SUBCOMMAND module names
 	params := cmdline.only_non_options(os.args[1..])
 	options := cmdline.only_options(os.args[1..])
-	verbose_println('cli params: ${params}')
+	// dump(params)
 	if params.len < 1 {
 		help.print_and_exit('vpm', exit_code: 5)
 	}
 	vpm_command := params[0]
 	mut requested_modules := params[1..].clone()
 	ensure_vmodules_dir_exist()
-	// println('module names: ') println(requested_modules)
 	match vpm_command {
 		'help' {
 			help.print_and_exit('vpm')
