@@ -429,15 +429,15 @@ fn up_low(s string, upper_flag bool) string {
 		if ch_len == 1 {
 			if upper_flag == true {
 				unsafe {
-					// ASCII lowercase is 0x61 -> 0x7a.  Subtract 0x20 to uppercase.
-					c := str_res[index]
-					str_res[index] = if c >= 0x61 && c <= 0x7a { c - 0x20 } else { c }
+					// Subtract 0x20 (ASCII space char) from ASCII lowercase to convert to uppercase.
+					c := u8(s[index])
+					str_res[index] = if c >= u8(0x61) && c <= u8(0x7a) { c - u8(0x20) } else { c }
 				}
 			} else {
 				unsafe {
-					// ASCII uppercase is 0x41 -> 0x5a.  Add 0x20 to lowercase.
-					c := str_res[index]
-					str_res[index] = if c >= 0x41 && c <= 0x5a { c + 0x20 } else { c }
+					// Add (ASCII space char) to ASCII uppercase to convert to lowercase.
+					c := u8(s[index])
+					str_res[index] = if c >= u8(0x41) && c <= u8(0x5a) { c + u8(0x20) } else { c }
 				}
 			}
 		} else if ch_len > 1 && ch_len < 5 {
