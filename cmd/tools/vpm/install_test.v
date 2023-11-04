@@ -18,7 +18,7 @@ fn testsuite_end() {
 }
 
 fn test_install_from_vpm_ident() {
-	os.execute_or_exit('${v} install nedpals.args')
+	res := os.execute_or_exit('${v} install nedpals.args')
 	assert res.output.contains('Skipping download count increment for "nedpals.args".')
 	mod := vmod.from_file(os.join_path(test_path, 'nedpals', 'args', 'v.mod')) or {
 		assert false, err.msg()
