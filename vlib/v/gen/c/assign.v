@@ -459,6 +459,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			mut op_overloaded := false
 			mut op_expected_left := ast.Type(0)
 			mut op_expected_right := ast.Type(0)
+			is_shared_re_assign := !is_decl && node.left_types[i].has_flag(.shared_f)
+				&& left is ast.Ident && left_sym.kind in [.array, .map, .struct_]
 			if node.op == .plus_assign && unaliased_right_sym.kind == .string {
 				if mut left is ast.IndexExpr {
 					if g.table.sym(left.left_type).kind == .array_fixed {
@@ -608,11 +610,11 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				if left in [ast.Ident, ast.SelectorExpr] {
 					g.prevent_sum_type_unwrapping_once = true
 				}
-				if !is_fixed_array_var || is_decl {
+				if !is_fixed_array_var || is_decl || is_shared_re_assign {
 					if op_overloaded {
 						g.op_arg(left, op_expected_left, var_type)
 					} else {
-						if !is_decl && left.is_auto_deref_var() {
+						if !is_decl && !is_shared_re_assign && left.is_auto_deref_var() {
 							g.write('*')
 						}
 						g.expr(left)
@@ -728,7 +730,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						if op_overloaded {
 							g.op_arg(val, op_expected_right, val_type)
 						} else {
-							exp_type := if left.is_auto_deref_var() || var_type.has_flag(.shared_f) {
+							exp_type := if var_type.is_ptr()
+								&& (left.is_auto_deref_var() || var_type.has_flag(.shared_f)) {
 								var_type.deref()
 							} else {
 								var_type
