@@ -79,13 +79,13 @@ fn vpm_install(requested_modules []string, opts []string) {
 		vpm_install_from_vpm(vpm_modules)
 	}
 	if external_modules.len > 0 {
-		vcs := if '--hg' in opts { supported_vcs['hd'] } else { supported_vcs['git'] }
+		vcs := if '--hg' in opts { supported_vcs['hg'] } else { supported_vcs['git'] }
 		vpm_install_from_vcs(external_modules, vcs)
 	}
 }
 
 fn install_module(vcs &VCS, name string, url string, final_module_path string) ! {
-	cmd := '${vcs.cmd} ${vcs.install_arg} "${url}" "${final_module_path}"'
+	cmd := '${vcs.cmd} ${vcs.args.install} "${url}" "${final_module_path}"'
 	verbose_println('      command: ${cmd}')
 	println('Installing module "${name}" from "${url}" to "${final_module_path}" ...')
 	res := os.execute(cmd)
