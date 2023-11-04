@@ -435,7 +435,7 @@ fn up_low(s string, upper_flag bool) string {
 				}
 			} else {
 				unsafe {
-					// Add (ASCII space char) to ASCII uppercase to convert to lowercase.
+					// Add 0x20 (ASCII space char) to ASCII uppercase to convert to lowercase.
 					c := s[index]
 					str_res[index] = if c >= 0x41 && c <= 0x5a { c + 0x20 } else { c }
 				}
