@@ -427,13 +427,16 @@ fn up_low(s string, upper_flag bool) string {
 		ch_len := utf8_char_len(s[index])
 
 		if ch_len == 1 {
+			c := str_res[index]
 			if upper_flag == true {
 				unsafe {
-					str_res[index] = u8(C.toupper(s.str[index]))
+					// ASCII lowercase is 0x61 -> 0x7a.  Subtract 0x20 to uppercase.
+					str_res[index] = if c >= 0x61 && c <= 0x7a { c - 0x20 } else { c }
 				}
 			} else {
 				unsafe {
-					str_res[index] = u8(C.tolower(s.str[index]))
+					// ASCII uppercase is 0x41 -> 0x5a.  Add 0x20 to lowercase.
+					str_res[index] = if c >= 0x41 && c <= 0x5a { c + 0x20 } else { c }
 				}
 			}
 		} else if ch_len > 1 && ch_len < 5 {
