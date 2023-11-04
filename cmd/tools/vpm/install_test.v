@@ -63,6 +63,9 @@ fn test_install_already_existent() {
 	}
 	assert mod.name == 'markdown'
 	assert mod.dependencies == []string{}
+	// The same module but with the `.git` extension added.
+	os.execute_or_exit('${v} install https://github.com/vlang/markdown.git')
+	assert res.output.contains('already exists')
 }
 
 fn test_install_once() {
