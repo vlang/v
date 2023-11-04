@@ -17,36 +17,46 @@ mut:
 	vmodules_path string
 }
 
-enum Source {
-	git
-	hg
-	vpm
+struct VCS {
+	dir  string
+	cmd  string
+	args struct {
+		install  string
+		path     string // the flag used to specify a path. E.g., used to explictly work on a path during multithreaded updating.
+		update   string
+		outdated []string
+	}
 }
 
 const (
-	settings                  = &VpmSettings{}
-	default_vpm_server_urls   = ['https://vpm.vlang.io', 'https://vpm.url4e.com']
-	vpm_server_urls           = rand.shuffle_clone(default_vpm_server_urls) or { [] } // ensure that all queries are distributed fairly
-	valid_vpm_commands        = ['help', 'search', 'install', 'update', 'upgrade', 'outdated',
-		'list', 'remove', 'show']
-	excluded_dirs             = ['cache', 'vlib']
-	supported_vcs_systems     = ['git', 'hg']
-	supported_vcs_folders     = ['.git', '.hg']
-	supported_vcs_update_cmds = {
-		'git': 'pull --recurse-submodules' // pulling with `--depth=1` leads to conflicts, when the upstream is more than 1 commit newer
-		'hg':  'pull --update'
-	}
-	supported_vcs_install_cmds = {
-		'git': 'clone --depth=1 --recursive --shallow-submodules'
-		'hg':  'clone'
-	}
-	supported_vcs_outdated_steps = {
-		'git': ['fetch', 'rev-parse @', 'rev-parse @{u}']
-		'hg':  ['incoming']
-	}
-	supported_vcs_version_cmds = {
-		'git': 'version'
-		'hg':  'version'
+	settings                = &VpmSettings{}
+	no_dl_count_increment   = os.getenv('VPM_NO_INCREMENT') == '1'
+	default_vpm_server_urls = ['https://vpm.vlang.io', 'https://vpm.url4e.com']
+	vpm_server_urls         = rand.shuffle_clone(default_vpm_server_urls) or { [] } // ensure that all queries are distributed fairly
+	valid_vpm_commands      = ['help', 'search', 'install', 'update', 'upgrade', 'outdated', 'list',
+		'remove', 'show']
+	excluded_dirs           = ['cache', 'vlib']
+	supported_vcs           = {
+		'git': VCS{
+			dir: '.git'
+			cmd: 'git'
+			args: struct {
+				install: 'clone --depth=1 --recursive --shallow-submodules'
+				update: 'pull --recurse-submodules' // pulling with `--depth=1` leads to conflicts, when the upstream is more than 1 commit newer
+				path: '-C'
+				outdated: ['fetch', 'rev-parse @', 'rev-parse @{u}']
+			}
+		}
+		'hg':  VCS{
+			dir: '.hg'
+			cmd: 'hg'
+			args: struct {
+				install: 'clone'
+				update: 'pull --update'
+				path: '-R'
+				outdated: ['incoming']
+			}
+		}
 	}
 )
 
@@ -57,14 +67,13 @@ fn main() {
 	// args are: vpm [options] SUBCOMMAND module names
 	params := cmdline.only_non_options(os.args[1..])
 	options := cmdline.only_options(os.args[1..])
-	verbose_println('cli params: ${params}')
+	// dump(params)
 	if params.len < 1 {
 		help.print_and_exit('vpm', exit_code: 5)
 	}
 	vpm_command := params[0]
 	mut requested_modules := params[1..].clone()
 	ensure_vmodules_dir_exist()
-	// println('module names: ') println(requested_modules)
 	match vpm_command {
 		'help' {
 			help.print_and_exit('vpm')

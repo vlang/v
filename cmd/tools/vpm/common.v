@@ -36,12 +36,10 @@ fn get_mod_date_info(mut pp pool.PoolProcessor, idx int, wid int) &ModDateInfo {
 	}
 	final_module_path := valid_final_path_of_existing_module(result.name) or { return result }
 	vcs := vcs_used_in_dir(final_module_path) or { return result }
-	is_hg := vcs[0] == 'hg'
-	vcs_cmd_steps := supported_vcs_outdated_steps[vcs[0]]
+	is_hg := vcs.cmd == 'hg'
 	mut outputs := []string{}
-	for step in vcs_cmd_steps {
-		path_flag := if is_hg { '-R' } else { '-C' }
-		cmd := '${vcs[0]} ${path_flag} "${final_module_path}" ${step}'
+	for step in vcs.args.outdated {
+		cmd := '${vcs.cmd} ${vcs.args.path} "${final_module_path}" ${step}'
 		res := os.execute('${cmd}')
 		if res.exit_code < 0 {
 			verbose_println('Error command: ${cmd}')
@@ -55,7 +53,7 @@ fn get_mod_date_info(mut pp pool.PoolProcessor, idx int, wid int) &ModDateInfo {
 		}
 		outputs << res.output
 	}
-	// vcs[0] == 'git'
+	// vcs.cmd == 'git'
 	if !is_hg && outputs[1] != outputs[2] {
 		result.outdated = true
 	}
@@ -229,16 +227,17 @@ fn ensure_vmodules_dir_exist() {
 	}
 }
 
-fn ensure_vcs_is_installed(vcs string) ! {
-	cmd := '${vcs} ${supported_vcs_version_cmds[vcs]}'
-	verbose_println('      command: ${cmd}')
-	os.execute_opt(cmd) or {
-		verbose_println('      command output: ${err}')
+fn ensure_vcs_is_installed(vcs &VCS) ! {
+	os.find_abs_path_of_executable(vcs.cmd) or {
 		return error('VPM needs `${vcs}` to be installed.')
 	}
 }
 
 fn increment_module_download_count(name string) ! {
+	if no_dl_count_increment {
+		println('Skipping download count increment for "${name}".')
+		return
+	}
 	mut errors := []string{}
 
 	for server_url in vpm_server_urls {
@@ -283,18 +282,13 @@ fn url_to_module_name(modulename string) string {
 	return res
 }
 
-fn vcs_used_in_dir(dir string) ?[]string {
-	mut vcs := []string{}
-	for repo_subfolder in supported_vcs_folders {
-		checked_folder := os.real_path(os.join_path(dir, repo_subfolder))
-		if os.is_dir(checked_folder) {
-			vcs << repo_subfolder.replace('.', '')
+fn vcs_used_in_dir(dir string) ?VCS {
+	for vcs in supported_vcs.values() {
+		if os.is_dir(os.real_path(os.join_path(dir, vcs.dir))) {
+			return vcs
 		}
 	}
-	if vcs.len == 0 {
-		return none
-	}
-	return vcs
+	return none
 }
 
 fn valid_final_path_of_existing_module(modulename string) ?string {

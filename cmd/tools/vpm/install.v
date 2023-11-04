@@ -43,7 +43,7 @@ fn vpm_install(requested_modules []string, opts []string) {
 					eprintln('Errors while parsing module url "${raw_url}" : ${err}')
 					continue
 				}
-				mod_name := url.path.all_after_last('/')
+				mod_name := url.path.all_after_last('/').replace('.git', '')
 				if mod_name in installed_modules {
 					already_installed << mod_name
 					i_deleted << i
@@ -69,7 +69,7 @@ fn vpm_install(requested_modules []string, opts []string) {
 		if already_installed.len > 0 {
 			verbose_println('Already installed modules: ${already_installed}')
 			if already_installed.len == modules.len {
-				verbose_println('All modules are already installed.')
+				println('All modules are already installed.')
 				exit(0)
 			}
 		}
@@ -79,13 +79,13 @@ fn vpm_install(requested_modules []string, opts []string) {
 		vpm_install_from_vpm(vpm_modules)
 	}
 	if external_modules.len > 0 {
-		source := if '--hg' in opts { Source.hg } else { Source.git }
-		vpm_install_from_vcs(external_modules, source)
+		vcs := if '--hg' in opts { supported_vcs['hg'] } else { supported_vcs['git'] }
+		vpm_install_from_vcs(external_modules, vcs)
 	}
 }
 
-fn install_module(vcs string, name string, url string, final_module_path string) ! {
-	cmd := '${vcs} ${supported_vcs_install_cmds[vcs]} "${url}" "${final_module_path}"'
+fn install_module(vcs &VCS, name string, url string, final_module_path string) ! {
+	cmd := '${vcs.cmd} ${vcs.args.install} "${url}" "${final_module_path}"'
 	verbose_println('      command: ${cmd}')
 	println('Installing module "${name}" from "${url}" to "${final_module_path}" ...')
 	os.execute_opt(cmd) or {
@@ -104,14 +104,14 @@ fn vpm_install_from_vpm(module_names []string) {
 			eprintln(err)
 			continue
 		}
-		mut vcs := mod.vcs
-		if vcs == '' {
-			vcs = supported_vcs_systems[0]
-		}
-		if vcs !in supported_vcs_systems {
-			errors++
-			eprintln('Skipping module "${name}", since it uses an unsupported VCS {${vcs}} .')
-			continue
+		vcs := if mod.vcs != '' {
+			supported_vcs[mod.vcs] or {
+				errors++
+				eprintln('Skipping module "${name}", since it uses an unsupported VCS {${mod.vcs}} .')
+				continue
+			}
+		} else {
+			supported_vcs['git']
 		}
 		ensure_vcs_is_installed(vcs) or {
 			errors++
@@ -139,8 +139,7 @@ fn vpm_install_from_vpm(module_names []string) {
 	}
 }
 
-fn vpm_install_from_vcs(modules []string, vcs_key Source) {
-	vcs := vcs_key.str()
+fn vpm_install_from_vcs(modules []string, vcs &VCS) {
 	mut errors := 0
 	for raw_url in modules {
 		url := urllib.parse(raw_url) or {
@@ -150,7 +149,7 @@ fn vpm_install_from_vcs(modules []string, vcs_key Source) {
 		}
 		// Module identifier based on URL.
 		// E.g.: `https://github.com/owner/awesome-v-project` -> `owner/awesome_v_project`
-		mut ident := url.path#[1..].replace('-', '_')
+		mut ident := url.path#[1..].replace('-', '_').replace('.git', '')
 		owner, repo_name := ident.split_once('/') or {
 			errors++
 			eprintln('Errors while retrieving module name for: "${url}"')
@@ -184,10 +183,18 @@ fn vpm_install_from_vcs(modules []string, vcs_key Source) {
 				if os.exists(minfo.final_module_path) {
 					eprintln('Warning module "${minfo.final_module_path}" already exists!')
 					eprintln('Removing module "${minfo.final_module_path}" ...')
-					os.rmdir_all(minfo.final_module_path) or {
+					mut err_msg := ''
+					$if windows {
+						os.execute_opt('rd /s /q ${minfo.final_module_path}') or {
+							err_msg = err.msg()
+						}
+					} $else {
+						os.rmdir_all(minfo.final_module_path) or { err_msg = err.msg() }
+					}
+					if err_msg != '' {
 						errors++
 						eprintln('Errors while removing "${minfo.final_module_path}" :')
-						eprintln(err)
+						eprintln(err_msg)
 						continue
 					}
 				}

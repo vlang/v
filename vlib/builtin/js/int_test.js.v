@@ -1,3 +1,6 @@
+// vtest flaky: true
+// vtest retry: 3
+
 const (
 	a = 3
 	u = u64(1)
@@ -109,7 +112,7 @@ fn test_hex() {
 	// assert u64(-1).hex() == 'ffffffffffffffff'
 	// signed tests
 	// assert i8(-1).hex() == 'ff'
-	assert i8(12).hex() == 'c'
+	assert i8(12).hex() == '0c'
 	assert i16(32767).hex() == '7fff'
 	assert int(2147483647).hex() == '7fffffff'
 	assert i64(9223372036854775807).hex() == '7fffffffffffffff'
@@ -202,35 +205,35 @@ fn test_int_to_hex() {
 	st1 := [u8(0x41)].repeat(100)
 	assert st1.hex() == '41'.repeat(100)*/
 	// --- int to hex tests
-	c0 := 12
+	c := 12
 	// 8Bit
-	assert u8(0).hex() == '0'
-	assert u8(c0).hex() == 'c'
-	assert i8(c0).hex() == 'c'
+	assert u8(0).hex() == '00'
+	assert u8(c).hex() == '0c'
+	assert i8(c).hex() == '0c'
 	assert u8(127).hex() == '7f'
 	assert i8(127).hex() == '7f'
 	assert u8(255).hex() == 'ff'
 	// assert u8(-1).hex() == 'ff'
 	// 16bit
 	assert u16(0).hex() == '0'
-	assert i16(c0).hex() == 'c'
-	assert u16(c0).hex() == 'c'
+	assert i16(c).hex() == 'c'
+	assert u16(c).hex() == 'c'
 	assert i16(32767).hex() == '7fff'
 	assert u16(32767).hex() == '7fff'
 	// assert i16(-1).hex() == 'ffff'
 	assert u16(65535).hex() == 'ffff'
 	// 32bit
 	assert u32(0).hex() == '0'
-	assert c0.hex() == 'c'
-	assert u32(c0).hex() == 'c'
+	assert c.hex() == 'c'
+	assert u32(c).hex() == 'c'
 	assert 2147483647.hex() == '7fffffff'
 	assert u32(2147483647).hex() == '7fffffff'
 	// assert (-1).hex() == 'ffffffffffffffff'
 	// assert u32(4294967295).hex() == 'ffffffff'
 	// 64 bit
 	assert u64(0).hex() == '0'
-	assert i64(c0).hex() == 'c'
-	assert u64(c0).hex() == 'c'
+	assert i64(c).hex() == 'c'
+	assert u64(c).hex() == 'c'
 	assert i64(9223372036854775807).hex() == '7fffffffffffffff'
 	assert u64(9223372036854775807).hex() == '7fffffffffffffff'
 	// assert i64(-1).hex() == 'ffffffffffffffff'

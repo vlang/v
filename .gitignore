@@ -130,3 +130,4 @@ vls.log
 wasm.v
 TAGS
 tags
+vlib/builtin/js/*.js

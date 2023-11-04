@@ -18,14 +18,13 @@ fn update_module(mut pp pool.PoolProcessor, idx int, wid int) &ModUpdateInfo {
 	zname := url_to_module_name(result.name)
 	result.final_path = valid_final_path_of_existing_module(result.name) or { return result }
 	println('Updating module "${zname}" in "${result.final_path}" ...')
-	vcs := vcs_used_in_dir(result.final_path) or { return result }[0]
+	vcs := vcs_used_in_dir(result.final_path) or { return result }
 	ensure_vcs_is_installed(vcs) or {
 		result.has_err = true
 		eprintln(err)
 		return result
 	}
-	path_flag := if vcs == 'hg' { '-R' } else { '-C' }
-	cmd := '${vcs} ${path_flag} "${result.final_path}" ${supported_vcs_update_cmds[vcs]}'
+	cmd := '${vcs.cmd} ${vcs.args.path} "${result.final_path}" ${vcs.args.update}'
 	verbose_println('    command: ${cmd}')
 	res := os.execute_opt('${cmd}') or {
 		result.has_err = true
@@ -69,14 +68,13 @@ fn vpm_update_verbose(module_names []string) {
 		zname := url_to_module_name(name)
 		final_module_path := valid_final_path_of_existing_module(name) or { continue }
 		println('Updating module "${zname}" in "${final_module_path}" ...')
-		vcs := vcs_used_in_dir(final_module_path) or { continue }[0]
+		vcs := vcs_used_in_dir(final_module_path) or { continue }
 		ensure_vcs_is_installed(vcs) or {
 			errors++
 			eprintln(err)
 			continue
 		}
-		path_flag := if vcs == 'hg' { '-R' } else { '-C' }
-		cmd := '${vcs} ${path_flag} "${final_module_path}" ${supported_vcs_update_cmds[vcs]}'
+		cmd := '${vcs.cmd} ${vcs.args.path} "${final_module_path}" ${vcs.args.update}'
 		verbose_println('    command: ${cmd}')
 		res := os.execute_opt('${cmd}') or {
 			errors++
