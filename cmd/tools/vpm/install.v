@@ -184,10 +184,18 @@ fn vpm_install_from_vcs(modules []string, vcs &VCS) {
 				if os.exists(minfo.final_module_path) {
 					eprintln('Warning module "${minfo.final_module_path}" already exists!')
 					eprintln('Removing module "${minfo.final_module_path}" ...')
-					os.rmdir_all(minfo.final_module_path) or {
+					mut err_msg := ''
+					$if windows {
+						os.execute_opt('rd /s /q ${minfo.final_module_path}') or {
+							err_msg = err.msg()
+						}
+					} $else {
+						os.rmdir_all(minfo.final_module_path) or { err_msg = err.msg() }
+					}
+					if err_msg != '' {
 						errors++
 						eprintln('Errors while removing "${minfo.final_module_path}" :')
-						eprintln(err)
+						eprintln(err_msg)
 						continue
 					}
 				}
