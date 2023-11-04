@@ -27,6 +27,7 @@ struct VCS {
 
 const (
 	settings                = &VpmSettings{}
+	no_dl_count_increment   = os.getenv('VPM_NO_INCREMENT') == '1'
 	default_vpm_server_urls = ['https://vpm.vlang.io', 'https://vpm.url4e.com']
 	vpm_server_urls         = rand.shuffle_clone(default_vpm_server_urls) or { [] } // ensure that all queries are distributed fairly
 	valid_vpm_commands      = ['help', 'search', 'install', 'update', 'upgrade', 'outdated', 'list',

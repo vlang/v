@@ -10,6 +10,7 @@ const (
 
 fn testsuite_begin() {
 	os.setenv('VMODULES', test_path, true)
+	os.setenv('VPM_NO_INCREMENT', '1', true)
 }
 
 fn testsuite_end() {
@@ -19,6 +20,7 @@ fn testsuite_end() {
 fn test_install_from_vpm_ident() {
 	res := os.execute('${v} install nedpals.args')
 	assert res.exit_code == 0, res.output
+	assert res.output.contains('Skipping download count increment for "nedpals.args".')
 	mod := vmod.from_file(os.join_path(test_path, 'nedpals', 'args', 'v.mod')) or {
 		assert false, err.str()
 		return
