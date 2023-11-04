@@ -9,14 +9,6 @@ import rand
 import v.help
 import v.vmod
 
-struct VpmSettings {
-mut:
-	is_help       bool
-	is_verbose    bool
-	server_urls   []string
-	vmodules_path string
-}
-
 struct VCS {
 	dir  string
 	cmd  string
@@ -64,7 +56,6 @@ fn main() {
 	// which provides the path to V inside os.getenv('VEXE')
 	// args are: vpm [options] SUBCOMMAND module names
 	params := cmdline.only_non_options(os.args[1..])
-	options := cmdline.only_options(os.args[1..])
 	// dump(params)
 	if params.len < 1 {
 		help.print_and_exit('vpm', exit_code: 5)
@@ -80,7 +71,7 @@ fn main() {
 			vpm_search(requested_modules)
 		}
 		'install' {
-			vpm_install(requested_modules, options)
+			vpm_install(requested_modules)
 		}
 		'update' {
 			vpm_update(requested_modules)
@@ -108,15 +99,6 @@ fn main() {
 			}
 			exit(3)
 		}
-	}
-}
-
-fn init_settings() VpmSettings {
-	return VpmSettings{
-		is_help: '-h' in os.args || '--help' in os.args || 'help' in os.args
-		is_verbose: '-v' in os.args
-		server_urls: cmdline.options(os.args, '-server-url')
-		vmodules_path: os.vmodules_dir()
 	}
 }
 

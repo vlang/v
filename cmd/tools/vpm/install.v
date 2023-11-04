@@ -5,7 +5,7 @@ import v.vmod
 import v.help
 import net.urllib
 
-fn vpm_install(requested_modules []string, opts []string) {
+fn vpm_install(requested_modules []string) {
 	if settings.is_help {
 		help.print_and_exit('vpm')
 	}
@@ -34,7 +34,7 @@ fn vpm_install(requested_modules []string, opts []string) {
 	mut vpm_modules := modules.filter(it !in external_modules)
 	installed_modules := get_installed_modules()
 
-	if installed_modules.len > 0 && '--once' in opts {
+	if installed_modules.len > 0 && settings.is_once {
 		mut already_installed := []string{}
 		if external_modules.len > 0 {
 			mut i_deleted := []int{}
@@ -79,8 +79,7 @@ fn vpm_install(requested_modules []string, opts []string) {
 		vpm_install_from_vpm(vpm_modules)
 	}
 	if external_modules.len > 0 {
-		vcs := if '--hg' in opts { supported_vcs['hg'] } else { supported_vcs['git'] }
-		vpm_install_from_vcs(external_modules, vcs)
+		vpm_install_from_vcs(external_modules, supported_vcs[settings.vcs])
 	}
 }
 
