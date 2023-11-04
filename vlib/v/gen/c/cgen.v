@@ -3634,7 +3634,12 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if node.expr_type == 0 {
 		g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
 	}
-
+	if g.enum_data_type == node.typ {
+		g.expr(node.expr)
+		g.write('.')
+		g.write(node.field_name)
+		return
+	}
 	sym := g.table.sym(g.unwrap_generic(node.expr_type))
 	field_name := if sym.language == .v { c_name(node.field_name) } else { node.field_name }
 

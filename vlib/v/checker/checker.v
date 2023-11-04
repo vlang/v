@@ -1470,6 +1470,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	} else if c.inside_comptime_for_field && typ == c.enum_data_type && node.field_name == 'value' {
 		// for comp-time enum.values
 		node.expr_type = c.comptime_fields_type[c.comptime_for_field_var]
+		node.typ = typ
 		return node.expr_type
 	}
 	node.expr_type = typ
