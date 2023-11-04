@@ -81,19 +81,7 @@ fn new_project(args []string) {
 		exit(3)
 	}
 
-	c.description = os.input('Input your project description: ')
-
-	default_version := '0.0.0'
-	c.version = os.input('Input your project version: (${default_version}) ')
-	if c.version == '' {
-		c.version = default_version
-	}
-
-	default_license := os.getenv_opt('VLICENSE') or { 'MIT' }
-	c.license = os.input('Input your project license: (${default_license}) ')
-	if c.license == '' {
-		c.license = default_license
-	}
+	c.prompt()
 
 	println('Initialising ...')
 	if args.len == 2 {
@@ -131,14 +119,13 @@ fn init_project() {
 	mut c := Create{}
 	dir_name := check_name(os.file_name(os.getwd()))
 	if !os.exists('v.mod') {
-		c.description = ''
 		mod_dir_has_hyphens := dir_name.contains('-')
 		c.name = if mod_dir_has_hyphens { dir_name.replace('-', '_') } else { dir_name }
+		c.prompt()
 		c.write_vmod(false)
 		if mod_dir_has_hyphens {
 			println('The directory name `${dir_name}` is invalid as a module name. The module name in `v.mod` was set to `${c.name}`')
 		}
-		println('Change the description of your project in `v.mod`')
 	}
 	if !os.exists('src/main.v') {
 		c.set_bin_project_files(false)
@@ -147,6 +134,20 @@ fn init_project() {
 	c.write_gitattributes(false)
 	c.write_editorconfig(false)
 	c.create_git_repo('.')
+}
+
+fn (mut c Create) prompt() {
+	c.description = os.input('Input your project description: ')
+	default_version := '0.0.0'
+	c.version = os.input('Input your project version: (${default_version}) ')
+	if c.version == '' {
+		c.version = default_version
+	}
+	default_license := 'MIT'
+	c.license = os.input('Input your project license: (${default_license}) ')
+	if c.license == '' {
+		c.license = default_license
+	}
 }
 
 fn cerror(e string) {
