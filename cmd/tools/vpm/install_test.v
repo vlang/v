@@ -52,11 +52,6 @@ fn test_install_from_git_url() {
 }
 
 fn test_install_already_existent() {
-	// FIXME: Skip this for now on Windows, as `rmdir_all` results in permission
-	// errors when vpm tries to remove existing modules.
-	$if windows {
-		return
-	}
 	mut res := os.execute('${v} install https://github.com/vlang/markdown')
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('already exists')
