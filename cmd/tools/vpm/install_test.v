@@ -10,6 +10,7 @@ const (
 
 fn testsuite_begin() {
 	os.setenv('VMODULES', test_path, true)
+	os.setenv('VPM_NO_INCREMENT', '1', true)
 }
 
 fn testsuite_end() {
@@ -19,6 +20,7 @@ fn testsuite_end() {
 fn test_install_from_vpm_ident() {
 	res := os.execute('${v} install nedpals.args')
 	assert res.exit_code == 0, res.output
+	assert res.output.contains('Skipping download count increment for "nedpals.args".')
 	mod := vmod.from_file(os.join_path(test_path, 'nedpals', 'args', 'v.mod')) or {
 		assert false, err.str()
 		return
@@ -52,11 +54,6 @@ fn test_install_from_git_url() {
 }
 
 fn test_install_already_existent() {
-	// FIXME: Skip this for now on Windows, as `rmdir_all` results in permission
-	// errors when vpm tries to remove existing modules.
-	$if windows {
-		return
-	}
 	mut res := os.execute('${v} install https://github.com/vlang/markdown')
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('already exists')
@@ -66,6 +63,9 @@ fn test_install_already_existent() {
 	}
 	assert mod.name == 'markdown'
 	assert mod.dependencies == []string{}
+	// The same module but with the `.git` extension added.
+	os.execute_or_exit('${v} install https://github.com/vlang/markdown.git')
+	assert res.output.contains('already exists')
 }
 
 fn test_install_once() {

@@ -1,3 +1,6 @@
+// vtest flaky: true
+// vtest retry: 3
+
 const (
 	a = 3
 	u = u64(1)

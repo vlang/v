@@ -38,9 +38,8 @@ fn get_mod_date_info(mut pp pool.PoolProcessor, idx int, wid int) &ModDateInfo {
 	vcs := vcs_used_in_dir(final_module_path) or { return result }
 	is_hg := vcs.cmd == 'hg'
 	mut outputs := []string{}
-	for step in vcs.outdated_steps {
-		path_flag := if is_hg { '-R' } else { '-C' }
-		cmd := '${vcs.cmd} ${path_flag} "${final_module_path}" ${step}'
+	for step in vcs.args.outdated {
+		cmd := '${vcs.cmd} ${vcs.args.path} "${final_module_path}" ${step}'
 		res := os.execute('${cmd}')
 		if res.exit_code < 0 {
 			verbose_println('Error command: ${cmd}')
@@ -229,16 +228,16 @@ fn ensure_vmodules_dir_exist() {
 }
 
 fn ensure_vcs_is_installed(vcs &VCS) ! {
-	cmd := '${vcs.cmd} --version'
-	verbose_println('      command: ${cmd}')
-	res := os.execute(cmd)
-	if res.exit_code != 0 {
-		verbose_println('      command output: ${res.output}')
+	os.find_abs_path_of_executable(vcs.cmd) or {
 		return error('VPM needs `${vcs}` to be installed.')
 	}
 }
 
 fn increment_module_download_count(name string) ! {
+	if no_dl_count_increment {
+		println('Skipping download count increment for "${name}".')
+		return
+	}
 	mut errors := []string{}
 
 	for server_url in vpm_server_urls {

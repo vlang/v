@@ -24,8 +24,7 @@ fn update_module(mut pp pool.PoolProcessor, idx int, wid int) &ModUpdateInfo {
 		eprintln(err)
 		return result
 	}
-	path_flag := if vcs.cmd == 'hg' { '-R' } else { '-C' }
-	cmd := '${vcs.cmd} ${path_flag} "${result.final_path}" ${vcs.update_arg}'
+	cmd := '${vcs.cmd} ${vcs.args.path} "${result.final_path}" ${vcs.args.update}'
 	verbose_println('    command: ${cmd}')
 	res := os.execute('${cmd}')
 	if res.exit_code != 0 {
@@ -76,8 +75,7 @@ fn vpm_update_verbose(module_names []string) {
 			eprintln(err)
 			continue
 		}
-		path_flag := if vcs.cmd == 'hg' { '-R' } else { '-C' }
-		cmd := '${vcs.cmd} ${path_flag} "${final_module_path}" ${vcs.update_arg}'
+		cmd := '${vcs.cmd} ${vcs.args.path} "${final_module_path}" ${vcs.args.update}'
 		verbose_println('    command: ${cmd}')
 		res := os.execute('${cmd}')
 		if res.exit_code != 0 {

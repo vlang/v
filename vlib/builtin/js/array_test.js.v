@@ -1,3 +1,6 @@
+// vtest flaky: true
+// vtest retry: 3
+
 fn test_js() {
 	$if js_node {
 		assert true

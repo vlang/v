@@ -43,7 +43,7 @@ fn vpm_install(requested_modules []string, opts []string) {
 					eprintln('Errors while parsing module url "${raw_url}" : ${err}')
 					continue
 				}
-				mod_name := url.path.all_after_last('/')
+				mod_name := url.path.all_after_last('/').replace('.git', '')
 				if mod_name in installed_modules {
 					already_installed << mod_name
 					i_deleted << i
@@ -69,7 +69,7 @@ fn vpm_install(requested_modules []string, opts []string) {
 		if already_installed.len > 0 {
 			verbose_println('Already installed modules: ${already_installed}')
 			if already_installed.len == modules.len {
-				verbose_println('All modules are already installed.')
+				println('All modules are already installed.')
 				exit(0)
 			}
 		}
@@ -79,13 +79,13 @@ fn vpm_install(requested_modules []string, opts []string) {
 		vpm_install_from_vpm(vpm_modules)
 	}
 	if external_modules.len > 0 {
-		vcs := if '--hg' in opts { supported_vcs['hd'] } else { supported_vcs['git'] }
+		vcs := if '--hg' in opts { supported_vcs['hg'] } else { supported_vcs['git'] }
 		vpm_install_from_vcs(external_modules, vcs)
 	}
 }
 
 fn install_module(vcs &VCS, name string, url string, final_module_path string) ! {
-	cmd := '${vcs.cmd} ${vcs.install_arg} "${url}" "${final_module_path}"'
+	cmd := '${vcs.cmd} ${vcs.args.install} "${url}" "${final_module_path}"'
 	verbose_println('      command: ${cmd}')
 	println('Installing module "${name}" from "${url}" to "${final_module_path}" ...')
 	res := os.execute(cmd)
@@ -150,7 +150,7 @@ fn vpm_install_from_vcs(modules []string, vcs &VCS) {
 		}
 		// Module identifier based on URL.
 		// E.g.: `https://github.com/owner/awesome-v-project` -> `owner/awesome_v_project`
-		mut ident := url.path#[1..].replace('-', '_')
+		mut ident := url.path#[1..].replace('-', '_').replace('.git', '')
 		owner, repo_name := ident.split_once('/') or {
 			errors++
 			eprintln('Errors while retrieving module name for: "${url}"')
@@ -184,10 +184,18 @@ fn vpm_install_from_vcs(modules []string, vcs &VCS) {
 				if os.exists(minfo.final_module_path) {
 					eprintln('Warning module "${minfo.final_module_path}" already exists!')
 					eprintln('Removing module "${minfo.final_module_path}" ...')
-					os.rmdir_all(minfo.final_module_path) or {
+					mut err_msg := ''
+					$if windows {
+						os.execute_opt('rd /s /q ${minfo.final_module_path}') or {
+							err_msg = err.msg()
+						}
+					} $else {
+						os.rmdir_all(minfo.final_module_path) or { err_msg = err.msg() }
+					}
+					if err_msg != '' {
 						errors++
 						eprintln('Errors while removing "${minfo.final_module_path}" :')
-						eprintln(err)
+						eprintln(err_msg)
 						continue
 					}
 				}

@@ -18,11 +18,14 @@ mut:
 }
 
 struct VCS {
-	cmd            string
-	dir            string
-	update_arg     string
-	install_arg    string
-	outdated_steps []string
+	dir  string
+	cmd  string
+	args struct {
+		install  string
+		path     string // the flag used to specify a path. E.g., used to explictly work on a path during multithreaded updating.
+		update   string
+		outdated []string
+	}
 }
 
 const (
@@ -34,18 +37,24 @@ const (
 	excluded_dirs           = ['cache', 'vlib']
 	supported_vcs           = {
 		'git': VCS{
-			cmd: 'git'
 			dir: '.git'
-			update_arg: 'pull --recurse-submodules' // pulling with `--depth=1` leads to conflicts, when the upstream is more than 1 commit newer
-			install_arg: 'clone --depth=1 --recursive --shallow-submodules'
-			outdated_steps: ['fetch', 'rev-parse @', 'rev-parse @{u}']
+			cmd: 'git'
+			args: struct {
+				install: 'clone --depth=1 --recursive --shallow-submodules'
+				update: 'pull --recurse-submodules' // pulling with `--depth=1` leads to conflicts, when the upstream is more than 1 commit newer
+				path: '-C'
+				outdated: ['fetch', 'rev-parse @', 'rev-parse @{u}']
+			}
 		}
 		'hg':  VCS{
-			cmd: 'hg'
 			dir: '.hg'
-			update_arg: 'pull --update'
-			install_arg: 'clone'
-			outdated_steps: ['incoming']
+			cmd: 'hg'
+			args: struct {
+				install: 'clone'
+				update: 'pull --update'
+				path: '-R'
+				outdated: ['incoming']
+			}
 		}
 	}
 )
@@ -56,14 +65,13 @@ fn main() {
 	// args are: vpm [options] SUBCOMMAND module names
 	params := cmdline.only_non_options(os.args[1..])
 	options := cmdline.only_options(os.args[1..])
-	verbose_println('cli params: ${params}')
+	// dump(params)
 	if params.len < 1 {
 		help.print_and_exit('vpm', exit_code: 5)
 	}
 	vpm_command := params[0]
 	mut requested_modules := params[1..].clone()
 	ensure_vmodules_dir_exist()
-	// println('module names: ') println(requested_modules)
 	match vpm_command {
 		'help' {
 			help.print_and_exit('vpm')
