@@ -1,5 +1,12 @@
 module os
 
+// The kind of the pipe file descriptor, that is used for communicating with the child process
+pub enum ChildProcessPipeKind {
+	stdin
+	stdout
+	stderr
+}
+
 // signal_kill - kills the process, after that it is no longer running
 pub fn (mut p Process) signal_kill() {
 	if p.status !in [.running, .stopped] {
@@ -109,69 +116,141 @@ fn (mut p Process) _spawn() int {
 
 // is_alive - query whether the process p.pid is still alive
 pub fn (mut p Process) is_alive() bool {
+	mut res := false
 	if p.status in [.running, .stopped] {
-		return p._is_alive()
+		res = p._is_alive()
 	}
-	return false
+	$if trace_process_is_alive ? {
+		eprintln('${@LOCATION}, pid: ${p.pid}, status: ${p.status}, res: ${res}')
+	}
+	return res
 }
 
 //
 pub fn (mut p Process) set_redirect_stdio() {
 	p.use_stdio_ctl = true
+	$if trace_process_pipes ? {
+		eprintln('${@LOCATION}, pid: ${p.pid}, status: ${p.status}')
+	}
 	return
 }
 
+// stdin_write will write the string `s`, to the stdin pipe of the child process.
 pub fn (mut p Process) stdin_write(s string) {
-	p._check_redirection_call('stdin_write')
-	$if windows {
-		p.win_write_string(0, s)
-	} $else {
-		fd_write(p.stdio_fd[0], s)
+	p._check_redirection_call(@METHOD)
+	$if trace_process_pipes ? {
+		eprintln('${@LOCATION}, pid: ${p.pid}, status: ${p.status}, s.len: ${s.len}, s: `${s}`')
 	}
+	p._write_to(.stdin, s)
 }
 
-// will read from stdout pipe, will only return when EOF (end of file) or data
-// means this will block unless there is data
+// stdout_slurp will read from the stdout pipe, and will block until it either reads all the data, or until the pipe is closed (end of file).
 pub fn (mut p Process) stdout_slurp() string {
-	p._check_redirection_call('stdout_slurp')
-	$if windows {
-		return p.win_slurp(1)
-	} $else {
-		return fd_slurp(p.stdio_fd[1]).join('')
+	p._check_redirection_call(@METHOD)
+	res := p._slurp_from(.stdout)
+	$if trace_process_pipes ? {
+		eprintln('${@LOCATION}, pid: ${p.pid}, status: ${p.status}, res.len: ${res.len}, res: `${res}`')
 	}
+	return res
 }
 
-// read from stderr pipe, wait for data or EOF
+// stderr_slurp will read from the stderr pipe, and will block until it either reads all the data, or until the pipe is closed (end of file).
 pub fn (mut p Process) stderr_slurp() string {
-	p._check_redirection_call('stderr_slurp')
-	$if windows {
-		return p.win_slurp(2)
-	} $else {
-		return fd_slurp(p.stdio_fd[2]).join('')
+	p._check_redirection_call(@METHOD)
+	res := p._slurp_from(.stderr)
+	$if trace_process_pipes ? {
+		eprintln('${@LOCATION}, pid: ${p.pid}, status: ${p.status}, res.len: ${res.len}, res: `${res}`')
 	}
+	return res
 }
 
-// read from stdout, return if data or not
+// stdout_read reads a block of data, from the stdout pipe of the child process. It will block, if there is no data to be read.
+// Call .is_pending() to check if there is data to be read, if you do not want to block.
 pub fn (mut p Process) stdout_read() string {
-	p._check_redirection_call('stdout_read')
+	p._check_redirection_call(@METHOD)
+	res := p._read_from(.stdout)
+	$if trace_process_pipes ? {
+		eprintln('${@LOCATION}, pid: ${p.pid}, status: ${p.status}, res.len: ${res.len}, res: `${res}`')
+	}
+	return res
+}
+
+// stdout_read reads a block of data, from the stderr pipe of the child process. It will block, if there is no data to be read.
+// Call .is_pending() to check if there is data to be read, if you do not want to block.
+pub fn (mut p Process) stderr_read() string {
+	p._check_redirection_call(@METHOD)
+	res := p._read_from(.stderr)
+	$if trace_process_pipes ? {
+		eprintln('${@LOCATION}, pid: ${p.pid}, status: ${p.status}, res.len: ${res.len}, res: `${res}`')
+	}
+	return res
+}
+
+// pipe_read reads a block of data, from the given pipe of the child process.
+// It will return `none`, if there is no data to be read, *without blocking*.
+pub fn (mut p Process) pipe_read(pkind ChildProcessPipeKind) ?string {
+	p._check_redirection_call(@METHOD)
+	if !p._is_pending(pkind) {
+		$if trace_process_pipes ? {
+			eprintln('${@LOCATION}, pid: ${p.pid}, status: ${p.status}, no pending data')
+		}
+		return none
+	}
+	res := p._read_from(pkind)
+	$if trace_process_pipes ? {
+		eprintln('${@LOCATION}, pid: ${p.pid}, status: ${p.status}, res.len: ${res.len}, res: `${res}`')
+	}
+	return res
+}
+
+// is_pending returns whether there is data to be read from child process's pipe corresponding to `pkind`.
+// For example `if p.is_pending(.stdout) { dump( p.stdout_read() ) }` will not block indefinitely.
+pub fn (mut p Process) is_pending(pkind ChildProcessPipeKind) bool {
+	p._check_redirection_call(@METHOD)
+	res := p._is_pending(pkind)
+	$if trace_process_pipes ? {
+		eprintln('${@LOCATION}, pid: ${p.pid}, status: ${p.status}, pkind: ${pkind}, res: ${res}')
+	}
+	return res
+}
+
+// _read_from should be called only from .stdout_read/0, .stderr_read/0 and .pipe_read/1
+fn (mut p Process) _read_from(pkind ChildProcessPipeKind) string {
 	$if windows {
-		s, _ := p.win_read_string(1, 4096)
+		s, _ := p.win_read_string(pkind, 4096)
 		return s
 	} $else {
-		s, _ := fd_read(p.stdio_fd[1], 4096)
+		s, _ := fd_read(p.stdio_fd[pkind], 4096)
 		return s
 	}
 }
 
-pub fn (mut p Process) stderr_read() string {
-	p._check_redirection_call('stderr_read')
+// _slurp_from should be called only from stdout_slurp() and stderr_slurp()
+fn (mut p Process) _slurp_from(pkind ChildProcessPipeKind) string {
 	$if windows {
-		s, _ := p.win_read_string(2, 4096)
-		return s
+		return p.win_slurp(pkind, 4096)
 	} $else {
-		s, _ := fd_read(p.stdio_fd[2], 4096)
-		return s
+		return fd_slurp(p.stdio_fd[pkind]).join('')
 	}
+}
+
+// _write_to should be called only from stdin_write()
+fn (mut p Process) _write_to(pkind ChildProcessPipeKind, s string) {
+	$if windows {
+		p.win_write_string(pkind, s)
+	} $else {
+		fd_write(p.stdio_fd[pkind], s)
+	}
+}
+
+// _is_pending should be called only from is_pending()
+fn (mut p Process) _is_pending(pkind ChildProcessPipeKind) bool {
+	$if windows {
+		// TODO
+	} $else {
+		return fd_is_pending(p.stdio_fd[pkind])
+	}
+	return false
 }
 
 // _check_redirection_call - should be called just by stdxxx methods
