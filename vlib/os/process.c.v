@@ -217,7 +217,7 @@ pub fn (mut p Process) is_pending(pkind ChildProcessPipeKind) bool {
 // _read_from should be called only from .stdout_read/0, .stderr_read/0 and .pipe_read/1
 fn (mut p Process) _read_from(pkind ChildProcessPipeKind) string {
 	$if windows {
-		s, _ := p.win_read_string(pkind, 4096)
+		s, _ := p.win_read_string(int(pkind), 4096)
 		return s
 	} $else {
 		s, _ := fd_read(p.stdio_fd[pkind], 4096)
@@ -228,7 +228,7 @@ fn (mut p Process) _read_from(pkind ChildProcessPipeKind) string {
 // _slurp_from should be called only from stdout_slurp() and stderr_slurp()
 fn (mut p Process) _slurp_from(pkind ChildProcessPipeKind) string {
 	$if windows {
-		return p.win_slurp(pkind, 4096)
+		return p.win_slurp(int(pkind))
 	} $else {
 		return fd_slurp(p.stdio_fd[pkind]).join('')
 	}
@@ -237,7 +237,7 @@ fn (mut p Process) _slurp_from(pkind ChildProcessPipeKind) string {
 // _write_to should be called only from stdin_write()
 fn (mut p Process) _write_to(pkind ChildProcessPipeKind, s string) {
 	$if windows {
-		p.win_write_string(pkind, s)
+		p.win_write_string(int(pkind), s)
 	} $else {
 		fd_write(p.stdio_fd[pkind], s)
 	}

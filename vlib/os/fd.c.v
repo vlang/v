@@ -2,7 +2,14 @@ module os
 
 // low level operations with file descriptors/handles
 
-#include <sys/select.h>
+$if !windows {
+	#include <sys/select.h>
+}
+
+$if windows {
+	#flag -lws2_32
+	#include <winsock2.h>
+}
 
 // fd_close closes the file descriptor. It returns 0 on success.
 pub fn fd_close(fd int) int {
