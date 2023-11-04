@@ -487,7 +487,17 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 				var.pos)
 		}
 		if parent_var.expr is ast.IfGuardExpr {
-			var.typ = parent_var.expr.expr_type.clear_flags(.option, .result)
+			sym := c.table.sym(parent_var.expr.expr_type)
+			if sym.info is ast.MultiReturn {
+				for i, v in parent_var.expr.vars {
+					if v.name == var.name {
+						var.typ = sym.info.types[i]
+						break
+					}
+				}
+			} else {
+				var.typ = parent_var.expr.expr_type.clear_flags(.option, .result)
+			}
 		} else {
 			var.typ = parent_var.typ
 		}
