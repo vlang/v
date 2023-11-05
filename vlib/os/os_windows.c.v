@@ -594,7 +594,8 @@ fn get_long_path(path string) !string {
 }
 
 [typedef]
-struct C.SYSTEM_INFO {
+// C.SYSTEM_INFO contains information about the current computer system. This includes the architecture and type of the processor, the number of processors in the system, the page size, and other such information.
+pub struct C.SYSTEM_INFO {
 	dwNumberOfProcessors u32
 	dwPageSize u32
 }
