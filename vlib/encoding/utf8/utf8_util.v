@@ -1,17 +1,11 @@
-/*
-utf-8 util
-
-Copyright (c) 2019-2023 Dario Deledda. All rights reserved.
-Use of this source code is governed by an MIT license
-that can be found in the LICENSE file.
-
-This file contains utilities for utf8 strings
-*/
+// utf-8 utility string functions
+//
+// Copyright (c) 2019-2023 Dario Deledda. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
 module utf8
 
-/*
-Utility functions
-*/
+// Utility functions
 
 // len return the length as number of unicode chars from a string
 pub fn len(s string) int {
@@ -111,30 +105,24 @@ pub fn reverse(s string) string {
 	return str_array.join('')
 }
 
-/*
-Conversion functions
-*/
+// Conversion functions
 
 // to_upper return an uppercase string from a string
 pub fn to_upper(s string) string {
-	return up_low(s, true)
+	return convert_case(s, true)
 }
 
 // to_lower return an lowercase string from a string
 pub fn to_lower(s string) string {
-	return up_low(s, false)
+	return convert_case(s, false)
 }
 
-/*
-Punctuation functions
-
-The "western" function search on a small table, that is quicker than
-the global unicode table search. **Use only for western chars**.
-*/
-
+// Punctuation functions
 //
+// The "western" function search on a small table, that is quicker than
+// the global unicode table search. **Use only for western chars**.
+
 // Western
-//
 
 // is_punct return true if the string[index] byte is the start of a unicode western punctuation
 pub fn is_punct(s string, index int) bool {
@@ -191,9 +179,7 @@ pub fn is_uchar_punct(uchar int) bool {
 	return find_punct_in_table(uchar, utf8.unicode_punct_western) != 0
 }
 
-//
 // Global
-//
 
 // is_global_punct return true if the string[index] byte of is the start of a global unicode punctuation
 pub fn is_global_punct(s string, index int) bool {
@@ -205,11 +191,9 @@ pub fn is_uchar_global_punct(uchar int) bool {
 	return find_punct_in_table(uchar, utf8.unicode_punct) != 0
 }
 
-/*
-Private functions
-*/
+// Private functions
 
-// Raw to_lower utf-8 function
+// utf8_to_lower raw utf-8 to_lower function
 fn utf8_to_lower(in_cp int) int {
 	mut cp := in_cp
 	if (0x0041 <= cp && 0x005a >= cp) || (0x00c0 <= cp && 0x00d6 >= cp)
@@ -311,7 +295,7 @@ fn utf8_to_lower(in_cp int) int {
 	return cp
 }
 
-// Raw to_upper utf-8 function
+// utf8_to_upper raw utf-8 to_upper function
 fn utf8_to_upper(in_cp int) int {
 	mut cp := in_cp
 	if (0x0061 <= cp && 0x007a >= cp) || (0x00e0 <= cp && 0x00f6 >= cp)
@@ -413,12 +397,12 @@ fn utf8_to_upper(in_cp int) int {
 	return cp
 }
 
+// convert_case converts letter cases
 //
-// if upper_flag == true  then make low ==> upper conversion
-// if upper_flag == false then make upper ==> low conversion
-//
-// up_low make the dirt job
-fn up_low(s string, upper_flag bool) string {
+// if upper_flag == true  then convert lowercase ==> uppercase
+// if upper_flag == false then convert uppercase ==> lowercase
+[direct_array_access]
+fn convert_case(s string, upper_flag bool) string {
 	mut index := 0
 	mut tab_char := 0
 	mut str_res := unsafe { malloc_noscan(s.len + 1) }
@@ -431,13 +415,13 @@ fn up_low(s string, upper_flag bool) string {
 				unsafe {
 					// Subtract 0x20 from ASCII lowercase to convert to uppercase.
 					c := s[index]
-					str_res[index] = if c >= 0x61 && c <= 0x7a { c - 0x20 } else { c }
+					str_res[index] = if c >= 0x61 && c <= 0x7a { c & 0xdf } else { c }
 				}
 			} else {
 				unsafe {
 					// Add 0x20 to ASCII uppercase to convert to lowercase.
 					c := s[index]
-					str_res[index] = if c >= 0x41 && c <= 0x5a { c + 0x20 } else { c }
+					str_res[index] = if c >= 0x41 && c <= 0x5a { c | 0x20 } else { c }
 				}
 			}
 		} else if ch_len > 1 && ch_len < 5 {
@@ -533,16 +517,14 @@ fn up_low(s string, upper_flag bool) string {
 	// for c compatibility set the ending 0
 	unsafe {
 		str_res[index] = 0
-		// C.printf("str_res: %s\n--------------\n",str_res)
 		return tos(str_res, s.len)
 	}
 }
 
-// find punct in lockup table
+// find_punct_in_table looks for valid punctuation in table
+[direct_array_access]
 fn find_punct_in_table(in_code int, in_table []int) int {
-	//
-	// We will use a simple binary search
-	//
+	// uses simple binary search
 
 	mut first_index := 0
 	mut last_index := (in_table.len)
@@ -566,15 +548,14 @@ fn find_punct_in_table(in_code int, in_table []int) int {
 			break
 		}
 	}
-	// C.printf("not found.\n")
+
 	return 0
 }
 
-/*
-Unicode punctuation chars
+// Unicode punctuation chars
+//
+// source: http://www.unicode.org/faq/punctuation_symbols.html
 
-source: http://www.unicode.org/faq/punctuation_symbols.html
-*/
 const (
 	// Western punctuation mark
 	// Character	Name	Browser	Image
