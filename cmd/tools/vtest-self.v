@@ -271,7 +271,7 @@ const (
 		'vlib/net/unix/unix_test.v',
 		'vlib/net/unix/use_net_and_net_unix_together_test.v',
 		'vlib/net/websocket/websocket_test.v',
-		'vlib/net/openssl/openssl_compiles_test.v',
+		'vlib/net/openssl/openssl_compiles_test.c.v',
 		'vlib/net/http/request_test.v',
 		'vlib/net/smtp/smtp_test.v',
 		'vlib/net/ssl/ssl_compiles_test.v',
