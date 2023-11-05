@@ -87,9 +87,8 @@ fn install_module(vcs &VCS, name string, url string, final_module_path string) !
 	cmd := '${vcs.cmd} ${vcs.args.install} "${url}" "${final_module_path}"'
 	verbose_println('      command: ${cmd}')
 	println('Installing module "${name}" from "${url}" to "${final_module_path}" ...')
-	res := os.execute(cmd)
-	if res.exit_code != 0 {
-		verbose_println('      command output: ${res.output}')
+	os.execute_opt(cmd) or {
+		verbose_println('      command output: ${err}')
 		return error('Failed installing module "${name}" to "${final_module_path}" .')
 	}
 }

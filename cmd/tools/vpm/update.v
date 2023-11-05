@@ -26,11 +26,10 @@ fn update_module(mut pp pool.PoolProcessor, idx int, wid int) &ModUpdateInfo {
 	}
 	cmd := '${vcs.cmd} ${vcs.args.path} "${result.final_path}" ${vcs.args.update}'
 	verbose_println('    command: ${cmd}')
-	res := os.execute('${cmd}')
-	if res.exit_code != 0 {
+	res := os.execute_opt('${cmd}') or {
 		result.has_err = true
 		println('Failed updating module "${zname}" in "${result.final_path}".')
-		verbose_println('      command output: ${res.output}')
+		verbose_println('      command output: ${err}')
 		return result
 	}
 	verbose_println('    ${res.output.trim_space()}')
@@ -77,11 +76,10 @@ fn vpm_update_verbose(module_names []string) {
 		}
 		cmd := '${vcs.cmd} ${vcs.args.path} "${final_module_path}" ${vcs.args.update}'
 		verbose_println('    command: ${cmd}')
-		res := os.execute('${cmd}')
-		if res.exit_code != 0 {
+		res := os.execute_opt('${cmd}') or {
 			errors++
 			println('Failed updating module "${zname}" in "${final_module_path}" .')
-			verbose_println('      command output: ${res.output}')
+			verbose_println('      command output: ${err}')
 			continue
 		}
 		verbose_println('    ${res.output.trim_space()}')
