@@ -712,6 +712,10 @@ pub fn (mut t Transformer) call_expr(mut node ast.CallExpr) ast.Expr {
 fn (mut t Transformer) trans_const_value_to_literal(mut expr ast.Expr) {
 	mut expr_ := expr
 	if mut expr_ is ast.Ident {
+		// if there is a local variable or a fn parameter, that has the same name as the constant, do not do the substitution:
+		if _ := expr_.scope.find_var(expr_.name) {
+			return
+		}
 		if mut obj := t.table.global_scope.find_const(expr_.mod + '.' + expr_.name) {
 			if mut obj.expr is ast.BoolLiteral {
 				expr = obj.expr
@@ -740,10 +744,10 @@ fn (mut t Transformer) trans_const_value_to_literal(mut expr ast.Expr) {
 pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 	node.left = t.expr(mut node.left)
 	node.right = t.expr(mut node.right)
-	// if !t.pref.translated {
-	// 	t.trans_const_value_to_literal(mut node.left)
-	// 	t.trans_const_value_to_literal(mut node.right)
-	// }
+	if !t.pref.translated {
+		t.trans_const_value_to_literal(mut node.left)
+		t.trans_const_value_to_literal(mut node.right)
+	}
 
 	mut pos := node.left.pos()
 	pos.extend(node.pos)
