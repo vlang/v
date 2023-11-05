@@ -591,6 +591,7 @@ fn get_long_path(path string) !string {
 
 [typedef]
 struct C.SYSTEM_INFO {
+	dwNumberOfProcessors u32
 	dwPageSize u32
 }
 

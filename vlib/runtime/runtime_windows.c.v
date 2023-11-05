@@ -3,11 +3,6 @@ module runtime
 import os
 
 [typedef]
-struct C.SYSTEM_INFO {
-	dwNumberOfProcessors u32
-}
-
-[typedef]
 struct C.MEMORYSTATUS {
 	dwTotalPhys usize
 	dwAvailPhys usize
