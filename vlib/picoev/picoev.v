@@ -39,7 +39,6 @@ pub:
 	max_headers  int     = 100
 	max_read     int     = 4096
 	max_write    int     = 8192
-	is_raw       bool
 }
 
 [heap]
@@ -49,7 +48,6 @@ pub struct Picoev {
 	raw_cb    fn (voidptr, int) = unsafe { nil }
 	user_data voidptr = unsafe { nil }
 
-	is_raw       bool
 	timeout_secs int
 	max_headers  int = 100
 	max_read     int = 4096
@@ -214,7 +212,7 @@ fn raw_callback(fd int, events int, context voidptr) {
 		return
 	} else if events & picoev.picoev_read != 0 {
 		pv.set_timeout(fd, pv.timeout_secs)
-		if pv.is_raw {
+		if !isnil(pv.raw_cb) {
 			pv.raw_cb(pv.user_data, fd)
 			return
 		}
@@ -297,10 +295,9 @@ pub fn new(config Config) &Picoev {
 		max_headers: config.max_headers
 		max_read: config.max_read
 		max_write: config.max_write
-		is_raw: config.is_raw
 	}
 
-	if !config.is_raw {
+	if isnil(pv.raw_cb) {
 		pv.buf = unsafe { malloc_noscan(picoev.max_fds * config.max_read + 1) }
 		pv.out = unsafe { malloc_noscan(picoev.max_fds * config.max_write + 1) }
 	}
