@@ -588,3 +588,17 @@ fn get_long_path(path string) !string {
 	long_path := unsafe { string_from_wide(&long_path_buf[0]) }
 	return long_path
 }
+
+[typedef]
+struct C.SYSTEM_INFO {
+	dwPageSize u32
+}
+
+fn C.GetSystemInfo(&C.SYSTEM_INFO)
+
+// page_size returns the page size in bytes.
+pub fn page_size() int {
+	sinfo := C.SYSTEM_INFO{}
+	C.GetSystemInfo(&sinfo)
+	return int(sinfo.dwPageSize)
+}

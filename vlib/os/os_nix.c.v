@@ -506,3 +506,10 @@ pub fn posix_set_permission_bit(path_s string, mode u32, enable bool) {
 fn get_long_path(path string) !string {
 	return path
 }
+
+fn C.sysconf(name int) i64
+
+// page_size returns the page size in bytes.
+pub fn page_size() int {
+	return int(C.sysconf(C._SC_PAGESIZE))
+}
