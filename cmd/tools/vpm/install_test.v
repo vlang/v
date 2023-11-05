@@ -5,7 +5,7 @@ const (
 	v         = os.quoted_path(@VEXE)
 	// Running tests appends a tsession path to VTMP, which is automatically cleaned up after the test.
 	// The following will result in e.g. `$VTMP/tsession_7fe8e93bd740_1612958707536/test-vmodules/`.
-	test_path = os.join_path(os.vtmp_dir(), 'test-vmodules')
+	test_path = os.join_path(os.vtmp_dir(), 'vpm_install_test')
 )
 
 fn testsuite_begin() {

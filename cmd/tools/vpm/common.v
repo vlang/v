@@ -265,12 +265,13 @@ fn resolve_dependencies(name string, module_path string, module_names []string) 
 		eprintln(err)
 		return
 	}
-	// filter out dependencies that were already specified by the user
+	// Filter out modules that are both contained in the input query and listed as
+	// dependencies in the mod file of the module that is supposed to be installed.
 	deps := manifest.dependencies.filter(it !in module_names)
 	if deps.len > 0 {
 		println('Resolving ${deps.len} dependencies for module "${name}" ...')
 		verbose_println('Found dependencies: ${deps}')
-		vpm_install_from_vpm(deps)
+		vpm_install(deps)
 	}
 }
 
