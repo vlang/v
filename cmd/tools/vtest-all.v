@@ -117,7 +117,7 @@ fn get_all_commands() []Command {
 		line: '${vexe} -o calling_c.exe run examples/call_c_from_v/main.c.v'
 		okmsg: 'V can run main.c.v files'
 		runcmd: .execute
-		contains: 'V can call C functions like puts too.'
+		contains: 'V can call C functions like `puts` too.'
 	}
 	$if linux || macos {
 		res << Command{
