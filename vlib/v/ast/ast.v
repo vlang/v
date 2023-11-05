@@ -324,6 +324,7 @@ pub:
 	comments         []Comment
 	i                int
 	has_default_expr bool
+	attrs_has_at     bool // TODO: remove in next stage
 	attrs            []Attr
 	is_pub           bool
 	default_val      string
@@ -2409,6 +2410,9 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 			for k, v in rv64 {
 				res[k] = v
 			}
+		}
+		.wasm32 {
+			// no registers
 		}
 		else { // TODO
 			panic('all_registers: unhandled arch')

@@ -89,7 +89,6 @@ fn main() {
 	}
 	if files.len == 0 || '-help' in args || '--help' in args {
 		help.print_and_exit('fmt')
-		exit(0)
 	}
 	mut cli_args_no_files := []string{}
 	for idx, a in os.args {

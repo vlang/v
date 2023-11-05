@@ -63,6 +63,9 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	if p.out_name == '' {
 		filename := os.file_name(rpath).trim_space()
 		mut base := filename.all_before_last('.')
+		if os.file_ext(base) in ['.c', '.js', '.wasm'] {
+			base = base.all_before_last('.')
+		}
 		if base == '' {
 			// The file name is just `.v` or `.vsh` or `.*`
 			base = filename
@@ -94,7 +97,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		// compilers.
 		//
 		// If you do decide to break it, please *at the very least*, test it
-		// extensively, and make a PR about it, instead of commiting directly
+		// extensively, and make a PR about it, instead of committing directly
 		// and breaking the CI, VC, and users doing `v up`.
 		if rpath == '${p.vroot}/cmd/v' && os.is_dir('vlib/compiler') {
 			// Building V? Use v2, since we can't overwrite a running
@@ -129,7 +132,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		p.parse_define('emscripten')
 	}
 	if p.os == ._auto {
-		// No OS specifed? Use current system
+		// No OS specified? Use current system
 		p.os = if p.backend != .wasm { get_host_os() } else { .wasi }
 	}
 	//

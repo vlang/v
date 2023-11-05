@@ -153,7 +153,7 @@ fn C.sleep(seconds u32) u32
 fn C.usleep(usec u32) int
 
 [typedef]
-struct C.DIR {
+pub struct C.DIR {
 }
 
 fn C.opendir(&char) &C.DIR

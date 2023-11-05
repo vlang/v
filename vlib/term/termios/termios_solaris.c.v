@@ -19,7 +19,7 @@ type Speed = int
 type Cc = u8
 
 // Termios stores the terminal options
-struct C.termios {
+pub struct C.termios {
 mut:
 	c_iflag TcFlag
 	c_oflag TcFlag

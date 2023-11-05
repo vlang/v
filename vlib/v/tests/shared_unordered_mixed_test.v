@@ -44,7 +44,7 @@ fn doub_large(shared a Large, shared b Large, shared c Large, shared d Large, sh
 }
 
 fn test_mixed_order_lock_rlock() {
-	// initialze objects so that their sum = 1
+	// initialize objects so that their sum = 1
 	shared a := Large{
 		l: 4
 	}

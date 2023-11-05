@@ -1,2 +1,2 @@
-struct C.atype{}
+pub struct C.atype{}
 type BType = &C.atype

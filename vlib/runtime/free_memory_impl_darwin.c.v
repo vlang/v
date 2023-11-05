@@ -3,11 +3,11 @@ module runtime
 #include <mach/mach.h>
 
 [typedef]
-struct C.vm_size_t {
+pub struct C.vm_size_t {
 }
 
 [typedef]
-struct C.vm_statistics64_data_t {
+pub struct C.vm_statistics64_data_t {
 	free_count          u32
 	purgeable_count     u32
 	speculative_count   u32
@@ -15,7 +15,7 @@ struct C.vm_statistics64_data_t {
 }
 
 [typedef]
-struct C.host_t {}
+pub struct C.host_t {}
 
 fn C.mach_host_self() C.host_t
 fn C.host_page_size(host C.host_t, out_page_size &C.vm_size_t) int

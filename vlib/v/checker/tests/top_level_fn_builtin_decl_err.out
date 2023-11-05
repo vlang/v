@@ -1,3 +1,10 @@
+vlib/v/checker/tests/top_level_fn_builtin_decl_err.vv:3:12: warning: byte is deprecated, use u8 instead
+    1 | 
+    2 | [inline]
+    3 | fn char(ch byte) fn (string) !(byte, string) {
+      |            ~~~~
+    4 |     return fn [ch] (input string) !(byte, string) {
+    5 |         return if input[0] == ch {
 vlib/v/checker/tests/top_level_fn_builtin_decl_err.vv:3:1: error: top level declaration cannot shadow builtin type
     1 | 
     2 | [inline]

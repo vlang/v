@@ -85,8 +85,9 @@ pub mut:
 	len1         int  = 6 // number of decimal digits, if needed
 	positive     bool = true // mandatory: the sign of the number passed
 	sign_flag    bool       // flag for print sign as prefix in padding
-	allign       Align_text = .right // alignment of the string
-	rm_tail_zero bool       // remove the tail zeros from floats
+	align        Align_text = .right // alignment of the string
+	allign       Align_text [deprecated: 'use align instead'; deprecated_after: '2023-11-30'] = .right
+	rm_tail_zero bool // remove the tail zeros from floats
 }
 
 // format_str returns a `string` formatted according to the options set in `p`.
@@ -103,13 +104,13 @@ pub fn format_str(s string, p BF_param) string {
 	defer {
 		unsafe { res.free() }
 	}
-	if p.allign == .right {
+	if p.align == .right {
 		for i1 := 0; i1 < dif; i1++ {
 			res.write_u8(p.pad_ch)
 		}
 	}
 	res.write_string(s)
-	if p.allign == .left {
+	if p.align == .left {
 		for i1 := 0; i1 < dif; i1++ {
 			res.write_u8(p.pad_ch)
 		}

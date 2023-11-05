@@ -29,9 +29,9 @@ pub enum GarbageCollectionMode {
 	unknown
 	no_gc
 	boehm_full // full garbage collection mode
-	boehm_incr // incremental garbage colletion mode
+	boehm_incr // incremental garbage collection mode
 	boehm_full_opt // full garbage collection mode
-	boehm_incr_opt // incremental garbage colletion mode
+	boehm_incr_opt // incremental garbage collection mode
 	boehm_leak // leak detection mode (makes `gc_check_leaks()` work)
 }
 
@@ -133,7 +133,7 @@ pub mut:
 	is_help            bool     // -h, -help or --help was passed
 	is_quiet           bool     // do not show the repetitive explanatory messages like the one for `v -prod run file.v` .
 	is_cstrict         bool     // turn on more C warnings; slightly slower
-	eval_argument      string   // `println(2+2)` on `v -e "println(2+2)"`. Note that this souce code, will be evaluated in vsh mode, so 'v -e 'println(ls(".")!)' is valid.
+	eval_argument      string   // `println(2+2)` on `v -e "println(2+2)"`. Note that this source code, will be evaluated in vsh mode, so 'v -e 'println(ls(".")!)' is valid.
 	test_runner        string   // can be 'simple' (fastest, but much less detailed), 'tap', 'normal'
 	profile_file       string   // the profile results will be stored inside profile_file
 	profile_no_inline  bool     // when true, [inline] functions would not be profiled
@@ -151,12 +151,13 @@ pub mut:
 	show_callgraph         bool   // -show-callgraph, print the program callgraph, in a Graphviz DOT format to stdout
 	show_depgraph          bool   // -show-depgraph, print the program module dependency graph, in a Graphviz DOT format to stdout
 	dump_c_flags           string // `-dump-c-flags file.txt` - let V store all C flags, passed to the backend C compiler in `file.txt`, one C flag/value per line.
-	dump_modules           string // `-dump-modules modules.txt` - let V store all V modules, that were used by the compiled program in `modules.txt`, one module per line.	
+	dump_modules           string // `-dump-modules modules.txt` - let V store all V modules, that were used by the compiled program in `modules.txt`, one module per line.
 	dump_files             string // `-dump-files files.txt` - let V store all V or .template file paths, that were used by the compiled program in `files.txt`, one path per line.
 	dump_defines           string // `-dump-defines defines.txt` - let V store all the defines that affect the current program and their values, one define per line + `,` + its value.
 	use_cache              bool   // when set, use cached modules to speed up subsequent compilations, at the cost of slower initial ones (while the modules are cached)
 	retry_compilation      bool = true // retry the compilation with another C compiler, if tcc fails.
 	use_os_system_to_run   bool   // when set, use os.system() to run the produced executable, instead of os.new_process; works around segfaults on macos, that may happen when xcode is updated
+	macosx_version_min     string = '10.7' // relevant only for macos and ios targets
 	// TODO Convert this into a []string
 	cflags  string // Additional options which will be passed to the C compiler *before* other options.
 	ldflags string // Additional options which will be passed to the C compiler *after* everything else.
@@ -183,12 +184,12 @@ pub mut:
 	custom_prelude   string // Contents of custom V prelude that will be prepended before code in resulting .c files
 	cmain            string // The name of the generated C main function. Useful with framework like code, that uses macros to re-define `main`, like SDL2 does. When set, V will always generate `int THE_NAME(int ___argc, char** ___argv){`, *no matter* the platform.
 	lookup_path      []string
-	output_cross_c   bool // true, when the user passed `-os cross`
+	output_cross_c   bool // true, when the user passed `-os cross` or `-cross`
 	output_es5       bool
 	prealloc         bool
 	vroot            string
 	vlib             string   // absolute path to the vlib/ folder
-	vmodules_paths   []string // absolute paths to the vmodules folders, by default ['/home/user/.vmodules'], can be overriden by setting VMODULES
+	vmodules_paths   []string // absolute paths to the vmodules folders, by default ['/home/user/.vmodules'], can be overridden by setting VMODULES
 	out_name_c       string   // full os.real_path to the generated .tmp.c file; set by builder.
 	out_name         string
 	path             string // Path to file/folder to compile
@@ -227,7 +228,7 @@ pub mut:
 	skip_unused       bool // skip generating C code for functions, that are not used
 	//
 	use_color           ColorOutput // whether the warnings/errors should use ANSI color escapes.
-	cleanup_files       []string    // list of temporary *.tmp.c and *.tmp.c.rsp files. Cleaned up on successfull builds.
+	cleanup_files       []string    // list of temporary *.tmp.c and *.tmp.c.rsp files. Cleaned up on successful builds.
 	build_options       []string    // list of options, that should be passed down to `build-module`, if needed for -usecache
 	cache_manager       vcache.CacheManager
 	gc_mode             GarbageCollectionMode = .unknown // .no_gc, .boehm, .boehm_leak, ...
@@ -685,6 +686,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-use-os-system-to-run' {
 				res.use_os_system_to_run = true
 			}
+			'-macosx-version-min' {
+				res.macosx_version_min = cmdline.option(current_args, arg, res.macosx_version_min)
+				i++
+				res.build_options << '${arg} ${res.macosx_version_min}'
+			}
 			'-nocache' {
 				res.use_cache = false
 			}
@@ -694,10 +700,12 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-no-parallel' {
 				res.no_parallel = true
+				res.build_options << arg
 			}
 			'-parallel-cc' {
 				res.parallel_cc = true
 				res.no_parallel = true // TODO: see how to make both work
+				res.build_options << arg
 			}
 			'-native' {
 				res.backend = .native
@@ -732,6 +740,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-print-watched-files' {
 				res.print_watched_files = true
+			}
+			'-cross' {
+				res.output_cross_c = true
+				res.build_options << '${arg}'
 			}
 			'-os' {
 				target_os := cmdline.option(current_args, '-os', '')
@@ -822,6 +834,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				}
 				if b.is_js() {
 					res.output_cross_c = true
+				}
+				if b == .wasm {
+					res.compile_defines << 'wasm'
+					res.compile_defines_all << 'wasm'
+					res.arch = .wasm32
 				}
 				res.backend = b
 				i++
@@ -1084,7 +1101,7 @@ pub fn arch_from_string(arch_str string) !Arch {
 		'js_freestanding' {
 			return .js_freestanding
 		}
-		'wasm32' {
+		'wasm32', 'wasm' {
 			return .wasm32
 		}
 		'' {

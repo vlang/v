@@ -6,7 +6,7 @@ module time
 #include <time.h>
 // #include <sysinfoapi.h>
 
-struct C.tm {
+pub struct C.tm {
 	tm_year int
 	tm_mon  int
 	tm_mday int
@@ -49,7 +49,7 @@ const (
 )
 
 // in most systems, these are __quad_t, which is an i64
-struct C.timespec {
+pub struct C.timespec {
 	tv_sec  i64
 	tv_nsec i64
 }
@@ -128,7 +128,7 @@ pub fn (t Time) local() Time {
 
 // win_now calculates current time using winapi to get higher resolution on windows
 // GetSystemTimeAsFileTime is used and converted to local time. It can resolve time
-// down to millisecond. Other more precice methods can be implemented in the future
+// down to millisecond. Other more precise methods can be implemented in the future
 fn win_now() Time {
 	ft_utc := C._FILETIME{}
 	C.GetSystemTimeAsFileTime(&ft_utc)
@@ -152,7 +152,7 @@ fn win_now() Time {
 
 // win_utc calculates current time using winapi to get higher resolution on windows
 // GetSystemTimeAsFileTime is used. It can resolve time down to millisecond
-// other more precice methods can be implemented in the future
+// other more precise methods can be implemented in the future
 fn win_utc() Time {
 	ft_utc := C._FILETIME{}
 	C.GetSystemTimeAsFileTime(&ft_utc)

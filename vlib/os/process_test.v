@@ -6,7 +6,7 @@ import time
 const (
 	vexe                   = os.getenv('VEXE')
 	vroot                  = os.dir(vexe)
-	tfolder                = os.join_path(os.vtmp_dir(), 'v', 'tests', 'os_process')
+	tfolder                = os.join_path(os.vtmp_dir(), 'tests', 'os_process')
 	test_os_process        = os.join_path(tfolder, 'test_os_process.exe')
 	test_os_process_source = os.join_path(vroot, 'cmd/tools/test_os_process.v')
 )

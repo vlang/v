@@ -1,7 +1,7 @@
 [has_globals]
 module embed_file
 
-interface Decoder {
+pub interface Decoder {
 	decompress([]u8) ![]u8
 }
 

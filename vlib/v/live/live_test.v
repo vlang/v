@@ -22,7 +22,7 @@ If everything works fine, the output of the generated program would have changed
 which then is detected by the test program (the histogram checks).
 
 Since this test program is sensitive to coordination (or lack of) of several processes,
-it tries to sidestep the coordination issue by polling the file system for the existance
+it tries to sidestep the coordination issue by polling the file system for the existence
 of files, ORIGINAL.txt ... STOP.txt , which are appended to by the generated program.
 
 Note: That approach of monitoring the state of the running generated program, is clearly not ideal,
@@ -33,7 +33,7 @@ TODO: Cleanup this when/if v has better process control/communication primitives
 */
 const (
 	vexe                = os.getenv('VEXE')
-	vtmp_folder         = os.join_path(os.vtmp_dir(), 'v', 'tests', 'live')
+	vtmp_folder         = os.join_path(os.vtmp_dir(), 'tests', 'live')
 	main_source_file    = os.join_path(vtmp_folder, 'main.v')
 	tmp_file            = os.join_path(vtmp_folder, 'mymodule', 'generated_live_module.tmp')
 	source_file         = os.join_path(vtmp_folder, 'mymodule', 'mymodule.v')

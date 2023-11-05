@@ -1,6 +1,6 @@
 module datatypes
 
-/// Internal rapresentation of the tree node
+/// Internal representation of the tree node
 [heap]
 struct BSTreeNode[T] {
 mut:
@@ -234,7 +234,7 @@ fn (bst &BSTree[T]) pre_order_traversal_helper(node &BSTreeNode[T], mut result [
 	bst.pre_order_traversal_helper(node.right, mut result)
 }
 
-// get_node is a helper method to ge the internal rapresentation of the node with the `value`.
+// get_node is a helper method to ge the internal representation of the node with the `value`.
 fn (bst &BSTree[T]) get_node(node &BSTreeNode[T], value T) &BSTreeNode[T] {
 	if unsafe { node == 0 } || !node.is_init {
 		return new_none_node[T](false)

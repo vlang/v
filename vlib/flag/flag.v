@@ -52,7 +52,7 @@ fn (mut f Flag) free() {
 // str returns a string representation of the given Flag
 pub fn (f Flag) str() string {
 	return '' + '    flag:\n' + '            name: ${f.name}\n' +
-		'            abbr: `${f.abbr.ascii_str()}`\n' + '            usag: ${f.usage}\n' +
+		'            abbr: `${f.abbr.ascii_str()}`\n' + '            usage: ${f.usage}\n' +
 		'            desc: ${f.val_desc}'
 }
 
@@ -266,7 +266,7 @@ fn (mut fs FlagParser) parse_value(longhand string, shorthand u8) []string {
 		}
 	}
 	for i, del in to_delete {
-		// i entrys are deleted so it's shifted left i times.
+		// i entries are deleted so it's shifted left i times.
 		fs.args.delete(del - i)
 	}
 	return found_entries

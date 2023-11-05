@@ -96,8 +96,18 @@ fn (mut g Gen) infix_expr_arrow_op(node ast.InfixExpr) {
 
 // infix_expr_eq_op generates code for `==` and `!=`
 fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
-	left := g.unwrap(node.left_type)
-	right := g.unwrap(node.right_type)
+	left_type := if node.left is ast.ComptimeSelector {
+		g.get_comptime_var_type(node.left)
+	} else {
+		node.left_type
+	}
+	right_type := if node.right is ast.ComptimeSelector {
+		g.get_comptime_var_type(node.right)
+	} else {
+		node.right_type
+	}
+	left := g.unwrap(left_type)
+	right := g.unwrap(right_type)
 	mut has_defined_eq_operator := false
 	mut eq_operator_expects_ptr := false
 	if m := g.table.find_method(left.sym, '==') {
@@ -110,7 +120,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		g.gen_plain_infix_expr(node)
 		return
 	}
-	is_none_check := node.left_type.has_flag(.option) && node.right is ast.None
+	is_none_check := left_type.has_flag(.option) && node.right is ast.None
 	if is_none_check {
 		g.gen_is_none_check(node)
 	} else if (left.typ.is_ptr() && right.typ.is_int())
@@ -603,7 +613,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 }
 
 // infix_expr_in_optimization optimizes `<var> in <array>` expressions,
-// and transform them in a serie of equality comparison
+// and transform them in a series of equality comparison
 // i.e. `a in [1,2,3]` => `a == 1 || a == 2 || a == 3`
 fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, right ast.ArrayInit) {
 	mut elem_sym := g.table.sym(right.elem_type)
@@ -612,6 +622,10 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, right ast.ArrayInit) {
 			.string, .alias, .sum_type, .map, .interface_, .array, .struct_ {
 				if elem_sym.kind == .string {
 					g.write('string__eq(')
+					if left.is_auto_deref_var() || (left is ast.Ident && left.info is ast.IdentVar
+						&& g.table.sym(left.obj.typ).kind in [.interface_, .sum_type]) {
+						g.write('*')
+					}
 				} else {
 					ptr_typ := g.equality_fn(right.elem_type)
 					if elem_sym.kind == .alias {

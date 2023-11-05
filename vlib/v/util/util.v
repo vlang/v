@@ -493,7 +493,7 @@ pub fn recompile_file(vexe string, file string) {
 }
 
 // get_vtmp_folder returns the path to a folder, that is writable to V programs,
-// and specific to the user. It can be overriden by setting the env variable `VTMP`.
+// and specific to the user. It can be overridden by setting the env variable `VTMP`.
 pub fn get_vtmp_folder() string {
 	return os.vtmp_dir()
 }

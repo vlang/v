@@ -43,7 +43,7 @@ pub struct ContainerBase {
 	ViewBase
 }
 
-// want to excute this method
+// want to execute this method
 pub fn (mut cb ContainerBase) init(window &Window) {
 	dump(@METHOD)
 	assert true

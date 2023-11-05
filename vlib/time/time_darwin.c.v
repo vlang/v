@@ -8,7 +8,7 @@ const start_time = C.mach_absolute_time()
 const time_base = init_time_base()
 
 [typedef]
-struct C.mach_timebase_info_data_t {
+pub struct C.mach_timebase_info_data_t {
 	numer u32
 	denom u32
 }

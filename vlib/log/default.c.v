@@ -8,7 +8,7 @@ __global default_logger &Logger
 
 // TODO: remove this hack, when the language has a way to access the raw pointer to an interface value directly:
 [typedef]
-struct C.log__Logger {
+pub struct C.log__Logger {
 mut:
 	_object voidptr
 }

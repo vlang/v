@@ -83,7 +83,7 @@ pub fn (mut e Eval) eval(mut files []&ast.File) {
 	e.run_func(e.mods['main']['main'] or { ast.FnDecl{} } as ast.FnDecl)
 }
 
-// first arg is reciever (if method)
+// first arg is receiver (if method)
 pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 	e.back_trace << EvalTrace{func.idx, func.source_file.idx, func.pos.line_nr}
 	old_mod := e.cur_mod
@@ -276,7 +276,7 @@ pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 }
 
 fn (e Eval) error(msg string) {
-	eprintln('> V interpeter backtrace:')
+	eprintln('> V interpreter backtrace:')
 	e.print_backtrace()
 	util.verror('interpreter', msg)
 }

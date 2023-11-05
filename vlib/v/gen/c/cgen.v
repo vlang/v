@@ -82,17 +82,17 @@ mut:
 	sorted_global_const_names []string
 	file                      &ast.File  = unsafe { nil }
 	table                     &ast.Table = unsafe { nil }
-	unique_file_path_hash     u64 // a hash of file.path, used for making auxilary fn generation unique (like `compare_xyz`)
+	unique_file_path_hash     u64 // a hash of file.path, used for making auxiliary fn generation unique (like `compare_xyz`)
 	fn_decl                   &ast.FnDecl = unsafe { nil } // pointer to the FnDecl we are currently inside otherwise 0
 	last_fn_c_name            string
 	tmp_count                 int         // counter for unique tmp vars (_tmp1, _tmp2 etc); resets at the start of each fn.
 	tmp_count_af              int  // a separate tmp var counter for autofree fn calls
 	tmp_count_declarations    int  // counter for unique tmp names (_d1, _d2 etc); does NOT reset, used for C declarations
-	global_tmp_count          int  // like tmp_count but global and not resetted in each function
+	global_tmp_count          int  // like tmp_count but global and not reset in each function
 	discard_or_result         bool // do not safe last ExprStmt of `or` block in tmp variable to defer ongoing expr usage
 	is_direct_array_access    bool // inside a `[direct_array_access fn a() {}` function
 	is_assign_lhs             bool // inside left part of assign expr (for array_set(), etc)
-	is_void_expr_stmt         bool // ExprStmt whos result is discarded
+	is_void_expr_stmt         bool // ExprStmt whose result is discarded
 	is_arraymap_set           bool // map or array set value state
 	is_amp                    bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&u8(0)` etc
 	is_sql                    bool // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
@@ -1067,9 +1067,9 @@ fn (mut g Gen) expr_string_surround(prepend string, expr ast.Expr, append string
 	return g.out.cut_to(pos)
 }
 
-// TODO this really shouldnt be seperate from typ
+// TODO this really shouldn't be separate from typ
 // but I(emily) would rather have this generation
-// all unified in one place so that it doesnt break
+// all unified in one place so that it doesn't break
 // if one location changes
 fn (mut g Gen) option_type_name(t ast.Type) (string, string) {
 	mut base := g.base_type(t)
@@ -2591,7 +2591,7 @@ fn cescape_nonascii(original string) string {
 	return res
 }
 
-// cestring returns a V string, properly escaped for embeddeding in a C string literal.
+// cestring returns a V string, properly escaped for embedding in a C string literal.
 fn cestring(s string) string {
 	return s.replace('\\', '\\\\').replace('"', "'")
 }
@@ -2632,7 +2632,7 @@ fn (mut g Gen) asm_stmt(stmt ast.AsmStmt) {
 		} else {
 			g.write(' ')
 		}
-		// swap destionation and operands for att syntax
+		// swap destination and operands for att syntax
 		if template.args.len != 0 && !template.is_directive {
 			template.args.prepend(template.args.last())
 			template.args.delete(template.args.len - 1)
@@ -5045,7 +5045,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		g.write('(${styp}){')
 		mut arg_idx := 0
 		for i, expr in node.exprs {
-			// Check if we are dealing with a multi return and handle it seperately
+			// Check if we are dealing with a multi return and handle it separately
 			if g.expr_is_multi_return_call(expr) {
 				call_expr := expr as ast.CallExpr
 				expr_sym := g.table.sym(call_expr.return_type)
@@ -5803,7 +5803,7 @@ fn (mut g Gen) write_init_function() {
 		g.writeln('\t_closure_mtx_init();')
 	}
 
-	// reflection bootstraping
+	// reflection bootstrapping
 	if g.has_reflection {
 		if var := g.global_const_defs['g_reflection'] {
 			g.writeln(var.init)
@@ -6185,7 +6185,7 @@ fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 	// sort graph
 	dep_graph_sorted := dep_graph.resolve()
 	if !dep_graph_sorted.acyclic {
-		// this should no longer be called since it's catched in the parser
+		// this should no longer be called since it's in the parser
 		// TODO: should it be removed?
 		verror('cgen.sort_structs(): the following structs form a dependency cycle:\n' +
 			dep_graph_sorted.display_cycles() +
@@ -6257,7 +6257,7 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 	g.indent--
 }
 
-// If user is accessing the return value eg. in assigment, pass the variable name.
+// If user is accessing the return value eg. in assignment, pass the variable name.
 // If the user is not using the option return value. We need to pass a temp var
 // to access its fields (`.ok`, `.error` etc)
 // `os.cp(...)` => `Option bool tmp = os__cp(...); if (tmp.state != 0) { ... }`
@@ -6768,7 +6768,7 @@ fn (mut g Gen) interface_table() string {
 						cast_struct.writeln('\t\t.${cname} = (${field_styp}*)((char*)x + __offsetof_ptr(x, ${cctype}, ${cname})),')
 					} else if st_sym.kind == .array
 						&& field.name in ['element_size', 'data', 'offset', 'len', 'cap', 'flags'] {
-						// Manaully checking, we already knows array contains above fields
+						// Manually checking, we already knows array contains above fields
 						cast_struct.writeln('\t\t.${cname} = (${field_styp}*)((char*)x + __offsetof_ptr(x, ${cctype}, ${cname})),')
 					} else {
 						// the field is embedded in another struct

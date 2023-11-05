@@ -21,7 +21,7 @@ const (
 	show_progress                  = os.getenv('GITHUB_JOB') == '' && '-silent' !in os.args
 	non_option_args                = cmdline.only_non_options(os.args[2..])
 	is_verbose                     = os.getenv('VERBOSE') != ''
-	vcheckfolder                   = os.join_path(os.vtmp_dir(), 'v', 'vcheck_${os.getuid()}')
+	vcheckfolder                   = os.join_path(os.vtmp_dir(), 'vcheck_${os.getuid()}')
 	should_autofix                 = os.getenv('VAUTOFIX') != ''
 	vexe                           = @VEXE
 )
@@ -44,7 +44,6 @@ fn (v1 CheckResult) + (v2 CheckResult) CheckResult {
 fn main() {
 	if non_option_args.len == 0 || '-help' in os.args {
 		help.print_and_exit('check-md')
-		exit(0)
 	}
 	if '-all' in os.args {
 		println('´-all´ flag is deprecated. Please use ´v check-md .´ instead.')

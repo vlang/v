@@ -46,7 +46,7 @@ pub enum Platform {
 	vinix
 	haiku
 	raw
-	cross // TODO: add functionality for v doc -os cross whenever possible
+	cross // TODO: add functionality for v doc -cross whenever possible
 }
 
 // copy of pref.os_from_string
@@ -327,13 +327,13 @@ pub fn (mut d Doc) file_ast(mut file_ast ast.File) map[string]DocNode {
 			last_import_stmt_idx = sidx
 		}
 	}
-	mut preceeding_comments := []DocComment{}
+	mut preceding_comments := []DocComment{}
 	// mut imports_section := true
 	for sidx, mut stmt in file_ast.stmts {
 		if mut stmt is ast.ExprStmt {
 			// Collect comments
 			if mut stmt.expr is ast.Comment {
-				preceeding_comments << ast_comment_to_doc_comment(stmt.expr)
+				preceding_comments << ast_comment_to_doc_comment(stmt.expr)
 				continue
 			}
 		}
@@ -343,13 +343,13 @@ pub fn (mut d Doc) file_ast(mut file_ast ast.File) map[string]DocNode {
 				continue
 			}
 			// the previous comments were probably a copyright/license one
-			module_comment := merge_doc_comments(preceeding_comments)
-			preceeding_comments = []
+			module_comment := merge_doc_comments(preceding_comments)
+			preceding_comments = []
 			if !d.is_vlib && !module_comment.starts_with('Copyright (c)') {
 				if module_comment == '' {
 					continue
 				}
-				d.head.comments << preceeding_comments
+				d.head.comments << preceding_comments
 			}
 			continue
 		}
@@ -357,16 +357,16 @@ pub fn (mut d Doc) file_ast(mut file_ast ast.File) map[string]DocNode {
 			// the accumulated comments were interspersed before/between the imports;
 			// just add them all to the module comments:
 			if d.with_head {
-				d.head.comments << preceeding_comments
+				d.head.comments << preceding_comments
 			}
-			preceeding_comments = []
+			preceding_comments = []
 			// imports_section = false
 		}
 		if stmt is ast.Import {
 			continue
 		}
 		mut node := d.stmt(mut stmt, os.base(file_ast.path)) or {
-			preceeding_comments = []
+			preceding_comments = []
 			continue
 		}
 		if node.parent_name !in contents {
@@ -380,10 +380,10 @@ pub fn (mut d Doc) file_ast(mut file_ast ast.File) map[string]DocNode {
 				kind: parent_node_kind
 			}
 		}
-		if d.with_comments && preceeding_comments.len > 0 {
-			node.comments << preceeding_comments
+		if d.with_comments && preceding_comments.len > 0 {
+			node.comments << preceding_comments
 		}
-		preceeding_comments = []
+		preceding_comments = []
 		if node.parent_name.len > 0 {
 			parent_name := node.parent_name
 			if node.parent_name == 'Constants' {

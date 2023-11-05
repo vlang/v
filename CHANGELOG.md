@@ -818,7 +818,7 @@ Final steps in making the Option type a first class type:
 - C to V translation via C2V: `v translate file.c`. (Demo video: [Translating DOOM from C to V, building it in under a second and running it!](https://www.youtube.com/watch?v=6oXrz3oRoEg))
 - Lots of bug fixes in V, cgen, and C interop to allow running translated DOOM.v.
 - Programs built with the V compiler no longer leak memory by default.
-- Closures. All operating systems are supported. ([Demo](https://twitter.com/v_language/status/1528710491882852352))
+- Closures. All operating systems are supported. ([Demo](https://x.com/v_language/status/1528710491882852352))
 - `Option` and `Result` are now separate types: `?Foo` and `!Foo` respectively. Old code will continue working for 1 year and will result in a warning/hint.
 - Hundreds of new checks in the type checker.
 - All V's backends have been split up into separate processes.  As the result, building V got 26% faster.

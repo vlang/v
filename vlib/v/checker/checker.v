@@ -958,8 +958,14 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 		eprintln('> type_implements typ: ${typ.debug()} (`${c.table.type_to_str(typ)}`) | inter_typ: ${interface_type.debug()} (`${c.table.type_to_str(interface_type)}`)')
 	}
 	utyp := c.unwrap_generic(typ)
+	styp := c.table.type_to_str(utyp)
 	typ_sym := c.table.sym(utyp)
 	mut inter_sym := c.table.sym(interface_type)
+	if inter_sym.mod !in [typ_sym.mod, c.mod] && !inter_sym.is_pub && typ_sym.mod != 'builtin' {
+		c.error('`${styp}` cannot implement private interface `${inter_sym.name}` of other module',
+			pos)
+		return false
+	}
 
 	// small hack for JS.Any type. Since `any` in regular V is getting deprecated we have our own JS.Any type for JS backend.
 	if typ_sym.name == 'JS.Any' {
@@ -1006,7 +1012,6 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 		// `none` "implements" the Error interface
 		return true
 	}
-	styp := c.table.type_to_str(utyp)
 	if typ_sym.kind == .interface_ && inter_sym.kind == .interface_ && !styp.starts_with('JS.')
 		&& !inter_sym.name.starts_with('JS.') {
 		c.error('cannot implement interface `${inter_sym.name}` with a different interface `${styp}`',
@@ -1687,8 +1692,7 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 				...field.pos
 				len: util.no_cur_mod(field.name, c.mod).len
 			}
-			c.add_error_detail('Module name duplicates will become errors after 2023/10/31.')
-			c.note('duplicate of a module name `${field.name}`', name_pos)
+			c.error('duplicate of a module name `${field.name}`', name_pos)
 		}
 		c.const_names << field.name
 	}
@@ -2057,7 +2061,8 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 				if mut node.expr is ast.InfixExpr {
 					if node.expr.op == .left_shift {
 						left_sym := c.table.final_sym(node.expr.left_type)
-						if left_sym.kind != .array {
+						if left_sym.kind != .array
+							&& c.table.final_sym(c.unwrap_generic(node.expr.left_type)).kind != .array {
 							c.error('unused expression', node.pos)
 						}
 					}

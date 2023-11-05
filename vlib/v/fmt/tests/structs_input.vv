@@ -63,4 +63,4 @@ somefield4 int
 */
 }
 
-struct C.Foo
+pub struct C.Foo

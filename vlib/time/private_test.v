@@ -1,7 +1,7 @@
 // tests that use and test private functions
 module time
 
-// test the old behavor is same as new, the unix time should always be local time
+// test the old behavior is same as new, the unix time should always be local time
 fn test_new_is_same_as_old_for_all_platforms() {
 	t := C.time(0)
 	tm := C.localtime(&t)

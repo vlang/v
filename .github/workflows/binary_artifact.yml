@@ -35,7 +35,7 @@ jobs:
            mv $ZIPNAME v/
            cd v/
       - name: Create artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: linux
           path: v_linux.zip
@@ -67,7 +67,7 @@ jobs:
            mv $ZIPNAME v/
            cd v/
       - name: Create artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: macos
           path: v_macos.zip
@@ -107,7 +107,7 @@ jobs:
 # https://superuser.com/a/1336434/194881
 # It is needed, because `zip` is not installed by default :-|
       - name: Create artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: windows
           path: v_windows.zip

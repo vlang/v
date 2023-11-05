@@ -45,5 +45,5 @@ fn test_main() {
 fn test_opt_call() {
 	mut t := ?Test{}
 	fn_a(none) // returns none
-	fn_b(t) // returs none
+	fn_b(t) // returns none
 }

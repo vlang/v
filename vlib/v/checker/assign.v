@@ -161,7 +161,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		mut right := if i < node.right.len { node.right[i] } else { node.right[0] }
 		mut right_type := node.right_types[i]
 		if mut right is ast.Ident {
-			// resolve shared right vairable
+			// resolve shared right variable
 			if right_type.has_flag(.shared_f) {
 				if c.fail_if_unreadable(right, right_type, 'right-hand side of assignment') {
 					return
@@ -375,8 +375,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							}
 						}
 						if left.name == left.mod && left.name != 'main' {
-							c.add_error_detail('Module name duplicates will become errors after 2023/10/31.')
-							c.note('duplicate of a module name `${left.name}`', left.pos)
+							c.error('duplicate of a module name `${left.name}`', left.pos)
 						}
 						// Check if variable name is already registered as imported module symbol
 						if c.check_import_sym_conflict(left.name) {
@@ -490,7 +489,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 								if r is ast.Ident {
 									obj := r.obj
 									if obj is ast.Var && !obj.is_mut {
-										c.warn('cannot add a referenece to an immutable object to a mutable array',
+										c.warn('cannot add a reference to an immutable object to a mutable array',
 											elem_expr.pos)
 									}
 								}
@@ -553,7 +552,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 		if left_sym.kind == .function && right_sym.info is ast.FnType {
 			return_sym := c.table.sym(right_sym.info.func.return_type)
 			if return_sym.kind == .placeholder {
-				c.error('unkown return type: cannot assign `${right}` as a function variable',
+				c.error('unknown return type: cannot assign `${right}` as a function variable',
 					right.pos())
 			} else if (!right_sym.info.is_anon && return_sym.kind == .any)
 				|| (return_sym.info is ast.Struct && return_sym.info.is_generic) {

@@ -14,3 +14,27 @@ pub fn signal_opt(signum Signal, handler SignalHandler) !SignalHandler {
 	}
 	return SignalHandler(prev_handler)
 }
+
+// A convenient way to ignore certain system signals when there is no need to process certain system signals,
+// Masking of system signals under posix systems requires a distinction between main and background threads.
+// Since there is no good way to easily tell whether the current thread is the main or background thread,
+// So a global variable is introduced to make the distinction.
+
+// An empty system signal handler (callback function) used to mask the specified system signal.
+fn ignore_signal_handler(signal Signal) {
+}
+
+// signal_ignore to mask system signals, e.g.: signal_ignore(.pipe, .urg, ...)
+pub fn signal_ignore(args ...Signal) {
+	if is_main_thread() {
+		// for main thread.
+		$if !windows {
+			for arg in args {
+				signal_opt(arg, ignore_signal_handler) or {}
+			}
+		}
+	} else {
+		// for background threads.
+		signal_ignore_internal(...args)
+	}
+}

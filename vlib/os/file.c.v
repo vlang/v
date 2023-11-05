@@ -5,7 +5,7 @@ pub struct Eof {
 	Error
 }
 
-// NotExpected is a generic error that means that we receave a not expecte error.
+// NotExpected is a generic error that means that we receave a not expected error.
 pub struct NotExpected {
 	cause string
 	code  int
@@ -841,7 +841,7 @@ pub enum SeekMode {
 //   .start   -> the origin is the start of the file
 //   .current -> the current position/cursor in the file
 //   .end     -> the end of the file
-// If the file is not seek-able, or an error occures, the error will
+// If the file is not seek-able, or an error occurs, the error will
 // be returned to the caller.
 // A successful call to the fseek() function clears the end-of-file
 // indicator for the file.

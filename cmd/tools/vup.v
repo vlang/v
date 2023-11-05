@@ -13,6 +13,9 @@ struct App {
 	is_prod    bool
 	vexe       string
 	vroot      string
+	//
+	skip_v_self  bool // do not run `v self`, effectively enforcing the running of `make` or `make.bat`
+	skip_current bool // skip the current hash check, enabling easier testing on the same commit, without using docker etc
 }
 
 fn new_app() App {
@@ -21,6 +24,8 @@ fn new_app() App {
 		is_prod: '-prod' in os.args
 		vexe: vexe
 		vroot: vroot
+		skip_v_self: '-skip_v_self' in os.args
+		skip_current: '-skip_current' in os.args
 	}
 }
 
@@ -34,7 +39,7 @@ fn main() {
 	current_hash := version.githash(true)
 	// println(v_hash)
 	// println(current_hash)
-	if v_hash == current_hash {
+	if v_hash == current_hash && !app.skip_current {
 		println('V is already updated.')
 		app.show_current_v_version()
 		return
@@ -77,6 +82,9 @@ fn (app App) recompile_v() bool {
 	// Note: app.vexe is more reliable than just v (which may be a symlink)
 	opts := if app.is_prod { '-prod' } else { '' }
 	vself := '${os.quoted_path(app.vexe)} ${opts} self'
+	if app.skip_v_self {
+		return app.make(vself)
+	}
 	app.vprintln('> recompiling v itself with `${vself}` ...')
 	self_result := os.execute(vself)
 	if self_result.exit_code == 0 {
@@ -170,9 +178,22 @@ fn (app App) get_git() {
 }
 
 fn get_make_cmd_name() string {
+	mut cmd := 'make'
 	$if windows {
-		return 'make.bat'
-	} $else {
-		return 'make'
+		cmd = 'make.bat'
 	}
+	if cmd == 'make' {
+		make_sure_cmd_is_available(cmd)
+		cc := os.getenv_opt('CC') or { 'cc' }
+		make_sure_cmd_is_available(cc)
+	}
+	return cmd
+}
+
+fn make_sure_cmd_is_available(cmd string) {
+	found_path := os.find_abs_path_of_executable(cmd) or {
+		eprintln('Could not find `${cmd}` in PATH. Please install `${cmd}`, since `v up` needs it.')
+		exit(1)
+	}
+	println('Found `${cmd}` as `${found_path}`.')
 }

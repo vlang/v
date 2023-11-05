@@ -191,8 +191,8 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 					continue
 				}
 			}
-			if already_initalised_node_field_index := inited_fields[field.name] {
-				mut sfield := node.init_fields[already_initalised_node_field_index]
+			if already_inited_node_field_index := inited_fields[field.name] {
+				mut sfield := node.init_fields[already_inited_node_field_index]
 				if sfield.typ == 0 {
 					continue
 				}
@@ -231,7 +231,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 				if node.no_keys && sym.kind == .struct_ {
 					sym_info := sym.info as ast.Struct
 					if sym_info.fields.len == node.init_fields.len {
-						sfield.name = sym_info.fields[already_initalised_node_field_index].name
+						sfield.name = sym_info.fields[already_inited_node_field_index].name
 					}
 				}
 				g.struct_init_field(sfield, sym.language)
@@ -510,7 +510,7 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 			field_name := c_name(field.name)
 			volatile_prefix := if field.is_volatile { 'volatile ' } else { '' }
 			mut size_suffix := ''
-			if is_minify && !g.is_cc_msvc {
+			if is_minify && !g.is_cc_msvc && !g.pref.output_cross_c {
 				if field.typ == ast.bool_type_idx {
 					size_suffix = ' : 1'
 				} else {

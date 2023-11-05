@@ -115,6 +115,12 @@ fn C.sg_fail_shader(shd C.sg_shader)
 fn C.sg_fail_pipeline(pip C.sg_pipeline)
 fn C.sg_fail_pass(pass C.sg_pass)
 
+// frame stats
+fn C.sg_enable_frame_stats()
+fn C.sg_disable_frame_stats()
+fn C.sg_frame_stats_enabled() bool
+fn C.sg_query_frame_stats() C.sg_frame_stats
+
 // rendering contexts (optional)
 fn C.sg_setup_context() C.sg_context
 fn C.sg_activate_context(ctx_id C.sg_context)

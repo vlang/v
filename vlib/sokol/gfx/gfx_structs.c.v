@@ -11,10 +11,11 @@ pub mut:
 	pass_pool_size                 int
 	context_pool_size              int
 	uniform_buffer_size            int
-	staging_buffer_size            int
 	max_commit_listeners           int
 	disable_validation             bool // disable validation layer even in debug mode, useful for tests
 	mtl_force_managed_storage_mode bool // for debugging: use Metal managed storage mode for resources even with UMA
+	wgpu_disable_bindgroups_cache  bool // set to true to disable the WebGPU backend BindGroup cache
+	wgpu_bindgroups_cache_size     int  // number of slots in the WebGPU bindgroup cache (must be 2^N)
 	//
 	allocator C.sg_allocator
 	logger    C.sg_logger
@@ -24,7 +25,7 @@ pub mut:
 
 pub type Desc = C.sg_desc
 
-struct C.sg_context_desc {
+pub struct C.sg_context_desc {
 pub mut:
 	color_format PixelFormat
 	depth_format PixelFormat
@@ -37,13 +38,13 @@ pub mut:
 
 pub type ContextDesc = C.sg_context_desc
 
-struct C.sg_gl_context_desc {
+pub struct C.sg_gl_context_desc {
 	force_gles2 bool
 }
 
 pub type GLContextDesc = C.sg_gl_context_desc
 
-struct C.sg_metal_context_desc {
+pub struct C.sg_metal_context_desc {
 	device                   voidptr
 	renderpass_descriptor_cb fn () voidptr = unsafe { nil }
 	drawable_cb              fn () voidptr = unsafe { nil }
@@ -51,7 +52,7 @@ struct C.sg_metal_context_desc {
 
 pub type MetalContextDesc = C.sg_metal_context_desc
 
-struct C.sg_d3d11_context_desc {
+pub struct C.sg_d3d11_context_desc {
 	device                voidptr
 	device_context        voidptr
 	render_target_view_cb fn () voidptr = unsafe { nil }
@@ -60,7 +61,7 @@ struct C.sg_d3d11_context_desc {
 
 pub type D3D11ContextDesc = C.sg_d3d11_context_desc
 
-struct C.sg_color_target_state {
+pub struct C.sg_color_target_state {
 pub mut:
 	pixel_format PixelFormat
 	write_mask   ColorMask
@@ -107,7 +108,7 @@ pub fn (mut p C.sg_pipeline) free() {
 	C.sg_destroy_pipeline(*p)
 }
 
-struct C.sg_bindings {
+pub struct C.sg_bindings {
 pub mut:
 	_start_canary         u32
 	vertex_buffers        [8]Buffer
@@ -172,7 +173,7 @@ pub mut:
 pub type StageBindings = C.sg_stage_bindings
 
 [heap]
-struct C.sg_shader_desc {
+pub struct C.sg_shader_desc {
 pub mut:
 	attrs [16]ShaderAttrDesc
 	vs    ShaderStageDesc
@@ -230,7 +231,7 @@ pub fn (desc &ShaderDesc) make_shader() Shader {
 	return C.sg_make_shader(desc)
 }
 
-struct C.sg_shader_attr_desc {
+pub struct C.sg_shader_attr_desc {
 pub mut:
 	name      &char // GLSL vertex attribute name (only required for GLES2)
 	sem_name  &char // HLSL semantic name
@@ -239,7 +240,7 @@ pub mut:
 
 pub type ShaderAttrDesc = C.sg_shader_attr_desc
 
-struct C.sg_shader_stage_desc {
+pub struct C.sg_shader_stage_desc {
 pub mut:
 	source              &char
 	bytecode            Range
@@ -259,7 +260,7 @@ pub fn (mut desc ShaderStageDesc) set_image(index int, name string) ShaderStageD
 	return *desc
 }
 
-struct C.sg_shader_uniform_block_desc {
+pub struct C.sg_shader_uniform_block_desc {
 pub mut:
 	size     usize
 	layout   UniformLayout
@@ -268,7 +269,7 @@ pub mut:
 
 pub type ShaderUniformBlockDesc = C.sg_shader_uniform_block_desc
 
-struct C.sg_shader_uniform_desc {
+pub struct C.sg_shader_uniform_desc {
 pub mut:
 	name        &char
 	@type       UniformType
@@ -277,7 +278,7 @@ pub mut:
 
 pub type ShaderUniformDesc = C.sg_shader_uniform_desc
 
-struct C.sg_shader_image_desc {
+pub struct C.sg_shader_image_desc {
 pub mut:
 	used         bool
 	multisampled bool
@@ -328,7 +329,7 @@ pub mut:
 
 pub type Range = C.sg_range
 
-struct C.sg_color {
+pub struct C.sg_color {
 pub mut:
 	r f32
 	g f32
@@ -349,7 +350,7 @@ pub fn (mut s Shader) free() {
 	C.sg_destroy_shader(*s)
 }
 
-struct C.sg_pass_desc {
+pub struct C.sg_pass_desc {
 pub mut:
 	color_attachments        [4]PassAttachmentDesc
 	depth_stencil_attachment PassAttachmentDesc
@@ -358,11 +359,208 @@ pub mut:
 
 pub type PassDesc = C.sg_pass_desc
 
-struct C.sg_pass_info {
+pub struct C.sg_pass_info {
 	info SlotInfo
 }
 
 pub type PassInfo = C.sg_pass_info
+
+[typedef]
+pub struct C.sg_frame_stats_gl {
+	num_bind_buffer                 u32
+	num_active_texture              u32
+	num_bind_texture                u32
+	num_bind_sampler                u32
+	num_use_program                 u32
+	num_render_state                u32
+	num_vertex_attrib_pointer       u32
+	num_vertex_attrib_divisor       u32
+	num_enable_vertex_attrib_array  u32
+	num_disable_vertex_attrib_array u32
+	num_uniform                     u32
+}
+
+pub type FrameStatsGL = C.sg_frame_stats_gl
+
+[typedef]
+pub struct C.sg_frame_stats_d3d11_pass {
+	num_om_set_render_targets    u32
+	num_clear_render_target_view u32
+	num_clear_depth_stencil_view u32
+	num_resolve_subresource      u32
+}
+
+pub type FrameStatsD3D11Pass = C.sg_frame_stats_d3d11_pass
+
+[typedef]
+pub struct C.sg_frame_stats_d3d11_pipeline {
+	num_rs_set_state               u32
+	num_om_set_depth_stencil_state u32
+	num_om_set_blend_state         u32
+	num_ia_set_primitive_topology  u32
+	num_ia_set_input_layout        u32
+	num_vs_set_shader              u32
+	num_vs_set_constant_buffers    u32
+	num_ps_set_shader              u32
+	num_ps_set_constant_buffers    u32
+}
+
+pub type FrameStatsD3D11Pipeline = C.sg_frame_stats_d3d11_pipeline
+
+[typedef]
+pub struct C.sg_frame_stats_d3d11_bindings {
+	num_ia_set_vertex_buffers   u32
+	num_ia_set_index_buffer     u32
+	num_vs_set_shader_resources u32
+	num_ps_set_shader_resources u32
+	num_vs_set_samplers         u32
+	num_ps_set_samplers         u32
+}
+
+pub type FrameStatsD3D11Bindings = C.sg_frame_stats_d3d11_bindings
+
+[typedef]
+pub struct C.sg_frame_stats_d3d11_uniforms {
+	num_update_subresource u32
+}
+
+pub type FrameStatsD3D11Uniforms = C.sg_frame_stats_d3d11_uniforms
+
+[typedef]
+pub struct C.sg_frame_stats_d3d11_draw {
+	num_draw_indexed_instanced u32
+	num_draw_indexed           u32
+	num_draw_instanced         u32
+	num_draw                   u32
+}
+
+pub type FrameStatsD3D11Draw = C.sg_frame_stats_d3d11_draw
+
+[typedef]
+pub struct C.sg_frame_stats_d3d11 {
+	pass      FrameStatsD3D11Pass
+	pipeline  FrameStatsD3D11Pipeline
+	bindings  FrameStatsD3D11Bindings
+	uniforms  FrameStatsD3D11Uniforms
+	draw      FrameStatsD3D11Draw
+	num_map   u32
+	num_unmap u32
+}
+
+pub type FrameStatsD3D11 = C.sg_frame_stats_d3d11
+
+[typedef]
+pub struct C.sg_frame_stats_metal_idpool {
+	num_added             u32
+	num_released          u32
+	num_garbage_collected u32
+}
+
+pub type FrameStatsMetalIdpool = C.sg_frame_stats_metal_idpool
+
+[typedef]
+pub struct C.sg_frame_stats_metal_pipeline {
+	num_set_blend_color             u32
+	num_set_cull_mode               u32
+	num_set_front_facing_winding    u32
+	num_set_stencil_reference_value u32
+	num_set_depth_bias              u32
+	num_set_render_pipeline_state   u32
+	num_set_depth_stencil_state     u32
+}
+
+pub type FrameStatsMetalPipeline = C.sg_frame_stats_metal_pipeline
+
+[typedef]
+pub struct C.sg_frame_stats_metal_bindings {
+	num_set_vertex_buffer          u32
+	num_set_vertex_texture         u32
+	num_set_vertex_sampler_state   u32
+	num_set_fragment_texture       u32
+	num_set_fragment_sampler_state u32
+}
+
+pub type FrameStatsMetalBindings = C.sg_frame_stats_metal_bindings
+
+[typedef]
+pub struct C.sg_frame_stats_metal_uniforms {
+	num_set_vertex_buffer_offset   u32
+	num_set_fragment_buffer_offset u32
+}
+
+pub type FrameStatsMetalUniforms = C.sg_frame_stats_metal_uniforms
+
+[typedef]
+pub struct C.sg_frame_stats_metal {
+	idpool   FrameStatsMetalIdpool
+	pipeline FrameStatsMetalPipeline
+	bindings FrameStatsMetalBindings
+	uniforms FrameStatsMetalUniforms
+}
+
+pub type FrameStatsMetal = C.sg_frame_stats_metal
+
+[typedef]
+pub struct C.sg_frame_stats_wgpu_uniforms {
+	num_set_bindgroup u32
+	size_write_buffer u32
+}
+
+pub type FrameStatsWGPUUniforms = C.sg_frame_stats_wgpu_uniforms
+
+[typedef]
+pub struct C.sg_frame_stats_wgpu_bindings {
+	num_set_vertex_buffer                    u32
+	num_skip_redundant_vertex_buffer         u32
+	num_set_index_buffer                     u32
+	num_skip_redundant_index_buffer          u32
+	num_create_bindgroup                     u32
+	num_discard_bindgroup                    u32
+	num_set_bindgroup                        u32
+	num_skip_redundant_bindgroup             u32
+	num_bindgroup_cache_hits                 u32
+	num_bindgroup_cache_misses               u32
+	num_bindgroup_cache_collisions           u32
+	num_bindgroup_cache_hash_vs_key_mismatch u32
+}
+
+pub type FrameStatsWGPUBindings = C.sg_frame_stats_wgpu_bindings
+
+[typedef]
+pub struct C.sg_frame_stats_wgpu {
+	uniforms FrameStatsWGPUUniforms
+	bindings FrameStatsWGPUBindings
+}
+
+pub type FrameStatsWGPU = C.sg_frame_stats_wgpu
+
+[typedef]
+pub struct C.sg_frame_stats {
+	frame_index u32 // current frame counter, starts at 0
+	//
+	num_passes             u32
+	num_apply_viewport     u32
+	num_apply_scissor_rect u32
+	num_apply_pipeline     u32
+	num_apply_bindings     u32
+	num_apply_uniforms     u32
+	num_draw               u32
+	num_update_buffer      u32
+	num_append_buffer      u32
+	num_update_image       u32
+	//
+	size_apply_uniforms u32
+	size_update_buffer  u32
+	size_append_buffer  u32
+	size_update_image   u32
+	//
+	gl    FrameStatsGL
+	d3d11 FrameStatsD3D11
+	metal FrameStatsMetal
+	wgpu  FrameStatsWGPU
+}
+
+pub type FrameStats = C.sg_frame_stats
 
 pub struct C.sg_pass_action {
 pub mut:
@@ -373,7 +571,7 @@ pub mut:
 
 pub type PassAction = C.sg_pass_action
 
-struct C.sg_pass {
+pub struct C.sg_pass {
 	id u32
 }
 
@@ -383,7 +581,7 @@ pub fn (mut p Pass) free() {
 	C.sg_destroy_pass(*p)
 }
 
-struct C.sg_buffer_desc {
+pub struct C.sg_buffer_desc {
 pub mut:
 	size  usize
 	@type BufferType
@@ -399,7 +597,7 @@ pub mut:
 
 pub type BufferDesc = C.sg_buffer_desc
 
-struct C.sg_slot_info {
+pub struct C.sg_slot_info {
 	state  ResourceState
 	res_id u32
 	ctx_id u32
@@ -524,7 +722,7 @@ pub mut:
 
 pub type ImageData = C.sg_image_data
 
-struct C.sg_features {
+pub struct C.sg_features {
 pub:
 	origin_top_left             bool // framebuffer and texture origin is in top left corner
 	image_clamp_to_border       bool // border color and clamp-to-border UV-wrap mode is supported
@@ -579,7 +777,7 @@ pub mut:
 
 pub type VertexAttrDesc = C.sg_vertex_attr_state
 
-struct C.sg_stencil_state {
+pub struct C.sg_stencil_state {
 	enabled    bool
 	front      StencilFaceState
 	back       StencilFaceState
@@ -590,7 +788,7 @@ struct C.sg_stencil_state {
 
 pub type StencilState = C.sg_stencil_state
 
-struct C.sg_depth_state {
+pub struct C.sg_depth_state {
 	pixel_format     PixelFormat
 	compare          CompareFunc
 	write_enabled    bool
@@ -601,7 +799,7 @@ struct C.sg_depth_state {
 
 pub type DepthState = C.sg_depth_state
 
-struct C.sg_stencil_face_state {
+pub struct C.sg_stencil_face_state {
 	compare       CompareFunc
 	fail_op       StencilOp
 	depth_fail_op StencilOp
@@ -610,7 +808,7 @@ struct C.sg_stencil_face_state {
 
 pub type StencilFaceState = C.sg_stencil_face_state
 
-struct C.sg_blend_state {
+pub struct C.sg_blend_state {
 pub mut:
 	enabled          bool
 	src_factor_rgb   BlendFactor
@@ -623,7 +821,7 @@ pub mut:
 
 pub type BlendState = C.sg_blend_state
 
-struct C.sg_color_attachment_action {
+pub struct C.sg_color_attachment_action {
 pub mut:
 	load_action  LoadAction
 	store_action StoreAction
@@ -670,7 +868,7 @@ pub:
 
 pub type PixelFormatInfo = C.sg_pixelformat_info
 
-struct C.sg_pass_attachment_desc {
+pub struct C.sg_pass_attachment_desc {
 pub mut:
 	image     Image
 	mip_level int

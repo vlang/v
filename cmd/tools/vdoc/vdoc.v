@@ -27,6 +27,7 @@ enum OutputType {
 	stdout
 }
 
+[heap]
 struct VDoc {
 	cfg Config [required]
 mut:
@@ -72,7 +73,7 @@ struct ParallelDoc {
 	out Output
 }
 
-fn (vd VDoc) gen_json(d doc.Doc) string {
+fn (vd &VDoc) gen_json(d doc.Doc) string {
 	cfg := vd.cfg
 	mut jw := strings.new_builder(200)
 	comments := if cfg.include_examples {
@@ -86,7 +87,7 @@ fn (vd VDoc) gen_json(d doc.Doc) string {
 	return jw.str()
 }
 
-fn (vd VDoc) gen_plaintext(d doc.Doc) string {
+fn (vd &VDoc) gen_plaintext(d doc.Doc) string {
 	cfg := vd.cfg
 	mut pw := strings.new_builder(200)
 	if cfg.is_color {
@@ -113,7 +114,7 @@ fn indent(s string) string {
 	return '    ' + s.replace('\n', '\n    ')
 }
 
-fn (vd VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.Builder) {
+fn (vd &VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.Builder) {
 	cfg := vd.cfg
 	for cn in contents {
 		if cn.content.len > 0 {
@@ -150,7 +151,7 @@ fn (vd VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.Buil
 	}
 }
 
-fn (vd VDoc) render_doc(d doc.Doc, out Output) (string, string) {
+fn (vd &VDoc) render_doc(d doc.Doc, out Output) (string, string) {
 	name := vd.get_file_name(d.head.name, out)
 	output := match out.typ {
 		.html { vd.gen_html(d) }
@@ -162,7 +163,7 @@ fn (vd VDoc) render_doc(d doc.Doc, out Output) (string, string) {
 }
 
 // get_file_name returns the final file name from a module name
-fn (vd VDoc) get_file_name(mod string, out Output) string {
+fn (vd &VDoc) get_file_name(mod string, out Output) string {
 	cfg := vd.cfg
 	mut name := mod
 	// since builtin is generated first, ignore it
@@ -183,21 +184,24 @@ fn (vd VDoc) get_file_name(mod string, out Output) string {
 	return name
 }
 
-fn (vd VDoc) work_processor(mut work sync.Channel, mut wg sync.WaitGroup) {
+fn (vd &VDoc) work_processor(mut work sync.Channel, mut wg sync.WaitGroup) {
 	for {
 		mut pdoc := ParallelDoc{}
 		if !work.pop(&pdoc) {
 			break
 		}
+		vd.vprintln('> start processing ${pdoc.d.base_path} ...')
+		flush_stdout()
 		file_name, content := vd.render_doc(pdoc.d, pdoc.out)
 		output_path := os.join_path(pdoc.out.path, file_name)
 		println('Generating ${pdoc.out.typ} in "${output_path}"')
+		flush_stdout()
 		os.write_file(output_path, content) or { panic(err) }
 	}
 	wg.done()
 }
 
-fn (vd VDoc) render_parallel(out Output) {
+fn (vd &VDoc) render_parallel(out Output) {
 	vjobs := runtime.nr_jobs()
 	mut work := sync.new_channel[ParallelDoc](u32(vd.docs.len))
 	mut wg := sync.new_waitgroup()
@@ -213,7 +217,7 @@ fn (vd VDoc) render_parallel(out Output) {
 	wg.wait()
 }
 
-fn (vd VDoc) render(out Output) map[string]string {
+fn (vd &VDoc) render(out Output) map[string]string {
 	mut docs := map[string]string{}
 	for doc in vd.docs {
 		name, output := vd.render_doc(doc, out)
@@ -223,7 +227,7 @@ fn (vd VDoc) render(out Output) map[string]string {
 	return docs
 }
 
-fn (vd VDoc) get_readme(path string) string {
+fn (vd &VDoc) get_readme(path string) string {
 	mut fname := ''
 	for name in ['readme', 'README'] {
 		if os.exists(os.join_path(path, '${name}.md')) {
@@ -243,7 +247,7 @@ fn (vd VDoc) get_readme(path string) string {
 	return readme_contents
 }
 
-fn (vd VDoc) emit_generate_err(err IError) {
+fn (vd &VDoc) emit_generate_err(err IError) {
 	cfg := vd.cfg
 	mut err_msg := err.msg()
 	if err.code() == 1 {
@@ -409,7 +413,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 	}
 }
 
-fn (vd VDoc) vprintln(str string) {
+fn (vd &VDoc) vprintln(str string) {
 	if vd.cfg.is_verbose {
 		println('vdoc: ${str}')
 	}
@@ -539,7 +543,7 @@ fn main() {
 		exit(1)
 	}
 	// Config is immutable from this point on
-	mut vd := VDoc{
+	mut vd := &VDoc{
 		cfg: cfg
 		manifest: vmod.Manifest{
 			repo_url: ''

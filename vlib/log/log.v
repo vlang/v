@@ -22,7 +22,7 @@ pub fn (l &Log) get_level() Level {
 	return l.level
 }
 
-// set_level sets the logging level to `level`. Messges for levels above it will skipped.
+// set_level sets the logging level to `level`. Messages for levels above it will skipped.
 // For example, after calling log.set_level(.info), log.debug('message') will produce nothing.
 // Call log.set_level(.disabled) to turn off the logging of all messages.
 pub fn (mut l Log) set_level(level Level) {

@@ -53,6 +53,7 @@ pub fn is_inf(f f64, sign int) bool {
 	return (sign >= 0 && f > max_f64) || (sign <= 0 && f < -max_f64)
 }
 
+// is_finite returns true if f is finite
 pub fn is_finite(f f64) bool {
 	return !is_nan(f) && !is_inf(f, 0)
 }

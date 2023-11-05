@@ -1,5 +1,5 @@
 module os
 
-struct C.dirent {
+pub struct C.dirent {
 	d_name [256]char
 }

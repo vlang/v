@@ -1,7 +1,7 @@
 #flag -I @VEXEROOT/vlib/v/tests/c_struct_free
 #include "free_struct.c"
 
-struct C.foo {
+pub struct C.foo {
 mut:
 	free int
 }

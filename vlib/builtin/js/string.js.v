@@ -432,7 +432,7 @@ pub fn (mut s []string) sort() {
 	s.sort_with_compare(compare_strings)
 }
 
-// sort_ignore_case sorts the string array using case insesitive comparing.
+// sort_ignore_case sorts the string array using case insensitive comparing.
 pub fn (mut s []string) sort_ignore_case() {
 	s.sort_with_compare(compare_lower_strings)
 }
@@ -484,7 +484,7 @@ pub fn (s string) repeat(count int) string {
 
 // TODO: Make these functions actually work.
 // strip_margin allows multi-line strings to be formatted in a way that removes white-space
-// before a delimeter. by default `|` is used.
+// before a delimiter. By default `|` is used.
 // Note: the delimiter has to be a byte at this time. That means surrounding
 // the value in ``.
 //

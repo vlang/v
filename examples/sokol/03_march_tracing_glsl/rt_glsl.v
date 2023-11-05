@@ -55,7 +55,7 @@ mut:
 /******************************************************************************
 * Texture functions
 ******************************************************************************/
-fn create_texture(w int, h int, buf &byte) (gfx.Image, gfx.Sampler) {
+fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {
 	sz := w * h * 4
 	mut img_desc := gfx.ImageDesc{
 		width: w
@@ -93,7 +93,7 @@ fn destroy_texture(sg_img gfx.Image) {
 }
 
 // Use only if usage: .dynamic is enabled
-fn update_text_texture(sg_img gfx.Image, w int, h int, buf &byte) {
+fn update_text_texture(sg_img gfx.Image, w int, h int, buf &u8) {
 	sz := w * h * 4
 	mut tmp_sbc := gfx.ImageData{}
 	tmp_sbc.subimage[0][0] = gfx.Range{
@@ -278,12 +278,12 @@ fn draw_cube_glsl(app App) {
 	tr_matrix := calc_tr_matrices(dw, dh, 0, 0, 2.3)
 	gfx.apply_viewport(0, 0, ws.width, ws.height, true)
 
-	// apply the pipline and bindings
+	// apply the pipeline and bindings
 	gfx.apply_pipeline(app.cube_pip_glsl)
 	gfx.apply_bindings(app.cube_bind)
 
 	// Uniforms
-	// *** vertex shadeer uniforms ***
+	// *** vertex shader uniforms ***
 	// passing the view matrix as uniform
 	// res is a 4x4 matrix of f32 thus: 4*16 byte of size
 	vs_uniforms_range := gfx.Range{
@@ -292,20 +292,18 @@ fn draw_cube_glsl(app App) {
 	}
 	gfx.apply_uniforms(.vs, C.SLOT_vs_params, &vs_uniforms_range)
 
-	// vfmt off
 	// *** fragment shader uniforms ***
 	time_ticks := f32(time.ticks() - app.ticks) / 1000
 	mut tmp_fs_params := [
 		f32(ws.width),
-		ws.height * ratio,           // x,y resolution to pass to FS
-		app.mouse_x,                 // mouse x
+		ws.height * ratio, // x,y resolution to pass to FS
+		app.mouse_x, // mouse x
 		ws.height - app.mouse_y * 2, // mouse y scaled
-		time_ticks,                  // time as f32
-		app.frame_count,             // frame count
+		time_ticks, // time as f32
+		app.frame_count, // frame count
 		0,
-		0 // padding bytes , see "fs_params" struct paddings in rt_glsl.h
+		0, // padding bytes , see "fs_params" struct paddings in rt_glsl.h
 	]!
-	// vfmt on
 	fs_uniforms_range := gfx.Range{
 		ptr: unsafe { &tmp_fs_params }
 		size: usize(sizeof(tmp_fs_params))

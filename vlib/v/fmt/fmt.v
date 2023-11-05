@@ -33,8 +33,6 @@ pub mut:
 	single_line_if     bool
 	cur_mod            string
 	did_imports        bool
-	is_assign          bool
-	is_struct_init     bool
 	auto_imports       []string          // automatically inserted imports that the user forgot to specify
 	import_pos         int               // position of the imports in the resulting string for later autoimports insertion
 	used_imports       []string          // to remove unused imports
@@ -48,7 +46,10 @@ pub mut:
 	inside_const       bool
 	inside_unsafe      bool
 	inside_comptime_if bool
+	is_assign          bool
+	is_index_expr      bool
 	is_mbranch_expr    bool // match a { x...y { } }
+	is_struct_init     bool
 	fn_scope           &ast.Scope = unsafe { nil }
 	wsinfix_depth      int
 	format_state       FormatState
@@ -788,7 +789,8 @@ fn expr_is_single_line(expr ast.Expr) bool {
 			}
 		}
 		ast.CallExpr {
-			if expr.or_block.stmts.len > 1 {
+			if expr.or_block.stmts.len > 1 || expr.args.any(it.expr is ast.CallExpr
+				&& it.expr.or_block.stmts.len > 1) {
 				return false
 			}
 		}
@@ -908,9 +910,17 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 				info.max = field.name.len
 			}
 			if !expr_is_single_line(field.expr) {
-				info.last_idx = i
-				align_infos << info
-				info = ValAlignInfo{}
+				is_ternary := field.expr is ast.IfExpr && field.expr.branches.len == 2
+					&& field.expr.has_else
+					&& branch_is_single_line((field.expr as ast.IfExpr).branches[0])
+					&& branch_is_single_line((field.expr as ast.IfExpr).branches[1])
+					&& (field.expr.is_expr || f.is_assign || f.inside_const
+					|| f.is_struct_init || f.single_line_fields)
+				if !is_ternary || field.name.len + field.expr.str().len > fmt.max_len.last() {
+					info.last_idx = i
+					align_infos << info
+					info = ValAlignInfo{}
+				}
 			}
 		}
 		info.last_idx = node.fields.len
@@ -2056,16 +2066,19 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 		if node.method_name == 'html' {
 			f.write('\$vweb.html()')
 		} else {
-			f.write('\$tmpl(${node.args[0].expr})')
+			f.write('\$tmpl(')
+			f.expr(node.args[0].expr)
+			f.write(')')
 		}
 	} else {
 		match true {
 			node.is_embed {
-				if node.embed_file.compression_type == 'none' {
-					f.write('\$embed_file(${node.args[0].expr})')
-				} else {
-					f.write('\$embed_file(${node.args[0].expr}, .${node.embed_file.compression_type})')
+				f.write('\$embed_file(')
+				f.expr(node.args[0].expr)
+				if node.embed_file.compression_type != 'none' {
+					f.write(', .${node.embed_file.compression_type}')
 				}
+				f.write(')')
 			}
 			node.is_env {
 				f.write("\$env('${node.args_var}')")
@@ -2225,7 +2238,8 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 	f.inside_comptime_if = node.is_comptime
 	mut is_ternary := node.branches.len == 2 && node.has_else
 		&& branch_is_single_line(node.branches[0]) && branch_is_single_line(node.branches[1])
-		&& (node.is_expr || f.is_assign || f.is_struct_init || f.single_line_fields)
+		&& (node.is_expr || f.is_assign || f.inside_const || f.is_struct_init
+		|| f.single_line_fields)
 	f.single_line_if = is_ternary
 	start_pos := f.out.len
 	start_len := f.line_len
@@ -2334,9 +2348,12 @@ pub fn (mut f Fmt) index_expr(node ast.IndexExpr) {
 			f.write('#')
 		}
 	}
+	last_index_expr_state := f.is_index_expr
+	f.is_index_expr = true
 	f.write('[')
 	f.expr(node.index)
 	f.write(']')
+	f.is_index_expr = last_index_expr_state
 	if node.or_expr.kind != .absent {
 		f.or_expr(node.or_expr)
 	}
@@ -2594,7 +2611,7 @@ pub fn (mut f Fmt) map_init(node ast.MapInit) {
 	for key in node.keys {
 		skey := f.node_str(key).trim_space()
 		skeys << skey
-		skey_len := skey.len_utf8()
+		skey_len := utf8_str_visible_length(skey)
 		if skey_len > max_field_len {
 			max_field_len = skey_len
 		}
@@ -2603,7 +2620,7 @@ pub fn (mut f Fmt) map_init(node ast.MapInit) {
 		skey := skeys[i]
 		f.write(skey)
 		f.write(': ')
-		skey_len := skey.len_utf8()
+		skey_len := utf8_str_visible_length(skey)
 		f.write(strings.repeat(` `, max_field_len - skey_len))
 		f.expr(node.vals[i])
 		f.comments(node.comments[i], prev_line: node.vals[i].pos().last_line, has_nl: false)
@@ -2802,7 +2819,7 @@ pub fn (mut f Fmt) prefix_expr(node ast.PrefixExpr) {
 
 pub fn (mut f Fmt) range_expr(node ast.RangeExpr) {
 	f.expr(node.low)
-	if f.is_mbranch_expr {
+	if f.is_mbranch_expr && !f.is_index_expr {
 		f.write('...')
 	} else {
 		f.write('..')

@@ -109,8 +109,8 @@ v -prod -o v cmd/v                            ## build V itself with -prod
 ./v -prod build-tools                         ## build all tools with -prod too
 touch ./cmd/tools/.disable_autorecompilation  ## tell V to not try to recompile any tool anymore
 
-### Cleanup folders that would not be needed inside a pacakge,
-### that is distrubuted separately from the V source repository:
+### Cleanup folders that would not be needed inside a package,
+### that is distributed separately from the V source repository:
 rm -rf .git/
 rm -rf thirdparty/tcc/.git/
 ```

@@ -126,6 +126,9 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				c.table.find_or_register_array_fixed(parent_sym.info.elem_type, parent_sym.info.size,
 					parent_sym.info.size_expr, true)
 			}
+			if return_sym.name == 'byte' {
+				c.warn('byte is deprecated, use u8 instead', node.return_type_pos)
+			}
 		}
 		final_return_sym := c.table.final_sym(node.return_type)
 		if final_return_sym.info is ast.MultiReturn {
@@ -264,32 +267,34 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				}
 			}
 			if param.name == node.mod && param.name != 'main' {
-				c.add_error_detail('Module name duplicates will become errors after 2023/10/31.')
-				c.note('duplicate of a module name `${param.name}`', param.pos)
+				c.error('duplicate of a module name `${param.name}`', param.pos)
 			}
 			// Check if parameter name is already registered as imported module symbol
 			if c.check_import_sym_conflict(param.name) {
 				c.error('duplicate of an import symbol `${param.name}`', param.pos)
 			}
+			if arg_typ_sym.kind == .alias && arg_typ_sym.name == 'byte' {
+				c.warn('byte is deprecated, use u8 instead', param.type_pos)
+			}
 		}
-		// Check if function name is already registered as imported module symbol
-		if !node.is_method && c.check_import_sym_conflict(node.short_name) {
-			c.error('duplicate of an import symbol `${node.short_name}`', node.pos)
+		if !node.is_method {
+			// Check if function name is already registered as imported module symbol
+			if c.check_import_sym_conflict(node.short_name) {
+				c.error('duplicate of an import symbol `${node.short_name}`', node.pos)
+			}
+			if node.params.len == 0 && node.name.after_char(`.`) == 'init' {
+				if node.is_pub {
+					c.error('fn `init` must not be public', node.pos)
+				}
+				if node.return_type != ast.void_type {
+					c.error('fn `init` cannot have a return type', node.pos)
+				}
+			}
+			if !c.is_builtin_mod && node.mod == 'main'
+				&& node.name.after_char(`.`) in reserved_type_names {
+				c.error('top level declaration cannot shadow builtin type', node.pos)
+			}
 		}
-	}
-	if node.language == .v && node.name.after_char(`.`) == 'init' && !node.is_method
-		&& node.params.len == 0 {
-		if node.is_pub {
-			c.error('fn `init` must not be public', node.pos)
-		}
-		if node.return_type != ast.void_type {
-			c.error('fn `init` cannot have a return type', node.pos)
-		}
-	}
-
-	if node.language == .v && node.mod == 'main' && node.name.after_char(`.`) in reserved_type_names
-		&& !node.is_method && !c.is_builtin_mod {
-		c.error('top level declaration cannot shadow builtin type', node.pos)
 	}
 	if node.return_type != ast.Type(0) {
 		if !c.ensure_type_exists(node.return_type, node.return_type_pos) {
@@ -481,7 +486,21 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 			c.error('original `${parent_var.name}` is immutable, declare it with `mut` to make it mutable',
 				var.pos)
 		}
-		var.typ = parent_var.typ
+		if parent_var.expr is ast.IfGuardExpr {
+			sym := c.table.sym(parent_var.expr.expr_type)
+			if sym.info is ast.MultiReturn {
+				for i, v in parent_var.expr.vars {
+					if v.name == var.name {
+						var.typ = sym.info.types[i]
+						break
+					}
+				}
+			} else {
+				var.typ = parent_var.expr.expr_type.clear_flags(.option, .result)
+			}
+		} else {
+			var.typ = parent_var.typ
+		}
 		if var.typ.has_flag(.generic) {
 			has_generic = true
 		}
@@ -1216,7 +1235,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		// ... but 2. disallow passing non-pointers - that is very rarely what the user wanted,
 		// it can lead to codegen errors (except for 'magic' functions like `json.encode` that,
 		// the compiler has special codegen support for), so it should be opt in, that is it
-		// shoould require an explicit voidptr(x) cast (and probably unsafe{} ?) .
+		// should require an explicit voidptr(x) cast (and probably unsafe{} ?) .
 		if call_arg.typ != param.typ && (param.typ == ast.voidptr_type
 			|| final_param_sym.idx == ast.voidptr_type_idx
 			|| param.typ == ast.nil_type || final_param_sym.idx == ast.nil_type_idx)

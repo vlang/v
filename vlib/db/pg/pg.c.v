@@ -1,6 +1,7 @@
 module pg
 
 import io
+import orm
 
 $if $pkgconfig('libpq') {
 	#pkgconfig --cflags --libs libpq
@@ -57,9 +58,9 @@ pub:
 
 //
 
-struct C.pg_result {}
+pub struct C.pg_result {}
 
-struct C.pg_conn {}
+pub struct C.pg_conn {}
 
 [typedef]
 pub struct C.PGresult {}
@@ -279,7 +280,7 @@ pub fn (db DB) exec_param_many(query string, params []string) ![]Row {
 	}
 }
 
-// exec_param2 executes a query with 1 parameter ($1), and returns either an error on failure, or the full result set on success
+// exec_param executes a query with 1 parameter ($1), and returns either an error on failure, or the full result set on success
 pub fn (db DB) exec_param(query string, param string) ![]Row {
 	return db.exec_param_many(query, [param])
 }
@@ -362,4 +363,20 @@ pub fn (db DB) copy_expert(query string, mut file io.ReaderWriter) !int {
 	}
 
 	return 0
+}
+
+fn pg_stmt_worker(db DB, query string, data orm.QueryData, where orm.QueryData) ![]Row {
+	mut param_types := []u32{}
+	mut param_vals := []&char{}
+	mut param_lens := []int{}
+	mut param_formats := []int{}
+
+	pg_stmt_binder(mut param_types, mut param_vals, mut param_lens, mut param_formats,
+		data)
+	pg_stmt_binder(mut param_types, mut param_vals, mut param_lens, mut param_formats,
+		where)
+
+	res := C.PQexecParams(db.conn, &char(query.str), param_vals.len, param_types.data,
+		param_vals.data, param_lens.data, param_formats.data, 0) // here, the last 0 means require text results, 1 - binary results
+	return db.handle_error_or_result(res, 'orm_stmt_worker')
 }

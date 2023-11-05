@@ -1,7 +1,7 @@
 import os
 import stbi
 
-const tfolder = os.join_path(os.vtmp_dir(), 'v', 'stbi')
+const tfolder = os.join_path(os.vtmp_dir(), 'stbi')
 
 fn testsuite_begin() {
 	os.mkdir_all(tfolder) or {}

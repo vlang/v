@@ -107,7 +107,7 @@ pub fn ntoh16(net u16) u16 {
 // The returned array length .len, will be in [1,2,4,8] .
 pub fn u64tovarint(n u64) ![]u8 {
 	if n > u64(1) << 62 {
-		return error('cannnot encode more than 2^62-1')
+		return error('cannot encode more than 2^62-1')
 	}
 	msb := match true {
 		n < 64 {

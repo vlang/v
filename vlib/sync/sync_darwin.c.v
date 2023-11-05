@@ -32,19 +32,19 @@ fn C.pthread_cond_timedwait(voidptr, voidptr, voidptr) int
 fn C.pthread_cond_destroy(voidptr) int
 
 [typedef]
-struct C.pthread_mutex_t {}
+pub struct C.pthread_mutex_t {}
 
 [typedef]
-struct C.pthread_cond_t {}
+pub struct C.pthread_cond_t {}
 
 [typedef]
-struct C.pthread_rwlock_t {}
+pub struct C.pthread_rwlock_t {}
 
 [typedef]
-struct C.pthread_rwlockattr_t {}
+pub struct C.pthread_rwlockattr_t {}
 
 [typedef]
-struct C.sem_t {}
+pub struct C.sem_t {}
 
 // [init_with=new_mutex] // TODO: implement support for this struct attribute, and disallow Mutex{} from outside the sync.new_mutex() function.
 [heap]
@@ -62,7 +62,7 @@ struct RwMutexAttr {
 }
 
 [typedef]
-struct C.pthread_condattr_t {}
+pub struct C.pthread_condattr_t {}
 
 struct CondAttr {
 	attr C.pthread_condattr_t

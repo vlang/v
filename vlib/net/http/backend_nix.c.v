@@ -14,7 +14,17 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string)
 		validate: req.validate
 		in_memory_verification: req.in_memory_verification
 	)!
-	ssl_conn.dial(host_name, port) or { return err }
+	mut retries := 0
+	for {
+		ssl_conn.dial(host_name, port) or {
+			retries++
+			if is_no_need_retry_error(err.code()) || retries >= req.max_retries {
+				return err
+			}
+			continue
+		}
+		break
+	}
 
 	req_headers := req.build_request_headers(method, host_name, path)
 	$if trace_http_request ? {
@@ -35,6 +45,9 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string)
 			eprintln('-'.repeat(20))
 			eprintln(unsafe { tos(bp, len) })
 			eprintln('-'.repeat(20))
+		}
+		if len <= 0 {
+			break
 		}
 		unsafe { content.write_ptr(bp, len) }
 		if req.on_progress != unsafe { nil } {

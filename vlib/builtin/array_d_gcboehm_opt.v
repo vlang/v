@@ -111,7 +111,7 @@ fn (mut a array) ensure_cap_noscan(required int) {
 }
 
 // repeat returns a new array with the given array elements repeated given times.
-// `cgen` will replace this with an apropriate call to `repeat_to_depth()`
+// `cgen` will replace this with an appropriate call to `repeat_to_depth()`
 
 // version of `repeat()` that handles multi dimensional arrays
 // `unsafe` to call directly because `depth` is not checked

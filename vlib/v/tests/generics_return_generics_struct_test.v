@@ -69,7 +69,7 @@ fn test_generics_method_return_generics_struct() {
 	assert foo.get[int](o) == 42
 }
 
-// test genrics struct str()
+// test generic struct str()
 pub struct ArrayIterator[T] {
 	data []T
 mut:

@@ -1,8 +1,9 @@
 import os
 
-const tfolder = os.join_path(os.vtmp_dir(), 'v', 'tests', 'os_file_test')
-
-const tfile = os.join_path_single(tfolder, 'test_file')
+const (
+	tfolder = os.join_path(os.vtmp_dir(), 'tests', 'os_file_test')
+	tfile   = os.join_path_single(tfolder, 'test_file')
+)
 
 fn testsuite_begin() {
 	os.rmdir_all(tfolder) or {}
@@ -151,7 +152,7 @@ fn test_read_eof_last_read_partial_buffer_fill() {
 
 // test_read_eof_last_read_full_buffer_fill tests that when reading a file the
 // end-of-file is detected and results in a none error being returned. This test
-// simulates file reading where the end-of-file is reached at the beinning of an
+// simulates file reading where the end-of-file is reached at the beginning of an
 // fread that returns no data.
 fn test_read_eof_last_read_full_buffer_fill() {
 	mut f := os.open_file(tfile, 'w')!

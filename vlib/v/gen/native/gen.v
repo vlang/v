@@ -83,7 +83,7 @@ mut:
 	address_size() i32
 	adr(r Arm64Register, delta i32) // Note: Temporary!
 	allocate_var(name string, size i32, initial_val i32) i32
-	assign_stmt(node ast.AssignStmt) // TODO: make platform-independant
+	assign_stmt(node ast.AssignStmt) // TODO: make platform-independent
 	builtin_decl(builtin BuiltinFn)
 	call_addr_at(addr i32, at i64) i64
 	call_builtin(name Builtin) i64
@@ -107,7 +107,7 @@ mut:
 	gen_print(s string, fd i32)
 	gen_syscall(node ast.CallExpr)
 	inc_var(var Var, config VarConfig)
-	infix_expr(node ast.InfixExpr) // TODO: make platform-independant
+	infix_expr(node ast.InfixExpr) // TODO: make platform-independent
 	infloop()
 	init_struct(var Var, init ast.StructInit)
 	init_array(var Var, init ast.ArrayInit)
@@ -520,7 +520,7 @@ pub fn (mut g Gen) link(obj_name string) {
 			g.link_elf_file(obj_name)
 		}
 		.windows {
-			// windows linking is alredy done before codegen
+			// windows linking is already done before codegen
 		}
 		.macos {
 			// TODO: implement linking for macos!

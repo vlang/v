@@ -407,7 +407,7 @@ pub fn (mut rng PRNG) binomial(n int, p f64) !int {
 	return count
 }
 
-// exponential returns an exponentially distributed random number with the rate paremeter
+// exponential returns an exponentially distributed random number with the rate parameter
 // lambda. It is expected that lambda is positive.
 pub fn (mut rng PRNG) exponential(lambda f64) f64 {
 	if lambda <= 0 {
@@ -748,7 +748,7 @@ pub fn binomial(n int, p f64) !int {
 	return default_rng.binomial(n, p)
 }
 
-// exponential returns an exponentially distributed random number with the rate paremeter
+// exponential returns an exponentially distributed random number with the rate parameter
 // lambda. It is expected that lambda is positive.
 pub fn exponential(lambda f64) f64 {
 	return default_rng.exponential(lambda)

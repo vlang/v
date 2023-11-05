@@ -125,7 +125,7 @@ fn dijkstra(g [][]int, s int) {
 	push_pq(mut pq_queue, s, 0) // goes s with priority 0
 	mut n := g.len
 
-	mut dist := []int{len: n, init: -1} // dist with -1 instead of INIFINITY
+	mut dist := []int{len: n, init: -1} // dist with -1 instead of INFINITE
 	mut path := []int{len: n, init: -1} // previous node of each shortest path
 
 	// Distance of source vertex from itself is always 0
@@ -133,7 +133,7 @@ fn dijkstra(g [][]int, s int) {
 
 	for pq_queue.len != 0 {
 		mut v := departure_priority(mut pq_queue)
-		// for all W adjcents vertices of v
+		// for all W adjacents vertices of v
 		mut adjs_of_v := all_adjacents(g, v) // all_ADJ of v ....
 		// print('\n ADJ ${v} is ${adjs_of_v}')
 		mut new_dist := 0

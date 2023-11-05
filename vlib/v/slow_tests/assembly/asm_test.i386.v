@@ -74,7 +74,7 @@ fn test_inline_asm() {
 	// assert loops == 1
 	// assert k == 5
 
-	// not marked as mut because we derefernce m to change l
+	// not marked as mut because we dereference m to change l
 	l := 5
 	m := &l
 	asm i386 {

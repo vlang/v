@@ -3,14 +3,14 @@ module sgl
 import sokol.gfx
 
 [typedef]
-struct C.sgl_pipeline {
+pub struct C.sgl_pipeline {
 	id u32
 }
 
 pub type Pipeline = C.sgl_pipeline
 
 [typedef]
-struct C.sgl_context {
+pub struct C.sgl_context {
 	id u32
 }
 

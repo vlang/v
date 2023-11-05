@@ -165,8 +165,8 @@ pub fn header(text string, divider string) string {
 	} else {
 		cols - 3 - 2 * divider.len
 	})
-	tlimit_alligned := if (tlimit % 2) != (cols % 2) { tlimit + 1 } else { tlimit }
-	tstart := imax(0, (cols - tlimit_alligned) / 2)
+	tlimit_aligned := if (tlimit % 2) != (cols % 2) { tlimit + 1 } else { tlimit }
+	tstart := imax(0, (cols - tlimit_aligned) / 2)
 	mut ln := ''
 	if divider.len > 0 {
 		ln = divider.repeat(1 + cols / divider.len)[0..cols]

@@ -60,31 +60,31 @@ jobs:
         run: docker exec autobahn_server_wss "python" "/check_results.py"
 
       - name: Publish all reports
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: full report
           path: ${{github.workspace}}/reports
 
       - name: Publish report client
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: client
           path: ${{github.workspace}}/reports/clients/index.html
 
       - name: Publish report server
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: server
           path: ${{github.workspace}}/reports/servers/index.html
 
       - name: Publish all reports WSS
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: full report wss
           path: ${{github.workspace}}/reports_wss
 
       - name: Publish report client wss
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: client wss
           path: ${{github.workspace}}/reports_wss/clients/index.html

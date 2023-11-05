@@ -268,7 +268,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			}
 			if c.fn_level == 0 && c.pref.output_cross_c {
 				// do not skip any of the branches for top level `$if OS {`
-				// statements, in `-os cross` mode
+				// statements, in `-cross` mode
 				found_branch = false
 				c.skip_flags = false
 				c.ct_cond_stack << branch.cond

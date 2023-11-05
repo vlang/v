@@ -91,6 +91,14 @@ pub fn (mut d Digest) reset() {
 	d.len = 0
 }
 
+fn (d &Digest) clone() &Digest {
+	return &Digest{
+		...d
+		h: d.h.clone()
+		x: d.x.clone()
+	}
+}
+
 // new returns a new Digest (implementing hash.Hash) computing the SHA256 checksum.
 pub fn new() &Digest {
 	mut d := &Digest{}
@@ -144,8 +152,8 @@ pub fn (mut d Digest) write(p_ []u8) !int {
 // sum returns the SHA256 or SHA224 checksum of digest with the data.
 pub fn (d &Digest) sum(b_in []u8) []u8 {
 	// Make a copy of d so that caller can keep writing and summing.
-	mut d0 := *d
-	hash := d0.checksum()
+	mut d0 := d.clone()
+	hash := d0.checksum_internal()
 	mut b_out := b_in.clone()
 	if d0.is224 {
 		for b in hash[..sha256.size224] {
@@ -159,8 +167,9 @@ pub fn (d &Digest) sum(b_in []u8) []u8 {
 	return b_out
 }
 
-// checksum returns the current byte checksum of the Digest.
-pub fn (mut d Digest) checksum() []u8 {
+// TODO:
+// When the deprecated "checksum()" is finally removed, restore this function name as: "checksum()"
+fn (mut d Digest) checksum_internal() []u8 {
 	mut len := d.len
 	// Padding. Add a 1 bit and 0 bits until 56 bytes mod 64.
 	mut tmp := []u8{len: (64)}
@@ -191,6 +200,14 @@ pub fn (mut d Digest) checksum() []u8 {
 	return digest
 }
 
+// checksum returns the current byte checksum of the Digest,
+// it is an internal method and is not recommended because its results are not idempotent.
+[deprecated: 'checksum() will be changed to a private method, use sum() instead']
+[deprecated_after: '2024-04-30']
+pub fn (mut d Digest) checksum() []u8 {
+	return d.checksum_internal()
+}
+
 // sum returns the SHA256 checksum of the bytes in `data`.
 // Example: assert sha256.sum('V'.bytes()).len > 0 == true
 pub fn sum(data []u8) []u8 {
@@ -201,14 +218,14 @@ pub fn sum(data []u8) []u8 {
 pub fn sum256(data []u8) []u8 {
 	mut d := new()
 	d.write(data) or { panic(err) }
-	return d.checksum()
+	return d.checksum_internal()
 }
 
 // sum224 returns the SHA224 checksum of the data.
 pub fn sum224(data []u8) []u8 {
 	mut d := new224()
 	d.write(data) or { panic(err) }
-	sum := d.checksum()
+	sum := d.checksum_internal()
 	mut sum224 := []u8{len: sha256.size224}
 	copy(mut sum224, sum[..sha256.size224])
 	return sum224

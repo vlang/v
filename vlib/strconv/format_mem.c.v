@@ -21,13 +21,13 @@ pub fn format_str_sb(s string, p BF_param, mut sb strings.Builder) {
 		return
 	}
 
-	if p.allign == .right {
+	if p.align == .right {
 		for i1 := 0; i1 < dif; i1++ {
 			sb.write_u8(p.pad_ch)
 		}
 	}
 	sb.write_string(s)
-	if p.allign == .left {
+	if p.align == .left {
 		for i1 := 0; i1 < dif; i1++ {
 			sb.write_u8(p.pad_ch)
 		}
@@ -49,7 +49,7 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 	dif := p.len0 - number_len
 	mut sign_written := false
 
-	if p.allign == .right {
+	if p.align == .right {
 		if p.pad_ch == `0` {
 			if p.positive {
 				if p.sign_flag {
@@ -127,7 +127,7 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 	}
 	//===========================================
 
-	if p.allign == .left {
+	if p.align == .left {
 		for i1 := 0; i1 < dif; i1++ {
 			res.write_u8(p.pad_ch)
 		}
@@ -365,7 +365,7 @@ pub fn format_fl(f f64, p BF_param) string {
 
 		// make the padding if needed
 		dif := p.len0 - buf_i + sign_len_diff
-		if p.allign == .right {
+		if p.align == .right {
 			for i1 := 0; i1 < dif; i1++ {
 				out[out_i] = p.pad_ch
 				out_i++
@@ -373,7 +373,7 @@ pub fn format_fl(f f64, p BF_param) string {
 		}
 		vmemcpy(&out[out_i], &buf[0], buf_i)
 		out_i += buf_i
-		if p.allign == .left {
+		if p.align == .left {
 			for i1 := 0; i1 < dif; i1++ {
 				out[out_i] = p.pad_ch
 				out_i++
@@ -436,7 +436,7 @@ pub fn format_es(f f64, p BF_param) string {
 
 		// make the padding if needed
 		dif := p.len0 - buf_i + sign_len_diff
-		if p.allign == .right {
+		if p.align == .right {
 			for i1 := 0; i1 < dif; i1++ {
 				out[out_i] = p.pad_ch
 				out_i++
@@ -444,7 +444,7 @@ pub fn format_es(f f64, p BF_param) string {
 		}
 		vmemcpy(&out[out_i], &buf[0], buf_i)
 		out_i += buf_i
-		if p.allign == .left {
+		if p.align == .left {
 			for i1 := 0; i1 < dif; i1++ {
 				out[out_i] = p.pad_ch
 				out_i++
