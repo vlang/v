@@ -696,8 +696,7 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 				}
 				else {}
 			}
-		}
-		*/
+		}*/
 		else {}
 	}
 	return node
@@ -741,10 +740,10 @@ fn (mut t Transformer) trans_const_value_to_literal(mut expr ast.Expr) {
 pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 	node.left = t.expr(mut node.left)
 	node.right = t.expr(mut node.right)
-	if !t.pref.translated {
-		t.trans_const_value_to_literal(mut node.left)
-		t.trans_const_value_to_literal(mut node.right)
-	}
+	// if !t.pref.translated {
+	// 	t.trans_const_value_to_literal(mut node.left)
+	// 	t.trans_const_value_to_literal(mut node.right)
+	// }
 
 	mut pos := node.left.pos()
 	pos.extend(node.pos)
