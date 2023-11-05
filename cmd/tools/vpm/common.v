@@ -234,7 +234,7 @@ fn ensure_vcs_is_installed(vcs &VCS) ! {
 }
 
 fn increment_module_download_count(name string) ! {
-	if no_dl_count_increment {
+	if settings.no_dl_count_increment {
 		println('Skipping download count increment for "${name}".')
 		return
 	}
