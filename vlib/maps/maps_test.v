@@ -107,3 +107,91 @@ fn test_from_array() {
 		5: 'f'
 	}
 }
+
+fn test_merge_by_replace_to() {
+	mut m1 := {
+		'abc': 'def'
+		'aa':  'bb'
+	}
+	m2 := {
+		'xyz': 'zyx'
+		'aa':  'dd'
+	}
+	merge_by_replace_to(mut m1, m2)
+	assert m1 == {
+		'abc': 'def'
+		'aa':  'dd'
+		'xyz': 'zyx'
+	}
+	assert m2 == {
+		'xyz': 'zyx'
+		'aa':  'dd'
+	}
+	//
+	mut im1 := {
+		11: 22
+		33: 44
+	}
+	im2 := {
+		55: 66
+		33: 999
+	}
+	merge_by_replace_to(mut im1, im2)
+	assert im1 == {
+		11: 22
+		33: 999
+		55: 66
+	}
+	assert im2 == {
+		55: 66
+		33: 999
+	}
+}
+
+fn test_merge_by_replace() {
+	m1 := {
+		'abc': 'def'
+		'aa':  'bb'
+	}
+	m2 := {
+		'xyz': 'zyx'
+		'aa':  'dd'
+	}
+	res := merge_by_replace(m1, m2)
+	assert res == {
+		'abc': 'def'
+		'aa':  'dd'
+		'xyz': 'zyx'
+	}
+	assert m1 == {
+		'abc': 'def'
+		'aa':  'bb'
+	}
+	assert m2 == {
+		'xyz': 'zyx'
+		'aa':  'dd'
+	}
+	//
+	mut im1 := {
+		11: 22
+		33: 44
+	}
+	im2 := {
+		55: 66
+		33: 999
+	}
+	ires := merge_by_replace(im1, im2)
+	assert im1 == {
+		11: 22
+		33: 44
+	}
+	assert im2 == {
+		55: 66
+		33: 999
+	}
+	assert ires == {
+		11: 22
+		33: 999
+		55: 66
+	}
+}
