@@ -93,10 +93,10 @@ fn (pr &HttpProxy) http_do(host urllib.URL, method Method, path string, req &Req
 
 		$if windows {
 			return error('Windows Not SUPPORTED') // todo windows ssl
-			response_text := req.do_request(req.build_request_headers(req.method, host_name,
-				path))!
-			client.shutdown()!
-			return response_text
+			// response_text := req.do_request(req.build_request_headers(req.method, host_name,
+			// 	path))!
+			// client.shutdown()!
+			// return response_text
 		} $else {
 			response_text := req.do_request(req.build_request_headers(req.method, host_name,
 				path), mut client)!
