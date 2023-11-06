@@ -4,7 +4,7 @@ import os
 import net.urllib
 import strings
 import markdown
-import regex
+import net.html
 import v.scanner
 import v.ast
 import v.token
@@ -19,9 +19,6 @@ const link_svg = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0
 const single_quote = "'"
 const double_quote = '"'
 const no_quotes_replacement = [single_quote, '', double_quote, '']
-
-const html_tag_escape_re = regex.regex_opt(r'`.+[(&lt;)(&gt;)].+`') or { panic(err) }
-const html_tag_escape_seq = ['<', '&lt;', '>', '&gt;']
 const md_script_escape_seq = ['<script>', '`', '</script>', '`']
 
 enum HighlightTokenTyp {
@@ -424,7 +421,7 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 		// Strip markdown [TOC] directives, since we generate our own.
 		comments.replace('[TOC]', '').replace_each(md_script_escape_seq)
 	} else {
-		html_tag_escape(comments)
+		comments
 	}
 	mut renderer := markdown.HtmlRenderer{
 		transformer: &MdHtmlCodeHighlighter{
@@ -490,37 +487,6 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 	return dnw_str
 }
 
-fn html_tag_escape(str string) string {
-	escaped_string := str.replace_each(html_tag_escape_seq)
-	mut re := html_tag_escape_re
-	if re.find_all_str(escaped_string).len > 0 {
-		return str
-	}
-	return escaped_string
-}
-
-/*
-fn js_compress(str string) string {
-	mut js := strings.new_builder(200)
-	lines := str.split_into_lines()
-	rules := [') {', ' = ', ', ', '{ ', ' }', ' (', '; ', ' + ', ' < ', ' - ', ' || ', ' var',
-		': ', ' >= ', ' && ', ' else if', ' === ', ' !== ', ' else ']
-	clean := ['){', '=', ',', '{', '}', '(', ';', '+', '<', '-', '||', 'var', ':', '>=', '&&',
-		'else if', '===', '!==', 'else']
-	for line in lines {
-		mut trimmed := line.trim_space()
-		if trimmed.starts_with('//') || (trimmed.starts_with('/*') && trimmed.ends_with('*/')) {
-			continue
-		}
-		for i in 0 .. rules.len - 1 {
-			trimmed = trimmed.replace(rules[i], clean[i])
-		}
-		js.write_string(trimmed)
-	}
-	js_str := js.str()
-	return js_str
-}
-*/
 fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
 	mut toc_slug := if dn.name.len == 0 || dn.content.len == 0 { '' } else { slug(dn.name) }
 	if toc_slug == '' && dn.children.len > 0 {
@@ -564,12 +530,14 @@ fn (f &MdHtmlCodeHighlighter) transform_attribute(p markdown.ParentType, name st
 }
 
 fn (f &MdHtmlCodeHighlighter) transform_content(parent markdown.ParentType, text string) string {
+	// NOTE: markdown.default_html_transformer uses html.escape internally.
+	initial_transformed_text := markdown.default_html_transformer.transform_content(parent, text)
 	if parent is markdown.MD_BLOCKTYPE && parent == .md_block_code {
 		if f.language == 'v' || f.language == 'vlang' {
-			return html_highlight(html_tag_escape(text), f.table)
+			return html_highlight(initial_transformed_text, f.table)
 		}
 	}
-	return markdown.default_html_transformer.transform_content(parent, html_tag_escape(text))
+	return initial_transformed_text
 }
 
 fn (mut f MdHtmlCodeHighlighter) config_set(key string, val string) {
