@@ -23,6 +23,9 @@ fn test_valid_parsing() {
 				},
 				xml.XMLNode{
 					name: 'author'
+					attributes: {
+						'attr': ' surrounding spaces '
+					}
 					children: ['Erik T. Ray']
 				},
 				xml.XMLNode{
