@@ -119,7 +119,7 @@ Example `v` script for your bin folder:
 --------------------------------------------------
 
 ```sh
-#!/bin/bash
+#!/usr/bin/env bash
 
 export VEXE="/opt/vlang/v"
 export VFLAGS="-cc /usr/bin/custom_cc"
