@@ -14,7 +14,7 @@ struct VCS {
 	cmd  string
 	args struct {
 		install  string
-		path     string // the flag used to specify a path. E.g., used to explictly work on a path during multithreaded updating.
+		path     string // the flag used to specify a path. E.g., used to explicitly work on a path during multithreaded updating.
 		update   string
 		outdated []string
 	}
@@ -92,8 +92,8 @@ fn main() {
 			vpm_show(requested_modules)
 		}
 		else {
-			// Unreachable in regular usage. V will catch unkown commands beforehand.
-			vpm_error('unkown command "${vpm_command}"')
+			// Unreachable in regular usage. V will catch unknown commands beforehand.
+			vpm_error('unknown command "${vpm_command}"')
 			help.print_and_exit('vpm', exit_code: 3)
 		}
 	}

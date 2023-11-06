@@ -11,6 +11,7 @@ const (
 
 fn testsuite_begin() {
 	os.setenv('VMODULES', test_path, true)
+	os.setenv('VPM_DEBUG', '', true)
 	os.setenv('VPM_NO_INCREMENT', '1', true)
 }
 

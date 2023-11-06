@@ -248,7 +248,9 @@ fn ensure_vmodules_dir_exist() {
 }
 
 fn ensure_vcs_is_installed(vcs &VCS) ! {
-	os.find_abs_path_of_executable(vcs.cmd) or { return error('failed to execute `${vcs}`.') }
+	os.find_abs_path_of_executable(vcs.cmd) or {
+		return error('VPM needs `${vcs.cmd}` to be installed.')
+	}
 }
 
 fn increment_module_download_count(name string) ! {
@@ -316,7 +318,7 @@ fn valid_final_path_of_existing_module(modulename string) ?string {
 	name := if mod := get_mod_by_url(modulename) { mod.name } else { modulename }
 	minfo := get_mod_name_info(name)
 	if !os.exists(minfo.final_module_path) {
-		vpm_error('failed to find a module with name `${minfo.mname_normalised}` exists at ${minfo.final_module_path}')
+		vpm_error('failed to find a module with name `${minfo.mname_normalised}` at `${minfo.final_module_path}`')
 		return none
 	}
 	if !os.is_dir(minfo.final_module_path) {
@@ -324,7 +326,7 @@ fn valid_final_path_of_existing_module(modulename string) ?string {
 		return none
 	}
 	vcs_used_in_dir(minfo.final_module_path) or {
-		vpm_error('skipping `${minfo.final_module_path}`, since it specifiecs an unsupported version control system.')
+		vpm_error('skipping `${minfo.final_module_path}`, since it specifics an unsupported version control system.')
 		return none
 	}
 	return minfo.final_module_path
@@ -347,9 +349,10 @@ fn vpm_error(msg string, opts ErrorOptions) {
 	eprintln(term.ecolorize(term.red, 'error: ') + msg)
 	if opts.details.len > 0 && settings.is_verbose {
 		eprint(term.ecolorize(term.blue, 'details: '))
+		padding := ' '.repeat('details: '.len)
 		for i, line in opts.details.split_into_lines() {
 			if i > 0 {
-				eprint(' '.repeat('details: '.len))
+				eprint(padding)
 			}
 			eprintln(term.ecolorize(term.blue, line))
 		}
