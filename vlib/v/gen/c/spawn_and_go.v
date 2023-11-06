@@ -371,7 +371,9 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			}
 		}
 		g.gowrappers.writeln(');')
-		g.gowrappers.writeln('\t_v_free(arg);')
+		if is_spawn {
+			g.gowrappers.writeln('\t_v_free(arg);')
+		}
 		if g.pref.os != .windows && node.call_expr.return_type != ast.void_type {
 			g.gowrappers.writeln('\treturn ret_ptr;')
 		} else {
