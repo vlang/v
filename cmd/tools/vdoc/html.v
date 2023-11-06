@@ -4,7 +4,6 @@ import os
 import net.urllib
 import strings
 import markdown
-import net.html
 import v.scanner
 import v.ast
 import v.token
