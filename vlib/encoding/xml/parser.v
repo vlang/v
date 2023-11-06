@@ -110,10 +110,16 @@ fn parse_comment(mut reader io.Reader) !XMLComment {
 	return XMLComment{comment_contents}
 }
 
+enum CDATAParserState {
+	normal
+	single
+	double
+}
+
 fn parse_cdata(mut reader io.Reader) !XMLCData {
 	mut contents_buf := strings.new_builder(xml.default_string_builder_cap)
-	mut found_bracket := false
-	mut found_double_bracket := false
+
+	mut state := CDATAParserState.normal
 	mut local_buf := [u8(0)]
 
 	for {
@@ -121,29 +127,34 @@ fn parse_cdata(mut reader io.Reader) !XMLCData {
 		contents_buf.write_u8(ch)
 		match ch {
 			`]` {
-				if found_double_bracket {
-					// Another ] after the ]] for some reason. Keep the state
-					found_double_bracket = true
-				} else if found_bracket {
-					found_double_bracket = true
-				} else {
-					found_bracket = true
+				match state {
+					.double {
+						// Another ] after the ]] for some reason. Keep the state
+					}
+					.single {
+						state = .double
+					}
+					.normal {
+						state = .single
+					}
 				}
 			}
 			`>` {
-				if found_double_bracket {
-					break
-				} else {
-					found_bracket = false
-					found_double_bracket = false
+				match state {
+					.double {
+						break
+					}
+					else {
+						state = .normal
+					}
 				}
 			}
 			else {
-				found_bracket = false
-				found_double_bracket = false
+				state = .normal
 			}
 		}
 	}
+
 	contents := contents_buf.str().trim_space()
 	if !contents.ends_with(']]>') {
 		return error('CDATA section not closed.')
