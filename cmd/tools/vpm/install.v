@@ -22,9 +22,10 @@ fn vpm_install(requested_modules []string) {
 			}
 			manifest.dependencies.clone()
 		} else {
-			eprintln('Specify a module for installation.')
-			help.print_and_exit('vpm')
-			return
+			vpm_error('specify at least one module for installation.',
+				details: 'example: `v install publisher.package` or `v install https://github.com/owner/repository`'
+			)
+			exit(2)
 		}
 	} else {
 		requested_modules.clone()
@@ -40,7 +41,7 @@ fn vpm_install(requested_modules []string) {
 			mut i_deleted := []int{}
 			for i, raw_url in external_modules {
 				url := urllib.parse(raw_url) or {
-					eprintln('Errors while parsing module url "${raw_url}" : ${err}')
+					vpm_error('failed to parse module url `${raw_url}`.', details: err.msg())
 					continue
 				}
 				mod_name := url.path.all_after_last('/').replace('.git', '')
@@ -85,11 +86,11 @@ fn vpm_install(requested_modules []string) {
 
 fn install_module(vcs &VCS, name string, url string, final_module_path string) ! {
 	cmd := '${vcs.cmd} ${vcs.args.install} "${url}" "${final_module_path}"'
-	verbose_println('      command: ${cmd}')
-	println('Installing module "${name}" from "${url}" to "${final_module_path}" ...')
+	vpm_log(@FILE_LINE, @FN, 'command: ${cmd}')
+	println('Installing module `${name}` from `${url}` to `${final_module_path}` ...')
 	os.execute_opt(cmd) or {
-		verbose_println('      command output: ${err}')
-		return error('Failed installing module "${name}" to "${final_module_path}" .')
+		vpm_log(@FILE_LINE, @FN, 'cmd output: ${err}')
+		return error('failed to install module `${name}` to `${final_module_path}`.')
 	}
 }
 
@@ -99,14 +100,13 @@ fn vpm_install_from_vpm(module_names []string) {
 		name := n.trim_space().replace('_', '-')
 		mod := get_module_meta_info(name) or {
 			errors++
-			eprintln('Errors while retrieving meta data for module ${name}:')
-			eprintln(err)
+			vpm_error('failed to retrieve meta data for module `${name}`.', details: err.msg())
 			continue
 		}
 		vcs := if mod.vcs != '' {
 			supported_vcs[mod.vcs] or {
 				errors++
-				eprintln('Skipping module "${name}", since it uses an unsupported VCS {${mod.vcs}} .')
+				vpm_error('skipping `${name}`, since it specifiecs an unsupported version control system `${mod.vcs}`.')
 				continue
 			}
 		} else {
@@ -114,7 +114,7 @@ fn vpm_install_from_vpm(module_names []string) {
 		}
 		ensure_vcs_is_installed(vcs) or {
 			errors++
-			eprintln(err)
+			vpm_error(err.msg())
 			continue
 		}
 		minfo := get_mod_name_info(mod.name)
@@ -124,12 +124,12 @@ fn vpm_install_from_vpm(module_names []string) {
 		}
 		install_module(vcs, name, mod.url, minfo.final_module_path) or {
 			errors++
-			eprintln(err)
+			vpm_error(err.msg())
 			continue
 		}
 		increment_module_download_count(name) or {
 			errors++
-			eprintln('Errors while incrementing the download count for ${name}:')
+			vpm_error('failed to increment the download count for `${name}`', details: err.msg())
 		}
 		resolve_dependencies(name, minfo.final_module_path, module_names)
 	}
@@ -143,7 +143,7 @@ fn vpm_install_from_vcs(modules []string, vcs &VCS) {
 	for raw_url in modules {
 		url := urllib.parse(raw_url) or {
 			errors++
-			eprintln('Errors while parsing module url "${raw_url}" : ${err}')
+			vpm_error('failed to parse module url `${raw_url}`.', details: err.msg())
 			continue
 		}
 		// Module identifier based on URL.
@@ -151,7 +151,7 @@ fn vpm_install_from_vcs(modules []string, vcs &VCS) {
 		mut ident := url.path#[1..].replace('-', '_').replace('.git', '')
 		owner, repo_name := ident.split_once('/') or {
 			errors++
-			eprintln('Errors while retrieving module name for: "${url}"')
+			vpm_error('failed to retrieve module name for `${url}`.', details: err.msg())
 			continue
 		}
 		mut final_module_path := os.real_path(os.join_path(settings.vmodules_path, owner.to_lower(),
@@ -162,26 +162,28 @@ fn vpm_install_from_vcs(modules []string, vcs &VCS) {
 		}
 		ensure_vcs_is_installed(vcs) or {
 			errors++
-			eprintln(err)
+			vpm_error(err.msg())
 			continue
 		}
 		install_module(vcs, repo_name, url.str(), final_module_path) or {
 			errors++
-			eprintln(err)
+			vpm_error(err.msg())
 			continue
 		}
 		vmod_path := os.join_path(final_module_path, 'v.mod')
 		if os.exists(vmod_path) {
 			manifest := vmod.from_file(vmod_path) or {
-				eprintln(err)
+				vpm_error(err.msg(),
+					verbose: true
+				)
 				return
 			}
 			minfo := get_mod_name_info(manifest.name)
 			if final_module_path != minfo.final_module_path {
-				println('Relocating module from "${ident}" to "${manifest.name}" ("${minfo.final_module_path}") ...')
+				println('Relocating module from `${ident}` to `${manifest.name}` (`${minfo.final_module_path}`) ...')
 				if os.exists(minfo.final_module_path) {
-					eprintln('Warning module "${minfo.final_module_path}" already exists!')
-					eprintln('Removing module "${minfo.final_module_path}" ...')
+					eprintln('Warning module `${minfo.final_module_path}` already exists!')
+					eprintln('Removing module `${minfo.final_module_path}` ...')
 					mut err_msg := ''
 					$if windows {
 						os.execute_opt('rd /s /q ${minfo.final_module_path}') or {
@@ -192,30 +194,26 @@ fn vpm_install_from_vcs(modules []string, vcs &VCS) {
 					}
 					if err_msg != '' {
 						errors++
-						eprintln('Errors while removing "${minfo.final_module_path}" :')
-						eprintln(err_msg)
+						vpm_error('failed to remove `${minfo.final_module_path}`', details: err_msg)
 						continue
 					}
 				}
 				os.mv(final_module_path, minfo.final_module_path) or {
 					errors++
-					eprintln('Errors while relocating module "${repo_name}" :')
-					eprintln(err)
+					vpm_error('failed to relocate module `${repo_name}`.', details: err.msg())
 					os.rmdir_all(final_module_path) or {
 						errors++
-						eprintln('Errors while removing "${final_module_path}" :')
-						eprintln(err)
+						vpm_error('failed to remove `${final_module_path}`.', details: err.msg())
 						continue
 					}
 					continue
 				}
-				println('Module "${repo_name}" relocated to "${manifest.name}" successfully.')
+				println('Module `${repo_name}` relocated to `${manifest.name}` successfully.')
 				publisher_dir := os.dir(final_module_path)
 				if os.is_dir_empty(publisher_dir) {
 					os.rmdir(publisher_dir) or {
 						errors++
-						eprintln('Errors while removing "${publisher_dir}" :')
-						eprintln(err)
+						vpm_error('failed to remove `${publisher_dir}`.', details: err.msg())
 					}
 				}
 				final_module_path = minfo.final_module_path
