@@ -47,7 +47,7 @@ pub struct DTDElement {
 }
 
 pub struct DocumentTypeDefinition {
-	name string        [required]
+	name string
 	list []DTDListItem
 }
 

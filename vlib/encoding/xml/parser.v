@@ -290,7 +290,6 @@ fn parse_doctype(mut reader io.Reader) !DocumentType {
 	return DocumentType{
 		name: name
 		dtd: DocumentTypeDefinition{
-			name: ''
 			list: items
 		}
 	}
