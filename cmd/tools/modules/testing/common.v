@@ -29,9 +29,20 @@ pub const test_only = os.getenv('VTEST_ONLY').split_any(',')
 
 pub const test_only_fn = os.getenv('VTEST_ONLY_FN').split_any(',')
 
+// TODO: this !!!*reliably*!!! fails compilation of `v cmd/tools/vbuild-examples.v` with a cgen error, without `-no-parallel`:
+// pub const fail_retry_delay_ms = os.getenv_opt('VTEST_FAIL_RETRY_DELAY_MS') or { '500' }.int() * time.millisecond
+// Note, it works with `-no-parallel`, and it works when that whole expr is inside a function, like below:
+pub const fail_retry_delay_ms = get_fail_retry_delay_ms()
+
 pub const is_node_present = os.execute('node --version').exit_code == 0
 
 pub const all_processes = get_all_processes()
+
+pub const header_bytes_to_search_for_module_main = 500
+
+fn get_fail_retry_delay_ms() time.Duration {
+	return os.getenv_opt('VTEST_FAIL_RETRY_DELAY_MS') or { '500' }.int() * time.millisecond
+}
 
 fn get_all_processes() []string {
 	$if windows {
@@ -504,7 +515,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 						goto test_passed_system
 					}
 				}
-				time.sleep(500 * time.millisecond)
+				time.sleep(testing.fail_retry_delay_ms)
 			}
 			if details.flaky && !testing.fail_flaky {
 				ts.append_message(.info, '   *FAILURE* of the known flaky test file ${relative_file} is ignored, since VTEST_FAIL_FLAKY is 0 . Retry count: ${details.retry} .',
@@ -566,6 +577,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 						goto test_passed_execute
 					}
 				}
+				time.sleep(testing.fail_retry_delay_ms)
 			}
 			if details.flaky && !testing.fail_flaky {
 				ts.append_message(.info, '   *FAILURE* of the known flaky test file ${relative_file} is ignored, since VTEST_FAIL_FLAKY is 0 . Retry count: ${details.retry} .',
@@ -628,14 +640,13 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 			continue
 		}
 		$if windows {
-			// skip process/command examples on windows
+			// skip process/command examples on windows. TODO: remove the need for this, fix os.Command
 			if fnormalised.ends_with('examples/process/command.v') {
 				continue
 			}
 		}
 		c := os.read_file(f) or { panic(err) }
-		maxc := if c.len > 500 { 500 } else { c.len }
-		start := c[0..maxc]
+		start := c#[0..testing.header_bytes_to_search_for_module_main]
 		if start.contains('module ') && !start.contains('module main') {
 			skipped_f := f.replace(os.join_path_single(parent_dir, ''), '')
 			skipped << skipped_f
