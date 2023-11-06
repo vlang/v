@@ -7,9 +7,10 @@ $if !windows {
 }
 
 $if windows {
-	#flag -lws2_32
 	#include <winsock2.h>
 }
+
+#flag windows -lws2_32
 
 // fd_close closes the file descriptor. It returns 0 on success.
 pub fn fd_close(fd int) int {

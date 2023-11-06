@@ -119,7 +119,7 @@ jobs:
       - name: Test new v.c
         run: |
           .\v.exe -o v.c cmd/v
-          .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -bt10 v.c
+          .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -lws2_32 -bt10 v.c
       - name: Install dependencies
         run: |
           .\v.exe setup-freetype
@@ -163,7 +163,7 @@ jobs:
       #     .\v.exe wipe-cache
       #     .\make.bat -tcc32
       # - name: Test new v.c
-      #   run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -Werror -g -w -ladvapi32 -bt10 v.c
+      #   run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -Werror -g -w -ladvapi32 -lws2_32 -bt10 v.c
       # - name: v doctor
       #   run: ./v doctor
       #
