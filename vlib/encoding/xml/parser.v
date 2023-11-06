@@ -12,72 +12,71 @@ const (
 	default_string_builder_cap = 32
 )
 
-fn parse_attributes(all_attributes string) !map[string]string {
-	if all_attributes.contains_u8(`<`) {
-		return error('Malformed XML. Found "<" in attribute string: "${all_attributes}"')
+// Helper types to assist in parsing
+
+struct TextSpan {
+mut:
+	start int
+	end   int
+}
+
+enum AttributeParserState {
+	key
+	eq
+	value
+}
+
+fn parse_attributes(attribute_contents string) !map[string]string {
+	if attribute_contents.contains_u8(`<`) {
+		return error('Malformed XML. Found "<" in attribute string: "${attribute_contents}"')
 	}
 	mut attributes := map[string]string{}
 
-	mut key_buf := strings.new_builder(xml.default_string_builder_cap)
-	mut value_buf := strings.new_builder(xml.default_string_builder_cap)
+	mut state := AttributeParserState.key
+	mut key_span, mut value_span := TextSpan{}, TextSpan{}
 
-	mut reading_key := true
-	mut reading_eq := false
-	mut reading_value := false
-
-	mut found_quote := u8(0)
-
-	for ch in all_attributes {
-		if reading_key {
-			match ch {
-				`=` {
-					reading_key = false
-					reading_eq = true
-				}
-				else {
-					key_buf.write_u8(ch)
-				}
-			}
-		} else if reading_eq {
-			match ch {
-				`=` {
-					return error('Duplicate "=" in attribute string: "${all_attributes}"')
-				}
-				`'`, `"` {
-					found_quote = ch
-					reading_eq = false
-					reading_value = true
-				}
-				else {
-					reading_eq = false
-					reading_value = true
-					found_quote = 0
-				}
-			}
-		} else if reading_value {
-			match ch {
-				`'`, `"` {
-					if found_quote == ch {
-						// We have reached the end of the value
-						reading_value = false
-						reading_key = true
-						attributes[key_buf.str().trim_space()] = value_buf.str().trim_space()
-
-						found_quote = 0
-					} else {
-						if found_quote == 0 {
-							found_quote = ch
-						} else {
-							value_buf.write_u8(ch)
-						}
+	for index, ch in attribute_contents {
+		match state {
+			.key {
+				match ch {
+					`=` {
+						state = AttributeParserState.eq
+					}
+					else {
+						key_span.end++
 					}
 				}
-				else {
-					value_buf.write_u8(ch)
+			}
+			.eq {
+				match ch {
+					`=` {
+						return error('Duplicate "=" in attribute string: "${attribute_contents}"')
+					}
+					`'`, `"` {
+						state = AttributeParserState.value
+						value_span.start = index + 1
+					}
+					else {
+						return error('Invalid character in attribute string: "${attribute_contents}"')
+					}
 				}
 			}
-		} else {
-			return error('Invalid state while parsing attributes: ${all_attributes}')
+			.value {
+				match ch {
+					`'`, `"` {
+						state = AttributeParserState.key
+						value_span.end = index
+						attributes[attribute_contents[key_span.start..key_span.end].trim_space()] = attribute_contents[value_span.start..value_span.end]
+
+						key_span.start = index + 1
+						key_span.end = index + 1
+					}
+					else {
+						state = AttributeParserState.value
+						value_span.end++
+					}
+				}
+			}
 		}
 	}
 
