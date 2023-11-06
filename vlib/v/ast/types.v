@@ -46,6 +46,7 @@ pub enum Language {
 	wasm32
 }
 
+// pref_arch_to_table_language returns target language based on pref_arch
 pub fn pref_arch_to_table_language(pref_arch pref.Arch) Language {
 	return match pref_arch {
 		.amd64 {
@@ -125,6 +126,7 @@ pub enum ShareType {
 	atomic_t
 }
 
+// str converts t to it's string form of ShareType i.e. mut, shared, atomic
 pub fn (t ShareType) str() string {
 	match t {
 		.mut_t { return 'mut' }
@@ -287,11 +289,13 @@ pub fn (t Type) idx() int {
 	return u16(t) & 0xffff
 }
 
+// is_void return true if t is of type void
 [inline]
 pub fn (t Type) is_void() bool {
 	return t == ast.void_type
 }
 
+// is_full return true if t is not of type void
 [inline]
 pub fn (t Type) is_full() bool {
 	return t != 0 && t != ast.void_type
@@ -311,17 +315,20 @@ pub fn (t Type) is_ptr() bool {
 	return (int(t) >> 16) & 0xff > 0
 }
 
+// is_pointer returns true if typ is any of the builtin pointer types (voidptr, byteptr, charptr)
 [inline]
 pub fn (typ Type) is_pointer() bool {
 	// builtin pointer types (voidptr, byteptr, charptr)
 	return typ.idx() in ast.pointer_type_idxs
 }
 
+// is_voidptr returns true if typ is a voidptr
 [inline]
 pub fn (typ Type) is_voidptr() bool {
 	return typ.idx() == ast.voidptr_type_idx
 }
 
+// is_any_kind_of_pointer returns true if t is any type of pointer
 [inline]
 pub fn (t Type) is_any_kind_of_pointer() bool {
 	return (int(t) >> 16) & 0xff > 0 || (u16(t) & 0xffff) in ast.pointer_type_idxs

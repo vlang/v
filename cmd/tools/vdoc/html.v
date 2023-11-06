@@ -210,13 +210,14 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 	}
 	// write nav1
 	if cfg.is_multi || vd.docs.len > 1 {
-		mut submod_prefix := ''
+		mut used_submod_prefix := []string{}
 		for i, dc in vd.docs {
-			if i - 1 >= 0 && dc.head.name.starts_with(submod_prefix + '.') {
+			names := dc.head.name.split('.')
+			submod_prefix := if names.len > 1 { names[0] } else { dc.head.name }
+			if i - 1 >= 0 && submod_prefix in used_submod_prefix {
 				continue
 			}
-			names := dc.head.name.split('.')
-			submod_prefix = if names.len > 1 { names[0] } else { dc.head.name }
+			used_submod_prefix << submod_prefix
 			mut href_name := './${dc.head.name}.html'
 			if (cfg.is_vlib && dc.head.name == 'builtin' && !cfg.include_readme)
 				|| dc.head.name == 'README' {
@@ -533,10 +534,10 @@ fn (f &MdHtmlCodeHighlighter) transform_attribute(p markdown.ParentType, name st
 fn (f &MdHtmlCodeHighlighter) transform_content(parent markdown.ParentType, text string) string {
 	if parent is markdown.MD_BLOCKTYPE && parent == .md_block_code {
 		if f.language == 'v' || f.language == 'vlang' {
-			return html_highlight(text, f.table)
+			return html_highlight(html_tag_escape(text), f.table)
 		}
 	}
-	return markdown.default_html_transformer.transform_content(parent, text)
+	return markdown.default_html_transformer.transform_content(parent, html_tag_escape(text))
 }
 
 fn (mut f MdHtmlCodeHighlighter) config_set(key string, val string) {

@@ -5,11 +5,12 @@ const (
 	v         = os.quoted_path(@VEXE)
 	// Running tests appends a tsession path to VTMP, which is automatically cleaned up after the test.
 	// The following will result in e.g. `$VTMP/tsession_7fe8e93bd740_1612958707536/test-vmodules/`.
-	test_path = os.join_path(os.vtmp_dir(), 'test-vmodules')
+	test_path = os.join_path(os.vtmp_dir(), 'vpm_install_test')
 )
 
 fn testsuite_begin() {
 	os.setenv('VMODULES', test_path, true)
+	os.setenv('VPM_NO_INCREMENT', '1', true)
 }
 
 fn testsuite_end() {
@@ -17,10 +18,10 @@ fn testsuite_end() {
 }
 
 fn test_install_from_vpm_ident() {
-	res := os.execute('${v} install nedpals.args')
-	assert res.exit_code == 0, res.output
+	res := os.execute_or_exit('${v} install nedpals.args')
+	assert res.output.contains('Skipping download count increment for "nedpals.args".')
 	mod := vmod.from_file(os.join_path(test_path, 'nedpals', 'args', 'v.mod')) or {
-		assert false, err.str()
+		assert false, err.msg()
 		return
 	}
 	assert mod.name == 'nedpals.args'
@@ -28,10 +29,9 @@ fn test_install_from_vpm_ident() {
 }
 
 fn test_install_from_vpm_short_ident() {
-	res := os.execute('${v} install pcre')
-	assert res.exit_code == 0, res.output
+	os.execute_or_exit('${v} install pcre')
 	mod := vmod.from_file(os.join_path(test_path, 'pcre', 'v.mod')) or {
-		assert false, err.str()
+		assert false, err.msg()
 		return
 	}
 	assert mod.name == 'pcre'
@@ -39,12 +39,11 @@ fn test_install_from_vpm_short_ident() {
 }
 
 fn test_install_from_git_url() {
-	res := os.execute('${v} install https://github.com/vlang/markdown')
-	assert res.exit_code == 0, res.output
+	res := os.execute_or_exit('${v} install https://github.com/vlang/markdown')
 	assert res.output.contains('Installing module "markdown" from "https://github.com/vlang/markdown')
 	assert res.output.contains('Relocating module from "vlang/markdown" to "markdown"')
 	mod := vmod.from_file(os.join_path(test_path, 'markdown', 'v.mod')) or {
-		assert false, err.str()
+		assert false, err.msg()
 		return
 	}
 	assert mod.name == 'markdown'
@@ -52,20 +51,17 @@ fn test_install_from_git_url() {
 }
 
 fn test_install_already_existent() {
-	// FIXME: Skip this for now on Windows, as `rmdir_all` results in permission
-	// errors when vpm tries to remove existing modules.
-	$if windows {
-		return
-	}
-	mut res := os.execute('${v} install https://github.com/vlang/markdown')
-	assert res.exit_code == 0, res.output
+	mut res := os.execute_or_exit('${v} install https://github.com/vlang/markdown')
 	assert res.output.contains('already exists')
 	mod := vmod.from_file(os.join_path(test_path, 'markdown', 'v.mod')) or {
-		assert false, err.str()
+		assert false, err.msg()
 		return
 	}
 	assert mod.name == 'markdown'
 	assert mod.dependencies == []string{}
+	// The same module but with the `.git` extension added.
+	os.execute_or_exit('${v} install https://github.com/vlang/markdown.git')
+	assert res.output.contains('already exists')
 }
 
 fn test_install_once() {
@@ -79,18 +75,16 @@ fn test_install_once() {
 	os.mkdir_all(test_path) or {}
 
 	// Install markdown module.
-	mut res := os.execute('${v} install markdown')
-	assert res.exit_code == 0, res.output
+	os.execute_or_exit('${v} install markdown')
 	// Keep track of the last modified state of the v.mod file of the installed markdown module.
 	md_last_modified := os.file_last_mod_unix(os.join_path(test_path, 'markdown', 'v.mod'))
 
 	install_cmd := '${@VEXE} install https://github.com/vlang/markdown https://github.com/vlang/pcre --once -v'
 	// Try installing two modules, one of which is already installed.
-	res = os.execute(install_cmd)
-	assert res.exit_code == 0, res.output
+	mut res := os.execute_or_exit(install_cmd)
 	assert res.output.contains("Already installed modules: ['markdown']")
 	mod := vmod.from_file(os.join_path(test_path, 'pcre', 'v.mod')) or {
-		assert false, err.str()
+		assert false, err.msg()
 		return
 	}
 	assert mod.name == 'pcre'
@@ -100,8 +94,7 @@ fn test_install_once() {
 		'v.mod'))
 
 	// Try installing two modules that are both already installed.
-	res = os.execute(install_cmd)
-	assert res.exit_code == 0, res.output
+	res = os.execute_or_exit(install_cmd)
 	assert res.output.contains('All modules are already installed.')
 	assert md_last_modified == os.file_last_mod_unix(os.join_path(test_path, 'markdown',
 		'v.mod'))

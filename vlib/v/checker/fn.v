@@ -486,7 +486,21 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 			c.error('original `${parent_var.name}` is immutable, declare it with `mut` to make it mutable',
 				var.pos)
 		}
-		var.typ = parent_var.typ
+		if parent_var.expr is ast.IfGuardExpr {
+			sym := c.table.sym(parent_var.expr.expr_type)
+			if sym.info is ast.MultiReturn {
+				for i, v in parent_var.expr.vars {
+					if v.name == var.name {
+						var.typ = sym.info.types[i]
+						break
+					}
+				}
+			} else {
+				var.typ = parent_var.expr.expr_type.clear_flags(.option, .result)
+			}
+		} else {
+			var.typ = parent_var.typ
+		}
 		if var.typ.has_flag(.generic) {
 			has_generic = true
 		}

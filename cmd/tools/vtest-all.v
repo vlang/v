@@ -113,6 +113,12 @@ fn get_all_commands() []Command {
 		runcmd: .execute
 		expect: "['arg1', 'arg2']1.0"
 	}
+	res << Command{
+		line: '${vexe} -o calling_c.exe run examples/call_c_from_v/main.c.v'
+		okmsg: 'V can run main.c.v files'
+		runcmd: .execute
+		contains: 'V can call C functions like `puts` too.'
+	}
 	$if linux || macos {
 		res << Command{
 			line: '${vexe} run examples/hello_world.v'

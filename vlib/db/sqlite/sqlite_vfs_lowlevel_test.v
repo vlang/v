@@ -214,7 +214,7 @@ fn example_vfsfile_read(file &sqlite.Sqlite3_file, output voidptr, amount int, o
 	vfsfile.vfs_state.log << 'read file=${vfsfile.name}'
 
 	unsafe {
-		C.memset(output, 0, amount)
+		vmemset(output, 0, amount)
 	}
 
 	return sqlite.sqlite_ioerr_short_read

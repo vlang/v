@@ -1012,3 +1012,7 @@ fn test_mv_by_cp_across_partitions() {
 fn test_mv_across_partitions() {
 	move_across_partitions_using_function(os.mv)!
 }
+
+fn test_page_size() {
+	assert os.page_size() >= 4096 // this is normal and assumed.
+}
