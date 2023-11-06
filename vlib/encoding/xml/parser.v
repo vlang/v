@@ -94,13 +94,15 @@ fn parse_comment(mut reader io.Reader) !XMLComment {
 		ch := next_char(mut reader, mut local_buf)!
 		match ch {
 			`-` {
-				if next_char(mut reader, mut local_buf)! == `-` {
+				after_ch := next_char(mut reader, mut local_buf)!
+				if after_ch == `-` {
 					if next_char(mut reader, mut local_buf)! == `>` {
 						break
 					}
 					return error('XML Comment not closed. Expected ">".')
 				} else {
 					comment_buffer.write_u8(ch)
+					comment_buffer.write_u8(after_ch)
 				}
 			}
 			else {

@@ -21,7 +21,7 @@ fn test_valid_parsing() ! {
 					children: ['Jones']
 				},
 				xml.XMLComment{
-					text: ' Registered name of the company '
+					text: ' Registered name of the company -> '
 				},
 				xml.XMLNode{
 					name: 'company'
@@ -30,7 +30,7 @@ fn test_valid_parsing() ! {
 				xml.XMLNode{
 					name: 'phone'
 					children: [xml.XMLComment{
-						text: ' Phone with country code '
+						text: ' Phone with country code -) '
 					}, '(046) 1233-44778']
 				},
 			]
