@@ -6,9 +6,10 @@ struct User {
 	name string [unique]
 }
 
-const db_folder = os.join_path(os.vtmp_dir(), 'v', 'orm_sql')
-
-const db_path = os.join_path(db_folder, 'sql_statement_or_blocks.db')
+const (
+	db_folder = os.join_path(os.vtmp_dir(), 'orm_sql')
+	db_path   = os.join_path(db_folder, 'sql_statement_or_blocks.db')
+)
 
 fn testsuite_begin() {
 	os.mkdir_all(db_folder) or {}

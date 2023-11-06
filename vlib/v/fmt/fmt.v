@@ -910,9 +910,17 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 				info.max = field.name.len
 			}
 			if !expr_is_single_line(field.expr) {
-				info.last_idx = i
-				align_infos << info
-				info = ValAlignInfo{}
+				is_ternary := field.expr is ast.IfExpr && field.expr.branches.len == 2
+					&& field.expr.has_else
+					&& branch_is_single_line((field.expr as ast.IfExpr).branches[0])
+					&& branch_is_single_line((field.expr as ast.IfExpr).branches[1])
+					&& (field.expr.is_expr || f.is_assign || f.inside_const
+					|| f.is_struct_init || f.single_line_fields)
+				if !is_ternary || field.name.len + field.expr.str().len > fmt.max_len.last() {
+					info.last_idx = i
+					align_infos << info
+					info = ValAlignInfo{}
+				}
 			}
 		}
 		info.last_idx = node.fields.len
@@ -2058,16 +2066,19 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 		if node.method_name == 'html' {
 			f.write('\$vweb.html()')
 		} else {
-			f.write('\$tmpl(${node.args[0].expr})')
+			f.write('\$tmpl(')
+			f.expr(node.args[0].expr)
+			f.write(')')
 		}
 	} else {
 		match true {
 			node.is_embed {
-				if node.embed_file.compression_type == 'none' {
-					f.write('\$embed_file(${node.args[0].expr})')
-				} else {
-					f.write('\$embed_file(${node.args[0].expr}, .${node.embed_file.compression_type})')
+				f.write('\$embed_file(')
+				f.expr(node.args[0].expr)
+				if node.embed_file.compression_type != 'none' {
+					f.write(', .${node.embed_file.compression_type}')
 				}
+				f.write(')')
 			}
 			node.is_env {
 				f.write("\$env('${node.args_var}')")

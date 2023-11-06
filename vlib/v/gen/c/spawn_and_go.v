@@ -161,7 +161,11 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			}
 		}
 	} else if is_go {
-		g.writeln('photon_thread_create((void*)${wrapper_fn_name}, &${arg_tmp_var});')
+		if util.nr_jobs > 0 {
+			g.writeln('photon_thread_create_and_migrate_to_work_pool((void*)${wrapper_fn_name}, &${arg_tmp_var});')
+		} else {
+			g.writeln('photon_thread_create((void*)${wrapper_fn_name}, &${arg_tmp_var});')
+		}
 	}
 	g.writeln('// end go')
 	if node.is_expr {
@@ -367,7 +371,9 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			}
 		}
 		g.gowrappers.writeln(');')
-		g.gowrappers.writeln('\t_v_free(arg);')
+		if is_spawn {
+			g.gowrappers.writeln('\t_v_free(arg);')
+		}
 		if g.pref.os != .windows && node.call_expr.return_type != ast.void_type {
 			g.gowrappers.writeln('\treturn ret_ptr;')
 		} else {

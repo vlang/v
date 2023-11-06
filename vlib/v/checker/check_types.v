@@ -13,18 +13,17 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	}
 	got_is_ptr := got.is_ptr()
 	exp_is_ptr := expected.is_ptr()
-	got_is_int := got.is_int()
-	exp_is_int := expected.is_int()
 
-	exp_is_pure_int := expected.is_pure_int()
-	got_is_pure_int := got.is_pure_int()
 	// allow int literals where any kind of real integers are expected:
-	if (exp_is_pure_int && got == ast.int_literal_type)
-		|| (got_is_pure_int && expected == ast.int_literal_type) {
+	if (got == ast.int_literal_type && expected.is_pure_int())
+		|| (expected == ast.int_literal_type && got.is_pure_int()) {
 		return true
 	}
 
 	if c.pref.translated {
+		got_is_int := got.is_int()
+		exp_is_int := expected.is_int()
+
 		if exp_is_int && got_is_int {
 			return true
 		}
@@ -34,12 +33,12 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		if expected == ast.voidptr_type || expected == ast.nil_type {
 			return true
 		}
-		if (expected == ast.bool_type && (got.is_any_kind_of_pointer() || got_is_int))
-			|| ((expected.is_any_kind_of_pointer() || exp_is_int) && got == ast.bool_type) {
+		if (expected == ast.bool_type && (got_is_int || got.is_any_kind_of_pointer()))
+			|| ((exp_is_int || expected.is_any_kind_of_pointer()) && got == ast.bool_type) {
 			return true
 		}
 
-		if expected.is_any_kind_of_pointer() { //&& !got.is_any_kind_of_pointer() {
+		if expected.is_any_kind_of_pointer() {
 			// Allow `int` as `&i8` etc in C code.
 			deref := expected.deref()
 			// deref := expected.set_nr_muls(0)
@@ -57,17 +56,17 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		expected_sym := c.table.sym(expected)
 
 		// Allow `[N]anyptr` as `[N]anyptr`
-		if got_sym.kind == .array && expected_sym.kind == .array {
-			if (got_sym.info as ast.Array).elem_type.is_any_kind_of_pointer()
-				&& (expected_sym.info as ast.Array).elem_type.is_any_kind_of_pointer() {
+		if got_sym.info is ast.Array && expected_sym.info is ast.Array {
+			if got_sym.info.elem_type.is_any_kind_of_pointer()
+				&& expected_sym.info.elem_type.is_any_kind_of_pointer() {
 				return true
 			}
-		} else if got_sym.kind == .array_fixed && expected_sym.kind == .array_fixed {
-			if (got_sym.info as ast.ArrayFixed).elem_type.is_any_kind_of_pointer()
-				&& (expected_sym.info as ast.ArrayFixed).elem_type.is_any_kind_of_pointer() {
+		} else if got_sym.info is ast.ArrayFixed && expected_sym.info is ast.ArrayFixed {
+			if got_sym.info.elem_type.is_any_kind_of_pointer()
+				&& expected_sym.info.elem_type.is_any_kind_of_pointer() {
 				return true
 			}
-			if c.check_types((got_sym.info as ast.ArrayFixed).elem_type, (expected_sym.info as ast.ArrayFixed).elem_type) {
+			if c.check_types(got_sym.info.elem_type, expected_sym.info.elem_type) {
 				return true
 			}
 		}
@@ -125,7 +124,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	}
 	if exp_idx == ast.voidptr_type_idx || exp_idx == ast.nil_type_idx
 		|| exp_idx == ast.byteptr_type_idx
-		|| (expected.is_ptr() && expected.deref().idx() == ast.u8_type_idx) {
+		|| (exp_is_ptr && expected.deref().idx() == ast.u8_type_idx) {
 		if got.is_any_kind_of_pointer() {
 			return true
 		}
@@ -139,7 +138,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	}
 	if got_idx == ast.voidptr_type_idx || got_idx == ast.nil_type_idx
 		|| got_idx == ast.byteptr_type_idx
-		|| (got_idx == ast.u8_type_idx && got.is_ptr()) {
+		|| (got_idx == ast.u8_type_idx && got_is_ptr) {
 		if expected.is_any_kind_of_pointer() {
 			return true
 		}

@@ -8,27 +8,24 @@ on:
     paths-ignore:
       - "**.md"
 
-concurrency:
-  group: build-v-apps-and-modules-${{ github.event.pull_request.number || github.sha }}
-  cancel-in-progress: true
-
 jobs:
   v-apps-compile:
     runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    if: >
+        github.event_name != 'push'
+        || github.event.ref == 'refs/heads/master'
+        || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Build V
         run: make && sudo ./v symlink
 
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --quiet -y libgc-dev   libsodium-dev libssl-dev sqlite3 libsqlite3-dev    valgrind    libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
-          sudo apt-get install --quiet -y --no-install-recommends gfortran liblapacke-dev libopenblas-dev ## for vsl/vtl
+          sudo apt-get install --quiet -y libgc-dev libsodium-dev libssl-dev sqlite3 libsqlite3-dev libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
           sudo apt-get install --quiet -y --no-install-recommends sassc libgit2-dev ## needed by gitly
-          sudo apt-get install --quiet -y --no-install-recommends libhdf5-cpp-103 libhdf5-dev libhdf5-mpi-dev hdf5-tools libopenmpi-dev opencl-headers liblapacke-dev libopenblas-dev ## needed by VSL
 
       - name: Build vlang/vab
         run: |
@@ -37,7 +34,7 @@ jobs:
           echo "Build vab"
           v ~/.vmodules/vab
           echo "Build vab with -gc boehm -skip-unused"
-          v -gc boehm -skip-unused ~/.vmodules/vab
+          v -g -gc boehm -skip-unused ~/.vmodules/vab
 
       - name: Build vlang/ved
         run: |
@@ -113,6 +110,49 @@ jobs:
           echo "Examples of UI should compile"
           v ~/.vmodules/ui/examples/build_examples.vsh
 
+      - name: Build vlang/adventofcode
+        run: |
+          echo "Clone the AdventOfCode repo"
+          git clone --depth 1 https://github.com/vlang/adventofcode  /tmp/adventofcode
+          echo "Install dependencies"
+          v install pcre
+          echo "Execute Tests"
+          cd /tmp/adventofcode && v run verify.v
+
+
+#      - name: Build VEX
+#        run: |
+#          echo "Install Vex"
+#          v install nedpals.vex
+#          echo "Compile all of the Vex examples"
+#          v should-compile-all ~/.vmodules/nedpals/vex/examples
+#          echo "Compile the simple Vex example with -skip-unused"
+#          v -skip-unused ~/.vmodules/nedpals/vex/examples/simple_example.v
+#          echo "Run Vex Tests"
+#          v test ~/.vmodules/nedpals/vex
+
+
+  vsl-and-vtl-compile:
+    runs-on: ubuntu-20.04
+    if: >
+        github.event_name != 'push'
+        || github.event.ref == 'refs/heads/master'
+        || github.event.repository.full_name != 'vlang/v'
+    timeout-minutes: 121
+    env:
+      VFLAGS: -no-parallel
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build V
+        run: make && sudo ./v symlink
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --quiet -y libgc-dev   libsodium-dev libssl-dev sqlite3 libsqlite3-dev libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
+          sudo apt-get install --quiet -y --no-install-recommends gfortran liblapacke-dev libopenblas-dev ## for vsl/vtl
+          sudo apt-get install --quiet -y --no-install-recommends libhdf5-cpp-103 libhdf5-dev libhdf5-mpi-dev hdf5-tools libopenmpi-dev opencl-headers liblapacke-dev libopenblas-dev ## needed by VSL
+
       - name: Build vlang/vsl
         run: |
           echo "Installing dependencies"
@@ -151,24 +191,3 @@ jobs:
           ~/.vmodules/vtl/bin/test --use-gc boehm
           echo "Execute Tests using Pure V Backend with Pure V Math and Garbage Collection enabled"
           ~/.vmodules/vtl/bin/test --use-cblas --use-gc boehm
-
-      - name: Build vlang/adventofcode
-        run: |
-          echo "Clone the AdventOfCode repo"
-          git clone --depth 1 https://github.com/vlang/adventofcode  /tmp/adventofcode
-          echo "Install dependencies"
-          v install pcre
-          echo "Execute Tests"
-          cd /tmp/adventofcode && v run verify.v
-
-
-#      - name: Build VEX
-#        run: |
-#          echo "Install Vex"
-#          v install nedpals.vex
-#          echo "Compile all of the Vex examples"
-#          v should-compile-all ~/.vmodules/nedpals/vex/examples
-#          echo "Compile the simple Vex example with -skip-unused"
-#          v -skip-unused ~/.vmodules/nedpals/vex/examples/simple_example.v
-#          echo "Run Vex Tests"
-#          v test ~/.vmodules/nedpals/vex

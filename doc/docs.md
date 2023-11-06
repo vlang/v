@@ -6231,7 +6231,7 @@ This is an example bash script you can use to optimize your CLI V program withou
 In most cases, you will need to change this script to make it suitable for your particular program.
 
 ```bash
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Get the full path to the current directory
 CUR_DIR=$(pwd)

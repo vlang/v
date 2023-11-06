@@ -1,11 +1,19 @@
 import os
+import v.vmod
 
 const (
+	vroot      = os.quoted_path(@VEXEROOT)
+	vexe       = os.quoted_path(@VEXE)
+	// Expect has to be installed for the test.
+	expect_exe = os.quoted_path(os.find_abs_path_of_executable('expect') or {
+		eprintln('skipping test, since expect is missing')
+		exit(0)
+	})
+	// Directory that contains the Expect scripts used in the test.
+	expect_tests_path     = os.join_path(@VEXEROOT, 'cmd', 'tools', 'vcreate', 'tests')
 	test_project_dir_name = 'test_project'
 	// Running tests appends a tsession path to VTMP, which is automatically cleaned up after the test.
 	// The following will result in e.g. `$VTMP/tsession_7fe8e93bd740_1612958707536/test_project/`.
-	// Note: The following uses `test_vcreate` deliberately and NOT `vcreate_test`.
-	// This avoids clashes with the `_test` postfix, which V also uses for test file binaries.
 	test_path             = os.join_path(os.vtmp_dir(), test_project_dir_name)
 )
 
@@ -16,20 +24,18 @@ fn testsuite_end() {
 fn init_and_check() ! {
 	os.chdir(test_path)!
 
-	// if main file already exist we should not tamper it
-	mut main_last_modified_time := i64(0)
-	is_main_file_preexisting := os.exists('src/main.v')
-	if is_main_file_preexisting == true {
-		main_last_modified_time = os.file_last_mod_unix('src/main.v')
-	}
-	os.execute_or_exit('${os.quoted_path(@VEXE)} init')
+	// Keep track of the last modified time of the main file to ensure it is not modifed if it already exists.
+	main_exists := os.exists('src/main.v')
+	main_last_modified := if main_exists { os.file_last_mod_unix('src/main.v') } else { 0 }
 
-	x := os.execute_or_exit('${os.quoted_path(@VEXE)} run .')
-	assert x.exit_code == 0
+	// Initilize project.
+	os.execute_or_exit('${expect_exe} ${os.join_path(expect_tests_path, 'init.expect')} ${vroot}')
+
+	x := os.execute_or_exit('${vexe} run .')
 	assert x.output.trim_space() == 'Hello World!'
 
-	if is_main_file_preexisting == true {
-		assert main_last_modified_time == os.file_last_mod_unix('src/main.v')
+	if main_exists {
+		assert main_last_modified == os.file_last_mod_unix('src/main.v')
 	} else {
 		assert os.read_file('src/main.v')! == [
 			'module main\n',
@@ -44,8 +50,8 @@ fn init_and_check() ! {
 		'Module {',
 		"	name: '${test_project_dir_name}'",
 		"	description: ''",
-		"	version: ''",
-		"	license: ''",
+		"	version: '0.0.0'",
+		"	license: 'MIT'",
 		'	dependencies: []',
 		'}',
 		'',
@@ -122,9 +128,9 @@ fn test_v_init_in_git_dir() {
 
 fn test_v_init_no_overwrite_gitignore() {
 	prepare_test_path()!
-	os.write_file('.gitignore', 'blah')!
-	os.execute_or_exit('${os.quoted_path(@VEXE)} init')
-	assert os.read_file('.gitignore')! == 'blah'
+	os.write_file('.gitignore', 'foo')!
+	os.execute_or_exit('${expect_exe} ${os.join_path(expect_tests_path, 'init.expect')} ${vroot}')
+	assert os.read_file('.gitignore')! == 'foo'
 }
 
 fn test_v_init_no_overwrite_gitattributes_and_editorconfig() {
@@ -141,8 +147,24 @@ indent_style = tab
 	prepare_test_path()!
 	os.write_file('.gitattributes', git_attributes_content)!
 	os.write_file('.editorconfig', editor_config_content)!
-	os.execute_or_exit('${os.quoted_path(@VEXE)} init')
+	os.execute_or_exit('${expect_exe} ${os.join_path(expect_tests_path, 'init.expect')} ${vroot}')
 
 	assert os.read_file('.gitattributes')! == git_attributes_content
 	assert os.read_file('.editorconfig')! == editor_config_content
+}
+
+fn test_v_init_in_dir_with_invalid_mod_name() {
+	// A project with a directory name with hyphens, which is invalid for a module name.
+	dir_name_with_invalid_mod_name := 'my-proj'
+	corrected_mod_name := 'my_proj'
+	proj_path := os.join_path(os.vtmp_dir(), dir_name_with_invalid_mod_name)
+	os.mkdir_all(proj_path) or {}
+	os.chdir(proj_path)!
+	os.execute_or_exit('${expect_exe} ${os.join_path(expect_tests_path, 'init_in_dir_with_invalid_mod_name.expect')} ${vroot} ${dir_name_with_invalid_mod_name} ${corrected_mod_name}')
+	// Assert mod data set in `new_with_model_arg.expect`.
+	mod := vmod.from_file(os.join_path(proj_path, 'v.mod')) or {
+		assert false, err.str()
+		return
+	}
+	assert mod.name == corrected_mod_name
 }

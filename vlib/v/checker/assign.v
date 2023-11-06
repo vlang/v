@@ -127,6 +127,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		is_blank_ident := left.is_blank_ident()
 		mut left_type := ast.void_type
 		mut var_option := false
+		mut is_shared_re_assign := false
 		if !is_decl && !is_blank_ident {
 			if left in [ast.Ident, ast.SelectorExpr] {
 				c.prevent_sum_type_unwrapping_once = true
@@ -137,6 +138,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			left_type = c.expr(mut left)
 			c.is_index_assign = false
 			c.expected_type = c.unwrap_generic(left_type)
+			is_shared_re_assign = left is ast.Ident && left.info is ast.IdentVar
+				&& ((left.info as ast.IdentVar).share == .shared_t || left_type.has_flag(.shared_f))
+				&& c.table.sym(left_type).kind in [.array, .map, .struct_]
 		}
 		if c.inside_comptime_for_field && mut left is ast.ComptimeSelector {
 			left_type = c.comptime_fields_default_type
@@ -181,7 +185,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		} else if right is ast.ComptimeSelector {
 			right_type = c.comptime_fields_default_type
 		}
-		if is_decl {
+		if is_decl || is_shared_re_assign {
 			// check generic struct init and return unwrap generic struct type
 			if mut right is ast.StructInit {
 				if right.typ.has_flag(.generic) {
@@ -283,7 +287,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				} else if left.info !is ast.IdentVar {
 					c.error('cannot assign to ${left.kind} `${left.name}`', left.pos)
 				} else {
-					if is_decl {
+					if is_decl || is_shared_re_assign {
 						c.check_valid_snake_case(left.name, 'variable name', left.pos)
 						if reserved_type_names_chk.matches(left.name) {
 							c.error('invalid use of reserved type `${left.name}` as a variable name',
@@ -301,9 +305,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						}
 					}
 					mut ident_var_info := left.info as ast.IdentVar
-					if ident_var_info.share == .shared_t {
+					if ident_var_info.share == .shared_t || is_shared_re_assign {
 						left_type = left_type.set_flag(.shared_f)
-						if is_decl {
+						if is_decl || is_shared_re_assign {
 							if left_type.nr_muls() > 1 {
 								c.error('shared cannot be multi level reference', left.pos)
 							}
@@ -375,8 +379,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							}
 						}
 						if left.name == left.mod && left.name != 'main' {
-							c.add_error_detail('Module name duplicates will become errors after 2023/10/31.')
-							c.note('duplicate of a module name `${left.name}`', left.pos)
+							c.error('duplicate of a module name `${left.name}`', left.pos)
 						}
 						// Check if variable name is already registered as imported module symbol
 						if c.check_import_sym_conflict(left.name) {

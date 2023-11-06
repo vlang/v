@@ -1,8 +1,9 @@
 import os
 
-const vexe = @VEXE
-
-const tfolder = os.join_path(os.vtmp_dir(), 'v', 'vcomplete_test')
+const (
+	vexe    = @VEXE
+	tfolder = os.join_path(os.vtmp_dir(), 'vcomplete_test')
+)
 
 enum Shell {
 	bash

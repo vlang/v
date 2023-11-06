@@ -881,6 +881,15 @@ pub fn execute_or_exit(cmd string) Result {
 	return res
 }
 
+// execute_opt returns the os.Result of executing `cmd`, or an error with its output on failure.
+pub fn execute_opt(cmd string) !Result {
+	res := execute(cmd)
+	if res.exit_code != 0 {
+		return error(res.output)
+	}
+	return res
+}
+
 // quoted path - return a quoted version of the path, depending on the platform.
 pub fn quoted_path(path string) string {
 	$if windows {

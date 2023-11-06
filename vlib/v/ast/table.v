@@ -75,7 +75,11 @@ pub fn (mut t Table) free() {
 	}
 }
 
-pub const invalid_type_idx = -1
+pub const (
+	invalid_type_idx     = -1
+	fn_type_escape_seq   = [' ', '', '(', '_', ')', '']
+	map_cname_escape_seq = ['[', '_T_', ', ', '_', ']', '']
+)
 
 pub type FnPanicHandler = fn (&Table, string)
 
@@ -862,7 +866,7 @@ pub fn (t &Table) array_cname(elem_type Type) string {
 	opt := if elem_type.has_flag(.option) { '_option_' } else { '' }
 	res := if elem_type.has_flag(.result) { '_result_' } else { '' }
 	if elem_type_sym.cname.contains('[') {
-		type_name := elem_type_sym.cname.replace_each(['[', '_T_', ', ', '_', ']', ''])
+		type_name := elem_type_sym.cname.replace_each(ast.map_cname_escape_seq)
 		return 'Array_${opt}${res}${type_name}${suffix}'
 	} else {
 		return 'Array_${opt}${res}${elem_type_sym.cname}${suffix}'
@@ -892,7 +896,7 @@ pub fn (t &Table) array_fixed_cname(elem_type Type, size int) string {
 	opt := if elem_type.has_flag(.option) { '_option_' } else { '' }
 	res := if elem_type.has_flag(.result) { '_result_' } else { '' }
 	if elem_type_sym.cname.contains('[') {
-		type_name := elem_type_sym.cname.replace_each(['[', '_T_', ', ', '_', ']', ''])
+		type_name := elem_type_sym.cname.replace_each(ast.map_cname_escape_seq)
 		return 'Array_fixed_${opt}${res}${type_name}${suffix}_${size}'
 	} else {
 		return 'Array_fixed_${opt}${res}${elem_type_sym.cname}${suffix}_${size}'
@@ -999,7 +1003,7 @@ pub fn (t &Table) map_cname(key_type Type, value_type Type) string {
 	opt := if value_type.has_flag(.option) { '_option_' } else { '' }
 	res := if value_type.has_flag(.result) { '_result_' } else { '' }
 	if value_type_sym.cname.contains('[') {
-		type_name := value_type_sym.cname.replace_each(['[', '_T_', ', ', '_', ']', ''])
+		type_name := value_type_sym.cname.replace_each(ast.map_cname_escape_seq)
 		return 'Map_${key_type_sym.cname}_${opt}${res}${type_name}${suffix}'
 	} else {
 		return 'Map_${key_type_sym.cname}_${opt}${res}${value_type_sym.cname}${suffix}'
@@ -1187,7 +1191,7 @@ pub fn (mut t Table) find_or_register_fn_type(f Fn, is_anon bool, has_decl bool)
 	cname := if f.name.len == 0 {
 		'anon_fn_${t.fn_type_signature(f)}'
 	} else {
-		util.no_dots(f.name.clone()).replace_each([' ', '', '(', '_', ')', ''])
+		util.no_dots(f.name.clone()).replace_each(ast.fn_type_escape_seq)
 	}
 	anon := f.name.len == 0 || is_anon
 	existing_idx := t.type_idxs[name]

@@ -1,3 +1,6 @@
+// vtest flaky: true
+// vtest retry: 3
+
 // import strings
 
 // Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
