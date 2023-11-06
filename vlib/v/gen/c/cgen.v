@@ -680,6 +680,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		done_options: global_g.done_options
 		done_results: global_g.done_results
 		is_autofree: global_g.pref.autofree
+		obf_table: global_g.obf_table
 		referenced_fns: global_g.referenced_fns
 		is_cc_msvc: global_g.is_cc_msvc
 		use_segfault_handler: global_g.use_segfault_handler
