@@ -10,6 +10,9 @@ const (
 		'encoding': 'UTF-8'
 	}
 	default_string_builder_cap = 32
+
+	element_len                = '<!ELEMENT'.len
+	entity_len                 = '<!ENTITY'.len
 )
 
 // Helper types to assist in parsing
@@ -165,7 +168,7 @@ fn parse_cdata(mut reader io.Reader) !XMLCData {
 fn parse_entity(contents string) !(DTDEntity, string) {
 	// We find the nearest '>' to the start of the ENTITY
 	entity_end := contents.index('>') or { return error('Entity declaration not closed.') }
-	entity_contents := contents['<!ENTITY'.len..entity_end]
+	entity_contents := contents[xml.entity_len..entity_end]
 
 	name := entity_contents.trim_left(' \t\n').all_before(' ')
 	if name.len == 0 {
@@ -184,9 +187,32 @@ fn parse_entity(contents string) !(DTDEntity, string) {
 fn parse_element(contents string) !(DTDElement, string) {
 	// We find the nearest '>' to the start of the ELEMENT
 	element_end := contents.index('>') or { return error('Element declaration not closed.') }
-	element_contents := contents['<!ELEMENT'.len..element_end]
+	element_contents := contents[xml.element_len..element_end].trim_left(' \t\n')
 
-	name := element_contents.trim_left(' \t\n').all_before(' ')
+	mut name_span := TextSpan{}
+
+	for ch in element_contents {
+		match ch {
+			` `, `\t`, `\n` {
+				break
+			}
+			// Valid characters in an entity name are:
+			// 1. Lowercase alphabet - a-z
+			// 2. Uppercase alphabet - A-Z
+			// 3. Numbers - 0-9
+			// 4. Underscore - _
+			// 5. Colon - :
+			// 6. Period - .
+			`a`...`z`, `A`...`Z`, `0`...`9`, `_`, `:`, `.` {
+				name_span.end++
+			}
+			else {
+				return error('Invalid character in element name: "${ch}"')
+			}
+		}
+	}
+
+	name := element_contents[name_span.start..name_span.end].trim_left(' \t\n')
 	if name.len == 0 {
 		return error('Element is missing name.')
 	}
@@ -235,9 +261,9 @@ fn parse_doctype(mut reader io.Reader) !DocumentType {
 
 	doctype_contents := doctype_buffer.str().trim_space()
 
-	name := doctype_contents.all_before(' ').trim_space()
+	name := doctype_contents.all_before('[').trim_space()
 
-	mut list_contents := doctype_contents.all_after(' [').all_before(']').trim_space()
+	mut list_contents := doctype_contents.all_after('[').all_before(']').trim_space()
 	mut items := []DTDListItem{}
 
 	for list_contents.len > 0 {
