@@ -108,7 +108,7 @@ fn test_from_array() {
 	}
 }
 
-fn test_merge_by_replace_to() {
+fn test_merge_in_place() {
 	mut m1 := {
 		'abc': 'def'
 		'aa':  'bb'
@@ -117,7 +117,7 @@ fn test_merge_by_replace_to() {
 		'xyz': 'zyx'
 		'aa':  'dd'
 	}
-	merge_by_replace_to(mut m1, m2)
+	merge_in_place(mut m1, m2)
 	assert m1 == {
 		'abc': 'def'
 		'aa':  'dd'
@@ -136,7 +136,7 @@ fn test_merge_by_replace_to() {
 		55: 66
 		33: 999
 	}
-	merge_by_replace_to(mut im1, im2)
+	merge_in_place(mut im1, im2)
 	assert im1 == {
 		11: 22
 		33: 999
@@ -148,7 +148,7 @@ fn test_merge_by_replace_to() {
 	}
 }
 
-fn test_merge_by_replace() {
+fn test_merge() {
 	m1 := {
 		'abc': 'def'
 		'aa':  'bb'
@@ -157,7 +157,7 @@ fn test_merge_by_replace() {
 		'xyz': 'zyx'
 		'aa':  'dd'
 	}
-	res := merge_by_replace(m1, m2)
+	res := merge(m1, m2)
 	assert res == {
 		'abc': 'def'
 		'aa':  'dd'
@@ -180,7 +180,7 @@ fn test_merge_by_replace() {
 		55: 66
 		33: 999
 	}
-	ires := merge_by_replace(im1, im2)
+	ires := merge(im1, im2)
 	assert im1 == {
 		11: 22
 		33: 44
