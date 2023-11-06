@@ -1,6 +1,5 @@
 import os
 import v.vmod
-import term
 
 const (
 	v         = os.quoted_path(@VEXE)
