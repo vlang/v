@@ -13,6 +13,11 @@ const (
 
 	element_len                = '<!ELEMENT'.len
 	entity_len                 = '<!ENTITY'.len
+
+	doctype_chars              = 'OCTYPE'.bytes()
+	double_dash                = '--'.bytes()
+	c_tag                      = '[C'.bytes()
+	data_chars                 = 'DATA'.bytes()
 )
 
 // Helper types to assist in parsing
@@ -406,7 +411,7 @@ fn parse_prolog(mut reader io.Reader) !(Prolog, u8) {
 								if reader.read(mut doc_buf)! != 6 {
 									return error('Invalid DOCTYPE.')
 								}
-								if doc_buf.bytestr() != 'OCTYPE' {
+								if doc_buf != xml.doctype_chars {
 									return error('Invalid DOCTYPE.')
 								}
 								found_doctype = true
@@ -453,24 +458,23 @@ fn parse_children(name string, attributes map[string]string, mut reader io.Reade
 						if reader.read(mut next_two)! != 2 {
 							return error('Invalid XML. Incomplete comment or CDATA declaration.')
 						}
-						prefix := next_two.bytestr()
-						if prefix == '--' {
+						if next_two == xml.double_dash {
 							// Comment
 							comment := parse_comment(mut reader)!
 							children << comment
-						} else if prefix == '[C' {
+						} else if next_two == xml.c_tag {
 							// <![CDATA -> DATA
 							mut cdata_buf := []u8{len: 4}
 							if reader.read(mut cdata_buf)! != 4 {
 								return error('Invalid XML. Incomplete CDATA declaration.')
 							}
-							if cdata_buf.bytestr() != 'DATA' {
+							if cdata_buf != xml.data_chars {
 								return error('Invalid XML. Expected "CDATA" after "<![C".')
 							}
 							cdata := parse_cdata(mut reader)!
 							children << cdata
 						} else {
-							return error('Invalid XML. Unknown control sequence: ${prefix}')
+							return error('Invalid XML. Unknown control sequence: ${next_two.bytestr()}')
 						}
 					}
 					`/` {
@@ -479,7 +483,11 @@ fn parse_children(name string, attributes map[string]string, mut reader io.Reade
 						if reader.read(mut node_end_buffer)! != name.len + 1 {
 							return error('Invalid XML. Incomplete node end.')
 						}
-						if node_end_buffer.bytestr() != '${name}>' {
+
+						mut ending_chars := name.bytes()
+						ending_chars << `>`
+
+						if node_end_buffer != ending_chars {
 							return error('XML node <${name}> not closed.')
 						}
 
