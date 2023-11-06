@@ -1,0 +1,4 @@
+<sample>
+  <html>This is &lt;b&gt;bold&lt;/b&gt;</html>
+  <html><![CDATA[This is <b>bold</b>]]></html>
+</sample>

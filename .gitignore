@@ -130,4 +130,9 @@ vls.log
 wasm.v
 TAGS
 tags
+
+# ignore large GTK *.gir files
+Gtk-4.0.gir
+*.gir
+
 vlib/builtin/js/*.js
