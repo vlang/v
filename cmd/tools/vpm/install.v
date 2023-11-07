@@ -4,60 +4,6 @@ import os
 import v.vmod
 import v.help
 
-struct Module {
-mut:
-	// Can be populated via via VPM API.
-	name string
-	url  string
-	vcs  string
-	// Based on input / environment.
-	version      string
-	install_path string
-	external     bool
-}
-
-fn parse_query(query []string) []Module {
-	mut modules := []Module{}
-	mut errors := 0
-	for mod in query {
-		ident, version := mod.rsplit_once('@') or { mod, '' }
-		if ident.starts_with('https://') {
-			name := get_name_from_url(ident) or {
-				vpm_error(err.msg())
-				errors++
-				continue
-			}
-			name_normalized := name.replace('-', '_').to_lower()
-			modules << Module{
-				name: name
-				url: ident
-				version: version
-				install_path: os.real_path(os.join_path(settings.vmodules_path, name_normalized))
-				external: true
-			}
-		} else {
-			info := get_mod_vpm_info(ident) or {
-				vpm_error(err.msg())
-				errors++
-				continue
-			}
-			name_normalized := info.name.replace('-', '_').to_lower()
-			modules << Module{
-				name: info.name
-				url: info.url
-				vcs: info.vcs
-				version: version
-				install_path: os.real_path(os.join_path(settings.vmodules_path, name_normalized.replace('.',
-					os.path_separator)))
-			}
-		}
-	}
-	if errors > 0 && errors == query.len {
-		exit(1)
-	}
-	return modules
-}
-
 fn vpm_install(requested_modules []string) {
 	vpm_log(@FILE_LINE, @FN, 'requested_modules: ${requested_modules}')
 
@@ -145,16 +91,16 @@ fn vpm_install_from_vpm(modules []Module) {
 		vpm_log(@FILE_LINE, @FN, 'mod: ${mod}')
 		vcs := if mod.vcs != '' {
 			supported_vcs[mod.vcs] or {
-				errors++
 				vpm_error('skipping `${mod.name}`, since it uses an unsupported version control system `${mod.vcs}`.')
+				errors++
 				continue
 			}
 		} else {
 			supported_vcs['git']
 		}
 		vcs.is_executable() or {
-			errors++
 			vpm_error(err.msg())
+			errors++
 			continue
 		}
 		if os.exists(mod.install_path) {
@@ -163,21 +109,20 @@ fn vpm_install_from_vpm(modules []Module) {
 			continue
 		}
 		mod.install(vcs) or {
-			errors++
 			vpm_error(err.msg())
+			errors++
 			continue
 		}
 		increment_module_download_count(mod.name) or {
-			errors++
 			vpm_error('failed to increment the download count for `${mod.name}`', details: err.msg())
+			errors++
 		}
 		manifest := vmod.from_file(os.join_path(mod.install_path, 'v.mod')) or {
 			vpm_error(err.msg())
-			return
+			errors++
+			continue
 		}
-		deps := manifest.dependencies.filter(it !in idents)
-		vpm_log(@FILE_LINE, @FN, 'manifest: ${manifest}; deps: ${deps}')
-		install_dependencies(mod.name, deps)
+		install_dependencies(manifest.name, manifest.dependencies, idents)
 	}
 	if errors > 0 {
 		exit(1)
@@ -191,9 +136,10 @@ fn vpm_install_from_vcs(modules []Module, vcs &VCS) {
 	mut errors := 0
 	urls := modules.map(it.url)
 	for mod in modules {
+		vpm_log(@FILE_LINE, @FN, 'mod: ${mod}')
 		vcs.is_executable() or {
-			errors++
 			vpm_error(err.msg())
+			errors++
 			continue
 		}
 		if os.exists(mod.install_path) {
@@ -201,14 +147,16 @@ fn vpm_install_from_vcs(modules []Module, vcs &VCS) {
 			continue
 		}
 		mod.install(vcs) or {
-			errors++
 			vpm_error(err.msg())
+			errors++
 			continue
 		}
 		manifest := vmod.from_file(os.join_path(mod.install_path, 'v.mod')) or {
 			vpm_error(err.msg())
-			return
+			errors++
+			continue
 		}
+		vpm_log(@FILE_LINE, @FN, 'manifest: ${manifest}')
 		final_path := os.real_path(os.join_path(settings.vmodules_path, manifest.name))
 		if mod.install_path != final_path {
 			println('Relocating module from `${mod.name}` to `${manifest.name}` (`${final_path}`) ...')
@@ -226,8 +174,8 @@ fn vpm_install_from_vcs(modules []Module, vcs &VCS) {
 					os.rmdir_all(final_path) or { err_msg = err.msg() }
 				}
 				if err_msg != '' {
-					errors++
 					vpm_error('failed to remove `${final_path}`.', details: err_msg)
+					errors++
 					continue
 				}
 			}
@@ -236,8 +184,10 @@ fn vpm_install_from_vcs(modules []Module, vcs &VCS) {
 			if mod.install_path.count(os.path_separator) < final_path.count(os.path_separator)
 				&& !os.exists(final_path) {
 				os.mkdir_all(final_path) or {
+					vpm_error('failed to create directory for `${manifest.name}`.',
+						details: err.msg()
+					)
 					errors++
-					vpm_error('failed to create directory for `${manifest.name}` — ${err}')
 					continue
 				}
 			}
@@ -246,19 +196,15 @@ fn vpm_install_from_vcs(modules []Module, vcs &VCS) {
 				errors++
 				vpm_error('failed to relocate module `${mod.name}`.', details: err.msg())
 				os.rmdir_all(mod.install_path) or {
-					errors++
 					vpm_error('failed to remove `${mod.install_path}`.', details: err.msg())
+					errors++
 					continue
 				}
 				continue
 			}
 			verbose_println('Relocated `${mod.name}` to `${manifest.name}`.')
 		}
-		// Filter out modules that are both contained in the input query and listed as
-		// dependencies in the mod file of the module that is supposed to be installed.
-		deps := manifest.dependencies.filter(it !in urls)
-		vpm_log(@FILE_LINE, @FN, 'manifest: ${manifest}; deps: ${deps}')
-		install_dependencies(manifest.name, deps)
+		install_dependencies(manifest.name, manifest.dependencies, urls)
 	}
 	if errors > 0 {
 		exit(1)
@@ -281,8 +227,10 @@ fn (m Module) install(vcs &VCS) ! {
 	vpm_log(@FILE_LINE, @FN, 'cmd output: ${res.output}')
 }
 
-// TODO: check for merging possiblity with resolve_dependencies after progressing with `update` functions
-fn install_dependencies(name string, deps []string) {
+fn install_dependencies(name string, dependencies []string, modules []string) {
+	// Filter out modules that are both contained in the input query and listed as
+	// dependencies in the mod file of the module that is supposed to be installed.
+	deps := dependencies.filter(it !in modules)
 	if deps.len > 0 {
 		println('Resolving ${deps.len} dependencies for module `${name}` ...')
 		verbose_println('Found dependencies: ${deps}')
