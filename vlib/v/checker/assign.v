@@ -386,6 +386,10 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							c.error('duplicate of an import symbol `${left.name}`', left.pos)
 						}
 					}
+					if node.op == .assign && left_type.has_flag(.option) && right is ast.UnsafeExpr
+						&& right.expr.is_nil() {
+						c.error('cannot assign `nil` to option value', right.pos())
+					}
 				}
 			}
 			ast.PrefixExpr {
@@ -423,6 +427,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 								right.pos)
 						}
 					}
+				}
+				if left_type.has_flag(.option) && right is ast.UnsafeExpr && right.expr.is_nil() {
+					c.error('cannot assign `nil` to option value', right.pos())
 				}
 			}
 			else {
