@@ -65,6 +65,7 @@ pub mut:
 	fail_fast     bool
 	benchmark     benchmark.Benchmark
 	rm_binaries   bool = true
+	build_tools   bool // builds only executables in cmd/tools; used by `v build-tools'
 	silent_mode   bool
 	show_stats    bool
 	progress_mode bool
@@ -371,6 +372,9 @@ pub fn (mut ts TestSession) test() {
 				continue
 			}
 		}
+		if ts.build_tools && dot_relative_file.ends_with('_test.v') {
+			continue
+		}
 		remaining_files << dot_relative_file
 	}
 	remaining_files = vtest.filter_vtest_only(remaining_files, fix_slashes: false)
@@ -460,8 +464,13 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	// where an executable is not writable, if it is running).
 	// Note, that the common session temporary folder ts.vtmp_dir,
 	// will be removed after all tests are done.
-	test_folder_path := os.join_path(ts.vtmp_dir, rand.ulid())
-	os.mkdir_all(test_folder_path) or {}
+	mut test_folder_path := os.join_path(ts.vtmp_dir, rand.ulid())
+	if ts.build_tools {
+		// `v build-tools`, produce all executables in the same session folder, so that they can be copied later:
+		test_folder_path = ts.vtmp_dir
+	} else {
+		os.mkdir_all(test_folder_path) or {}
+	}
 	fname := os.file_name(file)
 	generated_binary_fname := if os.user_os() == 'windows' && !run_js {
 		fname.all_before_last('.v') + '.exe'
@@ -473,7 +482,6 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		if ts.rm_binaries {
 			os.rm(generated_binary_fpath) or {}
 		}
-
 		cmd_options << ' -o ${os.quoted_path(generated_binary_fpath)}'
 	}
 	cmd := '${os.quoted_path(ts.vexe)} ${cmd_options.join(' ')} ${os.quoted_path(file)}'

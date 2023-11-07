@@ -36,6 +36,7 @@ fn main() {
 	buildopts := args_string.all_before('build-tools')
 	mut session := testing.prepare_test_session(buildopts, folder, skips, main_label)
 	session.rm_binaries = false
+	session.build_tools = true
 	for stool in tools_in_subfolders {
 		session.add(os.join_path(tfolder, stool))
 	}
