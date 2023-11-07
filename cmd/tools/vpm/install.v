@@ -79,7 +79,7 @@ fn vpm_install(requested_modules []string) {
 		vpm_install_from_vpm(vpm_modules)
 	}
 	if external_modules.len > 0 {
-		vpm_install_from_vcs(external_modules, supported_vcs[settings.vcs])
+		vpm_install_from_vcs(external_modules)
 	}
 }
 
@@ -87,11 +87,11 @@ fn vpm_install_from_vpm(modules []Module) {
 	vpm_log(@FILE_LINE, @FN, 'modules: ${modules}')
 	mut errors := 0
 	idents := modules.map(it.name)
-	for mod in modules {
-		vpm_log(@FILE_LINE, @FN, 'mod: ${mod}')
-		vcs := if mod.vcs != '' {
-			supported_vcs[mod.vcs] or {
-				vpm_error('skipping `${mod.name}`, since it uses an unsupported version control system `${mod.vcs}`.')
+	for m in modules {
+		vpm_log(@FILE_LINE, @FN, 'module: ${m}')
+		vcs := if m.vcs != '' {
+			supported_vcs[m.vcs] or {
+				vpm_error('skipping `${m.name}`, since it uses an unsupported version control system `${m.vcs}`.')
 				errors++
 				continue
 			}
@@ -103,22 +103,23 @@ fn vpm_install_from_vpm(modules []Module) {
 			errors++
 			continue
 		}
-		if v := mod.installed_version {
-			if v == '' {
-				vpm_update([mod.name])
-			}
+		if !m.confirm_install() or {
+			vpm_error('failed to replace `${m.name}`.', details: err.msg())
+			errors++
+			continue
+		} {
 			continue
 		}
-		mod.install(vcs) or {
+		m.install(vcs) or {
 			vpm_error(err.msg())
 			errors++
 			continue
 		}
-		increment_module_download_count(mod.name) or {
-			vpm_error('failed to increment the download count for `${mod.name}`', details: err.msg())
+		increment_module_download_count(m.name) or {
+			vpm_error('failed to increment the download count for `${m.name}`', details: err.msg())
 			errors++
 		}
-		manifest := vmod.from_file(os.join_path(mod.install_path, 'v.mod')) or {
+		manifest := vmod.from_file(os.join_path(m.install_path, 'v.mod')) or {
 			vpm_error(err.msg())
 			errors++
 			continue
@@ -130,77 +131,41 @@ fn vpm_install_from_vpm(modules []Module) {
 	}
 }
 
-fn (m Module) remove() ! {
-	verbose_println('Removing `${m.name}` from `${m.install_path}`...')
-	$if windows {
-		os.execute_opt('rd /s /q ${m.install_path}')!
-	} $else {
-		os.rmdir_all(m.install_path)!
-	}
-}
-
-fn at_version(v string) string {
-	return if v != '' { '@${v}' } else { '' }
-}
-
-fn vpm_install_from_vcs(modules []Module, vcs &VCS) {
+fn vpm_install_from_vcs(modules []Module) {
 	vpm_log(@FILE_LINE, @FN, 'modules: ${modules}')
-	mut errors := 0
+	vcs := supported_vcs[settings.vcs]
+	vcs.is_executable() or {
+		vpm_error(err.msg())
+		exit(1)
+	}
 	urls := modules.map(it.url)
-	for mod in modules {
-		vpm_log(@FILE_LINE, @FN, 'mod: ${mod}')
-		vcs.is_executable() or {
+	mut errors := 0
+	for m in modules {
+		vpm_log(@FILE_LINE, @FN, 'module: ${m}')
+		if !m.confirm_install() or {
+			vpm_error('failed to replace `${m.name}`.', details: err.msg())
+			errors++
+			continue
+		} {
+			continue
+		}
+		m.install(vcs) or {
 			vpm_error(err.msg())
 			errors++
 			continue
 		}
-		if v := mod.installed_version {
-			if mod.version == '' && v == '' {
-				vpm_update([mod.name])
-				continue
-			}
-			if settings.is_force {
-				mod.remove() or {
-					vpm_error('failed to remove `${mod.name}`.', details: err.msg())
-					errors++
-					continue
-				}
-			} else {
-				println('Module `${mod.name}${at_version(v)}` already exists at `${mod.install_path}`.')
-				install_version := if mod.version == '' { 'latest' } else { mod.version }
-				input := os.input('Replace with `${mod.name}${at_version(install_version)}`? [Y/n]: ')
-				match input.to_lower() {
-					'', 'y' {
-						mod.remove() or {
-							vpm_error('failed to remove `${mod.name}`.', details: err.msg())
-							errors++
-							continue
-						}
-					}
-					else {
-						verbose_println('Skipping `${mod.name}`.')
-						continue
-					}
-				}
-			}
-		}
-		mod.install(vcs) or {
-			vpm_error(err.msg())
-			errors++
-			continue
-		}
-		manifest := vmod.from_file(os.join_path(mod.install_path, 'v.mod')) or {
+		manifest := vmod.from_file(os.join_path(m.install_path, 'v.mod')) or {
 			vpm_error(err.msg())
 			errors++
 			continue
 		}
 		vpm_log(@FILE_LINE, @FN, 'manifest: ${manifest}')
 		final_path := os.real_path(os.join_path(settings.vmodules_path, manifest.name))
-		if mod.install_path != final_path {
+		if m.install_path != final_path {
+			verbose_println('Relocating `${m.name} (${m.install_path})` to `${manifest.name} (${final_path})`...')
 			if os.exists(final_path) {
-				verbose_println('Relocating module from `${mod.name}` to `${manifest.name}` (`${final_path}`)...')
-				println('Target directory `${final_path}` for `${mod.name}` already exists.')
-				input := os.input('Replace with module directory? [Y/n]: ')
+				println('Target directory for `${m.name} (${final_path})` already exists.')
+				input := os.input('Replace it with the module directory? [Y/n]: ')
 				match input.to_lower() {
 					'', 'y' {
 						mut err_msg := ''
@@ -216,14 +181,14 @@ fn vpm_install_from_vcs(modules []Module, vcs &VCS) {
 						}
 					}
 					else {
-						verbose_println('Skipping `${mod.name}`.')
+						verbose_println('Skipping `${m.name}`.')
 						continue
 					}
 				}
 			}
 			// When the module should be relocated into a subdirectory we need to make sure
-			// it exists to not into permission errors.
-			if mod.install_path.count(os.path_separator) < final_path.count(os.path_separator)
+			// it exists to not run into permission errors.
+			if m.install_path.count(os.path_separator) < final_path.count(os.path_separator)
 				&& !os.exists(final_path) {
 				os.mkdir_all(final_path) or {
 					vpm_error('failed to create directory for `${manifest.name}`.',
@@ -233,23 +198,63 @@ fn vpm_install_from_vcs(modules []Module, vcs &VCS) {
 					continue
 				}
 			}
-			vpm_log(@FILE_LINE, @FN, 'mv `${mod.install_path}` to `${final_path}`')
-			os.mv(mod.install_path, final_path) or {
+			os.mv(m.install_path, final_path) or {
 				errors++
-				vpm_error('failed to relocate module `${mod.name}`.', details: err.msg())
-				os.rmdir_all(mod.install_path) or {
-					vpm_error('failed to remove `${mod.install_path}`.', details: err.msg())
+				vpm_error('failed to relocate module `${m.name}`.', details: err.msg())
+				os.rmdir_all(m.install_path) or {
+					vpm_error('failed to remove `${m.install_path}`.', details: err.msg())
 					errors++
 					continue
 				}
 				continue
 			}
-			verbose_println('Relocated `${mod.name}` to `${manifest.name}`.')
+			verbose_println('Relocated `${m.name}` to `${manifest.name}`.')
 		}
 		resolve_dependencies(manifest.name, manifest.dependencies, urls)
 	}
 	if errors > 0 {
 		exit(1)
+	}
+}
+
+fn (m Module) confirm_install() !bool {
+	// Case: define version, proceed if not installed.
+	v := m.installed_version or { return true }
+	// Case: installed, but not an explicit version.
+	if m.version == '' && v == '' {
+		vpm_update([m.name])
+		return false
+	}
+	// Case: installed, conflicting.
+	if settings.is_force {
+		m.remove()!
+		return true
+	} else if v == m.version {
+		println('Module `${m.name}${at_version(v)}` is already installed.')
+		return false
+	} else {
+		install_version := if m.version == '' { 'latest' } else { m.version }
+		println('Module `${m.name}${at_version(v)}` is already installed at `${m.install_path}`.')
+		input := os.input('Replace it with `${m.name}${at_version(install_version)}`? [Y/n]: ')
+		match input.to_lower() {
+			'', 'y' {
+				m.remove()!
+				return true
+			}
+			else {
+				verbose_println('Skipping `${m.name}`.')
+				return false
+			}
+		}
+	}
+}
+
+fn (m Module) remove() ! {
+	verbose_println('Removing `${m.name}` from `${m.install_path}`...')
+	$if windows {
+		os.execute_opt('rd /s /q ${m.install_path}')!
+	} $else {
+		os.rmdir_all(m.install_path)!
 	}
 }
 
@@ -267,4 +272,8 @@ fn (m Module) install(vcs &VCS) ! {
 		return error('failed to install module `${m.name}`.')
 	}
 	vpm_log(@FILE_LINE, @FN, 'cmd output: ${res.output}')
+}
+
+fn at_version(version string) string {
+	return if version != '' { '@${version}' } else { '' }
 }
