@@ -1992,6 +1992,7 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 		}
 		if i == args.len - 1 && arg.expr is ast.StructInit {
 			if arg.expr.typ == ast.void_type {
+				f.single_line_fields = true
 				f.use_short_fn_args = true
 			}
 		}
