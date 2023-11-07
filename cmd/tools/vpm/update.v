@@ -15,11 +15,11 @@ fn update_module(mut pp pool.PoolProcessor, idx int, wid int) &ModUpdateInfo {
 	mut result := &ModUpdateInfo{
 		name: pp.get_item[string](idx)
 	}
-	zname := url_to_module_name(result.name)
+	zname := get_name_from_url(result.name) or { result.name }
 	result.final_path = valid_final_path_of_existing_module(result.name) or { return result }
 	println('Updating module `${zname}` in `${result.final_path}` ...')
 	vcs := vcs_used_in_dir(result.final_path) or { return result }
-	ensure_vcs_is_installed(vcs) or {
+	vcs.is_executable() or {
 		result.has_err = true
 		vpm_error(err.msg())
 		return result
@@ -68,11 +68,11 @@ fn vpm_update(m []string) {
 fn vpm_update_verbose(module_names []string) {
 	mut errors := 0
 	for name in module_names {
-		zname := url_to_module_name(name)
+		zname := get_name_from_url(name) or { name }
 		final_module_path := valid_final_path_of_existing_module(name) or { continue }
 		println('Updating module `${zname}` in `${final_module_path}` ...')
 		vcs := vcs_used_in_dir(final_module_path) or { continue }
-		ensure_vcs_is_installed(vcs) or {
+		vcs.is_executable() or {
 			errors++
 			vpm_error(err.msg())
 			continue

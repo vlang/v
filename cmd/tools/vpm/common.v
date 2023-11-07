@@ -9,8 +9,8 @@ import net.urllib
 import term
 import log
 
-struct Mod {
-	id           int
+struct ModuleVpmInfo {
+	// id           int
 	name         string
 	url          string
 	nr_downloads int
@@ -22,14 +22,6 @@ pub struct ModDateInfo {
 mut:
 	outdated bool
 	exec_err bool
-}
-
-struct ModNameInfo {
-mut:
-	mname             string // The-user.The-mod , *never* The-user.The-mod.git
-	mname_normalised  string // the_user.the_mod
-	mname_as_path     string // the_user/the_mod
-	final_module_path string // ~/.vmodules/the_user/the_mod
 }
 
 [params]
@@ -68,19 +60,7 @@ fn get_mod_date_info(mut pp pool.PoolProcessor, idx int, wid int) &ModDateInfo {
 	return result
 }
 
-fn get_mod_name_info(mod_name string) ModNameInfo {
-	mut info := ModNameInfo{}
-	info.mname = if mod_name.ends_with('.git') { mod_name.replace('.git', '') } else { mod_name }
-	info.mname_normalised = info.mname.replace('-', '_').to_lower()
-	info.mname_as_path = info.mname_normalised.replace('.', os.path_separator)
-	info.final_module_path = os.real_path(os.join_path(settings.vmodules_path, info.mname_as_path))
-	return info
-}
-
-fn get_module_meta_info(name string) !Mod {
-	if mod := get_mod_by_url(name) {
-		return mod
-	}
+fn get_mod_vpm_info(name string) !ModuleVpmInfo {
 	if name.len < 2 || (!name[0].is_digit() && !name[0].is_letter()) {
 		return error('invalid module name `${name}`.')
 	}
@@ -107,7 +87,7 @@ fn get_module_meta_info(name string) !Mod {
 			errors << s.trim_space().limit(100) + ' ...'
 			continue
 		}
-		mod := json.decode(Mod, s) or {
+		mod := json.decode(ModuleVpmInfo, s) or {
 			errors << 'Skipping module `${name}`, since its information is not in json format.'
 			continue
 		}
@@ -115,22 +95,20 @@ fn get_module_meta_info(name string) !Mod {
 			errors << 'Skipping module `${name}`, since it is missing name or url information.'
 			continue
 		}
+		vpm_log(@FILE_LINE, @FN, 'name: ${name}; mod: ${mod}')
 		return mod
 	}
 	return error(errors.join_lines())
 }
 
-fn get_mod_by_url(name string) !Mod {
-	if purl := urllib.parse(name) {
-		verbose_println('purl: ${purl}')
-		mod := Mod{
-			name: purl.path.trim_left('/').trim_right('/').replace('/', '.')
-			url: name
-		}
-		verbose_println(mod.str())
-		return mod
+fn get_name_from_url(raw_url string) !string {
+	url := urllib.parse(raw_url) or { return error('failed to parse module URL `${raw_url}`.') }
+	owner, mut name := url.path.trim_left('/').rsplit_once('/') or {
+		return error('failed to retrieve module name for `${url}`.')
 	}
-	return error('invalid url: ${name}')
+	vpm_log(@FILE_LINE, @FN, 'raw_url: ${raw_url}; owner: ${owner}; name: ${name}')
+	name = if name.ends_with('.git') { name.replace('.git', '') } else { name }.to_lower()
+	return name
 }
 
 fn get_outdated() ![]string {
@@ -247,7 +225,7 @@ fn ensure_vmodules_dir_exist() {
 	}
 }
 
-fn ensure_vcs_is_installed(vcs &VCS) ! {
+fn (vcs &VCS) is_executable() ! {
 	os.find_abs_path_of_executable(vcs.cmd) or {
 		return error('VPM needs `${vcs.cmd}` to be installed.')
 	}
@@ -297,14 +275,6 @@ fn resolve_dependencies(name string, module_path string, module_names []string) 
 	}
 }
 
-fn url_to_module_name(modulename string) string {
-	mut res := if mod := get_mod_by_url(modulename) { mod.name } else { modulename }
-	if res.ends_with('.git') {
-		res = res.replace('.git', '')
-	}
-	return res
-}
-
 fn vcs_used_in_dir(dir string) ?VCS {
 	for vcs in supported_vcs.values() {
 		if os.is_dir(os.real_path(os.join_path(dir, vcs.dir))) {
@@ -314,22 +284,25 @@ fn vcs_used_in_dir(dir string) ?VCS {
 	return none
 }
 
-fn valid_final_path_of_existing_module(modulename string) ?string {
-	name := if mod := get_mod_by_url(modulename) { mod.name } else { modulename }
-	minfo := get_mod_name_info(name)
-	if !os.exists(minfo.final_module_path) {
-		vpm_error('failed to find a module with name `${minfo.mname_normalised}` at `${minfo.final_module_path}`')
+fn valid_final_path_of_existing_module(mod_name string) ?string {
+	mut name := get_name_from_url(mod_name) or { mod_name }
+	name_normalised := if name.ends_with('.git') { name.replace('.git', '') } else { name }.replace('-',
+		'_').to_lower()
+	path := os.real_path(os.join_path(settings.vmodules_path, name_normalised.replace('.',
+		os.path_separator)))
+	if !os.exists(path) {
+		vpm_error('failed to find a module with name `${name_normalised}` at `${path}`.')
 		return none
 	}
-	if !os.is_dir(minfo.final_module_path) {
-		vpm_error('skipping `${minfo.final_module_path}`, since it is not a directory.')
+	if !os.is_dir(path) {
+		vpm_error('skipping `${path}`, since it is not a directory.')
 		return none
 	}
-	vcs_used_in_dir(minfo.final_module_path) or {
-		vpm_error('skipping `${minfo.final_module_path}`, since it uses an unsupported version control system.')
+	vcs_used_in_dir(path) or {
+		vpm_error('skipping `${path}`, since it uses an unsupported version control system.')
 		return none
 	}
-	return minfo.final_module_path
+	return path
 }
 
 fn verbose_println(s string) {
