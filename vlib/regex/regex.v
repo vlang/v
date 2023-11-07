@@ -235,7 +235,7 @@ pub type FnValidator = fn (u8) bool
 
 struct Token {
 mut:
-	ist rune
+	ist u32
 	// char
 	ch     rune // char of the token if any
 	ch_len u8   // char len
@@ -553,7 +553,7 @@ fn (re RE) check_char_class(pc int, ch rune) bool {
 }
 
 // parse_char_class return (index, str_len, cc_type) of a char class [abcm-p], char class start after the [ char
-fn (mut re RE) parse_char_class(in_txt string, in_i int) (int, int, rune) {
+fn (mut re RE) parse_char_class(in_txt string, in_i int) (int, int, u32) {
 	mut status := CharClass_parse_state.start
 	mut i := in_i
 
@@ -1259,7 +1259,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 				if re.prog[pc2].ist == regex.ist_dot_char {
 					return regex.err_syntax_error, 0
 				}
-				if re.prog[pc2].ist !in [rune(regex.ist_prog_end), regex.ist_group_end,
+				if re.prog[pc2].ist !in [u32(regex.ist_prog_end), regex.ist_group_end,
 					regex.ist_group_start] {
 					// println("Next dot char check is PC: ${pc2}")
 					re.prog[pc1].dot_check_pc = pc2
@@ -1276,7 +1276,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 		pc1 = last_dot_char_pc + 1
 		mut is_last_dot := true
 		for pc1 < pc {
-			if re.prog[pc1].ist !in [rune(regex.ist_prog_end), regex.ist_group_end] {
+			if re.prog[pc1].ist !in [u32(regex.ist_prog_end), regex.ist_group_end] {
 				is_last_dot = false
 				break
 			}
@@ -1302,7 +1302,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 			bsls_char_count++
 			mut pc2 := pc1 + 1
 			for pc2 < pc {
-				if re.prog[pc2].ist !in [rune(regex.ist_prog_end), regex.ist_group_end,
+				if re.prog[pc2].ist !in [u32(regex.ist_prog_end), regex.ist_group_end,
 					regex.ist_group_start] {
 					// println("Next bsls check is PC: ${pc2}")
 					re.prog[pc1].bsls_check_pc = pc2
@@ -1319,7 +1319,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 		pc1 = last_bsls_char_pc + 1
 		mut is_last_bsls := true
 		for pc1 < pc {
-			if re.prog[pc1].ist !in [rune(regex.ist_prog_end), regex.ist_group_end] {
+			if re.prog[pc1].ist !in [u32(regex.ist_prog_end), regex.ist_group_end] {
 				is_last_bsls = false
 				break
 			}
@@ -1337,12 +1337,12 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 	mut cc_char_count := 0
 	mut last_cc_char_pc := -1
 	for pc1 < pc {
-		if re.prog[pc1].ist in [rune(regex.ist_char_class_pos), regex.ist_char_class_neg] {
+		if re.prog[pc1].ist in [u32(regex.ist_char_class_pos), regex.ist_char_class_neg] {
 			last_cc_char_pc = pc1
 			cc_char_count++
 			mut pc2 := pc1 + 1
 			for pc2 < pc {
-				if re.prog[pc2].ist !in [rune(regex.ist_prog_end), regex.ist_group_end,
+				if re.prog[pc2].ist !in [u32(regex.ist_prog_end), regex.ist_group_end,
 					regex.ist_group_start] {
 					// println("Next CC check is PC: ${pc2}")
 					re.prog[pc1].cc_check_pc = pc2
@@ -1359,7 +1359,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 		pc1 = last_cc_char_pc + 1
 		mut is_last_cc := true
 		for pc1 < pc {
-			if re.prog[pc1].ist !in [rune(regex.ist_prog_end), regex.ist_group_end] {
+			if re.prog[pc1].ist !in [u32(regex.ist_prog_end), regex.ist_group_end] {
 				is_last_cc = false
 				break
 			}
@@ -1727,8 +1727,8 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 	mut last_fnd_pc := -1
 
 	mut state := StateObj{} // actual state
-	mut ist := rune(0) // actual instruction
-	mut l_ist := rune(0) // last matched instruction
+	mut ist := u32(0) // actual instruction
+	mut l_ist := u32(0) // last matched instruction
 
 	mut step_count := 0 // stats for debug
 	mut dbg_line := 0 // count debug line printed
@@ -1904,7 +1904,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 			}
 
 			if l_ist in [
-				rune(regex.ist_char_class_neg),
+				u32(regex.ist_char_class_neg),
 				regex.ist_char_class_pos,
 				regex.ist_bsls_char,
 				regex.ist_dot_char,
@@ -2273,6 +2273,8 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 					continue
 				}
 
+				// println("HERE WE MUST STAY! ${state.i} >= ${in_txt_len}")
+
 				state.match_flag = false
 				mut cc_neg := false
 
@@ -2280,6 +2282,12 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 					cc_neg = true
 				}
 				mut cc_res := re.check_char_class(state.pc, ch)
+
+				// manage out of text on char class parse
+				if state.i >= (in_txt_len - 1) && cc_neg && re.prog[state.pc].last_dot_flag {
+					m_state = .ist_quant_n
+					continue
+				}
 
 				if cc_neg {
 					cc_res = !cc_res
@@ -2606,7 +2614,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 			}
 
 			rep := re.prog[state.pc].rep
-			// println(rep)
+			// println("ist_quant_p rep: ${rep} rep_min: ${re.prog[state.pc].rep_min}")
 
 			// under range
 			if rep > 0 && rep < re.prog[state.pc].rep_min {
