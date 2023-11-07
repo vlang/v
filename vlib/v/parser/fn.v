@@ -1198,8 +1198,12 @@ fn (mut p Parser) check_fn_mutable_arguments(typ ast.Type, pos token.Pos) {
 }
 
 fn (mut p Parser) check_fn_shared_arguments(typ ast.Type, pos token.Pos) {
-	sym := p.table.sym(typ)
+	mut sym := p.table.sym(typ)
+	if sym.kind == .generic_inst {
+		sym = p.table.type_symbols[(sym.info as ast.GenericInst).parent_idx]
+	}
 	if sym.kind !in [.array, .struct_, .map, .placeholder] && !typ.is_ptr() {
+		println(sym.info)
 		p.error_with_pos('shared arguments are only allowed for arrays, maps, and structs\n',
 			pos)
 	}
