@@ -52,7 +52,7 @@ fn main() {
 			new_project(os.args[2..])
 		}
 		'init' {
-			init_project()
+			init_project(os.args[2..])
 		}
 		else {
 			cerror('unknown command: ${cmd}')
@@ -65,25 +65,7 @@ fn main() {
 fn new_project(args []string) {
 	mut c := Create{}
 	c.new_dir = true
-
-	c.name = check_name(if args.len > 0 { args[0] } else { os.input('Input your project name: ') })
-
-	if c.name == '' {
-		cerror('project name cannot be empty')
-		exit(1)
-	}
-
-	if c.name.contains('-') {
-		cerror('"${c.name}" should not contain hyphens')
-		exit(1)
-	}
-
-	if os.is_dir(c.name) {
-		cerror('${c.name} folder already exists')
-		exit(3)
-	}
-
-	c.prompt()
+	c.prompt(args)
 
 	println('Initialising ...')
 	if args.len == 2 {
@@ -117,13 +99,13 @@ fn new_project(args []string) {
 	c.create_git_repo(c.name)
 }
 
-fn init_project() {
+fn init_project(args []string) {
 	mut c := Create{}
 	dir_name := check_name(os.file_name(os.getwd()))
 	if !os.exists('v.mod') {
 		mod_dir_has_hyphens := dir_name.contains('-')
 		c.name = if mod_dir_has_hyphens { dir_name.replace('-', '_') } else { dir_name }
-		c.prompt()
+		c.prompt(args)
 		c.write_vmod()
 		if mod_dir_has_hyphens {
 			println('The directory name `${dir_name}` is invalid as a module name. The module name in `v.mod` was set to `${c.name}`')
@@ -138,7 +120,22 @@ fn init_project() {
 	c.create_git_repo('.')
 }
 
-fn (mut c Create) prompt() {
+fn (mut c Create) prompt(args []string) {
+	if c.name == '' {
+		c.name = check_name(args[0] or { os.input('Input your project name: ') })
+		if c.name == '' {
+			cerror('project name cannot be empty')
+			exit(1)
+		}
+		if c.name.contains('-') {
+			cerror('"${c.name}" should not contain hyphens')
+			exit(1)
+		}
+		if os.is_dir(c.name) {
+			cerror('${c.name} folder already exists')
+			exit(3)
+		}
+	}
 	c.description = os.input('Input your project description: ')
 	default_version := '0.0.0'
 	c.version = os.input('Input your project version: (${default_version}) ')
