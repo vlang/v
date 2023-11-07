@@ -18,8 +18,9 @@ fn testsuite_end() {
 	os.rmdir_all(test_path) or {}
 }
 
+// path relative to `test_path`
 fn get_mod_name(path string) string {
-	mod := vmod.from_file(path) or {
+	mod := vmod.from_file(os.join_path(test_path, path, 'v.mod')) or {
 		eprintln(err)
 		return ''
 	}
@@ -51,20 +52,20 @@ fn test_install_dependencies_in_module_dir() {
 	// Run `v install`
 	res := os.execute_or_exit('${v} install')
 	assert res.output.contains('Detected v.mod file inside the project directory. Using it...'), res.output
-	assert res.output.contains('Installing module `markdown`'), res.output
-	assert res.output.contains('Installing module `pcre`'), res.output
-	assert res.output.contains('Installing module `vtray`'), res.output
-	assert get_mod_name(os.join_path(test_path, 'markdown', 'v.mod')) == 'markdown'
-	assert get_mod_name(os.join_path(test_path, 'pcre', 'v.mod')) == 'pcre'
-	assert get_mod_name(os.join_path(test_path, 'vtray', 'v.mod')) == 'vtray'
+	assert res.output.contains('Installing `markdown`'), res.output
+	assert res.output.contains('Installing `pcre`'), res.output
+	assert res.output.contains('Installing `vtray`'), res.output
+	assert get_mod_name('markdown') == 'markdown'
+	assert get_mod_name('pcre') == 'pcre'
+	assert get_mod_name('vtray') == 'vtray'
 }
 
 fn test_resolve_external_dependencies_during_module_install() {
 	res := os.execute_or_exit('${v} install https://github.com/ttytm/emoji-mart-desktop')
 	assert res.output.contains('Resolving 2 dependencies'), res.output
-	assert res.output.contains('Installing module `webview`'), res.output
-	assert res.output.contains('Installing module `miniaudio`'), res.output
+	assert res.output.contains('Installing `webview`'), res.output
+	assert res.output.contains('Installing `miniaudio`'), res.output
 	// The external dependencies should have been installed to `<vmodules_dir>/<dependency_name>`
-	assert get_mod_name(os.join_path(test_path, 'webview', 'v.mod')) == 'webview'
-	assert get_mod_name(os.join_path(test_path, 'miniaudio', 'v.mod')) == 'miniaudio'
+	assert get_mod_name('webview') == 'webview'
+	assert get_mod_name('miniaudio') == 'miniaudio'
 }

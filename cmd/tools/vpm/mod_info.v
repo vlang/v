@@ -8,14 +8,15 @@ import net.urllib
 
 struct Module {
 mut:
-	// Can be populated via VPM API.
+	// Fields that can be populated via VPM API.
 	name string
 	url  string
 	vcs  string
-	// Based on input / environment.
-	version      string
-	install_path string
-	external     bool
+	// Fields based on input / environment.
+	version           string // specifies the requested version.
+	install_path      string
+	is_external       bool
+	installed_version ?string
 }
 
 struct ModuleVpmInfo {
@@ -36,21 +37,18 @@ mut:
 fn parse_query(query []string) []Module {
 	mut modules := []Module{}
 	mut errors := 0
-	for mod in query {
-		ident, version := mod.rsplit_once('@') or { mod, '' }
-		if ident.starts_with('https://') {
+	for m in query {
+		ident, version := m.rsplit_once('@') or { m, '' }
+		mut mod := if ident.starts_with('https://') {
 			name := get_name_from_url(ident) or {
 				vpm_error(err.msg())
 				errors++
 				continue
 			}
-			name_normalized := name.replace('-', '_').to_lower()
-			modules << Module{
+			Module{
 				name: name
 				url: ident
-				version: version
-				install_path: os.real_path(os.join_path(settings.vmodules_path, name_normalized))
-				external: true
+				install_path: os.real_path(os.join_path(settings.vmodules_path, name))
 			}
 		} else {
 			info := get_mod_vpm_info(ident) or {
@@ -59,15 +57,19 @@ fn parse_query(query []string) []Module {
 				continue
 			}
 			name_normalized := info.name.replace('-', '_').to_lower()
-			modules << Module{
+			name_as_path := name_normalized.replace('.', os.path_separator)
+			Module{
 				name: info.name
 				url: info.url
 				vcs: info.vcs
-				version: version
-				install_path: os.real_path(os.join_path(settings.vmodules_path, name_normalized.replace('.',
-					os.path_separator)))
+				install_path: os.real_path(os.join_path(settings.vmodules_path, name_as_path))
 			}
 		}
+		mod.version = version
+		if v := os.execute_opt('git ls-remote --tags ${mod.install_path}') {
+			mod.installed_version = v.output.all_after_last('/').trim_space()
+		}
+		modules << mod
 	}
 	if errors > 0 && errors == query.len {
 		exit(1)
@@ -152,8 +154,8 @@ fn get_name_from_url(raw_url string) !string {
 		return error('failed to retrieve module name for `${url}`.')
 	}
 	vpm_log(@FILE_LINE, @FN, 'raw_url: ${raw_url}; owner: ${owner}; name: ${name}')
-	name = if name.ends_with('.git') { name.replace('.git', '') } else { name }.to_lower()
-	return name
+	name = if name.ends_with('.git') { name.replace('.git', '') } else { name }
+	return name.replace('-', '_').to_lower()
 }
 
 fn get_outdated() ![]string {

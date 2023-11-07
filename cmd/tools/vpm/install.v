@@ -32,8 +32,8 @@ fn vpm_install(requested_modules []string) {
 		requested_modules.clone()
 	})
 
-	mut vpm_modules := modules.filter(!it.external)
-	mut external_modules := modules.filter(it.external)
+	mut vpm_modules := modules.filter(!it.is_external)
+	mut external_modules := modules.filter(it.is_external)
 	installed_modules := get_installed_modules()
 
 	vpm_log(@FILE_LINE, @FN, 'VPM modules: ${vpm_modules}')
@@ -103,9 +103,10 @@ fn vpm_install_from_vpm(modules []Module) {
 			errors++
 			continue
 		}
-		if os.exists(mod.install_path) {
-			vpm_log(@FILE_LINE, @FN, 'exists: ${mod.install_path}')
-			vpm_update([mod.name])
+		if v := mod.installed_version {
+			if v == '' {
+				vpm_update([mod.name])
+			}
 			continue
 		}
 		mod.install(vcs) or {
@@ -129,8 +130,20 @@ fn vpm_install_from_vpm(modules []Module) {
 	}
 }
 
-// TODO: if requested version differs and the current install is a version install,
-// overwrite with -force or prompt + print(updating `module` to version `version`).
+fn (m Module) remove() ! {
+	verbose_println('Removing `${m.name}` from `${m.install_path}`...')
+	$if windows {
+		os.execute_opt('rd /s /q ${m.install_path}')!
+	} $else {
+		os.rmdir_all(m.install_path)!
+	}
+}
+
+fn at_version(v string) string {
+	return if v != '' { '@${v}' } else { '' }
+}
+
+// TODO: force flag
 fn vpm_install_from_vcs(modules []Module, vcs &VCS) {
 	vpm_log(@FILE_LINE, @FN, 'modules: ${modules}')
 	mut errors := 0
@@ -142,9 +155,27 @@ fn vpm_install_from_vcs(modules []Module, vcs &VCS) {
 			errors++
 			continue
 		}
-		if os.exists(mod.install_path) {
-			vpm_update([mod.name])
-			continue
+		if v := mod.installed_version {
+			if mod.version == '' && v == '' {
+				vpm_update([mod.name])
+				continue
+			}
+			install_version := if mod.version == '' { 'latest' } else { mod.version }
+			println('Module `${mod.name}${at_version(v)}` already exists at `${mod.install_path}`.')
+			input := os.input('Replace with `${mod.name}${at_version(install_version)}`? [Y/n]: ')
+			match input.to_lower() {
+				'', 'y' {
+					mod.remove() or {
+						vpm_error('failed to remove `${mod.name}`.', details: err.msg())
+						errors++
+						continue
+					}
+				}
+				else {
+					verbose_println('Skipping `${mod.name}`.')
+					continue
+				}
+			}
 		}
 		mod.install(vcs) or {
 			vpm_error(err.msg())
@@ -159,24 +190,28 @@ fn vpm_install_from_vcs(modules []Module, vcs &VCS) {
 		vpm_log(@FILE_LINE, @FN, 'manifest: ${manifest}')
 		final_path := os.real_path(os.join_path(settings.vmodules_path, manifest.name))
 		if mod.install_path != final_path {
-			println('Relocating module from `${mod.name}` to `${manifest.name}` (`${final_path}`) ...')
 			if os.exists(final_path) {
-				// TODO: detect updatability
-				// TODO: either require force flag or prompt for replace if a different module with the same name is already installed.
-				// TODO: check for local changes, don't overwrite by default
-				// vpm_update([manifest.name])
-				println('Warning module `${final_path}` already exists!')
-				println('Removing module `${final_path}` ...')
-				mut err_msg := ''
-				$if windows {
-					os.execute_opt('rd /s /q ${final_path}') or { err_msg = err.msg() }
-				} $else {
-					os.rmdir_all(final_path) or { err_msg = err.msg() }
-				}
-				if err_msg != '' {
-					vpm_error('failed to remove `${final_path}`.', details: err_msg)
-					errors++
-					continue
+				verbose_println('Relocating module from `${mod.name}` to `${manifest.name}` (`${final_path}`)...')
+				println('Target directory `${final_path}` for `${mod.name}` already exists.')
+				input := os.input('Replace with module directory? [Y/n]: ')
+				match input.to_lower() {
+					'', 'y' {
+						mut err_msg := ''
+						$if windows {
+							os.execute_opt('rd /s /q ${final_path}') or { err_msg = err.msg() }
+						} $else {
+							os.rmdir_all(final_path) or { err_msg = err.msg() }
+						}
+						if err_msg != '' {
+							vpm_error('failed to remove `${final_path}`.', details: err_msg)
+							errors++
+							continue
+						}
+					}
+					else {
+						verbose_println('Skipping `${mod.name}`.')
+						continue
+					}
 				}
 			}
 			// When the module should be relocated into a subdirectory we need to make sure
@@ -219,7 +254,7 @@ fn (m Module) install(vcs &VCS) ! {
 	}
 	cmd := '${vcs.cmd} ${install_arg} "${m.url}" "${m.install_path}"'
 	vpm_log(@FILE_LINE, @FN, 'command: ${cmd}')
-	println('Installing module `${m.name}` from `${m.url}` to `${m.install_path}` ...')
+	println('Installing `${m.name}` from `${m.url}` to `${m.install_path}`...')
 	res := os.execute_opt(cmd) or {
 		vpm_log(@FILE_LINE, @FN, 'cmd output: ${err}')
 		return error('failed to install module `${m.name}`.')
