@@ -175,7 +175,7 @@ pub fn (mut p Process) stdout_read() string {
 	return res
 }
 
-// stdout_read reads a block of data, from the stderr pipe of the child process. It will block, if there is no data to be read.
+// stderr_read reads a block of data, from the stderr pipe of the child process. It will block, if there is no data to be read.
 // Call .is_pending() to check if there is data to be read, if you do not want to block.
 pub fn (mut p Process) stderr_read() string {
 	p._check_redirection_call(@METHOD)
