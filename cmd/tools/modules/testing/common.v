@@ -10,6 +10,7 @@ import sync.pool
 import v.pref
 import v.util.vtest
 import runtime
+import rand
 
 pub const github_job = os.getenv('GITHUB_JOB')
 
@@ -72,7 +73,7 @@ pub mut:
 	nmessage_idx  int // currently printed message index
 	failed_cmds   shared []string
 	reporter      Reporter = Reporter(NormalReporter{})
-	hash          string // used during testing in temporary directory and file names to prevent collisions when files and directories are created in a test file.
+	hash          string // used as part of the name of the temporary directory created for tests, to ease cleanup
 }
 
 pub fn (mut ts TestSession) add_failed_cmd(cmd string) {
@@ -396,13 +397,13 @@ pub fn (mut ts TestSession) test() {
 	ts.reporter.worker_threads_finish(mut ts)
 	ts.reporter.divider()
 	ts.show_list_of_failed_tests()
-	// cleanup generated .tmp.c files after successful tests:
+
+	// cleanup the session folder, if everything was ok:
 	if ts.benchmark.nfail == 0 {
 		if ts.rm_binaries {
 			os.rmdir_all(ts.vtmp_dir) or {}
 		}
 	}
-	// remove empty session folders:
 	if os.ls(ts.vtmp_dir) or { [] }.len == 0 {
 		os.rmdir_all(ts.vtmp_dir) or {}
 	}
@@ -451,15 +452,23 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		flow_id: thread_id.str()
 	}
 	normalised_relative_file := relative_file.replace('\\', '/')
-	// Ensure that the generated binaries will be stored in the temporary folder.
-	// Remove them after a test passes/fails.
+	// Ensure that the generated binaries will be stored in an *unique*, fresh, and per test folder,
+	// inside the common session temporary folder, used for all the tests.
+	// This is done to provide a clean working environment, for each test, that will not contain
+	// files from other tests, and will make sure that tests with the same name, can be compiled
+	// inside their own folders, without name conflicts (and without locking issues on windows,
+	// where an executable is not writable, if it is running).
+	// Note, that the common session temporary folder ts.vtmp_dir,
+	// will be removed after all tests are done.
+	test_folder_path := os.join_path(ts.vtmp_dir, rand.ulid())
+	os.mkdir_all(test_folder_path) or {}
 	fname := os.file_name(file)
 	generated_binary_fname := if os.user_os() == 'windows' && !run_js {
-		'${fname.all_before_last('.v')}_${ts.hash}.exe'
+		fname.all_before_last('.v') + '.exe'
 	} else {
-		'${fname.all_before_last('.v')}_${ts.hash}'
+		fname.all_before_last('.v')
 	}
-	generated_binary_fpath := os.join_path_single(ts.vtmp_dir, generated_binary_fname)
+	generated_binary_fpath := os.join_path_single(test_folder_path, generated_binary_fname)
 	if produces_file_output {
 		if ts.rm_binaries {
 			os.rm(generated_binary_fpath) or {}
@@ -603,7 +612,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 	}
 	if produces_file_output && ts.rm_binaries {
-		os.rm(generated_binary_fpath) or {}
+		os.rmdir_all(test_folder_path) or {}
 	}
 	return pool.no_result
 }
