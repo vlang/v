@@ -122,7 +122,7 @@ fn vpm_install_from_vpm(modules []Module) {
 			errors++
 			continue
 		}
-		install_dependencies(manifest.name, manifest.dependencies, idents)
+		resolve_dependencies(manifest.name, manifest.dependencies, idents)
 	}
 	if errors > 0 {
 		exit(1)
@@ -204,7 +204,7 @@ fn vpm_install_from_vcs(modules []Module, vcs &VCS) {
 			}
 			verbose_println('Relocated `${mod.name}` to `${manifest.name}`.')
 		}
-		install_dependencies(manifest.name, manifest.dependencies, urls)
+		resolve_dependencies(manifest.name, manifest.dependencies, urls)
 	}
 	if errors > 0 {
 		exit(1)
@@ -225,15 +225,4 @@ fn (m Module) install(vcs &VCS) ! {
 		return error('failed to install module `${m.name}`.')
 	}
 	vpm_log(@FILE_LINE, @FN, 'cmd output: ${res.output}')
-}
-
-fn install_dependencies(name string, dependencies []string, modules []string) {
-	// Filter out modules that are both contained in the input query and listed as
-	// dependencies in the mod file of the module that is supposed to be installed.
-	deps := dependencies.filter(it !in modules)
-	if deps.len > 0 {
-		println('Resolving ${deps.len} dependencies for module `${name}` ...')
-		verbose_println('Found dependencies: ${deps}')
-		vpm_install(deps)
-	}
 }

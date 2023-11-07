@@ -280,3 +280,14 @@ fn increment_module_download_count(name string) ! {
 	}
 	return error(errors.join_lines())
 }
+
+fn resolve_dependencies(name string, dependencies []string, modules []string) {
+	// Filter out modules that are both contained in the input query and listed as
+	// dependencies in the mod file of the module that is supposed to be installed.
+	deps := dependencies.filter(it !in modules)
+	if deps.len > 0 {
+		println('Resolving ${deps.len} dependencies for module `${name}` ...')
+		verbose_println('Found dependencies: ${deps}')
+		vpm_install(deps)
+	}
+}

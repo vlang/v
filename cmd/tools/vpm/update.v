@@ -102,7 +102,14 @@ fn vpm_update_verbose(modules []string) {
 				verbose: true
 			)
 		}
-		resolve_dependencies(mod, install_path, modules)
+		manifest := vmod.from_file(os.join_path(install_path, 'v.mod')) or {
+			errors++
+			vpm_error(err.msg(),
+				verbose: true
+			)
+			continue
+		}
+		resolve_dependencies(manifest.name, manifest.dependencies, modules)
 	}
 	if errors > 0 {
 		exit(1)
