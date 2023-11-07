@@ -177,8 +177,9 @@ fn check_name(name string) string {
 	return name
 }
 
-fn vmod_content(c Create) string {
-	return "Module {
+fn (c &Create) write_vmod() {
+	path := if c.new_dir { '${c.name}/v.mod' } else { 'v.mod' }
+	content := "Module {
 	name: '${c.name}'
 	description: '${c.description}'
 	version: '${c.version}'
@@ -186,12 +187,58 @@ fn vmod_content(c Create) string {
 	dependencies: []
 }
 "
+	os.write_file(path, content) or { panic(err) }
 }
 
-fn gen_gitignore(name string) string {
-	return '# Binaries for programs and plugins
+fn (c &Create) write_gitattributes() {
+	path := if c.new_dir { '${c.name}/.gitattributes' } else { '.gitattributes' }
+	if !c.new_dir && os.exists(path) {
+		return
+	}
+	content := '* text=auto eol=lf
+*.bat eol=crlf
+
+**/*.v linguist-language=V
+**/*.vv linguist-language=V
+**/*.vsh linguist-language=V
+**/v.mod linguist-language=V
+'
+	os.write_file(path, content) or { panic(err) }
+}
+
+fn (c &Create) write_editorconfig() {
+	path := if c.new_dir { '${c.name}/.editorconfig' } else { '.editorconfig' }
+	if !c.new_dir && os.exists(path) {
+		return
+	}
+	content := '[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.v]
+indent_style = tab
+'
+	os.write_file(path, content) or { panic(err) }
+}
+
+fn (c &Create) create_git_repo(dir string) {
+	// Create Git Repo and .gitignore file
+	if !os.is_dir('${dir}/.git') {
+		res := os.execute('git init ${dir}')
+		if res.exit_code != 0 {
+			cerror('Unable to create git repo')
+			exit(4)
+		}
+	}
+	ignore_path := '${dir}/.gitignore'
+	if os.exists(ignore_path) {
+		return
+	}
+	ignore_content := '# Binaries for programs and plugins
 main
-${name}
+${c.name}
 *.exe
 *.exe~
 *.so
@@ -214,65 +261,7 @@ bin/
 *.db
 *.js
 '
-}
-
-fn gitattributes_content() string {
-	return '* text=auto eol=lf
-*.bat eol=crlf
-
-**/*.v linguist-language=V
-**/*.vv linguist-language=V
-**/*.vsh linguist-language=V
-**/v.mod linguist-language=V
-'
-}
-
-fn editorconfig_content() string {
-	return '[*]
-charset = utf-8
-end_of_line = lf
-insert_final_newline = true
-trim_trailing_whitespace = true
-
-[*.v]
-indent_style = tab
-'
-}
-
-fn (c &Create) write_vmod() {
-	vmod_path := if c.new_dir { '${c.name}/v.mod' } else { 'v.mod' }
-	os.write_file(vmod_path, vmod_content(c)) or { panic(err) }
-}
-
-fn (c &Create) write_gitattributes() {
-	gitattributes_path := if c.new_dir { '${c.name}/.gitattributes' } else { '.gitattributes' }
-	if !c.new_dir && os.exists(gitattributes_path) {
-		return
-	}
-	os.write_file(gitattributes_path, gitattributes_content()) or { panic(err) }
-}
-
-fn (c &Create) write_editorconfig() {
-	editorconfig_path := if c.new_dir { '${c.name}/.editorconfig' } else { '.editorconfig' }
-	if !c.new_dir && os.exists(editorconfig_path) {
-		return
-	}
-	os.write_file(editorconfig_path, editorconfig_content()) or { panic(err) }
-}
-
-fn (c &Create) create_git_repo(dir string) {
-	// Create Git Repo and .gitignore file
-	if !os.is_dir('${dir}/.git') {
-		res := os.execute('git init ${dir}')
-		if res.exit_code != 0 {
-			cerror('Unable to create git repo')
-			exit(4)
-		}
-	}
-	gitignore_path := '${dir}/.gitignore'
-	if !os.exists(gitignore_path) {
-		os.write_file(gitignore_path, gen_gitignore(c.name)) or {}
-	}
+	os.write_file(ignore_path, ignore_content) or {}
 }
 
 fn (mut c Create) create_files_and_directories() {
