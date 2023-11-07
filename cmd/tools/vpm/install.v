@@ -143,7 +143,6 @@ fn at_version(v string) string {
 	return if v != '' { '@${v}' } else { '' }
 }
 
-// TODO: force flag
 fn vpm_install_from_vcs(modules []Module, vcs &VCS) {
 	vpm_log(@FILE_LINE, @FN, 'modules: ${modules}')
 	mut errors := 0
@@ -160,20 +159,28 @@ fn vpm_install_from_vcs(modules []Module, vcs &VCS) {
 				vpm_update([mod.name])
 				continue
 			}
-			install_version := if mod.version == '' { 'latest' } else { mod.version }
-			println('Module `${mod.name}${at_version(v)}` already exists at `${mod.install_path}`.')
-			input := os.input('Replace with `${mod.name}${at_version(install_version)}`? [Y/n]: ')
-			match input.to_lower() {
-				'', 'y' {
-					mod.remove() or {
-						vpm_error('failed to remove `${mod.name}`.', details: err.msg())
-						errors++
+			if settings.is_force {
+				mod.remove() or {
+					vpm_error('failed to remove `${mod.name}`.', details: err.msg())
+					errors++
+					continue
+				}
+			} else {
+				println('Module `${mod.name}${at_version(v)}` already exists at `${mod.install_path}`.')
+				install_version := if mod.version == '' { 'latest' } else { mod.version }
+				input := os.input('Replace with `${mod.name}${at_version(install_version)}`? [Y/n]: ')
+				match input.to_lower() {
+					'', 'y' {
+						mod.remove() or {
+							vpm_error('failed to remove `${mod.name}`.', details: err.msg())
+							errors++
+							continue
+						}
+					}
+					else {
+						verbose_println('Skipping `${mod.name}`.')
 						continue
 					}
-				}
-				else {
-					verbose_println('Skipping `${mod.name}`.')
-					continue
 				}
 			}
 		}
