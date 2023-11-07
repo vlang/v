@@ -23,6 +23,7 @@ mut:
 	version     string
 	license     string
 	files       []ProjectFiles
+	new_dir     bool
 }
 
 struct ProjectFiles {
@@ -63,6 +64,7 @@ fn main() {
 
 fn new_project(args []string) {
 	mut c := Create{}
+	c.new_dir = true
 
 	c.name = check_name(if args.len > 0 { args[0] } else { os.input('Input your project name: ') })
 
@@ -88,7 +90,7 @@ fn new_project(args []string) {
 		// E.g.: `v new my_project lib`
 		match os.args.last() {
 			'bin' {
-				c.set_bin_project_files(true)
+				c.set_bin_project_files()
 			}
 			'lib' {
 				c.set_lib_project_files()
@@ -103,15 +105,15 @@ fn new_project(args []string) {
 		}
 	} else {
 		// E.g.: `v new my_project`
-		c.set_bin_project_files(true)
+		c.set_bin_project_files()
 	}
 
 	// gen project based in the `Create.files` info
 	c.create_files_and_directories()
 
-	c.write_vmod(true)
-	c.write_gitattributes(true)
-	c.write_editorconfig(true)
+	c.write_vmod()
+	c.write_gitattributes()
+	c.write_editorconfig()
 	c.create_git_repo(c.name)
 }
 
@@ -122,17 +124,17 @@ fn init_project() {
 		mod_dir_has_hyphens := dir_name.contains('-')
 		c.name = if mod_dir_has_hyphens { dir_name.replace('-', '_') } else { dir_name }
 		c.prompt()
-		c.write_vmod(false)
+		c.write_vmod()
 		if mod_dir_has_hyphens {
 			println('The directory name `${dir_name}` is invalid as a module name. The module name in `v.mod` was set to `${c.name}`')
 		}
 	}
 	if !os.exists('src/main.v') {
-		c.set_bin_project_files(false)
+		c.set_bin_project_files()
 	}
 	c.create_files_and_directories()
-	c.write_gitattributes(false)
-	c.write_editorconfig(false)
+	c.write_gitattributes()
+	c.write_editorconfig()
 	c.create_git_repo('.')
 }
 
@@ -237,22 +239,22 @@ indent_style = tab
 '
 }
 
-fn (c &Create) write_vmod(new bool) {
-	vmod_path := if new { '${c.name}/v.mod' } else { 'v.mod' }
+fn (c &Create) write_vmod() {
+	vmod_path := if c.new_dir { '${c.name}/v.mod' } else { 'v.mod' }
 	os.write_file(vmod_path, vmod_content(c)) or { panic(err) }
 }
 
-fn (c &Create) write_gitattributes(new bool) {
-	gitattributes_path := if new { '${c.name}/.gitattributes' } else { '.gitattributes' }
-	if !new && os.exists(gitattributes_path) {
+fn (c &Create) write_gitattributes() {
+	gitattributes_path := if c.new_dir { '${c.name}/.gitattributes' } else { '.gitattributes' }
+	if !c.new_dir && os.exists(gitattributes_path) {
 		return
 	}
 	os.write_file(gitattributes_path, gitattributes_content()) or { panic(err) }
 }
 
-fn (c &Create) write_editorconfig(new bool) {
-	editorconfig_path := if new { '${c.name}/.editorconfig' } else { '.editorconfig' }
-	if !new && os.exists(editorconfig_path) {
+fn (c &Create) write_editorconfig() {
+	editorconfig_path := if c.new_dir { '${c.name}/.editorconfig' } else { '.editorconfig' }
+	if !c.new_dir && os.exists(editorconfig_path) {
 		return
 	}
 	os.write_file(editorconfig_path, editorconfig_content()) or { panic(err) }
