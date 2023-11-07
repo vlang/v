@@ -326,7 +326,7 @@ fn valid_final_path_of_existing_module(modulename string) ?string {
 		return none
 	}
 	vcs_used_in_dir(minfo.final_module_path) or {
-		vpm_error('skipping `${minfo.final_module_path}`, since it specifics an unsupported version control system.')
+		vpm_error('skipping `${minfo.final_module_path}`, since it uses an unsupported version control system.')
 		return none
 	}
 	return minfo.final_module_path

@@ -106,7 +106,7 @@ fn vpm_install_from_vpm(module_names []string) {
 		vcs := if mod.vcs != '' {
 			supported_vcs[mod.vcs] or {
 				errors++
-				vpm_error('skipping `${name}`, since it specifics an unsupported version control system `${mod.vcs}`.')
+				vpm_error('skipping `${name}`, since it uses an unsupported version control system `${mod.vcs}`.')
 				continue
 			}
 		} else {
