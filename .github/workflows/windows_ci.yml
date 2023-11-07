@@ -20,7 +20,7 @@ jobs:
       - name: Test new v.c
         run: |
           .\v.exe -o v.c cmd/v
-          gcc -Werror -municode -w v.c
+          gcc -Werror -municode -w v.c -lws2_32
       - name: Install dependencies
         run: |
           .\v.exe setup-freetype
