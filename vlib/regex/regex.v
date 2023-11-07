@@ -2284,7 +2284,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 				mut cc_res := re.check_char_class(state.pc, ch)
 
 				// manage out of text on char class parse
-				if state.i >= (in_txt_len - 1) && cc_neg && re.prog[state.pc].last_dot_flag {	
+				if state.i >= (in_txt_len - 1) && cc_neg && re.prog[state.pc].last_dot_flag {
 					m_state = .ist_quant_n
 					continue
 				}
@@ -2607,25 +2607,24 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 		}
 		// ist_quant_p => quantifier positive test on token
 		else if m_state == .ist_quant_p {
-			//println("Here .ist_quant_p")
+			// println("Here .ist_quant_p")
 			// exit on first match
 			if (re.flag & regex.f_efm) != 0 {
 				return state.i, state.i + 1
 			}
 
 			rep := re.prog[state.pc].rep
-			//println("ist_quant_p rep: ${rep} rep_min: ${re.prog[state.pc].rep_min}")
+			// println("ist_quant_p rep: ${rep} rep_min: ${re.prog[state.pc].rep_min}")
 
 			// under range
 			if rep > 0 && rep < re.prog[state.pc].rep_min {
-				//println("ist_quant_p UNDER RANGE")
+				// println("ist_quant_p UNDER RANGE")
 				m_state = .ist_load // continue the loop
 				continue
 			}
-
 			// range ok, continue loop
 			else if rep >= re.prog[state.pc].rep_min && rep < re.prog[state.pc].rep_max {
-				//println("ist_quant_p IN RANGE")
+				// println("ist_quant_p IN RANGE")
 
 				// check greedy flag, if true exit on minimum
 				if re.prog[state.pc].greedy == true {
@@ -2637,7 +2636,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 			}
 			// max reached
 			else if rep == re.prog[state.pc].rep_max {
-				//println("ist_quant_p MAX RANGE")
+				// println("ist_quant_p MAX RANGE")
 				m_state = .ist_next
 				continue
 			}
