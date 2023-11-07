@@ -68,3 +68,25 @@ pub fn from_array[T](array []T) map[int]T {
 
 	return mp
 }
+
+// merge_in_place merges all elements of `m2` into the mutable map `m1`.
+// If a key exists in both maps, the value from `m1` will be overwritten by the
+// value from `m2`.
+// Note that this function modifes `m1`, while `m2` will not be.
+pub fn merge_in_place[K, V](mut m1 map[K]V, m2 map[K]V) {
+	for k, v in m2 {
+		m1[k] = v
+	}
+}
+
+// merge produces a map, that is the result of merging the first map `m1`,
+// with the second map `m2`. If a key exists in both maps, the value from m2,
+// will override the value from m1.
+// The original maps `m1` and `m2`, will not be modified. The return value is a new map.
+pub fn merge[K, V](m1 map[K]V, m2 map[K]V) map[K]V {
+	mut res := m1.clone()
+	for k, v in m2 {
+		res[k] = v
+	}
+	return res
+}
