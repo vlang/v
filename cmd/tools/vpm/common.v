@@ -6,6 +6,8 @@ import v.vmod
 import sync.pool
 import net.http
 import net.urllib
+import term
+import log
 
 struct Mod {
 	id           int
@@ -30,6 +32,12 @@ mut:
 	final_module_path string // ~/.vmodules/the_user/the_mod
 }
 
+[params]
+struct ErrorOptions {
+	details string
+	verbose bool // is used to only output the error message if the verbose setting is enabled.
+}
+
 fn get_mod_date_info(mut pp pool.PoolProcessor, idx int, wid int) &ModDateInfo {
 	mut result := &ModDateInfo{
 		name: pp.get_item[string](idx)
@@ -40,7 +48,7 @@ fn get_mod_date_info(mut pp pool.PoolProcessor, idx int, wid int) &ModDateInfo {
 	mut outputs := []string{}
 	for step in vcs.args.outdated {
 		cmd := '${vcs.cmd} ${vcs.args.path} "${final_module_path}" ${step}'
-		res := os.execute('${cmd}')
+		res := os.execute(cmd)
 		if res.exit_code < 0 {
 			verbose_println('Error command: ${cmd}')
 			verbose_println('Error details:\n${res.output}')
@@ -73,22 +81,24 @@ fn get_module_meta_info(name string) !Mod {
 	if mod := get_mod_by_url(name) {
 		return mod
 	}
+	if name.len < 2 || (!name[0].is_digit() && !name[0].is_letter()) {
+		return error('invalid module name `${name}`.')
+	}
 	mut errors := []string{}
-
 	for server_url in vpm_server_urls {
 		modurl := server_url + '/api/packages/${name}'
-		verbose_println('Retrieving module metadata from: "${modurl}" ...')
+		verbose_println('Retrieving module metadata from `${modurl}` ...')
 		r := http.get(modurl) or {
-			errors << 'Http server did not respond to our request for "${modurl}" .'
+			errors << 'Http server did not respond to our request for `${modurl}`.'
 			errors << 'Error details: ${err}'
 			continue
 		}
 		if r.status_code == 404 || r.body.trim_space() == '404' {
-			errors << 'Skipping module "${name}", since "${server_url}" reported that "${name}" does not exist.'
+			errors << 'Skipping module `${name}`, since `${server_url}` reported that `${name}` does not exist.'
 			continue
 		}
 		if r.status_code != 200 {
-			errors << 'Skipping module "${name}", since "${server_url}" responded with ${r.status_code} http status code. Please try again later.'
+			errors << 'Skipping module `${name}`, since `${server_url}` responded with ${r.status_code} http status code. Please try again later.'
 			continue
 		}
 		s := r.body
@@ -98,11 +108,11 @@ fn get_module_meta_info(name string) !Mod {
 			continue
 		}
 		mod := json.decode(Mod, s) or {
-			errors << 'Skipping module "${name}", since its information is not in json format.'
+			errors << 'Skipping module `${name}`, since its information is not in json format.'
 			continue
 		}
 		if '' == mod.url || '' == mod.name {
-			errors << 'Skipping module "${name}", since it is missing name or url information.'
+			errors << 'Skipping module `${name}`, since it is missing name or url information.'
 			continue
 		}
 		return mod
@@ -130,7 +140,7 @@ fn get_outdated() ![]string {
 	pp.work_on_items(module_names)
 	for res in pp.get_results[ModDateInfo]() {
 		if res.exec_err {
-			return error('Error while checking latest commits for "${res.name}" .')
+			return error('failed to check the latest commits for `${res.name}`.')
 		}
 		if res.outdated {
 			outdated << res.name
@@ -141,9 +151,14 @@ fn get_outdated() ![]string {
 
 fn get_all_modules() []string {
 	url := get_working_server_url()
-	r := http.get(url) or { panic(err) }
+	r := http.get(url) or {
+		vpm_error(err.msg(),
+			verbose: true
+		)
+		exit(1)
+	}
 	if r.status_code != 200 {
-		eprintln('Failed to search vpm.vlang.io. Status code: ${r.status_code}')
+		vpm_error('failed to search vpm.vlang.io.', details: 'Status code: ${r.status_code}')
 		exit(1)
 	}
 	s := r.body
@@ -222,20 +237,25 @@ fn get_working_server_url() string {
 
 fn ensure_vmodules_dir_exist() {
 	if !os.is_dir(settings.vmodules_path) {
-		println('Creating "${settings.vmodules_path}/" ...')
-		os.mkdir(settings.vmodules_path) or { panic(err) }
+		println('Creating `${settings.vmodules_path}` ...')
+		os.mkdir(settings.vmodules_path) or {
+			vpm_error(err.msg(),
+				verbose: true
+			)
+			exit(1)
+		}
 	}
 }
 
 fn ensure_vcs_is_installed(vcs &VCS) ! {
 	os.find_abs_path_of_executable(vcs.cmd) or {
-		return error('VPM needs `${vcs}` to be installed.')
+		return error('VPM needs `${vcs.cmd}` to be installed.')
 	}
 }
 
 fn increment_module_download_count(name string) ! {
 	if settings.no_dl_count_increment {
-		println('Skipping download count increment for "${name}".')
+		println('Skipping download count increment for `${name}`.')
 		return
 	}
 	mut errors := []string{}
@@ -243,12 +263,12 @@ fn increment_module_download_count(name string) ! {
 	for server_url in vpm_server_urls {
 		modurl := server_url + '/api/packages/${name}/incr_downloads'
 		r := http.post(modurl, '') or {
-			errors << 'Http server did not respond to our request for "${modurl}" .'
+			errors << 'Http server did not respond to our request for `${modurl}`.'
 			errors << 'Error details: ${err}'
 			continue
 		}
 		if r.status_code != 200 {
-			errors << 'Failed to increment the download count for module "${name}", since "${server_url}" responded with ${r.status_code} http status code. Please try again later.'
+			errors << 'Failed to increment the download count for module `${name}`, since `${server_url}` responded with ${r.status_code} http status code. Please try again later.'
 			continue
 		}
 		return
@@ -262,14 +282,16 @@ fn resolve_dependencies(name string, module_path string, module_names []string) 
 		return
 	}
 	manifest := vmod.from_file(vmod_path) or {
-		eprintln(err)
+		vpm_error(err.msg(),
+			verbose: true
+		)
 		return
 	}
 	// Filter out modules that are both contained in the input query and listed as
 	// dependencies in the mod file of the module that is supposed to be installed.
 	deps := manifest.dependencies.filter(it !in module_names)
 	if deps.len > 0 {
-		println('Resolving ${deps.len} dependencies for module "${name}" ...')
+		println('Resolving ${deps.len} dependencies for module `${name}` ...')
 		verbose_println('Found dependencies: ${deps}')
 		vpm_install(deps)
 	}
@@ -296,15 +318,15 @@ fn valid_final_path_of_existing_module(modulename string) ?string {
 	name := if mod := get_mod_by_url(modulename) { mod.name } else { modulename }
 	minfo := get_mod_name_info(name)
 	if !os.exists(minfo.final_module_path) {
-		eprintln('No module with name "${minfo.mname_normalised}" exists at ${minfo.final_module_path}')
+		vpm_error('failed to find a module with name `${minfo.mname_normalised}` at `${minfo.final_module_path}`')
 		return none
 	}
 	if !os.is_dir(minfo.final_module_path) {
-		eprintln('Skipping "${minfo.final_module_path}", since it is not a folder.')
+		vpm_error('skipping `${minfo.final_module_path}`, since it is not a directory.')
 		return none
 	}
 	vcs_used_in_dir(minfo.final_module_path) or {
-		eprintln('Skipping "${minfo.final_module_path}", since it does not use a supported vcs.')
+		vpm_error('skipping `${minfo.final_module_path}`, since it uses an unsupported version control system.')
 		return none
 	}
 	return minfo.final_module_path
@@ -313,5 +335,26 @@ fn valid_final_path_of_existing_module(modulename string) ?string {
 fn verbose_println(s string) {
 	if settings.is_verbose {
 		println(s)
+	}
+}
+
+fn vpm_log(line string, func string, msg string) {
+	log.debug('${line} | (${func}) ${msg}')
+}
+
+fn vpm_error(msg string, opts ErrorOptions) {
+	if opts.verbose && !settings.is_verbose {
+		return
+	}
+	eprintln(term.ecolorize(term.red, 'error: ') + msg)
+	if opts.details.len > 0 && settings.is_verbose {
+		eprint(term.ecolorize(term.blue, 'details: '))
+		padding := ' '.repeat('details: '.len)
+		for i, line in opts.details.split_into_lines() {
+			if i > 0 {
+				eprint(padding)
+			}
+			eprintln(term.ecolorize(term.blue, line))
+		}
 	}
 }
