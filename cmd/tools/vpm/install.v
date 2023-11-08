@@ -35,11 +35,9 @@ fn vpm_install(requested_modules []string) {
 			exit(2)
 		}
 	} else {
-		requested_modules.clone()
+		requested_modules
 	})
 
-	mut vpm_modules := modules.filter(!it.is_external)
-	mut external_modules := modules.filter(it.is_external)
 	installed_modules := get_installed_modules()
 
 	vpm_log(@FILE_LINE, @FN, 'VPM modules: ${vpm_modules}')
@@ -74,7 +72,7 @@ fn vpm_install(requested_modules []string) {
 		}
 		if already_installed.len > 0 {
 			verbose_println('Already installed modules: ${already_installed}')
-			if already_installed.len == modules.len {
+			if already_installed.len == requested_modules.len {
 				println('All modules are already installed.')
 				exit(0)
 			}

@@ -15,7 +15,6 @@ mut:
 	// Fields based on input / environment.
 	version           string // specifies the requested version.
 	install_path      string
-	is_external       bool
 	is_installed      bool
 	installed_version string
 }
@@ -35,12 +34,14 @@ mut:
 	exec_err bool
 }
 
-fn parse_query(query []string) []Module {
-	mut modules := []Module{}
+fn parse_query(query []string) ([]Module, []Module) {
+	mut vpm_modules, mut extended_modules := []Module{}, []Module{}
 	mut errors := 0
 	for m in query {
 		ident, version := m.rsplit_once('@') or { m, '' }
+		mut is_external := false
 		mut mod := if ident.starts_with('https://') {
+			is_external = true
 			name := get_name_from_url(ident) or {
 				vpm_error(err.msg())
 				errors++
@@ -71,12 +72,16 @@ fn parse_query(query []string) []Module {
 			mod.is_installed = true
 			mod.installed_version = v.output.all_after_last('/').trim_space()
 		}
-		modules << mod
+		if is_external {
+			extended_modules << mod
+		} else {
+			vpm_modules << mod
+		}
 	}
 	if errors > 0 && errors == query.len {
 		exit(1)
 	}
-	return modules
+	return vpm_modules, extended_modules
 }
 
 fn get_mod_date_info(mut pp pool.PoolProcessor, idx int, wid int) &ModuleDateInfo {
