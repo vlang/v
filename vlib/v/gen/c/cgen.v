@@ -3192,7 +3192,11 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			mut shared_styp := ''
 			if g.is_shared && !ret_type.has_flag(.shared_f) && !g.inside_or_block {
 				ret_sym := g.table.sym(ret_type)
-				shared_typ := ret_type.set_flag(.shared_f)
+				shared_typ := if ret_type.is_ptr() {
+					ret_type.deref().set_flag(.shared_f)
+				} else {
+					ret_type.set_flag(.shared_f)
+				}
 				shared_styp = g.typ(shared_typ)
 				if ret_sym.kind == .array {
 					g.writeln('(${shared_styp}*)__dup_shared_array(&(${shared_styp}){.mtx = {0}, .val =')
@@ -3208,6 +3212,10 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				0
 			}
 
+			if g.is_shared && !ret_type.has_flag(.shared_f) && !g.inside_or_block
+				&& ret_type.is_ptr() {
+				g.write('*'.repeat(ret_type.nr_muls()))
+			}
 			g.call_expr(node)
 			if g.is_autofree && !g.is_builtin_mod && !g.is_js_call && g.strs_to_free0.len == 0
 				&& !g.inside_lambda {
