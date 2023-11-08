@@ -60,6 +60,7 @@ const (
 	max_u8  = u8(255)
 
 	min_u16 = u16(0)
+	max_u16 = u16(65535)
 )
 
 // This implementation is the quickest with gcc -O2
