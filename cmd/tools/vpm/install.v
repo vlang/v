@@ -266,7 +266,8 @@ fn (m Module) install(vcs &VCS) ! {
 	}
 	cmd := '${vcs.cmd} ${install_arg} "${m.url}" "${m.install_path}"'
 	vpm_log(@FILE_LINE, @FN, 'command: ${cmd}')
-	println('Installing `${m.name}` from `${m.url}` to `${m.install_path}`...')
+	println('Installing `${m.name}`...')
+	verbose_println('  cloning from `${m.url}` to `${m.install_path}`')
 	res := os.execute_opt(cmd) or {
 		vpm_log(@FILE_LINE, @FN, 'cmd output: ${err}')
 		return error('failed to install module `${m.name}`.')
