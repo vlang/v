@@ -433,7 +433,7 @@ fn (cb &Clipboard) pick_target(prop Property) Atom {
 		mut to_be_requested := Atom(0)
 
 		// This is higher than the maximum priority.
-		mut priority := int(math.max_i32)
+		mut priority := int(max_i32)
 
 		for i in 0 .. prop.nitems {
 			// See if this data type is allowed and of higher priority (closer to zero)

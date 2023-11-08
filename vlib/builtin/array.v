@@ -540,7 +540,7 @@ pub fn (mut a array) delete_last() {
 // Alternative: Slices can also be made with [start..end] notation
 // Alternative: `.slice_ni()` will always return an array.
 fn (a array) slice(start int, _end int) array {
-	end := if _end == 2147483647 { a.len } else { _end } // max_int
+	end := if _end == max_i32 { a.len } else { _end } // max_int
 	$if !no_bounds_checking {
 		if start > end {
 			panic('array.slice: invalid slice index (${start} > ${end})')
@@ -575,7 +575,7 @@ fn (a array) slice(start int, _end int) array {
 // This function always return a valid array.
 fn (a array) slice_ni(_start int, _end int) array {
 	// a.flags.clear(.noslices)
-	mut end := if _end == 2147483647 { a.len } else { _end } // max_int
+	mut end := if _end == max_i32 { a.len } else { _end } // max_int
 	mut start := _start
 
 	if start < 0 {
