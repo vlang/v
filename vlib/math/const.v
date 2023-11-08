@@ -39,3 +39,27 @@ pub const (
 	max_f64               = 1.797693134862315708145274237317043567981e+308 // 2**1023 * (2**53 - 1) / 2**52
 	smallest_non_zero_f64 = 4.940656458412465441765687928682213723651e-324 // 1 / 2**(1023 - 1 + 52)
 )
+
+[deprecated: 'use built-in constants instead (e.g. min_i8 instead of math.min_i8)']
+[deprecated_after: '2023-12-31']
+pub const (
+	min_i8  = i8(-128)
+	max_i8  = i8(127)
+	min_i16 = i16(-32768)
+	max_i16 = i16(32767)
+	min_i32 = i32(-2147483648)
+	max_i32 = i32(2147483647)
+	// -9223372036854775808 is wrong, because C compilers parse literal values
+	// without sign first, and 9223372036854775808 overflows i64, hence the
+	// consecutive subtraction by 1
+	min_i64 = i64(-9223372036854775807 - 1)
+	max_i64 = i64(9223372036854775807)
+	min_u8  = u8(0)
+	max_u8  = u8(255)
+	min_u16 = u16(0)
+	max_u16 = u16(65535)
+	min_u32 = u32(0)
+	max_u32 = u32(4294967295)
+	min_u64 = u64(0)
+	max_u64 = u64(18446744073709551615)
+)
