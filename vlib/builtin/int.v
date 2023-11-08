@@ -66,6 +66,7 @@ const (
 	max_u32 = u32(4294967295)
 
 	min_u64 = u64(0)
+	max_u64 = u64(18446744073709551615)
 )
 
 // This implementation is the quickest with gcc -O2
