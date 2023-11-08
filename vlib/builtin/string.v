@@ -1027,7 +1027,7 @@ pub fn (s string) split_into_lines() []string {
 // Example: assert 'ABCD'.substr(1,3) == 'BC'
 [direct_array_access]
 pub fn (s string) substr(start int, _end int) string {
-	end := if _end == max_i32 { s.len } else { _end } // max_int
+	end := if _end == max_int { s.len } else { _end } // max_int
 	$if !no_bounds_checking {
 		if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
 			panic('substr(${start}, ${end}) out of bounds (len=${s.len})')
@@ -1052,7 +1052,7 @@ pub fn (s string) substr(start int, _end int) string {
 // return an error when the index is out of range
 [direct_array_access]
 pub fn (s string) substr_with_check(start int, _end int) !string {
-	end := if _end == max_i32 { s.len } else { _end } // max_int
+	end := if _end == max_int { s.len } else { _end } // max_int
 	if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
 		return error('substr(${start}, ${end}) out of bounds (len=${s.len})')
 	}
