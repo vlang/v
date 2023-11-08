@@ -84,7 +84,7 @@ pub fn approximate_with_eps(val f64, eps f64) Fraction {
 	if eps < 0.0 {
 		panic('Epsilon value cannot be negative.')
 	}
-	if math.abs(val) > math.max_i64 {
+	if math.abs(val) > max_i64 {
 		panic('Value out of range.')
 	}
 	// The integer part is separated first. Then we process the fractional

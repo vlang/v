@@ -54,6 +54,7 @@ const (
 	// without sign first, and 9223372036854775808 overflows i64, hence the
 	// consecutive subtraction by 1
 	min_i64 = i64(-9223372036854775807 - 1)
+	max_i64 = i64(9223372036854775807)
 )
 
 // This implementation is the quickest with gcc -O2
