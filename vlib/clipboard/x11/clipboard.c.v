@@ -4,7 +4,6 @@ module x11
 
 import time
 import sync
-import math
 
 $if freebsd {
 	#flag -I/usr/local/include
