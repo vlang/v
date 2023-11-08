@@ -9,6 +9,38 @@ const (
 	digit_pairs = '00102030405060708090011121314151617181910212223242526272829203132333435363738393041424344454647484940515253545556575859506162636465666768696071727374757677787970818283848586878889809192939495969798999'
 )
 
+pub const (
+	min_i8  = i8(-128)
+	max_i8  = i8(127)
+
+	min_i16 = i16(-32768)
+	max_i16 = i16(32767)
+
+	min_i32 = i32(-2147483648)
+	max_i32 = i32(2147483647)
+
+	min_int = min_i32
+	max_int = max_i32
+
+	// -9223372036854775808 is wrong, because C compilers parse literal values
+	// without sign first, and 9223372036854775808 overflows i64, hence the
+	// consecutive subtraction by 1
+	min_i64 = i64(-9223372036854775807 - 1)
+	max_i64 = i64(9223372036854775807)
+
+	min_u8  = u8(0)
+	max_u8  = u8(255)
+
+	min_u16 = u16(0)
+	max_u16 = u16(65535)
+
+	min_u32 = u32(0)
+	max_u32 = u32(4294967295)
+
+	min_u64 = u64(0)
+	max_u64 = u64(18446744073709551615)
+)
+
 // This implementation is the quickest with gcc -O2
 // str_l returns the string representation of the integer nn with max chars.
 [direct_array_access; inline]
