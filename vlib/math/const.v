@@ -42,7 +42,6 @@ pub const (
 
 // Integer limit values
 pub const (
-	min_i16 = i16(-32768)
 	max_i16 = i16(32767)
 	min_i32 = i32(-2147483648)
 	max_i32 = i32(2147483647)

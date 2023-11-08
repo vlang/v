@@ -43,6 +43,8 @@ const (
 
 	min_i8  = i8(-128)
 	max_i8  = i8(127)
+
+	min_i16 = i16(-32768)
 )
 
 // This implementation is the quickest with gcc -O2
