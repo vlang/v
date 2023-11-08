@@ -44,6 +44,7 @@ fn test_install_from_vpm_short_ident() {
 fn test_install_from_git_url() {
 	res := os.execute_or_exit('${v} install https://github.com/vlang/markdown')
 	assert res.output.contains('Installing `markdown`'), res.output
+	assert res.output.contains('Installed `markdown`'), res.output
 	mod := vmod.from_file(os.join_path(test_path, 'markdown', 'v.mod')) or {
 		assert false, err.msg()
 		return

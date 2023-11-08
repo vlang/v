@@ -97,7 +97,6 @@ fn main() {
 			help.print_and_exit('vpm', exit_code: 3)
 		}
 	}
-	println('Completed.')
 }
 
 fn vpm_upgrade() {

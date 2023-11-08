@@ -16,7 +16,8 @@ mut:
 	version           string // specifies the requested version.
 	install_path      string
 	is_external       bool
-	installed_version ?string
+	is_installed      bool
+	installed_version string
 }
 
 struct ModuleVpmInfo {
@@ -67,6 +68,7 @@ fn parse_query(query []string) []Module {
 		}
 		mod.version = version
 		if v := os.execute_opt('git ls-remote --tags ${mod.install_path}') {
+			mod.is_installed = true
 			mod.installed_version = v.output.all_after_last('/').trim_space()
 		}
 		modules << mod

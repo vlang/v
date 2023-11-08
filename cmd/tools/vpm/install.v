@@ -4,6 +4,12 @@ import os
 import v.vmod
 import v.help
 
+enum InstallResult {
+	installed
+	failed
+	skipped
+}
+
 fn vpm_install(requested_modules []string) {
 	vpm_log(@FILE_LINE, @FN, 'requested_modules: ${requested_modules}')
 
@@ -89,6 +95,7 @@ fn vpm_install_from_vpm(modules []Module) {
 	idents := modules.map(it.name)
 	for m in modules {
 		vpm_log(@FILE_LINE, @FN, 'module: ${m}')
+		last_errors := errors
 		vcs := if m.vcs != '' {
 			supported_vcs[m.vcs] or {
 				vpm_error('skipping `${m.name}`, since it uses an unsupported version control system `${m.vcs}`.')
@@ -103,17 +110,15 @@ fn vpm_install_from_vpm(modules []Module) {
 			errors++
 			continue
 		}
-		if !m.confirm_install() or {
-			vpm_error('failed to replace `${m.name}`.', details: err.msg())
-			errors++
-			continue
-		} {
-			continue
-		}
-		m.install(vcs) or {
-			vpm_error(err.msg())
-			errors++
-			continue
+		match m.install(vcs) {
+			.installed {}
+			.failed {
+				errors++
+				continue
+			}
+			.skipped {
+				continue
+			}
 		}
 		increment_module_download_count(m.name) or {
 			vpm_error('failed to increment the download count for `${m.name}`', details: err.msg())
@@ -123,6 +128,9 @@ fn vpm_install_from_vpm(modules []Module) {
 			vpm_error(err.msg())
 			errors++
 			continue
+		}
+		if last_errors == errors {
+			println('Installed `${m.name}`.')
 		}
 		resolve_dependencies(manifest.name, manifest.dependencies, idents)
 	}
@@ -142,17 +150,16 @@ fn vpm_install_from_vcs(modules []Module) {
 	mut errors := 0
 	for m in modules {
 		vpm_log(@FILE_LINE, @FN, 'module: ${m}')
-		if !m.confirm_install() or {
-			vpm_error('failed to replace `${m.name}`.', details: err.msg())
-			errors++
-			continue
-		} {
-			continue
-		}
-		m.install(vcs) or {
-			vpm_error(err.msg())
-			errors++
-			continue
+		last_errors := errors
+		match m.install(vcs) {
+			.installed {}
+			.failed {
+				errors++
+				continue
+			}
+			.skipped {
+				continue
+			}
 		}
 		manifest := vmod.from_file(os.join_path(m.install_path, 'v.mod')) or {
 			vpm_error(err.msg())
@@ -210,6 +217,9 @@ fn vpm_install_from_vcs(modules []Module) {
 			}
 			verbose_println('Relocated `${m.name}` to `${manifest.name}`.')
 		}
+		if last_errors == errors {
+			println('Installed `${m.name}`.')
+		}
 		resolve_dependencies(manifest.name, manifest.dependencies, urls)
 	}
 	if errors > 0 {
@@ -217,28 +227,50 @@ fn vpm_install_from_vcs(modules []Module) {
 	}
 }
 
-fn (m Module) confirm_install() !bool {
-	// Case: define version, proceed if not installed.
-	v := m.installed_version or { return true }
-	// Case: installed, but not an explicit version.
-	if m.version == '' && v == '' {
-		vpm_update([m.name])
-		return false
+fn (m Module) install(vcs &VCS) InstallResult {
+	if m.is_installed {
+		// Case: installed, but not an explicit version. Update instead of continuing the installation.
+		if m.version == '' && m.installed_version == '' {
+			vpm_update([m.name])
+			return .skipped
+		}
+		// Case: installed, but conflicting. Confirmation or -[-f]orce flag required.
+		if settings.is_force || m.confirm_install() {
+			m.remove() or {
+				vpm_error('failed to remove `${m.name}`.', details: err.msg())
+				return .failed
+			}
+		} else {
+			return .skipped
+		}
 	}
-	// Case: installed, conflicting.
-	if settings.is_force {
-		m.remove()!
-		return true
-	} else if v == m.version {
-		println('Module `${m.name}${at_version(v)}` is already installed.')
+	install_arg := if m.version != '' {
+		'${vcs.args.install} --single-branch -b ${m.version}'
+	} else {
+		vcs.args.install
+	}
+	cmd := '${vcs.cmd} ${install_arg} "${m.url}" "${m.install_path}"'
+	vpm_log(@FILE_LINE, @FN, 'command: ${cmd}')
+	println('Installing `${m.name}`...')
+	verbose_println('  cloning from `${m.url}` to `${m.install_path}`')
+	res := os.execute_opt(cmd) or {
+		vpm_error('failed to install `${m.name}`.', details: err.msg())
+		return .failed
+	}
+	vpm_log(@FILE_LINE, @FN, 'cmd output: ${res.output}')
+	return .installed
+}
+
+fn (m Module) confirm_install() bool {
+	if m.installed_version == m.version {
+		println('Module `${m.name}${at_version(m.installed_version)}` is already installed, use --force to overwrite.')
 		return false
 	} else {
-		install_version := if m.version == '' { 'latest' } else { m.version }
-		println('Module `${m.name}${at_version(v)}` is already installed at `${m.install_path}`.')
-		input := os.input('Replace it with `${m.name}${at_version(install_version)}`? [Y/n]: ')
+		install_version := at_version(if m.version == '' { 'latest' } else { m.version })
+		println('Module `${m.name}${at_version(m.installed_version)}` is already installed at `${m.install_path}`.')
+		input := os.input('Replace it with `${m.name}${install_version}`? [Y/n]: ')
 		match input.to_lower() {
 			'', 'y' {
-				m.remove()!
 				return true
 			}
 			else {
@@ -256,23 +288,7 @@ fn (m Module) remove() ! {
 	} $else {
 		os.rmdir_all(m.install_path)!
 	}
-}
-
-fn (m Module) install(vcs &VCS) ! {
-	install_arg := if m.version != '' {
-		'${vcs.args.install} --single-branch -b ${m.version}'
-	} else {
-		vcs.args.install
-	}
-	cmd := '${vcs.cmd} ${install_arg} "${m.url}" "${m.install_path}"'
-	vpm_log(@FILE_LINE, @FN, 'command: ${cmd}')
-	println('Installing `${m.name}`...')
-	verbose_println('  cloning from `${m.url}` to `${m.install_path}`')
-	res := os.execute_opt(cmd) or {
-		vpm_log(@FILE_LINE, @FN, 'cmd output: ${err}')
-		return error('failed to install module `${m.name}`.')
-	}
-	vpm_log(@FILE_LINE, @FN, 'cmd output: ${res.output}')
+	verbose_println('Removed `${m.name}`.')
 }
 
 fn at_version(version string) string {
