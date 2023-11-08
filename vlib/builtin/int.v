@@ -57,6 +57,7 @@ const (
 	max_i64 = i64(9223372036854775807)
 
 	min_u8  = u8(0)
+	max_u8  = u8(255)
 )
 
 // This implementation is the quickest with gcc -O2
