@@ -32,9 +32,7 @@ fn ensure_vmodules_dir_exist() {
 	if !os.is_dir(settings.vmodules_path) {
 		println('Creating `${settings.vmodules_path}` ...')
 		os.mkdir(settings.vmodules_path) or {
-			vpm_error(err.msg(),
-				verbose: true
-			)
+			vpm_error(err.msg(), verbose: true)
 			exit(1)
 		}
 	}

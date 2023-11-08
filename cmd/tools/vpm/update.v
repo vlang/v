@@ -66,9 +66,7 @@ fn update_module(mut pp pool.PoolProcessor, idx int, wid int) &ModuleUpdateInfo 
 	vpm_log(@FILE_LINE, @FN, 'cmd output: ${res.output.trim_space()}')
 	increment_module_download_count(name) or {
 		result.has_err = true
-		vpm_error(err.msg(),
-			verbose: true
-		)
+		vpm_error(err.msg(), verbose: true)
 	}
 	return result
 }
@@ -98,15 +96,11 @@ fn vpm_update_verbose(modules []string) {
 		vpm_log(@FILE_LINE, @FN, 'cmd: ${res.output.trim_space()}')
 		increment_module_download_count(name) or {
 			errors++
-			vpm_error(err.msg(),
-				verbose: true
-			)
+			vpm_error(err.msg(), verbose: true)
 		}
 		manifest := vmod.from_file(os.join_path(install_path, 'v.mod')) or {
 			errors++
-			vpm_error(err.msg(),
-				verbose: true
-			)
+			vpm_error(err.msg(), verbose: true)
 			continue
 		}
 		resolve_dependencies(manifest.name, manifest.dependencies, modules)
