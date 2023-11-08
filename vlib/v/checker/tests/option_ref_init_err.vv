@@ -5,7 +5,7 @@ mut:
 
 pub struct Window {
 mut:
-	a0 ?&Viewport 
+	a0 ?&Viewport
 	a1 ?&Viewport = none
 	a2 ?&Viewport = none
 	a3 ?&Viewport = unsafe { nil }
