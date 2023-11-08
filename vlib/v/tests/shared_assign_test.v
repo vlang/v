@@ -11,7 +11,7 @@ fn Foo.new_ref() &Foo {
 	return &Foo{}
 }
 
-fn get_map_non_ef() map[int]int {
+fn get_map_non_ref() map[int]int {
 	return {
 		0: 0
 	}
@@ -38,7 +38,7 @@ fn test_assign_from_call_expr() {
 		assert foo2.a == 0
 	}
 
-	shared map1 := get_map_non_ef()
+	shared map1 := get_map_non_ref()
 	rlock map1 {
 		assert map1[0] == 0
 	}
