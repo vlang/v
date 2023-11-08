@@ -1766,7 +1766,7 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 	senum_type := c.table.type_to_str(node.typ)
 	match node.typ {
 		ast.i8_type {
-			signed, enum_imin, enum_imax = true, -128, 0x7F
+			signed, enum_imin, enum_imax = true, min_i8, 0x7F
 		}
 		ast.i16_type {
 			signed, enum_imin, enum_imax = true, -32_768, 0x7FFF
