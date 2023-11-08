@@ -24,7 +24,6 @@ const (
 
 const (
 	// save importing math mod just for these
-	max_u32 = u32(4294967295)
 	max_u64 = u64(18446744073709551615)
 )
 
@@ -203,9 +202,9 @@ pub fn reverse_16(x u16) u16 {
 // reverse_32 returns the value of x with its bits in reversed order.
 [inline]
 pub fn reverse_32(x u32) u32 {
-	mut y := ((x >> u32(1) & (bits.m0 & bits.max_u32)) | ((x & (bits.m0 & bits.max_u32)) << 1))
-	y = ((y >> u32(2) & (bits.m1 & bits.max_u32)) | ((y & (bits.m1 & bits.max_u32)) << u32(2)))
-	y = ((y >> u32(4) & (bits.m2 & bits.max_u32)) | ((y & (bits.m2 & bits.max_u32)) << u32(4)))
+	mut y := ((x >> u32(1) & (bits.m0 & max_u32)) | ((x & (bits.m0 & max_u32)) << 1))
+	y = ((y >> u32(2) & (bits.m1 & max_u32)) | ((y & (bits.m1 & max_u32)) << u32(2)))
+	y = ((y >> u32(4) & (bits.m2 & max_u32)) | ((y & (bits.m2 & max_u32)) << u32(4)))
 	return reverse_bytes_32(u32(y))
 }
 
@@ -232,7 +231,7 @@ pub fn reverse_bytes_16(x u16) u16 {
 // This function's execution time does not depend on the inputs.
 [inline]
 pub fn reverse_bytes_32(x u32) u32 {
-	y := ((x >> u32(8) & (bits.m3 & bits.max_u32)) | ((x & (bits.m3 & bits.max_u32)) << u32(8)))
+	y := ((x >> u32(8) & (bits.m3 & max_u32)) | ((x & (bits.m3 & max_u32)) << u32(8)))
 	return u32((y >> 16) | (y << 16))
 }
 
