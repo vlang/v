@@ -1775,7 +1775,7 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 			signed, enum_imin, enum_imax = true, min_i32, max_i32
 		}
 		ast.i64_type {
-			signed, enum_imin, enum_imax = true, i64(-9223372036854775807 - 1), i64(0x7FFF_FFFF_FFFF_FFFF)
+			signed, enum_imin, enum_imax = true, min_i64, i64(0x7FFF_FFFF_FFFF_FFFF)
 		}
 		//
 		ast.u8_type {

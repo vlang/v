@@ -49,6 +49,11 @@ const (
 
 	min_i32 = i32(-2147483648)
 	max_i32 = i32(2147483647)
+
+	// -9223372036854775808 is wrong, because C compilers parse literal values
+	// without sign first, and 9223372036854775808 overflows i64, hence the
+	// consecutive subtraction by 1
+	min_i64 = i64(-9223372036854775807 - 1)
 )
 
 // This implementation is the quickest with gcc -O2
@@ -203,8 +208,7 @@ pub fn (nn i64) str() string {
 		mut d := i64(0)
 		if n == 0 {
 			return '0'
-		} else if n == i64(-9223372036854775807 - 1) {
-			// math.min_i64
+		} else if n == min_i64 {
 			return '-9223372036854775808'
 		}
 		max := 20

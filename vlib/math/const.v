@@ -42,10 +42,6 @@ pub const (
 
 // Integer limit values
 pub const (
-	// -9223372036854775808 is wrong, because C compilers parse literal values
-	// without sign first, and 9223372036854775808 overflows i64, hence the
-	// consecutive subtraction by 1
-	min_i64 = i64(-9223372036854775807 - 1)
 	max_i64 = i64(9223372036854775807)
 	min_u8  = u8(0)
 	max_u8  = u8(255)
