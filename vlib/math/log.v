@@ -1,11 +1,5 @@
 module math
 
-// TODO: this consts should be taken from int.v
-const (
-	min_i32 = i32(-2147483648)
-	max_i32 = i32(2147483647)
-)
-
 // log_n returns log base b of x
 pub fn log_n(x f64, b f64) f64 {
 	y := log(x)
@@ -65,13 +59,13 @@ pub fn log_b(x f64) f64 {
 // ilog_b(nan) = max_i32
 pub fn ilog_b(x f64) int {
 	if x == 0 {
-		return int(math.min_i32)
+		return int(min_i32)
 	}
 	if is_nan(x) {
-		return int(math.max_i32)
+		return int(max_i32)
 	}
 	if is_inf(x, 0) {
-		return int(math.max_i32)
+		return int(max_i32)
 	}
 	return ilog_b_(x)
 }
