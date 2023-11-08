@@ -1766,33 +1766,33 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 	senum_type := c.table.type_to_str(node.typ)
 	match node.typ {
 		ast.i8_type {
-			signed, enum_imin, enum_imax = true, -128, 0x7F
+			signed, enum_imin, enum_imax = true, min_i8, max_i8
 		}
 		ast.i16_type {
-			signed, enum_imin, enum_imax = true, -32_768, 0x7FFF
+			signed, enum_imin, enum_imax = true, min_i16, max_i16
 		}
 		ast.int_type {
-			signed, enum_imin, enum_imax = true, -2_147_483_648, 0x7FFF_FFFF
+			signed, enum_imin, enum_imax = true, min_i32, max_i32
 		}
 		ast.i64_type {
-			signed, enum_imin, enum_imax = true, i64(-9223372036854775807 - 1), i64(0x7FFF_FFFF_FFFF_FFFF)
+			signed, enum_imin, enum_imax = true, min_i64, max_i64
 		}
 		//
 		ast.u8_type {
-			signed, enum_umin, enum_umax = false, 0, 0xFF
+			signed, enum_umin, enum_umax = false, min_u8, max_u8
 		}
 		ast.u16_type {
-			signed, enum_umin, enum_umax = false, 0, 0xFFFF
+			signed, enum_umin, enum_umax = false, min_u16, max_u16
 		}
 		ast.u32_type {
-			signed, enum_umin, enum_umax = false, 0, 0xFFFF_FFFF
+			signed, enum_umin, enum_umax = false, min_u32, max_u32
 		}
 		ast.u64_type {
-			signed, enum_umin, enum_umax = false, 0, 0xFFFF_FFFF_FFFF_FFFF
+			signed, enum_umin, enum_umax = false, min_u64, max_u64
 		}
 		else {
 			if senum_type == 'i32' {
-				signed, enum_imin, enum_imax = true, -2_147_483_648, 0x7FFF_FFFF
+				signed, enum_imin, enum_imax = true, min_i32, max_i32
 			} else {
 				c.error('`${senum_type}` is not one of `i8`,`i16`,`i32`,`int`,`i64`,`u8`,`u16`,`u32`,`u64`',
 					node.typ_pos)
