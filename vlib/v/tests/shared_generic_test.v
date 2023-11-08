@@ -12,3 +12,14 @@ fn test_shared_struct_has_generics() {
 		assert bar.a == 1
 	}
 }
+
+fn generic_struct_as_parameters(shared arg Foo[int]) {
+	rlock arg {
+		assert arg.a == 1
+	}
+}
+
+fn test_generic_struct_as_parameters() {
+	shared foo := Foo[int]{1}
+	generic_struct_as_parameters(shared foo)
+}
