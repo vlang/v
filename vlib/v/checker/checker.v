@@ -1779,7 +1779,7 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 		}
 		//
 		ast.u8_type {
-			signed, enum_umin, enum_umax = false, 0, 0xFF
+			signed, enum_umin, enum_umax = false, min_u8, 0xFF
 		}
 		ast.u16_type {
 			signed, enum_umin, enum_umax = false, 0, 0xFFFF

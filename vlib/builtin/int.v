@@ -55,6 +55,8 @@ const (
 	// consecutive subtraction by 1
 	min_i64 = i64(-9223372036854775807 - 1)
 	max_i64 = i64(9223372036854775807)
+
+	min_u8  = u8(0)
 )
 
 // This implementation is the quickest with gcc -O2
