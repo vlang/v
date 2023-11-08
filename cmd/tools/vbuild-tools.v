@@ -15,7 +15,7 @@ const tools_in_subfolders = ['vast', 'vcreate', 'vdoc', 'vpm', 'vvet', 'vwhere']
 
 // non_packaged_tools are tools that should not be packaged with
 // prebuild versions of V, to keep the size smaller.
-// They are mainly usefull for the V project itself, not to end users.
+// They are mainly useful for the V project itself, not to end users.
 const non_packaged_tools = ['gen1m', 'gen_vc', 'fast', 'wyhash']
 
 fn main() {
