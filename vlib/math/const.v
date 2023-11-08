@@ -42,6 +42,5 @@ pub const (
 
 // Integer limit values
 pub const (
-	min_u64 = u64(0)
 	max_u64 = u64(18446744073709551615)
 )
