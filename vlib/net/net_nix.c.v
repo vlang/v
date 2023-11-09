@@ -28,3 +28,5 @@ const (
 	error_ewouldblock = C.EWOULDBLOCK
 	error_einprogress = C.EINPROGRESS
 )
+
+fn C.unlink(&char) int
