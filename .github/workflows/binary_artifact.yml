@@ -38,13 +38,13 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: linux
-          path: v_linux.zip
+          path: ${{ env.ZIPNAME }}
 
-  build-macos:
+  build-macos-x86_64:
     runs-on: macos-latest
     env:
       CC: clang
-      ZIPNAME: v_macos.zip
+      ZIPNAME: v_macos_x86_64.zip
     steps:
       - uses: actions/checkout@v1
       - name: Compile
@@ -70,7 +70,40 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: macos
-          path: v_macos.zip
+          path: ${{ env.ZIPNAME }}
+  
+  build-macos-arm64:
+    runs-on: macos-latest
+    env:
+      CC: clang
+      CFLAGS: -target arm64-apple-darwin
+      ZIPNAME: v_macos_arm64.zip
+    steps:
+      - uses: actions/checkout@v1
+      - name: Compile
+        run: |
+          make
+          ./v -skip-unused -cc $CC -cflags "$CFLAGS" -prod -o v cmd/v
+          ./v -skip-unused -cc $CC -cflags "$CFLAGS" -prod cmd/tools/vup.v
+          ./v -skip-unused -cc $CC -cflags "$CFLAGS" -prod cmd/tools/vdoctor.v
+      - name: Remove excluded
+        run: |
+           rm -rf .git/
+           rm -rf thirdparty/tcc/.git/
+           rm -rf vc/
+           rm -rf v_old
+           rm -rf vlib/v/tests/bench/gcboehm/*.svg
+      - name: Create ZIP archive
+        run: |
+           cd ..
+           zip -r9 --symlinks $ZIPNAME v/
+           mv $ZIPNAME v/
+           cd v/
+      - name: Create artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: macos
+          path: ${{ env.ZIPNAME }}
 
   build-windows:
     runs-on: windows-latest
@@ -110,11 +143,11 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: windows
-          path: v_windows.zip
+          path: ${{ env.ZIPNAME }}
 
   release:
     name: Create Github Release
-    needs: [build-linux, build-windows, build-macos]
+    needs: [build-linux, build-windows, build-macos-x86_64, build-macos-arm64]
     runs-on: ubuntu-20.04
     steps:
       - name: Get short tag name

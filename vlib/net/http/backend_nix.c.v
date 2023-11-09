@@ -30,7 +30,11 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string)
 	$if trace_http_request ? {
 		eprintln('> ${req_headers}')
 	}
-	// println(req_headers)
+
+	return req.do_request(req_headers, mut ssl_conn)!
+}
+
+fn (req &Request) do_request(req_headers string, mut ssl_conn ssl.SSLConn) !Response {
 	ssl_conn.write_string(req_headers) or { return err }
 
 	mut content := strings.new_builder(100)

@@ -148,7 +148,7 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Res
 	} else if req.proxy != unsafe { nil } {
 		mut retries := 0
 		for {
-			res := req.proxy.http_do(host_name, method, path, req) or {
+			res := req.proxy.http_do(url, method, path, req) or {
 				retries++
 				if is_no_need_retry_error(err.code()) || retries >= req.max_retries {
 					return err
