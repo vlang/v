@@ -1976,11 +1976,12 @@ fn (mut f Fmt) write_generic_call_if_require(node ast.CallExpr) {
 }
 
 pub fn (mut f Fmt) call_args(args []ast.CallArg) {
-	f.single_line_fields = true
+	old_single_line_fields_state := f.single_line_fields
 	old_short_arg_state := f.use_short_fn_args
+	f.single_line_fields = true
 	f.use_short_fn_args = false
 	defer {
-		f.single_line_fields = false
+		f.single_line_fields = old_single_line_fields_state
 		f.use_short_fn_args = old_short_arg_state
 	}
 	for i, arg in args {

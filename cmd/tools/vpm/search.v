@@ -9,7 +9,7 @@ fn vpm_search(keywords []string) {
 		help.print_and_exit('search')
 	}
 	if search_keys.len == 0 {
-		eprintln('´v search´ requires *at least one* keyword.')
+		vpm_error('specify at least one keyword to search for.')
 		exit(2)
 	}
 	modules := get_all_modules()
@@ -22,7 +22,7 @@ fn vpm_search(keywords []string) {
 				continue
 			}
 			if index == 0 {
-				println('Search results for "${joined}":\n')
+				println('Search results for `${joined}`:\n')
 			}
 			index++
 			mut parts := mod.split('.')
@@ -44,13 +44,13 @@ fn vpm_search(keywords []string) {
 		mut messages := ['No module(s) found for `${joined}` .']
 		for vlibmod in search_keys {
 			if os.is_dir(os.join_path(vroot, 'vlib', vlibmod)) {
-				messages << 'There is already an existing "${vlibmod}" module in vlib, so you can just `import ${vlibmod}` .'
+				messages << 'There is already an existing `${vlibmod}` module in vlib, so you can just `import ${vlibmod}` .'
 			}
 		}
 		for m in messages {
 			println(m)
 		}
 	} else {
-		eprintln('\nUse "v install author_name.module_name" to install the module.')
+		eprintln('\nUse `v install author_name.module_name` to install the module.')
 	}
 }

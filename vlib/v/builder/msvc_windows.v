@@ -325,7 +325,7 @@ pub fn (mut v Builder) cc_msvc() {
 	// Emily:
 	// Not all of these are needed (but the compiler should discard them if they are not used)
 	// these are the defaults used by msbuild and visual studio
-	mut real_libs := ['kernel32.lib', 'user32.lib', 'advapi32.lib']
+	mut real_libs := ['kernel32.lib', 'user32.lib', 'advapi32.lib', 'ws2_32.lib']
 	sflags := msvc_string_flags(v.get_os_cflags())
 	real_libs << sflags.real_libs
 	inc_paths := sflags.inc_paths

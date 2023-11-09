@@ -3192,7 +3192,11 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			mut shared_styp := ''
 			if g.is_shared && !ret_type.has_flag(.shared_f) && !g.inside_or_block {
 				ret_sym := g.table.sym(ret_type)
-				shared_typ := ret_type.set_flag(.shared_f)
+				shared_typ := if ret_type.is_ptr() {
+					ret_type.deref().set_flag(.shared_f)
+				} else {
+					ret_type.set_flag(.shared_f)
+				}
 				shared_styp = g.typ(shared_typ)
 				if ret_sym.kind == .array {
 					g.writeln('(${shared_styp}*)__dup_shared_array(&(${shared_styp}){.mtx = {0}, .val =')
@@ -3208,6 +3212,10 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				0
 			}
 
+			if g.is_shared && !ret_type.has_flag(.shared_f) && !g.inside_or_block
+				&& ret_type.is_ptr() {
+				g.write('*'.repeat(ret_type.nr_muls()))
+			}
 			g.call_expr(node)
 			if g.is_autofree && !g.is_builtin_mod && !g.is_js_call && g.strs_to_free0.len == 0
 				&& !g.inside_lambda {
@@ -3635,7 +3643,6 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if node.expr_type == 0 {
 		g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
 	}
-
 	sym := g.table.sym(g.unwrap_generic(node.expr_type))
 	field_name := if sym.language == .v { c_name(node.field_name) } else { node.field_name }
 
@@ -3701,6 +3708,11 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		g.write('sync__Channel_${node.field_name}(')
 		g.expr(node.expr)
 		g.write(')')
+		return
+	} else if g.enum_data_type == node.typ {
+		g.expr(node.expr)
+		g.write('.')
+		g.write(node.field_name)
 		return
 	}
 	mut sum_type_deref_field := ''

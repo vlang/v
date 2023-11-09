@@ -14,7 +14,7 @@ struct VCS {
 	cmd  string
 	args struct {
 		install  string
-		path     string // the flag used to specify a path. E.g., used to explictly work on a path during multithreaded updating.
+		path     string // the flag used to specify a path. E.g., used to explicitly work on a path during multithreaded updating.
 		update   string
 		outdated []string
 	}
@@ -56,7 +56,7 @@ fn main() {
 	// which provides the path to V inside os.getenv('VEXE')
 	// args are: vpm [options] SUBCOMMAND module names
 	params := cmdline.only_non_options(os.args[1..])
-	// dump(params)
+	vpm_log(@FILE_LINE, @FN, 'params: ${params}')
 	if params.len < 1 {
 		help.print_and_exit('vpm', exit_code: 5)
 	}
@@ -92,12 +92,9 @@ fn main() {
 			vpm_show(requested_modules)
 		}
 		else {
-			eprintln('Error: you tried to run "v ${vpm_command}"')
-			eprintln('... but the v package management tool vpm only knows about these commands:')
-			for validcmd in valid_vpm_commands {
-				eprintln('    v ${validcmd}')
-			}
-			exit(3)
+			// Unreachable in regular usage. V will catch unknown commands beforehand.
+			vpm_error('unknown command "${vpm_command}"')
+			help.print_and_exit('vpm', exit_code: 3)
 		}
 	}
 }
@@ -114,9 +111,9 @@ fn vpm_upgrade() {
 fn vpm_outdated() {
 	outdated := get_outdated() or { exit(1) }
 	if outdated.len > 0 {
-		eprintln('Outdated modules:')
+		println('Outdated modules:')
 		for m in outdated {
-			eprintln('  ${m}')
+			println('  ${m}')
 		}
 	} else {
 		println('Modules are up to date.')
@@ -126,7 +123,7 @@ fn vpm_outdated() {
 fn vpm_list() {
 	module_names := get_installed_modules()
 	if module_names.len == 0 {
-		eprintln('You have no modules installed.')
+		println('You have no modules installed.')
 		exit(0)
 	}
 	for mod in module_names {
@@ -139,46 +136,45 @@ fn vpm_remove(module_names []string) {
 		help.print_and_exit('remove')
 	}
 	if module_names.len == 0 {
-		eprintln('´v remove´ requires *at least one* module name.')
+		vpm_error('specify at least one module name for removal.')
 		exit(2)
 	}
 	for name in module_names {
-		final_module_path := valid_final_path_of_existing_module(name) or { continue }
-		eprintln('Removing module "${name}" ...')
-		verbose_println('removing folder ${final_module_path}')
-		os.rmdir_all(final_module_path) or {
-			verbose_println('error while removing "${final_module_path}": ${err.msg()}')
-		}
-		// delete author directory if it is empty
+		final_module_path := get_path_of_existing_module(name) or { continue }
+		println('Removing module "${name}" ...')
+		vpm_log(@FILE_LINE, @FN, 'removing: ${final_module_path}')
+		os.rmdir_all(final_module_path) or { vpm_error(err.msg(),
+			verbose: true
+		) }
+		// Delete author directory if it is empty.
 		author := name.split('.')[0]
 		author_dir := os.real_path(os.join_path(settings.vmodules_path, author))
 		if !os.exists(author_dir) {
 			continue
 		}
 		if os.is_dir_empty(author_dir) {
-			verbose_println('removing author folder ${author_dir}')
-			os.rmdir(author_dir) or {
-				verbose_println('error while removing "${author_dir}": ${err.msg()}')
-			}
+			verbose_println('Removing author folder ${author_dir}')
+			os.rmdir(author_dir) or { vpm_error(err.msg(),
+				verbose: true
+			) }
 		}
 	}
 }
 
-fn vpm_show(module_names []string) {
+fn vpm_show(modules []string) {
 	installed_modules := get_installed_modules()
-	for module_name in module_names {
-		if module_name !in installed_modules {
-			module_meta_info := get_module_meta_info(module_name) or { continue }
-			print('
-Name: ${module_meta_info.name}
-Homepage: ${module_meta_info.url}
-Downloads: ${module_meta_info.nr_downloads}
+	for m in modules {
+		if m !in installed_modules {
+			info := get_mod_vpm_info(m) or { continue }
+			print('Name: ${info.name}
+Homepage: ${info.url}
+Downloads: ${info.nr_downloads}
 Installed: False
 --------
 ')
 			continue
 		}
-		path := os.join_path(os.vmodules_dir(), module_name.replace('.', os.path_separator))
+		path := os.join_path(os.vmodules_dir(), m.replace('.', os.path_separator))
 		mod := vmod.from_file(os.join_path(path, 'v.mod')) or { continue }
 		print('Name: ${mod.name}
 Version: ${mod.version}

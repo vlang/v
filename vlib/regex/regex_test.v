@@ -181,6 +181,10 @@ match_test_suite = [
     TestItem{"ab.c", r"[^\s]*\.",0,3},
     TestItem{"ab c", r"[\S]+\s",0,3},
     TestItem{"ab c", r"[^\s]+\s",0,3},
+
+    // test last charr classes neg class
+    TestItem{"/a/", r"^/a/[^/]+$", -1,3},
+    TestItem{"/a/b",r"^/a/[^/]+$", 0,4},
 ]
 )
 

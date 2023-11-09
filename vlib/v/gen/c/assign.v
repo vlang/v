@@ -570,11 +570,18 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							if val_sym.info.generic_types.len > 0 {
 								if val is ast.StructInit {
 									var_styp := g.typ(val.typ)
-									g.write('${var_styp} ')
+									if var_type.has_flag(.shared_f) {
+										g.write('__shared__${var_styp}* ')
+									} else {
+										g.write('${var_styp} ')
+									}
 									is_used_var_styp = true
 								} else if val is ast.PrefixExpr {
 									if val.op == .amp && val.right is ast.StructInit {
 										var_styp := g.typ(val.right.typ.ref())
+										if var_type.has_flag(.shared_f) {
+											g.write('__shared__')
+										}
 										g.write('${var_styp} ')
 										is_used_var_styp = true
 									}

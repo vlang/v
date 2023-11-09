@@ -1,14 +1,14 @@
 #include "@VMODROOT/epoll.h"
 #include "@VMODROOT/netdb.h"
 
-pub struct C.epoll_event {
+pub struct C.zz_epoll_event {
 mut:
 	events u32
-	data   C.epoll_data_t
+	data   C.zz_epoll_data_t
 }
 
 [typedef]
-pub union C.epoll_data_t {
+pub union C.zz_epoll_data_t {
 mut:
 	ptr voidptr
 	fd  int
@@ -17,10 +17,10 @@ mut:
 }
 
 struct Epoll {
-	ev C.epoll_event
+	ev C.zz_epoll_event
 }
 
-pub struct C.hostent {
+pub struct C.zz_hostent {
 	h_name      &char
 	h_aliases   &&char
 	h_addrtype  int
@@ -29,18 +29,18 @@ pub struct C.hostent {
 }
 
 fn test_dump_c_struct() {
-	ev := C.epoll_event{}
+	ev := C.zz_epoll_event{}
 	unsafe { C.memset(&ev, 0, sizeof(ev)) }
 	dump(ev)
 	println(ev)
 
 	e := Epoll{
-		ev: C.epoll_event{}
+		ev: C.zz_epoll_event{}
 	}
 	dump(e)
 	println(e)
 	//
-	mut hostent := &C.hostent{
+	mut hostent := &C.zz_hostent{
 		h_addr_list: unsafe { nil }
 		h_aliases: unsafe { nil }
 		h_name: unsafe { nil }

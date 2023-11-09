@@ -12,6 +12,7 @@ const (
 
 fn testsuite_begin() {
 	os.setenv('VMODULES', test_path, true)
+	os.setenv('VPM_DEBUG', '', true)
 	os.setenv('VPM_NO_INCREMENT', '1', true)
 }
 
@@ -21,7 +22,7 @@ fn testsuite_end() {
 
 fn test_install_from_vpm_ident() {
 	res := os.execute_or_exit('${v} install nedpals.args')
-	assert res.output.contains('Skipping download count increment for "nedpals.args".')
+	assert res.output.contains('Skipping download count increment for `nedpals.args`.')
 	mod := vmod.from_file(os.join_path(test_path, 'nedpals', 'args', 'v.mod')) or {
 		assert false, err.msg()
 		return
@@ -42,8 +43,7 @@ fn test_install_from_vpm_short_ident() {
 
 fn test_install_from_git_url() {
 	res := os.execute_or_exit('${v} install https://github.com/vlang/markdown')
-	assert res.output.contains('Installing module "markdown" from "https://github.com/vlang/markdown')
-	assert res.output.contains('Relocating module from "vlang/markdown" to "markdown"')
+	assert res.output.contains('Installing module `markdown` from `https://github.com/vlang/markdown`')
 	mod := vmod.from_file(os.join_path(test_path, 'markdown', 'v.mod')) or {
 		assert false, err.msg()
 		return
@@ -54,7 +54,7 @@ fn test_install_from_git_url() {
 
 fn test_install_already_existent() {
 	mut res := os.execute_or_exit('${v} install https://github.com/vlang/markdown')
-	assert res.output.contains('already exists')
+	assert res.output.contains('Updating module `markdown` in `${test_path}/markdown`'), res.output
 	mod := vmod.from_file(os.join_path(test_path, 'markdown', 'v.mod')) or {
 		assert false, err.msg()
 		return
@@ -63,7 +63,7 @@ fn test_install_already_existent() {
 	assert mod.dependencies == []string{}
 	// The same module but with the `.git` extension added.
 	os.execute_or_exit('${v} install https://github.com/vlang/markdown.git')
-	assert res.output.contains('already exists')
+	assert res.output.contains('Updating module `markdown` in `${test_path}/markdown`'), res.output
 }
 
 fn test_install_once() {
@@ -106,5 +106,5 @@ fn test_missing_repo_name_in_url() {
 	incomplete_url := 'https://github.com/vlang'
 	res := os.execute('${v} install ${incomplete_url}')
 	assert res.exit_code == 1
-	assert res.output.trim_space() == 'Errors while retrieving module name for: "${incomplete_url}"'
+	assert res.output.contains('failed to retrieve module name for `${incomplete_url}`')
 }

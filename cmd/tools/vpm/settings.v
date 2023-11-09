@@ -2,6 +2,7 @@ module main
 
 import os
 import os.cmdline
+import log
 
 struct VpmSettings {
 mut:
@@ -18,6 +19,9 @@ fn init_settings() VpmSettings {
 	args := os.args[1..]
 	opts := cmdline.only_options(args)
 	cmds := cmdline.only_non_options(args)
+	if os.getenv('VPM_DEBUG') != '' {
+		log.set_level(.debug)
+	}
 	return VpmSettings{
 		is_help: '-h' in opts || '--help' in opts || 'help' in cmds
 		is_once: '--once' in opts
@@ -25,6 +29,6 @@ fn init_settings() VpmSettings {
 		vcs: if '--hg' in opts { 'hg' } else { 'git' }
 		server_urls: cmdline.options(args, '--server-urls')
 		vmodules_path: os.vmodules_dir()
-		no_dl_count_increment: os.getenv('VPM_NO_INCREMENT') == '1'
+		no_dl_count_increment: os.getenv('VPM_NO_INCREMENT') != ''
 	}
 }

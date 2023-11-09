@@ -23,6 +23,7 @@ mut:
 	version     string
 	license     string
 	files       []ProjectFiles
+	new_dir     bool
 }
 
 struct ProjectFiles {
@@ -51,7 +52,7 @@ fn main() {
 			new_project(os.args[2..])
 		}
 		'init' {
-			init_project()
+			init_project(os.args[2..])
 		}
 		else {
 			cerror('unknown command: ${cmd}')
@@ -63,32 +64,15 @@ fn main() {
 
 fn new_project(args []string) {
 	mut c := Create{}
-
-	c.name = check_name(if args.len > 0 { args[0] } else { os.input('Input your project name: ') })
-
-	if c.name == '' {
-		cerror('project name cannot be empty')
-		exit(1)
-	}
-
-	if c.name.contains('-') {
-		cerror('"${c.name}" should not contain hyphens')
-		exit(1)
-	}
-
-	if os.is_dir(c.name) {
-		cerror('${c.name} folder already exists')
-		exit(3)
-	}
-
-	c.prompt()
+	c.new_dir = true
+	c.prompt(args)
 
 	println('Initialising ...')
 	if args.len == 2 {
 		// E.g.: `v new my_project lib`
 		match os.args.last() {
 			'bin' {
-				c.set_bin_project_files(true)
+				c.set_bin_project_files()
 			}
 			'lib' {
 				c.set_lib_project_files()
@@ -103,40 +87,55 @@ fn new_project(args []string) {
 		}
 	} else {
 		// E.g.: `v new my_project`
-		c.set_bin_project_files(true)
+		c.set_bin_project_files()
 	}
 
 	// gen project based in the `Create.files` info
 	c.create_files_and_directories()
 
-	c.write_vmod(true)
-	c.write_gitattributes(true)
-	c.write_editorconfig(true)
+	c.write_vmod()
+	c.write_gitattributes()
+	c.write_editorconfig()
 	c.create_git_repo(c.name)
 }
 
-fn init_project() {
+fn init_project(args []string) {
 	mut c := Create{}
 	dir_name := check_name(os.file_name(os.getwd()))
 	if !os.exists('v.mod') {
 		mod_dir_has_hyphens := dir_name.contains('-')
 		c.name = if mod_dir_has_hyphens { dir_name.replace('-', '_') } else { dir_name }
-		c.prompt()
-		c.write_vmod(false)
+		c.prompt(args)
+		c.write_vmod()
 		if mod_dir_has_hyphens {
 			println('The directory name `${dir_name}` is invalid as a module name. The module name in `v.mod` was set to `${c.name}`')
 		}
 	}
 	if !os.exists('src/main.v') {
-		c.set_bin_project_files(false)
+		c.set_bin_project_files()
 	}
 	c.create_files_and_directories()
-	c.write_gitattributes(false)
-	c.write_editorconfig(false)
+	c.write_gitattributes()
+	c.write_editorconfig()
 	c.create_git_repo('.')
 }
 
-fn (mut c Create) prompt() {
+fn (mut c Create) prompt(args []string) {
+	if c.name == '' {
+		c.name = check_name(args[0] or { os.input('Input your project name: ') })
+		if c.name == '' {
+			cerror('project name cannot be empty')
+			exit(1)
+		}
+		if c.name.contains('-') {
+			cerror('"${c.name}" should not contain hyphens')
+			exit(1)
+		}
+		if os.is_dir(c.name) {
+			cerror('${c.name} folder already exists')
+			exit(3)
+		}
+	}
 	c.description = os.input('Input your project description: ')
 	default_version := '0.0.0'
 	c.version = os.input('Input your project version: (${default_version}) ')
@@ -175,8 +174,9 @@ fn check_name(name string) string {
 	return name
 }
 
-fn vmod_content(c Create) string {
-	return "Module {
+fn (c &Create) write_vmod() {
+	path := if c.new_dir { '${c.name}/v.mod' } else { 'v.mod' }
+	content := "Module {
 	name: '${c.name}'
 	description: '${c.description}'
 	version: '${c.version}'
@@ -184,12 +184,58 @@ fn vmod_content(c Create) string {
 	dependencies: []
 }
 "
+	os.write_file(path, content) or { panic(err) }
 }
 
-fn gen_gitignore(name string) string {
-	return '# Binaries for programs and plugins
+fn (c &Create) write_gitattributes() {
+	path := if c.new_dir { '${c.name}/.gitattributes' } else { '.gitattributes' }
+	if !c.new_dir && os.exists(path) {
+		return
+	}
+	content := '* text=auto eol=lf
+*.bat eol=crlf
+
+**/*.v linguist-language=V
+**/*.vv linguist-language=V
+**/*.vsh linguist-language=V
+**/v.mod linguist-language=V
+'
+	os.write_file(path, content) or { panic(err) }
+}
+
+fn (c &Create) write_editorconfig() {
+	path := if c.new_dir { '${c.name}/.editorconfig' } else { '.editorconfig' }
+	if !c.new_dir && os.exists(path) {
+		return
+	}
+	content := '[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.v]
+indent_style = tab
+'
+	os.write_file(path, content) or { panic(err) }
+}
+
+fn (c &Create) create_git_repo(dir string) {
+	// Create Git Repo and .gitignore file
+	if !os.is_dir('${dir}/.git') {
+		res := os.execute('git init ${dir}')
+		if res.exit_code != 0 {
+			cerror('Unable to create git repo')
+			exit(4)
+		}
+	}
+	ignore_path := '${dir}/.gitignore'
+	if os.exists(ignore_path) {
+		return
+	}
+	ignore_content := '# Binaries for programs and plugins
 main
-${name}
+${c.name}
 *.exe
 *.exe~
 *.so
@@ -212,65 +258,7 @@ bin/
 *.db
 *.js
 '
-}
-
-fn gitattributes_content() string {
-	return '* text=auto eol=lf
-*.bat eol=crlf
-
-**/*.v linguist-language=V
-**/*.vv linguist-language=V
-**/*.vsh linguist-language=V
-**/v.mod linguist-language=V
-'
-}
-
-fn editorconfig_content() string {
-	return '[*]
-charset = utf-8
-end_of_line = lf
-insert_final_newline = true
-trim_trailing_whitespace = true
-
-[*.v]
-indent_style = tab
-'
-}
-
-fn (c &Create) write_vmod(new bool) {
-	vmod_path := if new { '${c.name}/v.mod' } else { 'v.mod' }
-	os.write_file(vmod_path, vmod_content(c)) or { panic(err) }
-}
-
-fn (c &Create) write_gitattributes(new bool) {
-	gitattributes_path := if new { '${c.name}/.gitattributes' } else { '.gitattributes' }
-	if !new && os.exists(gitattributes_path) {
-		return
-	}
-	os.write_file(gitattributes_path, gitattributes_content()) or { panic(err) }
-}
-
-fn (c &Create) write_editorconfig(new bool) {
-	editorconfig_path := if new { '${c.name}/.editorconfig' } else { '.editorconfig' }
-	if !new && os.exists(editorconfig_path) {
-		return
-	}
-	os.write_file(editorconfig_path, editorconfig_content()) or { panic(err) }
-}
-
-fn (c &Create) create_git_repo(dir string) {
-	// Create Git Repo and .gitignore file
-	if !os.is_dir('${dir}/.git') {
-		res := os.execute('git init ${dir}')
-		if res.exit_code != 0 {
-			cerror('Unable to create git repo')
-			exit(4)
-		}
-	}
-	gitignore_path := '${dir}/.gitignore'
-	if !os.exists(gitignore_path) {
-		os.write_file(gitignore_path, gen_gitignore(c.name)) or {}
-	}
+	os.write_file(ignore_path, ignore_content) or {}
 }
 
 fn (mut c Create) create_files_and_directories() {

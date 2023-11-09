@@ -1777,7 +1777,11 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 								cast_sym := g.table.sym(g.unwrap_generic(typ))
 								mut is_ptr := false
 								if i == 0 {
-									g.write(node.name)
+									if obj.is_inherited {
+										g.write(c.closure_ctx + '->' + node.name)
+									} else {
+										g.write(node.name)
+									}
 									if obj.orig_type.is_ptr() {
 										is_ptr = true
 									}
