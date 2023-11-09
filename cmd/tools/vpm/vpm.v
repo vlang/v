@@ -140,7 +140,7 @@ fn vpm_remove(module_names []string) {
 		exit(2)
 	}
 	for name in module_names {
-		final_module_path := valid_final_path_of_existing_module(name) or { continue }
+		final_module_path := get_path_of_existing_module(name) or { continue }
 		println('Removing module "${name}" ...')
 		vpm_log(@FILE_LINE, @FN, 'removing: ${final_module_path}')
 		os.rmdir_all(final_module_path) or { vpm_error(err.msg(),
@@ -161,21 +161,20 @@ fn vpm_remove(module_names []string) {
 	}
 }
 
-fn vpm_show(module_names []string) {
+fn vpm_show(modules []string) {
 	installed_modules := get_installed_modules()
-	for module_name in module_names {
-		if module_name !in installed_modules {
-			module_meta_info := get_module_meta_info(module_name) or { continue }
-			print('
-Name: ${module_meta_info.name}
-Homepage: ${module_meta_info.url}
-Downloads: ${module_meta_info.nr_downloads}
+	for m in modules {
+		if m !in installed_modules {
+			info := get_mod_vpm_info(m) or { continue }
+			print('Name: ${info.name}
+Homepage: ${info.url}
+Downloads: ${info.nr_downloads}
 Installed: False
 --------
 ')
 			continue
 		}
-		path := os.join_path(os.vmodules_dir(), module_name.replace('.', os.path_separator))
+		path := os.join_path(os.vmodules_dir(), m.replace('.', os.path_separator))
 		mod := vmod.from_file(os.join_path(path, 'v.mod')) or { continue }
 		print('Name: ${mod.name}
 Version: ${mod.version}

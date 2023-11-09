@@ -9,27 +9,32 @@ import net.urllib
 import term
 import log
 
-struct Mod {
-	id           int
-	name         string
-	url          string
-	nr_downloads int
-	vcs          string
+struct Module {
+mut:
+	// Fields that can be populated via VPM API.
+	name string
+	url  string
+	vcs  string
+	// Fields based on input / environment.
+	version           string // specifies the requested version.
+	install_path      string
+	is_installed      bool
+	installed_version string
 }
 
-pub struct ModDateInfo {
+struct ModuleVpmInfo {
+	// id           int
+	name         string
+	url          string
+	vcs          string
+	nr_downloads int
+}
+
+pub struct ModuleDateInfo {
 	name string
 mut:
 	outdated bool
 	exec_err bool
-}
-
-struct ModNameInfo {
-mut:
-	mname             string // The-user.The-mod , *never* The-user.The-mod.git
-	mname_normalised  string // the_user.the_mod
-	mname_as_path     string // the_user/the_mod
-	final_module_path string // ~/.vmodules/the_user/the_mod
 }
 
 [params]
@@ -38,11 +43,61 @@ struct ErrorOptions {
 	verbose bool // is used to only output the error message if the verbose setting is enabled.
 }
 
-fn get_mod_date_info(mut pp pool.PoolProcessor, idx int, wid int) &ModDateInfo {
-	mut result := &ModDateInfo{
+fn parse_query(query []string) ([]Module, []Module) {
+	mut vpm_modules, mut extended_modules := []Module{}, []Module{}
+	mut errors := 0
+	for m in query {
+		ident, version := m.rsplit_once('@') or { m, '' }
+		mut is_external := false
+		mut mod := if ident.starts_with('https://') {
+			is_external = true
+			name := get_name_from_url(ident) or {
+				vpm_error(err.msg())
+				errors++
+				continue
+			}
+			Module{
+				name: name
+				url: ident
+				install_path: os.real_path(os.join_path(settings.vmodules_path, name))
+			}
+		} else {
+			info := get_mod_vpm_info(ident) or {
+				vpm_error('failed to retrieve metadata for `${ident}`.', details: err.msg())
+				errors++
+				continue
+			}
+			name_normalized := info.name.replace('-', '_').to_lower()
+			name_as_path := name_normalized.replace('.', os.path_separator)
+			Module{
+				name: info.name
+				url: info.url
+				vcs: info.vcs
+				install_path: os.real_path(os.join_path(settings.vmodules_path, name_as_path))
+			}
+		}
+		mod.version = version
+		if v := os.execute_opt('git ls-remote --tags ${mod.install_path}') {
+			mod.is_installed = true
+			mod.installed_version = v.output.all_after_last('/').trim_space()
+		}
+		if is_external {
+			extended_modules << mod
+		} else {
+			vpm_modules << mod
+		}
+	}
+	if errors > 0 && errors == query.len {
+		exit(1)
+	}
+	return vpm_modules, extended_modules
+}
+
+fn get_mod_date_info(mut pp pool.PoolProcessor, idx int, wid int) &ModuleDateInfo {
+	mut result := &ModuleDateInfo{
 		name: pp.get_item[string](idx)
 	}
-	final_module_path := valid_final_path_of_existing_module(result.name) or { return result }
+	final_module_path := get_path_of_existing_module(result.name) or { return result }
 	vcs := vcs_used_in_dir(final_module_path) or { return result }
 	is_hg := vcs.cmd == 'hg'
 	mut outputs := []string{}
@@ -68,26 +123,14 @@ fn get_mod_date_info(mut pp pool.PoolProcessor, idx int, wid int) &ModDateInfo {
 	return result
 }
 
-fn get_mod_name_info(mod_name string) ModNameInfo {
-	mut info := ModNameInfo{}
-	info.mname = if mod_name.ends_with('.git') { mod_name.replace('.git', '') } else { mod_name }
-	info.mname_normalised = info.mname.replace('-', '_').to_lower()
-	info.mname_as_path = info.mname_normalised.replace('.', os.path_separator)
-	info.final_module_path = os.real_path(os.join_path(settings.vmodules_path, info.mname_as_path))
-	return info
-}
-
-fn get_module_meta_info(name string) !Mod {
-	if mod := get_mod_by_url(name) {
-		return mod
-	}
+fn get_mod_vpm_info(name string) !ModuleVpmInfo {
 	if name.len < 2 || (!name[0].is_digit() && !name[0].is_letter()) {
 		return error('invalid module name `${name}`.')
 	}
 	mut errors := []string{}
 	for server_url in vpm_server_urls {
 		modurl := server_url + '/api/packages/${name}'
-		verbose_println('Retrieving module metadata from `${modurl}` ...')
+		verbose_println('Retrieving metadata for `${name}` from `${modurl}`...')
 		r := http.get(modurl) or {
 			errors << 'Http server did not respond to our request for `${modurl}`.'
 			errors << 'Error details: ${err}'
@@ -104,10 +147,10 @@ fn get_module_meta_info(name string) !Mod {
 		s := r.body
 		if s.len > 0 && s[0] != `{` {
 			errors << 'Invalid json data'
-			errors << s.trim_space().limit(100) + ' ...'
+			errors << s.trim_space().limit(100) + '...'
 			continue
 		}
-		mod := json.decode(Mod, s) or {
+		mod := json.decode(ModuleVpmInfo, s) or {
 			errors << 'Skipping module `${name}`, since its information is not in json format.'
 			continue
 		}
@@ -115,22 +158,20 @@ fn get_module_meta_info(name string) !Mod {
 			errors << 'Skipping module `${name}`, since it is missing name or url information.'
 			continue
 		}
+		vpm_log(@FILE_LINE, @FN, 'name: ${name}; mod: ${mod}')
 		return mod
 	}
 	return error(errors.join_lines())
 }
 
-fn get_mod_by_url(name string) !Mod {
-	if purl := urllib.parse(name) {
-		verbose_println('purl: ${purl}')
-		mod := Mod{
-			name: purl.path.trim_left('/').trim_right('/').replace('/', '.')
-			url: name
-		}
-		verbose_println(mod.str())
-		return mod
+fn get_name_from_url(raw_url string) !string {
+	url := urllib.parse(raw_url) or { return error('failed to parse module URL `${raw_url}`.') }
+	owner, mut name := url.path.trim_left('/').rsplit_once('/') or {
+		return error('failed to retrieve module name for `${url}`.')
 	}
-	return error('invalid url: ${name}')
+	vpm_log(@FILE_LINE, @FN, 'raw_url: ${raw_url}; owner: ${owner}; name: ${name}')
+	name = if name.ends_with('.git') { name.replace('.git', '') } else { name }
+	return name.replace('-', '_').to_lower()
 }
 
 fn get_outdated() ![]string {
@@ -138,7 +179,7 @@ fn get_outdated() ![]string {
 	mut outdated := []string{}
 	mut pp := pool.new_pool_processor(callback: get_mod_date_info)
 	pp.work_on_items(module_names)
-	for res in pp.get_results[ModDateInfo]() {
+	for res in pp.get_results[ModuleDateInfo]() {
 		if res.exec_err {
 			return error('failed to check the latest commits for `${res.name}`.')
 		}
@@ -297,14 +338,6 @@ fn resolve_dependencies(name string, module_path string, module_names []string) 
 	}
 }
 
-fn url_to_module_name(modulename string) string {
-	mut res := if mod := get_mod_by_url(modulename) { mod.name } else { modulename }
-	if res.ends_with('.git') {
-		res = res.replace('.git', '')
-	}
-	return res
-}
-
 fn vcs_used_in_dir(dir string) ?VCS {
 	for vcs in supported_vcs.values() {
 		if os.is_dir(os.real_path(os.join_path(dir, vcs.dir))) {
@@ -314,22 +347,22 @@ fn vcs_used_in_dir(dir string) ?VCS {
 	return none
 }
 
-fn valid_final_path_of_existing_module(modulename string) ?string {
-	name := if mod := get_mod_by_url(modulename) { mod.name } else { modulename }
-	minfo := get_mod_name_info(name)
-	if !os.exists(minfo.final_module_path) {
-		vpm_error('failed to find a module with name `${minfo.mname_normalised}` at `${minfo.final_module_path}`')
+fn get_path_of_existing_module(mod_name string) ?string {
+	name := get_name_from_url(mod_name) or { mod_name.replace('-', '_').to_lower() }
+	path := os.real_path(os.join_path(settings.vmodules_path, name.replace('.', os.path_separator)))
+	if !os.exists(path) {
+		vpm_error('failed to find `${name}` at `${path}`.')
 		return none
 	}
-	if !os.is_dir(minfo.final_module_path) {
-		vpm_error('skipping `${minfo.final_module_path}`, since it is not a directory.')
+	if !os.is_dir(path) {
+		vpm_error('skipping `${path}`, since it is not a directory.')
 		return none
 	}
-	vcs_used_in_dir(minfo.final_module_path) or {
-		vpm_error('skipping `${minfo.final_module_path}`, since it uses an unsupported version control system.')
+	vcs_used_in_dir(path) or {
+		vpm_error('skipping `${path}`, since it uses an unsupported version control system.')
 		return none
 	}
-	return minfo.final_module_path
+	return path
 }
 
 fn verbose_println(s string) {
