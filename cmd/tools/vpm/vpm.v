@@ -61,20 +61,21 @@ fn main() {
 		help.print_and_exit('vpm', exit_code: 5)
 	}
 	vpm_command := params[0]
-	mut requested_modules := params[1..].clone()
+	mut query := params[1..].clone()
+	vpm_log(@FILE_LINE, @FN, 'query: ${query}')
 	ensure_vmodules_dir_exist()
 	match vpm_command {
 		'help' {
 			help.print_and_exit('vpm')
 		}
 		'search' {
-			vpm_search(requested_modules)
+			vpm_search(query)
 		}
 		'install' {
-			vpm_install(requested_modules)
+			vpm_install(query)
 		}
 		'update' {
-			vpm_update(requested_modules)
+			vpm_update(query)
 		}
 		'upgrade' {
 			vpm_upgrade()
@@ -86,10 +87,10 @@ fn main() {
 			vpm_list()
 		}
 		'remove' {
-			vpm_remove(requested_modules)
+			vpm_remove(query)
 		}
 		'show' {
-			vpm_show(requested_modules)
+			vpm_show(query)
 		}
 		else {
 			// Unreachable in regular usage. V will catch unknown commands beforehand.
@@ -121,49 +122,45 @@ fn vpm_outdated() {
 }
 
 fn vpm_list() {
-	module_names := get_installed_modules()
-	if module_names.len == 0 {
+	installed := get_installed_modules()
+	if installed.len == 0 {
 		println('You have no modules installed.')
 		exit(0)
 	}
-	for mod in module_names {
-		println(mod)
+	for m in installed {
+		println(m)
 	}
 }
 
-fn vpm_remove(module_names []string) {
+fn vpm_remove(query []string) {
 	if settings.is_help {
 		help.print_and_exit('remove')
 	}
-	if module_names.len == 0 {
+	if query.len == 0 {
 		vpm_error('specify at least one module name for removal.')
 		exit(2)
 	}
-	for name in module_names {
-		final_module_path := get_path_of_existing_module(name) or { continue }
-		println('Removing module "${name}" ...')
+	for m in query {
+		final_module_path := get_path_of_existing_module(m) or { continue }
+		println('Removing module "${m}" ...')
 		vpm_log(@FILE_LINE, @FN, 'removing: ${final_module_path}')
-		os.rmdir_all(final_module_path) or { vpm_error(err.msg(),
-			verbose: true
-		) }
+		os.rmdir_all(final_module_path) or { vpm_error(err.msg(), verbose: true) }
 		// Delete author directory if it is empty.
-		author := name.split('.')[0]
+		author := m.split('.')[0]
 		author_dir := os.real_path(os.join_path(settings.vmodules_path, author))
 		if !os.exists(author_dir) {
 			continue
 		}
 		if os.is_dir_empty(author_dir) {
 			verbose_println('Removing author folder ${author_dir}')
-			os.rmdir(author_dir) or { vpm_error(err.msg(),
-				verbose: true
-			) }
+			os.rmdir(author_dir) or { vpm_error(err.msg(), verbose: true) }
 		}
 	}
 }
 
-fn vpm_show(modules []string) {
+fn vpm_show(query []string) {
 	installed_modules := get_installed_modules()
-	for m in modules {
+	for m in query {
 		if m !in installed_modules {
 			info := get_mod_vpm_info(m) or { continue }
 			print('Name: ${info.name}
