@@ -123,8 +123,11 @@ fn vpm_install_from_vpm(modules []Module) {
 			errors++
 		}
 		manifest := vmod.from_file(os.join_path(m.install_path, 'v.mod')) or {
-			vpm_error(err.msg())
-			errors++
+			vpm_error('Module `${m.name}` is lacking a v.mod file.',
+				details: err.msg()
+				verbose: true
+			)
+			println('Installed `${m.name}`.')
 			continue
 		}
 		if last_errors == errors {
@@ -160,8 +163,11 @@ fn vpm_install_from_vcs(modules []Module) {
 			}
 		}
 		manifest := vmod.from_file(os.join_path(m.install_path, 'v.mod')) or {
-			vpm_error(err.msg())
-			errors++
+			vpm_error('Module `${m.name}` is lacking a v.mod file.',
+				details: err.msg()
+				verbose: true
+			)
+			println('Installed `${m.name}`.')
 			continue
 		}
 		vpm_log(@FILE_LINE, @FN, 'manifest: ${manifest}')

@@ -34,7 +34,10 @@ fn vpm_update(modules []string) {
 			exit(1)
 		}
 		manifest := vmod.from_file(os.join_path(res.install_path, 'v.mod')) or {
-			vpm_error(err.msg())
+			vpm_error('Module `${res.name}` is lacking a v.mod file.',
+				details: err.msg()
+				verbose: true
+			)
 			continue
 		}
 		resolve_dependencies(manifest.name, manifest.dependencies, modules)
@@ -99,8 +102,7 @@ fn vpm_update_verbose(modules []string) {
 			vpm_error(err.msg(), verbose: true)
 		}
 		manifest := vmod.from_file(os.join_path(install_path, 'v.mod')) or {
-			errors++
-			vpm_error(err.msg(), verbose: true)
+			vpm_error('Module `${mod}` is lacking a v.mod file.', details: err.msg(), verbose: true)
 			continue
 		}
 		resolve_dependencies(manifest.name, manifest.dependencies, modules)
