@@ -170,8 +170,8 @@ fn vpm_install_from_vcs(modules []Module) {
 			println('Installed `${m.name}`.')
 			continue
 		}
-		vpm_log(@FILE_LINE, @FN, 'manifest: ${manifest}')
-		final_path := os.real_path(os.join_path(settings.vmodules_path, manifest.name))
+		final_path := os.real_path(os.join_path(settings.vmodules_path, manifest.name.replace('-',
+			'_').to_lower()))
 		if m.install_path != final_path {
 			verbose_println('Relocating `${m.name} (${m.install_path})` to `${manifest.name} (${final_path})`...')
 			if os.exists(final_path) {
