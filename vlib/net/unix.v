@@ -204,6 +204,15 @@ pub fn (mut c UnixConn) set_sock() ! {
 	}
 }
 
+pub fn (c &UnixConn) addr() !Addr {
+	return c.sock.address()
+}
+
+pub fn (c &UnixConn) str() string {
+	s := c.sock.str().replace('\n', ' ').replace('  ', ' ')
+	return 'UnixConn{ write_deadline: ${c.write_deadline}, read_deadline: ${c.read_deadline}, read_timeout: ${c.read_timeout}, write_timeout: ${c.write_timeout}, sock: ${s} }'
+}
+
 pub struct UnixListener {
 pub mut:
 	sock UnixSocket
@@ -232,10 +241,14 @@ pub fn listen_unix(socket_type SocketType, socket_path string, options ListenOpt
 	// cast to the correct type
 	alen := addr.len()
 
-	// try to unlink an existing filesystem object at `socket_path`. Ignore errors,
+	// try to unlink/remove an existing filesystem object at `socket_path`. Ignore errors,
 	// because it's ok if the path doesn't exists and if it exists, but can't be unlinked
 	// then `bind` will generate an error
-	C.unlink(&char(socket_path.str))
+	$if windows {
+		os.rm(socket_path) or {}
+	} $else {
+		C.unlink(&char(socket_path.str))
+	}
 	socket_error_message(C.bind(s.handle, voidptr(&addr), alen), 'binding to ${socket_path} failed')!
 	socket_error_message(C.listen(s.handle, options.backlog), 'listening on ${socket_path} with maximum backlog pending queue of ${options.backlog}, failed')!
 	return &UnixListener{
@@ -281,6 +294,25 @@ pub fn (mut l UnixListener) accept_only() !&UnixConn {
 	}
 }
 
+pub fn (l &UnixListener) accept_deadline() !time.Time {
+	if l.accept_deadline.unix != 0 {
+		return l.accept_deadline
+	}
+	return error('invalid deadline')
+}
+
+pub fn (mut l UnixListener) set_accept_deadline(deadline time.Time) {
+	l.accept_deadline = deadline
+}
+
+pub fn (l &UnixListener) accept_timeout() time.Duration {
+	return l.accept_timeout
+}
+
+pub fn (mut l UnixListener) set_accept_timeout(t time.Duration) {
+	l.accept_timeout = t
+}
+
 pub fn (mut l UnixListener) wait_for_accept() ! {
 	return wait_for_read(l.sock.handle, l.accept_deadline, l.accept_timeout)
 }
@@ -293,7 +325,11 @@ pub fn (mut l UnixListener) close() ! {
 
 // unlink removes the unix socket from the file system
 pub fn (mut l UnixListener) unlink() ! {
-	socket_error_message(C.unlink(&char(l.sock.socket_path.str)), 'could not unlink ${l.sock.socket_path}')!
+	$if windows {
+		os.rm(l.sock.socket_path)!
+	} $else {
+		socket_error_message(C.unlink(&char(l.sock.socket_path.str)), 'could not unlink ${l.sock.socket_path}')!
+	}
 }
 
 // unlink_on_signal removes the socket from the filesystem when signal `signum` occurs
@@ -348,6 +384,29 @@ fn (mut s UnixSocket) close() ! {
 	return close(s.handle)
 }
 
+fn (mut s UnixSocket) @select(test Select, timeout time.Duration) !bool {
+	return @select(s.handle, test, timeout)
+}
+
+fn (mut s UnixSocket) set_option(level int, opt int, value int) ! {
+	socket_error(C.setsockopt(s.handle, level, opt, &value, sizeof(int)))!
+}
+
+pub fn (mut s UnixSocket) set_option_bool(opt SocketOption, value bool) ! {
+	if opt !in opts_can_set {
+		return err_option_not_settable
+	}
+	if opt !in opts_bool {
+		return err_option_wrong_type
+	}
+	x := int(value)
+	s.set_option(C.SOL_SOCKET, int(opt), &x)!
+}
+
+pub fn (mut s UnixSocket) set_option_int(opt SocketOption, value int) ! {
+	s.set_option(C.SOL_SOCKET, int(opt), value)!
+}
+
 fn (mut s UnixSocket) connect(a Addr) ! {
 	$if !net_blocking_sockets ? {
 		res := $if is_coroutine ? {
@@ -359,34 +418,30 @@ fn (mut s UnixSocket) connect(a Addr) ! {
 			return
 		}
 		ecode := error_code()
-		// // On nix non-blocking sockets we expect einprogress
-		// // On windows we expect res == -1 && error_code() == ewouldblock
-		// if (is_windows && ecode == int(error_ewouldblock))
-		// 	|| (!is_windows && res == -1 && ecode == int(error_einprogress)) {
-		// 	// The  socket  is  nonblocking and the connection cannot be completed
-		// 	// immediately.  (UNIX domain sockets failed with EAGAIN instead.)
-		// 	// It is possible to select(2) or poll(2) for completion by selecting
-		// 	// the socket for  writing.   After  select(2) indicates  writability,
-		// 	// use getsockopt(2) to read the SO_ERROR option at level SOL_SOCKET to
-		// 	// determine whether connect() completed successfully (SO_ERROR is zero) or
-		// 	// unsuccessfully (SO_ERROR is one of the usual error codes  listed  here,
-		// 	// ex‐ plaining the reason for the failure).
-		// 	write_result := s.@select(.write, net.connect_timeout)!
-		// 	err := 0
-		// 	len := sizeof(err)
-		// 	xyz := C.getsockopt(s.handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len)
-		// 	if xyz == 0 && err == 0 {
-		// 		return
-		// 	}
-		// 	if write_result {
-		// 		if xyz == 0 {
-		// 			wrap_error(err)!
-		// 			return
-		// 		}
-		// 		return
-		// 	}
-		// 	return err_timed_out
-		// }
+
+		// no need to check for einprogress on nix
+		// On windows we expect res == -1 && error_code() == ewouldblock
+		if is_windows && ecode == int(error_ewouldblock) {
+			// The socket is nonblocking and the connection cannot be completed
+			// immediately. Wait till the socket is ready to write
+			write_result := s.@select(.write, connect_timeout)!
+			err := 0
+			len := sizeof(err)
+			// determine whether connect() completed successfully (SO_ERROR is zero)
+			xyz := C.getsockopt(s.handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len)
+			if xyz == 0 && err == 0 {
+				return
+			}
+			if write_result {
+				if xyz == 0 {
+					wrap_error(err)!
+					return
+				}
+				return
+			}
+			return err_timed_out
+		}
+
 		wrap_error(ecode)!
 		return
 	} $else {
