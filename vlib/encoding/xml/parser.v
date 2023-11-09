@@ -534,9 +534,12 @@ fn parse_single_node(first_char u8, mut reader io.Reader) !XMLNode {
 	if ch == `/` {
 		return error('XML node cannot start with "</".')
 	}
-	contents.write_u8(ch)
 
-	for {
+	if ch != `>` {
+		contents.write_u8(ch)
+	}
+
+	for ch != `>` {
 		ch = next_char(mut reader, mut local_buf)!
 		if ch == `>` {
 			break
@@ -547,7 +550,7 @@ fn parse_single_node(first_char u8, mut reader io.Reader) !XMLNode {
 	tag_contents := contents.str().trim_space()
 
 	parts := tag_contents.split_any(' \t\n')
-	name := first_char.ascii_str() + parts[0]
+	name := if parts.len > 0 { first_char.ascii_str() + parts[0] } else { first_char.ascii_str() }
 
 	// Check if it is a self-closing tag
 	if tag_contents.ends_with('/') {
