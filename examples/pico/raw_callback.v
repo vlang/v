@@ -17,7 +17,7 @@ fn main() {
 	pico.serve()
 }
 
-fn handle_conn(data voidptr, fd int, remove_from_loop fn ()) {
+fn handle_conn(mut pv picoev.Picoev, fd int) {
 	// setup a nonblocking tcp connection
 	mut conn := &net.TcpConn{
 		sock: net.tcp_socket_from_handle_raw(fd)
@@ -34,7 +34,6 @@ fn handle_conn(data voidptr, fd int, remove_from_loop fn ()) {
 
 	conn.write(http_response.bytes()) or { eprintln('could not write response') }
 
-	// remove the socket from picoev's event loop first before closing the connection
-	remove_from_loop()
-	conn.close() or { eprintln('could not close connection') }
+	// remove the socket from picoev's event loop and close the connection
+	pv.close_conn(fd)
 }
