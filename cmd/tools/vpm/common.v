@@ -19,6 +19,7 @@ mut:
 	version           string // specifies the requested version.
 	install_path      string
 	is_installed      bool
+	is_external       bool
 	installed_version string
 }
 
@@ -48,22 +49,22 @@ fn parse_query(query []string) ([]Module, []Module) {
 	mut errors := 0
 	for m in query {
 		ident, version := m.rsplit_once('@') or { m, '' }
-		mut is_external := false
 		mut mod := if ident.starts_with('https://') {
-			is_external = true
 			name := get_name_from_url(ident) or {
 				vpm_error(err.msg())
 				errors++
 				continue
 			}
-			if !has_vmod(ident) {
+			install_path := os.real_path(os.join_path(settings.vmodules_path, name))
+			if !has_vmod(ident, install_path) {
 				errors++
 				continue
 			}
 			Module{
 				name: name
 				url: ident
-				install_path: os.real_path(os.join_path(settings.vmodules_path, name))
+				install_path: install_path
+				is_external: true
 			}
 		} else {
 			info := get_mod_vpm_info(ident) or {
@@ -85,7 +86,7 @@ fn parse_query(query []string) ([]Module, []Module) {
 			mod.is_installed = true
 			mod.installed_version = v.output.all_after_last('/').trim_space()
 		}
-		if is_external {
+		if mod.is_external {
 			external_modules << mod
 		} else {
 			vpm_modules << mod
@@ -97,7 +98,11 @@ fn parse_query(query []string) ([]Module, []Module) {
 	return vpm_modules, external_modules
 }
 
-fn has_vmod(url string) bool {
+fn has_vmod(url string, install_path string) bool {
+	if os.exists((os.join_path(install_path, 'v.mod'))) {
+		// Safe time fetchting the repo when the module is already installed and has a `v.mod`.
+		return true
+	}
 	head_branch := os.execute_opt('git ls-remote --symref ${url} HEAD') or {
 		vpm_error('failed to find git HEAD for `${url}`.', details: err.msg())
 		return false
