@@ -13,10 +13,3 @@ enum Select {
 	write
 	except
 }
-
-// SocketType are the available sockets
-// enum SocketType {
-// 	dgram = C.SOCK_DGRAM
-// 	stream = C.SOCK_STREAM
-// 	seqpacket = C.SOCK_SEQPACKET
-// }
