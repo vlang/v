@@ -24,6 +24,7 @@ mut:
 	is_blocking    bool
 }
 
+// connect_stream returns a SOCK_STREAM connection for an unix domain socket on `socket_path`
 pub fn connect_stream(socket_path string) !&StreamConn {
 	if socket_path.len >= max_sun_path {
 		return error('Socket path too long! Max length: ${max_sun_path - 1} chars.')
@@ -41,6 +42,7 @@ pub fn connect_stream(socket_path string) !&StreamConn {
 	}
 }
 
+// close closes the connection
 pub fn (mut c StreamConn) close() ! {
 	$if trace_unix ? {
 		eprintln('    StreamConn.close | c.sock.handle: ${c.sock.handle:6}')
@@ -102,6 +104,7 @@ pub fn (mut c StreamConn) write_string(s string) !int {
 	return c.write_ptr(s.str, s.len)
 }
 
+// read_ptr attempts to write all data
 pub fn (mut c StreamConn) read_ptr(buf_ptr &u8, len int) !int {
 	mut res := $if is_coroutine ? {
 		wrap_read_result(C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout))!
@@ -144,10 +147,12 @@ pub fn (mut c StreamConn) read_ptr(buf_ptr &u8, len int) !int {
 	return error('none')
 }
 
+// read data into `buf`
 pub fn (mut c StreamConn) read(mut buf []u8) !int {
 	return c.read_ptr(buf.data, buf.len)
 }
 
+// read_deadline returns the read deadline
 pub fn (mut c StreamConn) read_deadline() !time.Time {
 	if c.read_deadline.unix == 0 {
 		return c.read_deadline
@@ -155,10 +160,12 @@ pub fn (mut c StreamConn) read_deadline() !time.Time {
 	return error('none')
 }
 
+// set_read_deadlien sets the read deadline
 pub fn (mut c StreamConn) set_read_deadline(deadline time.Time) {
 	c.read_deadline = deadline
 }
 
+// write_deadline returns the write deadline
 pub fn (mut c StreamConn) write_deadline() !time.Time {
 	if c.write_deadline.unix == 0 {
 		return c.write_deadline
@@ -166,36 +173,44 @@ pub fn (mut c StreamConn) write_deadline() !time.Time {
 	return error('none')
 }
 
+// set_write_deadline sets the write deadline
 pub fn (mut c StreamConn) set_write_deadline(deadline time.Time) {
 	c.write_deadline = deadline
 }
 
+// read_timeout returns the read timeout
 pub fn (c &StreamConn) read_timeout() time.Duration {
 	return c.read_timeout
 }
 
+// set_read_timeout sets the read timeout
 pub fn (mut c StreamConn) set_read_timeout(t time.Duration) {
 	c.read_timeout = t
 }
 
+// write_timeout returns the write timeout
 pub fn (c &StreamConn) write_timeout() time.Duration {
 	return c.write_timeout
 }
 
+// set_write_timout sets the write timeout
 pub fn (mut c StreamConn) set_write_timeout(t time.Duration) {
 	c.write_timeout = t
 }
 
+// wait_for_read blocks until the socket is ready to read
 [inline]
 pub fn (mut c StreamConn) wait_for_read() ! {
 	return wait_for_read(c.sock.handle, c.read_deadline, c.read_timeout)
 }
 
+// wait_for_read blocks until the socket is ready to write
 [inline]
 pub fn (mut c StreamConn) wait_for_write() ! {
 	return wait_for_write(c.sock.handle, c.write_deadline, c.write_timeout)
 }
 
+// str returns a string representation of connection `c`
 pub fn (c StreamConn) str() string {
 	s := c.sock.str().replace('\n', ' ').replace('  ', ' ')
 	return 'StreamConn{ write_deadline: ${c.write_deadline}, read_deadline: ${c.read_deadline}, read_timeout: ${c.read_timeout}, write_timeout: ${c.write_timeout}, sock: ${s} }'
@@ -214,6 +229,7 @@ pub struct ListenOptions {
 	backlog int = 128
 }
 
+// listen_stream creates an unix domain socket at `socket_path`
 pub fn listen_stream(socket_path string, options ListenOptions) !&StreamListener {
 	if socket_path.len >= max_sun_path {
 		return error('Socket path too long! Max length: ${max_sun_path - 1} chars.')
@@ -248,6 +264,7 @@ pub fn listen_stream(socket_path string, options ListenOptions) !&StreamListener
 	}
 }
 
+// accept accepts blocks until a new connection occurs
 pub fn (mut l StreamListener) accept() !&StreamConn {
 	$if trace_unix ? {
 		eprintln('    StreamListener.accept | l.sock.handle: ${l.sock.handle:6}')
@@ -279,6 +296,7 @@ pub fn (mut l StreamListener) accept() !&StreamConn {
 	return c
 }
 
+// accept_deadline returns the deadline until a new client is accepted
 pub fn (l &StreamListener) accept_deadline() !time.Time {
 	if l.accept_deadline.unix != 0 {
 		return l.accept_deadline
@@ -286,22 +304,27 @@ pub fn (l &StreamListener) accept_deadline() !time.Time {
 	return error('no deadline')
 }
 
+// set_accept_deadline sets the deadlinme until a new client is accepted
 pub fn (mut l StreamListener) set_accept_deadline(deadline time.Time) {
 	l.accept_deadline = deadline
 }
 
+// accept_timeout returns the timeout until a new client is accepted
 pub fn (l &StreamListener) accept_timeout() time.Duration {
 	return l.accept_timeout
 }
 
+// set_accept_timeout sets the timeout until a new client is accepted
 pub fn (mut l StreamListener) set_accept_timeout(t time.Duration) {
 	l.accept_timeout = t
 }
 
+// wait_for_accept blocks until a client can be accepted
 pub fn (mut l StreamListener) wait_for_accept() ! {
 	return wait_for_read(l.sock.handle, l.accept_deadline, l.accept_timeout)
 }
 
+// close closes the listening socket and unlinks/removes the socket file
 pub fn (mut l StreamListener) close() ! {
 	l.sock.close()!
 	l.unlink()!
@@ -327,6 +350,7 @@ pub fn (mut l StreamListener) unlink_on_signal(signum os.Signal) ! {
 	})!
 }
 
+// addr returns the `net.Addr` version of the listening socket's path
 pub fn (mut l StreamListener) addr() !net.Addr {
 	return l.sock.address()!
 }
@@ -373,10 +397,12 @@ fn (mut s StreamSocket) @select(test Select, timeout time.Duration) !bool {
 	return @select(s.handle, test, timeout)
 }
 
+// set_option sets an option on the socket
 fn (mut s StreamSocket) set_option(level int, opt int, value int) ! {
 	net.socket_error(C.setsockopt(s.handle, level, opt, &value, sizeof(int)))!
 }
 
+// set_option_bool sets a boolean option on the socket
 pub fn (mut s StreamSocket) set_option_bool(opt net.SocketOption, value bool) ! {
 	if opt !in net.opts_can_set {
 		return net.err_option_not_settable
@@ -388,6 +414,7 @@ pub fn (mut s StreamSocket) set_option_bool(opt net.SocketOption, value bool) ! 
 	s.set_option(C.SOL_SOCKET, int(opt), &x)!
 }
 
+// set_option_bool sets an int option on the socket
 pub fn (mut s StreamSocket) set_option_int(opt net.SocketOption, value int) ! {
 	s.set_option(C.SOL_SOCKET, int(opt), value)!
 }
@@ -452,6 +479,7 @@ fn (mut s StreamSocket) connect(socket_path string) ! {
 	}
 }
 
+// stream_socket_from_handle returns a `StreamSocket` instance from the raw file descriptor `sockfd`
 pub fn stream_socket_from_handle(sockfd int) !&StreamSocket {
 	mut s := &StreamSocket{
 		handle: sockfd
