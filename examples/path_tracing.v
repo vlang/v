@@ -556,7 +556,9 @@ fn ray_trace(w int, h int, samps int, file_name string, scene_id int) Image {
 							d.mult_s(140.0), d.norm()}, 0, scene_id).mult_s(samps1)
 					}
 					tmp_vec := Vec{clamp(r.x), clamp(r.y), clamp(r.z)}.mult_s(.25)
-					(*ivec) = *ivec + tmp_vec
+					unsafe {
+						(*ivec) = *ivec + tmp_vec
+					}
 				}
 			}
 		}
