@@ -98,12 +98,9 @@ fn wait_for_common(handle int, deadline time.Time, timeout time.Duration, test S
 	// Convert timeouts to deadlines
 	real_deadline := if timeout == net.infinite_timeout {
 		time.unix(0)
-	} else if timeout == 0 {
+	} else if timeout <= 0 {
 		// No timeout set, so assume deadline
 		deadline
-	} else if timeout < 0 {
-		// TODO(emily): Do something nicer here :)
-		panic('invalid negative timeout')
 	} else {
 		// timeout
 		time.now().add(timeout)
