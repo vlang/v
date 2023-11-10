@@ -527,20 +527,12 @@ fn parse_children(name string, attributes map[string]string, mut reader io.Reade
 }
 
 fn parse_single_node(first_char u8, mut reader io.Reader) !XMLNode {
-	mut local_buf := [u8(0)]
-	mut ch := next_char(mut reader, mut local_buf)!
 	mut contents := strings.new_builder(xml.default_string_builder_cap)
-	// We're expecting an opening tag
-	if ch == `/` {
-		return error('XML node cannot start with "</".')
-	}
+	contents.write_u8(first_char)
 
-	if ch != `>` {
-		contents.write_u8(ch)
-	}
-
-	for ch != `>` {
-		ch = next_char(mut reader, mut local_buf)!
+	mut local_buf := [u8(0)]
+	for {
+		mut ch := next_char(mut reader, mut local_buf)!
 		if ch == `>` {
 			break
 		}
@@ -550,7 +542,7 @@ fn parse_single_node(first_char u8, mut reader io.Reader) !XMLNode {
 	tag_contents := contents.str().trim_space()
 
 	parts := tag_contents.split_any(' \t\n')
-	name := if parts.len > 0 { first_char.ascii_str() + parts[0] } else { first_char.ascii_str() }
+	name := parts[0]
 
 	// Check if it is a self-closing tag
 	if tag_contents.ends_with('/') {
@@ -561,7 +553,7 @@ fn parse_single_node(first_char u8, mut reader io.Reader) !XMLNode {
 		}
 	}
 
-	attribute_string := tag_contents[name.len - 1..].trim_space()
+	attribute_string := tag_contents[name.len..].trim_space()
 	attributes := parse_attributes(attribute_string)!
 
 	return parse_children(name, attributes, mut reader)

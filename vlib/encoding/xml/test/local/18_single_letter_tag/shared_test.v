@@ -19,6 +19,9 @@ fn test_valid_parsing() {
 					children: [
 						xml.XMLNode{
 							name: 't'
+							attributes: {
+								'a': '1'
+							}
 							children: ['Item 1']
 						},
 					]
