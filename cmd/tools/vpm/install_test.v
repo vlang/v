@@ -112,8 +112,8 @@ fn test_missing_repo_name_in_url() {
 }
 
 fn test_missing_vmod_in_url() {
-	assert has_vmod('https://github.com/vlang/v') // main branch == `master`.
-	assert has_vmod('https://github.com/vlang/v') // main branch == `main`.
+	assert has_vmod('https://github.com/vlang/v') // head branch == `master`.
+	assert has_vmod('https://github.com/v-analyzer/v-analyzer') // head branch == `main`.
 	assert !has_vmod('https://github.com/octocat/octocat.github.io') // not a V module.
 	res := os.execute('${v} install https://github.com/octocat/octocat.github.io')
 	assert res.exit_code == 1
