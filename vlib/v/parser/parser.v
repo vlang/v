@@ -1874,6 +1874,7 @@ fn (mut p Parser) parse_attr(is_at bool) ast.Attr {
 			name: 'unsafe'
 			kind: kind
 			pos: apos.extend(p.tok.pos())
+			has_at: is_at
 		}
 	}
 	mut name := ''
