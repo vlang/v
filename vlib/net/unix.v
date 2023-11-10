@@ -23,6 +23,12 @@ mut:
 }
 
 pub fn dial_unix(socket_type SocketType, socket_path string) !&UnixConn {
+	$if windows {
+		if socket_type != .tcp {
+			return error('Windows only supports `.tcp` unix sockets (SOCK_STREAM)')
+		}
+	}
+
 	addrs := resolve_addrs(socket_path, .unix, socket_type) or {
 		return error('${err.msg()}; could not resolve path ${socket_path}')
 	}
@@ -349,6 +355,7 @@ pub fn (mut l UnixListener) addr() !Addr {
 
 struct UnixSocket {
 	Socket
+pub:
 	socket_path string
 }
 
