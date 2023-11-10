@@ -1867,7 +1867,7 @@ fn (mut p Parser) parse_attr(is_at bool) ast.Attr {
 	defer {
 		p.inside_attr_decl = false
 	}
-	apos := p.prev_tok.pos()
+	apos := if is_at { p.peek_token(-2).pos() } else { p.prev_tok.pos() }
 	if p.tok.kind == .key_unsafe {
 		p.next()
 		return ast.Attr{
