@@ -103,6 +103,7 @@ pub mut:
 // request to the given `url`.
 pub fn post_multipart_form(url string, conf PostMultipartFormConfig) !Response {
 	body, boundary := multipart_form_body(conf.form, conf.files)
+	println(conf.header)
 	mut header := conf.header
 	header.set(.content_type, 'multipart/form-data; boundary="${boundary}"')
 	return fetch(

@@ -1048,6 +1048,20 @@ pub fn (s string) substr(start int, _end int) string {
 	return res
 }
 
+// substr_unsafe works like substr(), but doesn't copy (allocate) the substring
+[direct_array_access]
+pub fn (s string) substr_unsafe(start int, _end int) string {
+	end := if _end == 2147483647 { s.len } else { _end } // max_int
+	len := end - start
+	if len == s.len {
+		return s
+	}
+	return string{
+		str: unsafe { s.str + start }
+		len: len
+	}
+}
+
 // version of `substr()` that is used in `a[start..end] or {`
 // return an error when the index is out of range
 [direct_array_access]

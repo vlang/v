@@ -21,6 +21,23 @@ enum Category {
 	examples
 }
 
+/*
+#### Improvements in the language
+#### Breaking changes
+#### Checker improvements/fixes
+#### Parser improvements
+#### Compiler internals
+#### Standard library
+#### Web
+#### ORM
+#### Database drivers
+#### Native backend
+#### C backend
+#### Tools
+#### Operating System support
+#### Examples
+*/
+
 struct Line {
 	category Category
 	text     string
@@ -37,6 +54,8 @@ mut:
 fn main() {
 	if !os.exists(log_txt) {
 		os.execute(git_log_cmd + ' > ' + log_txt)
+		println('log.txt generated, remove unnecessary commits from it and run the tool again')
+		return
 	}
 	lines := os.read_lines(log_txt)!
 	changelog_txt := os.read_file('CHANGELOG.md')!.to_lower()

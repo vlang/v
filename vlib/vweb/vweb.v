@@ -13,6 +13,7 @@ import time
 import json
 import encoding.html
 import context
+import strings
 
 // A type which don't get filtered inside templates
 pub type RawHtml = string
@@ -187,6 +188,7 @@ pub:
 struct Route {
 	methods    []http.Method
 	path       string
+	path_words []string // precalculated once to avoid split() allocations in handle_conn()
 	middleware string
 	host       string
 }
@@ -229,7 +231,8 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	//
 	resp.set_version(.v1_1)
 	resp.set_status(http.status_from_int(ctx.status.int()))
-	send_string(mut ctx.conn, resp.bytestr()) or { return false }
+	// send_string(mut ctx.conn, resp.bytestr()) or { return false }
+	fast_send_resp(mut ctx.conn, resp) or { return false }
 	return true
 }
 
@@ -354,10 +357,11 @@ pub fn (mut ctx Context) set_cookie_with_expire_date(key string, val string, exp
 
 // Gets a cookie by a key
 pub fn (ctx &Context) get_cookie(key string) !string {
-	if value := ctx.req.cookies[key] {
-		return value
-	}
-	return error('Cookie not found')
+	c := ctx.req.cookie(key) or { return error('Cookie not found') }
+	return c.value
+	// if value := ctx.req.cookies[key] {
+	// return value
+	//}
 }
 
 // TODO - test
@@ -437,6 +441,7 @@ fn generate_routes[T](app &T) !map[string]Route {
 		routes[method.name] = Route{
 			methods: http_methods
 			path: route_path
+			path_words: route_path.split('/').filter(it != '')
 			middleware: middleware
 			host: host
 		}
@@ -755,7 +760,11 @@ fn handle_route[T](mut app T, url urllib.URL, host string, routes &map[string]Ro
 			// Skip if the HTTP request method does not match the attributes
 			if app.req.method in route.methods {
 				// Used for route matching
-				route_words := route.path.split('/').filter(it != '')
+				route_words := route.path_words // route.path.split('/').filter(it != '')
+				// println('ROUTES ${routes}')
+				// println('\nROUTE WORDS')
+				// println(route_words)
+				// println(route.path_words)
 
 				// Skip if the host does not match or is empty
 				if route.host == '' || route.host == host {
@@ -1086,6 +1095,43 @@ fn send_string(mut conn net.TcpConn, s string) ! {
 		return error('connection was closed before send_string')
 	}
 	conn.write_string(s)!
+}
+
+// Formats resp to a string suitable for HTTP response transmission
+// A fast version of `resp.bytestr()` used with
+// `send_string(mut ctx.conn, resp.bytestr())`
+fn fast_send_resp(mut conn net.TcpConn, resp http.Response) ! {
+	mut sb := strings.new_builder(resp.body.len + 200)
+	/*
+	send_string(mut conn, 'HTTP/')!
+	send_string(mut conn, resp.http_version)!
+	send_string(mut conn, ' ')!
+	send_string(mut conn, resp.status_code.str())!
+	send_string(mut conn, ' ')!
+	send_string(mut conn, resp.status_msg)!
+	send_string(mut conn, '\r\n')!
+	send_string(mut conn, resp.header.render(
+		version: resp.version()
+	))!
+	send_string(mut conn, '\r\n')!
+	send_string(mut conn, resp.body)!
+	*/
+	sb.write_string('HTTP/')
+	sb.write_string(resp.http_version)
+	sb.write_string(' ')
+	sb.write_decimal(resp.status_code)
+	sb.write_string(' ')
+	sb.write_string(resp.status_msg)
+	sb.write_string('\r\n')
+	// sb.write_string(resp.header.render_with_sb(
+	// version: resp.version()
+	//))
+	resp.header.render_into_sb(mut sb,
+		version: resp.version()
+	)
+	sb.write_string('\r\n')
+	sb.write_string(resp.body)
+	send_string(mut conn, sb.str())!
 }
 
 // Do not delete.

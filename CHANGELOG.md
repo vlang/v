@@ -1,3 +1,59 @@
+## V 0.4.3
+*10 November 2023*
+
+#### Improvements in the language
+- Remove additional line breaks after call_expr before params struct args (#19795)
+
+#### Breaking changes
+
+#### Checker improvements/fixes
+- Fix comptime enumdata value property access (#19768)
+- Fix `field ?&Type` without default value (#19786)
+- Avoid nil assign to option var (#19746)
+
+#### Parser improvements
+- ast: add missing docstrings for the public fns in vlib/v/ast/types.v (#19752)
+- parser: give a friendly error when misusing if over $if (#19810)
+- Add multiple struct attributes error for new attribute syntax
+
+#### Compiler internals
+- transformer: fix using a constant, instead of a fn parameter with the same name (fix #19766) (#19773)
+
+#### Standard library
+- vlib: add an `encoding.xml` module with parser, validation, entity encoding, unit tests (#19708)
+- os: implement os.fd_is_pending/1, os.Process.pipe_read/1, os.Process.is_pending/1 (#19787)
+- builtin: copy min/max integer values consts from `math` to builtin so that the entire math module doesn't have to be imported(#19809)
+
+#### Web
+- flag,json,net: handle C calls in .v files (part of enabling `-W impure-v` as default) (#19779)
+- net.http: add socks5|http(s) proxy support [Linux] (#19676)
+
+#### ORM
+
+#### Database drivers
+
+#### Native backend
+
+#### C backend
+- Only generate free in wrapper for spawn and not go (#19780)
+- Fix g.obf_table data missing(fix #19695) (#19778)
+- Fix closure variable in smartcast (#19796)
+
+#### Tools
+- tools: fix resolving external dependencies in vpm, add test (#19772)
+- tools: cleanup and simplify vcreate, for upcoming fixes and features (#19794)
+- tools: improve error messages, add color coding and debug logging (#19781)
+- tools: fix `v build-tools`, make `v test` more robust (#19803)
+- tools: add parse_query to vpm (#19814)
+- ci: add macos arm64 binary release (#19823)
+- Require the presence of a `v.mod` file, to install external urls via vpm (#19825)
+
+#### Operating System support
+
+#### Examples
+- tests: workaround name conflict, causing false positives with msvc on windows, when both tests were executed at the same time (locked executable)
+
+
 ## V 0.4.2
 *30 September 2023*
 
