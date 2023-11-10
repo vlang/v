@@ -56,6 +56,10 @@ fn parse_query(query []string) ([]Module, []Module) {
 				errors++
 				continue
 			}
+			if !has_vmod(ident) {
+				errors++
+				continue
+			}
 			Module{
 				name: name
 				url: ident
@@ -91,6 +95,25 @@ fn parse_query(query []string) ([]Module, []Module) {
 		exit(1)
 	}
 	return vpm_modules, extended_modules
+}
+
+fn has_vmod(url string) bool {
+	head_branch := os.execute_opt('git ls-remote --symref ${url} HEAD') or {
+		vpm_error('failed to find git HEAD for `${url}`.', details: err.msg())
+		return false
+	}.output.all_after_last('/').all_before(' ').all_before('\t')
+	url_ := if url.ends_with('.git') { url.replace('.git', '') } else { url }
+	manifest_url := '${url_}/blob/${head_branch}/v.mod'
+	vpm_log(@FILE_LINE, @FN, 'manifest_url: ${manifest_url}')
+	has_vmod := http.head(manifest_url) or {
+		vpm_error('failed to retrieve module data for `${url}`.')
+		return false
+	}.status_code == 200
+	if !has_vmod {
+		vpm_error('failed to find `v.mod` for `${url}`.')
+		return false
+	}
+	return true
 }
 
 fn get_mod_date_info(mut pp pool.PoolProcessor, idx int, wid int) &ModuleDateInfo {
