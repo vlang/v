@@ -3,10 +3,9 @@ module net
 import os
 import time
 
-// unix sockets should not experience much delay
 pub const (
-	unix_default_read_timeout  = 100 * time.millisecond
-	unix_default_write_timeout = 100 * time.millisecond
+	unix_default_read_timeout  = 30 * time.second
+	unix_default_write_timeout = 30 * time.second
 )
 
 [heap]
@@ -453,7 +452,7 @@ fn (mut s UnixSocket) connect(a Addr) ! {
 		return
 	} $else {
 		x := $if is_coroutine ? {
-			C.photon_connect(s.handle, voidptr(&a), a.len(), tcp_default_read_timeout)
+			C.photon_connect(s.handle, voidptr(&a), a.len(), net.unix_default_read_timeout)
 		} $else {
 			C.connect(s.handle, voidptr(&a), a.len())
 		}
@@ -469,7 +468,6 @@ pub fn unix_socket_from_handle(sockfd int) !UnixSocket {
 	$if trace_unix ? {
 		eprintln('    unix_socket_from_handle | s.handle: ${s.handle:6}')
 	}
-	// s.set_default_options()!
 
 	$if !net_blocking_sockets ? {
 		$if windows {
