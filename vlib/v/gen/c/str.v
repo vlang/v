@@ -113,12 +113,17 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		if is_ptr && !is_var_mut {
 			ref_str := '&'.repeat(typ.nr_muls())
 			g.write('str_intp(1, _MOV((StrIntpData[]){{_SLIT("${ref_str}"), ${si_s_code} ,{.d_s = isnil(')
-			if is_ptr && typ.has_flag(.option) {
+			if typ.has_flag(.option) {
 				g.write('*(${g.base_type(exp_typ)}*)&')
 				g.expr(expr)
 				g.write('.data')
 				g.write(') ? _SLIT("Option(&nil)") : ')
 			} else {
+				inside_casting_to_str_old := g.inside_casting_to_str
+				g.inside_casting_to_str = false
+				defer {
+					g.inside_casting_to_str = inside_casting_to_str_old
+				}
 				g.expr(expr)
 				g.write(') ? _SLIT("nil") : ')
 			}
