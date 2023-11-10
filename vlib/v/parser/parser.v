@@ -1854,8 +1854,13 @@ fn (mut p Parser) attributes() {
 		p.error_with_pos('attributes cannot be empty', p.prev_tok.pos().extend(p.tok.pos()))
 		return
 	}
+	// TODO: remove when old attr syntax is removed
 	if p.inside_struct_attr_decl && p.tok.kind == .lsbr {
 		p.error_with_pos('multiple attributes should be in the same [], with ; separators',
+			p.prev_tok.pos().extend(p.tok.pos()))
+		return
+	} else if p.inside_struct_attr_decl && p.tok.kind == .at {
+		p.error_with_pos('multiple attributes should be in the same @[], with ; separators',
 			p.prev_tok.pos().extend(p.tok.pos()))
 		return
 	}
