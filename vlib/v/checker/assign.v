@@ -266,6 +266,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 		}
 		node.left_types << left_type
+		for left is ast.ParExpr {
+			left = (left as ast.ParExpr).expr
+		}
 		match mut left {
 			ast.Ident {
 				if (is_decl || left.kind == .blank_ident) && left_type.is_ptr()
