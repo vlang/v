@@ -416,6 +416,9 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) !string {
 		if b.pref.is_verbose {
 			println('  >> trying to find ${mod} in ${try_path} ..')
 		}
+		if vmod_file_location.vmod_file.len == 0 {
+			return error('v.mod file not found in root directory')
+		}
 		if os.is_dir(try_path) {
 			if b.pref.is_verbose {
 				println('  << found ${try_path} .')
