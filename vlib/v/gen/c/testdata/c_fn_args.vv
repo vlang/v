@@ -1,8 +1,9 @@
-fn foo(str &char) {
-	println(unsafe { str.vstring() })
+fn foo(bar &char, baz &char) {
+	println(unsafe { bar.vstring() + baz.vstring() })
 }
 
 fn main() {
+	baz := 'baz'.str
 	// Should compile with `-cc [gcc/clang] -cstrict`
-	foo('bar'.str)
+	foo('bar'.str, baz)
 }

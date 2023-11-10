@@ -2553,7 +2553,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			if deref_will_match || got_is_opt_or_res || expr.is_auto_deref_var() {
 				g.write('*')
 			}
-		} else if expr is ast.SelectorExpr && exp_sym.kind == .char && got_sym.kind == .u8 {
+		} else if expr !is ast.StringLiteral && exp_sym.kind == .char && got_sym.kind == .u8 {
 			g.write('(${exp_styp})')
 		}
 	}
