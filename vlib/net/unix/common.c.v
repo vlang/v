@@ -17,17 +17,11 @@ const (
 	infinite_timeout = time.infinite
 )
 
-const error_ewouldblock = C.EWOULDBLOCK
-
 fn C.strncpy(&char, &char, int)
 
 // close a socket, given its file descriptor `handle`.
 pub fn close(handle int) ! {
 	net.close(handle)!
-}
-
-fn error_code() int {
-	return C.errno
 }
 
 // shutdown shutsdown a socket, given its file descriptor `handle`.

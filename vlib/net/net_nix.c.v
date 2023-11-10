@@ -13,7 +13,7 @@ module net
 
 const is_windows = false
 
-fn error_code() int {
+pub fn error_code() int {
 	return C.errno
 }
 
@@ -24,7 +24,7 @@ pub const (
 	msg_nosignal = 0x4000
 )
 
-const (
+pub const (
 	error_ewouldblock = C.EWOULDBLOCK
 	error_einprogress = C.EINPROGRESS
 )

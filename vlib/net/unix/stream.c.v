@@ -28,7 +28,9 @@ pub fn connect_stream(socket_path string) !&StreamConn {
 	if socket_path.len >= max_sun_path {
 		return error('Socket path too long! Max length: ${max_sun_path - 1} chars.')
 	}
-	mut s := new_stream_socket(socket_path)!
+	mut s := new_stream_socket(socket_path) or {
+		return error('${err.msg()}; could not create new unix socket')
+	}
 
 	s.connect(socket_path)!
 
@@ -68,16 +70,16 @@ pub fn (mut c StreamConn) write_ptr(b &u8, len int) !int {
 			ptr := ptr_base + total_sent
 			remaining := len - total_sent
 			mut sent := $if is_coroutine ? {
-				C.photon_send(c.sock.handle, ptr, remaining, unix.msg_nosignal, c.write_timeout)
+				C.photon_send(c.sock.handle, ptr, remaining, net.msg_nosignal, c.write_timeout)
 			} $else {
-				C.send(c.sock.handle, ptr, remaining, unix.msg_nosignal)
+				C.send(c.sock.handle, ptr, remaining, net.msg_nosignal)
 			}
 			$if trace_unix_data_write ? {
 				eprintln('>>> UnixConn.write_ptr | data chunk, total_sent: ${total_sent:6}, remaining: ${remaining:6}, ptr: ${voidptr(ptr):x} => sent: ${sent:6}')
 			}
 			if sent < 0 {
-				code := error_code()
-				if code == int(error_ewouldblock) {
+				code := net.error_code()
+				if code == int(net.error_ewouldblock) {
 					c.wait_for_write()!
 					continue
 				} else {
@@ -117,8 +119,8 @@ pub fn (mut c StreamConn) read_ptr(buf_ptr &u8, len int) !int {
 		}
 		return res
 	}
-	code := error_code()
-	if code == int(error_ewouldblock) {
+	code := net.error_code()
+	if code == int(net.error_ewouldblock) {
 		c.wait_for_read()!
 		res = $if is_coroutine ? {
 			wrap_read_result(C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout))!
@@ -353,7 +355,7 @@ fn new_stream_socket(socket_path string) !StreamSocket {
 	$if !net_blocking_sockets ? {
 		$if windows {
 			t := u32(1) // true
-			net.socket_error(C.ioctlsocket(handle, fionbio, &t))!
+			net.socket_error(C.ioctlsocket(handle, net.fionbio, &t))!
 		} $else {
 			net.socket_error(C.fcntl(handle, C.F_SETFL, C.fcntl(handle, C.F_GETFL) | C.O_NONBLOCK))!
 		}
@@ -401,6 +403,7 @@ fn (mut s StreamSocket) connect(socket_path string) ! {
 	addr := addrs[0]
 	// cast to the correct type
 	alen := addr.len()
+	eprintln(addr)
 
 	$if !net_blocking_sockets ? {
 		res := $if is_coroutine ? {
@@ -411,12 +414,12 @@ fn (mut s StreamSocket) connect(socket_path string) ! {
 		if res == 0 {
 			return
 		}
-		ecode := error_code()
+		ecode := net.error_code()
 
 		// no need to check for einprogress on nix
-		// On windows we expect res == -1 && error_code() == ewouldblock
+		// On windows we expect res == -1 && net.error_code() == ewouldblock
 		$if windows {
-			if ecode == int(error_ewouldblock) {
+			if ecode == int(net.error_ewouldblock) {
 				// The socket is nonblocking and the connection cannot be completed
 				// immediately. Wait till the socket is ready to write
 				write_result := s.@select(.write, unix.connect_timeout)!
@@ -434,10 +437,9 @@ fn (mut s StreamSocket) connect(socket_path string) ! {
 					}
 					return
 				}
-				return err_timed_out
+				return net.err_timed_out
 			}
 		}
-
 		net.wrap_error(ecode)!
 		return
 	} $else {
@@ -462,7 +464,7 @@ pub fn stream_socket_from_handle(sockfd int) !&StreamSocket {
 	$if !net_blocking_sockets ? {
 		$if windows {
 			t := u32(1) // true
-			net.socket_error(C.ioctlsocket(sockfd, fionbio, &t))!
+			net.socket_error(C.ioctlsocket(sockfd, net.fionbio, &t))!
 		} $else {
 			net.socket_error(C.fcntl(sockfd, C.F_SETFL, C.fcntl(sockfd, C.F_GETFL) | C.O_NONBLOCK))!
 		}
