@@ -49,7 +49,7 @@ fn test_install_dependencies_in_module_dir() {
 	}
 	assert v_mod.dependencies == ['markdown', 'pcre', 'https://github.com/spytheman/vtray']
 	// Run `v install`
-	res := os.execute_or_exit('${v} install')
+	mut res := os.execute_or_exit('${v} install --once')
 	assert res.output.contains('Detected v.mod file inside the project directory. Using it...')
 	assert res.output.contains('Installing module `markdown`')
 	assert res.output.contains('Installing module `pcre`')
@@ -57,6 +57,8 @@ fn test_install_dependencies_in_module_dir() {
 	assert get_mod_name(os.join_path(test_path, 'markdown', 'v.mod')) == 'markdown'
 	assert get_mod_name(os.join_path(test_path, 'pcre', 'v.mod')) == 'pcre'
 	assert get_mod_name(os.join_path(test_path, 'vtray', 'v.mod')) == 'vtray'
+	res = os.execute_or_exit('${v} install --once')
+	assert res.output.contains('All modules are already installed.'), res.output
 }
 
 fn test_resolve_external_dependencies_during_module_install() {
