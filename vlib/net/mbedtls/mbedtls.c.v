@@ -163,14 +163,14 @@ fn C.mbedtls_entropy_free(&C.mbedtls_entropy_context)
 
 fn C.mbedtls_ssl_config_defaults(&C.mbedtls_ssl_config, int, int, int) int
 
-fn C.mbedtls_x509_crt_parse(&C.mbedtls_x509_crt, &char, int) int
-fn C.mbedtls_pk_parse_key(&C.mbedtls_pk_context, &char, int, &char, int, voidptr, voidptr) int
+fn C.mbedtls_x509_crt_parse(&C.mbedtls_x509_crt, &u8, int) int
+fn C.mbedtls_pk_parse_key(&C.mbedtls_pk_context, &u8, int, &char, int, voidptr, voidptr) int
 fn C.mbedtls_x509_crt_parse_file(&C.mbedtls_x509_crt, &char) int
 fn C.mbedtls_pk_parse_keyfile(&C.mbedtls_pk_context, &char, &char, voidptr, voidptr) int
 
-fn C.mbedtls_net_connect(&C.mbedtls_net_context, &u8, &u8, int) int
+fn C.mbedtls_net_connect(&C.mbedtls_net_context, &char, &char, int) int
 
-fn C.mbedtls_net_bind(&C.mbedtls_net_context, voidptr, &u8, int) int
+fn C.mbedtls_net_bind(&C.mbedtls_net_context, voidptr, &char, int) int
 fn C.mbedtls_net_accept(&C.mbedtls_net_context, &C.mbedtls_net_context, voidptr, int, voidptr) int
 fn C.mbedtls_ssl_session_reset(&C.mbedtls_ssl_context)
 fn C.mbedtls_ssl_conf_authmode(&C.mbedtls_ssl_config, int)
@@ -188,8 +188,8 @@ fn C.mbedtls_ssl_set_bio(&C.mbedtls_ssl_context, &C.mbedtls_net_context, voidptr
 
 fn C.mbedtls_ssl_handshake(&C.mbedtls_ssl_context) int
 
-fn C.mbedtls_ssl_read(&C.mbedtls_ssl_context, &char, int) int
-fn C.mbedtls_ssl_write(&C.mbedtls_ssl_context, &char, int) int
+fn C.mbedtls_ssl_read(&C.mbedtls_ssl_context, &u8, int) int
+fn C.mbedtls_ssl_write(&C.mbedtls_ssl_context, &u8, int) int
 
 fn C.mbedtls_high_level_strerr(int) &char
 
