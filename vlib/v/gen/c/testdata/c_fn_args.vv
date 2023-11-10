@@ -1,0 +1,8 @@
+fn foo(str &char) {
+	println(unsafe { str.vstring() })
+}
+
+fn main() {
+	// Should compile with `-cc [gcc/clang] -cstrict`
+	foo('bar'.str)
+}
