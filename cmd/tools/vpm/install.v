@@ -4,14 +4,12 @@ import os
 import v.vmod
 import v.help
 
-fn vpm_install(requested_modules []string) {
-	vpm_log(@FILE_LINE, @FN, 'requested_modules: ${requested_modules}')
-
+fn vpm_install(query []string) {
 	if settings.is_help {
 		help.print_and_exit('vpm')
 	}
 
-	mut vpm_modules, mut external_modules := parse_query(if requested_modules.len == 0 {
+	mut vpm_modules, mut external_modules := parse_query(if query.len == 0 {
 		if os.exists('./v.mod') {
 			// Case: `v install` was run in a directory of another V-module to install its dependencies
 			// - without additional module arguments.
@@ -29,7 +27,7 @@ fn vpm_install(requested_modules []string) {
 			exit(2)
 		}
 	} else {
-		requested_modules
+		query
 	})
 
 	installed_modules := get_installed_modules()
@@ -66,7 +64,7 @@ fn vpm_install(requested_modules []string) {
 		}
 		if already_installed.len > 0 {
 			verbose_println('Already installed modules: ${already_installed}')
-			if already_installed.len == requested_modules.len {
+			if already_installed.len == query.len {
 				println('All modules are already installed.')
 				exit(0)
 			}
@@ -81,22 +79,13 @@ fn vpm_install(requested_modules []string) {
 	}
 }
 
-fn install_module(vcs &VCS, name string, url string, final_module_path string) ! {
-	cmd := '${vcs.cmd} ${vcs.args.install} "${url}" "${final_module_path}"'
-	vpm_log(@FILE_LINE, @FN, 'command: ${cmd}')
-	println('Installing module `${name}` from `${url}` to `${final_module_path}` ...')
-	os.execute_opt(cmd) or {
-		vpm_log(@FILE_LINE, @FN, 'cmd output: ${err}')
-		return error('failed to install module `${name}` to `${final_module_path}`.')
-	}
-}
-
 fn vpm_install_from_vpm(modules []Module) {
 	vpm_log(@FILE_LINE, @FN, 'modules: ${modules}')
-	names := modules.map(it.name)
+	idents := modules.map(it.name)
 	mut errors := 0
 	for m in modules {
 		vpm_log(@FILE_LINE, @FN, 'module: ${m}')
+		last_errors := errors
 		vcs := if m.vcs != '' {
 			supported_vcs[m.vcs] or {
 				errors++
@@ -106,7 +95,7 @@ fn vpm_install_from_vpm(modules []Module) {
 		} else {
 			supported_vcs['git']
 		}
-		ensure_vcs_is_installed(vcs) or {
+		vcs.is_executable() or {
 			vpm_error(err.msg())
 			errors++
 			continue
@@ -115,7 +104,7 @@ fn vpm_install_from_vpm(modules []Module) {
 			vpm_update([m.name])
 			continue
 		}
-		install_module(vcs, m.name, m.url, m.install_path) or {
+		m.install(vcs) or {
 			errors++
 			vpm_error(err.msg())
 			continue
@@ -124,7 +113,10 @@ fn vpm_install_from_vpm(modules []Module) {
 			errors++
 			vpm_error('failed to increment the download count for `${m.name}`', details: err.msg())
 		}
-		resolve_dependencies(m.name, m.install_path, names)
+		if last_errors == errors {
+			println('Installed `${m.name}`.')
+		}
+		resolve_dependencies(get_manifest(m.install_path), idents)
 	}
 	if errors > 0 {
 		exit(1)
@@ -137,27 +129,23 @@ fn vpm_install_from_vcs(modules []Module) {
 	urls := modules.map(it.url)
 	for m in modules {
 		vpm_log(@FILE_LINE, @FN, 'module: ${m}')
+		last_errors := errors
 		if os.exists(m.install_path) {
 			vpm_update([m.name])
 			continue
 		}
-		ensure_vcs_is_installed(vcs) or {
+		vcs.is_executable() or {
 			vpm_error(err.msg())
 			errors++
 			continue
 		}
-		install_module(vcs, m.name, m.url, m.install_path) or {
+		m.install(vcs) or {
 			errors++
 			vpm_error(err.msg())
 			continue
 		}
-		manifest := vmod.from_file(os.join_path(m.install_path, 'v.mod')) or {
-			vpm_error('Module `${m.name}` is lacking a v.mod file.',
-				details: err.msg()
-				verbose: true
-			)
-			continue
-		}
+		// Note: increment error count when v.mod becomes mandatory for external modules.
+		manifest := get_manifest(m.install_path) or { continue }
 		final_path := os.real_path(os.join_path(settings.vmodules_path, manifest.name.replace('-',
 			'_').to_lower()))
 		if m.install_path != final_path {
@@ -167,14 +155,8 @@ fn vpm_install_from_vcs(modules []Module) {
 				input := os.input('Replace it with the module directory? [Y/n]: ')
 				match input.to_lower() {
 					'', 'y' {
-						mut err_msg := ''
-						$if windows {
-							os.execute_opt('rd /s /q ${final_path}') or { err_msg = err.msg() }
-						} $else {
-							os.rmdir_all(final_path) or { err_msg = err.msg() }
-						}
-						if err_msg != '' {
-							vpm_error('failed to remove `${final_path}`.', details: err_msg)
+						m.remove() or {
+							vpm_error('failed to remove `${final_path}`.', details: err.msg())
 							errors++
 							continue
 						}
@@ -209,9 +191,32 @@ fn vpm_install_from_vcs(modules []Module) {
 			}
 			verbose_println('Relocated `${m.name}` to `${manifest.name}`.')
 		}
-		resolve_dependencies(manifest.name, final_path, urls)
+		if last_errors == errors {
+			println('Installed `${m.name}`.')
+		}
+		resolve_dependencies(manifest, urls)
 	}
 	if errors > 0 {
 		exit(1)
 	}
+}
+
+fn (m Module) install(vcs &VCS) ! {
+	cmd := '${vcs.cmd} ${vcs.args.install} "${m.url}" "${m.install_path}"'
+	vpm_log(@FILE_LINE, @FN, 'command: ${cmd}')
+	println('Installing module `${m.name}` from `${m.url}` to `${m.install_path}` ...')
+	os.execute_opt(cmd) or {
+		vpm_log(@FILE_LINE, @FN, 'cmd output: ${err}')
+		return error('failed to install module `${m.name}` to `${m.install_path}`.')
+	}
+}
+
+fn (m Module) remove() ! {
+	verbose_println('Removing `${m.name}` from `${m.install_path}`...')
+	$if windows {
+		os.execute_opt('rd /s /q ${m.install_path}')!
+	} $else {
+		os.rmdir_all(m.install_path)!
+	}
+	verbose_println('Removed `${m.name}`.')
 }

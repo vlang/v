@@ -11,6 +11,29 @@ mut:
 	has_err    bool
 }
 
+fn vpm_update(query []string) {
+	if settings.is_help {
+		help.print_and_exit('update')
+	}
+	modules := if query.len == 0 {
+		get_installed_modules()
+	} else {
+		query.clone()
+	}
+	if settings.is_verbose {
+		vpm_update_verbose(modules)
+		return
+	}
+	mut pp := pool.new_pool_processor(callback: update_module)
+	pp.work_on_items(modules)
+	for res in pp.get_results[ModUpdateInfo]() {
+		if res.has_err {
+			exit(1)
+		}
+		resolve_dependencies(get_manifest(res.final_path), modules)
+	}
+}
+
 fn update_module(mut pp pool.PoolProcessor, idx int, wid int) &ModUpdateInfo {
 	mut result := &ModUpdateInfo{
 		name: pp.get_item[string](idx)
@@ -19,7 +42,7 @@ fn update_module(mut pp pool.PoolProcessor, idx int, wid int) &ModUpdateInfo {
 	result.final_path = get_path_of_existing_module(result.name) or { return result }
 	println('Updating module `${name}` in `${result.final_path}` ...')
 	vcs := vcs_used_in_dir(result.final_path) or { return result }
-	ensure_vcs_is_installed(vcs) or {
+	vcs.is_executable() or {
 		result.has_err = true
 		vpm_error(err.msg())
 		return result
@@ -28,41 +51,15 @@ fn update_module(mut pp pool.PoolProcessor, idx int, wid int) &ModUpdateInfo {
 	vpm_log(@FILE_LINE, @FN, 'cmd: ${cmd}')
 	res := os.execute_opt(cmd) or {
 		result.has_err = true
-		vpm_error('failed to update module `${name}` in `${result.final_path}`.',
-			details: err.msg()
-		)
+		vpm_error('failed to update module `${name}` in `${result.final_path}`.', details: err.msg())
 		return result
 	}
 	vpm_log(@FILE_LINE, @FN, 'cmd output: ${res.output.trim_space()}')
 	increment_module_download_count(name) or {
 		result.has_err = true
-		vpm_error(err.msg(),
-			verbose: true
-		)
+		vpm_error(err.msg(), verbose: true)
 	}
 	return result
-}
-
-fn vpm_update(m []string) {
-	mut module_names := m.clone()
-	if settings.is_help {
-		help.print_and_exit('update')
-	}
-	if module_names.len == 0 {
-		module_names = get_installed_modules()
-	}
-	if settings.is_verbose {
-		vpm_update_verbose(module_names)
-		return
-	}
-	mut pp := pool.new_pool_processor(callback: update_module)
-	pp.work_on_items(module_names)
-	for res in pp.get_results[ModUpdateInfo]() {
-		if res.has_err {
-			exit(1)
-		}
-		resolve_dependencies(res.name, res.final_path, module_names)
-	}
 }
 
 fn vpm_update_verbose(modules []string) {
@@ -72,7 +69,7 @@ fn vpm_update_verbose(modules []string) {
 		install_path := get_path_of_existing_module(mod) or { continue }
 		println('Updating module `${name}` in `${install_path}` ...')
 		vcs := vcs_used_in_dir(install_path) or { continue }
-		ensure_vcs_is_installed(vcs) or {
+		vcs.is_executable() or {
 			errors++
 			vpm_error(err.msg())
 			continue
@@ -89,11 +86,9 @@ fn vpm_update_verbose(modules []string) {
 		vpm_log(@FILE_LINE, @FN, 'cmd: ${res.output.trim_space()}')
 		increment_module_download_count(name) or {
 			errors++
-			vpm_error(err.msg(),
-				verbose: true
-			)
+			vpm_error(err.msg(), verbose: true)
 		}
-		resolve_dependencies(name, install_path, modules)
+		resolve_dependencies(get_manifest(install_path), modules)
 	}
 	if errors > 0 {
 		exit(1)
