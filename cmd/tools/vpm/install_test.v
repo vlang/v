@@ -1,5 +1,7 @@
 // vtest flaky: true
 // vtest retry: 3
+module main
+
 import os
 import v.vmod
 
@@ -107,4 +109,13 @@ fn test_missing_repo_name_in_url() {
 	res := os.execute('${v} install ${incomplete_url}')
 	assert res.exit_code == 1
 	assert res.output.contains('failed to retrieve module name for `${incomplete_url}`')
+}
+
+fn test_missing_vmod_in_url() {
+	assert has_vmod('https://github.com/vlang/v') // main branch == `master`.
+	assert has_vmod('https://github.com/vlang/v') // main branch == `main`.
+	assert !has_vmod('https://github.com/octocat/octocat.github.io') // not a V module.
+	res := os.execute('${v} install https://github.com/octocat/octocat.github.io')
+	assert res.exit_code == 1
+	assert res.output.contains('failed to find `v.mod` for `https://github.com/octocat/octocat.github.io`'), res.output
 }
