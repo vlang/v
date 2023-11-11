@@ -76,16 +76,16 @@ jobs:
     runs-on: macos-latest
     env:
       CC: clang
-      CFLAGS: -target arm64-apple-darwin
+      TARGET_CFLAGS: -target arm64-apple-darwin
       ZIPNAME: v_macos_arm64.zip
     steps:
       - uses: actions/checkout@v1
       - name: Compile
         run: |
           make
-          ./v -skip-unused -cc $CC -cflags "$CFLAGS" -prod -o v cmd/v
-          ./v -skip-unused -cc $CC -cflags "$CFLAGS" -prod cmd/tools/vup.v
-          ./v -skip-unused -cc $CC -cflags "$CFLAGS" -prod cmd/tools/vdoctor.v
+          ./v -skip-unused -cc $CC -cflags "$TARGET_CFLAGS" -prod cmd/tools/vup.v
+          ./v -skip-unused -cc $CC -cflags "$TARGET_CFLAGS" -prod cmd/tools/vdoctor.v
+          ./v -skip-unused -cc $CC -cflags "$TARGET_CFLAGS" -prod -o v cmd/v
       - name: Remove excluded
         run: |
            rm -rf .git/
