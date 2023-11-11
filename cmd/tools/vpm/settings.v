@@ -26,7 +26,7 @@ fn init_settings() VpmSettings {
 	return VpmSettings{
 		is_help: '-h' in opts || '--help' in opts || 'help' in cmds
 		is_once: '--once' in opts
-		is_verbose: '-v' in opts
+		is_verbose: '-v' in opts || '--verbose' in opts
 		is_force: '-f' in opts || '--force' in opts
 		vcs: if '--hg' in opts { 'hg' } else { 'git' }
 		server_urls: cmdline.options(args, '--server-urls')
