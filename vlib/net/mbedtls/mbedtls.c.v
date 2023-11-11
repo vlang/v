@@ -163,7 +163,7 @@ fn C.mbedtls_ssl_init(&C.mbedtls_ssl_context)
 fn C.mbedtls_ssl_setup(&C.mbedtls_ssl_context, &C.mbedtls_ssl_config) int
 fn C.mbedtls_ssl_session_reset(&C.mbedtls_ssl_context)
 fn C.mbedtls_ssl_conf_authmode(&C.mbedtls_ssl_config, int)
-fn C.mbedtls_ssl_conf_rng(&C.mbedtls_ssl_config, fn(voidptr, &u8, usize) int, &C.mbedtls_ctr_drbg_context)
+fn C.mbedtls_ssl_conf_rng(&C.mbedtls_ssl_config, fn (voidptr, &u8, usize) int, &C.mbedtls_ctr_drbg_context)
 fn C.mbedtls_ssl_set_bio(&C.mbedtls_ssl_context, &C.mbedtls_net_context, &C.mbedtls_ssl_send_t, &C.mbedtls_ssl_recv_t, &C.mbedtls_ssl_recv_timeout_t)
 fn C.mbedtls_ssl_conf_own_cert(&C.mbedtls_ssl_config, &C.mbedtls_x509_crt, &C.mbedtls_pk_context) int
 fn C.mbedtls_ssl_conf_ca_chain(&C.mbedtls_ssl_config, &C.mbedtls_x509_crt, &C.mbedtls_x509_crl)
