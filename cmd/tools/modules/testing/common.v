@@ -209,6 +209,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		$if solaris {
 			skip_files << 'examples/gg/gg2.v'
 			skip_files << 'examples/pico/pico.v'
+			skip_files << 'examples/pico/raw_callback.v'
 			skip_files << 'examples/sokol/fonts.v'
 			skip_files << 'examples/sokol/drawing.v'
 		}
