@@ -59,8 +59,9 @@ pub fn read_set_cookies(h map[string][]string) []&Cookie {
 // returns the successfully parsed Cookies.
 //
 // if `filter` isn't empty, only cookies of that name are returned
-pub fn read_cookies(h map[string][]string, filter string) []&Cookie {
-	lines := h['Cookie']
+pub fn read_cookies(h Header, filter string) []&Cookie {
+	// lines := h['Cookie']
+	lines := h.values(.cookie) // or {
 	if lines.len == 0 {
 		return []
 	}

@@ -7,8 +7,10 @@ const (
 type SteamId = u64
 
 fn (mut s SteamId) set_id(i u32) {
-	(*s) &= ~steamid_id_mask
-	(*s) |= ((u64(i) << steamid_id_shift) & steamid_id_mask)
+	unsafe {
+		(*s) &= ~steamid_id_mask
+		(*s) |= ((u64(i) << steamid_id_shift) & steamid_id_mask)
+	}
 }
 
 fn test_bitops_work_with_type_aliases() {

@@ -58,7 +58,9 @@ fn (mut g Gen) gen_free_method(typ ast.Type) string {
 		}
 		else {
 			println(g.table.type_str(typ))
-			verror("could not generate free method '${fn_name}' for type '${styp}'")
+			// print_backtrace()
+			println("could not generate free method '${fn_name}' for type '${styp}'")
+			// verror("could not generate free method '${fn_name}' for type '${styp}'")
 		}
 	}
 	return fn_name

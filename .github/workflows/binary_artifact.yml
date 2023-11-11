@@ -14,7 +14,7 @@ jobs:
       CC: gcc
       ZIPNAME: v_linux.zip
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v4
       - name: Compile
         run: |
           make
@@ -46,7 +46,7 @@ jobs:
       CC: clang
       ZIPNAME: v_macos_x86_64.zip
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v4
       - name: Compile
         run: |
           make
@@ -69,23 +69,23 @@ jobs:
       - name: Create artifact
         uses: actions/upload-artifact@v3
         with:
-          name: macos
+          name: macos_x86_64
           path: ${{ env.ZIPNAME }}
-  
+
   build-macos-arm64:
     runs-on: macos-latest
     env:
-      CC: clang
-      CFLAGS: -target arm64-apple-darwin
+      TARGET_CFLAGS: -target arm64-apple-darwin
+      VFLAGS: -skip-unused -cc clang
       ZIPNAME: v_macos_arm64.zip
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v4
       - name: Compile
         run: |
           make
-          ./v -skip-unused -cc $CC -cflags "$CFLAGS" -prod -o v cmd/v
-          ./v -skip-unused -cc $CC -cflags "$CFLAGS" -prod cmd/tools/vup.v
-          ./v -skip-unused -cc $CC -cflags "$CFLAGS" -prod cmd/tools/vdoctor.v
+          ./v -cflags "$TARGET_CFLAGS" -prod cmd/tools/vup.v
+          ./v -cflags "$TARGET_CFLAGS" -prod cmd/tools/vdoctor.v
+          ./v -cflags "$TARGET_CFLAGS" -prod -o v cmd/v
       - name: Remove excluded
         run: |
            rm -rf .git/
@@ -102,7 +102,7 @@ jobs:
       - name: Create artifact
         uses: actions/upload-artifact@v3
         with:
-          name: macos
+          name: macos_arm64
           path: ${{ env.ZIPNAME }}
 
   build-windows:
@@ -111,7 +111,7 @@ jobs:
       CC: msvc
       ZIPNAME: v_windows.zip
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v4
       - uses: msys2/setup-msys2@v2
       - name: Compile needed executables with -prod
         run: |
@@ -172,9 +172,9 @@ jobs:
     runs-on: ubuntu-20.04
     strategy:
       matrix:
-        version: [linux, macos, windows]
+        version: [windows, linux, macos_arm64, macos_x86_64]
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v4
       - name: Fetch artifacts
         uses: actions/download-artifact@v1
         with:

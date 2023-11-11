@@ -268,8 +268,6 @@ const (
 		'vlib/v/tests/orm_joined_tables_select_test.v',
 		'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
 		'vlib/net/websocket/ws_test.v',
-		'vlib/net/unix/unix_test.v',
-		'vlib/net/unix/use_net_and_net_unix_together_test.v',
 		'vlib/net/websocket/websocket_test.v',
 		'vlib/net/openssl/openssl_compiles_test.c.v',
 		'vlib/net/http/request_test.v',

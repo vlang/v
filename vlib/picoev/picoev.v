@@ -33,7 +33,7 @@ pub:
 	port         int = 8080
 	cb           fn (voidptr, picohttpparser.Request, mut picohttpparser.Response) = unsafe { nil }
 	err_cb       fn (voidptr, picohttpparser.Request, mut picohttpparser.Response, IError) = default_err_cb
-	raw_cb       fn (voidptr, int) = unsafe { nil }
+	raw_cb       fn (mut Picoev, int) = unsafe { nil }
 	user_data    voidptr = unsafe { nil }
 	timeout_secs int     = 8
 	max_headers  int     = 100
@@ -43,10 +43,9 @@ pub:
 
 [heap]
 pub struct Picoev {
-	cb        fn (voidptr, picohttpparser.Request, mut picohttpparser.Response) = unsafe { nil }
-	err_cb    fn (voidptr, picohttpparser.Request, mut picohttpparser.Response, IError) = default_err_cb
-	raw_cb    fn (voidptr, int) = unsafe { nil }
-	user_data voidptr = unsafe { nil }
+	cb     fn (voidptr, picohttpparser.Request, mut picohttpparser.Response) = unsafe { nil }
+	err_cb fn (voidptr, picohttpparser.Request, mut picohttpparser.Response, IError) = default_err_cb
+	raw_cb fn (mut Picoev, int) = unsafe { nil }
 
 	timeout_secs int
 	max_headers  int = 100
@@ -63,6 +62,8 @@ mut:
 	out &u8 = unsafe { nil }
 
 	date string
+pub:
+	user_data voidptr = unsafe { nil }
 }
 
 // init fills the `file_descriptors` array
@@ -213,7 +214,7 @@ fn raw_callback(fd int, events int, context voidptr) {
 	} else if events & picoev.picoev_read != 0 {
 		pv.set_timeout(fd, pv.timeout_secs)
 		if !isnil(pv.raw_cb) {
-			pv.raw_cb(pv.user_data, fd)
+			pv.raw_cb(mut pv, fd)
 			return
 		}
 

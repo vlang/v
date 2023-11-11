@@ -98,7 +98,12 @@ pub fn (mut r Response) set_status(s Status) {
 
 // version parses the version
 pub fn (r Response) version() Version {
-	return version_from_str('HTTP/${r.http_version}')
+	return match r.http_version {
+		'1.0' { .v1_0 }
+		'1.1' { .v1_1 }
+		'2.0' { .v2_0 }
+		else { .unknown }
+	}
 }
 
 // set_version sets the http_version string of the response

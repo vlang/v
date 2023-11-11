@@ -1,3 +1,89 @@
+## V 0.4.3
+*11 November 2023*
+*not complete yet*
+
+#### Improvements in the language
+- Align ternary expressions in const blocks (#19721)
+- Respect raw strings in `$embed_file(r'/some/path')` expressions (#19753)
+- Remove additional line breaks after call_expr before params struct args (#19795)
+
+#### Breaking changes
+
+#### Checker improvements/fixes
+- Check error of implementing other module private interface (fix #19620) (#19688)
+- Extend byte deprecation warning to array init types (#19671)
+- Extend byte deprecation warnings to return types (#19668)
+- Fix negative cap, len checks in array init (#19694)
+- Turn warning for var and param module name duplicates into error (#19645)
+- Fix closure in if guard (#19750)
+- Fix closure in if guard, with multi_return (#19765)
+- Fix comptime enumdata value property access (#19768)
+- Fix `field ?&Type` without default value (#19786)
+- Avoid nil assign to option var (#19746)
+- Allow for a shared variable to be whole reassigned (keeping the same mutex state) (fix #15649) (#19751)
+
+#### Parser improvements
+- parser: add `set_all` + `clear_all` methods to `[flag]` enum bitfields (#19717)
+- ast: reduce cost of frequently called functions by using constants (#19733)
+- parser: warn on unused imports, even when they are declared via `import math { sin, cos }`   (#19738)
+- ast: add missing docstrings for the public fns in vlib/v/ast/types.v (#19752)
+- parser: give a friendly error when misusing if over $if (#19810)
+- Add multiple struct attributes error for new attribute syntax
+
+#### Compiler internals
+- pref: fix unintended file extensions in default output names, allow for `v run file.c.v` (#19745)
+- transformer: fix using a constant, instead of a fn parameter with the same name (fix #19766) (#19773)
+
+#### Standard library
+- crypto.sha: fix calculating the same hash values when .sum() is called several times for sha1/256/512 (fix #19696) (#19697)
+- crypto.md5: fix calculating the same hash values, when .sum() is called several times (#19703)
+- os: add a new function `execute_opt` (#19723)
+- os: add os.page_size() (#19770)
+- vlib: add an `encoding.xml` module with parser, validation, entity encoding, unit tests (#19708)
+- os: implement os.fd_is_pending/1, os.Process.pipe_read/1, os.Process.is_pending/1 (#19787)
+- builtin: copy min/max integer values consts from `math` to builtin so that the entire math module doesn't have to be imported(#19809)
+
+#### Web
+- net.http: increase max_redirects to 16 (#19743)
+- picoev: implement raw mode (#19771)
+- flag,json,net: handle C calls in .v files (part of enabling `-W impure-v` as default) (#19779)
+- net.http: add socks5|http(s) proxy support [Linux] (#19676)
+
+#### ORM
+
+#### Database drivers
+
+#### Native backend
+
+#### C backend
+- Fix infix op when handling comptime selector (#19691)
+- Fix array contains method with interface(fix #19670) (#19675)
+- Reduce expense in repetitively called functions by using consts (#19732)
+- Fix closure parameter judgment when var cross assign inside anon fn(fix #19734) (#19736)
+- Only generate free in wrapper for spawn and not go (#19780)
+- Fix g.obf_table data missing(fix #19695) (#19778)
+- Fix closure variable in smartcast (#19796)
+
+#### Tools
+- testing: add temporary file hash to prevent accidental collisions with test file binaries (#19710)
+- ci: compile VTL and VSL in their own CI job, with `VFLAGS=-no-parallel`
+- tools: fix windows install of an already existing module with vpm (#19761)
+- tools: use `VPM_NO_INCREMENT` env var to skip dl count increment when testing vpm (#19756)
+- tools.vpm: improve handling of urls that end with .git (#19758)
+- tools: fix resolving external dependencies in vpm, add test (#19772)
+- tools: cleanup and simplify vcreate, for upcoming fixes and features (#19794)
+- tools: improve error messages, add color coding and debug logging (#19781)
+- tools: fix `v build-tools`, make `v test` more robust (#19803)
+- tools: add parse_query to vpm (#19814)
+- ci: add macos arm64 binary release (#19823)
+- Require the presence of a `v.mod` file, to install external urls via vpm (#19825)
+
+#### Operating System support
+
+#### Examples
+- tests: workaround name conflict, causing false positives with msvc on windows, when both tests were executed at the same time (locked executable)
+
+
 ## V 0.4.2
 *30 September 2023*
 
