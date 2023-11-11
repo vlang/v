@@ -5,3 +5,31 @@ vlib/v/checker/tests/match_return_mismatch_type_err.vv:4:10: error: return type 
       |                ~~
     5 |     }
     6 |     println(a)
+vlib/v/checker/tests/match_return_mismatch_type_err.vv:18:10: error: return type mismatch, it should be `&string`
+   16 |     _ = match any {
+   17 |         string { &any }
+   18 |         else { variable }
+      |                ~~~~~~~~
+   19 |     }
+   20 |
+vlib/v/checker/tests/match_return_mismatch_type_err.vv:23:10: error: return type mismatch, it should be `string`
+   21 |     _ = match any {
+   22 |         string { any }
+   23 |         else { &variable }
+      |                ^
+   24 |     }
+   25 | }
+vlib/v/checker/tests/match_return_mismatch_type_err.vv:36:10: error: return type mismatch, it should be `&string`
+   34 |     _ = match any {
+   35 |         string { &any }
+   36 |         else { variable }
+      |                ~~~~~~~~
+   37 |     }
+   38 |
+vlib/v/checker/tests/match_return_mismatch_type_err.vv:41:10: error: return type mismatch, it should be `string`
+   39 |     _ = match any {
+   40 |         string { any }
+   41 |         else { &variable }
+      |                ^
+   42 |     }
+   43 | }

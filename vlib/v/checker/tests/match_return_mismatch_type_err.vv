@@ -5,3 +5,39 @@ fn main() {
 	}
 	println(a)
 }
+
+// for test the returns both interface or non-interface
+interface IAny {}
+
+fn returns_both_interface_and_non_interface() {
+	any := IAny('abc')
+	variable := ''
+
+	_ = match any {
+		string { &any }
+		else { variable }
+	}
+
+	_ = match any {
+		string { any }
+		else { &variable }
+	}
+}
+
+// for test the returns both sumtype or non-sumtype
+type SAny = int | string
+
+fn returns_both_sumtype_and_non_sumtype() {
+	any := SAny('abc')
+	variable := ''
+
+	_ = match any {
+		string { &any }
+		else { variable }
+	}
+
+	_ = match any {
+		string { any }
+		else { &variable }
+	}
+}

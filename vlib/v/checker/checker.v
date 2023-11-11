@@ -3564,9 +3564,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 							typ = c.expr(mut obj.expr)
 						}
 					}
-					if c.inside_casting_to_str && obj.orig_type != 0
-						&& c.table.sym(obj.orig_type).kind == .interface_
-						&& c.table.sym(obj.smartcasts.last()).kind != .interface_ {
+					if c.inside_casting_to_str && c.is_interface_var(obj) {
 						typ = typ.deref()
 					}
 					is_option := typ.has_flag(.option) || typ.has_flag(.result)
@@ -4026,6 +4024,12 @@ fn (c &Checker) has_return(stmts []ast.Stmt) ?bool {
 pub fn (mut c Checker) is_comptime_var(node ast.Expr) bool {
 	return node is ast.Ident && node.info is ast.IdentVar && node.kind == .variable
 		&& (node.obj as ast.Var).ct_type_var != .no_comptime
+}
+
+[inline]
+fn (mut c Checker) is_interface_var(var ast.ScopeObject) bool {
+	return var is ast.Var && var.orig_type != 0 && c.table.sym(var.orig_type).kind == .interface_
+		&& c.table.sym(var.smartcasts.last()).kind != .interface_
 }
 
 fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
