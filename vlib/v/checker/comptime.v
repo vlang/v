@@ -287,6 +287,10 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			}
 			c.comptime_for_field_var = ''
 			c.inside_comptime_for_field = false
+		} else {
+			c.error('comptime field lookup supports only structs and interfaces, and ${sym.name} is neither',
+				node.typ_pos)
+			return
 		}
 	} else if node.kind == .values {
 		if sym.kind == .enum_ {
@@ -301,6 +305,10 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 				c.comptime_fields_type[node.val_var] = node.typ
 				c.stmts(mut node.stmts)
 			}
+		} else {
+			c.error('comptime value lookup supports only enum, and ${sym.name} isn\'t',
+				node.typ_pos)
+			return
 		}
 	} else {
 		c.stmts(mut node.stmts)
