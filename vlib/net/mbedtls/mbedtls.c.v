@@ -144,6 +144,15 @@ pub struct C.mbedtls_ssl_context {}
 [typedef]
 pub struct C.mbedtls_ssl_config {}
 
+[typedef]
+pub struct C.mbedtls_ssl_send_t {}
+
+[typedef]
+pub struct C.mbedtls_ssl_recv_t {}
+
+[typedef]
+pub struct C.mbedtls_ssl_recv_timeout_t {}
+
 fn C.mbedtls_net_init(&C.mbedtls_net_context)
 fn C.mbedtls_ssl_init(&C.mbedtls_ssl_context)
 fn C.mbedtls_ssl_config_init(&C.mbedtls_ssl_config)
@@ -151,7 +160,8 @@ fn C.mbedtls_pk_init(&C.mbedtls_pk_context)
 fn C.mbedtls_x509_crt_init(&C.mbedtls_x509_crt)
 fn C.mbedtls_ctr_drbg_init(&C.mbedtls_ctr_drbg_context)
 fn C.mbedtls_entropy_init(&C.mbedtls_entropy_context)
-fn C.mbedtls_ctr_drbg_seed(&C.mbedtls_ctr_drbg_context, voidptr, &C.mbedtls_entropy_context, &char, int) int
+fn C.mbedtls_entropy_func(voidptr, &u8, usize)
+fn C.mbedtls_ctr_drbg_seed(&C.mbedtls_ctr_drbg_context, fn (voidptr, &u8, usize), voidptr, &u8, usize) int
 
 fn C.mbedtls_net_free(&C.mbedtls_net_context)
 fn C.mbedtls_ssl_free(&C.mbedtls_ssl_context)
@@ -163,33 +173,34 @@ fn C.mbedtls_entropy_free(&C.mbedtls_entropy_context)
 
 fn C.mbedtls_ssl_config_defaults(&C.mbedtls_ssl_config, int, int, int) int
 
-fn C.mbedtls_x509_crt_parse(&C.mbedtls_x509_crt, &u8, int) int
-fn C.mbedtls_pk_parse_key(&C.mbedtls_pk_context, &u8, int, &char, int, voidptr, voidptr) int
+fn C.mbedtls_x509_crt_parse(&C.mbedtls_x509_crt, &u8, usize) int
+fn C.mbedtls_ctr_drbg_random(voidptr, &u8, usize) int
+fn C.mbedtls_pk_parse_key(&C.mbedtls_pk_context, &u8, usize, &u8, usize, fn (voidptr, &u8, usize) int, voidptr) int
 fn C.mbedtls_x509_crt_parse_file(&C.mbedtls_x509_crt, &char) int
-fn C.mbedtls_pk_parse_keyfile(&C.mbedtls_pk_context, &char, &char, voidptr, voidptr) int
+fn C.mbedtls_pk_parse_keyfile(&C.mbedtls_pk_context, &char, &char, fn (voidptr, &u8, usize) int, voidptr) int
 
 fn C.mbedtls_net_connect(&C.mbedtls_net_context, &char, &char, int) int
 
-fn C.mbedtls_net_bind(&C.mbedtls_net_context, voidptr, &char, int) int
-fn C.mbedtls_net_accept(&C.mbedtls_net_context, &C.mbedtls_net_context, voidptr, int, voidptr) int
+fn C.mbedtls_net_bind(&C.mbedtls_net_context, &char, &char, int) int
+fn C.mbedtls_net_accept(&C.mbedtls_net_context, &C.mbedtls_net_context, voidptr, usize, &usize) int
 fn C.mbedtls_ssl_session_reset(&C.mbedtls_ssl_context)
 fn C.mbedtls_ssl_conf_authmode(&C.mbedtls_ssl_config, int)
 
 fn C.mbedtls_ssl_conf_own_cert(&C.mbedtls_ssl_config, &C.mbedtls_x509_crt, &C.mbedtls_pk_context) int
 fn C.mbedtls_ssl_conf_authmode(&C.mbedtls_ssl_config, int)
 fn C.mbedtls_ssl_conf_ca_chain(&C.mbedtls_ssl_config, &C.mbedtls_x509_crt, &C.mbedtls_x509_crl)
-fn C.mbedtls_ssl_conf_rng(&C.mbedtls_ssl_config, voidptr, &C.mbedtls_ctr_drbg_context)
+fn C.mbedtls_ssl_conf_rng(&C.mbedtls_ssl_config, fn(voidptr, &u8, usize) int, &C.mbedtls_ctr_drbg_context)
 
 fn C.mbedtls_ssl_setup(&C.mbedtls_ssl_context, &C.mbedtls_ssl_config) int
 
 fn C.mbedtls_ssl_set_hostname(&C.mbedtls_ssl_context, &char) int
 
-fn C.mbedtls_ssl_set_bio(&C.mbedtls_ssl_context, &C.mbedtls_net_context, voidptr, voidptr, voidptr)
+fn C.mbedtls_ssl_set_bio(&C.mbedtls_ssl_context, &C.mbedtls_net_context, &C.mbedtls_ssl_send_t, &C.mbedtls_ssl_recv_t, &C.mbedtls_ssl_recv_timeout_t)
 
 fn C.mbedtls_ssl_handshake(&C.mbedtls_ssl_context) int
 
-fn C.mbedtls_ssl_read(&C.mbedtls_ssl_context, &u8, int) int
-fn C.mbedtls_ssl_write(&C.mbedtls_ssl_context, &u8, int) int
+fn C.mbedtls_ssl_read(&C.mbedtls_ssl_context, &u8, usize) int
+fn C.mbedtls_ssl_write(&C.mbedtls_ssl_context, &u8, usize) int
 
 fn C.mbedtls_high_level_strerr(int) &char
 
