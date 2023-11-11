@@ -287,7 +287,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			}
 			c.comptime_for_field_var = ''
 			c.inside_comptime_for_field = false
-		} else {
+		} else if c.table.generic_type_names(node.typ).len == 0 {
 			c.error('comptime field lookup supports only structs and interfaces, and ${sym.name} is neither',
 				node.typ_pos)
 			return
