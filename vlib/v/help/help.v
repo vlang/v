@@ -2,7 +2,22 @@ module help
 
 import os
 
-const help_dir = os.join_path(@VEXEROOT, 'vlib', 'v', 'help')
+fn hdir(base string) string {
+	return os.join_path(base, 'vlib', 'v', 'help')
+}
+
+fn help_dir() string {
+	mut vexe := os.getenv('VEXE')
+	if vexe == '' {
+		vexe = os.executable()
+	}
+	if vexe != '' {
+		return hdir(os.dir(vexe))
+	}
+	// use @VEXEROOT, but only if everything else fails; the negative of using it,
+	// is that it will depend on the filesystem of the host that built v
+	return hdir(@VEXEROOT)
+}
 
 [params]
 pub struct ExitOptions {
@@ -24,7 +39,7 @@ pub fn print_and_exit(topic string, opts ExitOptions) {
 		}
 	}
 	mut topic_path := ''
-	for path in os.walk_ext(help.help_dir, '.txt') {
+	for path in os.walk_ext(help_dir(), '.txt') {
 		if topic == os.file_name(path).all_before('.txt') {
 			topic_path = path
 			break
@@ -48,7 +63,7 @@ fn print_topic_unkown(topic string) {
 
 fn print_known_topics() {
 	mut res := 'Known help topics: '
-	topic_paths := os.walk_ext(help.help_dir, '.txt')
+	topic_paths := os.walk_ext(help_dir(), '.txt')
 	for i, path in topic_paths {
 		topic := os.file_name(path).all_before('.txt')
 		if topic != 'default' {
