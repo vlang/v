@@ -16,11 +16,12 @@ mut:
 	url  string
 	vcs  string
 	// Fields based on preference / environment.
-	version           string // specifies the requested version.
-	install_path      string
-	is_installed      bool
-	is_external       bool
-	installed_version string
+	version            string // specifies the requested version.
+	install_path       string
+	install_path_fmted string
+	is_installed       bool
+	is_external        bool
+	installed_version  string
 }
 
 struct ModuleVpmInfo {
@@ -44,6 +45,8 @@ struct ErrorOptions {
 	verbose bool // is used to only output the error message if the verbose setting is enabled.
 }
 
+const home_dir = os.home_dir()
+
 fn parse_query(query []string) ([]Module, []Module) {
 	mut vpm_modules, mut external_modules := []Module{}, []Module{}
 	mut errors := 0
@@ -64,6 +67,7 @@ fn parse_query(query []string) ([]Module, []Module) {
 				name: name
 				url: ident
 				install_path: install_path
+				install_path_fmted: fmt_mod_path(install_path)
 				is_external: true
 			}
 		} else {
@@ -74,11 +78,13 @@ fn parse_query(query []string) ([]Module, []Module) {
 			}
 			name_normalized := info.name.replace('-', '_').to_lower()
 			name_as_path := name_normalized.replace('.', os.path_separator)
+			install_path := os.real_path(os.join_path(settings.vmodules_path, name_as_path))
 			Module{
 				name: info.name
 				url: info.url
 				vcs: info.vcs
-				install_path: os.real_path(os.join_path(settings.vmodules_path, name_as_path))
+				install_path: install_path
+				install_path_fmted: fmt_mod_path(install_path)
 			}
 		}
 		mod.version = version
@@ -412,5 +418,17 @@ fn vpm_error(msg string, opts ErrorOptions) {
 			}
 			eprintln(term.ecolorize(term.blue, line))
 		}
+	}
+}
+
+// Formatted version of the vmodules install path. E.g. `/home/user/.vmodules` -> `~/.vmodules`
+fn fmt_mod_path(path string) string {
+	if !path.contains(home_dir) {
+		return path
+	}
+	return $if windows {
+		path.replace(home_dir, '%USERPROFILE%')
+	} $else {
+		path.replace(home_dir, '~')
 	}
 }
