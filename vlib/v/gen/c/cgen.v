@@ -4343,6 +4343,11 @@ fn (mut g Gen) get_const_name(node ast.Ident) string {
 	}
 }
 
+fn (mut g Gen) is_interface_var(var ast.ScopeObject) bool {
+	return var is ast.Var && var.orig_type != 0 && g.table.sym(var.orig_type).kind == .interface_
+		&& g.table.sym(var.smartcasts.last()).kind != .interface_
+}
+
 fn (mut g Gen) ident(node ast.Ident) {
 	prevent_sum_type_unwrapping_once := g.prevent_sum_type_unwrapping_once
 	g.prevent_sum_type_unwrapping_once = false
