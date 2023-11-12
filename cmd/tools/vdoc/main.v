@@ -34,9 +34,14 @@ fn main() {
 	vd.vprintln('Setting output type to "${cfg.output_type}"')
 	vd.generate_docs_from_file()
 	if cfg.run_examples {
-		println('Found ${vd.example_oks} examples.')
+		println('')
+		if vd.example_oks == 0 && vd.example_failures == 0 {
+			println(term.colorize(term.bright_yellow, 'Found NO examples.'))
+		} else {
+			println(term.colorize(term.gray, 'Found ${vd.example_oks} ok examples.'))
+		}
 		if vd.example_failures > 0 {
-			println('Found ${vd.example_failures} failing examples.')
+			println(term.colorize(term.red, 'Found ${vd.example_failures} failing examples.'))
 			exit(1)
 		}
 	}
