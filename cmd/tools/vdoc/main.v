@@ -94,6 +94,10 @@ fn parse_arguments(args []string) Config {
 				cfg.platform = selected_platform
 				i++
 			}
+			'-run-examples' {
+				cfg.run_examples = true
+				dump(cfg.run_examples)
+			}
 			'-no-timestamp' {
 				cfg.no_timestamp = true
 			}

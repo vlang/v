@@ -8,6 +8,7 @@ import sync
 import runtime
 import v.doc
 import v.vmod
+import v.util
 import json
 import term
 
@@ -52,6 +53,7 @@ mut:
 	input_path       string
 	symbol_name      string
 	platform         doc.Platform
+	run_examples     bool // `-run-examples` will run all `// Example: assert mod.abc() == y` comments in the processed modules
 }
 
 //
@@ -107,10 +109,22 @@ fn indent(s string) string {
 	return '    ' + s.replace('\n', '\n    ')
 }
 
+fn write_location(cn doc.DocNode, mut pw strings.Builder) {
+	location := '${util.path_styled_for_error_messages(cn.file_path)}:${cn.pos.line_nr + 1:-4}'
+	if location.len > 24 {
+		pw.write_string('${location:-38s} ')
+	} else {
+		pw.write_string('${location:-24s} ')
+	}
+}
+
 fn (vd &VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.Builder) {
 	cfg := vd.cfg
 	for cn in contents {
 		if cn.content.len > 0 {
+			if cfg.show_loc {
+				write_location(cn, mut pw)
+			}
 			if cfg.is_color {
 				pw.writeln(color_highlight(cn.content, vd.docs[0].table))
 			} else {
@@ -135,9 +149,6 @@ fn (vd &VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.Bui
 						pw.writeln(fex)
 					}
 				}
-			}
-			if cfg.show_loc {
-				pw.writeln('Location: ${cn.file_path}:${cn.pos.line_nr + 1}\n')
 			}
 		}
 		vd.write_plaintext_content(cn.children, mut pw)
