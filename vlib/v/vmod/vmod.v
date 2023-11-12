@@ -2,6 +2,15 @@ module vmod
 
 import os
 
+const mod_file_stop_paths = ['.git', '.hg', '.svn', '.v.mod.stop']
+
+// used during lookup for v.mod to support @VROOT
+const private_file_cacher = new_mod_file_cacher()
+
+pub fn get_cache() &ModFileCacher {
+	return vmod.private_file_cacher
+}
+
 // This file provides a caching mechanism for seeking quickly whether a
 // given folder has a v.mod file in it or in any of its parent folders.
 //
@@ -134,10 +143,6 @@ fn (mut mcache ModFileCacher) mark_folders_as_vmod_free(folders_so_far []string)
 	}
 }
 
-const (
-	mod_file_stop_paths = ['.git', '.hg', '.svn', '.v.mod.stop']
-)
-
 fn (mcache &ModFileCacher) check_for_stop(cfolder string, files []string) bool {
 	for i in vmod.mod_file_stop_paths {
 		if i in files {
@@ -159,13 +164,4 @@ fn (mut mcache ModFileCacher) get_files(cfolder string) []string {
 	}
 	mcache.folder_files[cfolder] = files
 	return files
-}
-
-// used during lookup for v.mod to support @VROOT
-const (
-	private_file_cacher = new_mod_file_cacher()
-)
-
-pub fn get_cache() &ModFileCacher {
-	return vmod.private_file_cacher
 }

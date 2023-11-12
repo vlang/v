@@ -33,6 +33,13 @@ fn main() {
 	}
 	vd.vprintln('Setting output type to "${cfg.output_type}"')
 	vd.generate_docs_from_file()
+	if cfg.run_examples {
+		println('Found ${vd.example_oks} examples.')
+		if vd.example_failures > 0 {
+			println('Found ${vd.example_failures} failing examples.')
+			exit(1)
+		}
+	}
 }
 
 fn parse_arguments(args []string) Config {
@@ -96,7 +103,6 @@ fn parse_arguments(args []string) Config {
 			}
 			'-run-examples' {
 				cfg.run_examples = true
-				dump(cfg.run_examples)
 			}
 			'-no-timestamp' {
 				cfg.no_timestamp = true

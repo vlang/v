@@ -32,6 +32,8 @@ mut:
 	search_data         []SearchResult
 	search_module_index []string // search results are split into a module part and the rest
 	search_module_data  []SearchModuleResult
+	example_failures    int // how many times an example failed to compile or run with non 0 exit code; when positive, finish with exit code 1
+	example_oks         int // how many ok examples were found when `-run-examples` was passed, that compiled and finished with 0 exit code.
 }
 
 struct Config {
@@ -82,7 +84,7 @@ fn (vd &VDoc) gen_json(d doc.Doc) string {
 	return jw.str()
 }
 
-fn (vd &VDoc) gen_plaintext(d doc.Doc) string {
+fn (mut vd VDoc) gen_plaintext(d doc.Doc) string {
 	cfg := vd.cfg
 	mut pw := strings.new_builder(200)
 	if cfg.is_color {
@@ -109,16 +111,19 @@ fn indent(s string) string {
 	return '    ' + s.replace('\n', '\n    ')
 }
 
-fn write_location(cn doc.DocNode, mut pw strings.Builder) {
+fn dn_to_location(cn doc.DocNode) string {
 	location := '${util.path_styled_for_error_messages(cn.file_path)}:${cn.pos.line_nr + 1:-4}'
 	if location.len > 24 {
-		pw.write_string('${location:-38s} ')
-	} else {
-		pw.write_string('${location:-24s} ')
+		return '${location:-38s} '
 	}
+	return '${location:-24s} '
 }
 
-fn (vd &VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.Builder) {
+fn write_location(cn doc.DocNode, mut pw strings.Builder) {
+	pw.write_string(dn_to_location(cn))
+}
+
+fn (mut vd VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.Builder) {
 	cfg := vd.cfg
 	for cn in contents {
 		if cn.content.len > 0 {
@@ -150,12 +155,13 @@ fn (vd &VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.Bui
 					}
 				}
 			}
+			vd.run_examples(cn, mut pw)
 		}
 		vd.write_plaintext_content(cn.children, mut pw)
 	}
 }
 
-fn (vd &VDoc) render_doc(d doc.Doc, out Output) (string, string) {
+fn (mut vd VDoc) render_doc(d doc.Doc, out Output) (string, string) {
 	name := vd.get_file_name(d.head.name, out)
 	output := match out.typ {
 		.html { vd.gen_html(d) }
@@ -188,7 +194,7 @@ fn (vd &VDoc) get_file_name(mod string, out Output) string {
 	return name
 }
 
-fn (vd &VDoc) work_processor(mut work sync.Channel, mut wg sync.WaitGroup) {
+fn (mut vd VDoc) work_processor(mut work sync.Channel, mut wg sync.WaitGroup) {
 	for {
 		mut pdoc := ParallelDoc{}
 		if !work.pop(&pdoc) {
@@ -205,7 +211,7 @@ fn (vd &VDoc) work_processor(mut work sync.Channel, mut wg sync.WaitGroup) {
 	wg.done()
 }
 
-fn (vd &VDoc) render_parallel(out Output) {
+fn (mut vd VDoc) render_parallel(out Output) {
 	vjobs := runtime.nr_jobs()
 	mut work := sync.new_channel[ParallelDoc](u32(vd.docs.len))
 	mut wg := sync.new_waitgroup()
@@ -221,7 +227,7 @@ fn (vd &VDoc) render_parallel(out Output) {
 	wg.wait()
 }
 
-fn (vd &VDoc) render(out Output) map[string]string {
+fn (mut vd VDoc) render(out Output) map[string]string {
 	mut docs := map[string]string{}
 	for doc in vd.docs {
 		name, output := vd.render_doc(doc, out)
