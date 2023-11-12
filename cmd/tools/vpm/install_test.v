@@ -15,7 +15,11 @@ const (
 fn testsuite_begin() {
 	os.setenv('VMODULES', test_path, true)
 	os.setenv('VPM_DEBUG', '', true)
-	os.setenv('VPM_NO_INCREMENT', '1', true)
+	// Skipping download count increment should be the default if vpm runs in CI.
+	// Don't set `VPM_NO_INCREMENT` to test this behavior. `CI` is always true in GH CI runs.
+	if os.getenv('CI') == '' {
+		os.setenv('VPM_NO_INCREMENT', '1', true)
+	}
 }
 
 fn testsuite_end() {

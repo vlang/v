@@ -23,6 +23,7 @@ fn init_settings() VpmSettings {
 	if os.getenv('VPM_DEBUG') != '' {
 		log.set_level(.debug)
 	}
+	no_inc_env := os.getenv('VPM_NO_INCREMENT')
 	return VpmSettings{
 		is_help: '-h' in opts || '--help' in opts || 'help' in cmds
 		is_once: '--once' in opts
@@ -31,6 +32,6 @@ fn init_settings() VpmSettings {
 		vcs: if '--hg' in opts { 'hg' } else { 'git' }
 		server_urls: cmdline.options(args, '--server-urls')
 		vmodules_path: os.vmodules_dir()
-		no_dl_count_increment: os.getenv('VPM_NO_INCREMENT') != ''
+		no_dl_count_increment: os.getenv('CI') != '' || (no_inc_env != '' && no_inc_env != '0')
 	}
 }
