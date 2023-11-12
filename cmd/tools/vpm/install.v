@@ -157,7 +157,7 @@ fn vpm_install_from_vcs(modules []Module) {
 		final_path := os.real_path(os.join_path(settings.vmodules_path, manifest.name.replace('-',
 			'_').to_lower()))
 		if m.install_path != final_path {
-			verbose_println('Relocating `${m.name} (${m.install_path})` to `${manifest.name} (${final_path})`...')
+			verbose_println('Relocating `${m.name} (${m.install_path_fmted})` to `${manifest.name} (${final_path})`...')
 			if os.exists(final_path) {
 				println('Target directory for `${m.name} (${final_path})` already exists.')
 				input := os.input('Replace it with the module directory? [Y/n]: ')
@@ -234,7 +234,7 @@ fn (m Module) install(vcs &VCS) InstallResult {
 	cmd := '${vcs.cmd} ${install_arg} "${m.url}" "${m.install_path}"'
 	vpm_log(@FILE_LINE, @FN, 'command: ${cmd}')
 	println('Installing `${m.name}`...')
-	verbose_println('  cloning from `${m.url}` to `${m.install_path}`')
+	verbose_println('  cloning from `${m.url}` to `${m.install_path_fmted}`')
 	res := os.execute_opt(cmd) or {
 		vpm_error('failed to install `${m.name}`.', details: err.msg())
 		return .failed
@@ -249,7 +249,7 @@ fn (m Module) confirm_install() bool {
 		return false
 	} else {
 		install_version := at_version(if m.version == '' { 'latest' } else { m.version })
-		println('Module `${m.name}${at_version(m.installed_version)}` is already installed at `${m.install_path}`.')
+		println('Module `${m.name}${at_version(m.installed_version)}` is already installed at `${m.install_path_fmted}`.')
 		input := os.input('Replace it with `${m.name}${install_version}`? [Y/n]: ')
 		match input.to_lower() {
 			'', 'y' {
@@ -264,7 +264,7 @@ fn (m Module) confirm_install() bool {
 }
 
 fn (m Module) remove() ! {
-	verbose_println('Removing `${m.name}` from `${m.install_path}`...')
+	verbose_println('Removing `${m.name}` from `${m.install_path_fmted}`...')
 	$if windows {
 		os.execute_opt('rd /s /q ${m.install_path}')!
 	} $else {

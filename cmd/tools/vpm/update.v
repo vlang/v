@@ -40,7 +40,7 @@ fn update_module(mut pp pool.PoolProcessor, idx int, wid int) &ModUpdateInfo {
 	}
 	name := get_name_from_url(result.name) or { result.name }
 	result.final_path = get_path_of_existing_module(result.name) or { return result }
-	println('Updating module `${name}` in `${result.final_path}` ...')
+	println('Updating module `${name}` in `${fmt_mod_path(result.final_path)}` ...')
 	vcs := vcs_used_in_dir(result.final_path) or { return result }
 	vcs.is_executable() or {
 		result.has_err = true
@@ -67,7 +67,7 @@ fn vpm_update_verbose(modules []string) {
 	for mod in modules {
 		name := get_name_from_url(mod) or { mod }
 		install_path := get_path_of_existing_module(mod) or { continue }
-		println('Updating module `${name}` in `${install_path}` ...')
+		println('Updating module `${name}` in `${fmt_mod_path(install_path)}` ...')
 		vcs := vcs_used_in_dir(install_path) or { continue }
 		vcs.is_executable() or {
 			errors++
