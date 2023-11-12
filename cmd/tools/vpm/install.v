@@ -43,6 +43,7 @@ fn vpm_install(query []string) {
 	vpm_log(@FILE_LINE, @FN, 'Installed modules: ${installed_modules}')
 
 	if installed_modules.len > 0 && settings.is_once {
+		num_to_install := vpm_modules.len + external_modules.len
 		mut already_installed := []string{}
 		if external_modules.len > 0 {
 			mut i_deleted := []int{}
@@ -70,7 +71,7 @@ fn vpm_install(query []string) {
 		}
 		if already_installed.len > 0 {
 			verbose_println('Already installed modules: ${already_installed}')
-			if already_installed.len == query.len {
+			if already_installed.len == num_to_install {
 				println('All modules are already installed.')
 				exit(0)
 			}
