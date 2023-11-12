@@ -58,7 +58,7 @@ fn (mut g Gen) gen_jsons() {
 
 		mut init_styp := '${styp} res'
 		if utyp.has_flag(.option) {
-			if sym.kind == .struct_ {
+			if sym.kind == .struct_ && !utyp.is_ptr() {
 				init_styp += ' = '
 				g.set_current_pos_as_last_stmt_pos()
 				pos := g.out.len
@@ -634,7 +634,8 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				dec.writeln('\telse')
 				dec.writeln('\t\t_option_ok(&(${base_typ}[]) {  tos5(cJSON_PrintUnformatted(js_get(root, "${name}"))) }, &${prefix}${op}${c_name(field.name)}, sizeof(${base_typ}));')
 			} else {
-				dec.writeln('\tres${op}${c_name(field.name)} = tos5(cJSON_PrintUnformatted(' +
+				dec.writeln(
+					'\t${prefix}${op}${c_name(field.name)} = tos5(cJSON_PrintUnformatted(' +
 					'js_get(root, "${name}")));')
 			}
 		} else {
