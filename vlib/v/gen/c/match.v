@@ -235,11 +235,11 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 				mut stmt := branch.stmts.last()
 				if mut stmt is ast.ExprStmt {
 					if mut stmt.expr is ast.Ident && stmt.expr.obj is ast.Var
-						&& g.is_interface_var(stmt.expr.obj) {
+						&& g.table.is_interface_var(stmt.expr.obj) {
 						g.inside_casting_to_str = true
 					} else if mut stmt.expr is ast.PrefixExpr && stmt.expr.right is ast.Ident {
 						ident := stmt.expr.right as ast.Ident
-						if ident.obj is ast.Var && g.is_interface_var(ident.obj) {
+						if ident.obj is ast.Var && g.table.is_interface_var(ident.obj) {
 							g.inside_casting_to_str = true
 						}
 					}

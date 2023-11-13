@@ -1362,6 +1362,12 @@ pub fn (t &Table) is_sumtype_or_in_variant(parent Type, typ Type) bool {
 	return t.sumtype_has_variant(parent, typ, false)
 }
 
+[inline]
+pub fn (t &Table) is_interface_var(var ScopeObject) bool {
+	return var is Var && var.orig_type != 0 && t.sym(var.orig_type).kind == .interface_
+		&& t.sym(var.smartcasts.last()).kind != .interface_
+}
+
 // only used for debugging V compiler type bugs
 pub fn (t &Table) known_type_names() []string {
 	mut res := []string{cap: t.type_idxs.len}
@@ -2332,6 +2338,12 @@ pub fn (t &Table) is_comptime_type(x Type, y ComptimeType) bool {
 			return x.has_flag(.option)
 		}
 	}
+}
+
+[inline]
+pub fn (t &Table) is_comptime_var(node Expr) bool {
+	return node is Ident && node.info is IdentVar && node.obj is Var
+		&& (node.obj as Var).ct_type_var != .no_comptime
 }
 
 pub fn (t &Table) dependent_names_in_expr(expr Expr) []string {
