@@ -44,9 +44,17 @@ fn update_module(mut pp pool.PoolProcessor, idx int, wid int) &ModUpdateInfo {
 		name: pp.get_item[string](idx)
 	}
 	name := get_name_from_url(result.name) or { result.name }
-	result.final_path = get_path_of_existing_module(result.name) or { return result }
+	result.final_path = get_path_of_existing_module(result.name) or {
+		vpm_error('failed to find path for `${name}`.', verbose: true)
+		result.has_err = true
+		return result
+	}
 	println('Updating module `${name}` in `${fmt_mod_path(result.final_path)}` ...')
-	vcs := vcs_used_in_dir(result.final_path) or { return result }
+	vcs := vcs_used_in_dir(result.final_path) or {
+		vpm_error('failed to find version control system for `${name}`.', verbose: true)
+		result.has_err = true
+		return result
+	}
 	vcs.is_executable() or {
 		result.has_err = true
 		vpm_error(err.msg())
