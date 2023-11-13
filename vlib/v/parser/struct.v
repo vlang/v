@@ -305,6 +305,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 						}
 					}
 					p.inside_struct_attr_decl = false
+					comments << p.eat_comments()
 				}
 				ast_fields << ast.StructField{
 					name: field_name

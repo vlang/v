@@ -2537,7 +2537,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		g.writeln('}, sizeof(${shared_styp}))')
 		return
 	} else if got_type_raw.has_flag(.shared_f) && !expected_type.has_flag(.shared_f) {
-		if expected_type.is_ptr() {
+		if expected_is_ptr {
 			g.write('&')
 		}
 		g.expr(expr)
@@ -4349,6 +4349,7 @@ fn (mut g Gen) get_const_name(node ast.Ident) string {
 	}
 }
 
+[inline]
 fn (mut g Gen) is_interface_var(var ast.ScopeObject) bool {
 	return var is ast.Var && var.orig_type != 0 && g.table.sym(var.orig_type).kind == .interface_
 		&& g.table.sym(var.smartcasts.last()).kind != .interface_

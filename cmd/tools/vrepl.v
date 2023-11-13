@@ -38,6 +38,33 @@ const (
 	repl_folder     = os.join_path(os.vtmp_dir(), 'repl')
 )
 
+const possible_statement_patterns = [
+	'++',
+	'--',
+	'<<',
+	'//',
+	'/*',
+	'assert ',
+	'fn ',
+	'pub ',
+	'mut ',
+	'enum ',
+	'const ',
+	'struct ',
+	'interface ',
+	'import ',
+	'#include ',
+	'for ',
+	'or ',
+	'insert(',
+	'delete(',
+	'prepend(',
+	'sort(',
+	'clear(',
+	'trim(',
+	' as ',
+]
+
 enum FnType {
 	@none
 	void
@@ -397,31 +424,6 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			func_call, fntype := r.function_call(r.line)
 			filter_line := r.line.replace(r.line.find_between("'", "'"), '').replace(r.line.find_between('"',
 				'"'), '')
-			possible_statement_patterns := [
-				'++',
-				'--',
-				'<<',
-				'//',
-				'/*',
-				'fn ',
-				'pub ',
-				'mut ',
-				'enum ',
-				'const ',
-				'struct ',
-				'interface ',
-				'import ',
-				'#include ',
-				'for ',
-				'or ',
-				'insert(',
-				'delete(',
-				'prepend(',
-				'sort(',
-				'clear(',
-				'trim(',
-				' as ',
-			]
 			mut is_statement := false
 			if filter_line.count('=') % 2 == 1
 				&& (filter_line.count('!=') + filter_line.count('>=') + filter_line.count('<=')) == 0 {

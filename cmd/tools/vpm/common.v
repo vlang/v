@@ -16,10 +16,12 @@ mut:
 	url  string
 	vcs  string
 	// Fields based on preference / environment.
-	version           string // specifies the requested version.
-	install_path      string
-	is_installed      bool
-	installed_version string
+	version            string // specifies the requested version.
+	install_path       string
+	install_path_fmted string
+	is_installed       bool
+	is_external        bool
+	installed_version  string
 }
 
 struct ModuleVpmInfo {
@@ -43,27 +45,30 @@ struct ErrorOptions {
 	verbose bool // is used to only output the error message if the verbose setting is enabled.
 }
 
+const home_dir = os.home_dir()
+
 fn parse_query(query []string) ([]Module, []Module) {
 	mut vpm_modules, mut external_modules := []Module{}, []Module{}
 	mut errors := 0
 	for m in query {
 		ident, version := m.rsplit_once('@') or { m, '' }
-		mut is_external := false
 		mut mod := if ident.starts_with('https://') {
-			is_external = true
 			name := get_name_from_url(ident) or {
 				vpm_error(err.msg())
 				errors++
 				continue
 			}
-			if !has_vmod(ident) {
+			install_path := os.real_path(os.join_path(settings.vmodules_path, name))
+			if !has_vmod(ident, install_path) {
 				errors++
 				continue
 			}
 			Module{
 				name: name
 				url: ident
-				install_path: os.real_path(os.join_path(settings.vmodules_path, name))
+				install_path: install_path
+				install_path_fmted: fmt_mod_path(install_path)
+				is_external: true
 			}
 		} else {
 			info := get_mod_vpm_info(ident) or {
@@ -73,11 +78,13 @@ fn parse_query(query []string) ([]Module, []Module) {
 			}
 			name_normalized := info.name.replace('-', '_').to_lower()
 			name_as_path := name_normalized.replace('.', os.path_separator)
+			install_path := os.real_path(os.join_path(settings.vmodules_path, name_as_path))
 			Module{
 				name: info.name
 				url: info.url
 				vcs: info.vcs
-				install_path: os.real_path(os.join_path(settings.vmodules_path, name_as_path))
+				install_path: install_path
+				install_path_fmted: fmt_mod_path(install_path)
 			}
 		}
 		mod.version = version
@@ -85,7 +92,7 @@ fn parse_query(query []string) ([]Module, []Module) {
 			mod.is_installed = true
 			mod.installed_version = v.output.all_after_last('/').trim_space()
 		}
-		if is_external {
+		if mod.is_external {
 			external_modules << mod
 		} else {
 			vpm_modules << mod
@@ -97,7 +104,11 @@ fn parse_query(query []string) ([]Module, []Module) {
 	return vpm_modules, external_modules
 }
 
-fn has_vmod(url string) bool {
+fn has_vmod(url string, install_path string) bool {
+	if os.exists((os.join_path(install_path, 'v.mod'))) {
+		// Safe time fetchting the repo when the module is already installed and has a `v.mod`.
+		return true
+	}
 	head_branch := os.execute_opt('git ls-remote --symref ${url} HEAD') or {
 		vpm_error('failed to find git HEAD for `${url}`.', details: err.msg())
 		return false
@@ -407,5 +418,17 @@ fn vpm_error(msg string, opts ErrorOptions) {
 			}
 			eprintln(term.ecolorize(term.blue, line))
 		}
+	}
+}
+
+// Formatted version of the vmodules install path. E.g. `/home/user/.vmodules` -> `~/.vmodules`
+fn fmt_mod_path(path string) string {
+	if !path.contains(home_dir) {
+		return path
+	}
+	return $if windows {
+		path.replace(home_dir, '%USERPROFILE%')
+	} $else {
+		path.replace(home_dir, '~')
 	}
 }

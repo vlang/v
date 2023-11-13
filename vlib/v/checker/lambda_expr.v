@@ -129,8 +129,10 @@ pub fn (mut c Checker) lambda_expr_fix_type_of_param(mut node ast.LambdaExpr, mu
 			v.expr = ast.empty_expr
 		}
 	}
-	c.ident(mut pident)
-	pident.obj.typ = ptype
+	if pident.kind != .blank_ident {
+		c.ident(mut pident)
+		pident.obj.typ = ptype
+	}
 }
 
 pub fn (mut c Checker) support_lambda_expr_in_sort(param_type ast.Type, return_type ast.Type, mut expr ast.LambdaExpr) {

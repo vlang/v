@@ -65,9 +65,10 @@ fn (opt &Options) collect_undocumented_functions_in_file(nfile string) []Undocum
 	mut comments := []string{}
 	mut tags := []string{}
 	for i, line in lines {
+		line_trimmed := line.trim_space()
 		if line.starts_with('//') {
 			comments << line
-		} else if line.trim_space().starts_with('[') {
+		} else if line_trimmed.starts_with('@[') || line_trimmed.starts_with('[') {
 			tags << collect_tags(line)
 		} else if line.starts_with('pub fn')
 			|| (opt.private && (line.starts_with('fn ') && !(line.starts_with('fn C.')
@@ -213,7 +214,7 @@ fn collect(path string, mut l []string, f fn (string, mut []string)) {
 
 fn collect_tags(line string) []string {
 	mut cleaned := line.all_before('/')
-	cleaned = cleaned.replace_each(['[', '', ']', '', ' ', ''])
+	cleaned = cleaned.replace_each(['@[', '', '[', '', ']', '', ' ', ''])
 	return cleaned.split(',')
 }
 

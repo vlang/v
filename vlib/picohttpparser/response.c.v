@@ -12,7 +12,7 @@ pub mut:
 [inline]
 pub fn (mut r Response) write_string(s string) {
 	unsafe {
-		C.memcpy(r.buf, s.str, s.len)
+		vmemcpy(r.buf, s.str, s.len)
 		r.buf += s.len
 	}
 }
@@ -36,7 +36,7 @@ pub fn (mut r Response) header(k string, v string) &Response {
 pub fn (mut r Response) header_date() &Response {
 	r.write_string('Date: ')
 	unsafe {
-		C.memcpy(r.buf, r.date, 29)
+		vmemcpy(r.buf, r.date, 29)
 		r.buf += 29
 	}
 	r.write_string('\r\n')

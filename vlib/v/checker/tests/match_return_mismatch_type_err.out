@@ -1,3 +1,10 @@
+vlib/v/checker/tests/match_return_mismatch_type_err.vv:27:6: warning: cannot assign a reference to a value (this will be an error soon) left=string false right=string true ptr=true
+   25 | 
+   26 |     mut res := ''
+   27 |     res = match any {
+      |         ^
+   28 |         string { &any }
+   29 |         else { &variable }
 vlib/v/checker/tests/match_return_mismatch_type_err.vv:4:10: error: return type mismatch, it should be `string`
     2 |     a := match 1 {
     3 |         1 { 'aa' }
@@ -5,3 +12,31 @@ vlib/v/checker/tests/match_return_mismatch_type_err.vv:4:10: error: return type 
       |                ~~
     5 |     }
     6 |     println(a)
+vlib/v/checker/tests/match_return_mismatch_type_err.vv:18:10: error: return type mismatch, it should be `&string`
+   16 |     _ = match any {
+   17 |         string { &any }
+   18 |         else { variable }
+      |                ~~~~~~~~
+   19 |     }
+   20 |
+vlib/v/checker/tests/match_return_mismatch_type_err.vv:23:10: error: return type mismatch, it should be `string`
+   21 |     _ = match any {
+   22 |         string { any }
+   23 |         else { &variable }
+      |                ^
+   24 |     }
+   25 |
+vlib/v/checker/tests/match_return_mismatch_type_err.vv:43:10: error: return type mismatch, it should be `&string`
+   41 |     _ = match any {
+   42 |         string { &any }
+   43 |         else { variable }
+      |                ~~~~~~~~
+   44 |     }
+   45 |
+vlib/v/checker/tests/match_return_mismatch_type_err.vv:48:10: error: return type mismatch, it should be `string`
+   46 |     _ = match any {
+   47 |         string { any }
+   48 |         else { &variable }
+      |                ^
+   49 |     }
+   50 | }

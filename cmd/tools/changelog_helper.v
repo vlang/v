@@ -19,6 +19,7 @@ enum Category {
 	tools
 	compiler_internals
 	examples
+	vfmt
 }
 
 /*
@@ -33,6 +34,7 @@ enum Category {
 #### Database drivers
 #### Native backend
 #### C backend
+#### vfmt
 #### Tools
 #### Operating System support
 #### Examples
@@ -117,6 +119,8 @@ fn (mut app App) process_line(text string) ! {
 		category = .improvements
 	} else if is_native(text) {
 		category = .native
+	} else if is_vfmt(text) {
+		category = .vfmt
 	} else if is_examples(text) {
 		// TODO maybe always skip these as well?
 		category = .examples
@@ -214,6 +218,7 @@ const category_map = {
 	.tools:              '#### Tools'
 	.compiler_internals: '#### Compiler internals'
 	.examples:           '#### Examples'
+	.vfmt:               '#### vfmt'
 }
 
 fn (l Line) write_at_category(txt string) ?string {
@@ -265,11 +270,10 @@ const db_strings = [
 	'db.sqlite',
 	'db.mysql',
 	'db.pg',
+	'pg:',
 ]
 
 const improvements_strings = [
-	'vfmt:',
-	'fmt:',
 	'all:',
 	'v:',
 ]
@@ -282,6 +286,7 @@ const parser_strings = [
 const stdlib_strings = [
 	'gg:',
 	'json:',
+	'json2:',
 	'time:',
 	'sync:',
 	'datatypes:',
@@ -388,6 +393,15 @@ const native_strings = [
 
 fn is_native(text string) bool {
 	return is_xxx(text, native_strings)
+}
+
+const vfmt_strings = [
+	'vfmt:',
+	'fmt:',
+]
+
+fn is_vfmt(text string) bool {
+	return is_xxx(text, vfmt_strings)
 }
 
 fn is_xxx(text string, words []string) bool {

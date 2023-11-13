@@ -1,0 +1,10 @@
+// abc just prints 'xyz'. The important thing however is the next line, that does an assertion,
+// that should be executed with `v doc -run-examples good.v`, and should succeed:
+// Example: assert 5 * 5 == 25
+pub fn abc() {
+	println('xyz')
+}
+
+fn main() {
+	abc()
+}
