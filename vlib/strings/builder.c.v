@@ -21,14 +21,14 @@ pub fn new_builder(initial_size int) Builder {
 // pass/access as []u8 later, without copying or freeing the buffer.
 // NB: you *should NOT use* the string builder instance after calling this method.
 // Use only the return value after calling this method.
-[unsafe]
+@[unsafe]
 pub fn (mut b Builder) reuse_as_plain_u8_array() []u8 {
 	unsafe { b.flags.clear(.noslices) }
 	return *b
 }
 
 // write_ptr writes `len` bytes provided byteptr to the accumulated buffer
-[unsafe]
+@[unsafe]
 pub fn (mut b Builder) write_ptr(ptr &u8, len int) {
 	if len == 0 {
 		return
@@ -37,7 +37,7 @@ pub fn (mut b Builder) write_ptr(ptr &u8, len int) {
 }
 
 // write_rune appends a single rune to the accumulated buffer
-[manualfree]
+@[manualfree]
 pub fn (mut b Builder) write_rune(r rune) {
 	mut buffer := [5]u8{}
 	res := unsafe { utf32_to_str_no_malloc(u32(r), &buffer[0]) }
@@ -77,7 +77,7 @@ pub fn (mut b Builder) write_byte(data u8) {
 // write_decimal appends a decimal representation of the number `n` into the builder `b`,
 // without dynamic allocation. The higher order digits come first, i.e. 6123 will be written
 // with the digit `6` first, then `1`, then `2` and `3` last.
-[direct_array_access]
+@[direct_array_access]
 pub fn (mut b Builder) write_decimal(n i64) {
 	if n == 0 {
 		b.write_u8(0x30)
@@ -112,7 +112,7 @@ pub fn (mut b Builder) write(data []u8) !int {
 
 // drain_builder writes all of the `other` builder content, then re-initialises
 // `other`, so that the `other` strings builder is ready to receive new content.
-[manualfree]
+@[manualfree]
 pub fn (mut b Builder) drain_builder(mut other Builder, other_new_cap int) {
 	if other.len > 0 {
 		b << *other
@@ -123,13 +123,13 @@ pub fn (mut b Builder) drain_builder(mut other Builder, other_new_cap int) {
 
 // byte_at returns a byte, located at a given index `i`.
 // Note: it can panic, if there are not enough bytes in the strings builder yet.
-[inline]
+@[inline]
 pub fn (b &Builder) byte_at(n int) u8 {
 	return unsafe { (&[]u8(b))[n] }
 }
 
 // write appends the string `s` to the buffer
-[inline]
+@[inline]
 pub fn (mut b Builder) write_string(s string) {
 	if s.len == 0 {
 		return
@@ -146,7 +146,7 @@ pub fn (mut b Builder) go_back(n int) {
 	b.trim(b.len - n)
 }
 
-[inline]
+@[inline]
 fn (b &Builder) spart(start_pos int, n int) string {
 	unsafe {
 		mut x := malloc_noscan(n + 1)
@@ -181,7 +181,7 @@ pub fn (mut b Builder) go_back_to(pos int) {
 }
 
 // writeln appends the string `s`, and then a newline character.
-[inline]
+@[inline]
 pub fn (mut b Builder) writeln(s string) {
 	// for c in s {
 	// b.buf << c
@@ -247,7 +247,7 @@ pub fn (mut b Builder) ensure_cap(n int) {
 
 // free frees the memory block, used for the buffer.
 // Note: do not use the builder, after a call to free().
-[unsafe]
+@[unsafe]
 pub fn (mut b Builder) free() {
 	if b.data != 0 {
 		unsafe { free(b.data) }

@@ -28,7 +28,7 @@ f64 to string with string format
 // f32_to_str_l returns `f` as a `string` in decimal notation with a maximum of 6 digits after the dot.
 //
 // Example: assert strconv.f32_to_str_l(34.1234567) == '34.12346'
-[manualfree]
+@[manualfree]
 pub fn f32_to_str_l(f f32) string {
 	s := f32_to_str(f, 6)
 	res := fxx_to_str_l_parse(s)
@@ -40,7 +40,7 @@ pub fn f32_to_str_l(f f32) string {
 // If the decimal digits after the dot are zero, a '.0' is appended for clarity.
 //
 // Example: assert strconv.f32_to_str_l_with_dot(34.) == '34.0'
-[manualfree]
+@[manualfree]
 pub fn f32_to_str_l_with_dot(f f32) string {
 	s := f32_to_str(f, 6)
 	res := fxx_to_str_l_parse_with_dot(s)
@@ -51,7 +51,7 @@ pub fn f32_to_str_l_with_dot(f f32) string {
 // f64_to_str_l returns `f` as a `string` in decimal notation with a maximum of 18 digits after the dot.
 //
 // Example: assert strconv.f64_to_str_l(123.1234567891011121) == '123.12345678910111'
-[manualfree]
+@[manualfree]
 pub fn f64_to_str_l(f f64) string {
 	s := f64_to_str(f, 18)
 	res := fxx_to_str_l_parse(s)
@@ -63,7 +63,7 @@ pub fn f64_to_str_l(f f64) string {
 // If the decimal digits after the dot are zero, a '.0' is appended for clarity.
 //
 // Example: assert strconv.f64_to_str_l_with_dot (34.) == '34.0'
-[manualfree]
+@[manualfree]
 pub fn f64_to_str_l_with_dot(f f64) string {
 	s := f64_to_str(f, 18)
 	res := fxx_to_str_l_parse_with_dot(s)
@@ -75,7 +75,7 @@ pub fn f64_to_str_l_with_dot(f f64) string {
 // floating-point `string` in scientific notation.
 //
 // Example: assert strconv.fxx_to_str_l_parse('34.22e+00') == '34.22'
-[direct_array_access; manualfree]
+@[direct_array_access; manualfree]
 pub fn fxx_to_str_l_parse(s string) string {
 	// check for +inf -inf Nan
 	if s.len > 2 && (s[0] == `n` || s[1] == `i`) {
@@ -209,7 +209,7 @@ pub fn fxx_to_str_l_parse(s string) string {
 // If the decimal digits after the dot are zero, a '.0' is appended for clarity.
 //
 // Example: assert strconv.fxx_to_str_l_parse_with_dot ('34.e+01') == '340.0'
-[direct_array_access; manualfree]
+@[direct_array_access; manualfree]
 pub fn fxx_to_str_l_parse_with_dot(s string) string {
 	// check for +inf -inf Nan
 	if s.len > 2 && (s[0] == `n` || s[1] == `i`) {

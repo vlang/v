@@ -1,2 +1,2 @@
-[export: 'test']
+@[export: 'test']
 fn C.printf(s string)

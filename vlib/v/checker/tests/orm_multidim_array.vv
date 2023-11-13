@@ -1,15 +1,15 @@
 import db.sqlite
 
-[table: users]
+@[table: users]
 struct User {
-	id int [pimary]
+	id int @[pimary]
 }
 
-[table: foos]
+@[table: foos]
 struct Foo {
-	id    int      [primary; sql: serial]
-	users []User   [fkey: id]
-	bad   [][]User [fkey: id]
+	id    int      @[primary; sql: serial]
+	users []User   @[fkey: id]
+	bad   [][]User @[fkey: id]
 }
 
 fn main() {

@@ -1,19 +1,19 @@
 import db.sqlite
 
 struct Boat {
-	id          int [primary; sql: serial]
-	color_id    int [references]
-	another1_id int [references: 'size']
-	another2_id int [references: 'size(secondary_id)']
+	id          int @[primary; sql: serial]
+	color_id    int @[references]
+	another1_id int @[references: 'size']
+	another2_id int @[references: 'size(secondary_id)']
 }
 
 struct Color {
-	id  int    [primary; sql: serial]
+	id  int    @[primary; sql: serial]
 	hex string
 }
 
 struct Size {
-	id           int [primary; sql: serial]
+	id           int @[primary; sql: serial]
 	secondary_id int
 }
 

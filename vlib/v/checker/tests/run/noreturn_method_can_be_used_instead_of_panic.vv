@@ -1,6 +1,6 @@
 struct Test {}
 
-[noreturn]
+@[noreturn]
 fn (mut t Test) zz_exit() {
 	println('${@METHOD} called, as it should')
 	flush_stdout()

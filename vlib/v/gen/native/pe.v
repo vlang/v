@@ -263,7 +263,7 @@ enum Pe32PlusOPtionalHeaderField {
 }
 
 // implemented because __offsetof() + [packed] structs wasn't consistent across OSs
-[inline]
+@[inline]
 fn pe32_plus_optional_header_offsetof(field Pe32PlusOPtionalHeaderField) i64 {
 	return i64(field)
 }
@@ -450,7 +450,7 @@ enum PeSectionHeaderField {
 }
 
 // implemented because __offsetof() + [packed] structs wasn't consistent across OSs
-[inline]
+@[inline]
 fn pe_section_header_offsetof(field PeSectionHeaderField) i64 {
 	return i64(field)
 }
@@ -561,7 +561,7 @@ enum PeImportDirectoryTableField {
 }
 
 // implemented because __offsetof() + [packed] structs wasn't consistent across OSs
-[inline]
+@[inline]
 fn pe_idt_offsetof(field PeImportDirectoryTableField) i64 {
 	return i64(field)
 }

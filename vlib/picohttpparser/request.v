@@ -31,7 +31,7 @@ pub mut:
 
 // parse_request parses a raw HTTP request and returns the number of bytes read.
 // -1 indicates a parse error and -2 means the request is parsed
-[inline]
+@[inline]
 pub fn (mut r Request) parse_request(s string) !int {
 	mut buf := s.str
 	buf_end := unsafe { s.str + s.len }
@@ -65,7 +65,7 @@ pub fn (mut r Request) parse_request(s string) !int {
 }
 
 // parse_request_path sets the `path` and `method` fields
-[inline]
+@[inline]
 pub fn (mut r Request) parse_request_path(s string) !int {
 	mut buf := s.str
 	buf_end := unsafe { s.str + s.len }
@@ -81,7 +81,7 @@ pub fn (mut r Request) parse_request_path(s string) !int {
 
 // parse_request_path_pipeline can parse the `path` and `method` of HTTP/1.1 pipelines.
 // Call it again to parse the next request
-[inline]
+@[inline]
 pub fn (mut r Request) parse_request_path_pipeline(s string) !int {
 	mut buf := unsafe { s.str + r.prev_len }
 	buf_end := unsafe { s.str + s.len }

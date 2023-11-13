@@ -3,7 +3,7 @@ module pool
 import sync
 import runtime
 
-[trusted]
+@[trusted]
 fn C.atomic_fetch_add_u32(voidptr, u32) u32
 
 pub const (

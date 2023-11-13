@@ -1,7 +1,7 @@
 // Copyright (c) 2020-2021 Raúl Hernández. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-[has_globals]
+@[has_globals]
 module ui
 
 import os
@@ -316,14 +316,14 @@ fn (mut ctx Context) parse_events() {
 	}
 }
 
-[inline]
+@[inline]
 fn save_title() {
 	// restore the previously saved terminal title
 	print('\x1b[22;0t')
 	flush_stdout()
 }
 
-[inline]
+@[inline]
 fn load_title() {
 	// restore the previously saved terminal title
 	print('\x1b[23;0t')

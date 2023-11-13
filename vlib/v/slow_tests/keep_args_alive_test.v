@@ -18,7 +18,7 @@ fn C.atomic_load_ptr(voidptr) voidptr
 
 fn C.atomic_store_ptr(voidptr, voidptr)
 
-[keep_args_alive]
+@[keep_args_alive]
 fn C.calc_expr_after_delay(voidptr, int, voidptr) int
 
 fn set_vals() voidptr {

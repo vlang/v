@@ -14,7 +14,7 @@ pub const (
 	default_height = 600
 )
 
-[params]
+@[params]
 pub struct GridSettings {
 pub:
 	width  int = sim.default_width
@@ -27,7 +27,7 @@ pub fn new_grid_settings(settings GridSettings) GridSettings {
 	}
 }
 
-[params]
+@[params]
 pub struct RunnerSettings {
 pub:
 	grid       GridSettings

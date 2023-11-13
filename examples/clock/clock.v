@@ -87,7 +87,7 @@ fn on_frame(mut app App) {
 }
 
 // Rotate a polygon round the centerpoint
-[manualfree]
+@[manualfree]
 fn draw_convex_poly_rotate(mut ctx gg.Context, dpi_scale f32, points []f32, c gx.Color, angle f32) {
 	sa := math.sin(math.pi * angle / 180.0)
 	ca := math.cos(math.pi * angle / 180.0)

@@ -9,7 +9,7 @@ pub enum CloseTagType {
 }
 
 // Tag holds the information of an HTML tag.
-[heap]
+@[heap]
 pub struct Tag {
 pub mut:
 	name               string

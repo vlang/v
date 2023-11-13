@@ -20,7 +20,7 @@ https://github.com/cespare/ryu/tree/ba56a33f39e3bbbfa409095d0f9ae168a595feea
 
 =============================================================================*/
 
-[direct_array_access]
+@[direct_array_access]
 fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 	mut n_digit := i_n_digit + 1
 	pad_digit := i_pad_digit + 1

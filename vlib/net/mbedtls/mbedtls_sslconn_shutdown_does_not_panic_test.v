@@ -27,7 +27,7 @@ fn read_input() string {
 	return os.input_opt('Message: ') or { 'Empty' }
 }
 
-[if network ?]
+@[if network ?]
 fn test_shutdown_does_not_panic() {
 	_ := spawn server()
 	time.sleep(1 * time.second)

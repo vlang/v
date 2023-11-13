@@ -4,7 +4,7 @@ import v.ast
 import strings
 import v.util
 
-[inline]
+@[inline]
 fn styp_to_copy_fn_name(styp string) string {
 	return styp.replace_each(['*', '', '.', '__', ' ', '__']) + '_\$copy'
 }

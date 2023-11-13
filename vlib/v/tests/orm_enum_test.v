@@ -9,7 +9,7 @@ enum Number {
 }
 
 struct Counter {
-	id     int    [primary; sql: serial]
+	id     int    @[primary; sql: serial]
 	number Number
 }
 

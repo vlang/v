@@ -50,7 +50,7 @@ mut:
 	row_pos           int
 }
 
-[params]
+@[params]
 pub struct ReaderConfig {
 	delimiter u8 = `,`
 	comment   u8 = `#`

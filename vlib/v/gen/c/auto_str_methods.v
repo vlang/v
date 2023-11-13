@@ -523,7 +523,7 @@ fn (mut g Gen) gen_str_for_thread(info ast.Thread, styp string, str_fn_name stri
 	g.auto_str_funcs.writeln('static string ${str_fn_name}(${styp} _) { return _SLIT("thread(${ret_type_name})");}')
 }
 
-[inline]
+@[inline]
 fn styp_to_str_fn_name(styp string) string {
 	return styp.replace_each(['*', '', '.', '__', ' ', '__']) + '_str'
 }

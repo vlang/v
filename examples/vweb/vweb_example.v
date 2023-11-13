@@ -22,7 +22,7 @@ pub fn (app &App) before_request() {
 	}
 }
 
-['/users/:user']
+@['/users/:user']
 pub fn (mut app App) user_endpoint(user string) vweb.Result {
 	id := rand.intn(100) or { 0 }
 	return app.json({
@@ -55,7 +55,7 @@ pub fn (mut app App) cookie() vweb.Result {
 	return app.text('Response Headers\n${app.header}')
 }
 
-[post]
+@[post]
 pub fn (mut app App) post() vweb.Result {
 	return app.text('Post body: ${app.req.data}')
 }

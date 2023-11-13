@@ -42,7 +42,7 @@ pub enum Kind {
 }
 
 // pos returns the exact position of a token in the input.
-[inline]
+@[inline]
 pub fn (tok &Token) pos() Pos {
 	return Pos{
 		len: tok.len

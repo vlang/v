@@ -5,7 +5,7 @@ module token
 
 const orm_custom_operators = ['like']
 
-[minify]
+@[minify]
 pub struct Token {
 pub:
 	kind    Kind   // the token number/enum; for quick comparisons
@@ -348,24 +348,24 @@ fn build_token_str() []string {
 	return s
 }
 
-[inline]
+@[inline]
 pub fn is_key(key string) bool {
 	return int(token.keywords[key]) > 0
 }
 
-[inline]
+@[inline]
 pub fn is_decl(t Kind) bool {
 	return t in [.key_enum, .key_interface, .key_fn, .key_struct, .key_type, .key_const, .key_pub,
 		.eof]
 }
 
-[inline]
+@[inline]
 pub fn (t Kind) is_assign() bool {
 	return t in token.assign_tokens
 }
 
 // note: used for some code generation, so no quoting
-[inline]
+@[inline]
 pub fn (t Kind) str() string {
 	idx := int(t)
 	if idx < 0 || token.token_str.len <= idx {
@@ -374,7 +374,7 @@ pub fn (t Kind) str() string {
 	return token.token_str[idx]
 }
 
-[inline]
+@[inline]
 pub fn (t Token) is_next_to(pre_token Token) bool {
 	return t.pos - pre_token.pos == pre_token.len
 }
@@ -479,54 +479,54 @@ pub fn build_precedences() []Precedence {
 const precedences = build_precedences()
 
 // precedence returns a tokens precedence if defined, otherwise 0
-[direct_array_access; inline]
+@[direct_array_access; inline]
 pub fn (tok Token) precedence() int {
 	return int(token.precedences[tok.kind])
 }
 
 // precedence returns the precedence of the given token `kind` if defined, otherwise 0
-[direct_array_access; inline]
+@[direct_array_access; inline]
 pub fn (kind Kind) precedence() int {
 	return int(token.precedences[kind])
 }
 
 // is_scalar returns true if the token is a scalar
-[inline]
+@[inline]
 pub fn (tok Token) is_scalar() bool {
 	return tok.kind in [.number, .string]
 }
 
 // is_unary returns true if the token can be in a unary expression
-[inline]
+@[inline]
 pub fn (tok Token) is_unary() bool {
 	// `+` | `-` | `!` | `~` | `*` | `&` | `<-`
 	return tok.kind in [.plus, .minus, .not, .bit_not, .mul, .amp, .arrow]
 }
 
-[inline]
+@[inline]
 pub fn (tok Kind) is_relational() bool {
 	// `<` | `<=` | `>` | `>=` | `==` | `!=`
 	return tok in [.lt, .le, .gt, .ge, .eq, .ne]
 }
 
-[inline]
+@[inline]
 pub fn (k Kind) is_start_of_type() bool {
 	return k in [.name, .lpar, .amp, .lsbr, .question, .key_shared, .not]
 }
 
-[inline]
+@[inline]
 pub fn (kind Kind) is_prefix() bool {
 	return kind in [.minus, .amp, .mul, .not, .bit_not]
 }
 
-[inline]
+@[inline]
 pub fn (kind Kind) is_infix() bool {
 	return kind in [.plus, .minus, .mod, .mul, .div, .eq, .ne, .gt, .lt, .key_in, .key_as, .ge,
 		.le, .logical_or, .xor, .not_in, .key_is, .not_is, .and, .dot, .pipe, .amp, .left_shift,
 		.right_shift, .unsigned_right_shift, .arrow, .key_like]
 }
 
-[inline]
+@[inline]
 pub fn (kind Kind) is_postfix() bool {
 	return kind in [.inc, .dec, .question]
 }

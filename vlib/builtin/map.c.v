@@ -7,7 +7,7 @@ fn C.wyhash64(u64, u64) u64
 // fast_string_eq is intended to be fast when
 // the strings are very likely to be equal
 // TODO: add branch prediction hints
-[inline]
+@[inline]
 fn fast_string_eq(a string, b string) bool {
 	if a.len != b.len {
 		return false

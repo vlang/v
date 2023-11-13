@@ -216,7 +216,7 @@ pub:
 	pos token.Pos
 }
 
-[minify]
+@[minify]
 pub struct StringLiteral {
 pub:
 	val      string
@@ -266,7 +266,7 @@ pub enum GenericKindField {
 }
 
 // `foo.bar`
-[minify]
+@[minify]
 pub struct SelectorExpr {
 pub:
 	pos        token.Pos
@@ -315,7 +315,7 @@ pub:
 	pos token.Pos
 }
 
-[minify]
+@[minify]
 pub struct StructField {
 pub:
 	pos              token.Pos
@@ -368,7 +368,7 @@ pub mut:
 }
 
 // const declaration
-[minify]
+@[minify]
 pub struct ConstDecl {
 pub:
 	is_pub bool
@@ -380,7 +380,7 @@ pub mut:
 	is_block     bool // const() block
 }
 
-[minify]
+@[minify]
 pub struct StructDecl {
 pub:
 	pos           token.Pos
@@ -418,7 +418,7 @@ pub:
 	comments []Comment
 }
 
-[minify]
+@[minify]
 pub struct InterfaceDecl {
 pub:
 	name          string
@@ -458,7 +458,7 @@ pub mut:
 //    ...a
 //    field1: 'hello'
 // }`
-[minify]
+@[minify]
 pub struct StructInit {
 pub:
 	pos             token.Pos
@@ -519,7 +519,7 @@ pub mut:
 }
 
 // function or method declaration
-[minify]
+@[minify]
 pub struct FnDecl {
 pub:
 	name                  string // 'math.bits.normalize'
@@ -594,7 +594,7 @@ pub fn (f &FnDecl) new_method_with_receiver_type(new_type Type) FnDecl {
 	}
 }
 
-[minify]
+@[minify]
 pub struct Fn {
 pub:
 	is_variadic           bool
@@ -638,7 +638,7 @@ fn (f &Fn) method_equals(o &Fn) bool {
 		&& f.name == o.name
 }
 
-[minify]
+@[minify]
 pub struct Param {
 pub:
 	pos         token.Pos
@@ -698,7 +698,7 @@ fn (p []Param) equals(o []Param) bool {
 }
 
 // break, continue
-[minify]
+@[minify]
 pub struct BranchStmt {
 pub:
 	kind  token.Kind
@@ -707,7 +707,7 @@ pub:
 }
 
 // function or method call expr
-[minify]
+@[minify]
 pub struct CallExpr {
 pub:
 	pos      token.Pos
@@ -752,7 +752,7 @@ pub struct AutofreeArgVar {
 */
 
 // function call argument: `f(callarg)`
-[minify]
+@[minify]
 pub struct CallArg {
 pub:
 	is_mut   bool
@@ -784,7 +784,7 @@ pub enum ComptimeVarKind {
 	generic_param // generic fn parameter
 }
 
-[minify]
+@[minify]
 pub struct Var {
 pub:
 	name            string
@@ -817,7 +817,7 @@ pub mut:
 
 // used for smartcasting only
 // struct fields change type in scopes
-[minify]
+@[minify]
 pub struct ScopeStructField {
 pub:
 	struct_type Type // type of struct
@@ -832,7 +832,7 @@ pub:
 	//        12 <- the current casted type (typ)
 }
 
-[minify]
+@[minify]
 pub struct GlobalField {
 pub:
 	name        string
@@ -858,7 +858,7 @@ pub mut:
 	end_comments []Comment
 }
 
-[minify]
+@[minify]
 pub struct EmbeddedFile {
 pub:
 	compression_type string
@@ -874,7 +874,7 @@ pub mut:
 // Each V source file is represented by one File structure.
 // When the V compiler runs, the parser will fill an []File.
 // That array is then passed to V's checker.
-[heap]
+@[heap]
 pub struct File {
 pub:
 	nr_lines      int    // number of source code lines in the file (including newlines and comments)
@@ -903,7 +903,7 @@ pub mut:
 	unique_prefix    string   // a hash of the `.path` field, used for making anon fn generation unique
 }
 
-[unsafe]
+@[unsafe]
 pub fn (f &File) free() {
 	unsafe {
 		f.path.free()
@@ -928,7 +928,7 @@ pub mut:
 
 // TODO: (joe) remove completely, use ident.obj
 // instead which points to the scope object
-[minify]
+@[minify]
 pub struct IdentVar {
 pub mut:
 	typ         Type
@@ -951,7 +951,7 @@ pub enum IdentKind {
 }
 
 // A single identifier
-[minify]
+@[minify]
 pub struct Ident {
 pub:
 	language Language
@@ -1009,7 +1009,7 @@ pub fn (i &Ident) var_info() IdentVar {
 
 // left op right
 // See: token.Kind.is_infix
-[minify]
+@[minify]
 pub struct InfixExpr {
 pub:
 	op      token.Kind
@@ -1046,7 +1046,7 @@ pub mut:
 }
 
 // See: token.Kind.is_prefix
-[minify]
+@[minify]
 pub struct PrefixExpr {
 pub:
 	op  token.Kind
@@ -1058,7 +1058,7 @@ pub mut:
 	is_option  bool // IfGuard
 }
 
-[minify]
+@[minify]
 pub struct IndexExpr {
 pub:
 	pos token.Pos
@@ -1076,7 +1076,7 @@ pub mut:
 	is_gated  bool // #[] gated array
 }
 
-[minify]
+@[minify]
 pub struct IfExpr {
 pub:
 	is_comptime   bool
@@ -1124,7 +1124,7 @@ pub mut:
 	scope    &Scope = unsafe { nil }
 }
 
-[minify]
+@[minify]
 pub struct MatchExpr {
 pub:
 	tok_kind token.Kind
@@ -1163,7 +1163,7 @@ pub mut:
 	expected_type Type // for debugging only
 }
 
-[minify]
+@[minify]
 pub struct SelectBranch {
 pub:
 	pos           token.Pos
@@ -1206,7 +1206,7 @@ pub mut:
 	scope &Scope = unsafe { nil }
 }
 
-[minify]
+@[minify]
 pub struct ForInStmt {
 pub:
 	key_var    string
@@ -1264,7 +1264,7 @@ pub mut:
 }
 
 // variable assign statement
-[minify]
+@[minify]
 pub struct AssignStmt {
 pub:
 	op           token.Kind // include: =,:=,+=,-=,*=,/= and so on; for a list of all the assign operators, see vlib/token/token.v
@@ -1316,7 +1316,7 @@ pub mut:
 }
 
 // enum declaration
-[minify]
+@[minify]
 pub struct EnumDecl {
 pub:
 	name             string
@@ -1371,7 +1371,7 @@ pub:
 // TODO: handle this differently
 // v1 excludes non current os ifdefs so
 // the defer's never get added in the first place
-[minify]
+@[minify]
 pub struct DeferStmt {
 pub:
 	pos token.Pos
@@ -1391,7 +1391,7 @@ pub mut:
 	comments []Comment
 }
 
-[minify]
+@[minify]
 pub struct GoExpr {
 pub:
 	pos token.Pos
@@ -1400,7 +1400,7 @@ pub mut:
 	is_expr   bool
 }
 
-[minify]
+@[minify]
 pub struct SpawnExpr {
 pub:
 	pos token.Pos
@@ -1423,7 +1423,7 @@ pub:
 	pos  token.Pos
 }
 
-[minify]
+@[minify]
 pub struct ArrayInit {
 pub:
 	pos           token.Pos   // `[]` in []Type{} position
@@ -1468,7 +1468,7 @@ pub mut:
 	elem_type Type
 }
 
-[minify]
+@[minify]
 pub struct MapInit {
 pub:
 	pos       token.Pos
@@ -1484,7 +1484,7 @@ pub mut:
 }
 
 // s[10..20]
-[minify]
+@[minify]
 pub struct RangeExpr {
 pub:
 	has_high bool
@@ -1497,7 +1497,7 @@ pub mut:
 	typ  Type // filled in by checker; the type of `0...1` is `int` for example, while `a`...`z` is `rune` etc
 }
 
-[minify]
+@[minify]
 pub struct CastExpr {
 pub mut:
 	arg       Expr   // `n` in `string(buf, n)`
@@ -1509,7 +1509,7 @@ pub mut:
 	pos       token.Pos
 }
 
-[minify]
+@[minify]
 pub struct AsmStmt {
 pub:
 	arch        pref.Arch
@@ -1527,7 +1527,7 @@ pub mut:
 	local_labels  []string // local to the assembly block
 }
 
-[minify]
+@[minify]
 pub struct AsmTemplate {
 pub mut:
 	name         string
@@ -1696,7 +1696,7 @@ pub const (
 )
 
 // `assert a == 0, 'a is zero'`
-[minify]
+@[minify]
 pub struct AssertStmt {
 pub:
 	pos       token.Pos
@@ -1751,7 +1751,7 @@ pub:
 */
 
 // deprecated
-[minify]
+@[minify]
 pub struct Assoc {
 pub:
 	var_name string
@@ -1783,7 +1783,7 @@ pub mut:
 	typ  Type
 }
 
-[minify]
+@[minify]
 pub struct OffsetOf {
 pub:
 	struct_type Type
@@ -1813,7 +1813,7 @@ pub mut:
 	expr Expr
 }
 
-[minify]
+@[minify]
 pub struct TypeOf {
 pub:
 	is_type bool
@@ -1823,7 +1823,7 @@ pub mut:
 	typ  Type
 }
 
-[minify]
+@[minify]
 pub struct DumpExpr {
 pub:
 	pos token.Pos
@@ -1858,7 +1858,7 @@ pub mut:
 	val string
 }
 
-[minify]
+@[minify]
 pub struct ComptimeSelector {
 pub:
 	has_parens bool // if $() is used, for vfmt
@@ -1870,7 +1870,7 @@ pub mut:
 	typ        Type
 }
 
-[minify]
+@[minify]
 pub struct ComptimeCall {
 pub:
 	pos          token.Pos
@@ -1966,7 +1966,7 @@ pub:
 	pos token.Pos
 }
 
-[inline]
+@[inline]
 pub fn (expr Expr) is_blank_ident() bool {
 	if expr is Ident {
 		return expr.kind == .blank_ident

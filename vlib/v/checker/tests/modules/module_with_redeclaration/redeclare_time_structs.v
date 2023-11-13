@@ -4,7 +4,7 @@ import sokol.memory
 
 pub const used = 1
 
-[typedef]
+@[typedef]
 pub struct C.saudio_allocator {
 pub mut:
 	alloc     memory.FnAllocatorAlloc
@@ -12,7 +12,7 @@ pub mut:
 	user_data voidptr
 }
 
-[typedef]
+@[typedef]
 pub struct C.saudio_logger {
 pub mut:
 	log_cb    memory.FnLogCb

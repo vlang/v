@@ -9,7 +9,7 @@ import v.pref
 // ? => Option type
 // ! => Result type
 // others => type `name`
-[inline]
+@[inline]
 fn (mut c Checker) error_type_name(exp_type ast.Type) string {
 	return if exp_type == ast.void_type.set_flag(.result) {
 		'Result type'

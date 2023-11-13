@@ -62,10 +62,10 @@ pub struct C.pg_result {}
 
 pub struct C.pg_conn {}
 
-[typedef]
+@[typedef]
 pub struct C.PGresult {}
 
-[typedef]
+@[typedef]
 pub struct C.PGconn {}
 
 pub enum ConnStatusType {
@@ -85,7 +85,7 @@ pub enum ConnStatusType {
 	gss_startup       = C.CONNECTION_GSS_STARTUP // Negotiating GSSAPI; available since PG 12
 }
 
-[typedef]
+@[typedef]
 pub enum ExecStatusType {
 	empty_query    = C.PGRES_EMPTY_QUERY // empty query string was executed
 	command_ok     = C.PGRES_COMMAND_OK // a query command that doesn't return anything was executed properly by the backend

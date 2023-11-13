@@ -1,6 +1,6 @@
 type Vector = []f64
 
-[heap]
+@[heap]
 struct HeapArray {
 mut:
 	data []f64

@@ -37,7 +37,7 @@ const (
 )
 
 // format_dec_sb format a u64
-[direct_array_access]
+@[direct_array_access]
 pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 	mut n_char := dec_digits(d)
 	sign_len := if !p.positive || p.sign_flag { 1 } else { 0 }

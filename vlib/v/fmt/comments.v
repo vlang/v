@@ -15,7 +15,7 @@ pub enum CommentsLevel {
 // - same_line: line comments will be on the same line as the last statement
 // - level:  either .keep (don't indent), or .indent (increment indentation)
 // - prev_line: the line number of the previous token to save linebreaks
-[minify; params]
+@[minify; params]
 pub struct CommentsOptions {
 	has_nl    bool = true
 	same_line bool

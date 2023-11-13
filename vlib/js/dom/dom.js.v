@@ -98,7 +98,7 @@ mut:
 pub type SVGMatrix = JS.DOMMatrix
 pub type WebKitCSSMatrix = JS.DOMMatrix
 
-[use_new]
+@[use_new]
 pub fn JS.DOMMatrix.prototype.constructor(init JS.Array) JS.DOMMatrix
 
 pub interface JS.DOMPoint {
@@ -110,7 +110,7 @@ mut:
 	z JS.Number
 }
 
-[use_new]
+@[use_new]
 pub fn JS.DOMPoint.prototype.constructor(x JS.Number, y JS.Number, z JS.Number, w JS.Number) JS.DOMPoint
 
 pub interface JS.DOMQuad {
@@ -121,7 +121,7 @@ pub interface JS.DOMQuad {
 	getBounds() JS.DOMRect
 }
 
-[use_new]
+@[use_new]
 pub fn JS.DOMQuad.prototype.constructor(p1 JS.DOMPoint, p2 JS.DOMPoint, p3 JS.DOMPoint, p4 JS.DOMPoint) JS.DOMQuad
 pub fn JS.DOMQuad.fromQuad(other JS.DOMQuad) JS.DOMQuad
 pub fn JS.DOMQuad.fromRect(other JS.DOMRect) JS.DOMRect
@@ -138,7 +138,7 @@ mut:
 	y JS.Number
 }
 
-[use_new]
+@[use_new]
 pub fn JS.DOMRect.prototype.constructor(x JS.Number, y JS.Number, width JS.Number, height JS.Number) JS.DOMRect
 
 pub interface JS.DOMStringList {
@@ -591,28 +591,28 @@ pub interface JS.DocumentType {
 	systemId JS.String
 }
 
-[single_impl]
+@[single_impl]
 pub interface JS.WebGLProgram {}
 
-[single_impl]
+@[single_impl]
 pub interface JS.WebGLShader {}
 
-[single_impl]
+@[single_impl]
 pub interface JS.WebGLBuffer {}
 
-[single_impl]
+@[single_impl]
 pub interface JS.WebGLFramebuffer {}
 
-[single_impl]
+@[single_impl]
 pub interface JS.WebGLRenderbuffer {}
 
-[single_impl]
+@[single_impl]
 pub interface JS.WebGLTexture {}
 
-[single_impl]
+@[single_impl]
 pub interface JS.WebGLUniformLocation {}
 
-[single_impl]
+@[single_impl]
 pub interface JS.WebGLVertexArrayObject {}
 
 pub interface JS.WebGLRenderingContext {
@@ -852,7 +852,7 @@ pub interface JS.ErrorEvent {
 	message JS.String
 }
 
-[use_new]
+@[use_new]
 pub fn JS.ErrorEvent.prototype.constructor(typ JS.String) JS.ErrorEvent
 
 pub interface JS.UIEvent {
@@ -861,7 +861,7 @@ pub interface JS.UIEvent {
 	view JS.Any
 }
 
-[use_new]
+@[use_new]
 pub fn JS.UIEvent.prototype.constructor(typ JS.String, dict JS.UIEventDict) JS.UIEvent
 
 pub struct JS.EventInit {
@@ -938,14 +938,14 @@ pub interface JS.Gamepad {
 	timestamp JS.Number
 }
 
-[single_impl]
+@[single_impl]
 pub interface JS.GamepadButton {
 	pressed JS.Boolean
 	touched JS.Boolean
 	value JS.Number
 }
 
-[single_impl]
+@[single_impl]
 pub interface JS.GamepadHapticActuator {
 }
 

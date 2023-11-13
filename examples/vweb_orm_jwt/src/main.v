@@ -33,7 +33,7 @@ fn new_app() &App {
 	return app
 }
 
-['/'; get]
+@['/'; get]
 pub fn (mut app App) ping() ?vweb.Result {
 	return app.text('ping')
 }

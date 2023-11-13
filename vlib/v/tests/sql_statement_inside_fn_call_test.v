@@ -1,7 +1,7 @@
 import db.sqlite
 
 struct Movie {
-	id   int    [primary]
+	id   int    @[primary]
 	name string
 }
 

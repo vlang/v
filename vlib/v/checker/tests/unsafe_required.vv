@@ -1,6 +1,6 @@
 struct S1 {}
 
-[unsafe]
+@[unsafe]
 fn (s S1) f(){}
 
 fn test_funcs() {

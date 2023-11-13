@@ -4,12 +4,12 @@ import v.ast
 
 struct Type {
 	// typ is the original type
-	typ ast.Type        [required]
-	sym &ast.TypeSymbol [required] = unsafe { nil }
+	typ ast.Type        @[required]
+	sym &ast.TypeSymbol = unsafe { nil } @[required]
 	// unaliased is `typ` once aliased have been resolved
 	// it may not contain information such as flags and nr_muls
-	unaliased     ast.Type        [required]
-	unaliased_sym &ast.TypeSymbol [required] = unsafe { nil }
+	unaliased     ast.Type        @[required]
+	unaliased_sym &ast.TypeSymbol = unsafe { nil } @[required]
 }
 
 // unwrap returns the following variants of a type:

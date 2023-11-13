@@ -145,7 +145,7 @@ fn test_drain_builder() {
 	assert target_sb.str() == 'abc'
 }
 
-[manualfree]
+@[manualfree]
 fn sb_i64_str(n i64) string {
 	mut sb := strings.new_builder(24)
 	defer {

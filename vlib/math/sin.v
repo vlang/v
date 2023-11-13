@@ -125,13 +125,13 @@ pub fn cos(x f64) f64 {
 }
 
 // cosf calculates cosine in radians (float32).
-[inline]
+@[inline]
 pub fn cosf(a f32) f32 {
 	return f32(cos(a))
 }
 
 // sinf calculates sine in radians (float32)
-[inline]
+@[inline]
 pub fn sinf(a f32) f32 {
 	return f32(sin(a))
 }

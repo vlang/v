@@ -9,7 +9,7 @@ import math
 // customisable through setting VJOBS
 const max_parallel_workers = runtime.nr_jobs()
 
-[params]
+@[params]
 pub struct ParserSettings {
 	sequential    bool
 	img           bool
@@ -146,7 +146,7 @@ fn parse_parallel_args(extra_workers int) !ParallelArgs {
 	return args
 }
 
-[inline]
+@[inline]
 fn get_workers(workers int, extra_workers int) int {
 	result := if workers + extra_workers <= args.max_parallel_workers {
 		workers

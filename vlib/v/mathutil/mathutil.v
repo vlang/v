@@ -3,17 +3,17 @@
 // that can be found in the LICENSE file.
 module mathutil
 
-[inline]
+@[inline]
 pub fn min[T](a T, b T) T {
 	return if a < b { a } else { b }
 }
 
-[inline]
+@[inline]
 pub fn max[T](a T, b T) T {
 	return if a > b { a } else { b }
 }
 
-[inline]
+@[inline]
 pub fn abs[T](a T) T {
 	return if a > 0 { a } else { -a }
 }

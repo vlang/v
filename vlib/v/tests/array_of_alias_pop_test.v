@@ -1,4 +1,4 @@
-[heap]
+@[heap]
 struct Attribute {
 mut:
 	name  string

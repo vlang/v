@@ -8,7 +8,7 @@ struct App {
 	vweb.Context
 }
 
-[table: 'benchmark']
+@[table: 'benchmark']
 struct Task {
 mut:
 	id     u32    [primary; serial; sql: serial]
@@ -33,12 +33,12 @@ fn new_app() &App {
 	return app
 }
 
-['/hello-world']
+@['/hello-world']
 pub fn (mut app App) hello_world() vweb.Result {
 	return app.text('hello world')
 }
 
-['/sqlite-memory/:count']
+@['/sqlite-memory/:count']
 pub fn (mut app App) sqlite_memory(count int) vweb.Result {
 	mut insert_stopwatchs := []int{}
 	mut select_stopwatchs := []int{}
@@ -100,7 +100,7 @@ pub fn (mut app App) sqlite_memory(count int) vweb.Result {
 	return app.json(response)
 }
 
-['/sqlite-file/:count']
+@['/sqlite-file/:count']
 pub fn (mut app App) sqlite_file(count int) vweb.Result {
 	response := Response{
 		insert: []
@@ -110,7 +110,7 @@ pub fn (mut app App) sqlite_file(count int) vweb.Result {
 	return app.json(response)
 }
 
-['/postgres/:count']
+@['/postgres/:count']
 pub fn (mut app App) postgres(count int) vweb.Result {
 	response := Response{
 		insert: []
@@ -120,7 +120,7 @@ pub fn (mut app App) postgres(count int) vweb.Result {
 	return app.json(response)
 }
 
-['/mysql/:count']
+@['/mysql/:count']
 pub fn (mut app App) mysql(count int) vweb.Result {
 	response := Response{
 		insert: []

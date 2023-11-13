@@ -4,7 +4,7 @@ module main
 import time
 import v.live
 
-[live]
+@[live]
 fn print_message() {
 	info := live.info()
 	println('OK reloads: ${info.reloads_ok:4d} | Total reloads: ${info.reloads:4d} | Hello! Modify this message while the program is running.')

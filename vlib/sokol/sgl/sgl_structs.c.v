@@ -2,14 +2,14 @@ module sgl
 
 import sokol.gfx
 
-[typedef]
+@[typedef]
 pub struct C.sgl_pipeline {
 	id u32
 }
 
 pub type Pipeline = C.sgl_pipeline
 
-[typedef]
+@[typedef]
 pub struct C.sgl_context {
 	id u32
 }
@@ -24,7 +24,7 @@ pub type Context = C.sgl_context
 // ContextDesc is sgl_context_desc_t
 pub type ContextDesc = C.sgl_context_desc_t
 
-[typedef]
+@[typedef]
 pub struct C.sgl_context_desc_t {
 	max_vertices int // default: 64k
 	max_commands int // default: 16k
@@ -35,7 +35,7 @@ pub struct C.sgl_context_desc_t {
 
 pub type Desc = C.sgl_desc_t
 
-[typedef]
+@[typedef]
 pub struct C.sgl_desc_t {
 pub:
 	max_vertices       int // size for vertex buffer

@@ -461,7 +461,7 @@ fn parse_request_uri(rawurl string) !URL {
 // via_request is true, the URL is assumed to have arrived via an HTTP request,
 // in which case only absolute URLs or path-absolute relative URLs are allowed.
 // If via_request is false, all forms of relative URLs are allowed.
-[manualfree]
+@[manualfree]
 fn parse_url(rawurl string, via_request bool) !URL {
 	if string_contains_ctl_u8(rawurl) {
 		return error(error_msg('parse_url: invalid control character in URL', rawurl))

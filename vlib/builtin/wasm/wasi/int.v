@@ -43,7 +43,7 @@ pub const (
 
 // This implementation is the quickest with gcc -O2
 // str_l returns the string representation of the integer nn with max chars.
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn (nn int) str_l(max int) string {
 	unsafe {
 		mut n := i64(nn)
@@ -123,7 +123,7 @@ pub fn (n int) str() string {
 
 // str returns the value of the `u32` as a `string`.
 // Example: assert u32(20000).str() == '20000'
-[direct_array_access; inline]
+@[direct_array_access; inline]
 pub fn (nn u32) str() string {
 	unsafe {
 		mut n := nn
@@ -160,14 +160,14 @@ pub fn (nn u32) str() string {
 }
 
 // str returns the value of the `int_literal` as a `string`.
-[inline]
+@[inline]
 pub fn (n int_literal) str() string {
 	return i64(n).str()
 }
 
 // str returns the value of the `i64` as a `string`.
 // Example: assert i64(-200000).str() == '-200000'
-[direct_array_access; inline]
+@[direct_array_access; inline]
 pub fn (nn i64) str() string {
 	unsafe {
 		mut n := nn
@@ -217,7 +217,7 @@ pub fn (nn i64) str() string {
 
 // str returns the value of the `u64` as a `string`.
 // Example: assert u64(2000000).str() == '2000000'
-[direct_array_access; inline]
+@[direct_array_access; inline]
 pub fn (nn u64) str() string {
 	unsafe {
 		mut n := nn

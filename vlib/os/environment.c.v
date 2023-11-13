@@ -18,7 +18,7 @@ pub fn getenv(key string) string {
 
 // `getenv_opt` returns the value of a given environment variable.
 // Returns `none` if the environment variable does not exist.
-[manualfree]
+@[manualfree]
 pub fn getenv_opt(key string) ?string {
 	unsafe {
 		$if windows {

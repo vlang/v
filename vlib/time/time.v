@@ -50,7 +50,7 @@ pub:
 	unix       i64
 	is_local   bool // used to make time.now().local().local() == time.now().local()
 	//
-	microsecond int [deprecated: 'use t.nanosecond / 1000 instead'; deprecated_after: '2023-08-05']
+	microsecond int @[deprecated: 'use t.nanosecond / 1000 instead'; deprecated_after: '2023-08-05']
 }
 
 // FormatDelimiter contains different time formats.
@@ -103,25 +103,25 @@ pub fn (t Time) smonth() string {
 }
 
 // unix_time returns the UNIX time with second resolution.
-[inline]
+@[inline]
 pub fn (t Time) unix_time() i64 {
 	return t.unix
 }
 
 // unix_time_milli returns the UNIX time with millisecond resolution.
-[inline]
+@[inline]
 pub fn (t Time) unix_time_milli() i64 {
 	return t.unix * 1_000 + (i64(t.nanosecond) / 1_000_000)
 }
 
 // unix_time_micro returns the UNIX time with microsecond resolution.
-[inline]
+@[inline]
 pub fn (t Time) unix_time_micro() i64 {
 	return t.unix * 1_000_000 + (i64(t.nanosecond) / 1_000)
 }
 
 // unix_time_nano returns the UNIX time with nanosecond resolution.
-[inline]
+@[inline]
 pub fn (t Time) unix_time_nano() i64 {
 	// TODO: use i128 here, when V supports it, since the following expression overflows for years like 3001:
 	return t.unix * 1_000_000_000 + i64(t.nanosecond)

@@ -28,7 +28,7 @@ mut:
 	state ServerStatus = .closed
 pub mut:
 	addr               string = ':8080' // change to ':8080' when port is removed
-	port               int             [deprecated: 'use addr'] = 8080
+	port               int = 8080             @[deprecated: 'use addr']
 	handler            Handler       = DebugHandler{}
 	read_timeout       time.Duration = 30 * time.second
 	write_timeout      time.Duration = 30 * time.second
@@ -124,7 +124,7 @@ pub fn (mut s Server) listen_and_serve() {
 }
 
 // stop signals the server that it should not respond anymore.
-[inline]
+@[inline]
 pub fn (mut s Server) stop() {
 	s.state = .stopped
 	if s.on_stopped != unsafe { nil } {
@@ -133,7 +133,7 @@ pub fn (mut s Server) stop() {
 }
 
 // close immediately closes the port and signals the server that it has been closed.
-[inline]
+@[inline]
 pub fn (mut s Server) close() {
 	s.state = .closed
 	s.listener.close() or { return }
@@ -143,13 +143,13 @@ pub fn (mut s Server) close() {
 }
 
 // status indicates whether the server is running, stopped, or closed.
-[inline]
+@[inline]
 pub fn (s &Server) status() ServerStatus {
 	return s.state
 }
 
 // WaitTillRunningParams allows for parametrising the calls to s.wait_till_running()
-[params]
+@[params]
 pub struct WaitTillRunningParams {
 pub:
 	max_retries     int = 100 // how many times to check for the status, for each single s.wait_till_running() call

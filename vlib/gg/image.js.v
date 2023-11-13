@@ -1,6 +1,6 @@
 module gg
 
-[heap]
+@[heap]
 pub struct Image {
 pub mut:
 	id          int

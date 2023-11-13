@@ -401,7 +401,7 @@ fn utf8_to_upper(in_cp int) int {
 //
 // if upper_flag == true  then convert lowercase ==> uppercase
 // if upper_flag == false then convert uppercase ==> lowercase
-[direct_array_access]
+@[direct_array_access]
 fn convert_case(s string, upper_flag bool) string {
 	mut index := 0
 	mut tab_char := 0
@@ -522,7 +522,7 @@ fn convert_case(s string, upper_flag bool) string {
 }
 
 // find_punct_in_table looks for valid punctuation in table
-[direct_array_access]
+@[direct_array_access]
 fn find_punct_in_table(in_code int, in_table []int) int {
 	// uses simple binary search
 

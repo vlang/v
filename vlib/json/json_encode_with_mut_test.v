@@ -17,7 +17,7 @@ pub enum CPUType {
 	arm32
 }
 
-[heap]
+@[heap]
 pub struct Node {
 pub:
 	name string = 'mymachine'

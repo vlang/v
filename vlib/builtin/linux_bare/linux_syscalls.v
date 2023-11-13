@@ -310,7 +310,7 @@ fn sys_execve(filename &u8, argv []&u8, envp []&u8) int {
 }
 
 // 60 sys_exit
-[noreturn]
+@[noreturn]
 fn sys_exit(ec int) {
 	sys_call1(60, u64(ec))
 	for {}

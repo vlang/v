@@ -23,16 +23,16 @@ pub enum ErrorType {
 	trailing_space
 }
 
-[minify]
+@[minify]
 pub struct Error {
 pub mut:
-	kind ErrorKind [required]
+	kind ErrorKind @[required]
 pub:
 	// General message
-	message   string    [required]
+	message   string    @[required]
 	details   string    // Details about how to resolve or fix the situation
 	file_path string    // file where the error have origin
 	pos       token.Pos // position in the file
-	fix       FixKind   [required]
-	typ       ErrorType [required]
+	fix       FixKind   @[required]
+	typ       ErrorType @[required]
 }

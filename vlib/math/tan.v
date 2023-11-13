@@ -64,7 +64,7 @@ pub fn tan(a f64) f64 {
 }
 
 // tanf calculates tangent. (float32)
-[inline]
+@[inline]
 pub fn tanf(a f32) f32 {
 	return f32(tan(a))
 }

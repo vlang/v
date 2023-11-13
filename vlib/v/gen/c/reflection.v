@@ -16,7 +16,7 @@ fn (mut g Gen) reflection_string(str string) int {
 }
 
 // gen_reflection_strings generates the reflectino string registration
-[inline]
+@[inline]
 fn (mut g Gen) gen_reflection_strings() {
 	for str, idx in g.reflection_strings {
 		g.writeln('\t${c.cprefix}add_string(_SLIT("${str}"), ${idx});')
@@ -24,13 +24,13 @@ fn (mut g Gen) gen_reflection_strings() {
 }
 
 // gen_empty_array generates code for empty array
-[inline]
+@[inline]
 fn (g Gen) gen_empty_array(type_name string) string {
 	return '__new_array_with_default(0, 0, sizeof(${type_name}), 0)'
 }
 
 // gen_functionarg_array generates the code for functionarg argument
-[inline]
+@[inline]
 fn (g Gen) gen_functionarg_array(type_name string, node ast.Fn) string {
 	if node.params.len == 0 {
 		return g.gen_empty_array(type_name)
@@ -43,7 +43,7 @@ fn (g Gen) gen_functionarg_array(type_name string, node ast.Fn) string {
 }
 
 // gen_functionarg_array generates the code for functionarg argument
-[inline]
+@[inline]
 fn (mut g Gen) gen_function_array(nodes []ast.Fn) string {
 	type_name := '${c.cprefix}Function'
 
@@ -59,7 +59,7 @@ fn (mut g Gen) gen_function_array(nodes []ast.Fn) string {
 }
 
 // gen_reflection_fn generates C code for Function struct
-[inline]
+@[inline]
 fn (mut g Gen) gen_reflection_fn(node ast.Fn) string {
 	mut arg_str := '((${c.cprefix}Function){'
 	v_name := node.name.all_after_last('.')
@@ -78,7 +78,7 @@ fn (mut g Gen) gen_reflection_fn(node ast.Fn) string {
 }
 
 // gen_reflection_sym generates C code for TypeSymbol struct
-[inline]
+@[inline]
 fn (mut g Gen) gen_reflection_sym(tsym ast.TypeSymbol) string {
 	kind_name := if tsym.kind in [.none_, .struct_, .enum_, .interface_] {
 		tsym.kind.str() + '_'
@@ -91,7 +91,7 @@ fn (mut g Gen) gen_reflection_sym(tsym ast.TypeSymbol) string {
 }
 
 // gen_attrs_array generates C code for []Attr
-[inline]
+@[inline]
 fn (g Gen) gen_attrs_array(attrs []ast.Attr) string {
 	if attrs.len == 0 {
 		return g.gen_empty_array('string')
@@ -104,7 +104,7 @@ fn (g Gen) gen_attrs_array(attrs []ast.Attr) string {
 }
 
 // gen_fields_array generates C code for []StructField
-[inline]
+@[inline]
 fn (g Gen) gen_fields_array(fields []ast.StructField) string {
 	if fields.len == 0 {
 		return g.gen_empty_array('${c.cprefix}StructField')
@@ -117,7 +117,7 @@ fn (g Gen) gen_fields_array(fields []ast.StructField) string {
 }
 
 // gen_type_array generates C code for []Type
-[inline]
+@[inline]
 fn (g Gen) gen_type_array(types []ast.Type) string {
 	if types.len == 0 {
 		return g.gen_empty_array(ast.int_type_name)
@@ -126,7 +126,7 @@ fn (g Gen) gen_type_array(types []ast.Type) string {
 }
 
 // gen_string_array generates C code for []string
-[inline]
+@[inline]
 fn (g Gen) gen_string_array(strs []string) string {
 	if strs.len == 0 {
 		return g.gen_empty_array('string')
@@ -136,7 +136,7 @@ fn (g Gen) gen_string_array(strs []string) string {
 }
 
 // gen_reflection_sym_info generates C code for TypeSymbol's info sum type
-[inline]
+@[inline]
 fn (mut g Gen) gen_reflection_sym_info(tsym ast.TypeSymbol) string {
 	match tsym.kind {
 		.array {

@@ -16,7 +16,7 @@ const (
 	separation_distance = 5.0
 )
 
-[direct_array_access]
+@[direct_array_access]
 fn main() {
 	mut positions := [boids_count]Vector{}
 	mut velocities := [boids_count]Vector{}

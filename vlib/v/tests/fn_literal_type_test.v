@@ -1,8 +1,8 @@
 import db.sqlite
 
-[table: 'Users']
+@[table: 'Users']
 struct User {
-	id   int    [primary; sql: serial]
+	id   int    @[primary; sql: serial]
 	name string
 }
 

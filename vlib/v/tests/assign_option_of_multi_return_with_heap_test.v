@@ -5,7 +5,7 @@ struct Poss2 {}
 type Possibilities = Poss1 | Poss2
 
 // comment out this attribute to make error go away BUT now you need to remember to use &PossOwner everytime you create new instance :(
-[heap]
+@[heap]
 pub struct PossOwner {
 pub:
 	name    string

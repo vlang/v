@@ -1,5 +1,5 @@
 
-[inline]
+@[inline]
 fn char(ch byte) fn (string) !(byte, string) {
 	return fn [ch] (input string) !(byte, string) {
 		return if input[0] == ch {

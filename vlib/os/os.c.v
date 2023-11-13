@@ -44,7 +44,7 @@ fn C.ftruncate(voidptr, u64) int
 fn C._chsize_s(voidptr, u64) int
 
 // read_bytes returns all bytes read from file in `path`.
-[manualfree]
+@[manualfree]
 pub fn read_bytes(path string) ![]u8 {
 	mut fp := vfopen(path, 'rb')!
 	defer {
@@ -89,7 +89,7 @@ const buf_size = 4096
 // It is intended for reading 0 sized files, or a dynamic files in a virtual filesystem like /proc/cpuinfo.
 // For these, we can not allocate all memory in advance (since we do not know the final size), and so we have no choice
 // but to read the file in `buf_size` chunks.
-[manualfree]
+@[manualfree]
 fn slurp_file_in_builder(fp &C.FILE) !strings.Builder {
 	buf := [os.buf_size]u8{}
 	mut sb := strings.new_builder(os.buf_size)
@@ -107,7 +107,7 @@ fn slurp_file_in_builder(fp &C.FILE) !strings.Builder {
 }
 
 // read_file reads the file in `path` and returns the contents.
-[manualfree]
+@[manualfree]
 pub fn read_file(path string) !string {
 	mode := 'rb'
 	mut fp := vfopen(path, mode)!
@@ -477,7 +477,7 @@ pub fn is_executable(path string) bool {
 // is_writable returns `true` if `path` is writable.
 // Warning: `is_writable()` is known to cause a TOCTOU vulnerability when used incorrectly
 // (for more information: https://github.com/vlang/v/blob/master/vlib/os/README.md)
-[manualfree]
+@[manualfree]
 pub fn is_writable(path string) bool {
 	$if windows {
 		p := path.replace('/', '\\')
@@ -494,7 +494,7 @@ pub fn is_writable(path string) bool {
 // is_readable returns `true` if `path` is readable.
 // Warning: `is_readable()` is known to cause a TOCTOU vulnerability when used incorrectly
 // (for more information: https://github.com/vlang/v/blob/master/vlib/os/README.md)
-[manualfree]
+@[manualfree]
 pub fn is_readable(path string) bool {
 	$if windows {
 		p := path.replace('/', '\\')
@@ -669,7 +669,7 @@ pub fn read_file_array[T](path string) []T {
 
 // executable returns the path name of the executable that started the current
 // process.
-[manualfree]
+@[manualfree]
 pub fn executable() string {
 	mut result := [max_path_buffer_size]u8{}
 	$if windows {
@@ -847,7 +847,7 @@ pub fn chdir(path string) ! {
 }
 
 // getwd returns the absolute path of the current directory.
-[manualfree]
+@[manualfree]
 pub fn getwd() string {
 	unsafe {
 		buf := [max_path_buffer_size]u8{}
@@ -872,7 +872,7 @@ pub fn getwd() string {
 // Also https://insanecoding.blogspot.com/2007/11/pathmax-simply-isnt.html
 // and https://insanecoding.blogspot.com/2007/11/implementing-realpath-in-c.html
 // Note: this particular rabbit hole is *deep* ...
-[manualfree]
+@[manualfree]
 pub fn real_path(fpath string) string {
 	mut fullpath := [max_path_buffer_size]u8{}
 	mut res := ''
@@ -931,7 +931,7 @@ pub fn real_path(fpath string) string {
 	return res
 }
 
-[direct_array_access; manualfree; unsafe]
+@[direct_array_access; manualfree; unsafe]
 fn normalize_drive_letter(path string) {
 	$if !windows {
 		return

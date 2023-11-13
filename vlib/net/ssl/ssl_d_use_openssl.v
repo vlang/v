@@ -6,7 +6,7 @@ pub struct SSLConn {
 	openssl.SSLConn
 }
 
-[params]
+@[params]
 pub struct SSLConnectConfig {
 	openssl.SSLConnectConfig
 }

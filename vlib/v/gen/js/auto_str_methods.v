@@ -442,7 +442,7 @@ fn (mut g JsGen) gen_str_for_thread(info ast.Thread, styp string, str_fn_name st
 	g.definitions.writeln('function ${str_fn_name}(_) { return new string("thread(${ret_type_name})");}')
 }
 
-[inline]
+@[inline]
 fn styp_to_str_fn_name(styp string) string {
 	return styp.replace_each(['*', '', '.', '__', ' ', '__']) + '_str'
 }

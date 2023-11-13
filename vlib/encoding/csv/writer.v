@@ -12,7 +12,7 @@ mut:
 	sb strings.Builder
 }
 
-[params]
+@[params]
 pub struct WriterConfig {
 	use_crlf  bool
 	delimiter u8 = `,`

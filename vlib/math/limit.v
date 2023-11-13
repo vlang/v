@@ -4,7 +4,7 @@
 module math
 
 // maxof returns the maximum value of the type `T`
-[inline]
+@[inline]
 pub fn maxof[T]() T {
 	$if T is i8 {
 		return max_i8
@@ -41,7 +41,7 @@ pub fn maxof[T]() T {
 }
 
 // minof returns the minimum value of the type `T`
-[inline]
+@[inline]
 pub fn minof[T]() T {
 	$if T is i8 {
 		return min_i8

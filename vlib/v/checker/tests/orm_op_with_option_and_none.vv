@@ -1,7 +1,7 @@
 import db.sqlite
 
 struct Foo {
-	id   u64     [primary; sql: serial]
+	id   u64     @[primary; sql: serial]
 	name ?string
 }
 

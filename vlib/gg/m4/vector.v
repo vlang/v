@@ -35,7 +35,7 @@ pub fn vec3(x f32, y f32, z f32) Vec4 {
 }
 
 // Remove all the raw zeros
-[direct_array_access]
+@[direct_array_access]
 pub fn (a Vec4) clean() Vec4 {
 	mut x := Vec4{}
 	for c, value in a.e {

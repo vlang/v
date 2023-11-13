@@ -10,7 +10,7 @@ pub struct C.epoll_event {
 	data   C.epoll_data_t
 }
 
-[typedef]
+@[typedef]
 union C.epoll_data_t {
 	ptr voidptr
 	fd  int

@@ -127,7 +127,7 @@ pub fn resolve_env_value(str string, check_for_presence bool) !string {
 // V itself. That mechanism can be disabled by package managers by creating/touching a small
 // `cmd/tools/.disable_autorecompilation` file, OR by changing the timestamps of all executables
 // in cmd/tools to be < 1024 seconds (in unix time).
-[noreturn]
+@[noreturn]
 pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
@@ -293,13 +293,13 @@ pub fn path_of_executable(path string) string {
 	return path
 }
 
-[heap]
+@[heap]
 struct SourceCache {
 mut:
 	sources map[string]string
 }
 
-[unsafe]
+@[unsafe]
 pub fn cached_read_source_file(path string) !string {
 	mut static cache := &SourceCache(unsafe { nil })
 	if cache == unsafe { nil } {

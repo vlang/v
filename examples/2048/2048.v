@@ -200,7 +200,7 @@ enum Direction {
 }
 
 // Utility functions
-[inline]
+@[inline]
 fn avg(a int, b int) int {
 	return (a + b) / 2
 }
@@ -357,7 +357,7 @@ fn (mut app App) new_game() {
 	app.new_random_tile()
 }
 
-[inline]
+@[inline]
 fn (mut app App) check_for_victory() {
 	for y in 0 .. 4 {
 		for x in 0 .. 4 {
@@ -370,7 +370,7 @@ fn (mut app App) check_for_victory() {
 	}
 }
 
-[inline]
+@[inline]
 fn (mut app App) check_for_game_over() {
 	if app.board.is_game_over() {
 		app.state = .over
@@ -547,7 +547,7 @@ fn (app &App) label_format(kind LabelKind) gx.TextCfg {
 	}
 }
 
-[inline]
+@[inline]
 fn (mut app App) set_theme(idx int) {
 	theme := themes[idx]
 	app.theme_idx = idx
@@ -761,12 +761,12 @@ fn (mut app App) handle_swipe() {
 	}
 }
 
-[inline]
+@[inline]
 fn (mut app App) next_theme() {
 	app.set_theme(if app.theme_idx == themes.len - 1 { 0 } else { app.theme_idx + 1 })
 }
 
-[inline]
+@[inline]
 fn (mut app App) next_tile_format() {
 	app.tile_format = unsafe { TileFormat(int(app.tile_format) + 1) }
 	if app.tile_format == .end_ {
@@ -774,7 +774,7 @@ fn (mut app App) next_tile_format() {
 	}
 }
 
-[inline]
+@[inline]
 fn (mut app App) undo() {
 	if app.undo.len > 0 {
 		undo := app.undo.pop()

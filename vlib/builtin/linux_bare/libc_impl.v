@@ -4,7 +4,7 @@ import dlmalloc
 
 __global global_allocator dlmalloc.Dlmalloc
 
-[unsafe]
+@[unsafe]
 pub fn memcpy(dest voidptr, src voidptr, n usize) voidptr {
 	dest_ := unsafe { &u8(dest) }
 	src_ := unsafe { &u8(src) }
@@ -16,13 +16,13 @@ pub fn memcpy(dest voidptr, src voidptr, n usize) voidptr {
 	return unsafe { dest }
 }
 
-[export: 'malloc']
-[unsafe]
+@[export: 'malloc']
+@[unsafe]
 fn __malloc(n usize) voidptr {
 	return unsafe { global_allocator.malloc(n) }
 }
 
-[unsafe]
+@[unsafe]
 fn strlen(_s voidptr) usize {
 	s := unsafe { &u8(_s) }
 	mut i := 0
@@ -30,7 +30,7 @@ fn strlen(_s voidptr) usize {
 	return usize(i)
 }
 
-[unsafe]
+@[unsafe]
 fn realloc(old_area voidptr, new_size usize) voidptr {
 	if old_area == 0 {
 		return unsafe { malloc(int(new_size)) }
@@ -50,7 +50,7 @@ fn realloc(old_area voidptr, new_size usize) voidptr {
 	}
 }
 
-[unsafe]
+@[unsafe]
 fn memset(s voidptr, c int, n usize) voidptr {
 	mut s_ := unsafe { &char(s) }
 	for i in 0 .. int(n) {
@@ -61,7 +61,7 @@ fn memset(s voidptr, c int, n usize) voidptr {
 	return unsafe { s }
 }
 
-[unsafe]
+@[unsafe]
 fn memmove(dest voidptr, src voidptr, n usize) voidptr {
 	dest_ := unsafe { &u8(dest) }
 	src_ := unsafe { &u8(src) }
@@ -81,8 +81,8 @@ fn memmove(dest voidptr, src voidptr, n usize) voidptr {
 	return unsafe { dest }
 }
 
-[export: 'calloc']
-[unsafe]
+@[export: 'calloc']
+@[unsafe]
 fn __calloc(nmemb usize, size usize) voidptr {
 	new_area := unsafe { malloc(int(nmemb) * int(size)) }
 	unsafe { memset(new_area, 0, nmemb * size) }
@@ -108,8 +108,8 @@ fn memcmp(a voidptr, b voidptr, n usize) int {
 	return 0
 }
 
-[export: 'free']
-[unsafe]
+@[export: 'free']
+@[unsafe]
 fn __free(ptr voidptr) {
 	unsafe {
 		global_allocator.free_(ptr)
@@ -142,7 +142,7 @@ pub fn write(fd i64, buf &u8, count u64) i64 {
 	return x
 }
 
-[noreturn]
+@[noreturn]
 fn bare_panic(msg string) {
 	println('V panic' + msg)
 	exit(1)
@@ -152,13 +152,13 @@ fn bare_backtrace() string {
 	return 'backtraces are not available with `-freestanding`'
 }
 
-[export: 'exit']
-[noreturn]
+@[export: 'exit']
+@[noreturn]
 fn __exit(code int) {
 	sys_exit(code)
 }
 
-[export: 'qsort']
+@[export: 'qsort']
 fn __qsort(base voidptr, nmemb usize, size usize, sort_cb FnSortCB) {
 	panic('qsort() is not yet implemented in `-freestanding`')
 }

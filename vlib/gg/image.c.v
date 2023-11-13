@@ -9,7 +9,7 @@ import sokol.sgl
 
 // Image holds the fields and data needed to
 // represent a bitmap/pixel based image in memory.
-[heap]
+@[heap]
 pub struct Image {
 pub mut:
 	id          int

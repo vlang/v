@@ -12,7 +12,7 @@ const (
 	max_u64  = u64(18446744073709551615) // as u64 // use this until we add support
 )
 
-[inline]
+@[inline]
 pub fn byte_to_lower(c u8) u8 {
 	return c | 32
 }
@@ -35,7 +35,7 @@ pub fn common_parse_uint(s string, _base int, _bit_size int, error_on_non_digit 
 
 // the first returned value contains the parsed value,
 // the second returned value contains the error code (0 = OK, >1 = index of first non-parseable character + 1, -1 = wrong base, -2 = wrong bit size, -3 = overflow)
-[direct_array_access]
+@[direct_array_access]
 pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 	if s.len < 1 {
 		return u64(0), 1
@@ -156,7 +156,7 @@ pub fn parse_uint(s string, _base int, _bit_size int) !u64 {
 
 // common_parse_int is called by parse int and allows the parsing
 // to stop on non or invalid digit characters and return with an error
-[direct_array_access]
+@[direct_array_access]
 pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit bool, error_on_high_digit bool) !i64 {
 	if _s.len < 1 {
 		// return error('parse_int: syntax error $s')
@@ -220,7 +220,7 @@ pub fn parse_int(_s string, base int, _bit_size int) !i64 {
 }
 
 // atoi is equivalent to parse_int(s, 10, 0), converted to type int.
-[direct_array_access]
+@[direct_array_access]
 pub fn atoi(s string) !int {
 	if s == '' {
 		return error('strconv.atoi: parsing "": invalid syntax')

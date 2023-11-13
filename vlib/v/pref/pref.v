@@ -94,7 +94,7 @@ pub const list_of_flags_with_param = ['b', 'd', 'e', 'o', 'define', 'backend', '
 
 pub const supported_test_runners = ['normal', 'simple', 'tap', 'dump', 'teamcity']
 
-[heap; minify]
+@[heap; minify]
 pub struct Preferences {
 pub mut:
 	os          OS // the OS to compile for
@@ -260,7 +260,7 @@ pub fn parse_args(known_external_commands []string, args []string) (&Preferences
 	return parse_args_and_show_errors(known_external_commands, args, false)
 }
 
-[if linux]
+@[if linux]
 fn detect_musl(mut res Preferences) {
 	res.is_glibc = true
 	res.is_musl = false
@@ -276,7 +276,7 @@ fn detect_musl(mut res Preferences) {
 	}
 }
 
-[noreturn]
+@[noreturn]
 fn run_code_in_tmp_vfile_and_exit(args []string, mut res Preferences, option_name string, extension string, content string) {
 	tmp_file_path := rand.ulid()
 	mut tmp_exe_file_path := res.out_name
@@ -1043,7 +1043,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	return res, command
 }
 
-[noreturn]
+@[noreturn]
 pub fn eprintln_exit(s string) {
 	eprintln(s)
 	exit(1)
@@ -1119,7 +1119,7 @@ fn must_exist(path string) {
 	}
 }
 
-[inline]
+@[inline]
 fn is_source_file(path string) bool {
 	return path.ends_with('.v') || os.exists(path)
 }

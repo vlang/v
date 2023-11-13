@@ -461,7 +461,7 @@ fn (mut app App) draw_footer() {
 	// }
 }
 
-[inline]
+@[inline]
 fn (mut app App) inc_size() {
 	if app.size < 30 {
 		app.size++
@@ -469,7 +469,7 @@ fn (mut app App) inc_size() {
 	app.show_msg('inc. size: ${app.size}', 1)
 }
 
-[inline]
+@[inline]
 fn (mut app App) dec_size() {
 	if app.size > 1 {
 		app.size--

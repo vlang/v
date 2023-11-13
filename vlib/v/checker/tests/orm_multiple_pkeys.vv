@@ -1,8 +1,8 @@
 import db.sqlite
 
 struct Person {
-	id   int    [primary]
-	name string [primary]
+	id   int    @[primary]
+	name string @[primary]
 }
 
 fn main() {

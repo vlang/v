@@ -8,7 +8,7 @@ const (
 )
 
 struct Module {
-	id           int       [primary; sql: serial]
+	id           int       @[primary; sql: serial]
 	name         string
 	nr_downloads int
 	test_id      u64
@@ -16,16 +16,16 @@ struct Module {
 	created      time.Time
 }
 
-[table: 'userlist']
+@[table: 'userlist']
 struct User {
-	id              int      [primary; sql: serial]
+	id              int      @[primary; sql: serial]
 	age             int
-	name            string   [sql: 'username']
+	name            string   @[sql: 'username']
 	is_customer     bool
-	skipped_string  string   [skip]
-	skipped_string2 string   [sql: '-']
-	skipped_array   []string [skip]
-	skipped_array2  []string [sql: '-']
+	skipped_string  string   @[skip]
+	skipped_string2 string   @[sql: '-']
+	skipped_array   []string @[skip]
+	skipped_array2  []string @[sql: '-']
 }
 
 struct Foo {
@@ -33,7 +33,7 @@ struct Foo {
 }
 
 struct TestTime {
-	id     int       [primary; sql: serial]
+	id     int       @[primary; sql: serial]
 	create time.Time
 }
 

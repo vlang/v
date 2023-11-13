@@ -24,7 +24,7 @@ pub fn (ed EmbedFileData) str() string {
 	return 'embed_file.EmbedFileData{ len: ${ed.len}, path: "${ed.path}", apath: "${ed.apath}", uncompressed: ${ptr_str(ed.uncompressed)} }'
 }
 
-[unsafe]
+@[unsafe]
 pub fn (mut ed EmbedFileData) free() {
 	unsafe {
 		ed.path.free()

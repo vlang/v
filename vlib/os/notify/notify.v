@@ -17,7 +17,7 @@ pub interface FdEvent {
 	kind FdEventType
 }
 
-[flag]
+@[flag]
 pub enum FdEventType {
 	read
 	write
@@ -27,7 +27,7 @@ pub enum FdEventType {
 	hangup
 }
 
-[flag]
+@[flag]
 pub enum FdConfigFlags {
 	edge_trigger
 	one_shot

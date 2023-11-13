@@ -14,7 +14,7 @@ const double_quote = 34
 
 const double_escape = '\\\\'
 
-[direct_array_access]
+@[direct_array_access]
 pub fn smart_quote(str string, raw bool) string {
 	len := str.len
 	if len == 0 {
