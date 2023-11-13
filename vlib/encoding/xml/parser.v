@@ -296,22 +296,20 @@ fn parse_doctype(mut reader io.Reader) !DocumentType {
 }
 
 fn parse_prolog(mut reader io.Reader) !(Prolog, u8) {
-	// Trim trailing whitespace
+	// Skip trailing whitespace and invalid characters
 	mut local_buf := [u8(0)]
 	mut ch := next_char(mut reader, mut local_buf)!
+
 	for {
-		match ch {
-			` `, `\t`, `\n` {
-				ch = next_char(mut reader, mut local_buf)!
-				continue
-			}
-			`<` {
-				break
-			}
-			else {
-				return error('Expecting a prolog or root node starting with "<".')
-			}
+		if ch == `<` {
+			break
 		}
+		// Printable ASCII characters but not whitespace means we have an invalid character.
+		if ch >= 0x20 && ch < 0x7E && ch !in [` `, `\t`, `\n`, `\r`] {
+			return error('Invalid character in prolog: "${ch.ascii_str()}" expected "<".')
+		}
+		ch = next_char(mut reader, mut local_buf)!
+		continue
 	}
 
 	ch = next_char(mut reader, mut local_buf)!
