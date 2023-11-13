@@ -80,7 +80,7 @@ pub fn (mut l Log) close() {
 	l.ofile.close()
 }
 
-// reopen reopens the log file.  Useful for log rotation.
+// reopen reopens the log file. Useful for log rotation.
 // This does nothing if you are only writing to the console.
 pub fn (mut l Log) reopen() ! {
 	l.flush()
