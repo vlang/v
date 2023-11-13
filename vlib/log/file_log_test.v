@@ -13,14 +13,15 @@ fn test_reopen() {
 	l.set_full_logpath(lpath1)
 	l.warn('one warning')
 	l.error('one error')
+	// simulate a log rotation, by moving the log file
 	os.mv(lpath1, lpath2)!
 	l.warn('another warning')
-	l.flush()
+	// call reopen, note that the message from above, should be in the new file lpath2:
 	l.reopen()!
 	l.warn('third warning')
 	l.flush()
-	// os.system('ls -la $lpath1 $lpath2')
 	l.close()
+	// os.system('ls -la $lpath1 $lpath2')
 	lcontent1 := os.read_file(lpath1)!
 	lcontent2 := os.read_file(lpath2)!
 	assert lcontent1.len > 0

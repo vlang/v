@@ -83,6 +83,7 @@ pub fn (mut l Log) close() {
 // reopen reopens the log file.  Useful for log rotation.
 // This does nothing if you are only writing to the console.
 pub fn (mut l Log) reopen() ! {
+	l.flush()
 	if l.output_target == .file || l.output_target == .both {
 		l.ofile.reopen(l.output_file_name, 'ab') or {
 			return error_with_code('re-opening log file `${l.output_file_name}` for appending failed',
