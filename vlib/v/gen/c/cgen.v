@@ -2537,7 +2537,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		g.writeln('}, sizeof(${shared_styp}))')
 		return
 	} else if got_type_raw.has_flag(.shared_f) && !expected_type.has_flag(.shared_f) {
-		if expected_type.is_ptr() {
+		if expected_is_ptr {
 			g.write('&')
 		}
 		g.expr(expr)
