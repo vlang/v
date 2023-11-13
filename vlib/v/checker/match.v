@@ -281,7 +281,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				if both_low_and_high_are_known {
 					high_low_cutoff := 1000
 					if high - low > high_low_cutoff {
-						c.warn('more than ${high_low_cutoff} possibilities (${low} ... ${high}) in match range',
+						c.note('more than ${high_low_cutoff} possibilities (${low} ... ${high}) in match range may affect compile time',
 							branch.pos)
 					}
 					for i in low .. high + 1 {
