@@ -3414,7 +3414,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				if mut node.expr is ast.ComptimeSelector && node.expr.left is ast.Ident {
 					// val.$(field.name)?
 					expr_str = '${node.expr.left.str()}.${g.comptime_for_field_value.name}'
-				} else if mut node.expr is ast.Ident && g.is_comptime_var(node.expr) {
+				} else if mut node.expr is ast.Ident && g.table.is_comptime_var(node.expr) {
 					// val?
 					expr_str = node.expr.name
 				}
@@ -4330,12 +4330,6 @@ pub fn (mut g Gen) is_generic_param_var(node ast.Expr) bool {
 		&& (node.obj as ast.Var).ct_type_var == .generic_param
 }
 
-[inline]
-pub fn (mut g Gen) is_comptime_var(node ast.Expr) bool {
-	return node is ast.Ident && node.info is ast.IdentVar && node.obj is ast.Var
-		&& (node.obj as ast.Var).ct_type_var != .no_comptime
-}
-
 fn (mut g Gen) get_const_name(node ast.Ident) string {
 	if g.pref.translated && !g.is_builtin_mod
 		&& !util.module_is_builtin(node.name.all_before_last('.')) {
@@ -4347,12 +4341,6 @@ fn (mut g Gen) get_const_name(node ast.Ident) string {
 	} else {
 		return '_const_' + g.get_ternary_name(c_name(node.name))
 	}
-}
-
-[inline]
-fn (mut g Gen) is_interface_var(var ast.ScopeObject) bool {
-	return var is ast.Var && var.orig_type != 0 && g.table.sym(var.orig_type).kind == .interface_
-		&& g.table.sym(var.smartcasts.last()).kind != .interface_
 }
 
 fn (mut g Gen) ident(node ast.Ident) {
@@ -4491,7 +4479,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 						g.write('(')
 						if obj_sym.kind == .sum_type && !is_auto_heap {
 							g.write('*')
-						} else if g.inside_casting_to_str && g.is_interface_var(node.obj) {
+						} else if g.inside_casting_to_str && g.table.is_interface_var(node.obj) {
 							g.write('*')
 						}
 					}
@@ -4572,7 +4560,8 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 	node_typ := g.unwrap_generic(node.typ)
 	mut expr_type := node.expr_type
 	sym := g.table.sym(node_typ)
-	if (node.expr is ast.Ident && g.is_comptime_var(node.expr)) || node.expr is ast.ComptimeSelector {
+	if (node.expr is ast.Ident && g.table.is_comptime_var(node.expr))
+		|| node.expr is ast.ComptimeSelector {
 		expr_type = g.unwrap_generic(g.get_comptime_var_type(node.expr))
 	}
 	if sym.kind in [.sum_type, .interface_] {

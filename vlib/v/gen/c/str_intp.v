@@ -244,7 +244,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	mut node_ := unsafe { node }
 	mut fmts := node_.fmts.clone()
 	for i, mut expr in node_.exprs {
-		if g.is_comptime_var(expr) {
+		if g.table.is_comptime_var(expr) {
 			ctyp := g.get_comptime_var_type(expr)
 			if ctyp != ast.void_type {
 				node_.expr_types[i] = ctyp
