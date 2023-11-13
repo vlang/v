@@ -74,22 +74,51 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 						ret_type = node.expected_type
 					} else {
 						ret_type = expr_type
-					}
-				} else if node.is_expr && ret_type.idx() != expr_type.idx() {
-					if (node.expected_type.has_flag(.option)
-						|| node.expected_type.has_flag(.result))
-						&& c.table.sym(stmt.typ).kind == .struct_
-						&& c.type_implements(stmt.typ, ast.error_type, node.pos) {
-						stmt.expr = ast.CastExpr{
-							expr: stmt.expr
-							typname: 'IError'
-							typ: ast.error_type
-							expr_type: stmt.typ
-							pos: node.pos
+						if expr_type.is_ptr() {
+							if stmt.expr is ast.Ident && stmt.expr.obj is ast.Var
+								&& c.is_interface_var(stmt.expr.obj) {
+								ret_type = expr_type.deref()
+							} else if mut stmt.expr is ast.PrefixExpr
+								&& stmt.expr.right is ast.Ident {
+								ident := stmt.expr.right as ast.Ident
+								if ident.obj is ast.Var && c.is_interface_var(ident.obj) {
+									ret_type = expr_type.deref()
+								}
+							}
 						}
-						stmt.typ = ast.error_type
-					} else {
-						c.check_match_branch_last_stmt(stmt, ret_type, expr_type)
+					}
+				} else {
+					if node.is_expr && ret_type.idx() != expr_type.idx() {
+						if (node.expected_type.has_flag(.option)
+							|| node.expected_type.has_flag(.result))
+							&& c.table.sym(stmt.typ).kind == .struct_
+							&& c.type_implements(stmt.typ, ast.error_type, node.pos) {
+							stmt.expr = ast.CastExpr{
+								expr: stmt.expr
+								typname: 'IError'
+								typ: ast.error_type
+								expr_type: stmt.typ
+								pos: node.pos
+							}
+							stmt.typ = ast.error_type
+						} else {
+							c.check_match_branch_last_stmt(stmt, ret_type, expr_type)
+						}
+					}
+					if node.is_expr && stmt.typ != ast.error_type {
+						ret_sym := c.table.sym(ret_type)
+						stmt_sym := c.table.sym(stmt.typ)
+						if ret_sym.kind !in [.sum_type, .interface_]
+							&& stmt_sym.kind in [.sum_type, .interface_] {
+							c.error('return type mismatch, it should be `${ret_sym.name}`',
+								stmt.pos)
+						}
+						if ret_type.nr_muls() != stmt.typ.nr_muls()
+							&& stmt.typ.idx() !in [ast.voidptr_type_idx, ast.nil_type_idx] {
+							type_name := '&'.repeat(ret_type.nr_muls()) + ret_sym.name
+							c.error('return type mismatch, it should be `${type_name}`',
+								stmt.pos)
+						}
 					}
 				}
 			} else if stmt !in [ast.Return, ast.BranchStmt] {

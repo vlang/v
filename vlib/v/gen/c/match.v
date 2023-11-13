@@ -230,7 +230,23 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 			if is_expr && tmp_var.len > 0 && g.table.sym(node.return_type).kind == .sum_type {
 				g.expected_cast_type = node.return_type
 			}
+			inside_casting_to_str_old := g.inside_casting_to_str
+			if is_expr && branch.stmts.len > 0 {
+				mut stmt := branch.stmts.last()
+				if mut stmt is ast.ExprStmt {
+					if mut stmt.expr is ast.Ident && stmt.expr.obj is ast.Var
+						&& g.is_interface_var(stmt.expr.obj) {
+						g.inside_casting_to_str = true
+					} else if mut stmt.expr is ast.PrefixExpr && stmt.expr.right is ast.Ident {
+						ident := stmt.expr.right as ast.Ident
+						if ident.obj is ast.Var && g.is_interface_var(ident.obj) {
+							g.inside_casting_to_str = true
+						}
+					}
+				}
+			}
 			g.stmts_with_tmp_var(branch.stmts, tmp_var)
+			g.inside_casting_to_str = inside_casting_to_str_old
 			g.expected_cast_type = 0
 			if g.inside_ternary == 0 {
 				g.writeln('}')
