@@ -80,6 +80,18 @@ pub fn (mut l Log) close() {
 	l.ofile.close()
 }
 
+// reopen reopens the log file. Useful for log rotation.
+// This does nothing if you are only writing to the console.
+pub fn (mut l Log) reopen() ! {
+	l.flush()
+	if l.output_target == .file || l.output_target == .both {
+		l.ofile.reopen(l.output_file_name, 'ab') or {
+			return error_with_code('re-opening log file `${l.output_file_name}` for appending failed',
+				1)
+		}
+	}
+}
+
 // log_file writes log line `s` with `level` to the log file.
 fn (mut l Log) log_file(s string, level Level) {
 	timestamp := time.now().format_ss_micro()
