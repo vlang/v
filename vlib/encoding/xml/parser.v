@@ -18,6 +18,9 @@ const (
 	double_dash                = '--'.bytes()
 	c_tag                      = '[C'.bytes()
 	data_chars                 = 'DATA'.bytes()
+
+	byte_order_marking_first   = u8(0xEF)
+	byte_order_marking_bytes   = [u8(0xBB), 0xBF]
 )
 
 // Helper types to assist in parsing
@@ -296,17 +299,29 @@ fn parse_doctype(mut reader io.Reader) !DocumentType {
 }
 
 fn parse_prolog(mut reader io.Reader) !(Prolog, u8) {
-	// Trim trailing whitespace
+	// Skip trailing whitespace and invalid characters
 	mut local_buf := [u8(0)]
 	mut ch := next_char(mut reader, mut local_buf)!
 	for {
 		match ch {
-			` `, `\t`, `\n` {
+			` `, `\t`, `\r`, `\n` {
 				ch = next_char(mut reader, mut local_buf)!
 				continue
 			}
 			`<` {
 				break
+			}
+			xml.byte_order_marking_first {
+				// UTF-8 BOM
+				mut bom_buf := [u8(0), 0]
+				if reader.read(mut bom_buf)! != 2 {
+					return error('Invalid UTF-8 BOM.')
+				}
+				if bom_buf != xml.byte_order_marking_bytes {
+					return error('Invalid UTF-8 BOM.')
+				}
+				ch = next_char(mut reader, mut local_buf)!
+				continue
 			}
 			else {
 				return error('Expecting a prolog or root node starting with "<".')
