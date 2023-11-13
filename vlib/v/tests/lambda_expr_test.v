@@ -45,3 +45,12 @@ fn test_fn_with_callback_called_with_lambda_expression() {
 	}) == 'a: 10, b: 20'
 	assert doit(100, 200, |a, b| 'a: ${a}, b: ${b}') == 'a: 100, b: 200'
 }
+
+// for test params has blank_ident
+fn f4(g fn (int) string) {
+	assert g(0) == 'hello'
+}
+
+fn test_params_has_blank_ident() {
+	f4(|_| 'hello')
+}
