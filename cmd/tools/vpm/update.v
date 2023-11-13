@@ -26,11 +26,16 @@ fn vpm_update(query []string) {
 	}
 	mut pp := pool.new_pool_processor(callback: update_module)
 	pp.work_on_items(modules)
+	mut errors := 0
 	for res in pp.get_results[ModUpdateInfo]() {
 		if res.has_err {
-			exit(1)
+			errors++
+			continue
 		}
 		resolve_dependencies(get_manifest(res.final_path), modules)
+	}
+	if errors > 0 {
+		exit(1)
 	}
 }
 
