@@ -18,6 +18,9 @@ const (
 	double_dash                = '--'.bytes()
 	c_tag                      = '[C'.bytes()
 	data_chars                 = 'DATA'.bytes()
+
+	byte_order_marking_first   = u8(0xEF)
+	byte_order_marking_bytes   = [u8(0xBB), 0xBF]
 )
 
 // Helper types to assist in parsing
@@ -299,17 +302,31 @@ fn parse_prolog(mut reader io.Reader) !(Prolog, u8) {
 	// Skip trailing whitespace and invalid characters
 	mut local_buf := [u8(0)]
 	mut ch := next_char(mut reader, mut local_buf)!
-
 	for {
-		if ch == `<` {
-			break
+		match ch {
+			` `, `\t`, `\r`, `\n` {
+				ch = next_char(mut reader, mut local_buf)!
+				continue
+			}
+			`<` {
+				break
+			}
+			xml.byte_order_marking_first {
+				// UTF-8 BOM
+				mut bom_buf := [u8(0), 0]
+				if reader.read(mut bom_buf)! != 2 {
+					return error('Invalid UTF-8 BOM.')
+				}
+				if bom_buf != xml.byte_order_marking_bytes {
+					return error('Invalid UTF-8 BOM.')
+				}
+				ch = next_char(mut reader, mut local_buf)!
+				continue
+			}
+			else {
+				return error('Expecting a prolog or root node starting with "<".')
+			}
 		}
-		// Printable ASCII characters but not whitespace means we have an invalid character.
-		if ch >= 0x20 && ch < 0x7E && ch !in [` `, `\t`, `\n`, `\r`] {
-			return error('Invalid character in prolog: "${ch.ascii_str()}" expected "<".')
-		}
-		ch = next_char(mut reader, mut local_buf)!
-		continue
 	}
 
 	ch = next_char(mut reader, mut local_buf)!
