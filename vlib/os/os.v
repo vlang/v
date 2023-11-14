@@ -699,7 +699,7 @@ pub fn mkdir_all(opath string, params MkdirParams) ! {
 		if is_dir(opath) {
 			return
 		}
-		return error('folder: ${opath}, error: File exists')
+		return error('path `${opath}` already exists, and is not a folder')
 	}
 	other_separator := if path_separator == '/' { '\\' } else { '/' }
 	path := opath.replace(other_separator, path_separator)
