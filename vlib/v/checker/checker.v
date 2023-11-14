@@ -2707,7 +2707,7 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			node.expr_type = c.expr(mut node.expr)
 
 			if c.inside_comptime_for_field && node.expr is ast.Ident {
-				if c.is_comptime_var(node.expr) {
+				if c.table.is_comptime_var(node.expr) {
 					node.expr_type = c.get_comptime_var_type(node.expr as ast.Ident)
 				} else if (node.expr as ast.Ident).name in c.comptime_fields_type {
 					node.expr_type = c.comptime_fields_type[(node.expr as ast.Ident).name]
@@ -3462,7 +3462,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 	// second use
 	if node.kind in [.constant, .global, .variable] {
 		info := node.info as ast.IdentVar
-		typ := if c.is_comptime_var(node) {
+		typ := if c.table.is_comptime_var(node) {
 			ctype := c.get_comptime_var_type(node)
 			if ctype != ast.void_type {
 				ctype
@@ -3564,7 +3564,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 							typ = c.expr(mut obj.expr)
 						}
 					}
-					if c.inside_casting_to_str && c.is_interface_var(obj) {
+					if c.inside_casting_to_str && c.table.is_interface_var(obj) {
 						typ = typ.deref()
 					}
 					is_option := typ.has_flag(.option) || typ.has_flag(.result)
@@ -4018,18 +4018,6 @@ fn (c &Checker) has_return(stmts []ast.Stmt) ?bool {
 		return has_top_return(stmts)
 	}
 	return none
-}
-
-[inline]
-pub fn (mut c Checker) is_comptime_var(node ast.Expr) bool {
-	return node is ast.Ident && node.info is ast.IdentVar && node.kind == .variable
-		&& (node.obj as ast.Var).ct_type_var != .no_comptime
-}
-
-[inline]
-fn (mut c Checker) is_interface_var(var ast.ScopeObject) bool {
-	return var is ast.Var && var.orig_type != 0 && c.table.sym(var.orig_type).kind == .interface_
-		&& c.table.sym(var.smartcasts.last()).kind != .interface_
 }
 
 fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {

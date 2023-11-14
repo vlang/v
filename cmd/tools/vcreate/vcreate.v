@@ -263,10 +263,7 @@ bin/
 
 fn (mut c Create) create_files_and_directories() {
 	for file in c.files {
-		// get dir and convert path separator
-		dir := file.path.split('/')#[..-1].join(os.path_separator)
-		// create all directories, if not exist
-		os.mkdir_all(dir) or { panic(err) }
+		os.mkdir_all(os.dir(file.path)) or { panic(err) }
 		os.write_file(file.path, file.content) or { panic(err) }
 	}
 }

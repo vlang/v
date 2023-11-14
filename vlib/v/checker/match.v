@@ -76,12 +76,12 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 						ret_type = expr_type
 						if expr_type.is_ptr() {
 							if stmt.expr is ast.Ident && stmt.expr.obj is ast.Var
-								&& c.is_interface_var(stmt.expr.obj) {
+								&& c.table.is_interface_var(stmt.expr.obj) {
 								ret_type = expr_type.deref()
 							} else if mut stmt.expr is ast.PrefixExpr
 								&& stmt.expr.right is ast.Ident {
 								ident := stmt.expr.right as ast.Ident
-								if ident.obj is ast.Var && c.is_interface_var(ident.obj) {
+								if ident.obj is ast.Var && c.table.is_interface_var(ident.obj) {
 									ret_type = expr_type.deref()
 								}
 							}
