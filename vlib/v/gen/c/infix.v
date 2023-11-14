@@ -1055,6 +1055,13 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 	}
 	if node.left_type.is_ptr() && node.left.is_auto_deref_var() {
 		g.write('*')
+	} else if !g.inside_casting_to_str && node.left is ast.Ident
+		&& g.table.is_interface_var(node.left.obj) {
+		inside_casting_to_str_old := g.inside_casting_to_str
+		g.inside_casting_to_str = true
+		defer {
+			g.inside_casting_to_str = inside_casting_to_str_old
+		}
 	}
 	g.expr(node.left)
 	g.write(' ${node.op.str()} ')
