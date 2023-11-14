@@ -115,6 +115,7 @@ pub const (
 		'.svg':    'image/svg+xml'
 		'.swf':    'application/x-shockwave-flash'
 		'.tar':    'application/x-tar'
+		'.toml':   'application/toml'
 		'.tif':    'image/tiff'
 		'.tiff':   'image/tiff'
 		'.ts':     'video/mp2t'
