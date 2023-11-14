@@ -11,7 +11,7 @@ import v.tests.bench.math_big_gcd.prime {
 }
 
 interface TestDataI {
-	r big.Integer
+	r  big.Integer
 	aa big.Integer
 	bb big.Integer
 }

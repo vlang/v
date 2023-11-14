@@ -7,7 +7,7 @@ module builtin
 pub interface IError {
 	// >> Hack to allow old style custom error implementations
 	// TODO: remove once deprecation period for `IError` methods has ended
-	msg string
+	msg  string
 	code int // <<
 	msg() string
 	code() int

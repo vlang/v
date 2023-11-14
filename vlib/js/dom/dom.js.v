@@ -17,12 +17,12 @@ pub fn (settings CanvasRenderingContext2DSettings) to_js() JS.Any {
 
 pub interface JS.DOMMatrix2DInit {
 mut:
-	a JS.Number
-	b JS.Number
-	c JS.Number
-	d JS.Number
-	e JS.Number
-	f JS.Number
+	a   JS.Number
+	b   JS.Number
+	c   JS.Number
+	d   JS.Number
+	e   JS.Number
+	f   JS.Number
 	m11 JS.Number
 	m12 JS.Number
 	m21 JS.Number
@@ -48,7 +48,7 @@ mut:
 }
 
 pub interface JS.DOMMatrix {
-	is2D JS.Boolean
+	is2D       JS.Boolean
 	isIdentity JS.Boolean
 	flipX() JS.DOMMatrix
 	flipY() JS.DOMMatrix
@@ -71,12 +71,12 @@ pub interface JS.DOMMatrix {
 	scaleSelf(scaleX JS.Number, scaleY JS.Number, scaleZ JS.Number, originX JS.Number, originY JS.Number, originZ JS.Number) JS.DOMMatrix
 	toString() JS.String
 mut:
-	a JS.Number
-	b JS.Number
-	c JS.Number
-	d JS.Number
-	e JS.Number
-	f JS.Number
+	a   JS.Number
+	b   JS.Number
+	c   JS.Number
+	d   JS.Number
+	e   JS.Number
+	f   JS.Number
 	m11 JS.Number
 	m12 JS.Number
 	m13 JS.Number
@@ -128,14 +128,14 @@ pub fn JS.DOMQuad.fromRect(other JS.DOMRect) JS.DOMRect
 
 pub interface JS.DOMRect {
 	bottom JS.Number
-	left JS.Number
-	right JS.Number
-	top JS.Number
+	left   JS.Number
+	right  JS.Number
+	top    JS.Number
 mut:
 	height JS.Number
-	width JS.Number
-	x JS.Number
-	y JS.Number
+	width  JS.Number
+	x      JS.Number
+	y      JS.Number
 }
 
 [use_new]
@@ -182,17 +182,17 @@ pub interface JS.EventTarget {
 
 pub interface JS.Node {
 	JS.EventTarget
-	baseURI JS.String
-	childNodes JS.Any
-	firstChild JS.ChildNode
-	isConnected JS.Boolean
-	lastChild JS.ChildNode
-	nextSibling JS.ChildNode
-	nodeName JS.String
-	nodeType JS.Number
-	ownerDocument JS.Document
-	parentElement JS.HTMLElement
-	parentNode JS.ParentNode
+	baseURI         JS.String
+	childNodes      JS.Any
+	firstChild      JS.ChildNode
+	isConnected     JS.Boolean
+	lastChild       JS.ChildNode
+	nextSibling     JS.ChildNode
+	nodeName        JS.String
+	nodeType        JS.Number
+	ownerDocument   JS.Document
+	parentElement   JS.HTMLElement
+	parentNode      JS.ParentNode
 	previousSibling JS.ChildNode
 	appendChild(node JS.Node) JS.Node
 	cloneNode(deep JS.Boolean) JS.Node
@@ -208,7 +208,7 @@ pub interface JS.Node {
 	removeChild(child JS.Node) JS.Node
 	replaceChild(node JS.Node, child JS.Node) JS.Npde
 mut:
-	nodeValue JS.String
+	nodeValue   JS.String
 	textContent JS.String
 }
 
@@ -223,32 +223,32 @@ pub interface JS.ChildNode {
 pub interface JS.ParentNode {
 	JS.Node
 	childElementCount JS.Number
-	children JS.HTMLCollection
+	children          JS.HTMLCollection
 }
 
 pub type WindowProxy = JS.Window
 
 pub interface JS.Document {
 	JS.Node
-	all JS.HTMLAllCollection
-	anchros JS.HTMLCollection
-	applets JS.HTMLCollection
-	characterSet JS.String
-	charset JS.String
-	compatMode JS.String
-	contentType JS.String
-	documentURI JS.String
-	documentElement JS.HTMLElement
-	hidden JS.Boolean
-	head JS.HTMLHeadElement
+	all               JS.HTMLAllCollection
+	anchros           JS.HTMLCollection
+	applets           JS.HTMLCollection
+	characterSet      JS.String
+	charset           JS.String
+	compatMode        JS.String
+	contentType       JS.String
+	documentURI       JS.String
+	documentElement   JS.HTMLElement
+	hidden            JS.Boolean
+	head              JS.HTMLHeadElement
 	fullscreenEnabled JS.Boolean
-	fullscreen JS.Boolean
-	lastModified JS.String
-	inputEncoding JS.String
-	implementation JS.DOMImplementation
-	doctype JS.DocumentType
-	embeds JS.HTMLCollection
-	forms JS.HTMLCollection
+	fullscreen        JS.Boolean
+	lastModified      JS.String
+	inputEncoding     JS.String
+	implementation    JS.DOMImplementation
+	doctype           JS.DocumentType
+	embeds            JS.HTMLCollection
+	forms             JS.HTMLCollection
 	getElementById(id JS.String) ?JS.HTMLElement
 	adoptNode(node JS.Node) JS.Node
 	close()
@@ -277,13 +277,13 @@ pub interface JS.Document {
 	requestPointerLock()
 	requestFullScreen() JS.Promise
 mut:
-	bgColor JS.String
-	fgColor JS.String
-	body JS.HTMLElement
-	cookie JS.String
-	domain JS.String
+	bgColor    JS.String
+	fgColor    JS.String
+	body       JS.HTMLElement
+	cookie     JS.String
+	domain     JS.String
 	designMode JS.String
-	dir JS.String
+	dir        JS.String
 	vlinkColor JS.String
 }
 
@@ -296,19 +296,19 @@ pub fn document_url(doc JS.Document) JS.String {
 
 pub interface JS.Element {
 	JS.Node
-	classList JS.DOMTokenList
-	clientHeight JS.Number
-	clientLeft JS.Number
-	clientTop JS.Number
-	clientWidth JS.Number
-	localName JS.String
-	namespaceURI JS.String
+	classList     JS.DOMTokenList
+	clientHeight  JS.Number
+	clientLeft    JS.Number
+	clientTop     JS.Number
+	clientWidth   JS.Number
+	localName     JS.String
+	namespaceURI  JS.String
 	ownerDocument JS.Document
-	part JS.DOMTokenList
-	prefix JS.String
-	scrollHeight JS.Number
-	scrollWidth JS.Number
-	tagName JS.String
+	part          JS.DOMTokenList
+	prefix        JS.String
+	scrollHeight  JS.Number
+	scrollWidth   JS.Number
+	tagName       JS.String
 	closest(selector JS.String) ?JS.Element
 	getAttribute(qualifiedName JS.String) ?JS.String
 	getAttributeNS(namespace JS.String, localName JS.String) ?JS.String
@@ -328,14 +328,14 @@ pub interface JS.Element {
 	hasPointerCapture(pointerId JS.Number) JS.Boolean
 	matches(selectors JS.String) JS.Boolean
 mut:
-	className JS.String
-	id JS.String
+	className          JS.String
+	id                 JS.String
 	onfullscreenchange fn (this JS.Element, ev JS.Event) JS.Any
-	onfullscreenerror fn (this JS.Element, ev JS.Event) JS.Any
-	outerHTML JS.String
-	scrollLeft JS.Number
-	scrollTop JS.Number
-	slot JS.String
+	onfullscreenerror  fn (this JS.Element, ev JS.Event) JS.Any
+	outerHTML          JS.String
+	scrollLeft         JS.Number
+	scrollTop          JS.Number
+	slot               JS.String
 }
 
 pub const (
@@ -374,24 +374,24 @@ pub interface JS.HTMLCollection {
 pub interface JS.HTMLElement {
 	JS.Element
 	accessKeyLabel JS.String
-	offsetHeight JS.Number
-	offsetLeft JS.Number
-	offsetParent JS.Any
-	offsetTop JS.Number
-	offsetWidth JS.Number
+	offsetHeight   JS.Number
+	offsetLeft     JS.Number
+	offsetParent   JS.Any
+	offsetTop      JS.Number
+	offsetWidth    JS.Number
 	click()
 mut:
-	accessKey JS.String
+	accessKey      JS.String
 	autocapitalize JS.String
-	dir JS.String
-	draggable JS.Boolean
-	hidden JS.Boolean
-	innerText JS.String
-	lang JS.String
-	outerText JS.String
-	spellcheck JS.Boolean
-	title JS.String
-	translate JS.Boolean
+	dir            JS.String
+	draggable      JS.Boolean
+	hidden         JS.Boolean
+	innerText      JS.String
+	lang           JS.String
+	outerText      JS.String
+	spellcheck     JS.Boolean
+	title          JS.String
+	translate      JS.Boolean
 }
 
 pub fn JS.HTMLElement.prototype.constructor() JS.HTMLElement
@@ -399,10 +399,10 @@ pub fn JS.HTMLElement.prototype.constructor() JS.HTMLElement
 pub interface JS.HTMLEmbedElement {
 	getSVGDocument() ?JS.Document
 mut:
-	align JS.String
+	align  JS.String
 	height JS.String
-	src JS.String
-	width JS.String
+	src    JS.String
+	width  JS.String
 }
 
 pub fn html_embed_type(embed JS.HTMLEmbedElement) JS.String {
@@ -423,7 +423,7 @@ pub interface JS.HTMLCanvasElement {
 	getContext(contextId JS.String, options JS.Any) ?CanvasContext
 mut:
 	height JS.Number
-	width JS.Number
+	width  JS.Number
 }
 
 pub type FillStyle = JS.CanvasGradient | JS.CanvasPattern | JS.String
@@ -464,16 +464,16 @@ pub interface JS.CanvasRenderingContext2D {
 	stroke()
 	fillText(text JS.String, x JS.Number, y JS.Number)
 mut:
-	lineCap JS.String
-	lineDashOffset JS.Number
-	lineJoin JS.String
-	lineWidth JS.Number
-	miterLimit JS.Number
-	fillStyle FillStyle
-	strokeStyle FillStyle
-	globalAlpha JS.Number
+	lineCap                  JS.String
+	lineDashOffset           JS.Number
+	lineJoin                 JS.String
+	lineWidth                JS.Number
+	miterLimit               JS.Number
+	fillStyle                FillStyle
+	strokeStyle              FillStyle
+	globalAlpha              JS.Number
 	globalCompositeOperation JS.String
-	font JS.String
+	font                     JS.String
 }
 
 pub interface JS.CanvasGradient {
@@ -512,21 +512,21 @@ pub type AnimationFrameCallback = fn (JS.Number)
 
 pub interface JS.Window {
 	JS.EventTarget
-	closed JS.Boolean
+	closed           JS.Boolean
 	devicePixelRatio JS.Number
-	document JS.Document
-	frameElement JS.Element
-	innerHeight JS.Number
-	innerWidth JS.Number
-	length JS.Number
-	outerHeight JS.Number
-	outerWidth JS.Number
-	screenLeft JS.Number
-	screenTop JS.Number
-	screenX JS.Number
-	screenY JS.Number
-	scrollX JS.Number
-	scrollY JS.Number
+	document         JS.Document
+	frameElement     JS.Element
+	innerHeight      JS.Number
+	innerWidth       JS.Number
+	length           JS.Number
+	outerHeight      JS.Number
+	outerWidth       JS.Number
+	screenLeft       JS.Number
+	screenTop        JS.Number
+	screenX          JS.Number
+	screenY          JS.Number
+	scrollX          JS.Number
+	scrollY          JS.Number
 	alert(message JS.Any)
 	blur()
 	cancelIdleCallback(handle JS.Number)
@@ -546,9 +546,9 @@ pub interface JS.Window {
 	scrollTo(x JS.Number, y JS.Number)
 	requestAnimationFrame(callback AnimationFrameCallback)
 mut:
-	name string
-	opener JS.Any
-	ondevicemotion OnDeviceMotion
+	name                string
+	opener              JS.Any
+	ondevicemotion      OnDeviceMotion
 	ondeviceorientation OnDeviceOrientation
 }
 
@@ -568,27 +568,27 @@ pub struct JS.DeviceMotionEventRotationRate {
 
 pub interface JS.DeviceMotionEvent {
 	JS.Event
-	interval JS.Number
-	acceleration JS.DeviceMotionEventAcceleration
+	interval                     JS.Number
+	acceleration                 JS.DeviceMotionEventAcceleration
 	accelerationIncludingGravity JS.DeviceMotionEventAcceleration
-	rotationRate JS.DeviceMotionEventRotationRate
+	rotationRate                 JS.DeviceMotionEventRotationRate
 }
 
 pub interface JS.DeviceOrientationEvent {
 	JS.Event
 	absolute JS.Boolean
-	alpha JS.Number
-	beta JS.Number
-	gamma JS.Number
+	alpha    JS.Number
+	beta     JS.Number
+	gamma    JS.Number
 }
 
 pub interface JS.DocumentType {
 	JS.Node
 	JS.ChildNode
-	name JS.String
+	name          JS.String
 	ownerDocument JS.Document
-	publicId JS.String
-	systemId JS.String
+	publicId      JS.String
+	systemId      JS.String
 }
 
 [single_impl]
@@ -616,9 +616,9 @@ pub interface JS.WebGLUniformLocation {}
 pub interface JS.WebGLVertexArrayObject {}
 
 pub interface JS.WebGLRenderingContext {
-	canvas JS.HTMLCanvasElement
+	canvas              JS.HTMLCanvasElement
 	drawingBufferHeight JS.Number
-	drawingBufferWidth JS.Number
+	drawingBufferWidth  JS.Number
 	activeTexture(texture JS.Number)
 	attachShader(program JS.WebGLProgram, shader JS.WebGLProgram)
 	linkProgram(program JS.WebGLProgram)
@@ -811,15 +811,15 @@ pub fn gl_depth_test() JS.Number {
 // Event is an event which takes place in the DOM.
 pub interface JS.Event {
 	JS.EventTarget
-	bubbles JS.Boolean
-	cancelable JS.Boolean
-	composed JS.Boolean
-	currentTarget JS.EventTarget
+	bubbles          JS.Boolean
+	cancelable       JS.Boolean
+	composed         JS.Boolean
+	currentTarget    JS.EventTarget
 	defaultPrevented JS.Boolean
-	eventPhase JS.Number
-	isTrusted JS.Boolean
-	srcElement JS.EventTarget
-	timeStamp JS.DOMHighResTimeStamp // composedPath returns the invocation target objects of event's path.
+	eventPhase       JS.Number
+	isTrusted        JS.Boolean
+	srcElement       JS.EventTarget
+	timeStamp        JS.DOMHighResTimeStamp // composedPath returns the invocation target objects of event's path.
 	composedPath() JS.Array
 	initEvent(typ JS.String, bubbles JS.Boolean, cancelable JS.Boolean)
 	preventDefault()
@@ -845,11 +845,11 @@ pub fn create_event(typ string, bubbles bool, cancelable bool, composed bool) JS
 
 pub interface JS.ErrorEvent {
 	JS.Event
-	colno JS.Number
-	error JS.Number
+	colno    JS.Number
+	error    JS.Number
 	filename JS.Number
-	lineno JS.Number
-	message JS.String
+	lineno   JS.Number
+	message  JS.String
 }
 
 [use_new]
@@ -858,7 +858,7 @@ pub fn JS.ErrorEvent.prototype.constructor(typ JS.String) JS.ErrorEvent
 pub interface JS.UIEvent {
 	JS.Event
 	detail JS.Number
-	view JS.Any
+	view   JS.Any
 }
 
 [use_new]
@@ -881,68 +881,68 @@ pub struct JS.UIEventInitDict {
 
 pub interface JS.MouseEvent {
 	JS.UIEvent
-	altKey JS.Boolean
-	button JS.Number
-	buttons JS.Number
-	clientX JS.Number
-	clientY JS.Number
-	ctrlKey JS.Number
-	metaKey JS.Number
-	movementX JS.Number
-	movementY JS.Number
-	offsetX JS.Number
-	offsetY JS.Number
-	pageX JS.Number
-	pageY JS.Number
+	altKey        JS.Boolean
+	button        JS.Number
+	buttons       JS.Number
+	clientX       JS.Number
+	clientY       JS.Number
+	ctrlKey       JS.Number
+	metaKey       JS.Number
+	movementX     JS.Number
+	movementY     JS.Number
+	offsetX       JS.Number
+	offsetY       JS.Number
+	pageX         JS.Number
+	pageY         JS.Number
 	relatedTarget JS.Any
-	screenX JS.Number
-	screenY JS.Number
-	shiftKey JS.Boolean
-	x JS.Number
-	y JS.Number
+	screenX       JS.Number
+	screenY       JS.Number
+	shiftKey      JS.Boolean
+	x             JS.Number
+	y             JS.Number
 	getModifierState(keyArg JS.String) JS.Boolean
 }
 
 pub interface JS.WheelEvent {
 	JS.MouseEvent
-	deltaX JS.Number
-	deltaY JS.Number
-	deltaZ JS.Number
+	deltaX    JS.Number
+	deltaY    JS.Number
+	deltaZ    JS.Number
 	deltaMode JS.Number
 }
 
 pub interface JS.PointerEvent {
 	JS.MouseEvent
-	height JS.Number
-	isPrimary JS.Boolean
-	pointerId JS.Number
-	pointerType JS.String
-	pressure JS.Number
+	height             JS.Number
+	isPrimary          JS.Boolean
+	pointerId          JS.Number
+	pointerType        JS.String
+	pressure           JS.Number
 	tangentialPressure JS.Number
-	tiltX JS.Number
-	tiltY JS.Number
-	twist JS.Number
-	width JS.Number
+	tiltX              JS.Number
+	tiltY              JS.Number
+	twist              JS.Number
+	width              JS.Number
 	getCoalescedEvents() JS.Array
 	getPredictedEvents() JS.Array
 }
 
 pub interface JS.Gamepad {
-	axes JS.Array // Array<number>
-	buttons JS.Array // Array<GamepadButton>
-	connected JS.Boolean
+	axes            JS.Array // Array<number>
+	buttons         JS.Array // Array<GamepadButton>
+	connected       JS.Boolean
 	hapticActuators JS.Array // Array<GamepadHapticActuator>
-	id JS.String
-	index JS.Number
-	mapping JS.String
-	timestamp JS.Number
+	id              JS.String
+	index           JS.Number
+	mapping         JS.String
+	timestamp       JS.Number
 }
 
 [single_impl]
 pub interface JS.GamepadButton {
 	pressed JS.Boolean
 	touched JS.Boolean
-	value JS.Number
+	value   JS.Number
 }
 
 [single_impl]
@@ -962,11 +962,11 @@ pub interface JS.HashChangeEvent {
 
 pub interface JS.MessageEvent {
 	JS.Event
-	data JS.Any
+	data        JS.Any
 	lastEventId JS.String
-	origin JS.String
-	ports JS.Array
-	source JS.Any
+	origin      JS.String
+	ports       JS.Array
+	source      JS.Any
 }
 
 pub interface JS.MessagePort {
@@ -988,20 +988,20 @@ pub interface JS.PopStateEvent {
 
 pub interface JS.ProgressEvent {
 	lenghtComputable JS.Boolean
-	loaded JS.Number
-	target JS.Any
-	total JS.Number
+	loaded           JS.Number
+	target           JS.Any
+	total            JS.Number
 }
 
 pub interface JS.KeyboardEvent {
 	JS.UIEvent
-	altKey JS.Boolean
-	code JS.String
-	ctrlKey JS.Boolean
+	altKey      JS.Boolean
+	code        JS.String
+	ctrlKey     JS.Boolean
 	isComposing JS.Boolean
-	key JS.String
-	location JS.Number
-	metaKey JS.Boolean
-	repeat JS.Boolean
-	shiftKey JS.Boolean
+	key         JS.String
+	location    JS.Number
+	metaKey     JS.Boolean
+	repeat      JS.Boolean
+	shiftKey    JS.Boolean
 }
