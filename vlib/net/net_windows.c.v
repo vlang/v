@@ -739,7 +739,7 @@ pub fn wsa_error(code int) WsaError {
 	return unsafe { WsaError(code) }
 }
 
-const (
+pub const (
 	error_ewouldblock = WsaError.wsaewouldblock
 	error_einprogress = WsaError.wsaeinprogress
 )
@@ -757,7 +757,7 @@ const (
 )
 
 // Error code returns the last socket error
-fn error_code() int {
+pub fn error_code() int {
 	return C.WSAGetLastError()
 }
 

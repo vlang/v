@@ -93,9 +93,9 @@ fn test_read_bytes_into_newline_binary() {
 	bw[9] = 0xff
 	bw[12] = 10 // newline
 
-	n0_bytes := bw[0..10]
-	n1_bytes := bw[10..13]
-	n2_bytes := bw[13..]
+	n0_bytes := unsafe { bw[0..10] }
+	n1_bytes := unsafe { bw[10..13] }
+	n2_bytes := unsafe { bw[13..] }
 
 	mut f := os.open_file(tfile, 'w')!
 	f.write(bw)!

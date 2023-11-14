@@ -15,7 +15,7 @@ const tools_in_subfolders = ['vast', 'vcreate', 'vdoc', 'vpm', 'vvet', 'vwhere']
 
 // non_packaged_tools are tools that should not be packaged with
 // prebuild versions of V, to keep the size smaller.
-// They are mainly usefull for the V project itself, not to end users.
+// They are mainly useful for the V project itself, not to end users.
 const non_packaged_tools = ['gen1m', 'gen_vc', 'fast', 'wyhash']
 
 fn main() {
@@ -36,6 +36,7 @@ fn main() {
 	buildopts := args_string.all_before('build-tools')
 	mut session := testing.prepare_test_session(buildopts, folder, skips, main_label)
 	session.rm_binaries = false
+	session.build_tools = true
 	for stool in tools_in_subfolders {
 		session.add(os.join_path(tfolder, stool))
 	}

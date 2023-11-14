@@ -788,7 +788,7 @@ fn (mut g Gen) get_comptime_var_type(node ast.Expr) ast.Type {
 }
 
 fn (mut g Gen) resolve_comptime_type(node ast.Expr, default_type ast.Type) ast.Type {
-	if (node is ast.Ident && g.is_comptime_var(node)) || node is ast.ComptimeSelector {
+	if (node is ast.Ident && g.table.is_comptime_var(node)) || node is ast.ComptimeSelector {
 		return g.get_comptime_var_type(node)
 	} else if node is ast.SelectorExpr && node.expr_type != 0 {
 		sym := g.table.sym(g.unwrap_generic(node.expr_type))

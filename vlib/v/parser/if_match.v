@@ -72,6 +72,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 				p.check(.dollar)
 			}
 		}
+		if_pos := p.tok.pos()
 		// `if` or `else if`
 		p.check(.key_if)
 		if p.tok.kind == .key_match {
@@ -139,6 +140,17 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			p.comptime_if_cond = true
 			p.inside_if_cond = true
 			cond = p.expr(0)
+			if mut cond is ast.InfixExpr && !is_comptime {
+				if cond.op in [.key_is, .not_is] {
+					if mut cond.left is ast.Ident {
+						if cond.left.name.len == 1 && cond.left.name.is_capital()
+							&& cond.right is ast.TypeNode {
+							p.error_with_pos('use `\$if` instead of `if`', if_pos)
+							return ast.IfExpr{}
+						}
+					}
+				}
+			}
 			p.inside_if_cond = false
 			if p.if_cond_comments.len > 0 {
 				comments << p.if_cond_comments

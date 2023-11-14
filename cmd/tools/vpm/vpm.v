@@ -9,74 +9,73 @@ import rand
 import v.help
 import v.vmod
 
-struct VpmSettings {
-mut:
-	is_help       bool
-	is_verbose    bool
-	server_urls   []string
-	vmodules_path string
-}
-
-enum Source {
-	git
-	hg
-	vpm
+struct VCS {
+	dir  string
+	cmd  string
+	args struct {
+		install  string
+		path     string // the flag used to specify a path. E.g., used to explicitly work on a path during multithreaded updating.
+		update   string
+		outdated []string
+	}
 }
 
 const (
-	settings                  = &VpmSettings{}
-	default_vpm_server_urls   = ['https://vpm.vlang.io', 'https://vpm.url4e.com']
-	vpm_server_urls           = rand.shuffle_clone(default_vpm_server_urls) or { [] } // ensure that all queries are distributed fairly
-	valid_vpm_commands        = ['help', 'search', 'install', 'update', 'upgrade', 'outdated',
-		'list', 'remove', 'show']
-	excluded_dirs             = ['cache', 'vlib']
-	supported_vcs_systems     = ['git', 'hg']
-	supported_vcs_folders     = ['.git', '.hg']
-	supported_vcs_update_cmds = {
-		'git': 'pull --recurse-submodules' // pulling with `--depth=1` leads to conflicts, when the upstream is more than 1 commit newer
-		'hg':  'pull --update'
-	}
-	supported_vcs_install_cmds = {
-		'git': 'clone --depth=1 --recursive --shallow-submodules'
-		'hg':  'clone'
-	}
-	supported_vcs_outdated_steps = {
-		'git': ['fetch', 'rev-parse @', 'rev-parse @{u}']
-		'hg':  ['incoming']
-	}
-	supported_vcs_version_cmds = {
-		'git': 'version'
-		'hg':  'version'
+	settings                = init_settings()
+	default_vpm_server_urls = ['https://vpm.vlang.io', 'https://vpm.url4e.com']
+	vpm_server_urls         = rand.shuffle_clone(default_vpm_server_urls) or { [] } // ensure that all queries are distributed fairly
+	valid_vpm_commands      = ['help', 'search', 'install', 'update', 'upgrade', 'outdated', 'list',
+		'remove', 'show']
+	excluded_dirs           = ['cache', 'vlib']
+	supported_vcs           = {
+		'git': VCS{
+			dir: '.git'
+			cmd: 'git'
+			args: struct {
+				install: 'clone --depth=1 --recursive --shallow-submodules'
+				update: 'pull --recurse-submodules' // pulling with `--depth=1` leads to conflicts, when the upstream is more than 1 commit newer
+				path: '-C'
+				outdated: ['fetch', 'rev-parse @', 'rev-parse @{u}']
+			}
+		}
+		'hg':  VCS{
+			dir: '.hg'
+			cmd: 'hg'
+			args: struct {
+				install: 'clone'
+				update: 'pull --update'
+				path: '-R'
+				outdated: ['incoming']
+			}
+		}
 	}
 )
 
 fn main() {
-	init_settings()
 	// This tool is intended to be launched by the v frontend,
 	// which provides the path to V inside os.getenv('VEXE')
 	// args are: vpm [options] SUBCOMMAND module names
 	params := cmdline.only_non_options(os.args[1..])
-	options := cmdline.only_options(os.args[1..])
-	verbose_println('cli params: ${params}')
+	vpm_log(@FILE_LINE, @FN, 'params: ${params}')
 	if params.len < 1 {
 		help.print_and_exit('vpm', exit_code: 5)
 	}
 	vpm_command := params[0]
-	mut requested_modules := params[1..].clone()
+	mut query := params[1..].clone()
+	vpm_log(@FILE_LINE, @FN, 'query: ${query}')
 	ensure_vmodules_dir_exist()
-	// println('module names: ') println(requested_modules)
 	match vpm_command {
 		'help' {
 			help.print_and_exit('vpm')
 		}
 		'search' {
-			vpm_search(requested_modules)
+			vpm_search(query)
 		}
 		'install' {
-			vpm_install(requested_modules, options)
+			vpm_install(query)
 		}
 		'update' {
-			vpm_update(requested_modules)
+			vpm_update(query)
 		}
 		'upgrade' {
 			vpm_upgrade()
@@ -88,31 +87,17 @@ fn main() {
 			vpm_list()
 		}
 		'remove' {
-			vpm_remove(requested_modules)
+			vpm_remove(query)
 		}
 		'show' {
-			vpm_show(requested_modules)
+			vpm_show(query)
 		}
 		else {
-			eprintln('Error: you tried to run "v ${vpm_command}"')
-			eprintln('... but the v package management tool vpm only knows about these commands:')
-			for validcmd in valid_vpm_commands {
-				eprintln('    v ${validcmd}')
-			}
-			exit(3)
+			// Unreachable in regular usage. V will catch unknown commands beforehand.
+			vpm_error('unknown command "${vpm_command}"')
+			help.print_and_exit('vpm', exit_code: 3)
 		}
 	}
-}
-
-fn init_settings() {
-	mut s := &VpmSettings(unsafe { nil })
-	unsafe {
-		s = settings
-	}
-	s.is_help = '-h' in os.args || '--help' in os.args || 'help' in os.args
-	s.is_verbose = '-v' in os.args
-	s.server_urls = cmdline.options(os.args, '-server-url')
-	s.vmodules_path = os.vmodules_dir()
 }
 
 fn vpm_upgrade() {
@@ -127,9 +112,9 @@ fn vpm_upgrade() {
 fn vpm_outdated() {
 	outdated := get_outdated() or { exit(1) }
 	if outdated.len > 0 {
-		eprintln('Outdated modules:')
+		println('Outdated modules:')
 		for m in outdated {
-			eprintln('  ${m}')
+			println('  ${m}')
 		}
 	} else {
 		println('Modules are up to date.')
@@ -137,61 +122,56 @@ fn vpm_outdated() {
 }
 
 fn vpm_list() {
-	module_names := get_installed_modules()
-	if module_names.len == 0 {
-		eprintln('You have no modules installed.')
+	installed := get_installed_modules()
+	if installed.len == 0 {
+		println('You have no modules installed.')
 		exit(0)
 	}
-	for mod in module_names {
-		println(mod)
+	for m in installed {
+		println(m)
 	}
 }
 
-fn vpm_remove(module_names []string) {
+fn vpm_remove(query []string) {
 	if settings.is_help {
 		help.print_and_exit('remove')
 	}
-	if module_names.len == 0 {
-		eprintln('´v remove´ requires *at least one* module name.')
+	if query.len == 0 {
+		vpm_error('specify at least one module name for removal.')
 		exit(2)
 	}
-	for name in module_names {
-		final_module_path := valid_final_path_of_existing_module(name) or { continue }
-		eprintln('Removing module "${name}" ...')
-		verbose_println('removing folder ${final_module_path}')
-		os.rmdir_all(final_module_path) or {
-			verbose_println('error while removing "${final_module_path}": ${err.msg()}')
-		}
-		// delete author directory if it is empty
-		author := name.split('.')[0]
+	for m in query {
+		final_module_path := get_path_of_existing_module(m) or { continue }
+		println('Removing module "${m}" ...')
+		vpm_log(@FILE_LINE, @FN, 'removing: ${final_module_path}')
+		os.rmdir_all(final_module_path) or { vpm_error(err.msg(), verbose: true) }
+		// Delete author directory if it is empty.
+		author := m.split('.')[0]
 		author_dir := os.real_path(os.join_path(settings.vmodules_path, author))
 		if !os.exists(author_dir) {
 			continue
 		}
 		if os.is_dir_empty(author_dir) {
-			verbose_println('removing author folder ${author_dir}')
-			os.rmdir(author_dir) or {
-				verbose_println('error while removing "${author_dir}": ${err.msg()}')
-			}
+			verbose_println('Removing author folder ${author_dir}')
+			os.rmdir(author_dir) or { vpm_error(err.msg(), verbose: true) }
 		}
 	}
 }
 
-fn vpm_show(module_names []string) {
+fn vpm_show(query []string) {
 	installed_modules := get_installed_modules()
-	for module_name in module_names {
-		if module_name !in installed_modules {
-			module_meta_info := get_module_meta_info(module_name) or { continue }
-			print('
-Name: ${module_meta_info.name}
-Homepage: ${module_meta_info.url}
-Downloads: ${module_meta_info.nr_downloads}
+	for m in query {
+		if m !in installed_modules {
+			info := get_mod_vpm_info(m) or { continue }
+			print('Name: ${info.name}
+Homepage: ${info.url}
+Downloads: ${info.nr_downloads}
 Installed: False
 --------
 ')
 			continue
 		}
-		path := os.join_path(os.vmodules_dir(), module_name.replace('.', os.path_separator))
+		path := os.join_path(os.vmodules_dir(), m.replace('.', os.path_separator))
 		mod := vmod.from_file(os.join_path(path, 'v.mod')) or { continue }
 		print('Name: ${mod.name}
 Version: ${mod.version}

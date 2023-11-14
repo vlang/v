@@ -22,6 +22,7 @@ const (
 	m4 = u64(0x0000ffff0000ffff)
 )
 
+// TODO: this consts should be taken from int.v
 const (
 	// save importing math mod just for these
 	max_u32 = u32(4294967295)

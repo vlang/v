@@ -21,7 +21,7 @@ pub enum SocketOption {
 	ipv6_only        = C.IPV6_V6ONLY
 }
 
-const (
+pub const (
 	opts_bool    = [SocketOption.broadcast, .debug, .dont_route, .error, .keep_alive, .oob_inline]
 	opts_int     = [
 		.receive_buf_size,

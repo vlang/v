@@ -1657,13 +1657,14 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	// Handle `print(x)`
 	mut print_auto_str := false
 	if is_print && (node.args[0].typ != ast.string_type
-		|| g.comptime_for_method.len > 0 || g.is_comptime_var(node.args[0].expr)) {
+		|| g.comptime_for_method.len > 0
+		|| g.table.is_comptime_var(node.args[0].expr)) {
 		g.inside_casting_to_str = true
 		defer {
 			g.inside_casting_to_str = false
 		}
 		mut typ := node.args[0].typ
-		if g.is_comptime_var(node.args[0].expr) {
+		if g.table.is_comptime_var(node.args[0].expr) {
 			ctyp := g.get_comptime_var_type(node.args[0].expr)
 			if ctyp != ast.void_type {
 				typ = ctyp
@@ -1777,7 +1778,11 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 								cast_sym := g.table.sym(g.unwrap_generic(typ))
 								mut is_ptr := false
 								if i == 0 {
-									g.write(node.name)
+									if obj.is_inherited {
+										g.write(c.closure_ctx + '->' + node.name)
+									} else {
+										g.write(node.name)
+									}
 									if obj.orig_type.is_ptr() {
 										is_ptr = true
 									}

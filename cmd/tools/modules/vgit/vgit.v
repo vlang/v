@@ -198,6 +198,10 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 			// after 53ffee1 2020-05-18, gcc builds on windows do need `-municode`
 			c_flags += '-municode'
 		}
+		// after 2023-11-07, windows builds need linking to ws2_32:
+		if vgit_context.commit_v__ts >= 1699341818 && !vgit_context.cc.contains('msvc') {
+			c_flags += '-lws2_32'
+		}
 		command_for_building_v_from_c_source = '${vgit_context.cc} ${c_flags} -o cv.exe  "${vc_source_file_location}" ${c_ldflags}'
 		command_for_selfbuilding = '.\\cv.exe -o ${vgit_context.vexename} {SOURCE}'
 	} else {

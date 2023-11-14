@@ -680,6 +680,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		done_options: global_g.done_options
 		done_results: global_g.done_results
 		is_autofree: global_g.pref.autofree
+		obf_table: global_g.obf_table
 		referenced_fns: global_g.referenced_fns
 		is_cc_msvc: global_g.is_cc_msvc
 		use_segfault_handler: global_g.use_segfault_handler
@@ -2536,7 +2537,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		g.writeln('}, sizeof(${shared_styp}))')
 		return
 	} else if got_type_raw.has_flag(.shared_f) && !expected_type.has_flag(.shared_f) {
-		if expected_type.is_ptr() {
+		if expected_is_ptr {
 			g.write('&')
 		}
 		g.expr(expr)
@@ -3191,7 +3192,11 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			mut shared_styp := ''
 			if g.is_shared && !ret_type.has_flag(.shared_f) && !g.inside_or_block {
 				ret_sym := g.table.sym(ret_type)
-				shared_typ := ret_type.set_flag(.shared_f)
+				shared_typ := if ret_type.is_ptr() {
+					ret_type.deref().set_flag(.shared_f)
+				} else {
+					ret_type.set_flag(.shared_f)
+				}
 				shared_styp = g.typ(shared_typ)
 				if ret_sym.kind == .array {
 					g.writeln('(${shared_styp}*)__dup_shared_array(&(${shared_styp}){.mtx = {0}, .val =')
@@ -3207,6 +3212,10 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				0
 			}
 
+			if g.is_shared && !ret_type.has_flag(.shared_f) && !g.inside_or_block
+				&& ret_type.is_ptr() {
+				g.write('*'.repeat(ret_type.nr_muls()))
+			}
 			g.call_expr(node)
 			if g.is_autofree && !g.is_builtin_mod && !g.is_js_call && g.strs_to_free0.len == 0
 				&& !g.inside_lambda {
@@ -3405,7 +3414,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				if mut node.expr is ast.ComptimeSelector && node.expr.left is ast.Ident {
 					// val.$(field.name)?
 					expr_str = '${node.expr.left.str()}.${g.comptime_for_field_value.name}'
-				} else if mut node.expr is ast.Ident && g.is_comptime_var(node.expr) {
+				} else if mut node.expr is ast.Ident && g.table.is_comptime_var(node.expr) {
 					// val?
 					expr_str = node.expr.name
 				}
@@ -3634,7 +3643,6 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if node.expr_type == 0 {
 		g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
 	}
-
 	sym := g.table.sym(g.unwrap_generic(node.expr_type))
 	field_name := if sym.language == .v { c_name(node.field_name) } else { node.field_name }
 
@@ -3700,6 +3708,11 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		g.write('sync__Channel_${node.field_name}(')
 		g.expr(node.expr)
 		g.write(')')
+		return
+	} else if g.enum_data_type == node.typ {
+		g.expr(node.expr)
+		g.write('.')
+		g.write(node.field_name)
 		return
 	}
 	mut sum_type_deref_field := ''
@@ -4317,12 +4330,6 @@ pub fn (mut g Gen) is_generic_param_var(node ast.Expr) bool {
 		&& (node.obj as ast.Var).ct_type_var == .generic_param
 }
 
-[inline]
-pub fn (mut g Gen) is_comptime_var(node ast.Expr) bool {
-	return node is ast.Ident && node.info is ast.IdentVar && node.obj is ast.Var
-		&& (node.obj as ast.Var).ct_type_var != .no_comptime
-}
-
 fn (mut g Gen) get_const_name(node ast.Ident) string {
 	if g.pref.translated && !g.is_builtin_mod
 		&& !util.module_is_builtin(node.name.all_before_last('.')) {
@@ -4472,9 +4479,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 						g.write('(')
 						if obj_sym.kind == .sum_type && !is_auto_heap {
 							g.write('*')
-						} else if g.inside_casting_to_str && node.obj.orig_type != 0
-							&& g.table.sym(node.obj.orig_type).kind == .interface_
-							&& g.table.sym(node.obj.smartcasts.last()).kind != .interface_ {
+						} else if g.inside_casting_to_str && g.table.is_interface_var(node.obj) {
 							g.write('*')
 						}
 					}
@@ -4555,7 +4560,8 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 	node_typ := g.unwrap_generic(node.typ)
 	mut expr_type := node.expr_type
 	sym := g.table.sym(node_typ)
-	if (node.expr is ast.Ident && g.is_comptime_var(node.expr)) || node.expr is ast.ComptimeSelector {
+	if (node.expr is ast.Ident && g.table.is_comptime_var(node.expr))
+		|| node.expr is ast.ComptimeSelector {
 		expr_type = g.unwrap_generic(g.get_comptime_var_type(node.expr))
 	}
 	if sym.kind in [.sum_type, .interface_] {

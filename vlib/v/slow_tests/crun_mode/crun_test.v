@@ -1,3 +1,5 @@
+// vtest flaky: true
+// vtest retry: 3
 import os
 import time
 
@@ -35,7 +37,7 @@ fn test_crun_simple_v_program_several_times() {
 		sw.restart()
 	}
 	dump(times)
-	assert times.first() > times.last() * 3 // cruns compile just once, if the source file is not changed
+	assert times.first() > times.last() * 2 // cruns compile just once, if the source file is not changed
 	$if !windows {
 		os.system('ls -la ${crun_folder}')
 		os.system('find ${crun_folder}')

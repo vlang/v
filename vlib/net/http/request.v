@@ -24,7 +24,7 @@ pub mut:
 	method     Method  = .get
 	header     Header
 	host       string
-	cookies    map[string]string
+	cookies    map[string]string [deprecated: 'use req.cookie(name) and req.add_cookie(name) instead']
 	data       string
 	url        string
 	user_agent string = 'v.http'
@@ -63,6 +63,26 @@ pub fn (mut req Request) add_header(key CommonHeader, val string) {
 // This method may fail if the key contains characters that are not permitted
 pub fn (mut req Request) add_custom_header(key string, val string) ! {
 	return req.header.add_custom(key, val)
+}
+
+// add_cookie adds a cookie to the request.
+pub fn (mut req Request) add_cookie(c Cookie) {
+	req.cookies[c.name] = c.value
+}
+
+// cookie returns the named cookie provided in the request or `none` if not found.
+// If multiple cookies match the given name, only one cookie will be returned.
+pub fn (req &Request) cookie(name string) ?Cookie {
+	// TODO(alex) this should work once Cookie is used
+	// return req.cookies[name] or { none }
+
+	if value := req.cookies[name] {
+		return Cookie{
+			name: name
+			value: value
+		}
+	}
+	return none
 }
 
 // do will send the HTTP request and returns `http.Response` as soon as the response is received
@@ -148,7 +168,7 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Res
 	} else if req.proxy != unsafe { nil } {
 		mut retries := 0
 		for {
-			res := req.proxy.http_do(host_name, method, path, req) or {
+			res := req.proxy.http_do(url, method, path, req) or {
 				retries++
 				if is_no_need_retry_error(err.code()) || retries >= req.max_retries {
 					return err
@@ -278,14 +298,25 @@ pub fn parse_request_head(mut reader io.BufferedReader) !Request {
 	mut header := new_header()
 	line = reader.read_line()!
 	for line != '' {
-		key, value := parse_header(line)!
+		// key, value := parse_header(line)!
+		mut pos := parse_header_fast(line)!
+		key := line.substr_unsafe(0, pos)
+		for pos < line.len - 1 && line[pos + 1].is_space() {
+			if line[pos + 1].is_space() {
+				// Skip space or tab in value name
+				pos++
+			}
+		}
+		value := line.substr_unsafe(pos + 1, line.len)
+		_, _ = key, value
+		// println('key,value=${key},${value}')
 		header.add_custom(key, value)!
 		line = reader.read_line()!
 	}
-	header.coerce(canonicalize: true)
+	// header.coerce(canonicalize: true)
 
 	mut request_cookies := map[string]string{}
-	for _, cookie in read_cookies(header.data, '') {
+	for _, cookie in read_cookies(header, '') {
 		request_cookies[cookie.name] = cookie.value
 	}
 
@@ -300,17 +331,27 @@ pub fn parse_request_head(mut reader io.BufferedReader) !Request {
 }
 
 fn parse_request_line(s string) !(Method, urllib.URL, Version) {
-	words := s.split(' ')
-	if words.len != 3 {
+	// println('S=${s}')
+	// words := s.split(' ')
+	// println(words)
+	space1, space2 := fast_request_words(s)
+	// if words.len != 3 {
+	if space1 == 0 || space2 == 0 {
 		return error('malformed request line')
 	}
-	method := method_from_str(words[0])
-	target := urllib.parse(words[1])!
-	version := version_from_str(words[2])
+	method_str := s.substr_unsafe(0, space1)
+	target_str := s.substr_unsafe(space1 + 1, space2)
+	version_str := s.substr_unsafe(space2 + 1, s.len)
+	// println('${method_str}!${target_str}!${version_str}')
+	// method := method_from_str(words[0])
+	// target := urllib.parse(words[1])!
+	// version := version_from_str(words[2])
+	method := method_from_str(method_str)
+	target := urllib.parse(target_str)!
+	version := version_from_str(version_str)
 	if version == .unknown {
 		return error('unsupported version')
 	}
-
 	return method, target, version
 }
 

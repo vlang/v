@@ -37,6 +37,9 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 		.key_mut, .key_shared, .key_atomic, .key_static, .key_volatile {
 			ident := p.ident(ast.Language.v)
 			node = ident
+			if p.peek_tok.kind != .assign && (p.inside_if_cond || p.inside_match) {
+				p.mark_var_as_used(ident.name)
+			}
 			p.add_defer_var(ident)
 			p.is_stmt_ident = is_stmt_ident
 		}

@@ -205,6 +205,9 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 						c.warn('unnecessary default value of `none`: struct fields are zeroed by default',
 							field.default_expr.pos)
 					}
+					if field.typ.has_flag(.option) && field.default_expr.is_nil() {
+						c.error('cannot assign `nil` to option value', field.default_expr.pos())
+					}
 					continue
 				}
 				if field.typ in ast.unsigned_integer_type_idxs {
@@ -727,14 +730,16 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						node.pos)
 					continue
 				}
-				if sym.kind == .struct_ {
-					c.check_ref_fields_initialized(sym, mut checked_types, '${type_sym.name}.${field.name}',
-						node)
-				} else if sym.kind == .alias {
-					parent_sym := c.table.sym((sym.info as ast.Alias).parent_type)
-					if parent_sym.kind == .struct_ {
-						c.check_ref_fields_initialized(parent_sym, mut checked_types,
-							'${type_sym.name}.${field.name}', node)
+				if !field.typ.has_flag(.option) {
+					if sym.kind == .struct_ {
+						c.check_ref_fields_initialized(sym, mut checked_types, '${type_sym.name}.${field.name}',
+							node)
+					} else if sym.kind == .alias {
+						parent_sym := c.table.sym((sym.info as ast.Alias).parent_type)
+						if parent_sym.kind == .struct_ {
+							c.check_ref_fields_initialized(parent_sym, mut checked_types,
+								'${type_sym.name}.${field.name}', node)
+						}
 					}
 				}
 				// Do not allow empty uninitialized interfaces

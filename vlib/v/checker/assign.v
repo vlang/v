@@ -127,6 +127,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		is_blank_ident := left.is_blank_ident()
 		mut left_type := ast.void_type
 		mut var_option := false
+		mut is_shared_re_assign := false
 		if !is_decl && !is_blank_ident {
 			if left in [ast.Ident, ast.SelectorExpr] {
 				c.prevent_sum_type_unwrapping_once = true
@@ -137,6 +138,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			left_type = c.expr(mut left)
 			c.is_index_assign = false
 			c.expected_type = c.unwrap_generic(left_type)
+			is_shared_re_assign = left is ast.Ident && left.info is ast.IdentVar
+				&& ((left.info as ast.IdentVar).share == .shared_t || left_type.has_flag(.shared_f))
+				&& c.table.sym(left_type).kind in [.array, .map, .struct_]
 		}
 		if c.inside_comptime_for_field && mut left is ast.ComptimeSelector {
 			left_type = c.comptime_fields_default_type
@@ -181,7 +185,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		} else if right is ast.ComptimeSelector {
 			right_type = c.comptime_fields_default_type
 		}
-		if is_decl {
+		if is_decl || is_shared_re_assign {
 			// check generic struct init and return unwrap generic struct type
 			if mut right is ast.StructInit {
 				if right.typ.has_flag(.generic) {
@@ -262,6 +266,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 		}
 		node.left_types << left_type
+		for left is ast.ParExpr {
+			left = (left as ast.ParExpr).expr
+		}
 		match mut left {
 			ast.Ident {
 				if (is_decl || left.kind == .blank_ident) && left_type.is_ptr()
@@ -289,21 +296,21 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							c.error('invalid use of reserved type `${left.name}` as a variable name',
 								left.pos)
 						}
-						if right is ast.Nil && !c.inside_unsafe {
-							// `x := unsafe { nil }` is allowed,
-							// as well as:
-							// `unsafe {
-							//    x := nil
-							//    println(x)
-							// }`
-							c.error('use of untyped nil in assignment (use `unsafe` | ${c.inside_unsafe})',
-								right.pos())
-						}
+					}
+					if (is_decl || is_shared_re_assign) && right is ast.Nil && !c.inside_unsafe {
+						// `x := unsafe { nil }` is allowed,
+						// as well as:
+						// `unsafe {
+						//    x := nil
+						//    println(x)
+						// }`
+						c.error('use of untyped nil in assignment (use `unsafe` | ${c.inside_unsafe})',
+							right.pos())
 					}
 					mut ident_var_info := left.info as ast.IdentVar
-					if ident_var_info.share == .shared_t {
+					if ident_var_info.share == .shared_t || is_shared_re_assign {
 						left_type = left_type.set_flag(.shared_f)
-						if is_decl {
+						if is_decl || is_shared_re_assign {
 							if left_type.nr_muls() > 1 {
 								c.error('shared cannot be multi level reference', left.pos)
 							}
@@ -382,6 +389,10 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							c.error('duplicate of an import symbol `${left.name}`', left.pos)
 						}
 					}
+					if node.op == .assign && left_type.has_flag(.option) && right is ast.UnsafeExpr
+						&& right.expr.is_nil() {
+						c.error('cannot assign `nil` to option value', right.pos())
+					}
 				}
 			}
 			ast.PrefixExpr {
@@ -419,6 +430,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 								right.pos)
 						}
 					}
+				}
+				if left_type.has_flag(.option) && right is ast.UnsafeExpr && right.expr.is_nil() {
+					c.error('cannot assign `nil` to option value', right.pos())
 				}
 			}
 			else {

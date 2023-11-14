@@ -1,0 +1,8 @@
+enum Test {
+	one
+	two
+}
+
+$for i in Test.fields {
+	println(i)
+}

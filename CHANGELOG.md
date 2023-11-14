@@ -1,3 +1,151 @@
+## V 0.4.3
+*11 November 2023*
+
+#### Improvements in the language
+- A new `encoding.xml` module with parser, validation, entity encoding, unit tests (#19708)
+- Better couroutines support (IO, networking)
+- Allocations in vweb apps reduced by 80%
+- Implement `@VCURRENTHASH` to replace `C.V_CURRENT_COMMIT_HASH` (#19514)
+- int => i64 on 64 bit, i32 on 32 bit (start of the transition)
+- Fix new int type promotion rules and cleanup native gen() (#19535)
+
+#### Breaking changes
+- `Request.cookies` map has been deprecated. Replaced with `Request.cookie()` and `Request.add_cookie()`. 
+- Stricter rules for C types (they always have to be declared now)
+
+#### Checker improvements/fixes
+- Turn the option/result split warning into an error
+- Turn propagation warning into an error (finishes the option/result split)
+- Fix fn call with option call argument in autofree mode (#19515)
+- Bring back pascal case check for aliases
+- C.xx = C.yy aliases
+- Allow casted integeral types in match ranges (#19572)
+- Warn about byte deprecation, when used as a fn parameter (#19629)
+- Allow size of fixed array to be integral casts (#19663)
+- Fix generic array append (#19658)
+- Check error of implementing other module private interface (fix #19620) (#19688)
+- Extend byte deprecation warning to array init types (#19671)
+- Extend byte deprecation warnings to return types (#19668)
+- Fix negative cap, len checks in array init (#19694)
+- Turn warning for var and param module name duplicates into error (#19645)
+- Fix closure in if guard, including with multi_return (#19765)
+- Fix comptime enumdata value property access (#19768)
+- Fix `field ?&Type` without default value (#19786)
+- Avoid nil assign to option var (#19746)
+- Allow for a shared variable to be whole reassigned (keeping the same mutex state) (fix #15649) (#19751)
+
+#### Parser improvements
+- Fix assigning static method to anon fn (#19499)
+- ast: fix formatting a struct declaration with a nested struct (#19592)
+- Add `set_all` + `clear_all` methods to `[flag]` enum bitfields (#19717)
+- ast: reduce cost of frequently called functions by using constants (#19733)
+- Warn on unused imports, even when they are declared via `import math { sin, cos }`   (#19738)
+- ast: add missing docstrings for the public fns in vlib/v/ast/types.v (#19752)
+- Give a friendly error when misusing if over $if (#19810)
+- Add multiple struct attributes error for new attribute syntax
+
+#### Compiler internals
+- checker, builder, pref: support `-dump-defines -` to help explore all the available user and system defines for a given program (#19576)
+- pref,builder: add support for `-macosx-version-min 10.2` and `-macosx-version-min 0` (with default of 10.7) (#19626)
+- pref: fix unintended file extensions in default output names, allow for `v run file.c.v` (#19745)
+- transformer: fix using a constant, instead of a fn parameter with the same name (fix #19766) (#19773)
+- maps: add maps.merge() and maps.merge_in_place() generic utility functions (#19776)
+- coroutines: only attempt to add/remove roots when GC is on.
+- markused: cleanup in mark_used(), use robust index names, instead of the much more brittle integer values (#19543)
+
+#### Standard library
+- builtin: add an `unsafe { a.reset() }` method, for quickly setting all bytes in an array to 0
+- math.fractions: use operator overloading and deprecate old functions (#19547)
+- gg: fix the alignment of the bottom border of draw_rounded_rect_empty on macos and linux
+- crypto.bcrypt: fix bcrypt failure for valid pass and hash (fix #19558) (#19569)
+- sokol: update sokol to the latest version
+- builtin: fix sizeof(C.BOOL) (windows specific) (#19589)
+- math.big: fix incorrect division with negative numbers (fix #19585) (#19587)
+- os: add a convenient way to ignore certain system signals (#19632)
+- os: fix os.ls(folder) on windows, when a protected folder can not be opened (#19647)
+- os: add a convenient way to ignore certain system signals (#19639)
+- crypto.sha: fix calculating the same hash values when .sum() is called several times for sha1/256/512 (fix #19696) (#19697)
+- crypto.md5: fix calculating the same hash values, when .sum() is called several times (#19703)
+- os: add a new function `execute_opt` (#19723)
+- os: add os.page_size() (#19770)
+- os: implement os.fd_is_pending/1, os.Process.pipe_read/1, os.Process.is_pending/1 (#19787)
+- builtin: copy min/max integer values consts from `math` to builtin so that the entire math module doesn't have to be imported(#19809)
+- json2: add support for nested structs (#19579)
+
+#### Web
+- vweb: add mime type support for static .md files
+- net.conv: add varinttou64 and u64tovarint functions, for the variable unsigned integer encoding, described in rfc9000 (for QUIC) (#19568)
+- net.http: support passing on_running, on_stopped, on_closed callback functions to http.Server{}, as well as show_startup_message: false. (#19591)
+- net: fix handling of spurious wake-up signals, lost when calling select() in mbedtls and openssl (continue on C.EINTR) (#19600)
+- net: use conv.hton* consistently, instead of `$if tinyc { conv.hton16(port) } $else { u16(C.htons(port)) }`
+- net.http: support passing an HTTP proxy server in http.fetch (#19606)
+- net.http: add a retry mechanism to http.fetch(), when the socket inevitably errors (#19660)
+- wasm: implement inline assembly (#19686)
+- net.http: increase max_redirects to 16 (#19743)
+- picoev: implement raw mode (#19771)
+- flag,json,net: handle C calls in .v files (part of enabling `-W impure-v` as default) (#19779)
+- net.http: add socks5|http(s) proxy support [Linux] (#19676)
+
+#### ORM
+- orm: add null handling and option fields (#19379)
+- orm: make is_null/is_not_null unary ops; don't bind null in where (#19635)
+
+#### Database drivers
+- pg: hande C calls, move to .c.v files (#19739)
+
+#### Native backend
+- native: support `-no-builtin` (generate executables < 1KB Linux with `v -no-builtin -b native examples/hello_world.v`)
+- native: use i32 instead of int
+
+#### C backend
+- Fix printing fixed array of options (#19479)
+- Fix struct field of fixed array init (fix #19483) (#19487)
+- Fix struct init with multi option fn type (#19491)
+- Ast, native, cgen: add support for `$if native {}` (#19500)
+- Fix maps with i32 keys
+- Fix for c stmt with option or result calls (#19641)
+- Fix infix op when handling comptime selector (#19691)
+- Fix array contains method with interface(fix #19670) (#19675)
+- Reduce expense in repetitively called functions by using consts (#19732)
+- Fix closure parameter judgment when var cross assign inside anon fn(fix #19734) (#19736)
+- Only generate free in wrapper for spawn and not go (#19780)
+- Fix g.obf_table data missing(fix #19695) (#19778)
+- Fix closure variable in smartcast (#19796)
+
+#### vfmt
+- Remove additional line breaks after call_expr before params struct args (#19795)
+- Fix map value aligment when using keys with uft8 symbols (#19689)
+- Align ternary expressions in const blocks (#19721)
+- Respect range index expressions in match branches (#19684)
+- Respect raw strings in `$embed_file(r'/some/path')` expressions (#19753)
+- Fix formatting of struct field with default value and new attr syntax (#19683)
+- Recognize or blocks in call args (#19690)
+
+#### Tools
+- all: add support for `@LOCATION`, for more convenient logging/tracing, without needing to combine `@FILE`, `@LINE` at runtime (#19488)
+- benchmark: add new methods b.record_measure/1 and b.all_recorded_measures/0 (#19561)
+- ci: update c2v workflow, translate doom on macOS (#19562)
+- strings: add Bulder.write_decimal/1 method (write a decimal number, without additional allocations) (#19625)
+- testing: add temporary file hash to prevent accidental collisions with test file binaries (#19710)
+- ci: compile VTL and VSL in their own CI job, with `VFLAGS=-no-parallel`
+- tools: fix windows install of an already existing module with vpm (#19761)
+- tools: use `VPM_NO_INCREMENT` env var to skip dl count increment when testing vpm (#19756)
+- tools.vpm: improve handling of urls that end with .git (#19758)
+- tools: fix resolving external dependencies in vpm, add test (#19772)
+- tools: cleanup and simplify vcreate, for upcoming fixes and features (#19794)
+- tools: improve error messages, add color coding and debug logging (#19781)
+- tools: fix `v build-tools`, make `v test` more robust (#19803)
+- tools: add parse_query to vpm (#19814)
+- ci: add macos arm64 binary release (#19823)
+- Require the presence of a `v.mod` file, to install external urls via vpm (#19825)
+- vcreate: fix `v init` with project names containing dashes (#19619)
+
+#### Operating System support
+
+#### Examples
+- tests: workaround name conflict, causing false positives with msvc on windows, when both tests were executed at the same time (locked executable)
+
+
 ## V 0.4.2
 *30 September 2023*
 

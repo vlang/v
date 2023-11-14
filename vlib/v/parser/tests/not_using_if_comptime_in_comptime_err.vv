@@ -1,0 +1,17 @@
+interface Checkable {
+	test int
+}
+
+struct Test {
+	test int
+}
+
+fn check[T]() bool {
+	if T is Checkable {
+		return true
+	} else {
+		return false
+	}
+}
+
+println(check[Test]())

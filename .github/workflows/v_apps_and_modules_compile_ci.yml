@@ -10,7 +10,7 @@ on:
 
 jobs:
   v-apps-compile:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     if: >
         github.event_name != 'push'
         || github.event.ref == 'refs/heads/master'
@@ -73,13 +73,13 @@ jobs:
           echo "Clone Gitly"
           git clone https://github.com/vlang/gitly /tmp/gitly
           echo "Build Gitly"
-          v /tmp/gitly
+          v -cc gcc /tmp/gitly
           ## echo "Build Gitly with -autofree"
-          ## v -autofree /tmp/gitly
+          ## v -cc gcc -autofree /tmp/gitly
           echo "Compile gitly.css from gitly.scss"
           sassc /tmp/gitly/src/static/css/gitly.scss > /tmp/gitly/src/static/css/gitly.css
           # echo "Run first_run.v"
-          # v run /tmp/gitly/tests/first_run.v
+          # v -cc gcc run /tmp/gitly/tests/first_run.v
           # # /tmp/gitly/gitly -ci_run
 
       - name: Build V Language Server (v-analyzer) v-analyzer/v-analyzer

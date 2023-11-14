@@ -486,7 +486,21 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 			c.error('original `${parent_var.name}` is immutable, declare it with `mut` to make it mutable',
 				var.pos)
 		}
-		var.typ = parent_var.typ
+		if parent_var.expr is ast.IfGuardExpr {
+			sym := c.table.sym(parent_var.expr.expr_type)
+			if sym.info is ast.MultiReturn {
+				for i, v in parent_var.expr.vars {
+					if v.name == var.name {
+						var.typ = sym.info.types[i]
+						break
+					}
+				}
+			} else {
+				var.typ = parent_var.expr.expr_type.clear_flags(.option, .result)
+			}
+		} else {
+			var.typ = parent_var.typ
+		}
 		if var.typ.has_flag(.generic) {
 			has_generic = true
 		}
@@ -1548,7 +1562,8 @@ fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_t
 						comptime_args[i] = comptime_args[i].set_nr_muls(0)
 					}
 				}
-			} else if call_arg.expr is ast.ComptimeSelector && c.is_comptime_var(call_arg.expr) {
+			} else if call_arg.expr is ast.ComptimeSelector
+				&& c.table.is_comptime_var(call_arg.expr) {
 				comptime_args[i] = c.get_comptime_var_type(call_arg.expr)
 			}
 		}

@@ -1027,7 +1027,7 @@ pub fn (s string) split_into_lines() []string {
 // Example: assert 'ABCD'.substr(1,3) == 'BC'
 [direct_array_access]
 pub fn (s string) substr(start int, _end int) string {
-	end := if _end == 2147483647 { s.len } else { _end } // max_int
+	end := if _end == max_int { s.len } else { _end } // max_int
 	$if !no_bounds_checking {
 		if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
 			panic('substr(${start}, ${end}) out of bounds (len=${s.len})')
@@ -1048,11 +1048,25 @@ pub fn (s string) substr(start int, _end int) string {
 	return res
 }
 
+// substr_unsafe works like substr(), but doesn't copy (allocate) the substring
+[direct_array_access]
+pub fn (s string) substr_unsafe(start int, _end int) string {
+	end := if _end == 2147483647 { s.len } else { _end } // max_int
+	len := end - start
+	if len == s.len {
+		return s
+	}
+	return string{
+		str: unsafe { s.str + start }
+		len: len
+	}
+}
+
 // version of `substr()` that is used in `a[start..end] or {`
 // return an error when the index is out of range
 [direct_array_access]
 pub fn (s string) substr_with_check(start int, _end int) !string {
-	end := if _end == 2147483647 { s.len } else { _end } // max_int
+	end := if _end == max_int { s.len } else { _end } // max_int
 	if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
 		return error('substr(${start}, ${end}) out of bounds (len=${s.len})')
 	}
@@ -1076,7 +1090,7 @@ pub fn (s string) substr_with_check(start int, _end int) !string {
 [direct_array_access]
 pub fn (s string) substr_ni(_start int, _end int) string {
 	mut start := _start
-	mut end := if _end == 2147483647 { s.len } else { _end } // max_int
+	mut end := if _end == max_int { s.len } else { _end } // max_int
 
 	// borders math
 	if start < 0 {
@@ -2188,7 +2202,7 @@ pub fn (s string) trim_indent() string {
 		.filter(!it.is_blank())
 		.map(it.indent_width())
 
-	mut min_common_indent := int(2147483647) // max int
+	mut min_common_indent := int(max_int) // max int
 	for line_indent in lines_indents {
 		if line_indent < min_common_indent {
 			min_common_indent = line_indent

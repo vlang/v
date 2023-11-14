@@ -33,6 +33,7 @@ pub:
 	port         int = 8080
 	cb           fn (voidptr, picohttpparser.Request, mut picohttpparser.Response) = unsafe { nil }
 	err_cb       fn (voidptr, picohttpparser.Request, mut picohttpparser.Response, IError) = default_err_cb
+	raw_cb       fn (mut Picoev, int) = unsafe { nil }
 	user_data    voidptr = unsafe { nil }
 	timeout_secs int     = 8
 	max_headers  int     = 100
@@ -42,9 +43,9 @@ pub:
 
 [heap]
 pub struct Picoev {
-	cb        fn (voidptr, picohttpparser.Request, mut picohttpparser.Response) = unsafe { nil }
-	err_cb    fn (voidptr, picohttpparser.Request, mut picohttpparser.Response, IError) = default_err_cb
-	user_data voidptr = unsafe { nil }
+	cb     fn (voidptr, picohttpparser.Request, mut picohttpparser.Response) = unsafe { nil }
+	err_cb fn (voidptr, picohttpparser.Request, mut picohttpparser.Response, IError) = default_err_cb
+	raw_cb fn (mut Picoev, int) = unsafe { nil }
 
 	timeout_secs int
 	max_headers  int = 100
@@ -61,6 +62,8 @@ mut:
 	out &u8 = unsafe { nil }
 
 	date string
+pub:
+	user_data voidptr = unsafe { nil }
 }
 
 // init fills the `file_descriptors` array
@@ -210,6 +213,10 @@ fn raw_callback(fd int, events int, context voidptr) {
 		return
 	} else if events & picoev.picoev_read != 0 {
 		pv.set_timeout(fd, pv.timeout_secs)
+		if !isnil(pv.raw_cb) {
+			pv.raw_cb(mut pv, fd)
+			return
+		}
 
 		mut buf := pv.buf
 		unsafe {
@@ -283,13 +290,17 @@ pub fn new(config Config) &Picoev {
 		num_loops: 1
 		cb: config.cb
 		err_cb: config.err_cb
+		raw_cb: config.raw_cb
 		user_data: config.user_data
 		timeout_secs: config.timeout_secs
 		max_headers: config.max_headers
 		max_read: config.max_read
 		max_write: config.max_write
-		buf: unsafe { malloc_noscan(picoev.max_fds * config.max_read + 1) }
-		out: unsafe { malloc_noscan(picoev.max_fds * config.max_write + 1) }
+	}
+
+	if isnil(pv.raw_cb) {
+		pv.buf = unsafe { malloc_noscan(picoev.max_fds * config.max_read + 1) }
+		pv.out = unsafe { malloc_noscan(picoev.max_fds * config.max_write + 1) }
 	}
 
 	// epoll for linux

@@ -17,7 +17,8 @@ fn testsuite_end() {
 
 fn test_conditional_executable_removal() {
 	os.chdir(test_path)!
-	os.execute_or_exit('${os.quoted_path(vexe)} init')
+	os.mkdir_all('src')!
+	os.write_file('src/main.v', 'fn main(){\n\tprintln("Hello World!")\n}\n')!
 
 	mut executable := 'run_check'
 	$if windows {

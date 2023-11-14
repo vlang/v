@@ -1976,11 +1976,12 @@ fn (mut f Fmt) write_generic_call_if_require(node ast.CallExpr) {
 }
 
 pub fn (mut f Fmt) call_args(args []ast.CallArg) {
-	f.single_line_fields = true
+	old_single_line_fields_state := f.single_line_fields
 	old_short_arg_state := f.use_short_fn_args
+	f.single_line_fields = true
 	f.use_short_fn_args = false
 	defer {
-		f.single_line_fields = false
+		f.single_line_fields = old_single_line_fields_state
 		f.use_short_fn_args = old_short_arg_state
 	}
 	for i, arg in args {
@@ -2066,16 +2067,19 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 		if node.method_name == 'html' {
 			f.write('\$vweb.html()')
 		} else {
-			f.write('\$tmpl(${node.args[0].expr})')
+			f.write('\$tmpl(')
+			f.expr(node.args[0].expr)
+			f.write(')')
 		}
 	} else {
 		match true {
 			node.is_embed {
-				if node.embed_file.compression_type == 'none' {
-					f.write('\$embed_file(${node.args[0].expr})')
-				} else {
-					f.write('\$embed_file(${node.args[0].expr}, .${node.embed_file.compression_type})')
+				f.write('\$embed_file(')
+				f.expr(node.args[0].expr)
+				if node.embed_file.compression_type != 'none' {
+					f.write(', .${node.embed_file.compression_type}')
 				}
+				f.write(')')
 			}
 			node.is_env {
 				f.write("\$env('${node.args_var}')")

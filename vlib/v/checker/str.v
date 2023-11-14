@@ -45,7 +45,7 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 	c.inside_casting_to_str = true
 	for i, mut expr in node.exprs {
 		mut ftyp := c.expr(mut expr)
-		if c.is_comptime_var(expr) {
+		if c.table.is_comptime_var(expr) {
 			ctyp := c.get_comptime_var_type(expr)
 			if ctyp != ast.void_type {
 				ftyp = ctyp
@@ -78,7 +78,8 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 					c.error('no known default format for type `${c.table.get_type_name(ftyp)}`',
 						node.fmt_poss[i])
 				}
-			} else if c.is_comptime_var(expr) && c.get_comptime_var_type(expr) != ast.void_type {
+			} else if c.table.is_comptime_var(expr)
+				&& c.get_comptime_var_type(expr) != ast.void_type {
 				// still `_` placeholder for comptime variable without specifier
 				node.need_fmts[i] = false
 			} else {

@@ -2,21 +2,15 @@ module main
 
 import markdown
 import os
-import os.cmdline
 import time
 import strings
 import sync
 import runtime
 import v.doc
 import v.vmod
+import v.util
 import json
 import term
-
-const (
-	allowed_formats = ['md', 'markdown', 'json', 'text', 'stdout', 'html', 'htm']
-	vexe            = os.getenv_opt('VEXE') or { @VEXE }
-	vroot           = os.dir(vexe)
-)
 
 enum OutputType {
 	unset
@@ -38,6 +32,8 @@ mut:
 	search_data         []SearchResult
 	search_module_index []string // search results are split into a module part and the rest
 	search_module_data  []SearchModuleResult
+	example_failures    int // how many times an example failed to compile or run with non 0 exit code; when positive, finish with exit code 1
+	example_oks         int // how many ok examples were found when `-run-examples` was passed, that compiled and finished with 0 exit code.
 }
 
 struct Config {
@@ -59,6 +55,7 @@ mut:
 	input_path       string
 	symbol_name      string
 	platform         doc.Platform
+	run_examples     bool // `-run-examples` will run all `// Example: assert mod.abc() == y` comments in the processed modules
 }
 
 //
@@ -87,7 +84,7 @@ fn (vd &VDoc) gen_json(d doc.Doc) string {
 	return jw.str()
 }
 
-fn (vd &VDoc) gen_plaintext(d doc.Doc) string {
+fn (mut vd VDoc) gen_plaintext(d doc.Doc) string {
 	cfg := vd.cfg
 	mut pw := strings.new_builder(200)
 	if cfg.is_color {
@@ -114,10 +111,25 @@ fn indent(s string) string {
 	return '    ' + s.replace('\n', '\n    ')
 }
 
-fn (vd &VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.Builder) {
+fn dn_to_location(cn doc.DocNode) string {
+	location := '${util.path_styled_for_error_messages(cn.file_path)}:${cn.pos.line_nr + 1:-4}'
+	if location.len > 24 {
+		return '${location:-38s} '
+	}
+	return '${location:-24s} '
+}
+
+fn write_location(cn doc.DocNode, mut pw strings.Builder) {
+	pw.write_string(dn_to_location(cn))
+}
+
+fn (mut vd VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.Builder) {
 	cfg := vd.cfg
 	for cn in contents {
 		if cn.content.len > 0 {
+			if cfg.show_loc {
+				write_location(cn, mut pw)
+			}
 			if cfg.is_color {
 				pw.writeln(color_highlight(cn.content, vd.docs[0].table))
 			} else {
@@ -143,15 +155,13 @@ fn (vd &VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.Bui
 					}
 				}
 			}
-			if cfg.show_loc {
-				pw.writeln('Location: ${cn.file_path}:${cn.pos.line_nr + 1}\n')
-			}
+			vd.run_examples(cn, mut pw)
 		}
 		vd.write_plaintext_content(cn.children, mut pw)
 	}
 }
 
-fn (vd &VDoc) render_doc(d doc.Doc, out Output) (string, string) {
+fn (mut vd VDoc) render_doc(d doc.Doc, out Output) (string, string) {
 	name := vd.get_file_name(d.head.name, out)
 	output := match out.typ {
 		.html { vd.gen_html(d) }
@@ -184,7 +194,7 @@ fn (vd &VDoc) get_file_name(mod string, out Output) string {
 	return name
 }
 
-fn (vd &VDoc) work_processor(mut work sync.Channel, mut wg sync.WaitGroup) {
+fn (mut vd VDoc) work_processor(mut work sync.Channel, mut wg sync.WaitGroup) {
 	for {
 		mut pdoc := ParallelDoc{}
 		if !work.pop(&pdoc) {
@@ -201,7 +211,7 @@ fn (vd &VDoc) work_processor(mut work sync.Channel, mut wg sync.WaitGroup) {
 	wg.done()
 }
 
-fn (vd &VDoc) render_parallel(out Output) {
+fn (mut vd VDoc) render_parallel(out Output) {
 	vjobs := runtime.nr_jobs()
 	mut work := sync.new_channel[ParallelDoc](u32(vd.docs.len))
 	mut wg := sync.new_waitgroup()
@@ -217,7 +227,7 @@ fn (vd &VDoc) render_parallel(out Output) {
 	wg.wait()
 }
 
-fn (vd &VDoc) render(out Output) map[string]string {
+fn (mut vd VDoc) render(out Output) map[string]string {
 	mut docs := map[string]string{}
 	for doc in vd.docs {
 		name, output := vd.render_doc(doc, out)
@@ -417,138 +427,4 @@ fn (vd &VDoc) vprintln(str string) {
 	if vd.cfg.is_verbose {
 		println('vdoc: ${str}')
 	}
-}
-
-fn parse_arguments(args []string) Config {
-	mut cfg := Config{}
-	cfg.is_color = term.can_show_color_on_stdout()
-	for i := 0; i < args.len; i++ {
-		arg := args[i]
-		current_args := args[i..]
-		match arg {
-			'-all' {
-				cfg.pub_only = false
-			}
-			'-f' {
-				format := cmdline.option(current_args, '-f', '')
-				if format !in allowed_formats {
-					allowed_str := allowed_formats.join(', ')
-					eprintln('vdoc: "${format}" is not a valid format. Only ${allowed_str} are allowed.')
-					exit(1)
-				}
-				cfg.output_type = set_output_type_from_str(format)
-				i++
-			}
-			'-color' {
-				cfg.is_color = true
-			}
-			'-no-color' {
-				cfg.is_color = false
-			}
-			'-inline-assets' {
-				cfg.inline_assets = true
-			}
-			'-theme-dir' {
-				cfg.theme_dir = cmdline.option(current_args, '-theme-dir', default_theme)
-			}
-			'-l' {
-				cfg.show_loc = true
-			}
-			'-comments' {
-				cfg.include_comments = true
-			}
-			'-m' {
-				cfg.is_multi = true
-			}
-			'-o' {
-				opath := cmdline.option(current_args, '-o', '')
-				cfg.output_path = if opath == 'stdout' { opath } else { os.real_path(opath) }
-				i++
-			}
-			'-os' {
-				platform_str := cmdline.option(current_args, '-os', '')
-				if platform_str == 'cross' {
-					eprintln('`v doc -os cross` is not supported yet.')
-					exit(1)
-				}
-				selected_platform := doc.platform_from_string(platform_str) or {
-					eprintln(err.msg())
-					exit(1)
-				}
-				cfg.platform = selected_platform
-				i++
-			}
-			'-no-timestamp' {
-				cfg.no_timestamp = true
-			}
-			'-no-examples' {
-				cfg.include_examples = false
-			}
-			'-readme' {
-				cfg.include_readme = true
-			}
-			'-v' {
-				cfg.is_verbose = true
-			}
-			else {
-				if cfg.input_path.len < 1 {
-					cfg.input_path = arg
-				} else if !cfg.is_multi {
-					// Symbol name filtering should not be enabled
-					// in multi-module documentation mode.
-					cfg.symbol_name = arg
-				}
-				if i == args.len - 1 {
-					break
-				}
-			}
-		}
-	}
-	// Correct from configuration from user input
-	if cfg.output_path == 'stdout' && cfg.output_type == .html {
-		cfg.inline_assets = true
-	}
-	$if windows {
-		cfg.input_path = cfg.input_path.replace('/', os.path_separator)
-	} $else {
-		cfg.input_path = cfg.input_path.replace('\\', os.path_separator)
-	}
-	is_path := cfg.input_path.ends_with('.v') || cfg.input_path.split(os.path_separator).len > 1
-		|| cfg.input_path == '.'
-	if cfg.input_path.trim_right('/') == 'vlib' {
-		cfg.is_vlib = true
-		cfg.is_multi = true
-		cfg.input_path = os.join_path(vroot, 'vlib')
-	} else if !is_path {
-		// TODO vd.vprintln('Input "$cfg.input_path" is not a valid path. Looking for modules named "$cfg.input_path"...')
-		mod_path := doc.lookup_module(cfg.input_path) or {
-			eprintln('vdoc: ${err}')
-			exit(1)
-		}
-		cfg.input_path = mod_path
-	}
-	return cfg
-}
-
-fn main() {
-	if os.args.len < 2 || '-h' in os.args || '-help' in os.args || '--help' in os.args
-		|| os.args[1..] == ['doc', 'help'] {
-		os.system('${os.quoted_path(vexe)} help doc')
-		exit(0)
-	}
-	args := os.args[2..].clone()
-	cfg := parse_arguments(args)
-	if cfg.input_path.len == 0 {
-		eprintln('vdoc: No input path found.')
-		exit(1)
-	}
-	// Config is immutable from this point on
-	mut vd := &VDoc{
-		cfg: cfg
-		manifest: vmod.Manifest{
-			repo_url: ''
-		}
-	}
-	vd.vprintln('Setting output type to "${cfg.output_type}"')
-	vd.generate_docs_from_file()
 }

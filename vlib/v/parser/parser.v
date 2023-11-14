@@ -1854,8 +1854,13 @@ fn (mut p Parser) attributes() {
 		p.error_with_pos('attributes cannot be empty', p.prev_tok.pos().extend(p.tok.pos()))
 		return
 	}
+	// TODO: remove when old attr syntax is removed
 	if p.inside_struct_attr_decl && p.tok.kind == .lsbr {
 		p.error_with_pos('multiple attributes should be in the same [], with ; separators',
+			p.prev_tok.pos().extend(p.tok.pos()))
+		return
+	} else if p.inside_struct_attr_decl && p.tok.kind == .at {
+		p.error_with_pos('multiple attributes should be in the same @[], with ; separators',
 			p.prev_tok.pos().extend(p.tok.pos()))
 		return
 	}
@@ -1867,13 +1872,14 @@ fn (mut p Parser) parse_attr(is_at bool) ast.Attr {
 	defer {
 		p.inside_attr_decl = false
 	}
-	apos := p.prev_tok.pos()
+	apos := if is_at { p.peek_token(-2).pos() } else { p.prev_tok.pos() }
 	if p.tok.kind == .key_unsafe {
 		p.next()
 		return ast.Attr{
 			name: 'unsafe'
 			kind: kind
 			pos: apos.extend(p.tok.pos())
+			has_at: is_at
 		}
 	}
 	mut name := ''
@@ -3699,7 +3705,6 @@ fn (mut p Parser) import_stmt() ast.Import {
 			syms_pos: initial_syms_pos
 			pos: import_node.pos.extend(initial_syms_pos)
 		}
-		p.register_used_import(mod_alias) // no `unused import` msg for parent
 	}
 	pos_t := p.tok.pos()
 	if import_pos.line_nr == pos_t.line_nr {

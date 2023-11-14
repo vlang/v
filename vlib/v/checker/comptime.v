@@ -287,6 +287,10 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			}
 			c.comptime_for_field_var = ''
 			c.inside_comptime_for_field = false
+		} else if c.table.generic_type_names(node.typ).len == 0 && sym.kind != .placeholder {
+			c.error('iterating over .fields is supported only for structs and interfaces, and ${sym.name} is neither',
+				node.typ_pos)
+			return
 		}
 	} else if node.kind == .values {
 		if sym.kind == .enum_ {
@@ -301,6 +305,10 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 				c.comptime_fields_type[node.val_var] = node.typ
 				c.stmts(mut node.stmts)
 			}
+		} else {
+			c.error('iterating over .values is supported only for enums, and ${sym.name} is not an enum',
+				node.typ_pos)
+			return
 		}
 	} else {
 		c.stmts(mut node.stmts)
