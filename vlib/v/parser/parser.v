@@ -2416,8 +2416,8 @@ fn (p &Parser) is_generic_call() bool {
 	}
 
 	if kind2 == .lsbr {
-		// case 1
-		return tok3.kind == .rsbr
+		// case 1 (array or fixed array type)
+		return tok3.kind == .rsbr || (tok4.kind == .rsbr && p.is_typename(tok5))
 	}
 
 	if kind2 == .name {
