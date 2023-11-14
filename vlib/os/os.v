@@ -582,8 +582,10 @@ pub fn join_path_single(base string, elem string) string {
 	defer {
 		unsafe { sbase.free() }
 	}
-	sb.write_string(sbase)
-	sb.write_string(path_separator)
+	if base != '' {
+		sb.write_string(sbase)
+		sb.write_string(path_separator)
+	}
 	sb.write_string(elem)
 	return sb.str()
 }
