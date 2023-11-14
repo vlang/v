@@ -695,6 +695,12 @@ pub struct MkdirParams {
 
 // mkdir_all will create a valid full path of all directories given in `path`.
 pub fn mkdir_all(opath string, params MkdirParams) ! {
+	if exists(opath) {
+		if is_dir(opath) {
+			return
+		}
+		return error('folder: ${opath}, error: File exists')
+	}
 	other_separator := if path_separator == '/' { '\\' } else { '/' }
 	path := opath.replace(other_separator, path_separator)
 	mut p := if path.starts_with(path_separator) { path_separator } else { '' }
