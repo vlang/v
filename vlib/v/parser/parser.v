@@ -2030,10 +2030,12 @@ fn (mut p Parser) error_with_pos(s string, pos token.Pos) ast.NodeError {
 		// To avoid getting stuck after an error, the parser
 		// will proceed to the next token.
 		if p.pref.check_only || p.pref.only_check_syntax {
-			p.next()
+			if p.tok.kind != .eof {
+				p.next()
+			}
 		}
 	}
-	if p.pref.output_mode == .silent {
+	if p.pref.output_mode == .silent && p.tok.kind != .eof {
 		// Normally, parser errors mean that the parser exits immediately, so there can be only 1 parser error.
 		// In the silent mode however, the parser continues to run, even though it would have stopped. Some
 		// of the parser logic does not expect that, and may loop forever.
