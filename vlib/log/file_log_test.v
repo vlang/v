@@ -3,6 +3,10 @@ import log
 import rand
 
 fn test_reopen() {
+	if os.user_os() == 'windows' && os.getenv('SKIP_TEST_REOPEN') == '' {
+		eprintln('skip renaming and reopening a log file on windows')
+		exit(0)
+	}
 	lfolder := os.join_path(os.vtmp_dir(), rand.ulid())
 	lpath1 := os.join_path(lfolder, 'current.log')
 	lpath2 := os.join_path(lfolder, 'current.log.2')
@@ -14,7 +18,7 @@ fn test_reopen() {
 	l.warn('one warning')
 	l.error('one error')
 	// simulate a log rotation, by moving the log file
-	os.mv(lpath1, lpath2)!
+	os.rename(lpath1, lpath2)!
 	l.warn('another warning')
 	// call reopen, note that the message from above, should be in the new file lpath2:
 	l.reopen()!
