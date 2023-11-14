@@ -131,8 +131,11 @@ pub fn (mut d Doc) stmt_signature(stmt ast.Stmt) string {
 // stmt_name returns the name of a given `ast.Stmt` node.
 pub fn (d Doc) stmt_name(stmt ast.Stmt) string {
 	match stmt {
-		ast.FnDecl, ast.StructDecl, ast.EnumDecl, ast.InterfaceDecl {
+		ast.StructDecl, ast.EnumDecl, ast.InterfaceDecl {
 			return stmt.name
+		}
+		ast.FnDecl {
+			return stmt.get_name()
 		}
 		ast.TypeDecl {
 			match stmt {
