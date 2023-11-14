@@ -3,9 +3,9 @@ module main
 import os
 
 fn (mut c Create) set_bin_project_files() {
-	main_path := os.join_path('src', 'main.v')
+	base := if c.new_dir { c.name } else { '' }
 	c.files << ProjectFiles{
-		path: if c.new_dir { os.join_path(c.name, main_path) } else { main_path }
+		path: os.join_path(base, 'src', 'main.v')
 		content: "module main
 
 fn main() {

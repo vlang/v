@@ -3,18 +3,11 @@
 module main
 
 import os
+import cli { Command, Flag }
 
-// Note: this program follows a similar convention to Rust: `init` makes the
-// structure of the program in the _current_ directory, while `new`
-// makes the program structure in a _sub_ directory. Besides that, the
-// functionality is essentially the same.
-
-// Note: here are the currently supported invocations so far:
-// - `v init` -> initialize a new project in the current folder
-// - `v new` -> create a new project in the directory specified during setup, using the "bin" template by default.
-// - `v new my_bin_project bin` -> create a new project directory `my_bin_project`, using the bin template.
-// - `v new my_lib_project lib` -> create a new project directory `my_lib_project`, using the lib template.
-// - `v new my_web_project web` -> create a new project directory `my_web_project`, using the vweb template.
+// Note: this program follows a similar convention as Rust cargo:
+// `init` creates the structure of project in the current directory,
+// `new` creates the structure of a project in a sub directory.
 
 struct Create {
 mut:
@@ -24,6 +17,7 @@ mut:
 	license     string
 	files       []ProjectFiles
 	new_dir     bool
+	template    Template
 }
 
 struct ProjectFiles {
@@ -31,89 +25,126 @@ struct ProjectFiles {
 	content string
 }
 
-fn main() {
-	cmd := os.args[1]
-	match cmd {
-		'new' {
-			// list of models allowed
-			project_models := ['bin', 'lib', 'web']
-			if os.args.len == 4 {
-				// validation
-				if os.args.last() !in project_models {
-					mut error_str := 'It is not possible create a "${os.args[os.args.len - 2]}" project.\n'
-					error_str += 'See the list of allowed projects:\n'
-					for model in project_models {
-						error_str += 'v new ${os.args[os.args.len - 2]} ${model}\n'
-					}
-					eprintln(error_str)
-					exit(1)
-				}
-			}
-			new_project(os.args[2..])
-		}
-		'init' {
-			init_project(os.args[2..])
-		}
-		else {
-			cerror('unknown command: ${cmd}')
-			exit(1)
-		}
-	}
-	println('Complete!')
+enum Template {
+	@none
+	bin
+	lib
+	web
 }
 
-fn new_project(args []string) {
-	mut c := Create{}
-	c.new_dir = true
-	c.prompt(args)
-
-	println('Initialising ...')
-	if args.len == 2 {
-		// E.g.: `v new my_project lib`
-		match os.args.last() {
-			'bin' {
-				c.set_bin_project_files()
-			}
-			'lib' {
-				c.set_lib_project_files()
-			}
-			'web' {
-				c.set_web_project_files()
-			}
-			else {
-				eprintln('${os.args.last()} model not exist')
-				exit(1)
-			}
-		}
-	} else {
-		// E.g.: `v new my_project`
-		c.set_bin_project_files()
+fn main() {
+	flags := [
+		Flag{
+			flag: .bool
+			name: 'bin'
+			description: 'Use the template for an executable application [default].'
+		},
+		Flag{
+			flag: .bool
+			name: 'lib'
+			description: 'Use the template for a library project.'
+		},
+		Flag{
+			flag: .bool
+			name: 'web'
+			description: 'Use the template for a vweb project.'
+		},
+	]
+	mut cmd := Command{
+		flags: [
+			Flag{
+				flag: .bool
+				name: 'help'
+				description: 'Print help information.'
+				global: true
+			},
+		]
+		posix_mode: true
+		commands: [
+			Command{
+				name: 'new'
+				usage: '<project_name>'
+				description: [
+					'Creates a new V project in a directory with the specified project name.',
+					'',
+					'A setup prompt is started to create a `v.mod` file with the projects metadata.',
+					'The <project_name> argument can be omitted and entered in the prompts dialog.',
+					'If git is installed, `git init` will be performed during the setup.',
+				].join_lines()
+				parent: &Command{
+					name: 'v'
+				}
+				posix_mode: true
+				disable_man: true
+				flags: flags
+				pre_execute: validate
+				execute: new_project
+			},
+			Command{
+				name: 'init'
+				description: [
+					'Sets up a V project within the current directory.',
+					'',
+					"If no `v.mod` exists, a setup prompt is started to create one with the project's metadata.",
+					'If no `.v` file exists, a project template is generated. If the current directory is not a',
+					'git project and git is installed, `git init` will be performed during the setup.',
+				].join_lines()
+				parent: &Command{
+					name: 'v'
+				}
+				posix_mode: true
+				disable_man: true
+				flags: flags
+				pre_execute: validate
+				execute: init_project
+			},
+		]
 	}
+	cmd.parse(os.args)
+}
 
-	// gen project based in the `Create.files` info
+fn validate(cmd Command) ! {
+	if cmd.flags.get_bool('help')! {
+		cmd.execute_help()
+		exit(0)
+	}
+	if cmd.args.len > 1 {
+		eprintln('error: too many arguments.\n')
+		cmd.execute_help()
+		exit(2)
+	}
+}
+
+fn new_project(cmd Command) ! {
+	mut c := Create{
+		template: get_template(cmd)
+		new_dir: true
+	}
+	c.prompt(cmd.args)
+	println('Initialising ...')
+	// Generate project files based on `Create.files`.
 	c.create_files_and_directories()
-
 	c.write_vmod()
 	c.write_gitattributes()
 	c.write_editorconfig()
 	c.create_git_repo(c.name)
 }
 
-fn init_project(args []string) {
-	mut c := Create{}
+fn init_project(cmd Command) ! {
+	mut c := Create{
+		template: get_template(cmd)
+	}
 	dir_name := check_name(os.file_name(os.getwd()))
 	if !os.exists('v.mod') {
 		mod_dir_has_hyphens := dir_name.contains('-')
 		c.name = if mod_dir_has_hyphens { dir_name.replace('-', '_') } else { dir_name }
-		c.prompt(args)
+		c.prompt(cmd.args)
 		c.write_vmod()
 		if mod_dir_has_hyphens {
 			println('The directory name `${dir_name}` is invalid as a module name. The module name in `v.mod` was set to `${c.name}`')
 		}
 	}
-	if !os.exists('src/main.v') {
-		c.set_bin_project_files()
-	}
+	println('Initialising ...')
 	c.create_files_and_directories()
 	c.write_gitattributes()
 	c.write_editorconfig()
@@ -146,6 +177,22 @@ fn (mut c Create) prompt(args []string) {
 	c.license = os.input('Input your project license: (${default_license}) ')
 	if c.license == '' {
 		c.license = default_license
+	}
+}
+
+fn get_template(cmd Command) Template {
+	bin := cmd.flags.get_bool('bin') or { false }
+	lib := cmd.flags.get_bool('lib') or { false }
+	web := cmd.flags.get_bool('web') or { false }
+	if (bin && lib) || (bin && web) || (lib && web) {
+		eprintln("error: can't use more then one template")
+		exit(2)
+	}
+	return match true {
+		bin { .bin }
+		lib { .lib }
+		web { .web }
+		else { .@none }
 	}
 }
 
@@ -262,8 +309,22 @@ bin/
 }
 
 fn (mut c Create) create_files_and_directories() {
+	// Set project template files for `v new` or when no `.v` files exists during `v init`.
+	if c.new_dir || os.walk_ext(os.file_name(os.getwd()), '.v').len == 0 {
+		match c.template {
+			.@none, .bin { c.set_bin_project_files() }
+			.lib { c.set_lib_project_files() }
+			.web { c.set_web_project_files() }
+		}
+	}
 	for file in c.files {
 		os.mkdir_all(os.dir(file.path)) or { panic(err) }
 		os.write_file(file.path, file.content) or { panic(err) }
 	}
+	kind := match c.template {
+		.@none, .bin { 'binary (application)' }
+		.lib { 'library' }
+		.web { 'web' }
+	}
+	println('Created ${kind} project `${c.name}`')
 }

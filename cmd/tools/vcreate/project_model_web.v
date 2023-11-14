@@ -3,8 +3,9 @@ module main
 import os { join_path }
 
 fn (mut c Create) set_web_project_files() {
+	base := if c.new_dir { c.name } else { '' }
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'databases', 'config_databases_sqlite.v')
+		path: join_path(base, 'src', 'databases', 'config_databases_sqlite.v')
 		content: "module databases
 
 import db.sqlite // can change to 'db.mysql', 'db.pg'
@@ -16,7 +17,7 @@ pub fn create_db_connection() !sqlite.DB {
 "
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'templates', 'header_component.html')
+		path: join_path(base, 'src', 'templates', 'header_component.html')
 		content: "<nav>
 	<div class='nav-wrapper'>
 		<a href='javascript:window.history.back();' class='left'>
@@ -35,7 +36,7 @@ pub fn create_db_connection() !sqlite.DB {
 "
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'templates', 'products.css')
+		path: join_path(base, 'src', 'templates', 'products.css')
 		content: 'h1.title {
 	font-family: Arial, Helvetica, sans-serif;
 	color: #3b7bbf;
@@ -49,7 +50,7 @@ div.products-table {
 }'
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'templates', 'products.html')
+		path: join_path(base, 'src', 'templates', 'products.html')
 		content: "<!DOCTYPE html>
 <html>
 <head>
@@ -146,7 +147,7 @@ div.products-table {
 </html>"
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'auth_controllers.v')
+		path: join_path(base, 'src', 'auth_controllers.v')
 		content: "module main
 
 import vweb
@@ -163,7 +164,7 @@ pub fn (mut app App) controller_auth(username string, password string) vweb.Resu
 "
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'auth_dto.v')
+		path: join_path(base, 'src', 'auth_dto.v')
 		content: 'module main
 
 struct AuthRequestDto {
@@ -173,7 +174,7 @@ struct AuthRequestDto {
 '
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'auth_services.v')
+		path: join_path(base, 'src', 'auth_services.v')
 		content: "module main
 
 import crypto.hmac
@@ -268,7 +269,7 @@ fn auth_verify(token string) bool {
 "
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'index.html')
+		path: join_path(base, 'src', 'index.html')
 		content: "<!DOCTYPE html>
 <html>
 <head>
@@ -347,7 +348,7 @@ fn auth_verify(token string) bool {
 "
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'main.v')
+		path: join_path(base, 'src', 'main.v')
 		content: "module main
 
 import vweb
@@ -392,7 +393,7 @@ pub fn (mut app App) index() vweb.Result {
 "
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'product_controller.v')
+		path: join_path(base, 'src', 'product_controller.v')
 		content: "module main
 
 import vweb
@@ -458,7 +459,7 @@ pub fn (mut app App) controller_create_product(product_name string) vweb.Result 
 "
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'product_entities.v')
+		path: join_path(base, 'src', 'product_entities.v')
 		content: "module main
 
 @[table: 'products']
@@ -471,7 +472,7 @@ struct Product {
 "
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'product_service.v')
+		path: join_path(base, 'src', 'product_service.v')
 		content: "module main
 
 import databases
@@ -518,7 +519,7 @@ fn (mut app App) service_get_all_products_from(user_id int) ![]Product {
 "
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'product_view_api.v')
+		path: join_path(base, 'src', 'product_view_api.v')
 		content: "module main
 
 import json
@@ -557,7 +558,7 @@ pub fn get_product(token string) ![]User {
 "
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'product_view.v')
+		path: join_path(base, 'src', 'product_view.v')
 		content: "module main
 
 import vweb
@@ -579,7 +580,7 @@ pub fn (mut app App) products() !vweb.Result {
 "
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'user_controllers.v')
+		path: join_path(base, 'src', 'user_controllers.v')
 		content: "module main
 
 import vweb
@@ -649,7 +650,7 @@ pub fn (mut app App) controller_create_user(username string, password string) vw
 "
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'user_entities.v')
+		path: join_path(base, 'src', 'user_entities.v')
 		content: "module main
 
 @[table: 'users']
@@ -664,7 +665,7 @@ mut:
 "
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'user_services.v')
+		path: join_path(base, 'src', 'user_services.v')
 		content: "module main
 
 import crypto.bcrypt
@@ -733,7 +734,7 @@ fn (mut app App) service_get_user(id int) !User {
 "
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'user_view_api.v')
+		path: join_path(base, 'src', 'user_view_api.v')
 		content: "module main
 
 import json
