@@ -384,7 +384,11 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		sym := p.table.sym(rec.typ)
 		if sym.info is ast.Struct {
 			fn_generic_names := generic_names.clone()
-			generic_names = sym.info.generic_types.map(p.table.sym(it).name)
+			generic_names = p.types_to_names(sym.info.generic_types, p.tok.pos(), 'sym.info.generic_types') or {
+				return ast.FnDecl{
+					scope: 0
+				}
+			}
 			for gname in fn_generic_names {
 				if gname !in generic_names {
 					generic_names << gname
