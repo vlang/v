@@ -537,7 +537,8 @@ pub fn is_file(path string) bool {
 	return exists(path) && !is_dir(path)
 }
 
-// join_path returns a path as string from input string parameter(s).
+// join_path joins any number of path elements into a single path, separating
+// them with a platform-specific path_separator. Empty elements are ignored.
 [manualfree]
 pub fn join_path(base string, dirs ...string) string {
 	// TODO: fix freeing of `dirs` when the passed arguments are variadic,
@@ -568,8 +569,8 @@ pub fn join_path(base string, dirs ...string) string {
 	return res
 }
 
-// join_path_single appends the `elem` after `base`, using a platform specific
-// path_separator.
+// join_path_single appends the `elem` after `base`, separated with a
+// platform-specific path_separator. Empty elements are ignored.
 [manualfree]
 pub fn join_path_single(base string, elem string) string {
 	// TODO: deprecate this and make it `return os.join_path(base, elem)`,
