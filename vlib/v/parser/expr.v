@@ -852,6 +852,7 @@ fn (mut p Parser) lambda_expr() ?ast.LambdaExpr {
 	defer {
 		p.close_scope()
 	}
+	p.scope.detached_from_parent = true
 
 	mut pos := p.tok.pos()
 	mut params := []ast.Ident{}
