@@ -32,11 +32,11 @@ interface Bar {
 
 interface TestsRunner {
 mut:
-	fn_passes u64
-	fn_fails u64
+	fn_passes     u64
+	fn_fails      u64
 	assert_passes u64
-	assert_fails u64
-	test_fn_info &TestFnMetaInfo // filled in by generated code, before .fn_start() is called.
+	assert_fails  u64
+	test_fn_info  &TestFnMetaInfo // filled in by generated code, before .fn_start() is called.
 	start(ntests int) // called before all tests, you can initialise private data here. ntests is the number of test functions in the _test.v file.
 	finish() // called after all tests are finished, you should free all the private data here.
 	//
