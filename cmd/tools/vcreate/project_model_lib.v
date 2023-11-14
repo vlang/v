@@ -1,8 +1,10 @@
 module main
 
+import os
+
 fn (mut c Create) set_lib_project_files() {
 	c.files << ProjectFiles{
-		path: '${c.name}/src/${c.name}.v'
+		path: os.join_path(c.name, 'src', c.name + '.v')
 		content: 'module ${c.name}
 
 // square calculates the second power of `x`
@@ -12,7 +14,7 @@ pub fn square(x int) int {
 '
 	}
 	c.files << ProjectFiles{
-		path: '${c.name}/tests/square_test.v'
+		path: os.join_path(c.name, 'tests', 'square_test.v')
 		content: 'import ${c.name}
 
 fn test_square() {
