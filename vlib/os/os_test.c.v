@@ -609,11 +609,17 @@ fn test_file_ext() {
 }
 
 fn test_join() {
+	base_var := ''
+	dir_var := ''
 	$if windows {
 		assert os.join_path('v', 'vlib', 'os') == 'v\\vlib\\os'
+		assert os.join_path(base_var, 'f1', 'f2') == 'f1\\f2'
+		assert os.join_path('v', dir_var, 'dir') == 'v\\dir'
 	} $else {
 		assert os.join_path('v', 'vlib', 'os') == 'v/vlib/os'
 		assert os.join_path('/foo/bar', './file.txt') == '/foo/bar/file.txt'
+		assert os.join_path(base_var, 'f1', 'f2') == 'f1/f2'
+		assert os.join_path('v', dir_var, 'dir') == 'v/dir'
 	}
 }
 

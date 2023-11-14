@@ -552,10 +552,15 @@ pub fn join_path(base string, dirs ...string) string {
 	}
 	sb.write_string(sbase)
 	for d in dirs {
-		sb.write_string(path_separator)
-		sb.write_string(d)
+		if d != '' {
+			sb.write_string(path_separator)
+			sb.write_string(d)
+		}
 	}
 	mut res := sb.str()
+	if sbase == '' {
+		res = res.trim_left(path_separator)
+	}
 	if res.contains('/./') {
 		// Fix `join_path("/foo/bar", "./file.txt")` => `/foo/bar/./file.txt`
 		res = res.replace('/./', '/')
