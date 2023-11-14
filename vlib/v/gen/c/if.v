@@ -379,7 +379,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 					}
 				}
 				if !g.inside_casting_to_str && branch.cond is ast.Ident
-					&& g.is_interface_var(branch.cond.obj) {
+					&& g.table.is_interface_var(branch.cond.obj) {
 					inside_casting_to_str_old := g.inside_casting_to_str
 					g.inside_casting_to_str = true
 					defer {
