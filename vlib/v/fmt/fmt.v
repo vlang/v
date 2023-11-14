@@ -1351,9 +1351,22 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 		}
 	}
 
+	mut field_aligns := []AlignInfo{}
+	mut comment_aligns := []AlignInfo{}
+	mut default_expr_aligns := []AlignInfo{}
+	mut field_types := []string{cap: node.fields.len}
+
+	// Calculate the alignments first
+	f.calculate_alignment(node.fields, mut field_aligns, mut comment_aligns, mut default_expr_aligns, mut
+		field_types)
+
+	mut field_align_i := 0
 	// TODO: alignment, comments, etc.
 	for field in immut_fields {
-		f.interface_field(field)
+		if field_aligns[field_align_i].line_nr < field.pos.line_nr {
+			field_align_i++
+		}
+		f.interface_field(field, field_aligns[field_align_i])
 	}
 	for method in immut_methods {
 		f.interface_method(method)
@@ -1361,7 +1374,10 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 	if mut_fields.len + mut_methods.len > 0 {
 		f.writeln('mut:')
 		for field in mut_fields {
-			f.interface_field(field)
+			if field_aligns[field_align_i].line_nr < field.pos.line_nr {
+				field_align_i++
+			}
+			f.interface_field(field, field_aligns[field_align_i])
 		}
 		for method in mut_methods {
 			f.interface_method(method)
@@ -1370,24 +1386,59 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 	f.writeln('}\n')
 }
 
-pub fn (mut f Fmt) interface_field(field ast.StructField) {
+pub fn (mut f Fmt) calculate_alignment(fields []ast.StructField, mut field_aligns []AlignInfo, mut comment_aligns []AlignInfo, mut default_expr_aligns []AlignInfo, mut field_types []string) {
+	// Calculate the alignments first
+	for i, field in fields {
+		ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
+		// Handle anon structs recursively
+		field_types << ft
+		attrs_len := inline_attrs_len(field.attrs)
+		end_pos := field.pos.pos + field.pos.len
+		for comment in field.comments {
+			if comment.pos.pos >= end_pos {
+				if comment.pos.line_nr == field.pos.line_nr {
+					comment_aligns.add_info(attrs_len, field_types[i].len, comment.pos.line_nr,
+						use_threshold: true
+					)
+				}
+				continue
+			}
+		}
+		field_aligns.add_info(field.name.len, ft.len, field.pos.line_nr)
+		if field.has_default_expr {
+			default_expr_aligns.add_info(attrs_len, field_types[i].len, field.pos.line_nr,
+				use_threshold: true
+			)
+		}
+	}
+}
+
+pub fn (mut f Fmt) interface_field(field ast.StructField, field_align AlignInfo) {
 	ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
 	before_comments := field.comments.filter(it.pos.pos < field.pos.pos)
 	end_comments := field.comments.filter(it.pos.pos > field.pos.pos)
+	before_len := f.line_len
 	if before_comments.len > 0 {
 		f.comments(before_comments, level: .indent)
 	}
+	comments_len := f.line_len - before_len
+
 	sym := f.table.sym(field.typ)
 	if sym.info is ast.Struct {
 		if sym.info.is_anon {
 			f.write('\t${field.name} ')
 			f.write_anon_struct_field_decl(field.typ, ast.StructDecl{ fields: sym.info.fields })
 		} else {
-			f.write('\t${field.name} ${ft}')
+			f.write('\t${field.name} ')
 		}
 	} else {
-		f.write('\t${field.name} ${ft}')
+		f.write('\t${field.name} ')
 	}
+	if !(sym.info is ast.Struct && sym.info.is_anon) {
+		f.write(strings.repeat(` `, field_align.max_len - field.name.len - comments_len))
+		f.write(ft)
+	}
+
 	if end_comments.len > 0 {
 		f.comments(end_comments, level: .indent)
 	} else {
