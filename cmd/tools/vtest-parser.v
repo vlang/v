@@ -35,7 +35,6 @@ mut:
 	max_index  int      // the maximum index (equivalent to the file content length)
 	// parser context in the worker processes:
 	table      ast.Table
-	scope      ast.Scope
 	pref       &pref.Preferences = unsafe { nil }
 	period_ms  int  // print periodic progress
 	stop_print bool // stop printing the periodic progress
@@ -49,9 +48,6 @@ fn main() {
 		// A worker's process job is to try to parse a single given file in context.path.
 		// It can crash/panic freely.
 		context.table = ast.new_table()
-		context.scope = &ast.Scope{
-			parent: 0
-		}
 		context.pref = &pref.Preferences{
 			output_mode: .silent
 		}
