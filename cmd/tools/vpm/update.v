@@ -72,7 +72,7 @@ fn update_module(mut pp pool.PoolProcessor, idx int, wid int) &UpdateResult {
 	vpm_log(@FILE_LINE, @FN, 'cmd output: ${res.output.trim_space()}')
 	// Don't bail if the download count increment has failed.
 	increment_module_download_count(name) or { vpm_error(err.msg(), verbose: true) }
-	ctx := UpdateSession{pp.get_shared_context()}
+	ctx := unsafe { &UpdateSession(pp.get_shared_context()) }
 	resolve_dependencies(get_manifest(install_path), ctx.idents)
 	return result
 }
