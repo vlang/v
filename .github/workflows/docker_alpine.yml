@@ -1,0 +1,57 @@
+name: Docker Alpine MUSL CI
+
+on:
+  push:
+    paths-ignore:
+      - "**.md"
+      - "**.yml"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+      - "**.yml"
+
+concurrency:
+  group: docker-alpine-musl-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  alpine-docker-musl-gcc:
+    runs-on: ubuntu-20.04
+    if: >
+      github.event_name != 'push'
+      || github.event.ref == 'refs/heads/master'
+      || github.event.repository.full_name != 'vlang/v'
+    timeout-minutes: 241
+    container:
+      image: thevlang/vlang:alpine-build
+      env:
+        V_CI_MUSL: 1
+        VFLAGS: -cc gcc
+      volumes:
+        - ${{github.workspace}}:/opt/vlang
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Show Environment
+        run: |
+          echo "PWD:"
+          pwd
+          echo "ENVIRONMENT:"
+          env
+          echo "C Compiler:"
+          gcc --version
+
+      - name: Add dependencies
+        run: |
+          apk add libc6-compat
+
+      - name: Build V
+        run: CC=gcc make
+
+      - name: All code is formatted
+        run: VJOBS=1 ./v test-cleancode
+
+      - name: Run only essential tests
+        run: VTEST_JUST_ESSENTIAL=1 ./v test-self
