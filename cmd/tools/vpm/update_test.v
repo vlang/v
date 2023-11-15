@@ -36,6 +36,9 @@ fn test_update_idents() {
 	res = os.execute_or_exit('${v} update nedpals.args vtray')
 	assert res.output.contains('Updating module `vtray`'), res.output
 	assert res.output.contains('Updating module `nedpals.args`'), res.output
+	// Update installed module using its url.
+	res = os.execute('${v} update https://github.com/spytheman/vtray')
+	assert res.output.contains('Updating module `vtray`'), res.output
 	// Try update not installed.
 	res = os.execute('${v} update vsl')
 	assert res.exit_code == 1

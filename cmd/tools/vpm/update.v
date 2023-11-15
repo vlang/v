@@ -10,7 +10,7 @@ struct UpdateSession {
 
 pub struct UpdateResult {
 mut:
-	has_err bool
+	success bool
 }
 
 fn vpm_update(query []string) {
@@ -22,17 +22,13 @@ fn vpm_update(query []string) {
 	} else {
 		query.clone()
 	}
-	if settings.is_verbose {
-		vpm_update_verbose(idents)
-		return
-	}
 	mut pp := pool.new_pool_processor(callback: update_module)
 	ctx := UpdateSession{idents}
 	pp.set_shared_context(ctx)
 	pp.work_on_items(idents)
 	mut errors := 0
 	for res in pp.get_results[UpdateResult]() {
-		if res.has_err {
+		if !res.success {
 			errors++
 			continue
 		}
@@ -43,69 +39,38 @@ fn vpm_update(query []string) {
 }
 
 fn update_module(mut pp pool.PoolProcessor, idx int, wid int) &UpdateResult {
-	mut result := &UpdateResult{}
 	ident := pp.get_item[string](idx)
+	// Usually, the module `ident`ifier. `get_name_from_url` is only relevant for `v update <module_url>`.
 	name := get_name_from_url(ident) or { ident }
 	install_path := get_path_of_existing_module(ident) or {
 		vpm_error('failed to find path for `${name}`.', verbose: true)
-		result.has_err = true
-		return result
+		return &UpdateResult{}
 	}
-	println('Updating module `${name}` in `${fmt_mod_path(install_path)}` ...')
 	vcs := vcs_used_in_dir(install_path) or {
 		vpm_error('failed to find version control system for `${name}`.', verbose: true)
-		result.has_err = true
-		return result
+		return &UpdateResult{}
 	}
 	vcs.is_executable() or {
-		result.has_err = true
 		vpm_error(err.msg())
-		return result
+		return &UpdateResult{}
 	}
 	cmd := '${vcs.cmd} ${vcs.args.path} "${install_path}" ${vcs.args.update}'
 	vpm_log(@FILE_LINE, @FN, 'cmd: ${cmd}')
+	println('Updating module `${name}` in `${fmt_mod_path(install_path)}`...')
 	res := os.execute_opt(cmd) or {
-		result.has_err = true
 		vpm_error('failed to update module `${name}` in `${install_path}`.', details: err.msg())
-		return result
+		return &UpdateResult{}
 	}
 	vpm_log(@FILE_LINE, @FN, 'cmd output: ${res.output.trim_space()}')
+	if res.output.contains('Already up to date.') {
+		println('Skipped module `${ident}`. Already up to date.')
+	} else {
+		println('Updated module `${ident}`.')
+	}
 	// Don't bail if the download count increment has failed.
 	increment_module_download_count(name) or { vpm_error(err.msg(), verbose: true) }
 	ctx := unsafe { &UpdateSession(pp.get_shared_context()) }
+	vpm_log(@FILE_LINE, @FN, 'ident: ${ident}; ctx: ${ctx}')
 	resolve_dependencies(get_manifest(install_path), ctx.idents)
-	return result
-}
-
-fn vpm_update_verbose(idents []string) {
-	mut errors := 0
-	for mod in idents {
-		name := get_name_from_url(mod) or { mod }
-		install_path := get_path_of_existing_module(mod) or { continue }
-		println('Updating module `${name}` in `${fmt_mod_path(install_path)}` ...')
-		vcs := vcs_used_in_dir(install_path) or { continue }
-		vcs.is_executable() or {
-			errors++
-			vpm_error(err.msg())
-			continue
-		}
-		cmd := '${vcs.cmd} ${vcs.args.path} "${install_path}" ${vcs.args.update}'
-		vpm_log(@FILE_LINE, @FN, 'cmd: ${cmd}')
-		res := os.execute_opt(cmd) or {
-			errors++
-			vpm_error('failed to update module `${name}` in `${install_path}`.',
-				details: err.msg()
-			)
-			continue
-		}
-		vpm_log(@FILE_LINE, @FN, 'cmd: ${res.output.trim_space()}')
-		increment_module_download_count(name) or {
-			errors++
-			vpm_error(err.msg(), verbose: true)
-		}
-		resolve_dependencies(get_manifest(install_path), idents)
-	}
-	if errors > 0 {
-		exit(1)
-	}
+	return &UpdateResult{true}
 }
