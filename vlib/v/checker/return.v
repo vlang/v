@@ -34,6 +34,10 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 		}
 	}
 	expected_type_sym := c.table.sym(expected_type)
+	if expected_type_sym.info is ast.ArrayFixed {
+		c.table.find_or_register_array_fixed(expected_type_sym.info.elem_type, expected_type_sym.info.size,
+			expected_type_sym.info.size_expr, true)
+	}
 	if node.exprs.len > 0 && c.table.cur_fn.return_type == ast.void_type {
 		c.error('unexpected argument, current function does not return anything', node.exprs[0].pos())
 		return
