@@ -105,8 +105,8 @@ fn parse_query(query []string) ([]Module, []Module) {
 }
 
 fn has_vmod(url string, install_path string) bool {
-	if os.exists((os.join_path(install_path, 'v.mod'))) {
-		// Safe time fetchting the repo when the module is already installed and has a `v.mod`.
+	if install_path != '' && os.exists((os.join_path(install_path, 'v.mod'))) {
+		// Skip fetching the repo when the module is already installed and has a `v.mod`.
 		return true
 	}
 	head_branch := os.execute_opt('git ls-remote --symref ${url} HEAD') or {
