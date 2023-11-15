@@ -537,7 +537,8 @@ pub fn is_file(path string) bool {
 	return exists(path) && !is_dir(path)
 }
 
-// join_path returns a path as string from input string parameter(s).
+// join_path joins any number of path elements into a single path, separating
+// them with a platform-specific path_separator. Empty elements are ignored.
 @[manualfree]
 pub fn join_path(base string, dirs ...string) string {
 	// TODO: fix freeing of `dirs` when the passed arguments are variadic,
@@ -552,10 +553,15 @@ pub fn join_path(base string, dirs ...string) string {
 	}
 	sb.write_string(sbase)
 	for d in dirs {
-		sb.write_string(path_separator)
-		sb.write_string(d)
+		if d != '' {
+			sb.write_string(path_separator)
+			sb.write_string(d)
+		}
 	}
 	mut res := sb.str()
+	if sbase == '' {
+		res = res.trim_left(path_separator)
+	}
 	if res.contains('/./') {
 		// Fix `join_path("/foo/bar", "./file.txt")` => `/foo/bar/./file.txt`
 		res = res.replace('/./', '/')
@@ -563,8 +569,8 @@ pub fn join_path(base string, dirs ...string) string {
 	return res
 }
 
-// join_path_single appends the `elem` after `base`, using a platform specific
-// path_separator.
+// join_path_single appends the `elem` after `base`, separated with a
+// platform-specific path_separator. Empty elements are ignored.
 @[manualfree]
 pub fn join_path_single(base string, elem string) string {
 	// TODO: deprecate this and make it `return os.join_path(base, elem)`,
@@ -577,8 +583,10 @@ pub fn join_path_single(base string, elem string) string {
 	defer {
 		unsafe { sbase.free() }
 	}
-	sb.write_string(sbase)
-	sb.write_string(path_separator)
+	if base != '' {
+		sb.write_string(sbase)
+		sb.write_string(path_separator)
+	}
 	sb.write_string(elem)
 	return sb.str()
 }

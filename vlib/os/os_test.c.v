@@ -611,9 +611,13 @@ fn test_file_ext() {
 fn test_join() {
 	$if windows {
 		assert os.join_path('v', 'vlib', 'os') == 'v\\vlib\\os'
+		assert os.join_path('', 'f1', 'f2') == 'f1\\f2'
+		assert os.join_path('v', '', 'dir') == 'v\\dir'
 	} $else {
 		assert os.join_path('v', 'vlib', 'os') == 'v/vlib/os'
 		assert os.join_path('/foo/bar', './file.txt') == '/foo/bar/file.txt'
+		assert os.join_path('', 'f1', 'f2') == 'f1/f2'
+		assert os.join_path('v', '', 'dir') == 'v/dir'
 	}
 }
 
