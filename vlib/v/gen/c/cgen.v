@@ -4896,7 +4896,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	}
 
 	// got to do a correct check for multireturn
-	sym := g.table.sym(g.fn_decl.return_type)
+	sym := g.table.sym(g.unwrap_generic(g.fn_decl.return_type))
 	mut fn_ret_type := g.fn_decl.return_type
 	if sym.kind == .alias {
 		unaliased_type := g.table.unaliased_type(fn_ret_type)
