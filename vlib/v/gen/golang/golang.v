@@ -660,7 +660,10 @@ pub fn (mut f Gen) expr(node_ ast.Expr) {
 		}
 		ast.ComptimeType {
 			match node.kind {
+				.unknown { f.write('\$unknown') }
 				.array { f.write('\$array') }
+				.array_dynamic { f.write('\$array_dynamic') }
+				.array_fixed { f.write('\$array_fixed') }
 				.struct_ { f.write('\$struct') }
 				.iface { f.write('\$interface') }
 				.map_ { f.write('\$map') }

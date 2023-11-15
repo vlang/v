@@ -11,57 +11,66 @@ import v.token
 const (
 	supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig', 'compile_error',
 		'compile_warn', 'res']
-	comptime_types           = ['map', 'array', 'int', 'float', 'struct', 'interface', 'enum',
-		'sumtype', 'alias', 'function', 'option']
+	comptime_types           = ['map', 'array', 'array_dynamic', 'array_fixed', 'int', 'float',
+		'struct', 'interface', 'enum', 'sumtype', 'alias', 'function', 'option']
 )
 
 fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
-	mut node := ast.ComptimeType{ast.ComptimeTypeKind.map_, p.tok.pos()}
-
+	pos := p.tok.pos()
 	p.check(.dollar)
 	name := p.check_name()
 	if name !in parser.comptime_types {
 		p.error('unsupported compile-time type `${name}`: only ${parser.comptime_types} are supported')
 	}
-	mut cty := ast.ComptimeTypeKind.map_
-	match name {
+	mut kind := ast.ComptimeTypeKind.unknown
+	kind = match name {
 		'map' {
-			cty = .map_
+			.map_
 		}
 		'struct' {
-			cty = .struct_
+			.struct_
 		}
 		'interface' {
-			cty = .iface
+			.iface
 		}
 		'int' {
-			cty = .int
+			.int
 		}
 		'float' {
-			cty = .float
+			.float
 		}
 		'alias' {
-			cty = .alias
+			.alias
 		}
 		'function' {
-			cty = .function
+			.function
 		}
 		'array' {
-			cty = .array
+			.array
+		}
+		'array_fixed' {
+			.array_fixed
+		}
+		'array_dynamic' {
+			.array_dynamic
 		}
 		'enum' {
-			cty = .enum_
+			.enum_
 		}
 		'sumtype' {
-			cty = .sum_type
+			.sum_type
 		}
 		'option' {
-			cty = .option
+			.option
 		}
-		else {}
+		else {
+			.unknown
+		}
 	}
-	node = ast.ComptimeType{cty, node.pos}
-	return node
+	return ast.ComptimeType{
+		kind: kind
+		pos: pos
+	}
 }
 
 // // #include, #flag, #v

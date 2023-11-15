@@ -2303,6 +2303,9 @@ pub fn (t &Table) get_generic_names(generic_types []Type) []string {
 pub fn (t &Table) is_comptime_type(x Type, y ComptimeType) bool {
 	x_kind := t.type_kind(x)
 	match y.kind {
+		.unknown {
+			return false
+		}
 		.map_ {
 			return x_kind == .map
 		}
@@ -2321,6 +2324,12 @@ pub fn (t &Table) is_comptime_type(x Type, y ComptimeType) bool {
 		}
 		.array {
 			return x_kind in [.array, .array_fixed]
+		}
+		.array_dynamic {
+			return x_kind == .array
+		}
+		.array_fixed {
+			return x_kind == .array_fixed
 		}
 		.sum_type {
 			return x_kind == .sum_type
