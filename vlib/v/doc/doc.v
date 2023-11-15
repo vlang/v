@@ -284,7 +284,11 @@ pub fn (mut d Doc) stmt(mut stmt ast.Stmt, filename string) !DocNode {
 			if stmt.receiver.typ !in [0, 1] {
 				method_parent := d.type_to_str(stmt.receiver.typ)
 				node.kind = .method
-				node.parent_name = method_parent
+				if !stmt.is_static_type_method {
+					node.parent_name = method_parent
+				} else {
+					node.parent_name = ''
+				}
 			}
 			if d.extract_vars {
 				for param in stmt.params {
