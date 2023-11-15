@@ -10,6 +10,6 @@ spawn $v_root/v init
 expect "Input your project description: " { send "\r" } timeout { exit 1 }
 expect "Input your project version: (0.0.0) " { send "\r" } timeout { exit 1 }
 expect "Input your project license: (MIT) " { send "\r" } timeout { exit 1 }
-expect "Complete!" {} timeout {} timeout { exit 1 }
+# The completion messages is verified in `vcreate_init_test.v`.
 
 expect eof
