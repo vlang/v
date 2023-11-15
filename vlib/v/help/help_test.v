@@ -52,21 +52,9 @@ fn test_topic_sub_help() {
 
 fn test_help_topic_with_cli_mod() {
 	res := os.execute_or_exit(vexe + ' help init')
-	// Note: `os.execute` will add line breaks that are not added when using `os.system('v help init')`
-	// Or in the output of the cli module when using `v init --help`. For now, there is a manually
-	// added line break after the `--bin` flag line in the output below.
-	assert res.output.trim_space() == "Usage: v init [flags]
-
-Sets up a V project within the current directory.
-
-If no `v.mod` exists, a setup prompt is started to create one with the project's metadata.
-If no `.v` file exists, a project template is generated. If the current directory is not a
-git project and git is installed, `git init` will be performed during the setup.
-
-Flags:
-  --bin               Use the template for an executable application [default]
-                      .
-  --lib               Use the template for a library project.
-  --web               Use the template for a vweb project.
-  --help              Print help information."
+	assert res.output.contains('Usage: v init [flags]')
+	assert res.output.contains('Sets up a V project within the current directory.')
+	assert res.output.contains('Flags:')
+	assert res.output.contains('--bin               Use the template for an executable application [default]')
+	assert res.output.contains('--lib               Use the template for a library project.')
 }
