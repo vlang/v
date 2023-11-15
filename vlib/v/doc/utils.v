@@ -135,7 +135,11 @@ pub fn (d Doc) stmt_name(stmt ast.Stmt) string {
 			return stmt.name
 		}
 		ast.FnDecl {
-			return stmt.get_name()
+			if stmt.is_static_type_method {
+				return stmt.name.replace('__static__', '.')
+			} else {
+				return stmt.name
+			}
 		}
 		ast.TypeDecl {
 			match stmt {
