@@ -284,6 +284,14 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 				unwrapped_expr_type := c.unwrap_generic(field.typ)
 				tsym := c.table.sym(unwrapped_expr_type)
 				c.table.dumps[int(unwrapped_expr_type.clear_flags(.option, .result, .atomic_f))] = tsym.cname
+				if tsym.kind == .array_fixed {
+					info := tsym.info as ast.ArrayFixed
+					if !info.is_fn_ret {
+						// for dumping fixed array we must register the fixed array struct to return from function
+						c.table.find_or_register_array_fixed(info.elem_type, info.size,
+							info.size_expr, true)
+					}
+				}
 			}
 			c.comptime_for_field_var = ''
 			c.inside_comptime_for_field = false
