@@ -13,7 +13,7 @@ pub mut:
 	last_line int // the line number where the ast object ends (used by vfmt)
 }
 
-[unsafe]
+@[unsafe]
 pub fn (mut p Pos) free() {
 }
 
@@ -43,7 +43,7 @@ pub fn (mut pos Pos) update_last_line(last_line int) {
 	pos.last_line = last_line - 1
 }
 
-[inline]
+@[inline]
 pub fn (tok &Token) pos() Pos {
 	return Pos{
 		len: tok.len

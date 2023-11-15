@@ -253,21 +253,21 @@ pub fn (c Color) str() string {
 
 // rgba8 converts a color value to an int in the RGBA8 order.
 // see https://developer.apple.com/documentation/coreimage/ciformat
-[inline]
+@[inline]
 pub fn (c Color) rgba8() int {
 	return int(u32(c.r) << 24 | u32(c.g) << 16 | u32(c.b) << 8 | u32(c.a))
 }
 
 // bgra8 converts a color value to an int in the BGRA8 order.
 // see https://developer.apple.com/documentation/coreimage/ciformat
-[inline]
+@[inline]
 pub fn (c Color) bgra8() int {
 	return int(u32(c.b) << 24 | u32(c.g) << 16 | u32(c.r) << 8 | u32(c.a))
 }
 
 // abgr8 converts a color value to an int in the ABGR8 order.
 // see https://developer.apple.com/documentation/coreimage/ciformat
-[inline]
+@[inline]
 pub fn (c Color) abgr8() int {
 	return int(u32(c.a) << 24 | u32(c.b) << 16 | u32(c.g) << 8 | u32(c.r))
 }

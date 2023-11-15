@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module time
 
-[params]
+@[params]
 pub struct StopWatchOptions {
 	auto_start bool = true
 }

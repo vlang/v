@@ -126,7 +126,7 @@ fn remap(v f32, min f32, max f32, new_min f32, new_max f32) f32 {
 	return (((v - min) * (new_max - new_min)) / (max - min)) + new_min
 }
 
-[if showfps ?]
+@[if showfps ?]
 fn (mut game Game) showfps() {
 	game.frame++
 	last_frame_ms := f64(game.frame_sw.elapsed().microseconds()) / 1000.0

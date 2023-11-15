@@ -22,7 +22,7 @@ pub fn create_select_loop(id int) !&SelectLoop {
 	}
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn (mut pv Picoev) update_events(fd int, events int) int {
 	// check if fd is in range
 	assert fd < max_fds
@@ -31,7 +31,7 @@ fn (mut pv Picoev) update_events(fd int, events int) int {
 	return 0
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn (mut pv Picoev) poll_once(max_wait int) int {
 	readfds, writefds, errorfds := C.fd_set{}, C.fd_set{}, C.fd_set{}
 

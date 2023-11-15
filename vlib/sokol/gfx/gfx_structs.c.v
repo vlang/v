@@ -172,7 +172,7 @@ pub mut:
 
 pub type StageBindings = C.sg_stage_bindings
 
-[heap]
+@[heap]
 pub struct C.sg_shader_desc {
 pub mut:
 	attrs [16]ShaderAttrDesc
@@ -365,7 +365,7 @@ pub struct C.sg_pass_info {
 
 pub type PassInfo = C.sg_pass_info
 
-[typedef]
+@[typedef]
 pub struct C.sg_frame_stats_gl {
 	num_bind_buffer                 u32
 	num_active_texture              u32
@@ -382,7 +382,7 @@ pub struct C.sg_frame_stats_gl {
 
 pub type FrameStatsGL = C.sg_frame_stats_gl
 
-[typedef]
+@[typedef]
 pub struct C.sg_frame_stats_d3d11_pass {
 	num_om_set_render_targets    u32
 	num_clear_render_target_view u32
@@ -392,7 +392,7 @@ pub struct C.sg_frame_stats_d3d11_pass {
 
 pub type FrameStatsD3D11Pass = C.sg_frame_stats_d3d11_pass
 
-[typedef]
+@[typedef]
 pub struct C.sg_frame_stats_d3d11_pipeline {
 	num_rs_set_state               u32
 	num_om_set_depth_stencil_state u32
@@ -407,7 +407,7 @@ pub struct C.sg_frame_stats_d3d11_pipeline {
 
 pub type FrameStatsD3D11Pipeline = C.sg_frame_stats_d3d11_pipeline
 
-[typedef]
+@[typedef]
 pub struct C.sg_frame_stats_d3d11_bindings {
 	num_ia_set_vertex_buffers   u32
 	num_ia_set_index_buffer     u32
@@ -419,14 +419,14 @@ pub struct C.sg_frame_stats_d3d11_bindings {
 
 pub type FrameStatsD3D11Bindings = C.sg_frame_stats_d3d11_bindings
 
-[typedef]
+@[typedef]
 pub struct C.sg_frame_stats_d3d11_uniforms {
 	num_update_subresource u32
 }
 
 pub type FrameStatsD3D11Uniforms = C.sg_frame_stats_d3d11_uniforms
 
-[typedef]
+@[typedef]
 pub struct C.sg_frame_stats_d3d11_draw {
 	num_draw_indexed_instanced u32
 	num_draw_indexed           u32
@@ -436,7 +436,7 @@ pub struct C.sg_frame_stats_d3d11_draw {
 
 pub type FrameStatsD3D11Draw = C.sg_frame_stats_d3d11_draw
 
-[typedef]
+@[typedef]
 pub struct C.sg_frame_stats_d3d11 {
 	pass      FrameStatsD3D11Pass
 	pipeline  FrameStatsD3D11Pipeline
@@ -449,7 +449,7 @@ pub struct C.sg_frame_stats_d3d11 {
 
 pub type FrameStatsD3D11 = C.sg_frame_stats_d3d11
 
-[typedef]
+@[typedef]
 pub struct C.sg_frame_stats_metal_idpool {
 	num_added             u32
 	num_released          u32
@@ -458,7 +458,7 @@ pub struct C.sg_frame_stats_metal_idpool {
 
 pub type FrameStatsMetalIdpool = C.sg_frame_stats_metal_idpool
 
-[typedef]
+@[typedef]
 pub struct C.sg_frame_stats_metal_pipeline {
 	num_set_blend_color             u32
 	num_set_cull_mode               u32
@@ -471,7 +471,7 @@ pub struct C.sg_frame_stats_metal_pipeline {
 
 pub type FrameStatsMetalPipeline = C.sg_frame_stats_metal_pipeline
 
-[typedef]
+@[typedef]
 pub struct C.sg_frame_stats_metal_bindings {
 	num_set_vertex_buffer          u32
 	num_set_vertex_texture         u32
@@ -482,7 +482,7 @@ pub struct C.sg_frame_stats_metal_bindings {
 
 pub type FrameStatsMetalBindings = C.sg_frame_stats_metal_bindings
 
-[typedef]
+@[typedef]
 pub struct C.sg_frame_stats_metal_uniforms {
 	num_set_vertex_buffer_offset   u32
 	num_set_fragment_buffer_offset u32
@@ -490,7 +490,7 @@ pub struct C.sg_frame_stats_metal_uniforms {
 
 pub type FrameStatsMetalUniforms = C.sg_frame_stats_metal_uniforms
 
-[typedef]
+@[typedef]
 pub struct C.sg_frame_stats_metal {
 	idpool   FrameStatsMetalIdpool
 	pipeline FrameStatsMetalPipeline
@@ -500,7 +500,7 @@ pub struct C.sg_frame_stats_metal {
 
 pub type FrameStatsMetal = C.sg_frame_stats_metal
 
-[typedef]
+@[typedef]
 pub struct C.sg_frame_stats_wgpu_uniforms {
 	num_set_bindgroup u32
 	size_write_buffer u32
@@ -508,7 +508,7 @@ pub struct C.sg_frame_stats_wgpu_uniforms {
 
 pub type FrameStatsWGPUUniforms = C.sg_frame_stats_wgpu_uniforms
 
-[typedef]
+@[typedef]
 pub struct C.sg_frame_stats_wgpu_bindings {
 	num_set_vertex_buffer                    u32
 	num_skip_redundant_vertex_buffer         u32
@@ -526,7 +526,7 @@ pub struct C.sg_frame_stats_wgpu_bindings {
 
 pub type FrameStatsWGPUBindings = C.sg_frame_stats_wgpu_bindings
 
-[typedef]
+@[typedef]
 pub struct C.sg_frame_stats_wgpu {
 	uniforms FrameStatsWGPUUniforms
 	bindings FrameStatsWGPUBindings
@@ -534,7 +534,7 @@ pub struct C.sg_frame_stats_wgpu {
 
 pub type FrameStatsWGPU = C.sg_frame_stats_wgpu
 
-[typedef]
+@[typedef]
 pub struct C.sg_frame_stats {
 	frame_index u32 // current frame counter, starts at 0
 	//

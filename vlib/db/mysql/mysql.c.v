@@ -26,7 +26,7 @@ mut:
 	conn &C.MYSQL = unsafe { nil }
 }
 
-[params]
+@[params]
 pub struct Config {
 pub mut:
 	host     string = '127.0.0.1'
@@ -421,12 +421,12 @@ pub fn (db &DB) exec_param(query string, param string) ![]Row {
 	return db.exec_param_many(query, [param])!
 }
 
-[inline]
+@[inline]
 fn (db &DB) throw_mysql_error() ! {
 	return error_with_code(get_error_msg(db.conn), get_errno(db.conn))
 }
 
-[inline]
+@[inline]
 fn (db &DB) check_connection_is_established() ! {
 	if isnil(db.conn) {
 		return error('No connection to a MySQL server, use `connect()` to connect to a database for working with it')

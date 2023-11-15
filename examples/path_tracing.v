@@ -44,37 +44,37 @@ mut:
 	z f64 = 0.0
 }
 
-[inline]
+@[inline]
 fn (v Vec) + (b Vec) Vec {
 	return Vec{v.x + b.x, v.y + b.y, v.z + b.z}
 }
 
-[inline]
+@[inline]
 fn (v Vec) - (b Vec) Vec {
 	return Vec{v.x - b.x, v.y - b.y, v.z - b.z}
 }
 
-[inline]
+@[inline]
 fn (v Vec) * (b Vec) Vec {
 	return Vec{v.x * b.x, v.y * b.y, v.z * b.z}
 }
 
-[inline]
+@[inline]
 fn (v Vec) dot(b Vec) f64 {
 	return v.x * b.x + v.y * b.y + v.z * b.z
 }
 
-[inline]
+@[inline]
 fn (v Vec) mult_s(b f64) Vec {
 	return Vec{v.x * b, v.y * b, v.z * b}
 }
 
-[inline]
+@[inline]
 fn (v Vec) cross(b Vec) Vec {
 	return Vec{v.y * b.z - v.z * b.y, v.z * b.x - v.x * b.z, v.x * b.y - v.y * b.x}
 }
 
-[inline]
+@[inline]
 fn (v Vec) norm() Vec {
 	tmp_norm := 1.0 / math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z)
 	return Vec{v.x * tmp_norm, v.y * tmp_norm, v.z * tmp_norm}
@@ -323,7 +323,7 @@ const (
 )
 
 //********************************** Utilities ******************************
-[inline]
+@[inline]
 fn clamp(x f64) f64 {
 	if x < 0 {
 		return 0
@@ -334,7 +334,7 @@ fn clamp(x f64) f64 {
 	return x
 }
 
-[inline]
+@[inline]
 fn to_int(x f64) int {
 	p := math.pow(clamp(x), 1.0 / 2.2)
 	return int(p * 255.0 + 0.5)

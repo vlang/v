@@ -14,7 +14,7 @@ const (
 	max_len = [0, 35, 60, 85, 93, 100]
 )
 
-[minify]
+@[minify]
 pub struct Fmt {
 pub mut:
 	file               ast.File
@@ -56,7 +56,7 @@ pub mut:
 	source_text        string // can be set by `echo "println('hi')" | v fmt`, i.e. when processing source not from a file, but from stdin. In this case, it will contain the entire input text. You can use f.file.path otherwise, and read from that file.
 }
 
-[params]
+@[params]
 pub struct FmtOptions {
 	source_text string
 }
@@ -157,7 +157,7 @@ pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
 	return true
 }
 
-[params]
+@[params]
 pub struct RemoveNewLineConfig {
 	imports_buffer bool // Work on f.out_imports instead of f.out
 }

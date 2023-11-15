@@ -13,7 +13,7 @@ pub enum Variant {
 	italic
 }
 
-[if debug_font ?]
+@[if debug_font ?]
 fn debug_font_println(s string) {
 	println(s)
 }

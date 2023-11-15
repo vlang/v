@@ -18,7 +18,7 @@ fn resolve_nil_str(ptr &u8) string {
 	return unsafe { ptr.vstring() }
 }
 
-[inline]
+@[inline]
 fn mystring(b &u8) string {
 	unsafe {
 		return b.vstring()

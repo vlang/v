@@ -32,7 +32,7 @@ pub fn (c rune) str() string {
 }
 
 // string converts a rune array to a string
-[manualfree]
+@[manualfree]
 pub fn (ra []rune) string() string {
 	mut sb := strings.new_builder(ra.len)
 	sb.write_runes(ra)
@@ -56,7 +56,7 @@ pub fn (c rune) repeat(count int) string {
 }
 
 // bytes converts a rune to an array of bytes
-[manualfree]
+@[manualfree]
 pub fn (c rune) bytes() []u8 {
 	mut res := []u8{cap: 5}
 	res.len = unsafe { utf32_decode_to_buffer(u32(c), &u8(res.data)) }

@@ -29,7 +29,7 @@ pub fn (mut app App) before_request() {
 	app.user_id = app.get_cookie('id') or { '0' }
 }
 
-['/new_article'; post]
+@['/new_article'; post]
 pub fn (mut app App) new_article() vweb.Result {
 	title := app.form['title']
 	text := app.form['text']

@@ -83,7 +83,7 @@ pub fn sys_mono_now() u64 {
 
 // Note: vpc_now is used by `v -profile` .
 // It should NOT call *any other v function*, just C functions and casts.
-[inline]
+@[inline]
 fn vpc_now() u64 {
 	tm := u64(0)
 	C.QueryPerformanceCounter(voidptr(&tm))

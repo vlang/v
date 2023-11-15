@@ -18,7 +18,7 @@ pub fn days_from_unix_epoch(year int, month int, day int) int {
 // A detailed description of the algorithm here is in:
 // http://howardhinnant.github.io/date_algorithms.html
 // Note that method will return negative values for days before 1970-01-01.
-[inline]
+@[inline]
 pub fn (t Time) days_from_unix_epoch() int {
 	return days_from_unix_epoch(t.year, t.month, t.day)
 }

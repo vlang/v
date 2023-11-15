@@ -5,7 +5,7 @@ import os
 #flag -I @VEXEROOT/thirdparty/zip
 #include "zip.c"
 
-[params]
+@[params]
 pub struct ZipFolderOptions {
 	omit_empty_folders bool
 }
@@ -75,7 +75,7 @@ pub enum OpenMode {
 	append
 }
 
-[inline]
+@[inline]
 fn (om OpenMode) to_u8() u8 {
 	return match om {
 		.write {
@@ -106,7 +106,7 @@ pub fn open(name string, level CompressionLevel, mode OpenMode) !&Zip {
 }
 
 // close closes the zip archive, releases resources - always finalize.
-[inline]
+@[inline]
 pub fn (mut z Zip) close() {
 	C.zip_close(z)
 }
@@ -131,7 +131,7 @@ pub fn (mut z Zip) open_entry_by_index(index int) ! {
 }
 
 // close_entry closes a zip entry, flushes buffer and releases resources.
-[inline]
+@[inline]
 pub fn (mut zentry Zip) close_entry() {
 	C.zip_entry_close(zentry)
 }
@@ -170,13 +170,13 @@ pub fn (mut zentry Zip) is_dir() !bool {
 }
 
 // size returns an uncompressed size of the current zip entry.
-[inline]
+@[inline]
 pub fn (mut zentry Zip) size() u64 {
 	return C.zip_entry_size(zentry)
 }
 
 // crc32 returns CRC-32 checksum of the current zip entry.
-[inline]
+@[inline]
 pub fn (mut zentry Zip) crc32() u32 {
 	return C.zip_entry_crc32(zentry)
 }

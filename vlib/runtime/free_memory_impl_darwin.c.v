@@ -2,11 +2,11 @@ module runtime
 
 #include <mach/mach.h>
 
-[typedef]
+@[typedef]
 pub struct C.vm_size_t {
 }
 
-[typedef]
+@[typedef]
 pub struct C.vm_statistics64_data_t {
 	free_count          u32
 	purgeable_count     u32
@@ -14,7 +14,7 @@ pub struct C.vm_statistics64_data_t {
 	external_page_count u32
 }
 
-[typedef]
+@[typedef]
 pub struct C.host_t {}
 
 fn C.mach_host_self() C.host_t

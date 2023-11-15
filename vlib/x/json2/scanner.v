@@ -118,7 +118,7 @@ fn (s Scanner) tokenize(lit []u8, kind TokenKind) Token {
 }
 
 // text_scan scans and returns a string token.
-[manualfree]
+@[manualfree]
 fn (mut s Scanner) text_scan() Token {
 	mut has_closed := false
 	mut chrs := []u8{}
@@ -257,7 +257,7 @@ fn (s Scanner) invalid_token() Token {
 
 // scan returns a token based on the scanner's current position.
 // used to set the next token
-[manualfree]
+@[manualfree]
 fn (mut s Scanner) scan() Token {
 	if s.pos < s.text.len && (s.text[s.pos] == ` ` || s.text[s.pos] in json2.newlines) {
 		s.move()

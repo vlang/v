@@ -52,7 +52,7 @@ pub fn tcsetattr(fd int, optional_actions int, mut termios_p Termios) int {
 
 // ioctl is an unsafe wrapper around C.ioctl and keeps its semantic
 // It is only implemented for Unix like OSes
-[inline]
+@[inline]
 pub fn ioctl(fd int, request u64, arg voidptr) int {
 	return -1
 }

@@ -1,13 +1,13 @@
 // Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-[has_globals]
+@[has_globals]
 module ast
 
 import v.cflag
 import v.util
 
-[heap; minify]
+@[heap; minify]
 pub struct Table {
 mut:
 	parsing_type string // name of the type to enable recursive type parsing
@@ -52,7 +52,7 @@ pub mut:
 
 // used by vls to avoid leaks
 // TODO remove manual memory management
-[unsafe]
+@[unsafe]
 pub fn (mut t Table) free() {
 	unsafe {
 		for s in t.type_symbols {
@@ -284,7 +284,7 @@ pub fn (t &Table) find_method(s &TypeSymbol, name string) !Fn {
 	return error('unknown method `${name}`')
 }
 
-[params]
+@[params]
 pub struct GetEmbedsOptions {
 	preceding []Type
 }
@@ -634,12 +634,12 @@ pub fn (t &Table) resolve_common_sumtype_fields(mut sym TypeSymbol) {
 	sym.info = info
 }
 
-[inline]
+@[inline]
 pub fn (t &Table) find_type_idx(name string) int {
 	return t.type_idxs[name]
 }
 
-[inline]
+@[inline]
 pub fn (t &Table) find_sym(name string) ?&TypeSymbol {
 	idx := t.type_idxs[name]
 	if idx > 0 {
@@ -648,7 +648,7 @@ pub fn (t &Table) find_sym(name string) ?&TypeSymbol {
 	return none
 }
 
-[inline]
+@[inline]
 pub fn (t &Table) find_sym_and_type_idx(name string) (&TypeSymbol, int) {
 	idx := t.type_idxs[name]
 	if idx > 0 {
@@ -667,7 +667,7 @@ pub const invalid_type_symbol = &TypeSymbol{
 	cname: 'InvalidType'
 }
 
-[inline]
+@[inline]
 pub fn (t &Table) sym_by_idx(idx int) &TypeSymbol {
 	return t.type_symbols[idx]
 }
@@ -684,7 +684,7 @@ pub fn (t &Table) sym(typ Type) &TypeSymbol {
 }
 
 // final_sym follows aliases until it gets to a "real" Type
-[inline]
+@[inline]
 pub fn (t &Table) final_sym(typ Type) &TypeSymbol {
 	mut idx := typ.idx()
 	if idx > 0 {
@@ -699,17 +699,17 @@ pub fn (t &Table) final_sym(typ Type) &TypeSymbol {
 	return ast.invalid_type_symbol
 }
 
-[inline]
+@[inline]
 pub fn (t &Table) get_type_name(typ Type) string {
 	return t.sym(typ).name
 }
 
-[inline]
+@[inline]
 pub fn (t &Table) get_final_type_name(typ Type) string {
 	return t.final_sym(typ).name
 }
 
-[inline]
+@[inline]
 pub fn (t &Table) unalias_num_type(typ Type) Type {
 	sym := t.sym(typ)
 	if sym.info is Alias {
@@ -720,7 +720,7 @@ pub fn (t &Table) unalias_num_type(typ Type) Type {
 	return typ
 }
 
-[inline]
+@[inline]
 pub fn (t &Table) unaliased_type(typ Type) Type {
 	sym := t.sym(typ)
 	if sym.info is Alias {
@@ -767,7 +767,7 @@ fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx 
 	return ast.invalid_type_idx
 }
 
-[inline]
+@[inline]
 pub fn (mut t Table) register_sym(sym TypeSymbol) int {
 	mut idx := -2
 	$if trace_register_sym ? {
@@ -800,12 +800,12 @@ pub fn (mut t Table) register_sym(sym TypeSymbol) int {
 	return idx
 }
 
-[inline]
+@[inline]
 pub fn (mut t Table) register_enum_decl(enum_decl EnumDecl) {
 	t.enum_decls[enum_decl.name] = enum_decl
 }
 
-[inline]
+@[inline]
 pub fn (mut t Table) register_anon_struct(name string, sym_idx int) {
 	t.anon_struct_names[name] = sym_idx
 }
@@ -850,7 +850,7 @@ pub fn (t &Table) known_type_idx(typ Type) bool {
 
 // array_source_name generates the original name for the v source.
 // e. g. []int
-[inline]
+@[inline]
 pub fn (t &Table) array_name(elem_type Type) string {
 	elem_type_sym := t.sym(elem_type)
 	ptr := if elem_type.is_ptr() { '&'.repeat(elem_type.nr_muls()) } else { '' }
@@ -859,7 +859,7 @@ pub fn (t &Table) array_name(elem_type Type) string {
 	return '[]${opt}${res}${ptr}${elem_type_sym.name}'
 }
 
-[inline]
+@[inline]
 pub fn (t &Table) array_cname(elem_type Type) string {
 	elem_type_sym := t.sym(elem_type)
 	suffix := if elem_type.is_ptr() { '_ptr'.repeat(elem_type.nr_muls()) } else { '' }
@@ -875,7 +875,7 @@ pub fn (t &Table) array_cname(elem_type Type) string {
 
 // array_fixed_source_name generates the original name for the v source.
 // e. g. [16][8]int
-[inline]
+@[inline]
 pub fn (t &Table) array_fixed_name(elem_type Type, size int, size_expr Expr) string {
 	elem_type_sym := t.sym(elem_type)
 	ptr := if elem_type.is_ptr() { '&'.repeat(elem_type.nr_muls()) } else { '' }
@@ -889,7 +889,7 @@ pub fn (t &Table) array_fixed_name(elem_type Type, size int, size_expr Expr) str
 	return '[${size_str}]${opt}${res}${ptr}${elem_type_sym.name}'
 }
 
-[inline]
+@[inline]
 pub fn (t &Table) array_fixed_cname(elem_type Type, size int) string {
 	elem_type_sym := t.sym(elem_type)
 	suffix := if elem_type.is_ptr() { '_ptr${elem_type.nr_muls()}' } else { '' }
@@ -903,7 +903,7 @@ pub fn (t &Table) array_fixed_cname(elem_type Type, size int) string {
 	}
 }
 
-[inline]
+@[inline]
 pub fn (t &Table) chan_name(elem_type Type, is_mut bool) string {
 	elem_type_sym := t.sym(elem_type)
 	mut ptr := ''
@@ -915,7 +915,7 @@ pub fn (t &Table) chan_name(elem_type Type, is_mut bool) string {
 	return 'chan ${ptr}${elem_type_sym.name}'
 }
 
-[inline]
+@[inline]
 pub fn (t &Table) chan_cname(elem_type Type, is_mut bool) string {
 	elem_type_sym := t.sym(elem_type)
 	mut suffix := ''
@@ -927,7 +927,7 @@ pub fn (t &Table) chan_cname(elem_type Type, is_mut bool) string {
 	return 'chan_${elem_type_sym.cname}' + suffix
 }
 
-[inline]
+@[inline]
 pub fn (t &Table) promise_name(return_type Type) string {
 	if return_type.idx() == void_type_idx {
 		return 'Promise[JS.Any, JS.Any]'
@@ -937,7 +937,7 @@ pub fn (t &Table) promise_name(return_type Type) string {
 	return 'Promise[${return_type_sym.name}, JS.Any]'
 }
 
-[inline]
+@[inline]
 pub fn (t &Table) promise_cname(return_type Type) string {
 	if return_type == void_type {
 		return 'Promise_Any_Any'
@@ -947,7 +947,7 @@ pub fn (t &Table) promise_cname(return_type Type) string {
 	return 'Promise_${return_type_sym.name}_Any'
 }
 
-[inline]
+@[inline]
 pub fn (t &Table) thread_name(return_type Type) string {
 	if return_type.idx() == void_type_idx {
 		if return_type.has_flag(.option) {
@@ -965,7 +965,7 @@ pub fn (t &Table) thread_name(return_type Type) string {
 	return 'thread ${opt}${res}${ptr}${return_type_sym.name}'
 }
 
-[inline]
+@[inline]
 pub fn (t &Table) thread_cname(return_type Type) string {
 	if return_type == void_type {
 		if return_type.has_flag(.option) {
@@ -985,7 +985,7 @@ pub fn (t &Table) thread_cname(return_type Type) string {
 
 // map_source_name generates the original name for the v source.
 // e. g. map[string]int
-[inline]
+@[inline]
 pub fn (t &Table) map_name(key_type Type, value_type Type) string {
 	key_type_sym := t.sym(key_type)
 	value_type_sym := t.sym(value_type)
@@ -995,7 +995,7 @@ pub fn (t &Table) map_name(key_type Type, value_type Type) string {
 	return 'map[${key_type_sym.name}]${opt}${res}${ptr}${value_type_sym.name}'
 }
 
-[inline]
+@[inline]
 pub fn (t &Table) map_cname(key_type Type, value_type Type) string {
 	key_type_sym := t.sym(key_type)
 	value_type_sym := t.sym(value_type)
@@ -1226,7 +1226,7 @@ pub fn (mut t Table) add_placeholder_type(name string, language Language) int {
 	return t.register_sym(ph_type)
 }
 
-[inline]
+@[inline]
 pub fn (t &Table) value_type(typ Type) Type {
 	sym := t.final_sym(typ)
 	if typ.has_flag(.variadic) {
@@ -1362,7 +1362,7 @@ pub fn (t &Table) is_sumtype_or_in_variant(parent Type, typ Type) bool {
 	return t.sumtype_has_variant(parent, typ, false)
 }
 
-[inline]
+@[inline]
 pub fn (t &Table) is_interface_var(var ScopeObject) bool {
 	return var is Var && var.orig_type != 0 && t.sym(var.orig_type).kind == .interface_
 		&& t.sym(var.smartcasts.last()).kind != .interface_
@@ -2340,7 +2340,7 @@ pub fn (t &Table) is_comptime_type(x Type, y ComptimeType) bool {
 	}
 }
 
-[inline]
+@[inline]
 pub fn (t &Table) is_comptime_var(node Expr) bool {
 	return node is Ident && node.info is IdentVar && node.obj is Var
 		&& (node.obj as Var).ct_type_var != .no_comptime

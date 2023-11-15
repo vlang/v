@@ -7,7 +7,7 @@ mut:
 	data   C.zz_epoll_data_t
 }
 
-[typedef]
+@[typedef]
 pub union C.zz_epoll_data_t {
 mut:
 	ptr voidptr

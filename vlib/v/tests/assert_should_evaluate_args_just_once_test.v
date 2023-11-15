@@ -2,7 +2,7 @@ struct Abc {
 	ncalls int
 }
 
-[unsafe]
+@[unsafe]
 fn fn_that_should_be_called_just_once_array() []int {
 	mut static ncalls := 0
 	ncalls++
@@ -13,7 +13,7 @@ fn fn_that_should_be_called_just_once_array() []int {
 	return []int{len: ncalls, init: ncalls}
 }
 
-[unsafe]
+@[unsafe]
 fn fn_that_should_be_called_just_once_struct() Abc {
 	mut static ncalls := 0
 	ncalls++

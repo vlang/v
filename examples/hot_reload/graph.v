@@ -39,7 +39,7 @@ fn frame(mut ctx Context) {
 	ctx.gg.end()
 }
 
-[live]
+@[live]
 fn (ctx &Context) draw() {
 	s := gg.window_size()
 	mut w := s.width

@@ -975,7 +975,7 @@ fn test_in_struct() {
 	assert baz.bar[0] == 3
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn test_direct_modification() {
 	mut foo := [2, 0, 5]
 	foo[1] = 3
@@ -1208,7 +1208,7 @@ fn test_array_last() {
 	assert s.last().val == 'a'
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn test_direct_array_access() {
 	mut a := [11, 22, 33, 44]
 	assert a[0] == 11
@@ -1221,7 +1221,7 @@ fn test_direct_array_access() {
 	assert a == [21, 24, 14, 20]
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn test_direct_array_access_via_ptr() {
 	mut b := [11, 22, 33, 44]
 	unsafe {

@@ -41,7 +41,7 @@ mut:
 	sourcemap_helper []SourcemapHelper
 }
 
-[heap]
+@[heap]
 struct JsGen {
 	pref &pref.Preferences
 mut:
@@ -490,13 +490,13 @@ pub fn (mut g JsGen) init() {
 	g.definitions.writeln('function ReturnException(val) { this.val = val; }')
 }
 
-[noreturn]
+@[noreturn]
 fn verror(msg string) {
 	eprintln('jsgen error: ${msg}')
 	exit(1)
 }
 
-[inline]
+@[inline]
 pub fn (mut g JsGen) gen_indent() {
 	if g.ns.indent > 0 && g.empty_line {
 		g.out.write_string(util.tabs(g.ns.indent))
@@ -504,17 +504,17 @@ pub fn (mut g JsGen) gen_indent() {
 	g.empty_line = false
 }
 
-[inline]
+@[inline]
 pub fn (mut g JsGen) inc_indent() {
 	g.ns.indent++
 }
 
-[inline]
+@[inline]
 pub fn (mut g JsGen) dec_indent() {
 	g.ns.indent--
 }
 
-[inline]
+@[inline]
 pub fn (mut g JsGen) write(s string) {
 	if unsafe { g.ns == 0 } {
 		verror('g.write: not in a namespace')
@@ -523,7 +523,7 @@ pub fn (mut g JsGen) write(s string) {
 	g.out.write_string(s)
 }
 
-[inline]
+@[inline]
 pub fn (mut g JsGen) writeln(s string) {
 	if unsafe { g.ns == 0 } {
 		verror('g.writeln: not in a namespace')
@@ -533,7 +533,7 @@ pub fn (mut g JsGen) writeln(s string) {
 	g.empty_line = true
 }
 
-[inline]
+@[inline]
 pub fn (mut g JsGen) new_tmp_var() string {
 	g.tmp_count++
 	return '_tmp${g.tmp_count}'
@@ -541,7 +541,7 @@ pub fn (mut g JsGen) new_tmp_var() string {
 
 // 'mod1.mod2.fn' => 'mod1.mod2'
 // 'fn' => ''
-[inline]
+@[inline]
 fn get_ns(s string) string {
 	idx := s.last_index('.') or { return '' }
 	return s.substr(0, idx)
@@ -578,7 +578,7 @@ fn (mut g JsGen) stmts(stmts []ast.Stmt) {
 	}
 }
 
-[inline]
+@[inline]
 fn (mut g JsGen) write_v_source_line_info(pos token.Pos) {
 	// g.inside_ternary == 0 &&
 	if g.pref.sourcemap {

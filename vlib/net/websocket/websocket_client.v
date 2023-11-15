@@ -1,6 +1,6 @@
 // websocket module implements websocket client and a websocket server
 // attribution: @thecoderr the author of original websocket client
-[manualfree]
+@[manualfree]
 module websocket
 
 import net
@@ -84,7 +84,7 @@ pub enum OPCode {
 	pong         = 0x0A
 }
 
-[params]
+@[params]
 pub struct ClientOpt {
 	read_timeout  i64 = 30 * time.second
 	write_timeout i64 = 30 * time.second

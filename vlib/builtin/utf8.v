@@ -21,7 +21,7 @@ pub fn utf32_to_str(code u32) string {
 	}
 }
 
-[manualfree; unsafe]
+@[manualfree; unsafe]
 pub fn utf32_to_str_no_malloc(code u32, buf &u8) string {
 	unsafe {
 		len := utf32_decode_to_buffer(code, buf)
@@ -33,7 +33,7 @@ pub fn utf32_to_str_no_malloc(code u32, buf &u8) string {
 	}
 }
 
-[manualfree; unsafe]
+@[manualfree; unsafe]
 pub fn utf32_decode_to_buffer(code u32, buf &u8) int {
 	unsafe {
 		icode := int(code) // Prevents doing casts everywhere

@@ -392,7 +392,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 //}
 
 // get current thread size, if fn hasn't defined return default
-[inline]
+@[inline]
 fn (mut g Gen) get_cur_thread_stack_size(name string) string {
 	ast_fn := g.table.fns[name] or { return '${g.pref.thread_stack_size}' }
 	attrs := ast_fn.attrs

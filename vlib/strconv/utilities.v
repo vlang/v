@@ -5,14 +5,14 @@ import math.bits
 // general utilities
 
 // General Utilities
-[if debug_strconv ?]
+@[if debug_strconv ?]
 fn assert1(t bool, msg string) {
 	if !t {
 		panic(msg)
 	}
 }
 
-[inline]
+@[inline]
 fn bool_to_int(b bool) int {
 	if b {
 		return 1
@@ -20,7 +20,7 @@ fn bool_to_int(b bool) int {
 	return 0
 }
 
-[inline]
+@[inline]
 fn bool_to_u32(b bool) u32 {
 	if b {
 		return u32(1)
@@ -28,7 +28,7 @@ fn bool_to_u32(b bool) u32 {
 	return u32(0)
 }
 
-[inline]
+@[inline]
 fn bool_to_u64(b bool) u64 {
 	if b {
 		return u64(1)

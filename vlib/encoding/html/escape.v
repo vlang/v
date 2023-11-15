@@ -3,12 +3,12 @@ module html
 import encoding.hex
 import strconv
 
-[params]
+@[params]
 pub struct EscapeConfig {
 	quote bool = true
 }
 
-[params]
+@[params]
 pub struct UnescapeConfig {
 	EscapeConfig
 	all bool

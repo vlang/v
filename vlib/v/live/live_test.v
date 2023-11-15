@@ -104,7 +104,7 @@ fn watchdog() {
 	}
 }
 
-[debuglivetest]
+@[debuglivetest]
 fn vprintln(s string) {
 	eprintln(s)
 }

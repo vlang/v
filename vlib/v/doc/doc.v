@@ -96,7 +96,7 @@ pub fn (sk SymbolKind) str() string {
 	}
 }
 
-[minify]
+@[minify]
 pub struct Doc {
 pub mut:
 	prefs     &pref.Preferences = new_vdoc_preferences()
@@ -126,7 +126,7 @@ pub mut:
 	platform            Platform
 }
 
-[minify]
+@[minify]
 pub struct DocNode {
 pub mut:
 	name        string
@@ -139,9 +139,9 @@ pub mut:
 	parent_name string
 	return_type string
 	children    []DocNode
-	attrs       map[string]string [json: attributes]
+	attrs       map[string]string @[json: attributes]
 	from_scope  bool
-	is_pub      bool              [json: public]
+	is_pub      bool              @[json: public]
 	platform    Platform
 }
 

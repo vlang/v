@@ -21,7 +21,7 @@ struct _result {
 	// derived Result_xxx types
 }
 
-[markused]
+@[markused]
 fn _result_ok(data voidptr, mut res _result, size int) {
 	unsafe {
 		*res = _result{}
@@ -83,19 +83,19 @@ pub fn (err MessageError) code() int {
 	return err.code
 }
 
-[unsafe]
+@[unsafe]
 pub fn (err &MessageError) free() {
 	unsafe { err.msg.free() }
 }
 
-[if trace_error ?]
+@[if trace_error ?]
 fn trace_error(x string) {
 	eprintln('> ${@FN} | ${x}')
 }
 
 // error returns a default error instance containing the error given in `message`.
 // Example: if ouch { return error('an error occurred') }
-[inline]
+@[inline]
 pub fn error(message string) IError {
 	trace_error(message)
 	return &MessageError{
@@ -105,7 +105,7 @@ pub fn error(message string) IError {
 
 // error_with_code returns a default error instance containing the given `message` and error `code`.
 // Example: if ouch { return error_with_code('an error occurred', 1) }
-[inline]
+@[inline]
 pub fn error_with_code(message string, code int) IError {
 	trace_error('${message} | code: ${code}')
 	return &MessageError{

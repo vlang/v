@@ -18,18 +18,18 @@ $if windows {
 	#include <sys/resource.h>
 }
 
-[inline]
+@[inline]
 fn get_time() i64 {
 	// time.now() is slow
 	return i64(C.time(C.NULL))
 }
 
-[inline]
+@[inline]
 fn accept(fd int) int {
 	return C.accept(fd, 0, 0)
 }
 
-[inline]
+@[inline]
 fn close_socket(fd int) {
 	$if trace_fd ? {
 		eprintln('close ${fd}')
@@ -42,7 +42,7 @@ fn close_socket(fd int) {
 	}
 }
 
-[inline]
+@[inline]
 fn setup_sock(fd int) ! {
 	flag := 1
 
@@ -67,7 +67,7 @@ fn setup_sock(fd int) ! {
 	}
 }
 
-[inline]
+@[inline]
 fn req_read(fd int, b &u8, max_len int, idx int) int {
 	// use `recv` instead of `read` for windows compatibility
 	unsafe {

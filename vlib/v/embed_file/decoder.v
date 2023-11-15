@@ -1,4 +1,4 @@
-[has_globals]
+@[has_globals]
 module embed_file
 
 pub interface Decoder {

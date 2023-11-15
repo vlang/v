@@ -2,8 +2,8 @@ import os
 import db.sqlite
 
 struct User {
-	id   i64    [primary; sql: serial]
-	name string [unique]
+	id   i64    @[primary; sql: serial]
+	name string @[unique]
 }
 
 const (

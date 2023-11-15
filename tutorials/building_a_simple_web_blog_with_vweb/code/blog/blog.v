@@ -33,7 +33,7 @@ pub fn (app &App) index_html() vweb.Result {
 	return $vweb.html()
 }
 */
-['/index']
+@['/index']
 pub fn (app &App) index() vweb.Result {
 	articles := app.find_all_articles()
 	return $vweb.html()
@@ -43,12 +43,12 @@ pub fn (mut app App) before_request() {
 	app.user_id = app.get_cookie('id') or { '0' }
 }
 
-['/new']
+@['/new']
 pub fn (mut app App) new() vweb.Result {
 	return $vweb.html()
 }
 
-['/new_article'; post]
+@['/new_article'; post]
 pub fn (mut app App) new_article(title string, text string) vweb.Result {
 	if title == '' || text == '' {
 		return app.text('Empty text/title')
@@ -66,7 +66,7 @@ pub fn (mut app App) new_article(title string, text string) vweb.Result {
 	return app.redirect('/')
 }
 
-['/articles'; get]
+@['/articles'; get]
 pub fn (mut app App) articles() vweb.Result {
 	articles := app.find_all_articles()
 	json_result := json.encode(articles)

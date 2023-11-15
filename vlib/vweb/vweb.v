@@ -19,7 +19,7 @@ import strings
 pub type RawHtml = string
 
 // A dummy structure that returns from routes to indicate that you actually sent something to a user
-[noinit]
+@[noinit]
 pub struct Result {}
 
 pub const (
@@ -208,7 +208,7 @@ pub fn (ctx Context) before_request() {}
 
 // TODO - test
 // vweb intern function
-[manualfree]
+@[manualfree]
 pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bool {
 	if ctx.done {
 		return false
@@ -499,7 +499,7 @@ pub fn run[T](global_app &T, port int) {
 	run_at[T](global_app, host: '', port: port, family: .ip6) or { panic(err.msg()) }
 }
 
-[params]
+@[params]
 pub struct RunParams {
 	family               net.AddrFamily = .ip6 // use `family: .ip, host: 'localhost'` when you want it to bind only to 127.0.0.1
 	host                 string
@@ -511,7 +511,7 @@ pub struct RunParams {
 
 // run_at - start a new VWeb server, listening only on a specific address `host`, at the specified `port`
 // Example: vweb.run_at(new_app(), vweb.RunParams{ host: 'localhost' port: 8099 family: .ip }) or { panic(err) }
-[manualfree]
+@[manualfree]
 pub fn run_at[T](global_app &T, params RunParams) ! {
 	if params.port <= 0 || params.port > 65535 {
 		return error('invalid port number `${params.port}`, it should be between 1 and 65535')
@@ -632,7 +632,7 @@ fn new_request_app[T](global_app &T, ctx Context, tid int) &T {
 	return request_app
 }
 
-[manualfree]
+@[manualfree]
 fn handle_conn[T](mut conn net.TcpConn, global_app &T, controllers []&ControllerPath, routes &map[string]Route, tid int) {
 	conn.set_read_timeout(30 * time.second)
 	conn.set_write_timeout(30 * time.second)
@@ -718,7 +718,7 @@ fn handle_conn[T](mut conn net.TcpConn, global_app &T, controllers []&Controller
 	handle_route(mut request_app, url, host, routes, tid)
 }
 
-[manualfree]
+@[manualfree]
 fn handle_route[T](mut app T, url urllib.URL, host string, routes &map[string]Route, tid int) {
 	defer {
 		unsafe {
@@ -933,7 +933,7 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 
 // check if request is for a static file and serves it
 // returns true if we served a static file, false otherwise
-[manualfree]
+@[manualfree]
 fn serve_if_static[T](mut app T, url urllib.URL, host string) bool {
 	// TODO: handle url parameters properly - for now, ignore them
 	static_file := app.static_files[url.path] or { return false }
@@ -1179,7 +1179,7 @@ fn (mut w Worker[T]) process_incoming_requests() {
 	}
 }
 
-[params]
+@[params]
 pub struct PoolParams[T] {
 	handler    fn () T [required] = unsafe { nil }
 	nr_workers int = runtime.nr_jobs()

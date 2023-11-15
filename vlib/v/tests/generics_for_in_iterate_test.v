@@ -1,8 +1,8 @@
 pub struct Vec[T] {
 mut:
-	data &T    [required]
-	cap  usize [required]
-	len  usize [required]
+	data &T    @[required]
+	cap  usize @[required]
+	len  usize @[required]
 }
 
 pub fn new[T]() Vec[T] {

@@ -3,7 +3,7 @@ import sokol
 
 const used_import = sokol.used_import
 
-[console]
+@[console]
 fn main() {
 	println('hello world')
 }

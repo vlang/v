@@ -9,7 +9,7 @@ pub const is_used = 1
 
 // The live reloader code is implemented here.
 // Note: new_live_reload_info will be called by generated C code inside main()
-[markused]
+@[markused]
 pub fn new_live_reload_info(original string, vexe string, vopts string, live_fn_mutex voidptr, live_linkfn live.FNLinkLiveSymbols) &live.LiveReloadInfo {
 	file_base := os.file_name(original).replace('.v', '')
 	so_dir := os.cache_dir()
@@ -35,7 +35,7 @@ pub fn new_live_reload_info(original string, vexe string, vopts string, live_fn_
 // Note: start_reloader will be called by generated code inside main(), to start
 // the hot code reloader thread. start_reloader is executed in the context of
 // the original main thread.
-[markused]
+@[markused]
 pub fn start_reloader(mut r live.LiveReloadInfo) {
 	// The shared library should be loaded once in the main thread
 	// If that fails, the program would crash anyway, just provide
@@ -52,7 +52,7 @@ pub fn start_reloader(mut r live.LiveReloadInfo) {
 // that were used during the main program compilation. Any change to any of them, will later trigger a
 // recompilation and reloading of the produced shared library. This makes it possible for [live] functions
 // inside modules to also work, not just in the top level program.
-[markused]
+@[markused]
 pub fn add_live_monitored_file(mut lri live.LiveReloadInfo, path string) {
 	mtime := os.file_last_mod_unix(path)
 	lri.monitored_files << path
@@ -62,7 +62,7 @@ pub fn add_live_monitored_file(mut lri live.LiveReloadInfo, path string) {
 	}
 }
 
-[if debuglive ?]
+@[if debuglive ?]
 fn elog(r &live.LiveReloadInfo, s string) {
 	eprintln(s)
 }

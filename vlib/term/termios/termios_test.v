@@ -14,7 +14,7 @@ fn test_portable() {
 	assert true
 }
 
-[if !windows]
+@[if !windows]
 fn test_termios() {
 	mut original_term := Termios{}
 	tcgetattr(0, mut original_term)

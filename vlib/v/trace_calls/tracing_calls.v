@@ -1,7 +1,7 @@
-[has_globals]
+@[has_globals]
 module trace_calls
 
-[markused]
+@[markused]
 __global g_stack_base = &u8(0)
 __global g_start_time = u64(0)
 
@@ -22,7 +22,7 @@ fn C.pthread_self() u64
 fn C.GetCurrentThreadId() u32
 fn C.QueryPerformanceCounter(&u64) C.BOOL
 
-[markused]
+@[markused]
 pub fn on_call(fname string) {
 	mut volatile pfbase := unsafe { &u8(0) }
 	volatile fbase := u8(0)
@@ -44,7 +44,7 @@ pub fn on_call(fname string) {
 	C.fflush(C.stderr)
 }
 
-[inline]
+@[inline]
 fn current_time() u64 {
 	unsafe {
 		$if windows {
@@ -59,7 +59,7 @@ fn current_time() u64 {
 	}
 }
 
-[markused]
+@[markused]
 pub fn on_c_main() {
 	g_start_time = current_time()
 	C.fprintf(C.stderr, c'#          tid       ns      ssize name\n')

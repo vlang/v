@@ -1,12 +1,12 @@
 module mysql
 
-[typedef]
+@[typedef]
 pub struct C.MYSQL_STMT {
 	mysql   &C.MYSQL
 	stmt_id u32
 }
 
-[typedef]
+@[typedef]
 pub struct C.MYSQL_BIND {
 mut:
 	buffer_type   int

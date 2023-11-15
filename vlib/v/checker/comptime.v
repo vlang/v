@@ -9,7 +9,7 @@ import v.token
 import v.util
 import v.pkgconfig
 
-[inline]
+@[inline]
 fn (mut c Checker) get_ct_type_var(node ast.Expr) ast.ComptimeVarKind {
 	return if node is ast.Ident && node.obj is ast.Var {
 		(node.obj as ast.Var).ct_type_var
@@ -18,7 +18,7 @@ fn (mut c Checker) get_ct_type_var(node ast.Expr) ast.ComptimeVarKind {
 	}
 }
 
-[inline]
+@[inline]
 fn (mut c Checker) get_comptime_var_type(node ast.Expr) ast.Type {
 	if node is ast.Ident && node.obj is ast.Var {
 		return match (node.obj as ast.Var).ct_type_var {
@@ -935,7 +935,7 @@ fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) Comptime
 }
 
 // get_comptime_selector_type retrieves the var.$(field.name) type when field_name is 'name' otherwise default_type is returned
-[inline]
+@[inline]
 fn (mut c Checker) get_comptime_selector_type(node ast.ComptimeSelector, default_type ast.Type) ast.Type {
 	if node.field_expr is ast.SelectorExpr && c.check_comptime_is_field_selector(node.field_expr)
 		&& node.field_expr.field_name == 'name' {
@@ -945,14 +945,14 @@ fn (mut c Checker) get_comptime_selector_type(node ast.ComptimeSelector, default
 }
 
 // is_comptime_selector_field_name checks if the SelectorExpr is related to $for variable accessing specific field name provided by `field_name`
-[inline]
+@[inline]
 fn (mut c Checker) is_comptime_selector_field_name(node ast.SelectorExpr, field_name string) bool {
 	return c.inside_comptime_for_field && node.expr is ast.Ident
 		&& node.expr.name == c.comptime_for_field_var && node.field_name == field_name
 }
 
 // is_comptime_selector_type checks if the SelectorExpr is related to $for variable accessing .typ field
-[inline]
+@[inline]
 fn (mut c Checker) is_comptime_selector_type(node ast.SelectorExpr) bool {
 	if c.inside_comptime_for_field && node.expr is ast.Ident {
 		return node.expr.name == c.comptime_for_field_var && node.field_name == 'typ'
@@ -961,7 +961,7 @@ fn (mut c Checker) is_comptime_selector_type(node ast.SelectorExpr) bool {
 }
 
 // check_comptime_is_field_selector checks if the SelectorExpr is related to $for variable
-[inline]
+@[inline]
 fn (mut c Checker) check_comptime_is_field_selector(node ast.SelectorExpr) bool {
 	if c.inside_comptime_for_field && node.expr is ast.Ident {
 		return node.expr.name == c.comptime_for_field_var
@@ -970,7 +970,7 @@ fn (mut c Checker) check_comptime_is_field_selector(node ast.SelectorExpr) bool 
 }
 
 // check_comptime_is_field_selector_bool checks if the SelectorExpr is related to field.is_* boolean fields
-[inline]
+@[inline]
 fn (mut c Checker) check_comptime_is_field_selector_bool(node ast.SelectorExpr) bool {
 	if c.check_comptime_is_field_selector(node) {
 		return node.field_name in ['is_mut', 'is_pub', 'is_shared', 'is_atomic', 'is_option',

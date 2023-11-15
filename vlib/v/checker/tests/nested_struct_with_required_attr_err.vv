@@ -6,7 +6,7 @@ struct Bar {
 }
 
 struct Egg {
-	name string [required]
+	name string @[required]
 }
 
 fn main() {

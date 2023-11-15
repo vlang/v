@@ -13,7 +13,7 @@ import v.gen.wasm.serialise
 import wasm
 import os
 
-[heap; minify]
+@[heap; minify]
 pub struct Gen {
 	out_name string
 	pref     &pref.Preferences = unsafe { nil } // Preferences shared from V struct
@@ -62,7 +62,7 @@ pub struct LoopBreakpoint {
 	name       string
 }
 
-[noreturn]
+@[noreturn]
 pub fn (mut g Gen) v_error(s string, pos token.Pos) {
 	util.show_compiler_message('error:', pos: pos, file_path: g.file_path, message: s)
 	exit(1)
@@ -94,7 +94,7 @@ pub fn (mut g Gen) warning(s string, pos token.Pos) {
 	}
 }
 
-[noreturn]
+@[noreturn]
 pub fn (mut g Gen) w_error(s string) {
 	if g.pref.is_verbose {
 		print_backtrace()

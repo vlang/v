@@ -52,7 +52,7 @@ pub fn (mut con TcpConn) read_line() string {
 // read_line_max is a *simple*, *non customizable*, blocking line reader.
 // It will return a line, ending with LF, '' on EOF.
 // It stops reading, when the result line length exceeds max_line_len.
-[manualfree]
+@[manualfree]
 pub fn (mut con TcpConn) read_line_max(max_line_len int) string {
 	if !con.is_blocking {
 		con.set_blocking(true) or {}

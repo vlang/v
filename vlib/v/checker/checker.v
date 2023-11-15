@@ -40,7 +40,7 @@ pub const (
 	vroot_is_deprecated_message = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
 )
 
-[heap; minify]
+@[heap; minify]
 pub struct Checker {
 pub mut:
 	pref &pref.Preferences = unsafe { nil } // Preferences shared from V struct
@@ -1957,7 +1957,7 @@ fn (mut c Checker) check_enum_field_integer_literal(expr ast.IntegerLiteral, is_
 	}
 }
 
-[inline]
+@[inline]
 fn (mut c Checker) check_loop_label(label string, pos token.Pos) {
 	if label.len == 0 {
 		// ignore

@@ -24,7 +24,7 @@ pub fn (mut f Fmt) attrs(attrs []ast.Attr) {
 	}
 }
 
-[params]
+@[params]
 pub struct AttrsOptions {
 	same_line bool
 }

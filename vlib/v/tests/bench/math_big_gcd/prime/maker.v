@@ -21,12 +21,12 @@ pub fn (pc PrimeCfg) short() string {
 	return "r: '${pc.r}' a: '${pc.a}' b: '${pc.b}'"
 }
 
-[heap]
+@[heap]
 pub struct PrimeSet {
 pub mut:
-	r string [required]
-	a string [required]
-	b string [required]
+	r string @[required]
+	a string @[required]
+	b string @[required]
 }
 
 pub fn (p PrimeSet) to_primeset() PrimeSet {

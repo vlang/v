@@ -8,10 +8,10 @@ import net.http
 import math
 import v.util.version
 
-[table: 'benchmark']
+@[table: 'benchmark']
 struct Task {
 mut:
-	id     u32    [primary; serial; sql: serial]
+	id     u32    @[primary; serial; sql: serial]
 	title  string
 	status string
 }
@@ -68,7 +68,7 @@ fn new_app() &App {
 	return app
 }
 
-['/'; get]
+@['/'; get]
 pub fn (mut app App) controller_get_all_task() !vweb.Result {
 	v_version := version.full_v_version(true)
 	orm_stmt_kinds := ['insert', 'select', 'update']

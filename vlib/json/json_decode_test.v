@@ -8,7 +8,7 @@ struct TestTwin {
 
 struct TestTwins {
 mut:
-	twins []TestTwin [required]
+	twins []TestTwin @[required]
 }
 
 fn test_json_decode_fails_to_decode_unrecognised_array_of_dicts() {
@@ -58,9 +58,9 @@ mut:
 	description    string
 	id             int
 	total_comments int
-	file_name      string    [skip]
-	comments       []Comment [skip]
-	skip_field     string    [json: '-']
+	file_name      string    @[skip]
+	comments       []Comment @[skip]
+	skip_field     string    @[json: '-']
 }
 
 fn test_skip_fields_should_be_initialised_by_json_decode() {

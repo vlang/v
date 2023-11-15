@@ -178,7 +178,7 @@ fn (mut r Request) phr_parse_request(buf_start &u8, buf_end &u8, mut pret Pret) 
 	return r.parse_headers(buf, buf_end, mut pret)
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn (mut r Request) parse_headers(buf_start &u8, buf_end &u8, mut pret Pret) &u8 {
 	mut buf := unsafe { buf_start }
 
@@ -441,7 +441,7 @@ fn get_token_length_to_eol(buf_start &u8, buf_end &u8, mut pret Pret) int {
 
 // following functions are #define in the C version, but inline here for better readability
 
-[inline]
+@[inline]
 fn advance_token(tok_start &u8, tok_end &u8, mut pret Pret) string {
 	mut buf := unsafe { tok_start }
 	for *buf != ` ` {
@@ -465,7 +465,7 @@ fn advance_token(tok_start &u8, tok_end &u8, mut pret Pret) string {
 }
 
 // advance_token2 is a less safe version of advance_token
-[inline]
+@[inline]
 fn advance_token2(tok_start &u8, tok_end &u8, mut pret Pret) string {
 	mut len := 0
 	mut i := 0
@@ -483,7 +483,7 @@ fn advance_token2(tok_start &u8, tok_end &u8, mut pret Pret) string {
 	return unsafe { tos(tok_start, len) }
 }
 
-[inline]
+@[inline]
 fn is_printable_ascii(c u8) bool {
 	return u32(c - 32) < 95
 }

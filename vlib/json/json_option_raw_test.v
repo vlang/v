@@ -2,10 +2,10 @@ import json
 
 pub struct Dto {
 pub:
-	key      string  [raw]
-	key2     string  [raw]
-	data     ?string [raw]
-	optional ?string [raw]
+	key      string  @[raw]
+	key2     string  @[raw]
+	data     ?string @[raw]
+	optional ?string @[raw]
 }
 
 fn test_main() {

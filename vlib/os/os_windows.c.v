@@ -298,7 +298,7 @@ pub fn execute(cmd string) Result {
 // raw_execute starts the specified command, waits for it to complete, and returns its output.
 // It's marked as `unsafe` to help emphasize the problems that may arise by allowing, for example,
 // user provided escape sequences.
-[unsafe]
+@[unsafe]
 pub fn raw_execute(cmd string) Result {
 	mut child_stdin := &u32(0)
 	mut child_stdout_read := &u32(0)
@@ -524,32 +524,32 @@ pub fn ensure_folder_is_writable(folder string) ! {
 	rm(tmp_perm_check)!
 }
 
-[inline]
+@[inline]
 pub fn getpid() int {
 	return C._getpid()
 }
 
-[inline]
+@[inline]
 pub fn getppid() int {
 	return 0
 }
 
-[inline]
+@[inline]
 pub fn getuid() int {
 	return 0
 }
 
-[inline]
+@[inline]
 pub fn geteuid() int {
 	return 0
 }
 
-[inline]
+@[inline]
 pub fn getgid() int {
 	return 0
 }
 
-[inline]
+@[inline]
 pub fn getegid() int {
 	return 0
 }
@@ -594,7 +594,7 @@ fn get_long_path(path string) !string {
 }
 
 // C.SYSTEM_INFO contains information about the current computer system. This includes the architecture and type of the processor, the number of processors in the system, the page size, and other such information.
-[typedef]
+@[typedef]
 pub struct C.SYSTEM_INFO {
 	dwNumberOfProcessors u32
 	dwPageSize           u32

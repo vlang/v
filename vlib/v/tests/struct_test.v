@@ -18,8 +18,8 @@ mut:
 }
 
 struct Lol {
-	b []string [json: lol]
-	c string   [json: cc]
+	b []string @[json: lol]
+	c string   @[json: cc]
 	d int
 }
 
@@ -223,12 +223,12 @@ fn fooo() {
 }
 
 /*
-[typedef]
+@[typedef]
 pub struct C.fixed {
 	points [10]C.point
 }
 
-[typedef]
+@[typedef]
 pub struct C.point {
 	x int
 	y int
@@ -244,7 +244,7 @@ fn test_fixed_field() {
 	//}
 }
 */
-[params]
+@[params]
 struct Config {
 mut:
 	n   int

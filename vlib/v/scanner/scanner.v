@@ -23,7 +23,7 @@ const (
 	backslash    = `\\`
 )
 
-[minify]
+@[minify]
 pub struct Scanner {
 pub mut:
 	file_path                   string // '/path/to/file.v'
@@ -157,7 +157,7 @@ pub fn new_scanner(text string, comments_mode CommentsMode, pref_ &pref.Preferen
 	return s
 }
 
-[unsafe]
+@[unsafe]
 pub fn (mut s Scanner) free() {
 	unsafe {
 		// Note: s.text is not freed here, because it is shared with all other util.read_file instances,
@@ -168,7 +168,7 @@ pub fn (mut s Scanner) free() {
 	}
 }
 
-[inline]
+@[inline]
 fn (s &Scanner) should_parse_comment() bool {
 	return s.comments_mode == .parse_comments
 		|| (s.comments_mode == .toplevel_comments && !s.is_inside_toplvl_statement)
@@ -185,7 +185,7 @@ pub fn (mut s Scanner) set_current_tidx(cidx int) {
 	s.tidx = tidx
 }
 
-[inline]
+@[inline]
 fn (mut s Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Token {
 	cidx := s.tidx
 	s.tidx++
@@ -205,7 +205,7 @@ fn (mut s Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Tok
 	}
 }
 
-[inline]
+@[inline]
 fn (s &Scanner) new_eof_token() token.Token {
 	return token.Token{
 		kind: .eof
@@ -218,7 +218,7 @@ fn (s &Scanner) new_eof_token() token.Token {
 	}
 }
 
-[inline]
+@[inline]
 fn (mut s Scanner) new_multiline_token(tok_kind token.Kind, lit string, len int, start_line int) token.Token {
 	cidx := s.tidx
 	s.tidx++
@@ -237,7 +237,7 @@ fn (mut s Scanner) new_multiline_token(tok_kind token.Kind, lit string, len int,
 	}
 }
 
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn (mut s Scanner) ident_name() string {
 	start := s.pos
 	s.pos++
@@ -313,7 +313,7 @@ fn (mut s Scanner) ident_bin_number() string {
 	return number
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn (mut s Scanner) ident_hex_number() string {
 	mut has_wrong_digit := false
 	mut first_wrong_digit_pos := 0
@@ -397,7 +397,7 @@ fn (mut s Scanner) ident_oct_number() string {
 	return number
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn (mut s Scanner) ident_dec_number() string {
 	mut has_wrong_digit := false
 	mut first_wrong_digit_pos := 0
@@ -532,7 +532,7 @@ fn (mut s Scanner) ident_number() string {
 	}
 }
 
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn (mut s Scanner) skip_whitespace() {
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
@@ -611,7 +611,7 @@ fn (mut s Scanner) scan_remaining_text() {
 	}
 }
 
-[direct_array_access]
+@[direct_array_access]
 pub fn (mut s Scanner) scan() token.Token {
 	for {
 		cidx := s.tidx
@@ -629,7 +629,7 @@ pub fn (mut s Scanner) scan() token.Token {
 	return s.new_eof_token()
 }
 
-[direct_array_access; inline]
+@[direct_array_access; inline]
 pub fn (s &Scanner) peek_token(n int) token.Token {
 	idx := s.tidx + n
 	if idx >= s.all_tokens.len || idx < 0 {
@@ -639,7 +639,7 @@ pub fn (s &Scanner) peek_token(n int) token.Token {
 	return t
 }
 
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn (s &Scanner) look_ahead(n int) u8 {
 	if s.pos + n < s.text.len {
 		return s.text[s.pos + n]
@@ -648,7 +648,7 @@ fn (s &Scanner) look_ahead(n int) u8 {
 	}
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn (mut s Scanner) text_scan() token.Token {
 	// The for loop here is so that instead of doing
 	// `return s.scan()` (which will use a new call stack frame),
@@ -1179,7 +1179,7 @@ fn (s &Scanner) count_symbol_before(p int, sym u8) int {
 	return count
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn (mut s Scanner) ident_string() string {
 	// determines if it is a nested string
 	if s.is_inside_string {
@@ -1453,7 +1453,7 @@ fn trim_slash_line_break(s string) string {
 	return ret_str
 }
 
-[inline]
+@[inline]
 fn is_escape_sequence(c u8) bool {
 	return c in [`x`, `u`, `e`, `n`, `r`, `t`, `v`, `a`, `f`, `b`, `\\`, `\``, `$`, `@`, `?`, `{`,
 		`}`, `'`, `"`]
@@ -1569,7 +1569,7 @@ fn (mut s Scanner) ident_char() string {
 	return c
 }
 
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn (s &Scanner) expect(want string, start_pos int) bool {
 	end_pos := start_pos + want.len
 	if start_pos < 0 || end_pos < 0 || start_pos >= s.text.len || end_pos > s.text.len {
@@ -1583,20 +1583,20 @@ fn (s &Scanner) expect(want string, start_pos int) bool {
 	return true
 }
 
-[inline]
+@[inline]
 fn (mut s Scanner) ignore_line() {
 	s.eat_to_end_of_line()
 	s.inc_line_number()
 }
 
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn (mut s Scanner) eat_to_end_of_line() {
 	for s.pos < s.text.len && s.text[s.pos] != scanner.b_lf {
 		s.pos++
 	}
 }
 
-[inline]
+@[inline]
 fn (mut s Scanner) inc_line_number() {
 	s.last_nl_pos = s.text.len - 1
 	if s.last_nl_pos > s.pos {

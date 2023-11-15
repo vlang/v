@@ -9,17 +9,17 @@ module builtin
 
 pub interface JS.Object {}
 
-[single_impl]
+@[single_impl]
 pub interface JS.BigInt {
 	JS.Any
 }
 
-[single_impl]
+@[single_impl]
 pub interface JS.Number {
 	JS.Any
 }
 
-[single_impl]
+@[single_impl]
 pub interface JS.String {
 	JS.Any
 	length JS.Number
@@ -37,7 +37,7 @@ pub interface JS.String {
 	lastIndexOf(needle JS.String) JS.Number
 }
 
-[single_impl]
+@[single_impl]
 pub interface JS.Boolean {
 	JS.Any
 	length JS.Number

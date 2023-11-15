@@ -4,7 +4,7 @@ mut:
 	children []Abc
 }
 
-[manualfree]
+@[manualfree]
 fn main() {
 	mut a := &Abc{}
 	a.name = 'aaa'

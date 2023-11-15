@@ -70,7 +70,7 @@ fn @select(handle int, test Select, timeout time.Duration) !bool {
 	return C.FD_ISSET(handle, &set) != 0
 }
 
-[inline]
+@[inline]
 fn select_deadline(handle int, test Select, deadline time.Time) !bool {
 	// if we have a 0 deadline here then the timeout that was passed was infinite...
 	infinite := deadline.unix_time() == 0
@@ -125,7 +125,7 @@ fn wait_for_read(handle int, deadline time.Time, timeout time.Duration) ! {
 	return wait_for_common(handle, deadline, timeout, .read)
 }
 
-[inline]
+@[inline]
 fn wrap_read_result(result int) !int {
 	if result != 0 {
 		return result

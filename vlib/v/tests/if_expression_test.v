@@ -237,7 +237,7 @@ fn test_if_expr_with_or_block() {
 
 type Num = f32 | f64 | i64 | int
 
-[noreturn]
+@[noreturn]
 fn assert_false_noreturn() {
 	assert false
 	exit(1)

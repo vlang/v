@@ -1,4 +1,4 @@
-[generated]
+@[generated]
 module eval
 
 import v.token

@@ -12,15 +12,15 @@ pub mut:
 }
 
 struct Node {
-	location NodeLocation [json: 'loc']
+	location NodeLocation @[json: 'loc']
 }
 
 struct NodeLocation {
-	source_file ?SourceFile [json: 'includedFrom']
+	source_file ?SourceFile @[json: 'includedFrom']
 }
 
 struct SourceFile {
-	path string [json: 'file']
+	path string @[json: 'file']
 }
 
 fn test_encode_decode() {

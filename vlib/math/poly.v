@@ -26,12 +26,12 @@ fn poly_n_1_eval(c []f64, n int, x f64) f64 {
 	return ans
 }
 
-[inline]
+@[inline]
 fn poly_eval(c []f64, x f64) f64 {
 	return poly_n_eval(c, c.len, x)
 }
 
-[inline]
+@[inline]
 fn poly_1_eval(c []f64, x f64) f64 {
 	return poly_n_1_eval(c, c.len, x)
 }

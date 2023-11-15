@@ -29,7 +29,7 @@ println(os.args)
 	os.rm(rnd_vsh_script_path)!
 }
 
-[noreturn]
+@[noreturn]
 fn skip_test(reason string) {
 	println('skipping test, because ${reason} .')
 	exit(0)

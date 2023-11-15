@@ -1,4 +1,4 @@
-[heap]
+@[heap]
 struct Abc {
 mut:
 	n int

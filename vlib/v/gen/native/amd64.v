@@ -77,12 +77,12 @@ enum Amd64SetOp {
 	np = 0x9b0f
 }
 
-[params]
+@[params]
 struct AvailableAmd64Register {
 	available Amd64Register
 }
 
-[params]
+@[params]
 struct Amd64RegisterOption {
 	reg    Amd64Register    = Amd64Register.rax
 	ssereg Amd64SSERegister = Amd64SSERegister.xmm0

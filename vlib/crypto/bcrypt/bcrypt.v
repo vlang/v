@@ -27,7 +27,7 @@ mut:
 }
 
 // free the resources taken by the Hashed `h`
-[unsafe]
+@[unsafe]
 pub fn (mut h Hashed) free() {
 	$if prealloc {
 		return

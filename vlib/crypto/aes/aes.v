@@ -25,7 +25,7 @@ mut:
 }
 
 // free the resources taken by the AesCipher `c`
-[unsafe]
+@[unsafe]
 pub fn (mut c AesCipher) free() {
 	$if prealloc {
 		return

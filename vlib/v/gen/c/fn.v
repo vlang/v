@@ -854,7 +854,7 @@ fn (mut g Gen) conversion_function_call(prefix string, postfix string, node ast.
 	g.write(')${dot}_typ )${postfix}')
 }
 
-[inline]
+@[inline]
 fn (mut g Gen) gen_arg_from_type(node_type ast.Type, node ast.Expr) {
 	if node_type.has_flag(.shared_f) {
 		if node_type.is_ptr() {
@@ -2193,7 +2193,7 @@ fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 	}
 }
 
-[inline]
+@[inline]
 fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang ast.Language) {
 	arg_typ := g.unwrap_generic(arg.typ)
 	arg_sym := g.table.sym(arg_typ)

@@ -55,8 +55,8 @@ fn main() {
 
 // normal routes:
 
-[middleware: app_middleware]
-['/']
+@[middleware: app_middleware]
+@['/']
 pub fn (mut app App) index() vweb.Result {
 	mut result := ''
 
@@ -67,7 +67,7 @@ pub fn (mut app App) index() vweb.Result {
 	return app.text('${result}index')
 }
 
-['/single']
+@['/single']
 pub fn (mut app App) single() vweb.Result {
 	mut result := ''
 
@@ -78,7 +78,7 @@ pub fn (mut app App) single() vweb.Result {
 	return app.text('${result}single')
 }
 
-['/multiple']
+@['/multiple']
 pub fn (mut app App) multiple() vweb.Result {
 	mut result := ''
 
@@ -89,8 +89,8 @@ pub fn (mut app App) multiple() vweb.Result {
 	return app.text('${result}multiple')
 }
 
-[middleware: app_middleware]
-['/combined']
+@[middleware: app_middleware]
+@['/combined']
 pub fn (mut app App) combined() vweb.Result {
 	mut result := ''
 
@@ -101,7 +101,7 @@ pub fn (mut app App) combined() vweb.Result {
 	return app.text('${result}combined')
 }
 
-['/admin/nested']
+@['/admin/nested']
 pub fn (mut app App) nested() vweb.Result {
 	mut result := ''
 
@@ -114,8 +114,8 @@ pub fn (mut app App) nested() vweb.Result {
 
 // above routes + post
 
-[middleware: app_middleware]
-['/index_post'; post]
+@[middleware: app_middleware]
+@['/index_post'; post]
 pub fn (mut app App) index_post() vweb.Result {
 	mut result := ''
 
@@ -126,7 +126,7 @@ pub fn (mut app App) index_post() vweb.Result {
 	return app.text('${result}index_post:${app.req.data}')
 }
 
-['/single_post'; post]
+@['/single_post'; post]
 pub fn (mut app App) single_post() vweb.Result {
 	mut result := ''
 
@@ -137,7 +137,7 @@ pub fn (mut app App) single_post() vweb.Result {
 	return app.text('${result}single_post:${app.req.data}')
 }
 
-['/multiple_post'; post]
+@['/multiple_post'; post]
 pub fn (mut app App) multiple_post() vweb.Result {
 	mut result := ''
 
@@ -148,8 +148,8 @@ pub fn (mut app App) multiple_post() vweb.Result {
 	return app.text('${result}multiple_post:${app.req.data}')
 }
 
-[middleware: app_middleware]
-['/combined_post'; post]
+@[middleware: app_middleware]
+@['/combined_post'; post]
 pub fn (mut app App) combined_post() vweb.Result {
 	mut result := ''
 
@@ -160,7 +160,7 @@ pub fn (mut app App) combined_post() vweb.Result {
 	return app.text('${result}combined_post:${app.req.data}')
 }
 
-['/admin/nested_post'; post]
+@['/admin/nested_post'; post]
 pub fn (mut app App) nested_post() vweb.Result {
 	mut result := ''
 
@@ -173,7 +173,7 @@ pub fn (mut app App) nested_post() vweb.Result {
 
 // dynamic routes
 
-['/admin/:dynamic']
+@['/admin/:dynamic']
 pub fn (mut app App) admin_dynamic(dynamic string) vweb.Result {
 	mut result := ''
 
@@ -184,8 +184,8 @@ pub fn (mut app App) admin_dynamic(dynamic string) vweb.Result {
 	return app.text('${result}admin_dynamic:${dynamic}')
 }
 
-[middleware: app_middleware]
-['/other/:dynamic']
+@[middleware: app_middleware]
+@['/other/:dynamic']
 pub fn (mut app App) combined_dynamic(dynamic string) vweb.Result {
 	mut result := ''
 
@@ -198,8 +198,8 @@ pub fn (mut app App) combined_dynamic(dynamic string) vweb.Result {
 
 // redirect routes:
 
-[middleware: app_redirect]
-['/app_redirect']
+@[middleware: app_redirect]
+@['/app_redirect']
 pub fn (mut app App) app_redirect_route() vweb.Result {
 	mut result := ''
 
@@ -210,7 +210,7 @@ pub fn (mut app App) app_redirect_route() vweb.Result {
 	return app.text('${result}should_never_reach!')
 }
 
-['/redirect']
+@['/redirect']
 pub fn (mut app App) redirect_route() vweb.Result {
 	mut result := ''
 
@@ -221,7 +221,7 @@ pub fn (mut app App) redirect_route() vweb.Result {
 	return app.text('${result}should_never_reach!')
 }
 
-['/with-context']
+@['/with-context']
 pub fn (mut app App) with_context() vweb.Result {
 	a := app.get_value[string]('a') or { 'none' }
 	return app.text(a)

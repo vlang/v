@@ -62,7 +62,7 @@ fn fn_with_ref_return() &Foo {
 	return &Foo{}
 }
 
-[inline]
+@[inline]
 fn fn_with_flag() {
 	println('flag')
 }

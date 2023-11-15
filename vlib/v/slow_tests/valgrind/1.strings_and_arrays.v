@@ -375,7 +375,7 @@ fn parse_header1(s string) !string {
 }
 
 // TODO: remove this [manualfree] tag
-[manualfree]
+@[manualfree]
 fn advanced_options() {
 	s := parse_header0('foo:bar') or { return }
 	s2 := parse_header1('foo:bar') or { return }

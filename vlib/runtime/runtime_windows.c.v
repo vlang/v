@@ -2,7 +2,7 @@ module runtime
 
 import os
 
-[typedef]
+@[typedef]
 pub struct C.MEMORYSTATUS {
 	dwTotalPhys usize
 	dwAvailPhys usize

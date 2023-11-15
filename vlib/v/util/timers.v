@@ -1,14 +1,14 @@
 // Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-[has_globals]
+@[has_globals]
 module util
 
 import time
 
 __global g_timers = new_timers(should_print: false, label: 'g_timers')
 
-[heap]
+@[heap]
 pub struct Timers {
 	label string
 pub mut:
@@ -18,7 +18,7 @@ pub mut:
 	already_shown []string
 }
 
-[params]
+@[params]
 pub struct TimerParams {
 	should_print bool
 	label        string

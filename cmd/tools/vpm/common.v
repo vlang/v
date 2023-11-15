@@ -39,7 +39,7 @@ mut:
 	exec_err bool
 }
 
-[params]
+@[params]
 struct ErrorOptions {
 	details string
 	verbose bool // is used to only output the error message if the verbose setting is enabled.

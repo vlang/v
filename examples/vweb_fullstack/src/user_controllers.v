@@ -4,7 +4,7 @@ import vweb
 import encoding.base64
 import json
 
-['/controller/users'; get]
+@['/controller/users'; get]
 pub fn (mut app App) controller_get_all_user() vweb.Result {
 	// token := app.get_cookie('token') or { '' }
 	token := app.req.header.get_custom('token') or { '' }
@@ -21,7 +21,7 @@ pub fn (mut app App) controller_get_all_user() vweb.Result {
 	return app.json(response)
 }
 
-['/controller/user'; get]
+@['/controller/user'; get]
 pub fn (mut app App) controller_get_user() vweb.Result {
 	// token := app.get_cookie('token') or { '' }
 	token := app.req.header.get_custom('token') or { '' }
@@ -47,7 +47,7 @@ pub fn (mut app App) controller_get_user() vweb.Result {
 	return app.json(response)
 }
 
-['/controller/user/create'; post]
+@['/controller/user/create'; post]
 pub fn (mut app App) controller_create_user(username string, password string) vweb.Result {
 	if username == '' {
 		app.set_status(400, '')

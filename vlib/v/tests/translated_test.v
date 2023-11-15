@@ -1,4 +1,4 @@
-[translated]
+@[translated]
 module main
 
 fn test_NotSnakeCaseFunction() {
