@@ -424,7 +424,7 @@ pub interface JS.TypedArray {
 mut:
 	byteLength JS.Number
 	byteOffset JS.Number
-	length JS.Number
+	length     JS.Number
 }
 
 pub interface JS.Uint8Array {

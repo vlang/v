@@ -32,29 +32,8 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 	mut default_expr_aligns := []AlignInfo{}
 	mut field_types := []string{cap: node.fields.len}
 	// Calculate the alignments first
-	for i, field in node.fields {
-		ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
-		// Handle anon structs recursively
-		field_types << ft
-		attrs_len := inline_attrs_len(field.attrs)
-		end_pos := field.pos.pos + field.pos.len
-		for comment in field.comments {
-			if comment.pos.pos >= end_pos {
-				if comment.pos.line_nr == field.pos.line_nr {
-					comment_aligns.add_info(attrs_len, field_types[i].len, comment.pos.line_nr,
-						use_threshold: true
-					)
-				}
-				continue
-			}
-		}
-		field_aligns.add_info(field.name.len, ft.len, field.pos.line_nr)
-		if field.has_default_expr {
-			default_expr_aligns.add_info(attrs_len, field_types[i].len, field.pos.line_nr,
-				use_threshold: true
-			)
-		}
-	}
+	f.calculate_alignment(node.fields, mut field_aligns, mut comment_aligns, mut default_expr_aligns, mut
+		field_types)
 	f.writeln(' {')
 	if node.pre_comments.len > 0 {
 		f.comments_before_field(node.pre_comments)

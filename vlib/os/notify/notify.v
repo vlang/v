@@ -13,7 +13,7 @@ mut:
 }
 
 pub interface FdEvent {
-	fd int
+	fd   int
 	kind FdEventType
 }
 
