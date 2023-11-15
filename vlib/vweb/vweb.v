@@ -1181,7 +1181,7 @@ fn (mut w Worker[T]) process_incoming_requests() {
 
 @[params]
 pub struct PoolParams[T] {
-	handler    fn () T [required] = unsafe { nil }
+	handler    fn () T = unsafe { nil } @[required]
 	nr_workers int = runtime.nr_jobs()
 }
 

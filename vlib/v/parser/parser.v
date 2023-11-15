@@ -1812,8 +1812,10 @@ fn (mut p Parser) is_attributes() bool {
 
 // when is_top_stmt is true attrs are added to p.attrs
 fn (mut p Parser) attributes() {
+	start_pos := p.tok.pos()
 	mut is_at := false
 	if p.tok.kind == .lsbr {
+		p.note('`[attr]` has been deprecated, use `@[attr]` instead')
 		// [attr]
 		p.check(.lsbr)
 	} else if p.tok.kind == .at {
@@ -1824,16 +1826,16 @@ fn (mut p Parser) attributes() {
 	}
 	mut has_ctdefine := false
 	for p.tok.kind != .rsbr {
-		start_pos := p.tok.pos()
+		attr_start_pos := p.tok.pos()
 		attr := p.parse_attr(is_at)
 		if p.attrs.contains(attr.name) && attr.name != 'wasm_export' {
-			p.error_with_pos('duplicate attribute `${attr.name}`', start_pos.extend(p.prev_tok.pos()))
+			p.error_with_pos('duplicate attribute `${attr.name}`', attr_start_pos.extend(p.prev_tok.pos()))
 			return
 		}
 		if attr.kind == .comptime_define {
 			if has_ctdefine {
 				p.error_with_pos('only one `[if flag]` may be applied at a time `${attr.name}`',
-					start_pos.extend(p.prev_tok.pos()))
+					attr_start_pos.extend(p.prev_tok.pos()))
 				return
 			} else {
 				has_ctdefine = true
@@ -1851,7 +1853,7 @@ fn (mut p Parser) attributes() {
 		p.next()
 	}
 	if p.attrs.len == 0 {
-		p.error_with_pos('attributes cannot be empty', p.prev_tok.pos().extend(p.tok.pos()))
+		p.error_with_pos('attributes cannot be empty', start_pos.extend(p.tok.pos()))
 		return
 	}
 	// TODO: remove when old attr syntax is removed
