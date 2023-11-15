@@ -1,4 +1,4 @@
-[has_globals]
+@[has_globals]
 module main
 
 __global frees = []int{cap: 100}

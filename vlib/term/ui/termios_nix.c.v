@@ -16,14 +16,14 @@ pub struct C.winsize {
 
 const termios_at_startup = get_termios()
 
-[inline]
+@[inline]
 fn get_termios() termios.Termios {
 	mut t := termios.Termios{}
 	termios.tcgetattr(C.STDIN_FILENO, mut t)
 	return t
 }
 
-[inline]
+@[inline]
 fn get_terminal_size() (u16, u16) {
 	winsz := C.winsize{}
 	termios.ioctl(0, termios.flag(C.TIOCGWINSZ), voidptr(&winsz))

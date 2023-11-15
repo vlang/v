@@ -41,7 +41,7 @@ pub:
 	max_write    int     = 8192
 }
 
-[heap]
+@[heap]
 pub struct Picoev {
 	cb     fn (voidptr, picohttpparser.Request, mut picohttpparser.Response) = unsafe { nil }
 	err_cb fn (voidptr, picohttpparser.Request, mut picohttpparser.Response, IError) = default_err_cb
@@ -78,7 +78,7 @@ pub fn (mut pv Picoev) init() {
 }
 
 // add adds a file descriptor to the loop
-[direct_array_access]
+@[direct_array_access]
 pub fn (mut pv Picoev) add(fd int, events int, timeout int, cb voidptr) int {
 	assert fd < picoev.max_fds
 
@@ -99,7 +99,7 @@ pub fn (mut pv Picoev) add(fd int, events int, timeout int, cb voidptr) int {
 }
 
 // del removes a file descriptor from the loop
-[direct_array_access]
+@[direct_array_access]
 fn (mut pv Picoev) del(fd int) int {
 	assert fd < picoev.max_fds
 	mut target := pv.file_descriptors[fd]
@@ -135,7 +135,7 @@ fn (mut pv Picoev) loop_once(max_wait int) int {
 
 // set_timeout sets the timeout in seconds for a file descriptor. If a timeout occurs
 // the file descriptors target callback is called with a timeout event
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn (mut pv Picoev) set_timeout(fd int, secs int) {
 	assert fd < picoev.max_fds
 	if secs != 0 {
@@ -148,7 +148,7 @@ fn (mut pv Picoev) set_timeout(fd int, secs int) {
 // handle_timeout loops over all file descriptors and removes them from the loop
 // if they are timed out. Also the file descriptors target callback is called with a
 // timeout event
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn (mut pv Picoev) handle_timeout() {
 	mut to_remove := []int{}
 
@@ -192,13 +192,13 @@ fn accept_callback(listen_fd int, events int, cb_arg voidptr) {
 }
 
 // close_conn closes the socket `fd` and removes it from the loop
-[inline]
+@[inline]
 pub fn (mut pv Picoev) close_conn(fd int) {
 	pv.del(fd)
 	close_socket(fd)
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn raw_callback(fd int, events int, context voidptr) {
 	mut pv := unsafe { &Picoev(context) }
 	defer {

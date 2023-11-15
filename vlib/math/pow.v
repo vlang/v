@@ -10,7 +10,7 @@ const (
 )
 
 // powf returns base raised to the provided power. (float32)
-[inline]
+@[inline]
 pub fn powf(a f32, b f32) f32 {
 	return f32(pow(a, b))
 }

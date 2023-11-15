@@ -3,36 +3,36 @@ import db.mysql
 import time
 
 struct TestCustomSqlType {
-	id      int    [primary; sql: serial]
-	custom  string [sql_type: 'TEXT']
-	custom1 string [sql_type: 'VARCHAR(191)']
-	custom2 string [sql_type: 'datetime(3)']
-	custom3 string [sql_type: 'MEDIUMINT']
-	custom4 string [sql_type: 'DATETIME']
-	custom5 string [sql_type: 'datetime']
+	id      int    @[primary; sql: serial]
+	custom  string @[sql_type: 'TEXT']
+	custom1 string @[sql_type: 'VARCHAR(191)']
+	custom2 string @[sql_type: 'datetime(3)']
+	custom3 string @[sql_type: 'MEDIUMINT']
+	custom4 string @[sql_type: 'DATETIME']
+	custom5 string @[sql_type: 'datetime']
 }
 
 struct TestCustomWrongSqlType {
-	id      int    [primary; sql: serial]
+	id      int    @[primary; sql: serial]
 	custom  string
-	custom1 string [sql_type: 'VARCHAR']
-	custom2 string [sql_type: 'money']
-	custom3 string [sql_type: 'xml']
+	custom1 string @[sql_type: 'VARCHAR']
+	custom2 string @[sql_type: 'money']
+	custom3 string @[sql_type: 'xml']
 }
 
 struct TestTimeType {
 mut:
-	id         int       [primary; sql: serial]
+	id         int       @[primary; sql: serial]
 	username   string
-	created_at time.Time [sql_type: 'DATETIME']
-	updated_at string    [sql_type: 'DATETIME']
+	created_at time.Time @[sql_type: 'DATETIME']
+	updated_at string    @[sql_type: 'DATETIME']
 	deleted_at time.Time
 }
 
 struct TestDefaultAttribute {
-	id         string [primary; sql: serial]
+	id         string @[primary; sql: serial]
 	name       string
-	created_at string [default: 'CURRENT_TIMESTAMP'; sql_type: 'TIMESTAMP']
+	created_at string @[default: 'CURRENT_TIMESTAMP'; sql_type: 'TIMESTAMP']
 }
 
 fn test_mysql_orm() {

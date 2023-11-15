@@ -106,7 +106,7 @@ pub:
 	max_dropped_file_path_length int = 2048 // max length in bytes of a dropped UTF-8 file path (default: 2048)
 }
 
-[heap]
+@[heap]
 pub struct PipelineContainer {
 pub mut:
 	alpha sgl.Pipeline
@@ -143,7 +143,7 @@ fn (mut container PipelineContainer) init_pipeline() {
 	container.add = sgl.make_pipeline(&add_pipdesc)
 }
 
-[heap]
+@[heap]
 pub struct Context {
 mut:
 	render_text bool = true
@@ -525,7 +525,7 @@ pub enum EndEnum {
 	passthru
 }
 
-[params]
+@[params]
 pub struct EndOptions {
 	how EndEnum
 }

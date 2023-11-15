@@ -235,9 +235,9 @@ fn (fdr Finder) str() string {
 
 // Match is one result of the search_for_matches() process
 struct Match {
-	path string [required]
-	line int    [required]
-	text string [required]
+	path string @[required]
+	line int    @[required]
+	text string @[required]
 }
 
 fn (mtc Match) show() {

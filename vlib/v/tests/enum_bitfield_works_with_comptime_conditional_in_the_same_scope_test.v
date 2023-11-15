@@ -1,4 +1,4 @@
-[flag]
+@[flag]
 pub enum Fill {
 	crash
 }

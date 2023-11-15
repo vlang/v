@@ -1020,3 +1020,17 @@ fn test_mv_across_partitions() {
 fn test_page_size() {
 	assert os.page_size() >= 4096 // this is normal and assumed.
 }
+
+fn test_mkdir_at_file_dst() {
+	f3 := os.join_path('myfolder', 'f1', 'f2', 'f3')
+	os.mkdir_all(f3)!
+	assert os.is_dir(f3)
+	path := os.join_path(f3, 'no_ext_doc')
+	os.write_file(path, '')!
+	assert os.exists(path) && os.is_file(path)
+	os.mkdir_all(path) or {
+		assert err.msg() == 'path `${path}` already exists, and is not a folder', err.msg()
+		return
+	}
+	assert false
+}

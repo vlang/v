@@ -57,7 +57,7 @@ pub fn abs_path(path string) string {
 // - references to current directories (.)
 // - redundant path separators
 // - the last path separator
-[direct_array_access]
+@[direct_array_access]
 pub fn norm_path(path string) string {
 	if path.len == 0 {
 		return os.dot_str

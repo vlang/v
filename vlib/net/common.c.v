@@ -24,7 +24,7 @@ pub enum ShutdownDirection {
 	read_and_write
 }
 
-[params]
+@[params]
 pub struct ShutdownConfig {
 	how ShutdownDirection = .read_and_write
 }
@@ -88,7 +88,7 @@ fn @select(handle int, test Select, timeout time.Duration) !bool {
 	return C.FD_ISSET(handle, &set) != 0
 }
 
-[inline]
+@[inline]
 fn select_deadline(handle int, test Select, deadline time.Time) !bool {
 	// if we have a 0 deadline here then the timeout that was passed was infinite...
 	infinite := deadline.unix_time() == 0

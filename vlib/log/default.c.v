@@ -1,13 +1,13 @@
 // Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-[has_globals]
+@[has_globals]
 module log
 
 __global default_logger &Logger
 
 // TODO: remove this hack, when the language has a way to access the raw pointer to an interface value directly:
-[typedef]
+@[typedef]
 pub struct C.log__Logger {
 mut:
 	_object voidptr
@@ -24,7 +24,7 @@ fn deinit() {
 	free_logger(default_logger)
 }
 
-[manualfree]
+@[manualfree]
 fn free_logger(logger &Logger) {
 	if voidptr(logger) == unsafe { nil } {
 		return

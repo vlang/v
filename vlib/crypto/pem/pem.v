@@ -10,13 +10,13 @@ const (
 )
 
 // new returns a new `Block` with the specified block_type
-[deprecated: 'use Block.new instead']
-[inline]
+@[deprecated: 'use Block.new instead']
+@[inline]
 pub fn new(block_type string) Block {
 	return Block.new(block_type)
 }
 
-[params]
+@[params]
 pub struct EncodeConfig {
 pub mut:
 	// inner text wrap around
@@ -70,7 +70,7 @@ pub mut:
 }
 
 // Block.new returns a new `Block` with the specified block_type
-[inline]
+@[inline]
 pub fn Block.new(block_type string) Block {
 	return Block{
 		block_type: block_type
@@ -78,7 +78,7 @@ pub fn Block.new(block_type string) Block {
 }
 
 // free the resources taken by the Block `block`
-[unsafe]
+@[unsafe]
 pub fn (mut block Block) free() {
 	$if prealloc {
 		return
@@ -93,7 +93,7 @@ pub fn (mut block Block) free() {
 // header_by_key returns the selected key using the Header enum
 //
 // same as `block.headers[key.str()]`
-[inline]
+@[inline]
 pub fn (block Block) header_by_key(key Header) []string {
 	return block.headers[key.str()]
 }

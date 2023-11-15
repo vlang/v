@@ -15,7 +15,7 @@ mut:
 	position int
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn (mut fbr FullBufferReader) read(mut buf []u8) !int {
 	if fbr.position >= fbr.contents.len {
 		return io.Eof{}

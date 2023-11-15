@@ -98,7 +98,7 @@ fn (db MockDB) last_id() int {
 
 // --
 
-[table: 'foo']
+@[table: 'foo']
 struct Foo {
 mut:
 	id u64    [primary; sql: serial]

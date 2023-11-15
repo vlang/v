@@ -12,10 +12,10 @@ type SourceMapJson = map[string]json2.Any
 
 pub struct SourceMap {
 pub mut:
-	version                int               [json: version]
-	file                   string            [json: file]
-	source_root            string            [json: source_root]
-	sources                Sets              [json: sources]
+	version                int               @[json: version]
+	file                   string            @[json: file]
+	source_root            string            @[json: source_root]
+	sources                Sets              @[json: sources]
 	sources_content        map[string]string
 	names                  Sets
 	mappings               Mappings

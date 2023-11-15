@@ -3,7 +3,7 @@ import v.checker.tests.module_with_structs_with_deprecated_fields as m
 struct Abc {
 mut:
 	x int
-	d int [deprecated]
+	d int @[deprecated]
 	z int
 }
 

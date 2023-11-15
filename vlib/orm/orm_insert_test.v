@@ -2,55 +2,55 @@ import db.sqlite
 import rand
 
 struct Parent {
-	id       int     [primary; sql: serial]
+	id       int     @[primary; sql: serial]
 	name     string
-	children []Child [fkey: 'parent_id']
-	notes    []Note  [fkey: 'owner_id']
+	children []Child @[fkey: 'parent_id']
+	notes    []Note  @[fkey: 'owner_id']
 }
 
 struct Child {
 mut:
-	id        int    [primary; sql: serial]
+	id        int    @[primary; sql: serial]
 	parent_id int
 	name      string
 }
 
 struct Note {
 mut:
-	id       int    [primary; sql: serial]
+	id       int    @[primary; sql: serial]
 	owner_id int
 	text     string
 }
 
 struct Account {
-	id int [primary; sql: serial]
+	id int @[primary; sql: serial]
 }
 
 struct Package {
-	id     int    [primary; sql: serial]
-	name   string [unique]
-	author User   [fkey: 'id'] // mandatory user
+	id     int    @[primary; sql: serial]
+	name   string @[unique]
+	author User   @[fkey: 'id'] // mandatory user
 }
 
 struct Delivery {
-	id     int    [primary; sql: serial]
-	name   string [unique]
-	author ?User  [fkey: 'id'] // optional user
+	id     int    @[primary; sql: serial]
+	name   string @[unique]
+	author ?User  @[fkey: 'id'] // optional user
 }
 
 struct User {
 pub mut:
-	id       int    [primary; sql: serial]
-	username string [unique]
+	id       int    @[primary; sql: serial]
+	username string @[unique]
 }
 
 struct Entity {
-	uuid        string [primary]
+	uuid        string @[primary]
 	description string
 }
 
 struct EntityWithFloatPrimary {
-	id   f64    [primary]
+	id   f64    @[primary]
 	name string
 }
 
@@ -346,9 +346,9 @@ fn test_orm_insert_with_multiple_child_elements() {
 	assert parent.notes[2].text == 'Third note'
 }
 
-[table: 'customers']
+@[table: 'customers']
 struct Customer {
-	id   i64    [primary; sql: serial]
+	id   i64    @[primary; sql: serial]
 	name string
 }
 

@@ -86,7 +86,7 @@ pub fn pref_arch_to_table_language(pref_arch pref.Arch) Language {
 // * Table.type_kind(typ) not TypeSymbol.kind.
 // Each TypeSymbol is entered into `Table.types`.
 // See also: Table.sym.
-[minify]
+@[minify]
 pub struct TypeSymbol {
 pub:
 	parent_idx int
@@ -147,7 +147,7 @@ pub mut:
 	func     Fn
 }
 
-[minify]
+@[minify]
 pub struct Struct {
 pub:
 	attrs []Attr
@@ -172,7 +172,7 @@ pub mut:
 	concrete_types []Type // concrete types, e.g. [int, string]
 }
 
-[minify]
+@[minify]
 pub struct Interface {
 pub mut:
 	types   []Type // all types that implement this interface
@@ -198,7 +198,7 @@ pub:
 	attrs            map[string][]Attr
 }
 
-[minify]
+@[minify]
 pub struct Alias {
 pub:
 	parent_type Type
@@ -221,7 +221,7 @@ pub mut:
 	elem_type Type
 }
 
-[minify]
+@[minify]
 pub struct ArrayFixed {
 pub:
 	size      int
@@ -248,7 +248,7 @@ pub mut:
 	value_type Type
 }
 
-[minify]
+@[minify]
 pub struct SumType {
 pub mut:
 	fields       []StructField
@@ -284,31 +284,31 @@ pub fn (t Type) share() ShareType {
 }
 
 // return TypeSymbol idx for `t`
-[inline]
+@[inline]
 pub fn (t Type) idx() int {
 	return u16(t) & 0xffff
 }
 
 // is_void return true if t is of type void
-[inline]
+@[inline]
 pub fn (t Type) is_void() bool {
 	return t == ast.void_type
 }
 
 // is_full return true if t is not of type void
-[inline]
+@[inline]
 pub fn (t Type) is_full() bool {
 	return t != 0 && t != ast.void_type
 }
 
 // return nr_muls for `t`
-[inline]
+@[inline]
 pub fn (t Type) nr_muls() int {
 	return (int(t) >> 16) & 0xff
 }
 
 // return true if `t` is a pointer (nr_muls>0)
-[inline]
+@[inline]
 pub fn (t Type) is_ptr() bool {
 	// any normal pointer, i.e. &Type, &&Type etc;
 	// Note: voidptr, charptr and byteptr are NOT included!
@@ -316,26 +316,26 @@ pub fn (t Type) is_ptr() bool {
 }
 
 // is_pointer returns true if typ is any of the builtin pointer types (voidptr, byteptr, charptr)
-[inline]
+@[inline]
 pub fn (typ Type) is_pointer() bool {
 	// builtin pointer types (voidptr, byteptr, charptr)
 	return typ.idx() in ast.pointer_type_idxs
 }
 
 // is_voidptr returns true if typ is a voidptr
-[inline]
+@[inline]
 pub fn (typ Type) is_voidptr() bool {
 	return typ.idx() == ast.voidptr_type_idx
 }
 
 // is_any_kind_of_pointer returns true if t is any type of pointer
-[inline]
+@[inline]
 pub fn (t Type) is_any_kind_of_pointer() bool {
 	return (int(t) >> 16) & 0xff > 0 || (u16(t) & 0xffff) in ast.pointer_type_idxs
 }
 
 // set nr_muls on `t` and return it
-[inline]
+@[inline]
 pub fn (t Type) set_nr_muls(nr_muls int) Type {
 	if nr_muls < 0 || nr_muls > 255 {
 		panic('set_nr_muls: nr_muls must be between 0 & 255')
@@ -344,7 +344,7 @@ pub fn (t Type) set_nr_muls(nr_muls int) Type {
 }
 
 // increments nr_muls on `t` and return it
-[inline]
+@[inline]
 pub fn (t Type) ref() Type {
 	nr_muls := (int(t) >> 16) & 0xff
 	if nr_muls == 255 {
@@ -354,7 +354,7 @@ pub fn (t Type) ref() Type {
 }
 
 // decrement nr_muls on `t` and return it
-[inline]
+@[inline]
 pub fn (t Type) deref() Type {
 	nr_muls := (int(t) >> 16) & 0xff
 	if nr_muls == 0 {
@@ -364,19 +364,19 @@ pub fn (t Type) deref() Type {
 }
 
 // set `flag` on `t` and return `t`
-[inline]
+@[inline]
 pub fn (t Type) set_flag(flag TypeFlag) Type {
 	return int(t) | (1 << (int(flag) + 24))
 }
 
 // clear `flag` on `t` and return `t`
-[inline]
+@[inline]
 pub fn (t Type) clear_flag(flag TypeFlag) Type {
 	return int(t) & ~(1 << (int(flag) + 24))
 }
 
 // clear all flags or multi flags
-[inline]
+@[inline]
 pub fn (t Type) clear_flags(flags ...TypeFlag) Type {
 	if flags.len == 0 {
 		return int(t) & 0xffffff
@@ -390,7 +390,7 @@ pub fn (t Type) clear_flags(flags ...TypeFlag) Type {
 }
 
 // return true if `flag` is set on `t`
-[inline]
+@[inline]
 pub fn (t Type) has_flag(flag TypeFlag) bool {
 	return int(t) & (1 << (int(flag) + 24)) > 0
 }
@@ -458,19 +458,19 @@ pub fn (t Type) debug() []string {
 }
 
 // copy flags & nr_muls from `t_from` to `t` and return `t`
-[inline]
+@[inline]
 pub fn (t Type) derive(t_from Type) Type {
 	return (0xffff0000 & t_from) | u16(t)
 }
 
 // copy flags from `t_from` to `t` and return `t`
-[inline]
+@[inline]
 pub fn (t Type) derive_add_muls(t_from Type) Type {
 	return Type((0xff000000 & t_from) | u16(t)).set_nr_muls(t.nr_muls() + t_from.nr_muls())
 }
 
 // return new type with TypeSymbol idx set to `idx`
-[inline]
+@[inline]
 pub fn new_type(idx int) Type {
 	if idx < 1 || idx > 65535 {
 		panic('new_type: idx must be between 1 & 65535')
@@ -479,7 +479,7 @@ pub fn new_type(idx int) Type {
 }
 
 // return new type with TypeSymbol idx set to `idx` & nr_muls set to `nr_muls`
-[inline]
+@[inline]
 pub fn new_type_ptr(idx int, nr_muls int) Type {
 	if idx < 1 || idx > 65535 {
 		panic('new_type_ptr: idx must be between 1 & 65535')
@@ -490,42 +490,42 @@ pub fn new_type_ptr(idx int, nr_muls int) Type {
 	return (u32(nr_muls) << 16) | u16(idx)
 }
 
-[inline]
+@[inline]
 pub fn (typ Type) is_float() bool {
 	return !typ.is_ptr() && typ.idx() in ast.float_type_idxs
 }
 
-[inline]
+@[inline]
 pub fn (typ Type) is_int() bool {
 	return !typ.is_ptr() && typ.idx() in ast.integer_type_idxs
 }
 
-[inline]
+@[inline]
 pub fn (typ Type) is_int_valptr() bool {
 	return typ.is_ptr() && typ.idx() in ast.integer_type_idxs
 }
 
-[inline]
+@[inline]
 pub fn (typ Type) is_float_valptr() bool {
 	return typ.is_ptr() && typ.idx() in ast.float_type_idxs
 }
 
-[inline]
+@[inline]
 pub fn (typ Type) is_pure_int() bool {
 	return int(typ) in ast.integer_type_idxs
 }
 
-[inline]
+@[inline]
 pub fn (typ Type) is_pure_float() bool {
 	return int(typ) in ast.float_type_idxs
 }
 
-[inline]
+@[inline]
 pub fn (typ Type) is_signed() bool {
 	return typ.idx() in ast.signed_integer_type_idxs
 }
 
-[inline]
+@[inline]
 pub fn (typ Type) is_unsigned() bool {
 	return typ.idx() in ast.unsigned_integer_type_idxs
 }
@@ -547,22 +547,22 @@ pub fn (typ Type) flip_signedness() Type {
 	}
 }
 
-[inline]
+@[inline]
 pub fn (typ Type) is_int_literal() bool {
 	return int(typ) == ast.int_literal_type_idx
 }
 
-[inline]
+@[inline]
 pub fn (typ Type) is_number() bool {
 	return typ.clear_flags() in ast.number_type_idxs
 }
 
-[inline]
+@[inline]
 pub fn (typ Type) is_string() bool {
 	return typ.idx() == ast.string_type_idx
 }
 
-[inline]
+@[inline]
 pub fn (typ Type) is_bool() bool {
 	return typ.idx() == ast.bool_type_idx
 }
@@ -762,12 +762,12 @@ pub fn (t TypeSymbol) str() string {
 	return t.name
 }
 
-[noreturn]
+@[noreturn]
 fn (t &TypeSymbol) no_info_panic(fname string) {
 	panic('${fname}: no info for type: ${t.name}')
 }
 
-[inline]
+@[inline]
 pub fn (t &TypeSymbol) enum_info() Enum {
 	if t.info is Enum {
 		return t.info
@@ -781,7 +781,7 @@ pub fn (t &TypeSymbol) enum_info() Enum {
 	t.no_info_panic(@METHOD)
 }
 
-[inline]
+@[inline]
 pub fn (t &TypeSymbol) mr_info() MultiReturn {
 	if t.info is MultiReturn {
 		return t.info
@@ -795,7 +795,7 @@ pub fn (t &TypeSymbol) mr_info() MultiReturn {
 	t.no_info_panic(@METHOD)
 }
 
-[inline]
+@[inline]
 pub fn (t &TypeSymbol) array_info() Array {
 	if t.info is Array {
 		return t.info
@@ -809,7 +809,7 @@ pub fn (t &TypeSymbol) array_info() Array {
 	t.no_info_panic(@METHOD)
 }
 
-[inline]
+@[inline]
 pub fn (t &TypeSymbol) array_fixed_info() ArrayFixed {
 	if t.info is ArrayFixed {
 		return t.info
@@ -823,7 +823,7 @@ pub fn (t &TypeSymbol) array_fixed_info() ArrayFixed {
 	t.no_info_panic(@METHOD)
 }
 
-[inline]
+@[inline]
 pub fn (t &TypeSymbol) chan_info() Chan {
 	if t.info is Chan {
 		return t.info
@@ -837,7 +837,7 @@ pub fn (t &TypeSymbol) chan_info() Chan {
 	t.no_info_panic(@METHOD)
 }
 
-[inline]
+@[inline]
 pub fn (t &TypeSymbol) thread_info() Thread {
 	if t.info is Thread {
 		return t.info
@@ -851,7 +851,7 @@ pub fn (t &TypeSymbol) thread_info() Thread {
 	t.no_info_panic(@METHOD)
 }
 
-[inline]
+@[inline]
 pub fn (t &TypeSymbol) map_info() Map {
 	if t.info is Map {
 		return t.info
@@ -865,7 +865,7 @@ pub fn (t &TypeSymbol) map_info() Map {
 	t.no_info_panic(@METHOD)
 }
 
-[inline]
+@[inline]
 pub fn (t &TypeSymbol) struct_info() Struct {
 	if t.info is Struct {
 		return t.info
@@ -879,7 +879,7 @@ pub fn (t &TypeSymbol) struct_info() Struct {
 	t.no_info_panic(@METHOD)
 }
 
-[inline]
+@[inline]
 pub fn (t &TypeSymbol) sumtype_info() SumType {
 	if t.info is SumType {
 		return t.info
@@ -981,12 +981,12 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	t.register_sym(kind: .voidptr, name: 'nil', cname: 'voidptr', mod: 'builtin') // 31
 }
 
-[inline]
+@[inline]
 pub fn (t &TypeSymbol) is_pointer() bool {
 	return t.kind in [.byteptr, .charptr, .voidptr]
 }
 
-[inline]
+@[inline]
 pub fn (t &TypeSymbol) is_int() bool {
 	res := t.kind in [.i8, .i16, .int, .i64, .i32, .isize, .u8, .u16, .u32, .u64, .usize,
 		.int_literal, .rune]
@@ -996,32 +996,32 @@ pub fn (t &TypeSymbol) is_int() bool {
 	return res
 }
 
-[inline]
+@[inline]
 pub fn (t &TypeSymbol) is_float() bool {
 	return t.kind in [.f32, .f64, .float_literal]
 }
 
-[inline]
+@[inline]
 pub fn (t &TypeSymbol) is_string() bool {
 	return t.kind == .string
 }
 
-[inline]
+@[inline]
 pub fn (t &TypeSymbol) is_number() bool {
 	return t.is_int() || t.is_float()
 }
 
-[inline]
+@[inline]
 pub fn (t &TypeSymbol) is_bool() bool {
 	return t.kind == .bool
 }
 
-[inline]
+@[inline]
 pub fn (t &TypeSymbol) is_primitive() bool {
 	return t.is_number() || t.is_pointer() || t.is_string() || t.is_bool()
 }
 
-[inline]
+@[inline]
 pub fn (t &TypeSymbol) is_builtin() bool {
 	return t.mod == 'builtin'
 }
@@ -1139,7 +1139,7 @@ pub fn (t &Table) type_size(typ Type) (int, int) {
 
 // round_up rounds the number `n` up to the next multiple `multiple`.
 // Note: `multiple` must be a power of 2.
-[inline]
+@[inline]
 fn round_up(n int, multiple int) int {
 	return (n + multiple - 1) & -multiple
 }
@@ -1482,7 +1482,7 @@ fn (t Table) shorten_user_defined_typenames(originalname string, import_aliases 
 	return res
 }
 
-[minify]
+@[minify]
 pub struct FnSignatureOpts {
 	skip_receiver bool
 	type_only     bool

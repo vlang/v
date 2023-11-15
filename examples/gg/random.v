@@ -14,7 +14,7 @@ mut:
 	pixels      [pheight][pwidth]u32
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn (mut state AppState) update() {
 	mut rcolor := u64(state.gg.frame)
 	for {

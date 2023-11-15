@@ -49,7 +49,7 @@ mut:
 }
 
 // free the resources taken by the Digest `d`
-[unsafe]
+@[unsafe]
 pub fn (mut d Digest) free() {
 	$if prealloc {
 		return
@@ -202,8 +202,8 @@ fn (mut d Digest) checksum_internal() []u8 {
 
 // checksum returns the current byte checksum of the Digest,
 // it is an internal method and is not recommended because its results are not idempotent.
-[deprecated: 'checksum() will be changed to a private method, use sum() instead']
-[deprecated_after: '2024-04-30']
+@[deprecated: 'checksum() will be changed to a private method, use sum() instead']
+@[deprecated_after: '2024-04-30']
 pub fn (mut d Digest) checksum() []u8 {
 	return d.checksum_internal()
 }

@@ -30,8 +30,8 @@ pub fn (mut l Log) set_level(level Level) {
 }
 
 // set_output_level sets the internal logging output to `level`.
-[deprecated: 'use .set_level(level) instead']
-[deprecated_after: '2023-09-30']
+@[deprecated: 'use .set_level(level) instead']
+@[deprecated_after: '2023-09-30']
 pub fn (mut l Log) set_output_level(level Level) {
 	l.level = level
 }
@@ -119,7 +119,7 @@ pub fn (mut l Log) send_output(s &string, level Level) {
 
 // fatal logs line `s` via `send_output` if `Log.level` is greater than or equal to the `Level.fatal` category.
 // Note that this method performs a panic at the end, even if log level is not enabled.
-[noreturn]
+@[noreturn]
 pub fn (mut l Log) fatal(s string) {
 	if int(l.level) >= int(Level.fatal) {
 		l.send_output(s, .fatal)
@@ -161,7 +161,7 @@ pub fn (mut l Log) debug(s string) {
 }
 
 // free frees the given Log instance
-[unsafe]
+@[unsafe]
 pub fn (mut f Log) free() {
 	unsafe {
 		f.output_label.free()

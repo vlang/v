@@ -1,4 +1,4 @@
-[flag]
+@[flag]
 enum BfPermission {
 	read
 	write

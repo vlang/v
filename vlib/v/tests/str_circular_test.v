@@ -1,4 +1,4 @@
-[heap]
+@[heap]
 struct Aa {
 mut:
 	bs []Bb

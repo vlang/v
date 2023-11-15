@@ -41,7 +41,7 @@ enum Color {
 	blue
 }
 
-[flag]
+@[flag]
 enum Permissions {
 	read
 	write

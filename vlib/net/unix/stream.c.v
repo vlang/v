@@ -11,7 +11,7 @@ const (
 	msg_nosignal               = 0x4000
 )
 
-[heap]
+@[heap]
 pub struct StreamConn {
 pub mut:
 	sock StreamSocket
@@ -199,13 +199,13 @@ pub fn (mut c StreamConn) set_write_timeout(t time.Duration) {
 }
 
 // wait_for_read blocks until the socket is ready to read
-[inline]
+@[inline]
 pub fn (mut c StreamConn) wait_for_read() ! {
 	return wait_for_read(c.sock.handle, c.read_deadline, c.read_timeout)
 }
 
 // wait_for_read blocks until the socket is ready to write
-[inline]
+@[inline]
 pub fn (mut c StreamConn) wait_for_write() ! {
 	return wait_for_write(c.sock.handle, c.write_deadline, c.write_timeout)
 }
@@ -224,7 +224,7 @@ mut:
 	accept_deadline time.Time
 }
 
-[params]
+@[params]
 pub struct ListenOptions {
 	backlog int = 128
 }

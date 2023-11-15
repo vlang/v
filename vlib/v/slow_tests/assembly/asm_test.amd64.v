@@ -110,7 +110,7 @@ fn test_inline_asm() {
 	o.str()
 }
 
-[packed]
+@[packed]
 struct Manu {
 mut:
 	ebx  u32
@@ -131,7 +131,7 @@ fn (m Manu) str() string {
 
 // this test does not appear in i386 test since rip relative addressing was introduced in 64-bit mode
 // doesn't actually work
-[if !macos]
+@[if !macos]
 fn test_rip_relative_label() {
 	$if !macos {
 		mut a := i64(4)
@@ -153,7 +153,7 @@ $if !macos {
 
 // this test does not appear in i386 test since rip relative addressing was introduced in 64-bit mode
 // doesn't actually work
-[if !macos]
+@[if !macos]
 fn test_rip_relative_label_u8() {
 	$if !macos {
 		mut a := int(4)

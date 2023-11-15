@@ -256,7 +256,7 @@ fn (mut r Rat) randomize() {
 		r.app.height - block_size - buffer)
 }
 
-[heap]
+@[heap]
 struct App {
 mut:
 	termui &termui.Context = unsafe { nil }

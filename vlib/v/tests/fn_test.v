@@ -54,7 +54,7 @@ type F9 = fn (MyInterface)
 fn C.atoi(&u8) int
 fn C.freec(ptr voidptr)
 
-[trusted]
+@[trusted]
 fn C.exitc(code int)
 
 // above checks attribute doesn't conflict with `freec` return type

@@ -86,12 +86,12 @@ pub mut:
 	positive     bool = true // mandatory: the sign of the number passed
 	sign_flag    bool       // flag for print sign as prefix in padding
 	align        Align_text = .right // alignment of the string
-	allign       Align_text [deprecated: 'use align instead'; deprecated_after: '2023-11-30'] = .right
+	allign       Align_text = .right @[deprecated: 'use align instead'; deprecated_after: '2023-11-30']
 	rm_tail_zero bool // remove the tail zeros from floats
 }
 
 // format_str returns a `string` formatted according to the options set in `p`.
-[manualfree]
+@[manualfree]
 pub fn format_str(s string, p BF_param) string {
 	if p.len0 <= 0 {
 		return s.clone()

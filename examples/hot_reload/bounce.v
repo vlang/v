@@ -51,7 +51,7 @@ fn main() {
 
 // Try uncommenting or changing the lines inside the live functions.
 // Guess what will happen:
-[live]
+@[live]
 fn frame(mut game Game) {
 	game.gg.begin()
 	game.gg.draw_text_def(10, 5, 'Modify examples/hot_reload/bounce.v to get instant updates')
@@ -63,7 +63,7 @@ fn frame(mut game Game) {
 	game.gg.end()
 }
 
-[live]
+@[live]
 fn (mut game Game) update_model() {
 	speed := 2
 	game.x += speed * game.dx

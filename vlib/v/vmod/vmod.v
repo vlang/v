@@ -39,7 +39,7 @@ pub:
 	vmod_folder string
 }
 
-[heap]
+@[heap]
 pub struct ModFileCacher {
 mut:
 	cache map[string]ModFileAndFolder

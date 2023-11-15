@@ -16,7 +16,7 @@ pub fn (mut app App) index() vweb.Result {
 	return $vweb.html()
 }
 
-['/upload'; post]
+@['/upload'; post]
 pub fn (mut app App) upload() vweb.Result {
 	dump(app.form)
 	dump(app.files)
@@ -29,7 +29,7 @@ pub fn (mut app App) upload() vweb.Result {
 	return $vweb.html()
 }
 
-['/submit'; post]
+@['/submit'; post]
 pub fn (mut app App) submit() vweb.Result {
 	dump(app.form)
 	form_data := app.form.clone()

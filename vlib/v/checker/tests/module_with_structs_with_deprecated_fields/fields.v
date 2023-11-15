@@ -3,9 +3,9 @@ module module_with_structs_with_deprecated_fields
 pub struct Xyz {
 pub mut:
 	a int
-	b int [deprecated]
-	c int [deprecated: 'c use Xyz.a instead'; deprecated_after: '2021-03-01']
-	d int [deprecated: 'd use Xyz.a instead'; deprecated_after: '2999-03-01']
+	b int @[deprecated]
+	c int @[deprecated: 'c use Xyz.a instead'; deprecated_after: '2021-03-01']
+	d int @[deprecated: 'd use Xyz.a instead'; deprecated_after: '2999-03-01']
 }
 
 fn some_internal_function() {

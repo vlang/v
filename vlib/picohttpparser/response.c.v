@@ -9,7 +9,7 @@ pub mut:
 	buf &u8 = unsafe { nil }
 }
 
-[inline]
+@[inline]
 pub fn (mut r Response) write_string(s string) {
 	unsafe {
 		vmemcpy(r.buf, s.str, s.len)
@@ -17,13 +17,13 @@ pub fn (mut r Response) write_string(s string) {
 	}
 }
 
-[inline]
+@[inline]
 pub fn (mut r Response) http_ok() &Response {
 	r.write_string('HTTP/1.1 200 OK\r\n')
 	return unsafe { r }
 }
 
-[inline]
+@[inline]
 pub fn (mut r Response) header(k string, v string) &Response {
 	r.write_string(k)
 	r.write_string(': ')
@@ -32,7 +32,7 @@ pub fn (mut r Response) header(k string, v string) &Response {
 	return unsafe { r }
 }
 
-[inline]
+@[inline]
 pub fn (mut r Response) header_date() &Response {
 	r.write_string('Date: ')
 	unsafe {
@@ -43,13 +43,13 @@ pub fn (mut r Response) header_date() &Response {
 	return unsafe { r }
 }
 
-[inline]
+@[inline]
 pub fn (mut r Response) header_server() &Response {
 	r.write_string('Server: V\r\n')
 	return unsafe { r }
 }
 
-[inline]
+@[inline]
 pub fn (mut r Response) content_type(s string) &Response {
 	r.write_string('Content-Type: ')
 	r.write_string(s)
@@ -57,25 +57,25 @@ pub fn (mut r Response) content_type(s string) &Response {
 	return unsafe { r }
 }
 
-[inline]
+@[inline]
 pub fn (mut r Response) html() &Response {
 	r.write_string('Content-Type: text/html\r\n')
 	return unsafe { r }
 }
 
-[inline]
+@[inline]
 pub fn (mut r Response) plain() &Response {
 	r.write_string('Content-Type: text/plain\r\n')
 	return unsafe { r }
 }
 
-[inline]
+@[inline]
 pub fn (mut r Response) json() &Response {
 	r.write_string('Content-Type: application/json\r\n')
 	return unsafe { r }
 }
 
-[inline]
+@[inline]
 pub fn (mut r Response) body(body string) {
 	r.write_string('Content-Length: ')
 	unsafe {
@@ -85,27 +85,27 @@ pub fn (mut r Response) body(body string) {
 	r.write_string(body)
 }
 
-[inline]
+@[inline]
 pub fn (mut r Response) http_404() {
 	r.write_string('HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n')
 }
 
-[inline]
+@[inline]
 pub fn (mut r Response) http_405() {
 	r.write_string('HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n\r\n')
 }
 
-[inline]
+@[inline]
 pub fn (mut r Response) http_500() {
 	r.write_string('HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n')
 }
 
-[inline]
+@[inline]
 pub fn (mut r Response) raw(response string) {
 	r.write_string(response)
 }
 
-[inline]
+@[inline]
 pub fn (mut r Response) end() int {
 	n := int(i64(r.buf) - i64(r.buf_start))
 	// use send instead of write for windows compatibility

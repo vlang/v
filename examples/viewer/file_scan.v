@@ -72,12 +72,12 @@ pub mut:
 * Utility functions
 *
 ******************************************************************************/
-[inline]
+@[inline]
 fn modulo(x int, n int) int {
 	return (x % n + n) % n
 }
 
-[inline]
+@[inline]
 fn get_extension(x string) Item_type {
 	// 4 char extension check
 	if x.len > 4 {
@@ -110,7 +110,7 @@ fn get_extension(x string) Item_type {
 	return .file
 }
 
-[inline]
+@[inline]
 fn is_image(x Item_type) bool {
 	if int(x) >= int(Item_type.bmp) {
 		return true
@@ -118,7 +118,7 @@ fn is_image(x Item_type) bool {
 	return false
 }
 
-[inline]
+@[inline]
 fn is_container(x Item_type) bool {
 	if x in [.zip, .folder] {
 		return true
@@ -126,7 +126,7 @@ fn is_container(x Item_type) bool {
 	return false
 }
 
-[inline]
+@[inline]
 fn (item_list Item_list) is_inside_a_container() bool {
 	if item_list.lst.len <= 0 || item_list.n_item <= 0 {
 		return false
@@ -134,7 +134,7 @@ fn (item_list Item_list) is_inside_a_container() bool {
 	return item_list.lst[item_list.item_index].need_extract
 }
 
-[inline]
+@[inline]
 fn (item_list Item_list) get_file_path() string {
 	if item_list.lst.len <= 0 || item_list.n_item <= 0 {
 		return ''
@@ -334,7 +334,7 @@ fn (mut item_list Item_list) go_to_next_container(in_inc int) {
 * Other functions
 *
 ******************************************************************************/
-[inline]
+@[inline]
 fn (mut item_list Item_list) rotate(in_inc int) {
 	item_list.lst[item_list.item_index].rotation += in_inc
 	if item_list.lst[item_list.item_index].rotation >= 4 {

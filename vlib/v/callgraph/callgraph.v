@@ -21,7 +21,7 @@ pub fn show(mut table ast.Table, pref_ &pref.Preferences, ast_files []&ast.File)
 	mapper.dg.finish()
 }
 
-[heap]
+@[heap]
 struct Mapper {
 	pos int
 mut:

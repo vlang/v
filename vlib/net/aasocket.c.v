@@ -119,5 +119,5 @@ fn C.photon_accept(int, voidptr, int, timeout u64) int
 fn C.photon_send(int, voidptr, int, int, timeout u64) int
 fn C.photon_recv(int, voidptr, int, int, timeout u64) int
 
-[typedef]
+@[typedef]
 pub struct C.fd_set {}

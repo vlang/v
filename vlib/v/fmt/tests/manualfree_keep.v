@@ -1,4 +1,4 @@
-[manualfree]
+@[manualfree]
 module main
 
 fn abc() {
@@ -6,7 +6,7 @@ fn abc() {
 	println(x)
 }
 
-[manualfree]
+@[manualfree]
 fn xyz() {
 	x := 'xyz should do its own memory management'
 	println(x)

@@ -6,7 +6,7 @@ pub const (
 	align_right = HorizontalAlign.right
 )
 
-[params]
+@[params]
 pub struct TextCfg {
 pub:
 	color          Color = black

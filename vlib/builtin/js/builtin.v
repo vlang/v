@@ -6,7 +6,7 @@ module builtin
 
 fn (a any) toString()
 
-[noreturn]
+@[noreturn]
 pub fn panic(s string) {
 	eprintln('V panic: ${s}\n${js_stacktrace()}')
 	exit(1)
@@ -127,7 +127,7 @@ fn trace_error(x string) {
 
 // error returns a default error instance containing the error given in `message`.
 // Example: if ouch { return error('an error occurred') }
-[inline]
+@[inline]
 pub fn error(message string) IError {
 	// trace_error(message)
 	return &MessageError{
@@ -137,7 +137,7 @@ pub fn error(message string) IError {
 
 // error_with_code returns a default error instance containing the given `message` and error `code`.
 // Example: if ouch { return error_with_code('an error occurred', 1) }
-[inline]
+@[inline]
 pub fn error_with_code(message string, code int) IError {
 	// trace_error('$message | code: $code')
 	return &MessageError{
@@ -148,7 +148,7 @@ pub fn error_with_code(message string, code int) IError {
 
 // free allows for manually freeing memory allocated at the address `ptr`.
 // However, this is a no-op on JS backend
-[unsafe]
+@[unsafe]
 pub fn free(ptr voidptr) {
 	_ := ptr
 }

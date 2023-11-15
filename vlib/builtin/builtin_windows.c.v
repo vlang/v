@@ -1,7 +1,7 @@
 // Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-[has_globals]
+@[has_globals]
 module builtin
 
 // g_original_codepage - used to restore the original windows console code page when exiting
@@ -97,7 +97,7 @@ fn add_vectored_exception_handler(handler VectoredExceptionHandler) {
 	C.AddVectoredExceptionHandler(1, voidptr(handler))
 }
 
-[callconv: stdcall]
+@[callconv: stdcall]
 fn unhandled_exception_handler(e &ExceptionPointers) int {
 	match e.exception_record.code {
 		// These are 'used' by the backtrace printer
@@ -164,7 +164,7 @@ pub fn winapi_lasterr_str() string {
 }
 
 // panic with an error message generated from WinAPI's `LastError`
-[noreturn]
+@[noreturn]
 pub fn panic_lasterr(base string) {
 	panic(base + winapi_lasterr_str())
 }

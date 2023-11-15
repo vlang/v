@@ -15,7 +15,7 @@ $if !native {
 ----- f64 to string functions -----
 */
 // str return a `f64` as `string` in suitable notation.
-[inline]
+@[inline]
 pub fn (x f64) str() string {
 	unsafe {
 		f := strconv.Float64u{
@@ -37,7 +37,7 @@ pub fn (x f64) str() string {
 }
 
 // strg return a `f64` as `string` in "g" printf format
-[inline]
+@[inline]
 pub fn (x f64) strg() string {
 	if x == 0 {
 		return '0.0'
@@ -51,14 +51,14 @@ pub fn (x f64) strg() string {
 }
 
 // str returns the value of the `float_literal` as a `string`.
-[inline]
+@[inline]
 pub fn (d float_literal) str() string {
 	return f64(d).str()
 }
 
 // strsci returns the `f64` as a `string` in scientific notation with `digit_num` decimals displayed, max 17 digits.
 // Example: assert f64(1.234).strsci(3) == '1.234e+00'
-[inline]
+@[inline]
 pub fn (x f64) strsci(digit_num int) string {
 	mut n_digit := digit_num
 	if n_digit < 1 {
@@ -71,7 +71,7 @@ pub fn (x f64) strsci(digit_num int) string {
 
 // strlong returns a decimal notation of the `f64` as a `string`.
 // Example: assert f64(1.23456).strlong() == '1.23456'
-[inline]
+@[inline]
 pub fn (x f64) strlong() string {
 	return strconv.f64_to_str_l(x)
 }
@@ -81,7 +81,7 @@ pub fn (x f64) strlong() string {
 ----- f32 to string functions -----
 */
 // str returns a `f32` as `string` in suitable notation.
-[inline]
+@[inline]
 pub fn (x f32) str() string {
 	unsafe {
 		f := strconv.Float32u{
@@ -103,7 +103,7 @@ pub fn (x f32) str() string {
 }
 
 // strg return a `f32` as `string` in "g" printf format
-[inline]
+@[inline]
 pub fn (x f32) strg() string {
 	if x == 0 {
 		return '0.0'
@@ -118,7 +118,7 @@ pub fn (x f32) strg() string {
 
 // strsci returns the `f32` as a `string` in scientific notation with `digit_num` decimals displayed, max 8 digits.
 // Example: assert f32(1.234).strsci(3) == '1.234e+00'
-[inline]
+@[inline]
 pub fn (x f32) strsci(digit_num int) string {
 	mut n_digit := digit_num
 	if n_digit < 1 {
@@ -130,7 +130,7 @@ pub fn (x f32) strsci(digit_num int) string {
 }
 
 // strlong returns a decimal notation of the `f32` as a `string`.
-[inline]
+@[inline]
 pub fn (x f32) strlong() string {
 	return strconv.f32_to_str_l(x)
 }
@@ -141,42 +141,42 @@ pub fn (x f32) strlong() string {
 */
 // f32_abs returns the absolute value of `a` as a `f32` value.
 // Example: assert f32_abs(-2.0) == 2.0
-[inline]
+@[inline]
 pub fn f32_abs(a f32) f32 {
 	return if a < 0 { -a } else { a }
 }
 
 // f64_abs returns the absolute value of `a` as a `f64` value.
 // Example: assert f64_abs(-2.0) == f64(2.0)
-[inline]
+@[inline]
 fn f64_abs(a f64) f64 {
 	return if a < 0 { -a } else { a }
 }
 
 // f32_max returns the largest `f32` of input `a` and `b`.
 // Example: assert f32_max(2.0,3.0) == 3.0
-[inline]
+@[inline]
 pub fn f32_max(a f32, b f32) f32 {
 	return if a > b { a } else { b }
 }
 
 // f32_min returns the smallest `f32` of input `a` and `b`.
 // Example: assert f32_min(2.0,3.0) == 2.0
-[inline]
+@[inline]
 pub fn f32_min(a f32, b f32) f32 {
 	return if a < b { a } else { b }
 }
 
 // f64_max returns the largest `f64` of input `a` and `b`.
 // Example: assert f64_max(2.0,3.0) == 3.0
-[inline]
+@[inline]
 pub fn f64_max(a f64, b f64) f64 {
 	return if a > b { a } else { b }
 }
 
 // f64_min returns the smallest `f64` of input `a` and `b`.
 // Example: assert f64_min(2.0,3.0) == 2.0
-[inline]
+@[inline]
 fn f64_min(a f64, b f64) f64 {
 	return if a < b { a } else { b }
 }
@@ -184,7 +184,7 @@ fn f64_min(a f64, b f64) f64 {
 // eq_epsilon returns true if the `f32` is equal to input `b`.
 // using an epsilon of typically 1E-5 or higher (backend/compiler dependent).
 // Example: assert f32(2.0).eq_epsilon(2.0)
-[inline]
+@[inline]
 pub fn (a f32) eq_epsilon(b f32) bool {
 	hi := f32_max(f32_abs(a), f32_abs(b))
 	delta := f32_abs(a - b)
@@ -206,7 +206,7 @@ pub fn (a f32) eq_epsilon(b f32) bool {
 // eq_epsilon returns true if the `f64` is equal to input `b`.
 // using an epsilon of typically 1E-9 or higher (backend/compiler dependent).
 // Example: assert f64(2.0).eq_epsilon(2.0)
-[inline]
+@[inline]
 pub fn (a f64) eq_epsilon(b f64) bool {
 	hi := f64_max(f64_abs(a), f64_abs(b))
 	delta := f64_abs(a - b)

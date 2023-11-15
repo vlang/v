@@ -303,7 +303,7 @@ fn bi_buffer_len(input []u8) int {
 	return digits.len
 }
 
-[heap]
+@[heap]
 pub struct HeapData {
 pub mut:
 	r  big.Integer

@@ -7,7 +7,7 @@ jobs:
   gcc:
     runs-on: windows-2019
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
-    timeout-minutes: 181
+    timeout-minutes: 241
     env:
       VFLAGS: -cc gcc
       VERBOSE_MAKE: 1
@@ -59,7 +59,7 @@ jobs:
   msvc:
     runs-on: windows-2019
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
-    timeout-minutes: 181
+    timeout-minutes: 241
     env:
       VFLAGS: -cc msvc
       VERBOSE_MAKE: 1
@@ -105,7 +105,7 @@ jobs:
   tcc:
     runs-on: windows-2019
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
-    timeout-minutes: 121
+    timeout-minutes: 181
     env:
       VFLAGS: -cc tcc -no-retry-compilation
       VJOBS: 1

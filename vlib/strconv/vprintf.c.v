@@ -27,7 +27,7 @@ enum Char_parse_state {
 // Note, that this function is unsafe.
 // In most cases, you are better off using V's string interpolation,
 // when your format string is known at compile time.
-[unsafe]
+@[unsafe]
 pub fn v_printf(str string, pt ...voidptr) {
 	print(unsafe { v_sprintf(str, ...pt) })
 }
@@ -42,7 +42,7 @@ pub fn v_printf(str string, pt ...voidptr) {
 // x := 3.141516
 // assert strconv.v_sprintf('aaa %G', x) == 'aaa 3.141516'
 // ```
-[direct_array_access; manualfree; unsafe]
+@[direct_array_access; manualfree; unsafe]
 pub fn v_sprintf(str string, pt ...voidptr) string {
 	mut res := strings.new_builder(pt.len * 16)
 	defer {
@@ -557,7 +557,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 	return res.str()
 }
 
-[inline]
+@[inline]
 fn v_sprintf_panic(idx int, len int) {
 	if idx >= len {
 		panic('${idx + 1} % conversion specifiers, but given only ${len} args')
@@ -572,7 +572,7 @@ fn fabs(x f64) f64 {
 }
 
 // strings.Builder version of format_fl
-[direct_array_access; manualfree]
+@[direct_array_access; manualfree]
 pub fn format_fl_old(f f64, p BF_param) string {
 	unsafe {
 		mut s := ''
@@ -649,7 +649,7 @@ pub fn format_fl_old(f f64, p BF_param) string {
 	}
 }
 
-[manualfree]
+@[manualfree]
 fn format_es_old(f f64, p BF_param) string {
 	unsafe {
 		mut s := ''
@@ -755,7 +755,7 @@ fn remove_tail_zeros_old(s string) string {
 }
 
 // max int64 9223372036854775807
-[manualfree]
+@[manualfree]
 pub fn format_dec_old(d u64, p BF_param) string {
 	mut s := ''
 	mut res := strings.new_builder(20)

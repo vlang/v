@@ -1,4 +1,4 @@
-[has_globals]
+@[has_globals]
 module loader
 
 import dl
@@ -43,7 +43,7 @@ pub fn registered_dl_loader_keys() []string {
 }
 
 // DynamicLibLoader is a wrapper around dlopen, dlsym and dlclose.
-[heap]
+@[heap]
 pub struct DynamicLibLoader {
 pub:
 	key   string
@@ -55,7 +55,7 @@ mut:
 }
 
 // DynamicLibLoaderConfig is a configuration for DynamicLibLoader.
-[params]
+@[params]
 pub struct DynamicLibLoaderConfig {
 	// flags is the flags for dlopen.
 	flags int = dl.rtld_lazy

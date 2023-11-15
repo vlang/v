@@ -1,7 +1,7 @@
 // Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-[has_globals]
+@[has_globals]
 module rand
 
 import math.bits
@@ -25,7 +25,7 @@ mut:
 }
 
 // bytes returns a buffer of `bytes_needed` random bytes
-[inline]
+@[inline]
 pub fn (mut rng PRNG) bytes(bytes_needed int) ![]u8 {
 	if bytes_needed < 0 {
 		return error('can not read < 0 random bytes')
@@ -43,7 +43,7 @@ pub fn (mut rng PRNG) read(mut buf []u8) {
 }
 
 // u32n returns a uniformly distributed pseudorandom 32-bit signed positive `u32` in range `[0, max)`.
-[inline]
+@[inline]
 pub fn (mut rng PRNG) u32n(max u32) !u32 {
 	if max == 0 {
 		return error('max must be positive integer')
@@ -79,7 +79,7 @@ pub fn (mut rng PRNG) u32n(max u32) !u32 {
 }
 
 // u64n returns a uniformly distributed pseudorandom 64-bit signed positive `u64` in range `[0, max)`.
-[inline]
+@[inline]
 pub fn (mut rng PRNG) u64n(max u64) !u64 {
 	if max == 0 {
 		return error('max must be positive integer')
@@ -109,7 +109,7 @@ pub fn (mut rng PRNG) u64n(max u64) !u64 {
 }
 
 // u32_in_range returns a uniformly distributed pseudorandom 32-bit unsigned `u32` in range `[min, max)`.
-[inline]
+@[inline]
 pub fn (mut rng PRNG) u32_in_range(min u32, max u32) !u32 {
 	if max <= min {
 		return error('max must be greater than min')
@@ -118,7 +118,7 @@ pub fn (mut rng PRNG) u32_in_range(min u32, max u32) !u32 {
 }
 
 // u64_in_range returns a uniformly distributed pseudorandom 64-bit unsigned `u64` in range `[min, max)`.
-[inline]
+@[inline]
 pub fn (mut rng PRNG) u64_in_range(min u64, max u64) !u64 {
 	if max <= min {
 		return error('max must be greater than min')
@@ -127,43 +127,43 @@ pub fn (mut rng PRNG) u64_in_range(min u64, max u64) !u64 {
 }
 
 // i8 returns a (possibly negative) pseudorandom 8-bit `i8`.
-[inline]
+@[inline]
 pub fn (mut rng PRNG) i8() i8 {
 	return i8(rng.u8())
 }
 
 // i16 returns a (possibly negative) pseudorandom 16-bit `i16`.
-[inline]
+@[inline]
 pub fn (mut rng PRNG) i16() i16 {
 	return i16(rng.u16())
 }
 
 // int returns a (possibly negative) pseudorandom 32-bit `int`.
-[inline]
+@[inline]
 pub fn (mut rng PRNG) int() int {
 	return int(rng.u32())
 }
 
 // i64 returns a (possibly negative) pseudorandom 64-bit `i64`.
-[inline]
+@[inline]
 pub fn (mut rng PRNG) i64() i64 {
 	return i64(rng.u64())
 }
 
 // int31 returns a positive pseudorandom 31-bit `int`.
-[inline]
+@[inline]
 pub fn (mut rng PRNG) int31() int {
 	return int(rng.u32() & constants.u31_mask) // Set the 32nd bit to 0.
 }
 
 // int63 returns a positive pseudorandom 63-bit `i64`.
-[inline]
+@[inline]
 pub fn (mut rng PRNG) int63() i64 {
 	return i64(rng.u64() & constants.u63_mask) // Set the 64th bit to 0.
 }
 
 // intn returns a pseudorandom `int` in range `[0, max)`.
-[inline]
+@[inline]
 pub fn (mut rng PRNG) intn(max int) !int {
 	if max <= 0 {
 		return error('max has to be positive.')
@@ -172,7 +172,7 @@ pub fn (mut rng PRNG) intn(max int) !int {
 }
 
 // i64n returns a pseudorandom int that lies in `[0, max)`.
-[inline]
+@[inline]
 pub fn (mut rng PRNG) i64n(max i64) !i64 {
 	if max <= 0 {
 		return error('max has to be positive.')
@@ -181,7 +181,7 @@ pub fn (mut rng PRNG) i64n(max i64) !i64 {
 }
 
 // int_in_range returns a pseudorandom `int` in range `[min, max)`.
-[inline]
+@[inline]
 pub fn (mut rng PRNG) int_in_range(min int, max int) !int {
 	if max <= min {
 		return error('max must be greater than min')
@@ -191,7 +191,7 @@ pub fn (mut rng PRNG) int_in_range(min int, max int) !int {
 }
 
 // i64_in_range returns a pseudorandom `i64` in range `[min, max)`.
-[inline]
+@[inline]
 pub fn (mut rng PRNG) i64_in_range(min i64, max i64) !i64 {
 	if max <= min {
 		return error('max must be greater than min')
@@ -201,7 +201,7 @@ pub fn (mut rng PRNG) i64_in_range(min i64, max i64) !i64 {
 
 // f32 returns a pseudorandom `f32` value in range `[0, 1)`
 // using rng.u32() multiplied by an f64 constant.
-[inline]
+@[inline]
 pub fn (mut rng PRNG) f32() f32 {
 	return f32((rng.u32() >> 9) * constants.reciprocal_2_23rd)
 }
@@ -210,7 +210,7 @@ pub fn (mut rng PRNG) f32() f32 {
 // with full precision (mantissa random between 0 and 1
 // and the exponent varies as well.)
 // See https://allendowney.com/research/rand/ for background on the method.
-[inline]
+@[inline]
 pub fn (mut rng PRNG) f32cp() f32 {
 	mut x := rng.u32()
 	mut exp := u32(126)
@@ -242,7 +242,7 @@ pub fn (mut rng PRNG) f32cp() f32 {
 
 // f64 returns a pseudorandom `f64` value in range `[0, 1)`
 // using rng.u64() multiplied by a constant.
-[inline]
+@[inline]
 pub fn (mut rng PRNG) f64() f64 {
 	return f64((rng.u64() >> 12) * constants.reciprocal_2_52nd)
 }
@@ -251,7 +251,7 @@ pub fn (mut rng PRNG) f64() f64 {
 // with full precision (mantissa random between 0 and 1
 // and the exponent varies as well.)
 // See https://allendowney.com/research/rand/ for background on the method.
-[inline]
+@[inline]
 pub fn (mut rng PRNG) f64cp() f64 {
 	mut x := rng.u64()
 	mut exp := u64(1022)
@@ -281,7 +281,7 @@ pub fn (mut rng PRNG) f64cp() f64 {
 }
 
 // f32n returns a pseudorandom `f32` value in range `[0, max]`.
-[inline]
+@[inline]
 pub fn (mut rng PRNG) f32n(max f32) !f32 {
 	if max < 0 {
 		return error('max has to be non-negative.')
@@ -290,7 +290,7 @@ pub fn (mut rng PRNG) f32n(max f32) !f32 {
 }
 
 // f64n returns a pseudorandom `f64` value in range `[0, max]`.
-[inline]
+@[inline]
 pub fn (mut rng PRNG) f64n(max f64) !f64 {
 	if max < 0 {
 		return error('max has to be non-negative.')
@@ -299,7 +299,7 @@ pub fn (mut rng PRNG) f64n(max f64) !f64 {
 }
 
 // f32_in_range returns a pseudorandom `f32` in range `[min, max]`.
-[inline]
+@[inline]
 pub fn (mut rng PRNG) f32_in_range(min f32, max f32) !f32 {
 	if max < min {
 		return error('max must be greater than or equal to min')
@@ -308,7 +308,7 @@ pub fn (mut rng PRNG) f32_in_range(min f32, max f32) !f32 {
 }
 
 // i64_in_range returns a pseudorandom `i64` in range `[min, max]`.
-[inline]
+@[inline]
 pub fn (mut rng PRNG) f64_in_range(min f64, max f64) !f64 {
 	if max < min {
 		return error('max must be greater than or equal to min')
@@ -420,7 +420,7 @@ pub fn (mut rng PRNG) exponential(lambda f64) f64 {
 // shuffle randomly permutates the elements in `a`. The range for shuffling is
 // optional and the entire array is shuffled by default. Leave the end as 0 to
 // shuffle all elements until the end.
-[direct_array_access]
+@[direct_array_access]
 pub fn (mut rng PRNG) shuffle[T](mut a []T, config_ config.ShuffleConfigStruct) ! {
 	config_.validate_for(a)!
 	new_end := if config_.end == 0 { a.len } else { config_.end }
@@ -484,7 +484,7 @@ pub fn (mut rng PRNG) sample[T](array []T, k int) []T {
 __global default_rng &PRNG
 
 // new_default returns a new instance of the default RNG. If the seed is not provided, the current time will be used to seed the instance.
-[manualfree]
+@[manualfree]
 pub fn new_default(config_ config.PRNGConfigStruct) &PRNG {
 	mut rng := &wyrand.WyRandRNG{}
 	rng.seed(config_.seed_)

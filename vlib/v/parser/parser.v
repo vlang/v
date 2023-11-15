@@ -1,7 +1,7 @@
 // Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-[has_globals]
+@[has_globals]
 module parser
 
 import v.scanner
@@ -14,7 +14,7 @@ import v.errors
 import os
 import hash.fnv1a
 
-[minify]
+@[minify]
 pub struct Parser {
 	pref &pref.Preferences = unsafe { nil }
 mut:
@@ -175,12 +175,12 @@ pub fn parse_text(text string, path string, table &ast.Table, comments_mode scan
 	return res
 }
 
-[unsafe]
+@[unsafe]
 pub fn (mut p Parser) free() {
 	unsafe { p.free_scanner() }
 }
 
-[unsafe]
+@[unsafe]
 fn (mut p Parser) free_scanner() {
 	unsafe {
 		if p.scanner != 0 {
@@ -480,7 +480,7 @@ fn (mut p Parser) read_first_token() {
 	p.next()
 }
 
-[inline]
+@[inline]
 fn (p &Parser) peek_token(n int) token.Token {
 	return p.scanner.peek_token(n - 2)
 }
@@ -633,7 +633,7 @@ fn (mut p Parser) check(expected token.Kind) {
 	}
 }
 
-[params]
+@[params]
 struct ParamsForUnexpected {
 	got            string
 	expecting      string
@@ -696,7 +696,7 @@ fn (mut p Parser) check_name() string {
 	return name
 }
 
-[if trace_parser ?]
+@[if trace_parser ?]
 fn (p &Parser) trace_parser(label string) {
 	eprintln('parsing: ${p.file_name:-30}|tok.pos: ${p.tok.pos().line_str():-39}|tok.kind: ${p.tok.kind:-10}|tok.lit: ${p.tok.lit:-10}|${label}')
 }
@@ -915,7 +915,7 @@ fn (mut p Parser) comment_stmt() ast.ExprStmt {
 	}
 }
 
-[params]
+@[params]
 struct EatCommentsConfig {
 	same_line bool // Only eat comments on the same line as the previous token
 	follow_up bool // Comments directly below the previous token as long as there is no empty line
@@ -2030,10 +2030,12 @@ fn (mut p Parser) error_with_pos(s string, pos token.Pos) ast.NodeError {
 		// To avoid getting stuck after an error, the parser
 		// will proceed to the next token.
 		if p.pref.check_only || p.pref.only_check_syntax {
-			p.next()
+			if p.tok.kind != .eof {
+				p.next()
+			}
 		}
 	}
-	if p.pref.output_mode == .silent {
+	if p.pref.output_mode == .silent && p.tok.kind != .eof {
 		// Normally, parser errors mean that the parser exits immediately, so there can be only 1 parser error.
 		// In the silent mode however, the parser continues to run, even though it would have stopped. Some
 		// of the parser logic does not expect that, and may loop forever.
@@ -2341,7 +2343,7 @@ fn (mut p Parser) ident(language ast.Language) ast.Ident {
 	}
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn (p &Parser) is_generic_struct_init() bool {
 	lit0_is_capital := p.tok.kind != .eof && p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
 	if !lit0_is_capital || p.peek_tok.kind !in [.lt, .lsbr] {
@@ -2376,7 +2378,7 @@ fn (p &Parser) is_generic_struct_init() bool {
 	return false
 }
 
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn (p &Parser) is_typename(t token.Token) bool {
 	return t.kind == .name && (t.lit[0].is_capital() || p.table.known_type(t.lit))
 }
@@ -2393,7 +2395,7 @@ fn (p &Parser) is_typename(t token.Token) bool {
 // 8. if there is a &, ignore the & and see if it is a type
 // 9. otherwise, it's not generic
 // see also test_generic_detection in vlib/v/tests/generics_test.v
-[direct_array_access]
+@[direct_array_access]
 fn (p &Parser) is_generic_call() bool {
 	lit0_is_capital := p.tok.kind != .eof && p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
 	if lit0_is_capital || p.peek_tok.kind !in [.lt, .lsbr] {
@@ -2507,7 +2509,7 @@ fn (mut p Parser) is_generic_cast() bool {
 	return false
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn (mut p Parser) name_expr() ast.Expr {
 	prev_tok_kind := p.prev_tok.kind
 	mut node := ast.empty_expr
@@ -4093,14 +4095,14 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		all_bits_set_value := '0b' + '1'.repeat(fields.len)
 		p.codegen('
 //
-[inline] ${pubfn} (    e &${enum_name}) is_empty() bool           { return  ${senum_type}(*e) == 0 }
-[inline] ${pubfn} (    e &${enum_name}) has(flag ${enum_name}) bool { return  (${senum_type}(*e) &  (${senum_type}(flag))) != 0 }
-[inline] ${pubfn} (    e &${enum_name}) all(flag ${enum_name}) bool { return  (${senum_type}(*e) &  (${senum_type}(flag))) == ${senum_type}(flag) }
-[inline] ${pubfn} (mut e  ${enum_name}) set(flag ${enum_name})      { unsafe{ *e = ${enum_name}(${senum_type}(*e) |  (${senum_type}(flag))) } }
-[inline] ${pubfn} (mut e  ${enum_name}) set_all()                   { unsafe{ *e = ${enum_name}(${all_bits_set_value}) } }
-[inline] ${pubfn} (mut e  ${enum_name}) clear(flag ${enum_name})    { unsafe{ *e = ${enum_name}(${senum_type}(*e) & ~(${senum_type}(flag))) } }
-[inline] ${pubfn} (mut e  ${enum_name}) clear_all()                 { unsafe{ *e = ${enum_name}(0) } }
-[inline] ${pubfn} (mut e  ${enum_name}) toggle(flag ${enum_name})   { unsafe{ *e = ${enum_name}(${senum_type}(*e) ^  (${senum_type}(flag))) } }
+@[inline] ${pubfn} (    e &${enum_name}) is_empty() bool           { return  ${senum_type}(*e) == 0 }
+@[inline] ${pubfn} (    e &${enum_name}) has(flag ${enum_name}) bool { return  (${senum_type}(*e) &  (${senum_type}(flag))) != 0 }
+@[inline] ${pubfn} (    e &${enum_name}) all(flag ${enum_name}) bool { return  (${senum_type}(*e) &  (${senum_type}(flag))) == ${senum_type}(flag) }
+@[inline] ${pubfn} (mut e  ${enum_name}) set(flag ${enum_name})      { unsafe{ *e = ${enum_name}(${senum_type}(*e) |  (${senum_type}(flag))) } }
+@[inline] ${pubfn} (mut e  ${enum_name}) set_all()                   { unsafe{ *e = ${enum_name}(${all_bits_set_value}) } }
+@[inline] ${pubfn} (mut e  ${enum_name}) clear(flag ${enum_name})    { unsafe{ *e = ${enum_name}(${senum_type}(*e) & ~(${senum_type}(flag))) } }
+@[inline] ${pubfn} (mut e  ${enum_name}) clear_all()                 { unsafe{ *e = ${enum_name}(0) } }
+@[inline] ${pubfn} (mut e  ${enum_name}) toggle(flag ${enum_name})   { unsafe{ *e = ${enum_name}(${senum_type}(*e) ^  (${senum_type}(flag))) } }
 //
 ')
 	}
@@ -4330,7 +4332,7 @@ fn (p &Parser) new_true_expr() ast.Expr {
 	}
 }
 
-[noreturn]
+@[noreturn]
 fn verror(s string) {
 	util.verror('parser error', s)
 }
@@ -4472,7 +4474,7 @@ fn (mut p Parser) trace[T](fbase string, x &T) {
 	}
 }
 
-[params]
+@[params]
 struct ParserShowParams {
 	msg   string
 	reach int = 3

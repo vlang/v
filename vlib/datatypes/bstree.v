@@ -1,7 +1,7 @@
 module datatypes
 
 /// Internal representation of the tree node
-[heap]
+@[heap]
 struct BSTreeNode[T] {
 mut:
 	// Mark a node as initialized

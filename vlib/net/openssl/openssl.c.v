@@ -34,23 +34,23 @@ $if $pkgconfig('openssl') {
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
-[typedef]
+@[typedef]
 pub struct C.SSL {
 }
 
-[typedef]
+@[typedef]
 pub struct C.BIO {
 }
 
-[typedef]
+@[typedef]
 pub struct C.SSL_METHOD {
 }
 
-[typedef]
+@[typedef]
 pub struct C.X509 {
 }
 
-[typedef]
+@[typedef]
 pub struct C.SSL_CTX {
 }
 

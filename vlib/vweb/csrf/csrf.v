@@ -9,7 +9,7 @@ import rand
 import time
 import vweb
 
-[params]
+@[params]
 pub struct CsrfConfig {
 pub:
 	secret string

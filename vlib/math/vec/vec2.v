@@ -71,7 +71,7 @@ pub fn (v Vec2[T]) as_vec4[T]() Vec4[T] {
 //
 
 // + returns the resulting vector of the addition of `v` and `u`.
-[inline]
+@[inline]
 pub fn (v Vec2[T]) + (u Vec2[T]) Vec2[T] {
 	return Vec2[T]{v.x + u.x, v.y + u.y}
 }
@@ -103,7 +103,7 @@ pub fn (mut v Vec2[T]) plus_scalar[U](scalar U) {
 //
 
 // - returns the resulting vector of the subtraction of `v` and `u`.
-[inline]
+@[inline]
 pub fn (v Vec2[T]) - (u Vec2[T]) Vec2[T] {
 	return Vec2[T]{v.x - u.x, v.y - u.y}
 }
@@ -135,7 +135,7 @@ pub fn (mut v Vec2[T]) subtract_scalar[U](scalar U) {
 //
 
 // * returns the resulting vector of the multiplication of `v` and `u`.
-[inline]
+@[inline]
 pub fn (v Vec2[T]) * (u Vec2[T]) Vec2[T] {
 	return Vec2[T]{v.x * u.x, v.y * u.y}
 }
@@ -167,7 +167,7 @@ pub fn (mut v Vec2[T]) multiply_scalar[U](scalar U) {
 //
 
 // / returns the resulting vector of the division of `v` and `u`.
-[inline]
+@[inline]
 pub fn (v Vec2[T]) / (u Vec2[T]) Vec2[T] {
 	return Vec2[T]{v.x / u.x, v.y / u.y}
 }
@@ -259,7 +259,7 @@ pub fn (v Vec2[T]) project(u Vec2[T]) Vec2[T] {
 }
 
 // eq returns a bool indicating if the two vectors are equal.
-[inline]
+@[inline]
 pub fn (v Vec2[T]) eq(u Vec2[T]) bool {
 	return v.x == u.x && v.y == u.y
 }

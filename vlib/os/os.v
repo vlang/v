@@ -35,7 +35,7 @@ pub:
 	redirect_stdout bool
 }
 
-[unsafe]
+@[unsafe]
 pub fn (mut result Result) free() {
 	unsafe { result.output.free() }
 }
@@ -132,7 +132,7 @@ pub fn mv(source string, target string) ! {
 }
 
 // read_lines reads the file in `path` into an array of lines.
-[manualfree]
+@[manualfree]
 pub fn read_lines(path string) ![]string {
 	buf := read_file(path)!
 	res := buf.split_into_lines()
@@ -219,7 +219,7 @@ pub fn rmdir_all(path string) ! {
 
 // is_dir_empty will return a `bool` whether or not `path` is empty.
 // Note that it will return `true` if `path` does not exist.
-[manualfree]
+@[manualfree]
 pub fn is_dir_empty(path string) bool {
 	items := ls(path) or { return true }
 	res := items.len == 0
@@ -539,7 +539,7 @@ pub fn is_file(path string) bool {
 
 // join_path joins any number of path elements into a single path, separating
 // them with a platform-specific path_separator. Empty elements are ignored.
-[manualfree]
+@[manualfree]
 pub fn join_path(base string, dirs ...string) string {
 	// TODO: fix freeing of `dirs` when the passed arguments are variadic,
 	// but do not free the arr, when `os.join_path(base, ...arr)` is called.
@@ -571,7 +571,7 @@ pub fn join_path(base string, dirs ...string) string {
 
 // join_path_single appends the `elem` after `base`, separated with a
 // platform-specific path_separator. Empty elements are ignored.
-[manualfree]
+@[manualfree]
 pub fn join_path_single(base string, elem string) string {
 	// TODO: deprecate this and make it `return os.join_path(base, elem)`,
 	// when freeing variadic args vs ...arr is solved in the compiler
@@ -696,13 +696,19 @@ pub fn log(s string) {
 	println('os.log: ' + s)
 }
 
-[params]
+@[params]
 pub struct MkdirParams {
 	mode u32 = 0o777 // note that the actual mode is affected by the process's umask
 }
 
 // mkdir_all will create a valid full path of all directories given in `path`.
 pub fn mkdir_all(opath string, params MkdirParams) ! {
+	if exists(opath) {
+		if is_dir(opath) {
+			return
+		}
+		return error('path `${opath}` already exists, and is not a folder')
+	}
 	other_separator := if path_separator == '/' { '\\' } else { '/' }
 	path := opath.replace(other_separator, path_separator)
 	mut p := if path.starts_with(path_separator) { path_separator } else { '' }
@@ -837,7 +843,7 @@ pub fn vmodules_paths() []string {
 // See https://discordapp.com/channels/592103645835821068/592294828432424960/630806741373943808
 // It gives a convenient way to access program resources like images, fonts, sounds and so on,
 // *no matter* how the program was started, and what is the current working directory.
-[manualfree]
+@[manualfree]
 pub fn resource_abs_path(path string) string {
 	exe := executable()
 	dexe := dir(exe)

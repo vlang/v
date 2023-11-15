@@ -26,7 +26,7 @@ jobs:
   code-formatting:
     runs-on: ubuntu-20.04
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       VFLAGS: -cc gcc
     steps:
@@ -43,7 +43,7 @@ jobs:
   performance-regressions:
     runs-on: ubuntu-20.04
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       VFLAGS: -cc gcc
     steps:
@@ -96,8 +96,9 @@ jobs:
       - name: V self compilation with g++ and -std=c++20
         run: ./v -cc g++-11 -no-std -cflags -std=c++20 -o v2 cmd/v && ./v2 -cc g++-11 -no-std -cflags -std=c++20 -o v3 cmd/v
 
+      # NB: this does not mean it runs, but at least keeps it from regressing
       - name: Ensure V can be compiled with -autofree
-        run: ./v -autofree -o v2 cmd/v # NB: this does not mean it runs, but at least keeps it from regressing
+        run: ./v -autofree -o v2 cmd/v
 
       - name: Shader examples can be built
         run: |
@@ -126,17 +127,17 @@ jobs:
       - name: Build local v
         run: |
           make -j4
-          ./v -g cmd/tools/vtest-parser.v
+          ./v -g -d trace_parse_stmt cmd/tools/vtest-parser.v
       - name: Run test-parser
         run: |
-          ./v test-parser -S examples/hello_world.v
-          ./v test-parser -S examples/hanoi.v
-          ./v test-parser -S examples/fibonacci.v
-          ./v test-parser -S examples/cli.v
-          ./v test-parser -S examples/json.v
-          ./v test-parser -S examples/vmod.v
-          ./v test-parser -S examples/regex/regex_example.v
-          ./v test-parser -S examples/2048/2048.v
+          ./v test-parser --show_source --linear examples/hello_world.v
+          ./v test-parser --show_source --linear examples/hanoi.v
+          ./v test-parser --show_source --linear examples/fibonacci.v
+          ./v test-parser --show_source --linear examples/cli.v
+          ./v test-parser --show_source --linear examples/json.v
+          ./v test-parser --show_source --linear examples/vmod.v
+          ./v test-parser --show_source --linear examples/regex/regex_example.v
+          ./v test-parser --show_source --linear examples/2048/2048.v
 
       - name: Run test-parser over fuzzed files
         run: |
@@ -148,8 +149,11 @@ jobs:
           zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/vmod.v > examples/vmod_fuzz.v
           zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/regex/regex_example.v > examples/regex_example_fuzz.v
           zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/2048/2048.v > examples/2048/2048_fuzz.v
-          ./v test-parser -S examples/hello_world_fuzz.v
-          ./v test-parser -S examples/hanoi_fuzz.v
-          ./v test-parser -S examples/cli_fuzz.v
-          ./v test-parser -S examples/regex_example_fuzz.v
-          ./v test-parser -S examples/2048/2048_fuzz.v
+          ./v test-parser --show_source --linear examples/hello_world_fuzz.v
+          ./v test-parser --show_source --linear examples/fibonacci_fuzz.v
+          ./v test-parser --show_source --linear examples/hanoi_fuzz.v
+          ./v test-parser --show_source --linear examples/cli_fuzz.v
+          ./v test-parser --show_source --linear examples/json_fuzz.v
+          ./v test-parser --show_source --linear examples/vmod_fuzz.v
+          ./v test-parser --show_source --linear examples/regex_example_fuzz.v
+          ./v test-parser --show_source --linear examples/2048/2048_fuzz.v

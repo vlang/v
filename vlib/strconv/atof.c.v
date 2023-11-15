@@ -124,7 +124,7 @@ enum ParserState {
 
 // parser tries to parse the given string into a number
 // NOTE: #TOFIX need one char after the last char of the number
-[direct_array_access]
+@[direct_array_access]
 fn parser(s string) (ParserState, PrepNumber) {
 	mut digx := 0
 	mut result := ParserState.ok

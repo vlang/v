@@ -40,7 +40,7 @@ pub const (
 	vroot_is_deprecated_message = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
 )
 
-[heap; minify]
+@[heap; minify]
 pub struct Checker {
 pub mut:
 	pref &pref.Preferences = unsafe { nil } // Preferences shared from V struct
@@ -79,6 +79,7 @@ pub mut:
 	inside_unsafe              bool // true inside `unsafe {}` blocks
 	inside_const               bool // true inside `const ( ... )` blocks
 	inside_anon_fn             bool // true inside `fn() { ... }()`
+	inside_lambda              bool // true inside `|...| ...`
 	inside_ref_lit             bool // true inside `a := &something`
 	inside_defer               bool // true inside `defer {}` blocks
 	inside_fn_arg              bool // `a`, `b` in `a.f(b)`
@@ -1956,7 +1957,7 @@ fn (mut c Checker) check_enum_field_integer_literal(expr ast.IntegerLiteral, is_
 	}
 }
 
-[inline]
+@[inline]
 fn (mut c Checker) check_loop_label(label string, pos token.Pos) {
 	if label.len == 0 {
 		// ignore
@@ -2799,6 +2800,10 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			return c.int_lit(mut node)
 		}
 		ast.LambdaExpr {
+			c.inside_lambda = true
+			defer {
+				c.inside_lambda = false
+			}
 			return c.lambda_expr(mut node, c.expected_type)
 		}
 		ast.LockExpr {
@@ -3732,8 +3737,13 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					found_var := c.fn_scope.find_var(node.name)
 
 					if found_var != none {
-						c.error('`${node.name}` must be added to the capture list for the closure to be used inside',
-							node.pos)
+						if c.inside_lambda {
+							// Lambdas don't support capturing variables yet, so that's the only hint.
+							c.error('undefined variable `${node.name}`', node.pos)
+						} else {
+							c.error('`${node.name}` must be added to the capture list for the closure to be used inside',
+								node.pos)
+						}
 						return ast.void_type
 					}
 				}

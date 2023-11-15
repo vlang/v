@@ -74,13 +74,13 @@ const (
 General Utilities
 */
 // utf8util_char_len calculate the length in bytes of a utf8 char
-[inline]
+@[inline]
 fn utf8util_char_len(b u8) int {
 	return ((0xe5000000 >> ((b >> 3) & 0x1e)) & 3) + 1
 }
 
 // get_char get a char from position i and return an u32 with the unicode code
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn (re RE) get_char(in_txt string, i int) (u32, int) {
 	ini := unsafe { in_txt.str[i] }
 	// ascii 8 bit
@@ -99,7 +99,7 @@ fn (re RE) get_char(in_txt string, i int) (u32, int) {
 }
 
 // get_charb get a char from position i and return an u32 with the unicode code
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn (re RE) get_charb(in_txt &u8, i int) (u32, int) {
 	// ascii 8 bit
 	if (re.flag & regex.f_bin) != 0 || unsafe { in_txt[i] } & 0x80 == 0 {
@@ -116,7 +116,7 @@ fn (re RE) get_charb(in_txt &u8, i int) (u32, int) {
 	return ch, char_len
 }
 
-[inline]
+@[inline]
 fn is_alnum(in_char u8) bool {
 	mut tmp := in_char - `A`
 	if tmp <= 25 {
@@ -136,51 +136,51 @@ fn is_alnum(in_char u8) bool {
 	return false
 }
 
-[inline]
+@[inline]
 fn is_not_alnum(in_char u8) bool {
 	return !is_alnum(in_char)
 }
 
-[inline]
+@[inline]
 fn is_space(in_char u8) bool {
 	return in_char in regex.spaces
 }
 
-[inline]
+@[inline]
 fn is_not_space(in_char u8) bool {
 	return !is_space(in_char)
 }
 
-[inline]
+@[inline]
 fn is_digit(in_char u8) bool {
 	tmp := in_char - `0`
 	return tmp <= 0x09
 }
 
-[inline]
+@[inline]
 fn is_not_digit(in_char u8) bool {
 	return !is_digit(in_char)
 }
 
 /*
-[inline]
+@[inline]
 fn is_wordchar(in_char byte) bool {
 	return is_alnum(in_char) || in_char == `_`
 }
 
-[inline]
+@[inline]
 fn is_not_wordchar(in_char byte) bool {
 	return !is_alnum(in_char)
 }
 */
 
-[inline]
+@[inline]
 fn is_lower(in_char u8) bool {
 	tmp := in_char - `a`
 	return tmp <= 25
 }
 
-[inline]
+@[inline]
 fn is_upper(in_char u8) bool {
 	tmp := in_char - `A`
 	return tmp <= 25
@@ -207,7 +207,7 @@ pub fn (re RE) get_parse_error_string(err int) string {
 }
 
 // utf8_str convert and utf8 sequence to a printable string
-[inline]
+@[inline]
 fn utf8_str(ch rune) string {
 	mut i := 4
 	mut res := ''
@@ -265,7 +265,7 @@ mut:
 	source_index int
 }
 
-[inline]
+@[inline]
 fn (mut tok Token) reset() {
 	tok.rep = 0
 }
@@ -320,7 +320,7 @@ pub mut:
 }
 
 // Reset RE object
-[direct_array_access; inline]
+@[direct_array_access; inline]
 pub fn (mut re RE) reset() {
 	re.cc_index = 0
 
@@ -359,7 +359,7 @@ pub fn (mut re RE) reset() {
 // reset for search mode fail
 // gcc bug, dont use [inline] or go 5 time slower
 //[inline]
-[direct_array_access]
+@[direct_array_access]
 fn (mut re RE) reset_src() {
 	mut i := 0
 	for i < re.prog_len {
@@ -1636,7 +1636,7 @@ pub fn (re RE) get_query() string {
 * Groups saving utilities
 *
 ******************************************************************************/
-[direct_array_access]
+@[direct_array_access]
 fn (mut re RE) group_continuous_save(g_index int) {
 	if re.group_csave_flag == true {
 		// continuous save, save until we have space
@@ -1715,7 +1715,7 @@ pub mut:
 	last_dot_pc int = -1 // last dot chat pc
 }
 
-[direct_array_access]
+@[direct_array_access]
 pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 	// result status
 	mut result := regex.no_match_found // function return

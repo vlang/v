@@ -19,7 +19,7 @@ const (
 
 // u64toa converts `value` to an ascii string and stores it at `buf_start`
 // then it returns the length of the ascii string (branch lookup table implementation)
-[direct_array_access; unsafe]
+@[direct_array_access; unsafe]
 pub fn u64toa(buf_start &u8, value u64) !int {
 	mut buf := unsafe { buf_start }
 	// set maximum length to 100MB

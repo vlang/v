@@ -16,7 +16,7 @@ pub fn (mut app App) index() vweb.Result {
 	return $vweb.html()
 }
 
-['/upload'; post]
+@['/upload'; post]
 pub fn (mut app App) upload() vweb.Result {
 	fdata := app.files['upfile']
 

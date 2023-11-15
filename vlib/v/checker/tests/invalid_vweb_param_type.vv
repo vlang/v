@@ -4,7 +4,7 @@ struct App {
 	vweb.Context
 }
 
-['/:list'; get]
+@['/:list'; get]
 fn (mut app App) index(list []bool) vweb.Result {
 	return app.text('')
 }

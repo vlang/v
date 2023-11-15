@@ -351,7 +351,7 @@ fn get_compile_name_of_potential_v_project(file string) string {
 	return pfolder
 }
 
-[noreturn]
+@[noreturn]
 fn verror(s string) {
 	util.verror('vfmt error', s)
 }

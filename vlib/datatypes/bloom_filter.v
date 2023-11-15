@@ -2,7 +2,7 @@ module datatypes
 
 // Bloom filter is used to test whether a given element is part of a set.  Lookups will occasionally generate false positives, but never false  negatives.
 
-[heap]
+@[heap]
 struct BloomFilter[T] {
 	// TODO V bug
 	hash_func fn (T) u32 = unsafe { nil } // hash function, input [T] , output u32

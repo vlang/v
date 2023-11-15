@@ -26,13 +26,13 @@ const (
 	enc_char_special_slash = 47
 )
 
-[inline]
+@[inline]
 fn abs64(x i64) u64 {
 	return if x < 0 { u64(-x) } else { u64(x) }
 }
 
 // Decode a single base64 digit.
-[inline]
+@[inline]
 fn decode64(input u8) u8 {
 	$if debug {
 		assert input >= vlq.enc_char_special_plus
@@ -81,7 +81,7 @@ pub fn decode(mut input io.Reader) !i64 {
 	return if (accum & 1) != 0 { (-i64(abs_value)) } else { i64(abs_value) }
 }
 
-[inline]
+@[inline]
 fn encode64(input u8) u8 {
 	$if debug {
 		assert input < 64

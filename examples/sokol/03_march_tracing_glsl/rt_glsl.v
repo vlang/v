@@ -239,7 +239,7 @@ fn init_cube_glsl(mut app App) {
 	println('GLSL init DONE!')
 }
 
-[inline]
+@[inline]
 fn vec4(x f32, y f32, z f32, w f32) m4.Vec4 {
 	return m4.Vec4{
 		e: [x, y, z, w]!

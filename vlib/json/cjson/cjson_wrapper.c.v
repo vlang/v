@@ -12,7 +12,7 @@ module cjson
 #flag @VEXEROOT/thirdparty/cJSON/cJSON.o
 #include "cJSON.h"
 
-[typedef]
+@[typedef]
 pub struct C.cJSON {
 pub:
 	next  &C.cJSON // next/prev allow you to walk array/object chains. Alternatively, use GetArraySize/GetArrayItem/GetObjectItem
@@ -142,7 +142,7 @@ pub fn create_null() &Node {
 
 // delete removes the given node from memory.
 // NB: DO NOT USE that node, after you have called `unsafe { delete(node) }` !
-[unsafe]
+@[unsafe]
 pub fn delete(node &Node) {
 	C.cJSON_Delete(node)
 }

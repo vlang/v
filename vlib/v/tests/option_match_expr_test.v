@@ -1,6 +1,6 @@
 pub struct ParamPrecos {
 pub:
-	code      string [required]
+	code      string @[required]
 	table_ref ?i64
 }
 

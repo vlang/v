@@ -14,7 +14,7 @@ pub enum AttrKind {
 }
 
 // e.g. `[unsafe]`
-[minify]
+@[minify]
 pub struct Attr {
 pub:
 	name    string // [name]
@@ -59,7 +59,7 @@ pub fn (attrs []Attr) contains_arg(str string, arg string) bool {
 	return attrs.any(it.has_arg && it.name == str && it.arg == arg)
 }
 
-[direct_array_access]
+@[direct_array_access]
 pub fn (attrs []Attr) find_first(aname string) ?Attr {
 	for a in attrs {
 		if a.name == aname {
@@ -69,7 +69,7 @@ pub fn (attrs []Attr) find_first(aname string) ?Attr {
 	return none
 }
 
-[direct_array_access]
+@[direct_array_access]
 pub fn (attrs []Attr) find_last(aname string) ?Attr {
 	for idx := attrs.len - 1; idx > -1; idx-- {
 		a := attrs[idx]
@@ -80,7 +80,7 @@ pub fn (attrs []Attr) find_last(aname string) ?Attr {
 	return none
 }
 
-[direct_array_access]
+@[direct_array_access]
 pub fn (attrs []Attr) find_comptime_define() ?int {
 	for idx in 0 .. attrs.len {
 		if attrs[idx].kind == .comptime_define {

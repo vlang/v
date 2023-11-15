@@ -4,7 +4,7 @@ import vweb
 import encoding.base64
 import json
 
-['/controller/products'; get]
+@['/controller/products'; get]
 pub fn (mut app App) controller_get_all_products() vweb.Result {
 	token := app.req.header.get_custom('token') or { '' }
 
@@ -30,7 +30,7 @@ pub fn (mut app App) controller_get_all_products() vweb.Result {
 	// return app.text('response')
 }
 
-['/controller/product/create'; post]
+@['/controller/product/create'; post]
 pub fn (mut app App) controller_create_product(product_name string) vweb.Result {
 	if product_name == '' {
 		app.set_status(400, '')

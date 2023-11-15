@@ -1,6 +1,6 @@
 module main
 
-[heap]
+@[heap]
 struct Node[T] {
 mut:
 	value T

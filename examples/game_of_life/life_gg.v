@@ -10,7 +10,7 @@ const (
 	filled_color  = gx.blue
 )
 
-[live]
+@[live]
 fn print_automaton(app &App) {
 	square_size := 18
 	for y := 1; y < app.a.field.maxy; y++ {
