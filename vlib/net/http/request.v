@@ -24,7 +24,7 @@ pub mut:
 	method     Method  = .get
 	header     Header
 	host       string
-	cookies    map[string]string [deprecated: 'use req.cookie(name) and req.add_cookie(name) instead']
+	cookies    map[string]string @[deprecated: 'use req.cookie(name) and req.add_cookie(name) instead']
 	data       string
 	url        string
 	user_agent string = 'v.http'
