@@ -5798,8 +5798,8 @@ V supports the following compile time types:
 
 - `$alias` => matches [Type aliases](#type-aliases).
 - `$array` => matches [Arrays](#arrays) and [Fixed Size Arrays](#fixed-size-arrays).
-- `$array_dynamic` => matches only [Arrays](#arrays), but not [Fixed Size Arrays](#fixed-size-arrays).
-- `$array_fixed` => matches only [Fixed Size Arrays](#fixed-size-arrays), but not [Arrays](#arrays)
+- `$array_dynamic` => matches [Arrays](#arrays), but not [Fixed Size Arrays](#fixed-size-arrays).
+- `$array_fixed` => matches [Fixed Size Arrays](#fixed-size-arrays), but not [Arrays](#arrays)
 - `$enum` => matches [Enums](#enums).
 - `$float` => matches `f32`, `f64` and float literals.
 - `$function` => matches [Function Types](#function-types).
