@@ -1814,6 +1814,7 @@ fn (mut p Parser) is_attributes() bool {
 fn (mut p Parser) attributes() {
 	mut is_at := false
 	if p.tok.kind == .lsbr {
+		p.warn('`[attr]` has been deprecated, use `@[attr]` instead')
 		// [attr]
 		p.check(.lsbr)
 	} else if p.tok.kind == .at {
