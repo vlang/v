@@ -275,9 +275,13 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			}
 			c.inside_comptime_for_field = true
 			for field in fields {
+				if c.field_data_type == 0 {
+					c.field_data_type = ast.Type(c.table.find_type_idx('FieldData'))
+				}
 				c.comptime_for_field_value = field
 				c.comptime_for_field_var = node.val_var
-				c.comptime_fields_type[node.val_var] = node.typ
+				c.comptime_fields_type[node.val_var] = c.field_data_type
+				c.comptime_fields_type['${node.val_var}.typ'] = node.typ
 				c.comptime_fields_default_type = field.typ
 				c.stmts(mut node.stmts)
 
@@ -302,7 +306,8 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			for field in sym_info.vals {
 				c.comptime_enum_field_value = field
 				c.comptime_for_field_var = node.val_var
-				c.comptime_fields_type[node.val_var] = node.typ
+				c.comptime_fields_type[node.val_var] = c.enum_data_type
+				c.comptime_fields_type['${node.val_var}.typ'] = node.typ
 				c.stmts(mut node.stmts)
 			}
 		} else {
