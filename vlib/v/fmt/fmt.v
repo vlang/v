@@ -2696,12 +2696,12 @@ fn (mut f Fmt) match_branch(branch ast.MatchBranch, single_line bool) {
 				f.writeln('')
 			}
 			f.write(estr)
+			if j < branch.exprs.len - 1 {
+				f.write(', ')
+			}
 			if j < branch.ecmnts.len && branch.ecmnts[j].len > 0 {
 				f.write(' ')
 				f.comments(branch.ecmnts[j])
-			}
-			if j < branch.exprs.len - 1 {
-				f.write(', ')
 			}
 		}
 		f.is_mbranch_expr = false
@@ -2714,6 +2714,8 @@ fn (mut f Fmt) match_branch(branch ast.MatchBranch, single_line bool) {
 	} else {
 		if single_line {
 			f.write(' { ')
+		} else if branch.ecmnts.len > 0 && branch.ecmnts.last().len > 0 {
+			f.writeln('{')
 		} else {
 			f.writeln(' {')
 		}
