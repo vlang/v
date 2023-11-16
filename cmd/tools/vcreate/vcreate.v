@@ -26,7 +26,6 @@ struct ProjectFiles {
 }
 
 enum Template {
-	@none
 	bin
 	lib
 	web
@@ -109,7 +108,7 @@ fn validate(cmd Command) ! {
 		exit(0)
 	}
 	if cmd.args.len > 1 {
-		cerror('too many arguments.', .after)
+		cerror('too many arguments.\n')
 		cmd.execute_help()
 		exit(2)
 	}
@@ -155,15 +154,18 @@ fn (mut c Create) prompt(args []string) {
 	if c.name == '' {
 		c.name = check_name(args[0] or { os.input('Input your project name: ') })
 		if c.name == '' {
-			cerror('project name cannot be empty', .before)
+			eprintln('')
+			cerror('project name cannot be empty')
 			exit(1)
 		}
 		if c.name.contains('-') {
-			cerror('`${c.name}` should not contain hyphens', .before)
+			eprintln('')
+			cerror('`${c.name}` should not contain hyphens')
 			exit(1)
 		}
 		if os.is_dir(c.name) {
-			cerror('`${c.name}` folder already exists', .before)
+			eprintln('')
+			cerror('`${c.name}` folder already exists')
 			exit(3)
 		}
 	}
@@ -189,37 +191,20 @@ fn get_template(cmd Command) Template {
 		exit(2)
 	}
 	return match true {
-		bin { .bin }
 		lib { .lib }
 		web { .web }
-		else { .@none }
+		else { .bin }
 	}
 }
 
-enum LineBreak {
-	@none
-	before
-	after
-}
-
-fn cerror(e string, lb LineBreak) {
-	match lb {
-		.@none {}
-		.before {
-			eprintln('')
-		}
-		.after {
-			defer {
-				eprintln('')
-			}
-		}
-	}
+fn cerror(e string) {
 	eprintln('error: ${e}.')
 }
 
 fn check_name(name string) string {
 	if name.trim_space().len == 0 {
-		cerror('project name cannot be empty', .before)
+		eprintln('')
+		cerror('project name cannot be empty')
 		exit(1)
 	}
 	if name.is_title() {
@@ -289,7 +274,8 @@ fn (c &Create) create_git_repo(dir string) {
 	if !os.is_dir('${dir}/.git') {
 		res := os.execute('git init ${dir}')
 		if res.exit_code != 0 {
-			cerror('unable to initialize a git repository', .before)
+			eprintln('')
+			cerror('unable to initialize a git repository')
 			exit(4)
 		}
 	}
@@ -329,7 +315,7 @@ fn (mut c Create) create_files_and_directories() {
 	// Set project template files for `v new` or when no `.v` files exists during `v init`.
 	if c.new_dir || os.walk_ext(os.file_name(os.getwd()), '.v').len == 0 {
 		match c.template {
-			.@none, .bin { c.set_bin_project_files() }
+			.bin { c.set_bin_project_files() }
 			.lib { c.set_lib_project_files() }
 			.web { c.set_web_project_files() }
 		}
@@ -339,7 +325,7 @@ fn (mut c Create) create_files_and_directories() {
 		os.write_file(file.path, file.content) or { panic(err) }
 	}
 	kind := match c.template {
-		.@none, .bin { 'binary (application)' }
+		.bin { 'binary (application)' }
 		.lib { 'library' }
 		.web { 'web' }
 	}

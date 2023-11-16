@@ -12,5 +12,6 @@ expect "Input your project description: " { send "My Awesome V Application.\r" }
 expect "Input your project version: (0.0.0) " { send "0.0.1\r" } timeout { exit 1 }
 expect "Input your project license: (MIT) " { send "\r" } timeout { exit 1 }
 expect "Initialising ..." {} timeout { exit 1 }
+# The completion message is verified in `vcreate_init_test.v`.
 
 expect eof
