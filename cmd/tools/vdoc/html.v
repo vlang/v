@@ -311,8 +311,6 @@ ${tabs(2)}<script src="${vd.assets['dark_mode_js']}"></script>'
 			'<script src="${vd.assets['doc_js']}"></script>'
 		})
 	}
-	dump(cfg.html_no_footer)
-	dump(cfg.html_no_assets)
 	return result
 }
 
