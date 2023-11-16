@@ -541,7 +541,12 @@ fn parse_children(name string, attributes map[string]string, mut reader io.Reade
 	return error('XML node <${name}> not closed.')
 }
 
-fn parse_single_node(first_char u8, mut reader io.Reader) !XMLNode {
+// parse_single_node parses a single XML node from the reader. The first character of the tag is passed
+// in as the first_char parameter.
+// This function is meant to assist in parsing nested nodes one at a time. Using this function as
+// opposed to the recommended static functions makes it easier to parse smaller nodes in extremely large
+// XML documents without running out of memory.
+pub fn parse_single_node(first_char u8, mut reader io.Reader) !XMLNode {
 	mut contents := strings.new_builder(xml.default_string_builder_cap)
 	contents.write_u8(first_char)
 
@@ -564,7 +569,7 @@ fn parse_single_node(first_char u8, mut reader io.Reader) !XMLNode {
 		// We're not looking for children and inner text
 		return XMLNode{
 			name: name
-			attributes: parse_attributes(tag_contents[name.len - 1..tag_contents.len].trim_space())!
+			attributes: parse_attributes(tag_contents[name.len..tag_contents.len - 1].trim_space())!
 		}
 	}
 
