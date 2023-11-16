@@ -109,7 +109,7 @@ fn validate(cmd Command) ! {
 		exit(0)
 	}
 	if cmd.args.len > 1 {
-		eprintln('error: too many arguments.\n')
+		cerror('too many arguments.', .after)
 		cmd.execute_help()
 		exit(2)
 	}
@@ -155,15 +155,15 @@ fn (mut c Create) prompt(args []string) {
 	if c.name == '' {
 		c.name = check_name(args[0] or { os.input('Input your project name: ') })
 		if c.name == '' {
-			cerror('project name cannot be empty')
+			cerror('project name cannot be empty', .before)
 			exit(1)
 		}
 		if c.name.contains('-') {
-			cerror('"${c.name}" should not contain hyphens')
+			cerror('`${c.name}` should not contain hyphens', .before)
 			exit(1)
 		}
 		if os.is_dir(c.name) {
-			cerror('${c.name} folder already exists')
+			cerror('`${c.name}` folder already exists', .before)
 			exit(3)
 		}
 	}
@@ -196,13 +196,30 @@ fn get_template(cmd Command) Template {
 	}
 }
 
-fn cerror(e string) {
-	eprintln('\nerror: ${e}')
+enum LineBreak {
+	@none
+	before
+	after
+}
+
+fn cerror(e string, lb LineBreak) {
+	match lb {
+		.@none {}
+		.before {
+			eprintln('')
+		}
+		.after {
+			defer {
+				eprintln('')
+			}
+		}
+	}
+	eprintln('error: ${e}.')
 }
 
 fn check_name(name string) string {
 	if name.trim_space().len == 0 {
-		cerror('project name cannot be empty')
+		cerror('project name cannot be empty', .before)
 		exit(1)
 	}
 	if name.is_title() {
@@ -268,11 +285,11 @@ indent_style = tab
 }
 
 fn (c &Create) create_git_repo(dir string) {
-	// Create Git Repo and .gitignore file
+	// Initialize git and add a .gitignore file.
 	if !os.is_dir('${dir}/.git') {
 		res := os.execute('git init ${dir}')
 		if res.exit_code != 0 {
-			cerror('Unable to create git repo')
+			cerror('unable to initialize a git repository', .before)
 			exit(4)
 		}
 	}
