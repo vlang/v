@@ -60,14 +60,14 @@ fn trim_doc_node_description(description string) string {
 }
 
 fn set_output_type_from_str(format string) OutputType {
-	output_type := match format {
+	return match format {
 		'htm', 'html' { OutputType.html }
-		'md', 'markdown' { OutputType.markdown }
-		'json' { OutputType.json }
-		'stdout' { OutputType.stdout }
-		else { OutputType.plaintext }
+		'md', 'markdown' { .markdown }
+		'json' { .json }
+		'text' { .plaintext }
+		'ansi' { .ansi }
+		else { .ansi }
 	}
-	return output_type
 }
 
 fn get_ignore_paths(path string) ![]string {
@@ -213,9 +213,12 @@ fn color_highlight(code string, tb &ast.Table) string {
 					} else if
 						(next_tok.kind in [.lcbr, .rpar, .eof, .comma, .pipe, .name, .rcbr, .assign, .key_pub, .key_mut, .pipe, .comma, .comment, .lt, .lsbr]
 						&& next_tok.lit !in builtin)
-						&& (prev.kind in [.name, .amp, .lcbr, .rsbr, .key_type, .assign, .dot, .question, .rpar, .key_struct, .key_enum, .pipe, .key_interface, .comment, .ellipsis]
+						&& (prev.kind in [.name, .amp, .lcbr, .rsbr, .key_type, .assign, .dot, .not, .question, .rpar, .key_struct, .key_enum, .pipe, .key_interface, .comment, .ellipsis, .comma]
 						&& prev.lit !in builtin) && ((tok.lit != '' && tok.lit[0].is_capital())
 						|| prev_prev.lit in ['C', 'JS']) {
+						tok_typ = .symbol
+					} else if tok.lit[0].is_capital() && prev.kind == .lpar
+						&& next_tok.kind == .comma {
 						tok_typ = .symbol
 					} else if next_tok.kind == .lpar
 						|| (!(tok.lit != '' && tok.lit[0].is_capital())
