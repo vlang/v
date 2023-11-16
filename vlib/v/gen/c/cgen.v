@@ -1459,7 +1459,7 @@ pub fn (mut g Gen) write_typedef_types() {
 						mut def_str := 'typedef ${fixed};'
 						def_str = def_str.replace_once('(*)', '(*${styp}[${len}])')
 						g.type_definitions.writeln(def_str)
-					} else if !info.is_fn_ret {
+					} else if !info.is_fn_ret && len.int() > 0 {
 						g.type_definitions.writeln('typedef ${fixed} ${styp} [${len}];')
 						base := g.typ(info.elem_type.clear_flags(.option, .result))
 						if info.elem_type.has_flag(.option) && base !in g.options_forward {
@@ -6044,7 +6044,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 						mut def_str := 'typedef ${fixed_elem_name};'
 						def_str = def_str.replace_once('(*)', '(*${styp}[${len}])')
 						g.type_definitions.writeln(def_str)
-					} else {
+					} else if len > 0 {
 						g.type_definitions.writeln('typedef ${fixed_elem_name} ${styp} [${len}];')
 					}
 				}
