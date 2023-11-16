@@ -5315,7 +5315,8 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 						dep_names: g.table.dependent_names_in_expr(field_expr)
 					}
 				} else {
-					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false)
+					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false,
+						false)
 				}
 			}
 			ast.StringLiteral {
@@ -5332,9 +5333,11 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 					|| field.expr.return_type.has_flag(.result) {
 					g.inside_const_opt_or_res = true
 					unwrap_opt_res := field.expr.or_block.kind != .absent
-					g.const_decl_init_later(field.mod, name, field.expr, field.typ, unwrap_opt_res)
+					g.const_decl_init_later(field.mod, name, field.expr, field.typ, unwrap_opt_res,
+						unwrap_opt_res)
 				} else {
-					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false)
+					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false,
+						false)
 				}
 				g.inside_const_opt_or_res = false
 			}
@@ -5376,9 +5379,20 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 							continue
 						}
 					}
-					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false)
+					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false,
+						false)
+				} else if field.expr is ast.InfixExpr {
+					mut has_unwrap_opt_res := false
+					if field.expr.left is ast.CallExpr {
+						has_unwrap_opt_res = field.expr.left.or_block.kind != .absent
+					} else if field.expr.right is ast.CallExpr {
+						has_unwrap_opt_res = field.expr.right.or_block.kind != .absent
+					}
+					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false,
+						has_unwrap_opt_res)
 				} else {
-					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false)
+					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false,
+						false)
 				}
 			}
 		}
@@ -5534,7 +5548,7 @@ fn (mut g Gen) c_const_name(name string) string {
 	return if g.pref.translated && !g.is_builtin_mod { name } else { '_const_${name}' }
 }
 
-fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ ast.Type, unwrap_option bool) {
+fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ ast.Type, unwrap_option bool, surround_cbr bool) {
 	// Initialize more complex consts in `void _vinit/2{}`
 	// (C doesn't allow init expressions that can't be resolved at compile time).
 	mut styp := g.typ(typ)
@@ -5547,12 +5561,16 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ
 			init.writeln('\t_const_os__args = os__init_os_args(___argc, (byte**)___argv);')
 		}
 	} else {
-		if unwrap_option {
+		if surround_cbr {
 			init.writeln('{')
+		}
+		if unwrap_option {
 			init.writeln(g.expr_string_surround('\t${cname} = *(${styp}*)', expr, '.data;'))
-			init.writeln('}')
 		} else {
 			init.writeln(g.expr_string_surround('\t${cname} = ', expr, ';'))
+		}
+		if surround_cbr {
+			init.writeln('}')
 		}
 	}
 	mut def := '${styp} ${cname}'
