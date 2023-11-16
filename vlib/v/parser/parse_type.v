@@ -16,30 +16,28 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 	if p.tok.kind in [.number, .name] {
 		mut fixed_size := 0
 		mut size_expr := p.expr(0)
+		mut size_unresolved := true
 		if p.pref.is_fmt {
 			fixed_size = 987654321
 		} else {
 			match mut size_expr {
 				ast.IntegerLiteral {
 					fixed_size = size_expr.val.int()
+					size_unresolved = false
 				}
 				ast.Ident {
-					mut show_non_const_error := true
 					if mut const_field := p.table.global_scope.find_const('${p.mod}.${size_expr.name}') {
 						if mut const_field.expr is ast.IntegerLiteral {
 							fixed_size = const_field.expr.val.int()
-							show_non_const_error = false
-						} else {
-							if mut const_field.expr is ast.InfixExpr {
-								// QUESTION: this should most likely no be done in the parser, right?
-								mut t := transformer.new_transformer_with_table(p.table,
-									p.pref)
-								folded_expr := t.infix_expr(mut const_field.expr)
+							size_unresolved = false
+						} else if mut const_field.expr is ast.InfixExpr {
+							// QUESTION: this should most likely no be done in the parser, right?
+							mut t := transformer.new_transformer_with_table(p.table, p.pref)
+							folded_expr := t.infix_expr(mut const_field.expr)
 
-								if folded_expr is ast.IntegerLiteral {
-									fixed_size = folded_expr.val.int()
-									show_non_const_error = false
-								}
+							if folded_expr is ast.IntegerLiteral {
+								fixed_size = folded_expr.val.int()
+								size_unresolved = false
 							}
 						}
 					} else {
@@ -47,26 +45,17 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 							// for vfmt purposes, pretend the constant does exist
 							// it may have been defined in another .v file:
 							fixed_size = 1
-							show_non_const_error = false
+							size_unresolved = false
 						}
-					}
-					if show_non_const_error {
-						p.error_with_pos('non-constant array bound `${size_expr.name}`',
-							size_expr.pos)
 					}
 				}
 				ast.InfixExpr {
-					mut show_non_const_error := true
 					mut t := transformer.new_transformer_with_table(p.table, p.pref)
 					folded_expr := t.infix_expr(mut size_expr)
 
 					if folded_expr is ast.IntegerLiteral {
 						fixed_size = folded_expr.val.int()
-						show_non_const_error = false
-					}
-					if show_non_const_error {
-						p.error_with_pos('fixed array size cannot use non-constant eval value',
-							size_expr.pos)
+						size_unresolved = false
 					}
 				}
 				else {
@@ -85,7 +74,10 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 			// error is handled by parse_type
 			return 0
 		}
-		if fixed_size <= 0 {
+		// TODO:
+		// For now, when a const variable or expression is temporarily unavailable to evaluate,
+		// only pending struct fields are deferred.
+		if fixed_size <= 0 && (!p.inside_struct_field_decl || !size_unresolved) {
 			p.error_with_pos('fixed size cannot be zero or negative', size_expr.pos())
 		}
 		idx := p.table.find_or_register_array_fixed(elem_type, fixed_size, size_expr,

@@ -4,6 +4,7 @@ module checker
 
 import v.ast
 import v.util
+import v.transformer
 
 fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 	util.timing_start(@METHOD)
@@ -49,6 +50,67 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 		for attr in node.attrs {
 			if attr.name == 'typedef' && node.language != .c {
 				c.error('`typedef` attribute can only be used with C structs', node.pos)
+			}
+		}
+
+		// Evaluate the size of the unresolved fixed array
+		for mut field in node.fields {
+			sym := c.table.sym(field.typ)
+			if sym.kind == .array_fixed {
+				info := sym.info as ast.ArrayFixed
+				if info.size > 0 {
+					continue
+				}
+				mut fixed_size := 0
+				match info.size_expr {
+					ast.Ident {
+						if mut const_field := c.table.global_scope.find_const('${c.mod}.${info.size_expr.name}') {
+							if mut const_field.expr is ast.IntegerLiteral {
+								fixed_size = const_field.expr.val.int()
+							} else if mut const_field.expr is ast.InfixExpr {
+								mut t := transformer.new_transformer_with_table(c.table,
+									c.pref)
+								folded_expr := t.infix_expr(mut const_field.expr)
+								if folded_expr is ast.IntegerLiteral {
+									fixed_size = folded_expr.val.int()
+								}
+							}
+						}
+						if fixed_size <= 0 {
+							c.error('non-constant array bound `${info.size_expr.name}`',
+								info.size_expr.pos)
+						}
+					}
+					ast.InfixExpr {
+						mut t := transformer.new_transformer_with_table(c.table, c.pref)
+						mut size_expr := unsafe { &info.size_expr }
+						folded_expr := t.infix_expr(mut size_expr)
+
+						if folded_expr is ast.IntegerLiteral {
+							fixed_size = folded_expr.val.int()
+						}
+						if fixed_size <= 0 {
+							c.error('fixed array size cannot use non-constant eval value',
+								info.size_expr.pos)
+						}
+					}
+					else {}
+				}
+				if fixed_size <= 0 {
+					c.error('fixed size cannot be zero or negative', info.size_expr.pos())
+				}
+				idx := c.table.find_or_register_array_fixed(info.elem_type, fixed_size,
+					info.size_expr, false)
+				if info.elem_type.has_flag(.generic) {
+					field.typ = ast.new_type(idx).set_flag(.generic)
+				} else {
+					field.typ = ast.new_type(idx)
+				}
+				for mut symfield in struct_sym.info.fields {
+					if symfield.name == field.name {
+						symfield.typ = field.typ
+					}
+				}
 			}
 		}
 
