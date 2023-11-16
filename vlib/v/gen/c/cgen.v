@@ -694,7 +694,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 // free_builders should be called only when a Gen would NOT be used anymore
 // it frees the bulk of the memory that is private to the Gen instance
 // (the various string builders)
-[unsafe]
+@[unsafe]
 pub fn (mut g Gen) free_builders() {
 	unsafe {
 		g.out.free()
@@ -1419,7 +1419,7 @@ fn (mut g Gen) cc_type(typ ast.Type, is_prefix_struct bool) string {
 	return styp
 }
 
-[inline]
+@[inline]
 fn (g &Gen) type_sidx(t ast.Type) string {
 	if g.pref.build_mode == .build_module {
 		sym := g.table.sym(t)
@@ -1459,7 +1459,7 @@ pub fn (mut g Gen) write_typedef_types() {
 						mut def_str := 'typedef ${fixed};'
 						def_str = def_str.replace_once('(*)', '(*${styp}[${len}])')
 						g.type_definitions.writeln(def_str)
-					} else if !info.is_fn_ret {
+					} else if !info.is_fn_ret && len.int() > 0 {
 						g.type_definitions.writeln('typedef ${fixed} ${styp} [${len}];')
 						base := g.typ(info.elem_type.clear_flags(.option, .result))
 						if info.elem_type.has_flag(.option) && base !in g.options_forward {
@@ -2004,7 +2004,7 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 	g.write(tmp_var)
 }
 
-[inline]
+@[inline]
 fn (mut g Gen) write_v_source_line_info(pos token.Pos) {
 	if g.inside_ternary == 0 && g.pref.is_vlines && g.is_vlines_enabled {
 		nline := pos.line_nr + 1
@@ -2915,7 +2915,7 @@ fn (mut g Gen) autofree_scope_vars_stop(pos int, line_nr int, free_parent_scopes
 		stop_pos)
 }
 
-[if trace_autofree ?]
+@[if trace_autofree ?]
 fn (mut g Gen) trace_autofree(line string) {
 	g.writeln(line)
 }
@@ -4324,7 +4324,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 	}
 }
 
-[inline]
+@[inline]
 pub fn (mut g Gen) is_generic_param_var(node ast.Expr) bool {
 	return node is ast.Ident && node.info is ast.IdentVar && node.obj is ast.Var
 		&& (node.obj as ast.Var).ct_type_var == .generic_param
@@ -4684,7 +4684,7 @@ fn (mut g Gen) concat_expr(node ast.ConcatExpr) {
 	}
 }
 
-[inline]
+@[inline]
 fn (g &Gen) expr_is_multi_return_call(expr ast.Expr) bool {
 	if expr is ast.CallExpr {
 		return g.table.sym(expr.return_type).kind == .multi_return
@@ -4896,7 +4896,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	}
 
 	// got to do a correct check for multireturn
-	sym := g.table.sym(g.fn_decl.return_type)
+	sym := g.table.sym(g.unwrap_generic(g.fn_decl.return_type))
 	mut fn_ret_type := g.fn_decl.return_type
 	if sym.kind == .alias {
 		unaliased_type := g.table.unaliased_type(fn_ret_type)
@@ -5719,12 +5719,12 @@ fn (mut g Gen) assoc(node ast.Assoc) {
 	}
 }
 
-[noreturn]
+@[noreturn]
 fn verror(s string) {
 	util.verror('cgen error', s)
 }
 
-[noreturn]
+@[noreturn]
 fn (g &Gen) error(s string, pos token.Pos) {
 	util.show_compiler_message('cgen error:', pos: pos, file_path: g.file.path, message: s)
 	exit(1)
@@ -6044,7 +6044,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 						mut def_str := 'typedef ${fixed_elem_name};'
 						def_str = def_str.replace_once('(*)', '(*${styp}[${len}])')
 						g.type_definitions.writeln(def_str)
-					} else {
+					} else if len > 0 {
 						g.type_definitions.writeln('typedef ${fixed_elem_name} ${styp} [${len}];')
 					}
 				}
@@ -6367,7 +6367,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 	g.set_current_pos_as_last_stmt_pos()
 }
 
-[inline]
+@[inline]
 fn c_name(name_ string) string {
 	name := util.no_dots(name_)
 	if c.c_reserved_chk.matches(name) {
@@ -6550,7 +6550,7 @@ fn (g Gen) get_all_test_function_names() []string {
 	return all_tfuncs
 }
 
-[inline]
+@[inline]
 fn (mut g Gen) get_type(typ ast.Type) ast.Type {
 	return if typ == g.field_data_type { g.comptime_for_field_value.typ } else { typ }
 }
@@ -6572,7 +6572,7 @@ fn (mut g Gen) size_of(node ast.SizeOf) {
 	g.write('sizeof(${util.no_dots(styp)})')
 }
 
-[inline]
+@[inline]
 fn (mut g Gen) gen_enum_prefix(typ ast.Type) string {
 	if g.pref.translated && typ.is_number() {
 		// Mostly in translated code, when C enums are used as ints in switches

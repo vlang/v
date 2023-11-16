@@ -4,7 +4,7 @@ pub struct C.__mpz_struct1 {
 	x int
 }
 
-[typedef]
+@[typedef]
 pub struct C.__mpz_struct_typedef {
 	x int
 }

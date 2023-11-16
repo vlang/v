@@ -21,14 +21,14 @@ pub mut:
 
 fn C.new_atype(int) voidptr
 
-[trusted]
+@[trusted]
 fn C.handle_array(voidptr, int)
 
 fn todo_remove_me() {
 	// TODO: remove this dummy function, when the vfmt bug of [trusted] after a void C function is fixed
 }
 
-[trusted]
+@[trusted]
 fn C.handle_array2(voidptr, int)
 
 fn C.destroy_atype(voidptr)

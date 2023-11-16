@@ -19,13 +19,13 @@ fn help_dir() string {
 	return hdir(@VEXEROOT)
 }
 
-[params]
+@[params]
 pub struct ExitOptions {
 	exit_code int
 }
 
 // print_and_exit prints the help topic and exits.
-[noreturn]
+@[noreturn]
 pub fn print_and_exit(topic string, opts ExitOptions) {
 	if topic == 'topics' {
 		print_known_topics()

@@ -235,7 +235,7 @@ fn cmp(f1 Fraction, f2 Fraction) int {
 // +-----------------------------+
 
 // equals returns true if both the Fractions are equal
-[deprecated: 'use f1 == f2 instead']
+@[deprecated: 'use f1 == f2 instead']
 pub fn (f1 Fraction) equals(f2 Fraction) bool {
 	return cmp(f1, f2) == 0
 }
@@ -246,25 +246,25 @@ pub fn (f1 Fraction) == (f2 Fraction) bool {
 }
 
 // ge returns true if f1 >= f2
-[deprecated: 'use f1 >= f2 instead']
+@[deprecated: 'use f1 >= f2 instead']
 pub fn (f1 Fraction) ge(f2 Fraction) bool {
 	return cmp(f1, f2) >= 0
 }
 
 // gt returns true if f1 > f2
-[deprecated: 'use f1 > f2 instead']
+@[deprecated: 'use f1 > f2 instead']
 pub fn (f1 Fraction) gt(f2 Fraction) bool {
 	return cmp(f1, f2) > 0
 }
 
 // le returns true if f1 <= f2
-[deprecated: 'use f1 <= f2 instead']
+@[deprecated: 'use f1 <= f2 instead']
 pub fn (f1 Fraction) le(f2 Fraction) bool {
 	return cmp(f1, f2) <= 0
 }
 
 // lt returns true if f1 < f2
-[deprecated: 'use f1 < f2 instead']
+@[deprecated: 'use f1 < f2 instead']
 pub fn (f1 Fraction) lt(f2 Fraction) bool {
 	return cmp(f1, f2) < 0
 }

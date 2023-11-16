@@ -98,7 +98,7 @@ pub fn (mut rng MT19937RNG) seed(seed_data []u32) {
 }
 
 // byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
-[inline]
+@[inline]
 pub fn (mut rng MT19937RNG) u8() u8 {
 	if rng.bytes_left >= 1 {
 		rng.bytes_left -= 1
@@ -114,7 +114,7 @@ pub fn (mut rng MT19937RNG) u8() u8 {
 }
 
 // u16 returns a pseudorandom 16bit int in range `[0, 2¹⁶)`.
-[inline]
+@[inline]
 pub fn (mut rng MT19937RNG) u16() u16 {
 	if rng.bytes_left >= 2 {
 		rng.bytes_left -= 2
@@ -129,7 +129,7 @@ pub fn (mut rng MT19937RNG) u16() u16 {
 }
 
 // u32 returns a pseudorandom 32bit int in range `[0, 2³²)`.
-[inline]
+@[inline]
 pub fn (mut rng MT19937RNG) u32() u32 {
 	// Can we take a whole u32 out of the buffer?
 	if rng.bytes_left >= 4 {
@@ -147,7 +147,7 @@ pub fn (mut rng MT19937RNG) u32() u32 {
 const mag01 = [u64(0), u64(matrix_a)]
 
 // u64 returns a pseudorandom 64bit int in range `[0, 2⁶⁴)`.
-[direct_array_access; inline]
+@[direct_array_access; inline]
 pub fn (mut rng MT19937RNG) u64() u64 {
 	mut x := u64(0)
 	mut i := int(0)
@@ -175,13 +175,13 @@ pub fn (mut rng MT19937RNG) u64() u64 {
 }
 
 // block_size returns the number of bits that the RNG can produce in a single iteration.
-[inline]
+@[inline]
 pub fn (mut rng MT19937RNG) block_size() int {
 	return 64
 }
 
 // free should be called when the generator is no longer needed
-[unsafe]
+@[unsafe]
 pub fn (mut rng MT19937RNG) free() {
 	unsafe { free(rng) }
 }

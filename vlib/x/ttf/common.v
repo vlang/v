@@ -134,23 +134,23 @@ pub fn (mut bmp BitMap) save_raw_data(file_name string) {
 // Math functions
 //
 // integer part of x
-[inline]
+@[inline]
 fn ipart(x f32) f32 {
 	return f32(math.floor(x))
 }
 
-[inline]
+@[inline]
 fn round(x f32) f32 {
 	return ipart(x + 0.5)
 }
 
 // fractional part of x
-[inline]
+@[inline]
 fn fpart(x f32) f32 {
 	return x - f32(math.floor(x))
 }
 
-[inline]
+@[inline]
 fn rfpart(x f32) f32 {
 	return 1 - fpart(x)
 }
@@ -161,7 +161,7 @@ fn rfpart(x f32) f32 {
 *
 ******************************************************************************/
 /*
-[inline]
+@[inline]
 pub fn (mut dev BitMap) get_color(x int, y int) (int, int, int, int){
 	if x < 0 || x >= dev.width || y < 0 || y >= dev.height {
 		return 0,0,0,0
@@ -172,7 +172,7 @@ pub fn (mut dev BitMap) get_color(x int, y int) (int, int, int, int){
 	}
 }
 
-[inline]
+@[inline]
 pub fn (mut dev BitMap) get_color_u32(x int, y int) u32{
 	r, g, b, a := dev.get_color(x, y)
 	unsafe{
@@ -185,12 +185,12 @@ pub fn (mut dev BitMap) get_color_u32(x int, y int) u32{
 * Drawing
 *
 ******************************************************************************/
-[inline]
+@[inline]
 pub fn color_multiply_alpha(c u32, level f32) u32 {
 	return u32(f32(c & 0xFF) * level)
 }
 
-[inline]
+@[inline]
 pub fn color_multiply(c u32, level f32) u32 {
 	mut r := (f32((c >> 24) & 0xFF) / 255.0) * level
 	mut g := (f32((c >> 16) & 0xFF) / 255.0) * level

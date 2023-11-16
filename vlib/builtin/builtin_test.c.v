@@ -13,7 +13,7 @@ fn test_g_main_argv() {
 	assert first_arg.contains('builtin_test')
 }
 
-[if windows]
+@[if windows]
 fn test_bool_size() {
 	println(@LOCATION)
 	assert sizeof(C.BOOL) == 4

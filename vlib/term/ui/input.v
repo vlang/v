@@ -142,7 +142,7 @@ pub enum EventType {
 	resized
 }
 
-[flag]
+@[flag]
 pub enum Modifiers {
 	ctrl
 	shift
@@ -204,31 +204,31 @@ pub struct Config {
 	.stop]
 }
 
-[inline]
+@[inline]
 fn (ctx &Context) init() {
 	f := ctx.cfg.init_fn or { return }
 	f(ctx.cfg.user_data)
 }
 
-[inline]
+@[inline]
 fn (ctx &Context) frame() {
 	f := ctx.cfg.frame_fn or { return }
 	f(ctx.cfg.user_data)
 }
 
-[inline]
+@[inline]
 fn (ctx &Context) cleanup() {
 	f := ctx.cfg.cleanup_fn or { return }
 	f(ctx.cfg.user_data)
 }
 
-[inline]
+@[inline]
 fn (ctx &Context) fail(error string) {
 	f := ctx.cfg.fail_fn or { return }
 	f(error)
 }
 
-[inline]
+@[inline]
 fn (ctx &Context) event(event &Event) {
 	f := ctx.cfg.event_fn or { return }
 	f(event, ctx.cfg.user_data)

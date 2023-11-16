@@ -483,13 +483,13 @@ pub fn (f Any) str() string {
 }
 
 // json_str returns the JSON string representation of the `Any` type.
-[manualfree]
+@[manualfree]
 pub fn (f Any) json_str() string {
 	return encode(f)
 }
 
 // prettify_json_str returns the pretty-formatted JSON string representation of the `Any` type.
-[manualfree]
+@[manualfree]
 pub fn (f Any) prettify_json_str() string {
 	mut sb := strings.new_builder(4096)
 	defer {
@@ -532,7 +532,7 @@ fn (mut iter CharLengthIterator) next() ?int {
 
 // TODO - Need refactor. Is so slow. The longer the string, the lower the performance.
 // encode_string returns the JSON spec-compliant version of the string.
-[manualfree]
+@[manualfree]
 fn (e &Encoder) encode_string(s string, mut wr io.Writer) ! {
 	mut char_lens := CharLengthIterator{
 		text: s

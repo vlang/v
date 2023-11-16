@@ -2,14 +2,14 @@ module builtin
 
 //__global global_allocator dlmalloc.Dlmalloc
 
-[unsafe]
+@[unsafe]
 pub fn __malloc(size usize) voidptr {
 	unsafe {
 		return C.malloc(int(size))
 	}
 }
 
-[unsafe]
+@[unsafe]
 pub fn memcpy(dest &C.void, src &C.void, n usize) &C.void {
 	dest_ := unsafe { &u8(dest) }
 	src_ := unsafe { &u8(src) }
@@ -21,7 +21,7 @@ pub fn memcpy(dest &C.void, src &C.void, n usize) &C.void {
 	return unsafe { dest }
 }
 
-[unsafe]
+@[unsafe]
 fn strlen(_s &C.void) usize {
 	s := unsafe { &u8(_s) }
 	mut i := 0
@@ -29,7 +29,7 @@ fn strlen(_s &C.void) usize {
 	return usize(i)
 }
 
-[unsafe]
+@[unsafe]
 fn realloc(old_area &C.void, new_size usize) &C.void {
 	if old_area == 0 {
 		return unsafe { malloc(int(new_size)) }
@@ -49,7 +49,7 @@ fn realloc(old_area &C.void, new_size usize) &C.void {
 	}
 }
 
-[unsafe]
+@[unsafe]
 fn memset(s &C.void, c int, n usize) &C.void {
 	mut s_ := unsafe { &char(s) }
 	for i in 0 .. int(n) {
@@ -60,7 +60,7 @@ fn memset(s &C.void, c int, n usize) &C.void {
 	return unsafe { s }
 }
 
-[unsafe]
+@[unsafe]
 fn memmove(dest &C.void, src &C.void, n usize) &C.void {
 	dest_ := unsafe { &u8(dest) }
 	src_ := unsafe { &u8(src) }
@@ -80,8 +80,8 @@ fn memmove(dest &C.void, src &C.void, n usize) &C.void {
 	return unsafe { dest }
 }
 
-[export: 'calloc']
-[unsafe]
+@[export: 'calloc']
+@[unsafe]
 fn __calloc(nmemb usize, size usize) &C.void {
 	new_area := unsafe { malloc(int(nmemb) * int(size)) }
 	unsafe { memset(new_area, 0, nmemb * size) }
@@ -133,7 +133,7 @@ pub fn write(_fd i64, _buf &byte, _count u64) i64 {
 	return -1
 }
 
-[noreturn]
+@[noreturn]
 fn bare_panic(msg string) {
 	println('V panic' + msg)
 	exit(1)
@@ -143,8 +143,8 @@ fn bare_backtrace() string {
 	return 'backtraces are not available with `-freestanding`'
 }
 
-[export: 'exit']
-[noreturn]
+@[export: 'exit']
+@[noreturn]
 fn __exit(code int) {
 	unsafe {
 		// the only way to abort process execution in WASM
@@ -154,7 +154,7 @@ fn __exit(code int) {
 	for {}
 }
 
-[export: 'qsort']
+@[export: 'qsort']
 fn __qsort(base voidptr, nmemb usize, size usize, sort_cb FnSortCB) {
 	panic('qsort() is not yet implemented in `-freestanding`')
 }

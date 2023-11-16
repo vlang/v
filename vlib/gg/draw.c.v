@@ -12,7 +12,7 @@ import math
 // NOTE calling this function frequently is very *inefficient*,
 // for drawing shapes it's recommended to draw whole primitives with
 // functions like `draw_rect_empty` or `draw_triangle_empty` etc.
-[inline]
+@[inline]
 pub fn (ctx &Context) draw_pixel(x f32, y f32, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.pipeline.alpha)
@@ -29,7 +29,7 @@ pub fn (ctx &Context) draw_pixel(x f32, y f32, c gx.Color) {
 // NOTE calling this function frequently is very *inefficient*,
 // for drawing shapes it's recommended to draw whole primitives with
 // functions like `draw_rect_empty` or `draw_triangle_empty` etc.
-[direct_array_access; inline]
+@[direct_array_access; inline]
 pub fn (ctx &Context) draw_pixels(points []f32, c gx.Color) {
 	if points.len % 2 != 0 {
 		return
@@ -224,7 +224,7 @@ enum PaintStyle {
 	stroke
 }
 
-[params]
+@[params]
 pub struct DrawRectParams {
 	x          f32
 	y          f32
@@ -505,7 +505,7 @@ pub fn (ctx &Context) draw_triangle_filled(x f32, y f32, x2 f32, y2 f32, x3 f32,
 // `x`,`y` is the top-left corner of the square.
 // `s` is the length of each side of the square.
 // `c` is the color of the outline.
-[inline]
+@[inline]
 pub fn (ctx &Context) draw_square_empty(x f32, y f32, s f32, c gx.Color) {
 	ctx.draw_rect_empty(x, y, s, s, c)
 }
@@ -514,7 +514,7 @@ pub fn (ctx &Context) draw_square_empty(x f32, y f32, s f32, c gx.Color) {
 // `x`,`y` is the top-left corner of the square.
 // `s` is the length of each side of the square.
 // `c` is the fill color.
-[inline]
+@[inline]
 pub fn (ctx &Context) draw_square_filled(x f32, y f32, s f32, c gx.Color) {
 	ctx.draw_rect_filled(x, y, s, s, c)
 }
@@ -523,7 +523,7 @@ pub fn (ctx &Context) draw_square_filled(x f32, y f32, s f32, c gx.Color) {
 // and then choosing the most circle-ish drawing with the minimum number of segments.
 const small_circle_segments = [0, 2, 4, 6, 6, 8, 8, 13, 10, 18, 12, 12, 10, 13, 16, 15, 16]!
 
-[direct_array_access]
+@[direct_array_access]
 fn radius_to_segments(r f32) int {
 	if r < 30 {
 		ir := int(math.ceil(r))

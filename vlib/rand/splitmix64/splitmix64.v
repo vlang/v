@@ -30,7 +30,7 @@ pub fn (mut rng SplitMix64RNG) seed(seed_data []u32) {
 }
 
 // byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
-[inline]
+@[inline]
 pub fn (mut rng SplitMix64RNG) u8() u8 {
 	if rng.bytes_left >= 1 {
 		rng.bytes_left -= 1
@@ -46,7 +46,7 @@ pub fn (mut rng SplitMix64RNG) u8() u8 {
 }
 
 // u16 returns a pseudorandom 16bit int in range `[0, 2¹⁶)`.
-[inline]
+@[inline]
 pub fn (mut rng SplitMix64RNG) u16() u16 {
 	if rng.bytes_left >= 2 {
 		rng.bytes_left -= 2
@@ -61,7 +61,7 @@ pub fn (mut rng SplitMix64RNG) u16() u16 {
 }
 
 // u32 returns a pseudorandom 32bit int in range `[0, 2³²)`.
-[inline]
+@[inline]
 pub fn (mut rng SplitMix64RNG) u32() u32 {
 	if rng.bytes_left >= 4 {
 		rng.bytes_left -= 4
@@ -76,7 +76,7 @@ pub fn (mut rng SplitMix64RNG) u32() u32 {
 }
 
 // u64 returns a pseudorandom 64bit int in range `[0, 2⁶⁴)`.
-[inline]
+@[inline]
 pub fn (mut rng SplitMix64RNG) u64() u64 {
 	rng.state += (0x9e3779b97f4a7c15)
 	mut z := rng.state
@@ -86,13 +86,13 @@ pub fn (mut rng SplitMix64RNG) u64() u64 {
 }
 
 // block_size returns the number of bits that the RNG can produce in a single iteration.
-[inline]
+@[inline]
 pub fn (mut rng SplitMix64RNG) block_size() int {
 	return 64
 }
 
 // free should be called when the generator is no longer needed
-[unsafe]
+@[unsafe]
 pub fn (mut rng SplitMix64RNG) free() {
 	unsafe { free(rng) }
 }

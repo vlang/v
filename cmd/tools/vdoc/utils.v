@@ -9,7 +9,7 @@ import v.token
 import strings
 import v.pref
 
-[inline]
+@[inline]
 fn slug(title string) string {
 	return title.replace(' ', '-')
 }

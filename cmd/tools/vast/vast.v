@@ -150,13 +150,13 @@ mut:
 pub type Node = C.cJSON
 
 // create an object node
-[inline]
+@[inline]
 fn new_object() &Node {
 	return C.cJSON_CreateObject()
 }
 
 // add item to object node
-[inline]
+@[inline]
 fn (node &Node) add(key string, child &Node) {
 	if context.hide_names.len > 0 && key in context.hide_names {
 		return
@@ -168,7 +168,7 @@ fn (node &Node) add(key string, child &Node) {
 }
 
 // add item to object node
-[inline]
+@[inline]
 fn (node &Node) add_terse(key string, child &Node) {
 	if context.hide_names.len > 0 && key in context.hide_names {
 		return
@@ -177,13 +177,13 @@ fn (node &Node) add_terse(key string, child &Node) {
 }
 
 // create an array node
-[inline]
+@[inline]
 fn new_array() &Node {
 	return C.cJSON_CreateArray()
 }
 
 // add item to array node
-[inline]
+@[inline]
 fn (node &Node) add_item(child &Node) {
 	add_item_to_array(node, child)
 }

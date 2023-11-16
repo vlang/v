@@ -1,4 +1,4 @@
-[has_globals]
+@[has_globals]
 module builtin
 
 #flag -I@VEXEROOT/thirdparty/libbacktrace
@@ -85,7 +85,7 @@ fn bt_error_handler(data voidptr, msg &char, errnum int) {
 	exit(1)
 }
 
-[noinline]
+@[noinline]
 fn print_libbacktrace(frames_to_skip int) {
 	$if no_backtrace ? {
 		return
@@ -94,7 +94,7 @@ fn print_libbacktrace(frames_to_skip int) {
 	C.backtrace_full(bt_state, frames_to_skip, bt_print_callback, bt_error_callback, data)
 }
 
-[noinline]
+@[noinline]
 fn eprint_libbacktrace(frames_to_skip int) {
 	$if no_backtrace ? {
 		return

@@ -60,7 +60,7 @@ fn graphics_frame(mut state AppState) {
 	state.gg.end()
 }
 
-[inline]
+@[inline]
 fn (mut state AppState) bsample(idx int) u8 {
 	return u8(127 + state.frames[(state.gframe + idx) & 2047] * 128)
 }

@@ -1,7 +1,7 @@
 // Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-[has_globals]
+@[has_globals]
 module util
 
 import os
@@ -126,7 +126,7 @@ pub fn formatted_error(kind string, omsg string, filepath string, pos token.Pos)
 	return '${final_position} ${final_kind} ${final_msg}${final_context}'.trim_space()
 }
 
-[heap]
+@[heap]
 struct LinesCache {
 mut:
 	lines map[string][]string
@@ -197,7 +197,7 @@ pub fn source_file_context(kind string, filepath string, pos token.Pos) []string
 	return clines
 }
 
-[noreturn]
+@[noreturn]
 pub fn verror(kind string, s string) {
 	final_kind := bold(color(kind, kind))
 	eprintln('${final_kind}: ${s}')

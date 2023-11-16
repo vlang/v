@@ -33,7 +33,7 @@ fn new_app() &App {
 	return app
 }
 
-['/']
+@['/']
 pub fn (mut app App) index() vweb.Result {
 	println('Index page')
 	title := 'Home Page'
@@ -43,8 +43,8 @@ pub fn (mut app App) index() vweb.Result {
 	return app.html(base)
 }
 
-[middleware: check_auth]
-['/admin/secrets']
+@[middleware: check_auth]
+@['/admin/secrets']
 pub fn (mut app App) secrets() vweb.Result {
 	println('Secrets page')
 	title := 'Secret Admin Page'
@@ -54,7 +54,7 @@ pub fn (mut app App) secrets() vweb.Result {
 	return app.html(base)
 }
 
-['/admin/:sub']
+@['/admin/:sub']
 pub fn (mut app App) dynamic(sub string) vweb.Result {
 	println('Dynamic page')
 	title := 'Secret dynamic'
@@ -64,7 +64,7 @@ pub fn (mut app App) dynamic(sub string) vweb.Result {
 	return app.html(base)
 }
 
-['/early']
+@['/early']
 pub fn (mut app App) early() vweb.Result {
 	println('Early page')
 	title := 'Early Exit'

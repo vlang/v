@@ -166,7 +166,7 @@ fn update_text_texture(sg_img gfx.Image, w int, h int, buf &u8) {
 * Memory buffer
 *
 ******************************************************************************/
-[inline]
+@[inline]
 fn (mut app App) resize_buf_if_needed(in_size int) {
 	// manage the memory buffer
 	if app.mem_buf_size < in_size {
@@ -191,7 +191,7 @@ fn (mut app App) resize_buf_if_needed(in_size int) {
 *
 ******************************************************************************/
 // read_bytes from file in `path` in the memory buffer of app.
-[manualfree]
+@[manualfree]
 fn (mut app App) read_bytes(path string) bool {
 	mut fp := os.vfopen(path, 'rb') or {
 		eprintln('ERROR: Can not open the file [${path}].')
@@ -375,7 +375,7 @@ fn cleanup(mut app App) {
 * Draw functions
 *
 ******************************************************************************/
-[manualfree]
+@[manualfree]
 fn frame(mut app App) {
 	ws := gg.window_size_real_pixels()
 	if ws.width <= 0 || ws.height <= 0 {

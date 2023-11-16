@@ -5,7 +5,7 @@ fn test_generics_method_with_sumtype_args() {
 	assert ret == 22
 }
 
-[flag]
+@[flag]
 enum CatType {
 	black
 	white

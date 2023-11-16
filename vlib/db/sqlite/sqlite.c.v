@@ -58,7 +58,7 @@ pub struct C.sqlite3 {
 pub struct C.sqlite3_stmt {
 }
 
-[heap]
+@[heap]
 pub struct Stmt {
 	stmt &C.sqlite3_stmt = unsafe { nil }
 	db   &DB = unsafe { nil }
@@ -69,7 +69,7 @@ struct SQLError {
 }
 
 //
-[heap]
+@[heap]
 pub struct DB {
 pub mut:
 	is_open bool
@@ -215,7 +215,7 @@ pub fn (db &DB) q_string(query string) !string {
 }
 
 // exec executes the query on the given `db`, and returns an array of all the results, or an error on failure
-[manualfree]
+@[manualfree]
 pub fn (db &DB) exec(query string) ![]Row {
 	stmt := &C.sqlite3_stmt(unsafe { nil })
 	defer {
@@ -252,7 +252,7 @@ pub fn (db &DB) exec(query string) ![]Row {
 
 // exec_one executes a query on the given `db`.
 // It returns either the first row from the result, if the query was successful, or an error.
-[manualfree]
+@[manualfree]
 pub fn (db &DB) exec_one(query string) !Row {
 	rows := db.exec(query)!
 	defer {
@@ -269,7 +269,7 @@ pub fn (db &DB) exec_one(query string) !Row {
 }
 
 // error_message returns a proper V error, given an integer error code received from SQLite, and a query string
-[manualfree]
+@[manualfree]
 pub fn (db &DB) error_message(code int, query string) IError {
 	errmsg := unsafe { cstring_to_vstring(&char(C.sqlite3_errmsg(db.conn))) }
 	msg := '${errmsg} (${code}) (${query})'

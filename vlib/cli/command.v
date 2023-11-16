@@ -331,7 +331,7 @@ fn (cmds []Command) contains(name string) bool {
 	return false
 }
 
-[noreturn]
+@[noreturn]
 fn eprintln_exit(message string) {
 	eprintln(message)
 	exit(1)

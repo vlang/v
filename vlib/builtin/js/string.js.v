@@ -314,7 +314,7 @@ pub fn (s string) trim_right(cutset string) string {
 
 // trim_left strips any of the characters given in `cutset` from the left of the string.
 // Example: assert 'd Hello V developer'.trim_left(' d') == 'Hello V developer'
-[direct_array_access]
+@[direct_array_access]
 pub fn (s string) trim_left(cutset string) string {
 	if s.len < 1 || cutset.len < 1 {
 		return s.clone()
@@ -501,7 +501,7 @@ pub fn (s string) strip_margin() string {
 }
 
 // strip_margin_custom does the same as `strip_margin` but will use `del` as delimiter instead of `|`
-[direct_array_access]
+@[direct_array_access]
 pub fn (s string) strip_margin_custom(del u8) string {
 	mut sep := del
 	if sep.is_space() {
@@ -557,7 +557,7 @@ pub fn (s string) strip_margin_custom(del u8) string {
 // It returns the first Nth parts. When N=0, return all the splits.
 // The last returned element has the remainder of the string, even if
 // the remainder contains more `delim` substrings.
-[direct_array_access]
+@[direct_array_access]
 pub fn (s string) split_nth(delim string, nth int) []string {
 	mut res := []string{}
 	mut i := 0
@@ -634,7 +634,7 @@ struct RepIndex {
 
 // replace_each replaces all occurrences of the string pairs given in `vals`.
 // Example: assert 'ABCD'.replace_each(['B','C/','C','D','D','C']) == 'AC/DC'
-[direct_array_access]
+@[direct_array_access]
 pub fn (s string) replace_each(vals []string) string {
 	if s.len == 0 || vals.len == 0 {
 		return s.clone()
@@ -865,7 +865,7 @@ pub fn (s string) is_title() bool {
 // is a capital letter, and the rest are NOT.
 // Example: assert 'Hello'.is_capital() == true
 // Example: assert 'HelloWorld'.is_capital() == false
-[direct_array_access]
+@[direct_array_access]
 pub fn (s string) is_capital() bool {
 	if s.len == 0 || !(s[0] >= `A` && s[0] <= `Z`) {
 		return false
@@ -882,7 +882,7 @@ pub fn (s string) is_capital() bool {
 // is a capital letter, even if the rest are not.
 // Example: assert 'Hello'.starts_with_capital() == true
 // Example: assert 'Hello. World.'.starts_with_capital() == true
-[direct_array_access]
+@[direct_array_access]
 pub fn (s string) starts_with_capital() bool {
 	if s.len == 0 || !(s[0] >= `A` && s[0] <= `Z`) {
 		return false

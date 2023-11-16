@@ -305,7 +305,7 @@ pub fn mkdir(path string, params MkdirParams) ! {
 }
 
 // execute starts the specified command, waits for it to complete, and returns its output.
-[manualfree]
+@[manualfree]
 pub fn execute(cmd string) Result {
 	// if cmd.contains(';') || cmd.contains('&&') || cmd.contains('||') || cmd.contains('\n') {
 	// return Result{ exit_code: -1, output: ';, &&, || and \\n are not allowed in shell commands' }
@@ -349,12 +349,12 @@ pub fn execute(cmd string) Result {
 // On Windows raw_execute starts the specified command, waits for it to complete, and returns its output.
 // It's marked as `unsafe` to help emphasize the problems that may arise by allowing, for example,
 // user provided escape sequences.
-[unsafe]
+@[unsafe]
 pub fn raw_execute(cmd string) Result {
 	return execute(cmd)
 }
 
-[manualfree]
+@[manualfree]
 pub fn (mut c Command) start() ! {
 	pcmd := c.path + ' 2>&1'
 	defer {
@@ -366,7 +366,7 @@ pub fn (mut c Command) start() ! {
 	}
 }
 
-[manualfree]
+@[manualfree]
 pub fn (mut c Command) read_line() string {
 	buf := [4096]u8{}
 	mut res := strings.new_builder(1024)
@@ -433,7 +433,7 @@ fn C.mkstemp(stemplate &u8) int
 
 // ensure_folder_is_writable checks that `folder` exists, and is writable to the process
 // by creating an empty file in it, then deleting it.
-[manualfree]
+@[manualfree]
 pub fn ensure_folder_is_writable(folder string) ! {
 	if !exists(folder) {
 		return error_with_code('`${folder}` does not exist', 1)
@@ -455,32 +455,32 @@ pub fn ensure_folder_is_writable(folder string) ! {
 	rm(tmp_perm_check)!
 }
 
-[inline]
+@[inline]
 pub fn getpid() int {
 	return C.getpid()
 }
 
-[inline]
+@[inline]
 pub fn getppid() int {
 	return C.getppid()
 }
 
-[inline]
+@[inline]
 pub fn getuid() int {
 	return C.getuid()
 }
 
-[inline]
+@[inline]
 pub fn geteuid() int {
 	return C.geteuid()
 }
 
-[inline]
+@[inline]
 pub fn getgid() int {
 	return C.getgid()
 }
 
-[inline]
+@[inline]
 pub fn getegid() int {
 	return C.getegid()
 }

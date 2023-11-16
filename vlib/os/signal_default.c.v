@@ -1,4 +1,4 @@
-[has_globals]
+@[has_globals]
 module os
 
 #flag -lpthread
@@ -16,7 +16,7 @@ pub fn is_main_thread() bool {
 	return g_main_thread_id == u64(C.pthread_self())
 }
 
-[typedef]
+@[typedef]
 struct C.sigset_t {}
 
 fn C.sigaddset(set &C.sigset_t, signum int) int

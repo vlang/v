@@ -45,7 +45,7 @@ struct KeepMultiLineDefaultExprsIndent {
 	}]
 }
 
-[typedef]
+@[typedef]
 pub struct C.some_t {
 	@type int
 	data  struct {}

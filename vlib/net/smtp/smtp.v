@@ -166,7 +166,7 @@ fn (mut c Client) expect_reply(expected ReplyCode) ! {
 	}
 }
 
-[inline]
+@[inline]
 fn (mut c Client) send_str(s string) ! {
 	$if smtp_debug ? {
 		eprintln('\n\n[SEND START]')
@@ -181,20 +181,20 @@ fn (mut c Client) send_str(s string) ! {
 	}
 }
 
-[inline]
+@[inline]
 fn (mut c Client) send_ehlo() ! {
 	c.send_str('EHLO ${c.server}\r\n')!
 	c.expect_reply(.action_ok)!
 }
 
-[inline]
+@[inline]
 fn (mut c Client) send_starttls() ! {
 	c.send_str('STARTTLS\r\n')!
 	c.expect_reply(.ready)!
 	c.connect_ssl()!
 }
 
-[inline]
+@[inline]
 fn (mut c Client) send_auth() ! {
 	if c.username.len == 0 {
 		return

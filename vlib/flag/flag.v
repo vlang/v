@@ -40,7 +40,7 @@ fn (err ArgsCountError) msg() string {
 // It should be called manually in functions that use Flags,
 // and are marked with [manualfree]. After you call .free() on
 // a Flag instance, you should NOT use that instance any more.
-[unsafe]
+@[unsafe]
 fn (mut f Flag) free() {
 	unsafe {
 		f.name.free()
@@ -102,7 +102,7 @@ pub mut:
 // marked with `[manualfree]`,  otherwise, it is called automatically
 // in programs, compiled with `-autofree`. Note: you should NOT use the
 // instance over which you have called .free() for anything after the call.
-[unsafe]
+@[unsafe]
 fn (mut f FlagParser) free() {
 	unsafe {
 		for a in f.args {
@@ -218,7 +218,7 @@ fn (mut fs FlagParser) add_flag(name string, abbr u8, usage string, desc string)
 //
 // - the name, usage are registered
 // - found arguments and corresponding values are removed from args list
-[manualfree]
+@[manualfree]
 fn (mut fs FlagParser) parse_value(longhand string, shorthand u8) []string {
 	full := '--${longhand}'
 	defer {

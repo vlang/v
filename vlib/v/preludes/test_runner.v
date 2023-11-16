@@ -1,4 +1,4 @@
-[has_globals]
+@[has_globals]
 module main
 
 __global test_runner TestRunner
@@ -12,13 +12,13 @@ __global test_runner TestRunner
 
 interface TestRunner {
 mut:
-	file_test_info VTestFileMetaInfo // filled in by generated code, before .start() is called.
-	fn_test_info VTestFnMetaInfo // filled in by generated code, before .fn_start() is called.
-	fn_assert_passes u64 // reset this to 0 in .fn_start(), increase it in .assert_pass()
-	fn_passes u64 // increase this in .fn_pass()
-	fn_fails u64 // increase this in .fn_fails()
+	file_test_info      VTestFileMetaInfo // filled in by generated code, before .start() is called.
+	fn_test_info        VTestFnMetaInfo // filled in by generated code, before .fn_start() is called.
+	fn_assert_passes    u64 // reset this to 0 in .fn_start(), increase it in .assert_pass()
+	fn_passes           u64 // increase this in .fn_pass()
+	fn_fails            u64 // increase this in .fn_fails()
 	total_assert_passes u64 // increase this in .assert_pass()
-	total_assert_fails u64 // increase this in .assert_fail()
+	total_assert_fails  u64 // increase this in .assert_fail()
 	start(ntests int) // called before all tests, you can initialise private data here. ntests is the number of test functions in the _test.v file.
 	finish() // called after all tests are finished, you can print some stats if you want here.
 	exit_code() int // called right after finish(), it should return the exit code, that the test program will exit with.
@@ -50,7 +50,7 @@ fn vtest_new_filemetainfo(file string, tests int) VTestFileMetaInfo {
 	}
 }
 
-[unsafe]
+@[unsafe]
 fn (i &VTestFileMetaInfo) free() {
 	unsafe {
 		i.file.free()
@@ -76,7 +76,7 @@ fn vtest_new_metainfo(name string, mod string, file string, line_nr int) VTestFn
 	}
 }
 
-[unsafe]
+@[unsafe]
 fn (i &VTestFnMetaInfo) free() {
 	unsafe {
 		i.name.free()
@@ -87,7 +87,7 @@ fn (i &VTestFnMetaInfo) free() {
 
 //
 
-[typedef]
+@[typedef]
 pub struct C.main__TestRunner {
 mut:
 	_object voidptr
@@ -96,7 +96,7 @@ mut:
 // change_test_runner should be called by preludes that implement the
 // the TestRunner interface, in their vtest_init fn (see below), to
 // customize the way that V shows test results
-[manualfree]
+@[manualfree]
 pub fn change_test_runner(x &TestRunner) {
 	pobj := unsafe { &C.main__TestRunner(&test_runner)._object }
 	if pobj != 0 {

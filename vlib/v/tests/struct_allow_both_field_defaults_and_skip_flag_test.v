@@ -2,7 +2,7 @@ import json
 
 struct Foo {
 	x   int        = 123
-	bar int [skip] = -112233
+	bar int = -112233 @[skip]
 	y   int        = 456
 }
 

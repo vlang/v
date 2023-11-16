@@ -3,24 +3,24 @@ import rand
 import net.http
 
 struct Weather {
-	status      string [skip] // drop this field
-	api_version string [skip]
-	api_status  string [skip]
-	lang        string [skip]
-	unit        string [skip]
-	tzshift     int    [skip]
-	timezone    string [skip]
-	server_time u32    [skip]
-	location    []f32  [skip]
+	status      string @[skip] // drop this field
+	api_version string @[skip]
+	api_status  string @[skip]
+	lang        string @[skip]
+	unit        string @[skip]
+	tzshift     int    @[skip]
+	timezone    string @[skip]
+	server_time u32    @[skip]
+	location    []f32  @[skip]
 	result      Result //[json: result] if the field name is different in JSON, it can be specified
 }
 
 struct Result {
-	realtime          Realtime [skip]
-	minutely          Minutely [skip]
-	hourly            Hourly   [skip]
-	daily             Daily    [skip]
-	primary           int      [skip]
+	realtime          Realtime @[skip]
+	minutely          Minutely @[skip]
+	hourly            Hourly   @[skip]
+	daily             Daily    @[skip]
+	primary           int      @[skip]
 	forecast_keypoint string
 }
 

@@ -124,7 +124,7 @@ pub fn (mut f Gen) wrap_long_line(penalty_idx int, add_indent bool) bool {
 	return true
 }
 
-[params]
+@[params]
 pub struct RemoveNewLineConfig {
 	imports_buffer bool // Work on f.out_imports instead of f.out
 }
@@ -660,7 +660,10 @@ pub fn (mut f Gen) expr(node_ ast.Expr) {
 		}
 		ast.ComptimeType {
 			match node.kind {
+				.unknown { f.write('\$unknown') }
 				.array { f.write('\$array') }
+				.array_dynamic { f.write('\$array_dynamic') }
+				.array_fixed { f.write('\$array_fixed') }
 				.struct_ { f.write('\$struct') }
 				.iface { f.write('\$interface') }
 				.map_ { f.write('\$map') }

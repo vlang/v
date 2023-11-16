@@ -5,7 +5,7 @@ struct KeyVal {
 	value int
 }
 
-[if debug_bounds_checking ?]
+@[if debug_bounds_checking ?]
 fn debug_bounds_checking(str string) {
 	println(str)
 }
@@ -91,7 +91,7 @@ fn (mut i IndexState) safe_offset(key string) int {
 // Also within a function, analysis must be `disabled` when goto or break are
 // encountered as the code flow is then not lineear, and only restart when a
 // new function analysis is started.
-[if !no_bounds_checking]
+@[if !no_bounds_checking]
 fn (mut i IndexState) indent(is_function bool) {
 	mut kvs := []KeyVal{cap: i.max_index.len}
 	for k, v in i.max_index {
@@ -106,7 +106,7 @@ fn (mut i IndexState) indent(is_function bool) {
 }
 
 // restoring the data as it was before the if/for/unsafe block
-[if !no_bounds_checking]
+@[if !no_bounds_checking]
 fn (mut i IndexState) unindent() {
 	i.level -= 1
 	mut keys := []string{cap: i.max_index.len}

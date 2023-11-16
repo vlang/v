@@ -1,4 +1,4 @@
-[flag]
+@[flag]
 enum FilePerm {
 	read
 	write

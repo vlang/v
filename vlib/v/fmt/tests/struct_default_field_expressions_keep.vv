@@ -4,7 +4,7 @@ struct Foo {
 
 struct Bar {
 	f Foo        = &Foo(0)
-	z int [skip] = -1
+	z int = -1 @[skip]
 }
 
 struct Baz {

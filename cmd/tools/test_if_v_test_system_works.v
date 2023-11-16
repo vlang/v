@@ -40,7 +40,7 @@ fn cleanup_tdir() {
 
 type MyResult = string
 
-[noreturn]
+@[noreturn]
 fn (result MyResult) fail(reason string) {
 	eprintln('> ${reason}, but it does not. Result:\n${result}')
 	exit(1)

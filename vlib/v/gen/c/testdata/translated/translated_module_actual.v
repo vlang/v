@@ -1,7 +1,7 @@
-[translated]
+@[translated]
 module translated
 
 #include "@VMODROOT/sym.c"
 
-[c: 'ExternalSymbol']
+@[c: 'ExternalSymbol']
 pub fn external_symbol(&char) int

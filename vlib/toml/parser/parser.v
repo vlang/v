@@ -819,7 +819,7 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ! {
 }
 
 // array_of_tables parses next tokens into an array of `ast.Value`s.
-[autofree_bug; manualfree]
+@[autofree_bug; manualfree]
 pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Value) ! {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing array of tables "${p.tok.kind}" "${p.tok.lit}"')
 	// NOTE this is starting to get ugly. TOML isn't simple at this point
@@ -890,7 +890,7 @@ pub fn (mut p Parser) array_of_tables_contents() ![]ast.Value {
 }
 
 // double_array_of_tables parses next tokens into an array of tables of arrays of `ast.Value`s...
-[autofree_bug; manualfree]
+@[autofree_bug; manualfree]
 pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing nested array of tables "${p.tok.kind}" "${p.tok.lit}"')
 

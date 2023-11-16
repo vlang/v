@@ -114,7 +114,7 @@ fn clean_line_endings(s string) string {
 	return res
 }
 
-[params]
+@[params]
 struct CheckOutputParams {
 	program       string = 'some/dir/main.v'
 	cmd           string = 'v doc'

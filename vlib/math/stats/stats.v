@@ -117,7 +117,7 @@ pub fn rms[T](data []T) T {
 // of the given input array
 // Based on
 // https://www.mathsisfun.com/data/standard-deviation.html
-[inline]
+@[inline]
 pub fn population_variance[T](data []T) T {
 	if data.len == 0 {
 		return T(0)
@@ -144,7 +144,7 @@ pub fn population_variance_mean[T](data []T, mean T) T {
 // sample_variance calculates the spread of dataset around the mean
 // Based on
 // https://www.mathsisfun.com/data/standard-deviation.html
-[inline]
+@[inline]
 pub fn sample_variance[T](data []T) T {
 	if data.len == 0 {
 		return T(0)
@@ -170,7 +170,7 @@ pub fn sample_variance_mean[T](data []T, mean T) T {
 // population_stddev calculates how spread out the dataset is
 // Based on
 // https://www.mathsisfun.com/data/standard-deviation.html
-[inline]
+@[inline]
 pub fn population_stddev[T](data []T) T {
 	if data.len == 0 {
 		return T(0)
@@ -181,7 +181,7 @@ pub fn population_stddev[T](data []T) T {
 // population_stddev_mean calculates how spread out the dataset is, with the provide mean
 // Based on
 // https://www.mathsisfun.com/data/standard-deviation.html
-[inline]
+@[inline]
 pub fn population_stddev_mean[T](data []T, mean T) T {
 	if data.len == 0 {
 		return T(0)
@@ -193,7 +193,7 @@ pub fn population_stddev_mean[T](data []T, mean T) T {
 // Sample Standard Deviation of the given input array
 // Based on
 // https://www.mathsisfun.com/data/standard-deviation.html
-[inline]
+@[inline]
 pub fn sample_stddev[T](data []T) T {
 	if data.len == 0 {
 		return T(0)
@@ -205,7 +205,7 @@ pub fn sample_stddev[T](data []T) T {
 // Sample Standard Deviation of the given input array
 // Based on
 // https://www.mathsisfun.com/data/standard-deviation.html
-[inline]
+@[inline]
 pub fn sample_stddev_mean[T](data []T, mean T) T {
 	if data.len == 0 {
 		return T(0)
@@ -216,7 +216,7 @@ pub fn sample_stddev_mean[T](data []T, mean T) T {
 // absdev calculates the average distance between each data point and the mean
 // Based on
 // https://en.wikipedia.org/wiki/Average_absolute_deviation
-[inline]
+@[inline]
 pub fn absdev[T](data []T) T {
 	if data.len == 0 {
 		return T(0)
@@ -240,7 +240,7 @@ pub fn absdev_mean[T](data []T, mean T) T {
 }
 
 // tts, Sum of squares, calculates the sum over all squared differences between values and overall mean
-[inline]
+@[inline]
 pub fn tss[T](data []T) T {
 	if data.len == 0 {
 		return T(0)
@@ -375,7 +375,7 @@ pub fn range[T](data []T) T {
 
 // covariance calculates directional association between datasets
 // positive value denotes variables move in same direction and negative denotes variables move in opposite directions
-[inline]
+@[inline]
 pub fn covariance[T](data1 []T, data2 []T) T {
 	mean1 := mean[T](data1)
 	mean2 := mean[T](data2)
@@ -400,7 +400,7 @@ pub fn covariance_mean[T](data1 []T, data2 []T, mean1 T, mean2 T) T {
 
 // lag1_autocorrelation_mean calculates the correlation between values that are one time period apart
 // of a dataset, based on the mean
-[inline]
+@[inline]
 pub fn lag1_autocorrelation[T](data []T) T {
 	data_mean := mean[T](data)
 	return lag1_autocorrelation_mean[T](data, data_mean)
@@ -425,7 +425,7 @@ pub fn lag1_autocorrelation_mean[T](data []T, mean T) T {
 }
 
 // kurtosis calculates the measure of the 'tailedness' of the data by finding mean and standard of deviation
-[inline]
+@[inline]
 pub fn kurtosis[T](data []T) T {
 	data_mean := mean[T](data)
 	sd := population_stddev_mean[T](data, data_mean)
@@ -448,7 +448,7 @@ pub fn kurtosis_mean_stddev[T](data []T, mean T, sd T) T {
 }
 
 // skew calculates the mean and standard of deviation to find the skew from the data
-[inline]
+@[inline]
 pub fn skew[T](data []T) T {
 	data_mean := mean[T](data)
 	sd := population_stddev_mean[T](data, data_mean)

@@ -1,10 +1,10 @@
 interface Source {
 	element_size int
-	data voidptr
-	offset int
-	len int
-	cap int
-	flags ArrayFlags
+	data         voidptr
+	offset       int
+	len          int
+	cap          int
+	flags        ArrayFlags
 }
 
 fn test_array_as_interface() {

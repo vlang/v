@@ -22,7 +22,7 @@ mut:
 }
 
 // free the resources taken by the Ctr `c`
-[unsafe]
+@[unsafe]
 pub fn (mut x Ctr) free() {
 	$if prealloc {
 		return

@@ -2,8 +2,8 @@ import db.sqlite
 
 struct Target {
 pub mut:
-	id   int    [primary; sql: serial]
-	kind string [nonull]
+	id   int    @[primary; sql: serial]
+	kind string @[nonull]
 }
 
 fn add_target(repo Target) !int {

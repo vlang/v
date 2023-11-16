@@ -97,7 +97,7 @@ pub fn div_mod(a &Number, b &Number) (Number, Number) {
 	return c, d
 }
 
-[deprecated: 'use div_mod(a, b) instead']
+@[deprecated: 'use div_mod(a, b) instead']
 pub fn divmod(a &Number, b &Number) (Number, Number) {
 	return div_mod(a, b)
 }
@@ -142,17 +142,17 @@ pub fn (a &Number) isqrt() Number {
 	return b
 }
 
-[deprecated: 'use bitwise_and(a, b) instead']
+@[deprecated: 'use bitwise_and(a, b) instead']
 pub fn b_and(a &Number, b &Number) Number {
 	return bitwise_and(a, b)
 }
 
-[deprecated: 'use bitwise_or(a, b) instead']
+@[deprecated: 'use bitwise_or(a, b) instead']
 pub fn b_or(a &Number, b &Number) Number {
 	return bitwise_or(a, b)
 }
 
-[deprecated: 'use bitwise_xor(a, b) instead']
+@[deprecated: 'use bitwise_xor(a, b) instead']
 pub fn b_xor(a &Number, b &Number) Number {
 	return bitwise_xor(a, b)
 }
@@ -178,12 +178,12 @@ pub fn bitwise_xor(a &Number, b &Number) Number {
 	return c
 }
 
-[deprecated: 'use a.left_shift(amount) instead']
+@[deprecated: 'use a.left_shift(amount) instead']
 pub fn (a &Number) lshift(amount int) Number {
 	return a.left_shift(amount)
 }
 
-[deprecated: 'use a.right_shift(amount) instead']
+@[deprecated: 'use a.right_shift(amount) instead']
 pub fn (a &Number) rshift(amount int) Number {
 	return a.right_shift(amount)
 }
@@ -223,7 +223,7 @@ pub fn factorial(nn &Number) Number {
 	return a
 }
 
-[deprecated: 'use factorial_int instead']
+@[deprecated: 'use factorial_int instead']
 pub fn fact(n int) Number {
 	return factorial_int(n)
 }

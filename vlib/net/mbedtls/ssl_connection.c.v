@@ -213,7 +213,7 @@ pub fn (mut l SSLListener) accept() !&SSLConn {
 	return conn
 }
 
-[params]
+@[params]
 pub struct SSLConnectConfig {
 	verify   string // the path to a rootca.pem file, containing trusted CA certificate(s)
 	cert     string // the path to a cert.pem file, containing client certificate(s) for the request

@@ -152,7 +152,7 @@ const (
 // To rotate x right by k bits, call rotate_left_8(x, -k).
 //
 // This function's execution time does not depend on the inputs.
-[inline]
+@[inline]
 pub fn rotate_left_8(x u8, k int) u8 {
 	s := u8(k) & (bits.n8 - u8(1))
 	return (x << s) | (x >> (bits.n8 - s))
@@ -162,7 +162,7 @@ pub fn rotate_left_8(x u8, k int) u8 {
 // To rotate x right by k bits, call rotate_left_16(x, -k).
 //
 // This function's execution time does not depend on the inputs.
-[inline]
+@[inline]
 pub fn rotate_left_16(x u16, k int) u16 {
 	s := u16(k) & (bits.n16 - u16(1))
 	return (x << s) | (x >> (bits.n16 - s))
@@ -172,7 +172,7 @@ pub fn rotate_left_16(x u16, k int) u16 {
 // To rotate x right by k bits, call rotate_left_32(x, -k).
 //
 // This function's execution time does not depend on the inputs.
-[inline]
+@[inline]
 pub fn rotate_left_32(x u32, k int) u32 {
 	s := u32(k) & (bits.n32 - u32(1))
 	return (x << s) | (x >> (bits.n32 - s))
@@ -182,7 +182,7 @@ pub fn rotate_left_32(x u32, k int) u32 {
 // To rotate x right by k bits, call rotate_left_64(x, -k).
 //
 // This function's execution time does not depend on the inputs.
-[inline]
+@[inline]
 pub fn rotate_left_64(x u64, k int) u64 {
 	s := u64(k) & (bits.n64 - u64(1))
 	return (x << s) | (x >> (bits.n64 - s))
@@ -190,19 +190,19 @@ pub fn rotate_left_64(x u64, k int) u64 {
 
 // --- Reverse ---
 // reverse_8 returns the value of x with its bits in reversed order.
-[inline]
+@[inline]
 pub fn reverse_8(x u8) u8 {
 	return rev_8_tab[x]
 }
 
 // reverse_16 returns the value of x with its bits in reversed order.
-[inline]
+@[inline]
 pub fn reverse_16(x u16) u16 {
 	return u16(rev_8_tab[x >> 8]) | (u16(rev_8_tab[x & u16(0xff)]) << 8)
 }
 
 // reverse_32 returns the value of x with its bits in reversed order.
-[inline]
+@[inline]
 pub fn reverse_32(x u32) u32 {
 	mut y := ((x >> u32(1) & (bits.m0 & bits.max_u32)) | ((x & (bits.m0 & bits.max_u32)) << 1))
 	y = ((y >> u32(2) & (bits.m1 & bits.max_u32)) | ((y & (bits.m1 & bits.max_u32)) << u32(2)))
@@ -211,7 +211,7 @@ pub fn reverse_32(x u32) u32 {
 }
 
 // reverse_64 returns the value of x with its bits in reversed order.
-[inline]
+@[inline]
 pub fn reverse_64(x u64) u64 {
 	mut y := ((x >> u64(1) & (bits.m0 & bits.max_u64)) | ((x & (bits.m0 & bits.max_u64)) << 1))
 	y = ((y >> u64(2) & (bits.m1 & bits.max_u64)) | ((y & (bits.m1 & bits.max_u64)) << 2))
@@ -223,7 +223,7 @@ pub fn reverse_64(x u64) u64 {
 // reverse_bytes_16 returns the value of x with its bytes in reversed order.
 //
 // This function's execution time does not depend on the inputs.
-[inline]
+@[inline]
 pub fn reverse_bytes_16(x u16) u16 {
 	return (x >> 8) | (x << 8)
 }
@@ -231,7 +231,7 @@ pub fn reverse_bytes_16(x u16) u16 {
 // reverse_bytes_32 returns the value of x with its bytes in reversed order.
 //
 // This function's execution time does not depend on the inputs.
-[inline]
+@[inline]
 pub fn reverse_bytes_32(x u32) u32 {
 	y := ((x >> u32(8) & (bits.m3 & bits.max_u32)) | ((x & (bits.m3 & bits.max_u32)) << u32(8)))
 	return u32((y >> 16) | (y << 16))
@@ -240,7 +240,7 @@ pub fn reverse_bytes_32(x u32) u32 {
 // reverse_bytes_64 returns the value of x with its bytes in reversed order.
 //
 // This function's execution time does not depend on the inputs.
-[inline]
+@[inline]
 pub fn reverse_bytes_64(x u64) u64 {
 	mut y := ((x >> u64(8) & (bits.m3 & bits.max_u64)) | ((x & (bits.m3 & bits.max_u64)) << u64(8)))
 	y = ((y >> u64(16) & (bits.m4 & bits.max_u64)) | ((y & (bits.m4 & bits.max_u64)) << u64(16)))

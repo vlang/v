@@ -1,4 +1,4 @@
-[unsafe]
+@[unsafe]
 fn foo() int {
 	mut static x := 42
 	x++

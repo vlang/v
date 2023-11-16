@@ -42,7 +42,7 @@ pub mut:
 	client &Client = unsafe { nil }
 }
 
-[params]
+@[params]
 pub struct ServerOpt {
 	logger &log.Logger = &log.Logger(&log.Log{
 	level: .info

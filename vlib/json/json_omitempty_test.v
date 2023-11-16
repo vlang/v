@@ -4,8 +4,8 @@ pub struct MyStruct {
 pub mut:
 	code    int
 	message string
-	data    string  [omitempty]
-	data2   ?string [omitempty]
+	data    string  @[omitempty]
+	data2   ?string @[omitempty]
 }
 
 fn test_simple() {

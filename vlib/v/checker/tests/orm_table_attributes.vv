@@ -1,8 +1,8 @@
 import db.sqlite
 
-[table]
+@[table]
 struct Foo {
-	id int [primary; sql: serial]
+	id int @[primary; sql: serial]
 }
 
 fn main() {

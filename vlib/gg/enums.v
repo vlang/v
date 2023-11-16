@@ -13,14 +13,14 @@ pub enum MouseButton {
 // the [flag]-ed enum here can have combined states,
 // representing several pressed buttons at once.
 
-[flag]
+@[flag]
 pub enum MouseButtons {
 	left
 	right
 	middle
 }
 
-[flag]
+@[flag]
 pub enum Modifier {
 	shift // (1<<0)
 	ctrl // (1<<1)

@@ -66,7 +66,7 @@ pub fn (mut app App) html_page() vweb.Result {
 }
 
 // the following serve custom routes
-['/:user/settings']
+@['/:user/settings']
 pub fn (mut app App) settings(username string) vweb.Result {
 	if username !in known_users {
 		return app.not_found()
@@ -74,7 +74,7 @@ pub fn (mut app App) settings(username string) vweb.Result {
 	return app.html('username: ${username}')
 }
 
-['/:user/:repo/settings']
+@['/:user/:repo/settings']
 pub fn (mut app App) user_repo_settings(username string, repository string) vweb.Result {
 	if username !in known_users {
 		return app.not_found()
@@ -82,25 +82,25 @@ pub fn (mut app App) user_repo_settings(username string, repository string) vweb
 	return app.html('username: ${username} | repository: ${repository}')
 }
 
-['/json_echo'; post]
+@['/json_echo'; post]
 pub fn (mut app App) json_echo() vweb.Result {
 	// eprintln('>>>>> received http request at /json_echo is: $app.req')
 	app.set_content_type(app.req.header.get(.content_type) or { '' })
 	return app.ok(app.req.data)
 }
 
-['/login'; post]
+@['/login'; post]
 pub fn (mut app App) login_form(username string, password string) vweb.Result {
 	return app.html('username: x${username}x | password: x${password}x')
 }
 
-['/form_echo'; post]
+@['/form_echo'; post]
 pub fn (mut app App) form_echo() vweb.Result {
 	app.set_content_type(app.req.header.get(.content_type) or { '' })
 	return app.ok(app.form['foo'])
 }
 
-['/file_echo'; post]
+@['/file_echo'; post]
 pub fn (mut app App) file_echo() vweb.Result {
 	if 'file' !in app.files {
 		app.set_status(500, '')
@@ -111,7 +111,7 @@ pub fn (mut app App) file_echo() vweb.Result {
 }
 
 // Make sure [post] works without the path
-[post]
+@[post]
 pub fn (mut app App) json() vweb.Result {
 	// eprintln('>>>>> received http request at /json is: $app.req')
 	app.set_content_type(app.req.header.get(.content_type) or { '' })
@@ -124,8 +124,8 @@ pub fn (mut app App) not_found() vweb.Result {
 	return app.html('404 on "${app.req.url}"')
 }
 
-[host: 'example.com']
-['/with_host']
+@[host: 'example.com']
+@['/with_host']
 pub fn (mut app App) with_host() vweb.Result {
 	return app.ok('')
 }

@@ -96,7 +96,7 @@ pub fn (sk SymbolKind) str() string {
 	}
 }
 
-[minify]
+@[minify]
 pub struct Doc {
 pub mut:
 	prefs     &pref.Preferences = new_vdoc_preferences()
@@ -126,7 +126,7 @@ pub mut:
 	platform            Platform
 }
 
-[minify]
+@[minify]
 pub struct DocNode {
 pub mut:
 	name        string
@@ -139,9 +139,9 @@ pub mut:
 	parent_name string
 	return_type string
 	children    []DocNode
-	attrs       map[string]string [json: attributes]
+	attrs       map[string]string @[json: attributes]
 	from_scope  bool
-	is_pub      bool              [json: public]
+	is_pub      bool              @[json: public]
 	platform    Platform
 }
 
@@ -284,7 +284,11 @@ pub fn (mut d Doc) stmt(mut stmt ast.Stmt, filename string) !DocNode {
 			if stmt.receiver.typ !in [0, 1] {
 				method_parent := d.type_to_str(stmt.receiver.typ)
 				node.kind = .method
-				node.parent_name = method_parent
+				if !stmt.is_static_type_method {
+					node.parent_name = method_parent
+				} else {
+					node.parent_name = ''
+				}
 			}
 			if d.extract_vars {
 				for param in stmt.params {

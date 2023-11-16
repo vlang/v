@@ -3,7 +3,7 @@ module big
 import math.bits
 import strings
 
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn shrink_tail_zeros(mut a []u32) {
 	mut alen := a.len
 	for alen > 0 && a[alen - 1] == 0 {
@@ -61,13 +61,13 @@ fn newton_divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient [
 }
 
 // bit_length returns the number of bits needed to represent the absolute value of the integer a.
-[deprecated: 'use a.bit_len() instead']
-[inline]
+@[deprecated: 'use a.bit_len() instead']
+@[inline]
 pub fn bit_length(a Integer) int {
 	return a.digits.len * 32 - bits.leading_zeros_32(a.digits.last())
 }
 
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn debug_u32_str(a []u32) string {
 	mut sb := strings.new_builder(30)
 	sb.write_string('[')
@@ -83,7 +83,7 @@ fn debug_u32_str(a []u32) string {
 	return sb.str()
 }
 
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn found_multiplication_base_case(operand_a []u32, operand_b []u32, mut storage []u32) bool {
 	// base case necessary to end recursion
 	if operand_a.len == 0 || operand_b.len == 0 {
@@ -106,7 +106,7 @@ fn found_multiplication_base_case(operand_a []u32, operand_b []u32, mut storage 
 // karatsuba algorithm for multiplication
 // possible optimisations:
 // - transform one or all the recurrences in loops
-[direct_array_access]
+@[direct_array_access]
 fn karatsuba_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
 	if found_multiplication_base_case(operand_a, operand_b, mut storage) {
 		return
@@ -151,7 +151,7 @@ fn karatsuba_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage 
 	shrink_tail_zeros(mut storage)
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn toom3_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
 	if found_multiplication_base_case(operand_a, operand_b, mut storage) {
 		return
@@ -245,7 +245,7 @@ fn toom3_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u3
 	storage = result.digits.clone()
 }
 
-[inline]
+@[inline]
 fn pow2(k int) Integer {
 	mut ret := []u32{len: (k >> 5) + 1}
 	bit_set(mut ret, k)
@@ -256,7 +256,7 @@ fn pow2(k int) Integer {
 }
 
 // optimized left shift in place. amount must be positive
-[direct_array_access]
+@[direct_array_access]
 fn left_shift_digits_in_place(mut a []u32, amount int) {
 	a_len := a.len
 	// control or allocate capacity
@@ -272,7 +272,7 @@ fn left_shift_digits_in_place(mut a []u32, amount int) {
 }
 
 // optimized right shift in place. amount must be positive
-[direct_array_access]
+@[direct_array_access]
 fn right_shift_digits_in_place(mut a []u32, amount int) {
 	for index := 0; index < a.len - amount; index++ {
 		a[index] = a[index + amount]
@@ -285,7 +285,7 @@ fn right_shift_digits_in_place(mut a []u32, amount int) {
 
 // operand b can be greater than operand a
 // the capacity of both array is supposed to be sufficient
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn add_in_place(mut a []u32, b []u32) {
 	len_a := a.len
 	len_b := b.len
@@ -313,7 +313,7 @@ fn add_in_place(mut a []u32, b []u32) {
 }
 
 // a := a - b supposed a >= b
-[direct_array_access]
+@[direct_array_access]
 fn subtract_in_place(mut a []u32, b []u32) {
 	len_a := a.len
 	len_b := b.len

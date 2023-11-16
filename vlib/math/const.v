@@ -40,8 +40,8 @@ pub const (
 	smallest_non_zero_f64 = 4.940656458412465441765687928682213723651e-324 // 1 / 2**(1023 - 1 + 52)
 )
 
-[deprecated: 'use built-in constants instead (e.g. min_i8 instead of math.min_i8)']
-[deprecated_after: '2023-12-31']
+@[deprecated: 'use built-in constants instead (e.g. min_i8 instead of math.min_i8)']
+@[deprecated_after: '2023-12-31']
 pub const (
 	min_i8  = i8(-128)
 	max_i8  = i8(127)

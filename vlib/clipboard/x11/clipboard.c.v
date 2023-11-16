@@ -16,7 +16,7 @@ $if freebsd {
 
 #include <X11/Xlib.h> # Please install a package with the X11 development headers, for example: `apt-get install libx11-dev`
 // X11
-[typedef]
+@[typedef]
 pub struct C.Display {
 }
 
@@ -67,7 +67,7 @@ fn C.XFree(data voidptr)
 
 fn todo_del() {}
 
-[typedef]
+@[typedef]
 pub struct C.XSelectionRequestEvent {
 mut:
 	display   &C.Display = unsafe { nil } // Display the event was read from
@@ -79,7 +79,7 @@ mut:
 	time      int
 }
 
-[typedef]
+@[typedef]
 pub struct C.XSelectionEvent {
 mut:
 	@type     int
@@ -91,20 +91,20 @@ mut:
 	time      int
 }
 
-[typedef]
+@[typedef]
 pub struct C.XSelectionClearEvent {
 mut:
 	window    Window
 	selection Atom
 }
 
-[typedef]
+@[typedef]
 pub struct C.XDestroyWindowEvent {
 mut:
 	window Window
 }
 
-[typedef]
+@[typedef]
 union C.XEvent {
 mut:
 	@type             int
@@ -137,7 +137,7 @@ enum AtomType {
 	text_html   = 9
 }
 
-[heap]
+@[heap]
 pub struct Clipboard {
 	display &C.Display = unsafe { nil }
 mut:

@@ -1,6 +1,6 @@
 module builtin
 
-[typedef]
+@[typedef]
 pub struct C.FILE {}
 
 // <string.h>
@@ -12,7 +12,7 @@ fn C.memmove(dest voidptr, const_src voidptr, n usize) voidptr
 
 fn C.memset(str voidptr, c int, n usize) voidptr
 
-[trusted]
+@[trusted]
 fn C.calloc(int, int) &u8
 
 fn C.atoi(&char) int
@@ -23,7 +23,7 @@ fn C.realloc(a &u8, b int) &u8
 
 fn C.free(ptr voidptr)
 
-[noreturn; trusted]
+@[noreturn; trusted]
 fn C.exit(code int)
 
 fn C.qsort(base voidptr, items usize, item_size usize, cb C.qsort_callback_func)
@@ -34,7 +34,7 @@ fn C.strlen(s &char) int
 
 fn C.sscanf(&u8, &u8, ...&u8) int
 
-[trusted]
+@[trusted]
 fn C.isdigit(c int) bool
 
 // stdio.h
@@ -78,7 +78,7 @@ fn C.strrchr(s &char, c int) &char
 fn C.strchr(s &char, c int) &char
 
 // process execution, os.process:
-[trusted]
+@[trusted]
 fn C.getpid() int
 
 fn C.getuid() int
@@ -101,14 +101,14 @@ fn C._execvp(cmd_path &char, args &&char) int
 
 fn C.strcmp(s1 &char, s2 &char) int
 
-[trusted]
+@[trusted]
 fn C.fork() int
 
 fn C.wait(status &int) int
 
 fn C.waitpid(pid int, status &int, options int) int
 
-[trusted]
+@[trusted]
 fn C.kill(pid int, sig int) int
 
 fn C.setenv(&char, &char, int) int
@@ -135,24 +135,24 @@ fn C.rename(old_filename &char, new_filename &char) int
 
 fn C.fgets(str &char, n int, stream &C.FILE) int
 
-[trusted]
+@[trusted]
 fn C.sigemptyset() int
 
 fn C.getcwd(buf &char, size usize) &char
 
-[trusted]
+@[trusted]
 fn C.mktime() int
 
 fn C.gettimeofday(tv &C.timeval, tz &C.timezone) int
 
-[trusted]
+@[trusted]
 fn C.sleep(seconds u32) u32
 
 // fn C.usleep(usec useconds_t) int
-[trusted]
+@[trusted]
 fn C.usleep(usec u32) int
 
-[typedef]
+@[typedef]
 pub struct C.DIR {
 }
 
@@ -164,30 +164,30 @@ fn C.closedir(dirp &C.DIR) int
 fn C.mkdir(path &char, mode u32) int
 
 // C.rand returns a pseudorandom integer from 0 (inclusive) to C.RAND_MAX (exclusive)
-[trusted]
+@[trusted]
 fn C.rand() int
 
 // C.srand seeds the internal PRNG with the given value.
-[trusted]
+@[trusted]
 fn C.srand(seed u32)
 
 fn C.atof(str &char) f64
 
-[trusted]
+@[trusted]
 fn C.tolower(c int) int
 
-[trusted]
+@[trusted]
 fn C.toupper(c int) int
 
-[trusted]
+@[trusted]
 fn C.isspace(c int) int
 
 fn C.strchr(s &char, c int) &char
 
-[trusted]
+@[trusted]
 fn C.getchar() int
 
-[trusted]
+@[trusted]
 fn C.putchar(int) int
 
 fn C.strdup(s &char) &char
@@ -198,33 +198,33 @@ fn C.strcasecmp(s &char, s2 &char) int
 
 fn C.strncmp(s &char, s2 &char, n int) int
 
-[trusted]
+@[trusted]
 fn C.strerror(int) &char
 
 fn C.snprintf(str &char, size usize, format &char, opt ...voidptr) int
 
 fn C.fprintf(voidptr, &char, ...voidptr)
 
-[trusted]
+@[trusted]
 fn C.WIFEXITED(status int) bool
 
-[trusted]
+@[trusted]
 fn C.WEXITSTATUS(status int) int
 
-[trusted]
+@[trusted]
 fn C.WIFSIGNALED(status int) bool
 
-[trusted]
+@[trusted]
 fn C.WTERMSIG(status int) int
 
-[trusted]
+@[trusted]
 fn C.isatty(fd int) int
 
 fn C.syscall(number int, va ...voidptr) int
 
 fn C.sysctl(name &int, namelen u32, oldp voidptr, oldlenp voidptr, newp voidptr, newlen usize) int
 
-[trusted]
+@[trusted]
 fn C._fileno(int) int
 
 type C.intptr_t = voidptr
@@ -251,7 +251,7 @@ fn C.GetComputerNameW(&u16, &u32) bool
 
 fn C.GetUserNameW(&u16, &u32) bool
 
-[trusted]
+@[trusted]
 fn C.SendMessageTimeout() isize
 
 fn C.SendMessageTimeoutW(hWnd voidptr, msg u32, wParam &u16, lParam &u32, fuFlags u32, uTimeout u32, lpdwResult &u64) isize
@@ -286,7 +286,7 @@ fn C.SetConsoleMode(voidptr, u32) bool
 
 fn C.GetConsoleMode(voidptr, &u32) bool
 
-[trusted]
+@[trusted]
 fn C.GetCurrentProcessId() u32
 
 fn C.wprintf()
@@ -336,7 +336,7 @@ fn C._fullpath() int
 
 fn C.GetFullPathName(voidptr, u32, voidptr, voidptr) u32
 
-[trusted]
+@[trusted]
 fn C.GetCommandLine() voidptr
 
 fn C.LocalFree()
@@ -358,15 +358,15 @@ fn C.CloseHandle(voidptr) int
 
 fn C.GetExitCodeProcess(hProcess voidptr, lpExitCode &u32)
 
-[trusted]
+@[trusted]
 fn C.GetTickCount() i64
 
-[trusted]
+@[trusted]
 fn C.Sleep(dwMilliseconds u32)
 
 fn C.WSAStartup(u16, &voidptr) int
 
-[trusted]
+@[trusted]
 fn C.WSAGetLastError() int
 
 fn C.closesocket(int) int
@@ -379,7 +379,7 @@ fn C.vschannel_cleanup(&C.TlsContext)
 
 fn C.URLDownloadToFile(int, &u16, &u16, int, int)
 
-[trusted]
+@[trusted]
 fn C.GetLastError() u32
 
 fn C.CreateDirectory(&u8, int) bool
@@ -464,14 +464,14 @@ fn C.sem_timedwait(voidptr, voidptr) int
 fn C.sem_destroy(voidptr) int
 
 // MacOS semaphore functions
-[trusted]
+@[trusted]
 fn C.dispatch_semaphore_create(i64) voidptr
 
 fn C.dispatch_semaphore_signal(voidptr) i64
 
 fn C.dispatch_semaphore_wait(voidptr, u64) i64
 
-[trusted]
+@[trusted]
 fn C.dispatch_time(u64, i64) u64
 
 fn C.dispatch_release(voidptr)

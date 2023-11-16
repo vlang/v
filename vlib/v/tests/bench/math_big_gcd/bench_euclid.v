@@ -11,7 +11,7 @@ import v.tests.bench.math_big_gcd.prime {
 }
 
 interface TestDataI {
-	r big.Integer
+	r  big.Integer
 	aa big.Integer
 	bb big.Integer
 }
@@ -303,7 +303,7 @@ fn bi_buffer_len(input []u8) int {
 	return digits.len
 }
 
-[heap]
+@[heap]
 pub struct HeapData {
 pub mut:
 	r  big.Integer

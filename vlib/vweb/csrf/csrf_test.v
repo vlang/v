@@ -185,7 +185,7 @@ fn test_invalid_origin() {
 struct App {
 	vweb.Context
 pub mut:
-	csrf        csrf.CsrfApp                 [vweb_global]
+	csrf        csrf.CsrfApp                 @[vweb_global]
 	middlewares map[string][]vweb.Middleware
 }
 
@@ -199,7 +199,7 @@ pub fn (mut app App) index() vweb.Result {
 </form>')
 }
 
-[post]
+@[post]
 pub fn (mut app App) auth() vweb.Result {
 	app.csrf.protect(mut app.Context)
 
@@ -216,7 +216,7 @@ pub fn (mut app App) middleware_index() vweb.Result {
 </form>')
 }
 
-[post]
+@[post]
 pub fn (mut app App) middleware_auth() vweb.Result {
 	return app.ok('middleware authenticated')
 }

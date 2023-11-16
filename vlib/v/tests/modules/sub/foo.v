@@ -2,7 +2,7 @@ module sub
 
 import sub.foo.c
 
-[typedef]
+@[typedef]
 pub struct C.sub_foo {
 	a int
 }

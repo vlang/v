@@ -21,9 +21,9 @@ enum OutputType {
 	stdout
 }
 
-[heap]
+@[heap]
 struct VDoc {
-	cfg Config [required]
+	cfg Config @[required]
 mut:
 	docs                []doc.Doc
 	assets              map[string]string

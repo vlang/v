@@ -66,10 +66,10 @@ pub struct User {
 pub mut:
 	age           int
 	nums          []int
-	last_name     string [json: lastName]
-	is_registered bool   [json: IsRegistered]
-	typ           int    [json: 'type']
-	pets          string [json: 'pet_animals'; raw]
+	last_name     string @[json: lastName]
+	is_registered bool   @[json: IsRegistered]
+	typ           int    @[json: 'type']
+	pets          string @[json: 'pet_animals'; raw]
 }
 
 fn test_parse_user() {
@@ -124,7 +124,7 @@ fn test_encode_user() {
 struct Color {
 pub mut:
 	space string
-	point string [raw]
+	point string @[raw]
 }
 
 fn test_raw_json_field() {

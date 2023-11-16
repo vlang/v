@@ -227,7 +227,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	mut name := g.c_fn_name(node)
 	mut type_name := g.typ(g.unwrap_generic(node.return_type))
 
-	ret_sym := g.table.sym(node.return_type)
+	ret_sym := g.table.sym(g.unwrap_generic(node.return_type))
 	if node.return_type.has_flag(.generic) && ret_sym.kind == .array_fixed {
 		type_name = '_v_${type_name}'
 	} else if ret_sym.kind == .alias && !node.return_type.has_flag(.option) {
@@ -854,7 +854,7 @@ fn (mut g Gen) conversion_function_call(prefix string, postfix string, node ast.
 	g.write(')${dot}_typ )${postfix}')
 }
 
-[inline]
+@[inline]
 fn (mut g Gen) gen_arg_from_type(node_type ast.Type, node ast.Expr) {
 	if node_type.has_flag(.shared_f) {
 		if node_type.is_ptr() {
@@ -2193,7 +2193,7 @@ fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 	}
 }
 
-[inline]
+@[inline]
 fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang ast.Language) {
 	arg_typ := g.unwrap_generic(arg.typ)
 	arg_sym := g.table.sym(arg_typ)

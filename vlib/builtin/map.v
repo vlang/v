@@ -90,7 +90,7 @@ mut:
 	values      &u8 = unsafe { nil }
 }
 
-[inline]
+@[inline]
 fn new_dense_array(key_bytes int, value_bytes int) DenseArray {
 	cap := 8
 	return DenseArray{
@@ -105,25 +105,25 @@ fn new_dense_array(key_bytes int, value_bytes int) DenseArray {
 	}
 }
 
-[inline]
+@[inline]
 fn (d &DenseArray) key(i int) voidptr {
 	return unsafe { voidptr(d.keys + i * d.key_bytes) }
 }
 
 // for cgen
-[inline]
+@[inline]
 fn (d &DenseArray) value(i int) voidptr {
 	return unsafe { voidptr(d.values + i * d.value_bytes) }
 }
 
-[inline]
+@[inline]
 fn (d &DenseArray) has_index(i int) bool {
 	return d.deletes == 0 || unsafe { d.all_deleted[i] } == 0
 }
 
 // Make space to append an element and return index
 // The growth-factor is roughly 1.125 `(x + (x >> 3))`
-[inline]
+@[inline]
 fn (mut d DenseArray) expand() int {
 	old_cap := d.cap
 	old_key_size := d.key_bytes * old_cap
@@ -306,7 +306,7 @@ pub fn (mut m map) clear() {
 	m.key_values.len = 0
 }
 
-[inline]
+@[inline]
 fn (m &map) key_to_index(pkey voidptr) (u32, u32) {
 	hash := m.hash_fn(pkey)
 	index := hash & m.even_index
@@ -314,7 +314,7 @@ fn (m &map) key_to_index(pkey voidptr) (u32, u32) {
 	return u32(index), u32(meta)
 }
 
-[inline]
+@[inline]
 fn (m &map) meta_less(_index u32, _metas u32) (u32, u32) {
 	mut index := _index
 	mut meta := _metas
@@ -325,7 +325,7 @@ fn (m &map) meta_less(_index u32, _metas u32) (u32, u32) {
 	return index, meta
 }
 
-[inline]
+@[inline]
 fn (mut m map) meta_greater(_index u32, _metas u32, kvi u32) {
 	mut meta := _metas
 	mut index := _index
@@ -352,7 +352,7 @@ fn (mut m map) meta_greater(_index u32, _metas u32, kvi u32) {
 	m.ensure_extra_metas(probe_count)
 }
 
-[inline]
+@[inline]
 fn (mut m map) ensure_extra_metas(probe_count u32) {
 	if (probe_count << 1) == m.extra_metas {
 		size_of_u32 := sizeof(u32)
@@ -567,7 +567,7 @@ fn (m &map) exists(key voidptr) bool {
 	return false
 }
 
-[inline]
+@[inline]
 fn (mut d DenseArray) delete(i int) {
 	if d.deletes == 0 {
 		d.all_deleted = vcalloc(d.cap) // sets to 0
@@ -579,7 +579,7 @@ fn (mut d DenseArray) delete(i int) {
 }
 
 // delete removes the mapping of a particular key from the map.
-[unsafe]
+@[unsafe]
 pub fn (mut m map) delete(key voidptr) {
 	mut index, mut meta := m.key_to_index(key)
 	index, meta = m.meta_less(index, meta)
@@ -671,7 +671,7 @@ pub fn (m &map) values() array {
 }
 
 // warning: only copies keys, does not clone
-[unsafe]
+@[unsafe]
 fn (d &DenseArray) clone() DenseArray {
 	res := DenseArray{
 		key_bytes: d.key_bytes
@@ -694,7 +694,7 @@ fn (d &DenseArray) clone() DenseArray {
 }
 
 // clone returns a clone of the `map`.
-[unsafe]
+@[unsafe]
 pub fn (m &map) clone() map {
 	metasize := int(sizeof(u32) * (m.even_index + 2 + m.extra_metas))
 	res := map{
@@ -728,7 +728,7 @@ pub fn (m &map) clone() map {
 }
 
 // free releases all memory resources occupied by the `map`.
-[unsafe]
+@[unsafe]
 pub fn (m &map) free() {
 	unsafe { free(m.metas) }
 	unsafe {

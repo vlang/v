@@ -1,6 +1,6 @@
 interface IPerson {
 	name string
-	age int
+	age  int
 }
 
 struct PersonImpl {

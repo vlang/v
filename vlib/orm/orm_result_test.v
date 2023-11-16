@@ -1,12 +1,12 @@
 import db.sqlite
 
 struct Account {
-	id   int    [primary; sql: serial]
+	id   int    @[primary; sql: serial]
 	name string
 }
 
 struct Note {
-	id      int    [primary; sql: serial]
+	id      int    @[primary; sql: serial]
 	content string
 }
 

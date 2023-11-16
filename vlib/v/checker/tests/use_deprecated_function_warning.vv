@@ -1,9 +1,9 @@
-[deprecated]
+@[deprecated]
 fn xyz() {
 	println('hi')
 }
 
-[deprecated: 'use foo2 instead']
+@[deprecated: 'use foo2 instead']
 fn abc() {
 	println('hi')
 }
@@ -15,7 +15,7 @@ fn main() {
 
 struct S1 {}
 
-[deprecated: 'use bar instead']
+@[deprecated: 'use bar instead']
 fn (s S1) m() {}
 
 fn method() {

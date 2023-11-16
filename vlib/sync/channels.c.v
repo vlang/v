@@ -31,7 +31,7 @@ pub enum Direction {
 	push
 }
 
-[typedef]
+@[typedef]
 pub struct C.atomic_uintptr_t {}
 
 pub struct Channel {
@@ -157,24 +157,24 @@ pub fn (mut ch Channel) close() {
 	ch.writesem_im.post()
 }
 
-[inline]
+@[inline]
 pub fn (mut ch Channel) len() int {
 	return int(C.atomic_load_u32(&ch.read_avail))
 }
 
-[inline]
+@[inline]
 pub fn (mut ch Channel) closed() bool {
 	return C.atomic_load_u16(&ch.closed) != 0
 }
 
-[inline]
+@[inline]
 pub fn (mut ch Channel) push(src voidptr) {
 	if ch.try_push_priv(src, false) == .closed {
 		panic('push on closed channel')
 	}
 }
 
-[inline]
+@[inline]
 pub fn (mut ch Channel) try_push(src voidptr) ChanState {
 	return ch.try_push_priv(src, true)
 }
@@ -360,12 +360,12 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 	panic('unknown `try_push_priv` state')
 }
 
-[inline]
+@[inline]
 pub fn (mut ch Channel) pop(dest voidptr) bool {
 	return ch.try_pop_priv(dest, false) == .success
 }
 
-[inline]
+@[inline]
 pub fn (mut ch Channel) try_pop(dest voidptr) ChanState {
 	return ch.try_pop_priv(dest, true)
 }

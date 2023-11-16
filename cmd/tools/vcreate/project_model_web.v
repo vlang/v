@@ -151,7 +151,7 @@ div.products-table {
 
 import vweb
 
-['/controller/auth'; post]
+@['/controller/auth'; post]
 pub fn (mut app App) controller_auth(username string, password string) vweb.Result {
 	response := app.service_auth(username, password) or {
 		app.set_status(400, '')
@@ -167,8 +167,8 @@ pub fn (mut app App) controller_auth(username string, password string) vweb.Resu
 		content: 'module main
 
 struct AuthRequestDto {
-	username string [nonull]
-	password string [nonull]
+	username string @[nonull]
+	password string @[nonull]
 }
 '
 	}
@@ -399,7 +399,7 @@ import vweb
 import encoding.base64
 import json
 
-['/controller/products'; get]
+@['/controller/products'; get]
 pub fn (mut app App) controller_get_all_products() vweb.Result {
 	token := app.req.header.get_custom('token') or { '' }
 
@@ -425,7 +425,7 @@ pub fn (mut app App) controller_get_all_products() vweb.Result {
 	// return app.text('response')
 }
 
-['/controller/product/create'; post]
+@['/controller/product/create'; post]
 pub fn (mut app App) controller_create_product(product_name string) vweb.Result {
 	if product_name == '' {
 		app.set_status(400, '')
@@ -461,12 +461,12 @@ pub fn (mut app App) controller_create_product(product_name string) vweb.Result 
 		path: join_path(c.name, 'src', 'product_entities.v')
 		content: "module main
 
-[table: 'products']
+@[table: 'products']
 struct Product {
-	id         int    [primary; sql: serial]
+	id         int    @[primary; sql: serial]
 	user_id    int
-	name       string [nonull; sql_type: 'TEXT']
-	created_at string [default: 'CURRENT_TIMESTAMP']
+	name       string @[nonull; sql_type: 'TEXT']
+	created_at string @[default: 'CURRENT_TIMESTAMP']
 }
 "
 	}
@@ -562,7 +562,7 @@ pub fn get_product(token string) ![]User {
 
 import vweb
 
-['/products'; get]
+@['/products'; get]
 pub fn (mut app App) products() !vweb.Result {
 	token := app.get_cookie('token') or {
 		app.set_status(400, '')
@@ -586,7 +586,7 @@ import vweb
 import encoding.base64
 import json
 
-['/controller/users'; get]
+@['/controller/users'; get]
 pub fn (mut app App) controller_get_all_user() vweb.Result {
 	// token := app.get_cookie('token') or { '' }
 	token := app.req.header.get_custom('token') or { '' }
@@ -603,7 +603,7 @@ pub fn (mut app App) controller_get_all_user() vweb.Result {
 	return app.json(response)
 }
 
-['/controller/user'; get]
+@['/controller/user'; get]
 pub fn (mut app App) controller_get_user() vweb.Result {
 	// token := app.get_cookie('token') or { '' }
 	token := app.req.header.get_custom('token') or { '' }
@@ -629,7 +629,7 @@ pub fn (mut app App) controller_get_user() vweb.Result {
 	return app.json(response)
 }
 
-['/controller/user/create'; post]
+@['/controller/user/create'; post]
 pub fn (mut app App) controller_create_user(username string, password string) vweb.Result {
 	if username == '' {
 		app.set_status(400, '')
@@ -652,14 +652,14 @@ pub fn (mut app App) controller_create_user(username string, password string) vw
 		path: join_path(c.name, 'src', 'user_entities.v')
 		content: "module main
 
-[table: 'users']
+@[table: 'users']
 pub struct User {
 mut:
-	id       int       [primary; sql: serial]
-	username string    [nonull; sql_type: 'TEXT'; unique]
-	password string    [nonull; sql_type: 'TEXT']
+	id       int       @[primary; sql: serial]
+	username string    @[nonull; sql_type: 'TEXT'; unique]
+	password string    @[nonull; sql_type: 'TEXT']
 	active   bool
-	products []Product [fkey: 'user_id']
+	products []Product @[fkey: 'user_id']
 }
 "
 	}

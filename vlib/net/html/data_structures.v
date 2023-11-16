@@ -10,12 +10,12 @@ mut:
 	size     int
 }
 
-[inline]
+@[inline]
 fn is_null(data int) bool {
 	return data == html.null_element
 }
 
-[inline]
+@[inline]
 fn (stack Stack) is_empty() bool {
 	return stack.size <= 0
 }
@@ -69,17 +69,17 @@ fn (mut btree BTree) add_children(tag Tag) int {
 	return btree.all_tags.len - 1
 }
 
-[inline]
+@[inline]
 fn (btree BTree) get_children() []int {
 	return btree.childrens[btree.node_pointer]
 }
 
-[inline]
+@[inline]
 fn (btree BTree) get_parent() int {
 	return btree.parents[btree.node_pointer]
 }
 
-[inline]
+@[inline]
 fn (btree BTree) get_stored() Tag {
 	return btree.all_tags[btree.node_pointer]
 }

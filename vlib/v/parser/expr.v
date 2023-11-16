@@ -823,7 +823,7 @@ fn (mut p Parser) prefix_inc_dec_error() {
 // outside of the ORM and are not recognized as keywords in the language.
 // For example, there is a `like` operator in ORM, which should be used
 // in expressions like `name like 'M%'`, but it should not be used in V directly.
-[inline]
+@[inline]
 fn (mut p Parser) process_custom_orm_operators() {
 	if !p.inside_orm {
 		return
@@ -852,6 +852,7 @@ fn (mut p Parser) lambda_expr() ?ast.LambdaExpr {
 	defer {
 		p.close_scope()
 	}
+	p.scope.detached_from_parent = true
 
 	mut pos := p.tok.pos()
 	mut params := []ast.Ident{}

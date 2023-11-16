@@ -57,7 +57,7 @@ pub mut:
 	child_stderr_write &u32 = unsafe { nil }
 }
 
-[manualfree]
+@[manualfree]
 fn (mut p Process) win_spawn_process() int {
 	mut to_be_freed := []voidptr{cap: 5}
 	defer {

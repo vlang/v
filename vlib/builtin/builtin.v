@@ -1,11 +1,11 @@
 // Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-[has_globals]
+@[has_globals]
 module builtin
 
 // isnil returns true if an object is nil (only for C objects).
-[inline]
+@[inline]
 pub fn isnil(v voidptr) bool {
 	return v == 0
 }
@@ -60,7 +60,7 @@ pub:
 
 // free frees the memory occupied by the assertion meta data. It is called automatically by
 // the code, that V's test framework generates, after all other callbacks have been called.
-[manualfree; unsafe]
+@[manualfree; unsafe]
 pub fn (ami &VAssertMetaInfo) free() {
 	unsafe {
 		ami.fpath.free()

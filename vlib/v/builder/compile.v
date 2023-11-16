@@ -38,7 +38,7 @@ fn check_if_output_folder_is_writable(pref_ &pref.Preferences) {
 }
 
 // Temporary, will be done by -autofree
-[unsafe]
+@[unsafe]
 fn (mut b Builder) myfree() {
 	// for file in b.parsed_files {
 	// }
@@ -172,7 +172,7 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 fn eshcb(_ os.Signal) {
 }
 
-[noreturn]
+@[noreturn]
 fn serror(reason string, e IError) {
 	eprintln('could not ${reason} handler')
 	panic(e)

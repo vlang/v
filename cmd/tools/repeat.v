@@ -40,7 +40,7 @@ mut:
 	nmaxs                   int // number of maximums to discard
 }
 
-[unsafe]
+@[unsafe]
 fn (mut result CmdResult) free() {
 	unsafe {
 		result.cmd.free()
@@ -52,7 +52,7 @@ fn (mut result CmdResult) free() {
 	}
 }
 
-[unsafe]
+@[unsafe]
 fn (mut context Context) free() {
 	unsafe {
 		context.commands.free()
@@ -75,7 +75,7 @@ mut:
 	nmaxs   int // number of discarded slowest results
 }
 
-[unsafe]
+@[unsafe]
 fn (mut a Aints) free() {
 	unsafe { a.values.free() }
 }

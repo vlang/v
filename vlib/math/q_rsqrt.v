@@ -1,6 +1,6 @@
 module math
 
-[inline]
+@[inline]
 pub fn q_rsqrt(x f64) f64 {
 	x_half := 0.5 * x
 	mut i := i64(f64_bits(x))

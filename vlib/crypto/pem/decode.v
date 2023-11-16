@@ -7,7 +7,7 @@ import encoding.base64
 // can't be found.
 //
 // use decode if you still need the unparsed rest of the string.
-[inline]
+@[inline]
 pub fn decode_only(data string) ?Block {
 	block, _ := decode_internal(data)?
 	return block
@@ -18,7 +18,7 @@ pub fn decode_only(data string) ?Block {
 // or when a start of '-----BEGIN' or end of '-----END' can't be found.
 //
 // use decode_only if you do not need the unparsed rest of the string.
-[direct_array_access; inline]
+@[direct_array_access; inline]
 pub fn decode(data string) ?(Block, string) {
 	block, rest := decode_internal(data)?
 	return block, rest[rest.index(pem_end)? + pem_end.len..].all_after_first(pem_eol)
@@ -27,7 +27,7 @@ pub fn decode(data string) ?(Block, string) {
 // decode_internal allows `decode` variations to deal with the rest of the data as
 // they want to. for example Block.decode could have hindered performance with the final
 // indexing into `rest` that `decode_partial` does.
-[direct_array_access]
+@[direct_array_access]
 fn decode_internal(data string) ?(Block, string) {
 	// direct_array_access safety: since we use the string.index method here,
 	// we won't get an invalid index since it would otherwise return `none`
@@ -45,7 +45,7 @@ fn decode_internal(data string) ?(Block, string) {
 	return block, rest
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn parse_headers(block string) ?(map[string][]string, string) {
 	headers_str := block.all_before(pem_end).all_before('\n\n')
 
