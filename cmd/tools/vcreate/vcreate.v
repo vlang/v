@@ -313,7 +313,7 @@ bin/
 
 fn (mut c Create) create_files_and_directories() {
 	// Set project template files for `v new` or when no `.v` files exists during `v init`.
-	if c.new_dir || os.walk_ext(os.file_name(os.getwd()), '.v').len == 0 {
+	if c.new_dir || os.walk_ext('.', '.v').len == 0 {
 		match c.template {
 			.bin { c.set_bin_project_files() }
 			.lib { c.set_lib_project_files() }
