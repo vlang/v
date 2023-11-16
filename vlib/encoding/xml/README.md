@@ -7,6 +7,10 @@ Note that this is not a streaming XML parser. It reads the entire document into
 memory and then parses it. This is not a problem for small documents, but it
 might be a problem for extremely large documents (several hundred megabytes or more).
 
+The public function `parse_single_node` can be used to parse a single node from
+an implementation of `io.Reader`, which can help parse large XML documents on an
+element-by-element basis. Sample usage is provided in the `parser_test.v` file.
+
 ## Usage
 
 ### Parsing XML Files
