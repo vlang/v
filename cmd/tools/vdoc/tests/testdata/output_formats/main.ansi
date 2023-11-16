@@ -1,0 +1,36 @@
+
+[94mmodule[39m [32mmain[39m
+
+[94mconst[39m omega = [94m3[39m [90m// should be first[39m
+[94mconst[39m alpha = [94m5[39m [90m// should be in the middle[39m
+[94mconst[39m beta = [94m2[39m [90m// should be at the end[39m
+[94mfn[39m [36mabc[39m()
+    abc - should be last
+[94mfn[39m [36mdef[39m()
+    def - should be first
+[94mfn[39m [36mxyz[39m()
+    xyz - should be in the middle
+[94mfn[39m [32mMyXMLDocument[39m.[36mabc[39m(text [32mstring[39m) ?([32mstring[39m, [32mint[39m)
+    MyXMLDocument.abc does something too... I just do not know what.
+[94mfn[39m [32mMyXMLDocument[39m.[36mfrom_file[39m(path [32mstring[39m) ![32mMyXMLDocument[39m
+    MyXMLDocument.from_text processes the file path, and returns an error
+[94mfn[39m [32mMyXMLDocument[39m.[36mfrom_text[39m(text [32mstring[39m) ?[32mMyXMLDocument[39m
+    MyXMLDocument.from_text processes text and produces none
+[94mstruct[39m [32mMyXMLDocument[39m {
+	path [32mstring[39m
+}
+    MyXMLDocument is here just to test the different combinations of methods/output types
+[94mfn[39m (x &[32mMyXMLDocument[39m) [36minstance_from_file[39m(path [32mstring[39m) ![32mMyXMLDocument[39m
+    instance_from_file does stuff with path
+[94mfn[39m (x &[32mMyXMLDocument[39m) [36minstance_from_text[39m(text [32mstring[39m) ?[32mMyXMLDocument[39m
+    instance_from_text does stuff with text
+[94mfn[39m (x &[32mMyXMLDocument[39m) [36minstance_abc[39m(text [32mstring[39m) ?([32mstring[39m, [32mint[39m)
+    instance_abc does stuff too
+[94mfn[39m (x &[32mMyXMLDocument[39m) [36minstance_void[39m()
+    instance_void does stuff too
+[94mfn[39m (x &[32mMyXMLDocument[39m) [36minstance_int[39m() [32mint[39m
+    instance_int does stuff too
+[94mfn[39m (x &[32mMyXMLDocument[39m) [36minstance_result[39m() !
+    instance_error does stuff too
+[94mfn[39m (x &[32mMyXMLDocument[39m) [36minstance_option[39m() ?
+    instance_option does stuff too

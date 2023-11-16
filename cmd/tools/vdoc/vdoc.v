@@ -17,8 +17,8 @@ enum OutputType {
 	html
 	markdown
 	json
+	ansi // text with ANSI color escapes
 	plaintext
-	stdout
 }
 
 @[heap]
@@ -34,28 +34,6 @@ mut:
 	search_module_data  []SearchModuleResult
 	example_failures    int // how many times an example failed to compile or run with non 0 exit code; when positive, finish with exit code 1
 	example_oks         int // how many ok examples were found when `-run-examples` was passed, that compiled and finished with 0 exit code.
-}
-
-struct Config {
-mut:
-	pub_only         bool = true
-	show_loc         bool // for plaintext
-	is_color         bool
-	is_multi         bool
-	is_vlib          bool
-	is_verbose       bool
-	include_readme   bool
-	include_examples bool = true
-	include_comments bool // for plaintext
-	inline_assets    bool
-	theme_dir        string = default_theme
-	no_timestamp     bool
-	output_path      string
-	output_type      OutputType = .unset
-	input_path       string
-	symbol_name      string
-	platform         doc.Platform
-	run_examples     bool // `-run-examples` will run all `// Example: assert mod.abc() == y` comments in the processed modules
 }
 
 //
@@ -279,7 +257,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 	}
 	if out.path.len == 0 {
 		if cfg.output_type == .unset {
-			out.typ = .stdout
+			out.typ = .ansi
 		} else {
 			vd.vprintln('No output path has detected. Using input path instead.')
 			out.path = cfg.input_path
@@ -289,7 +267,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		ext := os.file_ext(out.path)
 		out.typ = set_output_type_from_str(ext.all_after('.'))
 	}
-	if cfg.include_readme && out.typ !in [.html, .stdout] {
+	if cfg.include_readme && out.typ !in [.html, .ansi, .plaintext] {
 		eprintln('vdoc: Including README.md for doc generation is supported on HTML output, or when running directly in the terminal.')
 		exit(1)
 	}
@@ -312,7 +290,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		comment := doc.DocComment{
 			text: readme_contents
 		}
-		if out.typ == .stdout {
+		if out.typ == .ansi {
 			println(markdown.to_plain(readme_contents))
 		} else if out.typ == .html && cfg.is_multi {
 			vd.docs << doc.Doc{
@@ -365,7 +343,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		exit(1)
 	}
 	vd.vprintln('Rendering docs...')
-	if out.path.len == 0 || out.path == 'stdout' {
+	if out.path.len == 0 || out.path == 'stdout' || out.path == '-' {
 		if out.typ == .html {
 			vd.render_static_html(out)
 		}

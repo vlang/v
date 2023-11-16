@@ -60,14 +60,14 @@ fn trim_doc_node_description(description string) string {
 }
 
 fn set_output_type_from_str(format string) OutputType {
-	output_type := match format {
+	return match format {
 		'htm', 'html' { OutputType.html }
-		'md', 'markdown' { OutputType.markdown }
-		'json' { OutputType.json }
-		'stdout' { OutputType.stdout }
-		else { OutputType.plaintext }
+		'md', 'markdown' { .markdown }
+		'json' { .json }
+		'text' { .plaintext }
+		'ansi' { .ansi }
+		else { .ansi }
 	}
-	return output_type
 }
 
 fn get_ignore_paths(path string) ![]string {

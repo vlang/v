@@ -198,11 +198,14 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 	}
 	for cn in dcs_contents {
 		vd.write_content(&cn, &d, mut contents)
-		write_toc(cn, mut symbols_toc)
-	} // write head
+		write_toc(cn, mut symbols_toc) // write head
+	}
+	if cfg.html_only_contents {
+		// no need for theming, styling etc, useful for testing and for external documentation generators
+		return contents.str()
+	}
+
 	// write css
-	mut version := if vd.manifest.version.len != 0 { vd.manifest.version } else { '' }
-	version = [version, @VCURRENTHASH].join(' ')
 	header_name := if cfg.is_multi && vd.docs.len > 1 {
 		os.file_name(os.real_path(cfg.input_path))
 	} else {
@@ -249,33 +252,67 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 	}
 	modules_toc_str := modules_toc.str()
 	symbols_toc_str := symbols_toc.str()
-	result := (os.read_file(os.join_path(cfg.theme_dir, 'index.html')) or { panic(err) }).replace('{{ title }}',
-		d.head.name).replace('{{ head_name }}', header_name).replace('{{ version }}',
-		version).replace('{{ light_icon }}', vd.assets['light_icon']).replace('{{ dark_icon }}',
-		vd.assets['dark_icon']).replace('{{ menu_icon }}', vd.assets['menu_icon']).replace('{{ head_assets }}',
-		if cfg.inline_assets {
-		'<style>${vd.assets['doc_css']}</style>
+	mut result := os.read_file(os.join_path(cfg.theme_dir, 'index.html')) or { panic(err) }
+	if cfg.html_no_vhash {
+		result = result.replace('{{ version }}', 'latest')
+	} else {
+		mut version := if vd.manifest.version.len != 0 { vd.manifest.version } else { '' }
+		version = [version, @VCURRENTHASH].join(' ')
+		result = result.replace('{{ version }}', version)
+	}
+	result = result.replace('{{ title }}', d.head.name)
+	result = result.replace('{{ head_name }}', header_name)
+	result = result.replace('{{ light_icon }}', vd.assets['light_icon'])
+	result = result.replace('{{ dark_icon }}', vd.assets['dark_icon'])
+	result = result.replace('{{ menu_icon }}', vd.assets['menu_icon'])
+	if cfg.html_no_assets {
+		result = result.replace('{{ head_assets }}', '')
+	} else {
+		result = result.replace('{{ head_assets }}', if cfg.inline_assets {
+			'<style>${vd.assets['doc_css']}</style>
 ${tabs(2)}<style>${vd.assets['normalize_css']}</style>
 ${tabs(2)}<script>${vd.assets['dark_mode_js']}</script>'
-	} else {
-		'<link rel="stylesheet" href="${vd.assets['doc_css']}" />
+		} else {
+			'<link rel="stylesheet" href="${vd.assets['doc_css']}" />
 ${tabs(2)}<link rel="stylesheet" href="${vd.assets['normalize_css']}" />
 ${tabs(2)}<script src="${vd.assets['dark_mode_js']}"></script>'
-	}).replace('{{ toc_links }}', if cfg.is_multi || vd.docs.len > 1 {
-		modules_toc_str
+		})
+	}
+	if cfg.html_no_toc_urls {
+		result = result.replace('{{ toc_links }}', '')
 	} else {
-		symbols_toc_str
-	}).replace('{{ contents }}', contents.str()).replace('{{ right_content }}', if cfg.is_multi
-		&& d.head.name != 'README' {
-		'<div class="doc-toc"><ul>${symbols_toc_str}</ul></div>'
+		result = result.replace('{{ toc_links }}', if cfg.is_multi || vd.docs.len > 1 {
+			modules_toc_str
+		} else {
+			symbols_toc_str
+		})
+	}
+	result = result.replace('{{ contents }}', contents.str())
+	if cfg.html_no_right {
+		result = result.replace('{{ right_content }}', '')
 	} else {
-		''
-	}).replace('{{ footer_content }}', gen_footer_text(d, !cfg.no_timestamp)).replace('{{ footer_assets }}',
-		if cfg.inline_assets {
-		'<script>${vd.assets['doc_js']}</script>'
+		result = result.replace('{{ right_content }}', if cfg.is_multi && d.head.name != 'README' {
+			'<div class="doc-toc"><ul>${symbols_toc_str}</ul></div>'
+		} else {
+			''
+		})
+	}
+	if cfg.html_no_footer {
+		result = result.replace('{{ footer_content }}', '')
 	} else {
-		'<script src="${vd.assets['doc_js']}"></script>'
-	})
+		result = result.replace('{{ footer_content }}', gen_footer_text(d, !cfg.no_timestamp))
+	}
+	if cfg.html_no_assets {
+		result = result.replace('{{ footer_assets }}', '')
+	} else {
+		result = result.replace('{{ footer_assets }}', if cfg.inline_assets {
+			'<script>${vd.assets['doc_js']}</script>'
+		} else {
+			'<script src="${vd.assets['doc_js']}"></script>'
+		})
+	}
+	dump(cfg.html_no_footer)
+	dump(cfg.html_no_assets)
 	return result
 }
 

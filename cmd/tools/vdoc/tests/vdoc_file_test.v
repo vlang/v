@@ -10,6 +10,8 @@ const vroot = @VMODROOT
 
 const diff_cmd = find_diff_cmd()
 
+const should_autofix = os.getenv('VAUTOFIX') != ''
+
 fn find_diff_cmd() string {
 	return diff.find_working_diff_command() or { '' }
 }
@@ -82,6 +84,23 @@ fn check_path(vexe string, dir string, tests []string) int {
 			cmd: '${os.quoted_path(vexe)} doc -readme -comments ${os.quoted_path(program)}'
 			out_filename: 'main.readme.comments.out'
 		)
+		// test the main 3 different formats:
+		fails += check_output(
+			program: program
+			cmd: '${os.quoted_path(vexe)} doc -f html -o - -html-only-contents -readme -comments ${os.quoted_path(program)}'
+			out_filename: 'main.html'
+		)
+		fails += check_output(
+			program: program
+			cmd: '${os.quoted_path(vexe)} doc -f ansi -o - -html-only-contents -readme -comments ${os.quoted_path(program)}'
+			out_filename: 'main.ansi'
+		)
+		fails += check_output(
+			program: program
+			cmd: '${os.quoted_path(vexe)} doc -f text -o - -html-only-contents -readme -comments ${os.quoted_path(program)}'
+			out_filename: 'main.text'
+		)
+		//
 		total_fails += fails
 		if fails == 0 {
 			println(term.green('OK'))
@@ -141,9 +160,13 @@ fn check_output(params CheckOutputParams) int {
 	found := clean_line_endings(res.output)
 	if expected != found {
 		print_compare(expected, found)
-		eprintln('>>> out_file_path: ${out_file_path}')
 		eprintln('>>>           cmd: VDOC_SORT=${params.should_sort} ${params.cmd}')
+		eprintln('>>> out_file_path: `${out_file_path}`')
+		eprintln('>>>           fix: VDOC_SORT=${params.should_sort} ${params.cmd} > ${out_file_path}')
 		fails++
+	}
+	if should_autofix {
+		os.write_file(out_file_path, res.output) or {}
 	}
 	return fails
 }
