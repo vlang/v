@@ -1418,23 +1418,15 @@ fn (mut s Scanner) decode_u_escape_single(str string, idx int) (int, string) {
 	return end_idx, utf32_to_str(u32(escaped_code_point))
 }
 
-// decode the flagged unicode escape sequences into their utf-8 bytes
-fn (mut s Scanner) decode_u_escapes(str string, start int, escapes_pos []int) string {
-	if escapes_pos.len == 0 {
-		return str
+// decode a single unicode escaped rune into its utf-8 bytes
+fn (mut s Scanner) decode_uerune(str string) string {
+	end_idx, segment := s.decode_u_escape_single(str, 0)
+	if str.len == end_idx {
+		return segment
 	}
-	mut ss := []string{cap: escapes_pos.len * 2 + 1}
-	ss << str[..escapes_pos.first() - start]
-	for i, pos in escapes_pos {
-		idx := pos - start
-		end_idx, segment := s.decode_u_escape_single(str, idx)
-		ss << segment
-		if i + 1 < escapes_pos.len {
-			ss << str[end_idx..escapes_pos[i + 1] - start]
-		} else {
-			ss << str[end_idx..]
-		}
-	}
+	mut ss := []string{cap: 2}
+	ss << segment
+	ss << str[end_idx..]
 	return ss.join('')
 }
 
@@ -1519,7 +1511,7 @@ fn (mut s Scanner) ident_char() string {
 		if c.len % 2 == 0 && (escaped_hex || escaped_unicode || escaped_octal) {
 			if escaped_unicode {
 				// there can only be one, so attempt to decode it now
-				c = s.decode_u_escapes(c, 0, [0])
+				c = s.decode_uerune(c)
 			} else {
 				// find escape sequence start positions
 				mut escapes_pos := []int{}
