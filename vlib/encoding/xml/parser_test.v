@@ -1,7 +1,7 @@
 module xml
 
-fn test_single_element_parsing() ! {
-	sample_doc := '
+const (
+	sample_doc = '
 <root>
 	<c id="c1"/>
 	<c id="c2">
@@ -18,8 +18,7 @@ fn test_single_element_parsing() ! {
 	</child>
 	<cz id="c10"/>
 </root>'
-
-	elements := [
+	xml_elements = [
 		XMLNode{
 			name: 'c'
 			attributes: {
@@ -87,9 +86,11 @@ fn test_single_element_parsing() ! {
 			}
 		},
 	]
+)
 
+fn test_single_element_parsing() ! {
 	mut reader := FullBufferReader{
-		contents: sample_doc.bytes()
+		contents: xml.sample_doc.bytes()
 	}
 	// Skip the "<root>" tag
 	mut skip := []u8{len: 6}
@@ -100,7 +101,7 @@ fn test_single_element_parsing() ! {
 
 	mut count := 0
 
-	for count < elements.len {
+	for count < xml.xml_elements.len {
 		match ch {
 			`<` {
 				next_ch := next_char(mut reader, mut local_buf)!
@@ -108,7 +109,7 @@ fn test_single_element_parsing() ! {
 					`/` {}
 					else {
 						parsed_element := parse_single_node(next_ch, mut reader)!
-						assert elements[count] == parsed_element
+						assert xml.xml_elements[count] == parsed_element
 						count++
 					}
 				}
