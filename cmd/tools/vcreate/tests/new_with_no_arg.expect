@@ -13,6 +13,6 @@ expect "Input your project description: " { send "My Awesome V Project.\r" } tim
 expect "Input your project version: (0.0.0) " { send "0.1.0\r" } timeout { exit 1 }
 expect "Input your project license: (MIT) " { send "GPL\r" } timeout { exit 1 }
 expect "Initialising ..." {} timeout { exit 1 }
-expect "Complete!" {} timeout { exit 1 }
+expect "Created binary (application) project `$project_name`" {} timeout { exit 1 }
 
 expect eof
