@@ -114,11 +114,11 @@ fn test_array() {
 	assert json.encode(StructType[[]int]{ val: [1] }) == '{"val":[1]}'
 	assert json.encode(StructType[[]int]{ val: [0, 1, 0, 2, 3, 2, 5, 1] }) == '{"val":[0,1,0,2,3,2,5,1]}'
 
-	assert json.encode(StructType[[]byte]{}) == '{"val":[]}'
-	assert json.encode(StructType[[]byte]{ val: [] }) == '{"val":[]}'
-	assert json.encode(StructType[[]byte]{ val: [byte(0)] }) == '{"val":[0]}'
-	assert json.encode(StructType[[]byte]{ val: [byte(1)] }) == '{"val":[1]}'
-	assert json.encode(StructType[[]byte]{ val: [byte(0), 1, 0, 2, 3, 2, 5, 1] }) == '{"val":[0,1,0,2,3,2,5,1]}'
+	assert json.encode(StructType[[]u8]{}) == '{"val":[]}'
+	assert json.encode(StructType[[]u8]{ val: [] }) == '{"val":[]}'
+	assert json.encode(StructType[[]u8]{ val: [u8(0)] }) == '{"val":[0]}'
+	assert json.encode(StructType[[]u8]{ val: [u8(1)] }) == '{"val":[1]}'
+	assert json.encode(StructType[[]u8]{ val: [u8(0), 1, 0, 2, 3, 2, 5, 1] }) == '{"val":[0,1,0,2,3,2,5,1]}'
 
 	assert json.encode(StructType[[]i64]{}) == '{"val":[]}'
 	assert json.encode(StructType[[]i64]{ val: [] }) == '{"val":[]}'
@@ -164,11 +164,11 @@ fn test_option_array() {
 	assert json.encode(StructTypeOption[[]int]{ val: [1] }) == '{"val":[1]}'
 	assert json.encode(StructTypeOption[[]int]{ val: [0, 1, 0, 2, 3, 2, 5, 1] }) == '{"val":[0,1,0,2,3,2,5,1]}'
 
-	assert json.encode(StructTypeOption[[]byte]{}) == '{}'
-	assert json.encode(StructTypeOption[[]byte]{ val: [] }) == '{"val":[]}'
-	assert json.encode(StructTypeOption[[]byte]{ val: [byte(0)] }) == '{"val":[0]}'
-	assert json.encode(StructTypeOption[[]byte]{ val: [byte(1)] }) == '{"val":[1]}'
-	assert json.encode(StructTypeOption[[]byte]{ val: [byte(0), 1, 0, 2, 3, 2, 5, 1] }) == '{"val":[0,1,0,2,3,2,5,1]}'
+	assert json.encode(StructTypeOption[[]u8]{}) == '{}'
+	assert json.encode(StructTypeOption[[]u8]{ val: [] }) == '{"val":[]}'
+	assert json.encode(StructTypeOption[[]u8]{ val: [u8(0)] }) == '{"val":[0]}'
+	assert json.encode(StructTypeOption[[]u8]{ val: [u8(1)] }) == '{"val":[1]}'
+	assert json.encode(StructTypeOption[[]u8]{ val: [u8(0), 1, 0, 2, 3, 2, 5, 1] }) == '{"val":[0,1,0,2,3,2,5,1]}'
 
 	assert json.encode(StructTypeOption[[]i64]{}) == '{}'
 	assert json.encode(StructTypeOption[[]i64]{ val: [] }) == '{"val":[]}'
