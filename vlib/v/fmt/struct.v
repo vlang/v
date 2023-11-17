@@ -124,7 +124,8 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 		f.mark_types_import_as_used(field.typ)
 		attrs_len := inline_attrs_len(field.attrs)
 		has_attrs := field.attrs.len > 0
-		has_at := if has_attrs { field.attrs[0].has_at } else { false }
+		// has_at := if has_attrs { field.attrs[0].has_at } else { false }
+		has_at := true
 		// TODO: this will get removed in next stage
 		if has_attrs && !has_at {
 			f.write(strings.repeat(` `, field_align.max_type_len - field_types[i].len))

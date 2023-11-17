@@ -707,12 +707,14 @@ fn (t Tree) attr(node ast.Attr) &Node {
 	obj.add_terse('ast_type', t.string_node('Attr'))
 	obj.add_terse('name', t.string_node(node.name))
 	obj.add_terse('has_arg', t.bool_node(node.has_arg))
+	obj.add_terse('arg', t.string_node(node.arg))
 	obj.add_terse('kind', t.enum_node(node.kind))
-	obj.add_terse('ct_expr', t.expr(node.ct_expr))
 	obj.add_terse('ct_opt', t.bool_node(node.ct_opt))
+	obj.add_terse('has_at', t.bool_node(node.has_at))
+	obj.add_terse('ct_expr', t.expr(node.ct_expr))
 	obj.add_terse('ct_evaled', t.bool_node(node.ct_evaled))
 	obj.add_terse('ct_skip', t.bool_node(node.ct_skip))
-	obj.add_terse('arg', t.string_node(node.arg))
+	obj.add('pos', t.pos(node.pos))
 	return obj
 }
 

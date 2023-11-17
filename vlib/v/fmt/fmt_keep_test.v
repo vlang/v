@@ -30,7 +30,7 @@ fn test_fmt() {
 	}
 	vroot := os.dir(vexe)
 	os.chdir(vroot) or {}
-	basepath := os.join_path(vroot, '')
+	basepath := vroot + '/'
 	tmpfolder := os.temp_dir()
 	diff_cmd := diff.find_working_diff_command() or { '' }
 	mut fmt_bench := benchmark.new_benchmark()
@@ -40,6 +40,7 @@ fn test_fmt() {
 	input_files << keep_input_files
 	input_files << expected_input_files
 	input_files = vtest.filter_vtest_only(input_files, basepath: vroot)
+	input_files.sort()
 	fmt_bench.set_total_expected_steps(input_files.len + 1)
 	prepare_bin2v_file(mut fmt_bench)
 	for istep, ipath in input_files {
