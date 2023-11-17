@@ -462,12 +462,27 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 	is_minify := s.is_minify
 	g.type_definitions.writeln(pre_pragma)
 
+	mut aligned_attr := ''
+	if attr := s.attrs.find_first('aligned') {
+		attr_arg := if attr.arg == '' { '' } else { ' (${attr.arg})' }
+		aligned_attr += if g.is_cc_msvc {
+			'__declspec(align${attr_arg})'
+		} else {
+			' __attribute__((aligned${attr_arg}))'
+		}
+	}
 	if is_anon {
 		g.type_definitions.write_string('\t${name} ')
 		return
 	} else if s.is_union {
+		if g.is_cc_msvc && aligned_attr != '' {
+			g.type_definitions.writeln('${aligned_attr} ')
+		}
 		g.type_definitions.writeln('union ${name} {')
 	} else {
+		if g.is_cc_msvc && aligned_attr != '' {
+			g.type_definitions.writeln('${aligned_attr} ')
+		}
 		g.type_definitions.writeln('struct ${name} {')
 	}
 
@@ -549,20 +564,15 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 	} else {
 		g.type_definitions.writeln('\tEMPTY_STRUCT_DECLARATION;')
 	}
-	mut ti_attrs := if !g.is_cc_msvc && s.attrs.contains('packed') {
+	ti_attrs := if !g.is_cc_msvc && s.attrs.contains('packed') {
 		'__attribute__((__packed__))'
 	} else {
 		''
 	}
-	if attr := s.attrs.find_first('aligned') {
-		attr_arg := if attr.arg == '' { '' } else { ' (${attr.arg})' }
-		ti_attrs += if g.is_cc_msvc {
-			'__declspec(align(${attr_arg}))'
-		} else {
-			' __attribute__((aligned${attr_arg}))'
-		}
-	}
 	g.type_definitions.write_string('}${ti_attrs}')
+	if !g.is_cc_msvc && aligned_attr != '' {
+		g.type_definitions.writeln(' ${aligned_attr}')
+	}
 	if !is_anon {
 		g.type_definitions.write_string(';')
 	}
