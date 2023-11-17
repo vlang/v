@@ -154,8 +154,8 @@ fn vpm_install_from_vcs(modules []Module) {
 			}
 		}
 		manifest := get_manifest(m.install_path) or { continue }
-		final_path := os.real_path(os.join_path(settings.vmodules_path, manifest.name.replace('-',
-			'_').to_lower()))
+		final_path := os.join_path(m.install_path.all_before_last(os.path_separator),
+			normalize_mod_path(manifest.name))
 		if m.install_path != final_path {
 			verbose_println('Relocating `${m.name} (${m.install_path_fmted})` to `${manifest.name} (${final_path})`...')
 			if os.exists(final_path) {
@@ -213,7 +213,12 @@ fn (m Module) install(vcs &VCS) InstallResult {
 	if m.is_installed {
 		// Case: installed, but not an explicit version. Update instead of continuing the installation.
 		if m.version == '' && m.installed_version == '' {
-			vpm_update([if m.is_external { m.url } else { m.name }])
+			if m.is_external && m.url.starts_with('http://') {
+				vpm_update([m.install_path.all_after(settings.vmodules_path).trim_left(os.path_separator).replace(os.path_separator,
+					'.')])
+			} else {
+				vpm_update([m.name])
+			}
 			return .skipped
 		}
 		// Case: installed, but conflicting. Confirmation or -[-f]orce flag required.
