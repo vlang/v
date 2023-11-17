@@ -131,8 +131,8 @@ struct User {
 	age           int
 	nums          []int
 	last_name     string @[json: lastName]
-	is_registered bool @[json: IsRegistered]
-	typ           int @[json: 'type']
+	is_registered bool   @[json: IsRegistered]
+	typ           int    @[json: 'type']
 	pets          string @[json: 'pet_animals'; raw]
 }
 
@@ -449,7 +449,7 @@ fn test_pretty() {
 
 struct Foo3 {
 	name string
-	age  int @[omitempty]
+	age  int    @[omitempty]
 }
 
 fn test_omit_empty() {
