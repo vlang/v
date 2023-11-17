@@ -2344,7 +2344,7 @@ V doesn't have default function arguments or named arguments, for that trailing 
 literal syntax can be used instead:
 
 ```v
-[params]
+@[params]
 struct ButtonConfig {
 	text        string
 	is_disabled bool
@@ -2470,7 +2470,7 @@ For an example, consider the following source in a directory `sample`:
 ```v oksyntax
 module sample
 
-[noinit]
+@[noinit]
 pub struct Information {
 pub:
 	data string
@@ -4488,7 +4488,7 @@ be achieved by tagging your assert containing functions with an `[assert_continu
 tag, for example running this program:
 
 ```v
-[assert_continues]
+@[assert_continues]
 fn abc(ii int) {
 	assert ii == 2
 }
@@ -4640,7 +4640,7 @@ data types:
 ```v
 struct MyType {}
 
-[unsafe]
+@[unsafe]
 fn (data &MyType) free() {
 	// ...
 }
@@ -4813,7 +4813,7 @@ mut:
 }
 
 // see discussion below
-[heap]
+@[heap]
 struct MyStruct {
 	n int
 }
@@ -4974,7 +4974,7 @@ V's ORM provides a number of benefits:
 import db.sqlite
 
 // sets a custom table name. Default is struct name (case-sensitive)
-[table: 'customers']
+@[table: 'customers']
 struct Customer {
 	id        int    [primary; sql: serial] // a field named `id` of integer type must be the first field
 	name      string [nonull]
@@ -5353,7 +5353,7 @@ function/struct/enum declaration and applies only to the following declaration.
 ```v
 // [flag] enables Enum types to be used as bitfields
 
-[flag]
+@[flag]
 enum BitField {
 	read
 	write
@@ -5395,13 +5395,13 @@ Function/method deprecations:
 ```v
 // Calling this function will result in a deprecation warning
 
-[deprecated]
+@[deprecated]
 fn old_function() {
 }
 
 // It can also display a custom deprecation message
 
-[deprecated: 'use new_function() instead']
+@[deprecated: 'use new_function() instead']
 fn legacy_function() {}
 
 // You can also specify a date, after which the function will be
@@ -5413,19 +5413,19 @@ fn legacy_function() {}
 // 6 months after the deprecation date, calls will be hard
 // compiler errors.
 
-[deprecated: 'use new_function2() instead']
-[deprecated_after: '2021-05-27']
+@[deprecated: 'use new_function2() instead']
+@[deprecated_after: '2021-05-27']
 fn legacy_function2() {}
 ```
 
 ```v nofmt
 // This function's calls will be inlined.
-[inline]
+@[inline]
 fn inlined_function() {
 }
 
 // This function's calls will NOT be inlined.
-[noinline]
+@[noinline]
 fn function() {
 }
 
@@ -5434,7 +5434,7 @@ fn function() {
 // just like exit/1 or panic/1. Such functions can not
 // have return types, and should end either in for{}, or
 // by calling other `[noreturn]` functions.
-[noreturn]
+@[noreturn]
 fn forever() {
 	for {}
 }
@@ -5442,13 +5442,13 @@ fn forever() {
 // The following struct must be allocated on the heap. Therefore, it can only be used as a
 // reference (`&Window`) or inside another reference (`&OuterStruct{ Window{...} }`).
 // See section "Stack and Heap"
-[heap]
+@[heap]
 struct Window {
 }
 
 // V will not generate this function and all its calls if the provided flag is false.
 // To use a flag, use `v -d flag`
-[if debug]
+@[if debug]
 fn foo() {
 }
 
@@ -5458,7 +5458,7 @@ fn bar() {
 
 // The memory pointed to by the pointer arguments of this function will not be
 // freed by the garbage collector (if in use) before the function returns
-[keep_args_alive]
+@[keep_args_alive]
 fn C.my_external_function(voidptr, int, voidptr) int
 
 // Calls to following function must be in unsafe{} blocks.
@@ -5467,7 +5467,7 @@ fn C.my_external_function(voidptr, int, voidptr) int
 // This is useful, when you want to have an `[unsafe]` function that
 // has checks before/after a certain unsafe operation, that will still
 // benefit from V's safety features.
-[unsafe]
+@[unsafe]
 fn risky_business() {
 	// code that will be checked, perhaps checking pre conditions
 	unsafe {
@@ -5483,22 +5483,22 @@ fn risky_business() {
 
 // V's autofree engine will not take care of memory management in this function.
 // You will have the responsibility to free memory manually yourself in it.
-[manualfree]
+@[manualfree]
 fn custom_allocations() {
 }
 
 // For C interop only, tells V that the following struct is defined with `typedef struct` in C
-[typedef]
+@[typedef]
 pub struct C.Foo {
 }
 
 // Used to add a custom calling convention to a function, available calling convention: stdcall, fastcall and cdecl.
 // This list also applies for type aliases (see below).
-[callconv: "stdcall"]
+@[callconv: "stdcall"]
 fn C.DefWindowProc(hwnd int, msg int, lparam int, wparam int)
 
 // Used to add a custom calling convention to a function type aliases.
-[callconv: "fastcall"]
+@[callconv: "fastcall"]
 type FastFn = fn (int) bool
 
 // Windows only:
@@ -5508,7 +5508,7 @@ type FastFn = fn (int) bool
 // (e)println output can be seen.
 // Use it to force-open a terminal to view output in, even if the app is started from Explorer.
 // Valid before main() only.
-[console]
+@[console]
 fn main() {
 }
 ```
@@ -6776,7 +6776,7 @@ For example, `fn foo() {}` in module `bar` will result in `bar__foo()`.
 To use a custom export name, use the `[export]` attribute:
 
 ```
-[export: 'my_custom_c_name']
+@[export: 'my_custom_c_name']
 fn foo() {
 }
 ```
@@ -6902,7 +6902,7 @@ module main
 
 import time
 
-[live]
+@[live]
 fn print_message() {
 	println('Hello! Modify this message while the program is running.')
 }

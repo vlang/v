@@ -19,7 +19,7 @@ In `examples/js_dom_draw_bechmark_chart/v_vweb_orm/src/main.v` path
 Create a route returning a `Response` struct like:
 
 ```v ignore
-['/sqlite-memory/:count']
+@['/sqlite-memory/:count']
 pub fn (mut app App) sqlite_memory(count int) vweb.Result {
 	mut insert_stopwatchs := []int{}
 	mut select_stopwatchs := []int{}

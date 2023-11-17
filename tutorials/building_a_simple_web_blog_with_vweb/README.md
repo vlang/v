@@ -69,7 +69,7 @@ fn main() {
 	vweb.run(app, 8081)
 }
 
-['/index']
+@['/index']
 pub fn (mut app App) index() vweb.Result {
 	return app.text('Hello world from vweb!')
 }
@@ -336,7 +336,7 @@ Create `new.html`:
 // article.v
 import vweb
 
-[post]
+@[post]
 pub fn (mut app App) new_article(title string, text string) vweb.Result {
 	if title == '' || text == '' {
 		return app.text('Empty text/title')
@@ -368,7 +368,7 @@ We need to update `index.html` to add a link to the "new article" page:
 Next we need to add the HTML endpoint to our code like we did with `index.html`:
 
 ```v ignore
-['/new']
+@['/new']
 pub fn (mut app App) new() vweb.Result {
 	return $vweb.html()
 }
@@ -386,7 +386,7 @@ in V is very simple:
 // article.v
 import vweb
 
-['/articles'; get]
+@['/articles'; get]
 pub fn (mut app App) articles() vweb.Result {
 	articles := app.find_all_articles()
 	return app.json(articles)

@@ -140,7 +140,7 @@ fn new_app() &App {
 	return app
 }
 
-['/'; get]
+@['/'; get]
 pub fn (mut app App) controller_get_all_task() vweb.Result {
 	file := os.read_file('./index.html') or { panic(err) }
 	return app.html(file)

@@ -54,7 +54,7 @@ exit
 In `v_vweb_orm/src/main.v`, create a route that returns a `Response` struct.
 
 ```v ignore
-['/sqlite-memory/:count']
+@['/sqlite-memory/:count']
 pub fn (mut app App) sqlite_memory(count int) vweb.Result {
 	mut insert_stopwatchs := []int{}
 	mut select_stopwatchs := []int{}
