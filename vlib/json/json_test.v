@@ -486,11 +486,11 @@ fn test_encode_sumtype_defined_ahead() {
 }
 
 struct StByteArray {
-	ba []byte
+	ba []u8
 }
 
 fn test_byte_array() {
-	assert json.encode(StByteArray{ ba: [byte(1), 2, 3, 4, 5] }) == '{"ba":[1,2,3,4,5]}'
+	assert json.encode(StByteArray{ ba: [u8(1), 2, 3, 4, 5] }) == '{"ba":[1,2,3,4,5]}'
 }
 
 struct Aa {
