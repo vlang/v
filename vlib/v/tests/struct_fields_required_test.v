@@ -1,6 +1,6 @@
 struct Fns {
-	f1 fn () [required]
-	f2 fn () [attr1; required]
+	f1 fn () @[required]
+	f2 fn () @[attr1; required]
 }
 
 fn func() {
