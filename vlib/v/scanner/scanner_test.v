@@ -155,6 +155,7 @@ fn test_escape_rune() {
 	// will not work until v compiler on github is updated
 	// assert `\x61` == `a`
 	// assert `\u0061` == `a`
+	// assert `\U00000061` == `a`
 
 	// will not work until PR is accepted
 	// assert `\141` == `a`
@@ -180,8 +181,13 @@ fn test_escape_rune() {
 	assert result[0].kind == .chartoken
 	assert result[0].lit == r'\\'
 
-	// SINGLE CHAR UNICODE ESCAPE
+	// SINGLE CHAR 16-bit UNICODE ESCAPE
 	result = scan_tokens(r'`\u2605`')
+	assert result[0].kind == .chartoken
+	assert result[0].lit == r'★'
+
+	// SINGLE CHAR 32-bit UNICODE ESCAPE
+	result = scan_tokens(r'`\U00002605`')
 	assert result[0].kind == .chartoken
 	assert result[0].lit == r'★'
 
@@ -207,6 +213,7 @@ fn test_escape_string() {
 	assert '\x61' == 'a'
 	assert '\x62' == 'b'
 	assert '\u0061' == 'a'
+	assert '\U00000061' == 'a'
 	assert '\141' == 'a'
 	assert '\xe2\x98\x85' == '★'
 	assert '\342\230\205' == '★'
@@ -230,11 +237,19 @@ fn test_escape_string() {
 	assert result[0].kind == .string
 	assert result[0].lit == r'\\'
 
-	// STRING UNICODE ESCAPE
+	// STRING 16-bit UNICODE ESCAPE
 	result = scan_tokens(r"'\u2605'")
 	assert result[0].kind == .string
 	assert result[0].lit == r'★'
 	result = scan_tokens(r"'H\u2605H'")
+	assert result[0].kind == .string
+	assert result[0].lit == r'H★H'
+
+	// STRING 32-bit UNICODE ESCAPE
+	result = scan_tokens(r"'\U00002605'")
+	assert result[0].kind == .string
+	assert result[0].lit == r'★'
+	result = scan_tokens(r"'H\U00002605H'")
 	assert result[0].kind == .string
 	assert result[0].lit == r'H★H'
 
@@ -249,7 +264,7 @@ fn test_escape_string() {
 	assert result[0].kind == .string
 	assert result[0].lit.bytes() == [u8(0xe2), `9`, `8`, `8`, `5`]
 
-	// MIX STRING ESCAPES
+	// MIX STRING ESCAPES with UTF-16 escapes
 	result = scan_tokens(r"'\x61\u2605'")
 	assert result[0].kind == .string
 	assert result[0].lit == r'a★'
@@ -257,13 +272,45 @@ fn test_escape_string() {
 	assert result[0].kind == .string
 	assert result[0].lit == r'★a'
 
-	// MIX STRING ESCAPES with offset
+	// MIX STRING ESCAPES with UTF-16 escapes with offset
 	result = scan_tokens(r"'x  \x61\u2605\x61'")
 	assert result[0].kind == .string
 	assert result[0].lit == r'x  a★a'
 	result = scan_tokens(r"'x  \u2605\x61\u2605'")
 	assert result[0].kind == .string
 	assert result[0].lit == r'x  ★a★'
+
+	// MIX STRING ESCAPES with UTF-32 escapes
+	result = scan_tokens(r"'\x61\U00002605'")
+	assert result[0].kind == .string
+	assert result[0].lit == r'a★'
+	result = scan_tokens(r"'\U00002605\x61'")
+	assert result[0].kind == .string
+	assert result[0].lit == r'★a'
+
+	// MIX STRING ESCAPES with UTF-32 escapes with offset
+	result = scan_tokens(r"'x  \x61\U00002605\x61'")
+	assert result[0].kind == .string
+	assert result[0].lit == r'x  a★a'
+	result = scan_tokens(r"'x  \U00002605\x61\U00002605'")
+	assert result[0].kind == .string
+	assert result[0].lit == r'x  ★a★'
+
+	// MIX STRING ESCAPES with UTF-16 and UTF-32 escapes
+	result = scan_tokens(r"'\u2605\x61\U00002605'")
+	assert result[0].kind == .string
+	assert result[0].lit == r'★a★'
+	result = scan_tokens(r"'\U00002605\x61\u2605'")
+	assert result[0].kind == .string
+	assert result[0].lit == r'★a★'
+
+	// MIX STRING ESCAPES with UTF-16 and UTF-32 escapes with offset
+	result = scan_tokens(r"'x  \x61\U00002605\x61\u2605'")
+	assert result[0].kind == .string
+	assert result[0].lit == r'x  a★a★'
+	result = scan_tokens(r"'x  \x61\u2605\x61\U00002605'")
+	assert result[0].kind == .string
+	assert result[0].lit == r'x  a★a★'
 
 	// SHOULD RESULT IN ERRORS
 	// result = scan_tokens(r'`\x61\x61`') // should always result in an error
