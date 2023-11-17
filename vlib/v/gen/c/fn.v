@@ -1257,7 +1257,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	left_sym := g.table.sym(left_type)
 	final_left_sym := g.table.final_sym(left_type)
-	if left_sym.kind == .array {
+	if left_sym.kind == .array || (final_left_sym.kind == .array
+		&& node.name in ['filter', 'map', 'sort', 'sorted', 'contains', 'any', 'all']) {
 		if g.gen_array_method_call(node, left_type) {
 			return
 		}
