@@ -11,7 +11,7 @@ struct App {
 @[table: 'benchmark']
 struct Task {
 mut:
-	id     u32    [primary; serial; sql: serial]
+	id     u32    @[primary; serial; sql: serial]
 	title  string
 	status string
 }

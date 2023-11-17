@@ -234,7 +234,7 @@ Create a new file `article.v`:
 module main
 
 struct Article {
-	id    int    [primary; sql: serial]
+	id    int    @[primary; sql: serial]
 	title string
 	text  string
 }

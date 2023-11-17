@@ -21,7 +21,7 @@ pub fn (ar &Vec[T]) iter() Iter[T] {
 
 pub struct Iter[T] {
 mut:
-	v   &Vec[T] [required]
+	v   &Vec[T] @[required]
 	pos usize
 }
 

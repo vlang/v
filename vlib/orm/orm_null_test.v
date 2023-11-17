@@ -101,7 +101,7 @@ fn (db MockDB) last_id() int {
 @[table: 'foo']
 struct Foo {
 mut:
-	id u64    [primary; sql: serial]
+	id u64    @[primary; sql: serial]
 	a  string
 	//	b  string  [default: '"yes"']
 	c ?string
@@ -222,7 +222,7 @@ fn test_option_struct_fields_and_none() {
 }
 
 struct Bar {
-	id   u64     [primary; sql: serial]
+	id   u64     @[primary; sql: serial]
 	name ?string
 	age  int
 }

@@ -153,7 +153,7 @@ pub fn (t &Table) fn_type_source_signature(f &Fn) string {
 		sig += ' ?'
 	} else if f.return_type == rvoid_type {
 		sig += ' !'
-	} else if f.return_type != void_type {
+	} else if f.return_type != void_type && f.return_type != 0 {
 		return_type_sym := t.sym(f.return_type)
 		if f.return_type.has_flag(.option) {
 			sig += ' ?${return_type_sym.name}'

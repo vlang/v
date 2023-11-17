@@ -2271,7 +2271,7 @@ It's also possible to define custom default values.
 
 ```v
 struct Foo {
-	n int [required]
+	n int @[required]
 }
 ```
 
@@ -4389,12 +4389,12 @@ struct User {
 	// If a field is not [required], but is missing, it will be assumed
 	// to have its default value, like 0 for numbers, or '' for strings,
 	// and decoding will not fail.
-	name string [required]
+	name string @[required]
 	age  int
 	// Use the `skip` attribute to skip certain fields
-	foo Foo [skip]
+	foo Foo @[skip]
 	// If the field name is different in JSON, it can be specified
-	last_name string [json: lastName]
+	last_name string @[json: lastName]
 }
 
 data := '{ "name": "Frodo", "lastName": "Baggins", "age": 25 }'
@@ -4976,10 +4976,10 @@ import db.sqlite
 // sets a custom table name. Default is struct name (case-sensitive)
 @[table: 'customers']
 struct Customer {
-	id        int    [primary; sql: serial] // a field named `id` of integer type must be the first field
-	name      string [nonull]
+	id        int    @[primary; sql: serial] // a field named `id` of integer type must be the first field
+	name      string @[nonull]
 	nr_orders int
-	country   string [nonull]
+	country   string @[nonull]
 }
 
 db := sqlite.connect('customers.db')!
@@ -5385,7 +5385,7 @@ module abc
 pub struct Xyz {
 pub mut:
 	a int
-	d int [deprecated: 'use Xyz.a instead'; deprecated_after: '2999-03-01']
+	d int @[deprecated: 'use Xyz.a instead'; deprecated_after: '2999-03-01']
 	// the tags above, will produce a notice, since the deprecation date is in the far future
 }
 ```

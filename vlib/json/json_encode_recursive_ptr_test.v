@@ -4,8 +4,8 @@ struct PostTag {
 	id         string
 	parent     ?&PostTag
 	visibility string
-	created_at string    [json: 'createdAt']
-	metadata   string    [raw]
+	created_at string    @[json: 'createdAt']
+	metadata   string    @[raw]
 }
 
 fn test_main() {
