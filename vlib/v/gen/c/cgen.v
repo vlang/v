@@ -4465,7 +4465,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 			g.write('${name}.val')
 			return
 		}
-		is_option = node.info.is_option || node.obj.typ.has_flag(.option)
+		is_option = node.info.is_option || (node.obj is ast.Var && node.obj.typ.has_flag(.option))
 		if node.obj is ast.Var {
 			is_auto_heap = node.obj.is_auto_heap
 				&& (!g.is_assign_lhs || g.assign_op != .decl_assign)
