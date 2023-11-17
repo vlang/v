@@ -25,6 +25,12 @@ pub fn find_working_diff_command() !string {
 			}
 			continue
 		}
+		$if freebsd {
+			if diffcmd == 'diff' { // FreeBSD diff has no `--version` option
+				return diffcmd
+			}
+		}
+
 		p := os.execute('${diffcmd} --version')
 		if p.exit_code < 0 {
 			continue
@@ -61,7 +67,10 @@ fn opendiff_exists() bool {
 
 pub fn color_compare_files(diff_cmd string, file1 string, file2 string) string {
 	if diff_cmd != '' {
-		full_cmd := '${diff_cmd} --minimal --text --unified=2  --show-function-line="fn " ${os.quoted_path(file1)} ${os.quoted_path(file2)} '
+		mut full_cmd := '${diff_cmd} --minimal --text --unified=2  --show-function-line="fn " ${os.quoted_path(file1)} ${os.quoted_path(file2)} '
+		$if freebsd {
+			full_cmd = '${diff_cmd} --minimal --text --unified=2  ${os.quoted_path(file1)} ${os.quoted_path(file2)} '
+		}
 		x := os.execute(full_cmd)
 		if x.exit_code < 0 {
 			return 'comparison command: `${full_cmd}` not found'
