@@ -30,7 +30,7 @@ non-option fields are defied as NOT NULL when creating tables.
 ```v ignore
 import time
 
-[table: 'foos']
+@[table: 'foos']
 struct Foo {
     id          int         [primary; sql: serial]
     name        string
