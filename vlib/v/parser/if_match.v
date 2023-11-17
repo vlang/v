@@ -258,13 +258,13 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			for {
 				// Sum type match
 				parsed_type := p.parse_type()
-				ecmnts << p.eat_comments()
 				types << parsed_type
 				exprs << ast.TypeNode{
 					typ: parsed_type
 					pos: p.prev_tok.pos()
 				}
 				if p.tok.kind != .comma {
+					ecmnts << p.eat_comments()
 					break
 				}
 				p.check(.comma)
@@ -275,6 +275,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 					for p.tok.kind == .comma {
 						p.next()
 					}
+					ecmnts << p.eat_comments()
 				}
 			}
 			is_sum_type = true
@@ -284,7 +285,6 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 				p.inside_match_case = true
 				mut range_pos := p.tok.pos()
 				expr := p.expr(0)
-				ecmnts << p.eat_comments()
 				p.inside_match_case = false
 				if p.tok.kind == .dotdot {
 					p.error_with_pos('match only supports inclusive (`...`) ranges, not exclusive (`..`)',
@@ -306,6 +306,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 					exprs << expr
 				}
 				if p.tok.kind != .comma {
+					ecmnts << p.eat_comments()
 					break
 				}
 
@@ -317,6 +318,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 					for p.tok.kind == .comma {
 						p.next()
 					}
+					ecmnts << p.eat_comments()
 				}
 			}
 		}
