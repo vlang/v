@@ -637,7 +637,8 @@ To use a format specifier, follow this pattern:
 
 - flags: may be zero or more of the following: `-` to left-align output within the field, `0` to use
   `0` as the padding character instead of the default `space` character.
-  > [!NOTE]
+  > **Note**
+  >
   > V does not currently support the use of `'` or `#` as format flags, and V supports but
   > doesn't need `+` to right-align since that's the default.
 - width: may be an integer value describing the minimum width of total field to output.
@@ -651,12 +652,14 @@ To use a format specifier, follow this pattern:
   integer and will render it as octal digits, `b` requires an integer and will render it as binary
   digits, `s` requires a string (almost never used).
 
-  > [!NOTE]
+  > **Note**
+  >
   > When a numeric type can render alphabetic characters, such as hex strings or special values
   > like `infinity`, the lowercase version of the type forces lowercase alphabetics and the
   > uppercase version forces uppercase alphabetics.
 
-  > [!NOTE]
+  > **Note**
+  >
   > In most cases, it's best to leave the format type empty. Floats will be rendered by
   > default as `g`, integers will be rendered by default as `d`, and `s` is almost always redundant.
   > There are only three cases where specifying a type is recommended:
@@ -5868,8 +5871,9 @@ With the example above:
   That corresponds to `$if customflag ? {}`, but for a whole file, not just a
   single block. `customflag` should be a snake_case identifier, it can not
   contain arbitrary characters (only lower case latin letters + numbers + `_`).
-  > [!NOTE]
-> A combinatorial `_d_customflag_linux.c.v` postfix will not work.
+  > **Note**
+  >
+  > A combinatorial `_d_customflag_linux.c.v` postfix will not work.
   > If you do need a custom flag file, that has platform dependent code, use the
   > postfix `_d_customflag.v`, and then use platform dependent compile time
   > conditional blocks inside it, i.e. `$if linux {}` etc.
