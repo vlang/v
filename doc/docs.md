@@ -259,6 +259,7 @@ println('hello world')
 ```
 
 > **Note**
+>
 > If you do not explicitly use `fn main() {}`, you need to make sure that all your
 > declarations come before any variable assignment statements or top level function calls,
 > since V will consider everything after the first assignment/function call as part of your
@@ -293,11 +294,13 @@ println(os.args)
 ```
 
 > **Note**
+>
 > After a successful run, V will delete the generated executable.
 > If you want to keep it, use `v -keepc run .` instead, or just compile
 > manually with `v .` .
 
 > **Note**
+>
 > Any V compiler flags should be passed *before* the `run` command.
 > Everything after the source file/folder, will be passed to the program
 > as is - it will not be processed by V.
@@ -369,6 +372,7 @@ To allow other [modules](#module-imports) to use them, prepend `pub`. The same a
 to [structs](#structs), [constants](#constants) and [types](#type-declarations).
 
 > **Note**
+>
 > `pub` can only be used from a named module.
 > For information about creating a module, see [Modules](#modules).
 
@@ -488,6 +492,7 @@ any // similar to C's void* and Go's interface{}
 ```
 
 > **Note**
+>
 > Unlike C and Go, `int` is always a 32 bit integer.
 
 There is an exception to the rule that all operators
@@ -638,6 +643,7 @@ To use a format specifier, follow this pattern:
 - flags: may be zero or more of the following: `-` to left-align output within the field, `0` to use
   `0` as the padding character instead of the default `space` character.
   > **Note**
+  >
   > V does not currently support the use of `'` or `#` as format flags, and V supports but
   > doesn't need `+` to right-align since that's the default.
 - width: may be an integer value describing the minimum width of total field to output.
@@ -652,11 +658,13 @@ To use a format specifier, follow this pattern:
   digits, `s` requires a string (almost never used).
 
   > **Note**
+  >
   > When a numeric type can render alphabetic characters, such as hex strings or special values
   > like `infinity`, the lowercase version of the type forces lowercase alphabetics and the
   > uppercase version forces uppercase alphabetics.
 
   > **Note**
+  >
   > In most cases, it's best to leave the format type empty. Floats will be rendered by
   > default as `g`, integers will be rendered by default as `d`, and `s` is almost always redundant.
   > There are only three cases where specifying a type is recommended:
@@ -904,6 +912,7 @@ println(nums.len) // "0"
 element. This is for low-level [`unsafe`](#memory-unsafe-code) code.
 
 > **Note**
+>
 > Fields are read-only and can't be modified by the user.
 
 #### Array Initialization
@@ -951,6 +960,7 @@ for i in 0 .. 1000 {
 ```
 
 > **Note**
+>
 > The above code uses a [range `for`](#range-for) statement.
 
 You can initialize the array by accessing the `index` variable which gives
@@ -1460,6 +1470,7 @@ fn main() {
 ```
 
 > **Note**
+>
 > This will import the module as well. Also, this is not allowed for
 > constants - they must always be prefixed.
 
@@ -1479,6 +1490,7 @@ println('Your OS is ${current_os}.')
 Any imported module name can be aliased using the `as` keyword:
 
 > **Note**
+>
 > This example will not compile unless you have created `mymod/sha256/somename.v`
 > (submodule names are determined by their path, not by the names of the .v file(s) in them).
 
@@ -1802,6 +1814,7 @@ println(num)
 Constants can also be used in the range branch expressions.
 
 > **Note**
+>
 > `match` as an expression is not usable in `for` loop and `if` statements.
 
 ### In operator
@@ -1816,6 +1829,7 @@ println(4 !in nums) // true
 ```
 
 > **Note**
+>
 > `in` checks if map contains a key, not a value.
 
 ```v
@@ -2458,6 +2472,7 @@ This is an alternative to factory functions like `fn new_user() User {}` and sho
 instead.
 
 > **Note**
+>
 > Note, that these are not constructors, but simple functions. V doesn't have constructors or
 > classes.
 
@@ -2657,6 +2672,7 @@ Output: `Size: 4B, clr1.b: 136, clr2.b: 0`
 Union member access must be performed in an `unsafe` block.
 
 > **Note**
+>
 > Embedded struct arguments are not necessarily stored in the order listed.
 
 ## Functions 2
@@ -2673,6 +2689,7 @@ are a function of their arguments only, and their evaluation has no side effects
 Function arguments are immutable by default, even when [references](#references) are passed.
 
 > **Note**
+>
 > However, V is not a purely functional language.
 
 There is a compiler flag to enable global variables (`-enable-globals`), but this is
@@ -3037,6 +3054,7 @@ fn print_backtrace() // prints backtraces on stderr
 ```
 
 > **Note**
+>
 > Although the `print` functions take a string, V accepts other printable types too.
 > See below for details.
 
@@ -3471,6 +3489,7 @@ fn fn1(s Foo) {
 
 We can test the underlying type of an interface using dynamic cast operators.
 > **Note**
+>
 > Dynamic cast converts variable `s` into a pointer inside the `if` statemnts in this example:
 
 ```v oksyntax
@@ -3546,6 +3565,7 @@ They are just a convenient way to write `i.some_function()` instead of
 a convenience for writing `s.xyz()` instead of `xyz(s)`.
 
 > **Note**
+>
 > This feature is NOT a "default implementation" like in C#.
 
 For example, if a struct `cat` is wrapped in an interface `a`, that has
@@ -3895,6 +3915,7 @@ entire program, or use a control flow statement (`return`, `break`, `continue`, 
 to break from the current block.
 
 > **Note**
+>
 > `break` and `continue` can only be used inside a `for` loop.
 
 V does not have a way to forcibly "unwrap" an option (as other languages do,
@@ -4064,6 +4085,7 @@ fn main() {
 ```
 
 > **Note**
+>
 > Threads rely on the machine's CPU (number of cores/threads).
 > Be aware that OS threads spawned with `spawn`
 > have limitations in regard to concurrency, 
@@ -4466,6 +4488,7 @@ unexpected value. Assert statements can be used in any function, not just test o
 which is handy when developing new functionality, to keep your invariants in check.
 
 > **Note**
+>
 > All `assert` statements are *removed*, when you compile your program with the `-prod` flag.
 
 ### Asserts with an extra message
@@ -4515,6 +4538,7 @@ assert_continues_example.v:3: FAIL: fn main.abc: assert ii == 2
 ```
 
 > **Note**
+>
 > V also supports a command line flag `-assert continues`, which will change the
 > behaviour of all asserts globally, as if you had tagged every function with `[assert_continues]`.
 
@@ -4546,6 +4570,7 @@ To run the test file above, use `v hello_test.v`. This will check that the funct
 producing the correct output. V executes all test functions in the file.
 
 > **Note**
+>
 > All `_test.v` files (both external and internal ones), are compiled as *separate programs*.
 > In other words, you may have as many `_test.v` files, and tests in them as you like, they will
 > not affect the compilation of your other code in `.v` files normally at all, but only when you
@@ -4601,6 +4626,7 @@ failing ones, that should be run in a specific way/options by a parent _test.v
 file.
 
 > **Note**
+>
 > The path to the V compiler, is available through @VEXE, so a _test.v
 > file, can easily run *other* test files like this:
 
@@ -4658,6 +4684,7 @@ For developers willing to have more low level control, autofree can be disabled 
 memory manually. (See [attributes](#attributes)).
 
 > **Note**
+>
 > Autofree is still WIP. Until it stabilises and becomes the default, please
 > avoid using it. Right now allocations are handled by a minimal and well performing GC
 > until V's autofree engine is production ready.
@@ -5562,6 +5589,7 @@ print($embed_file(@FILE).to_string())
 ```
 
 > **Note**
+>
 > you can have arbitrary source code in the file, without problems, since the full file
 > will be embeded into the executable, produced by compiling it. Also note that printing
 > is done with `print` and not `println`, to not add another new line, missing in the
@@ -5869,7 +5897,8 @@ With the example above:
   single block. `customflag` should be a snake_case identifier, it can not
   contain arbitrary characters (only lower case latin letters + numbers + `_`).
   > **Note**
-> A combinatorial `_d_customflag_linux.c.v` postfix will not work.
+  >
+  > A combinatorial `_d_customflag_linux.c.v` postfix will not work.
   > If you do need a custom flag file, that has platform dependent code, use the
   > postfix `_d_customflag.v`, and then use platform dependent compile time
   > conditional blocks inside it, i.e. `$if linux {}` etc.
@@ -5923,6 +5952,7 @@ finding the cause: look at the `unsafe` blocks (and how they interact with
 surrounding code).
 
 > **Note**
+>
 > This is work in progress.
 
 ## Structs with reference fields
@@ -6412,6 +6442,7 @@ v -os linux .
 ```
 
 > **Note**
+>
 > Cross-compiling a windows binary on a linux machine requires the GNU C compiler for
 > MinGW-w64 (targeting Win64) to first be installed.
 
@@ -6595,6 +6626,7 @@ You can (optionally) use different flags for different targets.
 Currently the `linux`, `darwin` , `freebsd`, and `windows` flags are supported.
 
 > **Note**
+>
 > Each flag must go on its own line (for now)
 
 ```v oksyntax
@@ -6674,6 +6706,7 @@ Module {
 ```
 
 > **Note**
+>
 > @VMODROOT will be replaced by V with the *nearest parent folder,
 > where there is a v.mod file*.
 > Any .v file beside or below the folder where the v.mod file is,
@@ -6700,6 +6733,7 @@ Ordinary zero terminated C strings can be converted to V strings with
 `unsafe { &char(cstring).vstring_with_len(len) }`.
 
 > **Note**
+>
 > The `.vstring()` and `.vstring_with_len()` methods do NOT create a copy of the `cstring`,
 > so you should NOT free it after calling the method `.vstring()`.
 > If you need to make a copy of the C string (some libc APIs like `getenv` pretty much require that,
