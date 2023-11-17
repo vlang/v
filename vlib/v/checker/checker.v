@@ -135,6 +135,7 @@ mut:
 	comptime_call_pos int // needed for correctly checking use before decl for templates
 	goto_labels       map[string]ast.GotoLabel // to check for unused goto labels
 	enum_data_type    ast.Type
+	field_data_type   ast.Type
 	fn_return_type    ast.Type
 	orm_table_fields  map[string][]ast.StructField // known table structs
 	//
@@ -1470,7 +1471,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		return ast.void_type
 	} else if c.inside_comptime_for_field && typ == c.enum_data_type && node.field_name == 'value' {
 		// for comp-time enum.values
-		node.expr_type = c.comptime_fields_type[c.comptime_for_field_var]
+		node.expr_type = c.comptime_fields_type['${c.comptime_for_field_var}.typ']
 		node.typ = typ
 		return node.expr_type
 	}
