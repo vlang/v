@@ -7,6 +7,11 @@ module openssl
 // use the (older) system openssl.
 #flag linux -I/usr/local/include/openssl
 #flag linux -L/usr/local/lib
+// On FreeBSD, prefer openssl from the ports collection, because
+// it is much more likely for it to be newer, than the system
+// openssl.
+#flag freebsd -I/usr/local/include
+#flag freebsd -L/usr/local/lib
 $if $pkgconfig('openssl') {
 	#pkgconfig --cflags --libs openssl
 } $else {
