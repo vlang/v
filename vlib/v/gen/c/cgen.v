@@ -5247,7 +5247,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					g.writeln('{0};')
 					if node.exprs[0] is ast.Ident {
 						g.write('memcpy(${tmpvar}.ret_arr, ${g.expr_string(node.exprs[0])}, sizeof(${g.typ(node.types[0])})) /*ret*/')
-					} else if node.exprs[0] is ast.ArrayInit {
+					} else if node.exprs[0] in [ast.ArrayInit, ast.StructInit] {
 						tmpvar2 := g.new_tmp_var()
 						g.write('${g.typ(node.types[0])} ${tmpvar2} = ')
 						g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
