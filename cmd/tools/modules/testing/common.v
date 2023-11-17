@@ -627,6 +627,7 @@ pub fn vlib_should_be_present(parent_dir string) {
 pub fn prepare_test_session(zargs string, folder string, oskipped []string, main_label string) TestSession {
 	vexe := pref.vexe_path()
 	parent_dir := os.dir(vexe)
+	nparent_dir := parent_dir.replace('\\', '/')
 	vlib_should_be_present(parent_dir)
 	vargs := zargs.replace(vexe, '')
 	eheader(main_label)
@@ -653,11 +654,10 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 				continue
 			}
 		}
-		c := os.read_file(f) or { panic(err) }
+		c := os.read_file(fnormalised) or { panic(err) }
 		start := c#[0..testing.header_bytes_to_search_for_module_main]
 		if start.contains('module ') && !start.contains('module main') {
-			skipped_f := f.replace(os.join_path_single(parent_dir, ''), '')
-			skipped << skipped_f
+			skipped << fnormalised.replace(nparent_dir + '/', '')
 		}
 		for skip_prefix in oskipped {
 			skip_folder := skip_prefix + '/'
@@ -665,7 +665,7 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 				continue next_file
 			}
 		}
-		mains << f
+		mains << fnormalised
 	}
 	session.files << mains
 	session.skip_files << skipped
