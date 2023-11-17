@@ -48,8 +48,9 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	if mut sym.info is ast.Struct {
 		is_anon = sym.info.is_anon
 	}
+	is_array := sym.kind in [.array_fixed, .array]
 
-	if !g.inside_cinit && !is_anon {
+	if !g.inside_cinit && !is_anon && !is_array {
 		g.write('(')
 		defer {
 			g.write(')')
@@ -88,7 +89,9 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		if g.table.sym(node.typ).kind == .alias && g.table.unaliased_type(node.typ).is_ptr() {
 			g.write('&')
 		}
-		if is_multiline {
+		if is_array {
+			g.write('{')
+		} else if is_multiline {
 			g.writeln('(${styp}){')
 		} else {
 			g.write('(${styp}){')
