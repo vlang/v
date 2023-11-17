@@ -52,7 +52,7 @@ fn parse_query(query []string) ([]Module, []Module) {
 	mut errors := 0
 	for m in query {
 		ident, version := m.rsplit_once('@') or { m, '' }
-		mut mod := if ident.starts_with('https://') {
+		mut mod := if ident.starts_with('https://') || ident.starts_with('http://') {
 			name := get_name_from_url(ident) or {
 				vpm_error(err.msg())
 				errors++

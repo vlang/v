@@ -44,14 +44,21 @@ fn test_install_from_vpm_short_ident() {
 }
 
 fn test_install_from_git_url() {
-	res := os.execute_or_exit('${v} install https://github.com/vlang/markdown')
+	mut res := os.execute_or_exit('${v} install https://github.com/vlang/markdown')
 	assert res.output.contains('Installing `markdown`'), res.output
-	mod := vmod.from_file(os.join_path(test_path, 'markdown', 'v.mod')) or {
+	mut mod := vmod.from_file(os.join_path(test_path, 'markdown', 'v.mod')) or {
 		assert false, err.msg()
 		return
 	}
 	assert mod.name == 'markdown'
 	assert mod.dependencies == []string{}
+	res = os.execute_or_exit('${v} install https://github.com/vlang/vsl')
+	assert res.output.contains('Installing `vsl`'), res.output
+	mod = vmod.from_file(os.join_path(test_path, 'vsl', 'v.mod')) or {
+		assert false, err.msg()
+		return
+	}
+	assert mod.name == 'vsl'
 }
 
 fn test_install_already_existent() {
