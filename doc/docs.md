@@ -6507,6 +6507,7 @@ For all supported options check the latest help:
 **Example**
 
 ```v
+#flag freebsd -I/usr/local/include -L/usr/local/lib
 #flag -lsqlite3
 #include "sqlite3.h"
 // See also the example from https://www.sqlite.org/quickstart.html
