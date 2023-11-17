@@ -549,10 +549,18 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 	} else {
 		g.type_definitions.writeln('\tEMPTY_STRUCT_DECLARATION;')
 	}
-	ti_attrs := if !g.is_cc_msvc && s.attrs.contains('packed') {
+	mut ti_attrs := if !g.is_cc_msvc && s.attrs.contains('packed') {
 		'__attribute__((__packed__))'
 	} else {
 		''
+	}
+	if attr := s.attrs.find_first('aligned') {
+		attr_arg := if attr.arg == '' { '' } else { ' (${attr.arg})' }
+		ti_attrs += if g.is_cc_msvc {
+			'__declspec(align(${attr_arg}))'
+		} else {
+			' __attribute__((aligned${attr_arg}))'
+		}
 	}
 	g.type_definitions.write_string('}${ti_attrs}')
 	if !is_anon {
