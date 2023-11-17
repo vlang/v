@@ -540,7 +540,9 @@ windows_newline := '\r\n'      // escape special characters like in C
 assert windows_newline.len == 2
 
 // arbitrary bytes can be directly specified using `\x##` notation where `#` is
-// a hex digit aardvark_str := '\x61ardvark' assert aardvark_str == 'aardvark'
+// a hex digit
+aardvark_str := '\x61ardvark'
+assert aardvark_str == 'aardvark'
 assert '\xc0'[0] == u8(0xc0)
 
 // or using octal escape `\###` notation where `#` is an octal digit
