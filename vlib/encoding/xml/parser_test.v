@@ -7,6 +7,7 @@ const (
 	<c id="c2">
 		Sample Text
 	</c>
+	<empty/>
 	<c id="c3"/>
 	<abc id="c4"/>
 	<xyz id="c5"/>
@@ -33,6 +34,10 @@ const (
 			children: [
 				'Sample Text',
 			]
+		},
+		XMLNode{
+			name: 'empty'
+			attributes: {}
 		},
 		XMLNode{
 			name: 'c'

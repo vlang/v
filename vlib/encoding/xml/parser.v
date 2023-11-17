@@ -562,7 +562,7 @@ pub fn parse_single_node(first_char u8, mut reader io.Reader) !XMLNode {
 	tag_contents := contents.str().trim_space()
 
 	parts := tag_contents.split_any(' \t\n')
-	name := parts[0]
+	name := parts[0].trim_right('/')
 
 	// Check if it is a self-closing tag
 	if tag_contents.ends_with('/') {
