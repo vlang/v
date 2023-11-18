@@ -1710,7 +1710,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		if !c.check_types(arg_type, info.elem_type) && !c.check_types(left_type, arg_type) {
 			c.error('cannot ${method_name} `${arg_sym.name}` to `${left_sym.name}`', arg_expr.pos())
 		}
-	} else if final_left_sym.kind == .array && method_name in ['first', 'last', 'pop'] {
+	} else if final_left_sym.kind == .array
+		&& method_name in ['filter', 'map', 'sort', 'sorted', 'contains', 'any', 'all', 'first', 'last', 'pop'] {
 		return c.array_builtin_method_call(mut node, left_type, final_left_sym)
 	} else if c.pref.backend.is_js() && left_sym.name.starts_with('Promise[')
 		&& method_name == 'wait' {
@@ -2613,10 +2614,12 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		c.error('.slice() is a private method, use `x[start..end]` instead', node.pos)
 		return ast.void_type
 	}
+	unwrapped_left_type := c.unwrap_generic(left_type)
+	unaliased_left_type := c.table.unaliased_type(unwrapped_left_type)
 	array_info := if left_sym.info is ast.Array {
 		left_sym.info as ast.Array
 	} else {
-		c.table.sym(c.unwrap_generic(left_type)).info as ast.Array
+		c.table.sym(unaliased_left_type).info as ast.Array
 	}
 	elem_typ = array_info.elem_type
 	if method_name in ['filter', 'map', 'any', 'all'] {
@@ -2708,7 +2711,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		}
 	}
 	// map/filter are supposed to have 1 arg only
-	mut arg_type := left_type
+	mut arg_type := unaliased_left_type
 	for mut arg in node.args {
 		arg_type = c.check_expr_opt_call(arg.expr, c.expr(mut arg.expr))
 	}
@@ -2810,7 +2813,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		}
 	} else if method_name == 'delete' {
 		c.fail_if_immutable(mut node.left)
-		unwrapped_left_sym := c.table.sym(c.unwrap_generic(left_type))
+		unwrapped_left_sym := c.table.sym(unwrapped_left_type)
 		if method := c.table.find_method(unwrapped_left_sym, method_name) {
 			node.receiver_type = method.receiver_type
 		}

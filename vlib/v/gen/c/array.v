@@ -468,8 +468,8 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	}
 
 	ret_typ := g.typ(node.return_type)
-	ret_sym := g.table.sym(node.return_type)
-	inp_sym := g.table.sym(node.receiver_type)
+	ret_sym := g.table.final_sym(node.return_type)
+	inp_sym := g.table.final_sym(node.receiver_type)
 	ret_info := ret_sym.info as ast.Array
 	mut ret_elem_type := g.typ(ret_info.elem_type)
 	inp_info := inp_sym.info as ast.Array
@@ -581,7 +581,7 @@ fn (mut g Gen) gen_array_sorted(node ast.CallExpr) {
 		g.past_tmp_var_done(past)
 	}
 	atype := g.typ(node.return_type)
-	sym := g.table.sym(node.return_type)
+	sym := g.table.final_sym(node.return_type)
 	info := sym.info as ast.Array
 	depth := g.get_array_depth(info.elem_type)
 
@@ -601,7 +601,7 @@ fn (mut g Gen) gen_array_sorted(node ast.CallExpr) {
 // `users.sort(a.age < b.age)`
 fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	// println('filter s="$s"')
-	rec_sym := g.table.sym(node.receiver_type)
+	rec_sym := g.table.final_sym(node.receiver_type)
 	if rec_sym.kind != .array {
 		println(node.name)
 		println(g.typ(node.receiver_type))
@@ -724,7 +724,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 		g.past_tmp_var_done(past)
 	}
 
-	sym := g.table.sym(node.return_type)
+	sym := g.table.final_sym(node.return_type)
 	if sym.kind != .array {
 		verror('filter() requires an array')
 	}
@@ -1121,7 +1121,7 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 		g.past_tmp_var_done(past)
 	}
 
-	sym := g.table.sym(node.left_type)
+	sym := g.table.final_sym(node.left_type)
 	info := sym.info as ast.Array
 	// styp := g.typ(node.return_type)
 	elem_type_str := g.typ(info.elem_type)
@@ -1200,7 +1200,7 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 		g.past_tmp_var_done(past)
 	}
 
-	sym := g.table.sym(node.left_type)
+	sym := g.table.final_sym(node.left_type)
 	info := sym.info as ast.Array
 	// styp := g.typ(node.return_type)
 	elem_type_str := g.typ(info.elem_type)
