@@ -6120,6 +6120,20 @@ may negatively impact performance or even be prohibited on certain CPU architect
 - On CPU architectures that do not support unaligned memory access or when high-speed memory access
 is needed.
 
+#### `[aligned]`
+
+The `[aligned]` attribute can be added to a structure to specify a minimum alignment (in bytes). 
+Using the `[aligned]` attribute you can increase the alignment, when using `[packed]` you can decrease it.
+
+**When to Use**
+
+- When memory usage is more critical than performance, e.g., in embedded systems.
+
+**When to Avoid**
+
+- On CPU architectures that do not support unaligned memory access or when high-speed memory access
+is needed.
+
 #### `[minify]`
 
 The `[minify]` attribute can be added to a struct, allowing the compiler to reorder the fields in
