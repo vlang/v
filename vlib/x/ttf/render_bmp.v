@@ -54,7 +54,7 @@ pub mut:
 pub fn (mut bmp BitMap) clear() {
 	mut sz := bmp.width * bmp.height * bmp.bp
 	unsafe {
-		C.memset(bmp.buf, 0x00, sz)
+		vmemset(bmp.buf, 0x00, sz)
 	}
 }
 
