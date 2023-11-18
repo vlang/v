@@ -53,8 +53,9 @@ fn parse_query(query []string) ([]Module, []Module) {
 	for m in query {
 		ident, version := m.rsplit_once('@') or { m, '' }
 		is_http := if ident.starts_with('http://') {
-			vpm_warn('installing `${ident}` via http.
-${' '.repeat('warning: '.len)}`http` support is deprecated, switch to `https` to ensure future compatibility.')
+			vpm_warn('installing `${ident}` via http.',
+				details: 'Support for `http` is deprecated, use `https` to ensure future compatibility.'
+			)
 			true
 		} else {
 			false
@@ -69,6 +70,7 @@ ${' '.repeat('warning: '.len)}`http` support is deprecated, switch to `https` to
 			install_path := normalize_mod_path(os.real_path(os.join_path(settings.vmodules_path,
 				base, name)))
 			if !has_vmod(ident, install_path) {
+				vpm_error('failed to find `v.mod` for `${ident}`.')
 				errors++
 				continue
 			}
@@ -88,6 +90,16 @@ ${' '.repeat('warning: '.len)}`http` support is deprecated, switch to `https` to
 			ident_as_path := info.name.replace('.', os.path_separator)
 			install_path := normalize_mod_path(os.real_path(os.join_path(settings.vmodules_path,
 				ident_as_path)))
+			if !has_vmod(info.url, install_path) {
+				mut details := ''
+				if resp := http.head('${info.url}/issues/new') {
+					if resp.status_code == 200 {
+						issue_tmpl_url := '${info.url}/issues/new?title=Missing%20Manifest&body=${info.name}%20is%20missing%20a%20manifest,%20please%20consider%20adding%20a%20v.mod%20file%20with%20the%20modules%20metadta.'
+						details = 'Help to ensure future-compatibility by adding a `v.mod` file or opening an issue at:\n`${issue_tmpl_url}`'
+					}
+				}
+				vpm_warn('`${info.name}` is missing a manifest file.', details: details)
+			}
 			Module{
 				name: info.name
 				url: info.url
@@ -129,11 +141,7 @@ fn has_vmod(url string, install_path string) bool {
 		vpm_error('failed to retrieve module data for `${url}`.')
 		return false
 	}.status_code == 200
-	if !has_vmod {
-		vpm_error('failed to find `v.mod` for `${url}`.')
-		return false
-	}
-	return true
+	return has_vmod
 }
 
 fn get_mod_date_info(mut pp pool.PoolProcessor, idx int, wid int) &ModuleDateInfo {
@@ -384,10 +392,7 @@ fn increment_module_download_count(name string) ! {
 }
 
 fn get_manifest(path string) ?vmod.Manifest {
-	return vmod.from_file(os.join_path(path, 'v.mod')) or {
-		vpm_warn('failed to find v.mod file for `${path.all_after_last(os.path_separator)}`.')
-		return none
-	}
+	return vmod.from_file(os.join_path(path, 'v.mod')) or { return none }
 }
 
 fn resolve_dependencies(manifest ?vmod.Manifest, modules []string) {
@@ -438,8 +443,18 @@ fn vpm_error(msg string, opts ErrorOptions) {
 	}
 }
 
-fn vpm_warn(msg string) {
+fn vpm_warn(msg string, opts ErrorOptions) {
 	eprintln(term.ecolorize(term.yellow, 'warning: ') + msg)
+	if opts.details.len > 0 {
+		eprint(term.ecolorize(term.blue, 'details: '))
+		padding := ' '.repeat('details: '.len)
+		for i, line in opts.details.split_into_lines() {
+			if i > 0 {
+				eprint(padding)
+			}
+			eprintln(term.ecolorize(term.blue, line))
+		}
+	}
 }
 
 // Formatted version of the vmodules install path. E.g. `/home/user/.vmodules` -> `~/.vmodules`
