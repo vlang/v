@@ -44,14 +44,24 @@ fn test_install_from_vpm_short_ident() {
 }
 
 fn test_install_from_git_url() {
-	res := os.execute_or_exit('${v} install https://github.com/vlang/markdown')
+	mut res := os.execute_or_exit('${v} install https://github.com/vlang/markdown')
 	assert res.output.contains('Installing `markdown`'), res.output
-	mod := vmod.from_file(os.join_path(test_path, 'markdown', 'v.mod')) or {
+	mut mod := vmod.from_file(os.join_path(test_path, 'markdown', 'v.mod')) or {
 		assert false, err.msg()
 		return
 	}
 	assert mod.name == 'markdown'
 	assert mod.dependencies == []string{}
+	res = os.execute_or_exit('${v} install http://github.com/Wertzui123/HashMap')
+	assert res.output.contains('Installing `HashMap`'), res.output
+	assert res.output.contains('`http` support is deprecated, switch to `https` to ensure future compatibility.'), res.output
+	mod = vmod.from_file(os.join_path(test_path, 'wertzui123', 'hashmap', 'v.mod')) or {
+		assert false, err.msg()
+		return
+	}
+	res = os.execute_or_exit('${v} install http://github.com/Wertzui123/HashMap')
+	assert res.output.contains('Updating module `wertzui123.hashmap`'), res.output
+	assert res.output.contains('`http` support is deprecated, switch to `https` to ensure future compatibility.'), res.output
 }
 
 fn test_install_already_existent() {

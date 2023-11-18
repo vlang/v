@@ -52,13 +52,22 @@ fn parse_query(query []string) ([]Module, []Module) {
 	mut errors := 0
 	for m in query {
 		ident, version := m.rsplit_once('@') or { m, '' }
-		mut mod := if ident.starts_with('https://') {
-			name := get_name_from_url(ident) or {
+		is_http := if ident.starts_with('http://') {
+			vpm_warn('installing `${ident}` via http.
+${' '.repeat('warning: '.len)}`http` support is deprecated, switch to `https` to ensure future compatibility.')
+			true
+		} else {
+			false
+		}
+		mut mod := if is_http || ident.starts_with('https://') {
+			publisher, name := get_ident_from_url(ident) or {
 				vpm_error(err.msg())
 				errors++
 				continue
 			}
-			install_path := os.real_path(os.join_path(settings.vmodules_path, name))
+			base := if is_http { publisher } else { '' }
+			install_path := normalize_mod_path(os.real_path(os.join_path(settings.vmodules_path,
+				base, name)))
 			if !has_vmod(ident, install_path) {
 				errors++
 				continue
@@ -76,9 +85,9 @@ fn parse_query(query []string) ([]Module, []Module) {
 				errors++
 				continue
 			}
-			name_normalized := info.name.replace('-', '_').to_lower()
-			name_as_path := name_normalized.replace('.', os.path_separator)
-			install_path := os.real_path(os.join_path(settings.vmodules_path, name_as_path))
+			ident_as_path := info.name.replace('.', os.path_separator)
+			install_path := normalize_mod_path(os.real_path(os.join_path(settings.vmodules_path,
+				ident_as_path)))
 			Module{
 				name: info.name
 				url: info.url
@@ -198,14 +207,23 @@ fn get_mod_vpm_info(name string) !ModuleVpmInfo {
 	return error(errors.join_lines())
 }
 
-fn get_name_from_url(raw_url string) !string {
+fn get_ident_from_url(raw_url string) !(string, string) {
 	url := urllib.parse(raw_url) or { return error('failed to parse module URL `${raw_url}`.') }
-	owner, mut name := url.path.trim_left('/').rsplit_once('/') or {
+	publisher, mut name := url.path.trim_left('/').rsplit_once('/') or {
 		return error('failed to retrieve module name for `${url}`.')
 	}
-	vpm_log(@FILE_LINE, @FN, 'raw_url: ${raw_url}; owner: ${owner}; name: ${name}')
+	vpm_log(@FILE_LINE, @FN, 'raw_url: ${raw_url}; publisher: ${publisher}; name: ${name}')
 	name = if name.ends_with('.git') { name.replace('.git', '') } else { name }
-	return name.replace('-', '_').to_lower()
+	return publisher, name
+}
+
+fn get_name_from_url(raw_url string) !string {
+	_, name := get_ident_from_url(raw_url)!
+	return name
+}
+
+fn normalize_mod_path(path string) string {
+	return path.replace('-', '_').to_lower()
 }
 
 fn get_outdated() ![]string {
@@ -367,8 +385,7 @@ fn increment_module_download_count(name string) ! {
 
 fn get_manifest(path string) ?vmod.Manifest {
 	return vmod.from_file(os.join_path(path, 'v.mod')) or {
-		eprintln(term.ecolorize(term.yellow, 'warning: ') +
-			'failed to find v.mod file for `${path.all_after_last(os.path_separator)}`.')
+		vpm_warn('failed to find v.mod file for `${path.all_after_last(os.path_separator)}`.')
 		return none
 	}
 }
@@ -419,6 +436,10 @@ fn vpm_error(msg string, opts ErrorOptions) {
 			eprintln(term.ecolorize(term.blue, line))
 		}
 	}
+}
+
+fn vpm_warn(msg string) {
+	eprintln(term.ecolorize(term.yellow, 'warning: ') + msg)
 }
 
 // Formatted version of the vmodules install path. E.g. `/home/user/.vmodules` -> `~/.vmodules`
