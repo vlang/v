@@ -1,9 +1,2 @@
-struct main__Test {
-        int a;
 }  __attribute__((aligned))
-;
-
-struct main__Test2 {
-        int a;
-        int b;
 }  __attribute__((aligned (16)))
