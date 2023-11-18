@@ -4465,7 +4465,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 			g.write('${name}.val')
 			return
 		}
-		is_option = node.info.is_option
+		is_option = node.info.is_option || (node.obj is ast.Var && node.obj.typ.has_flag(.option))
 		if node.obj is ast.Var {
 			is_auto_heap = node.obj.is_auto_heap
 				&& (!g.is_assign_lhs || g.assign_op != .decl_assign)
@@ -4479,6 +4479,10 @@ fn (mut g Gen) ident(node ast.Ident) {
 						g.write('(')
 						if obj_sym.kind == .sum_type && !is_auto_heap {
 							g.write('*')
+							if is_option {
+								styp := g.base_type(node.obj.typ)
+								g.write('(*(${styp}*)')
+							}
 						} else if g.inside_casting_to_str && g.table.is_interface_var(node.obj) {
 							g.write('*')
 						}
@@ -4504,6 +4508,9 @@ fn (mut g Gen) ident(node ast.Ident) {
 								sym := g.table.sym(cast_sym.info.types[g.aggregate_type_idx])
 								g.write('${dot}_${sym.cname}')
 							} else {
+								if is_option {
+									g.write('.data)')
+								}
 								g.write('${dot}_${cast_sym.cname}')
 							}
 						}
