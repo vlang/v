@@ -54,14 +54,14 @@ fn test_install_from_git_url() {
 	assert mod.dependencies == []string{}
 	res = os.execute_or_exit('${v} install http://github.com/Wertzui123/HashMap')
 	assert res.output.contains('Installing `HashMap`'), res.output
-	assert res.output.contains('`http` support is deprecated, switch to `https` to ensure future compatibility.'), res.output
+	assert res.output.contains('`http` is deprecated'), res.output
 	mod = vmod.from_file(os.join_path(test_path, 'wertzui123', 'hashmap', 'v.mod')) or {
 		assert false, err.msg()
 		return
 	}
 	res = os.execute_or_exit('${v} install http://github.com/Wertzui123/HashMap')
 	assert res.output.contains('Updating module `wertzui123.hashmap`'), res.output
-	assert res.output.contains('`http` support is deprecated, switch to `https` to ensure future compatibility.'), res.output
+	assert res.output.contains('`http` is deprecated'), res.output
 }
 
 fn test_install_already_existent() {
@@ -125,7 +125,11 @@ fn test_missing_vmod_in_url() {
 	assert has_vmod('https://github.com/vlang/v', '') // head branch == `master`.
 	assert has_vmod('https://github.com/v-analyzer/v-analyzer', '') // head branch == `main`.
 	assert !has_vmod('https://github.com/octocat/octocat.github.io', '') // not a V module.
-	res := os.execute('${v} install https://github.com/octocat/octocat.github.io')
+	mut res := os.execute('${v} install https://github.com/octocat/octocat.github.io')
 	assert res.exit_code == 1
 	assert res.output.contains('failed to find `v.mod` for `https://github.com/octocat/octocat.github.io`'), res.output
+	// No error for vpm modules yet.
+	res = os.execute_or_exit('${v} install spytheman.regex')
+	assert res.output.contains('`spytheman.regex` is missing a manifest file'), res.output
+	assert res.output.contains('Installing `spytheman.regex`'), res.output
 }
