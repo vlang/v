@@ -10,13 +10,14 @@ import v.help
 import v.vmod
 
 struct VCS {
-	dir  string
-	cmd  string
+	dir  string        @[required]
+	cmd  string        @[required]
 	args struct {
-		install  string
-		path     string // the flag used to specify a path. E.g., used to explicitly work on a path during multithreaded updating.
-		update   string
-		outdated []string
+		install  string   @[required]
+		version  string   @[required] // flag to specify a version, added to install.
+		path     string   @[required] // flag to specify a path. E.g., used to explicitly work on a path during multithreaded updating.
+		update   string   @[required]
+		outdated []string @[required]
 	}
 }
 
@@ -33,7 +34,8 @@ const (
 			cmd: 'git'
 			args: struct {
 				install: 'clone --depth=1 --recursive --shallow-submodules'
-				update: 'pull --recurse-submodules' // pulling with `--depth=1` leads to conflicts, when the upstream is more than 1 commit newer
+				version: '--single-branch -b'
+				update: 'pull --recurse-submodules' // pulling with `--depth=1` leads to conflicts when the upstream has more than 1 new commits.
 				path: '-C'
 				outdated: ['fetch', 'rev-parse @', 'rev-parse @{u}']
 			}
@@ -43,6 +45,7 @@ const (
 			cmd: 'hg'
 			args: struct {
 				install: 'clone'
+				version: '' // not supported yet.
 				update: 'pull --update'
 				path: '-R'
 				outdated: ['incoming']

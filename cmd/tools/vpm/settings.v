@@ -11,9 +11,11 @@ mut:
 	is_verbose            bool
 	is_force              bool
 	server_urls           []string
-	vcs                   string
 	vmodules_path         string
 	no_dl_count_increment bool
+	// git is used by default. URL installations can specify `--hg`. For already installed modules
+	// and VPM modules that specify a different VCS in their `v.mod`, the VCS is validated separately.
+	vcs VCS
 }
 
 fn init_settings() VpmSettings {
@@ -29,8 +31,8 @@ fn init_settings() VpmSettings {
 		is_once: '--once' in opts
 		is_verbose: '-v' in opts || '--verbose' in opts
 		is_force: '-f' in opts || '--force' in opts
-		vcs: if '--hg' in opts { 'hg' } else { 'git' }
 		server_urls: cmdline.options(args, '--server-urls')
+		vcs: supported_vcs[if '--hg' in opts { 'hg' } else { 'git' }]
 		vmodules_path: os.vmodules_dir()
 		no_dl_count_increment: os.getenv('CI') != '' || (no_inc_env != '' && no_inc_env != '0')
 	}
