@@ -52,6 +52,7 @@ fn parse_query(query []string) ([]Module, []Module) {
 	mut errors := 0
 	for m in query {
 		ident, version := m.rsplit_once('@') or { m, '' }
+		println('Scanning `${ident}`...')
 		is_http := if ident.starts_with('http://') {
 			vpm_warn('installing `${ident}` via http.',
 				details: 'Support for `http` is deprecated, use `https` to ensure future compatibility.'
