@@ -18,14 +18,14 @@ fn main() {
 fn new_app() &App {
 	mut app := &App{}
 
-	os.execute_or_panic('v -b wasm -os browser src/mandelbrot.wasm.v')
+	os.execute_or_panic('v -b wasm -os browser mandelbrot.wasm.v')
 
-	app.mount_static_folder_at(os.resource_abs_path('./src'), '/')
+	app.mount_static_folder_at(os.resource_abs_path('./'), '/')
 	return app
 }
 
 @['/'; get]
 pub fn (mut app App) controller_mandelbrot() !vweb.Result {
-	file := os.read_file('src/mandelbrot.html') or { panic(err) }
+	file := os.read_file('mandelbrot.html') or { panic(err) }
 	return app.html(file)
 }
