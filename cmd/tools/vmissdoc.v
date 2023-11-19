@@ -103,12 +103,12 @@ fn (opt &Options) collect_undocumented_functions_in_path(path string) []Undocume
 }
 
 fn (opt &Options) report_undocumented_functions_in_path(path string) int {
-	mut list := opt.collect_undocumented_functions_in_path(path)
-	opt.report_undocumented_functions(list)
-	return list.len
+	list := opt.collect_undocumented_functions_in_path(path)
+	return opt.report_undocumented_functions(list)
 }
 
-fn (opt &Options) report_undocumented_functions(list []UndocumentedFN) {
+fn (opt &Options) report_undocumented_functions(list []UndocumentedFN) int {
+	mut nreports := 0
 	if list.len > 0 {
 		for undocumented_fn in list {
 			mut line_numbers := '${undocumented_fn.line}:0:'
@@ -128,6 +128,7 @@ fn (opt &Options) report_undocumented_functions(list []UndocumentedFN) {
 			}
 			if opt.deprecated {
 				println('${ofile}:${line_numbers}${undocumented_fn.signature} ${tags_str}')
+				nreports++
 			} else {
 				mut has_deprecation_tag := false
 				for tag in undocumented_fn.tags {
@@ -138,10 +139,12 @@ fn (opt &Options) report_undocumented_functions(list []UndocumentedFN) {
 				}
 				if !has_deprecation_tag {
 					println('${ofile}:${line_numbers}${undocumented_fn.signature} ${tags_str}')
+					nreports++
 				}
 			}
 		}
 	}
+	return nreports
 }
 
 fn (opt &Options) diff_undocumented_functions_in_paths(path_old string, path_new string) []UndocumentedFN {
@@ -275,8 +278,8 @@ fn main() {
 			exit(1)
 		}
 		list := opt.diff_undocumented_functions_in_paths(path_old, path_new)
-		if list.len > 0 {
-			opt.report_undocumented_functions(list)
+		nreports := opt.report_undocumented_functions(list)
+		if nreports > 0 {
 			exit(1)
 		}
 		exit(0)
