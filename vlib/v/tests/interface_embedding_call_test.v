@@ -22,3 +22,31 @@ interface ParentGreeter {
 interface Greeter {
 	greet() string
 }
+
+// for issue 16496
+interface Foo {
+	a_method()
+}
+
+fn (f Foo) foo_method() int {
+	return 0
+}
+
+interface Bar {
+	Foo
+}
+
+fn (b Bar) bar_method() int {
+	// The test calls the method of the embedded interface in the interface method
+	return b.foo_method()
+}
+
+struct Derived {}
+
+fn (d &Derived) a_method() {
+}
+
+fn test_embedding_method_call_cgen() {
+	bar := Bar(Derived{})
+	assert bar.bar_method() == 0
+}
