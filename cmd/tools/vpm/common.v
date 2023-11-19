@@ -94,7 +94,7 @@ fn parse_query(query []string) ([]Module, []Module) {
 				mut details := ''
 				if resp := http.head('${info.url}/issues/new') {
 					if resp.status_code == 200 {
-						issue_tmpl_url := '${info.url}/issues/new?title=Missing%20Manifest&body=${info.name}%20is%20missing%20a%20manifest,%20please%20consider%20adding%20a%20v.mod%20file%20with%20the%20modules%20metadta.'
+						issue_tmpl_url := '${info.url}/issues/new?title=Missing%20Manifest&body=${info.name}%20is%20missing%20a%20manifest,%20please%20consider%20adding%20a%20v.mod%20file%20with%20the%20modules%20metadata.'
 						details = 'Help to ensure future-compatibility by adding a `v.mod` file or opening an issue at:\n`${issue_tmpl_url}`'
 					}
 				}
