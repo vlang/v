@@ -114,15 +114,17 @@ fn parse_query(query []string) ([]Module, []Module) {
 			// In case the head just temporarily matches a tag, make sure that there
 			// really is a version installation before adding it as `installed_version`.
 			// NOTE: can be refined for branch installations. E.g., for `sdl`.
-			tag := refs.output.all_after_last('refs/tags/').trim_space()
-			head := if refs.output.contains('refs/heads/') {
-				refs.output.all_after_last('refs/heads/').trim_space()
-			} else {
-				tag
-			}
-			vpm_log(@FILE_LINE, @FN, 'head: ${head}, tag: ${tag}')
-			if tag == head {
-				mod.installed_version = tag
+			if refs.output.contains('refs/tags/') {
+				tag := refs.output.all_after_last('refs/tags/').trim_space()
+				head := if refs.output.contains('refs/heads/') {
+					refs.output.all_after_last('refs/heads/').trim_space()
+				} else {
+					tag
+				}
+				vpm_log(@FILE_LINE, @FN, 'head: ${head}, tag: ${tag}')
+				if tag == head {
+					mod.installed_version = tag
+				}
 			}
 		}
 		if mod.is_external {
