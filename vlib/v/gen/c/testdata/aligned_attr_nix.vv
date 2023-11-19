@@ -10,7 +10,6 @@ struct Test2 {
 }
 
 @[aligned:8]
-enum Test3 {
-	a
-	b
+union Test3 {
+	a int
 }

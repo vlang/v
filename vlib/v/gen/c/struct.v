@@ -573,7 +573,7 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 	}
 	g.type_definitions.write_string('}${ti_attrs}')
 	if !g.is_cc_msvc && aligned_attr != '' {
-		g.type_definitions.writeln(' ${aligned_attr}')
+		g.type_definitions.write_string(' ${aligned_attr}')
 	}
 	if !is_anon {
 		g.type_definitions.write_string(';')

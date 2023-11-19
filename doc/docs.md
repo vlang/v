@@ -6123,7 +6123,8 @@ is needed.
 #### `[aligned]`
 
 The `[aligned]` attribute can be added to a structure to specify a minimum alignment (in bytes). 
-Using the `[aligned]` attribute you can increase the alignment, when using `[packed]` you can decrease it.
+Using the `[aligned]` attribute you can increase the alignment, when using `[packed]` you can 
+decrease it.
 
 **When to Use**
 
