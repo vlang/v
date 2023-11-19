@@ -48,11 +48,11 @@ fn (set ComparatorSet) satisfies(ver Version) bool {
 
 fn (c Comparator) satisfies(ver Version) bool {
 	return match c.op {
-		.gt { ver.gt(c.ver) }
-		.lt { ver.lt(c.ver) }
-		.ge { ver.ge(c.ver) }
-		.le { ver.le(c.ver) }
-		.eq { ver.eq(c.ver) }
+		.gt { ver > c.ver }
+		.lt { ver < c.ver }
+		.ge { ver >= c.ver }
+		.le { ver <= c.ver }
+		.eq { ver == c.ver }
 	}
 }
 

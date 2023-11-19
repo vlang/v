@@ -118,26 +118,26 @@ fn test_compare() {
 	patch := semver.build(1, 0, 1)
 	minor := semver.build(1, 2, 3)
 	major := semver.build(2, 0, 0)
-	assert first.le(first)
-	assert first.ge(first)
-	assert !first.lt(first)
-	assert !first.gt(first)
-	assert patch.ge(first)
-	assert first.le(patch)
-	assert !first.ge(patch)
-	assert !patch.le(first)
-	assert patch.gt(first)
-	assert first.lt(patch)
-	assert !first.gt(patch)
-	assert !patch.lt(first)
-	assert minor.gt(patch)
-	assert patch.lt(minor)
-	assert !patch.gt(minor)
-	assert !minor.lt(patch)
-	assert major.gt(minor)
-	assert minor.lt(major)
-	assert !minor.gt(major)
-	assert !major.lt(minor)
+	assert first <= first
+	assert first >= first
+	assert !(first < first)
+	assert !(first > first)
+	assert patch > first
+	assert first <= patch
+	assert !(first >= patch)
+	assert !(patch <= first)
+	assert patch > first
+	assert first < patch
+	assert !(first > patch)
+	assert !(patch < first)
+	assert minor > patch
+	assert patch < minor
+	assert !(patch > minor)
+	assert !(minor < patch)
+	assert major > minor
+	assert minor < major
+	assert !(minor > major)
+	assert !(major < minor)
 }
 
 fn test_satisfies() {
