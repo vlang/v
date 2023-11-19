@@ -476,14 +476,16 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 		return
 	} else if s.is_union {
 		if g.is_cc_msvc && aligned_attr != '' {
-			g.type_definitions.writeln('${aligned_attr} ')
+			g.type_definitions.writeln('union ${aligned_attr} ${name} {')
+		} else {
+			g.type_definitions.writeln('union ${name} {')
 		}
-		g.type_definitions.writeln('union ${name} {')
 	} else {
 		if g.is_cc_msvc && aligned_attr != '' {
-			g.type_definitions.writeln('${aligned_attr} ')
+			g.type_definitions.writeln('struct ${aligned_attr} ${name} {')
+		} else {
+			g.type_definitions.writeln('struct ${name} {')
 		}
-		g.type_definitions.writeln('struct ${name} {')
 	}
 
 	if s.fields.len > 0 || s.embeds.len > 0 {
