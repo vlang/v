@@ -74,7 +74,7 @@ pub fn (ver Version) satisfies(input string) bool {
 pub fn (v1 Version) eq(v2 Version) bool {
 	return compare_eq(v1, v2)
 }
-
+// == checks if `v1` is equal to `v2`
 pub fn (v1 Version) == (v2 Version) bool {
 	return compare_eq(v1, v2)
 }
@@ -85,7 +85,7 @@ pub fn (v1 Version) gt(v2 Version) bool {
 	return compare_gt(v1, v2)
 }
 
-// lt returns `true` if `v1` is less than `v2`.
+// < checks if `v1` is less than `v2`.
 pub fn (v1 Version) < (v2 Version) bool {
 	return compare_lt(v1, v2)
 }
