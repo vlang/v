@@ -8,3 +8,9 @@ struct Test2 {
 	a int 
 	b int
 }
+
+@[aligned:8]
+enum Test3 {
+	a
+	b
+}

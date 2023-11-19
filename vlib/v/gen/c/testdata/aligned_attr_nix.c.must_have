@@ -1,2 +1,2 @@
-}  __attribute__((aligned))
+}  __attribute__((aligned (8)))
 }  __attribute__((aligned (16)))
