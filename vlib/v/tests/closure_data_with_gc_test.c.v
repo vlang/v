@@ -16,7 +16,7 @@ fn test_closure_data_is_kept_alive() {
 	for _ in 0 .. 1000 {
 		unsafe {
 			p := malloc(8)
-			C.memset(p, 0x33, 8)
+			vmemset(p, 0x33, 8)
 		}
 	}
 	$if gcboehm ? {

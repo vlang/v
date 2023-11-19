@@ -4,7 +4,7 @@
 * To verify the effect of "[keep_args_alive]", this attribute may be commented out.
 * However it is not guaranteed that then this test will fail.
 * To provoke a failure it seems to be best to use `gcc` with optimization:
-* `gcc -gc boehm -cc gcc-9 -prod test keep_args_alive_test.v`.
+* `gcc -gc boehm -cc gcc-9 -prod test keep_args_alive_test.c.v`.
 * Without optimization, pointer variables may remain on the stack even if
 * not used any more.
 */

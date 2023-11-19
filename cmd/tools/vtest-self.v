@@ -180,7 +180,7 @@ const (
 		'vlib/v/tests/orm_enum_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
 		'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
-		'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.v', // fails compilation with: undefined reference to vtable for __cxxabiv1::__function_type_info'
+		'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v', // fails compilation with: undefined reference to vtable for __cxxabiv1::__function_type_info'
 	]
 	skip_with_werror              = [
 		'do_not_remove',
@@ -259,7 +259,7 @@ const (
 		'vlib/v/tests/const_and_global_with_same_name_test.v', // error C2099: initializer is not a constant
 		'vlib/v/tests/sumtype_as_cast_1_test.v', // error: cannot support compound statement expression ({expr; expr; expr;})
 		'vlib/v/tests/sumtype_as_cast_2_test.v', // error: cannot support compound statement expression ({expr; expr; expr;})
-		'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.v', // TODO
+		'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v', // TODO
 	]
 	skip_on_windows               = [
 		'do_not_remove',
@@ -350,7 +350,7 @@ fn main() {
 
 	$if windows {
 		if github_job == 'tcc' {
-			tsession.skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.v'
+			tsession.skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v'
 		}
 	}
 
