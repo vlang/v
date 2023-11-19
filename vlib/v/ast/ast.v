@@ -586,7 +586,12 @@ pub mut:
 	pos         token.Pos // function declaration position
 }
 
-pub fn (f &FnDecl) new_method_with_receiver_type(new_type Type) FnDecl {
+pub fn (f &FnDecl) new_method_with_receiver_type(new_type_ Type) FnDecl {
+	new_type := if f.params[0].typ.is_ptr() && !new_type_.is_ptr() {
+		new_type_.ref()
+	} else {
+		new_type_
+	}
 	unsafe {
 		mut new_method := f
 		new_method.params = f.params.clone()
@@ -624,17 +629,18 @@ pub:
 	pos                   token.Pos
 	return_type_pos       token.Pos
 pub mut:
-	return_type    Type
-	receiver_type  Type // != 0, when .is_method == true
-	name           string
-	params         []Param
-	source_fn      voidptr // set in the checker, while processing fn declarations // TODO get rid of voidptr
-	usages         int
-	generic_names  []string
-	dep_names      []string // globals or consts dependent names
-	attrs          []Attr   // all fn attributes
-	is_conditional bool     // true for `[if abc]fn(){}`
-	ctdefine_idx   int      // the index of the attribute, containing the compile time define [if mytag]
+	return_type       Type
+	receiver_type     Type // != 0, when .is_method == true
+	name              string
+	params            []Param
+	source_fn         voidptr // set in the checker, while processing fn declarations // TODO get rid of voidptr
+	usages            int
+	generic_names     []string
+	dep_names         []string // globals or consts dependent names
+	attrs             []Attr   // all fn attributes
+	is_conditional    bool     // true for `[if abc]fn(){}`
+	ctdefine_idx      int      // the index of the attribute, containing the compile time define [if mytag]
+	from_embeded_type Type     // for interface only, fn from the embedded interface
 }
 
 fn (f &Fn) method_equals(o &Fn) bool {
@@ -672,7 +678,12 @@ pub fn (p &Param) specifier() string {
 	}
 }
 
-pub fn (f &Fn) new_method_with_receiver_type(new_type Type) Fn {
+pub fn (f &Fn) new_method_with_receiver_type(new_type_ Type) Fn {
+	new_type := if f.params[0].typ.is_ptr() && !new_type_.is_ptr() {
+		new_type_.ref()
+	} else {
+		new_type_
+	}
 	unsafe {
 		mut new_method := f
 		new_method.params = f.params.clone()
@@ -680,6 +691,11 @@ pub fn (f &Fn) new_method_with_receiver_type(new_type Type) Fn {
 			if new_method.params[i].typ == new_method.params[0].typ {
 				new_method.params[i].typ = new_type
 			}
+		}
+		new_method.from_embeded_type = if f.from_embeded_type != 0 {
+			f.from_embeded_type
+		} else {
+			f.params[0].typ
 		}
 		new_method.params[0].typ = new_type
 

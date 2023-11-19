@@ -1412,6 +1412,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	is_array_method_first_last_repeat := final_left_sym.kind == .array
 		&& node.name in ['first', 'last', 'repeat']
+	is_interface := left_sym.kind == .interface_
+		&& g.table.sym(node.receiver_type).kind == .interface_
 	if node.receiver_type.is_ptr() && (!left_type.is_ptr()
 		|| node.from_embed_types.len != 0 || (left_type.has_flag(.shared_f) && node.name != 'str')) {
 		// The receiver is a reference, but the caller provided a value
@@ -1461,7 +1463,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.write('(map[]){')
 			g.expr(node.left)
 			g.write('}[0]')
-		} else if node.from_embed_types.len > 0 {
+		} else if !is_interface && node.from_embed_types.len > 0 {
 			n_ptr := node.left_type.nr_muls() - 1
 			if n_ptr > 0 {
 				g.write('(')
@@ -1471,23 +1473,56 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			} else {
 				g.expr(node.left)
 			}
+		} else if is_interface && node.from_embed_types.len > 0 {
+			if g.out.last_n(1) == '&' {
+				g.go_back(1)
+			}
+			if node.receiver_type.is_ptr() && left_type.is_ptr() {
+				// (main__IFoo*)bar
+				g.write('(')
+				g.write(g.table.sym(node.from_embed_types.last()).cname)
+				g.write('*)')
+				g.expr(node.left)
+			} else if node.receiver_type.is_ptr() && !left_type.is_ptr() {
+				// (main__IFoo*)&bar
+				g.write('(')
+				g.write(g.table.sym(node.from_embed_types.last()).cname)
+				g.write('*)&')
+				g.expr(node.left)
+			} else if !node.receiver_type.is_ptr() && left_type.is_ptr() {
+				// *((main__IFoo*)bar)
+				g.write('*((')
+				g.write(g.table.sym(node.from_embed_types.last()).cname)
+				g.write('*)')
+				g.expr(node.left)
+				g.write(')')
+			} else {
+				// *((main__IFoo*)&bar)
+				g.write('*((')
+				g.write(g.table.sym(node.from_embed_types.last()).cname)
+				g.write('*)&')
+				g.expr(node.left)
+				g.write(')')
+			}
 		} else {
 			g.expr(node.left)
 		}
-		for i, embed in node.from_embed_types {
-			embed_sym := g.table.sym(embed)
-			embed_name := embed_sym.embed_name()
-			is_left_ptr := if i == 0 {
-				left_type.is_ptr()
-			} else {
-				node.from_embed_types[i - 1].is_ptr()
+		if !is_interface || node.from_embed_types.len == 0 {
+			for i, embed in node.from_embed_types {
+				embed_sym := g.table.sym(embed)
+				embed_name := embed_sym.embed_name()
+				is_left_ptr := if i == 0 {
+					left_type.is_ptr()
+				} else {
+					node.from_embed_types[i - 1].is_ptr()
+				}
+				if is_left_ptr {
+					g.write('->')
+				} else {
+					g.write('.')
+				}
+				g.write(embed_name)
 			}
-			if is_left_ptr {
-				g.write('->')
-			} else {
-				g.write('.')
-			}
-			g.write(embed_name)
 		}
 		if left_type.has_flag(.shared_f)
 			&& (left_type != node.receiver_type || is_array_method_first_last_repeat) {
