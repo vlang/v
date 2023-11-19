@@ -1148,7 +1148,6 @@ fn test_maxof_minof() {
 	assert maxof[i32]() == 2147483647
 	assert maxof[i64]() == 9223372036854775807
 	assert maxof[u8]() == 255
-	assert maxof[byte]() == 255
 	assert maxof[u16]() == 65535
 	assert maxof[u32]() == 4294967295
 	assert maxof[u64]() == 18446744073709551615
@@ -1161,7 +1160,6 @@ fn test_maxof_minof() {
 	assert minof[i32]() == -2147483648
 	assert minof[i64]() == -9223372036854775807 - 1
 	assert minof[u8]() == 0
-	assert minof[byte]() == 0
 	assert minof[u16]() == 0
 	assert minof[u32]() == 0
 	assert minof[u64]() == 0

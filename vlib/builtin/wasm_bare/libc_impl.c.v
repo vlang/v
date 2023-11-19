@@ -105,11 +105,11 @@ fn memcmp(a &C.void, b &C.void, n usize) int {
 	return 0
 }
 
-fn vsprintf(str &char, format &char, ap &byte) int {
+fn vsprintf(str &char, format &char, ap &u8) int {
 	panic('vsprintf(): string interpolation is not supported in `-freestanding`')
 }
 
-fn vsnprintf(str &char, size usize, format &char, ap &byte) int {
+fn vsnprintf(str &char, size usize, format &char, ap &u8) int {
 	panic('vsnprintf(): string interpolation is not supported in `-freestanding`')
 }
 
@@ -119,17 +119,17 @@ enum Errno {
 }
 
 // not really needed
-fn bare_read(buf &byte, count u64) (i64, Errno) {
+fn bare_read(buf &u8, count u64) (i64, Errno) {
 	return 0, Errno.eerror
 }
 
-pub fn bare_print(buf &byte, len u64) {
+pub fn bare_print(buf &u8, len u64) {
 }
 
-fn bare_eprint(buf &byte, len u64) {
+fn bare_eprint(buf &u8, len u64) {
 }
 
-pub fn write(_fd i64, _buf &byte, _count u64) i64 {
+pub fn write(_fd i64, _buf &u8, _count u64) i64 {
 	return -1
 }
 

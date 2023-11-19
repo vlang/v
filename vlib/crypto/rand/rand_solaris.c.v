@@ -6,7 +6,7 @@ module rand
 
 #include <sys/random.h>
 
-fn C.getrandom(p &byte, n usize, flags u32) int
+fn C.getrandom(p &u8, n usize, flags u32) int
 
 const (
 	read_batch_size = 256

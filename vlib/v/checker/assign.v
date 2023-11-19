@@ -537,7 +537,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			}
 			if node.op == .assign {
 				// `mut arr := [u8(1),2,3]`
-				// `arr = [byte(4),5,6]`
+				// `arr = [u8(4),5,6]`
 				left_info := left_sym.info as ast.Array
 				left_elem_type := c.table.unaliased_type(left_info.elem_type)
 				if left_type_unwrapped.nr_muls() == right_type_unwrapped.nr_muls()
