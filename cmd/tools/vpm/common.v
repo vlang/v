@@ -109,9 +109,21 @@ fn parse_query(query []string) ([]Module, []Module) {
 			}
 		}
 		mod.version = version
-		if v := os.execute_opt('git ls-remote --tags ${mod.install_path}') {
+		if refs := os.execute_opt('git ls-remote --refs ${mod.install_path}') {
 			mod.is_installed = true
-			mod.installed_version = v.output.all_after_last('/').trim_space()
+			// In case the head just temporarily matches a tag, make sure that there
+			// really is a version installation before adding it as `installed_version`.
+			// NOTE: can be refined for branch installations. E.g., for `sdl`.
+			tag := refs.output.all_after_last('refs/tags/').trim_space()
+			head := if refs.output.contains('refs/heads/') {
+				refs.output.all_after_last('refs/heads/').trim_space()
+			} else {
+				tag
+			}
+			vpm_log(@FILE_LINE, @FN, 'head: ${head}, tag: ${tag}')
+			if tag == head {
+				mod.installed_version = tag
+			}
 		}
 		if mod.is_external {
 			external_modules << mod
