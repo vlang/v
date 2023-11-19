@@ -351,7 +351,7 @@ fn (enc &Encoding) decode_(src_ []u8, mut dst []u8) !(int, bool) {
 
 // strip_newlines removes newline characters and returns the number
 // of non-newline characters copied to dst.
-// fn strip_newlines(mut dst []u8, src []byte) int {
+// fn strip_newlines(mut dst []u8, src []u8) int {
 // 	mut offset := 0
 // 	for b in src {
 // 		if b in [`\r`, `\n`] {

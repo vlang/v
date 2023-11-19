@@ -6,7 +6,7 @@ module rand
 
 #include <stdlib.h>
 
-fn C.arc4random_buf(p &byte, n usize)
+fn C.arc4random_buf(p &u8, n usize)
 
 // read returns an array of `bytes_needed` random bytes read from the OS.
 pub fn read(bytes_needed int) ![]u8 {

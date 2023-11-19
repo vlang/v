@@ -1,6 +1,6 @@
 module builtin
 
-fn C.wyhash(&byte, u64, u64, &u64) u64
+fn C.wyhash(&u8, u64, u64, &u64) u64
 
 fn C.wyhash64(u64, u64) u64
 
