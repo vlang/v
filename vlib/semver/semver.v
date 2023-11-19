@@ -91,6 +91,7 @@ pub fn (v1 Version) < (v2 Version) bool {
 	return compare_lt(v1, v2)
 }
 
+// lt returns `true` if `v1` is less than `v2`.
 @[deprecated: 'use v1 < v2 instead']
 pub fn (v1 Version) lt(v2 Version) bool {
 	return compare_lt(v1, v2)
