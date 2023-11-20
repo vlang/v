@@ -4311,6 +4311,13 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 				typ_sym = unwrapped_sym
 			}
 		}
+		.struct_ {
+			s := typ_sym.info as ast.Struct
+			if s.is_generic && typ.has_flag(.generic) && !node.is_map && !node.is_array
+				&& !node.is_farray && !node.is_gated {
+				c.error('cannot index a generic', node.pos)
+			}
+		}
 		else {}
 	}
 	is_aggregate_arr := typ_sym.kind == .aggregate
@@ -4339,10 +4346,6 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		c.error('cannot assign to s[i] since V strings are immutable\n' +
 			'(note, that variables may be mutable but string values are always immutable, like in Go and Java)',
 			node.pos)
-	}
-
-	if typ.has_flag(.generic) && !node.is_map && !node.is_array && !node.is_farray && !node.is_gated {
-		c.error('cannot index a generic', node.pos)
 	}
 
 	if !c.inside_unsafe && !c.is_builtin_mod && !c.inside_if_guard && !c.is_index_assign
