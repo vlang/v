@@ -378,10 +378,10 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 						no_needs_par = true
 					}
 				}
-				inside_casting_to_str_old := g.inside_casting_to_str
-				if !g.inside_casting_to_str && branch.cond is ast.Ident
+				inside_interface_deref_old := g.inside_interface_deref
+				if !g.inside_interface_deref && branch.cond is ast.Ident
 					&& g.table.is_interface_var(branch.cond.obj) {
-					g.inside_casting_to_str = true
+					g.inside_interface_deref = true
 				}
 				if no_needs_par {
 					g.write('if ')
@@ -394,7 +394,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				} else {
 					g.writeln(') {')
 				}
-				g.inside_casting_to_str = inside_casting_to_str_old
+				g.inside_interface_deref = inside_interface_deref_old
 			}
 		}
 		if needs_tmp_var {

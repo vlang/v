@@ -146,7 +146,7 @@ mut:
 	inside_const_opt_or_res   bool
 	inside_lambda             bool
 	inside_cinit              bool
-	inside_casting_to_str     bool
+	inside_interface_deref    bool
 	last_tmp_call_var         []string
 	loop_depth                int
 	ternary_names             map[string]string
@@ -4483,7 +4483,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 								styp := g.base_type(node.obj.typ)
 								g.write('(*(${styp}*)')
 							}
-						} else if g.inside_casting_to_str && g.table.is_interface_var(node.obj) {
+						} else if g.inside_interface_deref && g.table.is_interface_var(node.obj) {
 							g.write('*')
 						}
 					}

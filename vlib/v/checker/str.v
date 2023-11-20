@@ -41,8 +41,8 @@ fn (mut c Checker) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 }
 
 fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
-	inside_casting_to_str_save := c.inside_casting_to_str
-	c.inside_casting_to_str = true
+	inside_interface_deref_save := c.inside_interface_deref
+	c.inside_interface_deref = true
 	for i, mut expr in node.exprs {
 		mut ftyp := c.expr(mut expr)
 		if c.table.is_comptime_var(expr) {
@@ -119,7 +119,7 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 			c.error('cannot call `str()` method recursively', expr.pos())
 		}
 	}
-	c.inside_casting_to_str = inside_casting_to_str_save
+	c.inside_interface_deref = inside_interface_deref_save
 	return ast.string_type
 }
 

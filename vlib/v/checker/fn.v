@@ -591,7 +591,7 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 }
 
 fn (mut c Checker) builtin_args(mut node ast.CallExpr, fn_name string, func ast.Fn) {
-	c.inside_casting_to_str = true
+	c.inside_interface_deref = true
 	c.expected_type = ast.string_type
 	node.args[0].typ = c.expr(mut node.args[0].expr)
 	arg := node.args[0]
@@ -605,7 +605,7 @@ fn (mut c Checker) builtin_args(mut node ast.CallExpr, fn_name string, func ast.
 		c.error('`${fn_name}` cannot print variadic values', node.pos)
 	}
 	c.fail_if_unreadable(arg.expr, arg.typ, 'argument to print')
-	c.inside_casting_to_str = false
+	c.inside_interface_deref = false
 	node.return_type = ast.void_type
 	c.set_node_expected_arg_types(mut node, func)
 
