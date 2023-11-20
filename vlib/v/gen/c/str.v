@@ -119,10 +119,10 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				g.write('.data')
 				g.write(') ? _SLIT("Option(&nil)") : ')
 			} else {
-				inside_casting_to_str_old := g.inside_casting_to_str
-				g.inside_casting_to_str = false
+				inside_interface_deref_old := g.inside_interface_deref
+				g.inside_interface_deref = false
 				defer {
-					g.inside_casting_to_str = inside_casting_to_str_old
+					g.inside_interface_deref = inside_interface_deref_old
 				}
 				g.expr(expr)
 				g.write(') ? _SLIT("nil") : ')

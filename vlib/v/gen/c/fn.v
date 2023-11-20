@@ -1695,9 +1695,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	if is_print && (node.args[0].typ != ast.string_type
 		|| g.comptime_for_method.len > 0
 		|| g.table.is_comptime_var(node.args[0].expr)) {
-		g.inside_casting_to_str = true
+		g.inside_interface_deref = true
 		defer {
-			g.inside_casting_to_str = false
+			g.inside_interface_deref = false
 		}
 		mut typ := node.args[0].typ
 		if g.table.is_comptime_var(node.args[0].expr) {
@@ -1768,9 +1768,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	}
 	if !print_auto_str {
 		if is_print {
-			g.inside_casting_to_str = true
+			g.inside_interface_deref = true
 			defer {
-				g.inside_casting_to_str = false
+				g.inside_interface_deref = false
 			}
 		}
 		if g.pref.is_debug && node.name == 'panic' {
