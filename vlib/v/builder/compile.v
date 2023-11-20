@@ -308,7 +308,11 @@ pub fn (v &Builder) get_user_files() []string {
 		user_files << os.join_path(preludes_path, 'live_shared.v')
 	}
 	if v.pref.is_test {
-		user_files << os.join_path(preludes_path, 'test_runner.v')
+		if v.pref.backend == .js_node {
+			user_files << os.join_path(preludes_path, 'test_runner.v')
+		} else {
+			user_files << os.join_path(preludes_path, 'test_runner.c.v')
+		}
 		//
 		mut v_test_runner_prelude := os.getenv('VTEST_RUNNER')
 		if v.pref.test_runner != '' {

@@ -74,7 +74,7 @@ SUBCMD:
   powershell: [QUERY]       - returns PowerShell compatible completion code with completions computed from QUERY"
 )
 
-// Snooped from cmd/v/v.v, vlib/v/pref/pref.v
+// Snooped from cmd/v/v.v, vlib/v/pref/pref.c.v
 const (
 	auto_complete_commands      = [
 		// simple_cmd
