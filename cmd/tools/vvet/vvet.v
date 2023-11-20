@@ -29,7 +29,10 @@ struct Options {
 	doc_private_fns_too bool
 }
 
-const term_colors = term.can_show_color_on_stderr()
+const (
+	term_colors = term.can_show_color_on_stderr()
+	clean_seq   = ['[', '', ']', '', ' ', '']
+)
 
 fn main() {
 	vet_options := cmdline.options_after(os.args, ['vet'])
@@ -140,7 +143,7 @@ fn (mut vt Vet) vet_fn_documentation(lines []string, line string, lnumber int) {
 	if lnumber > 0 {
 		collect_tags := fn (line string) []string {
 			mut cleaned := line.all_before('/')
-			cleaned = cleaned.replace_each(['[', '', ']', '', ' ', ''])
+			cleaned = cleaned.replace_each(clean_seq)
 			return cleaned.split(',')
 		}
 		ident_fn_name := fn (line string) string {
