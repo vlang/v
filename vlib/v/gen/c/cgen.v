@@ -6396,6 +6396,15 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 fn c_name(name_ string) string {
 	name := util.no_dots(name_)
 	if c.c_reserved_chk.matches(name) {
+		return '__v_${name}'
+	}
+	return name
+}
+
+@[inline]
+fn c_fn_name(name_ string) string {
+	name := util.no_dots(name_)
+	if c.c_reserved_chk.matches(name) {
 		return '_v_${name}'
 	}
 	return name
@@ -6740,7 +6749,7 @@ fn (mut g Gen) interface_table() string {
 		for k, method in inter_info.methods {
 			methodidx[method.name] = k
 			ret_styp := g.typ(method.return_type)
-			methods_struct_def.write_string('\t${ret_styp} (*_method_${c_name(method.name)})(void* _')
+			methods_struct_def.write_string('\t${ret_styp} (*_method_${c_fn_name(method.name)})(void* _')
 			// the first param is the receiver, it's handled by `void*` above
 			for i in 1 .. method.params.len {
 				arg := method.params[i]
@@ -6865,7 +6874,7 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 			if st == ast.voidptr_type || st == ast.nil_type {
 				for mname, _ in methodidx {
 					if g.pref.build_mode != .build_module {
-						methods_struct.writeln('\t\t._method_${c_name(mname)} = (void*) 0,')
+						methods_struct.writeln('\t\t._method_${c_fn_name(mname)} = (void*) 0,')
 					}
 				}
 			}
@@ -6975,7 +6984,7 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 				}
 				if g.pref.build_mode != .build_module && st != ast.voidptr_type
 					&& st != ast.nil_type {
-					methods_struct.writeln('\t\t._method_${c_name(method.name)} = (void*) ${method_call},')
+					methods_struct.writeln('\t\t._method_${c_fn_name(method.name)} = (void*) ${method_call},')
 				}
 			}
 
