@@ -100,6 +100,8 @@ fn parse_query(query []string) ([]Module, []Module) {
 				is_git_module = info.vcs == 'git'
 				if !is_git_module && version != '' {
 					vpm_error('skipping `${info.name}`, version installs are currently only supported for projects using `git`.')
+					errors++
+					continue
 				}
 				info_vcs
 			} else {
