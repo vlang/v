@@ -217,10 +217,10 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 		mut used_submod_prefixes := map[string]bool{}
 		for dc in vd.docs {
 			submod_prefix := dc.head.name.all_before('.')
-			if used_submod_prefixex[submod_prefix] {
+			if used_submod_prefixes[submod_prefix] {
 				continue
 			}
-			used_submod_prefixex[submod_prefix] = true
+			used_submod_prefixes[submod_prefix] = true
 			mut href_name := './${dc.head.name}.html'
 			if (cfg.is_vlib && dc.head.name == 'builtin' && !cfg.include_readme)
 				|| dc.head.name == 'README' {
