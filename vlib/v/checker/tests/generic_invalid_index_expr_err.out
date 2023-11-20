@@ -1,0 +1,7 @@
+vlib/v/checker/tests/generic_invalid_index_expr_err.vv:7:3: error: cannot index a generic
+    5 | 
+    6 | fn (mut h Heap[T]) insert(mut element T, pos int) {
+    7 |     h[pos] = element
+      |      ~~~~~
+    8 | }
+    9 |

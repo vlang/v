@@ -4341,6 +4341,10 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			node.pos)
 	}
 
+	if typ.has_flag(.generic) && !node.is_map && !node.is_array && !node.is_farray && !node.is_gated {
+		c.error('cannot index a generic', node.pos)
+	}
+
 	if !c.inside_unsafe && !c.is_builtin_mod && !c.inside_if_guard && !c.is_index_assign
 		&& typ_sym.kind == .map && node.or_expr.stmts.len == 0 {
 		elem_type := c.table.value_type(typ)
