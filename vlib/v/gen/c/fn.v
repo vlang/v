@@ -457,7 +457,7 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) string {
 	if node.language == .c {
 		name = util.no_dots(name)
 	} else {
-		name = c_name(name)
+		name = c_fn_name(name)
 	}
 
 	if node.generic_names.len > 0 {
@@ -1235,7 +1235,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.expr(node.left)
 		}
 		dot := g.dot_or_ptr(left_type)
-		mname := c_name(node.name)
+		mname := c_fn_name(node.name)
 		g.write('${dot}_typ]._method_${mname}(')
 		if node.left.is_auto_deref_var() && left_type.nr_muls() > 1 {
 			g.write('(')
@@ -1585,7 +1585,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			ast_type := node.args[0].expr as ast.TypeNode
 			// `json.decode(User, s)` => json.decode_User(s)
 			typ := c_name(g.typ(ast_type.typ))
-			fn_name := c_name(name) + '_' + typ
+			fn_name := c_fn_name(name) + '_' + typ
 			g.gen_json_for_type(ast_type.typ)
 			g.empty_line = true
 			g.writeln('// json.decode')
@@ -1612,7 +1612,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		// Skip "C."
 		name = util.no_dots(name[2..])
 	} else {
-		name = c_name(name)
+		name = c_fn_name(name)
 	}
 	if g.pref.translated || g.file.is_translated || node.is_file_translated {
 		// For `[c: 'P_TryMove'] fn p_trymove( ... `
@@ -1678,7 +1678,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			expr := node.args[0].expr
 			typ_sym := g.table.sym(typ)
 			if typ_sym.kind == .interface_ && (typ_sym.info as ast.Interface).defines_method('str') {
-				g.write('${c_name(print_method)}(')
+				g.write('${c_fn_name(print_method)}(')
 				rec_type_name := util.no_dots(g.cc_type(typ, false))
 				g.write('${c_name(rec_type_name)}_name_table[')
 				g.expr(expr)
@@ -1694,9 +1694,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				tmp := g.new_tmp_var()
 				g.write('string ${tmp} = ')
 				g.gen_expr_to_string(expr, typ)
-				g.writeln('; ${c_name(print_method)}(${tmp}); string_free(&${tmp});')
+				g.writeln('; ${c_fn_name(print_method)}(${tmp}); string_free(&${tmp});')
 			} else {
-				g.write('${c_name(print_method)}(')
+				g.write('${c_fn_name(print_method)}(')
 				if expr is ast.ComptimeSelector {
 					key_str := g.get_comptime_selector_key_type(expr)
 					if key_str != '' {
