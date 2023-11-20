@@ -336,7 +336,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 						node.params[1].typ) {
 						c.error('expected `${receiver_sym.name}` not `${param_sym.name}` - both operands must be the same type for operator overloading',
 							node.params[1].type_pos)
-					} else if node.name in ['<', '=='] && node.return_type != ast.bool_type {
+					} else if node.return_type != ast.bool_type && node.name in ['<', '=='] {
 						c.error('operator comparison methods should return `bool`', node.pos)
 					} else if parent_sym.is_primitive() {
 						// aliases of primitive types are explicitly allowed
@@ -728,7 +728,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 		}
 		panic('unreachable')
-	} else if node.args.len > 0 && fn_name == 'json.encode' && node.args[0].typ.has_flag(.shared_f) {
+	} else if node.args.len > 0 && node.args[0].typ.has_flag(.shared_f) && fn_name == 'json.encode' {
 		c.error('json.encode cannot handle shared data', node.pos)
 		return ast.void_type
 	} else if node.args.len > 0 && fn_name == 'json.decode' {
@@ -801,7 +801,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		}
 	}
 	// try prefix with current module as it would have never gotten prefixed
-	if !found && !fn_name.contains('.') && node.mod != 'builtin' {
+	if !found && node.mod != 'builtin' && !fn_name.contains('.') {
 		name_prefixed := '${node.mod}.${fn_name}'
 		if f := c.table.find_fn(name_prefixed) {
 			node.name = name_prefixed
@@ -2572,10 +2572,7 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type ast.
 				c.table.find_or_register_array(info.value_type)
 			}
 			ret_type = ast.Type(typ)
-			if method_name == 'keys' && info.key_type.has_flag(.generic) {
-				ret_type = ret_type.set_flag(.generic)
-			}
-			if method_name == 'values' && info.value_type.has_flag(.generic) {
+			if info.key_type.has_flag(.generic) {
 				ret_type = ret_type.set_flag(.generic)
 			}
 		}
@@ -2614,7 +2611,7 @@ fn (mut c Checker) ensure_same_array_return_type(mut node ast.CallExpr, left_typ
 fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type ast.Type, left_sym ast.TypeSymbol) ast.Type {
 	method_name := node.name
 	mut elem_typ := ast.void_type
-	if method_name == 'slice' && !c.is_builtin_mod {
+	if !c.is_builtin_mod && method_name == 'slice' {
 		c.error('.slice() is a private method, use `x[start..end]` instead', node.pos)
 		return ast.void_type
 	}
@@ -2646,7 +2643,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			// position of `it` doesn't matter
 			scope_register_it(mut node.scope, node.pos, elem_typ)
 		}
-	} else if method_name == 'sorted_with_compare' && node.args.len == 1 {
+	} else if node.args.len == 1 && method_name == 'sorted_with_compare' {
 		if node.args.len > 0 && mut node.args[0].expr is ast.LambdaExpr {
 			c.support_lambda_expr_in_sort(elem_typ.ref(), ast.int_type, mut node.args[0].expr)
 		}

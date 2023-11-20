@@ -395,7 +395,7 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 		}
 	}
 	// After the main checker run, run the line info check, print line info, and exit (if it's present)
-	if c.pref.line_info != '' && !c.pref.linfo.is_running { //'' && c.pref.linfo.line_nr == 0 {
+	if !c.pref.linfo.is_running && c.pref.line_info != '' { //'' && c.pref.linfo.line_nr == 0 {
 		// c.do_line_info(c.pref.line_info, ast_files)
 		println('setting is_running=true,  pref.path=${c.pref.linfo.path} curdir' + os.getwd())
 		c.pref.linfo.is_running = true
@@ -963,7 +963,7 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 	styp := c.table.type_to_str(utyp)
 	typ_sym := c.table.sym(utyp)
 	mut inter_sym := c.table.sym(interface_type)
-	if inter_sym.mod !in [typ_sym.mod, c.mod] && !inter_sym.is_pub && typ_sym.mod != 'builtin' {
+	if !inter_sym.is_pub && inter_sym.mod !in [typ_sym.mod, c.mod] && typ_sym.mod != 'builtin' {
 		c.error('`${styp}` cannot implement private interface `${inter_sym.name}` of other module',
 			pos)
 		return false
@@ -2321,7 +2321,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			c.error('hash statements are only allowed in backend specific files such "x.js.v" and "x.go.v"',
 				node.pos)
 		}
-		if c.mod == 'main' && c.pref.backend != .golang {
+		if c.pref.backend != .golang && c.mod == 'main' {
 			c.error('hash statements are not allowed in the main module. Place them in a separate module.',
 				node.pos)
 		}
@@ -4600,7 +4600,7 @@ fn (c &Checker) check_struct_signature(from ast.Struct, to ast.Struct) bool {
 fn (mut c Checker) fetch_field_name(field ast.StructField) string {
 	mut name := field.name
 	for attr in field.attrs {
-		if attr.kind == .string && attr.name == 'sql' && attr.arg != '' {
+		if attr.kind == .string && attr.arg != '' && attr.name == 'sql' {
 			name = attr.arg
 			break
 		}
