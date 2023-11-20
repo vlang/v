@@ -55,14 +55,13 @@ fn cb_zip_extract(filename &&char, arg &&char) int {
 	return 0
 }
 
-// CompressionLevel lists compression levels, see in "thirdparty/zip/miniz.h"
 pub enum CompressionLevel {
-	no_compression      = 0
-	best_speed          = 1
-	best_compression    = 9
-	uber_compression    = 10
-	default_level       = 6
-	default_compression = -1
+	no_compression      = C.MZ_NO_COMPRESSION
+	best_speed          = C.MZ_BEST_SPEED
+	best_compression    = C.MZ_BEST_COMPRESSION
+	uber_compression    = C.MZ_UBER_COMPRESSION
+	default_level       = C.MZ_DEFAULT_LEVEL
+	default_compression = C.MZ_DEFAULT_COMPRESSION
 }
 
 // OpenMode lists the opening modes
