@@ -976,7 +976,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			return p.for_stmt()
 		}
 		.name {
-			if p.tok.lit == 'sql' && p.peek_tok.kind == .name {
+			if p.peek_tok.kind == .name && p.tok.lit == 'sql' {
 				return p.sql_stmt()
 			}
 			if p.peek_tok.kind == .colon {
@@ -2425,7 +2425,7 @@ fn (p &Parser) is_generic_call() bool {
 	}
 
 	if kind2 == .name {
-		if tok2.lit == 'map' && kind3 == .lsbr {
+		if kind3 == .lsbr && tok2.lit == 'map' {
 			// case 2
 			return true
 		}
@@ -2554,7 +2554,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 	// p.warn('resetting')
 	p.expr_mod = ''
 	// `map[string]int` initialization
-	if p.tok.lit == 'map' && p.peek_tok.kind == .lsbr {
+	if p.peek_tok.kind == .lsbr && p.tok.lit == 'map' {
 		mut pos := p.tok.pos()
 		mut map_type := p.parse_map_type()
 		if p.tok.kind == .lcbr {
@@ -2648,12 +2648,8 @@ fn (mut p Parser) name_expr() ast.Expr {
 	if p.peek_tok.kind == .dot && !known_var && (language != .v || p.known_import(p.tok.lit)
 		|| p.mod.all_after_last('.') == p.tok.lit) {
 		// p.tok.lit has been recognized as a module
-		if language == .c {
-			mod = 'C'
-		} else if language == .js {
-			mod = 'JS'
-		} else if language == .wasm {
-			mod = 'WASM'
+		if language in [.c, .js, .wasm] {
+			mod = language.str().to_upper()
 		} else {
 			if p.tok.lit in p.imports {
 				// mark the imported module as used

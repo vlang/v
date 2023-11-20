@@ -303,37 +303,43 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 	for_val := p.check_name()
 	mut kind := ast.ComptimeForKind.methods
 	p.open_scope()
-	if for_val == 'methods' {
-		p.scope.register(ast.Var{
-			name: val_var
-			typ: p.table.find_type_idx('FunctionData')
-			pos: var_pos
-		})
-	} else if for_val == 'values' {
-		p.scope.register(ast.Var{
-			name: val_var
-			typ: p.table.find_type_idx('EnumData')
-			pos: var_pos
-		})
-		kind = .values
-	} else if for_val == 'fields' {
-		p.scope.register(ast.Var{
-			name: val_var
-			typ: p.table.find_type_idx('FieldData')
-			pos: var_pos
-		})
-		kind = .fields
-	} else if for_val == 'attributes' {
-		p.scope.register(ast.Var{
-			name: val_var
-			typ: p.table.find_type_idx('StructAttribute')
-			pos: var_pos
-		})
-		kind = .attributes
-	} else {
-		p.error_with_pos('unknown kind `${for_val}`, available are: `methods`, `fields`, `values`, or `attributes`',
-			p.prev_tok.pos())
-		return ast.ComptimeFor{}
+	match for_val {
+		'methods' {
+			p.scope.register(ast.Var{
+				name: val_var
+				typ: p.table.find_type_idx('FunctionData')
+				pos: var_pos
+			})
+		}
+		'values' {
+			p.scope.register(ast.Var{
+				name: val_var
+				typ: p.table.find_type_idx('EnumData')
+				pos: var_pos
+			})
+			kind = .values
+		}
+		'fields' {
+			p.scope.register(ast.Var{
+				name: val_var
+				typ: p.table.find_type_idx('FieldData')
+				pos: var_pos
+			})
+			kind = .fields
+		}
+		'attributes' {
+			p.scope.register(ast.Var{
+				name: val_var
+				typ: p.table.find_type_idx('StructAttribute')
+				pos: var_pos
+			})
+			kind = .attributes
+		}
+		else {
+			p.error_with_pos('unknown kind `${for_val}`, available are: `methods`, `fields`, `values`, or `attributes`',
+				p.prev_tok.pos())
+			return ast.ComptimeFor{}
+		}
 	}
 	spos := p.tok.pos()
 	stmts := p.parse_block()
