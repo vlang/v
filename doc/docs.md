@@ -6107,7 +6107,7 @@ sure that the access index will be valid.
 
 #### `[packed]`
 
-The `[packed]` attribute can be applied to a structure to create an unaligned memory layout,
+The `@[packed]` attribute can be applied to a structure to create an unaligned memory layout,
 which decreases the overall memory footprint of the structure. Using the `[packed]` attribute
 may negatively impact performance or even be prohibited on certain CPU architectures.
 
@@ -6124,10 +6124,9 @@ is needed.
 
 The `@[aligned]` attribute can be applied to a structure or union to specify a minimum alignment
 (in bytes) for variables of that type. Using the `@[aligned]` attribute you can only *increase*
-the default alignment. 
-Use `@[packed]` you want to *decrease* it. The alignment of any struct or union, should be at
-least a perfect multiple of the lowest common multiple of the alignments of all of the members
-of the struct or union.
+the default alignment. Use `@[packed]` if you want to *decrease* it. The alignment of any struct
+or union, should be at least a perfect multiple of the lowest common multiple of the alignments of
+all of the members of the struct or union.
 
 Example:
 ```v
@@ -6148,14 +6147,15 @@ specialised machine instructions, that do require a specific alignment to work.
 
 - On CPU architectures, that do not support unaligned memory access. If you are not working on
 performance critical algorithms, you do not really need it, since the proper minimum alignment
-is CPU specific.
+is CPU specific, and the compiler already usually will choose a good default for you.
 
-You can leave out the alignment factor, i.e. use just `@[aligned]`, in which case the compiler
-will align a type to the maximum useful alignment for the target machine you are compiling for,
-i.e. the alignment will be the largest alignment which is ever used for any data type on the
-target machine. Doing this can often make copy operations more efficient, because the compiler
-can choose whatever instructions copy the biggest chunks of memory, when performing copies to or
-from the variables which have types that you have aligned this way.
+> **Note**
+> You can leave out the alignment factor, i.e. use just `@[aligned]`, in which case the compiler
+> will align a type to the maximum useful alignment for the target machine you are compiling for,
+> i.e. the alignment will be the largest alignment which is ever used for any data type on the
+> target machine. Doing this can often make copy operations more efficient, because the compiler
+> can choose whatever instructions copy the biggest chunks of memory, when performing copies to or
+> from the variables which have types that you have aligned this way.
 
 See also ["What Every Programmer Should Know About Memory", by Ulrich Drepper](https://people.freebsd.org/~lstewart/articles/cpumemory.pdf) .
 
