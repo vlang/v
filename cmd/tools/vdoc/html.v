@@ -214,7 +214,7 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 	}
 	// write nav1
 	if cfg.is_multi || vd.docs.len > 1 {
-		mut used_submod_prefixex := map[string]bool{}
+		mut used_submod_prefixes := map[string]bool{}
 		for dc in vd.docs {
 			submod_prefix := dc.head.name.all_before('.')
 			if used_submod_prefixex[submod_prefix] {
