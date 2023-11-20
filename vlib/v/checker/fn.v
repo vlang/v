@@ -2572,7 +2572,10 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type ast.
 				c.table.find_or_register_array(info.value_type)
 			}
 			ret_type = ast.Type(typ)
-			if info.key_type.has_flag(.generic) {
+			if info.key_type.has_flag(.generic) && method_name == 'keys' {
+				ret_type = ret_type.set_flag(.generic)
+			}
+			if info.value_type.has_flag(.generic) && method_name == 'values' {
 				ret_type = ret_type.set_flag(.generic)
 			}
 		}
