@@ -13,16 +13,17 @@ import v.pref
 import v.util { tabs }
 
 const (
-	css_js_assets               = ['doc.css', 'normalize.css', 'doc.js', 'dark-mode.js']
-	default_theme               = os.resource_abs_path('theme')
-	link_svg                    = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M0 0h24v24H0z" fill="none"/><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>'
+	css_js_assets         = ['doc.css', 'normalize.css', 'doc.js', 'dark-mode.js']
+	default_theme         = os.resource_abs_path('theme')
+	link_svg              = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M0 0h24v24H0z" fill="none"/><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>'
 
-	single_quote                = "'"
-	double_quote                = '"'
-	no_quotes_replacement       = [single_quote, '', double_quote, '']
+	single_quote          = "'"
+	double_quote          = '"'
+	no_quotes_replacement = [single_quote, '', double_quote, '']
 
-	html_tag_escape_replacement = ['<', '&lt;', '>', '&gt;']
-	html_tag_escape_re          = regex.regex_opt(r'`.+[(&lt;)(&gt;)].+`') or { panic(err) }
+	html_tag_escape_re    = regex.regex_opt(r'`.+[(&lt;)(&gt;)].+`') or { panic(err) }
+	html_tag_escape_seq   = ['<', '&lt;', '>', '&gt;']
+	md_script_escape_seq  = ['<script>', '`', '</script>', '`']
 )
 
 enum HighlightTokenTyp {
@@ -213,14 +214,13 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 	}
 	// write nav1
 	if cfg.is_multi || vd.docs.len > 1 {
-		mut used_submod_prefix := []string{}
-		for i, dc in vd.docs {
-			names := dc.head.name.split('.')
-			submod_prefix := if names.len > 1 { names[0] } else { dc.head.name }
-			if i - 1 >= 0 && submod_prefix in used_submod_prefix {
+		mut used_submod_prefixex := map[string]bool{}
+		for dc in vd.docs {
+			submod_prefix := dc.head.name.all_before('.')
+			if used_submod_prefixex[submod_prefix] {
 				continue
 			}
-			used_submod_prefix << submod_prefix
+			used_submod_prefixex[submod_prefix] = true
 			mut href_name := './${dc.head.name}.html'
 			if (cfg.is_vlib && dc.head.name == 'builtin' && !cfg.include_readme)
 				|| dc.head.name == 'README' {
@@ -424,8 +424,7 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 	// Allow README.md to go through unescaped except for script tags
 	escaped_html := if head && is_module_readme(dn) {
 		// Strip markdown [TOC] directives, since we generate our own.
-		stripped := comments.replace('[TOC]', '')
-		markdown_escape_script_tags(stripped)
+		comments.replace('[TOC]', '').replace_each(md_script_escape_seq)
 	} else {
 		html_tag_escape(comments)
 	}
@@ -494,7 +493,7 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 }
 
 fn html_tag_escape(str string) string {
-	escaped_string := str.replace_each(html_tag_escape_replacement)
+	escaped_string := str.replace_each(html_tag_escape_seq)
 	mut re := html_tag_escape_re
 	if re.find_all_str(escaped_string).len > 0 {
 		return str
