@@ -1025,7 +1025,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 					expr: right_where_expr
 					expr_type: (right_where_expr.info as ast.IdentVar).typ
 					typ: (right_where_expr.info as ast.IdentVar).typ
-					scope: 0
+					scope: unsafe { nil }
 				}
 				mut sql_expr_select_array := ast.SqlExpr{
 					typ: field.typ.set_flag(.result)

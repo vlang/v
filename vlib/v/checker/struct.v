@@ -690,10 +690,19 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							init_field.pos)
 					}
 				} else {
-					if exp_type.is_ptr() && !got_type.is_any_kind_of_pointer()
-						&& init_field.expr.str() != '0' && !exp_type.has_flag(.option) {
-						c.error('reference field must be initialized with reference',
-							init_field.pos)
+					is_unsafe_0 := init_field.expr is ast.UnsafeExpr
+						&& (init_field.expr as ast.UnsafeExpr).expr.str() == '0'
+					if exp_type.is_ptr() && !is_unsafe_0 && !got_type.is_any_kind_of_pointer()
+						&& !exp_type.has_flag(.option) {
+						if init_field.expr.str() == '0' {
+							if !c.inside_unsafe && c.mod != 'builtin' && type_sym.language == .v {
+								c.note('assigning `0` to a reference field is only allowed in `unsafe` blocks',
+									init_field.pos)
+							}
+						} else {
+							c.error('reference field must be initialized with reference',
+								init_field.pos)
+						}
 					} else if exp_type.is_pointer() && !got_type.is_any_kind_of_pointer()
 						&& !got_type.is_int() {
 						got_typ_str := c.table.type_to_str(got_type)

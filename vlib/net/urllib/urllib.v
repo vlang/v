@@ -470,7 +470,7 @@ fn parse_url(rawurl string, via_request bool) !URL {
 		return error(error_msg('parse_url: empty URL', rawurl))
 	}
 	mut url := URL{
-		user: 0
+		user: unsafe { nil }
 	}
 	if rawurl == '*' {
 		url.path = '*'
