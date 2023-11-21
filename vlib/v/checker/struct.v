@@ -48,7 +48,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			struct_sym.info.fields.sort_with_compare(minify_sort_fn)
 		}
 		for attr in node.attrs {
-			if attr.name == 'typedef' && node.language != .c {
+			if node.language != .c && attr.name == 'typedef' {
 				c.error('`typedef` attribute can only be used with C structs', node.pos)
 			}
 		}
@@ -827,7 +827,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				}
 				*/
 				// Check for `[required]` struct attr
-				if field.attrs.contains('required') && !node.no_keys && !node.has_update_expr {
+				if !node.no_keys && !node.has_update_expr && field.attrs.contains('required') {
 					mut found := false
 					for init_field in node.init_fields {
 						if field.name == init_field.name {
