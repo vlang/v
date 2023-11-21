@@ -339,7 +339,12 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 			return c.eval_comptime_const_expr(expr.expr, nlevel + 1)
 		}
 		ast.EnumVal {
-			if val := c.table.find_enum_field_val(expr.enum_name, expr.val) {
+			enum_name := if expr.enum_name == '' {
+				c.table.type_to_str(c.expected_type)
+			} else {
+				expr.enum_name
+			}
+			if val := c.table.find_enum_field_val(enum_name, expr.val) {
 				return val
 			}
 		}
@@ -415,7 +420,24 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 		}
 		ast.InfixExpr {
 			left := c.eval_comptime_const_expr(expr.left, nlevel + 1)?
+			saved_expected_type := c.expected_type
+			if expr.left is ast.EnumVal {
+				c.expected_type = expr.left.typ
+			} else if expr.left is ast.InfixExpr {
+				mut infixexpr := expr
+				for {
+					if infixexpr.left is ast.InfixExpr {
+						infixexpr = infixexpr.left as ast.InfixExpr
+					} else {
+						break
+					}
+				}
+				if mut infixexpr.left is ast.EnumVal {
+					c.expected_type = infixexpr.left.typ
+				}
+			}
 			right := c.eval_comptime_const_expr(expr.right, nlevel + 1)?
+			c.expected_type = saved_expected_type
 			if left is string && right is string {
 				match expr.op {
 					.plus {
