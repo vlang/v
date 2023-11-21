@@ -11,17 +11,15 @@ import log
 
 struct Module {
 mut:
-	// Fields determined by the url or the info received from the VPM API.
-	name string
-	url  string
-	vcs  string
-	// Fields based on preference / environment.
+	name               string
+	url                string
 	version            string // specifies the requested version.
 	install_path       string
 	install_path_fmted string
+	installed_version  string
 	is_installed       bool
 	is_external        bool
-	installed_version  string
+	vcs                ?VCS
 }
 
 struct ModuleVpmInfo {
@@ -50,6 +48,7 @@ const home_dir = os.home_dir()
 fn parse_query(query []string) ([]Module, []Module) {
 	mut vpm_modules, mut external_modules := []Module{}, []Module{}
 	mut errors := 0
+	is_git_setting := settings.vcs.cmd == 'git'
 	for m in query {
 		ident, version := m.rsplit_once('@') or { m, '' }
 		println('Scanning `${ident}`...')
@@ -62,15 +61,17 @@ fn parse_query(query []string) ([]Module, []Module) {
 			false
 		}
 		mut mod := if is_http || ident.starts_with('https://') {
+			// External module.
 			publisher, name := get_ident_from_url(ident) or {
 				vpm_error(err.msg())
 				errors++
 				continue
 			}
+			// Resolve path, verify existence of manifest.
 			base := if is_http { publisher } else { '' }
 			install_path := normalize_mod_path(os.real_path(os.join_path(settings.vmodules_path,
 				base, name)))
-			if !has_vmod(ident, install_path) {
+			if is_git_setting && !has_vmod(ident, install_path) {
 				vpm_error('failed to find `v.mod` for `${ident}`.')
 				errors++
 				continue
@@ -79,19 +80,43 @@ fn parse_query(query []string) ([]Module, []Module) {
 				name: name
 				url: ident
 				install_path: install_path
-				install_path_fmted: fmt_mod_path(install_path)
 				is_external: true
 			}
 		} else {
+			// VPM registered module.
 			info := get_mod_vpm_info(ident) or {
 				vpm_error('failed to retrieve metadata for `${ident}`.', details: err.msg())
 				errors++
 				continue
 			}
+			// Verify VCS.
+			mut is_git_module := true
+			vcs := if info.vcs != '' {
+				info_vcs := supported_vcs[info.vcs] or {
+					vpm_error('skipping `${info.name}`, since it uses an unsupported version control system `${info.vcs}`.')
+					errors++
+					continue
+				}
+				is_git_module = info.vcs == 'git'
+				if !is_git_module && version != '' {
+					vpm_error('skipping `${info.name}`, version installs are currently only supported for projects using `git`.')
+					errors++
+					continue
+				}
+				info_vcs
+			} else {
+				supported_vcs['git']
+			}
+			vcs.is_executable() or {
+				vpm_error(err.msg())
+				errors++
+				continue
+			}
+			// Resolve path, verify existence of manifest.
 			ident_as_path := info.name.replace('.', os.path_separator)
 			install_path := normalize_mod_path(os.real_path(os.join_path(settings.vmodules_path,
 				ident_as_path)))
-			if !has_vmod(info.url, install_path) {
+			if is_git_module && !has_vmod(info.url, install_path) {
 				mut details := ''
 				if resp := http.head('${info.url}/issues/new') {
 					if resp.status_code == 200 {
@@ -104,12 +129,12 @@ fn parse_query(query []string) ([]Module, []Module) {
 			Module{
 				name: info.name
 				url: info.url
-				vcs: info.vcs
+				vcs: vcs
 				install_path: install_path
-				install_path_fmted: fmt_mod_path(install_path)
 			}
 		}
 		mod.version = version
+		mod.install_path_fmted = fmt_mod_path(mod.install_path)
 		if refs := os.execute_opt('git ls-remote --refs ${mod.install_path}') {
 			mod.is_installed = true
 			// In case the head just temporarily matches a tag, make sure that there
@@ -136,6 +161,12 @@ fn parse_query(query []string) ([]Module, []Module) {
 	}
 	if errors > 0 && errors == query.len {
 		exit(1)
+	}
+	if external_modules.len > 0 {
+		settings.vcs.is_executable() or {
+			vpm_error(err.msg())
+			exit(1)
+		}
 	}
 	return vpm_modules, external_modules
 }

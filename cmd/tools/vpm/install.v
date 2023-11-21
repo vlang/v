@@ -93,21 +93,7 @@ fn vpm_install_from_vpm(modules []Module) {
 	for m in modules {
 		vpm_log(@FILE_LINE, @FN, 'module: ${m}')
 		last_errors := errors
-		vcs := if m.vcs != '' {
-			supported_vcs[m.vcs] or {
-				vpm_error('skipping `${m.name}`, since it uses an unsupported version control system `${m.vcs}`.')
-				errors++
-				continue
-			}
-		} else {
-			supported_vcs['git']
-		}
-		vcs.is_executable() or {
-			vpm_error(err.msg())
-			errors++
-			continue
-		}
-		match m.install(vcs) {
+		match m.install() {
 			.installed {}
 			.failed {
 				errors++
@@ -133,17 +119,12 @@ fn vpm_install_from_vpm(modules []Module) {
 
 fn vpm_install_from_vcs(modules []Module) {
 	vpm_log(@FILE_LINE, @FN, 'modules: ${modules}')
-	vcs := supported_vcs[settings.vcs]
-	vcs.is_executable() or {
-		vpm_error(err.msg())
-		exit(1)
-	}
 	urls := modules.map(it.url)
 	mut errors := 0
 	for m in modules {
 		vpm_log(@FILE_LINE, @FN, 'module: ${m}')
 		last_errors := errors
-		match m.install(vcs) {
+		match m.install() {
 			.installed {}
 			.failed {
 				errors++
@@ -209,7 +190,7 @@ fn vpm_install_from_vcs(modules []Module) {
 	}
 }
 
-fn (m Module) install(vcs &VCS) InstallResult {
+fn (m Module) install() InstallResult {
 	if m.is_installed {
 		// Case: installed, but not an explicit version. Update instead of continuing the installation.
 		if m.version == '' && m.installed_version == '' {
@@ -231,12 +212,9 @@ fn (m Module) install(vcs &VCS) InstallResult {
 			return .skipped
 		}
 	}
-	install_arg := if m.version != '' {
-		'${vcs.args.install} --single-branch -b ${m.version}'
-	} else {
-		vcs.args.install
-	}
-	cmd := '${vcs.cmd} ${install_arg} "${m.url}" "${m.install_path}"'
+	vcs := m.vcs or { settings.vcs }
+	version_opt := if m.version != '' { ' ${vcs.args.version} ${m.version}' } else { '' }
+	cmd := '${vcs.cmd} ${vcs.args.install}${version_opt} "${m.url}" "${m.install_path}"'
 	vpm_log(@FILE_LINE, @FN, 'command: ${cmd}')
 	println('Installing `${m.name}`...')
 	verbose_println('  cloning from `${m.url}` to `${m.install_path_fmted}`')
