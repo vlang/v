@@ -59,6 +59,8 @@ fn test_install_from_git_url() {
 	res = os.execute_or_exit('${vexe} install http://github.com/Wertzui123/HashMap')
 	assert res.output.contains('Updating module `wertzui123.hashmap`'), res.output
 	assert res.output.contains('`http` is deprecated'), res.output
+	res = os.execute_or_exit('${vexe} install https://gitlab.com/tobealive/webview')
+	assert res.output.contains('Installed `webview`'), res.output
 }
 
 fn test_install_already_existent() {
