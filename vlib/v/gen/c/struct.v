@@ -462,13 +462,30 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 	is_minify := s.is_minify
 	g.type_definitions.writeln(pre_pragma)
 
+	mut aligned_attr := ''
+	if attr := s.attrs.find_first('aligned') {
+		attr_arg := if attr.arg == '' { '' } else { ' (${attr.arg})' }
+		aligned_attr += if g.is_cc_msvc {
+			'__declspec(align${attr_arg})'
+		} else {
+			' __attribute__((aligned${attr_arg}))'
+		}
+	}
 	if is_anon {
 		g.type_definitions.write_string('\t${name} ')
 		return
 	} else if s.is_union {
-		g.type_definitions.writeln('union ${name} {')
+		if g.is_cc_msvc && aligned_attr != '' {
+			g.type_definitions.writeln('union ${aligned_attr} ${name} {')
+		} else {
+			g.type_definitions.writeln('union ${name} {')
+		}
 	} else {
-		g.type_definitions.writeln('struct ${name} {')
+		if g.is_cc_msvc && aligned_attr != '' {
+			g.type_definitions.writeln('struct ${aligned_attr} ${name} {')
+		} else {
+			g.type_definitions.writeln('struct ${name} {')
+		}
 	}
 
 	if s.fields.len > 0 || s.embeds.len > 0 {
@@ -555,6 +572,9 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 		''
 	}
 	g.type_definitions.write_string('}${ti_attrs}')
+	if !g.is_cc_msvc && aligned_attr != '' {
+		g.type_definitions.write_string(' ${aligned_attr}')
+	}
 	if !is_anon {
 		g.type_definitions.write_string(';')
 	}
