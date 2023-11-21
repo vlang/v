@@ -134,25 +134,7 @@ fn parse_query(query []string) ([]Module, []Module) {
 			}
 		}
 		mod.version = version
-		mod.install_path_fmted = fmt_mod_path(mod.install_path)
-		if refs := os.execute_opt('git ls-remote --refs ${mod.install_path}') {
-			mod.is_installed = true
-			// In case the head just temporarily matches a tag, make sure that there
-			// really is a version installation before adding it as `installed_version`.
-			// NOTE: can be refined for branch installations. E.g., for `sdl`.
-			if refs.output.contains('refs/tags/') {
-				tag := refs.output.all_after_last('refs/tags/').trim_space()
-				head := if refs.output.contains('refs/heads/') {
-					refs.output.all_after_last('refs/heads/').trim_space()
-				} else {
-					tag
-				}
-				vpm_log(@FILE_LINE, @FN, 'head: ${head}, tag: ${tag}')
-				if tag == head {
-					mod.installed_version = tag
-				}
-			}
-		}
+		mod.get_installed()
 		if mod.is_external {
 			external_modules << mod
 		} else {
@@ -169,6 +151,27 @@ fn parse_query(query []string) ([]Module, []Module) {
 		}
 	}
 	return vpm_modules, external_modules
+}
+
+// TODO: add unit test
+fn (mut m Module) get_installed() {
+	refs := os.execute_opt('git ls-remote --refs ${m.install_path}') or { return }
+	m.is_installed = true
+	// In case the head just temporarily matches a tag, make sure that there
+	// really is a version installation before adding it as `installed_version`.
+	// NOTE: can be refined for branch installations. E.g., for `sdl`.
+	if refs.output.contains('refs/tags/') {
+		tag := refs.output.all_after_last('refs/tags/').all_before('\n').trim_space()
+		head := if refs.output.contains('refs/heads/') {
+			refs.output.all_after_last('refs/heads/').all_before('\n').trim_space()
+		} else {
+			tag
+		}
+		vpm_log(@FILE_LINE, @FN, 'head: ${head}, tag: ${tag}')
+		if tag == head {
+			m.installed_version = tag
+		}
+	}
 }
 
 fn has_vmod(url string, install_path string) bool {
