@@ -43,7 +43,10 @@ struct ErrorOptions {
 	verbose bool // is used to only output the error message if the verbose setting is enabled.
 }
 
-const home_dir = os.home_dir()
+const (
+	vexe     = os.quoted_path(@VEXE)
+	home_dir = os.home_dir()
+)
 
 fn parse_query(query []string) ([]Module, []Module) {
 	mut vpm_modules, mut external_modules := []Module{}, []Module{}

@@ -92,7 +92,6 @@ fn vpm_install_from_vpm(modules []Module) {
 	mut errors := 0
 	for m in modules {
 		vpm_log(@FILE_LINE, @FN, 'module: ${m}')
-		last_errors := errors
 		match m.install() {
 			.installed {}
 			.failed {
@@ -107,9 +106,7 @@ fn vpm_install_from_vpm(modules []Module) {
 			vpm_error('failed to increment the download count for `${m.name}`', details: err.msg())
 			errors++
 		}
-		if last_errors == errors {
-			println('Installed `${m.name}`.')
-		}
+		println('Installed `${m.name}`.')
 		resolve_dependencies(get_manifest(m.install_path), idents)
 	}
 	if errors > 0 {
@@ -123,7 +120,6 @@ fn vpm_install_from_vcs(modules []Module) {
 	mut errors := 0
 	for m in modules {
 		vpm_log(@FILE_LINE, @FN, 'module: ${m}')
-		last_errors := errors
 		match m.install() {
 			.installed {}
 			.failed {
@@ -180,9 +176,7 @@ fn vpm_install_from_vcs(modules []Module) {
 			}
 			verbose_println('Relocated `${m.name}` to `${manifest.name}`.')
 		}
-		if last_errors == errors {
-			println('Installed `${m.name}`.')
-		}
+		println('Installed `${m.name}`.')
 		resolve_dependencies(manifest, urls)
 	}
 	if errors > 0 {
