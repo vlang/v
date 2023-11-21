@@ -16,7 +16,7 @@ fn testsuite_begin() {
 	os.setenv('VMODULES', test_path, true)
 	os.setenv('VPM_DEBUG', '', true)
 	os.setenv('VPM_NO_INCREMENT', '1', true)
-	os.setenv('VPM_NO_PROMPT', '1', true)
+	os.setenv('VPM_FAIL_ON_PROMPT', '1', true)
 }
 
 fn testsuite_end() {

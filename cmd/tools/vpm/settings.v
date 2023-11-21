@@ -14,8 +14,8 @@ mut:
 	vmodules_path         string
 	no_dl_count_increment bool
 	// To ensure that some test scenarios with conflicting module directory names do not get stuck in prompts.
-	// It is intended that VPM does not display a prompt when `VPM_NO_PROMPT` is set.
-	no_prompt bool
+	// It is intended that VPM does not display a prompt when `VPM_FAIL_ON_PROMPT` is set.
+	fail_on_prompt bool
 	// git is used by default. URL installations can specify `--hg`. For already installed modules
 	// and VPM modules that specify a different VCS in their `v.mod`, the VCS is validated separately.
 	vcs VCS
@@ -38,6 +38,6 @@ fn init_settings() VpmSettings {
 		vcs: supported_vcs[if '--hg' in opts { 'hg' } else { 'git' }]
 		vmodules_path: os.vmodules_dir()
 		no_dl_count_increment: os.getenv('CI') != '' || (no_inc_env != '' && no_inc_env != '0')
-		no_prompt: os.getenv('VPM_NO_PROMPT') != ''
+		fail_on_prompt: os.getenv('VPM_FAIL_ON_PROMPT') != ''
 	}
 }
