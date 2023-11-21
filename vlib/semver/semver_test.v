@@ -171,7 +171,7 @@ fn test_coerce() {
 			assert false
 			return
 		}
-		assert fixed.eq(valid)
+		assert fixed == valid
 	}
 }
 
