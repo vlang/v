@@ -695,7 +695,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					if exp_type.is_ptr() && !is_unsafe_0 && !got_type.is_any_kind_of_pointer()
 						&& !exp_type.has_flag(.option) {
 						if init_field.expr.str() == '0' {
-							if !c.inside_unsafe && c.mod != 'builtin' && type_sym.language == .v {
+							if !c.inside_unsafe && type_sym.language == .v {
 								c.note('assigning `0` to a reference field is only allowed in `unsafe` blocks',
 									init_field.pos)
 							}
