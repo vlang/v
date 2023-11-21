@@ -420,30 +420,24 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 		}
 		ast.InfixExpr {
 			left := c.eval_comptime_const_expr(expr.left, nlevel + 1)?
+			saved_expected_type := c.expected_type
 			if expr.left is ast.EnumVal {
-				last_expected_type := c.expected_type
 				c.expected_type = expr.left.typ
-				defer {
-					c.expected_type = last_expected_type
-				}
 			} else if expr.left is ast.InfixExpr {
-				mut operand := expr
+				mut infixexpr := expr
 				for {
-					if operand.left is ast.InfixExpr {
-						operand = operand.left as ast.InfixExpr
+					if infixexpr.left is ast.InfixExpr {
+						infixexpr = infixexpr.left as ast.InfixExpr
 					} else {
 						break
 					}
 				}
-				if mut operand.left is ast.EnumVal {
-					last_expected_type := c.expected_type
-					c.expected_type = operand.left.typ
-					defer {
-						c.expected_type = last_expected_type
-					}
+				if mut infixexpr.left is ast.EnumVal {
+					c.expected_type = infixexpr.left.typ
 				}
 			}
 			right := c.eval_comptime_const_expr(expr.right, nlevel + 1)?
+			c.expected_type = saved_expected_type
 			if left is string && right is string {
 				match expr.op {
 					.plus {
