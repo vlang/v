@@ -130,54 +130,8 @@ fn vpm_install_from_vcs(modules []Module) {
 				continue
 			}
 		}
-		manifest := get_manifest(m.install_path) or { continue }
-		final_path := os.join_path(m.install_path.all_before_last(os.path_separator),
-			normalize_mod_path(manifest.name))
-		if m.install_path != final_path {
-			verbose_println('Relocating `${m.name} (${m.install_path_fmted})` to `${manifest.name} (${final_path})`...')
-			if os.exists(final_path) {
-				println('Target directory for `${m.name} (${final_path})` already exists.')
-				input := os.input('Replace it with the module directory? [Y/n]: ')
-				match input.to_lower() {
-					'', 'y' {
-						m.remove() or {
-							vpm_error('failed to remove `${final_path}`.', details: err.msg())
-							errors++
-							continue
-						}
-					}
-					else {
-						verbose_println('Skipping `${m.name}`.')
-						continue
-					}
-				}
-			}
-			// When the module should be relocated into a subdirectory we need to make sure
-			// it exists to not run into permission errors.
-			if m.install_path.count(os.path_separator) < final_path.count(os.path_separator)
-				&& !os.exists(final_path) {
-				os.mkdir_all(final_path) or {
-					vpm_error('failed to create directory for `${manifest.name}`.',
-						details: err.msg()
-					)
-					errors++
-					continue
-				}
-			}
-			os.mv(m.install_path, final_path) or {
-				errors++
-				vpm_error('failed to relocate module `${m.name}`.', details: err.msg())
-				os.rmdir_all(m.install_path) or {
-					vpm_error('failed to remove `${m.install_path}`.', details: err.msg())
-					errors++
-					continue
-				}
-				continue
-			}
-			verbose_println('Relocated `${m.name}` to `${manifest.name}`.')
-		}
 		println('Installed `${m.name}`.')
-		resolve_dependencies(manifest, urls)
+		resolve_dependencies(m.manifest, urls)
 	}
 	if errors > 0 {
 		exit(1)

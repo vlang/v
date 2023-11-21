@@ -118,10 +118,28 @@ fn test_missing_repo_name_in_url() {
 	assert res.output.contains('failed to retrieve module name for `${incomplete_url}`'), res.output
 }
 
-fn test_missing_vmod_in_url() {
-	assert has_vmod('https://github.com/vlang/v', '') // head branch == `master`.
-	assert has_vmod('https://github.com/v-analyzer/v-analyzer', '') // head branch == `main`.
-	assert !has_vmod('https://github.com/octocat/octocat.github.io', '') // not a V module.
+fn test_manifest_detection() {
+	// head branch == `main`.
+	mut mod := fetch_manifest('v-analyzer', 'https://github.com/v-analyzer/v-analyzer',
+		'', true) or {
+		assert false
+		return
+	}
+	assert mod.name == 'v-analyzer'
+	assert mod.dependencies == ['https://github.com/v-analyzer/v-tree-sitter']
+	// head branch == `master`.
+	mod = fetch_manifest('ui', 'https://github.com/pisaiah/ui', '', true) or {
+		assert false
+		return
+	}
+	assert mod.name == 'iui'
+	// not a V module.
+	if v := fetch_manifest('octocat', 'https://github.com/octocat/octocat.github.io',
+		'', true)
+	{
+		assert false, v.str()
+		return
+	}
 	mut res := os.execute('${vexe} install https://github.com/octocat/octocat.github.io')
 	assert res.exit_code == 1
 	assert res.output.contains('failed to find `v.mod` for `https://github.com/octocat/octocat.github.io`'), res.output
@@ -129,4 +147,21 @@ fn test_missing_vmod_in_url() {
 	res = os.execute_or_exit('${vexe} install spytheman.regex')
 	assert res.output.contains('`spytheman.regex` is missing a manifest file'), res.output
 	assert res.output.contains('Installing `spytheman.regex`'), res.output
+}
+
+fn test_install_potentially_conflicting() {
+	mut res := os.execute('${vexe} install ui')
+	assert res.output.contains('Installed `ui`')
+	mut mod := vmod.from_file(os.join_path(test_path, 'ui', 'v.mod')) or {
+		assert false, err.msg()
+		return
+	}
+	assert mod.name == 'ui'
+	res = os.execute('${vexe} install https://github.com/isaiahpatton/ui')
+	assert res.output.contains('Installed `iui`')
+	mod = vmod.from_file(os.join_path(test_path, 'iui', 'v.mod')) or {
+		assert false, err.msg()
+		return
+	}
+	assert mod.name == 'iui'
 }

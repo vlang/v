@@ -20,6 +20,7 @@ mut:
 	is_installed       bool
 	is_external        bool
 	vcs                ?VCS
+	manifest           vmod.Manifest
 }
 
 struct ModuleVpmInfo {
@@ -64,26 +65,30 @@ fn parse_query(query []string) ([]Module, []Module) {
 			false
 		}
 		mut mod := if is_http || ident.starts_with('https://') {
-			// External module.
+			// External module. The idenifier is an URL.
 			publisher, name := get_ident_from_url(ident) or {
 				vpm_error(err.msg())
 				errors++
 				continue
 			}
-			// Resolve path, verify existence of manifest.
-			base := if is_http { publisher } else { '' }
-			install_path := normalize_mod_path(os.real_path(os.join_path(settings.vmodules_path,
-				base, name)))
-			if is_git_setting && !has_vmod(ident, install_path) {
-				vpm_error('failed to find `v.mod` for `${ident}`.')
+			// Fetch manifest.
+			manifest := fetch_manifest(name, ident, version, is_git_setting) or {
+				vpm_error('failed to find `v.mod` for `${ident}${at_version(version)}`.',
+					details: err.msg()
+				)
 				errors++
 				continue
 			}
+			// Resolve path.
+			base := if is_http { publisher } else { '' }
+			install_path := normalize_mod_path(os.real_path(os.join_path(settings.vmodules_path,
+				base, manifest.name)))
 			Module{
-				name: name
+				name: manifest.name
 				url: ident
 				install_path: install_path
 				is_external: true
+				manifest: manifest
 			}
 		} else {
 			// VPM registered module.
@@ -115,11 +120,9 @@ fn parse_query(query []string) ([]Module, []Module) {
 				errors++
 				continue
 			}
-			// Resolve path, verify existence of manifest.
-			ident_as_path := info.name.replace('.', os.path_separator)
-			install_path := normalize_mod_path(os.real_path(os.join_path(settings.vmodules_path,
-				ident_as_path)))
-			if is_git_module && !has_vmod(info.url, install_path) {
+			// Fetch manifest.
+			manifest := fetch_manifest(info.name, info.url, version, is_git_module) or {
+				// Add link with issue template requesting to add a manifest.
 				mut details := ''
 				if resp := http.head('${info.url}/issues/new') {
 					if resp.status_code == 200 {
@@ -128,12 +131,19 @@ fn parse_query(query []string) ([]Module, []Module) {
 					}
 				}
 				vpm_warn('`${info.name}` is missing a manifest file.', details: details)
+				vpm_log(@FILE_LINE, @FN, 'vpm manifest detection error: ${err}')
+				vmod.Manifest{}
 			}
+			// Resolve path.
+			ident_as_path := info.name.replace('.', os.path_separator)
+			install_path := normalize_mod_path(os.real_path(os.join_path(settings.vmodules_path,
+				ident_as_path)))
 			Module{
 				name: info.name
 				url: info.url
 				vcs: vcs
 				install_path: install_path
+				manifest: manifest
 			}
 		}
 		mod.version = version
@@ -177,23 +187,38 @@ fn (mut m Module) get_installed() {
 	}
 }
 
-fn has_vmod(url string, install_path string) bool {
-	if install_path != '' && os.exists((os.join_path(install_path, 'v.mod'))) {
-		// Skip fetching the repo when the module is already installed and has a `v.mod`.
-		return true
+fn fetch_manifest(name string, url string, version string, is_git bool) !vmod.Manifest {
+	if !is_git {
+		// TODO: fetch manifest for mercurial repositories
+		return vmod.Manifest{
+			name: name
+		}
 	}
-	head_branch := os.execute_opt('git ls-remote --symref ${url} HEAD') or {
-		vpm_error('failed to find git HEAD for `${url}`.', details: err.msg())
-		return false
-	}.output.all_after_last('/').all_before(' ').all_before('\t')
+	v := if version != '' {
+		version
+	} else {
+		head_branch := os.execute_opt('git ls-remote --symref ${url} HEAD') or {
+			return error('failed to find git HEAD. ${err}')
+		}
+		head_branch.output.all_after_last('/').all_before(' ').all_before('\t')
+	}
 	url_ := if url.ends_with('.git') { url.replace('.git', '') } else { url }
-	manifest_url := '${url_}/blob/${head_branch}/v.mod'
-	vpm_log(@FILE_LINE, @FN, 'manifest_url: ${manifest_url}')
-	has_vmod := http.head(manifest_url) or {
-		vpm_error('failed to retrieve module data for `${url}`.')
-		return false
-	}.status_code == 200
-	return has_vmod
+	// Scan both URLS. E.g.:
+	// https://github.com/publisher/module/raw/v0.7.0/v.mod
+	// https://gitlab.com/publisher/module/-/raw/main/v.mod
+	raw_paths := ['raw/', '/-/raw/']
+	for i, raw_p in raw_paths {
+		manifest_url := '${url_}/${raw_p}/${v}/v.mod'
+		vpm_log(@FILE_LINE, @FN, 'manifest_url ${i}: ${manifest_url}')
+		raw_manifest_resp := http.get(manifest_url) or { continue }
+		if raw_manifest_resp.status_code != 200 {
+			return error('unsuccessful response status `${raw_manifest_resp.status_code}`.')
+		}
+		return vmod.decode(raw_manifest_resp.body) or {
+			return error('failed to decode manifest `${raw_manifest_resp.body}`. ${err}')
+		}
+	}
+	return error('failed to retrieve manifest.')
 }
 
 fn get_mod_date_info(mut pp pool.PoolProcessor, idx int, wid int) &ModuleDateInfo {

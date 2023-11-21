@@ -88,5 +88,5 @@ fn test_install_from_url_with_git_version_tag() {
 	// Install invalid version verbose.
 	res = os.execute('${vexe} install -f -v ${url}@${tag}')
 	assert res.exit_code == 1
-	assert res.output.contains('Remote branch abc not found in upstream origin'), res.output
+	assert res.output.contains('failed to find `v.mod` for `${url}@${tag}`'), res.output
 }
