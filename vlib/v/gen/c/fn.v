@@ -2318,6 +2318,10 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 					g.write(')')
 					return
 				}
+			} else if arg_sym.kind == .interface_ && exp_sym.kind == .interface_ {
+				if exp_is_ptr && !arg_is_ptr {
+					g.write('&')
+				}
 			}
 		}
 	} else if arg_typ.has_flag(.shared_f) && !expected_type.has_flag(.shared_f) {
