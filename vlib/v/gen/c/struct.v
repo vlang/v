@@ -49,7 +49,9 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		is_anon = sym.info.is_anon
 	}
 	is_array := sym.kind in [.array_fixed, .array]
-	const_msvc_init := !g.inside_cast && g.inside_const && g.is_cc_msvc
+
+	// detect if we need type casting on msvc initialization
+	const_msvc_init := g.is_cc_msvc && g.inside_const && g.inside_lambda && !g.inside_cast
 
 	if !g.inside_cinit && !is_anon && !is_array && !const_msvc_init {
 		g.write('(')
