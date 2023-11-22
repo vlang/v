@@ -42,3 +42,5 @@ fn a8()
     Note: this should be it's own paragraph.
     
     Fixme: this should be it's own paragraph.
+fn a9()
+    normal comment

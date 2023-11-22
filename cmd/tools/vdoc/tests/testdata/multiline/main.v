@@ -53,3 +53,12 @@ pub fn a7() {
 pub fn a8() {
 	println('hi')
 }
+
+// Some info that should not be added as doc comment
+// A align      2 bit  Note: for now only 1 used!
+// U uppercase  1 bit  0 do nothing, 1 do to_upper()
+
+// normal comment
+pub fn a9() {
+	println('hi')
+}
