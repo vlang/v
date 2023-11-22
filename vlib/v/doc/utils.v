@@ -43,77 +43,69 @@ pub fn merge_doc_comments(comments []DocComment) string {
 	if comments.len == 0 {
 		return ''
 	}
-	mut commentlines := []string{}
-	mut last_comment_line_nr := 0
-	for i := comments.len - 1; i >= 0; i-- {
-		cmt := comments[i]
-		if (!cmt.is_multi && last_comment_line_nr != 0
-			&& cmt.pos.line_nr + 1 < last_comment_line_nr - 1) || (cmt.is_multi
-			&& cmt.pos.line_nr + cmt.text.count('\n') + 1 < last_comment_line_nr - 1) {
-			// skip comments that are not part of a continuous block,
-			// located right above the top level statement.
-			break
-		}
-		mut cmt_content := cmt.text.trim_left('\x01')
-		if cmt.is_multi {
-			// /**/ comments are deliberately NOT supported as vdoc comments,
-			// so just ignore them:
-			continue
-		} else {
-			if cmt_content.starts_with(' ') {
-				cmt_content = cmt_content[1..]
-			}
-			commentlines << cmt_content
-		}
-		last_comment_line_nr = cmt.pos.line_nr + 1
-	}
-	commentlines = commentlines.reverse()
-	mut is_codeblock := false
-	mut next_on_newline := true
 	mut comment := ''
-	for line in commentlines {
-		if line.starts_with('```') {
-			is_codeblock = !is_codeblock
-			comment += '\n' + line
-			continue
-		} else if is_codeblock {
-			comment += '\n' + line
+	mut next_on_newline := true
+	for i, cmt in comments {
+		if cmt.is_multi {
+			// /**/ comments are deliberately NOT supported as vdoc comments, ignore them.
 			continue
 		}
-
-		line_trimmed := line.trim(' ').to_lower()
-
-		// Use own paragraph for "highlight" comments.
-		if line_trimmed.starts_with('note:') {
-			comment += '\n\nNote:${line['note:'.len..]}'
-			continue
-		} else if line_trimmed.starts_with('fixme:') {
-			comment += '\n\nFixme:${line['fixme:'.len..]}'
-			continue
-		} else if line_trimmed.starts_with('todo:') {
-			comment += '\n\nTodo:${line['todo:'.len..]}'
-			continue
-		}
-
-		mut is_horizontalrule := false
-		line_no_spaces := line_trimmed.replace(' ', '')
-		for ch in ['-', '=', '*', '_', '~'] {
-			if line_no_spaces.starts_with(ch.repeat(3))
-				&& line_no_spaces.count(ch) == line_no_spaces.len {
-				is_horizontalrule = true
-				break
+		if next_comment := comments[i + 1] {
+			if next_comment.pos.line_nr > cmt.pos.line_nr + 1 {
+				// Don't add comments that are not part of a contiguous block into comment.
+				comment = ''
+				continue
 			}
 		}
-
-		if line_trimmed == '' || is_horizontalrule
-			|| (line.starts_with('#') && line.before(' ').count('#') == line.before(' ').len)
-			|| (line_trimmed.starts_with('|') && line_trimmed.ends_with('|'))
-			|| line_trimmed.starts_with('- ') {
-			comment += '\n' + line
-			next_on_newline = true
-		} else {
-			sep := if next_on_newline { '\n' } else { ' ' }
-			comment += sep + line
+		mut is_codeblock := false
+		line_loop: for line in cmt.text.split_into_lines() {
+			l := line.trim_left('\x01').trim_space()
+			if is_codeblock {
+				comment += l + '\n'
+				continue
+			}
+			if l.starts_with('```') {
+				if !is_codeblock {
+					comment += '\n'
+				}
+				comment += l + '\n'
+				is_codeblock = !is_codeblock
+				next_on_newline = true
+				continue
+			}
+			if l == '' {
+				comment += if comment.ends_with('\n') { '\n' } else { '\n\n' }
+				next_on_newline = true
+				continue
+			}
+			line_before_spaces := l.before(' ')
+			if (l.starts_with('|') && l.ends_with('|')) || l.starts_with('- ')
+				|| (l.starts_with('#') && line_before_spaces.count('#') == line_before_spaces.len) {
+				comment += l + '\n'
+				next_on_newline = true
+				continue
+			}
+			// Use own paragraph for "highlight" comments.
+			ll := l.to_lower()
+			for word in ['note:', 'fixme:', 'todo:'] {
+				if ll.starts_with(word) {
+					comment += '\n\n${word.title()}${l[word.len..]}'
+					continue line_loop
+				}
+			}
+			line_no_spaces := l.replace(' ', '')
+			for ch in ['-', '=', '*', '_', '~'] {
+				if line_no_spaces.starts_with(ch.repeat(3))
+					&& line_no_spaces.count(ch) == line_no_spaces.len {
+					comment += '\n' + l + '\n'
+					next_on_newline = true
+					continue line_loop
+				}
+			}
+			if !next_on_newline {
+				comment += ' '
+			}
+			comment += l
 			next_on_newline = false
 		}
 	}
