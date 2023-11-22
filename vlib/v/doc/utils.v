@@ -69,19 +69,31 @@ pub fn merge_doc_comments(comments []DocComment) string {
 	}
 	commentlines = commentlines.reverse()
 	mut is_codeblock := false
-	mut previously_newline := true
+	mut next_on_newline := true
 	mut comment := ''
 	for line in commentlines {
 		if line.starts_with('```') {
 			is_codeblock = !is_codeblock
-			comment = comment + '\n' + line
+			comment += '\n' + line
 			continue
 		} else if is_codeblock {
-			comment = comment + '\n' + line
+			comment += '\n' + line
 			continue
 		}
 
-		line_trimmed := line.trim(' ')
+		line_trimmed := line.trim(' ').to_lower()
+
+		// Use own paragraph for "highlight" comments.
+		if line_trimmed.starts_with('note:') {
+			comment += '\n\nNote:${line['note:'.len..]}'
+			continue
+		} else if line_trimmed.starts_with('fixme:') {
+			comment += '\n\nFixme:${line['fixme:'.len..]}'
+			continue
+		} else if line_trimmed.starts_with('todo:') {
+			comment += '\n\nTodo:${line['todo:'.len..]}'
+			continue
+		}
 
 		mut is_horizontalrule := false
 		line_no_spaces := line_trimmed.replace(' ', '')
@@ -97,15 +109,12 @@ pub fn merge_doc_comments(comments []DocComment) string {
 			|| (line.starts_with('#') && line.before(' ').count('#') == line.before(' ').len)
 			|| (line_trimmed.starts_with('|') && line_trimmed.ends_with('|'))
 			|| line_trimmed.starts_with('- ') {
-			comment = comment + '\n' + line
-			previously_newline = true
-		} else if line.ends_with('.') {
-			comment = comment + '\n' + line + '  '
-			previously_newline = true
+			comment += '\n' + line
+			next_on_newline = true
 		} else {
-			sep := if previously_newline { '\n' } else { ' ' }
-			comment = comment + sep + line
-			previously_newline = false
+			sep := if next_on_newline { '\n' } else { ' ' }
+			comment += sep + line
+			next_on_newline = false
 		}
 	}
 	return comment
