@@ -4,6 +4,7 @@ module checker
 
 import v.ast
 import v.util
+import v.token
 import v.transformer
 
 fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
@@ -795,12 +796,12 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				if !field.typ.has_flag(.option) {
 					if sym.kind == .struct_ {
 						c.check_ref_fields_initialized(sym, mut checked_types, '${type_sym.name}.${field.name}',
-							node)
+							node.pos)
 					} else if sym.kind == .alias {
 						parent_sym := c.table.sym((sym.info as ast.Alias).parent_type)
 						if parent_sym.kind == .struct_ {
 							c.check_ref_fields_initialized(parent_sym, mut checked_types,
-								'${type_sym.name}.${field.name}', node)
+								'${type_sym.name}.${field.name}', node.pos)
 						}
 					}
 				}
@@ -896,7 +897,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 }
 
 // Recursively check whether the struct type field is initialized
-fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut checked_types []ast.Type, linked_name string, node &ast.StructInit) {
+fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut checked_types []ast.Type, linked_name string, pos &token.Pos) {
 	if c.pref.translated || c.file.is_translated {
 		return
 	}
@@ -915,7 +916,7 @@ fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut 
 		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !field.typ.has_flag(.option)
 			&& !field.has_default_expr {
 			c.error('reference field `${linked_name}.${field.name}` must be initialized (part of struct `${struct_sym.name}`)',
-				node.pos)
+				pos)
 			continue
 		}
 		if sym.kind == .struct_ {
@@ -927,13 +928,61 @@ fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut 
 			}
 			checked_types << field.typ
 			c.check_ref_fields_initialized(sym, mut checked_types, '${linked_name}.${field.name}',
-				node)
+				pos)
 		} else if sym.kind == .alias {
 			psym := c.table.sym((sym.info as ast.Alias).parent_type)
 			if psym.kind == .struct_ {
 				checked_types << field.typ
 				c.check_ref_fields_initialized(psym, mut checked_types, '${linked_name}.${field.name}',
-					node)
+					pos)
+			}
+		}
+	}
+}
+
+// Recursively check whether the struct type field is initialized
+// NOTE:
+// This method is temporary and will only be called by the do_check_elements_ref_fields_initialized() method.
+// The goal is to give only a notice, not an error, for now. After a while,
+// when we change the notice to error, we can remove this temporary method.
+fn (mut c Checker) check_ref_fields_initialized_note(struct_sym &ast.TypeSymbol, mut checked_types []ast.Type, linked_name string, pos &token.Pos) {
+	if c.pref.translated || c.file.is_translated {
+		return
+	}
+	if struct_sym.kind == .struct_ && struct_sym.language == .c
+		&& (struct_sym.info as ast.Struct).is_typedef {
+		return
+	}
+	fields := c.table.struct_fields(struct_sym)
+	for field in fields {
+		sym := c.table.sym(field.typ)
+		if field.name.len > 0 && field.name[0].is_capital() && sym.info is ast.Struct
+			&& sym.language == .v {
+			// an embedded struct field
+			continue
+		}
+		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !field.typ.has_flag(.option)
+			&& !field.has_default_expr {
+			c.note('reference field `${linked_name}.${field.name}` must be initialized (part of struct `${struct_sym.name}`)',
+				pos)
+			continue
+		}
+		if sym.kind == .struct_ {
+			if sym.language == .c && (sym.info as ast.Struct).is_typedef {
+				continue
+			}
+			if field.typ in checked_types {
+				continue
+			}
+			checked_types << field.typ
+			c.check_ref_fields_initialized(sym, mut checked_types, '${linked_name}.${field.name}',
+				pos)
+		} else if sym.kind == .alias {
+			psym := c.table.sym((sym.info as ast.Alias).parent_type)
+			if psym.kind == .struct_ {
+				checked_types << field.typ
+				c.check_ref_fields_initialized(psym, mut checked_types, '${linked_name}.${field.name}',
+					pos)
 			}
 		}
 	}
