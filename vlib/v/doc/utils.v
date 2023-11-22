@@ -43,22 +43,25 @@ pub fn merge_doc_comments(comments []DocComment) string {
 	if comments.len == 0 {
 		return ''
 	}
-	mut comment := ''
-	mut next_on_newline := true
-	for i, cmt in comments {
-		if cmt.is_multi {
-			// /**/ comments are deliberately NOT supported as vdoc comments, ignore them.
+	mut doc_comments := []string{}
+	for i := comments.len - 1; i >= 0; i-- {
+		if comments[i].is_multi {
+			// `/*foo*/` block comments are deliberately NOT supported as doc comments, ignore them.
 			continue
 		}
-		if next_comment := comments[i + 1] {
-			if next_comment.pos.line_nr > cmt.pos.line_nr + 1 {
-				// Don't add comments that are not part of a contiguous block into comment.
-				comment = ''
-				continue
+		doc_comments << comments[i].text
+		if cmt_above := comments[i - 1] {
+			if cmt_above.pos.line_nr + 1 < comments[i].pos.line_nr {
+				// Stop when a doc comment reaches the top of its contiguous block.
+				break
 			}
 		}
+	}
+	mut comment := ''
+	mut next_on_newline := true
+	for cmt in doc_comments.reverse() {
 		mut is_codeblock := false
-		line_loop: for line in cmt.text.split_into_lines() {
+		line_loop: for line in cmt.split_into_lines() {
 			l := line.trim_left('\x01').trim_space()
 			if is_codeblock {
 				comment += l + '\n'
