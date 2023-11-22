@@ -35,13 +35,13 @@ fn C.sem_timedwait(voidptr, voidptr) int
 fn C.sem_destroy(voidptr) int
 
 @[typedef]
-pub struct C.pthread_mutex_t {}
+pub struct C.pthread_mutex {}
 
 @[typedef]
-pub struct C.pthread_rwlock_t {}
+pub struct C.pthread_rwlock {}
 
 @[typedef]
-pub struct C.pthread_rwlockattr_t {}
+pub struct C.pthread_rwlockattr {}
 
 @[typedef]
 pub struct C.sem_t {}
@@ -49,16 +49,16 @@ pub struct C.sem_t {}
 // [init_with=new_mutex] // TODO: implement support for this struct attribute, and disallow Mutex{} from outside the sync.new_mutex() function.
 @[heap]
 pub struct Mutex {
-	mutex &C.pthread_mutex_t = unsafe { nil }
+	mutex &C.pthread_mutex = unsafe { nil }
 }
 
 @[heap]
 pub struct RwMutex {
-	mutex &C.pthread_rwlock_t = unsafe { nil }
+	mutex &C.pthread_rwlock = unsafe { nil }
 }
 
 struct RwMutexAttr {
-	attr &C.pthread_rwlockattr_t = unsafe { nil }
+	attr &C.pthread_rwlockattr = unsafe { nil }
 }
 
 @[heap]
