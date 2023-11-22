@@ -45,7 +45,7 @@ struct ErrorOptions {
 }
 
 const (
-	vexe     = os.quoted_path(@VEXE)
+	vexe     = os.getenv('VEXE')
 	home_dir = os.home_dir()
 )
 
