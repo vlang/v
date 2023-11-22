@@ -1,7 +1,7 @@
 // hello
 //
 // line after empty line,
-// newline after commentline.
+// newline after comment line.
 // ```v
 // code
 // ```

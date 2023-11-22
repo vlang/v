@@ -3,7 +3,7 @@ module main
 fn funky()
     hello
     
-    line after empty line, newline after commentline.
+    line after empty line, newline after comment line.
     ```v
     code
     ```

@@ -9,7 +9,7 @@ pub fn a2() {
 	println('hi')
 }
 
-// This should be its own parapgraph.
+// This should be its own paragraph.
 //
 // This should be another paragraph.
 pub fn a3() {
@@ -17,13 +17,13 @@ pub fn a3() {
 }
 
 // This should be merged
-// into one parapgraph.
+// into one paragraph.
 // Note: this should be it's own paragraph.
 pub fn a4() {
 	println('hi')
 }
 
-// This should be its own parapgraph.
+// This should be its own paragraph.
 // NOTE: this should also be it own paragraph
 // note: this should be it's own paragraph.
 pub fn a5() {
