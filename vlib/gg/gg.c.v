@@ -720,6 +720,11 @@ pub fn window_size() Size {
 	return Size{int(sapp.width() / s), int(sapp.height() / s)}
 }
 
+// set_window_title sets main window's title
+pub fn set_window_title(title string) {
+	C.sapp_set_window_title(title.str)
+}
+
 // window_size_real_pixels returns the `Size` of the active window without scale
 pub fn window_size_real_pixels() Size {
 	return Size{sapp.width(), sapp.height()}

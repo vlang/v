@@ -123,12 +123,21 @@ pub mut:
 }
 
 // hex takes in a 32 bit integer and splits it into 4 byte values
+/*
 pub fn hex(color int) Color {
 	return Color{
 		r: u8((color >> 24) & 0xFF)
 		g: u8((color >> 16) & 0xFF)
 		b: u8((color >> 8) & 0xFF)
 		a: u8(color & 0xFF)
+	}
+}
+*/
+pub fn hex(color int) Color {
+	return Color{
+		r: u8((color >> 16) & 0xFF)
+		g: u8((color >> 8) & 0xFF)
+		b: u8((color >> 0) & 0xFF)
 	}
 }
 
@@ -298,9 +307,14 @@ const (
 )
 
 // color_from_string returns a Color, corresponding to the given string
-// or black Color if string is not found in lookup table
+// or black Color if string is not found in lookup table, or a hex color if starting with #
 pub fn color_from_string(s string) Color {
-	return gx.string_colors[s]
+	if s.starts_with('#') {
+		mut hex_str := '0x' + s[1..]
+		return hex(hex_str.int())
+	} else {
+		return gx.string_colors[s]
+	}
 }
 
 // to_css_string returns a CSS compatible string e.g. `rgba(10,11,12,13)` of the color `c`.
