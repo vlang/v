@@ -102,6 +102,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			c.warn('arrays of references need to be initialized right away, therefore `len:` cannot be used (unless inside `unsafe`)',
 				node.pos)
 		}
+		c.check_elements_ref_fields_initialized(node.elem_type, node.pos)
 		return node.typ
 	}
 
@@ -112,6 +113,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			c.warn('fixed arrays of references need to be initialized right away (unless inside `unsafe`)',
 				node.pos)
 		}
+		c.check_elements_ref_fields_initialized(node.elem_type, node.pos)
 	}
 	// `a = []`
 	if node.exprs.len == 0 {
@@ -400,6 +402,7 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		c.ensure_type_exists(info.value_type, node.pos)
 		node.key_type = info.key_type
 		node.value_type = info.value_type
+		c.check_elements_ref_fields_initialized(node.typ, node.pos)
 		return node.typ
 	}
 
@@ -498,4 +501,73 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		return map_type
 	}
 	return node.typ
+}
+
+// check the element, and its children for ref uninitialized fields
+fn (mut c Checker) check_elements_ref_fields_initialized(typ ast.Type, pos &token.Pos) {
+	if typ == 0 || c.inside_const {
+		return
+	}
+	sym := c.table.sym(typ)
+	mut checked_types := []ast.Type{}
+	c.do_check_elements_ref_fields_initialized(sym, mut checked_types, pos)
+}
+
+// Recursively check the element, and its children for ref uninitialized fields
+fn (mut c Checker) do_check_elements_ref_fields_initialized(sym &ast.TypeSymbol, mut checked_types []ast.Type, pos &token.Pos) {
+	if sym.info is ast.Struct {
+		linked_name := sym.name
+		// For now, let's call this method and give a notice instead of an error.
+		// After some time, we remove the check_ref_fields_initialized_note() method and
+		// simply call check_ref_fields_initialized()
+		c.check_ref_fields_initialized_note(sym, mut checked_types, linked_name, pos)
+		return
+	}
+	match sym.info {
+		ast.Array {
+			elem_type := sym.info.elem_type
+			if elem_type in checked_types {
+				return
+			}
+			checked_types << elem_type
+			elem_sym := c.table.sym(elem_type)
+			c.do_check_elements_ref_fields_initialized(elem_sym, mut checked_types, pos)
+		}
+		ast.ArrayFixed {
+			elem_type := sym.info.elem_type
+			if elem_type in checked_types {
+				return
+			}
+			checked_types << elem_type
+			elem_sym := c.table.sym(elem_type)
+			c.do_check_elements_ref_fields_initialized(elem_sym, mut checked_types, pos)
+		}
+		ast.Map {
+			key_type := sym.info.key_type
+			if key_type in checked_types {
+				return
+			}
+			checked_types << key_type
+			key_sym := c.table.sym(key_type)
+			c.do_check_elements_ref_fields_initialized(key_sym, mut checked_types, pos)
+			value_type := sym.info.value_type
+			if value_type in checked_types {
+				return
+			}
+			checked_types << value_type
+			value_sym := c.table.sym(value_type)
+			c.do_check_elements_ref_fields_initialized(value_sym, mut checked_types, pos)
+		}
+		ast.Alias {
+			parent_type := sym.info.parent_type
+			if parent_type in checked_types {
+				return
+			}
+			checked_types << parent_type
+			parent_sym := c.table.sym(parent_type)
+			c.do_check_elements_ref_fields_initialized(parent_sym, mut checked_types,
+				pos)
+		}
+		else {}
+	}
 }
