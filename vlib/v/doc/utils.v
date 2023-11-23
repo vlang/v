@@ -102,6 +102,7 @@ pub fn merge_doc_comments(comments []DocComment) string {
 					// Workaround for compiling with `v -cstrict -cc gcc vlib/v/doc/doc_test.v`
 					// and using multiple continue `<label>`.
 					continue_line_loop = true
+					break
 				}
 			}
 			if continue_line_loop {
