@@ -87,17 +87,17 @@ fn check_path(vexe string, dir string, tests []string) int {
 		// test the main 3 different formats:
 		fails += check_output(
 			program: program
-			cmd: '${os.quoted_path(vexe)} doc -f html -o - -html-only-contents -readme -comments ${os.quoted_path(program)}'
+			cmd: '${os.quoted_path(vexe)} doc -f html -o - -html-only-contents -readme -comments ${os.quoted_path(os.dir(program))}'
 			out_filename: 'main.html'
 		)
 		fails += check_output(
 			program: program
-			cmd: '${os.quoted_path(vexe)} doc -f ansi -o - -html-only-contents -readme -comments ${os.quoted_path(program)}'
+			cmd: '${os.quoted_path(vexe)} doc -f ansi -o - -html-only-contents -readme -comments ${os.quoted_path(os.dir(program))}'
 			out_filename: 'main.ansi'
 		)
 		fails += check_output(
 			program: program
-			cmd: '${os.quoted_path(vexe)} doc -f text -o - -html-only-contents -readme -comments ${os.quoted_path(program)}'
+			cmd: '${os.quoted_path(vexe)} doc -f text -o - -html-only-contents -readme -comments ${os.quoted_path(os.dir(program))}'
 			out_filename: 'main.text'
 		)
 		//
