@@ -39,7 +39,6 @@ fn vpm_search(keywords []string) {
 		}
 	}
 	if index == 0 {
-		vexe := os.getenv('VEXE')
 		vroot := os.real_path(os.dir(vexe))
 		mut messages := ['No module(s) found for `${joined}` .']
 		for vlibmod in search_keys {
