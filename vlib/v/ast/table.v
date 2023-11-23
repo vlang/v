@@ -96,9 +96,9 @@ pub fn (t &Table) panic(message string) {
 pub fn new_table() &Table {
 	mut t := &Table{
 		global_scope: &Scope{
-			parent: 0
+			parent: unsafe { nil }
 		}
-		cur_fn: 0
+		cur_fn: unsafe { nil }
 	}
 	t.register_builtin_type_symbols()
 	t.is_fmt = true

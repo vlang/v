@@ -328,10 +328,10 @@ pub fn raw_execute(cmd string) Result {
 	}
 	proc_info := ProcessInformation{}
 	start_info := StartupInfo{
-		lp_reserved2: 0
-		lp_reserved: 0
-		lp_desktop: 0
-		lp_title: 0
+		lp_reserved2: unsafe { nil }
+		lp_reserved: unsafe { nil }
+		lp_desktop: unsafe { nil }
+		lp_title: unsafe { nil }
 		cb: sizeof(C.PROCESS_INFORMATION)
 		h_std_input: child_stdin
 		h_std_output: child_stdout_write

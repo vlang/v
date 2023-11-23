@@ -335,7 +335,7 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 					file: the_main_file.path
 					return_type: ast.void_type
 					scope: &ast.Scope{
-						parent: 0
+						parent: nil
 					}
 				}
 				has_main_fn = true
@@ -2021,7 +2021,7 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 				if mut id.info is ast.IdentVar {
 					if id.comptime && id.name in ast.valid_comptime_not_user_defined {
 						node.defer_vars[i] = ast.Ident{
-							scope: 0
+							scope: unsafe { nil }
 							name: ''
 						}
 						continue

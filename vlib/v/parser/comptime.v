@@ -102,7 +102,7 @@ fn (mut p Parser) hash() ast.HashStmt {
 
 fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	err_node := ast.ComptimeCall{
-		scope: 0
+		scope: unsafe { nil }
 	}
 	start_pos := p.tok.pos()
 	p.check(.dollar)
@@ -130,7 +130,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		p.check(.string)
 		p.check(.rpar)
 		return ast.ComptimeCall{
-			scope: 0
+			scope: unsafe { nil }
 			method_name: method_name
 			args_var: s
 			is_env: method_name == 'env'
@@ -149,14 +149,14 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		p.check(.rpar)
 		if has_args {
 			return ast.ComptimeCall{
-				scope: 0
+				scope: unsafe { nil }
 				method_name: method_name
 				args_var: type_index
 				pos: start_pos.extend(p.prev_tok.pos())
 			}
 		}
 		return ast.ComptimeCall{
-			scope: 0
+			scope: unsafe { nil }
 			method_name: method_name
 			pos: start_pos.extend(p.prev_tok.pos())
 		}
@@ -197,7 +197,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			p.register_auto_import('v.preludes.embed_file.zlib')
 		}
 		return ast.ComptimeCall{
-			scope: 0
+			scope: unsafe { nil }
 			is_embed: true
 			embed_file: ast.EmbeddedFile{
 				compression_type: embed_compression_type
@@ -233,7 +233,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		if !os.exists(path) {
 			if p.pref.is_fmt {
 				return ast.ComptimeCall{
-					scope: 0
+					scope: unsafe { nil }
 					is_vweb: true
 					method_name: method_name
 					args_var: literal_string_param
@@ -274,7 +274,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	mut file := parse_comptime(tmpl_path, v_code, p.table, p.pref, p.scope)
 	file.path = tmpl_path
 	return ast.ComptimeCall{
-		scope: 0
+		scope: unsafe { nil }
 		is_vweb: true
 		vweb_tmpl: file
 		method_name: method_name

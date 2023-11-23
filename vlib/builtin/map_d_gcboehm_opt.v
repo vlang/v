@@ -23,7 +23,7 @@ fn new_dense_array_noscan(key_bytes int, key_noscan bool, value_bytes int, value
 		cap: cap
 		len: 0
 		deletes: 0
-		all_deleted: 0
+		all_deleted: unsafe { nil }
 		keys: __malloc_at_least_one(u64(cap) * u64(key_bytes), key_noscan)
 		values: __malloc_at_least_one(u64(cap) * u64(value_bytes), value_noscan)
 	}

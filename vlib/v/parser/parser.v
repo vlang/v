@@ -262,7 +262,7 @@ pub fn parse_vet_file(path string, table_ &ast.Table, pref_ &pref.Preferences) (
 		eprintln('> ${@MOD}.${@FN} path: ${path}')
 	}
 	global_scope := &ast.Scope{
-		parent: 0
+		parent: unsafe { nil }
 	}
 	mut p := Parser{
 		scanner: scanner.new_scanner_file(path, .parse_comments, pref_) or { panic(err) }
@@ -1194,7 +1194,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 
 	p.check(.lcbr)
 	p.scope = &ast.Scope{
-		parent: 0 // you shouldn't be able to reference other variables in assembly blocks
+		parent: unsafe { nil } // you shouldn't be able to reference other variables in assembly blocks
 		detached_from_parent: true
 		start_pos: p.tok.pos
 		objects: ast.all_registers(mut p.table, arch) //
@@ -4295,7 +4295,7 @@ fn (mut p Parser) assoc() ast.Assoc {
 	mut v := p.scope.find_var(var_name) or {
 		p.error('unknown variable `${var_name}`')
 		return ast.Assoc{
-			scope: 0
+			scope: unsafe { nil }
 		}
 	}
 	v.is_used = true

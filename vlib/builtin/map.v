@@ -99,7 +99,7 @@ fn new_dense_array(key_bytes int, value_bytes int) DenseArray {
 		cap: cap
 		len: 0
 		deletes: 0
-		all_deleted: 0
+		all_deleted: unsafe { nil }
 		keys: unsafe { malloc(__at_least_one(u64(cap) * u64(key_bytes))) }
 		values: unsafe { malloc(__at_least_one(u64(cap) * u64(value_bytes))) }
 	}
@@ -679,9 +679,9 @@ fn (d &DenseArray) clone() DenseArray {
 		cap: d.cap
 		len: d.len
 		deletes: d.deletes
-		all_deleted: 0
-		values: 0
-		keys: 0
+		all_deleted: unsafe { nil }
+		values: unsafe { nil }
+		keys: unsafe { nil }
 	}
 	unsafe {
 		if d.deletes != 0 {

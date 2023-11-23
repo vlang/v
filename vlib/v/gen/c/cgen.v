@@ -279,7 +279,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) (string
 	}
 	mut reflection_strings := map[string]int{}
 	mut global_g := Gen{
-		file: 0
+		file: unsafe { nil }
 		out: strings.new_builder(512000)
 		cheaders: strings.new_builder(15000)
 		includes: strings.new_builder(100)
@@ -308,7 +308,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) (string
 		sql_buf: strings.new_builder(100)
 		table: table
 		pref: pref_
-		fn_decl: 0
+		fn_decl: unsafe { nil }
 		is_autofree: pref_.autofree
 		indent: -1
 		module_built: module_built
@@ -662,7 +662,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		cleanup: strings.new_builder(100)
 		table: global_g.table
 		pref: global_g.pref
-		fn_decl: 0
+		fn_decl: unsafe { nil }
 		indent: -1
 		module_built: global_g.module_built
 		timers: util.new_timers(
@@ -3994,7 +3994,7 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 	g.cur_lock = unsafe { node } // is ok because it is discarded at end of fn
 	defer {
 		g.cur_lock = ast.LockExpr{
-			scope: 0
+			scope: unsafe { nil }
 		}
 	}
 	tmp_result := if node.is_expr { g.new_tmp_var() } else { '' }

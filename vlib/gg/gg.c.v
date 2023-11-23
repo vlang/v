@@ -445,7 +445,7 @@ pub fn new_context(cfg Config) &Context {
 		width: cfg.width
 		height: cfg.height
 		config: cfg
-		ft: 0
+		ft: unsafe { nil }
 		ui_mode: cfg.ui_mode
 		native_rendering: cfg.native_rendering
 		window: sapp.Desc{
