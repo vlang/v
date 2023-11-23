@@ -3174,7 +3174,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		snexpr := node.expr.str()
 		tt := c.table.type_to_str(to_type)
 		c.error('cannot cast string to `${tt}`, use `${snexpr}[index]` instead.', node.pos)
-	} else if final_from_sym.kind == .string && to_type.is_pointer() {
+	} else if final_from_sym.kind == .string && to_type.is_pointer() && !c.inside_unsafe {
 		tt := c.table.type_to_str(to_type)
 		c.error('cannot cast string to `${tt}`', node.pos)
 	} else if final_from_sym.kind == .array && !from_type.is_ptr() && to_type != ast.string_type
