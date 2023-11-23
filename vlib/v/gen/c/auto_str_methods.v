@@ -1068,7 +1068,7 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 	} else if _field_type.has_flag(.option) || should_use_indent_func(sym.kind) {
 		obj := '${deref}it.${final_field_name}${sufix}'
 		if has_custom_str {
-			if sym.kind == .interface_ {
+			if sym.kind == .interface_ && (sym.info as ast.Interface).defines_method('str') {
 				iface_obj := 'it.${final_field_name}${sufix}'
 				dot := if field_type.is_ptr() { '->' } else { '.' }
 				return '${fn_name.trim_string_right('_str')}_name_table[${iface_obj}${dot}_typ]._method_str(${iface_obj}${dot}_object)', true
