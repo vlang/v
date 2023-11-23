@@ -22,10 +22,6 @@ pub fn (mut heap MinHeap[T]) insert(item T) {
 
 // insert array of elements to the heap.
 pub fn (mut heap MinHeap[T]) insert_many(elements []T) {
-	if elements.len == 0 {
-		return
-	}
-
 	for v in elements {
 		heap.insert(v)
 	}

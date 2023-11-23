@@ -83,9 +83,6 @@ pub fn (mut list LinkedList[T]) push(item T) {
 
 // push adds an array of elements to the end of the linked list
 pub fn (mut list LinkedList[T]) push_many(elements []T) {
-	if elements.len == 0 {
-		return
-	}
 	for v in elements {
 		list.push(v)
 	}
