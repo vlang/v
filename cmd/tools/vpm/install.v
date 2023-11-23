@@ -169,7 +169,3 @@ fn (m Module) remove() ! {
 	}
 	verbose_println('Removed `${m.name}`.')
 }
-
-fn at_version(version string) string {
-	return if version != '' { '@${version}' } else { '' }
-}
