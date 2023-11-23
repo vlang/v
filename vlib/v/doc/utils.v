@@ -4,6 +4,11 @@ import strings
 import v.ast
 import v.token
 
+const (
+	highlight_keys        = ['note:', 'fixme:', 'todo:']
+	horizontal_rule_chars = ['-', '=', '*', '_', '~']
+)
+
 // merge_comments merges all the comment contents into a single text.
 pub fn merge_comments(comments []ast.Comment) string {
 	mut res := []string{}
@@ -90,14 +95,15 @@ pub fn merge_doc_comments(comments []DocComment) string {
 			}
 			// Use own paragraph for "highlight" comments.
 			ll := l.to_lower()
-			for word in ['note:', 'fixme:', 'todo:'] {
-				if ll.starts_with(word) {
-					comment += '\n\n${word.title()}${l[word.len..]}'
+			mut continue_line_loop := false
+			for key in doc.highlight_keys {
+				if ll.starts_with(key) {
+					comment += '\n\n${key.title()}${l[key.len..]}'
 					continue line_loop
 				}
 			}
 			line_no_spaces := l.replace(' ', '')
-			for ch in ['-', '=', '*', '_', '~'] {
+			for ch in doc.horizontal_rule_chars {
 				if line_no_spaces.starts_with(ch.repeat(3))
 					&& line_no_spaces.count(ch) == line_no_spaces.len {
 					comment += '\n' + l + '\n'
