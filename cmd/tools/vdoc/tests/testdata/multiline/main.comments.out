@@ -5,15 +5,15 @@ fn a1()
 fn a2()
     this should be merged into the same line
 fn a3()
-    This should be its own parapgraph.
+    This should be its own paragraph.
     
     This should be another paragraph.
 fn a4()
-    This should be merged into one parapgraph.
+    This should be merged into one paragraph.
     
     Note: this should be it's own paragraph.
 fn a5()
-    This should be its own parapgraph.
+    This should be its own paragraph.
     
     Note: this should also be it own paragraph
     
@@ -42,3 +42,5 @@ fn a8()
     Note: this should be it's own paragraph.
     
     Fixme: this should be it's own paragraph.
+fn a9()
+    normal comment

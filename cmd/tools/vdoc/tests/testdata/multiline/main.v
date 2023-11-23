@@ -9,7 +9,7 @@ pub fn a2() {
 	println('hi')
 }
 
-// This should be its own parapgraph.
+// This should be its own paragraph.
 //
 // This should be another paragraph.
 pub fn a3() {
@@ -17,13 +17,13 @@ pub fn a3() {
 }
 
 // This should be merged
-// into one parapgraph.
+// into one paragraph.
 // Note: this should be it's own paragraph.
 pub fn a4() {
 	println('hi')
 }
 
-// This should be its own parapgraph.
+// This should be its own paragraph.
 // NOTE: this should also be it own paragraph
 // note: this should be it's own paragraph.
 pub fn a5() {
@@ -51,5 +51,14 @@ pub fn a7() {
 // NOTE: this should be it's own paragraph.
 // FIXME: this should be it's own paragraph.
 pub fn a8() {
+	println('hi')
+}
+
+// Some info that should not be added as doc comment
+// A align      2 bit  Note: for now only 1 used!
+// U uppercase  1 bit  0 do nothing, 1 do to_upper()
+
+// normal comment
+pub fn a9() {
 	println('hi')
 }
