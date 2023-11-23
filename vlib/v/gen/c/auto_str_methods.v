@@ -1068,6 +1068,12 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 	} else if _field_type.has_flag(.option) || should_use_indent_func(sym.kind) {
 		obj := '${deref}it.${final_field_name}${sufix}'
 		if has_custom_str {
+			if sym.kind == .interface_ {
+				mut s := '${fn_name.trim_string_right('_str')}_name_table[${obj}'
+				dot := if field_type.is_ptr() { '->' } else { '.' }
+				s += '${dot}_typ]._method_str(${obj}${dot}_object)'
+				return s, true
+			}
 			return '${fn_name}(${obj})', true
 		}
 		return 'indent_${fn_name}(${obj}, indent_count + 1)', true
