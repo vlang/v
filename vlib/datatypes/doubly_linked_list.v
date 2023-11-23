@@ -85,7 +85,7 @@ pub fn (mut list DoublyLinkedList[T]) push_front(item T) {
 }
 
 // push_many adds array of elements to the beginning of the linked list
-pub fn (mut list DoublyLinkedList[T]) push_many(elements []T, direction Direction) ! {
+pub fn (mut list DoublyLinkedList[T]) push_many(elements []T, direction Direction) {
 	match direction {
 		.front {
 			for v in elements {
