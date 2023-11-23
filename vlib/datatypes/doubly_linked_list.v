@@ -1,5 +1,10 @@
 module datatypes
 
+enum Direction {
+	front
+	back
+}
+
 struct DoublyListNode[T] {
 mut:
 	data T
@@ -80,26 +85,24 @@ pub fn (mut list DoublyLinkedList[T]) push_front(item T) {
 }
 
 // push_many adds array of elements to the beginning of the linked list
-pub fn (mut list DoublyLinkedList[T]) push_many(elements []T, direction string) !{
+pub fn (mut list DoublyLinkedList[T]) push_many(elements []T, direction Direction) ! {
 	if elements.len == 0 {
-	return 
+		return
 	}
 	match direction {
-		'front' {
+		.front {
 			for v in elements {
-			list.push_front(v)
+				list.push_front(v)
+			}
 		}
-		}
-		'back' {
+		.back {
 			for v in elements {
-			list.push_back(v)
-		}
-		}
-		else {
-			return error('direction must be front or back')
+				list.push_back(v)
+			}
 		}
 	}
 }
+
 // pop_back removes the last element of the linked list
 pub fn (mut list DoublyLinkedList[T]) pop_back() !T {
 	if list.is_empty() {

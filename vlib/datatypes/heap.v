@@ -25,7 +25,7 @@ pub fn (mut heap MinHeap[T]) insert_many(elements []T) {
 	if elements.len == 0 {
 		return
 	}
-	
+
 	for v in elements {
 		heap.insert(v)
 	}

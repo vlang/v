@@ -26,6 +26,7 @@ fn test_first() {
 	list.first() or { return }
 	assert false
 }
+
 fn test_push_many() {
 	mut list := LinkedList[int]{}
 	x := [1, 2, 3, 4, 5]

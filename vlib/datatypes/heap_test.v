@@ -18,16 +18,17 @@ fn test_min_heap() {
 	}
 }
 
-fn test_min_heap_insert_many(){
+fn test_min_heap_insert_many() {
 	mut heap := MinHeap[int]{}
-	elem := [2,0,8,4,1]
+	elem := [2, 0, 8, 4, 1]
 	heap.insert_many(elem)
 
 	assert heap.pop()! == 0
 	assert heap.peek()! == 1
 	heap.pop()!
-	assert heap.peek()! == 2 
+	assert heap.peek()! == 2
 }
+
 struct Item {
 	data     string
 	priority int

@@ -50,18 +50,19 @@ fn test_push() {
 
 fn test_push_many_back() {
 	mut list := DoublyLinkedList[int]{}
-	elem := [1,2,3]
-	list.push_many(elem,"back")!
+	elem := [1, 2, 3]
+	list.push_many(elem, Direction.back)!
 	assert list.last()! != 1
 	assert list.last()! != 2
 	assert list.last()! == 3
 }
+
 fn test_push_many_front() {
 	mut list := DoublyLinkedList[int]{}
-	mut elem := [1,2,3]
-	list.push_many(elem,"back")!
+	mut elem := [1, 2, 3]
+	list.push_many(elem, Direction.back)!
 	elem = [111]
-	list.push_many(elem,"front")!
+	list.push_many(elem, Direction.front)!
 	assert list.first()! == 111
 }
 
