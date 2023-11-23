@@ -1069,10 +1069,9 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 		obj := '${deref}it.${final_field_name}${sufix}'
 		if has_custom_str {
 			if sym.kind == .interface_ {
-				mut s := '${fn_name.trim_string_right('_str')}_name_table[${obj}'
+				iface_obj := 'it.${final_field_name}${sufix}'
 				dot := if field_type.is_ptr() { '->' } else { '.' }
-				s += '${dot}_typ]._method_str(${obj}${dot}_object)'
-				return s, true
+				return '${fn_name.trim_string_right('_str')}_name_table[${iface_obj}${dot}_typ]._method_str(${iface_obj}${dot}_object)', true
 			}
 			return '${fn_name}(${obj})', true
 		}
