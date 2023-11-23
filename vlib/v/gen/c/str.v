@@ -108,6 +108,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		unwrap_option := expr is ast.Ident && expr.or_expr.kind == .propagate_option
 		exp_typ := if unwrap_option { typ.clear_flag(.option) } else { typ }
 		is_ptr := exp_typ.is_ptr()
+		is_dump_expr := expr is ast.DumpExpr
 		is_var_mut := expr.is_auto_deref_var()
 		str_fn_name := g.get_str_fn(exp_typ)
 		if is_ptr && !is_var_mut {
@@ -130,7 +131,14 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		}
 		g.write('${str_fn_name}(')
 		if str_method_expects_ptr && !is_ptr {
-			g.write('&')
+			if is_dump_expr {
+				g.write('ADDR(${g.typ(typ)}, ')
+				defer {
+					g.write(')')
+				}
+			} else {
+				g.write('&')
+			}
 		} else if is_ptr && typ.has_flag(.option) {
 			g.write('*(${g.typ(typ)}*)&')
 		} else if !str_method_expects_ptr && !is_shared && (is_ptr || is_var_mut) {
