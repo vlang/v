@@ -99,8 +99,13 @@ pub fn merge_doc_comments(comments []DocComment) string {
 			for key in doc.highlight_keys {
 				if ll.starts_with(key) {
 					comment += '\n\n${key.title()}${l[key.len..]}'
-					continue line_loop
+					// Workaround for compiling with `v -cstrict -cc gcc vlib/v/doc/doc_test.v`
+					// and using multiple continue `<label>`.
+					continue_line_loop = true
 				}
+			}
+			if continue_line_loop {
+				continue
 			}
 			line_no_spaces := l.replace(' ', '')
 			for ch in doc.horizontal_rule_chars {
