@@ -16,7 +16,7 @@ The benefits of using V for web:
   is enough.
 - Fast development without any boilerplate.
 
-> **Note**
+> [!NOTE]
 > V and Vweb are at a very early stage and are changing rapidly.
 
 The code is available [here](./code/blog).

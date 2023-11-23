@@ -4,7 +4,7 @@
 
 ## Running the App
 
-> **NOTE**\
+> [!NOTE]
 > The following steps require Node.js.
 > To install Node, please refer to the [download page](https://nodejs.org/en/download/)
 > or the installation via your operating systems [package manager](https://nodejs.org/en/download/package-manager).

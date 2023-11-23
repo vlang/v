@@ -6149,7 +6149,7 @@ specialised machine instructions, that do require a specific alignment to work.
 performance critical algorithms, you do not really need it, since the proper minimum alignment
 is CPU specific, and the compiler already usually will choose a good default for you.
 
-> **Note**
+> [!NOTE]
 > You can leave out the alignment factor, i.e. use just `@[aligned]`, in which case the compiler
 > will align a type to the maximum useful alignment for the target machine you are compiling for,
 > i.e. the alignment will be the largest alignment which is ever used for any data type on the
