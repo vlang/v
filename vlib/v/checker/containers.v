@@ -98,7 +98,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		}
 
 		// `&int{}` check
-		if node.elem_type.is_any_kind_of_pointer() && !c.inside_unsafe && node.has_len {
+		if node.has_len && !c.check_elements_ref_containers_initialized(node.elem_type) {
 			c.warn('arrays of references need to be initialized right away, therefore `len:` cannot be used (unless inside `unsafe`)',
 				node.pos)
 		}
@@ -109,7 +109,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	if node.is_fixed {
 		c.ensure_sumtype_array_has_default_value(node)
 		c.ensure_type_exists(node.elem_type, node.elem_type_pos)
-		if node.elem_type.is_any_kind_of_pointer() && !c.inside_unsafe && !c.is_builtin_mod {
+		if !c.is_builtin_mod && !c.check_elements_ref_containers_initialized(node.elem_type) {
 			c.warn('fixed arrays of references need to be initialized right away (unless inside `unsafe`)',
 				node.pos)
 		}
@@ -570,4 +570,44 @@ fn (mut c Checker) do_check_elements_ref_fields_initialized(sym &ast.TypeSymbol,
 		}
 		else {}
 	}
+}
+
+// check the element, and its children for ref uninitialized containers
+fn (mut c Checker) check_elements_ref_containers_initialized(typ ast.Type) bool {
+	if typ == 0 || c.inside_unsafe {
+		return true
+	}
+	if typ.is_any_kind_of_pointer() {
+		return false
+	}
+	sym := c.table.sym(typ)
+	match sym.info {
+		ast.Array {
+			elem_type := sym.info.elem_type
+			if elem_type.is_any_kind_of_pointer() {
+				return false
+			}
+			return c.check_elements_ref_containers_initialized(elem_type)
+		}
+		ast.ArrayFixed {
+			elem_type := sym.info.elem_type
+			if elem_type.is_any_kind_of_pointer() && !c.is_builtin_mod {
+				return false
+			}
+			return c.check_elements_ref_containers_initialized(elem_type)
+		}
+		ast.Map {
+			value_type := sym.info.value_type
+			if value_type.is_any_kind_of_pointer() && !c.is_builtin_mod {
+				return false
+			}
+			return c.check_elements_ref_containers_initialized(value_type)
+		}
+		ast.Alias {
+			parent_type := sym.info.parent_type
+			return c.check_elements_ref_containers_initialized(parent_type)
+		}
+		else {}
+	}
+	return true
 }
