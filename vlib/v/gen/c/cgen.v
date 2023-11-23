@@ -144,6 +144,7 @@ mut:
 	inside_cast_in_heap       int // inside cast to interface type in heap (resolve recursive calls)
 	inside_cast               bool
 	inside_const              bool
+	inside_array_item         bool
 	inside_const_opt_or_res   bool
 	inside_lambda             bool
 	inside_cinit              bool

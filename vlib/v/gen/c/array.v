@@ -148,6 +148,11 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 	}
 	g.write('{')
 	if node.has_val {
+		tmp_inside_array := g.inside_array_item
+		g.inside_array_item = true
+		defer {
+			g.inside_array_item = tmp_inside_array
+		}
 		elem_type := (array_type.unaliased_sym.info as ast.ArrayFixed).elem_type
 		elem_sym := g.table.final_sym(elem_type)
 		for i, expr in node.exprs {
