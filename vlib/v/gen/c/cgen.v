@@ -142,7 +142,9 @@ mut:
 	inside_for_c_stmt         bool
 	inside_comptime_for_field bool
 	inside_cast_in_heap       int // inside cast to interface type in heap (resolve recursive calls)
+	inside_cast               bool
 	inside_const              bool
+	inside_array_item         bool
 	inside_const_opt_or_res   bool
 	inside_lambda             bool
 	inside_cinit              bool
@@ -4564,6 +4566,11 @@ fn (mut g Gen) ident(node ast.Ident) {
 }
 
 fn (mut g Gen) cast_expr(node ast.CastExpr) {
+	tmp_inside_cast := g.inside_cast
+	g.inside_cast = true
+	defer {
+		g.inside_cast = tmp_inside_cast
+	}
 	node_typ := g.unwrap_generic(node.typ)
 	mut expr_type := node.expr_type
 	sym := g.table.sym(node_typ)

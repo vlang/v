@@ -50,7 +50,10 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	}
 	is_array := sym.kind in [.array_fixed, .array]
 
-	if !g.inside_cinit && !is_anon && !is_array {
+	// detect if we need type casting on msvc initialization
+	const_msvc_init := g.is_cc_msvc && g.inside_const && !g.inside_cast && g.inside_array_item
+
+	if !g.inside_cinit && !is_anon && !is_array && !const_msvc_init {
 		g.write('(')
 		defer {
 			g.write(')')
@@ -89,7 +92,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		if g.table.sym(node.typ).kind == .alias && g.table.unaliased_type(node.typ).is_ptr() {
 			g.write('&')
 		}
-		if is_array {
+		if is_array || const_msvc_init {
 			g.write('{')
 		} else if is_multiline {
 			g.writeln('(${styp}){')
