@@ -49,8 +49,9 @@ const (
 	home_dir = os.home_dir()
 )
 
-fn parse_query(query []string) ([]Module, []Module) {
-	mut vpm_modules, mut external_modules := []Module{}, []Module{}
+fn parse_query(query []string) []Module {
+	mut modules := []Module{}
+	mut checked_settings_vcs := false
 	mut errors := 0
 	is_git_setting := settings.vcs.cmd == 'git'
 	for m in query {
@@ -70,6 +71,14 @@ fn parse_query(query []string) ([]Module, []Module) {
 				vpm_error(err.msg())
 				errors++
 				continue
+			}
+			// Verify VCS. Only needed once for external modules.
+			if !checked_settings_vcs {
+				checked_settings_vcs = true
+				settings.vcs.is_executable() or {
+					vpm_error(err.msg())
+					exit(1)
+				}
 			}
 			// Fetch manifest.
 			manifest := fetch_manifest(name, ident, version, is_git_setting) or {
@@ -148,22 +157,12 @@ fn parse_query(query []string) ([]Module, []Module) {
 		}
 		mod.version = version
 		mod.get_installed()
-		if mod.is_external {
-			external_modules << mod
-		} else {
-			vpm_modules << mod
-		}
+		modules << mod
 	}
 	if errors > 0 && errors == query.len {
 		exit(1)
 	}
-	if external_modules.len > 0 {
-		settings.vcs.is_executable() or {
-			vpm_error(err.msg())
-			exit(1)
-		}
-	}
-	return vpm_modules, external_modules
+	return modules
 }
 
 // TODO: add unit test

@@ -15,7 +15,7 @@ fn vpm_install(query []string) {
 		help.print_and_exit('vpm')
 	}
 
-	mut vpm_modules, mut external_modules := parse_query(if query.len == 0 {
+	mut modules := parse_query(if query.len == 0 {
 		if os.exists('./v.mod') {
 			// Case: `v install` was run in a directory of another V-module to install its dependencies
 			// - without additional module arguments.
@@ -38,35 +38,22 @@ fn vpm_install(query []string) {
 
 	installed_modules := get_installed_modules()
 
-	vpm_log(@FILE_LINE, @FN, 'VPM modules: ${vpm_modules}')
-	vpm_log(@FILE_LINE, @FN, 'External modules: ${external_modules}')
+	vpm_log(@FILE_LINE, @FN, 'Queried Modules: ${modules}')
 	vpm_log(@FILE_LINE, @FN, 'Installed modules: ${installed_modules}')
 
 	if installed_modules.len > 0 && settings.is_once {
-		num_to_install := vpm_modules.len + external_modules.len
+		num_to_install := modules.len
 		mut already_installed := []string{}
-		if external_modules.len > 0 {
+		if modules.len > 0 {
 			mut i_deleted := []int{}
-			for i, m in external_modules {
+			for i, m in modules {
 				if m.name in installed_modules {
 					already_installed << m.name
 					i_deleted << i
 				}
 			}
 			for i in i_deleted.reverse() {
-				external_modules.delete(i)
-			}
-		}
-		if vpm_modules.len > 0 {
-			mut i_deleted := []int{}
-			for i, m in vpm_modules {
-				if m.name in installed_modules {
-					already_installed << m.name
-					i_deleted << i
-				}
-			}
-			for i in i_deleted.reverse() {
-				vpm_modules.delete(i)
+				modules.delete(i)
 			}
 		}
 		if already_installed.len > 0 {
@@ -78,15 +65,10 @@ fn vpm_install(query []string) {
 		}
 	}
 
-	if vpm_modules.len > 0 {
-		vpm_install_from_vpm(vpm_modules)
-	}
-	if external_modules.len > 0 {
-		vpm_install_from_vcs(external_modules)
-	}
+	install_modules(modules)
 }
 
-fn vpm_install_from_vpm(modules []Module) {
+fn install_modules(modules []Module) {
 	vpm_log(@FILE_LINE, @FN, 'modules: ${modules}')
 	idents := modules.map(it.name)
 	mut errors := 0
@@ -102,36 +84,16 @@ fn vpm_install_from_vpm(modules []Module) {
 				continue
 			}
 		}
-		increment_module_download_count(m.name) or {
-			vpm_error('failed to increment the download count for `${m.name}`', details: err.msg())
-			errors++
+		if !m.is_external {
+			increment_module_download_count(m.name) or {
+				vpm_error('failed to increment the download count for `${m.name}`',
+					details: err.msg()
+				)
+				errors++
+			}
 		}
 		println('Installed `${m.name}`.')
 		resolve_dependencies(get_manifest(m.install_path), idents)
-	}
-	if errors > 0 {
-		exit(1)
-	}
-}
-
-fn vpm_install_from_vcs(modules []Module) {
-	vpm_log(@FILE_LINE, @FN, 'modules: ${modules}')
-	urls := modules.map(it.url)
-	mut errors := 0
-	for m in modules {
-		vpm_log(@FILE_LINE, @FN, 'module: ${m}')
-		match m.install() {
-			.installed {}
-			.failed {
-				errors++
-				continue
-			}
-			.skipped {
-				continue
-			}
-		}
-		println('Installed `${m.name}`.')
-		resolve_dependencies(m.manifest, urls)
 	}
 	if errors > 0 {
 		exit(1)
