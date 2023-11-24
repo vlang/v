@@ -61,8 +61,8 @@ fn test_install_dependencies_in_module_dir() {
 }
 
 fn test_resolve_external_dependencies_during_module_install() {
-	res := os.execute_or_exit('${v} install https://github.com/ttytm/emoji-mart-desktop')
-	assert res.output.contains('Resolving 2 dependencies'), res.output
+	res := os.execute_or_exit('${v} install -v https://github.com/ttytm/emoji-mart-desktop')
+	assert res.output.contains('Found 2 dependencies'), res.output
 	assert res.output.contains('Installing `webview`'), res.output
 	assert res.output.contains('Installing `miniaudio`'), res.output
 	// The external dependencies should have been installed to `<vmodules_dir>/<dependency_name>`

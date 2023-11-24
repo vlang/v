@@ -70,7 +70,6 @@ fn vpm_install(query []string) {
 
 fn install_modules(modules []Module) {
 	vpm_log(@FILE_LINE, @FN, 'modules: ${modules}')
-	idents := modules.map(it.name)
 	mut errors := 0
 	for m in modules {
 		vpm_log(@FILE_LINE, @FN, 'module: ${m}')
@@ -93,7 +92,6 @@ fn install_modules(modules []Module) {
 			}
 		}
 		println('Installed `${m.name}`.')
-		resolve_dependencies(get_manifest(m.install_path), idents)
 	}
 	if errors > 0 {
 		exit(1)

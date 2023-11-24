@@ -20,6 +20,7 @@ mut:
 
 fn parse_query(query []string) []Module {
 	mut modules := []Module{}
+	mut dependencies := map[string]bool{}
 	mut checked_settings_vcs := false
 	mut errors := 0
 	is_git_setting := settings.vcs.cmd == 'git'
@@ -127,9 +128,24 @@ fn parse_query(query []string) []Module {
 		mod.version = version
 		mod.get_installed()
 		modules << mod
+		if mod.manifest.dependencies.len > 0 {
+			verbose_println('Found ${mod.manifest.dependencies.len} dependencies for `${mod.name}`: ${mod.manifest.dependencies}.')
+			for d in mod.manifest.dependencies {
+				if !dependencies[d] {
+					dependencies[d] = true
+				}
+			}
+		}
 	}
 	if errors > 0 && errors == query.len {
 		exit(1)
+	}
+	if dependencies.len > 0 {
+		vpm_log(@FILE_LINE, @FN, 'dependencies: ${dependencies}')
+		deps := dependencies.keys().filter(it !in query)
+		vpm_log(@FILE_LINE, @FN, 'dependencies filtered: ${deps}')
+		println('Scanning dependencies...')
+		modules << parse_query(deps)
 	}
 	return modules
 }
