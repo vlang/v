@@ -456,6 +456,25 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		} else {
 			g.writeln('\t${val_styp} ${val} = *(${val_styp}*)${t_var}.data;')
 		}
+	} else if node.kind == .aggregate {
+		for_type := (g.table.sym(node.cond_type).info as ast.Aggregate).types[g.aggregate_type_idx]
+		val_type := g.table.value_type(for_type)
+
+		node.scope.update_var_type(node.val_var, val_type)
+
+		g.for_in_stmt(ast.ForInStmt{
+			cond: node.cond
+			cond_type: for_type
+			kind: g.table.sym(for_type).kind
+			stmts: node.stmts
+			val_type: val_type
+			val_var: node.val_var
+			val_is_mut: node.val_is_mut
+			val_is_ref: node.val_is_ref
+		})
+
+		g.loop_depth--
+		return
 	} else {
 		typ_str := g.table.type_to_str(node.cond_type)
 		g.error('for in: unhandled symbol `${node.cond}` of type `${typ_str}`', node.pos)
