@@ -230,3 +230,18 @@ fn test_back_iterator() {
 	}
 	assert res == [3, 2, 1]
 }
+
+fn test_push_many() {
+	mut list := DoublyLinkedList[int]{}
+	list.push_back(1)
+	list.push_back(2)
+	list.push_back(3)
+	list.push_many([4, 5, 6], .front)
+	list.push_many([7, 8, 9], .back)
+
+	mut res := []int{}
+	for x in list {
+		res << x
+	}
+	assert res == [4, 5, 6, 1, 2, 3, 7, 8, 9]
+}

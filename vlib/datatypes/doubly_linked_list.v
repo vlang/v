@@ -1,6 +1,6 @@
 module datatypes
 
-enum Direction {
+pub enum Direction {
 	front
 	back
 }
@@ -88,7 +88,7 @@ pub fn (mut list DoublyLinkedList[T]) push_front(item T) {
 pub fn (mut list DoublyLinkedList[T]) push_many(elements []T, direction Direction) {
 	match direction {
 		.front {
-			for v in elements {
+			for v in elements.reverse() {
 				list.push_front(v)
 			}
 		}
