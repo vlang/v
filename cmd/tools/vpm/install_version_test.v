@@ -65,7 +65,7 @@ fn test_install_from_vpm_with_git_version_tag() {
 fn test_install_from_url_with_git_version_tag() {
 	mut url := 'https://github.com/vlang/vsl'
 	mut tag := 'v0.1.50'
-	mut res := os.execute_or_exit('v install ${url}@${tag}')
+	mut res := os.execute_or_exit('${vexe} install ${url}@${tag}')
 	assert res.output.contains('Installing `vsl`'), res.output
 	assert res.output.contains('Installed `vsl`'), res.output
 	mut name, mut version := get_mod_name_and_version('vsl')
