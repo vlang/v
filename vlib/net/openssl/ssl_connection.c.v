@@ -34,8 +34,8 @@ pub fn new_ssl_conn(config SSLConnectConfig) !&SSLConn {
 	}
 	mut conn := &SSLConn{
 		config: config
-		sslctx: 0
-		ssl: 0
+		sslctx: unsafe { nil }
+		ssl: unsafe { nil }
 		handle: 0
 	}
 	conn.init() or { return err }
