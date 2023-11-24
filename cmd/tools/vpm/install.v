@@ -141,14 +141,14 @@ fn (m Module) confirm_install() bool {
 		println('Module `${m.name}${at_version(m.installed_version)}` is already installed, use --force to overwrite.')
 		return false
 	} else {
-		install_version := at_version(if m.version == '' { 'latest' } else { m.version })
 		println('Module `${m.name}${at_version(m.installed_version)}` is already installed at `${m.install_path_fmted}`.')
 		if settings.fail_on_prompt {
 			vpm_error('VPM should not have entered a confirmation prompt.')
 			exit(1)
 		}
+		install_version := at_version(if m.version == '' { 'latest' } else { m.version })
 		input := os.input('Replace it with `${m.name}${install_version}`? [Y/n]: ')
-		match input.to_lower() {
+		match input.trim_space().to_lower() {
 			'', 'y' {
 				return true
 			}
