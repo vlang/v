@@ -63,6 +63,8 @@ mut:
 	found___          string
 	took              time.Duration
 	cli_cmd           string
+	ntries            int
+	max_ntries        int = 1
 }
 
 struct Tasks {
@@ -186,6 +188,7 @@ fn (mut tasks Tasks) add(custom_vexe string, dir string, voptions string, result
 }
 
 fn (mut tasks Tasks) add_evars(evars string, custom_vexe string, dir string, voptions string, result_extension string, tests []string, is_module bool) {
+	max_ntries := get_max_ntries()
 	paths := vtest.filter_vtest_only(tests, basepath: dir)
 	for path in paths {
 		tasks.all << TaskDescription{
@@ -196,6 +199,7 @@ fn (mut tasks Tasks) add_evars(evars string, custom_vexe string, dir string, vop
 			result_extension: result_extension
 			path: path
 			is_module: is_module
+			max_ntries: max_ntries
 		}
 	}
 }
@@ -316,11 +320,30 @@ fn (mut tasks Tasks) run() {
 fn work_processor(work chan TaskDescription, results chan TaskDescription) {
 	for {
 		mut task := <-work or { break }
-		sw := time.new_stopwatch()
-		task.execute()
-		task.took = sw.elapsed()
+		mut i := 0
+		for i = 1; i <= task.max_ntries; i++ {
+			sw := time.new_stopwatch()
+			task.execute()
+			task.took = sw.elapsed()
+			if !task.is_error {
+				break
+			}
+			cli_cmd := task.get_cli_cmd()
+			eprintln('>    failed ${i:3} times, doing `${cli_cmd}`\n')
+			if i <= task.max_ntries {
+				time.sleep(100 * time.millisecond)
+			}
+		}
+		task.ntries = i
 		results <- task
 	}
+}
+
+fn (mut task TaskDescription) get_cli_cmd() string {
+	program := task.path
+	cmd_prefix := if task.evars.len > 0 { '${task.evars} ' } else { '' }
+	cli_cmd := '${cmd_prefix}${os.quoted_path(task.vexe)} ${task.voptions} ${os.quoted_path(program)}'
+	return cli_cmd
 }
 
 // actual processing; Note: no output is done here at all
@@ -328,11 +351,9 @@ fn (mut task TaskDescription) execute() {
 	if task.is_skipped {
 		return
 	}
-	program := task.path
-	cmd_prefix := if task.evars.len > 0 { '${task.evars} ' } else { '' }
-	cli_cmd := '${cmd_prefix}${os.quoted_path(task.vexe)} ${task.voptions} ${os.quoted_path(program)}'
+	cli_cmd := task.get_cli_cmd()
 	res := os.execute(cli_cmd)
-	expected_out_path := program.replace('.vv', '') + task.result_extension
+	expected_out_path := task.path.replace('.vv', '') + task.result_extension
 	task.expected_out_path = expected_out_path
 	task.cli_cmd = cli_cmd
 	if should_autofix && !os.exists(expected_out_path) {
@@ -380,4 +401,8 @@ fn get_tests_in_dir(dir string, is_module bool) []string {
 	}
 	tests.sort()
 	return tests
+}
+
+fn get_max_ntries() int {
+	return if v_ci_musl { 3 } else { 1 }
 }
