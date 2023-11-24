@@ -1,4 +1,4 @@
-## Building a 150 KB web blog in V & SQLite
+## Building a 400 KB web blog in V & SQLite
 
 Hello,
 
@@ -409,6 +409,18 @@ If the database file doesn't exist it will create it. The second command will
 create the table `Article` if none exists already. Now every time the
 app is run you will see the articles created from the previous executions
 
-To be continued...
+### Building the blog
+
+Run
+
+```bash
+v -d use_openssl -o blog -prod . && strip ./blog
+```
+
+This will result in a ~400KB binary. `-d use_openssl` tells vweb to link to OpenSSL. Without this flag mbedtls will be embedded, and the
+binary size will increase to ~700KB.
+
+
+### To be continued...
 
 For an example of a more sophisticated web app written in V, check out Vorum: https://github.com/vlang/vorum
