@@ -4,9 +4,8 @@ import v.vmod
 
 const (
 	vexe              = os.quoted_path(@VEXE)
-	vroot             = os.quoted_path(@VEXEROOT)
 	test_path         = os.join_path(os.vtmp_dir(), 'vpm_install_version_input_test')
-	expect_tests_path = os.join_path(vroot, 'cmd', 'tools', 'vpm', 'expect')
+	expect_tests_path = os.join_path(@VEXEROOT, 'cmd', 'tools', 'vpm', 'expect')
 	expect_exe        = os.quoted_path(os.find_abs_path_of_executable('expect') or {
 		eprintln('skipping test, since expect is missing')
 		exit(0)
@@ -51,7 +50,7 @@ fn test_reinstall_mod_with_version_installation() {
 	$if macos {
 		mod_path = '/private' + os.join_path(test_path, mod)
 	}
-	expect_args := [vroot, mod, tag, new_tag, mod_path].join(' ')
+	expect_args := [vexe, mod, tag, new_tag, mod_path].join(' ')
 
 	// Decline.
 	decline_test := os.join_path(expect_tests_path, 'decline_reinstall_mod_with_version_installation.expect')

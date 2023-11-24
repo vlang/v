@@ -2,14 +2,13 @@
 
 set timeout 3
 
-# Pass v_root as arg, since we chdir into a temp directory during testing and create a project there.
-set v_root [lindex $argv 0]
+set vexe [lindex $argv 0]
 set mod [lindex $argv 1]
 set cur_tag [lindex $argv 2]
 set new_tag [lindex $argv 3]
 set install_path [lindex $argv 4]
 
-spawn $v_root/v install $mod@$new_tag
+spawn $vexe install $mod@$new_tag
 
 expect "Scanning `$mod`..." {} timeout { exit 1 }
 expect "Module `$mod@$cur_tag` is already installed at `$install_path`." {} timeout { exit 1 }
