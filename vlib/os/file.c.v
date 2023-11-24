@@ -259,6 +259,7 @@ pub fn (f &File) read(mut buf []u8) !int {
 }
 
 // **************************** Write ops  ***************************
+
 // write implements the Writer interface.
 // It returns how many bytes were actually written.
 pub fn (mut f File) write(buf []u8) !int {
@@ -559,6 +560,7 @@ pub fn (f &File) read_into_ptr(ptr &u8, max_size int) !int {
 }
 
 // **************************** Utility  ops ***********************
+
 // flush writes any buffered unwritten data left in the file stream.
 pub fn (mut f File) flush() {
 	if !f.is_opened {
