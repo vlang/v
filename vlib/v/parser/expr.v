@@ -551,20 +551,24 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 			}
 		} else if p.tok.kind == .left_shift && p.is_stmt_ident {
 			// arr << elem
-			tok := p.tok
-			mut pos := tok.pos()
-			p.next()
-			right := p.expr(precedence - 1)
-			pos.update_last_line(p.prev_tok.line_nr)
-			if mut node is ast.IndexExpr {
-				node.recursive_arraymap_set_is_setter()
-			}
-			node = ast.InfixExpr{
-				left: node
-				right: right
-				op: tok.kind
-				pos: pos
-				is_stmt: true
+			if node is ast.CastExpr {
+				node = p.infix_expr(node)
+			} else {
+				tok := p.tok
+				mut pos := tok.pos()
+				p.next()
+				right := p.expr(precedence - 1)
+				pos.update_last_line(p.prev_tok.line_nr)
+				if mut node is ast.IndexExpr {
+					node.recursive_arraymap_set_is_setter()
+				}
+				node = ast.InfixExpr{
+					left: node
+					right: right
+					op: tok.kind
+					pos: pos
+					is_stmt: true
+				}
 			}
 		} else if p.tok.kind.is_infix() && !(p.tok.kind in [.minus, .amp, .mul]
 			&& p.tok.line_nr != p.prev_tok.line_nr) {
