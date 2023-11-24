@@ -102,7 +102,10 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			c.warn('arrays of references need to be initialized right away, therefore `len:` cannot be used (unless inside `unsafe`)',
 				node.pos)
 		}
-		c.check_elements_ref_fields_initialized(node.elem_type, node.pos)
+		// `&Struct{} check
+		if node.has_len {
+			c.check_elements_ref_fields_initialized(node.elem_type, node.pos)
+		}
 		return node.typ
 	}
 

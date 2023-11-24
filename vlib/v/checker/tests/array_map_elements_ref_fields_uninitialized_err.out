@@ -1,34 +1,34 @@
 vlib/v/checker/tests/array_map_elements_ref_fields_uninitialized_err.vv:8:6: notice: reference field `Foo.n` must be initialized (part of struct `Foo`)
-    6 | 
+    6 |
     7 | fn main() {
-    8 |     _ = []Foo{}
+    8 |     _ = []Foo{len: 1}
       |         ~~~~~~
     9 |     _ = [1]Foo{}
    10 |     _ = map[string]Foo{}
 vlib/v/checker/tests/array_map_elements_ref_fields_uninitialized_err.vv:9:6: notice: reference field `Foo.n` must be initialized (part of struct `Foo`)
     7 | fn main() {
-    8 |     _ = []Foo{}
+    8 |     _ = []Foo{len: 1}
     9 |     _ = [1]Foo{}
       |         ~~~~~~~~
    10 |     _ = map[string]Foo{}
    11 |     _ = map[string][]Foo{}
 vlib/v/checker/tests/array_map_elements_ref_fields_uninitialized_err.vv:10:6: notice: reference field `Foo.n` must be initialized (part of struct `Foo`)
-    8 |     _ = []Foo{}
+    8 |     _ = []Foo{len: 1}
     9 |     _ = [1]Foo{}
    10 |     _ = map[string]Foo{}
       |         ~~~~~~~~~~~~~~~~
    11 |     _ = map[string][]Foo{}
-   12 |     _ = []AliasFoo{}
+   12 |     _ = []AliasFoo{len: 1}
 vlib/v/checker/tests/array_map_elements_ref_fields_uninitialized_err.vv:11:6: notice: reference field `Foo.n` must be initialized (part of struct `Foo`)
     9 |     _ = [1]Foo{}
    10 |     _ = map[string]Foo{}
    11 |     _ = map[string][]Foo{}
       |         ~~~~~~~~~~~~~~~~~~
-   12 |     _ = []AliasFoo{}
+   12 |     _ = []AliasFoo{len: 1}
    13 | }
 vlib/v/checker/tests/array_map_elements_ref_fields_uninitialized_err.vv:12:6: notice: reference field `Foo.n` must be initialized (part of struct `Foo`)
    10 |     _ = map[string]Foo{}
    11 |     _ = map[string][]Foo{}
-   12 |     _ = []AliasFoo{}
+   12 |     _ = []AliasFoo{len: 1}
       |         ~~~~~~~~~~~
    13 | }
