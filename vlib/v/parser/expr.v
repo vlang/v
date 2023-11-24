@@ -550,10 +550,11 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 				return node
 			}
 		} else if p.tok.kind == .left_shift && p.is_stmt_ident {
-			// arr << elem
+			// cast(expr) << expr
 			if node is ast.CastExpr {
 				node = p.infix_expr(node)
 			} else {
+				// arr << elem
 				tok := p.tok
 				mut pos := tok.pos()
 				p.next()
