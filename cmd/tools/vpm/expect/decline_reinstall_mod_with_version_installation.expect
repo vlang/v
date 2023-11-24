@@ -11,8 +11,8 @@ set install_path [lindex $argv 4]
 
 spawn $v_root/v install $mod@$new_tag
 
-expect "Scanning `$mod`..."
-expect "Module `$mod@$cur_tag` is already installed at `$install_path`."
+expect "Scanning `$mod`..." {} timeout { exit 1 }
+expect "Module `$mod@$cur_tag` is already installed at `$install_path`." {} timeout { exit 1 }
 expect "Replace it with `$mod@$new_tag`? \\\[Y/n\\\]: " { send "n\r" } timeout { exit 1 }
 
 expect eof
