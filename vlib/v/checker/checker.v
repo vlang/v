@@ -4319,7 +4319,8 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 	}
 	is_aggregate_arr := typ_sym.kind == .aggregate
 		&& (typ_sym.info as ast.Aggregate).types.filter(c.table.type_kind(it) !in [.array, .array_fixed, .string, .map]).len == 0
-	if typ_sym.kind !in [.array, .array_fixed, .string, .map] && !typ.is_ptr()
+	if typ_sym.kind !in [.array, .array_fixed, .string, .map]
+		&& (!typ.is_ptr() || typ_sym.kind in [.sum_type, .interface_])
 		&& typ !in [ast.byteptr_type, ast.charptr_type] && !typ.has_flag(.variadic)
 		&& !is_aggregate_arr {
 		c.error('type `${typ_sym.name}` does not support indexing', node.pos)
