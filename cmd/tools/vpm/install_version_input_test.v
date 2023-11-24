@@ -3,9 +3,10 @@ import os
 import v.vmod
 
 const (
+	vexe              = os.quoted_path(@VEXE)
 	vroot             = os.quoted_path(@VEXEROOT)
 	test_path         = os.join_path(os.vtmp_dir(), 'vpm_install_version_input_test')
-	expect_tests_path = os.join_path(@VEXEROOT, 'cmd', 'tools', 'vpm', 'expect')
+	expect_tests_path = os.join_path(vroot, 'cmd', 'tools', 'vpm', 'expect')
 	expect_exe        = os.quoted_path(os.find_abs_path_of_executable('expect') or {
 		eprintln('skipping test, since expect is missing')
 		exit(0)
@@ -39,7 +40,7 @@ fn test_reinstall_mod_with_version_installation() {
 	// Install version.
 	mod := 'vsl'
 	tag := 'v0.1.47'
-	os.execute_or_exit('v install ${mod}@${tag}')
+	os.execute_or_exit('${vexe} install ${mod}@${tag}')
 	mut name, mut version := get_mod_name_and_version(mod)
 	assert name == mod
 	assert version == tag.trim_left('v')
