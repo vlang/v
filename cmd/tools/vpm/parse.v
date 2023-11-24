@@ -124,6 +124,7 @@ fn parse_query(query []string) []Module {
 				manifest: manifest
 			}
 		}
+		mod.install_path_fmted = fmt_mod_path(mod.install_path)
 		mod.version = version
 		mod.get_installed()
 		modules << mod
