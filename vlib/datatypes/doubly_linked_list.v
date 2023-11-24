@@ -88,7 +88,8 @@ pub fn (mut list DoublyLinkedList[T]) push_front(item T) {
 pub fn (mut list DoublyLinkedList[T]) push_many(elements []T, direction Direction) {
 	match direction {
 		.front {
-			for v in elements.reverse() {
+			for i := elements.len - 1; i >= 0; i-- {
+				v := elements[i]
 				list.push_front(v)
 			}
 		}
