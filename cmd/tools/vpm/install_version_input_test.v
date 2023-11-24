@@ -47,7 +47,10 @@ fn test_reinstall_mod_with_version_installation() {
 
 	// Try reinstalling
 	new_tag := 'v0.1.50'
-	mod_path := os.join_path(test_path, mod)
+	mut mod_path := os.join_path(test_path, mod)
+	$if macos {
+		mod_path = '/private' + os.join_path(test_path, mod)
+	}
 	expect_args := [vroot, mod, tag, new_tag, mod_path].join(' ')
 
 	// Decline.
