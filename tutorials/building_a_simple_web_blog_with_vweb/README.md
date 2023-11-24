@@ -417,8 +417,8 @@ Run
 v -d use_openssl -o blog -prod . && strip ./blog
 ```
 
-This will result in a ~400KB binary. `-d use_openssl` tells vweb to link to OpenSSL. Without this flag mbedtls will be embedded, and the
-binary size will increase to ~700KB.
+This will result in a ~400KB binary. `-d use_openssl` tells vweb to link to OpenSSL.
+Without this flag mbedtls will be embedded, and the binary size will increase to ~700KB.
 
 
 ### To be continued...
