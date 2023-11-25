@@ -924,7 +924,12 @@ pub fn (t &Table) chan_cname(elem_type Type, is_mut bool) string {
 	} else if elem_type.is_ptr() {
 		suffix = '_ptr'
 	}
-	return 'chan_${elem_type_sym.cname}' + suffix
+	type_name := if elem_type_sym.cname.contains('[') {
+		elem_type_sym.cname.replace_each(ast.map_cname_escape_seq)
+	} else {
+		elem_type_sym.cname
+	}
+	return 'chan_${type_name}' + suffix
 }
 
 @[inline]
