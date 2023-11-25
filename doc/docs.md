@@ -2926,10 +2926,8 @@ To dereference a reference, use the `*` operator, just like in C.
 ## Constants
 
 ```v
-const (
-	pi    = 3.14
-	world = '世界'
-)
+const pi = 3.14
+const world = '世界'
 
 println(pi)
 println(world)
@@ -2961,16 +2959,14 @@ fn rgb(r int, g int, b int) Color {
 	}
 }
 
-const (
-	numbers = [1, 2, 3]
-	red     = Color{
-		r: 255
-		g: 0
-		b: 0
-	}
-	// evaluate function call at compile time*
-	blue = rgb(0, 0, 255)
-)
+const numbers = [1, 2, 3]
+const red = Color{
+	r: 255
+	g: 0
+	b: 0
+}
+// evaluate function call at compile time*
+const blue = rgb(0, 0, 255)
 
 println(numbers)
 println(red)
