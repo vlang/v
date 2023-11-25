@@ -45,7 +45,6 @@ fn (context Context) footer() string {
 
 fn (context Context) file2v(bname string, fbytes []u8, bn_max int) string {
 	mut sb := strings.new_builder(1000)
-	bn_diff_len := bn_max - bname.len
 	sb.write_string('const ${bname}_len' + ' = ${fbytes.len}\n')
 	fbyte := fbytes[0]
 	bnmae_line := 'const ${bname}' + ' = [u8(${fbyte}), '
