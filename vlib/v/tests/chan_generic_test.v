@@ -4,7 +4,7 @@ struct Task[T] {
 }
 
 fn check[T](input T) T {
-	ch := chan Task[T]{} // replacing T with `int` compiles fine
+	ch := chan Task[T]{}
 	// do something with channel
 	ch.close()
 	return input
