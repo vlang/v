@@ -57,17 +57,17 @@ version = '1.5.1'
 import os
 import flag
 
-const	tool_name = os.file_name(os.executable())
+const tool_name = os.file_name(os.executable())
 const tool_version = '0.1.33'
 
 fn main() {
 	// stuff
 }
 	"
-		line: 6
-		expected_patch: "	tool_version     = '0.1.34'"
-		expected_minor: "	tool_version     = '0.2.0'"
-		expected_major: "	tool_version     = '1.0.0'"
+		line: 5
+		expected_patch: "const tool_version = '0.1.34'"
+		expected_minor: "const tool_version = '0.2.0'"
+		expected_major: "const tool_version = '1.0.0'"
 	},
 ]
 
