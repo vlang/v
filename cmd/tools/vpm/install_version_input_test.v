@@ -2,15 +2,13 @@
 import os
 import v.vmod
 
-const (
-	vexe              = os.quoted_path(@VEXE)
-	test_path         = os.join_path(os.vtmp_dir(), 'vpm_install_version_input_test')
-	expect_tests_path = os.join_path(@VEXEROOT, 'cmd', 'tools', 'vpm', 'expect')
-	expect_exe        = os.quoted_path(os.find_abs_path_of_executable('expect') or {
-		eprintln('skipping test, since expect is missing')
-		exit(0)
-	})
-)
+const vexe = os.quoted_path(@VEXE)
+const test_path = os.join_path(os.vtmp_dir(), 'vpm_install_version_input_test')
+const expect_tests_path = os.join_path(@VEXEROOT, 'cmd', 'tools', 'vpm', 'expect')
+const expect_exe = os.quoted_path(os.find_abs_path_of_executable('expect') or {
+	eprintln('skipping test, since expect is missing')
+	exit(0)
+})
 
 fn testsuite_begin() {
 	os.setenv('VMODULES', test_path, true)
@@ -44,17 +42,14 @@ fn test_reinstall_mod_with_version_installation() {
 	assert name == mod
 	assert version == tag.trim_left('v')
 
-	// Try reinstalling
+	// Try reinstalling.
 	new_tag := 'v0.1.50'
-	mut mod_path := os.join_path(test_path, mod)
-	$if macos {
-		mod_path = '/private' + os.join_path(test_path, mod)
-	}
-	expect_args := [vexe, mod, tag, new_tag, mod_path].join(' ')
+	install_path := os.real_path(os.join_path(test_path, mod))
+	expect_args := [vexe, mod, tag, new_tag, install_path].join(' ')
 
 	// Decline.
 	decline_test := os.join_path(expect_tests_path, 'decline_reinstall_mod_with_version_installation.expect')
-	manifest_path := os.join_path(mod_path, 'v.mod')
+	manifest_path := os.join_path(install_path, 'v.mod')
 	last_modified := os.file_last_mod_unix(manifest_path)
 	os.execute_or_exit('${expect_exe} ${decline_test} ${expect_args}')
 	assert last_modified == os.file_last_mod_unix(manifest_path)
