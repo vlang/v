@@ -4,14 +4,20 @@ import picohttpparser
 import time
 
 pub const max_fds = 1024
+
 pub const max_queue = 4096
 
 // events
 pub const picoev_read = 1
+
 pub const picoev_write = 2
+
 pub const picoev_timeout = 4
+
 pub const picoev_add = 0x40000000
+
 pub const picoev_del = 0x20000000
+
 pub const picoev_readwrite = 3
 
 // Target is a data representation of everything that needs to be associated with a single
@@ -31,7 +37,7 @@ pub:
 	port         int = 8080
 	cb           fn (voidptr, picohttpparser.Request, mut picohttpparser.Response) = unsafe { nil }
 	err_cb       fn (voidptr, picohttpparser.Request, mut picohttpparser.Response, IError) = default_err_cb
-	raw_cb       fn (mut Picoev, int) = unsafe { nil }
+	raw_cb       fn (mut Picoev, int, int) = unsafe { nil }
 	user_data    voidptr = unsafe { nil }
 	timeout_secs int     = 8
 	max_headers  int     = 100
@@ -43,7 +49,7 @@ pub:
 pub struct Picoev {
 	cb     fn (voidptr, picohttpparser.Request, mut picohttpparser.Response) = unsafe { nil }
 	err_cb fn (voidptr, picohttpparser.Request, mut picohttpparser.Response, IError) = default_err_cb
-	raw_cb fn (mut Picoev, int) = unsafe { nil }
+	raw_cb fn (mut Picoev, int, int) = unsafe { nil }
 
 	timeout_secs int
 	max_headers  int = 100
@@ -98,7 +104,7 @@ pub fn (mut pv Picoev) add(fd int, events int, timeout int, cb voidptr) int {
 
 // del removes a file descriptor from the loop
 @[direct_array_access]
-fn (mut pv Picoev) del(fd int) int {
+pub fn (mut pv Picoev) del(fd int) int {
 	assert fd < picoev.max_fds
 	mut target := pv.file_descriptors[fd]
 
@@ -212,7 +218,7 @@ fn raw_callback(fd int, events int, context voidptr) {
 	} else if events & picoev.picoev_read != 0 {
 		pv.set_timeout(fd, pv.timeout_secs)
 		if !isnil(pv.raw_cb) {
-			pv.raw_cb(mut pv, fd)
+			pv.raw_cb(mut pv, fd, events)
 			return
 		}
 
@@ -272,6 +278,12 @@ fn raw_callback(fd int, events int, context voidptr) {
 
 		// Callback (should call .end() itself)
 		pv.cb(pv.user_data, req, mut &res)
+	} else if events & picoev.picoev_write != 0 {
+		pv.set_timeout(fd, pv.timeout_secs)
+		if !isnil(pv.raw_cb) {
+			pv.raw_cb(mut pv, fd, events)
+			return
+		}
 	}
 }
 
