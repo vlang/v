@@ -9,12 +9,10 @@ struct Vector {
 	z f64
 }
 
-const (
-	boids_count         = 10000
-	max_coordinate      = 10000.0
-	cohesion_distance   = 10.0
-	separation_distance = 5.0
-)
+const boids_count = 10000
+const max_coordinate = 10000.0
+const cohesion_distance = 10.0
+const separation_distance = 5.0
 
 @[direct_array_access]
 fn main() {

@@ -5,10 +5,8 @@ import gg
 import time
 import math
 
-const (
-	size  = 700
-	scale = 50.0
-)
+const size = 700
+const scale = 50.0
 
 struct Context {
 mut:

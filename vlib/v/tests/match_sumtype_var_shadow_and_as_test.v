@@ -8,14 +8,12 @@ struct Dog {
 
 type Animal = Cat | Dog
 
-const (
-	cat = Cat{
-		name: 'cat'
-	}
-	dog = Dog{
-		name: 'dog'
-	}
-)
+const cat = Cat{
+	name: 'cat'
+}
+const dog = Dog{
+	name: 'dog'
+}
 
 fn test_shadow() {
 	mut animal := Animal{}

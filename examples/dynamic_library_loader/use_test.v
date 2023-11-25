@@ -5,10 +5,8 @@ module main
 import os
 import dl
 
-const (
-	vexe   = os.real_path(os.getenv('VEXE'))
-	so_ext = dl.dl_ext
-)
+const vexe = os.real_path(os.getenv('VEXE'))
+const so_ext = dl.dl_ext
 
 fn test_vexe() {
 	// dump(vexe)

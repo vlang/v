@@ -2,8 +2,7 @@ module main
 
 import encoding.xml
 
-const (
-	sample_document = '
+const sample_document = '
 <root>
 	<a attr="value1">
 		<b id="middle-tag" attr="value2">
@@ -22,7 +21,6 @@ const (
 	<l attr="value12">Text9</l>
 </root>
 '
-)
 
 fn test_querying() ! {
 	doc := xml.XMLDocument.from_string(sample_document)!

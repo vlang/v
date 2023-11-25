@@ -4,11 +4,10 @@ module hmac
 
 import crypto.internal.subtle
 
-const (
-	ipad = []u8{len: 256, init: 0x36} // TODO is 256 enough??
-	opad = []u8{len: 256, init: 0x5C}
-	npad = []u8{len: 256, init: 0}
-)
+const ipad = []u8{len: 256, init: 0x36} // TODO is 256 enough??
+
+const opad = []u8{len: 256, init: 0x5C}
+const npad = []u8{len: 256, init: 0}
 
 // new returns a HMAC byte array, depending on the hash algorithm used.
 pub fn new(key []u8, data []u8, hash_func fn ([]u8) []u8, blocksize int) []u8 {

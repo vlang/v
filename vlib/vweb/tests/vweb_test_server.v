@@ -4,9 +4,7 @@ import os
 import vweb
 import time
 
-const (
-	known_users = ['bilbo', 'kent']
-)
+const known_users = ['bilbo', 'kent']
 
 struct App {
 	vweb.Context

@@ -1,10 +1,8 @@
 import v.gen.js.tests.hello as hl
 import v.gen.js.tests.hello.hello1 as hl1
 
-const (
-	i_am_a_const = 21214
-	super        = 'amazing keyword'
-)
+const i_am_a_const = 21214
+const super = 'amazing keyword'
 
 struct Foo {
 mut:

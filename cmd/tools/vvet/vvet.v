@@ -29,10 +29,8 @@ struct Options {
 	doc_private_fns_too bool
 }
 
-const (
-	term_colors = term.can_show_color_on_stderr()
-	clean_seq   = ['[', '', ']', '', ' ', '']
-)
+const term_colors = term.can_show_color_on_stderr()
+const clean_seq = ['[', '', ']', '', ' ', '']
 
 fn main() {
 	vet_options := cmdline.options_after(os.args, ['vet'])

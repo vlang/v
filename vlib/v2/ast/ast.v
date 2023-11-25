@@ -5,10 +5,8 @@ module ast
 
 import v2.token
 
-pub const (
-	empty_expr = Expr(EmptyExpr(0))
-	empty_stmt = Stmt(EmptyStmt(0))
-)
+pub const empty_expr = Expr(EmptyExpr(0))
+pub const empty_stmt = Stmt(EmptyStmt(0))
 
 type EmptyExpr = u8
 type EmptyStmt = u8

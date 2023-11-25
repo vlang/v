@@ -1,8 +1,6 @@
 module picohttpparser
 
-const (
-	max_headers = 100
-)
+const max_headers = 100
 
 pub struct Header {
 pub mut:

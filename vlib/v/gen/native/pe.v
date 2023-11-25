@@ -14,68 +14,68 @@ enum PeCharacteristics {
 	executable_image = 0x2f
 }
 
-const (
-	image_base                    = i64(0x400000)
+const image_base = i64(0x400000)
 
-	pe_section_align              = 0x1000
-	pe_file_align                 = 0x0200
+const pe_section_align = 0x1000
+const pe_file_align = 0x0200
 
-	pe_coff_hdr_size              = 0x18
-	pe_opt_hdr_size               = 0xf0
-	pe32_plus_opt_hdr_size        = 0x70
-	pe_header_size                = pe_file_align
-	pe_section_header_size        = 0x28
-	pe_stack_size                 = 0x200000 // gcc default on windows
-	pe_heap_size                  = 0x100000 // gcc default on windows
-	// tcc defaults
-	pe_major_linker_version       = 6
-	pe_minor_linker_version       = 0
-	pe_major_os_version           = 4
-	pe_minor_os_version           = 0
-	pe_major_subsystem_version    = 4
-	pe_minor_subsystem_version    = 0
+const pe_coff_hdr_size = 0x18
+const pe_opt_hdr_size = 0xf0
+const pe32_plus_opt_hdr_size = 0x70
+const pe_header_size = pe_file_align
+const pe_section_header_size = 0x28
+const pe_stack_size = 0x200000 // gcc default on windows
 
-	pe_header_machine_offset      = 4
-	pe_number_of_sections_offset  = 6
+const pe_heap_size = 0x100000 // gcc default on windows
 
-	pe_num_data_dirs              = 0x10
+// tcc defaults
+const pe_major_linker_version = 6
+const pe_minor_linker_version = 0
+const pe_major_os_version = 4
+const pe_minor_os_version = 0
+const pe_major_subsystem_version = 4
+const pe_minor_subsystem_version = 0
 
-	dos_stub_end                  = 0x80
-	optdr_location                = 0x98
+const pe_header_machine_offset = 4
+const pe_number_of_sections_offset = 6
 
-	// reference: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format?redirectedfrom=MSDN#section-flags
-	pe_scn_type_no_pad            = 0x00000008
-	pe_scn_cnt_code               = 0x00000020
-	pe_scn_cnt_initialized_data   = 0x00000040
-	pe_scn_cnt_uninitialized_data = 0x00000080
-	pe_scn_lnk_info               = 0x00000200
-	pe_scn_lnk_remove             = 0x00000400
-	pe_scn_lnk_comdat             = 0x00001000
-	pe_scn_gprel                  = 0x00008000
-	pe_scn_lnk_nreloc_ovfl        = 0x01000000
-	pe_scn_mem_discardable        = 0x02000000
-	pe_scn_mem_not_cached         = 0x04000000
-	pe_scn_mem_not_paged          = 0x08000000
-	pe_scn_mem_shared             = 0x10000000
-	pe_scn_mem_execute            = 0x20000000
-	pe_scn_mem_read               = 0x40000000
-	pe_scn_mem_write              = i32(u32(0x80000000))
-	// obj files only:
-	pe_scn_align_1bytes           = 0x00100000
-	pe_scn_align_2bytes           = 0x00200000
-	pe_scn_align_4bytes           = 0x00300000
-	pe_scn_align_8bytes           = 0x00400000
-	pe_scn_align_16bytes          = 0x00500000
-	pe_scn_align_32bytes          = 0x00600000
-	pe_scn_align_64bytes          = 0x00700000
-	pe_scn_align_128bytes         = 0x00800000
-	pe_scn_align_256bytes         = 0x00900000
-	pe_scn_align_512bytes         = 0x00a00000
-	pe_scn_align_1024bytes        = 0x00b00000
-	pe_scn_align_2048bytes        = 0x00c00000
-	pe_scn_align_4096bytes        = 0x00d00000
-	pe_scn_align_8192bytes        = 0x00e00000
-)
+const pe_num_data_dirs = 0x10
+
+const dos_stub_end = 0x80
+const optdr_location = 0x98
+
+// reference: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format?redirectedfrom=MSDN#section-flags
+const pe_scn_type_no_pad = 0x00000008
+const pe_scn_cnt_code = 0x00000020
+const pe_scn_cnt_initialized_data = 0x00000040
+const pe_scn_cnt_uninitialized_data = 0x00000080
+const pe_scn_lnk_info = 0x00000200
+const pe_scn_lnk_remove = 0x00000400
+const pe_scn_lnk_comdat = 0x00001000
+const pe_scn_gprel = 0x00008000
+const pe_scn_lnk_nreloc_ovfl = 0x01000000
+const pe_scn_mem_discardable = 0x02000000
+const pe_scn_mem_not_cached = 0x04000000
+const pe_scn_mem_not_paged = 0x08000000
+const pe_scn_mem_shared = 0x10000000
+const pe_scn_mem_execute = 0x20000000
+const pe_scn_mem_read = 0x40000000
+const pe_scn_mem_write = i32(u32(0x80000000))
+// obj files only:
+const pe_scn_align_1bytes = 0x00100000
+const pe_scn_align_2bytes = 0x00200000
+const pe_scn_align_4bytes = 0x00300000
+const pe_scn_align_8bytes = 0x00400000
+const pe_scn_align_16bytes = 0x00500000
+const pe_scn_align_32bytes = 0x00600000
+const pe_scn_align_64bytes = 0x00700000
+const pe_scn_align_128bytes = 0x00800000
+const pe_scn_align_256bytes = 0x00900000
+const pe_scn_align_512bytes = 0x00a00000
+const pe_scn_align_1024bytes = 0x00b00000
+const pe_scn_align_2048bytes = 0x00c00000
+const pe_scn_align_4096bytes = 0x00d00000
+const pe_scn_align_8192bytes = 0x00e00000
 
 enum PeMachine as u16 {
 	i386  = 0x014c

@@ -4,11 +4,9 @@ import gg
 import gx
 import automaton
 
-const (
-	screen_width  = 800
-	screen_height = 600
-	filled_color  = gx.blue
-)
+const screen_width = 800
+const screen_height = 600
+const filled_color = gx.blue
 
 @[live]
 fn print_automaton(app &App) {

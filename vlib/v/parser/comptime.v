@@ -8,12 +8,10 @@ import v.ast
 import v.pref
 import v.token
 
-const (
-	supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig', 'compile_error',
-		'compile_warn', 'res']
-	comptime_types           = ['map', 'array', 'array_dynamic', 'array_fixed', 'int', 'float',
-		'struct', 'interface', 'enum', 'sumtype', 'alias', 'function', 'option']
-)
+const supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig', 'compile_error',
+	'compile_warn', 'res']
+const comptime_types = ['map', 'array', 'array_dynamic', 'array_fixed', 'int', 'float', 'struct',
+	'interface', 'enum', 'sumtype', 'alias', 'function', 'option']
 
 fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
 	pos := p.tok.pos()

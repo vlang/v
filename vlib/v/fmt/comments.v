@@ -52,7 +52,7 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 			}
 			out_s += s
 		}
-		if !is_separate_line && f.indent > 0 {
+		if !is_separate_line { // && f.indent > 0 {
 			f.remove_new_line() // delete the generated \n
 			f.write(' ')
 		}

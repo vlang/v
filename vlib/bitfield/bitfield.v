@@ -20,9 +20,7 @@ mut:
 }
 
 // helper functions
-const (
-	slot_size = 32
-)
+const slot_size = 32
 
 // from_bytes converts a byte array into a bitfield.
 // [0x0F, 0x01] => 0000 1111 0000 0001

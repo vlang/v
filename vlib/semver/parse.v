@@ -8,12 +8,10 @@ mut:
 	raw_ints []string
 }
 
-const (
-	ver_major = 0
-	ver_minor = 1
-	ver_patch = 2
-	versions  = [ver_major, ver_minor, ver_patch]
-)
+const ver_major = 0
+const ver_minor = 1
+const ver_patch = 2
+const versions = [ver_major, ver_minor, ver_patch]
 
 // TODO: Rewrite using regexps?
 // /(\d+)\.(\d+)\.(\d+)(?:\-([0-9A-Za-z-.]+))?(?:\+([0-9A-Za-z-]+))?/

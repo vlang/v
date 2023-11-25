@@ -12,47 +12,45 @@ import v.util.version
 import v.builder
 import v.builder.cbuilder
 
-const (
-	external_tools                      = [
-		'ast',
-		'bin2v',
-		'bug',
-		'build-examples',
-		'build-tools',
-		'build-vbinaries',
-		'bump',
-		'check-md',
-		'complete',
-		'compress',
-		'doc',
-		'doctor',
-		'fmt',
-		'gret',
-		'ls',
-		'missdoc',
-		'repl',
-		'self',
-		'setup-freetype',
-		'shader',
-		'share',
-		'should-compile-all',
-		'symlink',
-		'scan',
-		'test',
-		'test-all', // runs most of the tests and other checking tools, that will be run by the CI
-		'test-cleancode',
-		'test-fmt',
-		'test-parser',
-		'test-self',
-		'tracev',
-		'up',
-		'vet',
-		'wipe-cache',
-		'watch',
-		'where',
-	]
-	list_of_flags_that_allow_duplicates = ['cc', 'd', 'define', 'cf', 'cflags']
-)
+const external_tools = [
+	'ast',
+	'bin2v',
+	'bug',
+	'build-examples',
+	'build-tools',
+	'build-vbinaries',
+	'bump',
+	'check-md',
+	'complete',
+	'compress',
+	'doc',
+	'doctor',
+	'fmt',
+	'gret',
+	'ls',
+	'missdoc',
+	'repl',
+	'self',
+	'setup-freetype',
+	'shader',
+	'share',
+	'should-compile-all',
+	'symlink',
+	'scan',
+	'test',
+	'test-all', // runs most of the tests and other checking tools, that will be run by the CI
+	'test-cleancode',
+	'test-fmt',
+	'test-parser',
+	'test-self',
+	'tracev',
+	'up',
+	'vet',
+	'wipe-cache',
+	'watch',
+	'where',
+]
+const list_of_flags_that_allow_duplicates = ['cc', 'd', 'define', 'cf', 'cflags']
 
 fn main() {
 	mut timers_should_print := false

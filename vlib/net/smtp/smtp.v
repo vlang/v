@@ -12,9 +12,7 @@ import strings
 import time
 import io
 
-const (
-	recv_size = 128
-)
+const recv_size = 128
 
 enum ReplyCode {
 	ready      = 220

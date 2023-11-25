@@ -4,6 +4,4 @@ module main
 // but only for the main executable.
 import v.live.executable
 
-const (
-	no_warning_live_executable_is_used = executable.is_used
-)
+const no_warning_live_executable_is_used = executable.is_used

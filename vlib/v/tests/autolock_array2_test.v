@@ -1,8 +1,6 @@
 import sync
 
-const (
-	iterations_per_thread2 = 100000
-)
+const iterations_per_thread2 = 100000
 
 fn inc_elements(shared foo []int, n int, mut sem sync.Semaphore) {
 	for _ in 0 .. iterations_per_thread2 {

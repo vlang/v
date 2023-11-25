@@ -4,9 +4,7 @@ import os
 import term
 import time
 
-const (
-	term_colors = term.can_show_color_on_stdout()
-)
+const term_colors = term.can_show_color_on_stdout()
 
 pub fn set_verbose(on bool) {
 	// setting a global here would be the obvious solution,

@@ -3,13 +3,11 @@ import flag
 import scripting
 import vgit
 
-const (
-	tool_version     = '0.0.6'
-	tool_description = "  Compares V executable size and performance,
+const tool_version = '0.0.6'
+const tool_description = "  Compares V executable size and performance,
 |  between 2 commits from V's local git history.
 |  When only one commit is given, it is compared to master.
 |  ".strip_margin()
-)
 
 struct Context {
 	cwd string // current working folder

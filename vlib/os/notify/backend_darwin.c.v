@@ -48,44 +48,43 @@ pub fn new() !FdNotifier {
 	return x
 }
 
-const (
-	// filter types
-	kqueue_read           = i16(C.EVFILT_READ)
-	kqueue_write          = i16(C.EVFILT_WRITE)
-	kqueue_aio            = i16(C.EVFILT_AIO)
-	kqueue_vnode          = i16(C.EVFILT_VNODE)
-	kqueue_proc           = i16(C.EVFILT_PROC)
-	kqueue_signal         = i16(C.EVFILT_SIGNAL)
-	kqueue_timer          = i16(C.EVFILT_TIMER)
-	kqueue_machport       = i16(C.EVFILT_MACHPORT)
-	kqueue_fs             = i16(C.EVFILT_FS)
-	kqueue_user           = i16(C.EVFILT_USER)
-	kqueue_vm             = i16(C.EVFILT_VM)
-	kqueue_exception      = i16(C.EVFILT_EXCEPT)
-	kqueue_syscount       = i16(C.EVFILT_SYSCOUNT)
+// filter types
+const kqueue_read = i16(C.EVFILT_READ)
+const kqueue_write = i16(C.EVFILT_WRITE)
+const kqueue_aio = i16(C.EVFILT_AIO)
+const kqueue_vnode = i16(C.EVFILT_VNODE)
+const kqueue_proc = i16(C.EVFILT_PROC)
+const kqueue_signal = i16(C.EVFILT_SIGNAL)
+const kqueue_timer = i16(C.EVFILT_TIMER)
+const kqueue_machport = i16(C.EVFILT_MACHPORT)
+const kqueue_fs = i16(C.EVFILT_FS)
+const kqueue_user = i16(C.EVFILT_USER)
+const kqueue_vm = i16(C.EVFILT_VM)
+const kqueue_exception = i16(C.EVFILT_EXCEPT)
+const kqueue_syscount = i16(C.EVFILT_SYSCOUNT)
 
-	// actions
-	kqueue_add            = u16(C.EV_ADD)
-	kqueue_delete         = u16(C.EV_DELETE)
-	kqueue_enable         = u16(C.EV_ENABLE)
-	kqueue_disable        = u16(C.EV_DISABLE)
+// actions
+const kqueue_add = u16(C.EV_ADD)
+const kqueue_delete = u16(C.EV_DELETE)
+const kqueue_enable = u16(C.EV_ENABLE)
+const kqueue_disable = u16(C.EV_DISABLE)
 
-	// flags
-	kqueue_oneshot        = u16(C.EV_ONESHOT)
-	kqueue_edge_trigger   = u16(C.EV_CLEAR) // kqueue_clear
-	kqueue_receipt        = u16(C.EV_RECEIPT)
-	kqueue_dispatch       = u16(C.EV_DISPATCH)
-	kqueue_udata_specific = u16(C.EV_UDATA_SPECIFIC)
-	kqueue_dispatch2      = u16(C.EV_DISPATCH | C.EV_UDATA_SPECIFIC)
-	kqueue_vanished       = u16(C.EV_VANISHED)
-	kqueue_sysflags       = u16(C.EV_SYSFLAGS)
-	kqueue_flag0          = u16(C.EV_FLAG0)
-	kqueue_flag1          = u16(C.EV_FLAG1)
+// flags
+const kqueue_oneshot = u16(C.EV_ONESHOT)
+const kqueue_edge_trigger = u16(C.EV_CLEAR) // kqueue_clear
 
-	// returned values
-	kqueue_eof            = u16(C.EV_EOF)
-	kqueue_error          = u16(C.EV_ERROR)
-)
+const kqueue_receipt = u16(C.EV_RECEIPT)
+const kqueue_dispatch = u16(C.EV_DISPATCH)
+const kqueue_udata_specific = u16(C.EV_UDATA_SPECIFIC)
+const kqueue_dispatch2 = u16(C.EV_DISPATCH | C.EV_UDATA_SPECIFIC)
+const kqueue_vanished = u16(C.EV_VANISHED)
+const kqueue_sysflags = u16(C.EV_SYSFLAGS)
+const kqueue_flag0 = u16(C.EV_FLAG0)
+const kqueue_flag1 = u16(C.EV_FLAG1)
+
+// returned values
+const kqueue_eof = u16(C.EV_EOF)
+const kqueue_error = u16(C.EV_ERROR)
 
 // ctl is a helper method for add, modify, and remove
 fn (mut kn KqueueNotifier) ctl(fd int, filter i16, flags u16) ! {

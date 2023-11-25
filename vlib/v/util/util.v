@@ -11,32 +11,27 @@ import v.util.recompilation
 import runtime
 
 // math.bits is needed by strconv.ftoa
-pub const (
-	builtin_module_parts = ['math.bits', 'strconv', 'dlmalloc', 'strconv.ftoa', 'strings', 'builtin']
-	bundle_modules       = ['clipboard', 'fontstash', 'gg', 'gx', 'sokol', 'szip', 'ui']
-)
+pub const builtin_module_parts = ['math.bits', 'strconv', 'dlmalloc', 'strconv.ftoa', 'strings',
+	'builtin']
+pub const bundle_modules = ['clipboard', 'fontstash', 'gg', 'gx', 'sokol', 'szip', 'ui']
 
-pub const (
-	external_module_dependencies_for_tool = {
-		'vdoc': ['markdown']
-	}
-)
+pub const external_module_dependencies_for_tool = {
+	'vdoc': ['markdown']
+}
 
-const (
-	const_tabs = [
-		'',
-		'\t',
-		'\t\t',
-		'\t\t\t',
-		'\t\t\t\t',
-		'\t\t\t\t\t',
-		'\t\t\t\t\t\t',
-		'\t\t\t\t\t\t\t',
-		'\t\t\t\t\t\t\t\t',
-		'\t\t\t\t\t\t\t\t\t',
-		'\t\t\t\t\t\t\t\t\t\t',
-	]
-)
+const const_tabs = [
+	'',
+	'\t',
+	'\t\t',
+	'\t\t\t',
+	'\t\t\t\t',
+	'\t\t\t\t\t',
+	'\t\t\t\t\t\t',
+	'\t\t\t\t\t\t\t',
+	'\t\t\t\t\t\t\t\t',
+	'\t\t\t\t\t\t\t\t\t',
+	'\t\t\t\t\t\t\t\t\t\t',
+]
 
 pub const nr_jobs = runtime.nr_jobs()
 
@@ -443,9 +438,7 @@ pub fn no_dots(s string) string {
 	return s.replace('.', '__')
 }
 
-const (
-	map_prefix = 'map[string]'
-)
+const map_prefix = 'map[string]'
 
 // no_cur_mod - removes cur_mod. prefix from typename,
 // but *only* when it is at the start, i.e.:

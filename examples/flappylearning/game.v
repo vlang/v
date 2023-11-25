@@ -8,10 +8,8 @@ import math
 import rand
 import neuroevolution
 
-const (
-	win_width  = 500
-	win_height = 512
-)
+const win_width = 500
+const win_height = 512
 
 struct Bird {
 mut:

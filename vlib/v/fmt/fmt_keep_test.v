@@ -11,15 +11,13 @@ import v.pref
 import v.util.diff
 import v.util.vtest
 
-const (
-	error_missing_vexe = 1
-	error_failed_tests = 2
-	b2v_keep_path      = os.join_path('vlib', 'v', 'fmt', 'tests', 'bin2v_keep.vv')
-	fpref              = &pref.Preferences{
-		is_fmt: true
-	}
-	vexe               = os.getenv('VEXE')
-)
+const error_missing_vexe = 1
+const error_failed_tests = 2
+const b2v_keep_path = os.join_path('vlib', 'v', 'fmt', 'tests', 'bin2v_keep.vv')
+const fpref = &pref.Preferences{
+	is_fmt: true
+}
+const vexe = os.getenv('VEXE')
 
 fn test_fmt() {
 	fmt_message := 'checking that v fmt keeps already formatted files *unchanged*'

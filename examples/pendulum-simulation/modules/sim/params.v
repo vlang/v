@@ -2,14 +2,12 @@ module sim
 
 import math
 
-pub const (
-	default_rope_length     = 0.25
-	default_bearing_mass    = 0.03
-	default_magnet_spacing  = 0.05
-	default_magnet_height   = 0.03
-	default_magnet_strength = 10.0
-	default_gravity         = 4.9
-)
+pub const default_rope_length = 0.25
+pub const default_bearing_mass = 0.03
+pub const default_magnet_spacing = 0.05
+pub const default_magnet_height = 0.03
+pub const default_magnet_strength = 10.0
+pub const default_gravity = 4.9
 
 @[params]
 pub struct SimParams {

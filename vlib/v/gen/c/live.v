@@ -54,18 +54,17 @@ fn (mut g Gen) generate_hotcode_reloader_code() {
 	}
 }
 
-const (
-	posix_hotcode_definitions_1 = '
+const posix_hotcode_definitions_1 = '
 void v_bind_live_symbols(void* live_lib){
 	@LOAD_FNS@
 }
 '
-	windows_hotcode_definitions_1 = '
+
+const windows_hotcode_definitions_1 = '
 void v_bind_live_symbols(void* live_lib){
 	@LOAD_FNS@
 }
 '
-)
 
 fn (mut g Gen) generate_hotcode_reloading_main_caller() {
 	if !g.pref.is_livemain {

@@ -2,10 +2,8 @@ import time
 import math
 import sokol.audio
 
-const (
-	sw          = time.new_stopwatch()
-	sw_start_ms = sw.elapsed().milliseconds()
-)
+const sw = time.new_stopwatch()
+const sw_start_ms = sw.elapsed().milliseconds()
 
 @[inline]
 fn sintone(periods int, frame int, num_frames int) f32 {

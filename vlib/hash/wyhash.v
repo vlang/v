@@ -15,13 +15,11 @@
 // try running with and without the `-prod` flag
 module hash
 
-const (
-	wyp0 = u64(0xa0761d6478bd642f)
-	wyp1 = u64(0xe7037ed1a0b428db)
-	wyp2 = u64(0x8ebc6af09c88c6e3)
-	wyp3 = u64(0x589965cc75374cc3)
-	wyp4 = u64(0x1d8e4e27c47d124f)
-)
+const wyp0 = u64(0xa0761d6478bd642f)
+const wyp1 = u64(0xe7037ed1a0b428db)
+const wyp2 = u64(0x8ebc6af09c88c6e3)
+const wyp3 = u64(0x589965cc75374cc3)
+const wyp4 = u64(0x1d8e4e27c47d124f)
 
 @[inline]
 fn wyrotr(v u64, k u32) u64 {

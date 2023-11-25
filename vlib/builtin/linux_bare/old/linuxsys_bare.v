@@ -4,17 +4,18 @@ pub enum Linux_mem {
 	page_size = 4096
 }
 
-pub const (
-	wp_sys_wnohang     = u64(0x00000001)
-	wp_sys_wuntraced   = u64(0x00000002)
-	wp_sys_wstopped    = u64(0x00000002)
-	wp_sys_wexited     = u64(0x00000004)
-	wp_sys_wcontinued  = u64(0x00000008)
-	wp_sys_wnowait     = u64(0x01000000) // don't reap, just poll status.
-	wp_sys___wnothread = u64(0x20000000) // don't wait on children of other threads in this group
-	wp_sys___wall      = u64(0x40000000) // wait on all children, regardless of type
-	wp_sys___wclone    = u64(0x80000000) // wait only on non-sigchld children
-)
+pub const wp_sys_wnohang = u64(0x00000001)
+pub const wp_sys_wuntraced = u64(0x00000002)
+pub const wp_sys_wstopped = u64(0x00000002)
+pub const wp_sys_wexited = u64(0x00000004)
+pub const wp_sys_wcontinued = u64(0x00000008)
+pub const wp_sys_wnowait = u64(0x01000000) // don't reap, just poll status.
+
+pub const wp_sys___wnothread = u64(0x20000000) // don't wait on children of other threads in this group
+
+pub const wp_sys___wall = u64(0x40000000) // wait on all children, regardless of type
+
+pub const wp_sys___wclone = u64(0x80000000)
 
 // First argument to waitid:
 pub enum Wi_which {
@@ -107,64 +108,62 @@ pub enum Signo {
 	sigsys    = 31
 }
 
-pub const (
-	fcntlf_dupfd         = 0x00000000
-	fcntlf_exlck         = 0x00000004
-	fcntlf_getfd         = 0x00000001
-	fcntlf_getfl         = 0x00000003
-	fcntlf_getlk         = 0x00000005
-	fcntlf_getlk64       = 0x0000000c
-	fcntlf_getown        = 0x00000009
-	fcntlf_getowner_uids = 0x00000011
-	fcntlf_getown_ex     = 0x00000010
-	fcntlf_getsig        = 0x0000000b
-	fcntlf_ofd_getlk     = 0x00000024
-	fcntlf_ofd_setlk     = 0x00000025
-	fcntlf_ofd_setlkw    = 0x00000026
-	fcntlf_owner_pgrp    = 0x00000002
-	fcntlf_owner_pid     = 0x00000001
-	fcntlf_owner_tid     = 0x00000000
-	fcntlf_rdlck         = 0x00000000
-	fcntlf_setfd         = 0x00000002
-	fcntlf_setfl         = 0x00000004
-	fcntlf_setlk         = 0x00000006
-	fcntlf_setlk64       = 0x0000000d
-	fcntlf_setlkw        = 0x00000007
-	fcntlf_setlkw64      = 0x0000000e
-	fcntlf_setown        = 0x00000008
-	fcntlf_setown_ex     = 0x0000000f
-	fcntlf_setsig        = 0x0000000a
-	fcntlf_shlck         = 0x00000008
-	fcntlf_unlck         = 0x00000002
-	fcntlf_wrlck         = 0x00000001
-	fcntllock_ex         = 0x00000002
-	fcntllock_mand       = 0x00000020
-	fcntllock_nb         = 0x00000004
-	fcntllock_read       = 0x00000040
-	fcntllock_rw         = 0x000000c0
-	fcntllock_sh         = 0x00000001
-	fcntllock_un         = 0x00000008
-	fcntllock_write      = 0x00000080
-	fcntlo_accmode       = 0x00000003
-	fcntlo_append        = 0x00000400
-	fcntlo_cloexec       = 0x00080000
-	fcntlo_creat         = 0x00000040
-	fcntlo_direct        = 0x00004000
-	fcntlo_directory     = 0x00010000
-	fcntlo_dsync         = 0x00001000
-	fcntlo_excl          = 0x00000080
-	fcntlo_largefile     = 0x00008000
-	fcntlo_ndelay        = 0x00000800
-	fcntlo_noatime       = 0x00040000
-	fcntlo_noctty        = 0x00000100
-	fcntlo_nofollow      = 0x00020000
-	fcntlo_nonblock      = 0x00000800
-	fcntlo_path          = 0x00200000
-	fcntlo_rdonly        = 0x00000000
-	fcntlo_rdwr          = 0x00000002
-	fcntlo_trunc         = 0x00000200
-	fcntlo_wronly        = 0x00000001
-)
+pub const fcntlf_dupfd = 0x00000000
+pub const fcntlf_exlck = 0x00000004
+pub const fcntlf_getfd = 0x00000001
+pub const fcntlf_getfl = 0x00000003
+pub const fcntlf_getlk = 0x00000005
+pub const fcntlf_getlk64 = 0x0000000c
+pub const fcntlf_getown = 0x00000009
+pub const fcntlf_getowner_uids = 0x00000011
+pub const fcntlf_getown_ex = 0x00000010
+pub const fcntlf_getsig = 0x0000000b
+pub const fcntlf_ofd_getlk = 0x00000024
+pub const fcntlf_ofd_setlk = 0x00000025
+pub const fcntlf_ofd_setlkw = 0x00000026
+pub const fcntlf_owner_pgrp = 0x00000002
+pub const fcntlf_owner_pid = 0x00000001
+pub const fcntlf_owner_tid = 0x00000000
+pub const fcntlf_rdlck = 0x00000000
+pub const fcntlf_setfd = 0x00000002
+pub const fcntlf_setfl = 0x00000004
+pub const fcntlf_setlk = 0x00000006
+pub const fcntlf_setlk64 = 0x0000000d
+pub const fcntlf_setlkw = 0x00000007
+pub const fcntlf_setlkw64 = 0x0000000e
+pub const fcntlf_setown = 0x00000008
+pub const fcntlf_setown_ex = 0x0000000f
+pub const fcntlf_setsig = 0x0000000a
+pub const fcntlf_shlck = 0x00000008
+pub const fcntlf_unlck = 0x00000002
+pub const fcntlf_wrlck = 0x00000001
+pub const fcntllock_ex = 0x00000002
+pub const fcntllock_mand = 0x00000020
+pub const fcntllock_nb = 0x00000004
+pub const fcntllock_read = 0x00000040
+pub const fcntllock_rw = 0x000000c0
+pub const fcntllock_sh = 0x00000001
+pub const fcntllock_un = 0x00000008
+pub const fcntllock_write = 0x00000080
+pub const fcntlo_accmode = 0x00000003
+pub const fcntlo_append = 0x00000400
+pub const fcntlo_cloexec = 0x00080000
+pub const fcntlo_creat = 0x00000040
+pub const fcntlo_direct = 0x00004000
+pub const fcntlo_directory = 0x00010000
+pub const fcntlo_dsync = 0x00001000
+pub const fcntlo_excl = 0x00000080
+pub const fcntlo_largefile = 0x00008000
+pub const fcntlo_ndelay = 0x00000800
+pub const fcntlo_noatime = 0x00040000
+pub const fcntlo_noctty = 0x00000100
+pub const fcntlo_nofollow = 0x00020000
+pub const fcntlo_nonblock = 0x00000800
+pub const fcntlo_path = 0x00200000
+pub const fcntlo_rdonly = 0x00000000
+pub const fcntlo_rdwr = 0x00000002
+pub const fcntlo_trunc = 0x00000200
+pub const fcntlo_wronly = 0x00000001
 
 pub enum Errno {
 	enoerror = 0x00000000

@@ -10,12 +10,12 @@
 
 module base32
 
-pub const (
-	std_padding  = `=` // Standard padding character
-	no_padding   = u8(-1) // No padding
-	std_alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'.bytes()
-	hex_alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUV'.bytes()
-)
+pub const std_padding = `=` // Standard padding character
+
+pub const no_padding = u8(-1) // No padding
+
+pub const std_alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'.bytes()
+pub const hex_alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUV'.bytes()
 
 struct Encoding {
 	padding_char u8

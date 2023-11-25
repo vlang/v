@@ -3,10 +3,8 @@ module sim
 import math
 import benchmark
 
-const (
-	max_iterations     = 1000
-	simulation_delta_t = 0.0005
-)
+const max_iterations = 1000
+const simulation_delta_t = 0.0005
 
 pub struct SimRequest {
 	params SimParams

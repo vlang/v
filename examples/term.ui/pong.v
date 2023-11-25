@@ -9,12 +9,12 @@ enum Mode {
 	game
 }
 
-const (
-	player_one = 1 // Human control this racket
-	player_two = 0 // Take over this AI controller
-	white      = ui.Color{255, 255, 255}
-	orange     = ui.Color{255, 140, 0}
-)
+const player_one = 1 // Human control this racket
+
+const player_two = 0 // Take over this AI controller
+
+const white = ui.Color{255, 255, 255}
+const orange = ui.Color{255, 140, 0}
 
 @[heap]
 struct App {

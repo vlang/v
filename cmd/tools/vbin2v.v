@@ -4,10 +4,8 @@ import os
 import flag
 import strings
 
-const (
-	tool_version     = '0.0.4'
-	tool_description = 'Converts a list of arbitrary files into a single v module file.'
-)
+const tool_version = '0.0.4'
+const tool_description = 'Converts a list of arbitrary files into a single v module file.'
 
 struct Context {
 mut:

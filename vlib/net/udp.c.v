@@ -2,10 +2,8 @@ module net
 
 import time
 
-const (
-	udp_default_read_timeout  = time.second / 10
-	udp_default_write_timeout = time.second / 10
-)
+const udp_default_read_timeout = time.second / 10
+const udp_default_write_timeout = time.second / 10
 
 struct UdpSocket {
 	Socket

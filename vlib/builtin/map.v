@@ -53,27 +53,25 @@ find the index for their meta's in the new array. Instead of rehashing compl-
 etely, it simply uses the cached-hashbits stored in the meta, resulting in
 much faster rehashing.
 */
-const (
-	// Number of bits from the hash stored for each entry
-	hashbits            = 24
-	// Number of bits from the hash stored for rehashing
-	max_cached_hashbits = 16
-	// Initial log-number of buckets in the hashtable
-	init_log_capicity   = 5
-	// Initial number of buckets in the hashtable
-	init_capicity       = 1 << init_log_capicity
-	// Maximum load-factor (len / capacity)
-	max_load_factor     = 0.8
-	// Initial highest even index in metas
-	init_even_index     = init_capicity - 2
-	// Used for incrementing `extra_metas` when max
-	// probe count is too high, to avoid overflow
-	extra_metas_inc     = 4
-	// Bitmask to select all the hashbits
-	hash_mask           = u32(0x00FFFFFF)
-	// Used for incrementing the probe-count
-	probe_inc           = u32(0x01000000)
-)
+// Number of bits from the hash stored for each entry
+const hashbits = 24
+// Number of bits from the hash stored for rehashing
+const max_cached_hashbits = 16
+// Initial log-number of buckets in the hashtable
+const init_log_capicity = 5
+// Initial number of buckets in the hashtable
+const init_capicity = 1 << init_log_capicity
+// Maximum load-factor (len / capacity)
+const max_load_factor = 0.8
+// Initial highest even index in metas
+const init_even_index = init_capicity - 2
+// Used for incrementing `extra_metas` when max
+// probe count is too high, to avoid overflow
+const extra_metas_inc = 4
+// Bitmask to select all the hashbits
+const hash_mask = u32(0x00FFFFFF)
+// Used for incrementing the probe-count
+const probe_inc = u32(0x01000000)
 
 // DenseArray represents a dynamic array with very low growth factor
 struct DenseArray {

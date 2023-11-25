@@ -4,12 +4,10 @@ import time
 import os
 import net
 
-const (
-	unix_default_read_timeout  = 30 * time.second
-	unix_default_write_timeout = 30 * time.second
-	connect_timeout            = 5 * time.second
-	msg_nosignal               = 0x4000
-)
+const unix_default_read_timeout = 30 * time.second
+const unix_default_write_timeout = 30 * time.second
+const connect_timeout = 5 * time.second
+const msg_nosignal = 0x4000
 
 @[heap]
 pub struct StreamConn {

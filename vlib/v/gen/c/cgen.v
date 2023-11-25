@@ -14,26 +14,24 @@ import v.util.version
 import v.depgraph
 import sync.pool
 
-const (
-	// Note: some of the words in c_reserved, are not reserved in C, but are
-	// in C++, or have special meaning in V, thus need escaping too. `small`
-	// should not be needed, but see:
-	// https://stackoverflow.com/questions/5874215/what-is-rpcndr-h
-	c_reserved     = ['array', 'auto', 'bool', 'break', 'calloc', 'case', 'char', 'class', 'complex',
-		'const', 'continue', 'default', 'delete', 'do', 'double', 'else', 'enum', 'error', 'exit',
-		'export', 'extern', 'false', 'float', 'for', 'free', 'goto', 'if', 'inline', 'int', 'link',
-		'long', 'malloc', 'namespace', 'new', 'nil', 'panic', 'register', 'restrict', 'return',
-		'short', 'signed', 'sizeof', 'static', 'string', 'struct', 'switch', 'typedef', 'typename',
-		'union', 'unix', 'unsigned', 'void', 'volatile', 'while', 'template', 'true', 'small',
-		'stdout', 'stdin', 'stderr', 'far', 'near', 'huge', 'requires']
-	c_reserved_chk = token.new_keywords_matcher_from_array_trie(c_reserved)
-	// same order as in token.Kind
-	cmp_str        = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
-	// when operands are switched
-	cmp_rev        = ['eq', 'ne', 'lt', 'gt', 'le', 'ge']
-	result_name    = '_result'
-	option_name    = '_option'
-)
+// Note: some of the words in c_reserved, are not reserved in C, but are
+// in C++, or have special meaning in V, thus need escaping too. `small`
+// should not be needed, but see:
+// https://stackoverflow.com/questions/5874215/what-is-rpcndr-h
+const c_reserved = ['array', 'auto', 'bool', 'break', 'calloc', 'case', 'char', 'class', 'complex',
+	'const', 'continue', 'default', 'delete', 'do', 'double', 'else', 'enum', 'error', 'exit',
+	'export', 'extern', 'false', 'float', 'for', 'free', 'goto', 'if', 'inline', 'int', 'link',
+	'long', 'malloc', 'namespace', 'new', 'nil', 'panic', 'register', 'restrict', 'return', 'short',
+	'signed', 'sizeof', 'static', 'string', 'struct', 'switch', 'typedef', 'typename', 'union',
+	'unix', 'unsigned', 'void', 'volatile', 'while', 'template', 'true', 'small', 'stdout', 'stdin',
+	'stderr', 'far', 'near', 'huge', 'requires']
+const c_reserved_chk = token.new_keywords_matcher_from_array_trie(c_reserved)
+// same order as in token.Kind
+const cmp_str = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
+// when operands are switched
+const cmp_rev = ['eq', 'ne', 'lt', 'gt', 'le', 'ge']
+const result_name = '_result'
+const option_name = '_option'
 
 fn string_array_to_map(a []string) map[string]bool {
 	mut res := map[string]bool{}
@@ -5938,9 +5936,7 @@ fn (mut g Gen) write_init_function() {
 	}
 }
 
-const (
-	builtins = ['string', 'array', 'DenseArray', 'map', 'Error', 'IError', option_name, result_name]
-)
+const builtins = ['string', 'array', 'DenseArray', 'map', 'Error', 'IError', option_name, result_name]
 
 fn (mut g Gen) write_builtin_types() {
 	if g.pref.no_builtin {

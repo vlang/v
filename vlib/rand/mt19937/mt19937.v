@@ -49,14 +49,12 @@ C++ functions for MT19937, with initialization improved 2002/2/10.
 */
 pub const seed_len = 2
 
-const (
-	nn            = 312
-	mm            = 156
-	matrix_a      = 0xB5026F5AA96619E9
-	um            = 0xFFFFFFFF80000000
-	lm            = 0x7FFFFFFF
-	inv_f64_limit = 1.0 / 9007199254740992.0
-)
+const nn = 312
+const mm = 156
+const matrix_a = 0xB5026F5AA96619E9
+const um = 0xFFFFFFFF80000000
+const lm = 0x7FFFFFFF
+const inv_f64_limit = 1.0 / 9007199254740992.0
 
 // MT19937RNG is generator that uses the Mersenne Twister algorithm with period 2^19937.
 // **NOTE**: The RNG is not seeded when instantiated so remember to seed it before use.

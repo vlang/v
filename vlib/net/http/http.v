@@ -5,11 +5,10 @@ module http
 
 import net.urllib
 
-const (
-	max_redirects        = 16 // safari max - other browsers allow up to 20
-	content_type_default = 'text/plain'
-	bufsize              = 1536
-)
+const max_redirects = 16 // safari max - other browsers allow up to 20
+
+const content_type_default = 'text/plain'
+const bufsize = 1536
 
 // FetchConfig holds configuration data for the fetch function.
 pub struct FetchConfig {

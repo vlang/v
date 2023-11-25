@@ -4,10 +4,8 @@ import gg
 import gx
 import os
 
-const (
-	win_width  = 600
-	win_height = 300
-)
+const win_width = 600
+const win_height = 300
 
 struct App {
 mut:

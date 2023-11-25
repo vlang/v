@@ -1,10 +1,8 @@
 import context
 import time
 
-const (
-	// a reasonable duration to block in an example
-	short_duration = 1 * time.millisecond
-)
+// a reasonable duration to block in an example
+const short_duration = 1 * time.millisecond
 
 // This example passes a context with an arbitrary deadline to tell a blocking
 // function that it should abandon its work as soon as it gets to it.

@@ -9,34 +9,30 @@ module sha256
 
 import encoding.binary
 
-pub const (
-	// The size of a SHA256 checksum in bytes.
-	size       = 32
-	// The size of a SHA224 checksum in bytes.
-	size224    = 28
-	// The blocksize of SHA256 and SHA224 in bytes.
-	block_size = 64
-)
+// The size of a SHA256 checksum in bytes.
+pub const size = 32
+// The size of a SHA224 checksum in bytes.
+pub const size224 = 28
+// The blocksize of SHA256 and SHA224 in bytes.
+pub const block_size = 64
 
-const (
-	chunk     = 64
-	init0     = 0x6A09E667
-	init1     = u32(0xBB67AE85)
-	init2     = 0x3C6EF372
-	init3     = u32(0xA54FF53A)
-	init4     = 0x510E527F
-	init5     = u32(0x9B05688C)
-	init6     = 0x1F83D9AB
-	init7     = 0x5BE0CD19
-	init0_224 = u32(0xC1059ED8)
-	init1_224 = 0x367CD507
-	init2_224 = 0x3070DD17
-	init3_224 = u32(0xF70E5939)
-	init4_224 = u32(0xFFC00B31)
-	init5_224 = 0x68581511
-	init6_224 = 0x64F98FA7
-	init7_224 = u32(0xBEFA4FA4)
-)
+const chunk = 64
+const init0 = 0x6A09E667
+const init1 = u32(0xBB67AE85)
+const init2 = 0x3C6EF372
+const init3 = u32(0xA54FF53A)
+const init4 = 0x510E527F
+const init5 = u32(0x9B05688C)
+const init6 = 0x1F83D9AB
+const init7 = 0x5BE0CD19
+const init0_224 = u32(0xC1059ED8)
+const init1_224 = 0x367CD507
+const init2_224 = 0x3070DD17
+const init3_224 = u32(0xF70E5939)
+const init4_224 = u32(0xFFC00B31)
+const init5_224 = 0x68581511
+const init6_224 = 0x64F98FA7
+const init7_224 = u32(0xBEFA4FA4)
 
 // digest represents the partial evaluation of a checksum.
 struct Digest {

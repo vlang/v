@@ -3,10 +3,8 @@ module net
 import time
 import strings
 
-pub const (
-	tcp_default_read_timeout  = 30 * time.second
-	tcp_default_write_timeout = 30 * time.second
-)
+pub const tcp_default_read_timeout = 30 * time.second
+pub const tcp_default_write_timeout = 30 * time.second
 
 @[heap]
 pub struct TcpConn {
@@ -537,9 +535,7 @@ fn (mut s TcpSocket) @select(test Select, timeout time.Duration) !bool {
 	return @select(s.handle, test, timeout)
 }
 
-const (
-	connect_timeout = 5 * time.second
-)
+const connect_timeout = 5 * time.second
 
 fn (mut s TcpSocket) connect(a Addr) ! {
 	$if !net_blocking_sockets ? {

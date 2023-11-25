@@ -3,12 +3,10 @@
 // that can be found in the LICENSE file.
 module os
 
-pub const (
-	sys_write         = 4
-	sys_open          = 5
-	sys_close         = 6
-	sys_mkdir         = 136
-	sys_creat         = 8
-	sys_open_nocancel = 398
-	sys_stat64        = 338
-)
+pub const sys_write = 4
+pub const sys_open = 5
+pub const sys_close = 6
+pub const sys_mkdir = 136
+pub const sys_creat = 8
+pub const sys_open_nocancel = 398
+pub const sys_stat64 = 338
