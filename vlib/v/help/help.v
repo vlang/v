@@ -42,9 +42,7 @@ pub fn print_and_exit(topic string, opts ExitOptions) {
 		}
 	}
 	if topic in help.cli_topics {
-		v_cmd_name := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
-		v_cmd := os.join_path(@VEXEROOT, v_cmd_name)
-		os.system('${v_cmd} ${topic} --help')
+		os.system('${os.getenv('VEXE')} ${topic} --help')
 		exit(opts.exit_code)
 	}
 	mut topic_path := ''
