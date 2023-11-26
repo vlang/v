@@ -205,6 +205,9 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			mut value_type := c.table.value_type(typ)
 			if sym.kind == .string {
 				value_type = ast.u8_type
+			} else if sym.kind == .aggregate
+				&& (sym.info as ast.Aggregate).types.filter(c.table.type_kind(it) !in [.array, .array_fixed, .string, .map]).len == 0 {
+				value_type = c.table.value_type((sym.info as ast.Aggregate).types[0])
 			}
 			if value_type == ast.void_type || typ.has_flag(.result) {
 				if typ != ast.void_type {
