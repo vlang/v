@@ -42,7 +42,7 @@ pub fn print_and_exit(topic string, opts ExitOptions) {
 		}
 	}
 	if topic in help.cli_topics {
-		os.system('${os.getenv('VEXE')} ${topic} --help')
+		os.system('${os.quoted_path(os.getenv('VEXE'))} ${topic} --help')
 		exit(opts.exit_code)
 	}
 	mut topic_path := ''
