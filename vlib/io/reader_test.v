@@ -53,9 +53,7 @@ fn (mut s StringReader) read(mut buf []u8) !int {
 	return read
 }
 
-const (
-	newline_count = 100000
-)
+const newline_count = 100000
 
 fn test_stringreader() {
 	text := '12345\n'.repeat(io.newline_count)

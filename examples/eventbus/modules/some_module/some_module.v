@@ -2,9 +2,7 @@ module some_module
 
 import eventbus
 
-const (
-	eb = eventbus.new[string]()
-)
+const eb = eventbus.new[string]()
 
 pub struct Duration {
 pub:

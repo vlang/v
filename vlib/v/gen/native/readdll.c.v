@@ -7,11 +7,9 @@ import maps
 import os
 import encoding.binary
 
-const (
-	pe_dword_size            = 4
-	pe_export_data_dir_index = 0
-	pe_export_directory_size = 0x28
-)
+const pe_dword_size = 4
+const pe_export_data_dir_index = 0
+const pe_export_directory_size = 0x28
 
 struct SystemDll {
 	name      string

@@ -6,11 +6,9 @@ import v.ast
 import v.util
 import strings
 
-const (
-	// BUG: this const is not released from the memory! use a const for now
-	// si_s_code = "0x" + int(StrIntpType.si_s).hex() // code for a simple string
-	si_s_code = '0xfe10'
-)
+// BUG: this const is not released from the memory! use a const for now
+// si_s_code = "0x" + int(StrIntpType.si_s).hex() // code for a simple string
+const si_s_code = '0xfe10'
 
 fn (mut g Gen) gen_str_default(sym ast.TypeSymbol, styp string, str_fn_name string) {
 	$if trace_autostr ? {

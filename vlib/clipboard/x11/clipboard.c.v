@@ -114,10 +114,8 @@ mut:
 	xselection        C.XSelectionEvent
 }
 
-const (
-	atom_names = ['TARGETS', 'CLIPBOARD', 'PRIMARY', 'SECONDARY', 'TEXT', 'UTF8_STRING', 'text/plain',
-		'text/html']
-)
+const atom_names = ['TARGETS', 'CLIPBOARD', 'PRIMARY', 'SECONDARY', 'TEXT', 'UTF8_STRING',
+	'text/plain', 'text/html']
 
 // UNSUPPORTED TYPES: MULTIPLE, INCR, TIMESTAMP, image/bmp, image/jpeg, image/tiff, image/png
 // all the atom types we need

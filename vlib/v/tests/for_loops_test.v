@@ -1,6 +1,4 @@
-const (
-	nums = [1, 2, 3]
-)
+const nums = [1, 2, 3]
 
 fn test_for_char_in() {
 	mut sum := 0

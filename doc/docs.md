@@ -2926,10 +2926,8 @@ To dereference a reference, use the `*` operator, just like in C.
 ## Constants
 
 ```v
-const (
-	pi    = 3.14
-	world = '世界'
-)
+const pi = 3.14
+const world = '世界'
 
 println(pi)
 println(world)
@@ -2961,16 +2959,14 @@ fn rgb(r int, g int, b int) Color {
 	}
 }
 
-const (
-	numbers = [1, 2, 3]
-	red     = Color{
-		r: 255
-		g: 0
-		b: 0
-	}
-	// evaluate function call at compile time*
-	blue = rgb(0, 0, 255)
-)
+const numbers = [1, 2, 3]
+const red = Color{
+	r: 255
+	g: 0
+	b: 0
+}
+// evaluate function call at compile time*
+const blue = rgb(0, 0, 255)
 
 println(numbers)
 println(red)
@@ -4069,8 +4065,8 @@ fn main() {
 > [!NOTE]
 > Threads rely on the machine's CPU (number of cores/threads).
 > Be aware that OS threads spawned with `spawn`
-> have limitations in regard to concurrency, 
-> including resource overhead and scalability issues, 
+> have limitations in regard to concurrency,
+> including resource overhead and scalability issues,
 > and might affect performance in cases of high thread count.
 
 There's also a `go` keyword. Right now `go foo()` will be automatically renamed via vfmt
@@ -5539,7 +5535,7 @@ that are substituted at compile time:
   where the V executable is (as a string).
 - `@VHASH`  => replaced with the shortened commit hash of the V compiler (as a string).
 - `@VCURRENTHASH` => Similar to `@VHASH`, but changes when the compiler is
-  recompiled on a different commit (after local modifications, or after 
+  recompiled on a different commit (after local modifications, or after
   using git bisect etc).
 - `@VMOD_FILE` => replaced with the contents of the nearest v.mod file (as a string).
 - `@VMODROOT` => will be substituted with the *folder*,
@@ -5695,7 +5691,7 @@ fn main() {
 ```
 
 Note: compressing binary assets like png or zip files, usually will not gain you much,
-and in some cases may even take more space in the final executable, since they are 
+and in some cases may even take more space in the final executable, since they are
 already compressed.
 
 `$embed_file` returns
@@ -5843,21 +5839,21 @@ main_default.c.v:
 
 ```v ignore
 module main
-const ( message = 'Hello world' )
+const message = 'Hello world'
 ```
 
 main_linux.c.v:
 
 ```v ignore
 module main
-const ( message = 'Hello linux' )
+const message = 'Hello linux'
 ```
 
 main_windows.c.v:
 
 ```v ignore
 module main
-const ( message = 'Hello windows' )
+const message = 'Hello windows'
 ```
 
 With the example above:

@@ -5,14 +5,11 @@ import gx
 import os
 import math
 
-const (
-	win_width  = 600
-	win_height = 700
-	bg_color   = gx.white
-)
+const win_width = 600
+const win_height = 700
+const bg_color = gx.white
 
-const (
-	text = '
+const text = '
 Once upon a midnight dreary, while I pondered, weak and weary,
 Over many a quaint and curious volume of forgotten lore—
     While I nodded, nearly napping, suddenly there came a tapping,
@@ -55,8 +52,8 @@ Soon again I heard a tapping somewhat louder than before.
 Let my heart be still a moment and this mystery explore;—
             ’Tis the wind and nothing more!”
 '
-	lines = text.split('\n')
-)
+
+const lines = text.split('\n')
 
 struct App {
 mut:

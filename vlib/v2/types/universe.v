@@ -7,101 +7,99 @@ module types
 // __global universe = init_universe()
 const universe = init_universe()
 
-const (
-	// primitives
-	bool_ = Primitive{
-		props: .boolean
+// primitives
+const bool_ = Primitive{
+	props: .boolean
+}
+const i8_ = Primitive{
+	props: .integer
+	size: 8
+}
+const i16_ = Primitive{
+	props: .integer
+	size: 16
+}
+const i32_ = Primitive{
+	props: .integer
+	size: 32
+}
+// TODO: represent platform specific size
+// will this be calculated at compile time?
+const int_ = Primitive{
+	props: .integer
+	// size: 32
+}
+const i64_ = Primitive{
+	props: .integer
+	size: 64
+}
+const u8_ = Primitive{
+	props: .integer | .unsigned
+	size: 8
+}
+// byte_ = Primitive{props: .integer | .unsigned, size: 8}
+const byte_ = Alias{
+	name: 'byte'
+	base_type: u8_
+}
+const u16_ = Primitive{
+	props: .integer | .unsigned
+	size: 16
+}
+const u32_ = Primitive{
+	props: .integer | .unsigned
+	size: 32
+}
+const u64_ = Primitive{
+	props: .integer | .unsigned
+	size: 64
+}
+const f32_ = Primitive{
+	props: .float
+	size: 32
+}
+const f64_ = Primitive{
+	props: .float
+	size: 64
+}
+// complex / non primitives
+const string_ = String(0)
+const chan_ = Channel{}
+const char_ = Char(0)
+const isize_ = ISize(0)
+const usize_ = USize(0)
+const rune_ = Rune(0)
+const void_ = Void(0)
+const nil_ = Nil(0)
+const none_ = None(0)
+const byteptr_ = Alias{
+	name: 'byteptr'
+	base_type: Pointer{
+		base_type: byte_
 	}
-	i8_ = Primitive{
-		props: .integer
-		size: 8
+}
+const charptr_ = Alias{
+	name: 'charptr'
+	base_type: Pointer{
+		base_type: char_
 	}
-	i16_ = Primitive{
-		props: .integer
-		size: 16
+}
+const voidptr_ = Alias{
+	name: 'voidptr'
+	base_type: Pointer{
+		base_type: void_
 	}
-	i32_ = Primitive{
-		props: .integer
-		size: 32
-	}
-	// TODO: represent platform specific size
-	// will this be calculated at compile time?
-	int_ = Primitive{
-		props: .integer
-		// size: 32
-	}
-	i64_ = Primitive{
-		props: .integer
-		size: 64
-	}
-	u8_ = Primitive{
-		props: .integer | .unsigned
-		size: 8
-	}
-	// byte_ = Primitive{props: .integer | .unsigned, size: 8}
-	byte_ = Alias{
-		name: 'byte'
-		base_type: u8_
-	}
-	u16_ = Primitive{
-		props: .integer | .unsigned
-		size: 16
-	}
-	u32_ = Primitive{
-		props: .integer | .unsigned
-		size: 32
-	}
-	u64_ = Primitive{
-		props: .integer | .unsigned
-		size: 64
-	}
-	f32_ = Primitive{
-		props: .float
-		size: 32
-	}
-	f64_ = Primitive{
-		props: .float
-		size: 64
-	}
-	// complex / non primitives
-	string_  = String(0)
-	chan_    = Channel{}
-	char_    = Char(0)
-	isize_   = ISize(0)
-	usize_   = USize(0)
-	rune_    = Rune(0)
-	void_    = Void(0)
-	nil_     = Nil(0)
-	none_    = None(0)
-	byteptr_ = Alias{
-		name: 'byteptr'
-		base_type: Pointer{
-			base_type: byte_
-		}
-	}
-	charptr_ = Alias{
-		name: 'charptr'
-		base_type: Pointer{
-			base_type: char_
-		}
-	}
-	voidptr_ = Alias{
-		name: 'voidptr'
-		base_type: Pointer{
-			base_type: void_
-		}
-	}
-	int_literal_ = Primitive{
-		props: .untyped | .integer
-	}
-	float_literal_ = Primitive{
-		props: .untyped | .float
-	}
-	// int_literal_   = IntLiteral(0)
-	// float_literal_ = FloatLiteral(0)
-	// TODO: is this what thread should be?
-	thread_ = Thread{}
-)
+}
+const int_literal_ = Primitive{
+	props: .untyped | .integer
+}
+const float_literal_ = Primitive{
+	props: .untyped | .float
+}
+// int_literal_   = IntLiteral(0)
+// float_literal_ = FloatLiteral(0)
+// TODO: is this what thread should be?
+const thread_ = Thread{}
 
 pub fn init_universe() &Scope {
 	// universe scope

@@ -1,13 +1,11 @@
 import v.ast
 import v.cflag
 
-const (
-	module_name = 'main'
-	cdefines    = []string{}
-	no_name     = ''
-	no_flag     = ''
-	no_os       = ''
-)
+const module_name = 'main'
+const cdefines = []string{}
+const no_name = ''
+const no_flag = ''
+const no_os = ''
 
 fn test_parse_valid_cflags() {
 	mut t := ast.new_table()

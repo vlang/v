@@ -13,32 +13,29 @@ import v.errors
 import v.pkgconfig
 import v.transformer
 
-const (
-	int_min                                        = int(0x80000000)
-	int_max                                        = int(0x7FFFFFFF)
-	// prevent stack overflows by restricting too deep recursion:
-	expr_level_cutoff_limit                        = 40
-	stmt_level_cutoff_limit                        = 40
-	iface_level_cutoff_limit                       = 100
-	generic_fn_cutoff_limit_per_fn                 = 10_000 // how many times post_process_generic_fns, can visit the same function before bailing out
-	generic_fn_postprocess_iterations_cutoff_limit = 1000_000 // how many times the compiler will try to resolve all remaining generic functions
-)
+const int_min = int(0x80000000)
+const int_max = int(0x7FFFFFFF)
+// prevent stack overflows by restricting too deep recursion:
+const expr_level_cutoff_limit = 40
+const stmt_level_cutoff_limit = 40
+const iface_level_cutoff_limit = 100
+const generic_fn_cutoff_limit_per_fn = 10_000 // how many times post_process_generic_fns, can visit the same function before bailing out
 
-pub const (
-	// array_builtin_methods contains a list of all methods on array, that return other typed arrays,
-	// i.e. that act as *pseudogeneric* methods, that need compiler support, so that the types of the results
-	// are properly checked.
-	// Note that methods that do not return anything, or that return known types, are not listed here, since they are just ordinary non generic methods.
-	array_builtin_methods       = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
-		'sorted', 'sorted_with_compare', 'contains', 'index', 'wait', 'any', 'all', 'first', 'last',
-		'pop', 'delete']
-	array_builtin_methods_chk   = token.new_keywords_matcher_from_array_trie(array_builtin_methods)
-	// TODO: remove `byte` from this list when it is no longer supported
-	reserved_type_names         = ['byte', 'bool', 'char', 'i8', 'i16', 'int', 'i64', 'u8', 'u16',
-		'u32', 'u64', 'f32', 'f64', 'map', 'string', 'rune', 'usize', 'isize', 'voidptr', 'thread']
-	reserved_type_names_chk     = token.new_keywords_matcher_from_array_trie(reserved_type_names)
-	vroot_is_deprecated_message = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
-)
+const generic_fn_postprocess_iterations_cutoff_limit = 1000_000
+
+// array_builtin_methods contains a list of all methods on array, that return other typed arrays,
+// i.e. that act as *pseudogeneric* methods, that need compiler support, so that the types of the results
+// are properly checked.
+// Note that methods that do not return anything, or that return known types, are not listed here, since they are just ordinary non generic methods.
+pub const array_builtin_methods = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
+	'sorted', 'sorted_with_compare', 'contains', 'index', 'wait', 'any', 'all', 'first', 'last',
+	'pop', 'delete']
+pub const array_builtin_methods_chk = token.new_keywords_matcher_from_array_trie(array_builtin_methods)
+// TODO: remove `byte` from this list when it is no longer supported
+pub const reserved_type_names = ['byte', 'bool', 'char', 'i8', 'i16', 'int', 'i64', 'u8', 'u16',
+	'u32', 'u64', 'f32', 'f64', 'map', 'string', 'rune', 'usize', 'isize', 'voidptr', 'thread']
+pub const reserved_type_names_chk = token.new_keywords_matcher_from_array_trie(reserved_type_names)
+pub const vroot_is_deprecated_message = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
 
 @[heap; minify]
 pub struct Checker {

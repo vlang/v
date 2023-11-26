@@ -122,12 +122,10 @@ fn (mut f FlagParser) free() {
 	}
 }
 
-pub const (
-	// used for formatting usage message
-	space           = '                            '
-	underline       = '-----------------------------------------------'
-	max_args_number = 4048
-)
+// used for formatting usage message
+pub const space = '                            '
+pub const underline = '-----------------------------------------------'
+pub const max_args_number = 4048
 
 // new_flag_parser - create a new flag parser for the given args
 pub fn new_flag_parser(args []string) &FlagParser {

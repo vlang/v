@@ -3,9 +3,7 @@ module main
 import vweb
 import databases
 
-const (
-	http_port = 8081
-)
+const http_port = 8081
 
 struct App {
 	vweb.Context

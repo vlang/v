@@ -19,18 +19,14 @@ import v.mathutil as mu
 // v itself.
 // error_context_before - how many lines of source context to print before the pointer line
 // error_context_after - ^^^ same, but after
-const (
-	error_context_before = 2
-	error_context_after  = 2
-)
+const error_context_before = 2
+const error_context_after = 2
 
 // emanager.support_color - should the error and other messages
 // have ANSI terminal escape color codes in them.
 // By default, v tries to autodetect, if the terminal supports colors.
 // Use -color and -nocolor options to override the detection decision.
-pub const (
-	emanager = new_error_manager()
-)
+pub const emanager = new_error_manager()
 
 pub struct EManager {
 mut:

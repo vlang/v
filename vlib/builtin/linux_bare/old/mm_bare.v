@@ -1,10 +1,8 @@
 module builtin
 
-const (
-	mem_prot  = Mm_prot(int(Mm_prot.prot_read) | int(Mm_prot.prot_write))
-	mem_flags = Map_flags(int(Map_flags.map_private) | int(Map_flags.map_anonymous))
-	page_size = u64(Linux_mem.page_size)
-)
+const mem_prot = Mm_prot(int(Mm_prot.prot_read) | int(Mm_prot.prot_write))
+const mem_flags = Map_flags(int(Map_flags.map_private) | int(Map_flags.map_anonymous))
+const page_size = u64(Linux_mem.page_size)
 
 pub fn mm_pages(size u64) u32 {
 	pages := (size + u64(4) + page_size) / page_size

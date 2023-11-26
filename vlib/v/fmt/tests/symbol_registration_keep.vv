@@ -2,12 +2,10 @@ module analyzer
 
 import os
 
-const (
-	mut_struct_keyword     = 'mut:'
-	pub_struct_keyword     = 'pub:'
-	pub_mut_struct_keyword = 'pub mut:'
-	global_struct_keyword  = '__global:'
-)
+const mut_struct_keyword = 'mut:'
+const pub_struct_keyword = 'pub:'
+const pub_mut_struct_keyword = 'pub mut:'
+const global_struct_keyword = '__global:'
 
 struct SymbolRegistration {
 mut:

@@ -552,6 +552,9 @@ fn (p &Parser) is_array_type() bool {
 		if tok.kind in [.name, .amp] {
 			return true
 		}
+		if tok.kind == .eof {
+			break
+		}
 		i++
 		if tok.kind == .lsbr || tok.kind != .rsbr {
 			continue

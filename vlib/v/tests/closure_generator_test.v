@@ -1,11 +1,9 @@
 import strings
 import os
 
-const (
-	max_params       = get_max_params()
-	all_param_names  = []string{len: max_params, init: '${`a` + index}'}
-	all_param_values = []string{len: max_params, init: '${index + 1}'}
-)
+const max_params = get_max_params()
+const all_param_names = []string{len: max_params, init: '${`a` + index}'}
+const all_param_values = []string{len: max_params, init: '${index + 1}'}
 
 fn get_max_params() int {
 	$if macos {

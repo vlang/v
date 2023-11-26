@@ -4,12 +4,10 @@
 import os
 import flag
 
-const (
-	tool_name        = 'v missdoc'
-	tool_version     = '0.1.0'
-	tool_description = 'Prints all V functions in .v files under PATH/, that do not yet have documentation comments.'
-	work_dir_prefix  = normalise_path(os.real_path(os.wd_at_startup) + os.path_separator)
-)
+const tool_name = 'v missdoc'
+const tool_version = '0.1.0'
+const tool_description = 'Prints all V functions in .v files under PATH/, that do not yet have documentation comments.'
+const work_dir_prefix = normalise_path(os.real_path(os.wd_at_startup) + os.path_separator)
 
 struct UndocumentedFN {
 	file      string

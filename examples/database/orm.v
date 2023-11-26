@@ -20,20 +20,16 @@ import db.pg
 //   * Child
 // in the passed databases, so it is better to use empty DBs for it.
 
-const (
-	mysql_host = os.getenv_opt('MHOST') or { 'localhost' }
-	mysql_port = os.getenv_opt('MPORT') or { '3306' }.u32()
-	mysql_user = os.getenv_opt('MUSER') or { 'myuser' }
-	mysql_pass = os.getenv_opt('MPASS') or { 'abc' }
-	mysql_db   = os.getenv_opt('MDATABASE') or { 'test' }
-)
+const mysql_host = os.getenv_opt('MHOST') or { 'localhost' }
+const mysql_port = os.getenv_opt('MPORT') or { '3306' }.u32()
+const mysql_user = os.getenv_opt('MUSER') or { 'myuser' }
+const mysql_pass = os.getenv_opt('MPASS') or { 'abc' }
+const mysql_db = os.getenv_opt('MDATABASE') or { 'test' }
 
-const (
-	pg_host = os.getenv_opt('PGHOST') or { 'localhost' }
-	pg_user = os.getenv_opt('PGUSER') or { 'test' }
-	pg_pass = os.getenv_opt('PGPASS') or { 'abc' }
-	pg_db   = os.getenv_opt('PGDATABASE') or { 'test' }
-)
+const pg_host = os.getenv_opt('PGHOST') or { 'localhost' }
+const pg_user = os.getenv_opt('PGUSER') or { 'test' }
+const pg_pass = os.getenv_opt('PGPASS') or { 'abc' }
+const pg_db = os.getenv_opt('PGDATABASE') or { 'test' }
 
 @[table: 'modules']
 struct Module {

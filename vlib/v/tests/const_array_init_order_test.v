@@ -1,8 +1,6 @@
-const (
-	cst3 = [[[cst1, cst2]]]
-	cst1 = [11]
-	cst2 = [22]
-)
+const cst3 = [[[cst1, cst2]]]
+const cst1 = [11]
+const cst2 = [22]
 
 fn test_const_array_init_order() {
 	println(cst3)

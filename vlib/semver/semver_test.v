@@ -20,60 +20,58 @@ struct TestCoerce {
 	valid   string
 }
 
-const (
-	versions_to_test         = [
-		TestVersion{'1.2.4', 1, 2, 4, '', ''},
-		TestVersion{'1.2.4-prerelease-1', 1, 2, 4, 'prerelease-1', ''},
-		TestVersion{'1.2.4+20191231', 1, 2, 4, '', '20191231'},
-		TestVersion{'1.2.4-prerelease-1+20191231', 1, 2, 4, 'prerelease-1', '20191231'},
-		TestVersion{'1.2.4+20191231-prerelease-1', 1, 2, 4, '', '20191231-prerelease-1'},
-	]
-	ranges_to_test           = [
-		TestRange{'1.1.0', '1.1.0', '1.1.1'},
-		TestRange{'1.1.0', '=1.1.0', '=1.1.1'},
-		TestRange{'1.1.0', '>=1.0.0', '<1.1.0'},
-		TestRange{'1.1.0', '>=1.0.0 <=1.1.0', '>=1.0.0 <1.1.0'},
-		TestRange{'2.3.1', '>=1.0.0 <=1.1.0 || >2.0.0 <2.3.4', '>=1.0.0 <1.1.0'},
-		TestRange{'2.3.1', '>=1.0.0 <=1.1.0 || >2.0.0 <2.3.4', '>=1.0.0 <1.1.0 || >4.0.0 <5.0.0'},
-		TestRange{'2.3.1', '~2.3.0', '~2.4.0'},
-		TestRange{'3.0.0', '~3.0.0', '~4.0.0'},
-		TestRange{'2.3.1', '^2.0.0', '^2.4.0'},
-		TestRange{'0.3.1', '^0.3.0', '^2.4.0'},
-		TestRange{'0.0.4', '^0.0.1', '^0.1.0'},
-		TestRange{'2.3.4', '^0.0.1 || ^2.3.0', '^3.1.0 || ^4.2.0'},
-		TestRange{'2.3.4', '>2 || <3', '>3 || >4'},
-		TestRange{'2.3.4', '2.3.4 - 2.3.5', '2.5.1 - 2.8.3'},
-		TestRange{'2.3.4', '2.2 - 2.3', '2.4 - 2.8'},
-		TestRange{'2.3.4', '2.3.x', '2.4.x'},
-		TestRange{'2.3.4', '2.x', '3.x'},
-		TestRange{'2.3.4', '*', '3.x'},
-	]
-	coerce_to_test           = [
-		TestCoerce{'1.2.0.4', '1.2.0'},
-		TestCoerce{'1.2.0', '1.2.0'},
-		TestCoerce{'1.2', '1.2.0'},
-		TestCoerce{'1', '1.0.0'},
-		TestCoerce{'1-alpha', '1.0.0-alpha'},
-		TestCoerce{'1+meta', '1.0.0+meta'},
-		TestCoerce{'1-alpha+meta', '1.0.0-alpha+meta'},
-	]
-	invalid_versions_to_test = [
-		'a.b.c',
-		'1.2',
-		'1.2.x',
-		'1.2.3.4',
-		'1.2.3-alpha@',
-		'1.2.3+meta%',
-	]
-	invalid_ranges_to_test   = [
-		'^a',
-		'~b',
-		'a - c',
-		'>a',
-		'a',
-		'a.x',
-	]
-)
+const versions_to_test = [
+	TestVersion{'1.2.4', 1, 2, 4, '', ''},
+	TestVersion{'1.2.4-prerelease-1', 1, 2, 4, 'prerelease-1', ''},
+	TestVersion{'1.2.4+20191231', 1, 2, 4, '', '20191231'},
+	TestVersion{'1.2.4-prerelease-1+20191231', 1, 2, 4, 'prerelease-1', '20191231'},
+	TestVersion{'1.2.4+20191231-prerelease-1', 1, 2, 4, '', '20191231-prerelease-1'},
+]
+const ranges_to_test = [
+	TestRange{'1.1.0', '1.1.0', '1.1.1'},
+	TestRange{'1.1.0', '=1.1.0', '=1.1.1'},
+	TestRange{'1.1.0', '>=1.0.0', '<1.1.0'},
+	TestRange{'1.1.0', '>=1.0.0 <=1.1.0', '>=1.0.0 <1.1.0'},
+	TestRange{'2.3.1', '>=1.0.0 <=1.1.0 || >2.0.0 <2.3.4', '>=1.0.0 <1.1.0'},
+	TestRange{'2.3.1', '>=1.0.0 <=1.1.0 || >2.0.0 <2.3.4', '>=1.0.0 <1.1.0 || >4.0.0 <5.0.0'},
+	TestRange{'2.3.1', '~2.3.0', '~2.4.0'},
+	TestRange{'3.0.0', '~3.0.0', '~4.0.0'},
+	TestRange{'2.3.1', '^2.0.0', '^2.4.0'},
+	TestRange{'0.3.1', '^0.3.0', '^2.4.0'},
+	TestRange{'0.0.4', '^0.0.1', '^0.1.0'},
+	TestRange{'2.3.4', '^0.0.1 || ^2.3.0', '^3.1.0 || ^4.2.0'},
+	TestRange{'2.3.4', '>2 || <3', '>3 || >4'},
+	TestRange{'2.3.4', '2.3.4 - 2.3.5', '2.5.1 - 2.8.3'},
+	TestRange{'2.3.4', '2.2 - 2.3', '2.4 - 2.8'},
+	TestRange{'2.3.4', '2.3.x', '2.4.x'},
+	TestRange{'2.3.4', '2.x', '3.x'},
+	TestRange{'2.3.4', '*', '3.x'},
+]
+const coerce_to_test = [
+	TestCoerce{'1.2.0.4', '1.2.0'},
+	TestCoerce{'1.2.0', '1.2.0'},
+	TestCoerce{'1.2', '1.2.0'},
+	TestCoerce{'1', '1.0.0'},
+	TestCoerce{'1-alpha', '1.0.0-alpha'},
+	TestCoerce{'1+meta', '1.0.0+meta'},
+	TestCoerce{'1-alpha+meta', '1.0.0-alpha+meta'},
+]
+const invalid_versions_to_test = [
+	'a.b.c',
+	'1.2',
+	'1.2.x',
+	'1.2.3.4',
+	'1.2.3-alpha@',
+	'1.2.3+meta%',
+]
+const invalid_ranges_to_test = [
+	'^a',
+	'~b',
+	'a - c',
+	'>a',
+	'a',
+	'a.x',
+]
 
 fn test_from() {
 	for item in versions_to_test {

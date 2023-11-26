@@ -1,20 +1,18 @@
 import x.json2 as json
 
-const (
-	sample_data = {
-		'int':  json.Any(int(1))
-		'i64':  json.Any(i64(128))
-		'f32':  json.Any(f32(2.0))
-		'f64':  json.Any(f64(1.283))
-		'bool': json.Any(false)
-		'str':  json.Any('test')
-		'null': json.Any(json.null)
-		'arr':  json.Any([json.Any('lol')])
-		'obj':  json.Any({
-			'foo': json.Any(10)
-		})
-	}
-)
+const sample_data = {
+	'int':  json.Any(int(1))
+	'i64':  json.Any(i64(128))
+	'f32':  json.Any(f32(2.0))
+	'f64':  json.Any(f64(1.283))
+	'bool': json.Any(false)
+	'str':  json.Any('test')
+	'null': json.Any(json.null)
+	'arr':  json.Any([json.Any('lol')])
+	'obj':  json.Any({
+		'foo': json.Any(10)
+	})
+}
 
 fn is_null(f json.Any) bool {
 	match f {

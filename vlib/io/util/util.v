@@ -3,9 +3,7 @@ module util
 import os
 import rand
 
-const (
-	retries = 10000
-)
+const retries = 10000
 
 @[params]
 pub struct TempFileOptions {

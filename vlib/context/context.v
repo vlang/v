@@ -6,16 +6,14 @@ module context
 
 import time
 
-const (
-	cancel_context_key = Key('context.CancelContext')
+const cancel_context_key = Key('context.CancelContext')
 
-	// canceled is the error returned by Context.err when the context is canceled.
-	canceled           = error('context canceled')
+// canceled is the error returned by Context.err when the context is canceled.
+const canceled = error('context canceled')
 
-	// deadline_exceeded is the error returned by Context.err when the context's
-	// deadline passes.
-	deadline_exceeded  = error('context deadline exceeded')
-)
+// deadline_exceeded is the error returned by Context.err when the context's
+// deadline passes.
+const deadline_exceeded = error('context deadline exceeded')
 
 // Key represents the type for the ValueContext key
 pub type Key = bool | f32 | f64 | i16 | i64 | i8 | int | string | u16 | u32 | u64 | u8 | voidptr

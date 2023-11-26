@@ -5,11 +5,9 @@ import gg
 import gx
 import sokol.sapp
 
-const (
-	max_files = 12
-	text      = 'Drag&Drop here max ${max_files} files.'
-	text_size = 16
-)
+const max_files = 12
+const text = 'Drag&Drop here max ${max_files} files.'
+const text_size = 16
 
 struct App {
 mut:

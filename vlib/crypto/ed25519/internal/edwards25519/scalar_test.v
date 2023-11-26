@@ -99,11 +99,9 @@ fn test_scalar_set_canonical_bytes_round_trip() {
 	}
 }
 
-const (
-	sc_error = Scalar{
-		s: [32]u8{init: (u8(-1))}
-	}
-)
+const sc_error = Scalar{
+	s: [32]u8{init: (u8(-1))}
+}
 
 fn test_scalar_set_canonical_bytes_on_noncanonical_value() {
 	mut b := sc_minus_one.s

@@ -3,23 +3,21 @@ module pkgconfig
 import semver
 import os
 
-const (
-	default_paths = [
-		'/usr/local/lib/x86_64-linux-gnu/pkgconfig',
-		'/usr/local/lib64/pkgconfig',
-		'/usr/local/lib/pkgconfig',
-		'/usr/local/share/pkgconfig',
-		'/usr/lib/x86_64-linux-gnu/pkgconfig',
-		'/usr/lib/aarch64-linux-gnu/pkgconfig',
-		'/usr/lib64/pkgconfig',
-		'/usr/lib/pkgconfig',
-		'/usr/share/pkgconfig',
-		'/opt/homebrew/lib/pkgconfig', // Brew on macOS
-		'/usr/local/libdata/pkgconfig', // FreeBSD
-		'/usr/lib/i386-linux-gnu/pkgconfig', // Debian 32bit
-	]
-	version       = '0.3.3'
-)
+const default_paths = [
+	'/usr/local/lib/x86_64-linux-gnu/pkgconfig',
+	'/usr/local/lib64/pkgconfig',
+	'/usr/local/lib/pkgconfig',
+	'/usr/local/share/pkgconfig',
+	'/usr/lib/x86_64-linux-gnu/pkgconfig',
+	'/usr/lib/aarch64-linux-gnu/pkgconfig',
+	'/usr/lib64/pkgconfig',
+	'/usr/lib/pkgconfig',
+	'/usr/share/pkgconfig',
+	'/opt/homebrew/lib/pkgconfig', // Brew on macOS
+	'/usr/local/libdata/pkgconfig', // FreeBSD
+	'/usr/lib/i386-linux-gnu/pkgconfig', // Debian 32bit
+]
+const version = '0.3.3'
 
 pub struct Options {
 pub:

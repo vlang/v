@@ -12,9 +12,7 @@ import time
 import log
 import rand
 
-const (
-	empty_bytearr = []u8{} // used as empty response to avoid allocation
-)
+const empty_bytearr = []u8{}
 
 pub struct ClientState {
 pub mut:

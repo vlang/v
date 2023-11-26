@@ -1,10 +1,8 @@
 // vtest flaky: true
 // vtest retry: 3
 
-const (
-	a = 3
-	u = u64(1)
-)
+const a = 3
+const u = u64(1)
 
 fn test_const() {
 	b := (true && true) || false

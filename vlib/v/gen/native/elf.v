@@ -5,131 +5,127 @@ module native
 
 import os
 
-const (
-	elf_class32              = 1
-	elf_class64              = 2
+const elf_class32 = 1
+const elf_class64 = 2
 
-	elf_data_le              = 1
-	elf_data_be              = 2
+const elf_data_le = 1
+const elf_data_be = 2
 
-	elf_version              = 1
-	elf_abiversion           = 0
+const elf_version = 1
+const elf_abiversion = 0
 
-	// elf type
-	elf_type_none            = 0
-	elf_type_rel             = 1
-	elf_type_exec            = 2
-	elf_type_dyn             = 3
-	elf_type_core            = 4
+// elf type
+const elf_type_none = 0
+const elf_type_rel = 1
+const elf_type_exec = 2
+const elf_type_dyn = 3
+const elf_type_core = 4
 
-	elf_amd64                = 0x3e
-	elf_arm64                = 0xb7
+const elf_amd64 = 0x3e
+const elf_arm64 = 0xb7
 
-	elf_osabi_none           = 0
-	elf_osabi_hpux           = 1
-	elf_osabi_netbsd         = 2
-	elf_osabi_linux          = 3
-	elf_osabi_freebsd        = 9
+const elf_osabi_none = 0
+const elf_osabi_hpux = 1
+const elf_osabi_netbsd = 2
+const elf_osabi_linux = 3
+const elf_osabi_freebsd = 9
 
-	elf_header_size          = 0x40
-	elf_phentry_size         = 0x38
+const elf_header_size = 0x40
+const elf_phentry_size = 0x38
 
-	// elf program header type
-	elf_pt_null              = 0
-	elf_pt_load              = 1
-	elf_pt_dynamic           = 2
-	elf_pt_interp            = 3
-	elf_pt_note              = 4
-	elf_pt_shlib             = 5
-	elf_pt_phdr              = 6
-	elf_pt_tls               = 7
+// elf program header type
+const elf_pt_null = 0
+const elf_pt_load = 1
+const elf_pt_dynamic = 2
+const elf_pt_interp = 3
+const elf_pt_note = 4
+const elf_pt_shlib = 5
+const elf_pt_phdr = 6
+const elf_pt_tls = 7
 
-	// offset of e_entry field in the elf header
-	elf_e_entry_offset       = 24
+// offset of e_entry field in the elf header
+const elf_e_entry_offset = 24
 
-	// alignment of program headers
-	elf_p_align              = 0x1000
+// alignment of program headers
+const elf_p_align = 0x1000
 
-	// elf section header size
-	elf_shentry_size         = 0x40
+// elf section header size
+const elf_shentry_size = 0x40
 
-	// elf section type
-	elf_sht_null             = 0x00
-	elf_sht_progbits         = 0x01
-	elf_sht_symtab           = 0x02
-	elf_sht_strtab           = 0x03
-	elf_sht_rela             = 0x04
-	elf_sht_hash             = 0x05
-	elf_sht_dynamic          = 0x06
-	elf_sht_note             = 0x07
-	elf_sht_nobits           = 0x08
-	elf_sht_rel              = 0x09
-	elf_sht_shlib            = 0x0a
-	elf_sht_dynsym           = 0x0b
+// elf section type
+const elf_sht_null = 0x00
+const elf_sht_progbits = 0x01
+const elf_sht_symtab = 0x02
+const elf_sht_strtab = 0x03
+const elf_sht_rela = 0x04
+const elf_sht_hash = 0x05
+const elf_sht_dynamic = 0x06
+const elf_sht_note = 0x07
+const elf_sht_nobits = 0x08
+const elf_sht_rel = 0x09
+const elf_sht_shlib = 0x0a
+const elf_sht_dynsym = 0x0b
 
-	// elf section flags
-	elf_shf_write            = u64(0x01)
-	elf_shf_alloc            = u64(0x02)
-	elf_shf_execinstr        = u64(0x04)
-	elf_shf_merge            = u64(0x10)
-	elf_sht_strings          = u64(0x20)
-	elf_shf_info_link        = u64(0x40)
-	elf_shf_link_order       = u64(0x80)
-	elf_shf_os_nonconforming = u64(0x100)
-	elf_shf_groub            = u64(0x200)
-	elf_shf_tls              = u64(0x400)
+// elf section flags
+const elf_shf_write = u64(0x01)
+const elf_shf_alloc = u64(0x02)
+const elf_shf_execinstr = u64(0x04)
+const elf_shf_merge = u64(0x10)
+const elf_sht_strings = u64(0x20)
+const elf_shf_info_link = u64(0x40)
+const elf_shf_link_order = u64(0x80)
+const elf_shf_os_nonconforming = u64(0x100)
+const elf_shf_groub = u64(0x200)
+const elf_shf_tls = u64(0x400)
 
-	// elf symbol tables
-	elf_symtab_size          = 0x18
-	elf_dynamic_size         = 0x10
-	elf_rela_size            = 0x18
-	elf_rel_size             = 0x10
-	elf_sh_symtab_entsize    = elf_symtab_size
-	elf_sh_symtab_align      = 8
+// elf symbol tables
+const elf_symtab_size = 0x18
+const elf_dynamic_size = 0x10
+const elf_rela_size = 0x18
+const elf_rel_size = 0x10
+const elf_sh_symtab_entsize = elf_symtab_size
+const elf_sh_symtab_align = 8
 
-	// elf symbol binding
-	elf_stb_local            = u8(0)
-	elf_stb_global           = u8(1)
+// elf symbol binding
+const elf_stb_local = u8(0)
+const elf_stb_global = u8(1)
 
-	// elf symbol types
-	elf_stt_notype           = u8(0)
-	elf_stt_object           = u8(1)
-	elf_stt_func             = u8(2)
-	elf_stt_section          = u8(3)
-	elf_stt_file             = u8(4)
+// elf symbol types
+const elf_stt_notype = u8(0)
+const elf_stt_object = u8(1)
+const elf_stt_func = u8(2)
+const elf_stt_section = u8(3)
+const elf_stt_file = u8(4)
 
-	// elf symbol visibility
-	elf_stv_default          = i8(0)
+// elf symbol visibility
+const elf_stv_default = i8(0)
 
-	// elf relocation types
-	elf_r_amd64_none         = 0
-	elf_r_amd64_64           = 1
-	elf_r_amd64_pc32         = 2
-	elf_r_amd64_got32        = 3
-	elf_r_amd64_plt32        = 4
-	elf_r_amd64_copy         = 5
-	elf_r_amd64_glob_dat     = 6
-	elf_r_amd64_jump_slot    = 7
-	elf_r_amd64_relative     = 8
-	elf_r_amd64_gotpcrel     = 9
-	elf_r_amd64_32           = 10
-	elf_r_amd64_32s          = 11
-	elf_r_amd64_16           = 12
-	elf_r_amd64_pc16         = 13
-	elf_r_amd64_8            = 14
-	elf_r_amd64_pc8          = 15
-	elf_r_amd64_pc64         = 24
-	elf_r_amd64_gotoff64     = 25
-	elf_r_amd64_gotpc32      = 26
-	elf_r_amd64_size32       = 32
-	elf_r_amd64_size64       = 33
-	elf_r_amd64_gotpcrelx    = 0x29
-)
+// elf relocation types
+const elf_r_amd64_none = 0
+const elf_r_amd64_64 = 1
+const elf_r_amd64_pc32 = 2
+const elf_r_amd64_got32 = 3
+const elf_r_amd64_plt32 = 4
+const elf_r_amd64_copy = 5
+const elf_r_amd64_glob_dat = 6
+const elf_r_amd64_jump_slot = 7
+const elf_r_amd64_relative = 8
+const elf_r_amd64_gotpcrel = 9
+const elf_r_amd64_32 = 10
+const elf_r_amd64_32s = 11
+const elf_r_amd64_16 = 12
+const elf_r_amd64_pc16 = 13
+const elf_r_amd64_8 = 14
+const elf_r_amd64_pc8 = 15
+const elf_r_amd64_pc64 = 24
+const elf_r_amd64_gotoff64 = 25
+const elf_r_amd64_gotpc32 = 26
+const elf_r_amd64_size32 = 32
+const elf_r_amd64_size64 = 33
+const elf_r_amd64_gotpcrelx = 0x29
 
-const (
-	segment_start = 0x400000
-	placeholder   = 0
-)
+const segment_start = 0x400000
+const placeholder = 0
 
 struct ElfHeader {
 mut:

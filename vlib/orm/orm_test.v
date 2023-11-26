@@ -3,9 +3,7 @@
 import time
 import db.sqlite
 
-const (
-	offset_const = 2
-)
+const offset_const = 2
 
 struct Module {
 	id           int       @[primary; sql: serial]

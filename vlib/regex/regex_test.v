@@ -776,17 +776,15 @@ fn rest_regex_replace_n() {
 }
 
 // test quantifier wrong sequences
-const (
-	test_quantifier_sequences_list = [
-		r'+{3}.*+{3}',
-		r'+{3}.*?{3}',
-		r'+{3}.**{3}',
-		r'+{3}.*\+{3}*',
-		r'+{3}.*\+{3}+',
-		r'+{3}.*\+{3}??',
-		r'+{3}.*\+{3}{4}',
-	]
-)
+const test_quantifier_sequences_list = [
+	r'+{3}.*+{3}',
+	r'+{3}.*?{3}',
+	r'+{3}.**{3}',
+	r'+{3}.*\+{3}*',
+	r'+{3}.*\+{3}+',
+	r'+{3}.*\+{3}??',
+	r'+{3}.*\+{3}{4}',
+]
 
 fn test_quantifier_sequences() {
 	for pattern in test_quantifier_sequences_list {
@@ -863,11 +861,9 @@ fn test_groups_in_find() {
 	}
 }
 
-const (
-	err_query_list = [
-		r'([a]|[b])*',
-	]
-)
+const err_query_list = [
+	r'([a]|[b])*',
+]
 
 fn test_errors() {
 	mut count := 0
@@ -923,16 +919,14 @@ struct Test_negation_group {
 	res bool
 }
 
-const (
-	negation_groups = [
-		Test_negation_group{'automobile', false},
-		Test_negation_group{'botomobile', true},
-		Test_negation_group{'auto_caravan', false},
-		Test_negation_group{'moto_mobile', true},
-		Test_negation_group{'pippole', true},
-		Test_negation_group{'boring test', false},
-	]
-)
+const negation_groups = [
+	Test_negation_group{'automobile', false},
+	Test_negation_group{'botomobile', true},
+	Test_negation_group{'auto_caravan', false},
+	Test_negation_group{'moto_mobile', true},
+	Test_negation_group{'pippole', true},
+	Test_negation_group{'boring test', false},
+]
 
 fn test_negation_groups() {
 	mut query := r'(?!auto)\w+le'

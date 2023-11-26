@@ -183,11 +183,9 @@ pub:
 	pos token.Pos
 }
 
-pub const (
-	empty_expr = Expr(EmptyExpr(0))
-	empty_stmt = Stmt(EmptyStmt{})
-	empty_node = Node(EmptyNode{})
-)
+pub const empty_expr = Expr(EmptyExpr(0))
+pub const empty_stmt = Stmt(EmptyStmt{})
+pub const empty_node = Node(EmptyNode{})
 
 // `{stmts}` or `unsafe {stmts}`
 pub struct Block {
@@ -1633,89 +1631,84 @@ pub mut:
 	expr Expr // (a)
 }
 
-pub const (
-	// reference: https://en.wikipedia.org/wiki/X86#/media/File:Table_of_x86_Registers_svg.svg
-	// map register size -> register name
-	x86_no_number_register_list = {
-		8:  ['al', 'ah', 'bl', 'bh', 'cl', 'ch', 'dl', 'dh', 'bpl', 'sil', 'dil', 'spl']
-		16: ['ax', 'bx', 'cx', 'dx', 'bp', 'si', 'di', 'sp', // segment registers
-		 		'cs', 'ss', 'ds', 'es', 'fs', 'gs', 'flags', 'ip', // task registers
-		 		'gdtr', 'idtr', 'tr', 'ldtr', // CSR register 'msw', /* FP core registers */ 'cw', 'sw', 'tw', 'fp_ip', 'fp_dp', 'fp_cs',
-		 		'fp_ds', 'fp_opc']
-		32: [
-			'eax',
-			'ebx',
-			'ecx',
-			'edx',
-			'ebp',
-			'esi',
-			'edi',
-			'esp',
-			'eflags',
-			'eip', // CSR register
-			'mxcsr', // 32-bit FP core registers 'fp_dp', 'fp_ip' (TODO: why are there duplicates?)
-		]
-		64: ['rax', 'rbx', 'rcx', 'rdx', 'rbp', 'rsi', 'rdi', 'rsp', 'rflags', 'rip']
+// reference: https://en.wikipedia.org/wiki/X86#/media/File:Table_of_x86_Registers_svg.svg
+// map register size -> register name
+pub const x86_no_number_register_list = {
+	8:  ['al', 'ah', 'bl', 'bh', 'cl', 'ch', 'dl', 'dh', 'bpl', 'sil', 'dil', 'spl']
+	16: ['ax', 'bx', 'cx', 'dx', 'bp', 'si', 'di', 'sp', // segment registers
+	 	'cs', 'ss', 'ds', 'es', 'fs', 'gs', 'flags', 'ip', // task registers
+	 	'gdtr', 'idtr', 'tr', 'ldtr', // CSR register 'msw', /* FP core registers */ 'cw', 'sw', 'tw', 'fp_ip', 'fp_dp', 'fp_cs',
+	 	'fp_ds', 'fp_opc']
+	32: [
+		'eax',
+		'ebx',
+		'ecx',
+		'edx',
+		'ebp',
+		'esi',
+		'edi',
+		'esp',
+		'eflags',
+		'eip', // CSR register
+		'mxcsr', // 32-bit FP core registers 'fp_dp', 'fp_ip' (TODO: why are there duplicates?)
+	]
+	64: ['rax', 'rbx', 'rcx', 'rdx', 'rbp', 'rsi', 'rdi', 'rsp', 'rflags', 'rip']
+}
+// no comments because maps do not support comments
+// r#*: gp registers added in 64-bit extensions, can only be from 8-15 actually
+// *mm#: vector/simd registers
+// st#: floating point numbers
+// cr#: control/status registers
+// dr#: debug registers
+pub const x86_with_number_register_list = {
+	8:   {
+		'r#b': 16
 	}
-	// no comments because maps do not support comments
-	// r#*: gp registers added in 64-bit extensions, can only be from 8-15 actually
-	// *mm#: vector/simd registers
-	// st#: floating point numbers
-	// cr#: control/status registers
-	// dr#: debug registers
-	x86_with_number_register_list = {
-		8:   {
-			'r#b': 16
-		}
-		16:  {
-			'r#w': 16
-		}
-		32:  {
-			'r#d': 16
-		}
-		64:  {
-			'r#':  16
-			'mm#': 16
-			'cr#': 16
-			'dr#': 16
-		}
-		80:  {
-			'st#': 16
-		}
-		128: {
-			'xmm#': 32
-		}
-		256: {
-			'ymm#': 32
-		}
-		512: {
-			'zmm#': 32
-		}
+	16:  {
+		'r#w': 16
 	}
-)
+	32:  {
+		'r#d': 16
+	}
+	64:  {
+		'r#':  16
+		'mm#': 16
+		'cr#': 16
+		'dr#': 16
+	}
+	80:  {
+		'st#': 16
+	}
+	128: {
+		'xmm#': 32
+	}
+	256: {
+		'ymm#': 32
+	}
+	512: {
+		'zmm#': 32
+	}
+}
 
 // TODO: saved priviled registers for arm
-pub const (
-	arm_no_number_register_list   = ['fp', // aka r11
-	 	'ip', // not instruction pointer: aka r12
-	 	'sp', // aka r13
-	 	'lr', // aka r14
-	 	'pc', // this is instruction pointer ('program counter'): aka r15
-	] // 'cpsr' and 'apsr' are special flags registers, but cannot be referred to directly
-	arm_with_number_register_list = {
-		'r#': 16
-	}
-)
+pub const arm_no_number_register_list = ['fp', // aka r11
+ 'ip', // not instruction pointer: aka r12
+ 'sp', // aka r13
+ 'lr', // aka r14
+ 'pc', // this is instruction pointer ('program counter'): aka r15
+] // 'cpsr' and 'apsr' are special flags registers, but cannot be referred to directly
 
-pub const (
-	riscv_no_number_register_list   = ['zero', 'ra', 'sp', 'gp', 'tp']
-	riscv_with_number_register_list = {
-		'x#': 32
-		't#': 3
-		's#': 12
-		'a#': 8
-	}
-)
+pub const arm_with_number_register_list = {
+	'r#': 16
+}
+
+pub const riscv_no_number_register_list = ['zero', 'ra', 'sp', 'gp', 'tp']
+pub const riscv_with_number_register_list = {
+	'x#': 32
+	't#': 3
+	's#': 12
+	'a#': 8
+}
 
 // `assert a == 0, 'a is zero'`
 @[minify]

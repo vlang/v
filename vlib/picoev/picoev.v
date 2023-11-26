@@ -3,18 +3,16 @@ module picoev
 import picohttpparser
 import time
 
-pub const (
-	max_fds          = 1024
-	max_queue        = 4096
+pub const max_fds = 1024
+pub const max_queue = 4096
 
-	// events
-	picoev_read      = 1
-	picoev_write     = 2
-	picoev_timeout   = 4
-	picoev_add       = 0x40000000
-	picoev_del       = 0x20000000
-	picoev_readwrite = 3 // 1 xor 2
-)
+// events
+pub const picoev_read = 1
+pub const picoev_write = 2
+pub const picoev_timeout = 4
+pub const picoev_add = 0x40000000
+pub const picoev_del = 0x20000000
+pub const picoev_readwrite = 3
 
 // Target is a data representation of everything that needs to be associated with a single
 // file descriptor (connection)

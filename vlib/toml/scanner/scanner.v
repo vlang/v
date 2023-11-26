@@ -7,10 +7,8 @@ import toml.input
 import toml.token
 import toml.util
 
-pub const (
-	digit_extras = [`_`, `.`, `x`, `o`, `b`, `e`, `E`]
-	end_of_text  = u32(~0)
-)
+pub const digit_extras = [`_`, `.`, `x`, `o`, `b`, `e`, `E`]
+pub const end_of_text = u32(~0)
 
 // Scanner contains the necessary fields for the state of the scan process.
 // the task the scanner does is also referred to as "lexing" or "tokenizing".

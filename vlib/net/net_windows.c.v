@@ -739,10 +739,8 @@ pub fn wsa_error(code int) WsaError {
 	return unsafe { WsaError(code) }
 }
 
-pub const (
-	error_ewouldblock = WsaError.wsaewouldblock
-	error_einprogress = WsaError.wsaeinprogress
-)
+pub const error_ewouldblock = WsaError.wsaewouldblock
+pub const error_einprogress = WsaError.wsaeinprogress
 
 // Link to Winsock library
 #flag -lws2_32
@@ -750,11 +748,9 @@ pub const (
 #include <ws2tcpip.h>
 
 // Constants that windows needs
-const (
-	fionbio      = C.FIONBIO
-	msg_nosignal = 0
-	wsa_v22      = 0x202 // C.MAKEWORD(2, 2)
-)
+const fionbio = C.FIONBIO
+const msg_nosignal = 0
+const wsa_v22 = 0x202
 
 // Error code returns the last socket error
 pub fn error_code() int {

@@ -8,10 +8,8 @@ module aes
 import crypto.cipher
 import crypto.internal.subtle
 
-pub const (
-	// The AES block size in bytes.
-	block_size = 16
-)
+// The AES block size in bytes.
+pub const block_size = 16
 
 // AesCipher represents an AES encryption using a particular key.
 // It follows the API of golang's `cipher.Block` and is designed to

@@ -352,9 +352,7 @@ fn test_reverse() {
 	assert f.len == 0
 }
 
-const (
-	c_n = 5
-)
+const c_n = 5
 
 struct Foooj {
 	a [5]int // c_n
@@ -1288,12 +1286,10 @@ fn test_push_arr_string_free() {
 	assert lines[1] == 'ab'
 }
 
-const (
-	grid_size_1 = 2
-	grid_size_2 = 3
-	grid_size_3 = 4
-	cell_value  = 123
-)
+const grid_size_1 = 2
+const grid_size_2 = 3
+const grid_size_3 = 4
+const cell_value = 123
 
 fn test_multidimensional_array_initialization_with_consts() {
 	mut data := [][][]int{len: grid_size_1, init: [][]int{len: grid_size_2, init: []int{len: grid_size_3, init: cell_value}}}

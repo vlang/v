@@ -130,10 +130,9 @@ mut:
 }
 
 // type of glyph
-const (
-	g_type_simple  = u16(1) // simple type
-	g_type_complex = u16(2) // compound type
-)
+const g_type_simple = u16(1) // simple type
+
+const g_type_complex = u16(2)
 
 pub struct Glyph {
 pub mut:
@@ -348,14 +347,12 @@ pub fn (mut tf TTF_File) read_glyph(index u16) Glyph {
 	return tmp_glyph
 }
 
-const (
-	tfk_on_curve  = 1
-	tfk_x_is_byte = 2
-	tfk_y_is_byte = 4
-	tfk_repeat    = 8
-	tfk_x_delta   = 16
-	tfk_y_delta   = 32
-)
+const tfk_on_curve = 1
+const tfk_x_is_byte = 2
+const tfk_y_is_byte = 4
+const tfk_repeat = 8
+const tfk_x_delta = 16
+const tfk_y_delta = 32
 
 fn (mut tf TTF_File) read_simple_glyph(mut in_glyph Glyph) {
 	if in_glyph.number_of_contours == 0 {
@@ -446,19 +443,17 @@ fn (mut tf TTF_File) read_simple_glyph(mut in_glyph Glyph) {
 	in_glyph.valid_glyph = true
 }
 
-const (
-	tfkc_arg_1_and_2_are_words    = 1
-	tfkc_args_are_xy_values       = 2
-	tfkc_round_xy_to_grid         = 4
-	tfkc_we_have_a_scale          = 8
-	// reserved                   = 16
-	tfkc_more_components          = 32
-	tfkc_we_have_an_x_and_y_scale = 64
-	tfkc_we_have_a_two_by_two     = 128
-	tfkc_we_have_instructions     = 256
-	tfkc_use_my_metrics           = 512
-	tfkc_overlap_component        = 1024
-)
+const tfkc_arg_1_and_2_are_words = 1
+const tfkc_args_are_xy_values = 2
+const tfkc_round_xy_to_grid = 4
+const tfkc_we_have_a_scale = 8
+// reserved                   = 16
+const tfkc_more_components = 32
+const tfkc_we_have_an_x_and_y_scale = 64
+const tfkc_we_have_a_two_by_two = 128
+const tfkc_we_have_instructions = 256
+const tfkc_use_my_metrics = 512
+const tfkc_overlap_component = 1024
 
 struct Component {
 mut:

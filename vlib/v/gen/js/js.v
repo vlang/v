@@ -9,21 +9,19 @@ import v.depgraph
 import encoding.base64
 import v.gen.js.sourcemap
 
-const (
-	// https://ecma-international.org/ecma-262/#sec-reserved-words
-	js_reserved        = ['await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger',
-		'default', 'delete', 'do', 'else', 'enum', 'export', 'extends', 'finally', 'for', 'function',
-		'if', 'implements', 'import', 'in', 'instanceof', 'interface', 'let', 'new', 'package',
-		'private', 'protected', 'public', 'return', 'static', 'super', 'switch', 'this', 'throw',
-		'try', 'typeof', 'var', 'void', 'while', 'with', 'yield', 'Number', 'String', 'Boolean',
-		'Array', 'Map', 'document', 'Promise']
-	// used to generate type structs
-	v_types            = ['i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64',
-		'int_literal', 'float_literal', 'bool', 'string', 'map', 'array', 'rune', 'any', 'voidptr']
-	shallow_equatables = [ast.Kind.i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64,
-		.int_literal, .float_literal, .bool, .string]
-	option_name        = '_option'
-)
+// https://ecma-international.org/ecma-262/#sec-reserved-words
+const js_reserved = ['await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger',
+	'default', 'delete', 'do', 'else', 'enum', 'export', 'extends', 'finally', 'for', 'function',
+	'if', 'implements', 'import', 'in', 'instanceof', 'interface', 'let', 'new', 'package', 'private',
+	'protected', 'public', 'return', 'static', 'super', 'switch', 'this', 'throw', 'try', 'typeof',
+	'var', 'void', 'while', 'with', 'yield', 'Number', 'String', 'Boolean', 'Array', 'Map',
+	'document', 'Promise']
+// used to generate type structs
+const v_types = ['i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'int_literal',
+	'float_literal', 'bool', 'string', 'map', 'array', 'rune', 'any', 'voidptr']
+const shallow_equatables = [ast.Kind.i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64,
+	.int_literal, .float_literal, .bool, .string]
+const option_name = '_option'
 
 struct SourcemapHelper {
 	src_path string

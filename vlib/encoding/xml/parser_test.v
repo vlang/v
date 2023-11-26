@@ -1,7 +1,6 @@
 module xml
 
-const (
-	sample_doc = '
+const sample_doc = '
 <root>
 	<c id="c1"/>
 	<c id="c2">
@@ -19,79 +18,79 @@ const (
 	</child>
 	<cz id="c10"/>
 </root>'
-	xml_elements = [
-		XMLNode{
-			name: 'c'
-			attributes: {
-				'id': 'c1'
-			}
-		},
-		XMLNode{
-			name: 'c'
-			attributes: {
-				'id': 'c2'
-			}
-			children: [
-				'Sample Text',
-			]
-		},
-		XMLNode{
-			name: 'empty'
-			attributes: {}
-		},
-		XMLNode{
-			name: 'c'
-			attributes: {
-				'id': 'c3'
-			}
-		},
-		XMLNode{
-			name: 'abc'
-			attributes: {
-				'id': 'c4'
-			}
-		},
-		XMLNode{
-			name: 'xyz'
-			attributes: {
-				'id': 'c5'
-			}
-		},
-		XMLNode{
-			name: 'c'
-			attributes: {
-				'id': 'c6'
-			}
-		},
-		XMLNode{
-			name: 'cx'
-			attributes: {
-				'id': 'c7'
-			}
-		},
-		XMLNode{
-			name: 'cd'
-			attributes: {
-				'id': 'c8'
-			}
-		},
-		XMLNode{
-			name: 'child'
-			attributes: {
-				'id': 'c9'
-			}
-			children: [
-				'More Sample Text',
-			]
-		},
-		XMLNode{
-			name: 'cz'
-			attributes: {
-				'id': 'c10'
-			}
-		},
-	]
-)
+
+const xml_elements = [
+	XMLNode{
+		name: 'c'
+		attributes: {
+			'id': 'c1'
+		}
+	},
+	XMLNode{
+		name: 'c'
+		attributes: {
+			'id': 'c2'
+		}
+		children: [
+			'Sample Text',
+		]
+	},
+	XMLNode{
+		name: 'empty'
+		attributes: {}
+	},
+	XMLNode{
+		name: 'c'
+		attributes: {
+			'id': 'c3'
+		}
+	},
+	XMLNode{
+		name: 'abc'
+		attributes: {
+			'id': 'c4'
+		}
+	},
+	XMLNode{
+		name: 'xyz'
+		attributes: {
+			'id': 'c5'
+		}
+	},
+	XMLNode{
+		name: 'c'
+		attributes: {
+			'id': 'c6'
+		}
+	},
+	XMLNode{
+		name: 'cx'
+		attributes: {
+			'id': 'c7'
+		}
+	},
+	XMLNode{
+		name: 'cd'
+		attributes: {
+			'id': 'c8'
+		}
+	},
+	XMLNode{
+		name: 'child'
+		attributes: {
+			'id': 'c9'
+		}
+		children: [
+			'More Sample Text',
+		]
+	},
+	XMLNode{
+		name: 'cz'
+		attributes: {
+			'id': 'c10'
+		}
+	},
+]
 
 fn test_single_element_parsing() ! {
 	mut reader := FullBufferReader{

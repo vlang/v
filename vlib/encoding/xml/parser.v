@@ -4,24 +4,22 @@ import io
 import os
 import strings
 
-const (
-	default_prolog_attributes = {
-		'version':  '1.0'
-		'encoding': 'UTF-8'
-	}
-	default_string_builder_cap = 32
+const default_prolog_attributes = {
+	'version':  '1.0'
+	'encoding': 'UTF-8'
+}
+const default_string_builder_cap = 32
 
-	element_len                = '<!ELEMENT'.len
-	entity_len                 = '<!ENTITY'.len
+const element_len = '<!ELEMENT'.len
+const entity_len = '<!ENTITY'.len
 
-	doctype_chars              = 'OCTYPE'.bytes()
-	double_dash                = '--'.bytes()
-	c_tag                      = '[C'.bytes()
-	data_chars                 = 'DATA'.bytes()
+const doctype_chars = 'OCTYPE'.bytes()
+const double_dash = '--'.bytes()
+const c_tag = '[C'.bytes()
+const data_chars = 'DATA'.bytes()
 
-	byte_order_marking_first   = u8(0xEF)
-	byte_order_marking_bytes   = [u8(0xBB), 0xBF]
-)
+const byte_order_marking_first = u8(0xEF)
+const byte_order_marking_bytes = [u8(0xBB), 0xBF]
 
 // Helper types to assist in parsing
 

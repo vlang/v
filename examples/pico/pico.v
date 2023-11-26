@@ -2,9 +2,7 @@ import json
 import picoev
 import picohttpparser
 
-const (
-	port = 8089
-)
+const port = 8089
 
 struct Message {
 	message string

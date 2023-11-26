@@ -4,11 +4,9 @@ import os
 import testing
 import v.util
 
-const (
-	known_failing_exceptions = [
-		'vlib/crypto/aes/const.v', // const array wrapped in too many lines
-	]
-)
+const known_failing_exceptions = [
+	'vlib/crypto/aes/const.v', // const array wrapped in too many lines
+]
 
 fn main() {
 	args_string := os.args[1..].join(' ')

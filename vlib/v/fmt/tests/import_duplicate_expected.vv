@@ -1,9 +1,7 @@
 import math
 import os
 
-const (
-	mypi = math.pi
-)
+const mypi = math.pi
 
 fn main() {
 	println(os.path_separator)

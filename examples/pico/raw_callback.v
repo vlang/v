@@ -3,10 +3,8 @@ module main
 import net
 import picoev
 
-const (
-	port          = 8080
-	http_response = 'HTTP/1.1 200 OK\r\nContent-type: text/html\r\nContent-length: 18\r\n\r\nHello from Picoev!'
-)
+const port = 8080
+const http_response = 'HTTP/1.1 200 OK\r\nContent-type: text/html\r\nContent-length: 18\r\n\r\nHello from Picoev!'
 
 fn main() {
 	println('Starting webserver on http://localhost:${port}/ ...')

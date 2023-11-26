@@ -3,10 +3,8 @@
 import os
 import v.vmod
 
-const (
-	v         = os.quoted_path(@VEXE)
-	test_path = os.join_path(os.vtmp_dir(), 'vpm_dependency_test')
-)
+const v = os.quoted_path(@VEXE)
+const test_path = os.join_path(os.vtmp_dir(), 'vpm_dependency_test')
 
 fn testsuite_begin() {
 	os.setenv('VMODULES', test_path, true)

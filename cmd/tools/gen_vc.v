@@ -22,60 +22,50 @@ import net.urllib
 // --force     force update even if already up to date
 
 // git credentials
-const (
-	git_username = os.getenv('GITUSER')
-	git_password = os.getenv('GITPASS')
-)
+const git_username = os.getenv('GITUSER')
+const git_password = os.getenv('GITPASS')
 
 // repository
-const (
-	// git repo
-	git_repo_v      = 'github.com/vlang/v'
-	git_repo_vc     = 'github.com/vlang/vc'
-	// local repo directories
-	git_repo_dir_v  = 'v'
-	git_repo_dir_vc = 'vc'
-)
+// git repo
+const git_repo_v = 'github.com/vlang/v'
+const git_repo_vc = 'github.com/vlang/vc'
+// local repo directories
+const git_repo_dir_v = 'v'
+const git_repo_dir_vc = 'vc'
 
 // gen_vc
-const (
-	// name
-	app_name             = 'gen_vc'
-	// version
-	app_version          = '0.1.3'
-	// description
-	app_description      = "This tool regenerates V's bootstrap .c files every time the V master branch is updated."
-	// assume something went wrong if file size less than this
-	too_short_file_limit = 5000
-	// create a .c file for these os's
-	vc_build_oses        = [
-		'nix',
-		// all nix based os
-		'windows',
-	]
-)
+// name
+const app_name = 'gen_vc'
+// version
+const app_version = '0.1.3'
+// description
+const app_description = "This tool regenerates V's bootstrap .c files every time the V master branch is updated."
+// assume something went wrong if file size less than this
+const too_short_file_limit = 5000
+// create a .c file for these os's
+const vc_build_oses = [
+	'nix',
+	// all nix based os
+	'windows',
+]
 
 // default options (overridden by flags)
-const (
-	// gen_vc working directory
-	work_dir    = '/tmp/gen_vc'
-	// dont push anything to remote repo
-	dry_run     = false
-	// server port
-	server_port = 7171
-	// log file
-	log_file    = '${work_dir}/log.txt'
-	// log_to is either 'file' or 'terminal'
-	log_to      = 'terminal'
-)
+// gen_vc working directory
+const work_dir = '/tmp/gen_vc'
+// dont push anything to remote repo
+const dry_run = false
+// server port
+const server_port = 7171
+// log file
+const log_file = '${work_dir}/log.txt'
+// log_to is either 'file' or 'terminal'
+const log_to = 'terminal'
 
 // errors
-const (
-	err_msg_build = 'error building'
-	err_msg_make  = 'make failed'
-	err_msg_gen_c = 'failed to generate .c file'
-	err_msg_cmd_x = 'error running cmd'
-)
+const err_msg_build = 'error building'
+const err_msg_make = 'make failed'
+const err_msg_gen_c = 'failed to generate .c file'
+const err_msg_cmd_x = 'error running cmd'
 
 struct GenVC {
 	// logger

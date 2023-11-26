@@ -30,10 +30,8 @@ struct ErrorOptions {
 	verbose bool // is used to only output the error message if the verbose setting is enabled.
 }
 
-const (
-	vexe     = os.quoted_path(os.getenv('VEXE'))
-	home_dir = os.home_dir()
-)
+const vexe = os.quoted_path(os.getenv('VEXE'))
+const home_dir = os.home_dir()
 
 fn get_mod_date_info(mut pp pool.PoolProcessor, idx int, wid int) &ModuleDateInfo {
 	mut result := &ModuleDateInfo{

@@ -3,10 +3,8 @@
 // that can be found in the LICENSE file.
 module native
 
-const (
-	dos_header_size          = 0x40
-	dos_header_lfanew_offset = 0x3c
-)
+const dos_header_size = 0x40
+const dos_header_lfanew_offset = 0x3c
 
 pub fn (mut g Gen) gen_dos_header() {
 	dos_header := [

@@ -1,8 +1,6 @@
 module geometry
 
-const (
-	module_name = 'geometry'
-)
+const module_name = 'geometry'
 
 pub enum Shape {
 	circle

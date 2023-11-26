@@ -1,9 +1,7 @@
 import datatypes
 
-const (
-	w = 64
-	h = 32
-)
+const w = 64
+const h = 32
 
 interface Display {
 mut:

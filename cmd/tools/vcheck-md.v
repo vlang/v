@@ -10,21 +10,19 @@ import term
 import v.help
 import regex
 
-const (
-	too_long_line_length_example   = 120
-	too_long_line_length_codeblock = 120
-	too_long_line_length_table     = 120
-	too_long_line_length_link      = 150
-	too_long_line_length_other     = 100
-	term_colors                    = term.can_show_color_on_stderr()
-	hide_warnings                  = '-hide-warnings' in os.args || '-w' in os.args
-	show_progress                  = os.getenv('GITHUB_JOB') == '' && '-silent' !in os.args
-	non_option_args                = cmdline.only_non_options(os.args[2..])
-	is_verbose                     = os.getenv('VERBOSE') != ''
-	vcheckfolder                   = os.join_path(os.vtmp_dir(), 'vcheck_${os.getuid()}')
-	should_autofix                 = os.getenv('VAUTOFIX') != ''
-	vexe                           = @VEXE
-)
+const too_long_line_length_example = 120
+const too_long_line_length_codeblock = 120
+const too_long_line_length_table = 120
+const too_long_line_length_link = 150
+const too_long_line_length_other = 100
+const term_colors = term.can_show_color_on_stderr()
+const hide_warnings = '-hide-warnings' in os.args || '-w' in os.args
+const show_progress = os.getenv('GITHUB_JOB') == '' && '-silent' !in os.args
+const non_option_args = cmdline.only_non_options(os.args[2..])
+const is_verbose = os.getenv('VERBOSE') != ''
+const vcheckfolder = os.join_path(os.vtmp_dir(), 'vcheck_${os.getuid()}')
+const should_autofix = os.getenv('VAUTOFIX') != ''
+const vexe = @VEXE
 
 struct CheckResult {
 pub mut:

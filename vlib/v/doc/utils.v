@@ -4,10 +4,8 @@ import strings
 import v.ast
 import v.token
 
-const (
-	highlight_keys        = ['note:', 'fixme:', 'todo:']
-	horizontal_rule_chars = ['-', '=', '*', '_', '~']
-)
+const highlight_keys = ['note:', 'fixme:', 'todo:']
+const horizontal_rule_chars = ['-', '=', '*', '_', '~']
 
 // merge_comments merges all the comment contents into a single text.
 pub fn merge_comments(comments []ast.Comment) string {

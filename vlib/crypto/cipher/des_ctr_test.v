@@ -1,11 +1,9 @@
 import crypto.des
 import crypto.cipher
 
-const (
-	key = '123456789012345678901234'.bytes()
-	iv  = 'abcdegfh'.bytes()
-	str = '73c86d43a9d700a253a96c85b0f6b03ac9792e0e757f869cca306bd3cba1c62b'
-)
+const key = '123456789012345678901234'.bytes()
+const iv = 'abcdegfh'.bytes()
+const str = '73c86d43a9d700a253a96c85b0f6b03ac9792e0e757f869cca306bd3cba1c62b'
 
 fn test_triple_des_ctr() {
 	mut src := str.bytes()
