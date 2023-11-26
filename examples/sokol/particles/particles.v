@@ -9,9 +9,7 @@ import sokol.gfx
 import sokol.sgl
 import particle
 
-const (
-	used_import = sokol.used_import
-)
+const used_import = sokol.used_import
 
 fn main() {
 	mut app := &App{

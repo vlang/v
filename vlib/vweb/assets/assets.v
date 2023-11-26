@@ -6,9 +6,7 @@ import os
 import time
 import crypto.md5
 
-const (
-	unknown_asset_type_error = 'vweb.assets: unknown asset type'
-)
+const unknown_asset_type_error = 'vweb.assets: unknown asset type'
 
 pub struct AssetManager {
 mut:

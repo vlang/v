@@ -1,10 +1,8 @@
 import os
 import net.unix
 
-const (
-	tfolder     = os.join_path(os.vtmp_dir(), 'unix_test')
-	socket_path = os.join_path(tfolder, 'v_unix.sock')
-)
+const tfolder = os.join_path(os.vtmp_dir(), 'unix_test')
+const socket_path = os.join_path(tfolder, 'v_unix.sock')
 
 fn testsuite_begin() {
 	os.mkdir_all(tfolder) or {}

@@ -5,9 +5,7 @@ import vweb
 // import vweb.assets
 import time
 
-const (
-	port = 8081
-)
+const port = 8081
 
 struct App {
 	vweb.Context

@@ -21,30 +21,29 @@ pub enum SocketOption {
 	ipv6_only        = C.IPV6_V6ONLY
 }
 
-pub const (
-	opts_bool    = [SocketOption.broadcast, .debug, .dont_route, .error, .keep_alive, .oob_inline]
-	opts_int     = [
-		.receive_buf_size,
-		.receive_low_size,
-		.receive_timeout,
-		.send_buf_size,
-		.send_low_size,
-		.send_timeout,
-	]
+pub const opts_bool = [SocketOption.broadcast, .debug, .dont_route, .error, .keep_alive, .oob_inline]
 
-	opts_can_set = [
-		SocketOption.broadcast,
-		.debug,
-		.dont_route,
-		.keep_alive,
-		.linger,
-		.oob_inline,
-		.receive_buf_size,
-		.receive_low_size,
-		.receive_timeout,
-		.send_buf_size,
-		.send_low_size,
-		.send_timeout,
-		.ipv6_only,
-	]
-)
+pub const opts_int = [
+	SocketOption.receive_buf_size,
+	.receive_low_size,
+	.receive_timeout,
+	.send_buf_size,
+	.send_low_size,
+	.send_timeout,
+]
+
+pub const opts_can_set = [
+	SocketOption.broadcast,
+	.debug,
+	.dont_route,
+	.keep_alive,
+	.linger,
+	.oob_inline,
+	.receive_buf_size,
+	.receive_low_size,
+	.receive_timeout,
+	.send_buf_size,
+	.send_low_size,
+	.send_timeout,
+	.ipv6_only,
+]

@@ -13,15 +13,13 @@ import v.errors
 import v.ast
 import v.mathutil
 
-const (
-	single_quote = `'`
-	double_quote = `"`
-	// char used as number separator
-	num_sep      = `_`
-	b_lf         = 10
-	b_cr         = 13
-	backslash    = `\\`
-)
+const single_quote = `'`
+const double_quote = `"`
+// char used as number separator
+const num_sep = `_`
+const b_lf = 10
+const b_cr = 13
+const backslash = `\\`
 
 @[minify]
 pub struct Scanner {

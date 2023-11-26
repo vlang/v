@@ -1,11 +1,9 @@
 import os
 
-const (
-	shdc_exe_name = 'sokol-shdc.exe'
-	tool_name     = os.file_name(os.executable())
-	cache_dir     = os.join_path(os.cache_dir(), 'v', tool_name)
-	shdc          = shdc_exe()
-)
+const shdc_exe_name = 'sokol-shdc.exe'
+const tool_name = os.file_name(os.executable())
+const cache_dir = os.join_path(os.cache_dir(), 'v', tool_name)
+const shdc = shdc_exe()
 
 fn test_const_call_expr_order() {
 	dump(cache_dir)

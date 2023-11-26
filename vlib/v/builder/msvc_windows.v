@@ -14,12 +14,10 @@ import v.cflag
 type RegKey = voidptr
 
 // Taken from the windows SDK
-const (
-	hkey_local_machine     = RegKey(0x80000002)
-	key_query_value        = (0x0001)
-	key_wow64_32key        = (0x0200)
-	key_enumerate_sub_keys = (0x0008)
-)
+const hkey_local_machine = RegKey(0x80000002)
+const key_query_value = (0x0001)
+const key_wow64_32key = (0x0200)
+const key_enumerate_sub_keys = (0x0008)
 
 // Given a root key look for one of the subkeys in 'versions' and get the path
 fn find_windows_kit_internal(key RegKey, versions []string) !string {

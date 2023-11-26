@@ -1,9 +1,7 @@
-const (
-	size            = 5
-	u64_size        = u64(5)
-	int_size        = int(1)
-	infix_cast_size = int(100 / 50)
-)
+const size = 5
+const u64_size = u64(5)
+const int_size = int(1)
+const infix_cast_size = int(100 / 50)
 
 struct Foo {
 	bar [size]u8
@@ -55,10 +53,8 @@ fn test_int_const_used_as_fixed_array_size() {
 	assert aa.len == 10_000
 }
 
-const (
-	rows = 2
-	cols = 3
-)
+const rows = 2
+const cols = 3
 
 struct Matrix1 {
 	data [rows * cols]int

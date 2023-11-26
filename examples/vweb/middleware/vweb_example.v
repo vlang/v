@@ -3,9 +3,7 @@ module main
 import vweb
 
 // for another example see vlib/vweb/tests/middleware_test_server.v
-const (
-	http_port = 8080
-)
+const http_port = 8080
 
 struct App {
 	vweb.Context

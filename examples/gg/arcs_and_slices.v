@@ -4,12 +4,10 @@ import gg
 import gx
 import math
 
-const (
-	win_width  = 700
-	win_height = 800
-	bg_color   = gx.white
-	colour     = gx.black
-)
+const win_width = 700
+const win_height = 800
+const bg_color = gx.white
+const colour = gx.black
 
 enum Selection {
 	segs = 0

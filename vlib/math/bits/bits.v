@@ -3,31 +3,29 @@
 // that can be found in the LICENSE file.
 module bits
 
-const (
-	// See http://supertech.csail.mit.edu/papers/debruijn.pdf
-	de_bruijn32    = u32(0x077CB531)
-	de_bruijn32tab = [u8(0), 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8, 31, 27, 13,
-		23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9]!
-	de_bruijn64    = u64(0x03f79d71b4ca8b09)
-	de_bruijn64tab = [u8(0), 1, 56, 2, 57, 49, 28, 3, 61, 58, 42, 50, 38, 29, 17, 4, 62, 47, 59,
-		36, 45, 43, 51, 22, 53, 39, 33, 30, 24, 18, 12, 5, 63, 55, 48, 27, 60, 41, 37, 16, 46,
-		35, 44, 21, 52, 32, 23, 11, 54, 26, 40, 15, 34, 20, 31, 10, 25, 14, 19, 9, 13, 8, 7, 6]!
-)
+// See http://supertech.csail.mit.edu/papers/debruijn.pdf
+const de_bruijn32 = u32(0x077CB531)
+const de_bruijn32tab = [u8(0), 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8, 31, 27, 13,
+	23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9]!
+const de_bruijn64 = u64(0x03f79d71b4ca8b09)
+const de_bruijn64tab = [u8(0), 1, 56, 2, 57, 49, 28, 3, 61, 58, 42, 50, 38, 29, 17, 4, 62, 47,
+	59, 36, 45, 43, 51, 22, 53, 39, 33, 30, 24, 18, 12, 5, 63, 55, 48, 27, 60, 41, 37, 16, 46,
+	35, 44, 21, 52, 32, 23, 11, 54, 26, 40, 15, 34, 20, 31, 10, 25, 14, 19, 9, 13, 8, 7, 6]!
 
-const (
-	m0 = u64(0x5555555555555555) // 01010101 ...
-	m1 = u64(0x3333333333333333) // 00110011 ...
-	m2 = u64(0x0f0f0f0f0f0f0f0f) // 00001111 ...
-	m3 = u64(0x00ff00ff00ff00ff) // etc.
-	m4 = u64(0x0000ffff0000ffff)
-)
+const m0 = u64(0x5555555555555555) // 01010101 ...
+
+const m1 = u64(0x3333333333333333) // 00110011 ...
+
+const m2 = u64(0x0f0f0f0f0f0f0f0f) // 00001111 ...
+
+const m3 = u64(0x00ff00ff00ff00ff) // etc.
+
+const m4 = u64(0x0000ffff0000ffff)
 
 // TODO: this consts should be taken from int.v
-const (
-	// save importing math mod just for these
-	max_u32 = u32(4294967295)
-	max_u64 = u64(18446744073709551615)
-)
+// save importing math mod just for these
+const max_u32 = u32(4294967295)
+const max_u64 = u64(18446744073709551615)
 
 // --- LeadingZeros ---
 // leading_zeros_8 returns the number of leading zero bits in x; the result is 8 for x == 0.
@@ -140,12 +138,10 @@ pub fn ones_count_64(x u64) int {
 	return int(y) & ((1 << 7) - 1)
 }
 
-const (
-	n8  = u8(8)
-	n16 = u16(16)
-	n32 = u32(32)
-	n64 = u64(64)
-)
+const n8 = u8(8)
+const n16 = u16(16)
+const n32 = u32(32)
+const n64 = u64(64)
 
 // --- RotateLeft ---
 // rotate_left_8 returns the value of x rotated left by (k mod 8) bits.
@@ -362,12 +358,10 @@ pub fn sub_64(x u64, y u64, borrow u64) (u64, u64) {
 }
 
 // --- Full-width multiply ---
-const (
-	two32          = u64(0x100000000)
-	mask32         = two32 - 1
-	overflow_error = 'Overflow Error'
-	divide_error   = 'Divide Error'
-)
+const two32 = u64(0x100000000)
+const mask32 = two32 - 1
+const overflow_error = 'Overflow Error'
+const divide_error = 'Divide Error'
 
 // mul_32 returns the 64-bit product of x and y: (hi, lo) = x * y
 // with the product bits' upper half returned in hi and the lower

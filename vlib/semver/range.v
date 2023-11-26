@@ -1,12 +1,10 @@
 module semver
 
 // * Private functions.
-const (
-	comparator_sep     = ' '
-	comparator_set_sep = ' || '
-	hyphen_range_sep   = ' - '
-	x_range_symbols    = 'Xx*'
-)
+const comparator_sep = ' '
+const comparator_set_sep = ' || '
+const hyphen_range_sep = ' - '
+const x_range_symbols = 'Xx*'
 
 enum Operator {
 	gt

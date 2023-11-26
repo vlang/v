@@ -19,10 +19,8 @@ interface TestDataI {
 type GCDSet = PrimeSet
 type Clocks = map[string]benchmark.Benchmark
 
-const (
-	empty_set = GCDSet{'1', '1', '1'}
-	with_dots = false
-)
+const empty_set = GCDSet{'1', '1', '1'}
+const with_dots = false
 
 fn main() {
 	fp := os.join_path(@VROOT, prime.toml_path)

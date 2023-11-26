@@ -567,39 +567,37 @@ pub fn (typ Type) is_bool() bool {
 	return typ.idx() == ast.bool_type_idx
 }
 
-pub const (
-	void_type_idx          = 1
-	voidptr_type_idx       = 2
-	byteptr_type_idx       = 3
-	charptr_type_idx       = 4
-	i8_type_idx            = 5
-	i16_type_idx           = 6
-	i32_type_idx           = 7
-	int_type_idx           = 8
-	i64_type_idx           = 9
-	isize_type_idx         = 10
-	u8_type_idx            = 11
-	u16_type_idx           = 12
-	u32_type_idx           = 13
-	u64_type_idx           = 14
-	usize_type_idx         = 15
-	f32_type_idx           = 16
-	f64_type_idx           = 17
-	char_type_idx          = 18
-	bool_type_idx          = 19
-	none_type_idx          = 20
-	string_type_idx        = 21
-	rune_type_idx          = 22
-	array_type_idx         = 23
-	map_type_idx           = 24
-	chan_type_idx          = 25
-	any_type_idx           = 26
-	float_literal_type_idx = 27
-	int_literal_type_idx   = 28
-	thread_type_idx        = 29
-	error_type_idx         = 30
-	nil_type_idx           = 31
-)
+pub const void_type_idx = 1
+pub const voidptr_type_idx = 2
+pub const byteptr_type_idx = 3
+pub const charptr_type_idx = 4
+pub const i8_type_idx = 5
+pub const i16_type_idx = 6
+pub const i32_type_idx = 7
+pub const int_type_idx = 8
+pub const i64_type_idx = 9
+pub const isize_type_idx = 10
+pub const u8_type_idx = 11
+pub const u16_type_idx = 12
+pub const u32_type_idx = 13
+pub const u64_type_idx = 14
+pub const usize_type_idx = 15
+pub const f32_type_idx = 16
+pub const f64_type_idx = 17
+pub const char_type_idx = 18
+pub const bool_type_idx = 19
+pub const none_type_idx = 20
+pub const string_type_idx = 21
+pub const rune_type_idx = 22
+pub const array_type_idx = 23
+pub const map_type_idx = 24
+pub const chan_type_idx = 25
+pub const any_type_idx = 26
+pub const float_literal_type_idx = 27
+pub const int_literal_type_idx = 28
+pub const thread_type_idx = 29
+pub const error_type_idx = 30
+pub const nil_type_idx = 31
 
 // Note: builtin_type_names must be in the same order as the idx consts above
 pub const builtin_type_names = ['void', 'voidptr', 'byteptr', 'charptr', 'i8', 'i16', 'int', 'i64',
@@ -609,63 +607,60 @@ pub const builtin_type_names = ['void', 'voidptr', 'byteptr', 'charptr', 'i8', '
 
 pub const builtin_type_names_matcher = token.new_keywords_matcher_from_array_trie(builtin_type_names)
 
-pub const (
-	integer_type_idxs          = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, u8_type_idx,
-		u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx, usize_type_idx,
-		int_literal_type_idx, rune_type_idx, i32_type_idx]
-	signed_integer_type_idxs   = [char_type_idx, i8_type_idx, i16_type_idx, int_type_idx,
-		i64_type_idx, i32_type_idx, isize_type_idx]
-	unsigned_integer_type_idxs = [u8_type_idx, u16_type_idx, u32_type_idx, u64_type_idx,
-		usize_type_idx]
-	// C will promote any type smaller than int to int in an expression
-	int_promoted_type_idxs     = [char_type_idx, i8_type_idx, i16_type_idx, u8_type_idx, u16_type_idx]
-	float_type_idxs            = [f32_type_idx, f64_type_idx, float_literal_type_idx]
-	number_type_idxs           = [i8_type_idx, i16_type_idx, int_type_idx, i32_type_idx, i64_type_idx,
-		u8_type_idx, char_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx,
-		usize_type_idx, f32_type_idx, f64_type_idx, int_literal_type_idx, float_literal_type_idx,
-		rune_type_idx]
-	pointer_type_idxs          = [voidptr_type_idx, byteptr_type_idx, charptr_type_idx, nil_type_idx]
-)
+pub const integer_type_idxs = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, u8_type_idx,
+	u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx, usize_type_idx, int_literal_type_idx,
+	rune_type_idx, i32_type_idx]
+pub const signed_integer_type_idxs = [char_type_idx, i8_type_idx, i16_type_idx, int_type_idx,
+	i64_type_idx, i32_type_idx, isize_type_idx]
+pub const unsigned_integer_type_idxs = [u8_type_idx, u16_type_idx, u32_type_idx, u64_type_idx,
+	usize_type_idx]
+// C will promote any type smaller than int to int in an expression
+pub const int_promoted_type_idxs = [char_type_idx, i8_type_idx, i16_type_idx, u8_type_idx,
+	u16_type_idx]
+pub const float_type_idxs = [f32_type_idx, f64_type_idx, float_literal_type_idx]
+pub const number_type_idxs = [i8_type_idx, i16_type_idx, int_type_idx, i32_type_idx, i64_type_idx,
+	u8_type_idx, char_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx,
+	usize_type_idx, f32_type_idx, f64_type_idx, int_literal_type_idx, float_literal_type_idx,
+	rune_type_idx]
+pub const pointer_type_idxs = [voidptr_type_idx, byteptr_type_idx, charptr_type_idx, nil_type_idx]
 
-pub const (
-	void_type          = new_type(void_type_idx)
-	ovoid_type         = new_type(void_type_idx).set_flag(.option) // the return type of `fn ()?`
-	rvoid_type         = new_type(void_type_idx).set_flag(.result) // the return type of `fn () !`
-	voidptr_type       = new_type(voidptr_type_idx)
-	byteptr_type       = new_type(byteptr_type_idx)
-	charptr_type       = new_type(charptr_type_idx)
-	i8_type            = new_type(i8_type_idx)
-	i16_type           = new_type(i16_type_idx)
-	i32_type           = new_type(i32_type_idx)
-	int_type           = new_type(int_type_idx)
-	i64_type           = new_type(i64_type_idx)
-	isize_type         = new_type(isize_type_idx)
-	u8_type            = new_type(u8_type_idx)
-	u16_type           = new_type(u16_type_idx)
-	u32_type           = new_type(u32_type_idx)
-	u64_type           = new_type(u64_type_idx)
-	usize_type         = new_type(usize_type_idx)
-	f32_type           = new_type(f32_type_idx)
-	f64_type           = new_type(f64_type_idx)
-	char_type          = new_type(char_type_idx)
-	bool_type          = new_type(bool_type_idx)
-	none_type          = new_type(none_type_idx)
-	string_type        = new_type(string_type_idx)
-	rune_type          = new_type(rune_type_idx)
-	array_type         = new_type(array_type_idx)
-	map_type           = new_type(map_type_idx)
-	chan_type          = new_type(chan_type_idx)
-	any_type           = new_type(any_type_idx)
-	float_literal_type = new_type(float_literal_type_idx)
-	int_literal_type   = new_type(int_literal_type_idx)
-	thread_type        = new_type(thread_type_idx)
-	error_type         = new_type(error_type_idx)
-	charptr_types      = new_charptr_types()
-	byteptr_types      = new_byteptr_types()
-	voidptr_types      = new_voidptr_types()
-	cptr_types         = merge_types(voidptr_types, byteptr_types, charptr_types)
-	nil_type           = new_type(nil_type_idx)
-)
+pub const void_type = new_type(void_type_idx)
+pub const ovoid_type = new_type(void_type_idx).set_flag(.option) // the return type of `fn ()?`
+pub const rvoid_type = new_type(void_type_idx).set_flag(.result) // the return type of `fn () !`
+pub const voidptr_type = new_type(voidptr_type_idx)
+pub const byteptr_type = new_type(byteptr_type_idx)
+pub const charptr_type = new_type(charptr_type_idx)
+pub const i8_type = new_type(i8_type_idx)
+pub const i16_type = new_type(i16_type_idx)
+pub const i32_type = new_type(i32_type_idx)
+pub const int_type = new_type(int_type_idx)
+pub const i64_type = new_type(i64_type_idx)
+pub const isize_type = new_type(isize_type_idx)
+pub const u8_type = new_type(u8_type_idx)
+pub const u16_type = new_type(u16_type_idx)
+pub const u32_type = new_type(u32_type_idx)
+pub const u64_type = new_type(u64_type_idx)
+pub const usize_type = new_type(usize_type_idx)
+pub const f32_type = new_type(f32_type_idx)
+pub const f64_type = new_type(f64_type_idx)
+pub const char_type = new_type(char_type_idx)
+pub const bool_type = new_type(bool_type_idx)
+pub const none_type = new_type(none_type_idx)
+pub const string_type = new_type(string_type_idx)
+pub const rune_type = new_type(rune_type_idx)
+pub const array_type = new_type(array_type_idx)
+pub const map_type = new_type(map_type_idx)
+pub const chan_type = new_type(chan_type_idx)
+pub const any_type = new_type(any_type_idx)
+pub const float_literal_type = new_type(float_literal_type_idx)
+pub const int_literal_type = new_type(int_literal_type_idx)
+pub const thread_type = new_type(thread_type_idx)
+pub const error_type = new_type(error_type_idx)
+pub const charptr_types = new_charptr_types()
+pub const byteptr_types = new_byteptr_types()
+pub const voidptr_types = new_voidptr_types()
+pub const cptr_types = merge_types(voidptr_types, byteptr_types, charptr_types)
+pub const nil_type = new_type(nil_type_idx)
 
 fn new_charptr_types() []Type {
 	return [ast.charptr_type, new_type(ast.char_type_idx).set_nr_muls(1)]

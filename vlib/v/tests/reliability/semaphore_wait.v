@@ -42,11 +42,9 @@ mut:
 	nxt []&PtrObj
 }
 
-const (
-	log2n = 9
-	n     = 1 << log2n
-	n4    = f64(u64(1) << (4 * log2n))
-)
+const log2n = 9
+const n = 1 << log2n
+const n4 = f64(u64(1) << (4 * log2n))
 
 fn waste_mem() {
 	mut objs := PtrPtrObj{

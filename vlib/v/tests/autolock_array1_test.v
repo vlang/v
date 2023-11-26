@@ -1,8 +1,6 @@
 import time
 
-const (
-	iterations_per_thread = 100000
-)
+const iterations_per_thread = 100000
 
 fn add_elements(shared foo []int, n int) {
 	for _ in 0 .. iterations_per_thread {

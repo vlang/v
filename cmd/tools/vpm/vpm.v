@@ -21,38 +21,36 @@ struct VCS {
 	}
 }
 
-const (
-	settings                = init_settings()
-	default_vpm_server_urls = ['https://vpm.vlang.io', 'https://vpm.url4e.com']
-	vpm_server_urls         = rand.shuffle_clone(default_vpm_server_urls) or { [] } // ensure that all queries are distributed fairly
-	valid_vpm_commands      = ['help', 'search', 'install', 'update', 'upgrade', 'outdated', 'list',
-		'remove', 'show']
-	excluded_dirs           = ['cache', 'vlib']
-	supported_vcs           = {
-		'git': VCS{
-			dir: '.git'
-			cmd: 'git'
-			args: struct {
-				install: 'clone --depth=1 --recursive --shallow-submodules'
-				version: '--single-branch -b'
-				update: 'pull --recurse-submodules' // pulling with `--depth=1` leads to conflicts when the upstream has more than 1 new commits.
-				path: '-C'
-				outdated: ['fetch', 'rev-parse @', 'rev-parse @{u}']
-			}
-		}
-		'hg':  VCS{
-			dir: '.hg'
-			cmd: 'hg'
-			args: struct {
-				install: 'clone'
-				version: '' // not supported yet.
-				update: 'pull --update'
-				path: '-R'
-				outdated: ['incoming']
-			}
+const settings = init_settings()
+const default_vpm_server_urls = ['https://vpm.vlang.io', 'https://vpm.url4e.com']
+const vpm_server_urls = rand.shuffle_clone(default_vpm_server_urls) or { [] } // ensure that all queries are distributed fairly
+const valid_vpm_commands = ['help', 'search', 'install', 'update', 'upgrade', 'outdated', 'list',
+	'remove', 'show']
+const excluded_dirs = ['cache', 'vlib']
+const supported_vcs = {
+	'git': VCS{
+		dir: '.git'
+		cmd: 'git'
+		args: struct {
+			install: 'clone --depth=1 --recursive --shallow-submodules'
+			version: '--single-branch -b'
+			update: 'pull --recurse-submodules' // pulling with `--depth=1` leads to conflicts when the upstream has more than 1 new commits.
+			path: '-C'
+			outdated: ['fetch', 'rev-parse @', 'rev-parse @{u}']
 		}
 	}
-)
+	'hg':  VCS{
+		dir: '.hg'
+		cmd: 'hg'
+		args: struct {
+			install: 'clone'
+			version: '' // not supported yet.
+			update: 'pull --update'
+			path: '-R'
+			outdated: ['incoming']
+		}
+	}
+}
 
 fn main() {
 	// This tool is intended to be launched by the v frontend,

@@ -15,37 +15,35 @@ mut:
 	length        &u32
 }
 
-const (
-	mysql_type_decimal     = C.MYSQL_TYPE_DECIMAL
-	mysql_type_tiny        = C.MYSQL_TYPE_TINY
-	mysql_type_short       = C.MYSQL_TYPE_SHORT
-	mysql_type_long        = C.MYSQL_TYPE_LONG
-	mysql_type_float       = C.MYSQL_TYPE_FLOAT
-	mysql_type_double      = C.MYSQL_TYPE_DOUBLE
-	mysql_type_null        = C.MYSQL_TYPE_NULL
-	mysql_type_timestamp   = C.MYSQL_TYPE_TIMESTAMP
-	mysql_type_longlong    = C.MYSQL_TYPE_LONGLONG
-	mysql_type_int24       = C.MYSQL_TYPE_INT24
-	mysql_type_date        = C.MYSQL_TYPE_DATE
-	mysql_type_time        = C.MYSQL_TYPE_TIME
-	mysql_type_datetime    = C.MYSQL_TYPE_DATETIME
-	mysql_type_year        = C.MYSQL_TYPE_YEAR
-	mysql_type_varchar     = C.MYSQL_TYPE_VARCHAR
-	mysql_type_bit         = C.MYSQL_TYPE_BIT
-	mysql_type_timestamp22 = C.MYSQL_TYPE_TIMESTAMP
-	mysql_type_json        = C.MYSQL_TYPE_JSON
-	mysql_type_newdecimal  = C.MYSQL_TYPE_NEWDECIMAL
-	mysql_type_enum        = C.MYSQL_TYPE_ENUM
-	mysql_type_set         = C.MYSQL_TYPE_SET
-	mysql_type_tiny_blob   = C.MYSQL_TYPE_TINY_BLOB
-	mysql_type_medium_blob = C.MYSQL_TYPE_MEDIUM_BLOB
-	mysql_type_long_blob   = C.MYSQL_TYPE_LONG_BLOB
-	mysql_type_blob        = C.MYSQL_TYPE_BLOB
-	mysql_type_var_string  = C.MYSQL_TYPE_VAR_STRING
-	mysql_type_string      = C.MYSQL_TYPE_STRING
-	mysql_type_geometry    = C.MYSQL_TYPE_GEOMETRY
-	mysql_no_data          = C.MYSQL_NO_DATA
-)
+const mysql_type_decimal = C.MYSQL_TYPE_DECIMAL
+const mysql_type_tiny = C.MYSQL_TYPE_TINY
+const mysql_type_short = C.MYSQL_TYPE_SHORT
+const mysql_type_long = C.MYSQL_TYPE_LONG
+const mysql_type_float = C.MYSQL_TYPE_FLOAT
+const mysql_type_double = C.MYSQL_TYPE_DOUBLE
+const mysql_type_null = C.MYSQL_TYPE_NULL
+const mysql_type_timestamp = C.MYSQL_TYPE_TIMESTAMP
+const mysql_type_longlong = C.MYSQL_TYPE_LONGLONG
+const mysql_type_int24 = C.MYSQL_TYPE_INT24
+const mysql_type_date = C.MYSQL_TYPE_DATE
+const mysql_type_time = C.MYSQL_TYPE_TIME
+const mysql_type_datetime = C.MYSQL_TYPE_DATETIME
+const mysql_type_year = C.MYSQL_TYPE_YEAR
+const mysql_type_varchar = C.MYSQL_TYPE_VARCHAR
+const mysql_type_bit = C.MYSQL_TYPE_BIT
+const mysql_type_timestamp22 = C.MYSQL_TYPE_TIMESTAMP
+const mysql_type_json = C.MYSQL_TYPE_JSON
+const mysql_type_newdecimal = C.MYSQL_TYPE_NEWDECIMAL
+const mysql_type_enum = C.MYSQL_TYPE_ENUM
+const mysql_type_set = C.MYSQL_TYPE_SET
+const mysql_type_tiny_blob = C.MYSQL_TYPE_TINY_BLOB
+const mysql_type_medium_blob = C.MYSQL_TYPE_MEDIUM_BLOB
+const mysql_type_long_blob = C.MYSQL_TYPE_LONG_BLOB
+const mysql_type_blob = C.MYSQL_TYPE_BLOB
+const mysql_type_var_string = C.MYSQL_TYPE_VAR_STRING
+const mysql_type_string = C.MYSQL_TYPE_STRING
+const mysql_type_geometry = C.MYSQL_TYPE_GEOMETRY
+const mysql_no_data = C.MYSQL_NO_DATA
 
 fn C.mysql_stmt_init(&C.MYSQL) &C.MYSQL_STMT
 fn C.mysql_stmt_prepare(&C.MYSQL_STMT, &char, u32) int

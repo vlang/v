@@ -9,6 +9,8 @@ pub type FNCb = fn (data voidptr)
 
 pub type FNEvent = fn (e &Event, data voidptr)
 
+pub type FNEvent2 = fn (data voidptr, e &Event)
+
 pub type FNFail = fn (msg string, data voidptr)
 
 pub type FNKeyDown = fn (c KeyCode, m Modifier, data voidptr)

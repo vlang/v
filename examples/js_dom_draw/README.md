@@ -117,9 +117,7 @@ module main
 import vweb
 import os
 
-const (
-	http_port = 3001
-)
+const http_port = 3001
 
 struct App {
 	vweb.Context

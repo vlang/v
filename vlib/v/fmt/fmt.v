@@ -8,11 +8,10 @@ import v.ast
 import v.util
 import v.pref
 
-const (
-	bs      = '\\'
-	// when to break a line depending on the penalty
-	max_len = [0, 35, 60, 85, 93, 100]
-)
+const bs = '\\'
+
+// when to break a line depending on the penalty
+const max_len = [0, 35, 60, 85, 93, 100]
 
 @[minify]
 pub struct Fmt {
@@ -891,57 +890,30 @@ mut:
 }
 
 pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
-	f.attrs(node.attrs)
-	if node.is_pub {
-		f.write('pub ')
-	}
 	if node.fields.len == 0 && node.pos.line_nr == node.pos.last_line {
-		f.writeln('const ()\n')
+		// remove "const()"
 		return
+	}
+
+	f.attrs(node.attrs)
+	if !node.is_block {
+		if node.is_pub {
+			f.write('pub ')
+		}
 	}
 	f.inside_const = true
 	defer {
 		f.inside_const = false
 	}
-	f.write('const ')
-	mut align_infos := []ValAlignInfo{}
-	if node.is_block {
-		f.writeln('(')
-		mut info := ValAlignInfo{}
-		for i, field in node.fields {
-			if field.name.len > info.max {
-				info.max = field.name.len
-			}
-			if !expr_is_single_line(field.expr) {
-				is_ternary := field.expr is ast.IfExpr && field.expr.branches.len == 2
-					&& field.expr.has_else
-					&& branch_is_single_line((field.expr as ast.IfExpr).branches[0])
-					&& branch_is_single_line((field.expr as ast.IfExpr).branches[1])
-					&& (field.expr.is_expr || f.is_assign || f.inside_const
-					|| f.is_struct_init || f.single_line_fields)
-				if !is_ternary || field.name.len + field.expr.str().len > fmt.max_len.last() {
-					info.last_idx = i
-					align_infos << info
-					info = ValAlignInfo{}
-				}
-			}
-		}
-		info.last_idx = node.fields.len
-		align_infos << info
-		f.indent++
-	} else {
-		align_infos << ValAlignInfo{0, 1}
+	if !node.is_block {
+		f.write('const ')
 	}
 	mut prev_field := if node.fields.len > 0 {
 		ast.Node(node.fields[0])
 	} else {
 		ast.Node(ast.NodeError{})
 	}
-	mut align_idx := 0
-	for i, field in node.fields {
-		if i > align_infos[align_idx].last_idx {
-			align_idx++
-		}
+	for _, field in node.fields {
 		if field.comments.len > 0 {
 			if f.should_insert_newline_before_node(ast.Expr(field.comments[0]), prev_field) {
 				f.writeln('')
@@ -953,8 +925,14 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 			f.writeln('')
 		}
 		name := field.name.after('.')
+		if node.is_block {
+			// const() blocks are deprecated, prepend "const" before each value
+			if node.is_pub {
+				f.write('pub ')
+			}
+			f.write('const ')
+		}
 		f.write('${name} ')
-		f.write(strings.repeat(` `, align_infos[align_idx].max - field.name.len))
 		f.write('= ')
 		f.expr(field.expr)
 		f.comments(field.end_comments, same_line: true)
@@ -971,18 +949,7 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 		prev_field = field
 	}
 
-	if node.is_block {
-		f.comments_after_last_field(node.end_comments)
-	} else if node.end_comments.len == 0 {
-		// If no single line comments after the const expr is present
-		f.writeln('')
-	}
-	if node.is_block {
-		f.indent--
-		f.writeln(')\n')
-	} else {
-		f.writeln('')
-	}
+	f.writeln('')
 }
 
 pub fn (mut f Fmt) defer_stmt(node ast.DeferStmt) {

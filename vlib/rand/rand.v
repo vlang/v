@@ -651,11 +651,9 @@ pub fn read(mut buf []u8) {
 	read_internal(mut default_rng, mut buf)
 }
 
-const (
-	english_letters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
-	hex_chars       = 'abcdef0123456789'
-	ascii_chars     = '!"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ\\^_`abcdefghijklmnopqrstuvwxyz{|}~'
-)
+const english_letters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+const hex_chars = 'abcdef0123456789'
+const ascii_chars = '!"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ\\^_`abcdefghijklmnopqrstuvwxyz{|}~'
 
 // ulid generates an Unique Lexicographically sortable IDentifier.
 // See https://github.com/ulid/spec .

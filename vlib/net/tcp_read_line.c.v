@@ -2,12 +2,10 @@ module net
 
 import strings
 
-const (
-	crlf              = '\r\n'
-	msg_peek          = 0x02
-	max_read          = 400
-	max_read_line_len = 1048576
-)
+const crlf = '\r\n'
+const msg_peek = 0x02
+const max_read = 400
+const max_read_line_len = 1048576
 
 // get_blocking returns whether the connection is in a blocking state,
 // that is calls to .read_line, C.recv etc will block till there is new

@@ -1,7 +1,5 @@
-const (
-	version              = 123
-	disable_opt_features = true
-)
+const version = 123
+const disable_opt_features = true
 
 // Note: the `unknown_fn()` calls are here on purpose, to make sure that anything
 // that doesn't match a compile-time condition is not even parsed.

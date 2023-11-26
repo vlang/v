@@ -2,10 +2,8 @@ module unsigned
 
 import math.bits
 
-pub const (
-	uint256_zero = Uint256{Uint128{}, Uint128{}}
-	uint256_max  = Uint256{uint128_max, uint128_max}
-)
+pub const uint256_zero = Uint256{Uint128{}, Uint128{}}
+pub const uint256_max = Uint256{uint128_max, uint128_max}
 
 // Uint256 is an unsigned 256-bit number
 pub struct Uint256 {

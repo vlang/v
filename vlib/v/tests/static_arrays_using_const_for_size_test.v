@@ -1,6 +1,4 @@
-const (
-	sbuffer_size = 10
-)
+const sbuffer_size = 10
 
 fn test_hardcoded_static_arr() {
 	myints := [10]int{}

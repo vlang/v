@@ -135,11 +135,10 @@ fn (a Aints) str() string {
 		'ms ± σ: ${a.stddev:4.1f}ms, min: ${a.imin:4}ms, max: ${a.imax:4}ms, runs:${a.values.len:3}, nmins:${a.nmins:2}, nmaxs:${a.nmaxs:2}'
 }
 
-const (
-	max_fail_percent             = 100 * 1000
-	max_time                     = 60 * 1000 // ms
-	performance_regression_label = 'Performance regression detected, failing since '
-)
+const max_fail_percent = 100 * 1000
+const max_time = 60 * 1000 // ms
+
+const performance_regression_label = 'Performance regression detected, failing since '
 
 fn main() {
 	mut context := Context{}

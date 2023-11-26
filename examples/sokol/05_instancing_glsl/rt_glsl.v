@@ -21,12 +21,10 @@ import sokol.gfx
 // import sokol.sgl
 import time
 
-const (
-	win_width  = 800
-	win_height = 800
-	bg_color   = gx.white
-	num_inst   = 16384
-)
+const win_width = 800
+const win_height = 800
+const bg_color = gx.white
+const num_inst = 16384
 
 struct App {
 mut:

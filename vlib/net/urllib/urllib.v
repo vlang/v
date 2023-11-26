@@ -20,10 +20,8 @@ enum EncodingMode {
 	encode_fragment
 }
 
-const (
-	err_msg_escape = 'unescape: invalid URL escape'
-	err_msg_parse  = 'parse: failed parsing url'
-)
+const err_msg_escape = 'unescape: invalid URL escape'
+const err_msg_parse = 'parse: failed parsing url'
 
 fn error_msg(message string, val string) string {
 	mut msg := 'net.urllib.${message}'

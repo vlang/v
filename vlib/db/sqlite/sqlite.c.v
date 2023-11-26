@@ -15,28 +15,26 @@ $if windows {
 #include "sqlite3.h"
 
 // https://www.sqlite.org/rescode.html
-pub const (
-	sqlite_ok                 = 0
-	sqlite_error              = 1
-	sqlite_row                = 100
-	sqlite_done               = 101
-	sqlite_cantopen           = 14
-	sqlite_ioerr_read         = 266
-	sqlite_ioerr_short_read   = 522
-	sqlite_ioerr_write        = 778
-	sqlite_ioerr_fsync        = 1034
-	sqlite_ioerr_fstat        = 1802
-	sqlite_ioerr_delete       = 2570
+pub const sqlite_ok = 0
+pub const sqlite_error = 1
+pub const sqlite_row = 100
+pub const sqlite_done = 101
+pub const sqlite_cantopen = 14
+pub const sqlite_ioerr_read = 266
+pub const sqlite_ioerr_short_read = 522
+pub const sqlite_ioerr_write = 778
+pub const sqlite_ioerr_fsync = 1034
+pub const sqlite_ioerr_fstat = 1802
+pub const sqlite_ioerr_delete = 2570
 
-	sqlite_open_main_db       = 0x00000100
-	sqlite_open_temp_db       = 0x00000200
-	sqlite_open_transient_db  = 0x00000400
-	sqlite_open_main_journal  = 0x00000800
-	sqlite_open_temp_journal  = 0x00001000
-	sqlite_open_subjournal    = 0x00002000
-	sqlite_open_super_journal = 0x00004000
-	sqlite_open_wal           = 0x00080000
-)
+pub const sqlite_open_main_db = 0x00000100
+pub const sqlite_open_temp_db = 0x00000200
+pub const sqlite_open_transient_db = 0x00000400
+pub const sqlite_open_main_journal = 0x00000800
+pub const sqlite_open_temp_journal = 0x00001000
+pub const sqlite_open_subjournal = 0x00002000
+pub const sqlite_open_super_journal = 0x00004000
+pub const sqlite_open_wal = 0x00080000
 
 pub enum SyncMode {
 	off

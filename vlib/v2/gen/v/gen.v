@@ -8,10 +8,8 @@ import v2.pref
 import strings
 import time
 
-const (
-	// tabs = build_tabs(16)
-	tabs = build_tabs(24)
-)
+// tabs = build_tabs(16)
+const tabs = build_tabs(24)
 
 struct Gen {
 	pref &pref.Preferences

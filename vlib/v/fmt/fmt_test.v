@@ -10,13 +10,11 @@ import v.parser
 import v.pref
 import v.util.diff
 
-const (
-	error_missing_vexe = 1
-	error_failed_tests = 2
-	fpref              = &pref.Preferences{
-		is_fmt: true
-	}
-)
+const error_missing_vexe = 1
+const error_failed_tests = 2
+const fpref = &pref.Preferences{
+	is_fmt: true
+}
 
 fn test_fmt() {
 	fmt_message := 'vfmt tests'

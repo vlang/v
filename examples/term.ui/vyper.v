@@ -3,16 +3,14 @@ import term.ui as termui
 import rand
 
 // define some global constants
-const (
-	block_size = 1
-	buffer     = 10
-	green      = termui.Color{0, 255, 0}
-	grey       = termui.Color{150, 150, 150}
-	white      = termui.Color{255, 255, 255}
-	blue       = termui.Color{0, 0, 255}
-	red        = termui.Color{255, 0, 0}
-	black      = termui.Color{0, 0, 0}
-)
+const block_size = 1
+const buffer = 10
+const green = termui.Color{0, 255, 0}
+const grey = termui.Color{150, 150, 150}
+const white = termui.Color{255, 255, 255}
+const blue = termui.Color{0, 0, 255}
+const red = termui.Color{255, 0, 0}
+const black = termui.Color{0, 0, 0}
 
 // what edge of the screen are you facing
 enum Orientation {

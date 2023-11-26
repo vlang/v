@@ -9,12 +9,10 @@ import gx
 import math
 import time
 
-const (
-	win_width   = 600
-	win_height  = 700
-	bg_color    = gx.white
-	count_color = gx.black
-)
+const win_width = 600
+const win_height = 700
+const bg_color = gx.white
+const count_color = gx.black
 
 struct App {
 mut:

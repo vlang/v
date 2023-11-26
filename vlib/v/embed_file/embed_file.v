@@ -2,9 +2,7 @@ module embed_file
 
 import os
 
-pub const (
-	is_used = 1
-)
+pub const is_used = 1
 
 // EmbedFileData encapsulates functionality for the `$embed_file()` compile time call.
 pub struct EmbedFileData {

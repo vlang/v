@@ -9,10 +9,8 @@ import toml.token
 import toml.scanner
 import strconv
 
-const (
-	// utf8_max is the largest inclusive value of the Unicodes scalar value ranges.
-	utf8_max = 0x10FFFF
-)
+// utf8_max is the largest inclusive value of the Unicodes scalar value ranges.
+const utf8_max = 0x10FFFF
 
 // Decoder decode special sequences in a tree of TOML `ast.Value`'s.
 pub struct Decoder {

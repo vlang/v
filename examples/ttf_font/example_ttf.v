@@ -7,15 +7,13 @@ import x.ttf
 import os
 
 // import math
-const (
-	win_width  = 600
-	win_height = 700
-	bg_color   = gx.white
-	font_paths = [
-		os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'Imprima-Regular.ttf')),
-		os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'Graduate-Regular.ttf')),
-	]
-)
+const win_width = 600
+const win_height = 700
+const bg_color = gx.white
+const font_paths = [
+	os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'Imprima-Regular.ttf')),
+	os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'Graduate-Regular.ttf')),
+]
 
 // UI
 struct App_data {

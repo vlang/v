@@ -26,14 +26,12 @@ fn //C.VALGRIND_FREELIKE_BLOCK(addr voidptr, rzB usize)
 fn //C.VALGRIND_MAKE_MEM_UNDEFINED(addr voidptr, size usize)
 */
 
-pub const (
-	n_small_bins           = 32
-	n_tree_bins            = 32
-	small_bin_shift        = 3
-	tree_bin_shift         = 8
+pub const n_small_bins = 32
+pub const n_tree_bins = 32
+pub const small_bin_shift = 3
+pub const tree_bin_shift = 8
 
-	max_release_check_rate = 4095
-)
+pub const max_release_check_rate = 4095
 
 fn usize_leading_zeros(x usize) usize {
 	if sizeof(usize) == 8 {
@@ -287,13 +285,11 @@ mut:
 	index  u32
 }
 
-const (
-	pinuse    = 1 << 0
-	cinuse    = 1 << 1
-	flag4     = 1 << 2
-	inuse     = pinuse | cinuse
-	flag_bits = pinuse | cinuse | flag4
-)
+const pinuse = 1 << 0
+const cinuse = 1 << 1
+const flag4 = 1 << 2
+const inuse = pinuse | cinuse
+const flag_bits = pinuse | cinuse | flag4
 
 fn fencepost_head() usize {
 	return dlmalloc.inuse | sizeof(usize)

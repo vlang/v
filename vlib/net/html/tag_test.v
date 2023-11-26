@@ -2,8 +2,7 @@ module html
 
 import strings
 
-const (
-	html = '<!doctype html>
+const html = '<!doctype html>
 <html>
 <head></head>
 <body>
@@ -28,7 +27,6 @@ const (
   <div id="3rd"></div>
 </body>
 </html>'
-)
 
 fn test_search_tag_by_type() {
 	mut dom := parse(html.html)

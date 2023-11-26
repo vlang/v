@@ -70,8 +70,9 @@ pub:
 	cleanup_fn        FNCb   = unsafe { nil }
 	fail_fn           FNFail = unsafe { nil }
 	//
-	event_fn FNEvent = unsafe { nil }
-	quit_fn  FNEvent = unsafe { nil }
+	event_fn FNEvent  = unsafe { nil }
+	on_event FNEvent2 = unsafe { nil }
+	quit_fn  FNEvent  = unsafe { nil }
 	//
 	keydown_fn FNKeyDown = unsafe { nil }
 	keyup_fn   FNKeyUp   = unsafe { nil }
@@ -353,6 +354,8 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 	}
 	if ctx.config.event_fn != unsafe { nil } {
 		ctx.config.event_fn(e, ctx.config.user_data)
+	} else if ctx.config.on_event != unsafe { nil } {
+		ctx.config.on_event(ctx.config.user_data, e)
 	}
 	match e.typ {
 		.mouse_move {

@@ -1,9 +1,7 @@
 import os
 
-const (
-	tfolder = os.join_path(os.vtmp_dir(), 'tests', 'os_file_test')
-	tfile   = os.join_path_single(tfolder, 'test_file')
-)
+const tfolder = os.join_path(os.vtmp_dir(), 'tests', 'os_file_test')
+const tfile = os.join_path_single(tfolder, 'test_file')
 
 fn testsuite_begin() {
 	os.rmdir_all(tfolder) or {}
@@ -48,14 +46,12 @@ enum Permissions {
 	execute
 }
 
-const (
-	unit_point         = Point{1.0, 1.0, 1.0}
-	another_point      = Point{0.25, 2.25, 6.25}
-	extended_point     = Extended_Point{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0}
-	another_byte       = u8(123)
-	another_color      = Color.red
-	another_permission = Permissions.read | .write
-)
+const unit_point = Point{1.0, 1.0, 1.0}
+const another_point = Point{0.25, 2.25, 6.25}
+const extended_point = Extended_Point{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0}
+const another_byte = u8(123)
+const another_color = Color.red
+const another_permission = Permissions.read | .write
 
 // test_read_bytes_into_newline_text tests reading text from a file with newlines.
 // This test simulates reading a larger text file step by step into a buffer and

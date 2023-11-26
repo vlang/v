@@ -338,9 +338,7 @@ mut:
 	slot               JS.String
 }
 
-pub const (
-	document = JS.Document{}
-)
+pub const document = JS.Document{}
 
 pub fn window() JS.Window {
 	mut x := JS.Any(unsafe { voidptr(u64(0)) })

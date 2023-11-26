@@ -4,7 +4,6 @@ import strings
 import time { sleep }
 
 const alt = '.,-~:;=!*#$@'
-
 fn rd(cs int, ls int, a f64, b f64) {
 	tt_spacing, p_spacing := 0.07, 0.02
 	r1, r2, k2 := 1, 2, 5

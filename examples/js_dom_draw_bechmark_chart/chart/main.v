@@ -38,10 +38,8 @@ fn (framework_platform FrameworkPlatform) to_map() map[string][]int {
 	return mapa
 }
 
-const (
-	http_port             = 3001
-	benchmark_loop_length = 20
-)
+const http_port = 3001
+const benchmark_loop_length = 20
 
 struct App {
 	vweb.Context

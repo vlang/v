@@ -1,11 +1,9 @@
 import os
 
-const (
-	shdc_exe_name = 'sokol-shdc.exe'
-	tool_name     = os.file_name(os.executable())
-	cache_dir     = os.join_path(os.cache_dir(), 'v', tool_name)
-	shdc          = shdc_exe()
-)
+const shdc_exe_name = 'sokol-shdc.exe'
+const tool_name = os.file_name(os.executable())
+const cache_dir = os.join_path(os.cache_dir(), 'v', tool_name)
+const shdc = shdc_exe()
 
 fn shdc_exe() string {
 	return os.join_path(cache_dir, shdc_exe_name)

@@ -8,12 +8,10 @@ import v.ast
 import v.pref
 import v.token
 
-const (
-	supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig', 'compile_error',
-		'compile_warn', 'res']
-	comptime_types           = ['map', 'array', 'array_dynamic', 'array_fixed', 'int', 'float',
-		'struct', 'interface', 'enum', 'sumtype', 'alias', 'function', 'option']
-)
+const supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig', 'compile_error',
+	'compile_warn', 'res']
+const comptime_types = ['map', 'array', 'array_dynamic', 'array_fixed', 'int', 'float', 'struct',
+	'interface', 'enum', 'sumtype', 'alias', 'function', 'option']
 
 fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
 	pos := p.tok.pos()
@@ -161,7 +159,8 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			pos: start_pos.extend(p.prev_tok.pos())
 		}
 	}
-	mut literal_string_param := if is_html { '' } else { p.tok.lit }
+	has_string_arg := p.tok.kind == .string
+	mut literal_string_param := if is_html && !has_string_arg { '' } else { p.tok.lit }
 	if p.tok.kind == .name {
 		if var := p.scope.find_var(p.tok.lit) {
 			if var.expr is ast.StringLiteral {
@@ -175,7 +174,12 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	}
 	path_of_literal_string_param := literal_string_param.replace('/', os.path_separator)
 	mut arg := ast.CallArg{}
-	if !is_html {
+	if is_html && !(has_string_arg || p.tok.kind == .rpar) {
+		p.error('expecting `\$vweb.html()` for a default template path or `\$vweb.html("/path/to/template.html")`')
+	}
+	if is_html && p.tok.kind != .string {
+		// $vweb.html() can have no arguments
+	} else {
 		arg_expr := p.expr(0)
 		arg = ast.CallArg{
 			expr: arg_expr
@@ -211,13 +215,17 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	fn_path := p.cur_fn_name.split('_')
 	fn_path_joined := fn_path.join(os.path_separator)
 	compiled_vfile_path := os.real_path(p.scanner.file_path.replace('/', os.path_separator))
-	tmpl_path := if is_html { '${fn_path.last()}.html' } else { path_of_literal_string_param }
+	tmpl_path := if is_html && !has_string_arg {
+		'${fn_path.last()}.html'
+	} else {
+		path_of_literal_string_param
+	}
 	// Looking next to the vweb program
 	dir := os.dir(compiled_vfile_path)
 	mut path := os.join_path_single(dir, fn_path_joined)
 	path += '.html'
 	path = os.real_path(path)
-	if !is_html {
+	if !is_html || has_string_arg {
 		if os.is_abs_path(tmpl_path) {
 			path = tmpl_path
 		} else {

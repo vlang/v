@@ -3,10 +3,8 @@ module test
 fn C._vinit(int, voidptr)
 fn C.GC_INIT()
 
-const (
-	foo = 1
-	bar = (foo << 5) + 9
-)
+const foo = 1
+const bar = (foo << 5) + 9
 
 @[export: Tatltuae]
 pub fn test_tatltuae() int {
