@@ -1,3 +1,4 @@
+@[deprecated: "use `compress/zip` instead"]
 module szip
 
 import os
