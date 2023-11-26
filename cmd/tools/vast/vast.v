@@ -496,6 +496,20 @@ fn (t Tree) const_decl(node ast.ConstDecl) &Node {
 	return obj
 }
 
+fn (t Tree) lambda_expr(node ast.LambdaExpr) &Node {
+	mut obj := new_object()
+	obj.add_terse('ast_type', t.string_node('LambdaExpr'))
+	obj.add_terse('params', t.array_node_ident(node.params))
+	obj.add_terse('pos_expr', t.pos(node.pos_expr))
+	obj.add_terse('expr', t.expr(node.expr))
+	obj.add_terse('pos_end', t.pos(node.pos_end))
+	obj.add('scope', t.number_node(int(node.scope)))
+	obj.add('func', t.number_node(int(node.func)))
+	obj.add_terse('is_checked', t.bool_node(node.is_checked))
+	obj.add_terse('typ', t.type_node(node.typ))
+	return obj
+}
+
 fn (t Tree) const_field(node ast.ConstField) &Node {
 	mut obj := new_object()
 	obj.add_terse('ast_type', t.string_node('ConstField'))
@@ -1178,6 +1192,9 @@ fn (t Tree) expr(expr ast.Expr) &Node {
 		}
 		ast.DumpExpr {
 			return t.dump_expr(expr)
+		}
+		ast.LambdaExpr {
+			return t.lambda_expr(expr)
 		}
 		ast.NodeError {
 			return t.node_error(expr)
