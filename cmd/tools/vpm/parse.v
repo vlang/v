@@ -58,13 +58,12 @@ fn parse_query(query []string) []Module {
 				continue
 			}
 			// Resolve path.
-			base := if is_http { publisher } else { '' }
-			install_path := normalize_mod_path(os.real_path(os.join_path(settings.vmodules_path,
-				base, manifest.name)))
+			mod_path := normalize_mod_path(os.join_path(if is_http { publisher } else { '' },
+				manifest.name))
 			Module{
 				name: manifest.name
 				url: ident
-				install_path: install_path
+				install_path: os.real_path(os.join_path(settings.vmodules_path, mod_path))
 				is_external: true
 				manifest: manifest
 			}
@@ -113,17 +112,16 @@ fn parse_query(query []string) []Module {
 				vmod.Manifest{}
 			}
 			// Resolve path.
-			ident_as_path := info.name.replace('.', os.path_separator)
-			install_path := normalize_mod_path(os.real_path(os.join_path(settings.vmodules_path,
-				ident_as_path)))
+			mod_path := normalize_mod_path(info.name.replace('.', os.path_separator))
 			Module{
 				name: info.name
 				url: info.url
 				vcs: vcs
-				install_path: install_path
+				install_path: os.real_path(os.join_path(settings.vmodules_path, mod_path))
 				manifest: manifest
 			}
 		}
+		mod.install_path_fmted = fmt_mod_path(mod.install_path)
 		mod.version = version
 		mod.get_installed()
 		modules << mod
