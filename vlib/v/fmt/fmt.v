@@ -2086,7 +2086,13 @@ pub fn (mut f Fmt) chan_init(mut node ast.ChanInit) {
 pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 	if node.is_vweb {
 		if node.method_name == 'html' {
-			f.write('\$vweb.html()')
+			if node.args.len == 1 && node.args[0].expr is ast.StringLiteral {
+				f.write('\$vweb.html(')
+				f.expr(node.args[0].expr)
+				f.write(')')
+			} else {
+				f.write('\$vweb.html()')
+			}
 		} else {
 			f.write('\$tmpl(')
 			f.expr(node.args[0].expr)
