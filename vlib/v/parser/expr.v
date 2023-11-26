@@ -195,7 +195,8 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			if p.expecting_type {
 				// parse json.decode type (`json.decode([]User, s)`)
 				node = p.name_expr()
-			} else if p.is_amp && p.peek_tok.kind == .rsbr {
+			} else if (p.is_amp && p.peek_tok.kind == .rsbr)
+				|| (p.peek_tok.kind == .rsbr && p.peek_token(3).kind == .lpar) {
 				mut n := 2
 				mut peek_n_tok := p.peek_token(n)
 				for peek_n_tok.kind in [.name, .dot] {
