@@ -144,8 +144,6 @@ pub fn read_file(path string) !string {
 	}
 }
 
-// ***************************** OS ops ************************
-//
 // truncate changes the size of the file located in `path` to `len`.
 // Note that changing symbolic links on Windows only works as admin.
 pub fn truncate(path string, len u64) ! {
