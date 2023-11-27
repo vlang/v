@@ -80,6 +80,7 @@ const essential_list = [
 	'vlib/v/gen/native/tests/native_test.v',
 	'vlib/v/pkgconfig/pkgconfig_test.v',
 	'vlib/v/slow_tests/inout/compiler_test.v',
+	'vlib/v/tests/select_auto_sync_test.v',
 	'vlib/x/json2/json2_test.v',
 ]
 const skip_test_files = [
