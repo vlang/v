@@ -1,4 +1,5 @@
-@[deprecated: "use `compress/zip` instead"]
+@[deprecated: 'use `compress/zip` instead']
+@[deprecated_after: '2023-12-31']
 module szip
 
 import os
