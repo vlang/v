@@ -1,6 +1,7 @@
 // vtest retry: 3
 import os
 import v.vmod
+import time
 
 const v = os.quoted_path(@VEXE)
 const test_path = os.join_path(os.vtmp_dir(), 'vpm_dependency_test')
@@ -71,4 +72,12 @@ fn test_resolve_external_dependencies_during_module_install() {
 	// The external dependencies should have been installed to `<vmodules_dir>/<dependency_name>`
 	assert get_mod_name(os.join_path(test_path, 'webview', 'v.mod')) == 'webview'
 	assert get_mod_name(os.join_path(test_path, 'miniaudio', 'v.mod')) == 'miniaudio'
+}
+
+fn test_install_with_recursive_dependencies() {
+	spawn fn () {
+		time.sleep(2 * time.minute)
+		exit(1)
+	}()
+	os.execute_or_exit('${v} install https://gitlab.com/tobealive/a')
 }
