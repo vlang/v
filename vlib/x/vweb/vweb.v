@@ -772,6 +772,7 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 	}
 	// return 404
 	user_context.not_found()
+	route = Route{}
 	return
 }
 

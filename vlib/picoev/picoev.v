@@ -45,6 +45,7 @@ pub:
 	max_read     int            = 4096
 	max_write    int            = 8192
 	family       net.AddrFamily = .ip
+	host         string = 'localhost'
 }
 
 @[heap]
