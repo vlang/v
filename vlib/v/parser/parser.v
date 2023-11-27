@@ -3838,6 +3838,9 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			p.vet_notice('use a fixed array, instead of a dynamic one', pos.line_nr, vet.FixKind.unknown,
 				.default)
 		}
+		if is_block {
+			end_comments << p.eat_comments(same_line: true)
+		}
 		field := ast.ConstField{
 			name: full_name
 			mod: p.mod
@@ -3851,6 +3854,9 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		fields << field
 		p.table.global_scope.register(field)
 		comments = []
+		if is_block {
+			end_comments = []
+		}
 		if !is_block {
 			break
 		}
