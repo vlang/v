@@ -1221,12 +1221,11 @@ pub fn (mut f Fmt) for_stmt(node ast.ForStmt) {
 pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
 	f.attrs(node.attrs)
 	if node.fields.len == 0 && node.pos.line_nr == node.pos.last_line {
-		f.writeln('__global ()')
+		// remove "__global()"
 		return
 	}
 	f.write('__global ')
 	mut max := 0
-	// mut has_assign := false
 	if node.is_block {
 		f.writeln('(')
 		f.indent++
@@ -1234,9 +1233,6 @@ pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
 			if field.name.len > max {
 				max = field.name.len
 			}
-			// if field.has_expr {
-			// has_assign = true
-			//}
 		}
 	}
 	for field in node.fields {
