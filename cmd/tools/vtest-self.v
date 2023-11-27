@@ -336,7 +336,10 @@ fn main() {
 
 	if !testing.is_node_present {
 		testroot := vroot + os.path_separator
-		tsession.skip_files << test_js_files.map(it.replace(testroot, ''))
+		tsession.skip_files << test_js_files.map(it.replace(testroot, '').replace('\\', '/'))
+	}
+	if !testing.is_go_present {
+		tsession.skip_files << 'vlib/v/gen/golang/tests/golang_test.v'
 	}
 	testing.find_started_process('mysqld') or {
 		tsession.skip_files << 'vlib/db/mysql/mysql_orm_test.v'
@@ -427,6 +430,10 @@ fn main() {
 		tsession.skip_files << skip_on_windows
 		$if msvc {
 			tsession.skip_files << skip_on_windows_msvc
+		}
+		if !C.IsWindows10OrGreater() {
+			tsession.skip_files << 'vlib/net/unix/use_net_and_net_unix_together_test.v'
+			tsession.skip_files << 'vlib/net/unix/unix_test.v'
 		}
 	}
 	$if !windows {
