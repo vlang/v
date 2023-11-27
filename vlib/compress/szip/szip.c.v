@@ -1,4 +1,4 @@
-module zip
+module szip
 
 import os
 
@@ -95,11 +95,11 @@ fn (om OpenMode) to_u8() u8 {
 // mode: can be any value of the OpenMode enum.
 pub fn open(name string, level CompressionLevel, mode OpenMode) !&Zip {
 	if name.len == 0 {
-		return error('zip: name of file empty')
+		return error('szip: name of file empty')
 	}
 	p_zip := unsafe { &Zip(C.zip_open(&char(name.str), int(level), char(mode.to_u8()))) }
 	if isnil(p_zip) {
-		return error('zip: cannot open/create/append new zip archive')
+		return error('szip: cannot open/create/append new zip archive')
 	}
 	return p_zip
 }
@@ -117,7 +117,7 @@ pub fn (mut z Zip) close() {
 pub fn (mut zentry Zip) open_entry(name string) ! {
 	res := C.zip_entry_open(zentry, &char(name.str))
 	if res == -1 {
-		return error('zip: cannot open archive entry')
+		return error('szip: cannot open archive entry')
 	}
 }
 
@@ -125,7 +125,7 @@ pub fn (mut zentry Zip) open_entry(name string) ! {
 pub fn (mut z Zip) open_entry_by_index(index int) ! {
 	res := C.zip_entry_openbyindex(z, index)
 	if res == -1 {
-		return error('zip: cannot open archive entry at index ${index}')
+		return error('szip: cannot open archive entry at index ${index}')
 	}
 }
 
@@ -154,7 +154,7 @@ pub fn (mut zentry Zip) name() string {
 pub fn (mut zentry Zip) index() !int {
 	index := int(C.zip_entry_index(zentry))
 	if index == -1 {
-		return error('zip: cannot get current index of zip entry')
+		return error('szip: cannot get current index of zip entry')
 	}
 	return index // must be check for INVALID_VALUE
 }
@@ -163,7 +163,7 @@ pub fn (mut zentry Zip) index() !int {
 pub fn (mut zentry Zip) is_dir() !bool {
 	isdir := C.zip_entry_isdir(zentry)
 	if isdir < 0 {
-		return error('zip: cannot check entry type')
+		return error('szip: cannot check entry type')
 	}
 	return isdir == 1
 }
@@ -183,11 +183,11 @@ pub fn (mut zentry Zip) crc32() u32 {
 // write_entry compresses an input buffer for the current zip entry.
 pub fn (mut zentry Zip) write_entry(data []u8) ! {
 	if int(data[0] & 0xff) == -1 {
-		return error('zip: cannot write entry')
+		return error('szip: cannot write entry')
 	}
 	res := C.zip_entry_write(zentry, data.data, data.len)
 	if res != 0 {
-		return error('zip: failed to write entry')
+		return error('szip: failed to write entry')
 	}
 }
 
@@ -195,7 +195,7 @@ pub fn (mut zentry Zip) write_entry(data []u8) ! {
 pub fn (mut zentry Zip) create_entry(name string) ! {
 	res := C.zip_entry_fwrite(zentry, &char(name.str))
 	if res != 0 {
-		return error('zip: failed to create entry')
+		return error('szip: failed to create entry')
 	}
 }
 
@@ -208,7 +208,7 @@ pub fn (mut zentry Zip) read_entry() !voidptr {
 	mut bsize := usize(0)
 	res := C.zip_entry_read(zentry, unsafe { &voidptr(&buf) }, &bsize)
 	if res == -1 {
-		return error('zip: cannot read properly data from entry')
+		return error('szip: cannot read properly data from entry')
 	}
 	return buf
 }
@@ -218,7 +218,7 @@ pub fn (mut zentry Zip) read_entry_buf(buf voidptr, in_bsize int) !int {
 	bsize := usize(in_bsize)
 	res := C.zip_entry_noallocread(zentry, buf, bsize)
 	if res == -1 {
-		return error('zip: cannot read properly data from entry')
+		return error('szip: cannot read properly data from entry')
 	}
 	return res
 }
@@ -227,14 +227,14 @@ pub fn (mut zentry Zip) read_entry_buf(buf voidptr, in_bsize int) !int {
 pub fn (mut zentry Zip) extract_entry(path string) ! {
 	res := C.zip_entry_fread(zentry, &char(path.str))
 	if res != 0 {
-		return error('zip: failed to extract entry')
+		return error('szip: failed to extract entry')
 	}
 }
 
 // extract zip file to directory
 pub fn extract_zip_to_dir(file string, dir string) !bool {
 	if C.access(&char(dir.str), 0) == -1 {
-		return error('zip: cannot open directory for extracting, directory not exists')
+		return error('szip: cannot open directory for extracting, directory not exists')
 	}
 	res := C.zip_extract(&char(file.str), &char(dir.str), cb_zip_extract, 0)
 	return res == 0
@@ -308,7 +308,7 @@ pub fn zip_folder(folder string, zip_file string, opt ZipFolderOptions) ! {
 pub fn (mut zentry Zip) total() !int {
 	tentry := int(C.zip_entries_total(zentry))
 	if tentry == -1 {
-		return error('zip: cannot count total entries')
+		return error('szip: cannot count total entries')
 	}
 	return tentry
 }

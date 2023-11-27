@@ -1,4 +1,4 @@
-import compress.zip
+import compress.szip
 import os
 
 const test_out_zip = 'v_test_zip.zip'
@@ -38,7 +38,7 @@ fn testsuite_end() {
 	cleanup()
 }
 
-fn test_zip_create_temp_files() {
+fn test_szip_create_temp_files() {
 	os.mkdir(test_path)!
 	os.mkdir(test_path2)!
 	os.write_file(fpath1, 'file one')!
@@ -52,7 +52,7 @@ fn test_zip_create_temp_files() {
 fn test_zipping_files() {
 	mut files := (os.ls(test_path)!).map(os.join_path(test_path, it))
 	files << (os.ls(test_path2)!).map(os.join_path(test_path2, it))
-	zip.zip_files(files, test_out_zip)!
+	szip.zip_files(files, test_out_zip)!
 	assert os.exists(test_out_zip)
 	os.rm(fpath1)!
 	os.rm(fpath2)!
@@ -60,8 +60,8 @@ fn test_zipping_files() {
 }
 
 fn test_extract_zipped_files() {
-	zip.extract_zip_to_dir(test_out_zip, test_path)!
-	zip.extract_zip_to_dir(test_out_zip, test_path2)!
+	szip.extract_zip_to_dir(test_out_zip, test_path)!
+	szip.extract_zip_to_dir(test_out_zip, test_path2)!
 	assert os.exists(fpath1)
 	assert os.exists(fpath2)
 	assert os.exists(fpath3)
@@ -89,10 +89,10 @@ fn test_reading_zipping_files() {
 	}
 	files := (os.ls(test_path)!).map(os.join_path(test_path, it))
 
-	zip.zip_files(files, test_out_zip)!
+	szip.zip_files(files, test_out_zip)!
 	assert os.exists(test_out_zip)
 
-	mut zp := zip.open(test_out_zip, zip.CompressionLevel.no_compression, zip.OpenMode.read_only)!
+	mut zp := szip.open(test_out_zip, szip.CompressionLevel.no_compression, szip.OpenMode.read_only)!
 	n_entries := zp.total()!
 	assert n_entries == n_files
 
@@ -131,12 +131,12 @@ fn test_zip_folder() {
 	os.write_file(fpath5, '5')!
 	os.write_file(fpath6, '6')!
 
-	zip.zip_folder(test_path3, test_dir_zip)!
+	szip.zip_folder(test_path3, test_dir_zip)!
 	assert os.exists(test_dir_zip)
 
 	os.rmdir_all(test_path3)!
 	os.mkdir_all(test_path3)!
-	zip.extract_zip_to_dir(test_dir_zip, test_path3)!
+	szip.extract_zip_to_dir(test_dir_zip, test_path3)!
 	assert os.exists(test_path3_1)
 	assert os.exists(test_path3_2)
 	assert os.exists(test_path3_3) // This is the empty dir
@@ -156,12 +156,12 @@ fn test_zip_folder_omit_empty_directories() {
 	os.write_file(fpath5, '5')!
 	os.write_file(fpath6, '6')!
 
-	zip.zip_folder(test_path3, test_dir_zip, omit_empty_folders: true)!
+	szip.zip_folder(test_path3, test_dir_zip, omit_empty_folders: true)!
 	assert os.exists(test_dir_zip)
 
 	os.rmdir_all(test_path3)!
 	os.mkdir_all(test_path3)!
-	zip.extract_zip_to_dir(test_dir_zip, test_path3)!
+	szip.extract_zip_to_dir(test_dir_zip, test_path3)!
 	assert os.exists(test_path3_1)
 	assert os.exists(test_path3_2)
 	assert !os.exists(test_path3_3) // This is the empty dir, should be omitted with `omit_empty_folders`
