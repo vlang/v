@@ -5,7 +5,7 @@ import time
 
 const port = 13001
 
-const localserver = 'http://localhost:${port}'
+const localserver = 'http://127.0.0.1:${port}'
 
 const exit_after = time.second * 10
 
@@ -82,7 +82,7 @@ fn testsuite_begin() {
 
 		app.Middleware.route_use('/after', handler: after_middleware, after: true)
 
-		vweb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2) or {
+		vweb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip) or {
 			panic('could not start vweb app')
 		}
 	}()

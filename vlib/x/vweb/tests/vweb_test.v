@@ -20,9 +20,9 @@ const vroot = os.dir(vexe)
 
 const serverexe = os.join_path(os.cache_dir(), 'vweb_test_server.exe')
 
-const tcp_r_timeout = 30 * time.second
+const tcp_r_timeout = 2 * time.second
 
-const tcp_w_timeout = 30 * time.second
+const tcp_w_timeout = 2 * time.second
 
 // setup of vweb webserver
 fn testsuite_begin() {
@@ -298,7 +298,7 @@ fn testsuite_end() {
 
 // utility code:
 struct SimpleTcpClientConfig {
-	retries int    = 20
+	retries int    = 4
 	host    string = 'static.dev'
 	path    string = '/'
 	agent   string = 'v/net.tcp.v'
@@ -313,6 +313,7 @@ fn simple_tcp_client(config SimpleTcpClientConfig) !string {
 		tries++
 		eprintln('> client retries: ${tries}')
 		client = net.dial_tcp(localserver) or {
+			eprintln('dial error: ${err.msg()}')
 			if tries > config.retries {
 				return err
 			}
@@ -322,7 +323,7 @@ fn simple_tcp_client(config SimpleTcpClientConfig) !string {
 		break
 	}
 	if client == unsafe { nil } {
-		eprintln('could not create a tcp client connection to ${localserver} after ${config.retries} retries')
+		eprintln('could not create a tcp client connection to http://${localserver} after ${config.retries} retries')
 		exit(1)
 	}
 	client.set_read_timeout(tcp_r_timeout)

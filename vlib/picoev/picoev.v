@@ -1,5 +1,6 @@
 module picoev
 
+import net
 import picohttpparser
 import time
 
@@ -38,11 +39,12 @@ pub:
 	cb           fn (voidptr, picohttpparser.Request, mut picohttpparser.Response) = unsafe { nil }
 	err_cb       fn (voidptr, picohttpparser.Request, mut picohttpparser.Response, IError) = default_err_cb
 	raw_cb       fn (mut Picoev, int, int) = unsafe { nil }
-	user_data    voidptr = unsafe { nil }
-	timeout_secs int     = 8
-	max_headers  int     = 100
-	max_read     int     = 4096
-	max_write    int     = 8192
+	user_data    voidptr        = unsafe { nil }
+	timeout_secs int            = 8
+	max_headers  int            = 100
+	max_read     int            = 4096
+	max_write    int            = 8192
+	family       net.AddrFamily = .ip
 }
 
 @[heap]

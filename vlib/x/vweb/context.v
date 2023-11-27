@@ -198,10 +198,12 @@ pub fn (mut ctx Context) redirect(url string) Result {
 	return ctx.send_response_to_client('text/plain', '302 Found')
 }
 
+// before_request is always the first function that is executed and acts as middleware
 pub fn (mut ctx Context) before_request() Result {
 	return Result{}
 }
 
+// returns a HTTP 404 response
 pub fn (mut ctx Context) not_found() Result {
 	ctx.res.set_status(.not_found)
 	return ctx.send_response_to_client('text/plain', '404 Not Found')

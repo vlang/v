@@ -5,7 +5,7 @@ import os
 
 const port = 13002
 
-const localserver = 'http://localhost:${port}'
+const localserver = 'http://127.0.0.1:${port}'
 
 const exit_after = time.second * 10
 
@@ -33,7 +33,7 @@ pub struct Context {
 fn testsuite_begin() {
 	spawn fn () {
 		mut app := &App{}
-		vweb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2) or {
+		vweb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip) or {
 			panic('could not start vweb app')
 		}
 	}()

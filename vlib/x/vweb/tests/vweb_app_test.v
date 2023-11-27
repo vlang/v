@@ -27,7 +27,7 @@ fn test_a_vweb_application_compiles() {
 		exit(0)
 	}()
 	mut app := &App{}
-	vweb.run[App, Context](mut app, port)
+	vweb.run_at[App, Context](mut app, port: port, family: .ip)
 }
 
 pub fn (mut ctx Context) before_request() {

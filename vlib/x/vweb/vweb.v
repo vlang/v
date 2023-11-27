@@ -188,6 +188,7 @@ fn generate_routes[A, X](app &A) !map[string]Route {
 	return routes
 }
 
+// run - start a new VWeb server, listening to all available addresses, at the specified `port`
 pub fn run[A, X](mut global_app A, port int) {
 	run_at[A, X](mut global_app, host: '', port: port, family: .ip6) or { panic(err.msg()) }
 }
@@ -210,6 +211,7 @@ pub mut:
 	pos   i64
 }
 
+// close the open file and reset the struct to its default values
 pub fn (mut fr FileResponse) done() {
 	fr.open = false
 	fr.file.close()
@@ -224,6 +226,7 @@ pub mut:
 	pos  i64
 }
 
+// free the current string and reset the struct to its default values
 @[manualfree]
 pub fn (mut sr StringResponse) done() {
 	sr.open = false
@@ -286,6 +289,7 @@ pub fn run_at[A, X](mut global_app A, params RunParams) ! {
 		raw_cb: ev_callback[A, X]
 		user_data: pico_context
 		timeout_secs: params.timeout_in_seconds
+		family: params.family
 	)
 
 	// Forever accept every connection that comes

@@ -33,6 +33,7 @@ pub struct MiddlewareOptions[T] {
 	after   bool
 }
 
+// string representation of Middleware
 pub fn (m &Middleware[T]) str() string {
 	return 'vweb.Middleware[${T.name}]{
         global_handlers: [${m.global_handlers.len}]
@@ -42,7 +43,7 @@ pub fn (m &Middleware[T]) str() string {
     }'
 }
 
-//
+// use registers a global middleware handler
 pub fn (mut m Middleware[T]) use(options MiddlewareOptions[T]) {
 	if options.after {
 		m.global_handlers_after << voidptr(options.handler)
@@ -51,6 +52,7 @@ pub fn (mut m Middleware[T]) use(options MiddlewareOptions[T]) {
 	}
 }
 
+// route_use registers a middlware handler for a specific route(s)
 pub fn (mut m Middleware[T]) route_use(route string, options MiddlewareOptions[T]) {
 	middleware := RouteMiddleware{
 		url_parts: route.split('/').filter(it != '')

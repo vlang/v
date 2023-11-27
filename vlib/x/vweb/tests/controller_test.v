@@ -5,7 +5,7 @@ import net.http
 
 const port = 13006
 
-const localserver = 'http://localhost:${port}'
+const localserver = 'http://127.0.0.1:${port}'
 
 const exit_after = time.second * 10
 
@@ -61,7 +61,7 @@ fn testsuite_begin() {
 		// even though it is declared last
 		app.register_controller[HiddenByOther, Context]('/other/hide', mut hidden)!
 
-		vweb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2) or {
+		vweb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip) or {
 			panic('could not start vweb app')
 		}
 	}()
