@@ -913,7 +913,7 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 	} else {
 		ast.Node(ast.NodeError{})
 	}
-	for _, field in node.fields {
+	for fidx, field in node.fields {
 		if field.comments.len > 0 {
 			if f.should_insert_newline_before_node(ast.Expr(field.comments[0]), prev_field) {
 				f.writeln('')
@@ -936,7 +936,8 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 		f.write('= ')
 		f.expr(field.expr)
 		f.comments(field.end_comments, same_line: true)
-		if node.is_block && field.end_comments.len == 0 {
+		if node.is_block && fidx < node.fields.len - 1 && node.fields.len > 1 {
+			// old style grouped consts, converted to the new style ungrouped const
 			f.writeln('')
 		} else {
 			// Write out single line comments after const expr if present
