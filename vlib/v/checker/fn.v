@@ -1931,8 +1931,16 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	}
 
 	// x is Bar[T], x.foo() -> x.foo[T]()
-	rec_sym := c.table.final_sym(node.left_type)
-	rec_is_generic := left_type.has_flag(.generic)
+	rec_sym := if is_method_from_embed {
+		c.table.final_sym(node.from_embed_types.last())
+	} else {
+		c.table.final_sym(node.left_type)
+	}
+	rec_is_generic := if is_method_from_embed {
+		node.from_embed_types.last().has_flag(.generic)
+	} else {
+		left_type.has_flag(.generic)
+	}
 	mut rec_concrete_types := []ast.Type{}
 	match rec_sym.info {
 		ast.Struct, ast.SumType, ast.Interface {
@@ -1948,6 +1956,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				t_concrete_types := node.concrete_types.clone()
 				node.concrete_types = rec_sym.info.concrete_types
 				node.concrete_types << t_concrete_types
+			} else if !rec_is_generic && rec_concrete_types.len > 0
+				&& method.generic_names.len == rec_concrete_types.len {
+				node.concrete_types = rec_concrete_types
 			}
 		}
 		else {}
