@@ -1,6 +1,7 @@
 ## Description:
 
-This is an example of a an .md file, used for adding more rich text documentation in a project or module.
+This is an example of a an .md file, used for adding more rich text
+documentation in a project or module.
 
 This is a [link](https://vlang.io/) to the main V site.
 
