@@ -61,43 +61,43 @@ fn check_path(dir string, tests []string) int {
 	paths := vtest.filter_vtest_only(tests, basepath: vroot)
 	for path in paths {
 		mut fails := 0
-		program := os.quoted_path(path)
+		qpath := os.quoted_path(path)
 		print(path + ' ')
 		fails += check_output(
-			program: program
-			cmd: '${vexe} doc ${program}'
+			program: path
+			cmd: '${vexe} doc ${qpath}'
 			out_filename: 'main.out'
 		)
 		fails += check_output(
-			program: program
-			cmd: '${vexe} doc -comments ${program}'
+			program: path
+			cmd: '${vexe} doc -comments ${qpath}'
 			out_filename: 'main.unsorted.out'
 			should_sort: false
 		)
 		fails += check_output(
-			program: program
-			cmd: '${vexe} doc -comments ${program}'
+			program: path
+			cmd: '${vexe} doc -comments ${qpath}'
 			out_filename: 'main.comments.out'
 		)
 		fails += check_output(
-			program: program
-			cmd: '${vexe} doc -readme -comments ${program}'
+			program: path
+			cmd: '${vexe} doc -readme -comments ${qpath}'
 			out_filename: 'main.readme.comments.out'
 		)
 		// test the main 3 different formats:
-		program_dir := if os.is_file(path) { os.quoted_path(os.dir(path)) } else { program }
+		program_dir := os.quoted_path(if os.is_file(path) { os.dir(path) } else { path })
 		fails += check_output(
-			program: program
+			program: path
 			cmd: '${vexe} doc -f html -o - -html-only-contents -readme -comments ${program_dir}'
 			out_filename: 'main.html'
 		)
 		fails += check_output(
-			program: program
+			program: path
 			cmd: '${vexe} doc -f ansi -o - -html-only-contents -readme -comments ${program_dir}'
 			out_filename: 'main.ansi'
 		)
 		fails += check_output(
-			program: program
+			program: path
 			cmd: '${vexe} doc -f text -o - -html-only-contents -readme -comments ${program_dir}'
 			out_filename: 'main.text'
 		)
