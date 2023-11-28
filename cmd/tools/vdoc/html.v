@@ -37,6 +37,11 @@ enum HighlightTokenTyp {
 	operator
 	punctuation
 	string
+	// For string interpolation
+	opening_string
+	string_interp
+	partial_string
+	closing_string
 	symbol
 	none_
 	module_
@@ -330,87 +335,166 @@ fn get_src_link(repo_url string, file_name string, line_nr int) string {
 	return url.str()
 }
 
-fn html_highlight(code string, tb &ast.Table) string {
-	builtin := ['bool', 'string', 'i8', 'i16', 'int', 'i64', 'i128', 'byte', 'u16', 'u32', 'u64',
-		'u128', 'rune', 'f32', 'f64', 'int_literal', 'float_literal', 'byteptr', 'voidptr', 'any']
-	highlight_code := fn (tok token.Token, typ HighlightTokenTyp) string {
-		lit := if typ in [.unone, .operator, .punctuation] {
-			tok.kind.str()
-		} else if typ == .string {
-			"'${tok.lit}'"
-		} else if typ == .char {
-			'`${tok.lit}`'
-		} else if typ == .comment {
-			if tok.lit != '' && tok.lit[0] == 1 { '//${tok.lit[1..]}' } else { '//${tok.lit}' }
-		} else {
-			tok.lit
+fn write_token(tok token.Token, typ HighlightTokenTyp, mut buf strings.Builder) {
+	match typ {
+		.unone, .operator, .punctuation {
+			buf.write_string(tok.kind.str())
 		}
-		if typ in [.unone, .name] {
-			return lit
+		.string_interp {
+			// tok.kind.str() for this returns $2 instead of $
+			buf.write_byte(`$`)
 		}
-		return '<span class="token ${typ}">${lit}</span>'
+		.opening_string {
+			buf.write_string("'${tok.lit}")
+		}
+		.closing_string {
+			// A string as the next token of the expression
+			// inside the string interpolation indicates that
+			// this is the closing of string interpolation
+			buf.write_string("${tok.lit}'")
+		}
+		.string {
+			buf.write_string("'${tok.lit}'")
+		}
+		.char {
+			buf.write_string('`${tok.lit}`')
+		}
+		.comment {
+			buf.write_string('//')
+			if tok.lit != '' && tok.lit[0] == 1 {
+				buf.write_string(tok.lit[1..])
+			} else {
+				buf.write_string(tok.lit)
+			}
+		}
+		else {
+			buf.write_string(tok.lit)
+		}
 	}
+}
+
+fn html_highlight(code string, tb &ast.Table) string {
 	mut s := scanner.new_scanner(code, .parse_comments, &pref.Preferences{ output_mode: .silent })
 	mut tok := s.scan()
 	mut next_tok := s.scan()
 	mut buf := strings.new_builder(200)
 	mut i := 0
+	mut inside_string_interp := false
 	for i < code.len {
-		if i == tok.pos {
-			mut tok_typ := HighlightTokenTyp.unone
-			match tok.kind {
-				.name {
-					if tok.lit in builtin || tb.known_type(tok.lit) {
-						tok_typ = .builtin
-					} else if next_tok.kind == .lcbr {
-						tok_typ = .symbol
-					} else if next_tok.kind == .lpar || (!tok.lit[0].is_capital()
-						&& next_tok.kind == .lt && next_tok.pos == tok.pos + tok.lit.len) {
-						tok_typ = .function
-					} else {
-						tok_typ = .name
-					}
-				}
-				.comment {
-					tok_typ = .comment
-				}
-				.chartoken {
-					tok_typ = .char
-				}
-				.string {
-					tok_typ = .string
-				}
-				.number {
-					tok_typ = .number
-				}
-				.key_true, .key_false {
-					tok_typ = .boolean
-				}
-				.lpar, .lcbr, .rpar, .rcbr, .lsbr, .rsbr, .semicolon, .colon, .comma, .dot,
-				.dotdot, .ellipsis {
-					tok_typ = .punctuation
-				}
-				else {
-					if token.is_key(tok.lit) || token.is_decl(tok.kind) {
-						tok_typ = .keyword
-					} else if tok.kind == .decl_assign || tok.kind.is_assign() || tok.is_unary()
-						|| tok.kind.is_relational() || tok.kind.is_infix() || tok.kind.is_postfix() {
-						tok_typ = .operator
-					}
-				}
-			}
-			buf.write_string(highlight_code(tok, tok_typ))
-			if next_tok.kind != .eof {
-				i = tok.pos + tok.len
-				tok = next_tok
-				next_tok = s.scan()
-			} else {
-				break
-			}
-		} else {
+		if i != tok.pos {
+			// All characters not detected by the scanner
+			// (mostly whitespaces) go here.
 			buf.write_u8(code[i])
 			i++
+			continue
 		}
+
+		mut tok_typ := HighlightTokenTyp.unone
+		match tok.kind {
+			.name {
+				if tok.lit in highlight_builtin_types || tb.known_type(tok.lit) {
+					tok_typ = .builtin
+				} else if next_tok.kind == .lcbr {
+					tok_typ = .symbol
+				} else if next_tok.kind == .lpar || (!tok.lit[0].is_capital()
+					&& next_tok.kind == .lt && next_tok.pos == tok.pos + tok.lit.len) {
+					tok_typ = .function
+				} else {
+					tok_typ = .name
+				}
+			}
+			.comment {
+				tok_typ = .comment
+			}
+			.chartoken {
+				tok_typ = .char
+			}
+			.str_dollar {
+				tok_typ = .string_interp
+				inside_string_interp = true
+			}
+			.string {
+				if inside_string_interp {
+					if next_tok.kind == .str_dollar {
+						// the " hello " in "${a} hello ${b} world"
+						tok_typ = .partial_string
+					} else {
+						// the " world" in "${a} hello ${b} world"
+						tok_typ = .closing_string
+					}
+
+					// NOTE: Do not switch inside_string_interp yet!
+					// It will be handy later when we do some special
+					// handling in generating code (see code below)
+				} else if next_tok.kind == .str_dollar {
+					tok_typ = .opening_string
+				} else {
+					tok_typ = .string
+				}
+			}
+			.number {
+				tok_typ = .number
+			}
+			.key_true, .key_false {
+				tok_typ = .boolean
+			}
+			.lpar, .lcbr, .rpar, .rcbr, .lsbr, .rsbr, .semicolon, .colon, .comma, .dot, .dotdot,
+			.ellipsis {
+				tok_typ = .punctuation
+			}
+			else {
+				if token.is_key(tok.lit) || token.is_decl(tok.kind) {
+					tok_typ = .keyword
+				} else if tok.kind == .decl_assign || tok.kind.is_assign() || tok.is_unary()
+					|| tok.kind.is_relational() || tok.kind.is_infix() || tok.kind.is_postfix() {
+					tok_typ = .operator
+				}
+			}
+		}
+
+		if tok_typ in [.unone, .name] {
+			write_token(tok, tok_typ, mut buf)
+		} else {
+			// Special handling for "complex" string literals
+			if tok_typ in [.partial_string, .closing_string] && inside_string_interp {
+				// rcbr is not rendered when the string on the right
+				// side of the expr/string interpolation is not empty.
+				// e.g. "${a}.${b}${c}"
+				// expectation: "${a}.${b}${c}"
+				// reality: "${a.${b}${c}"
+				if tok.lit.len != 0 {
+					write_token(token.Token{ kind: .rcbr }, .unone, mut buf)
+				}
+
+				inside_string_interp = false
+			}
+
+			// Properly treat and highlight the "string"-related types
+			// as if they are "string" type.
+			final_tok_typ := match tok_typ {
+				.opening_string, .partial_string, .closing_string { HighlightTokenTyp.string }
+				else { tok_typ }
+			}
+
+			buf.write_string('<span class="token ${final_tok_typ}">')
+			write_token(tok, tok_typ, mut buf)
+			buf.write_string('</span>')
+		}
+
+		if next_tok.kind == .eof {
+			break
+		}
+
+		i = tok.pos + tok.len
+
+		// This is to avoid issues that skips any "unused" tokens
+		// For example: Call expr with complex string literals as arg
+		if i - 1 == next_tok.pos {
+			i--
+		}
+
+		tok = next_tok
+		next_tok = s.scan()
 	}
 	return buf.str()
 }
