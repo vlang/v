@@ -530,7 +530,8 @@ fn (f &MdHtmlCodeHighlighter) transform_attribute(p markdown.ParentType, name st
 
 fn (f &MdHtmlCodeHighlighter) transform_content(parent markdown.ParentType, text string) string {
 	// NOTE: markdown.default_html_transformer uses html.escape internally.
-	initial_transformed_text := markdown.default_html_transformer.transform_content(parent, text)
+	initial_transformed_text := markdown.default_html_transformer.transform_content(parent,
+		text)
 	if parent is markdown.MD_BLOCKTYPE && parent == .md_block_code {
 		if f.language == 'v' || f.language == 'vlang' {
 			return html_highlight(initial_transformed_text, f.table)
