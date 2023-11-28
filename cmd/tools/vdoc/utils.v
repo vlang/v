@@ -137,9 +137,11 @@ fn gen_footer_text(d &doc.Doc, include_timestamp bool) string {
 	return '${footer_text} Generated on: ${time_str}'
 }
 
+const highlight_builtin_types = ['bool', 'string', 'i8', 'i16', 'int', 'i64', 'i128', 'isize',
+	'byte', 'u8', 'u16', 'u32', 'u64', 'usize', 'u128', 'rune', 'f32', 'f64', 'byteptr', 'voidptr',
+	'any']
+
 fn color_highlight(code string, tb &ast.Table) string {
-	builtin := ['bool', 'string', 'i8', 'i16', 'int', 'i64', 'i128', 'isize', 'byte', 'u8', 'u16',
-		'u32', 'u64', 'usize', 'u128', 'rune', 'f32', 'f64', 'byteptr', 'voidptr', 'any']
 	highlight_code := fn (tok token.Token, typ HighlightTokenTyp) string {
 		mut lit := ''
 		match typ {
@@ -207,14 +209,15 @@ fn color_highlight(code string, tb &ast.Table) string {
 			mut tok_typ := HighlightTokenTyp.unone
 			match tok.kind {
 				.name {
-					if (tok.lit in builtin || tb.known_type(tok.lit))
+					if (tok.lit in highlight_builtin_types || tb.known_type(tok.lit))
 						&& (next_tok.kind != .lpar || prev.kind !in [.key_fn, .rpar]) {
 						tok_typ = .builtin
 					} else if
 						(next_tok.kind in [.lcbr, .rpar, .eof, .comma, .pipe, .name, .rcbr, .assign, .key_pub, .key_mut, .pipe, .comma, .comment, .lt, .lsbr]
-						&& next_tok.lit !in builtin)
+						&& next_tok.lit !in highlight_builtin_types)
 						&& (prev.kind in [.name, .amp, .lcbr, .rsbr, .key_type, .assign, .dot, .not, .question, .rpar, .key_struct, .key_enum, .pipe, .key_interface, .comment, .ellipsis, .comma]
-						&& prev.lit !in builtin) && ((tok.lit != '' && tok.lit[0].is_capital())
+						&& prev.lit !in highlight_builtin_types)
+						&& ((tok.lit != '' && tok.lit[0].is_capital())
 						|| prev_prev.lit in ['C', 'JS']) {
 						tok_typ = .symbol
 					} else if tok.lit[0].is_capital() && prev.kind == .lpar

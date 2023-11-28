@@ -25,7 +25,7 @@ fn vpm_install(query []string) {
 				println('Nothing to install.')
 				exit(0)
 			}
-			manifest.dependencies.clone()
+			manifest.dependencies
 		} else {
 			vpm_error('specify at least one module for installation.',
 				details: 'example: `v install publisher.package` or `v install https://github.com/owner/repository`'
@@ -70,7 +70,6 @@ fn vpm_install(query []string) {
 
 fn install_modules(modules []Module) {
 	vpm_log(@FILE_LINE, @FN, 'modules: ${modules}')
-	idents := modules.map(it.name)
 	mut errors := 0
 	for m in modules {
 		vpm_log(@FILE_LINE, @FN, 'module: ${m}')
@@ -93,7 +92,6 @@ fn install_modules(modules []Module) {
 			}
 		}
 		println('Installed `${m.name}`.')
-		resolve_dependencies(get_manifest(m.install_path), idents)
 	}
 	if errors > 0 {
 		exit(1)
@@ -141,14 +139,14 @@ fn (m Module) confirm_install() bool {
 		println('Module `${m.name}${at_version(m.installed_version)}` is already installed, use --force to overwrite.')
 		return false
 	} else {
-		install_version := at_version(if m.version == '' { 'latest' } else { m.version })
 		println('Module `${m.name}${at_version(m.installed_version)}` is already installed at `${m.install_path_fmted}`.')
 		if settings.fail_on_prompt {
 			vpm_error('VPM should not have entered a confirmation prompt.')
 			exit(1)
 		}
+		install_version := at_version(if m.version == '' { 'latest' } else { m.version })
 		input := os.input('Replace it with `${m.name}${install_version}`? [Y/n]: ')
-		match input.to_lower() {
+		match input.trim_space().to_lower() {
 			'', 'y' {
 				return true
 			}
