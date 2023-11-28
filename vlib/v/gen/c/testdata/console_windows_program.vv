@@ -1,4 +1,4 @@
-// vtest vflags: -cc msvc -os windows
+// vtest vflags: -os windows
 
 @[console]
 fn main() {
