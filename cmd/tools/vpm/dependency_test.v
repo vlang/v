@@ -77,6 +77,7 @@ fn test_resolve_external_dependencies_during_module_install() {
 fn test_install_with_recursive_dependencies() {
 	spawn fn () {
 		time.sleep(2 * time.minute)
+		eprintln('Timeout while testing installation with recursive dependencies.')
 		exit(1)
 	}()
 	res := os.execute('${v} install https://gitlab.com/tobealive/a')
