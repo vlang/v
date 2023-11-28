@@ -913,7 +913,7 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 	} else {
 		ast.Node(ast.NodeError{})
 	}
-	for _, field in node.fields {
+	for fidx, field in node.fields {
 		if field.comments.len > 0 {
 			if f.should_insert_newline_before_node(ast.Expr(field.comments[0]), prev_field) {
 				f.writeln('')
@@ -936,7 +936,8 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 		f.write('= ')
 		f.expr(field.expr)
 		f.comments(field.end_comments, same_line: true)
-		if node.is_block && field.end_comments.len == 0 {
+		if node.is_block && fidx < node.fields.len - 1 && node.fields.len > 1 {
+			// old style grouped consts, converted to the new style ungrouped const
 			f.writeln('')
 		} else {
 			// Write out single line comments after const expr if present
@@ -1221,12 +1222,11 @@ pub fn (mut f Fmt) for_stmt(node ast.ForStmt) {
 pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
 	f.attrs(node.attrs)
 	if node.fields.len == 0 && node.pos.line_nr == node.pos.last_line {
-		f.writeln('__global ()')
+		// remove "__global()"
 		return
 	}
 	f.write('__global ')
 	mut max := 0
-	// mut has_assign := false
 	if node.is_block {
 		f.writeln('(')
 		f.indent++
@@ -1234,9 +1234,6 @@ pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
 			if field.name.len > max {
 				max = field.name.len
 			}
-			// if field.has_expr {
-			// has_assign = true
-			//}
 		}
 	}
 	for field in node.fields {
@@ -2086,7 +2083,13 @@ pub fn (mut f Fmt) chan_init(mut node ast.ChanInit) {
 pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 	if node.is_vweb {
 		if node.method_name == 'html' {
-			f.write('\$vweb.html()')
+			if node.args.len == 1 && node.args[0].expr is ast.StringLiteral {
+				f.write('\$vweb.html(')
+				f.expr(node.args[0].expr)
+				f.write(')')
+			} else {
+				f.write('\$vweb.html()')
+			}
 		} else {
 			f.write('\$tmpl(')
 			f.expr(node.args[0].expr)

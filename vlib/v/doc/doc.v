@@ -103,8 +103,8 @@ pub mut:
 	base_path string
 	table     &ast.Table      = ast.new_table()
 	checker   checker.Checker = checker.Checker{
-		table: 0
-		pref: 0
+		table: unsafe { nil }
+		pref: unsafe { nil }
 	}
 	fmt                 fmt.Fmt
 	filename            string

@@ -17,7 +17,7 @@ another_const = ['a', 'b'
 		]
 multiline_const = [
 		'first line',  'second line','third line',
-  'fourth line']		
+  'fourth line']
 )
 
 const (
@@ -26,6 +26,12 @@ const (
 
 pub const (
 i_am_pub_const=true
+)
+
+const (
+	abc = 1 // abc
+	def = 2 // def
+	ghi = 3 // ghi
 )
 
 fn main() {

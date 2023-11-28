@@ -46,6 +46,10 @@ pub fn (mut app App) index() vweb.Result {
 	return $vweb.html()
 }
 
+pub fn (mut app App) custom_template() vweb.Result {
+	return $vweb.html('custom.html')
+}
+
 pub fn (mut app App) show_text() vweb.Result {
 	return app.text('Hello world from vweb')
 }

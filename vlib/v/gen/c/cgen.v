@@ -4245,44 +4245,56 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 		}
 	}
 	chan_array := g.new_tmp_var()
-	g.write('Array_sync__Channel_ptr ${chan_array} = new_array_from_c_array(${n_channels}, ${n_channels}, sizeof(sync__Channel*), _MOV((sync__Channel*[${n_channels}]){')
-	for i in 0 .. n_channels {
-		if i > 0 {
-			g.write(', ')
+	if n_channels == 0 {
+		g.writeln('Array_sync__Channel_ptr ${chan_array} = __new_array_with_default(0, 0, sizeof(sync__Channel*), 0);')
+	} else {
+		g.write('Array_sync__Channel_ptr ${chan_array} = new_array_from_c_array(${n_channels}, ${n_channels}, sizeof(sync__Channel*), _MOV((sync__Channel*[${n_channels}]){')
+		for i in 0 .. n_channels {
+			if i > 0 {
+				g.write(', ')
+			}
+			g.write('(sync__Channel*)(')
+			g.expr(channels[i])
+			g.write(')')
 		}
-		g.write('(sync__Channel*)(')
-		g.expr(channels[i])
-		g.write(')')
+		g.writeln('}));\n')
 	}
-	g.writeln('}));\n')
 	directions_array := g.new_tmp_var()
-	g.write('Array_sync__Direction ${directions_array} = new_array_from_c_array(${n_channels}, ${n_channels}, sizeof(sync__Direction), _MOV((sync__Direction[${n_channels}]){')
-	for i in 0 .. n_channels {
-		if i > 0 {
-			g.write(', ')
+	if n_channels == 0 {
+		g.writeln('Array_sync__Direction ${directions_array} = __new_array_with_default(0, 0, sizeof(sync__Direction), 0);')
+	} else {
+		g.write('Array_sync__Direction ${directions_array} = new_array_from_c_array(${n_channels}, ${n_channels}, sizeof(sync__Direction), _MOV((sync__Direction[${n_channels}]){')
+		for i in 0 .. n_channels {
+			if i > 0 {
+				g.write(', ')
+			}
+			if is_push[i] {
+				g.write('sync__Direction__push')
+			} else {
+				g.write('sync__Direction__pop')
+			}
 		}
-		if is_push[i] {
-			g.write('sync__Direction__push')
-		} else {
-			g.write('sync__Direction__pop')
-		}
+		g.writeln('}));\n')
 	}
-	g.writeln('}));\n')
 	objs_array := g.new_tmp_var()
-	g.write('Array_voidptr ${objs_array} = new_array_from_c_array(${n_channels}, ${n_channels}, sizeof(voidptr), _MOV((voidptr[${n_channels}]){')
-	for i in 0 .. n_channels {
-		if i > 0 {
-			g.write(', &')
-		} else {
-			g.write('&')
+	if n_channels == 0 {
+		g.writeln('Array_voidptr ${objs_array} = __new_array_with_default(0, 0, sizeof(voidptr), 0);')
+	} else {
+		g.write('Array_voidptr ${objs_array} = new_array_from_c_array(${n_channels}, ${n_channels}, sizeof(voidptr), _MOV((voidptr[${n_channels}]){')
+		for i in 0 .. n_channels {
+			if i > 0 {
+				g.write(', &')
+			} else {
+				g.write('&')
+			}
+			if tmp_objs[i] == '' {
+				g.expr(objs[i])
+			} else {
+				g.write(tmp_objs[i])
+			}
 		}
-		if tmp_objs[i] == '' {
-			g.expr(objs[i])
-		} else {
-			g.write(tmp_objs[i])
-		}
+		g.writeln('}));\n')
 	}
-	g.writeln('}));\n')
 	select_result := g.new_tmp_var()
 	g.write('int ${select_result} = sync__channel_select(&/*arr*/${chan_array}, ${directions_array}, &/*arr*/${objs_array}, ')
 	if has_timeout {

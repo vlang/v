@@ -37,6 +37,8 @@ pub const fail_retry_delay_ms = get_fail_retry_delay_ms()
 
 pub const is_node_present = os.execute('node --version').exit_code == 0
 
+pub const is_go_present = os.execute('go version').exit_code == 0
+
 pub const all_processes = get_all_processes()
 
 pub const header_bytes_to_search_for_module_main = 500

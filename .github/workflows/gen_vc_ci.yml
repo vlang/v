@@ -46,4 +46,6 @@ jobs:
 
           # in case there are recent commits:
           git -C vc pull --rebase origin master
-          git -C vc push
+          # Note that failure below may happen, due to vlang/vc rejecting the push
+          # from forked repos; that is not usually a problem.
+          git -C vc push || true 

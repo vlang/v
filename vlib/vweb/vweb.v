@@ -235,9 +235,9 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	return true
 }
 
-// Response HTTP_OK with s as payload with content-type `text/html`
-pub fn (mut ctx Context) html(s string) Result {
-	ctx.send_response_to_client('text/html', s)
+// Response HTTP_OK with payload with content-type `text/html`
+pub fn (mut ctx Context) html(payload string) Result {
+	ctx.send_response_to_client('text/html', payload)
 	return Result{}
 }
 
