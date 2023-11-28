@@ -733,6 +733,9 @@ pub fn cache_dir() string {
 	// or empty, a default equal to $HOME/.cache should be used.
 	xdg_cache_home := getenv('XDG_CACHE_HOME')
 	if xdg_cache_home != '' {
+		if !is_dir(xdg_cache_home) && !is_link(xdg_cache_home) {
+			mkdir_all(xdg_cache_home, mode: 0o700) or { panic(err) }
+		}
 		return xdg_cache_home
 	}
 	cdir := join_path_single(home_dir(), '.cache')
