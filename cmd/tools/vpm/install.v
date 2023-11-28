@@ -25,7 +25,7 @@ fn vpm_install(query []string) {
 				println('Nothing to install.')
 				exit(0)
 			}
-			manifest.dependencies.clone()
+			manifest.dependencies
 		} else {
 			vpm_error('specify at least one module for installation.',
 				details: 'example: `v install publisher.package` or `v install https://github.com/owner/repository`'
