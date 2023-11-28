@@ -5,10 +5,6 @@ import strings
 #flag windows -l advapi32
 #include <process.h>
 #include <sys/utime.h>
-#include <versionhelpers.h>
-
-// See https://docs.microsoft.com/en-us/windows/win32/api/versionhelpers/nf-versionhelpers-iswindows10orgreater
-fn C.IsWindows10OrGreater() bool
 
 // See https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createsymboliclinkw
 fn C.CreateSymbolicLinkW(&u16, &u16, u32) int
@@ -394,9 +390,7 @@ pub fn symlink(origin string, target string) ! {
 			flags ^= 1
 		}
 
-		if C.IsWindows10OrGreater() {
-			flags ^= 2 // SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
-		}
+		flags ^= 2 // SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
 		res := C.CreateSymbolicLinkW(target.to_wide(), origin.to_wide(), flags)
 
 		// 1 = success, != 1 failure => https://stackoverflow.com/questions/33010440/createsymboliclink-on-windows-10

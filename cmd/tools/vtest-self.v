@@ -432,10 +432,6 @@ fn main() {
 		$if msvc {
 			tsession.skip_files << skip_on_windows_msvc
 		}
-		if !C.IsWindows10OrGreater() {
-			tsession.skip_files << 'vlib/net/unix/use_net_and_net_unix_together_test.v'
-			tsession.skip_files << 'vlib/net/unix/unix_test.v'
-		}
 	}
 	$if !windows {
 		tsession.skip_files << skip_on_non_windows
