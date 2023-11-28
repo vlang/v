@@ -76,7 +76,7 @@ fn abc()
 fn def()
     def - should be first
 fn xyz()
-    xyz - should be in the middle
+    xyz - should be in the middle a small script <script>console.log('hello');</script> bold text <b>bold</b> end underlined text <u>underline</u> end a link [main v repo](https://github.com/vlang/v)
 fn MyXMLDocument.abc(text string) ?(string, int)
     MyXMLDocument.abc does something too... I just do not know what.
 fn MyXMLDocument.from_file(path string) !MyXMLDocument
