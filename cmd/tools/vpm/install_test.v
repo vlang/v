@@ -3,11 +3,12 @@
 module main
 
 import os
+import rand
 import v.vmod
 
 // Running tests appends a tsession path to VTMP, which is automatically cleaned up after the test.
 // The following will result in e.g. `$VTMP/tsession_7fe8e93bd740_1612958707536/test-vmodules/`.
-const test_path = os.join_path(os.vtmp_dir(), 'vpm_install_test')
+const test_path = os.join_path(os.vtmp_dir(), 'vpm_install_test_${rand.ulid()}')
 
 fn testsuite_begin() {
 	os.setenv('VMODULES', test_path, true)

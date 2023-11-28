@@ -2,9 +2,10 @@
 module main
 
 import os
+import rand
 import v.vmod
 
-const test_path = os.join_path(os.vtmp_dir(), 'vpm_install_version_test')
+const test_path = os.join_path(os.vtmp_dir(), 'vpm_install_version_test_${rand.ulid()}')
 
 fn testsuite_begin() {
 	os.setenv('VMODULES', test_path, true)

@@ -1,10 +1,11 @@
 // vtest retry: 3
 import os
-import v.vmod
 import time
+import rand
+import v.vmod
 
 const v = os.quoted_path(@VEXE)
-const test_path = os.join_path(os.vtmp_dir(), 'vpm_dependency_test')
+const test_path = os.join_path(os.vtmp_dir(), 'vpm_dependency_test_${rand.ulid()}')
 
 fn testsuite_begin() {
 	os.setenv('VMODULES', test_path, true)
@@ -29,10 +30,6 @@ fn test_install_dependencies_in_module_dir() {
 	os.mkdir_all(test_path) or {}
 	mod := 'my_module'
 	mod_path := os.join_path(test_path, mod)
-	$if windows {
-		// Make sure path is clean to work around CI failures with Windows MSVC.
-		os.system('rd /s /q ${mod_path}')
-	}
 	os.mkdir(mod_path)!
 	os.chdir(mod_path)!
 	// Create a v.mod file that lists dependencies.

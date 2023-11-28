@@ -1,9 +1,10 @@
 // vtest retry: 3
 import os
+import rand
 import v.vmod
 
 const vexe = os.quoted_path(@VEXE)
-const test_path = os.join_path(os.vtmp_dir(), 'vpm_install_version_input_test')
+const test_path = os.join_path(os.vtmp_dir(), 'vpm_install_version_input_test_${rand.ulid()}')
 const expect_tests_path = os.join_path(@VEXEROOT, 'cmd', 'tools', 'vpm', 'expect')
 const expect_exe = os.quoted_path(os.find_abs_path_of_executable('expect') or {
 	eprintln('skipping test, since expect is missing')
