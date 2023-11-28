@@ -276,6 +276,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 	mut arrs := []ast.SqlStmtLine{}
 	mut fkeys := []string{}
 	mut field_names := []string{}
+	mut opt_fields := []int{}
 
 	for field in node.fields {
 		sym := g.table.sym(field.typ)
@@ -288,6 +289,9 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 				fkeys << attr.arg
 			} else {
 				verror('missing fkey attribute')
+			}
+			if field.typ.has_flag(.option) {
+				opt_fields << arrs.len
 			}
 			arrs << node.sub_structs[int(field.typ)]
 			field_names << field.name
@@ -431,13 +435,22 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 		}
 		for i, mut arr in arrs {
 			idx := g.new_tmp_var()
-			g.writeln('for (int ${idx} = 0; ${idx} < ${node.object_var}${member_access_type}${arr.object_var}.len; ${idx}++) {')
+			ctyp := g.typ(arr.table_expr.typ)
+			is_option := opt_fields.contains(i)
+			if is_option {
+				g.writeln('for (int ${idx} = 0; ${node.object_var}${member_access_type}${arr.object_var}.state != 2 && ${idx} < (*(Array_${ctyp}*)${node.object_var}${member_access_type}${arr.object_var}.data).len; ${idx}++) {')
+			} else {
+				g.writeln('for (int ${idx} = 0; ${idx} < ${node.object_var}${member_access_type}${arr.object_var}.len; ${idx}++) {')
+			}
 			g.indent++
 			last_ids := g.new_tmp_var()
 			res_ := g.new_tmp_var()
 			tmp_var := g.new_tmp_var()
-			ctyp := g.typ(arr.table_expr.typ)
-			g.writeln('${ctyp} ${tmp_var} = (*(${ctyp}*)array_get(${node.object_var}${member_access_type}${arr.object_var}, ${idx}));')
+			if is_option {
+				g.writeln('${ctyp} ${tmp_var} = (*(${ctyp}*)array_get(*(Array_${ctyp}*)${node.object_var}${member_access_type}${arr.object_var}.data, ${idx}));')
+			} else {
+				g.writeln('${ctyp} ${tmp_var} = (*(${ctyp}*)array_get(${node.object_var}${member_access_type}${arr.object_var}, ${idx}));')
+			}
 			arr.object_var = tmp_var
 			mut fff := []ast.StructField{}
 			for f in arr.fields {
