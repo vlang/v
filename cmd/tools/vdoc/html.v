@@ -345,16 +345,16 @@ fn write_token(tok token.Token, typ HighlightTokenTyp, mut buf strings.Builder) 
 			buf.write_byte(`$`)
 		}
 		.opening_string {
-			buf.write_string('"${tok.lit}')
+			buf.write_string("'${tok.lit}")
 		}
 		.closing_string {
 			// A string as the next token of the expression
 			// inside the string interpolation indicates that
 			// this is the closing of string interpolation
-			buf.write_string('${tok.lit}"')
+			buf.write_string("${tok.lit}'")
 		}
 		.string {
-			buf.write_string('"${tok.lit}"')
+			buf.write_string("'${tok.lit}'")
 		}
 		.char {
 			buf.write_string('`${tok.lit}`')
