@@ -37,7 +37,8 @@ fn test_reinstall_mod_with_version_installation() {
 	// Install version.
 	mod := 'vsl'
 	tag := 'v0.1.47'
-	os.execute_or_exit('${vexe} install ${mod}@${tag}')
+	mut res := os.execute('${vexe} install ${mod}@${tag}')
+	assert res.exit_code == 0, res.str()
 	mut name, mut version := get_mod_name_and_version(mod)
 	assert name == mod
 	assert version == tag.trim_left('v')
@@ -51,12 +52,14 @@ fn test_reinstall_mod_with_version_installation() {
 	decline_test := os.join_path(expect_tests_path, 'decline_reinstall_mod_with_version_installation.expect')
 	manifest_path := os.join_path(install_path, 'v.mod')
 	last_modified := os.file_last_mod_unix(manifest_path)
-	os.execute_or_exit('${expect_exe} ${decline_test} ${expect_args}')
+	res = os.execute('${expect_exe} ${decline_test} ${expect_args}')
+	assert res.exit_code == 0, res.str()
 	assert last_modified == os.file_last_mod_unix(manifest_path)
 
 	// Accept.
 	accept_test := os.join_path(expect_tests_path, 'accept_reinstall_mod_with_version_installation.expect')
-	os.execute_or_exit('${expect_exe} ${accept_test} ${expect_args}')
+	res = os.execute('${expect_exe} ${accept_test} ${expect_args}')
+	assert res.exit_code == 0, res.str()
 	name, version = get_mod_name_and_version(mod)
 	assert name == mod, name
 	assert version == new_tag.trim_left('v'), version

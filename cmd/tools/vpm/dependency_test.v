@@ -51,7 +51,8 @@ fn test_install_dependencies_in_module_dir() {
 	}
 	assert v_mod.dependencies == ['markdown', 'pcre', 'https://github.com/spytheman/vtray']
 	// Run `v install`
-	mut res := os.execute_or_exit('${v} install --once')
+	mut res := os.execute('${v} install --once')
+	assert res.exit_code == 0, res.str()
 	assert res.output.contains('Detected v.mod file inside the project directory. Using it...'), res.output
 	assert res.output.contains('Installing `markdown`'), res.output
 	assert res.output.contains('Installing `pcre`'), res.output
@@ -60,12 +61,14 @@ fn test_install_dependencies_in_module_dir() {
 	assert get_mod_name(os.join_path(test_path, 'markdown', 'v.mod')) == 'markdown'
 	assert get_mod_name(os.join_path(test_path, 'pcre', 'v.mod')) == 'pcre'
 	assert get_mod_name(os.join_path(test_path, 'vtray', 'v.mod')) == 'vtray'
-	res = os.execute_or_exit('${v} install --once')
+	res = os.execute('${v} install --once')
+	assert res.exit_code == 0, res.str()
 	assert res.output.contains('All modules are already installed.'), res.output
 }
 
 fn test_resolve_external_dependencies_during_module_install() {
-	res := os.execute_or_exit('${v} install -v https://github.com/ttytm/emoji-mart-desktop')
+	res := os.execute('${v} install -v https://github.com/ttytm/emoji-mart-desktop')
+	assert res.exit_code == 0, res.str()
 	assert res.output.contains('Found 2 dependencies'), res.output
 	assert res.output.contains('Installing `webview`'), res.output
 	assert res.output.contains('Installing `miniaudio`'), res.output
@@ -79,5 +82,6 @@ fn test_install_with_recursive_dependencies() {
 		time.sleep(2 * time.minute)
 		exit(1)
 	}()
-	os.execute_or_exit('${v} install https://gitlab.com/tobealive/a')
+	res := os.execute('${v} install https://gitlab.com/tobealive/a')
+	assert res.exit_code == 0, res.str()
 }
