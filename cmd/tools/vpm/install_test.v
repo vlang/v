@@ -163,3 +163,51 @@ fn test_install_potentially_conflicting() {
 	manifest = get_vmod('iui')
 	assert manifest.name == 'iui'
 }
+
+fn test_get_installed_version() {
+	test_project_path := os.join_path(test_path, 'test_project')
+	os.mkdir_all(test_project_path)!
+	os.chdir(test_project_path)!
+	os.write_file('v.mod', '')!
+	if os.getenv('CI') != '' {
+		os.execute_or_exit('git config --global user.email "v@vi.com"')
+		os.execute_or_exit('git config --global user.name "V CI"')
+	}
+	mut res := os.execute('git init')
+	assert res.exit_code == 0, res.str()
+	res = os.execute('git add .')
+	assert res.exit_code == 0, res.str()
+	res = os.execute('git commit -m "initial commit"')
+	assert res.exit_code == 0, res.str()
+	mut mod := Module{
+		install_path: test_project_path
+	}
+	mod.get_installed()
+	assert mod.is_installed
+	assert mod.installed_version == ''
+
+	// Create a tag -> latests commit and tag are at the same state,
+	// but it should not be treated as a version installation, when there is another head branch.
+	res = os.execute('git tag v0.1.0')
+	assert res.exit_code == 0, res.str()
+	mod.is_installed = false
+	mod.get_installed()
+	assert mod.is_installed
+	assert mod.installed_version == ''
+
+	os.execute('git checkout v0.1.0')
+	assert res.exit_code == 0, res.str()
+	mod.is_installed = false
+	mod.get_installed()
+	assert mod.is_installed
+	assert mod.installed_version == ''
+
+	os.execute('git branch -D master')
+	assert res.exit_code == 0, res.str()
+	os.execute('git reset --hard v0.1.0')
+	assert res.exit_code == 0, res.str()
+	mod.is_installed = false
+	mod.get_installed()
+	assert mod.is_installed
+	assert mod.installed_version == 'v0.1.0'
+}

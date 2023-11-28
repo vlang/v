@@ -152,9 +152,9 @@ fn (mut p Parser) parse_module(m string) {
 	}
 }
 
-// TODO: add unit test
 fn (mut m Module) get_installed() {
 	refs := os.execute_opt('git ls-remote --refs ${m.install_path}') or { return }
+	vpm_log(@FILE_LINE, @FN, 'refs: ${refs}')
 	m.is_installed = true
 	// In case the head just temporarily matches a tag, make sure that there
 	// really is a version installation before adding it as `installed_version`.
