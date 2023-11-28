@@ -2,6 +2,8 @@ Description:
 This is an example of a an .md file, used for adding more rich text
 documentation in a project or module.
 This is a link to the main V site.
+This is a bold text.
+This is a script console.log('hi from README.md'); .
 Examples:
 Processing command line args:
 import os
@@ -64,6 +66,10 @@ fn auth_verify(secret string, token string) bool {
     This is an example of a an .md file, used for adding more rich text documentation in a project or module.
     
     This is a [link](https://vlang.io/) to the main V site.
+    
+    This is a <b>bold text</b>.
+    
+    This is a script <script>console.log('hi from README.md');</script> .
     
     ## Examples:
     
