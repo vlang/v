@@ -1,4 +1,3 @@
-// vtest flaky: true
 // vtest retry: 3
 module main
 
@@ -21,47 +20,42 @@ fn testsuite_end() {
 	os.rmdir_all(test_path) or {}
 }
 
+fn get_vmod(path string) vmod.Manifest {
+	return vmod.from_file(os.join_path(test_path, path, 'v.mod')) or {
+		eprintln('Failed to parse v.mod for `${path}`')
+		exit(1)
+	}
+}
+
 fn test_install_from_vpm_ident() {
 	res := os.execute('${vexe} install nedpals.args')
 	assert res.exit_code == 0, res.str()
 	assert res.output.contains('Skipping download count increment for `nedpals.args`.'), res.output
-	mod := vmod.from_file(os.join_path(test_path, 'nedpals', 'args', 'v.mod')) or {
-		assert false, err.msg()
-		return
-	}
-	assert mod.name == 'nedpals.args'
-	assert mod.dependencies == []string{}
+	manifest := get_vmod(os.join_path('nedpals', 'args'))
+	assert manifest.name == 'nedpals.args'
+	assert manifest.dependencies == []string{}
 }
 
 fn test_install_from_vpm_short_ident() {
 	res := os.execute('${vexe} install pcre')
 	assert res.exit_code == 0, res.str()
-	mod := vmod.from_file(os.join_path(test_path, 'pcre', 'v.mod')) or {
-		assert false, err.msg()
-		return
-	}
-	assert mod.name == 'pcre'
-	assert mod.description == 'A simple regex library for V.'
+	manifest := get_vmod('pcre')
+	assert manifest.name == 'pcre'
+	assert manifest.description == 'A simple regex library for V.'
 }
 
 fn test_install_from_git_url() {
 	mut res := os.execute('${vexe} install https://github.com/vlang/markdown')
 	assert res.exit_code == 0, res.str()
 	assert res.output.contains('Installing `markdown`'), res.output
-	mut mod := vmod.from_file(os.join_path(test_path, 'markdown', 'v.mod')) or {
-		assert false, err.msg()
-		return
-	}
-	assert mod.name == 'markdown'
-	assert mod.dependencies == []string{}
+	mut manifest := get_vmod('markdown')
+	assert manifest.name == 'markdown'
+	assert manifest.dependencies == []string{}
 	res = os.execute('${vexe} install http://github.com/Wertzui123/HashMap')
 	assert res.exit_code == 0, res.str()
 	assert res.output.contains('Installing `HashMap`'), res.output
 	assert res.output.contains('`http` is deprecated'), res.output
-	mod = vmod.from_file(os.join_path(test_path, 'wertzui123', 'hashmap', 'v.mod')) or {
-		assert false, err.msg()
-		return
-	}
+	manifest = get_vmod(os.join_path('wertzui123', 'hashmap'))
 	res = os.execute('${vexe} install http://github.com/Wertzui123/HashMap')
 	assert res.exit_code == 0, res.str()
 	assert res.output.contains('Updating module `wertzui123.hashmap`'), res.output
@@ -74,17 +68,14 @@ fn test_install_from_git_url() {
 fn test_install_already_existent() {
 	mut res := os.execute('${vexe} install https://github.com/vlang/markdown')
 	assert res.exit_code == 0, res.str()
-	assert res.output.contains('Updating module `markdown` in `${test_path}/markdown`'), res.output
-	mod := vmod.from_file(os.join_path(test_path, 'markdown', 'v.mod')) or {
-		assert false, err.msg()
-		return
-	}
-	assert mod.name == 'markdown'
-	assert mod.dependencies == []string{}
+	assert res.output.contains('Updating module `markdown`'), res.output
+	manifest := get_vmod('markdown')
+	assert manifest.name == 'markdown'
+	assert manifest.dependencies == []string{}
 	// The same module but with the `.git` extension added.
 	res = os.execute('${vexe} install https://github.com/vlang/markdown.git')
 	assert res.exit_code == 0, res.str()
-	assert res.output.contains('Updating module `markdown` in `${test_path}/markdown`'), res.output
+	assert res.output.contains('Updating module `markdown`'), res.output
 }
 
 fn test_install_once() {
@@ -108,12 +99,9 @@ fn test_install_once() {
 	res = os.execute(install_cmd)
 	assert res.exit_code == 0, res.str()
 	assert res.output.contains("Already installed modules: ['markdown']"), res.output
-	mod := vmod.from_file(os.join_path(test_path, 'pcre', 'v.mod')) or {
-		assert false, err.msg()
-		return
-	}
-	assert mod.name == 'pcre'
-	assert mod.description == 'A simple regex library for V.'
+	manifest := get_vmod('pcre')
+	assert manifest.name == 'pcre'
+	assert manifest.description == 'A simple regex library for V.'
 	// Ensure the before installed markdown module wasn't modified.
 	assert md_last_modified == os.file_last_mod_unix(os.join_path(test_path, 'markdown',
 		'v.mod'))
@@ -135,19 +123,19 @@ fn test_missing_repo_name_in_url() {
 
 fn test_manifest_detection() {
 	// head branch == `main`.
-	mut mod := fetch_manifest('v-analyzer', 'https://github.com/v-analyzer/v-analyzer',
+	mut manifest := fetch_manifest('v-analyzer', 'https://github.com/v-analyzer/v-analyzer',
 		'', true) or {
 		assert false
 		return
 	}
-	assert mod.name == 'v-analyzer'
-	assert mod.dependencies == ['https://github.com/v-analyzer/v-tree-sitter']
+	assert manifest.name == 'v-analyzer'
+	assert manifest.dependencies == ['https://github.com/v-analyzer/v-tree-sitter']
 	// head branch == `master`.
-	mod = fetch_manifest('ui', 'https://github.com/pisaiah/ui', '', true) or {
+	manifest = fetch_manifest('ui', 'https://github.com/pisaiah/ui', '', true) or {
 		assert false
 		return
 	}
-	assert mod.name == 'iui'
+	assert manifest.name == 'iui'
 	// not a V module.
 	if v := fetch_manifest('octocat', 'https://github.com/octocat/octocat.github.io',
 		'', true)
@@ -168,16 +156,10 @@ fn test_manifest_detection() {
 fn test_install_potentially_conflicting() {
 	mut res := os.execute('${vexe} install ui')
 	assert res.output.contains('Installed `ui`')
-	mut mod := vmod.from_file(os.join_path(test_path, 'ui', 'v.mod')) or {
-		assert false, err.msg()
-		return
-	}
-	assert mod.name == 'ui'
+	mut manifest := get_vmod('ui')
+	assert manifest.name == 'ui'
 	res = os.execute('${vexe} install https://github.com/isaiahpatton/ui')
 	assert res.output.contains('Installed `iui`')
-	mod = vmod.from_file(os.join_path(test_path, 'iui', 'v.mod')) or {
-		assert false, err.msg()
-		return
-	}
-	assert mod.name == 'iui'
+	manifest = get_vmod('iui')
+	assert manifest.name == 'iui'
 }

@@ -25,29 +25,28 @@ fn testsuite_end() {
 	os.rmdir_all(test_path) or {}
 }
 
-fn get_mod_name_and_version(path string) (string, string) {
-	mod := vmod.from_file(os.join_path(test_path, path, 'v.mod')) or {
-		eprintln(err)
-		return '', ''
+fn get_vmod(path string) vmod.Manifest {
+	return vmod.from_file(os.join_path(test_path, path, 'v.mod')) or {
+		eprintln('Failed to parse v.mod for `${path}`')
+		exit(1)
 	}
-	return mod.name, mod.version
 }
 
 // Test installing another version of a module of which an explicit version is already installed.
 fn test_reinstall_mod_with_version_installation() {
 	// Install version.
-	mod := 'vsl'
+	ident := 'vsl'
 	tag := 'v0.1.47'
-	mut res := os.execute('${vexe} install ${mod}@${tag}')
+	mut res := os.execute('${vexe} install ${ident}@${tag}')
 	assert res.exit_code == 0, res.str()
-	mut name, mut version := get_mod_name_and_version(mod)
-	assert name == mod
-	assert version == tag.trim_left('v')
+	mut manifest := get_vmod(ident)
+	assert manifest.name == ident
+	assert manifest.version == tag.trim_left('v')
 
 	// Try reinstalling.
 	new_tag := 'v0.1.50'
-	install_path := os.real_path(os.join_path(test_path, mod))
-	expect_args := [vexe, mod, tag, new_tag, install_path].join(' ')
+	install_path := os.real_path(os.join_path(test_path, ident))
+	expect_args := [vexe, ident, tag, new_tag, install_path].join(' ')
 
 	// Decline.
 	decline_test := os.join_path(expect_tests_path, 'decline_reinstall_mod_with_version_installation.expect')
@@ -61,7 +60,7 @@ fn test_reinstall_mod_with_version_installation() {
 	accept_test := os.join_path(expect_tests_path, 'accept_reinstall_mod_with_version_installation.expect')
 	res = os.execute('${expect_exe} ${accept_test} ${expect_args}')
 	assert res.exit_code == 0, res.str()
-	name, version = get_mod_name_and_version(mod)
-	assert name == mod, name
-	assert version == new_tag.trim_left('v'), version
+	manifest = get_vmod(ident)
+	assert manifest.name == ident
+	assert manifest.version == new_tag.trim_left('v')
 }
