@@ -324,7 +324,7 @@ pub fn raw_execute(cmd string) Result {
 		lp_reserved: unsafe { nil }
 		lp_desktop: unsafe { nil }
 		lp_title: unsafe { nil }
-		cb: sizeof(C.PROCESS_INFORMATION)
+		cb: sizeof(StartupInfo)
 		h_std_input: child_stdin
 		h_std_output: child_stdout_write
 		h_std_error: child_stdout_write

@@ -10,10 +10,7 @@ fn hdir(base string) string {
 }
 
 fn help_dir() string {
-	mut vexe := os.getenv('VEXE')
-	if vexe == '' {
-		vexe = os.executable()
-	}
+	vexe := get_vexe()
 	if vexe != '' {
 		return hdir(os.dir(vexe))
 	}
@@ -42,7 +39,8 @@ pub fn print_and_exit(topic string, opts ExitOptions) {
 		}
 	}
 	if topic in help.cli_topics {
-		os.system('${@VEXE} ${topic} --help')
+		vexe := get_vexe()
+		os.system('${os.quoted_path(vexe)} ${topic} --help')
 		exit(opts.exit_code)
 	}
 	mut topic_path := ''
@@ -78,4 +76,12 @@ fn print_known_topics() {
 		}
 	}
 	println(res)
+}
+
+fn get_vexe() string {
+	mut vexe := os.getenv('VEXE')
+	if vexe == '' {
+		vexe = os.executable()
+	}
+	return vexe
 }

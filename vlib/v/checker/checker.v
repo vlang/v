@@ -4352,18 +4352,26 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		}
 	}
 
-	if (typ.is_ptr() && !typ.has_flag(.shared_f) && !node.left.is_auto_deref_var())
+	if (typ.is_ptr() && !typ.has_flag(.shared_f) && (!node.left.is_auto_deref_var()
+		|| (typ_sym.kind == .struct_ && typ_sym.name != 'array')))
 		|| typ.is_pointer() {
 		mut is_ok := false
+		mut is_mut_struct := false
 		if mut node.left is ast.Ident {
 			if mut node.left.obj is ast.Var {
 				// `mut param []T` function parameter
 				is_ok = node.left.obj.is_mut && node.left.obj.is_arg && !typ.deref().is_ptr()
+					&& typ_sym.kind != .struct_
+				// `mut param Struct`
+				is_mut_struct = node.left.obj.is_mut && node.left.obj.is_arg
+					&& typ_sym.kind == .struct_
 			}
 		}
 		if !is_ok && node.index is ast.RangeExpr {
 			s := c.table.type_to_str(typ)
 			c.error('type `${s}` does not support slicing', node.pos)
+		} else if is_mut_struct {
+			c.error('type `mut ${typ_sym.name}` does not support slicing', node.pos)
 		} else if !c.inside_unsafe && !is_ok && !c.pref.translated && !c.file.is_translated {
 			c.warn('pointer indexing is only allowed in `unsafe` blocks', node.pos)
 		}

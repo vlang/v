@@ -1,4 +1,4 @@
-// vtest vflags: -cc msvc -os windows
+// vtest vflags: -os windows
 import sokol
 
 const used_import = sokol.used_import

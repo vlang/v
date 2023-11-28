@@ -336,7 +336,11 @@ fn main() {
 
 	if !testing.is_node_present {
 		testroot := vroot + os.path_separator
-		tsession.skip_files << test_js_files.map(it.replace(testroot, ''))
+		tsession.skip_files << test_js_files.map(it.replace(testroot, '').replace('\\',
+			'/'))
+	}
+	if !testing.is_go_present {
+		tsession.skip_files << 'vlib/v/gen/golang/tests/golang_test.v'
 	}
 	testing.find_started_process('mysqld') or {
 		tsession.skip_files << 'vlib/db/mysql/mysql_orm_test.v'
