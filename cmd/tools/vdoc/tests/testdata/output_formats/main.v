@@ -10,6 +10,10 @@ pub fn def() {
 }
 
 // xyz - should be in the middle
+// a small script <script>console.log('hello');</script>
+// bold text <b>bold</b> end
+// underlined text <u>underline</u> end
+// a link [main v repo](https://github.com/vlang/v)
 pub fn xyz() {
 	println(2)
 }
