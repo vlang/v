@@ -1020,7 +1020,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 					g.writeln('\t${field_var} = (${field_c_typ}){ .state = 2, .err = _const_none__, .data = {EMPTY_STRUCT_INITIALIZATION} };')
 				} else {
 					g.writeln('if (!${sub_result_var}.is_error)')
-					g.writeln('\t*(${field_c_typ}*){${field_var} = *(${field_c_typ}*)${sub_result_var}.data;')
+					g.writeln('\t*(${field_c_typ}*)${field_var} = *(${field_c_typ}*)${sub_result_var}.data;')
 				}
 				fields_idx++
 			} else if sym.kind == .array {
