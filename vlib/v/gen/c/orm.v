@@ -370,6 +370,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			}
 			mut sym := g.table.sym(field.typ)
 			mut typ := sym.cname
+			mut ctyp := sym.cname
 			if sym.kind == .struct_ && typ != 'time__Time' {
 				g.writeln('(*(orm__Primitive*) array_get(${last_ids_arr}, ${structs})),')
 				structs++
@@ -377,13 +378,14 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			}
 			// fields processed hereafter can be NULL...
 			if typ == 'time__Time' {
+				ctyp = 'time__Time'
 				typ = 'time'
 			} else if sym.kind == .enum_ {
 				typ = 'i64'
 			}
 			var := '${node.object_var}${member_access_type}${c_name(field.name)}'
 			if field.typ.has_flag(.option) {
-				g.writeln('${var}.state == 2? _const_orm__null_primitive : orm__${typ}_to_primitive(*(${typ}*)(${var}.data)),')
+				g.writeln('${var}.state == 2? _const_orm__null_primitive : orm__${typ}_to_primitive(*(${ctyp}*)(${var}.data)),')
 			} else {
 				g.writeln('orm__${typ}_to_primitive(${var}),')
 			}
