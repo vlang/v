@@ -952,7 +952,13 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 		if node.is_array {
 			info := g.table.sym(node.typ).array_info()
 			typ_str = g.typ(info.elem_type)
-			g.writeln('${unwrapped_c_typ} ${tmp}_array = __new_array(0, ${select_unwrapped_result_var_name}.len, sizeof(${typ_str}));')
+			base_typ := g.base_type(node.typ)
+			if node.typ.has_flag(.option) {
+				g.writeln('${unwrapped_c_typ} ${tmp}_array = { .state = 2, .err = _const_none__, .data = {EMPTY_STRUCT_INITIALIZATION} };')
+				g.writeln('_option_ok(&(${base_typ}[]) { __new_array(0, ${select_unwrapped_result_var_name}.len, sizeof(${typ_str})) }, (_option *)&${tmp}_array, sizeof(${base_typ}));')
+			} else {
+				g.writeln('${unwrapped_c_typ} ${tmp}_array = __new_array(0, ${select_unwrapped_result_var_name}.len, sizeof(${typ_str}));')
+			}
 			g.writeln('for (; ${idx} < ${select_unwrapped_result_var_name}.len; ${idx}++) {')
 			g.indent++
 			g.write('${typ_str} ${tmp} = (${typ_str}) {')
@@ -1014,7 +1020,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 					g.writeln('\t${field_var} = (${field_c_typ}){ .state = 2, .err = _const_none__, .data = {EMPTY_STRUCT_INITIALIZATION} };')
 				} else {
 					g.writeln('if (!${sub_result_var}.is_error)')
-					g.writeln('\t${field_var} = *(${field_c_typ}*)${sub_result_var}.data;')
+					g.writeln('\t*(${field_c_typ}*){${field_var} = *(${field_c_typ}*)${sub_result_var}.data;')
 				}
 				fields_idx++
 			} else if sym.kind == .array {
@@ -1064,8 +1070,14 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 				sub_result_c_typ := g.typ(sub.typ)
 				g.writeln('${sub_result_c_typ} ${sub_result_var};')
 				g.write_orm_select(sql_expr_select_array, connection_var_name, sub_result_var)
-				g.writeln('if (!${sub_result_var}.is_error)')
-				g.writeln('\t${field_var} = *(${unwrapped_c_typ}*)${sub_result_var}.data;')
+				g.writeln('if (!${sub_result_var}.is_error) {')
+				if field.typ.has_flag(.option) {
+					g.writeln('\t${field_var}.state = 0;')
+					g.writeln('\t*(${g.base_type(field.typ)}*)${field_var}.data = *(${g.base_type(field.typ)}*)${sub_result_var}.data;')
+				} else {
+					g.writeln('\t${field_var} = *(${unwrapped_c_typ}*)${sub_result_var}.data;')
+				}
+				g.writeln('}')
 			} else if field.typ.has_flag(.option) {
 				prim_var := g.new_tmp_var()
 				g.writeln('orm__Primitive *${prim_var} = &${array_get_call_code};')
@@ -1086,7 +1098,12 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 		}
 
 		if node.is_array {
-			g.writeln('array_push(&${tmp}_array, _MOV((${typ_str}[]){ ${tmp} }));')
+			if node.typ.has_flag(.option) {
+				g.writeln('${tmp}_array.state = 0;')
+				g.writeln('array_push((${g.base_type(node.typ)}*)&${tmp}_array.data, _MOV((${typ_str}[]){ ${tmp} }));')
+			} else {
+				g.writeln('array_push(&${tmp}_array, _MOV((${typ_str}[]){ ${tmp} }));')
+			}
 			g.indent--
 			g.writeln('}')
 		}
@@ -1094,11 +1111,15 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 		g.indent--
 		g.writeln('}')
 
-		g.write('*(${unwrapped_c_typ}*) ${result_var}.data = ${tmp}')
 		if node.is_array {
-			g.write('_array')
+			if node.typ.has_flag(.option) {
+				g.writeln('*(${g.base_type(node.typ)}*) ${result_var}.data = *(${g.base_type(node.typ)}*)${tmp}_array.data;')
+			} else {
+				g.writeln('*(${unwrapped_c_typ}*) ${result_var}.data = ${tmp}_array;')
+			}
+		} else {
+			g.writeln('*(${unwrapped_c_typ}*) ${result_var}.data = ${tmp};')
 		}
-		g.writeln(';')
 	}
 
 	g.indent--
