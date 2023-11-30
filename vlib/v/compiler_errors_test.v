@@ -282,10 +282,10 @@ fn (mut tasks Tasks) run() {
 			println('failed cmd: ${task.cli_cmd}')
 			println('expected_out_path: ${task.expected_out_path}')
 			println('============')
-			println('expected:')
+			println('expected (len: ${task.expected.len:5}, hash: ${task.expected.hash()}):')
 			println(task.expected)
 			println('============')
-			println('found:')
+			println('found    (len: ${task.found___.len:5}, hash: ${task.found___.hash()}):')
 			println(task.found___)
 			println('============\n')
 			diff_content(task.expected, task.found___)
@@ -384,10 +384,34 @@ fn clean_line_endings(s string) string {
 	return res
 }
 
+fn chunks(s string, chunk_size int) string {
+	mut res := []string{}
+	for i := 0; i < s.len; i += chunk_size {
+		res << s#[i..i + chunk_size]
+	}
+	return res.join('\n')
+}
+
+fn chunka(s []u8, chunk_size int) string {
+	mut res := []string{}
+	for i := 0; i < s.len; i += chunk_size {
+		res << s#[i..i + chunk_size].str()
+	}
+	return res.join('\n')
+}
+
 fn diff_content(expected string, found string) {
-	diff_cmd := diff.find_working_diff_command() or { return }
 	println(term.bold(term.yellow('diff: ')))
-	println(diff.color_compare_strings(diff_cmd, rand.ulid(), expected, found))
+	if diff_cmd := diff.find_working_diff_command() {
+		println(diff.color_compare_strings(diff_cmd, rand.ulid(), expected, found))
+	} else {
+		println('>>>> could not find a working diff command; dumping bytes instead...')
+		println('expected bytes:\n${chunka(expected.bytes(), 25)}')
+		println('   found bytes:\n${chunka(found.bytes(), 25)}')
+		println('============')
+		println('  expected hex:\n${chunks(expected.bytes().hex(), 80)}')
+		println('     found hex:\n${chunks(found.bytes().hex(), 80)}')
+	}
 	println('============\n')
 }
 
