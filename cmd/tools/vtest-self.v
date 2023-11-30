@@ -109,9 +109,19 @@ const skip_fsanitize_too_slow = [
 	'vlib/v/slow_tests/profile/profile_test.v',
 	'vlib/v/slow_tests/repl/repl_test.v',
 	'vlib/v/slow_tests/valgrind/valgrind_test.v',
+	'cmd/tools/vpm/dependency_test.v',
+	'cmd/tools/vpm/install_test.v',
+	'cmd/tools/vpm/install_version_input_test.v',
+	'cmd/tools/vpm/install_version_test.v',
+	'cmd/tools/vpm/update_test.v',
 ]
 const skip_with_fsanitize_memory = [
 	'do_not_remove',
+	'cmd/tools/vpm/dependency_test.v', // known flaky, for fsanitize_memory, due to using mbedtls
+	'cmd/tools/vpm/install_test.v', // known flaky, for fsanitize_memory, due to using mbedtls
+	'cmd/tools/vpm/install_version_input_test.v', // known flaky, for fsanitize_memory, due to using mbedtls
+	'cmd/tools/vpm/install_version_test.v', // known flaky, for fsanitize_memory, due to using mbedtls
+	'cmd/tools/vpm/update_test.v', // known flaky, for fsanitize_memory, due to using mbedtls
 	'vlib/net/tcp_simple_client_server_test.v',
 	'vlib/net/http/cookie_test.v',
 	'vlib/net/http/http_test.v',
