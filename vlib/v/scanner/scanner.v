@@ -646,8 +646,11 @@ fn (s &Scanner) look_ahead(n int) u8 {
 	}
 }
 
+// text_scan returns a single token from the text, and updates the scanner state,
+// so that it will be ready to get the next token right after that.
+// See also Scanner.prepare_for_new_text and new_silent_scanner()
 @[direct_array_access]
-fn (mut s Scanner) text_scan() token.Token {
+pub fn (mut s Scanner) text_scan() token.Token {
 	// The for loop here is so that instead of doing
 	// `return s.scan()` (which will use a new call stack frame),
 	// text_scan can just do continue, keeping
@@ -1177,8 +1180,11 @@ fn (s &Scanner) count_symbol_before(p int, sym u8) int {
 	return count
 }
 
+// ident_string returns a lexed V string, starting from the current position in the text
+// it supports r'strings', c'strings', interpolated 'strings' and "strings", and hex
+// escapes in them (except in the r'strings' where the content is returned verbatim)
 @[direct_array_access]
-fn (mut s Scanner) ident_string() string {
+pub fn (mut s Scanner) ident_string() string {
 	// determines if it is a nested string
 	if s.is_inside_string {
 		s.is_nested_string = true
@@ -1506,7 +1512,7 @@ fn is_escape_sequence(c u8) bool {
 ///   escaped unicode 32 literals like `\U00002605`
 ///   escaped utf8 runes in hex like `\xe2\x98\x85` => (★)
 ///   escaped utf8 runes in octal like `\342\230\205` => (★)
-fn (mut s Scanner) ident_char() string {
+pub fn (mut s Scanner) ident_char() string {
 	lspos := token.Pos{
 		line_nr: s.line_nr
 		pos: s.pos
@@ -1785,5 +1791,37 @@ fn (mut s Scanner) vet_error(msg string, fix vet.FixKind) {
 fn (mut s Scanner) trace[T](fbase string, x &T) {
 	if s.file_base == fbase {
 		println('> s.trace | ${fbase:-10s} | ${voidptr(x):16} | ${x}')
+	}
+}
+
+// prepare_for_new_text resets the internal state of the scanner,
+// so that it can be reused for scanning the new text, given by `text`,
+// using a subsequent s.scan_text() call, to get the token corresponding to the text.
+pub fn (mut s Scanner) prepare_for_new_text(text string) {
+	s.text = text
+	s.pos = 0
+	s.line_nr = 0
+	s.last_nl_pos = 0
+	s.is_crlf = false
+	s.is_inside_string = false
+	s.is_nested_string = false
+	s.is_started = false
+	s.is_inter_start = false
+	s.is_inter_end = false
+	s.is_enclosed_inter = false
+	s.is_nested_enclosed_inter = false
+	s.last_lt = 0
+	s.quote = 0
+	s.inter_quote = 0
+}
+
+// new_silent_scanner returns a new scanner instance, setup to just set internal flags and append errors
+// to its .errors field, *without aborting the program*. It is mainly useful for programs that want to
+// lex potentially invalid V source code repeatedly, and do their own error handling (checking .errors.len).
+pub fn new_silent_scanner() &Scanner {
+	mut p := pref.new_preferences()
+	p.output_mode = .silent
+	return &Scanner{
+		pref: p
 	}
 }
