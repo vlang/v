@@ -636,23 +636,26 @@ fn handle_request[A, X](mut conn net.TcpConn, req http.Request, params &RequestP
 
 fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string, routes &map[string]Route) {
 	mut route := Route{}
+	mut middleware_has_sent_response := false
 
 	defer {
-		// execute middleware functions after vweb is done and before the request is processed
+		// execute middleware functions after vweb is done and before the response is send
 		mut was_done := true
 		$if A is MiddlewareApp {
-			// if the middleware doesn't send an alternate response, but only changes the
-			// response object we only have to check if the `done` was previously set to true
-			was_done = user_context.Context.done
-			// reset `done` so the middleware functions can return a different response
-			// 1 time only, since the `done` guard is still present in
-			// `Context.send_response_to_client`
-			user_context.Context.done = false
+			if middleware_has_sent_response == false {
+				// if the middleware doesn't send an alternate response, but only changes the
+				// response object we only have to check if the `done` was previously set to true
+				was_done = user_context.Context.done
+				// reset `done` so the middleware functions can return a different response
+				// 1 time only, since the `done` guard is still present in
+				// `Context.send_response_to_client`
+				user_context.Context.done = false
 
-			// no need to check the result of `validate_middleware`, since a response has to be sent
-			// anyhow. This function makes sure no further middleware is executed.
-			validate_middleware[X](mut user_context, app.Middleware.get_global_handlers_after[X]())
-			validate_middleware[X](mut user_context, route.after_middlewares)
+				// no need to check the result of `validate_middleware`, since a response has to be sent
+				// anyhow. This function makes sure no further middleware is executed.
+				validate_middleware[X](mut user_context, app.Middleware.get_global_handlers_after[X]())
+				validate_middleware[X](mut user_context, route.after_middlewares)
+			}
 		}
 		// send only the headers, because if the response body is too big, TcpConn code will
 		// actually block, because it has to wait for the socket to become ready to write. Vweb
@@ -691,6 +694,7 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 	// then execute global middleware functions
 	$if A is MiddlewareApp {
 		if validate_middleware[X](mut user_context, app.Middleware.get_global_handlers[X]()) == false {
+			middleware_has_sent_response = true
 			return
 		}
 	}
@@ -724,6 +728,7 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 						// We found a match
 						$if A is MiddlewareApp {
 							if validate_middleware[X](mut user_context, route.middlewares) == false {
+								middleware_has_sent_response = true
 								return
 							}
 						}
@@ -744,6 +749,7 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 					if url_words.len == 0 && route_words == ['index'] && method.name == 'index' {
 						$if A is MiddlewareApp {
 							if validate_middleware[X](mut user_context, route.middlewares) == false {
+								middleware_has_sent_response = true
 								return
 							}
 						}
@@ -755,6 +761,7 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 					if params := route_matches(url_words, route_words) {
 						$if A is MiddlewareApp {
 							if validate_middleware[X](mut user_context, route.middlewares) == false {
+								middleware_has_sent_response = true
 								return
 							}
 						}

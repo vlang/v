@@ -58,6 +58,11 @@ pub fn controller[A, X](path string, mut global_app A) !&ControllerPath {
 	}
 }
 
+// register_controller adds a new Controller to your app
+pub fn (mut c Controller) register_host_controller[A, X](host string, path string, mut global_app A) ! {
+	c.controllers << controller_host[A, X](host, path, mut global_app)!
+}
+
 // controller_host generates a controller which only handles incoming requests from the `host` domain
 pub fn controller_host[A, X](host string, path string, mut global_app A) &ControllerPath {
 	mut ctrl := controller[A, X](path, mut global_app)

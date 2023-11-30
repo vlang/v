@@ -116,7 +116,8 @@ fn validate_middleware[T](mut ctx T, raw_handlers []voidptr) bool {
 }
 
 // encode_gzip adds gzip encoding to the HTTP Response body.
-// Use this middleware as last!
+// This middleware does not encode files, if you return `ctx.file()`.
+// Register this middleware as last!
 // Example: app.use(vweb.encode_gzip[Context]())
 pub fn encode_gzip[T]() MiddlewareOptions[T] {
 	return MiddlewareOptions[T]{
@@ -151,7 +152,7 @@ pub fn encode_gzip[T]() MiddlewareOptions[T] {
 }
 
 // decode_gzip decodes the body of a gzip'ed HTTP request.
-// Use this middleware before you do anything with the request body!
+// Register this middleware before you do anything with the request body!
 // Example: app.use(vweb.decode_gzip[Context]())
 pub fn decode_gzip[T]() MiddlewareOptions[T] {
 	return MiddlewareOptions[T]{

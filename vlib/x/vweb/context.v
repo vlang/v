@@ -49,7 +49,28 @@ pub mut:
 	livereload_poll_interval_ms int = 250
 }
 
-// vweb intern function
+// returns the request header data from the key
+pub fn (ctx &Context) get_header(key http.CommonHeader) !string {
+	return ctx.req.header.get(key)!
+}
+
+// returns the request header data from the key
+pub fn (ctx &Context) get_custom_header(key string) !string {
+	return ctx.req.header.get_custom(key)!
+}
+
+// set a header on the response object
+pub fn (mut ctx Context) set_header(key http.CommonHeader, value string) {
+	ctx.res.header.set(key, value)
+}
+
+// set a custom header on the response object
+pub fn (mut ctx Context) set_custom_header(key string, value string) ! {
+	ctx.res.header.set_custom(key, value)!
+}
+
+// send_response_to_client finalizes the response headers and sets Content-Type to `mimetype`
+// and the response body to `response`
 pub fn (mut ctx Context) send_response_to_client(mimetype string, response string) Result {
 	if ctx.done && !ctx.takeover {
 		eprintln('[vweb] a response cannot be sent twice over one connection')
@@ -95,7 +116,7 @@ pub fn (mut ctx Context) text(s string) Result {
 	return ctx.send_response_to_client('text/plain', s)
 }
 
-// Response HTTP_OK with json_s as payload with content-type `application/json`
+// Response HTTP_OK with j as payload with content-type `application/json`
 pub fn (mut ctx Context) json[T](j T) Result {
 	json_s := json.encode(j)
 	return ctx.send_response_to_client('application/json', json_s)
@@ -222,7 +243,7 @@ pub fn (ctx &Context) get_cookie(key string) ?string {
 pub fn (mut ctx Context) set_cookie(cookie http.Cookie) {
 	cookie_raw := cookie.str()
 	if cookie_raw == '' {
-		eprintln('[vweb] error setting cookie: name of cookie is invalid')
+		eprintln('[vweb] error setting cookie: name of cookie is invalid.\n${cookie}')
 		return
 	}
 	ctx.res.header.add(.set_cookie, cookie_raw)
@@ -242,4 +263,25 @@ pub fn (mut ctx Context) set_content_type(mime string) {
 pub fn (mut ctx Context) takeover_conn() Result {
 	ctx.takeover = true
 	return Result{}
+}
+
+// user_agent returns the user-agent header for the current client
+pub fn (ctx &Context) user_agent() string {
+	return ctx.req.header.get(.user_agent) or { '' }
+}
+
+// Returns the ip address from the current user
+pub fn (ctx &Context) ip() string {
+	mut ip := ctx.req.header.get(.x_forwarded_for) or { '' }
+	if ip == '' {
+		ip = ctx.req.header.get_custom('X-Real-Ip') or { '' }
+	}
+
+	if ip.contains(',') {
+		ip = ip.all_before(',')
+	}
+	if ip == '' {
+		ip = ctx.conn.peer_ip() or { '' }
+	}
+	return ip
 }
