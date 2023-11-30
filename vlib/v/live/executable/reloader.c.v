@@ -92,6 +92,7 @@ fn compile_lib(mut r live.LiveReloadInfo) ?string {
 		eprintln('new_lib_path: ${new_lib_path_with_extension} does not exist')
 		return none
 	}
+	println('recompilation success')
 	return new_lib_path_with_extension
 }
 
