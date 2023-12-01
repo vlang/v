@@ -1955,7 +1955,7 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 							if mut parent_info is Struct {
 								for mut embed in parent_info.embeds {
 									if embed == orig_type {
-										embed = fields[i].typ.set_flag(.generic)
+										embed = fields[i].typ
 										break
 									}
 								}
@@ -2138,7 +2138,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 								if fields[i].name.len > 1 && fields[i].name[0].is_capital() {
 									for mut embed in parent_info.embeds {
 										if embed == orig_type {
-											embed = fields[i].typ.set_flag(.generic)
+											embed = fields[i].typ
 											break
 										}
 									}
