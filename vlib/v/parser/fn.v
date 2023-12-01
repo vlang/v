@@ -440,7 +440,14 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		return_type = p.parse_type()
 		p.inside_fn_return = false
 		return_type_pos = return_type_pos.extend(p.prev_tok.pos())
+
+		if p.tok.kind == .not {
+			ret_type_sym := p.table.sym(return_type)
+			p.error_with_pos('wrong syntax, it must be !${ret_type_sym.name}, not ${ret_type_sym.name}!',
+				return_type_pos)
+		}
 	}
+
 	if p.tok.kind == .comma {
 		mr_pos := return_type_pos.extend(p.peek_tok.pos())
 		p.error_with_pos('multiple return types in function declaration must use parentheses, e.g. (int, string)',
