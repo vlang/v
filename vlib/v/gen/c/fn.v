@@ -257,8 +257,10 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	// For this purpose, the actual body of the live function,
 	// is put under a non publicly accessible function, that is prefixed
 	// with 'impl_live_' .
-	if is_livemain {
-		g.hotcode_fn_names << name
+	if is_livemode {
+		if is_livefn {
+			g.hotcode_fn_names << name
+		}
 		g.hotcode_fpaths << g.file.path
 	}
 	mut impl_fn_name := name
@@ -1158,14 +1160,22 @@ fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concret
 	return comptime_args
 }
 
-fn (mut g Gen) method_call(node ast.CallExpr) {
-	// TODO: there are still due to unchecked exprs (opt/some fn arg)
-	if node.left_type == 0 {
-		g.checker_bug('CallExpr.left_type is 0 in method_call', node.pos)
+fn (mut g Gen) resolve_receiver_name(node ast.CallExpr, unwrapped_rec_type ast.Type, final_left_sym ast.TypeSymbol, left_sym ast.TypeSymbol, typ_sym ast.TypeSymbol) string {
+	mut receiver_type_name := util.no_dots(g.cc_type(unwrapped_rec_type, false))
+	if final_left_sym.kind == .map && node.name in ['clone', 'move'] {
+		receiver_type_name = 'map'
 	}
-	if node.receiver_type == 0 {
-		g.checker_bug('CallExpr.receiver_type is 0 in method_call', node.pos)
+	if final_left_sym.kind == .array && !(left_sym.kind == .alias && left_sym.has_method(node.name))
+		&& node.name in ['clear', 'repeat', 'sort_with_compare', 'sorted_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice', 'pointers'] {
+		if !(left_sym.info is ast.Alias && typ_sym.has_method(node.name)) {
+			// `array_Xyz_clone` => `array_clone`
+			receiver_type_name = 'array'
+		}
 	}
+	return receiver_type_name
+}
+
+fn (mut g Gen) resolve_receiver_type(node ast.CallExpr) (ast.Type, &ast.TypeSymbol) {
 	left_type := g.unwrap_generic(node.left_type)
 	mut unwrapped_rec_type := node.receiver_type
 	if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 { // in generic fn
@@ -1215,9 +1225,23 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		unwrapped_rec_type = node.from_embed_types.last()
 		typ_sym = g.table.sym(unwrapped_rec_type)
 	}
+	return unwrapped_rec_type, typ_sym
+}
+
+fn (mut g Gen) method_call(node ast.CallExpr) {
+	// TODO: there are still due to unchecked exprs (opt/some fn arg)
+	if node.left_type == 0 {
+		g.checker_bug('CallExpr.left_type is 0 in method_call', node.pos)
+	}
+	if node.receiver_type == 0 {
+		g.checker_bug('CallExpr.receiver_type is 0 in method_call', node.pos)
+	}
+	left_type := g.unwrap_generic(node.left_type)
+	mut unwrapped_rec_type, typ_sym := g.resolve_receiver_type(node)
+
 	rec_cc_type := g.cc_type(unwrapped_rec_type, false)
 	mut receiver_type_name := util.no_dots(rec_cc_type)
-	if mut typ_sym.info is ast.Interface && typ_sym.info.defines_method(node.name) {
+	if typ_sym.info is ast.Interface && typ_sym.info.defines_method(node.name) {
 		// Speaker_name_table[s._interface_idx].speak(s._object)
 		$if debug_interface_method_call ? {
 			eprintln('>>> interface typ_sym.name: ${typ_sym.name} | receiver_type_name: ${receiver_type_name} | pos: ${node.pos}')
@@ -1306,15 +1330,11 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.get_free_method(rec_type)
 	}
 	mut has_cast := false
-	if final_left_sym.kind == .map && node.name in ['clone', 'move'] {
-		receiver_type_name = 'map'
-	}
+
+	receiver_type_name = g.resolve_receiver_name(node, unwrapped_rec_type, final_left_sym,
+		left_sym, typ_sym)
 	if final_left_sym.kind == .array && !(left_sym.kind == .alias && left_sym.has_method(node.name))
 		&& node.name in ['clear', 'repeat', 'sort_with_compare', 'sorted_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice', 'pointers'] {
-		if !(left_sym.info is ast.Alias && typ_sym.has_method(node.name)) {
-			// `array_Xyz_clone` => `array_clone`
-			receiver_type_name = 'array'
-		}
 		if node.name in ['last', 'first', 'pop'] {
 			return_type_str := g.typ(node.return_type)
 			has_cast = true

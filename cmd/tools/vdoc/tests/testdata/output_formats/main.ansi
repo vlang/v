@@ -2,6 +2,8 @@ Description:
 This is an example of a an .md file, used for adding more rich text
 documentation in a project or module.
 This is a link to the main V site.
+This is a bold text.
+This is a script console.log('hi from README.md'); .
 Examples:
 Processing command line args:
 import os
@@ -64,6 +66,10 @@ fn auth_verify(secret string, token string) bool {
     This is an example of a an .md file, used for adding more rich text documentation in a project or module.
     
     This is a [link](https://vlang.io/) to the main V site.
+    
+    This is a <b>bold text</b>.
+    
+    This is a script <script>console.log('hi from README.md');</script> .
     
     ## Examples:
     
@@ -135,7 +141,7 @@ fn auth_verify(secret string, token string) bool {
 [94mfn[39m [36mdef[39m()
     def - should be first
 [94mfn[39m [36mxyz[39m()
-    xyz - should be in the middle
+    xyz - should be in the middle a small script <script>console.log('hello');</script> bold text <b>bold</b> end underlined text <u>underline</u> end a link [main v repo](https://github.com/vlang/v)
 [94mfn[39m [32mMyXMLDocument[39m.[36mabc[39m(text [32mstring[39m) ?([32mstring[39m, [32mint[39m)
     MyXMLDocument.abc does something too... I just do not know what.
 [94mfn[39m [32mMyXMLDocument[39m.[36mfrom_file[39m(path [32mstring[39m) ![32mMyXMLDocument[39m
