@@ -59,7 +59,7 @@ fn (g &Gen) nth_stmt_pos(n int) int {
 
 @[inline]
 fn (mut g Gen) set_current_pos_as_last_stmt_pos() {
-	g.stmt_path_pos << g.out.len
+	g.stmt_path_pos << g.out.buf.len
 }
 
 @[inline]

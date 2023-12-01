@@ -340,7 +340,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 	mut comptime_may_skip_else := false
 
 	for i, branch in node.branches {
-		start_pos := g.out.len
+		start_pos := g.out.buf.len
 		if comptime_may_skip_else {
 			continue // if we already have a known true, ignore other branches
 		}
@@ -361,7 +361,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 			comptime_if_stmts_skip = !comptime_if_stmts_skip
 			g.writeln('')
 		}
-		expr_str := g.out.last_n(g.out.len - start_pos).trim_space()
+		expr_str := g.out.last_n(g.out.buf.len - start_pos).trim_space()
 		if expr_str != '' {
 			if g.defer_ifdef != '' {
 				g.defer_ifdef += '\n' + '\t'.repeat(g.indent + 1)

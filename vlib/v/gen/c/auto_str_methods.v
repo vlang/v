@@ -897,7 +897,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 	mut fn_body := strings.new_builder(info.fields.len * 256)
 	defer {
 		fn_body_surrounder.builder_write_befores(mut fn_builder)
-		fn_builder << fn_body
+		fn_builder.buf << fn_body.buf
 		fn_body_surrounder.builder_write_afters(mut fn_builder)
 		fn_builder.writeln('\tstring_free(&indents);')
 		fn_builder.writeln('\treturn res;')

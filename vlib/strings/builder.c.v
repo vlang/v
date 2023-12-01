@@ -7,12 +7,15 @@ module strings
 // dynamically growing buffer, then use the resulting large string. Using
 // a string builder is much better for performance/memory usage than doing
 // constantly string concatenation.
-pub type Builder = []u8
+pub struct Builder {
+pub mut:
+	buf []u8
+}
 
 // new_builder returns a new string builder, with an initial capacity of `initial_size`
 pub fn new_builder(initial_size int) Builder {
-	mut res := Builder([]u8{cap: initial_size})
-	unsafe { res.flags.set(.noslices) }
+	mut res := Builder{[]u8{cap: initial_size}}
+	unsafe { res.buf.flags.set(.noslices) }
 	return res
 }
 
@@ -23,8 +26,8 @@ pub fn new_builder(initial_size int) Builder {
 // Use only the return value after calling this method.
 @[unsafe]
 pub fn (mut b Builder) reuse_as_plain_u8_array() []u8 {
-	unsafe { b.flags.clear(.noslices) }
-	return *b
+	unsafe { b.buf.flags.clear(.noslices) }
+	return b.buf
 }
 
 // write_ptr writes `len` bytes provided byteptr to the accumulated buffer
@@ -33,7 +36,7 @@ pub fn (mut b Builder) write_ptr(ptr &u8, len int) {
 	if len == 0 {
 		return
 	}
-	unsafe { b.push_many(ptr, len) }
+	unsafe { b.buf.push_many(ptr, len) }
 }
 
 // write_rune appends a single rune to the accumulated buffer
@@ -44,7 +47,7 @@ pub fn (mut b Builder) write_rune(r rune) {
 	if res.len == 0 {
 		return
 	}
-	unsafe { b.push_many(res.str, res.len) }
+	unsafe { b.buf.push_many(res.str, res.len) }
 }
 
 // write_runes appends all the given runes to the accumulated buffer
@@ -55,23 +58,23 @@ pub fn (mut b Builder) write_runes(runes []rune) {
 		if res.len == 0 {
 			continue
 		}
-		unsafe { b.push_many(res.str, res.len) }
+		unsafe { b.buf.push_many(res.str, res.len) }
 	}
 }
 
 // clear clears the buffer contents
 pub fn (mut b Builder) clear() {
-	b = []u8{cap: b.cap}
+	b.buf = []u8{cap: b.buf.cap}
 }
 
 // write_u8 appends a single `data` byte to the accumulated buffer
 pub fn (mut b Builder) write_u8(data u8) {
-	b << data
+	b.buf << data
 }
 
 // write_byte appends a single `data` byte to the accumulated buffer
 pub fn (mut b Builder) write_byte(data u8) {
-	b << data
+	b.buf << data
 }
 
 // write_decimal appends a decimal representation of the number `n` into the builder `b`,
@@ -106,7 +109,7 @@ pub fn (mut b Builder) write(data []u8) !int {
 	if data.len == 0 {
 		return 0
 	}
-	b << data
+	b.buf << data
 	return data.len
 }
 
@@ -114,10 +117,10 @@ pub fn (mut b Builder) write(data []u8) !int {
 // `other`, so that the `other` strings builder is ready to receive new content.
 @[manualfree]
 pub fn (mut b Builder) drain_builder(mut other Builder, other_new_cap int) {
-	if other.len > 0 {
-		b << *other
+	if other.buf.len > 0 {
+		b.buf << other.buf
 	}
-	unsafe { other.free() }
+	unsafe { other.buf.free() }
 	other = new_builder(other_new_cap)
 }
 
@@ -125,7 +128,7 @@ pub fn (mut b Builder) drain_builder(mut other Builder, other_new_cap int) {
 // Note: it can panic, if there are not enough bytes in the strings builder yet.
 @[inline]
 pub fn (b &Builder) byte_at(n int) u8 {
-	return unsafe { (&[]u8(b))[n] }
+	return unsafe { b.buf[n] }
 }
 
 // write appends the string `s` to the buffer
@@ -134,7 +137,7 @@ pub fn (mut b Builder) write_string(s string) {
 	if s.len == 0 {
 		return
 	}
-	unsafe { b.push_many(s.str, s.len) }
+	unsafe { b.buf.push_many(s.str, s.len) }
 	// for c in s {
 	// b.buf << c
 	// }
@@ -150,14 +153,14 @@ pub fn (mut b Builder) writeln_string(s string) {
 
 // go_back discards the last `n` bytes from the buffer
 pub fn (mut b Builder) go_back(n int) {
-	b.trim(b.len - n)
+	b.buf.trim(b.buf.len - n)
 }
 
 @[inline]
 fn (b &Builder) spart(start_pos int, n int) string {
 	unsafe {
 		mut x := malloc_noscan(n + 1)
-		vmemcpy(x, &u8(b.data) + start_pos, n)
+		vmemcpy(x, &u8(b.buf.data) + start_pos, n)
 		x[n] = 0
 		return tos(x, n)
 	}
@@ -165,9 +168,9 @@ fn (b &Builder) spart(start_pos int, n int) string {
 
 // cut_last cuts the last `n` bytes from the buffer and returns them
 pub fn (mut b Builder) cut_last(n int) string {
-	cut_pos := b.len - n
+	cut_pos := b.buf.len - n
 	res := b.spart(cut_pos, n)
-	b.trim(cut_pos)
+	b.buf.trim(cut_pos)
 	return res
 }
 
@@ -175,16 +178,16 @@ pub fn (mut b Builder) cut_last(n int) string {
 // if `pos` is superior to builder length, returns an empty string
 // and cancel further operations
 pub fn (mut b Builder) cut_to(pos int) string {
-	if pos > b.len {
+	if pos > b.buf.len {
 		return ''
 	}
-	return b.cut_last(b.len - pos)
+	return b.cut_last(b.buf.len - pos)
 }
 
 // go_back_to resets the buffer to the given position `pos`
 // Note: pos should be < than the existing buffer length.
 pub fn (mut b Builder) go_back_to(pos int) {
-	b.trim(pos)
+	b.buf.trim(pos)
 }
 
 // writeln appends the string `s`, and then a newline character.
@@ -194,28 +197,28 @@ pub fn (mut b Builder) writeln(s string) {
 	// b.buf << c
 	// }
 	if s.len > 0 {
-		unsafe { b.push_many(s.str, s.len) }
+		unsafe { b.buf.push_many(s.str, s.len) }
 	}
 	// b.buf << []u8(s)  // TODO
-	b << u8(`\n`)
+	b.buf << u8(`\n`)
 }
 
 // last_n(5) returns 'world'
 // buf == 'hello world'
 pub fn (b &Builder) last_n(n int) string {
-	if n > b.len {
+	if n > b.buf.len {
 		return ''
 	}
-	return b.spart(b.len - n, n)
+	return b.spart(b.buf.len - n, n)
 }
 
 // after(6) returns 'world'
 // buf == 'hello world'
 pub fn (b &Builder) after(n int) string {
-	if n >= b.len {
+	if n >= b.buf.len {
 		return ''
 	}
-	return b.spart(n, b.len - n)
+	return b.spart(n, b.buf.len - n)
 }
 
 // str returns a copy of all of the accumulated buffer content.
@@ -223,32 +226,32 @@ pub fn (b &Builder) after(n int) string {
 // The returned string *owns* its own separate copy of the accumulated data that was in
 // the string builder, before the .str() call.
 pub fn (mut b Builder) str() string {
-	b << u8(0)
-	bcopy := unsafe { &u8(memdup_noscan(b.data, b.len)) }
-	s := unsafe { bcopy.vstring_with_len(b.len - 1) }
-	b.trim(0)
+	b.buf << u8(0)
+	bcopy := unsafe { &u8(memdup_noscan(b.buf.data, b.buf.len)) }
+	s := unsafe { bcopy.vstring_with_len(b.buf.len - 1) }
+	b.buf.trim(0)
 	return s
 }
 
 // ensure_cap ensures that the buffer has enough space for at least `n` bytes by growing the buffer if necessary
 pub fn (mut b Builder) ensure_cap(n int) {
 	// code adapted from vlib/builtin/array.v
-	if n <= b.cap {
+	if n <= b.buf.cap {
 		return
 	}
 
-	new_data := vcalloc(n * b.element_size)
-	if b.data != unsafe { nil } {
-		unsafe { vmemcpy(new_data, b.data, b.len * b.element_size) }
+	new_data := vcalloc(n * b.buf.element_size)
+	if b.buf.data != unsafe { nil } {
+		unsafe { vmemcpy(new_data, b.buf.data, b.buf.len * b.buf.element_size) }
 		// TODO: the old data may be leaked when no GC is used (ref-counting?)
-		if b.flags.has(.noslices) {
-			unsafe { free(b.data) }
+		if b.buf.flags.has(.noslices) {
+			unsafe { free(b.buf.data) }
 		}
 	}
 	unsafe {
-		b.data = new_data
-		b.offset = 0
-		b.cap = n
+		b.buf.data = new_data
+		b.buf.offset = 0
+		b.buf.cap = n
 	}
 }
 
@@ -256,10 +259,10 @@ pub fn (mut b Builder) ensure_cap(n int) {
 // Note: do not use the builder, after a call to free().
 @[unsafe]
 pub fn (mut b Builder) free() {
-	if b.data != 0 {
-		unsafe { free(b.data) }
+	if b.buf.data != 0 {
+		unsafe { free(b.buf.data) }
 		unsafe {
-			b.data = nil
+			b.buf.data = nil
 		}
 	}
 }

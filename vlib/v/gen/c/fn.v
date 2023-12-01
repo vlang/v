@@ -56,7 +56,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 			g.definitions.write_string('static ')
 		}
 		if !node.is_anon {
-			g.out_fn_start_pos << g.out.len
+			g.out_fn_start_pos << g.out.buf.len
 		}
 	}
 	prev_is_direct_array_access := g.is_direct_array_access
@@ -66,7 +66,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	}
 	g.gen_attrs(node.attrs)
 	mut skip := false
-	pos := g.out.len
+	pos := g.out.buf.len
 	should_bundle_module := util.should_bundle_module(node.mod)
 	if g.pref.build_mode == .build_module {
 		// TODO true for not just "builtin"
@@ -202,7 +202,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		// TODO remove unsafe
 		g.cur_fn = node
 	}
-	fn_start_pos := g.out.len
+	fn_start_pos := g.out.buf.len
 	is_closure := node.scope.has_inherited_vars()
 	mut cur_closure_ctx := ''
 	if is_closure {
@@ -304,7 +304,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		g.definitions.write_string(fn_header)
 		g.write(fn_header)
 	}
-	arg_start_pos := g.out.len
+	arg_start_pos := g.out.buf.len
 	fargs, fargtypes, heap_promoted := g.fn_decl_params(node.params, node.scope, node.is_variadic)
 	if is_closure {
 		g.nr_closures++
@@ -569,7 +569,7 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 		}
 		builder.writeln('};\n')
 	}
-	pos := g.out.len
+	pos := g.out.buf.len
 	was_anon_fn := g.anon_fn
 	g.anon_fn = true
 	g.fn_decl(node.decl)

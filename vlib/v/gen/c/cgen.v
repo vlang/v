@@ -358,23 +358,23 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) (string
 		util.timing_start('cgen unification')
 		for g in pp.get_results_ref[Gen]() {
 			global_g.embedded_files << g.embedded_files
-			global_g.out.write(g.out) or { panic(err) }
-			global_g.cheaders.write(g.cheaders) or { panic(err) }
-			global_g.preincludes.write(g.preincludes) or { panic(err) }
-			global_g.includes.write(g.includes) or { panic(err) }
-			global_g.typedefs.write(g.typedefs) or { panic(err) }
-			global_g.type_definitions.write(g.type_definitions) or { panic(err) }
-			global_g.alias_definitions.write(g.alias_definitions) or { panic(err) }
-			global_g.definitions.write(g.definitions) or { panic(err) }
-			global_g.gowrappers.write(g.gowrappers) or { panic(err) }
-			global_g.auto_str_funcs.write(g.auto_str_funcs) or { panic(err) }
-			global_g.dump_funcs.write(g.auto_str_funcs) or { panic(err) }
-			global_g.comptime_definitions.write(g.comptime_definitions) or { panic(err) }
-			global_g.pcs_declarations.write(g.pcs_declarations) or { panic(err) }
-			global_g.hotcode_definitions.write(g.hotcode_definitions) or { panic(err) }
-			global_g.embedded_data.write(g.embedded_data) or { panic(err) }
-			global_g.shared_types.write(g.shared_types) or { panic(err) }
-			global_g.shared_functions.write(g.channel_definitions) or { panic(err) }
+			global_g.out.write(g.out.buf) or { panic(err) }
+			global_g.cheaders.write(g.cheaders.buf) or { panic(err) }
+			global_g.preincludes.write(g.preincludes.buf) or { panic(err) }
+			global_g.includes.write(g.includes.buf) or { panic(err) }
+			global_g.typedefs.write(g.typedefs.buf) or { panic(err) }
+			global_g.type_definitions.write(g.type_definitions.buf) or { panic(err) }
+			global_g.alias_definitions.write(g.alias_definitions.buf) or { panic(err) }
+			global_g.definitions.write(g.definitions.buf) or { panic(err) }
+			global_g.gowrappers.write(g.gowrappers.buf) or { panic(err) }
+			global_g.auto_str_funcs.write(g.auto_str_funcs.buf) or { panic(err) }
+			global_g.dump_funcs.write(g.auto_str_funcs.buf) or { panic(err) }
+			global_g.comptime_definitions.write(g.comptime_definitions.buf) or { panic(err) }
+			global_g.pcs_declarations.write(g.pcs_declarations.buf) or { panic(err) }
+			global_g.hotcode_definitions.write(g.hotcode_definitions.buf) or { panic(err) }
+			global_g.embedded_data.write(g.embedded_data.buf) or { panic(err) }
+			global_g.shared_types.write(g.shared_types.buf) or { panic(err) }
+			global_g.shared_functions.write(g.channel_definitions.buf) or { panic(err) }
 
 			global_g.force_main_console = global_g.force_main_console || g.force_main_console
 
@@ -403,13 +403,13 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) (string
 			for k, v in g.sumtype_definitions {
 				global_g.sumtype_definitions[k] = v
 			}
-			global_g.json_forward_decls.write(g.json_forward_decls) or { panic(err) }
-			global_g.enum_typedefs.write(g.enum_typedefs) or { panic(err) }
-			global_g.channel_definitions.write(g.channel_definitions) or { panic(err) }
-			global_g.thread_definitions.write(g.thread_definitions) or { panic(err) }
-			global_g.sql_buf.write(g.sql_buf) or { panic(err) }
+			global_g.json_forward_decls.write(g.json_forward_decls.buf) or { panic(err) }
+			global_g.enum_typedefs.write(g.enum_typedefs.buf) or { panic(err) }
+			global_g.channel_definitions.write(g.channel_definitions.buf) or { panic(err) }
+			global_g.thread_definitions.write(g.thread_definitions.buf) or { panic(err) }
+			global_g.sql_buf.write(g.sql_buf.buf) or { panic(err) }
 
-			global_g.cleanups[g.file.mod.name].write(g.cleanup) or { panic(err) } // strings.Builder.write never fails; it is like that in the source
+			global_g.cleanups[g.file.mod.name].write(g.cleanup.buf) or { panic(err) } // strings.Builder.write never fails; it is like that in the source
 
 			for str_type in g.str_types {
 				global_g.str_types << str_type
@@ -498,14 +498,14 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) (string
 	}
 
 	// insert for options forward
-	if g.out_options_forward.len > 0 || g.out_results_forward.len > 0 {
+	if g.out_options_forward.buf.len > 0 || g.out_results_forward.buf.len > 0 {
 		tail := g.type_definitions.cut_to(g.options_pos_forward)
-		if g.out_options_forward.len > 0 {
+		if g.out_options_forward.buf.len > 0 {
 			g.type_definitions.writeln('// #start V forward option_xxx definitions:')
 			g.type_definitions.writeln(g.out_options_forward.str())
 			g.type_definitions.writeln('// #end V forward option_xxx definitions\n')
 		}
-		if g.out_results_forward.len > 0 {
+		if g.out_results_forward.buf.len > 0 {
 			g.type_definitions.writeln('// #start V forward result_xxx definitions:')
 			g.type_definitions.writeln(g.out_results_forward.str())
 			g.type_definitions.writeln('// #end V forward result_xxx definitions\n')
@@ -528,7 +528,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) (string
 	b.write_string(g.preincludes.str())
 	b.writeln('\n// V cheaders:')
 	b.write_string(g.cheaders.str())
-	if g.pcs_declarations.len > 0 {
+	if g.pcs_declarations.buf.len > 0 {
 		b.writeln('\n// V profile counters:')
 		b.write_string(g.pcs_declarations.str())
 	}
@@ -563,32 +563,32 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) (string
 		b.writeln('\n// V interface table:')
 		b.write_string(interface_table)
 	}
-	if g.gowrappers.len > 0 {
+	if g.gowrappers.buf.len > 0 {
 		b.writeln('\n// V gowrappers:')
 		b.write_string(g.gowrappers.str())
 	}
-	if g.hotcode_definitions.len > 0 {
+	if g.hotcode_definitions.buf.len > 0 {
 		b.writeln('\n// V hotcode definitions:')
 		b.write_string(g.hotcode_definitions.str())
 	}
-	if g.embedded_data.len > 0 {
+	if g.embedded_data.buf.len > 0 {
 		b.writeln('\n// V embedded data:')
 		b.write_string(g.embedded_data.str())
 	}
-	if g.shared_functions.len > 0 {
+	if g.shared_functions.buf.len > 0 {
 		b.writeln('\n// V shared type functions:')
 		b.write_string(g.shared_functions.str())
 		b.write_string(c_concurrency_helpers)
 	}
-	if g.channel_definitions.len > 0 {
+	if g.channel_definitions.buf.len > 0 {
 		b.writeln('\n// V channel code:')
 		b.write_string(g.channel_definitions.str())
 	}
-	if g.auto_str_funcs.len > 0 {
+	if g.auto_str_funcs.buf.len > 0 {
 		b.writeln('\n// V auto str functions:')
 		b.write_string(g.auto_str_funcs.str())
 	}
-	if g.dump_funcs.len > 0 {
+	if g.dump_funcs.buf.len > 0 {
 		b.writeln('\n// V dump functions:')
 		b.write_string(g.dump_funcs.str())
 	}
@@ -609,7 +609,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) (string
 		}
 	}
 	b.writeln('\n// end of V out')
-	mut header := b.last_n(b.len)
+	mut header := b.last_n(b.buf.len)
 	header = '#ifndef V_HEADER_FILE\n#define V_HEADER_FILE' + header
 	header += '\n#endif\n'
 	out_str := g.out.str()
@@ -799,7 +799,7 @@ pub fn (mut g Gen) init() {
 		g.cheaders.writeln('#include <spawn.h>')
 	}
 	g.write_builtin_types()
-	g.options_pos_forward = g.type_definitions.len
+	g.options_pos_forward = g.type_definitions.buf.len
 	g.write_typedef_types()
 	g.write_typeof_functions()
 	g.write_sorted_types()
@@ -1037,7 +1037,7 @@ fn (mut g Gen) generic_fn_name(types []ast.Type, before string) string {
 }
 
 fn (mut g Gen) expr_string(expr ast.Expr) string {
-	pos := g.out.len
+	pos := g.out.buf.len
 	// pos2 := 	g.out_parallel[g.out_idx].len
 	g.expr(expr)
 	// g.out_parallel[g.out_idx].cut_to(pos2)
@@ -1045,7 +1045,7 @@ fn (mut g Gen) expr_string(expr ast.Expr) string {
 }
 
 fn (mut g Gen) expr_string_with_cast(expr ast.Expr, typ ast.Type, exp ast.Type) string {
-	pos := g.out.len
+	pos := g.out.buf.len
 	// pos2 := 	g.out_parallel[g.out_idx].len
 	g.expr_with_cast(expr, typ, exp)
 	// g.out_parallel[g.out_idx].cut_to(pos2)
@@ -1055,7 +1055,7 @@ fn (mut g Gen) expr_string_with_cast(expr ast.Expr, typ ast.Type, exp ast.Type) 
 // Surround a potentially multi-statement expression safely with `prepend` and `append`.
 // (and create a statement)
 fn (mut g Gen) expr_string_surround(prepend string, expr ast.Expr, append string) string {
-	pos := g.out.len
+	pos := g.out.buf.len
 	// pos2 := 	g.out_parallel[g.out_idx].len
 	g.stmt_path_pos << pos
 	defer {
@@ -1451,7 +1451,7 @@ pub fn (mut g Gen) write_typedef_types() {
 					len := styp.after('_')
 					mut fixed := g.typ(info.elem_type)
 					if elem_sym.info is ast.FnType {
-						pos := g.out.len
+						pos := g.out.buf.len
 						// pos2:=g.out_parallel[g.out_idx].len
 						g.write_fn_ptr_decl(&elem_sym.info, '')
 						fixed = g.out.cut_to(pos)
@@ -1667,7 +1667,7 @@ pub fn (mut g Gen) write_array_fixed_return_types() {
 }
 
 pub fn (mut g Gen) write_multi_return_types() {
-	start_pos := g.type_definitions.len
+	start_pos := g.type_definitions.buf.len
 	g.typedefs.writeln('\n// BEGIN_multi_return_typedefs')
 	g.type_definitions.writeln('\n// BEGIN_multi_return_structs')
 	for sym in g.table.type_symbols {
@@ -2570,10 +2570,10 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 }
 
 fn write_octal_escape(mut b strings.Builder, c u8) {
-	b << 92 // \
-	b << 48 + (c >> 6) // oct digit 2
-	b << 48 + (c >> 3) & 7 // oct digit 1
-	b << 48 + c & 7 // oct digit 0
+	b.buf << 92 // \
+	b.buf << 48 + (c >> 6) // oct digit 2
+	b.buf << 48 + (c >> 3) & 7 // oct digit 1
+	b.buf << 48 + c & 7 // oct digit 0
 }
 
 fn cescape_nonascii(original string) string {
@@ -4739,7 +4739,7 @@ fn (mut g Gen) hash_stmt(node ast.HashStmt) {
 	line_nr := node.pos.line_nr + 1
 	mut ct_condition := ''
 	if node.ct_conds.len > 0 {
-		ct_condition_start := g.out.len
+		ct_condition_start := g.out.buf.len
 		for idx, ct_expr in node.ct_conds {
 			g.comptime_if_cond(ct_expr, false)
 			if idx < node.ct_conds.len - 1 {
@@ -5818,7 +5818,7 @@ fn (mut g Gen) write_init_function() {
 	if g.pref.is_liveshared {
 		return
 	}
-	fn_vinit_start_pos := g.out.len
+	fn_vinit_start_pos := g.out.buf.len
 
 	// ___argv is declared as voidptr here, because that unifies the windows/unix logic
 	g.writeln('void _vinit(int ___argc, voidptr ___argv) {')
@@ -5906,7 +5906,7 @@ fn (mut g Gen) write_init_function() {
 		println(g.out.after(fn_vinit_start_pos))
 	}
 
-	fn_vcleanup_start_pos := g.out.len
+	fn_vcleanup_start_pos := g.out.buf.len
 	g.writeln('void _vcleanup(void) {')
 	if g.pref.trace_calls {
 		g.writeln('\tv__trace_calls__on_call(_SLIT("_vcleanup"));')
@@ -6078,7 +6078,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 						fixed_elem_name = fixed_elem_name[3..]
 					}
 					if elem_sym.info is ast.FnType {
-						pos := g.out.len
+						pos := g.out.buf.len
 						g.write_fn_ptr_decl(&elem_sym.info, '')
 						fixed_elem_name = g.out.cut_to(pos)
 						mut def_str := 'typedef ${fixed_elem_name};'
@@ -6946,7 +6946,7 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 					// inline void Cat_speak_Interface_Animal_method_wrapper(Cat c) { return Cat_speak(*c); }
 					iwpostfix := '_Interface_${interface_name}_method_wrapper'
 					methods_wrapper.write_string('static inline ${g.typ(method.return_type)} ${cctype}_${name}${iwpostfix}(')
-					params_start_pos := g.out.len
+					params_start_pos := g.out.buf.len
 					mut params := method.params.clone()
 					// hack to mutate typ
 					params[0] = ast.Param{
@@ -6954,7 +6954,7 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 						typ: st.set_nr_muls(1)
 					}
 					fargs, _, _ := g.fn_decl_params(params, unsafe { nil }, false)
-					mut parameter_name := g.out.cut_last(g.out.len - params_start_pos)
+					mut parameter_name := g.out.cut_last(g.out.buf.len - params_start_pos)
 
 					if st.is_ptr() {
 						parameter_name = parameter_name.trim_string_left('__shared__')

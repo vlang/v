@@ -115,7 +115,7 @@ fn (mut g Gen) dump_expr_definitions() {
 		if dump_sym.kind == .function {
 			fninfo := dump_sym.info as ast.FnType
 			str_dumparg_type = 'DumpFNType_${name}'
-			tdef_pos := g.out.len
+			tdef_pos := g.out.buf.len
 			g.write_fn_ptr_decl(&fninfo, str_dumparg_type)
 			str_tdef := g.out.after(tdef_pos)
 			g.go_back(str_tdef.len)

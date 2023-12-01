@@ -330,7 +330,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 				}
 			}
 			if has_cast {
-				pos := g.out.len
+				pos := g.out.buf.len
 				g.call_args(expr)
 				mut call_args_str := g.out.after(pos)
 				g.go_back(call_args_str.len)
@@ -343,7 +343,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 				g.gowrappers.write_string(call_args_str)
 			} else if expr.name in ['print', 'println', 'eprint', 'eprintln', 'panic']
 				&& expr.args[0].typ != ast.string_type {
-				pos := g.out.len
+				pos := g.out.buf.len
 				g.gen_expr_to_string(expr.args[0].expr, expr.args[0].typ)
 				mut call_args_str := g.out.after(pos)
 				g.out.go_back(call_args_str.len)

@@ -426,7 +426,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					right := val as ast.Ident
 					v_var = right.name
 				}
-				pos := g.out.len
+				pos := g.out.buf.len
 				g.expr(left)
 
 				if g.is_arraymap_set && g.arraymap_set_pos > 0 {
@@ -554,9 +554,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 
 				fn_name := c_fn_name(g.get_ternary_name(ident.name))
 				g.write('${ret_styp} (${msvc_call_conv}*${fn_name}) (')
-				def_pos := g.definitions.len
+				def_pos := g.definitions.buf.len
 				g.fn_decl_params(func.func.params, unsafe { nil }, false)
-				g.definitions.go_back(g.definitions.len - def_pos)
+				g.definitions.go_back(g.definitions.buf.len - def_pos)
 				g.write(')${call_conv_attribute_suffix}')
 			} else {
 				if is_decl {

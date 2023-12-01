@@ -443,7 +443,7 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 		}
 	}
 	// TODO avoid buffer manip
-	start_pos := g.type_definitions.len
+	start_pos := g.type_definitions.buf.len
 
 	mut pre_pragma := ''
 	mut post_pragma := ''

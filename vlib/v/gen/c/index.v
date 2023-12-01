@@ -422,7 +422,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 		g.is_arraymap_set = old_is_arraymap_set
 		g.is_assign_lhs = old_is_assign_lhs
 		g.write('}')
-		g.arraymap_set_pos = g.out.len
+		g.arraymap_set_pos = g.out.buf.len
 		g.write(', &(${val_type_str}[]) { ')
 		if g.assign_op != .assign && info.value_type != ast.string_type {
 			zero := g.type_default(info.value_type)

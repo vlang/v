@@ -61,7 +61,7 @@ fn (mut g Gen) gen_jsons() {
 			if sym.kind == .struct_ && !utyp.is_ptr() {
 				init_styp += ' = '
 				g.set_current_pos_as_last_stmt_pos()
-				pos := g.out.len
+				pos := g.out.buf.len
 				g.expr_with_tmp_var(ast.Expr(ast.StructInit{ typ: utyp, typ_str: styp }),
 					utyp, utyp, 'res')
 				init_styp = g.out.cut_to(pos).trim_space()
@@ -73,7 +73,7 @@ fn (mut g Gen) gen_jsons() {
 			if sym.kind == .struct_ {
 				init_styp += ' = '
 				g.set_current_pos_as_last_stmt_pos()
-				pos := g.out.len
+				pos := g.out.buf.len
 				g.write(init_styp)
 				g.expr(ast.Expr(ast.StructInit{
 					typ: utyp
