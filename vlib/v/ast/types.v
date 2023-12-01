@@ -1544,7 +1544,11 @@ pub fn (t &TypeSymbol) symbol_name_except_generic() string {
 }
 
 pub fn (t &TypeSymbol) embed_name() string {
-	if t.name.contains('[') {
+	if t.name.contains('<') {
+		// Abc<T>[int] => Abc
+		// main.Abc<T>[main.Enum] => Abc
+		return t.name.split('<')[0].split('.').last()
+	} else if t.name.contains('[') {
 		// Abc[int] => Abc
 		// main.Abc[main.Enum] => Abc
 		return t.name.split('[')[0].split('.').last()
