@@ -69,7 +69,8 @@ format *PG_VERSION_NUM 17* without 0 also should work
 
 7. Add libpq.dll to v/thirdparty/pg/win64
 
-To get libpq.dll You can install PostgreSQL database and get this dll from bin folder, or compile DB from source code
+To get the libpq.dll file, you can install the PostgreSQL database, 
+and get this dll from its bin/ folder, or compile DB from source code.
 ```
 
 ## Getting Started with [PostgreSQL](https://www.postgresqltutorial.com/postgresql-getting-started)
