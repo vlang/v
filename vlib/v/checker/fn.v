@@ -1732,10 +1732,10 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	} else if (left_sym.kind == .map || final_left_sym.kind == .map)
 		&& method_name in ['clone', 'keys', 'values', 'move', 'delete'] {
 		if left_sym.kind == .map {
-			return c.map_builtin_method_call(mut node, left_type, c.table.sym(left_type))
+			return c.map_builtin_method_call(mut node, unwrapped_left_type, c.table.sym(unwrapped_left_type))
 		} else if left_sym.info is ast.Alias {
-			parent_type := left_sym.info.parent_type
-			return c.map_builtin_method_call(mut node, parent_type, c.table.final_sym(left_type))
+			parent_type := c.unwrap_generic(left_sym.info.parent_type)
+			return c.map_builtin_method_call(mut node, parent_type, c.table.final_sym(unwrapped_left_type))
 		}
 	} else if left_sym.kind == .array && method_name in ['insert', 'prepend'] {
 		if method_name == 'insert' {
@@ -1767,7 +1767,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 	} else if final_left_sym.kind == .array
 		&& method_name in ['filter', 'map', 'sort', 'sorted', 'contains', 'any', 'all', 'first', 'last', 'pop'] {
-		return c.array_builtin_method_call(mut node, left_type, final_left_sym)
+		return c.array_builtin_method_call(mut node, unwrapped_left_type, final_left_sym)
 	} else if c.pref.backend.is_js() && left_sym.name.starts_with('Promise[')
 		&& method_name == 'wait' {
 		info := left_sym.info as ast.Struct
