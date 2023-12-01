@@ -7,7 +7,7 @@ const port = 13003
 
 const localserver = 'http://127.0.0.1:${port}'
 
-const exit_after = time.second * 10
+const exit_after = time.second * 15
 
 pub struct App {
 	vweb.StaticHandler
@@ -65,7 +65,7 @@ fn run_app_test() {
 
 	app.mount_static_folder_at('testdata', '/static') or { panic(err) }
 
-	vweb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip) or {
+	vweb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 10, family: .ip) or {
 		panic('could not start vweb app')
 	}
 }

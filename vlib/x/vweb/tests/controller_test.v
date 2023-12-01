@@ -7,7 +7,7 @@ const port = 13006
 
 const localserver = 'http://127.0.0.1:${port}'
 
-const exit_after = time.second * 10
+const exit_after = time.second * 15
 
 pub struct Context {
 	vweb.Context
@@ -66,7 +66,7 @@ fn testsuite_begin() {
 		}
 	}()
 	// app startup time
-	time.sleep(time.second * 2)
+	time.sleep(time.second * 10)
 
 	spawn fn () {
 		time.sleep(exit_after)

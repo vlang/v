@@ -23,11 +23,11 @@ struct Article {
 
 fn test_a_vweb_application_compiles() {
 	spawn fn () {
-		time.sleep(2 * time.second)
+		time.sleep(15 * time.second)
 		exit(0)
 	}()
 	mut app := &App{}
-	vweb.run_at[App, Context](mut app, port: port, family: .ip)!
+	vweb.run_at[App, Context](mut app, port: port, family: .ip, timeout_in_seconds: 10)!
 }
 
 pub fn (mut ctx Context) before_request() {

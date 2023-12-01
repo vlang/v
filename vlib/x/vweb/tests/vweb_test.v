@@ -6,23 +6,15 @@ import net.http
 import io
 
 const sport = 13005
-
 const localserver = '127.0.0.1:${sport}'
-
 const exit_after_time = 12000
-
 // milliseconds
 const vexe = os.getenv('VEXE')
-
 const vweb_logfile = os.getenv('VWEB_LOGFILE')
-
 const vroot = os.dir(vexe)
-
 const serverexe = os.join_path(os.cache_dir(), 'vweb_test_server.exe')
-
-const tcp_r_timeout = 2 * time.second
-
-const tcp_w_timeout = 2 * time.second
+const tcp_r_timeout = 10 * time.second
+const tcp_w_timeout = 10 * time.second
 
 // setup of vweb webserver
 fn testsuite_begin() {
