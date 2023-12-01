@@ -134,11 +134,7 @@ pub fn (mut b Builder) write_string(s string) {
 	if s.len == 0 {
 		return
 	}
-	$if gcboehm ? {
-		unsafe { b.push_many_noscan(s.str, s.len) }
-	} $else {
-		unsafe { b.push_many(s.str, s.len) }
-	}
+	unsafe { b.push_many(s.str, s.len) }
 	// for c in s {
 	// b.buf << c
 	// }
