@@ -31,9 +31,9 @@ Use the `-prod` flag when building for production.
 
 ## Getting Started
 
-To start, you have to import the module `x.vweb` and define a structure that will 
+To start, you must import the module `x.vweb` and define a structure which will 
 represent your app and a structure which will represent the context of a request.
-These structures have to be declared with the `pub` keyword.
+These structures must be declared with the `pub` keyword.
 
 **Example:**
 ```v
@@ -60,23 +60,22 @@ fn main() {
 You can use the `App` struct for data you want to keep during the lifetime of your program,
 or for data that you want to share between different routes.
 
-The `Context` struct is created every time a request is received, so you could use this struct
-for data that could be different for each request.
+A new `Context` struct is created every time a request is received, to contain data that is different for each request.
 
 ## Defining endpoints
 
-To add endpoints to your web server, you have to extend the `App` struct.
+To add endpoints to your web server, you must extend the `App` struct.
 For routing you can either use auto-mapping of function names or specify the path as an attribute.
 The function expects a parameter of your Context type and a response of the type `vweb.Result`.
 
 **Example:**
 ```v ignore
-// This endpoint can be accessed via http://localhost:port/hello
+// This endpoint can be accessed via http://server:port/hello
 pub fn (app &App) hello(mut ctx Context) vweb.Result {
 	return ctx.text('Hello')
 }
 
-// This endpoint can be accessed via http://localhost:port/foo
+// This endpoint can be accessed via http://server:port/foo
 @['/foo']
 pub fn (app &App) world(mut ctx Context) vweb.Result {
 	return ctx.text('World')
@@ -92,13 +91,13 @@ you can simply add the attribute before the function definition.
 **Example:**
 
 ```v ignore
-// only GET requests to http://localhost:port/world are handled by this method
+// only GET requests to http://server:port/world are handled by this method
 @[get]
 pub fn (app &App) world(mut ctx Context) vweb.Result {
 	return ctx.text('World')
 }
 
-// only POST requests to http://localhost:port/product/create are handled by this method
+// only POST requests to http://server:port/product/create are handled by this method
 @['/product/create'; post]
 pub fn (app &App) create_product(mut ctx Context) vweb.Result {
 	return ctx.text('product')
@@ -123,7 +122,7 @@ pub fn (app &App) hello_user(mut ctx Context, user string) vweb.Result {
 }
 ```
 
-If we would visit http://localhost:port/hello/vaesel we would see the text `Hello vaesel`.
+If we visit http://localhost:port/hello/vaesel we would see the text `Hello vaesel`.
 
 ### Routes with Parameter Arrays
 
@@ -148,7 +147,7 @@ You have direct access to query values by accessing the `query` field on your co
 You are also able to access any formdata or files that were sent
 with the request with the fields `.form` and `.files` respectively.
 
-In the following example if we would visit http://localhost:port/user?name=Vweb we 
+In the following example, visiting http://localhost:port/user?name=Vweb we 
 will see the text `Hello Vweb!`. And if we access the route without the `name` parameter,
 http://localhost:port/user, we will see the text `no user was found`, 
 
@@ -210,11 +209,12 @@ pub fn (app &App) normal(mut ctx Context) vweb.Result {
 }
 ```
 
-In this example we defined an endpoint with a parameter first. If we would access our app
+In this example we defined an endpoint with a parameter first. If we access our app
 on the url http://localhost:port/normal we will not see `from normal`, but 
 `from with_parameter, path: "normal"`.
 
 ### Custom not found page
+
 You can implement a `not_found` endpoint that is called when a request is made and no
 matching route is found to replace the default HTTP 404 not found page. This route
 has to be defined on our Context struct.
@@ -248,12 +248,12 @@ Let's say you have the following file structure:
 └── main.v
 ```
 
-If we want to have all the documents inside the `static` to be publicly accessible we can
+If we want all the documents inside the `static` sub-directory to be publicly accessible we can
 use `handle_static`.
 
 > **Note:**
 > vweb will recursively search the folder you mount; all the files inside that folder
-> will be publically available.
+> will be publicly available.
 
 *main.v*
 ```v
@@ -302,12 +302,12 @@ It is also possible to mount the `static` folder at a custom path.
 app.mount_static_folder_at('static', '/public')
 ```
 
-If we run our app the `main.css` file is available at http://localhost:8080/files/css/main.css
+If we run our app the `main.css` file is available at http://localhost:8080/public/main.css
 
 ### Dealing with MIME types
 
-By default vweb will map the extension of a file to a MIME type. If any of your static files'
-extension do not have a default MIME type in vweb, vweb will throw an error and you
+By default vweb will map the extension of a file to a MIME type. If any of your static file's
+extensions do not have a default MIME type in vweb, vweb will throw an error and you
 have to add your MIME type to `.static_mime_types` yourself.
 
 **Example:**
@@ -558,6 +558,7 @@ You can do everything with a controller struct as with a regular `App` struct.
 Register middleware, add static files and you can even register other controllers!
 
 ### Routing
+
 Any route inside a controller struct is treated as a relative route to its controller namespace.
 
 ```v ignore
@@ -584,6 +585,7 @@ There will be an error, because the controller `Admin` handles all routes starti
 `'/admin'`: the endpoint `admin_path` is unreachable.
 
 ### Controller with hostname
+
 You can also set a host for a controller. All requests coming to that host will be handled
 by the controller.
 
@@ -615,6 +617,7 @@ embed `vweb.Context`. Below are some of te most used methods, look at the
 You can directly access the HTTP request on the `.req` field.
 
 #### Get request headers
+
 **Example:**
 ```v ignore
 pub fn (app &App) index(mut ctx Context) vweb.Result {
@@ -626,6 +629,7 @@ pub fn (app &App) index(mut ctx Context) vweb.Result {
 ```
 
 #### Get a cookie
+
 **Example:**
 ```v ignore
 pub fn (app &App) index(mut ctx Context) vweb.Result {
@@ -654,6 +658,7 @@ ctx.json(User{
 ```
 
 #### Sending files
+
 **Example:**
 ```v ignore
 pub fn (app &App) file_response(mut ctx Context) vweb.Result {
@@ -663,6 +668,7 @@ pub fn (app &App) file_response(mut ctx Context) vweb.Result {
 ```
 
 #### Set response headers
+
 **Example:**
 ```v ignore
 pub fn (app &App) index(mut ctx Context) vweb.Result {
@@ -674,6 +680,7 @@ pub fn (app &App) index(mut ctx Context) vweb.Result {
 ```
 
 #### Set a cookie
+
 **Example:**
 ```v ignore
 pub fn (app &App) index(mut ctx Context) vweb.Result {
@@ -689,6 +696,7 @@ pub fn (app &App) index(mut ctx Context) vweb.Result {
 ```
 
 #### Redirect
+
 **Example:**
 ```v ignore
 pub fn (app &App) index(mut ctx Context) vweb.Result {
@@ -703,6 +711,7 @@ pub fn (app &App) index(mut ctx Context) vweb.Result {
 ```
 
 #### Sending error responses
+
 **Example:**
 ```v ignore
 pub fn (app &App) login(mut ctx Context) vweb.Result {
