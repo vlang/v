@@ -80,7 +80,8 @@ fn (mut g Gen) generate_hotcode_reloading_main_caller() {
 	}
 	vexe := util.cescaped_path(pref.vexe_path())
 	file := util.cescaped_path(g.pref.path)
-	ccompiler := '-cc ${g.pref.ccompiler}'
+	ccpath := util.cescaped_path(g.pref.ccompiler)
+	ccompiler := '-cc ${ccpath}'
 	so_debug_flag := if g.pref.is_debug { '-cg' } else { '' }
 	vopts := '${ccompiler} ${so_debug_flag} -sharedlive -shared'
 	//

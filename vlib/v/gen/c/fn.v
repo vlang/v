@@ -257,8 +257,10 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	// For this purpose, the actual body of the live function,
 	// is put under a non publicly accessible function, that is prefixed
 	// with 'impl_live_' .
-	if is_livemain {
-		g.hotcode_fn_names << name
+	if is_livemode {
+		if is_livefn {
+			g.hotcode_fn_names << name
+		}
 		g.hotcode_fpaths << g.file.path
 	}
 	mut impl_fn_name := name
