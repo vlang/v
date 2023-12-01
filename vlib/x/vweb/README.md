@@ -20,10 +20,6 @@ Now modifying any file in your web app (whether it's a .v file with the backend 
 or a compiled .html template file) will result in an instant refresh of your app
 in the browser. No need to quit the app, rebuild it, and refresh the page in the browser!
 
-Now modifying any file in your web app (whether it's a .v file with the backend logic
-or a compiled .html template file) will result in an instant refresh of your app
-in the browser. No need to quit the app, rebuild it, and refresh the page in the browser!
-
 ## Deploying vweb apps
 
 All the code, including HTML templates, is in one binary file. That's all you need to deploy.
@@ -41,17 +37,38 @@ module main
 
 import x.vweb
 
+pub struct User {
+pub mut:
+	name string
+	id   int
+}
+
 // Our context struct must embed `vweb.Context`!
 pub struct Context {
 	vweb.Context
+pub mut:
+	// In the context struct we store data that could be different
+	// for each request. Like a User struct or a session id
+	user       User
+	session_id string
 }
 
 pub struct App {
-	name string
+pub:
+	// In the app struct we store data that should be accessible by all endpoints.
+	// For example a database or configuration values.
+	secret_key string
+}
+
+// This is how endpoints are defined in vweb. This is the index route
+pub fn (app &App) index(mut ctx Context) vweb.Result {
+	return ctx.text('Hello V! The secret key is "${app.secret_key}"')
 }
 
 fn main() {
-	mut app := &App{}
+	mut app := &App{
+		secret_key: 'secret'
+	}
 	// Pass the App and context type and start the web server on port 8080
 	vweb.run[App, Context](mut app, 8080)
 }
@@ -60,7 +77,8 @@ fn main() {
 You can use the `App` struct for data you want to keep during the lifetime of your program,
 or for data that you want to share between different routes.
 
-A new `Context` struct is created every time a request is received, to contain data that is different for each request.
+A new `Context` struct is created every time a request is received, 
+so it can contain different data for each request.
 
 ## Defining endpoints
 
@@ -104,10 +122,38 @@ pub fn (app &App) create_product(mut ctx Context) vweb.Result {
 }
 ```
 
+By default endpoints are marked as GET requests only. It is also possible to
+add multiple HTTP verbs per endpoint.
+
+**Example:**
+
+```v ignore
+// only GET and POST requests to http://server:port/login are handled by this method
+@['/login'; get; post]
+pub fn (app &App) login(mut ctx Context) vweb.Result {
+	if ctx.req.method == .get {
+		// show the login page on a GET request
+		return ctx.html('<h1>Login page</h1><p>todo: make form</p>')
+	} else {
+		// request method is POST
+		password := ctx.form['password']
+		// validate password length
+		if password.len < 12 {
+			return ctx.text('password is too weak!')
+		} else {
+			// redirect to the profile page
+			return ctx.redirect('/profile')
+		}
+	}
+}
+```
+
 ### Routes with Parameters
 
-Parameters are passed directly to an endpoint route using the colon sign `:`
-and received in a `string` parameter.
+Parameters are passed directly to an endpoint route using the colon sign `:`. The route
+parameters are passed as arguments. V will cast the parameter to any of V's primitive types
+(`string`, `int` etc,).
+
 To pass a parameter to an endpoint, you simply define it inside an attribute, e. g.
 `@['/hello/:user]`.
 After it is defined in the attribute, you have to add it as a function parameter.
@@ -115,9 +161,17 @@ After it is defined in the attribute, you have to add it as a function parameter
 **Example:**
 
 ```v ignore
+// V will pass the parameter 'user' as a string
           vvvv
-@['/hello/:user']                         vvvv
+@['/hello/:user']                             vvvv
 pub fn (app &App) hello_user(mut ctx Context, user string) vweb.Result {
+	return ctx.text('Hello ${user}')
+}
+
+// V will pass the parameter 'id' as an int
+              vv
+@['/document/:id']                              vv
+pub fn (app &App) get_document(mut ctx Context, id int) vweb.Result {
 	return ctx.text('Hello ${user}')
 }
 ```
@@ -135,7 +189,7 @@ This will match all routes after `'/'`. For example the url `/path/to/test` woul
 
 ```v ignore
          vvv
-@['/:path...']                          vvvv
+@['/:path...']                              vvvv
 pub fn (app &App) wildcard(mut ctx Context, path string) vweb.Result {
 	return ctx.text('URL path = "${path}"')
 }
