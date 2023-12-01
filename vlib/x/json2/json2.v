@@ -178,7 +178,7 @@ pub fn encode[T](val T) string {
 
 // encode_array is a generic function that encodes a array into a JSON string.
 fn encode_array[T](val []T) string {
-	mut buf := []u8{cap: 10000}
+	mut buf := []u8{}
 
 	defer {
 		unsafe { buf.free() }

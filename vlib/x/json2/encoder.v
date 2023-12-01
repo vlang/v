@@ -513,7 +513,7 @@ pub fn (f Any) json_str() string {
 // prettify_json_str returns the pretty-formatted JSON string representation of the `Any` type.
 @[manualfree]
 pub fn (f Any) prettify_json_str() string {
-	mut buf := []u8{cap: 1000000}
+	mut buf := []u8{}
 	defer {
 		unsafe { buf.free() }
 	}
