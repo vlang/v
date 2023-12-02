@@ -1803,7 +1803,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				g.gen_enum_static_from_string(node.name)
 				g.str_fn_names << node.name
 			}
-			g.write('${node.name}(')
+			g.write('${util.no_dots(node.name)}(')
 			g.call_args(node)
 			g.write(')')
 		} else {
