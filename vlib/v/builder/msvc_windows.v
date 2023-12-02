@@ -443,13 +443,16 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(mod string, path string, 
 		flush_stdout()
 	}
 	// Note, that building object files with msvc can fail with permission denied errors,
-	// when the final .obj file, is locked by another msvc process for writing.
+	// when the final .obj file, is locked by another msvc process for writing, or linker errors.
 	// Instead of failing, just retry several times in this case.
 	mut res := os.Result{}
 	mut i := 0
 	for i = 0; i < builder.thirdparty_obj_build_max_retries; i++ {
 		res = os.execute(cmd)
-		if res.exit_code == 0 || !res.output.contains('Permission denied') {
+		if res.exit_code == 0 {
+			break
+		}
+		if !(res.output.contains('Permission denied') || res.output.contains('cannot open file')) {
 			break
 		}
 		eprintln('---------------------------------------------------------------------')
