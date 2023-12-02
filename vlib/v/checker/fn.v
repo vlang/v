@@ -883,27 +883,76 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				}
 			}
 		}
-		if fn_name.ends_with('from_string') {
-			enum_name := fn_name.all_before('__static__')
-			full_enum_name := if !enum_name.contains('.') {
-				c.mod + '.' + enum_name
-			} else {
-				enum_name
-			}
-			idx := c.table.type_idxs[full_enum_name]
-			ret_typ := ast.Type(idx).set_flag(.option)
-			if node.args.len != 1 {
-				c.error('expected 1 argument, but got ${node.args.len}', node.pos)
-			} else {
-				node.args[0].typ = c.expr(mut node.args[0].expr)
-				if node.args[0].typ != ast.string_type {
-					styp := c.table.type_to_str(node.args[0].typ)
-					c.error('expected `string` argument, but got `${styp}`', node.pos)
+	}
+	// Enum.from_string, `mod.Enum.from_string('item')`, `Enum.from_string('item')`
+	if !found && fn_name.ends_with('__static__from_string') {
+		enum_name := fn_name.all_before('__static__')
+		mut full_enum_name := if !enum_name.contains('.') {
+			c.mod + '.' + enum_name
+		} else {
+			enum_name
+		}
+		mut idx := c.table.type_idxs[full_enum_name]
+		if idx > 0 {
+			// is from another mod.
+			if enum_name.contains('.') {
+				mut t_sym := c.table.sym_by_idx(idx)
+				if t_sym.kind == .alias {
+					parent_type := (t_sym.info as ast.Alias).parent_type
+					t_sym = c.table.sym(parent_type)
+				}
+				if t_sym.kind != .enum_ {
+					c.error('expected enum, but `${full_enum_name}` is ${t_sym.kind}',
+						node.pos)
+					return ast.void_type
+				}
+				if !t_sym.is_pub {
+					c.error('module `${t_sym.mod}` type `${t_sym.name}` is private', node.pos)
+					return ast.void_type
 				}
 			}
-			node.return_type = ret_typ
-			return ret_typ
+		} else if !enum_name.contains('.') {
+			// find from another mods.
+			for import_sym in c.file.imports {
+				full_enum_name = '${import_sym.mod}.${enum_name}'
+				idx = c.table.type_idxs[full_enum_name]
+				if idx < 1 {
+					continue
+				}
+				mut t_sym := c.table.sym_by_idx(idx)
+				if t_sym.kind == .alias {
+					parent_type := (t_sym.info as ast.Alias).parent_type
+					t_sym = c.table.sym(parent_type)
+				}
+				if t_sym.kind != .enum_ {
+					c.error('expected enum, but `${full_enum_name}` is ${t_sym.kind}',
+						node.pos)
+					return ast.void_type
+				}
+				if !t_sym.is_pub {
+					c.error('module `${t_sym.mod}` type `${t_sym.name}` is private', node.pos)
+					return ast.void_type
+				}
+				break
+			}
 		}
+		if idx == 0 {
+			c.error('unknown enum `${enum_name}`', node.pos)
+			return ast.void_type
+		}
+
+		ret_typ := ast.Type(idx).set_flag(.option)
+		if node.args.len != 1 {
+			c.error('expected 1 argument, but got ${node.args.len}', node.pos)
+		} else {
+			node.args[0].typ = c.expr(mut node.args[0].expr)
+			if node.args[0].typ != ast.string_type {
+				styp := c.table.type_to_str(node.args[0].typ)
+				c.error('expected `string` argument, but got `${styp}`', node.pos)
+			}
+		}
+		node.return_type = ret_typ
+		return ret_typ
 	}
 	mut is_native_builtin := false
 	if !found && c.pref.backend == .native {

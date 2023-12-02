@@ -1150,12 +1150,22 @@ fn should_use_indent_func(kind ast.Kind) bool {
 
 fn (mut g Gen) gen_enum_static_from_string(fn_name string) {
 	enum_name := fn_name.all_before('__static__')
-	mod_enum_name := if !enum_name.contains('.') {
+	mut mod_enum_name := if !enum_name.contains('.') {
 		g.cur_mod.name + '.' + enum_name
 	} else {
 		enum_name
 	}
-	idx := g.table.type_idxs[mod_enum_name]
+	mut idx := g.table.type_idxs[mod_enum_name]
+	if idx == 0 && (enum_name.contains('.') || enum_name[0].is_capital()) {
+		// no cur mod, find from another mods.
+		for import_sym in g.file.imports {
+			mod_enum_name = '${import_sym.mod}.${enum_name}'
+			idx = g.table.type_idxs[mod_enum_name]
+			if idx > 0 {
+				break
+			}
+		}
+	}
 	enum_typ := ast.Type(idx)
 	enum_styp := g.typ(enum_typ)
 	option_enum_typ := ast.Type(idx).set_flag(.option)
@@ -1164,9 +1174,10 @@ fn (mut g Gen) gen_enum_static_from_string(fn_name string) {
 	enum_field_vals := g.table.get_enum_field_vals(mod_enum_name)
 
 	mut fn_builder := strings.new_builder(512)
-	g.definitions.writeln('static ${option_enum_styp} ${fn_name}(string name); // auto')
+	fn_name_no_dots := util.no_dots(fn_name)
+	g.definitions.writeln('static ${option_enum_styp} ${fn_name_no_dots}(string name); // auto')
 
-	fn_builder.writeln('static ${option_enum_styp} ${fn_name}(string name) {')
+	fn_builder.writeln('static ${option_enum_styp} ${fn_name_no_dots}(string name) {')
 	fn_builder.writeln('\t${option_enum_styp} t1;')
 	fn_builder.writeln('\tbool exists = false;')
 	fn_builder.writeln('\tint inx = 0;')

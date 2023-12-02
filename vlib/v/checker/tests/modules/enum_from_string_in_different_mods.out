@@ -1,0 +1,47 @@
+main.v:3:15: error: module `amod` type `MyEnum` is private
+    1 | module main
+    2 |
+    3 | import amod { MyEnum }
+      |               ~~~~~~
+    4 |
+    5 | fn main() {
+main.v:6:6: error: module `amod` type `amod.MyEnum` is private
+    4 |
+    5 | fn main() {
+    6 |     _ = MyEnum.from_string('item1')
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    7 |     _ = amod.MyEnum.from_string('item1')
+    8 |     _ = amod.MyStruct.from_string('item1')
+main.v:6:4: error: assignment mismatch: 1 variable(s) but `MyEnum.from_string()` returns 0 value(s)
+    4 |
+    5 | fn main() {
+    6 |     _ = MyEnum.from_string('item1')
+      |       ^
+    7 |     _ = amod.MyEnum.from_string('item1')
+    8 |     _ = amod.MyStruct.from_string('item1')
+main.v:7:11: error: module `amod` type `amod.MyEnum` is private
+    5 | fn main() {
+    6 |     _ = MyEnum.from_string('item1')
+    7 |     _ = amod.MyEnum.from_string('item1')
+      |              ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    8 |     _ = amod.MyStruct.from_string('item1')
+    9 | }
+main.v:7:4: error: assignment mismatch: 1 variable(s) but `amod.MyEnum.from_string()` returns 0 value(s)
+    5 | fn main() {
+    6 |     _ = MyEnum.from_string('item1')
+    7 |     _ = amod.MyEnum.from_string('item1')
+      |       ^
+    8 |     _ = amod.MyStruct.from_string('item1')
+    9 | }
+main.v:8:11: error: expected enum, but `amod.MyStruct` is struct
+    6 |     _ = MyEnum.from_string('item1')
+    7 |     _ = amod.MyEnum.from_string('item1')
+    8 |     _ = amod.MyStruct.from_string('item1')
+      |              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    9 | }
+main.v:8:4: error: assignment mismatch: 1 variable(s) but `amod.MyStruct.from_string()` returns 0 value(s)
+    6 |     _ = MyEnum.from_string('item1')
+    7 |     _ = amod.MyEnum.from_string('item1')
+    8 |     _ = amod.MyStruct.from_string('item1')
+      |       ^
+    9 | }
