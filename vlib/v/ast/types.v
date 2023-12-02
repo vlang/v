@@ -1215,6 +1215,10 @@ pub fn (t &Table) clean_generics_type_str(typ Type) string {
 	return result.all_before('[')
 }
 
+// strip_extra_struct_types returns the name of remove the `<generic names>` from the
+// complete qualified name and keep the `[concrete names]`, For example:
+// `main.Foo<T, <T, U>>[int, [int, string]]` -> `main.Foo[int, [int, string]]`
+// `main.Foo<T>[int] -> main.Foo[int]`
 fn strip_extra_struct_types(name string) string {
 	mut start := 0
 	mut is_start := false
@@ -1531,7 +1535,9 @@ pub fn (t &Table) fn_signature_using_aliases(func &Fn, import_aliases map[string
 }
 
 // symbol_name_except_generic return the name of the complete qualified name of the type,
-// but without the generic parts. For example, `main.Abc[int]` -> `main.Abc`
+// but without the generic parts. For example:
+// `main.Abc[int]` -> `main.Abc`
+// `main.Abc<T>[int]` -> `main.Abc<T>`
 pub fn (t &TypeSymbol) symbol_name_except_generic() string {
 	// main.Abc[int]
 	mut embed_name := t.name
@@ -1543,6 +1549,10 @@ pub fn (t &TypeSymbol) symbol_name_except_generic() string {
 	return embed_name
 }
 
+// embed_name return the pure name of the complete qualified name of the type,
+// without the generic parts, concrete parts and mod parts. For example:
+// `main.Abc[int]` -> `Abc`
+// `main.Abc<T>[int]` -> `Abc`
 pub fn (t &TypeSymbol) embed_name() string {
 	if t.name.contains('<') {
 		// Abc<T>[int] => Abc

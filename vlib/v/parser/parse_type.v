@@ -718,6 +718,18 @@ fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Languag
 					&& p.struct_init_generic_types != sym.info.generic_types {
 					generic_names := p.types_to_names(p.struct_init_generic_types, p.tok.pos(),
 						'struct_init_generic_types') or { return ast.Type(0) }
+					// NOTE:
+					// Used here for the wraparound `< >` characters, is not a reserved character in generic syntax,
+					// is used as the `generic names` part of the qualified type name,
+					// while the `[ ]` characters is the `concrete namea` part of the qualified type name.
+					// The two pairs characters distinguish the generic name from the concrete name, such as:
+					//   main.Foo<T, U>[int, string]
+					//   main.Foo<T, <T, U>>[int, [int, string]]
+					//   ...
+					// There are methods in ast/types that rely on this representation:
+					//   fn symbol_name_except_generic()
+					//   fn embed_name()
+					//   fn strip_extra_struct_types()
 					mut sym_name := sym.name + '<'
 					for i, gt in generic_names {
 						sym_name += gt
