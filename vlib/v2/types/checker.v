@@ -1765,7 +1765,7 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 				c.env.generic_types[lhs_expr.name()] << generic_type_map
 			}
 		} else if lhs_expr is ast.GenericArgs {
-			c.error_with_pos('cannot call non generic fuction with generic argument list',
+			c.error_with_pos('cannot call non generic function with generic argument list',
 				expr.pos)
 		}
 
