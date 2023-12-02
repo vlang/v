@@ -255,7 +255,8 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 	typ := c.unwrap_generic(node.typ)
 	sym := c.table.final_sym(typ)
 	if sym.kind == .placeholder || typ.has_flag(.generic) {
-		c.error('expecting type but `${sym.name}` isn\'t', node.typ_pos)
+		c.error('\$for expects a type name to be used here, but ${sym.name} is not a type name',
+			node.typ_pos)
 	}
 	if node.kind == .fields {
 		if sym.kind in [.struct_, .interface_] {
