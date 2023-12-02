@@ -1154,6 +1154,14 @@ fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concret
 				if param_typ.nr_muls() > 0 && comptime_args[i].nr_muls() > 0 {
 					comptime_args[i] = comptime_args[i].set_nr_muls(0)
 				}
+			} else if mut call_arg.expr is ast.ComptimeCall {
+				if call_arg.expr.method_name == 'method' {
+					sym := g.table.sym(g.unwrap_generic(call_arg.expr.left_type))
+					// `app.$method()`
+					if m := sym.find_method(g.comptime_for_method) {
+						comptime_args[i] = m.return_type
+					}
+				}
 			}
 		}
 	}

@@ -44,6 +44,15 @@ fn (mut c Checker) get_comptime_var_type(node ast.Expr) ast.Type {
 	} else if node is ast.SelectorExpr && c.is_comptime_selector_type(node) {
 		// field_var.typ from $for field
 		return c.comptime_fields_default_type
+	} else if node is ast.ComptimeCall {
+		method_name := c.comptime_for_method
+		left_sym := c.table.sym(c.unwrap_generic(node.left_type))
+		f := left_sym.find_method(method_name) or {
+			c.error('could not find method `${method_name}` on compile-time resolution',
+				node.method_pos)
+			return ast.void_type
+		}
+		return f.return_type
 	}
 	return ast.void_type
 }
@@ -322,6 +331,16 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			c.error('iterating over .values is supported only for enums, and ${sym.name} is not an enum',
 				node.typ_pos)
 			return
+		}
+	} else if node.kind == .methods {
+		mut methods := sym.methods.filter(it.attrs.len == 0) // methods without attrs first
+		methods_with_attrs := sym.methods.filter(it.attrs.len > 0) // methods with attrs second
+		methods << methods_with_attrs
+
+		for method in methods {
+			c.comptime_for_method = method.name
+			c.comptime_for_method_var = node.val_var
+			c.stmts(mut node.stmts)
 		}
 	} else {
 		c.stmts(mut node.stmts)

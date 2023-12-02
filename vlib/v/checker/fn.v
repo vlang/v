@@ -1565,6 +1565,8 @@ fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_t
 			} else if call_arg.expr is ast.ComptimeSelector
 				&& c.table.is_comptime_var(call_arg.expr) {
 				comptime_args[i] = c.get_comptime_var_type(call_arg.expr)
+			} else if call_arg.expr is ast.ComptimeCall {
+				comptime_args[i] = c.get_comptime_var_type(call_arg.expr)
 			}
 		}
 	}

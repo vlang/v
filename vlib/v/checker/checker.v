@@ -113,6 +113,8 @@ mut:
 	comptime_fields_type             map[string]ast.Type
 	comptime_for_field_value         ast.StructField // value of the field variable
 	comptime_enum_field_value        string // current enum value name
+	comptime_for_method              string // $for method in T.methods {}
+	comptime_for_method_var          string // $for method in T.methods {}; the variable name
 	fn_scope                         &ast.Scope = unsafe { nil }
 	main_fn_decl_node                ast.FnDecl
 	match_exhaustive_cutoff_limit    int = 10
