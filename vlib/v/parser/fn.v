@@ -441,9 +441,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		p.inside_fn_return = false
 		return_type_pos = return_type_pos.extend(p.prev_tok.pos())
 
-		if p.tok.kind == .not {
+		if p.tok.kind in [.question, .not] {
 			ret_type_sym := p.table.sym(return_type)
-			p.error_with_pos('wrong syntax, it must be !${ret_type_sym.name}, not ${ret_type_sym.name}!',
+			p.error_with_pos('wrong syntax, it must be ${p.tok.kind}${ret_type_sym.name}, not ${ret_type_sym.name}${p.tok.kind}',
 				return_type_pos)
 		}
 	}
