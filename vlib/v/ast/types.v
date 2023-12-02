@@ -1215,7 +1215,7 @@ pub fn (t &Table) clean_generics_type_str(typ Type) string {
 	return result.all_before('[')
 }
 
-// strip_extra_struct_types returns the name of remove the `<generic names>` from the
+// strip_extra_struct_types removes the `<generic names>` from the
 // complete qualified name and keep the `[concrete names]`, For example:
 // `main.Foo<T, <T, U>>[int, [int, string]]` -> `main.Foo[int, [int, string]]`
 // `main.Foo<T>[int] -> main.Foo[int]`

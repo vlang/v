@@ -721,7 +721,7 @@ fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Languag
 					// NOTE:
 					// Used here for the wraparound `< >` characters, is not a reserved character in generic syntax,
 					// is used as the `generic names` part of the qualified type name,
-					// while the `[ ]` characters is the `concrete namea` part of the qualified type name.
+					// while the `[ ]` characters is the `concrete names` part of the qualified type name.
 					// The two pairs characters distinguish the generic name from the concrete name, such as:
 					//   main.Foo<T, U>[int, string]
 					//   main.Foo<T, <T, U>>[int, [int, string]]
