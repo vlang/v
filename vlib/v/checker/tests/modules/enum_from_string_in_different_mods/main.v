@@ -1,6 +1,6 @@
 module main
 
-import mod { MyEnum, MyStruct }
+import amod { MyEnum, MyStruct }
 
 fn main() {
 	_ = MyEnum.from_string('item1')
