@@ -1,4 +1,4 @@
-module amod
+module mod
 
 enum MyEnum {
 	item1
