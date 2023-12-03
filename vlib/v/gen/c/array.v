@@ -710,7 +710,8 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 }
 
 fn (mut g Gen) gen_array_sort_call(node ast.CallExpr, compare_fn string) {
-	mut deref_field := g.dot_or_ptr(node.left_type)
+	// array.sorted uses a temporary variable (no pointer in use)
+	mut deref_field := if node.name == 'sorted' { '.' } else { g.dot_or_ptr(node.left_type) }
 	// eprintln('> qsort: pointer $node.left_type | deref_field: `$deref_field`')
 	g.empty_line = true
 	g.write('qsort(')
