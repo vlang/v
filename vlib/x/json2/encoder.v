@@ -30,11 +30,11 @@ const colon_byte = `:`
 
 const space_byte = ` `
 
-const unicode_escape_chars = [`\\`, `u`]
+const unicode_escape_chars = [`\\`, `u`]!
 
 const quote_byte = `"`
 
-const escaped_chars = [(r'\b'), (r'\f'), (r'\n'), (r'\r'), (r'\t')]
+const escaped_chars = [(r'\b'), (r'\f'), (r'\n'), (r'\r'), (r'\t')]!
 
 const curly_open = `{`
 
@@ -162,13 +162,13 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut buf []u8) ! {
 		e.encode_struct(val, level, mut buf)!
 	} $else $if T is $enum {
 		e.encode_any(Any(int(val)), level, mut buf)!
-	} $else $if T in [bool] {
+	} $else $if T is bool {
 		e.encode_any(val, level, mut buf)!
-	} $else $if T in [$float] {
+	} $else $if T is $float {
 		e.encode_any(val, level, mut buf)!
-	} $else $if T in [$int] {
+	} $else $if T is $int {
 		e.encode_any(val, level, mut buf)!
-	} $else $if T in [Null] {
+	} $else $if T is Null {
 		e.encode_any(val, level, mut buf)!
 	} $else {
 		// dump(val.str())
@@ -387,7 +387,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 				} $else $if field.unaliased_typ is time.Time {
 					parsed_time := time.parse(val.$(field.name).str()) or { time.Time{} }
 					e.encode_string(parsed_time.format_rfc3339(), mut buf)!
-				} $else $if field.unaliased_typ in [bool] {
+				} $else $if field.unaliased_typ is bool {
 					if val.$(field.name).str() == 'true' {
 						unsafe { buf.push_many('true'.str, 'true'.len) }
 					} else {
