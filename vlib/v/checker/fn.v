@@ -1591,8 +1591,14 @@ fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_t
 				}
 			} else if call_arg.expr is ast.ComptimeSelector {
 				ct_value := c.get_comptime_var_type(call_arg.expr)
+				param_typ_sym := c.table.sym(param_typ)
 				if ct_value != ast.void_type {
-					comptime_args[i] = ct_value
+					cparam_type_sym := c.table.sym(c.unwrap_generic(ct_value))
+					if param_typ_sym.kind == .array && cparam_type_sym.info is ast.Array {
+						comptime_args[i] = cparam_type_sym.info.elem_type
+					} else {
+						comptime_args[i] = ct_value
+					}
 				}
 			}
 		}
