@@ -25,8 +25,7 @@ fn encode[T](val T) {
 			if method.attrs.len >= 1 {
 				if method.attrs[0].contains('sumtype_to') {
 					if val.type_name() == method.attrs[0].all_after('sumtype_to:').trim_space() {
-						// println(val.$method())
-						encode(val.$method()) // Problem here !!!!!!!!!!!!!!!!!!!!!!!!!!!!!1!!!!11!
+						encode(val.$method())
 					}
 				}
 			}

@@ -115,6 +115,7 @@ mut:
 	comptime_enum_field_value        string // current enum value name
 	comptime_for_method              string // $for method in T.methods {}
 	comptime_for_method_var          string // $for method in T.methods {}; the variable name
+	comptime_values_stack            []CurrentComptimeValues // stores the values from the above on each $for loop, to make nesting them easier
 	fn_scope                         &ast.Scope = unsafe { nil }
 	main_fn_decl_node                ast.FnDecl
 	match_exhaustive_cutoff_limit    int = 10
