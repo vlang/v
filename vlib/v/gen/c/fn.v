@@ -1525,7 +1525,21 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				g.write(')')
 			}
 		} else {
-			g.expr(node.left)
+			if is_range_slice && node.left is ast.IndexExpr && node.left.index is ast.RangeExpr {
+				arr_type := g.unwrap_generic(node.left.left_type)
+				arr_sym := g.table.final_sym(arr_type)
+
+				if arr_sym.kind == .array_fixed {
+					arr_info := arr_sym.array_fixed_info()
+					g.write('new_array_from_c_array_no_alloc(${arr_info.size}, 0, sizeof(${g.typ(arr_info.elem_type)}), ')
+					g.expr(node.left.left)
+					g.write(')')
+				} else {
+					g.expr(node.left)
+				}
+			} else {
+				g.expr(node.left)
+			}
 		}
 		if !is_interface || node.from_embed_types.len == 0 {
 			for i, embed in node.from_embed_types {
