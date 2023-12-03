@@ -1,6 +1,7 @@
 module builder
 
 import os
+import time
 import v.pref
 import v.util
 import v.cflag
@@ -400,6 +401,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(mod string, path string, 
 		return
 	}
 	println('${obj_path} not found, building it (with msvc)...')
+	flush_stdout()
 	cfile := '${path_without_o_postfix}.c'
 	flags := msvc_string_flags(moduleflags)
 	inc_dirs := flags.inc_paths.join(' ')
@@ -438,14 +440,38 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(mod string, path string, 
 	// Note: the quotes above ARE balanced.
 	$if trace_thirdparty_obj_files ? {
 		println('>>> build_thirdparty_obj_file_with_msvc cmd: ${cmd}')
+		flush_stdout()
 	}
-	res := os.execute(cmd)
+	// Note, that building object files with msvc can fail with permission denied errors,
+	// when the final .obj file, is locked by another msvc process for writing, or linker errors.
+	// Instead of failing, just retry several times in this case.
+	mut res := os.Result{}
+	mut i := 0
+	for i = 0; i < builder.thirdparty_obj_build_max_retries; i++ {
+		res = os.execute(cmd)
+		if res.exit_code == 0 {
+			break
+		}
+		if !(res.output.contains('Permission denied') || res.output.contains('cannot open file')) {
+			break
+		}
+		eprintln('---------------------------------------------------------------------')
+		eprintln('   msvc: failed to build a thirdparty object, try: ${i}/${builder.thirdparty_obj_build_max_retries}')
+		eprintln('    cmd: ${cmd}')
+		eprintln(' output:')
+		eprintln(res.output)
+		eprintln('---------------------------------------------------------------------')
+		time.sleep(builder.thirdparty_obj_build_retry_delay)
+	}
 	if res.exit_code != 0 {
-		println('msvc: failed to build a thirdparty object; cmd: ${cmd}')
-		verror(res.output)
+		verror('msvc: failed to build a thirdparty object after ${i}/${builder.thirdparty_obj_build_max_retries} retries, cmd: ${cmd}')
 	}
 	println(res.output)
+	flush_stdout()
 }
+
+const thirdparty_obj_build_max_retries = 5
+const thirdparty_obj_build_retry_delay = 200 * time.millisecond
 
 struct MsvcStringFlags {
 mut:

@@ -255,7 +255,8 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 	typ := c.unwrap_generic(node.typ)
 	sym := c.table.final_sym(typ)
 	if sym.kind == .placeholder || typ.has_flag(.generic) {
-		c.error('unknown type `${sym.name}`', node.typ_pos)
+		c.error('\$for expects a type name to be used here, but ${sym.name} is not a type name',
+			node.typ_pos)
 	}
 	if node.kind == .fields {
 		if sym.kind in [.struct_, .interface_] {
@@ -268,7 +269,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 					fields = sym.info.fields.clone()
 				}
 				else {
-					c.error('comptime field lookup supports only structs and interfaces currently, and ${sym.name} is neither',
+					c.error('iterating over .fields is supported only for structs and interfaces, and ${sym.name} is neither',
 						node.typ_pos)
 					return
 				}

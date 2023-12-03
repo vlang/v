@@ -255,7 +255,7 @@ fn (mut a array) push_noscan(val voidptr) {
 // push_many implements the functionality for pushing another array.
 // `val` is array.data and user facing usage is `a << [1,2,3]`
 @[unsafe]
-pub fn (mut a3 array) push_many_noscan(val voidptr, size int) {
+fn (mut a3 array) push_many_noscan(val voidptr, size int) {
 	if size <= 0 || val == unsafe { nil } {
 		return
 	}
