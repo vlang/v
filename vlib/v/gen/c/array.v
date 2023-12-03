@@ -608,8 +608,6 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	// println('filter s="$s"')
 	rec_sym := g.table.final_sym(node.receiver_type)
 	if rec_sym.kind != .array {
-		println(node.name)
-		println(g.typ(node.receiver_type))
 		// println(rec_sym.kind)
 		verror('.sort() is an array method')
 	}
