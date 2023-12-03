@@ -1,40 +1,40 @@
-main.v:3:8: warning: module 'amod' is imported but never used
+vlib/v/checker/tests/modules/enum_from_string_in_different_mods/src/main.v:3:8: warning: module 'mod' is imported but never used
     1 | module main
     2 |
-    3 | import amod { MyEnum, MyStruct }
-      |        ~~~~
+    3 | import mod { MyEnum, MyStruct }
+      |        ~~~
     4 |
     5 | fn main() {
-main.v:3:15: error: module `amod` type `MyEnum` is private
+vlib/v/checker/tests/modules/enum_from_string_in_different_mods/src/main.v:3:14: error: module `mod` type `MyEnum` is private
     1 | module main
     2 |
-    3 | import amod { MyEnum, MyStruct }
-      |               ~~~~~~
+    3 | import mod { MyEnum, MyStruct }
+      |              ~~~~~~
     4 |
     5 | fn main() {
-main.v:6:6: error: module `amod` type `amod.MyEnum` is private
+vlib/v/checker/tests/modules/enum_from_string_in_different_mods/src/main.v:6:7: error: module `mod` type `mod.MyEnum` is private
     4 |
     5 | fn main() {
-    6 |     _ = MyEnum.from_string('item1')
-      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    7 |     _ = MyStruct.from_string('item1')
+    6 |     _ := MyEnum.from_string('item1')
+      |          ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    7 |     _ := MyStruct.from_string('item1')
     8 | }
-main.v:6:4: error: assignment mismatch: 1 variable(s) but `MyEnum.from_string()` returns 0 value(s)
+vlib/v/checker/tests/modules/enum_from_string_in_different_mods/src/main.v:6:4: error: assignment mismatch: 1 variable(s) but `MyEnum.from_string()` returns 0 value(s)
     4 |
     5 | fn main() {
-    6 |     _ = MyEnum.from_string('item1')
-      |       ^
-    7 |     _ = MyStruct.from_string('item1')
+    6 |     _ := MyEnum.from_string('item1')
+      |       ~~
+    7 |     _ := MyStruct.from_string('item1')
     8 | }
-main.v:7:6: error: expected enum, but `amod.MyStruct` is struct
+vlib/v/checker/tests/modules/enum_from_string_in_different_mods/src/main.v:7:7: error: expected enum, but `mod.MyStruct` is struct
     5 | fn main() {
-    6 |     _ = MyEnum.from_string('item1')
-    7 |     _ = MyStruct.from_string('item1')
-      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    6 |     _ := MyEnum.from_string('item1')
+    7 |     _ := MyStruct.from_string('item1')
+      |          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     8 | }
-main.v:7:4: error: assignment mismatch: 1 variable(s) but `MyStruct.from_string()` returns 0 value(s)
+vlib/v/checker/tests/modules/enum_from_string_in_different_mods/src/main.v:7:4: error: assignment mismatch: 1 variable(s) but `MyStruct.from_string()` returns 0 value(s)
     5 | fn main() {
-    6 |     _ = MyEnum.from_string('item1')
-    7 |     _ = MyStruct.from_string('item1')
-      |       ^
+    6 |     _ := MyEnum.from_string('item1')
+    7 |     _ := MyStruct.from_string('item1')
+      |       ~~
     8 | }

@@ -896,18 +896,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		if idx > 0 {
 			// is from another mod.
 			if enum_name.contains('.') {
-				mut t_sym := c.table.sym_by_idx(idx)
-				if t_sym.kind == .alias {
-					parent_type := (t_sym.info as ast.Alias).parent_type
-					t_sym = c.table.sym(parent_type)
-				}
-				if t_sym.kind != .enum_ {
-					c.error('expected enum, but `${full_enum_name}` is ${t_sym.kind}',
-						node.pos)
-					return ast.void_type
-				}
-				if !t_sym.is_pub {
-					c.error('module `${t_sym.mod}` type `${t_sym.name}` is private', node.pos)
+				if !c.check_type_and_visibility(full_enum_name, idx, .enum_, node.pos) {
 					return ast.void_type
 				}
 			}
@@ -919,18 +908,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				if idx < 1 {
 					continue
 				}
-				mut t_sym := c.table.sym_by_idx(idx)
-				if t_sym.kind == .alias {
-					parent_type := (t_sym.info as ast.Alias).parent_type
-					t_sym = c.table.sym(parent_type)
-				}
-				if t_sym.kind != .enum_ {
-					c.error('expected enum, but `${full_enum_name}` is ${t_sym.kind}',
-						node.pos)
-					return ast.void_type
-				}
-				if !t_sym.is_pub {
-					c.error('module `${t_sym.mod}` type `${t_sym.name}` is private', node.pos)
+				if !c.check_type_and_visibility(full_enum_name, idx, .enum_, node.pos) {
 					return ast.void_type
 				}
 				break
@@ -1669,6 +1647,24 @@ fn (mut c Checker) cast_to_fixed_array_ret(typ ast.Type, sym ast.TypeSymbol) ast
 			sym.info.size_expr, true)
 	}
 	return typ
+}
+
+// checks if a type from another module is is expected and visible(`is_pub`)
+fn (mut c Checker) check_type_and_visibility(name string, type_idx int, expected_kind &ast.Kind, pos &token.Pos) bool {
+	mut sym := c.table.sym_by_idx(type_idx)
+	if sym.kind == .alias {
+		parent_type := (sym.info as ast.Alias).parent_type
+		sym = c.table.sym(parent_type)
+	}
+	if sym.kind != expected_kind {
+		c.error('expected ${expected_kind}, but `${name}` is ${sym.kind}', pos)
+		return false
+	}
+	if !sym.is_pub {
+		c.error('module `${sym.mod}` type `${sym.name}` is private', pos)
+		return false
+	}
+	return true
 }
 
 fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
