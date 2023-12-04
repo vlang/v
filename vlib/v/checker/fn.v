@@ -1589,9 +1589,17 @@ fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_t
 						comptime_args[i] = comptime_args[i].set_nr_muls(0)
 					}
 				}
-			} else if call_arg.expr is ast.ComptimeSelector
-				&& c.table.is_comptime_var(call_arg.expr) {
-				comptime_args[i] = c.get_comptime_var_type(call_arg.expr)
+			} else if call_arg.expr is ast.ComptimeSelector {
+				ct_value := c.get_comptime_var_type(call_arg.expr)
+				param_typ_sym := c.table.sym(param_typ)
+				if ct_value != ast.void_type {
+					cparam_type_sym := c.table.sym(c.unwrap_generic(ct_value))
+					if param_typ_sym.kind == .array && cparam_type_sym.info is ast.Array {
+						comptime_args[i] = cparam_type_sym.info.elem_type
+					} else {
+						comptime_args[i] = ct_value
+					}
+				}
 			} else if call_arg.expr is ast.ComptimeCall {
 				comptime_args[i] = c.get_comptime_var_type(call_arg.expr)
 			}
