@@ -1531,7 +1531,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 
 				if arr_sym.kind == .array_fixed {
 					arr_info := arr_sym.array_fixed_info()
-					g.write('new_array_from_c_array_no_alloc(${arr_info.size}, 0, sizeof(${g.typ(arr_info.elem_type)}), ')
+					g.write('new_array_from_c_array_no_alloc(${arr_info.size}, ${arr_info.size}, sizeof(${g.typ(arr_info.elem_type)}), ')
 					g.expr(node.left.left)
 					g.write(')')
 				} else {
