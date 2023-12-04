@@ -164,8 +164,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 			node.args[i].typ = c.expr(mut arg.expr)
 		}
 		c.stmts_ending_with_expression(mut node.or_block.stmts)
-		// assume string for now
-		return ast.string_type
+		return c.get_comptime_var_type(node)
 	}
 	if node.method_name == 'res' {
 		if !c.inside_defer {
