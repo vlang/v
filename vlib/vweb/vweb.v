@@ -33,6 +33,11 @@ pub const http_302 = http.new_response(
 	body: '302 Found'
 	header: headers_close
 )
+pub const http_303 = http.new_response(
+	status: .see_other
+	body: '303 See Other'
+	header: headers_close
+)
 pub const http_400 = http.new_response(
 	status: .bad_request
 	body: '400 Bad Request'
@@ -303,13 +308,21 @@ pub fn (mut ctx Context) server_error(ecode int) Result {
 	return Result{}
 }
 
+@[params]
+pub struct RedirectParams {
+	status_code int = 302
+}
+
 // Redirect to an url
-pub fn (mut ctx Context) redirect(url string) Result {
+pub fn (mut ctx Context) redirect(url string, params RedirectParams) Result {
 	if ctx.done {
 		return Result{}
 	}
 	ctx.done = true
 	mut resp := vweb.http_302
+	if params.status_code == 303 {
+		resp = vweb.http_303
+	}
 	resp.header = resp.header.join(ctx.header)
 	resp.header.add(.location, url)
 	send_string(mut ctx.conn, resp.bytestr()) or { return Result{} }
