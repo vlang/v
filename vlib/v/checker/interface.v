@@ -243,12 +243,10 @@ fn (mut c Checker) resolve_generic_interface(typ ast.Type, interface_type ast.Ty
 					}
 				}
 				for imethod in inter_sym.info.methods {
-					method := typ_sym.find_method(imethod.name) or {
-						typ_sym.find_method_with_generic_parent(imethod.name) or {
-							c.error('can not find method `${imethod.name}` on `${typ_sym.name}`, needed for interface: `${inter_sym.name}`',
-								pos)
-							return 0
-						}
+					method := typ_sym.find_method_with_generic_parent(imethod.name) or {
+						c.error('can not find method `${imethod.name}` on `${typ_sym.name}`, needed for interface: `${inter_sym.name}`',
+							pos)
+						return 0
 					}
 					if imethod.return_type.has_flag(.generic) {
 						imret_sym := c.table.sym(imethod.return_type)
