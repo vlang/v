@@ -61,16 +61,14 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 		lines := node.text.split_into_lines()
 		f.write('/*')
 		for i, line in lines {
+			f.empty_line = false
 			if i == lines.len - 1 {
-				f.empty_line = false
+				f.write(line)
 				if node.text[node.text.len - 1] == `\n` {
-					f.writeln(line)
-				} else {
-					f.write(line)
+					f.writeln('')
 				}
 				f.write('*/')
 			} else {
-				f.empty_line = false
 				f.writeln(line.trim_right(' '))
 			}
 		}
