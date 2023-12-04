@@ -1600,7 +1600,9 @@ fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_t
 						comptime_args[i] = ct_value
 					}
 				}
-			}
+		  } else if call_arg.expr is ast.ComptimeCall {
+				comptime_args[i] = c.get_comptime_var_type(call_arg.expr)
+			}        
 		}
 	}
 	return comptime_args
@@ -1657,7 +1659,7 @@ fn (mut c Checker) cast_to_fixed_array_ret(typ ast.Type, sym ast.TypeSymbol) ast
 	return typ
 }
 
-// checks if a type from another module is is expected and visible(`is_pub`)
+// checks if a type from another module is as expected and visible(`is_pub`)
 fn (mut c Checker) check_type_and_visibility(name string, type_idx int, expected_kind &ast.Kind, pos &token.Pos) bool {
 	mut sym := c.table.sym_by_idx(type_idx)
 	if sym.kind == .alias {
@@ -2618,7 +2620,7 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type ast.
 			if method_name[0] == `m` {
 				c.fail_if_immutable(mut node.left)
 			}
-			if node.left.is_auto_deref_var() || ret_type.has_flag(.shared_f) {
+			if node.left.is_auto_deref_var() || left_type.has_flag(.shared_f) {
 				ret_type = left_type.deref()
 			} else {
 				ret_type = left_type
@@ -2701,7 +2703,9 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 				c.lambda_expr_fix_type_of_param(mut node.args[0].expr, mut node.args[0].expr.params[0],
 					elem_typ)
 				le_type := c.expr(mut node.args[0].expr.expr)
-				// eprintln('>>>>> node.args[0].expr: ${ast.Expr(node.args[0].expr)} | elem_typ: ${elem_typ} | etype: ${le_type}')
+				// eprintln('
+        
+        >> node.args[0].expr: ${ast.Expr(node.args[0].expr)} | elem_typ: ${elem_typ} | etype: ${le_type}')
 				c.support_lambda_expr_one_param(elem_typ, le_type, mut node.args[0].expr)
 			} else {
 				c.support_lambda_expr_one_param(elem_typ, ast.bool_type, mut node.args[0].expr)
