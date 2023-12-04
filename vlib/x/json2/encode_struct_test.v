@@ -18,6 +18,36 @@ type TimeAlias = time.Time
 type StructAlias = StructType[int]
 type EnumAlias = Enumerates
 
+@[cast]
+fn (a StringAlias) alias_cast_() StringAlias {
+	return a
+}
+
+@[cast]
+fn (a BoolAlias) alias_cast_() BoolAlias {
+	return a
+}
+
+@[cast]
+fn (a IntAlias) alias_cast_() IntAlias {
+	return a
+}
+
+@[cast]
+fn (a TimeAlias) alias_cast_() TimeAlias {
+	return a
+}
+
+@[cast]
+fn (a StructAlias) alias_cast_() StructAlias {
+	return a
+}
+
+@[cast]
+fn (a EnumAlias) alias_cast_() EnumAlias {
+	return a
+}
+
 type SumTypes = StructType[string] | bool | int | string | time.Time
 
 enum Enumerates {
@@ -245,6 +275,31 @@ fn test_pointer() {
 	assert json.encode(StructTypePointer[int]{ val: &int_initialized_with_reference }) == '{"val":0}'
 	int_initialized_with_reference = 1
 	assert json.encode(StructTypePointer[int]{ val: &int_initialized_with_reference }) == '{"val":1}'
+}
+
+@[cast]
+fn (sum SumTypes) a() StructType[string] {
+	return sum as StructType[string]
+}
+
+@[cast]
+fn (sum SumTypes) b() bool {
+	return sum as bool
+}
+
+@[cast]
+fn (sum SumTypes) c() int {
+	return sum as int
+}
+
+@[cast]
+fn (sum SumTypes) d() string {
+	return sum as string
+}
+
+@[cast]
+fn (sum SumTypes) e() time.Time {
+	return sum as time.Time
 }
 
 fn test_sumtypes() {
