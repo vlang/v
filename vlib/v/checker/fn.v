@@ -2703,7 +2703,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 				c.lambda_expr_fix_type_of_param(mut node.args[0].expr, mut node.args[0].expr.params[0],
 					elem_typ)
 				le_type := c.expr(mut node.args[0].expr.expr)
-				// eprintln('>> node.args[0].expr: ${ast.Expr(node.args[0].expr)} | elem_typ: ${elem_typ} | etype: ${le_type}')
+				// eprintln('>>>>> node.args[0].expr: ${ast.Expr(node.args[0].expr)} | elem_typ: ${elem_typ} | etype: ${le_type}')
 				c.support_lambda_expr_one_param(elem_typ, le_type, mut node.args[0].expr)
 			} else {
 				c.support_lambda_expr_one_param(elem_typ, ast.bool_type, mut node.args[0].expr)
