@@ -1732,10 +1732,10 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	} else if (left_sym.kind == .map || final_left_sym.kind == .map)
 		&& method_name in ['clone', 'keys', 'values', 'move', 'delete'] {
 		if left_sym.kind == .map {
-			return c.map_builtin_method_call(mut node, left_type, c.table.sym(left_type))
+			return c.map_builtin_method_call(mut node, unwrapped_left_type, c.table.sym(unwrapped_left_type))
 		} else if left_sym.info is ast.Alias {
-			parent_type := left_sym.info.parent_type
-			return c.map_builtin_method_call(mut node, parent_type, c.table.final_sym(left_type))
+			parent_type := c.unwrap_generic(left_sym.info.parent_type)
+			return c.map_builtin_method_call(mut node, parent_type, c.table.final_sym(unwrapped_left_type))
 		}
 	} else if left_sym.kind == .array && method_name in ['insert', 'prepend'] {
 		if method_name == 'insert' {
@@ -1767,7 +1767,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 	} else if final_left_sym.kind == .array
 		&& method_name in ['filter', 'map', 'sort', 'sorted', 'contains', 'any', 'all', 'first', 'last', 'pop'] {
-		return c.array_builtin_method_call(mut node, left_type, final_left_sym)
+		return c.array_builtin_method_call(mut node, unwrapped_left_type, final_left_sym)
 	} else if c.pref.backend.is_js() && left_sym.name.starts_with('Promise[')
 		&& method_name == 'wait' {
 		info := left_sym.info as ast.Struct
@@ -2621,9 +2621,9 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type ast.
 				c.fail_if_immutable(mut node.left)
 			}
 			if node.left.is_auto_deref_var() || left_type.has_flag(.shared_f) {
-				ret_type = left_type.deref()
+				ret_type = node.left_type.deref()
 			} else {
-				ret_type = left_type
+				ret_type = node.left_type
 			}
 			ret_type = ret_type.clear_flag(.shared_f)
 		}
@@ -2658,7 +2658,7 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type ast.
 		}
 		else {}
 	}
-	node.receiver_type = left_type.ref()
+	node.receiver_type = node.left_type.ref()
 	node.return_type = ret_type
 	return node.return_type
 }
@@ -2877,9 +2877,9 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		node.return_type = array_info.elem_type
 		if method_name == 'pop' {
 			c.fail_if_immutable(mut node.left)
-			node.receiver_type = left_type.ref()
+			node.receiver_type = node.left_type.ref()
 		} else {
-			node.receiver_type = left_type
+			node.receiver_type = node.left_type
 		}
 	} else if method_name == 'delete' {
 		c.fail_if_immutable(mut node.left)
