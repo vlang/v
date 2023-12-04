@@ -590,9 +590,21 @@ fn (mut g Gen) gen_array_sorted(node ast.CallExpr) {
 	info := sym.info as ast.Array
 	depth := g.get_array_depth(info.elem_type)
 
-	g.write('${atype} ${past.tmp_var} = array_clone_to_depth(ADDR(${atype},')
-	g.expr(node.left)
-	g.writeln('), ${depth});')
+	deref_field := if node.receiver_type.nr_muls() > node.left_type.nr_muls()
+		&& node.left_type.is_ptr() {
+		true
+	} else {
+		false
+	}
+	if !deref_field {
+		g.write('${atype} ${past.tmp_var} = array_clone_to_depth(ADDR(${atype},')
+		g.expr(node.left)
+		g.writeln('), ${depth});')
+	} else {
+		g.write('${atype} ${past.tmp_var} = array_clone_to_depth(')
+		g.expr(node.left)
+		g.writeln(', ${depth});')
+	}
 
 	unsafe {
 		node.left = ast.Expr(ast.Ident{
@@ -708,7 +720,12 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 }
 
 fn (mut g Gen) gen_array_sort_call(node ast.CallExpr, compare_fn string) {
-	mut deref_field := g.dot_or_ptr(node.left_type)
+	mut deref_field := if node.receiver_type.nr_muls() > node.left_type.nr_muls()
+		&& node.left_type.is_ptr() {
+		g.dot_or_ptr(node.left_type.deref())
+	} else {
+		g.dot_or_ptr(node.left_type)
+	}
 	// eprintln('> qsort: pointer $node.left_type | deref_field: `$deref_field`')
 	g.empty_line = true
 	g.write('qsort(')
