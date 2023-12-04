@@ -216,10 +216,6 @@ fn get_path_of_existing_module(mod_name string) ?string {
 		vpm_error('skipping `${path}`, since it is not a directory.')
 		return none
 	}
-	vcs_used_in_dir(path) or {
-		vpm_error('skipping `${path}`, since it uses an unsupported version control system.')
-		return none
-	}
 	return path
 }
 
