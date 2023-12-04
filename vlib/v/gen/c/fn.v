@@ -1524,53 +1524,6 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				g.expr(node.left)
 				g.write(')')
 			}
-		} else if is_range_slice && node.left is ast.IndexExpr && node.left.index is ast.RangeExpr {
-			arr_type := g.unwrap_generic(node.left.left_type)
-			arr_sym := g.table.final_sym(arr_type)
-			range_expr := node.left.index as ast.RangeExpr
-
-			if arr_sym.kind == .array_fixed {
-				arr_info := arr_sym.array_fixed_info()
-				g.write('array_slice(new_array_from_c_array(${arr_info.size}, ${arr_info.size}, sizeof(${g.typ(arr_info.elem_type)}), ')
-				g.expr(node.left.left)
-				g.write(')')
-				g.write(', ')
-				if range_expr.has_low {
-					g.expr(range_expr.low)
-				} else {
-					g.write('0')
-				}
-				g.write(', ')
-				if range_expr.has_high {
-					g.expr(range_expr.high)
-				} else {
-					g.write('${arr_info.size}')
-				}
-				g.write(')')
-			} else {
-				if node.left.is_gated {
-					g.write('array_slice_ni(')
-				} else {
-					g.write('array_slice(')
-				}
-				if node.left.left.is_auto_deref_var() {
-					g.write('*')
-				}
-				g.expr(node.left.left)
-				g.write(', ')
-				if range_expr.has_low {
-					g.expr(range_expr.low)
-				} else {
-					g.write('0')
-				}
-				g.write(', ')
-				if range_expr.has_high {
-					g.expr(range_expr.high)
-				} else {
-					g.write('2147483647') // max_int
-				}
-				g.write(')')
-			}
 		} else {
 			g.expr(node.left)
 		}
