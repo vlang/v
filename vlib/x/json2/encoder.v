@@ -28,8 +28,6 @@ const comma_byte = `,`
 
 const colon_byte = `:`
 
-const space_byte = ` `
-
 const unicode_escape_chars = [`\\`, `u`]!
 
 const quote_byte = `"`
@@ -49,7 +47,7 @@ fn (e &Encoder) encode_newline(level int, mut buf []u8) ! {
 	if e.newline != 0 {
 		buf << e.newline
 		for j := 0; j < level * e.newline_spaces_count; j++ {
-			buf << json2.space_byte
+			buf << ` `
 		}
 	}
 }
@@ -91,7 +89,7 @@ fn (e &Encoder) encode_any(val Any, level int, mut buf []u8) ! {
 				e.encode_string(k, mut buf)!
 				buf << json2.colon_byte
 				if e.newline != 0 {
-					buf << json2.space_byte
+					buf << ` `
 				}
 				e.encode_value_with_level(v, level + 1, mut buf)!
 				if i < val.len - 1 {
@@ -132,7 +130,7 @@ fn (e &Encoder) encode_map[T](value T, level int, mut buf []u8) ! {
 		e.encode_string(k.str(), mut buf)!
 		buf << json2.colon_byte
 		if e.newline != 0 {
-			buf << json2.space_byte
+			buf << ` `
 		}
 		e.encode_value_with_level(v, level + 1, mut buf)!
 		if idx < value.len - 1 {
@@ -212,7 +210,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 				buf << json2.colon_byte
 
 				if e.newline != 0 {
-					buf << json2.space_byte
+					buf << ` `
 				}
 
 				$if field.typ is ?string {
@@ -277,7 +275,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 				buf << json2.colon_byte
 
 				if e.newline != 0 {
-					buf << json2.space_byte
+					buf << ` `
 				}
 			}
 
@@ -604,7 +602,7 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 			} else {
 				// TODO: still figuring out what
 				// to do with more than 4 chars
-				buf << json2.space_byte
+				buf << ` `
 			}
 			unsafe {
 				slice.free()
