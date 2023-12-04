@@ -64,9 +64,9 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 			if i == lines.len - 1 {
 				f.empty_line = false
 				if node.text[node.text.len - 1] == `\n` {
-					f.writeln(line)	
+					f.writeln(line)
 				} else {
-					f.write(line)	
+					f.write(line)
 				}
 				f.write('*/')
 			} else {
