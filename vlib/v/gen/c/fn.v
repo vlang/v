@@ -1524,22 +1524,34 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				g.expr(node.left)
 				g.write(')')
 			}
-		} else {
-			if is_range_slice && node.left is ast.IndexExpr && node.left.index is ast.RangeExpr {
-				arr_type := g.unwrap_generic(node.left.left_type)
-				arr_sym := g.table.final_sym(arr_type)
+		} else if is_range_slice && node.left is ast.IndexExpr && node.left.index is ast.RangeExpr {
+			arr_type := g.unwrap_generic(node.left.left_type)
+			arr_sym := g.table.final_sym(arr_type)
+			range_expr := node.left.index as ast.RangeExpr
 
-				if arr_sym.kind == .array_fixed {
-					arr_info := arr_sym.array_fixed_info()
-					g.write('new_array_from_c_array_no_alloc(${arr_info.size}, ${arr_info.size}, sizeof(${g.typ(arr_info.elem_type)}), ')
-					g.expr(node.left.left)
-					g.write(')')
+			if arr_sym.kind == .array_fixed {
+				arr_info := arr_sym.array_fixed_info()
+				g.write('array_slice(new_array_from_c_array(${arr_info.size}, ${arr_info.size}, sizeof(${g.typ(arr_info.elem_type)}), ')
+				g.expr(node.left.left)
+				g.write(')')
+				g.write(', ')
+				if range_expr.has_low {
+					g.expr(range_expr.low)
 				} else {
-					g.expr(node.left)
+					g.write('0')
 				}
+				g.write(', ')
+				if range_expr.has_high {
+					g.expr(range_expr.high)
+				} else {
+					g.write('${arr_info.size}')
+				}
+				g.write(')')
 			} else {
 				g.expr(node.left)
 			}
+		} else {
+			g.expr(node.left)
 		}
 		if !is_interface || node.from_embed_types.len == 0 {
 			for i, embed in node.from_embed_types {

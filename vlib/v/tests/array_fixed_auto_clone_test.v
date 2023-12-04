@@ -4,12 +4,15 @@ fn test_main() {
 }
 
 fn name[T](mut buf4 T) {
-	for idx in 0 .. 100 {
-		buf4[idx] = idx
-	}
+	mut bp := buf4[0..5]
+	assert bp.len == 5
+	println(bp)
 
-	mut bp := buf4[1..99]
-
-	println(bp.bytestr())
+	bp = buf4[..]
 	assert bp.len == 100
+	println(bp)
+
+	bp = buf4[4..]
+	assert bp.len == 96
+	println(bp)
 }
