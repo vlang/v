@@ -231,27 +231,52 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						}
 					} else if branch.cond.op in [.eq, .ne] && left is ast.SelectorExpr
 						&& right is ast.StringLiteral {
-						if left.expr.str() == c.comptime_for_field_var {
-							if left.field_name == 'name' {
-								is_comptime_type_is_expr = true
-								match branch.cond.op {
-									.eq {
-										skip_state = if c.comptime_for_field_value.name == right.val.str() {
-											ComptimeBranchSkipState.eval
-										} else {
-											ComptimeBranchSkipState.skip
+						match left.expr.str() {
+							c.comptime_for_field_var {
+								if left.field_name == 'name' {
+									is_comptime_type_is_expr = true
+									match branch.cond.op {
+										.eq {
+											skip_state = if c.comptime_for_field_value.name == right.val.str() {
+												ComptimeBranchSkipState.eval
+											} else {
+												ComptimeBranchSkipState.skip
+											}
 										}
-									}
-									.ne {
-										skip_state = if c.comptime_for_field_value.name == right.val.str() {
-											ComptimeBranchSkipState.skip
-										} else {
-											ComptimeBranchSkipState.eval
+										.ne {
+											skip_state = if c.comptime_for_field_value.name == right.val.str() {
+												ComptimeBranchSkipState.skip
+											} else {
+												ComptimeBranchSkipState.eval
+											}
 										}
+										else {}
 									}
-									else {}
 								}
 							}
+							c.comptime_for_method_var {
+								if left.field_name == 'name' {
+									is_comptime_type_is_expr = true
+									match branch.cond.op {
+										.eq {
+											skip_state = if c.comptime_for_method == right.val.str() {
+												ComptimeBranchSkipState.eval
+											} else {
+												ComptimeBranchSkipState.skip
+											}
+										}
+										.ne {
+											skip_state = if c.comptime_for_method == right.val.str() {
+												ComptimeBranchSkipState.skip
+											} else {
+												ComptimeBranchSkipState.eval
+											}
+										}
+										else {}
+									}
+								}
+							}
+							else {}
 						}
 					}
 				}

@@ -79,7 +79,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 				c.error('cannot return `none` in unsafe block', expr.expr.pos)
 			}
 		}
-		if typ == ast.void_type && expr !is ast.ComptimeCall {
+		if typ == ast.void_type {
 			c.error('`${expr}` used as value', node.pos)
 			return
 		}
