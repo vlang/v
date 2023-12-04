@@ -343,6 +343,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 		for method in methods {
 			c.comptime_for_method = method.name
 			c.comptime_for_method_var = node.val_var
+			c.comptime_for_method_ret_type = method.return_type
 			c.stmts(mut node.stmts)
 		}
 		c.pop_existing_comptime_values()
@@ -1068,6 +1069,7 @@ struct CurrentComptimeValues {
 	comptime_enum_field_value    string
 	comptime_for_method          string
 	comptime_for_method_var      string
+	comptime_for_method_ret_type ast.Type
 }
 
 fn (mut c Checker) push_existing_comptime_values() {
@@ -1080,6 +1082,7 @@ fn (mut c Checker) push_existing_comptime_values() {
 		comptime_enum_field_value: c.comptime_enum_field_value
 		comptime_for_method: c.comptime_for_method
 		comptime_for_method_var: c.comptime_for_method_var
+		comptime_for_method_ret_type: c.comptime_for_method_ret_type
 	}
 }
 
@@ -1093,4 +1096,5 @@ fn (mut c Checker) pop_existing_comptime_values() {
 	c.comptime_enum_field_value = old.comptime_enum_field_value
 	c.comptime_for_method = old.comptime_for_method
 	c.comptime_for_method_var = old.comptime_for_method_var
+	c.comptime_for_method_ret_type = old.comptime_for_method_ret_type
 }

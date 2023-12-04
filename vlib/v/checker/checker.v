@@ -112,9 +112,10 @@ mut:
 	comptime_fields_default_type     ast.Type
 	comptime_fields_type             map[string]ast.Type
 	comptime_for_field_value         ast.StructField // value of the field variable
-	comptime_enum_field_value        string // current enum value name
-	comptime_for_method              string // $for method in T.methods {}
-	comptime_for_method_var          string // $for method in T.methods {}; the variable name
+	comptime_enum_field_value        string   // current enum value name
+	comptime_for_method              string   // $for method in T.methods {}
+	comptime_for_method_var          string   // $for method in T.methods {}; the variable name
+	comptime_for_method_ret_type     ast.Type // $for method - current method.return_type field
 	comptime_values_stack            []CurrentComptimeValues // stores the values from the above on each $for loop, to make nesting them easier
 	fn_scope                         &ast.Scope = unsafe { nil }
 	main_fn_decl_node                ast.FnDecl
