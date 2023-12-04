@@ -489,7 +489,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 	// but `x := T{}` is ok.
 	if !c.is_builtin_mod && !c.inside_unsafe && type_sym.language == .v
 		&& c.table.cur_concrete_types.len == 0 {
-		pos := type_sym.name.last_index('.') or { -1 }
+		pos := type_sym.name.index_last('.') or { -1 }
 		first_letter := type_sym.name[pos + 1]
 		if !first_letter.is_capital()
 			&& (type_sym.kind != .struct_ || !(type_sym.info as ast.Struct).is_anon)

@@ -306,7 +306,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) string 
 				// calculate final generated location in output based on position
 				current_segment := g.out.substr(int(sm_pos), int(sourcemap_ns_entry.ns_pos))
 				current_line += u32(current_segment.count('\n'))
-				current_column := if last_nl_pos := current_segment.last_index('\n') {
+				current_column := if last_nl_pos := current_segment.index_last('\n') {
 					u32(current_segment.len - last_nl_pos - 1)
 				} else {
 					u32(0)
@@ -541,7 +541,7 @@ pub fn (mut g JsGen) new_tmp_var() string {
 // 'fn' => ''
 @[inline]
 fn get_ns(s string) string {
-	idx := s.last_index('.') or { return '' }
+	idx := s.index_last('.') or { return '' }
 	return s.substr(0, idx)
 }
 

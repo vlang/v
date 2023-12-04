@@ -240,7 +240,7 @@ pub fn file_ext(opath string) string {
 		return empty_str
 	}
 	path := file_name(opath)
-	pos := path.last_index(dot_str) or { return empty_str }
+	pos := path.index_last(dot_str) or { return empty_str }
 	if pos + 1 >= path.len || pos == 0 {
 		return empty_str
 	}
@@ -258,7 +258,7 @@ pub fn dir(opath string) string {
 	}
 	other_separator := if path_separator == '/' { '\\' } else { '/' }
 	path := opath.replace(other_separator, path_separator)
-	pos := path.last_index(path_separator) or { return '.' }
+	pos := path.index_last(path_separator) or { return '.' }
 	if pos == 0 && path_separator == '/' {
 		return '/'
 	}
@@ -280,10 +280,10 @@ pub fn base(opath string) string {
 	}
 	if path.ends_with(path_separator) {
 		path2 := path[..path.len - 1]
-		pos := path2.last_index(path_separator) or { return path2.clone() }
+		pos := path2.index_last(path_separator) or { return path2.clone() }
 		return path2[pos + 1..]
 	}
-	pos := path.last_index(path_separator) or { return path.clone() }
+	pos := path.index_last(path_separator) or { return path.clone() }
 	return path[pos + 1..]
 }
 

@@ -533,7 +533,7 @@ struct ParseAuthorityRes {
 }
 
 fn parse_authority(authority string) !ParseAuthorityRes {
-	i := authority.last_index('@') or { -1 }
+	i := authority.index_last('@') or { -1 }
 	mut host := ''
 	mut zuser := user('')
 	if i < 0 {
@@ -577,7 +577,7 @@ fn parse_host(host string) !string {
 	if host.starts_with('[') {
 		// parse an IP-Literal in RFC 3986 and RFC 6874.
 		// E.g., '[fe80::1]', '[fe80::1%25en0]', '[fe80::1]:80'.
-		mut i := host.last_index(']') or {
+		mut i := host.index_last(']') or {
 			return error(error_msg("parse_host: missing ']' in host", ''))
 		}
 		mut colon_port := host[i + 1..]
@@ -597,7 +597,7 @@ fn parse_host(host string) !string {
 			host3 := unescape(host[i..], .encode_host) or { return err.msg() }
 			return host1 + host2 + host3
 		}
-	} else if i := host.last_index(':') {
+	} else if i := host.index_last(':') {
 		colon_port := host[i..]
 		if !valid_optional_port(colon_port) {
 			return error(error_msg('parse_host: invalid port ${colon_port} after host ',
@@ -870,7 +870,7 @@ fn resolve_path(base string, ref string) string {
 	if ref == '' {
 		full = base
 	} else if ref[0] != `/` {
-		i := base.last_index('/') or { -1 }
+		i := base.index_last('/') or { -1 }
 		full = base[..i + 1] + ref
 	} else {
 		full = ref

@@ -232,7 +232,7 @@ pub fn (mut obj_part ObjPart) parse_obj_buffer(rows []string, single_material bo
 							mat_count++
 							mut part := Part{}
 							if mat_count > 1 {
-								li := obj_part.part[obj_part.part.len - 1].name.last_index('_m') or {
+								li := obj_part.part[obj_part.part.len - 1].name.index_last('_m') or {
 									obj_part.part[obj_part.part.len - 1].name.len - 1
 								}
 								part.name = obj_part.part[obj_part.part.len - 1].name[..li] +
