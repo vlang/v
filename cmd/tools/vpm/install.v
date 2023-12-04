@@ -121,8 +121,9 @@ fn (m Module) install() InstallResult {
 		}
 	}
 	vcs := m.vcs or { settings.vcs }
-	version_opt := if m.version != '' { ' ${vcs.args.version} ${m.version}' } else { '' }
-	cmd := '${vcs.cmd} ${vcs.args.install}${version_opt} "${m.url}" "${m.install_path}"'
+	args := vcs_info[vcs].args
+	version_opt := if m.version != '' { '${args.version} ${m.version}' } else { '' }
+	cmd := [vcs.str(), args.install, version_opt, m.url, os.quoted_path(m.install_path)].join(' ')
 	vpm_log(@FILE_LINE, @FN, 'command: ${cmd}')
 	println('Installing `${m.name}`...')
 	verbose_println('  cloning from `${m.url}` to `${m.install_path_fmted}`')

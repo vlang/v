@@ -39,10 +39,10 @@ fn get_mod_date_info(mut pp pool.PoolProcessor, idx int, wid int) &ModuleDateInf
 	}
 	path := get_path_of_existing_module(result.name) or { return result }
 	vcs := vcs_used_in_dir(path) or { return result }
-	is_hg := vcs.cmd == 'hg'
+	args := vcs_info[vcs].args
 	mut outputs := []string{}
-	for step in vcs.args.outdated {
-		cmd := '${vcs.cmd} ${vcs.args.path} "${path}" ${step}'
+	for step in args.outdated {
+		cmd := [vcs.str(), args.path, os.quoted_path(path), step].join(' ')
 		res := os.execute(cmd)
 		if res.exit_code < 0 {
 			verbose_println('Error command: ${cmd}')
@@ -50,14 +50,13 @@ fn get_mod_date_info(mut pp pool.PoolProcessor, idx int, wid int) &ModuleDateInf
 			result.exec_err = true
 			return result
 		}
-		if is_hg && res.exit_code == 1 {
+		if vcs == .hg && res.exit_code == 1 {
 			result.outdated = true
 			return result
 		}
 		outputs << res.output
 	}
-	// vcs.cmd == 'git'
-	if !is_hg && outputs[1] != outputs[2] {
+	if vcs == .git && outputs[1] != outputs[2] {
 		result.outdated = true
 	}
 	return result

@@ -2,8 +2,13 @@ module main
 
 import os
 
-struct VCS {
-	cmd  string        @[required]
+// Supported version control system commands.
+enum VCS {
+	git
+	hg
+}
+
+struct VCSInfo {
 	dir  string        @[required]
 	args struct {
 		install  string   @[required]
@@ -14,9 +19,8 @@ struct VCS {
 	}
 }
 
-const supported_vcs = {
-	'git': VCS{
-		cmd: 'git'
+const vcs_info = {
+	VCS.git: VCSInfo{
 		dir: '.git'
 		args: struct {
 			install: 'clone --depth=1 --recursive --shallow-submodules'
@@ -26,8 +30,7 @@ const supported_vcs = {
 			outdated: ['fetch', 'rev-parse @', 'rev-parse @{u}']
 		}
 	}
-	'hg':  VCS{
-		cmd: 'hg'
+	VCS.hg:  VCSInfo{
 		dir: '.hg'
 		args: struct {
 			install: 'clone'
@@ -40,16 +43,25 @@ const supported_vcs = {
 }
 
 fn (vcs &VCS) is_executable() ! {
-	os.find_abs_path_of_executable(vcs.cmd) or {
-		return error('VPM needs `${vcs.cmd}` to be installed.')
+	cmd := vcs.str()
+	os.find_abs_path_of_executable(cmd) or {
+		return error('VPM requires that `${cmd}` is executable.')
 	}
 }
 
 fn vcs_used_in_dir(dir string) ?VCS {
-	for vcs in supported_vcs.values() {
-		if os.is_dir(os.real_path(os.join_path(dir, vcs.dir))) {
+	for vcs, info in vcs_info {
+		if os.is_dir(os.real_path(os.join_path(dir, info.dir))) {
 			return vcs
 		}
 	}
 	return none
+}
+
+fn vcs_from_str(str string) ?VCS {
+	return match str {
+		'git' { .git }
+		'hg' { .hg }
+		else { none }
+	}
 }
