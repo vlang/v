@@ -237,12 +237,15 @@ pub fn is_dir_empty(path string) bool {
 // ```
 pub fn file_ext(opath string) string {
 	if opath.len < 3 {
-		return empty_str
+		return ''
 	}
 	path := file_name(opath)
-	pos := path.index_last(dot_str) or { return empty_str }
+	pos := path.index_u8_last(`.`)
+	if pos == -1 {
+		return ''
+	}
 	if pos + 1 >= path.len || pos == 0 {
-		return empty_str
+		return ''
 	}
 	return path[pos..]
 }
