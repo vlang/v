@@ -310,7 +310,7 @@ pub fn (mut ctx Context) server_error(ecode int) Result {
 
 @[params]
 pub struct RedirectParams {
-	status_code int = 302 
+	status_code int = 302
 }
 
 // Redirect to an url
