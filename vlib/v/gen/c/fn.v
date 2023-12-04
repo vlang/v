@@ -1548,7 +1548,28 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				}
 				g.write(')')
 			} else {
-				g.expr(node.left)
+				if node.left.is_gated {
+					g.write('array_slice_ni(')
+				} else {
+					g.write('array_slice(')
+				}
+				if node.left.left.is_auto_deref_var() {
+					g.write('*')
+				}
+				g.expr(node.left.left)
+				g.write(', ')
+				if range_expr.has_low {
+					g.expr(range_expr.low)
+				} else {
+					g.write('0')
+				}
+				g.write(', ')
+				if range_expr.has_high {
+					g.expr(range_expr.high)
+				} else {
+					g.write('2147483647') // max_int
+				}
+				g.write(')')
 			}
 		} else {
 			g.expr(node.left)
