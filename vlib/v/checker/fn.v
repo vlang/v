@@ -1600,9 +1600,9 @@ fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_t
 						comptime_args[i] = ct_value
 					}
 				}
-		  } else if call_arg.expr is ast.ComptimeCall {
+			} else if call_arg.expr is ast.ComptimeCall {
 				comptime_args[i] = c.get_comptime_var_type(call_arg.expr)
-			}        
+			}
 		}
 	}
 	return comptime_args
