@@ -2610,7 +2610,7 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type ast.
 			if method_name[0] == `m` {
 				c.fail_if_immutable(mut node.left)
 			}
-			if node.left.is_auto_deref_var() || ret_type.has_flag(.shared_f) {
+			if node.left.is_auto_deref_var() || left_type.has_flag(.shared_f) {
 				ret_type = left_type.deref()
 			} else {
 				ret_type = left_type
