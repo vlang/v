@@ -2621,9 +2621,9 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type ast.
 				c.fail_if_immutable(mut node.left)
 			}
 			if node.left.is_auto_deref_var() || left_type.has_flag(.shared_f) {
-				ret_type = left_type.deref()
+				ret_type = node.left_type.deref()
 			} else {
-				ret_type = left_type
+				ret_type = node.left_type
 			}
 			ret_type = ret_type.clear_flag(.shared_f)
 		}
@@ -2658,7 +2658,7 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type ast.
 		}
 		else {}
 	}
-	node.receiver_type = left_type.ref()
+	node.receiver_type = node.left_type.ref()
 	node.return_type = ret_type
 	return node.return_type
 }
@@ -2877,9 +2877,9 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		node.return_type = array_info.elem_type
 		if method_name == 'pop' {
 			c.fail_if_immutable(mut node.left)
-			node.receiver_type = left_type.ref()
+			node.receiver_type = node.left_type.ref()
 		} else {
-			node.receiver_type = left_type
+			node.receiver_type = node.left_type
 		}
 	} else if method_name == 'delete' {
 		c.fail_if_immutable(mut node.left)
