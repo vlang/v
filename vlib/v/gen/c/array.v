@@ -720,7 +720,7 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 }
 
 fn (mut g Gen) gen_array_sort_call(node ast.CallExpr, compare_fn string) {
-	mut deref_field := if node.receiver_type.nr_muls() > node.left_type.nr_muls()
+	deref_field := if node.receiver_type.nr_muls() > node.left_type.nr_muls()
 		&& node.left_type.is_ptr() {
 		g.dot_or_ptr(node.left_type.deref())
 	} else {
