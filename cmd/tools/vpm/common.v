@@ -252,12 +252,6 @@ fn ensure_vmodules_dir_exist() {
 	}
 }
 
-fn (vcs &VCS) is_executable() ! {
-	os.find_abs_path_of_executable(vcs.cmd) or {
-		return error('VPM needs `${vcs.cmd}` to be installed.')
-	}
-}
-
 fn increment_module_download_count(name string) ! {
 	if settings.no_dl_count_increment {
 		println('Skipping download count increment for `${name}`.')
@@ -294,15 +288,6 @@ fn resolve_dependencies(manifest ?vmod.Manifest, modules []string) {
 		verbose_println('Found dependencies: ${deps}')
 		vpm_install(deps)
 	}
-}
-
-fn vcs_used_in_dir(dir string) ?VCS {
-	for vcs in supported_vcs.values() {
-		if os.is_dir(os.real_path(os.join_path(dir, vcs.dir))) {
-			return vcs
-		}
-	}
-	return none
 }
 
 fn verbose_println(msg string) {
