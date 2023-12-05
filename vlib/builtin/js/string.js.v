@@ -730,7 +730,7 @@ pub fn (s string) replace_each(vals []string) string {
 }
 
 // last_index returns the position of the last occurrence of the input string.
-fn (s string) last_index_(p string) int {
+fn (s string) index_last_(p string) int {
 	if p.len > s.len || p.len == 0 {
 		return -1
 	}
@@ -748,13 +748,21 @@ fn (s string) last_index_(p string) int {
 	return -1
 }
 
-// last_index returns the position of the last occurrence of the input string.
-pub fn (s string) last_index(p string) ?int {
-	idx := s.last_index_(p)
+// index_last returns the position of the first character of the *last* occurance of the `needle` string in `s`.
+pub fn (s string) index_last(needle string) ?int {
+	idx := s.index_last_(needle)
 	if idx == -1 {
 		return none
 	}
 	return idx
+}
+
+// last_index returns the position of the first character of the *last* occurance of the `needle` string in `s`.
+@[deprecated: 'use `.index_last(needle string)` instead']
+@[deprecated_after: '2023-12-18']
+@[inline]
+pub fn (s string) last_index(needle string) ?int {
+	return s.index_last(needle)
 }
 
 pub fn (s string) trim_space() string {
@@ -967,6 +975,27 @@ pub fn (s string) index(search string) ?int {
 		return none
 	}
 	return res
+}
+
+// index_u8_last returns the index of the *last* occurrence of the byte `c` (if found) in the string.
+// It returns -1, if `c` is not found.
+@[direct_array_access]
+pub fn (s string) index_u8_last(c u8) int {
+	for i := s.len - 1; i >= 0; i-- {
+		if s[i] == c {
+			return i
+		}
+	}
+	return -1
+}
+
+// last_index_u8 returns the index of the last occurrence of byte `c` if found in the string.
+// It returns -1, if the byte `c` is not found.
+@[deprecated: 'use `.index_u8_last(c u8)` instead']
+@[deprecated_after: '2023-12-18']
+@[inline]
+pub fn (s string) last_index_u8(c u8) int {
+	return s.index_u8_last(c)
 }
 
 pub fn (_rune string) utf32_code() int {
