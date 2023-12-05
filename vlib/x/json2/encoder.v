@@ -327,29 +327,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 			} $else $if field.typ is $sumtype {
 				e.encode_value_with_level(val.$(field.name), level, mut wr)!
 			} $else $if field.typ is $alias {
-				$if field.unaliased_typ is string {
-					e.encode_string(val.$(field.name).str(), mut wr)!
-				} $else $if field.unaliased_typ is time.Time {
-					parsed_time := time.parse(val.$(field.name).str()) or { time.Time{} }
-					e.encode_string(parsed_time.format_rfc3339(), mut wr)!
-				} $else $if field.unaliased_typ in [bool, $float, $int] {
-					wr.write(val.$(field.name).str().bytes())!
-				} $else $if field.unaliased_typ is $array {
-					// e.encode_array(val.$(field.name), level + 1, mut wr)! // FIXME - error: could not infer generic type `U` in call to `encode_array`
-				} $else $if field.unaliased_typ is $struct {
-					// e.encode_struct(val.$(field.name), level + 1, mut wr)! // FIXME - error: cannot use `BoolAlias` as `StringAlias` in argument 1 to `x.json2.Encoder.encode_struct`
-					e.encode_struct(value, level + 1, mut wr)!
-				} $else $if field.unaliased_typ is $enum {
-					// enum_value := val.$(field.name)
-					// dump(int(val.$(field.name))) // FIXME
-					// dump(val.$(field.name).int()) // FIXME - error: unknown method or field: `BoolAlias.int`
-					// dump(val.$(field.name).int()) // FIXME - error: cannot convert 'enum <anonymous>' to 'struct string'
-
-					// wr.write(val.$(field.name).int().str().bytes())! // FIXME - error: unknown method or field: `BoolAlias.int`
-				} $else $if field.unaliased_typ is $sumtype {
-				} $else {
-					return error('the alias ${typeof(val).name} cannot be encoded')
-				}
+				e.encode_value_with_level(val.$(field.name), level, mut wr)!
 			} $else {
 				return error('type ${typeof(val).name} cannot be array encoded')
 			}

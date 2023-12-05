@@ -19,32 +19,32 @@ type StructAlias = StructType[int]
 type EnumAlias = Enumerates
 
 @[cast]
-fn (a StringAlias) alias_cast_() StringAlias {
+fn (a StringAlias) alias_cast_a() StringAlias {
 	return a
 }
 
 @[cast]
-fn (a BoolAlias) alias_cast_() BoolAlias {
+fn (a BoolAlias) alias_cast_b() BoolAlias {
 	return a
 }
 
 @[cast]
-fn (a IntAlias) alias_cast_() IntAlias {
+fn (a IntAlias) alias_cast_c() IntAlias {
 	return a
 }
 
 @[cast]
-fn (a TimeAlias) alias_cast_() TimeAlias {
+fn (a TimeAlias) alias_cast_d() TimeAlias {
 	return a
 }
 
 @[cast]
-fn (a StructAlias) alias_cast_() StructAlias {
+fn (a StructAlias) alias_cast_e() StructAlias {
 	return a
 }
 
 @[cast]
-fn (a EnumAlias) alias_cast_() EnumAlias {
+fn (a EnumAlias) alias_cast_f() EnumAlias {
 	return a
 }
 
