@@ -1127,8 +1127,11 @@ fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concret
 							} else if arg_sym.kind == .any {
 								cparam_type_sym := g.table.sym(g.unwrap_generic(ctyp))
 								if param_typ_sym.kind == .array && cparam_type_sym.info is ast.Array {
-									ctyp = cparam_type_sym.info.elem_type
-									comptime_args[i] = ctyp
+									comptime_args[i] = cparam_type_sym.info.elem_type
+								} else if param_typ_sym.kind == .map
+									&& cparam_type_sym.info is ast.Map {
+									comptime_args[i] = cparam_type_sym.info.key_type
+									comptime_args[i + 1] = cparam_type_sym.info.value_type
 								} else {
 									if node_.args[i].expr.is_auto_deref_var() {
 										ctyp = ctyp.deref()
