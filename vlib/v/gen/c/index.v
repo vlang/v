@@ -65,11 +65,10 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 }
 
 fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
-	sym := g.table.final_sym(node.left_type)
+	sym := g.table.final_sym(g.unwrap_generic(node.left_type))
 	mut tmp_opt := ''
 	mut cur_line := ''
 	mut gen_or := node.or_expr.kind != .absent || node.is_option
-
 	if sym.kind == .string {
 		if node.is_gated {
 			g.write('string_substr_ni(')
