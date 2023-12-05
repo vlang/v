@@ -344,6 +344,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			c.comptime_for_method = method.name
 			c.comptime_for_method_var = node.val_var
 			c.comptime_for_method_ret_type = method.return_type
+			c.comptime_fields_type['${node.val_var}.return_type'] = method.return_type
 			c.stmts(mut node.stmts)
 		}
 		c.pop_existing_comptime_values()
