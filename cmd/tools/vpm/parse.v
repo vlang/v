@@ -28,7 +28,7 @@ mut:
 
 fn parse_query(query []string) []Module {
 	mut p := Parser{
-		is_git_setting: settings.vcs.cmd == 'git'
+		is_git_setting: settings.vcs == .git
 	}
 	for m in query {
 		p.parse_module(m)
@@ -96,12 +96,12 @@ fn (mut p Parser) parse_module(m string) {
 		// Verify VCS.
 		mut is_git_module := true
 		vcs := if info.vcs != '' {
-			info_vcs := supported_vcs[info.vcs] or {
+			info_vcs := vcs_from_str(info.vcs) or {
 				vpm_error('skipping `${info.name}`, since it uses an unsupported version control system `${info.vcs}`.')
 				p.errors++
 				return
 			}
-			is_git_module = info.vcs == 'git'
+			is_git_module = info_vcs == .git
 			if !is_git_module && version != '' {
 				vpm_error('skipping `${info.name}`, version installs are currently only supported for projects using `git`.')
 				p.errors++
@@ -109,7 +109,7 @@ fn (mut p Parser) parse_module(m string) {
 			}
 			info_vcs
 		} else {
-			supported_vcs['git']
+			VCS.git
 		}
 		vcs.is_executable() or {
 			vpm_error(err.msg())
