@@ -1,4 +1,4 @@
-// vtest vflags: -d init_is_not_defined
+// vtest vflags: -d not_defined
 
 @[if init_on ?]
 fn init() {
