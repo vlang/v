@@ -1073,9 +1073,21 @@ fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concret
 						mut ctyp := g.get_comptime_var_type(call_arg.expr)
 						if ctyp != ast.void_type {
 							arg_sym := g.table.sym(ctyp)
-							if arg_sym.kind == .array && param_typ.has_flag(.generic)
-								&& g.table.final_sym(param_typ).kind == .array {
-								ctyp = (arg_sym.info as ast.Array).elem_type
+							param_sym := g.table.final_sym(param_typ)
+							if arg_sym.info is ast.Array && param_sym.kind == .array {
+								ctyp = arg_sym.info.elem_type
+							} else if arg_sym.info is ast.Map && param_sym.info is ast.Map {
+								if call_arg.expr.obj.ct_type_var == .value_var {
+									ctyp = arg_sym.info.value_type
+									if param_sym.info.value_type.nr_muls() > 0 && ctyp.nr_muls() > 0 {
+										ctyp = ctyp.set_nr_muls(0)
+									}
+								} else if call_arg.expr.obj.ct_type_var == .key_var {
+									ctyp = arg_sym.info.key_type
+									if param_sym.info.key_type.nr_muls() > 0 && ctyp.nr_muls() > 0 {
+										ctyp = ctyp.set_nr_muls(0)
+									}
+								}
 							}
 							comptime_args[i] = ctyp
 						}
@@ -1113,9 +1125,9 @@ fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concret
 									}
 								}
 							} else if arg_sym.kind == .any {
-								mut cparam_type_sym := g.table.sym(g.unwrap_generic(ctyp))
-								if param_typ_sym.kind == .array && cparam_type_sym.kind == .array {
-									ctyp = (cparam_type_sym.info as ast.Array).elem_type
+								cparam_type_sym := g.table.sym(g.unwrap_generic(ctyp))
+								if param_typ_sym.kind == .array && cparam_type_sym.info is ast.Array {
+									ctyp = cparam_type_sym.info.elem_type
 									comptime_args[i] = ctyp
 								} else {
 									if node_.args[i].expr.is_auto_deref_var() {
@@ -1153,6 +1165,14 @@ fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concret
 				}
 				if param_typ.nr_muls() > 0 && comptime_args[i].nr_muls() > 0 {
 					comptime_args[i] = comptime_args[i].set_nr_muls(0)
+				}
+			} else if mut call_arg.expr is ast.ComptimeCall {
+				if call_arg.expr.method_name == 'method' {
+					sym := g.table.sym(g.unwrap_generic(call_arg.expr.left_type))
+					// `app.$method()`
+					if m := sym.find_method(g.comptime_for_method) {
+						comptime_args[i] = m.return_type
+					}
 				}
 			}
 		}
@@ -1803,7 +1823,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				g.gen_enum_static_from_string(node.name)
 				g.str_fn_names << node.name
 			}
-			g.write('${node.name}(')
+			g.write('${util.no_dots(node.name)}(')
 			g.call_args(node)
 			g.write(')')
 		} else {

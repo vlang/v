@@ -113,6 +113,9 @@ mut:
 	comptime_fields_type             map[string]ast.Type
 	comptime_for_field_value         ast.StructField // value of the field variable
 	comptime_enum_field_value        string // current enum value name
+	comptime_for_method              string // $for method in T.methods {}
+	comptime_for_method_var          string // $for method in T.methods {}; the variable name
+	comptime_values_stack            []CurrentComptimeValues // stores the values from the above on each $for loop, to make nesting them easier
 	fn_scope                         &ast.Scope = unsafe { nil }
 	main_fn_decl_node                ast.FnDecl
 	match_exhaustive_cutoff_limit    int = 10
@@ -477,7 +480,7 @@ fn (mut c Checker) check_valid_snake_case(name string, identifier string, pos to
 }
 
 fn stripped_name(name string) string {
-	idx := name.last_index('.') or { -1 }
+	idx := name.index_last('.') or { -1 }
 	return name[(idx + 1)..]
 }
 

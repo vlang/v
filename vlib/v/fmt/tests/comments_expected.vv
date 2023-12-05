@@ -26,14 +26,14 @@ fn single_line_blocks() {
 }
 
 fn main() {
-	/*
-	block1
+	/* block1
 	*/
 	/*
-	block2
-	*/
+	block2 */
 	/*
+
 	block3
+
 	*/
 	a := 1 // this is a comment
 	d := c // and an extra one
@@ -52,16 +52,12 @@ fn insert_space() {
 }
 
 fn linebreaks_in_block_comments() {
-	/*
-	foo
+	/*foo
 	comment goes here!
-	bar
-	*/
-	/*
-	spam
+	bar*/
+	/*  spam
 	spaces make no difference there
-	eggs
-	*/
+	eggs */
 }
 
 fn between_if_branches() {

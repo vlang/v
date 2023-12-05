@@ -322,14 +322,21 @@ fn work_processor(work chan TaskDescription, results chan TaskDescription) {
 		mut task := <-work or { break }
 		mut i := 0
 		for i = 1; i <= task.max_ntries; i++ {
+			// reset the .is_error flag, from the potential previous retries, otherwise it can
+			// be set on the first retry, all the next retries can succeed, and the task will
+			// be still considered failed, with a very puzzling non difference reported.
+			task.is_error = false
 			sw := time.new_stopwatch()
 			task.execute()
 			task.took = sw.elapsed()
+			cli_cmd := task.get_cli_cmd()
 			if !task.is_error {
+				if i > 1 {
+					eprintln('>    succeeded after ${i:3}/${task.max_ntries} retries, doing `${cli_cmd}`')
+				}
 				break
 			}
-			cli_cmd := task.get_cli_cmd()
-			eprintln('>    failed ${i:3} times, doing `${cli_cmd}`\n')
+			eprintln('>    failed ${i:3}/${task.max_ntries} times, doing `${cli_cmd}`')
 			if i <= task.max_ntries {
 				time.sleep(100 * time.millisecond)
 			}

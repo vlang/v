@@ -54,7 +54,8 @@ fn update_module(mut pp pool.PoolProcessor, idx int, wid int) &UpdateResult {
 		vpm_error(err.msg())
 		return &UpdateResult{}
 	}
-	cmd := '${vcs.cmd} ${vcs.args.path} "${install_path}" ${vcs.args.update}'
+	args := vcs_info[vcs].args
+	cmd := [vcs.str(), args.path, os.quoted_path(install_path), args.update].join(' ')
 	vpm_log(@FILE_LINE, @FN, 'cmd: ${cmd}')
 	println('Updating module `${name}` in `${fmt_mod_path(install_path)}`...')
 	res := os.execute_opt(cmd) or {

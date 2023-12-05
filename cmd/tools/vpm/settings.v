@@ -35,7 +35,7 @@ fn init_settings() VpmSettings {
 		is_verbose: '-v' in opts || '--verbose' in opts
 		is_force: '-f' in opts || '--force' in opts
 		server_urls: cmdline.options(args, '--server-urls')
-		vcs: supported_vcs[if '--hg' in opts { 'hg' } else { 'git' }]
+		vcs: if '--hg' in opts { .hg } else { .git }
 		vmodules_path: os.vmodules_dir()
 		no_dl_count_increment: os.getenv('CI') != '' || (no_inc_env != '' && no_inc_env != '0')
 		fail_on_prompt: os.getenv('VPM_FAIL_ON_PROMPT') != ''

@@ -883,27 +883,54 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				}
 			}
 		}
-		if fn_name.ends_with('from_string') {
-			enum_name := fn_name.all_before('__static__')
-			full_enum_name := if !enum_name.contains('.') {
-				c.mod + '.' + enum_name
-			} else {
-				enum_name
-			}
-			idx := c.table.type_idxs[full_enum_name]
-			ret_typ := ast.Type(idx).set_flag(.option)
-			if node.args.len != 1 {
-				c.error('expected 1 argument, but got ${node.args.len}', node.pos)
-			} else {
-				node.args[0].typ = c.expr(mut node.args[0].expr)
-				if node.args[0].typ != ast.string_type {
-					styp := c.table.type_to_str(node.args[0].typ)
-					c.error('expected `string` argument, but got `${styp}`', node.pos)
+	}
+	// Enum.from_string, `mod.Enum.from_string('item')`, `Enum.from_string('item')`
+	if !found && fn_name.ends_with('__static__from_string') {
+		enum_name := fn_name.all_before('__static__')
+		mut full_enum_name := if !enum_name.contains('.') {
+			c.mod + '.' + enum_name
+		} else {
+			enum_name
+		}
+		mut idx := c.table.type_idxs[full_enum_name]
+		if idx > 0 {
+			// is from another mod.
+			if enum_name.contains('.') {
+				if !c.check_type_and_visibility(full_enum_name, idx, .enum_, node.pos) {
+					return ast.void_type
 				}
 			}
-			node.return_type = ret_typ
-			return ret_typ
+		} else if !enum_name.contains('.') {
+			// find from another mods.
+			for import_sym in c.file.imports {
+				full_enum_name = '${import_sym.mod}.${enum_name}'
+				idx = c.table.type_idxs[full_enum_name]
+				if idx < 1 {
+					continue
+				}
+				if !c.check_type_and_visibility(full_enum_name, idx, .enum_, node.pos) {
+					return ast.void_type
+				}
+				break
+			}
 		}
+		if idx == 0 {
+			c.error('unknown enum `${enum_name}`', node.pos)
+			return ast.void_type
+		}
+
+		ret_typ := ast.Type(idx).set_flag(.option)
+		if node.args.len != 1 {
+			c.error('expected 1 argument, but got ${node.args.len}', node.pos)
+		} else {
+			node.args[0].typ = c.expr(mut node.args[0].expr)
+			if node.args[0].typ != ast.string_type {
+				styp := c.table.type_to_str(node.args[0].typ)
+				c.error('expected `string` argument, but got `${styp}`', node.pos)
+			}
+		}
+		node.return_type = ret_typ
+		return ret_typ
 	}
 	mut is_native_builtin := false
 	if !found && c.pref.backend == .native {
@@ -1562,8 +1589,18 @@ fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_t
 						comptime_args[i] = comptime_args[i].set_nr_muls(0)
 					}
 				}
-			} else if call_arg.expr is ast.ComptimeSelector
-				&& c.table.is_comptime_var(call_arg.expr) {
+			} else if call_arg.expr is ast.ComptimeSelector {
+				ct_value := c.get_comptime_var_type(call_arg.expr)
+				param_typ_sym := c.table.sym(param_typ)
+				if ct_value != ast.void_type {
+					cparam_type_sym := c.table.sym(c.unwrap_generic(ct_value))
+					if param_typ_sym.kind == .array && cparam_type_sym.info is ast.Array {
+						comptime_args[i] = cparam_type_sym.info.elem_type
+					} else {
+						comptime_args[i] = ct_value
+					}
+				}
+			} else if call_arg.expr is ast.ComptimeCall {
 				comptime_args[i] = c.get_comptime_var_type(call_arg.expr)
 			}
 		}
@@ -1622,6 +1659,24 @@ fn (mut c Checker) cast_to_fixed_array_ret(typ ast.Type, sym ast.TypeSymbol) ast
 	return typ
 }
 
+// checks if a type from another module is as expected and visible(`is_pub`)
+fn (mut c Checker) check_type_and_visibility(name string, type_idx int, expected_kind &ast.Kind, pos &token.Pos) bool {
+	mut sym := c.table.sym_by_idx(type_idx)
+	if sym.kind == .alias {
+		parent_type := (sym.info as ast.Alias).parent_type
+		sym = c.table.sym(parent_type)
+	}
+	if sym.kind != expected_kind {
+		c.error('expected ${expected_kind}, but `${name}` is ${sym.kind}', pos)
+		return false
+	}
+	if !sym.is_pub {
+		c.error('module `${sym.mod}` type `${sym.name}` is private', pos)
+		return false
+	}
+	return true
+}
+
 fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	left_type := c.expr(mut node.left)
 	if left_type == ast.void_type {
@@ -1677,10 +1732,10 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	} else if (left_sym.kind == .map || final_left_sym.kind == .map)
 		&& method_name in ['clone', 'keys', 'values', 'move', 'delete'] {
 		if left_sym.kind == .map {
-			return c.map_builtin_method_call(mut node, left_type, c.table.sym(left_type))
+			return c.map_builtin_method_call(mut node, unwrapped_left_type, c.table.sym(unwrapped_left_type))
 		} else if left_sym.info is ast.Alias {
-			parent_type := left_sym.info.parent_type
-			return c.map_builtin_method_call(mut node, parent_type, c.table.final_sym(left_type))
+			parent_type := c.unwrap_generic(left_sym.info.parent_type)
+			return c.map_builtin_method_call(mut node, parent_type, c.table.final_sym(unwrapped_left_type))
 		}
 	} else if left_sym.kind == .array && method_name in ['insert', 'prepend'] {
 		if method_name == 'insert' {
@@ -1712,7 +1767,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 	} else if final_left_sym.kind == .array
 		&& method_name in ['filter', 'map', 'sort', 'sorted', 'contains', 'any', 'all', 'first', 'last', 'pop'] {
-		return c.array_builtin_method_call(mut node, left_type, final_left_sym)
+		return c.array_builtin_method_call(mut node, unwrapped_left_type, final_left_sym)
 	} else if c.pref.backend.is_js() && left_sym.name.starts_with('Promise[')
 		&& method_name == 'wait' {
 		info := left_sym.info as ast.Struct
@@ -2565,10 +2620,10 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type ast.
 			if method_name[0] == `m` {
 				c.fail_if_immutable(mut node.left)
 			}
-			if node.left.is_auto_deref_var() || ret_type.has_flag(.shared_f) {
-				ret_type = left_type.deref()
+			if node.left.is_auto_deref_var() || left_type.has_flag(.shared_f) {
+				ret_type = node.left_type.deref()
 			} else {
-				ret_type = left_type
+				ret_type = node.left_type
 			}
 			ret_type = ret_type.clear_flag(.shared_f)
 		}
@@ -2603,7 +2658,7 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type ast.
 		}
 		else {}
 	}
-	node.receiver_type = left_type.ref()
+	node.receiver_type = node.left_type.ref()
 	node.return_type = ret_type
 	return node.return_type
 }
@@ -2822,9 +2877,9 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		node.return_type = array_info.elem_type
 		if method_name == 'pop' {
 			c.fail_if_immutable(mut node.left)
-			node.receiver_type = left_type.ref()
+			node.receiver_type = node.left_type.ref()
 		} else {
-			node.receiver_type = left_type
+			node.receiver_type = node.left_type
 		}
 	} else if method_name == 'delete' {
 		c.fail_if_immutable(mut node.left)

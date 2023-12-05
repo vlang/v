@@ -44,6 +44,15 @@ fn (mut c Checker) get_comptime_var_type(node ast.Expr) ast.Type {
 	} else if node is ast.SelectorExpr && c.is_comptime_selector_type(node) {
 		// field_var.typ from $for field
 		return c.comptime_fields_default_type
+	} else if node is ast.ComptimeCall {
+		method_name := c.comptime_for_method
+		left_sym := c.table.sym(c.unwrap_generic(node.left_type))
+		f := left_sym.find_method(method_name) or {
+			c.error('could not find method `${method_name}` on compile-time resolution',
+				node.method_pos)
+			return ast.void_type
+		}
+		return f.return_type
 	}
 	return ast.void_type
 }
@@ -255,7 +264,8 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 	typ := c.unwrap_generic(node.typ)
 	sym := c.table.final_sym(typ)
 	if sym.kind == .placeholder || typ.has_flag(.generic) {
-		c.error('unknown type `${sym.name}`', node.typ_pos)
+		c.error('\$for expects a type name to be used here, but ${sym.name} is not a type name',
+			node.typ_pos)
 	}
 	if node.kind == .fields {
 		if sym.kind in [.struct_, .interface_] {
@@ -268,11 +278,12 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 					fields = sym.info.fields.clone()
 				}
 				else {
-					c.error('comptime field lookup supports only structs and interfaces currently, and ${sym.name} is neither',
+					c.error('iterating over .fields is supported only for structs and interfaces, and ${sym.name} is neither',
 						node.typ_pos)
 					return
 				}
 			}
+			c.push_existing_comptime_values()
 			c.inside_comptime_for_field = true
 			for field in fields {
 				if c.field_data_type == 0 {
@@ -297,8 +308,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 					}
 				}
 			}
-			c.comptime_for_field_var = ''
-			c.inside_comptime_for_field = false
+			c.pop_existing_comptime_values()
 		} else if c.table.generic_type_names(node.typ).len == 0 && sym.kind != .placeholder {
 			c.error('iterating over .fields is supported only for structs and interfaces, and ${sym.name} is neither',
 				node.typ_pos)
@@ -306,6 +316,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 		}
 	} else if node.kind == .values {
 		if sym.kind == .enum_ {
+			c.push_existing_comptime_values()
 			sym_info := sym.info as ast.Enum
 			c.inside_comptime_for_field = true
 			if c.enum_data_type == 0 {
@@ -318,11 +329,24 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 				c.comptime_fields_type['${node.val_var}.typ'] = node.typ
 				c.stmts(mut node.stmts)
 			}
+			c.pop_existing_comptime_values()
 		} else {
 			c.error('iterating over .values is supported only for enums, and ${sym.name} is not an enum',
 				node.typ_pos)
 			return
 		}
+	} else if node.kind == .methods {
+		mut methods := sym.methods.filter(it.attrs.len == 0) // methods without attrs first
+		methods_with_attrs := sym.methods.filter(it.attrs.len > 0) // methods with attrs second
+		methods << methods_with_attrs
+
+		c.push_existing_comptime_values()
+		for method in methods {
+			c.comptime_for_method = method.name
+			c.comptime_for_method_var = node.val_var
+			c.stmts(mut node.stmts)
+		}
+		c.pop_existing_comptime_values()
 	} else {
 		c.stmts(mut node.stmts)
 	}
@@ -1034,4 +1058,40 @@ fn (mut c Checker) get_comptime_selector_bool_field(field_name string) bool {
 		'is_enum' { return field_sym.kind == .enum_ }
 		else { return false }
 	}
+}
+
+struct CurrentComptimeValues {
+	inside_comptime_for_field    bool
+	comptime_for_field_var       string
+	comptime_fields_default_type ast.Type
+	comptime_fields_type         map[string]ast.Type
+	comptime_for_field_value     ast.StructField
+	comptime_enum_field_value    string
+	comptime_for_method          string
+	comptime_for_method_var      string
+}
+
+fn (mut c Checker) push_existing_comptime_values() {
+	c.comptime_values_stack << CurrentComptimeValues{
+		inside_comptime_for_field: c.inside_comptime_for_field
+		comptime_for_field_var: c.comptime_for_field_var
+		comptime_fields_default_type: c.comptime_fields_default_type
+		comptime_fields_type: c.comptime_fields_type.clone()
+		comptime_for_field_value: c.comptime_for_field_value
+		comptime_enum_field_value: c.comptime_enum_field_value
+		comptime_for_method: c.comptime_for_method
+		comptime_for_method_var: c.comptime_for_method_var
+	}
+}
+
+fn (mut c Checker) pop_existing_comptime_values() {
+	old := c.comptime_values_stack.pop()
+	c.inside_comptime_for_field = old.inside_comptime_for_field
+	c.comptime_for_field_var = old.comptime_for_field_var
+	c.comptime_fields_default_type = old.comptime_fields_default_type
+	c.comptime_fields_type = old.comptime_fields_type.clone()
+	c.comptime_for_field_value = old.comptime_for_field_value
+	c.comptime_enum_field_value = old.comptime_enum_field_value
+	c.comptime_for_method = old.comptime_for_method
+	c.comptime_for_method_var = old.comptime_for_method_var
 }
