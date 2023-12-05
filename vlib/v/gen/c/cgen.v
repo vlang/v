@@ -5869,14 +5869,14 @@ fn (mut g Gen) write_init_function() {
 			// ignore v.reflection already initialized above
 			continue
 		}
-		mut is_empty := true
+		mut const_section_header_shown := false
 		// write globals and consts init later
 		for var_name in g.sorted_global_const_names {
 			if var := g.global_const_defs[var_name] {
 				if var.mod == mod_name && var.init.len > 0 {
-					if is_empty {
-						is_empty = false
-						g.writeln('\t// Initializations for module ${mod_name}')
+					if !const_section_header_shown {
+						g.writeln('\t// Initializations of consts for module ${mod_name}')
+						const_section_header_shown = true
 					}
 					g.writeln(var.init)
 				}
@@ -5885,12 +5885,21 @@ fn (mut g Gen) write_init_function() {
 		init_fn_name := '${mod_name}.init'
 		if initfn := g.table.find_fn(init_fn_name) {
 			if initfn.return_type == ast.void_type && initfn.params.len == 0 {
-				if is_empty {
-					g.writeln('\t// Initializations for module ${mod_name}')
+				mut should_be_skipped := false
+				if initfn.source_fn != unsafe { nil } {
+					fndecl := unsafe { &ast.FnDecl(initfn.source_fn) }
+					if fndecl.should_be_skipped {
+						should_be_skipped = fndecl.should_be_skipped
+					}
 				}
-				mod_c_name := util.no_dots(mod_name)
-				init_fn_c_name := '${mod_c_name}__init'
-				g.writeln('\t${init_fn_c_name}();')
+				if should_be_skipped {
+					g.writeln('\t// Skipping fn init() for module ${mod_name}')
+				} else {
+					g.writeln('\t// Calling fn init() for module ${mod_name}')
+					mod_c_name := util.no_dots(mod_name)
+					init_fn_c_name := '${mod_c_name}__init'
+					g.writeln('\t${init_fn_c_name}();')
+				}
 			}
 		}
 		cleanup_fn_name := '${mod_name}.cleanup'
