@@ -875,9 +875,9 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			styp := g.table.find_type_idx(sig)
 
 			// TODO: type aliases
-			ret_typ := method.return_type.idx()
+			ret_typ := method.return_type
 			g.writeln('\t${node.val_var}.typ = ${styp};')
-			g.writeln('\t${node.val_var}.return_type = ${ret_typ};')
+			g.writeln('\t${node.val_var}.return_type = ${ret_typ.idx()};')
 
 			g.comptime_var_type_map['${node.val_var}.return_type'] = ret_typ
 			g.comptime_var_type_map['${node.val_var}.typ'] = styp
