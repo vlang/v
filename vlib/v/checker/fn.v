@@ -413,20 +413,23 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	}
 	node.source_file = c.file
 
-	if node.name in c.table.fns && node.name != 'main.main' {
-		mut dep_names := []string{}
-		for stmt in node.stmts {
-			dnames := c.table.dependent_names_in_stmt(stmt)
-			for dname in dnames {
-				if dname in dep_names {
-					continue
+	if node.name in c.table.fns {
+		if node.name != 'main.main' {
+			mut dep_names := []string{}
+			for stmt in node.stmts {
+				dnames := c.table.dependent_names_in_stmt(stmt)
+				for dname in dnames {
+					if dname in dep_names {
+						continue
+					}
+					dep_names << dname
 				}
-				dep_names << dname
+			}
+			if dep_names.len > 0 {
+				c.table.fns[node.name].dep_names = dep_names
 			}
 		}
-		if dep_names.len > 0 {
-			c.table.fns[node.name].dep_names = dep_names
-		}
+		c.table.fns[node.name].source_fn = voidptr(node)
 	}
 
 	// vweb checks
