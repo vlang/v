@@ -7,7 +7,7 @@ const port = 13002
 
 const localserver = 'http://127.0.0.1:${port}'
 
-const exit_after = time.second * 15
+const exit_after = time.second * 10
 
 const tmp_file = os.join_path(os.vtmp_dir(), 'vweb_large_payload.txt')
 
@@ -33,7 +33,7 @@ pub struct Context {
 fn testsuite_begin() {
 	spawn fn () {
 		mut app := &App{}
-		vweb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 10, family: .ip) or {
+		vweb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip) or {
 			panic('could not start vweb app')
 		}
 	}()

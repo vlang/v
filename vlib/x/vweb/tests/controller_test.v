@@ -7,7 +7,7 @@ const port = 13006
 
 const localserver = 'http://127.0.0.1:${port}'
 
-const exit_after = time.second * 15
+const exit_after = time.second * 10
 
 pub struct Context {
 	vweb.Context
