@@ -74,18 +74,6 @@ fn vpm_upgrade() {
 	}
 }
 
-fn vpm_outdated() {
-	outdated := get_outdated() or { exit(1) }
-	if outdated.len > 0 {
-		println('Outdated modules:')
-		for m in outdated {
-			println('  ${m}')
-		}
-	} else {
-		println('Modules are up to date.')
-	}
-}
-
 fn vpm_list() {
 	installed := get_installed_modules()
 	if installed.len == 0 {
