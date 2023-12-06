@@ -2090,6 +2090,32 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			} else {
 				method.params[i + 1].typ
 			}
+			// If initialize a generic struct with short syntax,
+			// need to get the parameter information from the original generic method
+			if is_method_from_embed && arg.expr is ast.StructInit {
+				expr := arg.expr as ast.StructInit
+				is_short_syntax := expr.is_short_syntax && expr.typ == ast.void_type
+				if is_short_syntax {
+					embed_type := node.from_embed_types.last()
+					embed_sym := c.table.sym(embed_type)
+					if embed_sym.info is ast.Struct {
+						info := embed_sym.info as ast.Struct
+						if info.concrete_types.len > 0 {
+							parent_type := info.parent_type
+							parent_sym := c.table.sym(parent_type)
+							if parent_sym.info is ast.Struct && parent_sym.info.is_generic {
+								if f := parent_sym.find_method(method_name) {
+									exp_arg_typ = if f.is_variadic && i >= f.params.len - 1 {
+										f.params.last().typ
+									} else {
+										f.params[i + 1].typ
+									}
+								}
+							}
+						}
+					}
+				}
+			}
 			param_is_mut = false
 			no_type_promotion = false
 		}
