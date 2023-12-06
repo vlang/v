@@ -54,7 +54,7 @@ fn (mut p Parser) parse_module(m string) {
 		false
 	}
 	mut mod := if is_http || ident.starts_with('https://') {
-		// External module. The idenifier is an URL.
+		// External module. The identifier is an URL.
 		publisher, name := get_ident_from_url(ident) or {
 			vpm_error(err.msg())
 			p.errors++

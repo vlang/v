@@ -23,7 +23,7 @@ fn testsuite_end() {
 
 fn get_vmod(path string) vmod.Manifest {
 	return vmod.from_file(os.join_path(test_path, path, 'v.mod')) or {
-		eprintln('Failed to parse v.mod for `${path}`')
+		eprintln('Failed to parse v.mod for `${path}`. ${err}')
 		exit(1)
 	}
 }
@@ -167,15 +167,14 @@ fn test_install_potentially_conflicting() {
 
 fn test_get_installed_version() {
 	test_project_path := os.join_path(test_path, 'test_project')
-	os.mkdir_all(test_project_path)!
-	os.chdir(test_project_path)!
-	os.write_file('v.mod', '')!
-	if os.getenv('CI') != '' {
-		os.execute_or_exit('git config --global user.email "v@vi.com"')
-		os.execute_or_exit('git config --global user.name "V CI"')
-	}
-	mut res := os.execute('git init')
+	mut res := os.execute('git init ${test_project_path}')
 	assert res.exit_code == 0, res.str()
+	os.chdir(test_project_path)!
+	if os.execute('git config user.name').exit_code == 1 {
+		os.execute_or_exit('git config user.email "ci@vlang.io"')
+		os.execute_or_exit('git config user.name "V CI"')
+	}
+	os.write_file('v.mod', '')!
 	res = os.execute('git add .')
 	assert res.exit_code == 0, res.str()
 	res = os.execute('git commit -m "initial commit"')
