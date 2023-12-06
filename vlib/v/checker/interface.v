@@ -303,9 +303,52 @@ fn (mut c Checker) resolve_generic_interface(typ ast.Type, interface_type ast.Ty
 					}
 					for i, iparam in imethod.params {
 						param := method.params[i] or { ast.Param{} }
-						if iparam.typ.has_flag(.generic)
-							&& c.table.get_type_name(iparam.typ) == gt_name {
-							inferred_type = param.typ
+						if iparam.typ.has_flag(.generic) {
+							param_sym := c.table.sym(iparam.typ)
+							arg_sym := c.table.sym(param.typ)
+							if c.table.get_type_name(iparam.typ) == gt_name {
+								inferred_type = param.typ
+							} else if arg_sym.info is ast.Array && param_sym.info is ast.Array {
+								mut arg_elem_typ, mut param_elem_typ := arg_sym.info.elem_type, param_sym.info.elem_type
+								mut arg_elem_sym, mut param_elem_sym := c.table.sym(arg_elem_typ), c.table.sym(param_elem_typ)
+								for {
+									if mut arg_elem_sym.info is ast.Array
+										&& mut param_elem_sym.info is ast.Array {
+										arg_elem_typ, param_elem_typ = arg_elem_sym.info.elem_type, param_elem_sym.info.elem_type
+										arg_elem_sym, param_elem_sym = c.table.sym(arg_elem_typ), c.table.sym(param_elem_typ)
+									} else {
+										if param_elem_sym.name == gt_name {
+											inferred_type = arg_elem_typ
+										}
+										break
+									}
+								}
+							} else if arg_sym.info is ast.ArrayFixed
+								&& param_sym.info is ast.ArrayFixed {
+								mut arg_elem_typ, mut param_elem_typ := arg_sym.info.elem_type, param_sym.info.elem_type
+								mut arg_elem_sym, mut param_elem_sym := c.table.sym(arg_elem_typ), c.table.sym(param_elem_typ)
+								for {
+									if mut arg_elem_sym.info is ast.ArrayFixed
+										&& mut param_elem_sym.info is ast.ArrayFixed {
+										arg_elem_typ, param_elem_typ = arg_elem_sym.info.elem_type, param_elem_sym.info.elem_type
+										arg_elem_sym, param_elem_sym = c.table.sym(arg_elem_typ), c.table.sym(param_elem_typ)
+									} else {
+										if param_elem_sym.name == gt_name {
+											inferred_type = arg_elem_typ
+										}
+										break
+									}
+								}
+							} else if arg_sym.info is ast.Map && param_sym.info is ast.Map {
+								if param_sym.info.key_type.has_flag(.generic)
+									&& c.table.sym(param_sym.info.key_type).name == gt_name {
+									inferred_type = arg_sym.info.key_type
+								}
+								if param_sym.info.value_type.has_flag(.generic)
+									&& c.table.sym(param_sym.info.value_type).name == gt_name {
+									inferred_type = arg_sym.info.value_type
+								}
+							}
 						}
 					}
 				}

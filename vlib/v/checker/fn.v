@@ -413,20 +413,23 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	}
 	node.source_file = c.file
 
-	if node.name in c.table.fns && node.name != 'main.main' {
-		mut dep_names := []string{}
-		for stmt in node.stmts {
-			dnames := c.table.dependent_names_in_stmt(stmt)
-			for dname in dnames {
-				if dname in dep_names {
-					continue
+	if node.name in c.table.fns {
+		if node.name != 'main.main' {
+			mut dep_names := []string{}
+			for stmt in node.stmts {
+				dnames := c.table.dependent_names_in_stmt(stmt)
+				for dname in dnames {
+					if dname in dep_names {
+						continue
+					}
+					dep_names << dname
 				}
-				dep_names << dname
+			}
+			if dep_names.len > 0 {
+				c.table.fns[node.name].dep_names = dep_names
 			}
 		}
-		if dep_names.len > 0 {
-			c.table.fns[node.name].dep_names = dep_names
-		}
+		c.table.fns[node.name].source_fn = voidptr(node)
 	}
 
 	// vweb checks
@@ -2086,6 +2089,32 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				method.params.last().typ
 			} else {
 				method.params[i + 1].typ
+			}
+			// If initialize a generic struct with short syntax,
+			// need to get the parameter information from the original generic method
+			if is_method_from_embed && arg.expr is ast.StructInit {
+				expr := arg.expr as ast.StructInit
+				is_short_syntax := expr.is_short_syntax && expr.typ == ast.void_type
+				if is_short_syntax {
+					embed_type := node.from_embed_types.last()
+					embed_sym := c.table.sym(embed_type)
+					if embed_sym.info is ast.Struct {
+						info := embed_sym.info as ast.Struct
+						if info.concrete_types.len > 0 {
+							parent_type := info.parent_type
+							parent_sym := c.table.sym(parent_type)
+							if parent_sym.info is ast.Struct && parent_sym.info.is_generic {
+								if f := parent_sym.find_method(method_name) {
+									exp_arg_typ = if f.is_variadic && i >= f.params.len - 1 {
+										f.params.last().typ
+									} else {
+										f.params[i + 1].typ
+									}
+								}
+							}
+						}
+					}
+				}
 			}
 			param_is_mut = false
 			no_type_promotion = false
