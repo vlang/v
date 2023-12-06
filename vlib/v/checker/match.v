@@ -129,13 +129,16 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					}
 					if !node.is_sum_type {
 						if mut stmt.expr is ast.CastExpr {
+							expr_typ_sym := c.table.sym(stmt.expr.typ)
 							if need_explicit_cast {
-								if explicit_cast_type != stmt.expr.typ {
+								if explicit_cast_type != stmt.expr.typ
+									&& expr_typ_sym.kind !in [.interface_, .sum_type] {
 									c.error('expected explicit type cast of `${c.table.type_to_str(explicit_cast_type)}` not `${c.table.type_to_str(stmt.expr.typ)}`',
 										stmt.pos)
 								}
 							} else {
-								if explicit_cast_type != stmt.expr.typ {
+								if explicit_cast_type != stmt.expr.typ
+									&& expr_typ_sym.kind !in [.interface_, .sum_type] {
 									c.error('casted type `${c.table.type_to_str(stmt.expr.typ)}` is not same as base type `${c.table.type_to_str(explicit_cast_type)}`',
 										stmt.pos)
 								}

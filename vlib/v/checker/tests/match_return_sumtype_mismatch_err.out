@@ -5,3 +5,10 @@ vlib/v/checker/tests/match_return_sumtype_mismatch_err.vv:15:11: error: return t
       |                 ~~~
    16 |     }
    17 | }
+vlib/v/checker/tests/match_return_sumtype_mismatch_err.vv:15:11: error: expected an explicit cast type of `St` from first branch
+   13 |     return match b {
+   14 |         true { St('TRUE') }
+   15 |         false { `F` }
+      |                 ~~~
+   16 |     }
+   17 | }
