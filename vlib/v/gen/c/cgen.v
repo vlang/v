@@ -4631,7 +4631,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 			&& (sym.info as ast.Alias).parent_type !in [expr_type, ast.string_type]) {
 			if sym.kind == .string && !node.typ.is_ptr() {
 				cast_label = '*(string*)&'
-			} else {
+			} else if !(g.is_cc_msvc && g.typ(node.typ) == g.typ(expr_type)) {
 				cast_label = '(${styp})'
 			}
 		}
