@@ -224,9 +224,9 @@ fn test_install_from_hg_url() ! {
 	// Initialize project without manifest file.
 	mut res := os.execute('hg init ${test_module_path}')
 	assert res.exit_code == 0, res.str()
-	mut p, mut addr := test_utils.hg_serve(hg_path, test_module_path)
+	mut p, mut port := test_utils.hg_serve(hg_path, test_module_path)
 	// Trying to install it should fail.
-	res = os.execute('${vexe} install --hg ${addr}')
+	res = os.execute('${vexe} install --hg http://127.0.0.1:${port}')
 	if res.exit_code != 1 {
 		p.signal_kill()
 		assert false, res.str()
@@ -245,9 +245,9 @@ fn test_install_from_hg_url() ! {
 	assert res.exit_code == 0, res.str()
 	res = os.execute('hg --config ui.username=v_ci commit -m "add v.mod"')
 	assert res.exit_code == 0, res.str()
-	p, addr = test_utils.hg_serve(hg_path, test_module_path)
+	p, port = test_utils.hg_serve(hg_path, test_module_path)
 	// Trying to install the module should work now.
-	res = os.execute('${vexe} install -v --hg ${addr}')
+	res = os.execute('${vexe} install --hg http://127.0.0.1:${port}')
 	if res.exit_code != 0 {
 		p.signal_kill()
 		assert false, res.str()
