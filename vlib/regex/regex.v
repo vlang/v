@@ -2429,7 +2429,8 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 				// println("ist_simple_char")
 				state.match_flag = false
 
-				if re.prog[state.pc].ch == ch {
+				if re.prog[state.pc].ch == ch
+					&& (state.i < in_txt_len - 1 || re.prog[state.pc].ch != 0) {
 					state.match_flag = true
 					l_ist = regex.ist_simple_char
 
