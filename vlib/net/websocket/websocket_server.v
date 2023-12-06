@@ -146,7 +146,7 @@ pub fn (mut s Server) handle_handshake(mut conn net.TcpConn, key string) !&Serve
 	mut c := &Client{
 		is_server: true
 		conn: conn
-		ssl_conn: ssl.new_ssl_conn()!
+		is_ssl: false
 		logger: &log.Log{
 			level: .debug
 		}
