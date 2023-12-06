@@ -188,7 +188,7 @@ fn fetch_manifest(name string, url string, version string, is_git bool) !vmod.Ma
 		}
 		head_branch.output.all_after_last('/').all_before(' ').all_before('\t')
 	}
-	url_ := if url.ends_with('.git') { url.replace('.git', '') } else { url }
+	url_ := url.trim_string_right('.git')
 	// Scan both URLS. E.g.:
 	// https://github.com/publisher/module/raw/v0.7.0/v.mod
 	// https://gitlab.com/publisher/module/-/raw/main/v.mod
