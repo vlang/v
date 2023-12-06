@@ -1050,7 +1050,7 @@ fn (g Gen) get_generic_array_element_type(array ast.Array) ast.Type {
 	return typ
 }
 
-fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concrete_types []ast.Type) map[int]ast.Type {
+fn (mut g Gen) resolve_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concrete_types []ast.Type) map[int]ast.Type {
 	mut comptime_args := map[int]ast.Type{}
 	has_dynamic_vars := (g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0)
 		|| g.inside_comptime_for_field
@@ -1179,6 +1179,13 @@ fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concret
 					if m := sym.find_method(g.comptime_for_method) {
 						comptime_args[k] = m.return_type
 					}
+				}
+			} else if mut call_arg.expr is ast.CastExpr {
+				cparam_type_sym := g.table.sym(g.unwrap_generic(call_arg.expr.typ))
+				param_typ_sym := g.table.sym(param_typ)
+				if param_typ_sym.kind == .map && cparam_type_sym.info is ast.Map {
+					comptime_args[k] = cparam_type_sym.info.key_type
+					comptime_args[k + 1] = cparam_type_sym.info.value_type
 				}
 			}
 		}
@@ -1425,7 +1432,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
 		if m := g.table.find_method(g.table.sym(node.left_type), node.name) {
 			mut node_ := unsafe { node }
-			comptime_args := g.change_comptime_args(m, mut node_, concrete_types)
+			comptime_args := g.resolve_comptime_args(m, mut node_, concrete_types)
 			for k, v in comptime_args {
 				if (rec_len + k) < concrete_types.len {
 					if !node.concrete_types[k].has_flag(.generic) {
@@ -1717,7 +1724,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		if func := g.table.find_fn(node.name) {
 			mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
 			mut node_ := unsafe { node }
-			comptime_args := g.change_comptime_args(func, mut node_, concrete_types)
+			comptime_args := g.resolve_comptime_args(func, mut node_, concrete_types)
 			if concrete_types.len > 0 {
 				for k, v in comptime_args {
 					if k < concrete_types.len {

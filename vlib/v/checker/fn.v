@@ -1502,7 +1502,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	return func.return_type
 }
 
-fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_types []ast.Type) map[int]ast.Type {
+fn (mut c Checker) resolve_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_types []ast.Type) map[int]ast.Type {
 	mut comptime_args := map[int]ast.Type{}
 	has_dynamic_vars := (c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0)
 		|| c.inside_comptime_for_field
@@ -1634,7 +1634,7 @@ fn (mut c Checker) resolve_fn_generic_args(func ast.Fn, mut node ast.CallExpr) [
 				else {}
 			}
 		}
-		mut comptime_args := c.get_comptime_args(func, node, concrete_types)
+		mut comptime_args := c.resolve_comptime_args(func, node, concrete_types)
 		if comptime_args.len > 0 {
 			for k, v in comptime_args {
 				if (rec_len + k) < concrete_types.len {
