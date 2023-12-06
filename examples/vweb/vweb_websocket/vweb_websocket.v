@@ -70,8 +70,8 @@ pub fn (mut app App) index() vweb.Result {
 
 pub fn (mut app App) ws() !vweb.Result {
 	key := app.req.header.get(http.CommonHeader.sec_websocket_key)!
-	app.wss.handle_handcheck(mut app.conn, key) or {
-		wlog('handle_handcheck error: ${err.msg()}')
+	app.wss.handle_handshake(mut app.conn, key) or {
+		wlog('handle_handshake error: ${err.msg()}')
 		return err
 	}
 	return app.text('')

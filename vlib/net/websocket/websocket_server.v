@@ -142,7 +142,8 @@ fn (mut s Server) serve_client(mut c Client) ! {
 	}
 }
 
-pub fn (mut s Server) handle_handcheck(mut conn net.TcpConn, key string) !&ServerClient {
+// handle_handshake use an existing connection to respond to the handshake for a given key
+pub fn (mut s Server) handle_handshake(mut conn net.TcpConn, key string) !&ServerClient {
 	mut c := &Client{
 		is_server: true
 		conn: conn
