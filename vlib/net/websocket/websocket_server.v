@@ -25,9 +25,10 @@ mut:
 	message_callbacks       []MessageEventHandler // new message callback functions
 	close_callbacks         []CloseEventHandler   // close message callback functions
 pub:
-	family net.AddrFamily = .ip
-	port   int  // port used as listen to incoming connections
-	is_ssl bool // true if secure connection (not supported yet on server)
+	family      net.AddrFamily = .ip
+	port        int  // port used as listen to incoming connections
+	is_ssl      bool // true if secure connection (not supported yet on server)
+	is_headless bool // true don't want to start a listener and use an other server
 pub mut:
 	server_state shared ServerState
 }
@@ -134,22 +135,57 @@ fn (mut s Server) serve_client(mut c Client) ! {
 		c.logger.debug('server-> End serve client (${c.id})')
 	}
 	mut handshake_response, mut server_client := s.handle_server_handshake(mut c)!
-	accept := s.send_connect_event(mut server_client)!
-	if !accept {
-		s.logger.debug('server-> client not accepted')
-		c.shutdown_socket()!
-		return
-	}
-	// the client is accepted
-	c.socket_write(handshake_response.bytes())!
-	lock s.server_state {
-		s.server_state.clients[server_client.client.id] = server_client
-	}
-	s.setup_callbacks(mut server_client)
+	s.attach_client(mut server_client, handshake_response)!
 	c.listen() or {
 		s.logger.error(err.msg())
 		return err
 	}
+}
+
+pub fn (mut s Server) handle_handcheck(mut conn net.TcpConn, key string) !&ServerClient {
+	mut c := &Client{
+		is_server: true
+		conn: conn
+		ssl_conn: ssl.new_ssl_conn()!
+		logger: &log.Log{
+			level: .debug
+		}
+		client_state: ClientState{
+			state: .open
+		}
+		last_pong_ut: time.now().unix
+		id: rand.uuid_v4()
+	}
+	mut server_client := &ServerClient{
+		resource_name: 'GET'
+		client_key: key
+		client: unsafe { c }
+		server: unsafe { &s }
+	}
+	digest := create_key_challenge_response(key)!
+	handshake_response := 'HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${digest}\r\n\r\n'
+	s.attach_client(mut server_client, handshake_response)!
+	spawn s.handle_ping()
+	c.listen() or {
+		s.logger.error(err.msg())
+		return err
+	}
+	return server_client
+}
+
+fn (mut s Server) attach_client(mut server_client ServerClient, handshake_response string) ! {
+	accept := s.send_connect_event(mut server_client)!
+	if !accept {
+		s.logger.debug('server-> client not accepted')
+		server_client.client.shutdown_socket()!
+		return
+	}
+	// the client is accepted
+	server_client.client.socket_write(handshake_response.bytes())!
+	lock s.server_state {
+		s.server_state.clients[server_client.client.id] = unsafe { server_client }
+	}
+	s.setup_callbacks(mut server_client)
 }
 
 // setup_callbacks initialize all callback functions
