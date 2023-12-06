@@ -186,13 +186,13 @@ match_test_suite = [
     TestItem{"/a/", r"^/a/[^/]+$", -1,3},
     TestItem{"/a/b",r"^/a/[^/]+$", 0,4},
 
-	// test `\0` as terminator
-	TestItem{"abc", "^abc\0$", -1,3},
-	TestItem{"abc\0", "^abc\0$", 0,4},
+    // test `\0` as terminator
+    TestItem{"abc", "^abc\0$", -1,3},
+    TestItem{"abc\0", "^abc\0$", 0,4},
 
-	// test has `\0` chars
-	TestItem{"abcxyz", "^abc\0xyz$", -1,3},
-	TestItem{"abc\0xyz", "^abc\0xyz$", 0,7},
+    // test has `\0` chars
+    TestItem{"abcxyz", "^abc\0xyz$", -1,3},
+    TestItem{"abc\0xyz", "^abc\0xyz$", 0,7},
 ]
 )
 
