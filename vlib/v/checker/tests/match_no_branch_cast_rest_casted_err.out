@@ -1,0 +1,7 @@
+vlib/v/checker/tests/match_no_branch_cast_rest_casted_err.vv:6:10: error: expected an explicit cast type of `u8` from first branch
+    4 |         'a' { u8(10) }
+    5 |         'b' { u8(12) }
+    6 |         else { 0 }
+      |                ^
+    7 |     }
+    8 |

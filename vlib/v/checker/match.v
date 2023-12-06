@@ -36,6 +36,8 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	c.match_exprs(mut node, cond_type_sym)
 	c.expected_type = cond_type
 	mut first_iteration := true
+	mut explicit_cast_type := ast.void_type
+	mut need_explicit_cast := false
 	mut ret_type := ast.void_type
 	mut nbranches_with_return := 0
 	mut nbranches_without_return := 0
@@ -87,6 +89,11 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 							}
 						}
 					}
+					explicit_cast_type = stmt.typ
+					if mut stmt.expr is ast.CastExpr {
+						need_explicit_cast = true
+						explicit_cast_type = stmt.expr.typ
+					}
 				} else {
 					if node.is_expr && ret_type.idx() != expr_type.idx() {
 						if (node.expected_type.has_flag(.option)
@@ -118,6 +125,26 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 							type_name := '&'.repeat(ret_type.nr_muls()) + ret_sym.name
 							c.error('return type mismatch, it should be `${type_name}`',
 								stmt.pos)
+						}
+					}
+					if !node.is_sum_type {
+						if mut stmt.expr is ast.CastExpr {
+							if need_explicit_cast {
+								if explicit_cast_type != stmt.expr.typ {
+									c.error('expected explicit type cast of `${c.table.type_to_str(explicit_cast_type)}` not `${c.table.type_to_str(stmt.expr.typ)}`',
+										stmt.pos)
+								}
+							} else {
+								if explicit_cast_type != stmt.expr.typ {
+									c.error('casted type `${c.table.type_to_str(stmt.expr.typ)}` is not same as base type `${c.table.type_to_str(explicit_cast_type)}`',
+										stmt.pos)
+								}
+							}
+						} else {
+							if need_explicit_cast {
+								c.error('expected an explicit cast type of `${c.table.type_to_str(explicit_cast_type)}` from first branch',
+									stmt.pos)
+							}
 						}
 					}
 				}
