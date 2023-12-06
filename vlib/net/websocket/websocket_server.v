@@ -25,10 +25,9 @@ mut:
 	message_callbacks       []MessageEventHandler // new message callback functions
 	close_callbacks         []CloseEventHandler   // close message callback functions
 pub:
-	family      net.AddrFamily = .ip
-	port        int  // port used as listen to incoming connections
-	is_ssl      bool // true if secure connection (not supported yet on server)
-	is_headless bool // true don't want to start a listener and use an other server
+	family net.AddrFamily = .ip
+	port   int  // port used as listen to incoming connections
+	is_ssl bool // true if secure connection (not supported yet on server)
 pub mut:
 	server_state shared ServerState
 }
