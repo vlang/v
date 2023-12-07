@@ -17,19 +17,24 @@ fn testsuite_end() {
 	os.rmdir_all(test_path) or {}
 }
 
-fn test_is_outdated() {
+fn test_is_outdated_git_module() {
 	os.execute_or_exit('git clone https://github.com/vlang/libsodium.git')
-	os.execute_or_exit('hg clone https://www.mercurial-scm.org/repo/hello')
 	assert !is_outdated('libsodium')
-	assert !is_outdated('hello')
-
 	os.execute_or_exit('git -C libsodium reset --hard HEAD~1')
-	os.execute_or_exit('hg --config extensions.strip= -R hello strip -r tip')
 	assert is_outdated('libsodium')
-	assert is_outdated('hello')
-
 	os.execute_or_exit('git -C libsodium pull')
-	os.execute_or_exit('hg -R hello pull')
 	assert !is_outdated('libsodium')
+}
+
+fn test_is_outdated_hg_module() {
+	os.find_abs_path_of_executable('hg') or {
+		eprintln('skipping test, since `hg` is not executable.')
+		return
+	}
+	os.execute_or_exit('hg clone https://www.mercurial-scm.org/repo/hello')
+	assert !is_outdated('hello')
+	os.execute_or_exit('hg --config extensions.strip= -R hello strip -r tip')
+	assert is_outdated('hello')
+	os.execute_or_exit('hg -R hello pull')
 	assert !is_outdated('hello')
 }
