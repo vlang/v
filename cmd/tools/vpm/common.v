@@ -108,8 +108,8 @@ fn get_ident_from_url(raw_url string) !(string, string) {
 	publisher, mut name := url.path.trim_left('/').rsplit_once('/') or {
 		return error('failed to retrieve module name for `${url}`.')
 	}
+	name = name.trim_string_right('.git')
 	vpm_log(@FILE_LINE, @FN, 'raw_url: ${raw_url}; publisher: ${publisher}; name: ${name}')
-	name = if name.ends_with('.git') { name.replace('.git', '') } else { name }
 	return publisher, name
 }
 
