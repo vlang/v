@@ -66,7 +66,7 @@ fn main() {
 }
 
 fn vpm_upgrade() {
-	outdated := get_outdated() or { exit(1) }
+	outdated := get_outdated()
 	if outdated.len > 0 {
 		vpm_update(outdated)
 	} else {
