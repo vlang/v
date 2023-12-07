@@ -12,9 +12,7 @@ const expect_exe = os.quoted_path(os.find_abs_path_of_executable('expect') or {
 })
 
 fn testsuite_begin() {
-	os.setenv('VMODULES', test_path, true)
-	os.setenv('VPM_NO_INCREMENT', '1', true)
-	os.setenv('VPM_DEBUG', '', true)
+	test_utils.set_test_env(test_path)
 	// Explicitly disable fail on prompt.
 	os.setenv('VPM_FAIL_ON_PROMPT', '', true)
 	os.mkdir_all(test_path) or {}
