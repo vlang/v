@@ -1502,18 +1502,20 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	return func.return_type
 }
 
-fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_types []ast.Type) map[int]ast.Type {
+fn (mut c Checker) resolve_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_types []ast.Type) map[int]ast.Type {
 	mut comptime_args := map[int]ast.Type{}
 	has_dynamic_vars := (c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0)
 		|| c.inside_comptime_for_field
 	if has_dynamic_vars {
 		offset := if func.is_method { 1 } else { 0 }
+		mut k := -1
 		for i, call_arg in node_.args {
 			param := if func.is_variadic && i >= func.params.len - (offset + 1) {
 				func.params.last()
 			} else {
 				func.params[offset + i]
 			}
+			k++
 			if !param.typ.has_flag(.generic) {
 				continue
 			}
@@ -1528,7 +1530,7 @@ fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_t
 								&& c.table.final_sym(param_typ).kind == .array {
 								ctyp = arg_sym.info.elem_type
 							}
-							comptime_args[i] = ctyp
+							comptime_args[k] = ctyp
 						}
 					} else if call_arg.expr.obj.ct_type_var == .generic_param {
 						mut ctyp := c.get_comptime_var_type(call_arg.expr)
@@ -1538,11 +1540,11 @@ fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_t
 
 							if param_typ.has_flag(.variadic) {
 								ctyp = ast.mktyp(ctyp)
-								comptime_args[i] = ctyp
+								comptime_args[k] = ctyp
 							} else if arg_sym.info is ast.Array && param_typ.has_flag(.generic)
 								&& param_typ_sym.kind == .array {
 								ctyp = c.get_generic_array_element_type(arg_sym.info)
-								comptime_args[i] = ctyp
+								comptime_args[k] = ctyp
 							} else if arg_sym.kind in [.struct_, .interface_, .sum_type] {
 								mut generic_types := []ast.Type{}
 								match arg_sym.info {
@@ -1560,15 +1562,19 @@ fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_t
 									if gt_name in generic_names
 										&& generic_types.len == concrete_types.len {
 										idx := generic_names.index(gt_name)
-										comptime_args[i] = concrete_types[idx]
+										comptime_args[k] = concrete_types[idx]
 										break
 									}
 								}
 							} else if arg_sym.kind == .any {
 								cparam_type_sym := c.table.sym(c.unwrap_generic(ctyp))
 								if param_typ_sym.kind == .array && cparam_type_sym.info is ast.Array {
-									ctyp = cparam_type_sym.info.elem_type
-									comptime_args[i] = ctyp
+									comptime_args[k] = cparam_type_sym.info.elem_type
+								} else if param_typ_sym.kind == .map
+									&& cparam_type_sym.info is ast.Map {
+									comptime_args[k] = cparam_type_sym.info.key_type
+									comptime_args[k + 1] = cparam_type_sym.info.value_type
+									k++
 								} else {
 									if node_.args[i].expr.is_auto_deref_var() {
 										ctyp = ctyp.deref()
@@ -1576,20 +1582,20 @@ fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_t
 									if ctyp.nr_muls() > 0 && param_typ.nr_muls() > 0 {
 										ctyp = ctyp.set_nr_muls(0)
 									}
-									comptime_args[i] = ctyp
+									comptime_args[k] = ctyp
 								}
 							} else {
-								comptime_args[i] = ctyp
+								comptime_args[k] = ctyp
 							}
 						}
 					}
 				}
 			} else if call_arg.expr is ast.PrefixExpr {
 				if call_arg.expr.right is ast.ComptimeSelector {
-					comptime_args[i] = c.get_comptime_var_type(call_arg.expr.right)
-					comptime_args[i] = comptime_args[i].deref()
-					if comptime_args[i].nr_muls() > 0 && param_typ.nr_muls() > 0 {
-						comptime_args[i] = comptime_args[i].set_nr_muls(0)
+					comptime_args[k] = c.get_comptime_var_type(call_arg.expr.right)
+					comptime_args[k] = comptime_args[k].deref()
+					if comptime_args[k].nr_muls() > 0 && param_typ.nr_muls() > 0 {
+						comptime_args[k] = comptime_args[k].set_nr_muls(0)
 					}
 				}
 			} else if call_arg.expr is ast.ComptimeSelector {
@@ -1598,13 +1604,13 @@ fn (mut c Checker) get_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_t
 				if ct_value != ast.void_type {
 					cparam_type_sym := c.table.sym(c.unwrap_generic(ct_value))
 					if param_typ_sym.kind == .array && cparam_type_sym.info is ast.Array {
-						comptime_args[i] = cparam_type_sym.info.elem_type
+						comptime_args[k] = cparam_type_sym.info.elem_type
 					} else {
-						comptime_args[i] = ct_value
+						comptime_args[k] = ct_value
 					}
 				}
 			} else if call_arg.expr is ast.ComptimeCall {
-				comptime_args[i] = c.get_comptime_var_type(call_arg.expr)
+				comptime_args[k] = c.get_comptime_var_type(call_arg.expr)
 			}
 		}
 	}
@@ -1628,7 +1634,7 @@ fn (mut c Checker) resolve_fn_generic_args(func ast.Fn, mut node ast.CallExpr) [
 				else {}
 			}
 		}
-		mut comptime_args := c.get_comptime_args(func, node, concrete_types)
+		mut comptime_args := c.resolve_comptime_args(func, node, concrete_types)
 		if comptime_args.len > 0 {
 			for k, v in comptime_args {
 				if (rec_len + k) < concrete_types.len {
