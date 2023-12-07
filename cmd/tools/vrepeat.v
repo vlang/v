@@ -298,9 +298,9 @@ fn (mut context Context) show_diff_summary() {
 				first_marker = bold('>')
 				first_cmd_percentage = cpercent
 			}
-			mut comparison := '== 100%'
+			mut comparison := '==='
 			if r.atiming.average != base {
-				comparison = '${cpercent:7.1f}%'
+				comparison = '${cpercent:+7.1f}%'
 			}
 			println(' ${first_marker}${(i + 1):3} ${comparison:9} `${r.cmd}`')
 			println('                ${r.atiming}')
