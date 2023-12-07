@@ -4,6 +4,7 @@ module main
 import os
 import rand
 import v.vmod
+import test_utils
 
 const test_path = os.join_path(os.vtmp_dir(), 'vpm_install_version_test_${rand.ulid()}')
 

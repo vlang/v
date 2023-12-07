@@ -2,6 +2,7 @@
 import os
 import rand
 import v.vmod
+import test_utils
 
 const vexe = os.quoted_path(@VEXE)
 const test_path = os.join_path(os.vtmp_dir(), 'vpm_install_version_input_test_${rand.ulid()}')

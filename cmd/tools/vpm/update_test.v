@@ -1,6 +1,7 @@
 // vtest retry: 3
 import os
 import rand
+import test_utils
 
 const v = os.quoted_path(@VEXE)
 const test_path = os.join_path(os.vtmp_dir(), 'vpm_update_test_${rand.ulid()}')
