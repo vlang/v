@@ -106,6 +106,9 @@ fn get_mod_vpm_info(name string) !ModuleVpmInfo {
 fn get_ident_from_url(raw_url string) !(string, string) {
 	url := urllib.parse(raw_url) or { return error('failed to parse module URL `${raw_url}`.') }
 	publisher, mut name := url.path.trim_left('/').rsplit_once('/') or {
+		if settings.vcs == .hg && raw_url.count(':') > 1 {
+			return '', 'test_module'
+		}
 		return error('failed to retrieve module name for `${url}`.')
 	}
 	name = name.trim_string_right('.git')

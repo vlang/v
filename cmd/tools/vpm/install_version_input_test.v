@@ -27,7 +27,7 @@ fn testsuite_end() {
 
 fn get_vmod(path string) vmod.Manifest {
 	return vmod.from_file(os.join_path(test_path, path, 'v.mod')) or {
-		eprintln('Failed to parse v.mod for `${path}`')
+		eprintln('Failed to parse v.mod for `${path}`. ${err}')
 		exit(1)
 	}
 }

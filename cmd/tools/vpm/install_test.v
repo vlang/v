@@ -4,6 +4,7 @@ module main
 import os
 import rand
 import v.vmod
+import test_utils
 
 // Running tests appends a tsession path to VTMP, which is automatically cleaned up after the test.
 // The following will result in e.g. `$VTMP/tsession_7fe8e93bd740_1612958707536/test-vmodules/`.
@@ -22,7 +23,7 @@ fn testsuite_end() {
 
 fn get_vmod(path string) vmod.Manifest {
 	return vmod.from_file(os.join_path(test_path, path, 'v.mod')) or {
-		eprintln('Failed to parse v.mod for `${path}`')
+		eprintln('Failed to parse v.mod for `${path}`. ${err}')
 		exit(1)
 	}
 }
@@ -166,15 +167,14 @@ fn test_install_potentially_conflicting() {
 
 fn test_get_installed_version() {
 	test_project_path := os.join_path(test_path, 'test_project')
-	os.mkdir_all(test_project_path)!
-	os.chdir(test_project_path)!
-	os.write_file('v.mod', '')!
-	if os.getenv('CI') != '' {
-		os.execute_or_exit('git config --global user.email "v@vi.com"')
-		os.execute_or_exit('git config --global user.name "V CI"')
-	}
-	mut res := os.execute('git init')
+	mut res := os.execute('git init ${test_project_path}')
 	assert res.exit_code == 0, res.str()
+	os.chdir(test_project_path)!
+	if os.execute('git config user.name').exit_code == 1 {
+		os.execute_or_exit('git config user.email "ci@vlang.io"')
+		os.execute_or_exit('git config user.name "V CI"')
+	}
+	os.write_file('v.mod', '')!
 	res = os.execute('git add .')
 	assert res.exit_code == 0, res.str()
 	res = os.execute('git commit -m "initial commit"')
@@ -210,4 +210,51 @@ fn test_get_installed_version() {
 	mod.get_installed()
 	assert mod.is_installed
 	assert mod.installed_version == 'v0.1.0'
+}
+
+fn test_install_from_hg_url() ! {
+	hg_path := os.find_abs_path_of_executable('hg') or {
+		eprintln('skipping test, since `hg` is not executable.')
+		return
+	}
+	test_module_path := os.join_path(os.temp_dir(), rand.ulid(), 'hg_test_module')
+	defer {
+		os.rmdir_all(test_module_path) or {}
+	}
+	// Initialize project without manifest file.
+	mut res := os.execute('hg init ${test_module_path}')
+	assert res.exit_code == 0, res.str()
+	mut p, mut port := test_utils.hg_serve(hg_path, test_module_path)
+	// Trying to install it should fail.
+	res = os.execute('${vexe} install --hg http://127.0.0.1:${port}')
+	if res.exit_code != 1 {
+		p.signal_kill()
+		assert false, res.str()
+	}
+	assert res.output.contains('failed to find `v.mod`'), res.output
+	p.signal_kill()
+	// Create and commit manifest.
+	name := 'my_awesome_v_module'
+	version := '1.0.0'
+	os.write_file(os.join_path(test_module_path, 'v.mod'), "Module{
+	name: '${name}'
+	version: '${version}'
+}")!
+	os.chdir(test_module_path)!
+	res = os.execute('hg add')
+	assert res.exit_code == 0, res.str()
+	res = os.execute('hg --config ui.username=v_ci commit -m "add v.mod"')
+	assert res.exit_code == 0, res.str()
+	p, port = test_utils.hg_serve(hg_path, test_module_path)
+	// Trying to install the module should work now.
+	res = os.execute('${vexe} install --hg http://127.0.0.1:${port}')
+	if res.exit_code != 0 {
+		p.signal_kill()
+		assert false, res.str()
+	}
+	p.signal_kill()
+	// Get manifest from the vmodules directory.
+	manifest := get_vmod(name)
+	assert manifest.name == name
+	assert manifest.version == version
 }

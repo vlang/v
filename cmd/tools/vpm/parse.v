@@ -54,7 +54,7 @@ fn (mut p Parser) parse_module(m string) {
 		false
 	}
 	mut mod := if is_http || ident.starts_with('https://') {
-		// External module. The idenifier is an URL.
+		// External module. The identifier is an URL.
 		publisher, name := get_ident_from_url(ident) or {
 			vpm_error(err.msg())
 			p.errors++
@@ -175,10 +175,11 @@ fn (mut m Module) get_installed() {
 
 fn fetch_manifest(name string, url string, version string, is_git bool) !vmod.Manifest {
 	if !is_git {
-		// TODO: fetch manifest for mercurial repositories
-		return vmod.Manifest{
-			name: name
-		}
+		manifest_url := '${url}/raw-file/tip/v.mod'
+		vpm_log(@FILE_LINE, @FN, 'manifest_url: ${manifest_url}')
+		return get_manifest_from_resp(http.get(manifest_url) or {
+			return error('failed to retrieve manifest. ${err}')
+		})
 	}
 	v := if version != '' {
 		version
@@ -196,13 +197,16 @@ fn fetch_manifest(name string, url string, version string, is_git bool) !vmod.Ma
 	for i, raw_p in raw_paths {
 		manifest_url := '${url_}/${raw_p}/${v}/v.mod'
 		vpm_log(@FILE_LINE, @FN, 'manifest_url ${i}: ${manifest_url}')
-		raw_manifest_resp := http.get(manifest_url) or { continue }
-		if raw_manifest_resp.status_code != 200 {
-			return error('unsuccessful response status `${raw_manifest_resp.status_code}`.')
-		}
-		return vmod.decode(raw_manifest_resp.body) or {
-			return error('failed to decode manifest `${raw_manifest_resp.body}`. ${err}')
-		}
+		return get_manifest_from_resp(http.get(manifest_url) or { continue })
 	}
 	return error('failed to retrieve manifest.')
+}
+
+fn get_manifest_from_resp(resp http.Response) !vmod.Manifest {
+	if resp.status_code != 200 {
+		return error('unsuccessful response status `${resp.status_code}`.')
+	}
+	return vmod.decode(resp.body) or {
+		return error('failed to decode manifest `${resp.body}`. ${err}')
+	}
 }
