@@ -30,6 +30,7 @@ const external_tools = [
 	'ls',
 	'missdoc',
 	'repl',
+	'repeat',
 	'self',
 	'setup-freetype',
 	'shader',

@@ -2,8 +2,8 @@ module help
 
 import os
 
-// Topics whose module uses the cli module.
-const cli_topics = ['new', 'init']
+// Topics whose module uses the cli or flag modules (both support --help).
+const cli_topics = ['new', 'init', 'repeat']
 
 fn hdir(base string) string {
 	return os.join_path(base, 'vlib', 'v', 'help')
