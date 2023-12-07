@@ -21,6 +21,7 @@ fn hg_serve(hg_path string, path string) (&os.Process, int) {
 	mut i := 0
 	for p.is_alive() {
 		if i == 500 { // Wait max. 5 seconds.
+			p.signal_kill()
 			eprintln('Failed to serve mercurial repository on localhost.')
 			exit(1)
 		}
