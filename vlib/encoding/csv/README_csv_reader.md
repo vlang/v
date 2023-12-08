@@ -174,11 +174,11 @@ import encoding.csv
 fn main() {
     file_path := 'big2.csv'
     mut csvr := csv.csv_reader(
-        file_path:file_path,
-        mem_buf_size:1024*1024*64, 
-        end_line_len:csv.endline_crlf_len
+        file_path:file_path, // path to the file CSV
+        mem_buf_size:1024*1024*64, // we set 64MByte of buffer for this file
+        end_line_len:csv.endline_crlf_len // we are using a windows text file
     )!
-    
+    // The data will be saved in this array
     mut data := [][]string{len:csvr.csv_map.len}
     for row_index in 1..csvr.csv_map.len {
         // get single cells
@@ -191,6 +191,78 @@ fn main() {
 ```
 This type of reading if faster then read an entire row and then extract the needed data.
 
-## Performance
+## Comments and blank lines
+This module can manage blank rows in the file and comment rows:
+```v
+import encoding.csv
+const txt := 
+'
+# this is a comment line
+a,b,c
 
+
+
+0,1,2
+
+3,4,5
+# another comment
+'
+fn main() {
+    mut csvr := csv.csv_reader(
+        scr_buf:txt.str,  
+        scr_buf_len: txt.len, 
+        comment: `#`  // line starting with # will be ignored
+    )!
+    // scan all rows, csvr.csv_map.len contain the valid
+    // rows number in the CSV file.
+    for row_index in 0..csvr.csv_map.len {
+        row := csvr.get_row(row_index)!
+        println(row)
+    }
+    csvr.dispose_csv_reader()
+}
+```
+Output:
+```
+['a', 'b', 'c']
+['0', '1', '2']
+['3', '4', '5']
+```
+## Quote char
+This module support quote char inside the cells, the following example show the usage:
+```v
+import encoding.csv
+const txt := 
+"
+# comment line
+'a' , 'b', 'c'
+'1' , '2', '3'
+'4' ,'5', 'a,b,c', 'e'
+"
+fn main() {
+    mut csvr := csv.csv_reader(
+        scr_buf:txt.str,       // string pointer
+        scr_buf_len: txt.len,  // string length
+        comment: `#`,          // line starting with # will be ignored
+        quote: `'`,            // char used for quotes
+        quote_remove: true     // remove quotes from the cells
+    )!
+    
+    // scan all rows, csvr.csv_map.len contain the valid
+    // rows number in the CSV file.
+    for row_index in 0..csvr.csv_map.len {
+        row := csvr.get_row(row_index)!
+        println(row)
+    }
+    csvr.dispose_csv_reader()
+}
+```
+Output:
+```
+['a', 'b', 'c']
+['1', '2', '3']
+['4', '5', 'a,b,c', 'e']
+```
+## Performance
+This module was tested with CSV files up to 4GByte with 4 milions of rows
 

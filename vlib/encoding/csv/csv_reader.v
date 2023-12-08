@@ -60,7 +60,7 @@ pub mut:
 	separator_len int  = 1     // size of the separator rune 
 	quote         u8   = `"`   // double quote is the standard quote char
 	quote_remove  bool         // if true clear the cell from the quotes
-	comment       u8   = `#`   // eery line that start with the quote char is ignored
+	comment       u8   = `#`   // every line that start with the quote char is ignored
 
 	default_cell string = "*"  // return this string if out of the csv boundaries
 	empty_cell   string = "#"  // retunrn this if empty cell
@@ -90,9 +90,12 @@ struct CsvReaderConfig {
 	end_index    i64 = -1
 	mem_buf_size int = 1024 * 64  // default buffer size 64KByte
 	separator    u8  = `,`
+	comment      u8  = `#`    // every line that start with the quote char is ignored
 	default_cell string = "*" // return this string if out of the csv boundaries
 	empty_cell   string  // return this string if empty cell
-	end_line_len int  = endline_cr_len  // size of the endline rune 
+	end_line_len int  = endline_cr_len  // size of the endline rune
+	quote        u8   = `"`   // double quote is the standard quote char
+	quote_remove bool         // if true clear the cell from the quotes
 }
 
 /******************************************************************************
@@ -150,6 +153,9 @@ pub fn csv_reader(cfg CsvReaderConfig) !&CsvReader {
 	cr.empty_cell = cfg.empty_cell
 	cr.end_line_len = cfg.end_line_len
 	cr.separator = cfg.separator
+	cr.comment = cfg.comment
+	cr.quote_remove = cfg.quote_remove
+	cr.quote = cfg.quote
 
 	cr.map_csv()!
 
