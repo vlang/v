@@ -48,8 +48,9 @@ pub struct CsvReader {
 pub mut:
 	index i64
 
-	f     os.File
-	f_len i64
+	f              os.File
+	f_len          i64
+	is_bom_present bool
 
 	start_index i64
 	end_index   i64 = -1
@@ -119,6 +120,15 @@ pub fn csv_reader(cfg CsvReaderConfig) !&CsvReader {
 		if cfg.end_index == -1 {
 			cr.end_index = cfg.scr_buf_len
 		}
+
+		// check if BOM header is in the memory buffer
+		unsafe {
+			if *&u8(cr.mem_buf) == 0xEF && *(&u8(cr.mem_buf) + 1) == 0xBB
+				&& *(&u8(cr.mem_buf) + 2) == 0xBF {
+				cr.is_bom_present = true
+				cr.index += 3 // skip the BOM
+			}
+		}
 	}
 	// check if is a file source
 	else if cfg.file_path.len > 0 {
@@ -141,6 +151,20 @@ pub fn csv_reader(cfg CsvReaderConfig) !&CsvReader {
 
 		if cfg.end_index == -1 {
 			cr.end_index = cr.f_len
+		}
+
+		// check if BOM header is in the file
+		if cr.index == 0 {
+			if cr.f.read_into_ptr(cr.mem_buf, 4)! == 4 {
+				unsafe {
+					if *&u8(cr.mem_buf) == 0xEF && *(&u8(cr.mem_buf) + 1) == 0xBB
+						&& *(&u8(cr.mem_buf) + 2) == 0xBF {
+						cr.is_bom_present = true
+						cr.index += 3 // skip the BOM
+					}
+				}
+			}
+			cr.f.seek(cfg.start_index, .start)!
 		}
 	}
 
@@ -222,7 +246,7 @@ pub fn (mut cr CsvReader) map_csv() ! {
 	unsafe {
 		p := &u8(cr.mem_buf)
 		cr.csv_map << []i64{}
-		cr.csv_map[0] << 0
+		cr.csv_map[0] << if cr.is_bom_present { 3 } else { 0 } // skip the BOM data
 		for i < cr.end_index {
 			read_bytes_count := cr.fill_buffer(i)!
 			// println("${i:-12d} of ${cr.f_len:-12d} readed: ${read_bytes_count}")

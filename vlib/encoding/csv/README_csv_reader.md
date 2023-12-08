@@ -277,4 +277,4 @@ Output:
 ['4', '5', 'a,b,c', 'e']
 ```
 ## Performance
-This module was tested with CSV files up to 4GByte with 4 million rows
+This module was tested with CSV files up to 4 GBs with 4 million rows
