@@ -450,3 +450,30 @@ fn test_open_file_on_chinese_windows() {
 		assert os.file_size('中文.txt') == 2
 	}
 }
+
+fn test_open_file_crlf_binary_mode() {
+	teststr := 'hello\r\n'
+	fname := 'text.txt'
+
+	mut wfile := os.open_file(fname, 'w', 0o666)!
+	wfile.write_string(teststr)!
+	wfile.close()
+
+	mut fcont_w := os.read_file(fname)!
+
+	os.rm(fname) or {}
+
+	mut wbfile := os.open_file(fname, 'wb', 0o666)!
+	wbfile.write_string(teststr)!
+	wbfile.close()
+
+	mut fcont_wb := os.read_file(fname)!
+
+	os.rm(fname) or {}
+
+	$if windows {
+		assert fcont_w != teststr
+	}
+
+	assert fcont_wb == teststr
+}
