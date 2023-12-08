@@ -9,6 +9,7 @@ mut:
 	name               string
 	url                string
 	version            string // specifies the requested version.
+	tmp_path           string
 	install_path       string
 	install_path_fmted string
 	installed_version  string
@@ -22,14 +23,11 @@ struct Parser {
 mut:
 	modules              map[string]Module
 	checked_settings_vcs bool
-	is_git_setting       bool
 	errors               int
 }
 
 fn parse_query(query []string) []Module {
-	mut p := Parser{
-		is_git_setting: settings.vcs == .git
-	}
+	mut p := Parser{}
 	for m in query {
 		p.parse_module(m)
 	}
@@ -68,20 +66,30 @@ fn (mut p Parser) parse_module(m string) {
 				exit(1)
 			}
 		}
-		// Fetch manifest.
-		manifest := fetch_manifest(name, ident, version, p.is_git_setting) or {
-			vpm_error('failed to find `v.mod` for `${ident}${at_version(version)}`.',
-				details: err.msg()
-			)
+		tmp_path := get_tmp_path(os.join_path(publisher, name, version)) or {
+			vpm_error('failed to get temporary directory for `${ident}`.', details: err.msg())
 			p.errors++
 			return
 		}
-		// Resolve path.
+		settings.vcs.clone(ident, version, tmp_path) or {
+			vpm_error('failed to clone `${ident}`.', details: err.msg())
+			p.errors++
+			return
+		}
+		manifest := get_manifest(tmp_path) or {
+			vpm_error('failed to find `v.mod` for `${ident}${at_version(version)}`.',
+				details: err.msg()
+			)
+			os.rmdir_all(tmp_path) or {}
+			p.errors++
+			return
+		}
 		mod_path := normalize_mod_path(os.join_path(if is_http { publisher } else { '' },
 			manifest.name))
 		Module{
 			name: manifest.name
 			url: ident
+			tmp_path: tmp_path
 			install_path: os.real_path(os.join_path(settings.vmodules_path, mod_path))
 			is_external: true
 			manifest: manifest
@@ -94,15 +102,13 @@ fn (mut p Parser) parse_module(m string) {
 			return
 		}
 		// Verify VCS.
-		mut is_git_module := true
 		vcs := if info.vcs != '' {
 			info_vcs := vcs_from_str(info.vcs) or {
 				vpm_error('skipping `${info.name}`, since it uses an unsupported version control system `${info.vcs}`.')
 				p.errors++
 				return
 			}
-			is_git_module = info_vcs == .git
-			if !is_git_module && version != '' {
+			if info_vcs != .git && version != '' {
 				vpm_error('skipping `${info.name}`, version installs are currently only supported for projects using `git`.')
 				p.errors++
 				return
@@ -116,8 +122,18 @@ fn (mut p Parser) parse_module(m string) {
 			p.errors++
 			return
 		}
-		// Fetch manifest.
-		manifest := fetch_manifest(info.name, info.url, version, is_git_module) or {
+		mod_path := normalize_mod_path(info.name.replace('.', os.path_separator))
+		tmp_path := get_tmp_path(os.join_path(mod_path, version)) or {
+			vpm_error('failed to get temporary directory for `${ident}`.', details: err.msg())
+			p.errors++
+			return
+		}
+		vcs.clone(info.url, version, tmp_path) or {
+			vpm_error('failed to clone `${ident}`.', details: err.msg())
+			p.errors++
+			return
+		}
+		manifest := get_manifest(tmp_path) or {
 			// Add link with issue template requesting to add a manifest.
 			mut details := ''
 			if resp := http.head('${info.url}/issues/new') {
@@ -130,11 +146,10 @@ fn (mut p Parser) parse_module(m string) {
 			vpm_log(@FILE_LINE, @FN, 'vpm manifest detection error: ${err}')
 			vmod.Manifest{}
 		}
-		// Resolve path.
-		mod_path := normalize_mod_path(info.name.replace('.', os.path_separator))
 		Module{
 			name: info.name
 			url: info.url
+			tmp_path: tmp_path
 			vcs: vcs
 			install_path: os.real_path(os.join_path(settings.vmodules_path, mod_path))
 			manifest: manifest
@@ -173,40 +188,12 @@ fn (mut m Module) get_installed() {
 	}
 }
 
-fn fetch_manifest(name string, url string, version string, is_git bool) !vmod.Manifest {
-	if !is_git {
-		manifest_url := '${url}/raw-file/tip/v.mod'
-		vpm_log(@FILE_LINE, @FN, 'manifest_url: ${manifest_url}')
-		return get_manifest_from_resp(http.get(manifest_url) or {
-			return error('failed to retrieve manifest. ${err}')
-		})
+fn get_tmp_path(relative_path string) ?string {
+	tmp_path := os.real_path(os.join_path(settings.tmp_path, relative_path))
+	if os.exists(tmp_path) {
+		// It's unlikely that the tmp_path already exists, but it might
+		// occur if vpm was canceled during an installation or update.
+		os.rmdir_all(tmp_path) or { return none }
 	}
-	v := if version != '' {
-		version
-	} else {
-		head_branch := os.execute_opt('git ls-remote --symref ${url} HEAD') or {
-			return error('failed to find git HEAD. ${err}')
-		}
-		head_branch.output.all_after_last('/').all_before(' ').all_before('\t')
-	}
-	url_ := url.trim_string_right('.git')
-	// Scan both URLS. E.g.:
-	// https://github.com/publisher/module/raw/v0.7.0/v.mod
-	// https://gitlab.com/publisher/module/-/raw/main/v.mod
-	raw_paths := ['raw/', '/-/raw/']
-	for i, raw_p in raw_paths {
-		manifest_url := '${url_}/${raw_p}/${v}/v.mod'
-		vpm_log(@FILE_LINE, @FN, 'manifest_url ${i}: ${manifest_url}')
-		return get_manifest_from_resp(http.get(manifest_url) or { continue })
-	}
-	return error('failed to retrieve manifest.')
-}
-
-fn get_manifest_from_resp(resp http.Response) !vmod.Manifest {
-	if resp.status_code != 200 {
-		return error('unsuccessful response status `${resp.status_code}`.')
-	}
-	return vmod.decode(resp.body) or {
-		return error('failed to decode manifest `${resp.body}`. ${err}')
-	}
+	return tmp_path
 }

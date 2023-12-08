@@ -42,6 +42,15 @@ const vcs_info = {
 	}
 }
 
+fn (vcs VCS) clone(url string, version string, path string) ! {
+	args := vcs_info[vcs].args
+	version_opt := if version != '' { '${args.version} ${version}' } else { '' }
+	cmd := [vcs.str(), args.install, version_opt, url, os.quoted_path(path)].join(' ')
+	vpm_log(@FILE_LINE, @FN, 'cmd: ${cmd}')
+	res := os.execute_opt(cmd)!
+	vpm_log(@FILE_LINE, @FN, 'cmd output: ${res.output}')
+}
+
 fn (vcs &VCS) is_executable() ! {
 	cmd := vcs.str()
 	os.find_abs_path_of_executable(cmd) or {
