@@ -1,7 +1,7 @@
 
 # CSV Reader
-This module is a Random Access CSV file reader, it perform a file indexing before the readings.
-This indexing operation permit to access to every cell of the CSV file in a random order.
+This module is a Random Access CSV file reader, it indexes the file file before reading the data.
+This indexing operation permits access to every cell of the CSV file in random order.
 Here a very simple example of usage:
 
 ```v
@@ -32,7 +32,7 @@ will give the following output:
 ```
 This is the simplest way to use it to read csv files, with default configuration 
 every cell is read as `string`.
-To read a single row it is used the function `get_row()` that return an array of `string`.
+The function `get_row()` is used to read a single row, and it returns an array of `string`.
 
 ## Reading from different sources `csv_reader`
 The CSV Reader can read from files, strings, memory buffers.
@@ -44,17 +44,17 @@ csv.csv_reader(file_path:file_path)
 ```
 csv.csv_reader_from_string(string_with_the_csv)
 ```
-*Note: csv_reader_from_string is a syntactic sugar for memory buffer reading*
+*N*Note: csv_reader_from_string is "syntax sugar" for buffered reading*
 ### read from a memory buffer
 ```
 csv.csv_reader(scr_buf:voidptr(buffer_ptr),  scr_buf_len: buffer_len)
 ```
 When you call `csv.csv_reader` a `CsvReader` struct is initialized passing 
-a `CsvReaderConfig` as a parameter.
-Working on these structs it is possible to change the beahivour of the CSV Reader.
+a `CsvReaderConfig` struct as a parameter.
+Using these structs, it is possible to change the behavior of the CSV Reader.
 
 ## The `CsvReaderConfig` struct
-The config struct is the following:
+The config struct is as follows:
 ```
 pub struct CsvReaderConfig {
 	scr_buf      voidptr // pointer to the buffer of data
@@ -76,8 +76,8 @@ pub struct CsvReaderConfig {
 |------------|--------------|
 |`scr_buf`, `scr_buf_len`|If `scr_buf_len > 0` the reader will use the  `scr_buf` pointer as the base address of the data to parse and  `scr_buf_len` as the length of the buffer itself|
 |`file_path`| if `scr_buf_len == 0` the reader will try to open the `file_path`  file|
-| `start_index`,`end_index`| **Internal usage for now**|
-| `mem_buf_size`|memory allocated for the reading operations on the file, more memory more speed|
+|`start_index`,`end_index`| **Internal usage for now**|
+|`mem_buf_size`|memory allocated for the reading operations on the file, more memory more speed|
 |`separator`|char used as cell separator in the CSV file, default is comma|
 |`default_cell`|return this string if the query coordinates are out of the csv boundaries|
 |`empty_cell`|return this string if the query coordinates are on an empty cell|
@@ -86,8 +86,8 @@ pub struct CsvReaderConfig {
 |`quote_remove`| if **true** try to remove the quotes from each cell, use only in quoted csv files|
 
 ## Random Access reading
-The main feature of this module is allow random access to the CSV file cells, 
-let see an example with some custom configurations:
+The main feature of this module is to allow random access to CSV file cells, 
+such as this example with custom configuration:
 ```v
 import encoding.csv
 
@@ -100,7 +100,7 @@ a,b,c
 fn main() {
 	mut csvr := csv.csv_reader_from_string(txt)!
 
-	// we are setting directly in the `CsvReader` struct these params
+	// we are directly setting these params in the `CsvReader` struct
 	csvr.default_cell = '*'
 	csvr.empty_cell = 'EMPTY'
 
@@ -119,11 +119,11 @@ Output:
 [0,4] => *
 [1,2] => EMPTY
 ```
-The function `csvr.get_cell()` allow to pick a single cell as a `string`.
+The function `csvr.get_cell()` allows reading a single cell as a `string`.
 
 ## Using the header
-This module allow to use the header of the CSV (if any is present) to simplify 
-some read operation on the CSV file.
+This example reads the CSV file header (if present) to simplify 
+some read operations on the CSV file.
 ```v
 import encoding.csv
 
@@ -200,10 +200,10 @@ fn main() {
 	csvr.dispose_csv_reader()
 }
 ```
-This type of reading if faster then read an entire row and then extract the needed data.
+This style of reading is faster then reading an entire row then extracting the needed data.
 
 ## Comments and blank lines
-This module can manage blank rows in the file and comment rows:
+This example shows how to handle blank rows and comment rows in the file:
 ```v
 import encoding.csv
 
@@ -241,7 +241,7 @@ Output:
 ['3', '4', '5']
 ```
 ## Quote char
-This module support quote char inside the cells, the following example show the usage:
+This example shows how to handle quoted cells:
 ```v
 import encoding.csv
 
@@ -277,5 +277,4 @@ Output:
 ['4', '5', 'a,b,c', 'e']
 ```
 ## Performance
-This module was tested with CSV files up to 4GByte with 4 milions of rows
-
+This module was tested with CSV files up to 4GByte with 4 million rows
