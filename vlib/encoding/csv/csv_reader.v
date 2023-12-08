@@ -89,7 +89,7 @@ struct CsvReaderConfig {
 	start_index  i64
 	end_index    i64 = -1
 	mem_buf_size int = 1024 * 64  // default buffer size 64KByte
-	separator    rune  = `,`
+	separator    u8  = `,`
 	default_cell string = "*" // return this string if out of the csv boundaries
 	empty_cell   string  // return this string if empty cell
 	end_line_len int  = endline_cr_len  // size of the endline rune 
@@ -330,7 +330,7 @@ struct GetCellConfig {
 }
 
 pub fn (mut cr CsvReader) get_cell(cfg GetCellConfig)! string {
-		if cfg.y < cr.csv_map.len && cfg.x < (cr.csv_map[cfg.y].len - 1) {
+	if cfg.y < cr.csv_map.len && cfg.x < (cr.csv_map[cfg.y].len - 1) {
 		mut start := cr.csv_map[cfg.y][cfg.x]
 		mut end   := cr.csv_map[cfg.y][cfg.x + 1]
 		
