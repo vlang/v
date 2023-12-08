@@ -308,6 +308,7 @@ pub fn (mut cr CsvReader) map_csv() ! {
 	// println("map_csv Done! ${count}")
 }
 
+// get_row get a row from the CSV file as a string array
 pub fn (mut cr CsvReader) get_row(y int) ![]string {
 	mut h := []string{}
 	if cr.csv_map.len > 1 {
@@ -323,6 +324,7 @@ pub struct GetCellConfig {
 	y int
 }
 
+// get_cell read a single cel nd return a string
 pub fn (mut cr CsvReader) get_cell(cfg GetCellConfig) !string {
 	if cfg.y < cr.csv_map.len && cfg.x < (cr.csv_map[cfg.y].len - 1) {
 		mut start := cr.csv_map[cfg.y][cfg.x]
@@ -392,7 +394,7 @@ pub fn (mut cr CsvReader) get_cell(cfg GetCellConfig) !string {
 
 type CellValue = f32 | int | string
 
-// get_cellt read a single cell using the sum type CellValue
+// get_cellt read a single cell and return a sum type CellValue
 pub fn (mut cr CsvReader) get_cellt(cfg GetCellConfig) !CellValue {
 	if cr.header_row >= 0 && cfg.x < cr.header_list.len {
 		h := cr.header_list[cfg.x]
