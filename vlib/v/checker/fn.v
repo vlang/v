@@ -1849,6 +1849,10 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					method = m
 					has_method = true
 					is_generic = true
+					if left_sym.kind == .interface_ && m.from_embeded_type != 0 {
+						is_method_from_embed = true
+						node.from_embed_types = [m.from_embeded_type]
+					}
 				}
 			}
 		}
@@ -2345,6 +2349,10 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		node.receiver_type = left_type.derive(method.params[0].typ).set_flag(.generic)
 	} else {
 		node.receiver_type = method.params[0].typ
+	}
+	if left_sym.kind == .interface_ && is_method_from_embed && method.return_type.has_flag(.generic)
+		&& method.generic_names.len == 0 {
+		method.generic_names = c.table.get_generic_names((rec_sym.info as ast.Interface).generic_types)
 	}
 	if method.generic_names.len != node.concrete_types.len {
 		// no type arguments given in call, attempt implicit instantiation
