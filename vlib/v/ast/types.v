@@ -1756,10 +1756,27 @@ pub fn (s &SumType) find_field(name string) ?StructField {
 }
 
 pub fn (i Interface) defines_method(name string) bool {
-	for mut method in unsafe { i.methods } {
-		if method.name == name {
+	if i.methods.any(it.name == name) {
+		return true
+	}
+	if i.parent_type.has_flag(.generic) {
+		parent_sym := global_table.sym(i.parent_type)
+		parent_info := parent_sym.info as Interface
+		if parent_info.methods.any(it.name == name) {
 			return true
 		}
 	}
 	return false
+}
+
+pub fn (i Interface) get_methods() []string {
+	if i.methods.len > 0 {
+		return i.methods.map(it.name)
+	}
+	if i.parent_type.has_flag(.generic) {
+		parent_sym := global_table.sym(i.parent_type)
+		parent_info := parent_sym.info as Interface
+		return parent_info.methods.map(it.name)
+	}
+	return []
 }

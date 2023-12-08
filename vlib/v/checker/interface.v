@@ -74,7 +74,7 @@ fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 				if embed_decl := c.table.interfaces[embed.typ] {
 					for f in embed_decl.fields {
 						if f.name in efnames {
-							// already existing method name, check for conflicts
+							// already existing field name, check for conflicts
 							ifield := node.fields[efnames[f.name]]
 							if field := c.table.find_field_with_embeds(isym, f.name) {
 								if ifield.typ != field.typ {
@@ -91,7 +91,7 @@ fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 					}
 					for m in embed_decl.methods {
 						if m.name in emnames {
-							// already existing field name, check for conflicts
+							// already existing method name, check for conflicts
 							imethod := node.methods[emnames[m.name]]
 							if em_fn := decl_sym.find_method(imethod.name) {
 								if m_fn := isym.find_method(m.name) {
