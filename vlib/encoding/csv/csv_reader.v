@@ -131,7 +131,7 @@ pub fn csv_reader(cfg CsvReaderConfig) !&CsvReader {
 			cr.mem_buf = malloc(cfg.mem_buf_size)
 			cr.mem_buf_size = cfg.mem_buf_size
 		}
-		cr.f = os.open(cfg.file_path)!
+		cr.f = os.open_file(cfg.file_path, 'rb')!
 
 		cr.f.seek(0, .end)!
 		cr.f_len = cr.f.tell()!
