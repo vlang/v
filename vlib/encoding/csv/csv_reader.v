@@ -11,6 +11,7 @@ Know limitation:
 - no stream reading
 */
 module csv
+
 import os
 
 /******************************************************************************
@@ -19,11 +20,11 @@ import os
 *
 ******************************************************************************/
 // endline lengths
-pub const endline_cr_len   = 1
+pub const endline_cr_len = 1
 pub const endline_crlf_len = 2
 
 // Type of read buffer
-pub const ram_csv  = 1
+pub const ram_csv = 1
 pub const file_csv = 0
 
 /******************************************************************************
@@ -33,69 +34,65 @@ pub const file_csv = 0
 ******************************************************************************/
 pub enum ColumType {
 	string = 0
-	int = 1
-	f32 = 2
+	int    = 1
+	f32    = 2
 }
 
 pub struct HeaderItem {
 pub mut:
-	label string
+	label  string
 	column int
-	htype ColumType = .string
+	htype  ColumType = .string
 }
 
 pub struct CsvReader {
 pub mut:
 	index i64
-	
-	f os.File
+
+	f     os.File
 	f_len i64
 
 	start_index i64
 	end_index   i64 = -1
 
-	end_line      u8   = `\n`
-	end_line_len  int  = endline_cr_len  // size of the endline rune \n = 1, \r\n = 2
-	separator     u8   = `,`   // comma is the default separator
-	separator_len int  = 1     // size of the separator rune 
-	quote         u8   = `"`   // double quote is the standard quote char
-	quote_remove  bool         // if true clear the cell from the quotes
-	comment       u8   = `#`   // every line that start with the quote char is ignored
+	end_line      u8  = `\n`
+	end_line_len  int = csv.endline_cr_len // size of the endline rune \n = 1, \r\n = 2
+	separator     u8  = `,` // comma is the default separator
+	separator_len int = 1 // size of the separator rune
+	quote         u8  = `"` // double quote is the standard quote char
+	quote_remove  bool // if true clear the cell from the quotes
+	comment       u8 = `#` // every line that start with the quote char is ignored
 
-	default_cell string = "*"  // return this string if out of the csv boundaries
-	empty_cell   string = "#"  // retunrn this if empty cell
-
+	default_cell string = '*' // return this string if out of the csv boundaries
+	empty_cell   string = '#' // retunrn this if empty cell
 	// ram buffer
-	mem_buf_type  u32     // buffer type 0=File,1=RAM
+	mem_buf_type  u32    // buffer type 0=File,1=RAM
 	mem_buf       voidptr // buffer used to load chars from file
 	mem_buf_size  i64     // size of the buffer
 	mem_buf_start i64 = -1 // start index in the file of the read buffer
 	mem_buf_end   i64 = -1 // end index in the file of the read buffer
-
 	// csv map for quick access
 	csv_map [][]i64
-
 	// header
-	header_row int = -1			// row index of the header in the csv_map
-	header_list []HeaderItem    // list of the header item 
-	header_map  map[string]int  // map from header label to column index
+	header_row  int = -1 // row index of the header in the csv_map
+	header_list []HeaderItem // list of the header item
+	header_map  map[string]int // map from header label to column index
 }
 
-pub
-struct CsvReaderConfig {
-	scr_buf      voidptr // pointer to the buffer of data 
+pub struct CsvReaderConfig {
+	scr_buf      voidptr // pointer to the buffer of data
 	scr_buf_len  i64     // if > 0 use the RAM pointed from scr_buf as source of data
 	file_path    string
 	start_index  i64
-	end_index    i64 = -1
-	mem_buf_size int = 1024 * 64  // default buffer size 64KByte
-	separator    u8  = `,`
-	comment      u8  = `#`    // every line that start with the quote char is ignored
-	default_cell string = "*" // return this string if out of the csv boundaries
-	empty_cell   string  // return this string if empty cell
-	end_line_len int  = endline_cr_len  // size of the endline rune
-	quote        u8   = `"`   // double quote is the standard quote char
-	quote_remove bool         // if true clear the cell from the quotes
+	end_index    i64    = -1
+	mem_buf_size int    = 1024 * 64 // default buffer size 64KByte
+	separator    u8     = `,`
+	comment      u8     = `#` // every line that start with the quote char is ignored
+	default_cell string = '*' // return this string if out of the csv boundaries
+	empty_cell   string // return this string if empty cell
+	end_line_len int = csv.endline_cr_len // size of the endline rune
+	quote        u8  = `"` // double quote is the standard quote char
+	quote_remove bool   // if true clear the cell from the quotes
 }
 
 /******************************************************************************
@@ -106,18 +103,18 @@ struct CsvReaderConfig {
 
 // csv_reader_from_string create a csv reader from a string
 pub fn csv_reader_from_string(in_str string) !&CsvReader {
-	return csv_reader(CsvReaderConfig{scr_buf:in_str.str, scr_buf_len:in_str.len})!
+	return csv_reader(CsvReaderConfig{ scr_buf: in_str.str, scr_buf_len: in_str.len })!
 }
 
-// csv_reader create a random access csv reader 
+// csv_reader create a random access csv reader
 pub fn csv_reader(cfg CsvReaderConfig) !&CsvReader {
 	mut cr := &CsvReader{}
 
 	cr.start_index = cfg.start_index
 	cr.end_index = cfg.end_index
-	
+
 	if cfg.scr_buf != 0 && cfg.scr_buf_len > 0 {
-		cr.mem_buf_type = ram_csv // RAM buffer
+		cr.mem_buf_type = csv.ram_csv // RAM buffer
 		cr.mem_buf = cfg.scr_buf
 		cr.mem_buf_size = cfg.scr_buf_len
 		if cfg.end_index == -1 {
@@ -129,13 +126,12 @@ pub fn csv_reader(cfg CsvReaderConfig) !&CsvReader {
 		if !os.exists(cfg.file_path) {
 			return error('ERROR: file ${cfg.file_path} not found!')
 		}
-		cr.mem_buf_type = file_csv  // File buffer
+		cr.mem_buf_type = csv.file_csv // File buffer
 		// allocate the memory
 		unsafe {
 			cr.mem_buf = malloc(cfg.mem_buf_size)
 			cr.mem_buf_size = cfg.mem_buf_size
 		}
-
 		cr.f = os.open(cfg.file_path)!
 
 		cr.f.seek(0, .end)!
@@ -147,7 +143,7 @@ pub fn csv_reader(cfg CsvReaderConfig) !&CsvReader {
 		if cfg.end_index == -1 {
 			cr.end_index = cr.f_len
 		}
-	} 
+	}
 
 	cr.default_cell = cfg.default_cell
 	cr.empty_cell = cfg.empty_cell
@@ -164,40 +160,36 @@ pub fn csv_reader(cfg CsvReaderConfig) !&CsvReader {
 
 // dispose_csv_reader release the resources used by the csv_reader
 pub fn (mut cr CsvReader) dispose_csv_reader() {
-	if cr.mem_buf_type == ram_csv {
+	if cr.mem_buf_type == csv.ram_csv {
 		// do nothing, ram buffer is static
-
-	} else if cr.mem_buf_type == file_csv {
-		
+	} else if cr.mem_buf_type == csv.file_csv {
 		// file close
 		if cr.f.is_opened {
 			cr.f.close()
 		}
-		
+
 		// free the allocated memory
 		if cr.mem_buf_size > 0 {
 			unsafe {
 				free(cr.mem_buf)
 			}
-			cr.mem_buf = voidptr(0)
+			cr.mem_buf = unsafe { nil }
 			cr.mem_buf_size = 0
-
 		}
 	}
-	
 }
 
 fn (mut cr CsvReader) fill_buffer(i i64) !i64 {
 	// use ram
-	if cr.mem_buf_type == ram_csv {
+	if cr.mem_buf_type == csv.ram_csv {
 		// do nothing, ram buffer are static for now
 		cr.mem_buf_start = i
 		cr.mem_buf_end = cr.mem_buf_size
 		read_bytes_count := cr.mem_buf_end - cr.mem_buf_start
 		// println("fill_buffer RAM: ${i} read_bytes_count: ${read_bytes_count} mem_buf_start: ${cr.mem_buf_start} mem_buf_end: ${cr.mem_buf_end}")
 		return i64(read_bytes_count)
-	// use file
-	} else if cr.mem_buf_type == file_csv {
+		// use file
+	} else if cr.mem_buf_type == csv.file_csv {
 		cr.start_index = i
 		cr.f.seek(cr.start_index, .start)!
 		// IMPORTANT: add 64 bit support in vlib!!
@@ -210,22 +202,21 @@ fn (mut cr CsvReader) fill_buffer(i i64) !i64 {
 	return i64(-1)
 }
 
-
 /******************************************************************************
 *
 * Csv mapper, mapped reader
 *
 ******************************************************************************/
 // map_csv create an index of whole csv file to consent random access to every cell in the file
-pub fn (mut cr CsvReader) map_csv()! {
+pub fn (mut cr CsvReader) map_csv() ! {
 	mut count := 0
 	mut i := i64(0)
 	mut capture_flag := true
 	mut drop_row := false
-	mut quote_flag := false  // true if we are parsing inside a quote
+	mut quote_flag := false // true if we are parsing inside a quote
 
 	// if File return to the start of the file
-	if cr.mem_buf_type == file_csv {
+	if cr.mem_buf_type == csv.file_csv {
 		cr.f.seek(cr.start_index, .start)!
 	}
 
@@ -245,23 +236,23 @@ pub fn (mut cr CsvReader) map_csv()! {
 					quote_flag = !quote_flag
 					p1++
 					i1++
-				} else
-				// manage comment line
-				if !quote_flag && *p1 == cr.comment && cr.csv_map[cr.csv_map.len - 1].len <= 1 {
+				}
+				else if // manage comment line
+				 !quote_flag && *p1 == cr.comment && cr.csv_map[cr.csv_map.len - 1].len <= 1 {
 					drop_row = true
 					p1++
 					i1++
 					// println("drop_row: ${cr.csv_map.len - 1}")
-				} else
-				// capture separator
-				if !quote_flag && capture_flag && *p1 == cr.separator && !drop_row {
+				}
+				else if // capture separator
+				 !quote_flag && capture_flag && *p1 == cr.separator && !drop_row {
 					cr.csv_map[cr.csv_map.len - 1] << (i + i1)
 
 					p1 += cr.separator_len
 					i1 += cr.separator_len
-				} else
-				// capture end line
-				if *p1 == cr.end_line {
+				}
+				else if // capture end line
+				 *p1 == cr.end_line {
 					if quote_flag {
 						error_col := cr.csv_map[cr.csv_map.len - 1].last() - cr.csv_map[cr.csv_map.len - 1].first()
 						return error('ERROR: quote not closed at row ${count} after column ${error_col}!')
@@ -271,23 +262,22 @@ pub fn (mut cr CsvReader) map_csv()! {
 					cr.csv_map[cr.csv_map.len - 1] << (i + i1) - (cr.end_line_len - 1)
 					p1 += cr.end_line_len
 					i1 += cr.end_line_len
-					
+
 					if drop_row == true {
 						cr.csv_map[cr.csv_map.len - 1].clear()
 						drop_row = false
 					} else {
 						// skip empty rows
-						if cr.csv_map[cr.csv_map.len - 1].len == 2 && 
-							cr.csv_map[cr.csv_map.len - 1][0] == cr.csv_map[cr.csv_map.len - 1][1]
-						{
+						if cr.csv_map[cr.csv_map.len - 1].len == 2
+							&& cr.csv_map[cr.csv_map.len - 1][0] == cr.csv_map[cr.csv_map.len - 1][1] {
 							// recycle the row
 							cr.csv_map[cr.csv_map.len - 1].clear()
 						} else {
 							// it all ok, insert a new row
-							cr.csv_map << []i64{cap: cr.csv_map[cr.csv_map.len - 1].len }
+							cr.csv_map << []i64{cap: cr.csv_map[cr.csv_map.len - 1].len}
 						}
 					}
-					
+
 					cr.csv_map[cr.csv_map.len - 1] << (i + i1) - (cr.end_line_len - 1)
 
 					p1 -= (cr.end_line_len - 1)
@@ -305,47 +295,45 @@ pub fn (mut cr CsvReader) map_csv()! {
 			i += read_bytes_count
 		}
 	}
-
 	// remove last row if it is not a valid one
 	if cr.csv_map[cr.csv_map.len - 1].len < 2 {
 		cr.csv_map.delete(cr.csv_map.len - 1)
 	}
 
 	// if File return to the start of the file
-	if cr.mem_buf_type == file_csv {
+	if cr.mem_buf_type == csv.file_csv {
 		cr.f.seek(cr.start_index, .start)!
 	}
 
-	//println("map_csv Done! ${count}")
+	// println("map_csv Done! ${count}")
 }
 
 pub fn (mut cr CsvReader) get_row(y int) ![]string {
 	mut h := []string{}
 	if cr.csv_map.len > 1 {
-		for x in 0..(cr.csv_map[y].len - 1) {
-			h << cr.get_cell(x:x, y:y)!
+		for x in 0 .. (cr.csv_map[y].len - 1) {
+			h << cr.get_cell(x: x, y: y)!
 		}
 	}
 	return h
 }
 
-pub
-struct GetCellConfig {
+pub struct GetCellConfig {
 	x int
 	y int
 }
 
-pub fn (mut cr CsvReader) get_cell(cfg GetCellConfig)! string {
+pub fn (mut cr CsvReader) get_cell(cfg GetCellConfig) !string {
 	if cfg.y < cr.csv_map.len && cfg.x < (cr.csv_map[cfg.y].len - 1) {
 		mut start := cr.csv_map[cfg.y][cfg.x]
-		mut end   := cr.csv_map[cfg.y][cfg.x + 1]
-		
+		mut end := cr.csv_map[cfg.y][cfg.x + 1]
+
 		if cfg.x > 0 {
 			start++
 		}
 
-		mut len   := end - start
-		//println("len calc: ${len}")
+		mut len := end - start
+		// println("len calc: ${len}")
 		if len <= 0 {
 			return cr.empty_cell
 		}
@@ -381,7 +369,7 @@ pub fn (mut cr CsvReader) get_cell(cfg GetCellConfig)! string {
 				// println("after end quote filtering [${start},${end}] len:${len}")
 
 				len = end - start
-				//println("len calc2: ${len}")
+				// println("len calc2: ${len}")
 				if len <= 0 {
 					return cr.empty_cell
 				}
@@ -389,7 +377,7 @@ pub fn (mut cr CsvReader) get_cell(cfg GetCellConfig)! string {
 			}
 
 			// create the string from the buffer
-			mut tmp_mem := malloc(isize(len+1))
+			mut tmp_mem := malloc(isize(len + 1))
 			mem_start := &u8(cr.mem_buf) + start - cr.start_index
 			vmemcpy(tmp_mem, mem_start, isize(len))
 			tmp_mem[len] = 0
@@ -402,12 +390,13 @@ pub fn (mut cr CsvReader) get_cell(cfg GetCellConfig)! string {
 	return cr.default_cell
 }
 
-type CellValue = int | f32 | string
+type CellValue = f32 | int | string
+
 // get_cellt read a single cell using the sum type CellValue
-pub fn (mut cr CsvReader) get_cellt(cfg GetCellConfig)! CellValue {
+pub fn (mut cr CsvReader) get_cellt(cfg GetCellConfig) !CellValue {
 	if cr.header_row >= 0 && cfg.x < cr.header_list.len {
 		h := cr.header_list[cfg.x]
-		res :=  cr.get_cell(cfg)!
+		res := cr.get_cell(cfg)!
 		if h.htype == .int {
 			return res.int()
 		}
@@ -415,9 +404,8 @@ pub fn (mut cr CsvReader) get_cellt(cfg GetCellConfig)! CellValue {
 			return res.f32()
 		}
 		return res
-	} 
+	}
 	return cr.get_cell(cfg)!
-	
 }
 
 /******************************************************************************
@@ -425,42 +413,40 @@ pub fn (mut cr CsvReader) get_cellt(cfg GetCellConfig)! CellValue {
 * Header management
 *
 ******************************************************************************/
-pub
-struct GetHeaderConf {
+pub struct GetHeaderConf {
 	header_row int // row where to inspect the header
 }
 
 // build_header_dict infer the header, it use the first available row in not row number is passesd
 // it try to infer the type of column using the first available row after the header
 // By default all the column are of the string type
-pub fn (mut cr CsvReader) build_header_dict(cfg GetHeaderConf)! {
-	
+pub fn (mut cr CsvReader) build_header_dict(cfg GetHeaderConf) ! {
 	if cr.csv_map.len > 1 && cfg.header_row >= 0 && cfg.header_row < cr.csv_map.len {
 		cr.header_row = cfg.header_row
-		for col in 0..(cr.csv_map[cfg.header_row].len - 1) {
+		for col in 0 .. (cr.csv_map[cfg.header_row].len - 1) {
 			// fill the base struct
-			label :=  cr.get_cell(x:col, y:cfg.header_row)!
+			label := cr.get_cell(x: col, y: cfg.header_row)!
 			mut h := HeaderItem{
-				label: label,
-				column: col,
+				label: label
+				column: col
 				htype: .string
 			}
 
 			// try to infer the type if we haev at least one more row
-			if cfg.header_row + 1  < cr.csv_map.len {
-				x := cr.get_cell(x:col, y:cfg.header_row + 1)!.trim_space().to_lower()
-				mut sign_c  := int(0)
-				mut int_c   := int(0)
+			if cfg.header_row + 1 < cr.csv_map.len {
+				x := cr.get_cell(x: col, y: cfg.header_row + 1)!.trim_space().to_lower()
+				mut sign_c := int(0)
+				mut int_c := int(0)
 				mut float_c := int(0)
 				mut alpha_c := int(0)
-				mut htype   := ColumType.string
+				mut htype := ColumType.string
 				// raw extimation fo the type
 				for c in x {
-					if c in [`+`,`-`] {
+					if c in [`+`, `-`] {
 						sign_c++
 						continue
 					}
-					if c >= `0` && c <= `9`{
+					if c >= `0` && c <= `9` {
 						int_c++
 						continue
 					}
@@ -468,7 +454,7 @@ pub fn (mut cr CsvReader) build_header_dict(cfg GetHeaderConf)! {
 						float_c++
 						continue
 					}
-					if c in [`e`,`E`] && (float_c > 0 || int_c > 0) {
+					if c in [`e`, `E`] && (float_c > 0 || int_c > 0) {
 						float_c++
 						continue
 					}
@@ -491,7 +477,6 @@ pub fn (mut cr CsvReader) build_header_dict(cfg GetHeaderConf)! {
 			cr.header_map[label] = col
 		}
 	}
-	
 }
 
 /******************************************************************************
@@ -503,8 +488,8 @@ pub fn (mut cr CsvReader) build_header_dict(cfg GetHeaderConf)! {
 pub fn (mut cr CsvReader) rows_count() !i64 {
 	mut count := i64(0)
 	mut i := i64(0)
- 
-	if cr.mem_buf_type == file_csv {
+
+	if cr.mem_buf_type == csv.file_csv {
 		cr.f.seek(cr.start_index, .start)!
 	}
 	unsafe {
@@ -524,7 +509,7 @@ pub fn (mut cr CsvReader) rows_count() !i64 {
 			i += read_bytes_count
 		}
 	}
-	if cr.mem_buf_type == file_csv {
+	if cr.mem_buf_type == csv.file_csv {
 		cr.f.seek(cr.start_index, .start)!
 	}
 	// println("rows_count Done!")
