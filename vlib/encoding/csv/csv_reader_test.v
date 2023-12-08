@@ -194,13 +194,13 @@ fn test_csv_string() {
 	// println("file_path_str: ${file_path_str}")
 
 	// test Windows confguration
-	mut tmp_txt1 := txt1.replace('\n','\r\n')
-	
+	mut tmp_txt1 := txt1.replace('\n', '\r\n')
+
 	mut f := os.open_file(file_path_str, 'wb')!
-	unsafe{
+	unsafe {
 		f.write_ptr(tmp_txt1.str, tmp_txt1.len)
 	}
-	//f.write_string(tmp_txt1)!
+	// f.write_string(tmp_txt1)!
 	f.close()
 
 	// parse the temp file
