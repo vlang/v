@@ -26,6 +26,13 @@ mut:
 	errors               int
 }
 
+enum ModuleKind {
+	registered
+	https
+	http
+	ssh
+}
+
 fn parse_query(query []string) []Module {
 	mut p := Parser{}
 	for m in query {
@@ -41,19 +48,34 @@ fn (mut p Parser) parse_module(m string) {
 	if m in p.modules {
 		return
 	}
-	ident, version := m.rsplit_once('@') or { m, '' }
-	println('Scanning `${ident}`...')
-	is_http := if ident.starts_with('http://') {
-		vpm_warn('installing `${ident}` via http.',
-			details: 'Support for `http` is deprecated, use `https` to ensure future compatibility.'
-		)
-		true
-	} else {
-		false
+	kind := match true {
+		m.starts_with('https://') { ModuleKind.https }
+		m.starts_with('git@') { ModuleKind.ssh }
+		m.starts_with('http://') { ModuleKind.http }
+		else { ModuleKind.registered }
 	}
-	mut mod := if is_http || ident.starts_with('https://') {
+	println('Scanning `${m}`...')
+	mut mod := if kind != ModuleKind.registered {
 		// External module. The identifier is an URL.
-		publisher, name := get_ident_from_url(ident) or {
+		ident, version := if kind == .ssh {
+			if m.count('@') > 1 {
+				m.all_before_last('@'), m.all_after_last('@')
+			} else {
+				m, ''
+			}
+		} else {
+			m.rsplit_once('@') or { m, '' }
+		}
+		if kind == .http {
+			vpm_warn('installing `${ident}` via http.',
+				details: 'Support for `http` is deprecated, use `https` to ensure future compatibility.'
+			)
+		}
+		publisher, name := get_ident_from_url(if kind == .ssh {
+			'https://' + ident['git@'.len..].replace(':', '/')
+		} else {
+			ident
+		}) or {
 			vpm_error(err.msg())
 			p.errors++
 			return
@@ -72,7 +94,7 @@ fn (mut p Parser) parse_module(m string) {
 			return
 		}
 		settings.vcs.clone(ident, version, tmp_path) or {
-			vpm_error('failed to clone `${ident}`.', details: err.msg())
+			vpm_error('failed to install `${ident}`.', details: err.msg())
 			p.errors++
 			return
 		}
@@ -84,18 +106,20 @@ fn (mut p Parser) parse_module(m string) {
 			p.errors++
 			return
 		}
-		mod_path := normalize_mod_path(os.join_path(if is_http { publisher } else { '' },
+		mod_path := normalize_mod_path(os.join_path(if kind == .http { publisher } else { '' },
 			manifest.name))
 		Module{
 			name: manifest.name
 			url: ident
-			tmp_path: tmp_path
+			version: version
 			install_path: os.real_path(os.join_path(settings.vmodules_path, mod_path))
 			is_external: true
+			tmp_path: tmp_path
 			manifest: manifest
 		}
 	} else {
 		// VPM registered module.
+		ident, version := m.rsplit_once('@') or { m, '' }
 		info := get_mod_vpm_info(ident) or {
 			vpm_error('failed to retrieve metadata for `${ident}`.', details: err.msg())
 			p.errors++
@@ -129,7 +153,7 @@ fn (mut p Parser) parse_module(m string) {
 			return
 		}
 		vcs.clone(info.url, version, tmp_path) or {
-			vpm_error('failed to clone `${ident}`.', details: err.msg())
+			vpm_error('failed to install `${ident}`.', details: err.msg())
 			p.errors++
 			return
 		}
@@ -149,14 +173,14 @@ fn (mut p Parser) parse_module(m string) {
 		Module{
 			name: info.name
 			url: info.url
-			tmp_path: tmp_path
+			version: version
 			vcs: vcs
 			install_path: os.real_path(os.join_path(settings.vmodules_path, mod_path))
+			tmp_path: tmp_path
 			manifest: manifest
 		}
 	}
 	mod.install_path_fmted = fmt_mod_path(mod.install_path)
-	mod.version = version
 	mod.get_installed()
 	p.modules[m] = mod
 	if mod.manifest.dependencies.len > 0 {
