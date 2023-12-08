@@ -108,7 +108,7 @@ const txt4 = 'a,b,c,d\n0,1,2,3\n4,5,6,7\n'
 * Test Functions
 *
 ******************************************************************************/
-fn perform_test(mut csvr csv.CsvReader) ! {
+fn perform_test(mut csvr csv.RandomAccessReader) ! {
 	csvr.build_header_dict(csv.GetHeaderConf{})!
 
 	// test the Header reader
@@ -165,13 +165,13 @@ fn perform_test(mut csvr csv.CsvReader) ! {
 	assert csvr.get_cell(x: 1, y: 5)! == 'b,c,d', 'get_cell filer quote flag failed'
 }
 
-fn perform_test2(mut csvr csv.CsvReader) ! {
+fn perform_test2(mut csvr csv.RandomAccessReader) ! {
 	csvr.build_header_dict(csv.GetHeaderConf{})!
 	// test the empty cells
 	assert csvr.get_cell(x: csvr.header_map['c'], y: 5)! == csvr.empty_cell, 'get_cell empty_cell failed 2'
 }
 
-fn perform_test3(mut csvr csv.CsvReader) ! {
+fn perform_test3(mut csvr csv.RandomAccessReader) ! {
 	csvr.build_header_dict(csv.GetHeaderConf{})!
 	/*
 	// debug print

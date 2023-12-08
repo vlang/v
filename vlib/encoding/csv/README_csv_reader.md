@@ -44,19 +44,19 @@ csv.csv_reader(file_path:file_path)
 ```v ignore
 csv.csv_reader_from_string(string_with_the_csv)
 ```
-*N*Note: csv_reader_from_string is "syntax sugar" for buffered reading*
+*Note: csv_reader_from_string is "syntax sugar" for buffered reading*
 ### read from a memory buffer
 ```v ignore
 csv.csv_reader(scr_buf:voidptr(buffer_ptr),  scr_buf_len: buffer_len)
 ```
-When you call `csv.csv_reader` a `CsvReader` struct is initialized passing 
-a `CsvReaderConfig` struct as a parameter.
+When you call `csv.csv_reader` a `RandomAccessReader` struct is initialized passing 
+a `RandomAccessReaderConfig` struct as a parameter.
 Using these structs, it is possible to change the behavior of the CSV Reader.
 
-## The `CsvReaderConfig` struct
+## The `RandomAccessReaderConfig` struct
 The config struct is as follows:
 ```v ignore
-pub struct CsvReaderConfig {
+pub struct RandomAccessReaderConfig {
 	scr_buf      voidptr // pointer to the buffer of data
 	scr_buf_len  i64     // if > 0 use the RAM pointed from scr_buf as source of data
 	file_path    string
@@ -100,7 +100,7 @@ a,b,c
 fn main() {
 	mut csvr := csv.csv_reader_from_string(txt)!
 
-	// we are directly setting these params in the `CsvReader` struct
+	// we are directly setting these params in the `RandomAccessReader` struct
 	csvr.default_cell = '*'
 	csvr.empty_cell = 'EMPTY'
 

@@ -44,7 +44,7 @@ pub mut:
 	htype  ColumType = .string
 }
 
-pub struct CsvReader {
+pub struct RandomAccessReader {
 pub mut:
 	index i64
 
@@ -80,7 +80,7 @@ pub mut:
 }
 
 @[params]
-pub struct CsvReaderConfig {
+pub struct RandomAccessReaderConfig {
 	scr_buf      voidptr // pointer to the buffer of data
 	scr_buf_len  i64     // if > 0 use the RAM pointed from scr_buf as source of data
 	file_path    string
@@ -103,13 +103,13 @@ pub struct CsvReaderConfig {
 ******************************************************************************/
 
 // csv_reader_from_string create a csv reader from a string
-pub fn csv_reader_from_string(in_str string) !&CsvReader {
-	return csv_reader(CsvReaderConfig{ scr_buf: in_str.str, scr_buf_len: in_str.len })!
+pub fn csv_reader_from_string(in_str string) !&RandomAccessReader {
+	return csv_reader(RandomAccessReaderConfig{ scr_buf: in_str.str, scr_buf_len: in_str.len })!
 }
 
 // csv_reader create a random access csv reader
-pub fn csv_reader(cfg CsvReaderConfig) !&CsvReader {
-	mut cr := &CsvReader{}
+pub fn csv_reader(cfg RandomAccessReaderConfig) !&RandomAccessReader {
+	mut cr := &RandomAccessReader{}
 
 	cr.start_index = cfg.start_index
 	cr.end_index = cfg.end_index
@@ -183,7 +183,7 @@ pub fn csv_reader(cfg CsvReaderConfig) !&CsvReader {
 }
 
 // dispose_csv_reader release the resources used by the csv_reader
-pub fn (mut cr CsvReader) dispose_csv_reader() {
+pub fn (mut cr RandomAccessReader) dispose_csv_reader() {
 	if cr.mem_buf_type == csv.ram_csv {
 		// do nothing, ram buffer is static
 	} else if cr.mem_buf_type == csv.file_csv {
@@ -203,7 +203,7 @@ pub fn (mut cr CsvReader) dispose_csv_reader() {
 	}
 }
 
-fn (mut cr CsvReader) fill_buffer(i i64) !i64 {
+fn (mut cr RandomAccessReader) fill_buffer(i i64) !i64 {
 	// use ram
 	if cr.mem_buf_type == csv.ram_csv {
 		// do nothing, ram buffer are static for now
@@ -232,7 +232,7 @@ fn (mut cr CsvReader) fill_buffer(i i64) !i64 {
 *
 ******************************************************************************/
 // map_csv create an index of whole csv file to consent random access to every cell in the file
-pub fn (mut cr CsvReader) map_csv() ! {
+pub fn (mut cr RandomAccessReader) map_csv() ! {
 	mut count := 0
 	mut i := i64(0)
 	mut capture_flag := true
@@ -333,7 +333,7 @@ pub fn (mut cr CsvReader) map_csv() ! {
 }
 
 // get_row get a row from the CSV file as a string array
-pub fn (mut cr CsvReader) get_row(y int) ![]string {
+pub fn (mut cr RandomAccessReader) get_row(y int) ![]string {
 	mut h := []string{}
 	if cr.csv_map.len > 1 {
 		for x in 0 .. (cr.csv_map[y].len - 1) {
@@ -350,7 +350,7 @@ pub struct GetCellConfig {
 }
 
 // get_cell read a single cel nd return a string
-pub fn (mut cr CsvReader) get_cell(cfg GetCellConfig) !string {
+pub fn (mut cr RandomAccessReader) get_cell(cfg GetCellConfig) !string {
 	if cfg.y < cr.csv_map.len && cfg.x < (cr.csv_map[cfg.y].len - 1) {
 		mut start := cr.csv_map[cfg.y][cfg.x]
 		mut end := cr.csv_map[cfg.y][cfg.x + 1]
@@ -423,7 +423,7 @@ pub fn (mut cr CsvReader) get_cell(cfg GetCellConfig) !string {
 type CellValue = f32 | int | string
 
 // get_cellt read a single cell and return a sum type CellValue
-pub fn (mut cr CsvReader) get_cellt(cfg GetCellConfig) !CellValue {
+pub fn (mut cr RandomAccessReader) get_cellt(cfg GetCellConfig) !CellValue {
 	if cr.header_row >= 0 && cfg.x < cr.header_list.len {
 		h := cr.header_list[cfg.x]
 		res := cr.get_cell(cfg)!
@@ -451,7 +451,7 @@ pub struct GetHeaderConf {
 // build_header_dict infer the header, it use the first available row in not row number is passesd
 // it try to infer the type of column using the first available row after the header
 // By default all the column are of the string type
-pub fn (mut cr CsvReader) build_header_dict(cfg GetHeaderConf) ! {
+pub fn (mut cr RandomAccessReader) build_header_dict(cfg GetHeaderConf) ! {
 	if cr.csv_map.len > 1 && cfg.header_row >= 0 && cfg.header_row < cr.csv_map.len {
 		cr.header_row = cfg.header_row
 		for col in 0 .. (cr.csv_map[cfg.header_row].len - 1) {
@@ -516,7 +516,7 @@ pub fn (mut cr CsvReader) build_header_dict(cfg GetHeaderConf) ! {
 *
 ******************************************************************************/
 // rows_count count the rows in the csv between start_index and end_index
-pub fn (mut cr CsvReader) rows_count() !i64 {
+pub fn (mut cr RandomAccessReader) rows_count() !i64 {
 	mut count := i64(0)
 	mut i := i64(0)
 
