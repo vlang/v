@@ -214,7 +214,7 @@ fn test_csv_string() {
 
 	// remove the temp file
 	os.rm(file_path_str)!
-	
+
 	csvr = csv.csv_reader_from_string(txt2)!
 	perform_test2(mut csvr)!
 	csvr.dispose_csv_reader()
