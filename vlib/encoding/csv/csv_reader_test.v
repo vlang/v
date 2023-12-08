@@ -5,7 +5,7 @@ Copyright (c) 2023 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
 that can be found in the LICENSE file.
 
-This file contains regex module
+This file contains tests
 
 Know limitation:
 */
@@ -193,13 +193,14 @@ fn test_csv_string() {
 	file_path_str := os.join_path(os.temp_dir(), 'test_csv.csv')
 	// println("file_path_str: ${file_path_str}")
 
-	// in Windows, when write_string() is called
-	// it already write the \r\n chars
-	mut tmp_txt1 := $if windows { txt1 } $else { txt1.replace('\n', '\r\n') }
-
-	// tmp_txt1 = txt1.replace('\n\r','\n')
-	mut f := os.open_file(file_path_str, 'w')!
-	f.write_string(tmp_txt1)!
+	// test Windows confguration
+	mut tmp_txt1 := txt1.replace('\n','\r\n')
+	
+	mut f := os.open_file(file_path_str, 'wb')!
+	unsafe{
+		f.write_ptr(tmp_txt1.str, tmp_txt1.len)
+	}
+	//f.write_string(tmp_txt1)!
 	f.close()
 
 	// parse the temp file
