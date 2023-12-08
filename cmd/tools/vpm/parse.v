@@ -132,11 +132,6 @@ fn (mut p Parser) parse_module(m string) {
 				p.errors++
 				return
 			}
-			if info_vcs != .git && version != '' {
-				vpm_error('skipping `${info.name}`, version installs are currently only supported for projects using `git`.')
-				p.errors++
-				return
-			}
 			info_vcs
 		} else {
 			VCS.git

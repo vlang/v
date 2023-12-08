@@ -34,7 +34,7 @@ const vcs_info = {
 		dir: '.hg'
 		args: struct {
 			install: 'clone'
-			version: '' // not supported yet.
+			version: '--rev'
 			update: 'pull --update'
 			path: '-R'
 			outdated: ['incoming']
