@@ -37,16 +37,16 @@ The function `get_row()` is used to read a single row, and it returns an array o
 ## Reading from different sources `csv_reader`
 The CSV Reader can read from files, strings, memory buffers.
 ### read from a file
-```
+```v ignore
 csv.csv_reader(file_path:file_path)
 ```
 ### read from a string 
-```
+```v ignore
 csv.csv_reader_from_string(string_with_the_csv)
 ```
 *N*Note: csv_reader_from_string is "syntax sugar" for buffered reading*
 ### read from a memory buffer
-```
+```v ignore
 csv.csv_reader(scr_buf:voidptr(buffer_ptr),  scr_buf_len: buffer_len)
 ```
 When you call `csv.csv_reader` a `CsvReader` struct is initialized passing 
@@ -55,7 +55,7 @@ Using these structs, it is possible to change the behavior of the CSV Reader.
 
 ## The `CsvReaderConfig` struct
 The config struct is as follows:
-```
+```v ignore
 pub struct CsvReaderConfig {
 	scr_buf      voidptr // pointer to the buffer of data
 	scr_buf_len  i64     // if > 0 use the RAM pointed from scr_buf as source of data

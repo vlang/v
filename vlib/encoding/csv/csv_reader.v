@@ -79,6 +79,7 @@ pub mut:
 	header_map  map[string]int // map from header label to column index
 }
 
+@[params]
 pub struct CsvReaderConfig {
 	scr_buf      voidptr // pointer to the buffer of data
 	scr_buf_len  i64     // if > 0 use the RAM pointed from scr_buf as source of data
@@ -342,6 +343,7 @@ pub fn (mut cr CsvReader) get_row(y int) ![]string {
 	return h
 }
 
+@[params]
 pub struct GetCellConfig {
 	x int
 	y int
@@ -441,6 +443,7 @@ pub fn (mut cr CsvReader) get_cellt(cfg GetCellConfig) !CellValue {
 * Header management
 *
 ******************************************************************************/
+@[params]
 pub struct GetHeaderConf {
 	header_row int // row where to inspect the header
 }
