@@ -379,12 +379,15 @@ pub fn (mut cr CsvReader) get_cell(cfg GetCellConfig) !string {
 
 			// create the string from the buffer
 			mut tmp_mem := malloc(isize(len + 1))
+			/*
+			defer {
+				free(tmp_mem)
+			}
+			*/
 			mem_start := &u8(cr.mem_buf) + start - cr.start_index
 			vmemcpy(tmp_mem, mem_start, isize(len))
-			tmp_mem[len] = 0
-
+			tmp_mem[len] = 0 // 0 for C string compatibility
 			ret_str := tos(tmp_mem, int(len))
-			free(tmp_mem)
 			return ret_str
 		}
 	}

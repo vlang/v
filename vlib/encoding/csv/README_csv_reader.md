@@ -1,8 +1,8 @@
 
 # CSV Reader
-This module is a Random Access CSV file reader, it indexes the file file before reading the data.
+This module is a Random Access CSV file reader, it indexes the file before reading the data.
 This indexing operation permits access to every cell of the CSV file in random order.
-Here a very simple example of usage:
+Here is a very simple example of usage:
 
 ```v
 import encoding.csv

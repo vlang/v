@@ -189,7 +189,6 @@ fn test_csv_string() {
 	perform_test(mut csvr)!
 	csvr.dispose_csv_reader()
 
-	/*
 	// create a temp file to test csv parsing from file
 	file_path_str := os.join_path(os.temp_dir(), 'test_csv.csv')
 	// println("file_path_str: ${file_path_str}")
@@ -215,7 +214,7 @@ fn test_csv_string() {
 
 	// remove the temp file
 	os.rm(file_path_str)!
-	*/
+	
 	csvr = csv.csv_reader_from_string(txt2)!
 	perform_test2(mut csvr)!
 	csvr.dispose_csv_reader()
