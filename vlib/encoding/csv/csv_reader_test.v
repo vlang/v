@@ -192,7 +192,11 @@ fn test_csv_string() {
 	// create a temp file to test csv parsing from file
 	file_path_str := os.join_path(os.temp_dir(), 'test_csv.csv')
 	// println("file_path_str: ${file_path_str}")
-	mut tmp_txt1 := txt1.replace('\n', '\r\n')
+
+	// in Windows, when write_string() is called
+	// it already write the \r\n chars
+	mut tmp_txt1 := $if windows { txt1 } $else { txt1.replace('\n', '\r\n') }
+
 	// tmp_txt1 = txt1.replace('\n\r','\n')
 	mut f := os.open_file(file_path_str, 'w')!
 	f.write_string(tmp_txt1)!
