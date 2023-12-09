@@ -49,7 +49,7 @@ fn callback(data voidptr, req picohttpparser.Request, mut res picohttpparser.Res
 }
 
 fn main() {
-	println('Starting webserver on http://127.0.0.1:${port}/ ...')
+	println('Starting webserver on http://localhost:${port}/ ...')
 	mut server := picoev.new(port: port, cb: callback)
 	server.serve()
 }
