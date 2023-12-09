@@ -36,7 +36,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	c.match_exprs(mut node, cond_type_sym)
 	c.expected_type = cond_type
 	mut first_iteration := true
-	mut explicit_cast_type := ast.void_type
+	mut infer_cast_type := ast.void_type
 	mut need_explicit_cast := false
 	mut ret_type := ast.void_type
 	mut nbranches_with_return := 0
@@ -89,10 +89,10 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 							}
 						}
 					}
-					explicit_cast_type = stmt.typ
+					infer_cast_type = stmt.typ
 					if mut stmt.expr is ast.CastExpr {
 						need_explicit_cast = true
-						explicit_cast_type = stmt.expr.typ
+						infer_cast_type = stmt.expr.typ
 					}
 				} else {
 					if node.is_expr && ret_type.idx() != expr_type.idx() {
@@ -131,21 +131,21 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 						if mut stmt.expr is ast.CastExpr {
 							expr_typ_sym := c.table.sym(stmt.expr.typ)
 							if need_explicit_cast {
-								if explicit_cast_type != stmt.expr.typ
+								if infer_cast_type != stmt.expr.typ
 									&& expr_typ_sym.kind !in [.interface_, .sum_type] {
-									c.error('the type of the last expression in the first match branch was an explicit `${c.table.type_to_str(explicit_cast_type)}`, not `${c.table.type_to_str(stmt.expr.typ)}`',
+									c.error('the type of the last expression in the first match branch was an explicit `${c.table.type_to_str(infer_cast_type)}`, not `${c.table.type_to_str(stmt.expr.typ)}`',
 										stmt.pos)
 								}
 							} else {
-								if explicit_cast_type != stmt.expr.typ
+								if infer_cast_type != stmt.expr.typ
 									&& expr_typ_sym.kind !in [.interface_, .sum_type] {
-									c.error('the type of the last expression of the first match branch was `${c.table.type_to_str(stmt.expr.typ)}`, which is not compatible with `${c.table.type_to_str(explicit_cast_type)}`',
+									c.error('the type of the last expression of the first match branch was `${c.table.type_to_str(stmt.expr.typ)}`, which is not compatible with `${c.table.type_to_str(infer_cast_type)}`',
 										stmt.pos)
 								}
 							}
 						} else {
 							if mut stmt.expr is ast.IntegerLiteral {
-								cast_type_sym := c.table.sym(explicit_cast_type)
+								cast_type_sym := c.table.sym(infer_cast_type)
 								num := stmt.expr.val.i64()
 								mut needs_explicit_cast := false
 
@@ -196,7 +196,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 									else {}
 								}
 								if needs_explicit_cast {
-									c.error('${num} does not fit the range of `${c.table.type_to_str(explicit_cast_type)}`',
+									c.error('${num} does not fit the range of `${c.table.type_to_str(infer_cast_type)}`',
 										stmt.pos)
 								}
 							}
