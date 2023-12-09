@@ -188,14 +188,3 @@ fn tokenize(json_data string) []string {
 	}
 	return tokens
 }
-
-struct StructType[T] {
-mut:
-	val T
-}
-
-struct StructTypeAndOptionType[T] {
-mut:
-	val        T
-	option_val ?T
-}

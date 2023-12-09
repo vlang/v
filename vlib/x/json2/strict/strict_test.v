@@ -1,5 +1,16 @@
 import x.json2.strict
 
+struct StructType[T] {
+mut:
+	val T
+}
+
+struct StructTypeAndOptionType[T] {
+mut:
+	val        T
+	option_val ?T
+}
+
 fn general_test() {
 	json_data := r'
 	    {
