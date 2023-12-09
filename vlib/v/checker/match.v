@@ -133,20 +133,72 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 							if need_explicit_cast {
 								if explicit_cast_type != stmt.expr.typ
 									&& expr_typ_sym.kind !in [.interface_, .sum_type] {
-									c.error('expected explicit type cast of `${c.table.type_to_str(explicit_cast_type)}` not `${c.table.type_to_str(stmt.expr.typ)}`',
+									c.error('the type of the last expression in the first match branch was an explicit `${c.table.type_to_str(explicit_cast_type)}`, not `${c.table.type_to_str(stmt.expr.typ)}`',
 										stmt.pos)
 								}
 							} else {
 								if explicit_cast_type != stmt.expr.typ
 									&& expr_typ_sym.kind !in [.interface_, .sum_type] {
-									c.error('casted type `${c.table.type_to_str(stmt.expr.typ)}` is not same as base type `${c.table.type_to_str(explicit_cast_type)}`',
+									c.error('the type of the last expression of the first match branch was `${c.table.type_to_str(stmt.expr.typ)}`, which is not compatible with `${c.table.type_to_str(explicit_cast_type)}`',
 										stmt.pos)
 								}
 							}
 						} else {
-							if need_explicit_cast {
-								c.error('expected an explicit cast type of `${c.table.type_to_str(explicit_cast_type)}` from first branch',
-									stmt.pos)
+							if mut stmt.expr is ast.IntegerLiteral {
+								cast_type_sym := c.table.sym(explicit_cast_type)
+								num := stmt.expr.val.i64()
+								mut needs_explicit_cast := false
+
+								match cast_type_sym.kind {
+									.u8 {
+										if !(num >= min_u8 && num <= max_u8) {
+											needs_explicit_cast = true
+										}
+									}
+									.u16 {
+										if !(num >= min_u16 && num <= max_u16) {
+											needs_explicit_cast = true
+										}
+									}
+									.u32 {
+										if !(num >= min_u32 && num <= max_u32) {
+											needs_explicit_cast = true
+										}
+									}
+									.u64 {
+										if !(num >= min_u64 && num <= max_u64) {
+											needs_explicit_cast = true
+										}
+									}
+									.i8 {
+										if !(num >= min_i32 && num <= max_i32) {
+											needs_explicit_cast = true
+										}
+									}
+									.i16 {
+										if !(num >= min_i16 && num <= max_i16) {
+											needs_explicit_cast = true
+										}
+									}
+									.i32, .int {
+										if !(num >= min_i32 && num <= max_i32) {
+											needs_explicit_cast = true
+										}
+									}
+									.i64 {
+										if !(num >= min_i64 && num <= max_i64) {
+											needs_explicit_cast = true
+										}
+									}
+									.int_literal {
+										needs_explicit_cast = false
+									}
+									else {}
+								}
+								if needs_explicit_cast {
+									c.error('${num} does not fit the range of `${c.table.type_to_str(explicit_cast_type)}`',
+										stmt.pos)
+								}
 							}
 						}
 					}
