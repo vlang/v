@@ -378,8 +378,7 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 		}
 
 		if field.default_expr is ast.None {
-			tmp_var := g.new_tmp_var()
-			g.expr_with_tmp_var(ast.None{}, ast.none_type, field.typ, tmp_var)
+			g.gen_option_error(field.typ, ast.None{})
 			return true
 		} else if field.typ.has_flag(.option) {
 			tmp_var := g.new_tmp_var()
@@ -394,8 +393,7 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 		}
 		g.expr(field.default_expr)
 	} else if field.typ.has_flag(.option) {
-		tmp_var := g.new_tmp_var()
-		g.expr_with_tmp_var(ast.None{}, ast.none_type, field.typ, tmp_var)
+		g.gen_option_error(field.typ, ast.None{})
 		return true
 	} else if sym.info is ast.ArrayFixed {
 		g.write('{')
