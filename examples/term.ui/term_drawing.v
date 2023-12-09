@@ -6,87 +6,84 @@ module main
 import term.ui
 
 // The color palette, taken from Google's Material design
-const (
-	colors = [
-		[
-			ui.Color{239, 154, 154},
-			ui.Color{244, 143, 177},
-			ui.Color{206, 147, 216},
-			ui.Color{179, 157, 219},
-			ui.Color{159, 168, 218},
-			ui.Color{144, 202, 249},
-			ui.Color{129, 212, 250},
-			ui.Color{128, 222, 234},
-			ui.Color{128, 203, 196},
-			ui.Color{165, 214, 167},
-			ui.Color{197, 225, 165},
-			ui.Color{230, 238, 156},
-			ui.Color{255, 245, 157},
-			ui.Color{255, 224, 130},
-			ui.Color{255, 204, 128},
-			ui.Color{255, 171, 145},
-			ui.Color{188, 170, 164},
-			ui.Color{238, 238, 238},
-			ui.Color{176, 190, 197},
-		],
-		[
-			ui.Color{244, 67, 54},
-			ui.Color{233, 30, 99},
-			ui.Color{156, 39, 176},
-			ui.Color{103, 58, 183},
-			ui.Color{63, 81, 181},
-			ui.Color{33, 150, 243},
-			ui.Color{3, 169, 244},
-			ui.Color{0, 188, 212},
-			ui.Color{0, 150, 136},
-			ui.Color{76, 175, 80},
-			ui.Color{139, 195, 74},
-			ui.Color{205, 220, 57},
-			ui.Color{255, 235, 59},
-			ui.Color{255, 193, 7},
-			ui.Color{255, 152, 0},
-			ui.Color{255, 87, 34},
-			ui.Color{121, 85, 72},
-			ui.Color{120, 120, 120},
-			ui.Color{96, 125, 139},
-		],
-		[
-			ui.Color{198, 40, 40},
-			ui.Color{173, 20, 87},
-			ui.Color{106, 27, 154},
-			ui.Color{69, 39, 160},
-			ui.Color{40, 53, 147},
-			ui.Color{21, 101, 192},
-			ui.Color{2, 119, 189},
-			ui.Color{0, 131, 143},
-			ui.Color{0, 105, 92},
-			ui.Color{46, 125, 50},
-			ui.Color{85, 139, 47},
-			ui.Color{158, 157, 36},
-			ui.Color{249, 168, 37},
-			ui.Color{255, 143, 0},
-			ui.Color{239, 108, 0},
-			ui.Color{216, 67, 21},
-			ui.Color{78, 52, 46},
-			ui.Color{33, 33, 33},
-			ui.Color{55, 71, 79},
-		],
-	]
-)
+const colors = [
+	[
+		ui.Color{239, 154, 154},
+		ui.Color{244, 143, 177},
+		ui.Color{206, 147, 216},
+		ui.Color{179, 157, 219},
+		ui.Color{159, 168, 218},
+		ui.Color{144, 202, 249},
+		ui.Color{129, 212, 250},
+		ui.Color{128, 222, 234},
+		ui.Color{128, 203, 196},
+		ui.Color{165, 214, 167},
+		ui.Color{197, 225, 165},
+		ui.Color{230, 238, 156},
+		ui.Color{255, 245, 157},
+		ui.Color{255, 224, 130},
+		ui.Color{255, 204, 128},
+		ui.Color{255, 171, 145},
+		ui.Color{188, 170, 164},
+		ui.Color{238, 238, 238},
+		ui.Color{176, 190, 197},
+	],
+	[
+		ui.Color{244, 67, 54},
+		ui.Color{233, 30, 99},
+		ui.Color{156, 39, 176},
+		ui.Color{103, 58, 183},
+		ui.Color{63, 81, 181},
+		ui.Color{33, 150, 243},
+		ui.Color{3, 169, 244},
+		ui.Color{0, 188, 212},
+		ui.Color{0, 150, 136},
+		ui.Color{76, 175, 80},
+		ui.Color{139, 195, 74},
+		ui.Color{205, 220, 57},
+		ui.Color{255, 235, 59},
+		ui.Color{255, 193, 7},
+		ui.Color{255, 152, 0},
+		ui.Color{255, 87, 34},
+		ui.Color{121, 85, 72},
+		ui.Color{120, 120, 120},
+		ui.Color{96, 125, 139},
+	],
+	[
+		ui.Color{198, 40, 40},
+		ui.Color{173, 20, 87},
+		ui.Color{106, 27, 154},
+		ui.Color{69, 39, 160},
+		ui.Color{40, 53, 147},
+		ui.Color{21, 101, 192},
+		ui.Color{2, 119, 189},
+		ui.Color{0, 131, 143},
+		ui.Color{0, 105, 92},
+		ui.Color{46, 125, 50},
+		ui.Color{85, 139, 47},
+		ui.Color{158, 157, 36},
+		ui.Color{249, 168, 37},
+		ui.Color{255, 143, 0},
+		ui.Color{239, 108, 0},
+		ui.Color{216, 67, 21},
+		ui.Color{78, 52, 46},
+		ui.Color{33, 33, 33},
+		ui.Color{55, 71, 79},
+	],
+]
 
-const (
-	frame_rate       = 30 // fps
-	msg_display_time = 5 * frame_rate
-	w                = 200
-	h                = 100
-	space            = ' '
-	spaces           = '  '
-	select_color     = 'Select color: '
-	select_size      = 'Size: ＋  －'
-	help_1           = '╭────────╮'
-	help_2           = '│  HELP  │'
-	help_3           = '╰────────╯'
-)
+const frame_rate = 30 // fps
+
+const msg_display_time = 5 * frame_rate
+const w = 200
+const h = 100
+const space = ' '
+const spaces = '  '
+const select_color = 'Select color: '
+const select_size = 'Size: ＋  －'
+const help_1 = '╭────────╮'
+const help_2 = '│  HELP  │'
+const help_3 = '╰────────╯'
 
 struct App {
 mut:
@@ -125,7 +122,7 @@ fn main() {
 	app.mouse_pos.x = 40
 	app.mouse_pos.y = 15
 	app.ui.clear()
-	app.ui.run()?
+	app.ui.run()!
 }
 
 fn frame(mut app App) {
@@ -461,7 +458,7 @@ fn (mut app App) draw_footer() {
 	// }
 }
 
-[inline]
+@[inline]
 fn (mut app App) inc_size() {
 	if app.size < 30 {
 		app.size++
@@ -469,7 +466,7 @@ fn (mut app App) inc_size() {
 	app.show_msg('inc. size: ${app.size}', 1)
 }
 
-[inline]
+@[inline]
 fn (mut app App) dec_size() {
 	if app.size > 1 {
 		app.size--

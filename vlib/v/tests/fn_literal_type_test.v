@@ -1,15 +1,13 @@
 import db.sqlite
 
-[table: 'Users']
+@[table: 'Users']
 struct User {
-	id   int    [primary; sql: serial]
+	id   int    @[primary; sql: serial]
 	name string
 }
 
-const (
-	const_users_offset  = 1
-	const_users_offset2 = 1
-)
+const const_users_offset = 1
+const const_users_offset2 = 1
 
 fn test_orm() {
 	db := sqlite.connect(':memory:') or { panic(err) }

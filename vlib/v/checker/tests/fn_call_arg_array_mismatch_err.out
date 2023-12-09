@@ -1,0 +1,7 @@
+vlib/v/checker/tests/fn_call_arg_array_mismatch_err.vv:9:36: error: cannot use `string` as `array` in argument 2 to `os.write_file_array`
+    7 |
+    8 | fn main() {
+    9 |     os.write_file_array(service_path, service_file) or {
+      |                                       ~~~~~~~~~~~~
+   10 |         eprintln('Error: write file service')
+   11 |         exit(1)

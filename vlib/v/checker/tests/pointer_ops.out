@@ -54,6 +54,13 @@ vlib/v/checker/tests/pointer_ops.vv:15:3: error: invalid operator `%` to `&Foo` 
       |         ~~~~~~~
    16 |     }
    17 | }
+vlib/v/checker/tests/pointer_ops.vv:15:3: error: mismatched types `&Foo` and `int literal`
+   13 |         _ = p[3]
+   14 |         mut foo := &Foo{}
+   15 |         foo % 3
+      |         ~~~~~~~
+   16 |     }
+   17 | }
 vlib/v/checker/tests/pointer_ops.vv:22:7: error: `+` cannot be used with `voidptr`
    20 |     unsafe {
    21 |         mut p := nil
@@ -104,6 +111,13 @@ vlib/v/checker/tests/pointer_ops.vv:28:8: error: type `nil` does not support ind
    29 |         mut foo := &Foo{}
    30 |         foo % 3
 vlib/v/checker/tests/pointer_ops.vv:30:3: error: invalid operator `%` to `&Foo` and `int literal`
+   28 |         _ = p[3]
+   29 |         mut foo := &Foo{}
+   30 |         foo % 3
+      |         ~~~~~~~
+   31 |     }
+   32 | }
+vlib/v/checker/tests/pointer_ops.vv:30:3: error: mismatched types `&Foo` and `int literal`
    28 |         _ = p[3]
    29 |         mut foo := &Foo{}
    30 |         foo % 3

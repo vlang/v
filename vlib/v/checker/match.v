@@ -9,7 +9,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	node.is_expr = c.expected_type != ast.void_type
 	node.expected_type = c.expected_type
 	if mut node.cond is ast.ParExpr && !c.pref.translated && !c.file.is_translated {
-		c.error('unnecessary `()` in `match` condition, use `match expr {` instead of `match (expr) {`.',
+		c.warn('unnecessary `()` in `match` condition, use `match expr {` instead of `match (expr) {`.',
 			node.cond.pos)
 	}
 	if node.is_expr {
@@ -18,15 +18,17 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 			c.expected_expr_type = ast.void_type
 		}
 	}
-	cond_type := c.expr(node.cond)
+	cond_type := c.expr(mut node.cond)
 	// we setting this here rather than at the end of the method
 	// since it is used in c.match_exprs() it saves checking twice
 	node.cond_type = ast.mktyp(cond_type)
-	if (node.cond is ast.Ident && (node.cond as ast.Ident).is_mut)
-		|| (node.cond is ast.SelectorExpr && (node.cond as ast.SelectorExpr).is_mut) {
-		c.fail_if_immutable(node.cond)
+	if (node.cond is ast.Ident && node.cond.is_mut)
+		|| (node.cond is ast.SelectorExpr && node.cond.is_mut) {
+		c.fail_if_immutable(mut node.cond)
 	}
-	c.ensure_type_exists(node.cond_type, node.pos) or { return ast.void_type }
+	if !c.ensure_type_exists(node.cond_type, node.pos) {
+		return ast.void_type
+	}
 	c.check_expr_opt_call(node.cond, cond_type)
 	cond_type_sym := c.table.sym(cond_type)
 	cond_is_option := cond_type.has_flag(.option)
@@ -37,11 +39,11 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	mut ret_type := ast.void_type
 	mut nbranches_with_return := 0
 	mut nbranches_without_return := 0
-	for branch in node.branches {
+	for mut branch in node.branches {
 		if node.is_expr {
-			c.stmts_ending_with_expression(branch.stmts)
+			c.stmts_ending_with_expression(mut branch.stmts)
 		} else {
-			c.stmts(branch.stmts)
+			c.stmts(mut branch.stmts)
 		}
 		c.smartcast_mut_pos = token.Pos{}
 		c.smartcast_cond_pos = token.Pos{}
@@ -58,7 +60,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 				if node.is_expr {
 					c.expected_type = node.expected_type
 				}
-				expr_type := c.expr(stmt.expr)
+				expr_type := c.expr(mut stmt.expr)
 				if !branch.is_else && cond_is_option && branch.exprs[0] !is ast.None {
 					c.error('`match` expression with Option type only checks against `none`, to match its value you must unwrap it first `var?`',
 						branch.pos)
@@ -72,25 +74,54 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 						ret_type = node.expected_type
 					} else {
 						ret_type = expr_type
-					}
-				} else if node.is_expr && ret_type.idx() != expr_type.idx() {
-					if (node.expected_type.has_flag(.option)
-						|| node.expected_type.has_flag(.result))
-						&& c.table.sym(stmt.typ).kind == .struct_
-						&& c.type_implements(stmt.typ, ast.error_type, node.pos) {
-						stmt.expr = ast.CastExpr{
-							expr: stmt.expr
-							typname: 'IError'
-							typ: ast.error_type
-							expr_type: stmt.typ
-							pos: node.pos
+						if expr_type.is_ptr() {
+							if stmt.expr is ast.Ident && stmt.expr.obj is ast.Var
+								&& c.table.is_interface_var(stmt.expr.obj) {
+								ret_type = expr_type.deref()
+							} else if mut stmt.expr is ast.PrefixExpr
+								&& stmt.expr.right is ast.Ident {
+								ident := stmt.expr.right as ast.Ident
+								if ident.obj is ast.Var && c.table.is_interface_var(ident.obj) {
+									ret_type = expr_type.deref()
+								}
+							}
 						}
-						stmt.typ = ast.error_type
-					} else {
-						c.check_match_branch_last_stmt(stmt, ret_type, expr_type)
+					}
+				} else {
+					if node.is_expr && ret_type.idx() != expr_type.idx() {
+						if (node.expected_type.has_flag(.option)
+							|| node.expected_type.has_flag(.result))
+							&& c.table.sym(stmt.typ).kind == .struct_
+							&& c.type_implements(stmt.typ, ast.error_type, node.pos) {
+							stmt.expr = ast.CastExpr{
+								expr: stmt.expr
+								typname: 'IError'
+								typ: ast.error_type
+								expr_type: stmt.typ
+								pos: node.pos
+							}
+							stmt.typ = ast.error_type
+						} else {
+							c.check_match_branch_last_stmt(stmt, ret_type, expr_type)
+						}
+					}
+					if node.is_expr && stmt.typ != ast.error_type {
+						ret_sym := c.table.sym(ret_type)
+						stmt_sym := c.table.sym(stmt.typ)
+						if ret_sym.kind !in [.sum_type, .interface_]
+							&& stmt_sym.kind in [.sum_type, .interface_] {
+							c.error('return type mismatch, it should be `${ret_sym.name}`',
+								stmt.pos)
+						}
+						if ret_type.nr_muls() != stmt.typ.nr_muls()
+							&& stmt.typ.idx() !in [ast.voidptr_type_idx, ast.nil_type_idx] {
+							type_name := '&'.repeat(ret_type.nr_muls()) + ret_sym.name
+							c.error('return type mismatch, it should be `${type_name}`',
+								stmt.pos)
+						}
 					}
 				}
-			} else if stmt !is ast.Return {
+			} else if stmt !in [ast.Return, ast.BranchStmt] {
 				if node.is_expr && ret_type != ast.void_type {
 					c.error('`match` expression requires an expression as the last statement of every branch',
 						stmt.pos)
@@ -164,13 +195,18 @@ fn (mut c Checker) get_comptime_number_value(mut expr ast.Expr) ?i64 {
 	if mut expr is ast.IntegerLiteral {
 		return expr.val.i64()
 	}
+	if mut expr is ast.CastExpr {
+		if mut expr.expr is ast.IntegerLiteral {
+			return expr.expr.val.i64()
+		}
+	}
 	if mut expr is ast.Ident {
 		has_expr_mod_in_name := expr.name.contains('.')
 		expr_name := if has_expr_mod_in_name { expr.name } else { '${expr.mod}.${expr.name}' }
 
 		if mut obj := c.table.global_scope.find_const(expr_name) {
 			if obj.typ == 0 {
-				obj.typ = c.expr(obj.expr)
+				obj.typ = c.expr(mut obj.expr)
 			}
 			return c.get_comptime_number_value(mut obj.expr)
 		}
@@ -192,10 +228,14 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 			// TODO: investigate why enums are different here:
 			if expr !is ast.EnumVal {
 				// ensure that the sub expressions of the branch are actually checked, before anything else:
-				_ := c.expr(expr)
+				_ := c.expr(mut expr)
 			}
 			if expr is ast.TypeNode && cond_sym.kind == .struct_ {
 				c.error('struct instances cannot be matched by type name, they can only be matched to other instances of the same struct type',
+					branch.pos)
+			}
+			if mut expr is ast.TypeNode && cond_sym.is_primitive() {
+				c.error('matching by type can only be done for sum types, generics, interfaces, `${node.cond}` is none of those',
 					branch.pos)
 			}
 			if mut expr is ast.RangeExpr {
@@ -241,7 +281,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				if both_low_and_high_are_known {
 					high_low_cutoff := 1000
 					if high - low > high_low_cutoff {
-						c.warn('more than ${high_low_cutoff} possibilities (${low} ... ${high}) in match range',
+						c.note('more than ${high_low_cutoff} possibilities (${low} ... ${high}) in match range may affect compile time',
 							branch.pos)
 					}
 					for i in low .. high + 1 {
@@ -272,7 +312,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				c.error('match case `${key}` is handled more than once', branch.pos)
 			}
 			c.expected_type = node.cond_type
-			expr_type := c.expr(expr)
+			expr_type := c.expr(mut expr)
 			if expr_type.idx() == 0 {
 				// parser failed, stop checking
 				return
@@ -286,7 +326,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				// c.type_implements(expr_type, c.expected_type, expr.pos())
 				expr_pos := expr.pos()
 				if c.type_implements(expr_type, c.expected_type, expr_pos) {
-					if !expr_type.is_ptr() && !expr_type.is_pointer() && !c.inside_unsafe {
+					if !expr_type.is_any_kind_of_pointer() && !c.inside_unsafe {
 						if expr_type_sym.kind != .interface_ {
 							c.mark_as_referenced(mut &branch.exprs[k], true)
 						}
@@ -353,7 +393,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					expr_type = expr_types[0].typ
 				}
 
-				c.smartcast(node.cond, node.cond_type, expr_type, mut branch.scope)
+				c.smartcast(mut node.cond, node.cond_type, expr_type, mut branch.scope)
 			}
 		}
 	}
@@ -389,6 +429,9 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 						is_exhaustive = false
 						unhandled << '`.${v}`'
 					}
+				}
+				if cond_type_sym.info.is_flag {
+					is_exhaustive = false
 				}
 			}
 			else {

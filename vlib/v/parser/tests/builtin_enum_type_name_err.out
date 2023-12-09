@@ -1,0 +1,5 @@
+vlib/v/parser/tests/builtin_enum_type_name_err.vv:1:6: error: cannot register enum `rune`, another type with this name exists
+    1 | enum rune {
+      |      ~~~~
+    2 |     a
+    3 |     b

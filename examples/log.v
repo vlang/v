@@ -1,6 +1,14 @@
 import log
 
 fn main() {
+	// Note: you *do not* need to create a logger instance, and pass it around, just to use the `log` module.
+	// The log module already creates an instance of a thread safe Logger, and utility functions to work with it:
+	log.set_level(.debug)
+	log.debug('simple debug message')
+	log.warn('simple warning message')
+	log.info('simple information message')
+	log.error('simple error message')
+
 	mut l := log.Log{}
 	l.set_level(.info)
 	// Make a new file called info.log in the current folder

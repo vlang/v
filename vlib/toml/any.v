@@ -235,8 +235,8 @@ pub fn (m map[string]Any) to_inline_toml() string {
 	mut i := 1
 	for k, v in m {
 		key := if k.contains(' ') { '"${k}"' } else { k }
-		delimeter := if i < m.len { ',' } else { '' }
-		toml_text += ' ${key} = ${v.to_toml()}${delimeter}'
+		delimiter := if i < m.len { ',' } else { '' }
+		toml_text += ' ${key} = ${v.to_toml()}${delimiter}'
 		i++
 	}
 	return toml_text + ' }'

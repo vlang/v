@@ -130,10 +130,9 @@ mut:
 }
 
 // type of glyph
-const (
-	g_type_simple  = u16(1) // simple type
-	g_type_complex = u16(2) // compound type
-)
+const g_type_simple = u16(1) // simple type
+
+const g_type_complex = u16(2)
 
 pub struct Glyph {
 pub mut:
@@ -162,17 +161,17 @@ pub fn (mut tf TTF_File) get_horizontal_metrics(glyph_index u16) (int, int) {
 	mut advance_width := 0
 	mut left_side_bearing := 0
 	if glyph_index < tf.num_of_long_hor_metrics {
-		offset += glyph_index * 4
+		offset += u32(glyph_index) * 4
 		tf.pos = offset
 		advance_width = tf.get_u16()
 		left_side_bearing = tf.get_i16()
 		// dprintln("${glyph_index} aw:${advance_width} lsb:${left_side_bearing}")
 	} else {
 		// read the last entry of the hMetrics array
-		tf.pos = offset + (tf.num_of_long_hor_metrics - 1) * 4
+		tf.pos = offset + u32(tf.num_of_long_hor_metrics - 1) * 4
 		advance_width = tf.get_u16()
-		tf.pos = offset + tf.num_of_long_hor_metrics * 4 +
-			2 * (glyph_index - tf.num_of_long_hor_metrics)
+		tf.pos = offset + u32(tf.num_of_long_hor_metrics) * 4 +
+			2 * u32(glyph_index - tf.num_of_long_hor_metrics)
 		left_side_bearing = tf.get_fword()
 	}
 	tf.pos = old_pos
@@ -348,14 +347,12 @@ pub fn (mut tf TTF_File) read_glyph(index u16) Glyph {
 	return tmp_glyph
 }
 
-const (
-	tfk_on_curve  = 1
-	tfk_x_is_byte = 2
-	tfk_y_is_byte = 4
-	tfk_repeat    = 8
-	tfk_x_delta   = 16
-	tfk_y_delta   = 32
-)
+const tfk_on_curve = 1
+const tfk_x_is_byte = 2
+const tfk_y_is_byte = 4
+const tfk_repeat = 8
+const tfk_x_delta = 16
+const tfk_y_delta = 32
 
 fn (mut tf TTF_File) read_simple_glyph(mut in_glyph Glyph) {
 	if in_glyph.number_of_contours == 0 {
@@ -366,7 +363,7 @@ fn (mut tf TTF_File) read_simple_glyph(mut in_glyph Glyph) {
 		in_glyph.contour_ends << tf.get_u16()
 	}
 
-	// skip over intructions
+	// skip over instructions
 	tf.pos = tf.get_u16() + tf.pos
 
 	mut num_points := 0
@@ -446,19 +443,17 @@ fn (mut tf TTF_File) read_simple_glyph(mut in_glyph Glyph) {
 	in_glyph.valid_glyph = true
 }
 
-const (
-	tfkc_arg_1_and_2_are_words    = 1
-	tfkc_args_are_xy_values       = 2
-	tfkc_round_xy_to_grid         = 4
-	tfkc_we_have_a_scale          = 8
-	// reserved                   = 16
-	tfkc_more_components          = 32
-	tfkc_we_have_an_x_and_y_scale = 64
-	tfkc_we_have_a_two_by_two     = 128
-	tfkc_we_have_instructions     = 256
-	tfkc_use_my_metrics           = 512
-	tfkc_overlap_component        = 1024
-)
+const tfkc_arg_1_and_2_are_words = 1
+const tfkc_args_are_xy_values = 2
+const tfkc_round_xy_to_grid = 4
+const tfkc_we_have_a_scale = 8
+// reserved                   = 16
+const tfkc_more_components = 32
+const tfkc_we_have_an_x_and_y_scale = 64
+const tfkc_we_have_a_two_by_two = 128
+const tfkc_we_have_instructions = 256
+const tfkc_use_my_metrics = 512
+const tfkc_overlap_component = 1024
 
 struct Component {
 mut:
@@ -757,7 +752,7 @@ fn (mut tf TTF_File) read_name_table() {
 		offset := tf.get_u16()
 
 		old_pos := tf.pos
-		tf.pos = table_offset + string_offset + offset
+		tf.pos = u32(table_offset) + u32(string_offset) + u32(offset)
 
 		mut name := ''
 		if platform_id == 0 || platform_id == 3 {
@@ -929,7 +924,7 @@ fn (mut tm TrueTypeCmap) map_4(char_code int, mut tf TTF_File) int {
 			if segment.start_code <= char_code && segment.end_code >= char_code {
 				mut index := (segment.id_delta + char_code) & 0xffff
 				if segment.id_range_offset > 0 {
-					glyph_index_address := segment.id_range_offset +
+					glyph_index_address := u32(segment.id_range_offset) +
 						2 * u32(char_code - segment.start_code)
 					tf.pos = glyph_index_address
 					index = tf.get_u16()
@@ -1106,7 +1101,7 @@ fn (mut tf TTF_File) read_panose_table() {
 	// dprintln('READING! PANOSE offset:${tf.tables['OS/2']}')
 	version := tf.get_u16()
 	dprintln('Panose version: ${version:04x}')
-	tf.pos += 2 * 14 // move to Panose class + 10 byte array	
+	tf.pos += 2 * 14 // move to Panose class + 10 byte array
 	mut count := 0
 
 	// get family
@@ -1161,21 +1156,21 @@ fn tst() {
 	mut tf := TTF_File{}
 
 	tf.buf = [
-		u8(0xFF), /* 8  bit */
+		u8(0xFF), // 8  bit
 		0xF1,
-		0xF2, /* 16 bit */
+		0xF2, // 16 bit
 		0x81,
 		0x23,
 		0x45,
-		0x67, /* 32 bit */
+		0x67, // 32 bit
 		0x12,
 		0x34,
 		0x12,
-		0x34, /* get_2dot14 16 bit */
+		0x34, // get_2dot14 16 bit
 		0x12,
 		0x34,
 		0x12,
-		0x34 /* get_fixed 32 bit int */,
+		0x34, // get_fixed 32 bit int
 	]
 	assert tf.get_u8().hex() == 'ff'
 	assert tf.get_u16().hex() == 'f1f2'

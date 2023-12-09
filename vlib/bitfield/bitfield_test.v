@@ -260,7 +260,7 @@ fn test_bf_pos() {
 	 * set haystack size to 80
 	 * test different sizes of needle, from 1 to 80
 	 * test different positions of needle, from 0 to where it fits
-	 * all haystacks here contain exactly one instanse of needle,
+	 * all haystacks here contain exactly one instance of needle,
 	 * so search should return non-negative-values
 	*
 	*/

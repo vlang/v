@@ -65,10 +65,8 @@ fn test_bytes_montgomery_infinity() {
 	assert got == want
 }
 
-const (
-	loworder_string = '26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc85'
-	loworder_bytes  = hex.decode(loworder_string) or { panic(err) }
-)
+const loworder_string = '26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc85'
+const loworder_bytes = hex.decode(loworder_string) or { panic(err) }
 
 fn fn_cofactor(mut data []u8) bool {
 	if data.len != 64 {

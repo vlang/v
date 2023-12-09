@@ -10,62 +10,59 @@ import gx
 import gg
 // import sokol.sapp
 
-const (
-	block_size      = 20 // virtual pixels
-	field_height    = 20 // # of blocks
-	field_width     = 10
-	tetro_size      = 4
-	win_width       = block_size * field_width
-	win_height      = block_size * field_height
-	timer_period    = 250 // ms
-	text_size       = 24
-	limit_thickness = 3
-)
+const block_size = 20 // virtual pixels
 
-const (
-	text_cfg = gx.TextCfg{
-		align: .left
-		size: text_size
-		color: gx.rgb(0, 0, 0)
-	}
-	over_cfg = gx.TextCfg{
-		align: .left
-		size: text_size
-		color: gx.white
-	}
-)
+const field_height = 20 // # of blocks
 
-const (
-	// Tetros' 4 possible states are encoded in binaries
-	// 0000 0  0000 0  0000 0  0000 0  0000 0  0000 0
-	// 0000 0  0000 0  0000 0  0000 0  0011 3  0011 3
-	// 0110 6  0010 2  0011 3  0110 6  0001 1  0010 2
-	// 0110 6  0111 7  0110 6  0011 3  0001 1  0010 2
-	// There is a special case 1111, since 15 can't be used.
-	b_tetros         = [
-		[66, 66, 66, 66],
-		[27, 131, 72, 232],
-		[36, 231, 36, 231],
-		[63, 132, 63, 132],
-		[311, 17, 223, 74],
-		[322, 71, 113, 47],
-		[1111, 9, 1111, 9],
-	]
-	// Each tetro has its unique color
-	colors           = [
-		gx.rgb(0, 0, 0), /* unused ? */
-		gx.rgb(255, 242, 0), /* yellow quad */
-		gx.rgb(174, 0, 255), /* purple triple */
-		gx.rgb(60, 255, 0), /* green short topright */
-		gx.rgb(255, 0, 0), /* red short topleft */
-		gx.rgb(255, 180, 31), /* orange long topleft */
-		gx.rgb(33, 66, 255), /* blue long topright */
-		gx.rgb(74, 198, 255), /* lightblue longest */
-		gx.rgb(0, 170, 170),
-	]
-	background_color = gx.white
-	ui_color         = gx.rgba(255, 0, 0, 210)
-)
+const field_width = 10
+const tetro_size = 4
+const win_width = block_size * field_width
+const win_height = block_size * field_height
+const timer_period = 250 // ms
+
+const text_size = 24
+const limit_thickness = 3
+
+const text_cfg = gx.TextCfg{
+	align: .left
+	size: text_size
+	color: gx.rgb(0, 0, 0)
+}
+const over_cfg = gx.TextCfg{
+	align: .left
+	size: text_size
+	color: gx.white
+}
+
+// Tetros' 4 possible states are encoded in binaries
+// 0000 0  0000 0  0000 0  0000 0  0000 0  0000 0
+// 0000 0  0000 0  0000 0  0000 0  0011 3  0011 3
+// 0110 6  0010 2  0011 3  0110 6  0001 1  0010 2
+// 0110 6  0111 7  0110 6  0011 3  0001 1  0010 2
+// There is a special case 1111, since 15 can't be used.
+const b_tetros = [
+	[66, 66, 66, 66],
+	[27, 131, 72, 232],
+	[36, 231, 36, 231],
+	[63, 132, 63, 132],
+	[311, 17, 223, 74],
+	[322, 71, 113, 47],
+	[1111, 9, 1111, 9],
+]
+// Each tetro has its unique color
+const colors = [
+	gx.rgb(0, 0, 0), // unused ?
+	gx.rgb(255, 242, 0), // yellow quad
+	gx.rgb(174, 0, 255), // purple triple
+	gx.rgb(60, 255, 0), // green short topright
+	gx.rgb(255, 0, 0), // red short topleft
+	gx.rgb(255, 180, 31), // orange long topleft
+	gx.rgb(33, 66, 255), // blue long topright
+	gx.rgb(74, 198, 255), // lightblue longest
+	gx.rgb(0, 170, 170),
+]
+const background_color = gx.white
+const ui_color = gx.rgba(255, 0, 0, 210)
 
 // TODO: type Tetro [tetro_size]struct{ x, y int }
 struct Block {
@@ -115,7 +112,7 @@ mut:
 	// gg context for drawing
 	gg          &gg.Context = unsafe { nil }
 	font_loaded bool
-	show_ghost  bool = true
+	show_ghost  bool
 	// frame/time counters:
 	frame     int
 	frame_old int
@@ -127,7 +124,7 @@ fn remap(v f32, min f32, max f32, new_min f32, new_max f32) f32 {
 	return (((v - min) * (new_max - new_min)) / (max - min)) + new_min
 }
 
-[if showfps ?]
+@[if showfps ?]
 fn (mut game Game) showfps() {
 	game.frame++
 	last_frame_ms := f64(game.frame_sw.elapsed().microseconds()) / 1000.0
@@ -159,9 +156,7 @@ fn frame(mut game Game) {
 }
 
 fn main() {
-	mut game := &Game{
-		gg: 0
-	}
+	mut game := &Game{}
 	mut fpath := os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'RobotoMono-Regular.ttf'))
 	$if android {
 		fpath = 'fonts/RobotoMono-Regular.ttf'
@@ -322,7 +317,6 @@ fn (mut g Game) get_tetro() {
 	g.tetro = g.tetros_cache[idx..idx + tetro_size].clone()
 }
 
-// TODO mut
 fn (mut g Game) drop_tetro() {
 	for i in 0 .. tetro_size {
 		tetro := g.tetro[i]

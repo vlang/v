@@ -131,10 +131,10 @@ fn read_wav_file_samples(fpath string) ![]f32 {
 		return error('WAV should have `WAVE` form type')
 	}
 	if rh.file_size + 8 != bytes.len {
-		return error('WAV should have valid lenght')
+		return error('WAV should have valid length')
 	}
 	offset += sizeof(RIFFHeader)
-	mut rf := &RIFFFormat(0)
+	mut rf := &RIFFFormat(unsafe { nil })
 	for {
 		if offset >= bytes.len {
 			break

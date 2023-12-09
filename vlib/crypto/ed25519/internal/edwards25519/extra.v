@@ -326,7 +326,7 @@ pub fn (mut v Point) vartime_multiscalar_mult(scalars []Scalar, points []Point) 
 	// at each iteration and checking whether there is a nonzero
 	// coefficient to look up a multiple of.
 	//
-	// Skip trying to find the first nonzero coefficent, because
+	// Skip trying to find the first nonzero coefficient, because
 	// searching might be more work than a few extra doublings.
 	// k == i, l == j
 	for k := 255; k >= 0; k-- {

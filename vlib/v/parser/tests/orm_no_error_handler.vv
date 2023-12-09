@@ -1,9 +1,11 @@
+import db.sqlite
+
 struct User {
 	id int
 }
 
 fn main() {
-	db := true
+	db := sqlite.connect(':memory:')!
 
 	_ := sql db {
 		select from User

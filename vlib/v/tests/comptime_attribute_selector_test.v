@@ -1,6 +1,6 @@
-[name: 'abc']
-[amount: 2]
-[abc]
+@[name: 'abc']
+@[amount: 2]
+@[abc]
 struct Abc {}
 
 fn test_comptime_for_attributes() {

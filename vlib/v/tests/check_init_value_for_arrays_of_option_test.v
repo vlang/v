@@ -32,7 +32,6 @@ fn test_primitives() {
 	check_init_value_for_arrays_of_option[i64]()
 
 	check_init_value_for_arrays_of_option[u8]()
-	check_init_value_for_arrays_of_option[byte]()
 	check_init_value_for_arrays_of_option[u16]()
 	check_init_value_for_arrays_of_option[u32]()
 	check_init_value_for_arrays_of_option[u64]()

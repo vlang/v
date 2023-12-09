@@ -123,8 +123,8 @@ fn test_find_pri_const() {
 	assert fdr.matches == [
 		Match{
 			path: os.join_path(test_dir, 'file_two.v')
-			line: 5
-			text: 'y = 100'
+			line: 4
+			text: 'const y = 100'
 		},
 	]
 }
@@ -137,7 +137,7 @@ fn test_find_pub_enum() {
 	assert fdr.matches == [
 		Match{
 			path: os.join_path(test_dir, 'file_two.v')
-			line: 9
+			line: 7
 			text: 'pub enum Public'
 		},
 	]
@@ -151,7 +151,7 @@ fn test_find_pri_enum() {
 	assert fdr.matches == [
 		Match{
 			path: os.join_path(test_dir, 'file_two.v')
-			line: 14
+			line: 12
 			text: 'enum Private'
 		},
 	]
@@ -165,7 +165,7 @@ fn test_find_fn() {
 	assert fdr.matches == [
 		Match{
 			path: os.join_path(test_dir, 'file_two.v')
-			line: 27
+			line: 25
 			text: 'fn some_function_name(foo string, bar int) string'
 		},
 	]
@@ -179,8 +179,8 @@ fn test_find_pub_const_with_mod() {
 	assert fdr.matches == [
 		Match{
 			path: os.join_path(test_dir, 'nested_mod', 'nested_file.v')
-			line: 5
-			text: 'b = 60'
+			line: 4
+			text: 'pub const b = 60'
 		},
 	]
 }

@@ -1,0 +1,12 @@
+fn onlyint[T](val T) T {
+	$if val is $int {
+		return val
+	} $else {
+		$compile_error('not an int')
+	}
+}
+
+fn main() {
+	onlyint(7)
+	onlyint([]int{})
+}

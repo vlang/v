@@ -7,9 +7,9 @@ import stbi
 import sokol.gfx
 import sokol.sgl
 
-// Image holds the fileds and data needed to
+// Image holds the fields and data needed to
 // represent a bitmap/pixel based image in memory.
-[heap]
+@[heap]
 pub struct Image {
 pub mut:
 	id          int
@@ -21,19 +21,30 @@ pub mut:
 	ext         string
 	simg_ok     bool
 	simg        gfx.Image
+	ssmp        gfx.Sampler
 	path        string
 }
 
 // create_image creates an `Image` from `file`.
-pub fn (ctx &Context) create_image(file string) !Image {
-	// println('\ncreate_image("$file")')
+pub fn (mut ctx Context) create_image(file string) !Image {
 	if !os.exists(file) {
-		return error('image file "${file}" not found')
+		$if android {
+			image_data := os.read_apk_asset(file)!
+			mut image := ctx.create_image_from_byte_array(image_data)!
+
+			image.path = file
+
+			return image
+		} $else {
+			return error('image file "${file}" not found')
+		}
 	}
+
 	$if macos {
 		if ctx.native_rendering {
 			// return C.darwin_create_image(file)
 			mut img := C.darwin_create_image(file)
+
 			// println('created macos image: $img.path w=$img.width')
 			// C.printf('p = %p\n', img.data)
 			img.id = ctx.image_cache.len
@@ -43,6 +54,7 @@ pub fn (ctx &Context) create_image(file string) !Image {
 			return img
 		}
 	}
+
 	if !gfx.is_valid() {
 		// Sokol is not initialized yet, add stbi object to a queue/cache
 		// ctx.image_queue << file
@@ -78,8 +90,8 @@ pub fn (mut img Image) init_sokol_image() &Image {
 		width: img.width
 		height: img.height
 		num_mipmaps: 0
-		wrap_u: .clamp_to_edge
-		wrap_v: .clamp_to_edge
+		// wrap_u: .clamp_to_edge // XTODO SAMPLER
+		// wrap_v: .clamp_to_edge
 		label: img.path.str
 		d3d11_texture: 0
 	}
@@ -101,6 +113,16 @@ pub fn (mut img Image) init_sokol_image() &Image {
 		size: img_size
 	}
 	img.simg = gfx.make_image(&img_desc)
+
+	mut smp_desc := gfx.SamplerDesc{
+		min_filter: .linear
+		mag_filter: .linear
+		wrap_u: .clamp_to_edge
+		wrap_v: .clamp_to_edge
+	}
+
+	img.ssmp = gfx.make_sampler(&smp_desc)
+
 	img.simg_ok = true
 	img.ok = true
 	return img
@@ -131,10 +153,6 @@ pub fn (mut ctx Context) new_streaming_image(w int, h int, channels int, sicfg S
 		num_slices: 1
 		num_mipmaps: 1
 		usage: .stream
-		wrap_u: sicfg.wrap_u
-		wrap_v: sicfg.wrap_v
-		min_filter: sicfg.min_filter
-		mag_filter: sicfg.mag_filter
 		label: img.path.str
 	}
 	// Sokol requires that streamed images have NO .ptr/.size initially:
@@ -143,6 +161,15 @@ pub fn (mut ctx Context) new_streaming_image(w int, h int, channels int, sicfg S
 		size: usize(0)
 	}
 	img.simg = gfx.make_image(&img_desc)
+
+	mut smp_desc := gfx.SamplerDesc{
+		wrap_u: sicfg.wrap_u // SAMPLER
+		wrap_v: sicfg.wrap_v
+		min_filter: sicfg.min_filter
+		mag_filter: sicfg.mag_filter
+	}
+
+	img.ssmp = gfx.make_sampler(&smp_desc)
 	img.simg_ok = true
 	img.ok = true
 	img_idx := ctx.cache_image(img)
@@ -256,45 +283,47 @@ pub struct StreamingImageConfig {
 // provided image should be drawn onto the screen
 pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 	$if macos {
-		unsafe {
-			mut img := config.img
-			if config.img == nil {
-				// Get image by id
-				if config.img_id > 0 {
-					img = &ctx.image_cache[config.img_id]
-				} else {
-					eprintln('gg: failed to get image to draw natively')
+		if ctx.native_rendering {
+			unsafe {
+				mut img := config.img
+				if config.img == nil {
+					// Get image by id
+					if config.img_id > 0 {
+						img = &ctx.image_cache[config.img_id]
+					} else {
+						eprintln('gg: failed to get image to draw natively')
+						return
+					}
+				}
+				if img.id >= ctx.image_cache.len {
+					eprintln('gg: draw_image() bad img id ${img.id} (img cache len = ${ctx.image_cache.len})')
 					return
 				}
-			}
-			if img.id >= ctx.image_cache.len {
-				eprintln('gg: draw_image() bad img id ${img.id} (img cache len = ${ctx.image_cache.len})')
-				return
-			}
-			if ctx.native_rendering {
-				if img.width == 0 {
-					println('w=0')
+				if ctx.native_rendering {
+					if img.width == 0 {
+						println('w=0')
+						return
+					}
+					if !os.exists(img.path) {
+						println('not exist path')
+						return
+					}
+					x := config.img_rect.x
+					y := config.img_rect.y
+					width := if config.img_rect.width == 0 {
+						f32(img.width)
+					} else {
+						config.img_rect.width
+					}
+					height := if config.img_rect.height == 0 {
+						f32(img.height)
+					} else {
+						config.img_rect.height
+					}
+					C.darwin_draw_image(x, ctx.height - (y + config.img_rect.height),
+						width, height, img)
 					return
 				}
-				if !os.exists(img.path) {
-					println('not exist path')
-					return
-				}
-				x := config.img_rect.x
-				y := config.img_rect.y
-				width := if config.img_rect.width == 0 {
-					f32(img.width)
-				} else {
-					config.img_rect.width
-				}
-				height := if config.img_rect.height == 0 {
-					f32(img.height)
-				} else {
-					config.img_rect.height
-				}
-				C.darwin_draw_image(x, ctx.height - (y + config.img_rect.height), width,
-					height, img)
-				return
 			}
 		}
 	}
@@ -348,7 +377,7 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 	}
 
 	sgl.enable_texture()
-	sgl.texture(img.simg)
+	sgl.texture(img.simg, img.ssmp)
 
 	if config.rotate != 0 {
 		width := img_rect.width * ctx.scale

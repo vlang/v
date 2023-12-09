@@ -1,6 +1,6 @@
 pub struct Range[T] {
 	start T
-	end   T [required]
+	end   T @[required]
 	step  T = T(1)
 mut:
 	now T

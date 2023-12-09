@@ -114,11 +114,11 @@ fn test_array() {
 	assert json.encode(StructType[[]int]{ val: [1] }) == '{"val":[1]}'
 	assert json.encode(StructType[[]int]{ val: [0, 1, 0, 2, 3, 2, 5, 1] }) == '{"val":[0,1,0,2,3,2,5,1]}'
 
-	assert json.encode(StructType[[]byte]{}) == '{"val":[]}'
-	assert json.encode(StructType[[]byte]{ val: [] }) == '{"val":[]}'
-	assert json.encode(StructType[[]byte]{ val: [byte(0)] }) == '{"val":[0]}'
-	assert json.encode(StructType[[]byte]{ val: [byte(1)] }) == '{"val":[1]}'
-	assert json.encode(StructType[[]byte]{ val: [byte(0), 1, 0, 2, 3, 2, 5, 1] }) == '{"val":[0,1,0,2,3,2,5,1]}'
+	assert json.encode(StructType[[]u8]{}) == '{"val":[]}'
+	assert json.encode(StructType[[]u8]{ val: [] }) == '{"val":[]}'
+	assert json.encode(StructType[[]u8]{ val: [u8(0)] }) == '{"val":[0]}'
+	assert json.encode(StructType[[]u8]{ val: [u8(1)] }) == '{"val":[1]}'
+	assert json.encode(StructType[[]u8]{ val: [u8(0), 1, 0, 2, 3, 2, 5, 1] }) == '{"val":[0,1,0,2,3,2,5,1]}'
 
 	assert json.encode(StructType[[]i64]{}) == '{"val":[]}'
 	assert json.encode(StructType[[]i64]{ val: [] }) == '{"val":[]}'
@@ -164,11 +164,11 @@ fn test_option_array() {
 	assert json.encode(StructTypeOption[[]int]{ val: [1] }) == '{"val":[1]}'
 	assert json.encode(StructTypeOption[[]int]{ val: [0, 1, 0, 2, 3, 2, 5, 1] }) == '{"val":[0,1,0,2,3,2,5,1]}'
 
-	assert json.encode(StructTypeOption[[]byte]{}) == '{}'
-	assert json.encode(StructTypeOption[[]byte]{ val: [] }) == '{"val":[]}'
-	assert json.encode(StructTypeOption[[]byte]{ val: [byte(0)] }) == '{"val":[0]}'
-	assert json.encode(StructTypeOption[[]byte]{ val: [byte(1)] }) == '{"val":[1]}'
-	assert json.encode(StructTypeOption[[]byte]{ val: [byte(0), 1, 0, 2, 3, 2, 5, 1] }) == '{"val":[0,1,0,2,3,2,5,1]}'
+	assert json.encode(StructTypeOption[[]u8]{}) == '{}'
+	assert json.encode(StructTypeOption[[]u8]{ val: [] }) == '{"val":[]}'
+	assert json.encode(StructTypeOption[[]u8]{ val: [u8(0)] }) == '{"val":[0]}'
+	assert json.encode(StructTypeOption[[]u8]{ val: [u8(1)] }) == '{"val":[1]}'
+	assert json.encode(StructTypeOption[[]u8]{ val: [u8(0), 1, 0, 2, 3, 2, 5, 1] }) == '{"val":[0,1,0,2,3,2,5,1]}'
 
 	assert json.encode(StructTypeOption[[]i64]{}) == '{}'
 	assert json.encode(StructTypeOption[[]i64]{ val: [] }) == '{"val":[]}'
@@ -225,6 +225,26 @@ fn test_alias() {
 	assert json.encode(StructType[StructAlias]{}) == '{"val":{"val":0}}'
 	assert json.encode(StructType[StructAlias]{ val: StructType[int]{0} }) == '{"val":{"val":0}}'
 	assert json.encode(StructType[StructAlias]{ val: StructType[int]{1} }) == '{"val":{"val":1}}'
+}
+
+fn test_pointer() {
+	mut string_initialized_with_reference := ''
+	assert json.encode(StructTypePointer[string]{ val: 0 }) == '{}'
+	assert json.encode(StructTypePointer[string]{ val: &string_initialized_with_reference }) == '{"val":""}'
+	string_initialized_with_reference = 'a'
+	assert json.encode(StructTypePointer[string]{ val: &string_initialized_with_reference }) == '{"val":"a"}'
+
+	mut bool_initialized_with_reference := false
+	assert json.encode(StructTypePointer[bool]{ val: 0 }) == '{}'
+	assert json.encode(StructTypePointer[bool]{ val: &bool_initialized_with_reference }) == '{"val":false}'
+	bool_initialized_with_reference = true
+	assert json.encode(StructTypePointer[bool]{ val: &bool_initialized_with_reference }) == '{"val":true}'
+
+	mut int_initialized_with_reference := 0
+	assert json.encode(StructTypePointer[int]{ val: 0 }) == '{}'
+	assert json.encode(StructTypePointer[int]{ val: &int_initialized_with_reference }) == '{"val":0}'
+	int_initialized_with_reference = 1
+	assert json.encode(StructTypePointer[int]{ val: &int_initialized_with_reference }) == '{"val":1}'
 }
 
 fn test_sumtypes() {

@@ -32,7 +32,7 @@ fn start_server() ! {
 		}
 	}
 	// Make that in execution test time give time to execute at least one time
-	s.ping_interval = 100
+	s.set_ping_interval(100)
 	s.on_connect(fn (mut s websocket.ServerClient) !bool {
 		slog('ws.on_connect, s.client_key: ${s.client_key}')
 		// Here you can look att the client info and accept or not accept

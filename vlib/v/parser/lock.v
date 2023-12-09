@@ -44,14 +44,11 @@ fn (mut p Parser) lockable() ast.Expr {
 }
 
 // like `expr_list()` but only lockables are allowed, `{` starts lock block (not struct literal)
-fn (mut p Parser) lockable_list() ([]ast.Expr, []ast.Comment) {
+fn (mut p Parser) lockable_list() []ast.Expr {
 	mut exprs := []ast.Expr{}
-	mut comments := []ast.Comment{}
 	for {
 		expr := p.lockable()
-		if expr is ast.Comment {
-			comments << expr
-		} else {
+		if expr !is ast.Comment {
 			exprs << expr
 			if p.tok.kind != .comma {
 				break
@@ -59,7 +56,7 @@ fn (mut p Parser) lockable_list() ([]ast.Expr, []ast.Comment) {
 			p.next()
 		}
 	}
-	return exprs, comments
+	return exprs
 }
 
 fn (mut p Parser) lock_expr() ast.LockExpr {
@@ -68,7 +65,6 @@ fn (mut p Parser) lock_expr() ast.LockExpr {
 	p.open_scope()
 	mut pos := p.tok.pos()
 	mut lockeds := []ast.Expr{}
-	mut comments := []ast.Comment{}
 	mut is_rlocked := []bool{}
 	for {
 		is_rlock := p.tok.kind == .key_rlock
@@ -80,7 +76,7 @@ fn (mut p Parser) lock_expr() ast.LockExpr {
 			break
 		}
 		if p.tok.kind == .name {
-			exprs, comms := p.lockable_list()
+			exprs := p.lockable_list()
 			for e in exprs {
 				if !e.is_lockable() {
 					p.error_with_pos('`${e}` cannot be locked - only `x` or `x.y` are supported',
@@ -89,7 +85,6 @@ fn (mut p Parser) lock_expr() ast.LockExpr {
 				lockeds << e
 				is_rlocked << is_rlock
 			}
-			comments << comms
 		}
 		if p.tok.kind == .lcbr {
 			break

@@ -40,25 +40,23 @@ pub fn compress(data []u8) ![]u8 {
 	return result
 }
 
-[params]
+@[params]
 pub struct DecompressParams {
 	verify_header_checksum bool = true
 	verify_length          bool = true
 	verify_checksum        bool = true
 }
 
-pub const (
-	reserved_bits = 0b1110_0000
-	ftext         = 0b0000_0001
-	fextra        = 0b0000_0100
-	fname         = 0b0000_1000
-	fcomment      = 0b0001_0000
-	fhcrc         = 0b0000_0010
-)
+pub const reserved_bits = 0b1110_0000
+pub const ftext = 0b0000_0001
+pub const fextra = 0b0000_0100
+pub const fname = 0b0000_1000
+pub const fcomment = 0b0001_0000
+pub const fhcrc = 0b0000_0010
 
 const min_header_length = 18
 
-[noinit]
+@[noinit]
 pub struct GzipHeader {
 pub mut:
 	length            int = 10

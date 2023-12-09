@@ -14,7 +14,7 @@
 [![Sponsor][SponsorBadge]][SponsorUrl]
 [![Patreon][PatreonBadge]][PatreonUrl]
 [![Discord][DiscordBadge]][DiscordUrl]
-[![Twitter][TwitterBadge]][TwitterUrl]
+[![X][XBadge]][XUrl]
 [![Modules][ModulesBadge]][ModulesUrl]
 </div>
 
@@ -41,21 +41,23 @@
 - C and JavaScript backends
 - Great for writing low-level software ([Vinix OS](https://github.com/vlang/vinix))
 
-## Stability guarantee and future changes
+## Stability, future changes, post 1.0 freeze
 
-Despite being at an early development stage, the V language is relatively stable and has
-backwards compatibility guarantee, meaning that the code you write today is guaranteed
-to work a month, a year, or five years from now.
+Despite being at an early development stage, the V language is relatively stable, and doesn't
+change often. But there will be changes before 1.0.
+Most changes in the syntax are handled via vfmt automatically.
 
-There still may be minor syntax changes before the 1.0 release, but they will be handled
-automatically via `vfmt`, as has been done in the past.
-
-The V core APIs (primarily the `os` module) will still have minor changes until
-they are stabilized in V 1.0. Of course the APIs will grow after that, but without breaking
+The V core APIs (primarily the `os` module) will also have minor changes until
+they are stabilized in V 1.0. Of course, the APIs will grow after that, but without breaking
 existing code.
 
-Unlike many other languages, V is not going to be always changing, with new features
-being introduced and old features modified. It is always going to be a small and simple
+After the 1.0 release V is going to be in the "feature freeze" mode. That means no breaking changes
+in the language, only bug fixes and performance improvements. Similar to Go.
+
+Will there be V 2.0? Not within a decade after 1.0, perhaps not ever.
+
+To sum it up, unlike many other languages, V is not going to be always changing, with new features
+introduced and old features modified. It is always going to be a small and simple
 language, very similar to the way it is right now.
 
 ## Installing V from source
@@ -93,7 +95,7 @@ V is constantly being updated. To update V, simply run:
 v up
 ```
 
-> **Note**
+> [!NOTE]
 > If you run into any trouble, or you have a different operating
 > system or Linux distribution that doesn't install or work immediately, please see
 > [Installation Issues](https://github.com/vlang/v/discussions/categories/installation-issues)
@@ -121,7 +123,7 @@ Otherwise, follow these instructions:
 
 ### Symlinking
 
-> **Note**
+> [!NOTE]
 > It is *highly recommended*, that you put V on your PATH. That saves
 > you the effort to type in the full path to your v executable every time.
 > V provides a convenience `v symlink` command to do that more easily.
@@ -147,7 +149,7 @@ v symlink
 That will make V available everywhere, by adding it to your PATH. Please restart your
 shell/editor after that, so that it can pick up the new PATH variable.
 
-> **Note**
+> [!NOTE]
 > There is no need to run `v symlink` more than once - v will still be available, even after
 > `v up`, restarts, and so on.  You only need to run it again if you decide to move the V repo
 > folder somewhere else.
@@ -201,33 +203,22 @@ cd v
 make
 ```
 
-## Installing editor/IDE plugin
+## Editor/IDE Plugins
 
-V has plugins for many editors:
+To bring IDE functions for the V programming languages to your editor, check out
+[v-analyzer](https://github.com/v-analyzer/v-analyzer). It provides a
+[VS Code extension](https://marketplace.visualstudio.com/items?itemName=VOSCA.vscode-v-analyzer)
+and language server capabilities for other editors.
 
-- [VS Code plugin](https://github.com/vlang/vscode-vlang)
-- [JetBrains IDE plugin](https://plugins.jetbrains.com/plugin/20287-vlang/docs/quick-start-guide.html)
+The plugin for JetBrains IDEs (IntelliJ, CLion, GoLand, etc.) also offers a great development
+experience with V. You can find all features in [its documentation](https://plugins.jetbrains.com/plugin/20287-vlang/docs/syntax-highlighting.html).
+
+Other Plugins:
+
 - [Vim plugins](https://github.com/vlang/awesome-v#vim)
 - [Emacs plugins](https://github.com/vlang/awesome-v#emacs)
 - [Sublime Text 3 plugins](https://github.com/vlang/awesome-v#sublime-text-3)
 - [Atom plugins](https://github.com/vlang/awesome-v#atom)
-
-### IntelliSense
-
-V has a Language Server:
-[VLS](https://github.com/vlang/vls).
-The VS Code plugin provides built-in support for VLS.
-
-> **Note**
-> 
-> VLS may be unstable at the moment.
-> If you encounter any problem, please create a new
-> [issue](https://github.com/vlang/vls/issues).
-
-The plugin for JetBrains IDE (IntelliJ, CLion, GoLand, etc) at the moment is
-the best choice if you want a great V development experience.
-You can see all its features in
-[its documentation](https://plugins.jetbrains.com/plugin/20287-vlang/docs/syntax-highlighting.html).
 
 ## Testing and running the examples
 
@@ -376,12 +367,12 @@ section on our
 [DiscordBadge]: https://img.shields.io/discord/592103645835821068?label=Discord&logo=discord&logoColor=white
 [PatreonBadge]: https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.vercel.app%2Fapi%3Fusername%3Dvlang%26type%3Dpatrons&style=flat
 [SponsorBadge]: https://camo.githubusercontent.com/da8bc40db5ed31e4b12660245535b5db67aa03ce/68747470733a2f2f696d672e736869656c64732e696f2f7374617469632f76313f6c6162656c3d53706f6e736f72266d6573736167653d254532253944254134266c6f676f3d476974487562
-[TwitterBadge]: https://img.shields.io/badge/follow-%40v_language-1DA1F2?logo=twitter&style=flat&logoColor=white&color=1da1f2
+[XBadge]: https://img.shields.io/badge/follow-%40v_language-1DA1F2?logo=x&style=flat&logoColor=white&color=1da1f2
 [ModulesBadge]: https://img.shields.io/badge/modules-reference-027d9c?logo=v&logoColor=white&logoWidth=10
 
 [WorkflowUrl]: https://github.com/vlang/v/commits/master
 [DiscordUrl]: https://discord.gg/vlang
 [PatreonUrl]: https://patreon.com/vlang
 [SponsorUrl]: https://github.com/sponsors/medvednikov
-[TwitterUrl]: https://twitter.com/v_language
+[XUrl]: https://x.com/v_language
 [ModulesUrl]: https://modules.vlang.io

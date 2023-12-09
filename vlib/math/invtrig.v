@@ -45,13 +45,11 @@ module math
 // pi/2.0 = PIO2 + morebits
 // tan3pio8 = tan(3*pi/8)
 
-const (
-	morebits = 6.123233995736765886130e-17
-	tan3pio8 = 2.41421356237309504880
-)
+const morebits = 6.123233995736765886130e-17
+const tan3pio8 = 2.41421356237309504880
 
 // xatan evaluates a series valid in the range [0, 0.66].
-[inline]
+@[inline]
 fn xatan(x f64) f64 {
 	xatan_p0 := -8.750608600031904122785e-01
 	xatan_p1 := -1.615753718733365076637e+01
@@ -72,7 +70,7 @@ fn xatan(x f64) f64 {
 
 // satan reduces its argument (known to be positive)
 // to the range [0, 0.66] and calls xatan.
-[inline]
+@[inline]
 fn satan(x f64) f64 {
 	if x <= 0.66 {
 		return xatan(x)
@@ -201,7 +199,7 @@ pub fn asin(x_ f64) f64 {
 //
 // special case is:
 // acos(x) = nan if x < -1 or x > 1
-[inline]
+@[inline]
 pub fn acos(x f64) f64 {
 	if x < -1.0 || x > 1.0 {
 		return nan()

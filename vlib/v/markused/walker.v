@@ -192,6 +192,7 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 		ast.HashStmt {}
 		ast.Import {}
 		ast.InterfaceDecl {}
+		ast.SemicolonStmt {}
 		ast.Module {}
 		ast.TypeDecl {}
 		ast.NodeError {}
@@ -236,7 +237,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		ast.ArrayInit {
 			w.expr(node.len_expr)
 			w.expr(node.cap_expr)
-			w.expr(node.default_expr)
+			w.expr(node.init_expr)
 			w.exprs(node.exprs)
 		}
 		ast.Assoc {
@@ -273,7 +274,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.fn_by_name('eprint')
 			w.fn_by_name('eprintln')
 		}
-		ast.GoExpr {
+		ast.SpawnExpr {
 			w.expr(node.call_expr)
 			if w.pref.os == .windows {
 				w.fn_by_name('panic_lasterr')
@@ -282,6 +283,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				w.fn_by_name('c_error_number_str')
 				w.fn_by_name('panic_error_number')
 			}
+		}
+		ast.GoExpr {
+			w.expr(node.call_expr)
 		}
 		ast.IndexExpr {
 			w.expr(node.left)
@@ -344,6 +348,9 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 					// println('>>> else, ast.Ident kind: $node.kind')
 				}
 			}
+		}
+		ast.LambdaExpr {
+			w.expr(node.func)
 		}
 		ast.Likely {
 			w.expr(node.expr)
@@ -412,11 +419,8 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			if node.has_update_expr {
 				w.expr(node.update_expr)
 			}
-			for sif in node.fields {
+			for sif in node.init_fields {
 				w.expr(sif.expr)
-			}
-			for sie in node.embeds {
-				w.expr(sie.expr)
 			}
 		}
 		ast.TypeOf {

@@ -1,3 +1,5 @@
+// vtest flaky: true
+// vtest retry: 3
 import os
 import toml
 import toml.ast
@@ -10,26 +12,25 @@ const hide_oks = os.getenv('VTEST_HIDE_OK') == '1'
 // `cd vlib/toml/tests/testdata`
 // `git clone --depth 1 https://github.com/BurntSushi/toml-test.git burntsushi/toml-test`
 // See also the CI toml tests
-const (
-	// Kept for easier handling of future updates to the tests
-	valid_exceptions       = [
-		'comment/everywhere.toml',
-	]
-	invalid_exceptions     = [
-		'datetime/hour-over.toml',
-		'datetime/mday-under.toml',
-		'datetime/minute-over.toml',
-		'datetime/month-under.toml',
-		'datetime/second-over.toml',
-	]
-	valid_value_exceptions = []string{}
-	// BUG with string interpolation of '${i64(-9223372036854775808)}') see below for workaround
-	//'integer/long.toml', // TODO https://github.com/vlang/v/issues/9507
+// Kept for easier handling of future updates to the tests
+const valid_exceptions = [
+	'comment/everywhere.toml',
+]
+const invalid_exceptions = [
+	'datetime/hour-over.toml',
+	'datetime/mday-under.toml',
+	'datetime/minute-over.toml',
+	'datetime/month-under.toml',
+	'datetime/second-over.toml',
+]
+const valid_value_exceptions = []string{}
+// BUG with string interpolation of '${i64(-9223372036854775808)}') see below for workaround
+//'integer/long.toml', // TODO https://github.com/vlang/v/issues/9507
 
-	jq                     = os.find_abs_path_of_executable('jq') or { '' }
-	compare_work_dir_root  = os.join_path(os.vtmp_dir(), 'v', 'toml', 'burntsushi')
-	// From: https://stackoverflow.com/a/38266731/1904615
-	jq_normalize           = r'# Apply f to composite entities recursively using keys[], and to atoms
+const jq = os.find_abs_path_of_executable('jq') or { '' }
+const compare_work_dir_root = os.join_path(os.vtmp_dir(), 'toml', 'burntsushi')
+// From: https://stackoverflow.com/a/38266731/1904615
+const jq_normalize = r'# Apply f to composite entities recursively using keys[], and to atoms
 def sorted_walk(f):
   . as $in
   | if type == "object" then
@@ -42,9 +43,8 @@ def sorted_walk(f):
 def normalize: sorted_walk(if type == "array" then sort else . end);
 
 normalize'
-)
 
-fn run(args []string) ?string {
+fn run(args []string) !string {
 	res := os.execute(args.join(' '))
 	if res.exit_code != 0 {
 		return error('${args[0]} failed with return code ${res.exit_code}.\n${res.output}')

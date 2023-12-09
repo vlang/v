@@ -9,7 +9,7 @@ struct Alarm {
 struct Clock {
 mut:
 	arr       []Alarm
-	alarm_fkt Fkt
+	alarm_fkt Fkt = unsafe { nil }
 }
 
 fn fkt(mut a Alarm) {

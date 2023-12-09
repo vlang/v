@@ -1,7 +1,7 @@
 // Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-[has_globals]
+@[has_globals]
 module util
 
 import os
@@ -19,18 +19,14 @@ import v.mathutil as mu
 // v itself.
 // error_context_before - how many lines of source context to print before the pointer line
 // error_context_after - ^^^ same, but after
-const (
-	error_context_before = 2
-	error_context_after  = 2
-)
+const error_context_before = 2
+const error_context_after = 2
 
 // emanager.support_color - should the error and other messages
 // have ANSI terminal escape color codes in them.
 // By default, v tries to autodetect, if the terminal supports colors.
 // Use -color and -nocolor options to override the detection decision.
-pub const (
-	emanager = new_error_manager()
-)
+pub const emanager = new_error_manager()
 
 pub struct EManager {
 mut:
@@ -126,7 +122,7 @@ pub fn formatted_error(kind string, omsg string, filepath string, pos token.Pos)
 	return '${final_position} ${final_kind} ${final_msg}${final_context}'.trim_space()
 }
 
-[heap]
+@[heap]
 struct LinesCache {
 mut:
 	lines map[string][]string
@@ -197,7 +193,7 @@ pub fn source_file_context(kind string, filepath string, pos token.Pos) []string
 	return clines
 }
 
-[noreturn]
+@[noreturn]
 pub fn verror(kind string, s string) {
 	final_kind := bold(color(kind, kind))
 	eprintln('${final_kind}: ${s}')

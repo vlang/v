@@ -37,7 +37,8 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 				}
 			}
 		}
-	} else if node.expr is ast.Ident && g.inside_comptime_for_field && g.is_comptime_var(node.expr) {
+	} else if node.expr is ast.Ident && g.inside_comptime_for_field
+		&& g.table.is_comptime_var(node.expr) {
 		expr_type = g.get_comptime_var_type(node.expr)
 		name = g.typ(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*',
 			'')
@@ -60,6 +61,14 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		g.expr(node.expr)
 		g.write('.data)')
 		g.inside_opt_or_res = old_inside_opt_or_res
+	} else if node.expr is ast.ArrayInit {
+		if node.expr.is_fixed {
+			s := g.typ(node.expr.typ)
+			if !node.expr.has_index {
+				g.write('(${s})')
+			}
+		}
+		g.expr(node.expr)
 	} else {
 		old_inside_opt_or_res := g.inside_opt_or_res
 		g.inside_opt_or_res = true
@@ -67,14 +76,20 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		g.inside_opt_or_res = old_inside_opt_or_res
 	}
 	g.write(')')
+	if (g.inside_assign || g.expected_fixed_arr) && !expr_type.has_flag(.option)
+		&& g.table.type_kind(expr_type) == .array_fixed {
+		g.write('.ret_arr')
+	}
 }
 
 fn (mut g Gen) dump_expr_definitions() {
+	mut dump_already_generated_fns := map[string]bool{}
 	mut dump_typedefs := map[string]bool{}
 	mut dump_fns := strings.new_builder(100)
 	mut dump_fn_defs := strings.new_builder(100)
 	for dump_type, cname in g.table.dumps {
 		dump_sym := g.table.sym(dump_type)
+		// eprintln('>>> dump_type: $dump_type | cname: $cname | dump_sym: $dump_sym.name')
 		mut name := cname
 		if dump_sym.language == .c {
 			name = name[3..]
@@ -86,6 +101,7 @@ fn (mut g Gen) dump_expr_definitions() {
 		to_string_fn_name := g.get_str_fn(typ.clear_flags(.shared_f, .result))
 		mut ptr_asterisk := if is_ptr { '*'.repeat(typ.nr_muls()) } else { '' }
 		mut str_dumparg_type := ''
+		mut str_dumparg_ret_type := ''
 		if dump_sym.kind == .none_ {
 			str_dumparg_type = 'IError' + ptr_asterisk
 		} else {
@@ -95,6 +111,7 @@ fn (mut g Gen) dump_expr_definitions() {
 			}
 			str_dumparg_type += g.cc_type(dump_type, true) + ptr_asterisk
 		}
+		mut is_fixed_arr_ret := false
 		if dump_sym.kind == .function {
 			fninfo := dump_sym.info as ast.FnType
 			str_dumparg_type = 'DumpFNType_${name}'
@@ -103,11 +120,45 @@ fn (mut g Gen) dump_expr_definitions() {
 			str_tdef := g.out.after(tdef_pos)
 			g.go_back(str_tdef.len)
 			dump_typedefs['typedef ${str_tdef};'] = true
+			str_dumparg_ret_type = str_dumparg_type
+		} else if !typ.has_flag(.option) && dump_sym.is_array_fixed() {
+			match dump_sym.kind {
+				.array_fixed {
+					if (dump_sym.info as ast.ArrayFixed).is_fn_ret {
+						str_dumparg_ret_type = str_dumparg_type
+						str_dumparg_type = str_dumparg_type.trim_string_left('_v_')
+					} else {
+						// fixed array returned from function
+						str_dumparg_ret_type = '_v_' + str_dumparg_type
+					}
+				}
+				.alias {
+					parent_sym := g.table.sym((dump_sym.info as ast.Alias).parent_type)
+					if parent_sym.kind == .array_fixed {
+						str_dumparg_ret_type =
+							if (parent_sym.info as ast.ArrayFixed).is_fn_ret { '' } else { '_v_' } +
+							g.cc_type((dump_sym.info as ast.Alias).parent_type, true)
+						str_dumparg_type = str_dumparg_ret_type.trim_string_left('_v_')
+						is_fixed_arr_ret = true
+					}
+				}
+				else {}
+			}
+			is_fixed_arr_ret = true
+		} else {
+			str_dumparg_ret_type = str_dumparg_type
 		}
 		dump_fn_name := '_v_dump_expr_${name}' +
 			(if is_ptr { '_ptr'.repeat(typ.nr_muls()) } else { '' })
-		dump_fn_defs.writeln('${str_dumparg_type} ${dump_fn_name}(string fpath, int line, string sexpr, ${str_dumparg_type} dump_arg);')
-		if g.writeln_fn_header('${str_dumparg_type} ${dump_fn_name}(string fpath, int line, string sexpr, ${str_dumparg_type} dump_arg)', mut
+
+		// protect against duplicate declarations:
+		if dump_already_generated_fns[dump_fn_name] {
+			continue
+		}
+		dump_already_generated_fns[dump_fn_name] = true
+
+		dump_fn_defs.writeln('${str_dumparg_ret_type} ${dump_fn_name}(string fpath, int line, string sexpr, ${str_dumparg_type} dump_arg);')
+		if g.writeln_fn_header('${str_dumparg_ret_type} ${dump_fn_name}(string fpath, int line, string sexpr, ${str_dumparg_type} dump_arg)', mut
 			dump_fns)
 		{
 			continue
@@ -157,7 +208,14 @@ fn (mut g Gen) dump_expr_definitions() {
 		dump_fns.writeln('\tstrings__Builder_write_string(&sb, value);')
 		dump_fns.writeln("\tstrings__Builder_write_rune(&sb, '\\n');")
 		surrounder.builder_write_afters(mut dump_fns)
-		dump_fns.writeln('\treturn dump_arg;')
+		if is_fixed_arr_ret {
+			tmp_var := g.new_tmp_var()
+			dump_fns.writeln('\t${str_dumparg_ret_type} ${tmp_var} = {0};')
+			dump_fns.writeln('\tmemcpy(${tmp_var}.ret_arr, dump_arg, sizeof(${str_dumparg_type}));')
+			dump_fns.writeln('\treturn ${tmp_var};')
+		} else {
+			dump_fns.writeln('\treturn dump_arg;')
+		}
 		dump_fns.writeln('}')
 	}
 	for tdef, _ in dump_typedefs {

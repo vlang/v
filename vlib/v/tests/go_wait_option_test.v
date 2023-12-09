@@ -3,14 +3,14 @@
 
 fn f(n int) ?f64 {
 	if n < 0 {
-		return error('negative number')
+		return none
 	}
 	return n + f64(n) / 2
 }
 
 fn g(n int) ? {
 	if n % 2 == 0 {
-		return error('even number')
+		return none
 	} else {
 		return
 	}
@@ -53,7 +53,7 @@ fn test_propagate() {
 	assert z == 31.0
 }
 
-fn test_array_void_interate() {
+fn test_array_void_iter() {
 	mut r := []thread ?{}
 	for i in 0 .. 3 {
 		r << spawn g(i)
@@ -67,7 +67,7 @@ fn test_array_void_interate() {
 	assert res[2] == 2
 }
 
-fn test_array_val_interate() {
+fn test_array_val_iter() {
 	mut r := []thread ?f64{}
 	for i in -1 .. 2 {
 		r << spawn f(i)
@@ -86,7 +86,7 @@ fn get_only_a_option_return(return_none bool) ? {
 	if return_none {
 		return
 	}
-	return error('msg')
+	return none
 }
 
 fn get_only_a_result_return() ! {

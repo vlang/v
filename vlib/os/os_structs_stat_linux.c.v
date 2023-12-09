@@ -16,7 +16,7 @@ pub struct C.stat {
 	st_ctime   i64 // 8
 }
 
-struct C.__stat64 {
+pub struct C.__stat64 {
 	st_mode  u32
 	st_size  u64
 	st_mtime u64

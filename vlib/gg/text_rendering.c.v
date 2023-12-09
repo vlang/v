@@ -147,10 +147,35 @@ pub fn (ctx &Context) set_text_cfg(cfg gx.TextCfg) {
 	ctx.ft.fons.vert_metrics(&ascender, &descender, &lh)
 }
 
-// set_cfg sets the current text configuration
-[deprecated: 'use set_text_cfg() instead']
-pub fn (ctx &Context) set_cfg(cfg gx.TextCfg) {
-	ctx.set_text_cfg(cfg)
+@[params]
+pub struct DrawTextParams {
+	x    int
+	y    int
+	text string
+
+	color          Color = gx.black
+	size           int   = 16
+	align          gx.HorizontalAlign = .left
+	vertical_align gx.VerticalAlign   = .top
+	max_width      int
+	family         string
+	bold           bool
+	mono           bool
+	italic         bool
+}
+
+pub fn (ctx &Context) draw_text2(p DrawTextParams) {
+	ctx.draw_text(p.x, p.y, p.text, gx.TextCfg{
+		color: p.color
+		size: p.size
+		align: p.align
+		vertical_align: p.vertical_align
+		max_width: p.max_width
+		family: p.family
+		bold: p.bold
+		mono: p.mono
+		italic: p.italic
+	}) // TODO perf once it's the only function to draw text
 }
 
 // draw_text draws the string in `text_` starting at top-left position `x`,`y`.

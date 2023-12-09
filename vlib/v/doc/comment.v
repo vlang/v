@@ -2,9 +2,7 @@ module doc
 
 import v.token
 
-const (
-	example_pattern = '\x01 Example: '
-)
+const example_pattern = '\x01 Example: '
 
 pub struct DocComment {
 pub mut:

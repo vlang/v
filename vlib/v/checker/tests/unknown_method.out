@@ -4,3 +4,9 @@ vlib/v/checker/tests/unknown_method.vv:7:12: error: unknown method or field: `Te
     7 |     println(t.sdd())
       |               ~~~~~
     8 | }
+vlib/v/checker/tests/unknown_method.vv:7:2: error: `println` can not print void expressions
+    5 | fn main() {
+    6 |     t := Test{}
+    7 |     println(t.sdd())
+      |     ~~~~~~~~~~~~~~~~
+    8 | }

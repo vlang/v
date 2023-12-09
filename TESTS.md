@@ -60,7 +60,7 @@ matches an expected .out file. You can also check for code that does panic
 using this test runner - just paste the start of the `panic()` output in the
 corresponding .out file.
 
-> **Note**
+> [!NOTE]
 > These tests, expect to find a pair of `.vv` and `.out` files, in the folder:
 > vlib/v/slow_tests/inout
 
@@ -84,7 +84,7 @@ file is compiled with `-o -` .
 
 This *test runner*, checks whether whole project folders, can be compiled, and run.
 
-> **Note**
+> [!NOTE]
 > Each project in these folders, should finish with an exit code of 0,
 > and it should output `OK` as its last stdout line.
 
@@ -145,6 +145,9 @@ will keep the existing source nice and clean.
 Ensure that all .md files in the project are formatted properly,
 and that the V code block examples in them can be compiled/formatted too.
 
+Note: if that command finds formatting errors, they can be fixed with:
+`VAUTOFIX=1 ./v check-md -hide-warnings file.md`
+
 ## `v test-self`
 
 Run `vlib` module tests, *including* the compiler tests.
@@ -157,7 +160,7 @@ This runs tests for:
 * `vlib/v/checker/tests/*.vv`
 * `vlib/v/parser/tests/*.vv`
 
-> **Note**
+> [!NOTE]
 > There are special folders, that compiler_errors_test.v will try to
 > run/compile with specific options:
 
@@ -182,3 +185,11 @@ tests in the main V repository, for example:
 
 * `v vet vlib/v` - run a style checker.
 * `v test-self` (run self tests) in various compilation modes.
+
+> [!NOTE]
+The VDOC test vdoc_file_test.v now also supports VAUTOFIX, which is
+useful, if you change anything inside cmd/tools/vdoc or vlib/v/doc/,
+or inside the modules that it depends on (like markdown).
+After such changes, just run this command *2 times*, and commit the
+resulting changes in `cmd/tools/vdoc/tests/testdata` as well:
+`VAUTOFIX=1 ./v cmd/tools/vdoc/tests/vdoc_file_test.v`

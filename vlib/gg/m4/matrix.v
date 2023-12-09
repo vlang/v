@@ -41,7 +41,7 @@ pub fn (x Mat4) str() string {
 }
 
 // Remove all the raw zeros
-[direct_array_access]
+@[direct_array_access]
 pub fn (a Mat4) clean() Mat4 {
 	unsafe {
 		x := Mat4{}
@@ -66,7 +66,7 @@ pub fn (x Mat4) sum_all() f32 {
 }
 
 // Check if two matrix are equal using module precision
-[direct_array_access]
+@[direct_array_access]
 pub fn (x Mat4) is_equal(y Mat4) bool {
 	unsafe {
 		for c, value in x.e {
@@ -162,7 +162,7 @@ pub fn (mut x Mat4) set_f32(value f32) {
 // Rows/Column access
 //-------------------------------------
 // Set the row as the input vec4
-[direct_array_access; unsafe]
+@[direct_array_access; unsafe]
 pub fn (mut x Mat4) set_row(row int, v3 Vec4) {
 	unsafe {
 		x.e[row * 4 + 0] = v3.e[0]
@@ -173,7 +173,7 @@ pub fn (mut x Mat4) set_row(row int, v3 Vec4) {
 }
 
 // Get a row from a matrix
-[direct_array_access; unsafe]
+@[direct_array_access; unsafe]
 pub fn (x Mat4) get_row(row int) Vec4 {
 	unsafe {
 		// vfmt off
@@ -183,7 +183,7 @@ pub fn (x Mat4) get_row(row int) Vec4 {
 }
 
 // Set the column as the input vec4
-[direct_array_access; unsafe]
+@[direct_array_access; unsafe]
 pub fn (mut x Mat4) set_col(col int, v3 Vec4) {
 	unsafe {
 		// vfmt off
@@ -196,7 +196,7 @@ pub fn (mut x Mat4) set_col(col int, v3 Vec4) {
 }
 
 // Get a column from a matrix
-[direct_array_access; unsafe]
+@[direct_array_access; unsafe]
 pub fn (x Mat4) get_col(col int) Vec4 {
 	unsafe {
 		// vfmt off
@@ -206,7 +206,7 @@ pub fn (x Mat4) get_col(col int) Vec4 {
 }
 
 // Swap two columns in the matrix
-[direct_array_access; unsafe]
+@[direct_array_access; unsafe]
 pub fn (mut x Mat4) swap_col(col1 int, col2 int) {
 	unsafe {
 		// vfmt off
@@ -229,7 +229,7 @@ pub fn (mut x Mat4) swap_col(col1 int, col2 int) {
 }
 
 // Swap two rows in the matrix
-[direct_array_access; unsafe]
+@[direct_array_access; unsafe]
 pub fn (mut x Mat4) swap_row(row1 int, row2 int) {
 	unsafe {
 		v0 := x.e[row1 * 4 + 0]
@@ -360,25 +360,25 @@ pub fn (a Mat4) * (b Mat4) Mat4 {
 	unsafe {
 		// vfmt off
 		return Mat4{ e: [
-			/* [0][0] */  a.f[0][0] * b.f[0][0] + a.f[0][1] * b.f[1][0] + a.f[0][2] * b.f[2][0] + a.f[0][3] * b.f[3][0],
-			/* [0][1] */  a.f[0][0] * b.f[0][1] + a.f[0][1] * b.f[1][1] + a.f[0][2] * b.f[2][1] + a.f[0][3] * b.f[3][1],
-			/* [0][2] */  a.f[0][0] * b.f[0][2] + a.f[0][1] * b.f[1][2] + a.f[0][2] * b.f[2][2] + a.f[0][3] * b.f[3][2],
-			/* [0][3] */  a.f[0][0] * b.f[0][3] + a.f[0][1] * b.f[1][3] + a.f[0][2] * b.f[2][3] + a.f[0][3] * b.f[3][3],
+			a.f[0][0] * b.f[0][0] + a.f[0][1] * b.f[1][0] + a.f[0][2] * b.f[2][0] + a.f[0][3] * b.f[3][0], // [0][0]
+			a.f[0][0] * b.f[0][1] + a.f[0][1] * b.f[1][1] + a.f[0][2] * b.f[2][1] + a.f[0][3] * b.f[3][1], // [0][1]
+			a.f[0][0] * b.f[0][2] + a.f[0][1] * b.f[1][2] + a.f[0][2] * b.f[2][2] + a.f[0][3] * b.f[3][2], // [0][2]
+			a.f[0][0] * b.f[0][3] + a.f[0][1] * b.f[1][3] + a.f[0][2] * b.f[2][3] + a.f[0][3] * b.f[3][3], // [0][3]
 
-			/* [1][0] */  a.f[1][0] * b.f[0][0] + a.f[1][1] * b.f[1][0] + a.f[1][2] * b.f[2][0] + a.f[1][3] * b.f[3][0],
-			/* [1][1] */  a.f[1][0] * b.f[0][1] + a.f[1][1] * b.f[1][1] + a.f[1][2] * b.f[2][1] + a.f[1][3] * b.f[3][1],
-			/* [1][2] */  a.f[1][0] * b.f[0][2] + a.f[1][1] * b.f[1][2] + a.f[1][2] * b.f[2][2] + a.f[1][3] * b.f[3][2],
-			/* [1][3] */  a.f[1][0] * b.f[0][3] + a.f[1][1] * b.f[1][3] + a.f[1][2] * b.f[2][3] + a.f[1][3] * b.f[3][3],
+			a.f[1][0] * b.f[0][0] + a.f[1][1] * b.f[1][0] + a.f[1][2] * b.f[2][0] + a.f[1][3] * b.f[3][0], // [1][0]
+			a.f[1][0] * b.f[0][1] + a.f[1][1] * b.f[1][1] + a.f[1][2] * b.f[2][1] + a.f[1][3] * b.f[3][1], // [1][1]
+			a.f[1][0] * b.f[0][2] + a.f[1][1] * b.f[1][2] + a.f[1][2] * b.f[2][2] + a.f[1][3] * b.f[3][2], // [1][2]
+			a.f[1][0] * b.f[0][3] + a.f[1][1] * b.f[1][3] + a.f[1][2] * b.f[2][3] + a.f[1][3] * b.f[3][3], // [1][3]
 
-			/* [2][0] */  a.f[2][0] * b.f[0][0] + a.f[2][1] * b.f[1][0] + a.f[2][2] * b.f[2][0] + a.f[2][3] * b.f[3][0],
-			/* [2][1] */  a.f[2][0] * b.f[0][1] + a.f[2][1] * b.f[1][1] + a.f[2][2] * b.f[2][1] + a.f[2][3] * b.f[3][1],
-			/* [2][2] */  a.f[2][0] * b.f[0][2] + a.f[2][1] * b.f[1][2] + a.f[2][2] * b.f[2][2] + a.f[2][3] * b.f[3][2],
-			/* [2][3] */  a.f[2][0] * b.f[0][3] + a.f[2][1] * b.f[1][3] + a.f[2][2] * b.f[2][3] + a.f[2][3] * b.f[3][3],
+			a.f[2][0] * b.f[0][0] + a.f[2][1] * b.f[1][0] + a.f[2][2] * b.f[2][0] + a.f[2][3] * b.f[3][0], // [2][0]
+			a.f[2][0] * b.f[0][1] + a.f[2][1] * b.f[1][1] + a.f[2][2] * b.f[2][1] + a.f[2][3] * b.f[3][1], // [2][1]
+			a.f[2][0] * b.f[0][2] + a.f[2][1] * b.f[1][2] + a.f[2][2] * b.f[2][2] + a.f[2][3] * b.f[3][2], // [2][2]
+			a.f[2][0] * b.f[0][3] + a.f[2][1] * b.f[1][3] + a.f[2][2] * b.f[2][3] + a.f[2][3] * b.f[3][3], // [2][3]
 
-			/* [3][0] */  a.f[3][0] * b.f[0][0] + a.f[3][1] * b.f[1][0] + a.f[3][2] * b.f[2][0] + a.f[3][3] * b.f[3][0],
-			/* [3][1] */  a.f[3][0] * b.f[0][1] + a.f[3][1] * b.f[1][1] + a.f[3][2] * b.f[2][1] + a.f[3][3] * b.f[3][1],
-			/* [3][2] */  a.f[3][0] * b.f[0][2] + a.f[3][1] * b.f[1][2] + a.f[3][2] * b.f[2][2] + a.f[3][3] * b.f[3][2],
-			/* [3][3] */  a.f[3][0] * b.f[0][3] + a.f[3][1] * b.f[1][3] + a.f[3][2] * b.f[2][3] + a.f[3][3] * b.f[3][3],
+			a.f[3][0] * b.f[0][0] + a.f[3][1] * b.f[1][0] + a.f[3][2] * b.f[2][0] + a.f[3][3] * b.f[3][0], // [3][0]
+			a.f[3][0] * b.f[0][1] + a.f[3][1] * b.f[1][1] + a.f[3][2] * b.f[2][1] + a.f[3][3] * b.f[3][1], // [3][1]
+			a.f[3][0] * b.f[0][2] + a.f[3][1] * b.f[1][2] + a.f[3][2] * b.f[2][2] + a.f[3][3] * b.f[3][2], // [3][2]
+			a.f[3][0] * b.f[0][3] + a.f[3][1] * b.f[1][3] + a.f[3][2] * b.f[2][3] + a.f[3][3] * b.f[3][3], // [3][3]
 		]!}
 		// vfmt on
 	}
@@ -551,10 +551,10 @@ pub fn rotate(angle f32, w Vec4) Mat4 {
 
 		// vfmt off
 		return Mat4{ e: [
-			/* [0][0] */  (ax * ax * cv) + cs      ,  /* [0][1] */ (ax * ay * cv) + az * sn ,  /* [0][2] */ (ax * az * cv) - ay * sn ,  /* [0][3] */ 0,
-			/* [1][0] */  (ay * ax * cv) - az * sn ,  /* [1][1] */ (ay * ay * cv) + cs      ,  /* [1][2] */ (ay * az * cv) + ax * sn ,  /* [1][3] */ 0,
-			/* [2][0] */  (az * ax * cv) + ay * sn ,  /* [2][1] */ (az * ay * cv) - ax * sn ,  /* [2][2] */ (az * az * cv) + cs      ,  /* [2][3] */ 0,
-			/* [3][0] */  0,                          /* [3][1] */ 0                        ,  /* [3][2] */ 0                        ,  /* [3][3] */ 1,
+			(ax * ax * cv) + cs,      (ax * ay * cv) + az * sn, (ax * az * cv) - ay * sn, 0,
+			(ay * ax * cv) - az * sn, (ay * ay * cv) + cs,      (ay * az * cv) + ax * sn, 0,
+			(az * ax * cv) + ay * sn, (az * ay * cv) - ax * sn, (az * az * cv) + cs,      0,
+			0,                        0,                        0,                        1,
 		]!}
 		// vfmt on
 	}

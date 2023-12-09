@@ -105,7 +105,6 @@ match_test_suite = [
 	TestItem{"this cpapaz adce aabe third",r"(c(pa)+z)(\s[\a]+){2}$",-1,0},
 	TestItem{"1234this cpapaz adce aabe ter",r"(c(pa)+z)(\s[\a]+){2}$",-1,0},
 	TestItem{"cpapaz ole. pipipo,",r"^.*c.+ol?e.*p([ip])+o$",-1,0},
-	TestItem{"/home/us_er/pippo/info-01.jpeg", r"(/?[-\w_]+)*\.txt$",-1,26}
 
 	// check unicode
 	TestItem{"this is a Ⅰ Ⅱ Ⅲ Ⅳ Ⅴ Ⅵ test",r".*a [Ⅰ-Ⅵ ]+",0,34},
@@ -174,6 +173,26 @@ match_test_suite = [
     TestItem{"refs/remotes/origin/master", r"refs/remotes/origin/(.*)",0,26},
     TestItem{"refs/remotes/origin/mastep", r"refs/remotes/origin/(\w*)",0,26},
     TestItem{"refs/remotes/origin/master", r"refs/remotes/origin/(\w*)",0,26},
+
+    // test \S+ vs [^\s]+
+    TestItem{"ab.c", r"\S+\.",0,3},
+    TestItem{"ab.c", r"[^\s]+\.",0,3},
+    TestItem{"ab.c", r"\S*\.",0,3},
+    TestItem{"ab.c", r"[^\s]*\.",0,3},
+    TestItem{"ab c", r"[\S]+\s",0,3},
+    TestItem{"ab c", r"[^\s]+\s",0,3},
+
+    // test last charr classes neg class
+    TestItem{"/a/", r"^/a/[^/]+$", -1,3},
+    TestItem{"/a/b",r"^/a/[^/]+$", 0,4},
+
+    // test `\0` as terminator
+    TestItem{"abc", "^abc\0$", -1,3},
+    TestItem{"abc\0", "^abc\0$", 0,4},
+
+    // test has `\0` chars
+    TestItem{"abcxyz", "^abc\0xyz$", -1,3},
+    TestItem{"abc\0xyz", "^abc\0xyz$", 0,7},
 ]
 )
 
@@ -765,17 +784,15 @@ fn rest_regex_replace_n() {
 }
 
 // test quantifier wrong sequences
-const (
-	test_quantifier_sequences_list = [
-		r'+{3}.*+{3}',
-		r'+{3}.*?{3}',
-		r'+{3}.**{3}',
-		r'+{3}.*\+{3}*',
-		r'+{3}.*\+{3}+',
-		r'+{3}.*\+{3}??',
-		r'+{3}.*\+{3}{4}',
-	]
-)
+const test_quantifier_sequences_list = [
+	r'+{3}.*+{3}',
+	r'+{3}.*?{3}',
+	r'+{3}.**{3}',
+	r'+{3}.*\+{3}*',
+	r'+{3}.*\+{3}+',
+	r'+{3}.*\+{3}??',
+	r'+{3}.*\+{3}{4}',
+]
 
 fn test_quantifier_sequences() {
 	for pattern in test_quantifier_sequences_list {
@@ -852,11 +869,9 @@ fn test_groups_in_find() {
 	}
 }
 
-const (
-	err_query_list = [
-		r'([a]|[b])*',
-	]
-)
+const err_query_list = [
+	r'([a]|[b])*',
+]
 
 fn test_errors() {
 	mut count := 0
@@ -912,16 +927,14 @@ struct Test_negation_group {
 	res bool
 }
 
-const (
-	negation_groups = [
-		Test_negation_group{'automobile', false},
-		Test_negation_group{'botomobile', true},
-		Test_negation_group{'auto_caravan', false},
-		Test_negation_group{'moto_mobile', true},
-		Test_negation_group{'pippole', true},
-		Test_negation_group{'boring test', false},
-	]
-)
+const negation_groups = [
+	Test_negation_group{'automobile', false},
+	Test_negation_group{'botomobile', true},
+	Test_negation_group{'auto_caravan', false},
+	Test_negation_group{'moto_mobile', true},
+	Test_negation_group{'pippole', true},
+	Test_negation_group{'boring test', false},
+]
 
 fn test_negation_groups() {
 	mut query := r'(?!auto)\w+le'

@@ -19,9 +19,9 @@ fn (mut p Parser) array_init(is_option bool) ast.ArrayInit {
 	mut is_fixed := false
 	mut has_val := false
 	mut has_type := false
-	mut has_default := false
+	mut has_init := false
 	mut has_index := false
-	mut default_expr := ast.empty_expr
+	mut init_expr := ast.empty_expr
 	if p.tok.kind == .rsbr {
 		last_pos = p.tok.pos()
 		// []typ => `[]` and `typ` must be on the same line
@@ -33,16 +33,18 @@ fn (mut p Parser) array_init(is_option bool) ast.ArrayInit {
 			elem_type = p.parse_type()
 			// this is set here because it's a known type, others could be the
 			// result of expr so we do those in checker
-			idx := p.table.find_or_register_array(elem_type)
-			if elem_type.has_flag(.generic) {
-				array_type = ast.new_type(idx).set_flag(.generic)
-			} else {
-				array_type = ast.new_type(idx)
+			if elem_type != 0 {
+				idx := p.table.find_or_register_array(elem_type)
+				if elem_type.has_flag(.generic) {
+					array_type = ast.new_type(idx).set_flag(.generic)
+				} else {
+					array_type = ast.new_type(idx)
+				}
+				if is_option {
+					array_type = array_type.set_flag(.option)
+				}
+				has_type = true
 			}
-			if is_option {
-				array_type = array_type.set_flag(.option)
-			}
-			has_type = true
 		}
 		last_pos = p.tok.pos()
 	} else {
@@ -63,7 +65,8 @@ fn (mut p Parser) array_init(is_option bool) ast.ArrayInit {
 		last_pos = p.tok.pos()
 		p.check(.rsbr)
 		if exprs.len == 1 && p.tok.line_nr == line_nr
-			&& (p.tok.kind in [.name, .amp] || (p.tok.kind == .lsbr && p.is_array_type())) {
+			&& (p.tok.kind in [.name, .amp, .question, .key_shared]
+			|| (p.tok.kind == .lsbr && p.is_array_type())) {
 			// [100]u8
 			elem_type = p.parse_type()
 			if p.table.sym(elem_type).name == 'byte' {
@@ -86,8 +89,8 @@ fn (mut p Parser) array_init(is_option bool) ast.ArrayInit {
 						return ast.ArrayInit{}
 					}
 					p.check(.colon)
-					has_default = true
-					has_index = p.handle_index_variable(mut default_expr)
+					has_init = true
+					has_index = p.handle_index_variable(mut init_expr)
 				}
 				last_pos = p.tok.pos()
 				p.check(.rcbr)
@@ -142,8 +145,8 @@ fn (mut p Parser) array_init(is_option bool) ast.ArrayInit {
 					cap_expr = p.expr(0)
 				}
 				'init' {
-					has_default = true
-					has_index = p.handle_index_variable(mut default_expr)
+					has_init = true
+					has_index = p.handle_index_variable(mut init_expr)
 				}
 				else {
 					p.error('wrong field `${key}`, expecting `len`, `cap`, or `init`')
@@ -155,7 +158,7 @@ fn (mut p Parser) array_init(is_option bool) ast.ArrayInit {
 			}
 		}
 		p.check(.rcbr)
-		if has_default && !has_len {
+		if has_init && !has_len {
 			p.error_with_pos('cannot use `init` attribute unless `len` attribute is also provided',
 				attr_pos)
 		}
@@ -175,10 +178,10 @@ fn (mut p Parser) array_init(is_option bool) ast.ArrayInit {
 		has_len: has_len
 		len_expr: len_expr
 		has_cap: has_cap
-		has_default: has_default
+		has_init: has_init
 		has_index: has_index
 		cap_expr: cap_expr
-		default_expr: default_expr
+		init_expr: init_expr
 	}
 }
 

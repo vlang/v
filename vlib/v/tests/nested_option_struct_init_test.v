@@ -20,7 +20,7 @@ struct AA {
 }
 
 struct BB {
-	x string [required]
+	x string @[required]
 }
 
 fn test_nested_option_struct_with_attr_init() {

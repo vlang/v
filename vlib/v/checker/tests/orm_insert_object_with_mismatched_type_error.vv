@@ -7,7 +7,7 @@ struct Tiddler {
 }
 
 struct Tiddlers {
-	id      int    [primary; sql: serial]
+	id      int    @[primary; sql: serial]
 	created string
 }
 

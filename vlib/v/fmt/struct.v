@@ -32,32 +32,12 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 	mut default_expr_aligns := []AlignInfo{}
 	mut field_types := []string{cap: node.fields.len}
 	// Calculate the alignments first
-	for i, field in node.fields {
-		ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
-		// Handle anon structs recursively
-		field_types << ft
-		attrs_len := inline_attrs_len(field.attrs)
-		end_pos := field.pos.pos + field.pos.len
-		mut comments_len := 0 // Length of comments between field name and type
-		for comment in field.comments {
-			if comment.pos.pos >= end_pos {
-				if comment.pos.line_nr == field.pos.line_nr {
-					comment_aligns.add_info(attrs_len, field_types[i].len, comment.pos.line_nr,
-						use_threshold: true)
-				}
-				continue
-			}
-			if comment.pos.pos > field.pos.pos {
-				comments_len += '/* ${comment.text.trim_left('\x01')} */ '.len
-			}
-		}
-		field_aligns.add_info(comments_len + field.name.len, ft.len, field.pos.line_nr)
-		if field.has_default_expr {
-			default_expr_aligns.add_info(attrs_len, field_types[i].len, field.pos.line_nr,
-				use_threshold: true)
-		}
-	}
+	f.calculate_alignment(node.fields, mut field_aligns, mut comment_aligns, mut default_expr_aligns, mut
+		field_types)
 	f.writeln(' {')
+	if node.pre_comments.len > 0 {
+		f.comments_before_field(node.pre_comments)
+	}
 	for embed in node.embeds {
 		f.mark_types_import_as_used(embed.typ)
 		styp := f.table.type_to_str_using_aliases(embed.typ, f.mod2alias)
@@ -79,39 +59,46 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 	mut default_expr_align_i := 0
 	mut inc_indent := false // for correct indents with multi line default exprs
 	for i, field in node.fields {
-		if i == node.mut_pos {
-			f.writeln('mut:')
-		} else if i == node.pub_pos {
-			f.writeln('pub:')
-		} else if i == node.pub_mut_pos {
-			f.writeln('pub mut:')
-		} else if i == node.global_pos {
-			f.writeln('__global:')
-		} else if i == node.module_pos {
-			f.writeln('module:')
-		} else if i > 0 {
-			// keep one empty line between fields (exclude one after mut:, pub:, ...)
-			mut before_last_line := node.fields[i - 1].pos.line_nr
-			if node.fields[i - 1].comments.len > 0 {
-				if before_last_line < node.fields[i - 1].comments.last().pos.last_line {
-					before_last_line = node.fields[i - 1].comments.last().pos.last_line
-				}
+		match true {
+			i == node.mut_pos {
+				f.writeln('mut:')
 			}
-			if node.fields[i - 1].has_default_expr {
-				if before_last_line < node.fields[i - 1].default_expr.pos().last_line {
-					before_last_line = node.fields[i - 1].default_expr.pos().last_line
-				}
+			i == node.pub_pos {
+				f.writeln('pub:')
 			}
+			i == node.pub_mut_pos {
+				f.writeln('pub mut:')
+			}
+			i == node.global_pos {
+				f.writeln('__global:')
+			}
+			i == node.module_pos {
+				f.writeln('module:')
+			}
+			i > 0 {
+				// keep one empty line between fields (exclude one after mut:, pub:, ...)
+				last_field := node.fields[i - 1]
+				before_last_line := if last_field.comments.len > 0
+					&& last_field.pos.line_nr < last_field.comments.last().pos.last_line {
+					last_field.comments.last().pos.last_line
+				} else if last_field.has_default_expr {
+					last_field.default_expr.pos().last_line
+				} else {
+					last_field.pos.line_nr
+				}
 
-			mut next_first_line := field.pos.line_nr
-			if field.comments.len > 0 {
-				if next_first_line > field.comments[0].pos.line_nr {
-					next_first_line = field.comments[0].pos.line_nr
+				next_first_line := if field.comments.len > 0
+					&& field.pos.line_nr > field.comments[0].pos.line_nr {
+					field.comments[0].pos.line_nr
+				} else {
+					field.pos.line_nr
+				}
+
+				if next_first_line - before_last_line > 1 {
+					f.writeln('')
 				}
 			}
-			if next_first_line - before_last_line > 1 {
-				f.writeln('')
-			}
+			else {}
 		}
 		end_pos := field.pos.pos + field.pos.len
 		before_comments := field.comments.filter(it.pos.pos < field.pos.pos)
@@ -123,13 +110,12 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 		f.write('\t${volatile_prefix}${field.name} ')
 		// Handle comments between field name and type
 		before_len := f.line_len
-		f.comments(between_comments, iembed: true, has_nl: false)
+		f.comments(between_comments, has_nl: false)
 		comments_len := f.line_len - before_len
-		mut field_align := field_aligns[field_align_i]
-		if field_align.line_nr < field.pos.line_nr {
+		if field_aligns[field_align_i].line_nr < field.pos.line_nr {
 			field_align_i++
-			field_align = field_aligns[field_align_i]
 		}
+		field_align := field_aligns[field_align_i]
 		f.write(strings.repeat(` `, field_align.max_len - field.name.len - comments_len))
 		// Handle anon structs recursively
 		if !f.write_anon_struct_field_decl(field.typ, field.anon_struct_decl) {
@@ -138,16 +124,18 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 		f.mark_types_import_as_used(field.typ)
 		attrs_len := inline_attrs_len(field.attrs)
 		has_attrs := field.attrs.len > 0
-		if has_attrs {
+		// has_at := if has_attrs { field.attrs[0].has_at } else { false }
+		has_at := true
+		// TODO: this will get removed in next stage
+		if has_attrs && !has_at {
 			f.write(strings.repeat(` `, field_align.max_type_len - field_types[i].len))
-			f.single_line_attrs(field.attrs, inline: true)
+			f.single_line_attrs(field.attrs, same_line: true)
 		}
 		if field.has_default_expr {
-			mut align := default_expr_aligns[default_expr_align_i]
-			if align.line_nr < field.pos.line_nr {
+			if default_expr_aligns[default_expr_align_i].line_nr < field.pos.line_nr {
 				default_expr_align_i++
-				align = default_expr_aligns[default_expr_align_i]
 			}
+			align := default_expr_aligns[default_expr_align_i]
 			pad_len := align.max_len - attrs_len + align.max_type_len - field_types[i].len
 			f.write(strings.repeat(` `, pad_len))
 			f.write(' = ')
@@ -161,17 +149,20 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 				inc_indent = false
 			}
 		}
+		if has_attrs && has_at {
+			f.write(strings.repeat(` `, field_align.max_type_len - field_types[i].len))
+			f.single_line_attrs(field.attrs, same_line: true)
+		}
 		// Handle comments after field type
 		if after_type_comments.len > 0 {
 			if after_type_comments[0].pos.line_nr > field.pos.line_nr {
 				f.writeln('')
 			} else {
 				if !field.has_default_expr {
-					mut align := comment_aligns[comment_align_i]
-					if align.line_nr < field.pos.line_nr {
+					if comment_aligns[comment_align_i].line_nr < field.pos.line_nr {
 						comment_align_i++
-						align = comment_aligns[comment_align_i]
 					}
+					align := comment_aligns[comment_align_i]
 					pad_len := align.max_len - attrs_len + align.max_type_len - field_types[i].len
 					f.write(strings.repeat(` `, pad_len))
 				}
@@ -182,11 +173,13 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 			f.writeln('')
 		}
 	}
-	f.comments_after_last_field(node.end_comments)
-	if is_anon {
+	if is_anon || node.end_comments.len > 0 {
 		f.write('}')
 	} else {
-		f.writeln('}\n')
+		f.writeln('}')
+	}
+	if node.end_comments.len > 0 {
+		f.comments(node.end_comments, same_line: true)
 	}
 }
 
@@ -238,11 +231,12 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 		f.is_struct_init = struct_init_save
 	}
 	f.mark_types_import_as_used(node.typ)
-	type_sym := f.table.sym(node.typ)
+	sym_name := f.table.sym(node.typ).name
 	// f.write('<old name: $type_sym.name>')
-	mut name := type_sym.name
-	if !name.starts_with('C.') && !name.starts_with('JS.') {
-		name = f.no_cur_mod(f.short_module(type_sym.name)) // TODO f.type_to_str?
+	mut name := if !sym_name.starts_with('C.') && !sym_name.starts_with('JS.') {
+		f.no_cur_mod(f.short_module(sym_name)) // TODO f.type_to_str?
+	} else {
+		sym_name
 	}
 	if name == 'void' {
 		name = ''
@@ -253,13 +247,13 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 	if node.is_anon {
 		f.write('struct ')
 	}
-	if node.fields.len == 0 && !node.has_update_expr {
+	if node.init_fields.len == 0 && !node.has_update_expr {
 		// `Foo{}` on one line if there are no fields or comments
 		if node.pre_comments.len == 0 {
 			f.write('${name}{}')
 		} else {
 			f.writeln('${name}{')
-			f.comments(node.pre_comments, inline: true, has_nl: true, level: .indent)
+			f.comments(node.pre_comments, same_line: true, has_nl: true, level: .indent)
 			f.write('}')
 		}
 		f.mark_import_as_used(name)
@@ -272,9 +266,9 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 			f.expr(node.update_expr)
 			f.write(', ')
 		}
-		for i, field in node.fields {
-			f.expr(field.expr)
-			if i < node.fields.len - 1 {
+		for i, init_field in node.init_fields {
+			f.expr(init_field.expr)
+			if i < node.init_fields.len - 1 {
 				f.write(', ')
 			}
 		}
@@ -308,34 +302,34 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 				f.writeln('')
 				f.indent++
 			}
-			f.comments(node.pre_comments, inline: true, has_nl: true, level: .keep)
+			f.comments(node.pre_comments, same_line: true, has_nl: true, level: .keep)
 			if node.has_update_expr {
 				f.write('...')
 				f.expr(node.update_expr)
 				if single_line_fields {
-					if node.fields.len > 0 {
+					if node.init_fields.len > 0 {
 						f.write(', ')
 					}
 				} else {
 					f.writeln('')
 				}
-				f.comments(node.update_expr_comments, inline: true, has_nl: true, level: .keep)
+				f.comments(node.update_expr_comments, same_line: true, has_nl: true, level: .keep)
 			}
-			for i, field in node.fields {
-				f.write('${field.name}: ')
-				f.expr(field.expr)
-				f.comments(field.comments, inline: true, has_nl: false, level: .indent)
+			for i, init_field in node.init_fields {
+				f.write('${init_field.name}: ')
+				f.expr(init_field.expr)
+				f.comments(init_field.comments, same_line: true, has_nl: false, level: .indent)
 				if single_line_fields {
-					if i < node.fields.len - 1 {
+					if i < node.init_fields.len - 1 {
 						f.write(', ')
 					}
 				} else {
 					f.writeln('')
 				}
-				f.comments(field.next_comments, inline: false, has_nl: true, level: .keep)
-				if single_line_fields && (field.comments.len > 0
-					|| field.next_comments.len > 0
-					|| !expr_is_single_line(field.expr)
+				f.comments(init_field.next_comments, has_nl: true, level: .keep)
+				if single_line_fields && (init_field.comments.len > 0
+					|| init_field.next_comments.len > 0
+					|| !expr_is_single_line(init_field.expr)
 					|| f.line_len > max_len.last()) {
 					single_line_fields = false
 					f.out.go_back_to(fields_start)

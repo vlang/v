@@ -1,6 +1,7 @@
 module builder
 
 import os
+import time
 import v.pref
 import v.util
 import v.cflag
@@ -14,12 +15,10 @@ import v.cflag
 type RegKey = voidptr
 
 // Taken from the windows SDK
-const (
-	hkey_local_machine     = RegKey(0x80000002)
-	key_query_value        = (0x0001)
-	key_wow64_32key        = (0x0200)
-	key_enumerate_sub_keys = (0x0008)
-)
+const hkey_local_machine = RegKey(0x80000002)
+const key_query_value = (0x0001)
+const key_wow64_32key = (0x0200)
+const key_enumerate_sub_keys = (0x0008)
 
 // Given a root key look for one of the subkeys in 'versions' and get the path
 fn find_windows_kit_internal(key RegKey, versions []string) !string {
@@ -325,7 +324,7 @@ pub fn (mut v Builder) cc_msvc() {
 	// Emily:
 	// Not all of these are needed (but the compiler should discard them if they are not used)
 	// these are the defaults used by msbuild and visual studio
-	mut real_libs := ['kernel32.lib', 'user32.lib', 'advapi32.lib']
+	mut real_libs := ['kernel32.lib', 'user32.lib', 'advapi32.lib', 'ws2_32.lib']
 	sflags := msvc_string_flags(v.get_os_cflags())
 	real_libs << sflags.real_libs
 	inc_paths := sflags.inc_paths
@@ -402,6 +401,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(mod string, path string, 
 		return
 	}
 	println('${obj_path} not found, building it (with msvc)...')
+	flush_stdout()
 	cfile := '${path_without_o_postfix}.c'
 	flags := msvc_string_flags(moduleflags)
 	inc_dirs := flags.inc_paths.join(' ')
@@ -440,14 +440,38 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(mod string, path string, 
 	// Note: the quotes above ARE balanced.
 	$if trace_thirdparty_obj_files ? {
 		println('>>> build_thirdparty_obj_file_with_msvc cmd: ${cmd}')
+		flush_stdout()
 	}
-	res := os.execute(cmd)
+	// Note, that building object files with msvc can fail with permission denied errors,
+	// when the final .obj file, is locked by another msvc process for writing, or linker errors.
+	// Instead of failing, just retry several times in this case.
+	mut res := os.Result{}
+	mut i := 0
+	for i = 0; i < builder.thirdparty_obj_build_max_retries; i++ {
+		res = os.execute(cmd)
+		if res.exit_code == 0 {
+			break
+		}
+		if !(res.output.contains('Permission denied') || res.output.contains('cannot open file')) {
+			break
+		}
+		eprintln('---------------------------------------------------------------------')
+		eprintln('   msvc: failed to build a thirdparty object, try: ${i}/${builder.thirdparty_obj_build_max_retries}')
+		eprintln('    cmd: ${cmd}')
+		eprintln(' output:')
+		eprintln(res.output)
+		eprintln('---------------------------------------------------------------------')
+		time.sleep(builder.thirdparty_obj_build_retry_delay)
+	}
 	if res.exit_code != 0 {
-		println('msvc: failed to build a thirdparty object; cmd: ${cmd}')
-		verror(res.output)
+		verror('msvc: failed to build a thirdparty object after ${i}/${builder.thirdparty_obj_build_max_retries} retries, cmd: ${cmd}')
 	}
 	println(res.output)
+	flush_stdout()
 }
+
+const thirdparty_obj_build_max_retries = 5
+const thirdparty_obj_build_retry_delay = 200 * time.millisecond
 
 struct MsvcStringFlags {
 mut:

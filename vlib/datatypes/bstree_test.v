@@ -86,7 +86,7 @@ fn test_get_left_on_empty_bst() {
 }
 
 // Check the remove operation if it is able to remove
-// all elements required, and mantains the BST propriety.
+// all elements required, and maintains the BST propriety.
 fn test_remove_from_bst_one() {
 	mut bst := BSTree[int]{}
 	assert bst.insert(10)

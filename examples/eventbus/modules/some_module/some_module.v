@@ -2,9 +2,7 @@ module some_module
 
 import eventbus
 
-const (
-	eb = eventbus.new()
-)
+const eb = eventbus.new[string]()
 
 pub struct Duration {
 pub:
@@ -29,6 +27,6 @@ pub fn do_work() {
 	some_module.eb.publish('event_baz', &Duration{42}, &EventMetadata{'Additional data at the end.'})
 }
 
-pub fn get_subscriber() eventbus.Subscriber {
+pub fn get_subscriber() eventbus.Subscriber[string] {
 	return *some_module.eb.subscriber
 }

@@ -1,10 +1,10 @@
 module main
 
-fn test(f fn () ?) ? {
+fn test(f fn () !) ! {
 	return error('test')
 }
 
-fn test1() ? {
+fn test1() ! {
 	return error('test1')
 }
 

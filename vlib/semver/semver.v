@@ -43,10 +43,9 @@ pub fn from(input string) !Version {
 		return &EmptyInputError{}
 	}
 	raw_version := parse(input)
-	version := raw_version.validate() or { return &InvalidVersionFormatError{
+	return raw_version.validate() or { return &InvalidVersionFormatError{
 		input: input
 	} }
-	return version
 }
 
 // build returns a `Version` structure with given `major`, `minor` and `patch` versions.
@@ -71,26 +70,41 @@ pub fn (ver Version) satisfies(input string) bool {
 }
 
 // eq returns `true` if `v1` is equal to `v2`.
+@[deprecated: 'use v1 == v2 instead']
 pub fn (v1 Version) eq(v2 Version) bool {
 	return compare_eq(v1, v2)
 }
 
+// == checks if `v1` is equal to `v2`
+pub fn (v1 Version) == (v2 Version) bool {
+	return compare_eq(v1, v2)
+}
+
 // gt returns `true` if `v1` is greater than `v2`.
+@[deprecated: 'use v1 > v2 instead']
 pub fn (v1 Version) gt(v2 Version) bool {
 	return compare_gt(v1, v2)
 }
 
+// < checks if `v1` is less than `v2`.
+pub fn (v1 Version) < (v2 Version) bool {
+	return compare_lt(v1, v2)
+}
+
 // lt returns `true` if `v1` is less than `v2`.
+@[deprecated: 'use v1 < v2 instead']
 pub fn (v1 Version) lt(v2 Version) bool {
 	return compare_lt(v1, v2)
 }
 
 // ge returns `true` if `v1` is greater than or equal to `v2`.
+@[deprecated: 'use v1 >= v2 instead']
 pub fn (v1 Version) ge(v2 Version) bool {
 	return compare_ge(v1, v2)
 }
 
-// le returns `true` if `v1` is less than or equal to `v2`.
+// le returns `true` if `v1` is less than or equal to `v2`
+@[deprecated: 'use v1 <= v2 instead']
 pub fn (v1 Version) le(v2 Version) bool {
 	return compare_le(v1, v2)
 }
@@ -105,7 +119,7 @@ pub fn (ver Version) str() string {
 	return '${common_string}${prerelease_string}${metadata_string}'
 }
 
-// * Utilites.
+// * Utilities.
 // coerce converts the `input` version to a `Version` struct.
 // coerce will strip any contents *after* the parsed version string:
 /*

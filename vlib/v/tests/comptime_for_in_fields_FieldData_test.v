@@ -33,9 +33,9 @@ struct Complex {
 	o_ch_i     ?chan int = chan int{cap: 10}
 	o_my_alias ?MyInt    = 123
 	// o_atomic_i ?atomic int // TODO: cgen error, but should be probably a checker one, since option atomics do not make sense
-	o_pointer1_i ?&int   = unsafe { nil }
-	o_pointer2_i ?&&int  = unsafe { nil }
-	o_pointer3_i ?&&&int = unsafe { nil }
+	o_pointer1_i ?&int
+	o_pointer2_i ?&&int
+	o_pointer3_i ?&&&int
 	//
 	o_array_i          ?[]int
 	o_map_i            ?map[int]int

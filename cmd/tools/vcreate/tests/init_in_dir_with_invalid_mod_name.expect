@@ -1,0 +1,18 @@
+#!/usr/bin/env expect
+
+set timeout 3
+
+# Pass v_root as arg, since we chdir into a temp directory during testing and create a project there.
+set v_root [lindex $argv 0]
+set project_dir_name [lindex $argv 1]
+set corrected_mod_name [lindex $argv 2]
+
+spawn $v_root/v init
+
+expect "Input your project description: " { send "\r" } timeout { exit 1 }
+expect "Input your project version: (0.0.0) " { send "\r" } timeout { exit 1 }
+expect "Input your project license: (MIT) " { send "\r" } timeout { exit 1 }
+expect "The directory name `$project_dir_name` is invalid as a module name. The module name in `v.mod` was set to `$corrected_mod_name`" {} timeout { exit 1 }
+expect "Created binary (application) project `$corrected_mod_name`" {} timeout {} timeout { exit 1 }
+
+expect eof

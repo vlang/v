@@ -10,11 +10,9 @@ import math
 import time { Time, now }
 
 // const decl
-const (
-	a = 1
-	b = 3
-	c = 'c'
-)
+const a = 1
+const b = 3
+const c = 'c'
 
 // struct decl
 struct Point {
@@ -60,7 +58,7 @@ interface Myinterfacer {
 	sub(int, int) int
 }
 
-// main funciton
+// main function
 fn main() {
 	add(1, 3)
 	println(add(1, 2))

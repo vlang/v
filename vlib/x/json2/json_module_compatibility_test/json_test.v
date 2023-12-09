@@ -66,10 +66,10 @@ pub struct User {
 pub mut:
 	age           int
 	nums          []int
-	last_name     string [json: lastName]
-	is_registered bool   [json: IsRegistered]
-	typ           int    [json: 'type']
-	pets          string [json: 'pet_animals'; raw]
+	last_name     string @[json: lastName]
+	is_registered bool   @[json: IsRegistered]
+	typ           int    @[json: 'type']
+	pets          string @[json: 'pet_animals'; raw]
 }
 
 fn test_parse_user() {
@@ -124,7 +124,7 @@ fn test_encode_user() {
 struct Color {
 pub mut:
 	space string
-	point string [raw]
+	point string @[raw]
 }
 
 fn test_raw_json_field() {
@@ -176,11 +176,11 @@ fn test_encode_alias_struct() {
 }
 
 struct StByteArray {
-	ba []byte
+	ba []u8
 }
 
 fn test_byte_array() {
-	assert json.encode(StByteArray{ ba: [byte(1), 2, 3, 4, 5] }) == '{"ba":[1,2,3,4,5]}'
+	assert json.encode(StByteArray{ ba: [u8(1), 2, 3, 4, 5] }) == '{"ba":[1,2,3,4,5]}'
 }
 
 struct Bar {
@@ -263,6 +263,25 @@ fn test_encode_alias_field() {
 		}
 	})
 	assert s == '{"sub":{"a":1}}'
+}
+
+struct APrice {}
+
+pub struct Association {
+	association &Association = unsafe { nil }
+	price       APrice
+}
+
+//! FIX: returning null
+fn test_encoding_struct_with_pointers() {
+	value := Association{
+		association: &Association{
+			price: APrice{}
+		}
+		price: APrice{}
+	}
+	// println(value)
+	assert json.encode(value) == '{"association":{"price":{}},"price":{}}'
 }
 
 pub struct City {

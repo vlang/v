@@ -54,8 +54,10 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	old_inside_opt_or_res := g.inside_opt_or_res
 	g.inside_opt_or_res = true
+	g.expected_fixed_arr = true
 	defer {
 		g.inside_opt_or_res = old_inside_opt_or_res
+		g.expected_fixed_arr = false
 	}
 	is_shared := etype.has_flag(.shared_f)
 	mut typ := etype
@@ -103,27 +105,40 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		}
 	} else if sym_has_str_method
 		|| sym.kind in [.array, .array_fixed, .map, .struct_, .multi_return, .sum_type, .interface_] {
-		unwrap_option := expr is ast.Ident && (expr as ast.Ident).or_expr.kind == .propagate_option
+		unwrap_option := expr is ast.Ident && expr.or_expr.kind == .propagate_option
 		exp_typ := if unwrap_option { typ.clear_flag(.option) } else { typ }
 		is_ptr := exp_typ.is_ptr()
+		is_dump_expr := expr is ast.DumpExpr
 		is_var_mut := expr.is_auto_deref_var()
 		str_fn_name := g.get_str_fn(exp_typ)
 		if is_ptr && !is_var_mut {
 			ref_str := '&'.repeat(typ.nr_muls())
 			g.write('str_intp(1, _MOV((StrIntpData[]){{_SLIT("${ref_str}"), ${si_s_code} ,{.d_s = isnil(')
-			if is_ptr && typ.has_flag(.option) {
+			if typ.has_flag(.option) {
 				g.write('*(${g.base_type(exp_typ)}*)&')
 				g.expr(expr)
 				g.write('.data')
 				g.write(') ? _SLIT("Option(&nil)") : ')
 			} else {
+				inside_interface_deref_old := g.inside_interface_deref
+				g.inside_interface_deref = false
+				defer {
+					g.inside_interface_deref = inside_interface_deref_old
+				}
 				g.expr(expr)
 				g.write(') ? _SLIT("nil") : ')
 			}
 		}
 		g.write('${str_fn_name}(')
 		if str_method_expects_ptr && !is_ptr {
-			g.write('&')
+			if is_dump_expr {
+				g.write('ADDR(${g.typ(typ)}, ')
+				defer {
+					g.write(')')
+				}
+			} else {
+				g.write('&')
+			}
 		} else if is_ptr && typ.has_flag(.option) {
 			g.write('*(${g.typ(typ)}*)&')
 		} else if !str_method_expects_ptr && !is_shared && (is_ptr || is_var_mut) {
@@ -162,7 +177,8 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				g.write('*')
 			}
 			g.expr_with_cast(expr, typ, typ)
-		} else {
+		} else if typ.has_flag(.option) {
+			// only Option fn receive argument
 			g.expr_with_cast(expr, typ, typ)
 		}
 		g.write(')')

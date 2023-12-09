@@ -5,9 +5,11 @@ import strings
 #include <sys/stat.h> // #include <signal.h>
 #include <errno.h>
 
-pub const (
-	args = []string{}
-)
+$if freebsd {
+	#include <sys/sysctl.h>
+}
+
+pub const args = []string{}
 
 fn C.readdir(voidptr) &C.dirent
 
@@ -18,6 +20,8 @@ fn C.getline(voidptr, voidptr, voidptr) int
 fn C.sigaction(int, voidptr, int) int
 
 fn C.open(&char, int, ...int) int
+
+fn C._wopen(&u16, int, ...int) int
 
 fn C.fdopen(fd int, mode &char) &C.FILE
 
@@ -38,7 +42,7 @@ fn C.ftruncate(voidptr, u64) int
 fn C._chsize_s(voidptr, u64) int
 
 // read_bytes returns all bytes read from file in `path`.
-[manualfree]
+@[manualfree]
 pub fn read_bytes(path string) ![]u8 {
 	mut fp := vfopen(path, 'rb')!
 	defer {
@@ -83,7 +87,7 @@ const buf_size = 4096
 // It is intended for reading 0 sized files, or a dynamic files in a virtual filesystem like /proc/cpuinfo.
 // For these, we can not allocate all memory in advance (since we do not know the final size), and so we have no choice
 // but to read the file in `buf_size` chunks.
-[manualfree]
+@[manualfree]
 fn slurp_file_in_builder(fp &C.FILE) !strings.Builder {
 	buf := [os.buf_size]u8{}
 	mut sb := strings.new_builder(os.buf_size)
@@ -101,7 +105,7 @@ fn slurp_file_in_builder(fp &C.FILE) !strings.Builder {
 }
 
 // read_file reads the file in `path` and returns the contents.
-[manualfree]
+@[manualfree]
 pub fn read_file(path string) !string {
 	mode := 'rb'
 	mut fp := vfopen(path, mode)!
@@ -140,17 +144,19 @@ pub fn read_file(path string) !string {
 	}
 }
 
-// ***************************** OS ops ************************
-//
 // truncate changes the size of the file located in `path` to `len`.
 // Note that changing symbolic links on Windows only works as admin.
 pub fn truncate(path string, len u64) ! {
-	fp := C.open(&char(path.str), o_wronly | o_trunc, 0)
-	defer {
-		C.close(fp)
+	fp := $if windows {
+		C._wopen(path.to_wide(), o_wronly | o_trunc, 0)
+	} $else {
+		C.open(&char(path.str), o_wronly | o_trunc, 0)
 	}
 	if fp < 0 {
 		return error_with_code(posix_get_error_msg(C.errno), C.errno)
+	}
+	defer {
+		C.close(fp)
 	}
 	$if windows {
 		if C._chsize_s(fp, len) != 0 {
@@ -325,7 +331,7 @@ pub fn fileno(cfile voidptr) int {
 	$if windows {
 		return C._fileno(cfile)
 	} $else {
-		mut cfile_casted := &C.FILE(0) // FILE* cfile_casted = 0;
+		mut cfile_casted := &C.FILE(unsafe { nil }) // FILE* cfile_casted = 0;
 		cfile_casted = cfile
 		// Required on FreeBSD/OpenBSD/NetBSD as stdio.h defines fileno(..) with a macro
 		// that performs a field access on its argument without casting from void*.
@@ -393,6 +399,8 @@ pub fn system(cmd string) int {
 	$if windows {
 		// overcome bug in system & _wsystem (cmd) when first char is quote `"`
 		wcmd := if cmd.len > 1 && cmd[0] == `"` && cmd[1] != `"` { '"${cmd}"' } else { cmd }
+		flush_stdout()
+		flush_stderr()
 		unsafe {
 			ret = C._wsystem(wcmd.to_wide())
 		}
@@ -419,10 +427,11 @@ pub fn system(cmd string) int {
 	}
 	$if !windows {
 		pret, is_signaled := posix_wait4_to_exit_status(ret)
-		if is_signaled {
-			println('Terminated by signal ${ret:2d} (' + sigint_to_signal_name(pret) + ')')
-		}
 		ret = pret
+		if is_signaled {
+			eprintln('Terminated by signal ${pret:2d} (' + sigint_to_signal_name(pret) + ')')
+			ret = pret + 128
+		}
 	}
 	return ret
 }
@@ -466,7 +475,7 @@ pub fn is_executable(path string) bool {
 // is_writable returns `true` if `path` is writable.
 // Warning: `is_writable()` is known to cause a TOCTOU vulnerability when used incorrectly
 // (for more information: https://github.com/vlang/v/blob/master/vlib/os/README.md)
-[manualfree]
+@[manualfree]
 pub fn is_writable(path string) bool {
 	$if windows {
 		p := path.replace('/', '\\')
@@ -483,7 +492,7 @@ pub fn is_writable(path string) bool {
 // is_readable returns `true` if `path` is readable.
 // Warning: `is_readable()` is known to cause a TOCTOU vulnerability when used incorrectly
 // (for more information: https://github.com/vlang/v/blob/master/vlib/os/README.md)
-[manualfree]
+@[manualfree]
 pub fn is_readable(path string) bool {
 	$if windows {
 		p := path.replace('/', '\\')
@@ -531,7 +540,7 @@ pub fn rmdir(path string) ! {
 fn print_c_errno() {
 	e := C.errno
 	se := unsafe { tos_clone(&u8(C.strerror(e))) }
-	println('errno=${e} err=${se}')
+	eprintln('errno=${e} err=${se}')
 }
 
 // get_raw_line returns a one-line string from stdin along with '\n' if there is any.
@@ -543,7 +552,8 @@ pub fn get_raw_line() string {
 			h_input := C.GetStdHandle(C.STD_INPUT_HANDLE)
 			mut bytes_read := u32(0)
 			if is_atty(0) > 0 {
-				x := C.ReadConsole(h_input, buf, max_line_chars * 2, &bytes_read, 0)
+				x := C.ReadConsole(h_input, buf, max_line_chars * 2, voidptr(&bytes_read),
+					0)
 				if !x {
 					return tos(buf, 0)
 				}
@@ -552,7 +562,7 @@ pub fn get_raw_line() string {
 			mut offset := 0
 			for {
 				pos := buf + offset
-				res := C.ReadFile(h_input, pos, 1, C.LPDWORD(&bytes_read), 0)
+				res := C.ReadFile(h_input, pos, 1, voidptr(&bytes_read), 0)
 				if !res && offset == 0 {
 					return tos(buf, 0)
 				}
@@ -571,7 +581,14 @@ pub fn get_raw_line() string {
 		max := usize(0)
 		buf := &char(0)
 		nr_chars := unsafe { C.getline(&buf, &max, C.stdin) }
-		return unsafe { tos(&u8(buf), if nr_chars < 0 { 0 } else { nr_chars }) }
+		str := unsafe { tos(&u8(buf), if nr_chars < 0 { 0 } else { nr_chars }) }
+		ret := str.clone()
+		unsafe {
+			if nr_chars > 0 && buf != 0 {
+				C.free(buf)
+			}
+		}
+		return ret
 	}
 }
 
@@ -587,7 +604,7 @@ pub fn get_raw_stdin() []u8 {
 			mut offset := 0
 			for {
 				pos := buf + offset
-				res := C.ReadFile(h_input, pos, block_bytes, C.LPDWORD(&bytes_read), 0)
+				res := C.ReadFile(h_input, pos, block_bytes, voidptr(&bytes_read), 0)
 				offset += bytes_read
 				if !res {
 					break
@@ -650,7 +667,7 @@ pub fn read_file_array[T](path string) []T {
 
 // executable returns the path name of the executable that started the current
 // process.
-[manualfree]
+@[manualfree]
 pub fn executable() string {
 	mut result := [max_path_buffer_size]u8{}
 	$if windows {
@@ -699,7 +716,10 @@ pub fn executable() string {
 	}
 	$if freebsd {
 		bufsize := usize(max_path_buffer_size)
-		mib := [1 /* CTL_KERN */, 14 /* KERN_PROC */, 12 /* KERN_PROC_PATHNAME */, -1]
+		mib := [1, // CTL_KERN
+		 		14, // KERN_PROC
+		 		12, // KERN_PROC_PATHNAME
+		 		-1]
 		unsafe { C.sysctl(mib.data, mib.len, &result[0], &bufsize, 0, 0) }
 		res := unsafe { tos_clone(&result[0]) }
 		return res
@@ -825,7 +845,7 @@ pub fn chdir(path string) ! {
 }
 
 // getwd returns the absolute path of the current directory.
-[manualfree]
+@[manualfree]
 pub fn getwd() string {
 	unsafe {
 		buf := [max_path_buffer_size]u8{}
@@ -850,7 +870,7 @@ pub fn getwd() string {
 // Also https://insanecoding.blogspot.com/2007/11/pathmax-simply-isnt.html
 // and https://insanecoding.blogspot.com/2007/11/implementing-realpath-in-c.html
 // Note: this particular rabbit hole is *deep* ...
-[manualfree]
+@[manualfree]
 pub fn real_path(fpath string) string {
 	mut fullpath := [max_path_buffer_size]u8{}
 	mut res := ''
@@ -909,7 +929,7 @@ pub fn real_path(fpath string) string {
 	return res
 }
 
-[direct_array_access; manualfree; unsafe]
+@[direct_array_access; manualfree; unsafe]
 fn normalize_drive_letter(path string) {
 	$if !windows {
 		return
@@ -988,7 +1008,8 @@ pub fn chown(path string, owner int, group int) ! {
 	}
 }
 
-// open_append opens `path` file for appending.
+// open_append tries to open a file from a given path.
+// If successful, it and returns a `File` for appending.
 pub fn open_append(path string) !File {
 	mut file := File{}
 	$if windows {
@@ -1013,7 +1034,7 @@ pub fn open_append(path string) !File {
 // execvp - loads and executes a new child process, *in place* of the current process.
 // The child process executable is located in `cmdpath`.
 // The arguments, that will be passed to it are in `args`.
-// Note: this function will NOT return when successfull, since
+// Note: this function will NOT return when successful, since
 // the child process will take control over execution.
 pub fn execvp(cmdpath string, cmdargs []string) ! {
 	mut cargs := []&char{}
@@ -1040,7 +1061,7 @@ pub fn execvp(cmdpath string, cmdargs []string) ! {
 // The child process executable is located in `cmdpath`.
 // The arguments, that will be passed to it are in `args`.
 // You can pass environment variables to through `envs`.
-// Note: this function will NOT return when successfull, since
+// Note: this function will NOT return when successful, since
 // the child process will take control over execution.
 pub fn execve(cmdpath string, cmdargs []string, envs []string) ! {
 	mut cargv := []&char{}

@@ -7,6 +7,7 @@ import v.ast
 
 fn (mut p Parser) sql_expr() ast.Expr {
 	tmp_inside_match := p.inside_match
+	p.inside_orm = true
 	p.inside_match = true
 	// `sql db {`
 	pos := p.tok.pos()
@@ -83,6 +84,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 
 	p.check(.rcbr)
 	p.inside_match = false
+	p.inside_orm = false
 	or_expr := p.parse_sql_or_block()
 	p.inside_match = tmp_inside_match
 
@@ -114,8 +116,10 @@ fn (mut p Parser) sql_expr() ast.Expr {
 // update User set nr_oders=nr_orders+1 where id == user_id
 fn (mut p Parser) sql_stmt() ast.SqlStmt {
 	mut pos := p.tok.pos()
+	p.inside_orm = true
 	p.inside_match = true
 	defer {
+		p.inside_orm = false
 		p.inside_match = false
 	}
 	// `sql db {`
@@ -212,7 +216,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 			scope: p.scope
 		}
 	}
-	mut inserted_var_name := ''
+	mut inserted_var := ''
 	mut table_type := ast.Type(0)
 	if kind != .delete {
 		if kind == .update {
@@ -220,7 +224,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 		} else if kind == .insert {
 			expr := p.expr(0)
 			if expr is ast.Ident {
-				inserted_var_name = expr.name
+				inserted_var = expr.name
 			} else {
 				p.error('can only insert variables')
 				return ast.SqlStmtLine{}
@@ -273,7 +277,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 			typ: table_type
 			pos: table_pos
 		}
-		object_var_name: inserted_var_name
+		object_var: inserted_var
 		pos: pos
 		updated_columns: updated_columns
 		update_exprs: update_exprs
@@ -286,7 +290,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 
 fn (mut p Parser) check_sql_keyword(name string) ?bool {
 	if p.check_name() != name {
-		p.error('V ORM: expecting `${name}`')
+		p.error('ORM: expecting `${name}`')
 		return none
 	}
 	return true

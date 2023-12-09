@@ -7,23 +7,198 @@ import toml.ast
 import toml.input
 import toml.scanner
 import toml.parser
+import maps
 
 // Null is used in sumtype checks as a "default" value when nothing else is possible.
 pub struct Null {
 }
 
 // decode decodes a TOML `string` into the target type `T`.
+// If `T` has a custom `.from_toml()` method, it will be used instead of the default.
 pub fn decode[T](toml_txt string) !T {
 	doc := parse_text(toml_txt)!
 	mut typ := T{}
-	typ.from_toml(doc.to_any())
+	$for method in T.methods {
+		$if method.name == 'from_toml' {
+			typ.$method(doc.to_any())
+			return typ
+		}
+	}
+	$if T !is $struct {
+		return error('toml.decode: expected struct, found ${T.name}')
+	}
+	decode_struct[T](doc.to_any(), mut typ)
 	return typ
 }
 
+fn decode_struct[T](doc Any, mut typ T) {
+	$for field in T.fields {
+		value := doc.value(field.name)
+		$if field.is_enum {
+			typ.$(field.name) = value.int()
+		} $else $if field.typ is string {
+			typ.$(field.name) = value.string()
+		} $else $if field.typ is bool {
+			typ.$(field.name) = value.bool()
+		} $else $if field.typ is int {
+			typ.$(field.name) = value.int()
+		} $else $if field.typ is i64 {
+			typ.$(field.name) = value.i64()
+		} $else $if field.typ is u64 {
+			typ.$(field.name) = value.u64()
+		} $else $if field.typ is f32 {
+			typ.$(field.name) = value.f32()
+		} $else $if field.typ is f64 {
+			typ.$(field.name) = value.f64()
+		} $else $if field.typ is DateTime {
+			typ.$(field.name) = value.datetime()
+		} $else $if field.typ is Date {
+			typ.$(field.name) = value.date()
+		} $else $if field.typ is Time {
+			typ.$(field.name) = value.time()
+		} $else $if field.is_array {
+			arr := value.array()
+			match typeof(typ.$(field.name)).name {
+				'[]string' { typ.$(field.name) = arr.as_strings() }
+				'[]int' { typ.$(field.name) = arr.map(it.int()) }
+				'[]i64' { typ.$(field.name) = arr.map(it.i64()) }
+				'[]u64' { typ.$(field.name) = arr.map(it.u64()) }
+				'[]f32' { typ.$(field.name) = arr.map(it.f32()) }
+				'[]f64' { typ.$(field.name) = arr.map(it.f64()) }
+				'[]bool' { typ.$(field.name) = arr.map(it.bool()) }
+				'[]toml.DateTime' { typ.$(field.name) = arr.map(it.datetime()) }
+				'[]toml.Date' { typ.$(field.name) = arr.map(it.date()) }
+				'[]toml.Time' { typ.$(field.name) = arr.map(it.time()) }
+				else {}
+			}
+		} $else $if field.is_map {
+			mut mmap := value.as_map()
+			match typeof(typ.$(field.name)).name {
+				'map[string]string' {
+					typ.$(field.name) = mmap.as_strings()
+				}
+				// Should be cleaned up to use the more modern lambda syntax
+				// |k, v| k, v.int()
+				// Unfortunately lambdas have issues with multiple return at the time of writing
+				'map[string]int' {
+					typ.$(field.name) = maps.to_map[string, Any, string, int](mmap, fn (k string, v Any) (string, int) {
+						return k, v.int()
+					})
+				}
+				'map[string]i64' {
+					typ.$(field.name) = maps.to_map[string, Any, string, i64](mmap, fn (k string, v Any) (string, i64) {
+						return k, v.i64()
+					})
+				}
+				'map[string]u64' {
+					typ.$(field.name) = maps.to_map[string, Any, string, u64](mmap, fn (k string, v Any) (string, u64) {
+						return k, v.u64()
+					})
+				}
+				'map[string]f32' {
+					typ.$(field.name) = maps.to_map[string, Any, string, f32](mmap, fn (k string, v Any) (string, f32) {
+						return k, v.f32()
+					})
+				}
+				'map[string]f64' {
+					typ.$(field.name) = maps.to_map[string, Any, string, f64](mmap, fn (k string, v Any) (string, f64) {
+						return k, v.f64()
+					})
+				}
+				'map[string]bool' {
+					typ.$(field.name) = maps.to_map[string, Any, string, bool](mmap, fn (k string, v Any) (string, bool) {
+						return k, v.bool()
+					})
+				}
+				'map[string]toml.DateTime' {
+					typ.$(field.name) = maps.to_map[string, Any, string, DateTime](mmap,
+						fn (k string, v Any) (string, DateTime) {
+						return k, v.datetime()
+					})
+				}
+				'map[string]toml.Date' {
+					typ.$(field.name) = maps.to_map[string, Any, string, Date](mmap, fn (k string, v Any) (string, Date) {
+						return k, v.date()
+					})
+				}
+				'map[string]toml.Time' {
+					typ.$(field.name) = maps.to_map[string, Any, string, Time](mmap, fn (k string, v Any) (string, Time) {
+						return k, v.time()
+					})
+				}
+				else {}
+			}
+		} $else $if field.is_struct {
+			mut s := typ.$(field.name)
+			decode_struct(value, mut s)
+			typ.$(field.name) = s
+		}
+	}
+}
+
 // encode encodes the type `T` into a TOML string.
-// Currently encode expects the method `.to_toml()` exists on `T`.
+// If `T` has a custom `.to_toml()` method, it will be used instead of the default.
 pub fn encode[T](typ T) string {
-	return typ.to_toml()
+	$for method in T.methods {
+		$if method.name == 'to_toml' {
+			return typ.$method()
+		}
+	}
+	mp := encode_struct[T](typ)
+	return mp.to_toml()
+}
+
+fn encode_struct[T](typ T) map[string]Any {
+	mut mp := map[string]Any{}
+	$for field in T.fields {
+		mp[field.name] = to_any(typ.$(field.name))
+	}
+	return mp
+}
+
+fn to_any[T](value T) Any {
+	$if T is $enum {
+		return Any(int(value))
+	} $else $if T is Date {
+		return Any(value)
+	} $else $if T is Time {
+		return Any(value)
+	} $else $if T is Null {
+		return Any(value)
+	} $else $if T is bool {
+		return Any(value)
+	} $else $if T is $float {
+		return Any(value)
+	} $else $if T is i64 {
+		return Any(value)
+	} $else $if T is int {
+		return Any(value)
+	} $else $if T is u64 {
+		return Any(value)
+	} $else $if T is DateTime {
+		return Any(value)
+	} $else $if T is $struct {
+		$for method in T.methods {
+			$if method.name == 'to_toml' {
+				return Any(value.$method())
+			}
+		}
+		return encode_struct(value)
+	} $else $if T is $array {
+		mut arr := []Any{cap: value.len}
+		for v in value {
+			arr << to_any(v)
+		}
+		return arr
+	} $else $if T is $map {
+		mut mmap := map[string]Any{}
+		for key, val in value {
+			mmap['${key}'] = to_any(val)
+		}
+		return mmap
+	} $else {
+		return Any('${value}')
+	}
 }
 
 // DateTime is the representation of an RFC 3339 datetime string.
@@ -108,26 +283,6 @@ pub fn parse_text(text string) !Doc {
 	}
 }
 
-// parse parses the TOML document provided in `toml`.
-// parse automatically try to determine if the type of `toml` is a file or text.
-// For explicit parsing of input types see `parse_file` or `parse_text`.
-[deprecated: 'use parse_file or parse_text instead']
-[deprecated_after: '2022-06-18']
-pub fn parse(toml string) !Doc {
-	mut input_config := input.auto_config(toml)!
-	scanner_config := scanner.Config{
-		input: input_config
-	}
-	parser_config := parser.Config{
-		scanner: scanner.new_scanner(scanner_config)!
-	}
-	mut p := parser.new_parser(parser_config)
-	ast_ := p.parse()!
-	return Doc{
-		ast: ast_
-	}
-}
-
 // parse_dotted_key converts `key` string to an array of strings.
 // parse_dotted_key preserves strings delimited by both `"` and `'`.
 pub fn parse_dotted_key(key string) ![]string {
@@ -185,6 +340,16 @@ fn parse_array_key(key string) (string, int) {
 		}
 	}
 	return k, index
+}
+
+// decode decodes a TOML `string` into the target struct type `T`.
+pub fn (d Doc) decode[T]() !T {
+	$if T !is $struct {
+		return error('Doc.decode: expected struct, found ${T.name}')
+	}
+	mut typ := T{}
+	decode_struct(d.to_any(), mut typ)
+	return typ
 }
 
 // to_any converts the `Doc` to toml.Any type.

@@ -18,6 +18,10 @@ struct Other {
 	vweb.Context
 }
 
+struct OtherHidedByOther {
+	vweb.Context
+}
+
 fn exit_after_timeout(timeout_in_ms int) {
 	time.sleep(timeout_in_ms * time.millisecond)
 	println('>> webserver: pid: ${os.getpid()}, exiting ...')
@@ -38,6 +42,7 @@ fn main() {
 		controllers: [
 			vweb.controller('/admin', &Admin{}),
 			vweb.controller('/other', &Other{}),
+			vweb.controller('/other/hide', &OtherHidedByOther{}),
 		]
 	}
 
@@ -45,12 +50,12 @@ fn main() {
 	vweb.run_at(app, host: 'localhost', port: http_port, family: .ip)!
 }
 
-['/']
+@['/']
 pub fn (mut app App) home() vweb.Result {
 	return app.text('App')
 }
 
-['/path']
+@['/path']
 pub fn (mut app App) app_path() vweb.Result {
 	return app.text('App path')
 }
@@ -60,12 +65,12 @@ pub fn (mut app App) not_found() vweb.Result {
 	return app.text('404 From App')
 }
 
-['/']
+@['/']
 pub fn (mut app Admin) admin_home() vweb.Result {
 	return app.text('Admin')
 }
 
-['/path']
+@['/path']
 pub fn (mut app Admin) admin_path() vweb.Result {
 	return app.text('Admin path')
 }
@@ -75,13 +80,23 @@ pub fn (mut app Admin) not_found() vweb.Result {
 	return app.text('404 From Admin')
 }
 
-['/']
+@['/']
 pub fn (mut app Other) other_home() vweb.Result {
 	return app.text('Other')
 }
 
-['/path']
+@['/path']
 pub fn (mut app Other) other_path() vweb.Result {
+	return app.text('Other path')
+}
+
+@['/']
+pub fn (mut app OtherHidedByOther) other_home() vweb.Result {
+	return app.text('Other')
+}
+
+@['/path']
+pub fn (mut app OtherHidedByOther) other_path() vweb.Result {
 	return app.text('Other path')
 }
 
@@ -92,12 +107,12 @@ pub fn (mut app App) shutdown() vweb.Result {
 	if session_key != 'superman' {
 		return app.not_found()
 	}
-	spawn app.gracefull_exit()
+	spawn app.exit_gracefully()
 	return app.ok('good bye')
 }
 
-fn (mut app App) gracefull_exit() {
-	eprintln('>> webserver: gracefull_exit')
+fn (mut app App) exit_gracefully() {
+	eprintln('>> webserver: exit_gracefully')
 	time.sleep(100 * time.millisecond)
 	exit(0)
 }

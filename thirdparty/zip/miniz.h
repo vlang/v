@@ -4926,6 +4926,24 @@ static int mz_mkdir(const char *pDirname) {
 #define MZ_DELETE_FILE remove
 #define MZ_MKDIR(d) _mkdir(d)
 
+#elif defined(__FreeBSD__)
+#ifndef MINIZ_NO_TIME
+#include <utime.h>
+#endif
+
+#define MZ_FOPEN(f, m) fopen(f, m)
+#define MZ_FCLOSE fclose
+#define MZ_FREAD fread
+#define MZ_FWRITE fwrite
+#define MZ_FTELL64 ftello
+#define MZ_FSEEK64 fseeko
+#define MZ_FILE_STAT_STRUCT stat
+#define MZ_FILE_STAT stat
+#define MZ_FFLUSH fflush
+#define MZ_FREOPEN(p, m, s) freopen(p, m, s)
+#define MZ_DELETE_FILE remove
+#define MZ_MKDIR(d) mkdir(d, 0755)
+
 #elif defined(__TINYC__)
 #ifndef MINIZ_NO_TIME
 #include <sys/utime.h>

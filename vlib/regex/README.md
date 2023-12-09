@@ -39,9 +39,6 @@ The main differences can be summarized in the following points:
 - The **match operation stops at the end of the string**. It does *NOT* stop
   at new line characters.
 
-- The **match operation stops at the end of the string**. It does *NOT* stop
-  at new line characters.
-
 ## Tokens
 
 The tokens are the atomic units, used by this regex engine.
@@ -169,7 +166,7 @@ match too, finally test the token `c`.
 > Two char classes with an `OR` in the middle is a syntax error.
 
 That also means, that a query string like `abc|bde` is not equal to
-`(abc)|(bde)`, but instead to `ab(c|b)de.
+`(abc)|(bde)`, but instead to `ab(c|b)de`.
 The OR operation works only for `c|b`, not at char concatenation level.
 
 ### Groups

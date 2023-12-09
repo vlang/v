@@ -2,7 +2,7 @@ import json
 
 struct TestOptionalRawString {
 	id   int
-	data ?string [raw]
+	data ?string @[raw]
 }
 
 fn test_raw_opt() {

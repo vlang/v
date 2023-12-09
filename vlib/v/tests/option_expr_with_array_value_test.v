@@ -8,7 +8,7 @@ fn print_error() ?[]Empty {
 		empty: 'Test'
 	}
 	if test[0].empty != '' {
-		return error('Not empty')
+		return none
 	}
 	return test
 }

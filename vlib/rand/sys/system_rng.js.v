@@ -9,7 +9,7 @@ module sys
 type SysRNG = WyRandRNG
 
 // In the JS version, we simply return the same int as is normally generated.
-[inline]
+@[inline]
 pub fn (r SysRNG) default_rand() int {
 	return r.int()
 }

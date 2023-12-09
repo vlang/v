@@ -14,12 +14,10 @@ module builtin
 // The number for `degree` has been picked through vigor-
 // ous benchmarking but can be changed to any number > 1.
 // `degree` determines the maximum length of each node.
-const (
-	degree         = 6
-	mid_index      = degree - 1
-	max_len        = 2 * degree - 1
-	children_bytes = sizeof(voidptr) * (max_len + 1)
-)
+const degree = 6
+const mid_index = degree - 1
+const max_len = 2 * degree - 1
+const children_bytes = sizeof(voidptr) * (max_len + 1)
 
 pub struct SortedMap {
 	value_bytes int
@@ -60,7 +58,7 @@ fn new_sorted_map_init(n int, value_bytes int, keys &string, values voidptr) Sor
 // each insertion.
 fn new_node() &mapnode {
 	return &mapnode{
-		children: 0
+		children: unsafe { nil }
 		len: 0
 	}
 }

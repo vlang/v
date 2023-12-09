@@ -15,22 +15,22 @@ fn generate_temp_html() string {
 
 fn test_search_by_tag_type() {
 	dom := parse(generate_temp_html())
-	assert dom.get_tag('div').len == 4
-	assert dom.get_tag('head').len == 1
-	assert dom.get_tag('body').len == 1
+	assert dom.get_tags(name: 'div').len == 4
+	assert dom.get_tags(name: 'head').len == 1
+	assert dom.get_tags(name: 'body').len == 1
 }
 
 fn test_search_by_attribute_value() {
 	mut dom := parse(generate_temp_html())
 	// println(temp_html)
 	print('Amount ')
-	println(dom.get_tag_by_attribute_value('id', 'name_0'))
-	assert dom.get_tag_by_attribute_value('id', 'name_0').len == 1
+	println(dom.get_tags_by_attribute_value('id', 'name_0'))
+	assert dom.get_tags_by_attribute_value('id', 'name_0').len == 1
 }
 
 fn test_access_parent() {
 	mut dom := parse(generate_temp_html())
-	div_tags := dom.get_tag('div')
+	div_tags := dom.get_tags(name: 'div')
 	parent := div_tags[0].parent
 	assert unsafe { parent != 0 }
 	for div_tag in div_tags {
@@ -40,7 +40,7 @@ fn test_access_parent() {
 
 fn test_search_by_attributes() {
 	dom := parse(generate_temp_html())
-	assert dom.get_tag_by_attribute('id').len == 4
+	assert dom.get_tags_by_attribute('id').len == 4
 }
 
 fn test_tags_used() {
@@ -50,7 +50,7 @@ fn test_tags_used() {
 
 fn test_access_tag_fields() {
 	dom := parse(generate_temp_html())
-	id_tags := dom.get_tag_by_attribute('id')
+	id_tags := dom.get_tags_by_attribute('id')
 	assert id_tags[0].name == 'div'
 	assert id_tags[1].attributes['class'] == 'several-1'
 }

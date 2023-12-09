@@ -7,7 +7,8 @@ import v.ast
 
 fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
 	if node.is_expr && g.inside_ternary == 0 {
-		if g.is_autofree || node.typ.has_flag(.option) || node.typ.has_flag(.result) {
+		if g.is_autofree || node.typ.has_flag(.option) || node.typ.has_flag(.result)
+			|| node.is_comptime {
 			return true
 		}
 		for branch in node.branches {
@@ -24,6 +25,8 @@ fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
 						return true
 					}
 				} else if branch.stmts[0] is ast.Return {
+					return true
+				} else if branch.stmts[0] is ast.BranchStmt {
 					return true
 				}
 			}
@@ -76,6 +79,9 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 			if expr.or_block.kind != .absent {
 				return true
 			}
+			if g.need_tmp_var_in_expr(expr.left) {
+				return true
+			}
 			for arg in expr.args {
 				if g.need_tmp_var_in_expr(arg.expr) {
 					return true
@@ -112,7 +118,7 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 			if g.need_tmp_var_in_expr(expr.cap_expr) {
 				return true
 			}
-			if g.need_tmp_var_in_expr(expr.default_expr) {
+			if g.need_tmp_var_in_expr(expr.init_expr) {
 				return true
 			}
 			for elem_expr in expr.exprs {
@@ -137,8 +143,8 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 			if g.need_tmp_var_in_expr(expr.update_expr) {
 				return true
 			}
-			for field in expr.fields {
-				if g.need_tmp_var_in_expr(field.expr) {
+			for init_field in expr.init_fields {
+				if g.need_tmp_var_in_expr(init_field.expr) {
 					return true
 				}
 			}
@@ -182,21 +188,23 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	mut cur_line := ''
 	mut raw_state := false
 	if needs_tmp_var {
+		mut styp := g.typ(node.typ)
 		if node.typ.has_flag(.option) {
 			raw_state = g.inside_if_option
 			defer {
 				g.inside_if_option = raw_state
 			}
 			g.inside_if_option = true
+			styp = styp.replace('*', '_ptr')
 		} else if node.typ.has_flag(.result) {
 			raw_state = g.inside_if_result
 			defer {
 				g.inside_if_result = raw_state
 			}
 			g.inside_if_result = true
+			styp = styp.replace('*', '_ptr')
 		}
-		styp := g.typ(node.typ)
-		cur_line = g.go_before_stmt(0)
+		cur_line = g.go_before_last_stmt()
 		g.empty_line = true
 		g.writeln('${styp} ${tmp}; /* if prepend */')
 		if g.infix_left_var_name.len > 0 {
@@ -335,7 +343,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		} else {
 			if i == 0 && node.branches.len > 1 && !needs_tmp_var && needs_conds_order {
 				cond_var_name := g.new_tmp_var()
-				line := g.go_before_stmt(0).trim_space()
+				line := g.go_before_last_stmt().trim_space()
 				g.empty_line = true
 				g.write('bool ${cond_var_name} = ')
 				g.expr(branch.cond)
@@ -346,7 +354,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				g.writeln('if (${cond_var_name}) {')
 			} else if i > 0 && branch_cond_var_names.len > 0 && !needs_tmp_var && needs_conds_order {
 				cond_var_name := g.new_tmp_var()
-				line := g.go_before_stmt(0)
+				line := g.go_before_last_stmt()
 				g.empty_line = true
 				g.writeln('bool ${cond_var_name};')
 				branch_cond := branch_cond_var_names.join(' || ')
@@ -373,6 +381,11 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 						no_needs_par = true
 					}
 				}
+				inside_interface_deref_old := g.inside_interface_deref
+				if !g.inside_interface_deref && branch.cond is ast.Ident
+					&& g.table.is_interface_var(branch.cond.obj) {
+					g.inside_interface_deref = true
+				}
 				if no_needs_par {
 					g.write('if ')
 				} else {
@@ -384,6 +397,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				} else {
 					g.writeln(') {')
 				}
+				g.inside_interface_deref = inside_interface_deref_old
 			}
 		}
 		if needs_tmp_var {

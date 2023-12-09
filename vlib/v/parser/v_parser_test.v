@@ -76,9 +76,9 @@ x := 10
 '
 	table := ast.new_table()
 	vpref := &pref.Preferences{}
-	prog := parse_file(s, table, .skip_comments, vpref)
+	mut prog := parse_file(s, table, .skip_comments, vpref)
 	mut checker_ := checker.new_checker(table, vpref)
-	checker_.check(prog)
+	checker_.check(mut prog)
 	res, _, _, _ := c.gen([prog], table, vpref)
 	println(res)
 }
@@ -100,13 +100,13 @@ fn test_one() {
 	for line in input {
 		e << parse_stmt(line, table, scope)
 	}
-	program := &ast.File{
+	mut program := &ast.File{
 		stmts: e
 		scope: scope
 		global_scope: scope
 	}
 	mut checker_ := checker.new_checker(table, vpref)
-	checker_.check(program)
+	checker_.check(mut program)
 	mut res, _, _, _ := c.gen([program], table, vpref)
 	res = res.replace('\n', '').trim_space().after('#endif')
 	println(res)
@@ -143,12 +143,12 @@ fn test_parse_expr() {
 		println('\n\nst="${s}"')
 		e << parse_stmt(s, table, scope)
 	}
-	program := &ast.File{
+	mut program := &ast.File{
 		stmts: e
 		scope: scope
 		global_scope: scope
 	}
-	chk.check(program)
+	chk.check(mut program)
 	mut res, _, _, _ := c.gen([program], table, vpref)
 	res = res.after('#endif')
 	println('========')
@@ -259,7 +259,7 @@ fn test_fn_is_html_open_tag() {
 	b = is_html_open_tag('style', s)
 	assert b == false
 
-	s = '<sript>'
+	s = '<script>'
 	b = is_html_open_tag('style', s)
 	assert b == false
 }

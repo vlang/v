@@ -65,11 +65,11 @@ fn test_parse_iso8601() {
 	]
 	times := [
 		[2020, 6, 5, 15, 38, 6, 0],
-		[2020, 6, 5, 15, 38, 6, 15959],
-		[2020, 6, 5, 15, 38, 6, 15959],
-		[2020, 6, 5, 13, 38, 6, 15959],
-		[2020, 6, 5, 17, 38, 6, 15959],
-		[2020, 11, 5, 15, 38, 6, 15959],
+		[2020, 6, 5, 15, 38, 6, 15959000],
+		[2020, 6, 5, 15, 38, 6, 15959000],
+		[2020, 6, 5, 13, 38, 6, 15959000],
+		[2020, 6, 5, 17, 38, 6, 15959000],
+		[2020, 11, 5, 15, 38, 6, 15959000],
 	]
 	for i, format in formats {
 		t := time.parse_iso8601(format) or {
@@ -89,8 +89,8 @@ fn test_parse_iso8601() {
 		assert t.minute == minute
 		second := times[i][5]
 		assert t.second == second
-		microsecond := times[i][6]
-		assert t.microsecond == microsecond
+		nanosecond := times[i][6]
+		assert t.nanosecond == nanosecond
 	}
 }
 
@@ -107,7 +107,7 @@ fn test_parse_iso8601_local() {
 	assert t.hour == 15
 	assert t.minute == 38
 	assert t.second == 6
-	assert t.microsecond == 15959
+	assert t.nanosecond == 15959_000
 }
 
 fn test_parse_iso8601_invalid() {
@@ -145,7 +145,7 @@ fn test_parse_iso8601_date_only() {
 	assert t.hour == 0
 	assert t.minute == 0
 	assert t.second == 0
-	assert t.microsecond == 0
+	assert t.nanosecond == 0
 }
 
 fn check_invalid_date(s string) {
@@ -200,4 +200,39 @@ fn test_ad_second_to_parse_result_pre_2001() {
 	future_tm := now_tm.add_seconds(60)
 	assert future_tm.str() == '2000-01-01 04:01:00'
 	assert now_tm.unix < future_tm.unix
+}
+
+fn test_parse_format() {
+	mut s := '2018-01-27 12:48:34'
+	mut t := time.parse_format(s, 'YYYY-MM-DD HH:mm:ss') or {
+		eprintln('> failing format: ${s} | err: ${err}')
+		assert false
+		return
+	}
+	assert t.year == 2018 && t.month == 1 && t.day == 27 && t.hour == 12 && t.minute == 48
+		&& t.second == 34
+
+	s = '2018-November-27 12:48:20'
+	t = time.parse_format(s, 'YYYY-MMMM-DD HH:mm:ss') or {
+		eprintln('> failing format: ${s} | err: ${err}')
+		assert false
+		return
+	}
+	assert t.year == 2018 && t.month == 11 && t.day == 27 && t.hour == 12 && t.minute == 48
+		&& t.second == 20
+
+	s = '18-1-2 0:8:2'
+	t = time.parse_format(s, 'YY-M-D H:m:s') or {
+		eprintln('> failing format: ${s} | err: ${err}')
+		assert false
+		return
+	}
+	assert t.year == 2018 && t.month == 1 && t.day == 2 && t.hour == 0 && t.minute == 8
+		&& t.second == 2
+
+	// This should always fail, because we test if M and D allow for a 01 value which they shouldn't
+	s = '2018-01-02 1:8:2'
+	t = time.parse_format(s, 'YYYY-M-D H:m:s') or { return }
+	eprintln('> failing for datetime: ${s}, the datetime string should not have passed the format "YYYY-M-D H:m:s"')
+	assert false
 }

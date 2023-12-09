@@ -19,3 +19,5 @@ false true
 6
 <none>
 sizeof: 4, 12
+this is an interpolated string
+num: 42; bool: true

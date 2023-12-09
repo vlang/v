@@ -14,13 +14,27 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string)
 		validate: req.validate
 		in_memory_verification: req.in_memory_verification
 	)!
-	ssl_conn.dial(host_name, port) or { return err }
+	mut retries := 0
+	for {
+		ssl_conn.dial(host_name, port) or {
+			retries++
+			if is_no_need_retry_error(err.code()) || retries >= req.max_retries {
+				return err
+			}
+			continue
+		}
+		break
+	}
 
 	req_headers := req.build_request_headers(method, host_name, path)
 	$if trace_http_request ? {
 		eprintln('> ${req_headers}')
 	}
-	// println(req_headers)
+
+	return req.do_request(req_headers, mut ssl_conn)!
+}
+
+fn (req &Request) do_request(req_headers string, mut ssl_conn ssl.SSLConn) !Response {
 	ssl_conn.write_string(req_headers) or { return err }
 
 	mut content := strings.new_builder(100)
@@ -36,12 +50,21 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string)
 			eprintln(unsafe { tos(bp, len) })
 			eprintln('-'.repeat(20))
 		}
+		if len <= 0 {
+			break
+		}
 		unsafe { content.write_ptr(bp, len) }
+		if req.on_progress != unsafe { nil } {
+			req.on_progress(req, content[content.len - len..], u64(content.len))!
+		}
 	}
 	ssl_conn.shutdown()!
 	response_text := content.str()
 	$if trace_http_response ? {
 		eprintln('< ${response_text}')
+	}
+	if req.on_finish != unsafe { nil } {
+		req.on_finish(req, u64(response_text.len))!
 	}
 	return parse_response(response_text)
 }

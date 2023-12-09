@@ -9,37 +9,36 @@ const hide_oks = os.getenv('VTEST_HIDE_OK') == '1'
 // The actual tests and data can be obtained by doing:
 // `git clone --depth 1 https://github.com/alexcrichton/toml-rs.git vlib/toml/tests/testdata/alexcrichton/toml-test`
 // See also the CI toml tests
-const (
-	// Kept for easier handling of future updates to the tests
-	valid_exceptions       = [
-		'valid/example-v0.3.0.toml',
-		'valid/example-v0.4.0.toml',
-		'valid/datetime-truncate.toml', // Not considered valid since RFC 3339 doesn't permit > 6 ms digits ??
-	]
-	invalid_exceptions     = []string{}
+// Kept for easier handling of future updates to the tests
+const valid_exceptions = [
+	'valid/example-v0.3.0.toml',
+	'valid/example-v0.4.0.toml',
+	'valid/datetime-truncate.toml', // Not considered valid since RFC 3339 doesn't permit > 6 ms digits ??
+]
+const invalid_exceptions = []string{}
 
-	valid_value_exceptions = [
-		// These have correct values, and should've passed, but the format of arrays is *mixed* in the JSON ??
-		'valid/datetime-truncate.toml',
-		'valid/example2.toml',
-		'valid/example-v0.4.0.toml',
-		'valid/example-v0.3.0.toml',
-	]
+const valid_value_exceptions = [
+	// These have correct values, and should've passed, but the format of arrays is *mixed* in the JSON ??
+	'valid/datetime-truncate.toml',
+	'valid/example2.toml',
+	'valid/example-v0.4.0.toml',
+	'valid/example-v0.3.0.toml',
+]
 
-	// These have correct values, and should've passed as-is, but the format of arrays changes in the JSON ??
-	// We account for that here
-	use_type_2_arrays      = [
-		'valid/table-array-implicit.toml',
-		'valid/table-array-many.toml',
-		'valid/table-array-one.toml',
-		'valid/table-array-nest.toml',
-		'valid/table-array-nest-no-keys.toml',
-	]
-	tests_folder           = os.join_path('test-suite', 'tests')
-	jq                     = os.find_abs_path_of_executable('jq') or { '' }
-	compare_work_dir_root  = os.join_path(os.vtmp_dir(), 'v', 'toml', 'alexcrichton')
-	// From: https://stackoverflow.com/a/38266731/1904615
-	jq_normalize           = r'# Apply f to composite entities recursively using keys[], and to atoms
+// These have correct values, and should've passed as-is, but the format of arrays changes in the JSON ??
+// We account for that here
+const use_type_2_arrays = [
+	'valid/table-array-implicit.toml',
+	'valid/table-array-many.toml',
+	'valid/table-array-one.toml',
+	'valid/table-array-nest.toml',
+	'valid/table-array-nest-no-keys.toml',
+]
+const tests_folder = os.join_path('test-suite', 'tests')
+const jq = os.find_abs_path_of_executable('jq') or { '' }
+const compare_work_dir_root = os.join_path(os.vtmp_dir(), 'toml', 'alexcrichton')
+// From: https://stackoverflow.com/a/38266731/1904615
+const jq_normalize = r'# Apply f to composite entities recursively using keys[], and to atoms
 def sorted_walk(f):
   . as $in
   | if type == "object" then
@@ -52,7 +51,6 @@ def sorted_walk(f):
 def normalize: sorted_walk(if type == "array" then sort else . end);
 
 normalize'
-)
 
 fn run(args []string) !string {
 	res := os.execute(args.join(' '))

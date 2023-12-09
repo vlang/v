@@ -8,7 +8,7 @@ pub const rtld_next = voidptr(-1)
 
 // get_shared_library_extension returns the platform dependent shared library extension
 // i.e. .dll on windows, .so on most unixes, .dylib on macos.
-[inline]
+@[inline]
 pub fn get_shared_library_extension() string {
 	return $if windows {
 		'.dll'
@@ -21,13 +21,12 @@ pub fn get_shared_library_extension() string {
 
 // get_libname returns a library name with the operating system specific extension for
 // shared libraries.
-[inline]
+@[inline]
 pub fn get_libname(libname string) string {
 	return '${libname}${dl.dl_ext}'
 }
 
-// open_opt - loads the dynamic shared object.
-// Unlike open, open_opt return an option.
+// open_opt tries to load a given dynamic shared object.
 pub fn open_opt(filename string, flags int) !voidptr {
 	shared_object_handle := open(filename, flags)
 	if shared_object_handle == 0 {

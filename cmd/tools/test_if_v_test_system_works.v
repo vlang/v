@@ -5,11 +5,9 @@ module main
 import os
 import rand
 
-const (
-	vexe  = os.quoted_path(get_vexe_path())
-	vroot = os.dir(vexe)
-	tdir  = new_tdir()
-)
+const vexe = os.quoted_path(get_vexe_path())
+const vroot = os.dir(vexe)
+const tdir = new_tdir()
 
 fn get_vexe_path() string {
 	env_vexe := os.getenv('VEXE')
@@ -26,7 +24,7 @@ fn get_vexe_path() string {
 }
 
 fn new_tdir() string {
-	dir := os.join_path(os.vtmp_dir(), 'v', rand.ulid())
+	dir := os.join_path(os.vtmp_dir(), rand.ulid())
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(dir) or { panic(err) }
 	C.atexit(cleanup_tdir)
@@ -40,7 +38,7 @@ fn cleanup_tdir() {
 
 type MyResult = string
 
-[noreturn]
+@[noreturn]
 fn (result MyResult) fail(reason string) {
 	eprintln('> ${reason}, but it does not. Result:\n${result}')
 	exit(1)

@@ -23,28 +23,32 @@ so that <b>TOCTOU</b> is no longer possible.
 
 <table>
 <tr>
+<td>Possibility for TOCTOU attack</td>
+<td>TOCTOU not possible</td>
+</tr>
+<tr>
 <td>
-Possibility for TOCTOU attack
 
-```v ignore 
-if os.is_writable("file"){
+```v ignore
+if os.is_writable("file") {
+    // time to make a quick attack
+    // (e.g. symlink /etc/passwd to `file`)
 
-    // >> time to make a quick attack (e.g. symlink /etc/passwd to >file<) <<
-
-    mut f := os.create('path/to/file') ?
-        // <do something with file>
+    mut f := os.create('path/to/file')!
+    // do something with file
     f.close()
 }
 ```
 </td>
-<td>TOCTOU not possible
+<td>
 
 ```v ignore
 mut f := os.create('path/to/file') or {
     println("file not writable")
 }
 
-// >> do something with file; file is locked <<
+// file is locked
+// do something with file
 
 f.close()
 ```

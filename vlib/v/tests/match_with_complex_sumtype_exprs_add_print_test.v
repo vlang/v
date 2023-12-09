@@ -74,7 +74,7 @@ fn min(tree Tree) f64 {
 	}
 }
 
-// delete a value in BST (if nonexistant do nothing)
+// delete a value in BST (if nonexistent do nothing)
 fn delete(tree Tree, x f64) Tree {
 	return match tree {
 		Empty {

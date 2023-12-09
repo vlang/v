@@ -1,7 +1,5 @@
-const (
-	a = 3
-	u = u64(1)
-)
+const a = 3
+const u = u64(1)
 
 fn test_const() {
 	b := (true && true) || false
@@ -39,7 +37,7 @@ fn test_str_methods() {
 	assert charptr(1).str() == '0x1'
 }
 
-fn test_and_precendence() {
+fn test_and_precedence() {
 	assert (2 & 0 == 0) == ((2 & 0) == 0)
 	assert (2 & 0 != 0) == ((2 & 0) != 0)
 	assert (0 & 0 >= 0) == ((0 & 0) >= 0)
@@ -48,7 +46,7 @@ fn test_and_precendence() {
 	assert (1 & 2 > 0) == ((1 & 2) > 0)
 }
 
-fn test_or_precendence() {
+fn test_or_precedence() {
 	assert (1 | 0 == 0) == ((1 | 0) == 0)
 	assert (1 | 0 != 1) == ((1 | 0) != 1)
 	assert (1 | 0 >= 2) == ((1 | 0) >= 2)
@@ -57,7 +55,7 @@ fn test_or_precendence() {
 	assert (1 | 0 > 1) == ((1 | 0) > 1)
 }
 
-fn test_xor_precendence() {
+fn test_xor_precedence() {
 	assert (1 ^ 0 == 2) == ((1 ^ 0) == 2)
 	assert (1 ^ 0 != 2) == ((1 ^ 0) != 2)
 	assert (1 ^ 0 >= 0) == ((1 ^ 0) >= 0)
@@ -66,12 +64,12 @@ fn test_xor_precendence() {
 	assert (1 ^ 0 > 1) == ((1 ^ 0) > 1)
 }
 
-fn test_left_shift_precendence() {
+fn test_left_shift_precedence() {
 	assert (2 << 4 | 3) == ((2 << 4) | 3)
 	assert (2 << 4 | 3) != (2 << (4 | 3))
 }
 
-fn test_right_shift_precendence() {
+fn test_right_shift_precedence() {
 	assert (256 >> 4 | 3) == ((256 >> 4) | 3)
 	assert (256 >> 4 | 3) != (256 >> (4 | 3))
 }
@@ -247,10 +245,4 @@ fn test_repeat() {
 	assert b.repeat(5) == 'VVVVV'
 	assert b.repeat(1) == b.ascii_str()
 	assert b.repeat(0) == ''
-}
-
-fn test_byte_vs_u8() {
-	bb := byte(1)
-	uu := u8(1)
-	assert bb == uu
 }

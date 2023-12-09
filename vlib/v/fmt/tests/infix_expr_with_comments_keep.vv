@@ -1,9 +1,9 @@
 fn main() {
 	a := 4 // comment1
-	 + /* comment2 */ 6
+	 + 6 // comment2
 
-	b := 5 /* comment1 */ + // comment2
+	b := 5 + // comment2
 	 6
 
-	c := 4 /* comment1 */ + /* comment2 */ 6 // comment3
+	c := 4 + 6 // comment3
 }

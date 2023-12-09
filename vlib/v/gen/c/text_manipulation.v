@@ -52,29 +52,28 @@ fn (mut g Gen) go_back_to(n int) {
 	// g.out_parallel[g.out_idx].go_back_to(n)
 }
 
-[inline]
+@[inline]
 fn (g &Gen) nth_stmt_pos(n int) int {
 	return g.stmt_path_pos[g.stmt_path_pos.len - (1 + n)]
 }
 
-[inline]
+@[inline]
 fn (mut g Gen) set_current_pos_as_last_stmt_pos() {
 	g.stmt_path_pos << g.out.len
 }
 
-fn (mut g Gen) go_before_stmt(n int) string {
-	stmt_pos := g.nth_stmt_pos(n)
-	// g.out_parallel[g.out_idx].cut_to(stmt_pos)
-	return g.out.cut_to(stmt_pos)
+@[inline]
+fn (mut g Gen) go_before_last_stmt() string {
+	return g.out.cut_to(g.nth_stmt_pos(0))
 }
 
-[inline]
+@[inline]
 fn (mut g Gen) go_before_ternary() string {
-	return g.go_before_stmt(g.inside_ternary)
+	return g.out.cut_to(g.nth_stmt_pos(g.inside_ternary))
 }
 
 fn (mut g Gen) insert_before_stmt(s string) {
-	cur_line := g.go_before_stmt(g.inside_ternary)
+	cur_line := g.out.cut_to(g.nth_stmt_pos(g.inside_ternary))
 	g.writeln(s)
 	g.write(cur_line)
 }
@@ -84,4 +83,14 @@ fn (mut g Gen) insert_at(pos int, s string) {
 	// g.out_parallel[g.out_idx].cut_to(pos)
 	g.writeln(s)
 	g.write(cur_line)
+
+	// After modifying the code in the buffer, we need to adjust the positions of the statements
+	// to account for the added line of code.
+	// This is necessary to ensure that autofree can properly insert string declarations
+	// in the correct positions, considering the surgically made changes.
+	for index, stmt_pos in g.stmt_path_pos {
+		if stmt_pos >= pos {
+			g.stmt_path_pos[index] += s.len + 1
+		}
+	}
 }

@@ -20,8 +20,13 @@ pub fn fast_raw_decode(src string) !Any {
 
 // decode is a generic function that decodes a JSON string into the target type.
 pub fn decode[T](src string) !T {
-	mut typ := T{}
 	res := raw_decode(src)!.as_map()
+	return decode_struct[T](T{}, res)
+}
+
+// decode_struct is a generic function that decodes a JSON map into the struct T.
+fn decode_struct[T](_ T, res map[string]Any) !T {
+	mut typ := T{}
 	$if T is $struct {
 		$for field in T.fields {
 			mut json_name := field.name
@@ -117,14 +122,14 @@ pub fn decode[T](src string) !T {
 					typ.$(field.name) = res[json_name]!.str()
 				}
 			} $else $if field.typ is time.Time {
-				typ.$(field.name) = res[field.name]!.to_time()!
+				typ.$(field.name) = res[json_name]!.to_time()!
 			} $else $if field.typ is ?time.Time {
 				if json_name in res {
-					typ.$(field.name) = res[field.name]!.to_time()!
+					typ.$(field.name) = res[json_name]!.to_time()!
 				}
 			} $else $if field.is_array {
-				// typ.$(field.name) = res[field.name]!.arr()
 			} $else $if field.is_struct {
+				typ.$(field.name) = decode_struct(typ.$(field.name), res[field.name]!.as_map())!
 			} $else $if field.is_alias {
 			} $else $if field.is_map {
 			} $else {
@@ -146,6 +151,8 @@ pub fn decode[T](src string) !T {
 				else {}
 			}
 		}
+	} $else {
+		return error("The type `${T.name}` can't be decoded.")
 	}
 	return typ
 }
@@ -162,7 +169,7 @@ pub fn encode[T](val T) string {
 		}
 
 		default_encoder.encode_value(val, mut sb) or {
-			dump(err)
+			println(err)
 			default_encoder.encode_value[Null](null, mut sb) or {}
 		}
 
@@ -179,7 +186,7 @@ fn encode_array[T](val []T) string {
 	}
 
 	default_encoder.encode_array(val, 1, mut sb) or {
-		dump(err)
+		println(err)
 		default_encoder.encode_value[Null](null, mut sb) or {}
 	}
 
@@ -393,8 +400,8 @@ pub fn (f Any) to_time() !time.Time {
 			return time.unix(f)
 		}
 		string {
-			if f.len == 10 && f[4] == `-` && f[7] == `-` {
-				// just a date in the format `2001-01-01`
+			is_iso8601 := f[4] == `-` && f[7] == `-`
+			if is_iso8601 {
 				return time.parse_iso8601(f)!
 			}
 			is_rfc3339 := f.len == 24 && f[23] == `Z` && f[10] == `T`

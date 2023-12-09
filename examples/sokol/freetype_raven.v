@@ -6,8 +6,7 @@ import fontstash
 import sokol.sfons
 import os
 
-const (
-	text = '
+const text = '
 Once upon a midnight dreary, while I pondered, weak and weary,
 Over many a quaint and curious volume of forgotten lore—
     While I nodded, nearly napping, suddenly there came a tapping,
@@ -50,8 +49,8 @@ Soon again I heard a tapping somewhat louder than before.
 Let my heart be still a moment and this mystery explore;—
             ’Tis the wind and nothing more!”
 '
-	lines = text.split('\n')
-)
+
+const lines = text.split('\n')
 
 struct AppState {
 mut:
@@ -63,8 +62,8 @@ mut:
 
 fn main() {
 	mut color_action := gfx.ColorAttachmentAction{
-		action: .clear
-		value: gfx.Color{
+		load_action: .clear
+		clear_value: gfx.Color{
 			r: 1.0
 			g: 1.0
 			b: 1.0
@@ -114,9 +113,7 @@ fn frame(mut state AppState) {
 	gfx.commit()
 }
 
-const (
-	black = sfons.rgba(0, 0, 0, 255)
-)
+const black = sfons.rgba(0, 0, 0, 255)
 
 fn (mut state AppState) render_font() {
 	lh := 30

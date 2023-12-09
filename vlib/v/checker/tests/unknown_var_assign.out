@@ -3,3 +3,8 @@ vlib/v/checker/tests/unknown_var_assign.vv:2:5: error: undefined ident: `x` (use
     2 |     x = 'hello v'
       |     ^
     3 | }
+vlib/v/checker/tests/unknown_var_assign.vv:2:9: error: cannot assign to `x`: expected `void`, not `string`
+    1 | fn main() {
+    2 |     x = 'hello v'
+      |         ~~~~~~~~~
+    3 | }

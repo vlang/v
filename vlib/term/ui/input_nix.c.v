@@ -1,6 +1,7 @@
 // Copyright (c) 2020-2021 Raúl Hernández. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+@[has_globals]
 module ui
 
 struct ExtraContext {
@@ -11,7 +12,7 @@ mut:
 	read_all_bytes bool = true
 }
 
-const ctx_ptr = &Context(unsafe { nil })
+__global ctx_ptr = &Context(unsafe { nil })
 
 // init initializes the terminal console with Config `cfg`.
 pub fn init(cfg Config) &Context {
@@ -20,23 +21,18 @@ pub fn init(cfg Config) &Context {
 	}
 	ctx.read_buf = []u8{cap: cfg.buffer_size}
 
-	// lmao
-	unsafe {
-		x := &ui.ctx_ptr
-		*x = ctx
-		_ = x
-	}
+	ctx_ptr = ctx
 	return ctx
 }
 
-[inline]
+@[inline]
 fn save_title() {
 	// restore the previously saved terminal title
 	print('\x1b[22;0t')
 	flush_stdout()
 }
 
-[inline]
+@[inline]
 fn load_title() {
 	// restore the previously saved terminal title
 	print('\x1b[23;0t')
@@ -44,7 +40,7 @@ fn load_title() {
 }
 
 // run sets up and starts the terminal.
-pub fn (mut ctx Context) run() ? {
+pub fn (mut ctx Context) run() ! {
 	if ctx.cfg.use_x11 {
 		ctx.fail('error: x11 backend not implemented yet')
 		exit(1)
@@ -56,7 +52,7 @@ pub fn (mut ctx Context) run() ? {
 
 // shifts the array left, to remove any data that was just read, and updates its len
 // TODO: remove
-[inline]
+@[inline]
 fn (mut ctx Context) shift(len int) {
 	unsafe {
 		C.memmove(ctx.read_buf.data, &u8(ctx.read_buf.data) + len, ctx.read_buf.cap - len)
@@ -65,7 +61,7 @@ fn (mut ctx Context) shift(len int) {
 }
 
 // TODO: don't actually do this, lmao
-[inline]
+@[inline]
 fn (mut ctx Context) resize_arr(size int) {
 	mut l := unsafe { &ctx.read_buf.len }
 	unsafe {

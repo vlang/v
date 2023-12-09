@@ -5,26 +5,23 @@ import v.ast
 import v.token
 import v.pref
 import v.util
-import v.util.version
 import v.depgraph
 import encoding.base64
 import v.gen.js.sourcemap
 
-const (
-	// https://ecma-international.org/ecma-262/#sec-reserved-words
-	js_reserved        = ['await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger',
-		'default', 'delete', 'do', 'else', 'enum', 'export', 'extends', 'finally', 'for', 'function',
-		'if', 'implements', 'import', 'in', 'instanceof', 'interface', 'let', 'new', 'package',
-		'private', 'protected', 'public', 'return', 'static', 'super', 'switch', 'this', 'throw',
-		'try', 'typeof', 'var', 'void', 'while', 'with', 'yield', 'Number', 'String', 'Boolean',
-		'Array', 'Map', 'document', 'Promise']
-	// used to generate type structs
-	v_types            = ['i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64',
-		'int_literal', 'float_literal', 'bool', 'string', 'map', 'array', 'rune', 'any', 'voidptr']
-	shallow_equatables = [ast.Kind.i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64,
-		.int_literal, .float_literal, .bool, .string]
-	option_name        = '_option'
-)
+// https://ecma-international.org/ecma-262/#sec-reserved-words
+const js_reserved = ['await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger',
+	'default', 'delete', 'do', 'else', 'enum', 'export', 'extends', 'finally', 'for', 'function',
+	'if', 'implements', 'import', 'in', 'instanceof', 'interface', 'let', 'new', 'package', 'private',
+	'protected', 'public', 'return', 'static', 'super', 'switch', 'this', 'throw', 'try', 'typeof',
+	'var', 'void', 'while', 'with', 'yield', 'Number', 'String', 'Boolean', 'Array', 'Map',
+	'document', 'Promise']
+// used to generate type structs
+const v_types = ['i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'int_literal',
+	'float_literal', 'bool', 'string', 'map', 'array', 'rune', 'any', 'voidptr']
+const shallow_equatables = [ast.Kind.i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64,
+	.int_literal, .float_literal, .bool, .string]
+const option_name = '_option'
 
 struct SourcemapHelper {
 	src_path string
@@ -42,7 +39,7 @@ mut:
 	sourcemap_helper []SourcemapHelper
 }
 
-[heap]
+@[heap]
 struct JsGen {
 	pref &pref.Preferences
 mut:
@@ -247,7 +244,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) string 
 	// deps_resolved := graph.resolve()
 	// nodes := deps_resolved.nodes
 
-	mut out := g.definitions.str() + g.hashes()
+	mut out := g.definitions.str()
 	if !g.pref.output_es5 {
 		out += '\nlet wasmExportObject;\n'
 
@@ -309,10 +306,10 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) string 
 				// calculate final generated location in output based on position
 				current_segment := g.out.substr(int(sm_pos), int(sourcemap_ns_entry.ns_pos))
 				current_line += u32(current_segment.count('\n'))
-				current_column := if last_nl_pos := current_segment.last_index('\n') {
-					u32(current_segment.len - last_nl_pos - 1)
-				} else {
-					u32(0)
+				mut current_column := u32(0)
+				last_nl_pos := current_segment.index_u8_last(`\n`)
+				if last_nl_pos != -1 {
+					current_column = u32(current_segment.len - last_nl_pos - 1)
 				}
 				g.sourcemap.add_mapping(sourcemap_ns_entry.src_path, sourcemap.SourcePosition{
 					source_line: sourcemap_ns_entry.src_line
@@ -491,19 +488,13 @@ pub fn (mut g JsGen) init() {
 	g.definitions.writeln('function ReturnException(val) { this.val = val; }')
 }
 
-pub fn (g JsGen) hashes() string {
-	mut res := '// V_COMMIT_HASH ${version.vhash()}\n'
-	res += '// V_CURRENT_COMMIT_HASH ${version.githash(g.pref.building_v)}\n'
-	return res
-}
-
-[noreturn]
+@[noreturn]
 fn verror(msg string) {
 	eprintln('jsgen error: ${msg}')
 	exit(1)
 }
 
-[inline]
+@[inline]
 pub fn (mut g JsGen) gen_indent() {
 	if g.ns.indent > 0 && g.empty_line {
 		g.out.write_string(util.tabs(g.ns.indent))
@@ -511,17 +502,17 @@ pub fn (mut g JsGen) gen_indent() {
 	g.empty_line = false
 }
 
-[inline]
+@[inline]
 pub fn (mut g JsGen) inc_indent() {
 	g.ns.indent++
 }
 
-[inline]
+@[inline]
 pub fn (mut g JsGen) dec_indent() {
 	g.ns.indent--
 }
 
-[inline]
+@[inline]
 pub fn (mut g JsGen) write(s string) {
 	if unsafe { g.ns == 0 } {
 		verror('g.write: not in a namespace')
@@ -530,7 +521,7 @@ pub fn (mut g JsGen) write(s string) {
 	g.out.write_string(s)
 }
 
-[inline]
+@[inline]
 pub fn (mut g JsGen) writeln(s string) {
 	if unsafe { g.ns == 0 } {
 		verror('g.writeln: not in a namespace')
@@ -540,7 +531,7 @@ pub fn (mut g JsGen) writeln(s string) {
 	g.empty_line = true
 }
 
-[inline]
+@[inline]
 pub fn (mut g JsGen) new_tmp_var() string {
 	g.tmp_count++
 	return '_tmp${g.tmp_count}'
@@ -548,9 +539,12 @@ pub fn (mut g JsGen) new_tmp_var() string {
 
 // 'mod1.mod2.fn' => 'mod1.mod2'
 // 'fn' => ''
-[inline]
+@[inline]
 fn get_ns(s string) string {
-	idx := s.last_index('.') or { return '' }
+	idx := s.index_u8_last(`.`)
+	if idx == -1 {
+		return ''
+	}
 	return s.substr(0, idx)
 }
 
@@ -585,7 +579,7 @@ fn (mut g JsGen) stmts(stmts []ast.Stmt) {
 	}
 }
 
-[inline]
+@[inline]
 fn (mut g JsGen) write_v_source_line_info(pos token.Pos) {
 	// g.inside_ternary == 0 &&
 	if g.pref.sourcemap {
@@ -739,6 +733,9 @@ fn (mut g JsGen) stmt_no_semi(node_ ast.Stmt) {
 			}
 			g.gen_return_stmt(node)
 		}
+		ast.SemicolonStmt {
+			g.writeln(';')
+		}
 		ast.SqlStmt {}
 		ast.StructDecl {
 			g.write_v_source_line_info(node.pos)
@@ -842,6 +839,9 @@ fn (mut g JsGen) stmt(node_ ast.Stmt) {
 			}
 			g.gen_return_stmt(node)
 		}
+		ast.SemicolonStmt {
+			g.writeln(';')
+		}
 		ast.SqlStmt {}
 		ast.StructDecl {
 			g.write_v_source_line_info(node.pos)
@@ -935,6 +935,9 @@ fn (mut g JsGen) expr(node_ ast.Expr) {
 		ast.GoExpr {
 			g.gen_go_expr(node)
 		}
+		ast.SpawnExpr {
+			g.gen_spawn_expr(node)
+		}
 		ast.Ident {
 			g.gen_ident(node)
 		}
@@ -952,6 +955,9 @@ fn (mut g JsGen) expr(node_ ast.Expr) {
 		}
 		ast.IntegerLiteral {
 			g.gen_integer_literal_expr(node)
+		}
+		ast.LambdaExpr {
+			eprintln('> TODO: implement short lambda expressions in the JS backend')
 		}
 		ast.Likely {
 			g.write('(')
@@ -1826,6 +1832,20 @@ fn (mut g JsGen) gen_go_expr(node ast.GoExpr) {
 	g.writeln('})});')
 }
 
+fn (mut g JsGen) gen_spawn_expr(node ast.SpawnExpr) {
+	if g.pref.output_es5 {
+		verror('No support for goroutines on ES5 output')
+		return
+	}
+	g.writeln('new _v_Promise({promise: new Promise(function(resolve){')
+	g.inc_indent()
+	g.write('resolve(')
+	g.expr(node.call_expr)
+	g.write(');')
+	g.dec_indent()
+	g.writeln('})});')
+}
+
 fn (mut g JsGen) gen_import_stmt(it ast.Import) {
 	g.ns.imports[it.mod] = it.alias
 }
@@ -2103,8 +2123,8 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 		g.writeln('; it++) {')
 		g.inc_indent()
 		g.write('${t1}.push(')
-		if it.has_default {
-			g.expr(it.default_expr)
+		if it.has_init {
+			g.expr(it.init_expr)
 		} else {
 			// Fill the array with the default values for its type
 			t := g.to_js_typ_val(it.elem_type)
@@ -2135,8 +2155,8 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 		g.writeln('; ${t2}++) {')
 		g.inc_indent()
 		g.write('${t1}.push(')
-		if it.has_default {
-			g.expr(it.default_expr)
+		if it.has_init {
+			g.expr(it.init_expr)
 		} else {
 			// Fill the array with the default values for its type
 			t := g.to_js_typ_val(it.elem_type)
@@ -2230,8 +2250,7 @@ fn (mut g JsGen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 				if branch.stmts[0] is ast.ExprStmt {
 					stmt := branch.stmts[0] as ast.ExprStmt
 					if stmt.expr in [ast.CallExpr, ast.IfExpr, ast.MatchExpr]
-						|| (stmt.expr is ast.IndexExpr
-						&& (stmt.expr as ast.IndexExpr).or_expr.kind != .absent) {
+						|| (stmt.expr is ast.IndexExpr && stmt.expr.or_expr.kind != .absent) {
 						return true
 					}
 				}
@@ -3402,22 +3421,22 @@ fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 	if name.contains('<') {
 		name = name[0..name.index('<') or { name.len }]
 	}
-	if it.fields.len == 0 && type_sym.kind != .interface_ {
+	if it.init_fields.len == 0 && type_sym.kind != .interface_ {
 		if type_sym.kind == .struct_ && type_sym.language == .js {
 			g.write('{}')
 		} else {
 			g.write('new ${g.js_name(name)}({})')
 		}
-	} else if it.fields.len == 0 && type_sym.kind == .interface_ {
+	} else if it.init_fields.len == 0 && type_sym.kind == .interface_ {
 		g.write('new ${g.js_name(name)}()') // JS interfaces can be instantiated with default ctor
-	} else if type_sym.kind == .interface_ && it.fields.len != 0 {
+	} else if type_sym.kind == .interface_ && it.init_fields.len != 0 {
 		g.writeln('(function () {')
 		g.inc_indent()
 		g.writeln('let tmp = new ${g.js_name(name)}()')
 
-		for field in it.fields {
-			g.write('tmp.${field.name} = ')
-			g.expr(field.expr)
+		for init_field in it.init_fields {
+			g.write('tmp.${init_field.name} = ')
+			g.expr(init_field.expr)
 			g.writeln(';')
 		}
 		g.writeln('return tmp')
@@ -3426,12 +3445,12 @@ fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 	} else if type_sym.kind == .struct_ && type_sym.language == .js {
 		g.writeln('{')
 		g.inc_indent()
-		for i, field in it.fields {
-			if field.name.len != 0 {
-				g.write('${field.name}: ')
+		for i, init_field in it.init_fields {
+			if init_field.name.len != 0 {
+				g.write('${init_field.name}: ')
 			}
-			g.expr(field.expr)
-			if i < it.fields.len - 1 {
+			g.expr(init_field.expr)
+			if i < it.init_fields.len - 1 {
 				g.write(',')
 			}
 			g.writeln('')
@@ -3445,10 +3464,10 @@ fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 		tmp := g.new_tmp_var()
 		g.writeln('let ${tmp} = new ${g.js_name(name)}({});')
 
-		for field in it.fields {
-			if field.name.len != 0 {
-				g.write('${tmp}.${field.name} = ')
-				g.expr(field.expr)
+		for init_field in it.init_fields {
+			if init_field.name.len != 0 {
+				g.write('${tmp}.${init_field.name} = ')
+				g.expr(init_field.expr)
 			}
 			g.write(';')
 
@@ -3489,7 +3508,7 @@ fn (mut g JsGen) gen_typeof_expr(it ast.TypeOf) {
 }
 
 fn (mut g JsGen) gen_cast_tmp(tmp string, typ_ ast.Type) {
-	// Skip cast if type is the same as the parrent caster
+	// Skip cast if type is the same as the parent caster
 	tsym := g.table.final_sym(typ_)
 	if !g.pref.output_es5 && (tsym.kind == .i64 || tsym.kind == .u64) {
 		g.write('new ')
@@ -3568,7 +3587,7 @@ fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
 		return
 	}
 
-	// Skip cast if type is the same as the parrent caster
+	// Skip cast if type is the same as the parent caster
 	tsym := to_type_sym
 	if tsym.kind == .sum_type {
 		g.expr(it.expr)
@@ -3633,7 +3652,7 @@ fn (mut g JsGen) gen_integer_literal_expr(it ast.IntegerLiteral) {
 		}
 	}
 
-	// Skip cast if type is the same as the parrent caster
+	// Skip cast if type is the same as the parent caster
 	if g.cast_stack.len > 0 {
 		if g.cast_stack.last() in ast.integer_type_idxs {
 			g.write('new ')
@@ -3670,7 +3689,7 @@ fn (mut g JsGen) gen_float_literal_expr(it ast.FloatLiteral) {
 		}
 	}
 
-	// Skip cast if type is the same as the parrent caster
+	// Skip cast if type is the same as the parent caster
 	if g.cast_stack.len > 0 {
 		if g.cast_stack.last() in ast.float_type_idxs {
 			g.write('new f32(${it.val})')

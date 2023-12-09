@@ -150,13 +150,13 @@ mut:
 pub type Node = C.cJSON
 
 // create an object node
-[inline]
+@[inline]
 fn new_object() &Node {
 	return C.cJSON_CreateObject()
 }
 
 // add item to object node
-[inline]
+@[inline]
 fn (node &Node) add(key string, child &Node) {
 	if context.hide_names.len > 0 && key in context.hide_names {
 		return
@@ -168,7 +168,7 @@ fn (node &Node) add(key string, child &Node) {
 }
 
 // add item to object node
-[inline]
+@[inline]
 fn (node &Node) add_terse(key string, child &Node) {
 	if context.hide_names.len > 0 && key in context.hide_names {
 		return
@@ -177,13 +177,13 @@ fn (node &Node) add_terse(key string, child &Node) {
 }
 
 // create an array node
-[inline]
+@[inline]
 fn new_array() &Node {
 	return C.cJSON_CreateArray()
 }
 
 // add item to array node
-[inline]
+@[inline]
 fn (node &Node) add_item(child &Node) {
 	add_item_to_array(node, child)
 }
@@ -300,8 +300,11 @@ fn (t Tree) mod(node ast.Module) &Node {
 	return obj
 }
 
-fn (t Tree) scope(scope ast.Scope) &Node {
+fn (t Tree) scope(scope &ast.Scope) &Node {
 	mut obj := new_object()
+	if unsafe { scope == nil } {
+		return obj
+	}
 	obj.add_terse('ast_type', t.string_node('Scope'))
 	obj.add_terse('parent', t.string_node(ptr_str(scope.parent)))
 	children_arr := new_array()
@@ -432,6 +435,7 @@ fn (t Tree) stmt(node ast.Stmt) &Node {
 		ast.AssertStmt { return t.assert_stmt(node) }
 		ast.ExprStmt { return t.expr_stmt(node) }
 		ast.Block { return t.block(node) }
+		ast.SemicolonStmt { return t.semicolon_stmt(node) }
 		ast.SqlStmt { return t.sql_stmt(node) }
 		ast.AsmStmt { return t.asm_stmt(node) }
 		ast.NodeError { return t.node_error(node) }
@@ -476,7 +480,6 @@ fn (t Tree) comment(node ast.Comment) &Node {
 	obj.add_terse('ast_type', t.string_node('Comment'))
 	obj.add('text', t.string_node(node.text))
 	obj.add('is_multi', t.bool_node(node.is_multi))
-	obj.add('is_inline', t.bool_node(node.is_inline))
 	obj.add('pos', t.pos(node.pos))
 	return obj
 }
@@ -490,6 +493,20 @@ fn (t Tree) const_decl(node ast.ConstDecl) &Node {
 	obj.add_terse('attrs', t.array_node_attr(node.attrs))
 	obj.add('end_comments', t.array_node_comment(node.end_comments))
 	obj.add('pos', t.pos(node.pos))
+	return obj
+}
+
+fn (t Tree) lambda_expr(node ast.LambdaExpr) &Node {
+	mut obj := new_object()
+	obj.add_terse('ast_type', t.string_node('LambdaExpr'))
+	obj.add_terse('params', t.array_node_ident(node.params))
+	obj.add_terse('pos_expr', t.pos(node.pos_expr))
+	obj.add_terse('expr', t.expr(node.expr))
+	obj.add_terse('pos_end', t.pos(node.pos_end))
+	obj.add('scope', t.number_node(int(node.scope)))
+	obj.add('func', t.number_node(int(node.func)))
+	obj.add_terse('is_checked', t.bool_node(node.is_checked))
+	obj.add_terse('typ', t.type_node(node.typ))
 	return obj
 }
 
@@ -704,12 +721,14 @@ fn (t Tree) attr(node ast.Attr) &Node {
 	obj.add_terse('ast_type', t.string_node('Attr'))
 	obj.add_terse('name', t.string_node(node.name))
 	obj.add_terse('has_arg', t.bool_node(node.has_arg))
+	obj.add_terse('arg', t.string_node(node.arg))
 	obj.add_terse('kind', t.enum_node(node.kind))
-	obj.add_terse('ct_expr', t.expr(node.ct_expr))
 	obj.add_terse('ct_opt', t.bool_node(node.ct_opt))
+	obj.add_terse('has_at', t.bool_node(node.has_at))
+	obj.add_terse('ct_expr', t.expr(node.ct_expr))
 	obj.add_terse('ct_evaled', t.bool_node(node.ct_evaled))
 	obj.add_terse('ct_skip', t.bool_node(node.ct_skip))
-	obj.add_terse('arg', t.string_node(node.arg))
+	obj.add('pos', t.pos(node.pos))
 	return obj
 }
 
@@ -804,7 +823,6 @@ fn (t Tree) sum_type_decl(node ast.SumTypeDecl) &Node {
 	obj.add('pos', t.pos(node.pos))
 	obj.add_terse('typ', t.type_node(node.typ))
 	obj.add_terse('generic_types', t.array_node_type(node.generic_types))
-	obj.add('comments', t.array_node_comment(node.comments))
 	obj.add_terse('variants', t.array_node_type_expr(node.variants))
 	obj.add('name_pos', t.pos(node.name_pos))
 	return obj
@@ -860,7 +878,6 @@ fn (t Tree) assign_stmt(node ast.AssignStmt) &Node {
 	obj.add_terse('is_simple', t.bool_node(node.is_simple))
 	obj.add_terse('has_cross_var', t.bool_node(node.has_cross_var))
 	obj.add('pos', t.pos(node.pos))
-	obj.add('comments', t.array_node_comment(node.comments))
 	obj.add('end_comments', t.array_node_comment(node.end_comments))
 	return obj
 }
@@ -1002,6 +1019,7 @@ fn (t Tree) comptime_call(node ast.ComptimeCall) &Node {
 	obj.add_terse('env_value', t.string_node(node.env_value))
 	obj.add('pos', t.pos(node.pos))
 	obj.add_terse('args', t.array_node_call_arg(node.args))
+	obj.add_terse('or_block', t.or_expr(node.or_block))
 	return obj
 }
 
@@ -1166,11 +1184,17 @@ fn (t Tree) expr(expr ast.Expr) &Node {
 		ast.GoExpr {
 			return t.go_expr(expr)
 		}
+		ast.SpawnExpr {
+			return t.spawn_expr(expr)
+		}
 		ast.OffsetOf {
 			return t.offset_of(expr)
 		}
 		ast.DumpExpr {
 			return t.dump_expr(expr)
+		}
+		ast.LambdaExpr {
+			return t.lambda_expr(expr)
 		}
 		ast.NodeError {
 			return t.node_error(expr)
@@ -1563,8 +1587,7 @@ fn (t Tree) struct_init(node ast.StructInit) &Node {
 	obj.add('pos', t.pos(node.pos))
 	obj.add('name_pos', t.pos(node.name_pos))
 	obj.add('update_expr_comments', t.array_node_comment(node.update_expr_comments))
-	obj.add_terse('fields', t.array_node_struct_init_field(node.fields))
-	obj.add_terse('embeds', t.array_node_struct_init_embed(node.embeds))
+	obj.add_terse('init_fields', t.array_node_struct_init_field(node.init_fields))
 	obj.add('pre_comments', t.array_node_comment(node.pre_comments))
 	return obj
 }
@@ -1584,19 +1607,6 @@ fn (t Tree) struct_init_field(node ast.StructInitField) &Node {
 	return obj
 }
 
-fn (t Tree) struct_init_embed(node ast.StructInitEmbed) &Node {
-	mut obj := new_object()
-	obj.add_terse('ast_type', t.string_node('StructInitEmbed'))
-	obj.add_terse('name', t.string_node(node.name))
-	obj.add_terse('expr', t.expr(node.expr))
-	obj.add_terse('typ', t.type_node(node.typ))
-	obj.add_terse('expected_type', t.type_node(node.expected_type))
-	obj.add('comments', t.array_node_comment(node.comments))
-	obj.add('next_comments', t.array_node_comment(node.next_comments))
-	obj.add('pos', t.pos(node.pos))
-	return obj
-}
-
 fn (t Tree) array_init(node ast.ArrayInit) &Node {
 	mut obj := new_object()
 	obj.add_terse('ast_type', t.string_node('ArrayInit'))
@@ -1611,10 +1621,10 @@ fn (t Tree) array_init(node ast.ArrayInit) &Node {
 	obj.add_terse('mod', t.string_node(node.mod))
 	obj.add_terse('len_expr', t.expr(node.len_expr))
 	obj.add_terse('cap_expr', t.expr(node.cap_expr))
-	obj.add_terse('default_expr', t.expr(node.default_expr))
+	obj.add_terse('init_expr', t.expr(node.init_expr))
 	obj.add_terse('has_len', t.bool_node(node.has_len))
 	obj.add_terse('has_cap', t.bool_node(node.has_cap))
-	obj.add_terse('has_default', t.bool_node(node.has_default))
+	obj.add_terse('has_init', t.bool_node(node.has_init))
 	obj.add_terse('has_index', t.bool_node(node.has_index))
 	obj.add_terse('expr_types', t.array_node_type(node.expr_types))
 	obj.add('pos', t.pos(node.pos))
@@ -1756,6 +1766,12 @@ fn (t Tree) sql_expr(node ast.SqlExpr) &Node {
 	return obj
 }
 
+fn (t Tree) semicolon_stmt(node ast.SemicolonStmt) &Node {
+	mut obj := new_object()
+	obj.add('pos', t.pos(node.pos))
+	return obj
+}
+
 fn (t Tree) sql_stmt(node ast.SqlStmt) &Node {
 	mut obj := new_object()
 	obj.add_terse('ast_type', t.string_node('SqlStmt'))
@@ -1772,7 +1788,7 @@ fn (t Tree) sql_stmt_line(node ast.SqlStmtLine) &Node {
 	obj.add_terse('ast_type', t.string_node('SqlStmtLine'))
 	obj.add_terse('kind', t.enum_node(node.kind))
 	obj.add_terse('table_expr', t.type_expr(node.table_expr))
-	obj.add_terse('object_var_name', t.string_node(node.object_var_name))
+	obj.add_terse('object_var', t.string_node(node.object_var))
 	obj.add_terse('where_expr', t.expr(node.where_expr))
 	obj.add_terse('fields', t.array_node_struct_field(node.fields))
 	obj.add_terse('updated_columns', t.array_node_string(node.updated_columns))
@@ -1856,6 +1872,15 @@ fn (t Tree) array_decompose(expr ast.ArrayDecompose) &Node {
 fn (t Tree) go_expr(expr ast.GoExpr) &Node {
 	mut obj := new_object()
 	obj.add_terse('ast_type', t.string_node('GoExpr'))
+	obj.add_terse('call_expr', t.call_expr(expr.call_expr))
+	obj.add_terse('is_expr', t.bool_node(expr.is_expr))
+	obj.add('pos', t.pos(expr.pos))
+	return obj
+}
+
+fn (t Tree) spawn_expr(expr ast.SpawnExpr) &Node {
+	mut obj := new_object()
+	obj.add_terse('ast_type', t.string_node('SpawnExpr'))
 	obj.add_terse('call_expr', t.call_expr(expr.call_expr))
 	obj.add_terse('is_expr', t.bool_node(expr.is_expr))
 	obj.add('pos', t.pos(expr.pos))
@@ -2290,14 +2315,6 @@ fn (t Tree) array_node_if_guard_var(nodes []ast.IfGuardVar) &Node {
 	mut arr := new_array()
 	for node in nodes {
 		arr.add_item(t.if_guard_var(node))
-	}
-	return arr
-}
-
-fn (t Tree) array_node_struct_init_embed(nodes []ast.StructInitEmbed) &Node {
-	mut arr := new_array()
-	for node in nodes {
-		arr.add_item(t.struct_init_embed(node))
 	}
 	return arr
 }

@@ -6,8 +6,8 @@ pub mut:
 
 interface Adoptable {
 	class_name string
-	age int
-	test int
+	age        int
+	test       int
 }
 
 struct Cat {

@@ -105,9 +105,11 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	mut is_field_pub := false
 	mut is_field_global := false
 	mut last_line := p.prev_tok.pos().line_nr + 1
+	mut pre_comments := []ast.Comment{}
 	mut end_comments := []ast.Comment{}
 	if !no_body {
 		p.check(.lcbr)
+		pre_comments = p.eat_comments()
 		mut i := 0
 		for p.tok.kind != .rcbr {
 			mut comments := []ast.Comment{}
@@ -118,7 +120,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				}
 			}
 			if p.tok.kind == .rcbr {
-				end_comments = comments.clone()
+				end_comments = p.eat_comments(same_line: true)
 				break
 			}
 			if p.tok.kind == .key_pub {
@@ -195,7 +197,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				&& (p.peek_tok.line_nr != p.tok.line_nr || p.peek_tok.kind !in [.name, .amp])
 				&& (p.peek_tok.kind != .lsbr || p.peek_token(2).kind != .rsbr))
 				|| p.peek_tok.kind == .dot) && language == .v && p.peek_tok.kind != .key_fn
-			is_on_top := ast_fields.len == 0 && !(is_field_mut || is_field_global)
+			is_on_top := ast_fields.len == 0 && !(is_field_pub || is_field_mut || is_field_global)
 			mut field_name := ''
 			mut typ := ast.Type(0)
 			mut type_pos := token.Pos{}
@@ -244,11 +246,9 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				p.inside_struct_field_decl = true
 				if p.tok.kind == .key_struct {
 					// Anon structs
-					if p.tok.kind == .key_struct {
-						p.anon_struct_decl = p.struct_decl(true)
-						// Find the registered anon struct type, it was registered above in `p.struct_decl()`
-						typ = p.table.find_type_idx(p.anon_struct_decl.name)
-					}
+					p.anon_struct_decl = p.struct_decl(true)
+					// Find the registered anon struct type, it was registered above in `p.struct_decl()`
+					typ = p.table.find_type_idx(p.anon_struct_decl.name)
 				} else {
 					start_type_pos := p.tok.pos()
 					typ = p.parse_type()
@@ -265,9 +265,9 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				}
 			}
 			// Comments after type (same line)
-			comments << p.eat_comments()
 			prev_attrs := p.attrs
 			p.attrs = []
+			// TODO: remove once old syntax is no longer supported
 			if p.tok.kind == .lsbr {
 				p.inside_struct_attr_decl = true
 				// attrs are stored in `p.attrs`
@@ -279,6 +279,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				}
 				p.inside_struct_attr_decl = false
 			}
+			comments << p.eat_comments()
 			mut default_expr := ast.empty_expr
 			mut has_default_expr := false
 			if !is_embed {
@@ -292,6 +293,18 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 						else {}
 					}
 					has_default_expr = true
+					comments << p.eat_comments()
+				}
+				if p.tok.kind == .at {
+					p.inside_struct_attr_decl = true
+					// attrs are stored in `p.attrs`
+					p.attributes()
+					for fa in p.attrs {
+						if fa.name == 'deprecated' {
+							is_field_deprecated = true
+						}
+					}
+					p.inside_struct_attr_decl = false
 					comments << p.eat_comments()
 				}
 				ast_fields << ast.StructField{
@@ -312,7 +325,6 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 					is_deprecated: is_field_deprecated
 					anon_struct_decl: p.anon_struct_decl
 				}
-				p.anon_struct_decl = ast.StructDecl{}
 			}
 			// save embeds as table fields too, it will be used in generation phase
 			fields << ast.StructField{
@@ -331,13 +343,16 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				is_global: is_field_global
 				is_volatile: is_field_volatile
 				is_deprecated: is_field_deprecated
+				anon_struct_decl: p.anon_struct_decl
 			}
+			p.anon_struct_decl = ast.StructDecl{}
 			p.attrs = prev_attrs
 			i++
 		}
 		p.top_level_statement_end()
 		last_line = p.tok.line_nr
 		p.check(.rcbr)
+		end_comments = p.eat_comments(same_line: true)
 	}
 	is_minify := attrs.contains('minify')
 	mut sym := ast.TypeSymbol{
@@ -387,7 +402,8 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		module_pos: module_pos
 		language: language
 		is_union: is_union
-		attrs: attrs
+		attrs: if is_anon { []ast.Attr{} } else { attrs } // anon structs can't have attributes
+		pre_comments: pre_comments
 		end_comments: end_comments
 		generic_types: generic_types
 		embeds: embeds
@@ -398,6 +414,7 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 	first_pos := (if kind == .short_syntax && p.prev_tok.kind == .lcbr { p.prev_tok } else { p.tok }).pos()
 	p.struct_init_generic_types = []ast.Type{}
 	mut typ := if kind == .short_syntax { ast.void_type } else { p.parse_type() }
+	struct_init_generic_types := p.struct_init_generic_types.clone()
 	if is_option {
 		typ = typ.set_flag(.option)
 	}
@@ -406,7 +423,7 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 		p.check(.lcbr)
 	}
 	pre_comments := p.eat_comments()
-	mut fields := []ast.StructInitField{}
+	mut init_fields := []ast.StructInitField{}
 	mut i := 0
 	no_keys := p.peek_tok.kind != .colon && p.tok.kind != .rcbr && p.tok.kind != .ellipsis // `Vec{a,b,c}
 	saved_is_amp := p.is_amp
@@ -422,7 +439,7 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 		mut first_field_pos := token.Pos{}
 		mut comments := []ast.Comment{}
 		mut nline_comments := []ast.Comment{}
-		is_update_expr := fields.len == 0 && p.tok.kind == .ellipsis
+		is_update_expr := init_fields.len == 0 && p.tok.kind == .ellipsis
 		if no_keys {
 			// name will be set later in checker
 			expr = p.expr(0)
@@ -462,7 +479,7 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 		comments << p.eat_comments(same_line: true)
 		nline_comments << p.eat_comments()
 		if !is_update_expr {
-			fields << ast.StructInitField{
+			init_fields << ast.StructInitField{
 				name: field_name
 				expr: expr
 				pos: field_pos
@@ -481,7 +498,7 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 		unresolved: typ.has_flag(.generic)
 		typ_str: typ_str
 		typ: typ
-		fields: fields
+		init_fields: init_fields
 		update_expr: update_expr
 		update_expr_pos: update_expr_pos
 		update_expr_comments: update_expr_comments
@@ -492,7 +509,7 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option
 		is_short_syntax: kind == .short_syntax
 		is_anon: kind == .anon
 		pre_comments: pre_comments
-		generic_types: p.struct_init_generic_types
+		generic_types: struct_init_generic_types
 	}
 }
 
@@ -577,10 +594,11 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	mut is_mut := false
 	mut mut_pos := -1
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
+		// check embedded interface from internal module
 		if p.tok.kind == .name && p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
 			&& (p.peek_tok.line_nr != p.tok.line_nr
 			|| p.peek_tok.kind !in [.name, .amp, .lsbr, .lpar]
-			|| (p.peek_tok.kind == .lsbr && p.peek_tok.pos - p.tok.pos == p.tok.len)) {
+			|| (p.peek_tok.kind == .lsbr && p.peek_tok.is_next_to(p.tok))) {
 			iface_pos := p.tok.pos()
 			mut iface_name := p.tok.lit
 			iface_type := p.parse_type()
@@ -599,8 +617,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			}
 			continue
 		}
-
-		// Check embedded interface from external module
+		// check embedded interface from external module
 		if p.tok.kind == .name && p.peek_tok.kind == .dot {
 			if p.tok.lit !in p.imports {
 				p.error_with_pos('mod `${p.tok.lit}` not imported', p.tok.pos())
@@ -623,6 +640,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			if p.tok.kind == .rcbr {
 				break
 			}
+			continue
 		}
 
 		if p.tok.kind == .key_mut {
@@ -635,11 +653,12 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			is_mut = true
 			mut_pos = fields.len
 		}
-		if p.peek_tok.kind in [.lt, .lsbr] && p.peek_tok.pos - p.tok.pos == p.tok.len {
+		if p.peek_tok.kind in [.lt, .lsbr] && p.peek_tok.is_next_to(p.tok) {
 			p.error_with_pos("no need to add generic type names in generic interface's method",
 				p.peek_tok.pos())
 			return ast.InterfaceDecl{}
 		}
+		mut comments := p.eat_comments()
 		if p.peek_tok.kind == .lpar {
 			method_start_pos := p.tok.pos()
 			line_nr := p.tok.line_nr
@@ -653,9 +672,8 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 				p.error_with_pos('duplicate method `${name}`', method_start_pos)
 				return ast.InterfaceDecl{}
 			}
-			// field_names << name
-			args2, _, is_variadic := p.fn_args() // TODO merge ast.Param and ast.Arg to avoid this
-			mut args := [
+			params_t, _, is_variadic := p.fn_params() // TODO merge ast.Param and ast.Arg to avoid this
+			mut params := [
 				ast.Param{
 					name: 'x'
 					is_mut: is_mut
@@ -663,12 +681,12 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 					is_hidden: true
 				},
 			]
-			args << args2
+			params << params_t
 			mut method := ast.FnDecl{
 				name: name
 				short_name: name
 				mod: p.mod
-				params: args
+				params: params
 				file: p.file_name
 				return_type: ast.void_type
 				is_variadic: is_variadic
@@ -682,15 +700,14 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 				method.return_type_pos = method.return_type_pos.extend(p.tok.pos())
 				method.pos = method.pos.extend(method.return_type_pos)
 			}
-			mcomments := p.eat_comments(same_line: true)
+			comments << p.eat_comments(same_line: true)
 			mnext_comments := p.eat_comments()
-			method.comments = mcomments
+			method.comments = comments
 			method.next_comments = mnext_comments
 			methods << method
-			// println('register method $name')
 			tmethod := ast.Fn{
 				name: name
-				params: args
+				params: params
 				pos: method.pos
 				return_type: method.return_type
 				is_variadic: is_variadic
@@ -707,13 +724,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			mut type_pos := p.tok.pos()
 			field_typ := p.parse_type()
 			type_pos = type_pos.extend(p.prev_tok.pos())
-			mut comments := []ast.Comment{}
-			for p.tok.kind == .comment {
-				comments << p.comment()
-				if p.tok.kind == .rcbr {
-					break
-				}
-			}
+			comments << p.eat_comments(same_line: true)
 			fields << ast.StructField{
 				name: field_name
 				pos: field_pos

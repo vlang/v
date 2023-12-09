@@ -83,7 +83,7 @@ pub fn (mut e Eval) eval(mut files []&ast.File) {
 	e.run_func(e.mods['main']['main'] or { ast.FnDecl{} } as ast.FnDecl)
 }
 
-// first arg is reciever (if method)
+// first arg is receiver (if method)
 pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 	e.back_trace << EvalTrace{func.idx, func.source_file.idx, func.pos.line_nr}
 	old_mod := e.cur_mod
@@ -194,6 +194,38 @@ pub fn (mut e Eval) register_symbol_stmts(stmts []ast.Stmt, mod string, file str
 	}
 }
 
+pub fn (mut e Eval) comptime_cond(cond ast.Expr) bool {
+	match cond {
+		ast.Ident {
+			match cond.name {
+				'native' {
+					return false
+				}
+				'windows' {
+					return e.pref.os == .windows
+				}
+				else {
+					e.error('unknown compile time if')
+				}
+			}
+		}
+		ast.PrefixExpr {
+			match cond.op {
+				.not {
+					return !e.comptime_cond(cond.right)
+				}
+				else {
+					e.error('unsupported prefix expression')
+				}
+			}
+		}
+		else {
+			e.error('unsupported expression')
+		}
+	}
+	return false
+}
+
 pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 	match stmt {
 		ast.Module {
@@ -226,28 +258,9 @@ pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 						e.error('only comptime ifs are allowed in top level')
 					}
 					for i, branch in x.branches {
-						mut do_if := false
-						println('branch:${branch}')
-						cond := branch.cond
-						match cond {
-							ast.Ident {
-								match (branch.cond as ast.Ident).name {
-									'windows' {
-										do_if = e.pref.os == .windows
-									}
-									else {
-										e.error('unknown compile time if')
-									}
-								}
-								do_if = do_if || x.branches.len == i + 1
-								if do_if {
-									e.register_symbol_stmts(branch.stmts, mod, file)
-									break
-								}
-							}
-							else {
-								e.error('unsupported expression')
-							}
+						if e.comptime_cond(branch.cond) || x.branches.len == i + 1 {
+							e.register_symbol_stmts(branch.stmts, mod, file)
+							break
 						}
 					}
 				}
@@ -263,15 +276,14 @@ pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 }
 
 fn (e Eval) error(msg string) {
-	eprintln('> V interpeter backtrace:')
+	eprintln('> V interpreter backtrace:')
 	e.print_backtrace()
 	util.verror('interpreter', msg)
 }
 
 fn (e Eval) panic(s string) {
-	commithash := unsafe { tos5(&char(C.V_CURRENT_COMMIT_HASH)) }
 	eprintln('V panic: ${s}')
-	eprintln('V hash: ${commithash}')
+	eprintln('V hash: ${@VCURRENTHASH}')
 	e.print_backtrace()
 	exit(1)
 }

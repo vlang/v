@@ -20,10 +20,8 @@ enum EncodingMode {
 	encode_fragment
 }
 
-const (
-	err_msg_escape = 'unescape: invalid URL escape'
-	err_msg_parse  = 'parse: failed parsing url'
-)
+const err_msg_escape = 'unescape: invalid URL escape'
+const err_msg_parse = 'parse: failed parsing url'
 
 fn error_msg(message string, val string) string {
 	mut msg := 'net.urllib.${message}'
@@ -415,7 +413,7 @@ fn get_scheme(rawurl string) !string {
 	return split[0]
 }
 
-// split slices s into two substrings separated by the first occurence of
+// split slices s into two substrings separated by the first occurrence of
 // sep. If cutc is true then sep is included with the second substring.
 // If sep does not occur in s then s and the empty string is returned.
 fn split(s string, sep u8, cutc bool) (string, string) {
@@ -461,7 +459,7 @@ fn parse_request_uri(rawurl string) !URL {
 // via_request is true, the URL is assumed to have arrived via an HTTP request,
 // in which case only absolute URLs or path-absolute relative URLs are allowed.
 // If via_request is false, all forms of relative URLs are allowed.
-[manualfree]
+@[manualfree]
 fn parse_url(rawurl string, via_request bool) !URL {
 	if string_contains_ctl_u8(rawurl) {
 		return error(error_msg('parse_url: invalid control character in URL', rawurl))
@@ -470,7 +468,7 @@ fn parse_url(rawurl string, via_request bool) !URL {
 		return error(error_msg('parse_url: empty URL', rawurl))
 	}
 	mut url := URL{
-		user: 0
+		user: unsafe { nil }
 	}
 	if rawurl == '*' {
 		url.path = '*'
@@ -535,7 +533,7 @@ struct ParseAuthorityRes {
 }
 
 fn parse_authority(authority string) !ParseAuthorityRes {
-	i := authority.last_index('@') or { -1 }
+	i := authority.index_u8_last(`@`)
 	mut host := ''
 	mut zuser := user('')
 	if i < 0 {
@@ -576,10 +574,11 @@ fn parse_authority(authority string) !ParseAuthorityRes {
 // parse_host parses host as an authority without user
 // information. That is, as host[:port].
 fn parse_host(host string) !string {
-	if host.starts_with('[') {
+	if host.len > 0 && host[0] == `[` {
 		// parse an IP-Literal in RFC 3986 and RFC 6874.
 		// E.g., '[fe80::1]', '[fe80::1%25en0]', '[fe80::1]:80'.
-		mut i := host.last_index(']') or {
+		mut i := host.index_u8_last(`]`)
+		if i == -1 {
 			return error(error_msg("parse_host: missing ']' in host", ''))
 		}
 		mut colon_port := host[i + 1..]
@@ -599,11 +598,14 @@ fn parse_host(host string) !string {
 			host3 := unescape(host[i..], .encode_host) or { return err.msg() }
 			return host1 + host2 + host3
 		}
-	} else if i := host.last_index(':') {
-		colon_port := host[i..]
-		if !valid_optional_port(colon_port) {
-			return error(error_msg('parse_host: invalid port ${colon_port} after host ',
-				''))
+	} else {
+		i := host.index_u8_last(`:`)
+		if i != -1 {
+			colon_port := host[i..]
+			if !valid_optional_port(colon_port) {
+				return error(error_msg('parse_host: invalid port ${colon_port} after host ',
+					''))
+			}
 		}
 	}
 	h := unescape(host, .encode_host) or { return err.msg() }
@@ -872,7 +874,7 @@ fn resolve_path(base string, ref string) string {
 	if ref == '' {
 		full = base
 	} else if ref[0] != `/` {
-		i := base.last_index('/') or { -1 }
+		i := base.index_u8_last(`/`)
 		full = base[..i + 1] + ref
 	} else {
 		full = ref
@@ -889,7 +891,7 @@ fn resolve_path(base string, ref string) string {
 			}
 			'..' {
 				if dst.len > 0 {
-					dst = dst[..dst.len - 1]
+					dst = unsafe { dst[..dst.len - 1] }
 				}
 			}
 			else {
@@ -1003,17 +1005,17 @@ pub fn (u &URL) port() string {
 // split_host_port separates host and port. If the port is not valid, it returns
 // the entire input as host, and it doesn't check the validity of the host.
 // Per RFC 3986, it requires ports to be numeric.
-fn split_host_port(hostport string) (string, string) {
+pub fn split_host_port(hostport string) (string, string) {
 	mut host := hostport
 	mut port := ''
-	colon := host.last_index_u8(`:`)
+	colon := host.index_u8_last(`:`)
 	if colon != -1 {
 		if valid_optional_port(host[colon..]) {
 			port = host[colon + 1..]
 			host = host[..colon]
 		}
 	}
-	if host.starts_with('[') && host.ends_with(']') {
+	if host.len > 1 && host[0] == `[` && host.ends_with(']') {
 		host = host[1..host.len - 1]
 	}
 	return host, port

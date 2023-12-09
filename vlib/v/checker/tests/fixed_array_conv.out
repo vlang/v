@@ -12,11 +12,25 @@ vlib/v/checker/tests/fixed_array_conv.vv:3:3: error: mismatched types `voidptr` 
       |   ^
     4 | mut ip := &int(0)
     5 | ip = arr
+vlib/v/checker/tests/fixed_array_conv.vv:3:5: error: cannot assign to `p`: expected `voidptr`, not `[2]int`
+    1 | arr := [2, 3]!
+    2 | mut p := unsafe { nil }
+    3 | p = arr
+      |     ~~~
+    4 | mut ip := &int(0)
+    5 | ip = arr
 vlib/v/checker/tests/fixed_array_conv.vv:5:4: error: mismatched types `&int` and `[2]int`
     3 | p = arr
     4 | mut ip := &int(0)
     5 | ip = arr
       |    ^
+    6 | _ = &int(arr)
+    7 | _ = p
+vlib/v/checker/tests/fixed_array_conv.vv:5:6: error: cannot assign to `ip`: expected `&int`, not `[2]int`
+    3 | p = arr
+    4 | mut ip := &int(0)
+    5 | ip = arr
+      |      ~~~
     6 | _ = &int(arr)
     7 | _ = p
 vlib/v/checker/tests/fixed_array_conv.vv:11:13: error: cannot use `[2]int` as `voidptr` in argument 1 to `memdup`

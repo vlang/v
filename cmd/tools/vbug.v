@@ -16,7 +16,7 @@ fn get_vdoctor_output(is_verbose bool) string {
 	return result.output
 }
 
-// get ouput from `v -g -o vdbg cmd/v && vdbg file.v`
+// get output from `v -g -o vdbg cmd/v && vdbg file.v`
 fn get_v_build_output(is_verbose bool, is_yes bool, file_path string) string {
 	mut vexe := os.getenv('VEXE')
 	// prepare a V compiler with -g to have better backtraces if possible

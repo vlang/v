@@ -12,47 +12,46 @@ import v.util.version
 import v.builder
 import v.builder.cbuilder
 
-const (
-	external_tools                      = [
-		'ast',
-		'bin2v',
-		'bug',
-		'build-examples',
-		'build-tools',
-		'build-vbinaries',
-		'bump',
-		'check-md',
-		'complete',
-		'compress',
-		'doc',
-		'doctor',
-		'fmt',
-		'gret',
-		'ls',
-		'missdoc',
-		'repl',
-		'self',
-		'setup-freetype',
-		'shader',
-		'share',
-		'should-compile-all',
-		'symlink',
-		'scan',
-		'test',
-		'test-all', // runs most of the tests and other checking tools, that will be run by the CI
-		'test-cleancode',
-		'test-fmt',
-		'test-parser',
-		'test-self',
-		'tracev',
-		'up',
-		'vet',
-		'wipe-cache',
-		'watch',
-		'where',
-	]
-	list_of_flags_that_allow_duplicates = ['cc', 'd', 'define', 'cf', 'cflags']
-)
+const external_tools = [
+	'ast',
+	'bin2v',
+	'bug',
+	'build-examples',
+	'build-tools',
+	'build-vbinaries',
+	'bump',
+	'check-md',
+	'complete',
+	'compress',
+	'doc',
+	'doctor',
+	'fmt',
+	'gret',
+	'ls',
+	'missdoc',
+	'repl',
+	'repeat',
+	'self',
+	'setup-freetype',
+	'shader',
+	'share',
+	'should-compile-all',
+	'symlink',
+	'scan',
+	'test',
+	'test-all', // runs most of the tests and other checking tools, that will be run by the CI
+	'test-cleancode',
+	'test-fmt',
+	'test-parser',
+	'test-self',
+	'tracev',
+	'up',
+	'vet',
+	'wipe-cache',
+	'watch',
+	'where',
+]
+const list_of_flags_that_allow_duplicates = ['cc', 'd', 'define', 'cf', 'cflags']
 
 fn main() {
 	mut timers_should_print := false
@@ -193,18 +192,7 @@ fn rebuild(prefs &pref.Preferences) {
 			util.launch_tool(prefs.is_verbose, 'builders/golang_builder', os.args[1..])
 		}
 		.wasm {
-			assert_wasm_backend_thirdparty()
 			util.launch_tool(prefs.is_verbose, 'builders/wasm_builder', os.args[1..])
 		}
-	}
-}
-
-fn assert_wasm_backend_thirdparty() {
-	vroot := os.dir(pref.vexe_path())
-	if !os.exists('${vroot}/cmd/tools/builders/wasm_builder')
-		&& !os.exists('${vroot}/thirdparty/binaryen') {
-		eprintln('The WebAssembly backend requires `binaryen`, an external library dependency')
-		eprintln('This can be installed with `./cmd/tools/install_binaryen.vsh`, to download prebuilt libraries for your platform')
-		exit(1)
 	}
 }

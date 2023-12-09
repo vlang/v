@@ -17,7 +17,7 @@ pub fn map_of_indexes[T](array []T) map[T][]int {
 }
 
 // map_of_counts returns a map, where each key is an unique value in `array`,
-// and each value for that key is how many times that value occures in `array`.
+// and each value for that key is how many times that value occurs in `array`.
 // It can be useful for building histograms of discrete measurements.
 // Example: arrays.map_of_counts([1,2,3,4,4,2,1,4,4]) == {1: 2, 2: 2, 3: 1, 4: 4}
 pub fn map_of_counts[T](array []T) map[T]int {

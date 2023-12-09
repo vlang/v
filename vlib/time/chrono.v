@@ -14,20 +14,11 @@ pub fn days_from_unix_epoch(year int, month int, day int) int {
 	return era * 146097 + day_of_the_era - 719468
 }
 
-// days_from_civil - return the number of days since the
-// Unix epoch 1970-01-01.
-// deprecated: use time.days_from_unix_epoch instead
-[deprecated: 'use time.days_from_unix_epoch instead']
-[deprecated_after: '2022-11-23']
-pub fn days_from_civil(year int, month int, day int) int {
-	return days_from_unix_epoch(year, month, day)
-}
-
 // days_from_unix_epoch - return the number of days since the Unix epoch 1970-01-01.
 // A detailed description of the algorithm here is in:
 // http://howardhinnant.github.io/date_algorithms.html
 // Note that method will return negative values for days before 1970-01-01.
-[inline]
+@[inline]
 pub fn (t Time) days_from_unix_epoch() int {
 	return days_from_unix_epoch(t.year, t.month, t.day)
 }

@@ -5,131 +5,127 @@ module native
 
 import os
 
-const (
-	elf_class32              = 1
-	elf_class64              = 2
+const elf_class32 = 1
+const elf_class64 = 2
 
-	elf_data_le              = 1
-	elf_data_be              = 2
+const elf_data_le = 1
+const elf_data_be = 2
 
-	elf_version              = 1
-	elf_abiversion           = 0
+const elf_version = 1
+const elf_abiversion = 0
 
-	// elf type
-	elf_type_none            = 0
-	elf_type_rel             = 1
-	elf_type_exec            = 2
-	elf_type_dyn             = 3
-	elf_type_core            = 4
+// elf type
+const elf_type_none = 0
+const elf_type_rel = 1
+const elf_type_exec = 2
+const elf_type_dyn = 3
+const elf_type_core = 4
 
-	elf_amd64                = 0x3e
-	elf_arm64                = 0xb7
+const elf_amd64 = 0x3e
+const elf_arm64 = 0xb7
 
-	elf_osabi_none           = 0
-	elf_osabi_hpux           = 1
-	elf_osabi_netbsd         = 2
-	elf_osabi_linux          = 3
-	elf_osabi_freebsd        = 9
+const elf_osabi_none = 0
+const elf_osabi_hpux = 1
+const elf_osabi_netbsd = 2
+const elf_osabi_linux = 3
+const elf_osabi_freebsd = 9
 
-	elf_header_size          = 0x40
-	elf_phentry_size         = 0x38
+const elf_header_size = 0x40
+const elf_phentry_size = 0x38
 
-	// elf program header type
-	elf_pt_null              = 0
-	elf_pt_load              = 1
-	elf_pt_dynamic           = 2
-	elf_pt_interp            = 3
-	elf_pt_note              = 4
-	elf_pt_shlib             = 5
-	elf_pt_phdr              = 6
-	elf_pt_tls               = 7
+// elf program header type
+const elf_pt_null = 0
+const elf_pt_load = 1
+const elf_pt_dynamic = 2
+const elf_pt_interp = 3
+const elf_pt_note = 4
+const elf_pt_shlib = 5
+const elf_pt_phdr = 6
+const elf_pt_tls = 7
 
-	// offset of e_entry field in the elf header
-	elf_e_entry_offset       = 24
+// offset of e_entry field in the elf header
+const elf_e_entry_offset = 24
 
-	// alignment of program headers
-	elf_p_align              = 0x1000
+// alignment of program headers
+const elf_p_align = 0x1000
 
-	// elf section header size
-	elf_shentry_size         = 0x40
+// elf section header size
+const elf_shentry_size = 0x40
 
-	// elf section type
-	elf_sht_null             = 0x00
-	elf_sht_progbits         = 0x01
-	elf_sht_symtab           = 0x02
-	elf_sht_strtab           = 0x03
-	elf_sht_rela             = 0x04
-	elf_sht_hash             = 0x05
-	elf_sht_dynamic          = 0x06
-	elf_sht_note             = 0x07
-	elf_sht_nobits           = 0x08
-	elf_sht_rel              = 0x09
-	elf_sht_shlib            = 0x0a
-	elf_sht_dynsym           = 0x0b
+// elf section type
+const elf_sht_null = 0x00
+const elf_sht_progbits = 0x01
+const elf_sht_symtab = 0x02
+const elf_sht_strtab = 0x03
+const elf_sht_rela = 0x04
+const elf_sht_hash = 0x05
+const elf_sht_dynamic = 0x06
+const elf_sht_note = 0x07
+const elf_sht_nobits = 0x08
+const elf_sht_rel = 0x09
+const elf_sht_shlib = 0x0a
+const elf_sht_dynsym = 0x0b
 
-	// elf section flags
-	elf_shf_write            = u64(0x01)
-	elf_shf_alloc            = u64(0x02)
-	elf_shf_execinstr        = u64(0x04)
-	elf_shf_merge            = u64(0x10)
-	elf_sht_strings          = u64(0x20)
-	elf_shf_info_link        = u64(0x40)
-	elf_shf_link_order       = u64(0x80)
-	elf_shf_os_nonconforming = u64(0x100)
-	elf_shf_groub            = u64(0x200)
-	elf_shf_tls              = u64(0x400)
+// elf section flags
+const elf_shf_write = u64(0x01)
+const elf_shf_alloc = u64(0x02)
+const elf_shf_execinstr = u64(0x04)
+const elf_shf_merge = u64(0x10)
+const elf_sht_strings = u64(0x20)
+const elf_shf_info_link = u64(0x40)
+const elf_shf_link_order = u64(0x80)
+const elf_shf_os_nonconforming = u64(0x100)
+const elf_shf_groub = u64(0x200)
+const elf_shf_tls = u64(0x400)
 
-	// elf symbol tables
-	elf_symtab_size          = 0x18
-	elf_dynamic_size         = 0x10
-	elf_rela_size            = 0x18
-	elf_rel_size             = 0x10
-	elf_sh_symtab_entsize    = elf_symtab_size
-	elf_sh_symtab_align      = 8
+// elf symbol tables
+const elf_symtab_size = 0x18
+const elf_dynamic_size = 0x10
+const elf_rela_size = 0x18
+const elf_rel_size = 0x10
+const elf_sh_symtab_entsize = elf_symtab_size
+const elf_sh_symtab_align = 8
 
-	// elf symbol binding
-	elf_stb_local            = u8(0)
-	elf_stb_global           = u8(1)
+// elf symbol binding
+const elf_stb_local = u8(0)
+const elf_stb_global = u8(1)
 
-	// elf symbol types
-	elf_stt_notype           = u8(0)
-	elf_stt_object           = u8(1)
-	elf_stt_func             = u8(2)
-	elf_stt_section          = u8(3)
-	elf_stt_file             = u8(4)
+// elf symbol types
+const elf_stt_notype = u8(0)
+const elf_stt_object = u8(1)
+const elf_stt_func = u8(2)
+const elf_stt_section = u8(3)
+const elf_stt_file = u8(4)
 
-	// elf symbol visibility
-	elf_stv_default          = i8(0)
+// elf symbol visibility
+const elf_stv_default = i8(0)
 
-	// elf relocation types
-	elf_r_amd64_none         = 0
-	elf_r_amd64_64           = 1
-	elf_r_amd64_pc32         = 2
-	elf_r_amd64_got32        = 3
-	elf_r_amd64_plt32        = 4
-	elf_r_amd64_copy         = 5
-	elf_r_amd64_glob_dat     = 6
-	elf_r_amd64_jump_slot    = 7
-	elf_r_amd64_relative     = 8
-	elf_r_amd64_gotpcrel     = 9
-	elf_r_amd64_32           = 10
-	elf_r_amd64_32s          = 11
-	elf_r_amd64_16           = 12
-	elf_r_amd64_pc16         = 13
-	elf_r_amd64_8            = 14
-	elf_r_amd64_pc8          = 15
-	elf_r_amd64_pc64         = 24
-	elf_r_amd64_gotoff64     = 25
-	elf_r_amd64_gotpc32      = 26
-	elf_r_amd64_size32       = 32
-	elf_r_amd64_size64       = 33
-	elf_r_amd64_gotpcrelx    = 0x29
-)
+// elf relocation types
+const elf_r_amd64_none = 0
+const elf_r_amd64_64 = 1
+const elf_r_amd64_pc32 = 2
+const elf_r_amd64_got32 = 3
+const elf_r_amd64_plt32 = 4
+const elf_r_amd64_copy = 5
+const elf_r_amd64_glob_dat = 6
+const elf_r_amd64_jump_slot = 7
+const elf_r_amd64_relative = 8
+const elf_r_amd64_gotpcrel = 9
+const elf_r_amd64_32 = 10
+const elf_r_amd64_32s = 11
+const elf_r_amd64_16 = 12
+const elf_r_amd64_pc16 = 13
+const elf_r_amd64_8 = 14
+const elf_r_amd64_pc8 = 15
+const elf_r_amd64_pc64 = 24
+const elf_r_amd64_gotoff64 = 25
+const elf_r_amd64_gotpc32 = 26
+const elf_r_amd64_size32 = 32
+const elf_r_amd64_size64 = 33
+const elf_r_amd64_gotpcrelx = 0x29
 
-const (
-	segment_start = 0x400000
-	placeholder   = 0
-)
+const segment_start = 0x400000
+const placeholder = 0
 
 struct ElfHeader {
 mut:
@@ -140,11 +136,11 @@ mut:
 	ident_abiversion i8  // Further specification of the ABI version.
 	typ              i16 // Object file type.
 	machine          i16 // Target instruction set architecture.
-	version          int // ELF version.
+	version          i32 // ELF version.
 	entry            i64 // Memory address of the entry point.
 	phoff            i64 // Pointer to the start of the program header table.
 	shoff            i64 // Pointer to the start of the section header table.
-	flags            int // Flags.
+	flags            i32 // Flags.
 	ehsize           i16 // Header size.
 	phentsize        i16 // Size of program headers.
 	phnum            i16 // Number of program headers.
@@ -179,11 +175,11 @@ fn (mut g Gen) default_elf_header() ElfHeader {
 fn (mut g Gen) gen_elf_header(h ElfHeader) {
 	g.write('\x7fELF'.bytes())
 	g.println('; \\x7fELF')
-	g.write8(h.ident_class)
-	g.write8(h.ident_data)
-	g.write8(h.ident_version)
-	g.write8(h.ident_osabi)
-	g.write8(h.ident_abiversion)
+	g.write8(i32(h.ident_class))
+	g.write8(i32(h.ident_data))
+	g.write8(i32(h.ident_version))
+	g.write8(i32(h.ident_osabi))
+	g.write8(i32(h.ident_abiversion))
 
 	// padding
 	for _ in 0 .. 7 {
@@ -191,9 +187,9 @@ fn (mut g Gen) gen_elf_header(h ElfHeader) {
 	}
 	g.println('; e_ident')
 
-	g.write16(h.typ)
+	g.write16(i32(h.typ))
 	g.println('; e_type')
-	g.write16(h.machine)
+	g.write16(i32(h.machine))
 	g.println('; e_machine')
 	g.write32(h.version)
 	g.println('; e_version')
@@ -205,17 +201,17 @@ fn (mut g Gen) gen_elf_header(h ElfHeader) {
 	g.println('; e_shoff')
 	g.write32(h.flags)
 	g.println('; e_flags')
-	g.write16(h.ehsize)
+	g.write16(i32(h.ehsize))
 	g.println('; e_ehsize')
-	g.write16(h.phentsize)
+	g.write16(i32(h.phentsize))
 	g.println('; e_phentsize')
-	g.write16(h.phnum)
+	g.write16(i32(h.phnum))
 	g.println('; e_phnum')
-	g.write16(h.shentsize)
+	g.write16(i32(h.shentsize))
 	g.println('; e_shentsize')
-	g.write16(h.shnum)
+	g.write16(i32(h.shnum))
 	g.println('; e_shnum')
-	g.write16(h.shstrndx)
+	g.write16(i32(h.shstrndx))
 	g.println('; e_shstrndx')
 
 	g.println('^^^ ELF header (64)')
@@ -223,8 +219,8 @@ fn (mut g Gen) gen_elf_header(h ElfHeader) {
 
 struct ProgramHeader {
 mut:
-	typ    int // Program header type.
-	flags  int // Segment-independent flags.
+	typ    i32 // Program header type.
+	flags  i32 // Segment-independent flags.
 	offset i64 // Offset of the segment in the file image.
 	vaddr  i64 // Virtual segment address.
 	paddr  i64 // Physical segment address.
@@ -233,7 +229,7 @@ mut:
 	align  i64 // Segment alignment.
 }
 
-fn (mut g Gen) create_program_header(typ int, flags int, align i64) ProgramHeader {
+fn (mut g Gen) create_program_header(typ i32, flags i32, align i64) ProgramHeader {
 	return ProgramHeader{
 		typ: typ
 		flags: flags
@@ -279,14 +275,14 @@ fn (mut g Gen) gen_program_header(p ProgramHeader) {
 
 struct SectionHeader {
 mut:
-	name      int // Offset to name string in .shstrtab.
-	typ       int // Section type.
+	name      i32 // Offset to name string in .shstrtab.
+	typ       i32 // Section type.
 	flags     i64 // Section attributes.
 	addr      i64 // Section address.
 	offset    i64 // Section address offset.
 	size      i64 // Section size.
-	link      int // Section index for associated section types.
-	info      int // Extra section information.
+	link      i32 // Section index for associated section types.
+	info      i32 // Extra section information.
 	addralign i64 // Section Alignment (must be power of two).
 	entsize   i64 // Section entry size.
 
@@ -296,7 +292,7 @@ mut:
 struct SymbolTableSection {
 	str_name string // string name (not generated)
 mut:
-	name  int // Index to name in .strtab.
+	name  i32 // Index to name in .strtab.
 	info  i8  // symbol type and binding attribute.
 	other i8  // Symbol visibility.
 	shndx i16 // Related section header table index.
@@ -341,7 +337,7 @@ mut:
 	addend i64 // Constant addent for computing the value of the relocation field.
 }
 
-fn (mut g Gen) create_rela_section(name string, offset i64, sym int, typ u32, addend i64) RelASection {
+fn (mut g Gen) create_rela_section(name string, offset i64, sym i32, typ u32, addend i64) RelASection {
 	return RelASection{
 		name: name
 		offset: offset
@@ -370,18 +366,18 @@ fn (mut g Gen) create_dynamic_section(tag i64, val i64) DynamicSection {
 
 struct NoteSection {
 mut:
-	namesz int // Length of the name field in bytes.
-	descsz int // Length of the descriptor field in bytes.
-	typ    int // Type of the node
+	namesz i32 // Length of the name field in bytes.
+	descsz i32 // Length of the descriptor field in bytes.
+	typ    i32 // Type of the node
 
 	name []u8 // Name string of the note.
-	desc []u8 // Descripition string of the node, must be aligned by 4 bytes
+	desc []u8 // Description string of the node, must be aligned by 4 bytes
 }
 
-fn (mut g Gen) create_note_section(typ int, name string, desc string) NoteSection {
+fn (mut g Gen) create_note_section(typ i32, name string, desc string) NoteSection {
 	return NoteSection{
-		namesz: name.len
-		descsz: desc.len
+		namesz: i32(name.len)
+		descsz: i32(desc.len)
 		typ: typ
 		name: name.bytes()
 		desc: desc.bytes()
@@ -446,7 +442,7 @@ mut:
 	data   SectionData = DynSymSection{}
 }
 
-fn (mut g Gen) create_section(name string, typ int, link int, info int, addralign i64, entsize i64, data SectionData) Section {
+fn (mut g Gen) create_section(name string, typ i32, link i32, info i32, addralign i64, entsize i64, data SectionData) Section {
 	return Section{
 		name: name
 		header: SectionHeader{
@@ -462,12 +458,12 @@ fn (mut g Gen) create_section(name string, typ int, link int, info int, addralig
 
 fn (mut g Gen) create_shstrtab(mut sections []Section) {
 	mut names := []string{len: sections.len + 1}
-	mut offset := 1
+	mut offset := i32(1)
 
 	for i, mut section in sections {
 		names[i] = section.name
 		section.header.name = offset
-		offset += section.name.len + 1
+		offset += i32(section.name.len) + 1
 	}
 
 	names[sections.len] = '.shstrtab'
@@ -481,8 +477,8 @@ fn (mut g Gen) create_shstrtab(mut sections []Section) {
 
 fn (mut g Gen) create_symtab(mut sections []Section, mut table []SymbolTableSection) {
 	mut names := []string{len: table.len}
-	mut offset := 1
-	mut local_symbols := 0
+	mut offset := i32(1)
+	mut local_symbols := i32(0)
 
 	for i, mut entry in table {
 		names[i] = entry.str_name
@@ -493,13 +489,13 @@ fn (mut g Gen) create_symtab(mut sections []Section, mut table []SymbolTableSect
 			local_symbols++
 		}
 
-		offset += entry.str_name.len + 1
+		offset += i32(entry.str_name.len + 1)
 	}
 
 	sections << g.create_section('.strtab', native.elf_sht_strtab, 0, 0, 1, 0, g.create_string_table_section(names))
 
 	sections << // index of .strtab
-	g.create_section('.symtab', native.elf_sht_symtab, sections.len - 1, local_symbols,
+	g.create_section('.symtab', native.elf_sht_symtab, i32(sections.len - 1), local_symbols,
 		native.elf_sh_symtab_align, native.elf_sh_symtab_entsize, table)
 }
 
@@ -518,10 +514,10 @@ fn (mut g Gen) create_progbits(name string, flags u64, data []u8) Section {
 	return section
 }
 
-fn (mut g Gen) find_section_header(name string, sections []Section) int {
+fn (mut g Gen) find_section_header(name string, sections []Section) i32 {
 	for i, section in sections {
 		if name == section.name {
-			return i
+			return i32(i)
 		}
 	}
 	return 0
@@ -571,9 +567,9 @@ fn (mut g Gen) gen_symtab_data(section Section, data []SymbolTableSection) {
 		}
 
 		g.write32(symbol.name)
-		g.write8(symbol.info)
-		g.write8(symbol.other)
-		g.write16(symbol.shndx)
+		g.write8(i32(symbol.info))
+		g.write8(i32(symbol.other))
+		g.write16(i32(symbol.shndx))
 		g.write64(symbol.value)
 		g.write64(symbol.size)
 		g.println('; SHT_SYMTAB ${symbol.str_name}')
@@ -683,10 +679,10 @@ fn (mut g Gen) gen_section_data(sections []Section) {
 	}
 }
 
-pub fn (mut g Gen) symtab_get_index(symbols []SymbolTableSection, name string) int {
+pub fn (mut g Gen) symtab_get_index(symbols []SymbolTableSection, name string) i32 {
 	for i, sym in symbols {
 		if sym.str_name == name {
-			return i
+			return i32(i)
 		}
 	}
 	return 0
@@ -751,7 +747,7 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 	}
 
 	g.code_start_pos = g.pos()
-	g.debug_pos = int(g.pos())
+	g.debug_pos = i32(g.pos())
 	// if g.start_symbol_addr > 0 {
 	//	g.write64_at(g.start_symbol_addr + native.elf_symtab_size - 16, g.code_start_pos)
 	//}
@@ -760,16 +756,13 @@ pub fn (mut g Gen) generate_linkable_elf_header() {
 	g.elf_text_header_addr = text_section.header.offset
 	g.write64_at(g.elf_text_header_addr + 24, g.pos()) // write the code start pos to the text section
 
-	g.call(native.placeholder)
+	g.code_gen.call(native.placeholder)
 	g.println('; call main.main')
-	if g.pref.arch == .arm64 {
-	} else {
-		g.mov64(.rax, 0)
-	}
-	g.ret()
+	g.code_gen.mov64(g.code_gen.main_reg(), 0)
+	g.code_gen.ret()
 	g.println('; return 0')
 
-	g.debug_pos = g.buf.len
+	g.debug_pos = i32(g.buf.len)
 }
 
 pub fn (mut g Gen) generate_simple_elf_header() {
@@ -799,22 +792,22 @@ pub fn (mut g Gen) generate_simple_elf_header() {
 	}
 
 	g.code_start_pos = g.pos()
-	g.debug_pos = int(g.pos())
+	g.debug_pos = i32(g.pos())
 
-	g.call(native.placeholder)
+	g.code_gen.call(native.placeholder)
 	g.println('; call main.main')
 
 	// generate exit syscall
 	match g.pref.arch {
 		.arm64 {
-			g.mov_arm(.x16, 0)
-			g.mov_arm(.x0, 0)
-			g.svc()
+			g.code_gen.mov(Arm64Register.x16, 0)
+			g.code_gen.mov(Arm64Register.x0, 0)
+			g.code_gen.svc()
 		}
 		.amd64 {
-			g.mov(.edi, 0)
-			g.mov(.eax, g.nsyscall_exit())
-			g.syscall()
+			g.code_gen.mov(Amd64Register.edi, 0)
+			g.code_gen.mov(Amd64Register.eax, g.nsyscall(.exit))
+			g.code_gen.syscall()
 		}
 		else {
 			g.n_error('unsupported platform ${g.pref.arch}')
@@ -823,17 +816,17 @@ pub fn (mut g Gen) generate_simple_elf_header() {
 }
 
 pub fn (mut g Gen) elf_string_table() {
-	mut generated := map[string]int{}
+	mut generated := map[string]i32{}
 
 	for _, s in g.strs {
-		pos := generated[s.str] or { g.buf.len }
+		pos := generated[s.str] or { i32(g.buf.len) }
 
 		match s.typ {
 			.abs64 {
-				g.write64_at(s.pos, pos)
+				g.write64_at(i64(s.pos), i64(pos))
 			}
 			.rel32 {
-				g.write32_at(s.pos, pos - s.pos - 4)
+				g.write32_at(i64(s.pos), pos - s.pos - 4)
 			}
 			else {
 				g.n_error('unsupported string reloc type')
@@ -875,7 +868,7 @@ pub fn (mut g Gen) generate_elf_footer() {
 	g.write64_at(g.file_size_pos + 8, file_size)
 	if g.pref.arch == .arm64 {
 		bl_next := u32(0x94000001)
-		g.write32_at(g.code_start_pos, int(bl_next))
+		g.write32_at(g.code_start_pos, i32(bl_next))
 	} else {
 		// amd64
 		// call main function, it's not guaranteed to be the first
@@ -883,9 +876,8 @@ pub fn (mut g Gen) generate_elf_footer() {
 		// now need to replace "0" with a relative address of the main function
 		// +1 is for "e8"
 		// -5 is for "e8 00 00 00 00"
-		g.write32_at(g.code_start_pos + 1, int(g.main_fn_addr - g.code_start_pos) - 5)
+		g.write32_at(g.code_start_pos + 1, i32(g.main_fn_addr - g.code_start_pos) - 5)
 	}
-
 	g.create_executable()
 }
 
@@ -923,7 +915,7 @@ pub fn (mut g Gen) find_o_path(fname string) string {
 }
 
 pub fn (mut g Gen) get_lpaths() string {
-	lpaths := match g.pref.arch {
+	mut lpaths := match g.pref.arch {
 		.amd64 {
 			g.prepend_vobjpath(['/usr/lib/x86_64-linux-gnu', '/usr/lib64', '/lib64', '/usr/lib',
 				'/lib'])
@@ -936,6 +928,7 @@ pub fn (mut g Gen) get_lpaths() string {
 			['/dev/null']
 		}
 	}
+	lpaths << g.linker_include_paths
 	return lpaths.map('-L${it}').join(' ')
 }
 
@@ -964,7 +957,7 @@ pub fn (mut g Gen) link_elf_file(obj_file string) {
 		else { '/dev/null' }
 	}
 
-	linker_args := [
+	mut linker_args := [
 		'-v',
 		lpaths,
 		'-m ${arch}',
@@ -979,6 +972,7 @@ pub fn (mut g Gen) link_elf_file(obj_file string) {
 		'${obj_file}',
 		'-o ${g.out_name}',
 	]
+	linker_args << g.linker_libs
 	slinker_args := linker_args.join(' ')
 
 	mut ld := 'ld'

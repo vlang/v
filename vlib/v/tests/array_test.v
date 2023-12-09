@@ -1,3 +1,26 @@
+enum Foo {
+	zero
+	first  = 1
+	third  = 3
+	fourth
+}
+
+const enum_size = i32(Foo.third)
+
+fn test_enum_val_as_fixed_array_size() {
+	arr1 := [int(Foo.first)]int{}
+	assert arr1 == [0]!
+
+	// TODO check why it fails on MSVC
+	$if !msvc {
+		arr2 := [enum_size]int{}
+		assert arr2 == [0, 0, 0]!
+	}
+
+	arr3 := [int(Foo.fourth)]int{}
+	assert arr3 == [0, 0, 0, 0]!
+}
+
 fn test_for_in_array_named_array() {
 	mut array := [1]
 	for elem in array {
@@ -21,7 +44,7 @@ fn test_for_in_shared_array_named_array() {
 
 fn test_fixed_array_to_dynamic_array() {
 	y := [1, 2, 3]!
-	mut x := y[..]
+	mut x := unsafe { y[..] }
 	x << 4
 	assert x.len == 4
 }

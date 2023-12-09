@@ -236,6 +236,9 @@ fn (mut g JsGen) comptime_if_to_ifdef(name string, is_comptime_option bool) !str
 		'js' {
 			return 'true'
 		}
+		'native' {
+			return 'false'
+		}
 		// compilers:
 		'gcc' {
 			return 'false'

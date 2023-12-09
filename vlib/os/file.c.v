@@ -5,7 +5,7 @@ pub struct Eof {
 	Error
 }
 
-// NotExpected is a generic error that means that we receave a not expecte error.
+// NotExpected is a generic error that means that we receave a not expected error.
 pub struct NotExpected {
 	cause string
 	code  int
@@ -51,7 +51,7 @@ fn fix_windows_path(path string) string {
 	return p
 }
 
-// open_file can be used to open or create a file with custom flags and permissions and returns a `File` object.
+// open_file tries to open or create a file with custom flags and permissions.
 pub fn open_file(path string, mode string, options ...int) !File {
 	mut flags := 0
 	mut seek_to_end := false
@@ -101,12 +101,15 @@ pub fn open_file(path string, mode string, options ...int) !File {
 		}
 	}
 	p := fix_windows_path(path)
-	fd := C.open(&char(p.str), flags, permission)
+	fd := $if windows {
+		C._wopen(p.to_wide(), flags, permission)
+	} $else {
+		C.open(&char(p.str), flags, permission)
+	}
 	if fd == -1 {
 		return error(posix_get_error_msg(C.errno))
 	}
-	fdopen_mode := mode.replace('b', '')
-	cfile := C.fdopen(fd, &char(fdopen_mode.str))
+	cfile := C.fdopen(fd, &char(mode.str))
 	if isnil(cfile) {
 		return error('Failed to open or create file "${path}"')
 	}
@@ -125,7 +128,7 @@ pub fn open_file(path string, mode string, options ...int) !File {
 	}
 }
 
-// open tries to open a file for reading and returns back a read-only `File` object.
+// open tries to open a file from a given path for reading.
 pub fn open(path string) !File {
 	/*
 	$if linux {
@@ -213,14 +216,14 @@ pub fn stderr() File {
 
 // eof returns true, when the end of file has been reached
 pub fn (f &File) eof() bool {
-	cfile := &C.FILE(f.cfile)
+	cfile := unsafe { &C.FILE(f.cfile) }
 	return C.feof(cfile) != 0
 }
 
 // reopen allows a `File` to be reused. It is mostly useful for reopening standard input and output.
 pub fn (mut f File) reopen(path string, mode string) ! {
 	p := fix_windows_path(path)
-	mut cfile := &C.FILE(0)
+	mut cfile := &C.FILE(unsafe { nil })
 	$if windows {
 		cfile = C._wfreopen(p.to_wide(), mode.to_wide(), f.cfile)
 	} $else {
@@ -238,13 +241,13 @@ pub fn (f &File) read(mut buf []u8) !int {
 		return Eof{}
 	}
 	// the following is needed, because on FreeBSD, C.feof is a macro:
-	nbytes := int(C.fread(buf.data, 1, buf.len, &C.FILE(f.cfile)))
+	nbytes := int(C.fread(buf.data, 1, buf.len, unsafe { &C.FILE(f.cfile) }))
 	// if no bytes were read, check for errors and end-of-file.
 	if nbytes <= 0 {
-		if C.feof(&C.FILE(f.cfile)) != 0 {
+		if C.feof(unsafe { &C.FILE(f.cfile) }) != 0 {
 			return Eof{}
 		}
-		if C.ferror(&C.FILE(f.cfile)) != 0 {
+		if C.ferror(unsafe { &C.FILE(f.cfile) }) != 0 {
 			return NotExpected{
 				cause: 'unexpected error from fread'
 				code: -1
@@ -255,6 +258,7 @@ pub fn (f &File) read(mut buf []u8) !int {
 }
 
 // **************************** Write ops  ***************************
+
 // write implements the Writer interface.
 // It returns how many bytes were actually written.
 pub fn (mut f File) write(buf []u8) !int {
@@ -351,14 +355,14 @@ pub fn (mut f File) write_to(pos u64, buf []u8) !int {
 // write_ptr writes `size` bytes to the file, starting from the address in `data`.
 // Note: write_ptr is unsafe and should be used carefully, since if you pass invalid
 // pointers to it, it will cause your programs to segfault.
-[unsafe]
+@[unsafe]
 pub fn (mut f File) write_ptr(data voidptr, size int) int {
 	return int(C.fwrite(data, 1, size, f.cfile))
 }
 
 // write_full_buffer writes a whole buffer of data to the file, starting from the
 // address in `buffer`, no matter how many tries/partial writes it would take.
-[unsafe]
+@[unsafe]
 pub fn (mut f File) write_full_buffer(buffer voidptr, buffer_len usize) ! {
 	if buffer_len <= usize(0) {
 		return
@@ -384,7 +388,7 @@ pub fn (mut f File) write_full_buffer(buffer voidptr, buffer_len usize) ! {
 // at byte offset `pos`, counting from the start of the file (pos 0).
 // Note: write_ptr_at is unsafe and should be used carefully, since if you pass invalid
 // pointers to it, it will cause your programs to segfault.
-[unsafe]
+@[unsafe]
 pub fn (mut f File) write_ptr_at(data voidptr, size int, pos u64) int {
 	$if x64 {
 		$if windows {
@@ -462,7 +466,7 @@ pub fn (f &File) read_bytes_into_newline(mut buf []u8) !int {
 	mut buf_ptr := 0
 	mut nbytes := 0
 
-	stream := &C.FILE(f.cfile)
+	stream := unsafe { &C.FILE(f.cfile) }
 	for (buf_ptr < buf.len) {
 		c = C.getc(stream)
 		match c {
@@ -555,6 +559,7 @@ pub fn (f &File) read_into_ptr(ptr &u8, max_size int) !int {
 }
 
 // **************************** Utility  ops ***********************
+
 // flush writes any buffered unwritten data left in the file stream.
 pub fn (mut f File) flush() {
 	if !f.is_opened {
@@ -837,7 +842,7 @@ pub enum SeekMode {
 //   .start   -> the origin is the start of the file
 //   .current -> the current position/cursor in the file
 //   .end     -> the end of the file
-// If the file is not seek-able, or an error occures, the error will
+// If the file is not seek-able, or an error occurs, the error will
 // be returned to the caller.
 // A successful call to the fseek() function clears the end-of-file
 // indicator for the file.
@@ -870,7 +875,12 @@ pub fn (f &File) tell() !i64 {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
-	pos := C.ftell(f.cfile)
+	mut pos := isize(0)
+	$if windows {
+		pos = C._telli64(f.fd)
+	} $else {
+		pos = C.ftell(f.cfile)
+	}
 	if pos == -1 {
 		return error(posix_get_error_msg(C.errno))
 	}

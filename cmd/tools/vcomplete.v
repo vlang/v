@@ -41,10 +41,10 @@ module main
 
 import os
 
-const (
-	auto_complete_shells = ['bash', 'fish', 'zsh', 'powershell'] // list of supported shells
-	vexe                 = os.getenv('VEXE')
-	help_text            = "Usage:
+const auto_complete_shells = ['bash', 'fish', 'zsh', 'powershell'] // list of supported shells
+
+const vexe = os.getenv('VEXE')
+const help_text = "Usage:
   v complete [options] [SUBCMD] QUERY...
 
 Description:
@@ -72,216 +72,243 @@ SUBCMD:
   fish      : [QUERY]       - returns Fish compatible completion code with completions computed from QUERY
   zsh       : [QUERY]       - returns ZSH  compatible completion code with completions computed from QUERY
   powershell: [QUERY]       - returns PowerShell compatible completion code with completions computed from QUERY"
-)
 
-// Snooped from cmd/v/v.v, vlib/v/pref/pref.v
-const (
-	auto_complete_commands      = [
-		// simple_cmd
-		'ast',
-		'doc',
-		'vet',
-		// tools in one .v file
-		'bin2v',
-		'bug',
-		'build-examples',
-		'build-tools',
-		'build-vbinaries',
-		'bump',
-		'check-md',
-		'complete',
-		'compress',
-		'create',
-		'doctor',
-		'fmt',
-		'gret',
-		'ls',
-		'repl',
-		'self',
-		'setup-freetype',
-		'shader',
-		'symlink',
-		'test-all',
-		'test-cleancode',
-		'test-fmt',
-		'test-parser',
-		'test-self',
-		'test',
-		'tracev',
-		'up',
-		'watch',
-		'wipe-cache',
-		// commands
-		'help',
-		'new',
-		'init',
-		'translate',
-		'self',
-		'search',
-		'install',
-		'update',
-		'upgrade',
-		'outdated',
-		'list',
-		'remove',
-		'vlib-docs',
-		'get',
-		'version',
-		'run',
-		'build',
-		'build-module',
-		'missdoc',
-	]
-	// Entries in the flag arrays below should be entered as is:
-	// * Short flags, e.g.: "-v", should be entered: '-v'
-	// * Long flags, e.g.: "--version", should be entered: '--version'
-	// * Single-dash flags, e.g.: "-version", should be entered: '-version'
-	auto_complete_flags         = [
-		'-apk',
-		'-show-timings',
-		'-check-syntax',
-		'-check',
-		'-v',
-		'-progress',
-		'-silent',
-		'-g',
-		'-cg',
-		'-repl',
-		'-live',
-		'-sharedlive',
-		'-shared',
-		'--enable-globals',
-		'-enable-globals',
-		'-autofree',
-		'-compress',
-		'-freestanding',
-		'-no-parallel',
-		'-no-preludes',
-		'-prof',
-		'-profile',
-		'-profile-no-inline',
-		'-prod',
-		'-simulator',
-		'-stats',
-		'-obfuscate',
-		'-translated',
-		'-color',
-		'-nocolor',
-		'-showcc',
-		'-show-c-output',
-		'-experimental',
-		'-usecache',
-		'-prealloc',
-		'-parallel',
-		'-native',
-		'-W',
-		'-keepc',
-		'-w',
-		'-print-v-files',
-		'-error-limit',
-		'-message-limit',
-		'-os',
-		'-printfn',
-		'-cflags',
-		'-define',
-		'-d',
-		'-cc',
-		'-o',
-		'-b',
-		'-path',
-		'-custom-prelude',
-		'-name',
-		'-bundle',
-		'-V',
-		'-version',
-		'--version',
-	]
-	auto_complete_flags_doc     = [
-		'-all',
-		'-f',
-		'-h',
-		'-help',
-		'-m',
-		'-o',
-		'-readme',
-		'-v',
-		'-filename',
-		'-pos',
-		'-no-timestamp',
-		'-inline-assets',
-		'-theme-dir',
-		'-open',
-		'-p',
-		'-s',
-		'-l',
-	]
-	auto_complete_flags_fmt     = [
-		'-c',
-		'-diff',
-		'-l',
-		'-w',
-		'-debug',
-		'-verify',
-	]
-	auto_complete_flags_bin2v   = [
-		'-h',
-		'--help',
-		'-m',
-		'--module',
-		'-p',
-		'--prefix',
-		'-w',
-		'--write',
-	]
-	auto_complete_flags_shader  = [
-		'--help',
-		'-h',
-		'--force-update',
-		'-u',
-		'--verbose',
-		'-v',
-		'--slang',
-		'-l',
-		'--output',
-		'-o',
-	]
-	auto_complete_flags_missdoc = [
-		'--help',
-		'-h',
-		'--tags',
-		'-t',
-		'--deprecated',
-		'-d',
-		'--private',
-		'-p',
-		'--no-line-numbers',
-		'-n',
-		'--exclude',
-		'-e',
-		'--relative-paths',
-		'-r',
-		'--js',
-		'--verify',
-		'--diff',
-	]
-	auto_complete_flags_bump    = [
-		'--patch',
-		'--minor',
-		'--major',
-	]
-	auto_complete_flags_self    = [
-		'-prod',
-	]
-	auto_complete_compilers     = [
-		'cc',
-		'gcc',
-		'tcc',
-		'tinyc',
-		'clang',
-		'mingw',
-		'msvc',
-	]
-)
+// Snooped from cmd/v/v.v, vlib/v/pref/pref.c.v
+const auto_complete_commands = [
+	// simple_cmd
+	'ast',
+	'doc',
+	'vet',
+	// tools in one .v file
+	'bin2v',
+	'bug',
+	'build-examples',
+	'build-tools',
+	'build-vbinaries',
+	'bump',
+	'check-md',
+	'complete',
+	'compress',
+	'create',
+	'doctor',
+	'fmt',
+	'gret',
+	'ls',
+	'repl',
+	'repeat',
+	'self',
+	'setup-freetype',
+	'shader',
+	'symlink',
+	'test-all',
+	'test-cleancode',
+	'test-fmt',
+	'test-parser',
+	'test-self',
+	'test',
+	'tracev',
+	'up',
+	'watch',
+	'wipe-cache',
+	// commands
+	'help',
+	'new',
+	'init',
+	'translate',
+	'self',
+	'search',
+	'install',
+	'update',
+	'upgrade',
+	'outdated',
+	'list',
+	'remove',
+	'vlib-docs',
+	'get',
+	'version',
+	'run',
+	'build',
+	'build-module',
+	'missdoc',
+]
+// Entries in the flag arrays below should be entered as is:
+// * Short flags, e.g.: "-v", should be entered: '-v'
+// * Long flags, e.g.: "--version", should be entered: '--version'
+// * Single-dash flags, e.g.: "-version", should be entered: '-version'
+const auto_complete_flags = [
+	'-apk',
+	'-show-timings',
+	'-check-syntax',
+	'-check',
+	'-v',
+	'-progress',
+	'-silent',
+	'-g',
+	'-cg',
+	'-repl',
+	'-live',
+	'-sharedlive',
+	'-shared',
+	'--enable-globals',
+	'-enable-globals',
+	'-autofree',
+	'-compress',
+	'-freestanding',
+	'-no-builtin',
+	'-no-parallel',
+	'-no-preludes',
+	'-prof',
+	'-profile',
+	'-profile-no-inline',
+	'-prod',
+	'-simulator',
+	'-stats',
+	'-obfuscate',
+	'-translated',
+	'-color',
+	'-nocolor',
+	'-showcc',
+	'-show-c-output',
+	'-experimental',
+	'-usecache',
+	'-prealloc',
+	'-parallel',
+	'-native',
+	'-W',
+	'-keepc',
+	'-w',
+	'-print-v-files',
+	'-error-limit',
+	'-message-limit',
+	'-os',
+	'-printfn',
+	'-cflags',
+	'-define',
+	'-d',
+	'-cc',
+	'-o',
+	'-b',
+	'-path',
+	'-custom-prelude',
+	'-name',
+	'-bundle',
+	'-V',
+	'-version',
+	'--version',
+]
+const auto_complete_flags_doc = [
+	'-all',
+	'-f',
+	'-h',
+	'-help',
+	'-m',
+	'-o',
+	'-readme',
+	'-v',
+	'-filename',
+	'-pos',
+	'-no-timestamp',
+	'-inline-assets',
+	'-theme-dir',
+	'-open',
+	'-p',
+	'-s',
+	'-l',
+]
+const auto_complete_flags_fmt = [
+	'-c',
+	'-diff',
+	'-l',
+	'-w',
+	'-debug',
+	'-verify',
+]
+const auto_complete_flags_bin2v = [
+	'-h',
+	'--help',
+	'-m',
+	'--module',
+	'-p',
+	'--prefix',
+	'-w',
+	'--write',
+]
+const auto_complete_flags_shader = [
+	'--help',
+	'-h',
+	'--force-update',
+	'-u',
+	'--verbose',
+	'-v',
+	'--slang',
+	'-l',
+	'--output',
+	'-o',
+]
+const auto_complete_flags_missdoc = [
+	'--help',
+	'-h',
+	'--tags',
+	'-t',
+	'--deprecated',
+	'-d',
+	'--private',
+	'-p',
+	'--no-line-numbers',
+	'-n',
+	'--exclude',
+	'-e',
+	'--relative-paths',
+	'-r',
+	'--js',
+	'--verify',
+	'--diff',
+]
+const auto_complete_flags_bump = [
+	'--patch',
+	'--minor',
+	'--major',
+]
+const auto_complete_flags_self = [
+	'-prod',
+]
+const auto_complete_flags_repeat = [
+	'--help',
+	'-h',
+	'--runs',
+	'-r',
+	'--series',
+	'-s',
+	'--warmup',
+	'-w',
+	'--newline',
+	'-n',
+	'--output',
+	'-O',
+	'--max_time',
+	'-m',
+	'--fail_percent',
+	'-f',
+	'--template',
+	'-t',
+	'--parameter',
+	'-p',
+	'--nmins',
+	'-i',
+	'--nmaxs',
+	'-a',
+	'--ignore',
+	'-e',
+]
+const auto_complete_compilers = [
+	'cc',
+	'gcc',
+	'tcc',
+	'tinyc',
+	'clang',
+	'mingw',
+	'msvc',
+]
 
 // auto_complete prints auto completion results back to the calling shell's completion system.
 // auto_complete acts as communication bridge between the calling shell and V's completions.
@@ -342,11 +369,19 @@ fn auto_complete(args []string) {
 				exit(0)
 			}
 			mut lines := []string{}
+			mut dirs := []string{}
+			mut files := []string{}
 			list := auto_complete_request(sub_args[1..])
 			for entry in list {
-				lines << 'compadd -U -S' + '""' + ' -- ' + "'${entry}';"
+				match true {
+					os.is_dir(entry) { dirs << entry }
+					os.is_file(entry) { files << entry }
+					else { lines << entry }
+				}
 			}
-			println(lines.join('\n'))
+			println('compadd -q -- ${lines.join(' ')}')
+			println('compadd -J "dirs" -X "directory" -d -- ${dirs.join(' ')}')
+			println('compadd -J "files" -X "file" -f -- ${files.join(' ')}')
 		}
 		'-h', '--help' {
 			println(help_text)
@@ -437,6 +472,9 @@ fn auto_complete_request(args []string) []string {
 				}
 				'bump' { // 'v bump -<tab>' -> flags.
 					list = get_flags(auto_complete_flags_bump, part)
+				}
+				'repeat' { // 'v repeat -<tab>' -> flags.
+					list = get_flags(auto_complete_flags_repeat, part)
 				}
 				else {
 					for flag in auto_complete_flags {

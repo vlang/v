@@ -31,11 +31,9 @@ mut:
 	diff_cmd string // filled in when -diff or -verify is passed
 }
 
-const (
-	formatted_file_token = '\@\@\@' + 'FORMATTED_FILE: '
-	vtmp_folder          = os.vtmp_dir()
-	term_colors          = term.can_show_color_on_stderr()
-)
+const formatted_file_token = '\@\@\@' + 'FORMATTED_FILE: '
+const vtmp_folder = os.vtmp_dir()
+const term_colors = term.can_show_color_on_stderr()
 
 fn main() {
 	// if os.getenv('VFMT_ENABLE') == '' {
@@ -89,7 +87,6 @@ fn main() {
 	}
 	if files.len == 0 || '-help' in args || '--help' in args {
 		help.print_and_exit('fmt')
-		exit(0)
 	}
 	mut cli_args_no_files := []string{}
 	for idx, a in os.args {
@@ -352,7 +349,7 @@ fn get_compile_name_of_potential_v_project(file string) string {
 	return pfolder
 }
 
-[noreturn]
+@[noreturn]
 fn verror(s string) {
 	util.verror('vfmt error', s)
 }

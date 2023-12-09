@@ -24,7 +24,7 @@ jobs:
         cd v
         ./v run examples/hello_world.v
 
-  macos:
+  macos-x86_64:
     runs-on: macOS-latest
     timeout-minutes: 5
     steps:
@@ -36,14 +36,18 @@ jobs:
     - name: Download V
       run: |
         tag=${GITHUB_REF##*/}
-        wget https://github.com/vlang/v/releases/download/$tag/v_macos.zip
-        unzip v_macos.zip
+        wget https://github.com/vlang/v/releases/download/$tag/v_macos_x86_64.zip
+        unzip v_macos_x86_64.zip
         cd v
         ./v -version
     - name: Test V
       run: |
         cd v
         ./v run examples/hello_world.v
+
+  # NOTE: we cannot currently test the macos arm64 build without a apple silicon runner
+  # the arm64 release is cross compiled from intel. the apple silicon hosted runner is
+  # only currently available on the macos-latest-xlarge plan, not on the free plans.
 
   windows:
     runs-on: windows-latest

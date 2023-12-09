@@ -1,7 +1,7 @@
 module main
 
-import underscore as _
+import underscore as _abc
 
 fn main() {
-	_.foo()
+	_abc.foo()
 }

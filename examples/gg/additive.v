@@ -5,7 +5,7 @@ import gg
 import gx
 import math
 
-[heap]
+@[heap]
 pub struct Window {
 pub mut:
 	ctx   &gg.Context = unsafe { 0 }

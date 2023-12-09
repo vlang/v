@@ -25,7 +25,9 @@ fn test_mut() {
 	n := 1
 	mut b := (&n)
 	//
-	(*b) = 10
+	unsafe {
+		(*b) = 10
+	}
 	// mut b := mut a
 	// b = 10
 }

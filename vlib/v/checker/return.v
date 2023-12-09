@@ -9,7 +9,7 @@ import v.pref
 // ? => Option type
 // ! => Result type
 // others => type `name`
-[inline]
+@[inline]
 fn (mut c Checker) error_type_name(exp_type ast.Type) string {
 	return if exp_type == ast.void_type.set_flag(.result) {
 		'Result type'
@@ -34,6 +34,10 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 		}
 	}
 	expected_type_sym := c.table.sym(expected_type)
+	if expected_type_sym.info is ast.ArrayFixed {
+		c.table.find_or_register_array_fixed(expected_type_sym.info.elem_type, expected_type_sym.info.size,
+			expected_type_sym.info.size_expr, true)
+	}
 	if node.exprs.len > 0 && c.table.cur_fn.return_type == ast.void_type {
 		c.error('unexpected argument, current function does not return anything', node.exprs[0].pos())
 		return
@@ -64,14 +68,14 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 	}
 	mut got_types := []ast.Type{}
 	mut expr_idxs := []int{}
-	for i, expr in node.exprs {
-		mut typ := c.expr(expr)
+	for i, mut expr in node.exprs {
+		mut typ := c.expr(mut expr)
 		if typ == 0 {
 			return
 		}
 		// Handle `return unsafe { none }`
-		if expr is ast.UnsafeExpr {
-			if expr.expr is ast.None {
+		if mut expr is ast.UnsafeExpr {
+			if mut expr.expr is ast.None {
 				c.error('cannot return `none` in unsafe block', expr.expr.pos)
 			}
 		}
@@ -82,13 +86,16 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 		// Unpack multi return types
 		sym := c.table.sym(typ)
 		if sym.kind == .multi_return {
+			if i > 0 || i != node.exprs.len - 1 {
+				c.error('cannot use multi-return with other return types', expr.pos())
+			}
 			for t in sym.mr_info().types {
 				got_types << t
 				expr_idxs << i
 			}
 		} else {
-			if expr is ast.Ident {
-				if expr.obj is ast.Var {
+			if mut expr is ast.Ident {
+				if mut expr.obj is ast.Var {
 					if expr.obj.smartcasts.len > 0 {
 						typ = c.unwrap_generic(expr.obj.smartcasts.last())
 					}
@@ -118,10 +125,10 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 	result_type_idx := c.table.type_idxs['_result']
 	got_types_0_idx := got_types[0].idx()
 	if exp_is_option && got_types_0_idx == ast.error_type_idx {
-		c.warn('Option and Result types have been split, use `!Foo` to return errors',
+		c.error('Option and Result types have been split, use `!Foo` to return errors',
 			node.pos)
 	} else if exp_is_result && got_types_0_idx == ast.none_type_idx {
-		c.warn('Option and Result types have been split, use `?` to return none', node.pos)
+		c.error('Option and Result types have been split, use `?` to return none', node.pos)
 	}
 	if (exp_is_option
 		&& got_types_0_idx in [ast.none_type_idx, ast.error_type_idx, option_type_idx])
@@ -131,14 +138,16 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 	if expected_types.len > 0 && expected_types.len != got_types.len {
 		// `fn foo() !(int, string) { return Err{} }`
 		if (exp_is_option || exp_is_result) && node.exprs.len == 1 {
-			got_typ := c.expr(node.exprs[0])
-			got_typ_sym := c.table.sym(got_typ)
-			if got_typ_sym.kind == .struct_ && c.type_implements(got_typ, ast.error_type, node.pos) {
+			mut expr_ := node.exprs[0]
+			got_type := c.expr(mut expr_)
+			got_type_sym := c.table.sym(got_type)
+			if got_type_sym.kind == .struct_
+				&& c.type_implements(got_type, ast.error_type, node.pos) {
 				node.exprs[0] = ast.CastExpr{
 					expr: node.exprs[0]
 					typname: 'IError'
 					typ: ast.error_type
-					expr_type: got_typ
+					expr_type: got_type
 					pos: node.pos
 				}
 				node.types[0] = ast.error_type
@@ -153,7 +162,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 	}
 	for i, exp_type in expected_types {
 		exprv := node.exprs[expr_idxs[i]]
-		if exprv is ast.Ident && (exprv as ast.Ident).or_expr.kind == .propagate_option {
+		if exprv is ast.Ident && exprv.or_expr.kind == .propagate_option {
 			if exp_type.has_flag(.option) {
 				c.warn('unwrapping option is redundant as the function returns option',
 					node.pos)
@@ -161,24 +170,30 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 				c.error('should not unwrap option var on return, it could be none', node.pos)
 			}
 		}
-		got_typ := c.unwrap_generic(got_types[i])
-		if got_typ.has_flag(.option) && got_typ.clear_flag(.option) != exp_type.clear_flag(.option) {
+		got_type := c.unwrap_generic(got_types[i])
+		if got_type.has_flag(.option)
+			&& got_type.clear_flag(.option) != exp_type.clear_flag(.option) {
 			pos := node.exprs[expr_idxs[i]].pos()
-			c.error('cannot use `${c.table.type_to_str(got_typ)}` as ${c.error_type_name(exp_type)} in return argument',
+			c.error('cannot use `${c.table.type_to_str(got_type)}` as ${c.error_type_name(exp_type)} in return argument',
 				pos)
 		}
-		if got_typ.has_flag(.result) && (!exp_type.has_flag(.result)
-			|| c.table.type_to_str(got_typ) != c.table.type_to_str(exp_type)) {
+		if got_type.has_flag(.result) && (!exp_type.has_flag(.result)
+			|| c.table.type_to_str(got_type) != c.table.type_to_str(exp_type)) {
 			pos := node.exprs[expr_idxs[i]].pos()
-			c.error('cannot use `${c.table.type_to_str(got_typ)}` as ${c.error_type_name(exp_type)} in return argument',
+			c.error('cannot use `${c.table.type_to_str(got_type)}` as ${c.error_type_name(exp_type)} in return argument',
 				pos)
+		}
+		if exprv is ast.ComptimeCall && exprv.method_name == 'tmpl'
+			&& c.table.final_sym(exp_type).kind != .string {
+			c.error('cannot use `string` as type `${c.table.type_to_str(exp_type)}` in return argument',
+				exprv.pos)
 		}
 		if node.exprs[expr_idxs[i]] !is ast.ComptimeCall {
-			got_typ_sym := c.table.sym(got_typ)
-			exp_typ_sym := c.table.sym(exp_type)
+			got_type_sym := c.table.sym(got_type)
+			exp_type_sym := c.table.sym(exp_type)
 			pos := node.exprs[expr_idxs[i]].pos()
-			if c.check_types(got_typ, exp_type) {
-				if exp_type.is_unsigned() && got_typ.is_int_literal() {
+			if c.check_types(got_type, exp_type) {
+				if exp_type.is_unsigned() && got_type.is_int_literal() {
 					if node.exprs[expr_idxs[i]] is ast.IntegerLiteral {
 						var := (node.exprs[expr_idxs[i]] as ast.IntegerLiteral).val
 						if var[0] == `-` {
@@ -188,80 +203,69 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 					}
 				}
 			} else {
-				if exp_typ_sym.kind == .interface_ {
-					if c.type_implements(got_typ, exp_type, node.pos) {
-						if !got_typ.is_ptr() && !got_typ.is_pointer()
-							&& got_typ_sym.kind != .interface_ && !c.inside_unsafe {
+				if exp_type_sym.kind == .interface_ {
+					if c.type_implements(got_type, exp_type, node.pos) {
+						if !got_type.is_any_kind_of_pointer() && got_type_sym.kind != .interface_
+							&& !c.inside_unsafe {
 							c.mark_as_referenced(mut &node.exprs[expr_idxs[i]], true)
 						}
 					}
 					continue
 				}
+				exp_final_sym := c.table.final_sym(exp_type)
+				got_final_sym := c.table.final_sym(got_type)
+				if exp_final_sym.kind == .array_fixed && got_final_sym.kind == .array_fixed {
+					got_arr_sym := c.table.sym(c.cast_to_fixed_array_ret(got_type, got_final_sym))
+					if (exp_final_sym.info as ast.ArrayFixed).is_compatible(got_arr_sym.info as ast.ArrayFixed) {
+						continue
+					}
+				}
 				// `fn foo() !int { return Err{} }`
-				if got_typ_sym.kind == .struct_
-					&& c.type_implements(got_typ, ast.error_type, node.pos) {
+				if got_type_sym.kind == .struct_
+					&& c.type_implements(got_type, ast.error_type, node.pos) {
 					node.exprs[expr_idxs[i]] = ast.CastExpr{
 						expr: node.exprs[expr_idxs[i]]
 						typname: 'IError'
 						typ: ast.error_type
-						expr_type: got_typ
+						expr_type: got_type
 						pos: node.pos
 					}
 					node.types[expr_idxs[i]] = ast.error_type
 					continue
 				}
-				got_typ_name := if got_typ_sym.kind == .function {
-					'${c.table.type_to_str(got_typ)}'
+				got_type_name := if got_type_sym.kind == .function {
+					'${c.table.type_to_str(got_type)}'
 				} else {
-					got_typ_sym.name
+					got_type_sym.name
 				}
-				c.error('cannot use `${got_typ_name}` as ${c.error_type_name(exp_type)} in return argument',
+				c.error('cannot use `${got_type_name}` as ${c.error_type_name(exp_type)} in return argument',
 					pos)
 			}
 		}
-		unaliased_exp_typ := c.table.unaliased_type(exp_type)
-		if got_typ.is_real_pointer() && !exp_type.is_real_pointer()
-			&& !unaliased_exp_typ.is_real_pointer() {
+		if got_type.is_any_kind_of_pointer() && !exp_type.is_any_kind_of_pointer()
+			&& !c.table.unaliased_type(exp_type).is_any_kind_of_pointer() {
 			pos := node.exprs[expr_idxs[i]].pos()
 			if node.exprs[expr_idxs[i]].is_auto_deref_var() {
 				continue
 			}
 			c.add_error_detail('use `return *pointer` instead of `return pointer`, and just `return value` instead of `return &value`')
-			c.error('fn `${c.table.cur_fn.name}` expects you to return a non reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
+			c.error('fn `${c.table.cur_fn.name}` expects you to return a non reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_type)}` instead',
 				pos)
 		}
-		unaliased_got_typ := c.table.unaliased_type(got_typ)
-		if exp_type.is_real_pointer() && !got_typ.is_real_pointer()
-			&& !unaliased_got_typ.is_real_pointer() && got_typ != ast.int_literal_type
-			&& !c.pref.translated && !c.file.is_translated {
+		if exp_type.is_any_kind_of_pointer() && !got_type.is_any_kind_of_pointer()
+			&& !c.table.unaliased_type(got_type).is_any_kind_of_pointer()
+			&& got_type != ast.int_literal_type && !c.pref.translated && !c.file.is_translated {
 			pos := node.exprs[expr_idxs[i]].pos()
 			if node.exprs[expr_idxs[i]].is_auto_deref_var() {
 				continue
 			}
-			c.error('fn `${c.table.cur_fn.name}` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
+			c.error('fn `${c.table.cur_fn.name}` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_type)}` instead',
 				pos)
 		}
-		if exp_type.is_ptr() && got_typ.is_ptr() {
+		if exp_type.is_ptr() && got_type.is_ptr() {
 			mut r_expr := &node.exprs[expr_idxs[i]]
 			if mut r_expr is ast.Ident {
-				if mut r_expr.obj is ast.Var {
-					mut obj := unsafe { &r_expr.obj }
-					if c.fn_scope != unsafe { nil } {
-						obj = c.fn_scope.find_var(r_expr.obj.name) or { obj }
-					}
-					if obj.is_stack_obj && !c.inside_unsafe {
-						type_sym := c.table.sym(obj.typ.set_nr_muls(0))
-						if !type_sym.is_heap() && !c.pref.translated && !c.file.is_translated {
-							suggestion := if type_sym.kind == .struct_ {
-								'declaring `${type_sym.name}` as `[heap]`'
-							} else {
-								'wrapping the `${type_sym.name}` object in a `struct` declared as `[heap]`'
-							}
-							c.error('`${r_expr.name}` cannot be returned outside `unsafe` blocks as it might refer to an object stored on stack. Consider ${suggestion}.',
-								r_expr.pos)
-						}
-					}
-				}
+				c.fail_if_stack_struct_action_outside_unsafe(mut r_expr, 'returned')
 			}
 		}
 	}
@@ -310,6 +314,10 @@ fn has_top_return(stmts []ast.Stmt) bool {
 					// do not ignore panic() calls on non checked stmts
 					if stmt.expr.is_noreturn
 						|| (stmt.expr.is_method == false && stmt.expr.name == 'panic') {
+						return true
+					}
+				} else if stmt.expr is ast.ComptimeCall {
+					if stmt.expr.method_name == 'compile_error' {
 						return true
 					}
 				}

@@ -98,7 +98,7 @@ endif
 
 all: latest_vc latest_tcc latest_legacy
 ifdef WIN32
-	$(CC) $(CFLAGS) -std=c99 -municode -w -o v1.exe $(VC)/$(VCFILE) $(LDFLAGS)
+	$(CC) $(CFLAGS) -std=c99 -municode -w -o v1.exe $(VC)/$(VCFILE) $(LDFLAGS) -lws2_32
 	v1.exe -no-parallel -o v2.exe $(VFLAGS) cmd/v
 	v2.exe -o $(VEXE) $(VFLAGS) cmd/v
 	del v1.exe
@@ -154,7 +154,7 @@ endif
 fresh_tcc:
 	rm -rf $(TMPTCC)
 ifndef local
-# Check wether a TCC branch exists for the user's system configuration.
+# Check whether a TCC branch exists for the user's system configuration.
 ifneq (,$(findstring thirdparty-$(TCCOS)-$(TCCARCH), $(shell git ls-remote --heads $(TCCREPO) | sed 's/^[a-z0-9]*\trefs.heads.//')))
 	$(GITFASTCLONE) --branch thirdparty-$(TCCOS)-$(TCCARCH) $(TCCREPO) $(TMPTCC)
 	@$(MAKE) --quiet check_for_working_tcc 2> /dev/null

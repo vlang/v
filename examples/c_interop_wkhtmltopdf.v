@@ -13,11 +13,11 @@ import os
 #flag -lwkhtmltox
 #include "wkhtmltox/pdf.h" # You can install the C package for your system from the wkhtmltopdf.org/downloads.html page
 
-struct C.wkhtmltopdf_global_settings {}
+pub struct C.wkhtmltopdf_global_settings {}
 
-struct C.wkhtmltopdf_object_settings {}
+pub struct C.wkhtmltopdf_object_settings {}
 
-struct C.wkhtmltopdf_converter {}
+pub struct C.wkhtmltopdf_converter {}
 
 fn C.wkhtmltopdf_init(use_graphics bool) int
 

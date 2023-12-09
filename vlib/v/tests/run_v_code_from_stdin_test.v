@@ -1,10 +1,8 @@
 import os
 
 const vexe = os.getenv('VEXE')
-
 const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
-
-const vtmp_folder = os.join_path(os.vtmp_dir(), 'v', 'tests', 'run_v_code')
+const vtmp_folder = os.join_path(os.vtmp_dir(), 'tests', 'run_v_code')
 
 fn test_vexe_is_set() {
 	assert vexe != ''

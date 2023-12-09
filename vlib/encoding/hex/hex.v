@@ -40,7 +40,7 @@ pub fn decode(s string) ![]u8 {
 
 // encode converts an array of bytes into a string of ASCII hex bytes. The
 // output will always be a string with length a multiple of 2.
-[manualfree]
+@[manualfree]
 pub fn encode(bytes []u8) string {
 	mut sb := strings.new_builder(bytes.len * 2)
 	for b in bytes {

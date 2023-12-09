@@ -5,7 +5,7 @@ pub struct Eof {
 	Error
 }
 
-// NotExpected is a generic error that means that we receave a not expecte error.
+// NotExpected is a generic error that means that we receave a not expected error.
 pub struct NotExpected {
 	cause string
 	code  int
@@ -29,10 +29,8 @@ mut:
 	read(mut buf []u8) !int
 }
 
-const (
-	read_all_len      = 10 * 1024
-	read_all_grow_len = 1024
-)
+const read_all_len = 10 * 1024
+const read_all_grow_len = 1024
 
 // ReadAllConfig allows options to be passed for the behaviour
 // of read_all.

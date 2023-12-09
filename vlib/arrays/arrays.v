@@ -1,16 +1,20 @@
 module arrays
 
+import strings
+
 // Common arrays functions:
-// - min / max - return the value of the minumum / maximum
-// - idx_min / idx_max - return the index of the first minumum / maximum
+// - min / max - return the value of the minimum / maximum
+// - idx_min / idx_max - return the index of the first minimum / maximum
 // - merge - combine two sorted arrays and maintain sorted order
+// - append - combine two arrays, by appending the second array to the first
 // - chunk - chunk array to arrays with n elements
 // - window - get snapshots of the window of the given size sliding along array with the given step, where each snapshot is an array
 // - group - merge two arrays by interleaving e.g. arrays.group([1,3,5], [2,4,6]) => [[1,2],[3,4],[5,6]]
 // - flatten - reduce dimensionality of array by one. e.g. arrays.flatten([[1,2],[3,4],[5,6]]) => [1,2,3,4,5,6]
+// - each - call a callback fn, for each element of the array, similar to a.map(), but unlike it, the callback should not return anything
 
 // min returns the minimum value in the array
-// Example: arrays.min([1,2,3,0,9]) // => 0
+// Example: arrays.min([1, 2, 3, 0, 9])! // => 0
 pub fn min[T](array []T) !T {
 	if array.len == 0 {
 		return error('.min called on an empty array')
@@ -25,7 +29,7 @@ pub fn min[T](array []T) !T {
 }
 
 // max returns the maximum value in the array
-// Example: arrays.max([1,2,3,0,9]) // => 9
+// Example: arrays.max([1, 2, 3, 0, 9])! // => 9
 pub fn max[T](array []T) !T {
 	if array.len == 0 {
 		return error('.max called on an empty array')
@@ -40,7 +44,7 @@ pub fn max[T](array []T) !T {
 }
 
 // idx_min returns the index of the minimum value in the array
-// Example: arrays.idx_min([1,2,3,0,9]) // => 3
+// Example: arrays.idx_min([1, 2, 3, 0, 9])! // => 3
 pub fn idx_min[T](array []T) !int {
 	if array.len == 0 {
 		return error('.idx_min called on an empty array')
@@ -57,7 +61,7 @@ pub fn idx_min[T](array []T) !int {
 }
 
 // idx_max returns the index of the maximum value in the array
-// Example: arrays.idx_max([1,2,3,0,9]) // => 4
+// Example: arrays.idx_max([1, 2, 3, 0, 9])! // => 4
 pub fn idx_max[T](array []T) !int {
 	if array.len == 0 {
 		return error('.idx_max called on an empty array')
@@ -74,8 +78,8 @@ pub fn idx_max[T](array []T) !int {
 }
 
 // merge two sorted arrays (ascending) and maintain sorted order
-// Example: arrays.merge([1,3,5,7], [2,4,6,8]) // => [1,2,3,4,5,6,7,8]
-[direct_array_access]
+// Example: arrays.merge([1, 3, 5, 7], [2, 4, 6, 8]) // => [1, 2, 3, 4, 5, 6, 7, 8]
+@[direct_array_access]
 pub fn merge[T](a []T, b []T) []T {
 	mut m := []T{len: a.len + b.len}
 	mut ia := 0
@@ -107,19 +111,30 @@ pub fn merge[T](a []T, b []T) []T {
 	return m
 }
 
+// append the second array `b` to the first array `a`, and return the result.
+// Note, that unlike arrays.concat, arrays.append is less flexible, but more efficient,
+// since it does not require you to use ...a for the second parameter.
+// Example: arrays.append([1, 3, 5, 7], [2, 4, 6, 8]) // => [1, 3, 5, 7, 2, 4, 6, 8]
+pub fn append[T](a []T, b []T) []T {
+	mut m := []T{cap: a.len + b.len}
+	m << a
+	m << b
+	return m
+}
+
 // group n arrays into a single array of arrays with n elements
 //
 // This function is analogous to the "zip" function of other languages.
 // To fully interleave two arrays, follow this function with a call to `flatten`.
 //
 // NOTE: An error will be generated if the type annotation is omitted.
-// Example: arrays.group<int>([1,2,3],[4,5,6]) // => [[1, 4], [2, 5], [3, 6]]
-pub fn group[T](arrays ...[]T) [][]T {
-	mut length := if arrays.len > 0 { arrays[0].len } else { 0 }
+// Example: arrays.group[int]([1, 2, 3], [4, 5, 6]) // => [[1, 4], [2, 5], [3, 6]]
+pub fn group[T](arrs ...[]T) [][]T {
+	mut length := if arrs.len > 0 { arrs[0].len } else { 0 }
 	// calculate length of output by finding shortest input array
-	for ndx in 1 .. arrays.len {
-		if arrays[ndx].len < length {
-			length = arrays[ndx].len
+	for ndx in 1 .. arrs.len {
+		if arrs[ndx].len < length {
+			length = arrs[ndx].len
 		}
 	}
 
@@ -127,10 +142,10 @@ pub fn group[T](arrays ...[]T) [][]T {
 		mut arr := [][]T{cap: length}
 		// append all combined arrays into the resultant array
 		for ndx in 0 .. length {
-			mut grouped := []T{cap: arrays.len}
+			mut grouped := []T{cap: arrs.len}
 			// combine each list item for the ndx position into one array
-			for arr_ndx in 0 .. arrays.len {
-				grouped << arrays[arr_ndx][ndx]
+			for arr_ndx in 0 .. arrs.len {
+				grouped << arrs[arr_ndx][ndx]
 			}
 			arr << grouped
 		}
@@ -199,7 +214,7 @@ pub fn window[T](array []T, attr WindowAttribute) [][]T {
 // NOTICE: currently V has bug that cannot make sum function takes custom struct with + operator overloaded
 // which means you can only pass array of numbers for now.
 // TODO: Fix generic operator overloading detection issue.
-// Example: arrays.sum<int>([1, 2, 3, 4, 5])? // => 15
+// Example: arrays.sum[int]([1, 2, 3, 4, 5])! // => 15
 pub fn sum[T](array []T) !T {
 	if array.len == 0 {
 		return error('Cannot sum up array of nothing.')
@@ -283,7 +298,7 @@ pub fn filter_indexed[T](array []T, predicate fn (idx int, elem T) bool) []T {
 // ```v
 // // Sum the length of each string in an array
 // a := ['Hi', 'all']
-// r := arrays.fold<string, int>(a, 0,
+// r := arrays.fold[string, int](a, 0,
 // 	fn (r int, t string) int { return r + t.len })
 // assert r == 5
 // ```
@@ -310,7 +325,7 @@ pub fn fold_indexed[T, R](array []T, init R, fold_op fn (idx int, acc R, elem T)
 }
 
 // flatten flattens n + 1 dimensional array into n dimensional array
-// Example: arrays.flatten<int>([[1, 2, 3], [4, 5]]) // => [1, 2, 3, 4, 5]
+// Example: arrays.flatten[int]([[1, 2, 3], [4, 5]]) // => [1, 2, 3, 4, 5]
 pub fn flatten[T](array [][]T) []T {
 	// calculate required capacity
 	mut required_size := 0
@@ -370,7 +385,7 @@ pub fn map_indexed[T, R](array []T, transform fn (idx int, elem T) R) []R {
 }
 
 // group_by groups together elements, for which the `grouping_op` callback produced the same result.
-// Example: arrays.group_by<int, string>(['H', 'el', 'lo'], fn (v string) int { return v.len }) // => {1: ['H'], 2: ['el', 'lo']}
+// Example: arrays.group_by[int, string](['H', 'el', 'lo'], fn (v string) int { return v.len }) // => {1: ['H'], 2: ['el', 'lo']}
 pub fn group_by[K, V](array []V, grouping_op fn (val V) K) map[K][]V {
 	mut result := map[K][]V{}
 
@@ -404,7 +419,7 @@ pub fn concat[T](a []T, b ...T) []T {
 }
 
 // returns the smallest element >= val, requires `array` to be sorted
-// Example: arrays.lower_bound([2, 4, 6, 8], 3)? // => 4
+// Example: arrays.lower_bound([2, 4, 6, 8], 3)! // => 4
 pub fn lower_bound[T](array []T, val T) !T {
 	if array.len == 0 {
 		return error('.lower_bound called on an empty array')
@@ -452,7 +467,7 @@ pub fn upper_bound[T](array []T, val T) !T {
 // binary search, requires `array` to be sorted, returns index of found item or error.
 // Binary searches on sorted lists can be faster than other array searches because at maximum
 // the algorithm only has to traverse log N elements
-// Example: arrays.binary_search([1, 2, 3, 4], 4)? // => 3
+// Example: arrays.binary_search([1, 2, 3, 4], 4)! // => 3
 pub fn binary_search[T](array []T, target T) !int {
 	mut left := 0
 	mut right := array.len - 1
@@ -507,7 +522,7 @@ pub fn rotate_right[T](mut array []T, k int) {
 	}
 }
 
-[unsafe]
+@[unsafe]
 fn ptr_rotate[T](left_ int, mid &T, right_ int) {
 	sz := usize(sizeof(T))
 	mut left := usize(left_)
@@ -582,7 +597,7 @@ fn raw_array_malloc_size[T]() isize {
 	}
 }
 
-[unsafe]
+@[unsafe]
 fn memswap(x voidptr, y voidptr, len usize) {
 	block_size := isize(sizeof(Block))
 
@@ -614,7 +629,7 @@ fn memswap(x voidptr, y voidptr, len usize) {
 	}
 }
 
-[unsafe]
+@[unsafe]
 fn swap_nonoverlapping[T](x_ &T, y_ &T, count int) {
 	x := voidptr(x_)
 	y := voidptr(y_)
@@ -657,10 +672,90 @@ fn can_copy_bits[T]() bool {
 
 // carray_to_varray copies a C byte array into a V array of type `T`.
 // See also: `cstring_to_vstring`
-[unsafe]
+@[unsafe]
 pub fn carray_to_varray[T](c_array_data voidptr, items int) []T {
 	mut v_array := []T{len: items}
 	total_size := items * isize(sizeof(T))
 	unsafe { vmemcpy(v_array.data, c_array_data, total_size) }
 	return v_array
+}
+
+// find_first returns the first element that matches the given predicate.
+// Returns `none` if no match is found.
+// Example: arrays.find_first([1, 2, 3, 4, 5], fn (i int) bool { return i == 3 })? // => 3
+pub fn find_first[T](array []T, predicate fn (elem T) bool) ?T {
+	if array.len == 0 {
+		return none
+	}
+	for item in array {
+		if predicate(item) {
+			return item
+		}
+	}
+	return none
+}
+
+// find_last returns the last element that matches the given predicate.
+// Returns `none` if no match is found.
+// Example: arrays.find_last([1, 2, 3, 4, 5], fn (i int) bool { return i == 3})? // => 3
+pub fn find_last[T](array []T, predicate fn (elem T) bool) ?T {
+	if array.len == 0 {
+		return none
+	}
+	for idx := array.len - 1; idx >= 0; idx-- {
+		item := array[idx]
+		if predicate(item) {
+			return item
+		}
+	}
+	return none
+}
+
+// join_to_string takes in a custom transform function and joins all elements into a string with
+// the specified separator
+@[manualfree]
+pub fn join_to_string[T](array []T, separator string, transform fn (elem T) string) string {
+	mut sb := strings.new_builder(array.len * 2)
+	defer {
+		unsafe { sb.free() }
+	}
+	for i, item in array {
+		x := transform(item)
+		sb.write_string(x)
+		unsafe { x.free() }
+		if i < array.len - 1 {
+			sb.write_string(separator)
+		}
+	}
+	return sb.str()
+}
+
+// partition splits the original array into pair of lists,
+// where first list contains elements for which predicate yielded true,
+// while second list contains elements for which predicate yielded false
+pub fn partition[T](array []T, predicate fn (elem T) bool) ([]T, []T) {
+	mut matching, mut non_matching := []T{}, []T{}
+	for item in array {
+		if predicate(item) {
+			matching << item
+		} else {
+			non_matching << item
+		}
+	}
+	return matching, non_matching
+}
+
+// each calls the callback fn `cb`, for each element of the given array `a`
+pub fn each[T](a []T, cb fn (elem T)) {
+	for item in a {
+		cb(item)
+	}
+}
+
+// each_indexed calls the callback fn `cb`, for each element of the given array `a`,
+// passing it both the index of the current element, and the element itself
+pub fn each_indexed[T](a []T, cb fn (i int, e T)) {
+	for idx, item in a {
+		cb(idx, item)
+	}
 }

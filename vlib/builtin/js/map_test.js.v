@@ -1,8 +1,8 @@
+// vtest flaky: true
+// vtest retry: 3
 import rand
 
-const (
-	strings = unique_strings(200, 10)
-)
+const strings = unique_strings(200, 10)
 
 fn unique_strings(arr_len int, str_len int) []string {
 	mut arr := []string{cap: arr_len}

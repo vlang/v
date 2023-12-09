@@ -2,6 +2,7 @@ fn main() {
 	test_eq_ne()
 	test_lt_gt()
 	test_ref_deref()
+	test_nil()
 	println("ok")
 }
 
@@ -65,4 +66,17 @@ fn test_ref_deref() {
 
 	assert *c == b
 	assert **c == *b
+}
+
+fn test_nil() {
+	unsafe {
+		a := voidptr(nil)
+		b := voidptr(0)
+
+		assert a == b
+		assert a == 0
+		assert b == nil
+
+		println(nil) // currently outputs '0x0' -> should this be 'nil'?
+	}
 }

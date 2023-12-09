@@ -9,9 +9,7 @@ import sokol.gfx
 import sokol.sgl
 import particle
 
-const (
-	used_import = sokol.used_import
-)
+const used_import = sokol.used_import
 
 fn main() {
 	mut app := &App{
@@ -83,7 +81,7 @@ fn init(mut app App) {
 	mut pipdesc := gfx.PipelineDesc{}
 	unsafe { vmemset(&pipdesc, 0, int(sizeof(pipdesc))) }
 
-	color_state := gfx.ColorState{
+	color_state := gfx.ColorTargetState{
 		blend: gfx.BlendState{
 			enabled: true
 			src_factor_rgb: .src_alpha

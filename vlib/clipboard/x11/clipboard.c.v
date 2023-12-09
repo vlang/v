@@ -4,7 +4,6 @@ module x11
 
 import time
 import sync
-import math
 
 $if freebsd {
 	#flag -I/usr/local/include
@@ -17,8 +16,8 @@ $if freebsd {
 
 #include <X11/Xlib.h> # Please install a package with the X11 development headers, for example: `apt-get install libx11-dev`
 // X11
-[typedef]
-struct C.Display {
+@[typedef]
+pub struct C.Display {
 }
 
 type Window = u64
@@ -68,8 +67,8 @@ fn C.XFree(data voidptr)
 
 fn todo_del() {}
 
-[typedef]
-struct C.XSelectionRequestEvent {
+@[typedef]
+pub struct C.XSelectionRequestEvent {
 mut:
 	display   &C.Display = unsafe { nil } // Display the event was read from
 	owner     Window
@@ -80,8 +79,8 @@ mut:
 	time      int
 }
 
-[typedef]
-struct C.XSelectionEvent {
+@[typedef]
+pub struct C.XSelectionEvent {
 mut:
 	@type     int
 	display   &C.Display = unsafe { nil } // Display the event was read from
@@ -92,20 +91,20 @@ mut:
 	time      int
 }
 
-[typedef]
-struct C.XSelectionClearEvent {
+@[typedef]
+pub struct C.XSelectionClearEvent {
 mut:
 	window    Window
 	selection Atom
 }
 
-[typedef]
-struct C.XDestroyWindowEvent {
+@[typedef]
+pub struct C.XDestroyWindowEvent {
 mut:
 	window Window
 }
 
-[typedef]
+@[typedef]
 union C.XEvent {
 mut:
 	@type             int
@@ -115,10 +114,8 @@ mut:
 	xselection        C.XSelectionEvent
 }
 
-const (
-	atom_names = ['TARGETS', 'CLIPBOARD', 'PRIMARY', 'SECONDARY', 'TEXT', 'UTF8_STRING', 'text/plain',
-		'text/html']
-)
+const atom_names = ['TARGETS', 'CLIPBOARD', 'PRIMARY', 'SECONDARY', 'TEXT', 'UTF8_STRING',
+	'text/plain', 'text/html']
 
 // UNSUPPORTED TYPES: MULTIPLE, INCR, TIMESTAMP, image/bmp, image/jpeg, image/tiff, image/png
 // all the atom types we need
@@ -126,26 +123,26 @@ const (
 // in the future, maybe we can extend this
 // to support other mime types
 enum AtomType {
-	xa_atom = 0 // value 4
-	xa_string = 1 // value 31
-	targets = 2
-	clipboard = 3
-	primary = 4
-	secondary = 5
-	text = 6
+	xa_atom     = 0 // value 4
+	xa_string   = 1 // value 31
+	targets     = 2
+	clipboard   = 3
+	primary     = 4
+	secondary   = 5
+	text        = 6
 	utf8_string = 7
-	text_plain = 8
-	text_html = 9
+	text_plain  = 8
+	text_html   = 9
 }
 
-[heap]
+@[heap]
 pub struct Clipboard {
 	display &C.Display = unsafe { nil }
 mut:
 	selection Atom // the selection atom
 	window    Window
 	atoms     []Atom
-	mutex     &sync.Mutex = unsafe { nil }
+	mutex     &sync.Mutex = sync.new_mutex()
 	text      string // text data sent or received
 	got_text  bool   // used to confirm that we have got the text
 	is_owner  bool   // to save selection owner state
@@ -433,7 +430,7 @@ fn (cb &Clipboard) pick_target(prop Property) Atom {
 		mut to_be_requested := Atom(0)
 
 		// This is higher than the maximum priority.
-		mut priority := math.max_i32
+		mut priority := int(max_i32)
 
 		for i in 0 .. prop.nitems {
 			// See if this data type is allowed and of higher priority (closer to zero)

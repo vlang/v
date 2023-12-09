@@ -17,6 +17,9 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 		g.indent++
 		if node.has_init {
 			g.stmt(node.init)
+			if node.init is ast.ExprStmt {
+				g.write('; ')
+			}
 		}
 		g.writeln('bool _is_first = true;')
 		g.writeln('while (true) {')
@@ -53,11 +56,16 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 		if node.label.len > 0 {
 			g.writeln('${node.label}:')
 		}
+		g.set_current_pos_as_last_stmt_pos()
+		g.skip_stmt_pos = true
 		g.write('for (')
 		if !node.has_init {
 			g.write('; ')
 		} else {
 			g.stmt(node.init)
+			if node.init is ast.ExprStmt {
+				g.write('; ')
+			}
 			// Remove excess return and add space
 			if g.out.last_n(1) == '\n' {
 				g.go_back(1)
@@ -87,6 +95,7 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 			}
 		}
 		g.writeln(') {')
+		g.skip_stmt_pos = false
 		g.is_vlines_enabled = true
 		g.inside_for_c_stmt = false
 		g.stmts(node.stmts)
@@ -132,7 +141,8 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	mut node := unsafe { node_ }
 	mut is_comptime := false
 
-	if (node.cond is ast.Ident && g.is_comptime_var(node.cond)) || node.cond is ast.ComptimeSelector {
+	if (node.cond is ast.Ident && g.table.is_comptime_var(node.cond))
+		|| node.cond is ast.ComptimeSelector {
 		mut unwrapped_typ := g.unwrap_generic(node.cond_type)
 		ctyp := g.get_comptime_var_type(node.cond)
 		if ctyp != ast.void_type {
@@ -211,7 +221,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		mut val_sym := g.table.sym(node.val_type)
 		op_field := g.dot_or_ptr(node.cond_type)
 
-		if is_comptime && g.is_comptime_var(node.cond) {
+		if is_comptime && g.table.is_comptime_var(node.cond) {
 			mut unwrapped_typ := g.unwrap_generic(node.cond_type)
 			ctyp := g.unwrap_generic(g.get_comptime_var_type(node.cond))
 			if ctyp != ast.void_type {
@@ -446,6 +456,25 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		} else {
 			g.writeln('\t${val_styp} ${val} = *(${val_styp}*)${t_var}.data;')
 		}
+	} else if node.kind == .aggregate {
+		for_type := (g.table.sym(node.cond_type).info as ast.Aggregate).types[g.aggregate_type_idx]
+		val_type := g.table.value_type(for_type)
+
+		node.scope.update_var_type(node.val_var, val_type)
+
+		g.for_in_stmt(ast.ForInStmt{
+			cond: node.cond
+			cond_type: for_type
+			kind: g.table.sym(for_type).kind
+			stmts: node.stmts
+			val_type: val_type
+			val_var: node.val_var
+			val_is_mut: node.val_is_mut
+			val_is_ref: node.val_is_ref
+		})
+
+		g.loop_depth--
+		return
 	} else {
 		typ_str := g.table.type_to_str(node.cond_type)
 		g.error('for in: unhandled symbol `${node.cond}` of type `${typ_str}`', node.pos)

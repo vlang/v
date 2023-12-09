@@ -32,7 +32,7 @@ pub struct Base {
 
 pub fn (mut b Base) init() {}
 
-[heap]
+@[heap]
 pub struct Label {
 	Base
 }
@@ -43,7 +43,7 @@ mut:
 	init()
 }
 
-[heap]
+@[heap]
 pub struct LinearLayout {
 	Base
 mut:

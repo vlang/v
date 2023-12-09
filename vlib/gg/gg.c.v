@@ -16,6 +16,8 @@ $if windows {
 	#include "windows.h"
 }
 
+#flag wasm32_emscripten --embed-file @VEXEROOT/examples/assets/fonts/RobotoMono-Regular.ttf@/assets/fonts/RobotoMono-Regular.ttf
+
 // call Windows API to get screen size
 fn C.GetSystemMetrics(int) int
 
@@ -58,6 +60,7 @@ pub:
 	create_window bool
 	// window_user_ptr voidptr
 	window_title      string
+	html5_canvas_name string = 'canvas'
 	borderless_window bool
 	always_on_top     bool
 	bg_color          gx.Color
@@ -67,8 +70,9 @@ pub:
 	cleanup_fn        FNCb   = unsafe { nil }
 	fail_fn           FNFail = unsafe { nil }
 	//
-	event_fn FNEvent = unsafe { nil }
-	quit_fn  FNEvent = unsafe { nil }
+	event_fn FNEvent  = unsafe { nil }
+	on_event FNEvent2 = unsafe { nil }
+	quit_fn  FNEvent  = unsafe { nil }
 	//
 	keydown_fn FNKeyDown = unsafe { nil }
 	keyup_fn   FNKeyUp   = unsafe { nil }
@@ -103,7 +107,7 @@ pub:
 	max_dropped_file_path_length int = 2048 // max length in bytes of a dropped UTF-8 file path (default: 2048)
 }
 
-[heap]
+@[heap]
 pub struct PipelineContainer {
 pub mut:
 	alpha sgl.Pipeline
@@ -114,41 +118,33 @@ fn (mut container PipelineContainer) init_pipeline() {
 	// FIXME(FireRedz): this looks kinda funny, find a better way to initialize pipeline.
 
 	// Alpha
-	mut alpha_pipdesc := gfx.PipelineDesc{
-		label: c'alpha-pipeline'
-	}
-
+	mut alpha_pipdesc := gfx.PipelineDesc{}
 	unsafe { vmemset(&alpha_pipdesc, 0, int(sizeof(alpha_pipdesc))) }
-
-	alpha_pipdesc.colors[0] = gfx.ColorState{
+	alpha_pipdesc.label = c'alpha-pipeline'
+	alpha_pipdesc.colors[0] = gfx.ColorTargetState{
 		blend: gfx.BlendState{
 			enabled: true
 			src_factor_rgb: .src_alpha
 			dst_factor_rgb: .one_minus_src_alpha
 		}
 	}
-
 	container.alpha = sgl.make_pipeline(&alpha_pipdesc)
 
 	// Add
-	mut add_pipdesc := gfx.PipelineDesc{
-		label: c'additive-pipeline'
-	}
-
+	mut add_pipdesc := gfx.PipelineDesc{}
 	unsafe { vmemset(&add_pipdesc, 0, int(sizeof(add_pipdesc))) }
-
-	add_pipdesc.colors[0] = gfx.ColorState{
+	add_pipdesc.label = c'additive-pipeline'
+	add_pipdesc.colors[0] = gfx.ColorTargetState{
 		blend: gfx.BlendState{
 			enabled: true
 			src_factor_rgb: .src_alpha
 			dst_factor_rgb: .one
 		}
 	}
-
 	container.add = sgl.make_pipeline(&add_pipdesc)
 }
 
-[heap]
+@[heap]
 pub struct Context {
 mut:
 	render_text bool = true
@@ -165,7 +161,6 @@ pub mut:
 	height      int
 	clear_pass  gfx.PassAction
 	window      sapp.Desc
-	timage_pip  sgl.Pipeline       [deprecated: 'Use `Context.pipeline.alpha` instead!']
 	pipeline    &PipelineContainer = unsafe { nil }
 	config      Config
 	user_data   voidptr
@@ -256,10 +251,6 @@ fn gg_init_sokol_window(user_data voidptr) {
 	ctx.pipeline = &PipelineContainer{}
 	ctx.pipeline.init_pipeline()
 
-	// Keep the old pipeline for now, cuz v ui used it.
-	ctx.timage_pip = ctx.pipeline.alpha
-
-	//
 	if ctx.config.init_fn != unsafe { nil } {
 		$if android {
 			// NOTE on Android sokol can emit resize events *before* the init function is
@@ -363,6 +354,8 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 	}
 	if ctx.config.event_fn != unsafe { nil } {
 		ctx.config.event_fn(e, ctx.config.user_data)
+	} else if ctx.config.on_event != unsafe { nil } {
+		ctx.config.on_event(ctx.config.user_data, e)
 	}
 	match e.typ {
 		.mouse_move {
@@ -455,17 +448,17 @@ pub fn new_context(cfg Config) &Context {
 		width: cfg.width
 		height: cfg.height
 		config: cfg
-		ft: 0
+		ft: unsafe { nil }
 		ui_mode: cfg.ui_mode
 		native_rendering: cfg.native_rendering
 		window: sapp.Desc{
 			init_userdata_cb: gg_init_sokol_window
 			frame_userdata_cb: gg_frame_fn
 			event_userdata_cb: gg_event_fn
-			fail_userdata_cb: gg_fail_fn
+			// fail_userdata_cb: gg_fail_fn
 			cleanup_userdata_cb: gg_cleanup_fn
 			window_title: &char(cfg.window_title.str)
-			html5_canvas_name: &char(cfg.window_title.str)
+			html5_canvas_name: &char(cfg.html5_canvas_name.str)
 			width: cfg.width
 			height: cfg.height
 			sample_count: cfg.sample_count
@@ -530,8 +523,56 @@ pub fn (ctx &Context) begin() {
 	sgl.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
 }
 
-// end finishes drawing for the context.
-pub fn (ctx &Context) end() {
+pub enum EndEnum {
+	clear
+	passthru
+}
+
+@[params]
+pub struct EndOptions {
+	how EndEnum
+}
+
+const dontcare_pass = gfx.PassAction{
+	colors: [
+		gfx.ColorAttachmentAction{
+			load_action: .dontcare
+			clear_value: gfx.Color{1.0, 1.0, 1.0, 1.0}
+		},
+		gfx.ColorAttachmentAction{
+			load_action: .dontcare
+			clear_value: gfx.Color{1.0, 1.0, 1.0, 1.0}
+		},
+		gfx.ColorAttachmentAction{
+			load_action: .dontcare
+			clear_value: gfx.Color{1.0, 1.0, 1.0, 1.0}
+		},
+		gfx.ColorAttachmentAction{
+			load_action: .dontcare
+			clear_value: gfx.Color{1.0, 1.0, 1.0, 1.0}
+		},
+	]!
+}
+
+// end finishes all the drawing for the context ctx.
+// All accumulated draw calls before ctx.end(), will be done in a separate Sokol pass.
+//
+// Note: each Sokol pass, has a limit on the number of draw calls, that can be done in it.
+// Once that limit is reached, the whole pass will not draw anything, which can be frustrating.
+//
+// To overcome this limitation, you may use *several passes*, when you want to make thousands
+// of draw calls (for example, if you need to draw thousands of circles/rectangles/sprites etc),
+// where each pass will render just a limited amount of primitives.
+//
+// In the context of the gg module (without dropping to using sgl and gfx directly), it means,
+// that you will need a new pair of ctx.begin() and ctx.end() calls, surrounding all the draw
+// calls, that should be done in each pass.
+//
+// The default ctx.end() is equivalent to ctx.end(how:.clear). It will erase the existing
+// rendered content with the background color, before drawing anything else.
+// You can call ctx.end(how:.passthru) for a pass, that *will not* erase the previously
+// rendered content in the context.
+pub fn (ctx &Context) end(options EndOptions) {
 	$if show_fps ? {
 		ctx.show_fps()
 	} $else {
@@ -539,7 +580,14 @@ pub fn (ctx &Context) end() {
 			ctx.show_fps()
 		}
 	}
-	gfx.begin_default_pass(ctx.clear_pass, sapp.width(), sapp.height())
+	match options.how {
+		.clear {
+			gfx.begin_default_pass(ctx.clear_pass, sapp.width(), sapp.height())
+		}
+		.passthru {
+			gfx.begin_default_pass(gg.dontcare_pass, sapp.width(), sapp.height())
+		}
+	}
 	sgl.draw()
 	gfx.end_pass()
 	gfx.commit()
@@ -553,10 +601,10 @@ pub fn (ctx &Context) end() {
 
 pub struct FPSConfig {
 pub mut:
-	x           int
-	y           int
-	width       int
-	height      int
+	x           int  // horizontal position on screen
+	y           int  // vertical position on screen
+	width       int  // minimum width
+	height      int  // minimum height
 	show        bool // do not show by default, use `-d show_fps` or set it manually in your app to override with: `app.gg.fps.show = true`
 	text_config gx.TextCfg = gx.TextCfg{
 		color: gx.yellow
@@ -581,14 +629,18 @@ pub fn (ctx &Context) show_fps() {
 	sgl.matrix_mode_projection()
 	sgl.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
 	ctx.set_text_cfg(ctx.fps.text_config)
+	fps_text := int(0.5 + 1.0 / frame_duration).str()
 	if ctx.fps.width == 0 {
 		mut fps := unsafe { &ctx.fps }
-		fps.width, fps.height = ctx.text_size('00') // maximum size; prevents blinking on variable width fonts
+		fps.width, fps.height = ctx.text_size('00') // usual size; prevents blinking on variable width fonts
 	}
-	fps_text := int(0.5 + 1.0 / frame_duration).str()
-	ctx.draw_rect_filled(ctx.fps.x, ctx.fps.y, ctx.fps.width + 2, ctx.fps.height + 4,
-		ctx.fps.background_color)
-	ctx.draw_text(ctx.fps.x + ctx.fps.width / 2 + 1, ctx.fps.y + ctx.fps.height / 2 + 2,
+	char_width := ctx.fps.text_config.size / 2
+	mut full_width := ctx.fps.width
+	if char_width * fps_text.len > ctx.fps.width {
+		full_width += (fps_text.len - 2) * char_width
+	}
+	ctx.draw_rect_filled(ctx.fps.x, ctx.fps.y, full_width + 2, ctx.fps.height + 4, ctx.fps.background_color)
+	ctx.draw_text(ctx.fps.x + full_width / 2 + 1, ctx.fps.y + ctx.fps.height / 2 + 2,
 		fps_text, ctx.fps.text_config)
 }
 
@@ -669,6 +721,11 @@ pub fn screen_size() Size {
 pub fn window_size() Size {
 	s := dpi_scale()
 	return Size{int(sapp.width() / s), int(sapp.height() / s)}
+}
+
+// set_window_title sets main window's title
+pub fn set_window_title(title string) {
+	C.sapp_set_window_title(title.str)
 }
 
 // window_size_real_pixels returns the `Size` of the active window without scale

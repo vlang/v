@@ -4,13 +4,13 @@
 module math
 
 // maxof returns the maximum value of the type `T`
-[inline]
+@[inline]
 pub fn maxof[T]() T {
 	$if T is i8 {
 		return max_i8
 	} $else $if T is i16 {
 		return max_i16
-	} $else $if T is int {
+	} $else $if T is i32 {
 		return max_i32
 	} $else $if T is i32 {
 		return max_i32
@@ -30,19 +30,24 @@ pub fn maxof[T]() T {
 		return max_f32
 	} $else $if T is f64 {
 		return max_f64
+	} $else $if T is int {
+		$if new_int ? {
+			return int(max_i64)
+		}
+		return int(max_i32)
 	} $else {
 		panic('A maximum value of the type `${typeof[T]().name}` is not defined.')
 	}
 }
 
 // minof returns the minimum value of the type `T`
-[inline]
+@[inline]
 pub fn minof[T]() T {
 	$if T is i8 {
 		return min_i8
 	} $else $if T is i16 {
 		return min_i16
-	} $else $if T is int {
+	} $else $if T is i32 {
 		return min_i32
 	} $else $if T is i32 {
 		return min_i32
@@ -62,6 +67,11 @@ pub fn minof[T]() T {
 		return -max_f32
 	} $else $if T is f64 {
 		return -max_f64
+	} $else $if T is int {
+		$if new_int ? {
+			return int(min_i64)
+		}
+		return int(min_i32)
 	} $else {
 		panic('A minimum value of the type `${typeof[T]().name}` is not defined.')
 	}

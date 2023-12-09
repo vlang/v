@@ -3,9 +3,9 @@ module checker
 import v.ast
 
 fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
-	typ := c.unwrap_generic(c.expr(node.expr))
+	typ := c.unwrap_generic(c.expr(mut node.expr))
 	typ_sym := c.table.sym(typ)
-	is_non_void_pointer := (typ.is_ptr() || typ.is_pointer()) && typ_sym.kind != .voidptr
+	is_non_void_pointer := typ.is_any_kind_of_pointer() && typ_sym.kind != .voidptr
 
 	if node.op in [.inc, .dec] && !node.expr.is_lvalue() {
 		op_kind, bin_op_alt := if node.op == .inc {
@@ -24,8 +24,12 @@ fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
 	}
 	if !(typ_sym.is_number() || ((c.inside_unsafe || c.pref.translated) && is_non_void_pointer)) {
 		if c.inside_comptime_for_field {
-			if c.is_comptime_var(node.expr) || node.expr is ast.ComptimeSelector {
-				return c.unwrap_generic(c.get_comptime_var_type(node.expr))
+			if c.table.is_comptime_var(node.expr) || node.expr is ast.ComptimeSelector {
+				node.typ = c.unwrap_generic(c.get_comptime_var_type(node.expr))
+				if node.op == .question {
+					node.typ = node.typ.clear_flag(.option)
+				}
+				return node.typ
 			}
 		}
 
@@ -33,7 +37,7 @@ fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
 		c.error('invalid operation: ${node.op.str()} (non-numeric type `${typ_str}`)',
 			node.pos)
 	} else {
-		node.auto_locked, _ = c.fail_if_immutable(node.expr)
+		node.auto_locked, _ = c.fail_if_immutable(mut node.expr)
 	}
 	node.typ = typ
 	return typ

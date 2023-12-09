@@ -11,32 +11,27 @@ import v.util.recompilation
 import runtime
 
 // math.bits is needed by strconv.ftoa
-pub const (
-	builtin_module_parts = ['math.bits', 'strconv', 'dlmalloc', 'strconv.ftoa', 'strings', 'builtin']
-	bundle_modules       = ['clipboard', 'fontstash', 'gg', 'gx', 'sokol', 'szip', 'ui']
-)
+pub const builtin_module_parts = ['math.bits', 'strconv', 'dlmalloc', 'strconv.ftoa', 'strings',
+	'builtin']
+pub const bundle_modules = ['clipboard', 'fontstash', 'gg', 'gx', 'sokol', 'szip', 'ui']
 
-pub const (
-	external_module_dependencies_for_tool = {
-		'vdoc': ['markdown']
-	}
-)
+pub const external_module_dependencies_for_tool = {
+	'vdoc': ['markdown']
+}
 
-const (
-	const_tabs = [
-		'',
-		'\t',
-		'\t\t',
-		'\t\t\t',
-		'\t\t\t\t',
-		'\t\t\t\t\t',
-		'\t\t\t\t\t\t',
-		'\t\t\t\t\t\t\t',
-		'\t\t\t\t\t\t\t\t',
-		'\t\t\t\t\t\t\t\t\t',
-		'\t\t\t\t\t\t\t\t\t\t',
-	]
-)
+const const_tabs = [
+	'',
+	'\t',
+	'\t\t',
+	'\t\t\t',
+	'\t\t\t\t',
+	'\t\t\t\t\t',
+	'\t\t\t\t\t\t',
+	'\t\t\t\t\t\t\t',
+	'\t\t\t\t\t\t\t\t',
+	'\t\t\t\t\t\t\t\t\t',
+	'\t\t\t\t\t\t\t\t\t\t',
+]
 
 pub const nr_jobs = runtime.nr_jobs()
 
@@ -127,7 +122,7 @@ pub fn resolve_env_value(str string, check_for_presence bool) !string {
 // V itself. That mechanism can be disabled by package managers by creating/touching a small
 // `cmd/tools/.disable_autorecompilation` file, OR by changing the timestamps of all executables
 // in cmd/tools to be < 1024 seconds (in unix time).
-[noreturn]
+@[noreturn]
 pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
@@ -163,7 +158,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		for emodule in emodules {
 			check_module_is_installed(emodule, is_verbose) or { panic(err) }
 		}
-		mut compilation_command := '${os.quoted_path(vexe)} -skip-unused '
+		mut compilation_command := '${os.quoted_path(vexe)} '
 		if tool_name in ['vself', 'vup', 'vdoctor', 'vsymlink'] {
 			// These tools will be called by users in cases where there
 			// is high chance of there being a problem somewhere. Thus
@@ -180,9 +175,13 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 			println('Compiling ${tool_name} with: "${compilation_command}"')
 		}
 
+		current_work_dir := os.getwd()
 		retry_max_count := 3
 		for i in 0 .. retry_max_count {
+			// ensure a stable and known working folder, when compiling V's tools, to avoid module lookup problems:
+			os.chdir(vroot) or {}
 			tool_compilation := os.execute(compilation_command)
+			os.chdir(current_work_dir) or {}
 			if tool_compilation.exit_code == 0 {
 				break
 			} else {
@@ -289,13 +288,13 @@ pub fn path_of_executable(path string) string {
 	return path
 }
 
-[heap]
+@[heap]
 struct SourceCache {
 mut:
 	sources map[string]string
 }
 
-[unsafe]
+@[unsafe]
 pub fn cached_read_source_file(path string) !string {
 	mut static cache := &SourceCache(unsafe { nil })
 	if cache == unsafe { nil } {
@@ -439,9 +438,7 @@ pub fn no_dots(s string) string {
 	return s.replace('.', '__')
 }
 
-const (
-	map_prefix = 'map[string]'
-)
+const map_prefix = 'map[string]'
 
 // no_cur_mod - removes cur_mod. prefix from typename,
 // but *only* when it is at the start, i.e.:
@@ -489,7 +486,7 @@ pub fn recompile_file(vexe string, file string) {
 }
 
 // get_vtmp_folder returns the path to a folder, that is writable to V programs,
-// and specific to the user. It can be overriden by setting the env variable `VTMP`.
+// and specific to the user. It can be overridden by setting the env variable `VTMP`.
 pub fn get_vtmp_folder() string {
 	return os.vtmp_dir()
 }

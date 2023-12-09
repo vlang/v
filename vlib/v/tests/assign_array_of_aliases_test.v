@@ -1,6 +1,6 @@
 fn test_assign_array_of_aliases() {
 	mut arr := [u8(1), 2, 3]
-	arr = [byte(4), 5, 6]
+	arr = [u8(4), 5, 6]
 
 	println(arr)
 	assert arr.len == 3

@@ -14,13 +14,6 @@ const c_commit_hash_default = '
 #endif
 '
 
-// V_CURRENT_COMMIT_HASH is updated, when V is rebuilt inside a git repo.
-const c_current_commit_hash_default = '
-#ifndef V_CURRENT_COMMIT_HASH
-	#define V_CURRENT_COMMIT_HASH "@@@"
-#endif
-'
-
 const c_concurrency_helpers = '
 typedef struct __shared_map __shared_map;
 struct __shared_map {
@@ -328,10 +321,10 @@ const c_common_macros = '
 		#else
 			// On linux: int backtrace(void **__array, int __size);
 			// On BSD: size_t backtrace(void **, size_t);
-		#endif		
+		#endif
 	#endif
 #endif
-		      
+
 #ifdef __TINYC__
 	#define _Atomic volatile
 	#undef EMPTY_STRUCT_DECLARATION
@@ -360,7 +353,7 @@ const c_common_macros = '
 
 // for __offset_of
 #ifndef __offsetof
-	#define __offsetof(PTYPE,FIELDNAME) ((size_t)((char *)&((PTYPE *)0)->FIELDNAME - (char *)0))
+	#define __offsetof(PTYPE,FIELDNAME) ((size_t)(&((PTYPE *)0)->FIELDNAME))
 #endif
 
 #define OPTION_CAST(x) (x)
@@ -435,7 +428,7 @@ const c_common_macros = '
 	#endif
 	# if !defined(__TINYC__) && defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
 	#  define VNORETURN _Noreturn
-	# elif defined(__GNUC__) && __GNUC__ >= 2
+	# elif !defined(VNORETURN) && defined(__GNUC__) && __GNUC__ >= 2
 	#  define VNORETURN __attribute__((noreturn))
 	# endif
 	#ifndef VNORETURN
@@ -446,19 +439,16 @@ const c_common_macros = '
 #if !defined(VUNREACHABLE)
 	#if defined(__GNUC__) && !defined(__clang__)
 		#define V_GCC_VERSION  (__GNUC__ * 10000L + __GNUC_MINOR__ * 100L + __GNUC_PATCHLEVEL__)
-		#if (V_GCC_VERSION >= 40500L)
+		#if (V_GCC_VERSION >= 40500L) && !defined(__TINYC__)
 			#define VUNREACHABLE()  do { __builtin_unreachable(); } while (0)
 		#endif
 	#endif
-	#if defined(__clang__) && defined(__has_builtin)
+	#if defined(__clang__) && defined(__has_builtin) && !defined(__TINYC__)
 		#if __has_builtin(__builtin_unreachable)
 			#define VUNREACHABLE()  do { __builtin_unreachable(); } while (0)
 		#endif
 	#endif
 	#ifndef VUNREACHABLE
-		#define VUNREACHABLE() do { } while (0)
-	#endif
-	#if defined(__FreeBSD__) && defined(__TINYC__)
 		#define VUNREACHABLE() do { } while (0)
 	#endif
 #endif
@@ -526,7 +516,7 @@ void _vcleanup(void);
 #define _ARR_LEN(a) ( (sizeof(a)) / (sizeof(a[0])) )
 
 void v_free(voidptr ptr);
-voidptr memdup(voidptr src, int sz);
+//voidptr memdup(voidptr src, isize sz);
 
 #if INTPTR_MAX == INT32_MAX
 	#define TARGET_IS_32BIT 1
@@ -556,7 +546,7 @@ voidptr memdup(voidptr src, int sz);
 	#error Cygwin is not supported, please use MinGW or Visual Studio.
 #endif
 
-#if defined(__linux__) || defined(__FreeBSD__) || defined(__DragonFly__) || defined(__vinix__) || defined(__serenity__) || defined(__sun)
+#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__) || defined(__vinix__) || defined(__serenity__) || defined(__sun) || defined(__plan9__)
 	#include <sys/types.h>
 	#include <sys/wait.h> // os__wait uses wait on nix
 #endif
@@ -650,7 +640,7 @@ typedef uint32_t u32;
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef u8 byte;
-typedef int i32;
+typedef int32_t i32;
 typedef uint32_t rune;
 typedef size_t usize;
 typedef ptrdiff_t isize;
@@ -721,7 +711,7 @@ void _vcleanup();
 #define _ARR_LEN(a) ( (sizeof(a)) / (sizeof(a[0])) )
 
 void v_free(voidptr ptr);
-voidptr memdup(voidptr src, int sz);
+voidptr memdup(voidptr src, isize size);
 
 '
 
@@ -803,7 +793,7 @@ static inline uint64_t _wymix(uint64_t A, uint64_t B){ _wymum(&A,&B); return A^B
 #if (WYHASH_LITTLE_ENDIAN)
 	static inline uint64_t _wyr8(const uint8_t *p) { uint64_t v; memcpy(&v, p, 8); return v;}
 	static inline uint64_t _wyr4(const uint8_t *p) { uint32_t v; memcpy(&v, p, 4); return v;}
-#elif defined(__GNUC__) || defined(__INTEL_COMPILER) || defined(__clang__)
+#elif !defined(__TINYC__) && (defined(__GNUC__) || defined(__INTEL_COMPILER) || defined(__clang__))
 	static inline uint64_t _wyr8(const uint8_t *p) { uint64_t v; memcpy(&v, p, 8); return __builtin_bswap64(v);}
 	static inline uint64_t _wyr4(const uint8_t *p) { uint32_t v; memcpy(&v, p, 4); return __builtin_bswap32(v);}
 #elif defined(_MSC_VER)

@@ -36,7 +36,7 @@ fn main() {
 
 	if !os.exists('website') {
 		println('cloning the website repo...')
-		os.system('git clone git@github.com:/vlang/website.git')
+		os.system('git clone --filter=blob:none git@github.com:/vlang/website.git')
 	}
 	for {
 		elog('------------------- Checking for updates ... -------------------')

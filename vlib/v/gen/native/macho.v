@@ -3,44 +3,42 @@
 // that can be found in the LICENSE file.
 module native
 
-const (
-	s_attr_some_instructions = 0x0400
-	s_attr_pure_instructions = u32(0x80000000)
-	s_attr_ext_reloc         = 0x0200
-	s_attr_loc_reloc         = 0x0100
-	macho_symcmd_size        = 0x18
-	macho_d_size             = 0x50
-	mh_object                = 1
-	mh_execute               = 2
-	lc_dyld_chained_fixups   = u32(0x80000034)
-	lc_dyld_exports_trie     = u32(0x80000033)
-	lc_dyld_info_only        = u32(0x80000022)
-	lc_dysymtab              = 0xb
-	lc_load_dylib            = 0xc
-	lc_load_dylinker         = 0xe
-	lc_main                  = u32(0x80000028)
-	lc_segment_64            = 0x19
-	lc_symtab                = 0x2
-	base_addr                = i64(0x1_0000_0000)
-)
+const s_attr_some_instructions = 0x0400
+const s_attr_pure_instructions = u32(0x80000000)
+const s_attr_ext_reloc = 0x0200
+const s_attr_loc_reloc = 0x0100
+const macho_symcmd_size = 0x18
+const macho_d_size = 0x50
+const mh_object = 1
+const mh_execute = 2
+const lc_dyld_chained_fixups = u32(0x80000034)
+const lc_dyld_exports_trie = u32(0x80000033)
+const lc_dyld_info_only = u32(0x80000022)
+const lc_dysymtab = 0xb
+const lc_load_dylib = 0xc
+const lc_load_dylinker = 0xe
+const lc_main = u32(0x80000028)
+const lc_segment_64 = 0x19
+const lc_symtab = 0x2
+const base_addr = i64(0x1_0000_0000)
 
 struct Symbol {
-	str_entry  int
-	symbol_typ int
-	section    int
-	desc       int
+	str_entry  i32
+	symbol_typ i32
+	section    i32
+	desc       i32
 	val        i64
 	name       string
 	is_ext     bool
 }
 
 struct Reloc {
-	addr  int
-	pcrel int
-	len   int
-	ext   int
-	typ   int
-	snum  int // symbol index (if ext) or infile section number
+	addr  i32
+	pcrel i32
+	len   i32
+	ext   i32
+	typ   i32
+	snum  i32 // symbol index (if ext) or infile section number
 }
 
 fn (mut g Gen) macho_segment64_pagezero() {
@@ -48,7 +46,7 @@ fn (mut g Gen) macho_segment64_pagezero() {
 	g.write_string_with_padding('__PAGEZERO', 16) // section name
 	g.write64(0) // vmaddr
 	if g.pref.arch == .amd64 {
-		g.write64(g.get_pagesize()) // vmsize
+		g.write64(i64(g.get_pagesize())) // vmsize
 	} else {
 		g.write64(native.base_addr) // vmsize
 	}
@@ -60,10 +58,10 @@ fn (mut g Gen) macho_segment64_pagezero() {
 	g.write32(0) // flags
 }
 
-fn (mut g Gen) macho_add_loadcommand(typ u32, size int) {
+fn (mut g Gen) macho_add_loadcommand(typ u32, size i32) {
 	g.macho_ncmds++
 	g.macho_cmdsize += size
-	g.write32(int(typ))
+	g.write32(i32(typ))
 	g.write32(size)
 }
 
@@ -94,9 +92,9 @@ fn (mut g Gen) macho_segment64_linkedit() {
 	} else {
 		// g.size_pos << g.buf.len
 		// g.write64(native.base_addr + g.get_pagesize()) // vmaddr
-		g.write64(g.get_pagesize() - 0x1000) // vmaddr
+		g.write64(i64(g.get_pagesize()) - 0x1000) // vmaddr
 		g.write64(0) // g.get_pagesize()) // vmsize
-		g.write64(g.get_pagesize()) // fileoff
+		g.write64(i64(g.get_pagesize())) // fileoff
 	}
 	g.write64(0) // filesize
 	g.write32(7) // maxprot
@@ -105,7 +103,7 @@ fn (mut g Gen) macho_segment64_linkedit() {
 	g.write32(0) // flags
 }
 
-fn (mut g Gen) macho_header(ncmds int, bintype int) int {
+fn (mut g Gen) macho_header(ncmds i32, bintype i32) i32 {
 	g.write32(0xfeedfacf) // MH_MAGIC_64
 	if g.pref.arch == .arm64 {
 		g.write32(0x0100000c) // CPU_TYPE_ARM64
@@ -117,7 +115,7 @@ fn (mut g Gen) macho_header(ncmds int, bintype int) int {
 	g.write32(native.mh_execute) // filetype
 	g.write32(ncmds) // ncmds
 
-	cmdsize_offset := g.buf.len
+	cmdsize_offset := i32(g.buf.len)
 	g.write32(0) // size of load commands
 
 	if g.pref.arch == .arm64 {
@@ -129,15 +127,15 @@ fn (mut g Gen) macho_header(ncmds int, bintype int) int {
 	return cmdsize_offset
 }
 
-fn (mut g Gen) macho_segment64_text() []int {
-	mut patch := []int{}
+fn (mut g Gen) macho_segment64_text() []i32 {
+	mut patch := []i32{}
 	g.macho_add_loadcommand(native.lc_segment_64, 152)
 	g.write_string_with_padding('__TEXT', 16) // section name
 	g.write64(native.base_addr) // vmaddr
 
-	g.write64(g.get_pagesize() * 2) // vmsize
+	g.write64(i64(g.get_pagesize()) * 2) // vmsize
 	g.write64(0) // fileoff
-	g.write64(g.get_pagesize() + 63) // filesize
+	g.write64(i64(g.get_pagesize()) + 63) // filesize
 
 	g.write32(7) // maxprot
 	g.write32(5) // initprot
@@ -147,13 +145,13 @@ fn (mut g Gen) macho_segment64_text() []int {
 	g.write_string_with_padding('__text', 16) // section name
 	g.write_string_with_padding('__TEXT', 16) // segment name
 	if g.pref.arch == .arm64 {
-		g.write64(native.base_addr + g.get_pagesize()) // vmaddr
+		g.write64(native.base_addr + i64(g.get_pagesize())) // vmaddr
 		g.write64(0) // vmsize
 		g.write32(0) // offset
 		g.write32(4) // align
 	} else {
-		g.write64(native.base_addr + g.get_pagesize()) // vmaddr
-		patch << g.buf.len
+		g.write64(native.base_addr + i64(g.get_pagesize())) // vmaddr
+		patch << i32(g.buf.len)
 		g.write64(0) // vmsize
 		g.write32(g.get_pagesize()) // offset
 		g.write32(0) // align
@@ -231,7 +229,7 @@ fn (mut g Gen) macho_dylibs() {
 	g.write_string_with_padding('/usr/lib/libSystem.B.dylib', 32)
 }
 
-fn (mut g Gen) macho_main(addr int) {
+fn (mut g Gen) macho_main(addr i32) {
 	g.macho_add_loadcommand(native.lc_main, 24)
 	g.write32(addr) // entrypoint
 	g.write32(0) // initial_stacksize
@@ -239,9 +237,9 @@ fn (mut g Gen) macho_main(addr int) {
 
 pub fn (mut g Gen) generate_macho_header() {
 	pagesize := g.get_pagesize()
-	g.code_start_pos = pagesize
+	g.code_start_pos = i64(pagesize)
 	g.debug_pos = pagesize
-	ncmds := 0 // 9+ 2 -2 -3 -1
+	ncmds := i32(0) // 9+ 2 -2 -3 -1
 	cmdsize_offset := g.macho_header(ncmds, native.mh_execute)
 	g.macho_segment64_pagezero()
 
@@ -254,20 +252,20 @@ pub fn (mut g Gen) generate_macho_header() {
 	g.macho_dylibs()
 	g.macho_main(pagesize)
 
-	g.write32_at(cmdsize_offset, g.buf.len - 24)
-	g.write_nulls(pagesize - g.buf.len)
-	g.call(0)
+	g.write32_at(i64(cmdsize_offset), i32(g.buf.len) - 24)
+	g.write_nulls(pagesize - i32(g.buf.len))
+	g.code_gen.call(0)
 }
 
-fn (mut g Gen) get_pagesize() int {
+fn (mut g Gen) get_pagesize() i32 {
 	if g.pref.arch == .arm64 {
 		return 0x4000 // 16KB
 	}
 	return 0x1000 // 4KB
 }
 
-fn (mut g Gen) write_nulls(len int) {
-	pad := g.get_pagesize() - g.buf.len
+fn (mut g Gen) write_nulls(len i32) {
+	pad := g.get_pagesize() - i32(g.buf.len)
 	for _ in 0 .. pad {
 		g.write8(0)
 	}
@@ -284,7 +282,7 @@ pub fn (mut g Gen) generate_macho_object_header() {
 		g.write32(3) // CPU_SUBTYPE_X64
 	}
 	g.write32(native.mh_object) // MH_OBJECT
-	text_offset := 0x138
+	text_offset := i32(0x138)
 	g.write32(4) // # of load commands
 	g.write32(text_offset - 0x20) // size of load commands // 0x138-0x20
 	// g.write32(0x00002000) // MH_SUBSECTIONS_VIA_SYMBOLS
@@ -296,7 +294,7 @@ pub fn (mut g Gen) generate_macho_object_header() {
 	g.zeroes(16) // segment name
 	g.write64(0) // VM address
 	g.write64(0x25) // VM size
-	g.write64(text_offset) // file offset
+	g.write64(i64(text_offset)) // file offset
 	g.write64(0x25) // file size
 	g.write32(0x7) // max vm protection
 	g.write32(0x7) // initial vm protection
@@ -315,7 +313,7 @@ pub fn (mut g Gen) generate_macho_object_header() {
 	}
 	g.write32(0x160) // relocation offset
 	g.write32(0x1) // # of relocations
-	g.write32(int(native.s_attr_some_instructions | native.s_attr_pure_instructions))
+	g.write32(i32(native.s_attr_some_instructions | native.s_attr_pure_instructions))
 	g.write32(0)
 	g.write32(0)
 	g.write32(0)
@@ -354,7 +352,7 @@ pub fn (mut g Gen) generate_macho_object_header() {
 }
 
 pub fn (mut g Gen) generate_macho_footer() {
-	codesize := g.buf.len - 0x1000
+	codesize := i32(g.buf.len) - 0x1000
 	g.write_relocs()
 	g.sym_table()
 	stringtablesize := g.sym_string_table()
@@ -363,22 +361,22 @@ pub fn (mut g Gen) generate_macho_footer() {
 	for o in g.size_pos {
 		n := g.read32_at(o)
 		// eprintln('$n + $delta')
-		g.write32_at(o, n + delta)
+		g.write32_at(i64(o), n + delta)
 	}
 	g.write64(0)
 	g.macho_patch_header()
 	if g.pref.arch == .amd64 {
-		call_delta := int(g.main_fn_addr - g.code_start_pos) - 5
+		call_delta := i32(g.main_fn_addr - g.code_start_pos) - 5
 		g.write32_at(g.code_start_pos + 1, call_delta)
 		g.create_executable()
 	} else {
-		call_delta := int(g.main_fn_addr - g.code_start_pos)
+		call_delta := i32(g.main_fn_addr - g.code_start_pos)
 		if (call_delta % 4) != 0 || call_delta < 0 {
 			g.n_error('Invalid entrypoint->main delta (${call_delta})')
 		} else {
 			blop := (0x94 << 24) | (call_delta / 4)
-			g.write32_at(g.code_start_pos, int(blop))
-			g.write_nulls(g.get_pagesize() - g.buf.len)
+			g.write32_at(g.code_start_pos, i32(blop))
+			g.write_nulls(g.get_pagesize() - i32(g.buf.len))
 			g.create_executable()
 		}
 	}
@@ -423,20 +421,14 @@ fn (mut g Gen) sym_table_command() {
 		is_ext: false
 	}
 	g.macho_add_loadcommand(native.lc_symtab, native.macho_symcmd_size)
-	sym_table_offset := 0x168
+	sym_table_offset := i32(0x168)
 	g.write32(sym_table_offset)
-	g_syms_len := 4
+	g_syms_len := i32(4)
 	g.write32(g_syms_len)
-	str_offset := 0x1a8
+	str_offset := i32(0x1a8)
 	g.write32(str_offset)
-	str_size := 0x20
+	str_size := i32(0x20)
 	g.write32(str_size)
-}
-
-pub fn (mut g Gen) zeroes(n int) {
-	for _ in 0 .. n {
-		g.buf << 0
-	}
 }
 
 fn (mut g Gen) write_relocs() {
@@ -473,35 +465,4 @@ fn (mut g Gen) write_symbol(s Symbol) {
 	g.write8(0)
 	g.write64(s.val)
 	// g.write16(s.desc)
-}
-
-fn (mut g Gen) sym_string_table() int {
-	begin := g.buf.len
-	g.zeroes(1)
-
-	mut generated := map[string]int{}
-
-	for _, s in g.strs {
-		pos := generated[s.str] or { g.buf.len }
-
-		match s.typ {
-			.rel32 {
-				g.write32_at(s.pos, pos - s.pos - 4)
-			}
-			else {
-				if g.pref.os == .windows {
-					// that should be .rel32, not windows-specific
-					g.write32_at(s.pos, pos - s.pos - 4)
-				} else {
-					g.write64_at(s.pos, pos + native.base_addr)
-				}
-			}
-		}
-
-		if s.str !in generated {
-			generated[s.str] = pos
-			g.write_string(s.str)
-		}
-	}
-	return g.buf.len - begin
 }

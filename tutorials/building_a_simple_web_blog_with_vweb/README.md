@@ -1,4 +1,4 @@
-## Building a 150 KB web blog in V & SQLite
+## Building a 400 KB web blog in V & SQLite
 
 Hello,
 
@@ -16,7 +16,7 @@ The benefits of using V for web:
   is enough.
 - Fast development without any boilerplate.
 
-> **Note**
+> [!NOTE]
 > V and Vweb are at a very early stage and are changing rapidly.
 
 The code is available [here](./code/blog).
@@ -40,7 +40,7 @@ Now V should be globally available on your system.
 ### Install SQLite development dependency
 
 If you don't have it already installed, look at the
-[`sqlite` README](../../vlib/sqlite/README.md) for instructions.
+[`sqlite` README](../../vlib/db/sqlite/README.md) for instructions.
 
 ### Creating a new Vweb project
 
@@ -48,7 +48,8 @@ V projects can be created anywhere and don't need to have a certain structure:
 
 ```bash
 mkdir blog
-v init
+cd blog
+touch blog.v
 ```
 
 First, let's create a simple hello world website:
@@ -68,7 +69,7 @@ fn main() {
 	vweb.run(app, 8081)
 }
 
-['/index']
+@['/index']
 pub fn (mut app App) index() vweb.Result {
 	return app.text('Hello world from vweb!')
 }
@@ -202,11 +203,11 @@ since a DB connection doesn't have to be set up for each request.
 // blog.v
 fn main() {
 	mut app := App{
-		db: sqlite.connect(':memory:') or { panic(err) }
+		db: sqlite.connect(':memory:')!
 	}
 	sql app.db {
 		create table Article
-	}
+	}!
 
 	first_article := Article{
 		title: 'Hello, world!'
@@ -221,7 +222,7 @@ fn main() {
 	sql app.db {
 		insert first_article into Article
 		insert second_article into Article
-	}
+	}!
 	vweb.run(app, 8080)
 }
 ```
@@ -233,7 +234,7 @@ Create a new file `article.v`:
 module main
 
 struct Article {
-	id    int    [primary; sql: serial]
+	id    int    @[primary; sql: serial]
 	title string
 	text  string
 }
@@ -241,7 +242,7 @@ struct Article {
 pub fn (app &App) find_all_articles() []Article {
 	return sql app.db {
 		select from Article
-	}
+	} or { panic(err) }
 }
 ```
 
@@ -288,7 +289,7 @@ For example, if we only wanted to find articles with ids between 100 and 200, we
 
 return sql app.db {
 	select from Article where id >= 100 && id <= 200
-}
+} or { panic(err) }
 ```
 
 Retrieving a single article is very simple:
@@ -298,7 +299,7 @@ Retrieving a single article is very simple:
 pub fn (app &App) retrieve_article() ?Article {
 	return sql app.db {
 		select from Article limit 1
-	}
+	} or { panic(err) }[0]
 }
 ```
 
@@ -307,9 +308,8 @@ bad queries will always be handled by the developer:
 
 ```v ignore
 // article.v
-article := app.retrieve_article(10) or {
-	app.text('Article not found')
-	return
+article := app.retrieve_article() or {
+	return app.text('Article not found')
 }
 ```
 
@@ -336,7 +336,7 @@ Create `new.html`:
 // article.v
 import vweb
 
-[post]
+@[post]
 pub fn (mut app App) new_article(title string, text string) vweb.Result {
 	if title == '' || text == '' {
 		return app.text('Empty text/title')
@@ -348,7 +348,7 @@ pub fn (mut app App) new_article(title string, text string) vweb.Result {
 	println(article)
 	sql app.db {
 		insert article into Article
-	}
+	} or { panic(err) }
 	return app.redirect('/')
 }
 ```
@@ -368,7 +368,7 @@ We need to update `index.html` to add a link to the "new article" page:
 Next we need to add the HTML endpoint to our code like we did with `index.html`:
 
 ```v ignore
-['/new']
+@['/new']
 pub fn (mut app App) new() vweb.Result {
 	return $vweb.html()
 }
@@ -386,7 +386,7 @@ in V is very simple:
 // article.v
 import vweb
 
-['/articles'; get]
+@['/articles'; get]
 pub fn (mut app App) articles() vweb.Result {
 	articles := app.find_all_articles()
 	return app.json(articles)
@@ -401,7 +401,7 @@ If one wants to persist data they need to use a file instead of memory SQLite Da
 Replace the db setup code with this instead:
 
 ```
-db: sqlite.connect('blog.db') or { panic(err) }
+db: sqlite.connect('blog.db')!
 ```
 
 As we can see it attempts to open a file in the current directory named `blog.db`.
@@ -409,6 +409,18 @@ If the database file doesn't exist it will create it. The second command will
 create the table `Article` if none exists already. Now every time the
 app is run you will see the articles created from the previous executions
 
-To be continued...
+### Building the blog
+
+Run
+
+```bash
+v -d use_openssl -o blog -prod . && strip ./blog
+```
+
+This will result in a ~400KB binary. `-d use_openssl` tells vweb to link to OpenSSL.
+Without this flag mbedtls will be embedded, and the binary size will increase to ~700KB.
+
+
+### To be continued...
 
 For an example of a more sophisticated web app written in V, check out Vorum: https://github.com/vlang/vorum

@@ -1,4 +1,4 @@
-fn f(n int) ?f64 {
+fn f(n int) !f64 {
 	if n < 0 {
 		return error('negative')
 	}

@@ -3,10 +3,8 @@ import rand.splitmix64
 import rand.musl
 import rand.mt19937
 
-const (
-	rnd_count = 40
-	seeds     = [[u32(42), 0], [u32(256), 0]]
-)
+const rnd_count = 40
+const seeds = [[u32(42), 0], [u32(256), 0]]
 
 fn get_n_random_ints(seed_data []u32, n int) []int {
 	mut values := []int{cap: n}
@@ -192,9 +190,32 @@ fn test_rand_u8() {
 	assert all[0] != all[128]
 }
 
-const (
-	string_count = 25
-)
+fn test_rand_u16() {
+	mut all := []u16{}
+	mut same_as_previous := 0
+	mut previous := u16(0)
+	for _ in 0 .. 65536 {
+		x := rand.u16()
+		assert x >= 0
+		assert x <= 65535
+		all << x
+		if previous == x {
+			same_as_previous++
+			// dump(previous)
+			// dump(x)
+		}
+		previous = x
+	}
+	assert same_as_previous < 1000
+	all.sort(a < b)
+	assert all[0] != all[65535]
+	assert all[0] != all[32768]
+	// dump( all[0] )
+	// dump( all[65535] )
+	// dump( all[32768] )
+}
+
+const string_count = 25
 
 fn test_rand_string_from_set() {
 	sets := [
@@ -428,4 +449,24 @@ fn test_element2() {
 		assert 3 != e
 		assert 4 != e
 	}
+}
+
+fn test_proper_masking() {
+	under32 := []int{len: 10, init: index * 0 + rand.intn(1073741823)!}
+	assert under32 != [0].repeat(10)
+
+	over32 := []int{len: 10, init: index * 0 + rand.intn(1073741824)!}
+	assert over32 != [0].repeat(10)
+
+	under64 := []i64{len: 10, init: index * 0 + rand.i64n(i64(4611686018427387903))!}
+	assert under64 != [i64(0)].repeat(10)
+
+	over64 := []i64{len: 10, init: index * 0 + rand.i64n(i64(4611686018427387904))!}
+	assert over64 != [i64(0)].repeat(10)
+
+	almost_full32 := []int{len: 10, init: index * 0 + rand.intn(2147483647)!}
+	assert almost_full32 != [0].repeat(10)
+
+	almost_full64 := []i64{len: 10, init: index * 0 + rand.i64n(i64(9223372036854775807))!}
+	assert almost_full64 != [i64(0)].repeat(10)
 }

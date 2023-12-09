@@ -18,9 +18,9 @@ pub mut:
 	description     string
 	man_description string
 	version         string
-	pre_execute     FnCommandCallback
-	execute         FnCommandCallback
-	post_execute    FnCommandCallback
+	pre_execute     FnCommandCallback = unsafe { nil }
+	execute         FnCommandCallback = unsafe { nil }
+	post_execute    FnCommandCallback = unsafe { nil }
 	disable_help    bool
 	disable_man     bool
 	disable_version bool
@@ -294,10 +294,12 @@ fn (cmd Command) check_required_flags() {
 pub fn (cmd Command) execute_help() {
 	if cmd.commands.contains('help') {
 		help_cmd := cmd.commands.get('help') or { return } // ignore error and handle command normally
-		help_cmd.execute(help_cmd) or { panic(err) }
-	} else {
-		print(cmd.help_message())
+		if !isnil(help_cmd.execute) {
+			help_cmd.execute(help_cmd) or { panic(err) }
+			return
+		}
 	}
+	print(cmd.help_message())
 }
 
 // execute_help executes the callback registered
@@ -329,7 +331,7 @@ fn (cmds []Command) contains(name string) bool {
 	return false
 }
 
-[noreturn]
+@[noreturn]
 fn eprintln_exit(message string) {
 	eprintln(message)
 	exit(1)

@@ -16,71 +16,89 @@ module regex
 
 import strings
 
-pub const (
-	v_regex_version          = '1.0 alpha' // regex module version
+pub const v_regex_version = '1.0 alpha' // regex module version
 
-	max_code_len             = 256 // default small base code len for the regex programs
-	max_quantifier           = 1073741824 // default max repetitions allowed for the quantifiers = 2^30
-	// spaces chars (here only westerns!!) TODO: manage all the spaces from unicode
-	spaces                   = [` `, `\t`, `\n`, `\r`, `\v`, `\f`]
-	// new line chars for now only '\n'
-	new_line_list            = [`\n`, `\r`]
+pub const max_code_len = 256 // default small base code len for the regex programs
 
-	// Results
-	no_match_found           = -1
+pub const max_quantifier = 1073741824 // default max repetitions allowed for the quantifiers = 2^30
 
-	// Errors
-	compile_ok               = 0 // the regex string compiled, all ok
-	err_char_unknown         = -2 // the char used is unknow to the system
-	err_undefined            = -3 // the compiler symbol is undefined
-	err_internal_error       = -4 // Bug in the regex system!!
-	err_cc_alloc_overflow    = -5 // memory for char class full!!
-	err_syntax_error         = -6 // syntax error in regex compiling
-	err_groups_overflow      = -7 // max number of groups reached
-	err_groups_max_nested    = -8 // max number of nested group reached
-	err_group_not_balanced   = -9 // group not balanced
-	err_group_qm_notation    = -10 // group invalid notation
-	err_invalid_or_with_cc   = -11 // invalid or on two consecutive char class
-	err_neg_group_quantifier = -12 // negation groups can not have quantifier
-	err_consecutive_dots     = -13 // two consecutive dots is an error
-)
+// spaces chars (here only westerns!!) TODO: manage all the spaces from unicode
+pub const spaces = [` `, `\t`, `\n`, `\r`, `\v`, `\f`]
+// new line chars for now only '\n'
+pub const new_line_list = [`\n`, `\r`]
 
-const (
-	//*************************************
-	// regex program instructions
-	//*************************************
-	ist_simple_char    = u32(0x7FFFFFFF) // single char instruction, 31 bit available to char
-	// char class 11 0100 AA xxxxxxxx
-	// AA = 00  regular class
-	// AA = 01  Negated class ^ char
-	ist_char_class     = u32(0xD1000000) // MASK
-	ist_char_class_pos = u32(0xD0000000) // char class normal [abc]
-	ist_char_class_neg = u32(0xD1000000) // char class negate [^abc]
-	// dot char        10 0110 xx xxxxxxxx
-	ist_dot_char       = u32(0x98000000) // match any char except \n
-	// backslash chars 10 0100 xx xxxxxxxx
-	ist_bsls_char      = u32(0x90000000) // backslash char
-	// OR |            10 010Y xx xxxxxxxx
-	ist_or_branch      = u32(0x91000000) // OR case
-	// groups          10 010Y xx xxxxxxxx
-	ist_group_start    = u32(0x92000000) // group start (
-	ist_group_end      = u32(0x94000000) // group end   )
-	// control instructions
-	ist_prog_end       = u32(0x88000000) // 10 0010 xx xxxxxxxx
-		//*************************************
-)
+// Results
+pub const no_match_found = -1
+
+// Errors
+pub const compile_ok = 0 // the regex string compiled, all ok
+
+pub const err_char_unknown = -2 // the char used is unknow to the system
+
+pub const err_undefined = -3 // the compiler symbol is undefined
+
+pub const err_internal_error = -4 // Bug in the regex system!!
+
+pub const err_cc_alloc_overflow = -5 // memory for char class full!!
+
+pub const err_syntax_error = -6 // syntax error in regex compiling
+
+pub const err_groups_overflow = -7 // max number of groups reached
+
+pub const err_groups_max_nested = -8 // max number of nested group reached
+
+pub const err_group_not_balanced = -9 // group not balanced
+
+pub const err_group_qm_notation = -10 // group invalid notation
+
+pub const err_invalid_or_with_cc = -11 // invalid or on two consecutive char class
+
+pub const err_neg_group_quantifier = -12 // negation groups can not have quantifier
+
+pub const err_consecutive_dots = -13
+
+//*************************************
+// regex program instructions
+//*************************************
+const ist_simple_char = u32(0x7FFFFFFF) // single char instruction, 31 bit available to char
+
+// char class 11 0100 AA xxxxxxxx
+// AA = 00  regular class
+// AA = 01  Negated class ^ char
+const ist_char_class = u32(0xD1000000) // MASK
+
+const ist_char_class_pos = u32(0xD0000000) // char class normal [abc]
+
+const ist_char_class_neg = u32(0xD1000000) // char class negate [^abc]
+
+// dot char        10 0110 xx xxxxxxxx
+const ist_dot_char = u32(0x98000000) // match any char except \n
+
+// backslash chars 10 0100 xx xxxxxxxx
+const ist_bsls_char = u32(0x90000000) // backslash char
+
+// OR |            10 010Y xx xxxxxxxx
+const ist_or_branch = u32(0x91000000) // OR case
+
+// groups          10 010Y xx xxxxxxxx
+const ist_group_start = u32(0x92000000) // group start (
+
+const ist_group_end = u32(0x94000000) // group end   )
+
+// control instructions
+const ist_prog_end = u32(0x88000000)
 
 /*
 General Utilities
 */
 // utf8util_char_len calculate the length in bytes of a utf8 char
-[inline]
+@[inline]
 fn utf8util_char_len(b u8) int {
 	return ((0xe5000000 >> ((b >> 3) & 0x1e)) & 3) + 1
 }
 
 // get_char get a char from position i and return an u32 with the unicode code
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn (re RE) get_char(in_txt string, i int) (u32, int) {
 	ini := unsafe { in_txt.str[i] }
 	// ascii 8 bit
@@ -99,7 +117,7 @@ fn (re RE) get_char(in_txt string, i int) (u32, int) {
 }
 
 // get_charb get a char from position i and return an u32 with the unicode code
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn (re RE) get_charb(in_txt &u8, i int) (u32, int) {
 	// ascii 8 bit
 	if (re.flag & regex.f_bin) != 0 || unsafe { in_txt[i] } & 0x80 == 0 {
@@ -116,7 +134,7 @@ fn (re RE) get_charb(in_txt &u8, i int) (u32, int) {
 	return ch, char_len
 }
 
-[inline]
+@[inline]
 fn is_alnum(in_char u8) bool {
 	mut tmp := in_char - `A`
 	if tmp <= 25 {
@@ -136,51 +154,51 @@ fn is_alnum(in_char u8) bool {
 	return false
 }
 
-[inline]
+@[inline]
 fn is_not_alnum(in_char u8) bool {
 	return !is_alnum(in_char)
 }
 
-[inline]
+@[inline]
 fn is_space(in_char u8) bool {
 	return in_char in regex.spaces
 }
 
-[inline]
+@[inline]
 fn is_not_space(in_char u8) bool {
 	return !is_space(in_char)
 }
 
-[inline]
+@[inline]
 fn is_digit(in_char u8) bool {
 	tmp := in_char - `0`
 	return tmp <= 0x09
 }
 
-[inline]
+@[inline]
 fn is_not_digit(in_char u8) bool {
 	return !is_digit(in_char)
 }
 
 /*
-[inline]
+@[inline]
 fn is_wordchar(in_char byte) bool {
 	return is_alnum(in_char) || in_char == `_`
 }
 
-[inline]
+@[inline]
 fn is_not_wordchar(in_char byte) bool {
 	return !is_alnum(in_char)
 }
 */
 
-[inline]
+@[inline]
 fn is_lower(in_char u8) bool {
 	tmp := in_char - `a`
 	return tmp <= 25
 }
 
-[inline]
+@[inline]
 fn is_upper(in_char u8) bool {
 	tmp := in_char - `A`
 	return tmp <= 25
@@ -207,7 +225,7 @@ pub fn (re RE) get_parse_error_string(err int) string {
 }
 
 // utf8_str convert and utf8 sequence to a printable string
-[inline]
+@[inline]
 fn utf8_str(ch rune) string {
 	mut i := 4
 	mut res := ''
@@ -235,7 +253,7 @@ pub type FnValidator = fn (u8) bool
 
 struct Token {
 mut:
-	ist rune
+	ist u32
 	// char
 	ch     rune // char of the token if any
 	ch_len u8   // char len
@@ -248,7 +266,7 @@ mut:
 	// counters for quantifier check (repetitions)
 	rep int
 	// validator function pointer
-	validator FnValidator
+	validator FnValidator = unsafe { nil }
 	// groups variables
 	group_neg bool // negation flag for the group, 0 => no negation > 0 => negataion
 	group_rep int  // repetition of the group
@@ -265,7 +283,7 @@ mut:
 	source_index int
 }
 
-[inline]
+@[inline]
 fn (mut tok Token) reset() {
 	tok.rep = 0
 }
@@ -275,16 +293,18 @@ fn (mut tok Token) reset() {
 * Regex struct
 *
 ******************************************************************************/
-pub const (
-	f_nl  = 0x00000001 // end the match when find a new line symbol
-	f_ms  = 0x00000002 // match true only if the match is at the start of the string
-	f_me  = 0x00000004 // match true only if the match is at the end of the string
+pub const f_nl = 0x00000001 // end the match when find a new line symbol
 
-	f_efm = 0x00000100 // exit on first token matched, used by search
-	f_bin = 0x00000200 // work only on bytes, ignore utf-8
-	// behaviour modifier flags
-	f_src = 0x00020000 // search mode enabled
-)
+pub const f_ms = 0x00000002 // match true only if the match is at the start of the string
+
+pub const f_me = 0x00000004 // match true only if the match is at the end of the string
+
+pub const f_efm = 0x00000100 // exit on first token matched, used by search
+
+pub const f_bin = 0x00000200 // work only on bytes, ignore utf-8
+
+// behaviour modifier flags
+pub const f_src = 0x00020000
 
 // Log function prototype
 pub type FnLog = fn (string)
@@ -320,7 +340,7 @@ pub mut:
 }
 
 // Reset RE object
-[direct_array_access; inline]
+@[direct_array_access; inline]
 pub fn (mut re RE) reset() {
 	re.cc_index = 0
 
@@ -359,7 +379,7 @@ pub fn (mut re RE) reset() {
 // reset for search mode fail
 // gcc bug, dont use [inline] or go 5 time slower
 //[inline]
-[direct_array_access]
+@[direct_array_access]
 fn (mut re RE) reset_src() {
 	mut i := 0
 	for i < re.prog_len {
@@ -376,25 +396,23 @@ fn (mut re RE) reset_src() {
 ******************************************************************************/
 struct BslsStruct {
 	ch        rune        // meta char
-	validator FnValidator // validator function pointer
+	validator FnValidator = unsafe { nil } // validator function pointer
 }
 
-const (
-	bsls_validator_array = [
-		BslsStruct{`w`, is_alnum},
-		BslsStruct{`W`, is_not_alnum},
-		BslsStruct{`s`, is_space},
-		BslsStruct{`S`, is_not_space},
-		BslsStruct{`d`, is_digit},
-		BslsStruct{`D`, is_not_digit},
-		BslsStruct{`a`, is_lower},
-		BslsStruct{`A`, is_upper},
-	]
+const bsls_validator_array = [
+	BslsStruct{`w`, is_alnum},
+	BslsStruct{`W`, is_not_alnum},
+	BslsStruct{`s`, is_space},
+	BslsStruct{`S`, is_not_space},
+	BslsStruct{`d`, is_digit},
+	BslsStruct{`D`, is_not_digit},
+	BslsStruct{`a`, is_lower},
+	BslsStruct{`A`, is_upper},
+]
 
-	// these chars are escape if preceded by a \
-	bsls_escape_list     = [`\\`, `|`, `.`, `:`, `*`, `+`, `-`, `{`, `}`, `[`, `]`, `(`, `)`, `?`,
-		`^`, `!`]
-)
+// these chars are escape if preceded by a \
+const bsls_escape_list = [`\\`, `|`, `.`, `:`, `*`, `+`, `-`, `{`, `}`, `[`, `]`, `(`, `)`, `?`,
+	`^`, `!`]
 
 enum BSLS_parse_state {
 	start
@@ -450,20 +468,22 @@ fn (re RE) parse_bsls(in_txt string, in_i int) (int, int) {
 * Char class
 *
 ******************************************************************************/
-const (
-	cc_null = 0 // empty cc token
-	cc_char = 1 // simple char: a
-	cc_int  = 2 // char interval: a-z
-	cc_bsls = 3 // backslash char
-	cc_end  = 4 // cc sequence terminator
-)
+const cc_null = 0 // empty cc token
+
+const cc_char = 1 // simple char: a
+
+const cc_int = 2 // char interval: a-z
+
+const cc_bsls = 3 // backslash char
+
+const cc_end = 4
 
 struct CharClass {
 mut:
 	cc_type   int         // type of cc token
 	ch0       rune        // first char of the interval a-b  a in this case
 	ch1       rune        // second char of the interval a-b b in this case
-	validator FnValidator // validator function pointer
+	validator FnValidator = unsafe { nil } // validator function pointer
 }
 
 enum CharClass_parse_state {
@@ -553,7 +573,7 @@ fn (re RE) check_char_class(pc int, ch rune) bool {
 }
 
 // parse_char_class return (index, str_len, cc_type) of a char class [abcm-p], char class start after the [ char
-fn (mut re RE) parse_char_class(in_txt string, in_i int) (int, int, rune) {
+fn (mut re RE) parse_char_class(in_txt string, in_i int) (int, int, u32) {
 	mut status := CharClass_parse_state.start
 	mut i := in_i
 
@@ -910,9 +930,7 @@ fn (re RE) parse_groups(in_txt string, in_i int) (int, bool, bool, string, int) 
 	return -2, true, false, name, i
 }
 
-const (
-	quntifier_chars = [rune(`+`), `*`, `?`, `{`]
-)
+const quntifier_chars = [rune(`+`), `*`, `?`, `{`]
 
 //
 // main compiler
@@ -1004,7 +1022,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 			// manage negation groups
 			if negate_flag == true {
 				re.prog[pc].group_neg = true
-				re.prog[pc].rep_min = 0 // may be not catched, but it is ok
+				re.prog[pc].rep_min = 0 // may not be caught, but it is ok
 			}
 
 			// set the group id
@@ -1259,7 +1277,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 				if re.prog[pc2].ist == regex.ist_dot_char {
 					return regex.err_syntax_error, 0
 				}
-				if re.prog[pc2].ist !in [rune(regex.ist_prog_end), regex.ist_group_end,
+				if re.prog[pc2].ist !in [u32(regex.ist_prog_end), regex.ist_group_end,
 					regex.ist_group_start] {
 					// println("Next dot char check is PC: ${pc2}")
 					re.prog[pc1].dot_check_pc = pc2
@@ -1276,7 +1294,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 		pc1 = last_dot_char_pc + 1
 		mut is_last_dot := true
 		for pc1 < pc {
-			if re.prog[pc1].ist !in [rune(regex.ist_prog_end), regex.ist_group_end] {
+			if re.prog[pc1].ist !in [u32(regex.ist_prog_end), regex.ist_group_end] {
 				is_last_dot = false
 				break
 			}
@@ -1302,7 +1320,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 			bsls_char_count++
 			mut pc2 := pc1 + 1
 			for pc2 < pc {
-				if re.prog[pc2].ist !in [rune(regex.ist_prog_end), regex.ist_group_end,
+				if re.prog[pc2].ist !in [u32(regex.ist_prog_end), regex.ist_group_end,
 					regex.ist_group_start] {
 					// println("Next bsls check is PC: ${pc2}")
 					re.prog[pc1].bsls_check_pc = pc2
@@ -1319,7 +1337,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 		pc1 = last_bsls_char_pc + 1
 		mut is_last_bsls := true
 		for pc1 < pc {
-			if re.prog[pc1].ist !in [rune(regex.ist_prog_end), regex.ist_group_end] {
+			if re.prog[pc1].ist !in [u32(regex.ist_prog_end), regex.ist_group_end] {
 				is_last_bsls = false
 				break
 			}
@@ -1337,12 +1355,12 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 	mut cc_char_count := 0
 	mut last_cc_char_pc := -1
 	for pc1 < pc {
-		if re.prog[pc1].ist in [rune(regex.ist_char_class_pos), regex.ist_char_class_neg] {
+		if re.prog[pc1].ist in [u32(regex.ist_char_class_pos), regex.ist_char_class_neg] {
 			last_cc_char_pc = pc1
 			cc_char_count++
 			mut pc2 := pc1 + 1
 			for pc2 < pc {
-				if re.prog[pc2].ist !in [rune(regex.ist_prog_end), regex.ist_group_end,
+				if re.prog[pc2].ist !in [u32(regex.ist_prog_end), regex.ist_group_end,
 					regex.ist_group_start] {
 					// println("Next CC check is PC: ${pc2}")
 					re.prog[pc1].cc_check_pc = pc2
@@ -1359,7 +1377,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 		pc1 = last_cc_char_pc + 1
 		mut is_last_cc := true
 		for pc1 < pc {
-			if re.prog[pc1].ist !in [rune(regex.ist_prog_end), regex.ist_group_end] {
+			if re.prog[pc1].ist !in [u32(regex.ist_prog_end), regex.ist_group_end] {
 				is_last_cc = false
 				break
 			}
@@ -1636,7 +1654,7 @@ pub fn (re RE) get_query() string {
 * Groups saving utilities
 *
 ******************************************************************************/
-[direct_array_access]
+@[direct_array_access]
 fn (mut re RE) group_continuous_save(g_index int) {
 	if re.group_csave_flag == true {
 		// continuous save, save until we have space
@@ -1674,7 +1692,7 @@ fn (mut re RE) group_continuous_save(g_index int) {
 *
 ******************************************************************************/
 enum Match_state {
-	start = 0
+	start        = 0
 	stop
 	end
 	new_line
@@ -1715,7 +1733,7 @@ pub mut:
 	last_dot_pc int = -1 // last dot chat pc
 }
 
-[direct_array_access]
+@[direct_array_access]
 pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 	// result status
 	mut result := regex.no_match_found // function return
@@ -1727,8 +1745,8 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 	mut last_fnd_pc := -1
 
 	mut state := StateObj{} // actual state
-	mut ist := rune(0) // actual instruction
-	mut l_ist := rune(0) // last matched instruction
+	mut ist := u32(0) // actual instruction
+	mut l_ist := u32(0) // last matched instruction
 
 	mut step_count := 0 // stats for debug
 	mut dbg_line := 0 // count debug line printed
@@ -1904,7 +1922,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 			}
 
 			if l_ist in [
-				rune(regex.ist_char_class_neg),
+				u32(regex.ist_char_class_neg),
 				regex.ist_char_class_pos,
 				regex.ist_bsls_char,
 				regex.ist_dot_char,
@@ -2202,6 +2220,79 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 			}
 			// char class IST
 			else if ist == regex.ist_char_class_pos || ist == regex.ist_char_class_neg {
+				// check next token to be false
+				mut next_check_flag := false
+
+				// if we are done with max go on dot char are dedicated case!!
+				if re.prog[state.pc].rep >= re.prog[state.pc].rep_max {
+					re.state_list.pop()
+					m_state = .ist_next
+					continue
+				}
+
+				if re.prog[state.pc].last_dot_flag == false && re.prog[state.pc].cc_check_pc >= 0
+					&& re.prog[state.pc].rep >= re.prog[state.pc].rep_min {
+					// load the char
+					// ch_t, _ := re.get_charb(in_txt, state.i+char_len)
+					ch_t := ch
+					chk_pc := re.prog[state.pc].cc_check_pc
+
+					// simple char
+					if re.prog[chk_pc].ist == regex.ist_simple_char {
+						if re.prog[chk_pc].ch == ch_t {
+							next_check_flag = true
+						}
+						// println("Check [ist_simple_char] [${re.prog[chk_pc].ch}]==[${ch_t:c}] => $next_check_flag")
+					}
+					// char char_class
+					else if re.prog[chk_pc].ist == regex.ist_char_class_pos
+						|| re.prog[chk_pc].ist == regex.ist_char_class_neg {
+						mut cc_neg := false
+						if re.prog[chk_pc].ist == regex.ist_char_class_neg {
+							cc_neg = true
+						}
+						mut cc_res := re.check_char_class(chk_pc, ch_t)
+
+						if cc_neg {
+							cc_res = !cc_res
+						}
+						next_check_flag = cc_res
+						// println("Check [ist_char_class] => $next_check_flag")
+					}
+					// check bsls
+					else if re.prog[chk_pc].ist == regex.ist_bsls_char {
+						next_check_flag = re.prog[chk_pc].validator(u8(ch_t))
+						// println("Check [ist_bsls_char] => $next_check_flag")
+					}
+				}
+
+				// check if we must continue or pass to the next IST
+				if next_check_flag == true && re.prog[state.pc + 1].ist != regex.ist_prog_end {
+					// println("save the state!!")
+					mut dot_state := StateObj{
+						group_index: state.group_index
+						match_flag: state.match_flag
+						match_index: state.match_index
+						first_match: state.first_match
+						pc: state.pc
+						i: state.i + char_len
+						char_len: char_len
+						last_dot_pc: state.pc
+					}
+					// if we are managing a \[something]* stay on the same char on return
+					if re.prog[state.pc].rep_min == 0 {
+						dot_state.i -= char_len
+					}
+
+					re.state_list << dot_state
+
+					m_state = .ist_quant_n
+					// println("dot_char stack len: ${re.state_list.len}")
+					continue
+				}
+
+				// println("HERE WE MUST STAY! ${state.i} >= ${in_txt_len}")
+
 				state.match_flag = false
 				mut cc_neg := false
 
@@ -2209,6 +2300,12 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 					cc_neg = true
 				}
 				mut cc_res := re.check_char_class(state.pc, ch)
+
+				// manage out of text on char class parse
+				if state.i >= (in_txt_len - 1) && cc_neg && re.prog[state.pc].last_dot_flag {
+					m_state = .ist_quant_n
+					continue
+				}
 
 				if cc_neg {
 					cc_res = !cc_res
@@ -2332,7 +2429,8 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 				// println("ist_simple_char")
 				state.match_flag = false
 
-				if re.prog[state.pc].ch == ch {
+				if re.prog[state.pc].ch == ch
+					&& (state.i < in_txt_len - 1 || re.prog[state.pc].ch != 0) {
 					state.match_flag = true
 					l_ist = regex.ist_simple_char
 
@@ -2535,7 +2633,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 			}
 
 			rep := re.prog[state.pc].rep
-			// println(rep)
+			// println("ist_quant_p rep: ${rep} rep_min: ${re.prog[state.pc].rep_min}")
 
 			// under range
 			if rep > 0 && rep < re.prog[state.pc].rep_min {

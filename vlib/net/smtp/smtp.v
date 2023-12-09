@@ -12,15 +12,13 @@ import strings
 import time
 import io
 
-const (
-	recv_size = 128
-)
+const recv_size = 128
 
 enum ReplyCode {
-	ready = 220
-	close = 221
-	auth_ok = 235
-	action_ok = 250
+	ready      = 220
+	close      = 221
+	auth_ok    = 235
+	action_ok  = 250
 	mail_start = 354
 }
 
@@ -33,7 +31,7 @@ pub struct Client {
 mut:
 	conn     net.TcpConn
 	ssl_conn &ssl.SSLConn = unsafe { nil }
-	reader   io.BufferedReader
+	reader   ?&io.BufferedReader
 pub:
 	server   string
 	port     int = 25
@@ -139,7 +137,7 @@ fn (mut c Client) connect_ssl() ! {
 fn (mut c Client) expect_reply(expected ReplyCode) ! {
 	mut str := ''
 	for {
-		str = c.reader.read_line()!
+		str = c.reader or { return error('the Client.reader field is not set') }.read_line()!
 		if str.len < 4 {
 			return error('Invalid SMTP response: ${str}')
 		}
@@ -162,11 +160,11 @@ fn (mut c Client) expect_reply(expected ReplyCode) ! {
 			return error('Received unexpected status code ${status}, expecting ${expected}')
 		}
 	} else {
-		return error('Recieved unexpected SMTP data: ${str}')
+		return error('Received unexpected SMTP data: ${str}')
 	}
 }
 
-[inline]
+@[inline]
 fn (mut c Client) send_str(s string) ! {
 	$if smtp_debug ? {
 		eprintln('\n\n[SEND START]')
@@ -181,20 +179,20 @@ fn (mut c Client) send_str(s string) ! {
 	}
 }
 
-[inline]
+@[inline]
 fn (mut c Client) send_ehlo() ! {
 	c.send_str('EHLO ${c.server}\r\n')!
 	c.expect_reply(.action_ok)!
 }
 
-[inline]
+@[inline]
 fn (mut c Client) send_starttls() ! {
 	c.send_str('STARTTLS\r\n')!
 	c.expect_reply(.ready)!
 	c.connect_ssl()!
 }
 
-[inline]
+@[inline]
 fn (mut c Client) send_auth() ! {
 	if c.username.len == 0 {
 		return

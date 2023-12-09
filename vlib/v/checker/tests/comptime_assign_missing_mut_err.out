@@ -1,0 +1,7 @@
+vlib/v/checker/tests/comptime_assign_missing_mut_err.vv:13:4: error: `res` is immutable, declare it with `mut` to make it mutable
+   11 |         val := doc.value(field.name)
+   12 |         $if field.typ is string {
+   13 |             res.$(field.name) = val.string()
+      |             ~~~
+   14 |         }
+   15 |     }

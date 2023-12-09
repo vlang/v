@@ -1,14 +1,15 @@
-const (
-	start        = 1
-	start_2      = 4
-	end          = 3
-	end_2        = 8
-	//
-	start_rune   = `a`
-	start_2_rune = `d`
-	end_rune     = `c`
-	end_2_rune   = `i`
-)
+const start = 1
+const start_2 = 4
+const end = 3
+const end_2 = 8
+//
+const start_rune = `a`
+const start_2_rune = `d`
+const end_rune = `c`
+const end_2_rune = `i`
+//
+const start_cast_expr = u16(1)
+const end_cast_expr = u16(5)
 
 fn test_match_int_const_ranges() {
 	mut results := []int{}
@@ -62,4 +63,14 @@ fn test_match_expr_rune_const_ranges() {
 		results << result
 	}
 	assert results == [1, 1, 1, 2, 2, 3, 3, 3, 3, 4, 4]
+}
+
+fn test_match_expr_integer_cast_const_ranges() {
+	c := u16(3)
+	match c {
+		start_cast_expr...end_cast_expr {
+			assert c == u16(3)
+		}
+		else {}
+	}
 }

@@ -10,7 +10,7 @@ pub mut:
 	nr_closes        int
 }
 
-// Do not run these tests everytime, since they are flaky.
+// Do not run these tests every time, since they are flaky.
 // They have their own specialized CI runner.
 const github_job = os.getenv('GITHUB_JOB')
 
@@ -50,7 +50,7 @@ fn start_server(family net.AddrFamily, listen_port int) ! {
 	eprintln('> start_server family:${family} | listen_port: ${listen_port}')
 	mut s := websocket.new_server(family, listen_port, '')
 	// make that in execution test time give time to execute at least one time
-	s.ping_interval = 1
+	s.set_ping_interval(1)
 
 	s.on_connect(fn (mut s websocket.ServerClient) !bool {
 		// here you can look att the client info and accept or not accept
@@ -80,7 +80,7 @@ fn start_server_in_thread_and_wait_till_it_is_ready_to_accept_connections(mut ws
 	spawn fn [mut ws] () {
 		ws.listen() or { panic('websocket server could not listen, err: ${err}') }
 	}()
-	for ws.state != .open {
+	for ws.get_state() != .open {
 		time.sleep(10 * time.millisecond)
 	}
 	eprintln('-----------------------------------------------------------------------------')
@@ -129,10 +129,10 @@ fn ws_test(family net.AddrFamily, uri string) ! {
 		client.write(msg.bytes(), .text_frame) or {
 			panic('fail to write to websocket, err: ${err}')
 		}
-		// sleep to give time to recieve response before send a new one
+		// sleep to give time to receive response before send a new one
 		time.sleep(100 * time.millisecond)
 	}
-	// sleep to give time to recieve response before asserts
+	// sleep to give time to receive response before asserts
 	time.sleep(1500 * time.millisecond)
 	// We expect at least 2 pongs, one sent directly and one indirectly
 	assert test_results.nr_pong_received >= 2

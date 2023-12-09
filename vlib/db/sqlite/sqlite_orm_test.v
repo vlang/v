@@ -3,27 +3,27 @@ import db.sqlite
 import time
 
 struct TestCustomSqlType {
-	id      int       [primary; sql: serial]
-	custom  string    [sql_type: 'INTEGER']
-	custom1 string    [sql_type: 'TEXT']
-	custom2 string    [sql_type: 'REAL']
-	custom3 string    [sql_type: 'NUMERIC']
+	id      int       @[primary; sql: serial]
+	custom  string    @[sql_type: 'INTEGER']
+	custom1 string    @[sql_type: 'TEXT']
+	custom2 string    @[sql_type: 'REAL']
+	custom3 string    @[sql_type: 'NUMERIC']
 	custom4 string
 	custom5 int
 	custom6 time.Time
 }
 
-struct TestDefaultAtribute {
-	id          string [primary; sql: serial]
+struct TestDefaultAttribute {
+	id          string  @[primary; sql: serial]
 	name        string
-	created_at  string [default: 'CURRENT_TIME']
-	created_at1 string [default: 'CURRENT_DATE']
-	created_at2 string [default: 'CURRENT_TIMESTAMP']
+	created_at  ?string @[default: 'CURRENT_TIME']
+	created_at1 ?string @[default: 'CURRENT_DATE']
+	created_at2 ?string @[default: 'CURRENT_TIMESTAMP']
 }
 
 struct EntityToTest {
-	id   int    [notnull; sql_type: 'INTEGER']
-	smth string [notnull; sql_type: 'TEXT']
+	id   int    @[notnull; sql_type: 'INTEGER']
+	smth string @[notnull; sql_type: 'TEXT']
 }
 
 fn test_sqlite_orm() {
@@ -103,11 +103,10 @@ fn test_sqlite_orm() {
 		create table TestCustomSqlType
 	}!
 
-	mut result_custom_sql, mut exec_custom_code := db.exec('
+	mut result_custom_sql := db.exec('
 		pragma table_info(TestCustomSqlType);
-	')
+	')!
 
-	assert exec_custom_code == 101
 	mut table_info_types_results := []string{}
 	information_schema_custom_sql := ['INTEGER', 'INTEGER', 'TEXT', 'REAL', 'NUMERIC', 'TEXT',
 		'INTEGER', 'INTEGER']
@@ -125,14 +124,13 @@ fn test_sqlite_orm() {
 	*/
 
 	sql db {
-		create table TestDefaultAtribute
+		create table TestDefaultAttribute
 	}!
 
-	mut result_default_sql, mut code := db.exec('
-			pragma table_info(TestDefaultAtribute);
-		')
+	mut result_default_sql := db.exec('
+			pragma table_info(TestDefaultAttribute);
+		')!
 
-	assert code == 101
 	mut information_schema_data_types_results := []string{}
 	information_schema_default_sql := ['', '', 'CURRENT_TIME', 'CURRENT_DATE', 'CURRENT_TIMESTAMP']
 
@@ -141,29 +139,29 @@ fn test_sqlite_orm() {
 	}
 	assert information_schema_data_types_results == information_schema_default_sql
 
-	test_default_atribute := TestDefaultAtribute{
+	test_default_attribute := TestDefaultAttribute{
 		name: 'Hitalo'
 	}
 
 	sql db {
-		insert test_default_atribute into TestDefaultAtribute
+		insert test_default_attribute into TestDefaultAttribute
 	}!
 
-	test_default_atributes := sql db {
-		select from TestDefaultAtribute limit 1
+	test_default_attributes := sql db {
+		select from TestDefaultAttribute limit 1
 	}!
 
-	result_test_default_atribute := test_default_atributes.first()
-	assert result_test_default_atribute.name == 'Hitalo'
-	assert test_default_atribute.created_at.len == 0
-	assert test_default_atribute.created_at1.len == 0
-	assert test_default_atribute.created_at2.len == 0
-	assert result_test_default_atribute.created_at.len == 8 // HH:MM:SS
-	assert result_test_default_atribute.created_at1.len == 10 // YYYY-MM-DD
-	assert result_test_default_atribute.created_at2.len == 19 // YYYY-MM-DD HH:MM:SS
+	result_test_default_attribute := test_default_attributes.first()
+	assert result_test_default_attribute.name == 'Hitalo'
+	assert test_default_attribute.created_at or { '' } == ''
+	assert test_default_attribute.created_at1 or { '' } == ''
+	assert test_default_attribute.created_at2 or { '' } == ''
+	assert result_test_default_attribute.created_at or { '' }.len == 8 // HH:MM:SS
+	assert result_test_default_attribute.created_at1 or { '' }.len == 10 // YYYY-MM-DD
+	assert result_test_default_attribute.created_at2 or { '' }.len == 19 // YYYY-MM-DD HH:MM:SS
 
 	sql db {
-		drop table TestDefaultAtribute
+		drop table TestDefaultAttribute
 	}!
 }
 
@@ -176,7 +174,7 @@ fn test_get_affected_rows_count() {
 	db.exec('create table EntityToTest(
 		id integer not null constraint tbl_pk primary key,
 		smth  integer
-	);')
+	);')!
 
 	fst := EntityToTest{
 		id: 1

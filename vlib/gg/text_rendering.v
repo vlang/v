@@ -22,7 +22,7 @@ struct StringToRender {
 	cfg  gx.TextCfg
 }
 
-[if debug_font ?]
+@[if debug_font ?]
 fn debug_font_println(s string) {
 	println(s)
 }

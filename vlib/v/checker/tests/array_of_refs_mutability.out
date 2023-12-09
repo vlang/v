@@ -1,0 +1,14 @@
+vlib/v/checker/tests/array_of_refs_mutability.vv:11:14: warning: cannot add a reference to an immutable object to a mutable array
+    9 |     }
+   10 | 
+   11 |     mut arr := [&x]
+      |                 ^
+   12 |     arr[0].bar = 30
+   13 |
+vlib/v/checker/tests/array_of_refs_mutability.vv:15:10: warning: cannot add a reference to an immutable object to a mutable array
+   13 | 
+   14 |     mut arr2 := [&Foo{}]
+   15 |     arr2 = [&x]
+      |             ^
+   16 |     arr2[0].bar = 40
+   17 | }

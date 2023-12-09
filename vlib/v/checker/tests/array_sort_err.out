@@ -25,3 +25,15 @@ vlib/v/checker/tests/array_sort_err.vv:6:9: error: `.sort()` can only use `a` or
     6 |     arr.sort(c > d)
       |         ~~~~~~~~~~~
     7 | }
+vlib/v/checker/tests/array_sort_err.vv:6:14: error: undefined ident: `c`
+    4 |     arr.sort(a == b)
+    5 |     arr.sort(a > a)
+    6 |     arr.sort(c > d)
+      |              ^
+    7 | }
+vlib/v/checker/tests/array_sort_err.vv:6:18: error: undefined ident: `d`
+    4 |     arr.sort(a == b)
+    5 |     arr.sort(a > a)
+    6 |     arr.sort(c > d)
+      |                  ^
+    7 | }

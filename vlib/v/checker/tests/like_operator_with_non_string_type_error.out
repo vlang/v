@@ -1,0 +1,28 @@
+vlib/v/checker/tests/like_operator_with_non_string_type_error.vv:12:36: error: the right operand of the `like` operator must be a string type
+   10 | 
+   11 |     println(sql db {
+   12 |         select from User where name like 10
+      |                                          ~~
+   13 |     }!)
+   14 |
+vlib/v/checker/tests/like_operator_with_non_string_type_error.vv:16:26: error: the left operand of the `like` operator must be an identifier with a string type
+   14 | 
+   15 |     println(sql db {
+   16 |         select from User where 10 like true
+      |                                ~~
+   17 |     }!)
+   18 | }
+vlib/v/checker/tests/like_operator_with_non_string_type_error.vv:16:34: error: the right operand of the `like` operator must be a string type
+   14 | 
+   15 |     println(sql db {
+   16 |         select from User where 10 like true
+      |                                        ~~~~
+   17 |     }!)
+   18 | }
+vlib/v/checker/tests/like_operator_with_non_string_type_error.vv:16:26: error: ORM: left side of the `like` expression must be one of the `User`'s fields
+   14 | 
+   15 |     println(sql db {
+   16 |         select from User where 10 like true
+      |                                ~~
+   17 |     }!)
+   18 | }

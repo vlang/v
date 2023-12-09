@@ -1,4 +1,4 @@
-[has_globals]
+@[has_globals]
 module builtin
 
 // With -prealloc, V calls libc's malloc to get chunks, each at least 16MB
@@ -17,19 +17,19 @@ module builtin
 const prealloc_block_size = 16 * 1024 * 1024
 
 __global g_memory_block &VMemoryBlock
-[heap]
+@[heap]
 struct VMemoryBlock {
 mut:
 	id        int
 	cap       isize
-	start     &byte = 0
+	start     &u8 = 0
 	previous  &VMemoryBlock = 0
 	remaining isize
 	current   &u8 = 0
 	mallocs   int
 }
 
-[unsafe]
+@[unsafe]
 fn vmemory_block_new(prev &VMemoryBlock, at_least isize) &VMemoryBlock {
 	mut v := unsafe { &VMemoryBlock(C.calloc(1, sizeof(VMemoryBlock))) }
 	if unsafe { prev != 0 } {
@@ -45,8 +45,8 @@ fn vmemory_block_new(prev &VMemoryBlock, at_least isize) &VMemoryBlock {
 	return v
 }
 
-[unsafe]
-fn vmemory_block_malloc(n isize) &byte {
+@[unsafe]
+fn vmemory_block_malloc(n isize) &u8 {
 	unsafe {
 		if g_memory_block.remaining < n {
 			g_memory_block = vmemory_block_new(g_memory_block, n)
@@ -62,7 +62,7 @@ fn vmemory_block_malloc(n isize) &byte {
 
 /////////////////////////////////////////////////
 
-[unsafe]
+@[unsafe]
 fn prealloc_vinit() {
 	unsafe {
 		g_memory_block = vmemory_block_new(nil, prealloc_block_size)
@@ -72,7 +72,7 @@ fn prealloc_vinit() {
 	}
 }
 
-[unsafe]
+@[unsafe]
 fn prealloc_vcleanup() {
 	$if prealloc_stats ? {
 		// Note: we do 2 loops here, because string interpolation
@@ -95,21 +95,21 @@ fn prealloc_vcleanup() {
 	}
 }
 
-[unsafe]
-fn prealloc_malloc(n isize) &byte {
+@[unsafe]
+fn prealloc_malloc(n isize) &u8 {
 	return unsafe { vmemory_block_malloc(n) }
 }
 
-[unsafe]
-fn prealloc_realloc(old_data &byte, old_size isize, new_size isize) &byte {
+@[unsafe]
+fn prealloc_realloc(old_data &u8, old_size isize, new_size isize) &u8 {
 	new_ptr := unsafe { vmemory_block_malloc(new_size) }
 	min_size := if old_size < new_size { old_size } else { new_size }
 	unsafe { C.memcpy(new_ptr, old_data, min_size) }
 	return new_ptr
 }
 
-[unsafe]
-fn prealloc_calloc(n isize) &byte {
+@[unsafe]
+fn prealloc_calloc(n isize) &u8 {
 	new_ptr := unsafe { vmemory_block_malloc(n) }
 	unsafe { C.memset(new_ptr, 0, n) }
 	return new_ptr

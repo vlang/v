@@ -31,12 +31,37 @@ mut:
 	eval_func_lines []string // same line of the `VSTARTUP` file, but used to test fn type
 }
 
-const (
-	is_stdin_a_pipe = os.is_atty(0) == 0
-	vexe            = os.getenv('VEXE')
-	vstartup        = os.getenv('VSTARTUP')
-	repl_folder     = os.join_path(os.vtmp_dir(), 'v', 'repl')
-)
+const is_stdin_a_pipe = os.is_atty(0) == 0
+const vexe = os.getenv('VEXE')
+const vstartup = os.getenv('VSTARTUP')
+const repl_folder = os.join_path(os.vtmp_dir(), 'repl')
+
+const possible_statement_patterns = [
+	'++',
+	'--',
+	'<<',
+	'//',
+	'/*',
+	'assert ',
+	'fn ',
+	'pub ',
+	'mut ',
+	'enum ',
+	'const ',
+	'struct ',
+	'interface ',
+	'import ',
+	'#include ',
+	'for ',
+	'or ',
+	'insert(',
+	'delete(',
+	'prepend(',
+	'sort(',
+	'clear(',
+	'trim(',
+	' as ',
+]
 
 enum FnType {
 	@none
@@ -312,7 +337,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 		if line == '' && oline.ends_with('\n') {
 			continue
 		}
-		if line.len <= -1 || line == '' || line == 'exit' {
+		if line.len <= -1 || line == 'exit' {
 			break
 		}
 		if exit_pos := line.index('exit') {
@@ -397,33 +422,9 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			func_call, fntype := r.function_call(r.line)
 			filter_line := r.line.replace(r.line.find_between("'", "'"), '').replace(r.line.find_between('"',
 				'"'), '')
-			possible_statement_patterns := [
-				'++',
-				'--',
-				'<<',
-				'//',
-				'/*',
-				'fn ',
-				'pub ',
-				'mut ',
-				'enum ',
-				'const ',
-				'struct ',
-				'interface ',
-				'import ',
-				'#include ',
-				'for ',
-				'or ',
-				'insert(',
-				'delete(',
-				'prepend(',
-				'sort(',
-				'clear(',
-				'trim(',
-				' as ',
-			]
 			mut is_statement := false
-			if filter_line.count('=') % 2 == 1 {
+			if filter_line.count('=') % 2 == 1
+				&& (filter_line.count('!=') + filter_line.count('>=') + filter_line.count('<=')) == 0 {
 				is_statement = true
 			} else {
 				for pattern in possible_statement_patterns {

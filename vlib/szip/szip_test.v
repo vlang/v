@@ -1,27 +1,25 @@
 import szip
 import os
 
-const (
-	test_out_zip = 'v_test_zip.zip'
-	test_dir_zip = 'v_test_dir_zip.zip'
-	test_path    = 'zip files'
-	test_path2   = '.zip folder'
-	test_path3   = 'test zip folder'
-	test_path3_1 = os.join_path(test_path3, '1', '1')
-	test_path3_2 = os.join_path(test_path3, '2', '1')
-	test_path3_3 = os.join_path(test_path3, '3', '1')
-	test_path3_4 = os.join_path(test_path3, '4', '1')
-	fname1       = 'file_1.txt'
-	fpath1       = os.join_path(test_path, fname1)
-	fname2       = 'file_2.txt'
-	fpath2       = os.join_path(test_path, fname2)
-	fname3       = '.New Text Document.txt'
-	fpath3       = os.join_path(test_path2, fname3)
-	fname4       = 'file.txt'
-	fpath4       = os.join_path(test_path3_1, fname4)
-	fpath5       = os.join_path(test_path3_2, fname4)
-	fpath6       = os.join_path(test_path3_4, fname4)
-)
+const test_out_zip = 'v_test_zip.zip'
+const test_dir_zip = 'v_test_dir_zip.zip'
+const test_path = 'zip files'
+const test_path2 = '.zip folder'
+const test_path3 = 'test zip folder'
+const test_path3_1 = os.join_path(test_path3, '1', '1')
+const test_path3_2 = os.join_path(test_path3, '2', '1')
+const test_path3_3 = os.join_path(test_path3, '3', '1')
+const test_path3_4 = os.join_path(test_path3, '4', '1')
+const fname1 = 'file_1.txt'
+const fpath1 = os.join_path(test_path, fname1)
+const fname2 = 'file_2.txt'
+const fpath2 = os.join_path(test_path, fname2)
+const fname3 = '.New Text Document.txt'
+const fpath3 = os.join_path(test_path2, fname3)
+const fname4 = 'file.txt'
+const fpath4 = os.join_path(test_path3_1, fname4)
+const fpath5 = os.join_path(test_path3_2, fname4)
+const fpath6 = os.join_path(test_path3_4, fname4)
 
 fn cleanup() {
 	os.chdir(os.temp_dir()) or {}

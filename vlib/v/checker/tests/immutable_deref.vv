@@ -3,7 +3,7 @@ struct Context {}
 const ctx_ptr = &Context(unsafe { nil })
 
 fn main() {
-	// TODO unsafe bug, having this declaration inside `unsafe` results in an erro
+	// TODO unsafe bug, having this declaration inside `unsafe` results in an error
 	x := &ctx_ptr
 	unsafe {
 		*x = &Context{}

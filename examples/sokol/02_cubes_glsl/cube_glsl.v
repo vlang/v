@@ -28,17 +28,16 @@ import gg.m4
 
 fn C.cube_shader_desc(gfx.Backend) &gfx.ShaderDesc
 
-const (
-	win_width  = 800
-	win_height = 800
-	bg_color   = gx.white
-)
+const win_width = 800
+const win_height = 800
+const bg_color = gx.white
 
 struct App {
 mut:
 	gg          &gg.Context = unsafe { nil }
 	pip_3d      sgl.Pipeline
 	texture     gfx.Image
+	sampler     gfx.Sampler
 	init_flag   bool
 	frame_count int
 	mouse_x     int = -1
@@ -55,17 +54,13 @@ mut:
 * Texture functions
 *
 ******************************************************************************/
-fn create_texture(w int, h int, buf &byte) gfx.Image {
+fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {
 	sz := w * h * 4
 	mut img_desc := gfx.ImageDesc{
 		width: w
 		height: h
 		num_mipmaps: 0
-		min_filter: .linear
-		mag_filter: .linear
 		// usage: .dynamic
-		wrap_u: .clamp_to_edge
-		wrap_v: .clamp_to_edge
 		label: &u8(0)
 		d3d11_texture: 0
 	}
@@ -76,7 +71,16 @@ fn create_texture(w int, h int, buf &byte) gfx.Image {
 	}
 
 	sg_img := gfx.make_image(&img_desc)
-	return sg_img
+
+	mut smp_desc := gfx.SamplerDesc{
+		min_filter: .linear
+		mag_filter: .linear
+		wrap_u: .clamp_to_edge
+		wrap_v: .clamp_to_edge
+	}
+
+	sg_smp := gfx.make_sampler(&smp_desc)
+	return sg_img, sg_smp
 }
 
 fn destroy_texture(sg_img gfx.Image) {
@@ -84,7 +88,7 @@ fn destroy_texture(sg_img gfx.Image) {
 }
 
 // Use only if usage: .dynamic is enabled
-fn update_text_texture(sg_img gfx.Image, w int, h int, buf &byte) {
+fn update_text_texture(sg_img gfx.Image, w int, h int, buf &u8) {
 	sz := w * h * 4
 	mut tmp_sbc := gfx.ImageData{}
 	tmp_sbc.subimage[0][0] = gfx.Range{
@@ -361,7 +365,7 @@ fn init_cube_glsl(mut app App) {
 
 	app.cube_bind.vertex_buffers[0] = vbuf
 	app.cube_bind.index_buffer = ibuf
-	app.cube_bind.fs_images[C.SLOT_tex] = app.texture
+	app.cube_bind.fs.images[C.SLOT_tex] = app.texture
 	app.cube_pip_glsl = gfx.make_pipeline(&pipdesc)
 	println('GLSL init DONE!')
 }
@@ -374,8 +378,8 @@ fn draw_cube_glsl(app App) {
 	// clear
 	ws := gg.window_size_real_pixels()
 	mut color_action := gfx.ColorAttachmentAction{
-		action: unsafe { gfx.Action(C.SG_ACTION_DONTCARE) } // C.SG_ACTION_CLEAR)
-		value: gfx.Color{
+		load_action: unsafe { gfx.LoadAction(C.SG_LOADACTION_DONTCARE) } // C.SG_ACTION_CLEAR)
+		clear_value: gfx.Color{
 			r: 1.0
 			g: 1.0
 			b: 1.0
@@ -394,7 +398,7 @@ fn draw_cube_glsl(app App) {
 		tr_matrix := m4.calc_tr_matrices(dw, dh, rot[0], rot[1], 2.0)
 		gfx.apply_viewport(ws.width / 2, 0, ws.width / 2, ws.height / 2, true)
 
-		// apply the pipline and bindings
+		// apply the pipeline and bindings
 		gfx.apply_pipeline(app.cube_pip_glsl)
 		gfx.apply_bindings(app.cube_bind)
 
@@ -411,9 +415,9 @@ fn draw_cube_glsl(app App) {
 		time_ticks := f32(time.ticks() - app.ticks) / 1000
 		mut text_res := [
 			f32(512),
-			512, /* x,y resolution to pass to FS */
-			time_ticks, /* time as f32 */
-			0 /* padding 4 Bytes == 1 f32 */,
+			512, // x,y resolution to pass to FS
+			time_ticks, // time as f32
+			0, // padding 4 Bytes == 1 f32
 		]!
 		fs_uniforms_range := gfx.Range{
 			ptr: unsafe { &text_res }
@@ -433,7 +437,7 @@ fn draw_texture_cubes(app App) {
 	sgl.load_pipeline(app.pip_3d)
 
 	sgl.enable_texture()
-	sgl.texture(app.texture)
+	sgl.texture(app.texture, app.sampler)
 
 	sgl.matrix_mode_projection()
 	sgl.perspective(sgl.rad(45.0), 1.0, 0.1, 100.0)
@@ -523,7 +527,7 @@ fn my_init(mut app App) {
 	mut pipdesc := gfx.PipelineDesc{}
 	unsafe { vmemset(&pipdesc, 0, int(sizeof(pipdesc))) }
 
-	color_state := gfx.ColorState{
+	color_state := gfx.ColorTargetState{
 		blend: gfx.BlendState{
 			enabled: true
 			src_factor_rgb: .src_alpha
@@ -573,7 +577,7 @@ fn my_init(mut app App) {
 			i += 4
 		}
 	}
-	app.texture = create_texture(w, h, tmp_txt)
+	app.texture, app.sampler = create_texture(w, h, tmp_txt)
 	unsafe { free(tmp_txt) }
 
 	// glsl

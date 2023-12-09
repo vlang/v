@@ -3,15 +3,15 @@ module sfons
 import fontstash
 import sokol.memory
 
-[typedef]
+@[typedef]
 pub struct C.sfons_allocator_t {
 pub:
-	alloc     memory.FnAllocatorAlloc
-	free      memory.FnAllocatorFree
+	alloc_fn  memory.FnAllocatorAlloc = unsafe { nil }
+	free_fn   memory.FnAllocatorFree  = unsafe { nil }
 	user_data voidptr
 }
 
-[typedef]
+@[typedef]
 pub struct C.sfons_desc_t {
 pub:
 	width     int // initial width of font atlas texture (default: 512, must be power of 2)

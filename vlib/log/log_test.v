@@ -1,37 +1,31 @@
 module log
 
-import time
-
-fn log_mutable_statements(mut log Log) {
+fn log_mutable_statements(mut l Log) {
 	println(@FN + ' start')
-	log.info('info')
-	log.warn('warn')
-	log.error('error')
-	log.debug('no output for debug')
-	log.set_level(.debug)
-	log.debug('debug now')
-	log.set_level(level_from_tag('INFO') or { Level.disabled })
-	log.info('info again')
-	log.set_level(level_from_tag('') or { Level.disabled })
-	log.error('no output anymore')
+	l.info('info')
+	l.warn('warn')
+	l.error('error')
+	l.debug('no output for debug')
+	l.set_level(.debug)
+	l.debug('debug now')
+	l.set_level(level_from_tag('INFO') or { Level.disabled })
+	l.info('info again')
+	l.set_level(level_from_tag('') or { Level.disabled })
+	l.error('no output anymore')
 	println(@FN + ' end')
 }
 
-fn logger_mutable_statements(mut log Logger) {
+fn logger_mutable_statements(mut l Logger) {
 	println(@FN + ' start')
 	// the given logger instance could have a level to filter some levels used here
-	log.info('info')
-	log.warn('warn')
-	log.error('error')
-	log.debug('no output for debug')
-	log.set_level(.debug) // change logging level, now part of the Logger interface
-	log.debug('output for debug now')
-	log.info('output for info now')
+	l.info('info')
+	l.warn('warn')
+	l.error('error')
+	l.debug('no output for debug')
+	l.set_level(.debug) // change logging level, now part of the Logger interface
+	l.debug('output for debug now')
+	l.info('output for info now')
 	println(@FN + ' end')
-}
-
-fn delay() {
-	time.sleep(1 * time.second)
 }
 
 // Note that Log and Logger methods requires a mutable instance
@@ -52,19 +46,19 @@ pub fn new_log_as_logger() &Logger {
 
 fn test_log_mutable() {
 	println(@FN + ' start')
-	mut log := Log{}
-	log.set_level(.info)
-	log_mutable_statements(mut log)
+	mut l := Log{}
+	l.set_level(.info)
+	log_mutable_statements(mut l)
 	assert true
 	println(@FN + ' end')
 }
 
 fn test_log_mutable_reference() {
 	println(@FN + ' start')
-	mut log := new_log()
-	assert typeof(log).name == '&log.Log'
-	spawn log_mutable_statements(mut log)
-	delay() // wait to finish
+	mut l := new_log()
+	assert typeof(l).name == '&log.Log'
+	t := spawn log_mutable_statements(mut l)
+	t.wait()
 	assert true
 	println(@FN + ' end')
 }
@@ -75,8 +69,8 @@ fn test_logger_mutable_reference() {
 	mut logger := new_log_as_logger()
 	logger.set_level(.warn)
 	assert typeof(logger).name == '&log.Logger'
-	spawn logger_mutable_statements(mut logger)
-	delay() // wait to finish
+	t := spawn logger_mutable_statements(mut logger)
+	t.wait()
 	assert true
 	println(@FN + ' end')
 }

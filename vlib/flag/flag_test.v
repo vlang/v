@@ -236,7 +236,7 @@ fn test_could_expect_no_free_args() {
 	assert args.len < 0 // expect an error and need to use args
 }
 
-fn test_allow_abreviations() {
+fn test_allow_abbreviations() {
 	mut fp := flag.new_flag_parser(['-v', '-o', 'some_file', '-i', '42', '-f', '2.0'])
 	v := fp.bool('version', `v`, false, '')
 	o := fp.string('output', `o`, 'empty', '')
@@ -409,4 +409,17 @@ fn test_dashdash_acts_as_parser_full_stop_dashdash_at_end() {
 fn test_empty_string_with_flag() {
 	mut fp := flag.new_flag_parser([''])
 	s := fp.string('something', `s`, 'default', 'Hey parse me')
+}
+
+fn test_finalize_with_multi_shortargs() {
+	mut fp := flag.new_flag_parser(['-ab', '-c'])
+	a_bool := fp.bool('a_bool', `a`, false, '')
+	assert a_bool
+	b_bool := fp.bool('b_bool', `b`, false, '')
+	assert b_bool
+	c_bool := fp.bool('c_bool', `c`, false, '')
+	assert c_bool
+	additional_args := fp.finalize()!
+	println(additional_args.join_lines())
+	assert additional_args == []
 }

@@ -21,7 +21,7 @@ pub fn (mut f Gen) attrs(attrs []ast.Attr) {
 	}
 }
 
-[params]
+@[params]
 pub struct AttrsOptions {
 	inline bool
 }

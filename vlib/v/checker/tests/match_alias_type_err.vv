@@ -2,7 +2,7 @@ type Stmt = SelectStmt
 
 struct SelectStmt {}
 
-fn parse(sql string) Stmt {
+fn parse(sql_ string) Stmt {
 	return SelectStmt{}
 }
 

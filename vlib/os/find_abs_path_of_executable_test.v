@@ -1,7 +1,7 @@
 import os
 
 fn test_find_abs_path_of_executable() {
-	tfolder := os.join_path(os.vtmp_dir(), 'v', 'tests', 'filepath_test')
+	tfolder := os.join_path(os.vtmp_dir(), 'tests', 'filepath_test')
 	os.rmdir_all(tfolder) or {}
 	assert !os.is_dir(tfolder)
 	os.mkdir_all(tfolder)!

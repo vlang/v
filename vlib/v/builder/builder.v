@@ -149,6 +149,9 @@ pub fn (mut b Builder) middle_stages() ! {
 	if b.pref.show_callgraph {
 		callgraph.show(mut b.table, b.pref, b.parsed_files)
 	}
+	if b.pref.dump_defines != '' {
+		b.dump_defines()
+	}
 }
 
 pub fn (mut b Builder) front_and_middle_stages(v_files []string) ! {
@@ -173,7 +176,7 @@ pub fn (mut b Builder) parse_imports() {
 	// parsed (but not all of them), then this will cause a problem.
 	// we could add a list of parsed files instead, but I think
 	// there is a better solution all around, I will revisit this.
-	// NOTE: there is a very similar occurance with the way
+	// NOTE: there is a very similar occurrence with the way
 	// internal module test's work, and this was the reason there
 	// were issues with duplicate declarations, so we should sort
 	// that out in a similar way.
@@ -377,7 +380,7 @@ pub fn (b Builder) info(s string) {
 	}
 }
 
-[inline]
+@[inline]
 pub fn module_path(mod string) string {
 	// submodule support
 	return mod.replace('.', os.path_separator)
@@ -590,7 +593,7 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 				for stmt in file.stmts {
 					if stmt is ast.FnDecl {
 						if stmt.name == fn_name {
-							fheader := stmt.stringify(b.table, 'main', map[string]string{})
+							fheader := b.table.stringify_fn_decl(&stmt, 'main', map[string]string{})
 							redefines << FunctionRedefinition{
 								fpath: file.path
 								fline: stmt.pos.line_nr
@@ -644,7 +647,7 @@ pub fn (b &Builder) error_with_pos(s string, fpath string, pos token.Pos) errors
 	}
 }
 
-[noreturn]
+@[noreturn]
 pub fn verror(s string) {
 	util.verror('builder error', s)
 }

@@ -7,13 +7,11 @@ import toml.input
 import toml.token
 import toml.util
 
-pub const (
-	digit_extras = [`_`, `.`, `x`, `o`, `b`, `e`, `E`]
-	end_of_text  = u32(~0)
-)
+pub const digit_extras = [`_`, `.`, `x`, `o`, `b`, `e`, `E`]
+pub const end_of_text = u32(~0)
 
 // Scanner contains the necessary fields for the state of the scan process.
-// the task the scanner does is also refered to as "lexing" or "tokenizing".
+// the task the scanner does is also referred to as "lexing" or "tokenizing".
 // The Scanner methods are based on much of the work in `vlib/strings/textscanner`.
 pub struct Scanner {
 pub:
@@ -94,7 +92,7 @@ pub fn new_simple_file(path string) !Scanner {
 }
 
 // scan returns the next token from the input.
-[direct_array_access]
+@[direct_array_access]
 pub fn (mut s Scanner) scan() !token.Token {
 	s.validate_and_skip_headers()!
 
@@ -142,7 +140,7 @@ pub fn (mut s Scanner) scan() !token.Token {
 
 		if util.is_key_char(byte_c) {
 			key := s.extract_key()
-			if !s.is_left_of_assign && (key == 'true' || key == 'false') {
+			if u8(s.peek(1)) != `=` && (key == 'true' || key == 'false') {
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified a boolean "${key}" (${key.len})')
 				return s.new_token(.boolean, key, key.len)
 			}
@@ -246,7 +244,7 @@ pub fn (mut s Scanner) scan() !token.Token {
 }
 
 // free frees all allocated resources.
-[unsafe]
+@[unsafe]
 pub fn (mut s Scanner) free() {
 	unsafe {
 		s.text.free()
@@ -254,14 +252,14 @@ pub fn (mut s Scanner) free() {
 }
 
 // remaining returns how many characters remain in the text input.
-[inline]
+@[inline]
 pub fn (s &Scanner) remaining() int {
 	return s.text.len - s.pos
 }
 
 // next returns the next character code from the input text.
 // next returns `end_of_text` if it can't reach the next character.
-[direct_array_access; inline]
+@[direct_array_access; inline]
 pub fn (mut s Scanner) next() u32 {
 	if s.pos < s.text.len {
 		opos := s.pos
@@ -274,7 +272,7 @@ pub fn (mut s Scanner) next() u32 {
 }
 
 // skip skips one character ahead.
-[inline]
+@[inline]
 pub fn (mut s Scanner) skip() {
 	if s.pos + 1 < s.text.len {
 		s.pos++
@@ -285,7 +283,7 @@ pub fn (mut s Scanner) skip() {
 // skip_n skips ahead `n` characters.
 // If the skip goes out of bounds from the length of `Scanner.text`,
 // the scanner position will be sat to the last character possible.
-[inline]
+@[inline]
 pub fn (mut s Scanner) skip_n(n int) {
 	s.pos += n
 	if s.pos > s.text.len {
@@ -297,7 +295,7 @@ pub fn (mut s Scanner) skip_n(n int) {
 // at returns the *current* character code from the input text.
 // at returns `end_of_text` if it can't get the current character.
 // unlike `next()`, `at()` does not change the state of the scanner.
-[direct_array_access; inline]
+@[direct_array_access; inline]
 pub fn (s &Scanner) at() u32 {
 	if s.pos < s.text.len {
 		return s.text[s.pos]
@@ -313,7 +311,7 @@ fn (s Scanner) at_crlf() bool {
 
 // peek returns the character code from the input text at position + `n`.
 // peek returns `end_of_text` if it can't peek `n` characters ahead.
-[direct_array_access; inline]
+@[direct_array_access; inline]
 pub fn (s &Scanner) peek(n int) u32 {
 	if s.pos + n < s.text.len {
 		// Allow peeking back - needed for spaces between date and time in RFC 3339 format :/
@@ -335,7 +333,7 @@ pub fn (mut s Scanner) reset() {
 }
 
 // new_token returns a new `token.Token`.
-[inline]
+@[inline]
 fn (mut s Scanner) new_token(kind token.Kind, lit string, len int) token.Token {
 	// println('new_token($lit)')
 	mut col := s.col - len + 1
@@ -353,7 +351,7 @@ fn (mut s Scanner) new_token(kind token.Kind, lit string, len int) token.Token {
 }
 
 // ignore_line forwards the scanner to the end of the current line.
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn (mut s Scanner) ignore_line() !string {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' ignoring until EOL...')
 	start := s.pos
@@ -369,7 +367,7 @@ fn (mut s Scanner) ignore_line() !string {
 }
 
 // inc_line_number increases the internal line number.
-[inline]
+@[inline]
 fn (mut s Scanner) inc_line_number() {
 	s.col = 0
 	s.line_nr++
@@ -377,7 +375,7 @@ fn (mut s Scanner) inc_line_number() {
 }
 
 // extract_key parses and returns a TOML key as a string.
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn (mut s Scanner) extract_key() string {
 	s.pos--
 	s.col--
@@ -397,7 +395,7 @@ fn (mut s Scanner) extract_key() string {
 // extract_string collects and returns a string containing
 // any bytes recognized as a TOML string.
 // TOML strings are everything found between two double or single quotation marks (`"`/`'`).
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn (mut s Scanner) extract_string() !string {
 	// extract_string is called when the scanner has already reached
 	// a byte that is the start of a string so we rewind it to start at the correct
@@ -462,7 +460,7 @@ fn (mut s Scanner) extract_string() !string {
 // extract_multiline_string collects and returns a string containing
 // any bytes recognized as a TOML string.
 // TOML strings are everything found between two double or single quotation marks (`"`/`'`).
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn (mut s Scanner) extract_multiline_string() !string {
 	// extract_multiline_string is called from extract_string so we know the 3 first
 	// characters is the quotes
@@ -572,7 +570,7 @@ fn (mut s Scanner) handle_escapes(quote u8, is_multiline bool) (string, int) {
 // extract_number collects and returns a string containing
 // any bytes recognized as a TOML number except for "(+/-)nan" and "(+/-)inf".
 // TOML numbers can include digits 0-9 and `_`.
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn (mut s Scanner) extract_number() !string {
 	// extract_number is called when the scanner has already reached
 	// a byte that is a number or +/- - so we rewind it to start at the correct
@@ -591,6 +589,21 @@ fn (mut s Scanner) extract_number() !string {
 	s.col++
 	for s.pos < s.text.len {
 		c = s.at()
+		// Adjust scanner position to floating point numbers
+		mut float_precision := 0
+		if c == `.` {
+			mut i := 1
+			for c_ := u8(s.peek(i)); c_ != scanner.end_of_text && c_ != `\n`; c_ = u8(s.peek(i)) {
+				if !c_.is_digit() && c_ != `,` {
+					float_precision = 0
+					break
+				}
+				float_precision++
+				i++
+			}
+		}
+		s.pos += float_precision
+		s.col += float_precision
 		// Handle signed exponent notation. I.e.: 3e2, 3E2, 3e-2, 3E+2, 3e0, 3.1e2, 3.1E2, -1E-1
 		if c in [`e`, `E`] && s.peek(1) in [`+`, `-`] && u8(s.peek(2)).is_digit() {
 			s.pos += 2
@@ -610,7 +623,7 @@ fn (mut s Scanner) extract_number() !string {
 
 // extract_nan_or_inf_number collects and returns a string containing
 // any bytes recognized as infinity or not-a-number TOML numbers.
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn (mut s Scanner) extract_nan_or_inf_number() !string {
 	// extract_nan_or_inf_number is called when the scanner has already identified that
 	// +/- or 'nan'/'inf' bytes is up but we rewind it to start at the correct position

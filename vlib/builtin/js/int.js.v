@@ -108,9 +108,11 @@ pub fn (x u16) hex() string {
 }
 
 pub fn (x i8) hex() string {
-	res := ''
+	mut res := ''
 	#res.str = x.val.toString(16)
-
+	if res.len < 2 {
+		res = '0' + res
+	}
 	return res
 }
 
@@ -136,9 +138,11 @@ pub fn (x int_literal) hex() string {
 }
 
 pub fn (x u8) hex() string {
-	res := ''
+	mut res := ''
 	#res.str = x.val.toString(16)
-
+	if res.len < 2 {
+		res = '0' + res
+	}
 	return res
 }
 

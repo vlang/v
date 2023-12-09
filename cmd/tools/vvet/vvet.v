@@ -14,9 +14,10 @@ import term
 struct Vet {
 	opt Options
 mut:
-	errors []vet.Error
-	warns  []vet.Error
-	file   string
+	errors  []vet.Error
+	warns   []vet.Error
+	notices []vet.Error
+	file    string
 }
 
 struct Options {
@@ -29,6 +30,7 @@ struct Options {
 }
 
 const term_colors = term.can_show_color_on_stderr()
+const clean_seq = ['[', '', ']', '', ' ', '']
 
 fn main() {
 	vet_options := cmdline.options_after(os.args, ['vet'])
@@ -69,6 +71,9 @@ fn main() {
 		}
 	}
 	vfmt_err_count := vt.errors.filter(it.fix == .vfmt).len
+	for n in vt.notices {
+		eprintln(vt.e2string(n))
+	}
 	if vt.opt.show_warnings {
 		for w in vt.warns {
 			eprintln(vt.e2string(w))
@@ -100,9 +105,10 @@ fn (mut vt Vet) vet_file(path string) {
 	prefs.is_vsh = path.ends_with('.vsh')
 	table := ast.new_table()
 	vt.vprintln("vetting file '${path}'...")
-	_, errors := parser.parse_vet_file(path, table, prefs)
+	_, errors, notices := parser.parse_vet_file(path, table, prefs)
 	// Transfer errors from scanner and parser
 	vt.errors << errors
+	vt.notices << notices
 	// Scan each line in file for things to improve
 	source_lines := os.read_lines(vt.file) or { []string{} }
 	for lnumber, line in source_lines {
@@ -135,7 +141,7 @@ fn (mut vt Vet) vet_fn_documentation(lines []string, line string, lnumber int) {
 	if lnumber > 0 {
 		collect_tags := fn (line string) []string {
 			mut cleaned := line.all_before('/')
-			cleaned = cleaned.replace_each(['[', '', ']', '', ' ', ''])
+			cleaned = cleaned.replace_each(clean_seq)
 			return cleaned.split(',')
 		}
 		ident_fn_name := fn (line string) string {
@@ -153,7 +159,8 @@ fn (mut vt Vet) vet_fn_documentation(lines []string, line string, lnumber int) {
 				}
 			}
 			if tokens.len > 0 {
-				return tokens[0].all_before('(')
+				function_name_with_generic_parameters := tokens[0].all_before('(')
+				return function_name_with_generic_parameters.all_before('[')
 			}
 			return ''
 		}
@@ -234,6 +241,7 @@ fn (vt &Vet) e2string(err vet.Error) string {
 		kind = match err.kind {
 			.warning { term.magenta(kind) }
 			.error { term.red(kind) }
+			.notice { term.yellow(kind) }
 		}
 		kind = term.bold(kind)
 		location = term.bold(location)
@@ -272,5 +280,19 @@ fn (mut vt Vet) warn(msg string, line int, fix vet.FixKind) {
 		vt.errors << w
 	} else {
 		vt.warns << w
+	}
+}
+
+fn (mut vt Vet) notice(msg string, line int, fix vet.FixKind) {
+	pos := token.Pos{
+		line_nr: line + 1
+	}
+	vt.notices << vet.Error{
+		message: msg
+		file_path: vt.file
+		pos: pos
+		kind: .notice
+		fix: fix
+		typ: .default
 	}
 }

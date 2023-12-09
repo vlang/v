@@ -11,11 +11,11 @@ import v.util
 // should be compiled (v folder).
 // To implement that, these folders are initially skipped, then added
 // as a whole *after the testing.prepare_test_session call*.
-const tools_in_subfolders = ['vdoc', 'vvet', 'vast', 'vwhere', 'vcreate']
+const tools_in_subfolders = ['vast', 'vcreate', 'vdoc', 'vpm', 'vvet', 'vwhere']
 
 // non_packaged_tools are tools that should not be packaged with
 // prebuild versions of V, to keep the size smaller.
-// They are mainly usefull for the V project itself, not to end users.
+// They are mainly useful for the V project itself, not to end users.
 const non_packaged_tools = ['gen1m', 'gen_vc', 'fast', 'wyhash']
 
 fn main() {
@@ -36,6 +36,7 @@ fn main() {
 	buildopts := args_string.all_before('build-tools')
 	mut session := testing.prepare_test_session(buildopts, folder, skips, main_label)
 	session.rm_binaries = false
+	session.build_tools = true
 	for stool in tools_in_subfolders {
 		session.add(os.join_path(tfolder, stool))
 	}
@@ -62,6 +63,9 @@ fn main() {
 		}
 		if tname in tools_in_subfolders {
 			os.mv_by_cp(tpath, os.join_path(tfolder, tname, texe)) or { panic(err) }
+			continue
+		}
+		if os.is_dir(tpath) {
 			continue
 		}
 		target_path := os.join_path(tfolder, texe)

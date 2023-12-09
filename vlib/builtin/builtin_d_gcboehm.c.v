@@ -25,7 +25,11 @@ $if dynamic_boehm ? {
 				#flag -I/usr/local/include
 				#flag -L/usr/local/lib
 			}
-			#flag -lgc
+			$if freebsd {
+				#flag -lgc-threaded
+			} $else {
+				#flag -lgc
+			}
 		}
 	}
 } $else {
@@ -48,13 +52,14 @@ $if dynamic_boehm ? {
 		#flag -DGC_BUILTIN_ATOMIC=1
 		#flag -DBUS_PAGE_FAULT=T_PAGEFLT
 		$if !tinyc {
+			#flag -DUSE_MMAP
 			#flag -I @VEXEROOT/thirdparty/libgc/include
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		}
 		$if tinyc {
 			#flag -I/usr/local/include
-			#flag $first_existing("/usr/local/lib/libgc.a", "/usr/lib/libgc.a")
-			#flag -lgc
+			#flag $first_existing("/usr/local/lib/libgc-threaded.a", "/usr/lib/libgc-threaded.a")
+			#flag -lgc-threaded
 		}
 		#flag -lpthread
 	} $else $if openbsd {
@@ -132,3 +137,9 @@ pub fn gc_check_leaks() {
 		C.GC_gcollect()
 	}
 }
+
+fn C.GC_get_heap_usage_safe(pheap_size &usize, pfree_bytes &usize, punmapped_bytes &usize, pbytes_since_gc &usize, ptotal_bytes &usize)
+fn C.GC_get_memory_use() usize
+
+fn C.GC_add_roots(voidptr, voidptr)
+fn C.GC_remove_roots(voidptr, voidptr)

@@ -17,7 +17,23 @@ pub fn compile_c(mut b builder.Builder) {
 		println('all .v files before:')
 	}
 	$if windows {
-		b.find_win_cc() or { builder.verror(builder.no_compiler_error) }
+		b.find_win_cc() or {
+			builder.verror('
+==================
+Error: no C compiler detected.
+
+You can find instructions on how to install one in the V wiki:
+https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows
+
+If you think you have one installed, make sure it is in your PATH.
+If you do have one in your PATH, please raise an issue on GitHub:
+https://github.com/vlang/v/issues/new/choose
+
+You can also use `v doctor`, to see what V knows about your current environment.
+
+You can also seek #help on Discord: https://discord.gg/vlang
+')
+		}
 	}
 	mut files := b.get_builtin_files()
 	files << b.get_user_files()

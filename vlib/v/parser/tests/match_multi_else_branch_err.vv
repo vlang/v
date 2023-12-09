@@ -1,0 +1,7 @@
+fn main() {
+	_ := match true {
+		true { 1 }
+		else { 3 }
+		else { 5 }
+	}
+}

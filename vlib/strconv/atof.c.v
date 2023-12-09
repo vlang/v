@@ -17,31 +17,25 @@ module strconv
 // Note: when u128 will be available, these function can be refactored.
 
 // f32 constants
-pub const (
-	single_plus_zero      = u32(0x0000_0000)
-	single_minus_zero     = u32(0x8000_0000)
-	single_plus_infinity  = u32(0x7F80_0000)
-	single_minus_infinity = u32(0xFF80_0000)
-)
+pub const single_plus_zero = u32(0x0000_0000)
+pub const single_minus_zero = u32(0x8000_0000)
+pub const single_plus_infinity = u32(0x7F80_0000)
+pub const single_minus_infinity = u32(0xFF80_0000)
 
 // f64 constants
-pub const (
-	digits                = 18
-	double_plus_zero      = u64(0x0000000000000000)
-	double_minus_zero     = u64(0x8000000000000000)
-	double_plus_infinity  = u64(0x7FF0000000000000)
-	double_minus_infinity = u64(0xFFF0000000000000)
-)
+pub const digits = 18
+pub const double_plus_zero = u64(0x0000000000000000)
+pub const double_minus_zero = u64(0x8000000000000000)
+pub const double_plus_infinity = u64(0x7FF0000000000000)
+pub const double_minus_infinity = u64(0xFFF0000000000000)
 
 // char constants
-pub const (
-	c_dpoint = `.`
-	c_plus   = `+`
-	c_minus  = `-`
-	c_zero   = `0`
-	c_nine   = `9`
-	c_ten    = u32(10)
-)
+pub const c_dpoint = `.`
+pub const c_plus = `+`
+pub const c_minus = `-`
+pub const c_zero = `0`
+pub const c_nine = `9`
+pub const c_ten = u32(10)
 
 // right logical shift 96 bit
 fn lsr96(s2 u32, s1 u32, s0 u32) (u32, u32, u32) {
@@ -124,7 +118,7 @@ enum ParserState {
 
 // parser tries to parse the given string into a number
 // NOTE: #TOFIX need one char after the last char of the number
-[direct_array_access]
+@[direct_array_access]
 fn parser(s string) (ParserState, PrepNumber) {
 	mut digx := 0
 	mut result := ParserState.ok
@@ -334,7 +328,7 @@ fn converter(mut pn PrepNumber) u64 {
 	*/
 
 	// C.printf(c"mantissa before rounding: %08x%08x%08x binexp: %d \n", s2,s1,s0,binexp)
-	// s1 => 0xFFFFFFxx only F are rapresented
+	// s1 => 0xFFFFFFxx only F are represented
 	nbit := 7
 	check_round_bit := u32(1) << u32(nbit)
 	check_round_mask := u32(0xFFFFFFFF) << u32(nbit)

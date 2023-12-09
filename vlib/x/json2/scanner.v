@@ -8,7 +8,7 @@ import strconv
 struct Scanner {
 mut:
 	text []u8
-	pos  int
+	pos  int // the position of the token in scanner text
 	line int
 	col  int
 }
@@ -22,19 +22,19 @@ enum TokenKind {
 	null
 	bool_
 	eof
-	comma = 44
-	colon = 58
-	lsbr = 91
-	rsbr = 93
-	lcbr = 123
-	rcbr = 125
+	comma = 44 // ,
+	colon = 58 // :
+	lsbr  = 91 // [
+	rsbr  = 93 // ]
+	lcbr  = 123 // {
+	rcbr  = 125 // }
 }
 
 pub struct Token {
-	lit  []u8
-	kind TokenKind
-	line int
-	col  int
+	lit  []u8      // literal representation of the token
+	kind TokenKind // the token number/enum; for quick comparisons
+	line int       // the line in the source where the token occurred
+	col  int       // the column in the source where the token occurred
 }
 
 // full_col returns the full column information which includes the length
@@ -42,31 +42,29 @@ pub fn (t Token) full_col() int {
 	return t.col + t.lit.len
 }
 
-const (
-	// list of characters commonly used in JSON.
-	char_list                 = [`{`, `}`, `[`, `]`, `,`, `:`]
-	// list of newlines to check when moving to a new position.
-	newlines                  = [`\r`, `\n`, `\t`]
-	// list of escapable that needs to be escaped inside a JSON string.
-	// double quotes and forward slashes are excluded intentionally since
-	// they have their own separate checks for it in order to pass the
-	// JSON test suite (https://github.com/nst/JSONTestSuite/).
-	important_escapable_chars = [`\b`, `\f`, `\n`, `\r`, `\t`]
-	// list of valid unicode escapes aside from \u{4-hex digits}
-	valid_unicode_escapes     = [`b`, `f`, `n`, `r`, `t`, `\\`, `"`, `/`]
-	// used for transforming escapes into valid unicode (eg. n => \n)
-	unicode_transform_escapes = {
-		98:  `\b`
-		102: `\f`
-		110: `\n`
-		114: `\r`
-		116: `\t`
-		92:  `\\`
-		34:  `"`
-		47:  `/`
-	}
-	exp_signs = [u8(`-`), `+`]
-)
+// list of characters commonly used in JSON.
+const char_list = [`{`, `}`, `[`, `]`, `,`, `:`]
+// list of newlines to check when moving to a new position.
+const newlines = [`\r`, `\n`, `\t`]
+// list of escapable that needs to be escaped inside a JSON string.
+// double quotes and forward slashes are excluded intentionally since
+// they have their own separate checks for it in order to pass the
+// JSON test suite (https://github.com/nst/JSONTestSuite/).
+const important_escapable_chars = [`\b`, `\f`, `\n`, `\r`, `\t`]
+// list of valid unicode escapes aside from \u{4-hex digits}
+const valid_unicode_escapes = [`b`, `f`, `n`, `r`, `t`, `\\`, `"`, `/`]
+// used for transforming escapes into valid unicode (eg. n => \n)
+const unicode_transform_escapes = {
+	98:  `\b`
+	102: `\f`
+	110: `\n`
+	114: `\r`
+	116: `\t`
+	92:  `\\`
+	34:  `"`
+	47:  `/`
+}
+const exp_signs = [u8(`-`), `+`]
 
 // move_pos proceeds to the next position.
 fn (mut s Scanner) move() {
@@ -118,7 +116,7 @@ fn (s Scanner) tokenize(lit []u8, kind TokenKind) Token {
 }
 
 // text_scan scans and returns a string token.
-[manualfree]
+@[manualfree]
 fn (mut s Scanner) text_scan() Token {
 	mut has_closed := false
 	mut chrs := []u8{}
@@ -256,7 +254,8 @@ fn (s Scanner) invalid_token() Token {
 }
 
 // scan returns a token based on the scanner's current position.
-[manualfree]
+// used to set the next token
+@[manualfree]
 fn (mut s Scanner) scan() Token {
 	if s.pos < s.text.len && (s.text[s.pos] == ` ` || s.text[s.pos] in json2.newlines) {
 		s.move()

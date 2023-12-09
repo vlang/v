@@ -3,13 +3,13 @@
 // that can be found in the LICENSE file.
 module sync
 
-[trusted]
+@[trusted]
 fn C.atomic_fetch_add_u32(voidptr, u32) u32
 
-[trusted]
+@[trusted]
 fn C.atomic_load_u32(voidptr) u32
 
-[trusted]
+@[trusted]
 fn C.atomic_compare_exchange_weak_u32(voidptr, voidptr, u32) bool
 
 // WaitGroup
@@ -24,7 +24,7 @@ fn C.atomic_compare_exchange_weak_u32(voidptr, voidptr, u32) bool
 // `wg.done()` when finished
 //
 // [init_with=new_waitgroup] // TODO: implement support for init_with struct attribute, and disallow WaitGroup{} from outside the sync.new_waitgroup() function.
-[heap]
+@[heap]
 pub struct WaitGroup {
 mut:
 	task_count u32       // current task count - reading/writing should be atomic

@@ -1,5 +1,7 @@
 import vweb
 
+const embedded_file = $embed_file(r'C:\Users\user\path\to\file')
+
 struct App {
 	a string
 	b string

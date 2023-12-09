@@ -15,6 +15,10 @@ on:
 jobs:
   check-markdown:
     runs-on: ubuntu-20.04
+    if: >
+      github.event_name != 'push'
+      || github.event.ref == 'refs/heads/master'
+      || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v3
@@ -27,9 +31,13 @@ jobs:
 
   report-missing-fn-doc:
     runs-on: ubuntu-20.04
+    if: >
+      github.event_name != 'push'
+      || github.event.ref == 'refs/heads/master'
+      || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 5
     env:
-      MOPTIONS: --relative-paths --exclude /vlib/v/ --exclude /builtin/linux_bare/ --exclude /testdata/ --exclude /tests/
+      MOPTIONS: --diff --deprecated --relative-paths --exclude /vlib/v/ --exclude /builtin/linux_bare/ --exclude /testdata/ --exclude /tests/
     steps:
       - uses: actions/checkout@v3
       - name: Build V
@@ -44,4 +52,4 @@ jobs:
 
       - name: Check against parent commit
         run: |
-          ./v missdoc --diff $MOPTIONS pv/vlib vlib
+          ./v missdoc $MOPTIONS pv/vlib vlib

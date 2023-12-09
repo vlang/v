@@ -10,19 +10,27 @@ import rand
 import strings
 import time
 
+pub type RequestRedirectFn = fn (request &Request, nredirects int, new_url string) !
+
+pub type RequestProgressFn = fn (request &Request, chunk []u8, read_so_far u64) !
+
+pub type RequestFinishFn = fn (request &Request, final_size u64) !
+
 // Request holds information about an HTTP request (either received by
 // a server or to be sent by a client)
 pub struct Request {
 pub mut:
 	version    Version = .v1_1
-	method     Method
+	method     Method  = .get
 	header     Header
-	cookies    map[string]string
+	host       string
+	cookies    map[string]string @[deprecated: 'use req.cookie(name) and req.add_cookie(name) instead']
 	data       string
 	url        string
 	user_agent string = 'v.http'
 	verbose    bool
 	user_ptr   voidptr
+	proxy      &HttpProxy = unsafe { nil }
 	// NOT implemented for ssl connections
 	// time = -1 for no timeout
 	read_timeout  i64 = 30 * time.second
@@ -34,6 +42,11 @@ pub mut:
 	cert_key               string
 	in_memory_verification bool // if true, verify, cert, and cert_key are read from memory, not from a file
 	allow_redirect         bool = true // whether to allow redirect
+	max_retries            int  = 5 // maximum number of retries required when an underlying socket error occurs
+	// callbacks to allow custom reporting code to run, while the request is running
+	on_redirect RequestRedirectFn = unsafe { nil }
+	on_progress RequestProgressFn = unsafe { nil }
+	on_finish   RequestFinishFn   = unsafe { nil }
 }
 
 fn (mut req Request) free() {
@@ -52,14 +65,34 @@ pub fn (mut req Request) add_custom_header(key string, val string) ! {
 	return req.header.add_custom(key, val)
 }
 
-// do will send the HTTP request and returns `http.Response` as soon as the response is recevied
+// add_cookie adds a cookie to the request.
+pub fn (mut req Request) add_cookie(c Cookie) {
+	req.cookies[c.name] = c.value
+}
+
+// cookie returns the named cookie provided in the request or `none` if not found.
+// If multiple cookies match the given name, only one cookie will be returned.
+pub fn (req &Request) cookie(name string) ?Cookie {
+	// TODO(alex) this should work once Cookie is used
+	// return req.cookies[name] or { none }
+
+	if value := req.cookies[name] {
+		return Cookie{
+			name: name
+			value: value
+		}
+	}
+	return none
+}
+
+// do will send the HTTP request and returns `http.Response` as soon as the response is received
 pub fn (req &Request) do() !Response {
 	mut url := urllib.parse(req.url) or { return error('http.Request.do: invalid url ${req.url}') }
 	mut rurl := url
 	mut resp := Response{}
-	mut no_redirects := 0
+	mut nredirects := 0
 	for {
-		if no_redirects == max_redirects {
+		if nredirects == max_redirects {
 			return error('http.request.do: maximum number of redirects reached (${max_redirects})')
 		}
 		qresp := req.method_and_url_to_response(req.method, rurl)!
@@ -79,11 +112,14 @@ pub fn (req &Request) do() !Response {
 			}
 			redirect_url = url.str()
 		}
+		if req.on_redirect != unsafe { nil } {
+			req.on_redirect(req, nredirects, redirect_url)!
+		}
 		qrurl := urllib.parse(redirect_url) or {
 			return error('http.request.do: invalid URL in redirect "${redirect_url}"')
 		}
 		rurl = qrurl
-		no_redirects++
+		nredirects++
 	}
 	return resp
 }
@@ -103,14 +139,38 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Res
 		}
 	}
 	// println('fetch $method, $scheme, $host_name, $nport, $path ')
-	if scheme == 'https' {
+	if scheme == 'https' && req.proxy == unsafe { nil } {
 		// println('ssl_do( $nport, $method, $host_name, $path )')
-		res := req.ssl_do(nport, method, host_name, path)!
-		return res
-	} else if scheme == 'http' {
+		for i in 0 .. req.max_retries {
+			res := req.ssl_do(nport, method, host_name, path) or {
+				if i == req.max_retries - 1 || is_no_need_retry_error(err.code()) {
+					return err
+				}
+				continue
+			}
+			return res
+		}
+	} else if scheme == 'http' && req.proxy == unsafe { nil } {
 		// println('http_do( $nport, $method, $host_name, $path )')
-		res := req.http_do('${host_name}:${nport}', method, path)!
-		return res
+		for i in 0 .. req.max_retries {
+			res := req.http_do('${host_name}:${nport}', method, path) or {
+				if i == req.max_retries - 1 || is_no_need_retry_error(err.code()) {
+					return err
+				}
+				continue
+			}
+			return res
+		}
+	} else if req.proxy != unsafe { nil } {
+		for i in 0 .. req.max_retries {
+			res := req.proxy.http_do(url, method, path, req) or {
+				if i == req.max_retries - 1 || is_no_need_retry_error(err.code()) {
+					return err
+				}
+				continue
+			}
+			return res
+		}
 	}
 	return error('http.request.method_and_url_to_response: unsupported scheme: "${scheme}"')
 }
@@ -163,13 +223,36 @@ fn (req &Request) http_do(host string, method Method, path string) !Response {
 	$if trace_http_request ? {
 		eprintln('> ${s}')
 	}
-	mut bytes := io.read_all(reader: client)!
+	mut bytes := req.read_all_from_client_connection(client)!
 	client.close()!
 	response_text := bytes.bytestr()
 	$if trace_http_response ? {
 		eprintln('< ${response_text}')
 	}
+	if req.on_finish != unsafe { nil } {
+		req.on_finish(req, u64(response_text.len))!
+	}
 	return parse_response(response_text)
+}
+
+fn (req &Request) read_all_from_client_connection(r &net.TcpConn) ![]u8 {
+	mut read := i64(0)
+	mut b := []u8{len: 32768}
+	for {
+		old_read := read
+		new_read := r.read(mut b[read..]) or { break }
+		if new_read <= 0 {
+			break
+		}
+		read += new_read
+		if req.on_progress != unsafe { nil } {
+			req.on_progress(req, b[old_read..read], u64(read))!
+		}
+		for b.len <= read {
+			unsafe { b.grow_len(4096) }
+		}
+	}
+	return b[..read]
 }
 
 // referer returns 'Referer' header value of the given request
@@ -209,14 +292,25 @@ pub fn parse_request_head(mut reader io.BufferedReader) !Request {
 	mut header := new_header()
 	line = reader.read_line()!
 	for line != '' {
-		key, value := parse_header(line)!
+		// key, value := parse_header(line)!
+		mut pos := parse_header_fast(line)!
+		key := line.substr_unsafe(0, pos)
+		for pos < line.len - 1 && line[pos + 1].is_space() {
+			if line[pos + 1].is_space() {
+				// Skip space or tab in value name
+				pos++
+			}
+		}
+		value := line.substr_unsafe(pos + 1, line.len)
+		_, _ = key, value
+		// println('key,value=${key},${value}')
 		header.add_custom(key, value)!
 		line = reader.read_line()!
 	}
-	header.coerce(canonicalize: true)
+	// header.coerce(canonicalize: true)
 
 	mut request_cookies := map[string]string{}
-	for _, cookie in read_cookies(header.data, '') {
+	for _, cookie in read_cookies(header, '') {
 		request_cookies[cookie.name] = cookie.value
 	}
 
@@ -224,23 +318,34 @@ pub fn parse_request_head(mut reader io.BufferedReader) !Request {
 		method: method
 		url: target.str()
 		header: header
+		host: header.get(.host) or { '' }
 		version: version
 		cookies: request_cookies
 	}
 }
 
 fn parse_request_line(s string) !(Method, urllib.URL, Version) {
-	words := s.split(' ')
-	if words.len != 3 {
+	// println('S=${s}')
+	// words := s.split(' ')
+	// println(words)
+	space1, space2 := fast_request_words(s)
+	// if words.len != 3 {
+	if space1 == 0 || space2 == 0 {
 		return error('malformed request line')
 	}
-	method := method_from_str(words[0])
-	target := urllib.parse(words[1])!
-	version := version_from_str(words[2])
+	method_str := s.substr_unsafe(0, space1)
+	target_str := s.substr_unsafe(space1 + 1, space2)
+	version_str := s.substr_unsafe(space2 + 1, s.len)
+	// println('${method_str}!${target_str}!${version_str}')
+	// method := method_from_str(words[0])
+	// target := urllib.parse(words[1])!
+	// version := version_from_str(words[2])
+	method := method_from_str(method_str)
+	target := urllib.parse(target_str)!
+	version := version_from_str(version_str)
 	if version == .unknown {
 		return error('unsupported version')
 	}
-
 	return method, target, version
 }
 
@@ -303,13 +408,11 @@ pub fn (err MultiplePathAttributesError) msg() string {
 // (body, boundary).
 // Note: Form keys should not contain quotes
 fn multipart_form_body(form map[string]string, files map[string][]FileData) (string, string) {
-	alpha_numeric := 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-	boundary := rand.string_from_set(alpha_numeric, 64)
-
+	rboundary := rand.ulid()
 	mut sb := strings.new_builder(1024)
 	for name, value in form {
 		sb.write_string('\r\n--')
-		sb.write_string(boundary)
+		sb.write_string(rboundary)
 		sb.write_string('\r\nContent-Disposition: form-data; name="')
 		sb.write_string(name)
 		sb.write_string('"\r\n\r\n')
@@ -318,7 +421,7 @@ fn multipart_form_body(form map[string]string, files map[string][]FileData) (str
 	for name, fs in files {
 		for f in fs {
 			sb.write_string('\r\n--')
-			sb.write_string(boundary)
+			sb.write_string(rboundary)
 			sb.write_string('\r\nContent-Disposition: form-data; name="')
 			sb.write_string(name)
 			sb.write_string('"; filename="')
@@ -330,9 +433,9 @@ fn multipart_form_body(form map[string]string, files map[string][]FileData) (str
 		}
 	}
 	sb.write_string('\r\n--')
-	sb.write_string(boundary)
+	sb.write_string(rboundary)
 	sb.write_string('--')
-	return sb.str(), boundary
+	return sb.str(), rboundary
 }
 
 struct LineSegmentIndexes {
@@ -411,7 +514,7 @@ pub fn parse_multipart_form(body string, boundary string) (map[string]string, ma
 	return form, files
 }
 
-// parse_disposition parses the Content-Disposition header of a multipart form
+// parse_disposition parses the Content-Disposition header of a multipart form.
 // Returns a map of the key="value" pairs
 // Example: assert parse_disposition('Content-Disposition: form-data; name="a"; filename="b"') == {'name': 'a', 'filename': 'b'}
 fn parse_disposition(line string) map[string]string {
@@ -429,4 +532,13 @@ fn parse_disposition(line string) map[string]string {
 		}
 	}
 	return data
+}
+
+fn is_no_need_retry_error(err_code int) bool {
+	return err_code in [
+		net.err_port_out_of_range.code(),
+		net.err_no_udp_remote.code(),
+		net.err_connect_timed_out.code(),
+		net.err_timed_out_code,
+	]
 }

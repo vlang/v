@@ -21,27 +21,26 @@ pub fn format_str_sb(s string, p BF_param, mut sb strings.Builder) {
 		return
 	}
 
-	if p.allign == .right {
+	if p.align == .right {
 		for i1 := 0; i1 < dif; i1++ {
 			sb.write_u8(p.pad_ch)
 		}
 	}
 	sb.write_string(s)
-	if p.allign == .left {
+	if p.align == .left {
 		for i1 := 0; i1 < dif; i1++ {
 			sb.write_u8(p.pad_ch)
 		}
 	}
 }
 
-const (
-	max_size_f64_char = 32 // the f64 max representation is -36,028,797,018,963,968e1023, 21 chars, 32 is faster for the memory manger
-	// digit pairs in reverse order
-	digit_pairs       = '00102030405060708090011121314151617181910212223242526272829203132333435363738393041424344454647484940515253545556575859506162636465666768696071727374757677787970818283848586878889809192939495969798999'
-)
+const max_size_f64_char = 32 // the f64 max representation is -36,028,797,018,963,968e1023, 21 chars, 32 is faster for the memory manger
+
+// digit pairs in reverse order
+const digit_pairs = '00102030405060708090011121314151617181910212223242526272829203132333435363738393041424344454647484940515253545556575859506162636465666768696071727374757677787970818283848586878889809192939495969798999'
 
 // format_dec_sb formats an u64 using a `strings.Builder`.
-[direct_array_access]
+@[direct_array_access]
 pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 	mut n_char := dec_digits(d)
 	sign_len := if !p.positive || p.sign_flag { 1 } else { 0 }
@@ -49,7 +48,7 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 	dif := p.len0 - number_len
 	mut sign_written := false
 
-	if p.allign == .right {
+	if p.align == .right {
 		if p.pad_ch == `0` {
 			if p.positive {
 				if p.sign_flag {
@@ -127,7 +126,7 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 	}
 	//===========================================
 
-	if p.allign == .left {
+	if p.align == .left {
 		for i1 := 0; i1 < dif; i1++ {
 			res.write_u8(p.pad_ch)
 		}
@@ -136,7 +135,7 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 }
 
 // f64_to_str_lnd1 formats a f64 to a `string` with `dec_digit` digits after the dot.
-[direct_array_access; manualfree]
+@[direct_array_access; manualfree]
 pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 	unsafe {
 		// we add the rounding value
@@ -313,7 +312,7 @@ pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 }
 
 // format_fl is a `strings.Builder` version of format_fl.
-[direct_array_access; manualfree]
+@[direct_array_access; manualfree]
 pub fn format_fl(f f64, p BF_param) string {
 	unsafe {
 		mut fs := f64_to_str_lnd1(if f >= 0.0 { f } else { -f }, p.len1)
@@ -365,7 +364,7 @@ pub fn format_fl(f f64, p BF_param) string {
 
 		// make the padding if needed
 		dif := p.len0 - buf_i + sign_len_diff
-		if p.allign == .right {
+		if p.align == .right {
 			for i1 := 0; i1 < dif; i1++ {
 				out[out_i] = p.pad_ch
 				out_i++
@@ -373,7 +372,7 @@ pub fn format_fl(f f64, p BF_param) string {
 		}
 		vmemcpy(&out[out_i], &buf[0], buf_i)
 		out_i += buf_i
-		if p.allign == .left {
+		if p.align == .left {
 			for i1 := 0; i1 < dif; i1++ {
 				out[out_i] = p.pad_ch
 				out_i++
@@ -390,7 +389,7 @@ pub fn format_fl(f f64, p BF_param) string {
 }
 
 // format_es returns a f64 as a `string` formatted according to the options set in `p`.
-[direct_array_access; manualfree]
+@[direct_array_access; manualfree]
 pub fn format_es(f f64, p BF_param) string {
 	unsafe {
 		mut fs := f64_to_str_pad(if f > 0 { f } else { -f }, p.len1)
@@ -436,7 +435,7 @@ pub fn format_es(f f64, p BF_param) string {
 
 		// make the padding if needed
 		dif := p.len0 - buf_i + sign_len_diff
-		if p.allign == .right {
+		if p.align == .right {
 			for i1 := 0; i1 < dif; i1++ {
 				out[out_i] = p.pad_ch
 				out_i++
@@ -444,7 +443,7 @@ pub fn format_es(f f64, p BF_param) string {
 		}
 		vmemcpy(&out[out_i], &buf[0], buf_i)
 		out_i += buf_i
-		if p.allign == .left {
+		if p.align == .left {
 			for i1 := 0; i1 < dif; i1++ {
 				out[out_i] = p.pad_ch
 				out_i++
@@ -461,7 +460,7 @@ pub fn format_es(f f64, p BF_param) string {
 }
 
 // remove_tail_zeros strips traling zeros from `s` and return the resulting `string`.
-[direct_array_access]
+@[direct_array_access]
 pub fn remove_tail_zeros(s string) string {
 	unsafe {
 		mut buf := malloc_noscan(s.len + 1)

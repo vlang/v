@@ -18,6 +18,13 @@ vlib/v/checker/tests/if_match_result.vv:7:3: error: `if` expression requires an 
       |   ~~~~
     8 | }
     9 |
+vlib/v/checker/tests/if_match_result.vv:6:3: error: assignment mismatch: 1 variable(s) 0 value(s)
+    4 |     else {}
+    5 | }
+    6 | _ = if true {
+      |   ^
+    7 | } else {
+    8 | }
 vlib/v/checker/tests/if_match_result.vv:11:3: error: assignment mismatch: 1 variable(s) 0 value(s)
     9 | 
    10 | // void results

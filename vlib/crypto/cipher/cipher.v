@@ -6,7 +6,7 @@ module cipher
 // using a given key. It provides the capability to encrypt
 // or decrypt individual blocks. The mode implementations
 // extend that capability to streams of blocks.
-interface Block {
+pub interface Block {
 	block_size int // block_size returns the cipher's block size.
 	encrypt(mut dst []u8, src []u8) // Encrypt encrypts the first block in src into dst.
 	// Dst and src must overlap entirely or not at all.
@@ -15,7 +15,7 @@ interface Block {
 }
 
 // A Stream represents a stream cipher.
-interface Stream {
+pub interface Stream {
 	// xor_key_stream XORs each byte in the given slice with a byte from the
 	// cipher's key stream. Dst and src must overlap entirely or not at all.
 	//
@@ -31,7 +31,7 @@ interface Stream {
 
 // A BlockMode represents a block cipher running in a block-based mode (CBC,
 // ECB etc).
-interface BlockMode {
+pub interface BlockMode {
 	block_size int // block_size returns the mode's block size.
 	crypt_blocks(mut dst []u8, src []u8) // crypt_blocks encrypts or decrypts a number of blocks. The length of
 	// src must be a multiple of the block size. Dst and src must overlap

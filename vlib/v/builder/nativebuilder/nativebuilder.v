@@ -13,9 +13,19 @@ pub fn start() {
 }
 
 pub fn compile_native(mut b builder.Builder) {
-	// v.files << v.v_files_from_dir(os.join_path(v.pref.vlib_path,'builtin','bare'))
-	files := [b.pref.path]
+	if b.pref.is_verbose {
+		println('all .v files before:')
+	}
+	mut files := []string{}
+	if !b.pref.no_builtin {
+		files << b.get_builtin_files()
+	}
+	files << b.get_user_files()
 	b.set_module_lookup_paths()
+	if b.pref.is_verbose {
+		println('all .v files:')
+		println(files)
+	}
 	build_native(mut b, files, b.pref.out_name)
 }
 

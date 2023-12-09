@@ -5,17 +5,16 @@ import net
 import net.http
 import io
 
-const (
-	sport           = 12380
-	localserver     = '127.0.0.1:${sport}'
-	exit_after_time = 12000 // milliseconds
-	vexe            = os.getenv('VEXE')
-	vweb_logfile    = os.getenv('VWEB_LOGFILE')
-	vroot           = os.dir(vexe)
-	serverexe       = os.join_path(os.cache_dir(), 'vweb_test_server.exe')
-	tcp_r_timeout   = 30 * time.second
-	tcp_w_timeout   = 30 * time.second
-)
+const sport = 12380
+const localserver = '127.0.0.1:${sport}'
+const exit_after_time = 12000 // milliseconds
+
+const vexe = os.getenv('VEXE')
+const vweb_logfile = os.getenv('VWEB_LOGFILE')
+const vroot = os.dir(vexe)
+const serverexe = os.join_path(os.cache_dir(), 'vweb_test_server.exe')
+const tcp_r_timeout = 30 * time.second
+const tcp_w_timeout = 30 * time.second
 
 // setup of vweb webserver
 fn testsuite_begin() {
@@ -238,6 +237,33 @@ fn test_http_client_multipart_form_data() {
 	assert x.body == files[0].data
 }
 
+fn test_login_with_multipart_form_data_send_by_fetch() {
+	mut form_config := http.PostMultipartFormConfig{
+		form: {
+			'username': 'myusername'
+			'password': 'mypassword123'
+		}
+	}
+	x := http.post_multipart_form('http://${localserver}/login', form_config)!
+	assert x.status_code == 200
+	assert x.status_msg == 'OK'
+	assert x.body == 'username: xmyusernamex | password: xmypassword123x'
+}
+
+fn test_host() {
+	mut req := http.Request{
+		url: 'http://${localserver}/with_host'
+		method: .get
+	}
+
+	mut x := req.do()!
+	assert x.status() == .not_found
+
+	req.add_header(.host, 'example.com')
+	x = req.do()!
+	assert x.status() == .ok
+}
+
 fn test_http_client_shutdown_does_not_work_without_a_cookie() {
 	x := http.get('http://${localserver}/shutdown') or {
 		assert err.msg() == ''
@@ -289,7 +315,7 @@ fn simple_tcp_client(config SimpleTcpClientConfig) !string {
 		break
 	}
 	if client == unsafe { nil } {
-		eprintln('coult not create a tcp client connection to ${localserver} after ${config.retries} retries')
+		eprintln('could not create a tcp client connection to ${localserver} after ${config.retries} retries')
 		exit(1)
 	}
 	client.set_read_timeout(tcp_r_timeout)

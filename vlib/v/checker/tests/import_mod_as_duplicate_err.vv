@@ -1,0 +1,7 @@
+module json2
+
+import json as json2
+
+const used = true
+
+println(json2.used)

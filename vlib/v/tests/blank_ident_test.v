@@ -114,11 +114,9 @@ fn test_nested_for_in_array_both() {
 	}
 }
 
-const (
-	m = {
-		'key': 'value'
-	}
-)
+const m = {
+	'key': 'value'
+}
 
 fn test_for_in_map_key() {
 	for _, v in m {

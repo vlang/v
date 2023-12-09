@@ -5,7 +5,7 @@ fn test_interface_embedding_method_call() {
 	window.run()
 }
 
-[heap]
+@[heap]
 pub struct Window {
 mut:
 	initables []Initable
@@ -42,7 +42,7 @@ interface PopView {
 	Drawable
 }
 
-[heap]
+@[heap]
 pub struct Button {
 mut:
 	window &Window = unsafe { nil }

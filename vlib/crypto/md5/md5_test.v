@@ -11,7 +11,9 @@ fn test_crypto_md5_writer() {
 	mut digest := md5.new()
 	digest.write('this is a'.bytes()) or { assert false }
 	digest.write(' md5 checksum.'.bytes()) or { assert false }
-	sum := digest.sum([])
+	mut sum := digest.sum([])
+	assert sum.hex() == '6fb421ff99036547655984da12973431'
+	sum = digest.sum([])
 	assert sum.hex() == '6fb421ff99036547655984da12973431'
 }
 

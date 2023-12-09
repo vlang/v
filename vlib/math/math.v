@@ -16,7 +16,7 @@ pub fn aprox_sin(a f64) f64 {
 	return a0 + a * (a1 + a * (a2 + a * (a3 + a * (a4 + a * (a5 + a * (a6 + a * a7))))))
 }
 
-// aprox_cos returns an approximation of sin(a) made using lolremez
+// aprox_cos returns an approximation of cos(a) made using lolremez
 pub fn aprox_cos(a f64) f64 {
 	a0 := 9.9995999154986614e-1
 	a1 := 1.2548995793001028e-3
@@ -31,19 +31,19 @@ pub fn aprox_cos(a f64) f64 {
 }
 
 // copysign returns a value with the magnitude of x and the sign of y
-[inline]
+@[inline]
 pub fn copysign(x f64, y f64) f64 {
 	return f64_from_bits((f64_bits(x) & ~sign_mask) | (f64_bits(y) & sign_mask))
 }
 
-// degrees converts from radians to degrees.
-[inline]
+// degrees converts an angle in radians to a corresponding angle in degrees.
+@[inline]
 pub fn degrees(radians f64) f64 {
 	return radians * (180.0 / pi)
 }
 
 // angle_diff calculates the difference between angles in radians
-[inline]
+@[inline]
 pub fn angle_diff(radian_a f64, radian_b f64) f64 {
 	mut delta := fmod(radian_b - radian_a, tau)
 	delta = fmod(delta + 1.5 * tau, tau)
@@ -51,7 +51,7 @@ pub fn angle_diff(radian_a f64, radian_b f64) f64 {
 	return delta
 }
 
-[params]
+@[params]
 pub struct DigitParams {
 	base    int = 10
 	reverse bool
@@ -125,7 +125,7 @@ pub fn minmax(a f64, b f64) (f64, f64) {
 }
 
 // clamp returns x constrained between a and b
-[inline]
+@[inline]
 pub fn clamp(x f64, a f64, b f64) f64 {
 	if x < a {
 		return a
@@ -138,28 +138,29 @@ pub fn clamp(x f64, a f64, b f64) f64 {
 
 // sign returns the corresponding sign -1.0, 1.0 of the provided number.
 // if n is not a number, its sign is nan too.
-[inline]
+@[inline]
 pub fn sign(n f64) f64 {
+	// dump(n)
 	if is_nan(n) {
 		return nan()
 	}
 	return copysign(1.0, n)
 }
 
-// signi returns the corresponding sign -1.0, 1.0 of the provided number.
-[inline]
+// signi returns the corresponding sign -1, 1 of the provided number.
+@[inline]
 pub fn signi(n f64) int {
 	return int(copysign(1.0, n))
 }
 
-// radians converts from degrees to radians.
-[inline]
+// radians converts an angle in degrees to a corresponding angle in radians.
+@[inline]
 pub fn radians(degrees f64) f64 {
 	return degrees * (pi / 180.0)
 }
 
 // signbit returns a value with the boolean representation of the sign for x
-[inline]
+@[inline]
 pub fn signbit(x f64) bool {
 	return f64_bits(x) & sign_mask != 0
 }
@@ -200,9 +201,21 @@ pub fn veryclose(a f64, b f64) bool {
 
 // alike checks if a and b are equal
 pub fn alike(a f64, b f64) bool {
+	// eprintln('>>> a: ${f64_bits(a):20} | b: ${f64_bits(b):20} | a==b: ${a == b} | a: ${a:10} | b: ${b:10}')
+	// compare a and b, ignoring their last 2 bits:
+	if f64_bits(a) & 0xFFFF_FFFF_FFFF_FFFC == f64_bits(b) & 0xFFFF_FFFF_FFFF_FFFC {
+		return true
+	}
+	if a == -0 && b == 0 {
+		return true
+	}
+	if a == 0 && b == -0 {
+		return true
+	}
 	if is_nan(a) && is_nan(b) {
 		return true
-	} else if a == b {
+	}
+	if a == b {
 		return signbit(a) == signbit(b)
 	}
 	return false

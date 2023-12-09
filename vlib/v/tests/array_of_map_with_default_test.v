@@ -11,10 +11,10 @@ fn init_b(n_rows int) []map[int]int {
 	return tally
 }
 
-pub fn tallys_in_array(indexs []int, values [][]int, init fn (int) []map[int]int) []map[int]int {
-	mut tally := init(indexs.len)
+pub fn tallys_in_array(indices []int, values [][]int, init fn (int) []map[int]int) []map[int]int {
+	mut tally := init(indices.len)
 	for row in 0 .. values.len {
-		for i, index in indexs {
+		for i, index in indices {
 			tally[i][values[row][index]]++
 		}
 	}
@@ -22,12 +22,12 @@ pub fn tallys_in_array(indexs []int, values [][]int, init fn (int) []map[int]int
 }
 
 fn test_array_of_map_with_default() {
-	indexs := [0, 1]
+	indices := [0, 1]
 	values := [[1, 201], [1, 3], [1, 201], [1, 3]]
 
-	out1 := tallys_in_array(indexs, values, init_a)
+	out1 := tallys_in_array(indices, values, init_a)
 	println(out1)
-	out2 := tallys_in_array(indexs, values, init_b)
+	out2 := tallys_in_array(indices, values, init_b)
 	println(out2)
 
 	mut maps := []map[int]int{}

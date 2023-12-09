@@ -6,10 +6,25 @@ pub const used_import = 1
 #flag -I @VEXEROOT/thirdparty/sokol/util
 #flag freebsd -I /usr/local/include
 #flag darwin -fobjc-arc
+
 #flag linux -lX11 -lGL -lXcursor -lXi -lpthread
 #flag freebsd -L/usr/local/lib -lX11 -lGL -lXcursor -lXi
 #flag openbsd -L/usr/X11R6/lib -lX11 -lGL -lXcursor -lXi
 #flag windows -lgdi32
+
+$if windows {
+	#flag windows -lopengl32
+}
+
+// Note that -lm is needed *only* for sokol_gl.h's usage of sqrtf(),
+// but without -lm, this fails:
+// `v -cc gcc ~/.vmodules/sdl/examples/sdl_opengl_and_sokol/`
+// With tcc, this succeeds with or without -lm:
+// `v ~/.vmodules/sdl/examples/sdl_opengl_and_sokol/`
+$if !tinyc {
+	#flag linux -lm
+}
+
 // METAL
 $if macos {
 	$if darwin_sokol_glcore33 ? {
@@ -25,7 +40,7 @@ $if ios {
 }
 
 $if emscripten ? {
-	#flag -DSOKOL_GLES2
+	#flag -DSOKOL_GLES3
 	#flag -DSOKOL_NO_ENTRY
 	#flag -s ERROR_ON_UNDEFINED_SYMBOLS=0
 	#flag -s ASSERTIONS=1

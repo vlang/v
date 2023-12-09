@@ -8,10 +8,10 @@ import net.http
 import math
 import v.util.version
 
-[table: 'benchmark']
+@[table: 'benchmark']
 struct Task {
 mut:
-	id     u32    [primary; serial; sql: serial]
+	id     u32    @[primary; serial; sql: serial]
 	title  string
 	status string
 }
@@ -38,10 +38,8 @@ fn (framework_platform FrameworkPlatform) to_map() map[string][]int {
 	return mapa
 }
 
-const (
-	http_port             = 3001
-	benchmark_loop_length = 20
-)
+const http_port = 3001
+const benchmark_loop_length = 20
 
 struct App {
 	vweb.Context
@@ -68,7 +66,7 @@ fn new_app() &App {
 	return app
 }
 
-['/'; get]
+@['/'; get]
 pub fn (mut app App) controller_get_all_task() !vweb.Result {
 	v_version := version.full_v_version(true)
 	orm_stmt_kinds := ['insert', 'select', 'update']
@@ -197,7 +195,7 @@ fn gen_table_info(attribute_names []string, framework_platform map[string][]int)
 		// qtd. of values in 10 % of arrays
 		ten_perc := int(framework_platform[name].len / 10)
 
-		// get 10% highter
+		// get 10% higher
 		mut min_ten_array := framework_platform[name].clone()
 		min_ten_array.sort()
 		min_ten_array.trim(ten_perc)

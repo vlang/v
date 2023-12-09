@@ -35,7 +35,7 @@ fn (mut p Process) unix_spawn_process() int {
 		C.setpgid(0, 0)
 	}
 	if p.use_stdio_ctl {
-		// Redirect the child standart in/out/err to the pipes that
+		// Redirect the child standard in/out/err to the pipes that
 		// were created in the parent.
 		// Close the parent's pipe fds, the child do not need them:
 		fd_close(pipeset[1])
@@ -83,42 +83,32 @@ fn (mut p Process) unix_kill_pgroup() {
 }
 
 fn (mut p Process) unix_wait() {
-	cstatus := 0
-	mut ret := -1
-	$if !emscripten ? {
-		ret = C.waitpid(p.pid, &cstatus, 0)
-	}
-	if ret == -1 {
-		p.err = posix_get_error_msg(C.errno)
-		return
-	}
-	pret, is_signaled := posix_wait4_to_exit_status(cstatus)
-	if is_signaled {
-		p.status = .aborted
-		p.err = 'Terminated by signal ${ret:2d} (${sigint_to_signal_name(pret)})'
-	} else {
-		p.status = .exited
-	}
-	p.code = pret
+	p.impl_check_pid_status(false, 0)
 }
 
 fn (mut p Process) unix_is_alive() bool {
-	cstatus := 0
+	return p.impl_check_pid_status(true, C.WNOHANG)
+}
+
+fn (mut p Process) impl_check_pid_status(exit_early_on_ret0 bool, waitpid_options int) bool {
+	mut cstatus := 0
 	mut ret := -1
 	$if !emscripten ? {
-		ret = C.waitpid(p.pid, &cstatus, C.WNOHANG)
+		ret = C.waitpid(p.pid, &cstatus, waitpid_options)
 	}
+	p.code = ret
 	if ret == -1 {
 		p.err = posix_get_error_msg(C.errno)
 		return false
 	}
-	if ret == 0 {
+	if exit_early_on_ret0 && ret == 0 {
 		return true
 	}
-	pret, is_signaled := posix_wait4_to_exit_status(cstatus)
+	mut pret, is_signaled := posix_wait4_to_exit_status(cstatus)
 	if is_signaled {
 		p.status = .aborted
-		p.err = 'Terminated by signal ${ret:2d} (${sigint_to_signal_name(pret)})'
+		p.err = 'Terminated by signal ${pret:2d} (${sigint_to_signal_name(pret)})'
+		pret += 128
 	} else {
 		p.status = .exited
 	}

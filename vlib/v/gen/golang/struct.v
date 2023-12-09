@@ -116,7 +116,7 @@ pub fn (mut f Gen) struct_init(node ast.StructInit) {
 	if name == 'void' {
 		name = ''
 	}
-	if node.fields.len == 0 && !node.has_update_expr {
+	if node.init_fields.len == 0 && !node.has_update_expr {
 		// `Foo{}` on one line if there are no fields or comments
 		if node.pre_comments.len == 0 {
 			f.write('${name}{}')
@@ -134,9 +134,9 @@ pub fn (mut f Gen) struct_init(node ast.StructInit) {
 			f.expr(node.update_expr)
 			f.write(', ')
 		}
-		for i, field in node.fields {
-			f.expr(field.expr)
-			if i < node.fields.len - 1 {
+		for i, init_field in node.init_fields {
+			f.expr(init_field.expr)
+			if i < node.init_fields.len - 1 {
 				f.write(', ')
 			}
 		}
@@ -174,18 +174,18 @@ pub fn (mut f Gen) struct_init(node ast.StructInit) {
 				f.write('...')
 				f.expr(node.update_expr)
 				if single_line_fields {
-					if node.fields.len > 0 {
+					if node.init_fields.len > 0 {
 						f.write(', ')
 					}
 				} else {
 					f.writeln('')
 				}
 			}
-			for i, field in node.fields {
-				f.write('${field.name}: ')
-				f.expr(field.expr)
+			for i, init_field in node.init_fields {
+				f.write('${init_field.name}: ')
+				f.expr(init_field.expr)
 				if single_line_fields {
-					if i < node.fields.len - 1 {
+					if i < node.init_fields.len - 1 {
 						f.write(', ')
 					}
 				} else {

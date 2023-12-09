@@ -21,7 +21,7 @@ pub fn utf32_to_str(code u32) string {
 	}
 }
 
-[manualfree; unsafe]
+@[manualfree; unsafe]
 pub fn utf32_to_str_no_malloc(code u32, buf &u8) string {
 	unsafe {
 		len := utf32_decode_to_buffer(code, buf)
@@ -33,7 +33,7 @@ pub fn utf32_to_str_no_malloc(code u32, buf &u8) string {
 	}
 }
 
-[manualfree; unsafe]
+@[manualfree; unsafe]
 pub fn utf32_decode_to_buffer(code u32, buf &u8) int {
 	unsafe {
 		icode := int(code) // Prevents doing casts everywhere
@@ -64,19 +64,6 @@ pub fn utf32_decode_to_buffer(code u32, buf &u8) int {
 		}
 	}
 	return 0
-}
-
-// utf8_str_len returns the number of runes contained in the string.
-[deprecated: 'use `string.len_utf8()` instead']
-[deprecated_after: '2022-05-28']
-pub fn utf8_str_len(s string) int {
-	mut l := 0
-	mut i := 0
-	for i < s.len {
-		l++
-		i += ((0xe5000000 >> ((unsafe { s.str[i] } >> 3) & 0x1e)) & 3) + 1
-	}
-	return l
 }
 
 // Convert utf8 to utf32

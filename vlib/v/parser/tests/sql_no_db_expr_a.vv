@@ -1,4 +1,4 @@
 fn x() {
 	// SqlStmt
-	sql :=
+	sql_ :=
 }

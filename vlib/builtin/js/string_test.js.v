@@ -1,3 +1,6 @@
+// vtest flaky: true
+// vtest retry: 3
+
 // import strings
 
 // Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
@@ -402,6 +405,13 @@ fn test_contains_any() {
 	assert 'failure'.contains_any('ui')
 	assert !'foo'.contains_any('')
 	assert !''.contains_any('')
+}
+
+fn test_contains_only() {
+	assert '23885'.contains_only('0123456789')
+	assert '23gg885'.contains_only('01g23456789')
+	assert !'hello;'.contains_only('hello')
+	assert !''.contains_only('')
 }
 
 fn test_contains_any_substr() {

@@ -1,5 +1,0 @@
-vlib/v/parser/tests/const_init_decl_assign_err.vv:2:4: error: cannot use `:=` to declare a const, use `=` instead
-    1 | const (
-    2 |     a := 43
-      |       ~~
-    3 | )

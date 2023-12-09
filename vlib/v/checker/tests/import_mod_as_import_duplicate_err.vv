@@ -1,0 +1,12 @@
+import x.json2 as json
+import json
+
+numbers := {
+	'one':   1
+	'two':   2
+	'three': 3
+	'four':  4
+}
+
+out := json.encode(numbers)
+println(out)

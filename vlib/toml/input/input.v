@@ -13,27 +13,6 @@ pub:
 	file_path string // '/path/to/file.toml'
 }
 
-// auto_config returns an, automatic determined, input Config based on heuristics
-// found in `toml`
-// One example of several of why it's deprecated:
-// https://discord.com/channels/592103645835821068/592114487759470596/954101934988615721
-[deprecated: 'will be removed and not replaced due to flaky heuristics that leads to hard to find bugs']
-[deprecated_after: '2022-06-18']
-pub fn auto_config(toml string) !Config {
-	mut config := Config{}
-	if !toml.contains('\n') && os.is_file(toml) {
-		config = Config{
-			file_path: toml
-		}
-	} else {
-		config = Config{
-			text: toml
-		}
-	}
-	config.validate()!
-	return config
-}
-
 // validate returns an optional error if more than one of the fields
 // in `Config` has a non-default value (empty string).
 fn (c Config) validate() ! {

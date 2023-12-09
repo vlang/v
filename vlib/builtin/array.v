@@ -10,17 +10,17 @@ import strings
 // which avoids using generics and thus without generating extra
 // code for every type.
 pub struct array {
-pub:
-	element_size int // size in bytes of one element in the array.
 pub mut:
 	data   voidptr
 	offset int // in bytes (should be `usize`), to avoid copying data while making slices, unless it starts changing
 	len    int // length of the array in elements.
 	cap    int // capacity of the array in elements.
 	flags  ArrayFlags
+pub:
+	element_size int // size in bytes of one element in the array.
 }
 
-[flag]
+@[flag]
 pub enum ArrayFlags {
 	noslices // when <<, `.noslices` will free the old data block immediately (you have to be sure, that there are *no slices* to that specific array). TODO: integrate with reference counting/compiler support for the static cases.
 	noshrink // when `.noslices` and `.noshrink` are *both set*, .delete(x) will NOT allocate new memory and free the old. It will just move the elements in place, and adjust .len.
@@ -203,7 +203,7 @@ fn (mut a array) ensure_cap(required int) {
 }
 
 // repeat returns a new array with the given array elements repeated given times.
-// `cgen` will replace this with an apropriate call to `repeat_to_depth()`
+// `cgen` will replace this with an appropriate call to `repeat_to_depth()`
 //
 // This is a dummy placeholder that will be overridden by `cgen` with an appropriate
 // call to `repeat_to_depth()`. However the `checker` needs it here.
@@ -215,7 +215,7 @@ pub fn (a array) repeat(count int) array {
 // multi-dimensional arrays.
 //
 // It is `unsafe` to call directly because `depth` is not checked
-[direct_array_access; unsafe]
+@[direct_array_access; unsafe]
 pub fn (a array) repeat_to_depth(count int, depth int) array {
 	if count < 0 {
 		panic('array.repeat: count is negative: ${count}')
@@ -287,7 +287,7 @@ pub fn (mut a array) insert(i int, val voidptr) {
 
 // insert_many is used internally to implement inserting many values
 // into an the array beginning at `i`.
-[unsafe]
+@[unsafe]
 fn (mut a array) insert_many(i int, val voidptr, size int) {
 	$if !no_bounds_checking {
 		if i < 0 || i > a.len {
@@ -313,7 +313,7 @@ pub fn (mut a array) prepend(val voidptr) {
 // prepend_many prepends another array to this array.
 // NOTE: `.prepend` is probably all you need.
 // NOTE: This code is never called in all of vlib
-[unsafe]
+@[unsafe]
 fn (mut a array) prepend_many(val voidptr, size int) {
 	unsafe { a.insert_many(0, val, size) }
 }
@@ -389,6 +389,16 @@ pub fn (mut a array) clear() {
 	a.len = 0
 }
 
+// reset quickly sets the bytes of all elements of the array to 0.
+// Useful mainly for numeric arrays. Note, that calling reset()
+// is not safe, when your array contains more complex elements,
+// like structs, maps, pointers etc, since setting them to 0,
+// can later lead to hard to find bugs.
+@[unsafe]
+pub fn (mut a array) reset() {
+	unsafe { vmemset(a.data, 0, a.len * a.element_size) }
+}
+
 // trim trims the array length to `index` without modifying the allocated data.
 // If `index` is greater than `len` nothing will be changed.
 // Example: a.trim(3) // `a.len` is now <= 3
@@ -421,7 +431,7 @@ pub fn (mut a array) drop(num int) {
 }
 
 // we manually inline this for single operations for performance without -prod
-[inline; unsafe]
+@[inline; unsafe]
 fn (a array) get_unsafe(i int) voidptr {
 	unsafe {
 		return &u8(a.data) + u64(i) * u64(a.element_size)
@@ -530,7 +540,7 @@ pub fn (mut a array) delete_last() {
 // Alternative: Slices can also be made with [start..end] notation
 // Alternative: `.slice_ni()` will always return an array.
 fn (a array) slice(start int, _end int) array {
-	mut end := _end
+	end := if _end == max_int { a.len } else { _end } // max_int
 	$if !no_bounds_checking {
 		if start > end {
 			panic('array.slice: invalid slice index (${start} > ${end})')
@@ -565,7 +575,7 @@ fn (a array) slice(start int, _end int) array {
 // This function always return a valid array.
 fn (a array) slice_ni(_start int, _end int) array {
 	// a.flags.clear(.noslices)
-	mut end := _end
+	mut end := if _end == max_int { a.len } else { _end } // max_int
 	mut start := _start
 
 	if start < 0 {
@@ -609,12 +619,6 @@ fn (a array) slice_ni(_start int, _end int) array {
 	return res
 }
 
-// used internally for [2..4]
-fn (a array) slice2(start int, _end int, end_max bool) array {
-	end := if end_max { a.len } else { _end }
-	return a.slice(start, end)
-}
-
 // clone_static_to_depth() returns an independent copy of a given array.
 // Unlike `clone_to_depth()` it has a value receiver and is used internally
 // for slice-clone expressions like `a[2..4].clone()` and in -autofree generated code.
@@ -623,14 +627,14 @@ fn (a array) clone_static_to_depth(depth int) array {
 }
 
 // clone returns an independent copy of a given array.
-// this will be overwritten by `cgen` with an apropriate call to `.clone_to_depth()`
+// this will be overwritten by `cgen` with an appropriate call to `.clone_to_depth()`
 // However the `checker` needs it here.
 pub fn (a &array) clone() array {
 	return unsafe { a.clone_to_depth(0) }
 }
 
 // recursively clone given array - `unsafe` when called directly because depth is not checked
-[unsafe]
+@[unsafe]
 pub fn (a &array) clone_to_depth(depth int) array {
 	mut arr := array{
 		element_size: a.element_size
@@ -656,7 +660,7 @@ pub fn (a &array) clone_to_depth(depth int) array {
 }
 
 // we manually inline this for single operations for performance without -prod
-[inline; unsafe]
+@[inline; unsafe]
 fn (mut a array) set_unsafe(i int, val voidptr) {
 	unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * u64(i), val, a.element_size) }
 }
@@ -681,7 +685,7 @@ fn (mut a array) push(val voidptr) {
 
 // push_many implements the functionality for pushing another array.
 // `val` is array.data and user facing usage is `a << [1,2,3]`
-[unsafe]
+@[unsafe]
 pub fn (mut a3 array) push_many(val voidptr, size int) {
 	if size <= 0 || val == unsafe { nil } {
 		return
@@ -737,7 +741,7 @@ pub fn (a array) reverse() array {
 }
 
 // free frees all memory occupied by the array.
-[unsafe]
+@[unsafe]
 pub fn (a &array) free() {
 	$if prealloc {
 		return
@@ -750,6 +754,9 @@ pub fn (a &array) free() {
 	}
 	mblock_ptr := &u8(u64(a.data) - u64(a.offset))
 	unsafe { free(mblock_ptr) }
+	unsafe {
+		a.data = nil
+	}
 }
 
 // Some of the following functions have no implementation in V and exist here
@@ -820,9 +827,15 @@ pub fn (a array) map(callback fn (voidptr) voidptr) array
 // being compared.
 //
 // Example: array.sort() // will sort the array in ascending order
-// Example: array.sort(b < a) // will sort the array in decending order
+// Example: array.sort(b < a) // will sort the array in descending order
 // Example: array.sort(b.name < a.name) // will sort descending by the .name field
 pub fn (mut a array) sort(callback fn (voidptr, voidptr) int)
+
+// sorted returns a sorted copy of the original array. The original array is *NOT* modified.
+// See also .sort() .
+// Example: assert [9,1,6,3,9].sorted() == [1,3,6,9,9]
+// Example: assert [9,1,6,3,9].sorted(b < a) == [9,9,6,3,1]
+pub fn (a &array) sorted(callback fn (voidptr, voidptr) int) array
 
 // sort_with_compare sorts the array in-place using the results of the
 // given function to determine sort order.
@@ -850,10 +863,24 @@ pub fn (mut a array) sort(callback fn (voidptr, voidptr) int)
 // ```
 pub fn (mut a array) sort_with_compare(callback fn (voidptr, voidptr) int) {
 	$if freestanding {
-		panic('sort does not work with -freestanding')
+		panic('sort_with_compare does not work with -freestanding')
 	} $else {
 		unsafe { vqsort(a.data, usize(a.len), usize(a.element_size), callback) }
 	}
+}
+
+// sorted_with_compare sorts a clone of the array, using the results of the
+// given function to determine sort order. The original array is not modified.
+// See also .sort_with_compare()
+pub fn (a &array) sorted_with_compare(callback fn (voidptr, voidptr) int) array {
+	$if freestanding {
+		panic('sorted_with_compare does not work with -freestanding')
+	} $else {
+		mut r := a.clone()
+		unsafe { vqsort(r.data, usize(r.len), usize(r.element_size), callback) }
+		return r
+	}
+	return array{}
 }
 
 // contains determines whether an array includes a certain value among its elements
@@ -867,12 +894,12 @@ pub fn (a array) contains(value voidptr) bool
 // or `-1` if the value is not found.
 pub fn (a array) index(value voidptr) int
 
-[unsafe]
+@[direct_array_access; unsafe]
 pub fn (mut a []string) free() {
 	$if prealloc {
 		return
 	}
-	for s in a {
+	for mut s in a {
 		unsafe { s.free() }
 	}
 	unsafe { (&array(&a)).free() }
@@ -883,7 +910,7 @@ pub fn (mut a []string) free() {
 
 // str returns a string representation of an array of strings
 // Example: ['a', 'b', 'c'].str() // => "['a', 'b', 'c']".
-[manualfree]
+@[direct_array_access; manualfree]
 pub fn (a []string) str() string {
 	mut sb_len := 4 // 2x" + 1x, + 1xspace
 	if a.len > 0 {
@@ -945,20 +972,6 @@ pub fn copy(mut dst []u8, src []u8) int {
 	return min
 }
 
-// reduce executes a given reducer function on each element of the array,
-// resulting in a single output value.
-// NOTE: It exists as a method on `[]int` types only.
-// See also `arrays.reduce` for same name or `arrays.fold` for same functionality.
-[deprecated: 'use arrays.fold instead, this function has less flexibility than arrays.fold']
-[deprecated_after: '2022-10-11']
-pub fn (a []int) reduce(iter fn (int, int) int, accum_start int) int {
-	mut accum_ := accum_start
-	for i in a {
-		accum_ = iter(accum_, i)
-	}
-	return accum_
-}
-
 // grow_cap grows the array's capacity by `amount` elements.
 // Internally, it does this by copying the entire array to
 // a new memory location (creating a clone).
@@ -970,7 +983,7 @@ pub fn (mut a array) grow_cap(amount int) {
 // Internally, it does this by copying the entire array to
 // a new memory location (creating a clone) unless the array.cap
 // is already large enough.
-[unsafe]
+@[unsafe]
 pub fn (mut a array) grow_len(amount int) {
 	a.ensure_cap(a.len + amount)
 	a.len += amount
@@ -978,7 +991,7 @@ pub fn (mut a array) grow_len(amount int) {
 
 // pointers returns a new array, where each element
 // is the address of the corresponding element in the array.
-[unsafe]
+@[unsafe]
 pub fn (a array) pointers() []voidptr {
 	mut res := []voidptr{}
 	for i in 0 .. a.len {
@@ -989,7 +1002,7 @@ pub fn (a array) pointers() []voidptr {
 
 // vbytes on`voidptr` makes a V []u8 structure from a C style memory buffer.
 // NOTE: the data is reused, NOT copied!
-[unsafe]
+@[unsafe]
 pub fn (data voidptr) vbytes(len int) []u8 {
 	res := array{
 		element_size: 1
@@ -1002,7 +1015,7 @@ pub fn (data voidptr) vbytes(len int) []u8 {
 
 // vbytes on `&u8` makes a V []u8 structure from a C style memory buffer.
 // NOTE: the data is reused, NOT copied!
-[unsafe]
+@[unsafe]
 pub fn (data &u8) vbytes(len int) []u8 {
 	return unsafe { voidptr(data).vbytes(len) }
 }

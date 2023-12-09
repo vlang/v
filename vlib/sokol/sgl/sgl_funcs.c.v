@@ -3,8 +3,8 @@ module sgl
 // setup/shutdown/misc
 fn C.sgl_setup(desc &C.sgl_desc_t)
 fn C.sgl_shutdown()
-fn C.sgl_error() C.sgl_error_t
-fn C.sgl_context_error(ctx C.sgl_context) C.sgl_error_t
+fn C.sgl_error() SglError
+fn C.sgl_context_error(ctx C.sgl_context) SglError
 fn C.sgl_rad(deg f32) f32
 fn C.sgl_deg(rad f32) f32
 
@@ -28,7 +28,7 @@ fn C.sgl_scissor_rect(x int, y int, w int, h int, origin_top_left bool)
 fn C.sgl_scissor_rectf(x f32, y f32, w f32, h f32, origin_top_left bool)
 fn C.sgl_enable_texture()
 fn C.sgl_disable_texture()
-fn C.sgl_texture(img C.sg_image)
+fn C.sgl_texture(img C.sg_image, sampler C.sg_sampler)
 
 // pipeline stack functions
 fn C.sgl_load_default_pipeline()

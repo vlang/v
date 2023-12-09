@@ -48,7 +48,7 @@ fn do_rec(ch chan int, id int, mut ctx Context) {
 	n_iters := ctx.n_iters
 	base := id * n_iters * ctx.n_writers
 	for {
-		for ch.try_pop(tmp) == .success {
+		for ch.try_pop(mut tmp) == .success {
 			ctx.pops[base + i] = Event{
 				is_set: true
 				id: id

@@ -7,7 +7,7 @@ fn test_interface_embedding_complex() {
 
 //----------------------------------
 
-[heap]
+@[heap]
 pub struct Window {
 mut:
 	initables []Initable
@@ -38,12 +38,12 @@ pub fn (vb ViewBase) get_ptr() {}
 
 //-------------------------------------
 
-[heap]
+@[heap]
 pub struct ContainerBase {
 	ViewBase
 }
 
-// want to excute this method
+// want to execute this method
 pub fn (mut cb ContainerBase) init(window &Window) {
 	dump(@METHOD)
 	assert true
@@ -51,7 +51,7 @@ pub fn (mut cb ContainerBase) init(window &Window) {
 
 //--------------------------------------
 
-[heap]
+@[heap]
 pub struct LinearLayout {
 	ContainerBase
 }

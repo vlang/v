@@ -69,7 +69,7 @@ fn neg_b(b int) int {
 
 // assume that "generic" is a heavy function and should be shared
 // by *all* callers in this file
-[noinline]
+@[noinline]
 fn generic[T](func T) T {
 	return func
 }

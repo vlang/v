@@ -4,6 +4,12 @@ vlib/v/checker/tests/invalid_property.vv:2:7: error: `string` has no property `l
       |       ~~~~~~
     3 | _ = [1,2].foo
     4 |
+vlib/v/checker/tests/invalid_property.vv:2:3: error: assignment mismatch: 1 variable(s) 0 value(s)
+    1 | s :=''
+    2 | _ = s.length
+      |   ^
+    3 | _ = [1,2].foo
+    4 |
 vlib/v/checker/tests/invalid_property.vv:3:11: error: `[]int` has no property `foo`
     1 | s :=''
     2 | _ = s.length
@@ -11,8 +17,20 @@ vlib/v/checker/tests/invalid_property.vv:3:11: error: `[]int` has no property `f
       |           ~~~
     4 | 
     5 | mut fa := [3,4]!
+vlib/v/checker/tests/invalid_property.vv:3:3: error: assignment mismatch: 1 variable(s) 0 value(s)
+    1 | s :=''
+    2 | _ = s.length
+    3 | _ = [1,2].foo
+      |   ^
+    4 | 
+    5 | mut fa := [3,4]!
 vlib/v/checker/tests/invalid_property.vv:6:8: error: `[2]int` has no property `bar`
     4 | 
     5 | mut fa := [3,4]!
     6 | _ = fa.bar
       |        ~~~
+vlib/v/checker/tests/invalid_property.vv:6:3: error: assignment mismatch: 1 variable(s) 0 value(s)
+    4 | 
+    5 | mut fa := [3,4]!
+    6 | _ = fa.bar
+      |   ^

@@ -1,10 +1,10 @@
-pub type MenuItem = Action | Group | Separater
+pub type MenuItem = Action | Group | Separator
 
 pub struct Group {
 	children []MenuItem
 }
 
-pub struct Separater {}
+pub struct Separator {}
 
 pub struct Action {}
 
@@ -12,7 +12,7 @@ fn test_array_of_sumtype_init() {
 	g := Group{
 		children: [
 			Action{},
-			Separater{},
+			Separator{},
 			Group{
 				children: [
 					Action{},

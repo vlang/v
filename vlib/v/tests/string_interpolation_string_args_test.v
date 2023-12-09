@@ -28,4 +28,6 @@ fn test_interpolation_string_args() {
 
 	assert '1_${show_more_info('aaa', '111')} 2_${show_more_info('bbb', '222')}' == '1_aaa111 2_bbb222'
 	assert '1_${show_more_info('aaa', '111')} 2_${show_more_info('bbb', '222')}' == '1_aaa111 2_bbb222'
+
+	assert '"${show_info('abc')}"' == '"abc"'
 }

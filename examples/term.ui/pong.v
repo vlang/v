@@ -9,14 +9,14 @@ enum Mode {
 	game
 }
 
-const (
-	player_one = 1 // Human control this racket
-	player_two = 0 // Take over this AI controller
-	white      = ui.Color{255, 255, 255}
-	orange     = ui.Color{255, 140, 0}
-)
+const player_one = 1 // Human control this racket
 
-[heap]
+const player_two = 0 // Take over this AI controller
+
+const white = ui.Color{255, 255, 255}
+const orange = ui.Color{255, 140, 0}
+
+@[heap]
 struct App {
 mut:
 	tui    &ui.Context = unsafe { nil }
@@ -239,7 +239,7 @@ fn (mut b Ball) update(dt f32) {
 	b.pos.y += b.vel.y * b.acc.y * dt
 }
 
-[heap]
+@[heap]
 struct Game {
 mut:
 	app     &App = unsafe { nil }
@@ -493,5 +493,5 @@ fn main() {
 		hide_cursor: true
 		frame_rate: 60
 	)
-	app.tui.run()?
+	app.tui.run()!
 }

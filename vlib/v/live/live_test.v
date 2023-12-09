@@ -22,7 +22,7 @@ If everything works fine, the output of the generated program would have changed
 which then is detected by the test program (the histogram checks).
 
 Since this test program is sensitive to coordination (or lack of) of several processes,
-it tries to sidestep the coordination issue by polling the file system for the existance
+it tries to sidestep the coordination issue by polling the file system for the existence
 of files, ORIGINAL.txt ... STOP.txt , which are appended to by the generated program.
 
 Note: That approach of monitoring the state of the running generated program, is clearly not ideal,
@@ -31,20 +31,18 @@ not very flaky way.
 
 TODO: Cleanup this when/if v has better process control/communication primitives.
 */
-const (
-	vexe                = os.getenv('VEXE')
-	vtmp_folder         = os.join_path(os.vtmp_dir(), 'v', 'tests', 'live')
-	main_source_file    = os.join_path(vtmp_folder, 'main.v')
-	tmp_file            = os.join_path(vtmp_folder, 'mymodule', 'generated_live_module.tmp')
-	source_file         = os.join_path(vtmp_folder, 'mymodule', 'mymodule.v')
-	genexe_file         = os.join_path(vtmp_folder, 'generated_live_program')
-	output_file         = os.join_path(vtmp_folder, 'generated_live_program.output.txt')
-	res_original_file   = os.join_path(vtmp_folder, 'ORIGINAL.txt')
-	res_changed_file    = os.join_path(vtmp_folder, 'CHANGED.txt')
-	res_another_file    = os.join_path(vtmp_folder, 'ANOTHER.txt')
-	res_stop_file       = os.join_path(vtmp_folder, 'STOP.txt')
-	live_program_source = get_source_template()
-)
+const vexe = os.getenv('VEXE')
+const vtmp_folder = os.join_path(os.vtmp_dir(), 'tests', 'live')
+const main_source_file = os.join_path(vtmp_folder, 'main.v')
+const tmp_file = os.join_path(vtmp_folder, 'mymodule', 'generated_live_module.tmp')
+const source_file = os.join_path(vtmp_folder, 'mymodule', 'mymodule.v')
+const genexe_file = os.join_path(vtmp_folder, 'generated_live_program')
+const output_file = os.join_path(vtmp_folder, 'generated_live_program.output.txt')
+const res_original_file = os.join_path(vtmp_folder, 'ORIGINAL.txt')
+const res_changed_file = os.join_path(vtmp_folder, 'CHANGED.txt')
+const res_another_file = os.join_path(vtmp_folder, 'ANOTHER.txt')
+const res_stop_file = os.join_path(vtmp_folder, 'STOP.txt')
+const live_program_source = get_source_template()
 
 fn get_source_template() string {
 	src := os.read_file(os.join_path(os.dir(@FILE), 'live_test_template.vv')) or { panic(err) }
@@ -104,7 +102,7 @@ fn watchdog() {
 	}
 }
 
-[debuglivetest]
+@[debuglivetest]
 fn vprintln(s string) {
 	eprintln(s)
 }

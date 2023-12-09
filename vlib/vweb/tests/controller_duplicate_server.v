@@ -13,7 +13,7 @@ struct Admin {
 	vweb.Context
 }
 
-['/admin/duplicate']
+@['/admin/duplicate']
 pub fn (mut app App) duplicate() vweb.Result {
 	return app.text('duplicate')
 }

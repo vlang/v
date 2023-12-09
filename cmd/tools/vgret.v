@@ -9,11 +9,18 @@
 // * Test for *visual* differences between two, structurally equal, directories
 //
 // vgret uses features and applications that is currently only available on Linux based distros:
-// idiff : `sudo apt install openimageio-tools` to programmatically find *visual* differences between two images.
+// idiff - to programmatically find *visual* differences between two images:
+//   - Ubuntu: `sudo apt install openimageio-tools`
+//   - Arch:   `sudo pacman -S openimageio`
+// Xvfb - to start a virtual X server framebuffer:
+//   - Ubuntu: `sudo apt install xvfb`
+//   - Arch:   `sudo pacman -S xorg-server-xvfb`
 //
 // For developers:
 // For a quick overview of the generated images you can use `montage` from imagemagick to generate a "Contact Sheet":
 // montage -verbose -label '%f' -font Helvetica -pointsize 10 -background '#000000' -fill 'gray' -define jpeg:size=200x200 -geometry 200x200+2+2 -auto-orient $(fd -t f . /path/to/vgret/out/dir) /tmp/montage.jpg
+//   - Ubuntu: `sudo apt install imagemagick`
+//   - Arch:   `sudo pacman -S imagemagick`
 //
 // To generate the reference images locally - or for uploading to a remote repo like `gg-regression-images`
 // You can do the following:
@@ -37,10 +44,9 @@ import flag
 import time
 import toml
 
-const (
-	tool_name        = 'vgret'
-	tool_version     = '0.0.2'
-	tool_description = '\n  Dump and/or compare rendered frames of graphical apps
+const tool_name = 'vgret'
+const tool_version = '0.0.2'
+const tool_description = '\n  Dump and/or compare rendered frames of graphical apps
   both external and `gg` based apps is supported.
 
 Examples:
@@ -51,25 +57,21 @@ Examples:
   Compare screenshots in `/tmp/src` to existing screenshots in `/tmp/dst`
     v gret --compare-only /tmp/src /tmp/dst
 '
-	tmp_dir    = os.join_path(os.vtmp_dir(), 'v', tool_name)
-	runtime_os = os.user_os()
-	v_root     = os.real_path(@VMODROOT)
-)
 
-const (
-	supported_hosts           = ['linux']
-	supported_capture_methods = ['gg_record', 'generic_screenshot']
-	// External tool executables
-	v_exe                     = os.getenv('VEXE')
-	idiff_exe                 = os.find_abs_path_of_executable('idiff') or { '' }
-)
+const tmp_dir = os.join_path(os.vtmp_dir(), tool_name)
+const runtime_os = os.user_os()
+const v_root = os.real_path(@VMODROOT)
 
-const (
-	embedded_toml    = $embed_file('vgret.defaults.toml', .zlib)
-	default_toml     = embedded_toml.to_string()
-	empty_toml_array = []toml.Any{}
-	empty_toml_map   = map[string]toml.Any{}
-)
+const supported_hosts = ['linux']
+const supported_capture_methods = ['gg_record', 'generic_screenshot']
+// External tool executables
+const v_exe = os.getenv('VEXE')
+const idiff_exe = os.find_abs_path_of_executable('idiff') or { '' }
+
+const embedded_toml = $embed_file('vgret.defaults.toml', .zlib)
+const default_toml = embedded_toml.to_string()
+const empty_toml_array = []toml.Any{}
+const empty_toml_map = map[string]toml.Any{}
 
 struct Config {
 	path string

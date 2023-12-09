@@ -14,7 +14,7 @@ fn (x St) val() int {
 	return x.n
 }
 
-fn owerwrite_stack() f64 {
+fn overwrite_stack() f64 {
 	a := 12.5
 	b := 3.5
 	c := a + b
@@ -37,7 +37,7 @@ fn return_interface(x St) MyInterface {
 
 fn test_gen_interface() {
 	i1 := gen_interface()
-	d := owerwrite_stack()
+	d := overwrite_stack()
 	assert i1.val() == -123
 	assert d == 16.0
 }
@@ -47,7 +47,7 @@ fn test_convert_to_interface() {
 		n: 5
 	}
 	i2 := return_interface(x)
-	d := owerwrite_stack()
+	d := overwrite_stack()
 	assert i2.val() == 5
 	assert d == 16.0
 }

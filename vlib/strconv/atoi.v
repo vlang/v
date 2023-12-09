@@ -4,15 +4,13 @@ module strconv
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 // TODO: use options, or some way to return default with error.
-const (
-	// int_size is the size in bits of an int or uint value.
-	// int_size = 32 << (~u32(0) >> 63)
-	// max_u64 = u64(u64(1 << 63) - 1)
-	int_size = 32
-	max_u64  = u64(18446744073709551615) // as u64 // use this until we add support
-)
+// int_size is the size in bits of an int or uint value.
+// int_size = 32 << (~u32(0) >> 63)
+// max_u64 = u64(u64(1 << 63) - 1)
+const int_size = 32
+const max_u64 = u64(18446744073709551615)
 
-[inline]
+@[inline]
 pub fn byte_to_lower(c u8) u8 {
 	return c | 32
 }
@@ -35,7 +33,7 @@ pub fn common_parse_uint(s string, _base int, _bit_size int, error_on_non_digit 
 
 // the first returned value contains the parsed value,
 // the second returned value contains the error code (0 = OK, >1 = index of first non-parseable character + 1, -1 = wrong base, -2 = wrong bit size, -3 = overflow)
-[direct_array_access]
+@[direct_array_access]
 pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 	if s.len < 1 {
 		return u64(0), 1
@@ -89,6 +87,7 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 	// Use compile-time constants for common cases.
 	cutoff := strconv.max_u64 / u64(base) + u64(1)
 	max_val := if bit_size == 64 { strconv.max_u64 } else { (u64(1) << u64(bit_size)) - u64(1) }
+	basem1 := base - 1
 
 	mut n := u64(0)
 	for i in start_index .. s.len {
@@ -96,7 +95,6 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 
 		// manage underscore inside the number
 		if c == `_` {
-			// println("Here: ${s#[i..]}")
 			if i == start_index || i >= (s.len - 1) {
 				// println("_ limit")
 				return u64(0), 1
@@ -109,21 +107,25 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 			continue
 		}
 
+		mut sub_count := 0
+
 		// get the 0-9 digit
 		c -= 48 // subtract the rune `0`
 
 		// check if we are in the superior base rune interval [A..Z]
-		if c >= base {
-			c -= 7
-		}
+		if c >= 17 { // (65 - 48)
+			sub_count++
+			c -= 7 // subtract the `A` - `0` rune to obtain the value of the digit
 
-		// check if we are in the superior base rune interval [a..z]
-		if c >= base {
-			c -= 32 // subtract the `A` - `0` rune to obtain the value of the digit
+			// check if we are in the superior base rune interval [a..z]
+			if c >= 42 { // (97 - 7 - 48)
+				sub_count++
+				c -= 32 // subtract the `a` - `0` rune to obtain the value of the digit
+			}
 		}
 
 		// check for digit over base
-		if c >= base {
+		if c > basem1 || (sub_count == 0 && c > 9) {
 			return n, i + 1
 		}
 
@@ -152,7 +154,7 @@ pub fn parse_uint(s string, _base int, _bit_size int) !u64 {
 
 // common_parse_int is called by parse int and allows the parsing
 // to stop on non or invalid digit characters and return with an error
-[direct_array_access]
+@[direct_array_access]
 pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit bool, error_on_high_digit bool) !i64 {
 	if _s.len < 1 {
 		// return error('parse_int: syntax error $s')
@@ -216,7 +218,7 @@ pub fn parse_int(_s string, base int, _bit_size int) !i64 {
 }
 
 // atoi is equivalent to parse_int(s, 10, 0), converted to type int.
-[direct_array_access]
+@[direct_array_access]
 pub fn atoi(s string) !int {
 	if s == '' {
 		return error('strconv.atoi: parsing "": invalid syntax')

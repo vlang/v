@@ -111,7 +111,7 @@ pub fn short_module_name(name string) string {
 }
 
 // highlight_suggestion returns a colorfull/highlighted version of `message`,
-// but only if the standart error output allows for color messages, otherwise
+// but only if the standard error output allows for color messages, otherwise
 // the plain message will be returned.
 pub fn highlight_suggestion(message string) string {
 	return term.ecolorize(term.bright_blue, message)

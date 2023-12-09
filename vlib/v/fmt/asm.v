@@ -12,7 +12,12 @@ fn (mut f Fmt) asm_stmt(stmt ast.AsmStmt) {
 	} else if stmt.is_goto {
 		f.write('goto ')
 	}
-	f.writeln('${stmt.arch} {')
+	lit_arch := if stmt.arch == .wasm32 {
+		'wasm'
+	} else {
+		stmt.arch.str()
+	}
+	f.writeln('${lit_arch} {')
 	f.indent++
 
 	f.asm_templates(stmt.templates)
@@ -54,7 +59,7 @@ fn (mut f Fmt) asm_arg(arg ast.AsmArg) {
 			f.write(arg.val.str())
 		}
 		string {
-			f.write(arg)
+			f.string_literal(ast.StringLiteral{ val: arg })
 		}
 		ast.AsmAddressing {
 			if arg.segment != '' {
@@ -144,7 +149,7 @@ fn (mut f Fmt) asm_templates(templates []ast.AsmTemplate) {
 		if template.comments.len == 0 {
 			f.writeln('')
 		} else {
-			f.comments(template.comments, inline: false)
+			f.comments(template.comments)
 		}
 	}
 }
@@ -159,7 +164,7 @@ fn (mut f Fmt) asm_clobbered(clobbered []ast.AsmClobbered) {
 		if clob.comments.len == 0 {
 			f.writeln('')
 		} else {
-			f.comments(clob.comments, inline: false)
+			f.comments(clob.comments)
 		}
 	}
 }
@@ -183,7 +188,7 @@ fn (mut f Fmt) asm_ios(ios []ast.AsmIO) {
 		if io.comments.len == 0 {
 			f.writeln('')
 		} else {
-			f.comments(io.comments, inline: false)
+			f.comments(io.comments)
 		}
 	}
 }

@@ -5,3 +5,10 @@ vlib/v/checker/tests/is_type_not_exist.vv:8:10: error: is: type `SomethingThatDo
       |             ~~~~~~~~~~~~~~~~~~~~~~
     9 |         println('It should fail !')
    10 |     }
+vlib/v/checker/tests/is_type_not_exist.vv:8:10: error: `Integer` has no variant `SomethingThatDontExist`
+    6 | 
+    7 | fn fn_with_sum_type_param(i Integer) {
+    8 |     if i is SomethingThatDontExist {
+      |             ~~~~~~~~~~~~~~~~~~~~~~
+    9 |         println('It should fail !')
+   10 |     }

@@ -28,8 +28,9 @@ pub enum DOMEventType {
 	update_cursor
 	quit_requested
 	clipboard_pasted
-	files_droped
+	files_dropped
 	num
+	files_droped  @[deprecated: 'use files_dropped instead'; deprecated_after: '2023-08-21']
 }
 
 pub struct Event {
@@ -58,143 +59,143 @@ pub mut:
 
 pub enum DOMMouseButton {
 	invalid = -1
-	left = 0
-	right = 1
-	middle = 2
+	left    = 0
+	right   = 1
+	middle  = 2
 }
 
 pub enum DOMModifier {
 	shift = 1 //(1<<0)
-	ctrl = 2 //(1<<1)
-	alt = 4 //(1<<2)
+	ctrl  = 2 //(1<<1)
+	alt   = 4 //(1<<2)
 	super = 8 //(1<<3)
-	lmb = 0x100
-	rmb = 0x200
-	mmb = 0x400
+	lmb   = 0x100
+	rmb   = 0x200
+	mmb   = 0x400
 }
 
 pub enum DOMKeyCode {
-	invalid = 0
-	space = 32
-	apostrophe = 39 //'
-	comma = 44 //,
-	minus = 45 //-
-	period = 46 //.
-	slash = 47 ///
-	_0 = 48
-	_1 = 49
-	_2 = 50
-	_3 = 51
-	_4 = 52
-	_5 = 53
-	_6 = 54
-	_7 = 55
-	_8 = 56
-	_9 = 57
-	semicolon = 59 //;
-	equal = 61 //=
-	a = 65
-	b = 66
-	c = 67
-	d = 68
-	e = 69
-	f = 70
-	g = 71
-	h = 72
-	i = 73
-	j = 74
-	k = 75
-	l = 76
-	m = 77
-	n = 78
-	o = 79
-	p = 80
-	q = 81
-	r = 82
-	s = 83
-	t = 84
-	u = 85
-	v = 86
-	w = 87
-	x = 88
-	y = 89
-	z = 90
-	left_bracket = 91 //[
-	backslash = 92 //\
+	invalid       = 0
+	space         = 32
+	apostrophe    = 39 //'
+	comma         = 44 //,
+	minus         = 45 //-
+	period        = 46 //.
+	slash         = 47 ///
+	_0            = 48
+	_1            = 49
+	_2            = 50
+	_3            = 51
+	_4            = 52
+	_5            = 53
+	_6            = 54
+	_7            = 55
+	_8            = 56
+	_9            = 57
+	semicolon     = 59 //;
+	equal         = 61 //=
+	a             = 65
+	b             = 66
+	c             = 67
+	d             = 68
+	e             = 69
+	f             = 70
+	g             = 71
+	h             = 72
+	i             = 73
+	j             = 74
+	k             = 75
+	l             = 76
+	m             = 77
+	n             = 78
+	o             = 79
+	p             = 80
+	q             = 81
+	r             = 82
+	s             = 83
+	t             = 84
+	u             = 85
+	v             = 86
+	w             = 87
+	x             = 88
+	y             = 89
+	z             = 90
+	left_bracket  = 91 //[
+	backslash     = 92 //\
 	right_bracket = 93 //]
-	grave_accent = 96 //`
-	world_1 = 161 // non-us #1
-	world_2 = 162 // non-us #2
-	escape = 256
-	enter = 257
-	tab = 258
-	backspace = 259
-	insert = 260
-	delete = 261
-	right = 262
-	left = 263
-	down = 264
-	up = 265
-	page_up = 266
-	page_down = 267
-	home = 268
-	end = 269
-	caps_lock = 280
-	scroll_lock = 281
-	num_lock = 282
-	print_screen = 283
-	pause = 284
-	f1 = 290
-	f2 = 291
-	f3 = 292
-	f4 = 293
-	f5 = 294
-	f6 = 295
-	f7 = 296
-	f8 = 297
-	f9 = 298
-	f10 = 299
-	f11 = 300
-	f12 = 301
-	f13 = 302
-	f14 = 303
-	f15 = 304
-	f16 = 305
-	f17 = 306
-	f18 = 307
-	f19 = 308
-	f20 = 309
-	f21 = 310
-	f22 = 311
-	f23 = 312
-	f24 = 313
-	f25 = 314
-	kp_0 = 320
-	kp_1 = 321
-	kp_2 = 322
-	kp_3 = 323
-	kp_4 = 324
-	kp_5 = 325
-	kp_6 = 326
-	kp_7 = 327
-	kp_8 = 328
-	kp_9 = 329
-	kp_decimal = 330
-	kp_divide = 331
-	kp_multiply = 332
-	kp_subtract = 333
-	kp_add = 334
-	kp_enter = 335
-	kp_equal = 336
-	left_shift = 340
-	left_control = 341
-	left_alt = 342
-	left_super = 343
-	right_shift = 344
+	grave_accent  = 96 //`
+	world_1       = 161 // non-us #1
+	world_2       = 162 // non-us #2
+	escape        = 256
+	enter         = 257
+	tab           = 258
+	backspace     = 259
+	insert        = 260
+	delete        = 261
+	right         = 262
+	left          = 263
+	down          = 264
+	up            = 265
+	page_up       = 266
+	page_down     = 267
+	home          = 268
+	end           = 269
+	caps_lock     = 280
+	scroll_lock   = 281
+	num_lock      = 282
+	print_screen  = 283
+	pause         = 284
+	f1            = 290
+	f2            = 291
+	f3            = 292
+	f4            = 293
+	f5            = 294
+	f6            = 295
+	f7            = 296
+	f8            = 297
+	f9            = 298
+	f10           = 299
+	f11           = 300
+	f12           = 301
+	f13           = 302
+	f14           = 303
+	f15           = 304
+	f16           = 305
+	f17           = 306
+	f18           = 307
+	f19           = 308
+	f20           = 309
+	f21           = 310
+	f22           = 311
+	f23           = 312
+	f24           = 313
+	f25           = 314
+	kp_0          = 320
+	kp_1          = 321
+	kp_2          = 322
+	kp_3          = 323
+	kp_4          = 324
+	kp_5          = 325
+	kp_6          = 326
+	kp_7          = 327
+	kp_8          = 328
+	kp_9          = 329
+	kp_decimal    = 330
+	kp_divide     = 331
+	kp_multiply   = 332
+	kp_subtract   = 333
+	kp_add        = 334
+	kp_enter      = 335
+	kp_equal      = 336
+	left_shift    = 340
+	left_control  = 341
+	left_alt      = 342
+	left_super    = 343
+	right_shift   = 344
 	right_control = 345
-	right_alt = 346
-	right_super = 347
-	menu = 348
+	right_alt     = 346
+	right_super   = 347
+	menu          = 348
 }
 
 pub struct Config {
@@ -250,9 +251,9 @@ pub:
 	native_rendering  bool // Cocoa on macOS/iOS, GDI+ on Windows
 	// drag&drop
 	enable_dragndrop             bool // enable file dropping (drag'n'drop), default is false
-	max_dropped_files            int = 1 // max number of dropped files to process (default: 1)
-	max_dropped_file_path_length int = 2048 // max length in bytes of a dropped UTF-8 file path (default: 2048)
-	canvas                       string
+	max_dropped_files            int    = 1 // max number of dropped files to process (default: 1)
+	max_dropped_file_path_length int    = 2048 // max length in bytes of a dropped UTF-8 file path (default: 2048)
+	html5_canvas_name            string = 'canvas' // the id/name of the canvas element, that will be used to render GG apps
 }
 
 const size = Size{0, 0}
@@ -271,7 +272,7 @@ pub mut:
 	scale         f32 = 1.0
 	width         int
 	height        int
-	window        JS.Window    [noinit]
+	window        JS.Window    @[noinit]
 	config        Config
 	user_data     voidptr
 	ui_mode       bool
@@ -289,8 +290,8 @@ pub mut:
 	key_repeat        bool     // whether the pressed key was an autorepeated one
 	pressed_keys      [key_code_max]bool // an array representing all currently pressed keys
 	pressed_keys_edge [key_code_max]bool // true when the previous state of pressed_keys,
-	context           JS.CanvasRenderingContext2D [noinit]
-	canvas            JS.HTMLCanvasElement        [noinit]
+	context           JS.CanvasRenderingContext2D @[noinit]
+	canvas            JS.HTMLCanvasElement        @[noinit]
 	// *before* the current event was different
 }
 
@@ -330,8 +331,8 @@ pub fn new_context(cfg Config) &Context {
 	g.config = cfg
 	g.window = dom.window()
 	document := dom.document
-	canvas_elem := document.getElementById(cfg.canvas.str) or {
-		panic('gg: cannot get canvas element')
+	canvas_elem := document.getElementById(cfg.html5_canvas_name.str) or {
+		panic('gg: cannot get canvas element from cfg.html5_canvas_name.str')
 	}
 	canvas := get_canvas(canvas_elem)
 	g.canvas = canvas

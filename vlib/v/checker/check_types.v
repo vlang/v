@@ -4,6 +4,7 @@
 module checker
 
 import v.ast
+import v.token
 
 // TODO: promote(), check_types(), symmetric_check() and check() overlap - should be rearranged
 fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
@@ -12,18 +13,17 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	}
 	got_is_ptr := got.is_ptr()
 	exp_is_ptr := expected.is_ptr()
-	got_is_int := got.is_int()
-	exp_is_int := expected.is_int()
 
-	exp_is_pure_int := expected.is_pure_int()
-	got_is_pure_int := got.is_pure_int()
 	// allow int literals where any kind of real integers are expected:
-	if (exp_is_pure_int && got == ast.int_literal_type)
-		|| (got_is_pure_int && expected == ast.int_literal_type) {
+	if (got == ast.int_literal_type && expected.is_pure_int())
+		|| (expected == ast.int_literal_type && got.is_pure_int()) {
 		return true
 	}
 
 	if c.pref.translated {
+		got_is_int := got.is_int()
+		exp_is_int := expected.is_int()
+
 		if exp_is_int && got_is_int {
 			return true
 		}
@@ -33,12 +33,12 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		if expected == ast.voidptr_type || expected == ast.nil_type {
 			return true
 		}
-		if (expected == ast.bool_type && (got.is_any_kind_of_pointer() || got_is_int))
-			|| ((expected.is_any_kind_of_pointer() || exp_is_int) && got == ast.bool_type) {
+		if (expected == ast.bool_type && (got_is_int || got.is_any_kind_of_pointer()))
+			|| ((exp_is_int || expected.is_any_kind_of_pointer()) && got == ast.bool_type) {
 			return true
 		}
 
-		if expected.is_any_kind_of_pointer() { //&& !got.is_any_kind_of_pointer() {
+		if expected.is_any_kind_of_pointer() {
 			// Allow `int` as `&i8` etc in C code.
 			deref := expected.deref()
 			// deref := expected.set_nr_muls(0)
@@ -56,17 +56,17 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		expected_sym := c.table.sym(expected)
 
 		// Allow `[N]anyptr` as `[N]anyptr`
-		if got_sym.kind == .array && expected_sym.kind == .array {
-			if (got_sym.info as ast.Array).elem_type.is_any_kind_of_pointer()
-				&& (expected_sym.info as ast.Array).elem_type.is_any_kind_of_pointer() {
+		if got_sym.info is ast.Array && expected_sym.info is ast.Array {
+			if got_sym.info.elem_type.is_any_kind_of_pointer()
+				&& expected_sym.info.elem_type.is_any_kind_of_pointer() {
 				return true
 			}
-		} else if got_sym.kind == .array_fixed && expected_sym.kind == .array_fixed {
-			if (got_sym.info as ast.ArrayFixed).elem_type.is_any_kind_of_pointer()
-				&& (expected_sym.info as ast.ArrayFixed).elem_type.is_any_kind_of_pointer() {
+		} else if got_sym.info is ast.ArrayFixed && expected_sym.info is ast.ArrayFixed {
+			if got_sym.info.elem_type.is_any_kind_of_pointer()
+				&& expected_sym.info.elem_type.is_any_kind_of_pointer() {
 				return true
 			}
-			if c.check_types((got_sym.info as ast.ArrayFixed).elem_type, (expected_sym.info as ast.ArrayFixed).elem_type) {
+			if c.check_types(got_sym.info.elem_type, expected_sym.info.elem_type) {
 				return true
 			}
 		}
@@ -124,22 +124,22 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	}
 	if exp_idx == ast.voidptr_type_idx || exp_idx == ast.nil_type_idx
 		|| exp_idx == ast.byteptr_type_idx
-		|| (expected.is_ptr() && expected.deref().idx() == ast.u8_type_idx) {
-		if got.is_ptr() || got.is_pointer() {
+		|| (exp_is_ptr && expected.deref().idx() == ast.u8_type_idx) {
+		if got.is_any_kind_of_pointer() {
 			return true
 		}
 	}
 	// allow direct int-literal assignment for pointers for now
 	// maybe in the future options should be used for that
-	if expected.is_real_pointer() {
+	if expected.is_any_kind_of_pointer() {
 		if got == ast.int_literal_type {
 			return true
 		}
 	}
 	if got_idx == ast.voidptr_type_idx || got_idx == ast.nil_type_idx
 		|| got_idx == ast.byteptr_type_idx
-		|| (got_idx == ast.u8_type_idx && got.is_ptr()) {
-		if expected.is_ptr() || expected.is_pointer() {
+		|| (got_idx == ast.u8_type_idx && got_is_ptr) {
+		if expected.is_any_kind_of_pointer() {
 			return true
 		}
 	}
@@ -172,7 +172,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 			return false
 		}
 	}
-	if expected.has_flag(.generic) {
+	if expected.has_flag(.generic) && !got.has_flag(.generic) {
 		return false
 	}
 	return true
@@ -181,12 +181,12 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 fn (c Checker) check_multiple_ptr_match(got ast.Type, expected ast.Type, param ast.Param, arg ast.CallArg) bool {
 	param_nr_muls := if param.is_mut && !expected.is_ptr() { 1 } else { expected.nr_muls() }
 	if got.is_ptr() && got.nr_muls() > 1 && got.nr_muls() != param_nr_muls {
-		if arg.expr is ast.PrefixExpr && (arg.expr as ast.PrefixExpr).op == .amp {
+		if arg.expr is ast.PrefixExpr && arg.expr.op == .amp {
 			return false
 		}
 		if arg.expr is ast.UnsafeExpr {
-			expr := (arg.expr as ast.UnsafeExpr).expr
-			if expr is ast.PrefixExpr && (expr as ast.PrefixExpr).op == .amp {
+			expr := arg.expr.expr
+			if expr is ast.PrefixExpr && expr.op == .amp {
 				return false
 			}
 		}
@@ -224,10 +224,25 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 			&& got == ast.int_type_idx {
 			return
 		}
+	} else {
+		exp_sym_idx := c.table.sym(expected).idx
+		got_sym_idx := c.table.sym(got).idx
+		if expected.is_ptr() && got.is_ptr() && exp_sym_idx != got_sym_idx
+			&& exp_sym_idx in [ast.u8_type_idx, ast.byteptr_type_idx]
+			&& got_sym_idx !in [ast.u8_type_idx, ast.byteptr_type_idx] {
+			got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
+			return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
+		}
+
+		if !expected.has_flag(.option) && got.has_flag(.option) && (arg.expr !is ast.Ident
+			|| (arg.expr is ast.Ident && c.get_ct_type_var(arg.expr) != .field_var)) {
+			got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
+			return error('cannot use `${got_typ_str}` as `${expected_typ_str}`, it must be unwrapped first')
+		}
 	}
 	// check int signed/unsigned mismatch
 	if got == ast.int_literal_type_idx && expected in ast.unsigned_integer_type_idxs
-		&& arg.expr is ast.IntegerLiteral && (arg.expr as ast.IntegerLiteral).val.i64() < 0 {
+		&& arg.expr is ast.IntegerLiteral && arg.expr.val.i64() < 0 {
 		expected_typ_str := c.table.type_to_str(expected.clear_flag(.variadic))
 		return error('cannot use literal signed integer as `${expected_typ_str}`')
 	}
@@ -264,7 +279,10 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 		}
 	} else {
 		got_typ_sym := c.table.sym(c.unwrap_generic(got))
-		expected_typ_sym := c.table.sym(c.unwrap_generic(expected_))
+		expected_typ_sym := c.table.sym(c.unwrap_generic(expected))
+		if expected_typ_sym.kind == .interface_ && c.type_implements(got, expected, token.Pos{}) {
+			return
+		}
 
 		// Check on Generics types, there are some case where we have the following case
 		// `&Type[int] == &Type[]`. This is a common case we are implementing a function
@@ -331,7 +349,8 @@ fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 		return true
 	}
 	// TODO: use sym so it can be absorbed into below [.voidptr, .any] logic
-	if expected.idx() == ast.array_type_idx || got.idx() == ast.array_type_idx {
+	if (expected.idx() == ast.array_type_idx && c.table.final_sym(got).kind == .array)
+		|| (got.idx() == ast.array_type_idx && c.table.final_sym(expected).kind == .array) {
 		return true
 	}
 	got_sym, exp_sym := c.table.sym(got), c.table.sym(expected)
@@ -356,7 +375,7 @@ fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 		}
 	}
 	if !unalias_got.is_ptr() && got_sym.kind == .array_fixed
-		&& (unalias_expected.is_pointer() || unalias_expected.is_ptr()) {
+		&& unalias_expected.is_any_kind_of_pointer() {
 		// fixed array needs to be a struct, not a pointer
 		return false
 	}
@@ -366,6 +385,12 @@ fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 	// sum type
 	if c.table.sumtype_has_variant(expected, ast.mktyp(got), false) {
 		return true
+	}
+	// struct
+	if exp_sym.kind == .struct_ && got_sym.kind == .struct_ {
+		if c.table.type_to_str(expected) == c.table.type_to_str(got) {
+			return true
+		}
 	}
 	// type alias
 	if (got_sym.kind == .alias && got_sym.parent_idx == expected.idx())
@@ -415,8 +440,8 @@ fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSymbol,
 		exp_arg := exp_fn.params[i]
 		exp_arg_typ := c.unwrap_generic(exp_arg.typ)
 		got_arg_typ := c.unwrap_generic(got_arg.typ)
-		exp_arg_is_ptr := exp_arg_typ.is_ptr() || exp_arg_typ.is_pointer()
-		got_arg_is_ptr := got_arg_typ.is_ptr() || got_arg_typ.is_pointer()
+		exp_arg_is_ptr := exp_arg_typ.is_any_kind_of_pointer()
+		got_arg_is_ptr := got_arg_typ.is_any_kind_of_pointer()
 		if exp_arg.is_mut && !got_arg.is_mut {
 			return false
 		}
@@ -484,7 +509,7 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type_ ast.Type, righ
 	match node.op {
 		.left_shift, .right_shift, .unsigned_right_shift {
 			// The following code tries to disallow C UBs and IDs at the V level.
-			// From the C++ standart (see https://pvs-studio.com/en/docs/warnings/v610/):
+			// From the C++ standard (see https://pvs-studio.com/en/docs/warnings/v610/):
 			// 1. The type of the result is that of the promoted left operand.
 			// The behavior is undefined (UB), if the right operand is negative,
 			// or greater than or equal to the length in bits of the promoted left operand.
@@ -646,13 +671,13 @@ fn (c &Checker) expected_msg(got ast.Type, expected ast.Type) string {
 fn (mut c Checker) symmetric_check(left ast.Type, right ast.Type) bool {
 	// allow direct int-literal assignment for pointers for now
 	// maybe in the future options should be used for that
-	if right.is_ptr() || right.is_pointer() {
+	if right.is_any_kind_of_pointer() {
 		if left == ast.int_literal_type {
 			return true
 		}
 	}
 	// allow direct int-literal assignment for pointers for now
-	if left.is_ptr() || left.is_pointer() {
+	if left.is_any_kind_of_pointer() {
 		if right == ast.int_literal_type {
 			return true
 		}
@@ -669,15 +694,15 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 			for ft in sym.info.fields {
 				field_sym := c.table.sym(ft.typ)
 				if field_sym.name == gt_name {
-					for t in node.fields {
+					for t in node.init_fields {
 						if ft.name == t.name && t.typ != 0 {
-							concrete_types << t.typ
+							concrete_types << ast.mktyp(t.typ)
 							continue gname
 						}
 					}
 				}
 				if field_sym.info is ast.Array {
-					for t in node.fields {
+					for t in node.init_fields {
 						if ft.name == t.name {
 							init_sym := c.table.sym(t.typ)
 							if init_sym.info is ast.Array {
@@ -695,7 +720,7 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 												&& elem_typ.nr_muls() > 0 {
 												elem_typ = elem_typ.set_nr_muls(0)
 											}
-											concrete_types << elem_typ
+											concrete_types << ast.mktyp(elem_typ)
 											continue gname
 										}
 										break
@@ -705,7 +730,7 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 						}
 					}
 				} else if field_sym.info is ast.ArrayFixed {
-					for t in node.fields {
+					for t in node.init_fields {
 						if ft.name == t.name {
 							init_sym := c.table.sym(t.typ)
 							if init_sym.info is ast.ArrayFixed {
@@ -723,7 +748,7 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 												&& elem_typ.nr_muls() > 0 {
 												elem_typ = elem_typ.set_nr_muls(0)
 											}
-											concrete_types << elem_typ
+											concrete_types << ast.mktyp(elem_typ)
 											continue gname
 										}
 										break
@@ -733,7 +758,7 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 						}
 					}
 				} else if field_sym.info is ast.Map {
-					for t in node.fields {
+					for t in node.init_fields {
 						if ft.name == t.name {
 							init_sym := c.table.sym(t.typ)
 							if init_sym.info is ast.Map {
@@ -744,7 +769,7 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 										&& key_typ.nr_muls() > 0 {
 										key_typ = key_typ.set_nr_muls(0)
 									}
-									concrete_types << key_typ
+									concrete_types << ast.mktyp(key_typ)
 									continue gname
 								}
 								if field_sym.info.value_type.has_flag(.generic)
@@ -754,14 +779,14 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 										&& val_typ.nr_muls() > 0 {
 										val_typ = val_typ.set_nr_muls(0)
 									}
-									concrete_types << val_typ
+									concrete_types << ast.mktyp(val_typ)
 									continue gname
 								}
 							}
 						}
 					}
 				} else if field_sym.info is ast.FnType {
-					for t in node.fields {
+					for t in node.init_fields {
 						if ft.name == t.name {
 							init_sym := c.table.sym(t.typ)
 							if init_sym.info is ast.FnType {
@@ -773,7 +798,7 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 											if fn_param.typ.nr_muls() > 0 && arg_typ.nr_muls() > 0 {
 												arg_typ = arg_typ.set_nr_muls(0)
 											}
-											concrete_types << arg_typ
+											concrete_types << ast.mktyp(arg_typ)
 											continue gname
 										}
 									}
@@ -784,7 +809,7 @@ fn (mut c Checker) infer_struct_generic_types(typ ast.Type, node ast.StructInit)
 											&& ret_typ.nr_muls() > 0 {
 											ret_typ = ret_typ.set_nr_muls(0)
 										}
-										concrete_types << ret_typ
+										concrete_types << ast.mktyp(ret_typ)
 										continue gname
 									}
 								}
@@ -833,6 +858,7 @@ fn (g Checker) get_generic_array_fixed_element_type(array ast.ArrayFixed) ast.Ty
 
 fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 	mut inferred_types := []ast.Type{}
+	mut arg_inferred := []int{}
 	for gi, gt_name in func.generic_names {
 		// skip known types
 		if gi < node.concrete_types.len {
@@ -905,7 +931,8 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 					}
 				}
 
-				if arg.expr.is_auto_deref_var() {
+				if arg.expr.is_auto_deref_var()
+					|| (arg.expr is ast.ComptimeSelector && arg.expr.left.is_auto_deref_var()) {
 					typ = typ.deref()
 				}
 				// resolve &T &&T ...
@@ -913,9 +940,14 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 					typ = typ.set_nr_muls(0)
 				}
 			} else if param.typ.has_flag(.generic) {
-				arg_sym := c.table.final_sym(arg.typ)
+				arg_typ := if c.table.sym(arg.typ).kind == .any {
+					c.unwrap_generic(arg.typ)
+				} else {
+					arg.typ
+				}
+				arg_sym := c.table.final_sym(arg_typ)
 				if param.typ.has_flag(.variadic) {
-					typ = ast.mktyp(arg.typ)
+					typ = ast.mktyp(arg_typ)
 				} else if arg_sym.info is ast.Array && param_sym.info is ast.Array {
 					mut arg_elem_typ, mut param_elem_typ := arg_sym.info.elem_type, param_sym.info.elem_type
 					mut arg_elem_sym, mut param_elem_sym := c.table.sym(arg_elem_typ), c.table.sym(param_elem_typ)
@@ -1011,10 +1043,10 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 					}
 				} else if arg_sym.kind == .any && c.table.cur_fn.generic_names.len > 0
 					&& c.table.cur_fn.params.len > 0 && func.generic_names.len > 0
-					&& arg.expr is ast.Ident {
-					var_name := (arg.expr as ast.Ident).name
-					for cur_param in c.table.cur_fn.params {
-						if !cur_param.typ.has_flag(.generic) || cur_param.name != var_name {
+					&& arg.expr is ast.Ident && arg_i !in arg_inferred {
+					var_name := arg.expr.name
+					for k, cur_param in c.table.cur_fn.params {
+						if !cur_param.typ.has_flag(.generic) || k < gi || cur_param.name != var_name {
 							continue
 						}
 						typ = cur_param.typ
@@ -1028,6 +1060,9 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 						break
 					}
 				}
+			}
+			if typ != ast.void_type {
+				arg_inferred << arg_i
 			}
 		}
 		if typ == ast.void_type {

@@ -40,7 +40,7 @@ fn test_4_by_8_plus_5_by_10() {
 	sum := f1 + f2
 	assert sum.f64() == 1.0
 	assert sum.str() == '1/1'
-	assert sum.equals(fractions.fraction(1, 1))
+	assert sum == fractions.fraction(1, 1)
 }
 
 fn test_5_by_5_plus_8_by_8() {
@@ -49,7 +49,7 @@ fn test_5_by_5_plus_8_by_8() {
 	sum := f1 + f2
 	assert sum.f64() == 2.0
 	assert sum.str() == '2/1'
-	assert sum.equals(fractions.fraction(2, 1))
+	assert sum == fractions.fraction(2, 1)
 }
 
 fn test_9_by_3_plus_1_by_3() {
@@ -57,7 +57,7 @@ fn test_9_by_3_plus_1_by_3() {
 	f2 := fractions.fraction(1, 3)
 	sum := f1 + f2
 	assert sum.str() == '10/3'
-	assert sum.equals(fractions.fraction(10, 3))
+	assert sum == fractions.fraction(10, 3)
 }
 
 fn test_3_by_7_plus_1_by_4() {
@@ -65,7 +65,7 @@ fn test_3_by_7_plus_1_by_4() {
 	f2 := fractions.fraction(1, 4)
 	sum := f1 + f2
 	assert sum.str() == '19/28'
-	assert sum.equals(fractions.fraction(19, 28))
+	assert sum == fractions.fraction(19, 28)
 }
 
 fn test_36529_by_12409100000_plus_418754901_by_9174901000() {
@@ -226,44 +226,44 @@ fn test_reciprocal_1_by_4() {
 fn test_4_by_8_equals_5_by_10() {
 	f1 := fractions.fraction(4, 8)
 	f2 := fractions.fraction(5, 10)
-	assert f1.equals(f2)
+	assert f1 == f2
 }
 
 fn test_1_by_2_does_not_equal_3_by_4() {
 	f1 := fractions.fraction(1, 2)
 	f2 := fractions.fraction(3, 4)
-	assert !f1.equals(f2)
+	assert f1 != f2
 }
 
 fn test_reduce_3_by_9() {
 	f := fractions.fraction(3, 9)
-	assert f.reduce().equals(fractions.fraction(1, 3))
+	assert f.reduce() == fractions.fraction(1, 3)
 }
 
 fn test_1_by_3_less_than_2_by_4() {
 	f1 := fractions.fraction(1, 3)
 	f2 := fractions.fraction(2, 4)
-	assert f1.lt(f2)
-	assert f1.le(f2)
+	assert f1 < f2
+	assert f1 <= f2
 }
 
 fn test_2_by_3_greater_than_2_by_4() {
 	f1 := fractions.fraction(2, 3)
 	f2 := fractions.fraction(2, 4)
-	assert f1.gt(f2)
-	assert f1.ge(f2)
+	assert f1 > f2
+	assert f1 >= f2
 }
 
 fn test_5_by_7_not_less_than_2_by_4() {
 	f1 := fractions.fraction(5, 7)
 	f2 := fractions.fraction(2, 4)
-	assert !f1.lt(f2)
-	assert !f1.le(f2)
+	assert !(f1 < f2)
+	assert !(f1 <= f2)
 }
 
 fn test_49_by_75_not_greater_than_2_by_3() {
 	f1 := fractions.fraction(49, 75)
 	f2 := fractions.fraction(2, 3)
-	assert !f1.gt(f2)
-	assert !f1.ge(f2)
+	assert !(f1 > f2)
+	assert !(f1 >= f2)
 }

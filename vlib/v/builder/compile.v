@@ -38,7 +38,7 @@ fn check_if_output_folder_is_writable(pref_ &pref.Preferences) {
 }
 
 // Temporary, will be done by -autofree
-[unsafe]
+@[unsafe]
 fn (mut b Builder) myfree() {
 	// for file in b.parsed_files {
 	// }
@@ -82,12 +82,44 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	if !(b.pref.is_test || b.pref.is_run || b.pref.is_crun) {
 		exit(0)
 	}
-	compiled_file := os.real_path(b.pref.out_name)
+	mut compiled_file := b.pref.out_name
+	if b.pref.backend == .wasm && !compiled_file.ends_with('.wasm') {
+		compiled_file += '.wasm'
+	}
+	compiled_file = os.real_path(compiled_file)
+
+	mut run_args := []string{cap: b.pref.run_args.len + 1}
+
 	run_file := if b.pref.backend.is_js() {
 		node_basename := $if windows { 'node.exe' } $else { 'node' }
 		os.find_abs_path_of_executable(node_basename) or {
 			panic('Could not find `${node_basename}` in system path. Do you have Node.js installed?')
 		}
+	} else if b.pref.backend == .wasm {
+		mut actual_run := ['wasmer', 'wasmtime', 'wavm', 'wasm3']
+		mut actual_rf := ''
+
+		// -autofree bug
+		// error: cannot convert 'struct string' to 'struct _option_string'
+		// mut actual_rf := ?string(none)
+
+		for runtime in actual_run {
+			basename := $if windows { runtime + '.exe' } $else { runtime }
+
+			if rf := os.find_abs_path_of_executable(basename) {
+				if basename == 'wavm' {
+					run_args << 'run'
+				}
+				actual_rf = rf
+				break
+			}
+		}
+
+		if actual_rf == '' {
+			panic('Could not find `wasmer`, `wasmtime`, `wavm`, or `wasm3` in system path. Do you have any installed?')
+		}
+
+		actual_rf
 	} else if b.pref.backend == .golang {
 		go_basename := $if windows { 'go.exe' } $else { 'go' }
 		os.find_abs_path_of_executable(go_basename) or {
@@ -96,33 +128,43 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	} else {
 		compiled_file
 	}
-	mut run_args := []string{cap: b.pref.run_args.len + 1}
-	if b.pref.backend.is_js() {
+	if b.pref.backend.is_js() || b.pref.backend == .wasm {
 		run_args << compiled_file
 	} else if b.pref.backend == .golang {
 		run_args << ['run', compiled_file]
 	}
 	run_args << b.pref.run_args
-	mut run_process := os.new_process(run_file)
-	run_process.set_args(run_args)
+
 	if b.pref.is_verbose {
-		println('running ${run_process.filename} with arguments ${run_process.args}')
+		println('running ${run_file} with arguments ${run_args.join(' ')}')
 	}
-	// Ignore sigint and sigquit while running the compiled file,
-	// so ^C doesn't prevent v from deleting the compiled file.
-	// See also https://git.musl-libc.org/cgit/musl/tree/src/process/system.c
-	prev_int_handler := os.signal_opt(.int, eshcb) or { serror('set .int', err) }
-	mut prev_quit_handler := os.SignalHandler(eshcb)
-	$if !windows { // There's no sigquit on windows
-		prev_quit_handler = os.signal_opt(.quit, eshcb) or { serror('set .quit', err) }
+	mut ret := 0
+	if b.pref.use_os_system_to_run {
+		command_to_run := run_file + ' ' + run_args.join(' ')
+		ret = os.system(command_to_run)
+		// eprintln('> ret: ${ret:5} | command_to_run: ${command_to_run}')
+	} else {
+		mut run_process := os.new_process(run_file)
+		run_process.set_args(run_args)
+		// Ignore sigint and sigquit while running the compiled file,
+		// so ^C doesn't prevent v from deleting the compiled file.
+		// See also https://git.musl-libc.org/cgit/musl/tree/src/process/system.c
+		prev_int_handler := os.signal_opt(.int, eshcb) or { serror('set .int', err) }
+		mut prev_quit_handler := os.SignalHandler(eshcb)
+		$if !windows { // There's no sigquit on windows
+			prev_quit_handler = os.signal_opt(.quit, eshcb) or { serror('set .quit', err) }
+		}
+		run_process.wait()
+		os.signal_opt(.int, prev_int_handler) or { serror('restore .int', err) }
+		$if !windows {
+			os.signal_opt(.quit, prev_quit_handler) or { serror('restore .quit', err) }
+		}
+		ret = run_process.code
+		if run_process.err != '' {
+			eprintln(run_process.err)
+		}
+		run_process.close()
 	}
-	run_process.wait()
-	os.signal_opt(.int, prev_int_handler) or { serror('restore .int', err) }
-	$if !windows {
-		os.signal_opt(.quit, prev_quit_handler) or { serror('restore .quit', err) }
-	}
-	ret := run_process.code
-	run_process.close()
 	b.cleanup_run_executable_after_exit(compiled_file)
 	exit(ret)
 }
@@ -130,7 +172,7 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 fn eshcb(_ os.Signal) {
 }
 
-[noreturn]
+@[noreturn]
 fn serror(reason string, e IError) {
 	eprintln('could not ${reason} handler')
 	panic(e)
@@ -175,7 +217,14 @@ pub fn (mut v Builder) set_module_lookup_paths() {
 	if v.pref.is_verbose {
 		println('x: "${x}"')
 	}
-	v.module_search_paths << os.join_path(v.compiled_dir, 'modules')
+
+	if os.exists(os.join_path(v.compiled_dir, 'src/modules')) {
+		v.module_search_paths << os.join_path(v.compiled_dir, 'src/modules')
+	}
+	if os.exists(os.join_path(v.compiled_dir, 'modules')) {
+		v.module_search_paths << os.join_path(v.compiled_dir, 'modules')
+	}
+
 	v.module_search_paths << v.pref.lookup_path
 	if v.pref.is_verbose {
 		v.log('v.module_search_paths:')
@@ -259,7 +308,11 @@ pub fn (v &Builder) get_user_files() []string {
 		user_files << os.join_path(preludes_path, 'live_shared.v')
 	}
 	if v.pref.is_test {
-		user_files << os.join_path(preludes_path, 'test_runner.v')
+		if v.pref.backend == .js_node {
+			user_files << os.join_path(preludes_path, 'test_runner.v')
+		} else {
+			user_files << os.join_path(preludes_path, 'test_runner.c.v')
+		}
 		//
 		mut v_test_runner_prelude := os.getenv('VTEST_RUNNER')
 		if v.pref.test_runner != '' {

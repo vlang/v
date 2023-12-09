@@ -6,9 +6,7 @@ module pref
 import os
 import v.vcache
 
-pub const (
-	default_module_path = os.vmodules_dir()
-)
+pub const default_module_path = os.vmodules_dir()
 
 pub fn new_preferences() &Preferences {
 	mut p := &Preferences{}
@@ -21,19 +19,38 @@ fn (mut p Preferences) expand_lookup_paths() {
 		// Location of all vlib files
 		p.vroot = os.dir(vexe_path())
 	}
-	vlib_path := os.join_path(p.vroot, 'vlib')
+	p.vlib = os.join_path(p.vroot, 'vlib')
+	p.vmodules_paths = os.vmodules_paths()
+	//
 	if p.lookup_path.len == 0 {
 		p.lookup_path = ['@vlib', '@vmodules']
 	}
 	mut expanded_paths := []string{}
 	for path in p.lookup_path {
 		match path {
-			'@vlib' { expanded_paths << vlib_path }
-			'@vmodules' { expanded_paths << os.vmodules_paths() }
+			'@vlib' { expanded_paths << p.vlib }
+			'@vmodules' { expanded_paths << p.vmodules_paths }
 			else { expanded_paths << path }
 		}
 	}
 	p.lookup_path = expanded_paths
+}
+
+fn (mut p Preferences) expand_exclude_paths() {
+	mut res := []string{}
+	static_replacement_list := ['@vroot', p.vroot, '@vlib', p.vlib]
+	for x in p.exclude {
+		y := x.replace_each(static_replacement_list)
+		if y.contains('@vmodules') {
+			// @vmodules is a list of paths, each of which should be expanded in the complete exclusion list:
+			for vmp in p.vmodules_paths {
+				res << y.replace('@vmodules', vmp)
+			}
+			continue
+		}
+		res << y
+	}
+	p.exclude = res
 }
 
 pub fn (mut p Preferences) fill_with_defaults() {
@@ -41,10 +58,14 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		p.arch = get_host_arch()
 	}
 	p.expand_lookup_paths()
+	p.expand_exclude_paths()
 	rpath := os.real_path(p.path)
 	if p.out_name == '' {
 		filename := os.file_name(rpath).trim_space()
 		mut base := filename.all_before_last('.')
+		if os.file_ext(base) in ['.c', '.js', '.wasm'] {
+			base = base.all_before_last('.')
+		}
 		if base == '' {
 			// The file name is just `.v` or `.vsh` or `.*`
 			base = filename
@@ -76,7 +97,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		// compilers.
 		//
 		// If you do decide to break it, please *at the very least*, test it
-		// extensively, and make a PR about it, instead of commiting directly
+		// extensively, and make a PR about it, instead of committing directly
 		// and breaking the CI, VC, and users doing `v up`.
 		if rpath == '${p.vroot}/cmd/v' && os.is_dir('vlib/compiler') {
 			// Building V? Use v2, since we can't overwrite a running
@@ -111,13 +132,16 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		p.parse_define('emscripten')
 	}
 	if p.os == ._auto {
-		// No OS specifed? Use current system
+		// No OS specified? Use current system
 		p.os = if p.backend != .wasm { get_host_os() } else { .wasi }
 	}
 	//
 	p.try_to_use_tcc_by_default()
 	if p.ccompiler == '' {
 		p.default_c_compiler()
+	}
+	if p.cppcompiler == '' {
+		p.default_cpp_compiler()
 	}
 	p.find_cc_if_cross_compiling()
 	p.ccompiler_type = cc_from_string(p.ccompiler)
@@ -218,10 +242,6 @@ pub fn default_tcc_compiler() string {
 }
 
 pub fn (mut p Preferences) default_c_compiler() {
-	// fast_clang := '/usr/local/Cellar/llvm/8.0.0/bin/clang'
-	// if os.exists(fast_clang) {
-	// return fast_clang
-	// }
 	// TODO fix $if after 'string'
 	$if windows {
 		p.ccompiler = 'gcc'
@@ -246,6 +266,14 @@ pub fn (mut p Preferences) default_c_compiler() {
 	}
 	p.ccompiler = 'cc'
 	return
+}
+
+pub fn (mut p Preferences) default_cpp_compiler() {
+	if p.ccompiler.contains('clang') {
+		p.cppcompiler = 'clang++'
+		return
+	}
+	p.cppcompiler = 'c++'
 }
 
 pub fn vexe_path() string {

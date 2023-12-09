@@ -1,0 +1,51 @@
+name: Docker Ubuntu MUSL CI
+
+on:
+  push:
+    paths-ignore:
+      - "**.md"
+      - "**.yml"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+      - "**.yml"
+
+concurrency:
+  group: docker-ubuntu-musl-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  ubuntu-docker-musl:
+    runs-on: ubuntu-20.04
+    if: >
+      github.event_name != 'push'
+      || github.event.ref == 'refs/heads/master'
+      || github.event.repository.full_name != 'vlang/v'
+    timeout-minutes: 121
+    container:
+      image: thevlang/vlang:ubuntu-build
+      env:
+        V_CI_MUSL: 1
+        V_CI_UBUNTU_MUSL: 1
+        VFLAGS: -cc musl-gcc -gc none
+      volumes:
+        - ${{github.workspace}}:/opt/vlang
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Build V
+        run: |
+          echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
+      - name: Verify `v test` works
+        run: |
+          echo $VFLAGS
+          ./v cmd/tools/test_if_v_test_system_works.v
+          ./cmd/tools/test_if_v_test_system_works
+
+      - name: All code is formatted
+        run: ./v test-cleancode
+
+      - name: Test V fixed tests
+        run: ./v test-self

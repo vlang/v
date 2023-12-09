@@ -12,16 +12,14 @@ pub enum CommentsLevel {
 
 // CommentsOptions defines the way comments are going to be written
 // - has_nl: adds an newline at the end of a list of comments
-// - inline: line comments will be on the same line as the last statement
+// - same_line: line comments will be on the same line as the last statement
 // - level:  either .keep (don't indent), or .indent (increment indentation)
-// - iembed: a /* ... */ block comment used inside expressions; // comments the whole line
 // - prev_line: the line number of the previous token to save linebreaks
-[minify; params]
+@[minify; params]
 pub struct CommentsOptions {
 	has_nl    bool = true
-	inline    bool
+	same_line bool
 	level     CommentsLevel
-	iembed    bool
 	prev_line int = -1
 }
 
@@ -31,7 +29,7 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 	}
 	defer {
 		// ensure that the `vfmt off` comment itself was sent to the output,
-		// by defering the check for that state transition:
+		// by deferring the check for that state transition:
 		if node.text.starts_with('\x01 vfmt off') {
 			f.vfmt_off(node.pos.line_nr)
 		}
@@ -44,17 +42,8 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 	if options.level == .indent {
 		f.indent++
 	}
-	if options.iembed {
-		x := node.text.trim_left('\x01').trim_space()
-		if x.contains('\n') {
-			f.writeln('/*')
-			f.writeln(x)
-			f.write('*/')
-		} else {
-			f.write('/* ${x} */')
-		}
-	} else if !node.text.contains('\n') {
-		is_separate_line := !options.inline || node.text.starts_with('\x01')
+	if !node.text.contains('\n') {
+		is_separate_line := !options.same_line || node.text.starts_with('\x01')
 		mut s := node.text.trim_left('\x01').trim_right(' ')
 		mut out_s := '//'
 		if s != '' {
@@ -69,24 +58,20 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 		}
 		f.write(out_s)
 	} else {
-		lines := node.text.trim_space().split_into_lines()
-		start_break := is_char_alphanumeric(node.text[0]) || node.text[0].is_space()
-		end_break := is_char_alphanumeric(node.text.trim('\t').bytes().last())
-			|| node.text.bytes().last().is_space()
+		lines := node.text.split_into_lines()
 		f.write('/*')
-		if start_break {
-			f.writeln('')
-		}
-		for line in lines {
-			f.writeln(line.trim_right(' '))
+		for i, line in lines {
 			f.empty_line = false
+			if i == lines.len - 1 {
+				f.write(line)
+				if node.text[node.text.len - 1] == `\n` {
+					f.writeln('')
+				}
+				f.write('*/')
+			} else {
+				f.writeln(line.trim_right(' '))
+			}
 		}
-		if end_break {
-			f.empty_line = true
-		} else {
-			f.remove_new_line()
-		}
-		f.write('*/')
 	}
 	if options.level == .indent {
 		f.indent--
@@ -101,11 +86,11 @@ pub fn (mut f Fmt) comments(comments []ast.Comment, options CommentsOptions) {
 			|| (c.pos.line_nr > prev_line + 1 && f.out.len > 2 && f.out.last_n(2) != '\n\n')) {
 			f.writeln('')
 		}
-		if f.out.len > 1 && !f.out.last_n(1)[0].is_space() {
+		if i == 0 && f.out.len > 1 && !f.out.last_n(1)[0].is_space() {
 			f.write(' ')
 		}
 		f.comment(c, options)
-		if !options.iembed && (i < comments.len - 1 || options.has_nl) {
+		if i < comments.len - 1 || options.has_nl {
 			f.writeln('')
 		}
 		prev_line = c.pos.last_line
@@ -121,7 +106,7 @@ pub fn (mut f Fmt) comments_after_last_field(comments []ast.Comment) {
 	for comment in comments {
 		f.indent++
 		f.empty_line = true
-		f.comment(comment, inline: true)
+		f.comment(comment, same_line: true)
 		f.writeln('')
 		f.indent--
 	}
@@ -131,7 +116,7 @@ pub fn (mut f Fmt) import_comments(comments []ast.Comment, options CommentsOptio
 	if comments.len == 0 {
 		return
 	}
-	if options.inline {
+	if options.same_line {
 		f.remove_new_line(imports_buffer: true)
 	}
 	for c in comments {
@@ -139,7 +124,7 @@ pub fn (mut f Fmt) import_comments(comments []ast.Comment, options CommentsOptio
 		if ctext == '' {
 			continue
 		}
-		mut out_s := if options.inline { ' ' } else { '' } + '//'
+		mut out_s := if options.same_line { ' ' } else { '' } + '//'
 		if is_char_alphanumeric(ctext[0]) {
 			out_s += ' '
 		}

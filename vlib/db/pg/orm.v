@@ -10,18 +10,17 @@ import net.conv
 pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
 	query := orm.orm_select_gen(config, '"', true, '$', 1, where)
 
-	res := pg_stmt_worker(db, query, where, data)!
+	rows := pg_stmt_worker(db, query, where, data)!
 
 	mut ret := [][]orm.Primitive{}
 
 	if config.is_count {
 	}
 
-	for row in res {
+	for row in rows {
 		mut row_data := []orm.Primitive{}
 		for i, val in row.vals {
-			field := str_to_primitive(val, config.types[i])!
-			row_data << field
+			row_data << val_to_primitive(val, config.types[i])!
 		}
 		ret << row_data
 	}
@@ -74,22 +73,6 @@ pub fn (db DB) drop(table string) ! {
 
 // utils
 
-fn pg_stmt_worker(db DB, query string, data orm.QueryData, where orm.QueryData) ![]Row {
-	mut param_types := []u32{}
-	mut param_vals := []&char{}
-	mut param_lens := []int{}
-	mut param_formats := []int{}
-
-	pg_stmt_binder(mut param_types, mut param_vals, mut param_lens, mut param_formats,
-		data)
-	pg_stmt_binder(mut param_types, mut param_vals, mut param_lens, mut param_formats,
-		where)
-
-	res := C.PQexecParams(db.conn, &char(query.str), param_vals.len, param_types.data,
-		param_vals.data, param_lens.data, param_formats.data, 0) // here, the last 0 means require text results, 1 - binary results
-	return db.handle_error_or_result(res, 'orm_stmt_worker')
-}
-
 fn pg_stmt_binder(mut types []u32, mut vals []&char, mut lens []int, mut formats []int, d orm.QueryData) {
 	for data in d.data {
 		pg_stmt_match(mut types, mut vals, mut lens, mut formats, data)
@@ -112,21 +95,21 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []int, mut formats 
 		}
 		u16 {
 			types << u32(Oid.t_int2)
-			num := conv.htn16(data)
+			num := conv.hton16(data)
 			vals << &char(&num)
 			lens << int(sizeof(u16))
 			formats << 1
 		}
 		u32 {
 			types << u32(Oid.t_int4)
-			num := conv.htn32(data)
+			num := conv.hton32(data)
 			vals << &char(&num)
 			lens << int(sizeof(u32))
 			formats << 1
 		}
 		u64 {
 			types << u32(Oid.t_int8)
-			num := conv.htn64(data)
+			num := conv.hton64(data)
 			vals << &char(&num)
 			lens << int(sizeof(u64))
 			formats << 1
@@ -139,21 +122,21 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []int, mut formats 
 		}
 		i16 {
 			types << u32(Oid.t_int2)
-			num := conv.htn16(u16(data))
+			num := conv.hton16(u16(data))
 			vals << &char(&num)
 			lens << int(sizeof(i16))
 			formats << 1
 		}
 		int {
 			types << u32(Oid.t_int4)
-			num := conv.htn32(u32(data))
+			num := conv.hton32(u32(data))
 			vals << &char(&num)
 			lens << int(sizeof(int))
 			formats << 1
 		}
 		i64 {
 			types << u32(Oid.t_int8)
-			num := conv.htn64(u64(data))
+			num := conv.hton64(u64(data))
 			vals << &char(&num)
 			lens << int(sizeof(i64))
 			formats << 1
@@ -189,6 +172,12 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []int, mut formats 
 		orm.InfixType {
 			pg_stmt_match(mut types, mut vals, mut lens, mut formats, data.right)
 		}
+		orm.Null {
+			types << u32(0) // we do not know col type, let server infer
+			vals << &char(0) // NULL pointer indicates NULL
+			lens << int(0) // ignored
+			formats << 0 // ignored
+		}
 	}
 }
 
@@ -203,8 +192,11 @@ fn pg_type_from_v(typ int) !string {
 		orm.type_idx['int'], orm.type_idx['u32'] {
 			'INT'
 		}
-		orm.time {
+		orm.time_ {
 			'TIMESTAMP'
+		}
+		orm.enum_ {
+			'BIGINT'
 		}
 		orm.type_idx['i64'], orm.type_idx['u64'] {
 			'BIGINT'
@@ -231,69 +223,76 @@ fn pg_type_from_v(typ int) !string {
 	return str
 }
 
-fn str_to_primitive(str string, typ int) !orm.Primitive {
-	match typ {
-		// bool
-		orm.type_idx['bool'] {
-			return orm.Primitive(str == 't')
-		}
-		// i8
-		orm.type_idx['i8'] {
-			return orm.Primitive(str.i8())
-		}
-		// i16
-		orm.type_idx['i16'] {
-			return orm.Primitive(str.i16())
-		}
-		// int
-		orm.type_idx['int'] {
-			return orm.Primitive(str.int())
-		}
-		// i64
-		orm.type_idx['i64'] {
-			return orm.Primitive(str.i64())
-		}
-		// u8
-		orm.type_idx['u8'] {
-			data := str.i8()
-			return orm.Primitive(*unsafe { &u8(&data) })
-		}
-		// u16
-		orm.type_idx['u16'] {
-			data := str.i16()
-			return orm.Primitive(*unsafe { &u16(&data) })
-		}
-		// u32
-		orm.type_idx['u32'] {
-			data := str.int()
-			return orm.Primitive(*unsafe { &u32(&data) })
-		}
-		// u64
-		orm.type_idx['u64'] {
-			data := str.i64()
-			return orm.Primitive(*unsafe { &u64(&data) })
-		}
-		// f32
-		orm.type_idx['f32'] {
-			return orm.Primitive(str.f32())
-		}
-		// f64
-		orm.type_idx['f64'] {
-			return orm.Primitive(str.f64())
-		}
-		orm.type_string {
-			return orm.Primitive(str)
-		}
-		orm.time {
-			if str.contains_any(' /:-') {
-				date_time_str := time.parse(str)!
-				return orm.Primitive(date_time_str)
+fn val_to_primitive(val ?string, typ int) !orm.Primitive {
+	if str := val {
+		match typ {
+			// bool
+			orm.type_idx['bool'] {
+				return orm.Primitive(str == 't')
 			}
+			// i8
+			orm.type_idx['i8'] {
+				return orm.Primitive(str.i8())
+			}
+			// i16
+			orm.type_idx['i16'] {
+				return orm.Primitive(str.i16())
+			}
+			// int
+			orm.type_idx['int'] {
+				return orm.Primitive(str.int())
+			}
+			// i64
+			orm.type_idx['i64'] {
+				return orm.Primitive(str.i64())
+			}
+			// u8
+			orm.type_idx['u8'] {
+				data := str.i8()
+				return orm.Primitive(*unsafe { &u8(&data) })
+			}
+			// u16
+			orm.type_idx['u16'] {
+				data := str.i16()
+				return orm.Primitive(*unsafe { &u16(&data) })
+			}
+			// u32
+			orm.type_idx['u32'] {
+				data := str.int()
+				return orm.Primitive(*unsafe { &u32(&data) })
+			}
+			// u64
+			orm.type_idx['u64'] {
+				data := str.i64()
+				return orm.Primitive(*unsafe { &u64(&data) })
+			}
+			// f32
+			orm.type_idx['f32'] {
+				return orm.Primitive(str.f32())
+			}
+			// f64
+			orm.type_idx['f64'] {
+				return orm.Primitive(str.f64())
+			}
+			orm.type_string {
+				return orm.Primitive(str)
+			}
+			orm.time_ {
+				if str.contains_any(' /:-') {
+					date_time_str := time.parse(str)!
+					return orm.Primitive(date_time_str)
+				}
 
-			timestamp := str.int()
-			return orm.Primitive(time.unix(timestamp))
+				timestamp := str.int()
+				return orm.Primitive(time.unix(timestamp))
+			}
+			orm.enum_ {
+				return orm.Primitive(str.i64())
+			}
+			else {}
 		}
-		else {}
+		return error('Unknown field type ${typ}')
+	} else {
+		return orm.Null{}
 	}
-	return error('Unknown field type ${typ}')
 }

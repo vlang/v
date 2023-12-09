@@ -21,7 +21,7 @@ mut:
 }
 
 // free the resources taken by the Cfb `x`
-[unsafe]
+@[unsafe]
 pub fn (mut x Cfb) free() {
 	$if prealloc {
 		return

@@ -6,11 +6,11 @@ fn main() {
 	{
 		fac.local_get(0)
 		fac.eqz(.i64_t)
-		fac.c_if([], [.i64_t])
+		bif := fac.c_if([], [.i64_t])
 		{
 			fac.i64_const(1)
 		}
-		fac.c_else()
+		fac.c_else(bif)
 		{
 			{
 				fac.local_get(0)
@@ -23,7 +23,7 @@ fn main() {
 			}
 			fac.mul(.i64_t)
 		}
-		fac.c_end_if()
+		fac.c_end(bif)
 	}
 	m.commit(fac, true)
 	print(m.compile().bytestr())

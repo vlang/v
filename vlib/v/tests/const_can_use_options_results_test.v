@@ -1,7 +1,5 @@
-const (
-	aaa = iopt()?
-	bbb = sopt()!
-)
+const aaa = iopt()?
+const bbb = sopt()!
 
 fn iopt() ?int {
 	return 1234

@@ -11,3 +11,9 @@ vlib/v/checker/tests/modules/deprecated_module/main.v:16:11: error: undefined id
    16 |     dump(ttt.non_existing)
       |              ~~~~~~~~~~~~
    17 | }
+vlib/v/checker/tests/modules/deprecated_module/main.v:16:11: error: dump expression can not be void
+   14 |     dump(ttt.f())
+   15 |     dump(yyy.f())
+   16 |     dump(ttt.non_existing)
+      |              ~~~~~~~~~~~~
+   17 | }

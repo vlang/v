@@ -9,7 +9,7 @@ import v.token
 import strings
 import v.pref
 
-[inline]
+@[inline]
 fn slug(title string) string {
 	return title.replace(' ', '-')
 }
@@ -60,14 +60,14 @@ fn trim_doc_node_description(description string) string {
 }
 
 fn set_output_type_from_str(format string) OutputType {
-	output_type := match format {
+	return match format {
 		'htm', 'html' { OutputType.html }
-		'md', 'markdown' { OutputType.markdown }
-		'json' { OutputType.json }
-		'stdout' { OutputType.stdout }
-		else { OutputType.plaintext }
+		'md', 'markdown' { .markdown }
+		'json' { .json }
+		'text' { .plaintext }
+		'ansi' { .ansi }
+		else { .ansi }
 	}
-	return output_type
 }
 
 fn get_ignore_paths(path string) ![]string {
@@ -137,9 +137,11 @@ fn gen_footer_text(d &doc.Doc, include_timestamp bool) string {
 	return '${footer_text} Generated on: ${time_str}'
 }
 
+const highlight_builtin_types = ['bool', 'string', 'i8', 'i16', 'int', 'i64', 'i128', 'isize',
+	'byte', 'u8', 'u16', 'u32', 'u64', 'usize', 'u128', 'rune', 'f32', 'f64', 'byteptr', 'voidptr',
+	'any']
+
 fn color_highlight(code string, tb &ast.Table) string {
-	builtin := ['bool', 'string', 'i8', 'i16', 'int', 'i64', 'i128', 'isize', 'byte', 'u8', 'u16',
-		'u32', 'u64', 'usize', 'u128', 'rune', 'f32', 'f64', 'byteptr', 'voidptr', 'any']
 	highlight_code := fn (tok token.Token, typ HighlightTokenTyp) string {
 		mut lit := ''
 		match typ {
@@ -163,9 +165,9 @@ fn color_highlight(code string, tb &ast.Table) string {
 			}
 			.comment {
 				lit = if tok.lit != '' && tok.lit[0] == 1 {
-					'//${tok.lit[1..]}'
+					term.gray('//${tok.lit[1..]}')
 				} else {
-					'//${tok.lit}'
+					term.gray('//${tok.lit}')
 				}
 			}
 			.keyword {
@@ -207,15 +209,19 @@ fn color_highlight(code string, tb &ast.Table) string {
 			mut tok_typ := HighlightTokenTyp.unone
 			match tok.kind {
 				.name {
-					if (tok.lit in builtin || tb.known_type(tok.lit))
+					if (tok.lit in highlight_builtin_types || tb.known_type(tok.lit))
 						&& (next_tok.kind != .lpar || prev.kind !in [.key_fn, .rpar]) {
 						tok_typ = .builtin
 					} else if
 						(next_tok.kind in [.lcbr, .rpar, .eof, .comma, .pipe, .name, .rcbr, .assign, .key_pub, .key_mut, .pipe, .comma, .comment, .lt, .lsbr]
-						&& next_tok.lit !in builtin)
-						&& (prev.kind in [.name, .amp, .lcbr, .rsbr, .key_type, .assign, .dot, .question, .rpar, .key_struct, .key_enum, .pipe, .key_interface, .comment, .ellipsis]
-						&& prev.lit !in builtin) && ((tok.lit != '' && tok.lit[0].is_capital())
+						&& next_tok.lit !in highlight_builtin_types)
+						&& (prev.kind in [.name, .amp, .lcbr, .rsbr, .key_type, .assign, .dot, .not, .question, .rpar, .key_struct, .key_enum, .pipe, .key_interface, .comment, .ellipsis, .comma]
+						&& prev.lit !in highlight_builtin_types)
+						&& ((tok.lit != '' && tok.lit[0].is_capital())
 						|| prev_prev.lit in ['C', 'JS']) {
+						tok_typ = .symbol
+					} else if tok.lit[0].is_capital() && prev.kind == .lpar
+						&& next_tok.kind == .comma {
 						tok_typ = .symbol
 					} else if next_tok.kind == .lpar
 						|| (!(tok.lit != '' && tok.lit[0].is_capital())

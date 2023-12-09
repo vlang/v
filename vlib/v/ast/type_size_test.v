@@ -4,7 +4,7 @@ import v.pref
 
 struct T01 {
 	a int
-	b byte
+	b u8
 	c int
 }
 

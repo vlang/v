@@ -15,7 +15,8 @@ pick another:
 For more general build help, see also `v help build`.
 
 # Interfacing the Javascript Backend code generation, passing options to it:
-   -es5  Compile V to ES5 compatible code possibly shrinking output. Note that this flag might limit some types capabilities.
+   -es5  Compile V to ES5 compatible code possibly shrinking output.
+         Note that this flag might limit some types capabilities.
    -prod
       Do not create any JS Doc comments
 
@@ -27,7 +28,7 @@ For more general build help, see also `v help build`.
                            (currently default,
                            external source map files not implemented)
 
-   -sourcemap-src-include  Include the orginal V source files into the
+   -sourcemap-src-include  Include the original V source files into the
                            generated source map
    (default false, all files in the source map are currently referenced by
    their absolute system file path)

@@ -8,7 +8,7 @@ struct ABCD {}
 pub fn cast_object_desc[H](desc &ObjectDesc) ?H {
 	$if H is &ABCD {
 		if desc.typ == 12 { // desc == ABCD
-			return &ABCD(desc.ptr)
+			return unsafe { &ABCD(desc.ptr) }
 		}
 	}
 	return none

@@ -3,9 +3,8 @@ import flag
 import scripting
 import vgit
 
-const (
-	tool_version     = '0.0.3'
-	tool_description = '  Checkout an old V and compile it as it was on specific commit.
+const tool_version = '0.0.4'
+const tool_description = '  Checkout an old V and compile it as it was on specific commit.
 |     This tool is useful, when you want to discover when something broke.
 |     It is also useful, when you just want to experiment with an older historic V.
 |
@@ -25,7 +24,6 @@ const (
 |              ## until you find the commit, where the problem first occurred.
 |              ## When you finish, do not forget to do:
 |          git bisect reset'.strip_margin()
-)
 
 struct Context {
 mut:
@@ -83,7 +81,11 @@ fn sync_cache() {
 		repofolder := os.join_path(cache_oldv_folder, reponame)
 		if !os.exists(repofolder) {
 			scripting.verbose_trace(@FN, 'cloning to ${repofolder}')
-			scripting.exec('git clone --quiet https://github.com/vlang/${reponame} ${repofolder}') or {
+			mut repo_options := ''
+			if reponame == 'vc' {
+				repo_options = '--filter=blob:none'
+			}
+			scripting.exec('git clone ${repo_options} --quiet https://github.com/vlang/${reponame} ${repofolder}') or {
 				scripting.verbose_trace(@FN, '## error during clone: ${err}')
 				exit(1)
 			}
@@ -99,7 +101,7 @@ fn sync_cache() {
 }
 
 fn main() {
-	scripting.used_tools_must_exist(['git', 'cc'])
+	scripting.used_tools_must_exist(['git'])
 	//
 	// Resetting VEXE here allows for `v run cmd/tools/oldv.v'.
 	// the parent V would have set VEXE, which later will

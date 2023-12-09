@@ -1,8 +1,8 @@
-fn f1(mut b []byte) string {
+fn f1(mut b []u8) string {
 	return '${b}'
 }
 
-fn f2(b []byte) string {
+fn f2(b []u8) string {
 	return '${b}'
 }
 

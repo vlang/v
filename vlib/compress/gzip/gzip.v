@@ -7,7 +7,7 @@ import compress as compr
 import hash.crc32
 
 // compresses an array of bytes using gzip and returns the compressed bytes in a new array
-// Example: compressed := gzip.compress(b)?
+// Example: compressed := gzip.compress(b)!
 pub fn compress(data []u8) ![]u8 {
 	compressed := compr.compress(data, 0)!
 	// header
@@ -28,37 +28,35 @@ pub fn compress(data []u8) ![]u8 {
 	checksum := crc32.sum(data)
 	length := data.len
 	result << [
-		u8(checksum >> 24),
-		u8(checksum >> 16),
-		u8(checksum >> 8),
 		u8(checksum),
-		u8(length >> 24),
-		u8(length >> 16),
-		u8(length >> 8),
+		u8(checksum >> 8),
+		u8(checksum >> 16),
+		u8(checksum >> 24),
 		u8(length),
+		u8(length >> 8),
+		u8(length >> 16),
+		u8(length >> 24),
 	] // 8 bytes
 	return result
 }
 
-[params]
+@[params]
 pub struct DecompressParams {
 	verify_header_checksum bool = true
 	verify_length          bool = true
 	verify_checksum        bool = true
 }
 
-pub const (
-	reserved_bits = 0b1110_0000
-	ftext         = 0b0000_0001
-	fextra        = 0b0000_0100
-	fname         = 0b0000_1000
-	fcomment      = 0b0001_0000
-	fhcrc         = 0b0000_0010
-)
+pub const reserved_bits = 0b1110_0000
+pub const ftext = 0b0000_0001
+pub const fextra = 0b0000_0100
+pub const fname = 0b0000_1000
+pub const fcomment = 0b0001_0000
+pub const fhcrc = 0b0000_0010
 
 const min_header_length = 18
 
-[noinit]
+@[noinit]
 pub struct GzipHeader {
 pub mut:
 	length            int = 10
@@ -134,18 +132,18 @@ pub fn validate(data []u8, params DecompressParams) !GzipHeader {
 }
 
 // decompresses an array of bytes using zlib and returns the decompressed bytes in a new array
-// Example: decompressed := gzip.decompress(b)?
+// Example: decompressed := gzip.decompress(b)!
 pub fn decompress(data []u8, params DecompressParams) ![]u8 {
 	gzip_header := validate(data, params)!
 	header_length := gzip_header.length
 
 	decompressed := compr.decompress(data[header_length..data.len - 8], 0)!
-	length_expected := (u32(data[data.len - 4]) << 24) | (u32(data[data.len - 3]) << 16) | (u32(data[data.len - 2]) << 8) | data[data.len - 1]
+	length_expected := (u32(data[data.len - 1]) << 24) | (u32(data[data.len - 2]) << 16) | (u32(data[data.len - 3]) << 8) | data[data.len - 4]
 	if params.verify_length && decompressed.len != length_expected {
 		return error('length verification failed, got ${decompressed.len}, expected ${length_expected}')
 	}
 	checksum := crc32.sum(decompressed)
-	checksum_expected := (u32(data[data.len - 8]) << 24) | (u32(data[data.len - 7]) << 16) | (u32(data[data.len - 6]) << 8) | data[data.len - 5]
+	checksum_expected := (u32(data[data.len - 5]) << 24) | (u32(data[data.len - 6]) << 16) | (u32(data[data.len - 7]) << 8) | data[data.len - 8]
 	if params.verify_checksum && checksum != checksum_expected {
 		return error('checksum verification failed')
 	}

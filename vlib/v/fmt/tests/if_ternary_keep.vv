@@ -1,3 +1,7 @@
+import os
+
+const exe_extension = if os.user_os() == 'windows' { '.exe' } else { '' }
+
 struct Foo {
 	n int
 	s string

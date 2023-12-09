@@ -1,13 +1,12 @@
 module sapp
 
-const (
-	max_touchpoints  = 8
-	max_mousebuttons = 3
-	max_keycodes     = 512
-	max_iconimages   = 8
-)
+const max_touchpoints = 8
+const max_mousebuttons = 3
+const max_keycodes = 512
+const max_iconimages = 8
 
-[typedef]
+// sapp_range is a general pointer/size-pair struct for passing binary blobs into sokol_app.h
+@[typedef]
 pub struct C.sapp_range {
 pub:
 	ptr  voidptr
@@ -16,7 +15,7 @@ pub:
 
 pub type Range = C.sapp_range
 
-[typedef]
+@[typedef]
 pub struct C.sapp_image_desc {
 pub:
 	width  int
@@ -26,7 +25,7 @@ pub:
 
 pub type ImageDesc = C.sapp_image_desc
 
-[typedef]
+@[typedef]
 pub struct C.sapp_icon_desc {
 	sokol_default bool
 	images        [max_iconimages]ImageDesc
@@ -34,21 +33,22 @@ pub struct C.sapp_icon_desc {
 
 pub type IconDesc = C.sapp_icon_desc
 
-[typedef]
+@[typedef]
 pub struct C.sapp_desc {
 pub:
-	init_cb    fn () // these are the user-provided callbacks without user data
-	frame_cb   fn ()
-	cleanup_cb fn ()
-	event_cb   fn (&Event) //&sapp_event)
-	fail_cb    fn (&u8)
+	// these are the user-provided callbacks without user data
+	init_cb    fn ()       = unsafe { nil }
+	frame_cb   fn ()       = unsafe { nil }
+	cleanup_cb fn ()       = unsafe { nil }
+	event_cb   fn (&Event) = unsafe { nil } // &sapp_event
+	// fail_cb    fn (&u8)    = unsafe { nil }
 
 	user_data           voidptr // these are the user-provided callbacks with user data
-	init_userdata_cb    fn (voidptr)
-	frame_userdata_cb   fn (voidptr)
-	cleanup_userdata_cb fn (voidptr)
-	event_userdata_cb   fn (&Event, voidptr)
-	fail_userdata_cb    fn (&char, voidptr)
+	init_userdata_cb    fn (voidptr) = unsafe { nil }
+	frame_userdata_cb   fn (voidptr) = unsafe { nil }
+	cleanup_userdata_cb fn (voidptr) = unsafe { nil }
+	event_userdata_cb   fn (&Event, voidptr) = unsafe { nil }
+	// fail_userdata_cb    fn (&char, voidptr)  = unsafe { nil }
 
 	width                        int      // the preferred width of the window / canvas
 	height                       int      // the preferred height of the window / canvas
@@ -65,7 +65,6 @@ pub:
 	max_dropped_file_path_length int      // max length in bytes of a dropped UTF-8 file path (default: 2048)
 	icon                         IconDesc // the initial window icon to set
 	// backend-specific options
-	gl_force_gles2                bool  // if true, setup GLES2/WebGL even if GLES3/WebGL2 is available
 	win32_console_utf8            bool  // if true, set the output console codepage to UTF-8
 	win32_console_create          bool  // if true, attach stdout/stderr to a new console window
 	win32_console_attach          bool  // if true, attach stdout/stderr to parent process
@@ -84,7 +83,7 @@ pub mut:
 
 pub type Desc = C.sapp_desc
 
-[typedef]
+@[typedef]
 pub struct C.sapp_event {
 pub:
 	frame_count        u64         // current frame counter, always valid, useful for checking if two events were issued in the same frame
@@ -114,7 +113,7 @@ pub fn (e &C.sapp_event) str() string {
 	return 'evt: frame_count=${e.frame_count}, type=${e.@type}'
 }
 
-[typedef]
+@[typedef]
 pub struct C.sapp_touchpoint {
 pub:
 	identifier       u64

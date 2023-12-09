@@ -223,3 +223,23 @@ fn test_closure_over_variable_that_is_returned_from_a_multi_value_function() {
 	a()
 	println(two)
 }
+
+fn test_cross_var_assign_without_inherited() {
+	f := fn () {
+		mut left := 1
+		mut right := 2
+		left, right = right, left
+		assert left == 2 && right == 1
+	}
+	f()
+}
+
+fn test_cross_var_assign_with_inherited() {
+	mut left := 1
+	mut right := 2
+	f := fn [mut left, mut right] () {
+		left, right = right, left
+		assert left == 2 && right == 1
+	}
+	f()
+}

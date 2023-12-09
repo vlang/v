@@ -1,11 +1,9 @@
 import strings
 import os
 
-const (
-	max_params       = get_max_params()
-	all_param_names  = []string{len: max_params, init: '${`a` + index}'}
-	all_param_values = []string{len: max_params, init: '${index + 1}'}
-)
+const max_params = get_max_params()
+const all_param_names = []string{len: max_params, init: '${`a` + index}'}
+const all_param_values = []string{len: max_params, init: '${index + 1}'}
 
 fn get_max_params() int {
 	$if macos {
@@ -80,12 +78,12 @@ fn test_closures_with_n_args() {
 	}
 	v_code.writeln('}')
 
-	for typ in ['byte', 'u16', 'int', 'i64', 'voidptr', 'string'] {
+	for typ in ['u8', 'u16', 'int', 'i64', 'voidptr', 'string'] {
 		for i in 0 .. max_params {
 			param_names := all_param_names[..i]
 			params := param_names.map('${it} ${typ}')
 
-			mut values := all_param_values[..i]
+			mut values := all_param_values[..i].clone()
 			if typ == 'string' {
 				values = values.map("'${it}'")
 			} else {
@@ -170,7 +168,7 @@ fn test_closure_return_${styp}_${i}() ! {
 
 	code := v_code.str()
 	println('Compiling V code (${code.count('\n')} lines) ...')
-	wrkdir := os.join_path(os.vtmp_dir(), 'v', 'tests', 'closures')
+	wrkdir := os.join_path(os.vtmp_dir(), 'tests', 'closures')
 	os.mkdir_all(wrkdir)!
 	os.chdir(wrkdir)!
 	full_path_to_target := os.join_path(wrkdir, 'closure_return_test.v')

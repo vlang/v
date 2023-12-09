@@ -33,11 +33,25 @@ vlib/v/checker/tests/assign_multi_mismatch.vv:10:15: error: cannot use multi-val
       |               ~~~
    11 | _, _, _ := f(), 0
    12 | _, _ := f(), f()
+vlib/v/checker/tests/assign_multi_mismatch.vv:10:9: error: assignment mismatch: 3 variable(s) 2 value(s)
+    8 | _, _ := 0, f()
+    9 | _, _ := f(), 0
+   10 | _, _, _ := 0, f()
+      |         ~~
+   11 | _, _, _ := f(), 0
+   12 | _, _ := f(), f()
 vlib/v/checker/tests/assign_multi_mismatch.vv:11:12: error: cannot use multi-value (int, int) in single-value context
     9 | _, _ := f(), 0
    10 | _, _, _ := 0, f()
    11 | _, _, _ := f(), 0
       |            ~~~
+   12 | _, _ := f(), f()
+   13 | _, _, _, _ := f(), f()
+vlib/v/checker/tests/assign_multi_mismatch.vv:11:9: error: assignment mismatch: 3 variable(s) but `f()` returns 2 value(s)
+    9 | _, _ := f(), 0
+   10 | _, _, _ := 0, f()
+   11 | _, _, _ := f(), 0
+      |         ~~
    12 | _, _ := f(), f()
    13 | _, _, _, _ := f(), f()
 vlib/v/checker/tests/assign_multi_mismatch.vv:12:9: error: cannot use multi-value (int, int) in single-value context
@@ -52,6 +66,13 @@ vlib/v/checker/tests/assign_multi_mismatch.vv:13:15: error: cannot use multi-val
    12 | _, _ := f(), f()
    13 | _, _, _, _ := f(), f()
       |               ~~~
+   14 | 
+   15 | _, _ := 0, match 4 {
+vlib/v/checker/tests/assign_multi_mismatch.vv:13:12: error: assignment mismatch: 4 variable(s) but `f()` returns 2 value(s)
+   11 | _, _, _ := f(), 0
+   12 | _, _ := f(), f()
+   13 | _, _, _, _ := f(), f()
+      |            ~~
    14 | 
    15 | _, _ := 0, match 4 {
 vlib/v/checker/tests/assign_multi_mismatch.vv:19:3: error: assignment mismatch: 1 variable(s) 2 value(s)

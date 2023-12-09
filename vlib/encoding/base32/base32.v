@@ -10,12 +10,12 @@
 
 module base32
 
-pub const (
-	std_padding  = `=` // Standard padding character
-	no_padding   = u8(-1) // No padding
-	std_alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'.bytes()
-	hex_alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUV'.bytes()
-)
+pub const std_padding = `=` // Standard padding character
+
+pub const no_padding = u8(-1) // No padding
+
+pub const std_alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'.bytes()
+pub const hex_alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUV'.bytes()
 
 struct Encoding {
 	padding_char u8
@@ -212,8 +212,8 @@ fn (enc &Encoding) encode_(src_ []u8, mut dst []u8) {
 
 			break
 		}
-		src = src[5..]
-		dst = dst[8..]
+		src = unsafe { src[5..] }
+		dst = unsafe { dst[8..] }
 	}
 }
 
@@ -351,7 +351,7 @@ fn (enc &Encoding) decode_(src_ []u8, mut dst []u8) !(int, bool) {
 
 // strip_newlines removes newline characters and returns the number
 // of non-newline characters copied to dst.
-// fn strip_newlines(mut dst []u8, src []byte) int {
+// fn strip_newlines(mut dst []u8, src []u8) int {
 // 	mut offset := 0
 // 	for b in src {
 // 		if b in [`\r`, `\n`] {

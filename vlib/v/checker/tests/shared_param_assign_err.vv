@@ -1,0 +1,9 @@
+fn foo(shared arr []string) {
+	arr2 := arr
+	println(arr2)
+}
+
+fn main() {
+	shared arr := ['']
+	foo(shared arr)
+}

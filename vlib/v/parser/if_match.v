@@ -72,6 +72,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 				p.check(.dollar)
 			}
 		}
+		if_pos := p.tok.pos()
 		// `if` or `else if`
 		p.check(.key_if)
 		if p.tok.kind == .key_match {
@@ -139,6 +140,17 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			p.comptime_if_cond = true
 			p.inside_if_cond = true
 			cond = p.expr(0)
+			if mut cond is ast.InfixExpr && !is_comptime {
+				if cond.op in [.key_is, .not_is] {
+					if mut cond.left is ast.Ident {
+						if cond.left.name.len == 1 && cond.left.name.is_capital()
+							&& cond.right is ast.TypeNode {
+							p.error_with_pos('use `\$if` instead of `if`', if_pos)
+							return ast.IfExpr{}
+						}
+					}
+				}
+			}
 			p.inside_if_cond = false
 			if p.if_cond_comments.len > 0 {
 				comments << p.if_cond_comments
@@ -213,6 +225,7 @@ fn (mut p Parser) is_only_array_type() bool {
 
 fn (mut p Parser) match_expr() ast.MatchExpr {
 	match_first_pos := p.tok.pos()
+	mut else_count := 0
 	p.inside_match = true
 	p.check(.key_match)
 	mut is_sum_type := false
@@ -233,23 +246,25 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		mut is_else := false
 		if p.tok.kind == .key_else {
 			is_else = true
+			else_count += 1
 			p.next()
 		} else if (p.tok.kind == .name && !(p.tok.lit == 'C' && p.peek_tok.kind == .dot)
 			&& (((ast.builtin_type_names_matcher.matches(p.tok.lit) || p.tok.lit[0].is_capital())
 			&& p.peek_tok.kind != .lpar) || (p.peek_tok.kind == .dot && p.peek_token(2).lit.len > 0
 			&& p.peek_token(2).lit[0].is_capital()))) || p.is_only_array_type()
-			|| p.tok.kind == .key_fn {
+			|| p.tok.kind == .key_fn
+			|| (p.tok.kind == .lsbr && p.peek_token(2).kind == .amp) {
 			mut types := []ast.Type{}
 			for {
 				// Sum type match
 				parsed_type := p.parse_type()
-				ecmnts << p.eat_comments()
 				types << parsed_type
 				exprs << ast.TypeNode{
 					typ: parsed_type
 					pos: p.prev_tok.pos()
 				}
 				if p.tok.kind != .comma {
+					ecmnts << p.eat_comments()
 					break
 				}
 				p.check(.comma)
@@ -260,6 +275,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 					for p.tok.kind == .comma {
 						p.next()
 					}
+					ecmnts << p.eat_comments()
 				}
 			}
 			is_sum_type = true
@@ -269,7 +285,6 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 				p.inside_match_case = true
 				mut range_pos := p.tok.pos()
 				expr := p.expr(0)
-				ecmnts << p.eat_comments()
 				p.inside_match_case = false
 				if p.tok.kind == .dotdot {
 					p.error_with_pos('match only supports inclusive (`...`) ranges, not exclusive (`..`)',
@@ -291,6 +306,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 					exprs << expr
 				}
 				if p.tok.kind != .comma {
+					ecmnts << p.eat_comments()
 					break
 				}
 
@@ -302,6 +318,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 					for p.tok.kind == .comma {
 						p.next()
 					}
+					ecmnts << p.eat_comments()
 				}
 			}
 		}
@@ -327,6 +344,9 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		}
 		if is_else && branches.len == 1 {
 			p.error_with_pos('`match` must have at least one non `else` branch', pos)
+		}
+		if else_count > 1 {
+			p.error_with_pos('`match` can have only one `else` branch', pos)
 		}
 		if p.tok.kind == .rcbr || (is_else && no_lcbr) {
 			break
@@ -395,13 +415,13 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 			}
 			p.inside_match = true
 			p.inside_select = true
-			exprs, comments := p.expr_list()
+			exprs := p.expr_list()
 			if exprs.len != 1 {
 				p.error('only one expression allowed as `select` key')
 				return ast.SelectExpr{}
 			}
 			if p.tok.kind in [.assign, .decl_assign] {
-				stmt = p.partial_assign_stmt(exprs, comments)
+				stmt = p.partial_assign_stmt(exprs)
 			} else {
 				stmt = ast.ExprStmt{
 					expr: exprs[0]
@@ -474,6 +494,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 		}
 		branch_last_pos := p.tok.pos()
 		p.inside_match_body = true
+		p.inside_for = false
 		stmts := p.parse_block_no_scope(false)
 		p.close_scope()
 		p.inside_match_body = false
@@ -511,6 +532,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 	if p.tok.kind == .rcbr {
 		p.check(.rcbr)
 	}
+	p.register_auto_import('sync')
 	return ast.SelectExpr{
 		branches: branches
 		pos: pos.extend_with_last_line(p.prev_tok.pos(), p.prev_tok.line_nr)
