@@ -4,7 +4,14 @@ import os
 import net
 import time
 
-fn hg_serve(hg_path string, path string) (&os.Process, int) {
+pub fn set_test_env(test_path string) {
+	os.setenv('VMODULES', test_path, true)
+	os.setenv('VPM_DEBUG', '', true)
+	os.setenv('VPM_NO_INCREMENT', '1', true)
+	os.setenv('VPM_FAIL_ON_PROMPT', '1', true)
+}
+
+pub fn hg_serve(hg_path string, path string) (&os.Process, int) {
 	mut port := 8000
 	for {
 		if mut l := net.listen_tcp(.ip6, ':${port}') {
