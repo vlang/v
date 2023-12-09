@@ -49,7 +49,8 @@ pub mut:
 	on_finish   RequestFinishFn   = unsafe { nil }
 }
 
-fn (mut req Request) free() {
+@[unsafe]
+pub fn (mut req Request) free() {
 	unsafe { req.header.free() }
 }
 

@@ -16,7 +16,8 @@ pub mut:
 	http_version string
 }
 
-fn (mut resp Response) free() {
+@[unsafe]
+pub fn (mut resp Response) free() {
 	unsafe { resp.header.free() }
 }
 
