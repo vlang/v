@@ -63,6 +63,7 @@ pub struct SequentialReaderConfig {
 |`start_index`,`end_index`| **Internal usage for now**|
 |`mem_buf_size`|memory allocated for the reading operations on the file, more memory more speed|
 |`separator`|char used as cell separator in the CSV file, default is comma|
+|`comment`|very line that start with the quote char is ignored|
 |`default_cell`|return this string if the query coordinates are out of the csv boundaries|
 |`empty_cell`|return this string if the query coordinates are on an empty cell|
 |`end_line_len`|size of the endline, `endline_cr_len=1`,`endline_crlf_len=2`|
@@ -149,6 +150,7 @@ pub struct RandomAccessReaderConfig {
 |`start_index`,`end_index`| **Internal usage for now**|
 |`mem_buf_size`|memory allocated for the reading operations on the file, more memory more speed|
 |`separator`|char used as cell separator in the CSV file, default is comma|
+|`comment`|very line that start with the quote char is ignored
 |`default_cell`|return this string if the query coordinates are out of the csv boundaries|
 |`empty_cell`|return this string if the query coordinates are on an empty cell|
 |`end_line_len`|size of the endline, `endline_cr_len=1`,`endline_crlf_len=2`|

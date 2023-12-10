@@ -1,10 +1,9 @@
 /*
-csv reader 1.0 alpha
+csv random access reader 1.0 alpha
 
 Copyright (c) 2023 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
 that can be found in the LICENSE file.
-
 
 Known limitations:
 - no stream reading
