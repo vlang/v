@@ -879,7 +879,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			c.error('cannot use struct update syntax in compile time expressions', node.update_expr_pos)
 		} else if expr_sym.kind != .struct_ {
 			s := c.table.type_to_str(update_type)
-			c.error('expected123 struct, found `${s}`', node.update_expr.pos())
+			c.error('expected struct, found `${s}`', node.update_expr.pos())
 		} else if update_type != node.typ {
 			from_sym := c.table.sym(update_type)
 			to_sym := c.table.sym(node.typ)
