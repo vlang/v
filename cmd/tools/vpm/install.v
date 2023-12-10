@@ -133,7 +133,9 @@ fn (m Module) install() InstallResult {
 			return .failed
 		}
 	}
-	os.execute_opt('mv ${os.quoted_path(m.tmp_path)} ${os.quoted_path(m.install_path)}') or {
+	// TODO: use `os.mv` when working.
+	mv_cmd := $if windows { 'move' } $else { 'mv' }
+	os.execute_opt('${mv_cmd} ${os.quoted_path(m.tmp_path)} ${os.quoted_path(m.install_path)}') or {
 		vpm_error('failed to install `${m.name}`.', details: err.msg())
 		return .failed
 	}

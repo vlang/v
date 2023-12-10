@@ -207,12 +207,17 @@ fn (mut m Module) get_installed() {
 	}
 }
 
-fn get_tmp_path(relative_path string) ?string {
+fn get_tmp_path(relative_path string) !string {
 	tmp_path := os.real_path(os.join_path(settings.tmp_path, relative_path))
 	if os.exists(tmp_path) {
 		// It's unlikely that the tmp_path already exists, but it might
 		// occur if vpm was canceled during an installation or update.
-		os.rmdir_all(tmp_path) or { return none }
+		$if windows {
+			// FIXME: Workaround for failing `rmdir` commands on Windows.
+			os.execute_opt('rd /s /q ${tmp_path}')!
+		} $else {
+			os.rmdir_all(tmp_path)!
+		}
 	}
 	return tmp_path
 }
