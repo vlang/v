@@ -160,6 +160,7 @@ pub fn (mut cr SequentialReader) dispose_csv_reader() {
 	}
 }
 
+// has_data return the bytes available for future readings
 pub fn (mut cr SequentialReader) has_data() i64 {
 	return cr.end_index - cr.start_index
 }
