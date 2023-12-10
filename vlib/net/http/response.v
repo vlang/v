@@ -16,9 +16,13 @@ pub mut:
 	http_version string
 }
 
+// free frees the memory allocated for the http response
 @[unsafe]
 pub fn (mut resp Response) free() {
+	unsafe { resp.body.free() }
 	unsafe { resp.header.free() }
+	unsafe { resp.status_msg.free() }
+	unsafe { resp.http_version.free() }
 }
 
 // Formats resp to bytes suitable for HTTP response transmission

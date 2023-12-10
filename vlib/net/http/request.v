@@ -49,9 +49,23 @@ pub mut:
 	on_finish   RequestFinishFn   = unsafe { nil }
 }
 
+// free frees the memory allocated for the request
 @[unsafe]
 pub fn (mut req Request) free() {
 	unsafe { req.header.free() }
+	unsafe { req.host.free() }
+	// TODO: make the cookies stored in a cookie jar,
+	// that owns them, so that they can be used by many requests.
+	// TODO: `unsafe { req.cookie.free() }` is a cgen error; it should be a checker one instead, since cookie is a method...
+	unsafe { req.cookies.free() }
+	unsafe { req.data.free() }
+	unsafe { req.url.free() }
+	// TODO: the user agent can be shared between many requests too, just like verify, cert and cert_key
+	unsafe { req.user_agent.free() }
+	unsafe { req.verify.free() }
+	unsafe { req.cert.free() }
+	unsafe { req.cert_key.free() }
+	// Note: proxy is not owned by the request; it is intended to be used for many requests
 }
 
 // add_header adds the key and value of an HTTP request header
