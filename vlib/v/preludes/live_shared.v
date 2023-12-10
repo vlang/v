@@ -4,6 +4,4 @@ module main
 // but only for the shared library.
 import v.live.sharedlib
 
-const (
-	no_warning_live_shared_is_used = sharedlib.is_used
-)
+const no_warning_live_shared_is_used = sharedlib.is_used

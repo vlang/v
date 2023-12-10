@@ -7,7 +7,7 @@ import runtime
 import net.http
 import net.http.mime
 
-[params]
+@[params]
 pub struct StaticServeParams {
 pub mut:
 	folder         string        = '.' // the folder, that will be used as a base for serving all static resources; If it was /tmp, then: http://localhost:4001/x.txt => /tmp/x.txt

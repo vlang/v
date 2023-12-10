@@ -10,7 +10,7 @@ pub struct C.epoll_event {
 	data   C.epoll_data_t
 }
 
-[typedef]
+@[typedef]
 union C.epoll_data_t {
 	ptr voidptr
 	fd  int
@@ -53,18 +53,16 @@ pub fn new() !FdNotifier {
 	return x
 }
 
-const (
-	epoll_read         = u32(C.EPOLLIN)
-	epoll_write        = u32(C.EPOLLOUT)
-	epoll_peer_hangup  = u32(C.EPOLLRDHUP)
-	epoll_exception    = u32(C.EPOLLPRI)
-	epoll_error        = u32(C.EPOLLERR)
-	epoll_hangup       = u32(C.EPOLLHUP)
-	epoll_edge_trigger = u32(C.EPOLLET)
-	epoll_one_shot     = u32(C.EPOLLONESHOT)
-	epoll_wake_up      = u32(C.EPOLLWAKEUP)
-	epoll_exclusive    = u32(C.EPOLLEXCLUSIVE)
-)
+const epoll_read = u32(C.EPOLLIN)
+const epoll_write = u32(C.EPOLLOUT)
+const epoll_peer_hangup = u32(C.EPOLLRDHUP)
+const epoll_exception = u32(C.EPOLLPRI)
+const epoll_error = u32(C.EPOLLERR)
+const epoll_hangup = u32(C.EPOLLHUP)
+const epoll_edge_trigger = u32(C.EPOLLET)
+const epoll_one_shot = u32(C.EPOLLONESHOT)
+const epoll_wake_up = u32(C.EPOLLWAKEUP)
+const epoll_exclusive = u32(C.EPOLLEXCLUSIVE)
 
 // ctl is a helper method for add, modify, and remove
 fn (mut en EpollNotifier) ctl(fd int, op int, mask u32) ! {

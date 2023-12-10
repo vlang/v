@@ -2,12 +2,10 @@ module net
 
 import strings
 
-const (
-	crlf              = '\r\n'
-	msg_peek          = 0x02
-	max_read          = 400
-	max_read_line_len = 1048576
-)
+const crlf = '\r\n'
+const msg_peek = 0x02
+const max_read = 400
+const max_read_line_len = 1048576
 
 // get_blocking returns whether the connection is in a blocking state,
 // that is calls to .read_line, C.recv etc will block till there is new
@@ -52,7 +50,7 @@ pub fn (mut con TcpConn) read_line() string {
 // read_line_max is a *simple*, *non customizable*, blocking line reader.
 // It will return a line, ending with LF, '' on EOF.
 // It stops reading, when the result line length exceeds max_line_len.
-[manualfree]
+@[manualfree]
 pub fn (mut con TcpConn) read_line_max(max_line_len int) string {
 	if !con.is_blocking {
 		con.set_blocking(true) or {}

@@ -242,9 +242,7 @@ fn test_sub_expression() {
 	assert c
 }
 
-const (
-	one = 'one'
-)
+const one = 'one'
 
 fn test_match_constant_string() {
 	match one {

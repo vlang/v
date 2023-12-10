@@ -3,8 +3,9 @@ module main
 import os
 
 fn (mut c Create) set_lib_project_files() {
+	base := if c.new_dir { c.name } else { '' }
 	c.files << ProjectFiles{
-		path: os.join_path(c.name, 'src', c.name + '.v')
+		path: os.join_path(base, 'src', c.name + '.v')
 		content: 'module ${c.name}
 
 // square calculates the second power of `x`
@@ -14,7 +15,7 @@ pub fn square(x int) int {
 '
 	}
 	c.files << ProjectFiles{
-		path: os.join_path(c.name, 'tests', 'square_test.v')
+		path: os.join_path(base, 'tests', 'square_test.v')
 		content: 'import ${c.name}
 
 fn test_square() {

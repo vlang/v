@@ -3,9 +3,7 @@ module misc
 import rand
 import time
 
-const (
-	start_time_unix = time.now().unix // start_time_unix is set when the program is started.
-)
+const start_time_unix = time.now().unix
 
 // random returns a random time struct in *the past*.
 pub fn random() time.Time {

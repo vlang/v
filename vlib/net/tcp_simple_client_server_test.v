@@ -2,9 +2,7 @@ import io
 import net
 import strings
 
-const (
-	server_port = ':22443'
-)
+const server_port = ':22443'
 
 fn accept(mut server net.TcpListener, c chan &net.TcpConn) {
 	c <- server.accept() or { panic(err) }

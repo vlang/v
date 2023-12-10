@@ -77,28 +77,26 @@ enum Amd64SetOp {
 	np = 0x9b0f
 }
 
-[params]
+@[params]
 struct AvailableAmd64Register {
 	available Amd64Register
 }
 
-[params]
+@[params]
 struct Amd64RegisterOption {
 	reg    Amd64Register    = Amd64Register.rax
 	ssereg Amd64SSERegister = Amd64SSERegister.xmm0
 }
 
-const (
-	amd64_system_v_call_regs    = [Amd64Register.rdi, .rsi, .rdx, .rcx, .r8, .r9]
-	amd64_system_v_call_sseregs = [Amd64SSERegister.xmm0, .xmm1, .xmm2, .xmm3, .xmm4, .xmm5, .xmm6,
-		.xmm7]
+const amd64_system_v_call_regs = [Amd64Register.rdi, .rsi, .rdx, .rcx, .r8, .r9]
+const amd64_system_v_call_sseregs = [Amd64SSERegister.xmm0, .xmm1, .xmm2, .xmm3, .xmm4, .xmm5,
+	.xmm6, .xmm7]
 
-	// reference: https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-170#parameter-passing
-	amd64_windows_call_regs     = [Amd64Register.rcx, .rdx, .r8, .r9]
-	amd64_windows_call_sseregs  = [Amd64SSERegister.xmm0, .xmm1, .xmm2, .xmm3]
+// reference: https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-170#parameter-passing
+const amd64_windows_call_regs = [Amd64Register.rcx, .rdx, .r8, .r9]
+const amd64_windows_call_sseregs = [Amd64SSERegister.xmm0, .xmm1, .xmm2, .xmm3]
 
-	amd64_cpuregs               = ['eax', 'ecx', 'edx', 'ebx', 'esp', 'ebp', 'esi', 'edi']
-)
+const amd64_cpuregs = ['eax', 'ecx', 'edx', 'ebx', 'esp', 'ebp', 'esi', 'edi']
 
 fn amd64_get_call_regs(os pref.OS) []Amd64Register {
 	return match os {

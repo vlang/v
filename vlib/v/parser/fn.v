@@ -289,7 +289,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	if p.tok.kind == .lpar {
 		is_method = true
 		p.fn_receiver(mut params, mut rec) or { return ast.FnDecl{
-			scope: 0
+			scope: unsafe { nil }
 		} }
 
 		// rec.language was initialized with language variable.
@@ -321,7 +321,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			p.error_with_pos('function names cannot contain uppercase letters, use snake_case instead',
 				name_pos)
 			return ast.FnDecl{
-				scope: 0
+				scope: unsafe { nil }
 			}
 		}
 		if is_method {
@@ -336,7 +336,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			if is_duplicate {
 				p.error_with_pos('duplicate method `${name}`', name_pos)
 				return ast.FnDecl{
-					scope: 0
+					scope: unsafe { nil }
 				}
 			}
 		}
@@ -344,7 +344,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			if name in p.imported_symbols {
 				p.error_with_pos('cannot redefine imported function `${name}`', name_pos)
 				return ast.FnDecl{
-					scope: 0
+					scope: unsafe { nil }
 				}
 			}
 		}
@@ -374,7 +374,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	} else {
 		p.error_with_pos('expecting method name', p.tok.pos())
 		return ast.FnDecl{
-			scope: 0
+			scope: unsafe { nil }
 		}
 	}
 	// [T]
@@ -384,7 +384,11 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		sym := p.table.sym(rec.typ)
 		if sym.info is ast.Struct {
 			fn_generic_names := generic_names.clone()
-			generic_names = sym.info.generic_types.map(p.table.sym(it).name)
+			generic_names = p.types_to_names(sym.info.generic_types, p.tok.pos(), 'sym.info.generic_types') or {
+				return ast.FnDecl{
+					scope: unsafe { nil }
+				}
+			}
 			for gname in fn_generic_names {
 				if gname !in generic_names {
 					generic_names << gname
@@ -403,7 +407,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			if p.scope.known_var(param.name) {
 				p.error_with_pos('redefinition of parameter `${param.name}`', param.pos)
 				return ast.FnDecl{
-					scope: 0
+					scope: unsafe { nil }
 				}
 			}
 			is_stack_obj := !param.typ.has_flag(.shared_f) && (param.is_mut || param.typ.is_ptr())
@@ -436,7 +440,14 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		return_type = p.parse_type()
 		p.inside_fn_return = false
 		return_type_pos = return_type_pos.extend(p.prev_tok.pos())
+
+		if p.tok.kind in [.question, .not] {
+			ret_type_sym := p.table.sym(return_type)
+			p.error_with_pos('wrong syntax, it must be ${p.tok.kind}${ret_type_sym.name}, not ${ret_type_sym.name}${p.tok.kind}',
+				return_type_pos)
+		}
 	}
+
 	if p.tok.kind == .comma {
 		mr_pos := return_type_pos.extend(p.peek_tok.pos())
 		p.error_with_pos('multiple return types in function declaration must use parentheses, e.g. (int, string)',
@@ -479,7 +490,7 @@ run them via `v file.v` instead',
 			p.error_with_pos('cannot define new methods on non-local type ${type_sym.name}',
 				rec.type_pos)
 			return ast.FnDecl{
-				scope: 0
+				scope: unsafe { nil }
 			}
 		}
 		type_sym_method_idx = type_sym.register_method(ast.Fn{
@@ -581,7 +592,7 @@ run them via `v file.v` instead',
 	if !no_body && are_params_type_only {
 		p.error_with_pos('functions with type only params can not have bodies', body_start_pos)
 		return ast.FnDecl{
-			scope: 0
+			scope: unsafe { nil }
 		}
 	}
 	// if no_body && !name.starts_with('C.') {

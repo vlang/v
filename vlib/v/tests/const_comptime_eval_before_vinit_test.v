@@ -57,7 +57,7 @@ const zzz_an_f64_const_1 = zzz_an_f64_const + f64(1.0)
 // were instead initialised either as C globals, or as C define macros, their
 // values will be the same.
 
-[unsafe]
+@[unsafe]
 fn static_storage(idx int, value int) u8 {
 	mut static storage := [256]u8{}
 	if value == -1 {
@@ -71,7 +71,7 @@ fn static_storage(idx int, value int) u8 {
 // The _constructor attribute ensures that the function will be called
 // before main by the C compilers that support it.
 // Currently gcc/clang are known to work.
-[_constructor; unsafe]
+@[_constructor; unsafe]
 fn pre_main() {
 	unsafe {
 		static_storage(0, int(zzz_an_i8_const))

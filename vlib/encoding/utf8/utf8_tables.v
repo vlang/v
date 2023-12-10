@@ -3,19 +3,27 @@
 module utf8
 
 // for unicode type fast lookup
-const (
-	p_c      = 1 // a control character.
-	p_p      = 2 // a punctuation character.
-	p_n      = 4 // a numeral.
-	p_s      = 8 // a symbolic character.
-	p_z      = 16 // a spacing character.
-	p_lu     = 32 // an up_prer-case letter.
-	p_ll     = 64 // a lower-case letter.
-	p_pr     = 128 // a printable character according to Go's definition.
-	p_g      = p_pr | p_z // a graphical character according to the Unicode definition.
-	p_lo     = p_lu | p_ll // a letter that is neither up_prer nor lower case.
-	p_l_mask = p_lo
-)
+const p_c = 1 // a control character.
+
+const p_p = 2 // a punctuation character.
+
+const p_n = 4 // a numeral.
+
+const p_s = 8 // a symbolic character.
+
+const p_z = 16 // a spacing character.
+
+const p_lu = 32 // an up_prer-case letter.
+
+const p_ll = 64 // a lower-case letter.
+
+const p_pr = 128 // a printable character according to Go's definition.
+
+const p_g = p_pr | p_z // a graphical character according to the Unicode definition.
+
+const p_lo = p_lu | p_ll // a letter that is neither up_prer nor lower case.
+
+const p_l_mask = p_lo
 
 const props = [
 	p_c
@@ -534,9 +542,7 @@ const props = [
 
 // These tables are based on Go lang's tables: https://cs.opensource.google/go/go/+/refs/tags/go1.17.1:src/unicode/tables.go.
 // There is no need to investigate unicodes' type like letter yourself.
-const (
-	max_latin_1 = rune(0x00ff) // '\u00FF' // `ÿ`
-)
+const max_latin_1 = rune(0x00ff)
 
 // Represents all unicode in unicode category L.
 const letter_table = RangeTable{

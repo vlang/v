@@ -14,6 +14,22 @@ fn assert_array[T]() {
 	}
 }
 
+fn assert_array_dynamic[T]() {
+	$if T is $array_dynamic {
+		assert true
+	} $else {
+		assert false
+	}
+}
+
+fn assert_array_fixed[T]() {
+	$if T is $array_fixed {
+		assert true
+	} $else {
+		assert false
+	}
+}
+
 fn assert_struct[T]() {
 	$if T is $struct {
 		assert true
@@ -46,6 +62,22 @@ fn assert_not_array[T]() {
 	}
 }
 
+fn assert_not_array_dynamic[T]() {
+	$if T is $array_dynamic {
+		assert false
+	} $else {
+		assert true
+	}
+}
+
+fn assert_not_array_fixed[T]() {
+	$if T is $array_fixed {
+		assert false
+	} $else {
+		assert true
+	}
+}
+
 struct Abc {}
 
 struct Bc {}
@@ -71,6 +103,30 @@ fn test_kind_array() {
 	assert_not_array[string]()
 	assert_not_array[int]()
 	assert_not_array[map[int]int]()
+}
+
+fn test_kind_array_dynamic() {
+	assert_array_dynamic[[]int]()
+	assert_array_dynamic[[]f32]()
+	assert_array_dynamic[[]string]()
+
+	assert_not_array_dynamic[Abc]()
+	assert_not_array_dynamic[string]()
+	assert_not_array_dynamic[int]()
+	assert_not_array_dynamic[map[int]int]()
+	assert_not_array_dynamic[[3]int]()
+}
+
+fn test_kind_array_fixed() {
+	assert_array_fixed[[3]int]()
+	assert_array_fixed[[5]f32]()
+	assert_array_fixed[[6]string]()
+
+	assert_not_array_fixed[Abc]()
+	assert_not_array_fixed[string]()
+	assert_not_array_fixed[int]()
+	assert_not_array_fixed[map[int]int]()
+	assert_not_array_fixed[[]int]()
 }
 
 fn test_kind_struct() {

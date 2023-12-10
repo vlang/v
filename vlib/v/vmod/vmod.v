@@ -18,7 +18,7 @@ pub fn get_cache() &ModFileCacher {
 // examples/hanoi.v
 // vlib/v.mod
 // vlib/v/tests/project_with_c_code/mod1/v.mod
-// vlib/v/tests/project_with_c_code/mod1/wrapper.v
+// vlib/v/tests/project_with_c_code/mod1/wrapper.c.v
 // -----------------
 // ModFileCacher.get('examples')
 // => ModFileAndFolder{'', 'examples'}
@@ -39,7 +39,7 @@ pub:
 	vmod_folder string
 }
 
-[heap]
+@[heap]
 pub struct ModFileCacher {
 mut:
 	cache map[string]ModFileAndFolder

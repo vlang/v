@@ -79,6 +79,13 @@ fn test_header_delete_not_existing() {
 	// assert h.keys.len == 0
 }
 
+fn test_delete_header() {
+	mut r := new_request(.get, '', '')
+	r.header.set(.authorization, 'foo')
+	r.header.delete(.authorization)
+	assert r.header.get(.authorization)! == ''
+}
+
 fn test_custom_header() {
 	mut h := new_header()
 	h.add_custom('AbC', 'dEf')!

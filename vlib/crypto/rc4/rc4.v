@@ -21,7 +21,7 @@ mut:
 }
 
 // free the resources taken by the Cipher `c`
-[unsafe]
+@[unsafe]
 pub fn (mut c Cipher) free() {
 	$if prealloc {
 		return

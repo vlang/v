@@ -3,7 +3,7 @@ module main
 import db.sqlite
 
 struct Account {
-	id int [primary]
+	id int @[primary]
 }
 
 fn connect_option() ?sqlite.DB {

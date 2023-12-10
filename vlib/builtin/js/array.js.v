@@ -105,7 +105,7 @@ pub fn (mut a array) trim(index int) {
 #return result;
 #}
 
-[unsafe]
+@[unsafe]
 pub fn (a array) repeat_to_depth(count int, depth int) array {
 	if count < 0 {
 		panic('array.repeat: count is negative: ${count}')
@@ -297,7 +297,7 @@ pub fn (mut a array) prepend(val voidptr) {
 }
 
 // prepend_many prepends another array to this array.
-[unsafe]
+@[unsafe]
 pub fn (mut a array) prepend_many(val voidptr, size int) {
 	unsafe { a.insert_many(0, val, size) }
 }
@@ -369,7 +369,7 @@ pub fn (mut a array) delete_last() {
 	#a.val.arr.arr.pop();
 }
 
-[unsafe]
+@[unsafe]
 pub fn (a &array) free() {
 }
 
@@ -424,7 +424,7 @@ pub interface JS.TypedArray {
 mut:
 	byteLength JS.Number
 	byteOffset JS.Number
-	length JS.Number
+	length     JS.Number
 }
 
 pub interface JS.Uint8Array {

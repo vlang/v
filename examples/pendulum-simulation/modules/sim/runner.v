@@ -9,12 +9,10 @@ pub type SimStartHandler = fn () !
 
 pub type SimFinishHandler = fn () !
 
-pub const (
-	default_width  = 600
-	default_height = 600
-)
+pub const default_width = 600
+pub const default_height = 600
 
-[params]
+@[params]
 pub struct GridSettings {
 pub:
 	width  int = sim.default_width
@@ -27,7 +25,7 @@ pub fn new_grid_settings(settings GridSettings) GridSettings {
 	}
 }
 
-[params]
+@[params]
 pub struct RunnerSettings {
 pub:
 	grid       GridSettings

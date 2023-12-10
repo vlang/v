@@ -1,13 +1,13 @@
 struct Foo {}
 
-['/'; 'GET']
+@['/'; 'GET']
 fn (mut f Foo) hello() string {
 	return @FN
 }
 
 struct Bar {}
 
-['/'; 'GET']
+@['/'; 'GET']
 fn (b &Bar) world() string {
 	return @FN
 }

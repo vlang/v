@@ -1,9 +1,7 @@
 import os
 
-const (
-	tfolder = os.join_path(os.vtmp_dir(), 'tests', 'os_file_test')
-	tfile   = os.join_path_single(tfolder, 'test_file')
-)
+const tfolder = os.join_path(os.vtmp_dir(), 'tests', 'os_file_test')
+const tfile = os.join_path_single(tfolder, 'test_file')
 
 fn testsuite_begin() {
 	os.rmdir_all(tfolder) or {}
@@ -41,21 +39,19 @@ enum Color {
 	blue
 }
 
-[flag]
+@[flag]
 enum Permissions {
 	read
 	write
 	execute
 }
 
-const (
-	unit_point         = Point{1.0, 1.0, 1.0}
-	another_point      = Point{0.25, 2.25, 6.25}
-	extended_point     = Extended_Point{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0}
-	another_byte       = u8(123)
-	another_color      = Color.red
-	another_permission = Permissions.read | .write
-)
+const unit_point = Point{1.0, 1.0, 1.0}
+const another_point = Point{0.25, 2.25, 6.25}
+const extended_point = Extended_Point{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0}
+const another_byte = u8(123)
+const another_color = Color.red
+const another_permission = Permissions.read | .write
 
 // test_read_bytes_into_newline_text tests reading text from a file with newlines.
 // This test simulates reading a larger text file step by step into a buffer and
@@ -453,4 +449,31 @@ fn test_open_file_on_chinese_windows() {
 		os.truncate('中文.txt', 2)!
 		assert os.file_size('中文.txt') == 2
 	}
+}
+
+fn test_open_file_crlf_binary_mode() {
+	teststr := 'hello\r\n'
+	fname := 'text.txt'
+
+	mut wfile := os.open_file(fname, 'w', 0o666)!
+	wfile.write_string(teststr)!
+	wfile.close()
+
+	mut fcont_w := os.read_file(fname)!
+
+	os.rm(fname) or {}
+
+	mut wbfile := os.open_file(fname, 'wb', 0o666)!
+	wbfile.write_string(teststr)!
+	wbfile.close()
+
+	mut fcont_wb := os.read_file(fname)!
+
+	os.rm(fname) or {}
+
+	$if windows {
+		assert fcont_w != teststr
+	}
+
+	assert fcont_wb == teststr
 }

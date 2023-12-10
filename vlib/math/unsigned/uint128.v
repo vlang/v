@@ -9,10 +9,8 @@ pub mut:
 	hi u64
 }
 
-pub const (
-	uint128_zero = Uint128{}
-	uint128_max  = Uint128{18446744073709551615, 18446744073709551615}
-)
+pub const uint128_zero = Uint128{}
+pub const uint128_max = Uint128{18446744073709551615, 18446744073709551615}
 
 // is_zero returns true if u == 0
 pub fn (u Uint128) is_zero() bool {

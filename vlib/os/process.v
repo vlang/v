@@ -15,7 +15,7 @@ pub enum ProcessState {
 	closed
 }
 
-[heap]
+@[heap]
 pub struct Process {
 pub mut:
 	filename string // the process's command file path

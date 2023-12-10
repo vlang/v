@@ -1,8 +1,6 @@
 // see https://discordapp.com/channels/592103645835821068/592114487759470596/762271917293043762
-const (
-	steamid_id_shift = 2
-	steamid_id_mask  = 0x04
-)
+const steamid_id_shift = 2
+const steamid_id_mask = 0x04
 
 type SteamId = u64
 

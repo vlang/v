@@ -5,10 +5,8 @@ fn test_generics_struct_inst_method_call() {
 	assert r1
 }
 
-const (
-	tp_lft  = V2d[f32]{20}
-	bt_rigt = V2d[f32]{650}
-)
+const tp_lft = V2d[f32]{20}
+const bt_rigt = V2d[f32]{650}
 
 struct V2d[T] {
 mut:

@@ -3,11 +3,9 @@ module cli
 import term
 import strings
 
-const (
-	base_indent_len            = 2
-	min_description_indent_len = 20
-	spacing                    = 2
-)
+const base_indent_len = 2
+const min_description_indent_len = 20
+const spacing = 2
 
 fn help_flag(with_abbrev bool) Flag {
 	sabbrev := if with_abbrev { 'h' } else { '' }

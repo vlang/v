@@ -1,4 +1,4 @@
-[heap]
+@[heap]
 struct Aa {
 mut:
 	bs []Bb
@@ -6,7 +6,7 @@ mut:
 
 struct Bb {
 mut:
-	a &Aa
+	a &Aa = unsafe { nil }
 }
 
 fn test_circular() {

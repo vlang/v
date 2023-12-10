@@ -1,8 +1,8 @@
 pub struct Vec[T] {
 mut:
-	data &T    [required]
-	cap  usize [required]
-	len  usize [required]
+	data &T    @[required]
+	cap  usize @[required]
+	len  usize @[required]
 }
 
 pub fn new[T]() Vec[T] {
@@ -21,7 +21,7 @@ pub fn (ar &Vec[T]) iter() Iter[T] {
 
 pub struct Iter[T] {
 mut:
-	v   &Vec[T] [required]
+	v   &Vec[T] @[required]
 	pos usize
 }
 

@@ -1,8 +1,6 @@
 import sync
 
-const (
-	signals_per_thread = 100000
-)
+const signals_per_thread = 100000
 
 fn send_signals(mut sem sync.Semaphore, mut sem_end sync.Semaphore) {
 	for _ in 0 .. signals_per_thread {

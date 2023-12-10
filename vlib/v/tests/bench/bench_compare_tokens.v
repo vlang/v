@@ -28,7 +28,7 @@ fn main() {
 	}
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn from_string(name string) token.Kind {
 	match name.len {
 		2 {

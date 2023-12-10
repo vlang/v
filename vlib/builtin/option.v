@@ -21,7 +21,7 @@ struct _option {
 	// derived _option_xxx types
 }
 
-[markused]
+@[markused]
 fn _option_none(data voidptr, mut option _option, size int) {
 	unsafe {
 		*option = _option{
@@ -32,7 +32,7 @@ fn _option_none(data voidptr, mut option _option, size int) {
 	}
 }
 
-[markused]
+@[markused]
 fn _option_ok(data voidptr, mut option _option, size int) {
 	unsafe {
 		*option = _option{}

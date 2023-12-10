@@ -2,15 +2,13 @@ import json
 import picoev
 import picohttpparser
 
-const (
-	port = 8089
-)
+const port = 8089
 
 struct Message {
 	message string
 }
 
-[inline]
+@[inline]
 fn json_response() string {
 	msg := Message{
 		message: 'Hello, World!'
@@ -18,7 +16,7 @@ fn json_response() string {
 	return json.encode(msg)
 }
 
-[inline]
+@[inline]
 fn hello_response() string {
 	return 'Hello, World!'
 }
@@ -51,7 +49,7 @@ fn callback(data voidptr, req picohttpparser.Request, mut res picohttpparser.Res
 }
 
 fn main() {
-	println('Starting webserver on http://127.0.0.1:${port}/ ...')
+	println('Starting webserver on http://localhost:${port}/ ...')
 	mut server := picoev.new(port: port, cb: callback)
 	server.serve()
 }

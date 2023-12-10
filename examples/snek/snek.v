@@ -6,13 +6,11 @@ import time
 import rand
 
 // constants
-const (
-	top_height   = 100
-	canvas_size  = 700
-	game_size    = 17
-	tile_size    = canvas_size / game_size
-	tick_rate_ms = 100
-)
+const top_height = 100
+const canvas_size = 700
+const game_size = 17
+const tile_size = canvas_size / game_size
+const tick_rate_ms = 100
 
 const high_score_file_path = os.join_path(os.cache_dir(), 'v', 'examples', 'snek')
 

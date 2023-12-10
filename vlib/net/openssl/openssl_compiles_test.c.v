@@ -12,6 +12,6 @@ fn test_printing_struct_with_reference_field_of_type_ssl_ctx() {
 }
 
 fn test_openssl_compiles() {
-	assert openssl.is_used == 1
+	assert openssl.is_used
 	assert true
 }

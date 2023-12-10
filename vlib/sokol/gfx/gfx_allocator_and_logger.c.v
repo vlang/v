@@ -2,7 +2,7 @@ module gfx
 
 import sokol.memory
 
-[typedef]
+@[typedef]
 pub struct C.sg_allocator {
 pub mut:
 	alloc_fn  memory.FnAllocatorAlloc = unsafe { nil }
@@ -10,7 +10,7 @@ pub mut:
 	user_data voidptr
 }
 
-[typedef]
+@[typedef]
 pub struct C.sg_logger {
 pub mut:
 	func      memory.FnLogCb = unsafe { nil }

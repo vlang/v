@@ -10,12 +10,10 @@ import v.util
 import v.vcache
 import term
 
-const (
-	c_std       = 'c99'
-	c_std_gnu   = 'gnu99'
-	cpp_std     = 'c++17'
-	cpp_std_gnu = 'gnu++17'
-)
+const c_std = 'c99'
+const c_std_gnu = 'gnu99'
+const cpp_std = 'c++17'
+const cpp_std_gnu = 'gnu++17'
 
 const c_verror_message_marker = 'VERROR_MESSAGE '
 

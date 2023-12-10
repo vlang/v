@@ -5,7 +5,7 @@ module log
 
 // set_logger changes the default logger instance to the one provided by the user.
 // The existing logger will be freed, *after* the change is done.
-[manualfree]
+@[manualfree]
 pub fn set_logger(logger &Logger) {
 	// C.printf(c"set_logger  logger: %p | old logger: %p\n", logger, default_logger)
 	old_logger := unsafe { default_logger }
@@ -14,7 +14,7 @@ pub fn set_logger(logger &Logger) {
 }
 
 // get_logger returns a pointer to the current default logger instance
-[unsafe]
+@[unsafe]
 pub fn get_logger() &Logger {
 	return default_logger
 }

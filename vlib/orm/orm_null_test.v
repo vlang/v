@@ -54,25 +54,23 @@ fn (db MockDB) delete(table string, where orm.QueryData) ! {
 	return db.db.delete(table, where)
 }
 
-const (
-	typ_to_typename = {
-		typeof[i8]().idx:     'i8'
-		typeof[i16]().idx:    'i16'
-		typeof[int]().idx:    'int'
-		typeof[i64]().idx:    'i64'
-		typeof[u8]().idx:     'u8'
-		typeof[u16]().idx:    'u16'
-		typeof[u32]().idx:    'u32'
-		typeof[u64]().idx:    'u64'
-		typeof[f32]().idx:    'f32'
-		typeof[f64]().idx:    'f64'
-		typeof[string]().idx: 'string'
-		typeof[bool]().idx:   'bool'
-		orm.serial:           'serial'
-		orm.time_:            'time'
-		orm.enum_:            'enum'
-	}
-)
+const typ_to_typename = {
+	typeof[i8]().idx:     'i8'
+	typeof[i16]().idx:    'i16'
+	typeof[int]().idx:    'int'
+	typeof[i64]().idx:    'i64'
+	typeof[u8]().idx:     'u8'
+	typeof[u16]().idx:    'u16'
+	typeof[u32]().idx:    'u32'
+	typeof[u64]().idx:    'u64'
+	typeof[f32]().idx:    'f32'
+	typeof[f64]().idx:    'f64'
+	typeof[string]().idx: 'string'
+	typeof[bool]().idx:   'bool'
+	orm.serial:           'serial'
+	orm.time_:            'time'
+	orm.enum_:            'enum'
+}
 
 fn mock_type_from_v(typ int) !string {
 	return if typ in typ_to_typename {
@@ -98,10 +96,10 @@ fn (db MockDB) last_id() int {
 
 // --
 
-[table: 'foo']
+@[table: 'foo']
 struct Foo {
 mut:
-	id u64    [primary; sql: serial]
+	id u64    @[primary; sql: serial]
 	a  string
 	//	b  string  [default: '"yes"']
 	c ?string
@@ -222,7 +220,7 @@ fn test_option_struct_fields_and_none() {
 }
 
 struct Bar {
-	id   u64     [primary; sql: serial]
+	id   u64     @[primary; sql: serial]
 	name ?string
 	age  int
 }

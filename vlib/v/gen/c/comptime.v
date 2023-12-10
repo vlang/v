@@ -740,14 +740,14 @@ fn (mut g Gen) pop_existing_comptime_values() {
 }
 
 // is_comptime_selector_field_name checks if the SelectorExpr is related to $for variable accessing specific field name provided by `field_name`
-[inline]
+@[inline]
 fn (mut g Gen) is_comptime_selector_field_name(node ast.SelectorExpr, field_name string) bool {
 	return g.inside_comptime_for_field && node.expr is ast.Ident
 		&& node.expr.name == g.comptime_for_field_var && node.field_name == field_name
 }
 
 // check_comptime_is_field_selector checks if the SelectorExpr is related to $for variable accessing .typ field
-[inline]
+@[inline]
 fn (mut g Gen) is_comptime_selector_type(node ast.SelectorExpr) bool {
 	if g.inside_comptime_for_field && node.expr is ast.Ident {
 		return node.expr.name == g.comptime_for_field_var && node.field_name == 'typ'
@@ -875,9 +875,9 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			styp := g.table.find_type_idx(sig)
 
 			// TODO: type aliases
-			ret_typ := method.return_type.idx()
+			ret_typ := method.return_type
 			g.writeln('\t${node.val_var}.typ = ${styp};')
-			g.writeln('\t${node.val_var}.return_type = ${ret_typ};')
+			g.writeln('\t${node.val_var}.return_type = ${ret_typ.idx()};')
 
 			g.comptime_var_type_map['${node.val_var}.return_type'] = ret_typ
 			g.comptime_var_type_map['${node.val_var}.typ'] = styp

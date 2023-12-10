@@ -6,7 +6,7 @@ pub struct SSLConn {
 	mbedtls.SSLConn
 }
 
-[params]
+@[params]
 pub struct SSLConnectConfig {
 	mbedtls.SSLConnectConfig
 }

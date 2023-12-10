@@ -1,4 +1,4 @@
-[has_globals]
+@[has_globals]
 module sapp
 
 import sokol.gfx
@@ -33,149 +33,149 @@ pub fn create_desc() gfx.Desc {
 }
 
 // returns true after sokol-app has been initialized
-[inline]
+@[inline]
 pub fn isvalid() bool {
 	return C.sapp_isvalid()
 }
 
 // returns the current framebuffer width in pixels
-[inline]
+@[inline]
 pub fn width() int {
 	return C.sapp_width()
 }
 
 // returns the current framebuffer height in pixels
-[inline]
+@[inline]
 pub fn height() int {
 	return C.sapp_height()
 }
 
 // color_format gets default framebuffer color pixel format
-[inline]
+@[inline]
 pub fn color_format() int {
 	return C.sapp_color_format()
 }
 
 // depth_format gets default framebuffer depth pixel format
-[inline]
+@[inline]
 pub fn depth_format() int {
 	return C.sapp_depth_format()
 }
 
 // sample_count gets default framebuffer sample count
-[inline]
+@[inline]
 pub fn sample_count() int {
 	return C.sapp_sample_count()
 }
 
 // returns true when high_dpi was requested and actually running in a high-dpi scenario
-[inline]
+@[inline]
 pub fn high_dpi() bool {
 	return C.sapp_high_dpi()
 }
 
 // returns the dpi scaling factor (window pixels to framebuffer pixels)
-[inline]
+@[inline]
 pub fn dpi_scale() f32 {
 	return C.sapp_dpi_scale()
 }
 
 // show or hide the mobile device onscreen keyboard
-[inline]
+@[inline]
 pub fn show_keyboard(visible bool) {
 	C.sapp_show_keyboard(visible)
 }
 
 // return true if the mobile device onscreen keyboard is currently shown
-[inline]
+@[inline]
 pub fn keyboard_shown() bool {
 	return C.sapp_keyboard_shown()
 }
 
 // show or hide the mouse cursor
-[inline]
+@[inline]
 pub fn show_mouse(visible bool) {
 	C.sapp_show_mouse(visible)
 }
 
 // set mouse cursor
-[inline]
+@[inline]
 pub fn set_mouse_cursor(cursor MouseCursor) {
 	C.sapp_set_mouse_cursor(cursor)
 }
 
 // show or hide the mouse cursor
-[inline]
+@[inline]
 pub fn mouse_shown() bool {
 	return C.sapp_mouse_shown()
 }
 
-[inline]
+@[inline]
 pub fn lock_mouse(locked bool) {
 	C.sapp_lock_mouse(locked)
 }
 
-[inline]
+@[inline]
 pub fn mouse_locked() bool {
 	return C.sapp_mouse_locked()
 }
 
 // return the userdata pointer optionally provided in sapp_desc
-[inline]
+@[inline]
 pub fn userdata() voidptr {
 	return C.sapp_userdata()
 }
 
 // return a copy of the sapp_desc structure
-[inline]
+@[inline]
 pub fn query_desc() Desc {
 	return C.sapp_query_desc()
 }
 
 // initiate a "soft quit" (sends SAPP_EVENTTYPE_QUIT_REQUESTED)
-[inline]
+@[inline]
 pub fn request_quit() {
 	C.sapp_request_quit()
 }
 
 // cancel a pending quit (when SAPP_EVENTTYPE_QUIT_REQUESTED has been received)
-[inline]
+@[inline]
 pub fn cancel_quit() {
 	C.sapp_cancel_quit()
 }
 
 // intiate a "hard quit" (quit application without sending SAPP_EVENTTYPE_QUIT_REQUSTED)
-[inline]
+@[inline]
 pub fn quit() {
 	C.sapp_quit()
 }
 
 // call from inside event callback to consume the current event (don't forward to platform)
-[inline]
+@[inline]
 pub fn consume_event() {
 	C.sapp_consume_event()
 }
 
 // get the current frame counter (for comparison with sapp_event.frame_count)
-[inline]
+@[inline]
 pub fn frame_count() u64 {
 	return C.sapp_frame_count()
 }
 
 // get an averaged/smoothed frame duration in seconds
-[inline]
+@[inline]
 pub fn frame_duration() f64 {
 	return C.sapp_frame_duration()
 }
 
 // write string into clipboard
-[inline]
+@[inline]
 pub fn set_clipboard_string(str &u8) {
 	C.sapp_set_clipboard_string(str)
 }
 
 // read string from clipboard (usually during SAPP_EVENTTYPE_CLIPBOARD_PASTED)
-[inline]
+@[inline]
 pub fn get_clipboard_string() &char {
 	return &char(C.sapp_get_clipboard_string())
 }
@@ -199,95 +199,95 @@ pub fn run(desc &Desc) {
 }
 
 // HTML5: enable or disable the hardwired "Leave Site?" dialog box
-[inline]
+@[inline]
 pub fn html5_ask_leave_site(ask bool) {
 	C.sapp_html5_ask_leave_site(ask)
 }
 
 // Metal: get ARC-bridged pointer to Metal device object
-[inline]
+@[inline]
 pub fn metal_get_device() voidptr {
 	return voidptr(C.sapp_metal_get_device())
 }
 
 // Metal: get ARC-bridged pointer to this frame's renderpass descriptor
-[inline]
+@[inline]
 pub fn metal_get_renderpass_descriptor() voidptr {
 	return voidptr(C.sapp_metal_get_renderpass_descriptor())
 }
 
 // Metal: get ARC-bridged pointer to current drawable
-[inline]
+@[inline]
 pub fn metal_get_drawable() voidptr {
 	return voidptr(C.sapp_metal_get_drawable())
 }
 
 // macOS: get ARC-bridged pointer to macOS NSWindow
-[inline]
+@[inline]
 pub fn macos_get_window() voidptr {
 	return voidptr(C.sapp_macos_get_window())
 }
 
 // iOS: get ARC-bridged pointer to iOS UIWindow
-[inline]
+@[inline]
 pub fn ios_get_window() voidptr {
 	return voidptr(C.sapp_ios_get_window())
 }
 
 // D3D11: get pointer to ID3D11Device object
-[inline]
+@[inline]
 pub fn d3d11_get_device() voidptr {
 	return voidptr(C.sapp_d3d11_get_device())
 }
 
 // D3D11: get pointer to ID3D11DeviceContext object
-[inline]
+@[inline]
 pub fn d3d11_get_device_context() voidptr {
 	return voidptr(C.sapp_d3d11_get_device_context())
 }
 
 // D3D11: get pointer to ID3D11RenderTargetView object
-[inline]
+@[inline]
 pub fn d3d11_get_render_target_view() voidptr {
 	return voidptr(C.sapp_d3d11_get_render_target_view())
 }
 
 // D3D11: get pointer to ID3D11DepthStencilView
-[inline]
+@[inline]
 pub fn d3d11_get_depth_stencil_view() voidptr {
 	return voidptr(C.sapp_d3d11_get_depth_stencil_view())
 }
 
 // Win32: get the HWND window handle
-[inline]
+@[inline]
 pub fn win32_get_hwnd() voidptr {
 	return voidptr(C.sapp_win32_get_hwnd())
 }
 
 // Android: get native activity handle
-[inline]
+@[inline]
 pub fn android_get_native_activity() voidptr {
 	return voidptr(C.sapp_android_get_native_activity())
 }
 
 // Toggle full screen
-[inline]
+@[inline]
 pub fn toggle_fullscreen() {
 	C.sapp_toggle_fullscreen()
 }
 
 // Check if full screen rendering
-[inline]
+@[inline]
 pub fn is_fullscreen() bool {
 	return C.sapp_is_fullscreen()
 }
 
-[inline]
+@[inline]
 pub fn get_num_dropped_files() int {
 	return C.sapp_get_num_dropped_files()
 }
 
-[inline]
+@[inline]
 pub fn get_dropped_file_path(index int) string {
 	unsafe {
 		return cstring_to_vstring(C.sapp_get_dropped_file_path(index))

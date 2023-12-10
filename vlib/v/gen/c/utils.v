@@ -61,12 +61,12 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 
 struct Type {
 	// typ is the original type
-	typ ast.Type        [required]
-	sym &ast.TypeSymbol [required]
+	typ ast.Type        @[required]
+	sym &ast.TypeSymbol @[required]
 	// unaliased is `typ` once aliased have been resolved
 	// it may not contain information such as flags and nr_muls
-	unaliased     ast.Type        [required]
-	unaliased_sym &ast.TypeSymbol [required]
+	unaliased     ast.Type        @[required]
+	unaliased_sym &ast.TypeSymbol @[required]
 }
 
 // unwrap returns the following variants of a type:
@@ -125,7 +125,7 @@ fn escape_quotes(val string) string {
 	return unescaped_val.replace_each(['\x01', '${bs}${bs}', "'", "${bs}'", '"', '${bs}"'])
 }
 
-[inline]
+@[inline]
 fn (mut g Gen) dot_or_ptr(val_type ast.Type) string {
 	return if val_type.has_flag(.shared_f) {
 		'->val.'

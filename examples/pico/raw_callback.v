@@ -3,10 +3,9 @@ module main
 import net
 import picoev
 
-const (
-	port          = 8080
-	http_response = 'HTTP/1.1 200 OK\r\nContent-type: text/html\r\nContent-length: 18\r\n\r\nHello from Picoev!'
-)
+const port = 8080
+
+const http_response = 'HTTP/1.1 200 OK\r\nContent-type: text/html\r\nContent-length: 18\r\n\r\nHello from Picoev!'
 
 fn main() {
 	println('Starting webserver on http://localhost:${port}/ ...')
@@ -17,7 +16,7 @@ fn main() {
 	pico.serve()
 }
 
-fn handle_conn(mut pv picoev.Picoev, fd int) {
+fn handle_conn(mut pv picoev.Picoev, fd int, events int) {
 	// setup a nonblocking tcp connection
 	mut conn := &net.TcpConn{
 		sock: net.tcp_socket_from_handle_raw(fd)

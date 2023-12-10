@@ -54,7 +54,7 @@ pub mut:
 pub fn (mut bmp BitMap) clear() {
 	mut sz := bmp.width * bmp.height * bmp.bp
 	unsafe {
-		C.memset(bmp.buf, 0x00, sz)
+		vmemset(bmp.buf, 0x00, sz)
 	}
 }
 
@@ -187,7 +187,7 @@ pub fn (mut bmp BitMap) fline(in_x0 int, in_y0 int, in_x1 int, in_y1 int, c u32)
 * Draw functions
 *
 ******************************************************************************/
-[inline]
+@[inline]
 pub fn (mut bmp BitMap) plot(x int, y int, c u32) bool {
 	if x < 0 || x >= bmp.width || y < 0 || y >= bmp.height {
 		return false

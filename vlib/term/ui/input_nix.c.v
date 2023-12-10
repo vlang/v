@@ -1,7 +1,7 @@
 // Copyright (c) 2020-2021 Raúl Hernández. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-[has_globals]
+@[has_globals]
 module ui
 
 struct ExtraContext {
@@ -25,14 +25,14 @@ pub fn init(cfg Config) &Context {
 	return ctx
 }
 
-[inline]
+@[inline]
 fn save_title() {
 	// restore the previously saved terminal title
 	print('\x1b[22;0t')
 	flush_stdout()
 }
 
-[inline]
+@[inline]
 fn load_title() {
 	// restore the previously saved terminal title
 	print('\x1b[23;0t')
@@ -52,7 +52,7 @@ pub fn (mut ctx Context) run() ! {
 
 // shifts the array left, to remove any data that was just read, and updates its len
 // TODO: remove
-[inline]
+@[inline]
 fn (mut ctx Context) shift(len int) {
 	unsafe {
 		C.memmove(ctx.read_buf.data, &u8(ctx.read_buf.data) + len, ctx.read_buf.cap - len)
@@ -61,7 +61,7 @@ fn (mut ctx Context) shift(len int) {
 }
 
 // TODO: don't actually do this, lmao
-[inline]
+@[inline]
 fn (mut ctx Context) resize_arr(size int) {
 	mut l := unsafe { &ctx.read_buf.len }
 	unsafe {

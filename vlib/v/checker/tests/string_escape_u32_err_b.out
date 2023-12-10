@@ -1,0 +1,5 @@
+vlib/v/checker/tests/string_escape_u32_err_b.vv:2:15: error: `\U` incomplete 32 bit unicode character value
+    1 | fn main() {
+    2 |     println('\U345')
+      |               ^
+    3 | }

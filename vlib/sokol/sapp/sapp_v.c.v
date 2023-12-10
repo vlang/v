@@ -29,7 +29,7 @@ pub fn screenshot(path string) ! {
 
 // screenshot_ppm takes a screenshot of the current window and
 // saves it to `path` as a .ppm file.
-[manualfree]
+@[manualfree]
 pub fn screenshot_ppm(path string) ! {
 	ss := screenshot_window()
 	write_rgba_to_ppm(path, ss.width, ss.height, 4, ss.pixels)!
@@ -38,7 +38,7 @@ pub fn screenshot_ppm(path string) ! {
 
 // screenshot_png takes a screenshot of the current window and
 // saves it to `path` as a .png file.
-[manualfree]
+@[manualfree]
 pub fn screenshot_png(path string) ! {
 	ss := screenshot_window()
 	stbi.set_flip_vertically_on_write(true)

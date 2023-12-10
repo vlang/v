@@ -10,9 +10,7 @@ module main
 import os
 import benchmark
 
-const (
-	inner_indent = '     '
-)
+const inner_indent = '     '
 
 struct BenchedTests {
 mut:

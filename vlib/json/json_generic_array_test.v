@@ -9,7 +9,7 @@ pub:
 	skip            ?int
 	fields          ?[]string // This breaks the compiler when encoding to JSON
 	conflicts       ?bool
-	read_quorum     ?int      [json: r]
+	read_quorum     ?int      @[json: r]
 	update          ?bool
 	stable          ?bool
 	stale           ?string

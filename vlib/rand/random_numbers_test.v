@@ -3,10 +3,8 @@ import rand.splitmix64
 import rand.musl
 import rand.mt19937
 
-const (
-	rnd_count = 40
-	seeds     = [[u32(42), 0], [u32(256), 0]]
-)
+const rnd_count = 40
+const seeds = [[u32(42), 0], [u32(256), 0]]
 
 fn get_n_random_ints(seed_data []u32, n int) []int {
 	mut values := []int{cap: n}
@@ -217,9 +215,7 @@ fn test_rand_u16() {
 	// dump( all[32768] )
 }
 
-const (
-	string_count = 25
-)
+const string_count = 25
 
 fn test_rand_string_from_set() {
 	sets := [

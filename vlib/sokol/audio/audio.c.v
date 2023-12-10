@@ -55,7 +55,7 @@ pub fn (x FnStreamingCBWithUserData) str() string {
 	return '&FnStreamingCBWithUserData{ ${ptr_str(x)} }'
 }
 
-[typedef]
+@[typedef]
 pub struct C.saudio_allocator {
 pub mut:
 	alloc_fn  memory.FnAllocatorAlloc
@@ -63,7 +63,7 @@ pub mut:
 	user_data voidptr
 }
 
-[typedef]
+@[typedef]
 pub struct C.saudio_logger {
 pub mut:
 	func      memory.FnLogCb
@@ -81,7 +81,7 @@ pub mut:
 // | buffer_frames | 2048     | buffer size in frames, larger is more latency, smaller means higher CPU |
 // | packet_frames | 128      | push model only, number of frames that will be pushed in each packet |
 // | num_packets   | 64       | for push model only, number of packets in the backend ringbuffer |
-[typedef]
+@[typedef]
 pub struct C.saudio_desc {
 	sample_rate        int
 	num_channels       int
@@ -188,7 +188,7 @@ pub fn push(frames &f32, num_frames int) int {
 
 // fclamp - helper function to 'clamp' a number to a certain range
 // Example: realsample := audio.fclamp(sample, -1.0, 1.0)
-[inline]
+@[inline]
 pub fn fclamp(x f32, flo f32, fhi f32) f32 {
 	if x > fhi {
 		return fhi

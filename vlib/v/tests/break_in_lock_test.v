@@ -5,10 +5,9 @@ mut:
 	b string
 }
 
-const (
-	run_time   = time.millisecond * 500 // must be big enough to ensure threads have started
-	sleep_time = time.millisecond * 2000 // some tolerance added
-)
+const run_time = time.millisecond * 500 // must be big enough to ensure threads have started
+
+const sleep_time = time.millisecond * 2000
 
 fn test_return_lock() {
 	start := time.now()

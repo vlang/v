@@ -6,7 +6,7 @@ import net.urllib
 import net.ssl
 import net.socks
 
-[heap]
+@[heap]
 struct HttpProxy {
 mut:
 	scheme   string

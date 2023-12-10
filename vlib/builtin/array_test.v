@@ -352,9 +352,7 @@ fn test_reverse() {
 	assert f.len == 0
 }
 
-const (
-	c_n = 5
-)
+const c_n = 5
 
 struct Foooj {
 	a [5]int // c_n
@@ -982,7 +980,7 @@ fn test_in_struct() {
 	assert baz.bar[0] == 3
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn test_direct_modification() {
 	mut foo := [2, 0, 5]
 	foo[1] = 3
@@ -1052,7 +1050,7 @@ fn test_trim() {
 	assert arr.last() == 2
 }
 
-[manualfree]
+@[manualfree]
 fn test_drop() {
 	mut a := [1, 2]
 	a << 3 // pushing assures reallocation; a.cap now should be bigger:
@@ -1246,7 +1244,7 @@ fn test_array_last() {
 	assert s.last().val == 'a'
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn test_direct_array_access() {
 	mut a := [11, 22, 33, 44]
 	assert a[0] == 11
@@ -1259,7 +1257,7 @@ fn test_direct_array_access() {
 	assert a == [21, 24, 14, 20]
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn test_direct_array_access_via_ptr() {
 	mut b := [11, 22, 33, 44]
 	unsafe {
@@ -1288,12 +1286,10 @@ fn test_push_arr_string_free() {
 	assert lines[1] == 'ab'
 }
 
-const (
-	grid_size_1 = 2
-	grid_size_2 = 3
-	grid_size_3 = 4
-	cell_value  = 123
-)
+const grid_size_1 = 2
+const grid_size_2 = 3
+const grid_size_3 = 4
+const cell_value = 123
 
 fn test_multidimensional_array_initialization_with_consts() {
 	mut data := [][][]int{len: grid_size_1, init: [][]int{len: grid_size_2, init: []int{len: grid_size_3, init: cell_value}}}

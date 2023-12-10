@@ -1,7 +1,7 @@
 // Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-[has_globals]
+@[has_globals]
 module builtin
 
 // g_original_codepage - used to restore the original windows console code page when exiting
@@ -41,13 +41,11 @@ fn is_terminal(fd int) int {
 	return int(mode)
 }
 
-const (
-	std_output_handle                  = -11
-	std_error_handle                   = -12
-	enable_processed_output            = 1
-	enable_wrap_at_eol_output          = 2
-	evable_virtual_terminal_processing = 4
-)
+const std_output_handle = -11
+const std_error_handle = -12
+const enable_processed_output = 1
+const enable_wrap_at_eol_output = 2
+const evable_virtual_terminal_processing = 4
 
 fn builtin_init() {
 	g_original_codepage = C.GetConsoleOutputCP()
@@ -97,7 +95,7 @@ fn add_vectored_exception_handler(handler VectoredExceptionHandler) {
 	C.AddVectoredExceptionHandler(1, voidptr(handler))
 }
 
-[callconv: stdcall]
+@[callconv: stdcall]
 fn unhandled_exception_handler(e &ExceptionPointers) int {
 	match e.exception_record.code {
 		// These are 'used' by the backtrace printer
@@ -136,14 +134,12 @@ fn break_if_debugger_attached() {
 	}
 }
 
-const (
-	format_message_allocate_buffer = 0x00000100
-	format_message_argument_array  = 0x00002000
-	format_message_from_hmodule    = 0x00000800
-	format_message_from_string     = 0x00000400
-	format_message_from_system     = 0x00001000
-	format_message_ignore_inserts  = 0x00000200
-)
+const format_message_allocate_buffer = 0x00000100
+const format_message_argument_array = 0x00002000
+const format_message_from_hmodule = 0x00000800
+const format_message_from_string = 0x00000400
+const format_message_from_system = 0x00001000
+const format_message_ignore_inserts = 0x00000200
 
 // return an error message generated from WinAPI's `LastError`
 pub fn winapi_lasterr_str() string {
@@ -164,7 +160,7 @@ pub fn winapi_lasterr_str() string {
 }
 
 // panic with an error message generated from WinAPI's `LastError`
-[noreturn]
+@[noreturn]
 pub fn panic_lasterr(base string) {
 	panic(base + winapi_lasterr_str())
 }

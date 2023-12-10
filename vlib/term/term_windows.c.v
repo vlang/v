@@ -2,14 +2,14 @@ module term
 
 import os
 
-[typedef]
+@[typedef]
 pub struct C.COORD {
 mut:
 	X i16
 	Y i16
 }
 
-[typedef]
+@[typedef]
 pub struct C.SMALL_RECT {
 mut:
 	Left   u16
@@ -20,7 +20,7 @@ mut:
 
 // win: CONSOLE_SCREEN_BUFFER_INFO
 // https://docs.microsoft.com/en-us/windows/console/console-screen-buffer-info-str
-[typedef]
+@[typedef]
 pub struct C.CONSOLE_SCREEN_BUFFER_INFO {
 mut:
 	dwSize              C.COORD
@@ -36,7 +36,7 @@ mut:
 	AsciiChar   u8
 }
 
-[typedef]
+@[typedef]
 pub struct C.CHAR_INFO {
 mut:
 	Char       C.uChar

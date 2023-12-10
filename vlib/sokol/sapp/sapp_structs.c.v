@@ -1,14 +1,12 @@
 module sapp
 
-const (
-	max_touchpoints  = 8
-	max_mousebuttons = 3
-	max_keycodes     = 512
-	max_iconimages   = 8
-)
+const max_touchpoints = 8
+const max_mousebuttons = 3
+const max_keycodes = 512
+const max_iconimages = 8
 
 // sapp_range is a general pointer/size-pair struct for passing binary blobs into sokol_app.h
-[typedef]
+@[typedef]
 pub struct C.sapp_range {
 pub:
 	ptr  voidptr
@@ -17,7 +15,7 @@ pub:
 
 pub type Range = C.sapp_range
 
-[typedef]
+@[typedef]
 pub struct C.sapp_image_desc {
 pub:
 	width  int
@@ -27,7 +25,7 @@ pub:
 
 pub type ImageDesc = C.sapp_image_desc
 
-[typedef]
+@[typedef]
 pub struct C.sapp_icon_desc {
 	sokol_default bool
 	images        [max_iconimages]ImageDesc
@@ -35,7 +33,7 @@ pub struct C.sapp_icon_desc {
 
 pub type IconDesc = C.sapp_icon_desc
 
-[typedef]
+@[typedef]
 pub struct C.sapp_desc {
 pub:
 	// these are the user-provided callbacks without user data
@@ -85,7 +83,7 @@ pub mut:
 
 pub type Desc = C.sapp_desc
 
-[typedef]
+@[typedef]
 pub struct C.sapp_event {
 pub:
 	frame_count        u64         // current frame counter, always valid, useful for checking if two events were issued in the same frame
@@ -115,7 +113,7 @@ pub fn (e &C.sapp_event) str() string {
 	return 'evt: frame_count=${e.frame_count}, type=${e.@type}'
 }
 
-[typedef]
+@[typedef]
 pub struct C.sapp_touchpoint {
 pub:
 	identifier       u64

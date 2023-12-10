@@ -314,7 +314,7 @@ pub fn (s string) trim_right(cutset string) string {
 
 // trim_left strips any of the characters given in `cutset` from the left of the string.
 // Example: assert 'd Hello V developer'.trim_left(' d') == 'Hello V developer'
-[direct_array_access]
+@[direct_array_access]
 pub fn (s string) trim_left(cutset string) string {
 	if s.len < 1 || cutset.len < 1 {
 		return s.clone()
@@ -501,7 +501,7 @@ pub fn (s string) strip_margin() string {
 }
 
 // strip_margin_custom does the same as `strip_margin` but will use `del` as delimiter instead of `|`
-[direct_array_access]
+@[direct_array_access]
 pub fn (s string) strip_margin_custom(del u8) string {
 	mut sep := del
 	if sep.is_space() {
@@ -557,7 +557,7 @@ pub fn (s string) strip_margin_custom(del u8) string {
 // It returns the first Nth parts. When N=0, return all the splits.
 // The last returned element has the remainder of the string, even if
 // the remainder contains more `delim` substrings.
-[direct_array_access]
+@[direct_array_access]
 pub fn (s string) split_nth(delim string, nth int) []string {
 	mut res := []string{}
 	mut i := 0
@@ -634,7 +634,7 @@ struct RepIndex {
 
 // replace_each replaces all occurrences of the string pairs given in `vals`.
 // Example: assert 'ABCD'.replace_each(['B','C/','C','D','D','C']) == 'AC/DC'
-[direct_array_access]
+@[direct_array_access]
 pub fn (s string) replace_each(vals []string) string {
 	if s.len == 0 || vals.len == 0 {
 		return s.clone()
@@ -730,7 +730,7 @@ pub fn (s string) replace_each(vals []string) string {
 }
 
 // last_index returns the position of the last occurrence of the input string.
-fn (s string) last_index_(p string) int {
+fn (s string) index_last_(p string) int {
 	if p.len > s.len || p.len == 0 {
 		return -1
 	}
@@ -748,13 +748,21 @@ fn (s string) last_index_(p string) int {
 	return -1
 }
 
-// last_index returns the position of the last occurrence of the input string.
-pub fn (s string) last_index(p string) ?int {
-	idx := s.last_index_(p)
+// index_last returns the position of the first character of the *last* occurance of the `needle` string in `s`.
+pub fn (s string) index_last(needle string) ?int {
+	idx := s.index_last_(needle)
 	if idx == -1 {
 		return none
 	}
 	return idx
+}
+
+// last_index returns the position of the first character of the *last* occurance of the `needle` string in `s`.
+@[deprecated: 'use `.index_last(needle string)` instead']
+@[deprecated_after: '2023-12-18']
+@[inline]
+pub fn (s string) last_index(needle string) ?int {
+	return s.index_last(needle)
 }
 
 pub fn (s string) trim_space() string {
@@ -865,7 +873,7 @@ pub fn (s string) is_title() bool {
 // is a capital letter, and the rest are NOT.
 // Example: assert 'Hello'.is_capital() == true
 // Example: assert 'HelloWorld'.is_capital() == false
-[direct_array_access]
+@[direct_array_access]
 pub fn (s string) is_capital() bool {
 	if s.len == 0 || !(s[0] >= `A` && s[0] <= `Z`) {
 		return false
@@ -882,7 +890,7 @@ pub fn (s string) is_capital() bool {
 // is a capital letter, even if the rest are not.
 // Example: assert 'Hello'.starts_with_capital() == true
 // Example: assert 'Hello. World.'.starts_with_capital() == true
-[direct_array_access]
+@[direct_array_access]
 pub fn (s string) starts_with_capital() bool {
 	if s.len == 0 || !(s[0] >= `A` && s[0] <= `Z`) {
 		return false
@@ -967,6 +975,27 @@ pub fn (s string) index(search string) ?int {
 		return none
 	}
 	return res
+}
+
+// index_u8_last returns the index of the *last* occurrence of the byte `c` (if found) in the string.
+// It returns -1, if `c` is not found.
+@[direct_array_access]
+pub fn (s string) index_u8_last(c u8) int {
+	for i := s.len - 1; i >= 0; i-- {
+		if s[i] == c {
+			return i
+		}
+	}
+	return -1
+}
+
+// last_index_u8 returns the index of the last occurrence of byte `c` if found in the string.
+// It returns -1, if the byte `c` is not found.
+@[deprecated: 'use `.index_u8_last(c u8)` instead']
+@[deprecated_after: '2023-12-18']
+@[inline]
+pub fn (s string) last_index_u8(c u8) int {
+	return s.index_u8_last(c)
 }
 
 pub fn (_rune string) utf32_code() int {

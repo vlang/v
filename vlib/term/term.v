@@ -3,10 +3,8 @@ module term
 import os
 import strings.textscanner
 
-const (
-	default_columns_size = 80
-	default_rows_size    = 25
-)
+const default_columns_size = 80
+const default_rows_size = 25
 
 // Coord - used by term.get_cursor_position and term.set_cursor_position
 pub struct Coord {
@@ -183,7 +181,7 @@ fn imax(x int, y int) int {
 	return if x > y { x } else { y }
 }
 
-[manualfree]
+@[manualfree]
 fn supports_escape_sequences(fd int) bool {
 	vcolors_override := os.getenv('VCOLORS')
 	defer {

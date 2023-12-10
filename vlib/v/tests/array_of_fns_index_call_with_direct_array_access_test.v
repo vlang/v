@@ -6,7 +6,7 @@ fn func(n int) int {
 	return n
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn (b Bar) foo() int {
 	return b.f[0](22)
 }

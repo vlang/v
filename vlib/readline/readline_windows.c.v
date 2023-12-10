@@ -36,6 +36,7 @@ pub fn (mut r Readline) read_line_utf8(prompt string) ![]rune {
 		r.previous_lines[0] = []rune{}
 	}
 	print(r.prompt)
+	flush_stdout()
 	r.current = os.get_raw_line().runes()
 	r.previous_lines[0] = []rune{}
 	r.search_index = 0

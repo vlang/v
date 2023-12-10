@@ -71,7 +71,7 @@ pub fn fd_read(fd int, maxbytes int) (string, int) {
 	}
 }
 
-[typedef]
+@[typedef]
 pub struct C.fd_set {}
 
 pub struct C.timeval {

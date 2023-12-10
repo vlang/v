@@ -2,7 +2,7 @@ module datatypes
 
 // Bloom filter is used to test whether a given element is part of a set.  Lookups will occasionally generate false positives, but never false  negatives.
 
-[heap]
+@[heap]
 struct BloomFilter[T] {
 	// TODO V bug
 	hash_func fn (T) u32 = unsafe { nil } // hash function, input [T] , output u32
@@ -20,17 +20,15 @@ fn empty_cb[T](x T) u32 {
 }
 */
 
-const (
-	// Salt values(random values).  These salts are XORed with the output of the hash function to give multiple unique hashes.
-	salts = [
-		// vfmt off
+// Salt values(random values).  These salts are XORed with the output of the hash function to give multiple unique hashes.
+const salts = [
+	// vfmt off
 		u32(0xefd8c55b),0xa1c57493,0x174c3763,0xc26e60d4,
 		0x9ec387fe,0xdcdc9e97,0xfc495ddc,0x6a1fa748,
 		0x8d82a03b,0x38dc692a,0x97d0f42d,0x048a2be3,
 		0x9b5d83aa,0x2380d32f,0x2437552f,0xcc622295,
-		// vfmt on
-	]
-)
+	// vfmt on
+]
 
 fn (b &BloomFilter[T]) free() {
 	unsafe {

@@ -84,7 +84,12 @@ fn test_all() {
 			}
 		}
 		//
-		base_filename := os.file_name(test).replace('.v', '')
+		mut base_filename := os.file_name(test)
+		if base_filename.ends_with('.c.v') {
+			base_filename = base_filename#[..-4]
+		} else if base_filename.ends_with('.v') {
+			base_filename = base_filename#[..-2]
+		}
 		exe_filename := '${wrkdir}/${base_filename}'
 		full_path_to_source_file := os.join_path(vroot, test)
 		compile_cmd := '${os.quoted_path(vexe)} -o ${os.quoted_path(exe_filename)} -cg -cflags ' +

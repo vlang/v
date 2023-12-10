@@ -1,25 +1,25 @@
 import db.sqlite
 
 struct Parent {
-	id       int     [primary; sql: serial]
-	children []Child [fkey: 'parent_id']
-	notes    []Note  [fkey: 'owner_id']
+	id       int     @[primary; sql: serial]
+	children []Child @[fkey: 'parent_id']
+	notes    []Note  @[fkey: 'owner_id']
 }
 
 struct Child {
 mut:
-	id        int [primary; sql: serial]
+	id        int @[primary; sql: serial]
 	parent_id int
 }
 
 struct Note {
 mut:
-	id       int [primary; sql: serial]
+	id       int @[primary; sql: serial]
 	owner_id int
 }
 
 struct Entity {
-	name        string [primary]
+	name        string @[primary]
 	description string
 }
 

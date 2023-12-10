@@ -3,15 +3,13 @@ module js
 import v.ast
 import strings
 
-const (
-	special_array_methods = [
-		'sort',
-		'insert',
-		'prepend',
-		'index',
-		'contains',
-	]
-)
+const special_array_methods = [
+	'sort',
+	'insert',
+	'prepend',
+	'index',
+	'contains',
+]
 
 fn (mut g JsGen) gen_array_index_method(left_type ast.Type) string {
 	unwrap_left_type := g.unwrap_generic(left_type)

@@ -3,8 +3,9 @@ module main
 import os { join_path }
 
 fn (mut c Create) set_web_project_files() {
+	base := if c.new_dir { c.name } else { '' }
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'databases', 'config_databases_sqlite.v')
+		path: join_path(base, 'src', 'databases', 'config_databases_sqlite.v')
 		content: "module databases
 
 import db.sqlite // can change to 'db.mysql', 'db.pg'
@@ -16,7 +17,7 @@ pub fn create_db_connection() !sqlite.DB {
 "
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'templates', 'header_component.html')
+		path: join_path(base, 'src', 'templates', 'header_component.html')
 		content: "<nav>
 	<div class='nav-wrapper'>
 		<a href='javascript:window.history.back();' class='left'>
@@ -35,7 +36,7 @@ pub fn create_db_connection() !sqlite.DB {
 "
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'templates', 'products.css')
+		path: join_path(base, 'src', 'templates', 'products.css')
 		content: 'h1.title {
 	font-family: Arial, Helvetica, sans-serif;
 	color: #3b7bbf;
@@ -49,7 +50,7 @@ div.products-table {
 }'
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'templates', 'products.html')
+		path: join_path(base, 'src', 'templates', 'products.html')
 		content: "<!DOCTYPE html>
 <html>
 <head>
@@ -146,12 +147,12 @@ div.products-table {
 </html>"
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'auth_controllers.v')
+		path: join_path(base, 'src', 'auth_controllers.v')
 		content: "module main
 
 import vweb
 
-['/controller/auth'; post]
+@['/controller/auth'; post]
 pub fn (mut app App) controller_auth(username string, password string) vweb.Result {
 	response := app.service_auth(username, password) or {
 		app.set_status(400, '')
@@ -163,17 +164,17 @@ pub fn (mut app App) controller_auth(username string, password string) vweb.Resu
 "
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'auth_dto.v')
+		path: join_path(base, 'src', 'auth_dto.v')
 		content: 'module main
 
 struct AuthRequestDto {
-	username string [nonull]
-	password string [nonull]
+	username string @[nonull]
+	password string @[nonull]
 }
 '
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'auth_services.v')
+		path: join_path(base, 'src', 'auth_services.v')
 		content: "module main
 
 import crypto.hmac
@@ -268,7 +269,7 @@ fn auth_verify(token string) bool {
 "
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'index.html')
+		path: join_path(base, 'src', 'index.html')
 		content: "<!DOCTYPE html>
 <html>
 <head>
@@ -347,7 +348,7 @@ fn auth_verify(token string) bool {
 "
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'main.v')
+		path: join_path(base, 'src', 'main.v')
 		content: "module main
 
 import vweb
@@ -392,14 +393,14 @@ pub fn (mut app App) index() vweb.Result {
 "
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'product_controller.v')
+		path: join_path(base, 'src', 'product_controller.v')
 		content: "module main
 
 import vweb
 import encoding.base64
 import json
 
-['/controller/products'; get]
+@['/controller/products'; get]
 pub fn (mut app App) controller_get_all_products() vweb.Result {
 	token := app.req.header.get_custom('token') or { '' }
 
@@ -425,7 +426,7 @@ pub fn (mut app App) controller_get_all_products() vweb.Result {
 	// return app.text('response')
 }
 
-['/controller/product/create'; post]
+@['/controller/product/create'; post]
 pub fn (mut app App) controller_create_product(product_name string) vweb.Result {
 	if product_name == '' {
 		app.set_status(400, '')
@@ -458,20 +459,20 @@ pub fn (mut app App) controller_create_product(product_name string) vweb.Result 
 "
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'product_entities.v')
+		path: join_path(base, 'src', 'product_entities.v')
 		content: "module main
 
-[table: 'products']
+@[table: 'products']
 struct Product {
-	id         int    [primary; sql: serial]
+	id         int    @[primary; sql: serial]
 	user_id    int
-	name       string [nonull; sql_type: 'TEXT']
-	created_at string [default: 'CURRENT_TIMESTAMP']
+	name       string @[nonull; sql_type: 'TEXT']
+	created_at string @[default: 'CURRENT_TIMESTAMP']
 }
 "
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'product_service.v')
+		path: join_path(base, 'src', 'product_service.v')
 		content: "module main
 
 import databases
@@ -518,7 +519,7 @@ fn (mut app App) service_get_all_products_from(user_id int) ![]Product {
 "
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'product_view_api.v')
+		path: join_path(base, 'src', 'product_view_api.v')
 		content: "module main
 
 import json
@@ -557,12 +558,12 @@ pub fn get_product(token string) ![]User {
 "
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'product_view.v')
+		path: join_path(base, 'src', 'product_view.v')
 		content: "module main
 
 import vweb
 
-['/products'; get]
+@['/products'; get]
 pub fn (mut app App) products() !vweb.Result {
 	token := app.get_cookie('token') or {
 		app.set_status(400, '')
@@ -579,14 +580,14 @@ pub fn (mut app App) products() !vweb.Result {
 "
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'user_controllers.v')
+		path: join_path(base, 'src', 'user_controllers.v')
 		content: "module main
 
 import vweb
 import encoding.base64
 import json
 
-['/controller/users'; get]
+@['/controller/users'; get]
 pub fn (mut app App) controller_get_all_user() vweb.Result {
 	// token := app.get_cookie('token') or { '' }
 	token := app.req.header.get_custom('token') or { '' }
@@ -603,7 +604,7 @@ pub fn (mut app App) controller_get_all_user() vweb.Result {
 	return app.json(response)
 }
 
-['/controller/user'; get]
+@['/controller/user'; get]
 pub fn (mut app App) controller_get_user() vweb.Result {
 	// token := app.get_cookie('token') or { '' }
 	token := app.req.header.get_custom('token') or { '' }
@@ -629,7 +630,7 @@ pub fn (mut app App) controller_get_user() vweb.Result {
 	return app.json(response)
 }
 
-['/controller/user/create'; post]
+@['/controller/user/create'; post]
 pub fn (mut app App) controller_create_user(username string, password string) vweb.Result {
 	if username == '' {
 		app.set_status(400, '')
@@ -649,22 +650,22 @@ pub fn (mut app App) controller_create_user(username string, password string) vw
 "
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'user_entities.v')
+		path: join_path(base, 'src', 'user_entities.v')
 		content: "module main
 
-[table: 'users']
+@[table: 'users']
 pub struct User {
 mut:
-	id       int       [primary; sql: serial]
-	username string    [nonull; sql_type: 'TEXT'; unique]
-	password string    [nonull; sql_type: 'TEXT']
+	id       int       @[primary; sql: serial]
+	username string    @[nonull; sql_type: 'TEXT'; unique]
+	password string    @[nonull; sql_type: 'TEXT']
 	active   bool
-	products []Product [fkey: 'user_id']
+	products []Product @[fkey: 'user_id']
 }
 "
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'user_services.v')
+		path: join_path(base, 'src', 'user_services.v')
 		content: "module main
 
 import crypto.bcrypt
@@ -733,7 +734,7 @@ fn (mut app App) service_get_user(id int) !User {
 "
 	}
 	c.files << ProjectFiles{
-		path: join_path(c.name, 'src', 'user_view_api.v')
+		path: join_path(base, 'src', 'user_view_api.v')
 		content: "module main
 
 import json

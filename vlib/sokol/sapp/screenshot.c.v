@@ -1,6 +1,6 @@
 module sapp
 
-[heap]
+@[heap]
 pub struct Screenshot {
 	width  int
 	height int
@@ -9,7 +9,7 @@ mut:
 	pixels &u8 = unsafe { nil }
 }
 
-[manualfree]
+@[manualfree]
 pub fn screenshot_window() &Screenshot {
 	img_width := width()
 	img_height := height()
@@ -25,7 +25,7 @@ pub fn screenshot_window() &Screenshot {
 }
 
 // free - free *only* the Screenshot pixels.
-[unsafe]
+@[unsafe]
 pub fn (mut ss Screenshot) free() {
 	unsafe {
 		free(ss.pixels)
@@ -35,7 +35,7 @@ pub fn (mut ss Screenshot) free() {
 
 // destroy - free the Screenshot pixels,
 // then free the screenshot data structure itself.
-[unsafe]
+@[unsafe]
 pub fn (mut ss Screenshot) destroy() {
 	unsafe { ss.free() }
 	unsafe { free(ss) }

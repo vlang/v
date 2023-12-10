@@ -1,4 +1,4 @@
-[heap]
+@[heap]
 struct Foo {
 mut:
 	value int

@@ -1,4 +1,4 @@
-[autostr: allowrecurse]
+@[autostr: allowrecurse]
 struct Node {
 	a &Node = unsafe { nil }
 	b &Node = unsafe { nil }

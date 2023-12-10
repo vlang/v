@@ -1,4 +1,4 @@
-[params]
+@[params]
 struct Data {
 	array []int
 }

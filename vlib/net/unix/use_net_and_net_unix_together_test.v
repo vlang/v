@@ -2,11 +2,10 @@ import os
 import net.unix
 import net
 
-const (
-	use_net   = net.no_timeout // ensure that `net` is used, i.e. no warnings
-	tfolder   = os.join_path(os.vtmp_dir(), 'net_and_unix_together')
-	test_port = os.join_path(tfolder, 'unix_domain_socket')
-)
+const use_net = net.no_timeout // ensure that `net` is used, i.e. no warnings
+
+const tfolder = os.join_path(os.vtmp_dir(), 'net_and_unix_together')
+const test_port = os.join_path(tfolder, 'unix_domain_socket')
 
 fn testsuite_begin() {
 	os.mkdir_all(tfolder) or {}

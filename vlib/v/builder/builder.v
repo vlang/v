@@ -380,7 +380,7 @@ pub fn (b Builder) info(s string) {
 	}
 }
 
-[inline]
+@[inline]
 pub fn module_path(mod string) string {
 	// submodule support
 	return mod.replace('.', os.path_separator)
@@ -647,7 +647,7 @@ pub fn (b &Builder) error_with_pos(s string, fpath string, pos token.Pos) errors
 	}
 }
 
-[noreturn]
+@[noreturn]
 pub fn verror(s string) {
 	util.verror('builder error', s)
 }

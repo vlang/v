@@ -6,7 +6,7 @@ fn C.epoll_create(int) int
 fn C.epoll_wait(int, voidptr, int, int) int
 fn C.epoll_ctl(int, int, int, voidptr) int
 
-[typedef]
+@[typedef]
 pub union C.epoll_data_t {
 mut:
 	ptr voidptr
@@ -15,14 +15,14 @@ mut:
 	u64 u64
 }
 
-[packed]
+@[packed]
 pub struct C.epoll_event {
 mut:
 	events u32
 	data   C.epoll_data_t
 }
 
-[heap]
+@[heap]
 pub struct EpollLoop {
 mut:
 	id       int
@@ -48,7 +48,7 @@ pub fn create_epoll_loop(id int) !&EpollLoop {
 	return loop
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn (mut pv Picoev) update_events(fd int, events int) int {
 	// check if fd is in range
 	assert fd < max_fds
@@ -100,7 +100,7 @@ fn (mut pv Picoev) update_events(fd int, events int) int {
 	return 0
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn (mut pv Picoev) poll_once(max_wait int) int {
 	nevents := C.epoll_wait(pv.loop.epoll_fd, &pv.loop.events, max_fds, max_wait * 1000)
 

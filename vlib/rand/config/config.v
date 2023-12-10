@@ -10,7 +10,7 @@ import rand.seed
 // generator WyRand used 64 bits, ie. 2 u32s so that is the default. In case your desired generator
 // uses a different number of u32s, use the `seed.time_seed_array()` method with the correct
 // number of u32s.
-[params]
+@[params]
 pub struct PRNGConfigStruct {
 pub:
 	seed_ []u32 = seed.time_seed_array(2)
@@ -18,7 +18,7 @@ pub:
 
 // Configuration struct for generating normally distributed floats. The default value for
 // `mu` is 0 and the default value for `sigma` is 1.
-[params]
+@[params]
 pub struct NormalConfigStruct {
 pub:
 	mu    f64 = 0.0
@@ -28,7 +28,7 @@ pub:
 // Configuration struct for the shuffle functions.
 // The start index is inclusive and the end index is exclusive.
 // Set the end to 0 to shuffle until the end of the array.
-[params]
+@[params]
 pub struct ShuffleConfigStruct {
 pub:
 	start int

@@ -1,6 +1,6 @@
 // websocket module implements websocket client and a websocket server
 // attribution: @thecoderr the author of original websocket client
-[manualfree]
+@[manualfree]
 module websocket
 
 import net
@@ -12,9 +12,7 @@ import time
 import log
 import rand
 
-const (
-	empty_bytearr = []u8{} // used as empty response to avoid allocation
-)
+const empty_bytearr = []u8{}
 
 pub struct ClientState {
 pub mut:
@@ -84,7 +82,7 @@ pub enum OPCode {
 	pong         = 0x0A
 }
 
-[params]
+@[params]
 pub struct ClientOpt {
 	read_timeout  i64 = 30 * time.second
 	write_timeout i64 = 30 * time.second
@@ -97,7 +95,7 @@ pub struct ClientOpt {
 pub fn new_client(address string, opt ClientOpt) !&Client {
 	uri := parse_uri(address)!
 	return &Client{
-		conn: 0
+		conn: unsafe { nil }
 		is_server: false
 		ssl_conn: ssl.new_ssl_conn()!
 		is_ssl: address.starts_with('wss')

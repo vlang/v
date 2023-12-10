@@ -1,5 +1,5 @@
 struct Foo {
-	age  int    [str: skip]
+	age  int    @[str: skip]
 	name string
 }
 

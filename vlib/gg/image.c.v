@@ -9,7 +9,7 @@ import sokol.sgl
 
 // Image holds the fields and data needed to
 // represent a bitmap/pixel based image in memory.
-[heap]
+@[heap]
 pub struct Image {
 pub mut:
 	id          int
@@ -283,45 +283,47 @@ pub struct StreamingImageConfig {
 // provided image should be drawn onto the screen
 pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 	$if macos {
-		unsafe {
-			mut img := config.img
-			if config.img == nil {
-				// Get image by id
-				if config.img_id > 0 {
-					img = &ctx.image_cache[config.img_id]
-				} else {
-					eprintln('gg: failed to get image to draw natively')
+		if ctx.native_rendering {
+			unsafe {
+				mut img := config.img
+				if config.img == nil {
+					// Get image by id
+					if config.img_id > 0 {
+						img = &ctx.image_cache[config.img_id]
+					} else {
+						eprintln('gg: failed to get image to draw natively')
+						return
+					}
+				}
+				if img.id >= ctx.image_cache.len {
+					eprintln('gg: draw_image() bad img id ${img.id} (img cache len = ${ctx.image_cache.len})')
 					return
 				}
-			}
-			if img.id >= ctx.image_cache.len {
-				eprintln('gg: draw_image() bad img id ${img.id} (img cache len = ${ctx.image_cache.len})')
-				return
-			}
-			if ctx.native_rendering {
-				if img.width == 0 {
-					println('w=0')
+				if ctx.native_rendering {
+					if img.width == 0 {
+						println('w=0')
+						return
+					}
+					if !os.exists(img.path) {
+						println('not exist path')
+						return
+					}
+					x := config.img_rect.x
+					y := config.img_rect.y
+					width := if config.img_rect.width == 0 {
+						f32(img.width)
+					} else {
+						config.img_rect.width
+					}
+					height := if config.img_rect.height == 0 {
+						f32(img.height)
+					} else {
+						config.img_rect.height
+					}
+					C.darwin_draw_image(x, ctx.height - (y + config.img_rect.height),
+						width, height, img)
 					return
 				}
-				if !os.exists(img.path) {
-					println('not exist path')
-					return
-				}
-				x := config.img_rect.x
-				y := config.img_rect.y
-				width := if config.img_rect.width == 0 {
-					f32(img.width)
-				} else {
-					config.img_rect.width
-				}
-				height := if config.img_rect.height == 0 {
-					f32(img.height)
-				} else {
-					config.img_rect.height
-				}
-				C.darwin_draw_image(x, ctx.height - (y + config.img_rect.height), width,
-					height, img)
-				return
 			}
 		}
 	}

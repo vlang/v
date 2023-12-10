@@ -150,13 +150,13 @@ mut:
 pub type Node = C.cJSON
 
 // create an object node
-[inline]
+@[inline]
 fn new_object() &Node {
 	return C.cJSON_CreateObject()
 }
 
 // add item to object node
-[inline]
+@[inline]
 fn (node &Node) add(key string, child &Node) {
 	if context.hide_names.len > 0 && key in context.hide_names {
 		return
@@ -168,7 +168,7 @@ fn (node &Node) add(key string, child &Node) {
 }
 
 // add item to object node
-[inline]
+@[inline]
 fn (node &Node) add_terse(key string, child &Node) {
 	if context.hide_names.len > 0 && key in context.hide_names {
 		return
@@ -177,13 +177,13 @@ fn (node &Node) add_terse(key string, child &Node) {
 }
 
 // create an array node
-[inline]
+@[inline]
 fn new_array() &Node {
 	return C.cJSON_CreateArray()
 }
 
 // add item to array node
-[inline]
+@[inline]
 fn (node &Node) add_item(child &Node) {
 	add_item_to_array(node, child)
 }
@@ -496,6 +496,20 @@ fn (t Tree) const_decl(node ast.ConstDecl) &Node {
 	return obj
 }
 
+fn (t Tree) lambda_expr(node ast.LambdaExpr) &Node {
+	mut obj := new_object()
+	obj.add_terse('ast_type', t.string_node('LambdaExpr'))
+	obj.add_terse('params', t.array_node_ident(node.params))
+	obj.add_terse('pos_expr', t.pos(node.pos_expr))
+	obj.add_terse('expr', t.expr(node.expr))
+	obj.add_terse('pos_end', t.pos(node.pos_end))
+	obj.add('scope', t.number_node(int(node.scope)))
+	obj.add('func', t.number_node(int(node.func)))
+	obj.add_terse('is_checked', t.bool_node(node.is_checked))
+	obj.add_terse('typ', t.type_node(node.typ))
+	return obj
+}
+
 fn (t Tree) const_field(node ast.ConstField) &Node {
 	mut obj := new_object()
 	obj.add_terse('ast_type', t.string_node('ConstField'))
@@ -707,12 +721,14 @@ fn (t Tree) attr(node ast.Attr) &Node {
 	obj.add_terse('ast_type', t.string_node('Attr'))
 	obj.add_terse('name', t.string_node(node.name))
 	obj.add_terse('has_arg', t.bool_node(node.has_arg))
+	obj.add_terse('arg', t.string_node(node.arg))
 	obj.add_terse('kind', t.enum_node(node.kind))
-	obj.add_terse('ct_expr', t.expr(node.ct_expr))
 	obj.add_terse('ct_opt', t.bool_node(node.ct_opt))
+	obj.add_terse('has_at', t.bool_node(node.has_at))
+	obj.add_terse('ct_expr', t.expr(node.ct_expr))
 	obj.add_terse('ct_evaled', t.bool_node(node.ct_evaled))
 	obj.add_terse('ct_skip', t.bool_node(node.ct_skip))
-	obj.add_terse('arg', t.string_node(node.arg))
+	obj.add('pos', t.pos(node.pos))
 	return obj
 }
 
@@ -1176,6 +1192,9 @@ fn (t Tree) expr(expr ast.Expr) &Node {
 		}
 		ast.DumpExpr {
 			return t.dump_expr(expr)
+		}
+		ast.LambdaExpr {
+			return t.lambda_expr(expr)
 		}
 		ast.NodeError {
 			return t.node_error(expr)

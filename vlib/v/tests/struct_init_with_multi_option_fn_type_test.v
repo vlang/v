@@ -8,7 +8,7 @@ mut:
 
 // CycleMenuItemEvents is a set of events that can be invoked by a
 // `CycleMenuItem`.
-[params]
+@[params]
 pub struct CycleMenuItemEvents {
 __global:
 	click ?fn (string) bool
@@ -17,7 +17,7 @@ __global:
 
 // CycleMenuItem.new creates a new `CycleMenuItem` with the given label, values,
 // and function to invoke when the item is selected.
-[inline]
+@[inline]
 pub fn CycleMenuItem.new(label string, values []string, events CycleMenuItemEvents) CycleMenuItem {
 	return CycleMenuItem{
 		label: label

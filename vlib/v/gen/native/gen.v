@@ -16,7 +16,7 @@ import v.eval
 import term
 import strconv
 
-[heap; minify]
+@[heap; minify]
 pub struct Gen {
 	out_name string
 	pref     &pref.Preferences = unsafe { nil } // Preferences shared from V struct
@@ -229,7 +229,7 @@ struct LocalVar {
 
 struct GlobalVar {}
 
-[params]
+@[params]
 struct VarConfig {
 	offset i32      // offset from the variable
 	typ    ast.Type // type of the value you want to process e.g. struct fields.
@@ -255,7 +255,7 @@ union F64I64 {
 	i i64
 }
 
-[inline]
+@[inline]
 fn byt(n i32, s i32) u8 {
 	return u8((n >> (s * 8)) & 0xff)
 }
@@ -1109,7 +1109,7 @@ fn (mut g Gen) println(comment string) {
 	println(final)
 }
 
-[noreturn]
+@[noreturn]
 pub fn (mut g Gen) n_error(s string) {
 	util.verror('native error', s)
 }

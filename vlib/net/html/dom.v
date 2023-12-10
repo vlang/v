@@ -21,19 +21,19 @@ mut:
 	debug_file     os.File
 }
 
-[params]
+@[params]
 pub struct GetTagsOptions {
 	name string
 }
 
-[if debug_html ?]
+@[if debug_html ?]
 fn (mut dom DocumentObjectModel) print_debug(data string) {
 	if data.len > 0 {
 		dom.debug_file.writeln(data) or { eprintln(err) }
 	}
 }
 
-[inline]
+@[inline]
 fn is_close_tag(tag &Tag) bool {
 	return tag.name.len > 0 && tag.name[0] == `/`
 }
@@ -174,7 +174,7 @@ pub fn (dom DocumentObjectModel) get_root() &Tag {
 }
 
 // get_tag retrieves all tags in the document that have the given tag name.
-[deprecated: 'use get_tags instead']
+@[deprecated: 'use get_tags instead']
 pub fn (dom DocumentObjectModel) get_tag(name string) []&Tag {
 	return if name in dom.tag_type { dom.tag_type[name] } else { []&Tag{} }
 }
@@ -193,7 +193,7 @@ pub fn (dom DocumentObjectModel) get_tags_by_class_name(names ...string) []&Tag 
 }
 
 // get_tag_by_attribute retrieves all tags in the document that have the given attribute name.
-[deprecated: 'use get_tags_by_attribute instead']
+@[deprecated: 'use get_tags_by_attribute instead']
 pub fn (dom DocumentObjectModel) get_tag_by_attribute(name string) []&Tag {
 	return if name in dom.all_attributes { dom.all_attributes[name] } else { []&Tag{} }
 }
@@ -214,7 +214,7 @@ pub fn (mut dom DocumentObjectModel) get_tags_by_attribute_value(name string, va
 }
 
 // get_tag_by_attribute_value retrieves all tags in the document that have the given attribute name and value.
-[deprecated: 'use get_tags_by_attribute_value instead']
+@[deprecated: 'use get_tags_by_attribute_value instead']
 pub fn (mut dom DocumentObjectModel) get_tag_by_attribute_value(name string, value string) []&Tag {
 	location := dom.where_is(value, name)
 	return if dom.tag_attributes[name].len > location {

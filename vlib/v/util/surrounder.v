@@ -29,7 +29,7 @@ import strings
 // string_free(&tmp1);
 // ```
 
-[noinit]
+@[noinit]
 pub struct Surrounder {
 mut:
 	befores []string
@@ -56,7 +56,7 @@ pub fn (mut s Surrounder) add(before string, after string) {
 }
 
 // before returns all the `before` parts that were accumulated so far
-[manualfree]
+@[manualfree]
 pub fn (s &Surrounder) before() string {
 	len := s.befores.len
 	if len > 0 {
@@ -78,7 +78,7 @@ pub fn (s &Surrounder) before() string {
 
 // after returns all the `after` parts that were accumulated so far,
 // in reverse order of their addition.
-[manualfree]
+@[manualfree]
 pub fn (s &Surrounder) after() string {
 	len := s.afters.len
 	if len > 0 {
@@ -129,7 +129,7 @@ pub fn (s &Surrounder) builder_write_afters(mut sb strings.Builder) {
 
 // free frees the private resources associated with the surrounder instance
 // Called automatically by `-autofree`, or in `[manualfree]` tagged functions.
-[unsafe]
+@[unsafe]
 pub fn (mut s Surrounder) free() {
 	unsafe {
 		s.befores.free()

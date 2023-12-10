@@ -3,13 +3,13 @@
 // It also tests, that the exported functions will be exported as weak symbols,
 // if the user tagged them as such.
 
-[export: abcd]
+@[export: abcd]
 fn my_fn() int {
 	return 42
 }
 
-[export: wxyz]
-[weak]
+@[export: wxyz]
+@[weak]
 fn my_other_fn() int {
 	return 11
 }

@@ -1,21 +1,19 @@
 import os
 import v.vmod
 
-const (
-	vroot      = os.quoted_path(@VEXEROOT)
-	vexe       = os.quoted_path(@VEXE)
-	// Expect has to be installed for the test.
-	expect_exe = os.quoted_path(os.find_abs_path_of_executable('expect') or {
-		eprintln('skipping test, since expect is missing')
-		exit(0)
-	})
-	// Directory that contains the Expect scripts used in the test.
-	expect_tests_path     = os.join_path(@VEXEROOT, 'cmd', 'tools', 'vcreate', 'tests')
-	test_project_dir_name = 'test_project'
-	// Running tests appends a tsession path to VTMP, which is automatically cleaned up after the test.
-	// The following will result in e.g. `$VTMP/tsession_7fe8e93bd740_1612958707536/test_project/`.
-	test_path             = os.join_path(os.vtmp_dir(), test_project_dir_name)
-)
+const vroot = os.quoted_path(@VEXEROOT)
+const vexe = os.quoted_path(@VEXE)
+// Expect has to be installed for the test.
+const expect_exe = os.quoted_path(os.find_abs_path_of_executable('expect') or {
+	eprintln('skipping test, since expect is missing')
+	exit(0)
+})
+// Directory that contains the Expect scripts used in the test.
+const expect_tests_path = os.join_path(@VEXEROOT, 'cmd', 'tools', 'vcreate', 'tests')
+const test_project_dir_name = 'test_project'
+// Running tests appends a tsession path to VTMP, which is automatically cleaned up after the test.
+// The following will result in e.g. `$VTMP/tsession_7fe8e93bd740_1612958707536/test_project/`.
+const test_path = os.join_path(os.vtmp_dir(), test_project_dir_name)
 
 fn testsuite_end() {
 	os.rmdir_all(test_path) or {}
@@ -24,11 +22,11 @@ fn testsuite_end() {
 fn init_and_check() ! {
 	os.chdir(test_path)!
 
-	// Keep track of the last modified time of the main file to ensure it is not modifed if it already exists.
+	// Keep track of the last modified time of the main file to ensure it is not modified if it already exists.
 	main_exists := os.exists('src/main.v')
 	main_last_modified := if main_exists { os.file_last_mod_unix('src/main.v') } else { 0 }
 
-	// Initilize project.
+	// Initialize project.
 	os.execute_or_exit('${expect_exe} ${os.join_path(expect_tests_path, 'init.expect')} ${vroot}')
 
 	x := os.execute_or_exit('${vexe} run .')
@@ -147,13 +145,13 @@ indent_style = tab
 	prepare_test_path()!
 	os.write_file('.gitattributes', git_attributes_content)!
 	os.write_file('.editorconfig', editor_config_content)!
-	os.execute_or_exit('${expect_exe} ${os.join_path(expect_tests_path, 'init.expect')} ${vroot}')
-
+	res := os.execute_or_exit('${expect_exe} ${os.join_path(expect_tests_path, 'init.expect')} ${vroot}')
+	assert res.output.contains('Created binary (application) project `${test_project_dir_name}`')
 	assert os.read_file('.gitattributes')! == git_attributes_content
 	assert os.read_file('.editorconfig')! == editor_config_content
 }
 
-fn test_v_init_in_dir_with_invalid_mod_name() {
+fn test_v_init_in_dir_with_invalid_mod_name_input() {
 	// A project with a directory name with hyphens, which is invalid for a module name.
 	dir_name_with_invalid_mod_name := 'my-proj'
 	corrected_mod_name := 'my_proj'
@@ -167,4 +165,22 @@ fn test_v_init_in_dir_with_invalid_mod_name() {
 		return
 	}
 	assert mod.name == corrected_mod_name
+}
+
+fn test_v_init_with_model_arg_input() {
+	prepare_test_path()!
+	model := '--lib'
+	res := os.execute_or_exit('${expect_exe} ${os.join_path(expect_tests_path, 'init_with_model_arg.expect')} ${vroot} ${model}')
+	assert res.output.contains('Created library project `${test_project_dir_name}`'), res.output
+	project_path := os.join_path(test_path)
+	mod := vmod.from_file(os.join_path(project_path, 'v.mod')) or {
+		assert false, err.str()
+		return
+	}
+	assert mod.name == test_project_dir_name
+	assert mod.description == 'My Awesome V Application.'
+	assert mod.version == '0.0.1'
+	assert mod.license == 'MIT'
+	// Assert existence of a model-specific file.
+	assert os.exists(os.join_path(project_path, 'tests', 'square_test.v'))
 }

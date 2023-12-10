@@ -3,31 +3,29 @@
 // that can be found in the LICENSE file.
 module bits
 
-const (
-	// See http://supertech.csail.mit.edu/papers/debruijn.pdf
-	de_bruijn32    = u32(0x077CB531)
-	de_bruijn32tab = [u8(0), 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8, 31, 27, 13,
-		23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9]!
-	de_bruijn64    = u64(0x03f79d71b4ca8b09)
-	de_bruijn64tab = [u8(0), 1, 56, 2, 57, 49, 28, 3, 61, 58, 42, 50, 38, 29, 17, 4, 62, 47, 59,
-		36, 45, 43, 51, 22, 53, 39, 33, 30, 24, 18, 12, 5, 63, 55, 48, 27, 60, 41, 37, 16, 46,
-		35, 44, 21, 52, 32, 23, 11, 54, 26, 40, 15, 34, 20, 31, 10, 25, 14, 19, 9, 13, 8, 7, 6]!
-)
+// See http://supertech.csail.mit.edu/papers/debruijn.pdf
+const de_bruijn32 = u32(0x077CB531)
+const de_bruijn32tab = [u8(0), 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8, 31, 27, 13,
+	23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9]!
+const de_bruijn64 = u64(0x03f79d71b4ca8b09)
+const de_bruijn64tab = [u8(0), 1, 56, 2, 57, 49, 28, 3, 61, 58, 42, 50, 38, 29, 17, 4, 62, 47,
+	59, 36, 45, 43, 51, 22, 53, 39, 33, 30, 24, 18, 12, 5, 63, 55, 48, 27, 60, 41, 37, 16, 46,
+	35, 44, 21, 52, 32, 23, 11, 54, 26, 40, 15, 34, 20, 31, 10, 25, 14, 19, 9, 13, 8, 7, 6]!
 
-const (
-	m0 = u64(0x5555555555555555) // 01010101 ...
-	m1 = u64(0x3333333333333333) // 00110011 ...
-	m2 = u64(0x0f0f0f0f0f0f0f0f) // 00001111 ...
-	m3 = u64(0x00ff00ff00ff00ff) // etc.
-	m4 = u64(0x0000ffff0000ffff)
-)
+const m0 = u64(0x5555555555555555) // 01010101 ...
+
+const m1 = u64(0x3333333333333333) // 00110011 ...
+
+const m2 = u64(0x0f0f0f0f0f0f0f0f) // 00001111 ...
+
+const m3 = u64(0x00ff00ff00ff00ff) // etc.
+
+const m4 = u64(0x0000ffff0000ffff)
 
 // TODO: this consts should be taken from int.v
-const (
-	// save importing math mod just for these
-	max_u32 = u32(4294967295)
-	max_u64 = u64(18446744073709551615)
-)
+// save importing math mod just for these
+const max_u32 = u32(4294967295)
+const max_u64 = u64(18446744073709551615)
 
 // --- LeadingZeros ---
 // leading_zeros_8 returns the number of leading zero bits in x; the result is 8 for x == 0.
@@ -140,19 +138,17 @@ pub fn ones_count_64(x u64) int {
 	return int(y) & ((1 << 7) - 1)
 }
 
-const (
-	n8  = u8(8)
-	n16 = u16(16)
-	n32 = u32(32)
-	n64 = u64(64)
-)
+const n8 = u8(8)
+const n16 = u16(16)
+const n32 = u32(32)
+const n64 = u64(64)
 
 // --- RotateLeft ---
 // rotate_left_8 returns the value of x rotated left by (k mod 8) bits.
 // To rotate x right by k bits, call rotate_left_8(x, -k).
 //
 // This function's execution time does not depend on the inputs.
-[inline]
+@[inline]
 pub fn rotate_left_8(x u8, k int) u8 {
 	s := u8(k) & (bits.n8 - u8(1))
 	return (x << s) | (x >> (bits.n8 - s))
@@ -162,7 +158,7 @@ pub fn rotate_left_8(x u8, k int) u8 {
 // To rotate x right by k bits, call rotate_left_16(x, -k).
 //
 // This function's execution time does not depend on the inputs.
-[inline]
+@[inline]
 pub fn rotate_left_16(x u16, k int) u16 {
 	s := u16(k) & (bits.n16 - u16(1))
 	return (x << s) | (x >> (bits.n16 - s))
@@ -172,7 +168,7 @@ pub fn rotate_left_16(x u16, k int) u16 {
 // To rotate x right by k bits, call rotate_left_32(x, -k).
 //
 // This function's execution time does not depend on the inputs.
-[inline]
+@[inline]
 pub fn rotate_left_32(x u32, k int) u32 {
 	s := u32(k) & (bits.n32 - u32(1))
 	return (x << s) | (x >> (bits.n32 - s))
@@ -182,7 +178,7 @@ pub fn rotate_left_32(x u32, k int) u32 {
 // To rotate x right by k bits, call rotate_left_64(x, -k).
 //
 // This function's execution time does not depend on the inputs.
-[inline]
+@[inline]
 pub fn rotate_left_64(x u64, k int) u64 {
 	s := u64(k) & (bits.n64 - u64(1))
 	return (x << s) | (x >> (bits.n64 - s))
@@ -190,19 +186,19 @@ pub fn rotate_left_64(x u64, k int) u64 {
 
 // --- Reverse ---
 // reverse_8 returns the value of x with its bits in reversed order.
-[inline]
+@[inline]
 pub fn reverse_8(x u8) u8 {
 	return rev_8_tab[x]
 }
 
 // reverse_16 returns the value of x with its bits in reversed order.
-[inline]
+@[inline]
 pub fn reverse_16(x u16) u16 {
 	return u16(rev_8_tab[x >> 8]) | (u16(rev_8_tab[x & u16(0xff)]) << 8)
 }
 
 // reverse_32 returns the value of x with its bits in reversed order.
-[inline]
+@[inline]
 pub fn reverse_32(x u32) u32 {
 	mut y := ((x >> u32(1) & (bits.m0 & bits.max_u32)) | ((x & (bits.m0 & bits.max_u32)) << 1))
 	y = ((y >> u32(2) & (bits.m1 & bits.max_u32)) | ((y & (bits.m1 & bits.max_u32)) << u32(2)))
@@ -211,7 +207,7 @@ pub fn reverse_32(x u32) u32 {
 }
 
 // reverse_64 returns the value of x with its bits in reversed order.
-[inline]
+@[inline]
 pub fn reverse_64(x u64) u64 {
 	mut y := ((x >> u64(1) & (bits.m0 & bits.max_u64)) | ((x & (bits.m0 & bits.max_u64)) << 1))
 	y = ((y >> u64(2) & (bits.m1 & bits.max_u64)) | ((y & (bits.m1 & bits.max_u64)) << 2))
@@ -223,7 +219,7 @@ pub fn reverse_64(x u64) u64 {
 // reverse_bytes_16 returns the value of x with its bytes in reversed order.
 //
 // This function's execution time does not depend on the inputs.
-[inline]
+@[inline]
 pub fn reverse_bytes_16(x u16) u16 {
 	return (x >> 8) | (x << 8)
 }
@@ -231,7 +227,7 @@ pub fn reverse_bytes_16(x u16) u16 {
 // reverse_bytes_32 returns the value of x with its bytes in reversed order.
 //
 // This function's execution time does not depend on the inputs.
-[inline]
+@[inline]
 pub fn reverse_bytes_32(x u32) u32 {
 	y := ((x >> u32(8) & (bits.m3 & bits.max_u32)) | ((x & (bits.m3 & bits.max_u32)) << u32(8)))
 	return u32((y >> 16) | (y << 16))
@@ -240,7 +236,7 @@ pub fn reverse_bytes_32(x u32) u32 {
 // reverse_bytes_64 returns the value of x with its bytes in reversed order.
 //
 // This function's execution time does not depend on the inputs.
-[inline]
+@[inline]
 pub fn reverse_bytes_64(x u64) u64 {
 	mut y := ((x >> u64(8) & (bits.m3 & bits.max_u64)) | ((x & (bits.m3 & bits.max_u64)) << u64(8)))
 	y = ((y >> u64(16) & (bits.m4 & bits.max_u64)) | ((y & (bits.m4 & bits.max_u64)) << u64(16)))
@@ -362,12 +358,10 @@ pub fn sub_64(x u64, y u64, borrow u64) (u64, u64) {
 }
 
 // --- Full-width multiply ---
-const (
-	two32          = u64(0x100000000)
-	mask32         = two32 - 1
-	overflow_error = 'Overflow Error'
-	divide_error   = 'Divide Error'
-)
+const two32 = u64(0x100000000)
+const mask32 = two32 - 1
+const overflow_error = 'Overflow Error'
+const divide_error = 'Divide Error'
 
 // mul_32 returns the 64-bit product of x and y: (hi, lo) = x * y
 // with the product bits' upper half returned in hi and the lower

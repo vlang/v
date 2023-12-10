@@ -79,17 +79,17 @@ pub mut:
 	d_vp  voidptr
 }
 
-[inline]
+@[inline]
 fn fabs32(x f32) f32 {
 	return if x < 0 { -x } else { x }
 }
 
-[inline]
+@[inline]
 fn fabs64(x f64) f64 {
 	return if x < 0 { -x } else { x }
 }
 
-[inline]
+@[inline]
 fn abs64(x i64) u64 {
 	return if x < 0 { u64(-x) } else { u64(x) }
 }
@@ -148,7 +148,7 @@ pub fn get_str_intp_u32_format(fmt_type StrIntpType, in_width int, in_precision 
 }
 
 // convert from struct to formatted string
-[manualfree]
+@[manualfree]
 fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 	x := data.fmt
 	typ := unsafe { StrIntpType(x & 0x1F) }
@@ -655,7 +655,7 @@ pub:
 }
 
 // interpolation function
-[direct_array_access; manualfree]
+@[direct_array_access; manualfree]
 pub fn str_intp(data_len int, input_base &StrIntpData) string {
 	mut res := strings.new_builder(256)
 	for i := 0; i < data_len; i++ {
@@ -678,34 +678,32 @@ pub fn str_intp(data_len int, input_base &StrIntpData) string {
 // They are used to substitute old _STR calls.
 // FIXME: this const is not released from memory => use a precalculated string const for now.
 // si_s_code = "0x" + int(StrIntpType.si_s).hex() // code for a simple string.
-pub const (
-	si_s_code   = '0xfe10'
-	si_g32_code = '0xfe0e'
-	si_g64_code = '0xfe0f'
-)
+pub const si_s_code = '0xfe10'
+pub const si_g32_code = '0xfe0e'
+pub const si_g64_code = '0xfe0f'
 
-[inline]
+@[inline]
 pub fn str_intp_sq(in_str string) string {
 	return 'str_intp(2, _MOV((StrIntpData[]){{_SLIT("\'"), ${si_s_code}, {.d_s = ${in_str}}},{_SLIT("\'"), 0, {.d_c = 0 }}}))'
 }
 
-[inline]
+@[inline]
 pub fn str_intp_rune(in_str string) string {
 	return 'str_intp(2, _MOV((StrIntpData[]){{_SLIT("\`"), ${si_s_code}, {.d_s = ${in_str}}},{_SLIT("\`"), 0, {.d_c = 0 }}}))'
 }
 
-[inline]
+@[inline]
 pub fn str_intp_g32(in_str string) string {
 	return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${si_g32_code}, {.d_f32 = ${in_str} }}}))'
 }
 
-[inline]
+@[inline]
 pub fn str_intp_g64(in_str string) string {
 	return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${si_g64_code}, {.d_f64 = ${in_str} }}}))'
 }
 
 // replace %% with the in_str
-[manualfree]
+@[manualfree]
 pub fn str_intp_sub(base_str string, in_str string) string {
 	index := base_str.index('%%') or {
 		eprintln('No string interpolation %% parameters')

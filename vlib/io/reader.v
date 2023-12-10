@@ -29,10 +29,8 @@ mut:
 	read(mut buf []u8) !int
 }
 
-const (
-	read_all_len      = 10 * 1024
-	read_all_grow_len = 1024
-)
+const read_all_len = 10 * 1024
+const read_all_grow_len = 1024
 
 // ReadAllConfig allows options to be passed for the behaviour
 // of read_all.

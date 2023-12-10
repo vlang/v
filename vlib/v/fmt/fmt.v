@@ -8,13 +8,12 @@ import v.ast
 import v.util
 import v.pref
 
-const (
-	bs      = '\\'
-	// when to break a line depending on the penalty
-	max_len = [0, 35, 60, 85, 93, 100]
-)
+const bs = '\\'
 
-[minify]
+// when to break a line depending on the penalty
+const max_len = [0, 35, 60, 85, 93, 100]
+
+@[minify]
 pub struct Fmt {
 pub mut:
 	file               ast.File
@@ -56,7 +55,7 @@ pub mut:
 	source_text        string // can be set by `echo "println('hi')" | v fmt`, i.e. when processing source not from a file, but from stdin. In this case, it will contain the entire input text. You can use f.file.path otherwise, and read from that file.
 }
 
-[params]
+@[params]
 pub struct FmtOptions {
 	source_text string
 }
@@ -157,7 +156,7 @@ pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
 	return true
 }
 
-[params]
+@[params]
 pub struct RemoveNewLineConfig {
 	imports_buffer bool // Work on f.out_imports instead of f.out
 }
@@ -757,7 +756,10 @@ pub fn (mut f Fmt) expr(node_ ast.Expr) {
 		}
 		ast.ComptimeType {
 			match node.kind {
+				.unknown { f.write('\$unknown') }
 				.array { f.write('\$array') }
+				.array_dynamic { f.write('\$array_dynamic') }
+				.array_fixed { f.write('\$array_fixed') }
 				.struct_ { f.write('\$struct') }
 				.iface { f.write('\$interface') }
 				.map_ { f.write('\$map') }
@@ -888,57 +890,30 @@ mut:
 }
 
 pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
-	f.attrs(node.attrs)
-	if node.is_pub {
-		f.write('pub ')
-	}
 	if node.fields.len == 0 && node.pos.line_nr == node.pos.last_line {
-		f.writeln('const ()\n')
+		// remove "const()"
 		return
+	}
+
+	f.attrs(node.attrs)
+	if !node.is_block {
+		if node.is_pub {
+			f.write('pub ')
+		}
 	}
 	f.inside_const = true
 	defer {
 		f.inside_const = false
 	}
-	f.write('const ')
-	mut align_infos := []ValAlignInfo{}
-	if node.is_block {
-		f.writeln('(')
-		mut info := ValAlignInfo{}
-		for i, field in node.fields {
-			if field.name.len > info.max {
-				info.max = field.name.len
-			}
-			if !expr_is_single_line(field.expr) {
-				is_ternary := field.expr is ast.IfExpr && field.expr.branches.len == 2
-					&& field.expr.has_else
-					&& branch_is_single_line((field.expr as ast.IfExpr).branches[0])
-					&& branch_is_single_line((field.expr as ast.IfExpr).branches[1])
-					&& (field.expr.is_expr || f.is_assign || f.inside_const
-					|| f.is_struct_init || f.single_line_fields)
-				if !is_ternary || field.name.len + field.expr.str().len > fmt.max_len.last() {
-					info.last_idx = i
-					align_infos << info
-					info = ValAlignInfo{}
-				}
-			}
-		}
-		info.last_idx = node.fields.len
-		align_infos << info
-		f.indent++
-	} else {
-		align_infos << ValAlignInfo{0, 1}
+	if !node.is_block {
+		f.write('const ')
 	}
 	mut prev_field := if node.fields.len > 0 {
 		ast.Node(node.fields[0])
 	} else {
 		ast.Node(ast.NodeError{})
 	}
-	mut align_idx := 0
-	for i, field in node.fields {
-		if i > align_infos[align_idx].last_idx {
-			align_idx++
-		}
+	for fidx, field in node.fields {
 		if field.comments.len > 0 {
 			if f.should_insert_newline_before_node(ast.Expr(field.comments[0]), prev_field) {
 				f.writeln('')
@@ -950,12 +925,19 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 			f.writeln('')
 		}
 		name := field.name.after('.')
+		if node.is_block {
+			// const() blocks are deprecated, prepend "const" before each value
+			if node.is_pub {
+				f.write('pub ')
+			}
+			f.write('const ')
+		}
 		f.write('${name} ')
-		f.write(strings.repeat(` `, align_infos[align_idx].max - field.name.len))
 		f.write('= ')
 		f.expr(field.expr)
 		f.comments(field.end_comments, same_line: true)
-		if node.is_block && field.end_comments.len == 0 {
+		if node.is_block && fidx < node.fields.len - 1 && node.fields.len > 1 {
+			// old style grouped consts, converted to the new style ungrouped const
 			f.writeln('')
 		} else {
 			// Write out single line comments after const expr if present
@@ -968,18 +950,7 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 		prev_field = field
 	}
 
-	if node.is_block {
-		f.comments_after_last_field(node.end_comments)
-	} else if node.end_comments.len == 0 {
-		// If no single line comments after the const expr is present
-		f.writeln('')
-	}
-	if node.is_block {
-		f.indent--
-		f.writeln(')\n')
-	} else {
-		f.writeln('')
-	}
+	f.writeln('')
 }
 
 pub fn (mut f Fmt) defer_stmt(node ast.DeferStmt) {
@@ -1251,12 +1222,11 @@ pub fn (mut f Fmt) for_stmt(node ast.ForStmt) {
 pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
 	f.attrs(node.attrs)
 	if node.fields.len == 0 && node.pos.line_nr == node.pos.last_line {
-		f.writeln('__global ()')
+		// remove "__global()"
 		return
 	}
 	f.write('__global ')
 	mut max := 0
-	// mut has_assign := false
 	if node.is_block {
 		f.writeln('(')
 		f.indent++
@@ -1264,9 +1234,6 @@ pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
 			if field.name.len > max {
 				max = field.name.len
 			}
-			// if field.has_expr {
-			// has_assign = true
-			//}
 		}
 	}
 	for field in node.fields {
@@ -1351,9 +1318,22 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 		}
 	}
 
+	mut field_aligns := []AlignInfo{}
+	mut comment_aligns := []AlignInfo{}
+	mut default_expr_aligns := []AlignInfo{}
+	mut field_types := []string{cap: node.fields.len}
+
+	// Calculate the alignments first
+	f.calculate_alignment(node.fields, mut field_aligns, mut comment_aligns, mut default_expr_aligns, mut
+		field_types)
+
+	mut field_align_i := 0
 	// TODO: alignment, comments, etc.
 	for field in immut_fields {
-		f.interface_field(field)
+		if field_aligns[field_align_i].line_nr < field.pos.line_nr {
+			field_align_i++
+		}
+		f.interface_field(field, field_aligns[field_align_i])
 	}
 	for method in immut_methods {
 		f.interface_method(method)
@@ -1361,7 +1341,10 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 	if mut_fields.len + mut_methods.len > 0 {
 		f.writeln('mut:')
 		for field in mut_fields {
-			f.interface_field(field)
+			if field_aligns[field_align_i].line_nr < field.pos.line_nr {
+				field_align_i++
+			}
+			f.interface_field(field, field_aligns[field_align_i])
 		}
 		for method in mut_methods {
 			f.interface_method(method)
@@ -1370,24 +1353,59 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 	f.writeln('}\n')
 }
 
-pub fn (mut f Fmt) interface_field(field ast.StructField) {
+pub fn (mut f Fmt) calculate_alignment(fields []ast.StructField, mut field_aligns []AlignInfo, mut comment_aligns []AlignInfo, mut default_expr_aligns []AlignInfo, mut field_types []string) {
+	// Calculate the alignments first
+	for i, field in fields {
+		ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
+		// Handle anon structs recursively
+		field_types << ft
+		attrs_len := inline_attrs_len(field.attrs)
+		end_pos := field.pos.pos + field.pos.len
+		for comment in field.comments {
+			if comment.pos.pos >= end_pos {
+				if comment.pos.line_nr == field.pos.line_nr {
+					comment_aligns.add_info(attrs_len, field_types[i].len, comment.pos.line_nr,
+						use_threshold: true
+					)
+				}
+				continue
+			}
+		}
+		field_aligns.add_info(field.name.len, ft.len, field.pos.line_nr)
+		if field.has_default_expr {
+			default_expr_aligns.add_info(attrs_len, field_types[i].len, field.pos.line_nr,
+				use_threshold: true
+			)
+		}
+	}
+}
+
+pub fn (mut f Fmt) interface_field(field ast.StructField, field_align AlignInfo) {
 	ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
 	before_comments := field.comments.filter(it.pos.pos < field.pos.pos)
 	end_comments := field.comments.filter(it.pos.pos > field.pos.pos)
+	before_len := f.line_len
 	if before_comments.len > 0 {
 		f.comments(before_comments, level: .indent)
 	}
+	comments_len := f.line_len - before_len
+
 	sym := f.table.sym(field.typ)
 	if sym.info is ast.Struct {
 		if sym.info.is_anon {
 			f.write('\t${field.name} ')
 			f.write_anon_struct_field_decl(field.typ, ast.StructDecl{ fields: sym.info.fields })
 		} else {
-			f.write('\t${field.name} ${ft}')
+			f.write('\t${field.name} ')
 		}
 	} else {
-		f.write('\t${field.name} ${ft}')
+		f.write('\t${field.name} ')
 	}
+	if !(sym.info is ast.Struct && sym.info.is_anon) {
+		f.write(strings.repeat(` `, field_align.max_len - field.name.len - comments_len))
+		f.write(ft)
+	}
+
 	if end_comments.len > 0 {
 		f.comments(end_comments, level: .indent)
 	} else {
@@ -2065,7 +2083,13 @@ pub fn (mut f Fmt) chan_init(mut node ast.ChanInit) {
 pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 	if node.is_vweb {
 		if node.method_name == 'html' {
-			f.write('\$vweb.html()')
+			if node.args.len == 1 && node.args[0].expr is ast.StringLiteral {
+				f.write('\$vweb.html(')
+				f.expr(node.args[0].expr)
+				f.write(')')
+			} else {
+				f.write('\$vweb.html()')
+			}
 		} else {
 			f.write('\$tmpl(')
 			f.expr(node.args[0].expr)
@@ -2642,12 +2666,12 @@ fn (mut f Fmt) match_branch(branch ast.MatchBranch, single_line bool) {
 				f.writeln('')
 			}
 			f.write(estr)
+			if j < branch.exprs.len - 1 {
+				f.write(', ')
+			}
 			if j < branch.ecmnts.len && branch.ecmnts[j].len > 0 {
 				f.write(' ')
 				f.comments(branch.ecmnts[j])
-			}
-			if j < branch.exprs.len - 1 {
-				f.write(', ')
 			}
 		}
 		f.is_mbranch_expr = false
@@ -2660,6 +2684,8 @@ fn (mut f Fmt) match_branch(branch ast.MatchBranch, single_line bool) {
 	} else {
 		if single_line {
 			f.write(' { ')
+		} else if branch.ecmnts.len > 0 && branch.ecmnts.last().len > 0 {
+			f.writeln('{')
 		} else {
 			f.writeln(' {')
 		}

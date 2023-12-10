@@ -1,11 +1,11 @@
-[has_globals]
+@[has_globals]
 module reflection
 
 import arrays
 
 __global g_reflection = Reflection{}
 
-[heap; minify]
+@[heap; minify]
 pub struct Reflection {
 pub mut:
 	modules      []Module
@@ -86,12 +86,12 @@ pub enum VKind {
 }
 
 // return true if `flag` is set on `t`
-[inline]
+@[inline]
 pub fn (t VType) has_flag(flag VTypeFlag) bool {
 	return int(t) & (1 << (int(flag) + 24)) > 0
 }
 
-[inline]
+@[inline]
 pub fn (t VType) idx() int {
 	return u16(t) & 0xffff
 }
@@ -101,7 +101,7 @@ pub fn (t VType) str() string {
 }
 
 // return true if `t` is a pointer (nr_muls>0)
-[inline]
+@[inline]
 pub fn (t VType) is_ptr() bool {
 	// any normal pointer, i.e. &Type, &&Type etc;
 	// Note: voidptr, charptr and byteptr are NOT included!
@@ -320,17 +320,17 @@ pub fn get_type_symbol(idx int) ?TypeSymbol {
 
 // V reflection metainfo API (called from backend to fill metadata info)
 
-[markused]
+@[markused]
 fn add_module(mod_name string) {
 	g_reflection.modules << Module{mod_name}
 }
 
-[markused]
+@[markused]
 fn add_func(func Function) {
 	g_reflection.funcs << func
 }
 
-[markused]
+@[markused]
 fn add_type(type_ Type) {
 	g_reflection.types << Type{
 		...type_
@@ -338,12 +338,12 @@ fn add_type(type_ Type) {
 	}
 }
 
-[markused]
+@[markused]
 fn add_type_symbol(typesymbol TypeSymbol) {
 	g_reflection.type_symbols << typesymbol
 }
 
-[markused]
+@[markused]
 fn add_string(str string, idx int) {
 	g_reflection.strings[idx] = str
 }

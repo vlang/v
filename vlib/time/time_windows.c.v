@@ -41,12 +41,10 @@ fn C.localtime_s(t &C.time_t, tm &C.tm)
 
 fn C.timespec_get(t &C.timespec, base int) int
 
-const (
-	// start_time is needed on Darwin and Windows because of potential overflows
-	start_time       = init_win_time_start()
-	freq_time        = init_win_time_freq()
-	start_local_time = local_as_unix_time()
-)
+// start_time is needed on Darwin and Windows because of potential overflows
+const start_time = init_win_time_start()
+const freq_time = init_win_time_freq()
+const start_local_time = local_as_unix_time()
 
 // in most systems, these are __quad_t, which is an i64
 pub struct C.timespec {
@@ -83,7 +81,7 @@ pub fn sys_mono_now() u64 {
 
 // Note: vpc_now is used by `v -profile` .
 // It should NOT call *any other v function*, just C functions and casts.
-[inline]
+@[inline]
 fn vpc_now() u64 {
 	tm := u64(0)
 	C.QueryPerformanceCounter(voidptr(&tm))

@@ -3,27 +3,27 @@ import db.sqlite
 import time
 
 struct TestCustomSqlType {
-	id      int       [primary; sql: serial]
-	custom  string    [sql_type: 'INTEGER']
-	custom1 string    [sql_type: 'TEXT']
-	custom2 string    [sql_type: 'REAL']
-	custom3 string    [sql_type: 'NUMERIC']
+	id      int       @[primary; sql: serial]
+	custom  string    @[sql_type: 'INTEGER']
+	custom1 string    @[sql_type: 'TEXT']
+	custom2 string    @[sql_type: 'REAL']
+	custom3 string    @[sql_type: 'NUMERIC']
 	custom4 string
 	custom5 int
 	custom6 time.Time
 }
 
 struct TestDefaultAttribute {
-	id          string  [primary; sql: serial]
+	id          string  @[primary; sql: serial]
 	name        string
-	created_at  ?string [default: 'CURRENT_TIME']
-	created_at1 ?string [default: 'CURRENT_DATE']
-	created_at2 ?string [default: 'CURRENT_TIMESTAMP']
+	created_at  ?string @[default: 'CURRENT_TIME']
+	created_at1 ?string @[default: 'CURRENT_DATE']
+	created_at2 ?string @[default: 'CURRENT_TIMESTAMP']
 }
 
 struct EntityToTest {
-	id   int    [notnull; sql_type: 'INTEGER']
-	smth string [notnull; sql_type: 'TEXT']
+	id   int    @[notnull; sql_type: 'INTEGER']
+	smth string @[notnull; sql_type: 'TEXT']
 }
 
 fn test_sqlite_orm() {

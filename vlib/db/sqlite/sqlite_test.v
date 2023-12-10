@@ -4,7 +4,7 @@ type Connection = sqlite.DB
 
 struct User {
 pub:
-	id   int    [primary; sql: serial]
+	id   int    @[primary; sql: serial]
 	name string
 }
 

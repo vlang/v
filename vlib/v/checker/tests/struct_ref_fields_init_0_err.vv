@@ -1,0 +1,10 @@
+struct Foo {
+	foo &u8
+}
+
+fn main() {
+	_ = Foo{0}
+	_ = Foo{
+		foo: 0
+	}
+}

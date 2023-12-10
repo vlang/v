@@ -1,6 +1,6 @@
 struct Fns {
-	f1 fn () [required]
-	f2 fn () [attr1; required]
+	f1 fn () @[required]
+	f2 fn () @[attr1; required]
 }
 
 fn func() {
@@ -17,8 +17,8 @@ fn test_struct_fields_storing_required_functions() {
 }
 
 struct Data {
-	v1 int [required]
-	v2 int [required]
+	v1 int @[required]
+	v2 int @[required]
 }
 
 fn test_required_fields() {

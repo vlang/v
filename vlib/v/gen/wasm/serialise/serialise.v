@@ -8,7 +8,7 @@ import v.ast
 import math.bits
 import strconv
 
-[noinit]
+@[noinit]
 pub struct Pool {
 mut:
 	table &ast.Table
@@ -101,7 +101,7 @@ pub fn (mut p Pool) type_size(typ ast.Type) (int, int) {
 	return size, align
 }
 
-[params]
+@[params]
 pub struct PoolOpts {
 	null_terminated bool = true
 	intern_strings  bool = true

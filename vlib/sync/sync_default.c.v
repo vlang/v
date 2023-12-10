@@ -13,7 +13,7 @@ $if !android {
 
 #include <semaphore.h>
 
-[trusted]
+@[trusted]
 fn C.pthread_mutex_init(voidptr, voidptr) int
 fn C.pthread_mutex_lock(voidptr) int
 fn C.pthread_mutex_unlock(voidptr) int
@@ -34,25 +34,25 @@ fn C.sem_trywait(voidptr) int
 fn C.sem_timedwait(voidptr, voidptr) int
 fn C.sem_destroy(voidptr) int
 
-[typedef]
+@[typedef]
 pub struct C.pthread_mutex_t {}
 
-[typedef]
+@[typedef]
 pub struct C.pthread_rwlock_t {}
 
-[typedef]
+@[typedef]
 pub struct C.pthread_rwlockattr_t {}
 
-[typedef]
+@[typedef]
 pub struct C.sem_t {}
 
 // [init_with=new_mutex] // TODO: implement support for this struct attribute, and disallow Mutex{} from outside the sync.new_mutex() function.
-[heap]
+@[heap]
 pub struct Mutex {
 	mutex C.pthread_mutex_t
 }
 
-[heap]
+@[heap]
 pub struct RwMutex {
 	mutex C.pthread_rwlock_t
 }
@@ -61,7 +61,7 @@ struct RwMutexAttr {
 	attr C.pthread_rwlockattr_t
 }
 
-[heap]
+@[heap]
 pub struct Semaphore {
 	sem C.sem_t
 }
@@ -75,7 +75,7 @@ pub fn new_mutex() &Mutex {
 
 // init initialises the mutex. It should be called once before the mutex is used,
 // since it creates the associated resources needed for the mutex to work properly.
-[inline]
+@[inline]
 pub fn (mut m Mutex) init() {
 	C.pthread_mutex_init(&m.mutex, C.NULL)
 }
@@ -101,14 +101,14 @@ pub fn (mut m RwMutex) init() {
 
 // @lock locks the mutex instance (`lock` is a keyword).
 // If the mutex was already locked, it will block, till it is unlocked.
-[inline]
+@[inline]
 pub fn (mut m Mutex) @lock() {
 	C.pthread_mutex_lock(&m.mutex)
 }
 
 // unlock unlocks the mutex instance. The mutex is released, and one of
 // the other threads, that were blocked, because they called @lock can continue.
-[inline]
+@[inline]
 pub fn (mut m Mutex) unlock() {
 	C.pthread_mutex_unlock(&m.mutex)
 }
@@ -128,7 +128,7 @@ pub fn (mut m Mutex) destroy() {
 // Once it succeds, it returns.
 // Note: there may be several threads that are waiting for the same lock.
 // Note: RwMutex has separate read and write locks.
-[inline]
+@[inline]
 pub fn (mut m RwMutex) @rlock() {
 	C.pthread_rwlock_rdlock(&m.mutex)
 }
@@ -139,7 +139,7 @@ pub fn (mut m RwMutex) @rlock() {
 // it will continue waiting for the mutex to become unlocked.
 // Note: there may be several threads that are waiting for the same lock.
 // Note: RwMutex has separate read and write locks.
-[inline]
+@[inline]
 pub fn (mut m RwMutex) @lock() {
 	C.pthread_rwlock_wrlock(&m.mutex)
 }
@@ -158,7 +158,7 @@ pub fn (mut m RwMutex) destroy() {
 // To have a common portable API, there are two methods for
 // unlocking here as well, even though that they do the same
 // on !windows platforms.
-[inline]
+@[inline]
 pub fn (mut m RwMutex) runlock() {
 	C.pthread_rwlock_unlock(&m.mutex)
 }
@@ -168,14 +168,14 @@ pub fn (mut m RwMutex) runlock() {
 // To have a common portable API, there are two methods for
 // unlocking here as well, even though that they do the same
 // on !windows platforms.
-[inline]
+@[inline]
 pub fn (mut m RwMutex) unlock() {
 	C.pthread_rwlock_unlock(&m.mutex)
 }
 
 // new_semaphore creates a new initialised Semaphore instance on the heap, and returns a pointer to it.
 // The initial counter value of the semaphore is 0.
-[inline]
+@[inline]
 pub fn new_semaphore() &Semaphore {
 	return new_semaphore_init(0)
 }
@@ -191,7 +191,7 @@ pub fn new_semaphore_init(n u32) &Semaphore {
 // init initialises the Semaphore instance with `n` as its initial counter value.
 // It should be called once before the semaphore is used, since it creates the associated
 // resources needed for the semaphore to work properly.
-[inline]
+@[inline]
 pub fn (mut sem Semaphore) init(n u32) {
 	C.sem_init(&sem.sem, 0, n)
 }
@@ -200,7 +200,7 @@ pub fn (mut sem Semaphore) init(n u32) {
 // If the resulting counter value is > 0, and if there is another thread waiting
 // on the semaphore, the waiting thread will decrement the counter by 1
 // (locking the semaphore), and then will continue running. See also .wait() .
-[inline]
+@[inline]
 pub fn (mut sem Semaphore) post() {
 	C.sem_post(&sem.sem)
 }

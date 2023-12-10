@@ -136,7 +136,7 @@ fn (mut g Gen) gen_free_for_map(info ast.Map, styp string, fn_name string) {
 	fn_builder.writeln('}')
 }
 
-[inline]
+@[inline]
 fn styp_to_free_fn_name(styp string) string {
 	return styp.replace_each(['*', '', '.', '__', ' ', '__']) + '_free'
 }

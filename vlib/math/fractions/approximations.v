@@ -5,11 +5,9 @@ module fractions
 
 import math
 
-const (
-	default_eps    = 1.0e-4
-	max_iterations = 50
-	zero           = fraction(0, 1)
-)
+const default_eps = 1.0e-4
+const max_iterations = 50
+const zero = fraction(0, 1)
 
 // ------------------------------------------------------------------------
 // Unwrapped evaluation methods for fast evaluation of continued fractions.

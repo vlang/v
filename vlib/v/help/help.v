@@ -2,15 +2,15 @@ module help
 
 import os
 
+// Topics whose module uses the cli or flag modules (both support --help).
+const cli_topics = ['new', 'init', 'repeat']
+
 fn hdir(base string) string {
 	return os.join_path(base, 'vlib', 'v', 'help')
 }
 
 fn help_dir() string {
-	mut vexe := os.getenv('VEXE')
-	if vexe == '' {
-		vexe = os.executable()
-	}
+	vexe := get_vexe()
 	if vexe != '' {
 		return hdir(os.dir(vexe))
 	}
@@ -19,13 +19,13 @@ fn help_dir() string {
 	return hdir(@VEXEROOT)
 }
 
-[params]
+@[params]
 pub struct ExitOptions {
 	exit_code int
 }
 
 // print_and_exit prints the help topic and exits.
-[noreturn]
+@[noreturn]
 pub fn print_and_exit(topic string, opts ExitOptions) {
 	if topic == 'topics' {
 		print_known_topics()
@@ -37,6 +37,11 @@ pub fn print_and_exit(topic string, opts ExitOptions) {
 			print_topic_unkown(topic)
 			exit(fail_code)
 		}
+	}
+	if topic in help.cli_topics {
+		vexe := get_vexe()
+		os.system('${os.quoted_path(vexe)} ${topic} --help')
+		exit(opts.exit_code)
 	}
 	mut topic_path := ''
 	for path in os.walk_ext(help_dir(), '.txt') {
@@ -71,4 +76,12 @@ fn print_known_topics() {
 		}
 	}
 	println(res)
+}
+
+fn get_vexe() string {
+	mut vexe := os.getenv('VEXE')
+	if vexe == '' {
+		vexe = os.executable()
+	}
+	return vexe
 }

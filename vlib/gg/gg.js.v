@@ -30,7 +30,7 @@ pub enum DOMEventType {
 	clipboard_pasted
 	files_dropped
 	num
-	files_droped  [deprecated: 'use files_dropped instead'; deprecated_after: '2023-08-21']
+	files_droped  @[deprecated: 'use files_dropped instead'; deprecated_after: '2023-08-21']
 }
 
 pub struct Event {
@@ -272,7 +272,7 @@ pub mut:
 	scale         f32 = 1.0
 	width         int
 	height        int
-	window        JS.Window    [noinit]
+	window        JS.Window    @[noinit]
 	config        Config
 	user_data     voidptr
 	ui_mode       bool
@@ -290,8 +290,8 @@ pub mut:
 	key_repeat        bool     // whether the pressed key was an autorepeated one
 	pressed_keys      [key_code_max]bool // an array representing all currently pressed keys
 	pressed_keys_edge [key_code_max]bool // true when the previous state of pressed_keys,
-	context           JS.CanvasRenderingContext2D [noinit]
-	canvas            JS.HTMLCanvasElement        [noinit]
+	context           JS.CanvasRenderingContext2D @[noinit]
+	canvas            JS.HTMLCanvasElement        @[noinit]
 	// *before* the current event was different
 }
 

@@ -247,18 +247,16 @@ import sokol.gfx
 import x.ttf
 import os
 
-const (
-	win_width  = 600
-	win_height = 700
-	bg_color   = gx.white
-	font_paths = [
-		'arial.ttf',
-	]
-)
+const win_width = 600
+const win_height = 700
+const bg_color = gx.white
+const font_paths = [
+	'arial.ttf',
+]
 
 struct App_data {
 pub mut:
-	gg        &gg.Context
+	gg        &gg.Context = unsafe { nil }
 	sg_img    gfx.Image
 	init_flag bool
 	frame_c   int
@@ -294,9 +292,7 @@ fn draw_frame(mut app App_data) {
 }
 
 fn main() {
-	mut app := &App_data{
-		gg: 0
-	}
+	mut app := &App_data{}
 
 	app.gg = gg.new_context(
 		width: win_width

@@ -47,7 +47,7 @@ pub fn (mut l List[T]) find_last(node ?&Node[T]) ?&Node[T] {
 	}
 }
 
-[heap]
+@[heap]
 pub struct Node[T] {
 mut:
 	data T

@@ -18,8 +18,8 @@ mut:
 }
 
 struct Lol {
-	b []string [json: lol]
-	c string   [json: cc]
+	b []string @[json: lol]
+	c string   @[json: cc]
 	d int
 }
 
@@ -186,11 +186,9 @@ fn test_assoc_with_vars() {
 	assert merged2.b == 200
 }
 
-const (
-	const_def = Def{
-		a: 100
-	}
-)
+const const_def = Def{
+	a: 100
+}
 
 fn test_assoc_with_constants() {
 	println(1)
@@ -223,12 +221,12 @@ fn fooo() {
 }
 
 /*
-[typedef]
+@[typedef]
 pub struct C.fixed {
 	points [10]C.point
 }
 
-[typedef]
+@[typedef]
 pub struct C.point {
 	x int
 	y int
@@ -244,7 +242,7 @@ fn test_fixed_field() {
 	//}
 }
 */
-[params]
+@[params]
 struct Config {
 mut:
 	n   int
@@ -360,8 +358,8 @@ fn test_struct_with_default_values_no_init() {
 }
 
 struct FieldsWithOptionVoidReturnType {
-	f fn () ! [required]
-	g fn () ? [required]
+	f fn () ! @[required]
+	g fn () ? @[required]
 }
 
 fn test_fields_anon_fn_with_option_void_return_type() {

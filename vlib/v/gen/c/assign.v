@@ -215,7 +215,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		mut gen_or := false
 		mut blank_assign := false
 		mut ident := ast.Ident{
-			scope: 0
+			scope: unsafe { nil }
 		}
 		left_sym := g.table.sym(g.unwrap_generic(var_type))
 		if mut left is ast.Ident {
@@ -552,7 +552,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					''
 				}
 
-				fn_name := c_name(g.get_ternary_name(ident.name))
+				fn_name := c_fn_name(g.get_ternary_name(ident.name))
 				g.write('${ret_styp} (${msvc_call_conv}*${fn_name}) (')
 				def_pos := g.definitions.len
 				g.fn_decl_params(func.func.params, unsafe { nil }, false)
@@ -781,7 +781,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 	for i, lx in node.left {
 		mut is_auto_heap := false
 		mut ident := ast.Ident{
-			scope: 0
+			scope: unsafe { nil }
 		}
 		if lx is ast.Ident {
 			ident = lx
@@ -1081,11 +1081,12 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 		}
 		ast.CallExpr {
 			if val.is_method {
-				rec_cc_type := g.cc_type(val.receiver_type, false)
-				mut rec_typ_name := util.no_dots(rec_cc_type)
-				if g.table.sym(val.receiver_type).kind == .array {
-					rec_typ_name = 'array'
-				}
+				unwrapped_rec_type, typ_sym := g.resolve_receiver_type(val)
+				left_type := g.unwrap_generic(val.left_type)
+				left_sym := g.table.sym(left_type)
+				final_left_sym := g.table.final_sym(left_type)
+				rec_typ_name := g.resolve_receiver_name(val, unwrapped_rec_type, final_left_sym,
+					left_sym, typ_sym)
 				fn_name := util.no_dots('${rec_typ_name}_${val.name}')
 				g.write('${fn_name}(&')
 				g.gen_cross_tmp_variable(left, val.left)

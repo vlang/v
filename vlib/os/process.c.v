@@ -80,7 +80,7 @@ pub fn (mut p Process) close() {
 	}
 }
 
-[unsafe]
+@[unsafe]
 pub fn (mut p Process) free() {
 	p.close()
 	unsafe {

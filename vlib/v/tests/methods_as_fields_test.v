@@ -100,7 +100,7 @@ struct GG_Ctx {
 	frame_fn fn (voidptr) int
 }
 
-[heap]
+@[heap]
 struct App {
 	msg string = 'hello'
 }

@@ -20,14 +20,12 @@ import rand.seed
 
 pub const seed_len = 1
 
-const (
-	rand_limit     = u64(C.RAND_MAX)
-	rand_bitsize   = bits.len_64(rand_limit)
-	rand_bytesize  = rand_bitsize / 8
-	u16_iter_count = calculate_iterations_for(16)
-	u32_iter_count = calculate_iterations_for(32)
-	u64_iter_count = calculate_iterations_for(64)
-)
+const rand_limit = u64(C.RAND_MAX)
+const rand_bitsize = bits.len_64(rand_limit)
+const rand_bytesize = rand_bitsize / 8
+const u16_iter_count = calculate_iterations_for(16)
+const u32_iter_count = calculate_iterations_for(32)
+const u64_iter_count = calculate_iterations_for(64)
 
 fn calculate_iterations_for(bits_ int) int {
 	base := bits_ / sys.rand_bitsize
@@ -57,13 +55,13 @@ pub fn (mut r SysRNG) seed(seed_data []u32) {
 // b/w V and other languages using libc and not for regular use.
 // This is also a one-off feature of SysRNG, similar to the global seed
 // situation. Other generators will not have this.
-[inline]
+@[inline]
 pub fn (r SysRNG) default_rand() int {
 	return C.rand()
 }
 
 // byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
-[inline]
+@[inline]
 pub fn (mut r SysRNG) u8() u8 {
 	if r.bytes_left >= 1 {
 		r.bytes_left -= 1
@@ -79,7 +77,7 @@ pub fn (mut r SysRNG) u8() u8 {
 }
 
 // u16 returns a uniformly distributed pseudorandom 16-bit unsigned positive `u16`.
-[inline]
+@[inline]
 pub fn (mut r SysRNG) u16() u16 {
 	if r.bytes_left >= 2 {
 		r.bytes_left -= 2
@@ -95,7 +93,7 @@ pub fn (mut r SysRNG) u16() u16 {
 }
 
 // u32 returns a uniformly distributed pseudorandom 32-bit unsigned positive `u32`.
-[inline]
+@[inline]
 pub fn (r SysRNG) u32() u32 {
 	mut result := u32(C.rand())
 	for i in 1 .. sys.u32_iter_count {
@@ -105,7 +103,7 @@ pub fn (r SysRNG) u32() u32 {
 }
 
 // u64 returns a uniformly distributed pseudorandom 64-bit unsigned positive `u64`.
-[inline]
+@[inline]
 pub fn (r SysRNG) u64() u64 {
 	mut result := u64(C.rand())
 	for i in 1 .. sys.u64_iter_count {
@@ -115,13 +113,13 @@ pub fn (r SysRNG) u64() u64 {
 }
 
 // block_size returns the number of bits that the RNG can produce in a single iteration.
-[inline]
+@[inline]
 pub fn (r SysRNG) block_size() int {
 	return sys.rand_bitsize
 }
 
 // free should be called when the generator is no longer needed
-[unsafe]
+@[unsafe]
 pub fn (mut rng SysRNG) free() {
 	unsafe { free(rng) }
 }

@@ -4,26 +4,26 @@
 
 module stbi
 
-[if trace_stbi_allocations ?]
+@[if trace_stbi_allocations ?]
 fn trace_allocation(message string) {
 	eprintln(message)
 }
 
-[export: 'stbi__callback_malloc']
+@[export: 'stbi__callback_malloc']
 fn cb_malloc(s usize) voidptr {
 	res := unsafe { malloc(isize(s)) }
 	trace_allocation('> stbi__callback_malloc: ${s} => ${ptr_str(res)}')
 	return res
 }
 
-[export: 'stbi__callback_realloc']
+@[export: 'stbi__callback_realloc']
 fn cb_realloc(p voidptr, s usize) voidptr {
 	res := unsafe { v_realloc(p, isize(s)) }
 	trace_allocation('> stbi__callback_realloc: ${ptr_str(p)} , ${s} => ${ptr_str(res)}')
 	return res
 }
 
-[export: 'stbi__callback_free']
+@[export: 'stbi__callback_free']
 fn cb_free(p voidptr) {
 	trace_allocation('> stbi__callback_free: ${ptr_str(p)}')
 	unsafe { free(p) }
@@ -110,7 +110,7 @@ fn C.stbi_load(filename &char, x &int, y &int, channels_in_file &int, desired_ch
 fn C.stbi_load_from_file(f voidptr, x &int, y &int, channels_in_file &int, desired_channels int) &u8
 fn C.stbi_load_from_memory(buffer &u8, len int, x &int, y &int, channels_in_file &int, desired_channels int) &u8
 
-[params]
+@[params]
 pub struct LoadParams {
 	// the number of channels you expect the image to have.
 	// If set to 0 stbi will figure out the correct number of channels
@@ -188,7 +188,7 @@ fn C.stbi_write_bmp(filename &char, w int, h int, comp int, buffer &u8) int
 fn C.stbi_write_tga(filename &char, w int, h int, comp int, buffer &u8) int
 fn C.stbi_write_jpg(filename &char, w int, h int, comp int, buffer &u8, quality int) int
 
-// fn C.stbi_write_hdr(filename &char, w int, h int, comp int, buffer &byte) int // buffer &byte => buffer &f32
+// fn C.stbi_write_hdr(filename &char, w int, h int, comp int, buffer &u8) int // buffer &u8 => buffer &f32
 
 // stbi_write_png write on path a PNG file
 // row_stride_in_bytes is usually equal to: w * comp
@@ -222,7 +222,7 @@ pub fn stbi_write_jpg(path string, w int, h int, comp int, buf &u8, quality int)
 }
 
 /*
-pub fn stbi_write_hdr(path string, w int, h int, comp int, buf &byte) ! {
+pub fn stbi_write_hdr(path string, w int, h int, comp int, buf &u8) ! {
 	if 0 == C.stbi_write_hdr(&char(path.str), w , h , comp , buf){
 		return error('stbi_image failed to write hdr file to "$path"')
 	}

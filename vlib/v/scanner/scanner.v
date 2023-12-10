@@ -13,17 +13,15 @@ import v.errors
 import v.ast
 import v.mathutil
 
-const (
-	single_quote = `'`
-	double_quote = `"`
-	// char used as number separator
-	num_sep      = `_`
-	b_lf         = 10
-	b_cr         = 13
-	backslash    = `\\`
-)
+const single_quote = `'`
+const double_quote = `"`
+// char used as number separator
+const num_sep = `_`
+const b_lf = 10
+const b_cr = 13
+const backslash = `\\`
 
-[minify]
+@[minify]
 pub struct Scanner {
 pub mut:
 	file_path                   string // '/path/to/file.v'
@@ -157,7 +155,7 @@ pub fn new_scanner(text string, comments_mode CommentsMode, pref_ &pref.Preferen
 	return s
 }
 
-[unsafe]
+@[unsafe]
 pub fn (mut s Scanner) free() {
 	unsafe {
 		// Note: s.text is not freed here, because it is shared with all other util.read_file instances,
@@ -168,7 +166,7 @@ pub fn (mut s Scanner) free() {
 	}
 }
 
-[inline]
+@[inline]
 fn (s &Scanner) should_parse_comment() bool {
 	return s.comments_mode == .parse_comments
 		|| (s.comments_mode == .toplevel_comments && !s.is_inside_toplvl_statement)
@@ -185,7 +183,7 @@ pub fn (mut s Scanner) set_current_tidx(cidx int) {
 	s.tidx = tidx
 }
 
-[inline]
+@[inline]
 fn (mut s Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Token {
 	cidx := s.tidx
 	s.tidx++
@@ -205,7 +203,7 @@ fn (mut s Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Tok
 	}
 }
 
-[inline]
+@[inline]
 fn (s &Scanner) new_eof_token() token.Token {
 	return token.Token{
 		kind: .eof
@@ -218,7 +216,7 @@ fn (s &Scanner) new_eof_token() token.Token {
 	}
 }
 
-[inline]
+@[inline]
 fn (mut s Scanner) new_multiline_token(tok_kind token.Kind, lit string, len int, start_line int) token.Token {
 	cidx := s.tidx
 	s.tidx++
@@ -237,7 +235,7 @@ fn (mut s Scanner) new_multiline_token(tok_kind token.Kind, lit string, len int,
 	}
 }
 
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn (mut s Scanner) ident_name() string {
 	start := s.pos
 	s.pos++
@@ -313,7 +311,7 @@ fn (mut s Scanner) ident_bin_number() string {
 	return number
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn (mut s Scanner) ident_hex_number() string {
 	mut has_wrong_digit := false
 	mut first_wrong_digit_pos := 0
@@ -397,7 +395,7 @@ fn (mut s Scanner) ident_oct_number() string {
 	return number
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn (mut s Scanner) ident_dec_number() string {
 	mut has_wrong_digit := false
 	mut first_wrong_digit_pos := 0
@@ -532,7 +530,7 @@ fn (mut s Scanner) ident_number() string {
 	}
 }
 
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn (mut s Scanner) skip_whitespace() {
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
@@ -563,6 +561,12 @@ fn (mut s Scanner) end_of_file() token.Token {
 	s.eofs++
 	if s.eofs > 50 {
 		s.line_nr--
+		if s.file_path == scanner.internally_generated_v_code {
+			// show a bit more context for that case, since the source may not be easily visible by just inspecting a source file on the filesystem
+			dump(s.text#[0..50])
+			dump(s.text#[-50..])
+			dump(s.text.len)
+		}
 		panic(
 			'the end of file `${s.file_path}` has been reached 50 times already, the v parser is probably stuck.\n' +
 			'This should not happen. Please report the bug here, and include the last 2-3 lines of your source code:\n' +
@@ -605,7 +609,7 @@ fn (mut s Scanner) scan_remaining_text() {
 	}
 }
 
-[direct_array_access]
+@[direct_array_access]
 pub fn (mut s Scanner) scan() token.Token {
 	for {
 		cidx := s.tidx
@@ -623,7 +627,7 @@ pub fn (mut s Scanner) scan() token.Token {
 	return s.new_eof_token()
 }
 
-[direct_array_access; inline]
+@[direct_array_access; inline]
 pub fn (s &Scanner) peek_token(n int) token.Token {
 	idx := s.tidx + n
 	if idx >= s.all_tokens.len || idx < 0 {
@@ -633,7 +637,7 @@ pub fn (s &Scanner) peek_token(n int) token.Token {
 	return t
 }
 
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn (s &Scanner) look_ahead(n int) u8 {
 	if s.pos + n < s.text.len {
 		return s.text[s.pos + n]
@@ -642,8 +646,11 @@ fn (s &Scanner) look_ahead(n int) u8 {
 	}
 }
 
-[direct_array_access]
-fn (mut s Scanner) text_scan() token.Token {
+// text_scan returns a single token from the text, and updates the scanner state,
+// so that it will be ready to get the next token right after that.
+// See also Scanner.prepare_for_new_text and new_silent_scanner()
+@[direct_array_access]
+pub fn (mut s Scanner) text_scan() token.Token {
 	// The for loop here is so that instead of doing
 	// `return s.scan()` (which will use a new call stack frame),
 	// text_scan can just do continue, keeping
@@ -1173,8 +1180,11 @@ fn (s &Scanner) count_symbol_before(p int, sym u8) int {
 	return count
 }
 
-[direct_array_access]
-fn (mut s Scanner) ident_string() string {
+// ident_string returns a lexed V string, starting from the current position in the text
+// it supports r'strings', c'strings', interpolated 'strings' and "strings", and hex
+// escapes in them (except in the r'strings' where the content is returned verbatim)
+@[direct_array_access]
+pub fn (mut s Scanner) ident_string() string {
 	// determines if it is a nested string
 	if s.is_inside_string {
 		s.is_nested_string = true
@@ -1210,7 +1220,8 @@ fn (mut s Scanner) ident_string() string {
 		s.inc_line_number()
 	}
 	s.is_inside_string = false
-	mut u_escapes_pos := []int{} // pos list of \uXXXX
+	mut u16_escapes_pos := []int{} // pos list of \uXXXX
+	mut u32_escapes_pos := []int{} // pos list of \UXXXXXXXX
 	mut h_escapes_pos := []int{} // pos list of \xXX
 	mut backslash_count := if start_char == scanner.backslash { 1 } else { 0 }
 	for {
@@ -1241,7 +1252,7 @@ fn (mut s Scanner) ident_string() string {
 		if c == scanner.b_lf {
 			s.inc_line_number()
 		}
-		// Escape `\x` `\u`
+		// Escape `\x` `\u` `\U`
 		if backslash_count % 2 == 1 && !is_raw && !is_cstr {
 			// Escape `\x`
 			if c == `x` {
@@ -1257,9 +1268,23 @@ fn (mut s Scanner) ident_string() string {
 					|| s.text[s.pos + 3] == s.quote || s.text[s.pos + 4] == s.quote
 					|| !s.text[s.pos + 1].is_hex_digit() || !s.text[s.pos + 2].is_hex_digit()
 					|| !s.text[s.pos + 3].is_hex_digit() || !s.text[s.pos + 4].is_hex_digit() {
-					s.error(r'`\u` incomplete unicode character value')
+					s.error(r'`\u` incomplete 16 bit unicode character value')
 				}
-				u_escapes_pos << s.pos - 1
+				u16_escapes_pos << s.pos - 1
+			}
+			// Escape `\U`
+			if c == `U` {
+				if s.text[s.pos + 1] == s.quote || s.text[s.pos + 2] == s.quote
+					|| s.text[s.pos + 3] == s.quote || s.text[s.pos + 4] == s.quote
+					|| s.text[s.pos + 5] == s.quote || s.text[s.pos + 6] == s.quote
+					|| s.text[s.pos + 7] == s.quote || s.text[s.pos + 8] == s.quote
+					|| !s.text[s.pos + 1].is_hex_digit() || !s.text[s.pos + 2].is_hex_digit()
+					|| !s.text[s.pos + 3].is_hex_digit() || !s.text[s.pos + 4].is_hex_digit()
+					|| !s.text[s.pos + 5].is_hex_digit() || !s.text[s.pos + 6].is_hex_digit()
+					|| !s.text[s.pos + 7].is_hex_digit() || !s.text[s.pos + 8].is_hex_digit() {
+					s.error(r'`\U` incomplete 32 bit unicode character value')
+				}
+				u32_escapes_pos << s.pos - 1
 			}
 			// Unknown escape sequence
 			if !is_escape_sequence(c) && !c.is_digit() {
@@ -1301,19 +1326,26 @@ fn (mut s Scanner) ident_string() string {
 		if !s.is_fmt {
 			mut segment_idx := 0
 			mut str_segments := []string{}
-			if u_escapes_pos.len + h_escapes_pos.len > 0 {
+			if u16_escapes_pos.len + h_escapes_pos.len + u32_escapes_pos.len > 0 {
 				mut all_pos := []int{}
-				all_pos << u_escapes_pos
+				all_pos << u16_escapes_pos
+				all_pos << u32_escapes_pos
 				all_pos << h_escapes_pos
-				if u_escapes_pos.len != 0 && h_escapes_pos.len != 0 {
-					all_pos.sort()
-				}
+				all_pos.sort()
+
 				for pos in all_pos {
 					str_segments << string_so_far[segment_idx..(pos - start)]
 					segment_idx = pos - start
 
-					if pos in u_escapes_pos {
-						end_idx, segment := s.decode_u_escape_single(string_so_far, segment_idx)
+					if pos in u16_escapes_pos {
+						end_idx, segment := s.decode_u16_escape_single(string_so_far,
+							segment_idx)
+						str_segments << segment
+						segment_idx = end_idx
+					}
+					if pos in u32_escapes_pos {
+						end_idx, segment := s.decode_u32_escape_single(string_so_far,
+							segment_idx)
 						str_segments << segment
 						segment_idx = end_idx
 					}
@@ -1401,7 +1433,7 @@ fn (mut s Scanner) decode_o_escapes(sinput string, start int, escapes_pos []int)
 	return ss.join('')
 }
 
-fn (mut s Scanner) decode_u_escape_single(str string, idx int) (int, string) {
+fn (mut s Scanner) decode_u16_escape_single(str string, idx int) (int, string) {
 	end_idx := idx + 6 // "\uXXXX".len == 6
 	escaped_code_point := strconv.parse_uint(str[idx + 2..end_idx], 16, 32) or { 0 }
 	// Check if Escaped Code Point is invalid or not
@@ -1412,23 +1444,38 @@ fn (mut s Scanner) decode_u_escape_single(str string, idx int) (int, string) {
 	return end_idx, utf32_to_str(u32(escaped_code_point))
 }
 
-// decode the flagged unicode escape sequences into their utf-8 bytes
-fn (mut s Scanner) decode_u_escapes(str string, start int, escapes_pos []int) string {
-	if escapes_pos.len == 0 {
-		return str
+// decode a single 16 bit unicode escaped rune into its utf-8 bytes
+fn (mut s Scanner) decode_u16erune(str string) string {
+	end_idx, segment := s.decode_u16_escape_single(str, 0)
+	if str.len == end_idx {
+		return segment
 	}
-	mut ss := []string{cap: escapes_pos.len * 2 + 1}
-	ss << str[..escapes_pos.first() - start]
-	for i, pos in escapes_pos {
-		idx := pos - start
-		end_idx, segment := s.decode_u_escape_single(str, idx)
-		ss << segment
-		if i + 1 < escapes_pos.len {
-			ss << str[end_idx..escapes_pos[i + 1] - start]
-		} else {
-			ss << str[end_idx..]
-		}
+	mut ss := []string{cap: 2}
+	ss << segment
+	ss << str[end_idx..]
+	return ss.join('')
+}
+
+fn (mut s Scanner) decode_u32_escape_single(str string, idx int) (int, string) {
+	end_idx := idx + 10 // "\uXXXXXXXX".len == 10
+	escaped_code_point := strconv.parse_uint(str[idx + 2..end_idx], 16, 32) or { 0 }
+	// Check if Escaped Code Point is invalid or not
+	if rune(escaped_code_point).length_in_bytes() == -1 {
+		s.error('invalid unicode point `${str}`')
 	}
+
+	return end_idx, utf32_to_str(u32(escaped_code_point))
+}
+
+// decode a single 32 bit unicode escaped rune into its utf-8 bytes
+fn (mut s Scanner) decode_u32erune(str string) string {
+	end_idx, segment := s.decode_u32_escape_single(str, 0)
+	if str.len == end_idx {
+		return segment
+	}
+	mut ss := []string{cap: 2}
+	ss << segment
+	ss << str[end_idx..]
 	return ss.join('')
 }
 
@@ -1447,10 +1494,10 @@ fn trim_slash_line_break(s string) string {
 	return ret_str
 }
 
-[inline]
+@[inline]
 fn is_escape_sequence(c u8) bool {
 	return c in [`x`, `u`, `e`, `n`, `r`, `t`, `v`, `a`, `f`, `b`, `\\`, `\``, `$`, `@`, `?`, `{`,
-		`}`, `'`, `"`]
+		`}`, `'`, `"`, `U`]
 }
 
 /// ident_char is called when a backtick "single-char" is parsed from the code
@@ -1462,9 +1509,10 @@ fn is_escape_sequence(c u8) bool {
 ///   escaped single chars like `\\`, `\``, `\n` => '\\', '`', '\n'
 ///   escaped single hex bytes like `\x01`, `\x61` => '\x01', 'a'
 ///   escaped unicode literals like `\u2605`
+///   escaped unicode 32 literals like `\U00002605`
 ///   escaped utf8 runes in hex like `\xe2\x98\x85` => (★)
 ///   escaped utf8 runes in octal like `\342\230\205` => (★)
-fn (mut s Scanner) ident_char() string {
+pub fn (mut s Scanner) ident_char() string {
 	lspos := token.Pos{
 		line_nr: s.line_nr
 		pos: s.pos
@@ -1477,8 +1525,10 @@ fn (mut s Scanner) ident_char() string {
 
 	// set flags for advanced escapes first
 	escaped_hex := s.expect('\\x', start + 1)
-	escaped_unicode := s.expect('\\u', start + 1)
-	escaped_octal := !escaped_hex && !escaped_unicode && s.expect('\\', start + 1)
+	escaped_unicode_16 := s.expect('\\u', start + 1)
+	escaped_unicode_32 := s.expect('\\U', start + 1)
+	escaped_octal := !escaped_hex && !escaped_unicode_16 && !escaped_unicode_32
+		&& s.expect('\\', start + 1)
 
 	// walk the string to get characters up to the next backtick
 	for {
@@ -1507,13 +1557,17 @@ fn (mut s Scanner) ident_char() string {
 		// the string inside the backticks is longer than one character
 		// but we might only have one rune... attempt to decode escapes
 		// if the content expresses an escape code, it will have an even number of characters
-		// e.g. (octal) \141 (hex) \x61 or (unicode) \u2605
+		// e.g. (octal) \141 (hex) \x61 or (unicode) \u2605 or (32 bit unicode) \U00002605
 		// we don't handle binary escape codes in rune literals
 		orig := c
-		if c.len % 2 == 0 && (escaped_hex || escaped_unicode || escaped_octal) {
-			if escaped_unicode {
+		if c.len % 2 == 0
+			&& (escaped_hex || escaped_unicode_16 || escaped_unicode_32 || escaped_octal) {
+			if escaped_unicode_16 {
 				// there can only be one, so attempt to decode it now
-				c = s.decode_u_escapes(c, 0, [0])
+				c = s.decode_u16erune(c)
+			} else if escaped_unicode_32 {
+				// there can only be one, so attempt to decode it now
+				c = s.decode_u32erune(c)
 			} else {
 				// find escape sequence start positions
 				mut escapes_pos := []int{}
@@ -1532,7 +1586,7 @@ fn (mut s Scanner) ident_char() string {
 
 		u := c.runes()
 		if u.len != 1 {
-			if escaped_hex || escaped_unicode {
+			if escaped_hex || escaped_unicode_16 || escaped_unicode_32 {
 				s.error_with_pos('invalid character literal `${orig}` => `${c}` (${u}) (escape sequence did not refer to a singular rune)',
 					lspos)
 			} else if u.len == 0 {
@@ -1563,7 +1617,7 @@ fn (mut s Scanner) ident_char() string {
 	return c
 }
 
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn (s &Scanner) expect(want string, start_pos int) bool {
 	end_pos := start_pos + want.len
 	if start_pos < 0 || end_pos < 0 || start_pos >= s.text.len || end_pos > s.text.len {
@@ -1577,20 +1631,20 @@ fn (s &Scanner) expect(want string, start_pos int) bool {
 	return true
 }
 
-[inline]
+@[inline]
 fn (mut s Scanner) ignore_line() {
 	s.eat_to_end_of_line()
 	s.inc_line_number()
 }
 
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn (mut s Scanner) eat_to_end_of_line() {
 	for s.pos < s.text.len && s.text[s.pos] != scanner.b_lf {
 		s.pos++
 	}
 }
 
-[inline]
+@[inline]
 fn (mut s Scanner) inc_line_number() {
 	s.last_nl_pos = s.text.len - 1
 	if s.last_nl_pos > s.pos {
@@ -1737,5 +1791,37 @@ fn (mut s Scanner) vet_error(msg string, fix vet.FixKind) {
 fn (mut s Scanner) trace[T](fbase string, x &T) {
 	if s.file_base == fbase {
 		println('> s.trace | ${fbase:-10s} | ${voidptr(x):16} | ${x}')
+	}
+}
+
+// prepare_for_new_text resets the internal state of the scanner,
+// so that it can be reused for scanning the new text, given by `text`,
+// using a subsequent s.scan_text() call, to get the token corresponding to the text.
+pub fn (mut s Scanner) prepare_for_new_text(text string) {
+	s.text = text
+	s.pos = 0
+	s.line_nr = 0
+	s.last_nl_pos = 0
+	s.is_crlf = false
+	s.is_inside_string = false
+	s.is_nested_string = false
+	s.is_started = false
+	s.is_inter_start = false
+	s.is_inter_end = false
+	s.is_enclosed_inter = false
+	s.is_nested_enclosed_inter = false
+	s.last_lt = 0
+	s.quote = 0
+	s.inter_quote = 0
+}
+
+// new_silent_scanner returns a new scanner instance, setup to just set internal flags and append errors
+// to its .errors field, *without aborting the program*. It is mainly useful for programs that want to
+// lex potentially invalid V source code repeatedly, and do their own error handling (checking .errors.len).
+pub fn new_silent_scanner() &Scanner {
+	mut p := pref.new_preferences()
+	p.output_mode = .silent
+	return &Scanner{
+		pref: p
 	}
 }

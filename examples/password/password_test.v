@@ -1,14 +1,12 @@
 import os
 
-const (
-	// Expect has to be installed for the test.
-	expect_exe = os.find_abs_path_of_executable('expect') or {
-		eprintln('skipping test, since expect is missing')
-		exit(0)
-	}
-	// Directory that contains the Expect scripts used in the test.
-	expect_tests_path = os.join_path(@VMODROOT, 'examples', 'password', 'tests')
-)
+// Expect has to be installed for the test.
+const expect_exe = os.find_abs_path_of_executable('expect') or {
+	eprintln('skipping test, since expect is missing')
+	exit(0)
+}
+// Directory that contains the Expect scripts used in the test.
+const expect_tests_path = os.join_path(@VMODROOT, 'examples', 'password', 'tests')
 
 fn test_password_input() {
 	correct := os.execute(os.join_path(expect_tests_path, 'correct.expect'))

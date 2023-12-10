@@ -15,7 +15,7 @@ fn main() {
 	//	vweb.run(&App{}, 38091)
 }
 
-['/']
+@['/']
 pub fn (mut app App) app_main() vweb.Result {
 	return app.text('Hello World')
 }

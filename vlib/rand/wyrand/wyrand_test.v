@@ -3,17 +3,13 @@ import rand
 import rand.seed
 import rand.wyrand
 
-const (
-	range_limit = 40
-	value_count = 1000
-	seeds       = [[u32(42), 0], [u32(256), 0]]
-)
+const range_limit = 40
+const value_count = 1000
+const seeds = [[u32(42), 0], [u32(256), 0]]
 
-const (
-	sample_size   = 1000
-	stats_epsilon = 0.05
-	inv_sqrt_12   = 1.0 / math.sqrt(12)
-)
+const sample_size = 1000
+const stats_epsilon = 0.05
+const inv_sqrt_12 = 1.0 / math.sqrt(12)
 
 fn gen_randoms(seed_data []u32, bound int) []u64 {
 	bound_u64 := u64(bound)

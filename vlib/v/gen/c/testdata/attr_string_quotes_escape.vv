@@ -1,6 +1,6 @@
 struct Dummy {}
 
-['option: "1"']
+@['option: "1"']
 fn (d Dummy) sample_method() {
 }
 

@@ -47,13 +47,13 @@ pub fn eprintln(s string) {
 }
 
 // exit terminates execution immediately and returns exit `code` to the shell.
-[noreturn]
+@[noreturn]
 pub fn exit(code int) {
 	WASM.proc_exit(code)
 }
 
 // panic prints a nice error message, then exits the process with exit code of 1.
-[noreturn]
+@[noreturn]
 pub fn panic(s string) {
 	eprint('V panic: ')
 	eprintln(s)

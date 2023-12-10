@@ -1,12 +1,10 @@
 import term
 
-const (
-	color = $if windows {
-		term.bright_cyan('WINDOWS')
-	} $else {
-		term.bright_green('UNIX')
-	}
-)
+const color = $if windows {
+	term.bright_cyan('WINDOWS')
+} $else {
+	term.bright_green('UNIX')
+}
 
 fn test_const_from_comptime_if_expr() {
 	salutation := 'hello'

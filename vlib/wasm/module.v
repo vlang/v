@@ -57,7 +57,7 @@ pub enum RefType as u8 {
 
 // Module contains the WebAssembly module.
 // Use the `compile` method to compile the module into a pure byte array.
-[heap]
+@[heap]
 pub struct Module {
 mut:
 	buf            []u8

@@ -4,24 +4,22 @@ import io
 import os
 import strings
 
-const (
-	default_prolog_attributes = {
-		'version':  '1.0'
-		'encoding': 'UTF-8'
-	}
-	default_string_builder_cap = 32
+const default_prolog_attributes = {
+	'version':  '1.0'
+	'encoding': 'UTF-8'
+}
+const default_string_builder_cap = 32
 
-	element_len                = '<!ELEMENT'.len
-	entity_len                 = '<!ENTITY'.len
+const element_len = '<!ELEMENT'.len
+const entity_len = '<!ENTITY'.len
 
-	doctype_chars              = 'OCTYPE'.bytes()
-	double_dash                = '--'.bytes()
-	c_tag                      = '[C'.bytes()
-	data_chars                 = 'DATA'.bytes()
+const doctype_chars = 'OCTYPE'.bytes()
+const double_dash = '--'.bytes()
+const c_tag = '[C'.bytes()
+const data_chars = 'DATA'.bytes()
 
-	byte_order_marking_first   = u8(0xEF)
-	byte_order_marking_bytes   = [u8(0xBB), 0xBF]
-)
+const byte_order_marking_first = u8(0xEF)
+const byte_order_marking_bytes = [u8(0xBB), 0xBF]
 
 // Helper types to assist in parsing
 
@@ -541,7 +539,12 @@ fn parse_children(name string, attributes map[string]string, mut reader io.Reade
 	return error('XML node <${name}> not closed.')
 }
 
-fn parse_single_node(first_char u8, mut reader io.Reader) !XMLNode {
+// parse_single_node parses a single XML node from the reader. The first character of the tag is passed
+// in as the first_char parameter.
+// This function is meant to assist in parsing nested nodes one at a time. Using this function as
+// opposed to the recommended static functions makes it easier to parse smaller nodes in extremely large
+// XML documents without running out of memory.
+pub fn parse_single_node(first_char u8, mut reader io.Reader) !XMLNode {
 	mut contents := strings.new_builder(xml.default_string_builder_cap)
 	contents.write_u8(first_char)
 
@@ -557,14 +560,14 @@ fn parse_single_node(first_char u8, mut reader io.Reader) !XMLNode {
 	tag_contents := contents.str().trim_space()
 
 	parts := tag_contents.split_any(' \t\n')
-	name := parts[0]
+	name := parts[0].trim_right('/')
 
 	// Check if it is a self-closing tag
 	if tag_contents.ends_with('/') {
 		// We're not looking for children and inner text
 		return XMLNode{
 			name: name
-			attributes: parse_attributes(tag_contents[name.len - 1..tag_contents.len].trim_space())!
+			attributes: parse_attributes(tag_contents[name.len..tag_contents.len - 1].trim_space())!
 		}
 	}
 

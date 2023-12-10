@@ -148,7 +148,7 @@ pub fn (f Field) str() string {
 }
 
 // free frees the memory used by a result.
-[unsafe]
+@[unsafe]
 pub fn (r &Result) free() {
 	C.mysql_free_result(r.result)
 }

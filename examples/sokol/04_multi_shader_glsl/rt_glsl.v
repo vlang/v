@@ -30,11 +30,9 @@ import time
 fn C.rt_march_shader_desc(gfx.Backend) &gfx.ShaderDesc
 fn C.rt_puppy_shader_desc(gfx.Backend) &gfx.ShaderDesc
 
-const (
-	win_width  = 800
-	win_height = 800
-	bg_color   = gx.white
-)
+const win_width = 800
+const win_height = 800
+const bg_color = gx.white
 
 struct App {
 mut:
@@ -358,7 +356,7 @@ fn init_cube_glsl_p(mut app App) {
 	println('GLSL Puppy init DONE!')
 }
 
-[inline]
+@[inline]
 fn vec4(x f32, y f32, z f32, w f32) m4.Vec4 {
 	return m4.Vec4{
 		e: [x, y, z, w]!

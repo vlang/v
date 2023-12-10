@@ -110,13 +110,13 @@ fn (mut g Gen) gen_sumtype_equality_fn(left_type ast.Type) string {
 }
 
 // read_opt generates C code accessing option data
-[inline]
+@[inline]
 fn (mut g Gen) read_opt(typ ast.Type, var_name string) string {
 	return '(${g.base_type(typ)}*)${var_name}.data'
 }
 
 // read_field generates C code for reading option/no-option struct field
-[inline]
+@[inline]
 fn (mut g Gen) read_field(struct_type ast.Type, field_name string, var_name string) string {
 	return if struct_type.has_flag(.option) {
 		'(${g.read_opt(struct_type, var_name)})->${field_name}'
@@ -126,7 +126,7 @@ fn (mut g Gen) read_field(struct_type ast.Type, field_name string, var_name stri
 }
 
 // read_opt_field generates C code for reading option/no-option struct field
-[inline]
+@[inline]
 fn (mut g Gen) read_opt_field(struct_type ast.Type, field_name string, var_name string, field_typ ast.Type) string {
 	return if field_typ.has_flag(.option) {
 		'*(${g.base_type(field_typ)}*)${g.read_field(struct_type, field_name, var_name)}.data'

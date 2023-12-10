@@ -5,25 +5,23 @@ import vweb
 import vweb.csrf
 import os
 
-const (
-	sport                  = 12385
-	localserver            = '127.0.0.1:${sport}'
-	exit_after_time        = 12000 // milliseconds
+const sport = 12385
+const localserver = '127.0.0.1:${sport}'
+const exit_after_time = 12000 // milliseconds
 
-	session_id_cookie_name = 'session_id'
-	csrf_config            = &csrf.CsrfConfig{
-		secret: 'my-256bit-secret'
-		allowed_hosts: ['*']
-		session_cookie: session_id_cookie_name
-	}
+const session_id_cookie_name = 'session_id'
+const csrf_config = &csrf.CsrfConfig{
+	secret: 'my-256bit-secret'
+	allowed_hosts: ['*']
+	session_cookie: session_id_cookie_name
+}
 
-	allowed_origin         = 'example.com'
-	csrf_config_origin     = &csrf.CsrfConfig{
-		secret: 'my-256bit-secret'
-		allowed_hosts: [allowed_origin]
-		session_cookie: session_id_cookie_name
-	}
-)
+const allowed_origin = 'example.com'
+const csrf_config_origin = &csrf.CsrfConfig{
+	secret: 'my-256bit-secret'
+	allowed_hosts: [allowed_origin]
+	session_cookie: session_id_cookie_name
+}
 
 // 			Test CSRF functions
 // =====================================
@@ -185,7 +183,7 @@ fn test_invalid_origin() {
 struct App {
 	vweb.Context
 pub mut:
-	csrf        csrf.CsrfApp                 [vweb_global]
+	csrf        csrf.CsrfApp                 @[vweb_global]
 	middlewares map[string][]vweb.Middleware
 }
 
@@ -199,7 +197,7 @@ pub fn (mut app App) index() vweb.Result {
 </form>')
 }
 
-[post]
+@[post]
 pub fn (mut app App) auth() vweb.Result {
 	app.csrf.protect(mut app.Context)
 
@@ -216,7 +214,7 @@ pub fn (mut app App) middleware_index() vweb.Result {
 </form>')
 }
 
-[post]
+@[post]
 pub fn (mut app App) middleware_auth() vweb.Result {
 	return app.ok('middleware authenticated')
 }
