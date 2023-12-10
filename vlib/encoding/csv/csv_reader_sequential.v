@@ -230,7 +230,7 @@ pub fn (mut cr SequentialReader) get_next_row() ![]string {
 						} else {
 							(tos(cr.ch_buf.data, cr.ch_buf.len - 1).clone())
 						}
-						i += cr.end_line_len
+						i += cr.end_line_len - 1
 						break
 					}
 				} else if ch == `\r` && cr.end_line_len == 2 {
@@ -284,7 +284,7 @@ pub fn (mut cr SequentialReader) get_next_row() ![]string {
 					cr.row_count++
 					cr.col_count = 0
 					cr.ch_buf.clear()
-					i += cr.end_line_len
+					i += cr.end_line_len - 1
 					break
 				}
 			}
