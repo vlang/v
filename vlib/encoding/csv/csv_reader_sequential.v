@@ -69,6 +69,7 @@ pub fn csv_sequential_reader(cfg SequentialReaderConfig) !&SequentialReader {
 	cr.start_index = cfg.start_index
 	cr.end_index = cfg.end_index
 
+	// reading from a RAM buffer
 	if cfg.scr_buf != 0 && cfg.scr_buf_len > 0 {
 		cr.mem_buf_type = csv.ram_csv // RAM buffer
 		cr.mem_buf = cfg.scr_buf
@@ -89,6 +90,45 @@ pub fn csv_sequential_reader(cfg SequentialReaderConfig) !&SequentialReader {
 
 		cr.mem_buf_start = 0
 		cr.mem_buf_end = cr.mem_buf_size
+	
+
+	// check if is a file source
+	}else if cfg.file_path.len > 0 {
+		if !os.exists(cfg.file_path) {
+			return error('ERROR: file ${cfg.file_path} not found!')
+		}
+		cr.mem_buf_type = csv.file_csv // File buffer
+		// allocate the memory
+		unsafe {
+			cr.mem_buf = malloc(cfg.mem_buf_size)
+			cr.mem_buf_size = cfg.mem_buf_size
+		}
+		cr.f = os.open_file(cfg.file_path, 'rb')!
+
+		cr.f.seek(0, .end)!
+		cr.f_len = cr.f.tell()!
+
+		cr.f.seek(cfg.start_index, .start)!
+		cr.index = cr.f.tell()!
+
+		if cfg.end_index == -1 {
+			cr.end_index = cr.f_len
+		}
+
+		// check if BOM header is in the file
+		if cr.index == 0 {
+			if cr.f.read_into_ptr(cr.mem_buf, 4)! == 4 {
+				unsafe {
+					if *&u8(cr.mem_buf) == 0xEF && *(&u8(cr.mem_buf) + 1) == 0xBB
+						&& *(&u8(cr.mem_buf) + 2) == 0xBF {
+						cr.is_bom_present = true
+						cr.index += 3 // skip the BOM
+						cr.start_index += 3 // skip the BOM
+					}
+				}
+			}
+			cr.f.seek(cfg.start_index, .start)!
+		}
 	}
 
 	cr.default_cell = cfg.default_cell
@@ -127,9 +167,15 @@ pub fn (mut cr SequentialReader) has_data() i64 {
 	return cr.end_index - cr.start_index
 }
 
-fn (mut cr SequentialReader) fill_buffer(index i64) {
+fn (mut cr SequentialReader) fill_buffer(index i64)! {
 	if cr.mem_buf_type == csv.ram_csv {
-
+		// for now do nothing if ram buffer
+	} else {
+		cr.f.seek(index, .start)!
+		// IMPORTANT: add 64 bit support in vlib!!
+		read_bytes_count := cr.f.read_into_ptr(cr.mem_buf, int(cr.mem_buf_size))!
+		cr.mem_buf_start = index
+		cr.mem_buf_end = index + read_bytes_count
 	}
 }
 
@@ -151,10 +197,10 @@ pub fn (mut cr SequentialReader) get_next_row() ![]string {
 	p := &u8(cr.mem_buf)
 	for i < cr.end_index {
 		if i < cr.mem_buf_start || i >= cr.mem_buf_end {
-			cr.fill_buffer(i)
+			cr.fill_buffer(i)!
 		}
 		unsafe{
-			ch := *(p+i)
+			ch := *(p + i - cr.mem_buf_start)
 
 			if state == .cell {
 				if ch == cr.separator {
@@ -176,10 +222,14 @@ pub fn (mut cr SequentialReader) get_next_row() ![]string {
 
 					// skip empty rows
 					if !(r.len == 0 && ch_buf.len < 1) {
-						ch_buf << 0
+						ch_buf << 0						
 						r << cstring_to_vstring(ch_buf.data)
+						i += 1
 						break 
 					}
+				}
+				else if ch == `\r` && cr.end_line_len == 2 {
+					// skip CR
 				}
 				else { // normal char inside a cell
 					ch_buf << ch
@@ -188,6 +238,7 @@ pub fn (mut cr SequentialReader) get_next_row() ![]string {
 
 			if state == .comment {
 				if ch_buf.len > 0 {
+					// must be optimized
 					ch_buf << 0
 					r << cstring_to_vstring(ch_buf.data)
 					ch_buf.clear()
@@ -220,8 +271,10 @@ pub fn (mut cr SequentialReader) get_next_row() ![]string {
 				} else if ch == cr.end_line {
 					cr.row_count++
 					cr.col_count = 0
+					// must be optimized
 					ch_buf << 0
 					r << cstring_to_vstring(ch_buf.data)
+					i += 1
 					break 
 				}
 			}
