@@ -45,19 +45,4 @@ fn test_strict_check() {
 		duplicates: []
 		superfluous: ['val2']
 	}
-
-	// assert strict.strict_check[StructTypeAndOptionType[string]]('{"val": "","val2": "","val3": "","val3": ""}') == strict.StructCheckResult{
-	// 	duplicates: ['val3']
-	// 	superfluous: ['val2', 'val3']
-	// }
-
-	// assert strict.strict_check[StructType[StructTypeAndOptionType[string]]]('{"val": {"val": "","val2": ""}}') == strict.StructCheckResult{
-	// 	duplicates: []
-	// 	superfluous: ['val.val2']
-	// }
-
-	// assert strict.strict_check[StructType[[]StructTypeAndOptionType[string]]]('{"val": [{"val": "","val2": ""}],[{"val": "","gdgd": "sss"}]}') == strict.StructCheckResult{
-	// 	duplicates: []
-	// 	superfluous: ['val[0].val2', 'val[1].gdgd']
-	// }
 }
