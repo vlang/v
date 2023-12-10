@@ -3,17 +3,17 @@ module mysql
 // Values for the capabilities flag bitmask used by the MySQL protocol.
 // See more on https://dev.mysql.com/doc/dev/mysql-server/latest/group__group__cs__capabilities__flags.html#details
 pub enum ConnectionFlag {
-	client_compress = C.CLIENT_COMPRESS
-	client_found_rows = C.CLIENT_FOUND_ROWS
-	client_ignore_sigpipe = C.CLIENT_IGNORE_SIGPIPE
-	client_ignore_space = C.CLIENT_IGNORE_SPACE
-	client_interactive = C.CLIENT_INTERACTIVE
-	client_local_files = C.CLIENT_LOCAL_FILES
-	client_multi_results = C.CLIENT_MULTI_RESULTS
+	client_compress         = C.CLIENT_COMPRESS
+	client_found_rows       = C.CLIENT_FOUND_ROWS
+	client_ignore_sigpipe   = C.CLIENT_IGNORE_SIGPIPE
+	client_ignore_space     = C.CLIENT_IGNORE_SPACE
+	client_interactive      = C.CLIENT_INTERACTIVE
+	client_local_files      = C.CLIENT_LOCAL_FILES
+	client_multi_results    = C.CLIENT_MULTI_RESULTS
 	client_multi_statements = C.CLIENT_MULTI_STATEMENTS
-	client_no_schema = C.CLIENT_NO_SCHEMA
-	client_odbc = C.CLIENT_ODBC
-	client_ssl = C.CLIENT_SSL
+	client_no_schema        = C.CLIENT_NO_SCHEMA
+	client_odbc             = C.CLIENT_ODBC
+	client_ssl              = C.CLIENT_SSL
 	client_remember_options = C.CLIENT_REMEMBER_OPTIONS
 }
 
@@ -369,7 +369,8 @@ pub struct Stmt_Handle {
 
 // prepare takes in a query string, returning a Stmt_Handle
 // that can then be used to execute the query as many times
-// as needed
+// as needed, which must be closed manually by the user
+// Placeholders are represented by `?`
 pub fn (db &DB) prepare(query string) !Stmt_Handle {
 	stmt := C.mysql_stmt_init(db.conn)
 	if stmt == unsafe { nil } {
@@ -389,10 +390,10 @@ pub fn (db &DB) prepare(query string) !Stmt_Handle {
 	}
 }
 
-// execute on a Stmt_Handle takes in an array of params that
-// will be bound to the statement, followed by it's execution
-// Returns an array of Rows, which will be empty if nothing is
-// returned from the query
+// execute takes in an array of params that will be bound to the statement,
+// followed by it's execution
+// Returns an array of Rows, which will be empty if nothing is returned
+// from the query, or possibly an error value
 pub fn (stmt &Stmt_Handle) execute(params []string) ![]Row {
 	mut bind_params := []C.MYSQL_BIND{}
 	for param in params {
