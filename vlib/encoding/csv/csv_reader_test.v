@@ -122,14 +122,14 @@ fn test_csv_sequential() {
     
 
    	csvr = csv.csv_sequential_reader(scr_buf:txt2.str, scr_buf_len:txt2.len)!
+   	csvr.empty_cell = "####"
     data = [][]string{}
     for csvr.has_data() > 1 {
         data << csvr.get_next_row()!
     }
     csvr.dispose_csv_reader()
-    println(data[data.len - 2])
-    println(data[data.len - 2][2].len)
-    assert data[data.len - 2][2] == '', 'test_csv_sequential4 reading failed!'
+    assert data[data.len - 2][2] == '####', 'test_csv_sequential4 reading failed!'
+    assert data[data.len - 2][5] == 'pippo', 'test_csv_sequential5 reading failed!'
 }
 
 /******************************************************************************

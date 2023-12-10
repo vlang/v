@@ -209,9 +209,9 @@ pub fn (mut cr SequentialReader) get_next_row() ![]string {
 				if ch == cr.separator {
 					// must be optimized
 					cr.ch_buf << 0
-					row_res << (tos(cr.ch_buf.data, cr.ch_buf.len - 1).clone())
+					row_res << if (cr.ch_buf.len - 1) == 0 {cr. empty_cell} else {(tos(cr.ch_buf.data, cr.ch_buf.len - 1).clone())}
 					cr.ch_buf.clear()
-				} else if cr.ch_buf.len == 0 && ch == cr.comment {
+				} else if cr.ch_buf.len == 0 && ch == cr.comment && row_res.len == 0{
 					state = .comment
 				} else if ch == cr.quote {
 					state = .quote
@@ -226,7 +226,7 @@ pub fn (mut cr SequentialReader) get_next_row() ![]string {
 					// skip empty rows
 					if !(row_res.len == 0 && cr.ch_buf.len < 1) {
 						cr.ch_buf << 0						
-						row_res << (tos(cr.ch_buf.data, cr.ch_buf.len - 1).clone())
+						row_res << if (cr.ch_buf.len - 1) == 0 {cr. empty_cell} else {(tos(cr.ch_buf.data, cr.ch_buf.len - 1).clone())}
 						i += cr.end_line_len
 						break 
 					}
@@ -243,7 +243,7 @@ pub fn (mut cr SequentialReader) get_next_row() ![]string {
 				if cr.ch_buf.len > 0 {
 					// must be optimized
 					cr.ch_buf << 0
-					row_res << (tos(cr.ch_buf.data, cr.ch_buf.len - 1).clone())
+					row_res << if (cr.ch_buf.len - 1) == 0 {cr. empty_cell} else {(tos(cr.ch_buf.data, cr.ch_buf.len - 1).clone())}
 					cr.ch_buf.clear()
 				} else if ch == cr.end_line {
 					state = .cell
@@ -254,7 +254,7 @@ pub fn (mut cr SequentialReader) get_next_row() ![]string {
 				if ch == cr.quote {
 					// must be optimized
 					cr.ch_buf << 0
-					row_res << (tos(cr.ch_buf.data, cr.ch_buf.len - 1).clone())
+					row_res << if (cr.ch_buf.len - 1) == 0 {cr. empty_cell} else {(tos(cr.ch_buf.data, cr.ch_buf.len - 1).clone())}
 					cr.ch_buf.clear()
 
 					state = .after_quote
@@ -274,9 +274,7 @@ pub fn (mut cr SequentialReader) get_next_row() ![]string {
 				} else if ch == cr.end_line {
 					cr.row_count++
 					cr.col_count = 0
-					// must be optimized
-					cr.ch_buf << 0
-					row_res << (tos(cr.ch_buf.data, cr.ch_buf.len - 1).clone())
+					cr.ch_buf.clear()
 					i += cr.end_line_len
 					break 
 				}
