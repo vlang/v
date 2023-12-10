@@ -8,6 +8,10 @@ import test_utils
 const test_path = os.join_path(os.vtmp_dir(), 'vpm_outdated_test_${rand.ulid()}')
 
 fn testsuite_begin() {
+	$if !network ? {
+		eprintln('> skipping ${@FILE}, when `-d network` is missing')
+		exit(0)
+	}
 	test_utils.set_test_env(test_path)
 	os.mkdir_all(test_path)!
 	os.chdir(test_path)!

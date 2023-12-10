@@ -11,6 +11,10 @@ import test_utils
 const test_path = os.join_path(os.vtmp_dir(), 'vpm_install_test_${rand.ulid()}')
 
 fn testsuite_begin() {
+	$if !network ? {
+		eprintln('> skipping ${@FILE}, when `-d network` is missing')
+		exit(0)
+	}
 	test_utils.set_test_env(test_path)
 }
 
