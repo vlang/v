@@ -3,7 +3,6 @@ module main
 import os
 import net.http
 import net.urllib
-import sync.pool
 import v.vmod
 import json
 import term
@@ -17,13 +16,6 @@ struct ModuleVpmInfo {
 	nr_downloads int
 }
 
-pub struct ModuleDateInfo {
-	name string
-mut:
-	outdated bool
-	exec_err bool
-}
-
 @[params]
 struct ErrorOptions {
 	details string
@@ -32,35 +24,6 @@ struct ErrorOptions {
 
 const vexe = os.quoted_path(os.getenv('VEXE'))
 const home_dir = os.home_dir()
-
-fn get_mod_date_info(mut pp pool.PoolProcessor, idx int, wid int) &ModuleDateInfo {
-	mut result := &ModuleDateInfo{
-		name: pp.get_item[string](idx)
-	}
-	path := get_path_of_existing_module(result.name) or { return result }
-	vcs := vcs_used_in_dir(path) or { return result }
-	args := vcs_info[vcs].args
-	mut outputs := []string{}
-	for step in args.outdated {
-		cmd := [vcs.str(), args.path, os.quoted_path(path), step].join(' ')
-		res := os.execute(cmd)
-		if res.exit_code < 0 {
-			verbose_println('Error command: ${cmd}')
-			verbose_println('Error details:\n${res.output}')
-			result.exec_err = true
-			return result
-		}
-		if vcs == .hg && res.exit_code == 1 {
-			result.outdated = true
-			return result
-		}
-		outputs << res.output
-	}
-	if vcs == .git && outputs[1] != outputs[2] {
-		result.outdated = true
-	}
-	return result
-}
 
 fn get_mod_vpm_info(name string) !ModuleVpmInfo {
 	if name.len < 2 || (!name[0].is_digit() && !name[0].is_letter()) {
@@ -106,10 +69,13 @@ fn get_mod_vpm_info(name string) !ModuleVpmInfo {
 fn get_ident_from_url(raw_url string) !(string, string) {
 	url := urllib.parse(raw_url) or { return error('failed to parse module URL `${raw_url}`.') }
 	publisher, mut name := url.path.trim_left('/').rsplit_once('/') or {
+		if settings.vcs == .hg && raw_url.count(':') > 1 {
+			return '', 'test_module'
+		}
 		return error('failed to retrieve module name for `${url}`.')
 	}
+	name = name.trim_string_right('.git')
 	vpm_log(@FILE_LINE, @FN, 'raw_url: ${raw_url}; publisher: ${publisher}; name: ${name}')
-	name = if name.ends_with('.git') { name.replace('.git', '') } else { name }
 	return publisher, name
 }
 
@@ -120,22 +86,6 @@ fn get_name_from_url(raw_url string) !string {
 
 fn normalize_mod_path(path string) string {
 	return path.replace('-', '_').to_lower()
-}
-
-fn get_outdated() ![]string {
-	installed := get_installed_modules()
-	mut outdated := []string{}
-	mut pp := pool.new_pool_processor(callback: get_mod_date_info)
-	pp.work_on_items(installed)
-	for res in pp.get_results[ModuleDateInfo]() {
-		if res.exec_err {
-			return error('failed to check the latest commits for `${res.name}`.')
-		}
-		if res.outdated {
-			outdated << res.name
-		}
-	}
-	return outdated
 }
 
 fn get_all_modules() []string {

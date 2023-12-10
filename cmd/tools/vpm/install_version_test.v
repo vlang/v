@@ -4,14 +4,16 @@ module main
 import os
 import rand
 import v.vmod
+import test_utils
 
 const test_path = os.join_path(os.vtmp_dir(), 'vpm_install_version_test_${rand.ulid()}')
 
 fn testsuite_begin() {
-	os.setenv('VMODULES', test_path, true)
-	os.setenv('VPM_DEBUG', '', true)
-	os.setenv('VPM_NO_INCREMENT', '1', true)
-	os.setenv('VPM_FAIL_ON_PROMPT', '1', true)
+	$if !network ? {
+		eprintln('> skipping ${@FILE}, when `-d network` is missing')
+		exit(0)
+	}
+	test_utils.set_test_env(test_path)
 }
 
 fn testsuite_end() {
@@ -20,7 +22,7 @@ fn testsuite_end() {
 
 fn get_vmod(path string) vmod.Manifest {
 	return vmod.from_file(os.join_path(test_path, path, 'v.mod')) or {
-		eprintln('Failed to parse v.mod for `${path}`')
+		eprintln('Failed to parse v.mod for `${path}`. ${err}')
 		exit(1)
 	}
 }

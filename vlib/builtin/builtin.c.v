@@ -171,14 +171,14 @@ pub fn eprintln(s string) {
 	} $else $if ios {
 		C.WrappedNSLog(s.str)
 	} $else {
-		C.fflush(C.stdout)
-		C.fflush(C.stderr)
+		flush_stdout()
+		flush_stderr()
 		// eprintln is used in panics, so it should not fail at all
 		$if android && !termux {
 			C.android_print(C.stderr, c'%.*s\n', s.len, s.str)
 		}
 		_writeln_to_fd(2, s)
-		C.fflush(C.stderr)
+		flush_stderr()
 	}
 }
 
@@ -195,13 +195,13 @@ pub fn eprint(s string) {
 		// TODO: Implement a buffer as NSLog doesn't have a "print"
 		C.WrappedNSLog(s.str)
 	} $else {
-		C.fflush(C.stdout)
-		C.fflush(C.stderr)
+		flush_stdout()
+		flush_stderr()
 		$if android && !termux {
 			C.android_print(C.stderr, c'%.*s', s.len, s.str)
 		}
 		_write_buf_to_fd(2, s.str, s.len)
-		C.fflush(C.stderr)
+		flush_stderr()
 	}
 }
 

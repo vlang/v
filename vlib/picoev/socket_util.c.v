@@ -1,7 +1,6 @@
 module picoev
 
 import net
-import net.conv
 import picohttpparser
 
 #include <errno.h>
@@ -102,7 +101,7 @@ fn fatal_socket_error(fd int) bool {
 // listen creates a listening tcp socket and returns its file descriptor
 fn listen(config Config) int {
 	// not using the `net` modules sockets, because not all socket options are defined
-	fd := C.socket(net.AddrFamily.ip, net.SocketType.tcp, 0)
+	fd := C.socket(config.family, net.SocketType.tcp, 0)
 	assert fd != -1
 
 	$if trace_fd ? {
@@ -124,20 +123,18 @@ fn listen(config Config) int {
 	}
 
 	// addr settings
+	saddr := '${config.host}:${config.port}'
+	addrs := net.resolve_addrs(saddr, config.family, .tcp) or { panic(err) }
+	addr := addrs[0]
+	alen := addr.len()
 
-	sin_port := conv.hton16(u16(config.port))
-	sin_addr := conv.hton32(u32(C.INADDR_ANY))
-	mut addr := C.sockaddr_in{
-		sin_family: u8(C.AF_INET)
-		sin_port: sin_port
-		sin_addr: sin_addr
+	net.socket_error_message(C.bind(fd, voidptr(&addr), alen), 'binding to ${saddr} failed') or {
+		panic(err)
 	}
-	size := sizeof(C.sockaddr_in)
-	bind_res := C.bind(fd, voidptr(unsafe { &net.Addr(&addr) }), size)
-	assert bind_res == 0
+	net.socket_error_message(C.listen(fd, C.SOMAXCONN), 'listening on ${saddr} with maximum backlog pending queue of ${C.SOMAXCONN}, failed') or {
+		panic(err)
+	}
 
-	listen_res := C.listen(fd, C.SOMAXCONN)
-	assert listen_res == 0
 	setup_sock(fd) or {
 		config.err_cb(config.user_data, picohttpparser.Request{}, mut &picohttpparser.Response{},
 			err)

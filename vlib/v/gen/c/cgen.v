@@ -4631,7 +4631,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 			&& (sym.info as ast.Alias).parent_type !in [expr_type, ast.string_type]) {
 			if sym.kind == .string && !node.typ.is_ptr() {
 				cast_label = '*(string*)&'
-			} else {
+			} else if !(g.is_cc_msvc && g.typ(node.typ) == g.typ(expr_type)) {
 				cast_label = '(${styp})'
 			}
 		}
@@ -6772,8 +6772,10 @@ fn (mut g Gen) interface_table() string {
 		methods_struct_name := 'struct _${interface_name}_interface_methods'
 		mut methods_struct_def := strings.new_builder(100)
 		methods_struct_def.writeln('${methods_struct_name} {')
+		inter_methods := inter_info.get_methods()
 		mut methodidx := map[string]int{}
-		for k, method in inter_info.methods {
+		for k, method_name in inter_methods {
+			method := isym.find_method_with_generic_parent(method_name) or { continue }
 			methodidx[method.name] = k
 			ret_styp := g.typ(method.return_type)
 			methods_struct_def.write_string('\t${ret_styp} (*_method_${c_fn_name(method.name)})(void* _')
@@ -7078,7 +7080,7 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 		}
 		// add line return after interface index declarations
 		sb.writeln('')
-		if inter_info.methods.len > 0 {
+		if inter_methods.len > 0 {
 			sb.writeln(methods_wrapper.str())
 			sb.writeln(methods_struct_def.str())
 			sb.writeln(methods_struct.str())

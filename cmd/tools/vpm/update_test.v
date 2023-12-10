@@ -1,14 +1,17 @@
 // vtest retry: 3
 import os
 import rand
+import test_utils
 
 const v = os.quoted_path(@VEXE)
 const test_path = os.join_path(os.vtmp_dir(), 'vpm_update_test_${rand.ulid()}')
 
 fn testsuite_begin() {
-	os.setenv('VMODULES', test_path, true)
-	os.setenv('VPM_DEBUG', '', true)
-	os.setenv('VPM_NO_INCREMENT', '1', true)
+	$if !network ? {
+		eprintln('> skipping ${@FILE}, when `-d network` is missing')
+		exit(0)
+	}
+	test_utils.set_test_env(test_path)
 }
 
 fn testsuite_end() {

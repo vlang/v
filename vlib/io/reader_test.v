@@ -126,3 +126,38 @@ fn test_leftover() {
 	}
 	assert r.end_of_stream()
 }
+
+fn test_totalread_read() {
+	text := 'Some testing text'
+	mut s := StringReader{
+		text: text
+	}
+	mut r := new_buffered_reader(reader: s)
+
+	mut buf := []u8{len: text.len}
+	total := r.read(mut buf) or {
+		assert false
+		panic('bad')
+	}
+
+	assert r.total_read == total
+}
+
+fn test_totalread_readline() {
+	text := 'Some testing text\nmore_enters'
+	mut s := StringReader{
+		text: text
+	}
+	mut r := new_buffered_reader(reader: s)
+
+	_ := r.read_line() or {
+		assert false
+		panic('bad')
+	}
+	_ := r.read_line() or {
+		assert false
+		panic('bad')
+	}
+
+	assert r.total_read == text.len
+}

@@ -109,8 +109,7 @@ pub fn open_file(path string, mode string, options ...int) !File {
 	if fd == -1 {
 		return error(posix_get_error_msg(C.errno))
 	}
-	fdopen_mode := mode.replace('b', '')
-	cfile := C.fdopen(fd, &char(fdopen_mode.str))
+	cfile := C.fdopen(fd, &char(mode.str))
 	if isnil(cfile) {
 		return error('Failed to open or create file "${path}"')
 	}

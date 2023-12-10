@@ -23,7 +23,7 @@ interface Greeter {
 	greet() string
 }
 
-// for issue 16496
+// for issue 16496, test the own methods.
 interface Foo {
 	a_method()
 }
@@ -49,4 +49,29 @@ fn (d &Derived) a_method() {
 fn test_embedding_method_call_cgen() {
 	bar := Bar(Derived{})
 	assert bar.bar_method() == 0
+}
+
+// for issue 20113, test call the method signatures
+interface IFoo[T] {
+	method(arg T) T
+}
+
+interface IBar[T] {
+	IFoo
+}
+
+interface IBaz[T] {
+	IBar
+}
+
+struct DerivedStruct[T] {
+}
+
+fn (d DerivedStruct[T]) method[T](arg T) T {
+	return arg
+}
+
+fn main() {
+	a := IFoo[int](DerivedStruct[int]{})
+	assert a.method(1) == 1
 }

@@ -11,6 +11,7 @@ mut:
 	mfails int // maximum fails, after which we can assume that the stream has ended
 pub mut:
 	end_of_stream bool // whether we reached the end of the upstream reader
+	total_read    int  // total number of bytes read
 }
 
 // BufferedReaderConfig are options that can be given to a buffered reader.
@@ -55,6 +56,7 @@ pub fn (mut r BufferedReader) read(mut buf []u8) !int {
 		}
 	}
 	r.offset += read
+	r.total_read += read
 	return read
 }
 
@@ -128,6 +130,7 @@ pub fn (mut r BufferedReader) read_line() !string {
 		// try and find a newline character
 		mut i := r.offset
 		for ; i < r.len; i++ {
+			r.total_read++
 			c := r.buf[i]
 			if c == `\n` {
 				// great, we hit something

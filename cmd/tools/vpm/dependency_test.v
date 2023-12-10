@@ -8,6 +8,10 @@ const v = os.quoted_path(@VEXE)
 const test_path = os.join_path(os.vtmp_dir(), 'vpm_dependency_test_${rand.ulid()}')
 
 fn testsuite_begin() {
+	$if !network ? {
+		eprintln('> skipping ${@FILE}, when `-d network` is missing')
+		exit(0)
+	}
 	os.setenv('VMODULES', test_path, true)
 	os.setenv('VPM_DEBUG', '', true)
 	os.setenv('VPM_NO_INCREMENT', '1', true)
