@@ -429,8 +429,10 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				pos := g.out.len
 				g.expr(left)
 
-				if g.is_arraymap_set && g.arraymap_set_pos > 0 {
-					g.go_back_to(g.arraymap_set_pos)
+				if g.is_arraymap_set && g.arraymap_set_pos >= 0 {
+					if g.arraymap_set_pos > 0 {
+						g.go_back_to(g.arraymap_set_pos)
+					}
 					g.write(', &${v_var})')
 					g.is_arraymap_set = false
 					g.arraymap_set_pos = 0
