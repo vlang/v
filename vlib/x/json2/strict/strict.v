@@ -2,7 +2,8 @@ module strict
 
 import arrays
 
-struct KeyStruct {
+pub struct KeyStruct {
+pub:
 	key        string
 	value_type KeyType
 	token_pos  int // the position of the token
@@ -14,7 +15,7 @@ enum KeyType {
 	array
 }
 
-struct StructCheckResult {
+pub struct StructCheckResult {
 	duplicates  []string
 	superfluous []string
 }
@@ -40,11 +41,9 @@ fn strict_check[T](json_data string) StructCheckResult {
 				}) or { panic('${field.name} not found') }
 
 				// TODO get path here from `last_key.key`
-				// println("last_key: ${last_key}")
 				if last_key.value_type == .map {
-					// println("tokens[last_key+1..]: ${tokens[last_key.token_pos+2..]}")
-					lala := check(val.$(field.name), tokens[last_key.token_pos + 2..], mut
-						duplicates, mut superfluous)
+					check(val.$(field.name), tokens[last_key.token_pos + 2..], mut duplicates, mut
+						superfluous)
 				}
 			}
 		}
@@ -57,7 +56,7 @@ fn strict_check[T](json_data string) StructCheckResult {
 	}
 }
 
-fn check[T](val T, tokens []string, mut duplicates []string, mut superfluous []string) StructCheckResult {
+fn check[T](val T, tokens []string, mut duplicates []string, mut superfluous []string) {
 	$if T is $struct {
 		key_struct := get_keys_from_json(tokens)
 
@@ -72,14 +71,12 @@ fn check[T](val T, tokens []string, mut duplicates []string, mut superfluous []s
 		$for field in T.fields {
 			$if field.typ is $struct {
 				if last_key.value_type == .map {
-					// println("tokens[last_key+1..]: ${tokens[last_key.token_pos+2..]}")
-					lala := check(val.$(field.name), tokens[last_key.token_pos + 2..], mut
-						duplicates, mut superfluous)
+					check(val.$(field.name), tokens[last_key.token_pos + 2..], mut duplicates, mut
+						superfluous)
 				}
 			}
 		}
 	}
-	return StructCheckResult{}
 }
 
 fn get_superfluous_keys[T](tokens []string, key_struct []KeyStruct) []string {

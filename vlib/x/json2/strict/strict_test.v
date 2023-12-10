@@ -11,7 +11,7 @@ mut:
 	option_val ?T
 }
 
-fn general_test() {
+fn test_strict_check() {
 	json_data := r'
 	    {
 	        "val": 0,
@@ -20,32 +20,32 @@ fn general_test() {
 	    }
 	'
 
-	key_structs := strict.get_keys_from_json(tokenize(json_data))
+	key_structs := strict.get_keys_from_json(strict.tokenize(json_data))
 	for key_struct in key_structs {
 		println('Key: ${key_struct.key}, Value Type: ${key_struct.value_type}')
 	}
 
-	assert strict.strict_check[StructTypeAndOptionType[string]]('{"val": "","val": ""}') == StructCheckResult{
+	assert strict.strict_check[StructTypeAndOptionType[string]]('{"val": "","val": ""}') == strict.StructCheckResult{
 		duplicates: ['val']
 		superfluous: []
 	}
 
-	assert strict.strict_check[StructTypeAndOptionType[string]]('{"val": "","val2": ""}') == StructCheckResult{
+	assert strict.strict_check[StructTypeAndOptionType[string]]('{"val": "","val2": ""}') == strict.StructCheckResult{
 		duplicates: []
 		superfluous: ['val2']
 	}
 
-	// assert strict.strict_check[StructTypeAndOptionType[string]]('{"val": "","val2": "","val3": "","val3": ""}') == StructCheckResult{
+	// assert strict.strict_check[StructTypeAndOptionType[string]]('{"val": "","val2": "","val3": "","val3": ""}') == strict.StructCheckResult{
 	// 	duplicates: ['val3']
 	// 	superfluous: ['val2', 'val3']
 	// }
 
-	// assert strict.strict_check[StructType[StructTypeAndOptionType[string]]]('{"val": {"val": "","val2": ""}}') == StructCheckResult{
+	// assert strict.strict_check[StructType[StructTypeAndOptionType[string]]]('{"val": {"val": "","val2": ""}}') == strict.StructCheckResult{
 	// 	duplicates: []
 	// 	superfluous: ['val.val2']
 	// }
 
-	// assert strict.strict_check[StructType[[]StructTypeAndOptionType[string]]]('{"val": [{"val": "","val2": ""}],[{"val": "","gdgd": "sss"}]}') == StructCheckResult{
+	// assert strict.strict_check[StructType[[]StructTypeAndOptionType[string]]]('{"val": [{"val": "","val2": ""}],[{"val": "","gdgd": "sss"}]}') == strict.StructCheckResult{
 	// 	duplicates: []
 	// 	superfluous: ['val[0].val2', 'val[1].gdgd']
 	// }
