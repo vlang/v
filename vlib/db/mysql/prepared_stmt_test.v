@@ -16,8 +16,7 @@ fn test_prep() {
 
 	response = db.exec('create table if not exists test (
                         id INT PRIMARY KEY AUTO_INCREMENT,
-                        value TEXT
-                      )')!
+                        value TEXT)')!
 	assert response == []mysql.Row{}
 
 	stmt := db.prepare('insert into test (value) values (?)')!
