@@ -20,7 +20,7 @@ pub struct SequentialReaderConfig {
 	end_index    i64    = -1
 	mem_buf_size int    = 1024 * 64 // default buffer size 64KByte
 	separator    u8     = `,`
-	comment      u8     = `#` // every line that start with the quote char is ignored
+	comment      u8     = `#` // every line that start with the comment char is ignored
 	default_cell string = '*' // return this string if out of the csv boundaries
 	empty_cell   string // return this string if empty cell
 	end_line_len int = endline_cr_len // size of the endline rune
