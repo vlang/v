@@ -24,7 +24,6 @@ pub struct StructCheckResult {
 fn strict_check[T](json_data string) StructCheckResult {
 	$if T is $struct {
 		tokens := tokenize(json_data)
-		println(tokens)
 
 		key_struct := get_keys_from_json(tokens)
 
