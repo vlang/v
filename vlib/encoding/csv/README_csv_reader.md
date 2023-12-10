@@ -24,7 +24,7 @@ with default configuration every cell is read as `string`.
 The function `get_row()` is used to read a single row, and it returns an array of `string`.
 
 ## Reading from different sources `csv_sequential_reader`
-The CSV Sequential Reader can read from files, memory buffers.
+The CSV Sequential Reader can read from files, and memory buffers.
 
 ### read from a file
 ```v ignore
@@ -43,7 +43,7 @@ The config struct is as follows:
 ```v ignore
 pub struct SequentialReaderConfig {
 	scr_buf      voidptr // pointer to the buffer of data
-	scr_buf_len  i64     // if > 0 use the RAM pointed from scr_buf as source of data
+	scr_buf_len  i64     // if > 0 use the RAM pointed by scr_buf as source of data
 	file_path    string
 	start_index  i64
 	end_index    i64    = -1
@@ -63,7 +63,7 @@ pub struct SequentialReaderConfig {
 |`start_index`,`end_index`| **Internal usage for now**|
 |`mem_buf_size`|memory allocated for the reading operations on the file, more memory more speed|
 |`separator`|char used as cell separator in the CSV file, default is comma|
-|`comment`|very line that start with the comment char is ignored|
+|`comment`|every line that start with the comment char is ignored|
 |`default_cell`|return this string if the query coordinates are out of the csv boundaries|
 |`empty_cell`|return this string if the query coordinates are on an empty cell|
 |`end_line_len`|size of the endline, `endline_cr_len=1`,`endline_crlf_len=2`|
@@ -150,7 +150,7 @@ pub struct RandomAccessReaderConfig {
 |`start_index`,`end_index`| **Internal usage for now**|
 |`mem_buf_size`|memory allocated for the reading operations on the file, more memory more speed|
 |`separator`|char used as cell separator in the CSV file, default is comma|
-|`comment`|very line that start with the comment char is ignored
+|`comment`|every line that start with the comment char is ignored
 |`default_cell`|return this string if the query coordinates are out of the csv boundaries|
 |`empty_cell`|return this string if the query coordinates are on an empty cell|
 |`end_line_len`|size of the endline, `endline_cr_len=1`,`endline_crlf_len=2`|
