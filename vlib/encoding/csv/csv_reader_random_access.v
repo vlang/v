@@ -404,7 +404,7 @@ pub fn (mut cr RandomAccessReader) get_cell(cfg GetCellConfig) !string {
 			}
 
 			// create the string from the buffer
-			mut tmp_mem := malloc(isize(len + 1))
+			mut tmp_mem := malloc_noscan(isize(len + 1))
 			/*
 			defer {
 				free(tmp_mem)

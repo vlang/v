@@ -58,6 +58,8 @@ pub mut:
 	mem_buf_start i64 = -1 // start index in the file of the read buffer
 	mem_buf_end   i64 = -1 // end index in the file of the read buffer
 
+	ch_buf        []u8 = []u8{cap:1024}
+
 	// error management
 	row_count     i64
 	col_count     i64
@@ -189,8 +191,9 @@ enum SequentialReadingState as u16 {
 
 // get_next_row get the next row from the CSV file as a string array
 pub fn (mut cr SequentialReader) get_next_row() ![]string {
-	mut r := []string{}
-	mut ch_buf := []u8{cap:1024} // default 1024 bytes of buffer
+	mut row_res := []string{}
+	// clear the cell buffer
+	cr.ch_buf.clear()
 	mut i := cr.start_index
 	mut state := SequentialReadingState.cell
 
@@ -205,14 +208,14 @@ pub fn (mut cr SequentialReader) get_next_row() ![]string {
 			if state == .cell {
 				if ch == cr.separator {
 					// must be optimized
-					ch_buf << 0
-					r << cstring_to_vstring(ch_buf.data)
-					ch_buf.clear()
-				} else if ch_buf.len == 0 && ch == cr.comment {
+					cr.ch_buf << 0
+					row_res << (tos(cr.ch_buf.data, cr.ch_buf.len).clone())
+					cr.ch_buf.clear()
+				} else if cr.ch_buf.len == 0 && ch == cr.comment {
 					state = .comment
 				} else if ch == cr.quote {
 					state = .quote
-					ch_buf.clear()
+					cr.ch_buf.clear()
 					cr.col_count++
 					i++
 					continue
@@ -221,9 +224,9 @@ pub fn (mut cr SequentialReader) get_next_row() ![]string {
 					cr.col_count = 0
 
 					// skip empty rows
-					if !(r.len == 0 && ch_buf.len < 1) {
-						ch_buf << 0						
-						r << cstring_to_vstring(ch_buf.data)
+					if !(row_res.len == 0 && cr.ch_buf.len < 1) {
+						cr.ch_buf << 0						
+						row_res << (tos(cr.ch_buf.data, cr.ch_buf.len).clone())
 						i += 1
 						break 
 					}
@@ -232,16 +235,16 @@ pub fn (mut cr SequentialReader) get_next_row() ![]string {
 					// skip CR
 				}
 				else { // normal char inside a cell
-					ch_buf << ch
+					cr.ch_buf << ch
 				}
 			}
 
 			if state == .comment {
-				if ch_buf.len > 0 {
+				if cr.ch_buf.len > 0 {
 					// must be optimized
-					ch_buf << 0
-					r << cstring_to_vstring(ch_buf.data)
-					ch_buf.clear()
+					cr.ch_buf << 0
+					row_res << (tos(cr.ch_buf.data, cr.ch_buf.len).clone())
+					cr.ch_buf.clear()
 				} else if ch == cr.end_line {
 					state = .cell
 				}
@@ -250,9 +253,9 @@ pub fn (mut cr SequentialReader) get_next_row() ![]string {
 			if state == .quote {
 				if ch == cr.quote {
 					// must be optimized
-					ch_buf << 0
-					r << cstring_to_vstring(ch_buf.data)
-					ch_buf.clear()
+					cr.ch_buf << 0
+					row_res << (tos(cr.ch_buf.data, cr.ch_buf.len).clone())
+					cr.ch_buf.clear()
 
 					state = .after_quote
 					cr.col_count++
@@ -261,7 +264,7 @@ pub fn (mut cr SequentialReader) get_next_row() ![]string {
 				} else if ch == cr.end_line {
 					return error('ERROR: quote not closed at row ${cr.row_count} after column ${cr.col_count}!')
 				} else {// normal char inside a quote inside a cell
-					ch_buf << ch
+					cr.ch_buf << ch
 				}
 			}
 
@@ -272,8 +275,8 @@ pub fn (mut cr SequentialReader) get_next_row() ![]string {
 					cr.row_count++
 					cr.col_count = 0
 					// must be optimized
-					ch_buf << 0
-					r << cstring_to_vstring(ch_buf.data)
+					cr.ch_buf << 0
+					row_res << (tos(cr.ch_buf.data, cr.ch_buf.len).clone())
 					i += 1
 					break 
 				}
@@ -283,5 +286,5 @@ pub fn (mut cr SequentialReader) get_next_row() ![]string {
 		i++
 	}
 	cr.start_index = i
-	return r
+	return row_res
 }
