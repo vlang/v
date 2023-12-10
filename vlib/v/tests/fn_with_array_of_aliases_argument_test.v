@@ -11,7 +11,7 @@ fn (f Foo) show_array_of_u8(data []u8) string {
 }
 
 fn test_fn_with_array_of_aliases_argument() {
-	a := [byte(1), 2, 3]
+	a := [u8(1), 2, 3]
 
 	s1 := show_array_of_u8(a)
 	println(s1)

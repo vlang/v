@@ -236,10 +236,10 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 
 fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	// fn (mut g Gen) str_int2(node ast.StringInterLiteral) {
-	inside_casting_to_str_old := g.inside_casting_to_str
-	g.inside_casting_to_str = true
+	inside_interface_deref_old := g.inside_interface_deref
+	g.inside_interface_deref = true
 	defer {
-		g.inside_casting_to_str = inside_casting_to_str_old
+		g.inside_interface_deref = inside_interface_deref_old
 	}
 	mut node_ := unsafe { node }
 	mut fmts := node_.fmts.clone()

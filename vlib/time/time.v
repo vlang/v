@@ -1,41 +1,38 @@
 module time
 
-pub const (
-	days_string        = 'MonTueWedThuFriSatSun'
-	long_days          = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
-		'Sunday']
-	month_days         = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-	months_string      = 'JanFebMarAprMayJunJulAugSepOctNovDec'
-	long_months        = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
-		'September', 'October', 'November', 'December']
-	// The unsigned zero year for internal calculations.
-	// Must be 1 mod 400, and times before it will not compute correctly,
-	// but otherwise can be changed at will.
-	absolute_zero_year = i64(-292277022399)
-	seconds_per_minute = 60
-	seconds_per_hour   = 60 * seconds_per_minute
-	seconds_per_day    = 24 * seconds_per_hour
-	seconds_per_week   = 7 * seconds_per_day
-	days_per_400_years = days_in_year * 400 + 97
-	days_per_100_years = days_in_year * 100 + 24
-	days_per_4_years   = days_in_year * 4 + 1
-	days_in_year       = 365
-	days_before        = [
-		0,
-		31,
-		31 + 28,
-		31 + 28 + 31,
-		31 + 28 + 31 + 30,
-		31 + 28 + 31 + 30 + 31,
-		31 + 28 + 31 + 30 + 31 + 30,
-		31 + 28 + 31 + 30 + 31 + 30 + 31,
-		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31,
-		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30,
-		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31,
-		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30,
-		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31,
-	]
-)
+pub const days_string = 'MonTueWedThuFriSatSun'
+pub const long_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+pub const month_days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+pub const months_string = 'JanFebMarAprMayJunJulAugSepOctNovDec'
+pub const long_months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
+	'September', 'October', 'November', 'December']
+// The unsigned zero year for internal calculations.
+// Must be 1 mod 400, and times before it will not compute correctly,
+// but otherwise can be changed at will.
+pub const absolute_zero_year = i64(-292277022399)
+pub const seconds_per_minute = 60
+pub const seconds_per_hour = 60 * seconds_per_minute
+pub const seconds_per_day = 24 * seconds_per_hour
+pub const seconds_per_week = 7 * seconds_per_day
+pub const days_per_400_years = days_in_year * 400 + 97
+pub const days_per_100_years = days_in_year * 100 + 24
+pub const days_per_4_years = days_in_year * 4 + 1
+pub const days_in_year = 365
+pub const days_before = [
+	0,
+	31,
+	31 + 28,
+	31 + 28 + 31,
+	31 + 28 + 31 + 30,
+	31 + 28 + 31 + 30 + 31,
+	31 + 28 + 31 + 30 + 31 + 30,
+	31 + 28 + 31 + 30 + 31 + 30 + 31,
+	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31,
+	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30,
+	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31,
+	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30,
+	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31,
+]
 
 // Time contains various time units for a point in time.
 pub struct Time {
@@ -343,16 +340,14 @@ pub fn (t Time) debug() string {
 // A lot of these are taken from the Go library.
 pub type Duration = i64
 
-pub const (
-	nanosecond  = Duration(1)
-	microsecond = Duration(1000 * nanosecond)
-	millisecond = Duration(1000 * microsecond)
-	second      = Duration(1000 * millisecond)
-	minute      = Duration(60 * second)
-	hour        = Duration(60 * minute)
-	//	day         = Duration(24 * hour)
-	infinite    = Duration(i64(9223372036854775807))
-)
+pub const nanosecond = Duration(1)
+pub const microsecond = Duration(1000 * nanosecond)
+pub const millisecond = Duration(1000 * microsecond)
+pub const second = Duration(1000 * millisecond)
+pub const minute = Duration(60 * second)
+pub const hour = Duration(60 * minute)
+//	day         = Duration(24 * hour)
+pub const infinite = Duration(i64(9223372036854775807))
 
 // nanoseconds returns the duration as an integer number of nanoseconds.
 pub fn (d Duration) nanoseconds() i64 {

@@ -4,9 +4,7 @@ import io
 import os
 import x.json2
 
-const (
-	source_map_version = 3
-)
+const source_map_version = 3
 
 type SourceMapJson = map[string]json2.Any
 

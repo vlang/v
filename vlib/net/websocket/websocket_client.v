@@ -12,9 +12,7 @@ import time
 import log
 import rand
 
-const (
-	empty_bytearr = []u8{} // used as empty response to avoid allocation
-)
+const empty_bytearr = []u8{}
 
 pub struct ClientState {
 pub mut:
@@ -97,7 +95,7 @@ pub struct ClientOpt {
 pub fn new_client(address string, opt ClientOpt) !&Client {
 	uri := parse_uri(address)!
 	return &Client{
-		conn: 0
+		conn: unsafe { nil }
 		is_server: false
 		ssl_conn: ssl.new_ssl_conn()!
 		is_ssl: address.starts_with('wss')

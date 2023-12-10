@@ -10,12 +10,10 @@ import toml.util
 import toml.token
 import toml.scanner
 
-pub const (
-	all_formatting            = [token.Kind.whitespace, .tab, .cr, .nl]
-	space_formatting          = [token.Kind.whitespace, .tab]
-	keys_and_space_formatting = [token.Kind.whitespace, .tab, .minus, .bare, .quoted, .boolean,
-		.number, .underscore]
-)
+pub const all_formatting = [token.Kind.whitespace, .tab, .cr, .nl]
+pub const space_formatting = [token.Kind.whitespace, .tab]
+pub const keys_and_space_formatting = [token.Kind.whitespace, .tab, .minus, .bare, .quoted, .boolean,
+	.number, .underscore]
 
 type DottedKey = []string
 

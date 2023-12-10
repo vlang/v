@@ -262,7 +262,7 @@ pub fn parse_vet_file(path string, table_ &ast.Table, pref_ &pref.Preferences) (
 		eprintln('> ${@MOD}.${@FN} path: ${path}')
 	}
 	global_scope := &ast.Scope{
-		parent: 0
+		parent: unsafe { nil }
 	}
 	mut p := Parser{
 		scanner: scanner.new_scanner_file(path, .parse_comments, pref_) or { panic(err) }
@@ -551,6 +551,9 @@ fn (p &Parser) is_array_type() bool {
 		}
 		if tok.kind in [.name, .amp] {
 			return true
+		}
+		if tok.kind == .eof {
+			break
 		}
 		i++
 		if tok.kind == .lsbr || tok.kind != .rsbr {
@@ -976,7 +979,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			return p.for_stmt()
 		}
 		.name {
-			if p.tok.lit == 'sql' && p.peek_tok.kind == .name {
+			if p.peek_tok.kind == .name && p.tok.lit == 'sql' {
 				return p.sql_stmt()
 			}
 			if p.peek_tok.kind == .colon {
@@ -1194,7 +1197,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 
 	p.check(.lcbr)
 	p.scope = &ast.Scope{
-		parent: 0 // you shouldn't be able to reference other variables in assembly blocks
+		parent: unsafe { nil } // you shouldn't be able to reference other variables in assembly blocks
 		detached_from_parent: true
 		start_pos: p.tok.pos
 		objects: ast.all_registers(mut p.table, arch) //
@@ -2425,7 +2428,7 @@ fn (p &Parser) is_generic_call() bool {
 	}
 
 	if kind2 == .name {
-		if tok2.lit == 'map' && kind3 == .lsbr {
+		if kind3 == .lsbr && tok2.lit == 'map' {
 			// case 2
 			return true
 		}
@@ -2554,7 +2557,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 	// p.warn('resetting')
 	p.expr_mod = ''
 	// `map[string]int` initialization
-	if p.tok.lit == 'map' && p.peek_tok.kind == .lsbr {
+	if p.peek_tok.kind == .lsbr && p.tok.lit == 'map' {
 		mut pos := p.tok.pos()
 		mut map_type := p.parse_map_type()
 		if p.tok.kind == .lcbr {
@@ -2648,12 +2651,8 @@ fn (mut p Parser) name_expr() ast.Expr {
 	if p.peek_tok.kind == .dot && !known_var && (language != .v || p.known_import(p.tok.lit)
 		|| p.mod.all_after_last('.') == p.tok.lit) {
 		// p.tok.lit has been recognized as a module
-		if language == .c {
-			mod = 'C'
-		} else if language == .js {
-			mod = 'JS'
-		} else if language == .wasm {
-			mod = 'WASM'
+		if language in [.c, .js, .wasm] {
+			mod = language.str().to_upper()
 		} else {
 			if p.tok.lit in p.imports {
 				// mark the imported module as used
@@ -3839,6 +3838,9 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			p.vet_notice('use a fixed array, instead of a dynamic one', pos.line_nr, vet.FixKind.unknown,
 				.default)
 		}
+		if is_block {
+			end_comments << p.eat_comments(same_line: true)
+		}
 		field := ast.ConstField{
 			name: full_name
 			mod: p.mod
@@ -3852,6 +3854,9 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		fields << field
 		p.table.global_scope.register(field)
 		comments = []
+		if is_block {
+			end_comments = []
+		}
 		if !is_block {
 			break
 		}
@@ -4299,7 +4304,7 @@ fn (mut p Parser) assoc() ast.Assoc {
 	mut v := p.scope.find_var(var_name) or {
 		p.error('unknown variable `${var_name}`')
 		return ast.Assoc{
-			scope: 0
+			scope: unsafe { nil }
 		}
 	}
 	v.is_used = true

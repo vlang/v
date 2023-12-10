@@ -20,14 +20,12 @@ import rand.seed
 
 pub const seed_len = 1
 
-const (
-	rand_limit     = u64(C.RAND_MAX)
-	rand_bitsize   = bits.len_64(rand_limit)
-	rand_bytesize  = rand_bitsize / 8
-	u16_iter_count = calculate_iterations_for(16)
-	u32_iter_count = calculate_iterations_for(32)
-	u64_iter_count = calculate_iterations_for(64)
-)
+const rand_limit = u64(C.RAND_MAX)
+const rand_bitsize = bits.len_64(rand_limit)
+const rand_bytesize = rand_bitsize / 8
+const u16_iter_count = calculate_iterations_for(16)
+const u32_iter_count = calculate_iterations_for(32)
+const u64_iter_count = calculate_iterations_for(64)
 
 fn calculate_iterations_for(bits_ int) int {
 	base := bits_ / sys.rand_bitsize

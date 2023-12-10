@@ -21,11 +21,9 @@ $if windows {
 pub type Context = C.FONScontext
 
 //#flag -lfreetype
-pub const (
-	// TODO: fontstash.used_import is used to keep v from warning about unused imports
-	used_import = 1
-	invalid     = C.FONS_INVALID // -1
-)
+// TODO: fontstash.used_import is used to keep v from warning about unused imports
+pub const used_import = 1
+pub const invalid = C.FONS_INVALID
 
 // create_internal returns a fontstash Context allocated on the heap.
 //

@@ -14,12 +14,10 @@ pub struct UnescapeConfig {
 	all bool
 }
 
-const (
-	escape_seq         = ['&', '&amp;', '<', '&lt;', '>', '&gt;']
-	escape_quote_seq   = ['"', '&#34;', "'", '&#39;']
-	unescape_seq       = ['&amp;', '&', '&lt;', '<', '&gt;', '>']
-	unescape_quote_seq = ['&#34;', '"', '&#39;', "'"]
-)
+const escape_seq = ['&', '&amp;', '<', '&lt;', '>', '&gt;']
+const escape_quote_seq = ['"', '&#34;', "'", '&#39;']
+const unescape_seq = ['&amp;', '&', '&lt;', '<', '&gt;', '>']
+const unescape_quote_seq = ['&#34;', '"', '&#39;', "'"]
 
 // escape converts special characters in the input, specifically "<", ">", and "&"
 // to HTML-safe sequences. If `quote` is set to true (which is default), quotes in

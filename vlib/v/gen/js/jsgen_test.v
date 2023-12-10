@@ -1,11 +1,9 @@
 import os
 
-const (
-	test_dir     = os.join_path('vlib', 'v', 'gen', 'js', 'tests')
-	output_dir   = os.join_path(os.vtmp_dir(), '_js_tests/')
-	v_options    = '-b js -w'
-	node_options = ''
-)
+const test_dir = os.join_path('vlib', 'v', 'gen', 'js', 'tests')
+const output_dir = os.join_path(os.vtmp_dir(), '_js_tests/')
+const v_options = '-b js -w'
+const node_options = ''
 
 fn testsuite_end() {
 	os.rmdir_all(output_dir) or {}

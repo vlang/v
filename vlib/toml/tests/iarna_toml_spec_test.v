@@ -17,35 +17,34 @@ const do_yaml_conversion = os.getenv('VTEST_TOML_DO_YAML_CONVERSION') == '1'
 // The actual tests and data can be obtained by doing:
 // `git clone --depth 1 https://github.com/iarna/toml-spec-tests.git vlib/toml/tests/testdata/iarna/toml-test`
 // See also the CI toml tests
-const (
-	// Kept for easier handling of future updates to the tests
-	valid_exceptions       = []string{}
-	invalid_exceptions     = []string{}
+// Kept for easier handling of future updates to the tests
+const valid_exceptions = []string{}
+const invalid_exceptions = []string{}
 
-	valid_value_exceptions = [
-		'values/spec-date-time-3.toml',
-		'values/spec-date-time-4.toml',
-		'values/spec-readme-example.toml',
-		'values/spec-date-time-6.toml',
-		'values/spec-date-time-5.toml',
-		'values/spec-date-time-1.toml',
-		'values/spec-date-time-2.toml',
-		'values/qa-table-inline-nested-1000.toml',
-		'values/qa-array-inline-nested-1000.toml',
-	]
+const valid_value_exceptions = [
+	'values/spec-date-time-3.toml',
+	'values/spec-date-time-4.toml',
+	'values/spec-readme-example.toml',
+	'values/spec-date-time-6.toml',
+	'values/spec-date-time-5.toml',
+	'values/spec-date-time-1.toml',
+	'values/spec-date-time-2.toml',
+	'values/qa-table-inline-nested-1000.toml',
+	'values/qa-array-inline-nested-1000.toml',
+]
 
-	yaml_value_exceptions  = [
-		'values/spec-float-5.toml', // YAML: "1e6", V: 1000000
-		'values/spec-float-9.toml', // YAML: "-0e0", V: 0
-		'values/spec-float-6.toml', // YAML: "-2E-2", V: -0.02
-		'values/spec-float-4.toml', // YAML: "5e+22", V: 50000000000000004000000
-	]
+const yaml_value_exceptions = [
+	'values/spec-float-5.toml', // YAML: "1e6", V: 1000000
+	'values/spec-float-9.toml', // YAML: "-0e0", V: 0
+	'values/spec-float-6.toml', // YAML: "-2E-2", V: -0.02
+	'values/spec-float-4.toml', // YAML: "5e+22", V: 50000000000000004000000
+]
 
-	jq                     = os.find_abs_path_of_executable('jq') or { '' }
-	python                 = os.find_abs_path_of_executable('python') or { '' }
-	compare_work_dir_root  = os.join_path(os.vtmp_dir(), 'toml', 'iarna')
-	// From: https://stackoverflow.com/a/38266731/1904615
-	jq_normalize           = r'# Apply f to composite entities recursively using keys[], and to atoms
+const jq = os.find_abs_path_of_executable('jq') or { '' }
+const python = os.find_abs_path_of_executable('python') or { '' }
+const compare_work_dir_root = os.join_path(os.vtmp_dir(), 'toml', 'iarna')
+// From: https://stackoverflow.com/a/38266731/1904615
+const jq_normalize = r'# Apply f to composite entities recursively using keys[], and to atoms
 def sorted_walk(f):
   . as $in
   | if type == "object" then
@@ -58,7 +57,6 @@ def sorted_walk(f):
 def normalize: sorted_walk(if type == "array" then sort else . end);
 
 normalize'
-)
 
 fn run(args []string) !string {
 	res := os.execute(args.join(' '))

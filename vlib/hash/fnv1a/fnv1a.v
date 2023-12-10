@@ -3,12 +3,10 @@ module fnv1a
 // This module implements a FNV-1a hash.
 // (see https://en.wikipedia.org/wiki/Fowler–Noll–Vo_hash_function)
 
-const (
-	fnv64_prime        = u64(1099511628211)
-	fnv64_offset_basis = u64(14695981039346656037)
-	fnv32_offset_basis = u32(2166136261)
-	fnv32_prime        = u32(16777619)
-)
+const fnv64_prime = u64(1099511628211)
+const fnv64_offset_basis = u64(14695981039346656037)
+const fnv32_offset_basis = u32(2166136261)
+const fnv32_prime = u32(16777619)
 
 // sum32 returns a fnv1a hash of the string, described by `data`
 @[direct_array_access; inline]

@@ -186,11 +186,9 @@ fn test_assoc_with_vars() {
 	assert merged2.b == 200
 }
 
-const (
-	const_def = Def{
-		a: 100
-	}
-)
+const const_def = Def{
+	a: 100
+}
 
 fn test_assoc_with_constants() {
 	println(1)

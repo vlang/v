@@ -29,11 +29,9 @@ import time
 
 fn C.rt_shader_desc(gfx.Backend) &gfx.ShaderDesc
 
-const (
-	win_width  = 800
-	win_height = 800
-	bg_color   = gx.white
-)
+const win_width = 800
+const win_height = 800
+const bg_color = gx.white
 
 struct App {
 mut:

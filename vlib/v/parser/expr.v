@@ -44,9 +44,9 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			p.is_stmt_ident = is_stmt_ident
 		}
 		.name, .question {
-			if p.tok.lit == 'sql' && p.peek_tok.kind == .name {
+			if p.peek_tok.kind == .name && p.tok.lit == 'sql' {
 				node = p.sql_expr()
-			} else if p.tok.lit == 'map' && p.peek_tok.kind == .lcbr && !(p.builtin_mod
+			} else if p.peek_tok.kind == .lcbr && p.tok.lit == 'map' && !(p.builtin_mod
 				&& p.file_base in ['map.v', 'map_d_gcboehm_opt.v']) {
 				p.error_with_pos("deprecated map syntax, use syntax like `{'age': 20}`",
 					p.tok.pos())
@@ -296,7 +296,7 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 					|| p.tok.kind.is_start_of_type()
 					|| (p.tok.lit.len > 0 && p.tok.lit[0].is_capital())
 
-				if p.tok.lit in ['c', 'r'] && p.peek_tok.kind == .string {
+				if p.peek_tok.kind == .string && p.tok.lit in ['c', 'r'] {
 					is_known_var = false
 					is_type = false
 				}
@@ -549,7 +549,7 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 			} else {
 				return node
 			}
-		} else if p.tok.kind == .left_shift && p.is_stmt_ident {
+		} else if node !is ast.CastExpr && p.tok.kind == .left_shift && p.is_stmt_ident {
 			// arr << elem
 			tok := p.tok
 			mut pos := tok.pos()

@@ -429,8 +429,6 @@ fn (e &Encoder) encode_array[U](val []U, level int, mut wr io.Writer) ! {
 			e.encode_any(i64(val[i]), level + 1, mut wr)!
 		} $else $if U is u8 {
 			e.encode_any(u8(val[i]), level + 1, mut wr)!
-		} $else $if U is byte {
-			e.encode_any(u8(val[i]), level + 1, mut wr)!
 		} $else $if U is u16 {
 			e.encode_any(u16(val[i]), level + 1, mut wr)!
 		} $else $if U is u32 {

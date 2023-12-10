@@ -6,11 +6,9 @@ import v.ast
 import v.util
 import strings
 
-const (
-	// BUG: this const is not released from the memory! use a const for now
-	// si_s_code = "0x" + int(StrIntpType.si_s).hex() // code for a simple string
-	si_s_code = '0xfe10'
-)
+// BUG: this const is not released from the memory! use a const for now
+// si_s_code = "0x" + int(StrIntpType.si_s).hex() // code for a simple string
+const si_s_code = '0xfe10'
 
 fn (mut g Gen) gen_str_default(sym ast.TypeSymbol, styp string, str_fn_name string) {
 	$if trace_autostr ? {
@@ -1068,6 +1066,11 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 	} else if _field_type.has_flag(.option) || should_use_indent_func(sym.kind) {
 		obj := '${deref}it.${final_field_name}${sufix}'
 		if has_custom_str {
+			if sym.kind == .interface_ && (sym.info as ast.Interface).defines_method('str') {
+				iface_obj := 'it.${final_field_name}${sufix}'
+				dot := if field_type.is_ptr() { '->' } else { '.' }
+				return '${fn_name.trim_string_right('_str')}_name_table[${iface_obj}${dot}_typ]._method_str(${iface_obj}${dot}_object)', true
+			}
 			return '${fn_name}(${obj})', true
 		}
 		return 'indent_${fn_name}(${obj}, indent_count + 1)', true
@@ -1147,12 +1150,22 @@ fn should_use_indent_func(kind ast.Kind) bool {
 
 fn (mut g Gen) gen_enum_static_from_string(fn_name string) {
 	enum_name := fn_name.all_before('__static__')
-	mod_enum_name := if !enum_name.contains('.') {
+	mut mod_enum_name := if !enum_name.contains('.') {
 		g.cur_mod.name + '.' + enum_name
 	} else {
 		enum_name
 	}
-	idx := g.table.type_idxs[mod_enum_name]
+	mut idx := g.table.type_idxs[mod_enum_name]
+	if idx == 0 && (enum_name.contains('.') || enum_name[0].is_capital()) {
+		// no cur mod, find from another mods.
+		for import_sym in g.file.imports {
+			mod_enum_name = '${import_sym.mod}.${enum_name}'
+			idx = g.table.type_idxs[mod_enum_name]
+			if idx > 0 {
+				break
+			}
+		}
+	}
 	enum_typ := ast.Type(idx)
 	enum_styp := g.typ(enum_typ)
 	option_enum_typ := ast.Type(idx).set_flag(.option)
@@ -1161,9 +1174,10 @@ fn (mut g Gen) gen_enum_static_from_string(fn_name string) {
 	enum_field_vals := g.table.get_enum_field_vals(mod_enum_name)
 
 	mut fn_builder := strings.new_builder(512)
-	g.definitions.writeln('static ${option_enum_styp} ${fn_name}(string name); // auto')
+	fn_name_no_dots := util.no_dots(fn_name)
+	g.definitions.writeln('static ${option_enum_styp} ${fn_name_no_dots}(string name); // auto')
 
-	fn_builder.writeln('static ${option_enum_styp} ${fn_name}(string name) {')
+	fn_builder.writeln('static ${option_enum_styp} ${fn_name_no_dots}(string name) {')
 	fn_builder.writeln('\t${option_enum_styp} t1;')
 	fn_builder.writeln('\tbool exists = false;')
 	fn_builder.writeln('\tint inx = 0;')

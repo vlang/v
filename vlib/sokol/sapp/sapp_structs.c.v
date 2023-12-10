@@ -1,11 +1,9 @@
 module sapp
 
-const (
-	max_touchpoints  = 8
-	max_mousebuttons = 3
-	max_keycodes     = 512
-	max_iconimages   = 8
-)
+const max_touchpoints = 8
+const max_mousebuttons = 3
+const max_keycodes = 512
+const max_iconimages = 8
 
 // sapp_range is a general pointer/size-pair struct for passing binary blobs into sokol_app.h
 @[typedef]

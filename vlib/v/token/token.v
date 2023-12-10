@@ -182,19 +182,17 @@ pub enum AtKind {
 	location
 }
 
-pub const (
-	assign_tokens   = [Kind.assign, .plus_assign, .minus_assign, .mult_assign, .div_assign,
-		.xor_assign, .mod_assign, .or_assign, .and_assign, .right_shift_assign, .left_shift_assign,
-		.unsigned_right_shift_assign]
+pub const assign_tokens = [Kind.assign, .plus_assign, .minus_assign, .mult_assign, .div_assign,
+	.xor_assign, .mod_assign, .or_assign, .and_assign, .right_shift_assign, .left_shift_assign,
+	.unsigned_right_shift_assign]
 
-	valid_at_tokens = ['@VROOT', '@VMODROOT', '@VEXEROOT', '@FN', '@METHOD', '@MOD', '@STRUCT',
-		'@VEXE', '@FILE', '@LINE', '@COLUMN', '@VHASH', '@VCURRENTHASH', '@VMOD_FILE', '@FILE_LINE',
-		'@LOCATION']
+pub const valid_at_tokens = ['@VROOT', '@VMODROOT', '@VEXEROOT', '@FN', '@METHOD', '@MOD', '@STRUCT',
+	'@VEXE', '@FILE', '@LINE', '@COLUMN', '@VHASH', '@VCURRENTHASH', '@VMOD_FILE', '@FILE_LINE',
+	'@LOCATION']
 
-	token_str       = build_token_str()
+pub const token_str = build_token_str()
 
-	keywords        = build_keys()
-)
+pub const keywords = build_keys()
 
 pub const scanner_matcher = new_keywords_matcher_trie[Kind](keywords)
 

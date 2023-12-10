@@ -183,11 +183,9 @@ pub:
 	pos token.Pos
 }
 
-pub const (
-	empty_expr = Expr(EmptyExpr(0))
-	empty_stmt = Stmt(EmptyStmt{})
-	empty_node = Node(EmptyNode{})
-)
+pub const empty_expr = Expr(EmptyExpr(0))
+pub const empty_stmt = Stmt(EmptyStmt{})
+pub const empty_node = Node(EmptyNode{})
 
 // `{stmts}` or `unsafe {stmts}`
 pub struct Block {
@@ -586,7 +584,12 @@ pub mut:
 	pos         token.Pos // function declaration position
 }
 
-pub fn (f &FnDecl) new_method_with_receiver_type(new_type Type) FnDecl {
+pub fn (f &FnDecl) new_method_with_receiver_type(new_type_ Type) FnDecl {
+	new_type := if f.params[0].typ.is_ptr() && !new_type_.is_ptr() {
+		new_type_.ref()
+	} else {
+		new_type_
+	}
 	unsafe {
 		mut new_method := f
 		new_method.params = f.params.clone()
@@ -624,17 +627,18 @@ pub:
 	pos                   token.Pos
 	return_type_pos       token.Pos
 pub mut:
-	return_type    Type
-	receiver_type  Type // != 0, when .is_method == true
-	name           string
-	params         []Param
-	source_fn      voidptr // set in the checker, while processing fn declarations // TODO get rid of voidptr
-	usages         int
-	generic_names  []string
-	dep_names      []string // globals or consts dependent names
-	attrs          []Attr   // all fn attributes
-	is_conditional bool     // true for `[if abc]fn(){}`
-	ctdefine_idx   int      // the index of the attribute, containing the compile time define [if mytag]
+	return_type       Type
+	receiver_type     Type // != 0, when .is_method == true
+	name              string
+	params            []Param
+	source_fn         voidptr // set in the checker, while processing fn declarations // TODO get rid of voidptr
+	usages            int
+	generic_names     []string
+	dep_names         []string // globals or consts dependent names
+	attrs             []Attr   // all fn attributes
+	is_conditional    bool     // true for `[if abc]fn(){}`
+	ctdefine_idx      int      // the index of the attribute, containing the compile time define [if mytag]
+	from_embeded_type Type     // for interface only, fn from the embedded interface
 }
 
 fn (f &Fn) method_equals(o &Fn) bool {
@@ -672,7 +676,12 @@ pub fn (p &Param) specifier() string {
 	}
 }
 
-pub fn (f &Fn) new_method_with_receiver_type(new_type Type) Fn {
+pub fn (f &Fn) new_method_with_receiver_type(new_type_ Type) Fn {
+	new_type := if f.params[0].typ.is_ptr() && !new_type_.is_ptr() {
+		new_type_.ref()
+	} else {
+		new_type_
+	}
 	unsafe {
 		mut new_method := f
 		new_method.params = f.params.clone()
@@ -680,6 +689,11 @@ pub fn (f &Fn) new_method_with_receiver_type(new_type Type) Fn {
 			if new_method.params[i].typ == new_method.params[0].typ {
 				new_method.params[i].typ = new_type
 			}
+		}
+		new_method.from_embeded_type = if f.from_embeded_type != 0 {
+			f.from_embeded_type
+		} else {
+			f.params[0].typ
 		}
 		new_method.params[0].typ = new_type
 
@@ -1617,89 +1631,84 @@ pub mut:
 	expr Expr // (a)
 }
 
-pub const (
-	// reference: https://en.wikipedia.org/wiki/X86#/media/File:Table_of_x86_Registers_svg.svg
-	// map register size -> register name
-	x86_no_number_register_list = {
-		8:  ['al', 'ah', 'bl', 'bh', 'cl', 'ch', 'dl', 'dh', 'bpl', 'sil', 'dil', 'spl']
-		16: ['ax', 'bx', 'cx', 'dx', 'bp', 'si', 'di', 'sp', // segment registers
-		 		'cs', 'ss', 'ds', 'es', 'fs', 'gs', 'flags', 'ip', // task registers
-		 		'gdtr', 'idtr', 'tr', 'ldtr', // CSR register 'msw', /* FP core registers */ 'cw', 'sw', 'tw', 'fp_ip', 'fp_dp', 'fp_cs',
-		 		'fp_ds', 'fp_opc']
-		32: [
-			'eax',
-			'ebx',
-			'ecx',
-			'edx',
-			'ebp',
-			'esi',
-			'edi',
-			'esp',
-			'eflags',
-			'eip', // CSR register
-			'mxcsr', // 32-bit FP core registers 'fp_dp', 'fp_ip' (TODO: why are there duplicates?)
-		]
-		64: ['rax', 'rbx', 'rcx', 'rdx', 'rbp', 'rsi', 'rdi', 'rsp', 'rflags', 'rip']
+// reference: https://en.wikipedia.org/wiki/X86#/media/File:Table_of_x86_Registers_svg.svg
+// map register size -> register name
+pub const x86_no_number_register_list = {
+	8:  ['al', 'ah', 'bl', 'bh', 'cl', 'ch', 'dl', 'dh', 'bpl', 'sil', 'dil', 'spl']
+	16: ['ax', 'bx', 'cx', 'dx', 'bp', 'si', 'di', 'sp', // segment registers
+	 	'cs', 'ss', 'ds', 'es', 'fs', 'gs', 'flags', 'ip', // task registers
+	 	'gdtr', 'idtr', 'tr', 'ldtr', // CSR register 'msw', /* FP core registers */ 'cw', 'sw', 'tw', 'fp_ip', 'fp_dp', 'fp_cs',
+	 	'fp_ds', 'fp_opc']
+	32: [
+		'eax',
+		'ebx',
+		'ecx',
+		'edx',
+		'ebp',
+		'esi',
+		'edi',
+		'esp',
+		'eflags',
+		'eip', // CSR register
+		'mxcsr', // 32-bit FP core registers 'fp_dp', 'fp_ip' (TODO: why are there duplicates?)
+	]
+	64: ['rax', 'rbx', 'rcx', 'rdx', 'rbp', 'rsi', 'rdi', 'rsp', 'rflags', 'rip']
+}
+// no comments because maps do not support comments
+// r#*: gp registers added in 64-bit extensions, can only be from 8-15 actually
+// *mm#: vector/simd registers
+// st#: floating point numbers
+// cr#: control/status registers
+// dr#: debug registers
+pub const x86_with_number_register_list = {
+	8:   {
+		'r#b': 16
 	}
-	// no comments because maps do not support comments
-	// r#*: gp registers added in 64-bit extensions, can only be from 8-15 actually
-	// *mm#: vector/simd registers
-	// st#: floating point numbers
-	// cr#: control/status registers
-	// dr#: debug registers
-	x86_with_number_register_list = {
-		8:   {
-			'r#b': 16
-		}
-		16:  {
-			'r#w': 16
-		}
-		32:  {
-			'r#d': 16
-		}
-		64:  {
-			'r#':  16
-			'mm#': 16
-			'cr#': 16
-			'dr#': 16
-		}
-		80:  {
-			'st#': 16
-		}
-		128: {
-			'xmm#': 32
-		}
-		256: {
-			'ymm#': 32
-		}
-		512: {
-			'zmm#': 32
-		}
+	16:  {
+		'r#w': 16
 	}
-)
+	32:  {
+		'r#d': 16
+	}
+	64:  {
+		'r#':  16
+		'mm#': 16
+		'cr#': 16
+		'dr#': 16
+	}
+	80:  {
+		'st#': 16
+	}
+	128: {
+		'xmm#': 32
+	}
+	256: {
+		'ymm#': 32
+	}
+	512: {
+		'zmm#': 32
+	}
+}
 
 // TODO: saved priviled registers for arm
-pub const (
-	arm_no_number_register_list   = ['fp', // aka r11
-	 	'ip', // not instruction pointer: aka r12
-	 	'sp', // aka r13
-	 	'lr', // aka r14
-	 	'pc', // this is instruction pointer ('program counter'): aka r15
-	] // 'cpsr' and 'apsr' are special flags registers, but cannot be referred to directly
-	arm_with_number_register_list = {
-		'r#': 16
-	}
-)
+pub const arm_no_number_register_list = ['fp', // aka r11
+ 'ip', // not instruction pointer: aka r12
+ 'sp', // aka r13
+ 'lr', // aka r14
+ 'pc', // this is instruction pointer ('program counter'): aka r15
+] // 'cpsr' and 'apsr' are special flags registers, but cannot be referred to directly
 
-pub const (
-	riscv_no_number_register_list   = ['zero', 'ra', 'sp', 'gp', 'tp']
-	riscv_with_number_register_list = {
-		'x#': 32
-		't#': 3
-		's#': 12
-		'a#': 8
-	}
-)
+pub const arm_with_number_register_list = {
+	'r#': 16
+}
+
+pub const riscv_no_number_register_list = ['zero', 'ra', 'sp', 'gp', 'tp']
+pub const riscv_with_number_register_list = {
+	'x#': 32
+	't#': 3
+	's#': 12
+	'a#': 8
+}
 
 // `assert a == 0, 'a is zero'`
 @[minify]

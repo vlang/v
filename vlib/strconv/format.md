@@ -66,7 +66,7 @@ The Length field can be omitted or be any of:
 
 | Character | Description                                                                |
 | --------- | -------------------------------------------------------------------------- |
-| `hh`      | For integer types, causes `printf` to expect an `byte` or `i8` argument.   |
+| `hh`      | For integer types, causes `printf` to expect an `i8` or `u8` argument.     |
 | `h`       | For integer types, causes `printf` to expect an `int16` or `u16` argument. |
 | `l`       | For integer types, causes `printf` to expect an `i64` or `u64` argument.   |
 | `ll`      | For integer types, causes `printf` to expect an `i64` or `u64` argument.   |
@@ -99,7 +99,7 @@ import strconv
 
 a0 := u32(10)
 b0 := 200
-c0 := byte(12)
+c0 := u8(12)
 s0 := 'ciAo'
 ch0 := `B`
 f0 := 0.312345
@@ -118,7 +118,7 @@ integer
 ```v
 import strconv
 
-a := byte(12)
+a := u8(12)
 b := i16(13)
 c := 14
 d := i64(15)
@@ -136,7 +136,7 @@ unsigned integer
 ```v
 import strconv
 
-a1 := byte(0xff)
+a1 := u8(0xff)
 b1 := u16(0xffff)
 c1 := u32(0xffffffff)
 d1 := u64(-1)
@@ -154,7 +154,7 @@ hexadecimal
 ```v
 import strconv
 
-a1 := byte(0xff)
+a1 := u8(0xff)
 b1 := i16(0xffff)
 c1 := u32(0xffffffff)
 d1 := u64(-1)
@@ -239,7 +239,7 @@ The format module also has some utility functions:
 ```v oksyntax nofmt
 // calling struct
 struct BF_param {
-  pad_ch       byte       = ` `     // padding char
+  pad_ch       u8         = ` `     // padding char
   len0         int        = -1      // default len for whole the number or string
   len1         int        = 6       // number of decimal digits, if needed
   positive     bool       = true    // mandatory: the sign of the number passed

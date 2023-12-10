@@ -6,11 +6,9 @@ $if js_node {
 	#var tty = require('tty')
 }
 
-pub const (
-	path_delimiter = get_path_delimiter()
-	path_separator = get_path_separator()
-	args           = []string{}
-)
+pub const path_delimiter = get_path_delimiter()
+pub const path_separator = get_path_separator()
+pub const args = []string{}
 
 const executable_suffixes = ['']
 

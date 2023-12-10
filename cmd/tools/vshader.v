@@ -18,51 +18,47 @@ import io.util
 import flag
 import net.http
 
-const (
-	shdc_full_hash   = '6b84ea387a323db9e8e17f5abed2b254a6e409fe'
-	tool_version     = '0.0.3'
-	tool_description = "Compile shaders in sokol's annotated GLSL format to C headers for use with sokol based apps"
-	tool_name        = os.file_name(os.executable())
-	cache_dir        = os.join_path(os.cache_dir(), 'v', tool_name)
-	runtime_os       = os.user_os()
-)
+const shdc_full_hash = '6b84ea387a323db9e8e17f5abed2b254a6e409fe'
+const tool_version = '0.0.3'
+const tool_description = "Compile shaders in sokol's annotated GLSL format to C headers for use with sokol based apps"
+const tool_name = os.file_name(os.executable())
+const cache_dir = os.join_path(os.cache_dir(), 'v', tool_name)
+const runtime_os = os.user_os()
 
-const (
-	supported_hosts  = ['linux', 'macos', 'windows']
-	supported_slangs = [
-		'glsl330', // desktop OpenGL backend (SOKOL_GLCORE33)
-		'glsl100', // OpenGLES2 and WebGL (SOKOL_GLES3)
-		'glsl300es', // OpenGLES3 and WebGL2 (SOKOL_GLES3)
-		'hlsl4', // Direct3D11 with HLSL4 (SOKOL_D3D11)
-		'hlsl5', // Direct3D11 with HLSL5 (SOKOL_D3D11)
-		'metal_macos', // Metal on macOS (SOKOL_METAL)
-		'metal_ios', // Metal on iOS devices (SOKOL_METAL)
-		'metal_sim', // Metal on iOS simulator (SOKOL_METAL)
-		'wgsl', // WebGPU (SOKOL_WGPU)
-	]
-	default_slangs   = [
-		'glsl330',
-		'glsl100',
-		'glsl300es',
-		// 'hlsl4', and hlsl5 can't be used at the same time
-		'hlsl5',
-		'metal_macos',
-		'metal_ios',
-		'metal_sim',
-		'wgsl',
-	]
+const supported_hosts = ['linux', 'macos', 'windows']
+const supported_slangs = [
+	'glsl330', // desktop OpenGL backend (SOKOL_GLCORE33)
+	'glsl100', // OpenGLES2 and WebGL (SOKOL_GLES3)
+	'glsl300es', // OpenGLES3 and WebGL2 (SOKOL_GLES3)
+	'hlsl4', // Direct3D11 with HLSL4 (SOKOL_D3D11)
+	'hlsl5', // Direct3D11 with HLSL5 (SOKOL_D3D11)
+	'metal_macos', // Metal on macOS (SOKOL_METAL)
+	'metal_ios', // Metal on iOS devices (SOKOL_METAL)
+	'metal_sim', // Metal on iOS simulator (SOKOL_METAL)
+	'wgsl', // WebGPU (SOKOL_WGPU)
+]
+const default_slangs = [
+	'glsl330',
+	'glsl100',
+	'glsl300es',
+	// 'hlsl4', and hlsl5 can't be used at the same time
+	'hlsl5',
+	'metal_macos',
+	'metal_ios',
+	'metal_sim',
+	'wgsl',
+]
 
-	shdc_version     = shdc_full_hash[0..8]
-	shdc_urls        = {
-		'windows': 'https://github.com/floooh/sokol-tools-bin/raw/${shdc_full_hash}/bin/win32/sokol-shdc.exe'
-		'macos':   'https://github.com/floooh/sokol-tools-bin/raw/${shdc_full_hash}/bin/osx/sokol-shdc'
-		'linux':   'https://github.com/floooh/sokol-tools-bin/raw/${shdc_full_hash}/bin/linux/sokol-shdc'
-		'osx_a64': 'https://github.com/floooh/sokol-tools-bin/raw/${shdc_full_hash}/bin/osx_arm64/sokol-shdc'
-	}
-	shdc_version_file = os.join_path(cache_dir, 'sokol-shdc.version')
-	shdc              = shdc_exe()
-	shdc_exe_name     = 'sokol-shdc.exe'
-)
+const shdc_version = shdc_full_hash[0..8]
+const shdc_urls = {
+	'windows': 'https://github.com/floooh/sokol-tools-bin/raw/${shdc_full_hash}/bin/win32/sokol-shdc.exe'
+	'macos':   'https://github.com/floooh/sokol-tools-bin/raw/${shdc_full_hash}/bin/osx/sokol-shdc'
+	'linux':   'https://github.com/floooh/sokol-tools-bin/raw/${shdc_full_hash}/bin/linux/sokol-shdc'
+	'osx_a64': 'https://github.com/floooh/sokol-tools-bin/raw/${shdc_full_hash}/bin/osx_arm64/sokol-shdc'
+}
+const shdc_version_file = os.join_path(cache_dir, 'sokol-shdc.version')
+const shdc = shdc_exe()
+const shdc_exe_name = 'sokol-shdc.exe'
 
 struct Options {
 	show_help    bool

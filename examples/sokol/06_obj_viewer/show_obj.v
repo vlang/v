@@ -37,11 +37,9 @@ import obj
 
 fn C.gouraud_shader_desc(gfx.Backend) &gfx.ShaderDesc
 
-const (
-	win_width  = 600
-	win_height = 600
-	bg_color   = gx.white
-)
+const win_width = 600
+const win_height = 600
+const bg_color = gx.white
 
 struct App {
 mut:

@@ -75,11 +75,9 @@ pub fn (mut t Table) free() {
 	}
 }
 
-pub const (
-	invalid_type_idx     = -1
-	fn_type_escape_seq   = [' ', '', '(', '_', ')', '']
-	map_cname_escape_seq = ['[', '_T_', ', ', '_', ']', '']
-)
+pub const invalid_type_idx = -1
+pub const fn_type_escape_seq = [' ', '', '(', '_', ')', '']
+pub const map_cname_escape_seq = ['[', '_T_', ', ', '_', ']', '']
 
 pub type FnPanicHandler = fn (&Table, string)
 
@@ -96,9 +94,9 @@ pub fn (t &Table) panic(message string) {
 pub fn new_table() &Table {
 	mut t := &Table{
 		global_scope: &Scope{
-			parent: 0
+			parent: unsafe { nil }
 		}
-		cur_fn: 0
+		cur_fn: unsafe { nil }
 	}
 	t.register_builtin_type_symbols()
 	t.is_fmt = true
@@ -314,7 +312,7 @@ pub fn (t &Table) find_method_from_embeds(sym &TypeSymbol, method_name string) !
 		mut embed_of_found_methods := []Type{}
 		for embed in sym.info.embeds {
 			embed_sym := t.sym(embed)
-			if m := t.find_method(embed_sym, method_name) {
+			if m := embed_sym.find_method_with_generic_parent(method_name) {
 				found_methods << m
 				embed_of_found_methods << embed
 			} else {
@@ -334,7 +332,7 @@ pub fn (t &Table) find_method_from_embeds(sym &TypeSymbol, method_name string) !
 		mut embed_of_found_methods := []Type{}
 		for embed in sym.info.embeds {
 			embed_sym := t.sym(embed)
-			if m := t.find_method(embed_sym, method_name) {
+			if m := embed_sym.find_method_with_generic_parent(method_name) {
 				found_methods << m
 				embed_of_found_methods << embed
 			} else {
@@ -410,7 +408,7 @@ pub fn (t &Table) find_enum_field_val(name string, field_ string) ?i64 {
 			}
 		}
 	}
-	return val
+	return if enum_decl.is_flag { u64(1) << val } else { val }
 }
 
 pub fn (t &Table) get_enum_field_names(name string) []string {
@@ -924,7 +922,12 @@ pub fn (t &Table) chan_cname(elem_type Type, is_mut bool) string {
 	} else if elem_type.is_ptr() {
 		suffix = '_ptr'
 	}
-	return 'chan_${elem_type_sym.cname}' + suffix
+	type_name := if elem_type_sym.cname.contains('[') {
+		elem_type_sym.cname.replace_each(ast.map_cname_escape_seq)
+	} else {
+		elem_type_sym.cname
+	}
+	return 'chan_${type_name}' + suffix
 }
 
 @[inline]
@@ -1933,6 +1936,7 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 				fields = ts.info.fields.clone()
 				for i in 0 .. fields.len {
 					if fields[i].typ.has_flag(.generic) {
+						orig_type := fields[i].typ
 						sym := t.sym(fields[i].typ)
 						if sym.kind == .struct_ && fields[i].typ.idx() != typ.idx() {
 							fields[i].typ = t.unwrap_generic_type(fields[i].typ, t_generic_names,
@@ -1942,6 +1946,19 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 								t_concrete_types)
 							{
 								fields[i].typ = t_typ
+							}
+						}
+						// Update type in `info.embeds`, if it's embed
+						if fields[i].name.len > 1 && fields[i].name[0].is_capital() {
+							mut parent_sym := t.sym(typ)
+							mut parent_info := parent_sym.info
+							if mut parent_info is Struct {
+								for mut embed in parent_info.embeds {
+									if embed == orig_type {
+										embed = fields[i].typ
+										break
+									}
+								}
 							}
 						}
 					}
@@ -2107,6 +2124,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 						generic_names := t.get_generic_names(parent_info.generic_types)
 						for i in 0 .. fields.len {
 							if fields[i].typ.has_flag(.generic) {
+								orig_type := fields[i].typ
 								if fields[i].typ.idx() != info.parent_idx {
 									fields[i].typ = t.unwrap_generic_type(fields[i].typ,
 										generic_names, info.concrete_types)
@@ -2115,6 +2133,15 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 									generic_names, info.concrete_types)
 								{
 									fields[i].typ = t_typ
+								}
+								// Update type in `info.embeds`, if it's embed
+								if fields[i].name.len > 1 && fields[i].name[0].is_capital() {
+									for mut embed in parent_info.embeds {
+										if embed == orig_type {
+											embed = fields[i].typ
+											break
+										}
+									}
 								}
 							}
 						}

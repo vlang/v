@@ -160,10 +160,12 @@ fn (mut c Checker) deprecate(kind string, name string, attrs []ast.Attr, pos tok
 	now := time.now()
 	mut after_time := now
 	for attr in attrs {
-		if attr.name == 'deprecated' && attr.arg != '' {
-			deprecation_message = attr.arg
+		if attr.arg == '' {
+			continue
 		}
-		if attr.name == 'deprecated_after' && attr.arg != '' {
+		if attr.name == 'deprecated' {
+			deprecation_message = attr.arg
+		} else if attr.name == 'deprecated_after' {
 			after_time = time.parse_iso8601(attr.arg) or {
 				c.error('invalid time format', attr.pos)
 				now

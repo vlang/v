@@ -4,6 +4,7 @@ module checker
 
 import v.ast
 import v.util
+import v.token
 import v.transformer
 
 fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
@@ -48,7 +49,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			struct_sym.info.fields.sort_with_compare(minify_sort_fn)
 		}
 		for attr in node.attrs {
-			if attr.name == 'typedef' && node.language != .c {
+			if node.language != .c && attr.name == 'typedef' {
 				c.error('`typedef` attribute can only be used with C structs', node.pos)
 			}
 		}
@@ -488,7 +489,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 	// but `x := T{}` is ok.
 	if !c.is_builtin_mod && !c.inside_unsafe && type_sym.language == .v
 		&& c.table.cur_concrete_types.len == 0 {
-		pos := type_sym.name.last_index('.') or { -1 }
+		pos := type_sym.name.index_u8_last(`.`)
 		first_letter := type_sym.name[pos + 1]
 		if !first_letter.is_capital()
 			&& (type_sym.kind != .struct_ || !(type_sym.info as ast.Struct).is_anon)
@@ -690,10 +691,19 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							init_field.pos)
 					}
 				} else {
-					if exp_type.is_ptr() && !got_type.is_any_kind_of_pointer()
-						&& init_field.expr.str() != '0' && !exp_type.has_flag(.option) {
-						c.error('reference field must be initialized with reference',
-							init_field.pos)
+					is_unsafe_0 := init_field.expr is ast.UnsafeExpr
+						&& (init_field.expr as ast.UnsafeExpr).expr.str() == '0'
+					if exp_type.is_ptr() && !is_unsafe_0 && !got_type.is_any_kind_of_pointer()
+						&& !exp_type.has_flag(.option) {
+						if init_field.expr.str() == '0' {
+							if !c.inside_unsafe && type_sym.language == .v {
+								c.note('assigning `0` to a reference field is only allowed in `unsafe` blocks',
+									init_field.pos)
+							}
+						} else {
+							c.error('reference field must be initialized with reference',
+								init_field.pos)
+						}
 					} else if exp_type.is_pointer() && !got_type.is_any_kind_of_pointer()
 						&& !got_type.is_int() {
 						got_typ_str := c.table.type_to_str(got_type)
@@ -795,12 +805,12 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				if !field.typ.has_flag(.option) {
 					if sym.kind == .struct_ {
 						c.check_ref_fields_initialized(sym, mut checked_types, '${type_sym.name}.${field.name}',
-							node)
+							node.pos)
 					} else if sym.kind == .alias {
 						parent_sym := c.table.sym((sym.info as ast.Alias).parent_type)
 						if parent_sym.kind == .struct_ {
 							c.check_ref_fields_initialized(parent_sym, mut checked_types,
-								'${type_sym.name}.${field.name}', node)
+								'${type_sym.name}.${field.name}', node.pos)
 						}
 					}
 				}
@@ -827,7 +837,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				}
 				*/
 				// Check for `[required]` struct attr
-				if field.attrs.contains('required') && !node.no_keys && !node.has_update_expr {
+				if !node.no_keys && !node.has_update_expr && field.attrs.contains('required') {
 					mut found := false
 					for init_field in node.init_fields {
 						if field.name == init_field.name {
@@ -890,13 +900,30 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				generic_names := struct_sym.info.generic_types.map(c.table.sym(it).name)
 				node.typ = c.table.unwrap_generic_type(node.typ, generic_names, concrete_types)
 			}
+		} else if struct_sym.info.generic_types.len > 0
+			&& struct_sym.info.generic_types.len == struct_sym.info.concrete_types.len
+			&& c.table.cur_concrete_types.len == 0 {
+			parent_type := struct_sym.info.parent_type
+			parent_sym := c.table.sym(parent_type)
+			for method in parent_sym.methods {
+				generic_names := struct_sym.info.generic_types.map(c.table.sym(it).name)
+				for i, param in method.params {
+					if i == 0 || !param.typ.has_flag(.generic) {
+						continue
+					}
+					param_sym := c.table.sym(param.typ)
+					if param_sym.kind in [.struct_, .interface_, .sum_type] {
+						c.table.unwrap_generic_type(param.typ, generic_names, struct_sym.info.concrete_types)
+					}
+				}
+			}
 		}
 	}
 	return node.typ
 }
 
 // Recursively check whether the struct type field is initialized
-fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut checked_types []ast.Type, linked_name string, node &ast.StructInit) {
+fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut checked_types []ast.Type, linked_name string, pos &token.Pos) {
 	if c.pref.translated || c.file.is_translated {
 		return
 	}
@@ -915,7 +942,7 @@ fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut 
 		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !field.typ.has_flag(.option)
 			&& !field.has_default_expr {
 			c.error('reference field `${linked_name}.${field.name}` must be initialized (part of struct `${struct_sym.name}`)',
-				node.pos)
+				pos)
 			continue
 		}
 		if sym.kind == .struct_ {
@@ -927,13 +954,61 @@ fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut 
 			}
 			checked_types << field.typ
 			c.check_ref_fields_initialized(sym, mut checked_types, '${linked_name}.${field.name}',
-				node)
+				pos)
 		} else if sym.kind == .alias {
 			psym := c.table.sym((sym.info as ast.Alias).parent_type)
 			if psym.kind == .struct_ {
 				checked_types << field.typ
 				c.check_ref_fields_initialized(psym, mut checked_types, '${linked_name}.${field.name}',
-					node)
+					pos)
+			}
+		}
+	}
+}
+
+// Recursively check whether the struct type field is initialized
+// NOTE:
+// This method is temporary and will only be called by the do_check_elements_ref_fields_initialized() method.
+// The goal is to give only a notice, not an error, for now. After a while,
+// when we change the notice to error, we can remove this temporary method.
+fn (mut c Checker) check_ref_fields_initialized_note(struct_sym &ast.TypeSymbol, mut checked_types []ast.Type, linked_name string, pos &token.Pos) {
+	if c.pref.translated || c.file.is_translated {
+		return
+	}
+	if struct_sym.kind == .struct_ && struct_sym.language == .c
+		&& (struct_sym.info as ast.Struct).is_typedef {
+		return
+	}
+	fields := c.table.struct_fields(struct_sym)
+	for field in fields {
+		sym := c.table.sym(field.typ)
+		if field.name.len > 0 && field.name[0].is_capital() && sym.info is ast.Struct
+			&& sym.language == .v {
+			// an embedded struct field
+			continue
+		}
+		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !field.typ.has_flag(.option)
+			&& !field.has_default_expr {
+			c.note('reference field `${linked_name}.${field.name}` must be initialized (part of struct `${struct_sym.name}`)',
+				pos)
+			continue
+		}
+		if sym.kind == .struct_ {
+			if sym.language == .c && (sym.info as ast.Struct).is_typedef {
+				continue
+			}
+			if field.typ in checked_types {
+				continue
+			}
+			checked_types << field.typ
+			c.check_ref_fields_initialized(sym, mut checked_types, '${linked_name}.${field.name}',
+				pos)
+		} else if sym.kind == .alias {
+			psym := c.table.sym((sym.info as ast.Alias).parent_type)
+			if psym.kind == .struct_ {
+				checked_types << field.typ
+				c.check_ref_fields_initialized(psym, mut checked_types, '${linked_name}.${field.name}',
+					pos)
 			}
 		}
 	}

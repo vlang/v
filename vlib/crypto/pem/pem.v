@@ -2,12 +2,10 @@
 // according to RFC 1421
 module pem
 
-const (
-	pem_begin = '-----BEGIN '
-	pem_end   = '\n-----END '
-	pem_eol   = '-----'
-	colon     = ':'
-)
+const pem_begin = '-----BEGIN '
+const pem_end = '\n-----END '
+const pem_eol = '-----'
+const colon = ':'
 
 // new returns a new `Block` with the specified block_type
 @[deprecated: 'use Block.new instead']

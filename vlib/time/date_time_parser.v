@@ -72,7 +72,7 @@ fn (mut p DateTimeParser) must_be_string_one_of(oneof []string) !string {
 			return must
 		}
 	}
-	return error('invalid string: must be one of ${oneof}, at ${p.current_pos_datetime}')
+	return error('invalid string: must be one of ${oneof}, at: ${p.current_pos_datetime}')
 }
 
 fn (mut p DateTimeParser) must_be_valid_month() !int {
@@ -85,20 +85,20 @@ fn (mut p DateTimeParser) must_be_valid_month() !int {
 			}
 		}
 	}
-	return error_invalid_time(0, 'invalid month name')
+	return error_invalid_time(0, 'invalid month name, at: ${p.current_pos_datetime}')
 }
 
 fn (mut p DateTimeParser) must_be_valid_three_letter_month() !int {
-	for month_number := 1; month_number < long_months.len; month_number++ {
-		if p.current_pos_datetime + 3 < p.datetime.len {
-			month_three_letters := p.datetime[p.current_pos_datetime..p.current_pos_datetime + 3]
-			if months_string[(month_number - 1) * 3..month_number * 3] == month_three_letters {
+	if p.current_pos_datetime + 3 < p.datetime.len {
+		letters := p.datetime[p.current_pos_datetime..p.current_pos_datetime + 3]
+		for m := 1; m <= long_months.len; m++ {
+			if months_string[(m - 1) * 3..m * 3] == letters {
 				p.current_pos_datetime += 3
-				return month_number
+				return m
 			}
 		}
 	}
-	return error_invalid_time(0, 'invalid month three letters')
+	return error_invalid_time(0, 'invalid three letter month, at: ${p.current_pos_datetime}')
 }
 
 fn (mut p DateTimeParser) must_be_valid_week_day(letters int) !string {
@@ -108,7 +108,7 @@ fn (mut p DateTimeParser) must_be_valid_week_day(letters int) !string {
 			return v
 		}
 	}
-	return error_invalid_time(0, 'invalid month name')
+	return error_invalid_time(0, 'invalid month name, at: ${p.current_pos_datetime}')
 }
 
 fn extract_tokens(s string) ![]string {

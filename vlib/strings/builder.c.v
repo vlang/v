@@ -141,6 +141,13 @@ pub fn (mut b Builder) write_string(s string) {
 	// b.buf << []u8(s)  // TODO
 }
 
+// writeln appends the string `s`+`\n` to the buffer
+@[inline]
+pub fn (mut b Builder) writeln_string(s string) {
+	b.write_string(s)
+	b.write_string('\n')
+}
+
 // go_back discards the last `n` bytes from the buffer
 pub fn (mut b Builder) go_back(n int) {
 	b.trim(b.len - n)

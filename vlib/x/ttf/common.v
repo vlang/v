@@ -88,7 +88,7 @@ fn (mut bmp BitMap) format_texture() {
 pub fn (mut bmp BitMap) save_as_ppm(file_name string) {
 	tmp_buf := bmp.buf
 	mut buf := unsafe { malloc_noscan(bmp.buf_size) }
-	unsafe { C.memcpy(buf, tmp_buf, bmp.buf_size) }
+	unsafe { vmemcpy(buf, tmp_buf, bmp.buf_size) }
 	bmp.buf = buf
 
 	bmp.format_texture()

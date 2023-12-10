@@ -53,15 +53,13 @@ fn C.SymFromAddr(h_process voidptr, address u64, p_displacement voidptr, p_symbo
 fn C.SymGetLineFromAddr64(h_process voidptr, address u64, p_displacement voidptr, p_line &Line64) int
 
 // Ref - https://docs.microsoft.com/en-us/windows/win32/api/dbghelp/nf-dbghelp-symsetoptions
-const (
-	symopt_undname               = 0x00000002
-	symopt_deferred_loads        = 0x00000004
-	symopt_no_cpp                = 0x00000008
-	symopt_load_lines            = 0x00000010
-	symopt_include_32bit_modules = 0x00002000
-	symopt_allow_zero_address    = 0x01000000
-	symopt_debug                 = u32(0x80000000)
-)
+const symopt_undname = 0x00000002
+const symopt_deferred_loads = 0x00000004
+const symopt_no_cpp = 0x00000008
+const symopt_load_lines = 0x00000010
+const symopt_include_32bit_modules = 0x00002000
+const symopt_allow_zero_address = 0x01000000
+const symopt_debug = u32(0x80000000)
 
 fn print_backtrace_skipping_top_frames(skipframes int) bool {
 	$if msvc {

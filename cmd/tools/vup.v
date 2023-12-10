@@ -71,7 +71,7 @@ fn (app App) update_from_master() {
 		app.git_command('remote add origin https://github.com/vlang/v')
 		app.git_command('fetch')
 		app.git_command('reset --hard origin/master')
-		app.git_command('clean --quiet -xdf --exclude v.exe --exclude cmd/tools/vup.exe')
+		app.git_command('clean --quiet -xdf --exclude v --exclude v.exe --exclude cmd/tools/vup --exclude cmd/tools/vup.exe')
 	} else {
 		// pull latest
 		app.git_command('pull https://github.com/vlang/v master')

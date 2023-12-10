@@ -1152,14 +1152,31 @@ fn (s string) index_(p string) int {
 	return -1
 }
 
-// index returns the position of the first character of the input string.
-// It will return `none` if the input string can't be found.
+// index returns the position of the first character of the first occurance of the `needle` string in `s`.
+// It will return `none` if the `needle` string can't be found in `s`.
 pub fn (s string) index(p string) ?int {
 	idx := s.index_(p)
 	if idx == -1 {
 		return none
 	}
 	return idx
+}
+
+// index_last returns the position of the first character of the *last* occurance of the `needle` string in `s`.
+pub fn (s string) index_last(needle string) ?int {
+	idx := s.index_last_(needle)
+	if idx == -1 {
+		return none
+	}
+	return idx
+}
+
+// last_index returns the position of the first character of the *last* occurance of the `needle` string in `s`.
+@[deprecated: 'use `.index_last(needle string)` instead']
+@[deprecated_after: '2023-12-18']
+@[inline]
+pub fn (s string) last_index(needle string) ?int {
+	return s.index_last(needle)
 }
 
 // index_kmp does KMP search.
@@ -1209,9 +1226,9 @@ pub fn (s string) index_any(chars string) int {
 	return -1
 }
 
-// last_index returns the position of the last occurrence of the input string.
+// index_last_ returns the position of the last occurrence of the given string `p` in `s`.
 @[direct_array_access]
-fn (s string) last_index_(p string) int {
+fn (s string) index_last_(p string) int {
 	if p.len > s.len || p.len == 0 {
 		return -1
 	}
@@ -1227,15 +1244,6 @@ fn (s string) last_index_(p string) int {
 		i--
 	}
 	return -1
-}
-
-// last_index returns the position of the last occurrence of the input string.
-pub fn (s string) last_index(p string) ?int {
-	idx := s.last_index_(p)
-	if idx == -1 {
-		return none
-	}
-	return idx
 }
 
 // index_after returns the position of the input string, starting search from `start` position.
@@ -1279,16 +1287,25 @@ pub fn (s string) index_u8(c u8) int {
 	return -1
 }
 
-// last_index_byte returns the index of the last occurrence of byte `c` if found in the string.
-// last_index_byte returns -1 if the byte is not found.
+// index_u8_last returns the index of the *last* occurrence of the byte `c` (if found) in the string.
+// It returns -1, if `c` is not found.
 @[direct_array_access]
-pub fn (s string) last_index_u8(c u8) int {
+pub fn (s string) index_u8_last(c u8) int {
 	for i := s.len - 1; i >= 0; i-- {
 		if unsafe { s.str[i] == c } {
 			return i
 		}
 	}
 	return -1
+}
+
+// last_index_u8 returns the index of the last occurrence of byte `c` if found in the string.
+// It returns -1, if the byte `c` is not found.
+@[deprecated: 'use `.index_u8_last(c u8)` instead']
+@[deprecated_after: '2023-12-18']
+@[inline]
+pub fn (s string) last_index_u8(c u8) int {
+	return s.index_u8_last(c)
 }
 
 // count returns the number of occurrences of `substr` in the string.
@@ -1879,7 +1896,7 @@ pub fn (s string) all_before(sub string) string {
 // Example: assert '23:34:45.234'.all_before_last(':') == '23:34'
 // Example: assert 'abcd'.all_before_last('.') == 'abcd'
 pub fn (s string) all_before_last(sub string) string {
-	pos := s.last_index_(sub)
+	pos := s.index_last_(sub)
 	if pos == -1 {
 		return s.clone()
 	}
@@ -1903,7 +1920,7 @@ pub fn (s string) all_after(sub string) string {
 // Example: assert '23:34:45.234'.all_after_last(':') == '45.234'
 // Example: assert 'abcd'.all_after_last('z') == 'abcd'
 pub fn (s string) all_after_last(sub string) string {
-	pos := s.last_index_(sub)
+	pos := s.index_last_(sub)
 	if pos == -1 {
 		return s.clone()
 	}

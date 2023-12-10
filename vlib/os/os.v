@@ -237,12 +237,15 @@ pub fn is_dir_empty(path string) bool {
 // ```
 pub fn file_ext(opath string) string {
 	if opath.len < 3 {
-		return empty_str
+		return ''
 	}
 	path := file_name(opath)
-	pos := path.last_index(dot_str) or { return empty_str }
+	pos := path.index_u8_last(`.`)
+	if pos == -1 {
+		return ''
+	}
 	if pos + 1 >= path.len || pos == 0 {
-		return empty_str
+		return ''
 	}
 	return path[pos..]
 }
@@ -258,7 +261,7 @@ pub fn dir(opath string) string {
 	}
 	other_separator := if path_separator == '/' { '\\' } else { '/' }
 	path := opath.replace(other_separator, path_separator)
-	pos := path.last_index(path_separator) or { return '.' }
+	pos := path.index_last(path_separator) or { return '.' }
 	if pos == 0 && path_separator == '/' {
 		return '/'
 	}
@@ -280,10 +283,10 @@ pub fn base(opath string) string {
 	}
 	if path.ends_with(path_separator) {
 		path2 := path[..path.len - 1]
-		pos := path2.last_index(path_separator) or { return path2.clone() }
+		pos := path2.index_last(path_separator) or { return path2.clone() }
 		return path2[pos + 1..]
 	}
-	pos := path.last_index(path_separator) or { return path.clone() }
+	pos := path.index_last(path_separator) or { return path.clone() }
 	return path[pos + 1..]
 }
 
@@ -733,6 +736,9 @@ pub fn cache_dir() string {
 	// or empty, a default equal to $HOME/.cache should be used.
 	xdg_cache_home := getenv('XDG_CACHE_HOME')
 	if xdg_cache_home != '' {
+		if !is_dir(xdg_cache_home) && !is_link(xdg_cache_home) {
+			mkdir_all(xdg_cache_home, mode: 0o700) or { panic(err) }
+		}
 		return xdg_cache_home
 	}
 	cdir := join_path_single(home_dir(), '.cache')

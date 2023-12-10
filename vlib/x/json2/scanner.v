@@ -42,31 +42,29 @@ pub fn (t Token) full_col() int {
 	return t.col + t.lit.len
 }
 
-const (
-	// list of characters commonly used in JSON.
-	char_list                 = [`{`, `}`, `[`, `]`, `,`, `:`]
-	// list of newlines to check when moving to a new position.
-	newlines                  = [`\r`, `\n`, `\t`]
-	// list of escapable that needs to be escaped inside a JSON string.
-	// double quotes and forward slashes are excluded intentionally since
-	// they have their own separate checks for it in order to pass the
-	// JSON test suite (https://github.com/nst/JSONTestSuite/).
-	important_escapable_chars = [`\b`, `\f`, `\n`, `\r`, `\t`]
-	// list of valid unicode escapes aside from \u{4-hex digits}
-	valid_unicode_escapes     = [`b`, `f`, `n`, `r`, `t`, `\\`, `"`, `/`]
-	// used for transforming escapes into valid unicode (eg. n => \n)
-	unicode_transform_escapes = {
-		98:  `\b`
-		102: `\f`
-		110: `\n`
-		114: `\r`
-		116: `\t`
-		92:  `\\`
-		34:  `"`
-		47:  `/`
-	}
-	exp_signs = [u8(`-`), `+`]
-)
+// list of characters commonly used in JSON.
+const char_list = [`{`, `}`, `[`, `]`, `,`, `:`]
+// list of newlines to check when moving to a new position.
+const newlines = [`\r`, `\n`, `\t`]
+// list of escapable that needs to be escaped inside a JSON string.
+// double quotes and forward slashes are excluded intentionally since
+// they have their own separate checks for it in order to pass the
+// JSON test suite (https://github.com/nst/JSONTestSuite/).
+const important_escapable_chars = [`\b`, `\f`, `\n`, `\r`, `\t`]
+// list of valid unicode escapes aside from \u{4-hex digits}
+const valid_unicode_escapes = [`b`, `f`, `n`, `r`, `t`, `\\`, `"`, `/`]
+// used for transforming escapes into valid unicode (eg. n => \n)
+const unicode_transform_escapes = {
+	98:  `\b`
+	102: `\f`
+	110: `\n`
+	114: `\r`
+	116: `\t`
+	92:  `\\`
+	34:  `"`
+	47:  `/`
+}
+const exp_signs = [u8(`-`), `+`]
 
 // move_pos proceeds to the next position.
 fn (mut s Scanner) move() {

@@ -1,0 +1,15 @@
+@[aligned]
+struct Test {
+	a int
+}
+
+@[aligned:16]
+struct Test2 {
+	a int 
+	b int
+}
+
+@[aligned:8]
+union Test3 {
+	a int
+}

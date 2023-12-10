@@ -148,6 +148,11 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 	}
 	g.write('{')
 	if node.has_val {
+		tmp_inside_array := g.inside_array_item
+		g.inside_array_item = true
+		defer {
+			g.inside_array_item = tmp_inside_array
+		}
 		elem_type := (array_type.unaliased_sym.info as ast.ArrayFixed).elem_type
 		elem_sym := g.table.final_sym(elem_type)
 		for i, expr in node.exprs {
@@ -585,9 +590,21 @@ fn (mut g Gen) gen_array_sorted(node ast.CallExpr) {
 	info := sym.info as ast.Array
 	depth := g.get_array_depth(info.elem_type)
 
-	g.write('${atype} ${past.tmp_var} = array_clone_to_depth(ADDR(${atype},')
-	g.expr(node.left)
-	g.writeln('), ${depth});')
+	deref_field := if node.receiver_type.nr_muls() > node.left_type.nr_muls()
+		&& node.left_type.is_ptr() {
+		true
+	} else {
+		false
+	}
+	if !deref_field {
+		g.write('${atype} ${past.tmp_var} = array_clone_to_depth(ADDR(${atype},')
+		g.expr(node.left)
+		g.writeln('), ${depth});')
+	} else {
+		g.write('${atype} ${past.tmp_var} = array_clone_to_depth(')
+		g.expr(node.left)
+		g.writeln(', ${depth});')
+	}
 
 	unsafe {
 		node.left = ast.Expr(ast.Ident{
@@ -603,8 +620,6 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	// println('filter s="$s"')
 	rec_sym := g.table.final_sym(node.receiver_type)
 	if rec_sym.kind != .array {
-		println(node.name)
-		println(g.typ(node.receiver_type))
 		// println(rec_sym.kind)
 		verror('.sort() is an array method')
 	}
@@ -705,7 +720,12 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 }
 
 fn (mut g Gen) gen_array_sort_call(node ast.CallExpr, compare_fn string) {
-	mut deref_field := g.dot_or_ptr(node.left_type)
+	deref_field := if node.receiver_type.nr_muls() > node.left_type.nr_muls()
+		&& node.left_type.is_ptr() {
+		g.dot_or_ptr(node.left_type.deref())
+	} else {
+		g.dot_or_ptr(node.left_type)
+	}
 	// eprintln('> qsort: pointer $node.left_type | deref_field: `$deref_field`')
 	g.empty_line = true
 	g.write('qsort(')

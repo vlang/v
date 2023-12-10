@@ -7,16 +7,14 @@ import strings.textscanner
 // The following functions handle paths depending on the operating system,
 // therefore results may be different for certain operating systems.
 
-const (
-	fslash     = `/`
-	bslash     = `\\`
-	dot        = `.`
-	qmark      = `?`
-	fslash_str = '/'
-	dot_dot    = '..'
-	empty_str  = ''
-	dot_str    = '.'
-)
+const fslash = `/`
+const bslash = `\\`
+const dot = `.`
+const qmark = `?`
+const fslash_str = '/'
+const dot_dot = '..'
+const empty_str = ''
+const dot_str = '.'
 
 // is_abs_path returns `true` if the given `path` is absolute.
 pub fn is_abs_path(path string) bool {

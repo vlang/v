@@ -3,26 +3,10 @@ module main
 import os
 import net.http
 import net.urllib
-import sync.pool
 import v.vmod
 import json
 import term
 import log
-
-struct Module {
-mut:
-	// Fields determined by the url or the info received from the VPM API.
-	name string
-	url  string
-	vcs  string
-	// Fields based on preference / environment.
-	version            string // specifies the requested version.
-	install_path       string
-	install_path_fmted string
-	is_installed       bool
-	is_external        bool
-	installed_version  string
-}
 
 struct ModuleVpmInfo {
 	// id           int
@@ -32,147 +16,14 @@ struct ModuleVpmInfo {
 	nr_downloads int
 }
 
-pub struct ModuleDateInfo {
-	name string
-mut:
-	outdated bool
-	exec_err bool
-}
-
 @[params]
 struct ErrorOptions {
 	details string
 	verbose bool // is used to only output the error message if the verbose setting is enabled.
 }
 
+const vexe = os.quoted_path(os.getenv('VEXE'))
 const home_dir = os.home_dir()
-
-fn parse_query(query []string) ([]Module, []Module) {
-	mut vpm_modules, mut external_modules := []Module{}, []Module{}
-	mut errors := 0
-	for m in query {
-		ident, version := m.rsplit_once('@') or { m, '' }
-		is_http := if ident.starts_with('http://') {
-			vpm_warn('installing `${ident}` via http.',
-				details: 'Support for `http` is deprecated, use `https` to ensure future compatibility.'
-			)
-			true
-		} else {
-			false
-		}
-		mut mod := if is_http || ident.starts_with('https://') {
-			publisher, name := get_ident_from_url(ident) or {
-				vpm_error(err.msg())
-				errors++
-				continue
-			}
-			base := if is_http { publisher } else { '' }
-			install_path := normalize_mod_path(os.real_path(os.join_path(settings.vmodules_path,
-				base, name)))
-			if !has_vmod(ident, install_path) {
-				vpm_error('failed to find `v.mod` for `${ident}`.')
-				errors++
-				continue
-			}
-			Module{
-				name: name
-				url: ident
-				install_path: install_path
-				install_path_fmted: fmt_mod_path(install_path)
-				is_external: true
-			}
-		} else {
-			info := get_mod_vpm_info(ident) or {
-				vpm_error('failed to retrieve metadata for `${ident}`.', details: err.msg())
-				errors++
-				continue
-			}
-			ident_as_path := info.name.replace('.', os.path_separator)
-			install_path := normalize_mod_path(os.real_path(os.join_path(settings.vmodules_path,
-				ident_as_path)))
-			if !has_vmod(info.url, install_path) {
-				mut details := ''
-				if resp := http.head('${info.url}/issues/new') {
-					if resp.status_code == 200 {
-						issue_tmpl_url := '${info.url}/issues/new?title=Missing%20Manifest&body=${info.name}%20is%20missing%20a%20manifest,%20please%20consider%20adding%20a%20v.mod%20file%20with%20the%20modules%20metadta.'
-						details = 'Help to ensure future-compatibility by adding a `v.mod` file or opening an issue at:\n`${issue_tmpl_url}`'
-					}
-				}
-				vpm_warn('`${info.name}` is missing a manifest file.', details: details)
-			}
-			Module{
-				name: info.name
-				url: info.url
-				vcs: info.vcs
-				install_path: install_path
-				install_path_fmted: fmt_mod_path(install_path)
-			}
-		}
-		mod.version = version
-		if v := os.execute_opt('git ls-remote --tags ${mod.install_path}') {
-			mod.is_installed = true
-			mod.installed_version = v.output.all_after_last('/').trim_space()
-		}
-		if mod.is_external {
-			external_modules << mod
-		} else {
-			vpm_modules << mod
-		}
-	}
-	if errors > 0 && errors == query.len {
-		exit(1)
-	}
-	return vpm_modules, external_modules
-}
-
-fn has_vmod(url string, install_path string) bool {
-	if install_path != '' && os.exists((os.join_path(install_path, 'v.mod'))) {
-		// Skip fetching the repo when the module is already installed and has a `v.mod`.
-		return true
-	}
-	head_branch := os.execute_opt('git ls-remote --symref ${url} HEAD') or {
-		vpm_error('failed to find git HEAD for `${url}`.', details: err.msg())
-		return false
-	}.output.all_after_last('/').all_before(' ').all_before('\t')
-	url_ := if url.ends_with('.git') { url.replace('.git', '') } else { url }
-	manifest_url := '${url_}/blob/${head_branch}/v.mod'
-	vpm_log(@FILE_LINE, @FN, 'manifest_url: ${manifest_url}')
-	has_vmod := http.head(manifest_url) or {
-		vpm_error('failed to retrieve module data for `${url}`.')
-		return false
-	}.status_code == 200
-	return has_vmod
-}
-
-fn get_mod_date_info(mut pp pool.PoolProcessor, idx int, wid int) &ModuleDateInfo {
-	mut result := &ModuleDateInfo{
-		name: pp.get_item[string](idx)
-	}
-	path := get_path_of_existing_module(result.name) or { return result }
-	vcs := vcs_used_in_dir(path) or { return result }
-	is_hg := vcs.cmd == 'hg'
-	mut outputs := []string{}
-	for step in vcs.args.outdated {
-		cmd := '${vcs.cmd} ${vcs.args.path} "${path}" ${step}'
-		res := os.execute(cmd)
-		if res.exit_code < 0 {
-			verbose_println('Error command: ${cmd}')
-			verbose_println('Error details:\n${res.output}')
-			result.exec_err = true
-			return result
-		}
-		if is_hg && res.exit_code == 1 {
-			result.outdated = true
-			return result
-		}
-		outputs << res.output
-	}
-	// vcs.cmd == 'git'
-	if !is_hg && outputs[1] != outputs[2] {
-		result.outdated = true
-	}
-	return result
-}
 
 fn get_mod_vpm_info(name string) !ModuleVpmInfo {
 	if name.len < 2 || (!name[0].is_digit() && !name[0].is_letter()) {
@@ -218,10 +69,13 @@ fn get_mod_vpm_info(name string) !ModuleVpmInfo {
 fn get_ident_from_url(raw_url string) !(string, string) {
 	url := urllib.parse(raw_url) or { return error('failed to parse module URL `${raw_url}`.') }
 	publisher, mut name := url.path.trim_left('/').rsplit_once('/') or {
+		if settings.vcs == .hg && raw_url.count(':') > 1 {
+			return '', 'test_module'
+		}
 		return error('failed to retrieve module name for `${url}`.')
 	}
+	name = name.trim_string_right('.git')
 	vpm_log(@FILE_LINE, @FN, 'raw_url: ${raw_url}; publisher: ${publisher}; name: ${name}')
-	name = if name.ends_with('.git') { name.replace('.git', '') } else { name }
 	return publisher, name
 }
 
@@ -232,22 +86,6 @@ fn get_name_from_url(raw_url string) !string {
 
 fn normalize_mod_path(path string) string {
 	return path.replace('-', '_').to_lower()
-}
-
-fn get_outdated() ![]string {
-	installed := get_installed_modules()
-	mut outdated := []string{}
-	mut pp := pool.new_pool_processor(callback: get_mod_date_info)
-	pp.work_on_items(installed)
-	for res in pp.get_results[ModuleDateInfo]() {
-		if res.exec_err {
-			return error('failed to check the latest commits for `${res.name}`.')
-		}
-		if res.outdated {
-			outdated << res.name
-		}
-	}
-	return outdated
 }
 
 fn get_all_modules() []string {
@@ -328,10 +166,6 @@ fn get_path_of_existing_module(mod_name string) ?string {
 		vpm_error('skipping `${path}`, since it is not a directory.')
 		return none
 	}
-	vcs_used_in_dir(path) or {
-		vpm_error('skipping `${path}`, since it uses an unsupported version control system.')
-		return none
-	}
 	return path
 }
 
@@ -360,12 +194,6 @@ fn ensure_vmodules_dir_exist() {
 			vpm_error(err.msg(), verbose: true)
 			exit(1)
 		}
-	}
-}
-
-fn (vcs &VCS) is_executable() ! {
-	os.find_abs_path_of_executable(vcs.cmd) or {
-		return error('VPM needs `${vcs.cmd}` to be installed.')
 	}
 }
 
@@ -405,15 +233,6 @@ fn resolve_dependencies(manifest ?vmod.Manifest, modules []string) {
 		verbose_println('Found dependencies: ${deps}')
 		vpm_install(deps)
 	}
-}
-
-fn vcs_used_in_dir(dir string) ?VCS {
-	for vcs in supported_vcs.values() {
-		if os.is_dir(os.real_path(os.join_path(dir, vcs.dir))) {
-			return vcs
-		}
-	}
-	return none
 }
 
 fn verbose_println(msg string) {
@@ -467,4 +286,8 @@ fn fmt_mod_path(path string) string {
 	} $else {
 		path.replace(home_dir, '~')
 	}
+}
+
+fn at_version(version string) string {
+	return if version != '' { '@${version}' } else { '' }
 }

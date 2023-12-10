@@ -54,18 +54,17 @@ fn (mut g Gen) generate_hotcode_reloader_code() {
 	}
 }
 
-const (
-	posix_hotcode_definitions_1 = '
+const posix_hotcode_definitions_1 = '
 void v_bind_live_symbols(void* live_lib){
 	@LOAD_FNS@
 }
 '
-	windows_hotcode_definitions_1 = '
+
+const windows_hotcode_definitions_1 = '
 void v_bind_live_symbols(void* live_lib){
 	@LOAD_FNS@
 }
 '
-)
 
 fn (mut g Gen) generate_hotcode_reloading_main_caller() {
 	if !g.pref.is_livemain {
@@ -81,7 +80,8 @@ fn (mut g Gen) generate_hotcode_reloading_main_caller() {
 	}
 	vexe := util.cescaped_path(pref.vexe_path())
 	file := util.cescaped_path(g.pref.path)
-	ccompiler := '-cc ${g.pref.ccompiler}'
+	ccpath := util.cescaped_path(g.pref.ccompiler)
+	ccompiler := '-cc ${ccpath}'
 	so_debug_flag := if g.pref.is_debug { '-cg' } else { '' }
 	vopts := '${ccompiler} ${so_debug_flag} -sharedlive -shared'
 	//

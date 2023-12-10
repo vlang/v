@@ -3,26 +3,24 @@
 // that can be found in the LICENSE file.
 module native
 
-const (
-	s_attr_some_instructions = 0x0400
-	s_attr_pure_instructions = u32(0x80000000)
-	s_attr_ext_reloc         = 0x0200
-	s_attr_loc_reloc         = 0x0100
-	macho_symcmd_size        = 0x18
-	macho_d_size             = 0x50
-	mh_object                = 1
-	mh_execute               = 2
-	lc_dyld_chained_fixups   = u32(0x80000034)
-	lc_dyld_exports_trie     = u32(0x80000033)
-	lc_dyld_info_only        = u32(0x80000022)
-	lc_dysymtab              = 0xb
-	lc_load_dylib            = 0xc
-	lc_load_dylinker         = 0xe
-	lc_main                  = u32(0x80000028)
-	lc_segment_64            = 0x19
-	lc_symtab                = 0x2
-	base_addr                = i64(0x1_0000_0000)
-)
+const s_attr_some_instructions = 0x0400
+const s_attr_pure_instructions = u32(0x80000000)
+const s_attr_ext_reloc = 0x0200
+const s_attr_loc_reloc = 0x0100
+const macho_symcmd_size = 0x18
+const macho_d_size = 0x50
+const mh_object = 1
+const mh_execute = 2
+const lc_dyld_chained_fixups = u32(0x80000034)
+const lc_dyld_exports_trie = u32(0x80000033)
+const lc_dyld_info_only = u32(0x80000022)
+const lc_dysymtab = 0xb
+const lc_load_dylib = 0xc
+const lc_load_dylinker = 0xe
+const lc_main = u32(0x80000028)
+const lc_segment_64 = 0x19
+const lc_symtab = 0x2
+const base_addr = i64(0x1_0000_0000)
 
 struct Symbol {
 	str_entry  i32

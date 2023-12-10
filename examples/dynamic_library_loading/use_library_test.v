@@ -5,12 +5,10 @@ module main
 import os
 import dl
 
-const (
-	vexe              = os.real_path(os.getenv('VEXE'))
-	cfolder           = os.dir(@FILE)
-	so_ext            = dl.dl_ext
-	library_file_name = os.join_path(cfolder, dl.get_libname('library'))
-)
+const vexe = os.real_path(os.getenv('VEXE'))
+const cfolder = os.dir(@FILE)
+const so_ext = dl.dl_ext
+const library_file_name = os.join_path(cfolder, dl.get_libname('library'))
 
 fn test_vexe() {
 	// dump(vexe)

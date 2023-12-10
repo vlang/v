@@ -1,13 +1,11 @@
-const (
-	packets = {
-		0: &Packet{
-			pid: 2
-		}
-		1: &Packet{
-			pid: 1
-		}
+const packets = {
+	0: &Packet{
+		pid: 2
 	}
-)
+	1: &Packet{
+		pid: 1
+	}
+}
 
 struct Packet {
 	pid        int

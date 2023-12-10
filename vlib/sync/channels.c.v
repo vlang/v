@@ -6,11 +6,9 @@ import sync.stdatomic
 
 const aops_used = stdatomic.used
 
-const (
-	// how often to try to get data without blocking before to wait for semaphore
-	spinloops     = 750
-	spinloops_sem = 4000
-)
+// how often to try to get data without blocking before to wait for semaphore
+const spinloops = 750
+const spinloops_sem = 4000
 
 enum BufferElemStat {
 	unused  = 0
@@ -82,8 +80,8 @@ fn new_channel_st(n u32, st u32) &Channel {
 		read_avail: 0
 		ringbuf: rbuf
 		statusbuf: sbuf
-		write_subscriber: 0
-		read_subscriber: 0
+		write_subscriber: unsafe { nil }
+		read_subscriber: unsafe { nil }
 	}
 	ch.writesem.init(wsem)
 	ch.readsem.init(rsem)
@@ -105,8 +103,8 @@ fn new_channel_st_noscan(n u32, st u32) &Channel {
 			read_avail: 0
 			ringbuf: rbuf
 			statusbuf: sbuf
-			write_subscriber: 0
-			read_subscriber: 0
+			write_subscriber: unsafe { nil }
+			read_subscriber: unsafe { nil }
 		}
 		ch.writesem.init(wsem)
 		ch.readsem.init(rsem)

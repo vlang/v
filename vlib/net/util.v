@@ -1,8 +1,6 @@
 module net
 
-const (
-	socket_max_port = u16(0xFFFF)
-)
+const socket_max_port = u16(0xFFFF)
 
 // validate_port checks whether a port is valid
 // and returns the port or an error

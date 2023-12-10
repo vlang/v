@@ -188,7 +188,7 @@ fn C.stbi_write_bmp(filename &char, w int, h int, comp int, buffer &u8) int
 fn C.stbi_write_tga(filename &char, w int, h int, comp int, buffer &u8) int
 fn C.stbi_write_jpg(filename &char, w int, h int, comp int, buffer &u8, quality int) int
 
-// fn C.stbi_write_hdr(filename &char, w int, h int, comp int, buffer &byte) int // buffer &byte => buffer &f32
+// fn C.stbi_write_hdr(filename &char, w int, h int, comp int, buffer &u8) int // buffer &u8 => buffer &f32
 
 // stbi_write_png write on path a PNG file
 // row_stride_in_bytes is usually equal to: w * comp
@@ -222,7 +222,7 @@ pub fn stbi_write_jpg(path string, w int, h int, comp int, buf &u8, quality int)
 }
 
 /*
-pub fn stbi_write_hdr(path string, w int, h int, comp int, buf &byte) ! {
+pub fn stbi_write_hdr(path string, w int, h int, comp int, buf &u8) ! {
 	if 0 == C.stbi_write_hdr(&char(path.str), w , h , comp , buf){
 		return error('stbi_image failed to write hdr file to "$path"')
 	}

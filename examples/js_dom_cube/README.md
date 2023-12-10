@@ -12,7 +12,7 @@ Then you can open `index.html` in your favorite browser.
 
 ### JS Server
 
-> **NOTE**\
+> [!NOTE]
 > The JS server example in the following steps requires Node.js.
 > To install Node, please refer to the [download page](https://nodejs.org/en/download/)
 > or the installation via your operating systems [package manager](https://nodejs.org/en/download/package-manager).
@@ -115,9 +115,7 @@ module main
 import vweb
 import os
 
-const (
-	http_port = 3001
-)
+const http_port = 3001
 
 struct App {
 	vweb.Context

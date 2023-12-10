@@ -2,12 +2,13 @@ module websocket
 
 import encoding.utf8
 
-const (
-	header_len_offset           = 2 // offset for lengthpart of websocket header
-	buffer_size                 = 256 // default buffer size
-	extended_payload16_end_byte = 4 // header length with 16-bit extended payload
-	extended_payload64_end_byte = 10 // header length with 64-bit extended payload
-)
+const header_len_offset = 2 // offset for lengthpart of websocket header
+
+const buffer_size = 256 // default buffer size
+
+const extended_payload16_end_byte = 4 // header length with 16-bit extended payload
+
+const extended_payload64_end_byte = 10
 
 // Fragment represents a websocket data fragment
 struct Fragment {
@@ -32,9 +33,7 @@ mut:
 	masking_key [4]u8  // all frames from client to server is masked with this key
 }
 
-const (
-	invalid_close_codes = [999, 1004, 1005, 1006, 1014, 1015, 1016, 1100, 2000, 2999, 5000, 65536]
-)
+const invalid_close_codes = [999, 1004, 1005, 1006, 1014, 1015, 1016, 1100, 2000, 2999, 5000, 65536]
 
 // validate_client validates client frame rules from RFC6455
 pub fn (mut ws Client) validate_frame(frame &Frame) ! {

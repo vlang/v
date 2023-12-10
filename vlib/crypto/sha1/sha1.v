@@ -10,21 +10,17 @@ module sha1
 
 import encoding.binary
 
-pub const (
-	// The size of a SHA-1 checksum in bytes.
-	size       = 20
-	// The blocksize of SHA-1 in bytes.
-	block_size = 64
-)
+// The size of a SHA-1 checksum in bytes.
+pub const size = 20
+// The blocksize of SHA-1 in bytes.
+pub const block_size = 64
 
-const (
-	chunk = 64
-	init0 = 0x67452301
-	init1 = u32(0xEFCDAB89)
-	init2 = u32(0x98BADCFE)
-	init3 = 0x10325476
-	init4 = u32(0xC3D2E1F0)
-)
+const chunk = 64
+const init0 = 0x67452301
+const init1 = u32(0xEFCDAB89)
+const init2 = u32(0x98BADCFE)
+const init3 = 0x10325476
+const init4 = u32(0xC3D2E1F0)
 
 // digest represents the partial evaluation of a checksum.
 struct Digest {

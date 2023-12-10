@@ -6,12 +6,10 @@ import gx
 import rand
 import sokol.sgl
 
-const (
-	win_width     = 800
-	win_height    = 600
-	max_stars     = 5000
-	max_v_letters = 5
-)
+const win_width = 800
+const win_height = 600
+const max_stars = 5000
+const max_v_letters = 5
 
 struct Star {
 mut:

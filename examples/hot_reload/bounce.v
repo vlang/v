@@ -18,11 +18,9 @@ mut:
 	draw_fn voidptr
 }
 
-const (
-	window_width  = 400
-	window_height = 300
-	width         = 50
-)
+const window_width = 400
+const window_height = 300
+const width = 50
 
 fn main() {
 	mut game := &Game{

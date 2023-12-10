@@ -22,126 +22,129 @@ pub type RawHtml = string
 @[noinit]
 pub struct Result {}
 
-pub const (
-	methods_with_form = [http.Method.post, .put, .patch]
-	headers_close     = http.new_custom_header_from_map({
-		'Server':                           'VWeb'
-		http.CommonHeader.connection.str(): 'close'
-	}) or { panic('should never fail') }
+pub const methods_with_form = [http.Method.post, .put, .patch]
+pub const headers_close = http.new_custom_header_from_map({
+	'Server':                           'VWeb'
+	http.CommonHeader.connection.str(): 'close'
+}) or { panic('should never fail') }
 
-	http_302          = http.new_response(
-		status: .found
-		body: '302 Found'
-		header: headers_close
-	)
-	http_400          = http.new_response(
-		status: .bad_request
-		body: '400 Bad Request'
-		header: http.new_header(
-			key: .content_type
-			value: 'text/plain'
-		).join(headers_close)
-	)
-	http_404          = http.new_response(
-		status: .not_found
-		body: '404 Not Found'
-		header: http.new_header(
-			key: .content_type
-			value: 'text/plain'
-		).join(headers_close)
-	)
-	http_500          = http.new_response(
-		status: .internal_server_error
-		body: '500 Internal Server Error'
-		header: http.new_header(
-			key: .content_type
-			value: 'text/plain'
-		).join(headers_close)
-	)
-	mime_types        = {
-		'.aac':    'audio/aac'
-		'.abw':    'application/x-abiword'
-		'.arc':    'application/x-freearc'
-		'.avi':    'video/x-msvideo'
-		'.azw':    'application/vnd.amazon.ebook'
-		'.bin':    'application/octet-stream'
-		'.bmp':    'image/bmp'
-		'.bz':     'application/x-bzip'
-		'.bz2':    'application/x-bzip2'
-		'.cda':    'application/x-cdf'
-		'.csh':    'application/x-csh'
-		'.css':    'text/css'
-		'.csv':    'text/csv'
-		'.doc':    'application/msword'
-		'.docx':   'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-		'.eot':    'application/vnd.ms-fontobject'
-		'.epub':   'application/epub+zip'
-		'.gz':     'application/gzip'
-		'.gif':    'image/gif'
-		'.htm':    'text/html'
-		'.html':   'text/html'
-		'.ico':    'image/vnd.microsoft.icon'
-		'.ics':    'text/calendar'
-		'.jar':    'application/java-archive'
-		'.jpeg':   'image/jpeg'
-		'.jpg':    'image/jpeg'
-		'.js':     'text/javascript'
-		'.json':   'application/json'
-		'.jsonld': 'application/ld+json'
-		'.md':     'text/markdown'
-		'.mid':    'audio/midi audio/x-midi'
-		'.midi':   'audio/midi audio/x-midi'
-		'.mjs':    'text/javascript'
-		'.mp3':    'audio/mpeg'
-		'.mp4':    'video/mp4'
-		'.mpeg':   'video/mpeg'
-		'.mpkg':   'application/vnd.apple.installer+xml'
-		'.odp':    'application/vnd.oasis.opendocument.presentation'
-		'.ods':    'application/vnd.oasis.opendocument.spreadsheet'
-		'.odt':    'application/vnd.oasis.opendocument.text'
-		'.oga':    'audio/ogg'
-		'.ogv':    'video/ogg'
-		'.ogx':    'application/ogg'
-		'.opus':   'audio/opus'
-		'.otf':    'font/otf'
-		'.png':    'image/png'
-		'.pdf':    'application/pdf'
-		'.php':    'application/x-httpd-php'
-		'.ppt':    'application/vnd.ms-powerpoint'
-		'.pptx':   'application/vnd.openxmlformats-officedocument.presentationml.presentation'
-		'.rar':    'application/vnd.rar'
-		'.rtf':    'application/rtf'
-		'.sh':     'application/x-sh'
-		'.svg':    'image/svg+xml'
-		'.swf':    'application/x-shockwave-flash'
-		'.tar':    'application/x-tar'
-		'.toml':   'application/toml'
-		'.tif':    'image/tiff'
-		'.tiff':   'image/tiff'
-		'.ts':     'video/mp2t'
-		'.ttf':    'font/ttf'
-		'.txt':    'text/plain'
-		'.vsd':    'application/vnd.visio'
-		'.wasm':   'application/wasm'
-		'.wav':    'audio/wav'
-		'.weba':   'audio/webm'
-		'.webm':   'video/webm'
-		'.webp':   'image/webp'
-		'.woff':   'font/woff'
-		'.woff2':  'font/woff2'
-		'.xhtml':  'application/xhtml+xml'
-		'.xls':    'application/vnd.ms-excel'
-		'.xlsx':   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-		'.xml':    'application/xml'
-		'.xul':    'application/vnd.mozilla.xul+xml'
-		'.zip':    'application/zip'
-		'.3gp':    'video/3gpp'
-		'.3g2':    'video/3gpp2'
-		'.7z':     'application/x-7z-compressed'
-	}
-	max_http_post_size = 1024 * 1024
-	default_port       = 8080
+pub const http_302 = http.new_response(
+	status: .found
+	body: '302 Found'
+	header: headers_close
 )
+pub const http_303 = http.new_response(
+	status: .see_other
+	body: '303 See Other'
+	header: headers_close
+)
+pub const http_400 = http.new_response(
+	status: .bad_request
+	body: '400 Bad Request'
+	header: http.new_header(
+		key: .content_type
+		value: 'text/plain'
+	).join(headers_close)
+)
+pub const http_404 = http.new_response(
+	status: .not_found
+	body: '404 Not Found'
+	header: http.new_header(
+		key: .content_type
+		value: 'text/plain'
+	).join(headers_close)
+)
+pub const http_500 = http.new_response(
+	status: .internal_server_error
+	body: '500 Internal Server Error'
+	header: http.new_header(
+		key: .content_type
+		value: 'text/plain'
+	).join(headers_close)
+)
+pub const mime_types = {
+	'.aac':    'audio/aac'
+	'.abw':    'application/x-abiword'
+	'.arc':    'application/x-freearc'
+	'.avi':    'video/x-msvideo'
+	'.azw':    'application/vnd.amazon.ebook'
+	'.bin':    'application/octet-stream'
+	'.bmp':    'image/bmp'
+	'.bz':     'application/x-bzip'
+	'.bz2':    'application/x-bzip2'
+	'.cda':    'application/x-cdf'
+	'.csh':    'application/x-csh'
+	'.css':    'text/css'
+	'.csv':    'text/csv'
+	'.doc':    'application/msword'
+	'.docx':   'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+	'.eot':    'application/vnd.ms-fontobject'
+	'.epub':   'application/epub+zip'
+	'.gz':     'application/gzip'
+	'.gif':    'image/gif'
+	'.htm':    'text/html'
+	'.html':   'text/html'
+	'.ico':    'image/vnd.microsoft.icon'
+	'.ics':    'text/calendar'
+	'.jar':    'application/java-archive'
+	'.jpeg':   'image/jpeg'
+	'.jpg':    'image/jpeg'
+	'.js':     'text/javascript'
+	'.json':   'application/json'
+	'.jsonld': 'application/ld+json'
+	'.md':     'text/markdown'
+	'.mid':    'audio/midi audio/x-midi'
+	'.midi':   'audio/midi audio/x-midi'
+	'.mjs':    'text/javascript'
+	'.mp3':    'audio/mpeg'
+	'.mp4':    'video/mp4'
+	'.mpeg':   'video/mpeg'
+	'.mpkg':   'application/vnd.apple.installer+xml'
+	'.odp':    'application/vnd.oasis.opendocument.presentation'
+	'.ods':    'application/vnd.oasis.opendocument.spreadsheet'
+	'.odt':    'application/vnd.oasis.opendocument.text'
+	'.oga':    'audio/ogg'
+	'.ogv':    'video/ogg'
+	'.ogx':    'application/ogg'
+	'.opus':   'audio/opus'
+	'.otf':    'font/otf'
+	'.png':    'image/png'
+	'.pdf':    'application/pdf'
+	'.php':    'application/x-httpd-php'
+	'.ppt':    'application/vnd.ms-powerpoint'
+	'.pptx':   'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+	'.rar':    'application/vnd.rar'
+	'.rtf':    'application/rtf'
+	'.sh':     'application/x-sh'
+	'.svg':    'image/svg+xml'
+	'.swf':    'application/x-shockwave-flash'
+	'.tar':    'application/x-tar'
+	'.toml':   'application/toml'
+	'.tif':    'image/tiff'
+	'.tiff':   'image/tiff'
+	'.ts':     'video/mp2t'
+	'.ttf':    'font/ttf'
+	'.txt':    'text/plain'
+	'.vsd':    'application/vnd.visio'
+	'.wasm':   'application/wasm'
+	'.wav':    'audio/wav'
+	'.weba':   'audio/webm'
+	'.webm':   'video/webm'
+	'.webp':   'image/webp'
+	'.woff':   'font/woff'
+	'.woff2':  'font/woff2'
+	'.xhtml':  'application/xhtml+xml'
+	'.xls':    'application/vnd.ms-excel'
+	'.xlsx':   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+	'.xml':    'application/xml'
+	'.xul':    'application/vnd.mozilla.xul+xml'
+	'.zip':    'application/zip'
+	'.3gp':    'video/3gpp'
+	'.3g2':    'video/3gpp2'
+	'.7z':     'application/x-7z-compressed'
+}
+pub const max_http_post_size = 1024 * 1024
+pub const default_port = 8080
 
 // The Context struct represents the Context which hold the HTTP request and response.
 // It has fields for the query, form, files.
@@ -237,9 +240,9 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	return true
 }
 
-// Response HTTP_OK with s as payload with content-type `text/html`
-pub fn (mut ctx Context) html(s string) Result {
-	ctx.send_response_to_client('text/html', s)
+// Response HTTP_OK with payload with content-type `text/html`
+pub fn (mut ctx Context) html(payload string) Result {
+	ctx.send_response_to_client('text/html', payload)
 	return Result{}
 }
 
@@ -305,13 +308,21 @@ pub fn (mut ctx Context) server_error(ecode int) Result {
 	return Result{}
 }
 
+@[params]
+pub struct RedirectParams {
+	status_code int = 302
+}
+
 // Redirect to an url
-pub fn (mut ctx Context) redirect(url string) Result {
+pub fn (mut ctx Context) redirect(url string, params RedirectParams) Result {
 	if ctx.done {
 		return Result{}
 	}
 	ctx.done = true
 	mut resp := vweb.http_302
+	if params.status_code == 303 {
+		resp = vweb.http_303
+	}
 	resp.header = resp.header.join(ctx.header)
 	resp.header.add(.location, url)
 	send_string(mut ctx.conn, resp.bytestr()) or { return Result{} }

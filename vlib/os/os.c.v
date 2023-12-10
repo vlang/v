@@ -9,9 +9,7 @@ $if freebsd {
 	#include <sys/sysctl.h>
 }
 
-pub const (
-	args = []string{}
-)
+pub const args = []string{}
 
 fn C.readdir(voidptr) &C.dirent
 
@@ -146,8 +144,6 @@ pub fn read_file(path string) !string {
 	}
 }
 
-// ***************************** OS ops ************************
-//
 // truncate changes the size of the file located in `path` to `len`.
 // Note that changing symbolic links on Windows only works as admin.
 pub fn truncate(path string, len u64) ! {
@@ -403,6 +399,8 @@ pub fn system(cmd string) int {
 	$if windows {
 		// overcome bug in system & _wsystem (cmd) when first char is quote `"`
 		wcmd := if cmd.len > 1 && cmd[0] == `"` && cmd[1] != `"` { '"${cmd}"' } else { cmd }
+		flush_stdout()
+		flush_stderr()
 		unsafe {
 			ret = C._wsystem(wcmd.to_wide())
 		}

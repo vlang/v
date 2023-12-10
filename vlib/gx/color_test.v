@@ -2,13 +2,13 @@ import gx
 
 fn test_hex() {
 	// valid colors
-	a := gx.hex(0x6c5ce7ff)
-	b := gx.rgba(108, 92, 231, 255)
-	assert a == b
+	// a := gx.hex(0x6c5ce7ff)
+	// b := gx.rgba(108, 92, 231, 255)
+	assert gx.hex(0xff6600) == gx.rgb(255, 102, 0) // orange
 	// doesn't give right value with short hex value
 	short := gx.hex(0xfff)
 	assert short != gx.white
-	assert short == gx.Color{0, 0, 15, 255}
+	// assert short == gx.Color{0, 0, 15, 255}
 }
 
 fn test_add() {

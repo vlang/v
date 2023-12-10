@@ -678,11 +678,9 @@ pub fn str_intp(data_len int, input_base &StrIntpData) string {
 // They are used to substitute old _STR calls.
 // FIXME: this const is not released from memory => use a precalculated string const for now.
 // si_s_code = "0x" + int(StrIntpType.si_s).hex() // code for a simple string.
-pub const (
-	si_s_code   = '0xfe10'
-	si_g32_code = '0xfe0e'
-	si_g64_code = '0xfe0f'
-)
+pub const si_s_code = '0xfe10'
+pub const si_g32_code = '0xfe0e'
+pub const si_g64_code = '0xfe0f'
 
 @[inline]
 pub fn str_intp_sq(in_str string) string {

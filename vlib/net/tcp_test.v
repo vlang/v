@@ -3,9 +3,7 @@
 import net
 import os
 
-const (
-	test_port = 45123
-)
+const test_port = 45123
 
 fn handle_conn(mut c net.TcpConn) {
 	for {

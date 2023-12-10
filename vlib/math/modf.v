@@ -1,8 +1,6 @@
 module math
 
-const (
-	modf_maxpowtwo = 4.503599627370496000e+15
-)
+const modf_maxpowtwo = 4.503599627370496000e+15
 
 // modf returns integer and fractional floating-point numbers
 // that sum to f. Both values have the same sign as f.

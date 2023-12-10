@@ -5,11 +5,9 @@ module main
 import os
 import rand
 
-const (
-	vexe  = os.quoted_path(get_vexe_path())
-	vroot = os.dir(vexe)
-	tdir  = new_tdir()
-)
+const vexe = os.quoted_path(get_vexe_path())
+const vroot = os.dir(vexe)
+const tdir = new_tdir()
 
 fn get_vexe_path() string {
 	env_vexe := os.getenv('VEXE')

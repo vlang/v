@@ -4,6 +4,4 @@ module main
 // in both the main executable, and in the shared library.
 import v.live
 
-const (
-	no_warning_live_is_used = live.is_used
-)
+const no_warning_live_is_used = live.is_used

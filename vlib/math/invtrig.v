@@ -45,10 +45,8 @@ module math
 // pi/2.0 = PIO2 + morebits
 // tan3pio8 = tan(3*pi/8)
 
-const (
-	morebits = 6.123233995736765886130e-17
-	tan3pio8 = 2.41421356237309504880
-)
+const morebits = 6.123233995736765886130e-17
+const tan3pio8 = 2.41421356237309504880
 
 // xatan evaluates a series valid in the range [0, 0.66].
 @[inline]

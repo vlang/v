@@ -31,11 +31,9 @@ mut:
 	diff_cmd string // filled in when -diff or -verify is passed
 }
 
-const (
-	formatted_file_token = '\@\@\@' + 'FORMATTED_FILE: '
-	vtmp_folder          = os.vtmp_dir()
-	term_colors          = term.can_show_color_on_stderr()
-)
+const formatted_file_token = '\@\@\@' + 'FORMATTED_FILE: '
+const vtmp_folder = os.vtmp_dir()
+const term_colors = term.can_show_color_on_stderr()
 
 fn main() {
 	// if os.getenv('VFMT_ENABLE') == '' {

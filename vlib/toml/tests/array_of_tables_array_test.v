@@ -2,8 +2,7 @@ import os
 import toml
 import toml.to
 
-const (
-	toml_text = '[[a]]
+const toml_text = '[[a]]
     [[a.b]]
         [a.b.c]
             d = "val0"
@@ -11,7 +10,6 @@ const (
         [a.b.c]
             d = "val1"
 '
-)
 
 fn test_nested_array_of_tables() {
 	mut toml_doc := toml.parse_text(toml_text) or { panic(err) }

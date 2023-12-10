@@ -257,8 +257,10 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	// For this purpose, the actual body of the live function,
 	// is put under a non publicly accessible function, that is prefixed
 	// with 'impl_live_' .
-	if is_livemain {
-		g.hotcode_fn_names << name
+	if is_livemode {
+		if is_livefn {
+			g.hotcode_fn_names << name
+		}
 		g.hotcode_fpaths << g.file.path
 	}
 	mut impl_fn_name := name
@@ -457,7 +459,7 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) string {
 	if node.language == .c {
 		name = util.no_dots(name)
 	} else {
-		name = c_name(name)
+		name = c_fn_name(name)
 	}
 
 	if node.generic_names.len > 0 {
@@ -1048,18 +1050,20 @@ fn (g Gen) get_generic_array_element_type(array ast.Array) ast.Type {
 	return typ
 }
 
-fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concrete_types []ast.Type) map[int]ast.Type {
+fn (mut g Gen) resolve_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concrete_types []ast.Type) map[int]ast.Type {
 	mut comptime_args := map[int]ast.Type{}
 	has_dynamic_vars := (g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0)
 		|| g.inside_comptime_for_field
 	if has_dynamic_vars {
 		offset := if func.is_method { 1 } else { 0 }
+		mut k := -1
 		for i, mut call_arg in node_.args {
 			param := if func.is_variadic && i >= func.params.len - (offset + 1) {
 				func.params.last()
 			} else {
 				func.params[offset + i]
 			}
+			k++
 			if !param.typ.has_flag(.generic) {
 				continue
 			}
@@ -1071,11 +1075,23 @@ fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concret
 						mut ctyp := g.get_comptime_var_type(call_arg.expr)
 						if ctyp != ast.void_type {
 							arg_sym := g.table.sym(ctyp)
-							if arg_sym.kind == .array && param_typ.has_flag(.generic)
-								&& g.table.final_sym(param_typ).kind == .array {
-								ctyp = (arg_sym.info as ast.Array).elem_type
+							param_sym := g.table.final_sym(param_typ)
+							if arg_sym.info is ast.Array && param_sym.kind == .array {
+								ctyp = arg_sym.info.elem_type
+							} else if arg_sym.info is ast.Map && param_sym.info is ast.Map {
+								if call_arg.expr.obj.ct_type_var == .value_var {
+									ctyp = arg_sym.info.value_type
+									if param_sym.info.value_type.nr_muls() > 0 && ctyp.nr_muls() > 0 {
+										ctyp = ctyp.set_nr_muls(0)
+									}
+								} else if call_arg.expr.obj.ct_type_var == .key_var {
+									ctyp = arg_sym.info.key_type
+									if param_sym.info.key_type.nr_muls() > 0 && ctyp.nr_muls() > 0 {
+										ctyp = ctyp.set_nr_muls(0)
+									}
+								}
 							}
-							comptime_args[i] = ctyp
+							comptime_args[k] = ctyp
 						}
 					} else if call_arg.expr.obj.ct_type_var == .generic_param {
 						mut ctyp := g.get_comptime_var_type(call_arg.expr)
@@ -1084,11 +1100,11 @@ fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concret
 							param_typ_sym := g.table.sym(param_typ)
 							if param_typ.has_flag(.variadic) {
 								ctyp = ast.mktyp(ctyp)
-								comptime_args[i] = ctyp
+								comptime_args[k] = ctyp
 							} else if arg_sym.kind == .array && param_typ.has_flag(.generic)
 								&& param_typ_sym.kind == .array {
 								ctyp = g.get_generic_array_element_type(arg_sym.info as ast.Array)
-								comptime_args[i] = ctyp
+								comptime_args[k] = ctyp
 							} else if arg_sym.kind in [.struct_, .interface_, .sum_type] {
 								mut generic_types := []ast.Type{}
 								match arg_sym.info {
@@ -1106,15 +1122,19 @@ fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concret
 									if gt_name in generic_names
 										&& generic_types.len == concrete_types.len {
 										idx := generic_names.index(gt_name)
-										comptime_args[i] = concrete_types[idx]
+										comptime_args[k] = concrete_types[idx]
 										break
 									}
 								}
 							} else if arg_sym.kind == .any {
-								mut cparam_type_sym := g.table.sym(g.unwrap_generic(ctyp))
-								if param_typ_sym.kind == .array && cparam_type_sym.kind == .array {
-									ctyp = (cparam_type_sym.info as ast.Array).elem_type
-									comptime_args[i] = ctyp
+								cparam_type_sym := g.table.sym(g.unwrap_generic(ctyp))
+								if param_typ_sym.kind == .array && cparam_type_sym.info is ast.Array {
+									comptime_args[k] = cparam_type_sym.info.elem_type
+								} else if param_typ_sym.kind == .map
+									&& cparam_type_sym.info is ast.Map {
+									comptime_args[k] = cparam_type_sym.info.key_type
+									comptime_args[k + 1] = cparam_type_sym.info.value_type
+									k++
 								} else {
 									if node_.args[i].expr.is_auto_deref_var() {
 										ctyp = ctyp.deref()
@@ -1122,35 +1142,50 @@ fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concret
 									if ctyp.nr_muls() > 0 && param_typ.nr_muls() > 0 {
 										ctyp = ctyp.set_nr_muls(0)
 									}
-									comptime_args[i] = ctyp
+									comptime_args[k] = ctyp
 								}
 							} else {
-								comptime_args[i] = ctyp
+								comptime_args[k] = ctyp
 							}
 						}
 					}
 				}
 			} else if mut call_arg.expr is ast.PrefixExpr {
 				if call_arg.expr.right is ast.ComptimeSelector {
-					comptime_args[i] = g.comptime_for_field_type
-					comptime_args[i] = comptime_args[i].deref()
-					if param_typ.nr_muls() > 0 && comptime_args[i].nr_muls() > 0 {
-						comptime_args[i] = comptime_args[i].set_nr_muls(0)
+					comptime_args[k] = g.comptime_for_field_type
+					comptime_args[k] = comptime_args[k].deref()
+					if param_typ.nr_muls() > 0 && comptime_args[k].nr_muls() > 0 {
+						comptime_args[k] = comptime_args[k].set_nr_muls(0)
 					}
 				}
 			} else if mut call_arg.expr is ast.ComptimeSelector {
-				comptime_args[i] = g.comptime_for_field_type
+				comptime_args[k] = g.comptime_for_field_type
 				arg_sym := g.table.final_sym(call_arg.typ)
 				param_typ_sym := g.table.sym(param_typ)
 				if arg_sym.kind == .array && param_typ.has_flag(.generic)
 					&& param_typ_sym.kind == .array {
-					comptime_args[i] = g.get_generic_array_element_type(arg_sym.info as ast.Array)
+					comptime_args[k] = g.get_generic_array_element_type(arg_sym.info as ast.Array)
 				}
 				if call_arg.expr.left.is_auto_deref_var() {
-					comptime_args[i] = comptime_args[i].deref()
+					comptime_args[k] = comptime_args[k].deref()
 				}
-				if param_typ.nr_muls() > 0 && comptime_args[i].nr_muls() > 0 {
-					comptime_args[i] = comptime_args[i].set_nr_muls(0)
+				if param_typ.nr_muls() > 0 && comptime_args[k].nr_muls() > 0 {
+					comptime_args[k] = comptime_args[k].set_nr_muls(0)
+				}
+			} else if mut call_arg.expr is ast.ComptimeCall {
+				if call_arg.expr.method_name == 'method' {
+					sym := g.table.sym(g.unwrap_generic(call_arg.expr.left_type))
+					// `app.$method()`
+					if m := sym.find_method(g.comptime_for_method) {
+						comptime_args[k] = m.return_type
+					}
+				}
+			} else if mut call_arg.expr is ast.CastExpr {
+				cparam_type_sym := g.table.sym(g.unwrap_generic(call_arg.expr.typ))
+				param_typ_sym := g.table.sym(param_typ)
+				if param_typ_sym.kind == .map && cparam_type_sym.info is ast.Map {
+					comptime_args[k] = cparam_type_sym.info.key_type
+					comptime_args[k + 1] = cparam_type_sym.info.value_type
 				}
 			}
 		}
@@ -1158,14 +1193,22 @@ fn (mut g Gen) change_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concret
 	return comptime_args
 }
 
-fn (mut g Gen) method_call(node ast.CallExpr) {
-	// TODO: there are still due to unchecked exprs (opt/some fn arg)
-	if node.left_type == 0 {
-		g.checker_bug('CallExpr.left_type is 0 in method_call', node.pos)
+fn (mut g Gen) resolve_receiver_name(node ast.CallExpr, unwrapped_rec_type ast.Type, final_left_sym ast.TypeSymbol, left_sym ast.TypeSymbol, typ_sym ast.TypeSymbol) string {
+	mut receiver_type_name := util.no_dots(g.cc_type(unwrapped_rec_type, false))
+	if final_left_sym.kind == .map && node.name in ['clone', 'move'] {
+		receiver_type_name = 'map'
 	}
-	if node.receiver_type == 0 {
-		g.checker_bug('CallExpr.receiver_type is 0 in method_call', node.pos)
+	if final_left_sym.kind == .array && !(left_sym.kind == .alias && left_sym.has_method(node.name))
+		&& node.name in ['clear', 'repeat', 'sort_with_compare', 'sorted_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice', 'pointers'] {
+		if !(left_sym.info is ast.Alias && typ_sym.has_method(node.name)) {
+			// `array_Xyz_clone` => `array_clone`
+			receiver_type_name = 'array'
+		}
 	}
+	return receiver_type_name
+}
+
+fn (mut g Gen) resolve_receiver_type(node ast.CallExpr) (ast.Type, &ast.TypeSymbol) {
 	left_type := g.unwrap_generic(node.left_type)
 	mut unwrapped_rec_type := node.receiver_type
 	if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 { // in generic fn
@@ -1215,9 +1258,23 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		unwrapped_rec_type = node.from_embed_types.last()
 		typ_sym = g.table.sym(unwrapped_rec_type)
 	}
+	return unwrapped_rec_type, typ_sym
+}
+
+fn (mut g Gen) method_call(node ast.CallExpr) {
+	// TODO: there are still due to unchecked exprs (opt/some fn arg)
+	if node.left_type == 0 {
+		g.checker_bug('CallExpr.left_type is 0 in method_call', node.pos)
+	}
+	if node.receiver_type == 0 {
+		g.checker_bug('CallExpr.receiver_type is 0 in method_call', node.pos)
+	}
+	left_type := g.unwrap_generic(node.left_type)
+	mut unwrapped_rec_type, typ_sym := g.resolve_receiver_type(node)
+
 	rec_cc_type := g.cc_type(unwrapped_rec_type, false)
 	mut receiver_type_name := util.no_dots(rec_cc_type)
-	if mut typ_sym.info is ast.Interface && typ_sym.info.defines_method(node.name) {
+	if typ_sym.info is ast.Interface && typ_sym.info.defines_method(node.name) {
 		// Speaker_name_table[s._interface_idx].speak(s._object)
 		$if debug_interface_method_call ? {
 			eprintln('>>> interface typ_sym.name: ${typ_sym.name} | receiver_type_name: ${receiver_type_name} | pos: ${node.pos}')
@@ -1235,7 +1292,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.expr(node.left)
 		}
 		dot := g.dot_or_ptr(left_type)
-		mname := c_name(node.name)
+		mname := c_fn_name(node.name)
 		g.write('${dot}_typ]._method_${mname}(')
 		if node.left.is_auto_deref_var() && left_type.nr_muls() > 1 {
 			g.write('(')
@@ -1306,15 +1363,11 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.get_free_method(rec_type)
 	}
 	mut has_cast := false
-	if final_left_sym.kind == .map && node.name in ['clone', 'move'] {
-		receiver_type_name = 'map'
-	}
+
+	receiver_type_name = g.resolve_receiver_name(node, unwrapped_rec_type, final_left_sym,
+		left_sym, typ_sym)
 	if final_left_sym.kind == .array && !(left_sym.kind == .alias && left_sym.has_method(node.name))
 		&& node.name in ['clear', 'repeat', 'sort_with_compare', 'sorted_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice', 'pointers'] {
-		if !(left_sym.info is ast.Alias && typ_sym.has_method(node.name)) {
-			// `array_Xyz_clone` => `array_clone`
-			receiver_type_name = 'array'
-		}
 		if node.name in ['last', 'first', 'pop'] {
 			return_type_str := g.typ(node.return_type)
 			has_cast = true
@@ -1379,7 +1432,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
 		if m := g.table.find_method(g.table.sym(node.left_type), node.name) {
 			mut node_ := unsafe { node }
-			comptime_args := g.change_comptime_args(m, mut node_, concrete_types)
+			comptime_args := g.resolve_comptime_args(m, mut node_, concrete_types)
 			for k, v in comptime_args {
 				if (rec_len + k) < concrete_types.len {
 					if !node.concrete_types[k].has_flag(.generic) {
@@ -1412,6 +1465,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	is_array_method_first_last_repeat := final_left_sym.kind == .array
 		&& node.name in ['first', 'last', 'repeat']
+	is_interface := left_sym.kind == .interface_
+		&& g.table.sym(node.receiver_type).kind == .interface_
 	if node.receiver_type.is_ptr() && (!left_type.is_ptr()
 		|| node.from_embed_types.len != 0 || (left_type.has_flag(.shared_f) && node.name != 'str')) {
 		// The receiver is a reference, but the caller provided a value
@@ -1461,7 +1516,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.write('(map[]){')
 			g.expr(node.left)
 			g.write('}[0]')
-		} else if node.from_embed_types.len > 0 {
+		} else if !is_interface && node.from_embed_types.len > 0 {
 			n_ptr := node.left_type.nr_muls() - 1
 			if n_ptr > 0 {
 				g.write('(')
@@ -1471,23 +1526,56 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			} else {
 				g.expr(node.left)
 			}
+		} else if is_interface && node.from_embed_types.len > 0 {
+			if g.out.last_n(1) == '&' {
+				g.go_back(1)
+			}
+			if node.receiver_type.is_ptr() && left_type.is_ptr() {
+				// (main__IFoo*)bar
+				g.write('(')
+				g.write(g.table.sym(node.from_embed_types.last()).cname)
+				g.write('*)')
+				g.expr(node.left)
+			} else if node.receiver_type.is_ptr() && !left_type.is_ptr() {
+				// (main__IFoo*)&bar
+				g.write('(')
+				g.write(g.table.sym(node.from_embed_types.last()).cname)
+				g.write('*)&')
+				g.expr(node.left)
+			} else if !node.receiver_type.is_ptr() && left_type.is_ptr() {
+				// *((main__IFoo*)bar)
+				g.write('*((')
+				g.write(g.table.sym(node.from_embed_types.last()).cname)
+				g.write('*)')
+				g.expr(node.left)
+				g.write(')')
+			} else {
+				// *((main__IFoo*)&bar)
+				g.write('*((')
+				g.write(g.table.sym(node.from_embed_types.last()).cname)
+				g.write('*)&')
+				g.expr(node.left)
+				g.write(')')
+			}
 		} else {
 			g.expr(node.left)
 		}
-		for i, embed in node.from_embed_types {
-			embed_sym := g.table.sym(embed)
-			embed_name := embed_sym.embed_name()
-			is_left_ptr := if i == 0 {
-				left_type.is_ptr()
-			} else {
-				node.from_embed_types[i - 1].is_ptr()
+		if !is_interface || node.from_embed_types.len == 0 {
+			for i, embed in node.from_embed_types {
+				embed_sym := g.table.sym(embed)
+				embed_name := embed_sym.embed_name()
+				is_left_ptr := if i == 0 {
+					left_type.is_ptr()
+				} else {
+					node.from_embed_types[i - 1].is_ptr()
+				}
+				if is_left_ptr {
+					g.write('->')
+				} else {
+					g.write('.')
+				}
+				g.write(embed_name)
 			}
-			if is_left_ptr {
-				g.write('->')
-			} else {
-				g.write('.')
-			}
-			g.write(embed_name)
 		}
 		if left_type.has_flag(.shared_f)
 			&& (left_type != node.receiver_type || is_array_method_first_last_repeat) {
@@ -1585,7 +1673,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			ast_type := node.args[0].expr as ast.TypeNode
 			// `json.decode(User, s)` => json.decode_User(s)
 			typ := c_name(g.typ(ast_type.typ))
-			fn_name := c_name(name) + '_' + typ
+			fn_name := c_fn_name(name) + '_' + typ
 			g.gen_json_for_type(ast_type.typ)
 			g.empty_line = true
 			g.writeln('// json.decode')
@@ -1612,7 +1700,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		// Skip "C."
 		name = util.no_dots(name[2..])
 	} else {
-		name = c_name(name)
+		name = c_fn_name(name)
 	}
 	if g.pref.translated || g.file.is_translated || node.is_file_translated {
 		// For `[c: 'P_TryMove'] fn p_trymove( ... `
@@ -1636,7 +1724,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		if func := g.table.find_fn(node.name) {
 			mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
 			mut node_ := unsafe { node }
-			comptime_args := g.change_comptime_args(func, mut node_, concrete_types)
+			comptime_args := g.resolve_comptime_args(func, mut node_, concrete_types)
 			if concrete_types.len > 0 {
 				for k, v in comptime_args {
 					if k < concrete_types.len {
@@ -1660,9 +1748,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	if is_print && (node.args[0].typ != ast.string_type
 		|| g.comptime_for_method.len > 0
 		|| g.table.is_comptime_var(node.args[0].expr)) {
-		g.inside_casting_to_str = true
+		g.inside_interface_deref = true
 		defer {
-			g.inside_casting_to_str = false
+			g.inside_interface_deref = false
 		}
 		mut typ := node.args[0].typ
 		if g.table.is_comptime_var(node.args[0].expr) {
@@ -1678,7 +1766,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			expr := node.args[0].expr
 			typ_sym := g.table.sym(typ)
 			if typ_sym.kind == .interface_ && (typ_sym.info as ast.Interface).defines_method('str') {
-				g.write('${c_name(print_method)}(')
+				g.write('${c_fn_name(print_method)}(')
 				rec_type_name := util.no_dots(g.cc_type(typ, false))
 				g.write('${c_name(rec_type_name)}_name_table[')
 				g.expr(expr)
@@ -1694,9 +1782,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				tmp := g.new_tmp_var()
 				g.write('string ${tmp} = ')
 				g.gen_expr_to_string(expr, typ)
-				g.writeln('; ${c_name(print_method)}(${tmp}); string_free(&${tmp});')
+				g.writeln('; ${c_fn_name(print_method)}(${tmp}); string_free(&${tmp});')
 			} else {
-				g.write('${c_name(print_method)}(')
+				g.write('${c_fn_name(print_method)}(')
 				if expr is ast.ComptimeSelector {
 					key_str := g.get_comptime_selector_key_type(expr)
 					if key_str != '' {
@@ -1733,9 +1821,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	}
 	if !print_auto_str {
 		if is_print {
-			g.inside_casting_to_str = true
+			g.inside_interface_deref = true
 			defer {
-				g.inside_casting_to_str = false
+				g.inside_interface_deref = false
 			}
 		}
 		if g.pref.is_debug && node.name == 'panic' {
@@ -1748,7 +1836,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				g.gen_enum_static_from_string(node.name)
 				g.str_fn_names << node.name
 			}
-			g.write('${node.name}(')
+			g.write('${util.no_dots(node.name)}(')
 			g.call_args(node)
 			g.write(')')
 		} else {
@@ -2282,6 +2370,10 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 					g.expr_with_cast(arg.expr, arg_typ, expected_type)
 					g.write(')')
 					return
+				}
+			} else if arg_sym.kind == .interface_ && exp_sym.kind == .interface_ {
+				if exp_is_ptr && !arg_is_ptr {
+					g.write('&')
 				}
 			}
 		}

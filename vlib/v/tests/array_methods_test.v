@@ -73,3 +73,15 @@ fn test_string_eq_method_with_interface() {
 	}
 	assert false
 }
+
+// test deref when alias as receiver of methods
+type Array = []int
+
+pub fn (mut arr Array) alias_as_receiver_deref() []int {
+	return arr.sorted(b < a)
+}
+
+fn test_alias_as_receiver_deref() {
+	mut arr := Array([1, 2, 3])
+	assert arr.alias_as_receiver_deref() == [3, 2, 1]
+}

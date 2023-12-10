@@ -49,7 +49,7 @@ by using any of the following commands in a terminal:
 
 * `v init` → adds necessary files to the current folder to make it a V project
 * `v new abc` → creates a new project in the new folder `abc`, by default a "hello world" project.
-* `v new abcd web` → creates a new project in the new folder `abcd`, using the vweb template.
+* `v new --web abcd` → creates a new project in the new folder `abcd`, using the vweb template.
 
 ## Table of Contents
 
@@ -2926,10 +2926,8 @@ To dereference a reference, use the `*` operator, just like in C.
 ## Constants
 
 ```v
-const (
-	pi    = 3.14
-	world = '世界'
-)
+const pi = 3.14
+const world = '世界'
 
 println(pi)
 println(world)
@@ -2961,16 +2959,14 @@ fn rgb(r int, g int, b int) Color {
 	}
 }
 
-const (
-	numbers = [1, 2, 3]
-	red     = Color{
-		r: 255
-		g: 0
-		b: 0
-	}
-	// evaluate function call at compile time*
-	blue = rgb(0, 0, 255)
-)
+const numbers = [1, 2, 3]
+const red = Color{
+	r: 255
+	g: 0
+	b: 0
+}
+// evaluate function call at compile time*
+const blue = rgb(0, 0, 255)
 
 println(numbers)
 println(red)
@@ -4069,8 +4065,8 @@ fn main() {
 > [!NOTE]
 > Threads rely on the machine's CPU (number of cores/threads).
 > Be aware that OS threads spawned with `spawn`
-> have limitations in regard to concurrency, 
-> including resource overhead and scalability issues, 
+> have limitations in regard to concurrency,
+> including resource overhead and scalability issues,
 > and might affect performance in cases of high thread count.
 
 There's also a `go` keyword. Right now `go foo()` will be automatically renamed via vfmt
@@ -5539,7 +5535,7 @@ that are substituted at compile time:
   where the V executable is (as a string).
 - `@VHASH`  => replaced with the shortened commit hash of the V compiler (as a string).
 - `@VCURRENTHASH` => Similar to `@VHASH`, but changes when the compiler is
-  recompiled on a different commit (after local modifications, or after 
+  recompiled on a different commit (after local modifications, or after
   using git bisect etc).
 - `@VMOD_FILE` => replaced with the contents of the nearest v.mod file (as a string).
 - `@VMODROOT` => will be substituted with the *folder*,
@@ -5695,7 +5691,7 @@ fn main() {
 ```
 
 Note: compressing binary assets like png or zip files, usually will not gain you much,
-and in some cases may even take more space in the final executable, since they are 
+and in some cases may even take more space in the final executable, since they are
 already compressed.
 
 `$embed_file` returns
@@ -5843,21 +5839,21 @@ main_default.c.v:
 
 ```v ignore
 module main
-const ( message = 'Hello world' )
+const message = 'Hello world'
 ```
 
 main_linux.c.v:
 
 ```v ignore
 module main
-const ( message = 'Hello linux' )
+const message = 'Hello linux'
 ```
 
 main_windows.c.v:
 
 ```v ignore
 module main
-const ( message = 'Hello windows' )
+const message = 'Hello windows'
 ```
 
 With the example above:
@@ -6107,7 +6103,7 @@ sure that the access index will be valid.
 
 #### `[packed]`
 
-The `[packed]` attribute can be added to a structure to create an unaligned memory layout,
+The `@[packed]` attribute can be applied to a structure to create an unaligned memory layout,
 which decreases the overall memory footprint of the structure. Using the `[packed]` attribute
 may negatively impact performance or even be prohibited on certain CPU architectures.
 
@@ -6119,6 +6115,45 @@ may negatively impact performance or even be prohibited on certain CPU architect
 
 - On CPU architectures that do not support unaligned memory access or when high-speed memory access
 is needed.
+
+#### `[aligned]`
+
+The `@[aligned]` attribute can be applied to a structure or union to specify a minimum alignment
+(in bytes) for variables of that type. Using the `@[aligned]` attribute you can only *increase*
+the default alignment. Use `@[packed]` if you want to *decrease* it. The alignment of any struct
+or union, should be at least a perfect multiple of the lowest common multiple of the alignments of
+all of the members of the struct or union.
+
+Example:
+```v
+// Each u16 in the `data` field below, takes 2 bytes, and we have 3 of them = 6 bytes.
+// The smallest power of 2, bigger than 6 is 8, i.e. with `@[aligned]`, the alignment
+// for the entire struct U16s, will be 8:
+@[aligned]
+struct U16s {
+	data [3]u16
+}
+```
+**When to Use**
+
+- Only if the instances of your types, will be used in performance critical sections, or with
+specialised machine instructions, that do require a specific alignment to work.
+
+**When to Avoid**
+
+- On CPU architectures, that do not support unaligned memory access. If you are not working on
+performance critical algorithms, you do not really need it, since the proper minimum alignment
+is CPU specific, and the compiler already usually will choose a good default for you.
+
+> [!NOTE]
+> You can leave out the alignment factor, i.e. use just `@[aligned]`, in which case the compiler
+> will align a type to the maximum useful alignment for the target machine you are compiling for,
+> i.e. the alignment will be the largest alignment which is ever used for any data type on the
+> target machine. Doing this can often make copy operations more efficient, because the compiler
+> can choose whatever instructions copy the biggest chunks of memory, when performing copies to or
+> from the variables which have types that you have aligned this way.
+
+See also ["What Every Programmer Should Know About Memory", by Ulrich Drepper](https://people.freebsd.org/~lstewart/articles/cpumemory.pdf) .
 
 #### `[minify]`
 
