@@ -469,8 +469,8 @@ pub fn (mut h Header) delete(key CommonHeader) {
 
 // delete_custom deletes all values for a custom header key.
 pub fn (mut h Header) delete_custom(key string) {
-	for i, kv in h.data {
-		if kv.key == key {
+	for i := 0; i < h.cur_pos; i++ {
+		if h.data[i].key == key {
 			h.data[i] = HeaderKV{key, ''}
 		}
 	}

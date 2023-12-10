@@ -256,7 +256,7 @@ const font_paths = [
 
 struct App_data {
 pub mut:
-	gg        &gg.Context
+	gg        &gg.Context = unsafe { nil }
 	sg_img    gfx.Image
 	init_flag bool
 	frame_c   int
@@ -292,9 +292,7 @@ fn draw_frame(mut app App_data) {
 }
 
 fn main() {
-	mut app := &App_data{
-		gg: 0
-	}
+	mut app := &App_data{}
 
 	app.gg = gg.new_context(
 		width: win_width

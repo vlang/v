@@ -119,6 +119,17 @@ jobs:
           echo "Execute Tests"
           cd /tmp/adventofcode && v run verify.v
 
+      - name: Build vlang/msgpack
+        run: |
+          echo "Install msgpack"
+          v install msgpack
+          echo "Build msgpack"
+          v -shared ~/.vmodules/msgpack/
+          echo "Run msgpack tests"
+          v -stats test ~/.vmodules/msgpack/
+          echo "MessagePack examples should compile"
+          v should-compile-all ~/.vmodules/msgpack/examples
+
 
 #      - name: Build VEX
 #        run: |

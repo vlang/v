@@ -16,7 +16,7 @@ jobs:
       - name: Install dependencies
         run: |
           echo "PKG_CONFIG_PATH is '$PKG_CONFIG_PATH'"
-          brew install libpq openssl
+          brew install libpq openssl mercurial
           export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
           echo "LIBRARY_PATH is '$LIBRARY_PATH'"
       - name: Build V
