@@ -1,5 +1,6 @@
 # CSV Reader
-In this module are present two CSV reader:
+There are two CSV readers in this module:
+
 * Random Access reader
 * Sequential reader
  
@@ -18,9 +19,13 @@ fn main() {
 	csvr.dispose_csv_reader()
 }
 ```
-This is the simplest way to use it to read csv files in sequential mode.
+This is the simplest way to use it to read csv files in sequential mode,
+with default configuration every cell is read as `string`.
+The function `get_row()` is used to read a single row, and it returns an array of `string`.
+
 ## Reading from different sources `csv_sequential_reader`
 The CSV Sequential Reader can read from files, memory buffers.
+
 ### read from a file
 ```v ignore
 csv.csv_sequential_reader(file_path:file_path)
