@@ -24,9 +24,8 @@ pub struct SequentialReaderConfig {
 	comment      u8     = `#` // every line that start with the quote char is ignored
 	default_cell string = '*' // return this string if out of the csv boundaries
 	empty_cell   string // return this string if empty cell
-	end_line_len int = csv.endline_cr_len // size of the endline rune
+	end_line_len int = endline_cr_len // size of the endline rune
 	quote        u8  = `"` // double quote is the standard quote char
-	quote_remove bool   // if true clear the cell from the quotes
 }
 
 pub struct SequentialReader {
@@ -41,29 +40,28 @@ pub mut:
 	end_index   i64 = -1
 
 	end_line      u8  = `\n`
-	end_line_len  int = csv.endline_cr_len // size of the endline rune \n = 1, \r\n = 2
+	end_line_len  int = endline_cr_len // size of the endline rune \n = 1, \r\n = 2
 	separator     u8  = `,` // comma is the default separator
 	separator_len int = 1 // size of the separator rune
 	quote         u8  = `"` // double quote is the standard quote char
-	quote_remove  bool // if true clear the cell from the quotes
-	comment       u8 = `#` // every line that start with the quote char is ignored
+
+	comment u8 = `#` // every line that start with the quote char is ignored
 
 	default_cell string = '*' // return this string if out of the csv boundaries
 	empty_cell   string = '#' // retunrn this if empty cell
-
 	// ram buffer
-	mem_buf_type  u32    // buffer type 0=File,1=RAM
+	mem_buf_type  u32 // buffer type 0=File,1=RAM
 	mem_buf       voidptr // buffer used to load chars from file
 	mem_buf_size  i64     // size of the buffer
 	mem_buf_start i64 = -1 // start index in the file of the read buffer
 	mem_buf_end   i64 = -1 // end index in the file of the read buffer
 
-	ch_buf        []u8 = []u8{cap:1024}
-
+	ch_buf []u8 = []u8{cap: 1024}
 	// error management
-	row_count     i64
-	col_count     i64
+	row_count i64
+	col_count i64
 }
+
 // csv_reader create a sequential csv reader
 pub fn csv_sequential_reader(cfg SequentialReaderConfig) !&SequentialReader {
 	mut cr := &SequentialReader{}
@@ -73,7 +71,7 @@ pub fn csv_sequential_reader(cfg SequentialReaderConfig) !&SequentialReader {
 
 	// reading from a RAM buffer
 	if cfg.scr_buf != 0 && cfg.scr_buf_len > 0 {
-		cr.mem_buf_type = csv.ram_csv // RAM buffer
+		cr.mem_buf_type = ram_csv // RAM buffer
 		cr.mem_buf = cfg.scr_buf
 		cr.mem_buf_size = cfg.scr_buf_len
 		if cfg.end_index == -1 {
@@ -89,17 +87,15 @@ pub fn csv_sequential_reader(cfg SequentialReaderConfig) !&SequentialReader {
 				cr.start_index += 3 // skip the BOM
 			}
 		}
-
 		cr.mem_buf_start = 0
 		cr.mem_buf_end = cr.mem_buf_size
-	
 
-	// check if is a file source
-	}else if cfg.file_path.len > 0 {
+		// check if is a file source
+	} else if cfg.file_path.len > 0 {
 		if !os.exists(cfg.file_path) {
 			return error('ERROR: file ${cfg.file_path} not found!')
 		}
-		cr.mem_buf_type = csv.file_csv // File buffer
+		cr.mem_buf_type = file_csv // File buffer
 		// allocate the memory
 		unsafe {
 			cr.mem_buf = malloc(cfg.mem_buf_size)
@@ -138,7 +134,6 @@ pub fn csv_sequential_reader(cfg SequentialReaderConfig) !&SequentialReader {
 	cr.end_line_len = cfg.end_line_len
 	cr.separator = cfg.separator
 	cr.comment = cfg.comment
-	cr.quote_remove = cfg.quote_remove
 	cr.quote = cfg.quote
 
 	return cr
@@ -146,9 +141,9 @@ pub fn csv_sequential_reader(cfg SequentialReaderConfig) !&SequentialReader {
 
 // dispose_csv_reader release the resources used by the csv_reader
 pub fn (mut cr SequentialReader) dispose_csv_reader() {
-	if cr.mem_buf_type == csv.ram_csv {
+	if cr.mem_buf_type == ram_csv {
 		// do nothing, ram buffer is static
-	} else if cr.mem_buf_type == csv.file_csv {
+	} else if cr.mem_buf_type == file_csv {
 		// file close
 		if cr.f.is_opened {
 			cr.f.close()
@@ -169,8 +164,8 @@ pub fn (mut cr SequentialReader) has_data() i64 {
 	return cr.end_index - cr.start_index
 }
 
-fn (mut cr SequentialReader) fill_buffer(index i64)! {
-	if cr.mem_buf_type == csv.ram_csv {
+fn (mut cr SequentialReader) fill_buffer(index i64) ! {
+	if cr.mem_buf_type == ram_csv {
 		// for now do nothing if ram buffer
 	} else {
 		cr.f.seek(index, .start)!
@@ -182,7 +177,7 @@ fn (mut cr SequentialReader) fill_buffer(index i64)! {
 }
 
 enum SequentialReadingState as u16 {
-	comment 
+	comment
 	quote
 	after_quote
 	cell
@@ -202,16 +197,20 @@ pub fn (mut cr SequentialReader) get_next_row() ![]string {
 		if i < cr.mem_buf_start || i >= cr.mem_buf_end {
 			cr.fill_buffer(i)!
 		}
-		unsafe{
+		unsafe {
 			ch := *(p + i - cr.mem_buf_start)
 
 			if state == .cell {
 				if ch == cr.separator {
 					// must be optimized
 					cr.ch_buf << 0
-					row_res << if (cr.ch_buf.len - 1) == 0 {cr. empty_cell} else {(tos(cr.ch_buf.data, cr.ch_buf.len - 1).clone())}
+					row_res << if (cr.ch_buf.len - 1) == 0 {
+						cr.empty_cell
+					} else {
+						(tos(cr.ch_buf.data, cr.ch_buf.len - 1).clone())
+					}
 					cr.ch_buf.clear()
-				} else if cr.ch_buf.len == 0 && ch == cr.comment && row_res.len == 0{
+				} else if cr.ch_buf.len == 0 && ch == cr.comment && row_res.len == 0 {
 					state = .comment
 				} else if ch == cr.quote {
 					state = .quote
@@ -225,16 +224,18 @@ pub fn (mut cr SequentialReader) get_next_row() ![]string {
 
 					// skip empty rows
 					if !(row_res.len == 0 && cr.ch_buf.len < 1) {
-						cr.ch_buf << 0						
-						row_res << if (cr.ch_buf.len - 1) == 0 {cr. empty_cell} else {(tos(cr.ch_buf.data, cr.ch_buf.len - 1).clone())}
+						cr.ch_buf << 0
+						row_res << if (cr.ch_buf.len - 1) == 0 {
+							cr.empty_cell
+						} else {
+							(tos(cr.ch_buf.data, cr.ch_buf.len - 1).clone())
+						}
 						i += cr.end_line_len
-						break 
+						break
 					}
-				}
-				else if ch == `\r` && cr.end_line_len == 2 {
+				} else if ch == `\r` && cr.end_line_len == 2 {
 					// skip CR
-				}
-				else { // normal char inside a cell
+				} else { // normal char inside a cell
 					cr.ch_buf << ch
 				}
 			}
@@ -243,7 +244,11 @@ pub fn (mut cr SequentialReader) get_next_row() ![]string {
 				if cr.ch_buf.len > 0 {
 					// must be optimized
 					cr.ch_buf << 0
-					row_res << if (cr.ch_buf.len - 1) == 0 {cr. empty_cell} else {(tos(cr.ch_buf.data, cr.ch_buf.len - 1).clone())}
+					row_res << if (cr.ch_buf.len - 1) == 0 {
+						cr.empty_cell
+					} else {
+						(tos(cr.ch_buf.data, cr.ch_buf.len - 1).clone())
+					}
 					cr.ch_buf.clear()
 				} else if ch == cr.end_line {
 					state = .cell
@@ -254,7 +259,11 @@ pub fn (mut cr SequentialReader) get_next_row() ![]string {
 				if ch == cr.quote {
 					// must be optimized
 					cr.ch_buf << 0
-					row_res << if (cr.ch_buf.len - 1) == 0 {cr. empty_cell} else {(tos(cr.ch_buf.data, cr.ch_buf.len - 1).clone())}
+					row_res << if (cr.ch_buf.len - 1) == 0 {
+						cr.empty_cell
+					} else {
+						(tos(cr.ch_buf.data, cr.ch_buf.len - 1).clone())
+					}
 					cr.ch_buf.clear()
 
 					state = .after_quote
@@ -263,7 +272,7 @@ pub fn (mut cr SequentialReader) get_next_row() ![]string {
 					continue
 				} else if ch == cr.end_line {
 					return error('ERROR: quote not closed at row ${cr.row_count} after column ${cr.col_count}!')
-				} else {// normal char inside a quote inside a cell
+				} else { // normal char inside a quote inside a cell
 					cr.ch_buf << ch
 				}
 			}
@@ -276,7 +285,7 @@ pub fn (mut cr SequentialReader) get_next_row() ![]string {
 					cr.col_count = 0
 					cr.ch_buf.clear()
 					i += cr.end_line_len
-					break 
+					break
 				}
 			}
 		}
