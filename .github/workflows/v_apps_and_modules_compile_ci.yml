@@ -124,9 +124,9 @@ jobs:
           echo "Install msgpack"
           v install msgpack
           echo "Build msgpack"
-          v ~/.vmodules/msgpack/
+          v -shared ~/.vmodules/msgpack/
           echo "Run msgpack tests"
-          VJOBS=1 v -stats test ~/.vmodules/msgpack/
+          v -stats test ~/.vmodules/msgpack/
           echo "MessagePack examples should compile"
           v should-compile-all ~/.vmodules/msgpack/examples
 
