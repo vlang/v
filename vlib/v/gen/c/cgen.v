@@ -5891,6 +5891,9 @@ fn (mut g Gen) write_init_function() {
 
 	// ___argv is declared as voidptr here, because that unifies the windows/unix logic
 	g.writeln('void _vinit(int ___argc, voidptr ___argv) {')
+	if 'trace_vinit' in g.pref.compile_defines {
+		g.writeln('\tfprintf(stderr, ">>>> _vinit start\\n");')
+	}
 
 	g.write_debug_calls_typeof_functions()
 
@@ -5961,6 +5964,9 @@ fn (mut g Gen) write_init_function() {
 		cleaning_up_array << g.gen_call_to_mod_fn(mod_name, 'cleanup')
 	}
 
+	if 'trace_vinit' in g.pref.compile_defines {
+		g.writeln('\tfprintf(stderr, ">>>> _vinit end\\n");')
+	}
 	g.writeln('}')
 	if g.pref.printfn_list.len > 0 && '_vinit' in g.pref.printfn_list {
 		println(g.out.after(fn_vinit_start_pos))
@@ -5969,6 +5975,9 @@ fn (mut g Gen) write_init_function() {
 	//
 	fn_vcleanup_start_pos := g.out.len
 	g.writeln('void _vcleanup(void) {')
+	if 'trace_vcleanup' in g.pref.compile_defines {
+		g.writeln('\tfprintf(stderr, ">>>> _vcleanup start\\n");')
+	}
 	if g.pref.trace_calls {
 		g.writeln('\tv__trace_calls__on_call(_SLIT("_vcleanup"));')
 	}
@@ -5984,6 +5993,9 @@ fn (mut g Gen) write_init_function() {
 	g.writeln('\t// cleaning_up_array:')
 	for x in cleaning_up_array.reverse() {
 		g.writeln(x)
+	}
+	if 'trace_vcleanup' in g.pref.compile_defines {
+		g.writeln('\tfprintf(stderr, ">>>> _vcleanup end\\n");')
 	}
 	g.writeln('}')
 	if g.pref.printfn_list.len > 0 && '_vcleanup' in g.pref.printfn_list {

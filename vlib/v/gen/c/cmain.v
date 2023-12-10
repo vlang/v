@@ -116,6 +116,9 @@ fn (mut g Gen) gen_c_main_header() {
 		}
 		g.writeln('#endif')
 	}
+	if !g.pref.is_bare {
+		g.writeln('\tatexit(_vcleanup);')
+	}
 	g.writeln('\t_vinit(___argc, (voidptr)___argv);')
 	g.gen_c_main_profile_hook()
 	if g.pref.is_livemain {
@@ -124,7 +127,9 @@ fn (mut g Gen) gen_c_main_header() {
 }
 
 pub fn (mut g Gen) gen_c_main_footer() {
-	g.writeln('\t_vcleanup();')
+	if g.pref.is_bare {
+		g.writeln('\t_vcleanup();')
+	}
 	g.writeln('\treturn 0;')
 	g.writeln('}')
 }
@@ -140,14 +145,12 @@ void (_vsokol_cleanup_cb)(void) {
 	if (_vsokol_user_cleanup_ptr) {
 		_vsokol_user_cleanup_ptr();
 	}
-	_vcleanup();
 }
 
 void (_vsokol_cleanup_userdata_cb)(void* user_data) {
 	if (_vsokol_user_cleanup_cb_ptr) {
 		_vsokol_user_cleanup_cb_ptr(g_desc.user_data);
 	}
-	_vcleanup();
 }
 ')
 	}
@@ -168,8 +171,8 @@ sapp_desc sokol_main(int argc, char* argv[]) {
 		}
 		g.writeln('#endif')
 	}
-	g.writeln('\t_vinit(argc, (voidptr)argv);
-	')
+	g.writeln('\tatexit(_vcleanup);')
+	g.writeln('\t_vinit(argc, (voidptr)argv);')
 
 	g.gen_c_main_profile_hook()
 	g.writeln('\tmain__main();')
@@ -248,6 +251,7 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 		}
 		g.writeln('#endif')
 	}
+	g.writeln('\tatexit(_vcleanup);')
 	g.writeln('\t_vinit(___argc, (voidptr)___argv);')
 	g.writeln('\tmain__vtest_init();')
 	g.gen_c_main_profile_hook()
@@ -302,8 +306,6 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 	g.writeln('\tint test_exit_code = _vtrunner._method_exit_code(_vtobj);')
 	//
 	g.writeln('\t_vtrunner._method__v_free(_vtobj);')
-	g.writeln('')
-	g.writeln('\t_vcleanup();')
 	g.writeln('')
 	g.writeln('\treturn test_exit_code;')
 	g.writeln('}')

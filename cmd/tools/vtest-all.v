@@ -271,6 +271,12 @@ fn get_all_commands() []Command {
 		}
 	}
 	res << Command{
+		line: '${vexe} run cmd/tools/test_if_v_test_system_works.v'
+		okmsg: 'The V test system works'
+		runcmd: .execute
+		contains: '> all done'
+	}
+	res << Command{
 		line: '${vexe} ${vargs} -progress test-cleancode'
 		okmsg: 'All .v files are invariant when processed with `v fmt`'
 	}
