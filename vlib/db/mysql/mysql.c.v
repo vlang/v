@@ -3,17 +3,17 @@ module mysql
 // Values for the capabilities flag bitmask used by the MySQL protocol.
 // See more on https://dev.mysql.com/doc/dev/mysql-server/latest/group__group__cs__capabilities__flags.html#details
 pub enum ConnectionFlag {
-	client_compress         = C.CLIENT_COMPRESS
-	client_found_rows       = C.CLIENT_FOUND_ROWS
-	client_ignore_sigpipe   = C.CLIENT_IGNORE_SIGPIPE
-	client_ignore_space     = C.CLIENT_IGNORE_SPACE
-	client_interactive      = C.CLIENT_INTERACTIVE
-	client_local_files      = C.CLIENT_LOCAL_FILES
-	client_multi_results    = C.CLIENT_MULTI_RESULTS
+	client_compress = C.CLIENT_COMPRESS
+	client_found_rows = C.CLIENT_FOUND_ROWS
+	client_ignore_sigpipe = C.CLIENT_IGNORE_SIGPIPE
+	client_ignore_space = C.CLIENT_IGNORE_SPACE
+	client_interactive = C.CLIENT_INTERACTIVE
+	client_local_files = C.CLIENT_LOCAL_FILES
+	client_multi_results = C.CLIENT_MULTI_RESULTS
 	client_multi_statements = C.CLIENT_MULTI_STATEMENTS
-	client_no_schema        = C.CLIENT_NO_SCHEMA
-	client_odbc             = C.CLIENT_ODBC
-	client_ssl              = C.CLIENT_SSL
+	client_no_schema = C.CLIENT_NO_SCHEMA
+	client_odbc = C.CLIENT_ODBC
+	client_ssl = C.CLIENT_SSL
 	client_remember_options = C.CLIENT_REMEMBER_OPTIONS
 }
 
@@ -345,6 +345,32 @@ pub fn (db &DB) exec_none(query string) int {
 // exec_param_many executes the `query` with parameters provided as `?`'s in the query
 // It returns either the full result set, or an error on failure
 pub fn (db &DB) exec_param_many(query string, params []string) ![]Row {
+	stmt := db.prepare(query)!
+	defer {
+		stmt.close()
+	}
+	rows := stmt.execute(params)!
+	return rows
+}
+
+// exec_param executes the `query` with one parameter provided as an `?` in the query
+// It returns either the full result set, or an error on failure
+pub fn (db &DB) exec_param(query string, param string) ![]Row {
+	return db.exec_param_many(query, [param])!
+}
+
+// A Stmt_Handle is created through prepare, it will be bound
+// to one DB connection and will become unusable if the connection
+// is closed
+pub struct Stmt_Handle {
+	stmt &C.MYSQL_STMT = &C.MYSQL_STMT(unsafe { nil })
+	db   DB
+}
+
+// prepare takes in a query string, returning a Stmt_Handle
+// that can then be used to execute the query as many times
+// as needed
+pub fn (db &DB) prepare(query string) !Stmt_Handle {
 	stmt := C.mysql_stmt_init(db.conn)
 	if stmt == unsafe { nil } {
 		db.throw_mysql_error()!
@@ -355,6 +381,19 @@ pub fn (db &DB) exec_param_many(query string, params []string) ![]Row {
 		db.throw_mysql_error()!
 	}
 
+	return Stmt_Handle{
+		stmt: stmt
+		db: DB{
+			conn: db.conn
+		}
+	}
+}
+
+// execute on a Stmt_Handle takes in an array of params that
+// will be bound to the statement, followed by it's execution
+// Returns an array of Rows, which will be empty if nothing is
+// returned from the query
+pub fn (stmt &Stmt_Handle) execute(params []string) ![]Row {
 	mut bind_params := []C.MYSQL_BIND{}
 	for param in params {
 		bind := C.MYSQL_BIND{
@@ -366,17 +405,22 @@ pub fn (db &DB) exec_param_many(query string, params []string) ![]Row {
 		bind_params << bind
 	}
 
-	mut response := C.mysql_stmt_bind_param(stmt, unsafe { &C.MYSQL_BIND(bind_params.data) })
+	mut response := C.mysql_stmt_bind_param(stmt.stmt, unsafe { &C.MYSQL_BIND(bind_params.data) })
 	if response == true {
-		db.throw_mysql_error()!
+		stmt.db.throw_mysql_error()!
 	}
 
-	code = C.mysql_stmt_execute(stmt)
+	mut code := C.mysql_stmt_execute(stmt.stmt)
 	if code != 0 {
-		db.throw_mysql_error()!
+		stmt.db.throw_mysql_error()!
 	}
 
-	query_metadata := C.mysql_stmt_result_metadata(stmt)
+	query_metadata := C.mysql_stmt_result_metadata(stmt.stmt)
+	// If the query returns no metadata we have no data to return
+	// This happens in insert queries
+	if query_metadata == unsafe { nil } {
+		return []Row{}
+	}
 	num_cols := C.mysql_num_fields(query_metadata)
 	mut length := []u32{len: num_cols}
 
@@ -392,9 +436,9 @@ pub fn (db &DB) exec_param_many(query string, params []string) ![]Row {
 	}
 
 	mut rows := []Row{}
-	response = C.mysql_stmt_bind_result(stmt, unsafe { &C.MYSQL_BIND(binds.data) })
+	response = C.mysql_stmt_bind_result(stmt.stmt, unsafe { &C.MYSQL_BIND(binds.data) })
 	for {
-		code = C.mysql_stmt_fetch(stmt)
+		code = C.mysql_stmt_fetch(stmt.stmt)
 		if code == mysql_no_data {
 			break
 		}
@@ -405,20 +449,19 @@ pub fn (db &DB) exec_param_many(query string, params []string) ![]Row {
 			data := unsafe { malloc(l) }
 			binds[i].buffer = data
 			binds[i].buffer_length = l
-			code = C.mysql_stmt_fetch_column(stmt, unsafe { &binds[i] }, i, 0)
+			code = C.mysql_stmt_fetch_column(stmt.stmt, unsafe { &binds[i] }, i, 0)
 
 			row.vals << unsafe { data.vstring() }
 		}
 		rows << row
 	}
-	C.mysql_stmt_close(stmt)
 	return rows
 }
 
-// exec_param executes the `query` with one parameter provided as an `?` in the query
-// It returns either the full result set, or an error on failure
-pub fn (db &DB) exec_param(query string, param string) ![]Row {
-	return db.exec_param_many(query, [param])!
+// close acts on a Stmt_Handle to close the mysql Stmt
+// meaning it is no longer available for use
+pub fn (stmt &Stmt_Handle) close() {
+	C.mysql_stmt_close(stmt.stmt)
 }
 
 [inline]
