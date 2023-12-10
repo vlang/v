@@ -61,7 +61,7 @@ pub mut:
 	col_count i64
 }
 
-// csv_reader create a sequential csv reader
+// csv_sequential_reader creates a sequential csv reader
 pub fn csv_sequential_reader(cfg SequentialReaderConfig) !&SequentialReader {
 	mut cr := &SequentialReader{}
 
