@@ -9,7 +9,7 @@ pub:
 	token_pos  int // the position of the token
 }
 
-enum KeyType {
+pub enum KeyType {
 	literal
 	map
 	array
