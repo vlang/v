@@ -13,6 +13,10 @@ const expect_exe = os.quoted_path(os.find_abs_path_of_executable('expect') or {
 })
 
 fn testsuite_begin() {
+	$if !network ? {
+		eprintln('> skipping ${@FILE}, when `-d network` is missing')
+		exit(0)
+	}
 	test_utils.set_test_env(test_path)
 	// Explicitly disable fail on prompt.
 	os.setenv('VPM_FAIL_ON_PROMPT', '', true)
