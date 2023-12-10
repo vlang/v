@@ -105,7 +105,36 @@ const txt3 = 'a,b,c,d\r\n0,1,2,3\r\n4,5,6,7\r\n'
 const txt4 = 'a,b,c,d\n0,1,2,3\n4,5,6,7\n'
 /******************************************************************************
 *
-* Test Functions
+* Test Sequential Functions
+*
+******************************************************************************/
+fn test_csv_sequential() {
+	mut csvr := csv.csv_sequential_reader(scr_buf:txt1.str, scr_buf_len:txt1.len)!
+    mut data := [][]string{}
+    for csvr.has_data() > 1 {
+        data << csvr.get_next_row()!
+    }
+    csvr.dispose_csv_reader()
+    assert data[0][0] == 'a', 'test_csv_sequential1 reading failed!'
+    // there is a final empty row in txt1
+    assert data[data.len - 2][0] == 'a', 'test_csv_sequential2 reading failed!'
+    assert data[data.len - 2][1] == 'b,c,d', 'test_csv_sequential3 reading failed!'
+    
+
+   	csvr = csv.csv_sequential_reader(scr_buf:txt2.str, scr_buf_len:txt2.len)!
+    data = [][]string{}
+    for csvr.has_data() > 1 {
+        data << csvr.get_next_row()!
+    }
+    csvr.dispose_csv_reader()
+    println(data[data.len - 2])
+    println(data[data.len - 2][2].len)
+    assert data[data.len - 2][2] == '', 'test_csv_sequential4 reading failed!'
+}
+
+/******************************************************************************
+*
+* Test Random Access Functions
 *
 ******************************************************************************/
 fn perform_test(mut csvr csv.RandomAccessReader) ! {
@@ -233,6 +262,8 @@ fn test_csv_string() {
 	perform_test3(mut csvr)!
 	csvr.dispose_csv_reader()
 }
+
+
 
 // Debug code
 fn main() {

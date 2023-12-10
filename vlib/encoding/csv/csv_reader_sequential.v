@@ -209,7 +209,7 @@ pub fn (mut cr SequentialReader) get_next_row() ![]string {
 				if ch == cr.separator {
 					// must be optimized
 					cr.ch_buf << 0
-					row_res << (tos(cr.ch_buf.data, cr.ch_buf.len).clone())
+					row_res << (tos(cr.ch_buf.data, cr.ch_buf.len - 1).clone())
 					cr.ch_buf.clear()
 				} else if cr.ch_buf.len == 0 && ch == cr.comment {
 					state = .comment
@@ -226,8 +226,8 @@ pub fn (mut cr SequentialReader) get_next_row() ![]string {
 					// skip empty rows
 					if !(row_res.len == 0 && cr.ch_buf.len < 1) {
 						cr.ch_buf << 0						
-						row_res << (tos(cr.ch_buf.data, cr.ch_buf.len).clone())
-						i += 1
+						row_res << (tos(cr.ch_buf.data, cr.ch_buf.len - 1).clone())
+						i += cr.end_line_len
 						break 
 					}
 				}
@@ -243,7 +243,7 @@ pub fn (mut cr SequentialReader) get_next_row() ![]string {
 				if cr.ch_buf.len > 0 {
 					// must be optimized
 					cr.ch_buf << 0
-					row_res << (tos(cr.ch_buf.data, cr.ch_buf.len).clone())
+					row_res << (tos(cr.ch_buf.data, cr.ch_buf.len - 1).clone())
 					cr.ch_buf.clear()
 				} else if ch == cr.end_line {
 					state = .cell
@@ -254,7 +254,7 @@ pub fn (mut cr SequentialReader) get_next_row() ![]string {
 				if ch == cr.quote {
 					// must be optimized
 					cr.ch_buf << 0
-					row_res << (tos(cr.ch_buf.data, cr.ch_buf.len).clone())
+					row_res << (tos(cr.ch_buf.data, cr.ch_buf.len - 1).clone())
 					cr.ch_buf.clear()
 
 					state = .after_quote
@@ -276,8 +276,8 @@ pub fn (mut cr SequentialReader) get_next_row() ![]string {
 					cr.col_count = 0
 					// must be optimized
 					cr.ch_buf << 0
-					row_res << (tos(cr.ch_buf.data, cr.ch_buf.len).clone())
-					i += 1
+					row_res << (tos(cr.ch_buf.data, cr.ch_buf.len - 1).clone())
+					i += cr.end_line_len
 					break 
 				}
 			}
