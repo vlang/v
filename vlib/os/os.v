@@ -119,8 +119,9 @@ pub fn cp_all(src string, dst string, overwrite bool) ! {
 	}
 }
 
-// mv_by_cp first copies the source file, and if it is copied successfully, deletes the source file.
-// may be used when you are not sure that the source and target are on the same mount/partition.
+// mv_by_cp copies files or folders from `source` to `target`.
+// If copying is successful, `source` is deleted.
+// It may be used when the paths are not on the same mount/partition.
 pub fn mv_by_cp(source string, target string) ! {
 	cp_all(source, target, true)!
 	if is_dir(source) {
