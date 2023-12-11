@@ -117,9 +117,9 @@ fn (upd VlsUpdater) update_manifest(new_path string, from_source bool, timestamp
 
 	json_enc.encode_value(manifest, mut buffer)!
 
-	manifest_file.write(buffer)
+	manifest_file.write(buffer)!
 
-	buffer.free()
+	unsafe { buffer.free() }
 }
 
 fn (upd VlsUpdater) init_download_prebuilt() ! {
