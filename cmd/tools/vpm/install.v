@@ -133,11 +133,14 @@ fn (m Module) install() InstallResult {
 			return .failed
 		}
 	}
-	// TODO: use `os.mv` when working.
-	mv_cmd := $if windows { 'move' } $else { 'mv' }
-	os.execute_opt('${mv_cmd} ${os.quoted_path(m.tmp_path)} ${os.quoted_path(m.install_path)}') or {
-		vpm_error('failed to install `${m.name}`.', details: err.msg())
-		return .failed
+	os.mv(m.tmp_path, m.install_path) or {
+		// `os.mv` from the temp dir to the vmodules dir may fail on some linux systems.
+		// In such cases, fall back on the cli command `mv` for now.
+		vpm_log(@FILE_LINE, @FN, 'os.mv failed, trying cli command `mv` instead.')
+		os.execute_opt('mv ${os.quoted_path(m.tmp_path)} ${os.quoted_path(m.install_path)}') or {
+			vpm_error('failed to install `${m.name}`.', details: err.msg())
+			return .failed
+		}
 	}
 	return .installed
 }
