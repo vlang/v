@@ -518,6 +518,7 @@ pub struct RunParams {
 	nr_workers           int  = runtime.nr_jobs()
 	pool_channel_slots   int  = 1000
 	show_startup_message bool = true
+	startup_message      string
 }
 
 // run_at - start a new VWeb server, listening only on a specific address `host`, at the specified `port`
@@ -544,9 +545,13 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 	routes := generate_routes(global_app)!
 	controllers_sorted := check_duplicate_routes_in_controllers[T](global_app, routes)!
 
-	host := if params.host == '' { 'localhost' } else { params.host }
 	if params.show_startup_message {
-		println('[Vweb] Running app on http://${host}:${params.port}/')
+		if params.startup_message == '' {
+			host := if params.host == '' { 'localhost' } else { params.host }
+			println('[Vweb] Running app on http://${host}:${params.port}/')
+		} else {
+			println(params.startup_message)
+		}
 	}
 
 	ch := chan &RequestParams{cap: params.pool_channel_slots}
