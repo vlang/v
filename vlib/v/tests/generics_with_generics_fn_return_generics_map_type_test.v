@@ -14,7 +14,7 @@ fn expect_map[K, V](a map[K]V) map[K]V {
 	return a
 }
 
-fn main() {
+fn test_generics_with_generics_fn_return_map_type() {
 	a := {
 		'a': 1
 	}
