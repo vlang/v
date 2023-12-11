@@ -160,15 +160,10 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut wr io.Writer) !
 			}
 		}
 	} $else $if T is $alias {
-		$for method in T.methods {
-			if method.attrs.len >= 1 {
-				if method.attrs[0] == 'cast' {
-					if val.unaliased_typ() == method.return_type {
-						e.encode_value_with_level(val.$method(), level, mut wr)!
-					}
-				}
-			}
-		}
+		// TODO
+	} $else $if T is time.Time {
+		parsed_time := time.parse(val.str()) or { time.Time{} }
+		e.encode_string(parsed_time.format_rfc3339(), mut wr)!
 	} $else $if T is map[string]Any {
 		// weird quirk but val is destructured immediately to Any
 		e.encode_any(val, level, mut wr)!
@@ -323,11 +318,27 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut wr io.Writer) ! {
 				// TODO - replace for `field.typ is $enum`
 				wr.write(int(val.$(field.name)).str().bytes())!
 			} $else $if field.typ is $enum {
-				// wr.write(int(val.$(field.name)).str().bytes())! // FIXME - error: cannot cast string to `int`, use `val.$field.name.int()` instead.
 			} $else $if field.typ is $sumtype {
 				e.encode_value_with_level(val.$(field.name), level, mut wr)!
 			} $else $if field.typ is $alias {
-				e.encode_value_with_level(val.$(field.name), level, mut wr)!
+				$if field.unaliased_typ is string {
+					e.encode_string(val.$(field.name).str(), mut wr)!
+				} $else $if field.unaliased_typ is time.Time {
+					parsed_time := time.parse(val.$(field.name).str()) or { time.Time{} }
+					e.encode_string(parsed_time.format_rfc3339(), mut wr)!
+				} $else $if field.unaliased_typ in [bool, $float, $int] {
+					wr.write(val.$(field.name).str().bytes())!
+				} $else $if field.unaliased_typ is $array {
+					// TODO
+				} $else $if field.unaliased_typ is $struct {
+					e.encode_struct(value, level + 1, mut wr)!
+				} $else $if field.unaliased_typ is $enum {
+					// TODO
+				} $else $if field.unaliased_typ is $sumtype {
+					// TODO
+				} $else {
+					return error('the alias ${typeof(val).name} cannot be encoded')
+				}
 			} $else {
 				return error('type ${typeof(val).name} cannot be array encoded')
 			}
