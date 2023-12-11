@@ -11,6 +11,13 @@ const fixed_time = time.Time{
 	unix: 1647006865
 }
 
+type StringAlias = string
+type BoolAlias = bool
+type IntAlias = int
+type TimeAlias = time.Time
+type StructAlias = StructType[int]
+type EnumAlias = Enumerates
+
 type SumTypes = StructType[string] | bool | int | string | time.Time
 
 enum Enumerates {
@@ -197,6 +204,27 @@ fn test_option_array() {
 	// assert json.encode(StructTypeOption[[][]int]{
 	// 	val: [[0, 1], [0, 2, 3], [2], [5, 1]]
 	// }) == '{"val":[[0,1],[0,2,3],[2],[5,1]]}'
+}
+
+fn test_alias() {
+	assert json.encode(StructType[StringAlias]{}) == '{"val":""}'
+	assert json.encode(StructType[StringAlias]{ val: '' }) == '{"val":""}'
+	assert json.encode(StructType[StringAlias]{ val: 'a' }) == '{"val":"a"}'
+
+	assert json.encode(StructType[BoolAlias]{}) == '{"val":false}'
+	assert json.encode(StructType[BoolAlias]{ val: false }) == '{"val":false}'
+	assert json.encode(StructType[BoolAlias]{ val: true }) == '{"val":true}'
+
+	assert json.encode(StructType[IntAlias]{}) == '{"val":0}'
+	assert json.encode(StructType[IntAlias]{ val: 0 }) == '{"val":0}'
+	assert json.encode(StructType[IntAlias]{ val: 1 }) == '{"val":1}'
+
+	assert json.encode(StructType[TimeAlias]{}) == '{"val":"0000-00-00T00:00:00.000Z"}'
+	assert json.encode(StructType[TimeAlias]{ val: fixed_time }) == '{"val":"2022-03-11T13:54:25.000Z"}'
+
+	assert json.encode(StructType[StructAlias]{}) == '{"val":{"val":0}}'
+	assert json.encode(StructType[StructAlias]{ val: StructType[int]{0} }) == '{"val":{"val":0}}'
+	assert json.encode(StructType[StructAlias]{ val: StructType[int]{1} }) == '{"val":{"val":1}}'
 }
 
 fn test_pointer() {
