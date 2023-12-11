@@ -7,21 +7,24 @@
 		<title>V Mandelbrot WebAssembly Example</title>
 	</head>
 	<body>
+		<p>Below you should see the picture of the Mandelbrot set,
+		<br>calculated in WASM, and shown in a Canvas element.</p>
 		<canvas
 			id="canvas"
-			width="200"
-			height="200"
-			style="width: 100%; height: 100%; image-rendering: crisp-edges"
+			width="400"
+			height="400"
+			style="image-rendering: crisp-edges"
 		></canvas>
 		<script>
 			var canvas = document.getElementById("canvas");
 			var ctx = canvas.getContext("2d");
+			ctx.font = "32px serif";
+			ctx.fillText("Please wait...", 100, 250);
 			var memory;
 
 			function get_string(ptr, len) {
 				const buf = new Uint8Array(memory.buffer, ptr, len);
 				const str = new TextDecoder("utf8").decode(buf);
-
 				return str;
 			}
 
@@ -43,8 +46,9 @@
 			WebAssembly.instantiateStreaming(fetch("mandelbrot.wasm"), {
 				env: env,
 			}).then((res) => {
+				console.log(env.canvas_x())
+				console.log(env.canvas_y())
 				memory = res.instance.exports["memory"];
-
 				console.time("main.main");
 				res.instance.exports["main.main"]();
 				console.timeEnd("main.main");

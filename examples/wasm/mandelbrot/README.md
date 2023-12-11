@@ -3,7 +3,7 @@
 ## Using only V
 
 ```
-v run main.v
+v run .
 ```
 
 ## Using Python or Emscripten
