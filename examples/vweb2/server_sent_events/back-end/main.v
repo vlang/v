@@ -2,7 +2,6 @@ module main
 
 import vweb
 import vweb.sse
-import net
 import time
 import rand
 
