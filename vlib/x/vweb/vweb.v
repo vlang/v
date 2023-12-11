@@ -307,8 +307,12 @@ fn ev_callback[A, X](mut pv picoev.Picoev, fd int, events int) {
 
 		if params.file_responses[fd].open {
 			handle_write_file(mut pv, mut params, fd)
-		} else {
+		} else if params.string_responses[fd].open {
 			handle_write_string(mut pv, mut params, fd)
+		} else {
+			// this should never happen
+			eprintln('[vweb] error: write event on connection should be closed')
+			pv.close_conn(fd)
 		}
 	} else {
 		$if trace_picoev_callback ? {
@@ -339,11 +343,13 @@ fn handle_write_file(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 
 	// TODO: use `sendfile` in linux for optimizations (?)
 	params.file_responses[fd].file.read_into_ptr(data, bytes_to_write) or {
+		eprintln('[vweb] error: read_into_ptr')
 		params.file_responses[fd].done()
 		pv.close_conn(fd)
 		return
 	}
 	actual_written := send_string_ptr(mut conn, data, bytes_to_write) or {
+		eprintln('[vweb] error: send_string_ptr')
 		params.file_responses[fd].done()
 		pv.close_conn(fd)
 		return
@@ -375,6 +381,7 @@ fn handle_write_string(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 	// pointer magic to start at the correct position in the buffer
 	data := unsafe { params.string_responses[fd].str.str + params.string_responses[fd].pos }
 	actual_written := send_string_ptr(mut conn, data, bytes_to_write) or {
+		eprintln('[vweb] error: string send ptr')
 		params.string_responses[fd].done()
 		pv.close_conn(fd)
 		return
@@ -461,6 +468,7 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 			eprintln('[vweb] error parsing request: ${err}')
 			pv.close_conn(fd)
 			params.incomplete_requests[fd] = http.Request{}
+			params.idx[fd] = 0
 			return
 		}
 
@@ -476,8 +484,10 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 					value: 'text/plain'
 				).join(vweb.headers_close)
 			)) or {}
+
 			pv.close_conn(fd)
 			params.incomplete_requests[fd] = http.Request{}
+			params.idx[fd] = 0
 			return
 		} else if n < bytes_to_read || params.idx[fd] + n < content_length.int() {
 			// request is incomplete wait until the socket becomes ready to read again
@@ -522,6 +532,7 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 					fast_send_resp(mut conn, completed_context.res) or {}
 					pv.close_conn(fd)
 				} else {
+					params.string_responses[fd].open = true
 					params.string_responses[fd].str = completed_context.res.body
 					res := pv.add(fd, picoev.picoev_write, params.timeout_in_seconds,
 						picoev.raw_callback)
@@ -587,7 +598,7 @@ fn handle_request[A, X](mut conn net.TcpConn, req http.Request, params &RequestP
 
 	// parse the URL, query and form data
 	mut url := urllib.parse(req.url) or {
-		eprintln('[vweb] error parsing path: ${err}')
+		eprintln('[vweb] error parsing path: ${err} "${req.url}"')
 		return none
 	}
 	query := parse_query_from_url(url)
