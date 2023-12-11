@@ -342,13 +342,11 @@ fn handle_write_file(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 
 	// TODO: use `sendfile` in linux for optimizations (?)
 	params.file_responses[fd].file.read_into_ptr(data, bytes_to_write) or {
-		eprintln('[vweb] error: read_into_ptr')
 		params.file_responses[fd].done()
 		pv.close_conn(fd)
 		return
 	}
 	actual_written := send_string_ptr(mut conn, data, bytes_to_write) or {
-		eprintln('[vweb] error: send_string_ptr')
 		params.file_responses[fd].done()
 		pv.close_conn(fd)
 		return
@@ -380,7 +378,6 @@ fn handle_write_string(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 	// pointer magic to start at the correct position in the buffer
 	data := unsafe { params.string_responses[fd].str.str + params.string_responses[fd].pos }
 	actual_written := send_string_ptr(mut conn, data, bytes_to_write) or {
-		eprintln('[vweb] error: string send ptr')
 		params.string_responses[fd].done()
 		pv.close_conn(fd)
 		return
@@ -598,7 +595,7 @@ fn handle_request[A, X](mut conn net.TcpConn, req http.Request, params &RequestP
 
 	// parse the URL, query and form data
 	mut url := urllib.parse(req.url) or {
-		eprintln('[vweb] error parsing path: ${err} "${req.url}"')
+		eprintln('[vweb] error parsing path "${req.url}": ${err}')
 		return none
 	}
 	query := parse_query_from_url(url)
