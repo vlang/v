@@ -10,8 +10,7 @@ import strings
 import picoev
 
 // max read and write limits in bytes
-pub const max_read = 8096
-
+const max_read = 8096
 const max_write = 8096 * 2
 
 // A type which doesn't get filtered inside templates
