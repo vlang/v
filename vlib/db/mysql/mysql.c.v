@@ -359,19 +359,19 @@ pub fn (db &DB) exec_param(query string, param string) ![]Row {
 	return db.exec_param_many(query, [param])!
 }
 
-// A Stmt_Handle is created through prepare, it will be bound
+// A StmtHandle is created through prepare, it will be bound
 // to one DB connection and will become unusable if the connection
 // is closed
-pub struct Stmt_Handle {
+pub struct StmtHandle {
 	stmt &C.MYSQL_STMT = &C.MYSQL_STMT(unsafe { nil })
 	db   DB
 }
 
-// prepare takes in a query string, returning a Stmt_Handle
+// prepare takes in a query string, returning a StmtHandle
 // that can then be used to execute the query as many times
 // as needed, which must be closed manually by the user
 // Placeholders are represented by `?`
-pub fn (db &DB) prepare(query string) !Stmt_Handle {
+pub fn (db &DB) prepare(query string) !StmtHandle {
 	stmt := C.mysql_stmt_init(db.conn)
 	if stmt == unsafe { nil } {
 		db.throw_mysql_error()!
@@ -382,7 +382,7 @@ pub fn (db &DB) prepare(query string) !Stmt_Handle {
 		db.throw_mysql_error()!
 	}
 
-	return Stmt_Handle{
+	return StmtHandle{
 		stmt: stmt
 		db: DB{
 			conn: db.conn
@@ -394,7 +394,7 @@ pub fn (db &DB) prepare(query string) !Stmt_Handle {
 // followed by it's execution
 // Returns an array of Rows, which will be empty if nothing is returned
 // from the query, or possibly an error value
-pub fn (stmt &Stmt_Handle) execute(params []string) ![]Row {
+pub fn (stmt &StmtHandle) execute(params []string) ![]Row {
 	mut bind_params := []C.MYSQL_BIND{}
 	for param in params {
 		bind := C.MYSQL_BIND{
@@ -459,9 +459,9 @@ pub fn (stmt &Stmt_Handle) execute(params []string) ![]Row {
 	return rows
 }
 
-// close acts on a Stmt_Handle to close the mysql Stmt
+// close acts on a StmtHandle to close the mysql Stmt
 // meaning it is no longer available for use
-pub fn (stmt &Stmt_Handle) close() {
+pub fn (stmt &StmtHandle) close() {
 	C.mysql_stmt_close(stmt.stmt)
 }
 
