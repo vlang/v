@@ -1166,9 +1166,6 @@ fn (mut g Gen) resolve_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concre
 					&& param_typ_sym.kind == .array {
 					comptime_args[k] = g.get_generic_array_element_type(arg_sym.info as ast.Array)
 				}
-				if call_arg.expr.left.is_auto_deref_var() {
-					comptime_args[k] = comptime_args[k].deref()
-				}
 				if param_typ.nr_muls() > 0 && comptime_args[k].nr_muls() > 0 {
 					comptime_args[k] = comptime_args[k].set_nr_muls(0)
 				}
