@@ -317,6 +317,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	if os.getenv('VQUIET') != '' {
 		res.is_quiet = true
 	}
+	if os.getenv('VNORUN') != '' {
+		res.skip_running = true
+	}
 	mut command := ''
 	mut command_pos := -1
 
