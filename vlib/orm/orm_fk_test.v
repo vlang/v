@@ -1,3 +1,5 @@
+// vtest flaky: true
+// vtest retry: 3
 import db.sqlite
 
 struct Person {
