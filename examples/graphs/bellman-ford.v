@@ -53,7 +53,7 @@ fn print_sol(dist []int) {
 // to all other vertices using Bellman-Ford algorithm.  The
 // function also detects negative weight cycle
 fn bellman_ford[T](graph [][]T, src int) {
-	mut edges := build_map_edges_from_graph(graph)
+	mut edges := build_map_edges_from_graph[int](graph)
 	// this function was done to adapt a graph representation
 	// by a adjacency matrix, to list of adjacency (using a MAP)
 	n_edges := edges.len // number of EDGES
