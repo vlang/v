@@ -23,7 +23,7 @@ mut:
 
 // building a map of with all edges etc of a graph, represented from a matrix adjacency
 // Input: matrix adjacency --> Output: edges list of src, dest and weight
-fn build_map_edges_from_graph(g [][]int) map[int]EDGE {
+fn build_map_edges_from_graph[T](g [][]T) map[T]EDGE {
 	n := g.len // TOTAL OF NODES for this graph -- its dimensions
 	mut edges_map := map[int]EDGE{} // a graph represented by map of edges
 
@@ -52,8 +52,8 @@ fn print_sol(dist []int) {
 // The main function that finds shortest distances from src
 // to all other vertices using Bellman-Ford algorithm.  The
 // function also detects negative weight cycle
-fn bellman_ford(graph [][]int, src int) {
-	mut edges := build_map_edges_from_graph(graph)
+fn bellman_ford[T](graph [][]T, src int) {
+	mut edges := build_map_edges_from_graph[int](graph)
 	// this function was done to adapt a graph representation
 	// by a adjacency matrix, to list of adjacency (using a MAP)
 	n_edges := edges.len // number of EDGES
