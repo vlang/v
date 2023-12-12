@@ -138,17 +138,8 @@ pub fn mv_by_cp(source string, target string, opts MvParams) ! {
 
 // mv moves files or folders from `src` to `dst`.
 pub fn mv(source string, target string, opts MvParams) ! {
-	if exists(target) {
-		if !opts.overwrite {
-			return error('Destination path already exist')
-		}
-		if source != target {
-			if is_dir(target) {
-				rmdir_all(target)!
-			} else {
-				rm(target)!
-			}
-		}
+	if !opts.overwrite && exists(target) {
+		return error('Destination path already exist')
 	}
 	rename(source, target) or { mv_by_cp(source, target, opts)! }
 }
