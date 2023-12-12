@@ -17,143 +17,136 @@ isn't vulnerable to CSRF-attacks.
 
 ## Usage
 
-You can add `CsrfApp` to your own `App` struct to have the functions available 
-in your app's context, or you can use it with the middleware of vweb. 
+To enable CSRF-protection for your vweb app you must embed the `CsrfContext` struct 
+on your `Context` struct. You must also provide configuration options 
+(see [configuration & security](#configuration--security-considerations)).
 
-The advantage of the middleware approach is that you have to define
-the configuration separate from your `App`. This makes it possible to share the 
-configuration between modules or controllers.
+**Example:**
+```v
+import x.vweb
+import x.vweb.csrf
 
-### Usage with the CsrfApp
-
-Change `secret` and `allowed_hosts` when creating the `CsrfApp`.
-
-**Example**:
-```v ignore
-module main
-
-import net.http
-import vweb
-import vweb.csrf
-
-struct App {
+pub struct Context {
 	vweb.Context
-pub mut:
-	csrf csrf.CsrfApp [vweb_global]
-}
-
-fn main() {
-	app := &App{
-		csrf: csrf.CsrfApp{
-			// change the secret
-			secret: 'my-64bytes-secret'
-			// change to which domains you want to allow
-			allowed_hosts: ['*']
-		}
-	}
-	vweb.run(app, 8080)
-}
-
-pub fn (mut app App) index() vweb.Result {
-	// this line sets `app.token` and the cookie
-	app.csrf.set_token(mut app.Context)
-	return $vweb.html()
-}
-
-[post]
-pub fn (mut app App) auth() vweb.Result {
-	// this line protects the route against CSRF
-	app.csrf.protect(mut app.Context)
-	return app.text('authenticated!')
+	csrf.CsrfContext
 }
 ```
 
-index.html
+Change `secret` and `allowed_hosts` in a production environment!
+
+**Example:**
+```v ignore
+const csrf_config := csrf.CsrfConfig{
+	secret: 'my-secret'
+	allowed_hosts: ['*']
+}
+```
+
+### Middleware
+
+Enable CSRF protection for all routes, or a certain route(s) by using vweb's middleware.
+
+**Example:**
+```v ignore
+pub struct App {
+	vweb.Middleware[Context]
+}
+
+fn main() {
+	mut app := &App{}
+	// register the CSRF middleware and pass our configuration
+	// protect a specific route
+	app.route_use('/login', csrf.middleware[Context](csrf_config))
+	vweb.run[App, Context](mut app, 8080)
+}
+```
+
+### Setting the token
+
+For the CSRF-protection to work we have to generate an anti-CSRF token and set it
+as an hidden input field on any form that will be submitted to the route we 
+want to protect.
+
+**Example:**
+*main.v*
+```v ignore
+fn (app &App) index(mut ctx) vweb.Result {
+	// this function will set a cookie header and generate a CSRF token
+	ctx.set_csrf_token(mut ctx)
+	return $vweb.html()
+}
+
+@[post]
+fn (app &App) login(mut ctx, password string) vweb.Result {
+	// implement your own password validation here
+	if password == 'password' {
+		return ctx.text('You are logged in!')
+	} else {
+		return ctx.text('Invalid password!')
+	}
+}
+```
+*templates/index.html*
 ```html
-<form action="/auth" method="post">
-    <input type="hidden" name="@app.csrf.token_name" value="@app.csrf.token"/>
-    <label for="password">Your password:</label>
-    <input type="text" id="password" name="password" placeholder="Your password" />
+<h1>Log in</h1>
+<form method="POST" action="/login">
+    @{ctx.csrf_token_input()}
+    <label for="password">Password:</label>
+    <input type="text" name="password" id="password">
+    <button type="submit">Log in</button>
 </form>
 ```
 
-### Usage without CsrfApp
-If you use `vweb.Middleware` you can protect multiple routes at once.
+If we run the app with `v run main.v` and navigate to `http://localhost:8080/` 
+we will see the login form and we can login using the password "password".
 
-**Example**:
+If we remove the hidden input, by removing the line `@{ctx.csrf_token_input()}`
+from our html code we will see an error message indicating that the CSRF token
+is not set or invalid! By default the CSRF module sends an HTTP-403 response when 
+a token is invalid, if you want to send a custom response see the
+[advanced usage](#advanced-usage) section.
+
+> **Note:**
+> Please read the security and configuration section! If you configure
+> the CSRF module in an unsafe way, the protection will be useless.
+
+## Advanced Usage
+
+If you want more control over what routes are protected or what action you want to
+do when a CSRF-token is invalid, you can call `csrf.protect`  yourself whenever you want 
+to protect a route against CSRF attacks. This function returns `false` if the current CSRF token
+and cookie combination is not valid.
+
+**Example:**
 ```v ignore
-module main
-
-import net.http
-import vweb
-import vweb.csrf
-
-const (
-	// the configuration moved here
-	csrf_config = csrf.CsrfConfig{
-		// change the secret
-		secret: 'my-64bytes-secret'
-		// change to which domains you want to allow
-		allowed_hosts: ['*']
+@[post]
+fn (app &App) login(mut ctx, password string) vweb.Result {
+	if csrf.protect(mut ctx, csrf_config) == false {
+		// CSRF verification failed!
 	}
-)
-
-struct App {
-	vweb.Context
-pub mut:
-	middlewares map[string][]vweb.Middleware
-}
-
-fn main() {
-	app := &App{
-		middlewares: {
-			// protect all routes starting with the url '/auth'
-			'/auth': [csrf.middleware(csrf_config)]
-		}
-	}
-	vweb.run(app, 8080)
-}
-
-pub fn (mut app App) index() vweb.Result {
-	// get the token and set the cookie
-	csrftoken := csrf.set_token(mut app.Context, csrf_config)
-	return $vweb.html()
-}
-
-[post]
-pub fn (mut app App) auth() vweb.Result {
-	return app.text('authenticated!')
-}
-
-[post]
-pub fn (mut app App) register() vweb.Result {
-	// protect an individual route with the following line
-	csrf.protect(mut app.Context, csrf_config)
 	// ...
 }
 ```
 
-index.html (the hidden input has changed)
-```html
-<form action="/auth" method="post">
-    <input type="hidden" name="@csrf_config.token_name" value="@csrftoken"/>
-    <label for="password">Your password:</label>
-    <input type="text" id="password" name="password" placeholder="Your password" />
-</form>
+### Obtaining the anti-CSRF token
+
+When `set_csrf_token` is called the token is stored in the `csrf_token` field. You access
+this field directly to use it in an input field, or call `csrf_token_input`.
+
+**Example:**
+```v ignore
+fn (app &App) index(mut ctx) vweb.Result {
+	token := ctx.set_csrf_token(mut ctx)
+}
 ```
 
-### Protect all routes
-It is possible to protect all routes against CSRF-attacks. Every request that is not 
-defined as a [safe method](#safe-methods) (`GET`, `OPTIONS`, `HEAD` by default)
-will have CSRF-protection.
+### Clearing the anti-CSRF token
 
-**Example**:
+If you want to remove the anti-CSRF token and the cookie header you can call `clear_csrf_token`
+
+**Example:**
 ```v ignore
-pub fn (mut app App) before_request() {
-	app.csrf.protect(mut app.Context)
-	// or if you don't use `CsrfApp`:
-	// csrf.protect(mut app.Context, csrf_config)
-}
+ctx.clear_csrf_token()
 ```
 
 ## How it works
@@ -167,16 +160,16 @@ If the values match, the request is accepted.
 This approach has the advantage of being stateless: there is no need to store tokens on the server
 side and validate them. The token and cookie are bound cryptographically to each other so
 an attacker would need to know both values in order to make a CSRF-attack succeed. That
-is why is it important to **not leak the CSRF-token** via an url, or some other way.
+is why is it important to **not leak the CSRF-token** via an url, or some other way. This is way
+by default the `HTTPOnlye` flag on the cookie is set to true.
 See [client side CSRF][client-side-csrf] for more information.
 
 This is a high level overview of the implementation.
 
-## Security Considerations
+## Configuration & Security Considerations
 
 ### The secret key
 The secret key should be a random string that is not easily guessable. 
-The recommended size is 64 bytes.
 
 ### Sessions
 If your app supports some kind of user sessions, it is recommended to cryptographically

@@ -38,7 +38,7 @@ pub:
 	// how long the cookie stays valid in seconds. Default is 30 days
 	max_age       int = 60 * 60 * 24 * 30
 	cookie_domain string
-	// whether the cookie can be send only over hTTPS
+	// whether the cookie can be send only over HTTPS
 	secure bool
 }
 
@@ -51,8 +51,9 @@ pub mut:
 }
 
 // set_token generates a new csrf_token and adds a Cookie to the response
-pub fn (mut ctx CsrfContext) set_csrf_token[T](mut user_context T) {
+pub fn (mut ctx CsrfContext) set_csrf_token[T](mut user_context T) string {
 	ctx.csrf_token = set_token(mut user_context, ctx.config)
+	return ctx.csrf_token
 }
 
 pub fn (ctx &CsrfContext) clear_csrf_token[T](mut user_context T) {
