@@ -57,8 +57,8 @@ const shdc_urls = {
 	'osx_a64': 'https://github.com/floooh/sokol-tools-bin/raw/${shdc_full_hash}/bin/osx_arm64/sokol-shdc'
 }
 const shdc_version_file = os.join_path(cache_dir, 'sokol-shdc.version')
-const shdc = shdc_exe()
-const shdc_exe_name = 'sokol-shdc.exe'
+const shdc_exe = os.join_path(cache_dir, 'sokol-shdc.exe')
+const shdc = shdc_exe
 
 struct Options {
 	show_help    bool
@@ -260,13 +260,6 @@ fn ensure_external_tools(opt Options) ! {
 	download_shdc(opt)!
 }
 
-// shdc_exe returns an absolute path to the `sokol-shdc` tool.
-// Please note that the tool isn't guaranteed to actually be present, nor is
-// it guaranteed that it can be invoked.
-fn shdc_exe() string {
-	return os.join_path(cache_dir, shdc_exe_name)
-}
-
 // download_shdc downloads the `sokol-shdc` tool to an OS specific cache directory.
 fn download_shdc(opt Options) ! {
 	// We want to use the same, runtime, OS type as this tool is invoked on.
@@ -284,7 +277,7 @@ fn download_shdc(opt Options) ! {
 	if opt.verbose {
 		eprintln('> update_to_shdc_version: ${update_to_shdc_version} | shdc_version: ${shdc_version}')
 	}
-	file := shdc_exe()
+	file := shdc_exe
 	if opt.verbose {
 		if shdc_version != update_to_shdc_version && os.exists(file) {
 			eprintln('${tool_name} updating sokol-shdc to version ${shdc_version} ...')
