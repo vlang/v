@@ -644,7 +644,7 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 		// execute middleware functions after vweb is done and before the response is send
 		mut was_done := true
 		$if A is MiddlewareApp {
-			if not_found == false && middleware_has_sent_response == false {
+			if !not_found && !middleware_has_sent_response {
 				// if the middleware doesn't send an alternate response, but only changes the
 				// response object we only have to check if the `done` was previously set to true
 				was_done = user_context.Context.done
