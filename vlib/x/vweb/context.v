@@ -10,14 +10,6 @@ enum ContextReturnType {
 	file
 }
 
-pub enum RedirectType {
-	moved_permanently  = int(http.Status.moved_permanently)
-	found              = int(http.Status.found)
-	see_other          = int(http.Status.see_other)
-	temporary_redirect = int(http.Status.temporary_redirect)
-	permanent_redirect = int(http.Status.permanent_redirect)
-}
-
 // The Context struct represents the Context which holds the HTTP request and response.
 // It has fields for the query, form, files and methods for handling the request and response
 pub struct Context {
@@ -221,12 +213,10 @@ pub fn (mut ctx Context) server_error(msg string) Result {
 }
 
 // Redirect to an url
-pub fn (mut ctx Context) redirect(url string, redirect_type RedirectType) Result {
-	status := http.Status(redirect_type)
-	ctx.res.set_status(status)
-
+pub fn (mut ctx Context) redirect(url string) Result {
+	ctx.res.set_status(.found)
 	ctx.res.header.add(.location, url)
-	return ctx.send_response_to_client('text/plain', status.str())
+	return ctx.send_response_to_client('text/plain', '302 Found')
 }
 
 // before_request is always the first function that is executed and acts as middleware
