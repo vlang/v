@@ -309,6 +309,10 @@ fn download_shdc(opt Options) ! {
 	os.chmod(dtmp_path, 0o775)!
 	// Move downloaded file in place
 	os.mv(dtmp_path, file)!
+	if runtime_os in ['linux', 'macos'] {
+		// Use the .exe file ending to minimize platform friction.
+		os.mv(file, shdc)!
+	}
 	// Update internal version file
 	os.write_file(shdc_version_file, shdc_version)!
 }
