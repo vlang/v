@@ -58,7 +58,6 @@ const shdc_urls = {
 }
 const shdc_version_file = os.join_path(cache_dir, 'sokol-shdc.version')
 const shdc_exe = os.join_path(cache_dir, 'sokol-shdc.exe')
-const shdc = shdc_exe
 
 struct Options {
 	show_help    bool
@@ -192,7 +191,7 @@ fn compile_shader(opt CompileOptions, shader_file string) ! {
 	}
 
 	cmd :=
-		'${os.quoted_path(shdc)} --input ${os.quoted_path(shader_file)} --output ${os.quoted_path(out_file)} --slang ' +
+		'${os.quoted_path(shdc_exe)} --input ${os.quoted_path(shader_file)} --output ${os.quoted_path(out_file)} --slang ' +
 		os.quoted_path(slangs.join(':'))
 	if opt.verbose {
 		eprintln('${tool_name} executing:\n${cmd}')
@@ -238,18 +237,18 @@ fn ensure_external_tools(opt Options) ! {
 		return
 	}
 
-	is_shdc_available := os.is_file(shdc)
-	is_shdc_executable := os.is_executable(shdc)
+	is_shdc_available := os.is_file(shdc_exe)
+	is_shdc_executable := os.is_executable(shdc_exe)
 	if opt.verbose {
 		eprintln('reading version from ${shdc_version_file} ...')
 		version := os.read_file(shdc_version_file) or { 'unknown' }
-		eprintln('${tool_name} using sokol-shdc version ${version} at "${shdc}"')
+		eprintln('${tool_name} using sokol-shdc version ${version} at "${shdc_exe}"')
 		eprintln('executable: ${is_shdc_executable}')
 		eprintln(' available: ${is_shdc_available}')
 		if is_shdc_available {
-			eprintln(' file path: ${shdc}')
-			eprintln(' file size: ${os.file_size(shdc)}')
-			eprintln(' file time: ${time.unix_microsecond(os.file_last_mod_unix(shdc),
+			eprintln(' file path: ${shdc_exe}')
+			eprintln(' file size: ${os.file_size(shdc_exe)}')
+			eprintln(' file time: ${time.unix_microsecond(os.file_last_mod_unix(shdc_exe),
 				0)}')
 		}
 	}
@@ -277,19 +276,18 @@ fn download_shdc(opt Options) ! {
 	if opt.verbose {
 		eprintln('> update_to_shdc_version: ${update_to_shdc_version} | shdc_version: ${shdc_version}')
 	}
-	file := shdc_exe
 	if opt.verbose {
-		if shdc_version != update_to_shdc_version && os.exists(file) {
+		if shdc_version != update_to_shdc_version && os.exists(shdc_exe) {
 			eprintln('${tool_name} updating sokol-shdc to version ${shdc_version} ...')
 		} else {
 			eprintln('${tool_name} installing sokol-shdc version ${update_to_shdc_version} ...')
 		}
 	}
-	if os.exists(file) {
-		os.rm(file)!
+	if os.exists(shdc_exe) {
+		os.rm(shdc_exe)!
 	}
 
-	mut dtmp_file, dtmp_path := util.temp_file(util.TempFileOptions{ path: os.dir(file) })!
+	mut dtmp_file, dtmp_path := util.temp_file(util.TempFileOptions{ path: os.dir(shdc_exe) })!
 	dtmp_file.close()
 	if opt.verbose {
 		eprintln('${tool_name} downloading sokol-shdc from ${download_url}')
@@ -301,11 +299,7 @@ fn download_shdc(opt Options) ! {
 	// Make it executable
 	os.chmod(dtmp_path, 0o775)!
 	// Move downloaded file in place
-	os.mv(dtmp_path, file)!
-	if runtime_os in ['linux', 'macos'] {
-		// Use the .exe file ending to minimize platform friction.
-		os.mv(file, shdc)!
-	}
+	os.mv(dtmp_path, shdc_exe)!
 	// Update internal version file
 	os.write_file(shdc_version_file, shdc_version)!
 }
