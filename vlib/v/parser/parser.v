@@ -2926,7 +2926,26 @@ fn (mut p Parser) name_expr() ast.Expr {
 			return node
 		} else if is_option && p.tok.kind == .lsbr {
 			return p.array_init(is_option)
+		} else if !known_var && language == .v && p.peek_tok.kind == .dot && !p.pref.is_fmt {
+			peek_tok2 := p.peek_token(2)
+			peek_tok3 := p.peek_token(3)
+			mod = p.tok.lit
+			mut n := -1
+			for p.peek_token(n).kind == .dot && p.peek_token(n - 1).kind == .name {
+				mod = p.peek_token(n - 1).lit + '.' + mod
+				n -= 2
+			}
+			if peek_tok2.kind == .name && peek_tok2.lit.len > 0 && peek_tok2.lit[0].is_capital()
+				&& peek_tok3.kind == .lcbr
+				&& (mod.len > p.tok.lit.len || !p.known_import(p.tok.lit)) {
+				mut msg := 'unknown module `${mod}`'
+				if mod.len > p.tok.lit.len && p.known_import(p.tok.lit) {
+					msg += '; did you mean `${p.tok.lit}`?'
+				}
+				p.error_with_pos(msg, p.tok.pos())
+			}
 		}
+
 		ident := p.ident(language)
 		node = ident
 		p.add_defer_var(ident)
