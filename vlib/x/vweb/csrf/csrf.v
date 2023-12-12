@@ -56,6 +56,7 @@ pub fn (mut ctx CsrfContext) set_csrf_token[T](mut user_context T) string {
 	return ctx.csrf_token
 }
 
+// clear the csrf token and cookie header from the context
 pub fn (ctx &CsrfContext) clear_csrf_token[T](mut user_context T) {
 	user_context.set_cookie(http.Cookie{
 		name: config.cookie_name
@@ -64,10 +65,12 @@ pub fn (ctx &CsrfContext) clear_csrf_token[T](mut user_context T) {
 	})
 }
 
+// csrf_token_input returns an HTML hidden input containing the csrf token
 pub fn (ctx &CsrfContext) csrf_token_input() vweb.RawHtml {
 	return '<input type="hidden" name="${ctx.config.token_name}" value="${ctx.csrf_token}">'
 }
 
+// middleware returns a handler that you can use with vweb's middleware
 pub fn middleware[T](config CsrfConfig) vweb.MiddlewareOptions[T] {
 	return vweb.MiddlewareOptions[T]{
 		after: false
