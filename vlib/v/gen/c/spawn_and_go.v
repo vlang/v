@@ -45,6 +45,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			g.gen_anon_fn(mut expr.left)
 			g.writeln(';')
 			use_tmp_fn_var = true
+			name = g.anon_fn_cname(expr.left.decl.return_type, expr.left.decl.params.map(it.typ))
 		} else {
 			g.gen_anon_fn_decl(mut expr.left)
 			name = expr.left.decl.name
