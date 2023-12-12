@@ -10,13 +10,13 @@ function send(message) {
 
 socket.addEventListener("open", (event) => {
   console.log('Connected to WS server');
-  send('Salut tout le monde !');
+  send('Hey everyone !');
 });
 
 socket.addEventListener("message", (event) => {
   const { data } = event;
   messageList.innerHTML += `<li>&lt; ${data}</li>`;
   setTimeout(() => {
-    send(`Message reçu ${i++}`);
+    send(`Roger ${i++}`);
   }, 3000);
 });
