@@ -422,6 +422,11 @@ fn (f Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node) 
 			ast.Import {
 				return false
 			}
+			ast.ConstDecl {
+				if node !is ast.ConstDecl {
+					return true
+				}
+			}
 			else {}
 		}
 		match node {
