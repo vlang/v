@@ -11,6 +11,6 @@ fn (a SumType) cast_to[T]() T {
 }
 
 fn main() {
-	println(SumType("la").cast_to[string]())
+	println(SumType('la').cast_to[string]())
 	println(SumType(true).cast_to[bool]())
 }
