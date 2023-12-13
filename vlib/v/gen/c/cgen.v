@@ -6674,7 +6674,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			g.write(tmp_var)
 			g.write(dot)
 			sidx := g.type_sidx(unwrapped_node_typ)
-			g.write('_typ, ${sidx}); }) /*expected idx: ${sidx}, name: ${sym.name} */ ')
+			g.write('_typ, ${sidx}); })')
 		} else {
 			if sym.info is ast.FnType {
 				g.write('/* as */ (${styp})__as_cast(')
@@ -6691,7 +6691,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			g.write(')')
 			g.write(dot)
 			sidx := g.type_sidx(unwrapped_node_typ)
-			g.write('_typ, ${sidx}) /*expected idx: ${sidx}, name: ${sym.name} */ ')
+			g.write('_typ, ${sidx})')
 		}
 
 		// fill as cast name table
