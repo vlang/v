@@ -289,6 +289,7 @@ pub fn run_at[A, X](mut global_app A, params RunParams) ! {
 		user_data: pico_context
 		timeout_secs: params.timeout_in_seconds
 		family: params.family
+		host: params.host
 	)
 
 	// Forever accept every connection that comes
@@ -645,12 +646,13 @@ fn handle_request[A, X](mut conn net.TcpConn, req http.Request, params &RequestP
 fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string, routes &map[string]Route) {
 	mut route := Route{}
 	mut middleware_has_sent_response := false
+	mut not_found := false
 
 	defer {
 		// execute middleware functions after vweb is done and before the response is send
 		mut was_done := true
 		$if A is MiddlewareApp {
-			if middleware_has_sent_response == false {
+			if !not_found && !middleware_has_sent_response {
 				// if the middleware doesn't send an alternate response, but only changes the
 				// response object we only have to check if the `done` was previously set to true
 				was_done = user_context.Context.done
@@ -787,7 +789,7 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 	}
 	// return 404
 	user_context.not_found()
-	route = Route{}
+	not_found = true
 	return
 }
 
