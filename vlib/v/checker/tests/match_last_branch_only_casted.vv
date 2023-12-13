@@ -3,7 +3,7 @@ fn main () {
 	nb := match name {
 		'a' { 10 }
 		'b' { 500 }
-		else { u8(0) }
+		else { u64(345454) }
 	}
 
 	println(nb)
