@@ -134,12 +134,8 @@ fn (m Module) install() InstallResult {
 		}
 	}
 	os.mv(m.tmp_path, m.install_path) or {
-		// `os.mv` / `os.mv_by_cp` from the temp dir to the vmodules dir may fail on some linux systems.
-		// In such cases, fall back on `os.cp_app`.
-		os.cp_all(m.tmp_path, m.install_path, true) or {
-			vpm_error('failed to install `${m.name}`.', details: err.msg())
-			return .failed
-		}
+		vpm_error('failed to install `${m.name}`.', details: err.msg())
+		return .failed
 	}
 	return .installed
 }

@@ -119,11 +119,16 @@ pub fn cp_all(src string, dst string, overwrite bool) ! {
 	}
 }
 
+@[params]
+pub struct MvParams {
+	overwrite bool = true
+}
+
 // mv_by_cp copies files or folders from `source` to `target`.
 // If copying is successful, `source` is deleted.
 // It may be used when the paths are not on the same mount/partition.
-pub fn mv_by_cp(source string, target string) ! {
-	cp_all(source, target, true)!
+pub fn mv_by_cp(source string, target string, opts MvParams) ! {
+	cp_all(source, target, opts.overwrite)!
 	if is_dir(source) {
 		rmdir_all(source)!
 		return
@@ -132,8 +137,11 @@ pub fn mv_by_cp(source string, target string) ! {
 }
 
 // mv moves files or folders from `src` to `dst`.
-pub fn mv(source string, target string) ! {
-	rename(source, target) or { mv_by_cp(source, target)! }
+pub fn mv(source string, target string, opts MvParams) ! {
+	if !opts.overwrite && exists(target) {
+		return error('target path already exist')
+	}
+	rename(source, target) or { mv_by_cp(source, target, opts)! }
 }
 
 // read_lines reads the file in `path` into an array of lines.
