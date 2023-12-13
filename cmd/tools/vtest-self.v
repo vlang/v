@@ -90,6 +90,7 @@ const skip_test_files = [
 	'vlib/context/onecontext/onecontext_test.v', // backtrace_symbols is missing
 	'vlib/db/mysql/mysql_orm_test.v', // mysql not installed
 	'vlib/db/mysql/mysql_test.v', // mysql not installed
+	'vlib/db/mysql/prepared_stmt_test.v', // mysql not installed
 	'vlib/db/pg/pg_orm_test.v', // pg not installed
 ]
 // These tests are too slow to be run in the CI on each PR/commit

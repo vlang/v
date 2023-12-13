@@ -1471,7 +1471,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	}
 
 	if func.generic_names.len > 0 {
-		if has_generic {
+		if has_generic || node.concrete_types.any(it.has_flag(.generic)) {
 			if typ := c.table.resolve_generic_to_concrete(func.return_type, func.generic_names,
 				node.concrete_types)
 			{

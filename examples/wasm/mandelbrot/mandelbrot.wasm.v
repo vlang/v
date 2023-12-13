@@ -4,10 +4,12 @@ fn JS.setpixel(x int, y int, c f64)
 
 // `main` must be public!
 pub fn main() {
+	println('starting main.main...')
+
 	max_x := JS.canvas_x()
 	max_y := JS.canvas_y()
-
-	println('starting main.main!')
+	middle_x := max_x / 2
+	middle_y := max_y / 2
 
 	mut y := 0
 	for y < max_y {
@@ -16,8 +18,8 @@ pub fn main() {
 		for x < max_x {
 			x += 1
 
-			e := (f64(y) / 50) - 1.5
-			f := (f64(x) / 50) - 1.0
+			e := (f64(y) / middle_y) - 1.5
+			f := (f64(x) / middle_x) - 1.0
 
 			mut a := 0.0
 			mut b := 0.0
@@ -36,6 +38,6 @@ pub fn main() {
 			JS.setpixel(x, y, c)
 		}
 	}
-
-	panic('reached the end!')
+	// TODO: remove the need for panic here:
+	panic('reached the end of main.main')
 }

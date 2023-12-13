@@ -5,6 +5,8 @@ import crypto.md5
 import crypto.sha1
 import crypto.sha256
 import crypto.sha512
+import crypto.blake2s
+import crypto.blake2b
 
 // not yet supported
 // import crypto.md4
@@ -14,10 +16,7 @@ import crypto.sha512
 // import crypto.sha3_256
 // import crypto.sha3_384
 // import crypto.sha3_512
-// import crypto.blake2s_256
-// import crypto.blake2b_256
-// import crypto.blake2b_384
-// import crypto.blake2b_512
+
 const keys = [
 	[u8(0xb), 0xb, 0xb, 0xb, 0xb, 0xb, 0xb, 0xb, 0xb, 0xb, 0xb, 0xb, 0xb, 0xb, 0xb, 0xb],
 	'Jefe'.bytes(),
@@ -154,6 +153,142 @@ fn test_hmac_sha512() {
 	}
 }
 
+fn test_hmac_blake2s_256() {
+	blake2s_256_expected_results := [
+		'139cd736b926dae4853aab90655120e0305c476fde978166e472c7c8698c21b1',
+		'90b6281e2f3038c9056af0b4a7e763cae6fe5d9eb4386a0ec95237890c104ff0',
+		'92394bc2486bea31db01c74be46332edd1499e9700ea41df0670df79fcc0f7c6',
+		'464434dcbece095d456a1d62d6ec56f898e625a39e5c52bdf94daf111bad83aa',
+		'97a771b4e4e2fd4d4d0fd8aca2a0663ad8ad4a463cabbf603bf837dd84dec050',
+		'41202b7be1fd03f84658f4c18a08b43ddbbd73eb012750c8d1ebc8601f1e064c',
+		'467201ef5997a3442932b318083488cf9aa1d89bef2146154b4816d34863e33d',
+	]
+	mut result := ''
+	for i, key in hmac.keys {
+		result = new(key, hmac.data[i], blake2s.sum256, blake2s.block_size).hex()
+		assert result == blake2s_256_expected_results[i]
+	}
+}
+
+fn test_hmac_blake2s_224() {
+	blake2s_224_expected_results := [
+		'c0f46dbc41ffafb1d0caf1756cfb19177c78571d0d187e83f8683b3b',
+		'c33653634100f77a9359bfc4b3bd40a4a629766fb1da794dbb5cc45b',
+		'eeff700c648c71f8648077862d2aeb5108e7887adc2aaa2ee25aefab',
+		'42c6a6688981f6f33c02ceafb0439a496748d45d99fdde22d95313ac',
+		'fa78ffd75f2cdc6dc1304b874affd069783cfa8e6ae00dcb99de31f7',
+		'99d1e80dbc842755776ae32309e19020bbb54834c5c7d0c49fee7df2',
+		'17b9ebb1426a5a3dd6aa91567bd9cb9c19b3dc007adb726e55b98926',
+	]
+	mut result := ''
+	for i, key in hmac.keys {
+		result = new(key, hmac.data[i], blake2s.sum224, blake2s.block_size).hex()
+		assert result == blake2s_224_expected_results[i]
+	}
+}
+
+fn test_hmac_blake2s_160() {
+	blake2s_160_expected_results := [
+		'e53d35df4b62a18e0f9f65be35db58ffd84f4cf7',
+		'8356d437404c027ab98bf581190a96ca83ac7dc0',
+		'f9631e19deb77bd9ac0761015b7fddfafe14af12',
+		'63a8d39896fa7c4c5dac8c82ac20c783d7865e0c',
+		'05db15418a3b7938fcab45bf760a88e842033556',
+		'580927d927e9279e3f3f95d19b1c79564a0d6326',
+		'6f3127fcba040fe6ea552b22c39b0fd83abca19a',
+	]
+	mut result := ''
+	for i, key in hmac.keys {
+		result = new(key, hmac.data[i], blake2s.sum160, blake2s.block_size).hex()
+		assert result == blake2s_160_expected_results[i]
+	}
+}
+
+fn test_hmac_blake2s_128() {
+	blake2s_128_expected_results := [
+		'78a8c08a89de396ba4a75c543e6415f8',
+		'5edb7b76d61965470774a215034e8b18',
+		'77e6870fa0e9dd65751d29204086bed0',
+		'b43e3298ab9be441dd3cd26c70208b4a',
+		'43f416bd5d0933b4ad35aeef9c6680a7',
+		'39c14a9cebb8e2d8d19594783aed29e4',
+		'96a72e3adf5e0b02d4e6d4e8a7342a77',
+	]
+	mut result := ''
+	for i, key in hmac.keys {
+		result = new(key, hmac.data[i], blake2s.sum128, blake2s.block_size).hex()
+		assert result == blake2s_128_expected_results[i]
+	}
+}
+
+fn test_hmac_blake2b_512() {
+	blake2b_512_expected_results := [
+		'be2c398cbd5eef033031f9cee2caba52b280604f4afabf86de21973398c821fd120de5277f08955234182989c68b640af7dfa8cb9228eef4b48ffe768ef595eb',
+		'6ff884f8ddc2a6586b3c98a4cd6ebdf14ec10204b6710073eb5865ade37a2643b8807c1335d107ecdb9ffeaeb6828c4625ba172c66379efcd222c2de11727ab4',
+		'548fc7c3d5bd5a0ac74c5fe582037a259c774b81fb791d6c86e675d03b361939e21ea0fb9c6401df22170ebf8017d908675bbcf65911025a1ab5d271a372f43f',
+		'e5dbb6de2fee42a1caa06e4e7b84ce408ffa5c4a9de2632eca769cde8875014c72d0720feaf53f76e6a180357f528d7bf484fa3a14e8cc1f0f3bada717b43491',
+		'057f3bcc3511aa9627d96ab2ad02ec3dc86741514d19a3c9b10e539b0ca7c2587d9d04118636a67e18871633ecf8705a3ef6697cf6b64339f71b8cdffab89e34',
+		'368aba23ca42648157771936b436a0ecb3d83e5fe21e020fef2a08dc9e59739ea919a8d0f46c45b99491f426f1e7c62352d9d67c066571d74e191b69bedaf718',
+		'f1c9b64e121330c512dc31e0d4a2fc84b7ca5be64e08934a7fc4640c4a1f5cc3c1f34d811c8079cc2df65a4e5d68baf833a1ec558546abeaa7d564840618db7b',
+	]
+	mut result := ''
+	for i, key in hmac.keys {
+		result = new(key, hmac.data[i], blake2b.sum512, blake2b.block_size).hex()
+		assert result == blake2b_512_expected_results[i]
+	}
+}
+
+fn test_hmac_blake2b_384() {
+	blake2b_384_expected_results := [
+		'ce5d294bf1a260a93d29d4380fb5b66ebff87bc5b5d97c8889c115848ac0c559ef5b257c7ea1af05e6794e540a07d29a',
+		'e87f61624bc6c1db706a1efcc98e7e98c0ab8fea0978dbd87e2852406fdd313c87968c5b825847f3c04d975b8b88598d',
+		'9a24ae99bdddb091e966897c9ed3866d403c8d57bb99288aba05c0586304163ff1917420c746edaa327c99c419249799',
+		'123edcc587acf610f9f063c8873b94af1ca814e83b65abfd30bcfc4dbc2cc0bc6f1cd8460e5970cc375842bee91f0acb',
+		'08fb6e2930399c032169428b86c6799284fe3d42ac950698ecf61c08a1b40d7e84627ac578332947f661c2fe2e5f03c9',
+		'18666044866b52e2d76276a803222cdeb4ee18b41e8a535dca6b14723a7a5031c09463faa88a64d6a5e448220e20e676',
+		'c9d0155de83454f0720b5310b4b891ddc9ab702b8260b15aa6f7291efec95b7e7a2c986019814b7c28c105c22f0ef961',
+	]
+	mut result := ''
+	for i, key in hmac.keys {
+		result = new(key, hmac.data[i], blake2b.sum384, blake2b.block_size).hex()
+		assert result == blake2b_384_expected_results[i]
+	}
+}
+
+fn test_hmac_blake2b_256() {
+	blake2b_256_expected_results := [
+		'1a8becea07bab690945471ff79895bfbec032a3957bc9142a4778811915931ba',
+		'3cf096eeeb2202a250db168c4823a44ef4618ebabb225789386fed316131e3a0',
+		'efa4e41fcd8c0f6a568d5d274121095ff9676e6c1eb04fdd679d9c119669d778',
+		'8cdc727af11f390abd2323aac291c11054ac64352cdd9b5218afcd3e8d6fab45',
+		'7fe6b268c08631ac118a149b92348e02c640d1804291cc695f89f41ff9aeaee6',
+		'c093736a225e9f315fc3af8ca018f6e9b0a1c7c9974b116bfa63e2b7faf96a71',
+		'dce7f41e3db51656ffc97259ca0ef3358cbfb41ac3e74e2dd9cd8639ab4996a0',
+	]
+	mut result := ''
+	for i, key in hmac.keys {
+		result = new(key, hmac.data[i], blake2b.sum256, blake2b.block_size).hex()
+		assert result == blake2b_256_expected_results[i]
+	}
+}
+
+fn test_hmac_blake2b_160() {
+	blake2b_160_expected_results := [
+		'5e9e7dc73976e03bbb71ea70d4bebf692c49ecbe',
+		'c4728ccc2f7600f89d9a480514910b9f5daf3dd6',
+		'b178e2dfd75d74645c326fac538758d53e305d56',
+		'253d365a8930b7ff30ae85e862c464b7309056f8',
+		'a41030927a208f3234251c8ca54731adc58c3c81',
+		'e8f1b365fd6a63ca64e306901604aa33ea018c8b',
+		'fc5fb8ec933174d97c7712fa8f8802467ac42b1e',
+	]
+	mut result := ''
+	for i, key in hmac.keys {
+		result = new(key, hmac.data[i], blake2b.sum160, blake2b.block_size).hex()
+		assert result == blake2b_160_expected_results[i]
+	}
+}
+
 fn test_hmac_equal() {
 	mac1_1 := '7641c48a3b4aa8f887c07b3e83f96affb89c978fed8c96fcbbf4ad596eebfe496f9f16da6cd080ba393c6f365ad72b50d15c71bfb1d6b81f66a911786c6ce932'.bytes()
 	mac1_2 := '7641c48a3b4aa8f887c07b3e83f96affb89c978fed8c96fcbbf4ad596eebfe496f9f16da6cd080ba393c6f365ad72b50d15c71bfb1d6b81f66a911786c6ce932'.bytes()
@@ -201,22 +336,4 @@ fn test_hmac_equal() {
 // '69e9553223ede3637f08f9cc01ea9ded8f3b4202b5cc1feb60071e195a942f0ca0fa1cd70d3f1f9f24b2e18057b3001e7d5160e61eb6099f75ea4e0d6b849bd2'
 // 'eea495d39d9a07154b1266b028e233b9fd84de884ac8f0578e679f095ef14da96d0a355ed4738565884aec755c1b3f5ff09a918b437f6526e17dd8e77f425b95'
 // '1488670c683959b5304fa17c172bea81724a249b44981a3eb52cfc66ff0758b7cd1204745131b8adbc714db7fc4550ce26af5f2326067ad1e699f05cae8bb792'
-// ]
-// blake2b_expected_results  := [
-// 'be2c398cbd5eef033031f9cee2caba52b280604f4afabf86de21973398c821fd120de5277f08955234182989c68b640af7dfa8cb9228eef4b48ffe768ef595eb'
-// '6ff884f8ddc2a6586b3c98a4cd6ebdf14ec10204b6710073eb5865ade37a2643b8807c1335d107ecdb9ffeaeb6828c4625ba172c66379efcd222c2de11727ab4'
-// '548fc7c3d5bd5a0ac74c5fe582037a259c774b81fb791d6c86e675d03b361939e21ea0fb9c6401df22170ebf8017d908675bbcf65911025a1ab5d271a372f43f'
-// 'e5dbb6de2fee42a1caa06e4e7b84ce408ffa5c4a9de2632eca769cde8875014c72d0720feaf53f76e6a180357f528d7bf484fa3a14e8cc1f0f3bada717b43491'
-// '057f3bcc3511aa9627d96ab2ad02ec3dc86741514d19a3c9b10e539b0ca7c2587d9d04118636a67e18871633ecf8705a3ef6697cf6b64339f71b8cdffab89e34'
-// '368aba23ca42648157771936b436a0ecb3d83e5fe21e020fef2a08dc9e59739ea919a8d0f46c45b99491f426f1e7c62352d9d67c066571d74e191b69bedaf718'
-// 'f1c9b64e121330c512dc31e0d4a2fc84b7ca5be64e08934a7fc4640c4a1f5cc3c1f34d811c8079cc2df65a4e5d68baf833a1ec558546abeaa7d564840618db7b'
-// ]
-// blake2s_expected_results  := [
-// '139cd736b926dae4853aab90655120e0305c476fde978166e472c7c8698c21b1'
-// '464434dcbece095d456a1d62d6ec56f898e625a39e5c52bdf94daf111bad83aa'
-// '90b6281e2f3038c9056af0b4a7e763cae6fe5d9eb4386a0ec95237890c104ff0'
-// '92394bc2486bea31db01c74be46332edd1499e9700ea41df0670df79fcc0f7c6'
-// '97a771b4e4e2fd4d4d0fd8aca2a0663ad8ad4a463cabbf603bf837dd84dec050'
-// '41202b7be1fd03f84658f4c18a08b43ddbbd73eb012750c8d1ebc8601f1e064c'
-// '467201ef5997a3442932b318083488cf9aa1d89bef2146154b4816d34863e33d'
 // ]
