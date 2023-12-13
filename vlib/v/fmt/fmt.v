@@ -423,7 +423,7 @@ fn (f Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node) 
 				return false
 			}
 			ast.ConstDecl {
-				if node !is ast.ConstDecl {
+				if node !is ast.ConstDecl && !(node is ast.ExprStmt && node.expr is ast.Comment) {
 					return true
 				}
 			}
