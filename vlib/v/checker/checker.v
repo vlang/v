@@ -2633,8 +2633,8 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 				c.ensure_type_exists(node.typ, node.pos)
 				if !c.table.sumtype_has_variant(node.expr_type, node.typ, true) {
 					addr := '&'.repeat(node.typ.nr_muls())
-					c.error('cannot cast `${expr_type_sym.name}` to `${addr}${type_sym.name}`',
-						node.pos)
+					// c.error('cannot cast `${expr_type_sym.name}` to `${addr}${type_sym.name}`',
+					// 	node.pos)
 				}
 			} else if expr_type_sym.kind == .interface_ && type_sym.kind == .interface_ {
 				c.ensure_type_exists(node.typ, node.pos)
