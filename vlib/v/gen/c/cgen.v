@@ -1814,7 +1814,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 							g.expr(stmt.expr)
 							g.writeln(';')
 						} else {
-							ret_typ := if g.inside_assign {
+							ret_typ := if g.inside_assign || g.inside_if_option {
 								stmt.typ
 							} else {
 								g.fn_decl.return_type.clear_flag(.option)
