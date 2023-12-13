@@ -2628,7 +2628,7 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 		ast.AsCast {
 			node.expr_type = c.expr(mut node.expr)
 			expr_type_sym := c.table.sym(node.expr_type)
-			type_sym := c.table.sym(node.typ)
+			type_sym := c.table.sym(c.unwrap_generic(node.typ))
 			if expr_type_sym.kind == .sum_type {
 				c.ensure_type_exists(node.typ, node.pos)
 				if !c.table.sumtype_has_variant(node.expr_type, c.unwrap_generic(node.typ),
