@@ -41,3 +41,16 @@ fn test_anon_fn_returning_a_mut_parameter_should_act_the_same_as_normal_fn_retur
 	y := fnormal(mut b, 123)
 	assert a == b
 }
+
+// for issue 20163
+struct Struct {}
+
+fn test_spawn_anon_fn_with_closure_parameters_and_mut_ref_parameters() {
+	mut s := &Struct{}
+	a := 1
+
+	t := spawn fn [a] (mut s Struct) int {
+		return a
+	}(mut s)
+	assert t.wait() == 1
+}
