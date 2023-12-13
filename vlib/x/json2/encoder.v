@@ -151,12 +151,8 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut wr io.Writer) !
 		e.encode_any(val, level, mut wr)!
 	} $else $if T is $sumtype {
 		$for method in T.methods {
-			if method.attrs.len >= 1 {
-				if method.attrs[0] == 'cast' {
-					if val.type_idx() == method.return_type {
-						e.encode_value_with_level(val.$method(), level, mut wr)!
-					}
-				}
+			if method.return_type == val.type_idx() && 'cast' in method.attrs {
+				e.encode_value_with_level(val.$method(), level, mut wr)!
 			}
 		}
 	} $else $if T is $alias {
