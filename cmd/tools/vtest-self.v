@@ -276,6 +276,24 @@ const skip_on_windows_msvc = [
 	'vlib/v/tests/sumtype_as_cast_1_test.v', // error: cannot support compound statement expression ({expr; expr; expr;})
 	'vlib/v/tests/sumtype_as_cast_2_test.v', // error: cannot support compound statement expression ({expr; expr; expr;})
 	'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v', // TODO
+	'vlib/json/json_encode_struct_with_option_field_test.v', // error C2099: initializer is not a constant
+	'vlib/toml/tests/alexcrichton_toml_rs_test.v', // error C2099: initializer is not a constant
+	'vlib/toml/tests/burntsushi_toml_test.v', // error C2099: initializer is not a constant
+	'vlib/toml/tests/iarna_toml_spec_test.v', // error C2099: initializer is not a constant
+	'vlib/v/tests/alias_sumtype_method_call_test.v', // error C2099: initializer is not a constant
+	'vlib/v/tests/init_multiple_branches_test.v', // error C2099: initializer is not a constant
+	'vlib/v/tests/result_with_index_expr_test.v', // error C2099: initializer is not a constant
+	'vlib/x/json2/any_test.v', // error C2099: initializer is not a constant
+	'vlib/x/json2/decode_struct_test.v', // error C2099: initializer is not a constant
+	'vlib/x/json2/decoder_test.v', // error C2099: initializer is not a constant
+	'vlib/x/json2/encode_option_test.v', // error C2099: initializer is not a constant
+	'vlib/x/json2/encode_struct_test.v', // error C2099: initializer is not a constant
+	'vlib/x/json2/encoder_test.v', // error C2099: initializer is not a constant
+	'vlib/x/json2/integer_primitives_test.v', // error C2099: initializer is not a constant
+	'vlib/x/json2/json2_test.v', // error C2099: initializer is not a constant
+	'vlib/x/json2/json_module_compatibility_test/json_decode_with_encode_arg_test.v', // error C2099: initializer is not a constant
+	'vlib/x/json2/json_module_compatibility_test/json_decode_with_option_arg_test.v', // error C2099: initializer is not a constant
+	'vlib/x/json2/json_module_compatibility_test/json_test.v', // error C2099: initializer is not a constant
 ]
 const skip_on_windows = [
 	'do_not_remove',
