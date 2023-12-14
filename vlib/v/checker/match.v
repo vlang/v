@@ -140,7 +140,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 								if infer_cast_type != stmt.expr.typ
 									&& expr_typ_sym.kind !in [.interface_, .sum_type]
 									&& c.promote_num(stmt.expr.typ, ast.int_type) != ast.int_type {
-									c.error('the type of the last expression of the first match branch was `${c.table.type_to_str(stmt.expr.typ)}`, which is not compatible with `${c.table.type_to_str(infer_cast_type)}`',
+									c.error('the type of the last expression of the first match branch was `${c.table.type_to_str(infer_cast_type)}`, which is not compatible with `${c.table.type_to_str(stmt.expr.typ)}`',
 										stmt.pos)
 								}
 							}
