@@ -72,6 +72,6 @@ fn (d DerivedStruct[T]) method[T](arg T) T {
 }
 
 fn main() {
-	a := IFoo[int](DerivedStruct[int]{})
+	a := IBaz[int](DerivedStruct[int]{})
 	assert a.method(1) == 1
 }
