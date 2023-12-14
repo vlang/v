@@ -15,7 +15,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  setup:
+    strategy:
+      matrix:
+        os: [ubuntu-20.04, windows-2019, macos-12]
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: vlang
+      - name: Build V
+        if: runner.os != 'Windows'
+        run: cd vlang && make -j4 && ./v doctor
+      - name: Build V (Windows)
+        if: runner.os == 'Windows'
+        run: cd vlang && ./make.bat && ./v doctor
+      - name: Cache V
+        uses: actions/cache/save@v3
+        with:
+          path: vlang
+          key: ${{ runner.os }}-${{ github.sha }}
+
   linux:
+    needs: setup
     runs-on: ubuntu-20.04
     strategy:
       matrix:
@@ -24,13 +47,16 @@ jobs:
     env:
       VFLAGS: -cc ${{ matrix.cc }} -d network
     steps:
-      - uses: actions/checkout@v4
-      - name: Build V
-        run: make -j4 && ./v doctor
+      - name: Restore V cache
+        uses: actions/cache/restore@v3
+        with:
+          path: vlang
+          key: ${{ runner.os }}-${{ github.sha }}
       - name: Test
-        run: ./v test cmd/tools/vpm
+        run: cd vlang && ./v test cmd/tools/vpm
 
   windows:
+    needs: setup
     runs-on: windows-2019
     strategy:
       matrix:
@@ -39,19 +65,24 @@ jobs:
     env:
       VFLAGS: -cc ${{ matrix.cc }} -d network
     steps:
-      - uses: actions/checkout@v4
-      - name: Build V
-        run: ./make.bat -${{ matrix.cc }} && ./v doctor
+      - name: Restore V cache
+        uses: actions/cache/restore@v3
+        with:
+          path: vlang
+          key: ${{ runner.os }}-${{ github.sha }}
       - name: Test
-        run: ./v test cmd/tools/vpm
+        run: cd vlang && ./v test cmd/tools/vpm
 
   macos:
+    needs: setup
     runs-on: macos-12
     env:
       VFLAGS: -d network
     steps:
-      - uses: actions/checkout@v4
-      - name: Build V
-        run: make -j4 && ./v doctor
+      - name: Restore V cache
+        uses: actions/cache/restore@v3
+        with:
+          path: vlang
+          key: ${{ runner.os }}-${{ github.sha }}
       - name: Test
-        run: ./v test cmd/tools/vpm
+        run: cd vlang && ./v test cmd/tools/vpm
