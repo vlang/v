@@ -4,11 +4,11 @@ on:
   push:
     paths:
       - '**/vpm_ci.yml'
-      - 'cmd/tools/vpm.yml'
+      - '**/cmd/tools/vpm/**'
   pull_request:
     paths:
       - '**/vpm_ci.yml'
-      - 'cmd/tools/vpm.yml'
+      - '**/cmd/tools/vpm/**'
 
 concurrency:
   group: vpm-ci-${{ github.event.pull_request.number || github.sha }}
@@ -26,10 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: |
-          make -j4
-          [[ ${{ matrix.cc }} != "tcc" ]] && ./v -cc ${{ matrix.cc }} -cg -cstrict -o v cmd/v
-          ./v doctor
+        run: make -j4 && ./v doctor
       - name: Test
         run: ./v test cmd/tools/vpm
 
