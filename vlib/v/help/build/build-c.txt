@@ -180,10 +180,10 @@ see also `v help build`.
       more performant without autofree.
 
    -gc <mode>
-      Use and link a garbage collector. Only the Boehm–Demers–Weiser garbage collector
+      V uses a garbage collector by default. Only the Boehm–Demers–Weiser garbage collector
       is supported currently with the following sub-options:
 
-      `-gc boehm` ........... default garbage collector (same as not specifying option)
+      `-gc boehm` ........... use default garbage collector (same as not specifying option)
       `-gc boehm_full` ...... full garbage collection mode
       `-gc boehm_incr` ...... incremental/generational garbage collection mode
       `-gc boehm_full_opt` .. optimized full garbage collection mode
