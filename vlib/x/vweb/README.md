@@ -141,8 +141,9 @@ pub fn (app &App) login(mut ctx Context) vweb.Result {
 		if password.len < 12 {
 			return ctx.text('password is too weak!')
 		} else {
-			// redirect to the profile page
-			return ctx.redirect('/profile')
+			// we receive a POST request, so we want to explicitly tell the browser
+			// to send a GET request to the profile page.
+			return ctx.redirect('/profile', .see_other)
 		}
 	}
 }
@@ -751,13 +752,27 @@ pub fn (app &App) index(mut ctx Context) vweb.Result {
 
 #### Redirect
 
+You must pass the type of redirect to vweb:
+- `moved_permanently` HTTP code 301
+- `found` HTTP code 302
+- `see_other` HTTP code 303
+- `temporary_redirect` HTTP code 307
+- `permanent_redirect` HTTP code 308
+
+**Common use cases:**
+
+If you want to change the request method, for example when you receive a post request and
+want to redirect to another page via a GET request, you should use `see_other`. If you want
+the HTTP method to stay the same you should use `found` generally speaking.
+
 **Example:**
 ```v ignore
 pub fn (app &App) index(mut ctx Context) vweb.Result {
 	token := ctx.get_cookie('token') or { '' }
 	if token == '' {
 		// redirect the user to '/login' if the 'token' cookie is not set
-		return ctx.redirect('/login')
+		// we explicitly tell the browser to send a GET request
+		return ctx.redirect('/login', .see_other)
 	} else {
 		return ctx.text('Welcome!')
 	}
