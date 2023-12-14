@@ -2628,10 +2628,11 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 		ast.AsCast {
 			node.expr_type = c.expr(mut node.expr)
 			expr_type_sym := c.table.sym(node.expr_type)
-			type_sym := c.table.sym(node.typ)
+			type_sym := c.table.sym(c.unwrap_generic(node.typ))
 			if expr_type_sym.kind == .sum_type {
 				c.ensure_type_exists(node.typ, node.pos)
-				if !c.table.sumtype_has_variant(node.expr_type, node.typ, true) {
+				if !c.table.sumtype_has_variant(c.unwrap_generic(node.expr_type), c.unwrap_generic(node.typ),
+					true) {
 					addr := '&'.repeat(node.typ.nr_muls())
 					c.error('cannot cast `${expr_type_sym.name}` to `${addr}${type_sym.name}`',
 						node.pos)
@@ -4236,11 +4237,12 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 		c.type_error_for_operator('-', 'numeric', right_sym.name, node.pos)
 	}
 	if node.op == .arrow {
-		if right_sym.kind == .chan {
+		raw_right_sym := c.table.final_sym(right_type)
+		if raw_right_sym.kind == .chan {
 			c.stmts_ending_with_expression(mut node.or_block.stmts)
-			return right_sym.chan_info().elem_type
+			return raw_right_sym.chan_info().elem_type
 		}
-		c.type_error_for_operator('<-', '`chan`', right_sym.name, node.pos)
+		c.type_error_for_operator('<-', '`chan`', raw_right_sym.name, node.pos)
 	}
 	return right_type
 }

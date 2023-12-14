@@ -2479,8 +2479,10 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 					}
 				}
 			} else if expr is ast.SelectorExpr {
-				if _ := scope.find_struct_field(expr.expr.str(), expr.expr_type, expr.field_name) {
-					is_already_sum_type = true
+				if v := scope.find_struct_field(expr.expr.str(), expr.expr_type, expr.field_name) {
+					if v.smartcasts.len > 0 && unwrapped_expected_type == v.orig_type {
+						is_already_sum_type = true
+					}
 				}
 			}
 			if is_already_sum_type && !g.inside_return {
@@ -6674,7 +6676,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			g.write(tmp_var)
 			g.write(dot)
 			sidx := g.type_sidx(unwrapped_node_typ)
-			g.write('_typ, ${sidx}); }) /*expected idx: ${sidx}, name: ${sym.name} */ ')
+			g.write('_typ, ${sidx}); })')
 		} else {
 			if sym.info is ast.FnType {
 				g.write('/* as */ (${styp})__as_cast(')
@@ -6691,7 +6693,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			g.write(')')
 			g.write(dot)
 			sidx := g.type_sidx(unwrapped_node_typ)
-			g.write('_typ, ${sidx}) /*expected idx: ${sidx}, name: ${sym.name} */ ')
+			g.write('_typ, ${sidx})')
 		}
 
 		// fill as cast name table

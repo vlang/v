@@ -34,12 +34,21 @@ const vcs_info = {
 		dir: '.hg'
 		args: struct {
 			install: 'clone'
-			version: '' // not supported yet.
+			version: '--rev'
 			update: 'pull --update'
 			path: '-R'
 			outdated: ['incoming']
 		}
 	}
+}
+
+fn (vcs VCS) clone(url string, version string, path string) ! {
+	args := vcs_info[vcs].args
+	version_opt := if version != '' { '${args.version} ${version}' } else { '' }
+	cmd := [vcs.str(), args.install, version_opt, url, os.quoted_path(path)].join(' ')
+	vpm_log(@FILE_LINE, @FN, 'cmd: ${cmd}')
+	res := os.execute_opt(cmd)!
+	vpm_log(@FILE_LINE, @FN, 'cmd output: ${res.output}')
 }
 
 fn (vcs &VCS) is_executable() ! {

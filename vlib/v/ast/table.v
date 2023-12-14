@@ -1736,7 +1736,7 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 					{
 						gts := t.sym(ct)
 						if ct.is_ptr() {
-							nrt += '&'
+							nrt += '&'.repeat(ct.nr_muls())
 						}
 						nrt += gts.name
 						rnrt += gts.name
@@ -1915,7 +1915,7 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 				{
 					gts := t.sym(ct)
 					if ct.is_ptr() {
-						nrt += '&'
+						nrt += '&'.repeat(ct.nr_muls())
 					}
 					nrt += gts.name
 					c_nrt += gts.cname
@@ -1946,6 +1946,12 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 								t_concrete_types)
 							{
 								fields[i].typ = t_typ
+							}
+							if fields[i].typ.has_flag(.generic)
+								&& sym.kind in [.array, .array_fixed, .map]
+								&& t.check_if_elements_need_unwrap(typ, fields[i].typ) {
+								fields[i].typ = t.unwrap_generic_type(fields[i].typ, t_generic_names,
+									t_concrete_types)
 							}
 						}
 						// Update type in `info.embeds`, if it's embed
@@ -2325,6 +2331,47 @@ pub fn (t &Table) get_generic_names(generic_types []Type) []string {
 		}
 	}
 	return generic_names
+}
+
+// check_if_elements_need_unwrap checks if the elements of a container (arrays, maps) need to be unwrapped to a concrete type
+pub fn (mut t Table) check_if_elements_need_unwrap(root_typ Type, typ Type) bool {
+	sym := t.sym(typ)
+	if sym.kind !in [.array, .array_fixed, .map] {
+		return false
+	}
+
+	mut typs := []Type{}
+	match sym.info {
+		Array {
+			typs << (sym.info as Array).elem_type
+		}
+		ArrayFixed {
+			typs << (sym.info as ArrayFixed).elem_type
+		}
+		Map {
+			typs << (sym.info as Map).key_type
+			typs << (sym.info as Map).value_type
+		}
+		else {}
+	}
+	for typ_ in typs {
+		if typ_.has_flag(.generic) {
+			t_sym := t.sym(typ_)
+			match t_sym.info {
+				Struct, Interface, SumType {
+					if t_sym.info.is_generic && t_sym.info.generic_types.len > 0
+						&& t_sym.info.concrete_types.len == 0 && typ_.idx() != root_typ.idx() {
+						return true
+					}
+				}
+				else {}
+			}
+		}
+		if t.check_if_elements_need_unwrap(root_typ, typ_) {
+			return true
+		}
+	}
+	return false
 }
 
 pub fn (t &Table) is_comptime_type(x Type, y ComptimeType) bool {

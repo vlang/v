@@ -99,6 +99,9 @@ fn install_modules(modules []Module) {
 }
 
 fn (m Module) install() InstallResult {
+	defer {
+		os.rmdir_all(m.tmp_path) or {}
+	}
 	if m.is_installed {
 		// Case: installed, but not an explicit version. Update instead of continuing the installation.
 		if m.version == '' && m.installed_version == '' {
@@ -120,18 +123,20 @@ fn (m Module) install() InstallResult {
 			return .skipped
 		}
 	}
-	vcs := m.vcs or { settings.vcs }
-	args := vcs_info[vcs].args
-	version_opt := if m.version != '' { '${args.version} ${m.version}' } else { '' }
-	cmd := [vcs.str(), args.install, version_opt, m.url, os.quoted_path(m.install_path)].join(' ')
-	vpm_log(@FILE_LINE, @FN, 'command: ${cmd}')
 	println('Installing `${m.name}`...')
-	verbose_println('  cloning from `${m.url}` to `${m.install_path_fmted}`')
-	res := os.execute_opt(cmd) or {
+	// When the module should be relocated into a subdirectory we need to make sure
+	// it exists to not run into permission errors.
+	parent_dir := m.install_path.all_before_last(os.path_separator)
+	if !os.exists(parent_dir) {
+		os.mkdir_all(parent_dir) or {
+			vpm_error('failed to create module directory for `${m.name}`.', details: err.msg())
+			return .failed
+		}
+	}
+	os.mv(m.tmp_path, m.install_path) or {
 		vpm_error('failed to install `${m.name}`.', details: err.msg())
 		return .failed
 	}
-	vpm_log(@FILE_LINE, @FN, 'cmd output: ${res.output}')
 	return .installed
 }
 
