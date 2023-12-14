@@ -294,6 +294,7 @@ const skip_on_windows_msvc = [
 	'vlib/x/json2/json_module_compatibility_test/json_decode_with_encode_arg_test.v', // error C2099: initializer is not a constant
 	'vlib/x/json2/json_module_compatibility_test/json_decode_with_option_arg_test.v', // error C2099: initializer is not a constant
 	'vlib/x/json2/json_module_compatibility_test/json_test.v', // error C2099: initializer is not a constant
+	'vlib/x/json2/scanner_test.v', // error C2099: initializer is not a constant
 ]
 const skip_on_windows = [
 	'do_not_remove',
