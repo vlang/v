@@ -284,8 +284,6 @@ pub fn (mut ctx Context) not_found() vweb.Result {
 }
 ```
 
-## Database
-
 ## Static files
 
 Vweb also provides a way of handling static files. We can mount a folder at the root

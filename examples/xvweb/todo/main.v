@@ -78,7 +78,7 @@ pub fn (app &App) create_todo(mut ctx Context, name string) vweb.Result {
 	return app.index(mut ctx)
 }
 
-@['/complete/:id'; post]
+@['/todo/:id/complete'; post]
 pub fn (app &App) complete_todo(mut ctx Context, id int) vweb.Result {
 	// first check if there exist a TODO record with `id`
 	todos := sql app.db {
@@ -99,7 +99,7 @@ pub fn (app &App) complete_todo(mut ctx Context, id int) vweb.Result {
 	return ctx.redirect('/', .see_other)
 }
 
-@['/delete/:id'; post]
+@['/todo/:id/delete'; post]
 pub fn (app &App) delete_todo(mut ctx Context, id int) vweb.Result {
 	// first check if there exist a TODO record with `id`
 	todos := sql app.db {

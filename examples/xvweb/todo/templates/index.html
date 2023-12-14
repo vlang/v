@@ -28,18 +28,18 @@
         @for todo in todos
             <div class="todo">
                 <p class="name"><span class="todo-id">(id: @{todo.id})</span>@{todo.name}</p>
-                @if todo.completed == false
+                @if !todo.completed
                     <!-- We can also call methods of properties inside a template -->
                     <p class="time">Created at: <span class="time">@{todo.created.hhmmss()}</span></p>
                     <!-- Pass the id of the TODO as a route parameter to '/complete/:id' -->
-                    <form action="/complete/@{todo.id}" method="post">
+                    <form action="/todo/@{todo.id}/complete" method="post">
                         <button class="success" type="submit">Complete</button>
                     </form>
                 @else
                  <p class="time">Completed at: <span class="time">@{todo.updated.hhmmss()}</span></p>
                     <p class="completed">✔️</p>
                     <!-- Pass the id of the TODO as a route parameter to '/complete/:id' -->
-                    <form action="/delete/@{todo.id}" method="post">
+                    <form action="/todo/@{todo.id}/delete" method="post">
                         <button class="error" type="submit">Delete</button>
                     </form>
                 @endif
