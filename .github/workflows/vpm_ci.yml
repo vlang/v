@@ -1,0 +1,60 @@
+name: VPM CI
+
+on:
+  push:
+    paths:
+      - '**/vpm_ci.yml'
+      - 'cmd/tools/vpm.yml'
+  pull_request:
+    paths:
+      - '**/vpm_ci.yml'
+      - 'cmd/tools/vpm.yml'
+
+concurrency:
+  group: build-vpm-apps-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        cc: [tcc, gcc, clang]
+      fail-fast: false
+    env:
+      VFLAGS: -cc ${{ matrix.cc }} -d network
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build V
+        run: |
+          make -j4
+          [[ ${{ matrix.cc }} != "tcc" ]] && ./v -cc ${{ matrix.cc }} -cg -cstrict -o v cmd/v
+          ./v doctor
+      - name: Test
+        run: ./v test cmd/tools/vpm
+
+  windows:
+    runs-on: windows-2019
+    strategy:
+      matrix:
+        cc: [tcc, gcc, msvc]
+      fail-fast: false
+    env:
+      VFLAGS: -cc ${{ matrix.cc }} -d network
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build V
+        run: ./make.bat -${{ matrix.cc }} && ./v doctor
+      - name: Test
+        run: ./v test cmd/tools/vpm
+
+  macos:
+    runs-on: macos-12
+    env:
+      VFLAGS: -d network
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build V
+        run: make -j4 && ./v doctor
+      - name: Test
+        run: ./v test cmd/tools/vpm
