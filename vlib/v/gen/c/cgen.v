@@ -2479,8 +2479,10 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 					}
 				}
 			} else if expr is ast.SelectorExpr {
-				if _ := scope.find_struct_field(expr.expr.str(), expr.expr_type, expr.field_name) {
-					is_already_sum_type = true
+				if v := scope.find_struct_field(expr.expr.str(), expr.expr_type, expr.field_name) {
+					if v.smartcasts.len > 0 && unwrapped_expected_type == v.orig_type {
+						is_already_sum_type = true
+					}
 				}
 			}
 			if is_already_sum_type && !g.inside_return {

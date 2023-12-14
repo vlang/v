@@ -97,3 +97,23 @@ fn test_match_mut_selector() {
 		}
 	}
 }
+
+// for issue 20167
+type Any_1 = f64 | int | string
+type Any_2 = int | string
+
+struct Struct {
+	field Any_2
+}
+
+fn test_branches_return_struct_field() {
+	any_2 := Struct{Any_2(42)}
+	m := {
+		'item1': Any_1('')
+		'item2': match any_2.field {
+			string { any_2.field }
+			int { any_2.field }
+		}
+	}
+	assert m['item2']! == Any_1(42)
+}
