@@ -25,19 +25,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	} else {
 		p.check(.key_union)
 	}
-	language := if p.tok.lit == 'C' && p.peek_tok.kind == .dot {
-		ast.Language.c
-	} else if p.tok.lit == 'JS' && p.peek_tok.kind == .dot {
-		ast.Language.js
-	} else if p.tok.lit == 'WASM' && p.peek_tok.kind == .dot {
-		ast.Language.wasm
-	} else {
-		ast.Language.v
-	}
-	if language != .v {
-		p.next() // C || JS
-		p.next() // .
-	}
+	language := p.parse_language()
 	name_pos := p.tok.pos()
 	p.check_for_impure_v(language, name_pos)
 	if p.disallow_declarations_in_script_mode() {
@@ -522,17 +510,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		p.next()
 	}
 	p.next() // `interface`
-	language := if p.tok.lit == 'C' && p.peek_tok.kind == .dot {
-		ast.Language.c
-	} else if p.tok.lit == 'JS' && p.peek_tok.kind == .dot {
-		ast.Language.js
-	} else {
-		ast.Language.v
-	}
-	if language != .v {
-		p.next() // C || JS | WASM
-		p.next() // .
-	}
+	language := p.parse_language()
 	name_pos := p.tok.pos()
 	p.check_for_impure_v(language, name_pos)
 	if p.disallow_declarations_in_script_mode() {

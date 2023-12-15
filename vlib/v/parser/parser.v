@@ -2534,17 +2534,19 @@ fn (mut p Parser) name_expr() ast.Expr {
 			pos: type_pos
 		}
 	}
-	mut language := ast.Language.v
-	if p.tok.lit == 'C' {
-		language = ast.Language.c
-		p.check_for_impure_v(language, p.tok.pos())
+	language := if p.tok.lit == 'C' {
+		ast.Language.c
 	} else if p.tok.lit == 'JS' {
-		language = ast.Language.js
-		p.check_for_impure_v(language, p.tok.pos())
+		ast.Language.js
 	} else if p.tok.lit == 'WASM' {
-		language = ast.Language.wasm
+		ast.Language.wasm
+	} else {
+		ast.Language.v
+	}
+	if language != .v {
 		p.check_for_impure_v(language, p.tok.pos())
 	}
+	p.check_for_impure_v(language, p.tok.pos())
 	is_option := p.tok.kind == .question
 	if is_option {
 		if p.peek_tok.kind in [.name, .lsbr] {
