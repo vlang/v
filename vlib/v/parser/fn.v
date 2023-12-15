@@ -249,17 +249,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	p.check(.key_fn)
 	comments << p.eat_comments()
 	p.open_scope()
-	// C. || JS.
-	mut language := ast.Language.v
 	language_tok_pos := p.tok.pos()
-	if p.tok.kind == .name && p.tok.lit == 'C' {
-		is_unsafe = !is_trusted
-		language = .c
-	} else if p.tok.kind == .name && p.tok.lit == 'JS' {
-		language = .js
-	} else if p.tok.kind == .name && p.tok.lit == 'WASM' {
-		language = .wasm
-	}
+	mut language := p.parse_language()
 	p.fn_language = language
 	if language != .v {
 		for fna in p.attrs {
@@ -274,9 +265,10 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			language_tok_pos)
 	}
 	if language != .v {
-		p.next()
-		p.check(.dot)
 		p.check_for_impure_v(language, language_tok_pos)
+		if language == .c {
+			is_unsafe = !is_trusted
+		}
 	}
 	// Receiver?
 	mut rec := ReceiverParsingInfo{
@@ -521,14 +513,11 @@ run them via `v file.v` instead',
 			language: language
 		})
 	} else {
-		if language == .c {
-			name = 'C.${name}'
-		} else if language == .js {
-			name = 'JS.${name}'
-		} else if language == .wasm {
-			name = 'WASM.${name}'
-		} else {
-			name = p.prepend_mod(name)
+		name = match language {
+			.c { 'C.${name}' }
+			.js { 'JS.${name}' }
+			.wasm { 'WASM.${name}' }
+			else { p.prepend_mod(name) }
 		}
 		if !p.pref.translated && language == .v {
 			if existing := p.table.fns[name] {
