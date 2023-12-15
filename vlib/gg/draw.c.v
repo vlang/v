@@ -727,9 +727,7 @@ pub fn (ctx &Context) draw_slice_filled(x f32, y f32, radius f32, start_angle f3
 		xx *= rad_factor
 		yy *= rad_factor
 		sgl.v2f(xx + nx, yy + ny)
-		if i % 1 == 0 {
-			sgl.v2f(nx, ny)
-		}
+		sgl.v2f(nx, ny)
 	}
 	sgl.end()
 }
