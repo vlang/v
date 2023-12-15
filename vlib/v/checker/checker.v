@@ -1492,6 +1492,9 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		node.typ = ast.int_type
 		return ast.int_type
 	}
+	if sym.kind == .sum_type && field_name == '_variant' {
+		return ast.int_type
+	}
 	if sym.kind == .chan {
 		if field_name == 'closed' {
 			node.typ = ast.bool_type

@@ -3706,6 +3706,11 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		info := sym.info as ast.ArrayFixed
 		g.write('${info.size}')
 		return
+	} else if sym.kind == .sum_type && node.field_name == '_variant' {
+		g.write('v_typeof_sumtype_idx_${sym.cname}(')
+		g.expr(node.expr)
+		g.write('._typ)')
+		return
 	} else if sym.kind == .chan && (node.field_name == 'len' || node.field_name == 'closed') {
 		g.write('sync__Channel_${node.field_name}(')
 		g.expr(node.expr)
