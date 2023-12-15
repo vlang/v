@@ -2546,7 +2546,6 @@ fn (mut p Parser) name_expr() ast.Expr {
 	if language != .v {
 		p.check_for_impure_v(language, p.tok.pos())
 	}
-	p.check_for_impure_v(language, p.tok.pos())
 	is_option := p.tok.kind == .question
 	if is_option {
 		if p.peek_tok.kind in [.name, .lsbr] {
