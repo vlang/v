@@ -27,8 +27,8 @@ fn strict_check[T](json_data string) StructCheckResult {
 
 		key_struct := get_keys_from_json(tokens)
 
-		mut duplicates := get_duplicates_keys(tokens, key_struct)
-		mut superfluous := get_superfluous_keys[T](tokens, key_struct)
+		mut duplicates := get_duplicates_keys(key_struct)
+		mut superfluous := get_superfluous_keys[T](key_struct)
 
 		mut val := T{}
 
@@ -59,11 +59,11 @@ fn check[T](val T, tokens []string, mut duplicates []string, mut superfluous []s
 	$if T is $struct {
 		key_struct := get_keys_from_json(tokens)
 
-		for duplicate in get_duplicates_keys(tokens, key_struct) {
+		for duplicate in get_duplicates_keys(key_struct) {
 			duplicates << duplicate
 		}
 
-		for unnecessary in get_superfluous_keys[T](tokens, key_struct) {
+		for unnecessary in get_superfluous_keys[T](key_struct) {
 			superfluous << unnecessary
 		}
 
@@ -78,7 +78,7 @@ fn check[T](val T, tokens []string, mut duplicates []string, mut superfluous []s
 	}
 }
 
-fn get_superfluous_keys[T](tokens []string, key_struct []KeyStruct) []string {
+fn get_superfluous_keys[T](key_struct []KeyStruct) []string {
 	mut superfluous := []string{}
 
 	struct_keys := get_keys_from_[T]()
@@ -95,7 +95,7 @@ fn get_superfluous_keys[T](tokens []string, key_struct []KeyStruct) []string {
 	return superfluous
 }
 
-fn get_duplicates_keys(tokens []string, key_struct []KeyStruct) []string {
+fn get_duplicates_keys(key_struct []KeyStruct) []string {
 	json_keys := key_struct.map(fn (json_key KeyStruct) string {
 		return json_key.key
 	}).sorted()
