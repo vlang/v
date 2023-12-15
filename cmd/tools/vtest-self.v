@@ -295,6 +295,20 @@ const skip_on_windows_msvc = [
 	'vlib/x/json2/json_module_compatibility_test/json_decode_with_option_arg_test.v', // error C2099: initializer is not a constant
 	'vlib/x/json2/json_module_compatibility_test/json_test.v', // error C2099: initializer is not a constant
 	'vlib/x/json2/scanner_test.v', // error C2099: initializer is not a constant
+	'vlib/v/gen/js/tests/simple_sourcemap.v', // error C2099: initializer is not a constant
+	'vlib/v/gen/js/sourcemap/compare_test.v', // error C2099: initializer is not a constant
+	'vlib/v/gen/js/sourcemap/basic_test.v', // error C2099: initializer is not a constant
+	'vlib/v/gen/js/jsgen_test.v', // error C2099: initializer is not a constant
+	'vlib/toml/tests/array_of_tables_1_level_test.v', // error C2099: initializer is not a constant
+	'vlib/toml/tests/array_of_tables_2_level_test.v', // error C2099: initializer is not a constant
+	'vlib/toml/tests/array_of_tables_array_test.v', // error C2099: initializer is not a constant
+	'vlib/toml/tests/array_of_tables_edge_case_1_test.v', // error C2099: initializer is not a constant
+	'vlib/toml/tests/array_of_tables_edge_case_2_test.v', // error C2099: initializer is not a constant
+	'vlib/toml/tests/json_encoding_test.v', // error C2099: initializer is not a constant
+	'vlib/toml/tests/json_test.v', // error C2099: initializer is not a constant
+	'vlib/toml/tests/key_test.v', // error C2099: initializer is not a constant
+	'vlib/toml/tests/toml_bom_test.v', // error C2099: initializer is not a constant
+	'vlib/toml/tests/toml_test.v', // error C2099: initializer is not a constant
 ]
 const skip_on_windows = [
 	'do_not_remove',
