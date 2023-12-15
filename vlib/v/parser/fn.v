@@ -253,9 +253,6 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut language := p.parse_language()
 	p.fn_language = language
 	if language != .v {
-		if language == .c {
-			is_unsafe = !is_trusted
-		}
 		for fna in p.attrs {
 			if fna.name == 'export' {
 				p.error_with_pos('interop function cannot be exported', fna.pos)
@@ -269,6 +266,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	}
 	if language != .v {
 		p.check_for_impure_v(language, language_tok_pos)
+		if language == .c {
+			is_unsafe = !is_trusted
+		}
 	}
 	// Receiver?
 	mut rec := ReceiverParsingInfo{
@@ -513,14 +513,11 @@ run them via `v file.v` instead',
 			language: language
 		})
 	} else {
-		name = if language == .c {
-			'C.${name}'
-		} else if language == .js {
-			'JS.${name}'
-		} else if language == .wasm {
-			'WASM.${name}'
-		} else {
-			p.prepend_mod(name)
+		name = match language {
+			.c { 'C.${name}' }
+			.js { 'JS.${name}' }
+			.wasm { 'WASM.${name}' }
+			else { p.prepend_mod(name) }
 		}
 		if !p.pref.translated && language == .v {
 			if existing := p.table.fns[name] {

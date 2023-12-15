@@ -2534,14 +2534,11 @@ fn (mut p Parser) name_expr() ast.Expr {
 			pos: type_pos
 		}
 	}
-	language := if p.tok.lit == 'C' {
-		ast.Language.c
-	} else if p.tok.lit == 'JS' {
-		ast.Language.js
-	} else if p.tok.lit == 'WASM' {
-		ast.Language.wasm
-	} else {
-		ast.Language.v
+	language := match p.tok.lit {
+		'C' { ast.Language.c }
+		'JS' { ast.Language.js }
+		'WASM' { ast.Language.wasm }
+		else { ast.Language.v }
 	}
 	if language != .v {
 		p.check_for_impure_v(language, p.tok.pos())
