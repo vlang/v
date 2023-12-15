@@ -96,10 +96,7 @@ fn get_superfluous_keys[T](key_struct []KeyStruct) []string {
 }
 
 fn get_duplicates_keys(key_struct []KeyStruct) []string {
-	json_keys := key_struct.map(fn (json_key KeyStruct) string {
-		return json_key.key
-	}).sorted()
-
+	json_keys := key_struct.map(it.key).sorted()
 	return arrays.uniq_only_repeated(json_keys)
 }
 
