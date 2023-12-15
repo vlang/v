@@ -1569,14 +1569,7 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 	}
 	match mut sym.info {
 		Array {
-			mut elem_type := sym.info.elem_type
-			mut elem_sym := t.sym(elem_type)
-			mut dims := 1
-			for mut elem_sym.info is Array {
-				elem_type = elem_sym.info.elem_type
-				elem_sym = t.sym(elem_type)
-				dims++
-			}
+			dims, elem_type := t.get_array_dims(sym.info)
 			if typ := t.resolve_generic_to_concrete(elem_type, generic_names, concrete_types) {
 				idx := t.find_or_register_array_with_dims(typ, dims)
 				if typ.has_flag(.generic) {
@@ -1782,14 +1775,7 @@ pub fn (mut t Table) generic_type_names(generic_type Type) []string {
 	}
 	match mut sym.info {
 		Array {
-			mut elem_type := sym.info.elem_type
-			mut elem_sym := t.sym(elem_type)
-			mut dims := 1
-			for mut elem_sym.info is Array {
-				elem_type = elem_sym.info.elem_type
-				elem_sym = t.sym(elem_type)
-				dims++
-			}
+			_, elem_type := t.get_array_dims(sym.info)
 			names << t.generic_type_names(elem_type)
 		}
 		ArrayFixed {
@@ -1847,14 +1833,7 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 	ts := t.sym(typ)
 	match ts.info {
 		Array {
-			mut elem_type := ts.info.elem_type
-			mut elem_sym := t.sym(elem_type)
-			mut dims := 1
-			for mut elem_sym.info is Array {
-				elem_type = elem_sym.info.elem_type
-				elem_sym = t.sym(elem_type)
-				dims++
-			}
+			dims, elem_type := t.get_array_dims(ts.info)
 			unwrap_typ := t.unwrap_generic_type(elem_type, generic_names, concrete_types)
 			idx := t.find_or_register_array_with_dims(unwrap_typ, dims)
 			return new_type(idx).derive_add_muls(typ).clear_flag(.generic)
@@ -2548,4 +2527,16 @@ pub fn (t &Table) dependent_names_in_stmt(stmt Stmt) []string {
 		else {}
 	}
 	return names
+}
+
+pub fn (t &Table) get_array_dims(arr Array) (int, Type) {
+	mut dims := 1
+	mut elem_type := arr.elem_type
+	mut elem_sym := t.sym(elem_type)
+	for mut elem_sym.info is Array {
+		dims++
+		elem_type = elem_sym.info.elem_type
+		elem_sym = t.sym(elem_type)
+	}
+	return dims, elem_type
 }
