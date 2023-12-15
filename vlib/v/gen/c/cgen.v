@@ -45,6 +45,7 @@ pub struct Gen {
 	pref                &pref.Preferences = unsafe { nil }
 	field_data_type     ast.Type // cache her to avoid map lookups
 	enum_data_type      ast.Type // cache her to avoid map lookups
+	variant_data_type   ast.Type // cache her to avoid map lookups
 	module_built        string
 	timers_should_print bool
 mut:

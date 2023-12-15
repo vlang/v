@@ -999,6 +999,25 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				i++
 			}
 		}
+	} else if node.kind == .variants {
+		if sym.info is ast.SumType {
+			if sym.info.variants.len > 0 {
+				g.writeln('\tVariantData ${node.val_var} = {0};')
+			}
+			g.inside_comptime_for_field = true
+			g.push_existing_comptime_values()
+			for variant in sym.info.variants {
+				g.comptime_for_field_var = node.val_var
+				g.comptime_var_type_map['${node.val_var}.typ'] = variant
+
+				g.writeln('/* variant ${i} */ {')
+				g.writeln('\t${node.val_var}.typ = ${variant.idx()};')
+				g.stmts(node.stmts)
+				g.writeln('}')
+				i++
+			}
+			g.pop_existing_comptime_values()
+		}
 	}
 	g.indent--
 	g.writeln('}// \$for')
