@@ -85,7 +85,7 @@ jobs:
       - name: Build V Language Server (v-analyzer) v-analyzer/v-analyzer
         run: |
           echo "Clone v-analyzer"
-          git clone --depth 1 https://github.com/v-analyzer/v-analyzer /tmp/v-analyzer
+          git clone --depth=1 --recursive --shallow-submodules https://github.com/v-analyzer/v-analyzer /tmp/v-analyzer
           cd /tmp/v-analyzer
           echo "Installing dependencies"
           v install
@@ -118,6 +118,17 @@ jobs:
           v install pcre
           echo "Execute Tests"
           cd /tmp/adventofcode && v run verify.v
+
+      - name: Build vlang/msgpack
+        run: |
+          echo "Install msgpack"
+          v install msgpack
+          echo "Build msgpack"
+          v -shared ~/.vmodules/msgpack/
+          echo "Run msgpack tests"
+          v -stats test ~/.vmodules/msgpack/
+          echo "MessagePack examples should compile"
+          v should-compile-all ~/.vmodules/msgpack/examples
 
 
 #      - name: Build VEX

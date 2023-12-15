@@ -326,15 +326,22 @@ fn (mut p Parser) parse_type_with_mut(is_mut bool) ast.Type {
 }
 
 // Parses any language indicators on a type.
+@[direct_array_access]
 fn (mut p Parser) parse_language() ast.Language {
-	language := if p.tok.lit == 'C' {
-		ast.Language.c
-	} else if p.tok.lit == 'JS' {
-		ast.Language.js
-	} else if p.tok.lit == 'WASM' {
-		ast.Language.wasm
-	} else {
-		ast.Language.v
+	language := match true {
+		p.tok.lit.len == 1 && p.tok.lit[0] == `C` {
+			ast.Language.c
+		}
+		p.tok.lit.len == 2 && p.tok.lit[0] == `J` && p.tok.lit[1] == `S` {
+			ast.Language.js
+		}
+		p.tok.lit.len == 4 && p.tok.lit[0] == `W` && p.tok.lit[1] == `A` && p.tok.lit[2] == `S`
+			&& p.tok.lit[3] == `M` {
+			ast.Language.wasm
+		}
+		else {
+			ast.Language.v
+		}
 	}
 	if language != .v {
 		p.next()

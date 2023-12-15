@@ -224,10 +224,12 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 								else {}
 							}
 				*/
-				if need_wrapper {
-					g.write(', &(${elem_type_str}[]) { ')
-				} else {
-					g.write(', &')
+				if elem_sym.kind != .array_fixed {
+					if need_wrapper {
+						g.write(', &(${elem_type_str}[]) { ')
+					} else {
+						g.write(', &')
+					}
 				}
 			} else {
 				// `x[0] *= y`

@@ -1,6 +1,77 @@
-
 # CSV Reader
-This module is a Random Access CSV file reader, it indexes the file before reading the data.
+There are two CSV readers in this module:
+
+* Random Access reader
+* Sequential reader
+ 
+# Sequential CSV reader
+The sequential reader read the file row by row using only the memory needed for readings.
+Here is a very simple example of usage:
+
+```v
+import encoding.csv
+
+fn main() {
+	mut csvr := csv.csv_sequential_reader(file_path: 'big2.csv', end_line_len: csv.endline_crlf_len)!
+	for csvr.has_data() > 1 {
+		println(csvr.get_next_row()!)
+	}
+	csvr.dispose_csv_reader()
+}
+```
+This is the simplest way to use it to read csv files in sequential mode,
+with default configuration every cell is read as `string`.
+The function `get_row()` is used to read a single row, and it returns an array of `string`.
+
+## Reading from different sources `csv_sequential_reader`
+The CSV Sequential Reader can read from files, and memory buffers.
+
+### read from a file
+```v ignore
+csv.csv_sequential_reader(file_path:file_path)
+```
+### read from a memory buffer
+```v ignore
+csv.csv_sequential_reader(scr_buf:voidptr(buffer_ptr),  scr_buf_len: buffer_len)
+```
+When you call `csv.csv_sequential_reader` a `SequentialReader` struct is initialized passing 
+a `SequentialReaderConfig` struct as a parameter.
+Using these structs, it is possible to change the behavior of the CSV Reader.
+
+## The `SequentialReaderConfig` struct
+The config struct is as follows:
+```v ignore
+pub struct SequentialReaderConfig {
+	scr_buf      voidptr // pointer to the buffer of data
+	scr_buf_len  i64     // if > 0 use the RAM pointed by scr_buf as source of data
+	file_path    string
+	start_index  i64
+	end_index    i64    = -1
+	mem_buf_size int    = 1024 * 64 // default buffer size 64KByte
+	separator    u8     = `,`
+	comment      u8     = `#` // every line that start with the comment char is ignored
+	default_cell string = '*' // return this string if out of the csv boundaries
+	empty_cell   string // return this string if empty cell
+	end_line_len int = endline_cr_len // size of the endline rune
+	quote        u8  = `"` // double quote is the standard quote char
+}
+```
+|Field|Description|
+|------------|--------------|
+|`scr_buf`, `scr_buf_len`|If `scr_buf_len > 0` the reader will use the  `scr_buf` pointer as the base address of the data to parse and  `scr_buf_len` as the length of the buffer itself|
+|`file_path`| if `scr_buf_len == 0` the reader will try to open the `file_path`  file|
+|`start_index`,`end_index`| **Internal usage for now**|
+|`mem_buf_size`|memory allocated for the reading operations on the file, more memory more speed|
+|`separator`|char used as cell separator in the CSV file, default is comma|
+|`comment`|every line that start with the comment char is ignored|
+|`default_cell`|return this string if the query coordinates are out of the csv boundaries|
+|`empty_cell`|return this string if the query coordinates are on an empty cell|
+|`end_line_len`|size of the endline, `endline_cr_len=1`,`endline_crlf_len=2`|
+|`quote`|quote char for the cells|
+
+
+# Random Access CSV Reader
+The Random Access CSV file reader indexes the file before reading the data.
 This indexing operation permits access to every cell of the CSV file in random order.
 Here is a very simple example of usage:
 
@@ -30,12 +101,12 @@ will give the following output:
 ['0', '1', '2']
 ['3', '4', '5']
 ```
-This is the simplest way to use it to read csv files, with default configuration 
-every cell is read as `string`.
+This is the simplest way to use it to read csv files in a random access mode, 
+with default configuration every cell is read as `string`.
 The function `get_row()` is used to read a single row, and it returns an array of `string`.
 
 ## Reading from different sources `csv_reader`
-The CSV Reader can read from files, strings, memory buffers.
+The CSV Random access Reader can read from files, strings, memory buffers.
 ### read from a file
 ```v ignore
 csv.csv_reader(file_path:file_path)
@@ -64,7 +135,7 @@ pub struct RandomAccessReaderConfig {
 	end_index    i64    = -1
 	mem_buf_size int    = 1024 * 64 // default buffer size 64KByte
 	separator    u8     = `,`
-	comment      u8     = `#` // every line that start with the quote char is ignored
+	comment      u8     = `#` // every line that start with the comment char is ignored
 	default_cell string = '*' // return this string if out of the csv boundaries
 	empty_cell   string // return this string if empty cell
 	end_line_len int = csv.endline_cr_len // size of the endline rune
@@ -79,6 +150,7 @@ pub struct RandomAccessReaderConfig {
 |`start_index`,`end_index`| **Internal usage for now**|
 |`mem_buf_size`|memory allocated for the reading operations on the file, more memory more speed|
 |`separator`|char used as cell separator in the CSV file, default is comma|
+|`comment`|every line that start with the comment char is ignored
 |`default_cell`|return this string if the query coordinates are out of the csv boundaries|
 |`empty_cell`|return this string if the query coordinates are on an empty cell|
 |`end_line_len`|size of the endline, `endline_cr_len=1`,`endline_crlf_len=2`|

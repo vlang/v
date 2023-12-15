@@ -19,11 +19,11 @@ pub mut:
 // serve will start a static files web server.
 //
 // The most common usage is the following:
-//      v -e 'import net.http; http.serve()'
+//      v -e 'import net.http.file; file.serve()'
 // which will listen for http requests on port 4001 by default, and serve all the files in the current folder.
 //
-// Another example: `v -e 'import net.http; http.serve(folder: "/tmp")` , same but will serve all files inside the /tmp folder.
-// Another example: `v -e 'import net.http; http.serve(folder: "~/Projects", on: ":5002")` , expose all the files inside the ~/Projects folder, on http://localhost:5002/ .
+// Another example: `v -e 'import net.http.file; file.serve(folder: "/tmp")` , same but will serve all files inside the /tmp folder.
+// Another example: `v -e 'import net.http.file; file.serve(folder: "~/Projects", on: ":5002")` , expose all the files inside the ~/Projects folder, on http://localhost:5002/ .
 pub fn serve(params StaticServeParams) {
 	mut nparams := params
 	nparams.folder = os.norm_path(os.real_path(params.folder))

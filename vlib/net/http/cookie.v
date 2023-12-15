@@ -39,22 +39,6 @@ pub enum SameSite {
 	same_site_none_mode
 }
 
-// Parses all "Set-Cookie" values from the header `h` and
-// returns the successfully parsed Cookies.
-pub fn read_set_cookies(h map[string][]string) []&Cookie {
-	cookies_s := h['Set-Cookie']
-	cookie_count := cookies_s.len
-	if cookie_count == 0 {
-		return []
-	}
-	mut cookies := []&Cookie{}
-	for _, line in cookies_s {
-		c := parse_cookie(line) or { continue }
-		cookies << &c
-	}
-	return cookies
-}
-
 // Parses all "Cookie" values from the header `h` and
 // returns the successfully parsed Cookies.
 //

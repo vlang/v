@@ -124,27 +124,6 @@ fn test_missing_repo_name_in_url() {
 }
 
 fn test_manifest_detection() {
-	// head branch == `main`.
-	mut manifest := fetch_manifest('v-analyzer', 'https://github.com/v-analyzer/v-analyzer',
-		'', true) or {
-		assert false
-		return
-	}
-	assert manifest.name == 'v-analyzer'
-	assert manifest.dependencies == ['https://github.com/v-analyzer/v-tree-sitter']
-	// head branch == `master`.
-	manifest = fetch_manifest('ui', 'https://github.com/pisaiah/ui', '', true) or {
-		assert false
-		return
-	}
-	assert manifest.name == 'iui'
-	// not a V module.
-	if v := fetch_manifest('octocat', 'https://github.com/octocat/octocat.github.io',
-		'', true)
-	{
-		assert false, v.str()
-		return
-	}
 	mut res := os.execute('${vexe} install https://github.com/octocat/octocat.github.io')
 	assert res.exit_code == 1
 	assert res.output.contains('failed to find `v.mod` for `https://github.com/octocat/octocat.github.io`'), res.output

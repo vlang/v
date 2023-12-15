@@ -105,7 +105,68 @@ const txt3 = 'a,b,c,d\r\n0,1,2,3\r\n4,5,6,7\r\n'
 const txt4 = 'a,b,c,d\n0,1,2,3\n4,5,6,7\n'
 /******************************************************************************
 *
-* Test Functions
+* Test Sequential Functions
+*
+******************************************************************************/
+fn test_csv_sequential() {
+	mut csvr := csv.csv_sequential_reader(scr_buf: txt1.str, scr_buf_len: txt1.len)!
+	mut data := [][]string{}
+	for csvr.has_data() > 1 {
+		data << csvr.get_next_row()!
+	}
+	csvr.dispose_csv_reader()
+	assert data[0][0] == 'a', 'test_csv_sequential1 reading failed!'
+	// there is a final empty row in txt1
+	assert data[data.len - 2][0] == 'a', 'test_csv_sequential2 reading failed!'
+	assert data[data.len - 2][1] == 'b,c,d', 'test_csv_sequential3 reading failed!'
+
+	csvr = csv.csv_sequential_reader(scr_buf: txt2.str, scr_buf_len: txt2.len)!
+	csvr.empty_cell = '####'
+	data = [][]string{}
+	for csvr.has_data() > 1 {
+		data << csvr.get_next_row()!
+	}
+	csvr.dispose_csv_reader()
+	assert data[data.len - 2][2] == '####', 'test_csv_sequential4 reading failed!'
+	assert data[data.len - 2][5] == 'pippo', 'test_csv_sequential5 reading failed!'
+
+	// create a temp file to test csv parsing from file
+	file_path_str := os.join_path(os.temp_dir(), 'test_csv.csv')
+	// println("file_path_str: ${file_path_str}")
+
+	// test Windows confguration
+	mut tmp_txt1 := txt1.replace('\n', '\r\n')
+
+	mut f := os.open_file(file_path_str, 'wb')!
+	unsafe {
+		f.write_ptr(tmp_txt1.str, tmp_txt1.len)
+	}
+	// f.write_string(tmp_txt1)!
+	f.close()
+
+	csvr = csv.csv_sequential_reader(
+		file_path: file_path_str
+		mem_buf_size: 64
+		end_line_len: csv.endline_crlf_len
+	)!
+	data = [][]string{}
+	for csvr.has_data() > 1 {
+		data << csvr.get_next_row()!
+	}
+	csvr.dispose_csv_reader()
+
+	assert data[0][0] == 'a', 'test_csv_sequential1 reading failed!'
+	// there is a final empty row in txt1
+	assert data[data.len - 2][0] == 'a', 'test_csv_sequential2 reading failed!'
+	assert data[data.len - 2][1] == 'b,c,d', 'test_csv_sequential3 reading failed!'
+
+	// remove the temp file
+	os.rm(file_path_str)!
+}
+
+/******************************************************************************
+*
+* Test Random Access Functions
 *
 ******************************************************************************/
 fn perform_test(mut csvr csv.RandomAccessReader) ! {
