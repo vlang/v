@@ -62,8 +62,10 @@ pub fn (m FileMode) bitmask() u32 {
 // it supports windows for regular files, but it doesn't matter if you use owner, group or others when checking permissions on windows.
 pub fn inode(path string) FileInfo {
 	mut attr := C.stat{}
-	unsafe { C.stat(&char(path.str), &attr) }
 	$if windows {
+		// TODO: replace this with a C.GetFileAttributesW call instead.
+		// Use stat, lstat is not available on windows
+		unsafe { C.stat(&char(path.str), &attr) }
 		mut typ := FileType.regular
 		if attr.st_mode & u32(C.S_IFMT) == u32(C.S_IFDIR) {
 			typ = .directory
@@ -89,6 +91,9 @@ pub fn inode(path string) FileInfo {
 			}
 		}
 	} $else {
+		// note, that we use lstat here on purpose, to know the information about
+		// the potential symlinks themselves, not about the entities they point at
+		unsafe { C.lstat(&char(path.str), &attr) }
 		mut typ := FileType.unknown
 		if attr.st_mode & u32(C.S_IFMT) == u32(C.S_IFREG) {
 			typ = .regular

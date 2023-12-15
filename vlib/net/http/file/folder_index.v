@@ -100,6 +100,12 @@ fn write_page_table(mut sb strings.Builder, uri_path string, requested_file_path
 			sb.writeln('<td>${entity.mod_time.format_ss()}</td>')
 			sb.writeln('<td><a href="${entity.url}">${entity.fname}/</a></td>')
 			sb.writeln('</tr>')
+		} else if entity.typ == .symbolic_link {
+			sb.writeln('<tr>')
+			sb.writeln('<td>${entity.size}</td>')
+			sb.writeln('<td>${entity.mod_time.format_ss()}</td>')
+			sb.writeln('<td><a href="${entity.url}">${entity.fname}@</a></td>')
+			sb.writeln('</tr>')
 		} else {
 			sb.writeln('<tr>')
 			sb.writeln('<td>${entity.size}</td>')
