@@ -14,6 +14,7 @@ pub mut:
 	on             string        = 'localhost:4001' // on which address:port to listen for http requests
 	workers        int           = runtime.nr_jobs() // how many worker threads to use for serving the responses, by default it is limited to the number of available cores; can be controlled with setting VJOBS
 	shutdown_after time.Duration = time.infinite // after this time has passed, the webserver will gracefully shutdown on its own
+	filter_myexe   bool = true // whether to filter the name of the static file executable from the automatic folder listings for / . Useful with `v -e 'import net.http.file; file.serve()'`
 }
 
 // serve will start a static files web server.
@@ -57,10 +58,11 @@ fn (mut h StaticHttpHandler) handle(req http.Request) http.Response {
 	mut res := http.new_response(body: '')
 	sw := time.new_stopwatch()
 	defer {
-		log.info('took: ${sw.elapsed().microseconds():6} us, status: ${res.status_code}, size: ${res.body.len:6}, url: ${req.url}')
+		log.info('took: ${sw.elapsed().microseconds():6} us, status: ${res.status_code}, size: ${res.body.len:9}, url: ${req.url}')
 	}
+	mut uri_path := req.url.all_after_first('/').trim_right('/')
 	requested_file_path := os.norm_path(os.real_path(os.join_path_single(h.params.folder,
-		req.url.all_after_first('/'))))
+		uri_path)))
 	if !requested_file_path.starts_with(h.params.folder) {
 		log.warn('forbidden request; base folder: ${h.params.folder}, requested_file_path: ${requested_file_path}, ')
 		res = http.new_response(body: '<h1>forbidden</h1>')
@@ -68,20 +70,27 @@ fn (mut h StaticHttpHandler) handle(req http.Request) http.Response {
 		res.header.add(.content_type, 'text/html; charset=utf-8')
 		return res
 	}
-	mut body := ''
 	if !os.exists(requested_file_path) {
 		res.set_status(.not_found)
 		res.body = '<!DOCTYPE html><h1>no such file</h1>'
+		res.header.add(.content_type, 'text/html; charset=utf-8')
 		return res
 	}
-	body = os.read_file(requested_file_path) or {
-		res.set_status(.not_found)
-		''
+	//
+	mut body := ''
+	mut content_type := 'text/html; charset=utf-8'
+	if os.is_dir(requested_file_path) {
+		body = get_folder_index_html(requested_file_path, uri_path, h.params.filter_myexe)
+	} else {
+		body = os.read_file(requested_file_path) or {
+			res.set_status(.not_found)
+			''
+		}
+		mt := mime.get_mime_type(os.file_ext(requested_file_path).all_after_first('.'))
+		content_type = mime.get_content_type(mt)
 	}
-	mt := mime.get_mime_type(os.file_ext(requested_file_path).all_after_first('.'))
-	ct := mime.get_content_type(mt)
 	res = http.new_response(body: body)
 	res.body = body
-	res.header.add(.content_type, ct)
+	res.header.add(.content_type, content_type)
 	return res
 }
