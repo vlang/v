@@ -24,6 +24,8 @@ pub const s_ifmt = 0xF000 // type of file
 
 pub const s_ifdir = 0x4000 // directory
 
+pub const s_ifreg = 0x8000 // regular file
+
 pub const s_iflnk = 0xa000 // link
 
 pub const s_isuid = 0o4000 // SUID

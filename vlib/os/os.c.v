@@ -803,6 +803,7 @@ pub fn is_link(path string) bool {
 
 struct PathKind {
 mut:
+	is_file bool
 	is_dir  bool
 	is_link bool
 }
@@ -812,6 +813,9 @@ fn kind_of_existing_path(path string) PathKind {
 	$if windows {
 		attr := C.GetFileAttributesW(path.to_wide())
 		if attr != u32(C.INVALID_FILE_ATTRIBUTES) {
+			if (int(attr) & C.FILE_ATTRIBUTE_NORMAL) != 0 {
+				res.is_file = true
+			}
 			if (int(attr) & C.FILE_ATTRIBUTE_DIRECTORY) != 0 {
 				res.is_dir = true
 			}
@@ -825,6 +829,9 @@ fn kind_of_existing_path(path string) PathKind {
 		res_stat := unsafe { C.lstat(&char(path.str), &statbuf) }
 		if res_stat == 0 {
 			kind := (int(statbuf.st_mode) & s_ifmt)
+			if kind == s_ifreg {
+				res.is_file = true
+			}
 			if kind == s_ifdir {
 				res.is_dir = true
 			}

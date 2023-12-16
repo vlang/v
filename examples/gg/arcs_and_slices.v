@@ -7,7 +7,10 @@ import math
 const win_width = 700
 const win_height = 800
 const bg_color = gx.white
-const colour = gx.black
+
+// A transparent color is used to aid in verifying that
+// rendering is precise on each of the the arc types (e.g. no overlapping or double rendered slices)
+const colour = gx.rgba(100, 100, 0, 100)
 
 enum Selection {
 	segs = 0
@@ -28,9 +31,7 @@ mut:
 }
 
 fn main() {
-	mut app := &App{
-		gg: 0
-	}
+	mut app := &App{}
 	app.gg = gg.new_context(
 		width: win_width
 		height: win_height
