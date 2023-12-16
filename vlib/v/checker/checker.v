@@ -107,9 +107,9 @@ mut:
 	loop_label                       string     // set when inside a labelled for loop
 	vweb_gen_types                   []ast.Type // vweb route checks
 	timers                           &util.Timers = util.get_timers()
-	comptime_values_stack            []CurrentComptimeValues // stores the values from the above on each $for loop, to make nesting them easier
-	comptime                         &CurrentComptimeValues = unsafe { nil }
-	fn_scope                         &ast.Scope = unsafe { nil }
+	comptime_info_stack              []ComptimeInfo // stores the values from the above on each $for loop, to make nesting them easier
+	comptime                         &ComptimeInfo = unsafe { nil }
+	fn_scope                         &ast.Scope    = unsafe { nil }
 	main_fn_decl_node                ast.FnDecl
 	match_exhaustive_cutoff_limit    int = 10
 	is_last_stmt                     bool
@@ -148,7 +148,7 @@ pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
 		match_exhaustive_cutoff_limit: pref_.checker_match_exhaustive_cutoff_limit
 		v_current_commit_hash: version.githash(pref_.building_v)
 	}
-	checker.push_existing_comptime_values()
+	checker.push_new_comptime_info()
 	return checker
 }
 
@@ -1465,7 +1465,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		c.error('`${node.expr}` does not return a value', node.pos)
 		node.expr_type = ast.void_type
 		return ast.void_type
-	} else if c.comptime.inside_comptime_for_field && typ == c.enum_data_type
+	} else if c.comptime.inside_comptime_for && typ == c.enum_data_type
 		&& node.field_name == 'value' {
 		// for comp-time enum.values
 		node.expr_type = c.comptime.comptime_fields_type['${c.comptime.comptime_for_field_var}.typ']

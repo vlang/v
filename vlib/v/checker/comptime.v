@@ -320,7 +320,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 					return
 				}
 			}
-			c.push_existing_comptime_values()
+			c.push_new_comptime_info()
 			c.comptime.inside_comptime_for_field = true
 			c.comptime.inside_comptime_for = true
 			for field in fields {
@@ -346,7 +346,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 					}
 				}
 			}
-			c.pop_existing_comptime_values()
+			c.pop_comptime_info()
 		} else if c.table.generic_type_names(node.typ).len == 0 && sym.kind != .placeholder {
 			c.error('iterating over .fields is supported only for structs and interfaces, and ${sym.name} is neither',
 				node.typ_pos)
@@ -354,7 +354,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 		}
 	} else if node.kind == .values {
 		if sym.kind == .enum_ {
-			c.push_existing_comptime_values()
+			c.push_new_comptime_info()
 			sym_info := sym.info as ast.Enum
 			c.comptime.inside_comptime_for = true
 			if c.enum_data_type == 0 {
@@ -367,7 +367,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 				c.comptime.comptime_fields_type['${node.val_var}.typ'] = node.typ
 				c.stmts(mut node.stmts)
 			}
-			c.pop_existing_comptime_values()
+			c.pop_comptime_info()
 		} else {
 			c.error('iterating over .values is supported only for enums, and ${sym.name} is not an enum',
 				node.typ_pos)
@@ -378,7 +378,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 		methods_with_attrs := sym.methods.filter(it.attrs.len > 0) // methods with attrs second
 		methods << methods_with_attrs
 
-		c.push_existing_comptime_values()
+		c.push_new_comptime_info()
 		c.comptime.inside_comptime_for = true
 		for method in methods {
 			c.comptime.comptime_for_method = method.name
@@ -387,9 +387,9 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			c.comptime.comptime_fields_type['${node.val_var}.return_type'] = method.return_type
 			c.stmts(mut node.stmts)
 		}
-		c.pop_existing_comptime_values()
+		c.pop_comptime_info()
 	} else if node.kind == .variants {
-		c.push_existing_comptime_values()
+		c.push_new_comptime_info()
 		c.comptime.inside_comptime_for = true
 		if c.variant_data_type == 0 {
 			c.variant_data_type = ast.Type(c.table.find_type_idx('VariantData'))
@@ -400,7 +400,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			c.comptime.comptime_fields_type['${node.val_var}.typ'] = variant
 			c.stmts(mut node.stmts)
 		}
-		c.pop_existing_comptime_values()
+		c.pop_comptime_info()
 	} else {
 		c.stmts(mut node.stmts)
 	}
@@ -1032,7 +1032,7 @@ fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) Comptime
 		ast.SelectorExpr {
 			if c.check_comptime_is_field_selector(cond) {
 				if c.check_comptime_is_field_selector_bool(cond) {
-					ret_bool := c.get_comptime_selector_bool_field(cond.field_name)
+					ret_bool := c.comptime.get_comptime_selector_bool_field(cond.field_name)
 					return if ret_bool { .eval } else { .skip }
 				}
 				c.error('unknown field `${cond.field_name}` from ${c.comptime.comptime_for_field_var}',
@@ -1095,10 +1095,10 @@ fn (mut c Checker) check_comptime_is_field_selector_bool(node ast.SelectorExpr) 
 }
 
 // get_comptime_selector_bool_field evaluates the bool value for field.is_* fields
-fn (mut c Checker) get_comptime_selector_bool_field(field_name string) bool {
-	field := c.comptime.comptime_for_field_value
-	field_typ := c.comptime.comptime_fields_default_type
-	field_sym := c.table.sym(c.unwrap_generic(c.comptime.comptime_fields_default_type))
+fn (mut ct ComptimeInfo) get_comptime_selector_bool_field(field_name string) bool {
+	field := ct.comptime_for_field_value
+	field_typ := ct.comptime_fields_default_type
+	field_sym := ct.checker.table.sym(ct.checker.unwrap_generic(ct.comptime_fields_default_type))
 
 	match field_name {
 		'is_pub' { return field.is_pub }
@@ -1116,8 +1116,9 @@ fn (mut c Checker) get_comptime_selector_bool_field(field_name string) bool {
 	}
 }
 
-struct CurrentComptimeValues {
+struct ComptimeInfo {
 mut:
+	checker &Checker = unsafe { nil }
 	// $for
 	inside_comptime_for bool
 	// .variants
@@ -1139,19 +1140,21 @@ mut:
 	comptime_for_method_ret_type ast.Type
 }
 
-fn (mut c Checker) push_existing_comptime_values() {
-	c.comptime_values_stack << CurrentComptimeValues{}
+fn (mut c Checker) push_new_comptime_info() {
+	c.comptime_info_stack << ComptimeInfo{
+		checker: c
+	}
 
 	current := c.comptime
-	c.comptime = &c.comptime_values_stack[c.comptime_values_stack.len - 1]
+	c.comptime = &c.comptime_info_stack[c.comptime_info_stack.len - 1]
 
 	if current != unsafe { nil } {
 		c.comptime.comptime_fields_type = current.comptime_fields_type.clone()
 	}
 }
 
-fn (mut c Checker) pop_existing_comptime_values() {
-	c.comptime_values_stack.pop()
+fn (mut c Checker) pop_comptime_info() {
+	c.comptime_info_stack.pop()
 
-	c.comptime = &c.comptime_values_stack[c.comptime_values_stack.len - 1]
+	c.comptime = &c.comptime_info_stack[c.comptime_info_stack.len - 1]
 }

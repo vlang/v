@@ -150,7 +150,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 										right as ast.TypeNode)
 								}
 							} else if c.check_comptime_is_field_selector_bool(left) {
-								skip_state = if c.get_comptime_selector_bool_field(left.field_name) {
+								skip_state = if c.comptime.get_comptime_selector_bool_field(left.field_name) {
 									.eval
 								} else {
 									.skip
