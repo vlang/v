@@ -236,7 +236,11 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 					s = data.d.d_s.clone()
 				}
 
-				for _ in 1..( 1 + (if width > 0 {width} else {0})) {
+				for _ in 1 .. (1 + (if width > 0 {
+					width
+				} else {
+					0
+				})) {
 					sb.write_string(s)
 				}
 				s.free()

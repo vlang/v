@@ -352,15 +352,15 @@ fn test_interpolate_literal_limits() {
 }
 
 fn test_string_repetition() {
-	a:= "pippo"
-    assert '${'pera':r}'  == ''
-    assert '${'pera':R}'  == ''
-    assert '${'pera':0r}' == ''
-    assert '${'pera':0R}' == ''
-    assert '${'pera':1r}' == 'pera'
-    assert '${'pera':1R}' == 'PERA'
-    assert '${'pera':2r}' == 'perapera'
-    assert '${'pera':2R}' == 'PERAPERA'
-    assert '${a:2r}' == 'pippopippo'
-    assert '${a:2R}' == 'PIPPOPIPPO'
+	a := 'pippo'
+	assert '${'pera':r}' == ''
+	assert '${'pera':R}' == ''
+	assert '${'pera':0r}' == ''
+	assert '${'pera':0R}' == ''
+	assert '${'pera':1r}' == 'pera'
+	assert '${'pera':1R}' == 'PERA'
+	assert '${'pera':2r}' == 'perapera'
+	assert '${'pera':2R}' == 'PERAPERA'
+	assert '${a:2r}' == 'pippopippo'
+	assert '${a:2R}' == 'PIPPOPIPPO'
 }
