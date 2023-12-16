@@ -47,6 +47,9 @@ fn (mut c Checker) get_comptime_var_type(node ast.Expr) ast.Type {
 				c.comptime.comptime_for_variant_var {
 					return c.comptime.comptime_fields_type['${c.comptime.comptime_for_variant_var}.typ']
 				}
+				c.comptime.comptime_for_enum_var {
+					return c.comptime.comptime_fields_type['${c.comptime.comptime_for_enum_var}.typ']
+				}
 				else {
 					// field_var.typ from $for field
 					return c.comptime.comptime_fields_default_type
@@ -362,7 +365,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			}
 			for field in sym_info.vals {
 				c.comptime.comptime_enum_field_value = field
-				c.comptime.comptime_for_attr_var = node.val_var
+				c.comptime.comptime_for_enum_var = node.val_var
 				c.comptime.comptime_fields_type[node.val_var] = c.enum_data_type
 				c.comptime.comptime_fields_type['${node.val_var}.typ'] = node.typ
 				c.stmts(mut node.stmts)

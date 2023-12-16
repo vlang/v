@@ -2706,7 +2706,7 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			c.expected_type = ast.string_type
 			node.expr_type = c.expr(mut node.expr)
 
-			if c.comptime.inside_comptime_for_field && node.expr is ast.Ident {
+			if c.comptime.inside_comptime_for && node.expr is ast.Ident {
 				if c.table.is_comptime_var(node.expr) {
 					node.expr_type = c.get_comptime_var_type(node.expr as ast.Ident)
 				} else if (node.expr as ast.Ident).name in c.comptime.comptime_fields_type {
