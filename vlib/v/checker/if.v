@@ -149,7 +149,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 									skip_state = c.check_compatible_types(c.table.unaliased_type(left_type),
 										right as ast.TypeNode)
 								}
-							} else if c.check_comptime_is_field_selector_bool(left) {
+							} else if c.comptime.check_comptime_is_field_selector_bool(left) {
 								skip_state = if c.comptime.get_comptime_selector_bool_field(left.field_name) {
 									.eval
 								} else {

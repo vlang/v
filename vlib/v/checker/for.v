@@ -89,7 +89,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 					node.val_is_ref = node.cond.op == .amp
 				}
 				ast.ComptimeSelector {
-					comptime_typ := c.get_comptime_selector_type(node.cond, ast.void_type)
+					comptime_typ := c.comptime.get_comptime_selector_type(node.cond, ast.void_type)
 					if comptime_typ != ast.void_type {
 						sym = c.table.final_sym(comptime_typ)
 						typ = comptime_typ

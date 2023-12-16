@@ -921,7 +921,7 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 					typ = ast.new_type(idx).derive(arg.typ)
 				} else if c.comptime.inside_comptime_for_field && sym.kind in [.struct_, .any]
 					&& arg.expr is ast.ComptimeSelector {
-					comptime_typ := c.get_comptime_selector_type(arg.expr, ast.void_type)
+					comptime_typ := c.comptime.get_comptime_selector_type(arg.expr, ast.void_type)
 					if comptime_typ != ast.void_type {
 						typ = comptime_typ
 						if func.return_type.has_flag(.generic)

@@ -12,6 +12,7 @@ import v.util.version
 import v.errors
 import v.pkgconfig
 import v.transformer
+import v.compiler
 
 const int_min = int(0x80000000)
 const int_max = int(0x7FFFFFFF)
@@ -107,9 +108,9 @@ mut:
 	loop_label                       string     // set when inside a labelled for loop
 	vweb_gen_types                   []ast.Type // vweb route checks
 	timers                           &util.Timers = util.get_timers()
-	comptime_info_stack              []ComptimeInfo // stores the values from the above on each $for loop, to make nesting them easier
-	comptime                         &ComptimeInfo = unsafe { nil }
-	fn_scope                         &ast.Scope    = unsafe { nil }
+	comptime_info_stack              []compiler.ComptimeInfo // stores the values from the above on each $for loop, to make nesting them easier
+	comptime                         &compiler.ComptimeInfo = unsafe { nil }
+	fn_scope                         &ast.Scope = unsafe { nil }
 	main_fn_decl_node                ast.FnDecl
 	match_exhaustive_cutoff_limit    int = 10
 	is_last_stmt                     bool
@@ -1441,8 +1442,8 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		}
 	}
 	// evaluates comptime field.<name> (from T.fields)
-	if c.check_comptime_is_field_selector(node) {
-		if c.check_comptime_is_field_selector_bool(node) {
+	if c.comptime.check_comptime_is_field_selector(node) {
+		if c.comptime.check_comptime_is_field_selector_bool(node) {
 			node.expr_type = ast.bool_type
 			return node.expr_type
 		}
@@ -2980,7 +2981,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	node.expr_type = c.expr(mut node.expr) // type to be casted
 
 	if mut node.expr is ast.ComptimeSelector {
-		node.expr_type = c.get_comptime_selector_type(node.expr, node.expr_type)
+		node.expr_type = c.comptime.get_comptime_selector_type(node.expr, node.expr_type)
 	}
 
 	mut from_type := c.unwrap_generic(node.expr_type)
