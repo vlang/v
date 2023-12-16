@@ -1468,7 +1468,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	} else if c.comptime.inside_comptime_for && typ == c.enum_data_type
 		&& node.field_name == 'value' {
 		// for comp-time enum.values
-		node.expr_type = c.comptime.comptime_fields_type['${c.comptime.comptime_for_field_var}.typ']
+		node.expr_type = c.comptime.comptime_fields_type['${c.comptime.comptime_for_enum_var}.typ']
 		node.typ = typ
 		return node.expr_type
 	}
