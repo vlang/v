@@ -380,7 +380,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 
 		c.push_existing_comptime_values()
 		c.comptime.inside_comptime_for = true
-		for method in methods {			
+		for method in methods {
 			c.comptime.comptime_for_method = method.name
 			c.comptime.comptime_for_method_var = node.val_var
 			c.comptime.comptime_for_method_ret_type = method.return_type
@@ -1068,7 +1068,8 @@ fn (mut c Checker) is_comptime_selector_field_name(node ast.SelectorExpr, field_
 @[inline]
 fn (mut c Checker) is_comptime_selector_type(node ast.SelectorExpr) bool {
 	if c.comptime.inside_comptime_for_field && node.expr is ast.Ident {
-		return node.expr.name in [c.comptime.comptime_for_variant_var, c.comptime.comptime_for_field_var]
+		return
+			node.expr.name in [c.comptime.comptime_for_variant_var, c.comptime.comptime_for_field_var]
 			&& node.field_name == 'typ'
 	}
 	return false
@@ -1118,28 +1119,23 @@ fn (mut c Checker) get_comptime_selector_bool_field(field_name string) bool {
 struct CurrentComptimeValues {
 mut:
 	// $for
-	inside_comptime_for    bool
-	
+	inside_comptime_for bool
 	// .variants
-	comptime_for_variant_var     string
-	
+	comptime_for_variant_var string
 	// .fields
 	inside_comptime_for_field    bool
 	comptime_for_field_var       string
 	comptime_fields_default_type ast.Type
 	comptime_fields_type         map[string]ast.Type
 	comptime_for_field_value     ast.StructField
-
 	// .values
-	comptime_enum_field_value    string
-	comptime_for_enum_var string
-	
+	comptime_for_enum_var     string
+	comptime_enum_field_value string
 	// .attributes
-	comptime_for_attr_var      string
-
+	comptime_for_attr_var string
 	// .methods
-	comptime_for_method          string
 	comptime_for_method_var      string
+	comptime_for_method          string
 	comptime_for_method_ret_type ast.Type
 }
 
@@ -1147,7 +1143,7 @@ fn (mut c Checker) push_existing_comptime_values() {
 	c.comptime_values_stack << CurrentComptimeValues{}
 
 	current := c.comptime
-	c.comptime = &c.comptime_values_stack[c.comptime_values_stack.len-1]
+	c.comptime = &c.comptime_values_stack[c.comptime_values_stack.len - 1]
 
 	if current != unsafe { nil } {
 		c.comptime.comptime_fields_type = current.comptime_fields_type.clone()
@@ -1156,17 +1152,6 @@ fn (mut c Checker) push_existing_comptime_values() {
 
 fn (mut c Checker) pop_existing_comptime_values() {
 	c.comptime_values_stack.pop()
-	// c.inside_comptime_for = old.inside_comptime_for
-	// c.inside_comptime_for_field = old.inside_comptime_for_field
-	// c.comptime_for_field_var = old.comptime_for_field_var
-	// c.comptime_for_variant_var = old.comptime_for_variant_var
-	// c.comptime_fields_default_type = old.comptime_fields_default_type
-	// c.comptime_fields_type = old.comptime_fields_type.clone()
-	// c.comptime_for_field_value = old.comptime_for_field_value
-	// c.comptime_enum_field_value = old.comptime_enum_field_value
-	// c.comptime_for_method = old.comptime_for_method
-	// c.comptime_for_method_var = old.comptime_for_method_var
-	// c.comptime_for_method_ret_type = old.comptime_for_method_ret_type
 
-	c.comptime = &c.comptime_values_stack[c.comptime_values_stack.len-1]
+	c.comptime = &c.comptime_values_stack[c.comptime_values_stack.len - 1]
 }

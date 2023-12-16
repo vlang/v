@@ -82,8 +82,6 @@ pub mut:
 	inside_fn_arg              bool // `a`, `b` in `a.f(b)`
 	inside_ct_attr             bool // true inside `[if expr]`
 	inside_x_is_type           bool // true inside the Type expression of `if x is Type {`
-	//inside_comptime_for_field  bool // inside $for comptime .fields
-	//inside_comptime_for  bool // inside $for comptime
 	inside_generic_struct_init bool
 	cur_struct_generic_types   []ast.Type
 	cur_struct_concrete_types  []ast.Type
@@ -109,17 +107,8 @@ mut:
 	loop_label                       string     // set when inside a labelled for loop
 	vweb_gen_types                   []ast.Type // vweb route checks
 	timers                           &util.Timers = util.get_timers()
-	// comptime_for_field_var           string
-	// comptime_for_variant_var         string
-	// comptime_fields_default_type     ast.Type
-	// comptime_fields_type             map[string]ast.Type
-	// comptime_for_field_value         ast.StructField // value of the field variable
-	// comptime_enum_field_value        string   // current enum value name
-	// comptime_for_method              string   // $for method in T.methods {}
-	// comptime_for_method_var          string   // $for method in T.methods {}; the variable name
-//	comptime_for_method_ret_type     ast.Type // $for method - current method.return_type field
 	comptime_values_stack            []CurrentComptimeValues // stores the values from the above on each $for loop, to make nesting them easier
-	comptime            &CurrentComptimeValues = unsafe { nil }
+	comptime                         &CurrentComptimeValues = unsafe { nil }
 	fn_scope                         &ast.Scope = unsafe { nil }
 	main_fn_decl_node                ast.FnDecl
 	match_exhaustive_cutoff_limit    int = 10
@@ -1476,7 +1465,8 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		c.error('`${node.expr}` does not return a value', node.pos)
 		node.expr_type = ast.void_type
 		return ast.void_type
-	} else if c.comptime.inside_comptime_for_field && typ == c.enum_data_type && node.field_name == 'value' {
+	} else if c.comptime.inside_comptime_for_field && typ == c.enum_data_type
+		&& node.field_name == 'value' {
 		// for comp-time enum.values
 		node.expr_type = c.comptime.comptime_fields_type['${c.comptime.comptime_for_field_var}.typ']
 		node.typ = typ
