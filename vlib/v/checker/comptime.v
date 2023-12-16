@@ -1070,9 +1070,9 @@ fn (mut c Checker) is_comptime_selector_field_name(node ast.SelectorExpr, field_
 // is_comptime_selector_type checks if the SelectorExpr is related to $for variable accessing .typ field
 @[inline]
 fn (mut c Checker) is_comptime_selector_type(node ast.SelectorExpr) bool {
-	if c.comptime.inside_comptime_for_field && node.expr is ast.Ident {
+	if c.comptime.inside_comptime_for && node.expr is ast.Ident {
 		return
-			node.expr.name in [c.comptime.comptime_for_variant_var, c.comptime.comptime_for_field_var]
+			node.expr.name in [c.comptime.comptime_for_enum_var, c.comptime.comptime_for_variant_var, c.comptime.comptime_for_field_var]
 			&& node.field_name == 'typ'
 	}
 	return false
@@ -1144,15 +1144,27 @@ mut:
 }
 
 fn (mut c Checker) push_new_comptime_info() {
+	current := c.comptime
+
 	c.comptime_info_stack << ComptimeInfo{
 		checker: c
 	}
 
-	current := c.comptime
 	c.comptime = &c.comptime_info_stack[c.comptime_info_stack.len - 1]
 
 	if current != unsafe { nil } {
 		c.comptime.comptime_fields_type = current.comptime_fields_type.clone()
+		c.comptime.inside_comptime_for = current.inside_comptime_for
+		c.comptime.comptime_for_variant_var = current.comptime_for_variant_var
+		c.comptime.inside_comptime_for_field = current.inside_comptime_for_field
+		c.comptime.comptime_for_field_var = current.comptime_for_field_var
+		c.comptime.comptime_fields_default_type = current.comptime_fields_default_type
+		c.comptime.comptime_for_field_value = current.comptime_for_field_value
+		c.comptime.comptime_for_enum_var = current.comptime_for_enum_var
+		c.comptime.comptime_enum_field_value = current.comptime_enum_field_value
+		c.comptime.comptime_for_method_var = current.comptime_for_method_var
+		c.comptime.comptime_for_method = current.comptime_for_method
+		c.comptime.comptime_for_method_ret_type = current.comptime_for_method_ret_type
 	}
 }
 
