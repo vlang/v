@@ -309,6 +309,12 @@ const skip_on_windows_msvc = [
 	'vlib/toml/tests/key_test.v', // error C2099: initializer is not a constant
 	'vlib/toml/tests/toml_bom_test.v', // error C2099: initializer is not a constant
 	'vlib/toml/tests/toml_test.v', // error C2099: initializer is not a constant
+	'vlib/rand/rand_test.js.v', // error C2099: initializer is not a constant
+	'vlib/strings/builder_test.js.v', // error C2099: initializer is not a constant
+	'vlib/strings/similarity_test.js.v', // error C2099: initializer is not a constant
+	'vlib/strings/strings_test.js.v', // error C2099: initializer is not a constant
+	'vlib/strings/textscanner/textscanner_test.js.v', // error C2099: initializer is not a constant
+	'vlib/v/tests/cast_test.js.v', // error C2099: initializer is not a constant
 ]
 const skip_on_windows = [
 	'do_not_remove',
