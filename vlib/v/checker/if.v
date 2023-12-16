@@ -165,6 +165,11 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 									skip_state = c.check_compatible_types(c.comptime.comptime_fields_type['${c.comptime.comptime_for_variant_var}.typ'],
 										right as ast.TypeNode)
 								}
+							} else if comptime_field_name == c.comptime.comptime_for_enum_var {
+								if left.field_name == 'typ' {
+									skip_state = c.check_compatible_types(c.comptime.comptime_fields_type['${c.comptime.comptime_for_enum_var}.typ'],
+										right as ast.TypeNode)
+								}
 							}
 						} else if left is ast.TypeNode {
 							is_comptime_type_is_expr = true
