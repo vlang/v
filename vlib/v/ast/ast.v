@@ -1201,6 +1201,7 @@ pub enum ComptimeForKind {
 	fields
 	attributes
 	values
+	variants
 }
 
 pub struct ComptimeFor {

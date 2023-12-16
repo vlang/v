@@ -160,6 +160,11 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 									skip_state = c.check_compatible_types(c.unwrap_generic(c.comptime_for_method_ret_type),
 										right as ast.TypeNode)
 								}
+							} else if comptime_field_name == c.comptime_for_variant_var {
+								if left.field_name == 'typ' {
+									skip_state = c.check_compatible_types(c.comptime_fields_type['${c.comptime_for_variant_var}.typ'],
+										right as ast.TypeNode)
+								}
 							}
 						} else if left is ast.TypeNode {
 							is_comptime_type_is_expr = true
