@@ -142,8 +142,8 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				&& ((left.info as ast.IdentVar).share == .shared_t || left_type.has_flag(.shared_f))
 				&& c.table.sym(left_type).kind in [.array, .map, .struct_]
 		}
-		if c.inside_comptime_for_field && mut left is ast.ComptimeSelector {
-			left_type = c.comptime_fields_default_type
+		if c.comptime.inside_comptime_for_field && mut left is ast.ComptimeSelector {
+			left_type = c.comptime.comptime_fields_default_type
 			c.expected_type = c.unwrap_generic(left_type)
 		}
 		if node.right_types.len < node.left.len { // first type or multi return types added above
@@ -183,7 +183,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				right_type = right_type.clear_flag(.option)
 			}
 		} else if right is ast.ComptimeSelector {
-			right_type = c.comptime_fields_default_type
+			right_type = c.comptime.comptime_fields_default_type
 		}
 		if is_decl || is_shared_re_assign {
 			// check generic struct init and return unwrap generic struct type
@@ -351,7 +351,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 								if right is ast.ComptimeSelector {
 									if is_decl {
 										left.obj.ct_type_var = .field_var
-										left.obj.typ = c.comptime_fields_default_type
+										left.obj.typ = c.comptime.comptime_fields_default_type
 									}
 								} else if mut right is ast.Ident && right.obj is ast.Var
 									&& right.or_expr.kind == .absent {
@@ -365,7 +365,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 								} else if right is ast.DumpExpr
 									&& right.expr is ast.ComptimeSelector {
 									left.obj.ct_type_var = .field_var
-									left.obj.typ = c.comptime_fields_default_type
+									left.obj.typ = c.comptime.comptime_fields_default_type
 								}
 							}
 							ast.GlobalField {
@@ -766,8 +766,8 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					}
 				} else {
 					// allow `t.$(field.name) = 0` where `t.$(field.name)` is a enum
-					if c.inside_comptime_for_field && left is ast.ComptimeSelector {
-						field_sym := c.table.sym(c.unwrap_generic(c.comptime_fields_default_type))
+					if c.comptime.inside_comptime_for_field && left is ast.ComptimeSelector {
+						field_sym := c.table.sym(c.unwrap_generic(c.comptime.comptime_fields_default_type))
 
 						if field_sym.kind == .enum_ && !right_type.is_int() {
 							c.error('enums can only be assigned `int` values', right.pos())

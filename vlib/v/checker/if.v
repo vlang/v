@@ -139,10 +139,10 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 
 						if left is ast.SelectorExpr {
 							comptime_field_name = left.expr.str()
-							c.comptime_fields_type[comptime_field_name] = got_type
+							c.comptime.comptime_fields_type[comptime_field_name] = got_type
 							is_comptime_type_is_expr = true
-							if comptime_field_name == c.comptime_for_field_var {
-								left_type := c.unwrap_generic(c.comptime_fields_default_type)
+							if comptime_field_name == c.comptime.comptime_for_field_var {
+								left_type := c.unwrap_generic(c.comptime.comptime_fields_default_type)
 								if left.field_name == 'typ' {
 									skip_state = c.check_compatible_types(left_type, right as ast.TypeNode)
 								} else if left.field_name == 'unaliased_typ' {
@@ -155,14 +155,14 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 								} else {
 									.skip
 								}
-							} else if comptime_field_name == c.comptime_for_method_var {
+							} else if comptime_field_name == c.comptime.comptime_for_method_var {
 								if left.field_name == 'return_type' {
-									skip_state = c.check_compatible_types(c.unwrap_generic(c.comptime_for_method_ret_type),
+									skip_state = c.check_compatible_types(c.unwrap_generic(c.comptime.comptime_for_method_ret_type),
 										right as ast.TypeNode)
 								}
-							} else if comptime_field_name == c.comptime_for_variant_var {
+							} else if comptime_field_name == c.comptime.comptime_for_variant_var {
 								if left.field_name == 'typ' {
-									skip_state = c.check_compatible_types(c.comptime_fields_type['${c.comptime_for_variant_var}.typ'],
+									skip_state = c.check_compatible_types(c.comptime.comptime_fields_type['${c.comptime.comptime_for_variant_var}.typ'],
 										right as ast.TypeNode)
 								}
 							}
@@ -188,46 +188,46 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					if left is ast.SelectorExpr && right is ast.IntegerLiteral {
 						comptime_field_name = left.expr.str()
 						is_comptime_type_is_expr = true
-						if comptime_field_name == c.comptime_for_field_var {
+						if comptime_field_name == c.comptime.comptime_for_field_var {
 							if left.field_name == 'indirections' {
 								skip_state = match branch.cond.op {
 									.gt {
-										if c.comptime_fields_default_type.nr_muls() > right.val.i64() {
+										if c.comptime.comptime_fields_default_type.nr_muls() > right.val.i64() {
 											ComptimeBranchSkipState.eval
 										} else {
 											ComptimeBranchSkipState.skip
 										}
 									}
 									.lt {
-										if c.comptime_fields_default_type.nr_muls() < right.val.i64() {
+										if c.comptime.comptime_fields_default_type.nr_muls() < right.val.i64() {
 											ComptimeBranchSkipState.eval
 										} else {
 											ComptimeBranchSkipState.skip
 										}
 									}
 									.ge {
-										if c.comptime_fields_default_type.nr_muls() >= right.val.i64() {
+										if c.comptime.comptime_fields_default_type.nr_muls() >= right.val.i64() {
 											ComptimeBranchSkipState.eval
 										} else {
 											ComptimeBranchSkipState.skip
 										}
 									}
 									.le {
-										if c.comptime_fields_default_type.nr_muls() <= right.val.i64() {
+										if c.comptime.comptime_fields_default_type.nr_muls() <= right.val.i64() {
 											ComptimeBranchSkipState.eval
 										} else {
 											ComptimeBranchSkipState.skip
 										}
 									}
 									.ne {
-										if c.comptime_fields_default_type.nr_muls() != right.val.i64() {
+										if c.comptime.comptime_fields_default_type.nr_muls() != right.val.i64() {
 											ComptimeBranchSkipState.eval
 										} else {
 											ComptimeBranchSkipState.skip
 										}
 									}
 									.eq {
-										if c.comptime_fields_default_type.nr_muls() == right.val.i64() {
+										if c.comptime.comptime_fields_default_type.nr_muls() == right.val.i64() {
 											ComptimeBranchSkipState.eval
 										} else {
 											ComptimeBranchSkipState.skip
@@ -242,19 +242,19 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					} else if branch.cond.op in [.eq, .ne] && left is ast.SelectorExpr
 						&& right is ast.StringLiteral {
 						match left.expr.str() {
-							c.comptime_for_field_var {
+							c.comptime.comptime_for_field_var {
 								if left.field_name == 'name' {
 									is_comptime_type_is_expr = true
 									match branch.cond.op {
 										.eq {
-											skip_state = if c.comptime_for_field_value.name == right.val.str() {
+											skip_state = if c.comptime.comptime_for_field_value.name == right.val.str() {
 												ComptimeBranchSkipState.eval
 											} else {
 												ComptimeBranchSkipState.skip
 											}
 										}
 										.ne {
-											skip_state = if c.comptime_for_field_value.name == right.val.str() {
+											skip_state = if c.comptime.comptime_for_field_value.name == right.val.str() {
 												ComptimeBranchSkipState.skip
 											} else {
 												ComptimeBranchSkipState.eval
@@ -264,19 +264,19 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 									}
 								}
 							}
-							c.comptime_for_method_var {
+							c.comptime.comptime_for_method_var {
 								if left.field_name == 'name' {
 									is_comptime_type_is_expr = true
 									match branch.cond.op {
 										.eq {
-											skip_state = if c.comptime_for_method == right.val.str() {
+											skip_state = if c.comptime.comptime_for_method == right.val.str() {
 												ComptimeBranchSkipState.eval
 											} else {
 												ComptimeBranchSkipState.skip
 											}
 										}
 										.ne {
-											skip_state = if c.comptime_for_method == right.val.str() {
+											skip_state = if c.comptime.comptime_for_method == right.val.str() {
 												ComptimeBranchSkipState.skip
 											} else {
 												ComptimeBranchSkipState.eval
@@ -336,10 +336,10 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				node.branches[i].stmts = []
 			}
 			if comptime_field_name.len > 0 {
-				if comptime_field_name == c.comptime_for_method_var {
-					c.comptime_fields_type[comptime_field_name] = c.comptime_for_method_ret_type
+				if comptime_field_name == c.comptime.comptime_for_method_var {
+					c.comptime.comptime_fields_type[comptime_field_name] = c.comptime.comptime_for_method_ret_type
 				} else {
-					c.comptime_fields_type[comptime_field_name] = c.comptime_fields_default_type
+					c.comptime.comptime_fields_type[comptime_field_name] = c.comptime.comptime_fields_default_type
 				}
 			}
 			c.skip_flags = cur_skip_flags

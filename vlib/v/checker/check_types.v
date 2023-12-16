@@ -919,7 +919,7 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 					func_.name = ''
 					idx := c.table.find_or_register_fn_type(func_, true, false)
 					typ = ast.new_type(idx).derive(arg.typ)
-				} else if c.inside_comptime_for_field && sym.kind in [.struct_, .any]
+				} else if c.comptime.inside_comptime_for_field && sym.kind in [.struct_, .any]
 					&& arg.expr is ast.ComptimeSelector {
 					comptime_typ := c.get_comptime_selector_type(arg.expr, ast.void_type)
 					if comptime_typ != ast.void_type {
