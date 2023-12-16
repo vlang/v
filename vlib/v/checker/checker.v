@@ -109,6 +109,7 @@ mut:
 	vweb_gen_types                   []ast.Type // vweb route checks
 	timers                           &util.Timers = util.get_timers()
 	comptime_for_field_var           string
+	comptime_for_variant_var         string
 	comptime_fields_default_type     ast.Type
 	comptime_fields_type             map[string]ast.Type
 	comptime_for_field_value         ast.StructField // value of the field variable
@@ -137,6 +138,7 @@ mut:
 	goto_labels       map[string]ast.GotoLabel // to check for unused goto labels
 	enum_data_type    ast.Type
 	field_data_type   ast.Type
+	variant_data_type ast.Type
 	fn_return_type    ast.Type
 	orm_table_fields  map[string][]ast.StructField // known table structs
 	//

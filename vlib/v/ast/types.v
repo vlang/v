@@ -1535,18 +1535,32 @@ pub fn (t &Table) fn_signature_using_aliases(func &Fn, import_aliases map[string
 }
 
 // symbol_name_except_generic return the name of the complete qualified name of the type,
-// but without the generic parts. For example:
+// but without the generic parts. The potential `[]`, `&[][]` etc prefixes are kept. For example:
 // `main.Abc[int]` -> `main.Abc`
 // `main.Abc<T>[int]` -> `main.Abc<T>`
+// `[]main.Abc<T>[int]` -> `[]main.Abc<T>`
+// `&[][]main.Abc<T>[int]` -> `&[][]main.Abc<T>`
 pub fn (t &TypeSymbol) symbol_name_except_generic() string {
+	// &[]main.Abc[int], [][]main.Abc[int]...
+	mut prefix := ''
+	mut name := t.name
+	for i, ch in t.name {
+		if ch in [`&`, `[`, `]`] {
+			continue
+		}
+		if i > 0 {
+			prefix = t.name[..i]
+			name = t.name[i..]
+		}
+		break
+	}
 	// main.Abc[int]
-	mut embed_name := t.name
 	// remove generic part from name
 	// main.Abc[int] => main.Abc
-	if embed_name.contains('[') {
-		embed_name = embed_name.all_before('[')
+	if name.contains('[') {
+		name = name.all_before('[')
 	}
-	return embed_name
+	return prefix + name
 }
 
 // embed_name return the pure name of the complete qualified name of the type,

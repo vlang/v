@@ -42,7 +42,17 @@ fn (mut c Checker) get_comptime_var_type(node ast.Expr) ast.Type {
 		// val.$(field.name)
 		return c.get_comptime_selector_type(node, ast.void_type)
 	} else if node is ast.SelectorExpr && c.is_comptime_selector_type(node) {
-		// field_var.typ from $for field
+		if node.expr is ast.Ident {
+			match node.expr.name {
+				c.comptime_for_variant_var {
+					return c.comptime_fields_type['${c.comptime_for_variant_var}.typ']
+				}
+				else {
+					// field_var.typ from $for field
+					return c.comptime_fields_default_type
+				}
+			}
+		}
 		return c.comptime_fields_default_type
 	} else if node is ast.ComptimeCall {
 		method_name := c.comptime_for_method
@@ -345,6 +355,19 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			c.comptime_for_method_var = node.val_var
 			c.comptime_for_method_ret_type = method.return_type
 			c.comptime_fields_type['${node.val_var}.return_type'] = method.return_type
+			c.stmts(mut node.stmts)
+		}
+		c.pop_existing_comptime_values()
+	} else if node.kind == .variants {
+		c.push_existing_comptime_values()
+		c.inside_comptime_for_field = true
+		if c.variant_data_type == 0 {
+			c.variant_data_type = ast.Type(c.table.find_type_idx('VariantData'))
+		}
+		for variant in (sym.info as ast.SumType).variants {
+			c.comptime_for_variant_var = node.val_var
+			c.comptime_fields_type[node.val_var] = c.variant_data_type
+			c.comptime_fields_type['${node.val_var}.typ'] = variant
 			c.stmts(mut node.stmts)
 		}
 		c.pop_existing_comptime_values()
@@ -1015,7 +1038,8 @@ fn (mut c Checker) is_comptime_selector_field_name(node ast.SelectorExpr, field_
 @[inline]
 fn (mut c Checker) is_comptime_selector_type(node ast.SelectorExpr) bool {
 	if c.inside_comptime_for_field && node.expr is ast.Ident {
-		return node.expr.name == c.comptime_for_field_var && node.field_name == 'typ'
+		return node.expr.name in [c.comptime_for_variant_var, c.comptime_for_field_var]
+			&& node.field_name == 'typ'
 	}
 	return false
 }
@@ -1064,6 +1088,7 @@ fn (mut c Checker) get_comptime_selector_bool_field(field_name string) bool {
 struct CurrentComptimeValues {
 	inside_comptime_for_field    bool
 	comptime_for_field_var       string
+	comptime_for_variant_var     string
 	comptime_fields_default_type ast.Type
 	comptime_fields_type         map[string]ast.Type
 	comptime_for_field_value     ast.StructField
@@ -1077,6 +1102,7 @@ fn (mut c Checker) push_existing_comptime_values() {
 	c.comptime_values_stack << CurrentComptimeValues{
 		inside_comptime_for_field: c.inside_comptime_for_field
 		comptime_for_field_var: c.comptime_for_field_var
+		comptime_for_variant_var: c.comptime_for_variant_var
 		comptime_fields_default_type: c.comptime_fields_default_type
 		comptime_fields_type: c.comptime_fields_type.clone()
 		comptime_for_field_value: c.comptime_for_field_value
@@ -1091,6 +1117,7 @@ fn (mut c Checker) pop_existing_comptime_values() {
 	old := c.comptime_values_stack.pop()
 	c.inside_comptime_for_field = old.inside_comptime_for_field
 	c.comptime_for_field_var = old.comptime_for_field_var
+	c.comptime_for_variant_var = old.comptime_for_variant_var
 	c.comptime_fields_default_type = old.comptime_fields_default_type
 	c.comptime_fields_type = old.comptime_fields_type.clone()
 	c.comptime_for_field_value = old.comptime_for_field_value
