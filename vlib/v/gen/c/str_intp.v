@@ -76,6 +76,8 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 		}
 		*/
 		fmt_type = .si_s
+	} else if fspec in [`r`, `R`] {
+		fmt_type = .si_r
 	} else if typ.is_float() {
 		if fspec in [`g`, `G`] {
 			match typ {

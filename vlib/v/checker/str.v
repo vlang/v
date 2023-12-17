@@ -68,7 +68,7 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 		mut fmt := node.fmts[i]
 		// analyze and validate format specifier
 		if fmt !in [`E`, `F`, `G`, `e`, `f`, `g`, `d`, `u`, `x`, `X`, `o`, `c`, `s`, `S`, `p`,
-			`b`, `_`] {
+			`b`, `_`, `r`, `R`] {
 			c.error('unknown format specifier `${fmt:c}`', node.fmt_poss[i])
 		}
 		if fmt == `_` { // set default representation for type if none has been given
@@ -99,14 +99,14 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 				&& fmt !in [`d`, `c`, `x`, `X`, `o`, `u`, `x`, `X`, `o`, `b`])
 				|| (typ.is_float() && fmt !in [`E`, `F`, `G`, `e`, `f`, `g`])
 				|| (typ.is_pointer() && fmt !in [`p`, `x`, `X`])
-				|| (typ.is_string() && fmt !in [`s`, `S`])
+				|| (typ.is_string() && fmt !in [`s`, `S`, `r`, `R`])
 				|| (typ.idx() in [ast.i64_type_idx, ast.f64_type_idx] && fmt == `c`))
 				&& !(typ.is_ptr() && fmt in [`p`, `x`, `X`]) {
 				c.error('illegal format specifier `${fmt:c}` for type `${c.table.get_type_name(ftyp)}`',
 					node.fmt_poss[i])
 			}
 			if c.table.final_sym(typ).kind in [.array, .array_fixed, .struct_, .interface_, .none_, .map, .sum_type]
-				&& fmt in [`E`, `F`, `G`, `e`, `f`, `g`, `d`, `u`, `x`, `X`, `o`, `c`, `p`, `b`]
+				&& fmt in [`E`, `F`, `G`, `e`, `f`, `g`, `d`, `u`, `x`, `X`, `o`, `c`, `p`, `b`, `r`, `R`]
 				&& !(typ.is_ptr() && fmt in [`p`, `x`, `X`]) {
 				c.error('illegal format specifier `${fmt:c}` for type `${c.table.get_type_name(ftyp)}`',
 					node.fmt_poss[i])
