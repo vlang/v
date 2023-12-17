@@ -22,9 +22,9 @@ import x.vweb.sse
 
 // endpoint handler for SSE connections
 fn (app &App) sse(mut ctx Context) vweb.Result {
-    // handle the connection in a new thread
+	// handle the connection in a new thread
 	spawn handle_sse_conn(mut ctx)
-    // let vweb know that the connection should not be closed
+	// let vweb know that the connection should not be closed
 	return ctx.takeover_conn()
 }
 
@@ -32,12 +32,12 @@ fn handle_sse_conn(mut ctx Context) {
 	// pass vweb.Context
 	mut sse_conn := sse.start_connection(mut ctx.Context)
 
-    // send a message every second 3 times
+	// send a message every second 3 times
 	for _ in 0.. 3 {
 		time.sleep(time.second)
 		sse_conn.send_message(data: 'ping') or { break }
 	}
-    // close the SSE connection
+	// close the SSE connection
 	sse_conn.close()
 }
 ```
@@ -47,13 +47,13 @@ Javascript code:
 const eventSource = new EventSource('/sse');
 
 eventSource.addEventListener('message', (event) => {
-    console.log('received mesage:', event.data);
+	console.log('received mesage:', event.data);
 });
 
 eventSource.addEventListener('close', () => {
-    console.log('closing the connection')
-    // prevent browser from reconnecting
-    eventSource.close();
+	console.log('closing the connection')
+	// prevent browser from reconnecting
+	eventSource.close();
 });
 ```
 
