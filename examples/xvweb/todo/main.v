@@ -113,7 +113,7 @@ pub fn (app &App) delete_todo(mut ctx Context, id int) vweb.Result {
 
 	// prevent hackers from deleting TODO's that are not completed ;)
 	to_be_deleted := todos[0]
-	if to_be_deleted.completed == false {
+	if !to_be_deleted.completed {
 		return ctx.request_error('You must first complete a TODO before you can delete it!')
 	}
 
