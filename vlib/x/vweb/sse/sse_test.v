@@ -32,7 +32,7 @@ fn handle_sse_conn(mut ctx Context) {
 fn testsuite_begin() {
 	mut app := &App{}
 
-	spawn vweb.run[App, Context](mut app, port)
+	spawn vweb.run_at[App, Context](mut app, port: port, family: .ip)
 	// app startup time
 	time.sleep(time.second * 2)
 	spawn fn () {
