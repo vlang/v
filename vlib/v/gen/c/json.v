@@ -364,8 +364,8 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 	// DECODING (inline)
 	$if !json_no_inline_sumtypes ? {
 		type_tmp := g.new_tmp_var()
-		dec.writeln('\tif (cJSON_IsObject(root)) {')
-		dec.writeln('\t\tcJSON* ${type_tmp} = js_get(root, "_type");')
+		dec.writeln('\tif (cJSON_IsObject(root) || (cJSON_IsArray(root) && cJSON_IsObject(root->child))) {')
+		dec.writeln('\t\tcJSON* ${type_tmp} = cJSON_IsObject(root) ? js_get(root, "_type") : js_get(root->child, "_type");')
 		dec.writeln('\t\tif (${type_tmp} != 0) {')
 		dec.writeln('\t\t\tchar* ${type_var} = cJSON_GetStringValue(${type_tmp});')
 		// dec.writeln('\t\t\tcJSON_DeleteItemFromObjectCaseSensitive(root, "_type");')
@@ -424,7 +424,13 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 				enc.writeln('\t\tcJSON_AddItemToObject(o, "value", ${js_enc_name('i64')}(${var_data}${field_op}_${variant_typ}->__v_unix));')
 			} else {
 				enc.writeln('\t\to = ${js_enc_name(variant_typ)}(*${var_data}${field_op}_${variant_typ});')
-				enc.writeln('\t\tcJSON_AddItemToObject(o, "_type", cJSON_CreateString("${unmangled_variant_name}"));')
+				if variant_sym.kind == .array {
+					enc.writeln('\t\tif (cJSON_IsObject(o->child)) {')
+					enc.writeln('\t\t\tcJSON_AddItemToObject(o->child, "_type", cJSON_CreateString("${unmangled_variant_name}"));')
+					enc.writeln('\t\t}')
+				} else {
+					enc.writeln('\t\tcJSON_AddItemToObject(o, "_type", cJSON_CreateString("${unmangled_variant_name}"));')
+				}
 			}
 		}
 		enc.writeln('\t}')
@@ -470,7 +476,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 				dec.writeln('\t\t\t\t${prefix}res = ${variant_typ}_to_sumtype_${sym.cname}(&${tmp});')
 				dec.writeln('\t\t\t}')
 			} else if !is_js_prim(variant_typ) && variant_sym.kind != .enum_ {
-				dec.writeln('\t\t\tif (strcmp("${unmangled_variant_name}", ${type_var}) == 0) {')
+				dec.writeln('\t\t\tif (strcmp("${unmangled_variant_name}", ${type_var}) == 0 && ${variant_sym.kind == .array} == cJSON_IsArray(root)) {')
 				dec.writeln('\t\t\t\t${result_name}_${variant_typ} ${tmp} = ${js_dec_name(variant_typ)}(root);')
 				dec.writeln('\t\t\t\tif (${tmp}.is_error) {')
 
