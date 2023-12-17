@@ -24,7 +24,7 @@ fn testsuite_end() {
 fn test_is_outdated_git_module() {
 	os.execute_or_exit('git clone https://github.com/vlang/libsodium.git')
 	assert !is_outdated('libsodium')
-	os.execute_or_exit('git -C libsodium reset --hard HEAD~1')
+	os.execute_or_exit('git -C libsodium reset --hard HEAD~')
 	assert is_outdated('libsodium')
 	os.execute_or_exit('git -C libsodium pull')
 	assert !is_outdated('libsodium')
@@ -41,4 +41,22 @@ fn test_is_outdated_hg_module() {
 	assert is_outdated('hello')
 	os.execute_or_exit('hg -R hello pull')
 	assert !is_outdated('hello')
+}
+
+fn test_outdated() {
+	for m in ['pcre', 'libsodium', 'https://github.com/spytheman/vtray', 'nedpals.args'] {
+		os.execute_or_exit('${vexe} install ${m}')
+	}
+	for m in ['pcre', 'vtray', os.join_path('nedpals', 'args')] {
+		os.execute_or_exit('git -C ${m} fetch --unshallow')
+		os.execute_or_exit('git -C ${m} reset --hard HEAD~')
+		assert is_outdated(m)
+	}
+	res := os.execute('${vexe} outdated')
+	assert res.exit_code == 0, res.str()
+	assert res.output.contains('Outdated modules:'), res.output
+	assert res.output.contains('pcre'), res.output
+	assert res.output.contains('vtray'), res.output
+	assert res.output.contains('nedpals.args'), res.output
+	assert !res.output.contains('libsodium'), res.output
 }
