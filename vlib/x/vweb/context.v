@@ -97,10 +97,16 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 	// set Content-Type and Content-Length headers
 	mut custom_mimetype := if ctx.content_type.len == 0 { mimetype } else { ctx.content_type }
 	ctx.res.header.set(.content_type, custom_mimetype)
-	ctx.res.header.set(.content_length, ctx.res.body.len.str())
+	if ctx.res.body.len > 0 {
+		ctx.res.header.set(.content_length, ctx.res.body.len.str())
+	}
 	// send vweb's closing headers
 	ctx.res.header.set(.server, 'VWeb')
-	ctx.res.header.set(.connection, 'close')
+	// sent `Connection: close header` by default, if the user hasn't specified that the
+	// connection should not be closed.
+	if !ctx.takeover {
+		ctx.res.header.set(.connection, 'close')
+	}
 	// set the http version
 	ctx.res.set_version(.v1_1)
 	if ctx.res.status_code == 0 {
