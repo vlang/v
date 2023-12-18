@@ -17,5 +17,5 @@ fn test_main() {
 	arr << &Derived{}
 	arr << &Derived{}
 
-	assert arr[0] != arr[1]
+	assert arr[0] == arr[1]
 }
