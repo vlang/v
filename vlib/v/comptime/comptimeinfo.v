@@ -7,7 +7,7 @@ import v.token
 
 pub interface IResolverType {
 mut:
-	unwrap_generic(ast.Type) ast.Type
+	unwrap_generic(t ast.Type) ast.Type
 	error(s string, pos token.Pos)
 }
 
