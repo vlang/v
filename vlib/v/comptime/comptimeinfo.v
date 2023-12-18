@@ -1,3 +1,5 @@
+// Copyright (c) 2019-2023 V devs. All rights reserved.
+// Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module comptime
 
 import v.ast
