@@ -6,4 +6,7 @@ enum Test {
 
 fn main() {
 	_ := Test('one')
+	
+	my_str := 'one'
+	_ := Test(my_str)
 }
