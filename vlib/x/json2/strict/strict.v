@@ -21,7 +21,7 @@ pub struct StructCheckResult {
 }
 
 // REVIEW how performatic is it?
-fn strict_check[T](json_data string) StructCheckResult {
+pub fn strict_check[T](json_data string) StructCheckResult {
 	$if T is $struct {
 		tokens := tokenize(json_data)
 
