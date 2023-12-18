@@ -47,6 +47,7 @@ fn test_outdated() {
 	for m in ['pcre', 'libsodium', 'https://github.com/spytheman/vtray', 'nedpals.args'] {
 		os.execute_or_exit('${vexe} install ${m}')
 	}
+	// "Outdate" previously installed. Leave out `libsodium`.
 	for m in ['pcre', 'vtray', os.join_path('nedpals', 'args')] {
 		os.execute_or_exit('git -C ${m} fetch --unshallow')
 		os.execute_or_exit('git -C ${m} reset --hard HEAD~')
