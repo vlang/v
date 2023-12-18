@@ -235,10 +235,10 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 					return
 				}
 			}
-			c.push_new_comptime_info()
-			c.comptime.inside_comptime_for_field = true
-			c.comptime.inside_comptime_for = true
 			for field in fields {
+				c.push_new_comptime_info()
+				c.comptime.inside_comptime_for_field = true
+				c.comptime.inside_comptime_for = true
 				if c.field_data_type == 0 {
 					c.field_data_type = ast.Type(c.table.find_type_idx('FieldData'))
 				}
@@ -260,8 +260,8 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 							info.size_expr, true)
 					}
 				}
+				c.pop_comptime_info()
 			}
-			c.pop_comptime_info()
 		} else if c.table.generic_type_names(node.typ).len == 0 && sym.kind != .placeholder {
 			c.error('iterating over .fields is supported only for structs and interfaces, and ${sym.name} is neither',
 				node.typ_pos)
@@ -289,29 +289,29 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 		methods_with_attrs := sym.methods.filter(it.attrs.len > 0) // methods with attrs second
 		methods << methods_with_attrs
 
-		c.push_new_comptime_info()
-		c.comptime.inside_comptime_for = true
 		for method in methods {
+			c.push_new_comptime_info()
+			c.comptime.inside_comptime_for = true
 			c.comptime.comptime_for_method = method.name
 			c.comptime.comptime_for_method_var = node.val_var
 			c.comptime.comptime_for_method_ret_type = method.return_type
 			c.comptime.type_map['${node.val_var}.return_type'] = method.return_type
 			c.stmts(mut node.stmts)
+			c.pop_comptime_info()
 		}
-		c.pop_comptime_info()
 	} else if node.kind == .variants {
-		c.push_new_comptime_info()
-		c.comptime.inside_comptime_for = true
 		if c.variant_data_type == 0 {
 			c.variant_data_type = ast.Type(c.table.find_type_idx('VariantData'))
 		}
 		for variant in (sym.info as ast.SumType).variants {
+			c.push_new_comptime_info()
+			c.comptime.inside_comptime_for = true
 			c.comptime.comptime_for_variant_var = node.val_var
 			c.comptime.type_map[node.val_var] = c.variant_data_type
 			c.comptime.type_map['${node.val_var}.typ'] = variant
 			c.stmts(mut node.stmts)
+			c.pop_comptime_info()
 		}
-		c.pop_comptime_info()
 	} else {
 		c.stmts(mut node.stmts)
 	}

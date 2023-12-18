@@ -164,14 +164,12 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 									skip_state = c.check_compatible_types(c.unwrap_generic(c.comptime.comptime_for_method_ret_type),
 										right as ast.TypeNode)
 								}
-							} else if comptime_field_name == c.comptime.comptime_for_variant_var {
+							} else if comptime_field_name in [
+								c.comptime.comptime_for_variant_var,
+								c.comptime.comptime_for_enum_var,
+							] {
 								if left.field_name == 'typ' {
-									skip_state = c.check_compatible_types(c.comptime.type_map['${c.comptime.comptime_for_variant_var}.typ'],
-										right as ast.TypeNode)
-								}
-							} else if comptime_field_name == c.comptime.comptime_for_enum_var {
-								if left.field_name == 'typ' {
-									skip_state = c.check_compatible_types(c.comptime.type_map['${c.comptime.comptime_for_enum_var}.typ'],
+									skip_state = c.check_compatible_types(c.comptime.type_map['${comptime_field_name}.typ'],
 										right as ast.TypeNode)
 								}
 							}
