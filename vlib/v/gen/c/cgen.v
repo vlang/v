@@ -972,7 +972,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 			g.writeln('static int v_typeof_interface_idx_${sym.cname}(int sidx) { /* ${sym.name} */ ')
 			for t in inter_info.types {
 				sub_sym := g.table.sym(ast.mktyp(t))
-				g.writeln('\tif (sidx == _${sym.cname}_${sub_sym.cname}_index) return ${int(t)};')
+				g.writeln('\tif (sidx == _${sym.cname}_${sub_sym.cname}_index) return ${int(t.set_nr_muls(0))};')
 			}
 			g.writeln('\treturn ${int(ityp)};')
 			g.writeln('}')
