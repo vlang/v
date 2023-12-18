@@ -4,11 +4,18 @@ module comptime
 
 import v.ast
 import v.token
+import v.util
 
 pub interface IResolverType {
 mut:
+	file &ast.File
 	unwrap_generic(t ast.Type) ast.Type
-	error(s string, pos token.Pos)
+}
+
+@[noreturn]
+fn (mut ct ComptimeInfo) error(s string, pos token.Pos) {
+	util.show_compiler_message('cgen error:', pos: pos, file_path: ct.resolver.file.path, message: s)
+	exit(1)
 }
 
 @[inline]
@@ -80,7 +87,7 @@ pub fn (mut ct ComptimeInfo) get_comptime_var_type(node ast.Expr) ast.Type {
 		method_name := ct.comptime_for_method
 		left_sym := ct.table.sym(ct.resolver.unwrap_generic(node.left_type))
 		f := left_sym.find_method(method_name) or {
-			ct.resolver.error('could not find method `${method_name}` on compile-time resolution',
+			ct.error('could not find method `${method_name}` on compile-time resolution',
 				node.method_pos)
 			return ast.void_type
 		}
@@ -93,8 +100,7 @@ pub fn (mut ct ComptimeInfo) get_comptime_selector_var_type(node ast.ComptimeSel
 	field_name := ct.comptime_for_field_value.name
 	left_sym := ct.table.sym(ct.resolver.unwrap_generic(node.left_type))
 	field := ct.table.find_field_with_embeds(left_sym, field_name) or {
-		ct.resolver.error('`${node.left}` has no field named `${field_name}`', node.left.pos())
-		exit(1)
+		ct.error('`${node.left}` has no field named `${field_name}`', node.left.pos())
 	}
 	return field, field_name
 }
