@@ -4,7 +4,14 @@ import os
 import net.http
 import v.vmod
 
-struct Module {
+struct Parser {
+mut:
+	modules              map[string]Module
+	checked_settings_vcs bool
+	errors               int
+}
+
+pub struct Module {
 mut:
 	name               string
 	url                string
@@ -19,11 +26,10 @@ mut:
 	manifest           vmod.Manifest
 }
 
-struct Parser {
-mut:
-	modules              map[string]Module
-	checked_settings_vcs bool
-	errors               int
+struct InstalledModule {
+	path      string
+	is_global bool
+	url       string
 }
 
 enum ModuleKind {
@@ -203,6 +209,106 @@ fn (mut m Module) get_installed() {
 		vpm_log(@FILE_LINE, @FN, 'head: ${head}, tag: ${tag}')
 		if tag == head {
 			m.installed_version = tag
+		}
+	}
+}
+
+fn (mut p Parser) parse_outdated() {
+	for entry in os.ls(settings.vmodules_path) or { return } {
+		path := os.join_path(settings.vmodules_path, entry)
+		if entry in excluded_dirs || !os.is_dir(path) {
+			continue
+		}
+		// Global modules `vmodules_dir/module`.
+		if os.exists(os.join_path(path, 'v.mod')) {
+			if !is_outdated(path) {
+				continue
+			}
+			vcs := vcs_used_in_dir(path) or { continue }
+			args := vcs_info[vcs].args
+			// TODO: mercurial
+			url := os.execute_opt('${vcs.str()} ${args.path} ${path} config --get remote.origin.url') or {
+				vpm_error('failed to get url for `${entry}`.', details: err.msg())
+				continue
+			}.output.trim_space()
+			vpm_log(@FILE_LINE, @FN, 'url: ${url}')
+			if url.starts_with('https://github.com/vlang')
+				|| url.starts_with('git@github.com:vlang') {
+				p.parse_module(entry)
+			} else {
+				p.parse_module(url)
+			}
+			continue
+		}
+		// Modules under publisher namespace `vmodules_dir/publisher/module`.
+		for mod in os.ls(path) or { continue } {
+			mod_path := os.join_path(path, mod)
+			if os.exists(os.join_path(mod_path, 'v.mod')) && is_outdated(mod_path) {
+				p.parse_module('${entry}.${mod}')
+			}
+		}
+	}
+}
+
+fn (mut p Parser) parse_update_query(query []string) {
+	q_urls := query.filter(it.starts_with('https://') || it.starts_with('git@'))
+	mut installed := map[string]InstalledModule{}
+	for entry in os.ls(settings.vmodules_path) or { return } {
+		path := os.join_path(settings.vmodules_path, entry)
+		if entry in excluded_dirs || !os.is_dir(path) {
+			continue
+		}
+		// Global modules `vmodules_dir/module`.
+		if os.exists(os.join_path(path, 'v.mod')) {
+			vcs := vcs_used_in_dir(path) or { continue }
+			args := vcs_info[vcs].args
+			// TODO: mercurial
+			url := os.execute_opt('${vcs.str()} ${args.path} ${path} config --get remote.origin.url') or {
+				vpm_error('failed to get url for `${entry}`.', details: err.msg())
+				continue
+			}.output.trim_space()
+			vpm_log(@FILE_LINE, @FN, 'url: ${url}')
+			mod := InstalledModule{
+				path: path
+				is_global: true
+				url: if url.starts_with('https://github.com/vlang')
+					|| url.starts_with('git@github.com:vlang') {
+					''
+				} else {
+					url
+				}
+			}
+			if url in q_urls {
+				installed[url] = mod
+			} else {
+				installed[entry] = mod
+			}
+			continue
+		}
+		// Modules under a publisher namespace `vmodules_dir/publisher/module`.
+		for mod in os.ls(path) or { continue } {
+			mod_path := os.join_path(path, mod)
+			if os.exists(os.join_path(mod_path, 'v.mod')) {
+				installed['${entry}.${mod}'] = InstalledModule{
+					path: mod_path
+				}
+			}
+		}
+	}
+	for m in query {
+		if m !in installed {
+			vpm_error('failed to update `${m}`. Not installed.')
+			p.errors++
+			continue
+		}
+		if !is_outdated(installed[m].path) {
+			verbose_println('Skipping `${m}`. Already up to date.')
+			continue
+		}
+		if installed[m].is_global && installed[m].url != '' {
+			p.parse_module(installed[m].url)
+		} else {
+			p.parse_module(m)
 		}
 	}
 }
