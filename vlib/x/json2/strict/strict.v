@@ -110,7 +110,7 @@ fn get_keys_from_[T]() []string {
 	return struct_keys
 }
 
-fn get_keys_from_json(tokens []string) []KeyStruct {
+pub fn get_keys_from_json(tokens []string) []KeyStruct {
 	mut key_structs := []KeyStruct{}
 
 	mut nested_map_count := 0
