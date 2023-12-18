@@ -963,32 +963,39 @@ fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) Comptime
 	return .unknown
 }
 
+// push_new_comptime_info pushes a new comptime information frame
 fn (mut c Checker) push_new_comptime_info() {
 	current := c.comptime
 
-	c.comptime_info_stack << comptime.ComptimeInfo{
-		resolver: c
-		table: c.table
+	if current == unsafe { nil } {
+		c.comptime_info_stack << comptime.ComptimeInfo{
+			resolver: c
+			table: c.table
+		}
+	} else {
+		// copy current state to the new comptime information frame
+		c.comptime_info_stack << comptime.ComptimeInfo{
+			resolver: c
+			table: c.table
+			comptime_fields_type: current.comptime_fields_type.clone()
+			inside_comptime_for: current.inside_comptime_for
+			comptime_for_variant_var: current.comptime_for_variant_var
+			inside_comptime_for_field: current.inside_comptime_for_field
+			comptime_for_field_var: current.comptime_for_field_var
+			comptime_fields_default_type: current.comptime_fields_default_type
+			comptime_for_field_value: current.comptime_for_field_value
+			comptime_for_enum_var: current.comptime_for_enum_var
+			comptime_enum_field_value: current.comptime_enum_field_value
+			comptime_for_method_var: current.comptime_for_method_var
+			comptime_for_method: current.comptime_for_method
+			comptime_for_method_ret_type: current.comptime_for_method_ret_type
+		}
 	}
-
+	// set the pointer to current comptime information frame
 	c.comptime = &c.comptime_info_stack[c.comptime_info_stack.len - 1]
-
-	if current != unsafe { nil } {
-		c.comptime.comptime_fields_type = current.comptime_fields_type.clone()
-		c.comptime.inside_comptime_for = current.inside_comptime_for
-		c.comptime.comptime_for_variant_var = current.comptime_for_variant_var
-		c.comptime.inside_comptime_for_field = current.inside_comptime_for_field
-		c.comptime.comptime_for_field_var = current.comptime_for_field_var
-		c.comptime.comptime_fields_default_type = current.comptime_fields_default_type
-		c.comptime.comptime_for_field_value = current.comptime_for_field_value
-		c.comptime.comptime_for_enum_var = current.comptime_for_enum_var
-		c.comptime.comptime_enum_field_value = current.comptime_enum_field_value
-		c.comptime.comptime_for_method_var = current.comptime_for_method_var
-		c.comptime.comptime_for_method = current.comptime_for_method
-		c.comptime.comptime_for_method_ret_type = current.comptime_for_method_ret_type
-	}
 }
 
+// pop_comptime_info pops the current comptime information frame
 fn (mut c Checker) pop_comptime_info() {
 	c.comptime_info_stack.pop()
 
