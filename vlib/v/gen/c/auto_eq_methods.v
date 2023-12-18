@@ -130,7 +130,7 @@ fn (mut g Gen) read_field(struct_type ast.Type, field_name string, var_name stri
 @[inline]
 fn (mut g Gen) read_opt_field(struct_type ast.Type, field_name string, var_name string, field_typ ast.Type) string {
 	return if field_typ.has_flag(.option) {
-		field_typ_ := if g.table.sym(field_typ).kind == .interface_ && field_typ.is_ptr() {
+		field_typ_ := if g.table.sym(field_typ).kind in [.interface_, .string] && field_typ.is_ptr() {
 			field_typ.deref()
 		} else {
 			field_typ
@@ -182,14 +182,16 @@ fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
 			field_type := g.unwrap(field.typ)
 			field_name := c_name(field.name)
 
-			left_arg := g.read_field(left_no_ptr, field_name, 'a')
-			right_arg := g.read_field(left_no_ptr, field_name, 'b')
+			left_arg := g.read_field(left_type, field_name, 'a')
+			right_arg := g.read_field(left_type, field_name, 'b')
 
 			if field_type.sym.kind == .string {
 				if field.typ.has_flag(.option) {
 					left_arg_opt := g.read_opt_field(left_type, field_name, 'a', field.typ)
 					right_arg_opt := g.read_opt_field(left_type, field_name, 'b', field.typ)
 					fn_builder.write_string('(((${left_arg_opt}).len == (${right_arg_opt}).len && (${left_arg_opt}).len == 0) || string__eq(${left_arg_opt}, ${right_arg_opt}))')
+				} else if field.typ.is_ptr() {
+					fn_builder.write_string('((${left_arg}->len == ${right_arg}->len && ${left_arg}->len == 0) || string__eq(*(${left_arg}), *(${right_arg})))')
 				} else {
 					fn_builder.write_string('((${left_arg}.len == ${right_arg}.len && ${left_arg}.len == 0) || string__eq(${left_arg}, ${right_arg}))')
 				}
@@ -554,8 +556,8 @@ fn (mut g Gen) gen_interface_equality_fn(left_type ast.Type) string {
 		g.auto_fn_definitions << fn_builder.str()
 	}
 
-	left_arg := g.read_field(left_no_ptr, '_typ', 'a')
-	right_arg := g.read_field(left_no_ptr, '_typ', 'b')
+	left_arg := g.read_field(left_type, '_typ', 'a')
+	right_arg := g.read_field(left_type, '_typ', 'b')
 
 	fn_builder.writeln('static int v_typeof_interface_idx_${idx_fn}(int sidx); // for auto eq method')
 	fn_builder.writeln('static bool ${fn_name}_interface_eq(${ptr_styp} a, ${ptr_styp} b) {')
