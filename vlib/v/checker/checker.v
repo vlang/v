@@ -12,7 +12,7 @@ import v.util.version
 import v.errors
 import v.pkgconfig
 import v.transformer
-import v.compiler
+import v.comptime
 
 const int_min = int(0x80000000)
 const int_max = int(0x7FFFFFFF)
@@ -108,8 +108,8 @@ mut:
 	loop_label                       string     // set when inside a labelled for loop
 	vweb_gen_types                   []ast.Type // vweb route checks
 	timers                           &util.Timers = util.get_timers()
-	comptime_info_stack              []compiler.ComptimeInfo // stores the values from the above on each $for loop, to make nesting them easier
-	comptime                         &compiler.ComptimeInfo = unsafe { nil }
+	comptime_info_stack              []comptime.ComptimeInfo // stores the values from the above on each $for loop, to make nesting them easier
+	comptime                         &comptime.ComptimeInfo = unsafe { nil }
 	fn_scope                         &ast.Scope = unsafe { nil }
 	main_fn_decl_node                ast.FnDecl
 	match_exhaustive_cutoff_limit    int = 10
@@ -2708,8 +2708,8 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			node.expr_type = c.expr(mut node.expr)
 
 			if c.comptime.inside_comptime_for && node.expr is ast.Ident {
-				if c.table.is_comptime_var(node.expr) {
-					node.expr_type = c.get_comptime_var_type(node.expr as ast.Ident)
+				if c.comptime.is_comptime_var(node.expr) {
+					node.expr_type = c.comptime.get_comptime_var_type(node.expr as ast.Ident)
 				} else if (node.expr as ast.Ident).name in c.comptime.comptime_fields_type {
 					node.expr_type = c.comptime.comptime_fields_type[(node.expr as ast.Ident).name]
 				}
@@ -3471,8 +3471,8 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 	// second use
 	if node.kind in [.constant, .global, .variable] {
 		info := node.info as ast.IdentVar
-		typ := if c.table.is_comptime_var(node) {
-			ctype := c.get_comptime_var_type(node)
+		typ := if c.comptime.is_comptime_var(node) {
+			ctype := c.comptime.get_comptime_var_type(node)
 			if ctype != ast.void_type {
 				ctype
 			} else {

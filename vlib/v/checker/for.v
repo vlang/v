@@ -73,9 +73,9 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		node.scope.update_var_type(node.val_var, node.val_type)
 	} else {
 		mut is_comptime := false
-		if (node.cond is ast.Ident && c.table.is_comptime_var(node.cond))
+		if (node.cond is ast.Ident && c.comptime.is_comptime_var(node.cond))
 			|| node.cond is ast.ComptimeSelector {
-			ctyp := c.get_comptime_var_type(node.cond)
+			ctyp := c.comptime.get_comptime_var_type(node.cond)
 			if ctyp != ast.void_type {
 				is_comptime = true
 				typ = ctyp

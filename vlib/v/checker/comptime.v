@@ -8,68 +8,7 @@ import v.pref
 import v.token
 import v.util
 import v.pkgconfig
-import v.compiler
-
-@[inline]
-fn (mut c Checker) get_ct_type_var(node ast.Expr) ast.ComptimeVarKind {
-	return if node is ast.Ident && node.obj is ast.Var {
-		(node.obj as ast.Var).ct_type_var
-	} else {
-		.no_comptime
-	}
-}
-
-@[inline]
-fn (mut c Checker) get_comptime_var_type(node ast.Expr) ast.Type {
-	if node is ast.Ident && node.obj is ast.Var {
-		return match (node.obj as ast.Var).ct_type_var {
-			.generic_param {
-				// generic parameter from current function
-				node.obj.typ
-			}
-			.key_var, .value_var {
-				// key and value variables from normal for stmt
-				c.comptime.comptime_fields_type[node.name] or { ast.void_type }
-			}
-			.field_var {
-				// field var from $for loop
-				c.comptime.comptime_fields_default_type
-			}
-			else {
-				ast.void_type
-			}
-		}
-	} else if node is ast.ComptimeSelector {
-		// val.$(field.name)
-		return c.comptime.get_comptime_selector_type(node, ast.void_type)
-	} else if node is ast.SelectorExpr && c.comptime.is_comptime_selector_type(node) {
-		if node.expr is ast.Ident {
-			match node.expr.name {
-				c.comptime.comptime_for_variant_var {
-					return c.comptime.comptime_fields_type['${c.comptime.comptime_for_variant_var}.typ']
-				}
-				c.comptime.comptime_for_enum_var {
-					return c.comptime.comptime_fields_type['${c.comptime.comptime_for_enum_var}.typ']
-				}
-				else {
-					// field_var.typ from $for field
-					return c.comptime.comptime_fields_default_type
-				}
-			}
-		}
-		return c.comptime.comptime_fields_default_type
-	} else if node is ast.ComptimeCall {
-		method_name := c.comptime.comptime_for_method
-		left_sym := c.table.sym(c.unwrap_generic(node.left_type))
-		f := left_sym.find_method(method_name) or {
-			c.error('could not find method `${method_name}` on compile-time resolution',
-				node.method_pos)
-			return ast.void_type
-		}
-		return f.return_type
-	}
-	return ast.void_type
-}
+import v.comptime
 
 fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	if node.left !is ast.EmptyExpr {
@@ -178,7 +117,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 			node.args[i].typ = c.expr(mut arg.expr)
 		}
 		c.stmts_ending_with_expression(mut node.or_block.stmts)
-		return c.get_comptime_var_type(node)
+		return c.comptime.get_comptime_var_type(node)
 	}
 	if node.method_name == 'res' {
 		if !c.inside_defer {
@@ -271,34 +210,6 @@ fn (mut c Checker) comptime_selector(mut node ast.ComptimeSelector) ast.Type {
 		c.error('expected selector expression e.g. `$(field.name)`', node.field_expr.pos())
 	}
 	return ast.void_type
-}
-
-// identifies the comptime variable kind (i.e. if it is about .values, .fields, .methods  etc)
-fn (mut c Checker) comptime_get_kind_var(var ast.Ident) ?ast.ComptimeForKind {
-	if c.comptime.inside_comptime_for {
-		return none
-	}
-
-	match var.name {
-		c.comptime.comptime_for_variant_var {
-			return .variants
-		}
-		c.comptime.comptime_for_field_var {
-			return .fields
-		}
-		c.comptime.comptime_for_enum_var {
-			return .values
-		}
-		c.comptime.comptime_for_method_var {
-			return .methods
-		}
-		c.comptime.comptime_for_attr_var {
-			return .attributes
-		}
-		else {
-			return none
-		}
-	}
 }
 
 fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
@@ -820,7 +731,7 @@ fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) Comptime
 					} else if cond.left is ast.TypeNode && mut cond.right is ast.ComptimeType {
 						left := cond.left as ast.TypeNode
 						checked_type := c.unwrap_generic(left.typ)
-						return if c.table.is_comptime_type(checked_type, cond.right) {
+						return if c.comptime.is_comptime_type(checked_type, cond.right) {
 							.eval
 						} else {
 							.skip
@@ -831,8 +742,8 @@ fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) Comptime
 						if cond.left is ast.SelectorExpr
 							&& c.comptime.is_comptime_selector_type(cond.left)
 							&& mut cond.right is ast.ComptimeType {
-							checked_type := c.get_comptime_var_type(cond.left)
-							return if c.table.is_comptime_type(checked_type, cond.right) {
+							checked_type := c.comptime.get_comptime_var_type(cond.left)
+							return if c.comptime.is_comptime_type(checked_type, cond.right) {
 								.eval
 							} else {
 								.skip
@@ -1055,7 +966,7 @@ fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) Comptime
 fn (mut c Checker) push_new_comptime_info() {
 	current := c.comptime
 
-	c.comptime_info_stack << compiler.ComptimeInfo{
+	c.comptime_info_stack << comptime.ComptimeInfo{
 		resolver: c
 		table: c.table
 	}

@@ -356,7 +356,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 								} else if mut right is ast.Ident && right.obj is ast.Var
 									&& right.or_expr.kind == .absent {
 									if (right.obj as ast.Var).ct_type_var != .no_comptime {
-										ctyp := c.get_comptime_var_type(right)
+										ctyp := c.comptime.get_comptime_var_type(right)
 										if ctyp != ast.void_type {
 											left.obj.ct_type_var = (right.obj as ast.Var).ct_type_var
 											left.obj.typ = ctyp

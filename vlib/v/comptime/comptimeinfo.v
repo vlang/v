@@ -1,10 +1,81 @@
-module compiler
+module comptime
 
 import v.ast
+import v.token
 
 pub interface IResolverType {
 mut:
 	unwrap_generic(ast.Type) ast.Type
+	error(s string, pos token.Pos)
+}
+
+// is_comptime_var checks if the node is related to a comptime variable
+@[inline]
+pub fn (mut ct ComptimeInfo) is_comptime_var(node ast.Expr) bool {
+	return ct.get_ct_type_var(node) != .no_comptime
+}
+
+// get_ct_type_var gets the comptime type of the variable (.generic_param, .key_var, etc)
+@[inline]
+pub fn (mut ct ComptimeInfo) get_ct_type_var(node ast.Expr) ast.ComptimeVarKind {
+	return if node is ast.Ident && node.obj is ast.Var {
+		(node.obj as ast.Var).ct_type_var
+	} else {
+		.no_comptime
+	}
+}
+
+// get_comptime_var_type retrieves the actual type from a comptime related ast node
+@[inline]
+pub fn (mut ct ComptimeInfo) get_comptime_var_type(node ast.Expr) ast.Type {
+	if node is ast.Ident && node.obj is ast.Var {
+		return match (node.obj as ast.Var).ct_type_var {
+			.generic_param {
+				// generic parameter from current function
+				node.obj.typ
+			}
+			.key_var, .value_var {
+				// key and value variables from normal for stmt
+				ct.comptime_fields_type[node.name] or { ast.void_type }
+			}
+			.field_var {
+				// field var from $for loop
+				ct.comptime_fields_default_type
+			}
+			else {
+				ast.void_type
+			}
+		}
+	} else if node is ast.ComptimeSelector {
+		// val.$(field.name)
+		return ct.get_comptime_selector_type(node, ast.void_type)
+	} else if node is ast.SelectorExpr && ct.is_comptime_selector_type(node) {
+		if node.expr is ast.Ident {
+			match node.expr.name {
+				ct.comptime_for_variant_var {
+					return ct.comptime_fields_type['${ct.comptime_for_variant_var}.typ']
+				}
+				ct.comptime_for_enum_var {
+					return ct.comptime_fields_type['${ct.comptime_for_enum_var}.typ']
+				}
+				else {
+					// field_var.typ from $for field
+					return ct.comptime_fields_default_type
+				}
+			}
+		}
+		return ct.comptime_fields_default_type
+	} else if node is ast.ComptimeCall {
+		method_name := ct.comptime_for_method
+		left_sym := ct.table.sym(ct.resolver.unwrap_generic(node.left_type))
+		f := left_sym.find_method(method_name) or {
+			ct.resolver.error('could not find method `${method_name}` on compile-time resolution',
+				node.method_pos)
+			return ast.void_type
+		}
+		return f.return_type
+	}
+	return ast.void_type
 }
 
 // get_comptime_selector_type retrieves the var.$(field.name) type when field_name is 'name' otherwise default_type is returned
@@ -73,6 +144,83 @@ pub fn (mut ct ComptimeInfo) get_comptime_selector_bool_field(field_name string)
 		'is_alias' { return field_sym.kind == .alias }
 		'is_enum' { return field_sym.kind == .enum_ }
 		else { return false }
+	}
+}
+
+pub fn (mut ct ComptimeInfo) is_comptime_type(x ast.Type, y ast.ComptimeType) bool {
+	x_kind := ct.table.type_kind(x)
+	match y.kind {
+		.unknown {
+			return false
+		}
+		.map_ {
+			return x_kind == .map
+		}
+		.int {
+			return x_kind in [.i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .usize, .isize,
+				.int_literal]
+		}
+		.float {
+			return x_kind in [.f32, .f64, .float_literal]
+		}
+		.struct_ {
+			return x_kind == .struct_
+		}
+		.iface {
+			return x_kind == .interface_
+		}
+		.array {
+			return x_kind in [.array, .array_fixed]
+		}
+		.array_dynamic {
+			return x_kind == .array
+		}
+		.array_fixed {
+			return x_kind == .array_fixed
+		}
+		.sum_type {
+			return x_kind == .sum_type
+		}
+		.enum_ {
+			return x_kind == .enum_
+		}
+		.alias {
+			return x_kind == .alias
+		}
+		.function {
+			return x_kind == .function
+		}
+		.option {
+			return x.has_flag(.option)
+		}
+	}
+}
+
+// comptime_get_kind_var identifies the comptime variable kind (i.e. if it is about .values, .fields, .methods  etc)
+fn (mut ct ComptimeInfo) comptime_get_kind_var(var ast.Ident) ?ast.ComptimeForKind {
+	if ct.inside_comptime_for {
+		return none
+	}
+
+	match var.name {
+		ct.comptime_for_variant_var {
+			return .variants
+		}
+		ct.comptime_for_field_var {
+			return .fields
+		}
+		ct.comptime_for_enum_var {
+			return .values
+		}
+		ct.comptime_for_method_var {
+			return .methods
+		}
+		ct.comptime_for_attr_var {
+			return .attributes
+		}
+		else {
+			return none
+		}
 	}
 }
 

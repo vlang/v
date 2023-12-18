@@ -111,7 +111,9 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						if left is ast.TypeNode {
 							is_comptime_type_is_expr = true
 							checked_type = c.unwrap_generic(left.typ)
-							skip_state = if c.table.is_comptime_type(checked_type, right as ast.ComptimeType) {
+							skip_state = if c.comptime.is_comptime_type(checked_type,
+								right as ast.ComptimeType)
+							{
 								.eval
 							} else {
 								.skip
@@ -121,7 +123,9 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							if var := left.scope.find_var(left.name) {
 								checked_type = c.unwrap_generic(var.typ)
 							}
-							skip_state = if c.table.is_comptime_type(checked_type, right as ast.ComptimeType) {
+							skip_state = if c.comptime.is_comptime_type(checked_type,
+								right as ast.ComptimeType)
+							{
 								.eval
 							} else {
 								.skip
