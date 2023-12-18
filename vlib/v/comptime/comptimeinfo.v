@@ -11,6 +11,16 @@ mut:
 	error(s string, pos token.Pos)
 }
 
+@[inline]
+pub fn (mut ct ComptimeInfo) get_comptime_selector_key_type(val ast.ComptimeSelector) string {
+	if val.field_expr is ast.SelectorExpr {
+		if val.field_expr.expr is ast.Ident {
+			return '${val.field_expr.expr.name}.typ'
+		}
+	}
+	return ''
+}
+
 // is_comptime_var checks if the node is related to a comptime variable
 @[inline]
 pub fn (mut ct ComptimeInfo) is_comptime_var(node ast.Expr) bool {
@@ -38,11 +48,11 @@ pub fn (mut ct ComptimeInfo) get_comptime_var_type(node ast.Expr) ast.Type {
 			}
 			.key_var, .value_var {
 				// key and value variables from normal for stmt
-				ct.comptime_fields_type[node.name] or { ast.void_type }
+				ct.type_map[node.name] or { ast.void_type }
 			}
 			.field_var {
 				// field var from $for loop
-				ct.comptime_fields_default_type
+				ct.comptime_fields_cur_type
 			}
 			else {
 				ast.void_type
@@ -55,18 +65,17 @@ pub fn (mut ct ComptimeInfo) get_comptime_var_type(node ast.Expr) ast.Type {
 		if node.expr is ast.Ident {
 			match node.expr.name {
 				ct.comptime_for_variant_var {
-					return ct.comptime_fields_type['${ct.comptime_for_variant_var}.typ']
+					return ct.type_map['${ct.comptime_for_variant_var}.typ']
 				}
 				ct.comptime_for_enum_var {
-					return ct.comptime_fields_type['${ct.comptime_for_enum_var}.typ']
+					return ct.type_map['${ct.comptime_for_enum_var}.typ']
 				}
 				else {
 					// field_var.typ from $for field
-					return ct.comptime_fields_default_type
+					return ct.comptime_fields_cur_type
 				}
 			}
 		}
-		return ct.comptime_fields_default_type
 	} else if node is ast.ComptimeCall {
 		method_name := ct.comptime_for_method
 		left_sym := ct.table.sym(ct.resolver.unwrap_generic(node.left_type))
@@ -80,12 +89,22 @@ pub fn (mut ct ComptimeInfo) get_comptime_var_type(node ast.Expr) ast.Type {
 	return ast.void_type
 }
 
+pub fn (mut ct ComptimeInfo) get_comptime_selector_var_type(node ast.ComptimeSelector) (ast.StructField, string) {
+	field_name := ct.comptime_for_field_value.name
+	left_sym := ct.table.sym(ct.resolver.unwrap_generic(node.left_type))
+	field := ct.table.find_field_with_embeds(left_sym, field_name) or {
+		ct.resolver.error('`${node.left}` has no field named `${field_name}`', node.left.pos())
+		exit(1)
+	}
+	return field, field_name
+}
+
 // get_comptime_selector_type retrieves the var.$(field.name) type when field_name is 'name' otherwise default_type is returned
 @[inline]
 pub fn (mut ct ComptimeInfo) get_comptime_selector_type(node ast.ComptimeSelector, default_type ast.Type) ast.Type {
 	if node.field_expr is ast.SelectorExpr && ct.check_comptime_is_field_selector(node.field_expr)
 		&& node.field_expr.field_name == 'name' {
-		return ct.resolver.unwrap_generic(ct.comptime_fields_default_type)
+		return ct.resolver.unwrap_generic(ct.comptime_fields_cur_type)
 	}
 	return default_type
 }
@@ -130,8 +149,8 @@ pub fn (mut ct ComptimeInfo) check_comptime_is_field_selector_bool(node ast.Sele
 // get_comptime_selector_bool_field evaluates the bool value for field.is_* fields
 pub fn (mut ct ComptimeInfo) get_comptime_selector_bool_field(field_name string) bool {
 	field := ct.comptime_for_field_value
-	field_typ := ct.comptime_fields_default_type
-	field_sym := ct.table.sym(ct.resolver.unwrap_generic(ct.comptime_fields_default_type))
+	field_typ := ct.comptime_fields_cur_type
+	field_sym := ct.table.sym(ct.resolver.unwrap_generic(ct.comptime_fields_cur_type))
 
 	match field_name {
 		'is_pub' { return field.is_pub }
@@ -235,17 +254,16 @@ mut:
 pub mut:
 	// $for
 	inside_comptime_for bool
+	type_map            map[string]ast.Type
 	// .variants
 	comptime_for_variant_var string
 	// .fields
-	inside_comptime_for_field    bool
-	comptime_for_field_var       string
-	comptime_fields_default_type ast.Type
-	comptime_fields_type         map[string]ast.Type
-	comptime_for_field_value     ast.StructField
+	inside_comptime_for_field bool
+	comptime_for_field_var    string
+	comptime_fields_cur_type  ast.Type // current field type
+	comptime_for_field_value  ast.StructField
 	// .values
-	comptime_for_enum_var     string
-	comptime_enum_field_value string
+	comptime_for_enum_var string
 	// .attributes
 	comptime_for_attr_var string
 	// .methods

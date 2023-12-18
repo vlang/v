@@ -29,17 +29,17 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 	if node.expr is ast.ComptimeSelector {
 		if node.expr.field_expr is ast.SelectorExpr {
 			if node.expr.field_expr.expr is ast.Ident {
-				if node.expr.field_expr.expr.name == g.comptime_for_field_var
+				if node.expr.field_expr.expr.name == g.comptime.comptime_for_field_var
 					&& node.expr.field_expr.field_name == 'name' {
-					field, _ := g.get_comptime_selector_var_type(node.expr)
+					field, _ := g.comptime.get_comptime_selector_var_type(node.expr)
 					name = g.typ(g.unwrap_generic(field.typ.clear_flags(.shared_f, .result)))
 					expr_type = field.typ
 				}
 			}
 		}
-	} else if node.expr is ast.Ident && g.inside_comptime_for_field
-		&& g.table.is_comptime_var(node.expr) {
-		expr_type = g.get_comptime_var_type(node.expr)
+	} else if node.expr is ast.Ident && g.comptime.inside_comptime_for_field
+		&& g.comptime.is_comptime_var(node.expr) {
+		expr_type = g.comptime.get_comptime_var_type(node.expr)
 		name = g.typ(g.unwrap_generic(expr_type.clear_flags(.shared_f, .result))).replace('*',
 			'')
 	}

@@ -143,10 +143,10 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 
 						if left is ast.SelectorExpr {
 							comptime_field_name = left.expr.str()
-							c.comptime.comptime_fields_type[comptime_field_name] = got_type
+							c.comptime.type_map[comptime_field_name] = got_type
 							is_comptime_type_is_expr = true
 							if comptime_field_name == c.comptime.comptime_for_field_var {
-								left_type := c.unwrap_generic(c.comptime.comptime_fields_default_type)
+								left_type := c.unwrap_generic(c.comptime.comptime_fields_cur_type)
 								if left.field_name == 'typ' {
 									skip_state = c.check_compatible_types(left_type, right as ast.TypeNode)
 								} else if left.field_name == 'unaliased_typ' {
@@ -166,12 +166,12 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 								}
 							} else if comptime_field_name == c.comptime.comptime_for_variant_var {
 								if left.field_name == 'typ' {
-									skip_state = c.check_compatible_types(c.comptime.comptime_fields_type['${c.comptime.comptime_for_variant_var}.typ'],
+									skip_state = c.check_compatible_types(c.comptime.type_map['${c.comptime.comptime_for_variant_var}.typ'],
 										right as ast.TypeNode)
 								}
 							} else if comptime_field_name == c.comptime.comptime_for_enum_var {
 								if left.field_name == 'typ' {
-									skip_state = c.check_compatible_types(c.comptime.comptime_fields_type['${c.comptime.comptime_for_enum_var}.typ'],
+									skip_state = c.check_compatible_types(c.comptime.type_map['${c.comptime.comptime_for_enum_var}.typ'],
 										right as ast.TypeNode)
 								}
 							}
@@ -201,42 +201,42 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							if left.field_name == 'indirections' {
 								skip_state = match branch.cond.op {
 									.gt {
-										if c.comptime.comptime_fields_default_type.nr_muls() > right.val.i64() {
+										if c.comptime.comptime_fields_cur_type.nr_muls() > right.val.i64() {
 											ComptimeBranchSkipState.eval
 										} else {
 											ComptimeBranchSkipState.skip
 										}
 									}
 									.lt {
-										if c.comptime.comptime_fields_default_type.nr_muls() < right.val.i64() {
+										if c.comptime.comptime_fields_cur_type.nr_muls() < right.val.i64() {
 											ComptimeBranchSkipState.eval
 										} else {
 											ComptimeBranchSkipState.skip
 										}
 									}
 									.ge {
-										if c.comptime.comptime_fields_default_type.nr_muls() >= right.val.i64() {
+										if c.comptime.comptime_fields_cur_type.nr_muls() >= right.val.i64() {
 											ComptimeBranchSkipState.eval
 										} else {
 											ComptimeBranchSkipState.skip
 										}
 									}
 									.le {
-										if c.comptime.comptime_fields_default_type.nr_muls() <= right.val.i64() {
+										if c.comptime.comptime_fields_cur_type.nr_muls() <= right.val.i64() {
 											ComptimeBranchSkipState.eval
 										} else {
 											ComptimeBranchSkipState.skip
 										}
 									}
 									.ne {
-										if c.comptime.comptime_fields_default_type.nr_muls() != right.val.i64() {
+										if c.comptime.comptime_fields_cur_type.nr_muls() != right.val.i64() {
 											ComptimeBranchSkipState.eval
 										} else {
 											ComptimeBranchSkipState.skip
 										}
 									}
 									.eq {
-										if c.comptime.comptime_fields_default_type.nr_muls() == right.val.i64() {
+										if c.comptime.comptime_fields_cur_type.nr_muls() == right.val.i64() {
 											ComptimeBranchSkipState.eval
 										} else {
 											ComptimeBranchSkipState.skip
@@ -346,9 +346,9 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			}
 			if comptime_field_name.len > 0 {
 				if comptime_field_name == c.comptime.comptime_for_method_var {
-					c.comptime.comptime_fields_type[comptime_field_name] = c.comptime.comptime_for_method_ret_type
+					c.comptime.type_map[comptime_field_name] = c.comptime.comptime_for_method_ret_type
 				} else {
-					c.comptime.comptime_fields_type[comptime_field_name] = c.comptime.comptime_fields_default_type
+					c.comptime.type_map[comptime_field_name] = c.comptime.comptime_fields_cur_type
 				}
 			}
 			c.skip_flags = cur_skip_flags

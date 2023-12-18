@@ -193,7 +193,7 @@ fn (mut c Checker) comptime_selector(mut node ast.ComptimeSelector) ast.Type {
 	}
 	if mut node.field_expr is ast.SelectorExpr {
 		left_pos := node.field_expr.expr.pos()
-		if c.comptime.comptime_fields_type.len == 0 {
+		if c.comptime.type_map.len == 0 {
 			c.error('compile time field access can only be used when iterating over `T.fields`',
 				left_pos)
 		}
@@ -202,8 +202,8 @@ fn (mut c Checker) comptime_selector(mut node ast.ComptimeSelector) ast.Type {
 			return expr_type
 		}
 		expr_name := node.field_expr.expr.str()
-		if expr_name in c.comptime.comptime_fields_type {
-			return c.comptime.comptime_fields_type[expr_name]
+		if expr_name in c.comptime.type_map {
+			return c.comptime.type_map[expr_name]
 		}
 		c.error('unknown `\$for` variable `${expr_name}`', left_pos)
 	} else {
@@ -244,9 +244,9 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 				}
 				c.comptime.comptime_for_field_value = field
 				c.comptime.comptime_for_field_var = node.val_var
-				c.comptime.comptime_fields_type[node.val_var] = c.field_data_type
-				c.comptime.comptime_fields_type['${node.val_var}.typ'] = node.typ
-				c.comptime.comptime_fields_default_type = field.typ
+				c.comptime.type_map[node.val_var] = c.field_data_type
+				c.comptime.type_map['${node.val_var}.typ'] = node.typ
+				c.comptime.comptime_fields_cur_type = field.typ
 				c.stmts(mut node.stmts)
 
 				unwrapped_expr_type := c.unwrap_generic(field.typ)
@@ -270,18 +270,14 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 	} else if node.kind == .values {
 		if sym.kind == .enum_ {
 			c.push_new_comptime_info()
-			sym_info := sym.info as ast.Enum
 			c.comptime.inside_comptime_for = true
 			if c.enum_data_type == 0 {
 				c.enum_data_type = ast.Type(c.table.find_type_idx('EnumData'))
 			}
-			for field in sym_info.vals {
-				c.comptime.comptime_enum_field_value = field
-				c.comptime.comptime_for_enum_var = node.val_var
-				c.comptime.comptime_fields_type[node.val_var] = c.enum_data_type
-				c.comptime.comptime_fields_type['${node.val_var}.typ'] = node.typ
-				c.stmts(mut node.stmts)
-			}
+			c.comptime.comptime_for_enum_var = node.val_var
+			c.comptime.type_map[node.val_var] = c.enum_data_type
+			c.comptime.type_map['${node.val_var}.typ'] = node.typ
+			c.stmts(mut node.stmts)
 			c.pop_comptime_info()
 		} else {
 			c.error('iterating over .values is supported only for enums, and ${sym.name} is not an enum',
@@ -299,7 +295,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			c.comptime.comptime_for_method = method.name
 			c.comptime.comptime_for_method_var = node.val_var
 			c.comptime.comptime_for_method_ret_type = method.return_type
-			c.comptime.comptime_fields_type['${node.val_var}.return_type'] = method.return_type
+			c.comptime.type_map['${node.val_var}.return_type'] = method.return_type
 			c.stmts(mut node.stmts)
 		}
 		c.pop_comptime_info()
@@ -311,8 +307,8 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 		}
 		for variant in (sym.info as ast.SumType).variants {
 			c.comptime.comptime_for_variant_var = node.val_var
-			c.comptime.comptime_fields_type[node.val_var] = c.variant_data_type
-			c.comptime.comptime_fields_type['${node.val_var}.typ'] = variant
+			c.comptime.type_map[node.val_var] = c.variant_data_type
+			c.comptime.type_map['${node.val_var}.typ'] = variant
 			c.stmts(mut node.stmts)
 		}
 		c.pop_comptime_info()
@@ -977,15 +973,14 @@ fn (mut c Checker) push_new_comptime_info() {
 		c.comptime_info_stack << comptime.ComptimeInfo{
 			resolver: c
 			table: c.table
-			comptime_fields_type: current.comptime_fields_type.clone()
+			type_map: current.type_map.clone()
 			inside_comptime_for: current.inside_comptime_for
 			comptime_for_variant_var: current.comptime_for_variant_var
 			inside_comptime_for_field: current.inside_comptime_for_field
 			comptime_for_field_var: current.comptime_for_field_var
-			comptime_fields_default_type: current.comptime_fields_default_type
+			comptime_fields_cur_type: current.comptime_fields_cur_type
 			comptime_for_field_value: current.comptime_for_field_value
 			comptime_for_enum_var: current.comptime_for_enum_var
-			comptime_enum_field_value: current.comptime_enum_field_value
 			comptime_for_method_var: current.comptime_for_method_var
 			comptime_for_method: current.comptime_for_method
 			comptime_for_method_ret_type: current.comptime_for_method_ret_type

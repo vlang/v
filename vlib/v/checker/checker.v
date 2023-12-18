@@ -1469,7 +1469,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	} else if c.comptime.inside_comptime_for && typ == c.enum_data_type
 		&& node.field_name == 'value' {
 		// for comp-time enum.values
-		node.expr_type = c.comptime.comptime_fields_type['${c.comptime.comptime_for_enum_var}.typ']
+		node.expr_type = c.comptime.type_map['${c.comptime.comptime_for_enum_var}.typ']
 		node.typ = typ
 		return node.expr_type
 	}
@@ -2710,8 +2710,8 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			if c.comptime.inside_comptime_for && node.expr is ast.Ident {
 				if c.comptime.is_comptime_var(node.expr) {
 					node.expr_type = c.comptime.get_comptime_var_type(node.expr as ast.Ident)
-				} else if (node.expr as ast.Ident).name in c.comptime.comptime_fields_type {
-					node.expr_type = c.comptime.comptime_fields_type[(node.expr as ast.Ident).name]
+				} else if (node.expr as ast.Ident).name in c.comptime.type_map {
+					node.expr_type = c.comptime.type_map[(node.expr as ast.Ident).name]
 				}
 			}
 			c.check_expr_opt_call(node.expr, node.expr_type)

@@ -136,11 +136,11 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			node.scope.update_var_type(node.val_var, val_type)
 
 			if is_comptime {
-				c.comptime.comptime_fields_type[node.val_var] = val_type
+				c.comptime.type_map[node.val_var] = val_type
 				node.scope.update_ct_var_kind(node.val_var, .value_var)
 
 				defer {
-					c.comptime.comptime_fields_type.delete(node.val_var)
+					c.comptime.type_map.delete(node.val_var)
 				}
 			}
 		} else if sym.kind == .any {
@@ -159,11 +159,11 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				node.scope.update_var_type(node.key_var, key_type)
 
 				if is_comptime {
-					c.comptime.comptime_fields_type[node.key_var] = key_type
+					c.comptime.type_map[node.key_var] = key_type
 					node.scope.update_ct_var_kind(node.key_var, .key_var)
 
 					defer {
-						c.comptime.comptime_fields_type.delete(node.key_var)
+						c.comptime.type_map.delete(node.key_var)
 					}
 				}
 			}
@@ -172,11 +172,11 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			node.scope.update_var_type(node.val_var, value_type)
 
 			if is_comptime {
-				c.comptime.comptime_fields_type[node.val_var] = value_type
+				c.comptime.type_map[node.val_var] = value_type
 				node.scope.update_ct_var_kind(node.val_var, .value_var)
 
 				defer {
-					c.comptime.comptime_fields_type.delete(node.val_var)
+					c.comptime.type_map.delete(node.val_var)
 				}
 			}
 		} else {
@@ -194,11 +194,11 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				node.scope.update_var_type(node.key_var, key_type)
 
 				if is_comptime {
-					c.comptime.comptime_fields_type[node.key_var] = key_type
+					c.comptime.type_map[node.key_var] = key_type
 					node.scope.update_ct_var_kind(node.key_var, .key_var)
 
 					defer {
-						c.comptime.comptime_fields_type.delete(node.key_var)
+						c.comptime.type_map.delete(node.key_var)
 					}
 				}
 			}
@@ -254,11 +254,11 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			node.val_type = value_type
 			node.scope.update_var_type(node.val_var, value_type)
 			if is_comptime {
-				c.comptime.comptime_fields_type[node.val_var] = value_type
+				c.comptime.type_map[node.val_var] = value_type
 				node.scope.update_ct_var_kind(node.val_var, .value_var)
 
 				defer {
-					c.comptime.comptime_fields_type.delete(node.val_var)
+					c.comptime.type_map.delete(node.val_var)
 				}
 			}
 		}

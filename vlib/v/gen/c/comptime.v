@@ -7,45 +7,46 @@ import os
 import v.ast
 import v.util
 import v.pref
+import v.comptime
 
-fn (mut g Gen) get_comptime_selector_key_type(val ast.ComptimeSelector) string {
-	if val.field_expr is ast.SelectorExpr {
-		if val.field_expr.expr is ast.Ident {
-			return '${val.field_expr.expr.name}.typ'
-		}
-	}
-	return ''
-}
+// fn (mut g Gen) get_comptime_selector_key_type(val ast.ComptimeSelector) string {
+// 	if val.field_expr is ast.SelectorExpr {
+// 		if val.field_expr.expr is ast.Ident {
+// 			return '${val.field_expr.expr.name}.typ'
+// 		}
+// 	}
+// 	return ''
+// }
 
-fn (mut g Gen) get_comptime_selector_var_type(node ast.ComptimeSelector) (ast.StructField, string) {
-	field_name := g.comptime_for_field_value.name
-	left_sym := g.table.sym(g.unwrap_generic(node.left_type))
-	field := g.table.find_field_with_embeds(left_sym, field_name) or {
-		g.error('`${node.left}` has no field named `${field_name}`', node.left.pos())
-	}
-	return field, field_name
-}
+// fn (mut g Gen) get_comptime_selector_var_type(node ast.ComptimeSelector) (ast.StructField, string) {
+// 	field_name := g.comptime_for_field_value.name
+// 	left_sym := g.table.sym(g.unwrap_generic(node.left_type))
+// 	field := g.table.find_field_with_embeds(left_sym, field_name) or {
+// 		g.error('`${node.left}` has no field named `${field_name}`', node.left.pos())
+// 	}
+// 	return field, field_name
+// }
 
-fn (mut g Gen) get_comptime_selector_bool_field(field_name string) bool {
-	field := g.comptime_for_field_value
-	field_typ := g.comptime_for_field_type
-	field_sym := g.table.sym(g.unwrap_generic(g.comptime_for_field_type))
+// fn (mut g Gen) get_comptime_selector_bool_field(field_name string) bool {
+// 	field := g.comptime_for_field_value
+// 	field_typ := g.comptime_for_field_type
+// 	field_sym := g.table.sym(g.unwrap_generic(g.comptime_for_field_type))
 
-	match field_name {
-		'is_pub' { return field.is_pub }
-		'is_mut' { return field.is_mut }
-		'is_shared' { return field_typ.has_flag(.shared_f) }
-		'is_atomic' { return field_typ.has_flag(.atomic_f) }
-		'is_option' { return field.typ.has_flag(.option) }
-		'is_array' { return field_sym.kind in [.array, .array_fixed] }
-		'is_map' { return field_sym.kind == .map }
-		'is_chan' { return field_sym.kind == .chan }
-		'is_struct' { return field_sym.kind == .struct_ }
-		'is_alias' { return field_sym.kind == .alias }
-		'is_enum' { return field_sym.kind == .enum_ }
-		else { return false }
-	}
-}
+// 	match field_name {
+// 		'is_pub' { return field.is_pub }
+// 		'is_mut' { return field.is_mut }
+// 		'is_shared' { return field_typ.has_flag(.shared_f) }
+// 		'is_atomic' { return field_typ.has_flag(.atomic_f) }
+// 		'is_option' { return field.typ.has_flag(.option) }
+// 		'is_array' { return field_sym.kind in [.array, .array_fixed] }
+// 		'is_map' { return field_sym.kind == .map }
+// 		'is_chan' { return field_sym.kind == .chan }
+// 		'is_struct' { return field_sym.kind == .struct_ }
+// 		'is_alias' { return field_sym.kind == .alias }
+// 		'is_enum' { return field_sym.kind == .enum_ }
+// 		else { return false }
+// 	}
+// }
 
 fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 	g.expr(node.left)
@@ -57,9 +58,9 @@ fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 	// check for field.name
 	if node.field_expr is ast.SelectorExpr {
 		if node.field_expr.expr is ast.Ident {
-			if node.field_expr.expr.name == g.comptime_for_field_var
+			if node.field_expr.expr.name == g.comptime.comptime_for_field_var
 				&& node.field_expr.field_name == 'name' {
-				_, field_name := g.get_comptime_selector_var_type(node)
+				_, field_name := g.comptime.get_comptime_selector_var_type(node)
 				g.write(c_name(field_name))
 				return
 			}
@@ -130,7 +131,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 	g.trace_autofree('// \$method call. sym="${sym.name}"')
 	if node.method_name == 'method' {
 		// `app.$method()`
-		m := sym.find_method(g.comptime_for_method) or { return }
+		m := sym.find_method(g.comptime.comptime_for_method) or { return }
 		/*
 		vals := m.attrs[0].split('/')
 		args := vals.filter(it.starts_with(':')).map(it[1..])
@@ -175,7 +176,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			g.write('(*(${g.base_type(m.return_type)}*)')
 		}
 		// TODO: check argument types
-		g.write('${util.no_dots(sym.name)}_${g.comptime_for_method}(')
+		g.write('${util.no_dots(sym.name)}_${g.comptime.comptime_for_method}(')
 
 		// try to see if we need to pass a pointer
 		if mut node.left is ast.Ident {
@@ -447,8 +448,8 @@ fn (mut g Gen) get_expr_type(cond ast.Expr) ast.Type {
 				return g.unwrap_generic(cond.name_type)
 			} else {
 				name := '${cond.expr}.${cond.field_name}'
-				if name in g.comptime_var_type_map {
-					return g.comptime_var_type_map[name]
+				if name in g.comptime.type_map {
+					return g.comptime.type_map[name]
 				} else {
 					return g.unwrap_generic(cond.typ)
 				}
@@ -556,16 +557,16 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 				}
 				.eq, .ne {
 					// TODO Implement `$if method.args.len == 1`
-					if cond.left is ast.SelectorExpr
-						&& (g.comptime_for_field_var.len > 0 || g.comptime_for_method.len > 0) {
+					if cond.left is ast.SelectorExpr && (g.comptime.comptime_for_field_var.len > 0
+						|| g.comptime.comptime_for_method.len > 0) {
 						if cond.right is ast.StringLiteral {
 							if cond.left.expr is ast.Ident && cond.left.field_name == 'name' {
-								if g.comptime_for_method_var.len > 0
-									&& cond.left.expr.name == g.comptime_for_method_var {
+								if g.comptime.comptime_for_method_var.len > 0
+									&& cond.left.expr.name == g.comptime.comptime_for_method_var {
 									is_true := if cond.op == .eq {
-										g.comptime_for_method == cond.right.val
+										g.comptime.comptime_for_method == cond.right.val
 									} else {
-										g.comptime_for_method != cond.right.val
+										g.comptime.comptime_for_method != cond.right.val
 									}
 									if is_true {
 										g.write('1')
@@ -573,12 +574,12 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 										g.write('0')
 									}
 									return is_true, true
-								} else if g.comptime_for_field_var.len > 0
-									&& cond.left.expr.name == g.comptime_for_field_var {
+								} else if g.comptime.comptime_for_field_var.len > 0
+									&& cond.left.expr.name == g.comptime.comptime_for_field_var {
 									is_true := if cond.op == .eq {
-										g.comptime_for_field_value.name == cond.right.val
+										g.comptime.comptime_for_field_value.name == cond.right.val
 									} else {
-										g.comptime_for_field_value.name != cond.right.val
+										g.comptime.comptime_for_field_value.name != cond.right.val
 									}
 									if is_true {
 										g.write('1')
@@ -589,10 +590,10 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 								}
 							}
 						} else if cond.right is ast.IntegerLiteral {
-							if g.is_comptime_selector_field_name(cond.left, 'indirections') {
+							if g.comptime.is_comptime_selector_field_name(cond.left, 'indirections') {
 								is_true := match cond.op {
-									.eq { g.comptime_for_field_type.nr_muls() == cond.right.val.i64() }
-									.ne { g.comptime_for_field_type.nr_muls() != cond.right.val.i64() }
+									.eq { g.comptime.comptime_fields_cur_type.nr_muls() == cond.right.val.i64() }
+									.ne { g.comptime.comptime_fields_cur_type.nr_muls() != cond.right.val.i64() }
 									else { false }
 								}
 								if is_true {
@@ -652,12 +653,12 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 				}
 				.gt, .lt, .ge, .le {
 					if cond.left is ast.SelectorExpr && cond.right is ast.IntegerLiteral
-						&& g.is_comptime_selector_field_name(cond.left, 'indirections') {
+						&& g.comptime.is_comptime_selector_field_name(cond.left, 'indirections') {
 						is_true := match cond.op {
-							.gt { g.comptime_for_field_type.nr_muls() > cond.right.val.i64() }
-							.lt { g.comptime_for_field_type.nr_muls() < cond.right.val.i64() }
-							.ge { g.comptime_for_field_type.nr_muls() >= cond.right.val.i64() }
-							.le { g.comptime_for_field_type.nr_muls() <= cond.right.val.i64() }
+							.gt { g.comptime.comptime_fields_cur_type.nr_muls() > cond.right.val.i64() }
+							.lt { g.comptime.comptime_fields_cur_type.nr_muls() < cond.right.val.i64() }
+							.ge { g.comptime.comptime_fields_cur_type.nr_muls() >= cond.right.val.i64() }
+							.le { g.comptime.comptime_fields_cur_type.nr_muls() <= cond.right.val.i64() }
 							else { false }
 						}
 						if is_true {
@@ -685,10 +686,10 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 			return true, false
 		}
 		ast.SelectorExpr {
-			if g.inside_comptime_for_field && cond.expr is ast.Ident
-				&& cond.expr.name == g.comptime_for_field_var
+			if g.comptime.inside_comptime_for_field && cond.expr is ast.Ident
+				&& cond.expr.name == g.comptime.comptime_for_field_var
 				&& cond.field_name in ['is_mut', 'is_pub', 'is_shared', 'is_atomic', 'is_option', 'is_array', 'is_map', 'is_chan', 'is_struct', 'is_alias', 'is_enum'] {
-				ret_bool := g.get_comptime_selector_bool_field(cond.field_name)
+				ret_bool := g.comptime.get_comptime_selector_bool_field(cond.field_name)
 				g.write(ret_bool.str())
 				return ret_bool, true
 			} else {
@@ -706,90 +707,105 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 
 //
 
-struct CurrentComptimeValues {
-	inside_comptime_for_field bool
-	comptime_for_method       string
-	comptime_for_method_var   string
-	comptime_for_field_var    string
-	comptime_for_field_value  ast.StructField
-	comptime_for_field_type   ast.Type
-	comptime_var_type_map     map[string]ast.Type
-}
+// struct CurrentComptimeValues {
+// 	inside_comptime_for_field bool
+// 	comptime_for_method       string
+// 	comptime_for_method_var   string
+// 	comptime_for_field_var    string
+// 	comptime_for_field_value  ast.StructField
+// 	comptime_for_field_type   ast.Type
+// 	comptime_var_type_map     map[string]ast.Type
+// }
 
-fn (mut g Gen) push_existing_comptime_values() {
-	g.comptime_values_stack << CurrentComptimeValues{
-		inside_comptime_for_field: g.inside_comptime_for_field
-		comptime_for_method: g.comptime_for_method
-		comptime_for_method_var: g.comptime_for_method_var
-		comptime_for_field_var: g.comptime_for_field_var
-		comptime_for_field_value: g.comptime_for_field_value
-		comptime_for_field_type: g.comptime_for_field_type
-		comptime_var_type_map: g.comptime_var_type_map.clone()
+// push_new_comptime_info pushes a new comptime information frame
+fn (mut g Gen) push_new_comptime_info() {
+	current := g.comptime
+
+	if current == unsafe { nil } {
+		g.comptime_info_stack << comptime.ComptimeInfo{
+			resolver: unsafe { g }
+			table: g.table
+		}
+	} else {
+		// copy current state to the new comptime information frame
+		g.comptime_info_stack << comptime.ComptimeInfo{
+			resolver: unsafe { g }
+			table: g.table
+			type_map: current.type_map.clone()
+			inside_comptime_for: current.inside_comptime_for
+			comptime_for_variant_var: current.comptime_for_variant_var
+			inside_comptime_for_field: current.inside_comptime_for_field
+			comptime_for_field_var: current.comptime_for_field_var
+			comptime_fields_cur_type: current.comptime_fields_cur_type
+			comptime_for_field_value: current.comptime_for_field_value
+			comptime_for_enum_var: current.comptime_for_enum_var
+			comptime_for_method_var: current.comptime_for_method_var
+			comptime_for_method: current.comptime_for_method
+			comptime_for_method_ret_type: current.comptime_for_method_ret_type
+		}
 	}
+	// set the pointer to current comptime information frame
+	g.comptime = &g.comptime_info_stack[g.comptime_info_stack.len - 1]
 }
 
-fn (mut g Gen) pop_existing_comptime_values() {
-	old := g.comptime_values_stack.pop()
-	g.inside_comptime_for_field = old.inside_comptime_for_field
-	g.comptime_for_method = old.comptime_for_method
-	g.comptime_for_method_var = old.comptime_for_method_var
-	g.comptime_for_field_var = old.comptime_for_field_var
-	g.comptime_for_field_value = old.comptime_for_field_value
-	g.comptime_for_field_type = old.comptime_for_field_type
-	g.comptime_var_type_map = old.comptime_var_type_map.clone()
+// pop_comptime_info pops the current comptime information frame
+fn (mut g Gen) pop_comptime_info() {
+	g.comptime_info_stack.pop()
+
+	g.comptime = &g.comptime_info_stack[g.comptime_info_stack.len - 1]
 }
 
 // is_comptime_selector_field_name checks if the SelectorExpr is related to $for variable accessing specific field name provided by `field_name`
-@[inline]
-fn (mut g Gen) is_comptime_selector_field_name(node ast.SelectorExpr, field_name string) bool {
-	return g.inside_comptime_for_field && node.expr is ast.Ident
-		&& node.expr.name == g.comptime_for_field_var && node.field_name == field_name
-}
+// @[inline]
+// fn (mut g Gen) is_comptime_selector_field_name(node ast.SelectorExpr, field_name string) bool {
+// 	return g.inside_comptime_for_field && node.expr is ast.Ident
+// 		&& node.expr.name == g.comptime_for_field_var && node.field_name == field_name
+// }
 
 // check_comptime_is_field_selector checks if the SelectorExpr is related to $for variable accessing .typ field
-@[inline]
-fn (mut g Gen) is_comptime_selector_type(node ast.SelectorExpr) bool {
-	if g.inside_comptime_for_field && node.expr is ast.Ident {
-		return node.expr.name == g.comptime_for_field_var && node.field_name == 'typ'
-	}
-	return false
-}
+// @[inline]
+// fn (mut g Gen) is_comptime_selector_type(node ast.SelectorExpr) bool {
+// 	if g.inside_comptime_for_field && node.expr is ast.Ident {
+// 		return node.expr.name == g.comptime_for_field_var && node.field_name == 'typ'
+// 	}
+// 	return false
+// }
 
-fn (mut g Gen) get_comptime_var_type(node ast.Expr) ast.Type {
-	if node is ast.Ident && node.obj is ast.Var {
-		return match (node.obj as ast.Var).ct_type_var {
-			.generic_param {
-				// generic parameter from current function
-				node.obj.typ
-			}
-			.key_var, .value_var {
-				// key and value variables from normal for stmt
-				g.comptime_var_type_map[node.name] or { ast.void_type }
-			}
-			.field_var {
-				// field var from $for loop
-				g.comptime_for_field_type
-			}
-			else {
-				ast.void_type
-			}
-		}
-	} else if node is ast.ComptimeSelector {
-		// val.$(field.name)
-		key_str := g.get_comptime_selector_key_type(node)
-		if key_str != '' {
-			return g.comptime_var_type_map[key_str] or { ast.void_type }
-		}
-	} else if node is ast.SelectorExpr && g.is_comptime_selector_type(node) {
-		// field_var.typ from $for field
-		return g.comptime_for_field_type
-	}
-	return ast.void_type
-}
+// fn (mut g Gen) get_comptime_var_type(node ast.Expr) ast.Type {
+// 	if node is ast.Ident && node.obj is ast.Var {
+// 		return match (node.obj as ast.Var).ct_type_var {
+// 			.generic_param {
+// 				// generic parameter from current function
+// 				node.obj.typ
+// 			}
+// 			.key_var, .value_var {
+// 				// key and value variables from normal for stmt
+// 				g.comptime_var_type_map[node.name] or { ast.void_type }
+// 			}
+// 			.field_var {
+// 				// field var from $for loop
+// 				g.comptime_for_field_type
+// 			}
+// 			else {
+// 				ast.void_type
+// 			}
+// 		}
+// 	} else if node is ast.ComptimeSelector {
+// 		// val.$(field.name)
+// 		key_str := g.get_comptime_selector_key_type(node)
+// 		if key_str != '' {
+// 			return g.comptime_var_type_map[key_str] or { ast.void_type }
+// 		}
+// 	} else if node is ast.SelectorExpr && g.is_comptime_selector_type(node) {
+// 		// field_var.typ from $for field
+// 		return g.comptime_for_field_type
+// 	}
+// 	return ast.void_type
+// }
 
 fn (mut g Gen) resolve_comptime_type(node ast.Expr, default_type ast.Type) ast.Type {
-	if (node is ast.Ident && g.table.is_comptime_var(node)) || node is ast.ComptimeSelector {
-		return g.get_comptime_var_type(node)
+	if (node is ast.Ident && g.comptime.is_comptime_var(node)) || node is ast.ComptimeSelector {
+		return g.comptime.get_comptime_var_type(node)
 	} else if node is ast.SelectorExpr && node.expr_type != 0 {
 		sym := g.table.sym(g.unwrap_generic(node.expr_type))
 		if f := g.table.find_field_with_embeds(sym, node.field_name) {
@@ -814,7 +830,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 		}
 		typ_vweb_result := g.table.find_type_idx('vweb.Result')
 		for method in methods {
-			g.push_existing_comptime_values()
+			g.push_new_comptime_info()
 			// filter vweb route methods (non-generic method)
 			if method.receiver_type != 0 && method.return_type == typ_vweb_result {
 				rec_sym := g.table.sym(method.receiver_type)
@@ -822,14 +838,14 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 					if _ := g.table.find_field_with_embeds(rec_sym, 'Context') {
 						if method.generic_names.len > 0
 							|| (method.params.len > 1 && method.attrs.len == 0) {
-							g.pop_existing_comptime_values()
+							g.pop_comptime_info()
 							continue
 						}
 					}
 				}
 			}
-			g.comptime_for_method = method.name
-			g.comptime_for_method_var = node.val_var
+			g.comptime.comptime_for_method = method.name
+			g.comptime.comptime_for_method_var = node.val_var
 			g.writeln('/* method ${i} */ {')
 			g.writeln('\t${node.val_var}.name = _SLIT("${method.name}");')
 			if method.attrs.len == 0 {
@@ -853,7 +869,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 					if j < len - 1 {
 						g.write(', ')
 					}
-					g.comptime_var_type_map['${node.val_var}.args[${j}].typ'] = typ
+					g.comptime.type_map['${node.val_var}.args[${j}].typ'] = typ
 				}
 				g.writeln('}));\n')
 			}
@@ -879,12 +895,12 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			g.writeln('\t${node.val_var}.typ = ${styp};')
 			g.writeln('\t${node.val_var}.return_type = ${ret_typ.idx()};')
 
-			g.comptime_var_type_map['${node.val_var}.return_type'] = ret_typ
-			g.comptime_var_type_map['${node.val_var}.typ'] = styp
+			g.comptime.type_map['${node.val_var}.return_type'] = ret_typ
+			g.comptime.type_map['${node.val_var}.typ'] = styp
 			g.stmts(node.stmts)
 			i++
 			g.writeln('}')
-			g.pop_existing_comptime_values()
+			g.pop_comptime_info()
 		}
 	} else if node.kind == .fields {
 		if sym.kind in [.struct_, .interface_] {
@@ -904,12 +920,12 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			if fields.len > 0 {
 				g.writeln('\tFieldData ${node.val_var} = {0};')
 			}
+			g.push_new_comptime_info()
 			for field in fields {
-				g.push_existing_comptime_values()
-				g.inside_comptime_for_field = true
-				g.comptime_for_field_var = node.val_var
-				g.comptime_for_field_value = field
-				g.comptime_for_field_type = field.typ
+				g.comptime.inside_comptime_for_field = true
+				g.comptime.comptime_for_field_var = node.val_var
+				g.comptime.comptime_for_field_value = field
+				g.comptime.comptime_fields_cur_type = field.typ
 				g.writeln('/* field ${i} */ {')
 				g.writeln('\t${node.val_var}.name = _SLIT("${field.name}");')
 				if field.attrs.len == 0 {
@@ -942,13 +958,13 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 
 				g.writeln('\t${node.val_var}.indirections = ${field.typ.nr_muls()};')
 
-				g.comptime_var_type_map['${node.val_var}.typ'] = styp
-				g.comptime_var_type_map['${node.val_var}.unaliased_typ'] = unaliased_styp
+				g.comptime.type_map['${node.val_var}.typ'] = field.typ
+				g.comptime.type_map['${node.val_var}.unaliased_typ'] = unaliased_styp
 				g.stmts(node.stmts)
 				i++
 				g.writeln('}')
-				g.pop_existing_comptime_values()
 			}
+			g.pop_comptime_info()
 		}
 	} else if node.kind == .values {
 		if sym.kind == .enum_ {
@@ -957,16 +973,13 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 					g.writeln('\tEnumData ${node.val_var} = {0};')
 				}
 				for val in sym.info.vals {
-					g.comptime_enum_field_value = val
-					g.comptime_for_field_type = node.typ
-
 					g.writeln('/* enum vals ${i} */ {')
 					g.writeln('\t${node.val_var}.name = _SLIT("${val}");')
 					g.write('\t${node.val_var}.value = ')
 					if g.pref.translated && node.typ.is_number() {
-						g.writeln('_const_main__${g.comptime_enum_field_value};')
+						g.writeln('_const_main__${val};')
 					} else {
-						g.writeln('${g.typ(g.comptime_for_field_type)}__${g.comptime_enum_field_value};')
+						g.writeln('${g.typ(node.typ)}__${val};')
 					}
 					enum_attrs := sym.info.attrs[val]
 					if enum_attrs.len == 0 {
@@ -1004,11 +1017,11 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			if sym.info.variants.len > 0 {
 				g.writeln('\tVariantData ${node.val_var} = {0};')
 			}
-			g.inside_comptime_for_field = true
-			g.push_existing_comptime_values()
+			g.comptime.inside_comptime_for_field = true
+			g.push_new_comptime_info()
 			for variant in sym.info.variants {
-				g.comptime_for_field_var = node.val_var
-				g.comptime_var_type_map['${node.val_var}.typ'] = variant
+				g.comptime.comptime_for_field_var = node.val_var
+				g.comptime.type_map['${node.val_var}.typ'] = variant
 
 				g.writeln('/* variant ${i} */ {')
 				g.writeln('\t${node.val_var}.typ = ${variant.idx()};')
@@ -1016,7 +1029,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.writeln('}')
 				i++
 			}
-			g.pop_existing_comptime_values()
+			g.pop_comptime_info()
 		}
 	}
 	g.indent--
