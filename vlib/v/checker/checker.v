@@ -3318,8 +3318,8 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 				}
 			}
 		}
-		if mut node.expr is ast.StringLiteral {
-			c.add_error_detail('use ${c.table.type_to_str(node.typ)}.from_string(\'${node.expr.val}\') instead')
+		if node.expr_type == ast.string_type_idx {
+			c.add_error_detail('use ${c.table.type_to_str(node.typ)}.from_string(${node.expr}) instead')
 			c.error('cannot cast `string` to `enum`', node.pos)
 		}
 	}
