@@ -684,8 +684,10 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		use_segfault_handler: global_g.use_segfault_handler
 		has_reflection: 'v.reflection' in global_g.table.modules
 		reflection_strings: global_g.reflection_strings
-		comptime: global_g.comptime
-		comptime_info_stack: global_g.comptime_info_stack
+	}
+	if global_g.comptime != unsafe { nil } {
+		g.comptime_info_stack = global_g.comptime_info_stack.clone()
+		g.comptime = &g.comptime_info_stack[g.comptime_info_stack.len - 1]
 	}
 	g.gen_file()
 	return g
