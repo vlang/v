@@ -7,21 +7,6 @@ __global g_start_time = u64(0)
 
 pub const is_used = 1
 
-// unix:
-pub struct C.timespec {
-mut:
-	tv_sec  i64
-	tv_nsec i64
-}
-
-fn C.gettid() u32
-fn C.clock_gettime(int, &C.timespec)
-fn C.pthread_self() u64
-
-// windows:
-fn C.GetCurrentThreadId() u32
-fn C.QueryPerformanceCounter(&u64) C.BOOL
-
 @[markused]
 pub fn on_call(fname string) {
 	mut volatile pfbase := unsafe { &u8(0) }
