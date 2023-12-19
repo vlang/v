@@ -251,10 +251,19 @@ fn (mut ct ComptimeInfo) comptime_get_kind_var(var ast.Ident) ?ast.ComptimeForKi
 	}
 }
 
+pub struct DummyResolver {
+mut:
+	file &ast.File = unsafe { nil }
+}
+
+fn (d DummyResolver) unwrap_generic(t ast.Type) ast.Type {
+	return t
+}
+
 pub struct ComptimeInfo {
 pub mut:
 	// variable type resolver
-	resolver &IResolverType = unsafe { nil }
+	resolver IResolverType = DummyResolver{}
 	// symbol table resolver
 	table &ast.Table = unsafe { nil }
 	// $for

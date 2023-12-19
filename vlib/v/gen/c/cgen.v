@@ -321,7 +321,10 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) (string
 		reflection_strings: &reflection_strings
 	}
 
-	global_g.push_new_comptime_info()
+	global_g.comptime = &comptime.ComptimeInfo{
+		resolver: &global_g
+		table: table
+	}
 
 	/*
 	global_g.out_parallel = []strings.Builder{len: nr_cpus}
@@ -685,7 +688,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		has_reflection: 'v.reflection' in global_g.table.modules
 		reflection_strings: global_g.reflection_strings
 	}
-	g.comptime = comptime.ComptimeInfo{
+	g.comptime = &comptime.ComptimeInfo{
 		resolver: g
 		table: global_g.table
 	}
