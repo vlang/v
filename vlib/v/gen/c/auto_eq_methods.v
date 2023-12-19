@@ -130,17 +130,7 @@ fn (mut g Gen) read_field(struct_type ast.Type, field_name string, var_name stri
 @[inline]
 fn (mut g Gen) read_opt_field(struct_type ast.Type, field_name string, var_name string, field_typ ast.Type) string {
 	return if field_typ.has_flag(.option) {
-		field_typ_ := if g.table.sym(field_typ).kind in [.interface_, .string] && field_typ.is_ptr() {
-			field_typ.deref()
-		} else {
-			field_typ
-		}
-		opt := if g.table.sym(field_typ).kind == .interface_ && field_typ.is_ptr() {
-			'_option_'
-		} else {
-			''
-		}
-		'*(${opt}${g.base_type(field_typ_)}*)${g.read_field(struct_type, field_name, var_name)}.data'
+		'*(${g.base_type(field_typ)}*)${g.read_field(struct_type, field_name, var_name)}.data'
 	} else {
 		g.read_field(struct_type, field_name, var_name)
 	}
@@ -215,38 +205,10 @@ fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
 				fn_builder.write_string('${eq_fn}_alias_eq(${left_arg}, ${right_arg})')
 			} else if field_type.sym.kind == .function && !field.typ.has_flag(.option) {
 				fn_builder.write_string('*((voidptr*)(${left_arg})) == *((voidptr*)(${right_arg}))')
-			} else if field_type.sym.kind == .interface_ {
-				if field.typ.has_flag(.option) {
-					field_typ_ := if field.typ.is_ptr() {
-						field.typ.deref()
-					} else {
-						field.typ
-					}
-					if field.typ.is_ptr() {
-						left_arg_opt := g.read_opt_field(left_type, field_name, 'a', field.typ)
-						right_arg_opt := g.read_opt_field(left_type, field_name, 'b',
-							field.typ)
-						ptr := if field_typ_.is_ptr() {
-							'*'.repeat(field_typ_.nr_muls())
-						} else {
-							''
-						}
-						eq_fn := g.gen_interface_equality_fn(field_typ_)
-						fn_builder.write_string('${eq_fn}_interface_eq(${ptr}${left_arg_opt}, ${ptr}${right_arg_opt})')
-					} else {
-						ptr := if field_typ_.is_ptr() {
-							'*'.repeat(field_typ_.nr_muls())
-						} else {
-							''
-						}
-						eq_fn := g.gen_interface_equality_fn(field_typ_)
-						fn_builder.write_string('${eq_fn}_interface_eq(${ptr}${left_arg}, ${ptr}${right_arg})')
-					}
-				} else {
-					ptr := if field.typ.is_ptr() { '*'.repeat(field.typ.nr_muls()) } else { '' }
-					eq_fn := g.gen_interface_equality_fn(field.typ)
-					fn_builder.write_string('${eq_fn}_interface_eq(${ptr}${left_arg}, ${ptr}${right_arg})')
-				}
+			} else if field_type.sym.kind == .interface_ && !field.typ.is_ptr() {
+				ptr := if field.typ.is_ptr() { '*'.repeat(field.typ.nr_muls()) } else { '' }
+				eq_fn := g.gen_interface_equality_fn(field.typ)
+				fn_builder.write_string('${eq_fn}_interface_eq(${ptr}${left_arg}, ${ptr}${right_arg})')
 			} else if field.typ.has_flag(.option) {
 				fn_builder.write_string('${left_arg}.state == ${right_arg}.state && !memcmp(&${left_arg}.data, &${right_arg}.data, sizeof(${g.base_type(field.typ)}))')
 			} else {
