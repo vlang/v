@@ -5525,14 +5525,14 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, field_name string
 }
 
 fn (mut g Gen) const_decl_write_precomputed(mod string, styp string, cname string, field_name string, ct_value string) {
-	if g.pref.is_livemain || g.pref.is_liveshared || g.is_cc_msvc {
+	if g.pref.is_livemain || g.pref.is_liveshared {
 		// Note: tcc has problems reloading .so files with consts in them, when the consts are then used inside the reloaded
 		// live functions. As a workaround, just use simple #define macros in this case.
 		//
 		// If you change it, please also test with `v -live run examples/hot_reload/graph.v` which uses `math.pi` .
 		g.global_const_defs[util.no_dots(field_name)] = GlobalConstDef{
 			mod: mod
-			def: '#define ${cname} ${ct_value} // precomputed3, -live mode, --cc msvc'
+			def: '#define ${cname} ${ct_value} // precomputed3, -live mode'
 			order: -1
 		}
 		return
