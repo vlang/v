@@ -533,9 +533,9 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		interface_name = p.prepend_mod(modless_name)
 	}
 	generic_types, _ := p.parse_generic_types()
-	// println('interface decl $interface_name')
+	mut pre_comments := p.eat_comments()
 	p.check(.lcbr)
-	pre_comments := p.eat_comments()
+	pre_comments << p.eat_comments()
 	if modless_name in p.imported_symbols {
 		p.error_with_pos('cannot register interface `${interface_name}`, this type was already imported',
 			name_pos)
