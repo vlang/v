@@ -125,6 +125,7 @@ pub enum StrIntpType {
 	si_g64
 	si_s
 	si_p
+	si_r
 	si_vp
 }
 
@@ -148,6 +149,7 @@ pub fn type_to_str(x StrIntpType) string {
 		.si_e64 { return 'f64' } // e64 format use f64 data
 		.si_s { return 's' }
 		.si_p { return 'p' }
+		.si_r { return 'r' } // repeat string
 		.si_vp { return 'vp' }
 	}
 }
@@ -172,6 +174,7 @@ pub fn data_str(x StrIntpType) string {
 		.si_e64 { return 'd_f64' } // e64 format use f64 data
 		.si_s { return 'd_s' }
 		.si_p { return 'd_p' }
+		.si_r { return 'd_r' } // repeat string
 		.si_vp { return 'd_vp' }
 	}
 }
