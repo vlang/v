@@ -76,6 +76,8 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 		}
 		*/
 		fmt_type = .si_s
+	} else if fspec in [`r`, `R`] {
+		fmt_type = .si_r
 	} else if typ.is_float() {
 		if fspec in [`g`, `G`] {
 			match typ {
@@ -263,7 +265,8 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	g.write(' str_intp(${node.vals.len}, ')
 	g.write('_MOV((StrIntpData[]){')
 	for i, val in node.vals {
-		escaped_val := util.smart_quote(val, false)
+		mut escaped_val := util.smart_quote(val, false)
+		escaped_val = escaped_val.replace('\0', '\\0')
 
 		if escaped_val.len > 0 {
 			g.write('{_SLIT("${escaped_val}"), ')

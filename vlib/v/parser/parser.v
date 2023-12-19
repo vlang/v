@@ -4059,8 +4059,9 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		typ_pos = p.tok.pos()
 		enum_type = p.parse_type()
 	}
+	mut enum_decl_comments := p.eat_comments()
 	p.check(.lcbr)
-	enum_decl_comments := p.eat_comments()
+	enum_decl_comments << p.eat_comments()
 	senum_type := p.table.get_type_name(enum_type)
 	mut vals := []string{}
 	// mut default_exprs := []ast.Expr{}

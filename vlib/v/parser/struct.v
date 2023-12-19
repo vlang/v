@@ -52,6 +52,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		p.table.reset_parsing_type()
 	}
 	generic_types, _ := p.parse_generic_types()
+	mut pre_comments := p.eat_comments()
 	no_body := p.tok.kind != .lcbr
 	if language == .v && no_body {
 		p.error('`${p.tok.lit}` lacks body')
@@ -93,11 +94,10 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	mut is_field_pub := false
 	mut is_field_global := false
 	mut last_line := p.prev_tok.pos().line_nr + 1
-	mut pre_comments := []ast.Comment{}
 	mut end_comments := []ast.Comment{}
 	if !no_body {
 		p.check(.lcbr)
-		pre_comments = p.eat_comments()
+		pre_comments << p.eat_comments()
 		mut i := 0
 		for p.tok.kind != .rcbr {
 			mut comments := []ast.Comment{}
@@ -533,9 +533,9 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		interface_name = p.prepend_mod(modless_name)
 	}
 	generic_types, _ := p.parse_generic_types()
-	// println('interface decl $interface_name')
+	mut pre_comments := p.eat_comments()
 	p.check(.lcbr)
-	pre_comments := p.eat_comments()
+	pre_comments << p.eat_comments()
 	if modless_name in p.imported_symbols {
 		p.error_with_pos('cannot register interface `${interface_name}`, this type was already imported',
 			name_pos)

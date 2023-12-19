@@ -775,7 +775,15 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					} else {
 						if right_type_unwrapped != ast.void_type {
 							if !var_option || (var_option && right_type_unwrapped != ast.none_type) {
-								c.error('cannot assign to `${left}`: ${err.msg()}', right.pos())
+								if left_sym.kind == .array_fixed && right_sym.kind == .array
+									&& right is ast.ArrayInit {
+									c.add_error_detail('try `${left} = ${right}!` instead (with `!` after the array literal)')
+									c.error('cannot assign to `${left}`: ${err.msg()}',
+										right.pos())
+								} else {
+									c.error('cannot assign to `${left}`: ${err.msg()}',
+										right.pos())
+								}
 							}
 						}
 					}

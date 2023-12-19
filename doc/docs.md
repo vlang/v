@@ -4173,7 +4173,7 @@ Channels can be buffered or unbuffered and it is possible to `select` from multi
 
 #### Syntax and Usage
 
-Channels have the type `chan objtype`. An optional buffer length can specified as the `cap` field
+Channels have the type `chan objtype`. An optional buffer length can be specified as the `cap` field
 in the declaration:
 
 ```v

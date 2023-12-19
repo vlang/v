@@ -56,11 +56,15 @@ fn is_outdated(path string) bool {
 		vpm_log(@FILE_LINE, @FN, 'cmd: ${cmd}')
 		res := os.execute(cmd)
 		vpm_log(@FILE_LINE, @FN, 'output: ${res.output}')
+		if res.exit_code != 0 {
+			return false
+		}
 		if vcs == .hg {
-			return res.exit_code == 0
+			// HG uses only one outdated step. If it has not failed, the module is outdated.
+			return true
 		}
 		outputs << res.output
 	}
 	// Compare the current and latest origin commit sha.
-	return vcs == .git && outputs[1] != outputs[2]
+	return outputs[1] != outputs[2]
 }
