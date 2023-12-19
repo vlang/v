@@ -322,7 +322,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			ast.CallExpr {
 				is_call = true
 				if val.comptime_ret_val {
-					return_type = g.comptime.comptime_fields_cur_type
+					return_type = g.comptime.comptime_for_field_type
 					styp = g.typ(return_type)
 				} else {
 					return_type = val.return_type
@@ -656,7 +656,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				}
 			}
 			if !cloned {
-				if !g.comptime.inside_comptime_for_field
+				if g.comptime.comptime_for_field_var == ''
 					&& ((var_type.has_flag(.option) && !val_type.has_flag(.option))
 					|| (var_type.has_flag(.result) && !val_type.has_flag(.result))) {
 					old_inside_opt_or_res := g.inside_opt_or_res

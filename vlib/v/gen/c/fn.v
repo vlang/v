@@ -1053,7 +1053,7 @@ fn (g Gen) get_generic_array_element_type(array ast.Array) ast.Type {
 fn (mut g Gen) resolve_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concrete_types []ast.Type) map[int]ast.Type {
 	mut comptime_args := map[int]ast.Type{}
 	has_dynamic_vars := (g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0)
-		|| g.comptime.inside_comptime_for_field
+		|| g.comptime.comptime_for_field_var != ''
 	if has_dynamic_vars {
 		offset := if func.is_method { 1 } else { 0 }
 		mut k := -1
@@ -1152,14 +1152,14 @@ fn (mut g Gen) resolve_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concre
 				}
 			} else if mut call_arg.expr is ast.PrefixExpr {
 				if call_arg.expr.right is ast.ComptimeSelector {
-					comptime_args[k] = g.comptime.comptime_fields_cur_type
+					comptime_args[k] = g.comptime.comptime_for_field_type
 					comptime_args[k] = comptime_args[k].deref()
 					if param_typ.nr_muls() > 0 && comptime_args[k].nr_muls() > 0 {
 						comptime_args[k] = comptime_args[k].set_nr_muls(0)
 					}
 				}
 			} else if mut call_arg.expr is ast.ComptimeSelector {
-				comptime_args[k] = g.comptime.comptime_fields_cur_type
+				comptime_args[k] = g.comptime.comptime_for_field_type
 				arg_sym := g.table.final_sym(call_arg.typ)
 				param_typ_sym := g.table.sym(param_typ)
 				if arg_sym.kind == .array && param_typ.has_flag(.generic)

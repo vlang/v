@@ -553,8 +553,8 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 						} else if cond.right is ast.IntegerLiteral {
 							if g.comptime.is_comptime_selector_field_name(cond.left, 'indirections') {
 								is_true := match cond.op {
-									.eq { g.comptime.comptime_fields_cur_type.nr_muls() == cond.right.val.i64() }
-									.ne { g.comptime.comptime_fields_cur_type.nr_muls() != cond.right.val.i64() }
+									.eq { g.comptime.comptime_for_field_type.nr_muls() == cond.right.val.i64() }
+									.ne { g.comptime.comptime_for_field_type.nr_muls() != cond.right.val.i64() }
 									else { false }
 								}
 								if is_true {
@@ -616,10 +616,10 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 					if cond.left is ast.SelectorExpr && cond.right is ast.IntegerLiteral
 						&& g.comptime.is_comptime_selector_field_name(cond.left, 'indirections') {
 						is_true := match cond.op {
-							.gt { g.comptime.comptime_fields_cur_type.nr_muls() > cond.right.val.i64() }
-							.lt { g.comptime.comptime_fields_cur_type.nr_muls() < cond.right.val.i64() }
-							.ge { g.comptime.comptime_fields_cur_type.nr_muls() >= cond.right.val.i64() }
-							.le { g.comptime.comptime_fields_cur_type.nr_muls() <= cond.right.val.i64() }
+							.gt { g.comptime.comptime_for_field_type.nr_muls() > cond.right.val.i64() }
+							.lt { g.comptime.comptime_for_field_type.nr_muls() < cond.right.val.i64() }
+							.ge { g.comptime.comptime_for_field_type.nr_muls() >= cond.right.val.i64() }
+							.le { g.comptime.comptime_for_field_type.nr_muls() <= cond.right.val.i64() }
 							else { false }
 						}
 						if is_true {
@@ -647,7 +647,7 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 			return true, false
 		}
 		ast.SelectorExpr {
-			if g.comptime.inside_comptime_for_field && cond.expr is ast.Ident
+			if g.comptime.comptime_for_field_var != '' && cond.expr is ast.Ident
 				&& cond.expr.name == g.comptime.comptime_for_field_var
 				&& cond.field_name in ['is_mut', 'is_pub', 'is_shared', 'is_atomic', 'is_option', 'is_array', 'is_map', 'is_chan', 'is_struct', 'is_alias', 'is_enum'] {
 				ret_bool := g.comptime.get_comptime_selector_bool_field(cond.field_name)
@@ -674,9 +674,8 @@ fn (mut g Gen) push_new_comptime_info() {
 		type_map: g.comptime.type_map.clone()
 		inside_comptime_for: g.comptime.inside_comptime_for
 		comptime_for_variant_var: g.comptime.comptime_for_variant_var
-		inside_comptime_for_field: g.comptime.inside_comptime_for_field
 		comptime_for_field_var: g.comptime.comptime_for_field_var
-		comptime_fields_cur_type: g.comptime.comptime_fields_cur_type
+		comptime_for_field_type: g.comptime.comptime_for_field_type
 		comptime_for_field_value: g.comptime.comptime_for_field_value
 		comptime_for_enum_var: g.comptime.comptime_for_enum_var
 		comptime_for_method_var: g.comptime.comptime_for_method_var
@@ -693,9 +692,8 @@ fn (mut g Gen) pop_comptime_info() {
 	g.comptime.type_map = old.type_map.clone()
 	g.comptime.inside_comptime_for = old.inside_comptime_for
 	g.comptime.comptime_for_variant_var = old.comptime_for_variant_var
-	g.comptime.inside_comptime_for_field = old.inside_comptime_for_field
 	g.comptime.comptime_for_field_var = old.comptime_for_field_var
-	g.comptime.comptime_fields_cur_type = old.comptime_fields_cur_type
+	g.comptime.comptime_for_field_type = old.comptime_for_field_type
 	g.comptime.comptime_for_field_value = old.comptime_for_field_value
 	g.comptime.comptime_for_enum_var = old.comptime_for_enum_var
 	g.comptime.comptime_for_method_var = old.comptime_for_method_var
@@ -822,10 +820,10 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			}
 			g.push_new_comptime_info()
 			for field in fields {
-				g.comptime.inside_comptime_for_field = true
+				g.comptime.inside_comptime_for = true
 				g.comptime.comptime_for_field_var = node.val_var
 				g.comptime.comptime_for_field_value = field
-				g.comptime.comptime_fields_cur_type = field.typ
+				g.comptime.comptime_for_field_type = field.typ
 				g.writeln('/* field ${i} */ {')
 				g.writeln('\t${node.val_var}.name = _SLIT("${field.name}");')
 				if field.attrs.len == 0 {
@@ -917,7 +915,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			if sym.info.variants.len > 0 {
 				g.writeln('\tVariantData ${node.val_var} = {0};')
 			}
-			g.comptime.inside_comptime_for_field = true
+			g.comptime.inside_comptime_for = true
 			g.push_new_comptime_info()
 			for variant in sym.info.variants {
 				g.comptime.comptime_for_field_var = node.val_var

@@ -237,7 +237,6 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			}
 			for field in fields {
 				c.push_new_comptime_info()
-				c.comptime.inside_comptime_for_field = true
 				c.comptime.inside_comptime_for = true
 				if c.field_data_type == 0 {
 					c.field_data_type = ast.Type(c.table.find_type_idx('FieldData'))
@@ -246,7 +245,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 				c.comptime.comptime_for_field_var = node.val_var
 				c.comptime.type_map[node.val_var] = c.field_data_type
 				c.comptime.type_map['${node.val_var}.typ'] = node.typ
-				c.comptime.comptime_fields_cur_type = field.typ
+				c.comptime.comptime_for_field_type = field.typ
 				c.stmts(mut node.stmts)
 
 				unwrapped_expr_type := c.unwrap_generic(field.typ)
@@ -967,9 +966,8 @@ fn (mut c Checker) push_new_comptime_info() {
 		type_map: c.comptime.type_map.clone()
 		inside_comptime_for: c.comptime.inside_comptime_for
 		comptime_for_variant_var: c.comptime.comptime_for_variant_var
-		inside_comptime_for_field: c.comptime.inside_comptime_for_field
 		comptime_for_field_var: c.comptime.comptime_for_field_var
-		comptime_fields_cur_type: c.comptime.comptime_fields_cur_type
+		comptime_for_field_type: c.comptime.comptime_for_field_type
 		comptime_for_field_value: c.comptime.comptime_for_field_value
 		comptime_for_enum_var: c.comptime.comptime_for_enum_var
 		comptime_for_method_var: c.comptime.comptime_for_method_var
@@ -986,9 +984,8 @@ fn (mut c Checker) pop_comptime_info() {
 	c.comptime.type_map = old.type_map.clone()
 	c.comptime.inside_comptime_for = old.inside_comptime_for
 	c.comptime.comptime_for_variant_var = old.comptime_for_variant_var
-	c.comptime.inside_comptime_for_field = old.inside_comptime_for_field
 	c.comptime.comptime_for_field_var = old.comptime_for_field_var
-	c.comptime.comptime_fields_cur_type = old.comptime_fields_cur_type
+	c.comptime.comptime_for_field_type = old.comptime_for_field_type
 	c.comptime.comptime_for_field_value = old.comptime_for_field_value
 	c.comptime.comptime_for_enum_var = old.comptime_for_enum_var
 	c.comptime.comptime_for_method_var = old.comptime_for_method_var

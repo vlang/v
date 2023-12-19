@@ -2167,7 +2167,7 @@ fn (mut c Checker) branch_stmt(node ast.BranchStmt) {
 		c.error('`${node.kind.str()}` is not allowed in defer statements', node.pos)
 	}
 	if c.in_for_count == 0 {
-		if c.comptime.inside_comptime_for_field {
+		if c.comptime.inside_comptime_for {
 			c.error('${node.kind.str()} is not allowed within a compile-time loop', node.pos)
 		} else {
 			c.error('${node.kind.str()} statement not within a loop', node.pos)

@@ -146,7 +146,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							c.comptime.type_map[comptime_field_name] = got_type
 							is_comptime_type_is_expr = true
 							if comptime_field_name == c.comptime.comptime_for_field_var {
-								left_type := c.unwrap_generic(c.comptime.comptime_fields_cur_type)
+								left_type := c.unwrap_generic(c.comptime.comptime_for_field_type)
 								if left.field_name == 'typ' {
 									skip_state = c.check_compatible_types(left_type, right as ast.TypeNode)
 								} else if left.field_name == 'unaliased_typ' {
@@ -199,42 +199,42 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							if left.field_name == 'indirections' {
 								skip_state = match branch.cond.op {
 									.gt {
-										if c.comptime.comptime_fields_cur_type.nr_muls() > right.val.i64() {
+										if c.comptime.comptime_for_field_type.nr_muls() > right.val.i64() {
 											ComptimeBranchSkipState.eval
 										} else {
 											ComptimeBranchSkipState.skip
 										}
 									}
 									.lt {
-										if c.comptime.comptime_fields_cur_type.nr_muls() < right.val.i64() {
+										if c.comptime.comptime_for_field_type.nr_muls() < right.val.i64() {
 											ComptimeBranchSkipState.eval
 										} else {
 											ComptimeBranchSkipState.skip
 										}
 									}
 									.ge {
-										if c.comptime.comptime_fields_cur_type.nr_muls() >= right.val.i64() {
+										if c.comptime.comptime_for_field_type.nr_muls() >= right.val.i64() {
 											ComptimeBranchSkipState.eval
 										} else {
 											ComptimeBranchSkipState.skip
 										}
 									}
 									.le {
-										if c.comptime.comptime_fields_cur_type.nr_muls() <= right.val.i64() {
+										if c.comptime.comptime_for_field_type.nr_muls() <= right.val.i64() {
 											ComptimeBranchSkipState.eval
 										} else {
 											ComptimeBranchSkipState.skip
 										}
 									}
 									.ne {
-										if c.comptime.comptime_fields_cur_type.nr_muls() != right.val.i64() {
+										if c.comptime.comptime_for_field_type.nr_muls() != right.val.i64() {
 											ComptimeBranchSkipState.eval
 										} else {
 											ComptimeBranchSkipState.skip
 										}
 									}
 									.eq {
-										if c.comptime.comptime_fields_cur_type.nr_muls() == right.val.i64() {
+										if c.comptime.comptime_for_field_type.nr_muls() == right.val.i64() {
 											ComptimeBranchSkipState.eval
 										} else {
 											ComptimeBranchSkipState.skip
@@ -346,7 +346,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				if comptime_field_name == c.comptime.comptime_for_method_var {
 					c.comptime.type_map[comptime_field_name] = c.comptime.comptime_for_method_ret_type
 				} else {
-					c.comptime.type_map[comptime_field_name] = c.comptime.comptime_fields_cur_type
+					c.comptime.type_map[comptime_field_name] = c.comptime.comptime_for_field_type
 				}
 			}
 			c.skip_flags = cur_skip_flags

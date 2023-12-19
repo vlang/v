@@ -59,7 +59,7 @@ pub fn (mut ct ComptimeInfo) get_comptime_var_type(node ast.Expr) ast.Type {
 			}
 			.field_var {
 				// field var from $for loop
-				ct.comptime_fields_cur_type
+				ct.comptime_for_field_type
 			}
 			else {
 				ast.void_type
@@ -79,7 +79,7 @@ pub fn (mut ct ComptimeInfo) get_comptime_var_type(node ast.Expr) ast.Type {
 				}
 				else {
 					// field_var.typ from $for field
-					return ct.comptime_fields_cur_type
+					return ct.comptime_for_field_type
 				}
 			}
 		}
@@ -110,7 +110,7 @@ pub fn (mut ct ComptimeInfo) get_comptime_selector_var_type(node ast.ComptimeSel
 pub fn (mut ct ComptimeInfo) get_comptime_selector_type(node ast.ComptimeSelector, default_type ast.Type) ast.Type {
 	if node.field_expr is ast.SelectorExpr && ct.check_comptime_is_field_selector(node.field_expr)
 		&& node.field_expr.field_name == 'name' {
-		return ct.resolver.unwrap_generic(ct.comptime_fields_cur_type)
+		return ct.resolver.unwrap_generic(ct.comptime_for_field_type)
 	}
 	return default_type
 }
@@ -118,7 +118,7 @@ pub fn (mut ct ComptimeInfo) get_comptime_selector_type(node ast.ComptimeSelecto
 // is_comptime_selector_field_name checks if the SelectorExpr is related to $for variable accessing specific field name provided by `field_name`
 @[inline]
 pub fn (mut ct ComptimeInfo) is_comptime_selector_field_name(node ast.SelectorExpr, field_name string) bool {
-	return ct.inside_comptime_for_field && node.expr is ast.Ident
+	return ct.comptime_for_field_var != '' && node.expr is ast.Ident
 		&& node.expr.name == ct.comptime_for_field_var && node.field_name == field_name
 }
 
@@ -136,7 +136,7 @@ pub fn (mut ct ComptimeInfo) is_comptime_selector_type(node ast.SelectorExpr) bo
 // check_comptime_is_field_selector checks if the SelectorExpr is related to $for variable
 @[inline]
 pub fn (mut ct ComptimeInfo) check_comptime_is_field_selector(node ast.SelectorExpr) bool {
-	if ct.inside_comptime_for_field && node.expr is ast.Ident {
+	if ct.comptime_for_field_var != '' && node.expr is ast.Ident {
 		return node.expr.name == ct.comptime_for_field_var
 	}
 	return false
@@ -155,8 +155,8 @@ pub fn (mut ct ComptimeInfo) check_comptime_is_field_selector_bool(node ast.Sele
 // get_comptime_selector_bool_field evaluates the bool value for field.is_* fields
 pub fn (mut ct ComptimeInfo) get_comptime_selector_bool_field(field_name string) bool {
 	field := ct.comptime_for_field_value
-	field_typ := ct.comptime_fields_cur_type
-	field_sym := ct.table.sym(ct.resolver.unwrap_generic(ct.comptime_fields_cur_type))
+	field_typ := ct.comptime_for_field_type
+	field_sym := ct.table.sym(ct.resolver.unwrap_generic(ct.comptime_for_field_type))
 
 	match field_name {
 		'is_pub' { return field.is_pub }
@@ -272,10 +272,9 @@ pub mut:
 	// .variants
 	comptime_for_variant_var string
 	// .fields
-	inside_comptime_for_field bool
-	comptime_for_field_var    string
-	comptime_fields_cur_type  ast.Type // current field type
-	comptime_for_field_value  ast.StructField
+	comptime_for_field_var   string
+	comptime_for_field_type  ast.Type
+	comptime_for_field_value ast.StructField
 	// .values
 	comptime_for_enum_var string
 	// .attributes

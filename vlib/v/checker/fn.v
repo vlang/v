@@ -1199,7 +1199,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			arg_typ = c.expr(mut call_arg.expr)
 		}
 		node.args[i].typ = arg_typ
-		if c.comptime.inside_comptime_for_field {
+		if c.comptime.comptime_for_field_var != '' {
 			if mut call_arg.expr is ast.Ident {
 				if mut call_arg.expr.obj is ast.Var {
 					node.args[i].typ = call_arg.expr.obj.typ
@@ -1505,7 +1505,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 fn (mut c Checker) resolve_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_types []ast.Type) map[int]ast.Type {
 	mut comptime_args := map[int]ast.Type{}
 	has_dynamic_vars := (c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0)
-		|| c.comptime.inside_comptime_for_field
+		|| c.comptime.comptime_for_field_var != ''
 	if has_dynamic_vars {
 		offset := if func.is_method { 1 } else { 0 }
 		mut k := -1
