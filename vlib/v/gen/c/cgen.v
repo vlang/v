@@ -685,7 +685,10 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		has_reflection: 'v.reflection' in global_g.table.modules
 		reflection_strings: global_g.reflection_strings
 	}
-	g.push_new_comptime_info()
+	g.comptime = comptime.ComptimeInfo{
+		resolver: g
+		table: global_g.table
+	}
 	g.gen_file()
 	return g
 }

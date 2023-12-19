@@ -149,7 +149,10 @@ pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
 		match_exhaustive_cutoff_limit: pref_.checker_match_exhaustive_cutoff_limit
 		v_current_commit_hash: version.githash(pref_.building_v)
 	}
-	checker.push_new_comptime_info()
+	checker.comptime = &comptime.ComptimeInfo{
+		resolver: checker
+		table: table
+	}
 	return checker
 }
 

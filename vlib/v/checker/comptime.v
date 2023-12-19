@@ -959,12 +959,11 @@ fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) Comptime
 	return .unknown
 }
 
-// push_new_comptime_info pushes a new comptime information frame
+// push_new_comptime_info saves the current comptime information
 fn (mut c Checker) push_new_comptime_info() {
-	// copy current state to the new comptime information frame
 	c.comptime_info_stack << comptime.ComptimeInfo{
-		resolver: c
-		table: c.table
+		resolver: c.comptime.resolver
+		table: c.comptime.table
 		type_map: c.comptime.type_map.clone()
 		inside_comptime_for: c.comptime.inside_comptime_for
 		comptime_for_variant_var: c.comptime.comptime_for_variant_var
@@ -977,14 +976,22 @@ fn (mut c Checker) push_new_comptime_info() {
 		comptime_for_method: c.comptime.comptime_for_method
 		comptime_for_method_ret_type: c.comptime.comptime_for_method_ret_type
 	}
-
-	// set the pointer to current comptime information frame
-	c.comptime = c.comptime_info_stack[c.comptime_info_stack.len - 1]
 }
 
 // pop_comptime_info pops the current comptime information frame
 fn (mut c Checker) pop_comptime_info() {
-	c.comptime_info_stack.pop()
-
-	c.comptime = c.comptime_info_stack[c.comptime_info_stack.len - 1]
+	old := c.comptime_info_stack.pop()
+	c.comptime.resolver = old.resolver
+	c.comptime.table = old.table
+	c.comptime.type_map = old.type_map.clone()
+	c.comptime.inside_comptime_for = old.inside_comptime_for
+	c.comptime.comptime_for_variant_var = old.comptime_for_variant_var
+	c.comptime.inside_comptime_for_field = old.inside_comptime_for_field
+	c.comptime.comptime_for_field_var = old.comptime_for_field_var
+	c.comptime.comptime_fields_cur_type = old.comptime_fields_cur_type
+	c.comptime.comptime_for_field_value = old.comptime_for_field_value
+	c.comptime.comptime_for_enum_var = old.comptime_for_enum_var
+	c.comptime.comptime_for_method_var = old.comptime_for_method_var
+	c.comptime.comptime_for_method = old.comptime_for_method
+	c.comptime.comptime_for_method_ret_type = old.comptime_for_method_ret_type
 }

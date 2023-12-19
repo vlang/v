@@ -252,12 +252,11 @@ fn (mut ct ComptimeInfo) comptime_get_kind_var(var ast.Ident) ?ast.ComptimeForKi
 }
 
 pub struct ComptimeInfo {
-mut:
+pub mut:
 	// variable type resolver
 	resolver &IResolverType = unsafe { nil }
 	// symbol table resolver
 	table &ast.Table = unsafe { nil }
-pub mut:
 	// $for
 	inside_comptime_for bool
 	type_map            map[string]ast.Type
