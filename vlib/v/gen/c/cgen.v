@@ -5500,15 +5500,23 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, field_name string
 		}
 		string {
 			escaped_val := util.smart_quote(ct_value, false)
-			// g.const_decl_write_precomputed(line_nr, styp, cname, '_SLIT("$escaped_val")')
-			// TODO: ^ the above for strings, cause:
-			// `error C2099: initializer is not a constant` errors in MSVC,
-			// so fall back to the delayed initialisation scheme:
-			g.global_const_defs[util.no_dots(field_name)] = GlobalConstDef{
-				mod: mod
-				def: '${styp} ${cname}; // str inited later'
-				init: '\t${cname} = _SLIT("${escaped_val}");'
-				order: -1
+
+			$if windows {
+				if g.is_cc_msvc {
+					// g.const_decl_write_precomputed(mod, styp, cname, field_name, '_SLIT("${escaped_val}")')
+					g.global_const_defs[util.no_dots(field_name)] = GlobalConstDef{
+						mod: mod
+						def: '#define ${cname} ${ct_value} // precomputed4, --cc msvc'
+						order: -1
+					}
+				}
+			} $else {
+				g.global_const_defs[util.no_dots(field_name)] = GlobalConstDef{
+					mod: mod
+					def: '${styp} ${cname}; // str inited later'
+					init: '\t${cname} = _SLIT("${escaped_val}");'
+					order: -1
+				}
 			}
 			if g.is_autofree {
 				g.cleanups[mod].writeln('\tstring_free(&${cname});')
