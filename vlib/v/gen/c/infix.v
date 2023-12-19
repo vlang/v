@@ -97,12 +97,12 @@ fn (mut g Gen) infix_expr_arrow_op(node ast.InfixExpr) {
 // infix_expr_eq_op generates code for `==` and `!=`
 fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 	left_type := if node.left is ast.ComptimeSelector {
-		g.get_comptime_var_type(node.left)
+		g.comptime.get_comptime_var_type(node.left)
 	} else {
 		node.left_type
 	}
 	right_type := if node.right is ast.ComptimeSelector {
-		g.get_comptime_var_type(node.right)
+		g.comptime.get_comptime_var_type(node.right)
 	} else {
 		node.right_type
 	}
