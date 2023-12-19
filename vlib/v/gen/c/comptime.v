@@ -719,40 +719,31 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 
 // push_new_comptime_info pushes a new comptime information frame
 fn (mut g Gen) push_new_comptime_info() {
-	current := g.comptime
-
-	if current == unsafe { nil } {
-		g.comptime_info_stack << comptime.ComptimeInfo{
-			resolver: unsafe { g }
-			table: g.table
-		}
-	} else {
-		// copy current state to the new comptime information frame
-		g.comptime_info_stack << comptime.ComptimeInfo{
-			resolver: unsafe { g }
-			table: g.table
-			type_map: current.type_map.clone()
-			inside_comptime_for: current.inside_comptime_for
-			comptime_for_variant_var: current.comptime_for_variant_var
-			inside_comptime_for_field: current.inside_comptime_for_field
-			comptime_for_field_var: current.comptime_for_field_var
-			comptime_fields_cur_type: current.comptime_fields_cur_type
-			comptime_for_field_value: current.comptime_for_field_value
-			comptime_for_enum_var: current.comptime_for_enum_var
-			comptime_for_method_var: current.comptime_for_method_var
-			comptime_for_method: current.comptime_for_method
-			comptime_for_method_ret_type: current.comptime_for_method_ret_type
-		}
+	// copy current state to the new comptime information frame
+	g.comptime_info_stack << comptime.ComptimeInfo{
+		resolver: unsafe { g }
+		table: g.table
+		type_map: g.comptime.type_map.clone()
+		inside_comptime_for: g.comptime.inside_comptime_for
+		comptime_for_variant_var: g.comptime.comptime_for_variant_var
+		inside_comptime_for_field: g.comptime.inside_comptime_for_field
+		comptime_for_field_var: g.comptime.comptime_for_field_var
+		comptime_fields_cur_type: g.comptime.comptime_fields_cur_type
+		comptime_for_field_value: g.comptime.comptime_for_field_value
+		comptime_for_enum_var: g.comptime.comptime_for_enum_var
+		comptime_for_method_var: g.comptime.comptime_for_method_var
+		comptime_for_method: g.comptime.comptime_for_method
+		comptime_for_method_ret_type: g.comptime.comptime_for_method_ret_type
 	}
 	// set the pointer to current comptime information frame
-	g.comptime = &g.comptime_info_stack[g.comptime_info_stack.len - 1]
+	g.comptime = g.comptime_info_stack[g.comptime_info_stack.len - 1]
 }
 
 // pop_comptime_info pops the current comptime information frame
 fn (mut g Gen) pop_comptime_info() {
 	g.comptime_info_stack.pop()
 
-	g.comptime = &g.comptime_info_stack[g.comptime_info_stack.len - 1]
+	g.comptime = g.comptime_info_stack[g.comptime_info_stack.len - 1]
 }
 
 // is_comptime_selector_field_name checks if the SelectorExpr is related to $for variable accessing specific field name provided by `field_name`

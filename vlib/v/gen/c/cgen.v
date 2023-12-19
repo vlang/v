@@ -204,7 +204,7 @@ mut:
 	// nr_vars_to_free       int
 	// doing_autofree_tmp    bool
 	comptime_info_stack              []comptime.ComptimeInfo // stores the values from the above on each $for loop, to make nesting them easier
-	comptime                         &comptime.ComptimeInfo = unsafe { nil }
+	comptime                         comptime.ComptimeInfo
 	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type
 	// used in match multi branch
 	// TypeOne, TypeTwo {}
@@ -685,10 +685,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		has_reflection: 'v.reflection' in global_g.table.modules
 		reflection_strings: global_g.reflection_strings
 	}
-	if global_g.comptime != unsafe { nil } {
-		g.comptime_info_stack = global_g.comptime_info_stack.clone()
-		g.comptime = &g.comptime_info_stack[g.comptime_info_stack.len - 1]
-	}
+	g.push_new_comptime_info()
 	g.gen_file()
 	return g
 }

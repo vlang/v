@@ -109,7 +109,7 @@ mut:
 	vweb_gen_types                   []ast.Type // vweb route checks
 	timers                           &util.Timers = util.get_timers()
 	comptime_info_stack              []comptime.ComptimeInfo // stores the values from the above on each $for loop, to make nesting them easier
-	comptime                         &comptime.ComptimeInfo = unsafe { nil }
+	comptime                         comptime.ComptimeInfo
 	fn_scope                         &ast.Scope = unsafe { nil }
 	main_fn_decl_node                ast.FnDecl
 	match_exhaustive_cutoff_limit    int = 10

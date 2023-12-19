@@ -961,38 +961,30 @@ fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) Comptime
 
 // push_new_comptime_info pushes a new comptime information frame
 fn (mut c Checker) push_new_comptime_info() {
-	current := c.comptime
-
-	if current == unsafe { nil } {
-		c.comptime_info_stack << comptime.ComptimeInfo{
-			resolver: c
-			table: c.table
-		}
-	} else {
-		// copy current state to the new comptime information frame
-		c.comptime_info_stack << comptime.ComptimeInfo{
-			resolver: c
-			table: c.table
-			type_map: current.type_map.clone()
-			inside_comptime_for: current.inside_comptime_for
-			comptime_for_variant_var: current.comptime_for_variant_var
-			inside_comptime_for_field: current.inside_comptime_for_field
-			comptime_for_field_var: current.comptime_for_field_var
-			comptime_fields_cur_type: current.comptime_fields_cur_type
-			comptime_for_field_value: current.comptime_for_field_value
-			comptime_for_enum_var: current.comptime_for_enum_var
-			comptime_for_method_var: current.comptime_for_method_var
-			comptime_for_method: current.comptime_for_method
-			comptime_for_method_ret_type: current.comptime_for_method_ret_type
-		}
+	// copy current state to the new comptime information frame
+	c.comptime_info_stack << comptime.ComptimeInfo{
+		resolver: c
+		table: c.table
+		type_map: c.comptime.type_map.clone()
+		inside_comptime_for: c.comptime.inside_comptime_for
+		comptime_for_variant_var: c.comptime.comptime_for_variant_var
+		inside_comptime_for_field: c.comptime.inside_comptime_for_field
+		comptime_for_field_var: c.comptime.comptime_for_field_var
+		comptime_fields_cur_type: c.comptime.comptime_fields_cur_type
+		comptime_for_field_value: c.comptime.comptime_for_field_value
+		comptime_for_enum_var: c.comptime.comptime_for_enum_var
+		comptime_for_method_var: c.comptime.comptime_for_method_var
+		comptime_for_method: c.comptime.comptime_for_method
+		comptime_for_method_ret_type: c.comptime.comptime_for_method_ret_type
 	}
+
 	// set the pointer to current comptime information frame
-	c.comptime = &c.comptime_info_stack[c.comptime_info_stack.len - 1]
+	c.comptime = c.comptime_info_stack[c.comptime_info_stack.len - 1]
 }
 
 // pop_comptime_info pops the current comptime information frame
 fn (mut c Checker) pop_comptime_info() {
 	c.comptime_info_stack.pop()
 
-	c.comptime = &c.comptime_info_stack[c.comptime_info_stack.len - 1]
+	c.comptime = c.comptime_info_stack[c.comptime_info_stack.len - 1]
 }
