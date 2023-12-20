@@ -1819,12 +1819,11 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 							g.expr(stmt.expr)
 							g.writeln(';')
 						} else {
-							ret_typ := stmt.typ
-							// if g.inside_assign || g.inside_if_option {
-							// 	stmt.typ
-							// } else {
-							// 	g.fn_decl.return_type.clear_flag(.option)
-							// }
+							ret_typ := if g.inside_if_option && !g.inside_return {
+								stmt.typ
+							} else {
+								g.fn_decl.return_type.clear_flag(.option)
+							}
 							styp = g.base_type(ret_typ)
 							g.write('_option_ok(&(${styp}[]) { ')
 							g.expr_with_cast(stmt.expr, stmt.typ, ret_typ)
