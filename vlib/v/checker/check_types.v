@@ -235,7 +235,7 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 		}
 
 		if !expected.has_flag(.option) && got.has_flag(.option) && (arg.expr !is ast.Ident
-			|| (arg.expr is ast.Ident && c.get_ct_type_var(arg.expr) != .field_var)) {
+			|| (arg.expr is ast.Ident && c.comptime.get_ct_type_var(arg.expr) != .field_var)) {
 			got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
 			return error('cannot use `${got_typ_str}` as `${expected_typ_str}`, it must be unwrapped first')
 		}
@@ -919,9 +919,9 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 					func_.name = ''
 					idx := c.table.find_or_register_fn_type(func_, true, false)
 					typ = ast.new_type(idx).derive(arg.typ)
-				} else if c.inside_comptime_for_field && sym.kind in [.struct_, .any]
+				} else if c.comptime.comptime_for_field_var != '' && sym.kind in [.struct_, .any]
 					&& arg.expr is ast.ComptimeSelector {
-					comptime_typ := c.get_comptime_selector_type(arg.expr, ast.void_type)
+					comptime_typ := c.comptime.get_comptime_selector_type(arg.expr, ast.void_type)
 					if comptime_typ != ast.void_type {
 						typ = comptime_typ
 						if func.return_type.has_flag(.generic)

@@ -106,7 +106,7 @@ fn (mut g Gen) expr_with_opt(expr ast.Expr, expr_typ ast.Type, ret_typ ast.Type)
 		}
 		g.expr(expr)
 		if expr is ast.ComptimeSelector {
-			return '${expr.left.str()}.${g.comptime_for_field_value.name}'
+			return '${expr.left.str()}.${g.comptime.comptime_for_field_value.name}'
 		} else {
 			return expr.str()
 		}
@@ -236,7 +236,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			}
 			if mut left.obj is ast.Var {
 				if val is ast.Ident && g.table.is_comptime_var(val) {
-					ctyp := g.unwrap_generic(g.get_comptime_var_type(val))
+					ctyp := g.unwrap_generic(g.comptime.get_comptime_var_type(val))
 					if ctyp != ast.void_type {
 						var_type = ctyp
 						val_type = var_type
@@ -248,20 +248,20 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						g.assign_ct_type = var_type
 					}
 				} else if val is ast.ComptimeSelector {
-					key_str := g.get_comptime_selector_key_type(val)
+					key_str := g.comptime.get_comptime_selector_key_type(val)
 					if key_str != '' {
 						if is_decl {
-							var_type = g.comptime_var_type_map[key_str] or { var_type }
+							var_type = g.comptime.type_map[key_str] or { var_type }
 							val_type = var_type
 							left.obj.typ = var_type
 						} else {
-							val_type = g.comptime_var_type_map[key_str] or { var_type }
+							val_type = g.comptime.type_map[key_str] or { var_type }
 						}
 						g.assign_ct_type = var_type
 					}
 				} else if val is ast.ComptimeCall {
 					key_str := '${val.method_name}.return_type'
-					var_type = g.comptime_var_type_map[key_str] or { var_type }
+					var_type = g.comptime.type_map[key_str] or { var_type }
 					left.obj.typ = var_type
 					g.assign_ct_type = var_type
 				} else if is_decl && val is ast.Ident && val.info is ast.IdentVar {
@@ -272,9 +272,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						left.obj.typ = var_type
 					}
 				} else if val is ast.DumpExpr && val.expr is ast.ComptimeSelector {
-					key_str := g.get_comptime_selector_key_type(val.expr as ast.ComptimeSelector)
+					key_str := g.comptime.get_comptime_selector_key_type(val.expr as ast.ComptimeSelector)
 					if key_str != '' {
-						var_type = g.comptime_var_type_map[key_str] or { var_type }
+						var_type = g.comptime.type_map[key_str] or { var_type }
 						val_type = var_type
 						left.obj.typ = var_type
 					}
@@ -293,21 +293,21 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				is_auto_heap = left.obj.is_auto_heap
 			}
 		} else if mut left is ast.ComptimeSelector {
-			key_str := g.get_comptime_selector_key_type(left)
+			key_str := g.comptime.get_comptime_selector_key_type(left)
 			if key_str != '' {
-				var_type = g.comptime_var_type_map[key_str] or { var_type }
+				var_type = g.comptime.type_map[key_str] or { var_type }
 			}
 			if val is ast.ComptimeSelector {
-				key_str_right := g.get_comptime_selector_key_type(val)
+				key_str_right := g.comptime.get_comptime_selector_key_type(val)
 				if key_str_right != '' {
-					val_type = g.comptime_var_type_map[key_str_right] or { var_type }
+					val_type = g.comptime.type_map[key_str_right] or { var_type }
 				}
 			}
 			g.assign_ct_type = var_type
 		} else if mut left is ast.IndexExpr && val is ast.ComptimeSelector {
-			key_str := g.get_comptime_selector_key_type(val)
+			key_str := g.comptime.get_comptime_selector_key_type(val)
 			if key_str != '' {
-				val_type = g.comptime_var_type_map[key_str] or { var_type }
+				val_type = g.comptime.type_map[key_str] or { var_type }
 			}
 			g.assign_ct_type = val_type
 		}
@@ -322,7 +322,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			ast.CallExpr {
 				is_call = true
 				if val.comptime_ret_val {
-					return_type = g.comptime_for_field_type
+					return_type = g.comptime.comptime_for_field_type
 					styp = g.typ(return_type)
 				} else {
 					return_type = val.return_type
@@ -656,7 +656,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				}
 			}
 			if !cloned {
-				if !g.inside_comptime_for_field
+				if g.comptime.comptime_for_field_var == ''
 					&& ((var_type.has_flag(.option) && !val_type.has_flag(.option))
 					|| (var_type.has_flag(.result) && !val_type.has_flag(.result))) {
 					old_inside_opt_or_res := g.inside_opt_or_res

@@ -59,25 +59,25 @@ struct SearchResult {
 fn (vd VDoc) render_search_index(out Output) {
 	mut js_search_index := strings.new_builder(200)
 	mut js_search_data := strings.new_builder(200)
-	js_search_index.write_string('var searchModuleIndex = [')
-	js_search_data.write_string('var searchModuleData = [')
+	js_search_index.write_string('var searchModuleIndex = [\n')
+	js_search_data.write_string('var searchModuleData = [\n')
 	for i, title in vd.search_module_index {
 		data := vd.search_module_data[i]
-		js_search_index.write_string('"${title}",')
-		js_search_data.write_string('["${data.description}","${data.link}"],')
+		js_search_index.write_string('"${title}",\n')
+		js_search_data.write_string('["${data.description}","${data.link}"],\n')
 	}
-	js_search_index.writeln('];')
-	js_search_index.write_string('var searchIndex = [')
-	js_search_data.writeln('];')
-	js_search_data.write_string('var searchData = [')
+	js_search_index.writeln('];\n')
+	js_search_index.write_string('var searchIndex = [\n')
+	js_search_data.writeln('];\n')
+	js_search_data.write_string('var searchData = [\n')
 	for i, title in vd.search_index {
 		data := vd.search_data[i]
-		js_search_index.write_string('"${title}",')
+		js_search_index.write_string('"${title}",\n')
 		// array instead of object to reduce file size
-		js_search_data.write_string('["${data.badge}","${data.description}","${data.link}","${data.prefix}"],')
+		js_search_data.write_string('["${data.badge}","${data.description}","${data.link}","${data.prefix}"],\n')
 	}
-	js_search_index.writeln('];')
-	js_search_data.writeln('];')
+	js_search_index.writeln('];\n')
+	js_search_data.writeln('];\n')
 	out_file_path := os.join_path(out.path, 'search_index.js')
 	os.write_file(out_file_path, js_search_index.str() + js_search_data.str()) or { panic(err) }
 }
@@ -175,6 +175,7 @@ fn (vd VDoc) write_content(cn &doc.DocNode, d &doc.Doc, mut hw strings.Builder) 
 	src_link := get_src_link(vd.manifest.repo_url, file_path_name, cn.pos.line_nr + 1)
 	if cn.content.len != 0 || cn.name == 'Constants' {
 		hw.write_string(doc_node_html(cn, src_link, false, cfg.include_examples, d.table))
+		hw.write_string('\n')
 	}
 	for child in cn.children {
 		child_file_path_name := child.file_path.replace('${base_dir}/', '')
@@ -182,6 +183,7 @@ fn (vd VDoc) write_content(cn &doc.DocNode, d &doc.Doc, mut hw strings.Builder) 
 			child.pos.line_nr + 1)
 		hw.write_string(doc_node_html(child, child_src_link, false, cfg.include_examples,
 			d.table))
+		hw.write_string('\n')
 	}
 }
 
@@ -230,10 +232,10 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 			submodules := vd.docs.filter(it.head.name.starts_with(submod_prefix + '.'))
 			dropdown := if submodules.len > 0 { vd.assets['arrow_icon'] } else { '' }
 			active_class := if dc.head.name == d.head.name { ' active' } else { '' }
-			modules_toc.write_string('<li class="open${active_class}"><div class="menu-row">${dropdown}<a href="${href_name}">${submod_prefix}</a></div>')
+			modules_toc.write_string('<li class="open${active_class}">\n<div class="menu-row">${dropdown}<a href="${href_name}">${submod_prefix}</a></div>\n')
 			for j, cdoc in submodules {
 				if j == 0 {
-					modules_toc.write_string('<ul>')
+					modules_toc.write_string('<ul>\n')
 				}
 				submod_name := cdoc.head.name.all_after(submod_prefix + '.')
 				sub_selected_classes := if cdoc.head.name == d.head.name {
@@ -241,12 +243,12 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 				} else {
 					''
 				}
-				modules_toc.write_string('<li${sub_selected_classes}><a href="./${cdoc.head.name}.html">${submod_name}</a></li>')
+				modules_toc.write_string('<li${sub_selected_classes}><a href="./${cdoc.head.name}.html">${submod_name}</a></li>\n')
 				if j == submodules.len - 1 {
-					modules_toc.write_string('</ul>')
+					modules_toc.write_string('</ul>\n')
 				}
 			}
-			modules_toc.write_string('</li>')
+			modules_toc.write_string('</li>\n')
 		}
 	}
 	modules_toc_str := modules_toc.str()
@@ -539,18 +541,18 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 		if link.len != 0 {
 			dnw.write_string('<a class="link" rel="noreferrer" target="_blank" href="${link}">${link_svg}</a>')
 		}
-		dnw.write_string('</div>')
+		dnw.write_string('</div>\n')
 	}
 	if deprecated_tags.len > 0 {
-		attributes := deprecated_tags.map('<div class="attribute attribute-deprecated">${no_quotes(it)}</div>').join('')
-		dnw.writeln('<div class="attributes">${attributes}</div>')
+		attributes := deprecated_tags.map('<div class="attribute attribute-deprecated">${no_quotes(it)}</div>\n').join('')
+		dnw.writeln('<div class="attributes">${attributes}</div>\n')
 	}
 	if tags.len > 0 {
 		attributes := tags.map('<div class="attribute">${it}</div>').join('')
 		dnw.writeln('<div class="attributes">${attributes}</div>')
 	}
 	if !head && dn.content.len > 0 {
-		dnw.writeln('<pre class="signature"><code>${highlighted_code}</code></pre>')
+		dnw.writeln('<pre class="signature">\n<code>${highlighted_code}</code></pre>')
 	}
 	// do not mess with md_content further, its formatting is important, just output it 1:1 !
 	dnw.writeln('${md_content}\n')
@@ -561,7 +563,7 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 		dnw.writeln('<section class="doc-node examples"><h4>${example_title}</h4>')
 		for example in examples {
 			hl_example := html_highlight(example, tb)
-			dnw.writeln('<pre><code class="language-v">${hl_example}</code></pre>')
+			dnw.writeln('<pre>\n<code class="language-v">${hl_example}</code></pre>')
 		}
 		dnw.writeln('</section>')
 	}

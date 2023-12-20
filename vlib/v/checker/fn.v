@@ -1199,7 +1199,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			arg_typ = c.expr(mut call_arg.expr)
 		}
 		node.args[i].typ = arg_typ
-		if c.inside_comptime_for_field {
+		if c.comptime.comptime_for_field_var != '' {
 			if mut call_arg.expr is ast.Ident {
 				if mut call_arg.expr.obj is ast.Var {
 					node.args[i].typ = call_arg.expr.obj.typ
@@ -1440,7 +1440,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 						continue
 					}
 					c.check_expected_call_arg(utyp, unwrap_typ, node.language, call_arg) or {
-						if c.comptime_fields_type.len > 0 {
+						if c.comptime.type_map.len > 0 {
 							continue
 						}
 						c.error('${err.msg()} in argument ${i + 1} to `${fn_name}`', call_arg.pos)
@@ -1505,7 +1505,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 fn (mut c Checker) resolve_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_types []ast.Type) map[int]ast.Type {
 	mut comptime_args := map[int]ast.Type{}
 	has_dynamic_vars := (c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0)
-		|| c.inside_comptime_for_field
+		|| c.comptime.comptime_for_field_var != ''
 	if has_dynamic_vars {
 		offset := if func.is_method { 1 } else { 0 }
 		mut k := -1
@@ -1523,7 +1523,7 @@ fn (mut c Checker) resolve_comptime_args(func ast.Fn, node_ ast.CallExpr, concre
 			if call_arg.expr is ast.Ident {
 				if call_arg.expr.obj is ast.Var {
 					if call_arg.expr.obj.ct_type_var !in [.generic_param, .no_comptime] {
-						mut ctyp := c.get_comptime_var_type(call_arg.expr)
+						mut ctyp := c.comptime.get_comptime_var_type(call_arg.expr)
 						if ctyp != ast.void_type {
 							arg_sym := c.table.sym(ctyp)
 							if arg_sym.info is ast.Array && param_typ.has_flag(.generic)
@@ -1533,7 +1533,7 @@ fn (mut c Checker) resolve_comptime_args(func ast.Fn, node_ ast.CallExpr, concre
 							comptime_args[k] = ctyp
 						}
 					} else if call_arg.expr.obj.ct_type_var == .generic_param {
-						mut ctyp := c.get_comptime_var_type(call_arg.expr)
+						mut ctyp := c.comptime.get_comptime_var_type(call_arg.expr)
 						if ctyp != ast.void_type {
 							arg_sym := c.table.final_sym(call_arg.typ)
 							param_typ_sym := c.table.sym(param_typ)
@@ -1592,14 +1592,14 @@ fn (mut c Checker) resolve_comptime_args(func ast.Fn, node_ ast.CallExpr, concre
 				}
 			} else if call_arg.expr is ast.PrefixExpr {
 				if call_arg.expr.right is ast.ComptimeSelector {
-					comptime_args[k] = c.get_comptime_var_type(call_arg.expr.right)
+					comptime_args[k] = c.comptime.get_comptime_var_type(call_arg.expr.right)
 					comptime_args[k] = comptime_args[k].deref()
 					if comptime_args[k].nr_muls() > 0 && param_typ.nr_muls() > 0 {
 						comptime_args[k] = comptime_args[k].set_nr_muls(0)
 					}
 				}
 			} else if call_arg.expr is ast.ComptimeSelector {
-				ct_value := c.get_comptime_var_type(call_arg.expr)
+				ct_value := c.comptime.get_comptime_var_type(call_arg.expr)
 				param_typ_sym := c.table.sym(param_typ)
 				if ct_value != ast.void_type {
 					cparam_type_sym := c.table.sym(c.unwrap_generic(ct_value))
@@ -1610,7 +1610,7 @@ fn (mut c Checker) resolve_comptime_args(func ast.Fn, node_ ast.CallExpr, concre
 					}
 				}
 			} else if call_arg.expr is ast.ComptimeCall {
-				comptime_args[k] = c.get_comptime_var_type(call_arg.expr)
+				comptime_args[k] = c.comptime.get_comptime_var_type(call_arg.expr)
 			}
 		}
 	}
