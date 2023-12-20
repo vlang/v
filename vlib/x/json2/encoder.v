@@ -117,7 +117,11 @@ fn (e &Encoder) encode_any(val Any, level int, mut wr io.Writer) ! {
 			e.encode_newline(level - 1, mut wr)!
 			wr.write([u8(`]`)])!
 		}
-		time.Time {}
+		time.Time {
+			wr.write(json2.quote_bytes)!
+			wr.write(val.format_rfc3339().bytes())!
+			wr.write(json2.quote_bytes)!
+		}
 		Null {
 			wr.write(json2.null_in_bytes)!
 		}
