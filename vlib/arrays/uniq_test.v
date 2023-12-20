@@ -10,6 +10,41 @@ const astrings = ['b', 'b', 'a', 'b', 'z', 'a', 'a', 'd']
 
 const sstrings = ['a', 'a', 'a', 'b', 'b', 'b', 'd', 'z'] // astrings.sorted()
 
+fn test_reverse() {
+
+	print("\n----------------------------------------\n")
+	
+	for v in arrays.reverse(a) {
+		println(v)
+	}
+
+	print("----------------------------------------\n")
+
+	for v in arrays.reverse(s) {
+		println(v)
+	}
+
+	print("----------------------------------------\n")
+
+	for v in arrays.reverse(many_repeats) {
+		println(v)
+	}
+
+	print("----------------------------------------\n")
+	
+	for v in arrays.reverse(astrings) {
+		println(v)
+	}
+
+	print("----------------------------------------\n")
+
+	for v in arrays.reverse(sstrings) {
+		println(v)
+	}
+
+	print("---------------------------------------\n")
+}
+
 fn test_uniq() {
 	assert arrays.uniq([]int{}) == []
 	assert arrays.uniq([1, 1]) == [1]

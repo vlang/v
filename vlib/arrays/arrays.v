@@ -464,6 +464,22 @@ pub fn upper_bound[T](array []T, val T) !T {
 	}
 }
 
+pub fn reverse[T](array []T) []T {
+	
+	mut j := array.len-1
+	mut i := 0
+	mut reversed := []T{len: array.len}
+	
+	for j >= 0 {
+		
+		reversed[j] = array[i]
+		i = i + 1
+		j = j - 1
+	}
+
+	return reversed
+}
+
 // binary search, requires `array` to be sorted, returns index of found item or error.
 // Binary searches on sorted lists can be faster than other array searches because at maximum
 // the algorithm only has to traverse log N elements
