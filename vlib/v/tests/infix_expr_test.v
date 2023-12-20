@@ -81,3 +81,22 @@ fn test_cmp_u64_and_signed() {
 	assert u64(1) <= int(1)
 	assert !(u64(1) <= int(0))
 }
+
+// for issue 20220
+// test left is a receiver.
+struct Struct {
+}
+
+fn (s &Struct) foo() {
+	assert s != unsafe { nil }
+}
+
+fn (mut s Struct) bar() {
+	assert s != unsafe { nil }
+}
+
+fn test_left_is_receiver() {
+	mut s := Struct{}
+	s.foo()
+	s.bar()
+}

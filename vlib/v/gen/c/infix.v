@@ -1053,7 +1053,7 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 		typ_str := g.typ(node.promoted_type)
 		g.write('(${typ_str})(')
 	}
-	if node.left_type.is_ptr() && node.left.is_auto_deref_var() {
+	if node.left_type.is_ptr() && node.left.is_auto_deref_var() && node.right_type != ast.nil_type {
 		g.write('*')
 	} else if !g.inside_interface_deref && node.left is ast.Ident
 		&& g.table.is_interface_var(node.left.obj) {
