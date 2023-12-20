@@ -2353,61 +2353,6 @@ pub fn (mut t Table) check_if_elements_need_unwrap(root_typ Type, typ Type) bool
 	return false
 }
 
-pub fn (t &Table) is_comptime_type(x Type, y ComptimeType) bool {
-	x_kind := t.type_kind(x)
-	match y.kind {
-		.unknown {
-			return false
-		}
-		.map_ {
-			return x_kind == .map
-		}
-		.int {
-			return x_kind in [.i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .usize, .isize,
-				.int_literal]
-		}
-		.float {
-			return x_kind in [.f32, .f64, .float_literal]
-		}
-		.struct_ {
-			return x_kind == .struct_
-		}
-		.iface {
-			return x_kind == .interface_
-		}
-		.array {
-			return x_kind in [.array, .array_fixed]
-		}
-		.array_dynamic {
-			return x_kind == .array
-		}
-		.array_fixed {
-			return x_kind == .array_fixed
-		}
-		.sum_type {
-			return x_kind == .sum_type
-		}
-		.enum_ {
-			return x_kind == .enum_
-		}
-		.alias {
-			return x_kind == .alias
-		}
-		.function {
-			return x_kind == .function
-		}
-		.option {
-			return x.has_flag(.option)
-		}
-	}
-}
-
-@[inline]
-pub fn (t &Table) is_comptime_var(node Expr) bool {
-	return node is Ident && node.info is IdentVar && node.obj is Var
-		&& (node.obj as Var).ct_type_var != .no_comptime
-}
-
 pub fn (t &Table) dependent_names_in_expr(expr Expr) []string {
 	mut names := []string{}
 	match expr {

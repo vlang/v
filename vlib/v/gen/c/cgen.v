@@ -4591,7 +4591,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 	node_typ := g.unwrap_generic(node.typ)
 	mut expr_type := node.expr_type
 	sym := g.table.sym(node_typ)
-	if (node.expr is ast.Ident && g.table.is_comptime_var(node.expr))
+	if (node.expr is ast.Ident && g.comptime.is_comptime_var(node.expr))
 		|| node.expr is ast.ComptimeSelector {
 		expr_type = g.unwrap_generic(g.comptime.get_comptime_var_type(node.expr))
 	}

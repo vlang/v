@@ -213,11 +213,19 @@ fn (mut c Checker) comptime_selector(mut node ast.ComptimeSelector) ast.Type {
 }
 
 fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
-	typ := c.unwrap_generic(node.typ)
+	typ := if node.typ != ast.void_type {
+		c.unwrap_generic(node.typ)
+	} else {
+		node.typ = c.expr(mut node.expr)
+		node.typ
+	}
 	sym := c.table.final_sym(typ)
 	if sym.kind == .placeholder || typ.has_flag(.generic) {
 		c.error('\$for expects a type name to be used here, but ${sym.name} is not a type name',
 			node.typ_pos)
+	} else if sym.kind == .void {
+		c.error('only known compile-time variables can be used', node.typ_pos)
+		return
 	}
 	if node.kind == .fields {
 		if sym.kind in [.struct_, .interface_] {
@@ -261,7 +269,8 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 				}
 				c.pop_comptime_info()
 			}
-		} else if c.table.generic_type_names(node.typ).len == 0 && sym.kind != .placeholder {
+		} else if node.typ != ast.void_type && c.table.generic_type_names(node.typ).len == 0
+			&& sym.kind != .placeholder {
 			c.error('iterating over .fields is supported only for structs and interfaces, and ${sym.name} is neither',
 				node.typ_pos)
 			return
@@ -302,7 +311,18 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 		if c.variant_data_type == 0 {
 			c.variant_data_type = ast.Type(c.table.find_type_idx('VariantData'))
 		}
-		for variant in (sym.info as ast.SumType).variants {
+		mut variants := []ast.Type{}
+		if c.comptime.comptime_for_field_var != '' && typ == c.field_data_type {
+			sumtype_sym := c.table.sym(c.comptime.comptime_for_field_type)
+			if sumtype_sym.kind == .sum_type {
+				variants = (sumtype_sym.info as ast.SumType).variants.clone()
+			}
+		} else if sym.kind != .sum_type {
+			c.error('${sym.name} is not Sum type to use with .variants', node.typ_pos)
+		} else {
+			variants = (sym.info as ast.SumType).variants.clone()
+		}
+		for variant in variants {
 			c.push_new_comptime_info()
 			c.comptime.inside_comptime_for = true
 			c.comptime.comptime_for_variant_var = node.val_var
