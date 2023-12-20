@@ -4,15 +4,22 @@
 // and when the Mixin struct is not included, the eq method results causes the final assertion to fail
 pub interface Iface {}
 
-pub struct Derived {}
-
-pub struct Struct {
-	field ?&Iface
+// test ref
+pub struct Derived {
+	field1 &Iface = unsafe { nil }
 }
 
+// test option and ref
+pub struct Struct {
+	field2 ?&Iface
+}
+
+// test non-ref and embeded
 pub struct Mixin {
 	Derived
 	Struct
+	field3 Iface = Iface(1)
+	field4 ?Iface
 }
 
 fn test_main() {
