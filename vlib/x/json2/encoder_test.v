@@ -1,5 +1,6 @@
 import x.json2 as json
 import strings
+import time
 
 struct StructType[T] {
 mut:
@@ -135,4 +136,10 @@ fn test_encode_array() {
 fn test_encode_simple() {
 	assert json.encode('hello!') == '"hello!"'
 	assert json.encode(1) == '1'
+}
+
+fn test_encode_time() {
+	assert json.encode({
+		'bro': json.Any(time.Time{})
+	}) == '{"bro":"0000-00-00T00:00:00.000Z"}'
 }
