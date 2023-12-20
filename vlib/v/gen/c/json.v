@@ -516,7 +516,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 					if number_is_met {
 						var_num := var_t.replace('__', '.')
 						last_num := last_number_type.replace('__', '.')
-						verror('json: can not decode `${sym.name}` sumtype, too many numeric types (conflict of `${last_num}` and `${var_num}`), you can try to use alias for `${var_num}` or compile v with `json_no_inline_sumtypes` flag')
+						verror_suggest_json_no_inline_sumtypes(sym.name, last_num, var_num)
 					}
 					number_is_met = true
 					last_number_type = var_t
@@ -533,7 +533,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 				if var_t in ['string', 'rune'] {
 					if string_is_met {
 						var_num := var_t.replace('__', '.')
-						verror('json: can not decode `${sym.name}` sumtype, too many string types (conflict of `string` and `rune`), you can try to use alias for `${var_num}` or compile v with `json_no_inline_sumtypes` flag')
+						verror_suggest_json_no_inline_sumtypes(sym.name, 'string', var_num)
 					}
 					string_is_met = true
 					dec.writeln('\t\tif (cJSON_IsString(root)) {')
@@ -575,7 +575,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(utyp ast.Type, sym ast.TypeSymbol, mut enc st
 					if number_is_met {
 						var_num := var_t.replace('__', '.')
 						last_num := last_number_type.replace('__', '.')
-						verror('json: can not decode `${sym.name}` sumtype, too many numeric types (conflict of `${last_num}` and `${var_num}`), you can try to use alias for `${var_num}` or compile v with `json_no_inline_sumtypes` flag')
+						verror_suggest_json_no_inline_sumtypes(sym.name, last_num, var_num)
 					}
 					number_is_met = true
 					last_number_type = var_t
@@ -1090,4 +1090,9 @@ fn (mut g Gen) encode_map(utyp ast.Type, key_type ast.Type, value_type ast.Type)
 		array_free(&${keys_tmp});
 '
 	}
+}
+
+@[noreturn]
+fn verror_suggest_json_no_inline_sumtypes(sumtype_name string, type_name1 string, type_name2 string) {
+	verror('json: can not decode `${sumtype_name}` sumtype, too many numeric types (conflict of `${type_name1}` and `${type_name2}`), you can try to use alias for `${type_name2}` or compile v with `json_no_inline_sumtypes` flag')
 }
