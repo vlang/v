@@ -11,3 +11,6 @@ v/gen/native/tests/
 v/gen/tests/
 v/preludes_js/
 vweb/tests
+x/vweb/tests
+wasm/tests
+v/preludes

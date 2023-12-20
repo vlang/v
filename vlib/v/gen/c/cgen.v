@@ -12,6 +12,7 @@ import v.token
 import v.util
 import v.util.version
 import v.depgraph
+import v.comptime
 import sync.pool
 
 // Note: some of the words in c_reserved, are not reserved in C, but are
@@ -45,6 +46,7 @@ pub struct Gen {
 	pref                &pref.Preferences = unsafe { nil }
 	field_data_type     ast.Type // cache her to avoid map lookups
 	enum_data_type      ast.Type // cache her to avoid map lookups
+	variant_data_type   ast.Type // cache her to avoid map lookups
 	module_built        string
 	timers_should_print bool
 mut:
@@ -138,62 +140,62 @@ mut:
 	inside_curry_call         bool // inside foo()()!, foo()()?, foo()()
 	expected_fixed_arr        bool
 	inside_for_c_stmt         bool
-	inside_comptime_for_field bool
-	inside_cast_in_heap       int // inside cast to interface type in heap (resolve recursive calls)
-	inside_cast               bool
-	inside_const              bool
-	inside_array_item         bool
-	inside_const_opt_or_res   bool
-	inside_lambda             bool
-	inside_cinit              bool
-	inside_interface_deref    bool
-	last_tmp_call_var         []string
-	loop_depth                int
-	ternary_names             map[string]string
-	ternary_level_names       map[string][]string
-	arraymap_set_pos          int      // map or array set value position
-	stmt_path_pos             []int    // positions of each statement start, for inserting C statements before the current statement
-	skip_stmt_pos             bool     // for handling if expressions + autofree (since both prepend C statements)
-	left_is_opt               bool     // left hand side on assignment is an option
-	right_is_opt              bool     // right hand side on assignment is an option
-	assign_ct_type            ast.Type // left hand side resolved comptime type
-	indent                    int
-	empty_line                bool
-	assign_op                 token.Kind // *=, =, etc (for array_set)
-	defer_stmts               []ast.DeferStmt
-	defer_ifdef               string
-	defer_profile_code        string
-	defer_vars                []string
-	str_types                 []StrType       // types that need automatic str() generation
-	generated_str_fns         []StrType       // types that already have a str() function
-	str_fn_names              []string        // remove duplicate function names
-	threaded_fns              shared []string // for generating unique wrapper types and fns for `go xxx()`
-	waiter_fns                shared []string // functions that wait for `go xxx()` to finish
-	needed_equality_fns       []ast.Type
-	generated_eq_fns          []ast.Type
-	array_sort_fn             shared []string
-	array_contains_types      []ast.Type
-	array_index_types         []ast.Type
-	auto_fn_definitions       []string // auto generated functions definition list
-	sumtype_casting_fns       []SumtypeCastingFn
-	anon_fn_definitions       []string     // anon generated functions definition list
-	sumtype_definitions       map[int]bool // `_TypeA_to_sumtype_TypeB()` fns that have been generated
-	json_types                []ast.Type   // to avoid json gen duplicates
-	pcs                       []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
-	hotcode_fn_names          []string
-	hotcode_fpaths            []string
-	embedded_files            []ast.EmbeddedFile
-	sql_i                     int
-	sql_stmt_name             string
-	sql_bind_name             string
-	sql_idents                []string
-	sql_idents_types          []ast.Type
-	sql_left_type             ast.Type
-	sql_table_name            string
-	sql_fkey                  string
-	sql_parent_id             string
-	sql_side                  SqlExprSide // left or right, to distinguish idents in `name == name`
-	strs_to_free0             []string    // strings.Builder
+	// inside_comptime_for_field bool
+	inside_cast_in_heap     int // inside cast to interface type in heap (resolve recursive calls)
+	inside_cast             bool
+	inside_const            bool
+	inside_array_item       bool
+	inside_const_opt_or_res bool
+	inside_lambda           bool
+	inside_cinit            bool
+	inside_interface_deref  bool
+	last_tmp_call_var       []string
+	loop_depth              int
+	ternary_names           map[string]string
+	ternary_level_names     map[string][]string
+	arraymap_set_pos        int      // map or array set value position
+	stmt_path_pos           []int    // positions of each statement start, for inserting C statements before the current statement
+	skip_stmt_pos           bool     // for handling if expressions + autofree (since both prepend C statements)
+	left_is_opt             bool     // left hand side on assignment is an option
+	right_is_opt            bool     // right hand side on assignment is an option
+	assign_ct_type          ast.Type // left hand side resolved comptime type
+	indent                  int
+	empty_line              bool
+	assign_op               token.Kind // *=, =, etc (for array_set)
+	defer_stmts             []ast.DeferStmt
+	defer_ifdef             string
+	defer_profile_code      string
+	defer_vars              []string
+	str_types               []StrType       // types that need automatic str() generation
+	generated_str_fns       []StrType       // types that already have a str() function
+	str_fn_names            []string        // remove duplicate function names
+	threaded_fns            shared []string // for generating unique wrapper types and fns for `go xxx()`
+	waiter_fns              shared []string // functions that wait for `go xxx()` to finish
+	needed_equality_fns     []ast.Type
+	generated_eq_fns        []ast.Type
+	array_sort_fn           shared []string
+	array_contains_types    []ast.Type
+	array_index_types       []ast.Type
+	auto_fn_definitions     []string // auto generated functions definition list
+	sumtype_casting_fns     []SumtypeCastingFn
+	anon_fn_definitions     []string     // anon generated functions definition list
+	sumtype_definitions     map[int]bool // `_TypeA_to_sumtype_TypeB()` fns that have been generated
+	json_types              []ast.Type   // to avoid json gen duplicates
+	pcs                     []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
+	hotcode_fn_names        []string
+	hotcode_fpaths          []string
+	embedded_files          []ast.EmbeddedFile
+	sql_i                   int
+	sql_stmt_name           string
+	sql_bind_name           string
+	sql_idents              []string
+	sql_idents_types        []ast.Type
+	sql_left_type           ast.Type
+	sql_table_name          string
+	sql_fkey                string
+	sql_parent_id           string
+	sql_side                SqlExprSide // left or right, to distinguish idents in `name == name`
+	strs_to_free0           []string    // strings.Builder
 	// strs_to_free          []string // strings.Builder
 	// tmp_arg_vars_to_free  []string
 	// autofree_pregen       map[string]string
@@ -201,14 +203,8 @@ mut:
 	// autofree_tmp_vars     []string // to avoid redefining the same tmp vars in a single function
 	// nr_vars_to_free       int
 	// doing_autofree_tmp    bool
-	comptime_for_method              string // $for method in T.methods {}
-	comptime_for_method_var          string // $for method in T.methods {}; the variable name
-	comptime_for_field_var           string // $for field in T.fields {}; the variable name
-	comptime_for_field_value         ast.StructField // value of the field variable
-	comptime_for_field_type          ast.Type        // type of the field variable inferred from `$if field.typ is T {}`
-	comptime_enum_field_value        string // value of enum name
-	comptime_var_type_map            map[string]ast.Type
-	comptime_values_stack            []CurrentComptimeValues // stores the values from the above on each $for loop, to make nesting them easier
+	comptime_info_stack              []comptime.ComptimeInfo // stores the values from the above on each $for loop, to make nesting them easier
+	comptime                         comptime.ComptimeInfo
 	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type
 	// used in match multi branch
 	// TypeOne, TypeTwo {}
@@ -323,6 +319,11 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) (string
 		static_modifier: if pref_.parallel_cc { 'static' } else { '' }
 		has_reflection: 'v.reflection' in table.modules
 		reflection_strings: &reflection_strings
+	}
+
+	global_g.comptime = &comptime.ComptimeInfo{
+		resolver: &global_g
+		table: table
 	}
 
 	/*
@@ -687,6 +688,10 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		has_reflection: 'v.reflection' in global_g.table.modules
 		reflection_strings: global_g.reflection_strings
 	}
+	g.comptime = &comptime.ComptimeInfo{
+		resolver: g
+		table: global_g.table
+	}
 	g.gen_file()
 	return g
 }
@@ -971,7 +976,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 			g.writeln('static int v_typeof_interface_idx_${sym.cname}(int sidx) { /* ${sym.name} */ ')
 			for t in inter_info.types {
 				sub_sym := g.table.sym(ast.mktyp(t))
-				g.writeln('\tif (sidx == _${sym.cname}_${sub_sym.cname}_index) return ${int(t)};')
+				g.writeln('\tif (sidx == _${sym.cname}_${sub_sym.cname}_index) return ${int(t.set_nr_muls(0))};')
 			}
 			g.writeln('\treturn ${int(ityp)};')
 			g.writeln('}')
@@ -2479,8 +2484,10 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 					}
 				}
 			} else if expr is ast.SelectorExpr {
-				if _ := scope.find_struct_field(expr.expr.str(), expr.expr_type, expr.field_name) {
-					is_already_sum_type = true
+				if v := scope.find_struct_field(expr.expr.str(), expr.expr_type, expr.field_name) {
+					if v.smartcasts.len > 0 && unwrapped_expected_type == v.orig_type {
+						is_already_sum_type = true
+					}
 				}
 			}
 			if is_already_sum_type && !g.inside_return {
@@ -3413,8 +3420,8 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				mut expr_str := ''
 				if mut node.expr is ast.ComptimeSelector && node.expr.left is ast.Ident {
 					// val.$(field.name)?
-					expr_str = '${node.expr.left.str()}.${g.comptime_for_field_value.name}'
-				} else if mut node.expr is ast.Ident && g.table.is_comptime_var(node.expr) {
+					expr_str = '${node.expr.left.str()}.${g.comptime.comptime_for_field_value.name}'
+				} else if mut node.expr is ast.Ident && g.comptime.is_comptime_var(node.expr) {
 					// val?
 					expr_str = node.expr.name
 				}
@@ -4395,7 +4402,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 	if node.info is ast.IdentVar {
 		if node.obj is ast.Var {
 			if !g.is_assign_lhs && node.obj.ct_type_var !in [.generic_param, .no_comptime] {
-				comptime_type := g.get_comptime_var_type(node)
+				comptime_type := g.comptime.get_comptime_var_type(node)
 				if comptime_type.has_flag(.option) {
 					if (g.inside_opt_or_res || g.left_is_opt) && node.or_expr.kind == .absent {
 						if !g.is_assign_lhs && is_auto_heap {
@@ -4586,7 +4593,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 	sym := g.table.sym(node_typ)
 	if (node.expr is ast.Ident && g.table.is_comptime_var(node.expr))
 		|| node.expr is ast.ComptimeSelector {
-		expr_type = g.unwrap_generic(g.get_comptime_var_type(node.expr))
+		expr_type = g.unwrap_generic(g.comptime.get_comptime_var_type(node.expr))
 	}
 	if sym.kind in [.sum_type, .interface_] {
 		if node.typ.has_flag(.option) && node.expr is ast.None {
@@ -6613,7 +6620,7 @@ fn (g Gen) get_all_test_function_names() []string {
 
 @[inline]
 fn (mut g Gen) get_type(typ ast.Type) ast.Type {
-	return if typ == g.field_data_type { g.comptime_for_field_value.typ } else { typ }
+	return if typ == g.field_data_type { g.comptime.comptime_for_field_value.typ } else { typ }
 }
 
 fn (mut g Gen) size_of(node ast.SizeOf) {

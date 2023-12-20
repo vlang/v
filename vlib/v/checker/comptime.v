@@ -8,54 +8,7 @@ import v.pref
 import v.token
 import v.util
 import v.pkgconfig
-
-@[inline]
-fn (mut c Checker) get_ct_type_var(node ast.Expr) ast.ComptimeVarKind {
-	return if node is ast.Ident && node.obj is ast.Var {
-		(node.obj as ast.Var).ct_type_var
-	} else {
-		.no_comptime
-	}
-}
-
-@[inline]
-fn (mut c Checker) get_comptime_var_type(node ast.Expr) ast.Type {
-	if node is ast.Ident && node.obj is ast.Var {
-		return match (node.obj as ast.Var).ct_type_var {
-			.generic_param {
-				// generic parameter from current function
-				node.obj.typ
-			}
-			.key_var, .value_var {
-				// key and value variables from normal for stmt
-				c.comptime_fields_type[node.name] or { ast.void_type }
-			}
-			.field_var {
-				// field var from $for loop
-				c.comptime_fields_default_type
-			}
-			else {
-				ast.void_type
-			}
-		}
-	} else if node is ast.ComptimeSelector {
-		// val.$(field.name)
-		return c.get_comptime_selector_type(node, ast.void_type)
-	} else if node is ast.SelectorExpr && c.is_comptime_selector_type(node) {
-		// field_var.typ from $for field
-		return c.comptime_fields_default_type
-	} else if node is ast.ComptimeCall {
-		method_name := c.comptime_for_method
-		left_sym := c.table.sym(c.unwrap_generic(node.left_type))
-		f := left_sym.find_method(method_name) or {
-			c.error('could not find method `${method_name}` on compile-time resolution',
-				node.method_pos)
-			return ast.void_type
-		}
-		return f.return_type
-	}
-	return ast.void_type
-}
+import v.comptime
 
 fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	if node.left !is ast.EmptyExpr {
@@ -164,7 +117,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 			node.args[i].typ = c.expr(mut arg.expr)
 		}
 		c.stmts_ending_with_expression(mut node.or_block.stmts)
-		return c.get_comptime_var_type(node)
+		return c.comptime.get_comptime_var_type(node)
 	}
 	if node.method_name == 'res' {
 		if !c.inside_defer {
@@ -240,17 +193,17 @@ fn (mut c Checker) comptime_selector(mut node ast.ComptimeSelector) ast.Type {
 	}
 	if mut node.field_expr is ast.SelectorExpr {
 		left_pos := node.field_expr.expr.pos()
-		if c.comptime_fields_type.len == 0 {
+		if c.comptime.type_map.len == 0 {
 			c.error('compile time field access can only be used when iterating over `T.fields`',
 				left_pos)
 		}
-		expr_type = c.get_comptime_selector_type(node, ast.void_type)
+		expr_type = c.comptime.get_comptime_selector_type(node, ast.void_type)
 		if expr_type != ast.void_type {
 			return expr_type
 		}
 		expr_name := node.field_expr.expr.str()
-		if expr_name in c.comptime_fields_type {
-			return c.comptime_fields_type[expr_name]
+		if expr_name in c.comptime.type_map {
+			return c.comptime.type_map[expr_name]
 		}
 		c.error('unknown `\$for` variable `${expr_name}`', left_pos)
 	} else {
@@ -282,17 +235,17 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 					return
 				}
 			}
-			c.push_existing_comptime_values()
-			c.inside_comptime_for_field = true
 			for field in fields {
+				c.push_new_comptime_info()
+				c.comptime.inside_comptime_for = true
 				if c.field_data_type == 0 {
 					c.field_data_type = ast.Type(c.table.find_type_idx('FieldData'))
 				}
-				c.comptime_for_field_value = field
-				c.comptime_for_field_var = node.val_var
-				c.comptime_fields_type[node.val_var] = c.field_data_type
-				c.comptime_fields_type['${node.val_var}.typ'] = node.typ
-				c.comptime_fields_default_type = field.typ
+				c.comptime.comptime_for_field_value = field
+				c.comptime.comptime_for_field_var = node.val_var
+				c.comptime.type_map[node.val_var] = c.field_data_type
+				c.comptime.type_map['${node.val_var}.typ'] = node.typ
+				c.comptime.comptime_for_field_type = field.typ
 				c.stmts(mut node.stmts)
 
 				unwrapped_expr_type := c.unwrap_generic(field.typ)
@@ -306,8 +259,8 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 							info.size_expr, true)
 					}
 				}
+				c.pop_comptime_info()
 			}
-			c.pop_existing_comptime_values()
 		} else if c.table.generic_type_names(node.typ).len == 0 && sym.kind != .placeholder {
 			c.error('iterating over .fields is supported only for structs and interfaces, and ${sym.name} is neither',
 				node.typ_pos)
@@ -315,20 +268,16 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 		}
 	} else if node.kind == .values {
 		if sym.kind == .enum_ {
-			c.push_existing_comptime_values()
-			sym_info := sym.info as ast.Enum
-			c.inside_comptime_for_field = true
+			c.push_new_comptime_info()
+			c.comptime.inside_comptime_for = true
 			if c.enum_data_type == 0 {
 				c.enum_data_type = ast.Type(c.table.find_type_idx('EnumData'))
 			}
-			for field in sym_info.vals {
-				c.comptime_enum_field_value = field
-				c.comptime_for_field_var = node.val_var
-				c.comptime_fields_type[node.val_var] = c.enum_data_type
-				c.comptime_fields_type['${node.val_var}.typ'] = node.typ
-				c.stmts(mut node.stmts)
-			}
-			c.pop_existing_comptime_values()
+			c.comptime.comptime_for_enum_var = node.val_var
+			c.comptime.type_map[node.val_var] = c.enum_data_type
+			c.comptime.type_map['${node.val_var}.typ'] = node.typ
+			c.stmts(mut node.stmts)
+			c.pop_comptime_info()
 		} else {
 			c.error('iterating over .values is supported only for enums, and ${sym.name} is not an enum',
 				node.typ_pos)
@@ -339,15 +288,29 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 		methods_with_attrs := sym.methods.filter(it.attrs.len > 0) // methods with attrs second
 		methods << methods_with_attrs
 
-		c.push_existing_comptime_values()
 		for method in methods {
-			c.comptime_for_method = method.name
-			c.comptime_for_method_var = node.val_var
-			c.comptime_for_method_ret_type = method.return_type
-			c.comptime_fields_type['${node.val_var}.return_type'] = method.return_type
+			c.push_new_comptime_info()
+			c.comptime.inside_comptime_for = true
+			c.comptime.comptime_for_method = method.name
+			c.comptime.comptime_for_method_var = node.val_var
+			c.comptime.comptime_for_method_ret_type = method.return_type
+			c.comptime.type_map['${node.val_var}.return_type'] = method.return_type
 			c.stmts(mut node.stmts)
+			c.pop_comptime_info()
 		}
-		c.pop_existing_comptime_values()
+	} else if node.kind == .variants {
+		if c.variant_data_type == 0 {
+			c.variant_data_type = ast.Type(c.table.find_type_idx('VariantData'))
+		}
+		for variant in (sym.info as ast.SumType).variants {
+			c.push_new_comptime_info()
+			c.comptime.inside_comptime_for = true
+			c.comptime.comptime_for_variant_var = node.val_var
+			c.comptime.type_map[node.val_var] = c.variant_data_type
+			c.comptime.type_map['${node.val_var}.typ'] = variant
+			c.stmts(mut node.stmts)
+			c.pop_comptime_info()
+		}
 	} else {
 		c.stmts(mut node.stmts)
 	}
@@ -763,7 +726,7 @@ fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) Comptime
 					} else if cond.left is ast.TypeNode && mut cond.right is ast.ComptimeType {
 						left := cond.left as ast.TypeNode
 						checked_type := c.unwrap_generic(left.typ)
-						return if c.table.is_comptime_type(checked_type, cond.right) {
+						return if c.comptime.is_comptime_type(checked_type, cond.right) {
 							.eval
 						} else {
 							.skip
@@ -771,10 +734,11 @@ fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) Comptime
 					} else if cond.left in [ast.Ident, ast.SelectorExpr, ast.TypeNode] {
 						// `$if method.@type is string`
 						c.expr(mut cond.left)
-						if cond.left is ast.SelectorExpr && c.is_comptime_selector_type(cond.left)
+						if cond.left is ast.SelectorExpr
+							&& c.comptime.is_comptime_selector_type(cond.left)
 							&& mut cond.right is ast.ComptimeType {
-							checked_type := c.get_comptime_var_type(cond.left)
-							return if c.table.is_comptime_type(checked_type, cond.right) {
+							checked_type := c.comptime.get_comptime_var_type(cond.left)
+							return if c.comptime.is_comptime_type(checked_type, cond.right) {
 								.eval
 							} else {
 								.skip
@@ -793,10 +757,10 @@ fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) Comptime
 						// $if method.args.len == 1
 						return .unknown
 					} else if cond.left is ast.SelectorExpr
-						&& c.check_comptime_is_field_selector_bool(cond.left) {
+						&& c.comptime.check_comptime_is_field_selector_bool(cond.left) {
 						// field.is_public (from T.fields)
 					} else if cond.right is ast.SelectorExpr
-						&& c.check_comptime_is_field_selector_bool(cond.right) {
+						&& c.comptime.check_comptime_is_field_selector_bool(cond.right) {
 						// field.is_public (from T.fields)
 					} else if cond.left is ast.Ident {
 						// $if version == 2
@@ -850,7 +814,7 @@ fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) Comptime
 				}
 				.gt, .lt, .ge, .le {
 					if cond.left is ast.SelectorExpr && cond.right is ast.IntegerLiteral
-						&& c.is_comptime_selector_field_name(cond.left, 'indirections') {
+						&& c.comptime.is_comptime_selector_field_name(cond.left, 'indirections') {
 						return .unknown
 					}
 					c.error('invalid `\$if` condition', cond.pos)
@@ -977,12 +941,12 @@ fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) Comptime
 			return .eval
 		}
 		ast.SelectorExpr {
-			if c.check_comptime_is_field_selector(cond) {
-				if c.check_comptime_is_field_selector_bool(cond) {
-					ret_bool := c.get_comptime_selector_bool_field(cond.field_name)
+			if c.comptime.check_comptime_is_field_selector(cond) {
+				if c.comptime.check_comptime_is_field_selector_bool(cond) {
+					ret_bool := c.comptime.get_comptime_selector_bool_field(cond.field_name)
 					return if ret_bool { .eval } else { .skip }
 				}
-				c.error('unknown field `${cond.field_name}` from ${c.comptime_for_field_var}',
+				c.error('unknown field `${cond.field_name}` from ${c.comptime.comptime_for_field_var}',
 					cond.pos)
 			}
 			return .unknown
@@ -994,108 +958,37 @@ fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) Comptime
 	return .unknown
 }
 
-// get_comptime_selector_type retrieves the var.$(field.name) type when field_name is 'name' otherwise default_type is returned
-@[inline]
-fn (mut c Checker) get_comptime_selector_type(node ast.ComptimeSelector, default_type ast.Type) ast.Type {
-	if node.field_expr is ast.SelectorExpr && c.check_comptime_is_field_selector(node.field_expr)
-		&& node.field_expr.field_name == 'name' {
-		return c.unwrap_generic(c.comptime_fields_default_type)
-	}
-	return default_type
-}
-
-// is_comptime_selector_field_name checks if the SelectorExpr is related to $for variable accessing specific field name provided by `field_name`
-@[inline]
-fn (mut c Checker) is_comptime_selector_field_name(node ast.SelectorExpr, field_name string) bool {
-	return c.inside_comptime_for_field && node.expr is ast.Ident
-		&& node.expr.name == c.comptime_for_field_var && node.field_name == field_name
-}
-
-// is_comptime_selector_type checks if the SelectorExpr is related to $for variable accessing .typ field
-@[inline]
-fn (mut c Checker) is_comptime_selector_type(node ast.SelectorExpr) bool {
-	if c.inside_comptime_for_field && node.expr is ast.Ident {
-		return node.expr.name == c.comptime_for_field_var && node.field_name == 'typ'
-	}
-	return false
-}
-
-// check_comptime_is_field_selector checks if the SelectorExpr is related to $for variable
-@[inline]
-fn (mut c Checker) check_comptime_is_field_selector(node ast.SelectorExpr) bool {
-	if c.inside_comptime_for_field && node.expr is ast.Ident {
-		return node.expr.name == c.comptime_for_field_var
-	}
-	return false
-}
-
-// check_comptime_is_field_selector_bool checks if the SelectorExpr is related to field.is_* boolean fields
-@[inline]
-fn (mut c Checker) check_comptime_is_field_selector_bool(node ast.SelectorExpr) bool {
-	if c.check_comptime_is_field_selector(node) {
-		return node.field_name in ['is_mut', 'is_pub', 'is_shared', 'is_atomic', 'is_option',
-			'is_array', 'is_map', 'is_chan', 'is_struct', 'is_alias', 'is_enum']
-	}
-	return false
-}
-
-// get_comptime_selector_bool_field evaluates the bool value for field.is_* fields
-fn (mut c Checker) get_comptime_selector_bool_field(field_name string) bool {
-	field := c.comptime_for_field_value
-	field_typ := c.comptime_fields_default_type
-	field_sym := c.table.sym(c.unwrap_generic(c.comptime_fields_default_type))
-
-	match field_name {
-		'is_pub' { return field.is_pub }
-		'is_mut' { return field.is_mut }
-		'is_shared' { return field_typ.has_flag(.shared_f) }
-		'is_atomic' { return field_typ.has_flag(.atomic_f) }
-		'is_option' { return field.typ.has_flag(.option) }
-		'is_array' { return field_sym.kind in [.array, .array_fixed] }
-		'is_map' { return field_sym.kind == .map }
-		'is_chan' { return field_sym.kind == .chan }
-		'is_struct' { return field_sym.kind == .struct_ }
-		'is_alias' { return field_sym.kind == .alias }
-		'is_enum' { return field_sym.kind == .enum_ }
-		else { return false }
+// push_new_comptime_info saves the current comptime information
+fn (mut c Checker) push_new_comptime_info() {
+	c.comptime_info_stack << comptime.ComptimeInfo{
+		resolver: c.comptime.resolver
+		table: c.comptime.table
+		type_map: c.comptime.type_map.clone()
+		inside_comptime_for: c.comptime.inside_comptime_for
+		comptime_for_variant_var: c.comptime.comptime_for_variant_var
+		comptime_for_field_var: c.comptime.comptime_for_field_var
+		comptime_for_field_type: c.comptime.comptime_for_field_type
+		comptime_for_field_value: c.comptime.comptime_for_field_value
+		comptime_for_enum_var: c.comptime.comptime_for_enum_var
+		comptime_for_method_var: c.comptime.comptime_for_method_var
+		comptime_for_method: c.comptime.comptime_for_method
+		comptime_for_method_ret_type: c.comptime.comptime_for_method_ret_type
 	}
 }
 
-struct CurrentComptimeValues {
-	inside_comptime_for_field    bool
-	comptime_for_field_var       string
-	comptime_fields_default_type ast.Type
-	comptime_fields_type         map[string]ast.Type
-	comptime_for_field_value     ast.StructField
-	comptime_enum_field_value    string
-	comptime_for_method          string
-	comptime_for_method_var      string
-	comptime_for_method_ret_type ast.Type
-}
-
-fn (mut c Checker) push_existing_comptime_values() {
-	c.comptime_values_stack << CurrentComptimeValues{
-		inside_comptime_for_field: c.inside_comptime_for_field
-		comptime_for_field_var: c.comptime_for_field_var
-		comptime_fields_default_type: c.comptime_fields_default_type
-		comptime_fields_type: c.comptime_fields_type.clone()
-		comptime_for_field_value: c.comptime_for_field_value
-		comptime_enum_field_value: c.comptime_enum_field_value
-		comptime_for_method: c.comptime_for_method
-		comptime_for_method_var: c.comptime_for_method_var
-		comptime_for_method_ret_type: c.comptime_for_method_ret_type
-	}
-}
-
-fn (mut c Checker) pop_existing_comptime_values() {
-	old := c.comptime_values_stack.pop()
-	c.inside_comptime_for_field = old.inside_comptime_for_field
-	c.comptime_for_field_var = old.comptime_for_field_var
-	c.comptime_fields_default_type = old.comptime_fields_default_type
-	c.comptime_fields_type = old.comptime_fields_type.clone()
-	c.comptime_for_field_value = old.comptime_for_field_value
-	c.comptime_enum_field_value = old.comptime_enum_field_value
-	c.comptime_for_method = old.comptime_for_method
-	c.comptime_for_method_var = old.comptime_for_method_var
-	c.comptime_for_method_ret_type = old.comptime_for_method_ret_type
+// pop_comptime_info pops the current comptime information frame
+fn (mut c Checker) pop_comptime_info() {
+	old := c.comptime_info_stack.pop()
+	c.comptime.resolver = old.resolver
+	c.comptime.table = old.table
+	c.comptime.type_map = old.type_map.clone()
+	c.comptime.inside_comptime_for = old.inside_comptime_for
+	c.comptime.comptime_for_variant_var = old.comptime_for_variant_var
+	c.comptime.comptime_for_field_var = old.comptime_for_field_var
+	c.comptime.comptime_for_field_type = old.comptime_for_field_type
+	c.comptime.comptime_for_field_value = old.comptime_for_field_value
+	c.comptime.comptime_for_enum_var = old.comptime_for_enum_var
+	c.comptime.comptime_for_method_var = old.comptime_for_method_var
+	c.comptime.comptime_for_method = old.comptime_for_method
+	c.comptime.comptime_for_method_ret_type = old.comptime_for_method_ret_type
 }

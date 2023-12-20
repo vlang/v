@@ -10,6 +10,14 @@ enum ContextReturnType {
 	file
 }
 
+pub enum RedirectType {
+	moved_permanently  = int(http.Status.moved_permanently)
+	found              = int(http.Status.found)
+	see_other          = int(http.Status.see_other)
+	temporary_redirect = int(http.Status.temporary_redirect)
+	permanent_redirect = int(http.Status.permanent_redirect)
+}
+
 // The Context struct represents the Context which holds the HTTP request and response.
 // It has fields for the query, form, files and methods for handling the request and response
 pub struct Context {
@@ -89,10 +97,16 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 	// set Content-Type and Content-Length headers
 	mut custom_mimetype := if ctx.content_type.len == 0 { mimetype } else { ctx.content_type }
 	ctx.res.header.set(.content_type, custom_mimetype)
-	ctx.res.header.set(.content_length, ctx.res.body.len.str())
+	if ctx.res.body.len > 0 {
+		ctx.res.header.set(.content_length, ctx.res.body.len.str())
+	}
 	// send vweb's closing headers
 	ctx.res.header.set(.server, 'VWeb')
-	ctx.res.header.set(.connection, 'close')
+	// sent `Connection: close header` by default, if the user hasn't specified that the
+	// connection should not be closed.
+	if !ctx.takeover {
+		ctx.res.header.set(.connection, 'close')
+	}
 	// set the http version
 	ctx.res.set_version(.v1_1)
 	if ctx.res.status_code == 0 {
@@ -213,10 +227,12 @@ pub fn (mut ctx Context) server_error(msg string) Result {
 }
 
 // Redirect to an url
-pub fn (mut ctx Context) redirect(url string) Result {
-	ctx.res.set_status(.found)
+pub fn (mut ctx Context) redirect(url string, redirect_type RedirectType) Result {
+	status := http.Status(redirect_type)
+	ctx.res.set_status(status)
+
 	ctx.res.header.add(.location, url)
-	return ctx.send_response_to_client('text/plain', '302 Found')
+	return ctx.send_response_to_client('text/plain', status.str())
 }
 
 // before_request is always the first function that is executed and acts as middleware

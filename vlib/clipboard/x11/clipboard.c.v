@@ -178,7 +178,7 @@ fn new_x11_clipboard(selection AtomType) &Clipboard {
 	if display == C.NULL {
 		println('ERROR: No X Server running. Clipboard cannot be used.')
 		return &Clipboard{
-			display: 0
+			display: unsafe { nil }
 			mutex: sync.new_mutex()
 		}
 	}

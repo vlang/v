@@ -107,6 +107,11 @@ pub:
 	typ         int
 }
 
+pub struct VariantData {
+pub:
+	typ int
+}
+
 pub struct EnumData {
 pub:
 	name  string
