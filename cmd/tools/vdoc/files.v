@@ -39,22 +39,34 @@ fn is_included(path string, ignore_paths []string) bool {
 	return true
 }
 
-fn get_modules_list(path string, ignore_paths2 []string) []string {
-	files := os.ls(path) or { return []string{} }
+fn get_modules_list(opath string, ignore_paths2 []string) []string {
+	path := opath.trim_right('/\\')
+	names := os.ls(path) or { return [] }
 	mut ignore_paths := get_ignore_paths(path) or { []string{} }
 	ignore_paths << ignore_paths2
-	mut dirs := []string{}
-	for file in files {
-		fpath := os.join_path(path, file)
-		if os.is_dir(fpath) && is_included(fpath, ignore_paths) && !os.is_link(path) {
-			dirs << get_modules_list(fpath, ignore_paths.filter(it.starts_with(fpath)))
-		} else if fpath.ends_with('.v') && !fpath.ends_with('_test.v') {
-			if path in dirs {
-				continue
+	mut dirs := map[string]int{}
+	for name in names {
+		if name == 'testdata' {
+			continue
+		}
+		if name == 'tests' {
+			continue
+		}
+		fpath := os.join_path(path, name)
+		fmeta := os.inode(fpath)
+		if fmeta.typ == .directory && is_included(fpath, ignore_paths) {
+			current_ignore_paths := ignore_paths.filter(it.starts_with(fpath))
+			for k in get_modules_list(fpath, current_ignore_paths) {
+				dirs[k]++
 			}
-			dirs << path
+			continue
+		}
+		if fpath.ends_with('.v') && !fpath.ends_with('_test.v') {
+			dirs[path]++
+			continue
 		}
 	}
-	dirs.sort()
-	return dirs
+	mut res := dirs.keys()
+	res.sort()
+	return res
 }
