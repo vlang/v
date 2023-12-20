@@ -13,8 +13,6 @@ pub struct Encoder {
 	escape_unicode       bool = true
 }
 
-pub const default_encoder = Encoder{}
-
 // byte array versions of the most common tokens/chars to avoid reallocations
 const null_in_bytes = 'null'
 

@@ -166,10 +166,11 @@ pub fn encode[T](val T) string {
 		defer {
 			unsafe { buf.free() }
 		}
+		encoder := Encoder{}
 
-		default_encoder.encode_value(val, mut buf) or {
+		encoder.encode_value(val, mut buf) or {
 			println(err)
-			default_encoder.encode_value[string]('null', mut buf) or {}
+			encoder.encode_value[string]('null', mut buf) or {}
 		}
 
 		return buf.bytestr()
@@ -184,9 +185,10 @@ fn encode_array[T](val []T) string {
 		unsafe { buf.free() }
 	}
 
-	default_encoder.encode_array(val, 1, mut buf) or {
+	encoder := Encoder{}
+	encoder.encode_array(val, 1, mut buf) or {
 		println(err)
-		default_encoder.encode_value[string]('null', mut buf) or {}
+		encoder.encode_value[string]('null', mut buf) or {}
 	}
 
 	return buf.bytestr()

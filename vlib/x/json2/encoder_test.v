@@ -164,7 +164,7 @@ fn test_encode_value() {
 
 	sb.write(buffer)!
 
-	buffer.free()
+	unsafe { buffer.free() }
 
 	assert sb.str() == r'{
   "server_path": "new_path",
