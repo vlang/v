@@ -464,6 +464,8 @@ pub fn upper_bound[T](array []T, val T) !T {
 	}
 }
 
+// reverse, takes an array and returns the same array reversed
+// Example: arrays.reverse([1,2,3,4]) // => [4,3,2,1]
 pub fn reverse[T](array []T) []T {
 	
 	mut j := array.len-1
