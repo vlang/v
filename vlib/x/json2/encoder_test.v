@@ -34,7 +34,8 @@ fn test_json_string() {
 
 fn test_json_string_emoji() {
 	text := json.Any('🐈')
-	assert text.json_str() == r'" "'
+	assert text.json_str() == r'"🐈"'
+	assert json.Any('💀').json_str() == r'"💀"'
 }
 
 fn test_json_string_non_ascii() {
