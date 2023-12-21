@@ -1,0 +1,44 @@
+[vlib/v/slow_tests/inout/comptime_iterate.vv:18] f: FieldData{
+    name: 'a'
+    typ: 96
+    unaliased_typ: 96
+    attrs: []
+    is_pub: false
+    is_mut: true
+    is_shared: false
+    is_atomic: false
+    is_option: false
+    is_array: false
+    is_map: false
+    is_chan: false
+    is_enum: false
+    is_struct: false
+    is_alias: false
+    indirections: 0
+}
+[vlib/v/slow_tests/inout/comptime_iterate.vv:20] f2: VariantData{
+    typ: 8
+}
+[vlib/v/slow_tests/inout/comptime_iterate.vv:22] 'int': int
+[vlib/v/slow_tests/inout/comptime_iterate.vv:20] f2: VariantData{
+    typ: 21
+}
+[vlib/v/slow_tests/inout/comptime_iterate.vv:24] 'string': string
+FieldData{
+    name: 'y'
+    typ: 8
+    unaliased_typ: 8
+    attrs: []
+    is_pub: false
+    is_mut: false
+    is_shared: false
+    is_atomic: false
+    is_option: false
+    is_array: false
+    is_map: false
+    is_chan: false
+    is_enum: false
+    is_struct: false
+    is_alias: false
+    indirections: 0
+}

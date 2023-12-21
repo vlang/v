@@ -315,6 +315,7 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 		typ = p.parse_any_type(lang, false, false, false)
 	} else {
 		expr = p.ident(lang)
+		p.mark_var_as_used((expr as ast.Ident).name)
 	}
 	typ_pos = typ_pos.extend(p.prev_tok.pos())
 	p.check(.dot)

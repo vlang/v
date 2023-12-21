@@ -221,8 +221,9 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 	}
 	sym := c.table.final_sym(typ)
 	if sym.kind == .placeholder || typ.has_flag(.generic) {
-		c.error('\$for expects a type name to be used here, but ${sym.name} is not a type name',
+		c.error('\$for expects a type name or variable name to be used here, but ${sym.name} is not a type or variable name',
 			node.typ_pos)
+		return
 	} else if sym.kind == .void {
 		c.error('only known compile-time variables can be used', node.typ_pos)
 		return
