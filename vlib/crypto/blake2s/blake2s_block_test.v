@@ -56,7 +56,7 @@ fn test_mixing_function_g() {
 
 	// set up the message blocks with the value 'abc'
 	// the firet block will have the 3 bytes of the text to hash
-	// and the rest of the first block and the other 7 blocks
+	// and the rest of the first block and the other 15 blocks
 	// will be all zeros.  d.m[1..16] should already be zero.
 	d.m[0] = 0x00636261
 
