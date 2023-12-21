@@ -1,12 +1,12 @@
 // for issue 19425
-type Func = fn ()
+interface MyInterface {}
 
-fn handle_fns(fns []Func) {
-}
+type Func = fn () int
+
+fn handle_fns(fns []Func, mut w MyInterface) {}
 
 fn test_main() {
-	mut fns := []Func{}
-	t := spawn handle_fns(fns)
-	t.wait()
+	mut w := &MyInterface(123)
+	spawn handle_fns([], mut w)
 	assert true
 }
