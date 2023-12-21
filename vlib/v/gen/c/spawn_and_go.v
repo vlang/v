@@ -252,6 +252,19 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 					mut arg_types := f.params.map(it.typ)
 					arg_types = arg_types.map(muttable.resolve_generic_to_concrete(it,
 						f.generic_names, node.call_expr.concrete_types) or { it })
+					for i, typ in arg_types {
+						mut typ_sym := g.table.sym(typ)
+						for {
+							if mut typ_sym.info is ast.Array {
+								typ_sym = g.table.sym(typ_sym.info.elem_type)
+							} else {
+								if typ_sym.info is ast.FnType {
+									arg_types[i] = expr.args[i].typ
+								}
+								break
+							}
+						}
+					}
 					fn_var = g.fn_var_signature(return_type, arg_types, 'fn')
 				}
 			}
