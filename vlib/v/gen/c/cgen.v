@@ -1819,7 +1819,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 							g.expr(stmt.expr)
 							g.writeln(';')
 						} else {
-							ret_typ := if g.inside_if_option && !g.inside_return {
+							ret_typ := if g.inside_struct_init {
 								stmt.typ
 							} else {
 								g.fn_decl.return_type.clear_flag(.option)

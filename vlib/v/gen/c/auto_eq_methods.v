@@ -126,9 +126,39 @@ fn (mut g Gen) read_field(struct_type ast.Type, field_name string, var_name stri
 	}
 }
 
+// read_map generates C code for reading option/no-option struct field
+@[inline]
+fn (mut g Gen) read_map(struct_type ast.Type, var_name string) string {
+	return if struct_type.has_flag(.option) {
+		g.read_opt(struct_type, var_name)
+	} else {
+		var_name
+	}
+}
+
+// read_map_field generates C code for reading option/no-option struct field
+@[inline]
+fn (mut g Gen) read_map_field(typ ast.Type, field_name string, var_name string) string {
+	return if typ.has_flag(.option) {
+		'(*(${g.base_type(typ)}*)${var_name}.data).${field_name}'
+	} else {
+		'${var_name}.${field_name}'
+	}
+}
+
 // read_opt_field generates C code for reading option/no-option struct field
 @[inline]
 fn (mut g Gen) read_opt_field(struct_type ast.Type, field_name string, var_name string, field_typ ast.Type) string {
+	return if field_typ.has_flag(.option) {
+		'*(${g.base_type(field_typ)}*)${g.read_field(struct_type, field_name, var_name)}.data'
+	} else {
+		g.read_field(struct_type, field_name, var_name)
+	}
+}
+
+// read_map_opt_field generates C code for reading option/no-option map field
+@[inline]
+fn (mut g Gen) read_map_opt_field(struct_type ast.Type, field_name string, var_name string, field_typ ast.Type) string {
 	return if field_typ.has_flag(.option) {
 		'*(${g.base_type(field_typ)}*)${g.read_field(struct_type, field_name, var_name)}.data'
 	} else {
@@ -429,64 +459,71 @@ fn (mut g Gen) gen_map_equality_fn(left_type ast.Type) string {
 	ptr_value_styp := g.typ(value.typ)
 	g.definitions.writeln('static bool ${ptr_styp}_map_eq(${ptr_styp} a, ${ptr_styp} b); // auto')
 
+	left_len := g.read_map_field(left.typ, 'len', 'a')
+	right_len := g.read_map_field(left.typ, 'len', 'b')
+	key_values := g.read_map_field(left.typ, 'key_values', 'a')
+
+	a := if left.typ.has_flag(.option) { g.read_map(left.typ, 'a') } else { '&a' }
+	b := if left.typ.has_flag(.option) { g.read_map(left.typ, 'b') } else { '&b' }
+
 	mut fn_builder := strings.new_builder(512)
 	fn_builder.writeln('static bool ${ptr_styp}_map_eq(${ptr_styp} a, ${ptr_styp} b) {')
-	fn_builder.writeln('\tif (a.len != b.len) {')
+	fn_builder.writeln('\tif (${left_len} != ${right_len}) {')
 	fn_builder.writeln('\t\treturn false;')
 	fn_builder.writeln('\t}')
-	fn_builder.writeln('\tfor (int i = 0; i < a.key_values.len; ++i) {')
-	fn_builder.writeln('\t\tif (!DenseArray_has_index(&a.key_values, i)) continue;')
-	fn_builder.writeln('\t\tvoidptr k = DenseArray_key(&a.key_values, i);')
-	fn_builder.writeln('\t\tif (!map_exists(&b, k)) return false;')
+	fn_builder.writeln('\tfor (int i = 0; i < ${key_values}.len; ++i) {')
+	fn_builder.writeln('\t\tif (!DenseArray_has_index(&${key_values}, i)) continue;')
+	fn_builder.writeln('\t\tvoidptr k = DenseArray_key(&${key_values}, i);')
+	fn_builder.writeln('\t\tif (!map_exists(${b}, k)) return false;')
 	kind := g.table.type_kind(value.typ)
 	if kind == .function {
 		info := value.sym.info as ast.FnType
 		sig := g.fn_var_signature(info.func.return_type, info.func.params.map(it.typ),
 			'v')
-		fn_builder.writeln('\t\t${sig} = *(voidptr*)map_get(&a, k, &(voidptr[]){ 0 });')
+		fn_builder.writeln('\t\t${sig} = *(voidptr*)map_get(&${a}, k, &(voidptr[]){ 0 });')
 	} else {
-		fn_builder.writeln('\t\t${ptr_value_styp} v = *(${ptr_value_styp}*)map_get(&a, k, &(${ptr_value_styp}[]){ 0 });')
+		fn_builder.writeln('\t\t${ptr_value_styp} v = *(${ptr_value_styp}*)map_get(${a}, k, &(${ptr_value_styp}[]){ 0 });')
 	}
 	match kind {
 		.string {
-			fn_builder.writeln('\t\tif (!fast_string_eq(*(string*)map_get(&b, k, &(string[]){_SLIT("")}), v)) {')
+			fn_builder.writeln('\t\tif (!fast_string_eq(*(string*)map_get(${b}, k, &(string[]){_SLIT("")}), v)) {')
 		}
 		.sum_type {
 			eq_fn := g.gen_sumtype_equality_fn(value.typ)
-			fn_builder.writeln('\t\tif (!${eq_fn}_sumtype_eq(*(${ptr_value_styp}*)map_get(&b, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
+			fn_builder.writeln('\t\tif (!${eq_fn}_sumtype_eq(*(${ptr_value_styp}*)map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
 		}
 		.struct_ {
 			eq_fn := g.gen_struct_equality_fn(value.typ)
-			fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq(*(${ptr_value_styp}*)map_get(&b, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
+			fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq(*(${ptr_value_styp}*)map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
 		}
 		.interface_ {
 			eq_fn := g.gen_interface_equality_fn(value.typ)
-			fn_builder.writeln('\t\tif (!${eq_fn}_interface_eq(*(${ptr_value_styp}*)map_get(&b, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
+			fn_builder.writeln('\t\tif (!${eq_fn}_interface_eq(*(${ptr_value_styp}*)map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
 		}
 		.array {
 			eq_fn := g.gen_array_equality_fn(value.typ)
-			fn_builder.writeln('\t\tif (!${eq_fn}_arr_eq(*(${ptr_value_styp}*)map_get(&b, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
+			fn_builder.writeln('\t\tif (!${eq_fn}_arr_eq(*(${ptr_value_styp}*)map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
 		}
 		.array_fixed {
 			eq_fn := g.gen_fixed_array_equality_fn(value.typ)
-			fn_builder.writeln('\t\tif (!${eq_fn}_arr_eq(*(${ptr_value_styp}*)map_get(&b, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
+			fn_builder.writeln('\t\tif (!${eq_fn}_arr_eq(*(${ptr_value_styp}*)map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
 		}
 		.map {
 			eq_fn := g.gen_map_equality_fn(value.typ)
-			fn_builder.writeln('\t\tif (!${eq_fn}_map_eq(*(${ptr_value_styp}*)map_get(&b, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
+			fn_builder.writeln('\t\tif (!${eq_fn}_map_eq(*(${ptr_value_styp}*)map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
 		}
 		.alias {
 			eq_fn := g.gen_alias_equality_fn(value.typ)
-			fn_builder.writeln('\t\tif (!${eq_fn}_alias_eq(*(${ptr_value_styp}*)map_get(&b, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
+			fn_builder.writeln('\t\tif (!${eq_fn}_alias_eq(*(${ptr_value_styp}*)map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }), v)) {')
 		}
 		.function {
-			fn_builder.writeln('\t\tif (*(voidptr*)map_get(&b, k, &(voidptr[]){ 0 }) != v) {')
+			fn_builder.writeln('\t\tif (*(voidptr*)map_get(${b}, k, &(voidptr[]){ 0 }) != v) {')
 		}
 		else {
 			if value.typ.has_flag(.option) {
-				fn_builder.writeln('\t\tif (memcmp(v.data, ((${ptr_value_styp}*)map_get(&b, k, &(${ptr_value_styp}[]){ 0 }))->data, sizeof(${g.base_type(value.typ)})) != 0) {')
+				fn_builder.writeln('\t\tif (memcmp(v.data, ((${ptr_value_styp}*)map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }))->data, sizeof(${g.base_type(value.typ)})) != 0) {')
 			} else {
-				fn_builder.writeln('\t\tif (*(${ptr_value_styp}*)map_get(&b, k, &(${ptr_value_styp}[]){ 0 }) != v) {')
+				fn_builder.writeln('\t\tif (*(${ptr_value_styp}*)map_get(${b}, k, &(${ptr_value_styp}[]){ 0 }) != v) {')
 			}
 		}
 	}
