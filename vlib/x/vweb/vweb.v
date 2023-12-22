@@ -21,7 +21,7 @@ pub type RawHtml = string
 pub struct Result {}
 
 // no_result does nothing, but returns `vweb.Result`. Only use it when you are sure
-// a response will be send over the connection, or in combination with `Context.takover_conn`
+// a response will be send over the connection, or in combination with `Context.takeover_conn`
 pub fn no_result() Result {
 	return Result{}
 }

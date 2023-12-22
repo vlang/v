@@ -812,6 +812,9 @@ Sometimes you want to send the response in another thread, for example when usin
 over the TCP connection you can return `vweb.no_result()`. This function does nothinng
 and returns an empty `vweb.Result` struct, letting vweb know that we sent a response ourself.
 
+> **Note:**
+> It is important to call `ctx.takeover_conn` before you spawn a thread
+
 **Example:**
 ```v
 module main
