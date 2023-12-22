@@ -14,12 +14,12 @@ pub struct Context {
 pub struct App {}
 
 fn (app &App) sse(mut ctx Context) vweb.Result {
+	ctx.takeover_conn()
 	spawn handle_sse_conn(mut ctx)
-	return ctx.takeover_conn()
+	return vweb.no_result()
 }
 
 fn handle_sse_conn(mut ctx Context) {
-	// pass vweb.Context
 	mut sse_conn := sse.start_connection(mut ctx.Context)
 
 	for _ in 0 .. 3 {

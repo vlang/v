@@ -20,6 +20,12 @@ pub type RawHtml = string
 @[noinit]
 pub struct Result {}
 
+// no_result does nothing, but returns `vweb.Result`. Only use it when you are sure
+// a response will be send over the connection, or in combination with `Context.takeover_conn`
+pub fn no_result() Result {
+	return Result{}
+}
+
 pub const methods_with_form = [http.Method.post, .put, .patch]
 
 pub const headers_close = http.new_custom_header_from_map({
