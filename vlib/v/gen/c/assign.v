@@ -281,7 +281,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					g.assign_ct_type = var_type
 				} else if val is ast.IndexExpr {
 					if val.left is ast.Ident && g.is_generic_param_var(val.left) {
-						ctyp := g.unwrap_generic(g.get_gn_var_type(val.left as ast.Ident))
+						ctyp := g.unwrap_generic(g.get_gn_var_type(val.left))
 						if ctyp != ast.void_type {
 							var_type = ctyp
 							val_type = var_type
@@ -495,8 +495,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					else { 'unknown op' }
 				}
 				g.expr(left)
-				if left_sym.kind == .struct_ && (left_sym.info as ast.Struct).generic_types.len > 0 {
-					concrete_types := (left_sym.info as ast.Struct).concrete_types
+				if left_sym.info is ast.Struct && left_sym.info.generic_types.len > 0 {
+					concrete_types := left_sym.info.concrete_types
 					mut method_name := left_sym.cname + '_' + util.replace_op(extracted_op)
 					method_name = g.generic_fn_name(concrete_types, method_name)
 					g.write(' = ${method_name}(')
@@ -527,16 +527,15 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					op_overloaded = true
 				}
 			}
-			if right_sym.kind == .function && is_decl {
-				if is_inside_ternary && is_decl {
+			if right_sym.info is ast.FnType && is_decl {
+				if is_inside_ternary {
 					g.out.write_string(util.tabs(g.indent - g.inside_ternary))
 				}
-				func := right_sym.info as ast.FnType
-				ret_styp := g.typ(func.func.return_type)
+				ret_styp := g.typ(right_sym.info.func.return_type)
 
 				mut call_conv := ''
 				mut msvc_call_conv := ''
-				for attr in func.func.attrs {
+				for attr in right_sym.info.func.attrs {
 					match attr.name {
 						'callconv' {
 							if g.is_cc_msvc {
@@ -557,7 +556,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				fn_name := c_fn_name(g.get_ternary_name(ident.name))
 				g.write('${ret_styp} (${msvc_call_conv}*${fn_name}) (')
 				def_pos := g.definitions.len
-				g.fn_decl_params(func.func.params, unsafe { nil }, false)
+				g.fn_decl_params(right_sym.info.func.params, unsafe { nil }, false)
 				g.definitions.go_back(g.definitions.len - def_pos)
 				g.write(')${call_conv_attribute_suffix}')
 			} else {
@@ -568,33 +567,31 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					mut is_used_var_styp := false
 					if ident.name !in g.defer_vars {
 						val_sym := g.table.sym(val_type)
-						if val_sym.info is ast.Struct {
-							if val_sym.info.generic_types.len > 0 {
-								if val is ast.StructInit {
-									var_styp := g.typ(val.typ)
+						if val_sym.info is ast.Struct && val_sym.info.generic_types.len > 0 {
+							if val is ast.StructInit {
+								var_styp := g.typ(val.typ)
+								if var_type.has_flag(.shared_f) {
+									g.write('__shared__${var_styp}* ')
+								} else {
+									g.write('${var_styp} ')
+								}
+								is_used_var_styp = true
+							} else if val is ast.PrefixExpr {
+								if val.op == .amp && val.right is ast.StructInit {
+									var_styp := g.typ(val.right.typ.ref())
 									if var_type.has_flag(.shared_f) {
-										g.write('__shared__${var_styp}* ')
-									} else {
-										g.write('${var_styp} ')
+										g.write('__shared__')
 									}
+									g.write('${var_styp} ')
 									is_used_var_styp = true
-								} else if val is ast.PrefixExpr {
-									if val.op == .amp && val.right is ast.StructInit {
-										var_styp := g.typ(val.right.typ.ref())
-										if var_type.has_flag(.shared_f) {
-											g.write('__shared__')
-										}
-										g.write('${var_styp} ')
-										is_used_var_styp = true
-									}
 								}
 							}
 						}
 						if !is_used_var_styp {
 							if !val_type.has_flag(.option) && left_sym.is_array_fixed() {
-								if left_sym.kind == .alias {
-									parent_sym := g.table.final_sym((left_sym.info as ast.Alias).parent_type)
-									styp = g.typ((left_sym.info as ast.Alias).parent_type)
+								if left_sym.info is ast.Alias {
+									parent_sym := g.table.final_sym(left_sym.info.parent_type)
+									styp = g.typ(left_sym.info.parent_type)
 									if !parent_sym.is_array_fixed_ret() {
 										g.write('${styp} ')
 									} else {
