@@ -467,7 +467,7 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 						&& cond.right in [ast.ComptimeType, ast.TypeNode] {
 						exp_type := g.get_expr_type(cond.left)
 						if cond.right is ast.ComptimeType {
-							is_true := g.table.is_comptime_type(exp_type, cond.right)
+							is_true := g.comptime.is_comptime_type(exp_type, cond.right)
 							if cond.op == .key_is {
 								if is_true {
 									g.write('1')
@@ -583,7 +583,7 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 
 						for expr in cond.right.exprs {
 							if expr is ast.ComptimeType {
-								if g.table.is_comptime_type(checked_type, expr as ast.ComptimeType) {
+								if g.comptime.is_comptime_type(checked_type, expr as ast.ComptimeType) {
 									if cond.op == .key_in {
 										g.write('1')
 									} else {
@@ -714,7 +714,11 @@ fn (mut g Gen) resolve_comptime_type(node ast.Expr, default_type ast.Type) ast.T
 }
 
 fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
-	sym := g.table.final_sym(g.unwrap_generic(node.typ))
+	sym := if node.typ != g.field_data_type {
+		g.table.final_sym(g.unwrap_generic(node.typ))
+	} else {
+		g.table.final_sym(g.comptime.comptime_for_field_type)
+	}
 	g.writeln('/* \$for ${node.val_var} in ${sym.name}.${node.kind.str()} */ {')
 	g.indent++
 	mut i := 0
