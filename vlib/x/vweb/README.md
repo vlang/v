@@ -805,6 +805,13 @@ When this function is called you are free to do anything you want with the TCP
 connection and vweb will not interfere. This means that we are responsible for
 sending a response over the connection and closing it.
 
+### Empty Result
+
+Sometimes you want to send the response in another thread, for example when using 
+[Server Sent Events](sse/README.md). When you are sure that a response will be sent
+over the TCP connection you can return `vweb.no_result()`. This function does nothinng
+and returns an empty `vweb.Result` struct, letting vweb know that we sent a response ourself.
+
 **Example:**
 ```v
 module main
@@ -825,11 +832,14 @@ pub fn (app &App) index(mut ctx Context) vweb.Result {
 
 @['/long']
 pub fn (app &App) long_response(mut ctx Context) vweb.Result {
+	// let vweb know that the connection should not be closed
+	ctx.takeover_conn()
 	// use spawn to handle the connection in another thread
 	// if we don't the whole web server will block for 10 seconds,
 	// since vweb is singlethreaded
 	spawn handle_connection(mut ctx.conn)
-	return ctx.takeover_conn()
+	// we will send a custom response ourself, so we can safely return an empty result
+	return vweb.no_result()
 }
 
 fn handle_connection(mut conn net.TcpConn) {
