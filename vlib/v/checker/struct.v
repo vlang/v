@@ -489,7 +489,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 	// but `x := T{}` is ok.
 	if !c.is_builtin_mod && !c.inside_unsafe && type_sym.language == .v
 		&& c.table.cur_concrete_types.len == 0 {
-		pos := type_sym.name.last_index('.') or { -1 }
+		pos := type_sym.name.index_u8_last(`.`)
 		first_letter := type_sym.name[pos + 1]
 		if !first_letter.is_capital()
 			&& (type_sym.kind != .struct_ || !(type_sym.info as ast.Struct).is_anon)
@@ -704,8 +704,9 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							c.error('reference field must be initialized with reference',
 								init_field.pos)
 						}
-					} else if exp_type.is_pointer() && !got_type.is_any_kind_of_pointer()
-						&& !got_type.is_int() {
+					} else if exp_type.is_any_kind_of_pointer()
+						&& !got_type.is_any_kind_of_pointer() && !got_type.is_int()
+						&& (!exp_type.has_flag(.option) || got_type.idx() != ast.none_type_idx) {
 						got_typ_str := c.table.type_to_str(got_type)
 						exp_typ_str := c.table.type_to_str(exp_type)
 						c.error('cannot assign to field `${field_info.name}`: expected a pointer `${exp_typ_str}`, but got `${got_typ_str}`',
@@ -874,9 +875,10 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 	if node.has_update_expr {
 		update_type := c.expr(mut node.update_expr)
 		node.update_expr_type = update_type
+		expr_sym := c.table.final_sym(c.unwrap_generic(update_type))
 		if node.update_expr is ast.ComptimeSelector {
 			c.error('cannot use struct update syntax in compile time expressions', node.update_expr_pos)
-		} else if c.table.final_sym(update_type).kind != .struct_ {
+		} else if expr_sym.kind != .struct_ {
 			s := c.table.type_to_str(update_type)
 			c.error('expected struct, found `${s}`', node.update_expr.pos())
 		} else if update_type != node.typ {
@@ -899,6 +901,23 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			if concrete_types.len > 0 {
 				generic_names := struct_sym.info.generic_types.map(c.table.sym(it).name)
 				node.typ = c.table.unwrap_generic_type(node.typ, generic_names, concrete_types)
+			}
+		} else if struct_sym.info.generic_types.len > 0
+			&& struct_sym.info.generic_types.len == struct_sym.info.concrete_types.len
+			&& c.table.cur_concrete_types.len == 0 {
+			parent_type := struct_sym.info.parent_type
+			parent_sym := c.table.sym(parent_type)
+			for method in parent_sym.methods {
+				generic_names := struct_sym.info.generic_types.map(c.table.sym(it).name)
+				for i, param in method.params {
+					if i == 0 || !param.typ.has_flag(.generic) {
+						continue
+					}
+					param_sym := c.table.sym(param.typ)
+					if param_sym.kind in [.struct_, .interface_, .sum_type] {
+						c.table.unwrap_generic_type(param.typ, generic_names, struct_sym.info.concrete_types)
+					}
+				}
 			}
 		}
 	}

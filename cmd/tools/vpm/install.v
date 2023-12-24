@@ -25,7 +25,7 @@ fn vpm_install(query []string) {
 				println('Nothing to install.')
 				exit(0)
 			}
-			manifest.dependencies.clone()
+			manifest.dependencies
 		} else {
 			vpm_error('specify at least one module for installation.',
 				details: 'example: `v install publisher.package` or `v install https://github.com/owner/repository`'
@@ -70,7 +70,6 @@ fn vpm_install(query []string) {
 
 fn install_modules(modules []Module) {
 	vpm_log(@FILE_LINE, @FN, 'modules: ${modules}')
-	idents := modules.map(it.name)
 	mut errors := 0
 	for m in modules {
 		vpm_log(@FILE_LINE, @FN, 'module: ${m}')
@@ -93,7 +92,6 @@ fn install_modules(modules []Module) {
 			}
 		}
 		println('Installed `${m.name}`.')
-		resolve_dependencies(get_manifest(m.install_path), idents)
 	}
 	if errors > 0 {
 		exit(1)
@@ -101,6 +99,9 @@ fn install_modules(modules []Module) {
 }
 
 fn (m Module) install() InstallResult {
+	defer {
+		os.rmdir_all(m.tmp_path) or {}
+	}
 	if m.is_installed {
 		// Case: installed, but not an explicit version. Update instead of continuing the installation.
 		if m.version == '' && m.installed_version == '' {
@@ -122,17 +123,20 @@ fn (m Module) install() InstallResult {
 			return .skipped
 		}
 	}
-	vcs := m.vcs or { settings.vcs }
-	version_opt := if m.version != '' { ' ${vcs.args.version} ${m.version}' } else { '' }
-	cmd := '${vcs.cmd} ${vcs.args.install}${version_opt} "${m.url}" "${m.install_path}"'
-	vpm_log(@FILE_LINE, @FN, 'command: ${cmd}')
 	println('Installing `${m.name}`...')
-	verbose_println('  cloning from `${m.url}` to `${m.install_path_fmted}`')
-	res := os.execute_opt(cmd) or {
+	// When the module should be relocated into a subdirectory we need to make sure
+	// it exists to not run into permission errors.
+	parent_dir := m.install_path.all_before_last(os.path_separator)
+	if !os.exists(parent_dir) {
+		os.mkdir_all(parent_dir) or {
+			vpm_error('failed to create module directory for `${m.name}`.', details: err.msg())
+			return .failed
+		}
+	}
+	os.mv(m.tmp_path, m.install_path) or {
 		vpm_error('failed to install `${m.name}`.', details: err.msg())
 		return .failed
 	}
-	vpm_log(@FILE_LINE, @FN, 'cmd output: ${res.output}')
 	return .installed
 }
 
@@ -141,14 +145,14 @@ fn (m Module) confirm_install() bool {
 		println('Module `${m.name}${at_version(m.installed_version)}` is already installed, use --force to overwrite.')
 		return false
 	} else {
-		install_version := at_version(if m.version == '' { 'latest' } else { m.version })
 		println('Module `${m.name}${at_version(m.installed_version)}` is already installed at `${m.install_path_fmted}`.')
 		if settings.fail_on_prompt {
 			vpm_error('VPM should not have entered a confirmation prompt.')
 			exit(1)
 		}
+		install_version := at_version(if m.version == '' { 'latest' } else { m.version })
 		input := os.input('Replace it with `${m.name}${install_version}`? [Y/n]: ')
-		match input.to_lower() {
+		match input.trim_space().to_lower() {
 			'', 'y' {
 				return true
 			}

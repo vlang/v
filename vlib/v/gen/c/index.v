@@ -48,28 +48,25 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					g.write(')')
 				}
 			}
+		} else if sym.info is ast.Aggregate
+			&& sym.info.types.filter(g.table.type_kind(it) !in [.array, .array_fixed, .string, .map]).len == 0 {
+			// treating sumtype of array types
+			unwrapped_got_type := sym.info.types[g.aggregate_type_idx]
+			g.index_expr(ast.IndexExpr{ ...node, left_type: unwrapped_got_type })
 		} else {
-			if sym.kind == .aggregate
-				&& (sym.info as ast.Aggregate).types.filter(g.table.type_kind(it) !in [.array, .array_fixed, .string, .map]).len == 0 {
-				// treating sumtype of array types
-				unwrapped_got_type := (sym.info as ast.Aggregate).types[g.aggregate_type_idx]
-				g.index_expr(ast.IndexExpr{ ...node, left_type: unwrapped_got_type })
-			} else {
-				g.expr(node.left)
-				g.write('[')
-				g.expr(node.index)
-				g.write(']')
-			}
+			g.expr(node.left)
+			g.write('[')
+			g.expr(node.index)
+			g.write(']')
 		}
 	}
 }
 
 fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
-	sym := g.table.final_sym(node.left_type)
+	sym := g.table.final_sym(g.unwrap_generic(node.left_type))
 	mut tmp_opt := ''
 	mut cur_line := ''
 	mut gen_or := node.or_expr.kind != .absent || node.is_option
-
 	if sym.kind == .string {
 		if node.is_gated {
 			g.write('string_substr_ni(')
@@ -98,18 +95,17 @@ fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 			g.write('*')
 		}
 		g.expr(node.left)
-	} else if sym.kind == .array_fixed {
+	} else if sym.info is ast.ArrayFixed {
 		// Convert a fixed array to V array when doing `fixed_arr[start..end]`
-		info := sym.info as ast.ArrayFixed
-		noscan := g.check_noscan(info.elem_type)
+		noscan := g.check_noscan(sym.info.elem_type)
 		if node.is_gated {
 			g.write('array_slice_ni(')
 		} else {
 			g.write('array_slice(')
 		}
 		g.write('new_array_from_c_array${noscan}(')
-		ctype := g.typ(info.elem_type)
-		g.write('${info.size}, ${info.size}, sizeof(${ctype}), ')
+		ctype := g.typ(sym.info.elem_type)
+		g.write('${sym.info.size}, ${sym.info.size}, sizeof(${ctype}), ')
 		if node.left_type.is_ptr() {
 			g.write('*')
 		}
@@ -139,9 +135,8 @@ fn (mut g Gen) index_range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 	g.write(', ')
 	if range.has_high {
 		g.expr(range.high)
-	} else if sym.kind == .array_fixed {
-		info := sym.info as ast.ArrayFixed
-		g.write('${info.size}')
+	} else if sym.info is ast.ArrayFixed {
+		g.write('${sym.info.size}')
 	} else {
 		g.write('2147483647') // max_int
 	}
@@ -225,10 +220,12 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 								else {}
 							}
 				*/
-				if need_wrapper {
-					g.write(', &(${elem_type_str}[]) { ')
-				} else {
-					g.write(', &')
+				if elem_sym.kind != .array_fixed {
+					if need_wrapper {
+						g.write(', &(${elem_type_str}[]) { ')
+					} else {
+						g.write(', &')
+					}
 				}
 			} else {
 				// `x[0] *= y`

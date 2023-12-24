@@ -28,6 +28,8 @@ fn test_mysql() {
 	assert result_code == 0
 	result_code = db.exec_none('insert into users (username) values ("blaze")')
 	assert result_code == 0
+	rows := db.exec_param('insert into users (username) values (?)', 'Hi')!
+	assert rows == []mysql.Row{}
 
 	// Regression testing to ensure the query and exec return the same values
 	res := db.query('select * from users')!
@@ -68,6 +70,9 @@ fn test_mysql() {
 		},
 		mysql.Row{
 			vals: ['4', 'blaze']
+		},
+		mysql.Row{
+			vals: ['5', 'Hi']
 		},
 	]
 

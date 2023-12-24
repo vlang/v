@@ -144,6 +144,7 @@ pub enum ComptimeTypeKind {
 	alias
 	function
 	option
+	string
 }
 
 pub struct ComptimeType {
@@ -168,6 +169,7 @@ pub fn (cty ComptimeType) str() string {
 		.alias { '\$alias' }
 		.function { '\$function' }
 		.option { '\$option' }
+		.string { '\$string' }
 	}
 }
 
@@ -1201,6 +1203,7 @@ pub enum ComptimeForKind {
 	fields
 	attributes
 	values
+	variants
 }
 
 pub struct ComptimeFor {
@@ -1212,6 +1215,7 @@ pub:
 pub mut:
 	stmts []Stmt
 	typ   Type
+	expr  Expr
 }
 
 pub struct ForStmt {

@@ -217,3 +217,12 @@ fn test_intp_pointer_specifier_p() {
 	str2 := '${&foo:p}'
 	assert str1 == str2
 }
+
+// for issue: 20199
+// string contains the zero character: `\0`
+fn test_contains_zero_characters() {
+	mut str := 'abc'
+	str = '${str}\x00${str}'
+	assert str.len == 7
+	assert str == 'abc\0abc'
+}

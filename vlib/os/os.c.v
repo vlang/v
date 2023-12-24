@@ -144,8 +144,6 @@ pub fn read_file(path string) !string {
 	}
 }
 
-// ***************************** OS ops ************************
-//
 // truncate changes the size of the file located in `path` to `len`.
 // Note that changing symbolic links on Windows only works as admin.
 pub fn truncate(path string, len u64) ! {
@@ -401,6 +399,8 @@ pub fn system(cmd string) int {
 	$if windows {
 		// overcome bug in system & _wsystem (cmd) when first char is quote `"`
 		wcmd := if cmd.len > 1 && cmd[0] == `"` && cmd[1] != `"` { '"${cmd}"' } else { cmd }
+		flush_stdout()
+		flush_stderr()
 		unsafe {
 			ret = C._wsystem(wcmd.to_wide())
 		}
@@ -803,6 +803,7 @@ pub fn is_link(path string) bool {
 
 struct PathKind {
 mut:
+	is_file bool
 	is_dir  bool
 	is_link bool
 }
@@ -812,6 +813,9 @@ fn kind_of_existing_path(path string) PathKind {
 	$if windows {
 		attr := C.GetFileAttributesW(path.to_wide())
 		if attr != u32(C.INVALID_FILE_ATTRIBUTES) {
+			if (int(attr) & C.FILE_ATTRIBUTE_NORMAL) != 0 {
+				res.is_file = true
+			}
 			if (int(attr) & C.FILE_ATTRIBUTE_DIRECTORY) != 0 {
 				res.is_dir = true
 			}
@@ -825,6 +829,9 @@ fn kind_of_existing_path(path string) PathKind {
 		res_stat := unsafe { C.lstat(&char(path.str), &statbuf) }
 		if res_stat == 0 {
 			kind := (int(statbuf.st_mode) & s_ifmt)
+			if kind == s_ifreg {
+				res.is_file = true
+			}
 			if kind == s_ifdir {
 				res.is_dir = true
 			}

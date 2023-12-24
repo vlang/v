@@ -4,7 +4,6 @@ import os
 import net.urllib
 import strings
 import markdown
-import regex
 import v.scanner
 import v.ast
 import v.token
@@ -19,9 +18,6 @@ const link_svg = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0
 const single_quote = "'"
 const double_quote = '"'
 const no_quotes_replacement = [single_quote, '', double_quote, '']
-
-const html_tag_escape_re = regex.regex_opt(r'`.+[(&lt;)(&gt;)].+`') or { panic(err) }
-const html_tag_escape_seq = ['<', '&lt;', '>', '&gt;']
 const md_script_escape_seq = ['<script>', '`', '</script>', '`']
 
 enum HighlightTokenTyp {
@@ -37,6 +33,11 @@ enum HighlightTokenTyp {
 	operator
 	punctuation
 	string
+	// For string interpolation
+	opening_string
+	string_interp
+	partial_string
+	closing_string
 	symbol
 	none_
 	module_
@@ -58,25 +59,25 @@ struct SearchResult {
 fn (vd VDoc) render_search_index(out Output) {
 	mut js_search_index := strings.new_builder(200)
 	mut js_search_data := strings.new_builder(200)
-	js_search_index.write_string('var searchModuleIndex = [')
-	js_search_data.write_string('var searchModuleData = [')
+	js_search_index.write_string('var searchModuleIndex = [\n')
+	js_search_data.write_string('var searchModuleData = [\n')
 	for i, title in vd.search_module_index {
 		data := vd.search_module_data[i]
-		js_search_index.write_string('"${title}",')
-		js_search_data.write_string('["${data.description}","${data.link}"],')
+		js_search_index.write_string('"${title}",\n')
+		js_search_data.write_string('["${data.description}","${data.link}"],\n')
 	}
-	js_search_index.writeln('];')
-	js_search_index.write_string('var searchIndex = [')
-	js_search_data.writeln('];')
-	js_search_data.write_string('var searchData = [')
+	js_search_index.writeln('];\n')
+	js_search_index.write_string('var searchIndex = [\n')
+	js_search_data.writeln('];\n')
+	js_search_data.write_string('var searchData = [\n')
 	for i, title in vd.search_index {
 		data := vd.search_data[i]
-		js_search_index.write_string('"${title}",')
+		js_search_index.write_string('"${title}",\n')
 		// array instead of object to reduce file size
-		js_search_data.write_string('["${data.badge}","${data.description}","${data.link}","${data.prefix}"],')
+		js_search_data.write_string('["${data.badge}","${data.description}","${data.link}","${data.prefix}"],\n')
 	}
-	js_search_index.writeln('];')
-	js_search_data.writeln('];')
+	js_search_index.writeln('];\n')
+	js_search_data.writeln('];\n')
 	out_file_path := os.join_path(out.path, 'search_index.js')
 	os.write_file(out_file_path, js_search_index.str() + js_search_data.str()) or { panic(err) }
 }
@@ -174,6 +175,7 @@ fn (vd VDoc) write_content(cn &doc.DocNode, d &doc.Doc, mut hw strings.Builder) 
 	src_link := get_src_link(vd.manifest.repo_url, file_path_name, cn.pos.line_nr + 1)
 	if cn.content.len != 0 || cn.name == 'Constants' {
 		hw.write_string(doc_node_html(cn, src_link, false, cfg.include_examples, d.table))
+		hw.write_string('\n')
 	}
 	for child in cn.children {
 		child_file_path_name := child.file_path.replace('${base_dir}/', '')
@@ -181,6 +183,7 @@ fn (vd VDoc) write_content(cn &doc.DocNode, d &doc.Doc, mut hw strings.Builder) 
 			child.pos.line_nr + 1)
 		hw.write_string(doc_node_html(child, child_src_link, false, cfg.include_examples,
 			d.table))
+		hw.write_string('\n')
 	}
 }
 
@@ -229,10 +232,10 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 			submodules := vd.docs.filter(it.head.name.starts_with(submod_prefix + '.'))
 			dropdown := if submodules.len > 0 { vd.assets['arrow_icon'] } else { '' }
 			active_class := if dc.head.name == d.head.name { ' active' } else { '' }
-			modules_toc.write_string('<li class="open${active_class}"><div class="menu-row">${dropdown}<a href="${href_name}">${submod_prefix}</a></div>')
+			modules_toc.write_string('<li class="open${active_class}">\n<div class="menu-row">${dropdown}<a href="${href_name}">${submod_prefix}</a></div>\n')
 			for j, cdoc in submodules {
 				if j == 0 {
-					modules_toc.write_string('<ul>')
+					modules_toc.write_string('<ul>\n')
 				}
 				submod_name := cdoc.head.name.all_after(submod_prefix + '.')
 				sub_selected_classes := if cdoc.head.name == d.head.name {
@@ -240,12 +243,12 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 				} else {
 					''
 				}
-				modules_toc.write_string('<li${sub_selected_classes}><a href="./${cdoc.head.name}.html">${submod_name}</a></li>')
+				modules_toc.write_string('<li${sub_selected_classes}><a href="./${cdoc.head.name}.html">${submod_name}</a></li>\n')
 				if j == submodules.len - 1 {
-					modules_toc.write_string('</ul>')
+					modules_toc.write_string('</ul>\n')
 				}
 			}
-			modules_toc.write_string('</li>')
+			modules_toc.write_string('</li>\n')
 		}
 	}
 	modules_toc_str := modules_toc.str()
@@ -330,87 +333,166 @@ fn get_src_link(repo_url string, file_name string, line_nr int) string {
 	return url.str()
 }
 
-fn html_highlight(code string, tb &ast.Table) string {
-	builtin := ['bool', 'string', 'i8', 'i16', 'int', 'i64', 'i128', 'byte', 'u16', 'u32', 'u64',
-		'u128', 'rune', 'f32', 'f64', 'int_literal', 'float_literal', 'byteptr', 'voidptr', 'any']
-	highlight_code := fn (tok token.Token, typ HighlightTokenTyp) string {
-		lit := if typ in [.unone, .operator, .punctuation] {
-			tok.kind.str()
-		} else if typ == .string {
-			"'${tok.lit}'"
-		} else if typ == .char {
-			'`${tok.lit}`'
-		} else if typ == .comment {
-			if tok.lit != '' && tok.lit[0] == 1 { '//${tok.lit[1..]}' } else { '//${tok.lit}' }
-		} else {
-			tok.lit
+fn write_token(tok token.Token, typ HighlightTokenTyp, mut buf strings.Builder) {
+	match typ {
+		.unone, .operator, .punctuation {
+			buf.write_string(tok.kind.str())
 		}
-		if typ in [.unone, .name] {
-			return lit
+		.string_interp {
+			// tok.kind.str() for this returns $2 instead of $
+			buf.write_byte(`$`)
 		}
-		return '<span class="token ${typ}">${lit}</span>'
+		.opening_string {
+			buf.write_string("'${tok.lit}")
+		}
+		.closing_string {
+			// A string as the next token of the expression
+			// inside the string interpolation indicates that
+			// this is the closing of string interpolation
+			buf.write_string("${tok.lit}'")
+		}
+		.string {
+			buf.write_string("'${tok.lit}'")
+		}
+		.char {
+			buf.write_string('`${tok.lit}`')
+		}
+		.comment {
+			buf.write_string('//')
+			if tok.lit != '' && tok.lit[0] == 1 {
+				buf.write_string(tok.lit[1..])
+			} else {
+				buf.write_string(tok.lit)
+			}
+		}
+		else {
+			buf.write_string(tok.lit)
+		}
 	}
+}
+
+fn html_highlight(code string, tb &ast.Table) string {
 	mut s := scanner.new_scanner(code, .parse_comments, &pref.Preferences{ output_mode: .silent })
 	mut tok := s.scan()
 	mut next_tok := s.scan()
 	mut buf := strings.new_builder(200)
 	mut i := 0
+	mut inside_string_interp := false
 	for i < code.len {
-		if i == tok.pos {
-			mut tok_typ := HighlightTokenTyp.unone
-			match tok.kind {
-				.name {
-					if tok.lit in builtin || tb.known_type(tok.lit) {
-						tok_typ = .builtin
-					} else if next_tok.kind == .lcbr {
-						tok_typ = .symbol
-					} else if next_tok.kind == .lpar || (!tok.lit[0].is_capital()
-						&& next_tok.kind == .lt && next_tok.pos == tok.pos + tok.lit.len) {
-						tok_typ = .function
-					} else {
-						tok_typ = .name
-					}
-				}
-				.comment {
-					tok_typ = .comment
-				}
-				.chartoken {
-					tok_typ = .char
-				}
-				.string {
-					tok_typ = .string
-				}
-				.number {
-					tok_typ = .number
-				}
-				.key_true, .key_false {
-					tok_typ = .boolean
-				}
-				.lpar, .lcbr, .rpar, .rcbr, .lsbr, .rsbr, .semicolon, .colon, .comma, .dot,
-				.dotdot, .ellipsis {
-					tok_typ = .punctuation
-				}
-				else {
-					if token.is_key(tok.lit) || token.is_decl(tok.kind) {
-						tok_typ = .keyword
-					} else if tok.kind == .decl_assign || tok.kind.is_assign() || tok.is_unary()
-						|| tok.kind.is_relational() || tok.kind.is_infix() || tok.kind.is_postfix() {
-						tok_typ = .operator
-					}
-				}
-			}
-			buf.write_string(highlight_code(tok, tok_typ))
-			if next_tok.kind != .eof {
-				i = tok.pos + tok.len
-				tok = next_tok
-				next_tok = s.scan()
-			} else {
-				break
-			}
-		} else {
+		if i != tok.pos {
+			// All characters not detected by the scanner
+			// (mostly whitespaces) go here.
 			buf.write_u8(code[i])
 			i++
+			continue
 		}
+
+		mut tok_typ := HighlightTokenTyp.unone
+		match tok.kind {
+			.name {
+				if tok.lit in highlight_builtin_types || tb.known_type(tok.lit) {
+					tok_typ = .builtin
+				} else if next_tok.kind == .lcbr {
+					tok_typ = .symbol
+				} else if next_tok.kind == .lpar || (!tok.lit[0].is_capital()
+					&& next_tok.kind == .lt && next_tok.pos == tok.pos + tok.lit.len) {
+					tok_typ = .function
+				} else {
+					tok_typ = .name
+				}
+			}
+			.comment {
+				tok_typ = .comment
+			}
+			.chartoken {
+				tok_typ = .char
+			}
+			.str_dollar {
+				tok_typ = .string_interp
+				inside_string_interp = true
+			}
+			.string {
+				if inside_string_interp {
+					if next_tok.kind == .str_dollar {
+						// the " hello " in "${a} hello ${b} world"
+						tok_typ = .partial_string
+					} else {
+						// the " world" in "${a} hello ${b} world"
+						tok_typ = .closing_string
+					}
+
+					// NOTE: Do not switch inside_string_interp yet!
+					// It will be handy later when we do some special
+					// handling in generating code (see code below)
+				} else if next_tok.kind == .str_dollar {
+					tok_typ = .opening_string
+				} else {
+					tok_typ = .string
+				}
+			}
+			.number {
+				tok_typ = .number
+			}
+			.key_true, .key_false {
+				tok_typ = .boolean
+			}
+			.lpar, .lcbr, .rpar, .rcbr, .lsbr, .rsbr, .semicolon, .colon, .comma, .dot, .dotdot,
+			.ellipsis {
+				tok_typ = .punctuation
+			}
+			else {
+				if token.is_key(tok.lit) || token.is_decl(tok.kind) {
+					tok_typ = .keyword
+				} else if tok.kind == .decl_assign || tok.kind.is_assign() || tok.is_unary()
+					|| tok.kind.is_relational() || tok.kind.is_infix() || tok.kind.is_postfix() {
+					tok_typ = .operator
+				}
+			}
+		}
+
+		if tok_typ in [.unone, .name] {
+			write_token(tok, tok_typ, mut buf)
+		} else {
+			// Special handling for "complex" string literals
+			if tok_typ in [.partial_string, .closing_string] && inside_string_interp {
+				// rcbr is not rendered when the string on the right
+				// side of the expr/string interpolation is not empty.
+				// e.g. "${a}.${b}${c}"
+				// expectation: "${a}.${b}${c}"
+				// reality: "${a.${b}${c}"
+				if tok.lit.len != 0 {
+					write_token(token.Token{ kind: .rcbr }, .unone, mut buf)
+				}
+
+				inside_string_interp = false
+			}
+
+			// Properly treat and highlight the "string"-related types
+			// as if they are "string" type.
+			final_tok_typ := match tok_typ {
+				.opening_string, .partial_string, .closing_string { HighlightTokenTyp.string }
+				else { tok_typ }
+			}
+
+			buf.write_string('<span class="token ${final_tok_typ}">')
+			write_token(tok, tok_typ, mut buf)
+			buf.write_string('</span>')
+		}
+
+		if next_tok.kind == .eof {
+			break
+		}
+
+		i = tok.pos + tok.len
+
+		// This is to avoid issues that skips any "unused" tokens
+		// For example: Call expr with complex string literals as arg
+		if i - 1 == next_tok.pos {
+			i--
+		}
+
+		tok = next_tok
+		next_tok = s.scan()
 	}
 	return buf.str()
 }
@@ -424,7 +506,7 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 		// Strip markdown [TOC] directives, since we generate our own.
 		comments.replace('[TOC]', '').replace_each(md_script_escape_seq)
 	} else {
-		html_tag_escape(comments)
+		comments
 	}
 	mut renderer := markdown.HtmlRenderer{
 		transformer: &MdHtmlCodeHighlighter{
@@ -459,18 +541,18 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 		if link.len != 0 {
 			dnw.write_string('<a class="link" rel="noreferrer" target="_blank" href="${link}">${link_svg}</a>')
 		}
-		dnw.write_string('</div>')
+		dnw.write_string('</div>\n')
 	}
 	if deprecated_tags.len > 0 {
-		attributes := deprecated_tags.map('<div class="attribute attribute-deprecated">${no_quotes(it)}</div>').join('')
-		dnw.writeln('<div class="attributes">${attributes}</div>')
+		attributes := deprecated_tags.map('<div class="attribute attribute-deprecated">${no_quotes(it)}</div>\n').join('')
+		dnw.writeln('<div class="attributes">${attributes}</div>\n')
 	}
 	if tags.len > 0 {
 		attributes := tags.map('<div class="attribute">${it}</div>').join('')
 		dnw.writeln('<div class="attributes">${attributes}</div>')
 	}
 	if !head && dn.content.len > 0 {
-		dnw.writeln('<pre class="signature"><code>${highlighted_code}</code></pre>')
+		dnw.writeln('<pre class="signature">\n<code>${highlighted_code}</code></pre>')
 	}
 	// do not mess with md_content further, its formatting is important, just output it 1:1 !
 	dnw.writeln('${md_content}\n')
@@ -481,7 +563,7 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 		dnw.writeln('<section class="doc-node examples"><h4>${example_title}</h4>')
 		for example in examples {
 			hl_example := html_highlight(example, tb)
-			dnw.writeln('<pre><code class="language-v">${hl_example}</code></pre>')
+			dnw.writeln('<pre>\n<code class="language-v">${hl_example}</code></pre>')
 		}
 		dnw.writeln('</section>')
 	}
@@ -490,37 +572,6 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 	return dnw_str
 }
 
-fn html_tag_escape(str string) string {
-	escaped_string := str.replace_each(html_tag_escape_seq)
-	mut re := html_tag_escape_re
-	if re.find_all_str(escaped_string).len > 0 {
-		return str
-	}
-	return escaped_string
-}
-
-/*
-fn js_compress(str string) string {
-	mut js := strings.new_builder(200)
-	lines := str.split_into_lines()
-	rules := [') {', ' = ', ', ', '{ ', ' }', ' (', '; ', ' + ', ' < ', ' - ', ' || ', ' var',
-		': ', ' >= ', ' && ', ' else if', ' === ', ' !== ', ' else ']
-	clean := ['){', '=', ',', '{', '}', '(', ';', '+', '<', '-', '||', 'var', ':', '>=', '&&',
-		'else if', '===', '!==', 'else']
-	for line in lines {
-		mut trimmed := line.trim_space()
-		if trimmed.starts_with('//') || (trimmed.starts_with('/*') && trimmed.ends_with('*/')) {
-			continue
-		}
-		for i in 0 .. rules.len - 1 {
-			trimmed = trimmed.replace(rules[i], clean[i])
-		}
-		js.write_string(trimmed)
-	}
-	js_str := js.str()
-	return js_str
-}
-*/
 fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
 	mut toc_slug := if dn.name.len == 0 || dn.content.len == 0 { '' } else { slug(dn.name) }
 	if toc_slug == '' && dn.children.len > 0 {
@@ -564,12 +615,15 @@ fn (f &MdHtmlCodeHighlighter) transform_attribute(p markdown.ParentType, name st
 }
 
 fn (f &MdHtmlCodeHighlighter) transform_content(parent markdown.ParentType, text string) string {
+	// NOTE: markdown.default_html_transformer uses html.escape internally.
+	initial_transformed_text := markdown.default_html_transformer.transform_content(parent,
+		text)
 	if parent is markdown.MD_BLOCKTYPE && parent == .md_block_code {
 		if f.language == 'v' || f.language == 'vlang' {
-			return html_highlight(html_tag_escape(text), f.table)
+			return html_highlight(initial_transformed_text, f.table)
 		}
 	}
-	return markdown.default_html_transformer.transform_content(parent, html_tag_escape(text))
+	return initial_transformed_text
 }
 
 fn (mut f MdHtmlCodeHighlighter) config_set(key string, val string) {

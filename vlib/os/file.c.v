@@ -28,11 +28,6 @@ pub mut:
 	is_opened bool
 }
 
-struct FileInfo {
-	name string
-	size int
-}
-
 fn C.fseeko(&C.FILE, u64, int) int
 
 fn C._fseeki64(&C.FILE, u64, int) int
@@ -109,8 +104,7 @@ pub fn open_file(path string, mode string, options ...int) !File {
 	if fd == -1 {
 		return error(posix_get_error_msg(C.errno))
 	}
-	fdopen_mode := mode.replace('b', '')
-	cfile := C.fdopen(fd, &char(fdopen_mode.str))
+	cfile := C.fdopen(fd, &char(mode.str))
 	if isnil(cfile) {
 		return error('Failed to open or create file "${path}"')
 	}
@@ -259,6 +253,7 @@ pub fn (f &File) read(mut buf []u8) !int {
 }
 
 // **************************** Write ops  ***************************
+
 // write implements the Writer interface.
 // It returns how many bytes were actually written.
 pub fn (mut f File) write(buf []u8) !int {
@@ -559,6 +554,7 @@ pub fn (f &File) read_into_ptr(ptr &u8, max_size int) !int {
 }
 
 // **************************** Utility  ops ***********************
+
 // flush writes any buffered unwritten data left in the file stream.
 pub fn (mut f File) flush() {
 	if !f.is_opened {
@@ -874,7 +870,12 @@ pub fn (f &File) tell() !i64 {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
-	pos := C.ftell(f.cfile)
+	mut pos := isize(0)
+	$if windows {
+		pos = C._telli64(f.fd)
+	} $else {
+		pos = C.ftell(f.cfile)
+	}
 	if pos == -1 {
 		return error(posix_get_error_msg(C.errno))
 	}

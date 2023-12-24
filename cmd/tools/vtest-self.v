@@ -90,7 +90,9 @@ const skip_test_files = [
 	'vlib/context/onecontext/onecontext_test.v', // backtrace_symbols is missing
 	'vlib/db/mysql/mysql_orm_test.v', // mysql not installed
 	'vlib/db/mysql/mysql_test.v', // mysql not installed
+	'vlib/db/mysql/prepared_stmt_test.v', // mysql not installed
 	'vlib/db/pg/pg_orm_test.v', // pg not installed
+	'vlib/db/pg/pg_test.v', // pg not installed
 ]
 // These tests are too slow to be run in the CI on each PR/commit
 // in the sanitized modes:
@@ -109,9 +111,19 @@ const skip_fsanitize_too_slow = [
 	'vlib/v/slow_tests/profile/profile_test.v',
 	'vlib/v/slow_tests/repl/repl_test.v',
 	'vlib/v/slow_tests/valgrind/valgrind_test.v',
+	'cmd/tools/vpm/dependency_test.v',
+	'cmd/tools/vpm/install_test.v',
+	'cmd/tools/vpm/install_version_input_test.v',
+	'cmd/tools/vpm/install_version_test.v',
+	'cmd/tools/vpm/update_test.v',
 ]
 const skip_with_fsanitize_memory = [
 	'do_not_remove',
+	'cmd/tools/vpm/dependency_test.v', // known flaky, for fsanitize_memory, due to using mbedtls
+	'cmd/tools/vpm/install_test.v', // known flaky, for fsanitize_memory, due to using mbedtls
+	'cmd/tools/vpm/install_version_input_test.v', // known flaky, for fsanitize_memory, due to using mbedtls
+	'cmd/tools/vpm/install_version_test.v', // known flaky, for fsanitize_memory, due to using mbedtls
+	'cmd/tools/vpm/update_test.v', // known flaky, for fsanitize_memory, due to using mbedtls
 	'vlib/net/tcp_simple_client_server_test.v',
 	'vlib/net/http/cookie_test.v',
 	'vlib/net/http/http_test.v',
@@ -136,6 +148,8 @@ const skip_with_fsanitize_memory = [
 	'vlib/orm/orm_custom_operators_test.v',
 	'vlib/orm/orm_fk_test.v',
 	'vlib/orm/orm_references_test.v',
+	'vlib/orm/orm_option_array_test.v',
+	'vlib/orm/orm_option_time_test.v',
 	'vlib/db/sqlite/sqlite_test.v',
 	'vlib/db/sqlite/sqlite_orm_test.v',
 	'vlib/db/sqlite/sqlite_vfs_lowlevel_test.v',
@@ -223,6 +237,8 @@ const skip_on_ubuntu_musl = [
 	'vlib/orm/orm_custom_operators_test.v',
 	'vlib/orm/orm_fk_test.v',
 	'vlib/orm/orm_references_test.v',
+	'vlib/orm/orm_option_array_test.v',
+	'vlib/orm/orm_option_time_test.v',
 	'vlib/v/tests/orm_enum_test.v',
 	'vlib/v/tests/orm_sub_struct_test.v',
 	'vlib/v/tests/orm_sub_array_struct_test.v',
@@ -245,6 +261,8 @@ const skip_on_ubuntu_musl = [
 	'vlib/net/smtp/smtp_test.v',
 	'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
 	'vlib/v/tests/fn_literal_type_test.v',
+	'vlib/vweb/x/tests/vweb_test.v',
+	'vlib/vweb/x/tests/vweb_app_test.v',
 ]
 const skip_on_linux = [
 	'do_not_remove',
@@ -336,7 +354,11 @@ fn main() {
 
 	if !testing.is_node_present {
 		testroot := vroot + os.path_separator
-		tsession.skip_files << test_js_files.map(it.replace(testroot, ''))
+		tsession.skip_files << test_js_files.map(it.replace(testroot, '').replace('\\',
+			'/'))
+	}
+	if !testing.is_go_present {
+		tsession.skip_files << 'vlib/v/gen/golang/tests/golang_test.v'
 	}
 	testing.find_started_process('mysqld') or {
 		tsession.skip_files << 'vlib/db/mysql/mysql_orm_test.v'

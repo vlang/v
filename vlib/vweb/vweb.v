@@ -33,6 +33,11 @@ pub const http_302 = http.new_response(
 	body: '302 Found'
 	header: headers_close
 )
+pub const http_303 = http.new_response(
+	status: .see_other
+	body: '303 See Other'
+	header: headers_close
+)
 pub const http_400 = http.new_response(
 	status: .bad_request
 	body: '400 Bad Request'
@@ -303,13 +308,21 @@ pub fn (mut ctx Context) server_error(ecode int) Result {
 	return Result{}
 }
 
+@[params]
+pub struct RedirectParams {
+	status_code int = 302
+}
+
 // Redirect to an url
-pub fn (mut ctx Context) redirect(url string) Result {
+pub fn (mut ctx Context) redirect(url string, params RedirectParams) Result {
 	if ctx.done {
 		return Result{}
 	}
 	ctx.done = true
 	mut resp := vweb.http_302
+	if params.status_code == 303 {
+		resp = vweb.http_303
+	}
 	resp.header = resp.header.join(ctx.header)
 	resp.header.add(.location, url)
 	send_string(mut ctx.conn, resp.bytestr()) or { return Result{} }
@@ -505,6 +518,7 @@ pub struct RunParams {
 	nr_workers           int  = runtime.nr_jobs()
 	pool_channel_slots   int  = 1000
 	show_startup_message bool = true
+	startup_message      string
 }
 
 // run_at - start a new VWeb server, listening only on a specific address `host`, at the specified `port`
@@ -531,9 +545,13 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 	routes := generate_routes(global_app)!
 	controllers_sorted := check_duplicate_routes_in_controllers[T](global_app, routes)!
 
-	host := if params.host == '' { 'localhost' } else { params.host }
 	if params.show_startup_message {
-		println('[Vweb] Running app on http://${host}:${params.port}/')
+		if params.startup_message == '' {
+			host := if params.host == '' { 'localhost' } else { params.host }
+			println('[Vweb] Running app on http://${host}:${params.port}/')
+		} else {
+			println(params.startup_message)
+		}
 	}
 
 	ch := chan &RequestParams{cap: params.pool_channel_slots}

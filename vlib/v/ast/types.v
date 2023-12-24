@@ -1215,6 +1215,10 @@ pub fn (t &Table) clean_generics_type_str(typ Type) string {
 	return result.all_before('[')
 }
 
+// strip_extra_struct_types removes the `<generic names>` from the
+// complete qualified name and keep the `[concrete names]`, For example:
+// `main.Foo<T, <T, U>>[int, [int, string]]` -> `main.Foo[int, [int, string]]`
+// `main.Foo<T>[int] -> main.Foo[int]`
 fn strip_extra_struct_types(name string) string {
 	mut start := 0
 	mut is_start := false
@@ -1531,20 +1535,44 @@ pub fn (t &Table) fn_signature_using_aliases(func &Fn, import_aliases map[string
 }
 
 // symbol_name_except_generic return the name of the complete qualified name of the type,
-// but without the generic parts. For example, `main.Abc[int]` -> `main.Abc`
+// but without the generic parts. The potential `[]`, `&[][]` etc prefixes are kept. For example:
+// `main.Abc[int]` -> `main.Abc`
+// `main.Abc<T>[int]` -> `main.Abc<T>`
+// `[]main.Abc<T>[int]` -> `[]main.Abc<T>`
+// `&[][]main.Abc<T>[int]` -> `&[][]main.Abc<T>`
 pub fn (t &TypeSymbol) symbol_name_except_generic() string {
+	// &[]main.Abc[int], [][]main.Abc[int]...
+	mut prefix := ''
+	mut name := t.name
+	for i, ch in t.name {
+		if ch in [`&`, `[`, `]`] {
+			continue
+		}
+		if i > 0 {
+			prefix = t.name[..i]
+			name = t.name[i..]
+		}
+		break
+	}
 	// main.Abc[int]
-	mut embed_name := t.name
 	// remove generic part from name
 	// main.Abc[int] => main.Abc
-	if embed_name.contains('[') {
-		embed_name = embed_name.all_before('[')
+	if name.contains('[') {
+		name = name.all_before('[')
 	}
-	return embed_name
+	return prefix + name
 }
 
+// embed_name return the pure name of the complete qualified name of the type,
+// without the generic parts, concrete parts and mod parts. For example:
+// `main.Abc[int]` -> `Abc`
+// `main.Abc<T>[int]` -> `Abc`
 pub fn (t &TypeSymbol) embed_name() string {
-	if t.name.contains('[') {
+	if t.name.contains('<') {
+		// Abc<T>[int] => Abc
+		// main.Abc<T>[main.Enum] => Abc
+		return t.name.split('<')[0].split('.').last()
+	} else if t.name.contains('[') {
 		// Abc[int] => Abc
 		// main.Abc[main.Enum] => Abc
 		return t.name.split('[')[0].split('.').last()
@@ -1742,10 +1770,27 @@ pub fn (s &SumType) find_field(name string) ?StructField {
 }
 
 pub fn (i Interface) defines_method(name string) bool {
-	for mut method in unsafe { i.methods } {
-		if method.name == name {
+	if i.methods.any(it.name == name) {
+		return true
+	}
+	if i.parent_type.has_flag(.generic) {
+		parent_sym := global_table.sym(i.parent_type)
+		parent_info := parent_sym.info as Interface
+		if parent_info.methods.any(it.name == name) {
 			return true
 		}
 	}
 	return false
+}
+
+pub fn (i Interface) get_methods() []string {
+	if i.methods.len > 0 {
+		return i.methods.map(it.name)
+	}
+	if i.parent_type.has_flag(.generic) {
+		parent_sym := global_table.sym(i.parent_type)
+		parent_info := parent_sym.info as Interface
+		return parent_info.methods.map(it.name)
+	}
+	return []
 }

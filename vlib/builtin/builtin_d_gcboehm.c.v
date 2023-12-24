@@ -52,6 +52,7 @@ $if dynamic_boehm ? {
 		#flag -DGC_BUILTIN_ATOMIC=1
 		#flag -DBUS_PAGE_FAULT=T_PAGEFLT
 		$if !tinyc {
+			#flag -DUSE_MMAP
 			#flag -I @VEXEROOT/thirdparty/libgc/include
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		}

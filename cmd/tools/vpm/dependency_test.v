@@ -1,12 +1,17 @@
-// vtest flaky: true
 // vtest retry: 3
 import os
+import time
+import rand
 import v.vmod
 
 const v = os.quoted_path(@VEXE)
-const test_path = os.join_path(os.vtmp_dir(), 'vpm_dependency_test')
+const test_path = os.join_path(os.vtmp_dir(), 'vpm_dependency_test_${rand.ulid()}')
 
 fn testsuite_begin() {
+	$if !network ? {
+		eprintln('> skipping ${@FILE}, when `-d network` is missing')
+		exit(0)
+	}
 	os.setenv('VMODULES', test_path, true)
 	os.setenv('VPM_DEBUG', '', true)
 	os.setenv('VPM_NO_INCREMENT', '1', true)
@@ -47,7 +52,8 @@ fn test_install_dependencies_in_module_dir() {
 	}
 	assert v_mod.dependencies == ['markdown', 'pcre', 'https://github.com/spytheman/vtray']
 	// Run `v install`
-	mut res := os.execute_or_exit('${v} install --once')
+	mut res := os.execute('${v} install --once')
+	assert res.exit_code == 0, res.str()
 	assert res.output.contains('Detected v.mod file inside the project directory. Using it...'), res.output
 	assert res.output.contains('Installing `markdown`'), res.output
 	assert res.output.contains('Installing `pcre`'), res.output
@@ -56,16 +62,36 @@ fn test_install_dependencies_in_module_dir() {
 	assert get_mod_name(os.join_path(test_path, 'markdown', 'v.mod')) == 'markdown'
 	assert get_mod_name(os.join_path(test_path, 'pcre', 'v.mod')) == 'pcre'
 	assert get_mod_name(os.join_path(test_path, 'vtray', 'v.mod')) == 'vtray'
-	res = os.execute_or_exit('${v} install --once')
+	res = os.execute('${v} install --once')
+	assert res.exit_code == 0, res.str()
 	assert res.output.contains('All modules are already installed.'), res.output
 }
 
 fn test_resolve_external_dependencies_during_module_install() {
-	res := os.execute_or_exit('${v} install https://github.com/ttytm/emoji-mart-desktop')
-	assert res.output.contains('Resolving 2 dependencies'), res.output
+	res := os.execute('${v} install -v https://github.com/ttytm/emoji-mart-desktop')
+	assert res.exit_code == 0, res.str()
+	assert res.output.contains('Found 2 dependencies'), res.output
 	assert res.output.contains('Installing `webview`'), res.output
 	assert res.output.contains('Installing `miniaudio`'), res.output
 	// The external dependencies should have been installed to `<vmodules_dir>/<dependency_name>`
 	assert get_mod_name(os.join_path(test_path, 'webview', 'v.mod')) == 'webview'
 	assert get_mod_name(os.join_path(test_path, 'miniaudio', 'v.mod')) == 'miniaudio'
+}
+
+fn test_install_with_recursive_dependencies() {
+	spawn fn () {
+		time.sleep(2 * time.minute)
+		eprintln('Timeout while testing installation with recursive dependencies.')
+		exit(1)
+	}()
+	mut res := os.execute('${v} install https://gitlab.com/tobealive/a')
+	assert res.exit_code == 0, res.str()
+
+	// Test the installation of a module when passing its URL with the `.git` extension.
+	// One of the modules dependencies `https://gitlab.com/tobealive/c` has the
+	// `https://gitlab.com/tobealive/a` dependency without `.git`.
+	res = os.execute('${v} remove a b c')
+	assert res.exit_code == 0, res.str()
+	res = os.execute('${v} install https://gitlab.com/tobealive/a.git')
+	assert res.exit_code == 0, res.str()
 }

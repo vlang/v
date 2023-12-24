@@ -37,6 +37,8 @@ pub const fail_retry_delay_ms = get_fail_retry_delay_ms()
 
 pub const is_node_present = os.execute('node --version').exit_code == 0
 
+pub const is_go_present = os.execute('go version').exit_code == 0
+
 pub const all_processes = get_all_processes()
 
 pub const header_bytes_to_search_for_module_main = 500
@@ -248,6 +250,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			skip_files << 'examples/call_v_from_python/test.v' // the example only makes sense to be compiled, when python is installed
 			skip_files << 'examples/call_v_from_ruby/test.v' // the example only makes sense to be compiled, when ruby is installed
 			skip_files << 'vlib/vweb/vweb_app_test.v' // imports the `sqlite` module, which in turn includes sqlite3.h
+			skip_files << 'vlib/x/vweb/tests/vweb_app_test.v' // imports the `sqlite` module, which in turn includes sqlite3.h
 		}
 		$if !macos {
 			skip_files << 'examples/macos_tray/tray.v'
@@ -274,8 +277,8 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			skip_files << 'examples/sokol/sounds/wav_player.v'
 			skip_files << 'examples/sokol/sounds/simple_sin_tones.v'
 		}
-		// examples/wasm/mandelbrot/mandelbrot.v requires special compilation flags: `-b wasm -os browser`, skip it for now:
-		skip_files << 'examples/wasm/mandelbrot/mandelbrot.v'
+		// examples/wasm/mandelbrot/mandelbrot.wasm.v requires special compilation flags: `-b wasm -os browser`, skip it for now:
+		skip_files << 'examples/wasm/mandelbrot/mandelbrot.wasm.v'
 	}
 	vargs := _vargs.replace('-progress', '')
 	vexe := pref.vexe_path()

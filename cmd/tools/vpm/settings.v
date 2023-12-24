@@ -12,6 +12,7 @@ mut:
 	is_force              bool
 	server_urls           []string
 	vmodules_path         string
+	tmp_path              string
 	no_dl_count_increment bool
 	// To ensure that some test scenarios with conflicting module directory names do not get stuck in prompts.
 	// It is intended that VPM does not display a prompt when `VPM_FAIL_ON_PROMPT` is set.
@@ -35,8 +36,9 @@ fn init_settings() VpmSettings {
 		is_verbose: '-v' in opts || '--verbose' in opts
 		is_force: '-f' in opts || '--force' in opts
 		server_urls: cmdline.options(args, '--server-urls')
-		vcs: supported_vcs[if '--hg' in opts { 'hg' } else { 'git' }]
+		vcs: if '--hg' in opts { .hg } else { .git }
 		vmodules_path: os.vmodules_dir()
+		tmp_path: os.join_path(os.vtmp_dir(), 'vpm', 'modules')
 		no_dl_count_increment: os.getenv('CI') != '' || (no_inc_env != '' && no_inc_env != '0')
 		fail_on_prompt: os.getenv('VPM_FAIL_ON_PROMPT') != ''
 	}

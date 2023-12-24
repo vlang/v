@@ -58,24 +58,20 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 		}
 		f.write(out_s)
 	} else {
-		lines := node.text.trim_space().split_into_lines()
-		start_break := is_char_alphanumeric(node.text[0]) || node.text[0].is_space()
-		end_break := is_char_alphanumeric(node.text.trim('\t').bytes().last())
-			|| node.text.bytes().last().is_space()
+		lines := node.text.split_into_lines()
 		f.write('/*')
-		if start_break {
-			f.writeln('')
-		}
-		for line in lines {
-			f.writeln(line.trim_right(' '))
+		for i, line in lines {
 			f.empty_line = false
+			if i == lines.len - 1 {
+				f.write(line)
+				if node.text[node.text.len - 1] == `\n` {
+					f.writeln('')
+				}
+				f.write('*/')
+			} else {
+				f.writeln(line.trim_right(' '))
+			}
 		}
-		if end_break {
-			f.empty_line = true
-		} else {
-			f.remove_new_line()
-		}
-		f.write('*/')
 	}
 	if options.level == .indent {
 		f.indent--

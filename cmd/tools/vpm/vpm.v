@@ -9,48 +9,12 @@ import rand
 import v.help
 import v.vmod
 
-struct VCS {
-	dir  string        @[required]
-	cmd  string        @[required]
-	args struct {
-		install  string   @[required]
-		version  string   @[required] // flag to specify a version, added to install.
-		path     string   @[required] // flag to specify a path. E.g., used to explicitly work on a path during multithreaded updating.
-		update   string   @[required]
-		outdated []string @[required]
-	}
-}
-
 const settings = init_settings()
 const default_vpm_server_urls = ['https://vpm.vlang.io', 'https://vpm.url4e.com']
 const vpm_server_urls = rand.shuffle_clone(default_vpm_server_urls) or { [] } // ensure that all queries are distributed fairly
 const valid_vpm_commands = ['help', 'search', 'install', 'update', 'upgrade', 'outdated', 'list',
 	'remove', 'show']
 const excluded_dirs = ['cache', 'vlib']
-const supported_vcs = {
-	'git': VCS{
-		dir: '.git'
-		cmd: 'git'
-		args: struct {
-			install: 'clone --depth=1 --recursive --shallow-submodules'
-			version: '--single-branch -b'
-			update: 'pull --recurse-submodules' // pulling with `--depth=1` leads to conflicts when the upstream has more than 1 new commits.
-			path: '-C'
-			outdated: ['fetch', 'rev-parse @', 'rev-parse @{u}']
-		}
-	}
-	'hg':  VCS{
-		dir: '.hg'
-		cmd: 'hg'
-		args: struct {
-			install: 'clone'
-			version: '' // not supported yet.
-			update: 'pull --update'
-			path: '-R'
-			outdated: ['incoming']
-		}
-	}
-}
 
 fn main() {
 	// This tool is intended to be launched by the v frontend,
@@ -102,21 +66,9 @@ fn main() {
 }
 
 fn vpm_upgrade() {
-	outdated := get_outdated() or { exit(1) }
+	outdated := get_outdated()
 	if outdated.len > 0 {
 		vpm_update(outdated)
-	} else {
-		println('Modules are up to date.')
-	}
-}
-
-fn vpm_outdated() {
-	outdated := get_outdated() or { exit(1) }
-	if outdated.len > 0 {
-		println('Outdated modules:')
-		for m in outdated {
-			println('  ${m}')
-		}
 	} else {
 		println('Modules are up to date.')
 	}

@@ -115,7 +115,7 @@ see also `v help build`.
    -os <os>, -target-os <os>
       Change the target OS that V tries to compile for.
       By default, the target OS is the host system.
-	  
+
       Here is a list of the operating systems, supported by V:
       (CI tests runs on every commit/PR for each of these):
             `windows`, `linux`, `macos`
@@ -180,35 +180,45 @@ see also `v help build`.
       more performant without autofree.
 
    -gc <mode>
-      Use and link an optional garbage collector. Only the Boehm–Demers–Weiser
-      garbage collector is supported currently with the following sub-options:
+      V uses a garbage collector by default. Only the Boehm–Demers–Weiser garbage collector
+      is supported currently with the following sub-options:
 
-      `-gc boehm` ........... selects the default mode for the architecture
+      `-gc boehm` ........... use default garbage collector (same as not specifying option)
       `-gc boehm_full` ...... full garbage collection mode
       `-gc boehm_incr` ...... incremental/generational garbage collection mode
       `-gc boehm_full_opt` .. optimized full garbage collection mode
       `-gc boehm_incr_opt` .. optimized incremental/generational garbage collection mode
       `-gc boehm_leak` ...... leak detection mode
+      `-gc none` ............ no garbage collector
 
-      You need to install a `libgc-dev` package first, or install it manually from:
-
-          https://github.com/ivmai/bdwgc
-
-      On Mac OS, it can be installed using homebrew (https://homebrew.sh/) with
-      `brew install libgc`.
-
-      Note, `-gc boehm` is complementary to -autofree. The Boehm garbage
-      collector is conservative, and it may make your program significantly
-      slower if it does many small allocations in a loop. This option
-      is intended *mainly* for reducing the memory usage of programs, that
-      process large amounts of text in *batch mode* on low/limited memory
-      environments like small VPSes, and for which a few ms of garbage
-      collection pauses from time to time *do not matter much*.
+      Note: the garbage collector is complementary to -autofree. The Boehm garbage
+      collector is conservative, and it may affect program speed if it does many small
+      allocations in a loop.
 
       The option `-gc boehm_leak` is intended for leak detection in
       manual memory management. The function `gc_check_leaks()`
       can be called to get detection results. This function is a no-op
       when `-gc boehm_leak` is not supplied.
+
+      Use `-gc none` to completely disable the garbage collector, in case of
+      wanting to handle memory manually, or strictly using `-autofree`.
+
+      Note: some short lived applications, like compilers and other CLI tools can be
+      more performant, without autofree, and without a garbage collector, instead
+      relying on the OS to free the allocated memory automatically, after their
+      process ends.
+
+      On most supported platforms, the source of the used garbage collector is
+      located in `thirdparty/libgc/`, produced by post-processing
+      `https://github.com/ivmai/bdwgc`. If you have installed libgc by other means,
+      (through your distro's package manager or by compiling it yourself and
+      installing it), you can also tell V to use it instead of its own copy,
+      by adding `-d dynamic_boehm` to the command line while compiling your program.
+
+      On Debian you can use `sudo apt-get install libgc-dev`.
+
+      On macOS, you can install it, using homebrew (https://homebrew.sh/)
+      with `brew install libgc`.
 
 # Miscellaneous:
    -printfn <fn_name>
@@ -291,8 +301,8 @@ see also `v help build`.
       Example sample of the content of that file:
           system,linux,eval
           system,amd64,eval
-          system,solaris,skip		  
-          system,solaris,skip		  
+          system,solaris,skip
+          system,solaris,skip
           user,gcboehm,eval
           user,gg_record_trace,skip
 
@@ -344,4 +354,3 @@ see also `v help build`.
           https://learn.microsoft.com/en-us/cpp/build/reference/fp-specify-floating-point-behavior?view=msvc-170&redirectedfrom=MSDN
           https://clang.llvm.org/docs/UsersManual.html#cmdoption-ffast-math
           https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html#index-ffast-math
-

@@ -76,6 +76,8 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 		}
 		*/
 		fmt_type = .si_s
+	} else if fspec in [`r`, `R`] {
+		fmt_type = .si_r
 	} else if typ.is_float() {
 		if fspec in [`g`, `G`] {
 			match typ {
@@ -164,7 +166,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 	fmt := fmts[i]
 	typ := g.unwrap_generic(node.expr_types[i])
 	typ_sym := g.table.sym(typ)
-	if typ == ast.string_type && g.comptime_for_method.len == 0 {
+	if typ == ast.string_type && g.comptime.comptime_for_method.len == 0 {
 		if g.inside_vweb_tmpl {
 			g.write('vweb__filter(')
 			if expr.is_auto_deref_var() && fmt != `p` {
@@ -191,7 +193,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 		mut exp_typ := typ
 		if expr is ast.Ident {
 			if expr.obj is ast.Var {
-				if g.comptime_var_type_map.len > 0 || g.comptime_for_method.len > 0 {
+				if g.comptime.type_map.len > 0 || g.comptime.comptime_for_method.len > 0 {
 					exp_typ = expr.obj.typ
 				} else if expr.obj.smartcasts.len > 0 {
 					exp_typ = g.unwrap_generic(expr.obj.smartcasts.last())
@@ -244,8 +246,8 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	mut node_ := unsafe { node }
 	mut fmts := node_.fmts.clone()
 	for i, mut expr in node_.exprs {
-		if g.table.is_comptime_var(expr) {
-			ctyp := g.get_comptime_var_type(expr)
+		if g.comptime.is_comptime_var(expr) {
+			ctyp := g.comptime.get_comptime_var_type(expr)
 			if ctyp != ast.void_type {
 				node_.expr_types[i] = ctyp
 				if node_.fmts[i] == `_` {
@@ -263,7 +265,8 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	g.write(' str_intp(${node.vals.len}, ')
 	g.write('_MOV((StrIntpData[]){')
 	for i, val in node.vals {
-		escaped_val := util.smart_quote(val, false)
+		mut escaped_val := util.smart_quote(val, false)
+		escaped_val = escaped_val.replace('\0', '\\0')
 
 		if escaped_val.len > 0 {
 			g.write('{_SLIT("${escaped_val}"), ')

@@ -95,6 +95,7 @@ const auto_complete_commands = [
 	'gret',
 	'ls',
 	'repl',
+	'repeat',
 	'self',
 	'setup-freetype',
 	'shader',
@@ -271,6 +272,34 @@ const auto_complete_flags_bump = [
 const auto_complete_flags_self = [
 	'-prod',
 ]
+const auto_complete_flags_repeat = [
+	'--help',
+	'-h',
+	'--runs',
+	'-r',
+	'--series',
+	'-s',
+	'--warmup',
+	'-w',
+	'--newline',
+	'-n',
+	'--output',
+	'-O',
+	'--max_time',
+	'-m',
+	'--fail_percent',
+	'-f',
+	'--template',
+	'-t',
+	'--parameter',
+	'-p',
+	'--nmins',
+	'-i',
+	'--nmaxs',
+	'-a',
+	'--ignore',
+	'-e',
+]
 const auto_complete_compilers = [
 	'cc',
 	'gcc',
@@ -443,6 +472,9 @@ fn auto_complete_request(args []string) []string {
 				}
 				'bump' { // 'v bump -<tab>' -> flags.
 					list = get_flags(auto_complete_flags_bump, part)
+				}
+				'repeat' { // 'v repeat -<tab>' -> flags.
+					list = get_flags(auto_complete_flags_repeat, part)
 				}
 				else {
 					for flag in auto_complete_flags {

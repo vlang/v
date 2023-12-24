@@ -21,7 +21,7 @@ $if $pkgconfig('libpq') {
 	#flag darwin -I/opt/homebrew/opt/libpq/include
 	#flag darwin -L/opt/homebrew/opt/libpq/lib
 
-	#flag windows -I @VEXEROOT/thirdparty/pg/include
+	#flag windows -I @VEXEROOT/thirdparty/pg/libpq
 	#flag windows -L @VEXEROOT/thirdparty/pg/win64
 }
 
@@ -33,7 +33,11 @@ $if $pkgconfig('libpq') {
 #include <pg_config.h>
 
 // for orm
-#include <arpa/inet.h>
+$if windows {
+	#include <winsock2.h>
+} $else {
+	#include <arpa/inet.h>
+}
 
 #include "@VMODROOT/vlib/db/pg/compatibility.h"
 
@@ -186,8 +190,7 @@ fn res_to_rows(res voidptr) []Row {
 				row.vals << none
 			} else {
 				val := C.PQgetvalue(res, i, j)
-				sval := unsafe { val.vstring() }
-				row.vals << sval
+				row.vals << unsafe { cstring_to_vstring(val) }
 			}
 		}
 		rows << row

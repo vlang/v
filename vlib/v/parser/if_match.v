@@ -532,6 +532,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 	if p.tok.kind == .rcbr {
 		p.check(.rcbr)
 	}
+	p.register_auto_import('sync')
 	return ast.SelectExpr{
 		branches: branches
 		pos: pos.extend_with_last_line(p.prev_tok.pos(), p.prev_tok.line_nr)

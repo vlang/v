@@ -182,8 +182,15 @@ fn (mut p Parser) parse_chan_type() ast.Type {
 }
 
 fn (mut p Parser) parse_thread_type() ast.Type {
+	if p.peek_tok.kind == .lpar {
+		p.next()
+		ret_type := p.parse_multi_return_type()
+		idx := p.table.find_or_register_thread(ret_type)
+		return ast.new_type(idx)
+	}
 	is_opt := p.peek_tok.kind == .question
-	if is_opt {
+	is_result := p.peek_tok.kind == .not
+	if is_opt || is_result {
 		p.next()
 	}
 	if p.peek_tok.kind !in [.name, .key_pub, .key_mut, .amp, .lsbr] {
@@ -193,20 +200,27 @@ fn (mut p Parser) parse_thread_type() ast.Type {
 			ret_type = ret_type.set_flag(.option)
 			idx := p.table.find_or_register_thread(ret_type)
 			return ast.new_type(idx)
+		} else if is_result {
+			mut ret_type := ast.void_type
+			ret_type = ret_type.set_flag(.result)
+			idx := p.table.find_or_register_thread(ret_type)
+			return ast.new_type(idx)
 		} else {
 			return ast.thread_type
 		}
 	}
-	if !is_opt {
+	if !is_opt && !is_result {
 		p.next()
 	}
-	if is_opt || p.tok.kind in [.amp, .lsbr]
+	if is_opt || is_result || p.tok.kind in [.amp, .lsbr]
 		|| (p.tok.lit.len > 0 && p.tok.lit[0].is_capital())
 		|| ast.builtin_type_names_matcher.matches(p.tok.lit)
 		|| p.peek_tok.kind == .dot {
 		mut ret_type := p.parse_type()
 		if is_opt {
 			ret_type = ret_type.set_flag(.option)
+		} else if is_result {
+			ret_type = ret_type.set_flag(.result)
 		}
 		idx := p.table.find_or_register_thread(ret_type)
 		if ret_type.has_flag(.generic) {
@@ -326,15 +340,22 @@ fn (mut p Parser) parse_type_with_mut(is_mut bool) ast.Type {
 }
 
 // Parses any language indicators on a type.
+@[direct_array_access]
 fn (mut p Parser) parse_language() ast.Language {
-	language := if p.tok.lit == 'C' {
-		ast.Language.c
-	} else if p.tok.lit == 'JS' {
-		ast.Language.js
-	} else if p.tok.lit == 'WASM' {
-		ast.Language.wasm
-	} else {
-		ast.Language.v
+	language := match true {
+		p.tok.lit.len == 1 && p.tok.lit[0] == `C` {
+			ast.Language.c
+		}
+		p.tok.lit.len == 2 && p.tok.lit[0] == `J` && p.tok.lit[1] == `S` {
+			ast.Language.js
+		}
+		p.tok.lit.len == 4 && p.tok.lit[0] == `W` && p.tok.lit[1] == `A` && p.tok.lit[2] == `S`
+			&& p.tok.lit[3] == `M` {
+			ast.Language.wasm
+		}
+		else {
+			ast.Language.v
+		}
 	}
 	if language != .v {
 		p.next()
@@ -718,6 +739,18 @@ fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Languag
 					&& p.struct_init_generic_types != sym.info.generic_types {
 					generic_names := p.types_to_names(p.struct_init_generic_types, p.tok.pos(),
 						'struct_init_generic_types') or { return ast.Type(0) }
+					// NOTE:
+					// Used here for the wraparound `< >` characters, is not a reserved character in generic syntax,
+					// is used as the `generic names` part of the qualified type name,
+					// while the `[ ]` characters is the `concrete names` part of the qualified type name.
+					// The two pairs characters distinguish the generic name from the concrete name, such as:
+					//   main.Foo<T, U>[int, string]
+					//   main.Foo<T, <T, U>>[int, [int, string]]
+					//   ...
+					// There are methods in ast/types that rely on this representation:
+					//   fn symbol_name_except_generic()
+					//   fn embed_name()
+					//   fn strip_extra_struct_types()
 					mut sym_name := sym.name + '<'
 					for i, gt in generic_names {
 						sym_name += gt

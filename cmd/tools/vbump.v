@@ -109,7 +109,7 @@ fn process_file(input_file string, options Options) ! {
 	os.rm(backup_file) or {}
 
 	// Rename the original to the backup.
-	os.mv(input_file, backup_file) or { return error('Failed to copy file: ${input_file}') }
+	os.mv(input_file, backup_file) or { return error('Failed to move file: ${input_file}') }
 
 	// Process the old file and write it back to the original.
 	os.write_file(input_file, new_lines.join_lines()) or {

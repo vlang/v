@@ -405,7 +405,6 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		c.ensure_type_exists(info.value_type, node.pos)
 		node.key_type = info.key_type
 		node.value_type = info.value_type
-		c.check_elements_ref_fields_initialized(node.typ, node.pos)
 		return node.typ
 	}
 

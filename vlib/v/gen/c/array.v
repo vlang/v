@@ -544,8 +544,8 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		ast.CastExpr {
 			// value.map(Type(it)) when `value` is a comptime var
 			if expr.expr is ast.Ident && node.left is ast.Ident
-				&& g.table.is_comptime_var(node.left) {
-				ctyp := g.get_comptime_var_type(node.left)
+				&& g.comptime.is_comptime_var(node.left) {
+				ctyp := g.comptime.get_comptime_var_type(node.left)
 				if ctyp != ast.void_type {
 					expr.expr_type = g.table.value_type(ctyp)
 				}
@@ -590,9 +590,21 @@ fn (mut g Gen) gen_array_sorted(node ast.CallExpr) {
 	info := sym.info as ast.Array
 	depth := g.get_array_depth(info.elem_type)
 
-	g.write('${atype} ${past.tmp_var} = array_clone_to_depth(ADDR(${atype},')
-	g.expr(node.left)
-	g.writeln('), ${depth});')
+	deref_field := if node.receiver_type.nr_muls() > node.left_type.nr_muls()
+		&& node.left_type.is_ptr() {
+		true
+	} else {
+		false
+	}
+	if !deref_field {
+		g.write('${atype} ${past.tmp_var} = array_clone_to_depth(ADDR(${atype},')
+		g.expr(node.left)
+		g.writeln('), ${depth});')
+	} else {
+		g.write('${atype} ${past.tmp_var} = array_clone_to_depth(')
+		g.expr(node.left)
+		g.writeln(', ${depth});')
+	}
 
 	unsafe {
 		node.left = ast.Expr(ast.Ident{
@@ -608,8 +620,6 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	// println('filter s="$s"')
 	rec_sym := g.table.final_sym(node.receiver_type)
 	if rec_sym.kind != .array {
-		println(node.name)
-		println(g.typ(node.receiver_type))
 		// println(rec_sym.kind)
 		verror('.sort() is an array method')
 	}
@@ -710,7 +720,12 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 }
 
 fn (mut g Gen) gen_array_sort_call(node ast.CallExpr, compare_fn string) {
-	mut deref_field := g.dot_or_ptr(node.left_type)
+	deref_field := if node.receiver_type.nr_muls() > node.left_type.nr_muls()
+		&& node.left_type.is_ptr() {
+		g.dot_or_ptr(node.left_type.deref())
+	} else {
+		g.dot_or_ptr(node.left_type)
+	}
 	// eprintln('> qsort: pointer $node.left_type | deref_field: `$deref_field`')
 	g.empty_line = true
 	g.write('qsort(')
@@ -810,7 +825,8 @@ fn (mut g Gen) gen_array_insert(node ast.CallExpr) {
 	left_info := left_sym.info as ast.Array
 	elem_type_str := g.typ(left_info.elem_type)
 	arg2_sym := g.table.sym(node.args[1].typ)
-	is_arg2_array := arg2_sym.kind == .array && node.args[1].typ == node.left_type
+	is_arg2_array := arg2_sym.kind == .array
+		&& node.args[1].typ.clear_flag(.variadic) == node.left_type
 	noscan := g.check_noscan(left_info.elem_type)
 	addr := if node.left_type.is_ptr() { '' } else { '&' }
 	if is_arg2_array {

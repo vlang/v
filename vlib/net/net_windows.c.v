@@ -748,8 +748,8 @@ pub const error_einprogress = WsaError.wsaeinprogress
 #include <ws2tcpip.h>
 
 // Constants that windows needs
-const fionbio = C.FIONBIO
-const msg_nosignal = 0
+pub const fionbio = C.FIONBIO
+pub const msg_nosignal = 0
 const wsa_v22 = 0x202
 
 // Error code returns the last socket error

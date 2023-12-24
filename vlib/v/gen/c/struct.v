@@ -378,8 +378,7 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 		}
 
 		if field.default_expr is ast.None {
-			tmp_var := g.new_tmp_var()
-			g.expr_with_tmp_var(ast.None{}, ast.none_type, field.typ, tmp_var)
+			g.gen_option_error(field.typ, ast.None{})
 			return true
 		} else if field.typ.has_flag(.option) {
 			tmp_var := g.new_tmp_var()
@@ -394,8 +393,7 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 		}
 		g.expr(field.default_expr)
 	} else if field.typ.has_flag(.option) {
-		tmp_var := g.new_tmp_var()
-		g.expr_with_tmp_var(ast.None{}, ast.none_type, field.typ, tmp_var)
+		g.gen_option_error(field.typ, ast.None{})
 		return true
 	} else if sym.info is ast.ArrayFixed {
 		g.write('{')
@@ -616,6 +614,8 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 			if (sfield.expected_type.has_flag(.option) && !sfield.typ.has_flag(.option))
 				|| (sfield.expected_type.has_flag(.result) && !sfield.typ.has_flag(.result)) {
 				g.expr_with_opt(sfield.expr, sfield.typ, sfield.expected_type)
+			} else if sfield.expr is ast.LambdaExpr && sfield.expected_type.has_flag(.option) {
+				g.expr_opt_with_cast(sfield.expr, sfield.typ, sfield.expected_type)
 			} else {
 				g.left_is_opt = true
 				g.expr_with_cast(sfield.expr, sfield.typ, sfield.expected_type)

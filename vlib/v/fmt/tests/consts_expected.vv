@@ -25,6 +25,12 @@ const i_am_a_very_long_constant_name_so_i_stand_alone_and_my_length_is_over_90_c
 
 pub const i_am_pub_const = true
 
+const abc = 1 // abc
+
+const def = 2 // def
+
+const ghi = 3 // ghi
+
 fn main() {
 	a := [
 		[3, 5, 6],

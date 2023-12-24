@@ -49,7 +49,7 @@ by using any of the following commands in a terminal:
 
 * `v init` → adds necessary files to the current folder to make it a V project
 * `v new abc` → creates a new project in the new folder `abc`, by default a "hello world" project.
-* `v new abcd web` → creates a new project in the new folder `abcd`, using the vweb template.
+* `v new --web abcd` → creates a new project in the new folder `abcd`, using the vweb template.
 
 ## Table of Contents
 
@@ -4173,7 +4173,7 @@ Channels can be buffered or unbuffered and it is possible to `select` from multi
 
 #### Syntax and Usage
 
-Channels have the type `chan objtype`. An optional buffer length can specified as the `cap` field
+Channels have the type `chan objtype`. An optional buffer length can be specified as the `cap` field
 in the declaration:
 
 ```v

@@ -31,7 +31,6 @@ fn (mut anim Anim) advance() {
 
 fn main() {
 	mut app := &App{
-		gg: 0
 		anim: &Anim{}
 	}
 	app.gg = gg.new_context(
