@@ -539,18 +539,28 @@ fn (p &Parser) is_fn_type_decl() bool {
 	return true
 }
 
-fn (p &Parser) is_array_type() bool {
-	mut i := 1
+@[inline]
+fn (p &Parser) is_array_cast(offset int) bool {
+	name_offset := p.is_array_type_from_offset(offset)
+	if name_offset != -1 {
+		return p.peek_token(name_offset + 1).kind == .lpar
+	}
+	return false
+}
+
+@[inline]
+fn (p &Parser) is_array_type_from_offset(offset int) int {
 	mut tok := p.tok
 	line_nr := p.tok.line_nr
+	mut i := offset
 
 	for {
 		tok = p.peek_token(i)
 		if tok.line_nr != line_nr {
-			return false
+			return -1
 		}
 		if tok.kind in [.name, .amp] {
-			return true
+			return i
 		}
 		if tok.kind == .eof {
 			break
@@ -560,7 +570,12 @@ fn (p &Parser) is_array_type() bool {
 			continue
 		}
 	}
-	return false
+	return -1
+}
+
+@[inline]
+fn (p &Parser) is_array_type() bool {
+	return p.is_array_type_from_offset(1) != -1
 }
 
 fn (mut p Parser) open_scope() {

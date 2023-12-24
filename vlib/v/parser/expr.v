@@ -196,11 +196,11 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 				// parse json.decode type (`json.decode([]User, s)`)
 				node = p.name_expr()
 			} else if (p.is_amp && p.peek_tok.kind == .rsbr)
-				|| (p.peek_tok.kind == .rsbr && p.peek_token(3).kind == .lpar
-				&& p.tok.line_nr == p.peek_token(3).line_nr) {
+				|| (p.peek_tok.kind == .rsbr && (p.peek_token(3).kind == .lpar
+				|| p.is_array_cast(3)) && p.tok.line_nr == p.peek_token(3).line_nr) {
 				mut n := 2
 				mut peek_n_tok := p.peek_token(n)
-				for peek_n_tok.kind in [.name, .dot] {
+				for peek_n_tok.kind in [.name, .dot, .lsbr, .rsbr] {
 					n++
 					peek_n_tok = p.peek_token(n)
 				}
