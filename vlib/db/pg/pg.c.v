@@ -190,8 +190,7 @@ fn res_to_rows(res voidptr) []Row {
 				row.vals << none
 			} else {
 				val := C.PQgetvalue(res, i, j)
-				sval := unsafe { val.vstring() }
-				row.vals << sval
+				row.vals << unsafe { cstring_to_vstring(val) }
 			}
 		}
 		rows << row

@@ -1744,7 +1744,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	mut print_auto_str := false
 	if is_print && (node.args[0].typ != ast.string_type
 		|| g.comptime.comptime_for_method.len > 0
-		|| g.table.is_comptime_var(node.args[0].expr)) {
+		|| g.comptime.is_comptime_var(node.args[0].expr)) {
 		g.inside_interface_deref = true
 		defer {
 			g.inside_interface_deref = false

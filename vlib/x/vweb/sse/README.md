@@ -11,9 +11,9 @@ With SSE we want to keep the connection open, so we are able to
 keep sending events to the client. But if we hold the connection open indefinitely
 vweb isn't able to process any other requests. 
 
-We can let vweb know that it can continue
-processing other requests and that we will handle the connection ourself by
-returning `ctx.takeover_conn()`. Vweb will not close the connection and we can handle
+We can let vweb know that it can continue processing other requests and that we will 
+handle the connection ourself by calling `ctx.takeover_conn()` and and returning an empty result
+with `vweb.no_result()`. Vweb will not close the connection and we can handle
 the connection in a seperate thread.
 
 **Example:**
@@ -22,10 +22,12 @@ import x.vweb.sse
 
 // endpoint handler for SSE connections
 fn (app &App) sse(mut ctx Context) vweb.Result {
+	// let vweb know that the connection should not be closed
+	ctx.takeover_conn()
 	// handle the connection in a new thread
 	spawn handle_sse_conn(mut ctx)
-	// let vweb know that the connection should not be closed
-	return ctx.takeover_conn()
+	// we will send a custom response ourself, so we can safely return an empty result
+	return vweb.no_result()
 }
 
 fn handle_sse_conn(mut ctx Context) {

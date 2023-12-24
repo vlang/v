@@ -78,7 +78,7 @@ pub fn little_endian_put_u32(mut b []u8, v u32) {
 	b[3] = u8(v >> u32(24))
 }
 
-// little_endian_put_u32_at writes a u32 to the two bytes in the array b at the specified offset in little endian order.
+// little_endian_put_u32_at writes a u32 to the four bytes in the array b at the specified offset in little endian order.
 @[direct_array_access; inline]
 pub fn little_endian_put_u32_at(mut b []u8, v u32, o int) {
 	_ = b[o] // bounds check
@@ -89,7 +89,7 @@ pub fn little_endian_put_u32_at(mut b []u8, v u32, o int) {
 	b[o + 3] = u8(v >> u32(24))
 }
 
-// little_endian_put_u32_end writes a u32 to the last two bytes in the array b in little endian order.
+// little_endian_put_u32_end writes a u32 to the last four bytes in the array b in little endian order.
 @[direct_array_access; inline]
 pub fn little_endian_put_u32_end(mut b []u8, v u32) {
 	little_endian_put_u32_at(mut b, v, b.len - 4)
