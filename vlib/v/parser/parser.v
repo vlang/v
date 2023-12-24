@@ -562,7 +562,7 @@ fn (p &Parser) is_array_type_from_offset(offset int) int {
 		if tok.kind in [.name, .amp] {
 			return i
 		}
-		if tok.kind == .eof {
+		if tok.kind !in [.name, .amp, .lsbr, .rsbr] {
 			break
 		}
 		i++
