@@ -44,8 +44,8 @@ const (
 		zip: 24
 	)
 )
-	
-fn (a Address) str() string {
-	return 'Address.str(): $a.street, $a.city, $a.state $a.zip'
-}
 // vfmt on
+
+fn (a Address) str() string {
+	return 'Address.str(): ${a.street}, ${a.city}, ${a.state} ${a.zip}'
+}
