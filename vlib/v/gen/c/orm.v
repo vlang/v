@@ -281,7 +281,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 	for field in node.fields {
 		sym := g.table.sym(field.typ)
 		if sym.kind == .struct_ && sym.name != 'time.Time' {
-			subs << node.sub_structs[int(field.typ)]
+			subs << unsafe { node.sub_structs[int(field.typ)] }
 			unwrapped_c_typ := g.typ(field.typ.clear_flag(.option))
 			subs_unwrapped_c_typ << if field.typ.has_flag(.option) { unwrapped_c_typ } else { '' }
 		} else if sym.kind == .array {
@@ -293,7 +293,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			if field.typ.has_flag(.option) {
 				opt_fields << arrs.len
 			}
-			arrs << node.sub_structs[int(field.typ)]
+			arrs << unsafe { node.sub_structs[int(field.typ)] }
 			field_names << field.name
 		}
 	}
