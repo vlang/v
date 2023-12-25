@@ -367,7 +367,7 @@ pub fn mark_used(mut table ast.Table, pref_ &pref.Preferences, ast_files []&ast.
 	walker.mark_root_fns(all_fn_root_names)
 
 	if walker.n_asserts > 0 {
-		walker.fn_decl(mut all_fns['__print_assert_failure'])
+		unsafe { walker.fn_decl(mut all_fns['__print_assert_failure']) }
 	}
 	if table.used_maps > 0 {
 		for k, mut mfn in all_fns {
