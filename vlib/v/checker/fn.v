@@ -426,10 +426,14 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				}
 			}
 			if dep_names.len > 0 {
-				c.table.fns[node.name].dep_names = dep_names
+				unsafe {
+					c.table.fns[node.name].dep_names = dep_names
+				}
 			}
 		}
-		c.table.fns[node.name].source_fn = voidptr(node)
+		unsafe {
+			c.table.fns[node.name].source_fn = voidptr(node)
+		}
 	}
 
 	// vweb checks
@@ -810,7 +814,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			node.name = name_prefixed
 			found = true
 			func = f
-			c.table.fns[name_prefixed].usages++
+			unsafe { c.table.fns[name_prefixed].usages++ }
 		}
 	}
 	if !found && node.left is ast.IndexExpr {
@@ -868,7 +872,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		if f := c.table.find_fn(fn_name) {
 			found = true
 			func = f
-			c.table.fns[fn_name].usages++
+			unsafe { c.table.fns[fn_name].usages++ }
 		}
 	}
 	// already imported symbol (static Foo.new() in another module)
@@ -881,7 +885,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					found = true
 					func = f
 					node.name = qualified_name
-					c.table.fns[qualified_name].usages++
+					unsafe { c.table.fns[qualified_name].usages++ }
 					break
 				}
 			}
@@ -938,9 +942,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	mut is_native_builtin := false
 	if !found && c.pref.backend == .native {
 		if fn_name in ast.native_builtins {
-			c.table.fns[fn_name].usages++
+			unsafe { c.table.fns[fn_name].usages++ }
 			found = true
-			func = c.table.fns[fn_name]
+			func = unsafe { c.table.fns[fn_name] }
 			is_native_builtin = true
 		}
 	}
@@ -958,7 +962,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			node.name = os_name
 			found = true
 			func = f
-			c.table.fns[os_name].usages++
+			unsafe { c.table.fns[os_name].usages++ }
 		}
 	}
 	if is_native_builtin {
@@ -1040,8 +1044,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				if sym.info is ast.FnType {
 					// at this point, the const metadata should be already known,
 					// and we are sure that it is just a function
-					c.table.fns[qualified_const_name].usages++
-					c.table.fns[func.name].usages++
+					unsafe { c.table.fns[qualified_const_name].usages++ }
+					unsafe { c.table.fns[func.name].usages++ }
 					found = true
 					func = sym.info.func
 					node.is_fn_a_const = true
