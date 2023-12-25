@@ -8,7 +8,7 @@ struct Address
 		zip int
 }
 
-fn test_fn_call_with_newline_opening_brace() 
+fn test_fn_call_with_newline_opening_brace()
 {
 	println(initialized_address)
 	assert true
@@ -20,7 +20,7 @@ pub:
 	street string = '1234 Default St'
 	city   string = 'Your Favorite City'
 	state  string = 'Could Be Any'
-	zip    int    = 42 
+	zip    int    = 42
 }
 
 fn new_address(cfg AddressConfig) &Address
