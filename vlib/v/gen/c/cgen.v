@@ -1819,7 +1819,8 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 							g.expr(stmt.expr)
 							g.writeln(';')
 						} else {
-							ret_typ := if g.inside_assign {
+							// on assignemnt or struct field initialization
+							ret_typ := if g.inside_struct_init || g.inside_assign {
 								stmt.typ
 							} else {
 								g.fn_decl.return_type.clear_flag(.option)
