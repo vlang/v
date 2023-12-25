@@ -331,6 +331,7 @@ fn test_in_array_of_sumtype() {
 // for issue 20268
 struct Bar {}
 
+// vfmt off
 fn in_both_mut_ref(mut arr []&Bar, mut bar &Bar) {
 	assert bar !in arr
 }
@@ -340,3 +341,4 @@ fn test_in_both_mut_and_ref() {
 	mut bar := Bar{}
 	in_both_mut_ref(mut &arr, mut &bar)
 }
+// vfmt on
