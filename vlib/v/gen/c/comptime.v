@@ -922,7 +922,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			g.comptime.inside_comptime_for = true
 			g.push_new_comptime_info()
 			for variant in sym.info.variants {
-				g.comptime.comptime_for_field_var = node.val_var
+				g.comptime.comptime_for_variant_var = node.val_var
 				g.comptime.type_map['${node.val_var}.typ'] = variant
 
 				g.writeln('/* variant ${i} */ {')

@@ -364,7 +364,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			}
 			c.smartcast_mut_pos = token.Pos{}
 			c.smartcast_cond_pos = token.Pos{}
-		}
+		}		
 		if expr_required {
 			if branch.stmts.len > 0 {
 				mut stmt := branch.stmts.last()
@@ -516,6 +516,9 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope) {
 			c.smartcast_if_conds(mut node.left, mut scope)
 			c.smartcast_if_conds(mut node.right, mut scope)
 		} else if node.op == .key_is {
+			if node.left_type == ast.Type(0) {
+				node.left_type = c.expr(mut node.left)
+			}
 			right_expr := node.right
 			right_type := match right_expr {
 				ast.TypeNode {
@@ -524,15 +527,22 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope) {
 				ast.None {
 					ast.none_type_idx
 				}
+				ast.ComptimeType {
+					if right_expr.kind == .variant {
+						c.comptime.type_map['${c.comptime.comptime_for_variant_var}.typ']
+					} else {
+						ast.Type(0)	
+					}
+				}
 				else {
 					c.error('invalid type `${right_expr}`', right_expr.pos())
 					ast.Type(0)
 				}
 			}
 			if right_type != ast.Type(0) {
-				left_sym := c.table.sym(node.left_type)
 				right_sym := c.table.sym(right_type)
 				mut expr_type := c.expr(mut node.left)
+				left_sym := c.table.sym(expr_type)
 				if left_sym.kind == .aggregate {
 					expr_type = (left_sym.info as ast.Aggregate).sum_type
 				}
@@ -545,7 +555,7 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope) {
 					expr_str := c.table.type_to_str(expr_type)
 					c.error('cannot use type `${expect_str}` as type `${expr_str}`', node.pos)
 				}
-				if node.left in [ast.Ident, ast.SelectorExpr] && node.right is ast.TypeNode {
+				if node.left in [ast.Ident, ast.SelectorExpr] && node.right in [ast.ComptimeType, ast.TypeNode] {
 					is_variable := if mut node.left is ast.Ident {
 						node.left.kind == .variable
 					} else {

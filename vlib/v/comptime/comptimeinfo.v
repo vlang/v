@@ -53,6 +53,9 @@ pub fn (mut ct ComptimeInfo) get_comptime_var_type(node ast.Expr) ast.Type {
 				// generic parameter from current function
 				node.obj.typ
 			}
+			.smartcast {
+				ct.type_map['${ct.comptime_for_variant_var}.typ'] or { ast.void_type }
+			}
 			.key_var, .value_var {
 				// key and value variables from normal for stmt
 				ct.type_map[node.name] or { ast.void_type }
@@ -222,6 +225,10 @@ pub fn (mut ct ComptimeInfo) is_comptime_type(x ast.Type, y ast.ComptimeType) bo
 		}
 		.option {
 			return x.has_flag(.option)
+		}
+		.variant {
+			return ct.comptime_for_variant_var != ''
+				&& x_kind == ct.table.sym(ct.type_map['${ct.comptime_for_variant_var}.typ']).kind
 		}
 	}
 }
