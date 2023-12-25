@@ -4912,6 +4912,7 @@ fn (mut g Gen) branch_stmt(node ast.BranchStmt) {
 }
 
 fn (mut g Gen) return_stmt(node ast.Return) {
+	g.set_current_pos_as_last_stmt_pos()
 	g.write_v_source_line_info(node.pos)
 
 	g.inside_return = true
