@@ -279,7 +279,7 @@ pub fn parse_vet_file(path string, table_ &ast.Table, pref_ &pref.Preferences) (
 	p.set_path(path)
 	if p.scanner.text.contains_any_substr(['\n  ', ' \n']) {
 		source_lines := os.read_lines(path) or { []string{} }
-		mut is_vfmt_off := false 
+		mut is_vfmt_off := false
 		for lnumber, line in source_lines {
 			if line.starts_with('\x01 vfmt off') {
 				is_vfmt_off = true
