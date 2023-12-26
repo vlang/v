@@ -436,6 +436,12 @@ fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSymbol,
 	if !c.check_basic(got_fn.return_type, exp_fn.return_type) {
 		return false
 	}
+	// The check for sumtype in c.check_basic() in the previous step is only for its variant to be subsumed
+	// So we need to do a second, more rigorous check of the return value being sumtype.
+	if c.table.final_sym(exp_fn.return_type).kind == .sum_type
+		&& got_fn.return_type.idx() != exp_fn.return_type.idx() {
+		return false
+	}
 	for i, got_arg in got_fn.params {
 		exp_arg := exp_fn.params[i]
 		exp_arg_typ := c.unwrap_generic(exp_arg.typ)
