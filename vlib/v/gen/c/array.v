@@ -1007,7 +1007,7 @@ fn (mut g Gen) gen_array_contains(left_type ast.Type, left ast.Expr, right_type 
 	} else {
 		left_sym.array_fixed_info().elem_type
 	}
-	if right.is_auto_deref_var()
+	if (right.is_auto_deref_var() && !elem_typ.is_ptr())
 		|| (g.table.sym(elem_typ).kind !in [.interface_, .sum_type, .struct_] && right is ast.Ident
 		&& right.info is ast.IdentVar
 		&& g.table.sym(right.obj.typ).kind in [.interface_, .sum_type]) {
