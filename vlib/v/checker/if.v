@@ -364,7 +364,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			}
 			c.smartcast_mut_pos = token.Pos{}
 			c.smartcast_cond_pos = token.Pos{}
-		}		
+		}
 		if expr_required {
 			if branch.stmts.len > 0 {
 				mut stmt := branch.stmts.last()
@@ -531,7 +531,7 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope) {
 					if right_expr.kind == .variant {
 						c.comptime.type_map['${c.comptime.comptime_for_variant_var}.typ']
 					} else {
-						ast.Type(0)	
+						ast.Type(0)
 					}
 				}
 				else {
@@ -555,7 +555,8 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope) {
 					expr_str := c.table.type_to_str(expr_type)
 					c.error('cannot use type `${expect_str}` as type `${expr_str}`', node.pos)
 				}
-				if node.left in [ast.Ident, ast.SelectorExpr] && node.right in [ast.ComptimeType, ast.TypeNode] {
+				if node.left in [ast.Ident, ast.SelectorExpr]
+					&& node.right in [ast.ComptimeType, ast.TypeNode] {
 					is_variable := if mut node.left is ast.Ident {
 						node.left.kind == .variable
 					} else {
