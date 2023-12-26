@@ -3852,9 +3852,10 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 					orig_type = expr.obj.typ
 				}
 				is_inherited = expr.obj.is_inherited
-				ct_type_var = expr.obj.ct_type_var
-				if expr.obj.ct_type_var == .field_var {
-					ct_type_var = .smartcast
+				ct_type_var = if expr.obj.ct_type_var == .field_var {
+					.smartcast
+				} else {
+					.no_comptime
 				}
 			}
 			// smartcast either if the value is immutable or if the mut argument is explicitly given
