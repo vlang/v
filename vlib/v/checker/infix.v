@@ -648,8 +648,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				ast.None {
 					ast.none_type_idx
 				}
-				ast.ComptimeType {
-					if right_expr.kind == .variant {
+				ast.Ident {
+					if right_expr.name == c.comptime.comptime_for_variant_var {
 						c.comptime.type_map['${c.comptime.comptime_for_variant_var}.typ']
 					} else {
 						c.error('invalid type `${right_expr}`', right_expr.pos)
