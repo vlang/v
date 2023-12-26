@@ -281,9 +281,9 @@ pub fn parse_vet_file(path string, table_ &ast.Table, pref_ &pref.Preferences) (
 		source_lines := os.read_lines(path) or { []string{} }
 		mut is_vfmt_off := false
 		for lnumber, line in source_lines {
-			if line.starts_with('\x01 vfmt off') {
+			if line.starts_with('// vfmt off') {
 				is_vfmt_off = true
-			} else if line.starts_with('\x01 vfmt on') {
+			} else if line.starts_with('// vfmt on') {
 				is_vfmt_off = false
 			}
 			if is_vfmt_off {
