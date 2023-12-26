@@ -515,6 +515,9 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope) {
 		if node.op == .and {
 			c.smartcast_if_conds(mut node.left, mut scope)
 			c.smartcast_if_conds(mut node.right, mut scope)
+		} else if node.op == .ne && node.right is ast.None {
+			c.smartcast(mut node.left, node.left_type, node.left_type.clear_flag(.option), mut
+				scope)
 		} else if node.op == .key_is {
 			right_expr := node.right
 			right_type := match right_expr {

@@ -4505,6 +4505,8 @@ fn (mut g Gen) ident(node ast.Ident) {
 							}
 						} else if g.inside_interface_deref && g.table.is_interface_var(node.obj) {
 							g.write('*')
+						} else if is_option {
+							g.write('*(${g.base_type(node.obj.typ)}*)')
 						}
 					}
 					for i, typ in node.obj.smartcasts {
@@ -4529,9 +4531,14 @@ fn (mut g Gen) ident(node ast.Ident) {
 								g.write('${dot}_${sym.cname}')
 							} else {
 								if is_option {
-									g.write('.data)')
+									g.write('.data')
+									if obj_sym.kind in [.sum_type, .interface_] {
+										g.write(')')
+									}
 								}
-								g.write('${dot}_${cast_sym.cname}')
+								if obj_sym.kind in [.sum_type, .interface_] {
+									g.write('${dot}_${cast_sym.cname}')
+								}
 							}
 						}
 						g.write(')')
