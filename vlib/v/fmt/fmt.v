@@ -776,7 +776,6 @@ pub fn (mut f Fmt) expr(node_ ast.Expr) {
 				.function { f.write('\$function') }
 				.option { f.write('\$option') }
 				.string { f.write('\$string') }
-				.variant { f.write('\$variant') }
 			}
 		}
 	}

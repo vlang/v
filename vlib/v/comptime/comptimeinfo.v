@@ -226,10 +226,6 @@ pub fn (mut ct ComptimeInfo) is_comptime_type(x ast.Type, y ast.ComptimeType) bo
 		.option {
 			return x.has_flag(.option)
 		}
-		.variant {
-			return ct.comptime_for_variant_var != ''
-				&& x_kind == ct.table.sym(ct.type_map['${ct.comptime_for_variant_var}.typ']).kind
-		}
 	}
 }
 

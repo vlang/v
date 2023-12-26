@@ -3164,11 +3164,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 	mut node := unsafe { node_ }
 	match mut node {
 		ast.ComptimeType {
-			if node.kind != .variant {
-				g.error('g.expr(): Unhandled ComptimeType', node.pos)
-			} else {
-				g.write('${g.comptime.comptime_for_variant_var}.typ')
-			}
+			g.error('g.expr(): Unhandled ComptimeType', node.pos)
 		}
 		ast.EmptyExpr {
 			g.error('g.expr(): unhandled EmptyExpr', token.Pos{})

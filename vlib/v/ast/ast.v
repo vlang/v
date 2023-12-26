@@ -145,7 +145,6 @@ pub enum ComptimeTypeKind {
 	function
 	option
 	string
-	variant
 }
 
 pub struct ComptimeType {
@@ -171,7 +170,6 @@ pub fn (cty ComptimeType) str() string {
 		.function { '\$function' }
 		.option { '\$option' }
 		.string { '\$string' }
-		.variant { '\$variant' }
 	}
 }
 
@@ -806,7 +804,7 @@ pub enum ComptimeVarKind {
 	value_var // map value from `for k,v in t.$(field.name)`
 	field_var // comptime field var `a := t.$(field.name)`
 	generic_param // generic fn parameter
-	smartcast // smart cast when used in `is $variant`
+	smartcast // smart cast when used in `is v` (when `v` is from $for .variants)
 }
 
 @[minify]

@@ -2590,11 +2590,7 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 	match mut node {
 		ast.NodeError {}
 		ast.ComptimeType {
-			if node.kind == .variant {
-				return c.comptime.type_map['${c.comptime.comptime_for_variant_var}.typ']
-			} else {
-				c.error('incorrect use of compile-time type', node.pos)
-			}
+			c.error('incorrect use of compile-time type', node.pos)
 		}
 		ast.EmptyExpr {
 			if c.pref.is_verbose {
