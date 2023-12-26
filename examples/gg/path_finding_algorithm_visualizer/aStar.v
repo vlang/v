@@ -230,7 +230,6 @@ fn hf(p1 Point, p2 Point) int {
 
 // get the position of mouse in terms of which cells' row and column
 fn get_clicked_pos(pos Point, rows int, width int) (int, int) {
-	gap := width / rows
 	x := pos.x
 	y := pos.y
 	row := y / rows
