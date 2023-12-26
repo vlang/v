@@ -1,31 +1,31 @@
 // vfmt off
-struct Address
+struct Address  
 {
 	pub:
 		street string
 		city string
 		state string
-		zip int
+		zip int  
 }
 
-fn test_fn_call_with_newline_opening_brace()
+fn test_fn_call_with_newline_opening_brace()  
 {
-	println(initialized_address)
-	assert true
+	println(initialized_address) 
+	assert true 
 }
 
-struct AddressConfig {
+struct AddressConfig { 
 pub:
 
-	street string = '1234 Default St'
-	city   string = 'Your Favorite City'
-	state  string = 'Could Be Any'
-	zip    int    = 42
+	street string = '1234 Default St' 
+	city   string = 'Your Favorite City' 
+	state  string = 'Could Be Any' 
+	zip    int    = 42 
 }
 
-fn new_address(cfg AddressConfig) &Address
+fn new_address(cfg AddressConfig) &Address 
 {
-	return &Address
+	return &Address 
 	{
 		street:cfg.street
 		city:cfg.city
@@ -35,8 +35,8 @@ fn new_address(cfg AddressConfig) &Address
 }
 
 const (
-	default_address     = new_address(AddressConfig{})
-	initialized_address = new_address
+	default_address     = new_address(AddressConfig{}) 
+	initialized_address = new_address 
 	(
 		street: '0987 tluafeD tS'
 		city: 'ytiC etirovaF rouY'
