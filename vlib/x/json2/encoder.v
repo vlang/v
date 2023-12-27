@@ -302,7 +302,11 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 				unsafe { buf.push_many(val.$(field.name).format_rfc3339().str, val.$(field.name).format_rfc3339().len) }
 				buf << json2.quote_byte
 			} $else $if field.typ is bool {
-				unsafe { buf.push_many('${value}'.str, '${value}'.len) }
+				if value {
+					unsafe { buf.push_many('true'.str, 'true'.len) }
+				} else {
+					unsafe { buf.push_many('false'.str, 'false'.len) }
+				}
 			} $else $if field.typ in [$float, $int] {
 				unsafe { buf.push_many(val.$(field.name).str().str, val.$(field.name).str().len) }
 			} $else $if field.is_array {
