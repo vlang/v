@@ -276,9 +276,8 @@ pub fn (mut ctx Context) set_content_type(mime string) {
 // send over the connetion and you can send multiple responses.
 // This function is usefull when you want to keep the connection alive and/or
 // send multiple responses. Like with the SSE.
-pub fn (mut ctx Context) takeover_conn() Result {
+pub fn (mut ctx Context) takeover_conn() {
 	ctx.takeover = true
-	return Result{}
 }
 
 // user_agent returns the user-agent header for the current client

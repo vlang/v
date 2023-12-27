@@ -1,5 +1,6 @@
 import x.json2 as json
 import strings
+import time
 
 struct StructType[T] {
 mut:
@@ -33,7 +34,8 @@ fn test_json_string() {
 
 fn test_json_string_emoji() {
 	text := json.Any('🐈')
-	assert text.json_str() == r'" "'
+	assert text.json_str() == r'"🐈"'
+	assert json.Any('💀').json_str() == r'"💀"'
 }
 
 fn test_json_string_non_ascii() {
@@ -171,4 +173,10 @@ fn test_encode_value() {
   "last_updated": "timestamp.format_ss()",
   "from_source": "from_source"
 }'
+}
+
+fn test_encode_time() {
+	assert json.encode({
+		'bro': json.Any(time.Time{})
+	}) == '{"bro":"0000-00-00T00:00:00.000Z"}'
 }

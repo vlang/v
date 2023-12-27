@@ -674,6 +674,7 @@ pub fn (mut f Gen) expr(node_ ast.Expr) {
 				.alias { f.write('\$alias') }
 				.function { f.write('\$function') }
 				.option { f.write('\$option') }
+				.string { f.write('\$string') }
 			}
 		}
 	}

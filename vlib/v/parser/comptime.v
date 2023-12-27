@@ -11,7 +11,7 @@ import v.token
 const supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig', 'compile_error',
 	'compile_warn', 'res']
 const comptime_types = ['map', 'array', 'array_dynamic', 'array_fixed', 'int', 'float', 'struct',
-	'interface', 'enum', 'sumtype', 'alias', 'function', 'option']
+	'interface', 'enum', 'sumtype', 'alias', 'function', 'option', 'string']
 
 fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
 	pos := p.tok.pos()
@@ -60,6 +60,9 @@ fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
 		}
 		'option' {
 			.option
+		}
+		'string' {
+			.string
 		}
 		else {
 			.unknown
@@ -298,14 +301,22 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 	// `$for val in App.values {`
 	// `$for field in App.fields {`
 	// `$for attr in App.attributes {`
+	// `$for variant in App.variants {`
 	p.next()
 	p.check(.key_for)
 	var_pos := p.tok.pos()
 	val_var := p.check_name()
 	p.check(.key_in)
+	mut expr := ast.empty_expr
 	mut typ_pos := p.tok.pos()
 	lang := p.parse_language()
-	typ := p.parse_any_type(lang, false, false, false)
+	mut typ := ast.void_type
+	if p.tok.lit[0].is_capital() {
+		typ = p.parse_any_type(lang, false, false, false)
+	} else {
+		expr = p.ident(lang)
+		p.mark_var_as_used((expr as ast.Ident).name)
+	}
 	typ_pos = typ_pos.extend(p.prev_tok.pos())
 	p.check(.dot)
 	for_val := p.check_name()
@@ -365,6 +376,7 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 		stmts: stmts
 		kind: kind
 		typ: typ
+		expr: expr
 		typ_pos: typ_pos
 		pos: spos.extend(p.tok.pos())
 	}

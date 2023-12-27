@@ -654,9 +654,9 @@ and use a reference to the sum type instead: `var := &${node.name}(${variant_nam
 					for typ in sym.info.generic_types {
 						if typ !in node.generic_types {
 							sumtype_type_names := node.generic_types.map(c.table.type_to_str(it)).join(', ')
-							generic_sumtype_name := '${node.name}<${sumtype_type_names}>'
+							generic_sumtype_name := '${node.name}[${sumtype_type_names}]'
 							variant_type_names := sym.info.generic_types.map(c.table.type_to_str(it)).join(', ')
-							generic_variant_name := '${sym.name}<${variant_type_names}>'
+							generic_variant_name := '${sym.name}[${variant_type_names}]'
 							c.error('generic type name `${c.table.sym(typ).name}` of generic struct `${generic_variant_name}` is not mentioned in sumtype `${generic_sumtype_name}`',
 								variant.pos)
 						}
@@ -708,8 +708,12 @@ fn (mut c Checker) expand_iface_embeds(idecl &ast.InterfaceDecl, level int, ifac
 			mut list := iface_decl.embeds.clone()
 			if !iface_decl.are_embeds_expanded {
 				list = c.expand_iface_embeds(idecl, level + 1, iface_decl.embeds)
-				c.table.interfaces[ie.typ].embeds = list
-				c.table.interfaces[ie.typ].are_embeds_expanded = true
+				unsafe {
+					c.table.interfaces[ie.typ].embeds = list
+				}
+				unsafe {
+					c.table.interfaces[ie.typ].are_embeds_expanded = true
+				}
 			}
 			for partial in list {
 				res[partial.typ] = partial
@@ -4354,6 +4358,11 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		elem_type := c.table.value_type(typ)
 		if elem_type.is_any_kind_of_pointer() {
 			c.note('accessing a pointer map value requires an `or {}` block outside `unsafe`',
+				node.pos)
+		}
+		mut checked_types := []ast.Type{}
+		if c.is_contains_any_kind_of_pointer(elem_type, mut checked_types) {
+			c.note('accessing map value that contain pointers requires an `or {}` block outside `unsafe`',
 				node.pos)
 		}
 	}

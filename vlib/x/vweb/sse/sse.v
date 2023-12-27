@@ -37,7 +37,6 @@ pub mut:
 
 // start an SSE connection
 pub fn start_connection(mut ctx vweb.Context) &SSEConnection {
-	ctx.takeover_conn()
 	ctx.res.header.set(.connection, 'keep-alive')
 	ctx.res.header.set(.cache_control, 'no-cache')
 	ctx.send_response_to_client('text/event-stream', '')

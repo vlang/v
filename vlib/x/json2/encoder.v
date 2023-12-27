@@ -110,7 +110,11 @@ fn (e &Encoder) encode_any(val Any, level int, mut buf []u8) ! {
 			e.encode_newline(level - 1, mut buf)!
 			buf << `]`
 		}
-		time.Time {}
+		time.Time {
+			wr.write(quote_bytes)!
+			wr.write(val.format_rfc3339().bytes())!
+			wr.write(quote_bytes)!
+		}
 		Null {
 			buf << `n`
 			buf << `u`
@@ -600,7 +604,10 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 			} else {
 				// TODO: still figuring out what
 				// to do with more than 4 chars
+				// According to https://www.json.org/json-en.html however, any codepoint is valid inside a string,
+				// so just passing it along should hopefully also work.
 				buf << ` `
+				// wr.write(slice.bytes())!
 			}
 			unsafe {
 				slice.free()

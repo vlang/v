@@ -183,6 +183,9 @@ pub fn (mut ct ComptimeInfo) is_comptime_type(x ast.Type, y ast.ComptimeType) bo
 		.map_ {
 			return x_kind == .map
 		}
+		.string {
+			return x_kind == .string
+		}
 		.int {
 			return x_kind in [.i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .usize, .isize,
 				.int_literal]

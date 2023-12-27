@@ -75,7 +75,7 @@ fn sign_generic(mut signature []u8, privatekey []u8, message []u8) ! {
 	mut h := sha512.sum512(seed)
 	mut s := edwards25519.new_scalar()
 	s.set_bytes_with_clamping(h[..32])!
-	mut prefix := h[32..]
+	mut prefix := unsafe { h[32..] }
 
 	mut mh := sha512.new()
 	mh.write(prefix)!
