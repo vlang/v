@@ -111,9 +111,9 @@ fn (e &Encoder) encode_any(val Any, level int, mut buf []u8) ! {
 			buf << `]`
 		}
 		time.Time {
-			wr.write(quote_bytes)!
-			wr.write(val.format_rfc3339().bytes())!
-			wr.write(quote_bytes)!
+			buf << `"`
+			buf.push_many(val.format_rfc3339().str, val.format_rfc3339().len)
+			buf << `"`
 		}
 		Null {
 			buf << `n`
