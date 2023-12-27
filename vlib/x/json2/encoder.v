@@ -606,8 +606,7 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 				// to do with more than 4 chars
 				// According to https://www.json.org/json-en.html however, any codepoint is valid inside a string,
 				// so just passing it along should hopefully also work.
-				buf << ` `
-				// wr.write(slice.bytes())!
+				unsafe { buf.push_many(slice.str, slice.len) }
 			}
 			unsafe {
 				slice.free()
