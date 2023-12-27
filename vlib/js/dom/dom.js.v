@@ -615,6 +615,9 @@ pub interface JS.WebGLFramebuffer {}
 pub interface JS.WebGLRenderbuffer {}
 
 @[single_impl]
+pub interface JS.WebGLSampler {}
+
+@[single_impl]
 pub interface JS.WebGLTexture {}
 
 @[single_impl]
@@ -634,6 +637,7 @@ pub interface JS.WebGLRenderingContext {
 	bindBuffer(target JS.Number, buffer JS.WebGLBuffer)
 	bindFramebuffer(target JS.Number, buffer JS.WebGLFrameBuffer)
 	bindRenderbuffer(target JS.Number, renderbuffer JS.WebGLRenderbuffer)
+	bindSampler(unit JS.Number, sampler JS.WebGLSampler)
 	bindTexture(target JS.Number, texture JS.WebGLTexture)
 	clear(mask JS.Number)
 	clearColor(red JS.Number, green JS.Number, blue JS.Number, alpha JS.Number)
@@ -645,6 +649,7 @@ pub interface JS.WebGLRenderingContext {
 	createFramebuffer() ?JS.WebGLFrameBuffer
 	createProgram() ?JS.WebGLProgram
 	createRenderbuffer() ?JS.WebGLRenderbuffer
+	createSampler() ?JS.WebGLSampler
 	createShader(typ JS.Number) ?JS.WebGLShader
 	createTexture() ?JS.WebGLTexture
 	cullFace(mode JS.Number)
