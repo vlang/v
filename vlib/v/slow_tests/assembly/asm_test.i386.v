@@ -106,7 +106,7 @@ fn test_inline_asm() {
 	manu.str()
 }
 
-[packed]
+@[packed]
 struct Manu {
 mut:
 	ebx  u32

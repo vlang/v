@@ -2,10 +2,8 @@ module net
 
 import time
 
-const (
-	udp_default_read_timeout  = time.second / 10
-	udp_default_write_timeout = time.second / 10
-)
+const udp_default_read_timeout = time.second / 10
+const udp_default_write_timeout = time.second / 10
 
 struct UdpSocket {
 	Socket
@@ -161,12 +159,12 @@ pub fn (mut c UdpConn) set_write_timeout(t time.Duration) {
 	c.write_timeout = t
 }
 
-[inline]
+@[inline]
 pub fn (mut c UdpConn) wait_for_read() ! {
 	return wait_for_read(c.sock.handle, c.read_deadline, c.read_timeout)
 }
 
-[inline]
+@[inline]
 pub fn (mut c UdpConn) wait_for_write() ! {
 	return wait_for_write(c.sock.handle, c.write_deadline, c.write_timeout)
 }

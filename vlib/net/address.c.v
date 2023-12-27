@@ -10,10 +10,8 @@ union AddrData {
 	Ip6
 }
 
-const (
-	addr_ip6_any = [16]u8{init: u8(0)}
-	addr_ip_any  = [4]u8{init: u8(0)}
-)
+const addr_ip6_any = [16]u8{init: u8(0)}
+const addr_ip_any = [4]u8{init: u8(0)}
 
 // new_ip6 creates a new Addr from the IP6 address family, based on the given port and addr
 pub fn new_ip6(port u16, addr [16]u8) Addr {
@@ -62,10 +60,8 @@ pub fn (a Addr) family() AddrFamily {
 	return unsafe { AddrFamily(a.f) }
 }
 
-const (
-	max_ip_len  = 24
-	max_ip6_len = 46
-)
+const max_ip_len = 24
+const max_ip6_len = 46
 
 // str returns a string representation of `a`
 pub fn (a Ip) str() string {

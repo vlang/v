@@ -418,7 +418,7 @@ fn (upd VlsUpdater) error_details(err IError) string {
 	}
 }
 
-[noreturn]
+@[noreturn]
 fn (upd VlsUpdater) cli_error(err IError) {
 	match upd.output {
 		.text {

@@ -2,17 +2,17 @@ module builtin
 
 pub struct string {
 pub:
-	str &byte
+	str &u8
 	len int
 }
 
-pub fn strlen(s &byte) int {
+pub fn strlen(s &u8) int {
 	mut i := 0
 	for ; s[i] != 0; i++ {}
 	return i
 }
 
-pub fn tos(s &byte, len int) string {
+pub fn tos(s &u8, len int) string {
 	if s == 0 {
 		panic('tos(): nil string')
 	}
@@ -49,7 +49,7 @@ pub fn tos_clone(s byteptr) string {
 
 // Same as `tos`, but calculates the length. Called by `string(bytes)` casts.
 // Used only internally.
-pub fn tos2(s &byte) string {
+pub fn tos2(s &u8) string {
 	if s == 0 {
 		panic('tos2: nil string')
 	}
@@ -85,7 +85,7 @@ pub fn string_ne(s1 string, s2 string) bool {
 	return !string_eq(s1, s2)
 }
 
-pub fn i64_tos(buf &byte, len int, n0 i64, base int) string {
+pub fn i64_tos(buf &u8, len int, n0 i64, base int) string {
 	if base < 2 {
 		panic('base must be >= 2')
 	}

@@ -1,16 +1,16 @@
 // vtest vflags: -enable-globals
 
-[weak]
+@[weak]
 __global abc = u64(1)
 __global xyz = u64(2)
 
-[weak]
+@[weak]
 __global (
 	weak_1 = u64(4)
 	weak_2 = u64(5)
 )
 
-[weak]
+@[weak]
 fn a_weak_function() int {
 	return 42
 }

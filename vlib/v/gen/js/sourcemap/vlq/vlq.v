@@ -2,37 +2,35 @@ module vlq
 
 import io
 
-const (
-	shift                  = u8(5)
-	mask                   = u8((1 << shift) - 1)
-	continued              = u8(1 << shift)
-	max_i64                = u64(9223372036854775807)
+const shift = u8(5)
+const mask = u8((1 << shift) - 1)
+const continued = u8(1 << shift)
+const max_i64 = u64(9223372036854775807)
 
-	// index start is: byte - vlq.enc_char_special_plus
-	enc_index              = [62, 0, 0, 0, 63, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 0, 0, 0,
-		0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
-		22, 23, 24, 25, 0, 0, 0, 0, 0, 0, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
-		40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51]!
+// index start is: byte - vlq.enc_char_special_plus
+const enc_index = [62, 0, 0, 0, 63, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 0, 0, 0, 0, 0, 0, 0,
+	0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+	0, 0, 0, 0, 0, 0, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44,
+	45, 46, 47, 48, 49, 50, 51]!
 
-	enc_table              = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+const enc_table = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
-	enc_char_start_au      = 65
-	enc_char_end_zu        = 90
-	enc_char_start_al      = 97
-	enc_char_end_zl        = 122
-	enc_char_start_zero    = 48
-	enc_char_end_nine      = 57
-	enc_char_special_plus  = 43
-	enc_char_special_slash = 47
-)
+const enc_char_start_au = 65
+const enc_char_end_zu = 90
+const enc_char_start_al = 97
+const enc_char_end_zl = 122
+const enc_char_start_zero = 48
+const enc_char_end_nine = 57
+const enc_char_special_plus = 43
+const enc_char_special_slash = 47
 
-[inline]
+@[inline]
 fn abs64(x i64) u64 {
 	return if x < 0 { u64(-x) } else { u64(x) }
 }
 
 // Decode a single base64 digit.
-[inline]
+@[inline]
 fn decode64(input u8) u8 {
 	$if debug {
 		assert input >= vlq.enc_char_special_plus
@@ -81,7 +79,7 @@ pub fn decode(mut input io.Reader) !i64 {
 	return if (accum & 1) != 0 { (-i64(abs_value)) } else { i64(abs_value) }
 }
 
-[inline]
+@[inline]
 fn encode64(input u8) u8 {
 	$if debug {
 		assert input < 64

@@ -3,18 +3,17 @@
 // that can be found in the LICENSE file.
 module math
 
-const (
-	uvnan                   = u64(0x7FF8000000000001)
-	uvinf                   = u64(0x7FF0000000000000)
-	uvneginf                = u64(0xFFF0000000000000)
-	uvone                   = u64(0x3FF0000000000000)
-	mask                    = 0x7FF
-	shift                   = 64 - 11 - 1
-	bias                    = 1023
-	normalize_smallest_mask = u64(u64(1) << 52)
-	sign_mask               = u64(0x8000000000000000) // (u64(1) << 63)
-	frac_mask               = u64((u64(1) << u64(shift)) - u64(1))
-)
+const uvnan = u64(0x7FF8000000000001)
+const uvinf = u64(0x7FF0000000000000)
+const uvneginf = u64(0xFFF0000000000000)
+const uvone = u64(0x3FF0000000000000)
+const mask = 0x7FF
+const shift = 64 - 11 - 1
+const bias = 1023
+const normalize_smallest_mask = u64(u64(1) << 52)
+const sign_mask = u64(0x8000000000000000) // (u64(1) << 63)
+
+const frac_mask = u64((u64(1) << u64(shift)) - u64(1))
 
 // inf returns positive infinity if sign >= 0, negative infinity if sign < 0.
 pub fn inf(sign int) f64 {

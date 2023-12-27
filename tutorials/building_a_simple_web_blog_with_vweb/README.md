@@ -1,4 +1,4 @@
-## Building a 150 KB web blog in V & SQLite
+## Building a 400 KB web blog in V & SQLite
 
 Hello,
 
@@ -16,7 +16,7 @@ The benefits of using V for web:
   is enough.
 - Fast development without any boilerplate.
 
-> **Note**
+> [!NOTE]
 > V and Vweb are at a very early stage and are changing rapidly.
 
 The code is available [here](./code/blog).
@@ -69,7 +69,7 @@ fn main() {
 	vweb.run(app, 8081)
 }
 
-['/index']
+@['/index']
 pub fn (mut app App) index() vweb.Result {
 	return app.text('Hello world from vweb!')
 }
@@ -234,7 +234,7 @@ Create a new file `article.v`:
 module main
 
 struct Article {
-	id    int    [primary; sql: serial]
+	id    int    @[primary; sql: serial]
 	title string
 	text  string
 }
@@ -336,7 +336,7 @@ Create `new.html`:
 // article.v
 import vweb
 
-[post]
+@[post]
 pub fn (mut app App) new_article(title string, text string) vweb.Result {
 	if title == '' || text == '' {
 		return app.text('Empty text/title')
@@ -368,7 +368,7 @@ We need to update `index.html` to add a link to the "new article" page:
 Next we need to add the HTML endpoint to our code like we did with `index.html`:
 
 ```v ignore
-['/new']
+@['/new']
 pub fn (mut app App) new() vweb.Result {
 	return $vweb.html()
 }
@@ -386,7 +386,7 @@ in V is very simple:
 // article.v
 import vweb
 
-['/articles'; get]
+@['/articles'; get]
 pub fn (mut app App) articles() vweb.Result {
 	articles := app.find_all_articles()
 	return app.json(articles)
@@ -409,6 +409,18 @@ If the database file doesn't exist it will create it. The second command will
 create the table `Article` if none exists already. Now every time the
 app is run you will see the articles created from the previous executions
 
-To be continued...
+### Building the blog
+
+Run
+
+```bash
+v -d use_openssl -o blog -prod . && strip ./blog
+```
+
+This will result in a ~400KB binary. `-d use_openssl` tells vweb to link to OpenSSL.
+Without this flag mbedtls will be embedded, and the binary size will increase to ~700KB.
+
+
+### To be continued...
 
 For an example of a more sophisticated web app written in V, check out Vorum: https://github.com/vlang/vorum

@@ -79,6 +79,9 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 			if expr.or_block.kind != .absent {
 				return true
 			}
+			if g.need_tmp_var_in_expr(expr.left) {
+				return true
+			}
 			for arg in expr.args {
 				if g.need_tmp_var_in_expr(arg.expr) {
 					return true
@@ -378,6 +381,11 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 						no_needs_par = true
 					}
 				}
+				inside_interface_deref_old := g.inside_interface_deref
+				if !g.inside_interface_deref && branch.cond is ast.Ident
+					&& g.table.is_interface_var(branch.cond.obj) {
+					g.inside_interface_deref = true
+				}
 				if no_needs_par {
 					g.write('if ')
 				} else {
@@ -389,6 +397,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				} else {
 					g.writeln(') {')
 				}
+				g.inside_interface_deref = inside_interface_deref_old
 			}
 		}
 		if needs_tmp_var {

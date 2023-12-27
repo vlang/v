@@ -1,30 +1,26 @@
-[has_globals]
+@[has_globals]
 module loader
 
 import dl
 import os
 
-const (
-	dl_no_path_issue_msg  = 'no paths to dynamic library'
-	dl_open_issue_msg     = 'could not open dynamic library'
-	dl_sym_issue_msg      = 'could not get optional symbol from dynamic library'
-	dl_close_issue_msg    = 'could not close dynamic library'
-	dl_register_issue_msg = 'could not register dynamic library loader'
-)
+const dl_no_path_issue_msg = 'no paths to dynamic library'
+const dl_open_issue_msg = 'could not open dynamic library'
+const dl_sym_issue_msg = 'could not get optional symbol from dynamic library'
+const dl_close_issue_msg = 'could not close dynamic library'
+const dl_register_issue_msg = 'could not register dynamic library loader'
 
-pub const (
-	dl_no_path_issue_code  = 1
-	dl_open_issue_code     = 1
-	dl_sym_issue_code      = 2
-	dl_close_issue_code    = 3
-	dl_register_issue_code = 4
+pub const dl_no_path_issue_code = 1
+pub const dl_open_issue_code = 1
+pub const dl_sym_issue_code = 2
+pub const dl_close_issue_code = 3
+pub const dl_register_issue_code = 4
 
-	dl_no_path_issue_err   = error_with_code(dl_no_path_issue_msg, dl_no_path_issue_code)
-	dl_open_issue_err      = error_with_code(dl_open_issue_msg, dl_open_issue_code)
-	dl_sym_issue_err       = error_with_code(dl_sym_issue_msg, dl_sym_issue_code)
-	dl_close_issue_err     = error_with_code(dl_close_issue_msg, dl_close_issue_code)
-	dl_register_issue_err  = error_with_code(dl_register_issue_msg, dl_register_issue_code)
-)
+pub const dl_no_path_issue_err = error_with_code(dl_no_path_issue_msg, dl_no_path_issue_code)
+pub const dl_open_issue_err = error_with_code(dl_open_issue_msg, dl_open_issue_code)
+pub const dl_sym_issue_err = error_with_code(dl_sym_issue_msg, dl_sym_issue_code)
+pub const dl_close_issue_err = error_with_code(dl_close_issue_msg, dl_close_issue_code)
+pub const dl_register_issue_err = error_with_code(dl_register_issue_msg, dl_register_issue_code)
 
 __global (
 	registered_dl_loaders map[string]&DynamicLibLoader
@@ -43,7 +39,7 @@ pub fn registered_dl_loader_keys() []string {
 }
 
 // DynamicLibLoader is a wrapper around dlopen, dlsym and dlclose.
-[heap]
+@[heap]
 pub struct DynamicLibLoader {
 pub:
 	key   string
@@ -55,7 +51,7 @@ mut:
 }
 
 // DynamicLibLoaderConfig is a configuration for DynamicLibLoader.
-[params]
+@[params]
 pub struct DynamicLibLoaderConfig {
 	// flags is the flags for dlopen.
 	flags int = dl.rtld_lazy

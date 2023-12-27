@@ -1,6 +1,6 @@
 import os
 
-[direct_array_access]
+@[direct_array_access]
 fn test_big_int_array() {
 	dump(sizeof(isize))
 	mut maxn := 500_000_000 // try allocating ~2GB worth of integers on 32bit platforms

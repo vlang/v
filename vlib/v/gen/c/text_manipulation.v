@@ -52,22 +52,22 @@ fn (mut g Gen) go_back_to(n int) {
 	// g.out_parallel[g.out_idx].go_back_to(n)
 }
 
-[inline]
+@[inline]
 fn (g &Gen) nth_stmt_pos(n int) int {
 	return g.stmt_path_pos[g.stmt_path_pos.len - (1 + n)]
 }
 
-[inline]
+@[inline]
 fn (mut g Gen) set_current_pos_as_last_stmt_pos() {
 	g.stmt_path_pos << g.out.len
 }
 
-[inline]
+@[inline]
 fn (mut g Gen) go_before_last_stmt() string {
 	return g.out.cut_to(g.nth_stmt_pos(0))
 }
 
-[inline]
+@[inline]
 fn (mut g Gen) go_before_ternary() string {
 	return g.out.cut_to(g.nth_stmt_pos(g.inside_ternary))
 }

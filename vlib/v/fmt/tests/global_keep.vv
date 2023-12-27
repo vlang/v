@@ -4,7 +4,6 @@ struct TestInt {
 
 __global x = bool(true)
 __global y f32
-__global ()
 __global (
 	spam string
 	foo  = int(5)

@@ -45,6 +45,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			g.gen_anon_fn(mut expr.left)
 			g.writeln(';')
 			use_tmp_fn_var = true
+			name = g.anon_fn_cname(expr.left.decl.return_type, expr.left.decl.params.map(it.typ))
 		} else {
 			g.gen_anon_fn_decl(mut expr.left)
 			name = expr.left.decl.name
@@ -251,6 +252,19 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 					mut arg_types := f.params.map(it.typ)
 					arg_types = arg_types.map(muttable.resolve_generic_to_concrete(it,
 						f.generic_names, node.call_expr.concrete_types) or { it })
+					for i, typ in arg_types {
+						mut typ_sym := g.table.sym(typ)
+						for {
+							if mut typ_sym.info is ast.Array {
+								typ_sym = g.table.sym(typ_sym.info.elem_type)
+							} else {
+								if typ_sym.info is ast.FnType {
+									arg_types[i] = expr.args[i].typ
+								}
+								break
+							}
+						}
+					}
 					fn_var = g.fn_var_signature(return_type, arg_types, 'fn')
 				}
 			}
@@ -392,7 +406,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 //}
 
 // get current thread size, if fn hasn't defined return default
-[inline]
+@[inline]
 fn (mut g Gen) get_cur_thread_stack_size(name string) string {
 	ast_fn := g.table.fns[name] or { return '${g.pref.thread_stack_size}' }
 	attrs := ast_fn.attrs

@@ -20,36 +20,32 @@ import szip
 import strings
 
 // Help text
-const (
-	help_text_rows = [
-		'Image Viewer 0.9 help.',
-		'',
-		'ESC/q - Quit',
-		'cur. right - Next image',
-		'cur. left  - Previous image',
-		'cur. up    - Next folder',
-		'cur. down  - Previous folder',
-		'F - Toggle full screen',
-		'R - Rotate image of 90 degree',
-		'I - Toggle the info text',
-		'',
-		'mouse wheel - next/previous images',
-		'keep pressed left  Mouse button - Pan on the image',
-		'keep pressed right Mouse button - Zoom on the image',
-	]
-)
+const help_text_rows = [
+	'Image Viewer 0.9 help.',
+	'',
+	'ESC/q - Quit',
+	'cur. right - Next image',
+	'cur. left  - Previous image',
+	'cur. up    - Next folder',
+	'cur. down  - Previous folder',
+	'F - Toggle full screen',
+	'R - Rotate image of 90 degree',
+	'I - Toggle the info text',
+	'',
+	'mouse wheel - next/previous images',
+	'keep pressed left  Mouse button - Pan on the image',
+	'keep pressed right Mouse button - Zoom on the image',
+]
 
-const (
-	win_width       = 800
-	win_height      = 800
-	bg_color        = gx.black
-	pi_2            = 3.14159265359 / 2.0
-	uv              = [f32(0), 0, 1, 0, 1, 1, 0, 1]! // used for zoom icon during rotations
+const win_width = 800
+const win_height = 800
+const bg_color = gx.black
+const pi_2 = 3.14159265359 / 2.0
+const uv = [f32(0), 0, 1, 0, 1, 1, 0, 1]! // used for zoom icon during rotations
 
-	text_drop_files = 'Drop here some images/folder/zip to navigate in the pics'
-	text_scanning   = 'Scanning...'
-	text_loading    = 'Loading...'
-)
+const text_drop_files = 'Drop here some images/folder/zip to navigate in the pics'
+const text_scanning = 'Scanning...'
+const text_loading = 'Loading...'
 
 enum Viewer_state {
 	loading
@@ -166,7 +162,7 @@ fn update_text_texture(sg_img gfx.Image, w int, h int, buf &u8) {
 * Memory buffer
 *
 ******************************************************************************/
-[inline]
+@[inline]
 fn (mut app App) resize_buf_if_needed(in_size int) {
 	// manage the memory buffer
 	if app.mem_buf_size < in_size {
@@ -191,7 +187,7 @@ fn (mut app App) resize_buf_if_needed(in_size int) {
 *
 ******************************************************************************/
 // read_bytes from file in `path` in the memory buffer of app.
-[manualfree]
+@[manualfree]
 fn (mut app App) read_bytes(path string) bool {
 	mut fp := os.vfopen(path, 'rb') or {
 		eprintln('ERROR: Can not open the file [${path}].')
@@ -375,7 +371,7 @@ fn cleanup(mut app App) {
 * Draw functions
 *
 ******************************************************************************/
-[manualfree]
+@[manualfree]
 fn frame(mut app App) {
 	ws := gg.window_size_real_pixels()
 	if ws.width <= 0 || ws.height <= 0 {

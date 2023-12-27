@@ -12,35 +12,33 @@ import v.util.version
 import v.errors
 import v.pkgconfig
 import v.transformer
+import v.comptime
 
-const (
-	int_min                                        = int(0x80000000)
-	int_max                                        = int(0x7FFFFFFF)
-	// prevent stack overflows by restricting too deep recursion:
-	expr_level_cutoff_limit                        = 40
-	stmt_level_cutoff_limit                        = 40
-	iface_level_cutoff_limit                       = 100
-	generic_fn_cutoff_limit_per_fn                 = 10_000 // how many times post_process_generic_fns, can visit the same function before bailing out
-	generic_fn_postprocess_iterations_cutoff_limit = 1000_000 // how many times the compiler will try to resolve all remaining generic functions
-)
+const int_min = int(0x80000000)
+const int_max = int(0x7FFFFFFF)
+// prevent stack overflows by restricting too deep recursion:
+const expr_level_cutoff_limit = 40
+const stmt_level_cutoff_limit = 40
+const iface_level_cutoff_limit = 100
+const generic_fn_cutoff_limit_per_fn = 10_000 // how many times post_process_generic_fns, can visit the same function before bailing out
 
-pub const (
-	// array_builtin_methods contains a list of all methods on array, that return other typed arrays,
-	// i.e. that act as *pseudogeneric* methods, that need compiler support, so that the types of the results
-	// are properly checked.
-	// Note that methods that do not return anything, or that return known types, are not listed here, since they are just ordinary non generic methods.
-	array_builtin_methods       = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
-		'sorted', 'sorted_with_compare', 'contains', 'index', 'wait', 'any', 'all', 'first', 'last',
-		'pop', 'delete']
-	array_builtin_methods_chk   = token.new_keywords_matcher_from_array_trie(array_builtin_methods)
-	// TODO: remove `byte` from this list when it is no longer supported
-	reserved_type_names         = ['byte', 'bool', 'char', 'i8', 'i16', 'int', 'i64', 'u8', 'u16',
-		'u32', 'u64', 'f32', 'f64', 'map', 'string', 'rune', 'usize', 'isize', 'voidptr', 'thread']
-	reserved_type_names_chk     = token.new_keywords_matcher_from_array_trie(reserved_type_names)
-	vroot_is_deprecated_message = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
-)
+const generic_fn_postprocess_iterations_cutoff_limit = 1000_000
 
-[heap; minify]
+// array_builtin_methods contains a list of all methods on array, that return other typed arrays,
+// i.e. that act as *pseudogeneric* methods, that need compiler support, so that the types of the results
+// are properly checked.
+// Note that methods that do not return anything, or that return known types, are not listed here, since they are just ordinary non generic methods.
+pub const array_builtin_methods = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
+	'sorted', 'sorted_with_compare', 'contains', 'index', 'wait', 'any', 'all', 'first', 'last',
+	'pop', 'delete']
+pub const array_builtin_methods_chk = token.new_keywords_matcher_from_array_trie(array_builtin_methods)
+// TODO: remove `byte` from this list when it is no longer supported
+pub const reserved_type_names = ['byte', 'bool', 'char', 'i8', 'i16', 'int', 'i64', 'u8', 'u16',
+	'u32', 'u64', 'f32', 'f64', 'map', 'string', 'rune', 'usize', 'isize', 'voidptr', 'thread']
+pub const reserved_type_names_chk = token.new_keywords_matcher_from_array_trie(reserved_type_names)
+pub const vroot_is_deprecated_message = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
+
+@[heap; minify]
 pub struct Checker {
 pub mut:
 	pref &pref.Preferences = unsafe { nil } // Preferences shared from V struct
@@ -79,12 +77,12 @@ pub mut:
 	inside_unsafe              bool // true inside `unsafe {}` blocks
 	inside_const               bool // true inside `const ( ... )` blocks
 	inside_anon_fn             bool // true inside `fn() { ... }()`
+	inside_lambda              bool // true inside `|...| ...`
 	inside_ref_lit             bool // true inside `a := &something`
 	inside_defer               bool // true inside `defer {}` blocks
 	inside_fn_arg              bool // `a`, `b` in `a.f(b)`
 	inside_ct_attr             bool // true inside `[if expr]`
 	inside_x_is_type           bool // true inside the Type expression of `if x is Type {`
-	inside_comptime_for_field  bool
 	inside_generic_struct_init bool
 	cur_struct_generic_types   []ast.Type
 	cur_struct_concrete_types  []ast.Type
@@ -110,11 +108,8 @@ mut:
 	loop_label                       string     // set when inside a labelled for loop
 	vweb_gen_types                   []ast.Type // vweb route checks
 	timers                           &util.Timers = util.get_timers()
-	comptime_for_field_var           string
-	comptime_fields_default_type     ast.Type
-	comptime_fields_type             map[string]ast.Type
-	comptime_for_field_value         ast.StructField // value of the field variable
-	comptime_enum_field_value        string // current enum value name
+	comptime_info_stack              []comptime.ComptimeInfo // stores the values from the above on each $for loop, to make nesting them easier
+	comptime                         comptime.ComptimeInfo
 	fn_scope                         &ast.Scope = unsafe { nil }
 	main_fn_decl_node                ast.FnDecl
 	match_exhaustive_cutoff_limit    int = 10
@@ -124,7 +119,7 @@ mut:
 	need_recheck_generic_fns         bool // need recheck generic fns because there are cascaded nested generic fn
 	inside_sql                       bool // to handle sql table fields pseudo variables
 	inside_selector_expr             bool
-	inside_casting_to_str            bool
+	inside_interface_deref           bool
 	inside_decl_rhs                  bool
 	inside_if_guard                  bool // true inside the guard condition of `if x := opt() {}`
 	inside_assign                    bool
@@ -134,6 +129,8 @@ mut:
 	comptime_call_pos int // needed for correctly checking use before decl for templates
 	goto_labels       map[string]ast.GotoLabel // to check for unused goto labels
 	enum_data_type    ast.Type
+	field_data_type   ast.Type
+	variant_data_type ast.Type
 	fn_return_type    ast.Type
 	orm_table_fields  map[string][]ast.StructField // known table structs
 	//
@@ -145,13 +142,18 @@ pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
 	$if time_checking ? {
 		timers_should_print = true
 	}
-	return &Checker{
+	mut checker := &Checker{
 		table: table
 		pref: pref_
 		timers: util.new_timers(should_print: timers_should_print, label: 'checker')
 		match_exhaustive_cutoff_limit: pref_.checker_match_exhaustive_cutoff_limit
 		v_current_commit_hash: version.githash(pref_.building_v)
 	}
+	checker.comptime = &comptime.ComptimeInfo{
+		resolver: checker
+		table: table
+	}
+	return checker
 }
 
 fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
@@ -182,7 +184,7 @@ fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
 	c.loop_label = ''
 	c.using_new_err_struct = false
 	c.inside_selector_expr = false
-	c.inside_casting_to_str = false
+	c.inside_interface_deref = false
 	c.inside_decl_rhs = false
 	c.inside_if_guard = false
 	c.error_details.clear()
@@ -220,7 +222,7 @@ pub fn (mut c Checker) check(mut ast_file ast.File) {
 			} else if ast_import.mod == ast_file.imports[j].alias {
 				c.error('`${ast_file.imports[j].mod}` was already imported as `${ast_import.alias}` on line ${
 					ast_file.imports[j].mod_pos.line_nr + 1}', ast_import.mod_pos)
-			} else if ast_import.alias == ast_file.imports[j].alias {
+			} else if ast_import.alias != '_' && ast_import.alias == ast_file.imports[j].alias {
 				c.error('`${ast_file.imports[j].mod}` was already imported on line ${
 					ast_file.imports[j].alias_pos.line_nr + 1}', ast_import.alias_pos)
 			}
@@ -333,7 +335,7 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 					file: the_main_file.path
 					return_type: ast.void_type
 					scope: &ast.Scope{
-						parent: 0
+						parent: nil
 					}
 				}
 				has_main_fn = true
@@ -393,7 +395,7 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 		}
 	}
 	// After the main checker run, run the line info check, print line info, and exit (if it's present)
-	if c.pref.line_info != '' && !c.pref.linfo.is_running { //'' && c.pref.linfo.line_nr == 0 {
+	if !c.pref.linfo.is_running && c.pref.line_info != '' { //'' && c.pref.linfo.line_nr == 0 {
 		// c.do_line_info(c.pref.line_info, ast_files)
 		println('setting is_running=true,  pref.path=${c.pref.linfo.path} curdir' + os.getwd())
 		c.pref.linfo.is_running = true
@@ -478,7 +480,7 @@ fn (mut c Checker) check_valid_snake_case(name string, identifier string, pos to
 }
 
 fn stripped_name(name string) string {
-	idx := name.last_index('.') or { -1 }
+	idx := name.index_last('.') or { -1 }
 	return name[(idx + 1)..]
 }
 
@@ -652,9 +654,9 @@ and use a reference to the sum type instead: `var := &${node.name}(${variant_nam
 					for typ in sym.info.generic_types {
 						if typ !in node.generic_types {
 							sumtype_type_names := node.generic_types.map(c.table.type_to_str(it)).join(', ')
-							generic_sumtype_name := '${node.name}<${sumtype_type_names}>'
+							generic_sumtype_name := '${node.name}[${sumtype_type_names}]'
 							variant_type_names := sym.info.generic_types.map(c.table.type_to_str(it)).join(', ')
-							generic_variant_name := '${sym.name}<${variant_type_names}>'
+							generic_variant_name := '${sym.name}[${variant_type_names}]'
 							c.error('generic type name `${c.table.sym(typ).name}` of generic struct `${generic_variant_name}` is not mentioned in sumtype `${generic_sumtype_name}`',
 								variant.pos)
 						}
@@ -706,8 +708,12 @@ fn (mut c Checker) expand_iface_embeds(idecl &ast.InterfaceDecl, level int, ifac
 			mut list := iface_decl.embeds.clone()
 			if !iface_decl.are_embeds_expanded {
 				list = c.expand_iface_embeds(idecl, level + 1, iface_decl.embeds)
-				c.table.interfaces[ie.typ].embeds = list
-				c.table.interfaces[ie.typ].are_embeds_expanded = true
+				unsafe {
+					c.table.interfaces[ie.typ].embeds = list
+				}
+				unsafe {
+					c.table.interfaces[ie.typ].are_embeds_expanded = true
+				}
 			}
 			for partial in list {
 				res[partial.typ] = partial
@@ -961,7 +967,7 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 	styp := c.table.type_to_str(utyp)
 	typ_sym := c.table.sym(utyp)
 	mut inter_sym := c.table.sym(interface_type)
-	if inter_sym.mod !in [typ_sym.mod, c.mod] && !inter_sym.is_pub && typ_sym.mod != 'builtin' {
+	if !inter_sym.is_pub && inter_sym.mod !in [typ_sym.mod, c.mod] && typ_sym.mod != 'builtin' {
 		c.error('`${styp}` cannot implement private interface `${inter_sym.name}` of other module',
 			pos)
 		return false
@@ -1443,8 +1449,8 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		}
 	}
 	// evaluates comptime field.<name> (from T.fields)
-	if c.check_comptime_is_field_selector(node) {
-		if c.check_comptime_is_field_selector_bool(node) {
+	if c.comptime.check_comptime_is_field_selector(node) {
+		if c.comptime.check_comptime_is_field_selector_bool(node) {
 			node.expr_type = ast.bool_type
 			return node.expr_type
 		}
@@ -1467,9 +1473,10 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		c.error('`${node.expr}` does not return a value', node.pos)
 		node.expr_type = ast.void_type
 		return ast.void_type
-	} else if c.inside_comptime_for_field && typ == c.enum_data_type && node.field_name == 'value' {
+	} else if c.comptime.inside_comptime_for && typ == c.enum_data_type
+		&& node.field_name == 'value' {
 		// for comp-time enum.values
-		node.expr_type = c.comptime_fields_type[c.comptime_for_field_var]
+		node.expr_type = c.comptime.type_map['${c.comptime.comptime_for_enum_var}.typ']
 		node.typ = typ
 		return node.expr_type
 	}
@@ -1956,7 +1963,7 @@ fn (mut c Checker) check_enum_field_integer_literal(expr ast.IntegerLiteral, is_
 	}
 }
 
-[inline]
+@[inline]
 fn (mut c Checker) check_loop_label(label string, pos token.Pos) {
 	if label.len == 0 {
 		// ignore
@@ -2019,7 +2026,7 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 				if mut id.info is ast.IdentVar {
 					if id.comptime && id.name in ast.valid_comptime_not_user_defined {
 						node.defer_vars[i] = ast.Ident{
-							scope: 0
+							scope: unsafe { nil }
 							name: ''
 						}
 						continue
@@ -2164,7 +2171,7 @@ fn (mut c Checker) branch_stmt(node ast.BranchStmt) {
 		c.error('`${node.kind.str()}` is not allowed in defer statements', node.pos)
 	}
 	if c.in_for_count == 0 {
-		if c.inside_comptime_for_field {
+		if c.comptime.inside_comptime_for {
 			c.error('${node.kind.str()} is not allowed within a compile-time loop', node.pos)
 		} else {
 			c.error('${node.kind.str()} statement not within a loop', node.pos)
@@ -2319,7 +2326,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			c.error('hash statements are only allowed in backend specific files such "x.js.v" and "x.go.v"',
 				node.pos)
 		}
-		if c.mod == 'main' && c.pref.backend != .golang {
+		if c.pref.backend != .golang && c.mod == 'main' {
 			c.error('hash statements are not allowed in the main module. Place them in a separate module.',
 				node.pos)
 		}
@@ -2625,10 +2632,11 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 		ast.AsCast {
 			node.expr_type = c.expr(mut node.expr)
 			expr_type_sym := c.table.sym(node.expr_type)
-			type_sym := c.table.sym(node.typ)
+			type_sym := c.table.sym(c.unwrap_generic(node.typ))
 			if expr_type_sym.kind == .sum_type {
 				c.ensure_type_exists(node.typ, node.pos)
-				if !c.table.sumtype_has_variant(node.expr_type, node.typ, true) {
+				if !c.table.sumtype_has_variant(c.unwrap_generic(node.expr_type), c.unwrap_generic(node.typ),
+					true) {
 					addr := '&'.repeat(node.typ.nr_muls())
 					c.error('cannot cast `${expr_type_sym.name}` to `${addr}${type_sym.name}`',
 						node.pos)
@@ -2706,11 +2714,11 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			c.expected_type = ast.string_type
 			node.expr_type = c.expr(mut node.expr)
 
-			if c.inside_comptime_for_field && node.expr is ast.Ident {
-				if c.table.is_comptime_var(node.expr) {
-					node.expr_type = c.get_comptime_var_type(node.expr as ast.Ident)
-				} else if (node.expr as ast.Ident).name in c.comptime_fields_type {
-					node.expr_type = c.comptime_fields_type[(node.expr as ast.Ident).name]
+			if c.comptime.inside_comptime_for && node.expr is ast.Ident {
+				if c.comptime.is_comptime_var(node.expr) {
+					node.expr_type = c.comptime.get_comptime_var_type(node.expr as ast.Ident)
+				} else if (node.expr as ast.Ident).name in c.comptime.type_map {
+					node.expr_type = c.comptime.type_map[(node.expr as ast.Ident).name]
 				}
 			}
 			c.check_expr_opt_call(node.expr, node.expr_type)
@@ -2799,6 +2807,10 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			return c.int_lit(mut node)
 		}
 		ast.LambdaExpr {
+			c.inside_lambda = true
+			defer {
+				c.inside_lambda = false
+			}
 			return c.lambda_expr(mut node, c.expected_type)
 		}
 		ast.LockExpr {
@@ -2976,7 +2988,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	node.expr_type = c.expr(mut node.expr) // type to be casted
 
 	if mut node.expr is ast.ComptimeSelector {
-		node.expr_type = c.get_comptime_selector_type(node.expr, node.expr_type)
+		node.expr_type = c.comptime.get_comptime_selector_type(node.expr, node.expr_type)
 	}
 
 	mut from_type := c.unwrap_generic(node.expr_type)
@@ -3168,6 +3180,10 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		snexpr := node.expr.str()
 		tt := c.table.type_to_str(to_type)
 		c.error('cannot cast string to `${tt}`, use `${snexpr}[index]` instead.', node.pos)
+	} else if final_from_sym.kind == .string && to_type.is_pointer() && !c.inside_unsafe {
+		tt := c.table.type_to_str(to_type)
+		c.error('cannot cast string to `${tt}` outside `unsafe`, use ${tt}(s.str) instead',
+			node.pos)
 	} else if final_from_sym.kind == .array && !from_type.is_ptr() && to_type != ast.string_type
 		&& !(to_type.has_flag(.option) && from_type.idx() == to_type.idx()) {
 		ft := c.table.type_to_str(from_type)
@@ -3304,8 +3320,8 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 				}
 			}
 		}
-		if mut node.expr is ast.StringLiteral {
-			c.add_error_detail('use ${c.table.type_to_str(node.typ)}.from_string(\'${node.expr.val}\') instead')
+		if node.expr_type == ast.string_type_idx {
+			c.add_error_detail('use ${c.table.type_to_str(node.typ)}.from_string(${node.expr}) instead')
 			c.error('cannot cast `string` to `enum`', node.pos)
 		}
 	}
@@ -3462,8 +3478,8 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 	// second use
 	if node.kind in [.constant, .global, .variable] {
 		info := node.info as ast.IdentVar
-		typ := if c.table.is_comptime_var(node) {
-			ctype := c.get_comptime_var_type(node)
+		typ := if c.comptime.is_comptime_var(node) {
+			ctype := c.comptime.get_comptime_var_type(node)
 			if ctype != ast.void_type {
 				ctype
 			} else {
@@ -3564,7 +3580,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 							typ = c.expr(mut obj.expr)
 						}
 					}
-					if c.inside_casting_to_str && c.table.is_interface_var(obj) {
+					if c.inside_interface_deref && c.table.is_interface_var(obj) {
 						typ = typ.deref()
 					}
 					is_option := typ.has_flag(.option) || typ.has_flag(.result)
@@ -3732,8 +3748,13 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					found_var := c.fn_scope.find_var(node.name)
 
 					if found_var != none {
-						c.error('`${node.name}` must be added to the capture list for the closure to be used inside',
-							node.pos)
+						if c.inside_lambda {
+							// Lambdas don't support capturing variables yet, so that's the only hint.
+							c.error('undefined variable `${node.name}`', node.pos)
+						} else {
+							c.error('`${node.name}` must be added to the capture list for the closure to be used inside',
+								node.pos)
+						}
 						return ast.void_type
 					}
 				}
@@ -4220,11 +4241,12 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 		c.type_error_for_operator('-', 'numeric', right_sym.name, node.pos)
 	}
 	if node.op == .arrow {
-		if right_sym.kind == .chan {
+		raw_right_sym := c.table.final_sym(right_type)
+		if raw_right_sym.kind == .chan {
 			c.stmts_ending_with_expression(mut node.or_block.stmts)
-			return right_sym.chan_info().elem_type
+			return raw_right_sym.chan_info().elem_type
 		}
-		c.type_error_for_operator('<-', '`chan`', right_sym.name, node.pos)
+		c.type_error_for_operator('<-', '`chan`', raw_right_sym.name, node.pos)
 	}
 	return right_type
 }
@@ -4304,7 +4326,8 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 	}
 	is_aggregate_arr := typ_sym.kind == .aggregate
 		&& (typ_sym.info as ast.Aggregate).types.filter(c.table.type_kind(it) !in [.array, .array_fixed, .string, .map]).len == 0
-	if typ_sym.kind !in [.array, .array_fixed, .string, .map] && !typ.is_ptr()
+	if typ_sym.kind !in [.array, .array_fixed, .string, .map]
+		&& (!typ.is_ptr() || typ_sym.kind in [.sum_type, .interface_])
 		&& typ !in [ast.byteptr_type, ast.charptr_type] && !typ.has_flag(.variadic)
 		&& !is_aggregate_arr {
 		c.error('type `${typ_sym.name}` does not support indexing', node.pos)
@@ -4337,20 +4360,33 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			c.note('accessing a pointer map value requires an `or {}` block outside `unsafe`',
 				node.pos)
 		}
+		mut checked_types := []ast.Type{}
+		if c.is_contains_any_kind_of_pointer(elem_type, mut checked_types) {
+			c.note('accessing map value that contain pointers requires an `or {}` block outside `unsafe`',
+				node.pos)
+		}
 	}
 
-	if (typ.is_ptr() && !typ.has_flag(.shared_f) && !node.left.is_auto_deref_var())
+	if (typ.is_ptr() && !typ.has_flag(.shared_f) && (!node.left.is_auto_deref_var()
+		|| (typ_sym.kind == .struct_ && typ_sym.name != 'array')))
 		|| typ.is_pointer() {
 		mut is_ok := false
+		mut is_mut_struct := false
 		if mut node.left is ast.Ident {
 			if mut node.left.obj is ast.Var {
 				// `mut param []T` function parameter
 				is_ok = node.left.obj.is_mut && node.left.obj.is_arg && !typ.deref().is_ptr()
+					&& typ_sym.kind != .struct_
+				// `mut param Struct`
+				is_mut_struct = node.left.obj.is_mut && node.left.obj.is_arg
+					&& typ_sym.kind == .struct_
 			}
 		}
 		if !is_ok && node.index is ast.RangeExpr {
 			s := c.table.type_to_str(typ)
 			c.error('type `${s}` does not support slicing', node.pos)
+		} else if is_mut_struct {
+			c.error('type `mut ${typ_sym.name}` does not support slicing', node.pos)
 		} else if !c.inside_unsafe && !is_ok && !c.pref.translated && !c.file.is_translated {
 			c.warn('pointer indexing is only allowed in `unsafe` blocks', node.pos)
 		}
@@ -4589,7 +4625,7 @@ fn (c &Checker) check_struct_signature(from ast.Struct, to ast.Struct) bool {
 fn (mut c Checker) fetch_field_name(field ast.StructField) string {
 	mut name := field.name
 	for attr in field.attrs {
-		if attr.kind == .string && attr.name == 'sql' && attr.arg != '' {
+		if attr.kind == .string && attr.arg != '' && attr.name == 'sql' {
 			name = attr.arg
 			break
 		}

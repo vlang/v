@@ -3,19 +3,17 @@ module bcrypt
 import crypto.rand
 import crypto.blowfish
 
-pub const (
-	min_cost              = 4
-	max_cost              = 31
-	default_cost          = 10
-	salt_length           = 16
-	max_crypted_hash_size = 23
-	encoded_salt_size     = 22
-	encoded_hash_size     = 31
-	min_hash_size         = 59
+pub const min_cost = 4
+pub const max_cost = 31
+pub const default_cost = 10
+pub const salt_length = 16
+pub const max_crypted_hash_size = 23
+pub const encoded_salt_size = 22
+pub const encoded_hash_size = 31
+pub const min_hash_size = 59
 
-	major_version         = '2'
-	minor_version         = 'a'
-)
+pub const major_version = '2'
+pub const minor_version = 'a'
 
 pub struct Hashed {
 mut:
@@ -27,7 +25,7 @@ mut:
 }
 
 // free the resources taken by the Hashed `h`
-[unsafe]
+@[unsafe]
 pub fn (mut h Hashed) free() {
 	$if prealloc {
 		return

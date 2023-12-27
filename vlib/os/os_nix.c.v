@@ -9,38 +9,48 @@ import strings
 #include <sys/types.h>
 #include <utime.h>
 
-pub const (
-	path_separator = '/'
-	path_delimiter = ':'
-)
+pub const path_separator = '/'
+pub const path_delimiter = ':'
 
 const executable_suffixes = ['']
 
-const (
-	stdin_value  = 0
-	stdout_value = 1
-	stderr_value = 2
-)
+const stdin_value = 0
+const stdout_value = 1
+const stderr_value = 2
 
 // (Must be realized in Syscall) (Must be specified)
 // ref: http://www.ccfit.nsu.ru/~deviv/courses/unix/unix/ng7c229.html
-pub const (
-	s_ifmt  = 0xF000 // type of file
-	s_ifdir = 0x4000 // directory
-	s_iflnk = 0xa000 // link
-	s_isuid = 0o4000 // SUID
-	s_isgid = 0o2000 // SGID
-	s_isvtx = 0o1000 // Sticky
-	s_irusr = 0o0400 // Read by owner
-	s_iwusr = 0o0200 // Write by owner
-	s_ixusr = 0o0100 // Execute by owner
-	s_irgrp = 0o0040 // Read by group
-	s_iwgrp = 0o0020 // Write by group
-	s_ixgrp = 0o0010 // Execute by group
-	s_iroth = 0o0004 // Read by others
-	s_iwoth = 0o0002 // Write by others
-	s_ixoth = 0o0001 // Execute by others
-)
+pub const s_ifmt = 0xF000 // type of file
+
+pub const s_ifdir = 0x4000 // directory
+
+pub const s_ifreg = 0x8000 // regular file
+
+pub const s_iflnk = 0xa000 // link
+
+pub const s_isuid = 0o4000 // SUID
+
+pub const s_isgid = 0o2000 // SGID
+
+pub const s_isvtx = 0o1000 // Sticky
+
+pub const s_irusr = 0o0400 // Read by owner
+
+pub const s_iwusr = 0o0200 // Write by owner
+
+pub const s_ixusr = 0o0100 // Execute by owner
+
+pub const s_irgrp = 0o0040 // Read by group
+
+pub const s_iwgrp = 0o0020 // Write by group
+
+pub const s_ixgrp = 0o0010 // Execute by group
+
+pub const s_iroth = 0o0004 // Read by others
+
+pub const s_iwoth = 0o0002 // Write by others
+
+pub const s_ixoth = 0o0001
 
 fn C.utime(&char, voidptr) int
 
@@ -305,7 +315,7 @@ pub fn mkdir(path string, params MkdirParams) ! {
 }
 
 // execute starts the specified command, waits for it to complete, and returns its output.
-[manualfree]
+@[manualfree]
 pub fn execute(cmd string) Result {
 	// if cmd.contains(';') || cmd.contains('&&') || cmd.contains('||') || cmd.contains('\n') {
 	// return Result{ exit_code: -1, output: ';, &&, || and \\n are not allowed in shell commands' }
@@ -349,12 +359,12 @@ pub fn execute(cmd string) Result {
 // On Windows raw_execute starts the specified command, waits for it to complete, and returns its output.
 // It's marked as `unsafe` to help emphasize the problems that may arise by allowing, for example,
 // user provided escape sequences.
-[unsafe]
+@[unsafe]
 pub fn raw_execute(cmd string) Result {
 	return execute(cmd)
 }
 
-[manualfree]
+@[manualfree]
 pub fn (mut c Command) start() ! {
 	pcmd := c.path + ' 2>&1'
 	defer {
@@ -366,7 +376,7 @@ pub fn (mut c Command) start() ! {
 	}
 }
 
-[manualfree]
+@[manualfree]
 pub fn (mut c Command) read_line() string {
 	buf := [4096]u8{}
 	mut res := strings.new_builder(1024)
@@ -433,7 +443,7 @@ fn C.mkstemp(stemplate &u8) int
 
 // ensure_folder_is_writable checks that `folder` exists, and is writable to the process
 // by creating an empty file in it, then deleting it.
-[manualfree]
+@[manualfree]
 pub fn ensure_folder_is_writable(folder string) ! {
 	if !exists(folder) {
 		return error_with_code('`${folder}` does not exist', 1)
@@ -455,32 +465,32 @@ pub fn ensure_folder_is_writable(folder string) ! {
 	rm(tmp_perm_check)!
 }
 
-[inline]
+@[inline]
 pub fn getpid() int {
 	return C.getpid()
 }
 
-[inline]
+@[inline]
 pub fn getppid() int {
 	return C.getppid()
 }
 
-[inline]
+@[inline]
 pub fn getuid() int {
 	return C.getuid()
 }
 
-[inline]
+@[inline]
 pub fn geteuid() int {
 	return C.geteuid()
 }
 
-[inline]
+@[inline]
 pub fn getgid() int {
 	return C.getgid()
 }
 
-[inline]
+@[inline]
 pub fn getegid() int {
 	return C.getegid()
 }

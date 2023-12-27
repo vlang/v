@@ -2,9 +2,7 @@ module hello
 
 import v.gen.js.tests.hello.hello1
 
-pub const (
-	hello = 'Hello'
-)
+pub const hello = 'Hello'
 
 pub struct Aaa {
 pub mut:

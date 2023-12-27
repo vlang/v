@@ -1,12 +1,10 @@
 module semver
 
 // * Private functions.
-const (
-	comparator_sep     = ' '
-	comparator_set_sep = ' || '
-	hyphen_range_sep   = ' - '
-	x_range_symbols    = 'Xx*'
-)
+const comparator_sep = ' '
+const comparator_set_sep = ' || '
+const hyphen_range_sep = ' - '
+const x_range_symbols = 'Xx*'
 
 enum Operator {
 	gt
@@ -48,11 +46,11 @@ fn (set ComparatorSet) satisfies(ver Version) bool {
 
 fn (c Comparator) satisfies(ver Version) bool {
 	return match c.op {
-		.gt { ver.gt(c.ver) }
-		.lt { ver.lt(c.ver) }
-		.ge { ver.ge(c.ver) }
-		.le { ver.le(c.ver) }
-		.eq { ver.eq(c.ver) }
+		.gt { ver > c.ver }
+		.lt { ver < c.ver }
+		.ge { ver >= c.ver }
+		.le { ver <= c.ver }
+		.eq { ver == c.ver }
 	}
 }
 

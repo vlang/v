@@ -235,7 +235,7 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 		}
 
 		if !expected.has_flag(.option) && got.has_flag(.option) && (arg.expr !is ast.Ident
-			|| (arg.expr is ast.Ident && c.get_ct_type_var(arg.expr) != .field_var)) {
+			|| (arg.expr is ast.Ident && c.comptime.get_ct_type_var(arg.expr) != .field_var)) {
 			got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
 			return error('cannot use `${got_typ_str}` as `${expected_typ_str}`, it must be unwrapped first')
 		}
@@ -279,8 +279,8 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 		}
 	} else {
 		got_typ_sym := c.table.sym(c.unwrap_generic(got))
-		expected_typ_sym := c.table.sym(c.unwrap_generic(expected_))
-		if expected_typ_sym.kind == .interface_ && c.type_implements(got, expected_, token.Pos{}) {
+		expected_typ_sym := c.table.sym(c.unwrap_generic(expected))
+		if expected_typ_sym.kind == .interface_ && c.type_implements(got, expected, token.Pos{}) {
 			return
 		}
 
@@ -434,6 +434,12 @@ fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSymbol,
 		return false
 	}
 	if !c.check_basic(got_fn.return_type, exp_fn.return_type) {
+		return false
+	}
+	// The check for sumtype in c.check_basic() in the previous step is only for its variant to be subsumed
+	// So we need to do a second, more rigorous check of the return value being sumtype.
+	if c.table.final_sym(exp_fn.return_type).kind == .sum_type
+		&& got_fn.return_type.idx() != exp_fn.return_type.idx() {
 		return false
 	}
 	for i, got_arg in got_fn.params {
@@ -919,9 +925,9 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 					func_.name = ''
 					idx := c.table.find_or_register_fn_type(func_, true, false)
 					typ = ast.new_type(idx).derive(arg.typ)
-				} else if c.inside_comptime_for_field && sym.kind in [.struct_, .any]
+				} else if c.comptime.comptime_for_field_var != '' && sym.kind in [.struct_, .any]
 					&& arg.expr is ast.ComptimeSelector {
-					comptime_typ := c.get_comptime_selector_type(arg.expr, ast.void_type)
+					comptime_typ := c.comptime.get_comptime_selector_type(arg.expr, ast.void_type)
 					if comptime_typ != ast.void_type {
 						typ = comptime_typ
 						if func.return_type.has_flag(.generic)
@@ -930,9 +936,7 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 						}
 					}
 				}
-
-				if arg.expr.is_auto_deref_var()
-					|| (arg.expr is ast.ComptimeSelector && arg.expr.left.is_auto_deref_var()) {
+				if arg.expr.is_auto_deref_var() {
 					typ = typ.deref()
 				}
 				// resolve &T &&T ...
@@ -1081,4 +1085,41 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 	if c.table.register_fn_concrete_types(func.fkey(), inferred_types) {
 		c.need_recheck_generic_fns = true
 	}
+}
+
+// is_contains_any_kind_of_pointer check that the type and submember types(arrays, fixed arrays, maps, struct fields, and so on)
+// contain pointer types.
+fn (mut c Checker) is_contains_any_kind_of_pointer(typ ast.Type, mut checked_types []ast.Type) bool {
+	if typ.is_any_kind_of_pointer() {
+		return true
+	}
+	if typ in checked_types {
+		return false
+	}
+	checked_types << typ
+	sym := c.table.sym(typ)
+	match sym.info {
+		ast.Array, ast.ArrayFixed {
+			return c.is_contains_any_kind_of_pointer(sym.info.elem_type, mut checked_types)
+		}
+		ast.Map {
+			return c.is_contains_any_kind_of_pointer(sym.info.value_type, mut checked_types)
+		}
+		ast.Alias {
+			return c.is_contains_any_kind_of_pointer(sym.info.parent_type, mut checked_types)
+		}
+		ast.Struct {
+			if sym.kind == .struct_ && sym.language == .v {
+				fields := c.table.struct_fields(sym)
+				for field in fields {
+					ret := c.is_contains_any_kind_of_pointer(field.typ, mut checked_types)
+					if ret {
+						return true
+					}
+				}
+			}
+		}
+		else {}
+	}
+	return false
 }

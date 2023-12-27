@@ -1,5 +1,5 @@
 struct Abc {
-	prev &Abc
+	prev &Abc = unsafe { nil }
 }
 
 const a = [Abc{unsafe { nil }}, Abc{unsafe { &a[0] }}, Abc{unsafe { &a[1] }}]!

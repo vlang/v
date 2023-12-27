@@ -1,7 +1,5 @@
-const (
-	first_const  = 1000
-	second_const = 2000
-)
+const first_const = 1000
+const second_const = 2000
 
 enum Test {
 	example = first_const

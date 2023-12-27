@@ -14,7 +14,7 @@ module rand
 
 const sqrt2 = 1.41421356237309504880168872420969807856967187537694807317667974
 
-[inline]
+@[inline]
 fn msqrt(a f64) f64 {
 	if a == 0 {
 		return a
@@ -119,12 +119,12 @@ fn scalbn(x f64, n_ int) f64 {
 	return y * f64_from_bits(u64((0x3ff + n)) << 52)
 }
 
-[inline]
+@[inline]
 fn f64_from_bits(b u64) f64 {
 	return *unsafe { &f64(&b) }
 }
 
-[inline]
+@[inline]
 fn f64_bits(f f64) u64 {
 	return *unsafe { &u64(&f) }
 }

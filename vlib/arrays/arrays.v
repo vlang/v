@@ -79,7 +79,7 @@ pub fn idx_max[T](array []T) !int {
 
 // merge two sorted arrays (ascending) and maintain sorted order
 // Example: arrays.merge([1, 3, 5, 7], [2, 4, 6, 8]) // => [1, 2, 3, 4, 5, 6, 7, 8]
-[direct_array_access]
+@[direct_array_access]
 pub fn merge[T](a []T, b []T) []T {
 	mut m := []T{len: a.len + b.len}
 	mut ia := 0
@@ -522,7 +522,7 @@ pub fn rotate_right[T](mut array []T, k int) {
 	}
 }
 
-[unsafe]
+@[unsafe]
 fn ptr_rotate[T](left_ int, mid &T, right_ int) {
 	sz := usize(sizeof(T))
 	mut left := usize(left_)
@@ -597,7 +597,7 @@ fn raw_array_malloc_size[T]() isize {
 	}
 }
 
-[unsafe]
+@[unsafe]
 fn memswap(x voidptr, y voidptr, len usize) {
 	block_size := isize(sizeof(Block))
 
@@ -629,7 +629,7 @@ fn memswap(x voidptr, y voidptr, len usize) {
 	}
 }
 
-[unsafe]
+@[unsafe]
 fn swap_nonoverlapping[T](x_ &T, y_ &T, count int) {
 	x := voidptr(x_)
 	y := voidptr(y_)
@@ -672,7 +672,7 @@ fn can_copy_bits[T]() bool {
 
 // carray_to_varray copies a C byte array into a V array of type `T`.
 // See also: `cstring_to_vstring`
-[unsafe]
+@[unsafe]
 pub fn carray_to_varray[T](c_array_data voidptr, items int) []T {
 	mut v_array := []T{len: items}
 	total_size := items * isize(sizeof(T))
@@ -713,7 +713,7 @@ pub fn find_last[T](array []T, predicate fn (elem T) bool) ?T {
 
 // join_to_string takes in a custom transform function and joins all elements into a string with
 // the specified separator
-[manualfree]
+@[manualfree]
 pub fn join_to_string[T](array []T, separator string, transform fn (elem T) string) string {
 	mut sb := strings.new_builder(array.len * 2)
 	defer {

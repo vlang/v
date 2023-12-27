@@ -1,6 +1,6 @@
 enum Color {
-	red  = 1 + 1  [json: 'Red']
-	blue = 10 / 2  [json: 'Blue']
+	red  = 1 + 1  @[json: 'Red']
+	blue = 10 / 2  @[json: 'Blue']
 }
 
 fn test_main() {

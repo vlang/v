@@ -3,19 +3,17 @@ module unix
 import time
 import net
 
-const (
-	// no_deadline should be given to functions when no deadline is wanted (i.e. all functions
-	// return instantly)
-	no_deadline = time.Time{
-		unix: 0
-	}
-	// no_timeout should be given to functions when no timeout is wanted (i.e. all functions
-	// return instantly)
-	no_timeout       = time.Duration(0)
-	// infinite_timeout should be given to functions when an infinite_timeout is wanted (i.e. functions
-	// only ever return with data)
-	infinite_timeout = time.infinite
-)
+// no_deadline should be given to functions when no deadline is wanted (i.e. all functions
+// return instantly)
+const no_deadline = time.Time{
+	unix: 0
+}
+// no_timeout should be given to functions when no timeout is wanted (i.e. all functions
+// return instantly)
+const no_timeout = time.Duration(0)
+// infinite_timeout should be given to functions when an infinite_timeout is wanted (i.e. functions
+// only ever return with data)
+const infinite_timeout = time.infinite
 
 fn C.strncpy(&char, &char, int)
 
@@ -70,7 +68,7 @@ fn @select(handle int, test Select, timeout time.Duration) !bool {
 	return C.FD_ISSET(handle, &set) != 0
 }
 
-[inline]
+@[inline]
 fn select_deadline(handle int, test Select, deadline time.Time) !bool {
 	// if we have a 0 deadline here then the timeout that was passed was infinite...
 	infinite := deadline.unix_time() == 0
@@ -125,7 +123,7 @@ fn wait_for_read(handle int, deadline time.Time, timeout time.Duration) ! {
 	return wait_for_common(handle, deadline, timeout, .read)
 }
 
-[inline]
+@[inline]
 fn wrap_read_result(result int) !int {
 	if result != 0 {
 		return result

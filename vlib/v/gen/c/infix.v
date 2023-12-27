@@ -97,12 +97,12 @@ fn (mut g Gen) infix_expr_arrow_op(node ast.InfixExpr) {
 // infix_expr_eq_op generates code for `==` and `!=`
 fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 	left_type := if node.left is ast.ComptimeSelector {
-		g.get_comptime_var_type(node.left)
+		g.comptime.get_comptime_var_type(node.left)
 	} else {
 		node.left_type
 	}
 	right_type := if node.right is ast.ComptimeSelector {
-		g.get_comptime_var_type(node.right)
+		g.comptime.get_comptime_var_type(node.right)
 	} else {
 		node.right_type
 	}
@@ -828,7 +828,7 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 			} else {
 				g.write(', (')
 			}
-			g.expr_with_cast(node.right, node.right_type, left.unaliased.clear_flag(.shared_f))
+			g.expr_with_cast(node.right, right.typ, left.unaliased.clear_flag(.shared_f))
 			styp := g.typ(expected_push_many_atype)
 			g.write('), ${tmp_var}, ${styp})')
 		} else {
@@ -854,7 +854,7 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 				g.write(', _MOV((${elem_type_str}[]){ ')
 			}
 			if array_info.elem_type.has_flag(.option) {
-				g.expr_with_opt(node.right, node.right_type, array_info.elem_type)
+				g.expr_with_opt(node.right, right.typ, array_info.elem_type)
 			} else {
 				// if g.autofree
 				needs_clone := !g.is_builtin_mod
@@ -863,7 +863,7 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 				if needs_clone {
 					g.write('string_clone(')
 				}
-				g.expr_with_cast(node.right, node.right_type, array_info.elem_type)
+				g.expr_with_cast(node.right, right.typ, array_info.elem_type)
 				if needs_clone {
 					g.write(')')
 				}
@@ -1053,12 +1053,19 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 		typ_str := g.typ(node.promoted_type)
 		g.write('(${typ_str})(')
 	}
-	if node.left_type.is_ptr() && node.left.is_auto_deref_var() {
+	if node.left_type.is_ptr() && node.left.is_auto_deref_var() && !node.right_type.is_pointer() {
 		g.write('*')
+	} else if !g.inside_interface_deref && node.left is ast.Ident
+		&& g.table.is_interface_var(node.left.obj) {
+		inside_interface_deref_old := g.inside_interface_deref
+		g.inside_interface_deref = true
+		defer {
+			g.inside_interface_deref = inside_interface_deref_old
+		}
 	}
 	g.expr(node.left)
 	g.write(' ${node.op.str()} ')
-	if node.right_type.is_ptr() && node.right.is_auto_deref_var() {
+	if node.right_type.is_ptr() && node.right.is_auto_deref_var() && !node.left_type.is_pointer() {
 		g.write('*')
 		g.expr(node.right)
 	} else {

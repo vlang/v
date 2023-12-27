@@ -141,10 +141,10 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	mut node := unsafe { node_ }
 	mut is_comptime := false
 
-	if (node.cond is ast.Ident && g.table.is_comptime_var(node.cond))
+	if (node.cond is ast.Ident && g.comptime.is_comptime_var(node.cond))
 		|| node.cond is ast.ComptimeSelector {
 		mut unwrapped_typ := g.unwrap_generic(node.cond_type)
-		ctyp := g.get_comptime_var_type(node.cond)
+		ctyp := g.comptime.get_comptime_var_type(node.cond)
 		if ctyp != ast.void_type {
 			unwrapped_typ = g.unwrap_generic(ctyp)
 			is_comptime = true
@@ -158,11 +158,11 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		node.kind = unwrapped_sym.kind
 
 		if is_comptime {
-			g.comptime_var_type_map[node.val_var] = node.val_type
+			g.comptime.type_map[node.val_var] = node.val_type
 			node.scope.update_ct_var_kind(node.val_var, .value_var)
 
 			defer {
-				g.comptime_var_type_map.delete(node.val_var)
+				g.comptime.type_map.delete(node.val_var)
 			}
 		}
 
@@ -175,11 +175,11 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			node.scope.update_var_type(node.key_var, key_type)
 
 			if is_comptime {
-				g.comptime_var_type_map[node.key_var] = node.key_type
+				g.comptime.type_map[node.key_var] = node.key_type
 				node.scope.update_ct_var_kind(node.key_var, .key_var)
 
 				defer {
-					g.comptime_var_type_map.delete(node.key_var)
+					g.comptime.type_map.delete(node.key_var)
 				}
 			}
 		}
@@ -221,9 +221,9 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		mut val_sym := g.table.sym(node.val_type)
 		op_field := g.dot_or_ptr(node.cond_type)
 
-		if is_comptime && g.table.is_comptime_var(node.cond) {
+		if is_comptime && g.comptime.is_comptime_var(node.cond) {
 			mut unwrapped_typ := g.unwrap_generic(node.cond_type)
-			ctyp := g.unwrap_generic(g.get_comptime_var_type(node.cond))
+			ctyp := g.unwrap_generic(g.comptime.get_comptime_var_type(node.cond))
 			if ctyp != ast.void_type {
 				unwrapped_typ = ctyp
 			}
@@ -456,6 +456,25 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		} else {
 			g.writeln('\t${val_styp} ${val} = *(${val_styp}*)${t_var}.data;')
 		}
+	} else if node.kind == .aggregate {
+		for_type := (g.table.sym(node.cond_type).info as ast.Aggregate).types[g.aggregate_type_idx]
+		val_type := g.table.value_type(for_type)
+
+		node.scope.update_var_type(node.val_var, val_type)
+
+		g.for_in_stmt(ast.ForInStmt{
+			cond: node.cond
+			cond_type: for_type
+			kind: g.table.sym(for_type).kind
+			stmts: node.stmts
+			val_type: val_type
+			val_var: node.val_var
+			val_is_mut: node.val_is_mut
+			val_is_ref: node.val_is_ref
+		})
+
+		g.loop_depth--
+		return
 	} else {
 		typ_str := g.table.type_to_str(node.cond_type)
 		g.error('for in: unhandled symbol `${node.cond}` of type `${typ_str}`', node.pos)

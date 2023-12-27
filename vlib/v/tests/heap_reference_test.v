@@ -1,13 +1,13 @@
-[heap]
+@[heap]
 struct GitStructure {
 pub mut:
 	root  string
 	repos []&GitRepo
 }
 
-[heap]
+@[heap]
 struct GitRepo {
-	id int [skip]
+	id int @[skip]
 pub:
 	path string // path on filesystem
 	name string
@@ -53,7 +53,7 @@ fn test_opt_ref_return() {
 	assert err_msg == "Could not find repo for account name: 'wrong_name'"
 }
 
-[heap]
+@[heap]
 struct GitStructureNoRef {
 pub mut:
 	root  string

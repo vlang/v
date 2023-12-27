@@ -2,10 +2,8 @@ module main
 
 import os
 
-const (
-	vexe      = @VEXE
-	test_path = os.join_path(os.vtmp_dir(), 'run_check')
-)
+const vexe = @VEXE
+const test_path = os.join_path(os.vtmp_dir(), 'run_check')
 
 fn testsuite_begin() {
 	os.mkdir_all(test_path) or {}

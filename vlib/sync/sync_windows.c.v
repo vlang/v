@@ -22,29 +22,29 @@ type MHANDLE = voidptr
 // Semaphore HANDLE
 type SHANDLE = voidptr
 
-[typedef]
+@[typedef]
 pub struct C.SRWLOCK {}
 
-[typedef]
+@[typedef]
 pub struct C.CONDITION_VARIABLE {}
 
 //[init_with=new_mutex] // TODO: implement support for this struct attribute, and disallow Mutex{} from outside the sync.new_mutex() function.
 
 // `SRWLOCK` is much more performant that `Mutex` on Windows, so use that in both cases since we don't
 // want to share with other processes
-[heap]
+@[heap]
 pub struct Mutex {
 mut:
 	mx C.SRWLOCK // mutex handle
 }
 
-[heap]
+@[heap]
 pub struct RwMutex {
 mut:
 	mx C.SRWLOCK // mutex handle
 }
 
-[heap]
+@[heap]
 pub struct Semaphore {
 	mtx  C.SRWLOCK
 	cond C.CONDITION_VARIABLE
@@ -99,7 +99,7 @@ pub fn (mut m RwMutex) unlock() {
 	C.ReleaseSRWLockExclusive(&m.mx)
 }
 
-[inline]
+@[inline]
 pub fn new_semaphore() &Semaphore {
 	return new_semaphore_init(0)
 }

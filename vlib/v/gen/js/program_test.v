@@ -18,7 +18,7 @@ fn find_diff_cmd() string {
 	return diff.find_working_diff_command() or { '' }
 }
 
-[noreturn]
+@[noreturn]
 fn exit_because(msg string) {
 	eprintln('${msg}, tests will not run')
 	exit(0)

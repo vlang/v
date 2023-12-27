@@ -50,12 +50,12 @@ fn main() {
 	vweb.run_at(app, host: 'localhost', port: http_port, family: .ip)!
 }
 
-['/']
+@['/']
 pub fn (mut app App) home() vweb.Result {
 	return app.text('App')
 }
 
-['/path']
+@['/path']
 pub fn (mut app App) app_path() vweb.Result {
 	return app.text('App path')
 }
@@ -65,12 +65,12 @@ pub fn (mut app App) not_found() vweb.Result {
 	return app.text('404 From App')
 }
 
-['/']
+@['/']
 pub fn (mut app Admin) admin_home() vweb.Result {
 	return app.text('Admin')
 }
 
-['/path']
+@['/path']
 pub fn (mut app Admin) admin_path() vweb.Result {
 	return app.text('Admin path')
 }
@@ -80,22 +80,22 @@ pub fn (mut app Admin) not_found() vweb.Result {
 	return app.text('404 From Admin')
 }
 
-['/']
+@['/']
 pub fn (mut app Other) other_home() vweb.Result {
 	return app.text('Other')
 }
 
-['/path']
+@['/path']
 pub fn (mut app Other) other_path() vweb.Result {
 	return app.text('Other path')
 }
 
-['/']
+@['/']
 pub fn (mut app OtherHidedByOther) other_home() vweb.Result {
 	return app.text('Other')
 }
 
-['/path']
+@['/path']
 pub fn (mut app OtherHidedByOther) other_path() vweb.Result {
 	return app.text('Other path')
 }

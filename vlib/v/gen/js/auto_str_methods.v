@@ -125,6 +125,7 @@ pub enum StrIntpType {
 	si_g64
 	si_s
 	si_p
+	si_r
 	si_vp
 }
 
@@ -148,6 +149,7 @@ pub fn type_to_str(x StrIntpType) string {
 		.si_e64 { return 'f64' } // e64 format use f64 data
 		.si_s { return 's' }
 		.si_p { return 'p' }
+		.si_r { return 'r' } // repeat string
 		.si_vp { return 'vp' }
 	}
 }
@@ -172,15 +174,14 @@ pub fn data_str(x StrIntpType) string {
 		.si_e64 { return 'd_f64' } // e64 format use f64 data
 		.si_s { return 'd_s' }
 		.si_p { return 'd_p' }
+		.si_r { return 'd_r' } // repeat string
 		.si_vp { return 'd_vp' }
 	}
 }
 
-const (
-	// BUG: this const is not released from the memory! use a const for now
-	// si_s_code = "0x" + int(StrIntpType.si_s).hex() // code for a simple string
-	si_s_code = '0xfe10'
-)
+// BUG: this const is not released from the memory! use a const for now
+// si_s_code = "0x" + int(StrIntpType.si_s).hex() // code for a simple string
+const si_s_code = '0xfe10'
 
 fn should_use_indent_func(kind ast.Kind) bool {
 	return kind in [.struct_, .alias, .array, .array_fixed, .map, .sum_type, .interface_]
@@ -442,7 +443,7 @@ fn (mut g JsGen) gen_str_for_thread(info ast.Thread, styp string, str_fn_name st
 	g.definitions.writeln('function ${str_fn_name}(_) { return new string("thread(${ret_type_name})");}')
 }
 
-[inline]
+@[inline]
 fn styp_to_str_fn_name(styp string) string {
 	return styp.replace_each(['*', '', '.', '__', ' ', '__']) + '_str'
 }

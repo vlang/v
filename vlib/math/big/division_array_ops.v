@@ -5,7 +5,7 @@ import math.bits
 
 // suppose operand_a bigger than operand_b and both not null.
 // Both quotient and remaider are allocated but of length 0
-[direct_array_access]
+@[direct_array_access]
 fn binary_divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient []u32, mut remainder []u32) {
 	for index in 0 .. operand_a.len {
 		remainder << operand_a[index]
@@ -61,7 +61,7 @@ fn binary_divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient [
 
 // help routines for cleaner code but inline for performance
 // quicker than BitField.set_bit
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn bit_set(mut a []u32, n int) {
 	byte_offset := n >> 5
 	mask := u32(1) << u32(n % 32)
@@ -73,7 +73,7 @@ fn bit_set(mut a []u32, n int) {
 
 // a.len is greater or equal to b.len
 // returns true if a >= b (completed with zeroes)
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn greater_equal_from_end(a []u32, b []u32) bool {
 	$if debug {
 		assert a.len >= b.len
@@ -91,7 +91,7 @@ fn greater_equal_from_end(a []u32, b []u32) bool {
 
 // a := a - b supposed a >= b
 // attention the b operand is align with the a operand before the subtraction
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn subtract_align_last_byte_in_place(mut a []u32, b []u32) {
 	mut carry := u32(0)
 	mut new_carry := u32(0)
@@ -113,7 +113,7 @@ fn subtract_align_last_byte_in_place(mut a []u32, b []u32) {
 // logical left shift
 // there is no overflow. We know that the last bits are zero
 // and that n <= 32
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn left_shift_in_place(mut a []u32, n u32) {
 	mut carry := u32(0)
 	mut prec_carry := u32(0)
@@ -128,7 +128,7 @@ fn left_shift_in_place(mut a []u32, n u32) {
 
 // logical right shift without control because these digits have already been
 // shift left before
-[direct_array_access; inline]
+@[direct_array_access; inline]
 fn right_shift_in_place(mut a []u32, n u32) {
 	mut carry := u32(0)
 	mut prec_carry := u32(0)
@@ -142,7 +142,7 @@ fn right_shift_in_place(mut a []u32, n u32) {
 }
 
 // for assert
-[inline]
+@[inline]
 fn left_align_p(a u32, b u32) bool {
 	return bits.leading_zeros_32(a) == bits.leading_zeros_32(b)
 }

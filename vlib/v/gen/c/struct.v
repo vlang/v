@@ -48,8 +48,12 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	if mut sym.info is ast.Struct {
 		is_anon = sym.info.is_anon
 	}
+	is_array := sym.kind in [.array_fixed, .array]
 
-	if !g.inside_cinit && !is_anon {
+	// detect if we need type casting on msvc initialization
+	const_msvc_init := g.is_cc_msvc && g.inside_const && !g.inside_cast && g.inside_array_item
+
+	if !g.inside_cinit && !is_anon && !is_array && !const_msvc_init {
 		g.write('(')
 		defer {
 			g.write(')')
@@ -88,7 +92,9 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		if g.table.sym(node.typ).kind == .alias && g.table.unaliased_type(node.typ).is_ptr() {
 			g.write('&')
 		}
-		if is_multiline {
+		if is_array || const_msvc_init {
+			g.write('{')
+		} else if is_multiline {
 			g.writeln('(${styp}){')
 		} else {
 			g.write('(${styp}){')
@@ -372,8 +378,7 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 		}
 
 		if field.default_expr is ast.None {
-			tmp_var := g.new_tmp_var()
-			g.expr_with_tmp_var(ast.None{}, ast.none_type, field.typ, tmp_var)
+			g.gen_option_error(field.typ, ast.None{})
 			return true
 		} else if field.typ.has_flag(.option) {
 			tmp_var := g.new_tmp_var()
@@ -388,8 +393,7 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 		}
 		g.expr(field.default_expr)
 	} else if field.typ.has_flag(.option) {
-		tmp_var := g.new_tmp_var()
-		g.expr_with_tmp_var(ast.None{}, ast.none_type, field.typ, tmp_var)
+		g.gen_option_error(field.typ, ast.None{})
 		return true
 	} else if sym.info is ast.ArrayFixed {
 		g.write('{')
@@ -459,13 +463,30 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 	is_minify := s.is_minify
 	g.type_definitions.writeln(pre_pragma)
 
+	mut aligned_attr := ''
+	if attr := s.attrs.find_first('aligned') {
+		attr_arg := if attr.arg == '' { '' } else { ' (${attr.arg})' }
+		aligned_attr += if g.is_cc_msvc {
+			'__declspec(align${attr_arg})'
+		} else {
+			' __attribute__((aligned${attr_arg}))'
+		}
+	}
 	if is_anon {
 		g.type_definitions.write_string('\t${name} ')
 		return
 	} else if s.is_union {
-		g.type_definitions.writeln('union ${name} {')
+		if g.is_cc_msvc && aligned_attr != '' {
+			g.type_definitions.writeln('union ${aligned_attr} ${name} {')
+		} else {
+			g.type_definitions.writeln('union ${name} {')
+		}
 	} else {
-		g.type_definitions.writeln('struct ${name} {')
+		if g.is_cc_msvc && aligned_attr != '' {
+			g.type_definitions.writeln('struct ${aligned_attr} ${name} {')
+		} else {
+			g.type_definitions.writeln('struct ${name} {')
+		}
 	}
 
 	if s.fields.len > 0 || s.embeds.len > 0 {
@@ -552,6 +573,9 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 		''
 	}
 	g.type_definitions.write_string('}${ti_attrs}')
+	if !g.is_cc_msvc && aligned_attr != '' {
+		g.type_definitions.write_string(' ${aligned_attr}')
+	}
 	if !is_anon {
 		g.type_definitions.write_string(';')
 	}
@@ -590,6 +614,8 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 			if (sfield.expected_type.has_flag(.option) && !sfield.typ.has_flag(.option))
 				|| (sfield.expected_type.has_flag(.result) && !sfield.typ.has_flag(.result)) {
 				g.expr_with_opt(sfield.expr, sfield.typ, sfield.expected_type)
+			} else if sfield.expr is ast.LambdaExpr && sfield.expected_type.has_flag(.option) {
+				g.expr_opt_with_cast(sfield.expr, sfield.typ, sfield.expected_type)
 			} else {
 				g.left_is_opt = true
 				g.expr_with_cast(sfield.expr, sfield.typ, sfield.expected_type)

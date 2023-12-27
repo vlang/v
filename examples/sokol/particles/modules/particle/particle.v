@@ -5,10 +5,8 @@ module particle
 import math.vec
 import sokol.sgl
 
-const (
-	default_life_time = 1000
-	default_v_color   = Color{93, 136, 193, 255}
-)
+const default_life_time = 1000
+const default_v_color = Color{93, 136, 193, 255}
 
 // * Module public
 pub fn new(location vec.Vec2[f64]) &Particle {

@@ -4,12 +4,12 @@ pub type XMLNodeContents = XMLCData | XMLComment | XMLNode | string
 
 pub struct XMLCData {
 pub:
-	text string [required]
+	text string @[required]
 }
 
 pub struct XMLComment {
 pub:
-	text string [required]
+	text string @[required]
 }
 
 // XMLNode represents a single XML node. It contains the node name,
@@ -17,7 +17,7 @@ pub:
 // other XML nodes, CDATA, plain text, or comments.
 pub struct XMLNode {
 pub:
-	name       string            [required]
+	name       string            @[required]
 	attributes map[string]string
 	children   []XMLNodeContents
 }
@@ -31,19 +31,19 @@ pub:
 pub struct XMLDocument {
 	Prolog
 pub:
-	root XMLNode [required]
+	root XMLNode @[required]
 }
 
 pub type DTDListItem = DTDElement | DTDEntity
 
 pub struct DTDEntity {
-	name  string [required]
-	value string [required]
+	name  string @[required]
+	value string @[required]
 }
 
 pub struct DTDElement {
-	name       string   [required]
-	definition []string [required]
+	name       string   @[required]
+	definition []string @[required]
 }
 
 pub struct DocumentTypeDefinition {
@@ -52,7 +52,7 @@ pub struct DocumentTypeDefinition {
 }
 
 pub struct DocumentType {
-	name string  [required]
+	name string  @[required]
 	dtd  DTDInfo
 }
 

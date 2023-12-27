@@ -9,21 +9,19 @@ import v.depgraph
 import encoding.base64
 import v.gen.js.sourcemap
 
-const (
-	// https://ecma-international.org/ecma-262/#sec-reserved-words
-	js_reserved        = ['await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger',
-		'default', 'delete', 'do', 'else', 'enum', 'export', 'extends', 'finally', 'for', 'function',
-		'if', 'implements', 'import', 'in', 'instanceof', 'interface', 'let', 'new', 'package',
-		'private', 'protected', 'public', 'return', 'static', 'super', 'switch', 'this', 'throw',
-		'try', 'typeof', 'var', 'void', 'while', 'with', 'yield', 'Number', 'String', 'Boolean',
-		'Array', 'Map', 'document', 'Promise']
-	// used to generate type structs
-	v_types            = ['i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64',
-		'int_literal', 'float_literal', 'bool', 'string', 'map', 'array', 'rune', 'any', 'voidptr']
-	shallow_equatables = [ast.Kind.i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64,
-		.int_literal, .float_literal, .bool, .string]
-	option_name        = '_option'
-)
+// https://ecma-international.org/ecma-262/#sec-reserved-words
+const js_reserved = ['await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger',
+	'default', 'delete', 'do', 'else', 'enum', 'export', 'extends', 'finally', 'for', 'function',
+	'if', 'implements', 'import', 'in', 'instanceof', 'interface', 'let', 'new', 'package', 'private',
+	'protected', 'public', 'return', 'static', 'super', 'switch', 'this', 'throw', 'try', 'typeof',
+	'var', 'void', 'while', 'with', 'yield', 'Number', 'String', 'Boolean', 'Array', 'Map',
+	'document', 'Promise']
+// used to generate type structs
+const v_types = ['i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'int_literal',
+	'float_literal', 'bool', 'string', 'map', 'array', 'rune', 'any', 'voidptr']
+const shallow_equatables = [ast.Kind.i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64,
+	.int_literal, .float_literal, .bool, .string]
+const option_name = '_option'
 
 struct SourcemapHelper {
 	src_path string
@@ -41,7 +39,7 @@ mut:
 	sourcemap_helper []SourcemapHelper
 }
 
-[heap]
+@[heap]
 struct JsGen {
 	pref &pref.Preferences
 mut:
@@ -308,10 +306,10 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) string 
 				// calculate final generated location in output based on position
 				current_segment := g.out.substr(int(sm_pos), int(sourcemap_ns_entry.ns_pos))
 				current_line += u32(current_segment.count('\n'))
-				current_column := if last_nl_pos := current_segment.last_index('\n') {
-					u32(current_segment.len - last_nl_pos - 1)
-				} else {
-					u32(0)
+				mut current_column := u32(0)
+				last_nl_pos := current_segment.index_u8_last(`\n`)
+				if last_nl_pos != -1 {
+					current_column = u32(current_segment.len - last_nl_pos - 1)
 				}
 				g.sourcemap.add_mapping(sourcemap_ns_entry.src_path, sourcemap.SourcePosition{
 					source_line: sourcemap_ns_entry.src_line
@@ -490,13 +488,13 @@ pub fn (mut g JsGen) init() {
 	g.definitions.writeln('function ReturnException(val) { this.val = val; }')
 }
 
-[noreturn]
+@[noreturn]
 fn verror(msg string) {
 	eprintln('jsgen error: ${msg}')
 	exit(1)
 }
 
-[inline]
+@[inline]
 pub fn (mut g JsGen) gen_indent() {
 	if g.ns.indent > 0 && g.empty_line {
 		g.out.write_string(util.tabs(g.ns.indent))
@@ -504,17 +502,17 @@ pub fn (mut g JsGen) gen_indent() {
 	g.empty_line = false
 }
 
-[inline]
+@[inline]
 pub fn (mut g JsGen) inc_indent() {
 	g.ns.indent++
 }
 
-[inline]
+@[inline]
 pub fn (mut g JsGen) dec_indent() {
 	g.ns.indent--
 }
 
-[inline]
+@[inline]
 pub fn (mut g JsGen) write(s string) {
 	if unsafe { g.ns == 0 } {
 		verror('g.write: not in a namespace')
@@ -523,7 +521,7 @@ pub fn (mut g JsGen) write(s string) {
 	g.out.write_string(s)
 }
 
-[inline]
+@[inline]
 pub fn (mut g JsGen) writeln(s string) {
 	if unsafe { g.ns == 0 } {
 		verror('g.writeln: not in a namespace')
@@ -533,7 +531,7 @@ pub fn (mut g JsGen) writeln(s string) {
 	g.empty_line = true
 }
 
-[inline]
+@[inline]
 pub fn (mut g JsGen) new_tmp_var() string {
 	g.tmp_count++
 	return '_tmp${g.tmp_count}'
@@ -541,9 +539,12 @@ pub fn (mut g JsGen) new_tmp_var() string {
 
 // 'mod1.mod2.fn' => 'mod1.mod2'
 // 'fn' => ''
-[inline]
+@[inline]
 fn get_ns(s string) string {
-	idx := s.last_index('.') or { return '' }
+	idx := s.index_u8_last(`.`)
+	if idx == -1 {
+		return ''
+	}
 	return s.substr(0, idx)
 }
 
@@ -578,7 +579,7 @@ fn (mut g JsGen) stmts(stmts []ast.Stmt) {
 	}
 }
 
-[inline]
+@[inline]
 fn (mut g JsGen) write_v_source_line_info(pos token.Pos) {
 	// g.inside_ternary == 0 &&
 	if g.pref.sourcemap {

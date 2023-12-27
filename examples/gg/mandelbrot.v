@@ -91,7 +91,7 @@ fn (mut state AppState) update() {
 	}
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn (mut state AppState) worker(id int, input chan MandelChunk, ready chan bool) {
 	for {
 		chunk := <-input or { break }

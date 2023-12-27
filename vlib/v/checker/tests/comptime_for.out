@@ -11,20 +11,20 @@ vlib/v/checker/tests/comptime_for.vv:3:7: warning: unused variable: `f`
       |          ^
     4 |     $for f in T.fields {
     5 |         $if f.typ is Huh {}
-vlib/v/checker/tests/comptime_for.vv:2:12: error: unknown type `Huh`
+vlib/v/checker/tests/comptime_for.vv:2:12: error: $for expects a type name or variable name to be used here, but Huh is not a type or variable name
     1 | fn unknown() {
     2 |     $for m in Huh.methods {}
       |               ~~~
     3 |     $for f in Huh.fields {}
     4 |     $for f in T.fields {
-vlib/v/checker/tests/comptime_for.vv:3:12: error: unknown type `Huh`
+vlib/v/checker/tests/comptime_for.vv:3:12: error: $for expects a type name or variable name to be used here, but Huh is not a type or variable name
     1 | fn unknown() {
     2 |     $for m in Huh.methods {}
     3 |     $for f in Huh.fields {}
       |               ~~~
     4 |     $for f in T.fields {
     5 |         $if f.typ is Huh {}
-vlib/v/checker/tests/comptime_for.vv:4:12: error: unknown type `T`
+vlib/v/checker/tests/comptime_for.vv:4:12: error: $for expects a type name or variable name to be used here, but T is not a type or variable name
     2 |     $for m in Huh.methods {}
     3 |     $for f in Huh.fields {}
     4 |     $for f in T.fields {

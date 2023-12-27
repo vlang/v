@@ -111,7 +111,9 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						if left is ast.TypeNode {
 							is_comptime_type_is_expr = true
 							checked_type = c.unwrap_generic(left.typ)
-							skip_state = if c.table.is_comptime_type(checked_type, right as ast.ComptimeType) {
+							skip_state = if c.comptime.is_comptime_type(checked_type,
+								right as ast.ComptimeType)
+							{
 								.eval
 							} else {
 								.skip
@@ -121,7 +123,9 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							if var := left.scope.find_var(left.name) {
 								checked_type = c.unwrap_generic(var.typ)
 							}
-							skip_state = if c.table.is_comptime_type(checked_type, right as ast.ComptimeType) {
+							skip_state = if c.comptime.is_comptime_type(checked_type,
+								right as ast.ComptimeType)
+							{
 								.eval
 							} else {
 								.skip
@@ -139,21 +143,34 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 
 						if left is ast.SelectorExpr {
 							comptime_field_name = left.expr.str()
-							c.comptime_fields_type[comptime_field_name] = got_type
+							c.comptime.type_map[comptime_field_name] = got_type
 							is_comptime_type_is_expr = true
-							if comptime_field_name == c.comptime_for_field_var {
-								left_type := c.unwrap_generic(c.comptime_fields_default_type)
+							if comptime_field_name == c.comptime.comptime_for_field_var {
+								left_type := c.unwrap_generic(c.comptime.comptime_for_field_type)
 								if left.field_name == 'typ' {
 									skip_state = c.check_compatible_types(left_type, right as ast.TypeNode)
 								} else if left.field_name == 'unaliased_typ' {
 									skip_state = c.check_compatible_types(c.table.unaliased_type(left_type),
 										right as ast.TypeNode)
 								}
-							} else if c.check_comptime_is_field_selector_bool(left) {
-								skip_state = if c.get_comptime_selector_bool_field(left.field_name) {
+							} else if c.comptime.check_comptime_is_field_selector_bool(left) {
+								skip_state = if c.comptime.get_comptime_selector_bool_field(left.field_name) {
 									.eval
 								} else {
 									.skip
+								}
+							} else if comptime_field_name == c.comptime.comptime_for_method_var {
+								if left.field_name == 'return_type' {
+									skip_state = c.check_compatible_types(c.unwrap_generic(c.comptime.comptime_for_method_ret_type),
+										right as ast.TypeNode)
+								}
+							} else if comptime_field_name in [
+								c.comptime.comptime_for_variant_var,
+								c.comptime.comptime_for_enum_var,
+							] {
+								if left.field_name == 'typ' {
+									skip_state = c.check_compatible_types(c.comptime.type_map['${comptime_field_name}.typ'],
+										right as ast.TypeNode)
 								}
 							}
 						} else if left is ast.TypeNode {
@@ -178,46 +195,46 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					if left is ast.SelectorExpr && right is ast.IntegerLiteral {
 						comptime_field_name = left.expr.str()
 						is_comptime_type_is_expr = true
-						if comptime_field_name == c.comptime_for_field_var {
+						if comptime_field_name == c.comptime.comptime_for_field_var {
 							if left.field_name == 'indirections' {
 								skip_state = match branch.cond.op {
 									.gt {
-										if c.comptime_fields_default_type.nr_muls() > right.val.i64() {
+										if c.comptime.comptime_for_field_type.nr_muls() > right.val.i64() {
 											ComptimeBranchSkipState.eval
 										} else {
 											ComptimeBranchSkipState.skip
 										}
 									}
 									.lt {
-										if c.comptime_fields_default_type.nr_muls() < right.val.i64() {
+										if c.comptime.comptime_for_field_type.nr_muls() < right.val.i64() {
 											ComptimeBranchSkipState.eval
 										} else {
 											ComptimeBranchSkipState.skip
 										}
 									}
 									.ge {
-										if c.comptime_fields_default_type.nr_muls() >= right.val.i64() {
+										if c.comptime.comptime_for_field_type.nr_muls() >= right.val.i64() {
 											ComptimeBranchSkipState.eval
 										} else {
 											ComptimeBranchSkipState.skip
 										}
 									}
 									.le {
-										if c.comptime_fields_default_type.nr_muls() <= right.val.i64() {
+										if c.comptime.comptime_for_field_type.nr_muls() <= right.val.i64() {
 											ComptimeBranchSkipState.eval
 										} else {
 											ComptimeBranchSkipState.skip
 										}
 									}
 									.ne {
-										if c.comptime_fields_default_type.nr_muls() != right.val.i64() {
+										if c.comptime.comptime_for_field_type.nr_muls() != right.val.i64() {
 											ComptimeBranchSkipState.eval
 										} else {
 											ComptimeBranchSkipState.skip
 										}
 									}
 									.eq {
-										if c.comptime_fields_default_type.nr_muls() == right.val.i64() {
+										if c.comptime.comptime_for_field_type.nr_muls() == right.val.i64() {
 											ComptimeBranchSkipState.eval
 										} else {
 											ComptimeBranchSkipState.skip
@@ -231,27 +248,52 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						}
 					} else if branch.cond.op in [.eq, .ne] && left is ast.SelectorExpr
 						&& right is ast.StringLiteral {
-						if left.expr.str() == c.comptime_for_field_var {
-							if left.field_name == 'name' {
-								is_comptime_type_is_expr = true
-								match branch.cond.op {
-									.eq {
-										skip_state = if c.comptime_for_field_value.name == right.val.str() {
-											ComptimeBranchSkipState.eval
-										} else {
-											ComptimeBranchSkipState.skip
+						match left.expr.str() {
+							c.comptime.comptime_for_field_var {
+								if left.field_name == 'name' {
+									is_comptime_type_is_expr = true
+									match branch.cond.op {
+										.eq {
+											skip_state = if c.comptime.comptime_for_field_value.name == right.val.str() {
+												ComptimeBranchSkipState.eval
+											} else {
+												ComptimeBranchSkipState.skip
+											}
 										}
-									}
-									.ne {
-										skip_state = if c.comptime_for_field_value.name == right.val.str() {
-											ComptimeBranchSkipState.skip
-										} else {
-											ComptimeBranchSkipState.eval
+										.ne {
+											skip_state = if c.comptime.comptime_for_field_value.name == right.val.str() {
+												ComptimeBranchSkipState.skip
+											} else {
+												ComptimeBranchSkipState.eval
+											}
 										}
+										else {}
 									}
-									else {}
 								}
 							}
+							c.comptime.comptime_for_method_var {
+								if left.field_name == 'name' {
+									is_comptime_type_is_expr = true
+									match branch.cond.op {
+										.eq {
+											skip_state = if c.comptime.comptime_for_method == right.val.str() {
+												ComptimeBranchSkipState.eval
+											} else {
+												ComptimeBranchSkipState.skip
+											}
+										}
+										.ne {
+											skip_state = if c.comptime.comptime_for_method == right.val.str() {
+												ComptimeBranchSkipState.skip
+											} else {
+												ComptimeBranchSkipState.eval
+											}
+										}
+										else {}
+									}
+								}
+							}
+							else {}
 						}
 					}
 				}
@@ -301,7 +343,11 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				node.branches[i].stmts = []
 			}
 			if comptime_field_name.len > 0 {
-				c.comptime_fields_type[comptime_field_name] = c.comptime_fields_default_type
+				if comptime_field_name == c.comptime.comptime_for_method_var {
+					c.comptime.type_map[comptime_field_name] = c.comptime.comptime_for_method_ret_type
+				} else {
+					c.comptime.type_map[comptime_field_name] = c.comptime.comptime_for_field_type
+				}
 			}
 			c.skip_flags = cur_skip_flags
 			if c.fn_level == 0 && c.pref.output_cross_c && c.ct_cond_stack.len > 0 {

@@ -14,7 +14,7 @@ mut:
 	max_type_len int
 }
 
-[params]
+@[params]
 struct AddInfoConfig {
 	use_threshold bool
 }
@@ -27,7 +27,7 @@ fn (mut infos []AlignInfo) add_new_info(len int, type_len int, line int) {
 	}
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn (mut infos []AlignInfo) add_info(len int, type_len int, line int, cfg AddInfoConfig) {
 	if infos.len == 0 {
 		infos.add_new_info(len, type_len, line)

@@ -24,7 +24,7 @@ pub mut:
 	method     Method  = .get
 	header     Header
 	host       string
-	cookies    map[string]string [deprecated: 'use req.cookie(name) and req.add_cookie(name) instead']
+	cookies    map[string]string @[deprecated: 'use req.cookie(name) and req.add_cookie(name) instead']
 	data       string
 	url        string
 	user_agent string = 'v.http'
@@ -141,11 +141,9 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Res
 	// println('fetch $method, $scheme, $host_name, $nport, $path ')
 	if scheme == 'https' && req.proxy == unsafe { nil } {
 		// println('ssl_do( $nport, $method, $host_name, $path )')
-		mut retries := 0
-		for {
+		for i in 0 .. req.max_retries {
 			res := req.ssl_do(nport, method, host_name, path) or {
-				retries++
-				if is_no_need_retry_error(err.code()) || retries >= req.max_retries {
+				if i == req.max_retries - 1 || is_no_need_retry_error(err.code()) {
 					return err
 				}
 				continue
@@ -154,11 +152,9 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Res
 		}
 	} else if scheme == 'http' && req.proxy == unsafe { nil } {
 		// println('http_do( $nport, $method, $host_name, $path )')
-		mut retries := 0
-		for {
+		for i in 0 .. req.max_retries {
 			res := req.http_do('${host_name}:${nport}', method, path) or {
-				retries++
-				if is_no_need_retry_error(err.code()) || retries >= req.max_retries {
+				if i == req.max_retries - 1 || is_no_need_retry_error(err.code()) {
 					return err
 				}
 				continue
@@ -166,11 +162,9 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) !Res
 			return res
 		}
 	} else if req.proxy != unsafe { nil } {
-		mut retries := 0
-		for {
+		for i in 0 .. req.max_retries {
 			res := req.proxy.http_do(url, method, path, req) or {
-				retries++
-				if is_no_need_retry_error(err.code()) || retries >= req.max_retries {
+				if i == req.max_retries - 1 || is_no_need_retry_error(err.code()) {
 					return err
 				}
 				continue

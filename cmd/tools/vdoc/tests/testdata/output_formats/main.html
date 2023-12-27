@@ -1,0 +1,195 @@
+<section id="readme_main" class="doc-node">
+			<div class="title"><h1> main <a href="#readme_main">#</a></h1></div>
+<h2>Description:</h2><p>This is an example of a an .md file, used for adding more rich text documentation in a project or module.</p><p>This is a <a href="https://vlang.io/">link</a> to the main V site.</p><p>This is a <b>bold text</b>.</p><p>This is a script <code>console.log('hi from README.md');</code> .</p><h2>Examples:</h2><h3>Processing command line args:</h3><pre><code class="language-v"><span class="token keyword">import</span> os
+
+<span class="token keyword">fn</span> <span class="token function">main</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+<span class="token keyword">dump</span><span class="token punctuation">(</span>os<span class="token punctuation">.</span>args<span class="token punctuation">)</span>
+<span class="token keyword">dump</span><span class="token punctuation">(</span>os<span class="token punctuation">.</span>args<span class="token punctuation">.</span>len<span class="token punctuation">)</span>
+<span class="token keyword">assert</span> os<span class="token punctuation">.</span>args<span class="token punctuation">.</span>len <span class="token operator">&</span>gt<span class="token punctuation">;</span> <span class="token number">0</span>
+<span class="token punctuation">}</span></code></pre><h3>A JWT example (test syntax highlighting):</h3><pre><code class="language-v"><span class="token keyword">import</span> crypto<span class="token punctuation">.</span>hmac
+<span class="token keyword">import</span> crypto<span class="token punctuation">.</span>sha256
+<span class="token keyword">import</span> encoding<span class="token punctuation">.</span>base64
+<span class="token keyword">import</span> json
+<span class="token keyword">import</span> time
+
+<span class="token keyword">struct</span> <span class="token symbol">JwtHeader</span> <span class="token punctuation">{</span>
+alg <span class="token builtin">string</span>
+typ <span class="token builtin">string</span>
+<span class="token punctuation">}</span>
+
+<span class="token keyword">struct</span> <span class="token symbol">JwtPayload</span> <span class="token punctuation">{</span>
+sub  <span class="token builtin">string</span>
+name <span class="token builtin">string</span>
+iat  <span class="token builtin">int</span>
+<span class="token punctuation">}</span>
+
+<span class="token keyword">fn</span> <span class="token function">main</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+sw <span class="token operator">:=</span> time<span class="token punctuation">.</span><span class="token function">new_stopwatch</span><span class="token punctuation">(</span><span class="token punctuation">)</span>
+secret <span class="token operator">:=</span> <span class="token string">'your-256-bit-secret'</span>
+token <span class="token operator">:=</span> <span class="token function">make_token</span><span class="token punctuation">(</span>secret<span class="token punctuation">)</span>
+ok <span class="token operator">:=</span> <span class="token function">auth_verify</span><span class="token punctuation">(</span>secret<span class="token punctuation">,</span> token<span class="token punctuation">)</span>
+dt <span class="token operator">:=</span> sw<span class="token punctuation">.</span><span class="token function">elapsed</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">microseconds</span><span class="token punctuation">(</span><span class="token punctuation">)</span>
+<span class="token function">println</span><span class="token punctuation">(</span><span class="token string">'token: </span><span class="token string_interp">$</span>{token}<span class="token string">'</span><span class="token punctuation">)</span>
+<span class="token function">println</span><span class="token punctuation">(</span><span class="token string">'auth_verify(secret, token): </span><span class="token string_interp">$</span>{ok}<span class="token string">'</span><span class="token punctuation">)</span>
+<span class="token function">println</span><span class="token punctuation">(</span><span class="token string">'Elapsed time: </span><span class="token string_interp">$</span>{dt}<span class="token string"> uS'</span><span class="token punctuation">)</span>
+<span class="token punctuation">}</span>
+
+<span class="token keyword">fn</span> <span class="token function">make_token</span><span class="token punctuation">(</span>secret <span class="token builtin">string</span><span class="token punctuation">)</span> <span class="token builtin">string</span> <span class="token punctuation">{</span>
+header <span class="token operator">:=</span> base64<span class="token punctuation">.</span><span class="token function">url_encode</span><span class="token punctuation">(</span>json<span class="token punctuation">.</span><span class="token function">encode</span><span class="token punctuation">(</span><span class="token symbol">JwtHeader</span><span class="token punctuation">{</span><span class="token string">'HS256'</span><span class="token punctuation">,</span> <span class="token string">'JWT'</span><span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">bytes</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span>
+payload <span class="token operator">:=</span> base64<span class="token punctuation">.</span><span class="token function">url_encode</span><span class="token punctuation">(</span>json<span class="token punctuation">.</span><span class="token function">encode</span><span class="token punctuation">(</span><span class="token symbol">JwtPayload</span><span class="token punctuation">{</span><span class="token string">'1234567890'</span><span class="token punctuation">,</span> <span class="token string">'John Doe'</span><span class="token punctuation">,</span> <span class="token number">1516239022</span><span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">bytes</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span>
+signature <span class="token operator">:=</span> base64<span class="token punctuation">.</span><span class="token function">url_encode</span><span class="token punctuation">(</span>hmac<span class="token punctuation">.</span><span class="token function">new</span><span class="token punctuation">(</span>secret<span class="token punctuation">.</span><span class="token function">bytes</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">,</span><span class="token string">'</span><span class="token string_interp">$</span>{header}<span class="token string">.</span><span class="token string_interp">$</span>{payload}<span class="token string">'</span><span class="token punctuation">.</span><span class="token function">bytes</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">,</span>
+sha256<span class="token punctuation">.</span>sum<span class="token punctuation">,</span> sha256<span class="token punctuation">.</span>block_size<span class="token punctuation">)</span><span class="token punctuation">)</span>
+jwt <span class="token operator">:=</span><span class="token string">'</span><span class="token string_interp">$</span>{header}<span class="token string">.</span><span class="token string_interp">$</span>{payload}<span class="token string">.</span><span class="token string_interp">$</span>{signature}<span class="token string">'</span>
+<span class="token keyword">return</span> jwt
+<span class="token punctuation">}</span>
+
+<span class="token keyword">fn</span> <span class="token function">auth_verify</span><span class="token punctuation">(</span>secret <span class="token builtin">string</span><span class="token punctuation">,</span> token <span class="token builtin">string</span><span class="token punctuation">)</span> <span class="token builtin">bool</span> <span class="token punctuation">{</span>
+token_split <span class="token operator">:=</span> token<span class="token punctuation">.</span><span class="token function">split</span><span class="token punctuation">(</span><span class="token string">'.'</span><span class="token punctuation">)</span>
+signature_mirror <span class="token operator">:=</span> hmac<span class="token punctuation">.</span><span class="token function">new</span><span class="token punctuation">(</span>secret<span class="token punctuation">.</span><span class="token function">bytes</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">,</span><span class="token string">'</span><span class="token string_interp">$</span>{token_split<span class="token punctuation">[</span><span class="token number">0</span><span class="token punctuation">]</span>}<span class="token string">.</span><span class="token string_interp">$</span>{token_split<span class="token punctuation">[</span><span class="token number">1</span><span class="token punctuation">]</span>}<span class="token string">'</span><span class="token punctuation">.</span><span class="token function">bytes</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">,</span>
+sha256<span class="token punctuation">.</span>sum<span class="token punctuation">,</span> sha256<span class="token punctuation">.</span>block_size<span class="token punctuation">)</span>
+signature_from_token <span class="token operator">:=</span> base64<span class="token punctuation">.</span><span class="token function">url_decode</span><span class="token punctuation">(</span>token_split<span class="token punctuation">[</span><span class="token number">2</span><span class="token punctuation">]</span><span class="token punctuation">)</span>
+<span class="token keyword">return</span> hmac<span class="token punctuation">.</span><span class="token function">equal</span><span class="token punctuation">(</span>signature_from_token<span class="token punctuation">,</span> signature_mirror<span class="token punctuation">)</span>
+<span class="token punctuation">}</span></code></pre>
+
+</section>
+
+		<section id="Constants" class="doc-node const">
+			<div class="title"><h2>Constants <a href="#Constants">#</a></h2></div>
+
+
+</section>
+
+		<section id="" class="doc-node const">
+<pre class="signature">
+<code><span class="token keyword">const</span> omega <span class="token operator">=</span> <span class="token number">3</span> <span class="token comment">// should be first</span></code></pre>
+
+
+</section>
+
+		<section id="" class="doc-node const">
+<pre class="signature">
+<code><span class="token keyword">const</span> alpha <span class="token operator">=</span> <span class="token number">5</span> <span class="token comment">// should be in the middle</span></code></pre>
+
+
+</section>
+
+		<section id="" class="doc-node const">
+<pre class="signature">
+<code><span class="token keyword">const</span> beta <span class="token operator">=</span> <span class="token number">2</span> <span class="token comment">// should be at the end</span></code></pre>
+
+
+</section>
+
+		<section id="abc" class="doc-node">
+			<div class="title"><h2>fn abc <a href="#abc">#</a></h2></div>
+<pre class="signature">
+<code><span class="token keyword">fn</span> <span class="token function">abc</span><span class="token punctuation">(</span><span class="token punctuation">)</span></code></pre>
+<p>abc - should be last</p>
+
+</section>
+
+		<section id="def" class="doc-node">
+			<div class="title"><h2>fn def <a href="#def">#</a></h2></div>
+<pre class="signature">
+<code><span class="token keyword">fn</span> <span class="token function">def</span><span class="token punctuation">(</span><span class="token punctuation">)</span></code></pre>
+<p>def - should be first</p>
+
+</section>
+
+		<section id="xyz" class="doc-node">
+			<div class="title"><h2>fn xyz <a href="#xyz">#</a></h2></div>
+<pre class="signature">
+<code><span class="token keyword">fn</span> <span class="token function">xyz</span><span class="token punctuation">(</span><span class="token punctuation">)</span></code></pre>
+<p>xyz - should be in the middle a small script <script>console.log('hello');</script> bold text <b>bold</b> end underlined text <u>underline</u> end a link <a href="https://github.com/vlang/v">main v repo</a></p>
+
+</section>
+
+		<section id="MyXMLDocument.abc" class="doc-node">
+			<div class="title"><h2>fn MyXMLDocument.abc <a href="#MyXMLDocument.abc">#</a></h2></div>
+<pre class="signature">
+<code><span class="token keyword">fn</span> MyXMLDocument<span class="token punctuation">.</span><span class="token function">abc</span><span class="token punctuation">(</span>text <span class="token builtin">string</span><span class="token punctuation">)</span> <span class="token operator">?</span><span class="token punctuation">(</span><span class="token builtin">string</span><span class="token punctuation">,</span> <span class="token builtin">int</span><span class="token punctuation">)</span></code></pre>
+<p>MyXMLDocument.abc does something too... I just do not know what.</p>
+
+</section>
+
+		<section id="MyXMLDocument.from_file" class="doc-node">
+			<div class="title"><h2>fn MyXMLDocument.from_file <a href="#MyXMLDocument.from_file">#</a></h2></div>
+<pre class="signature">
+<code><span class="token keyword">fn</span> MyXMLDocument<span class="token punctuation">.</span><span class="token function">from_file</span><span class="token punctuation">(</span>path <span class="token builtin">string</span><span class="token punctuation">)</span> <span class="token operator">!</span>MyXMLDocument</code></pre>
+<p>MyXMLDocument.from_text processes the file path, and returns an error</p>
+
+</section>
+
+		<section id="MyXMLDocument.from_text" class="doc-node">
+			<div class="title"><h2>fn MyXMLDocument.from_text <a href="#MyXMLDocument.from_text">#</a></h2></div>
+<pre class="signature">
+<code><span class="token keyword">fn</span> MyXMLDocument<span class="token punctuation">.</span><span class="token function">from_text</span><span class="token punctuation">(</span>text <span class="token builtin">string</span><span class="token punctuation">)</span> <span class="token operator">?</span>MyXMLDocument</code></pre>
+<p>MyXMLDocument.from_text processes text and produces none</p>
+
+</section>
+
+		<section id="MyXMLDocument" class="doc-node">
+			<div class="title"><h2>struct MyXMLDocument <a href="#MyXMLDocument">#</a></h2></div>
+<pre class="signature">
+<code><span class="token keyword">struct</span> <span class="token symbol">MyXMLDocument</span> <span class="token punctuation">{</span>
+	path <span class="token builtin">string</span>
+<span class="token punctuation">}</span></code></pre>
+<p>MyXMLDocument is here just to test the different combinations of methods/output types</p>
+
+</section>
+
+		<section id="MyXMLDocument.instance_from_file" class="doc-node">
+			<div class="title"><h2>fn (MyXMLDocument) instance_from_file <a href="#MyXMLDocument.instance_from_file">#</a></h2></div>
+<pre class="signature">
+<code><span class="token keyword">fn</span> <span class="token punctuation">(</span>x <span class="token operator">&</span>MyXMLDocument<span class="token punctuation">)</span> <span class="token function">instance_from_file</span><span class="token punctuation">(</span>path <span class="token builtin">string</span><span class="token punctuation">)</span> <span class="token operator">!</span>MyXMLDocument</code></pre>
+<p>instance_from_file does stuff with path</p>
+
+</section>
+
+		<section id="MyXMLDocument.instance_from_text" class="doc-node">
+			<div class="title"><h2>fn (MyXMLDocument) instance_from_text <a href="#MyXMLDocument.instance_from_text">#</a></h2></div>
+<pre class="signature">
+<code><span class="token keyword">fn</span> <span class="token punctuation">(</span>x <span class="token operator">&</span>MyXMLDocument<span class="token punctuation">)</span> <span class="token function">instance_from_text</span><span class="token punctuation">(</span>text <span class="token builtin">string</span><span class="token punctuation">)</span> <span class="token operator">?</span>MyXMLDocument</code></pre>
+<p>instance_from_text does stuff with text</p>
+
+</section>
+
+		<section id="MyXMLDocument.instance_abc" class="doc-node">
+			<div class="title"><h2>fn (MyXMLDocument) instance_abc <a href="#MyXMLDocument.instance_abc">#</a></h2></div>
+<pre class="signature">
+<code><span class="token keyword">fn</span> <span class="token punctuation">(</span>x <span class="token operator">&</span>MyXMLDocument<span class="token punctuation">)</span> <span class="token function">instance_abc</span><span class="token punctuation">(</span>text <span class="token builtin">string</span><span class="token punctuation">)</span> <span class="token operator">?</span><span class="token punctuation">(</span><span class="token builtin">string</span><span class="token punctuation">,</span> <span class="token builtin">int</span><span class="token punctuation">)</span></code></pre>
+<p>instance_abc does stuff too</p>
+
+</section>
+
+		<section id="MyXMLDocument.instance_void" class="doc-node">
+			<div class="title"><h2>fn (MyXMLDocument) instance_void <a href="#MyXMLDocument.instance_void">#</a></h2></div>
+<pre class="signature">
+<code><span class="token keyword">fn</span> <span class="token punctuation">(</span>x <span class="token operator">&</span>MyXMLDocument<span class="token punctuation">)</span> <span class="token function">instance_void</span><span class="token punctuation">(</span><span class="token punctuation">)</span></code></pre>
+<p>instance_void does stuff too</p>
+
+</section>
+
+		<section id="MyXMLDocument.instance_int" class="doc-node">
+			<div class="title"><h2>fn (MyXMLDocument) instance_int <a href="#MyXMLDocument.instance_int">#</a></h2></div>
+<pre class="signature">
+<code><span class="token keyword">fn</span> <span class="token punctuation">(</span>x <span class="token operator">&</span>MyXMLDocument<span class="token punctuation">)</span> <span class="token function">instance_int</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token builtin">int</span></code></pre>
+<p>instance_int does stuff too</p>
+
+</section>
+
+		<section id="MyXMLDocument.instance_result" class="doc-node">
+			<div class="title"><h2>fn (MyXMLDocument) instance_result <a href="#MyXMLDocument.instance_result">#</a></h2></div>
+<pre class="signature">
+<code><span class="token keyword">fn</span> <span class="token punctuation">(</span>x <span class="token operator">&</span>MyXMLDocument<span class="token punctuation">)</span> <span class="token function">instance_result</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">!</span></code></pre>
+<p>instance_error does stuff too</p>
+
+</section>
+
+		<section id="MyXMLDocument.instance_option" class="doc-node">
+			<div class="title"><h2>fn (MyXMLDocument) instance_option <a href="#MyXMLDocument.instance_option">#</a></h2></div>
+<pre class="signature">
+<code><span class="token keyword">fn</span> <span class="token punctuation">(</span>x <span class="token operator">&</span>MyXMLDocument<span class="token punctuation">)</span> <span class="token function">instance_option</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">?</span></code></pre>
+<p>instance_option does stuff too</p>
+
+</section>

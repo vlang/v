@@ -28,7 +28,7 @@ pub fn (mut rng MuslRNG) seed(seed_data []u32) {
 }
 
 // byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
-[inline]
+@[inline]
 pub fn (mut rng MuslRNG) u8() u8 {
 	if rng.bytes_left >= 1 {
 		rng.bytes_left -= 1
@@ -44,7 +44,7 @@ pub fn (mut rng MuslRNG) u8() u8 {
 }
 
 // u16 returns a pseudorandom 16-bit unsigned integer (`u16`).
-[inline]
+@[inline]
 pub fn (mut rng MuslRNG) u16() u16 {
 	if rng.bytes_left >= 2 {
 		rng.bytes_left -= 2
@@ -59,7 +59,7 @@ pub fn (mut rng MuslRNG) u16() u16 {
 }
 
 // temper returns a tempered value based on `prev` value.
-[inline]
+@[inline]
 fn temper(prev u32) u32 {
 	mut x := prev
 	x ^= x >> 11
@@ -78,19 +78,19 @@ pub fn (mut rng MuslRNG) u32() u32 {
 }
 
 // u64 returns a pseudorandom 64-bit unsigned integer (`u64`).
-[inline]
+@[inline]
 pub fn (mut rng MuslRNG) u64() u64 {
 	return u64(rng.u32()) | (u64(rng.u32()) << 32)
 }
 
 // block_size returns the number of bits that the RNG can produce in a single iteration.
-[inline]
+@[inline]
 pub fn (mut rng MuslRNG) block_size() int {
 	return 32
 }
 
 // free should be called when the generator is no longer needed
-[unsafe]
+@[unsafe]
 pub fn (mut rng MuslRNG) free() {
 	unsafe { free(rng) }
 }

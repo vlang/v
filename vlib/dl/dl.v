@@ -8,7 +8,7 @@ pub const rtld_next = voidptr(-1)
 
 // get_shared_library_extension returns the platform dependent shared library extension
 // i.e. .dll on windows, .so on most unixes, .dylib on macos.
-[inline]
+@[inline]
 pub fn get_shared_library_extension() string {
 	return $if windows {
 		'.dll'
@@ -21,7 +21,7 @@ pub fn get_shared_library_extension() string {
 
 // get_libname returns a library name with the operating system specific extension for
 // shared libraries.
-[inline]
+@[inline]
 pub fn get_libname(libname string) string {
 	return '${libname}${dl.dl_ext}'
 }

@@ -11,7 +11,7 @@ import v.tests.bench.math_big_gcd.prime {
 }
 
 interface TestDataI {
-	r big.Integer
+	r  big.Integer
 	aa big.Integer
 	bb big.Integer
 }
@@ -19,10 +19,8 @@ interface TestDataI {
 type GCDSet = PrimeSet
 type Clocks = map[string]benchmark.Benchmark
 
-const (
-	empty_set = GCDSet{'1', '1', '1'}
-	with_dots = false
-)
+const empty_set = GCDSet{'1', '1', '1'}
+const with_dots = false
 
 fn main() {
 	fp := os.join_path(@VROOT, prime.toml_path)
@@ -303,7 +301,7 @@ fn bi_buffer_len(input []u8) int {
 	return digits.len
 }
 
-[heap]
+@[heap]
 pub struct HeapData {
 pub mut:
 	r  big.Integer

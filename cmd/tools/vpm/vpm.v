@@ -9,47 +9,12 @@ import rand
 import v.help
 import v.vmod
 
-struct VCS {
-	dir  string
-	cmd  string
-	args struct {
-		install  string
-		path     string // the flag used to specify a path. E.g., used to explicitly work on a path during multithreaded updating.
-		update   string
-		outdated []string
-	}
-}
-
-const (
-	settings                = init_settings()
-	default_vpm_server_urls = ['https://vpm.vlang.io', 'https://vpm.url4e.com']
-	vpm_server_urls         = rand.shuffle_clone(default_vpm_server_urls) or { [] } // ensure that all queries are distributed fairly
-	valid_vpm_commands      = ['help', 'search', 'install', 'update', 'upgrade', 'outdated', 'list',
-		'remove', 'show']
-	excluded_dirs           = ['cache', 'vlib']
-	supported_vcs           = {
-		'git': VCS{
-			dir: '.git'
-			cmd: 'git'
-			args: struct {
-				install: 'clone --depth=1 --recursive --shallow-submodules'
-				update: 'pull --recurse-submodules' // pulling with `--depth=1` leads to conflicts, when the upstream is more than 1 commit newer
-				path: '-C'
-				outdated: ['fetch', 'rev-parse @', 'rev-parse @{u}']
-			}
-		}
-		'hg':  VCS{
-			dir: '.hg'
-			cmd: 'hg'
-			args: struct {
-				install: 'clone'
-				update: 'pull --update'
-				path: '-R'
-				outdated: ['incoming']
-			}
-		}
-	}
-)
+const settings = init_settings()
+const default_vpm_server_urls = ['https://vpm.vlang.io', 'https://vpm.url4e.com']
+const vpm_server_urls = rand.shuffle_clone(default_vpm_server_urls) or { [] } // ensure that all queries are distributed fairly
+const valid_vpm_commands = ['help', 'search', 'install', 'update', 'upgrade', 'outdated', 'list',
+	'remove', 'show']
+const excluded_dirs = ['cache', 'vlib']
 
 fn main() {
 	// This tool is intended to be launched by the v frontend,
@@ -101,21 +66,9 @@ fn main() {
 }
 
 fn vpm_upgrade() {
-	outdated := get_outdated() or { exit(1) }
+	outdated := get_outdated()
 	if outdated.len > 0 {
 		vpm_update(outdated)
-	} else {
-		println('Modules are up to date.')
-	}
-}
-
-fn vpm_outdated() {
-	outdated := get_outdated() or { exit(1) }
-	if outdated.len > 0 {
-		println('Outdated modules:')
-		for m in outdated {
-			println('  ${m}')
-		}
 	} else {
 		println('Modules are up to date.')
 	}

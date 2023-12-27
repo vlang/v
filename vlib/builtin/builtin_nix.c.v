@@ -14,7 +14,7 @@ fn break_if_debugger_attached() {
 	}
 }
 
-[markused; noreturn]
+@[markused; noreturn]
 pub fn panic_lasterr(base string) {
 	// TODO: use strerror_r and errno
 	panic(base + ' unknown')

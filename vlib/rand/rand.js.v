@@ -16,9 +16,7 @@ fn internal_string_from_set(mut rng PRNG, charset string, len int) string {
 	return result
 }
 
-const (
-	ulid_encoding = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
-)
+const ulid_encoding = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
 
 fn internal_ulid_at_millisecond(mut rng PRNG, unix_time_milli u64) string {
 	mut buf := []u8{cap: 27}

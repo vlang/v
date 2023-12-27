@@ -21,7 +21,7 @@ pub fn new_thread_safe_log() &ThreadSafeLog {
 }
 
 // free frees the given ThreadSafeLog instance.
-[unsafe]
+@[unsafe]
 pub fn (mut x ThreadSafeLog) free() {
 	unsafe {
 		x.Log.free()
@@ -66,7 +66,7 @@ pub fn (mut x ThreadSafeLog) error(s string) {
 }
 
 // fatal logs a fatal message, and panics
-[noreturn]
+@[noreturn]
 pub fn (mut x ThreadSafeLog) fatal(s string) {
 	x.mu.@lock()
 	defer {

@@ -30,38 +30,36 @@ enum Mutability {
 	not
 }
 
-const (
-	_args   = os.args
-	verbose = '-v' in cmdline.only_options(_args)
-	header  = '-h' in cmdline.only_options(_args)
-	format  = '-f' in cmdline.only_options(_args)
-	symbols = {
-		'fn':        Symbol.@fn
-		'method':    .method
-		'struct':    .@struct
-		'interface': .@interface
-		'enum':      .@enum
-		'const':     .@const
-		'var':       .var
-		'regexp':    .regexp
-	}
-	visibilities = {
-		'all': Visibility.all
-		'pub': .@pub
-		'pri': .pri
-	}
-	mutabilities = {
-		'any': Mutability.any
-		'yes': .yes
-		'not': .not
-	}
-	vexe        = os.real_path(os.getenv_opt('VEXE') or { @VEXE })
-	vlib_dir    = os.join_path(os.dir(vexe), 'vlib')
-	vmod_dir    = os.vmodules_dir()
-	vmod_paths  = os.vmodules_paths()[1..]
-	current_dir = os.abs_path('.')
-	color_out   = term.can_show_color_on_stdout()
-)
+const _args = os.args
+const verbose = '-v' in cmdline.only_options(_args)
+const header = '-h' in cmdline.only_options(_args)
+const format = '-f' in cmdline.only_options(_args)
+const symbols = {
+	'fn':        Symbol.@fn
+	'method':    .method
+	'struct':    .@struct
+	'interface': .@interface
+	'enum':      .@enum
+	'const':     .@const
+	'var':       .var
+	'regexp':    .regexp
+}
+const visibilities = {
+	'all': Visibility.all
+	'pub': .@pub
+	'pri': .pri
+}
+const mutabilities = {
+	'any': Mutability.any
+	'yes': .yes
+	'not': .not
+}
+const vexe = os.real_path(os.getenv_opt('VEXE') or { @VEXE })
+const vlib_dir = os.join_path(os.dir(vexe), 'vlib')
+const vmod_dir = os.vmodules_dir()
+const vmod_paths = os.vmodules_paths()[1..]
+const current_dir = os.abs_path('.')
+const color_out = term.can_show_color_on_stdout()
 
 fn (mut cfg Symbol) set_from_str(str_in string) {
 	if str_in !in symbols {

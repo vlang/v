@@ -37,6 +37,8 @@ pub const fail_retry_delay_ms = get_fail_retry_delay_ms()
 
 pub const is_node_present = os.execute('node --version').exit_code == 0
 
+pub const is_go_present = os.execute('go version').exit_code == 0
+
 pub const all_processes = get_all_processes()
 
 pub const header_bytes_to_search_for_module_main = 500
@@ -204,7 +206,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		skip_files << 'examples/coroutines/coroutines_bench.v'
 		$if msvc {
 			skip_files << 'vlib/v/tests/const_comptime_eval_before_vinit_test.v' // _constructor used
-			skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.v'
+			skip_files << 'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v'
 		}
 		$if solaris {
 			skip_files << 'examples/gg/gg2.v'
@@ -248,6 +250,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			skip_files << 'examples/call_v_from_python/test.v' // the example only makes sense to be compiled, when python is installed
 			skip_files << 'examples/call_v_from_ruby/test.v' // the example only makes sense to be compiled, when ruby is installed
 			skip_files << 'vlib/vweb/vweb_app_test.v' // imports the `sqlite` module, which in turn includes sqlite3.h
+			skip_files << 'vlib/x/vweb/tests/vweb_app_test.v' // imports the `sqlite` module, which in turn includes sqlite3.h
 		}
 		$if !macos {
 			skip_files << 'examples/macos_tray/tray.v'
@@ -274,18 +277,8 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			skip_files << 'examples/sokol/sounds/wav_player.v'
 			skip_files << 'examples/sokol/sounds/simple_sin_tones.v'
 		}
-		// examples/wasm/mandelbrot/mandelbrot.v requires special compilation flags: `-b wasm -os browser`, skip it for now:
-		skip_files << 'examples/wasm/mandelbrot/mandelbrot.v'
-
-		// TODO: always build the wasm_builder in the future, not just when it was build manually before:
-		wasm_builder_executable := $if !windows {
-			'cmd/tools/builders/wasm_builder'
-		} $else {
-			'cmd/tools/builders/wasm_builder.exe'
-		}
-		if !os.exists(wasm_builder_executable) {
-			skip_files << os.join_path('cmd/tools/builders/wasm_builder.v')
-		}
+		// examples/wasm/mandelbrot/mandelbrot.wasm.v requires special compilation flags: `-b wasm -os browser`, skip it for now:
+		skip_files << 'examples/wasm/mandelbrot/mandelbrot.wasm.v'
 	}
 	vargs := _vargs.replace('-progress', '')
 	vexe := pref.vexe_path()
@@ -637,6 +630,7 @@ pub fn vlib_should_be_present(parent_dir string) {
 pub fn prepare_test_session(zargs string, folder string, oskipped []string, main_label string) TestSession {
 	vexe := pref.vexe_path()
 	parent_dir := os.dir(vexe)
+	nparent_dir := parent_dir.replace('\\', '/')
 	vlib_should_be_present(parent_dir)
 	vargs := zargs.replace(vexe, '')
 	eheader(main_label)
@@ -663,11 +657,10 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 				continue
 			}
 		}
-		c := os.read_file(f) or { panic(err) }
+		c := os.read_file(fnormalised) or { panic(err) }
 		start := c#[0..testing.header_bytes_to_search_for_module_main]
 		if start.contains('module ') && !start.contains('module main') {
-			skipped_f := f.replace(os.join_path_single(parent_dir, ''), '')
-			skipped << skipped_f
+			skipped << fnormalised.replace(nparent_dir + '/', '')
 		}
 		for skip_prefix in oskipped {
 			skip_folder := skip_prefix + '/'
@@ -675,7 +668,7 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 				continue next_file
 			}
 		}
-		mains << f
+		mains << fnormalised
 	}
 	session.files << mains
 	session.skip_files << skipped

@@ -28,7 +28,7 @@ pub fn (mut cs ComponentStore[T]) add(e Entity, value T) {
 	//	cs.instances[index] = value
 }
 
-[heap]
+@[heap]
 struct Registry {
 pub mut:
 	data map[string]IComponentStore

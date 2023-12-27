@@ -1,9 +1,9 @@
 module main
 
-[table: 'products']
+@[table: 'products']
 struct Product {
-	id         int    [primary; sql: serial]
+	id         int    @[primary; sql: serial]
 	user_id    int
-	name       string [sql_type: 'TEXT']
-	created_at string [default: 'CURRENT_TIMESTAMP']
+	name       string @[sql_type: 'TEXT']
+	created_at string @[default: 'CURRENT_TIMESTAMP']
 }

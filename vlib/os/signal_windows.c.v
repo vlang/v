@@ -1,4 +1,4 @@
-[has_globals]
+@[has_globals]
 module os
 
 fn C.GetCurrentThreadId() u32

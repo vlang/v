@@ -1,6 +1,6 @@
 import json
 
-[heap]
+@[heap]
 struct Foo {
 	a &int
 	b &string

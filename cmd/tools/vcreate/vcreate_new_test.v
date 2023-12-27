@@ -1,19 +1,17 @@
 import os
 import v.vmod
 
-const (
-	vroot      = @VEXEROOT
-	// Expect has to be installed for the test.
-	expect_exe = os.quoted_path(os.find_abs_path_of_executable('expect') or {
-		eprintln('skipping test, since expect is missing')
-		exit(0)
-	})
-	// Directory that contains the Expect scripts used in the test.
-	expect_tests_path = os.join_path(@VEXEROOT, 'cmd', 'tools', 'vcreate', 'tests')
-	// Running tests appends a tsession path to VTMP, which is automatically cleaned up after the test.
-	// The following will result in e.g. `$VTMP/tsession_7fe8e93bd740_1612958707536/test_vcreate_input/`.
-	test_module_path  = os.join_path(os.vtmp_dir(), 'test_vcreate_input')
-)
+const vroot = @VEXEROOT
+// Expect has to be installed for the test.
+const expect_exe = os.quoted_path(os.find_abs_path_of_executable('expect') or {
+	eprintln('skipping test, since expect is missing')
+	exit(0)
+})
+// Directory that contains the Expect scripts used in the test.
+const expect_tests_path = os.join_path(@VEXEROOT, 'cmd', 'tools', 'vcreate', 'tests')
+// Running tests appends a tsession path to VTMP, which is automatically cleaned up after the test.
+// The following will result in e.g. `$VTMP/tsession_7fe8e93bd740_1612958707536/test_vcreate_input/`.
+const test_module_path = os.join_path(os.vtmp_dir(), 'test_vcreate_input')
 
 fn testsuite_begin() {
 	dump(expect_exe)
@@ -68,12 +66,13 @@ fn test_new_with_name_arg_input() {
 fn test_new_with_model_arg_input() {
 	prepare_test_path()!
 	project_name := 'my_lib'
-	model := 'lib'
-	os.execute_opt('${expect_exe} ${os.join_path(expect_tests_path, 'new_with_model_arg.expect')} ${vroot} ${project_name} ${model}') or {
+	model := '--lib'
+	os.execute_opt('${expect_exe} ${os.join_path(expect_tests_path, 'new_with_model_arg.expect')} ${vroot} ${model} ${project_name}') or {
 		assert false, err.msg()
 	}
+	project_path := os.join_path(test_module_path, project_name)
 	// Assert mod data set in `new_with_model_arg.expect`.
-	mod := vmod.from_file(os.join_path(test_module_path, project_name, 'v.mod')) or {
+	mod := vmod.from_file(os.join_path(project_path, 'v.mod')) or {
 		assert false, err.str()
 		return
 	}
@@ -81,4 +80,6 @@ fn test_new_with_model_arg_input() {
 	assert mod.description == 'My Awesome V Project.'
 	assert mod.version == '0.0.1'
 	assert mod.license == 'MIT'
+	// Assert existence of a model-specific file.
+	assert os.exists(os.join_path(project_path, 'tests', 'square_test.v'))
 }

@@ -57,7 +57,7 @@ pub mut:
 	child_stderr_write &u32 = unsafe { nil }
 }
 
-[manualfree]
+@[manualfree]
 fn (mut p Process) win_spawn_process() int {
 	mut to_be_freed := []voidptr{cap: 5}
 	defer {
@@ -68,18 +68,18 @@ fn (mut p Process) win_spawn_process() int {
 	}
 	p.filename = abs_path(p.filename) // expand the path to an absolute one, in case we later change the working folder
 	mut wdata := &WProcess{
-		child_stdin: 0
-		child_stdout_read: 0
-		child_stdout_write: 0
-		child_stderr_read: 0
-		child_stderr_write: 0
+		child_stdin: unsafe { nil }
+		child_stdout_read: unsafe { nil }
+		child_stdout_write: unsafe { nil }
+		child_stderr_read: unsafe { nil }
+		child_stderr_write: unsafe { nil }
 	}
 	p.wdata = voidptr(wdata)
 	mut start_info := StartupInfo{
-		lp_reserved2: 0
-		lp_reserved: 0
-		lp_desktop: 0
-		lp_title: 0
+		lp_reserved2: unsafe { nil }
+		lp_reserved: unsafe { nil }
+		lp_desktop: unsafe { nil }
+		lp_title: unsafe { nil }
 		cb: sizeof(C.PROCESS_INFORMATION)
 	}
 	if p.use_stdio_ctl {

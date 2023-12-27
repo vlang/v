@@ -1,9 +1,9 @@
-[noreturn]
+@[noreturn]
 fn another() {
 	eprintln(@FN)
 }
 
-[noreturn]
+@[noreturn]
 fn abc() {
 	eprintln(@FN)
 	another()

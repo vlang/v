@@ -3,12 +3,12 @@ fn test_comptime_generic() {
 	func1(&a)
 }
 
-[inline]
+@[inline]
 pub fn func1[T](t &T) {
 	func2[T](t)
 }
 
-[inline]
+@[inline]
 pub fn func2[T](t &T) {
 	$if T is $array {
 		unsafe {

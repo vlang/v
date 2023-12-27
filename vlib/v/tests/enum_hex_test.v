@@ -10,11 +10,9 @@ enum WDecimal {
 	c = 256
 }
 
-const (
-	ca = 1
-	cb = 16
-	cc = 256
-)
+const ca = 1
+const cb = 16
+const cc = 256
 
 fn test_enum_hex() {
 	assert ca == int(WDecimal.a)

@@ -3,12 +3,10 @@ module benchmark
 import time
 import term
 
-pub const (
-	b_ok    = term.ok_message('OK  ')
-	b_fail  = term.fail_message('FAIL')
-	b_skip  = term.warn_message('SKIP')
-	b_spent = term.ok_message('SPENT')
-)
+pub const b_ok = term.ok_message('OK  ')
+pub const b_fail = term.fail_message('FAIL')
+pub const b_skip = term.warn_message('SKIP')
+pub const b_spent = term.ok_message('SPENT')
 
 pub struct Benchmark {
 pub mut:

@@ -31,19 +31,19 @@ pub fn aprox_cos(a f64) f64 {
 }
 
 // copysign returns a value with the magnitude of x and the sign of y
-[inline]
+@[inline]
 pub fn copysign(x f64, y f64) f64 {
 	return f64_from_bits((f64_bits(x) & ~sign_mask) | (f64_bits(y) & sign_mask))
 }
 
 // degrees converts an angle in radians to a corresponding angle in degrees.
-[inline]
+@[inline]
 pub fn degrees(radians f64) f64 {
 	return radians * (180.0 / pi)
 }
 
 // angle_diff calculates the difference between angles in radians
-[inline]
+@[inline]
 pub fn angle_diff(radian_a f64, radian_b f64) f64 {
 	mut delta := fmod(radian_b - radian_a, tau)
 	delta = fmod(delta + 1.5 * tau, tau)
@@ -51,7 +51,7 @@ pub fn angle_diff(radian_a f64, radian_b f64) f64 {
 	return delta
 }
 
-[params]
+@[params]
 pub struct DigitParams {
 	base    int = 10
 	reverse bool
@@ -125,7 +125,7 @@ pub fn minmax(a f64, b f64) (f64, f64) {
 }
 
 // clamp returns x constrained between a and b
-[inline]
+@[inline]
 pub fn clamp(x f64, a f64, b f64) f64 {
 	if x < a {
 		return a
@@ -138,7 +138,7 @@ pub fn clamp(x f64, a f64, b f64) f64 {
 
 // sign returns the corresponding sign -1.0, 1.0 of the provided number.
 // if n is not a number, its sign is nan too.
-[inline]
+@[inline]
 pub fn sign(n f64) f64 {
 	// dump(n)
 	if is_nan(n) {
@@ -148,19 +148,19 @@ pub fn sign(n f64) f64 {
 }
 
 // signi returns the corresponding sign -1, 1 of the provided number.
-[inline]
+@[inline]
 pub fn signi(n f64) int {
 	return int(copysign(1.0, n))
 }
 
 // radians converts an angle in degrees to a corresponding angle in radians.
-[inline]
+@[inline]
 pub fn radians(degrees f64) f64 {
 	return degrees * (pi / 180.0)
 }
 
 // signbit returns a value with the boolean representation of the sign for x
-[inline]
+@[inline]
 pub fn signbit(x f64) bool {
 	return f64_bits(x) & sign_mask != 0
 }

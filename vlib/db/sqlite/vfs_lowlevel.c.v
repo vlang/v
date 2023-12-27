@@ -13,7 +13,7 @@ pub mut:
 }
 
 // https://www.sqlite.org/c3ref/io_methods.html
-[heap]
+@[heap]
 pub struct C.sqlite3_io_methods {
 mut:
 	// version 1 and later fields
@@ -48,7 +48,7 @@ type Fn_sqlite3_syscall_ptr = fn ()
 
 pub type Sqlite3_vfs = C.sqlite3_vfs
 
-[heap]
+@[heap]
 pub struct C.sqlite3_vfs {
 pub mut:
 	// version 1 and later fields

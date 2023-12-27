@@ -5,17 +5,16 @@ import net
 import net.http
 import io
 
-const (
-	sport           = 12381
-	localserver     = '127.0.0.1:${sport}'
-	exit_after_time = 12000 // milliseconds
-	vexe            = os.getenv('VEXE')
-	vweb_logfile    = os.getenv('VWEB_LOGFILE')
-	vroot           = os.dir(vexe)
-	serverexe       = os.join_path(os.cache_dir(), 'middleware_test_server.exe')
-	tcp_r_timeout   = 30 * time.second
-	tcp_w_timeout   = 30 * time.second
-)
+const sport = 12381
+const localserver = '127.0.0.1:${sport}'
+const exit_after_time = 12000 // milliseconds
+
+const vexe = os.getenv('VEXE')
+const vweb_logfile = os.getenv('VWEB_LOGFILE')
+const vroot = os.dir(vexe)
+const serverexe = os.join_path(os.cache_dir(), 'middleware_test_server.exe')
+const tcp_r_timeout = 30 * time.second
+const tcp_w_timeout = 30 * time.second
 
 // setup of vweb webserver
 fn testsuite_begin() {

@@ -20,13 +20,9 @@ pub fn error_code() int {
 fn init() {
 }
 
-pub const (
-	msg_nosignal = 0x4000
-)
+pub const msg_nosignal = 0x4000
 
-pub const (
-	error_ewouldblock = C.EWOULDBLOCK
-	error_einprogress = C.EINPROGRESS
-)
+pub const error_ewouldblock = C.EWOULDBLOCK
+pub const error_einprogress = C.EINPROGRESS
 
 fn C.unlink(&char) int

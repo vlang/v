@@ -53,7 +53,7 @@ pub fn (block Block) encode(config EncodeConfig) !string {
 		'${pem_end}${block.block_type}${pem_eol}'
 }
 
-[inline]
+@[inline]
 fn wrap_lines(str string, newline string, length int) string {
 	return arrays.chunk(str.bytes(), length).map(it.bytestr()).join(newline)
 }

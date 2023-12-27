@@ -1,13 +1,13 @@
 import json
 
 struct OmitEmptyStruct {
-	bug Struct [omitempty]
+	bug Struct @[omitempty]
 }
 
 type MyAlias = string
 
 struct OmitEmptyAlias {
-	bug MyAlias [omitempty]
+	bug MyAlias @[omitempty]
 }
 
 struct Struct {
@@ -15,17 +15,17 @@ struct Struct {
 }
 
 struct OmitEmptyMap {
-	bug map[string]string [omitempty]
+	bug map[string]string @[omitempty]
 }
 
 struct OmitEmptyArray {
-	bug []string [omitempty]
+	bug []string @[omitempty]
 }
 
 type MySum = int | string
 
 struct OmitEmptySumType {
-	bug MySum [omitempty]
+	bug MySum @[omitempty]
 }
 
 struct FNumStruct {
@@ -33,7 +33,7 @@ struct FNumStruct {
 }
 
 struct OmitEmptyFNumStruct {
-	bug FNumStruct [omitempty]
+	bug FNumStruct @[omitempty]
 }
 
 fn test_struct() {

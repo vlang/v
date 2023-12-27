@@ -19,7 +19,7 @@ fn (u User) get_name() string {
 
 fn test2(arg []string) {}
 
-[noreturn]
+@[noreturn]
 fn test3(a reflection.Function) {
 }
 

@@ -49,3 +49,12 @@ fn test_topic_sub_help() {
 	assert res.exit_code == 0, res.output
 	assert res.output != ''
 }
+
+fn test_help_topic_with_cli_mod() {
+	res := os.execute_or_exit(vexe + ' help init')
+	assert res.output.contains('Usage: v init [flags]')
+	assert res.output.contains('Sets up a V project within the current directory.')
+	assert res.output.contains('Flags:')
+	assert res.output.contains('--bin               Use the template for an executable application [default]')
+	assert res.output.contains('--lib               Use the template for a library project.')
+}

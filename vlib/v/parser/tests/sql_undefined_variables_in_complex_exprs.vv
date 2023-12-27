@@ -2,7 +2,7 @@ module main
 
 struct User {
 mut:
-	id       int    [primary]
+	id       int    @[primary]
 	username string
 	age      string
 	city     string

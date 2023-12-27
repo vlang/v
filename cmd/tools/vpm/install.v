@@ -15,7 +15,7 @@ fn vpm_install(query []string) {
 		help.print_and_exit('vpm')
 	}
 
-	mut vpm_modules, mut external_modules := parse_query(if query.len == 0 {
+	mut modules := parse_query(if query.len == 0 {
 		if os.exists('./v.mod') {
 			// Case: `v install` was run in a directory of another V-module to install its dependencies
 			// - without additional module arguments.
@@ -25,7 +25,7 @@ fn vpm_install(query []string) {
 				println('Nothing to install.')
 				exit(0)
 			}
-			manifest.dependencies.clone()
+			manifest.dependencies
 		} else {
 			vpm_error('specify at least one module for installation.',
 				details: 'example: `v install publisher.package` or `v install https://github.com/owner/repository`'
@@ -38,35 +38,22 @@ fn vpm_install(query []string) {
 
 	installed_modules := get_installed_modules()
 
-	vpm_log(@FILE_LINE, @FN, 'VPM modules: ${vpm_modules}')
-	vpm_log(@FILE_LINE, @FN, 'External modules: ${external_modules}')
+	vpm_log(@FILE_LINE, @FN, 'Queried Modules: ${modules}')
 	vpm_log(@FILE_LINE, @FN, 'Installed modules: ${installed_modules}')
 
 	if installed_modules.len > 0 && settings.is_once {
-		num_to_install := vpm_modules.len + external_modules.len
+		num_to_install := modules.len
 		mut already_installed := []string{}
-		if external_modules.len > 0 {
+		if modules.len > 0 {
 			mut i_deleted := []int{}
-			for i, m in external_modules {
+			for i, m in modules {
 				if m.name in installed_modules {
 					already_installed << m.name
 					i_deleted << i
 				}
 			}
 			for i in i_deleted.reverse() {
-				external_modules.delete(i)
-			}
-		}
-		if vpm_modules.len > 0 {
-			mut i_deleted := []int{}
-			for i, m in vpm_modules {
-				if m.name in installed_modules {
-					already_installed << m.name
-					i_deleted << i
-				}
-			}
-			for i in i_deleted.reverse() {
-				vpm_modules.delete(i)
+				modules.delete(i)
 			}
 		}
 		if already_installed.len > 0 {
@@ -78,36 +65,15 @@ fn vpm_install(query []string) {
 		}
 	}
 
-	if vpm_modules.len > 0 {
-		vpm_install_from_vpm(vpm_modules)
-	}
-	if external_modules.len > 0 {
-		vpm_install_from_vcs(external_modules)
-	}
+	install_modules(modules)
 }
 
-fn vpm_install_from_vpm(modules []Module) {
+fn install_modules(modules []Module) {
 	vpm_log(@FILE_LINE, @FN, 'modules: ${modules}')
-	idents := modules.map(it.name)
 	mut errors := 0
 	for m in modules {
 		vpm_log(@FILE_LINE, @FN, 'module: ${m}')
-		last_errors := errors
-		vcs := if m.vcs != '' {
-			supported_vcs[m.vcs] or {
-				vpm_error('skipping `${m.name}`, since it uses an unsupported version control system `${m.vcs}`.')
-				errors++
-				continue
-			}
-		} else {
-			supported_vcs['git']
-		}
-		vcs.is_executable() or {
-			vpm_error(err.msg())
-			errors++
-			continue
-		}
-		match m.install(vcs) {
+		match m.install() {
 			.installed {}
 			.failed {
 				errors++
@@ -117,103 +83,34 @@ fn vpm_install_from_vpm(modules []Module) {
 				continue
 			}
 		}
-		increment_module_download_count(m.name) or {
-			vpm_error('failed to increment the download count for `${m.name}`', details: err.msg())
-			errors++
+		if !m.is_external {
+			increment_module_download_count(m.name) or {
+				vpm_error('failed to increment the download count for `${m.name}`',
+					details: err.msg()
+				)
+				errors++
+			}
 		}
-		if last_errors == errors {
-			println('Installed `${m.name}`.')
-		}
-		resolve_dependencies(get_manifest(m.install_path), idents)
+		println('Installed `${m.name}`.')
 	}
 	if errors > 0 {
 		exit(1)
 	}
 }
 
-fn vpm_install_from_vcs(modules []Module) {
-	vpm_log(@FILE_LINE, @FN, 'modules: ${modules}')
-	vcs := supported_vcs[settings.vcs]
-	vcs.is_executable() or {
-		vpm_error(err.msg())
-		exit(1)
+fn (m Module) install() InstallResult {
+	defer {
+		os.rmdir_all(m.tmp_path) or {}
 	}
-	urls := modules.map(it.url)
-	mut errors := 0
-	for m in modules {
-		vpm_log(@FILE_LINE, @FN, 'module: ${m}')
-		last_errors := errors
-		match m.install(vcs) {
-			.installed {}
-			.failed {
-				errors++
-				continue
-			}
-			.skipped {
-				continue
-			}
-		}
-		manifest := get_manifest(m.install_path) or { continue }
-		final_path := os.real_path(os.join_path(settings.vmodules_path, manifest.name.replace('-',
-			'_').to_lower()))
-		if m.install_path != final_path {
-			verbose_println('Relocating `${m.name} (${m.install_path_fmted})` to `${manifest.name} (${final_path})`...')
-			if os.exists(final_path) {
-				println('Target directory for `${m.name} (${final_path})` already exists.')
-				input := os.input('Replace it with the module directory? [Y/n]: ')
-				match input.to_lower() {
-					'', 'y' {
-						m.remove() or {
-							vpm_error('failed to remove `${final_path}`.', details: err.msg())
-							errors++
-							continue
-						}
-					}
-					else {
-						verbose_println('Skipping `${m.name}`.')
-						continue
-					}
-				}
-			}
-			// When the module should be relocated into a subdirectory we need to make sure
-			// it exists to not run into permission errors.
-			if m.install_path.count(os.path_separator) < final_path.count(os.path_separator)
-				&& !os.exists(final_path) {
-				os.mkdir_all(final_path) or {
-					vpm_error('failed to create directory for `${manifest.name}`.',
-						details: err.msg()
-					)
-					errors++
-					continue
-				}
-			}
-			os.mv(m.install_path, final_path) or {
-				errors++
-				vpm_error('failed to relocate module `${m.name}`.', details: err.msg())
-				os.rmdir_all(m.install_path) or {
-					vpm_error('failed to remove `${m.install_path}`.', details: err.msg())
-					errors++
-					continue
-				}
-				continue
-			}
-			verbose_println('Relocated `${m.name}` to `${manifest.name}`.')
-		}
-		if last_errors == errors {
-			println('Installed `${m.name}`.')
-		}
-		resolve_dependencies(manifest, urls)
-	}
-	if errors > 0 {
-		exit(1)
-	}
-}
-
-fn (m Module) install(vcs &VCS) InstallResult {
 	if m.is_installed {
 		// Case: installed, but not an explicit version. Update instead of continuing the installation.
 		if m.version == '' && m.installed_version == '' {
-			vpm_update([if m.is_external { m.url } else { m.name }])
+			if m.is_external && m.url.starts_with('http://') {
+				vpm_update([m.install_path.all_after(settings.vmodules_path).trim_left(os.path_separator).replace(os.path_separator,
+					'.')])
+			} else {
+				vpm_update([m.name])
+			}
 			return .skipped
 		}
 		// Case: installed, but conflicting. Confirmation or -[-f]orce flag required.
@@ -226,20 +123,20 @@ fn (m Module) install(vcs &VCS) InstallResult {
 			return .skipped
 		}
 	}
-	install_arg := if m.version != '' {
-		'${vcs.args.install} --single-branch -b ${m.version}'
-	} else {
-		vcs.args.install
-	}
-	cmd := '${vcs.cmd} ${install_arg} "${m.url}" "${m.install_path}"'
-	vpm_log(@FILE_LINE, @FN, 'command: ${cmd}')
 	println('Installing `${m.name}`...')
-	verbose_println('  cloning from `${m.url}` to `${m.install_path_fmted}`')
-	res := os.execute_opt(cmd) or {
+	// When the module should be relocated into a subdirectory we need to make sure
+	// it exists to not run into permission errors.
+	parent_dir := m.install_path.all_before_last(os.path_separator)
+	if !os.exists(parent_dir) {
+		os.mkdir_all(parent_dir) or {
+			vpm_error('failed to create module directory for `${m.name}`.', details: err.msg())
+			return .failed
+		}
+	}
+	os.mv(m.tmp_path, m.install_path) or {
 		vpm_error('failed to install `${m.name}`.', details: err.msg())
 		return .failed
 	}
-	vpm_log(@FILE_LINE, @FN, 'cmd output: ${res.output}')
 	return .installed
 }
 
@@ -248,10 +145,14 @@ fn (m Module) confirm_install() bool {
 		println('Module `${m.name}${at_version(m.installed_version)}` is already installed, use --force to overwrite.')
 		return false
 	} else {
-		install_version := at_version(if m.version == '' { 'latest' } else { m.version })
 		println('Module `${m.name}${at_version(m.installed_version)}` is already installed at `${m.install_path_fmted}`.')
+		if settings.fail_on_prompt {
+			vpm_error('VPM should not have entered a confirmation prompt.')
+			exit(1)
+		}
+		install_version := at_version(if m.version == '' { 'latest' } else { m.version })
 		input := os.input('Replace it with `${m.name}${install_version}`? [Y/n]: ')
-		match input.to_lower() {
+		match input.trim_space().to_lower() {
 			'', 'y' {
 				return true
 			}
@@ -271,8 +172,4 @@ fn (m Module) remove() ! {
 		os.rmdir_all(m.install_path)!
 	}
 	verbose_println('Removed `${m.name}`.')
-}
-
-fn at_version(version string) string {
-	return if version != '' { '@${version}' } else { '' }
 }

@@ -70,8 +70,9 @@ pub:
 	cleanup_fn        FNCb   = unsafe { nil }
 	fail_fn           FNFail = unsafe { nil }
 	//
-	event_fn FNEvent = unsafe { nil }
-	quit_fn  FNEvent = unsafe { nil }
+	event_fn FNEvent  = unsafe { nil }
+	on_event FNEvent2 = unsafe { nil }
+	quit_fn  FNEvent  = unsafe { nil }
 	//
 	keydown_fn FNKeyDown = unsafe { nil }
 	keyup_fn   FNKeyUp   = unsafe { nil }
@@ -106,7 +107,7 @@ pub:
 	max_dropped_file_path_length int = 2048 // max length in bytes of a dropped UTF-8 file path (default: 2048)
 }
 
-[heap]
+@[heap]
 pub struct PipelineContainer {
 pub mut:
 	alpha sgl.Pipeline
@@ -143,7 +144,7 @@ fn (mut container PipelineContainer) init_pipeline() {
 	container.add = sgl.make_pipeline(&add_pipdesc)
 }
 
-[heap]
+@[heap]
 pub struct Context {
 mut:
 	render_text bool = true
@@ -353,6 +354,8 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 	}
 	if ctx.config.event_fn != unsafe { nil } {
 		ctx.config.event_fn(e, ctx.config.user_data)
+	} else if ctx.config.on_event != unsafe { nil } {
+		ctx.config.on_event(ctx.config.user_data, e)
 	}
 	match e.typ {
 		.mouse_move {
@@ -445,7 +448,7 @@ pub fn new_context(cfg Config) &Context {
 		width: cfg.width
 		height: cfg.height
 		config: cfg
-		ft: 0
+		ft: unsafe { nil }
 		ui_mode: cfg.ui_mode
 		native_rendering: cfg.native_rendering
 		window: sapp.Desc{
@@ -525,7 +528,7 @@ pub enum EndEnum {
 	passthru
 }
 
-[params]
+@[params]
 pub struct EndOptions {
 	how EndEnum
 }
@@ -718,6 +721,11 @@ pub fn screen_size() Size {
 pub fn window_size() Size {
 	s := dpi_scale()
 	return Size{int(sapp.width() / s), int(sapp.height() / s)}
+}
+
+// set_window_title sets main window's title
+pub fn set_window_title(title string) {
+	C.sapp_set_window_title(title.str)
 }
 
 // window_size_real_pixels returns the `Size` of the active window without scale

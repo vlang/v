@@ -36,6 +36,8 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	c.match_exprs(mut node, cond_type_sym)
 	c.expected_type = cond_type
 	mut first_iteration := true
+	mut infer_cast_type := ast.void_type
+	mut need_explicit_cast := false
 	mut ret_type := ast.void_type
 	mut nbranches_with_return := 0
 	mut nbranches_without_return := 0
@@ -87,6 +89,11 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 							}
 						}
 					}
+					infer_cast_type = stmt.typ
+					if mut stmt.expr is ast.CastExpr {
+						need_explicit_cast = true
+						infer_cast_type = stmt.expr.typ
+					}
 				} else {
 					if node.is_expr && ret_type.idx() != expr_type.idx() {
 						if (node.expected_type.has_flag(.option)
@@ -118,6 +125,82 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 							type_name := '&'.repeat(ret_type.nr_muls()) + ret_sym.name
 							c.error('return type mismatch, it should be `${type_name}`',
 								stmt.pos)
+						}
+					}
+					if !node.is_sum_type {
+						if mut stmt.expr is ast.CastExpr {
+							expr_typ_sym := c.table.sym(stmt.expr.typ)
+							if need_explicit_cast {
+								if infer_cast_type != stmt.expr.typ
+									&& expr_typ_sym.kind !in [.interface_, .sum_type] {
+									c.error('the type of the last expression in the first match branch was an explicit `${c.table.type_to_str(infer_cast_type)}`, not `${c.table.type_to_str(stmt.expr.typ)}`',
+										stmt.pos)
+								}
+							} else {
+								if infer_cast_type != stmt.expr.typ
+									&& expr_typ_sym.kind !in [.interface_, .sum_type]
+									&& c.promote_num(stmt.expr.typ, ast.int_type) != ast.int_type {
+									c.error('the type of the last expression of the first match branch was `${c.table.type_to_str(infer_cast_type)}`, which is not compatible with `${c.table.type_to_str(stmt.expr.typ)}`',
+										stmt.pos)
+								}
+							}
+						} else {
+							if mut stmt.expr is ast.IntegerLiteral {
+								cast_type_sym := c.table.sym(infer_cast_type)
+								num := stmt.expr.val.i64()
+								mut needs_explicit_cast := false
+
+								match cast_type_sym.kind {
+									.u8 {
+										if !(num >= min_u8 && num <= max_u8) {
+											needs_explicit_cast = true
+										}
+									}
+									.u16 {
+										if !(num >= min_u16 && num <= max_u16) {
+											needs_explicit_cast = true
+										}
+									}
+									.u32 {
+										if !(num >= min_u32 && num <= max_u32) {
+											needs_explicit_cast = true
+										}
+									}
+									.u64 {
+										if !(num >= min_u64 && num <= max_u64) {
+											needs_explicit_cast = true
+										}
+									}
+									.i8 {
+										if !(num >= min_i32 && num <= max_i32) {
+											needs_explicit_cast = true
+										}
+									}
+									.i16 {
+										if !(num >= min_i16 && num <= max_i16) {
+											needs_explicit_cast = true
+										}
+									}
+									.i32, .int {
+										if !(num >= min_i32 && num <= max_i32) {
+											needs_explicit_cast = true
+										}
+									}
+									.i64 {
+										if !(num >= min_i64 && num <= max_i64) {
+											needs_explicit_cast = true
+										}
+									}
+									.int_literal {
+										needs_explicit_cast = false
+									}
+									else {}
+								}
+								if needs_explicit_cast {
+									c.error('${num} does not fit the range of `${c.table.type_to_str(infer_cast_type)}`',
+										stmt.pos)
+								}
+							}
 						}
 					}
 				}
@@ -281,7 +364,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				if both_low_and_high_are_known {
 					high_low_cutoff := 1000
 					if high - low > high_low_cutoff {
-						c.warn('more than ${high_low_cutoff} possibilities (${low} ... ${high}) in match range',
+						c.note('more than ${high_low_cutoff} possibilities (${low} ... ${high}) in match range may affect compile time',
 							branch.pos)
 					}
 					for i in low .. high + 1 {

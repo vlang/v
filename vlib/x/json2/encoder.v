@@ -117,7 +117,11 @@ fn (e &Encoder) encode_any(val Any, level int, mut wr io.Writer) ! {
 			e.encode_newline(level - 1, mut wr)!
 			wr.write([u8(`]`)])!
 		}
-		time.Time {}
+		time.Time {
+			wr.write(json2.quote_bytes)!
+			wr.write(val.format_rfc3339().bytes())!
+			wr.write(json2.quote_bytes)!
+		}
 		Null {
 			wr.write(json2.null_in_bytes)!
 		}
@@ -429,8 +433,6 @@ fn (e &Encoder) encode_array[U](val []U, level int, mut wr io.Writer) ! {
 			e.encode_any(i64(val[i]), level + 1, mut wr)!
 		} $else $if U is u8 {
 			e.encode_any(u8(val[i]), level + 1, mut wr)!
-		} $else $if U is byte {
-			e.encode_any(u8(val[i]), level + 1, mut wr)!
 		} $else $if U is u16 {
 			e.encode_any(u16(val[i]), level + 1, mut wr)!
 		} $else $if U is u32 {
@@ -483,13 +485,13 @@ pub fn (f Any) str() string {
 }
 
 // json_str returns the JSON string representation of the `Any` type.
-[manualfree]
+@[manualfree]
 pub fn (f Any) json_str() string {
 	return encode(f)
 }
 
 // prettify_json_str returns the pretty-formatted JSON string representation of the `Any` type.
-[manualfree]
+@[manualfree]
 pub fn (f Any) prettify_json_str() string {
 	mut sb := strings.new_builder(4096)
 	defer {
@@ -532,7 +534,7 @@ fn (mut iter CharLengthIterator) next() ?int {
 
 // TODO - Need refactor. Is so slow. The longer the string, the lower the performance.
 // encode_string returns the JSON spec-compliant version of the string.
-[manualfree]
+@[manualfree]
 fn (e &Encoder) encode_string(s string, mut wr io.Writer) ! {
 	mut char_lens := CharLengthIterator{
 		text: s
@@ -572,8 +574,10 @@ fn (e &Encoder) encode_string(s string, mut wr io.Writer) ! {
 				wr.write(hex_code)!
 			} else {
 				// TODO: still figuring out what
-				// to do with more than 4 chars
-				wr.write(json2.space_bytes)!
+				// to do with more than 4 chars.
+				// According to https://www.json.org/json-en.html however, any codepoint is valid inside a string,
+				// so just passing it along should hopefully also work.
+				wr.write(slice.bytes())!
 			}
 			unsafe {
 				slice.free()

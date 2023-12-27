@@ -1,4 +1,4 @@
-[_naked]
+@[_naked]
 fn naked_fn() {
 	asm i386 {
 		push ebp

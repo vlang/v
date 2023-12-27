@@ -3,17 +3,15 @@ module picohttpparser
 // NOTE: picohttpparser is designed for speed. Please do some benchmarks when
 // you change something in this file
 
-const (
-	// token_char_map contains all allowed characters in HTTP headers
-	token_char_map = '\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0' +
-		'\0\1\0\1\1\1\1\1\0\0\1\1\0\1\1\0\1\1\1\1\1\1\1\1\1\1\0\0\0\0\0\0' +
-		'\0\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\0\0\0\1\1' +
-		'\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\0\1\0\1\0' +
-		'\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0' +
-		'\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0' +
-		'\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0' +
-		'\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0'
-)
+// token_char_map contains all allowed characters in HTTP headers
+const token_char_map = '\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0' +
+	'\0\1\0\1\1\1\1\1\0\0\1\1\0\1\1\0\1\1\1\1\1\1\1\1\1\1\0\0\0\0\0\0' +
+	'\0\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\0\0\0\1\1' +
+	'\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\1\0\1\0\1\0' +
+	'\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0' +
+	'\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0' +
+	'\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0' +
+	'\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0'
 
 fn (mut r Request) phr_parse_request_path(buf_start &u8, buf_end &u8, mut pret Pret) {
 	mut buf := unsafe { buf_start + 0 }
@@ -178,7 +176,7 @@ fn (mut r Request) phr_parse_request(buf_start &u8, buf_end &u8, mut pret Pret) 
 	return r.parse_headers(buf, buf_end, mut pret)
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn (mut r Request) parse_headers(buf_start &u8, buf_end &u8, mut pret Pret) &u8 {
 	mut buf := unsafe { buf_start }
 
@@ -441,7 +439,7 @@ fn get_token_length_to_eol(buf_start &u8, buf_end &u8, mut pret Pret) int {
 
 // following functions are #define in the C version, but inline here for better readability
 
-[inline]
+@[inline]
 fn advance_token(tok_start &u8, tok_end &u8, mut pret Pret) string {
 	mut buf := unsafe { tok_start }
 	for *buf != ` ` {
@@ -465,7 +463,7 @@ fn advance_token(tok_start &u8, tok_end &u8, mut pret Pret) string {
 }
 
 // advance_token2 is a less safe version of advance_token
-[inline]
+@[inline]
 fn advance_token2(tok_start &u8, tok_end &u8, mut pret Pret) string {
 	mut len := 0
 	mut i := 0
@@ -483,7 +481,7 @@ fn advance_token2(tok_start &u8, tok_end &u8, mut pret Pret) string {
 	return unsafe { tos(tok_start, len) }
 }
 
-[inline]
+@[inline]
 fn is_printable_ascii(c u8) bool {
 	return u32(c - 32) < 95
 }

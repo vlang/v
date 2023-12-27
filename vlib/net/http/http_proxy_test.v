@@ -2,16 +2,14 @@ module http
 
 import encoding.base64
 
-const (
-	sample_proxy_url      = 'https://localhost'
-	sample_auth_proxy_url = 'http://user:pass@localhost:8888'
+const sample_proxy_url = 'https://localhost'
+const sample_auth_proxy_url = 'http://user:pass@localhost:8888'
 
-	sample_host           = '127.0.0.1:1337'
-	sample_request        = &Request{
-		url: 'http://${sample_host}'
-	}
-	sample_path           = '/'
-)
+const sample_host = '127.0.0.1:1337'
+const sample_request = &Request{
+	url: 'http://${sample_host}'
+}
+const sample_path = '/'
 
 fn test_proxy_fields() ? {
 	sample_proxy := new_http_proxy(http.sample_proxy_url)!

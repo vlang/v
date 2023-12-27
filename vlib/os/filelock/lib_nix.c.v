@@ -8,7 +8,7 @@ fn C.unlink(&char) int
 fn C.open(&char, int, int) int
 fn C.flock(int, int) int
 
-[unsafe]
+@[unsafe]
 pub fn (mut l FileLock) unlink() {
 	if l.fd != -1 {
 		C.close(l.fd)

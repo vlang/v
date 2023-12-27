@@ -21,14 +21,16 @@ enum JobTitle {
 struct Employee {
 mut:
 	name   string
-	family string   [json: '-'] // this field will be skipped
+	family string   @[json: '-'] // this field will be skipped
 	age    int
 	salary f32
-	title  JobTitle [json: 'ETitle'] // the key for this field will be 'ETitle', not 'title'
+	title  JobTitle @[json: 'ETitle'] // the key for this field will be 'ETitle', not 'title'
+	notes  string   @[omitempty]        // the JSON property is not created if the string is equal to '' (an empty string).
+	// TODO document @[raw]
 }
 
 fn main() {
-	x := Employee{'Peter', 'Begins', 28, 95000.5, .worker}
+	x := Employee{'Peter', 'Begins', 28, 95000.5, .worker, ''}
 	println(x)
 	s := json.encode(x)
 	println('JSON encoding of employee x: ${s}')

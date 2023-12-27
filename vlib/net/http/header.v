@@ -103,6 +103,7 @@ pub enum CommonHeader {
 	sec_fetch_site
 	sec_fetch_user
 	sec_websocket_accept
+	sec_websocket_key
 	server
 	server_timing
 	set_cookie
@@ -209,6 +210,7 @@ pub fn (h CommonHeader) str() string {
 		.sec_fetch_site { 'Sec-Fetch-Site' }
 		.sec_fetch_user { 'Sec-Fetch-User' }
 		.sec_websocket_accept { 'Sec-WebSocket-Accept' }
+		.sec_websocket_key { 'Sec-WebSocket-Key' }
 		.server { 'Server' }
 		.server_timing { 'Server-Timing' }
 		.set_cookie { 'Set-Cookie' }
@@ -314,6 +316,7 @@ const common_header_map = {
 	'sec-fetch-site':                      .sec_fetch_site
 	'sec-fetch-user':                      .sec_fetch_user
 	'sec-websocket-accept':                .sec_websocket_accept
+	'sec_websocket_key':                   .sec_websocket_key
 	'server':                              .server
 	'server-timing':                       .server_timing
 	'set-cookie':                          .set_cookie
@@ -469,8 +472,8 @@ pub fn (mut h Header) delete(key CommonHeader) {
 
 // delete_custom deletes all values for a custom header key.
 pub fn (mut h Header) delete_custom(key string) {
-	for i, kv in h.data {
-		if kv.key == key {
+	for i := 0; i < h.cur_pos; i++ {
+		if h.data[i].key == key {
 			h.data[i] = HeaderKV{key, ''}
 		}
 	}
@@ -485,7 +488,7 @@ pub fn (mut h Header) delete_custom(key string) {
 	*/
 }
 
-[params]
+@[params]
 pub struct HeaderCoerceConfig {
 	canonicalize bool
 }
@@ -548,7 +551,7 @@ pub fn (h Header) contains(key CommonHeader) bool {
 	// return h.contains_custom(key.str())
 }
 
-[params]
+@[params]
 pub struct HeaderQueryConfig {
 	exact bool
 }
@@ -661,7 +664,7 @@ pub fn (h Header) keys() []string {
 	return arrays.uniq(res)
 }
 
-[params]
+@[params]
 pub struct HeaderRenderConfig {
 	version      Version
 	coerce       bool
@@ -670,7 +673,7 @@ pub struct HeaderRenderConfig {
 
 // render renders the Header into a string for use in sending HTTP
 // requests. All header lines will end in `\r\n`
-[manualfree]
+@[manualfree]
 pub fn (h Header) render(flags HeaderRenderConfig) string {
 	// estimate ~48 bytes per header
 	mut sb := strings.new_builder(h.data.len * 48)

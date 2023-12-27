@@ -63,9 +63,7 @@ module main
 import eventbus
 
 // initialize it globally
-const (
-	eb = eventbus.new[string]()
-)
+const eb = eventbus.new[string]()
 
 fn main() {
 	// get a mutable reference to the subscriber

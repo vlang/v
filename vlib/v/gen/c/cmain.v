@@ -268,7 +268,7 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 	g.writeln('')
 	for tnumber, tname in all_tfuncs {
 		tcname := util.no_dots(tname)
-		testfn := g.table.fns[tname]
+		testfn := unsafe { g.table.fns[tname] }
 		lnum := testfn.pos.line_nr + 1
 		g.writeln('\tmain__VTestFnMetaInfo_free(test_runner.fn_test_info);')
 		g.writeln('\tstring tcname_${tnumber} = _SLIT("${tcname}");')

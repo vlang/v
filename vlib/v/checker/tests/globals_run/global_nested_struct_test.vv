@@ -10,7 +10,7 @@ fn test_get() {
     
 }
 
-[cinit]
+@[cinit]
 __global (
     baz = Foo{Bar{number: 5}}
 )

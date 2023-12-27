@@ -46,12 +46,12 @@ pub fn (mut parser Parser) add_code_tag(name string) {
 	parser.lexical_attributes.code_tags[name] = true
 }
 
-[inline]
+@[inline]
 fn (parser Parser) builder_str() string {
 	return parser.lexical_attributes.lexeme_builder.after(0)
 }
 
-[if debug_html ?]
+@[if debug_html ?]
 fn (mut parser Parser) print_debug(data string) {
 	if data.len > 0 {
 		parser.debug_file.writeln(data) or { panic(err) }
@@ -277,7 +277,7 @@ pub fn (mut parser Parser) parse_html(data string) {
 }
 
 // finalize finishes the parsing stage .
-[inline]
+@[inline]
 pub fn (mut parser Parser) finalize() {
 	parser.generate_tag()
 }

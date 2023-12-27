@@ -3,11 +3,9 @@ module util
 import os
 import rand
 
-const (
-	retries = 10000
-)
+const retries = 10000
 
-[params]
+@[params]
 pub struct TempFileOptions {
 	path    string = os.temp_dir()
 	pattern string
@@ -40,7 +38,7 @@ pub fn temp_file(tfo TempFileOptions) !(os.File, string) {
 		' could not create temporary file in "${d}". Retry limit (${util.retries}) exhausted. Please ensure write permissions.')
 }
 
-[params]
+@[params]
 pub struct TempDirOptions {
 	path    string = os.temp_dir()
 	pattern string
@@ -81,7 +79,7 @@ fn prefix_and_suffix(pattern string) !(string, string) {
 	if pat.contains(os.path_separator) {
 		return error('pattern cannot contain path separators (${os.path_separator}).')
 	}
-	pos := pat.last_index('*') or { -1 }
+	pos := pat.index_u8_last(`*`)
 	mut prefix := ''
 	mut suffix := ''
 	if pos != -1 {

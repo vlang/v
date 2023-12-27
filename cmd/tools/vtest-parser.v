@@ -6,18 +6,16 @@ import v.parser
 import v.ast
 import v.pref
 
-const (
-	vexe          = os.real_path(os.getenv_opt('VEXE') or { @VEXE })
-	vroot         = os.dir(vexe)
-	support_color = term.can_show_color_on_stderr() && term.can_show_color_on_stdout()
-	ecode_timeout = 101
-	ecode_memout  = 102
-	ecode_details = {
-		-1:  'worker executable not found'
-		101: 'too slow'
-		102: 'too memory hungry'
-	}
-)
+const vexe = os.real_path(os.getenv_opt('VEXE') or { @VEXE })
+const vroot = os.dir(vexe)
+const support_color = term.can_show_color_on_stderr() && term.can_show_color_on_stdout()
+const ecode_timeout = 101
+const ecode_memout = 102
+const ecode_details = {
+	-1:  'worker executable not found'
+	101: 'too slow'
+	102: 'too memory hungry'
+}
 
 struct Context {
 mut:
@@ -35,7 +33,6 @@ mut:
 	max_index  int      // the maximum index (equivalent to the file content length)
 	// parser context in the worker processes:
 	table      ast.Table
-	scope      ast.Scope
 	pref       &pref.Preferences = unsafe { nil }
 	period_ms  int  // print periodic progress
 	stop_print bool // stop printing the periodic progress
@@ -49,9 +46,6 @@ fn main() {
 		// A worker's process job is to try to parse a single given file in context.path.
 		// It can crash/panic freely.
 		context.table = ast.new_table()
-		context.scope = &ast.Scope{
-			parent: 0
-		}
 		context.pref = &pref.Preferences{
 			output_mode: .silent
 		}

@@ -75,7 +75,7 @@ fn (mut state BFState) find_matching_pairs() {
 	}
 }
 
-[noreturn]
+@[noreturn]
 fn (state &BFState) panic_for_bracket(b1 rune, b2 rune) {
 	panic('unbalanced `${b1}` found, its target `${b2}` is not known; address: ${state.address}, pc: ${state.pc}')
 }
@@ -131,7 +131,7 @@ fn (mut state BFState) run() ? {
 	}
 }
 
-[noreturn]
+@[noreturn]
 fn show_usage() {
 	eprintln('you need to supply a brainfuck program/expression as a string argument,')
 	eprintln('or filename.b, if it is located in a file (note the `.b` extension).')

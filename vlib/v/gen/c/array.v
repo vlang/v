@@ -148,6 +148,11 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 	}
 	g.write('{')
 	if node.has_val {
+		tmp_inside_array := g.inside_array_item
+		g.inside_array_item = true
+		defer {
+			g.inside_array_item = tmp_inside_array
+		}
 		elem_type := (array_type.unaliased_sym.info as ast.ArrayFixed).elem_type
 		elem_sym := g.table.final_sym(elem_type)
 		for i, expr in node.exprs {
@@ -468,8 +473,8 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	}
 
 	ret_typ := g.typ(node.return_type)
-	ret_sym := g.table.sym(node.return_type)
-	inp_sym := g.table.sym(node.receiver_type)
+	ret_sym := g.table.final_sym(node.return_type)
+	inp_sym := g.table.final_sym(node.receiver_type)
 	ret_info := ret_sym.info as ast.Array
 	mut ret_elem_type := g.typ(ret_info.elem_type)
 	inp_info := inp_sym.info as ast.Array
@@ -539,8 +544,8 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		ast.CastExpr {
 			// value.map(Type(it)) when `value` is a comptime var
 			if expr.expr is ast.Ident && node.left is ast.Ident
-				&& g.table.is_comptime_var(node.left) {
-				ctyp := g.get_comptime_var_type(node.left)
+				&& g.comptime.is_comptime_var(node.left) {
+				ctyp := g.comptime.get_comptime_var_type(node.left)
 				if ctyp != ast.void_type {
 					expr.expr_type = g.table.value_type(ctyp)
 				}
@@ -581,13 +586,25 @@ fn (mut g Gen) gen_array_sorted(node ast.CallExpr) {
 		g.past_tmp_var_done(past)
 	}
 	atype := g.typ(node.return_type)
-	sym := g.table.sym(node.return_type)
+	sym := g.table.final_sym(node.return_type)
 	info := sym.info as ast.Array
 	depth := g.get_array_depth(info.elem_type)
 
-	g.write('${atype} ${past.tmp_var} = array_clone_to_depth(ADDR(${atype},')
-	g.expr(node.left)
-	g.writeln('), ${depth});')
+	deref_field := if node.receiver_type.nr_muls() > node.left_type.nr_muls()
+		&& node.left_type.is_ptr() {
+		true
+	} else {
+		false
+	}
+	if !deref_field {
+		g.write('${atype} ${past.tmp_var} = array_clone_to_depth(ADDR(${atype},')
+		g.expr(node.left)
+		g.writeln('), ${depth});')
+	} else {
+		g.write('${atype} ${past.tmp_var} = array_clone_to_depth(')
+		g.expr(node.left)
+		g.writeln(', ${depth});')
+	}
 
 	unsafe {
 		node.left = ast.Expr(ast.Ident{
@@ -601,10 +618,8 @@ fn (mut g Gen) gen_array_sorted(node ast.CallExpr) {
 // `users.sort(a.age < b.age)`
 fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	// println('filter s="$s"')
-	rec_sym := g.table.sym(node.receiver_type)
+	rec_sym := g.table.final_sym(node.receiver_type)
 	if rec_sym.kind != .array {
-		println(node.name)
-		println(g.typ(node.receiver_type))
 		// println(rec_sym.kind)
 		verror('.sort() is an array method')
 	}
@@ -705,7 +720,12 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 }
 
 fn (mut g Gen) gen_array_sort_call(node ast.CallExpr, compare_fn string) {
-	mut deref_field := g.dot_or_ptr(node.left_type)
+	deref_field := if node.receiver_type.nr_muls() > node.left_type.nr_muls()
+		&& node.left_type.is_ptr() {
+		g.dot_or_ptr(node.left_type.deref())
+	} else {
+		g.dot_or_ptr(node.left_type)
+	}
 	// eprintln('> qsort: pointer $node.left_type | deref_field: `$deref_field`')
 	g.empty_line = true
 	g.write('qsort(')
@@ -724,7 +744,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 		g.past_tmp_var_done(past)
 	}
 
-	sym := g.table.sym(node.return_type)
+	sym := g.table.final_sym(node.return_type)
 	if sym.kind != .array {
 		verror('filter() requires an array')
 	}
@@ -805,7 +825,8 @@ fn (mut g Gen) gen_array_insert(node ast.CallExpr) {
 	left_info := left_sym.info as ast.Array
 	elem_type_str := g.typ(left_info.elem_type)
 	arg2_sym := g.table.sym(node.args[1].typ)
-	is_arg2_array := arg2_sym.kind == .array && node.args[1].typ == node.left_type
+	is_arg2_array := arg2_sym.kind == .array
+		&& node.args[1].typ.clear_flag(.variadic) == node.left_type
 	noscan := g.check_noscan(left_info.elem_type)
 	addr := if node.left_type.is_ptr() { '' } else { '&' }
 	if is_arg2_array {
@@ -986,7 +1007,7 @@ fn (mut g Gen) gen_array_contains(left_type ast.Type, left ast.Expr, right_type 
 	} else {
 		left_sym.array_fixed_info().elem_type
 	}
-	if right.is_auto_deref_var()
+	if (right.is_auto_deref_var() && !elem_typ.is_ptr())
 		|| (g.table.sym(elem_typ).kind !in [.interface_, .sum_type, .struct_] && right is ast.Ident
 		&& right.info is ast.IdentVar
 		&& g.table.sym(right.obj.typ).kind in [.interface_, .sum_type]) {
@@ -1121,7 +1142,7 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 		g.past_tmp_var_done(past)
 	}
 
-	sym := g.table.sym(node.left_type)
+	sym := g.table.final_sym(node.left_type)
 	info := sym.info as ast.Array
 	// styp := g.typ(node.return_type)
 	elem_type_str := g.typ(info.elem_type)
@@ -1200,7 +1221,7 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 		g.past_tmp_var_done(past)
 	}
 
-	sym := g.table.sym(node.left_type)
+	sym := g.table.final_sym(node.left_type)
 	info := sym.info as ast.Array
 	// styp := g.typ(node.return_type)
 	elem_type_str := g.typ(info.elem_type)

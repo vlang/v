@@ -53,27 +53,25 @@ find the index for their meta's in the new array. Instead of rehashing compl-
 etely, it simply uses the cached-hashbits stored in the meta, resulting in
 much faster rehashing.
 */
-const (
-	// Number of bits from the hash stored for each entry
-	hashbits            = 24
-	// Number of bits from the hash stored for rehashing
-	max_cached_hashbits = 16
-	// Initial log-number of buckets in the hashtable
-	init_log_capicity   = 5
-	// Initial number of buckets in the hashtable
-	init_capicity       = 1 << init_log_capicity
-	// Maximum load-factor (len / capacity)
-	max_load_factor     = 0.8
-	// Initial highest even index in metas
-	init_even_index     = init_capicity - 2
-	// Used for incrementing `extra_metas` when max
-	// probe count is too high, to avoid overflow
-	extra_metas_inc     = 4
-	// Bitmask to select all the hashbits
-	hash_mask           = u32(0x00FFFFFF)
-	// Used for incrementing the probe-count
-	probe_inc           = u32(0x01000000)
-)
+// Number of bits from the hash stored for each entry
+const hashbits = 24
+// Number of bits from the hash stored for rehashing
+const max_cached_hashbits = 16
+// Initial log-number of buckets in the hashtable
+const init_log_capicity = 5
+// Initial number of buckets in the hashtable
+const init_capicity = 1 << init_log_capicity
+// Maximum load-factor (len / capacity)
+const max_load_factor = 0.8
+// Initial highest even index in metas
+const init_even_index = init_capicity - 2
+// Used for incrementing `extra_metas` when max
+// probe count is too high, to avoid overflow
+const extra_metas_inc = 4
+// Bitmask to select all the hashbits
+const hash_mask = u32(0x00FFFFFF)
+// Used for incrementing the probe-count
+const probe_inc = u32(0x01000000)
 
 // DenseArray represents a dynamic array with very low growth factor
 struct DenseArray {
@@ -90,7 +88,7 @@ mut:
 	values      &u8 = unsafe { nil }
 }
 
-[inline]
+@[inline]
 fn new_dense_array(key_bytes int, value_bytes int) DenseArray {
 	cap := 8
 	return DenseArray{
@@ -99,31 +97,31 @@ fn new_dense_array(key_bytes int, value_bytes int) DenseArray {
 		cap: cap
 		len: 0
 		deletes: 0
-		all_deleted: 0
+		all_deleted: unsafe { nil }
 		keys: unsafe { malloc(__at_least_one(u64(cap) * u64(key_bytes))) }
 		values: unsafe { malloc(__at_least_one(u64(cap) * u64(value_bytes))) }
 	}
 }
 
-[inline]
+@[inline]
 fn (d &DenseArray) key(i int) voidptr {
 	return unsafe { voidptr(d.keys + i * d.key_bytes) }
 }
 
 // for cgen
-[inline]
+@[inline]
 fn (d &DenseArray) value(i int) voidptr {
 	return unsafe { voidptr(d.values + i * d.value_bytes) }
 }
 
-[inline]
+@[inline]
 fn (d &DenseArray) has_index(i int) bool {
 	return d.deletes == 0 || unsafe { d.all_deleted[i] } == 0
 }
 
 // Make space to append an element and return index
 // The growth-factor is roughly 1.125 `(x + (x >> 3))`
-[inline]
+@[inline]
 fn (mut d DenseArray) expand() int {
 	old_cap := d.cap
 	old_key_size := d.key_bytes * old_cap
@@ -306,7 +304,7 @@ pub fn (mut m map) clear() {
 	m.key_values.len = 0
 }
 
-[inline]
+@[inline]
 fn (m &map) key_to_index(pkey voidptr) (u32, u32) {
 	hash := m.hash_fn(pkey)
 	index := hash & m.even_index
@@ -314,7 +312,7 @@ fn (m &map) key_to_index(pkey voidptr) (u32, u32) {
 	return u32(index), u32(meta)
 }
 
-[inline]
+@[inline]
 fn (m &map) meta_less(_index u32, _metas u32) (u32, u32) {
 	mut index := _index
 	mut meta := _metas
@@ -325,7 +323,7 @@ fn (m &map) meta_less(_index u32, _metas u32) (u32, u32) {
 	return index, meta
 }
 
-[inline]
+@[inline]
 fn (mut m map) meta_greater(_index u32, _metas u32, kvi u32) {
 	mut meta := _metas
 	mut index := _index
@@ -352,7 +350,7 @@ fn (mut m map) meta_greater(_index u32, _metas u32, kvi u32) {
 	m.ensure_extra_metas(probe_count)
 }
 
-[inline]
+@[inline]
 fn (mut m map) ensure_extra_metas(probe_count u32) {
 	if (probe_count << 1) == m.extra_metas {
 		size_of_u32 := sizeof(u32)
@@ -567,7 +565,7 @@ fn (m &map) exists(key voidptr) bool {
 	return false
 }
 
-[inline]
+@[inline]
 fn (mut d DenseArray) delete(i int) {
 	if d.deletes == 0 {
 		d.all_deleted = vcalloc(d.cap) // sets to 0
@@ -579,7 +577,7 @@ fn (mut d DenseArray) delete(i int) {
 }
 
 // delete removes the mapping of a particular key from the map.
-[unsafe]
+@[unsafe]
 pub fn (mut m map) delete(key voidptr) {
 	mut index, mut meta := m.key_to_index(key)
 	index, meta = m.meta_less(index, meta)
@@ -671,7 +669,7 @@ pub fn (m &map) values() array {
 }
 
 // warning: only copies keys, does not clone
-[unsafe]
+@[unsafe]
 fn (d &DenseArray) clone() DenseArray {
 	res := DenseArray{
 		key_bytes: d.key_bytes
@@ -679,9 +677,9 @@ fn (d &DenseArray) clone() DenseArray {
 		cap: d.cap
 		len: d.len
 		deletes: d.deletes
-		all_deleted: 0
-		values: 0
-		keys: 0
+		all_deleted: unsafe { nil }
+		values: unsafe { nil }
+		keys: unsafe { nil }
 	}
 	unsafe {
 		if d.deletes != 0 {
@@ -694,7 +692,7 @@ fn (d &DenseArray) clone() DenseArray {
 }
 
 // clone returns a clone of the `map`.
-[unsafe]
+@[unsafe]
 pub fn (m &map) clone() map {
 	metasize := int(sizeof(u32) * (m.even_index + 2 + m.extra_metas))
 	res := map{
@@ -728,7 +726,7 @@ pub fn (m &map) clone() map {
 }
 
 // free releases all memory resources occupied by the `map`.
-[unsafe]
+@[unsafe]
 pub fn (m &map) free() {
 	unsafe { free(m.metas) }
 	unsafe {

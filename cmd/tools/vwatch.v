@@ -64,7 +64,7 @@ struct VFileStat {
 	mtime i64
 }
 
-[unsafe]
+@[unsafe]
 fn (mut vfs VFileStat) free() {
 	unsafe { vfs.path.free() }
 }
@@ -98,7 +98,7 @@ mut:
 	only_watch      []string // If not empty, *all* files that trigger updates, should match *at least one* of these s.match_glob() patterns. This is also triggered for vweb apps, to monitor for just *.v,*.js,*.css,*.html in vweb projects.
 }
 
-[if debug_vwatch ?]
+@[if debug_vwatch ?]
 fn (mut context Context) elog(msg string) {
 	eprintln('> vwatch ${context.pid}, ${msg}')
 }

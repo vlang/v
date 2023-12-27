@@ -19,7 +19,7 @@ const currency_id = 'cconst'
 
 pub struct Price {
 	net         f64
-	currency_id string [json: currencyId] = currency_id
+	currency_id string = currency_id @[json: currencyId]
 }
 
 //! BUGFIX
@@ -106,10 +106,10 @@ struct User {
 pub mut:
 	age           int
 	nums          []int
-	last_name     string [json: lastName]
-	is_registered bool   [json: IsRegistered]
-	typ           int    [json: 'type']
-	pets          string [json: 'pet_animals'; raw]
+	last_name     string @[json: lastName]
+	is_registered bool   @[json: IsRegistered]
+	typ           int    @[json: 'type']
+	pets          string @[json: 'pet_animals'; raw]
 }
 
 fn test_parse_user() {
@@ -333,7 +333,7 @@ fn test_decode_missing_maps_field() {
 
 struct Foo3 {
 	name string
-	age  int    [omitempty]
+	age  int    @[omitempty]
 }
 
 //! BUGFIX - .from_json(res)

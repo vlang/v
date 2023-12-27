@@ -1,4 +1,4 @@
-[heap]
+@[heap]
 struct Hwe {
 mut:
 	n int

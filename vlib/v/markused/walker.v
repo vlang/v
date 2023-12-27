@@ -60,7 +60,7 @@ pub fn (mut w Walker) mark_root_fns(all_fn_root_names []string) {
 			$if trace_skip_unused_roots ? {
 				println('>>>> ${fn_name} uses: ')
 			}
-			w.fn_decl(mut w.all_fns[fn_name])
+			unsafe { w.fn_decl(mut w.all_fns[fn_name]) }
 		}
 	}
 }

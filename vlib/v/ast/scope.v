@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module ast
 
-[heap]
+@[heap]
 pub struct Scope {
 pub mut:
 	// mut:
@@ -16,7 +16,7 @@ pub mut:
 	end_pos              int
 }
 
-[unsafe]
+@[unsafe]
 pub fn (s &Scope) free() {
 	unsafe {
 		s.objects.free()
@@ -175,7 +175,7 @@ pub fn (s &Scope) innermost(pos int) &Scope {
 	return s
 }
 
-[inline]
+@[inline]
 pub fn (s &Scope) contains(pos int) bool {
 	return pos >= s.start_pos && pos <= s.end_pos
 }

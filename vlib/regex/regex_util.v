@@ -123,7 +123,7 @@ pub fn (re RE) get_group_list() []Re_group {
 *
 ******************************************************************************/
 // match_string Match the pattern with the in_txt string
-[direct_array_access]
+@[direct_array_access]
 pub fn (re &RE) match_string(in_txt string) (int, int) {
 	unsafe {
 		start, mut end := re.match_base(in_txt.str, in_txt.len + 1)
@@ -160,7 +160,7 @@ pub fn (re &RE) matches_string(in_txt string) bool {
 ******************************************************************************/
 /*
 // find internal implementation HERE for reference do not remove!!
-[direct_array_access]
+@[direct_array_access]
 fn (mut re RE) find_imp(in_txt string) (int,int) {
 	old_flag := re.flag
 	re.flag |= f_src  // enable search mode
@@ -180,7 +180,7 @@ fn (mut re RE) find_imp(in_txt string) (int,int) {
 */
 
 // find try to find the first match in the input string
-[direct_array_access]
+@[direct_array_access]
 pub fn (mut re RE) find(in_txt string) (int, int) {
 	// old_flag := re.flag
 	// re.flag |= f_src  // enable search mode
@@ -220,7 +220,7 @@ pub fn (mut re RE) find(in_txt string) (int, int) {
 }
 
 // find try to find the first match in the input string strarting from start index
-[direct_array_access]
+@[direct_array_access]
 pub fn (mut re RE) find_from(in_txt string, start int) (int, int) {
 	old_flag := re.flag
 	// re.flag |= f_src // enable search mode
@@ -267,7 +267,7 @@ pub fn (mut re RE) find_from(in_txt string, start int) (int, int) {
 // mut re := regex.regex_opt('f|t[eo]+')?
 // res := re.find_all(blurb) // [0, 3, 12, 15, 20, 23, 28, 31, 33, 39]
 // ```
-[direct_array_access]
+@[direct_array_access]
 pub fn (mut re RE) find_all(in_txt string) []int {
 	// old_flag := re.flag
 	// re.flag |= f_src // enable search mode
@@ -336,7 +336,7 @@ pub fn (mut re RE) split(in_txt string) []string {
 }
 
 // find_all_str find all the non overlapping occurrences of the match pattern, return a string list
-[direct_array_access]
+@[direct_array_access]
 pub fn (mut re RE) find_all_str(in_txt string) []string {
 	// old_flag := re.flag
 	// re.flag |= f_src // enable search mode

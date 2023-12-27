@@ -1,9 +1,9 @@
 import v.reflection
 
-[test_struct]
+@[test_struct]
 struct Test {
-	m map[int]string [test]
-	n ?string        [test2; test3]
+	m map[int]string @[test]
+	n ?string        @[test2; test3]
 }
 
 enum Flags {

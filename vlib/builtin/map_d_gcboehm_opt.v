@@ -6,7 +6,7 @@
 
 module builtin
 
-[inline]
+@[inline]
 fn __malloc_at_least_one(how_many_bytes u64, noscan bool) &u8 {
 	if noscan {
 		return unsafe { malloc_noscan(__at_least_one(how_many_bytes)) }
@@ -14,7 +14,7 @@ fn __malloc_at_least_one(how_many_bytes u64, noscan bool) &u8 {
 	return unsafe { malloc(__at_least_one(how_many_bytes)) }
 }
 
-[inline]
+@[inline]
 fn new_dense_array_noscan(key_bytes int, key_noscan bool, value_bytes int, value_noscan bool) DenseArray {
 	cap := 8
 	return DenseArray{
@@ -23,7 +23,7 @@ fn new_dense_array_noscan(key_bytes int, key_noscan bool, value_bytes int, value
 		cap: cap
 		len: 0
 		deletes: 0
-		all_deleted: 0
+		all_deleted: unsafe { nil }
 		keys: __malloc_at_least_one(u64(cap) * u64(key_bytes), key_noscan)
 		values: __malloc_at_least_one(u64(cap) * u64(value_bytes), value_noscan)
 	}

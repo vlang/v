@@ -48,8 +48,8 @@ levels = { "info" = 1, "warn" = 2, "critical" = 3 }
 '
 
 struct FieldRemap {
-	text string [toml: 'txt']
-	num  u64    [toml: 'uint64']
+	text string @[toml: 'txt']
+	num  u64    @[toml: 'uint64']
 }
 
 struct Bio {

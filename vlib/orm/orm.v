@@ -2,42 +2,40 @@ module orm
 
 import time
 
-pub const (
-	num64       = [typeof[i64]().idx, typeof[u64]().idx]
-	nums        = [
-		typeof[i8]().idx,
-		typeof[i16]().idx,
-		typeof[int]().idx,
-		typeof[u8]().idx,
-		typeof[u16]().idx,
-		typeof[u32]().idx,
-		typeof[bool]().idx,
-	]
-	float       = [
-		typeof[f32]().idx,
-		typeof[f64]().idx,
-	]
-	type_string = typeof[string]().idx
-	serial      = -1
-	time_       = -2
-	enum_       = -3
-	type_idx    = {
-		'i8':     typeof[i8]().idx
-		'i16':    typeof[i16]().idx
-		'int':    typeof[int]().idx
-		'i64':    typeof[i64]().idx
-		'u8':     typeof[u8]().idx
-		'u16':    typeof[u16]().idx
-		'u32':    typeof[u32]().idx
-		'u64':    typeof[u64]().idx
-		'f32':    typeof[f32]().idx
-		'f64':    typeof[f64]().idx
-		'bool':   typeof[bool]().idx
-		'string': typeof[string]().idx
-	}
-	string_max_len = 2048
-	null_primitive = Primitive(Null{})
-)
+pub const num64 = [typeof[i64]().idx, typeof[u64]().idx]
+pub const nums = [
+	typeof[i8]().idx,
+	typeof[i16]().idx,
+	typeof[int]().idx,
+	typeof[u8]().idx,
+	typeof[u16]().idx,
+	typeof[u32]().idx,
+	typeof[bool]().idx,
+]
+pub const float = [
+	typeof[f32]().idx,
+	typeof[f64]().idx,
+]
+pub const type_string = typeof[string]().idx
+pub const serial = -1
+pub const time_ = -2
+pub const enum_ = -3
+pub const type_idx = {
+	'i8':     typeof[i8]().idx
+	'i16':    typeof[i16]().idx
+	'int':    typeof[int]().idx
+	'i64':    typeof[i64]().idx
+	'u8':     typeof[u8]().idx
+	'u16':    typeof[u16]().idx
+	'u32':    typeof[u32]().idx
+	'u64':    typeof[u64]().idx
+	'f32':    typeof[f32]().idx
+	'f64':    typeof[f64]().idx
+	'bool':   typeof[bool]().idx
+	'string': typeof[string]().idx
+}
+pub const string_max_len = 2048
+pub const null_primitive = Primitive(Null{})
 
 pub type Primitive = InfixType
 	| Null

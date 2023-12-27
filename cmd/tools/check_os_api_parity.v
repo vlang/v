@@ -10,24 +10,22 @@ import v.ast
 import rand
 import term
 
-const (
-	base_os      = 'linux'
-	os_names     = ['linux', 'macos', 'windows', 'freebsd', 'openbsd', 'solaris', 'termux']
-	skip_modules = [
-		'builtin.bare',
-		'builtin.linux_bare.old',
-		'builtin.js',
-		'strconv',
-		'strconv.ftoa',
-		'hash',
-		'strings',
-		'crypto.rand',
-		'os.bare',
-		'os2',
-		'szip',
-		'v.eval',
-	]
-)
+const base_os = 'linux'
+const os_names = ['linux', 'macos', 'windows', 'freebsd', 'openbsd', 'solaris', 'termux']
+const skip_modules = [
+	'builtin.bare',
+	'builtin.linux_bare.old',
+	'builtin.js',
+	'strconv',
+	'strconv.ftoa',
+	'hash',
+	'strings',
+	'crypto.rand',
+	'os.bare',
+	'os2',
+	'szip',
+	'v.eval',
+]
 
 struct App {
 	diff_cmd   string

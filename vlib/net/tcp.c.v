@@ -3,12 +3,10 @@ module net
 import time
 import strings
 
-pub const (
-	tcp_default_read_timeout  = 30 * time.second
-	tcp_default_write_timeout = 30 * time.second
-)
+pub const tcp_default_read_timeout = 30 * time.second
+pub const tcp_default_write_timeout = 30 * time.second
 
-[heap]
+@[heap]
 pub struct TcpConn {
 pub mut:
 	sock TcpSocket
@@ -249,12 +247,12 @@ pub fn (mut c TcpConn) set_write_timeout(t time.Duration) {
 	c.write_timeout = t
 }
 
-[inline]
+@[inline]
 pub fn (c TcpConn) wait_for_read() ! {
 	return wait_for_read(c.sock.handle, c.read_deadline, c.read_timeout)
 }
 
-[inline]
+@[inline]
 pub fn (mut c TcpConn) wait_for_write() ! {
 	return wait_for_write(c.sock.handle, c.write_deadline, c.write_timeout)
 }
@@ -295,7 +293,7 @@ mut:
 	accept_deadline time.Time
 }
 
-[params]
+@[params]
 pub struct ListenOptions {
 pub:
 	dualstack bool = true
@@ -537,9 +535,7 @@ fn (mut s TcpSocket) @select(test Select, timeout time.Duration) !bool {
 	return @select(s.handle, test, timeout)
 }
 
-const (
-	connect_timeout = 5 * time.second
-)
+const connect_timeout = 5 * time.second
 
 fn (mut s TcpSocket) connect(a Addr) ! {
 	$if !net_blocking_sockets ? {

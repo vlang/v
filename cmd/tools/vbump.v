@@ -7,10 +7,9 @@ import os
 import regex
 import semver
 
-const (
-	tool_name        = os.file_name(os.executable())
-	tool_version     = '0.1.0'
-	tool_description = '\n  Bump the semantic version of the v.mod and/or specified files.
+const tool_name = os.file_name(os.executable())
+const tool_version = '0.1.0'
+const tool_description = '\n  Bump the semantic version of the v.mod and/or specified files.
 
   The first instance of a version number is replaced with the new version.
   Additionally, the line affected must contain the word "version" in any
@@ -34,8 +33,8 @@ Examples:
   Upgrade the minor version in sample.v only
     v bump --minor sample.v
 '
-	semver_query = r'((0)|([1-9]\d*)\.){2}(0)|([1-9]\d*)(\-[\w\d\.\-_]+)?(\+[\w\d\.\-_]+)?'
-)
+
+const semver_query = r'((0)|([1-9]\d*)\.){2}(0)|([1-9]\d*)(\-[\w\d\.\-_]+)?(\+[\w\d\.\-_]+)?'
 
 struct Options {
 	show_help bool
@@ -110,7 +109,7 @@ fn process_file(input_file string, options Options) ! {
 	os.rm(backup_file) or {}
 
 	// Rename the original to the backup.
-	os.mv(input_file, backup_file) or { return error('Failed to copy file: ${input_file}') }
+	os.mv(input_file, backup_file) or { return error('Failed to move file: ${input_file}') }
 
 	// Process the old file and write it back to the original.
 	os.write_file(input_file, new_lines.join_lines()) or {

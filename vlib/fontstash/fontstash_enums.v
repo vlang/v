@@ -1,12 +1,12 @@
 module fontstash
 
-[flag]
+@[flag]
 pub enum Flags {
 	top_left
 	bottom_left
 }
 
-[flag]
+@[flag]
 pub enum Align {
 	// Horizontal align
 	left // Default

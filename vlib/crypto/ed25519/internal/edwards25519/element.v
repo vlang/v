@@ -31,31 +31,29 @@ mut:
 	l4 u64
 }
 
-const (
-	mask_low_51_bits = u64((1 << 51) - 1)
-	fe_zero          = Element{
-		l0: 0
-		l1: 0
-		l2: 0
-		l3: 0
-		l4: 0
-	}
-	fe_one = Element{
-		l0: 1
-		l1: 0
-		l2: 0
-		l3: 0
-		l4: 0
-	}
-	// sqrt_m1 is 2^((p-1)/4), which squared is equal to -1 by Euler's Criterion.
-	sqrt_m1 = Element{
-		l0: 1718705420411056
-		l1: 234908883556509
-		l2: 2233514472574048
-		l3: 2117202627021982
-		l4: 765476049583133
-	}
-)
+const mask_low_51_bits = u64((1 << 51) - 1)
+const fe_zero = Element{
+	l0: 0
+	l1: 0
+	l2: 0
+	l3: 0
+	l4: 0
+}
+const fe_one = Element{
+	l0: 1
+	l1: 0
+	l2: 0
+	l3: 0
+	l4: 0
+}
+// sqrt_m1 is 2^((p-1)/4), which squared is equal to -1 by Euler's Criterion.
+const sqrt_m1 = Element{
+	l0: 1718705420411056
+	l1: 234908883556509
+	l2: 2233514472574048
+	l3: 2117202627021982
+	l4: 765476049583133
+}
 
 // mul_64 returns a * b.
 fn mul_64(a u64, b u64) Uint128 {

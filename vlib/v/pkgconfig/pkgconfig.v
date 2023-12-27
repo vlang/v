@@ -3,23 +3,21 @@ module pkgconfig
 import semver
 import os
 
-const (
-	default_paths = [
-		'/usr/local/lib/x86_64-linux-gnu/pkgconfig',
-		'/usr/local/lib64/pkgconfig',
-		'/usr/local/lib/pkgconfig',
-		'/usr/local/share/pkgconfig',
-		'/usr/lib/x86_64-linux-gnu/pkgconfig',
-		'/usr/lib/aarch64-linux-gnu/pkgconfig',
-		'/usr/lib64/pkgconfig',
-		'/usr/lib/pkgconfig',
-		'/usr/share/pkgconfig',
-		'/opt/homebrew/lib/pkgconfig', // Brew on macOS
-		'/usr/local/libdata/pkgconfig', // FreeBSD
-		'/usr/lib/i386-linux-gnu/pkgconfig', // Debian 32bit
-	]
-	version       = '0.3.3'
-)
+const default_paths = [
+	'/usr/local/lib/x86_64-linux-gnu/pkgconfig',
+	'/usr/local/lib64/pkgconfig',
+	'/usr/local/lib/pkgconfig',
+	'/usr/local/share/pkgconfig',
+	'/usr/lib/x86_64-linux-gnu/pkgconfig',
+	'/usr/lib/aarch64-linux-gnu/pkgconfig',
+	'/usr/lib64/pkgconfig',
+	'/usr/lib/pkgconfig',
+	'/usr/share/pkgconfig',
+	'/opt/homebrew/lib/pkgconfig', // Brew on macOS
+	'/usr/local/libdata/pkgconfig', // FreeBSD
+	'/usr/lib/i386-linux-gnu/pkgconfig', // Debian 32bit
+]
+const version = '0.3.3'
 
 pub struct Options {
 pub:
@@ -162,13 +160,13 @@ fn (mut pc PkgConfig) resolve(pkgname string) !string {
 pub fn atleast(v string) bool {
 	v0 := semver.from(pkgconfig.version) or { return false }
 	v1 := semver.from(v) or { return false }
-	return v0.gt(v1)
+	return v0 > v1
 }
 
 pub fn (mut pc PkgConfig) atleast(v string) bool {
 	v0 := semver.from(pc.version) or { return false }
 	v1 := semver.from(v) or { return false }
-	return v0.gt(v1)
+	return v0 > v1
 }
 
 pub fn (mut pc PkgConfig) extend(pcdep &PkgConfig) !string {

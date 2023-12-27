@@ -18,7 +18,7 @@ pub const default_entities_reverse = {
 	'"': 'quot'
 }
 
-[params]
+@[params]
 pub struct EscapeConfig {
 	reverse_entities map[string]string = xml.default_entities_reverse
 }
@@ -36,7 +36,7 @@ pub fn escape_text(content string, config EscapeConfig) string {
 	return content.replace_each(flattened_entities)
 }
 
-[params]
+@[params]
 pub struct UnescapeConfig {
 	entities map[string]string = xml.default_entities
 }

@@ -17,7 +17,7 @@ mut:
 	owns_socket bool
 }
 
-[params]
+@[params]
 pub struct SSLConnectConfig {
 	verify   string // the path to a rootca.pem file, containing trusted CA certificate(s)
 	cert     string // the path to a cert.pem file, containing client certificate(s) for the request
@@ -34,8 +34,8 @@ pub fn new_ssl_conn(config SSLConnectConfig) !&SSLConn {
 	}
 	mut conn := &SSLConn{
 		config: config
-		sslctx: 0
-		ssl: 0
+		sslctx: unsafe { nil }
+		ssl: unsafe { nil }
 		handle: 0
 	}
 	conn.init() or { return err }

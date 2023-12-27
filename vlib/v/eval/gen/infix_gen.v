@@ -4,33 +4,33 @@ module main
 import strings
 import os
 
-const (
-	header = '[generated]
+const header = '[generated]
 module eval
 import v.token
 import v.ast
 fn(e Eval)infix_expr(left Object,right Object,op token.Kind,expecting ast.Type)Object{match op{'
-	footer = "else{e.error('unknown infix expression: \$op')}}return empty // should e.error before this anyway
+
+const footer = "else{e.error('unknown infix expression: \$op')}}return empty // should e.error before this anyway
 }
 "
-	uk_expect_footer = "else{e.error('unknown infix expectation: \${e.table.sym(expecting).str()}')}}"
-	comparison       = {
-		'gt': '>'
-		'lt': '<'
-		'eq': '=='
-		'ne': '!='
-	}
-	math_ops = {
-		'plus':        '+'
-		'minus':       '-'
-		'mul':         '*'
-		'div':         '/'
-		'right_shift': '>>'
-		'left_shift':  '<<'
-	}
-	compound_types = ['Int', 'Uint', 'Float']
-	literal_types  = ['i64', 'f64']
-)
+
+const uk_expect_footer = "else{e.error('unknown infix expectation: \${e.table.sym(expecting).str()}')}}"
+const comparison = {
+	'gt': '>'
+	'lt': '<'
+	'eq': '=='
+	'ne': '!='
+}
+const math_ops = {
+	'plus':        '+'
+	'minus':       '-'
+	'mul':         '*'
+	'div':         '/'
+	'right_shift': '>>'
+	'left_shift':  '<<'
+}
+const compound_types = ['Int', 'Uint', 'Float']
+const literal_types = ['i64', 'f64']
 
 fn main() {
 	mut b := strings.new_builder(124000)

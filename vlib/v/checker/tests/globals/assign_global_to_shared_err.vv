@@ -1,4 +1,4 @@
-[has_globals]
+@[has_globals]
 __global a = 0
 
 fn main() {

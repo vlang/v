@@ -9,13 +9,13 @@ module m4
 import math
 
 // Translate degrees to radians
-[inline]
+@[inline]
 pub fn rad(deg f32) f32 {
 	return (math.pi / 180.0) * deg
 }
 
 // Translate radians to degrees
-[inline]
+@[inline]
 pub fn deg(grad f32) f32 {
 	return (180.0 / math.pi) * grad
 }

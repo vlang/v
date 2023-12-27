@@ -44,7 +44,7 @@ pub fn (_str string) to_wide() &u16 {
 // in advance to use string_from_wide2/2).
 // See also builtin.wchar.to_string/1, for a version that eases working with
 // the platform dependent &wchar_t L"" strings.
-[manualfree; unsafe]
+@[manualfree; unsafe]
 pub fn string_from_wide(_wstr &u16) string {
 	$if windows {
 		unsafe {
@@ -66,7 +66,7 @@ pub fn string_from_wide(_wstr &u16) string {
 // and to pass it as the second argument.
 // See also builtin.wchar.to_string2/2, for a version that eases working
 // with the platform dependent &wchar_t L"" strings.
-[manualfree; unsafe]
+@[manualfree; unsafe]
 pub fn string_from_wide2(_wstr &u16, len int) string {
 	$if windows {
 		unsafe {

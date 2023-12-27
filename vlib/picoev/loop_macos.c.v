@@ -20,7 +20,7 @@ pub mut:
 	udata voidptr
 }
 
-[heap]
+@[heap]
 pub struct KqueueLoop {
 mut:
 	id    int
@@ -49,7 +49,7 @@ pub fn create_kqueue_loop(id int) !&KqueueLoop {
 }
 
 // ev_set sets a new `kevent` with file descriptor `index`
-[inline]
+@[inline]
 pub fn (mut pv Picoev) ev_set(index int, operation int, events int) {
 	// vfmt off
 	filter := i16(
@@ -64,19 +64,19 @@ pub fn (mut pv Picoev) ev_set(index int, operation int, events int) {
 
 // backend_build uses the lower 8 bits to store the old events and the higher 8
 // bits to store the next file descriptor in `Target.backend`
-[inline]
+@[inline]
 fn backend_build(next_fd int, events u32) int {
 	return int((u32(next_fd) << 8) | (events & 0xff))
 }
 
 // get the lower 8 bits
-[inline]
+@[inline]
 fn backend_get_old_events(backend int) int {
 	return backend & 0xff
 }
 
 // get the higher 8 bits
-[inline]
+@[inline]
 fn backend_get_next_fd(backend int) int {
 	return backend >> 8
 }
@@ -121,7 +121,7 @@ fn (mut pv Picoev) apply_pending_changes(apply_all bool) int {
 	return total
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn (mut pv Picoev) update_events(fd int, events int) int {
 	// check if fd is in range
 	assert fd < max_fds
@@ -155,7 +155,7 @@ fn (mut pv Picoev) update_events(fd int, events int) int {
 	return 0
 }
 
-[direct_array_access]
+@[direct_array_access]
 fn (mut pv Picoev) poll_once(max_wait int) int {
 	ts := C.timespec{
 		tv_sec: max_wait

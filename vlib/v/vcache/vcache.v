@@ -173,12 +173,12 @@ pub fn (mut cm CacheManager) mod_load(mod string, postfix string, key string) !s
 	return content
 }
 
-[if trace_usecache ?]
+@[if trace_usecache ?]
 pub fn dlog(fname string, s string) {
 	xlog(fname, s)
 }
 
-[if trace_usecache_n ?]
+@[if trace_usecache_n ?]
 fn nlog(fname string, s string) {
 	xlog(fname, s)
 }
@@ -192,7 +192,7 @@ fn xlog(fname string, s string) {
 	}
 }
 
-[unsafe]
+@[unsafe]
 fn mypid() int {
 	mut static pid := 0
 	if pid == 0 {

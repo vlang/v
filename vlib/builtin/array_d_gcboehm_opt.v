@@ -115,7 +115,7 @@ fn (mut a array) ensure_cap_noscan(required int) {
 
 // version of `repeat()` that handles multi dimensional arrays
 // `unsafe` to call directly because `depth` is not checked
-[unsafe]
+@[unsafe]
 fn (a array) repeat_to_depth_noscan(count int, depth int) array {
 	if count < 0 {
 		panic('array.repeat: count is negative: ${count}')
@@ -165,7 +165,7 @@ fn (mut a array) insert_noscan(i int, val voidptr) {
 }
 
 // insert_many inserts many values into the array from index `i`.
-[unsafe]
+@[unsafe]
 fn (mut a array) insert_many_noscan(i int, val voidptr, size int) {
 	$if !no_bounds_checking {
 		if i < 0 || i > a.len {
@@ -188,7 +188,7 @@ fn (mut a array) prepend_noscan(val voidptr) {
 }
 
 // prepend_many prepends another array to this array.
-[unsafe]
+@[unsafe]
 fn (mut a array) prepend_many_noscan(val voidptr, size int) {
 	unsafe { a.insert_many_noscan(0, val, size) }
 }
@@ -217,7 +217,7 @@ fn (a array) clone_static_to_depth_noscan(depth int) array {
 }
 
 // recursively clone given array - `unsafe` when called directly because depth is not checked
-[unsafe]
+@[unsafe]
 fn (a &array) clone_to_depth_noscan(depth int) array {
 	mut size := u64(a.cap) * u64(a.element_size)
 	if size == 0 {
@@ -254,7 +254,7 @@ fn (mut a array) push_noscan(val voidptr) {
 
 // push_many implements the functionality for pushing another array.
 // `val` is array.data and user facing usage is `a << [1,2,3]`
-[unsafe]
+@[unsafe]
 fn (mut a3 array) push_many_noscan(val voidptr, size int) {
 	if size <= 0 || val == unsafe { nil } {
 		return
@@ -298,7 +298,7 @@ fn (mut a array) grow_cap_noscan(amount int) {
 }
 
 // grow_len ensures that an array has a.len + amount of length
-[unsafe]
+@[unsafe]
 fn (mut a array) grow_len_noscan(amount int) {
 	a.ensure_cap_noscan(a.len + amount)
 	a.len += amount

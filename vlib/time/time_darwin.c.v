@@ -7,7 +7,7 @@ const start_time = C.mach_absolute_time()
 
 const time_base = init_time_base()
 
-[typedef]
+@[typedef]
 pub struct C.mach_timebase_info_data_t {
 	numer u32
 	denom u32
@@ -45,7 +45,7 @@ fn sys_mono_now_darwin() u64 {
 
 // Note: vpc_now_darwin is used by `v -profile` .
 // It should NOT call *any other v function*, just C functions and casts.
-[inline]
+@[inline]
 fn vpc_now_darwin() u64 {
 	tm := C.mach_absolute_time()
 	if time.time_base.denom == 0 {
