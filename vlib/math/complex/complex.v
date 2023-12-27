@@ -13,8 +13,8 @@ pub mut:
 }
 
 // complex returns a complex struct with the given `real` and `imaginary` values
-pub fn complex(re f64, im f64) Complex {
-	return Complex{re, im}
+pub fn complex(real f64, imaginary f64) Complex {
+	return Complex{real, imaginary}
 }
 
 // To String method
