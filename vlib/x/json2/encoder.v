@@ -112,7 +112,7 @@ fn (e &Encoder) encode_any(val Any, level int, mut buf []u8) ! {
 		}
 		time.Time {
 			buf << `"`
-			buf.push_many(val.format_rfc3339().str, val.format_rfc3339().len)
+			unsafe { buf.push_many(val.format_rfc3339().str, val.format_rfc3339().len) }
 			buf << `"`
 		}
 		Null {
