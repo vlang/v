@@ -176,3 +176,15 @@ fn test_cleanup_cache() {
 	assert os.exists(path1) == false
 	assert os.exists(path2) == true
 }
+
+fn test_include() {
+	mut am := assets.AssetManager{}
+
+	css_path := get_test_file_path('test1.css')
+	js_path := get_test_file_path('test1.js')
+	am.add(.css, css_path, 'other.css')!
+	am.add(.js, js_path, 'js/test.js')!
+
+	assert am.include(.css, 'other.css') == '<link rel="stylesheet" href="${css_path}">'
+	assert am.include(.js, 'js/test.js') == '<script src="${js_path}"></script>'
+}

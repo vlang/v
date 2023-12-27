@@ -12,7 +12,7 @@ pub enum AssetType {
 	all
 }
 
-struct Asset {
+pub struct Asset {
 pub:
 	kind          AssetType
 	file_path     string
@@ -198,6 +198,7 @@ pub fn (mut am AssetManager) cleanup_cache() ! {
 	}
 }
 
+// check if an asset is already added to the asset manager
 pub fn (am AssetManager) exists(asset_type AssetType, include_name string) bool {
 	assets := am.get_assets(asset_type)
 
@@ -213,18 +214,38 @@ pub fn (am AssetManager) include(asset_type AssetType, include_name string) vweb
 	assets := am.get_assets(asset_type)
 	for asset in assets {
 		if asset.include_name == include_name {
-			// always add href link from root ('/css/main.css')
-			return '<link rel="stylesheet" href="/${asset.file_path}">'
+			// always add link/src from root ('/css/main.css')
+			mut real_path := asset.file_path
+			if real_path[0] != `/` {
+				real_path = '/${asset.file_path}'
+			}
+
+			return match asset_type {
+				.css {
+					'<link rel="stylesheet" href="${real_path}">'
+				}
+				.js {
+					'<script src="${real_path}"></script>'
+				}
+				else {
+					eprintln('[vweb.assets] can only include css or js assets')
+					''
+				}
+			}
 		}
 	}
 	eprintln('[vweb.assets] no asset with include name "${include_name}" exists!')
 	return ''
 }
 
-// combine assets of type `asset_type` into a single file and return the outputted file path
+// combine assets of type `asset_type` into a single file and return the outputted file path.
+// If you call `combine` with asset type `all` the function will return an empty string,
+// the minified files will be available at `combined_file_name`.`asset_type`
 pub fn (mut am AssetManager) combine(asset_type AssetType) !string {
 	if asset_type == .all {
-		return error('cannot combine assets of type "all"')
+		am.combine(.css)!
+		am.combine(.js)!
+		return ''
 	}
 	if am.cache_dir == '' {
 		return error('cannot combine assets: cache directory is not valid')
