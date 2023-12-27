@@ -141,8 +141,8 @@ fn main() {
 	mut app := &App{}
 	// add all assets in the "assets" folder
 	app.am.handle_assets('assets')!
-    // remove all old cached files from the cache folder
-    app.am.cleanup_cache()!
+	// remove all old cached files from the cache folder
+	app.am.cleanup_cache()!
 	// serve all files in the "assets" folder as static files
 	app.handle_static('assets', false)!
 	// start the app
