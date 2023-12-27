@@ -555,21 +555,25 @@ pub fn (typ Type) flip_signedness() Type {
 	}
 }
 
+// is_int_literal returns `true` if `typ` is a int literal
 @[inline]
 pub fn (typ Type) is_int_literal() bool {
 	return int(typ) == ast.int_literal_type_idx
 }
 
+// is_number returns `true` if `typ` is a number
 @[inline]
 pub fn (typ Type) is_number() bool {
 	return typ.clear_flags() in ast.number_type_idxs
 }
 
+// is_string returns `true` if `typ` is a string type
 @[inline]
 pub fn (typ Type) is_string() bool {
 	return typ.idx() == ast.string_type_idx
 }
 
+// is_bool returns `true` if `typ` is of bool type
 @[inline]
 pub fn (typ Type) is_bool() bool {
 	return typ.idx() == ast.bool_type_idx
@@ -761,6 +765,7 @@ pub enum Kind {
 	thread
 }
 
+// str returns the the internal & source name of the type
 pub fn (t TypeSymbol) str() string {
 	return t.name
 }
