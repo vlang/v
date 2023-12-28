@@ -277,32 +277,6 @@ const skip_on_windows_msvc = [
 	'vlib/v/tests/sumtype_as_cast_1_test.v', // error: cannot support compound statement expression ({expr; expr; expr;})
 	'vlib/v/tests/sumtype_as_cast_2_test.v', // error: cannot support compound statement expression ({expr; expr; expr;})
 	'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v', // TODO
-	'vlib/toml/tests/alexcrichton_toml_rs_test.v', // error C2099: initializer is not a constant
-	'vlib/toml/tests/burntsushi_toml_test.v', // error C2099: initializer is not a constant
-	'vlib/toml/tests/iarna_toml_spec_test.v', // error C2099: initializer is not a constant
-	'vlib/v/tests/alias_sumtype_method_call_test.v', // error C2099: initializer is not a constant
-	'vlib/v/tests/init_multiple_branches_test.v', // error C2099: initializer is not a constant
-	'vlib/v/tests/result_with_index_expr_test.v', // error C2099: initializer is not a constant
-	'vlib/v/gen/js/tests/simple_sourcemap.v', // error C2099: initializer is not a constant
-	'vlib/v/gen/js/sourcemap/compare_test.v', // error C2099: initializer is not a constant
-	'vlib/v/gen/js/sourcemap/basic_test.v', // error C2099: initializer is not a constant
-	'vlib/v/gen/js/jsgen_test.v', // error C2099: initializer is not a constant
-	'vlib/toml/tests/array_of_tables_1_level_test.v', // error C2099: initializer is not a constant
-	'vlib/toml/tests/array_of_tables_2_level_test.v', // error C2099: initializer is not a constant
-	'vlib/toml/tests/array_of_tables_array_test.v', // error C2099: initializer is not a constant
-	'vlib/toml/tests/array_of_tables_edge_case_1_test.v', // error C2099: initializer is not a constant
-	'vlib/toml/tests/array_of_tables_edge_case_2_test.v', // error C2099: initializer is not a constant
-	'vlib/toml/tests/json_encoding_test.v', // error C2099: initializer is not a constant
-	'vlib/toml/tests/json_test.v', // error C2099: initializer is not a constant
-	'vlib/toml/tests/key_test.v', // error C2099: initializer is not a constant
-	'vlib/toml/tests/toml_bom_test.v', // error C2099: initializer is not a constant
-	'vlib/toml/tests/toml_test.v', // error C2099: initializer is not a constant
-	'vlib/rand/rand_test.js.v', // error C2099: initializer is not a constant
-	'vlib/strings/builder_test.js.v', // error C2099: initializer is not a constant
-	'vlib/strings/similarity_test.js.v', // error C2099: initializer is not a constant
-	'vlib/strings/strings_test.js.v', // error C2099: initializer is not a constant
-	'vlib/strings/textscanner/textscanner_test.js.v', // error C2099: initializer is not a constant
-	'vlib/v/tests/cast_test.js.v', // error C2099: initializer is not a constant
 ]
 const skip_on_windows = [
 	'do_not_remove',
