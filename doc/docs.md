@@ -4977,7 +4977,7 @@ import db.sqlite
 // sets a custom table name. Default is struct name (case-sensitive)
 @[table: 'customers']
 struct Customer {
-	id        int    @[primary; sql: serial] // a field named `id` of integer type must be the first field
+	id        int     @[primary; sql: serial] // a field named `id` of integer type must be the first field
 	name      string
 	nr_orders int
 	country   ?string
