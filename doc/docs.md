@@ -6965,13 +6965,20 @@ Make sure that in command you use a path to a V's file,
 in that case you need to modify content of a folder (add new file, for example),
 because changes in *message.v* will have no effect.
 
-Functions that you want to be reloaded must have `[live]` attribute
+Functions that you want to be reloaded must have `@[live]` attribute
 before their definition.
 
 Right now it's not possible to modify types while the program is running.
 
 More examples, including a graphical application:
 [github.com/vlang/v/tree/master/examples/hot_reload](https://github.com/vlang/v/tree/master/examples/hot_reload).
+
+#### About keeping states in hot reloading functions with v -live run
+V's hot code reloading relies on marking the functions that you want to reload with `@[live]`, then compiling a shared library of these `@[live]` functions, and then your v program loads that shared library at runtime. V (with the -live option) starts a new thread, that monitors the source files for changes, and when it detects modifications, it recompiles the shared library, and reloads it at runtime, so that new calls to those @[live] functions will be made to the newly loaded library.
+
+It keeps all the accumulated state (from locals outside the @[live] functions, from heap variables and from globals), but allows you to tweak the code in the marged functions quicker.
+
+When there are more substantial changes (to data structures, or to functions that were not marked), you would restart the run app manually.
 
 ### Cross-platform shell scripts in V
 
