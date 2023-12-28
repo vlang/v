@@ -4979,7 +4979,7 @@ import db.sqlite
 struct Customer {
 	id        int    @[primary; sql: serial] // a field named `id` of integer type must be the first field
 	name      string
-	nr_orders ?int
+	nr_orders int
 	country   string
 }
 
