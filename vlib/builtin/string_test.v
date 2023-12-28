@@ -1067,8 +1067,8 @@ fn test_split_into_lines() {
 	}
 }
 
-const single_bs = '\\'
-const double_bs = '\\\\'
+const single_backslash = '\\'
+const double_backslash = '\\\\'
 const newline = '\n'
 
 // vfmt off
@@ -1096,7 +1096,7 @@ fn test_string_literal_with_backslash_followed_by_newline() {
              Four \\\\
     Five \\\\\
     end'
-	assert b == 'One Two Three ${single_bs}Four ${double_bs}${newline}    Five ${double_bs}end'
+	assert b == 'One Two Three ${single_backslash}Four ${double_backslash}${newline}    Five ${double_backslash}end'
 	
 	// Note `\\` is followed *directly* by a newline, but `\\` is just an escape for `\`,
 	// and thus the newline has no special meaning, and should go into the string literal.
