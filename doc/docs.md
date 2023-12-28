@@ -4978,9 +4978,9 @@ import db.sqlite
 @[table: 'customers']
 struct Customer {
 	id        int    @[primary; sql: serial] // a field named `id` of integer type must be the first field
-	name      string @[nonull]
-	nr_orders int
-	country   string @[nonull]
+	name      string
+	nr_orders ?int
+	country   string
 }
 
 db := sqlite.connect('customers.db')!
