@@ -428,7 +428,7 @@ pub fn (f Any) to_time() !time.Time {
 		}
 	}
 }
-
+// map_from convert a struct to map of Any
 pub fn map_from[T](t T) map[string]Any {
 	mut m := map[string]Any{}
 	$if T is $struct {
