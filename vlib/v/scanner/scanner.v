@@ -1239,7 +1239,7 @@ pub fn (mut s Scanner) ident_string() string {
 			backslash_count++
 		}
 		// end of string
-		if c == s.quote && (is_raw || backslash_count % 2 == 0) {
+		if c == s.quote && (is_raw || backslash_count & 1 == 0) {
 			// handle '123\\' backslash at the end
 			break
 		}
@@ -1253,7 +1253,7 @@ pub fn (mut s Scanner) ident_string() string {
 			s.inc_line_number()
 		}
 		// Escape `\x` `\u` `\U`
-		if backslash_count % 2 == 1 && !is_raw && !is_cstr {
+		if backslash_count & 1 == 1 && !is_raw && !is_cstr {
 			// Escape `\x`
 			if c == `x` {
 				if s.text[s.pos + 1] == s.quote || !(s.text[s.pos + 1].is_hex_digit()
@@ -1293,7 +1293,7 @@ pub fn (mut s Scanner) ident_string() string {
 		}
 		// ${var} (ignore in vfmt mode) (skip \$)
 		if prevc == `$` && c == `{` && !is_raw
-			&& s.count_symbol_before(s.pos - 2, scanner.backslash) % 2 == 0 {
+			&& s.count_symbol_before(s.pos - 2, scanner.backslash) & 1 == 0 {
 			s.is_inside_string = true
 			if s.is_enclosed_inter {
 				s.is_nested_enclosed_inter = true
@@ -1306,7 +1306,7 @@ pub fn (mut s Scanner) ident_string() string {
 		}
 		// $var
 		if prevc == `$` && util.is_name_char(c) && !is_raw
-			&& s.count_symbol_before(s.pos - 2, scanner.backslash) % 2 == 0 {
+			&& s.count_symbol_before(s.pos - 2, scanner.backslash) & 1 == 0 {
 			s.is_inside_string = true
 			s.is_inter_start = true
 			s.pos -= 2
@@ -1573,7 +1573,7 @@ pub fn (mut s Scanner) ident_char() string {
 		// e.g. (octal) \141 (hex) \x61 or (unicode) \u2605 or (32 bit unicode) \U00002605
 		// we don't handle binary escape codes in rune literals
 		orig := c
-		if c.len % 2 == 0
+		if c.len & 1 == 0
 			&& (escaped_hex || escaped_unicode_16 || escaped_unicode_32 || escaped_octal) {
 			if escaped_unicode_16 {
 				// there can only be one, so attempt to decode it now
