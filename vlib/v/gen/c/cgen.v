@@ -5362,7 +5362,8 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 		field_expr := field.expr
 		match field.expr {
 			ast.ArrayInit {
-				if field.expr.is_fixed && g.pref.build_mode != .build_module {
+				if field.expr.is_fixed && g.pref.build_mode != .build_module
+					&& (!g.is_cc_msvc || field.expr.elem_type != ast.string_type) {
 					styp := g.typ(field.expr.typ)
 					val := g.expr_string(field.expr)
 					g.global_const_defs[util.no_dots(field.name)] = GlobalConstDef{
@@ -5370,6 +5371,10 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 						def: '${styp} ${const_name} = ${val}; // fixed array const'
 						dep_names: g.table.dependent_names_in_expr(field_expr)
 					}
+				} else if field.expr.is_fixed && g.is_cc_msvc
+					&& field.expr.elem_type == ast.string_type {
+					g.const_decl_init_later_msvc_string_fixed_array(field.mod, name, field.expr,
+						field.typ)
 				} else {
 					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false,
 						false)
@@ -5656,6 +5661,30 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ
 			g.cleanup.writeln('\tmap_free(&${cname});')
 		} else if styp == 'IError' {
 			g.cleanup.writeln('\tIError_free(&${cname});')
+		}
+	}
+}
+
+fn (mut g Gen) const_decl_init_later_msvc_string_fixed_array(mod string, name string, expr ast.ArrayInit, typ ast.Type) {
+	mut styp := g.typ(typ)
+	cname := g.c_const_name(name)
+	mut init := strings.new_builder(100)
+	for i, elem_expr in expr.exprs {
+		init.writeln(g.expr_string_surround('\t${cname}[${i}] = ', elem_expr, ';'))
+	}
+	mut def := '${styp} ${cname}'
+	g.global_const_defs[util.no_dots(name)] = GlobalConstDef{
+		mod: mod
+		def: '${def}; // inited later'
+		init: init.str().trim_right('\n')
+		dep_names: g.table.dependent_names_in_expr(expr)
+	}
+	if g.is_autofree {
+		sym := g.table.sym(typ)
+		if sym.has_method_with_generic_parent('free') {
+			g.cleanup.writeln('\t${styp}_free(&${cname});')
+		} else {
+			g.cleanup.writeln('\tarray_free(&${cname});')
 		}
 	}
 }
