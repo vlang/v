@@ -111,7 +111,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		is_dump_expr := expr is ast.DumpExpr
 		is_var_mut := expr.is_auto_deref_var()
 		str_fn_name := g.get_str_fn(exp_typ)
-		temp_var_needed := expr is ast.CallExpr && expr.return_type.is_ptr() && !unwrap_option
+		temp_var_needed := expr is ast.CallExpr && expr.return_type.is_ptr()
 		mut tmp_var := ''
 		if temp_var_needed {
 			tmp_var = g.new_tmp_var()
