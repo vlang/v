@@ -1741,7 +1741,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
 	if left_sym.kind == .array && array_builtin_methods_chk.matches(method_name) {
-		return c.array_builtin_method_call(mut node, left_type, c.table.sym(left_type))
+		return c.array_builtin_method_call(mut node, left_type)
 	} else if (left_sym.kind == .map || final_left_sym.kind == .map)
 		&& method_name in ['clone', 'keys', 'values', 'move', 'delete'] {
 		if left_sym.kind == .map {
@@ -1778,9 +1778,10 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		if !c.check_types(arg_type, info.elem_type) && !c.check_types(left_type, arg_type) {
 			c.error('cannot ${method_name} `${arg_sym.name}` to `${left_sym.name}`', arg_expr.pos())
 		}
-	} else if final_left_sym.kind == .array
-		&& method_name in ['filter', 'map', 'sort', 'sorted', 'contains', 'any', 'all', 'first', 'last', 'pop'] {
-		return c.array_builtin_method_call(mut node, unwrapped_left_type, final_left_sym)
+	} else if left_sym.kind == .alias && final_left_sym.kind == .array
+		&& array_builtin_methods_chk.matches(method_name) && method_name != 'clone'
+		&& !left_sym.has_method(method_name) {
+		return c.array_builtin_method_call(mut node, left_type)
 	} else if c.pref.backend.is_js() && left_sym.name.starts_with('Promise[')
 		&& method_name == 'wait' {
 		info := left_sym.info as ast.Struct
@@ -2731,7 +2732,8 @@ fn (mut c Checker) ensure_same_array_return_type(mut node ast.CallExpr, left_typ
 	}
 }
 
-fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type ast.Type, left_sym ast.TypeSymbol) ast.Type {
+fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type ast.Type) ast.Type {
+	left_sym := c.table.final_sym(left_type)
 	method_name := node.name
 	mut elem_typ := ast.void_type
 	if !c.is_builtin_mod && method_name == 'slice' {
