@@ -26,11 +26,11 @@ const comma_byte = `,`
 
 const colon_byte = `:`
 
-const unicode_escape_chars = [`\\`, `u`]!
+const unicode_escape_chars = [`\\`, `u`]
 
 const quote_byte = `"`
 
-const escaped_chars = [(r'\b'), (r'\f'), (r'\n'), (r'\r'), (r'\t')]!
+const escaped_chars = [(r'\b'), (r'\f'), (r'\n'), (r'\r'), (r'\t')]
 
 const curly_open = `{`
 
