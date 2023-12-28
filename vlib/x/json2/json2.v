@@ -429,7 +429,7 @@ pub fn (f Any) to_time() !time.Time {
 	}
 }
 
-fn map_from[T](t T) map[string]Any {
+pub fn map_from[T](t T) map[string]Any {
 	mut m := map[string]Any{}
 	$if T is $struct {
 		$for field in T.fields {
