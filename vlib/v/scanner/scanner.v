@@ -589,9 +589,9 @@ fn (mut s Scanner) scan_all_tokens_in_buffer() {
 	}
 	s.scan_remaining_text()
 	s.tidx = 0
-	$if debugscanner ? {
+	$if trace_scanner ? {
 		for t in s.all_tokens {
-			eprintln('> tidx:${t.tidx:-5} | kind: ${t.kind:-10} | lit: ${t.lit}')
+			eprintln('> tidx:${t.tidx:-5} | kind: ${t.kind:-10} | lit.len: ${t.lit.len:-5} | lit: `${t.lit}`')
 		}
 	}
 }
