@@ -4977,10 +4977,10 @@ import db.sqlite
 // sets a custom table name. Default is struct name (case-sensitive)
 @[table: 'customers']
 struct Customer {
-	id        int    @[primary; sql: serial] // a field named `id` of integer type must be the first field
+	id        int     @[primary; sql: serial] // a field named `id` of integer type must be the first field
 	name      string
 	nr_orders int
-	country   string
+	country   ?string
 }
 
 db := sqlite.connect('customers.db')!
@@ -4989,8 +4989,8 @@ db := sqlite.connect('customers.db')!
 // CREATE TABLE IF NOT EXISTS `Customer` (
 //      `id` INTEGER PRIMARY KEY,
 //      `name` TEXT NOT NULL,
-//      `nr_orders` INTEGER,
-//      `country` TEXT NOT NULL
+//      `nr_orders` INTEGER NOT NULL,
+//      `country` TEXT
 // )
 sql db {
 	create table Customer
@@ -5015,6 +5015,15 @@ sql db {
 	insert us_customer into Customer
 }!
 
+none_country_customer := Customer{
+	name: 'Dennis'
+	country: none
+	nr_orders: 2
+}
+sql db {
+	insert none_country_customer into Customer
+}!
+
 // update a customer:
 sql db {
 	update Customer set nr_orders = nr_orders + 1 where name == 'Bob'
@@ -5030,9 +5039,17 @@ println('number of all customers: ${nr_customers}')
 uk_customers := sql db {
 	select from Customer where country == 'uk' && nr_orders > 0
 }!
-println('We found a total of ${uk_customers.len} customers, that match the query.')
-for customer in uk_customers {
-	println('customer: ${customer.id}, ${customer.name}, ${customer.country}, ${customer.nr_orders}')
+println('We found a total of ${uk_customers.len} customers matching the query.')
+for c in uk_customers {
+	println('customer: ${c.id}, ${c.name}, ${c.country}, ${c.nr_orders}')
+}
+
+none_country_customers := sql db {
+	select from Customer where country is none
+}!
+println('We found a total of ${none_country_customers.len} customers, with no country set.')
+for c in none_country_customers {
+	println('customer: ${c.id}, ${c.name}, ${c.country}, ${c.nr_orders}')
 }
 
 // delete a customer
