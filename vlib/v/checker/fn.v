@@ -1779,9 +1779,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			c.error('cannot ${method_name} `${arg_sym.name}` to `${left_sym.name}`', arg_expr.pos())
 		}
 	} else if left_sym.kind == .alias && final_left_sym.kind == .array
-		&& array_builtin_methods_chk.matches(method_name)
-		&& !left_sym.has_method_with_generic_parent(method_name) {
-		return c.array_builtin_method_call(mut node, unwrapped_left_type)
+		&& array_builtin_methods_chk.matches(method_name) && !left_sym.has_method(method_name) {
+		return c.array_builtin_method_call(mut node, left_type)
 	} else if c.pref.backend.is_js() && left_sym.name.starts_with('Promise[')
 		&& method_name == 'wait' {
 		info := left_sym.info as ast.Struct
