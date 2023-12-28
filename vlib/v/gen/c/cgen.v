@@ -5423,7 +5423,6 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 					// only the ones which are inited later, so it's safe to use expr_string
 					g.const_decl_simple_define(field.mod, field.name, g.expr_string(field_expr))
 				} else if field.expr is ast.CastExpr {
-					// aqui?
 					if field.expr.expr is ast.ArrayInit {
 						if field.expr.expr.is_fixed && g.pref.build_mode != .build_module {
 							styp := g.typ(field.expr.typ)
