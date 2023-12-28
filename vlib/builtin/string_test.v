@@ -1262,3 +1262,21 @@ fn test_contains_byte() {
 	assert 'abc abca'.contains_u8(` `)
 	assert !'abc abca'.contains_u8(`A`)
 }
+
+fn test_backslash_new_line() {
+	assert '1\\
+	2'.len == 5
+
+	assert '\\
+test'.len == 6
+
+	assert '\\
+next'.len == 6
+
+	assert '1\\
+.'.len == 4
+
+	assert 'zzzzzzzzzzzzzzz\\'.len == 16
+
+	assert '1\\\'"'.len == 4
+}

@@ -1365,11 +1365,7 @@ pub fn (mut s Scanner) ident_string() string {
 		if n_cr_chars > 0 {
 			string_so_far = string_so_far.replace('\r', '')
 		}
-		if string_so_far.contains('\\\n') {
-			lit = trim_slash_line_break(string_so_far)
-		} else {
-			lit = string_so_far
-		}
+		lit = string_so_far
 	}
 	return lit
 }
@@ -1477,21 +1473,6 @@ fn (mut s Scanner) decode_u32erune(str string) string {
 	ss << segment
 	ss << str[end_idx..]
 	return ss.join('')
-}
-
-fn trim_slash_line_break(s string) string {
-	mut start := 0
-	mut ret_str := s
-	for {
-		idx := ret_str.index_after('\\\n', start)
-		if idx != -1 {
-			ret_str = ret_str[..idx] + ret_str[idx + 2..].trim_left(' \n\t\v\f\r')
-			start = idx
-		} else {
-			break
-		}
-	}
-	return ret_str
 }
 
 @[inline]

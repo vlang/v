@@ -46,7 +46,6 @@ pub fn smart_quote(str string, raw bool) string {
 	mut current := u8(0)
 	mut next := u8(0)
 	mut skip_next := false
-	mut is_double_escape := false
 	for {
 		pos++
 		if skip_next {
@@ -78,7 +77,6 @@ pub fn smart_quote(str string, raw bool) string {
 				// escaped backslash - keep as is
 				current = 0
 				skip_next = true
-				is_double_escape = true
 				result.write_string(util.double_escape)
 				continue
 			}
@@ -89,13 +87,6 @@ pub fn smart_quote(str string, raw bool) string {
 					continue
 				}
 				if next in util.invalid_escapes {
-					current = 0
-					skip_next = true
-					result.write_u8(next)
-					continue
-				}
-				// recognizes escape sequence of escape-char \\ to be one char \
-				if is_double_escape && (is_escape_sequence(next) || next.is_digit()) {
 					current = 0
 					skip_next = true
 					result.write_u8(next)
@@ -135,9 +126,4 @@ pub fn smart_quote(str string, raw bool) string {
 		result.write_u8(current)
 	}
 	return result.str()
-}
-
-@[inline]
-fn is_escape_sequence(c u8) bool {
-	return c in [`n`, `x`, `u`, `e`, `r`, `t`, `v`, `a`, `f`, `b`, `U`]
 }
