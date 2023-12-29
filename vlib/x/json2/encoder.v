@@ -579,14 +579,14 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 				buf << `\\`
 				buf << chr
 			} else if int(chr) < 0x20 {
-				// REVIEW
-				hex_code := chr.hex()
 				// unsafe { buf.push_many(json2.unicode_escape_chars.str, json2.unicode_escape_chars.len) } // \u
 				for r in json2.unicode_escape_chars {
 					buf << r
 				}
 				buf << json2.zero_in_byte // \u0
 				buf << json2.zero_in_byte // \u00
+
+				hex_code := chr.hex()
 				unsafe { buf.push_many(hex_code.str, hex_code.len) }
 			} else {
 				buf << chr
