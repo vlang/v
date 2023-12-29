@@ -232,7 +232,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 					|| field.typ is ?u8 || field.typ is ?u16 || field.typ is ?u32
 					|| field.typ is ?u64 {
 					str_value := val.$(field.name) ?.str()
-					unsafe { buf.push_manystr_value(.str, str_value.len) }
+					unsafe { buf.push_many(str_value.str, str_value.len) }
 				} $else $if field.typ is ?time.Time {
 					option_value := val.$(field.name) as ?time.Time
 					parsed_time := option_value as time.Time
