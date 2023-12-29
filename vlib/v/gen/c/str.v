@@ -111,12 +111,28 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		is_dump_expr := expr is ast.DumpExpr
 		is_var_mut := expr.is_auto_deref_var()
 		str_fn_name := g.get_str_fn(exp_typ)
+		temp_var_needed := expr is ast.CallExpr && expr.return_type.is_ptr()
+		mut tmp_var := ''
+		if temp_var_needed {
+			tmp_var = g.new_tmp_var()
+			ret_typ := g.typ(exp_typ)
+			line := g.go_before_last_stmt().trim_space()
+			g.empty_line = true
+			g.write('${ret_typ} ${tmp_var} = ')
+			g.expr(expr)
+			g.writeln(';')
+			g.write(line)
+		}
 		if is_ptr && !is_var_mut {
 			ref_str := '&'.repeat(typ.nr_muls())
 			g.write('str_intp(1, _MOV((StrIntpData[]){{_SLIT("${ref_str}"), ${si_s_code} ,{.d_s = isnil(')
 			if typ.has_flag(.option) {
 				g.write('*(${g.base_type(exp_typ)}*)&')
-				g.expr(expr)
+				if temp_var_needed {
+					g.write(tmp_var)
+				} else {
+					g.expr(expr)
+				}
 				g.write('.data')
 				g.write(') ? _SLIT("Option(&nil)") : ')
 			} else {
@@ -125,7 +141,11 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				defer {
 					g.inside_interface_deref = inside_interface_deref_old
 				}
-				g.expr(expr)
+				if temp_var_needed {
+					g.write(tmp_var)
+				} else {
+					g.expr(expr)
+				}
 				g.write(') ? _SLIT("nil") : ')
 			}
 		}
@@ -155,7 +175,11 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		if unwrap_option {
 			g.expr(expr)
 		} else {
-			g.expr_with_cast(expr, typ, typ)
+			if temp_var_needed {
+				g.write(tmp_var)
+			} else {
+				g.expr_with_cast(expr, typ, typ)
+			}
 		}
 
 		if is_shared {

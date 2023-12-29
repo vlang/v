@@ -589,9 +589,9 @@ fn (mut s Scanner) scan_all_tokens_in_buffer() {
 	}
 	s.scan_remaining_text()
 	s.tidx = 0
-	$if debugscanner ? {
+	$if trace_scanner ? {
 		for t in s.all_tokens {
-			eprintln('> tidx:${t.tidx:-5} | kind: ${t.kind:-10} | lit: ${t.lit}')
+			eprintln('> tidx:${t.tidx:-5} | kind: ${t.kind:-10} | lit.len: ${t.lit.len:-5} | lit: `${t.lit}`')
 		}
 	}
 }
@@ -1239,7 +1239,7 @@ pub fn (mut s Scanner) ident_string() string {
 			backslash_count++
 		}
 		// end of string
-		if c == s.quote && (is_raw || backslash_count % 2 == 0) {
+		if c == s.quote && (is_raw || backslash_count & 1 == 0) {
 			// handle '123\\' backslash at the end
 			break
 		}
@@ -1253,7 +1253,7 @@ pub fn (mut s Scanner) ident_string() string {
 			s.inc_line_number()
 		}
 		// Escape `\x` `\u` `\U`
-		if backslash_count % 2 == 1 && !is_raw && !is_cstr {
+		if backslash_count & 1 == 1 && !is_raw && !is_cstr {
 			// Escape `\x`
 			if c == `x` {
 				if s.text[s.pos + 1] == s.quote || !(s.text[s.pos + 1].is_hex_digit()
@@ -1287,13 +1287,13 @@ pub fn (mut s Scanner) ident_string() string {
 				u32_escapes_pos << s.pos - 1
 			}
 			// Unknown escape sequence
-			if !is_escape_sequence(c) && !c.is_digit() {
+			if !is_escape_sequence(c) && !c.is_digit() && c != `\n` {
 				s.error('`${c.ascii_str()}` unknown escape sequence')
 			}
 		}
 		// ${var} (ignore in vfmt mode) (skip \$)
 		if prevc == `$` && c == `{` && !is_raw
-			&& s.count_symbol_before(s.pos - 2, scanner.backslash) % 2 == 0 {
+			&& s.count_symbol_before(s.pos - 2, scanner.backslash) & 1 == 0 {
 			s.is_inside_string = true
 			if s.is_enclosed_inter {
 				s.is_nested_enclosed_inter = true
@@ -1306,7 +1306,7 @@ pub fn (mut s Scanner) ident_string() string {
 		}
 		// $var
 		if prevc == `$` && util.is_name_char(c) && !is_raw
-			&& s.count_symbol_before(s.pos - 2, scanner.backslash) % 2 == 0 {
+			&& s.count_symbol_before(s.pos - 2, scanner.backslash) & 1 == 0 {
 			s.is_inside_string = true
 			s.is_inter_start = true
 			s.pos -= 2
@@ -1483,12 +1483,25 @@ fn trim_slash_line_break(s string) string {
 	mut start := 0
 	mut ret_str := s
 	for {
+		// find the position of the first `\` followed by a newline, after `start`:
 		idx := ret_str.index_after('\\\n', start)
-		if idx != -1 {
-			ret_str = ret_str[..idx] + ret_str[idx + 2..].trim_left(' \n\t\v\f\r')
-			start = idx
-		} else {
+		if idx == -1 {
 			break
+		}
+		start = idx
+		// Here, ret_str[idx] is \, and ret_str[idx+1] is newline.
+		// Depending on the number of backslashes before the newline, we should either
+		// treat the last one and the whitespace after it as line-break, or just ignore it:
+		mut nbackslashes := 0
+		for eidx := idx; eidx >= 0 && ret_str[eidx] == `\\`; eidx-- {
+			nbackslashes++
+		}
+		// eprintln('>> start: ${start:-5} | nbackslashes: ${nbackslashes:-5} | ret_str: $ret_str')
+		if idx == 0 || (nbackslashes & 1) == 1 {
+			ret_str = ret_str[..idx] + ret_str[idx + 2..].trim_left(' \n\t\v\f\r')
+		} else {
+			// ensure the loop will terminate, when we could not strip anything:
+			start++
 		}
 	}
 	return ret_str
@@ -1560,7 +1573,7 @@ pub fn (mut s Scanner) ident_char() string {
 		// e.g. (octal) \141 (hex) \x61 or (unicode) \u2605 or (32 bit unicode) \U00002605
 		// we don't handle binary escape codes in rune literals
 		orig := c
-		if c.len % 2 == 0
+		if c.len & 1 == 0
 			&& (escaped_hex || escaped_unicode_16 || escaped_unicode_32 || escaped_octal) {
 			if escaped_unicode_16 {
 				// there can only be one, so attempt to decode it now

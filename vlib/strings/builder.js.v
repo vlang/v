@@ -73,7 +73,7 @@ pub fn (mut b Builder) str() string {
 
 pub fn (mut b Builder) cut_last(n int) string {
 	cut_pos := b.len - n
-	x := b[cut_pos..]
+	x := unsafe { b[cut_pos..] }
 	res := x.bytestr()
 	b.trim(cut_pos)
 	return res
@@ -113,17 +113,17 @@ pub fn (mut b Builder) after(n int) string {
 		return ''
 	}
 
-	x := b.slice(n, b.len)
+	x := unsafe { b[n..b.len] }
 	return x.bytestr()
 }
 
 // last_n(5) returns 'world'
 // buf == 'hello world'
-pub fn (b &Builder) last_n(n int) string {
+pub fn (mut b Builder) last_n(n int) string {
 	if n >= b.len {
 		return ''
 	}
 
-	x := b.slice(b.len - n, b.len)
+	x := unsafe { b[b.len - n..b.len] }
 	return x.bytestr()
 }

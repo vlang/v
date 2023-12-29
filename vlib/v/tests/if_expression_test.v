@@ -263,3 +263,13 @@ fn test_noreturn() {
 		assert_false_noreturn()
 	}
 }
+
+// for issue 20300
+// Phenomenon of issue:
+// infix expr generates wraparound parentheses, but misses the case where `array_contains()` is used.
+fn test_in_array_init() {
+	if 0 in []int{} {
+		assert false
+	}
+	assert true
+}
