@@ -804,6 +804,7 @@ pub enum ComptimeVarKind {
 	value_var // map value from `for k,v in t.$(field.name)`
 	field_var // comptime field var `a := t.$(field.name)`
 	generic_param // generic fn parameter
+	smartcast // smart cast when used in `is v` (when `v` is from $for .variants)
 }
 
 @[minify]

@@ -53,6 +53,9 @@ pub fn (mut ct ComptimeInfo) get_comptime_var_type(node ast.Expr) ast.Type {
 				// generic parameter from current function
 				node.obj.typ
 			}
+			.smartcast {
+				ct.type_map['${ct.comptime_for_variant_var}.typ'] or { ast.void_type }
+			}
 			.key_var, .value_var {
 				// key and value variables from normal for stmt
 				ct.type_map[node.name] or { ast.void_type }

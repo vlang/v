@@ -399,7 +399,11 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 fn (mut g Gen) get_expr_type(cond ast.Expr) ast.Type {
 	match cond {
 		ast.Ident {
-			return g.unwrap_generic(cond.obj.typ)
+			return if g.comptime.is_comptime_var(cond) {
+				g.unwrap_generic(g.comptime.get_comptime_var_type(cond))
+			} else {
+				g.unwrap_generic(cond.obj.typ)
+			}
 		}
 		ast.TypeNode {
 			return g.unwrap_generic(cond.typ)
@@ -922,7 +926,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			g.comptime.inside_comptime_for = true
 			g.push_new_comptime_info()
 			for variant in sym.info.variants {
-				g.comptime.comptime_for_field_var = node.val_var
+				g.comptime.comptime_for_variant_var = node.val_var
 				g.comptime.type_map['${node.val_var}.typ'] = variant
 
 				g.writeln('/* variant ${i} */ {')

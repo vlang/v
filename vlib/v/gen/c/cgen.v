@@ -4402,7 +4402,8 @@ fn (mut g Gen) ident(node ast.Ident) {
 	mut is_option := false
 	if node.info is ast.IdentVar {
 		if node.obj is ast.Var {
-			if !g.is_assign_lhs && node.obj.ct_type_var !in [.generic_param, .no_comptime] {
+			if !g.is_assign_lhs
+				&& node.obj.ct_type_var !in [.smartcast, .generic_param, .no_comptime] {
 				comptime_type := g.comptime.get_comptime_var_type(node)
 				if comptime_type.has_flag(.option) {
 					if (g.inside_opt_or_res || g.left_is_opt) && node.or_expr.kind == .absent {
@@ -4508,7 +4509,8 @@ fn (mut g Gen) ident(node ast.Ident) {
 							} else {
 								g.write('*')
 							}
-						} else if g.inside_interface_deref && g.table.is_interface_var(node.obj) {
+						} else if (g.inside_interface_deref && g.table.is_interface_var(node.obj))
+							|| node.obj.ct_type_var == .smartcast {
 							g.write('*')
 						} else if is_option {
 							g.write('*(${g.base_type(node.obj.typ)}*)')
@@ -4542,7 +4544,11 @@ fn (mut g Gen) ident(node ast.Ident) {
 										g.write(')')
 									}
 								}
-								if !is_option_unwrap && obj_sym.kind in [.sum_type, .interface_] {
+								if node.obj.ct_type_var == .smartcast {
+									cur_variant_sym := g.table.sym(g.comptime.type_map['${g.comptime.comptime_for_variant_var}.typ'])
+									g.write('${dot}_${cur_variant_sym.cname}')
+								} else if !is_option_unwrap
+									&& obj_sym.kind in [.sum_type, .interface_] {
 									g.write('${dot}_${cast_sym.cname}')
 								}
 							}
