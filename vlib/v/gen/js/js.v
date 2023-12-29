@@ -102,13 +102,13 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) string 
 		definitions: strings.new_builder(100)
 		table: table
 		pref: pref_
-		fn_decl: unsafe { nil }
+		fn_decl: 0
 		empty_line: true
-		doc: unsafe { nil }
-		ns: unsafe { nil }
+		doc: 0
+		ns: 0
 		enable_doc: true
-		file: unsafe { nil }
-		sourcemap: unsafe { nil }
+		file: 0
+		sourcemap: 0
 	}
 	g.doc = new_jsdoc(g)
 	// TODO: Add '[-no]-jsdoc' flag
