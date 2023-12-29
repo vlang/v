@@ -1738,50 +1738,50 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		// c.error('`void` type has no methods', node.left.pos())
 		return ast.void_type
 	}
-	// TODO: remove this for actual methods, use only for compiler magic
-	// FIXME: Argument count != 1 will break these
-	if left_sym.kind == .array && array_builtin_methods_chk.matches(method_name) {
-		return c.array_builtin_method_call(mut node, left_type)
-	} else if (left_sym.kind == .map || final_left_sym.kind == .map)
-		&& method_name in ['clone', 'keys', 'values', 'move', 'delete'] {
-		if left_sym.kind == .map {
-			return c.map_builtin_method_call(mut node, left_type)
-		} else if left_sym.info is ast.Alias {
-			parent_type := left_sym.info.parent_type
-			return c.map_builtin_method_call(mut node, parent_type)
-		}
-	} else if left_sym.kind == .array && method_name in ['insert', 'prepend'] {
-		if method_name == 'insert' {
-			if node.args.len != 2 {
-				c.error('`array.insert()` should have 2 arguments, e.g. `insert(1, val)`',
-					node.pos)
-				return ast.void_type
+	if final_left_sym.kind == .array {
+		if array_builtin_methods_chk.matches(method_name) && (left_sym.kind == .array
+			|| (left_sym.kind == .alias && method_name != 'clone'
+			&& !left_sym.has_method(method_name))) {
+			return c.array_builtin_method_call(mut node, left_type)
+		} else if method_name in ['insert', 'prepend'] {
+			if method_name == 'insert' {
+				if node.args.len != 2 {
+					c.error('`array.insert()` should have 2 arguments, e.g. `insert(1, val)`',
+						node.pos)
+					return ast.void_type
+				} else {
+					arg_type := c.expr(mut node.args[0].expr)
+					if arg_type !in [ast.int_type, ast.int_literal_type] {
+						c.error('the first argument of `array.insert()` should be integer',
+							node.args[0].expr.pos())
+						return ast.void_type
+					}
+				}
 			} else {
-				arg_type := c.expr(mut node.args[0].expr)
-				if arg_type !in [ast.int_type, ast.int_literal_type] {
-					c.error('the first argument of `array.insert()` should be integer',
-						node.args[0].expr.pos())
+				if node.args.len != 1 {
+					c.error('`array.prepend()` should have 1 argument, e.g. `prepend(val)`',
+						node.pos)
 					return ast.void_type
 				}
 			}
-		} else {
-			if node.args.len != 1 {
-				c.error('`array.prepend()` should have 1 argument, e.g. `prepend(val)`',
-					node.pos)
-				return ast.void_type
+			info := final_left_sym.info as ast.Array
+			mut arg_expr := if method_name == 'insert' {
+				node.args[1].expr
+			} else {
+				node.args[0].expr
+			}
+			arg_type := c.expr(mut arg_expr)
+			arg_sym := c.table.sym(arg_type)
+			if !c.check_types(arg_type, info.elem_type) && !c.check_types(left_type, arg_type) {
+				c.error('cannot ${method_name} `${arg_sym.name}` to `${left_sym.name}`',
+					arg_expr.pos())
 			}
 		}
-		info := left_sym.info as ast.Array
-		mut arg_expr := if method_name == 'insert' { node.args[1].expr } else { node.args[0].expr }
-		arg_type := c.expr(mut arg_expr)
-		arg_sym := c.table.sym(arg_type)
-		if !c.check_types(arg_type, info.elem_type) && !c.check_types(left_type, arg_type) {
-			c.error('cannot ${method_name} `${arg_sym.name}` to `${left_sym.name}`', arg_expr.pos())
-		}
-	} else if left_sym.kind == .alias && final_left_sym.kind == .array
-		&& array_builtin_methods_chk.matches(method_name) && method_name != 'clone'
-		&& !left_sym.has_method(method_name) {
-		return c.array_builtin_method_call(mut node, left_type)
+	} else if final_left_sym.kind == .map
+		&& method_name in ['clone', 'keys', 'values', 'move', 'delete'] && !(left_sym.kind == .alias
+		&& left_sym.has_method(method_name)) {
+		unaliased_left_type := c.table.unaliased_type(left_type)
+		return c.map_builtin_method_call(mut node, unaliased_left_type)
 	} else if c.pref.backend.is_js() && left_sym.name.starts_with('Promise[')
 		&& method_name == 'wait' {
 		info := left_sym.info as ast.Struct

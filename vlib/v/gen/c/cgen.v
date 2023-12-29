@@ -5524,7 +5524,12 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, field_name string
 					return false
 				}
 				escval := util.smart_quote(u8(rune_code).ascii_str(), false)
-				g.const_decl_write_precomputed(mod, styp, cname, field_name, "'${escval}'")
+
+				g.global_const_defs[util.no_dots(field_name)] = GlobalConstDef{
+					mod: mod
+					def: "#define ${cname} '${escval}'"
+					order: -1
+				}
 			} else {
 				g.const_decl_write_precomputed(mod, styp, cname, field_name, u32(ct_value).str())
 			}

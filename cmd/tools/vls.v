@@ -113,7 +113,13 @@ fn (upd VlsUpdater) update_manifest(new_path string, from_source bool, timestamp
 	manifest['last_updated'] = json2.Any(timestamp.format_ss())
 	manifest['from_source'] = json2.Any(from_source)
 
-	json_enc.encode_value(manifest, mut manifest_file)!
+	mut buffer := []u8{}
+
+	json_enc.encode_value(manifest, mut buffer)!
+
+	manifest_file.write(buffer)!
+
+	unsafe { buffer.free() }
 }
 
 fn (upd VlsUpdater) init_download_prebuilt() ! {
