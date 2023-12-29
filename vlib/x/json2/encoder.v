@@ -16,25 +16,25 @@ pub struct Encoder {
 // byte array versions of the most common tokens/chars to avoid reallocations
 const null_in_bytes = 'null'
 
-const true_in_bytes = 'true'
+const true_in_string = 'true'
 
-const false_in_bytes = 'false'
+const false_in_string = 'false'
 
-const zero_in_byte = `0`
+const zero_rune = `0`
 
-const comma_byte = `,`
+const comma_rune = `,`
 
-const colon_byte = `:`
+const colon_rune = `:`
 
 const unicode_escape_chars = [`\\`, `u`]
 
-const quote_byte = `"`
+const quote_rune = `"`
 
 const escaped_chars = [(r'\b'), (r'\f'), (r'\n'), (r'\r'), (r'\t')]
 
-const curly_open = `{`
+const curly_open_rune = `{`
 
-const curly_close = `}`
+const curly_close_rune = `}`
 
 // encode_value encodes a value to the specific writer.
 pub fn (e &Encoder) encode_value[T](val T, mut buf []u8) ! {
@@ -57,46 +57,48 @@ fn (e &Encoder) encode_any(val Any, level int, mut buf []u8) ! {
 		}
 		bool {
 			if val == true {
-				unsafe { buf.push_many(json2.true_in_bytes.str, json2.true_in_bytes.len) }
+				unsafe { buf.push_many(json2.true_in_string.str, json2.true_in_string.len) }
 			} else {
-				unsafe { buf.push_many(json2.false_in_bytes.str, json2.false_in_bytes.len) }
+				unsafe { buf.push_many(json2.false_in_string.str, json2.false_in_string.len) }
 			}
 		}
 		i8, i16, int, i64 {
-			unsafe { buf.push_many(val.str().str, val.str().len) }
+			str_int := val.str()
+			unsafe { buf.push_many(str_int.str, str_int.len) }
 		}
 		u8, u16, u32, u64 {
-			unsafe { buf.push_many(val.str().str, val.str().len) }
+			str_int := val.str()
+			unsafe { buf.push_many(str_int.str, str_int.len) }
 		}
 		f32, f64 {
 			$if !nofloat ? {
 				str_float := val.str()
 				unsafe { buf.push_many(str_float.str, str_float.len) }
 				if str_float[str_float.len - 1] == `.` {
-					buf << json2.zero_in_byte
+					buf << json2.zero_rune
 				}
 				return
 			}
-			buf << json2.zero_in_byte
+			buf << json2.zero_rune
 		}
 		map[string]Any {
-			buf << json2.curly_open
+			buf << json2.curly_open_rune
 			mut i := 0
 			for k, v in val {
 				e.encode_newline(level, mut buf)!
 				e.encode_string(k, mut buf)!
-				buf << json2.colon_byte
+				buf << json2.colon_rune
 				if e.newline != 0 {
 					buf << ` `
 				}
 				e.encode_value_with_level(v, level + 1, mut buf)!
 				if i < val.len - 1 {
-					buf << json2.comma_byte
+					buf << json2.comma_rune
 				}
 				i++
 			}
 			e.encode_newline(level - 1, mut buf)!
-			buf << json2.curly_close
+			buf << json2.curly_close_rune
 		}
 		[]Any {
 			buf << `[`
@@ -104,15 +106,16 @@ fn (e &Encoder) encode_any(val Any, level int, mut buf []u8) ! {
 				e.encode_newline(level, mut buf)!
 				e.encode_value_with_level(val[i], level + 1, mut buf)!
 				if i < val.len - 1 {
-					buf << json2.comma_byte
+					buf << json2.comma_rune
 				}
 			}
 			e.encode_newline(level - 1, mut buf)!
 			buf << `]`
 		}
 		time.Time {
+			str_time := val.format_rfc3339()
 			buf << `"`
-			unsafe { buf.push_many(val.format_rfc3339().str, val.format_rfc3339().len) }
+			unsafe { buf.push_many(str_time.str, str_time.len) }
 			buf << `"`
 		}
 		Null {
@@ -125,23 +128,23 @@ fn (e &Encoder) encode_any(val Any, level int, mut buf []u8) ! {
 }
 
 fn (e &Encoder) encode_map[T](value T, level int, mut buf []u8) ! {
-	buf << json2.curly_open
+	buf << json2.curly_open_rune
 	mut idx := 0
 	for k, v in value {
 		e.encode_newline(level, mut buf)!
 		e.encode_string(k.str(), mut buf)!
-		buf << json2.colon_byte
+		buf << json2.colon_rune
 		if e.newline != 0 {
 			buf << ` `
 		}
 		e.encode_value_with_level(v, level + 1, mut buf)!
 		if idx < value.len - 1 {
-			buf << json2.comma_byte
+			buf << json2.comma_rune
 		}
 		idx++
 	}
 	e.encode_newline(level, mut buf)!
-	buf << json2.curly_close
+	buf << json2.curly_close_rune
 }
 
 fn (e &Encoder) encode_value_with_level[T](val T, level int, mut buf []u8) ! {
@@ -157,7 +160,8 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut buf []u8) ! {
 	} $else $if T is []Any {
 		e.encode_any(val, level, mut buf)!
 	} $else $if T is Encodable {
-		unsafe { buf.push_many(val.json_str().str, val.json_str().len) }
+		str_value := val.json_str()
+		unsafe { buf.push_many(str_value.str, str_value.len) }
 	} $else $if T is $struct {
 		e.encode_struct(val, level, mut buf)!
 	} $else $if T is $enum {
@@ -177,7 +181,7 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut buf []u8) ! {
 }
 
 fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
-	buf << json2.curly_open
+	buf << json2.curly_open_rune
 	mut i := 0
 	mut fields_len := 0
 	$for field in U.fields {
@@ -209,7 +213,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 				} else {
 					e.encode_string(field.name, mut buf)!
 				}
-				buf << json2.colon_byte
+				buf << json2.colon_rune
 
 				if e.newline != 0 {
 					buf << ` `
@@ -218,16 +222,17 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 				$if field.typ is ?string {
 					e.encode_string(val.$(field.name) ?.str(), mut buf)!
 				} $else $if field.typ is ?bool {
-					if value ?.str() == 'true' {
-						unsafe { buf.push_many('true'.str, 'true'.len) }
+					if value ?.str() == json2.true_in_string {
+						unsafe { buf.push_many(json2.true_in_string.str, json2.true_in_string.len) }
 					} else {
-						unsafe { buf.push_many('false'.str, 'false'.len) }
+						unsafe { buf.push_many(json2.false_in_string.str, json2.false_in_string.len) }
 					}
 				} $else $if field.typ is ?f32 || field.typ is ?f64 || field.typ is ?i8
 					|| field.typ is ?i16 || field.typ is ?int || field.typ is ?i64
 					|| field.typ is ?u8 || field.typ is ?u16 || field.typ is ?u32
 					|| field.typ is ?u64 {
-					unsafe { buf.push_many(val.$(field.name) ?.str().str, val.$(field.name) ?.str().len) }
+					str_value := val.$(field.name) ?.str()
+					unsafe { buf.push_manystr_value(.str, str_value.len) }
 				} $else $if field.typ is ?time.Time {
 					option_value := val.$(field.name) as ?time.Time
 					parsed_time := option_value as time.Time
@@ -249,7 +254,8 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 						typeof[f32]().idx, typeof[f64]().idx, typeof[i8]().idx, typeof[i16]().idx,
 						typeof[int]().idx, typeof[i64]().idx, typeof[u8]().idx, typeof[u16]().idx,
 						typeof[u32]().idx, typeof[u64]().idx {
-							unsafe { buf.push_many(value.str().str, value.str().len) }
+							str_value := value.str()
+							unsafe { buf.push_many(str_value.str, str_value.len) }
 						}
 						typeof[[]int]().idx {
 							// FIXME - error: could not infer generic type `U` in call to `encode_array`
@@ -274,7 +280,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 				} else {
 					e.encode_string(field.name, mut buf)!
 				}
-				buf << json2.colon_byte
+				buf << json2.colon_rune
 
 				if e.newline != 0 {
 					buf << ` `
@@ -298,17 +304,19 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 			} $else $if field.typ is string {
 				e.encode_string(val.$(field.name).str(), mut buf)!
 			} $else $if field.typ is time.Time {
-				buf << json2.quote_byte
-				unsafe { buf.push_many(val.$(field.name).format_rfc3339().str, val.$(field.name).format_rfc3339().len) }
-				buf << json2.quote_byte
+				str_value := val.$(field.name).format_rfc3339()
+				buf << json2.quote_rune
+				unsafe { buf.push_many(str_value.str, str_value.len) }
+				buf << json2.quote_rune
 			} $else $if field.typ is bool {
 				if value {
-					unsafe { buf.push_many('true'.str, 'true'.len) }
+					unsafe { buf.push_many(json2.true_in_string.str, json2.true_in_string.len) }
 				} else {
-					unsafe { buf.push_many('false'.str, 'false'.len) }
+					unsafe { buf.push_many(json2.false_in_string.str, json2.false_in_string.len) }
 				}
 			} $else $if field.typ in [$float, $int] {
-				unsafe { buf.push_many(val.$(field.name).str().str, val.$(field.name).str().len) }
+				str_value := val.$(field.name).str()
+				unsafe { buf.push_many(str_value.str, str_value.len) }
 			} $else $if field.is_array {
 				// TODO - replace for `field.typ is $array`
 				e.encode_array(value, level + 1, mut buf)!
@@ -320,7 +328,8 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 				e.encode_map(value, level + 1, mut buf)!
 			} $else $if field.is_enum {
 				// TODO - replace for `field.typ is $enum`
-				unsafe { buf.push_many(int(val.$(field.name)).str().str, int(val.$(field.name)).str().len) }
+				str_value := int(val.$(field.name)).str()
+				unsafe { buf.push_many(str_value.str, str_value.len) }
 			} $else $if field.typ is $enum {
 				// wr.write(int(val.$(field.name)).str().bytes())! // FIXME - error: cannot cast string to `int`, use `val.$field.name.int()` instead.
 			} $else $if field.typ is $sumtype {
@@ -340,7 +349,8 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 						if sum_type_value.contains_any(' /:-') {
 							date_time_str := time.parse(sum_type_value)!
 							unsafe {
-								buf.push_many(date_time_str.format_rfc3339().str, date_time_str.format_rfc3339().len)
+								str_value := date_time_str.format_rfc3339()
+								buf.push_many(str_value.str, str_value.len)
 							}
 						} else {
 							unsafe { buf.push_many(sum_type_value.str, sum_type_value.len) }
@@ -392,13 +402,14 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 					parsed_time := time.parse(val.$(field.name).str()) or { time.Time{} }
 					e.encode_string(parsed_time.format_rfc3339(), mut buf)!
 				} $else $if field.unaliased_typ is bool {
-					if val.$(field.name).str() == 'true' {
-						unsafe { buf.push_many('true'.str, 'true'.len) }
+					if val.$(field.name).str() == json2.true_in_string {
+						unsafe { buf.push_many(json2.true_in_string.str, json2.true_in_string.len) }
 					} else {
-						unsafe { buf.push_many('false'.str, 'false'.len) }
+						unsafe { buf.push_many(json2.false_in_string.str, json2.false_in_string.len) }
 					}
 				} $else $if field.unaliased_typ in [$float, $int] {
-					unsafe { buf.push_many(val.$(field.name).str().str, val.$(field.name).str().len) }
+					str_value := val.$(field.name).str()
+					unsafe { buf.push_many(str_value.str, str_value.len) }
 				} $else $if field.unaliased_typ is $array {
 					// e.encode_array(val.$(field.name), level + 1, mut buf)! // FIXME - error: could not infer generic type `U` in call to `encode_array`
 				} $else $if field.unaliased_typ is $struct {
@@ -422,7 +433,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 
 		if i < fields_len - 1 && !ignore_field {
 			if !is_nil {
-				buf << json2.comma_byte
+				buf << json2.comma_rune
 			}
 		}
 		if !ignore_field {
@@ -430,7 +441,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 		}
 	}
 	e.encode_newline(level - 1, mut buf)!
-	buf << json2.curly_close
+	buf << json2.curly_close_rune
 	// b.measure('encode_struct')
 }
 
@@ -480,7 +491,7 @@ fn (e &Encoder) encode_array[U](val []U, level int, mut buf []u8) ! {
 			return error('type ${typeof(val).name} cannot be array encoded')
 		}
 		if i < val.len - 1 {
-			buf << json2.comma_byte
+			buf << json2.comma_rune
 		}
 	}
 
@@ -564,7 +575,7 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 		text: s
 	}
 	mut i := 0
-	buf << json2.quote_byte
+	buf << json2.quote_rune
 	for char_len in char_lens {
 		if char_len == 1 {
 			chr := s[i]
@@ -583,8 +594,8 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 				for r in json2.unicode_escape_chars {
 					buf << r
 				}
-				buf << json2.zero_in_byte // \u0
-				buf << json2.zero_in_byte // \u00
+				buf << json2.zero_rune // \u0
+				buf << json2.zero_rune // \u00
 
 				hex_code := chr.hex()
 				unsafe { buf.push_many(hex_code.str, hex_code.len) }
@@ -620,5 +631,5 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 		i += char_len
 	}
 
-	buf << json2.quote_byte
+	buf << json2.quote_rune
 }
