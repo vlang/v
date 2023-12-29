@@ -289,13 +289,13 @@ pub fn (t Type) idx() int {
 	return u16(t) & 0xffff
 }
 
-// is_void return true if t is of type void
+// is_void return true if `t` is of type `void`
 @[inline]
 pub fn (t Type) is_void() bool {
 	return t == ast.void_type
 }
 
-// is_full return true if t is not of type void
+// is_full return true if `t` is not of type `void`
 @[inline]
 pub fn (t Type) is_full() bool {
 	return t != 0 && t != ast.void_type
@@ -315,14 +315,14 @@ pub fn (t Type) is_ptr() bool {
 	return (int(t) >> 16) & 0xff > 0
 }
 
-// is_pointer returns true if typ is any of the builtin pointer types (voidptr, byteptr, charptr)
+// is_pointer returns true if `typ` is any of the builtin pointer types (voidptr, byteptr, charptr)
 @[inline]
 pub fn (typ Type) is_pointer() bool {
 	// builtin pointer types (voidptr, byteptr, charptr)
 	return typ.idx() in ast.pointer_type_idxs
 }
 
-// is_voidptr returns true if typ is a voidptr
+// is_voidptr returns true if `typ` is a voidptr
 @[inline]
 pub fn (typ Type) is_voidptr() bool {
 	return typ.idx() == ast.voidptr_type_idx
@@ -490,41 +490,49 @@ pub fn new_type_ptr(idx int, nr_muls int) Type {
 	return (u32(nr_muls) << 16) | u16(idx)
 }
 
+// is_float returns `true` if `typ` is float
 @[inline]
 pub fn (typ Type) is_float() bool {
 	return !typ.is_ptr() && typ.idx() in ast.float_type_idxs
 }
 
+// is_int returns `true` if `typ` is int
 @[inline]
 pub fn (typ Type) is_int() bool {
 	return !typ.is_ptr() && typ.idx() in ast.integer_type_idxs
 }
 
+// is_int_valptr returns `true` if `typ` is a pointer to a int
 @[inline]
 pub fn (typ Type) is_int_valptr() bool {
 	return typ.is_ptr() && typ.idx() in ast.integer_type_idxs
 }
 
+// is_float_valptr return `true` if `typ` is a pointer to float
 @[inline]
 pub fn (typ Type) is_float_valptr() bool {
 	return typ.is_ptr() && typ.idx() in ast.float_type_idxs
 }
 
+// is_pure_int return `true` if `typ` is a pure int
 @[inline]
 pub fn (typ Type) is_pure_int() bool {
 	return int(typ) in ast.integer_type_idxs
 }
 
+// is_pure_float return `true` if `typ` is a pure float
 @[inline]
 pub fn (typ Type) is_pure_float() bool {
 	return int(typ) in ast.float_type_idxs
 }
 
+// is_signed return `true` if `typ` is signed
 @[inline]
 pub fn (typ Type) is_signed() bool {
 	return typ.idx() in ast.signed_integer_type_idxs
 }
 
+// is_unsigned return `true` if `typ` is unsigned
 @[inline]
 pub fn (typ Type) is_unsigned() bool {
 	return typ.idx() in ast.unsigned_integer_type_idxs
@@ -547,21 +555,25 @@ pub fn (typ Type) flip_signedness() Type {
 	}
 }
 
+// is_int_literal returns `true` if `typ` is a int literal
 @[inline]
 pub fn (typ Type) is_int_literal() bool {
 	return int(typ) == ast.int_literal_type_idx
 }
 
+// is_number returns `true` if `typ` is a number
 @[inline]
 pub fn (typ Type) is_number() bool {
 	return typ.clear_flags() in ast.number_type_idxs
 }
 
+// is_string returns `true` if `typ` is a string type
 @[inline]
 pub fn (typ Type) is_string() bool {
 	return typ.idx() == ast.string_type_idx
 }
 
+// is_bool returns `true` if `typ` is of bool type
 @[inline]
 pub fn (typ Type) is_bool() bool {
 	return typ.idx() == ast.bool_type_idx
@@ -753,6 +765,7 @@ pub enum Kind {
 	thread
 }
 
+// str returns the the internal & source name of the type
 pub fn (t TypeSymbol) str() string {
 	return t.name
 }

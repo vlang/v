@@ -7,6 +7,13 @@ import net.ssl
 import strings
 
 fn (req &Request) ssl_do(port int, method Method, host_name string, path string) !Response {
+	$if windows && !no_vschannel ? {
+		return vschannel_ssl_do(req, port, method, host_name, path)
+	}
+	return net_ssl_do(req, port, method, host_name, path)
+}
+
+fn net_ssl_do(req &Request, port int, method Method, host_name string, path string) !Response {
 	mut ssl_conn := ssl.new_ssl_conn(
 		verify: req.verify
 		cert: req.cert

@@ -514,6 +514,9 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope) {
 		if node.op == .and {
 			c.smartcast_if_conds(mut node.left, mut scope)
 			c.smartcast_if_conds(mut node.right, mut scope)
+		} else if node.left is ast.Ident && node.op == .ne && node.right is ast.None {
+			c.smartcast(mut node.left, node.left_type, node.left_type.clear_flag(.option), mut
+				scope)
 		} else if node.op == .key_is {
 			if node.left_type == ast.Type(0) {
 				node.left_type = c.expr(mut node.left)
@@ -527,8 +530,8 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope) {
 					ast.none_type_idx
 				}
 				ast.Ident {
-					c.expr(mut node.left)
 					if right_expr.name == c.comptime.comptime_for_variant_var {
+						println(c.comptime.type_map['${c.comptime.comptime_for_variant_var}.typ'])
 						c.comptime.type_map['${c.comptime.comptime_for_variant_var}.typ']
 					} else {
 						c.error('invalid type `${right_expr}`', right_expr.pos)

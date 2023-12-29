@@ -436,6 +436,12 @@ fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSymbol,
 	if !c.check_basic(got_fn.return_type, exp_fn.return_type) {
 		return false
 	}
+	// The check for sumtype in c.check_basic() in the previous step is only for its variant to be subsumed
+	// So we need to do a second, more rigorous check of the return value being sumtype.
+	if c.table.final_sym(exp_fn.return_type).kind == .sum_type
+		&& got_fn.return_type.idx() != exp_fn.return_type.idx() {
+		return false
+	}
 	for i, got_arg in got_fn.params {
 		exp_arg := exp_fn.params[i]
 		exp_arg_typ := c.unwrap_generic(exp_arg.typ)
@@ -1079,4 +1085,41 @@ fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr) {
 	if c.table.register_fn_concrete_types(func.fkey(), inferred_types) {
 		c.need_recheck_generic_fns = true
 	}
+}
+
+// is_contains_any_kind_of_pointer check that the type and submember types(arrays, fixed arrays, maps, struct fields, and so on)
+// contain pointer types.
+fn (mut c Checker) is_contains_any_kind_of_pointer(typ ast.Type, mut checked_types []ast.Type) bool {
+	if typ.is_any_kind_of_pointer() {
+		return true
+	}
+	if typ in checked_types {
+		return false
+	}
+	checked_types << typ
+	sym := c.table.sym(typ)
+	match sym.info {
+		ast.Array, ast.ArrayFixed {
+			return c.is_contains_any_kind_of_pointer(sym.info.elem_type, mut checked_types)
+		}
+		ast.Map {
+			return c.is_contains_any_kind_of_pointer(sym.info.value_type, mut checked_types)
+		}
+		ast.Alias {
+			return c.is_contains_any_kind_of_pointer(sym.info.parent_type, mut checked_types)
+		}
+		ast.Struct {
+			if sym.kind == .struct_ && sym.language == .v {
+				fields := c.table.struct_fields(sym)
+				for field in fields {
+					ret := c.is_contains_any_kind_of_pointer(field.typ, mut checked_types)
+					if ret {
+						return true
+					}
+				}
+			}
+		}
+		else {}
+	}
+	return false
 }

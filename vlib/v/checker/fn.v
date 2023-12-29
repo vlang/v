@@ -426,10 +426,14 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				}
 			}
 			if dep_names.len > 0 {
-				c.table.fns[node.name].dep_names = dep_names
+				unsafe {
+					c.table.fns[node.name].dep_names = dep_names
+				}
 			}
 		}
-		c.table.fns[node.name].source_fn = voidptr(node)
+		unsafe {
+			c.table.fns[node.name].source_fn = voidptr(node)
+		}
 	}
 
 	// vweb checks
@@ -810,7 +814,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			node.name = name_prefixed
 			found = true
 			func = f
-			c.table.fns[name_prefixed].usages++
+			unsafe { c.table.fns[name_prefixed].usages++ }
 		}
 	}
 	if !found && node.left is ast.IndexExpr {
@@ -868,7 +872,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		if f := c.table.find_fn(fn_name) {
 			found = true
 			func = f
-			c.table.fns[fn_name].usages++
+			unsafe { c.table.fns[fn_name].usages++ }
 		}
 	}
 	// already imported symbol (static Foo.new() in another module)
@@ -881,7 +885,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					found = true
 					func = f
 					node.name = qualified_name
-					c.table.fns[qualified_name].usages++
+					unsafe { c.table.fns[qualified_name].usages++ }
 					break
 				}
 			}
@@ -938,9 +942,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	mut is_native_builtin := false
 	if !found && c.pref.backend == .native {
 		if fn_name in ast.native_builtins {
-			c.table.fns[fn_name].usages++
+			unsafe { c.table.fns[fn_name].usages++ }
 			found = true
-			func = c.table.fns[fn_name]
+			func = unsafe { c.table.fns[fn_name] }
 			is_native_builtin = true
 		}
 	}
@@ -958,7 +962,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			node.name = os_name
 			found = true
 			func = f
-			c.table.fns[os_name].usages++
+			unsafe { c.table.fns[os_name].usages++ }
 		}
 	}
 	if is_native_builtin {
@@ -1040,8 +1044,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				if sym.info is ast.FnType {
 					// at this point, the const metadata should be already known,
 					// and we are sure that it is just a function
-					c.table.fns[qualified_const_name].usages++
-					c.table.fns[func.name].usages++
+					unsafe { c.table.fns[qualified_const_name].usages++ }
+					unsafe { c.table.fns[func.name].usages++ }
 					found = true
 					func = sym.info.func
 					node.is_fn_a_const = true
@@ -1734,49 +1738,50 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		// c.error('`void` type has no methods', node.left.pos())
 		return ast.void_type
 	}
-	// TODO: remove this for actual methods, use only for compiler magic
-	// FIXME: Argument count != 1 will break these
-	if left_sym.kind == .array && array_builtin_methods_chk.matches(method_name) {
-		return c.array_builtin_method_call(mut node, left_type, c.table.sym(left_type))
-	} else if (left_sym.kind == .map || final_left_sym.kind == .map)
-		&& method_name in ['clone', 'keys', 'values', 'move', 'delete'] {
-		if left_sym.kind == .map {
-			return c.map_builtin_method_call(mut node, left_type)
-		} else if left_sym.info is ast.Alias {
-			parent_type := left_sym.info.parent_type
-			return c.map_builtin_method_call(mut node, parent_type)
-		}
-	} else if left_sym.kind == .array && method_name in ['insert', 'prepend'] {
-		if method_name == 'insert' {
-			if node.args.len != 2 {
-				c.error('`array.insert()` should have 2 arguments, e.g. `insert(1, val)`',
-					node.pos)
-				return ast.void_type
+	if final_left_sym.kind == .array {
+		if array_builtin_methods_chk.matches(method_name) && (left_sym.kind == .array
+			|| (left_sym.kind == .alias && method_name != 'clone'
+			&& !left_sym.has_method(method_name))) {
+			return c.array_builtin_method_call(mut node, left_type)
+		} else if method_name in ['insert', 'prepend'] {
+			if method_name == 'insert' {
+				if node.args.len != 2 {
+					c.error('`array.insert()` should have 2 arguments, e.g. `insert(1, val)`',
+						node.pos)
+					return ast.void_type
+				} else {
+					arg_type := c.expr(mut node.args[0].expr)
+					if arg_type !in [ast.int_type, ast.int_literal_type] {
+						c.error('the first argument of `array.insert()` should be integer',
+							node.args[0].expr.pos())
+						return ast.void_type
+					}
+				}
 			} else {
-				arg_type := c.expr(mut node.args[0].expr)
-				if arg_type !in [ast.int_type, ast.int_literal_type] {
-					c.error('the first argument of `array.insert()` should be integer',
-						node.args[0].expr.pos())
+				if node.args.len != 1 {
+					c.error('`array.prepend()` should have 1 argument, e.g. `prepend(val)`',
+						node.pos)
 					return ast.void_type
 				}
 			}
-		} else {
-			if node.args.len != 1 {
-				c.error('`array.prepend()` should have 1 argument, e.g. `prepend(val)`',
-					node.pos)
-				return ast.void_type
+			info := final_left_sym.info as ast.Array
+			mut arg_expr := if method_name == 'insert' {
+				node.args[1].expr
+			} else {
+				node.args[0].expr
+			}
+			arg_type := c.expr(mut arg_expr)
+			arg_sym := c.table.sym(arg_type)
+			if !c.check_types(arg_type, info.elem_type) && !c.check_types(left_type, arg_type) {
+				c.error('cannot ${method_name} `${arg_sym.name}` to `${left_sym.name}`',
+					arg_expr.pos())
 			}
 		}
-		info := left_sym.info as ast.Array
-		mut arg_expr := if method_name == 'insert' { node.args[1].expr } else { node.args[0].expr }
-		arg_type := c.expr(mut arg_expr)
-		arg_sym := c.table.sym(arg_type)
-		if !c.check_types(arg_type, info.elem_type) && !c.check_types(left_type, arg_type) {
-			c.error('cannot ${method_name} `${arg_sym.name}` to `${left_sym.name}`', arg_expr.pos())
-		}
-	} else if final_left_sym.kind == .array
-		&& method_name in ['filter', 'map', 'sort', 'sorted', 'contains', 'any', 'all', 'first', 'last', 'pop'] {
-		return c.array_builtin_method_call(mut node, unwrapped_left_type, final_left_sym)
+	} else if final_left_sym.kind == .map
+		&& method_name in ['clone', 'keys', 'values', 'move', 'delete'] && !(left_sym.kind == .alias
+		&& left_sym.has_method(method_name)) {
+		unaliased_left_type := c.table.unaliased_type(left_type)
+		return c.map_builtin_method_call(mut node, unaliased_left_type)
 	} else if c.pref.backend.is_js() && left_sym.name.starts_with('Promise[')
 		&& method_name == 'wait' {
 		info := left_sym.info as ast.Struct
@@ -2727,7 +2732,8 @@ fn (mut c Checker) ensure_same_array_return_type(mut node ast.CallExpr, left_typ
 	}
 }
 
-fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type ast.Type, left_sym ast.TypeSymbol) ast.Type {
+fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type ast.Type) ast.Type {
+	left_sym := c.table.final_sym(left_type)
 	method_name := node.name
 	mut elem_typ := ast.void_type
 	if !c.is_builtin_mod && method_name == 'slice' {
