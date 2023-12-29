@@ -20,8 +20,9 @@ pub struct StructCheckResult {
 	superfluous []string
 }
 
-// REVIEW how performatic is it?
+// strict_check
 pub fn strict_check[T](json_data string) StructCheckResult {
+	// REVIEW how performatic is it?
 	$if T is $struct {
 		tokens := tokenize(json_data)
 
@@ -110,6 +111,7 @@ fn get_keys_from_[T]() []string {
 	return struct_keys
 }
 
+// get_keys_from_json
 pub fn get_keys_from_json(tokens []string) []KeyStruct {
 	mut key_structs := []KeyStruct{}
 
