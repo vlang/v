@@ -7,6 +7,7 @@ import v.token
 
 fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	mut elem_type := ast.void_type
+	unwrap_elem_type := c.unwrap_generic(node.elem_type)
 	// `x := []string{}` (the type was set in the parser)
 	if node.typ != ast.void_type {
 		if node.elem_type != 0 {
@@ -76,14 +77,13 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			if len_typ.has_flag(.option) {
 				c.error('cannot use unwrapped Option as length', node.len_expr.pos())
 			}
-			if node.has_len && !node.has_init {
-				elem_type_sym := c.table.sym(node.elem_type)
-				if elem_type_sym.kind == .interface_ {
-					c.error('cannot instantiate an array of interfaces without also giving a default `init:` value',
-						node.len_expr.pos())
+			// check &int{}, interface, sum_type initialized
+			if !node.has_init {
+				c.check_elements_initialized(unwrap_elem_type) or {
+					c.warn('${err.msg()}, therefore `len:` cannot be used (unless inside `unsafe`, or if you also use `init:`)',
+						node.pos)
 				}
 			}
-			c.ensure_sumtype_array_has_default_value(node)
 		}
 		if node.has_cap {
 			cap_typ := c.check_expr_opt_call(node.cap_expr, c.expr(mut node.cap_expr))
@@ -97,26 +97,21 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			c.error('generic struct cannot be used in non-generic function', node.pos)
 		}
 
-		// `&int{}` check
-		if node.has_len && !c.check_elements_ref_containers_initialized(node.elem_type) {
-			c.warn('arrays of references need to be initialized right away, therefore `len:` cannot be used (unless inside `unsafe`)',
-				node.pos)
-		}
 		// `&Struct{} check
 		if node.has_len {
-			c.check_elements_ref_fields_initialized(node.elem_type, node.pos)
+			c.check_elements_ref_fields_initialized(unwrap_elem_type, node.pos)
 		}
 		return node.typ
 	}
 
 	if node.is_fixed {
-		c.ensure_sumtype_array_has_default_value(node)
 		c.ensure_type_exists(node.elem_type, node.elem_type_pos)
-		if !c.is_builtin_mod && !c.check_elements_ref_containers_initialized(node.elem_type) {
-			c.warn('fixed arrays of references need to be initialized right away (unless inside `unsafe`)',
-				node.pos)
+		if !c.is_builtin_mod {
+			c.check_elements_initialized(unwrap_elem_type) or {
+				c.warn('fixed ${err.msg()} (unless inside `unsafe`)', node.pos)
+			}
 		}
-		c.check_elements_ref_fields_initialized(node.elem_type, node.pos)
+		c.check_elements_ref_fields_initialized(unwrap_elem_type, node.pos)
 	}
 	// `a = []`
 	if node.exprs.len == 0 {
@@ -351,13 +346,6 @@ fn (mut c Checker) check_array_init_para_type(para string, mut expr ast.Expr, po
 	}
 }
 
-fn (mut c Checker) ensure_sumtype_array_has_default_value(node ast.ArrayInit) {
-	sym := c.table.sym(node.elem_type)
-	if sym.kind == .sum_type && !node.has_init {
-		c.error('cannot initialize sum type array without default value', node.pos)
-	}
-}
-
 fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 	// `map = {}`
 	if node.keys.len == 0 && node.vals.len == 0 && node.typ == 0 {
@@ -405,7 +393,6 @@ fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		c.ensure_type_exists(info.value_type, node.pos)
 		node.key_type = info.key_type
 		node.value_type = info.value_type
-		c.check_elements_ref_fields_initialized(node.typ, node.pos)
 		return node.typ
 	}
 
@@ -575,42 +562,46 @@ fn (mut c Checker) do_check_elements_ref_fields_initialized(sym &ast.TypeSymbol,
 	}
 }
 
-// check the element, and its children for ref uninitialized containers
-fn (mut c Checker) check_elements_ref_containers_initialized(typ ast.Type) bool {
+const err_ref_uninitialized = error('arrays of references need to be initialized right away')
+const err_interface_uninitialized = error('arrays of interfaces need to be initialized right away')
+const err_sumtype_uninitialized = error('arrays of sumtypes need to be initialized right away')
+
+// check the element, and its children for `ref/interface/sumtype` initialized
+fn (mut c Checker) check_elements_initialized(typ ast.Type) ! {
 	if typ == 0 || c.inside_unsafe {
-		return true
+		return
 	}
 	if typ.is_any_kind_of_pointer() {
-		return false
+		return checker.err_ref_uninitialized
 	}
 	sym := c.table.sym(typ)
+	if sym.kind == .interface_ {
+		return checker.err_interface_uninitialized
+	} else if sym.kind == .sum_type {
+		return checker.err_sumtype_uninitialized
+	}
+
 	match sym.info {
 		ast.Array {
 			elem_type := sym.info.elem_type
-			if elem_type.is_any_kind_of_pointer() {
-				return false
-			}
-			return c.check_elements_ref_containers_initialized(elem_type)
+			return c.check_elements_initialized(elem_type)
 		}
 		ast.ArrayFixed {
 			elem_type := sym.info.elem_type
-			if elem_type.is_any_kind_of_pointer() && !c.is_builtin_mod {
-				return false
+			if !c.is_builtin_mod {
+				return c.check_elements_initialized(elem_type)
 			}
-			return c.check_elements_ref_containers_initialized(elem_type)
 		}
 		ast.Map {
 			value_type := sym.info.value_type
-			if value_type.is_any_kind_of_pointer() && !c.is_builtin_mod {
-				return false
+			if !c.is_builtin_mod {
+				return c.check_elements_initialized(value_type)
 			}
-			return c.check_elements_ref_containers_initialized(value_type)
 		}
 		ast.Alias {
 			parent_type := sym.info.parent_type
-			return c.check_elements_ref_containers_initialized(parent_type)
+			return c.check_elements_initialized(parent_type)
 		}
 		else {}
 	}
-	return true
 }

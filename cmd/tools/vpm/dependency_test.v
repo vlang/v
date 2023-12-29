@@ -84,6 +84,14 @@ fn test_install_with_recursive_dependencies() {
 		eprintln('Timeout while testing installation with recursive dependencies.')
 		exit(1)
 	}()
-	res := os.execute('${v} install https://gitlab.com/tobealive/a')
+	mut res := os.execute('${v} install https://gitlab.com/tobealive/a')
+	assert res.exit_code == 0, res.str()
+
+	// Test the installation of a module when passing its URL with the `.git` extension.
+	// One of the modules dependencies `https://gitlab.com/tobealive/c` has the
+	// `https://gitlab.com/tobealive/a` dependency without `.git`.
+	res = os.execute('${v} remove a b c')
+	assert res.exit_code == 0, res.str()
+	res = os.execute('${v} install https://gitlab.com/tobealive/a.git')
 	assert res.exit_code == 0, res.str()
 }

@@ -544,8 +544,8 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 		ast.CastExpr {
 			// value.map(Type(it)) when `value` is a comptime var
 			if expr.expr is ast.Ident && node.left is ast.Ident
-				&& g.table.is_comptime_var(node.left) {
-				ctyp := g.get_comptime_var_type(node.left)
+				&& g.comptime.is_comptime_var(node.left) {
+				ctyp := g.comptime.get_comptime_var_type(node.left)
 				if ctyp != ast.void_type {
 					expr.expr_type = g.table.value_type(ctyp)
 				}
@@ -825,7 +825,8 @@ fn (mut g Gen) gen_array_insert(node ast.CallExpr) {
 	left_info := left_sym.info as ast.Array
 	elem_type_str := g.typ(left_info.elem_type)
 	arg2_sym := g.table.sym(node.args[1].typ)
-	is_arg2_array := arg2_sym.kind == .array && node.args[1].typ == node.left_type
+	is_arg2_array := arg2_sym.kind == .array
+		&& node.args[1].typ.clear_flag(.variadic) == node.left_type
 	noscan := g.check_noscan(left_info.elem_type)
 	addr := if node.left_type.is_ptr() { '' } else { '&' }
 	if is_arg2_array {
@@ -1006,7 +1007,7 @@ fn (mut g Gen) gen_array_contains(left_type ast.Type, left ast.Expr, right_type 
 	} else {
 		left_sym.array_fixed_info().elem_type
 	}
-	if right.is_auto_deref_var()
+	if (right.is_auto_deref_var() && !elem_typ.is_ptr())
 		|| (g.table.sym(elem_typ).kind !in [.interface_, .sum_type, .struct_] && right is ast.Ident
 		&& right.info is ast.IdentVar
 		&& g.table.sym(right.obj.typ).kind in [.interface_, .sum_type]) {

@@ -350,3 +350,17 @@ fn test_interpolate_literal_limits() {
 	assert '10 ${u32(0o377777_77777)}' == '10 4294967295'
 	assert '11 ${i64(-2147483647)}' == '11 -2147483647'
 }
+
+fn test_string_repetition() {
+	a := 'pippo'
+	assert '${'pera':r}' == ''
+	assert '${'pera':R}' == ''
+	assert '${'pera':0r}' == ''
+	assert '${'pera':0R}' == ''
+	assert '${'pera':1r}' == 'pera'
+	assert '${'pera':1R}' == 'PERA'
+	assert '${'pera':2r}' == 'perapera'
+	assert '${'pera':2R}' == 'PERAPERA'
+	assert '${a:2r}' == 'pippopippo'
+	assert '${a:2R}' == 'PIPPOPIPPO'
+}

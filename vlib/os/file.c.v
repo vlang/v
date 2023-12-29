@@ -28,11 +28,6 @@ pub mut:
 	is_opened bool
 }
 
-struct FileInfo {
-	name string
-	size int
-}
-
 fn C.fseeko(&C.FILE, u64, int) int
 
 fn C._fseeki64(&C.FILE, u64, int) int

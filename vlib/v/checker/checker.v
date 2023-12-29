@@ -12,6 +12,7 @@ import v.util.version
 import v.errors
 import v.pkgconfig
 import v.transformer
+import v.comptime
 
 const int_min = int(0x80000000)
 const int_max = int(0x7FFFFFFF)
@@ -82,7 +83,6 @@ pub mut:
 	inside_fn_arg              bool // `a`, `b` in `a.f(b)`
 	inside_ct_attr             bool // true inside `[if expr]`
 	inside_x_is_type           bool // true inside the Type expression of `if x is Type {`
-	inside_comptime_for_field  bool
 	inside_generic_struct_init bool
 	cur_struct_generic_types   []ast.Type
 	cur_struct_concrete_types  []ast.Type
@@ -108,15 +108,8 @@ mut:
 	loop_label                       string     // set when inside a labelled for loop
 	vweb_gen_types                   []ast.Type // vweb route checks
 	timers                           &util.Timers = util.get_timers()
-	comptime_for_field_var           string
-	comptime_fields_default_type     ast.Type
-	comptime_fields_type             map[string]ast.Type
-	comptime_for_field_value         ast.StructField // value of the field variable
-	comptime_enum_field_value        string   // current enum value name
-	comptime_for_method              string   // $for method in T.methods {}
-	comptime_for_method_var          string   // $for method in T.methods {}; the variable name
-	comptime_for_method_ret_type     ast.Type // $for method - current method.return_type field
-	comptime_values_stack            []CurrentComptimeValues // stores the values from the above on each $for loop, to make nesting them easier
+	comptime_info_stack              []comptime.ComptimeInfo // stores the values from the above on each $for loop, to make nesting them easier
+	comptime                         comptime.ComptimeInfo
 	fn_scope                         &ast.Scope = unsafe { nil }
 	main_fn_decl_node                ast.FnDecl
 	match_exhaustive_cutoff_limit    int = 10
@@ -137,6 +130,7 @@ mut:
 	goto_labels       map[string]ast.GotoLabel // to check for unused goto labels
 	enum_data_type    ast.Type
 	field_data_type   ast.Type
+	variant_data_type ast.Type
 	fn_return_type    ast.Type
 	orm_table_fields  map[string][]ast.StructField // known table structs
 	//
@@ -148,13 +142,18 @@ pub fn new_checker(table &ast.Table, pref_ &pref.Preferences) &Checker {
 	$if time_checking ? {
 		timers_should_print = true
 	}
-	return &Checker{
+	mut checker := &Checker{
 		table: table
 		pref: pref_
 		timers: util.new_timers(should_print: timers_should_print, label: 'checker')
 		match_exhaustive_cutoff_limit: pref_.checker_match_exhaustive_cutoff_limit
 		v_current_commit_hash: version.githash(pref_.building_v)
 	}
+	checker.comptime = &comptime.ComptimeInfo{
+		resolver: checker
+		table: table
+	}
+	return checker
 }
 
 fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
@@ -655,9 +654,9 @@ and use a reference to the sum type instead: `var := &${node.name}(${variant_nam
 					for typ in sym.info.generic_types {
 						if typ !in node.generic_types {
 							sumtype_type_names := node.generic_types.map(c.table.type_to_str(it)).join(', ')
-							generic_sumtype_name := '${node.name}<${sumtype_type_names}>'
+							generic_sumtype_name := '${node.name}[${sumtype_type_names}]'
 							variant_type_names := sym.info.generic_types.map(c.table.type_to_str(it)).join(', ')
-							generic_variant_name := '${sym.name}<${variant_type_names}>'
+							generic_variant_name := '${sym.name}[${variant_type_names}]'
 							c.error('generic type name `${c.table.sym(typ).name}` of generic struct `${generic_variant_name}` is not mentioned in sumtype `${generic_sumtype_name}`',
 								variant.pos)
 						}
@@ -709,8 +708,12 @@ fn (mut c Checker) expand_iface_embeds(idecl &ast.InterfaceDecl, level int, ifac
 			mut list := iface_decl.embeds.clone()
 			if !iface_decl.are_embeds_expanded {
 				list = c.expand_iface_embeds(idecl, level + 1, iface_decl.embeds)
-				c.table.interfaces[ie.typ].embeds = list
-				c.table.interfaces[ie.typ].are_embeds_expanded = true
+				unsafe {
+					c.table.interfaces[ie.typ].embeds = list
+				}
+				unsafe {
+					c.table.interfaces[ie.typ].are_embeds_expanded = true
+				}
 			}
 			for partial in list {
 				res[partial.typ] = partial
@@ -1446,8 +1449,8 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		}
 	}
 	// evaluates comptime field.<name> (from T.fields)
-	if c.check_comptime_is_field_selector(node) {
-		if c.check_comptime_is_field_selector_bool(node) {
+	if c.comptime.check_comptime_is_field_selector(node) {
+		if c.comptime.check_comptime_is_field_selector_bool(node) {
 			node.expr_type = ast.bool_type
 			return node.expr_type
 		}
@@ -1470,9 +1473,10 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		c.error('`${node.expr}` does not return a value', node.pos)
 		node.expr_type = ast.void_type
 		return ast.void_type
-	} else if c.inside_comptime_for_field && typ == c.enum_data_type && node.field_name == 'value' {
+	} else if c.comptime.inside_comptime_for && typ == c.enum_data_type
+		&& node.field_name == 'value' {
 		// for comp-time enum.values
-		node.expr_type = c.comptime_fields_type['${c.comptime_for_field_var}.typ']
+		node.expr_type = c.comptime.type_map['${c.comptime.comptime_for_enum_var}.typ']
 		node.typ = typ
 		return node.expr_type
 	}
@@ -2167,7 +2171,7 @@ fn (mut c Checker) branch_stmt(node ast.BranchStmt) {
 		c.error('`${node.kind.str()}` is not allowed in defer statements', node.pos)
 	}
 	if c.in_for_count == 0 {
-		if c.inside_comptime_for_field {
+		if c.comptime.inside_comptime_for {
 			c.error('${node.kind.str()} is not allowed within a compile-time loop', node.pos)
 		} else {
 			c.error('${node.kind.str()} statement not within a loop', node.pos)
@@ -2628,10 +2632,11 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 		ast.AsCast {
 			node.expr_type = c.expr(mut node.expr)
 			expr_type_sym := c.table.sym(node.expr_type)
-			type_sym := c.table.sym(node.typ)
+			type_sym := c.table.sym(c.unwrap_generic(node.typ))
 			if expr_type_sym.kind == .sum_type {
 				c.ensure_type_exists(node.typ, node.pos)
-				if !c.table.sumtype_has_variant(node.expr_type, node.typ, true) {
+				if !c.table.sumtype_has_variant(c.unwrap_generic(node.expr_type), c.unwrap_generic(node.typ),
+					true) {
 					addr := '&'.repeat(node.typ.nr_muls())
 					c.error('cannot cast `${expr_type_sym.name}` to `${addr}${type_sym.name}`',
 						node.pos)
@@ -2709,11 +2714,11 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			c.expected_type = ast.string_type
 			node.expr_type = c.expr(mut node.expr)
 
-			if c.inside_comptime_for_field && node.expr is ast.Ident {
-				if c.table.is_comptime_var(node.expr) {
-					node.expr_type = c.get_comptime_var_type(node.expr as ast.Ident)
-				} else if (node.expr as ast.Ident).name in c.comptime_fields_type {
-					node.expr_type = c.comptime_fields_type[(node.expr as ast.Ident).name]
+			if c.comptime.inside_comptime_for && node.expr is ast.Ident {
+				if c.comptime.is_comptime_var(node.expr) {
+					node.expr_type = c.comptime.get_comptime_var_type(node.expr as ast.Ident)
+				} else if (node.expr as ast.Ident).name in c.comptime.type_map {
+					node.expr_type = c.comptime.type_map[(node.expr as ast.Ident).name]
 				}
 			}
 			c.check_expr_opt_call(node.expr, node.expr_type)
@@ -2983,7 +2988,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	node.expr_type = c.expr(mut node.expr) // type to be casted
 
 	if mut node.expr is ast.ComptimeSelector {
-		node.expr_type = c.get_comptime_selector_type(node.expr, node.expr_type)
+		node.expr_type = c.comptime.get_comptime_selector_type(node.expr, node.expr_type)
 	}
 
 	mut from_type := c.unwrap_generic(node.expr_type)
@@ -3315,8 +3320,8 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 				}
 			}
 		}
-		if mut node.expr is ast.StringLiteral {
-			c.add_error_detail('use ${c.table.type_to_str(node.typ)}.from_string(\'${node.expr.val}\') instead')
+		if node.expr_type == ast.string_type_idx {
+			c.add_error_detail('use ${c.table.type_to_str(node.typ)}.from_string(${node.expr}) instead')
 			c.error('cannot cast `string` to `enum`', node.pos)
 		}
 	}
@@ -3473,8 +3478,8 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 	// second use
 	if node.kind in [.constant, .global, .variable] {
 		info := node.info as ast.IdentVar
-		typ := if c.table.is_comptime_var(node) {
-			ctype := c.get_comptime_var_type(node)
+		typ := if c.comptime.is_comptime_var(node) {
+			ctype := c.comptime.get_comptime_var_type(node)
 			if ctype != ast.void_type {
 				ctype
 			} else {
@@ -4236,11 +4241,12 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 		c.type_error_for_operator('-', 'numeric', right_sym.name, node.pos)
 	}
 	if node.op == .arrow {
-		if right_sym.kind == .chan {
+		raw_right_sym := c.table.final_sym(right_type)
+		if raw_right_sym.kind == .chan {
 			c.stmts_ending_with_expression(mut node.or_block.stmts)
-			return right_sym.chan_info().elem_type
+			return raw_right_sym.chan_info().elem_type
 		}
-		c.type_error_for_operator('<-', '`chan`', right_sym.name, node.pos)
+		c.type_error_for_operator('<-', '`chan`', raw_right_sym.name, node.pos)
 	}
 	return right_type
 }
@@ -4352,6 +4358,11 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		elem_type := c.table.value_type(typ)
 		if elem_type.is_any_kind_of_pointer() {
 			c.note('accessing a pointer map value requires an `or {}` block outside `unsafe`',
+				node.pos)
+		}
+		mut checked_types := []ast.Type{}
+		if c.is_contains_any_kind_of_pointer(elem_type, mut checked_types) {
+			c.note('accessing map value that contain pointers requires an `or {}` block outside `unsafe`',
 				node.pos)
 		}
 	}

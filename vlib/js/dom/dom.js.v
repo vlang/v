@@ -206,7 +206,7 @@ pub interface JS.Node {
 	lookupPrefix(namespace JS.String) JS.String
 	normalize()
 	removeChild(child JS.Node) JS.Node
-	replaceChild(node JS.Node, child JS.Node) JS.Npde
+	replaceChild(node JS.Node, child JS.Node) JS.Node
 mut:
 	nodeValue   JS.String
 	textContent JS.String
@@ -378,6 +378,8 @@ pub interface JS.HTMLElement {
 	offsetTop      JS.Number
 	offsetWidth    JS.Number
 	click()
+	querySelector(selectors JS.String) ?JS.HTMLElement
+	querySelectorAll(selectors JS.String) JS.NodeList
 mut:
 	accessKey      JS.String
 	autocapitalize JS.String
@@ -390,6 +392,14 @@ mut:
 	spellcheck     JS.Boolean
 	title          JS.String
 	translate      JS.Boolean
+}
+
+pub type NodeListForEachCb = fn (JS.HTMLElement, JS.Number, JS.NodeList)
+
+pub interface JS.NodeList {
+	length JS.Number
+	forEach(cb NodeListForEachCb, thisArg JS.Any)
+	item(idx JS.Number) ?JS.Any
 }
 
 pub fn JS.HTMLElement.prototype.constructor() JS.HTMLElement
@@ -605,6 +615,9 @@ pub interface JS.WebGLFramebuffer {}
 pub interface JS.WebGLRenderbuffer {}
 
 @[single_impl]
+pub interface JS.WebGLSampler {}
+
+@[single_impl]
 pub interface JS.WebGLTexture {}
 
 @[single_impl]
@@ -624,6 +637,7 @@ pub interface JS.WebGLRenderingContext {
 	bindBuffer(target JS.Number, buffer JS.WebGLBuffer)
 	bindFramebuffer(target JS.Number, buffer JS.WebGLFrameBuffer)
 	bindRenderbuffer(target JS.Number, renderbuffer JS.WebGLRenderbuffer)
+	bindSampler(unit JS.Number, sampler JS.WebGLSampler)
 	bindTexture(target JS.Number, texture JS.WebGLTexture)
 	clear(mask JS.Number)
 	clearColor(red JS.Number, green JS.Number, blue JS.Number, alpha JS.Number)
@@ -635,6 +649,7 @@ pub interface JS.WebGLRenderingContext {
 	createFramebuffer() ?JS.WebGLFrameBuffer
 	createProgram() ?JS.WebGLProgram
 	createRenderbuffer() ?JS.WebGLRenderbuffer
+	createSampler() ?JS.WebGLSampler
 	createShader(typ JS.Number) ?JS.WebGLShader
 	createTexture() ?JS.WebGLTexture
 	cullFace(mode JS.Number)

@@ -1,3 +1,5 @@
+// vtest flaky: true
+// vtest retry: 3
 // import db.mysql
 // import db.pg
 import time

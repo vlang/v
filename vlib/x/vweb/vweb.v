@@ -11,7 +11,6 @@ import picoev
 
 // max read and write limits in bytes
 const max_read = 8096
-
 const max_write = 8096 * 2
 
 // A type which doesn't get filtered inside templates
@@ -20,6 +19,12 @@ pub type RawHtml = string
 // A dummy structure that returns from routes to indicate that you actually sent something to a user
 @[noinit]
 pub struct Result {}
+
+// no_result does nothing, but returns `vweb.Result`. Only use it when you are sure
+// a response will be send over the connection, or in combination with `Context.takeover_conn`
+pub fn no_result() Result {
+	return Result{}
+}
 
 pub const methods_with_form = [http.Method.post, .put, .patch]
 
@@ -290,6 +295,7 @@ pub fn run_at[A, X](mut global_app A, params RunParams) ! {
 		user_data: pico_context
 		timeout_secs: params.timeout_in_seconds
 		family: params.family
+		host: params.host
 	)
 
 	// Forever accept every connection that comes
@@ -307,8 +313,12 @@ fn ev_callback[A, X](mut pv picoev.Picoev, fd int, events int) {
 
 		if params.file_responses[fd].open {
 			handle_write_file(mut pv, mut params, fd)
-		} else {
+		} else if params.string_responses[fd].open {
 			handle_write_string(mut pv, mut params, fd)
+		} else {
+			// this should never happen
+			eprintln('[vweb] error: write event on connection should be closed')
+			pv.close_conn(fd)
 		}
 	} else {
 		$if trace_picoev_callback ? {
@@ -461,6 +471,7 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 			eprintln('[vweb] error parsing request: ${err}')
 			pv.close_conn(fd)
 			params.incomplete_requests[fd] = http.Request{}
+			params.idx[fd] = 0
 			return
 		}
 
@@ -476,18 +487,21 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 					value: 'text/plain'
 				).join(vweb.headers_close)
 			)) or {}
+
 			pv.close_conn(fd)
 			params.incomplete_requests[fd] = http.Request{}
+			params.idx[fd] = 0
 			return
 		} else if n < bytes_to_read || params.idx[fd] + n < content_length.int() {
 			// request is incomplete wait until the socket becomes ready to read again
 			params.idx[fd] += n
 			// TODO: change this to a memcpy function?
-			req.data += buf.bytestr()
+			req.data += buf[0..n].bytestr()
 			params.incomplete_requests[fd] = req
 			return
 		} else {
 			// request is complete: n = bytes_to_read
+			params.idx[fd] += n
 			req.data += buf[0..n].bytestr()
 		}
 	}
@@ -522,6 +536,7 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 					fast_send_resp(mut conn, completed_context.res) or {}
 					pv.close_conn(fd)
 				} else {
+					params.string_responses[fd].open = true
 					params.string_responses[fd].str = completed_context.res.body
 					res := pv.add(fd, picoev.picoev_write, params.timeout_in_seconds,
 						picoev.raw_callback)
@@ -587,7 +602,7 @@ fn handle_request[A, X](mut conn net.TcpConn, req http.Request, params &RequestP
 
 	// parse the URL, query and form data
 	mut url := urllib.parse(req.url) or {
-		eprintln('[vweb] error parsing path: ${err}')
+		eprintln('[vweb] error parsing path "${req.url}": ${err}')
 		return none
 	}
 	query := parse_query_from_url(url)
@@ -637,12 +652,13 @@ fn handle_request[A, X](mut conn net.TcpConn, req http.Request, params &RequestP
 fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string, routes &map[string]Route) {
 	mut route := Route{}
 	mut middleware_has_sent_response := false
+	mut not_found := false
 
 	defer {
 		// execute middleware functions after vweb is done and before the response is send
 		mut was_done := true
 		$if A is MiddlewareApp {
-			if middleware_has_sent_response == false {
+			if !not_found && !middleware_has_sent_response {
 				// if the middleware doesn't send an alternate response, but only changes the
 				// response object we only have to check if the `done` was previously set to true
 				was_done = user_context.Context.done
@@ -779,7 +795,7 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 	}
 	// return 404
 	user_context.not_found()
-	route = Route{}
+	not_found = true
 	return
 }
 

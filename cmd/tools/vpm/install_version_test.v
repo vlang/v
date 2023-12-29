@@ -70,7 +70,7 @@ fn test_install_from_vpm_with_git_version_tag() {
 	assert res.output.contains('Updating module `${ident}`'), res.output
 }
 
-fn test_install_from_url_with_git_version_tag() {
+fn test_install_from_git_url_with_version_tag() {
 	mut url := 'https://github.com/vlang/vsl'
 	mut tag := 'v0.1.50'
 	mut res := os.execute('${vexe} install ${url}@${tag}')
@@ -99,7 +99,7 @@ fn test_install_from_url_with_git_version_tag() {
 	// Install invalid version verbose.
 	res = os.execute('${vexe} install -f -v ${url}@${tag}')
 	assert res.exit_code == 1, res.str()
-	assert res.output.contains('failed to find `v.mod` for `${url}@${tag}`'), res.output
+	assert res.output.contains('Could not find remote branch ${tag} to clone.'), res.output
 	// Install from GitLab.
 	url = 'https://gitlab.com/tobealive/webview'
 	tag = 'v0.6.0'
@@ -109,4 +109,57 @@ fn test_install_from_url_with_git_version_tag() {
 	manifest = get_vmod('webview')
 	assert manifest.name == 'webview'
 	assert manifest.version == '0.6.0'
+}
+
+fn test_install_from_hg_url_with_version_tag() ! {
+	hg_path := os.find_abs_path_of_executable('hg') or {
+		eprintln('skipping test, since `hg` is not executable.')
+		return
+	}
+	test_module_path := os.join_path(os.temp_dir(), rand.ulid(), 'hg_test_module')
+	defer {
+		os.rmdir_all(test_module_path) or {}
+	}
+	mut res := os.execute('hg init ${test_module_path}')
+	assert res.exit_code == 0, res.str()
+	os.chdir(test_module_path)!
+
+	os.write_file('v.mod', "Module{
+	name: 'my_awesome_v_module'
+	version: '0.1.0'
+}")!
+	res = os.execute('hg add')
+	assert res.exit_code == 0, res.str()
+	res = os.execute('hg --config ui.username=v_ci commit -m "initial commit"')
+	assert res.exit_code == 0, res.str()
+
+	os.write_file('README.md', 'Hello World!')!
+	res = os.execute('hg add')
+	assert res.exit_code == 0, res.str()
+	res = os.execute('hg --config ui.username=v_ci commit -m "add readme"')
+	assert res.exit_code == 0, res.str()
+
+	res = os.execute('hg tag v0.1.0')
+	assert res.exit_code == 0, res.str()
+
+	os.write_file('v.mod', "Module{
+	name: 'my_awesome_v_module'
+	version: '0.2.0'
+}")!
+	res = os.execute('hg add')
+	assert res.exit_code == 0, res.str()
+	res = os.execute('hg --config ui.username=v_ci commit -m "bump version to v0.2.0"')
+	assert res.exit_code == 0, res.str()
+
+	mut p, port := test_utils.hg_serve(hg_path, test_module_path)
+	res = os.execute('${vexe} install -v --hg http://127.0.0.1:${port}@v0.1.0')
+	if res.exit_code != 0 {
+		p.signal_kill()
+		assert false, res.str()
+	}
+	p.signal_kill()
+	// Get manifest from the vmodules directory.
+	manifest := get_vmod('my_awesome_v_module')
+	assert manifest.name == 'my_awesome_v_module'
+	assert manifest.version == '0.1.0'
 }

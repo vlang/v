@@ -1,0 +1,13 @@
+vlib/v/checker/tests/cast_sumtype_as_generic_err.vv:15:10: error: cannot cast `bool` to `SumType`
+   13 | fn main() {
+   14 |     println(SumType('la').cast_to[string]())
+   15 |     println(SumType(true).cast_to[bool]())
+      |             ~~~~~~~~~~~~~
+   16 | }
+vlib/v/checker/tests/cast_sumtype_as_generic_err.vv:10:11: error: cannot cast `SumType` to `bool`
+    8 |
+    9 | fn (a SumType) cast_to[T]() T {
+   10 |     return a as T
+      |              ~~
+   11 | }
+   12 |

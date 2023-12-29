@@ -141,8 +141,9 @@ pub fn (app &App) login(mut ctx Context) vweb.Result {
 		if password.len < 12 {
 			return ctx.text('password is too weak!')
 		} else {
-			// redirect to the profile page
-			return ctx.redirect('/profile')
+			// we receive a POST request, so we want to explicitly tell the browser
+			// to send a GET request to the profile page.
+			return ctx.redirect('/profile', .see_other)
 		}
 	}
 }
@@ -751,13 +752,27 @@ pub fn (app &App) index(mut ctx Context) vweb.Result {
 
 #### Redirect
 
+You must pass the type of redirect to vweb:
+- `moved_permanently` HTTP code 301
+- `found` HTTP code 302
+- `see_other` HTTP code 303
+- `temporary_redirect` HTTP code 307
+- `permanent_redirect` HTTP code 308
+
+**Common use cases:**
+
+If you want to change the request method, for example when you receive a post request and
+want to redirect to another page via a GET request, you should use `see_other`. If you want
+the HTTP method to stay the same you should use `found` generally speaking.
+
 **Example:**
 ```v ignore
 pub fn (app &App) index(mut ctx Context) vweb.Result {
 	token := ctx.get_cookie('token') or { '' }
 	if token == '' {
 		// redirect the user to '/login' if the 'token' cookie is not set
-		return ctx.redirect('/login')
+		// we explicitly tell the browser to send a GET request
+		return ctx.redirect('/login', .see_other)
 	} else {
 		return ctx.text('Welcome!')
 	}
@@ -790,6 +805,16 @@ When this function is called you are free to do anything you want with the TCP
 connection and vweb will not interfere. This means that we are responsible for
 sending a response over the connection and closing it.
 
+### Empty Result
+
+Sometimes you want to send the response in another thread, for example when using 
+[Server Sent Events](sse/README.md). When you are sure that a response will be sent
+over the TCP connection you can return `vweb.no_result()`. This function does nothinng
+and returns an empty `vweb.Result` struct, letting vweb know that we sent a response ourself.
+
+> **Note:**
+> It is important to call `ctx.takeover_conn` before you spawn a thread
+
 **Example:**
 ```v
 module main
@@ -810,11 +835,14 @@ pub fn (app &App) index(mut ctx Context) vweb.Result {
 
 @['/long']
 pub fn (app &App) long_response(mut ctx Context) vweb.Result {
+	// let vweb know that the connection should not be closed
+	ctx.takeover_conn()
 	// use spawn to handle the connection in another thread
 	// if we don't the whole web server will block for 10 seconds,
 	// since vweb is singlethreaded
 	spawn handle_connection(mut ctx.conn)
-	return ctx.takeover_conn()
+	// we will send a custom response ourself, so we can safely return an empty result
+	return vweb.no_result()
 }
 
 fn handle_connection(mut conn net.TcpConn) {

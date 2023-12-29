@@ -1,0 +1,4 @@
+[vlib/v/slow_tests/inout/comptime_iterate.vv:18] f.name: a
+[vlib/v/slow_tests/inout/comptime_iterate.vv:22] 'int': int
+[vlib/v/slow_tests/inout/comptime_iterate.vv:24] 'string': string
+[vlib/v/slow_tests/inout/comptime_iterate.vv:31] f3.name: y

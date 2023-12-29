@@ -704,8 +704,9 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							c.error('reference field must be initialized with reference',
 								init_field.pos)
 						}
-					} else if exp_type.is_pointer() && !got_type.is_any_kind_of_pointer()
-						&& !got_type.is_int() {
+					} else if exp_type.is_any_kind_of_pointer()
+						&& !got_type.is_any_kind_of_pointer() && !got_type.is_int()
+						&& (!exp_type.has_flag(.option) || got_type.idx() != ast.none_type_idx) {
 						got_typ_str := c.table.type_to_str(got_type)
 						exp_typ_str := c.table.type_to_str(exp_type)
 						c.error('cannot assign to field `${field_info.name}`: expected a pointer `${exp_typ_str}`, but got `${got_typ_str}`',
@@ -874,9 +875,10 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 	if node.has_update_expr {
 		update_type := c.expr(mut node.update_expr)
 		node.update_expr_type = update_type
+		expr_sym := c.table.final_sym(c.unwrap_generic(update_type))
 		if node.update_expr is ast.ComptimeSelector {
 			c.error('cannot use struct update syntax in compile time expressions', node.update_expr_pos)
-		} else if c.table.final_sym(update_type).kind != .struct_ {
+		} else if expr_sym.kind != .struct_ {
 			s := c.table.type_to_str(update_type)
 			c.error('expected struct, found `${s}`', node.update_expr.pos())
 		} else if update_type != node.typ {

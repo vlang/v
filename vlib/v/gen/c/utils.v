@@ -113,6 +113,24 @@ fn (mut g Gen) fn_var_signature(return_type ast.Type, arg_types []ast.Type, var_
 	return sig
 }
 
+// generate anon fn cname, e.g. `anon_fn_void_int_string`, `anon_fn_void_int_ptr_string`
+fn (mut g Gen) anon_fn_cname(return_type ast.Type, arg_types []ast.Type) string {
+	ret_styp := g.typ(return_type).replace('*', '_ptr')
+	mut sig := 'anon_fn_${ret_styp}_'
+	for j, arg_typ in arg_types {
+		arg_sym := g.table.sym(arg_typ)
+		if arg_sym.info is ast.FnType {
+			sig += g.anon_fn_cname(arg_sym.info.func.return_type, arg_sym.info.func.params.map(it.typ))
+		} else {
+			sig += g.typ(arg_typ).replace('*', '_ptr')
+		}
+		if j < arg_types.len - 1 {
+			sig += '_'
+		}
+	}
+	return sig
+}
+
 // escape quotes for string
 fn escape_quotes(val string) string {
 	bs := '\\'

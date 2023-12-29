@@ -51,7 +51,7 @@ pub fn (mut app App) new_article(mut ctx Context) vweb.Result {
 		insert article into Article
 	} or {}
 
-	return ctx.redirect('/')
+	return ctx.redirect('/', .see_other)
 }
 
 pub fn (mut app App) time(mut ctx Context) vweb.Result {

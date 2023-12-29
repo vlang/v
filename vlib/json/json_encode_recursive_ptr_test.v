@@ -9,7 +9,7 @@ struct PostTag {
 }
 
 fn test_main() {
-	new_post_tag := PostTag{}
+	new_post_tag := &PostTag{}
 	assert json.encode(new_post_tag) == '{"id":"","visibility":"","createdAt":"","metadata":""}'
 
 	new_post_tag2 := PostTag{

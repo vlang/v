@@ -1,0 +1,5 @@
+interface Abc   // interface Abc
+{
+	a int
+	get_info() string
+}

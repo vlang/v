@@ -955,7 +955,7 @@ fn test_reading_from_empty_file() {
 	os.rm(empty_file)!
 }
 
-fn move_across_partitions_using_function(f fn (src string, dst string) !) ! {
+fn move_across_partitions_using_function(f fn (src string, dst string, opts os.MvParams) !) ! {
 	bindfs := os.find_abs_path_of_executable('bindfs') or {
 		eprintln('skipping test_mv_by_cp, because bindfs was not present')
 		return

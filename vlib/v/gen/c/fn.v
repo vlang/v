@@ -957,9 +957,9 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 	}
 	left_node := node.left
 	if left_node is ast.ComptimeSelector {
-		key_str := g.get_comptime_selector_key_type(left_node)
+		key_str := g.comptime.get_comptime_selector_key_type(left_node)
 		if key_str != '' {
-			rec_type = g.comptime_var_type_map[key_str] or { rec_type }
+			rec_type = g.comptime.type_map[key_str] or { rec_type }
 			g.gen_expr_to_string(left_node, rec_type)
 			return true
 		}
@@ -973,7 +973,7 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 	} else if left_node is ast.ComptimeCall {
 		if left_node.method_name == 'method' {
 			sym := g.table.sym(g.unwrap_generic(left_node.left_type))
-			if m := sym.find_method(g.comptime_for_method) {
+			if m := sym.find_method(g.comptime.comptime_for_method) {
 				rec_type = m.return_type
 				g.gen_expr_to_string(left_node, rec_type)
 				return true
@@ -982,10 +982,10 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr) bool {
 	} else if left_node is ast.Ident {
 		if left_node.obj is ast.Var {
 			if left_node.obj.ct_type_var != .no_comptime {
-				rec_type = g.get_comptime_var_type(left_node)
+				rec_type = g.comptime.get_comptime_var_type(left_node)
 				g.gen_expr_to_string(left_node, rec_type)
 				return true
-			} else if g.comptime_var_type_map.len > 0 {
+			} else if g.comptime.type_map.len > 0 {
 				rec_type = left_node.obj.typ
 				g.gen_expr_to_string(left_node, rec_type)
 				return true
@@ -1053,7 +1053,7 @@ fn (g Gen) get_generic_array_element_type(array ast.Array) ast.Type {
 fn (mut g Gen) resolve_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concrete_types []ast.Type) map[int]ast.Type {
 	mut comptime_args := map[int]ast.Type{}
 	has_dynamic_vars := (g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0)
-		|| g.inside_comptime_for_field
+		|| g.comptime.comptime_for_field_var != ''
 	if has_dynamic_vars {
 		offset := if func.is_method { 1 } else { 0 }
 		mut k := -1
@@ -1072,7 +1072,7 @@ fn (mut g Gen) resolve_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concre
 				if mut call_arg.expr.obj is ast.Var {
 					node_.args[i].typ = call_arg.expr.obj.typ
 					if call_arg.expr.obj.ct_type_var !in [.generic_param, .no_comptime] {
-						mut ctyp := g.get_comptime_var_type(call_arg.expr)
+						mut ctyp := g.comptime.get_comptime_var_type(call_arg.expr)
 						if ctyp != ast.void_type {
 							arg_sym := g.table.sym(ctyp)
 							param_sym := g.table.final_sym(param_typ)
@@ -1094,7 +1094,7 @@ fn (mut g Gen) resolve_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concre
 							comptime_args[k] = ctyp
 						}
 					} else if call_arg.expr.obj.ct_type_var == .generic_param {
-						mut ctyp := g.get_comptime_var_type(call_arg.expr)
+						mut ctyp := g.comptime.get_comptime_var_type(call_arg.expr)
 						if ctyp != ast.void_type {
 							arg_sym := g.table.final_sym(call_arg.typ)
 							param_typ_sym := g.table.sym(param_typ)
@@ -1152,22 +1152,19 @@ fn (mut g Gen) resolve_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concre
 				}
 			} else if mut call_arg.expr is ast.PrefixExpr {
 				if call_arg.expr.right is ast.ComptimeSelector {
-					comptime_args[k] = g.comptime_for_field_type
+					comptime_args[k] = g.comptime.comptime_for_field_type
 					comptime_args[k] = comptime_args[k].deref()
 					if param_typ.nr_muls() > 0 && comptime_args[k].nr_muls() > 0 {
 						comptime_args[k] = comptime_args[k].set_nr_muls(0)
 					}
 				}
 			} else if mut call_arg.expr is ast.ComptimeSelector {
-				comptime_args[k] = g.comptime_for_field_type
+				comptime_args[k] = g.comptime.comptime_for_field_type
 				arg_sym := g.table.final_sym(call_arg.typ)
 				param_typ_sym := g.table.sym(param_typ)
 				if arg_sym.kind == .array && param_typ.has_flag(.generic)
 					&& param_typ_sym.kind == .array {
 					comptime_args[k] = g.get_generic_array_element_type(arg_sym.info as ast.Array)
-				}
-				if call_arg.expr.left.is_auto_deref_var() {
-					comptime_args[k] = comptime_args[k].deref()
 				}
 				if param_typ.nr_muls() > 0 && comptime_args[k].nr_muls() > 0 {
 					comptime_args[k] = comptime_args[k].set_nr_muls(0)
@@ -1176,7 +1173,7 @@ fn (mut g Gen) resolve_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concre
 				if call_arg.expr.method_name == 'method' {
 					sym := g.table.sym(g.unwrap_generic(call_arg.expr.left_type))
 					// `app.$method()`
-					if m := sym.find_method(g.comptime_for_method) {
+					if m := sym.find_method(g.comptime.comptime_for_method) {
 						comptime_args[k] = m.return_type
 					}
 				}
@@ -1746,15 +1743,15 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	// Handle `print(x)`
 	mut print_auto_str := false
 	if is_print && (node.args[0].typ != ast.string_type
-		|| g.comptime_for_method.len > 0
-		|| g.table.is_comptime_var(node.args[0].expr)) {
+		|| g.comptime.comptime_for_method.len > 0
+		|| g.comptime.is_comptime_var(node.args[0].expr)) {
 		g.inside_interface_deref = true
 		defer {
 			g.inside_interface_deref = false
 		}
 		mut typ := node.args[0].typ
-		if g.table.is_comptime_var(node.args[0].expr) {
-			ctyp := g.get_comptime_var_type(node.args[0].expr)
+		if g.comptime.is_comptime_var(node.args[0].expr) {
+			ctyp := g.comptime.get_comptime_var_type(node.args[0].expr)
 			if ctyp != ast.void_type {
 				typ = ctyp
 			}
@@ -1762,7 +1759,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		if typ == 0 {
 			g.checker_bug('print arg.typ is 0', node.pos)
 		}
-		if typ != ast.string_type || g.comptime_for_method.len > 0 {
+		if typ != ast.string_type || g.comptime.comptime_for_method.len > 0 {
 			expr := node.args[0].expr
 			typ_sym := g.table.sym(typ)
 			if typ_sym.kind == .interface_ && (typ_sym.info as ast.Interface).defines_method('str') {
@@ -1786,14 +1783,14 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			} else {
 				g.write('${c_fn_name(print_method)}(')
 				if expr is ast.ComptimeSelector {
-					key_str := g.get_comptime_selector_key_type(expr)
+					key_str := g.comptime.get_comptime_selector_key_type(expr)
 					if key_str != '' {
-						typ = g.comptime_var_type_map[key_str] or { typ }
+						typ = g.comptime.type_map[key_str] or { typ }
 					}
 				} else if expr is ast.ComptimeCall {
 					if expr.method_name == 'method' {
 						sym := g.table.sym(g.unwrap_generic(expr.left_type))
-						if m := sym.find_method(g.comptime_for_method) {
+						if m := sym.find_method(g.comptime.comptime_for_method) {
 							typ = m.return_type
 						}
 					}

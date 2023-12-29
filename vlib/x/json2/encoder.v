@@ -117,7 +117,11 @@ fn (e &Encoder) encode_any(val Any, level int, mut wr io.Writer) ! {
 			e.encode_newline(level - 1, mut wr)!
 			wr.write([u8(`]`)])!
 		}
-		time.Time {}
+		time.Time {
+			wr.write(json2.quote_bytes)!
+			wr.write(val.format_rfc3339().bytes())!
+			wr.write(json2.quote_bytes)!
+		}
 		Null {
 			wr.write(json2.null_in_bytes)!
 		}
@@ -570,8 +574,10 @@ fn (e &Encoder) encode_string(s string, mut wr io.Writer) ! {
 				wr.write(hex_code)!
 			} else {
 				// TODO: still figuring out what
-				// to do with more than 4 chars
-				wr.write(json2.space_bytes)!
+				// to do with more than 4 chars.
+				// According to https://www.json.org/json-en.html however, any codepoint is valid inside a string,
+				// so just passing it along should hopefully also work.
+				wr.write(slice.bytes())!
 			}
 			unsafe {
 				slice.free()

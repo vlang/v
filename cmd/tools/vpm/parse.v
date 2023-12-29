@@ -9,6 +9,7 @@ mut:
 	name               string
 	url                string
 	version            string // specifies the requested version.
+	tmp_path           string
 	install_path       string
 	install_path_fmted string
 	installed_version  string
@@ -22,14 +23,18 @@ struct Parser {
 mut:
 	modules              map[string]Module
 	checked_settings_vcs bool
-	is_git_setting       bool
 	errors               int
 }
 
+enum ModuleKind {
+	registered
+	https
+	http
+	ssh
+}
+
 fn parse_query(query []string) []Module {
-	mut p := Parser{
-		is_git_setting: settings.vcs == .git
-	}
+	mut p := Parser{}
 	for m in query {
 		p.parse_module(m)
 	}
@@ -40,22 +45,42 @@ fn parse_query(query []string) []Module {
 }
 
 fn (mut p Parser) parse_module(m string) {
-	if m in p.modules {
+	kind := match true {
+		m.starts_with('https://') { ModuleKind.https }
+		m.starts_with('git@') { ModuleKind.ssh }
+		m.starts_with('http://') { ModuleKind.http }
+		else { ModuleKind.registered }
+	}
+	ident, version := if kind == .ssh {
+		if m.count('@') > 1 {
+			m.all_before_last('@'), m.all_after_last('@')
+		} else {
+			m, ''
+		}
+	} else {
+		m.rsplit_once('@') or { m, '' }
+	}
+	key := match kind {
+		.registered { m }
+		.ssh { ident.replace(':', '/') + at_version(version) }
+		else { ident.all_after('//').trim_string_right('.git') + at_version(version) }
+	}
+	if key in p.modules {
 		return
 	}
-	ident, version := m.rsplit_once('@') or { m, '' }
-	println('Scanning `${ident}`...')
-	is_http := if ident.starts_with('http://') {
-		vpm_warn('installing `${ident}` via http.',
-			details: 'Support for `http` is deprecated, use `https` to ensure future compatibility.'
-		)
-		true
-	} else {
-		false
-	}
-	mut mod := if is_http || ident.starts_with('https://') {
+	println('Scanning `${m}`...')
+	mut mod := if kind != ModuleKind.registered {
 		// External module. The identifier is an URL.
-		publisher, name := get_ident_from_url(ident) or {
+		if kind == .http {
+			vpm_warn('installing `${ident}` via http.',
+				details: 'Support for `http` is deprecated, use `https` to ensure future compatibility.'
+			)
+		}
+		publisher, name := get_ident_from_url(if kind == .ssh {
+			'https://' + ident['git@'.len..].replace(':', '/')
+		} else {
+			ident
+		}) or {
 			vpm_error(err.msg())
 			p.errors++
 			return
@@ -68,22 +93,33 @@ fn (mut p Parser) parse_module(m string) {
 				exit(1)
 			}
 		}
-		// Fetch manifest.
-		manifest := fetch_manifest(name, ident, version, p.is_git_setting) or {
-			vpm_error('failed to find `v.mod` for `${ident}${at_version(version)}`.',
-				details: err.msg()
-			)
+		tmp_path := get_tmp_path(os.join_path(publisher, name, version)) or {
+			vpm_error('failed to get temporary directory for `${ident}`.', details: err.msg())
 			p.errors++
 			return
 		}
-		// Resolve path.
-		mod_path := normalize_mod_path(os.join_path(if is_http { publisher } else { '' },
+		settings.vcs.clone(ident, version, tmp_path) or {
+			vpm_error('failed to install `${ident}`.', details: err.msg())
+			p.errors++
+			return
+		}
+		manifest := get_manifest(tmp_path) or {
+			vpm_error('failed to find `v.mod` for `${ident}${at_version(version)}`.',
+				details: err.msg()
+			)
+			os.rmdir_all(tmp_path) or {}
+			p.errors++
+			return
+		}
+		mod_path := normalize_mod_path(os.join_path(if kind == .http { publisher } else { '' },
 			manifest.name))
 		Module{
 			name: manifest.name
 			url: ident
+			version: version
 			install_path: os.real_path(os.join_path(settings.vmodules_path, mod_path))
 			is_external: true
+			tmp_path: tmp_path
 			manifest: manifest
 		}
 	} else {
@@ -94,16 +130,9 @@ fn (mut p Parser) parse_module(m string) {
 			return
 		}
 		// Verify VCS.
-		mut is_git_module := true
 		vcs := if info.vcs != '' {
 			info_vcs := vcs_from_str(info.vcs) or {
 				vpm_error('skipping `${info.name}`, since it uses an unsupported version control system `${info.vcs}`.')
-				p.errors++
-				return
-			}
-			is_git_module = info_vcs == .git
-			if !is_git_module && version != '' {
-				vpm_error('skipping `${info.name}`, version installs are currently only supported for projects using `git`.')
 				p.errors++
 				return
 			}
@@ -116,8 +145,18 @@ fn (mut p Parser) parse_module(m string) {
 			p.errors++
 			return
 		}
-		// Fetch manifest.
-		manifest := fetch_manifest(info.name, info.url, version, is_git_module) or {
+		mod_path := normalize_mod_path(info.name.replace('.', os.path_separator))
+		tmp_path := get_tmp_path(os.join_path(mod_path, version)) or {
+			vpm_error('failed to get temporary directory for `${ident}`.', details: err.msg())
+			p.errors++
+			return
+		}
+		vcs.clone(info.url, version, tmp_path) or {
+			vpm_error('failed to install `${ident}`.', details: err.msg())
+			p.errors++
+			return
+		}
+		manifest := get_manifest(tmp_path) or {
 			// Add link with issue template requesting to add a manifest.
 			mut details := ''
 			if resp := http.head('${info.url}/issues/new') {
@@ -130,20 +169,19 @@ fn (mut p Parser) parse_module(m string) {
 			vpm_log(@FILE_LINE, @FN, 'vpm manifest detection error: ${err}')
 			vmod.Manifest{}
 		}
-		// Resolve path.
-		mod_path := normalize_mod_path(info.name.replace('.', os.path_separator))
 		Module{
 			name: info.name
 			url: info.url
+			version: version
 			vcs: vcs
 			install_path: os.real_path(os.join_path(settings.vmodules_path, mod_path))
+			tmp_path: tmp_path
 			manifest: manifest
 		}
 	}
 	mod.install_path_fmted = fmt_mod_path(mod.install_path)
-	mod.version = version
 	mod.get_installed()
-	p.modules[m] = mod
+	p.modules[key] = mod
 	if mod.manifest.dependencies.len > 0 {
 		verbose_println('Found ${mod.manifest.dependencies.len} dependencies for `${mod.name}`: ${mod.manifest.dependencies}.')
 		for d in mod.manifest.dependencies {
@@ -173,40 +211,17 @@ fn (mut m Module) get_installed() {
 	}
 }
 
-fn fetch_manifest(name string, url string, version string, is_git bool) !vmod.Manifest {
-	if !is_git {
-		manifest_url := '${url}/raw-file/tip/v.mod'
-		vpm_log(@FILE_LINE, @FN, 'manifest_url: ${manifest_url}')
-		return get_manifest_from_resp(http.get(manifest_url) or {
-			return error('failed to retrieve manifest. ${err}')
-		})
-	}
-	v := if version != '' {
-		version
-	} else {
-		head_branch := os.execute_opt('git ls-remote --symref ${url} HEAD') or {
-			return error('failed to find git HEAD. ${err}')
+fn get_tmp_path(relative_path string) !string {
+	tmp_path := os.real_path(os.join_path(settings.tmp_path, relative_path))
+	if os.exists(tmp_path) {
+		// It's unlikely that the tmp_path already exists, but it might
+		// occur if vpm was canceled during an installation or update.
+		$if windows {
+			// FIXME: Workaround for failing `rmdir` commands on Windows.
+			os.execute_opt('rd /s /q ${tmp_path}')!
+		} $else {
+			os.rmdir_all(tmp_path)!
 		}
-		head_branch.output.all_after_last('/').all_before(' ').all_before('\t')
 	}
-	url_ := url.trim_string_right('.git')
-	// Scan both URLS. E.g.:
-	// https://github.com/publisher/module/raw/v0.7.0/v.mod
-	// https://gitlab.com/publisher/module/-/raw/main/v.mod
-	raw_paths := ['raw/', '/-/raw/']
-	for i, raw_p in raw_paths {
-		manifest_url := '${url_}/${raw_p}/${v}/v.mod'
-		vpm_log(@FILE_LINE, @FN, 'manifest_url ${i}: ${manifest_url}')
-		return get_manifest_from_resp(http.get(manifest_url) or { continue })
-	}
-	return error('failed to retrieve manifest.')
-}
-
-fn get_manifest_from_resp(resp http.Response) !vmod.Manifest {
-	if resp.status_code != 200 {
-		return error('unsuccessful response status `${resp.status_code}`.')
-	}
-	return vmod.decode(resp.body) or {
-		return error('failed to decode manifest `${resp.body}`. ${err}')
-	}
+	return tmp_path
 }

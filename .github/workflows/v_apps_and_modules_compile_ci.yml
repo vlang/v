@@ -85,7 +85,7 @@ jobs:
       - name: Build V Language Server (v-analyzer) v-analyzer/v-analyzer
         run: |
           echo "Clone v-analyzer"
-          git clone --depth 1 https://github.com/v-analyzer/v-analyzer /tmp/v-analyzer
+          git clone --depth=1 --recursive --shallow-submodules https://github.com/v-analyzer/v-analyzer /tmp/v-analyzer
           cd /tmp/v-analyzer
           echo "Installing dependencies"
           v install

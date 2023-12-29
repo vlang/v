@@ -1,3 +1,5 @@
+// vtest flaky: true
+// vtest retry: 3
 import orm
 
 fn test_orm_stmt_gen_update() {

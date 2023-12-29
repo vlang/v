@@ -33,6 +33,7 @@ pub enum StrIntpType {
 	si_g64
 	si_s
 	si_p
+	si_r
 	si_vp
 }
 
@@ -56,6 +57,7 @@ pub fn (x StrIntpType) str() string {
 		.si_e64 { 'f64' } // e64 format use f64 data
 		.si_s { 's' }
 		.si_p { 'p' }
+		.si_r { 'r' } // repeat string
 		.si_vp { 'vp' }
 	}
 }
@@ -75,6 +77,7 @@ pub mut:
 	d_f32 f32
 	d_f64 f64
 	d_s   string
+	d_r   string
 	d_p   voidptr
 	d_vp  voidptr
 }
@@ -221,6 +224,27 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 				strconv.format_str_sb(s, bf, mut sb)
 			}
 			s.free()
+			return
+		}
+
+		if typ == .si_r {
+			if width > 0 {
+				mut s := ''
+				if upper_case {
+					s = data.d.d_s.to_upper()
+				} else {
+					s = data.d.d_s.clone()
+				}
+
+				for _ in 1 .. (1 + (if width > 0 {
+					width
+				} else {
+					0
+				})) {
+					sb.write_string(s)
+				}
+				s.free()
+			}
 			return
 		}
 
