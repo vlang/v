@@ -531,7 +531,6 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope) {
 				}
 				ast.Ident {
 					if right_expr.name == c.comptime.comptime_for_variant_var {
-						println(c.comptime.type_map['${c.comptime.comptime_for_variant_var}.typ'])
 						c.comptime.type_map['${c.comptime.comptime_for_variant_var}.typ']
 					} else {
 						c.error('invalid type `${right_expr}`', right_expr.pos)
