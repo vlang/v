@@ -36,7 +36,7 @@ const curly_open_rune = `{`
 
 const curly_close_rune = `}`
 
-// encode_value encodes a value to the specific writer.
+// encode_value encodes a value to the specific buffer.
 pub fn (e &Encoder) encode_value[T](val T, mut buf []u8) ! {
 	e.encode_value_with_level[T](val, 1, mut buf)!
 }
