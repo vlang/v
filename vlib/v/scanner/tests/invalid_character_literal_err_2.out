@@ -1,0 +1,7 @@
+vlib/v/scanner/tests/invalid_character_literal_err_2.vv:1:6: error: invalid character literal `\nb` => `\nb` ([`\n`, `b`]) (more than one character)
+    1 | a := `\nb`
+      |      ^
+Details: 
+vlib/v/scanner/tests/invalid_character_literal_err_2.vv:1:6: details: use quotes for strings, backticks for characters
+    1 | a := `\nb`
+      |

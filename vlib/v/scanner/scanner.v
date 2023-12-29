@@ -1537,11 +1537,14 @@ pub fn (mut s Scanner) ident_char() string {
 	mut len := 0
 
 	// set flags for advanced escapes first
-	escaped_hex := s.expect('\\x', start + 1)
-	escaped_unicode_16 := s.expect('\\u', start + 1)
-	escaped_unicode_32 := s.expect('\\U', start + 1)
+	escaped_hex := s.expect('\\x', start + 1) && s.text.len > start + 3
+		&& s.text[start + 3].is_hex_digit()
+	escaped_unicode_16 := s.expect('\\u', start + 1) && s.text.len > start + 3
+		&& s.text[start + 3].is_hex_digit()
+	escaped_unicode_32 := s.expect('\\U', start + 1) && s.text.len > start + 3
+		&& s.text[start + 3].is_hex_digit()
 	escaped_octal := !escaped_hex && !escaped_unicode_16 && !escaped_unicode_32
-		&& s.expect('\\', start + 1)
+		&& s.expect('\\', start + 1) && s.text.len > start + 2 && s.text[start + 2].is_oct_digit()
 
 	// walk the string to get characters up to the next backtick
 	for {
@@ -1599,8 +1602,19 @@ pub fn (mut s Scanner) ident_char() string {
 
 		u := c.runes()
 		if u.len != 1 {
+			mut err_info := []string{cap: u.len}
+			mut i := 0
+			for i < u.len {
+				if u[i] != `\\` || i == u.len - 1 {
+					err_info << '`${u[i]}`'
+					i++
+					continue
+				}
+				err_info << '`\\${u[i + 1]}`'
+				i += 2
+			}
 			if escaped_hex || escaped_unicode_16 || escaped_unicode_32 {
-				s.error_with_pos('invalid character literal `${orig}` => `${c}` (${u}) (escape sequence did not refer to a singular rune)',
+				s.error_with_pos('invalid character literal `${orig}` => `${c}` ([${err_info.join(', ')}]) (escape sequence did not refer to a singular rune)',
 					lspos)
 			} else if u.len == 0 {
 				s.add_error_detail_with_pos('use quotes for strings, backticks for characters',
@@ -1609,7 +1623,7 @@ pub fn (mut s Scanner) ident_char() string {
 			} else {
 				s.add_error_detail_with_pos('use quotes for strings, backticks for characters',
 					lspos)
-				s.error_with_pos('invalid character literal `${orig}` => `${c}` (${u}) (more than one character)',
+				s.error_with_pos('invalid character literal `${orig}` => `${c}` ([${err_info.join(', ')}]) (more than one character)',
 					lspos)
 			}
 		}
