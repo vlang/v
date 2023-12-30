@@ -45,27 +45,32 @@ fn parse_query(query []string) []Module {
 }
 
 fn (mut p Parser) parse_module(m string) {
-	if m in p.modules {
-		return
-	}
 	kind := match true {
 		m.starts_with('https://') { ModuleKind.https }
 		m.starts_with('git@') { ModuleKind.ssh }
 		m.starts_with('http://') { ModuleKind.http }
 		else { ModuleKind.registered }
 	}
+	ident, version := if kind == .ssh {
+		if m.count('@') > 1 {
+			m.all_before_last('@'), m.all_after_last('@')
+		} else {
+			m, ''
+		}
+	} else {
+		m.rsplit_once('@') or { m, '' }
+	}
+	key := match kind {
+		.registered { m }
+		.ssh { ident.replace(':', '/') + at_version(version) }
+		else { ident.all_after('//').trim_string_right('.git') + at_version(version) }
+	}
+	if key in p.modules {
+		return
+	}
 	println('Scanning `${m}`...')
 	mut mod := if kind != ModuleKind.registered {
 		// External module. The identifier is an URL.
-		ident, version := if kind == .ssh {
-			if m.count('@') > 1 {
-				m.all_before_last('@'), m.all_after_last('@')
-			} else {
-				m, ''
-			}
-		} else {
-			m.rsplit_once('@') or { m, '' }
-		}
 		if kind == .http {
 			vpm_warn('installing `${ident}` via http.',
 				details: 'Support for `http` is deprecated, use `https` to ensure future compatibility.'
@@ -119,7 +124,6 @@ fn (mut p Parser) parse_module(m string) {
 		}
 	} else {
 		// VPM registered module.
-		ident, version := m.rsplit_once('@') or { m, '' }
 		info := get_mod_vpm_info(ident) or {
 			vpm_error('failed to retrieve metadata for `${ident}`.', details: err.msg())
 			p.errors++
@@ -177,7 +181,7 @@ fn (mut p Parser) parse_module(m string) {
 	}
 	mod.install_path_fmted = fmt_mod_path(mod.install_path)
 	mod.get_installed()
-	p.modules[m] = mod
+	p.modules[key] = mod
 	if mod.manifest.dependencies.len > 0 {
 		verbose_println('Found ${mod.manifest.dependencies.len} dependencies for `${mod.name}`: ${mod.manifest.dependencies}.')
 		for d in mod.manifest.dependencies {

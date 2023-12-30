@@ -113,19 +113,16 @@ fn (mut g Gen) fn_var_signature(return_type ast.Type, arg_types []ast.Type, var_
 	return sig
 }
 
-// generate anon fn cname, e.g. `anon_fn_void_int_string`
+// generate anon fn cname, e.g. `anon_fn_void_int_string`, `anon_fn_void_int_ptr_string`
 fn (mut g Gen) anon_fn_cname(return_type ast.Type, arg_types []ast.Type) string {
-	ret_styp := c_name(g.typ(return_type))
-	mut sig := '${ret_styp}_'
+	ret_styp := g.typ(return_type).replace('*', '_ptr')
+	mut sig := 'anon_fn_${ret_styp}_'
 	for j, arg_typ in arg_types {
 		arg_sym := g.table.sym(arg_typ)
 		if arg_sym.info is ast.FnType {
-			func := arg_sym.info.func
-			arg_sig := g.anon_fn_cname(func.return_type, func.params.map(it.typ))
-			sig += 'fnon_fn_' + arg_sig
+			sig += g.anon_fn_cname(arg_sym.info.func.return_type, arg_sym.info.func.params.map(it.typ))
 		} else {
-			arg_styp := c_name(g.typ(arg_typ))
-			sig += arg_styp
+			sig += g.typ(arg_typ).replace('*', '_ptr')
 		}
 		if j < arg_types.len - 1 {
 			sig += '_'

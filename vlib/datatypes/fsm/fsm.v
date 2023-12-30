@@ -4,17 +4,24 @@ pub type EventHandlerFn = fn (receiver voidptr, from string, to string)
 
 pub type ConditionFn = fn (receiver voidptr, from string, to string) bool
 
+fn dummy_event_handler_fn(receiver voidptr, from string, to string) {
+}
+
+fn dummy_condition_fn(receiver voidptr, from string, to string) bool {
+	return true
+}
+
 struct State {
 mut:
-	entry_handler EventHandlerFn
-	run_handler   EventHandlerFn
-	exit_handler  EventHandlerFn
+	entry_handler EventHandlerFn = dummy_event_handler_fn
+	run_handler   EventHandlerFn = dummy_event_handler_fn
+	exit_handler  EventHandlerFn = dummy_event_handler_fn
 }
 
 struct Transition {
 mut:
 	to                string
-	condition_handler ConditionFn = unsafe { nil }
+	condition_handler ConditionFn = dummy_condition_fn
 }
 
 pub struct StateMachine {

@@ -1139,6 +1139,7 @@ fn data_str(x StrIntpType) string {
 		.si_e32 { 'd_f32' } // e32 format use f32 data
 		.si_e64 { 'd_f64' } // e64 format use f64 data
 		.si_s { 'd_s' }
+		.si_r { 'd_r' } // repeat string
 		.si_p { 'd_p' }
 		.si_vp { 'd_vp' }
 	}

@@ -3,7 +3,6 @@
 // that can be found in the LICENSE file.
 module json2
 
-import strings
 import time
 
 // Decodes a JSON string into an `Any` type. Returns an option.
@@ -162,35 +161,37 @@ pub fn encode[T](val T) string {
 	$if T is $array {
 		return encode_array(val)
 	} $else {
-		mut sb := strings.new_builder(64)
+		mut buf := []u8{}
 
 		defer {
-			unsafe { sb.free() }
+			unsafe { buf.free() }
 		}
+		encoder := Encoder{}
 
-		default_encoder.encode_value(val, mut sb) or {
+		encoder.encode_value(val, mut buf) or {
 			println(err)
-			default_encoder.encode_value[Null](null, mut sb) or {}
+			encoder.encode_value[string]('null', mut buf) or {}
 		}
 
-		return sb.str()
+		return buf.bytestr()
 	}
 }
 
 // encode_array is a generic function that encodes a array into a JSON string.
 fn encode_array[T](val []T) string {
-	mut sb := strings.new_builder(64)
+	mut buf := []u8{}
 
 	defer {
-		unsafe { sb.free() }
+		unsafe { buf.free() }
 	}
 
-	default_encoder.encode_array(val, 1, mut sb) or {
+	encoder := Encoder{}
+	encoder.encode_array(val, 1, mut buf) or {
 		println(err)
-		default_encoder.encode_value[Null](null, mut sb) or {}
+		encoder.encode_value[string]('null', mut buf) or {}
 	}
 
-	return sb.str()
+	return buf.bytestr()
 }
 
 // encode_pretty ...
@@ -429,7 +430,8 @@ pub fn (f Any) to_time() !time.Time {
 	}
 }
 
-fn map_from[T](t T) map[string]Any {
+// map_from convert a struct to map of Any
+pub fn map_from[T](t T) map[string]Any {
 	mut m := map[string]Any{}
 	$if T is $struct {
 		$for field in T.fields {

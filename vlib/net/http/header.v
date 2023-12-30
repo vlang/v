@@ -103,6 +103,7 @@ pub enum CommonHeader {
 	sec_fetch_site
 	sec_fetch_user
 	sec_websocket_accept
+	sec_websocket_key
 	server
 	server_timing
 	set_cookie
@@ -209,6 +210,7 @@ pub fn (h CommonHeader) str() string {
 		.sec_fetch_site { 'Sec-Fetch-Site' }
 		.sec_fetch_user { 'Sec-Fetch-User' }
 		.sec_websocket_accept { 'Sec-WebSocket-Accept' }
+		.sec_websocket_key { 'Sec-WebSocket-Key' }
 		.server { 'Server' }
 		.server_timing { 'Server-Timing' }
 		.set_cookie { 'Set-Cookie' }
@@ -314,6 +316,7 @@ const common_header_map = {
 	'sec-fetch-site':                      .sec_fetch_site
 	'sec-fetch-user':                      .sec_fetch_user
 	'sec-websocket-accept':                .sec_websocket_accept
+	'sec_websocket_key':                   .sec_websocket_key
 	'server':                              .server
 	'server-timing':                       .server_timing
 	'set-cookie':                          .set_cookie

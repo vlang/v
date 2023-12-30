@@ -279,7 +279,16 @@ pub fn parse_vet_file(path string, table_ &ast.Table, pref_ &pref.Preferences) (
 	p.set_path(path)
 	if p.scanner.text.contains_any_substr(['\n  ', ' \n']) {
 		source_lines := os.read_lines(path) or { []string{} }
+		mut is_vfmt_off := false
 		for lnumber, line in source_lines {
+			if line.starts_with('// vfmt off') {
+				is_vfmt_off = true
+			} else if line.starts_with('// vfmt on') {
+				is_vfmt_off = false
+			}
+			if is_vfmt_off {
+				continue
+			}
 			if line.starts_with('  ') {
 				p.vet_error('Looks like you are using spaces for indentation.', lnumber,
 					.vfmt, .space_indent)
@@ -2527,22 +2536,26 @@ fn (mut p Parser) name_expr() ast.Expr {
 		}
 		p.expecting_type = false
 		// get type position before moving to next
-		type_pos := p.tok.pos()
-		typ := p.parse_type()
-		return ast.TypeNode{
-			typ: typ
-			pos: type_pos
+		is_known_var := p.scope.known_var(p.tok.lit)
+		if is_known_var {
+			p.mark_var_as_used(p.tok.lit)
+			return p.ident(ast.Language.v)
+		} else {
+			type_pos := p.tok.pos()
+			typ := p.parse_type()
+			return ast.TypeNode{
+				typ: typ
+				pos: type_pos
+			}
 		}
 	}
-	mut language := ast.Language.v
-	if p.tok.lit == 'C' {
-		language = ast.Language.c
-		p.check_for_impure_v(language, p.tok.pos())
-	} else if p.tok.lit == 'JS' {
-		language = ast.Language.js
-		p.check_for_impure_v(language, p.tok.pos())
-	} else if p.tok.lit == 'WASM' {
-		language = ast.Language.wasm
+	language := match p.tok.lit {
+		'C' { ast.Language.c }
+		'JS' { ast.Language.js }
+		'WASM' { ast.Language.wasm }
+		else { ast.Language.v }
+	}
+	if language != .v {
 		p.check_for_impure_v(language, p.tok.pos())
 	}
 	is_option := p.tok.kind == .question
@@ -2685,10 +2698,9 @@ fn (mut p Parser) name_expr() ast.Expr {
 	is_generic_call := p.is_generic_call()
 	is_generic_cast := p.is_generic_cast()
 	is_generic_struct_init := p.is_generic_struct_init()
-	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
-	same_line := p.tok.line_nr == p.peek_tok.line_nr
-	// `(` must be on same line as name token otherwise it's a ParExpr
-	if !same_line && p.peek_tok.kind == .lpar {
+	if p.peek_tok.kind == .lpar && p.tok.line_nr != p.peek_tok.line_nr
+		&& p.peek_token(2).is_next_to(p.peek_tok) {
+		// `(` must be on same line as name token otherwise it's a ParExpr
 		ident := p.ident(language)
 		node = ident
 		p.add_defer_var(ident)
@@ -4061,8 +4073,9 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		typ_pos = p.tok.pos()
 		enum_type = p.parse_type()
 	}
+	mut enum_decl_comments := p.eat_comments()
 	p.check(.lcbr)
-	enum_decl_comments := p.eat_comments()
+	enum_decl_comments << p.eat_comments()
 	senum_type := p.table.get_type_name(enum_type)
 	mut vals := []string{}
 	// mut default_exprs := []ast.Expr{}
@@ -4367,7 +4380,7 @@ fn (mut p Parser) top_level_statement_start() {
 	if p.comments_mode == .toplevel_comments {
 		p.scanner.set_is_inside_toplevel_statement(true)
 		p.rewind_scanner_to_current_token_in_new_mode()
-		$if debugscanner ? {
+		$if trace_scanner ? {
 			eprintln('>> p.top_level_statement_start | tidx:${p.tok.tidx:-5} | p.tok.kind: ${p.tok.kind:-10} | p.tok.lit: ${p.tok.lit} ${p.peek_tok.lit} ${p.peek_token(2).lit} ${p.peek_token(3).lit} ...')
 		}
 	}
@@ -4377,7 +4390,7 @@ fn (mut p Parser) top_level_statement_end() {
 	if p.comments_mode == .toplevel_comments {
 		p.scanner.set_is_inside_toplevel_statement(false)
 		p.rewind_scanner_to_current_token_in_new_mode()
-		$if debugscanner ? {
+		$if trace_scanner ? {
 			eprintln('>> p.top_level_statement_end   | tidx:${p.tok.tidx:-5} | p.tok.kind: ${p.tok.kind:-10} | p.tok.lit: ${p.tok.lit} ${p.peek_tok.lit} ${p.peek_token(2).lit} ${p.peek_token(3).lit} ...')
 		}
 	}

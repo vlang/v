@@ -1,5 +1,6 @@
 import x.json2 as json
 import strings
+import time
 
 struct StructType[T] {
 mut:
@@ -33,7 +34,8 @@ fn test_json_string() {
 
 fn test_json_string_emoji() {
 	text := json.Any('🐈')
-	assert text.json_str() == r'" "'
+	assert text.json_str() == r'"🐈"'
+	assert json.Any('💀').json_str() == r'"💀"'
 }
 
 fn test_json_string_non_ascii() {
@@ -135,4 +137,46 @@ fn test_encode_array() {
 fn test_encode_simple() {
 	assert json.encode('hello!') == '"hello!"'
 	assert json.encode(1) == '1'
+}
+
+fn test_encode_value() {
+	json_enc := json.Encoder{
+		newline: `\n`
+		newline_spaces_count: 2
+		escape_unicode: false
+	}
+
+	mut manifest := map[string]json.Any{}
+
+	manifest['server_path'] = json.Any('new_path')
+	manifest['last_updated'] = json.Any('timestamp.format_ss()')
+	manifest['from_source'] = json.Any('from_source')
+
+	mut sb := strings.new_builder(64)
+	mut buffer := []u8{}
+	json_enc.encode_value(manifest, mut buffer)!
+
+	assert buffer.len > 0
+	assert buffer == [u8(123), 10, 32, 32, 34, 115, 101, 114, 118, 101, 114, 95, 112, 97, 116,
+		104, 34, 58, 32, 34, 110, 101, 119, 95, 112, 97, 116, 104, 34, 44, 10, 32, 32, 34, 108,
+		97, 115, 116, 95, 117, 112, 100, 97, 116, 101, 100, 34, 58, 32, 34, 116, 105, 109, 101,
+		115, 116, 97, 109, 112, 46, 102, 111, 114, 109, 97, 116, 95, 115, 115, 40, 41, 34, 44,
+		10, 32, 32, 34, 102, 114, 111, 109, 95, 115, 111, 117, 114, 99, 101, 34, 58, 32, 34, 102,
+		114, 111, 109, 95, 115, 111, 117, 114, 99, 101, 34, 10, 125]
+
+	sb.write(buffer)!
+
+	unsafe { buffer.free() }
+
+	assert sb.str() == r'{
+  "server_path": "new_path",
+  "last_updated": "timestamp.format_ss()",
+  "from_source": "from_source"
+}'
+}
+
+fn test_encode_time() {
+	assert json.encode({
+		'bro': json.Any(time.Time{})
+	}) == '{"bro":"0000-00-00T00:00:00.000Z"}'
 }

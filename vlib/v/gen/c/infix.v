@@ -97,12 +97,12 @@ fn (mut g Gen) infix_expr_arrow_op(node ast.InfixExpr) {
 // infix_expr_eq_op generates code for `==` and `!=`
 fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 	left_type := if node.left is ast.ComptimeSelector {
-		g.get_comptime_var_type(node.left)
+		g.comptime.get_comptime_var_type(node.left)
 	} else {
 		node.left_type
 	}
 	right_type := if node.right is ast.ComptimeSelector {
-		g.get_comptime_var_type(node.right)
+		g.comptime.get_comptime_var_type(node.right)
 	} else {
 		node.right_type
 	}
@@ -518,7 +518,9 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 						expr: node.left
 						expr_type: ast.mktyp(node.left_type)
 					}
+					g.write('(')
 					g.gen_array_contains(node.right_type, node.right, elem_type, new_node_left)
+					g.write(')')
 					return
 				}
 			} else if elem_type_.sym.kind == .interface_ {
@@ -528,11 +530,15 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 					expr: node.left
 					expr_type: ast.mktyp(node.left_type)
 				}
+				g.write('(')
 				g.gen_array_contains(node.right_type, node.right, elem_type, new_node_left)
+				g.write(')')
 				return
 			}
 		}
+		g.write('(')
 		g.gen_array_contains(node.right_type, node.right, node.left_type, node.left)
+		g.write(')')
 	} else if right.unaliased_sym.kind == .map {
 		g.write('_IN_MAP(')
 		if !left.typ.is_ptr() {
@@ -597,17 +603,23 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 						expr: node.left
 						expr_type: ast.mktyp(node.left_type)
 					}
+					g.write('(')
 					g.gen_array_contains(node.right_type, node.right, elem_type, new_node_left)
+					g.write(')')
 					return
 				}
 			}
 		}
+		g.write('(')
 		g.gen_array_contains(node.right_type, node.right, node.left_type, node.left)
+		g.write(')')
 	} else if right.unaliased_sym.kind == .string {
+		g.write('(')
 		g.write('string_contains(')
 		g.expr(node.right)
 		g.write(', ')
 		g.expr(node.left)
+		g.write(')')
 		g.write(')')
 	}
 }
@@ -708,6 +720,11 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 	}
 	if node.right is ast.None {
 		g.write('${ast.none_type.idx()} /* none */')
+	} else if node.right is ast.Ident && node.right.name == g.comptime.comptime_for_variant_var {
+		variant_idx := g.comptime.type_map['${g.comptime.comptime_for_variant_var}.typ'] or {
+			ast.void_type
+		}
+		g.write('${variant_idx.idx()}')
 	} else {
 		g.expr(node.right)
 	}
@@ -1053,7 +1070,7 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 		typ_str := g.typ(node.promoted_type)
 		g.write('(${typ_str})(')
 	}
-	if node.left_type.is_ptr() && node.left.is_auto_deref_var() {
+	if node.left_type.is_ptr() && node.left.is_auto_deref_var() && !node.right_type.is_pointer() {
 		g.write('*')
 	} else if !g.inside_interface_deref && node.left is ast.Ident
 		&& g.table.is_interface_var(node.left.obj) {
@@ -1065,7 +1082,7 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 	}
 	g.expr(node.left)
 	g.write(' ${node.op.str()} ')
-	if node.right_type.is_ptr() && node.right.is_auto_deref_var() {
+	if node.right_type.is_ptr() && node.right.is_auto_deref_var() && !node.left_type.is_pointer() {
 		g.write('*')
 		g.expr(node.right)
 	} else {
