@@ -247,31 +247,6 @@ fn test_pointer() {
 	assert json.encode(StructTypePointer[int]{ val: &int_initialized_with_reference }) == '{"val":1}'
 }
 
-@[cast]
-fn (sum SumTypes) a() StructType[string] {
-	return sum as StructType[string]
-}
-
-@[cast]
-fn (sum SumTypes) b() bool {
-	return sum as bool
-}
-
-@[cast]
-fn (sum SumTypes) c() int {
-	return sum as int
-}
-
-@[cast]
-fn (sum SumTypes) d() string {
-	return sum as string
-}
-
-@[cast]
-fn (sum SumTypes) e() time.Time {
-	return sum as time.Time
-}
-
 fn test_sumtypes() {
 	assert json.encode(StructType[SumTypes]{}) == '{}'
 	assert json.encode(StructType[SumTypes]{ val: '' }) == '{"val":""}'

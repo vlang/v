@@ -153,9 +153,11 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut buf []u8) ! {
 	} $else $if T is Any {
 		e.encode_any(val, level, mut buf)!
 	} $else $if T is $sumtype {
-		$for method in T.methods {
-			if method.return_type == val.type_idx() && 'cast' in method.attrs {
-				e.encode_value_with_level(val.$method(), level, mut buf)!
+		if val.str() != 'unknown sum type value' {
+			$for v in val.variants {
+				if val is v {
+					e.encode_value_with_level(val, level, mut buf)!
+				}
 			}
 		}
 	} $else $if T is $alias {
@@ -343,7 +345,14 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 				unsafe { buf.push_many(str_value.str, str_value.len) }
 			} $else $if field.typ is $enum {
 			} $else $if field.typ is $sumtype {
-				e.encode_value_with_level(val.$(field.name), level, mut buf)!
+				field_value := val.$(field.name)
+				if field_value.str() != 'unknown sum type value' {
+					$for v in field_value.variants {
+						if field_value is v {
+							e.encode_value_with_level(field_value, level, mut buf)!
+						}
+					}
+				}
 			} $else $if field.typ is $alias {
 				$if field.unaliased_typ is string {
 					e.encode_string(val.$(field.name).str(), mut buf)!
