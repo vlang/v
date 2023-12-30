@@ -136,3 +136,6 @@ Gtk-4.0.gir
 *.gir
 
 vlib/builtin/js/*.js
+
+# ignore the old regexp based v.ctags file (people using universal ctags < 6.1.0, can still benefit from them)
+.ctags.d/v.ctags
