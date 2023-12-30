@@ -39,9 +39,7 @@ pub fn (app &App) index(mut ctx Context) vweb.Result {
 	todos := sql app.db {
 		select from Todo
 	} or { return ctx.server_error('could not fetch todos from database!') }
-
-	// TODO: use $vweb.html()
-	return ctx.html($tmpl('templates/index.html'))
+	return $vweb.html()
 }
 
 // This method will only handle POST requests to the index page

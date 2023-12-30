@@ -246,6 +246,7 @@ mut:
 	has_reflection       bool
 	reflection_strings   &map[string]int
 	defer_return_tmp_var string
+	vweb_filter_fn_name  string // vweb__filter or x__vweb__filter, used by $vweb.html() for escaping strings in the templates, depending on which `vweb` import is used
 }
 
 // global or const variable definition string

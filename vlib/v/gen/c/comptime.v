@@ -59,25 +59,43 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			cur_line = g.go_before_last_stmt()
 		}
 
+		ret_sym := g.table.sym(g.fn_decl.return_type)
+		fn_name := g.fn_decl.name.replace('.', '__') + node.pos.pos.str()
+		is_x_vweb := ret_sym.cname == 'x__vweb__Result'
+
 		for stmt in node.vweb_tmpl.stmts {
 			if stmt is ast.FnDecl {
-				// insert stmts from vweb_tmpl fn
 				if stmt.name.starts_with('main.vweb_tmpl') {
 					if is_html {
 						g.inside_vweb_tmpl = true
+						if is_x_vweb {
+							g.vweb_filter_fn_name = 'x__vweb__filter'
+						} else {
+							g.vweb_filter_fn_name = 'vweb__filter'
+						}
 					}
+					// insert stmts from vweb_tmpl fn
 					g.stmts(stmt.stmts.filter(it !is ast.Return))
+					//
 					g.inside_vweb_tmpl = false
+					g.vweb_filter_fn_name = ''
 					break
 				}
 			}
 		}
 
-		fn_name := g.fn_decl.name.replace('.', '__') + node.pos.pos.str()
 		if is_html {
-			// return vweb html template
-			app_name := g.fn_decl.params[0].name
-			g.writeln('vweb__Context_html(&${app_name}->Context, _tmpl_res_${fn_name}); strings__Builder_free(&sb_${fn_name}); string_free(&_tmpl_res_${fn_name});')
+			// return a vweb or x.vweb html template
+			if is_x_vweb {
+				ctx_name := g.fn_decl.params[1].name
+				g.writeln('x__vweb__Context_html(${ctx_name}, _tmpl_res_${fn_name});')
+			} else {
+				// old vweb:
+				app_name := g.fn_decl.params[0].name
+				g.writeln('vweb__Context_html(&${app_name}->Context, _tmpl_res_${fn_name});')
+			}
+			g.writeln('strings__Builder_free(&sb_${fn_name});')
+			g.writeln('string_free(&_tmpl_res_${fn_name});')
 		} else {
 			// return $tmpl string
 			g.write(cur_line)

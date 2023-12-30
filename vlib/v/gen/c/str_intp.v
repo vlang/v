@@ -168,7 +168,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 	typ_sym := g.table.sym(typ)
 	if typ == ast.string_type && g.comptime.comptime_for_method.len == 0 {
 		if g.inside_vweb_tmpl {
-			g.write('vweb__filter(')
+			g.write('${g.vweb_filter_fn_name}(')
 			if expr.is_auto_deref_var() && fmt != `p` {
 				g.write('*')
 			}
