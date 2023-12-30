@@ -93,6 +93,7 @@ fn benchmark_measure_encode_by_type() ! {
 	measure_json_encode_old_vs_new(StructType[[]int]{})!
 	measure_json_encode_old_vs_new(StructType[StructType[int]]{ val: StructType[int]{} })!
 	measure_json_encode_old_vs_new(StructType[Enum]{})!
+	measure_json_encode_old_vs_new(StructType[SumTypes]{1})! 
 }
 
 fn benchmark_measure_encode_by_alias_type() ! {

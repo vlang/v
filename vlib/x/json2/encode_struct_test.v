@@ -18,7 +18,7 @@ type TimeAlias = time.Time
 type StructAlias = StructType[int]
 type EnumAlias = Enumerates
 
-type SumTypes = StructType[string] | bool | int | string | time.Time
+type SumTypes = StructType[string] | []SumTypes | []string | bool | int | string | time.Time
 
 enum Enumerates {
 	a
@@ -150,6 +150,11 @@ fn test_array() {
 		val: false
 	}]
 	assert json.encode(StructType[[]StructType[bool]]{ val: array_of_struct }) == '{"val":[{"val":true},{"val":false}]}'
+
+	assert json.encode(StructType[[][]string]{ val: [['1'], ['2']] }) == '{"val":[["1"],["2"]]}'
+
+	// error: cannot use `[][]string` as `[]string` in argument 1 to `x.json2.Encoder.encode_array`
+	// assert json.encode(StructType[[][][]string]{ val: [[['1']]] }) == '{"val":[[["1"]]]}'
 }
 
 fn test_option_array() {
@@ -277,6 +282,11 @@ fn test_sumtypes() {
 			val: 1
 		}
 	}) == '{"val":{"val":1}}'
+
+	// assert json.encode(StructType{ val: [SumTypes('a')] }) == '{"val":["a"]}'
+	// assert json.encode(StructType[SumTypes]{ val: ['a'] }) == '{"val":["a"]}'
+	// assert json.encode(StructType[SumTypes]{ val: [SumTypes('a')] }) == '{"val":["a"]}'
+	// assert json.encode(StructType[SumTypes]{ val: '' }) == '{"val":""}'
 }
 
 fn test_maps() {
