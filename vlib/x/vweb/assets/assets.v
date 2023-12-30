@@ -214,9 +214,10 @@ pub fn (am AssetManager) include(asset_type AssetType, include_name string) vweb
 	assets := am.get_assets(asset_type)
 	for asset in assets {
 		if asset.include_name == include_name {
-			// always add link/src from root ('/css/main.css')
+			// always add link/src from root of web server ('/css/main.css'),
+			// but leave absolute paths intact
 			mut real_path := asset.file_path
-			if real_path[0] != `/` {
+			if real_path[0] != `/` && !os.is_abs_path(real_path) {
 				real_path = '/${asset.file_path}'
 			}
 
