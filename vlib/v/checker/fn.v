@@ -2489,7 +2489,7 @@ fn (mut c Checker) post_process_generic_fns() ! {
 		for concrete_types in gtypes {
 			c.table.cur_concrete_types = concrete_types
 			c.fn_decl(mut node)
-			if node.name in ['vweb.run', 'vweb.run_at'] {
+			if node.name in ['x.vweb.run', 'x.vweb.run_at', 'vweb.run', 'vweb.run_at'] {
 				for ct in concrete_types {
 					if ct !in c.vweb_gen_types {
 						c.vweb_gen_types << ct
