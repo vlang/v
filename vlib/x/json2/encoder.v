@@ -151,18 +151,18 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut buf []u8) ! {
 	$if T is string {
 		e.encode_string(val, mut buf)!
 	} $else $if T is Any {
-		e.encode_any(val, level, mut wr)!
+		e.encode_any(val, level, mut buf)!
 	} $else $if T is $sumtype {
 		$for method in T.methods {
 			if method.return_type == val.type_idx() && 'cast' in method.attrs {
-				e.encode_value_with_level(val.$method(), level, mut wr)!
+				e.encode_value_with_level(val.$method(), level, mut buf)!
 			}
 		}
 	} $else $if T is $alias {
 		// TODO
 	} $else $if T is time.Time {
 		parsed_time := time.parse(val.str()) or { time.Time{} }
-		e.encode_string(parsed_time.format_rfc3339(), mut wr)!
+		e.encode_string(parsed_time.format_rfc3339(), mut buf)!
 	} $else $if T is map[string]Any {
 		// weird quirk but val is destructured immediately to Any
 		e.encode_any(val, level, mut buf)!
