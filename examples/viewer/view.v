@@ -16,7 +16,7 @@ import sokol.gfx
 import sokol.sgl
 import sokol.sapp
 import stbi
-import szip
+import compress.szip
 import strings
 
 // Help text
@@ -801,10 +801,10 @@ fn main() {
 
 	// App init
 	mut app := &App{
-		gg: 0
+		gg: unsafe { nil }
 		// zip fields
-		zip: 0
-		item_list: 0
+		zip: unsafe { nil }
+		item_list: unsafe { nil }
 	}
 
 	app.state = .scanning

@@ -9,7 +9,7 @@
 * TODO:
 **********************************************************************/
 import sokol.gfx
-import szip
+import compress.szip
 
 fn (mut il Item_list) scan_zip(path string, in_index int) ! {
 	println('Scanning ZIP [${path}]')
