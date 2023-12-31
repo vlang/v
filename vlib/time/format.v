@@ -34,11 +34,11 @@ pub fn (t Time) format_ss_nano() string {
 // RFC3339 is an Internet profile, based on the ISO 8601 standard for for representation of dates and times using the Gregorian calendar.
 // It is intended to improve consistency and interoperability, when representing and using date and time in Internet protocols.
 pub fn (t Time) format_rfc3339() string {
-	if t.year == 0 {
+	u := t.local_to_utc()
+
+	if u.year == 0 {
 		return '0000-00-00T00:00:00.000Z'
 	}
-
-	u := t.local_to_utc()
 
 	mut buffer := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, `T`, `0`, `0`, `:`, `0`,
 		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `Z`]!
