@@ -184,8 +184,13 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 	buf << json2.curly_open_rune
 	mut i := 0
 	mut fields_len := 0
+
 	$for field in U.fields {
-		if val.$(field.name).str() != 'Option(none)' {
+		$if field.is_option {
+			if val.$(field.name) != none {
+				fields_len++
+			}
+		} $else {
 			fields_len++
 		}
 	}
@@ -204,7 +209,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 		}
 
 		$if field.is_option {
-			is_none := value.str() == 'Option(none)'
+			is_none := value == none
 
 			if !is_none {
 				e.encode_newline(level, mut buf)!
