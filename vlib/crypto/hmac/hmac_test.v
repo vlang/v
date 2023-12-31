@@ -7,6 +7,7 @@ import crypto.sha256
 import crypto.sha512
 import crypto.blake2s
 import crypto.blake2b
+import crypto.blake3
 
 // not yet supported
 // import crypto.md4
@@ -286,6 +287,23 @@ fn test_hmac_blake2b_160() {
 	for i, key in hmac.keys {
 		result = new(key, hmac.data[i], blake2b.sum160, blake2b.block_size).hex()
 		assert result == blake2b_160_expected_results[i]
+	}
+}
+
+fn test_hmac_blake3_256() {
+	blake3_256_expected_results := [
+		'e09d0600c83f2e8e7c6a3fd4758c95afa196dfab6adb9f408768349624779c52',
+		'732da99ccc24e277b2fec6c42e0f29f1093689ff0821de4df22f7faec5168776',
+		'93411058fa4acdbdb1661e487713cfa2b1196494360fdbe10759e1d632c8c52e',
+		'ec84dec849126b9085c6e674d589d8eb830d9b892008cc60a2e91588c506876d',
+		'694fa508d2617fd490e80b0b5059df79811c4522e9d10d1fdf159fc75c80db2b',
+		'b097a8fc0bcc3e23bcbaaa200c17d64f5823be05cc222544bfcc5113cda695fe',
+		'dac8165b07656b282c5b9f2f2cf22569560778cb6240b11a383f2bf466f1ba36',
+	]
+	mut result := ''
+	for i, key in hmac.keys {
+		result = new(key, hmac.data[i], blake3.sum256, blake3.block_size).hex()
+		assert result == blake3_256_expected_results[i]
 	}
 }
 
