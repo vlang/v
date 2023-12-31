@@ -3838,6 +3838,7 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 			}
 		}
 		ast.Ident {
+			is_comptime := c.comptime.inside_comptime_for
 			mut is_mut := false
 			mut smartcasts := []ast.Type{}
 			mut is_already_casted := false
@@ -3846,15 +3847,13 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 			mut ct_type_var := ast.ComptimeVarKind.no_comptime
 			if mut expr.obj is ast.Var {
 				is_mut = expr.obj.is_mut
-				if expr.obj.ct_type_var != .smartcast {
-					smartcasts << expr.obj.smartcasts
-				}
+				smartcasts << expr.obj.smartcasts
 				is_already_casted = expr.obj.pos.pos == expr.pos.pos
 				if orig_type == 0 {
 					orig_type = expr.obj.typ
 				}
 				is_inherited = expr.obj.is_inherited
-				ct_type_var = if expr.obj.ct_type_var in [.field_var, .generic_param] {
+				ct_type_var = if is_comptime && expr.obj.ct_type_var != .no_comptime {
 					.smartcast
 				} else {
 					.no_comptime
@@ -3864,14 +3863,14 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 			if (!is_mut || expr.is_mut) && !is_already_casted {
 				smartcasts << to_type
 				if var := scope.find_var(expr.name) {
-					if var.ct_type_var == .smartcast {
+					if is_comptime && var.ct_type_var == .smartcast {
 						scope.update_smartcasts(expr.name, to_type)
 						return
 					}
 				}
 				scope.register(ast.Var{
 					name: expr.name
-					typ: cur_type // if ct_type_var == .smartcast { to_type } else { cur_type }
+					typ: cur_type
 					pos: expr.pos
 					is_used: true
 					is_mut: expr.is_mut
