@@ -180,7 +180,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							mut checked_type := ast.void_type
 							is_comptime_type_is_expr = true
 							if c.comptime.is_comptime_var(left) {
-								checked_type = c.comptime.get_comptime_var_type(left)
+								checked_type = c.unwrap_generic(c.comptime.get_comptime_var_type(left))
 							} else {
 								if var := left.scope.find_var(left.name) {
 									checked_type = c.unwrap_generic(var.typ)
@@ -523,7 +523,7 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope) {
 				scope)
 		} else if node.op == .key_is {
 			if node.left is ast.Ident && c.comptime.is_comptime_var(node.left) {
-				node.left_type = c.unwrap_generic(c.comptime.get_comptime_var_type(node.left))
+				node.left_type = c.comptime.get_comptime_var_type(node.left)
 			} else {
 				node.left_type = c.expr(mut node.left)
 			}
@@ -550,7 +550,7 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope) {
 			}
 			if right_type != ast.Type(0) {
 				right_sym := c.table.sym(right_type)
-				mut expr_type := c.unwrap_generic(c.expr(mut node.left))
+				mut expr_type := c.unwrap_generic(node.left_type)
 				left_sym := c.table.sym(expr_type)
 				if left_sym.kind == .aggregate {
 					expr_type = (left_sym.info as ast.Aggregate).sum_type

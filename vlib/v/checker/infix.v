@@ -662,8 +662,6 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 			}
 			if typ != ast.Type(0) {
-				left_type = c.unwrap_generic(left_type)
-				left_sym = c.table.sym(left_type)
 				typ_sym := c.table.sym(typ)
 				op := node.op.str()
 				if typ_sym.kind == .placeholder {
@@ -677,7 +675,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					if typ != ast.none_type_idx {
 						c.error('`${op}` can only be used to test for none in sql', node.pos)
 					}
-				} else if left_sym.kind !in [.interface_, .sum_type] {
+				} else if left_sym.kind !in [.interface_, .sum_type]
+					&& !c.comptime.is_comptime_var(node.left) {
 					c.error('`${op}` can only be used with interfaces and sum types',
 						node.pos) // can be used in sql too, but keep err simple
 				} else if mut left_sym.info is ast.SumType {
