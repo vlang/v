@@ -129,6 +129,13 @@ pub fn (mut s Scope) update_ct_var_kind(name string, kind ComptimeVarKind) {
 	}
 }
 
+pub fn (mut s Scope) update_smartcasts(name string, typ Type) {
+	mut obj := unsafe { s.objects[name] }
+	if mut obj is Var {
+		obj.smartcasts = [typ]
+	}
+}
+
 // selector_expr:  name.field_name
 pub fn (mut s Scope) register_struct_field(name string, field ScopeStructField) {
 	if f := s.struct_fields[name] {

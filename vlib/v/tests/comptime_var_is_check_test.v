@@ -14,6 +14,6 @@ fn gen[T, R](sum T) R {
 }
 
 fn test_main() {
-	// assert dump(gen[TestSum, string](TestSum('foo'))) == 'foo'
+	assert dump(gen[TestSum, string](TestSum('foo'))) == 'foo'
 	assert dump(gen[TestSum, int](TestSum(123))) == 123
 }

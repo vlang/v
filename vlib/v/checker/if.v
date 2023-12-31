@@ -179,11 +179,10 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						} else if left is ast.Ident {
 							mut checked_type := ast.void_type
 							is_comptime_type_is_expr = true
-							if c.comptime.is_comptime_var(left) {
-								checked_type = c.unwrap_generic(c.comptime.get_comptime_var_type(left))
-							} else {
-								if var := left.scope.find_var(left.name) {
-									checked_type = c.unwrap_generic(var.typ)
+							if var := left.scope.find_var(left.name) {
+								checked_type = c.unwrap_generic(var.typ)
+								if var.smartcasts.len > 0 {
+									checked_type = c.unwrap_generic(var.smartcasts.last())
 								}
 							}
 							skip_state = c.check_compatible_types(checked_type, right as ast.TypeNode)

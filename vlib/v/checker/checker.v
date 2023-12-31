@@ -3846,7 +3846,9 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 			mut ct_type_var := ast.ComptimeVarKind.no_comptime
 			if mut expr.obj is ast.Var {
 				is_mut = expr.obj.is_mut
-				smartcasts << expr.obj.smartcasts
+				if expr.obj.ct_type_var != .smartcast {
+					smartcasts << expr.obj.smartcasts
+				}
 				is_already_casted = expr.obj.pos.pos == expr.pos.pos
 				if orig_type == 0 {
 					orig_type = expr.obj.typ
@@ -3861,9 +3863,15 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 			// smartcast either if the value is immutable or if the mut argument is explicitly given
 			if (!is_mut || expr.is_mut) && !is_already_casted {
 				smartcasts << to_type
+				if var := scope.find_var(expr.name) {
+					if var.ct_type_var == .smartcast {
+						scope.update_smartcasts(expr.name, to_type)
+						return
+					}
+				}
 				scope.register(ast.Var{
 					name: expr.name
-					typ: if ct_type_var == .smartcast { to_type } else { cur_type }
+					typ: cur_type // if ct_type_var == .smartcast { to_type } else { cur_type }
 					pos: expr.pos
 					is_used: true
 					is_mut: expr.is_mut
