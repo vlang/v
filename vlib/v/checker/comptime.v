@@ -285,7 +285,6 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 			}
 			c.comptime.comptime_for_enum_var = node.val_var
 			c.comptime.type_map[node.val_var] = c.enum_data_type
-			c.comptime.type_map['${node.val_var}.typ'] = node.typ
 			c.stmts(mut node.stmts)
 			c.pop_comptime_info()
 		} else {

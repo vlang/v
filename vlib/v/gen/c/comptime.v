@@ -878,7 +878,11 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				if sym.info.vals.len > 0 {
 					g.writeln('\tEnumData ${node.val_var} = {0};')
 				}
+				g.push_new_comptime_info()
 				for val in sym.info.vals {
+					g.comptime.comptime_for_enum_var = node.val_var
+					g.comptime.type_map['${node.val_var}.typ'] = node.typ
+
 					g.writeln('/* enum vals ${i} */ {')
 					g.writeln('\t${node.val_var}.name = _SLIT("${val}");')
 					g.write('\t${node.val_var}.value = ')
@@ -900,6 +904,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 					g.writeln('}')
 					i++
 				}
+				g.pop_comptime_info()
 			}
 		}
 	} else if node.kind == .attributes {

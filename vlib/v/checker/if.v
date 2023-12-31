@@ -142,7 +142,6 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						}
 						if left is ast.SelectorExpr {
 							comptime_field_name = left.expr.str()
-							c.comptime.type_map[comptime_field_name] = got_type
 							is_comptime_type_is_expr = true
 							if comptime_field_name == c.comptime.comptime_for_field_var {
 								left_type := c.unwrap_generic(c.comptime.comptime_for_field_type)
@@ -519,13 +518,14 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope) {
 			c.smartcast_if_conds(mut node.right, mut scope)
 		} else if node.left is ast.Ident && node.op == .ne && node.right is ast.None {
 			c.smartcast(mut node.left, node.left_type, node.left_type.clear_flag(.option), mut
-				scope)
+				scope, false)
 		} else if node.op == .key_is {
 			if node.left is ast.Ident && c.comptime.is_comptime_var(node.left) {
 				node.left_type = c.comptime.get_comptime_var_type(node.left)
 			} else {
 				node.left_type = c.expr(mut node.left)
 			}
+			mut is_comptime := false
 			right_expr := node.right
 			right_type := match right_expr {
 				ast.TypeNode {
@@ -536,6 +536,7 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope) {
 				}
 				ast.Ident {
 					if right_expr.name == c.comptime.comptime_for_variant_var {
+						is_comptime = true
 						c.comptime.type_map['${c.comptime.comptime_for_variant_var}.typ']
 					} else {
 						c.error('invalid type `${right_expr}`', right_expr.pos)
@@ -586,7 +587,7 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope) {
 						}
 						if left_sym.kind in [.interface_, .sum_type] {
 							c.smartcast(mut node.left, node.left_type, right_type, mut
-								scope)
+								scope, is_comptime)
 						}
 					}
 				}

@@ -77,9 +77,6 @@ pub fn (mut ct ComptimeInfo) get_comptime_var_type(node ast.Expr) ast.Type {
 				ct.comptime_for_variant_var {
 					return ct.type_map['${ct.comptime_for_variant_var}.typ']
 				}
-				ct.comptime_for_enum_var {
-					return ct.type_map['${ct.comptime_for_enum_var}.typ']
-				}
 				else {
 					// field_var.typ from $for field
 					return ct.comptime_for_field_type

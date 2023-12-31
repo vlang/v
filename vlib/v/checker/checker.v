@@ -3794,7 +3794,7 @@ fn (mut c Checker) concat_expr(mut node ast.ConcatExpr) ast.Type {
 }
 
 // smartcast takes the expression with the current type which should be smartcasted to the target type in the given scope
-fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.Type, mut scope ast.Scope) {
+fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.Type, mut scope ast.Scope, is_comptime bool) {
 	sym := c.table.sym(cur_type)
 	to_type := if sym.kind == .interface_ && c.table.sym(to_type_).kind != .interface_ {
 		to_type_.ref()
@@ -3838,7 +3838,6 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 			}
 		}
 		ast.Ident {
-			is_comptime := c.comptime.inside_comptime_for
 			mut is_mut := false
 			mut smartcasts := []ast.Type{}
 			mut is_already_casted := false
