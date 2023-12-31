@@ -34,8 +34,36 @@ pub fn (t Time) format_ss_nano() string {
 // RFC3339 is an Internet profile, based on the ISO 8601 standard for for representation of dates and times using the Gregorian calendar.
 // It is intended to improve consistency and interoperability, when representing and using date and time in Internet protocols.
 pub fn (t Time) format_rfc3339() string {
+	if t.year == 0 {
+		return '0000-00-00T00:00:00.000Z'
+	}
+
 	u := t.local_to_utc()
-	return '${u.year:04d}-${u.month:02d}-${u.day:02d}T${u.hour:02d}:${u.minute:02d}:${u.second:02d}.${(u.nanosecond / 1_000_000):03d}Z'
+
+	mut buffer := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, `T`, `0`, `0`, `:`, `0`,
+		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `Z`]!
+
+	insert_text_on_fixed_array(mut buffer, 0, u.year.str(), 4)
+	insert_text_on_fixed_array(mut buffer, 5, u.month.str(), 2)
+	insert_text_on_fixed_array(mut buffer, 8, u.day.str(), 2)
+	insert_text_on_fixed_array(mut buffer, 11, u.hour.str(), 2)
+	insert_text_on_fixed_array(mut buffer, 14, u.minute.str(), 2)
+	insert_text_on_fixed_array(mut buffer, 17, u.second.str(), 2)
+	insert_text_on_fixed_array(mut buffer, 20, u.nanosecond.str(), 3)
+
+	return buffer[..].clone().bytestr()
+}
+
+fn insert_text_on_byte_array(mut buffer []u8, idx int, stri string, decimal_places int) {
+	for i := stri.len; i > 0; i-- {
+		buffer[idx + decimal_places - i] = stri[stri.len - i]
+	}
+}
+
+fn insert_text_on_fixed_array[F](mut buffer F, idx int, stri string, decimal_places int) {
+	for i := stri.len; i > 0; i-- {
+		buffer[idx + decimal_places - i] = stri[stri.len - i]
+	}
 }
 
 // format_rfc3339_nano returns a date string in "YYYY-MM-DDTHH:mm:ss.123456789Z" format (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
@@ -96,9 +124,9 @@ fn ordinal_suffix(n int) string {
 }
 
 const tokens_2 = ['MM', 'Mo', 'DD', 'Do', 'YY', 'ss', 'kk', 'NN', 'mm', 'hh', 'HH', 'ii', 'ZZ',
-	'dd', 'Qo', 'QQ', 'wo', 'ww']
-const tokens_3 = ['MMM', 'DDD', 'ZZZ', 'ddd']
-const tokens_4 = ['MMMM', 'DDDD', 'DDDo', 'dddd', 'YYYY']
+	'dd', 'Qo', 'QQ', 'wo', 'ww']!
+const tokens_3 = ['MMM', 'DDD', 'ZZZ', 'ddd']!
+const tokens_4 = ['MMMM', 'DDDD', 'DDDo', 'dddd', 'YYYY']!
 
 // custom_format returns a date with custom format
 //

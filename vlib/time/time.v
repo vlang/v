@@ -2,7 +2,7 @@ module time
 
 pub const days_string = 'MonTueWedThuFriSatSun'
 pub const long_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-pub const month_days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+pub const month_days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]!
 pub const months_string = 'JanFebMarAprMayJunJulAugSepOctNovDec'
 pub const long_months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
 	'September', 'October', 'November', 'December']
@@ -32,7 +32,7 @@ pub const days_before = [
 	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31,
 	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30,
 	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31,
-]
+]!
 
 // Time contains various time units for a point in time.
 pub struct Time {
@@ -470,6 +470,7 @@ pub fn offset() int {
 // local_to_utc converts the receiver `t` to the corresponding UTC time, if it contains local time.
 // If the receiver already does contain UTC time, it returns it unchanged.
 pub fn (t Time) local_to_utc() Time {
+	// aqui
 	if !t.is_local {
 		return t
 	}
