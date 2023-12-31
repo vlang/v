@@ -701,6 +701,9 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			g.expr(node.left)
 			g.writeln(';')
 			g.write(line)
+			if g.out.last_n(1) != '\n' {
+				g.writeln('')
+			}
 			g.write(tmp_var)
 		} else if node.or_block.kind == .absent {
 			g.expr(node.left)
