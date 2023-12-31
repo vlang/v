@@ -86,11 +86,30 @@ fn linux_now() Time {
 	return convert_ctime(loc_tm, int(ts.tv_nsec))
 }
 
+// fast_linux_now have 1ms less precision than linux_now
+fn fast_linux_now() Time {
+	// get the high precision time as UTC realtime clock
+	// and use the nanoseconds part
+	mut ts := C.timespec{}
+	C.clock_gettime(C.CLOCK_REALTIME_COARSE, &ts)
+	loc_tm := C.tm{}
+	C.localtime_r(voidptr(&ts.tv_sec), &loc_tm)
+	return convert_ctime(loc_tm, int(ts.tv_nsec))
+}
+
 fn linux_utc() Time {
 	// get the high precision time as UTC realtime clock
 	// and use the nanoseconds part
 	mut ts := C.timespec{}
 	C.clock_gettime(C.CLOCK_REALTIME, &ts)
+	return unix_nanosecond(i64(ts.tv_sec), int(ts.tv_nsec))
+}
+
+// fast_linux_utc have 1ms less precision than linux_utc
+// see https://access.redhat.com/documentation/pt-br/red_hat_enterprise_linux_for_real_time/7/html/reference_guide/sect-posix_clocks
+fn fast_linux_utc() Time {
+	mut ts := C.timespec{}
+	C.clock_gettime(C.CLOCK_REALTIME_COARSE, &ts)
 	return unix_nanosecond(i64(ts.tv_sec), int(ts.tv_nsec))
 }
 

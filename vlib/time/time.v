@@ -470,7 +470,6 @@ pub fn offset() int {
 // local_to_utc converts the receiver `t` to the corresponding UTC time, if it contains local time.
 // If the receiver already does contain UTC time, it returns it unchanged.
 pub fn (t Time) local_to_utc() Time {
-	// aqui
 	if !t.is_local {
 		return t
 	}

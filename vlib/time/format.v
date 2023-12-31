@@ -54,6 +54,42 @@ pub fn (t Time) format_rfc3339() string {
 	return buffer[..].clone().bytestr()
 }
 
+// fast_format_rfc3339 have 1ms less precision than format_rfc3339
+pub fn (t Time) fast_format_rfc3339() string {
+	mut u := Time{}
+
+	if t.is_local {
+		u = t
+	} else {
+		tt := fast_linux_utc()
+		local := tt.local()
+
+		offset := int(local.unix - tt.unix)
+
+		u = Time{
+			...u.add(offset * second)
+			is_local: true
+		}
+	}
+
+	if u.year == 0 {
+		return '0000-00-00T00:00:00.000Z'
+	}
+
+	mut buffer := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, `T`, `0`, `0`, `:`, `0`,
+		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `Z`]!
+
+	insert_text_on_fixed_array(mut buffer, 0, u.year.str(), 4)
+	insert_text_on_fixed_array(mut buffer, 5, u.month.str(), 2)
+	insert_text_on_fixed_array(mut buffer, 8, u.day.str(), 2)
+	insert_text_on_fixed_array(mut buffer, 11, u.hour.str(), 2)
+	insert_text_on_fixed_array(mut buffer, 14, u.minute.str(), 2)
+	insert_text_on_fixed_array(mut buffer, 17, u.second.str(), 2)
+	insert_text_on_fixed_array(mut buffer, 20, u.nanosecond.str(), 3)
+
+	return buffer[..].clone().bytestr()
+}
+
 fn insert_text_on_byte_array(mut buffer []u8, idx int, stri string, decimal_places int) {
 	for i := stri.len; i > 0; i-- {
 		buffer[idx + decimal_places - i] = stri[stri.len - i]

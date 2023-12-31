@@ -113,7 +113,7 @@ fn (e &Encoder) encode_any(val Any, level int, mut buf []u8) ! {
 			buf << `]`
 		}
 		time.Time {
-			str_time := val.format_rfc3339()
+			str_time := val.fast_format_rfc3339()
 			buf << `"`
 			unsafe { buf.push_many(str_time.str, str_time.len) }
 			buf << `"`
@@ -236,7 +236,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 				} $else $if field.typ is ?time.Time {
 					option_value := val.$(field.name) as ?time.Time
 					parsed_time := option_value as time.Time
-					e.encode_string(parsed_time.format_rfc3339(), mut buf)!
+					e.encode_string(parsed_time.fast_format_rfc3339(), mut buf)!
 				} $else $if field.is_array {
 					e.encode_array(value, level + 1, mut buf)!
 				} $else $if field.is_struct {
@@ -304,7 +304,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 			} $else $if field.typ is string {
 				e.encode_string(val.$(field.name).str(), mut buf)!
 			} $else $if field.typ is time.Time {
-				str_value := val.$(field.name).format_rfc3339()
+				str_value := val.$(field.name).fast_format_rfc3339()
 				buf << json2.quote_rune
 				unsafe { buf.push_many(str_value.str, str_value.len) }
 				buf << json2.quote_rune
@@ -349,7 +349,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 						if sum_type_value.contains_any(' /:-') {
 							date_time_str := time.parse(sum_type_value)!
 							unsafe {
-								str_value := date_time_str.format_rfc3339()
+								str_value := date_time_str.fast_format_rfc3339()
 								buf.push_many(str_value.str, str_value.len)
 							}
 						} else {
@@ -400,7 +400,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 					e.encode_string(val.$(field.name).str(), mut buf)!
 				} $else $if field.unaliased_typ is time.Time {
 					parsed_time := time.parse(val.$(field.name).str()) or { time.Time{} }
-					e.encode_string(parsed_time.format_rfc3339(), mut buf)!
+					e.encode_string(parsed_time.fast_format_rfc3339(), mut buf)!
 				} $else $if field.unaliased_typ is bool {
 					if val.$(field.name).str() == json2.true_in_string {
 						unsafe { buf.push_many(json2.true_in_string.str, json2.true_in_string.len) }
