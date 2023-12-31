@@ -3843,6 +3843,7 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 			mut is_already_casted := false
 			mut orig_type := 0
 			mut is_inherited := false
+			mut ct_type_var := ast.ComptimeVarKind.no_comptime
 			if mut expr.obj is ast.Var {
 				is_mut = expr.obj.is_mut
 				smartcasts << expr.obj.smartcasts
@@ -3851,19 +3852,25 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 					orig_type = expr.obj.typ
 				}
 				is_inherited = expr.obj.is_inherited
+				ct_type_var = if expr.obj.ct_type_var == .field_var {
+					.smartcast
+				} else {
+					.no_comptime
+				}
 			}
 			// smartcast either if the value is immutable or if the mut argument is explicitly given
 			if (!is_mut || expr.is_mut) && !is_already_casted {
 				smartcasts << to_type
 				scope.register(ast.Var{
 					name: expr.name
-					typ: cur_type
+					typ: if ct_type_var == .smartcast { to_type } else { cur_type }
 					pos: expr.pos
 					is_used: true
 					is_mut: expr.is_mut
 					is_inherited: is_inherited
 					smartcasts: smartcasts
 					orig_type: orig_type
+					ct_type_var: ct_type_var
 				})
 			} else if is_mut && !expr.is_mut {
 				c.smartcast_mut_pos = expr.pos

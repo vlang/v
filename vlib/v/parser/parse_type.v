@@ -434,6 +434,7 @@ fn (mut p Parser) parse_sum_type_variants() []ast.TypeNode {
 			pos: type_pos
 			end_comments: end_comments
 		}
+
 		if p.tok.kind != .pipe {
 			break
 		}

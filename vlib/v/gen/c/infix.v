@@ -720,6 +720,11 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 	}
 	if node.right is ast.None {
 		g.write('${ast.none_type.idx()} /* none */')
+	} else if node.right is ast.Ident && node.right.name == g.comptime.comptime_for_variant_var {
+		variant_idx := g.comptime.type_map['${g.comptime.comptime_for_variant_var}.typ'] or {
+			ast.void_type
+		}
+		g.write('${variant_idx.idx()}')
 	} else {
 		g.expr(node.right)
 	}
