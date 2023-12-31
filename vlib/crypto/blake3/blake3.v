@@ -103,7 +103,7 @@ struct Node {
 	chaining_value []u32
 }
 
-pub fn (n Node) str() string {
+fn (n Node) str() string {
 	return 'Node chaining_value: ${n.chaining_value[0]:08x} ${n.chaining_value[1]:08x} ${n.chaining_value[2]:08x} ${n.chaining_value[3]:08x}   ${n.chaining_value[4]:08x} ${n.chaining_value[5]:08x} ${n.chaining_value[6]:08x} ${n.chaining_value[7]:08x}'
 }
 

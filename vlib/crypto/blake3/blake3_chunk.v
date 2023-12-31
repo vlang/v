@@ -19,7 +19,7 @@ mut:
 	flags          u32
 }
 
-pub fn (c Chunk) str() string {
+fn (c Chunk) str() string {
 	return 'Chunk {\n    chunk_number: ${c.chunk_number}\n    chaining_value: ${c.chaining_value[0]:08x} ${c.chaining_value[1]:08x} ${c.chaining_value[2]:08x} ${c.chaining_value[3]:08x}   ${c.chaining_value[4]:08x} ${c.chaining_value[5]:08x} ${c.chaining_value[6]:08x} ${c.chaining_value[7]:08x}\n       block_words: ${c.block_words[0]:08x} ${c.block_words[1]:08x} ${c.block_words[2]:08x} ${c.block_words[3]:08x}   ${c.block_words[4]:08x} ${c.block_words[5]:08x} ${c.block_words[6]:08x} ${c.block_words[7]:08x}\n                    ${c.block_words[8]:08x} ${c.block_words[9]:08x} ${c.block_words[10]:08x} ${c.block_words[11]:08x}   ${c.block_words[12]:08x} ${c.block_words[13]:08x} ${c.block_words[14]:08x} ${c.block_words[15]:08x}\n         block_len: ${c.block_len}\n             flags: ${c.flags:08x}'
 }
 
