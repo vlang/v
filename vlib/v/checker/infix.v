@@ -662,6 +662,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 			}
 			if typ != ast.Type(0) {
+				left_type = c.unwrap_generic(left_type)
+				left_sym = c.table.sym(left_type)
 				typ_sym := c.table.sym(typ)
 				op := node.op.str()
 				if typ_sym.kind == .placeholder {
