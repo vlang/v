@@ -87,7 +87,7 @@ fn linux_now() Time {
 }
 
 // fast_linux_now have 1ms less precision than linux_now
-fn fast_linux_now() Time {
+pub fn fast_linux_now() Time {
 	// get the high precision time as UTC realtime clock
 	// and use the nanoseconds part
 	mut ts := C.timespec{}
