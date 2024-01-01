@@ -1902,6 +1902,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				c.warn('manual memory management with `free()` is only allowed in unsafe code',
 					node.pos)
 			}
+			if left_sym.kind == .array_fixed {
+				c.error('unknown method or field: ${left_sym.name}.free()', node.pos)
+			}
 			return ast.void_type
 		}
 		// call struct field fn type
