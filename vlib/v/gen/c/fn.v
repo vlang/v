@@ -1884,12 +1884,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 								if cast_sym.info is ast.Aggregate {
 									sym := g.table.sym(cast_sym.info.types[g.aggregate_type_idx])
 									g.write('${dot}_${sym.cname}')
-								} else if cast_sym.kind == .function {
-									if obj.orig_type.has_flag(.option) {
-										g.write('.data')
-									} else {
-										g.write('${dot}_${cast_sym.cname}')
-									}
+								} else if cast_sym.kind == .function
+									&& obj.orig_type.has_flag(.option) {
+									g.write('.data')
 								} else {
 									g.write('${dot}_${cast_sym.cname}')
 								}
