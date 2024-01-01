@@ -1887,6 +1887,8 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 								} else if cast_sym.kind == .function {
 									if obj.orig_type.has_flag(.option) {
 										g.write('.data')
+									} else {
+										g.write('${dot}_${cast_sym.cname}')
 									}
 								} else {
 									g.write('${dot}_${cast_sym.cname}')
