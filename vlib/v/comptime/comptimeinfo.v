@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 V devs. All rights reserved.
+// Copyright (c) 2019-2024 V devs. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module comptime
 
@@ -54,7 +54,7 @@ pub fn (mut ct ComptimeInfo) get_comptime_var_type(node ast.Expr) ast.Type {
 				node.obj.typ
 			}
 			.smartcast {
-				ct.type_map['${ct.comptime_for_variant_var}.typ'] or { ast.void_type }
+				ct.type_map['${ct.comptime_for_variant_var}.typ'] or { node.obj.typ }
 			}
 			.key_var, .value_var {
 				// key and value variables from normal for stmt
@@ -76,9 +76,6 @@ pub fn (mut ct ComptimeInfo) get_comptime_var_type(node ast.Expr) ast.Type {
 			match node.expr.name {
 				ct.comptime_for_variant_var {
 					return ct.type_map['${ct.comptime_for_variant_var}.typ']
-				}
-				ct.comptime_for_enum_var {
-					return ct.type_map['${ct.comptime_for_enum_var}.typ']
 				}
 				else {
 					// field_var.typ from $for field

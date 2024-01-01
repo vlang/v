@@ -92,7 +92,9 @@ pub enum SQLDialect {
 
 fn (kind OperationKind) to_str() string {
 	str := match kind {
-		.neq { '!=' }
+		// While most SQL databases support "!=" for not equal, "<>" is the standard
+		// operator.
+		.neq { '<>' }
 		.eq { '=' }
 		.gt { '>' }
 		.lt { '<' }

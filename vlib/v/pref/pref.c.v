@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module pref
@@ -212,6 +212,7 @@ pub mut:
 	//
 	skip_running     bool // when true, do no try to run the produced file (set by b.cc(), when -o x.c or -o x.js)
 	skip_warnings    bool // like C's "-w", forces warnings to be ignored.
+	skip_notes       bool // force notices to be ignored/not shown.
 	warn_impure_v    bool // -Wimpure-v, force a warning for JS.fn()/C.fn(), outside of .js.v/.c.v files. TODO: turn to an error by default
 	warns_are_errors bool // -W, like C's "-Werror", treat *every* warning is an error
 	notes_are_errors bool // -N, treat *every* notice as an error
@@ -720,8 +721,14 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-W' {
 				res.warns_are_errors = true
 			}
+			'-w' {
+				res.skip_warnings = true
+			}
 			'-N' {
 				res.notes_are_errors = true
+			}
+			'-n' {
+				res.skip_notes = true
 			}
 			'-no-rsp' {
 				res.no_rsp = true
@@ -731,9 +738,6 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-keepc' {
 				res.reuse_tmpc = true
-			}
-			'-w' {
-				res.skip_warnings = true
 			}
 			'-watch' {
 				eprintln_exit('The -watch option is deprecated. Please use the watch command `v watch file.v` instead.')

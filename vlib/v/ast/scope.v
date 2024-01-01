@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module ast
@@ -126,6 +126,13 @@ pub fn (mut s Scope) update_ct_var_kind(name string, kind ComptimeVarKind) {
 	mut obj := unsafe { s.objects[name] }
 	if mut obj is Var {
 		obj.ct_type_var = kind
+	}
+}
+
+pub fn (mut s Scope) update_smartcasts(name string, typ Type) {
+	mut obj := unsafe { s.objects[name] }
+	if mut obj is Var {
+		obj.smartcasts = [typ]
 	}
 }
 

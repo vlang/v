@@ -497,8 +497,8 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 	}
 
 	if b.pref.check_only {
-		for file in b.parsed_files {
-			if !b.pref.skip_warnings {
+		if !b.pref.skip_notes {
+			for file in b.parsed_files {
 				for err in file.notices {
 					kind := if b.pref.is_verbose {
 						'${err.reporter} notice #${b.nr_notices}:'
@@ -521,8 +521,8 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 			}
 		}
 
-		for file in b.parsed_files {
-			if !b.pref.skip_warnings {
+		if !b.pref.skip_warnings {
+			for file in b.parsed_files {
 				for err in file.warnings {
 					kind := if b.pref.is_verbose {
 						'${err.reporter} warning #${b.nr_warnings}:'
@@ -547,7 +547,7 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 	if b.pref.is_verbose && b.checker.nr_notices > 1 {
 		println('${b.checker.nr_notices} notices')
 	}
-	if b.checker.nr_notices > 0 && !b.pref.skip_warnings {
+	if b.checker.nr_notices > 0 && !b.pref.skip_notes {
 		for err in b.checker.notices {
 			kind := if b.pref.is_verbose {
 				'${err.reporter} notice #${b.checker.nr_notices}:'

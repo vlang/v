@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
@@ -285,7 +285,7 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 			if node.cond.right is ast.TypeNode && node.cond.left in [ast.Ident, ast.SelectorExpr] {
 				if c.table.type_kind(node.cond.left_type) in [.sum_type, .interface_] {
 					c.smartcast(mut node.cond.left, node.cond.left_type, node.cond.right_type, mut
-						node.scope)
+						node.scope, false)
 				}
 			}
 		}

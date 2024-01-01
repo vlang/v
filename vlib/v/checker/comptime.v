@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
@@ -217,7 +217,7 @@ fn (mut c Checker) comptime_for(mut node ast.ComptimeFor) {
 		c.unwrap_generic(node.typ)
 	} else {
 		node.typ = c.expr(mut node.expr)
-		node.typ
+		c.unwrap_generic(node.typ)
 	}
 	sym := c.table.final_sym(typ)
 	if sym.kind == .placeholder || typ.has_flag(.generic) {

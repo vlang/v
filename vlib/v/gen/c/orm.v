@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module c
 
@@ -809,6 +809,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 
 	select_result_var_name := g.new_tmp_var()
 	table_name := g.get_table_name_by_struct_type(node.table_expr.typ)
+	escaped_table_name := cescape_nonascii(util.smart_quote(table_name, false))
 	g.sql_table_name = g.table.sym(node.table_expr.typ).name
 
 	g.writeln('// sql { select from `${table_name}` }')
@@ -817,7 +818,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 	g.writeln('${connection_var_name}._object, // Connection object')
 	g.writeln('(orm__SelectConfig){')
 	g.indent++
-	g.writeln('.table = _SLIT("${table_name}"),')
+	g.writeln('.table = _SLIT("${escaped_table_name}"),')
 	g.writeln('.is_count = ${node.is_count},')
 	g.writeln('.has_where = ${node.has_where},')
 	g.writeln('.has_order = ${node.has_order},')

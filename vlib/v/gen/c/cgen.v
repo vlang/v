@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -4546,7 +4546,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 									}
 								}
 								if node.obj.ct_type_var == .smartcast {
-									cur_variant_sym := g.table.sym(g.comptime.type_map['${g.comptime.comptime_for_variant_var}.typ'])
+									cur_variant_sym := g.table.sym(g.unwrap_generic(g.comptime.get_comptime_var_type(node)))
 									g.write('${dot}_${cur_variant_sym.cname}')
 								} else if !is_option_unwrap
 									&& obj_sym.kind in [.sum_type, .interface_] {
