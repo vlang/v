@@ -735,8 +735,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				}
 			}
 		}
-		if !is_blank_ident && right_sym.kind != .placeholder && left_sym.kind != .interface_
-			&& !right_type.has_flag(.generic) && !left_type.has_flag(.generic) {
+		if !is_blank_ident && right_sym.kind != .placeholder && left_sym.kind != .interface_ {
 			// Dual sides check (compatibility check)
 			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
 				// allow literal values to auto deref var (e.g.`for mut v in values { v = 1.0 }`)
