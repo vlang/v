@@ -27,6 +27,15 @@ jobs:
           sudo apt-get install --quiet -y libgc-dev libsodium-dev libssl-dev sqlite3 libsqlite3-dev libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
           sudo apt-get install --quiet -y --no-install-recommends sassc libgit2-dev ## needed by gitly
 
+      - name: Test discord.v
+        run: |
+          echo "Clone https://github.com/DarpHome/discord.v/"
+          git clone https://github.com/DarpHome/discord.v/ discord && cd discord
+          echo "Checkout last known good commit"
+          git checkout 3b243977f00736ee62cf3af85aa7ff6c4c8c0269
+          echo "Execute Tests"
+          v test .
+
       - name: Build vlang/vab
         run: |
           echo "Install VAB"
@@ -202,12 +211,3 @@ jobs:
           ~/.vmodules/vtl/bin/test --use-gc boehm
           echo "Execute Tests using Pure V Backend with Pure V Math and Garbage Collection enabled"
           ~/.vmodules/vtl/bin/test --use-cblas --use-gc boehm
-
-      - name: Test discord.v
-        run: |
-          echo "Clone https://github.com/DarpHome/discord.v/"
-          git clone https://github.com/DarpHome/discord.v/ discord && cd discord
-          echo "Checkout last known good commit"
-          git checkout 3b243977f00736ee62cf3af85aa7ff6c4c8c0269
-          echo "Execute Tests"
-          v test .
