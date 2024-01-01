@@ -673,7 +673,11 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, right ast.ArrayInit) {
 
 // infix_expr_is_op generates code for `is` and `!is`
 fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
-	mut left_sym := g.table.sym(node.left_type)
+	mut left_sym := if g.comptime.is_comptime_var(node.left) {
+		g.table.sym(g.unwrap_generic(g.comptime.get_comptime_var_type(node.left)))
+	} else {
+		g.table.sym(node.left_type)
+	}
 	is_aggregate := left_sym.kind == .aggregate
 	if is_aggregate {
 		parent_left_type := (left_sym.info as ast.Aggregate).sum_type

@@ -3794,7 +3794,7 @@ fn (mut c Checker) concat_expr(mut node ast.ConcatExpr) ast.Type {
 }
 
 // smartcast takes the expression with the current type which should be smartcasted to the target type in the given scope
-fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.Type, mut scope ast.Scope) {
+fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.Type, mut scope ast.Scope, is_comptime bool) {
 	sym := c.table.sym(cur_type)
 	to_type := if sym.kind == .interface_ && c.table.sym(to_type_).kind != .interface_ {
 		to_type_.ref()
@@ -3852,7 +3852,7 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 					orig_type = expr.obj.typ
 				}
 				is_inherited = expr.obj.is_inherited
-				ct_type_var = if expr.obj.ct_type_var == .field_var {
+				ct_type_var = if is_comptime && expr.obj.ct_type_var != .no_comptime {
 					.smartcast
 				} else {
 					.no_comptime
@@ -3861,9 +3861,15 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 			// smartcast either if the value is immutable or if the mut argument is explicitly given
 			if (!is_mut || expr.is_mut) && !is_already_casted {
 				smartcasts << to_type
+				if var := scope.find_var(expr.name) {
+					if is_comptime && var.ct_type_var == .smartcast {
+						scope.update_smartcasts(expr.name, to_type)
+						return
+					}
+				}
 				scope.register(ast.Var{
 					name: expr.name
-					typ: if ct_type_var == .smartcast { to_type } else { cur_type }
+					typ: cur_type
 					pos: expr.pos
 					is_used: true
 					is_mut: expr.is_mut
