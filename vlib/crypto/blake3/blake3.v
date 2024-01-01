@@ -145,7 +145,7 @@ pub fn Digest.new_keyed_hash(key []u8) !Digest {
 	return Digest.new(key_words, u32(Flags.keyed_hash))
 }
 
-// Digest.new_derive_key_hash initializes a Digest structure for a deriving a Blake3 key
+// Digest.new_derive_key_hash initializes a Digest structure for deriving a Blake3 key
 pub fn Digest.new_derive_key_hash(context []u8) !Digest {
 	mut context_digest := Digest.new(blake3.iv, u32(Flags.derive_key_context))!
 
