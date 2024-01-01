@@ -202,3 +202,12 @@ jobs:
           ~/.vmodules/vtl/bin/test --use-gc boehm
           echo "Execute Tests using Pure V Backend with Pure V Math and Garbage Collection enabled"
           ~/.vmodules/vtl/bin/test --use-cblas --use-gc boehm
+
+      - name: Test discord.v
+        run: |
+          echo "Clone https://github.com/DarpHome/discord.v/"
+          git clone https://github.com/DarpHome/discord.v/ discord && cd discord
+          echo "Checkout last known good commit"
+          git checkout 3b243977f00736ee62cf3af85aa7ff6c4c8c0269
+          echo "Execute Tests"
+          v test .
