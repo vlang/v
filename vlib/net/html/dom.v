@@ -63,14 +63,14 @@ fn (mut dom DocumentObjectModel) add_tag_attribute(tag &Tag) {
 			dom.tag_attributes[attribute_name] = []
 		}
 		for {
-			mut temp_array := dom.tag_attributes[attribute_name]
+			mut temp_array := unsafe { dom.tag_attributes[attribute_name] }
 			temp_array << []&Tag{}
 			dom.tag_attributes[attribute_name] = temp_array
-			if location < dom.tag_attributes[attribute_name].len + 1 {
+			if location < unsafe { dom.tag_attributes[attribute_name].len } + 1 {
 				break
 			}
 		}
-		mut temp_array := dom.tag_attributes[attribute_name][location]
+		mut temp_array := unsafe { dom.tag_attributes[attribute_name][location] }
 		temp_array << tag
 		dom.tag_attributes[attribute_name][location] = temp_array
 	}
@@ -81,7 +81,7 @@ fn (mut dom DocumentObjectModel) add_tag_by_type(tag &Tag) {
 	if tag_name !in dom.tag_type {
 		dom.tag_type[tag_name] = [tag]
 	} else {
-		mut temp_array := dom.tag_type[tag_name]
+		mut temp_array := unsafe { dom.tag_type[tag_name] }
 		temp_array << tag
 		dom.tag_type[tag_name] = temp_array
 	}
@@ -92,7 +92,7 @@ fn (mut dom DocumentObjectModel) add_tag_by_attribute(tag &Tag) {
 		if attribute_name !in dom.all_attributes {
 			dom.all_attributes[attribute_name] = [tag]
 		} else {
-			mut temp_array := dom.all_attributes[attribute_name]
+			mut temp_array := unsafe { dom.all_attributes[attribute_name] }
 			temp_array << tag
 			dom.all_attributes[attribute_name] = temp_array
 		}
@@ -176,13 +176,17 @@ pub fn (dom DocumentObjectModel) get_root() &Tag {
 // get_tag retrieves all tags in the document that have the given tag name.
 @[deprecated: 'use get_tags instead']
 pub fn (dom DocumentObjectModel) get_tag(name string) []&Tag {
-	return if name in dom.tag_type { dom.tag_type[name] } else { []&Tag{} }
+	return dom.get_tags(name: name)
 }
 
 // get_tags returns all tags stored in the document.
 pub fn (dom DocumentObjectModel) get_tags(options GetTagsOptions) []&Tag {
 	if options.name != '' {
-		return if options.name in dom.tag_type { dom.tag_type[options.name] } else { []&Tag{} }
+		return if options.name in dom.tag_type {
+			unsafe { dom.tag_type[options.name] }
+		} else {
+			[]&Tag{}
+		}
 	}
 	return dom.all_tags
 }
@@ -195,31 +199,26 @@ pub fn (dom DocumentObjectModel) get_tags_by_class_name(names ...string) []&Tag 
 // get_tag_by_attribute retrieves all tags in the document that have the given attribute name.
 @[deprecated: 'use get_tags_by_attribute instead']
 pub fn (dom DocumentObjectModel) get_tag_by_attribute(name string) []&Tag {
-	return if name in dom.all_attributes { dom.all_attributes[name] } else { []&Tag{} }
+	return dom.get_tags_by_attribute(name)
 }
 
 // get_tags_by_attribute retrieves all tags in the document that have the given attribute name.
 pub fn (dom DocumentObjectModel) get_tags_by_attribute(name string) []&Tag {
-	return if name in dom.all_attributes { dom.all_attributes[name] } else { []&Tag{} }
+	return if name in dom.all_attributes { unsafe { dom.all_attributes[name] } } else { []&Tag{} }
 }
 
 // get_tags_by_attribute_value retrieves all tags in the document that have the given attribute name and value.
 pub fn (mut dom DocumentObjectModel) get_tags_by_attribute_value(name string, value string) []&Tag {
 	location := dom.where_is(value, name)
-	return if dom.tag_attributes[name].len > location {
-		dom.tag_attributes[name][location]
-	} else {
-		[]&Tag{}
+	attributes := unsafe { dom.tag_attributes[name] }
+	if attributes.len > location {
+		return attributes[location]
 	}
+	return []
 }
 
 // get_tag_by_attribute_value retrieves all tags in the document that have the given attribute name and value.
 @[deprecated: 'use get_tags_by_attribute_value instead']
 pub fn (mut dom DocumentObjectModel) get_tag_by_attribute_value(name string, value string) []&Tag {
-	location := dom.where_is(value, name)
-	return if dom.tag_attributes[name].len > location {
-		dom.tag_attributes[name][location]
-	} else {
-		[]&Tag{}
-	}
+	return dom.get_tags_by_attribute_value(name, value)
 }
