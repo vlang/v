@@ -880,8 +880,6 @@ fn (mut g Gen) gen_arg_from_type(node_type ast.Type, node ast.Expr) {
 fn (mut g Gen) gen_map_method_call(node ast.CallExpr, left_type ast.Type, left_sym ast.TypeSymbol) bool {
 	match node.name {
 		'clear' {
-			left_info := left_sym.info as ast.Map
-			elem_type_str := g.typ(left_info.key_type)
 			g.write('map_clear(')
 			g.gen_arg_from_type(left_type, node.left)
 			g.write(')')
