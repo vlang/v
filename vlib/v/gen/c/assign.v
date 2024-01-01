@@ -531,16 +531,13 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				if is_inside_ternary {
 					g.out.write_string(util.tabs(g.indent - g.inside_ternary))
 				}
-				ret_styp := if val is ast.SelectorExpr {
-					g.typ(g.unwrap_generic(val_type))
-				} else {
-					g.typ(right_sym.info.func.return_type)
-				}
 				fn_name := c_fn_name(g.get_ternary_name(ident.name))
 
-				if val_type.has_flag(.option) {
+				if val_type.has_flag(.option) && val is ast.SelectorExpr {
+					ret_styp := g.typ(g.unwrap_generic(val_type))
 					g.write('${ret_styp} ${fn_name}')
 				} else {
+					ret_styp := g.typ(right_sym.info.func.return_type)
 					mut call_conv := ''
 					mut msvc_call_conv := ''
 					for attr in right_sym.info.func.attrs {
