@@ -57,7 +57,10 @@ fn test_main() {
 		'type':        json2.Any(3)
 		'name':        'foo'
 		'description': 'This is my first command.'
-	})! == ApplicationCommandOption{
+	}) or {
+		assert false, 'Should not return error: ${err}'
+		return
+	} == ApplicationCommandOption{
 		typ: .string
 		name: 'foo'
 		description: 'This is my first command.'

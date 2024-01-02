@@ -342,6 +342,7 @@ fn (mut g Gen) gen_array_equality_fn(left_type ast.Type) string {
 
 	if left_type.has_flag(.option) {
 		fn_builder.writeln('\tif (a.state != b.state) return false;')
+		fn_builder.writeln('\tif (a.state == 2 && a.state == b.state) return true;')
 	}
 
 	fn_builder.writeln('\tif (${left_len} != ${right_len}) {')
