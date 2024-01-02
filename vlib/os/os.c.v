@@ -5,7 +5,7 @@ import strings
 #include <sys/stat.h> // #include <signal.h>
 #include <errno.h>
 
-$if freebsd {
+$if freebsd || openbsd {
 	#include <sys/sysctl.h>
 }
 
@@ -721,6 +721,33 @@ pub fn executable() string {
 		res := unsafe { tos_clone(&result[0]) }
 		return res
 	}
+	$if openbsd {
+		// Sadly, unlike on FreeBSD, there is still no reliable way, to get the full path of the
+		// current process in OpenBSD. However, we can try our best, by first checking, if the passed
+		// argv[0] to the process, contains an absolute path (starting with /), according to the kernel,
+		// and only go use the slower PATH scanning fallback method, when it does not.
+		// See also https://github.com/gpakosz/whereami/blob/master/src/whereami.c#L591
+		// and https://github.com/ziglang/zig/issues/6718#issuecomment-711134120 .
+		mut pbuf := unsafe { &&u8(&result[0]) }
+		bufsize := usize(max_path_buffer_size)
+		pid := C.getpid()
+		mib := [C.CTL_KERN, C.KERN_PROC_ARGS, pid, C.KERN_PROC_ARGV]!
+		if unsafe { C.sysctl(&mib[0], mib.len, C.NULL, &bufsize, C.NULL, 0) } == 0 {
+			if bufsize > max_path_buffer_size {
+				pbuf = unsafe { &&u8(malloc(bufsize)) }
+				defer {
+					unsafe { free(pbuf) }
+				}
+			}
+			if unsafe { C.sysctl(&mib[0], mib.len, pbuf, &bufsize, C.NULL, 0) } == 0 {
+				if unsafe { *pbuf[0] } == `/` {
+					res := unsafe { tos_clone(pbuf[0]) }
+					return res
+				}
+			}
+		}
+		return executable_fallback()
+	}
 	$if netbsd {
 		count := C.readlink(c'/proc/curproc/exe', &char(&result[0]), max_path_len)
 		if count < 0 {
@@ -747,9 +774,6 @@ pub fn executable() string {
 		}
 		res := unsafe { tos_clone(&result[0]) }
 		return res
-	}
-	// "Sadly there is no way to get the full path of the executed file in OpenBSD."
-	$if openbsd {
 	}
 	$if solaris {
 	}
