@@ -210,8 +210,13 @@ fn (mut g Gen) dump_expr_definitions() {
 		surrounder.builder_write_afters(mut dump_fns)
 		if is_fixed_arr_ret {
 			tmp_var := g.new_tmp_var()
-			dump_fns.writeln('\t${str_dumparg_ret_type} ${tmp_var} = {0};')
-			dump_fns.writeln('\tmemcpy(${tmp_var}.ret_arr, dump_arg, sizeof(${str_dumparg_type}));')
+			if typ.is_ptr() {
+				dump_fns.writeln('\t${str_dumparg_ret_type} ${tmp_var} = HEAP(${g.typ(typ.set_nr_muls(0))}, {0});')
+				dump_fns.writeln('\tmemcpy(${tmp_var}->ret_arr, dump_arg, sizeof(${str_dumparg_type}));')
+			} else {
+				dump_fns.writeln('\t${str_dumparg_ret_type} ${tmp_var} = {0};')
+				dump_fns.writeln('\tmemcpy(${tmp_var}.ret_arr, dump_arg, sizeof(${str_dumparg_type}));')
+			}
 			dump_fns.writeln('\treturn ${tmp_var};')
 		} else {
 			dump_fns.writeln('\treturn dump_arg;')
