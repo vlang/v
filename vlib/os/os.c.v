@@ -719,8 +719,8 @@ pub fn executable() string {
 		mib := [1, // CTL_KERN
 		 		14, // KERN_PROC
 		 		12, // KERN_PROC_PATHNAME
-		 		-1]
-		unsafe { C.sysctl(mib.data, mib.len, &result[0], &bufsize, 0, 0) }
+		 		-1]!
+		unsafe { C.sysctl(&mib[0], mib.len, &result[0], &bufsize, 0, 0) }
 		res := unsafe { tos_clone(&result[0]) }
 		return res
 	}
