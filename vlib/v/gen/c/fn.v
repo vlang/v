@@ -1866,8 +1866,12 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 						}
 						if obj.smartcasts.len > 0 && is_cast_needed {
 							for typ in obj.smartcasts {
-								sym := g.table.sym(typ)
-								g.write('(*(${sym.cname})(')
+								sym := g.table.sym(g.unwrap_generic(typ))
+								if obj.orig_type.has_flag(.option) && sym.kind == .function {
+									g.write('(*(${sym.cname}*)(')
+								} else {
+									g.write('(*(${sym.cname})(')
+								}
 							}
 							for i, typ in obj.smartcasts {
 								cast_sym := g.table.sym(g.unwrap_generic(typ))
@@ -1886,6 +1890,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 								if cast_sym.info is ast.Aggregate {
 									sym := g.table.sym(cast_sym.info.types[g.aggregate_type_idx])
 									g.write('${dot}_${sym.cname}')
+								} else if cast_sym.kind == .function
+									&& obj.orig_type.has_flag(.option) {
+									g.write('.data')
 								} else {
 									g.write('${dot}_${cast_sym.cname}')
 								}
