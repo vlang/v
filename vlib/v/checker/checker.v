@@ -3181,7 +3181,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		tt := c.table.type_to_str(to_type)
 		c.error('cannot cast string to `${tt}`, use `${snexpr}[index]` instead.', node.pos)
 	} else if final_from_sym.kind == .string && to_type.is_voidptr()
-		&& !node.expr_type.has_flag(.generic) {
+		&& !node.expr_type.has_flag(.generic) && !from_type.is_ptr() {
 		c.error('cannot cast string to `voidptr`, use voidptr(s.str) instead', node.pos)
 	} else if final_from_sym.kind == .string && to_type.is_pointer() && !c.inside_unsafe {
 		tt := c.table.type_to_str(to_type)
