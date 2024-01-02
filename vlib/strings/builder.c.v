@@ -226,6 +226,15 @@ pub fn (mut b Builder) str() string {
 	if b.last() != 0 {
 		// vlang need zero at end or not?
 		b << u8(0)
+	} else {
+		for i := b.len - 1; i > 0; i-- {
+			if (b[i - 1] & 0xff) != 0 {
+				unsafe {
+					b.len = i + 1 // include zero
+				}
+				break
+			}
+		}
 	}
 	bcopy := unsafe { &u8(memdup_noscan(b.data, b.len)) }
 	s := unsafe { bcopy.vstring_with_len(b.len - 1) }
