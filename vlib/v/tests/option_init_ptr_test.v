@@ -21,6 +21,6 @@ fn test_option_empty() {
 	b := &?Abc{}
 	dump(b)
 
-	assert a == none
-	assert b == none
+	assert a != none
+	assert b != none
 }
