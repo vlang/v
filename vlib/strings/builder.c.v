@@ -223,7 +223,10 @@ pub fn (b &Builder) after(n int) string {
 // The returned string *owns* its own separate copy of the accumulated data that was in
 // the string builder, before the .str() call.
 pub fn (mut b Builder) str() string {
-	b << u8(0)
+	if b.last() != 0 {
+		// vlang need zero at end or not?
+		b << u8(0)
+	}
 	bcopy := unsafe { &u8(memdup_noscan(b.data, b.len)) }
 	s := unsafe { bcopy.vstring_with_len(b.len - 1) }
 	b.trim(0)
