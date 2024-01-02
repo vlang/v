@@ -147,6 +147,21 @@ fn (e &Encoder) encode_map[T](value T, level int, mut buf []u8) ! {
 }
 
 fn (e &Encoder) encode_value_with_level[T](val T, level int, mut buf []u8) ! {
+	// $if val.indirections != 0 {
+	// 	if val != unsafe { nil } {
+	// 		$if field.indirections == 1 {
+	// 			e.encode_value_with_level(*val, level + 1, mut buf)!
+	// 		}
+	// 		$if field.indirections == 2 {
+	// 			e.encode_value_with_level(**val, level + 1, mut
+	// 				buf)!
+	// 		}
+	// 		$if field.indirections == 3 {
+	// 			e.encode_value_with_level(***val, level + 1, mut
+	// 				buf)!
+	// 		}
+	// 	}
+	// } $else
 	$if T is string {
 		e.encode_string(val, mut buf)!
 	} $else $if T is Any {
@@ -162,8 +177,10 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut buf []u8) ! {
 	} $else $if T is $alias {
 		// TODO
 	} $else $if T is time.Time {
-		parsed_time := time.parse(val.str()) or { time.Time{} }
-		e.encode_string(parsed_time.format_rfc3339(), mut buf)!
+		str_value := val.format_rfc3339()
+		buf << json2.quote_rune
+		unsafe { buf.push_many(str_value.str, str_value.len) }
+		buf << json2.quote_rune
 	} $else $if T is $map {
 		e.encode_map(val, level, mut buf)!
 	} $else $if T is []Any {
@@ -410,12 +427,7 @@ fn (e &Encoder) encode_array[U](val []U, level int, mut buf []u8) ! {
 		} $else $if U is $struct {
 			e.encode_struct(val[i], level + 1, mut buf)!
 		} $else $if U is $sumtype {
-			// TODO test
-			$if U is Any {
-				e.encode_any(val[i], level + 1, mut buf)!
-			} $else {
-				// TODO
-			}
+			e.encode_value_with_level(val[i], level, mut buf)!
 		} $else $if U is $enum {
 			// TODO test
 			e.encode_any(i64(val[i]), level + 1, mut buf)!
