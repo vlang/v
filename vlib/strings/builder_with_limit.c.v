@@ -1,5 +1,6 @@
 module strings
 
+// BuilderLimitedByFixedArray
 struct BuilderLimitedByFixedArray {
 	buf              &u8
 	fixed_array_size int
@@ -7,6 +8,7 @@ mut:
 	char_count int
 }
 
+// new_builder_limited_by_fixed_array
 pub fn new_builder_limited_by_fixed_array[F](fixed_array F) BuilderLimitedByFixedArray {
 	$if F is $array_fixed {
 		return BuilderLimitedByFixedArray{
@@ -18,6 +20,7 @@ pub fn new_builder_limited_by_fixed_array[F](fixed_array F) BuilderLimitedByFixe
 	}
 }
 
+// write_string
 @[direct_array_access]
 pub fn (mut b BuilderLimitedByFixedArray) write_string(s string) {
 	if s.len == 0 {
@@ -37,6 +40,7 @@ pub fn (mut b BuilderLimitedByFixedArray) write_string(s string) {
 	b.char_count += s.len
 }
 
+// str
 pub fn (mut b BuilderLimitedByFixedArray) str() string {
 	s := unsafe { b.buf.vstring_with_len(b.char_count) }
 
