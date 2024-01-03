@@ -242,7 +242,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 				debug_options << '-no-pie'
 			}
 		}
-		optimization_options = '-Ofast'
+		optimization_options = ['-Ofast']
 	}
 	//
 	if ccoptions.debug_mode {
