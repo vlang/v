@@ -5284,7 +5284,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			g.write('return ')
 		}
-		if expr0.is_auto_deref_var() {
+		if expr0.is_auto_deref_var() && !fn_return_is_fixed_array {
 			if g.fn_decl.return_type.is_ptr() {
 				var_str := g.expr_string(expr0)
 				g.write(var_str.trim('&'))
@@ -5303,7 +5303,12 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				if fn_return_is_fixed_array && !node.types[0].has_flag(.option) {
 					g.writeln('{0};')
 					if node.exprs[0] is ast.Ident {
-						g.write('memcpy(${tmpvar}.ret_arr, ${g.expr_string(node.exprs[0])}, sizeof(${g.typ(node.types[0])})) /*ret*/')
+						typ := if expr0.is_auto_deref_var() {
+							node.types[0].deref()
+						} else {
+							node.types[0]
+						}
+						g.write('memcpy(${tmpvar}.ret_arr, ${g.expr_string(node.exprs[0])}, sizeof(${g.typ(typ)})) /*ret*/')
 					} else if node.exprs[0] in [ast.ArrayInit, ast.StructInit] {
 						if node.exprs[0] is ast.ArrayInit && node.exprs[0].is_fixed
 							&& node.exprs[0].has_init {
