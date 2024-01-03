@@ -5593,7 +5593,7 @@ serializers for any data format. V has compile time `if` and `for` constructs:
 
 #### .fields
 
-You can iteratr over struct fields using `.fields`, it also works with generic types (e.g. `T.fields`) and generic arguments (e.g. `param.fields` where `fn gen[T](param T) {`).
+You can iterate over struct fields using `.fields`, it also works with generic types (e.g. `T.fields`) and generic arguments (e.g. `param.fields` where `fn gen[T](param T) {`).
 
 ```v
 struct User {
