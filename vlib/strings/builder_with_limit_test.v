@@ -6,6 +6,13 @@ const max_iterations = 10
 
 // ./v -stats -prod test vlib/strings/builder_with_limit_test.v
 
+fn test_buf_memory() {
+	mut new_sb := strings.new_builder_limited_by_fixed_array([3]u8{})
+
+	new_sb.write_string('87')
+	assert *new_sb.str().str != 56
+}
+
 fn test_compatibility() {
 	mut new_sb := strings.new_builder_limited_by_fixed_array([2 * max_iterations + 1]u8{})
 
