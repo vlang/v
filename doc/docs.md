@@ -5591,7 +5591,7 @@ print($embed_file(@FILE).to_string())
 Having built-in JSON support is nice, but V also allows you to create efficient
 serializers for any data format. V has compile time `if` and `for` constructs:
 
-#### [.fields](#comptime-fields)
+#### <h4 id="comptime-fields">.fields</h4>
 
 You can iterate over struct fields using `.fields`, it also works with generic types 
 (e.g. `T.fields`) and generic arguments (e.g. `param.fields` where `fn gen[T](param T) {`).
@@ -5614,7 +5614,7 @@ fn main() {
 // name is of type string
 ```
 
-#### [.values](#comptime-values)
+#### <h4 id="comptime-values">.values</h4>
 
 You can read [Enum](#enums) values and their attributes.
 
@@ -5638,7 +5638,7 @@ fn main() {
 // ['BLUE']
 ```
 
-#### [.attributes](#comptime-attrs)
+#### <h4 id="comptime-attrs">.attributes</h4>
 
 You can read [Struct](#structs) attributes.
 
@@ -5663,7 +5663,7 @@ fn main() {
 // }
 ```
 
-#### [.variants](#comptime-variants)
+#### <h4 id="comptime-variants">.variants</h4>
 
 You can read variant types from [Sum type](#sum-types).
 
@@ -5685,7 +5685,7 @@ fn main() {
 // has string type
 ```
 
-#### [.methods](#comptime-methods)
+#### <h4 id="comptime-methods">.methods</h4>
 
 You can retrieve information about struct methods.
 
