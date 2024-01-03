@@ -347,6 +347,9 @@ fn ev_callback[A, X](mut pv picoev.Picoev, fd int, events int) {
 			eprintln('> read event on file descriptor ${fd}')
 		}
 		handle_read[A, X](mut pv, mut params, fd)
+	} else {
+		// should never happen
+		eprintln('[vweb] error: invalid picoev event ${events}')
 	}
 }
 
