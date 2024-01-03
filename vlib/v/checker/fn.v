@@ -531,7 +531,7 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	}
 	// If the left expr has an or_block, it needs to be checked for legal or_block statement.
 	left_type := c.expr(mut node.left)
-	c.check_expr_result_call(node.left, left_type)
+	c.check_expr_option_or_result_call(node.left, left_type)
 	// TODO merge logic from method_call and fn_call
 	// First check everything that applies to both fns and methods
 	old_inside_fn_arg := c.inside_fn_arg
@@ -602,7 +602,7 @@ fn (mut c Checker) builtin_args(mut node ast.CallExpr, fn_name string, func ast.
 	c.expected_type = ast.string_type
 	node.args[0].typ = c.expr(mut node.args[0].expr)
 	arg := node.args[0]
-	c.check_expr_result_call(arg.expr, arg.typ)
+	c.check_expr_option_or_result_call(arg.expr, arg.typ)
 	if arg.typ.is_void() {
 		c.error('`${fn_name}` can not print void expressions', node.pos)
 	} else if arg.typ == ast.char_type && arg.typ.nr_muls() == 0 {
@@ -1198,7 +1198,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			continue
 		}
 
-		mut arg_typ := c.check_expr_result_call(call_arg.expr, c.expr(mut call_arg.expr))
+		mut arg_typ := c.check_expr_option_or_result_call(call_arg.expr, c.expr(mut call_arg.expr))
 		if call_arg.expr is ast.StructInit {
 			arg_typ = c.expr(mut call_arg.expr)
 		}
@@ -1426,7 +1426,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				func.params[i]
 			}
 			c.expected_type = param.typ
-			typ := c.check_expr_result_call(call_arg.expr, c.expr(mut call_arg.expr))
+			typ := c.check_expr_option_or_result_call(call_arg.expr, c.expr(mut call_arg.expr))
 
 			if param.typ.has_flag(.generic) && func.generic_names.len == node.concrete_types.len {
 				if unwrap_typ := c.table.resolve_generic_to_concrete(param.typ, func.generic_names,
@@ -1921,7 +1921,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				mut earg_types := []ast.Type{}
 
 				for i, mut arg in node.args {
-					targ := c.check_expr_result_call(arg.expr, c.expr(mut arg.expr))
+					targ := c.check_expr_option_or_result_call(arg.expr, c.expr(mut arg.expr))
 					arg.typ = targ
 
 					param := if info.func.is_variadic && i >= info.func.params.len - 1 {
@@ -2137,7 +2137,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		exp_arg_sym := c.table.sym(exp_arg_typ)
 		c.expected_type = exp_arg_typ
 
-		mut got_arg_typ := c.check_expr_result_call(arg.expr, c.expr(mut arg.expr))
+		mut got_arg_typ := c.check_expr_option_or_result_call(arg.expr, c.expr(mut arg.expr))
 		node.args[i].typ = got_arg_typ
 		if no_type_promotion {
 			if got_arg_typ != exp_arg_typ {
@@ -2839,7 +2839,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 	// map/filter are supposed to have 1 arg only
 	mut arg_type := unaliased_left_type
 	for mut arg in node.args {
-		arg_type = c.check_expr_result_call(arg.expr, c.expr(mut arg.expr))
+		arg_type = c.check_expr_option_or_result_call(arg.expr, c.expr(mut arg.expr))
 	}
 	if method_name == 'map' {
 		// eprintln('>>>>>>> map node.args[0].expr: ${node.args[0].expr}, left_type: ${left_type} | elem_typ: ${elem_typ} | arg_type: ${arg_type}')

@@ -1140,8 +1140,8 @@ fn (mut c Checker) expr_or_block_err(kind ast.OrKind, expr_name string, pos toke
 	}
 }
 
-// return the actual type of the expression, once the result is handled
-fn (mut c Checker) check_expr_result_call(expr ast.Expr, ret_type ast.Type) ast.Type {
+// return the actual type of the expression, once the result or option type is handled
+fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.Type) ast.Type {
 	match expr {
 		ast.CallExpr {
 			mut expr_ret_type := expr.return_type
@@ -1212,13 +1212,13 @@ fn (mut c Checker) check_expr_result_call(expr ast.Expr, ret_type ast.Type) ast.
 			}
 		}
 		ast.CastExpr {
-			c.check_expr_result_call(expr.expr, ret_type)
+			c.check_expr_option_or_result_call(expr.expr, ret_type)
 		}
 		ast.AsCast {
-			c.check_expr_result_call(expr.expr, ret_type)
+			c.check_expr_option_or_result_call(expr.expr, ret_type)
 		}
 		ast.ParExpr {
-			c.check_expr_result_call(expr.expr, ret_type)
+			c.check_expr_option_or_result_call(expr.expr, ret_type)
 		}
 		else {}
 	}
@@ -1688,7 +1688,7 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 			c.error('duplicate const `${field.name}`', name_pos)
 		}
 		if field.expr is ast.CallExpr {
-			sym := c.table.sym(c.check_expr_result_call(field.expr, c.expr(mut field.expr)))
+			sym := c.table.sym(c.check_expr_option_or_result_call(field.expr, c.expr(mut field.expr)))
 			if sym.kind == .multi_return {
 				c.error('const declarations do not support multiple return values yet',
 					field.expr.pos())
@@ -1708,7 +1708,7 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 		c.const_deps << field.name
 		prev_const_var := c.const_var
 		c.const_var = unsafe { field }
-		mut typ := c.check_expr_result_call(field.expr, c.expr(mut field.expr))
+		mut typ := c.check_expr_option_or_result_call(field.expr, c.expr(mut field.expr))
 		if ct_value := c.eval_comptime_const_expr(field.expr, 0) {
 			field.comptime_expr_value = ct_value
 			if ct_value is u64 {
@@ -2076,9 +2076,9 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 					}
 				}
 			}
-			c.check_expr_result_call(node.expr, or_typ)
+			c.check_expr_option_or_result_call(node.expr, or_typ)
 			// TODO This should work, even if it's prolly useless .-.
-			// node.typ = c.check_expr_result_call(node.expr, ast.void_type)
+			// node.typ = c.check_expr_option_or_result_call(node.expr, ast.void_type)
 		}
 		ast.FnDecl {
 			c.fn_decl(mut node)
@@ -2137,7 +2137,7 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 fn (mut c Checker) assert_stmt(mut node ast.AssertStmt) {
 	cur_exp_typ := c.expected_type
 	c.expected_type = ast.bool_type
-	assert_type := c.check_expr_result_call(node.expr, c.expr(mut node.expr))
+	assert_type := c.check_expr_option_or_result_call(node.expr, c.expr(mut node.expr))
 	if assert_type != ast.bool_type_idx {
 		atype_name := c.table.sym(assert_type).name
 		c.error('assert can be used only with `bool` expressions, but found `${atype_name}` instead',
@@ -2721,7 +2721,7 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 					node.expr_type = c.comptime.type_map[(node.expr as ast.Ident).name]
 				}
 			}
-			c.check_expr_result_call(node.expr, node.expr_type)
+			c.check_expr_option_or_result_call(node.expr, node.expr_type)
 			etidx := node.expr_type.idx()
 			if etidx == ast.void_type_idx {
 				c.error('dump expression can not be void', node.expr.pos())
@@ -4448,7 +4448,7 @@ fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		c.expected_or_type = typ
 	}
 	c.stmts_ending_with_expression(mut node.or_expr.stmts)
-	c.check_expr_result_call(node, typ)
+	c.check_expr_option_or_result_call(node, typ)
 	return typ
 }
 

@@ -29,7 +29,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	if !c.ensure_type_exists(node.cond_type, node.pos) {
 		return ast.void_type
 	}
-	c.check_expr_result_call(node.cond, cond_type)
+	c.check_expr_option_or_result_call(node.cond, cond_type)
 	cond_type_sym := c.table.sym(cond_type)
 	cond_is_option := cond_type.has_flag(.option)
 	node.is_sum_type = cond_type_sym.kind in [.interface_, .sum_type]

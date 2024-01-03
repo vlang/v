@@ -370,7 +370,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				if mut stmt is ast.ExprStmt {
 					if mut stmt.expr is ast.ConcatExpr {
 						for mut val in stmt.expr.vals {
-							c.check_expr_result_call(val, c.expr(mut val))
+							c.check_expr_option_or_result_call(val, c.expr(mut val))
 						}
 					}
 					c.expected_type = former_expected_type

@@ -230,7 +230,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			if field.has_default_expr {
 				c.expected_type = field.typ
 				if !field.typ.has_flag(.option) && !field.typ.has_flag(.result) {
-					c.check_expr_result_call(field.default_expr, field.default_expr_typ)
+					c.check_expr_option_or_result_call(field.default_expr, field.default_expr_typ)
 				}
 				interface_implemented := sym.kind == .interface_
 					&& c.type_implements(field.default_expr_typ, field.typ, field.pos)
@@ -629,7 +629,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 					c.error('`${init_field.expr}` (no value) used as value', init_field.pos)
 				}
 				if !exp_type.has_flag(.option) {
-					got_type = c.check_expr_result_call(init_field.expr, got_type)
+					got_type = c.check_expr_option_or_result_call(init_field.expr, got_type)
 					if got_type.has_flag(.option) {
 						c.error('cannot assign an Option value to a non-option struct field',
 							init_field.pos)
