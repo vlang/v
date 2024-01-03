@@ -826,6 +826,10 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 					unwrapped_styp = g.typ(g.assign_ct_type.derive(node.return_type).clear_flags(.option,
 						.result))
 				}
+				if g.table.sym(node.return_type).kind == .array_fixed
+					&& unwrapped_styp.starts_with('_v_') {
+					unwrapped_styp = unwrapped_styp[3..]
+				}
 				g.write('\n ${cur_line} (*(${unwrapped_styp}*)${tmp_opt}.data)')
 			} else {
 				g.write('\n ${cur_line} ${tmp_opt}')
@@ -1602,6 +1606,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	g.write(')')
 	if node.return_type != 0 && !node.return_type.has_flag(.option)
+		&& !node.return_type.has_flag(.result)
 		&& g.table.final_sym(node.return_type).kind == .array_fixed {
 		// it's non-option fixed array, requires accessing .ret_arr member to get the array
 		g.write('.ret_arr')
@@ -1939,6 +1944,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				g.write(')')
 			}
 			if node.return_type != 0 && !node.return_type.has_flag(.option)
+				&& !node.return_type.has_flag(.result)
 				&& g.table.final_sym(node.return_type).kind == .array_fixed {
 				// it's non-option fixed array, requires accessing .ret_arr member to get the array
 				g.write('.ret_arr')

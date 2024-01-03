@@ -5207,8 +5207,20 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				}
 			}
 			for i, expr in node.exprs {
-				g.expr_with_cast(expr, node.types[i], fn_ret_type.clear_flags(.option,
-					.result))
+				if return_sym.kind == .array_fixed {
+					line := g.go_before_last_stmt().trim_space()
+					g.empty_line = true
+					tmp_var_2 := g.new_tmp_var()
+					g.writeln('${ret_typ} ${tmp_var_2} = {0};')
+					g.write('memcpy(${tmp_var_2}.data, ')
+					g.expr(expr)
+					g.writeln(', sizeof(${styp}));')
+					g.write(line)
+					g.write(' *(${tmp_var_2}.data)')
+				} else {
+					g.expr_with_cast(expr, node.types[i], fn_ret_type.clear_flags(.option,
+						.result))
+				}
 				if i < node.exprs.len - 1 {
 					g.write(', ')
 				}
@@ -5239,6 +5251,16 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			for i, expr in node.exprs {
 				if fn_ret_type.has_flag(.option) {
 					g.expr_with_opt(expr, node.types[i], fn_ret_type.clear_flag(.result))
+				} else if return_sym.kind == .array_fixed {
+					line := g.go_before_last_stmt().trim_space()
+					g.empty_line = true
+					tmp_var_2 := g.new_tmp_var()
+					g.writeln('${ret_typ} ${tmp_var_2} = {0};')
+					g.write('memcpy(${tmp_var_2}.data, ')
+					g.expr(expr)
+					g.writeln(', sizeof(${styp}));')
+					g.write(line)
+					g.write(' *(${tmp_var_2}.data)')
 				} else {
 					g.expr_with_cast(expr, node.types[i], fn_ret_type.clear_flag(.result))
 				}
