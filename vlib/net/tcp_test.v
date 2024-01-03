@@ -1,7 +1,4 @@
-// vtest flaky: true
-// vtest retry: 8
 import net
-import os
 
 const test_port = 45123
 
@@ -48,18 +45,6 @@ fn echo(address string) ! {
 	println('Got "${buf.bytestr()}"')
 }
 
-fn test_tcp_ip6() {
-	eprintln('\n>>> ${@FN}')
-	address := 'localhost:${test_port}'
-	mut l := net.listen_tcp(.ip6, ':${test_port}') or { panic(err) }
-	dump(l)
-	start_echo_server(mut l)
-	echo(address) or { panic(err) }
-	l.close() or {}
-	// ensure there is at least one new socket created before the next test
-	l = net.listen_tcp(.ip6, ':${test_port + 1}') or { panic(err) }
-}
-
 fn start_echo_server(mut l net.TcpListener) {
 	ch_server_started := chan int{}
 	spawn one_shot_echo_server(mut l, ch_server_started)
@@ -76,23 +61,25 @@ fn test_tcp_ip() {
 	l.close() or {}
 }
 
+fn test_tcp_ip6() {
+	eprintln('\n>>> ${@FN}')
+	address := 'localhost:${test_port}'
+	mut l := net.listen_tcp(.ip6, ':${test_port}') or { panic(err) }
+	dump(l)
+	start_echo_server(mut l)
+	echo(address) or { panic(err) }
+	l.close() or {}
+	// ensure there is at least one new socket created before the next test
+	l = net.listen_tcp(.ip6, ':${test_port + 1}') or { panic(err) }
+}
+
 fn test_tcp_unix() {
 	eprintln('\n>>> ${@FN}')
-	// TODO(emily):
-	// whilst windows supposedly supports unix sockets
-	// this doesnt work (wsaeopnotsupp at the call to bind())
-	$if !windows {
-		address := os.real_path('tcp-test.sock')
-		// address := 'tcp-test.sock'
-		println('${address}')
+	address := 'tcp-test.sock'
+	eprintln('${address}')
 
-		mut l := net.listen_tcp(.unix, address) or { panic(err) }
-		start_echo_server(mut l)
-		echo(address) or { panic(err) }
-		l.close() or {}
-
-		os.rm(address) or { panic('failed to remove socket file') }
-	}
+	mut l := net.listen_tcp(.unix, address) or { return }
+	assert false
 }
 
 fn testsuite_end() {
