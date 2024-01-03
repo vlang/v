@@ -91,7 +91,7 @@ fn test_bigger_content_length() {
 		data: data
 	})!
 
-	// Content-length is larget than the data sent, so the request should timeout
+	// Content-length is larger than the data sent, so the request should timeout
 	assert x.status() == .request_timeout
 }
 
