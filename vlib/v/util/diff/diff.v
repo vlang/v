@@ -25,8 +25,8 @@ pub fn find_working_diff_command() !string {
 			}
 			continue
 		}
-		$if freebsd {
-			if diffcmd == 'diff' { // FreeBSD diff has no `--version` option
+		$if freebsd || openbsd {
+			if diffcmd == 'diff' { // FreeBSD/OpenBSD diff have no `--version` option
 				return diffcmd
 			}
 		}
@@ -70,6 +70,9 @@ pub fn color_compare_files(diff_cmd string, file1 string, file2 string) string {
 		mut full_cmd := '${diff_cmd} --minimal --text --unified=2  --show-function-line="fn " ${os.quoted_path(file1)} ${os.quoted_path(file2)} '
 		$if freebsd {
 			full_cmd = '${diff_cmd} --minimal --text --unified=2  ${os.quoted_path(file1)} ${os.quoted_path(file2)} '
+		}
+		$if openbsd {
+			full_cmd = '${diff_cmd} -d -a -U 2 ${os.quoted_path(file1)} ${os.quoted_path(file2)} '
 		}
 		x := os.execute(full_cmd)
 		if x.exit_code < 0 {
