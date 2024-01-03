@@ -11,6 +11,7 @@ on:
     paths-ignore:
       - "**.md"
       - "**.yml"
+      - "!**/vinix_ci.yml"
 
 jobs:
   vinix-build:
