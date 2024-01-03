@@ -5615,7 +5615,7 @@ fn main() {
 
 #### .values
 
-You can read [Enum](#enums) values and its attributes.
+You can read [Enum](#enums) values and their attributes.
 
 ```V
 enum Color {
