@@ -5207,7 +5207,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				}
 			}
 			for i, expr in node.exprs {
-				if return_sym.kind == .array_fixed {
+				if return_sym.kind == .array_fixed && expr !is ast.ArrayInit {
 					line := g.go_before_last_stmt().trim_space()
 					g.empty_line = true
 					tmp_var_2 := g.new_tmp_var()
@@ -5251,7 +5251,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			for i, expr in node.exprs {
 				if fn_ret_type.has_flag(.option) {
 					g.expr_with_opt(expr, node.types[i], fn_ret_type.clear_flag(.result))
-				} else if return_sym.kind == .array_fixed {
+				} else if return_sym.kind == .array_fixed && expr !is ast.ArrayInit {
 					line := g.go_before_last_stmt().trim_space()
 					g.empty_line = true
 					tmp_var_2 := g.new_tmp_var()
