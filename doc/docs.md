@@ -5828,6 +5828,7 @@ V supports the following compile time types:
 - `$option` => matches [Option Types](#optionresult-types-and-error-handling).
 - `$struct` => matches [Structs](#structs).
 - `$sumtype` => matches [Sum Types](#sum-types).
+- `$string` => matches [Strings](#strings).
 
 ### Environment specific files
 
