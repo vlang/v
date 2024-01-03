@@ -91,8 +91,8 @@ fn test_bigger_content_length() {
 		data: data
 	})!
 
-	assert x.status() == .bad_request
-	assert x.body == 'Mismatch of body length and Content-Length header'
+	// Content-length is larget than the data sent, so the request should timeout
+	assert x.status() == .request_timeout
 }
 
 fn test_smaller_content_length() {
