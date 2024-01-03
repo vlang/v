@@ -41,9 +41,8 @@ fn test_array_thread_void_wait() {
 
 fn test_void_thread_decl() {
 	shared a := [2, 3, 9]
-	mut t1 := thread(0)
+	mut t1 := spawn g(shared a, 0)
 	mut tarr := []thread{len: 2}
-	t1 = spawn g(shared a, 0)
 	tarr[0] = spawn g(shared a, 1)
 	tarr[1] = spawn g(shared a, 2)
 	t1.wait()

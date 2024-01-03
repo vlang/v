@@ -27,6 +27,19 @@ jobs:
           sudo apt-get install --quiet -y libgc-dev libsodium-dev libssl-dev sqlite3 libsqlite3-dev libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
           sudo apt-get install --quiet -y --no-install-recommends sassc libgit2-dev ## needed by gitly
 
+      - name: Test vsql compilation and examples
+        run: |
+          echo "Install vsql"
+          v install elliotchance.vsql ; cd ~/.vmodules/elliotchance/vsql
+          echo "Generate vsql/grammar.v"
+          make vsql/grammar.v
+          echo "Compile vsql"
+          v -o bin/vsql cmd/vsql
+          echo "Run examples"
+          make examples
+          echo "Run vsql/connection_test.v"
+          v vsql/connection_test.v
+
       - name: Test discord.v
         run: |
           echo "Clone https://github.com/DarpHome/discord.v/"

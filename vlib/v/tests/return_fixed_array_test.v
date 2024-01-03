@@ -21,3 +21,14 @@ fn test_without_alias() {
 	a := return_fixed_array()
 	assert a == [1, 2, 3]!
 }
+
+// for issue 20366: returns mut fixed array
+fn returns_mut_fixed_array(mut fixed_array [3]int) [3]int {
+	return fixed_array
+}
+
+fn test_returns_mut_fixed_array() {
+	mut fixed := [3]int{}
+	res := returns_mut_fixed_array(mut fixed)
+	assert res == [0, 0, 0]!
+}

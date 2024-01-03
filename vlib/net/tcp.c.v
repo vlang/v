@@ -301,6 +301,9 @@ pub:
 }
 
 pub fn listen_tcp(family AddrFamily, saddr string, options ListenOptions) !&TcpListener {
+	if family != .ip && family != .ip6 {
+		return error('listen_tcp only supports ip and ip6')
+	}
 	mut s := new_tcp_socket(family) or { return error('${err.msg()}; could not create new socket') }
 	s.set_dualstack(options.dualstack) or {}
 

@@ -37,7 +37,7 @@ pub fn (err IError) str() string {
 		else {
 			// >> Hack to allow old style custom error implementations
 			// TODO: remove once deprecation period for `IError` methods has ended
-			old_error_style := unsafe { voidptr(&err.msg) != voidptr(&err.code) } // if fields are not defined (new style) they don't have an offset between them
+			old_error_style := unsafe { voidptr(&err.msg.str) != voidptr(&err.code.str) } // if fields are not defined (new style) they don't have an offset between them
 			if old_error_style {
 				'${err.type_name()}: ${err.msg}'
 			} else {
