@@ -185,7 +185,7 @@ jobs:
         id: split
         with:
           msg: ${{ github.ref }}
-          seperator: /
+          separator: /
       - name: Get release
         id: get_release_info
         uses: leahlundqvist/get-release@v1.3.1
