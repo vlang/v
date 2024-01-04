@@ -51,18 +51,13 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		if typ_idx in ast.integer_type_idxs && high_type_idx !in ast.integer_type_idxs
 			&& high_type_idx != ast.void_type_idx {
 			c.error('range types do not match', node.cond.pos())
-		} else if typ_idx in ast.float_type_idxs || high_type_idx in ast.float_type_idxs {
-			c.error('range type can not be float', node.cond.pos())
-		} else if typ_idx == ast.bool_type_idx || high_type_idx == ast.bool_type_idx {
-			c.error('range type can not be bool', node.cond.pos())
-		} else if typ_idx == ast.string_type_idx || high_type_idx == ast.string_type_idx {
-			c.error('range type can not be string', node.cond.pos())
-		} else if typ_idx == ast.none_type_idx || high_type_idx == ast.none_type_idx {
-			c.error('range type can not be none', node.cond.pos())
 		} else if c.table.final_sym(typ).kind == .multi_return
 			&& c.table.final_sym(high_type).kind == .multi_return {
 			c.error('multi-returns cannot be used in ranges. A range is from a single value to a single higher value.',
-				node.cond.pos())
+				node.cond.pos().extend(node.high.pos()))
+		} else if typ_idx !in ast.integer_type_idxs {
+			type_str := c.table.type_to_str(typ)
+			c.error('range type cannot be `${type_str}`', node.cond.pos().extend(node.high.pos()))
 		}
 		if high_type in [ast.int_type, ast.int_literal_type] {
 			node.val_type = typ
