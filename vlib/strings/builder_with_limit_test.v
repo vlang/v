@@ -8,9 +8,12 @@ const max_iterations = 10
 
 fn test_buf_memory() {
 	mut new_sb := strings.new_builder_limited_by_fixed_array([3]u8{})
+ mut new_sb2 := strings.new_builder_limited_by_fixed_array([3]u8{})
 
 	new_sb.write_string('87')
-	assert *new_sb.str().str != 56
+ new_sb2.write_string('87')
+
+	assert ptr_str(new_sb.str().str) != ptr_str(new_sb2.str().str)
 }
 
 fn test_compatibility() {
