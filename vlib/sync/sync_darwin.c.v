@@ -126,7 +126,7 @@ pub fn (mut m Mutex) @lock() {
 // If the mutex was already locked, it will return false.
 @[inline]
 pub fn (mut m Mutex) try_lock() bool {
-	return C.pthread_mutex_try_lock(&m.mutex) == 0
+	return C.pthread_mutex_trylock(&m.mutex) == 0
 }
 
 // unlock unlocks the mutex instance. The mutex is released, and one of
