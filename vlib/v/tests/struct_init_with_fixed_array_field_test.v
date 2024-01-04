@@ -38,9 +38,9 @@ pub fn returns_struct_with_mut_fixed_array_init(mut fixed [3]int) Foo {
 }
 
 fn test_returns_struct_with_mut_fixed_array_init() {
-	mut fixed := [3]int{}
+	mut fixed := [59, 101, 200]!
 	mut foo := returns_struct_with_mut_fixed_array_init(mut fixed)
-	assert foo.buf == [0, 0, 0]!
+	assert foo.buf == [59, 101, 200]!
 }
 
 // for issue 20361(part 2): returns struct with init mut fixed array fields with generics
@@ -54,7 +54,7 @@ pub fn returns_struct_with_mut_fixed_array_init_with_generics[T](mut fixed T) Ba
 }
 
 fn test_returns_struct_with_mut_fixed_array_init_with_generics() {
-	mut fixed := [3]int{}
+	mut fixed := [59, 101, 200]!
 	mut bar := returns_struct_with_mut_fixed_array_init_with_generics(mut fixed)
-	assert bar.buf == [0, 0, 0]!
+	assert bar.buf == [59, 101, 200]!
 }
