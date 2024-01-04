@@ -161,7 +161,7 @@ fn find_vs_by_reg(vswhere_dir string, host_arch string, target_arch string) !VsI
 		// VSWhere is guaranteed to be installed at this location now
 		// If its not there then end user needs to update their visual studio
 		// installation!
-		res := os.execute('"${vswhere_dir}\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath')
+		res := os.execute('"${vswhere_dir}\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath')
 		// println('res: "$res"')
 		if res.exit_code != 0 {
 			return error_with_code(res.output, res.exit_code)

@@ -187,28 +187,29 @@ call :move_updated_to_v
 goto :success
 
 :msvc_strap
-set VsWhereDir=%ProgramFiles(x86)%
+set ProgramFiles=%ProgramFiles(x86)%
+set VsWhere=%ProgramFiles%/Microsoft Visual Studio/Installer/vswhere.exe
 set HostArch=x64
 if "%PROCESSOR_ARCHITECTURE%" == "x86" (
 	echo Using x86 Build Tools...
-	set VsWhereDir=%ProgramFiles%
+	set ProgramFiles=%ProgramFiles%
 	set HostArch=x86
 )
 
-if not exist "%VsWhereDir%/Microsoft Visual Studio/Installer/vswhere.exe" (
+if not exist "%VsWhere%" (
 	echo  ^> MSVC not found
 	if not [!compiler!] == [] goto :error
 	goto :compile_error
 )
 
-for /f "usebackq tokens=*" %%i in (`"%VsWhereDir%/Microsoft Visual Studio/Installer/vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (
+for /f "usebackq tokens=*" %%i in (`"%VsWhere%" -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (
 	set InstallDir=%%i
 )
 
-if exist "%InstallDir%/Common7/Tools/vsdevcmd.bat" (
-	call "%InstallDir%/Common7/Tools/vsdevcmd.bat" -arch=%HostArch% -host_arch=%HostArch% -no_logo
-) else if exist "%VsWhereDir%/Microsoft Visual Studio 14.0/Common7/Tools/vsdevcmd.bat" (
-	call "%VsWhereDir%/Microsoft Visual Studio 14.0/Common7/Tools/vsdevcmd.bat" -arch=%HostArch% -host_arch=%HostArch% -no_logo
+if exist "%InstallDir%/Common7/Tools/VsDevCmd.bat" (
+	call "%InstallDir%/Common7/Tools/VsDevCmd.bat" -arch=%HostArch% -host_arch=%HostArch% -no_logo
+) else if exist "%ProgramFiles%/Microsoft Visual Studio 14.0/Common7/Tools/vsdevcmd.bat" (
+	call "%ProgramFiles%/Microsoft Visual Studio 14.0/Common7/Tools/vsdevcmd.bat" -arch=%HostArch% -host_arch=%HostArch% -no_logo
 )
 
 set ObjFile=.v.c.obj

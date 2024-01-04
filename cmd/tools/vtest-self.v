@@ -433,7 +433,7 @@ fn main() {
 		tsession.skip_files << skip_on_ubuntu_musl
 	}
 	$if !amd64 && !arm64 {
-		tsession.skip_files << skip_on_non_amd64
+		tsession.skip_files << skip_on_non_amd64_or_arm64
 	}
 	$if amd64 {
 		tsession.skip_files << skip_on_amd64
