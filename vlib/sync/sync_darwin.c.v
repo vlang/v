@@ -12,6 +12,7 @@ import time
 @[trusted]
 fn C.pthread_mutex_init(voidptr, voidptr) int
 fn C.pthread_mutex_lock(voidptr) int
+fn C.pthread_mutex_trylock(voidptr) int
 fn C.pthread_mutex_unlock(voidptr) int
 fn C.pthread_mutex_destroy(voidptr) int
 fn C.pthread_rwlockattr_init(voidptr) int
@@ -20,6 +21,8 @@ fn C.pthread_rwlockattr_setpshared(voidptr, int) int
 fn C.pthread_rwlock_init(voidptr, voidptr) int
 fn C.pthread_rwlock_rdlock(voidptr) int
 fn C.pthread_rwlock_wrlock(voidptr) int
+fn C.pthread_rwlock_tryrdlock(voidptr) int
+fn C.pthread_rwlock_trywrlock(voidptr) int
 fn C.pthread_rwlock_unlock(voidptr) int
 fn C.pthread_rwlock_destroy(voidptr) int
 fn C.pthread_condattr_init(voidptr) int
@@ -119,6 +122,13 @@ pub fn (mut m Mutex) @lock() {
 	C.pthread_mutex_lock(&m.mutex)
 }
 
+// try_lock try to lock the mutex instance and return immediately.
+// If the mutex was already locked, it will return false.
+@[inline]
+pub fn (mut m Mutex) try_lock() bool {
+	return C.pthread_mutex_try_lock(&m.mutex) == 0
+}
+
 // unlock unlocks the mutex instance. The mutex is released, and one of
 // the other threads, that were blocked, because they called @lock can continue.
 @[inline]
@@ -156,6 +166,20 @@ pub fn (mut m RwMutex) @rlock() {
 @[inline]
 pub fn (mut m RwMutex) @lock() {
 	C.pthread_rwlock_wrlock(&m.mutex)
+}
+
+// try_rlock try to lock the given RwMutex instance for reading and return immediately.
+// If the mutex was already locked, it will return false.
+@[inline]
+pub fn (mut m RwMutex) try_rlock() bool {
+	return C.pthread_rwlock_tryrdlock(&m.mutex) == 0
+}
+
+// try_wlock try to lock the given RwMutex instance for writing and return immediately.
+// If the mutex was already locked, it will return false.
+@[inline]
+pub fn (mut m RwMutex) try_wlock() bool {
+	return C.pthread_rwlock_trywrlock(&m.mutex) == 0
 }
 
 // destroy frees the resources associated with the rwmutex instance.

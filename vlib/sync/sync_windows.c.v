@@ -76,6 +76,12 @@ pub fn (mut m Mutex) @lock() {
 	C.AcquireSRWLockExclusive(&m.mx)
 }
 
+// try_lock try to lock the mutex instance and return immediately.
+// If the mutex was already locked, it will return false.
+pub fn (mut m Mutex) try_lock() bool {
+	return C.TryAcquireSRWLockExclusive(&m.mx) != 0
+}
+
 pub fn (mut m Mutex) unlock() {
 	C.ReleaseSRWLockExclusive(&m.mx)
 }
@@ -87,6 +93,18 @@ pub fn (mut m RwMutex) @rlock() {
 
 pub fn (mut m RwMutex) @lock() {
 	C.AcquireSRWLockExclusive(&m.mx)
+}
+
+// try_rlock try to lock the given RwMutex instance for reading and return immediately.
+// If the mutex was already locked, it will return false.
+pub fn (mut m RwMutex) try_rlock() bool {
+	return C.TryAcquireSRWLockShared(&m.mx) != 0
+}
+
+// try_wlock try to lock the given RwMutex instance for writing and return immediately.
+// If the mutex was already locked, it will return false.
+pub fn (mut m RwMutex) try_wlock() bool {
+	return C.TryAcquireSRWLockExclusive(&m.mx) != 0
 }
 
 // Windows SRWLocks have different function to unlock
