@@ -26,3 +26,35 @@ fn test_struct_init_with_fixed_array_field() {
 	println(game.board)
 	assert '${game.board}' == '[x, o, x, o, o, x, x, x, o]'
 }
+
+// for issue 20361(part 1): returns struct with init mut fixed array fields without generics
+struct Foo {
+mut:
+	buf [3]int
+}
+
+pub fn returns_struct_with_mut_fixed_array_init(mut fixed [3]int) Foo {
+	return Foo{fixed}
+}
+
+fn test_returns_struct_with_mut_fixed_array_init() {
+	mut fixed := [3]int{}
+	mut foo := returns_struct_with_mut_fixed_array_init(mut fixed)
+	assert foo.buf == [0, 0, 0]!
+}
+
+// for issue 20361(part 2): returns struct with init mut fixed array fields with generics
+struct Bar[T] {
+mut:
+	buf T
+}
+
+pub fn returns_struct_with_mut_fixed_array_init_with_generics[T](mut fixed T) Bar[T] {
+	return Bar[T]{fixed}
+}
+
+fn test_returns_struct_with_mut_fixed_array_init_with_generics() {
+	mut fixed := [3]int{}
+	mut bar := returns_struct_with_mut_fixed_array_init_with_generics(mut fixed)
+	assert bar.buf == [0, 0, 0]!
+}
