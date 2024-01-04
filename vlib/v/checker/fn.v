@@ -1715,7 +1715,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	mut unknown_method_msg := if field := c.table.find_field(left_sym, method_name) {
 		'unknown method `${field.name}` did you mean to access the field with the same name instead?'
 	} else {
-		'unknown method or field: `${left_sym.name}.${method_name}`'
+		name := left_sym.symbol_name_except_generic().replace_each(['<', '[', '>', ']'])
+		'unknown method or field: `${name}.${method_name}`'
 	}
 	if left_type.has_flag(.option) && method_name != 'str' {
 		c.error('Option type cannot be called directly', node.left.pos())
@@ -1903,7 +1904,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					node.pos)
 			}
 			if left_sym.kind == .array_fixed {
-				c.error('unknown method or field: ${left_sym.name}.free()', node.pos)
+				name := left_sym.symbol_name_except_generic().replace_each(['<', '[', '>', ']'])
+				c.error('unknown method or field: ${name}.free()', node.pos)
 			}
 			return ast.void_type
 		}
