@@ -2303,7 +2303,11 @@ fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 
 @[inline]
 fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang ast.Language) {
-	arg_typ := g.unwrap_generic(arg.typ)
+	arg_typ := if arg.expr is ast.ComptimeSelector {
+		g.unwrap_generic(g.comptime.get_comptime_var_type(arg.expr))
+	} else {
+		g.unwrap_generic(arg.typ)
+	}
 	arg_sym := g.table.sym(arg_typ)
 	exp_is_ptr := expected_type.is_any_kind_of_pointer()
 	arg_is_ptr := arg_typ.is_any_kind_of_pointer()
