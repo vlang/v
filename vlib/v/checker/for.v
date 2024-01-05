@@ -56,8 +56,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			c.error('multi-returns cannot be used in ranges. A range is from a single value to a single higher value.',
 				node.cond.pos().extend(node.high.pos()))
 		} else if typ_idx !in ast.integer_type_idxs {
-			type_str := c.table.type_to_str(typ)
-			c.error('range type cannot be `${type_str}`', node.cond.pos().extend(node.high.pos()))
+			c.error('range type can only be an integer type', node.cond.pos().extend(node.high.pos()))
 		}
 		if high_type in [ast.int_type, ast.int_literal_type] {
 			node.val_type = typ
