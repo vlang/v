@@ -232,6 +232,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				c.error('Result type argument is not supported currently', param.type_pos)
 			}
 			arg_typ_sym := c.table.sym(param.typ)
+			pure_sym_name := arg_typ_sym.embed_name()
 			if arg_typ_sym.info is ast.Struct {
 				if !param.typ.is_ptr() && arg_typ_sym.info.is_heap { // set auto_heap to promote value parameter
 					mut v := node.scope.find_var(param.name) or { continue }
@@ -239,19 +240,19 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				}
 				if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
 					&& arg_typ_sym.info.concrete_types.len == 0 {
-					c.error('generic struct `${arg_typ_sym.name}` in fn declaration must specify the generic type names, e.g. ${arg_typ_sym.name}[T]',
+					c.error('generic struct `${pure_sym_name}` in fn declaration must specify the generic type names, e.g. ${pure_sym_name}[T]',
 						param.type_pos)
 				}
 			} else if arg_typ_sym.info is ast.Interface {
 				if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
 					&& arg_typ_sym.info.concrete_types.len == 0 {
-					c.error('generic interface `${arg_typ_sym.name}` in fn declaration must specify the generic type names, e.g. ${arg_typ_sym.name}[T]',
+					c.error('generic interface `${pure_sym_name}` in fn declaration must specify the generic type names, e.g. ${pure_sym_name}[T]',
 						param.type_pos)
 				}
 			} else if arg_typ_sym.info is ast.SumType {
 				if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
 					&& arg_typ_sym.info.concrete_types.len == 0 {
-					c.error('generic sumtype `${arg_typ_sym.name}` in fn declaration must specify the generic type names, e.g. ${arg_typ_sym.name}[T]',
+					c.error('generic sumtype `${pure_sym_name}` in fn declaration must specify the generic type names, e.g. ${pure_sym_name}[T]',
 						param.type_pos)
 				}
 			}
@@ -531,7 +532,7 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	}
 	// If the left expr has an or_block, it needs to be checked for legal or_block statement.
 	left_type := c.expr(mut node.left)
-	c.check_expr_opt_call(node.left, left_type)
+	c.check_expr_option_or_result_call(node.left, left_type)
 	// TODO merge logic from method_call and fn_call
 	// First check everything that applies to both fns and methods
 	old_inside_fn_arg := c.inside_fn_arg
@@ -602,7 +603,7 @@ fn (mut c Checker) builtin_args(mut node ast.CallExpr, fn_name string, func ast.
 	c.expected_type = ast.string_type
 	node.args[0].typ = c.expr(mut node.args[0].expr)
 	arg := node.args[0]
-	c.check_expr_opt_call(arg.expr, arg.typ)
+	c.check_expr_option_or_result_call(arg.expr, arg.typ)
 	if arg.typ.is_void() {
 		c.error('`${fn_name}` can not print void expressions', node.pos)
 	} else if arg.typ == ast.char_type && arg.typ.nr_muls() == 0 {
@@ -1198,7 +1199,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			continue
 		}
 
-		mut arg_typ := c.check_expr_opt_call(call_arg.expr, c.expr(mut call_arg.expr))
+		mut arg_typ := c.check_expr_option_or_result_call(call_arg.expr, c.expr(mut call_arg.expr))
 		if call_arg.expr is ast.StructInit {
 			arg_typ = c.expr(mut call_arg.expr)
 		}
@@ -1426,7 +1427,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				func.params[i]
 			}
 			c.expected_type = param.typ
-			typ := c.check_expr_opt_call(call_arg.expr, c.expr(mut call_arg.expr))
+			typ := c.check_expr_option_or_result_call(call_arg.expr, c.expr(mut call_arg.expr))
 
 			if param.typ.has_flag(.generic) && func.generic_names.len == node.concrete_types.len {
 				if unwrap_typ := c.table.resolve_generic_to_concrete(param.typ, func.generic_names,
@@ -1715,7 +1716,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	mut unknown_method_msg := if field := c.table.find_field(left_sym, method_name) {
 		'unknown method `${field.name}` did you mean to access the field with the same name instead?'
 	} else {
-		'unknown method or field: `${left_sym.name}.${method_name}`'
+		name := left_sym.symbol_name_except_generic().replace_each(['<', '[', '>', ']'])
+		'unknown method or field: `${name}.${method_name}`'
 	}
 	if left_type.has_flag(.option) && method_name != 'str' {
 		c.error('Option type cannot be called directly', node.left.pos())
@@ -1903,7 +1905,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					node.pos)
 			}
 			if left_sym.kind == .array_fixed {
-				c.error('unknown method or field: ${left_sym.name}.free()', node.pos)
+				name := left_sym.symbol_name_except_generic().replace_each(['<', '[', '>', ']'])
+				c.error('unknown method or field: ${name}.free()', node.pos)
 			}
 			return ast.void_type
 		}
@@ -1924,7 +1927,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				mut earg_types := []ast.Type{}
 
 				for i, mut arg in node.args {
-					targ := c.check_expr_opt_call(arg.expr, c.expr(mut arg.expr))
+					targ := c.check_expr_option_or_result_call(arg.expr, c.expr(mut arg.expr))
 					arg.typ = targ
 
 					param := if info.func.is_variadic && i >= info.func.params.len - 1 {
@@ -2026,6 +2029,12 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			if rec_is_generic && node.concrete_types.len == 0
 				&& method.generic_names.len == rec_sym.info.generic_types.len {
 				node.concrete_types = rec_sym.info.generic_types
+			} else if rec_is_generic && node.concrete_types.len > 0
+				&& method.generic_names.len > node.concrete_types.len
+				&& rec_sym.info.generic_types.len + node.concrete_types.len == method.generic_names.len {
+				t_concrete_types := node.concrete_types.clone()
+				node.concrete_types = rec_sym.info.generic_types
+				node.concrete_types << t_concrete_types
 			} else if !rec_is_generic && rec_sym.info.concrete_types.len > 0
 				&& node.concrete_types.len > 0
 				&& rec_sym.info.concrete_types.len + node.concrete_types.len == method.generic_names.len {
@@ -2140,7 +2149,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		exp_arg_sym := c.table.sym(exp_arg_typ)
 		c.expected_type = exp_arg_typ
 
-		mut got_arg_typ := c.check_expr_opt_call(arg.expr, c.expr(mut arg.expr))
+		mut got_arg_typ := c.check_expr_option_or_result_call(arg.expr, c.expr(mut arg.expr))
 		node.args[i].typ = got_arg_typ
 		if no_type_promotion {
 			if got_arg_typ != exp_arg_typ {
@@ -2842,7 +2851,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 	// map/filter are supposed to have 1 arg only
 	mut arg_type := unaliased_left_type
 	for mut arg in node.args {
-		arg_type = c.check_expr_opt_call(arg.expr, c.expr(mut arg.expr))
+		arg_type = c.check_expr_option_or_result_call(arg.expr, c.expr(mut arg.expr))
 	}
 	if method_name == 'map' {
 		// eprintln('>>>>>>> map node.args[0].expr: ${node.args[0].expr}, left_type: ${left_type} | elem_typ: ${elem_typ} | arg_type: ${arg_type}')

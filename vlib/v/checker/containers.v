@@ -73,7 +73,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			c.check_array_init_default_expr(mut node)
 		}
 		if node.has_len {
-			len_typ := c.check_expr_opt_call(node.len_expr, c.expr(mut node.len_expr))
+			len_typ := c.check_expr_option_or_result_call(node.len_expr, c.expr(mut node.len_expr))
 			if len_typ.has_flag(.option) {
 				c.error('cannot use unwrapped Option as length', node.len_expr.pos())
 			}
@@ -86,7 +86,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			}
 		}
 		if node.has_cap {
-			cap_typ := c.check_expr_opt_call(node.cap_expr, c.expr(mut node.cap_expr))
+			cap_typ := c.check_expr_option_or_result_call(node.cap_expr, c.expr(mut node.cap_expr))
 			if cap_typ.has_flag(.option) {
 				c.error('cannot use unwrapped Option as capacity', node.cap_expr.pos())
 			}
@@ -151,7 +151,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			}
 		}
 		for i, mut expr in node.exprs {
-			typ := c.check_expr_opt_call(expr, c.expr(mut expr))
+			typ := c.check_expr_option_or_result_call(expr, c.expr(mut expr))
 			if typ == ast.void_type {
 				c.error('invalid void array element type', expr.pos())
 			}
@@ -325,7 +325,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 
 fn (mut c Checker) check_array_init_default_expr(mut node ast.ArrayInit) {
 	mut init_expr := node.init_expr
-	init_typ := c.check_expr_opt_call(init_expr, c.expr(mut init_expr))
+	init_typ := c.check_expr_option_or_result_call(init_expr, c.expr(mut init_expr))
 	node.init_type = init_typ
 	if !node.elem_type.has_flag(.option) && init_typ.has_flag(.option) {
 		c.error('cannot use unwrapped Option as initializer', init_expr.pos())

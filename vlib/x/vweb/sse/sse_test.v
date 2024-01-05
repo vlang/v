@@ -1,3 +1,4 @@
+// vtest retry: 3
 import x.vweb
 import x.vweb.sse
 import time

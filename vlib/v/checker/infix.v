@@ -163,10 +163,10 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		// .eq, .ne, .gt, .lt, .ge, .le, .and, .logical_or, .dot, .key_as, .right_shift {}
 		.eq, .ne {
 			if node.left is ast.CallExpr && node.left.or_block.stmts.len > 0 {
-				c.check_expr_opt_call(node.left, left_type)
+				c.check_expr_option_or_result_call(node.left, left_type)
 			}
 			if node.right is ast.CallExpr && node.right.or_block.stmts.len > 0 {
-				c.check_expr_opt_call(node.right, right_type)
+				c.check_expr_option_or_result_call(node.right, right_type)
 			}
 			if left_type in ast.integer_type_idxs && right_type in ast.integer_type_idxs {
 				is_left_type_signed := left_type in ast.signed_integer_type_idxs
@@ -525,7 +525,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						node.pos)
 				}
 				// `array << elm`
-				c.check_expr_opt_call(node.right, right_type)
+				c.check_expr_option_or_result_call(node.right, right_type)
 				node.auto_locked, _ = c.fail_if_immutable(mut node.left)
 				left_value_type := c.table.value_type(c.unwrap_generic(left_type))
 				left_value_sym := c.table.sym(c.unwrap_generic(left_value_type))

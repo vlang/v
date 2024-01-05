@@ -233,7 +233,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 				debug_options << '-no-pie'
 			}
 		}
-		optimization_options = ['-O3', '-fno-strict-aliasing', '-flto']
+		optimization_options = ['-O3', '-flto']
 	}
 	if ccoptions.is_cc_icc {
 		if ccoptions.debug_mode {
@@ -242,7 +242,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 				debug_options << '-no-pie'
 			}
 		}
-		optimization_options = ['-Ofast', '-fno-strict-aliasing']
+		optimization_options = ['-Ofast']
 	}
 	//
 	if ccoptions.debug_mode {
@@ -836,7 +836,7 @@ fn (mut c Builder) cc_windows_cross() {
 	mut debug_options := []string{}
 	if c.pref.is_prod {
 		if c.pref.ccompiler != 'msvc' {
-			optimization_options = ['-O3', '-fno-strict-aliasing', '-flto']
+			optimization_options = ['-O3', '-flto']
 		}
 	}
 	if c.pref.is_debug {

@@ -1022,7 +1022,12 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 		// handle circular ref type of struct to the struct itself
 		if styp == field_styp && !allow_circular {
 			if is_field_array {
-				fn_body.write_string('it.${field_name}.len > 0 ? ${funcprefix}_SLIT("[<circular>]") : ${funcprefix}_SLIT("[]")')
+				if is_opt_field {
+					arr_styp := g.base_type(field.typ)
+					fn_body.write_string('it.${field_name}.state != 2 && (*(${arr_styp}*)it.${field_name}.data).len > 0 ? ${funcprefix}_SLIT("[<circular>]") : ${funcprefix}_SLIT("[]")')
+				} else {
+					fn_body.write_string('it.${field_name}.len > 0 ? ${funcprefix}_SLIT("[<circular>]") : ${funcprefix}_SLIT("[]")')
+				}
 			} else {
 				fn_body.write_string('${funcprefix}_SLIT("<circular>")')
 			}

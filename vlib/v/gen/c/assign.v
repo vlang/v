@@ -531,34 +531,38 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				if is_inside_ternary {
 					g.out.write_string(util.tabs(g.indent - g.inside_ternary))
 				}
-				ret_styp := g.typ(right_sym.info.func.return_type)
-
-				mut call_conv := ''
-				mut msvc_call_conv := ''
-				for attr in right_sym.info.func.attrs {
-					match attr.name {
-						'callconv' {
-							if g.is_cc_msvc {
-								msvc_call_conv = '__${attr.arg} '
-							} else {
-								call_conv = '${attr.arg}'
-							}
-						}
-						else {}
-					}
-				}
-				call_conv_attribute_suffix := if call_conv.len != 0 {
-					'__attribute__((${call_conv}))'
-				} else {
-					''
-				}
-
 				fn_name := c_fn_name(g.get_ternary_name(ident.name))
-				g.write('${ret_styp} (${msvc_call_conv}*${fn_name}) (')
-				def_pos := g.definitions.len
-				g.fn_decl_params(right_sym.info.func.params, unsafe { nil }, false)
-				g.definitions.go_back(g.definitions.len - def_pos)
-				g.write(')${call_conv_attribute_suffix}')
+
+				if val_type.has_flag(.option) && val is ast.SelectorExpr {
+					ret_styp := g.typ(g.unwrap_generic(val_type))
+					g.write('${ret_styp} ${fn_name}')
+				} else {
+					ret_styp := g.typ(right_sym.info.func.return_type)
+					mut call_conv := ''
+					mut msvc_call_conv := ''
+					for attr in right_sym.info.func.attrs {
+						match attr.name {
+							'callconv' {
+								if g.is_cc_msvc {
+									msvc_call_conv = '__${attr.arg} '
+								} else {
+									call_conv = '${attr.arg}'
+								}
+							}
+							else {}
+						}
+					}
+					call_conv_attribute_suffix := if call_conv.len != 0 {
+						'__attribute__((${call_conv}))'
+					} else {
+						''
+					}
+					g.write('${ret_styp} (${msvc_call_conv}*${fn_name}) (')
+					def_pos := g.definitions.len
+					g.fn_decl_params(right_sym.info.func.params, unsafe { nil }, false)
+					g.definitions.go_back(g.definitions.len - def_pos)
+					g.write(')${call_conv_attribute_suffix}')
+				}
 			} else {
 				if is_decl {
 					if is_inside_ternary {
