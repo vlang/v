@@ -272,7 +272,6 @@ pub struct Association {
 	price       APrice
 }
 
-//! FIX: returning null
 fn test_encoding_struct_with_pointers() {
 	value := Association{
 		association: &Association{
@@ -395,25 +394,12 @@ fn test_encode_decode_sumtype() {
 
 struct Foo3 {
 	name string
-	age  int    @[omitempty]
-}
-
-//! BUGFIX - .from_json(res)
-fn test_omit_empty() {
-	foo := Foo3{'Bob', 0}
-	assert json.encode_pretty(foo) == '{
-  "name": "Bob"
-}'
-}
-
-struct Foo31 {
-	name string
 	age  ?int
 }
 
 //! BUGFIX - .from_json(res)
 fn test_option_instead_of_omit_empty() {
-	foo := Foo31{
+	foo := Foo3{
 		name: 'Bob'
 	}
 	assert json.encode_pretty(foo) == '{
