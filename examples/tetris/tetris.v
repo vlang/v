@@ -171,6 +171,7 @@ fn main() {
 		frame_fn: frame
 		event_fn: on_event
 		font_path: fpath // wait_events: true
+		resizable: false
 	)
 	game.init_game()
 	game.gg.run() // Run the render loop in the main thread
