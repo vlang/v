@@ -1816,6 +1816,8 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 							cast_sym := g.table.sym(typ)
 							if cast_sym.info is ast.Aggregate {
 								typ = cast_sym.info.types[g.aggregate_type_idx]
+							} else if expr.obj.ct_type_var == .smartcast {
+								typ = g.unwrap_generic(g.comptime.get_comptime_var_type(expr))
 							}
 						}
 						// handling println( var or { ... })
