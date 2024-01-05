@@ -39,6 +39,7 @@ fn name[T](val T) {
 				assert val.str() == ''
 			}
 			dump(val)
+			println(val)
 		}
 	}
 }
