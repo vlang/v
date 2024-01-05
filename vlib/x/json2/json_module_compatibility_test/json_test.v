@@ -299,7 +299,7 @@ struct Data {
 mut:
 	countries []Country
 	users     map[string]User
-	// extra     map[string]map[string]int
+	extra     map[string]map[string]int
 }
 
 fn test_nested_type() {
@@ -333,20 +333,20 @@ fn test_nested_type() {
 				pets: 'little boo'
 			}
 		}
-		// extra: {
-		// 	'2': {
-		// 		'n1': 2
-		// 		'n2': 4
-		// 		'n3': 8
-		// 		'n4': 16
-		// 	}
-		// 	'3': {
-		// 		'n1': 3
-		// 		'n2': 9
-		// 		'n3': 27
-		// 		'n4': 81
-		// 	}
-		// }
+		extra: {
+			'2': {
+				'n1': 2
+				'n2': 4
+				'n3': 8
+				'n4': 16
+			}
+			'3': {
+				'n1': 3
+				'n2': 9
+				'n3': 27
+				'n4': 81
+			}
+		}
 	}
 	out := json.encode(data)
 	assert out == data_expected

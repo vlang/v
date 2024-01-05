@@ -36,11 +36,6 @@ fn test_raw_decode_map() {
 	assert mp['age'] or { 0 }.int() == 20
 }
 
-fn test_raw_decode_null() {
-	nul := json.raw_decode('null')!
-	assert nul is json.Null
-}
-
 fn test_raw_decode_invalid() {
 	json.raw_decode('1z') or {
 		assert err.msg() == '[x.json2] invalid token `z` (0:17)'

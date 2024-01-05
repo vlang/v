@@ -169,10 +169,6 @@ fn (mut p Parser) decode_value() !Any {
 		}
 		.null {
 			p.next_with_err()!
-			if p.convert_type {
-				return Any(null)
-			}
-			return Any('null')
 		}
 		.str_ {
 			str := p.tok.lit.bytestr()
@@ -185,7 +181,9 @@ fn (mut p Parser) decode_value() !Any {
 			}
 		}
 	}
-	return Any(null)
+	return InvalidTokenError{
+		token: p.tok
+	}
 }
 
 @[manualfree]
