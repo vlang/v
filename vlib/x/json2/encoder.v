@@ -99,7 +99,13 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut buf []u8) ! {
 	// 		}
 	// 	}
 	// } $else
-	$if T is string {
+
+	$if val is $option {
+		workaround := val
+		if workaround != none {
+			e.encode_value_with_level(val, level, mut buf)!
+		}
+	} $else $if T is string {
 		e.encode_string(val, mut buf)!
 	} $else $if T is $sumtype {
 		$for v in val.variants {
@@ -150,6 +156,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 	}
 	$for field in U.fields {
 		mut ignore_field := false
+
 		value := val.$(field.name)
 
 		is_nil := val.$(field.name).str() == '&nil'
@@ -162,10 +169,9 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 			}
 		}
 
-		$if field.is_option {
-			is_none := value == none
-
-			if !is_none {
+		$if value is $option {
+			workaround := val.$(field.name)
+			if workaround != none { // smartcast
 				e.encode_newline(level, mut buf)!
 				if json_name != '' {
 					e.encode_string(json_name, mut buf)!
@@ -177,61 +183,12 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 				if e.newline != 0 {
 					buf << ` `
 				}
-
-				$if field.typ is ?string {
-					e.encode_string(val.$(field.name) ?.str(), mut buf)!
-				} $else $if field.typ is ?bool {
-					if value ?.str() == json2.true_in_string {
-						unsafe { buf.push_many(json2.true_in_string.str, json2.true_in_string.len) }
-					} else {
-						unsafe { buf.push_many(json2.false_in_string.str, json2.false_in_string.len) }
-					}
-				} $else $if field.typ is ?f32 || field.typ is ?f64 || field.typ is ?i8
-					|| field.typ is ?i16 || field.typ is ?int || field.typ is ?i64
-					|| field.typ is ?u8 || field.typ is ?u16 || field.typ is ?u32
-					|| field.typ is ?u64 {
-					str_value := val.$(field.name) ?.str()
-					unsafe { buf.push_many(str_value.str, str_value.len) }
-				} $else $if field.typ is ?time.Time {
-					option_value := val.$(field.name) as ?time.Time
-					parsed_time := option_value as time.Time
-					e.encode_string(parsed_time.format_rfc3339(), mut buf)!
-				} $else $if field.is_array {
-					e.encode_array(value, level + 1, mut buf)!
-				} $else $if field.is_struct {
-					e.encode_struct(value, level + 1, mut buf)!
-				} $else $if field.is_enum {
-					// FIXME - checker and cast error
-					// wr.write(int(val.$(field.name)?).str().bytes())!
-					return error('type ${typeof(val).name} cannot be encoded yet')
-				} $else $if field.is_alias {
-					match field.unaliased_typ {
-						typeof[string]().idx {
-							e.encode_string(value.str(), mut buf)!
-						}
-						typeof[bool]().idx {}
-						typeof[f32]().idx, typeof[f64]().idx, typeof[i8]().idx, typeof[i16]().idx,
-						typeof[int]().idx, typeof[i64]().idx, typeof[u8]().idx, typeof[u16]().idx,
-						typeof[u32]().idx, typeof[u64]().idx {
-							str_value := value.str()
-							unsafe { buf.push_many(str_value.str, str_value.len) }
-						}
-						typeof[[]int]().idx {
-							// FIXME - error: could not infer generic type `U` in call to `encode_array`
-							// e.encode_array(value, level, mut buf)!
-						}
-						else {
-							// e.encode_value_with_level(value, level + 1, mut buf)!
-						}
-					}
-				} $else {
-					return error('type ${typeof(val).name} cannot be array encoded')
-				}
+				e.encode_value_with_level(value, level, mut buf)!
 			} else {
 				ignore_field = true
 			}
 		} $else {
-			is_none := val.$(field.name).str() == 'unknown sum type value'
+			is_none := val.$(field.name).str() == 'unknown sum type value' // assert json.encode(StructType[SumTypes]{}) == '{}'
 			if !is_none && !is_nil {
 				e.encode_newline(level, mut buf)!
 				if json_name != '' {
@@ -460,6 +417,7 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 	}
 	mut i := 0
 	buf << json2.quote_rune
+	// println(char_lens)
 	for char_len in char_lens {
 		if char_len == 1 {
 			chr := s[i]
@@ -484,7 +442,9 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 				hex_code := chr.hex()
 				unsafe { buf.push_many(hex_code.str, hex_code.len) }
 			} else {
-				buf << chr
+				// println(buf.bytestr())
+				// println(chr)
+				buf << chr // breaking //  TODO test // FIXME
 			}
 		} else {
 			slice := s[i..i + char_len]

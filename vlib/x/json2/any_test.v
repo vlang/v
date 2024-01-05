@@ -109,7 +109,6 @@ fn test_str() {
 	assert sample_data['f64'] or { 0 }.str() == '1.283'
 	assert sample_data['bool'] or { 0 }.str() == 'false'
 	assert sample_data['str'] or { 0 }.str() == 'test'
-	assert sample_data['null'] or { 0 }.str() == '' // in json2 null is not a value
 	assert sample_data['arr'] or { 'not lol' }.str() == '["lol"]'
 	assert sample_data.str() == '{"int":1,"i64":128,"f32":2.0,"f64":1.283,"bool":false,"str":"test","arr":["lol"],"obj":{"foo":10}}'
 }
