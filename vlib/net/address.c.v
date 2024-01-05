@@ -163,17 +163,20 @@ pub fn resolve_addrs_fuzzy(addr string, @type SocketType) ![]Addr {
 
 // resolve_ipaddrs converts the given `addr`, `family` and `typ` to a list of addresses
 pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ![]Addr {
-	address, port := split_address(addr)!
+	mut address, port := split_address(addr)!
 
-	if addr[0] == `:` {
+	if address.starts_with('[') && address.ends_with(']') {
+		address = address[1..address.len - 1]
+	}
+
+	// This is to allow a ":8080" shorthand notation similar to HTTPie
+	// [URL shortcuts for localhost](https://httpie.io/docs/cli/url-shortcuts-for-localhost)
+	// and (net.Dial)(https://pkg.go.dev/net#Dial) in Go.
+	if address == '' {
 		match family {
-			.ip6 {
-				return [new_ip6(port, net.addr_ip6_any)]
-			}
-			.ip, .unspec {
-				return [new_ip(port, net.addr_ip_any)]
-			}
-			else {}
+			.ip6 { return [new_ip6(port, net.addr_ip6_any)] }
+			.ip, .unspec { return [new_ip(port, net.addr_ip_any)] }
+			.unix { error('unix address must not be empty') }
 		}
 	}
 

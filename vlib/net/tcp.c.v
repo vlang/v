@@ -21,15 +21,6 @@ mut:
 
 pub fn dial_tcp(oaddress string) !&TcpConn {
 	mut address := oaddress
-	$if windows {
-		// resolving 0.0.0.0 to localhost, works on linux and macos, but not on windows, so try to emulate it:
-		if address.starts_with(':::') {
-			address = address.replace_once(':::', 'localhost:')
-		}
-		if address.starts_with('0.0.0.0:') {
-			address = address.replace_once('0.0.0.0:', 'localhost:')
-		}
-	}
 	addrs := resolve_addrs_fuzzy(address, .tcp) or {
 		return error('${err.msg()}; could not resolve address ${address} in dial_tcp')
 	}

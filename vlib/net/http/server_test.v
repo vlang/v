@@ -127,21 +127,21 @@ fn test_server_custom_handler() {
 	}
 	t := spawn server.listen_and_serve()
 	server.wait_till_running()!
-	x := http.fetch(url: 'http://${server.addr}/endpoint?abc=xyz', data: 'my data')!
+	x := http.fetch(url: 'http://127.0.0.1:${cport}/endpoint?abc=xyz', data: 'my data')!
 	assert x.body == 'my data, /endpoint?abc=xyz'
 	assert x.status_code == 200
 	assert x.status_msg == 'OK'
 	assert x.http_version == '1.1'
-	y := http.fetch(url: 'http://${server.addr}/another/endpoint', data: 'abcde')!
+	y := http.fetch(url: 'http://127.0.0.1:${cport}/another/endpoint', data: 'abcde')!
 	assert y.body == 'abcde, /another/endpoint'
 	assert y.status_code == 200
 	assert x.status_msg == 'OK'
 	assert y.status() == .ok
 	assert y.http_version == '1.1'
 	//
-	http.fetch(url: 'http://${server.addr}/something/else')!
+	http.fetch(url: 'http://127.0.0.1:${cport}/something/else')!
 	//
-	big_url := 'http://${server.addr}/redirect_to_big'
+	big_url := 'http://127.0.0.1:${cport}/redirect_to_big'
 	mut progress_calls := &ProgressCalls{}
 	z := http.fetch(
 		url: big_url
@@ -174,7 +174,7 @@ fn test_server_custom_handler() {
 	assert progress_calls.chunks[0].bytestr().starts_with('HTTP/1.1 301 Moved permanently')
 	assert progress_calls.chunks[1].bytestr().starts_with('HTTP/1.1 200 OK')
 	assert progress_calls.chunks.last().bytestr().contains('xyz def')
-	assert progress_calls.redirected_to == ['http://${server.addr}/big']
+	assert progress_calls.redirected_to == ['http://127.0.0.1:${cport}/big']
 	//
 	server.stop()
 	t.wait()
@@ -232,7 +232,8 @@ fn test_my_counting_handler_on_random_port() {
 		on_running: fn (mut server http.Server) {
 			spawn fn (mut server http.Server) {
 				log.warn('server started')
-				url := 'http://${server.addr}/count'
+				_, server_port := net.split_address(server.addr) or { panic(err) }
+				url := 'http://127.0.0.1:${server_port}/count'
 				log.info('fetching from url: ${url}')
 				for _ in 0 .. 5 {
 					x := http.fetch(url: url, data: 'my data') or { panic(err) }
