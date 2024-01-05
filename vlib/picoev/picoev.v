@@ -216,6 +216,12 @@ fn raw_callback(fd int, events int, context voidptr) {
 		$if trace_fd ? {
 			eprintln('timeout ${fd}')
 		}
+
+		if !isnil(pv.raw_cb) {
+			pv.raw_cb(mut pv, fd, events)
+			return
+		}
+
 		pv.close_conn(fd)
 		return
 	} else if events & picoev.picoev_read != 0 {

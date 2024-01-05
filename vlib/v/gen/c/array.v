@@ -1339,9 +1339,12 @@ fn (mut g Gen) fixed_array_var_init(expr ast.Expr, size int) {
 	g.write('{')
 	for i in 0 .. size {
 		if expr.is_auto_deref_var() {
-			g.write('*')
+			g.write('(*')
 		}
 		g.expr(expr)
+		if expr.is_auto_deref_var() {
+			g.write(')')
+		}
 		g.write('[${i}]')
 		if i != size - 1 {
 			g.write(', ')

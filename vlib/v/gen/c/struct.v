@@ -600,8 +600,9 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 		inside_cast_in_heap := g.inside_cast_in_heap
 		g.inside_cast_in_heap = 0 // prevent use of pointers in child structs
 
-		if field_type_sym.kind == .array_fixed && sfield.expr in [ast.Ident, ast.SelectorExpr] {
-			info := field_type_sym.info as ast.ArrayFixed
+		field_unwrap_sym := g.table.sym(g.unwrap_generic(sfield.typ))
+		if field_unwrap_sym.kind == .array_fixed && sfield.expr in [ast.Ident, ast.SelectorExpr] {
+			info := field_unwrap_sym.info as ast.ArrayFixed
 			g.fixed_array_var_init(sfield.expr, info.size)
 		} else {
 			if sfield.typ != ast.voidptr_type && sfield.typ != ast.nil_type

@@ -232,6 +232,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				c.error('Result type argument is not supported currently', param.type_pos)
 			}
 			arg_typ_sym := c.table.sym(param.typ)
+			pure_sym_name := arg_typ_sym.embed_name()
 			if arg_typ_sym.info is ast.Struct {
 				if !param.typ.is_ptr() && arg_typ_sym.info.is_heap { // set auto_heap to promote value parameter
 					mut v := node.scope.find_var(param.name) or { continue }
@@ -239,19 +240,19 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				}
 				if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
 					&& arg_typ_sym.info.concrete_types.len == 0 {
-					c.error('generic struct `${arg_typ_sym.name}` in fn declaration must specify the generic type names, e.g. ${arg_typ_sym.name}[T]',
+					c.error('generic struct `${pure_sym_name}` in fn declaration must specify the generic type names, e.g. ${pure_sym_name}[T]',
 						param.type_pos)
 				}
 			} else if arg_typ_sym.info is ast.Interface {
 				if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
 					&& arg_typ_sym.info.concrete_types.len == 0 {
-					c.error('generic interface `${arg_typ_sym.name}` in fn declaration must specify the generic type names, e.g. ${arg_typ_sym.name}[T]',
+					c.error('generic interface `${pure_sym_name}` in fn declaration must specify the generic type names, e.g. ${pure_sym_name}[T]',
 						param.type_pos)
 				}
 			} else if arg_typ_sym.info is ast.SumType {
 				if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
 					&& arg_typ_sym.info.concrete_types.len == 0 {
-					c.error('generic sumtype `${arg_typ_sym.name}` in fn declaration must specify the generic type names, e.g. ${arg_typ_sym.name}[T]',
+					c.error('generic sumtype `${pure_sym_name}` in fn declaration must specify the generic type names, e.g. ${pure_sym_name}[T]',
 						param.type_pos)
 				}
 			}
@@ -1715,7 +1716,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	mut unknown_method_msg := if field := c.table.find_field(left_sym, method_name) {
 		'unknown method `${field.name}` did you mean to access the field with the same name instead?'
 	} else {
-		'unknown method or field: `${left_sym.name}.${method_name}`'
+		name := left_sym.symbol_name_except_generic().replace_each(['<', '[', '>', ']'])
+		'unknown method or field: `${name}.${method_name}`'
 	}
 	if left_type.has_flag(.option) && method_name != 'str' {
 		c.error('Option type cannot be called directly', node.left.pos())
@@ -1903,7 +1905,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					node.pos)
 			}
 			if left_sym.kind == .array_fixed {
-				c.error('unknown method or field: ${left_sym.name}.free()', node.pos)
+				name := left_sym.symbol_name_except_generic().replace_each(['<', '[', '>', ']'])
+				c.error('unknown method or field: ${name}.free()', node.pos)
 			}
 			return ast.void_type
 		}
@@ -2026,6 +2029,12 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			if rec_is_generic && node.concrete_types.len == 0
 				&& method.generic_names.len == rec_sym.info.generic_types.len {
 				node.concrete_types = rec_sym.info.generic_types
+			} else if rec_is_generic && node.concrete_types.len > 0
+				&& method.generic_names.len > node.concrete_types.len
+				&& rec_sym.info.generic_types.len + node.concrete_types.len == method.generic_names.len {
+				t_concrete_types := node.concrete_types.clone()
+				node.concrete_types = rec_sym.info.generic_types
+				node.concrete_types << t_concrete_types
 			} else if !rec_is_generic && rec_sym.info.concrete_types.len > 0
 				&& node.concrete_types.len > 0
 				&& rec_sym.info.concrete_types.len + node.concrete_types.len == method.generic_names.len {
