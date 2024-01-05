@@ -574,16 +574,6 @@ pub fn (c u8) is_capital() bool {
 	return c >= `A` && c <= `Z`
 }
 
-// clone clones the byte array, and returns the newly created copy.
-pub fn (b []u8) clone() []u8 {
-	mut res := []u8{len: b.len}
-	// mut res := make([]u8, {repeat:b.len})
-	for i in 0 .. b.len {
-		res[i] = b[i]
-	}
-	return res
-}
-
 // bytestr produces a string from *all* the bytes in the array.
 // Note: the returned string will have .len equal to the array.len,
 // even when some of the array bytes were `0`.

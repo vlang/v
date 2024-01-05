@@ -1740,8 +1740,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	}
 	if final_left_sym.kind == .array {
 		if array_builtin_methods_chk.matches(method_name) && (left_sym.kind == .array
-			|| (left_sym.kind == .alias && method_name != 'clone'
-			&& !left_sym.has_method(method_name))) {
+			|| (left_sym.kind == .alias && !left_sym.has_method(method_name))) {
 			return c.array_builtin_method_call(mut node, left_type)
 		} else if method_name in ['insert', 'prepend'] {
 			if method_name == 'insert' {
