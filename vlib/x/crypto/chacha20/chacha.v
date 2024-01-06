@@ -122,7 +122,7 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 		n := cipher.xor_bytes(mut out, block, c.block)
 		assert n == block.len
 
-		// we make sure, takes only required remaining bytes
+		// make sure to take only remaining bytes
 		out = unsafe { out[0..src.len % chacha20.block_size] }
 
 		// append last output to the ciphertext buffer
