@@ -117,7 +117,7 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 		c.generic_key_stream()
 		// get the remaining partial block
 		block := unsafe { src[nr_blocks * chacha20.block_size..] }
-		// xor-ing block with keystream
+		// xor block with keystream
 		mut out := []u8{len: block.len}
 		n := cipher.xor_bytes(mut out, block, c.block)
 		assert n == block.len
