@@ -239,7 +239,7 @@ fn (mut c Cipher) do_rekey(key []u8, nonce []u8) ! {
 	c.nonce[2] = binary.little_endian_u32(nonces[8..12])
 }
 
-// chacha20_block was a ChaCha block function transforms a ChaCha20 state by running
+// chacha20_block transforms a ChaCha20 state by running
 // multiple quarter rounds.
 // see https://datatracker.ietf.org/doc/html/rfc8439#section-2.3
 fn (mut c Cipher) chacha20_block() {
