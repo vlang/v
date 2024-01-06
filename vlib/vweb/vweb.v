@@ -572,6 +572,7 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 			eprintln('[vweb] accept() failed with error: ${err.msg()}')
 			continue
 		}
+		connection.set_blocking(true) or {}
 		ch <- &RequestParams{
 			connection: connection
 			global_app: unsafe { global_app }

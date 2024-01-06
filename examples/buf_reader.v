@@ -6,6 +6,7 @@ import io
 fn main() {
 	// Make a new connection
 	mut conn := net.dial_tcp('google.com:80')!
+	conn.set_blocking(true)!
 	// Simple http HEAD request for a file
 	conn.write_string('GET /index.html HTTP/1.0\r\n\r\n')!
 	// Wrap in a buffered reader

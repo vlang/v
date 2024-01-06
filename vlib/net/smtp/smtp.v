@@ -75,7 +75,10 @@ pub fn (mut c Client) reconnect() ! {
 		return error('Already connected to server')
 	}
 
-	conn := net.dial_tcp('${c.server}:${c.port}') or { return error('Connecting to server failed') }
+	mut conn := net.dial_tcp('${c.server}:${c.port}') or {
+		return error('Connecting to server failed')
+	}
+	conn.set_blocking(true) or {}
 	c.conn = conn
 
 	if c.ssl {

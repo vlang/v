@@ -285,6 +285,7 @@ fn simple_tcp_client(config SimpleTcpClientConfig) !string {
 			time.sleep(100 * time.millisecond)
 			continue
 		}
+		client.set_blocking(true) or {}
 		break
 	}
 	if client == unsafe { nil } {
@@ -326,6 +327,7 @@ fn simple_tcp_client_post_json(config SimpleTcpClientConfig) !string {
 			time.sleep(100 * time.millisecond)
 			continue
 		}
+		client.set_blocking(true) or {}
 		break
 	}
 	if client == unsafe { nil } {

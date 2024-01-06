@@ -14,6 +14,7 @@ fn main() {
 	eprintln('Listen on ${laddr} ...')
 	for {
 		mut socket := server.accept()!
+		socket.set_blocking(true)!
 		spawn handle_client(mut socket)
 	}
 }

@@ -41,6 +41,7 @@ fn main() {
 							eprintln('error adding to notifier: ${err}')
 							return
 						}
+						conn.set_blocking(true) or {}
 						eprintln('connected')
 					} else {
 						eprintln('unable to accept: ${err}')

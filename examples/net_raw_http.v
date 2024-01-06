@@ -4,6 +4,7 @@ import io
 fn main() {
 	// Make a new connection
 	mut conn := net.dial_tcp('google.com:80')!
+	conn.set_blocking(true)!
 	defer {
 		conn.close() or {}
 	}

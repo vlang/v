@@ -23,6 +23,7 @@ fn one_shot_echo_server(mut l net.TcpListener, ch_started chan int) ! {
 	eprintln('> one_shot_echo_server')
 	ch_started <- 1
 	mut new_conn := l.accept() or { return error('could not accept') }
+	new_conn.set_blocking(true) or {}
 	eprintln('    > new_conn: ${new_conn}')
 	handle_conn(mut new_conn)
 	new_conn.close() or {}
@@ -30,6 +31,7 @@ fn one_shot_echo_server(mut l net.TcpListener, ch_started chan int) ! {
 
 fn echo(address string) ! {
 	mut c := net.dial_tcp(address)!
+	c.set_blocking(true)!
 	defer {
 		c.close() or {}
 	}

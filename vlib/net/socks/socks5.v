@@ -18,6 +18,7 @@ const auth_user_password = u8(2)
 // socks5_dial create new instance of &net.TcpConn
 pub fn socks5_dial(proxy_url string, host string, username string, password string) !&net.TcpConn {
 	mut con := net.dial_tcp(proxy_url)!
+	con.set_blocking(true)!
 	return handshake(mut con, host, username, password)!
 }
 

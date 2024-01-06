@@ -67,6 +67,7 @@ fn start_server(schannel chan int, shared ctx Context) {
 			}
 			continue
 		}
+		tcp_con.set_blocking(true) or {}
 		spawn receive_data(mut tcp_con, shared ctx)
 		lock ctx {
 			ctx.ok_server_accepts++
@@ -85,6 +86,7 @@ fn start_client(i int, shared ctx Context) {
 		}
 		return
 	}
+	tcp_con.set_blocking(true) or {}
 	lock ctx {
 		ctx.ok_client_dials++
 	}

@@ -188,6 +188,7 @@ pub fn (mut s SSLConn) dial(hostname string, port int) ! {
 	}
 	s.owns_socket = true
 	mut tcp_conn := net.dial_tcp('${hostname}:${port}') or { return err }
+	tcp_conn.set_blocking(true) or { return err }
 	s.connect(mut tcp_conn, hostname) or { return err }
 }
 
