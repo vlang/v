@@ -2561,7 +2561,7 @@ struct Button {
 }
 ```
 
-With embedding, the struct `Button` will automatically have get all the fields and methods from
+With embedding, the struct `Button` will automatically get all the fields and methods from
 the struct `Size`, which allows you to do:
 
 ```v oksyntax
