@@ -444,13 +444,32 @@ a, b = b, a
 println('${a}, ${b}') // 1, 0
 ```
 
-### Declaration errors
+### Warnings and declaration errors
 
 In development mode the compiler will warn you that you haven't used the variable
 (you'll get an "unused variable" warning).
 In production mode (enabled by passing the `-prod` flag to v – `v -prod foo.v`)
 it will not compile at all (like in Go).
+```v failcompile nofmt
+fn main() {
+	a := 10
+	// warning: unused variable `a`
+}
+```
+To ignore values returned by a function `_` can be used
+```v failcompile nofmt
+fn foo() (int, int) {
+	return 2, 3
+}
+fn main() {
+	c, _ := foo()
+	print(c)
+	// no warning about unused variable returned by foo.
+}
+```
 
+Unlike most languages, variable shadowing is not allowed. Declaring a variable with a name
+that is already used in a parent scope will cause a compilation error.
 ```v failcompile nofmt
 fn main() {
 	a := 10
@@ -460,9 +479,6 @@ fn main() {
 	// warning: unused variable `a`
 }
 ```
-
-Unlike most languages, variable shadowing is not allowed. Declaring a variable with a name
-that is already used in a parent scope will cause a compilation error.
 
 ## V Types
 
