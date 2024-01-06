@@ -25,6 +25,12 @@ fn test_sizeof() {
 	assert sizeof(flag.Flag) > 4
 
 	assert sizeof(c'hello') == 6
-	assert sizeof(r'hello') == 16
-	assert sizeof('hello') == 16
+
+	$if msvc {
+		assert sizeof(r'hello') == 12
+		assert sizeof('hello') == 12
+	} $else {
+		assert sizeof(r'hello') == 16
+		assert sizeof('hello') == 16
+	}
 }
