@@ -4188,9 +4188,13 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			dump(code_for_from_fn)
 		}
 	}
-	if p.pref.backend == .c {
-		// TODO: improve the other backends, to the point where they can handle generics or comptime too
-		p.codegen(code_for_from_fn)
+	if enum_name[0].is_capital() {
+		// TODO: this check is to prevent avoidable later stage checker errors for generated code,
+		// since currently there is no way to show the proper source context :-|.
+		if p.pref.backend == .c {
+			// TODO: improve the other backends, to the point where they can handle generics or comptime checks too
+			p.codegen(code_for_from_fn)
+		}
 	}
 
 	idx := p.table.register_sym(ast.TypeSymbol{
