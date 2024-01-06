@@ -99,7 +99,7 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 	// how many block the src bytes splitted to
 	nr_blocks := src.len / chacha20.block_size
 	for i := 0; i < nr_blocks; i++ {
-		// generates ciphers keystream block, its stored in c.block
+		// generate ciphers keystream block, stored in c.block
 		c.generic_key_stream()
 		// get current src block to be xor-ed
 		block := unsafe { src[i * chacha20.block_size..(i + 1) * chacha20.block_size] }
