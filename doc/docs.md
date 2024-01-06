@@ -450,17 +450,19 @@ In development mode the compiler will warn you that you haven't used the variabl
 (you'll get an "unused variable" warning).
 In production mode (enabled by passing the `-prod` flag to v – `v -prod foo.v`)
 it will not compile at all (like in Go).
-```v failcompile nofmt
+```v
 fn main() {
 	a := 10
 	// warning: unused variable `a`
 }
 ```
+
 To ignore values returned by a function `_` can be used
-```v failcompile nofmt
+```v
 fn foo() (int, int) {
 	return 2, 3
 }
+
 fn main() {
 	c, _ := foo()
 	print(c)
