@@ -4187,7 +4187,10 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			dump(code_for_from_fn)
 		}
 	}
-	p.codegen(code_for_from_fn)
+	if p.pref.backend == .c {
+		// TODO: improve the other backends, to the point where they can handle generics or comptime too
+		p.codegen(code_for_from_fn)
+	}
 
 	idx := p.table.register_sym(ast.TypeSymbol{
 		kind: .enum_
