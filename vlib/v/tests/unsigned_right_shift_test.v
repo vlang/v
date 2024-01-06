@@ -10,8 +10,8 @@ fn test_unsigned_right_shift_expr_isize_usize() {
 		assert usize(-5) >>> 1 == answer_u32
 	}
 	$if x64 {
-		assert isize(-5) >>> 1 == answer_u64
-		assert usize(-5) >>> 1 == answer_u64
+		assert u64(isize(-5) >>> 1) == answer_u64
+		assert u64(usize(-5) >>> 1) == answer_u64
 	}
 }
 
