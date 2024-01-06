@@ -265,7 +265,7 @@ fn (mut c Cipher) chacha20_block() {
 	c14 := c.nonce[1]
 	c15 := c.nonce[2]
 
-	// precomputes three first column round thats not depend on counter
+	// precomputes three first column rounds that do not depend on counter
 	if !c.precomp {
 		c.p1, c.p5, c.p9, c.p13 = quarter_round(c1, c5, c9, c13)
 		c.p2, c.p6, c.p10, c.p14 = quarter_round(c2, c6, c10, c14)
