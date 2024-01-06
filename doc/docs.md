@@ -66,7 +66,7 @@ by using any of the following commands in a terminal:
 * [Variables](#variables)
     * [Mutable variables](#mutable-variables)
     * [Initialization vs assignment](#initialization-vs-assignment)
-    * [Declaration errors](#declaration-errors)
+    * [Warnings and declaration errors](#warnings-and-declaration-errors)
 * [V types](#v-types)
     * [Primitive types](#primitive-types)
     * [Strings](#strings)
