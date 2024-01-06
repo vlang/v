@@ -216,6 +216,7 @@ fn (req &Request) http_do(host string, method Method, path string) !Response {
 	host_name, _ := net.split_address(host)!
 	s := req.build_request_headers(method, host_name, path)
 	mut client := net.dial_tcp(host)!
+	client.set_blocking(true)!
 	client.set_read_timeout(req.read_timeout)
 	client.set_write_timeout(req.write_timeout)
 	// TODO this really needs to be exposed somehow

@@ -114,6 +114,10 @@ pub fn (mut s Server) listen_and_serve() {
 			eprintln('accept() failed, reason: ${err}; skipping')
 			continue
 		}
+		conn.set_blocking(true) or {
+			eprintln('set_blocking() failed, reason: ${err}; skipping')
+			continue
+		}
 		conn.set_read_timeout(s.read_timeout)
 		conn.set_write_timeout(s.write_timeout)
 		ch <- conn
