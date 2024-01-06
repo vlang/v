@@ -638,6 +638,9 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 							init_field.pos)
 					}
 				}
+				if got_type.has_flag(.result) {
+					c.check_expr_option_or_result_call(init_field.expr, init_field.typ)
+				}
 				if exp_type.has_flag(.option) && got_type.is_ptr() && !(exp_type.is_ptr()
 					&& exp_type_sym.kind == .struct_) {
 					c.error('cannot assign a pointer to option struct field', init_field.pos)
