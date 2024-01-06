@@ -4188,7 +4188,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			dump(code_for_from_fn)
 		}
 	}
-	if enum_name[0].is_capital() {
+	if enum_name[0].is_capital() && fields.len > 0 {
 		// TODO: this check is to prevent avoidable later stage checker errors for generated code,
 		// since currently there is no way to show the proper source context :-|.
 		if p.pref.backend == .c {
