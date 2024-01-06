@@ -1,0 +1,58 @@
+enum MyEnum {
+	abc
+	def
+	xyz
+}
+
+@[flag]
+enum MyFlaggedEnum {
+	abc
+	def
+	xyz
+}
+
+/*
+fn dump_enum_values[R,T](list []T) {
+	for input in list {
+		// TODO: R.from() should work, when R is an enum, but it does not right now
+		x := R.from(input) or {
+			eprintln('>>>> error input: `${input}` | err: `${err}`')
+			continue
+		}
+		eprintln('> input: ${input} | x: ${x}')
+	}
+	assert true
+}
+fn test_enums_conversion_using_from() {
+	dump_enum_values[MyEnum,string](['abc', 'bbb', 'xyz', 'def', 'zzz'])
+	dump_enum_values[MyFlaggedEnum,int]([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+}
+*/
+
+fn test_enum_from_string() {
+	x := MyEnum.from('def')!
+	dump(x)
+	assert x == .def
+	y := MyFlaggedEnum.from('xyz')!
+	dump(y)
+	assert y == .xyz
+	if z := MyEnum.from('unknown') {
+		assert false
+	} else {
+		assert err.msg() == 'invalid value'
+	}
+}
+
+fn test_enum_from_integer() {
+	x := MyEnum.from(2)!
+	dump(x)
+	assert x == .xyz
+	y := MyFlaggedEnum.from(4)!
+	dump(y)
+	assert y == .xyz
+	if z := MyFlaggedEnum.from(9999) {
+		assert false
+	} else {
+		assert err.msg() == 'invalid value'
+	}
+}

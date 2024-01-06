@@ -4156,10 +4156,14 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	for f in fields {
 		isb.write_string('			.${f.name} { return ${enum_name}.${f.name} }\n')
 	}
+	if is_flag {
+		isb.write_string('			else{}\n')
+	}
 	isb.write_string('		}\n')
 	isb.write_string('	}\n')
 	isb.write_string('	\$if input is \$string {\n')
-	isb.write_string('		match input.str() {\n')
+	isb.write_string('		val := input.str()\n') // TODO: this should not be needed, the `$if input is $string` above should have already smartcasted `input`
+	isb.write_string('		match val {\n')
 	for f in fields {
 		isb.write_string('			\'${f.name}\' { return ${enum_name}.${f.name} }\n')
 	}
