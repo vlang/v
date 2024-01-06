@@ -101,7 +101,7 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 	for i := 0; i < nr_blocks; i++ {
 		// generates ciphers keystream block, its stored in c.block
 		c.generic_key_stream()
-		// get current's src block to be xor-ed
+		// get current src block to be xor-ed
 		block := unsafe { src[i * chacha20.block_size..(i + 1) * chacha20.block_size] }
 
 		// xor-ing current block of plaintext with keystream in c.block and stores result in out
