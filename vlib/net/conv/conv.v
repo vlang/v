@@ -15,7 +15,7 @@ pub fn htn64(host u64) u64 {
 	return hton64(host)
 }
 
-// htonf64 converts the 32 bit double `host` to the net format
+// htonf32 converts the 32 bit double `host` to the net format
 pub fn htonf32(host f32) f32 {
 	$if little_endian {
 		mut convert := ConversionUnion{
