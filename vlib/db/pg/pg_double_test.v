@@ -29,7 +29,7 @@ fn test_float_field() {
 	}!
 
 	assert rows[0].number == 9.58815
-	assert rows[0].number == 9.58815
+	assert rows[0].number2 == 9.58815
 
 	sql db {
 		drop table Demo
