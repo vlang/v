@@ -96,7 +96,7 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 	// and append to the result.
 	//
 	// Let's process for multiple blocks
-	// how many block the src bytes splitted to
+	// number of blocks the src bytes should be split into
 	nr_blocks := src.len / chacha20.block_size
 	for i := 0; i < nr_blocks; i++ {
 		// generate ciphers keystream block, stored in c.block
