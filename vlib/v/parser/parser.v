@@ -13,6 +13,7 @@ import v.vet
 import v.errors
 import os
 import hash.fnv1a
+import strings
 
 @[minify]
 pub struct Parser {
@@ -4118,6 +4119,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	p.check(.rcbr)
 	is_flag := p.attrs.contains('flag')
 	is_multi_allowed := p.attrs.contains('_allow_multiple_values')
+	pubfn := if p.mod == 'main' { 'fn' } else { 'pub fn' }
 	if is_flag {
 		if fields.len > 64 {
 			p.error('when an enum is used as bit field, it must have a max of 64 fields')
@@ -4130,7 +4132,6 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 				return ast.EnumDecl{}
 			}
 		}
-		pubfn := if p.mod == 'main' { 'fn' } else { 'pub fn' }
 		all_bits_set_value := '0b' + '1'.repeat(fields.len)
 		p.codegen('
 //
@@ -4145,6 +4146,33 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 //
 ')
 	}
+	// Add the generic `Enum.from[T](x T) !T {` static method too:
+	mut isb := strings.new_builder(1024)
+	isb.write_string('\n')
+	isb.write_string('${pubfn} ${enum_name}.from[T](input T) !${enum_name} {\n')
+	isb.write_string('	\$if input is \$int {\n')
+	isb.write_string('		val := unsafe{ ${enum_name}(input) }\n')
+	isb.write_string('		match val {\n')
+	for f in fields {
+		isb.write_string('			.${f.name} { return ${enum_name}.${f.name} }\n')
+	}
+	isb.write_string('		}\n')
+	isb.write_string('	}\n')
+	isb.write_string('	\$if input is \$string {\n')
+	isb.write_string('		match input.str() {\n')
+	for f in fields {
+		isb.write_string('			\'${f.name}\' { return ${enum_name}.${f.name} }\n')
+	}
+	isb.write_string('			else{}\n')
+	isb.write_string('		}\n')
+	isb.write_string('	}\n')
+	isb.write_string("	return error('invalid value')\n")
+	isb.write_string('}\n')
+	isb.write_string('\n')
+	code_for_from_fn := isb.str()
+	// if p.mod == 'main' { dump(code_for_from_fn) }
+	p.codegen(code_for_from_fn)
+
 	idx := p.table.register_sym(ast.TypeSymbol{
 		kind: .enum_
 		name: name
