@@ -193,7 +193,7 @@ pub fn (mut c TcpConn) write_ptr(b &u8, len int) !int {
 			}
 			if sent < 0 {
 				code := error_code()
-				if code == int(error_ewouldblock) {
+				if code == int(error_ewouldblock) && c.is_blocking {
 					c.wait_for_write()!
 					continue
 				} else {
