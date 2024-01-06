@@ -366,7 +366,7 @@ pub fn (mut p Parser) parse() &ast.File {
 
 	// codegen
 	if p.codegen_text.len > 0 && !p.pref.is_fmt {
-		ptext := 'module ' + p.mod.all_after_last('.') + p.codegen_text
+		ptext := 'module ' + p.mod.all_after_last('.') + '\n' + p.codegen_text
 		codegen_files << parse_text(ptext, p.file_name, p.table, p.comments_mode, p.pref)
 	}
 
@@ -474,9 +474,9 @@ pub fn parse_files(paths []string, table &ast.Table, pref_ &pref.Preferences) []
 // checked, markused, cgen-ed etc further, just like user's V code.
 pub fn (mut p Parser) codegen(code string) {
 	$if debug_codegen ? {
-		eprintln('parser.codegen:\n ${code}')
+		eprintln('parser.codegen: ${code}')
 	}
-	p.codegen_text += '\n' + code
+	p.codegen_text += code
 }
 
 fn (mut p Parser) init_parse_fns() {
