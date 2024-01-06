@@ -89,7 +89,7 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 	mut ciphertext := []u8{}
 
 	// ChaCha20's encryption mechanism is a relatively simple operation.
-	// for every block_sized's block from src bytes, build ChaCha20  keystream block,
+	// for every block_sized block from src bytes, build ChaCha20  keystream block,
 	// then xors each byte in the block with keystresm block and then appends xor-ed bytes
 	// to the output buffer. If there are remaining (trailing) partial bytes,
 	// generates one more keystream block, xors keystream block with partial bytes
