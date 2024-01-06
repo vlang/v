@@ -72,7 +72,7 @@ pub fn decrypt(key []u8, nonce []u8, ciphertext []u8) ![]u8 {
 }
 
 // xor_key_stream xors each byte in the given slice in the src with a byte from the
-// cipher's key stream. It fullfills `cipher.Stream` interface. Its does encrypts plaintext message
+// cipher's key stream. It fullfills `cipher.Stream` interface. It encrypts the plaintext message
 // in src and stores ciphertext result in dst in single shot of run of encryption.
 // You must never use the same (key, nonce) pair more than once for encryption.
 // This would void any confidentiality guarantees for the messages encrypted with the same nonce and key.
