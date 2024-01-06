@@ -14,7 +14,11 @@ fn test_generic_fn_variable() {
 
 	r2 := f[string]()
 	println(r2)
-	assert r2 == 16
+	$if msvc {
+		assert r2 == 12
+	} $else {
+		assert r2 == 16
+	}
 
 	r3 := f[f64]()
 	println(r3)
