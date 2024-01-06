@@ -2685,6 +2685,9 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type_ ast
 			}
 			if method_name[0] == `m` {
 				c.fail_if_immutable(mut node.left)
+				if !node.left.is_lvalue() {
+					c.error('cannot pass expression as `mut`', node.left.pos())
+				}
 			}
 			if node.left.is_auto_deref_var() || left_type.has_flag(.shared_f) {
 				ret_type = node.left_type.deref()
@@ -2713,6 +2716,9 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type_ ast
 		}
 		'delete' {
 			c.fail_if_immutable(mut node.left)
+			if !node.left.is_lvalue() {
+				c.error('cannot pass expression as `mut`', node.left.pos())
+			}
 			if node.args.len != 1 {
 				c.error('expected 1 argument, but got ${node.args.len}', node.pos)
 			}
@@ -2790,6 +2796,9 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 					node.pos)
 			}
 			c.fail_if_immutable(mut node.left)
+			if !node.left.is_lvalue() {
+				c.error('cannot pass expression as `mut`', node.left.pos())
+			}
 		}
 		// position of `a` and `b` doesn't matter, they're the same
 		scope_register_a_b(mut node.scope, node.pos, elem_typ)
@@ -2944,12 +2953,18 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		node.return_type = array_info.elem_type
 		if method_name == 'pop' {
 			c.fail_if_immutable(mut node.left)
+			if !node.left.is_lvalue() {
+				c.error('cannot pass expression as `mut`', node.left.pos())
+			}
 			node.receiver_type = node.left_type.ref()
 		} else {
 			node.receiver_type = node.left_type
 		}
 	} else if method_name == 'delete' {
 		c.fail_if_immutable(mut node.left)
+		if !node.left.is_lvalue() {
+			c.error('cannot pass expression as `mut`', node.left.pos())
+		}
 		unwrapped_left_sym := c.table.sym(unwrapped_left_type)
 		if method := c.table.find_method(unwrapped_left_sym, method_name) {
 			node.receiver_type = method.receiver_type
