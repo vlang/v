@@ -16,7 +16,7 @@ import x.crypto.chacha20
 
 fn main() {
 	// example of random key
-	// you should make sure the key (and nonce) is random enough.
+	// you should make sure the key (and nonce) are random enough.
 	// The security guarantees of the ChaCha20 require that the same nonce
 	// value is never used twice with the same key.
 	key := hex.decode('bf32a829ebf86d23f6a32a74ef0333401e54a6b2900d35bfadef82c5d49da15f')!
