@@ -127,7 +127,7 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 		return res
 	}
 	code := error_code()
-	if code == int(error_ewouldblock) {
+	if code == int(error_ewouldblock) && c.is_blocking {
 		c.wait_for_read()!
 		res = $if is_coroutine ? {
 			wrap_read_result(C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout))!
