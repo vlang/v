@@ -74,6 +74,7 @@ fn (mut ws Client) shutdown_socket() ! {
 fn (mut ws Client) dial_socket() !&net.TcpConn {
 	tcp_address := '${ws.uri.hostname}:${ws.uri.port}'
 	mut t := net.dial_tcp(tcp_address)!
+	t.set_blocking(true)!
 	optval := int(1)
 	t.sock.set_option_int(.keep_alive, optval)!
 	t.set_read_timeout(ws.read_timeout)

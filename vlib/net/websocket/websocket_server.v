@@ -220,6 +220,7 @@ fn (mut s Server) setup_callbacks(mut sc ServerClient) {
 // accept_new_client creates a new client instance for client that connects to the socket
 fn (mut s Server) accept_new_client() !&Client {
 	mut new_conn := s.ls.accept()!
+	new_conn.set_blocking(true)!
 	c := &Client{
 		is_server: true
 		conn: new_conn
