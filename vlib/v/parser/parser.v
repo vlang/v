@@ -4043,6 +4043,13 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 	}
 }
 
+fn source_name(name string) string {
+	if token.is_key(name) {
+		return '@${name}'
+	}
+	return name
+}
+
 fn (mut p Parser) enum_decl() ast.EnumDecl {
 	p.top_level_statement_start()
 	is_pub := p.tok.kind == .key_pub
@@ -4107,6 +4114,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		next_comments := p.eat_comments()
 		fields << ast.EnumField{
 			name: val
+			source_name: source_name(val)
 			pos: pos
 			expr: expr
 			has_expr: has_expr
@@ -4154,7 +4162,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	isb.write_string('		val := unsafe{ ${enum_name}(input) }\n')
 	isb.write_string('		match val {\n')
 	for f in fields {
-		isb.write_string('			.${f.name} { return ${enum_name}.${f.name} }\n')
+		isb.write_string('			.${f.source_name} { return ${enum_name}.${f.source_name} }\n')
 	}
 	if is_flag {
 		isb.write_string('			else{}\n')
@@ -4165,7 +4173,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	isb.write_string('		val := input.str()\n') // TODO: this should not be needed, the `$if input is $string` above should have already smartcasted `input`
 	isb.write_string('		match val {\n')
 	for f in fields {
-		isb.write_string('			\'${f.name}\' { return ${enum_name}.${f.name} }\n')
+		isb.write_string('			\'${f.name}\' { return ${enum_name}.${f.source_name} }\n')
 	}
 	isb.write_string('			else{}\n')
 	isb.write_string('		}\n')
@@ -4174,7 +4182,11 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	isb.write_string('}\n')
 	isb.write_string('\n')
 	code_for_from_fn := isb.str()
-	// if p.mod == 'main' { dump(code_for_from_fn) }
+	$if debug_enumcodegen ? {
+		if p.mod == 'main' {
+			dump(code_for_from_fn)
+		}
+	}
 	p.codegen(code_for_from_fn)
 
 	idx := p.table.register_sym(ast.TypeSymbol{
