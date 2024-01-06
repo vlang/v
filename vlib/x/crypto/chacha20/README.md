@@ -12,7 +12,7 @@ Examples
 module main
 
 import encoding.hex
-import chacha20
+import x.crypto.chacha20
 
 fn main() {
 	// example of random key 
