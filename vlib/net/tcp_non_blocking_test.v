@@ -16,7 +16,7 @@ fn server_thread(mut server_ready_mtx Mutex, mut client_write_mtx Mutex) {
 		times++
 		time.sleep(1 * time.millisecond)
 		read_len := server.read_nb(mut buf) or {
-			if err.code() == net.error_ewouldblock {
+			if err.code() == int(net.error_ewouldblock) {
 				continue
 			} else {
 				panic(err)
