@@ -140,7 +140,7 @@ pub fn (mut c Cipher) free() {
 		return
 	}
 	unsafe {
-		free(c)
+		c.block.free()
 	}
 }
 
