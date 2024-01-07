@@ -93,6 +93,7 @@ const skip_test_files = [
 	'vlib/db/mysql/prepared_stmt_test.v', // mysql not installed
 	'vlib/db/pg/pg_orm_test.v', // pg not installed
 	'vlib/db/pg/pg_test.v', // pg not installed
+	'vlib/db/pg/pg_double_test.v', // pg not installed
 ]
 // These tests are too slow to be run in the CI on each PR/commit
 // in the sanitized modes:
@@ -368,6 +369,7 @@ fn main() {
 	}
 	testing.find_started_process('postgres') or {
 		tsession.skip_files << 'vlib/db/pg/pg_orm_test.v'
+		tsession.skip_files << 'vlib/db/pg/pg_double_test.v'
 	}
 
 	$if windows {
