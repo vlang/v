@@ -155,6 +155,37 @@ pub fn (c TcpConn) read(mut buf []u8) !int {
 	return c.read_ptr(buf.data, buf.len)!
 }
 
+// read_nb read data in non-blocking mode
+// return total bytes read
+// if no read data, it will return error: net.error_ewouldblock or net.WsaError.wsaewouldblock
+// Note: Calling .read_nb will set the connection to non-blocking mode
+pub fn (mut c TcpConn) read_nb(mut buf []u8) !int {
+	if c.is_blocking {
+		c.set_blocking(false)!
+	}
+	mut buf_ptr := &u8(buf.data)
+	len := buf.len
+	mut res := $if is_coroutine ? {
+		C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout)
+	} $else {
+		C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)
+	}
+	$if trace_tcp ? {
+		eprintln('<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} len: ${len} | res: ${res}')
+	}
+	if res > 0 {
+		$if trace_tcp_data_read ? {
+			eprintln(
+				'<<< TcpConn.read_ptr  | 1 data.len: ${res:6} | hex: ${unsafe { buf_ptr.vbytes(res) }.hex()} | data: ' +
+				unsafe { buf_ptr.vstring_with_len(res) })
+		}
+		return res
+	} else {
+		wrap_error(error_code())!
+	}
+	return error('none')
+}
+
 pub fn (mut c TcpConn) read_deadline() !time.Time {
 	if c.read_deadline.unix == 0 {
 		return c.read_deadline
@@ -209,6 +240,52 @@ pub fn (mut c TcpConn) write_ptr(b &u8, len int) !int {
 // write blocks and attempts to write all data
 pub fn (mut c TcpConn) write(bytes []u8) !int {
 	return c.write_ptr(bytes.data, bytes.len)
+}
+
+// write_nb write data in non-blocking mode
+// return total bytes sent
+// if write data blocked, it will return error: net.error_ewouldblock or net.WsaError.wsaewouldblock
+// Note: Calling .write_nb will set the connection to non-blocking mode
+pub fn (mut c TcpConn) write_nb(buf []u8) !int {
+	if c.is_blocking {
+		c.set_blocking(false)!
+	}
+	mut b := &u8(buf.data)
+	len := buf.len
+	$if trace_tcp_sock_handle ? {
+		eprintln('>>> TcpConn.write_ptr | c: ${ptr_str(c)} | c.sock.handle: ${c.sock.handle} | b: ${ptr_str(b)} | len: ${len}')
+	}
+	$if trace_tcp ? {
+		eprintln(
+			'>>> TcpConn.write_ptr | c.sock.handle: ${c.sock.handle} | b: ${ptr_str(b)} len: ${len} |\n' +
+			unsafe { b.vstring_with_len(len) })
+	}
+	$if trace_tcp_data_write ? {
+		eprintln(
+			'>>> TcpConn.write_ptr | data.len: ${len:6} | hex: ${unsafe { b.vbytes(len) }.hex()} | data: ' +
+			unsafe { b.vstring_with_len(len) })
+	}
+	unsafe {
+		mut ptr_base := &u8(b)
+		mut total_sent := 0
+		for total_sent < len {
+			ptr := ptr_base + total_sent
+			remaining := len - total_sent
+			mut sent := $if is_coroutine ? {
+				C.photon_send(c.sock.handle, ptr, remaining, msg_nosignal, c.write_timeout)
+			} $else {
+				C.send(c.sock.handle, ptr, remaining, msg_nosignal)
+			}
+			$if trace_tcp_data_write ? {
+				eprintln('>>> TcpConn.write_ptr | data chunk, total_sent: ${total_sent:6}, remaining: ${remaining:6}, ptr: ${voidptr(ptr):x} => sent: ${sent:6}')
+			}
+			if sent < 0 {
+				wrap_error(error_code())!
+			}
+			total_sent += sent
+		}
+		return total_sent
+	}
 }
 
 // write_string blocks and attempts to write all data
