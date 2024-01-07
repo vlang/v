@@ -2,15 +2,16 @@ import net
 import sync { Mutex }
 import time
 
-fn server_thread(mut mtx Mutex) {
+fn server_thread(mut server_ready_mtx Mutex, mut client_write_mtx Mutex) {
 	mut buf := []u8{len: 128}
 	mut times := 0
-	mut listener := net.listen_tcp(.ip, ':8901') or { panic(err) }
+	mut listener := net.listen_tcp(.ip, ':22444') or { panic(err) }
+	server_ready_mtx.unlock()
 	mut server := listener.accept() or { panic(err) }
 	server.read_nb(mut buf) or { // nothing can be read yet
 		assert err.code() == net.error_ewouldblock
 	}
-	mtx.@lock() // wait for the master thread write data
+	client_write_mtx.@lock() // wait for the client thread write data
 	for times < 10 {
 		times++
 		time.sleep(1 * time.millisecond)
@@ -29,11 +30,14 @@ fn server_thread(mut mtx Mutex) {
 }
 
 fn test_non_blocking_read() {
-	mut mtx := sync.new_mutex()
-	mtx.@lock()
-	server := spawn server_thread(mut mtx)
-	mut conn := net.dial_tcp('localhost:8901') or { panic(err) }
+	mut server_ready_mtx := sync.new_mutex()
+	mut client_write_mtx := sync.new_mutex()
+	client_write_mtx.@lock()
+	server_ready_mtx.@lock()
+	server := spawn server_thread(mut server_ready_mtx, mut client_write_mtx)
+	server_ready_mtx.@lock()
+	mut conn := net.dial_tcp('127.0.0.1:22444') or { panic(err) }
 	conn.write_nb('hello'.bytes()) or { panic(err) }
-	mtx.unlock()
+	client_write_mtx.unlock()
 	server.wait()
 }
