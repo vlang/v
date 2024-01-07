@@ -81,7 +81,7 @@ fn otk_key_gen(key []u8, nonce []u8) ![]u8 {
 
 	if nonce.len == x_nonce_size {
 		mut cnonce := nonce[16..].clone()
-		subkey := hchacha20(key, nonce[0..16])!
+		subkey := xchacha20(key, nonce[0..16])!
 		cnonce.prepend([u8(0x00), 0x00, 0x00, 0x00])
 		mut c := new_cipher(subkey, nonce)!
 		c.chacha20_block()

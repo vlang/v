@@ -9,10 +9,10 @@ import encoding.binary
 // HChaCha20 nonce size
 const h_nonce_size = 16
 
-// hchacha20 are intermediary step to build xchacha20 and initialized the same way as the ChaCha20 cipher,
-// except hchacha20 use a 128-bit (16 byte) nonce and has no counter to derive subkey
+// xchacha20 are intermediary step to build xchacha20 and initialized the same way as the ChaCha20 cipher,
+// except xchacha20 use a 128-bit (16 byte) nonce and has no counter to derive subkey
 // see https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-xchacha-03#section-2.2
-fn hchacha20(key []u8, nonce []u8) ![]u8 {
+fn xchacha20(key []u8, nonce []u8) ![]u8 {
 	// early bound check
 	if key.len != key_size {
 		return error('xchacha: Bad key size')
@@ -83,7 +83,7 @@ fn xchacha20_encrypt(key []u8, nonce []u8, plaintext []u8) ![]u8 {
 fn xchacha20_encrypt_with_counter(key []u8, nonce []u8, ctr u32, plaintext []u8) ![]u8 {
 	// bound check elimination
 	_ = nonce[x_nonce_size - 1]
-	subkey := hchacha20(key, nonce[0..16])!
+	subkey := xchacha20(key, nonce[0..16])!
 	mut cnonce := nonce[16..24].clone()
 
 	cnonce.prepend([u8(0x00), 0x00, 0x00, 0x00])

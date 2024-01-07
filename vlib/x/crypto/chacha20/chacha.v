@@ -21,7 +21,7 @@ const block_size = 64
 
 // vfmt off
 
-// magic constant of first of four words of ChaCha20 state
+// four constants of ChaCha20 state.
 const cc0 = u32(0x61707865) // expa
 const cc1 = u32(0x3320646e) // nd 3
 const cc2 = u32(0x79622d32) // 2-by
@@ -208,10 +208,10 @@ fn (mut c Cipher) do_rekey(key []u8, nonce []u8) ! {
 	mut nonces := nonce.clone()
 	mut keys := key.clone()
 
-	// if nonce's length is 24 bytes, we derive a new key and nonce with hchacha20 function
+	// if nonce's length is 24 bytes, we derive a new key and nonce with xchacha20 function
 	// and supplied to setup process.
 	if nonces.len == chacha20.x_nonce_size {
-		keys = hchacha20(keys, nonces[0..16])!
+		keys = xchacha20(keys, nonces[0..16])!
 		mut cnonce := []u8{len: chacha20.nonce_size}
 		_ := copy(mut cnonce[4..12], nonces[16..24])
 		nonces = cnonce.clone()
