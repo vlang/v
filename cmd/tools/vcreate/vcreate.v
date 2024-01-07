@@ -48,6 +48,21 @@ fn main() {
 			name: 'web'
 			description: 'Use the template for a vweb project.'
 		},
+		Flag{
+			flag: .string
+			name: 'description'
+			description: 'Description of the project.'
+		},
+		Flag{
+			flag: .string
+			name: 'license'
+			description: 'License of the project (e.g. MIT). Default: MIT'
+		},
+		Flag{
+			flag: .string
+			name: 'project_version'
+			description: 'Version of the project (e.g. 0.4.3). Default: 0.0.0'
+		},
 	]
 	mut cmd := Command{
 		flags: [
@@ -134,10 +149,16 @@ fn init_project(cmd Command) ! {
 		template: get_template(cmd)
 	}
 	dir_name := check_name(os.file_name(os.getwd()))
+
 	if !os.exists('v.mod') {
 		mod_dir_has_hyphens := dir_name.contains('-')
+
 		c.name = if mod_dir_has_hyphens { dir_name.replace('-', '_') } else { dir_name }
 		c.prompt(cmd.args)
+		c.description = get_description(cmd)
+		c.license = get_license(cmd)
+		c.version = get_version(cmd)
+
 		c.write_vmod()
 		if mod_dir_has_hyphens {
 			println('The directory name `${dir_name}` is invalid as a module name. The module name in `v.mod` was set to `${c.name}`')
@@ -169,17 +190,37 @@ fn (mut c Create) prompt(args []string) {
 			exit(3)
 		}
 	}
-	c.description = os.input('Input your project description: ')
-	default_version := '0.0.0'
-	c.version = os.input('Input your project version: (${default_version}) ')
-	if c.version == '' {
-		c.version = default_version
-	}
+
+}
+
+fn get_description(cmd Command) string {
+	mut description := cmd.flags.get_string('description') or { os.input('Input your project description: ') }
+
+	return description
+}
+
+fn get_license(cmd Command) string {
 	default_license := 'MIT'
-	c.license = os.input('Input your project license: (${default_license}) ')
-	if c.license == '' {
-		c.license = default_license
+
+	mut license := cmd.flags.get_string('license') or { os.input('Input the license of your project: ') }
+
+	if license == '' {
+		license = default_license
 	}
+
+	return license
+}
+
+fn get_version(cmd Command) string {
+	default_version := '0.0.0'
+
+	mut version := cmd.flags.get_string('project_version') or { os.input('Input the version of your project: ') }
+
+	if version == '' {
+		version = default_version
+	}
+
+	return version
 }
 
 fn get_template(cmd Command) Template {
