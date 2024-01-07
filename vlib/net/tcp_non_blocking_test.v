@@ -9,7 +9,7 @@ fn server_thread(mut server_ready_mtx Mutex, mut client_write_mtx Mutex) {
 	server_ready_mtx.unlock()
 	mut server := listener.accept() or { panic(err) }
 	server.read_nb(mut buf) or { // nothing can be read yet
-		assert err.code() == net.error_ewouldblock
+		assert err.code() == int(net.error_ewouldblock)
 	}
 	client_write_mtx.@lock() // wait for the client thread write data
 	for times < 10 {
