@@ -157,7 +157,7 @@ pub fn (c TcpConn) read(mut buf []u8) !int {
 
 // read_nb read data in non-blocking mode
 // return total bytes read
-// if no read data, it will return error: net.error_ewouldblock or net.WsaError.wsaewouldblock
+// if no read data, it will return error: net.error_ewouldblock
 // Note: Calling .read_nb will set the connection to non-blocking mode
 pub fn (mut c TcpConn) read_nb(mut buf []u8) !int {
 	if c.is_blocking {
@@ -244,7 +244,7 @@ pub fn (mut c TcpConn) write(bytes []u8) !int {
 
 // write_nb write data in non-blocking mode
 // return total bytes sent
-// if write data blocked, it will return error: net.error_ewouldblock or net.WsaError.wsaewouldblock
+// if write data blocked, it will return error: net.error_ewouldblock
 // Note: Calling .write_nb will set the connection to non-blocking mode
 pub fn (mut c TcpConn) write_nb(buf []u8) !int {
 	if c.is_blocking {
