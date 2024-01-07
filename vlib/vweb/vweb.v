@@ -240,26 +240,26 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	return true
 }
 
-// Response HTTP_OK with payload with content-type `text/html`
+// Response with payload and content-type `text/html`
 pub fn (mut ctx Context) html(payload string) Result {
 	ctx.send_response_to_client('text/html', payload)
 	return Result{}
 }
 
-// Response HTTP_OK with s as payload with content-type `text/plain`
+// Response with s as payload and content-type `text/plain`
 pub fn (mut ctx Context) text(s string) Result {
 	ctx.send_response_to_client('text/plain', s)
 	return Result{}
 }
 
-// Response HTTP_OK with json_s as payload with content-type `application/json`
+// Response with json_s as payload and content-type `application/json`
 pub fn (mut ctx Context) json[T](j T) Result {
 	json_s := json.encode(j)
 	ctx.send_response_to_client('application/json', json_s)
 	return Result{}
 }
 
-// Response HTTP_OK with a pretty-printed JSON result
+// Response with a pretty-printed JSON result
 pub fn (mut ctx Context) json_pretty[T](j T) Result {
 	json_s := json.encode_pretty(j)
 	ctx.send_response_to_client('application/json', json_s)
@@ -267,7 +267,7 @@ pub fn (mut ctx Context) json_pretty[T](j T) Result {
 }
 
 // TODO - test
-// Response HTTP_OK with file as payload
+// Response with file as payload
 pub fn (mut ctx Context) file(f_path string) Result {
 	if !os.exists(f_path) {
 		eprintln('[vweb] file ${f_path} does not exist')
@@ -289,8 +289,9 @@ pub fn (mut ctx Context) file(f_path string) Result {
 	return Result{}
 }
 
-// Response HTTP_OK with s as payload
+// Response with s as payload and sets the status code to HTTP_OK
 pub fn (mut ctx Context) ok(s string) Result {
+	ctx.set_status(200, 'OK')
 	ctx.send_response_to_client(ctx.content_type, s)
 	return Result{}
 }

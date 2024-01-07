@@ -1,10 +1,44 @@
 module conv
 
+union ConversionUnion {
+mut:
+	as_int64    u64
+	as_int32    u32
+	as_double64 f64
+	as_double32 f32
+}
+
 // htn64 - DON'T USE, use hton64 instead
 @[deprecated: 'use hton64() instead']
 @[deprecated_after: '2023-12-31']
 pub fn htn64(host u64) u64 {
 	return hton64(host)
+}
+
+// htonf32 converts the 32 bit double `host` to the net format
+pub fn htonf32(host f32) f32 {
+	$if little_endian {
+		mut convert := ConversionUnion{
+			as_double32: host
+		}
+		convert.as_int32 = unsafe { hton32(convert.as_int32) }
+		return unsafe { convert.as_double32 }
+	} $else {
+		return host
+	}
+}
+
+// htonf64 converts the 64 bit double `host` to the net format
+pub fn htonf64(host f64) f64 {
+	$if little_endian {
+		mut convert := ConversionUnion{
+			as_double64: host
+		}
+		convert.as_int64 = unsafe { hton64(convert.as_int64) }
+		return unsafe { convert.as_double64 }
+	} $else {
+		return host
+	}
 }
 
 // hton64 converts the 64 bit value `host` to the net format (htonll)

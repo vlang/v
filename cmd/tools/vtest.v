@@ -138,6 +138,9 @@ fn (mut ctx Context) should_test(path string, backend string) ShouldTestStatus {
 	if path.ends_with('pg_orm_test.v') {
 		testing.find_started_process('postgres') or { return .skip }
 	}
+	if path.ends_with('pg_double_test.v') {
+		testing.find_started_process('postgres') or { return .skip }
+	}
 	if path.ends_with('onecontext_test.v') {
 		return .skip
 	}
