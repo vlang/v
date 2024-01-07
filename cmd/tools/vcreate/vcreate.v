@@ -190,11 +190,12 @@ fn (mut c Create) prompt(args []string) {
 			exit(3)
 		}
 	}
-
 }
 
 fn get_description(cmd Command) string {
-	mut description := cmd.flags.get_string('description') or { os.input('Input your project description: ') }
+	mut description := cmd.flags.get_string('description') or {
+		os.input('Input your project description: ')
+	}
 
 	return description
 }
@@ -202,7 +203,9 @@ fn get_description(cmd Command) string {
 fn get_license(cmd Command) string {
 	default_license := 'MIT'
 
-	mut license := cmd.flags.get_string('license') or { os.input('Input the license of your project: ') }
+	mut license := cmd.flags.get_string('license') or {
+		os.input('Input the license of your project: ')
+	}
 
 	if license == '' {
 		license = default_license
@@ -214,7 +217,9 @@ fn get_license(cmd Command) string {
 fn get_version(cmd Command) string {
 	default_version := '0.0.0'
 
-	mut version := cmd.flags.get_string('project_version') or { os.input('Input the version of your project: ') }
+	mut version := cmd.flags.get_string('project_version') or {
+		os.input('Input the version of your project: ')
+	}
 
 	if version == '' {
 		version = default_version
