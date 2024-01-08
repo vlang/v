@@ -8,6 +8,8 @@ $if js_node {
 
 pub const path_delimiter = get_path_delimiter()
 pub const path_separator = get_path_separator()
+pub const path_devnull = '/dev/null' // TODO
+
 pub const args = []string{}
 
 const executable_suffixes = ['']
