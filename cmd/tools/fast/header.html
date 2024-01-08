@@ -49,6 +49,20 @@ table td:nth-child(3) {
 .equal {
 	background-color: rgb(113, 68, 172);
 }
+
+table {
+        counter-reset: rowNumber -1;
+}
+table tr {
+        counter-increment: rowNumber;
+}
+table tr td:first-child::after {
+        position: absolute;
+        top: -1px;
+        right: 0px;
+        content: counter(rowNumber);
+        font-size: 10px;
+}
 </style>
 </head>
 <body>
