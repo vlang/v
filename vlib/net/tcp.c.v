@@ -323,7 +323,7 @@ pub fn (mut l TcpListener) accept() !&TcpConn {
 // See also vlib/vweb/vweb.v .
 //
 // If you do not need that, just call `.accept()!` instead, which will call
-// `.set_sock()!` for you.
+// `.set_sock()!` and `.set_blocking(true)` for you.
 pub fn (mut l TcpListener) accept_only() !&TcpConn {
 	$if trace_tcp ? {
 		eprintln('    TcpListener.accept | l.sock.handle: ${l.sock.handle:6}')

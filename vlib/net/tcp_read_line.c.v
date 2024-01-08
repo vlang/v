@@ -19,7 +19,7 @@ pub fn (mut con TcpConn) get_blocking() bool {
 // set_blocking will change the state of the connection to either blocking,
 // when state is true, or non blocking (false).
 // The default for `net` tcp connections is the non blocking mode.
-// Calling .read_line will set the connection to blocking mode.
+// Calling .read_line, .accept, .dial_tcp, .dial_tcp_with_bind will set the connection to blocking mode.
 pub fn (mut con TcpConn) set_blocking(state bool) ! {
 	con.is_blocking = state
 	$if windows {
