@@ -2559,7 +2559,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		got_deref_type := got_type.deref()
 		deref_sym := g.table.sym(got_deref_type)
 		deref_will_match := expected_type in [got_type, got_deref_type, deref_sym.parent_idx]
-		got_is_opt_or_res := got_type.has_any_flag(.option, .result)
+		got_is_opt_or_res := got_type.has_option_or_result()
 		if deref_will_match || got_is_opt_or_res || expr.is_auto_deref_var() {
 			g.write('*')
 		}
@@ -3701,7 +3701,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 
 	// if node expr is a root ident and an optional
-	mut is_opt_or_res := node.expr is ast.Ident && node.expr_type.has_any_flag(.option, .result)
+	mut is_opt_or_res := node.expr is ast.Ident && node.expr_type.has_option_or_result()
 	if is_opt_or_res {
 		opt_base_typ := g.base_type(node.expr_type)
 		g.write('(*(${opt_base_typ}*)')
@@ -4956,7 +4956,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	mut fn_ret_type := g.fn_decl.return_type
 	if sym.kind == .alias {
 		unaliased_type := g.table.unaliased_type(fn_ret_type)
-		if unaliased_type.has_any_flag(.option, .result) {
+		if unaliased_type.has_option_or_result() {
 			fn_ret_type = unaliased_type
 		}
 	}
@@ -6520,7 +6520,7 @@ fn c_fn_name(name_ string) string {
 
 fn (mut g Gen) type_default(typ_ ast.Type) string {
 	typ := g.unwrap_generic(typ_)
-	if typ.has_any_flag(.option, .result) {
+	if typ.has_option_or_result() {
 		return '{0}'
 	}
 	// Always set pointers to 0

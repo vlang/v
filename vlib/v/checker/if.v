@@ -381,7 +381,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						node.is_expr = true
 						node.typ = c.expected_type
 					}
-					if c.expected_type.has_any_flag(.option, .result) {
+					if c.expected_type.has_option_or_result() {
 						if node.typ == ast.void_type {
 							node.is_expr = true
 							node.typ = c.expected_type
@@ -447,7 +447,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						if is_noreturn_callexpr(stmt.expr) {
 							continue
 						}
-						if (node.typ.has_any_flag(.option, .result))
+						if (node.typ.has_option_or_result())
 							&& c.table.sym(stmt.typ).kind == .struct_
 							&& c.type_implements(stmt.typ, ast.error_type, node.pos) {
 							stmt.expr = ast.CastExpr{

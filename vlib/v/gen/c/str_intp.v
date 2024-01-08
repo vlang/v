@@ -13,7 +13,7 @@ import v.ast
 import v.util
 
 fn (mut g Gen) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
-	if ftyp.has_any_flag(.option, .result) {
+	if ftyp.has_option_or_result() {
 		return `s`
 	} else if typ.is_float() {
 		return `g`
@@ -38,7 +38,7 @@ fn (mut g Gen) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 		}
 		if ftyp in [ast.string_type, ast.bool_type]
 			|| sym.kind in [.enum_, .array, .array_fixed, .struct_, .map, .multi_return, .sum_type, .interface_, .none_]
-			|| ftyp.has_any_flag(.option, .result) || sym.has_method('str') {
+			|| ftyp.has_option_or_result() || sym.has_method('str') {
 			return `s`
 		} else {
 			return `_`

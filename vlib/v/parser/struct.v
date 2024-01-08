@@ -248,7 +248,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 					return ast.StructDecl{}
 				}
 				field_pos = field_start_pos.extend(p.prev_tok.pos())
-				if typ.has_any_flag(.option, .result) {
+				if typ.has_option_or_result() {
 					option_pos = p.peek_token(-2).pos()
 				}
 			}
