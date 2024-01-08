@@ -226,3 +226,10 @@ fn test_contains_zero_characters() {
 	assert str.len == 7
 	assert str == 'abc\0abc'
 }
+
+// for issue: 20432
+// non-ascii escape was lost
+fn test_interpo_non_ascii_characters() {
+	hello := '你好'
+	assert '${hello},世界！' == '你好,世界！'
+}
