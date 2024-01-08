@@ -332,6 +332,7 @@ pub fn listen_tcp(family AddrFamily, saddr string, options ListenOptions) !&TcpL
 pub fn (mut l TcpListener) accept() !&TcpConn {
 	mut res := l.accept_only()!
 	res.set_sock()!
+	res.set_blocking(true)!
 	return res
 }
 
@@ -376,7 +377,6 @@ pub fn (mut l TcpListener) accept_only() !&TcpConn {
 		read_timeout: net.tcp_default_read_timeout
 		write_timeout: net.tcp_default_write_timeout
 	}
-	conn.set_blocking(true)!
 	return conn
 }
 
