@@ -150,8 +150,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			}
 		}
 
-		if !g.inside_call && node.or_block.kind != .block
-			&& (m.return_type.has_flag(.option) || m.return_type.has_flag(.result)) {
+		if !g.inside_call && node.or_block.kind != .block && m.return_type.has_option_or_result() {
 			g.write('(*(${g.base_type(m.return_type)}*)')
 		}
 		// TODO: check argument types
@@ -212,12 +211,10 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			}
 		}
 		g.write(')')
-		if !g.inside_call && node.or_block.kind != .block
-			&& (m.return_type.has_flag(.option) || m.return_type.has_flag(.result)) {
+		if !g.inside_call && node.or_block.kind != .block && m.return_type.has_option_or_result() {
 			g.write('.data)')
 		}
-		if node.or_block.kind != .absent
-			&& (m.return_type.has_flag(.option) || m.return_type.has_flag(.result)) {
+		if node.or_block.kind != .absent && m.return_type.has_option_or_result() {
 			if !g.inside_assign {
 				cur_line := g.go_before_last_stmt()
 				tmp_var := g.new_tmp_var()
@@ -304,7 +301,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 		}
 	}
 	tmp_var := g.new_tmp_var()
-	is_opt_or_result := node.typ.has_flag(.option) || node.typ.has_flag(.result)
+	is_opt_or_result := node.typ.has_option_or_result()
 	line := if node.is_expr {
 		stmt_str := g.go_before_last_stmt()
 		g.write(util.tabs(g.indent))
