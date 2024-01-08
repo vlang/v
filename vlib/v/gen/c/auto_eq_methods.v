@@ -205,6 +205,9 @@ fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
 			left_arg := g.read_field(left_type, field_name, 'a')
 			right_arg := g.read_field(left_type, field_name, 'b')
 
+			if field.typ.has_flag(.option) {
+				fn_builder.write_string('(${left_arg}.state == ${right_arg}.state && ${right_arg}.state == 2 || ')
+			}
 			if field_type.sym.kind == .string {
 				if field.typ.has_flag(.option) {
 					left_arg_opt := g.read_opt_field(left_type, field_name, 'a', field.typ)
@@ -241,9 +244,12 @@ fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
 				eq_fn := g.gen_interface_equality_fn(field.typ)
 				fn_builder.write_string('${eq_fn}_interface_eq(${ptr}${left_arg}, ${ptr}${right_arg})')
 			} else if field.typ.has_flag(.option) {
-				fn_builder.write_string('${left_arg}.state == ${right_arg}.state && !memcmp(&${left_arg}.data, &${right_arg}.data, sizeof(${g.base_type(field.typ)}))')
+				fn_builder.write_string('!memcmp(&${left_arg}.data, &${right_arg}.data, sizeof(${g.base_type(field.typ)}))')
 			} else {
 				fn_builder.write_string('${left_arg} == ${right_arg}')
+			}
+			if field.typ.has_flag(.option) {
+				fn_builder.write_string(')')
 			}
 		}
 	} else {
