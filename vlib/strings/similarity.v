@@ -1,5 +1,10 @@
 module strings
 
+@[inline]
+fn imin(x u16, y u16) u16 {
+	return if x < y { x } else { y }
+}
+
 // levenshtein_distance uses the Levenshtein Distance algorithm to calculate
 // the distance between between two strings `a` and `b` (lower is closer).
 @[direct_array_access]
@@ -13,24 +18,24 @@ pub fn levenshtein_distance(a string, b string) int {
 	if a == b {
 		return 0
 	}
-	mut f := []int{len: b.len + 1, init: index}
-	for ca in a {
-		mut j := 1
-		mut fj1 := f[0]
-		f[0]++
-		for cb in b {
-			mut mn := if f[j] + 1 <= f[j - 1] + 1 { f[j] + 1 } else { f[j - 1] + 1 }
-			if cb != ca {
-				mn = if mn <= fj1 + 1 { mn } else { fj1 + 1 }
-			} else {
-				mn = if mn <= fj1 { mn } else { fj1 }
+
+	mut row := []u16{len: a.len + 1, init: u16(index)}
+
+	for i := 1; i < b.len; i++ {
+		mut prev := u16(i)
+		for j := 1; j < a.len; j++ {
+			mut current := row[j - 1] // match
+			if b[i - 1] != a[j - 1] {
+				// insertion, substitution, deletion
+				current = imin(imin(row[j - 1] + 1, prev + 1), row[j] + 1)
 			}
-			fj1 = f[j]
-			f[j] = mn
-			j++
+			row[j - 1] = prev
+			prev = current
 		}
+		row[a.len] = prev
 	}
-	return f[f.len - 1]
+
+	return row[a.len]
 }
 
 // levenshtein_distance_percentage uses the Levenshtein Distance algorithm to calculate
