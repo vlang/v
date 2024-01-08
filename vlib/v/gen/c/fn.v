@@ -628,6 +628,7 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 			g.definitions.write_string(')')
 			fparams << caname
 			fparamtypes << param_type_name
+			heap_promoted << false
 		} else {
 			mut heap_prom := false
 			if scope != unsafe { nil } {
