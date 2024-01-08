@@ -2,11 +2,18 @@ module strings
 
 // levenshtein_distance uses the Levenshtein Distance algorithm to calculate
 // the distance between between two strings `a` and `b` (lower is closer).
+@[direct_array_access]
 pub fn levenshtein_distance(a string, b string) int {
-	mut f := [0].repeat(b.len + 1)
-	for j in 0 .. f.len {
-		f[j] = j
+	if a.len == 0 {
+		return b.len
 	}
+	if b.len == 0 {
+		return a.len
+	}
+	if a == b {
+		return 0
+	}
+	mut f := []int{len: b.len + 1, init: index}
 	for ca in a {
 		mut j := 1
 		mut fj1 := f[0]
