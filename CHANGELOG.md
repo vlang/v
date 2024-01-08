@@ -1,3 +1,169 @@
+## V 0.4.4
+*8 January 2024*
+
+#### Improvements in the language
+- Unwrap const() blocks
+- Implement $for comptime T.variants (#20193)
+- Add `r` and `R` switches for repeating in string interpolation, `'${"abc":3r}'` == 'abcabcabc' (#20197)
+- Comptime refactor and cleanup (#20196)
+- Allow comptime-for to iterate over comptime variables, add `$string` comptime type, cleanup (#20233)
+- Unwrap an option value automatically, inside `if o != none {` (#20275)
+- Complete support for smartcasting to a comptime variable type (#20270)
+- Improve comptime var checking with `is` operator and smartcasting (#20315)
+
+#### Breaking changes
+
+#### Checker improvements/fixes
+- Disallow casting strings to pointers outside `unsafe` (#19977)
+- Disallow directly indexing sumtype and interface, when using as parameters(fix #19811) (#19982)
+- Fix loop on aggregates of arrays (in match branches) of sumtypes (fix #18548) (#19988)
+- Disallow indexing mut struct, passed as a fn parameter (#19992)
+- Enhance err msg for unknown types for comptime `$for` (#20057)
+- Fix .clone()/.move() with shared maps (#20083)
+- Fix generics method call with struct short syntax args(fix #20030) (#20100)
+- Fix unwrap, when generic structs are used as arguments, in uncalled methods (fix #20132) (#20135)
+- Fix generic fn with generic fn call returning generic map (fix #20106) (#20150)
+- Cast sumtype to its variant generic type (#20166)
+- Refactor `string` to `enum` error check, handle `EnumName(string_variable)` too (#20210)
+- Fix generic array method call with multi-types (#20237)
+- Remove unnecessary struct ref field initialization checks and notifications at map initializing(fix #20245) (#20251)
+- Add a notice, for accessing by key, map values, that contain pointers (to use unsafe or an `or {}` block) (#20266)
+- Fix mismatch checking when a function returns sumtype as an argument (fix #19325) (#20264)
+- Fix and cleanup uninitialized checks for array initialisers with `len:` (fix #20272) (#20279)
+- Give an error for `.free()` method calls, when used on fixed arrays  (#20320)
+- Fix type mismatch checking for assignments with generics (fix #20298) (#20327)
+- Fix too strict checking with generics in assignment type mismatch (fix #20335) (#20346)
+- Disallow `string` to `voidptr` cast entirely (#20351)
+- Fix generic method calls with multi generic types (fix #20330) (#20360)
+
+#### Parser improvements
+- parser: fix infix expr handling with cast on left side of << operator (#19985)
+- ast: fix generic structs with multiple levels of generic embedding (#20042)
+- parser: implement thread returns result and multi_returns (fix #19281) (#20194)
+- parser: fix formatting struct decl with comments (#20207)
+- parser: fix formatting enum and interface decl with comments (#20216)
+- parser: fix fn call with newline opening brace (fix #20258) (#20267)
+- parser: fix parse_vet_file() with vfmt off/on flag (#20273)
+
+#### Compiler internals
+- scanner: add new_silent_scanner/0, Scanner.prepare_for_new_text/1, make .ident_char/0, .ident_string/0 and .text_scan/0 public (#20045)
+- pref: support VNORUN=1, to enable running of tests, vsh files etc (i.e. just compile them, for debugging later)
+- scanner: fix backslashes followed directly by newline in string literals (fix #20291) (#20296)
+- scanner: fix escape character handling in character/rune literals (fix #20301) (#20304)
+- pref: disable the -macosx_version_min clang flag by default (#20297)
+- builder: remove passing `-fno-strict-aliasing`, for `-prod` to gcc/icc (#20368)
+
+#### Standard library
+- datatypes: add push_many for doubly and singly linked list + add insert_many for heap (#19975)
+- datatypes: make `Direction` pub and fix and add tests for `push_many` (#19983)
+- gg: fn (data voidptr, e &Event) for events, allows methods
+- vlib: add a `compress.szip` module, deprecate the `szip` one after 2023-12-31 (#20003)
+- os: create the folder described by `XDG_CACHE_HOME`, *if it is non empty, and it does not exist yet*, when calling `os.cache_dir()` (#20046)
+- vlib: use the builtin flush functions, instead of the C. ones (#20108)
+- crypto: add blake2s and blake2b hashes (#20149)
+- os: fix `mv_by_cp` for directories (#20154)
+- os: update mv fns, improve performance, add params struct to control overwrite behavior (#20156)
+- gg: fix overlapping slices in `draw_slice_filled()` (#20182)
+- json: fix option sumtype handling (#20186)
+- builtin: add `@[direct_array_access]` to js string trim_right method (#20222)
+- json2: add encoder support for `time.Time`  (#20228)
+- json2: fix encoding of 💀🐈 etc emojis (fix #20243) (#20247)
+- json2: make public the generic function `map_from/1` (#20294)
+- json2: optimise encoding to be faster than cJSON with -prod (#20052)
+- json2: support sumtype encoding in a more robust way (#20093)
+- json2: strict module (#17927)
+- crypto: fix notices/errors for `v -N test vlib/crypto`
+- crypto: add blake3 hash (#20319)
+- sokol: fix compiling gg and other graphical examples on OpenBSD (#20333)
+- csv: Add a sequential reader too (suitable for very large .csv files, it does not read everything at once) (#20140)
+
+#### Web
+- vweb: .html('custom_template.html')
+- vweb: add an optional parameter to the .redirect/2 method, to be able to set the http code for the redirects (#20082)
+- x.vweb: fix large payload (#20155)
+- x.vweb: reimplement csrf module (#20160)
+- net: make net.fionbio and net.msg_nosignal constants public in net_windows.c.v (#20183)
+- net.http: remove unused `read_set_cookies` function (#20187)
+- os, net.http.file: add a folder listing to the http static file server, started by file.serve/1 (#20192)
+- websocket: enable using an already existing connection (from vweb or another http server) (#20103)
+- x.vweb: fix fsanitize-address test for SSE, improve documentation on the usage of `takeover_conn` (#20249)
+- net.http: support `-d no_vschannel` on windows, to fix long waits, while connecting on some systems (#20265)
+- x.vweb: fix `$vweb.html()` integration in cgen for the newer `x.vweb` module (fix #20204)
+- net: support only ip and ip6 in net.tcp_listener (#20336)
+
+#### ORM
+- orm: fix code generation for an option time.Time field (#20031)
+- orm: fix the generated SQL for the "not equal" operator (#20321)
+
+#### Database drivers
+- db.mysql: add support for the FreeBSD name of the mariadb client library (#20039)
+- db.pg: fix using postgresql on windows, improve instructions for installing it (#20053)
+- db.mysql: add ability to prepare and execute statements separately (#20146)
+- db.pg: fix compilation error with the msvc compiler on windows, and add readme (#20326)
+
+#### Native backend
+
+#### C backend
+- Fix generics call with interface arg (fix #19976) (#20002)
+- Fix lambda initialization on option struct field (fix #19474) (#19995)
+- Fix live mode on windows (#20041)
+- Fix the static from_string method of Enum across mods(fix #20050) (#20068)
+- Fix `@[if xyz?] fn init() {}`, add tests (#20096)
+- Fix assignment to the elements of an array of fixed arrays (#20133)
+- Fix mutable comptimeselector usage (fix #20027) (#20134)
+- Fix generics chans select (#20159)
+- Fix string interp with zero characters (fix #20199) (#20200)
+- Fix interface eq method with option and ref (fix #19441) (#20201)
+- Fix infix expr in method of mut receiver variable (#20225)
+- Fix cgen for thread wrappers, when spawning fns with with anon-fn array args and mut interfaces (fix #19425) (#20241)
+- Fix fixed array return when returning fixed array initialization (#20262)
+- Fix function generated code, when returning from match (#20263)
+- Fix in expression with mut and ref (fix #20268) (#20271)
+- Fix initialization of const string arrays on msvc (fix #20287) (#20289)
+- Fix code generation when 'in array init' is used as an if condition (fix #20300) (#20302)
+- Escape table names (fix #20313) (#20322)
+- Add missing clear method for generic maps (#20340)
+- Fix auto unwrapping option fn type (#20332)
+- Fix option initialization with default struct initialization to not be `none` (#20349)
+- Fix auto str for arr options with possible circular reference (#20354)
+- Fix code generation when the function returns mut fixed array (fix #20366) (#20367)
+
+#### vfmt
+- vfmt: remove empty `__global()` (#20004)
+
+#### Tools
+- tools.vpm: evaluate dependencies earlier to fix potential recursive install loop (#19987)
+- tools.vpm: add support for ssh and hg version installations (#20125)
+- tools: simplify and remove redundancies in vshader.v (#20161)
+- ci: add new workflow, for doing the slower tests in vpm specifically with `-d network` (#20177)
+- tools.vpm: improve detection of already parsed modules (#20223)
+- scanner: change `-d debugscanner` to `-d trace_scanner` for uniformity with the other tracing options, described in CONTRIBUTING.md
+- v.pref: support a `-n` option, silencing only notices (#20331)
+- ci: add vsql to v_apps_and_modules_compile_ci.yml too (#20341)
+- ci: fix the workflow for Vinix, using the rules in its own .yml file (#20371)
+- Support -? as alias to -help (implement #20355) (#20358)
+- vdoc: filter testdata and tests folders by default, reduce filesystem stats calls
+
+#### Operating System support
+- os: small cleanup in the FreeBSD branch of os.executable/0: use fixed array for the sysctl params, instead of allocating a dynamic one (#20353)
+- os: improve os.executable() on OpenBSD (#20356)
+- v.util.diff: support OpenBSD's default `diff` tool (#20369)
+- os: fix os.open_file/3 `wb` mode creation of text files containing crlf on Windows (#20101)
+- os: fix File.tell for files > 2GB on windows, by using C._telli64(f.fd) (#20072)
+
+#### Examples
+- examples: show how to turn on CORS in a vweb server app
+- examples: serve the wasm mandelbrot project using a v web server (#19937)
+- examples: increase the resolution of the generated image in examples/wasm/mandelbrot
+- docs: update null convention in ORM example, since `@[nonull]` is no longer needed (#20286)
+- docs: add an example of a nullable ORM field (#20292)
+- example: add a path finding algorithm visualizer using gg (#20060)
+- examples: add an even smaller gg usage example, demonstrating how to always show the builtin fps counter, and how to avoid importing gx
+
+
+
+
+
 ## V 0.4.3
 *11 November 2023*
 

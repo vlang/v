@@ -232,6 +232,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				c.error('Result type argument is not supported currently', param.type_pos)
 			}
 			arg_typ_sym := c.table.sym(param.typ)
+			pure_sym_name := arg_typ_sym.embed_name()
 			if arg_typ_sym.info is ast.Struct {
 				if !param.typ.is_ptr() && arg_typ_sym.info.is_heap { // set auto_heap to promote value parameter
 					mut v := node.scope.find_var(param.name) or { continue }
@@ -239,19 +240,19 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				}
 				if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
 					&& arg_typ_sym.info.concrete_types.len == 0 {
-					c.error('generic struct `${arg_typ_sym.name}` in fn declaration must specify the generic type names, e.g. ${arg_typ_sym.name}[T]',
+					c.error('generic struct `${pure_sym_name}` in fn declaration must specify the generic type names, e.g. ${pure_sym_name}[T]',
 						param.type_pos)
 				}
 			} else if arg_typ_sym.info is ast.Interface {
 				if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
 					&& arg_typ_sym.info.concrete_types.len == 0 {
-					c.error('generic interface `${arg_typ_sym.name}` in fn declaration must specify the generic type names, e.g. ${arg_typ_sym.name}[T]',
+					c.error('generic interface `${pure_sym_name}` in fn declaration must specify the generic type names, e.g. ${pure_sym_name}[T]',
 						param.type_pos)
 				}
 			} else if arg_typ_sym.info is ast.SumType {
 				if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
 					&& arg_typ_sym.info.concrete_types.len == 0 {
-					c.error('generic sumtype `${arg_typ_sym.name}` in fn declaration must specify the generic type names, e.g. ${arg_typ_sym.name}[T]',
+					c.error('generic sumtype `${pure_sym_name}` in fn declaration must specify the generic type names, e.g. ${pure_sym_name}[T]',
 						param.type_pos)
 				}
 			}
@@ -1715,7 +1716,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	mut unknown_method_msg := if field := c.table.find_field(left_sym, method_name) {
 		'unknown method `${field.name}` did you mean to access the field with the same name instead?'
 	} else {
-		'unknown method or field: `${left_sym.name}.${method_name}`'
+		name := left_sym.symbol_name_except_generic().replace_each(['<', '[', '>', ']'])
+		'unknown method or field: `${name}.${method_name}`'
 	}
 	if left_type.has_flag(.option) && method_name != 'str' {
 		c.error('Option type cannot be called directly', node.left.pos())
@@ -1740,8 +1742,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	}
 	if final_left_sym.kind == .array {
 		if array_builtin_methods_chk.matches(method_name) && (left_sym.kind == .array
-			|| (left_sym.kind == .alias && method_name != 'clone'
-			&& !left_sym.has_method(method_name))) {
+			|| (left_sym.kind == .alias && !left_sym.has_method(method_name))) {
 			return c.array_builtin_method_call(mut node, left_type)
 		} else if method_name in ['insert', 'prepend'] {
 			if method_name == 'insert' {
@@ -1903,7 +1904,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					node.pos)
 			}
 			if left_sym.kind == .array_fixed {
-				c.error('unknown method or field: ${left_sym.name}.free()', node.pos)
+				name := left_sym.symbol_name_except_generic().replace_each(['<', '[', '>', ']'])
+				c.error('unknown method or field: ${name}.free()', node.pos)
 			}
 			return ast.void_type
 		}
@@ -2026,6 +2028,12 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			if rec_is_generic && node.concrete_types.len == 0
 				&& method.generic_names.len == rec_sym.info.generic_types.len {
 				node.concrete_types = rec_sym.info.generic_types
+			} else if rec_is_generic && node.concrete_types.len > 0
+				&& method.generic_names.len > node.concrete_types.len
+				&& rec_sym.info.generic_types.len + node.concrete_types.len == method.generic_names.len {
+				t_concrete_types := node.concrete_types.clone()
+				node.concrete_types = rec_sym.info.generic_types
+				node.concrete_types << t_concrete_types
 			} else if !rec_is_generic && rec_sym.info.concrete_types.len > 0
 				&& node.concrete_types.len > 0
 				&& rec_sym.info.concrete_types.len + node.concrete_types.len == method.generic_names.len {
@@ -2058,10 +2066,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			node.pos)
 	}
 	if method.params[0].is_mut {
-		to_lock, pos := c.fail_if_immutable(mut node.left)
-		if !node.left.is_lvalue() {
-			c.error('cannot pass expression as `mut`', node.left.pos())
-		}
+		to_lock, pos := c.check_for_mut_receiver(mut node.left)
 		// node.is_mut = true
 		if to_lock != '' && rec_share != .shared_t {
 			c.error('${to_lock} is `shared` and must be `lock`ed to be passed as `mut`',
@@ -2676,7 +2681,7 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type_ ast
 				c.error('`.${method_name}()` does not have any arguments', node.args[0].pos)
 			}
 			if method_name[0] == `m` {
-				c.fail_if_immutable(mut node.left)
+				c.check_for_mut_receiver(mut node.left)
 			}
 			if node.left.is_auto_deref_var() || left_type.has_flag(.shared_f) {
 				ret_type = node.left_type.deref()
@@ -2704,7 +2709,7 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type_ ast
 			}
 		}
 		'delete' {
-			c.fail_if_immutable(mut node.left)
+			c.check_for_mut_receiver(mut node.left)
 			if node.args.len != 1 {
 				c.error('expected 1 argument, but got ${node.args.len}', node.pos)
 			}
@@ -2781,7 +2786,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 				c.error('the `sort()` method can be called only on mutable receivers, but `${node.left}` is a call expression',
 					node.pos)
 			}
-			c.fail_if_immutable(mut node.left)
+			c.check_for_mut_receiver(mut node.left)
 		}
 		// position of `a` and `b` doesn't matter, they're the same
 		scope_register_a_b(mut node.scope, node.pos, elem_typ)
@@ -2935,13 +2940,13 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		}
 		node.return_type = array_info.elem_type
 		if method_name == 'pop' {
-			c.fail_if_immutable(mut node.left)
+			c.check_for_mut_receiver(mut node.left)
 			node.receiver_type = node.left_type.ref()
 		} else {
 			node.receiver_type = node.left_type
 		}
 	} else if method_name == 'delete' {
-		c.fail_if_immutable(mut node.left)
+		c.check_for_mut_receiver(mut node.left)
 		unwrapped_left_sym := c.table.sym(unwrapped_left_type)
 		if method := c.table.find_method(unwrapped_left_sym, method_name) {
 			node.receiver_type = method.receiver_type
@@ -2949,6 +2954,14 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		node.return_type = ast.void_type
 	}
 	return node.return_type
+}
+
+fn (mut c Checker) check_for_mut_receiver(mut expr ast.Expr) (string, token.Pos) {
+	to_lock, pos := c.fail_if_immutable(mut expr)
+	if !expr.is_lvalue() {
+		c.error('cannot pass expression as `mut`', expr.pos())
+	}
+	return to_lock, pos
 }
 
 fn scope_register_it(mut s ast.Scope, pos token.Pos, typ ast.Type) {

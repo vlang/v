@@ -628,6 +628,7 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 			g.definitions.write_string(')')
 			fparams << caname
 			fparamtypes << param_type_name
+			heap_promoted << false
 		} else {
 			mut heap_prom := false
 			if scope != unsafe { nil } {
@@ -825,6 +826,10 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 					&& node.or_block.kind in [.propagate_option, .propagate_result] {
 					unwrapped_styp = g.typ(g.assign_ct_type.derive(node.return_type).clear_flags(.option,
 						.result))
+				}
+				if g.table.sym(node.return_type).kind == .array_fixed
+					&& unwrapped_styp.starts_with('_v_') {
+					unwrapped_styp = unwrapped_styp[3..]
 				}
 				g.write('\n ${cur_line} (*(${unwrapped_styp}*)${tmp_opt}.data)')
 			} else {
@@ -1368,7 +1373,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 		g.get_free_method(rec_type)
 	}
-	mut has_cast := false
+	mut cast_n := 0
 
 	receiver_type_name = g.resolve_receiver_name(node, unwrapped_rec_type, final_left_sym,
 		left_sym, typ_sym)
@@ -1376,7 +1381,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		&& node.name in ['clear', 'repeat', 'sort_with_compare', 'sorted_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice', 'pointers'] {
 		if node.name in ['last', 'first', 'pop'] {
 			return_type_str := g.typ(node.return_type)
-			has_cast = true
+			cast_n++
 			g.write('(*(${return_type_str}*)')
 		}
 	}
@@ -1481,7 +1486,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		if !is_range_slice {
 			if !node.left.is_lvalue() {
 				g.write('ADDR(${rec_cc_type}, ')
-				has_cast = true
+				cast_n++
 			} else if !is_array_method_first_last_repeat && !(left_type.has_flag(.shared_f)
 				&& left_type == node.receiver_type) {
 				g.write('&')
@@ -1588,8 +1593,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.write('->val')
 		}
 	}
-	if has_cast {
-		g.write(')')
+	if cast_n > 0 {
+		g.write(')'.repeat(cast_n))
 	}
 	is_variadic := node.expected_arg_types.len > 0
 		&& node.expected_arg_types.last().has_flag(.variadic)
@@ -1602,6 +1607,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	g.write(')')
 	if node.return_type != 0 && !node.return_type.has_flag(.option)
+		&& !node.return_type.has_flag(.result)
 		&& g.table.final_sym(node.return_type).kind == .array_fixed {
 		// it's non-option fixed array, requires accessing .ret_arr member to get the array
 		g.write('.ret_arr')
@@ -1811,6 +1817,8 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 							cast_sym := g.table.sym(typ)
 							if cast_sym.info is ast.Aggregate {
 								typ = cast_sym.info.types[g.aggregate_type_idx]
+							} else if expr.obj.ct_type_var == .smartcast {
+								typ = g.unwrap_generic(g.comptime.get_comptime_var_type(expr))
 							}
 						}
 						// handling println( var or { ... })
@@ -1939,6 +1947,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				g.write(')')
 			}
 			if node.return_type != 0 && !node.return_type.has_flag(.option)
+				&& !node.return_type.has_flag(.result)
 				&& g.table.final_sym(node.return_type).kind == .array_fixed {
 				// it's non-option fixed array, requires accessing .ret_arr member to get the array
 				g.write('.ret_arr')
@@ -2297,7 +2306,11 @@ fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 
 @[inline]
 fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang ast.Language) {
-	arg_typ := g.unwrap_generic(arg.typ)
+	arg_typ := if arg.expr is ast.ComptimeSelector {
+		g.unwrap_generic(g.comptime.get_comptime_var_type(arg.expr))
+	} else {
+		g.unwrap_generic(arg.typ)
+	}
 	arg_sym := g.table.sym(arg_typ)
 	exp_is_ptr := expected_type.is_any_kind_of_pointer()
 	arg_is_ptr := arg_typ.is_any_kind_of_pointer()

@@ -171,8 +171,8 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 			}
 		}
 		got_type := c.unwrap_generic(got_types[i])
-		if got_type.has_flag(.option)
-			&& got_type.clear_flag(.option) != exp_type.clear_flag(.option) {
+		if got_type.has_flag(.option) && (!exp_type.has_flag(.option)
+			|| got_type.clear_flag(.option) != exp_type.clear_flag(.option)) {
 			pos := node.exprs[expr_idxs[i]].pos()
 			c.error('cannot use `${c.table.type_to_str(got_type)}` as ${c.error_type_name(exp_type)} in return argument',
 				pos)

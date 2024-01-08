@@ -5207,8 +5207,12 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				}
 			}
 			for i, expr in node.exprs {
-				g.expr_with_cast(expr, node.types[i], fn_ret_type.clear_flags(.option,
-					.result))
+				if return_sym.kind == .array_fixed && expr !is ast.ArrayInit {
+					g.fixed_array_var_init(expr, (return_sym.info as ast.ArrayFixed).size)
+				} else {
+					g.expr_with_cast(expr, node.types[i], fn_ret_type.clear_flags(.option,
+						.result))
+				}
 				if i < node.exprs.len - 1 {
 					g.write(', ')
 				}
@@ -5239,6 +5243,8 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			for i, expr in node.exprs {
 				if fn_ret_type.has_flag(.option) {
 					g.expr_with_opt(expr, node.types[i], fn_ret_type.clear_flag(.result))
+				} else if return_sym.kind == .array_fixed && expr !is ast.ArrayInit {
+					g.fixed_array_var_init(expr, (return_sym.info as ast.ArrayFixed).size)
 				} else {
 					g.expr_with_cast(expr, node.types[i], fn_ret_type.clear_flag(.result))
 				}
