@@ -4,21 +4,26 @@ import time
 fn server_thread(c_chan chan int) {
 	mut buf := []u8{len: 128}
 	mut times := 0
+	mut read_len := 0
 	mut listener := net.listen_tcp(.ip, ':22444') or { panic(err) }
 	c_chan <- 1
 	mut server := listener.accept() or { panic(err) }
 	server.set_blocking(false) or { panic(err) }
-	server.read(mut buf) or { // nothing can be read yet
+	read_len = server.read(mut buf) or { // nothing can be read yet
 		assert err.code() == int(net.error_ewouldblock)
+		-1
 	}
-	server.read(mut buf) or { // nothing can be read yet
+	assert read_len == -1 // ensure there is a error_ewouldblock
+	read_len = server.read(mut buf) or { // nothing can be read yet
 		assert err.code() == int(net.error_ewouldblock)
+		-2
 	}
+	assert read_len == -2 // ensure there is a error_ewouldblock
 	c_chan <- 2
 	for times < 10 {
 		times++
 		time.sleep(1 * time.millisecond)
-		read_len := server.read(mut buf) or {
+		read_len = server.read(mut buf) or {
 			if err.code() == int(net.error_ewouldblock) {
 				continue
 			} else {
