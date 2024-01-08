@@ -41,10 +41,10 @@ table td:nth-child(3) {
 }
 
 table {
-	counter-reset: rowNumber -1;
+	counter-reset: reversed(rowNumber);
 }
 table tr {
-	counter-increment: rowNumber;
+	counter-increment: rowNumber -1;
 }
 table tr td:first-child::after {
 	position: absolute;
