@@ -53,7 +53,6 @@ pub fn dial_tcp(oaddress string) !&TcpConn {
 			sock: s
 			read_timeout: net.tcp_default_read_timeout
 			write_timeout: net.tcp_default_write_timeout
-			is_blocking: true
 		}
 		conn.set_blocking(true)!
 		return conn
@@ -99,7 +98,6 @@ pub fn dial_tcp_with_bind(saddr string, laddr string) !&TcpConn {
 			sock: s
 			read_timeout: net.tcp_default_read_timeout
 			write_timeout: net.tcp_default_write_timeout
-			is_blocking: true
 		}
 		conn.set_blocking(true)!
 		return conn
@@ -377,7 +375,6 @@ pub fn (mut l TcpListener) accept_only() !&TcpConn {
 		handle: new_handle
 		read_timeout: net.tcp_default_read_timeout
 		write_timeout: net.tcp_default_write_timeout
-		is_blocking: true
 	}
 	conn.set_blocking(true)!
 	return conn
