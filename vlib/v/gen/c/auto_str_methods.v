@@ -1094,7 +1094,7 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 		return '${fn_name}(${deref}it.${final_field_name}${sufix})', false
 	} else {
 		mut method_str := ''
-		if !field_type.is_ptr() && (field_type.has_flag(.option) || field_type.has_flag(.result)) {
+		if !field_type.is_ptr() && field_type.has_any_flag(.option, .result) {
 			method_str = '(*(${sym.name}*)it.${final_field_name}.data)'
 		} else {
 			method_str = 'it.${final_field_name}'

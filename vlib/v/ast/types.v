@@ -395,6 +395,16 @@ pub fn (t Type) has_flag(flag TypeFlag) bool {
 	return int(t) & (1 << (int(flag) + 24)) > 0
 }
 
+@[inline]
+pub fn (t Type) has_any_flag(flags ...TypeFlag) bool {
+	for flag in flags {
+		if int(t) & (1 << (int(flag) + 24)) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // debug returns a verbose representation of the information in ts, useful for tracing/debugging
 pub fn (ts TypeSymbol) debug() []string {
 	mut res := []string{}
@@ -708,7 +718,7 @@ pub fn mktyp(typ Type) Type {
 
 // returns TypeSymbol kind only if there are no type modifiers
 pub fn (t &Table) type_kind(typ Type) Kind {
-	if typ.nr_muls() > 0 || typ.has_flag(.option) || typ.has_flag(.result) {
+	if typ.nr_muls() > 0 || typ.has_any_flag(.option, .result) {
 		return Kind.placeholder
 	}
 	return t.sym(typ).kind
@@ -1036,7 +1046,7 @@ pub fn (t &TypeSymbol) is_builtin() bool {
 
 // type_size returns the size and alignment (in bytes) of `typ`, similarly to  C's `sizeof()` and `alignof()`.
 pub fn (t &Table) type_size(typ Type) (int, int) {
-	if typ.has_flag(.option) || typ.has_flag(.result) {
+	if typ.has_any_flag(.option, .result) {
 		return t.type_size(ast.error_type_idx)
 	}
 	if typ.nr_muls() > 0 {

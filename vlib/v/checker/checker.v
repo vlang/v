@@ -1147,11 +1147,11 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 			mut expr_ret_type := expr.return_type
 			if expr_ret_type != 0 && c.table.sym(expr_ret_type).kind == .alias {
 				unaliased_ret_type := c.table.unaliased_type(expr_ret_type)
-				if unaliased_ret_type.has_flag(.option) || unaliased_ret_type.has_flag(.result) {
+				if unaliased_ret_type.has_any_flag(.option, .result) {
 					expr_ret_type = unaliased_ret_type
 				}
 			}
-			if expr_ret_type.has_flag(.option) || expr_ret_type.has_flag(.result) {
+			if expr_ret_type.has_any_flag(.option, .result) {
 				return_modifier_kind := if expr_ret_type.has_flag(.option) {
 					'an Option'
 				} else {
@@ -1179,7 +1179,7 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 		}
 		ast.SelectorExpr {
 			if c.table.sym(ret_type).kind != .chan {
-				if expr.typ.has_flag(.option) || expr.typ.has_flag(.result) {
+				if expr.typ.has_any_flag(.option, .result) {
 					with_modifier_kind := if expr.typ.has_flag(.option) {
 						'an Option'
 					} else {
@@ -2671,11 +2671,11 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			mut ret_type := c.call_expr(mut node)
 			if ret_type != 0 && c.table.sym(ret_type).kind == .alias {
 				unaliased_type := c.table.unaliased_type(ret_type)
-				if unaliased_type.has_flag(.option) || unaliased_type.has_flag(.result) {
+				if unaliased_type.has_any_flag(.option, .result) {
 					ret_type = unaliased_type
 				}
 			}
-			if !ret_type.has_flag(.option) && !ret_type.has_flag(.result) {
+			if !ret_type.has_any_flag(.option, .result) {
 				c.expr_or_block_err(node.or_block.kind, node.name, node.or_block.pos,
 					false)
 			}
@@ -3586,8 +3586,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					if c.inside_interface_deref && c.table.is_interface_var(obj) {
 						typ = typ.deref()
 					}
-					is_option := typ.has_flag(.option) || typ.has_flag(.result)
-						|| node.or_expr.kind != .absent
+					is_option := typ.has_any_flag(.option, .result) || node.or_expr.kind != .absent
 					node.kind = .variable
 					node.info = ast.IdentVar{
 						typ: typ
@@ -4297,7 +4296,7 @@ fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_ty
 				}
 			}
 		}
-		if index_type.has_flag(.option) || index_type.has_flag(.result) {
+		if index_type.has_any_flag(.option, .result) {
 			type_str := if typ_sym.kind == .string {
 				'(type `${typ_sym.name}`)'
 			} else {

@@ -29,7 +29,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 	mut expected_type := c.unwrap_generic(c.expected_type)
 	if expected_type != 0 && c.table.sym(expected_type).kind == .alias {
 		unaliased_type := c.table.unaliased_type(expected_type)
-		if unaliased_type.has_flag(.option) || unaliased_type.has_flag(.result) {
+		if unaliased_type.has_any_flag(.option, .result) {
 			expected_type = unaliased_type
 		}
 	}

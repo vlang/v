@@ -330,7 +330,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			}
 			// TODO: no buffer fiddling
 			ast.AnonFn {
-				if !(var_type.has_flag(.option) || var_type.has_flag(.result)) {
+				if !var_type.has_any_flag(.option, .result) {
 					if blank_assign {
 						g.write('{')
 					}
@@ -376,8 +376,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		g.is_assign_lhs = true
 		g.assign_op = node.op
 
-		g.left_is_opt = var_type.has_flag(.option) || var_type.has_flag(.result)
-		g.right_is_opt = val_type.has_flag(.option) || val_type.has_flag(.result)
+		g.left_is_opt = var_type.has_any_flag(.option, .result)
+		g.right_is_opt = val_type.has_any_flag(.option, .result)
 		defer {
 			g.left_is_opt = false
 			g.right_is_opt = false

@@ -397,7 +397,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					left_name := c.table.type_to_str(unwrapped_left_type)
 					right_name := c.table.type_to_str(unwrapped_right_type)
 					c.error('mismatched types `${left_name}` and `${right_name}`', left_right_pos)
-				} else if promoted_type.has_flag(.option) || promoted_type.has_flag(.result) {
+				} else if promoted_type.has_any_flag(.option, .result) {
 					s := c.table.type_to_str(promoted_type)
 					c.error('`${node.op}` cannot be used with `${s}`', node.pos)
 				} else if promoted_type.is_float() {

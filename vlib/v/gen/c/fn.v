@@ -769,7 +769,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		mut ret_typ := node.return_type
 		if g.table.sym(ret_typ).kind == .alias {
 			unaliased_type := g.table.unaliased_type(ret_typ)
-			if unaliased_type.has_flag(.option) || unaliased_type.has_flag(.result) {
+			if unaliased_type.has_any_flag(.option, .result) {
 				ret_typ = unaliased_type
 			}
 		}
@@ -808,7 +808,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		mut unwrapped_typ := node.return_type.clear_flags(.option, .result)
 		if g.table.sym(unwrapped_typ).kind == .alias {
 			unaliased_type := g.table.unaliased_type(unwrapped_typ)
-			if unaliased_type.has_flag(.option) || unaliased_type.has_flag(.result) {
+			if unaliased_type.has_any_flag(.option, .result) {
 				unwrapped_typ = unaliased_type.clear_flags(.option, .result)
 			}
 		}
