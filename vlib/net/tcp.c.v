@@ -49,11 +49,14 @@ pub fn dial_tcp(oaddress string) !&TcpConn {
 			continue
 		}
 
-		return &TcpConn{
+		mut conn := &TcpConn{
 			sock: s
 			read_timeout: net.tcp_default_read_timeout
 			write_timeout: net.tcp_default_write_timeout
+			is_blocking: true
 		}
+		conn.set_blocking(true)!
+		return conn
 	}
 
 	// Once we've failed now try and explain why we failed to connect
@@ -92,11 +95,14 @@ pub fn dial_tcp_with_bind(saddr string, laddr string) !&TcpConn {
 			continue
 		}
 
-		return &TcpConn{
+		mut conn := &TcpConn{
 			sock: s
 			read_timeout: net.tcp_default_read_timeout
 			write_timeout: net.tcp_default_write_timeout
+			is_blocking: true
 		}
+		conn.set_blocking(true)!
+		return conn
 	}
 	// failed
 	return error('dial_tcp_with_bind failed for address ${saddr}')
@@ -111,9 +117,9 @@ pub fn (mut c TcpConn) close() ! {
 
 pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 	mut res := $if is_coroutine ? {
-		wrap_read_result(C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout))!
+		C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout)
 	} $else {
-		wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0))!
+		C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)
 	}
 	$if trace_tcp ? {
 		eprintln('<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} len: ${len} | res: ${res}')
@@ -127,12 +133,12 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 		return res
 	}
 	code := error_code()
-	if code == int(error_ewouldblock) {
+	if code == int(error_ewouldblock) && c.is_blocking {
 		c.wait_for_read()!
 		res = $if is_coroutine ? {
-			wrap_read_result(C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout))!
+			C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout)
 		} $else {
-			wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0))!
+			C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)
 		}
 		$if trace_tcp ? {
 			eprintln('<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} len: ${len} | res: ${res}')
@@ -193,7 +199,7 @@ pub fn (mut c TcpConn) write_ptr(b &u8, len int) !int {
 			}
 			if sent < 0 {
 				code := error_code()
-				if code == int(error_ewouldblock) {
+				if code == int(error_ewouldblock) && c.is_blocking {
 					c.wait_for_write()!
 					continue
 				} else {
@@ -367,11 +373,14 @@ pub fn (mut l TcpListener) accept_only() !&TcpConn {
 		}
 	}
 
-	return &TcpConn{
+	mut conn := &TcpConn{
 		handle: new_handle
 		read_timeout: net.tcp_default_read_timeout
 		write_timeout: net.tcp_default_write_timeout
+		is_blocking: true
 	}
+	conn.set_blocking(true)!
+	return conn
 }
 
 pub fn (c &TcpListener) accept_deadline() !time.Time {
