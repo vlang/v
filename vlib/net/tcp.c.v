@@ -129,28 +129,8 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 				unsafe { buf_ptr.vstring_with_len(res) })
 		}
 		return res
-	}
-	code := error_code()
-	if code == int(error_ewouldblock) && c.is_blocking {
-		c.wait_for_read()!
-		res = $if is_coroutine ? {
-			C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout)
-		} $else {
-			C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)
-		}
-		$if trace_tcp ? {
-			eprintln('<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} len: ${len} | res: ${res}')
-		}
-		$if trace_tcp_data_read ? {
-			if res > 0 {
-				eprintln(
-					'<<< TcpConn.read_ptr  | 2 data.len: ${res:6} | hex: ${unsafe { buf_ptr.vbytes(res) }.hex()} | data: ' +
-					unsafe { buf_ptr.vstring_with_len(res) })
-			}
-		}
-		return socket_error(res)
 	} else {
-		wrap_error(code)!
+		wrap_error(error_code())!
 	}
 	return error('none')
 }
@@ -196,13 +176,7 @@ pub fn (mut c TcpConn) write_ptr(b &u8, len int) !int {
 				eprintln('>>> TcpConn.write_ptr | data chunk, total_sent: ${total_sent:6}, remaining: ${remaining:6}, ptr: ${voidptr(ptr):x} => sent: ${sent:6}')
 			}
 			if sent < 0 {
-				code := error_code()
-				if code == int(error_ewouldblock) && c.is_blocking {
-					c.wait_for_write()!
-					continue
-				} else {
-					wrap_error(code)!
-				}
+				wrap_error(error_code())!
 			}
 			total_sent += sent
 		}
