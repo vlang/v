@@ -70,7 +70,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			}
 		}
 		if mut branch.cond is ast.IfGuardExpr {
-			if branch.cond.expr_type.clear_flags(.option, .result) == ast.void_type
+			if branch.cond.expr_type.clear_option_and_result() == ast.void_type
 				&& !(branch.cond.vars.len == 1 && branch.cond.vars[0].name == '_') {
 				c.error('if guard expects non-propagate option or result', branch.pos)
 				continue
