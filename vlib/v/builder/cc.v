@@ -247,9 +247,6 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	//
 	if ccoptions.debug_mode {
 		ccoptions.args << debug_options
-		// $if macos {
-		// args << '-ferror-limit=5000'
-		// }
 	}
 	if v.pref.is_prod {
 		// don't warn for vlib tests
@@ -273,9 +270,10 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	}
 	//
 	ccoptions.shared_postfix = '.so'
-	$if macos {
+	if v.pref.os == .macos {
 		ccoptions.shared_postfix = '.dylib'
-	} $else $if windows {
+	}
+	if v.pref.os == .windows {
 		ccoptions.shared_postfix = '.dll'
 	}
 	if v.pref.is_shared {
@@ -817,9 +815,6 @@ fn (mut c Builder) cc_windows_cross() {
 	c.setup_ccompiler_options(c.pref.ccompiler)
 	c.build_thirdparty_obj_files()
 	c.setup_output_name()
-	if !c.pref.out_name.to_lower().ends_with('.exe') {
-		c.pref.out_name += '.exe'
-	}
 	mut args := []string{}
 	args << '${c.pref.cflags}'
 	args << '-o ${os.quoted_path(c.pref.out_name)}'
@@ -869,12 +864,14 @@ fn (mut c Builder) cc_windows_cross() {
 	}
 	//
 	mut all_args := []string{}
+	all_args << '-std=gnu11'
 	all_args << optimization_options
 	all_args << debug_options
-	all_args << '-std=gnu11'
 	//
 	all_args << args
+	//
 	all_args << '-municode'
+	all_args << c.ccoptions.linker_flags
 	all_args << '${c.pref.ldflags}'
 	c.dump_c_options(all_args)
 	mut cmd := cross_compiler_name_path + ' ' + all_args.join(' ')
@@ -988,7 +985,7 @@ fn missing_compiler_info() string {
 	$if macos {
 		return 'Install command line XCode tools with `xcode-select --install`'
 	}
-	return ''
+	return 'Install a C compiler, like gcc or clang'
 }
 
 fn error_context_lines(text string, keyword string, before int, after int) []string {
