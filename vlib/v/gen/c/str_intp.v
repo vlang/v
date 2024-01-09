@@ -265,7 +265,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	g.write(' str_intp(${node.vals.len}, ')
 	g.write('_MOV((StrIntpData[]){')
 	for i, val in node.vals {
-		mut escaped_val := util.smart_quote(val, false)
+		mut escaped_val := cescape_nonascii(util.smart_quote(val, false))
 		escaped_val = escaped_val.replace('\0', '\\0')
 
 		if escaped_val.len > 0 {
