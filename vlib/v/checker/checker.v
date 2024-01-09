@@ -2998,6 +2998,12 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	mut to_type := c.unwrap_generic(node.typ)
 	mut to_sym := c.table.sym(to_type) // type to be used as cast
 	mut final_to_sym := c.table.final_sym(to_type)
+	final_to_type := if mut to_sym.info is ast.Alias {
+		to_sym.info.parent_type
+	} else {
+		to_type
+	}
+	final_to_is_ptr := to_type.is_ptr() || final_to_type.is_ptr()
 
 	if to_type.has_flag(.result) {
 		c.error('casting to Result type is forbidden', node.pos)
@@ -3049,17 +3055,20 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			tt := c.table.type_to_str(to_type)
 			c.error('cannot cast `${ft}` to `${tt}`', node.pos)
 		}
-	} else if mut to_sym.info is ast.Alias && !(final_to_sym.kind == .struct_ && to_type.is_ptr()) {
-		if !c.check_types(from_type, to_sym.info.parent_type) && !(final_to_sym.is_int()
-			&& final_from_sym.kind in [.enum_, .bool, .i8, .u8, .char]) {
+	} else if mut to_sym.info is ast.Alias && !(final_to_sym.kind == .struct_ && final_to_is_ptr) {
+		if (!c.check_types(from_type, to_sym.info.parent_type) && !(final_to_sym.is_int()
+			&& final_from_sym.kind in [.enum_, .bool, .i8, .u8, .char]))
+			|| (final_to_sym.kind == .struct_
+			&& from_type.idx() in [ast.voidptr_type_idx, ast.nil_type_idx]) {
 			ft := c.table.type_to_str(from_type)
 			tt := c.table.type_to_str(to_type)
 			c.error('cannot cast `${ft}` to `${tt}` (alias to `${final_to_sym.name}`)',
 				node.pos)
 		}
-	} else if to_sym.kind == .struct_ && mut to_sym.info is ast.Struct && !to_sym.info.is_typedef
-		&& !to_type.is_ptr() {
-		// For now we ignore C typedef because of `C.Window(C.None)` in vlib/clipboard
+	} else if to_sym.kind == .struct_ && mut to_sym.info is ast.Struct
+		&& (!to_sym.info.is_typedef || from_type.idx() in [ast.voidptr_type_idx, ast.nil_type_idx])
+		&& !final_to_is_ptr {
+		// For now we ignore C typedef because of `C.Window(C.None)` in vlib/clipboard (except for `from_type` is voidptr/nil)
 		if from_sym.kind == .struct_ && from_sym.info is ast.Struct && !from_type.is_ptr() {
 			if !to_type.has_flag(.option) {
 				c.warn('casting to struct is deprecated, use e.g. `Struct{...expr}` instead',
@@ -3073,7 +3082,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			ft := c.table.type_to_str(from_type)
 			c.error('cannot cast `${ft}` to struct', node.pos)
 		}
-	} else if to_sym.kind == .struct_ && to_type.is_ptr() {
+	} else if to_sym.kind == .struct_ && final_to_is_ptr {
 		if from_sym.info is ast.Alias {
 			from_type = from_sym.info.parent_type.derive_add_muls(from_type)
 		}
@@ -3138,7 +3147,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		type_name := c.table.type_to_str(to_type)
 		c.error('cannot cast `none` to `${type_name}`', node.pos)
 	} else if from_sym.kind == .struct_ && !from_type.is_ptr() {
-		if (to_type.is_ptr() || to_sym.kind !in [.sum_type, .interface_]) && !c.is_builtin_mod {
+		if (final_to_is_ptr || to_sym.kind !in [.sum_type, .interface_]) && !c.is_builtin_mod {
 			from_type_name := c.table.type_to_str(from_type)
 			type_name := c.table.type_to_str(to_type)
 			c.error('cannot cast struct `${from_type_name}` to `${type_name}`', node.pos)
@@ -3172,7 +3181,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		tt := c.table.type_to_str(to_type)
 		c.error('cannot cast string to `${tt}`, use `${snexpr}.${final_to_sym.name}()` instead.',
 			node.pos)
-	} else if final_from_sym.kind == .string && to_type.is_ptr() && to_sym.kind != .string {
+	} else if final_from_sym.kind == .string && final_to_is_ptr && to_sym.kind != .string {
 		snexpr := node.expr.str()
 		tt := c.table.type_to_str(to_type)
 		c.error('cannot cast string to `${tt}`, use `${snexpr}.str` instead.', node.pos)
