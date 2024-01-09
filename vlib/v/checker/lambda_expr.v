@@ -63,7 +63,7 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 
 		mut stmts := []ast.Stmt{}
 		mut has_return := false
-		if return_type.clear_flags(.option, .result) == ast.void_type {
+		if return_type.clear_option_and_result() == ast.void_type {
 			stmts << ast.ExprStmt{
 				pos: node.pos
 				expr: node.expr

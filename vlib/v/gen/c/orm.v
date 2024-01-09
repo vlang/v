@@ -38,7 +38,7 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	result_c_typ := g.typ(node.typ)
 	g.writeln('${result_c_typ} ${result_var};')
 	g.write_orm_select(node, connection_var_name, result_var)
-	unwrapped_c_typ := g.typ(node.typ.clear_flags(.result))
+	unwrapped_c_typ := g.typ(node.typ.clear_flag(.result))
 	g.write('${left} *(${unwrapped_c_typ}*)${result_var}.data')
 }
 

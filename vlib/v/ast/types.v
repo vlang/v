@@ -389,6 +389,12 @@ pub fn (t Type) clear_flags(flags ...TypeFlag) Type {
 	}
 }
 
+// clear option and result flags
+@[inline]
+pub fn (t Type) clear_option_and_result() Type {
+	return u32(t) & ~0x0300_0000
+}
+
 // return true if `flag` is set on `t`
 @[inline]
 pub fn (t Type) has_flag(flag TypeFlag) bool {
