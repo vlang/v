@@ -554,7 +554,6 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 	}
 	// eprintln('>> vweb listen_address: `${listen_address}` | params.family: ${params.family} | l.addr: ${l.addr()} | params: $params')
 
-
 	ch := chan &RequestParams{cap: params.pool_channel_slots}
 	mut ws := []thread{cap: params.nr_workers}
 	for worker_number in 0 .. params.nr_workers {
