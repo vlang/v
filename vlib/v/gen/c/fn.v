@@ -628,6 +628,7 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 			g.definitions.write_string(')')
 			fparams << caname
 			fparamtypes << param_type_name
+			heap_promoted << false
 		} else {
 			mut heap_prom := false
 			if scope != unsafe { nil } {
@@ -768,7 +769,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		mut ret_typ := node.return_type
 		if g.table.sym(ret_typ).kind == .alias {
 			unaliased_type := g.table.unaliased_type(ret_typ)
-			if unaliased_type.has_flag(.option) || unaliased_type.has_flag(.result) {
+			if unaliased_type.has_option_or_result() {
 				ret_typ = unaliased_type
 			}
 		}
@@ -807,7 +808,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		mut unwrapped_typ := node.return_type.clear_flags(.option, .result)
 		if g.table.sym(unwrapped_typ).kind == .alias {
 			unaliased_type := g.table.unaliased_type(unwrapped_typ)
-			if unaliased_type.has_flag(.option) || unaliased_type.has_flag(.result) {
+			if unaliased_type.has_option_or_result() {
 				unwrapped_typ = unaliased_type.clear_flags(.option, .result)
 			}
 		}
@@ -2305,7 +2306,11 @@ fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 
 @[inline]
 fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang ast.Language) {
-	arg_typ := g.unwrap_generic(arg.typ)
+	arg_typ := if arg.expr is ast.ComptimeSelector {
+		g.unwrap_generic(g.comptime.get_comptime_var_type(arg.expr))
+	} else {
+		g.unwrap_generic(arg.typ)
+	}
 	arg_sym := g.table.sym(arg_typ)
 	exp_is_ptr := expected_type.is_any_kind_of_pointer()
 	arg_is_ptr := arg_typ.is_any_kind_of_pointer()

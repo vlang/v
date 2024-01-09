@@ -814,7 +814,7 @@ fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) Comptime
 							}
 						}
 					} else {
-						c.error('invalid `\$if` condition: ${cond.left.type_name()}1',
+						c.error('invalid `\$if` condition: ${cond.left.type_name()}',
 							cond.pos)
 					}
 				}

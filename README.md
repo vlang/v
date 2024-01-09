@@ -206,7 +206,7 @@ make
 ## Editor/IDE Plugins
 
 To bring IDE functions for the V programming languages to your editor, check out
-[v-analyzer](https://github.com/v-analyzer/v-analyzer). It provides a
+[v-analyzer](https://github.com/vlang/v-analyzer). It provides a
 [VS Code extension](https://marketplace.visualstudio.com/items?itemName=VOSCA.vscode-v-analyzer)
 and language server capabilities for other editors.
 

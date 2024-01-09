@@ -9,8 +9,17 @@ import strings
 #include <sys/types.h>
 #include <utime.h>
 
+// path_separator is the platform specific separator string, used between the folders
+// and filenames in a path. It is '/' on POSIX, and '\\' on Windows.
 pub const path_separator = '/'
+
+// path_delimiter is the platform specific delimiter string, used between the paths
+// in environment variables like PATH. It is ':' on POSIX, and ';' on Windows.
 pub const path_delimiter = ':'
+
+// path_devnull is a platform-specific file path of the null device.
+// It is '/dev/null' on POSIX, and r'\\.\nul' on Windows.
+pub const path_devnull = '/dev/null'
 
 const executable_suffixes = ['']
 

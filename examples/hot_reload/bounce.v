@@ -24,7 +24,6 @@ const width = 50
 
 fn main() {
 	mut game := &Game{
-		gg: 0
 		dx: 2
 		dy: 2
 		height: window_height

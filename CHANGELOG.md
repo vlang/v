@@ -1,6 +1,8 @@
-## V 0.4.3
-*3 January 2024*
+## V 0.4.4
+*8 January 2024*
+
 #### Improvements in the language
+- Unwrap const() blocks
 - Implement $for comptime T.variants (#20193)
 - Add `r` and `R` switches for repeating in string interpolation, `'${"abc":3r}'` == 'abcabcabc' (#20197)
 - Comptime refactor and cleanup (#20196)
@@ -12,6 +14,16 @@
 #### Breaking changes
 
 #### Checker improvements/fixes
+- Disallow casting strings to pointers outside `unsafe` (#19977)
+- Disallow directly indexing sumtype and interface, when using as parameters(fix #19811) (#19982)
+- Fix loop on aggregates of arrays (in match branches) of sumtypes (fix #18548) (#19988)
+- Disallow indexing mut struct, passed as a fn parameter (#19992)
+- Enhance err msg for unknown types for comptime `$for` (#20057)
+- Fix .clone()/.move() with shared maps (#20083)
+- Fix generics method call with struct short syntax args(fix #20030) (#20100)
+- Fix unwrap, when generic structs are used as arguments, in uncalled methods (fix #20132) (#20135)
+- Fix generic fn with generic fn call returning generic map (fix #20106) (#20150)
+- Cast sumtype to its variant generic type (#20166)
 - Refactor `string` to `enum` error check, handle `EnumName(string_variable)` too (#20210)
 - Fix generic array method call with multi-types (#20237)
 - Remove unnecessary struct ref field initialization checks and notifications at map initializing(fix #20245) (#20251)
@@ -25,6 +37,8 @@
 - Fix generic method calls with multi generic types (fix #20330) (#20360)
 
 #### Parser improvements
+- parser: fix infix expr handling with cast on left side of << operator (#19985)
+- ast: fix generic structs with multiple levels of generic embedding (#20042)
 - parser: implement thread returns result and multi_returns (fix #19281) (#20194)
 - parser: fix formatting struct decl with comments (#20207)
 - parser: fix formatting enum and interface decl with comments (#20216)
@@ -32,6 +46,7 @@
 - parser: fix parse_vet_file() with vfmt off/on flag (#20273)
 
 #### Compiler internals
+- scanner: add new_silent_scanner/0, Scanner.prepare_for_new_text/1, make .ident_char/0, .ident_string/0 and .text_scan/0 public (#20045)
 - pref: support VNORUN=1, to enable running of tests, vsh files etc (i.e. just compile them, for debugging later)
 - scanner: fix backslashes followed directly by newline in string literals (fix #20291) (#20296)
 - scanner: fix escape character handling in character/rune literals (fix #20301) (#20304)
@@ -39,6 +54,15 @@
 - builder: remove passing `-fno-strict-aliasing`, for `-prod` to gcc/icc (#20368)
 
 #### Standard library
+- datatypes: add push_many for doubly and singly linked list + add insert_many for heap (#19975)
+- datatypes: make `Direction` pub and fix and add tests for `push_many` (#19983)
+- gg: fn (data voidptr, e &Event) for events, allows methods
+- vlib: add a `compress.szip` module, deprecate the `szip` one after 2023-12-31 (#20003)
+- os: create the folder described by `XDG_CACHE_HOME`, *if it is non empty, and it does not exist yet*, when calling `os.cache_dir()` (#20046)
+- vlib: use the builtin flush functions, instead of the C. ones (#20108)
+- crypto: add blake2s and blake2b hashes (#20149)
+- os: fix `mv_by_cp` for directories (#20154)
+- os: update mv fns, improve performance, add params struct to control overwrite behavior (#20156)
 - gg: fix overlapping slices in `draw_slice_filled()` (#20182)
 - json: fix option sumtype handling (#20186)
 - builtin: add `@[direct_array_access]` to js string trim_right method (#20222)
@@ -51,8 +75,13 @@
 - crypto: fix notices/errors for `v -N test vlib/crypto`
 - crypto: add blake3 hash (#20319)
 - sokol: fix compiling gg and other graphical examples on OpenBSD (#20333)
+- csv: Add a sequential reader too (suitable for very large .csv files, it does not read everything at once) (#20140)
 
 #### Web
+- vweb: .html('custom_template.html')
+- vweb: add an optional parameter to the .redirect/2 method, to be able to set the http code for the redirects (#20082)
+- x.vweb: fix large payload (#20155)
+- x.vweb: reimplement csrf module (#20160)
 - net: make net.fionbio and net.msg_nosignal constants public in net_windows.c.v (#20183)
 - net.http: remove unused `read_set_cookies` function (#20187)
 - os, net.http.file: add a folder listing to the http static file server, started by file.serve/1 (#20192)
@@ -63,14 +92,26 @@
 - net: support only ip and ip6 in net.tcp_listener (#20336)
 
 #### ORM
+- orm: fix code generation for an option time.Time field (#20031)
 - orm: fix the generated SQL for the "not equal" operator (#20321)
 
 #### Database drivers
+- db.mysql: add support for the FreeBSD name of the mariadb client library (#20039)
+- db.pg: fix using postgresql on windows, improve instructions for installing it (#20053)
+- db.mysql: add ability to prepare and execute statements separately (#20146)
 - db.pg: fix compilation error with the msvc compiler on windows, and add readme (#20326)
 
 #### Native backend
 
 #### C backend
+- Fix generics call with interface arg (fix #19976) (#20002)
+- Fix lambda initialization on option struct field (fix #19474) (#19995)
+- Fix live mode on windows (#20041)
+- Fix the static from_string method of Enum across mods(fix #20050) (#20068)
+- Fix `@[if xyz?] fn init() {}`, add tests (#20096)
+- Fix assignment to the elements of an array of fixed arrays (#20133)
+- Fix mutable comptimeselector usage (fix #20027) (#20134)
+- Fix generics chans select (#20159)
 - Fix string interp with zero characters (fix #20199) (#20200)
 - Fix interface eq method with option and ref (fix #19441) (#20201)
 - Fix infix expr in method of mut receiver variable (#20225)
@@ -88,8 +129,12 @@
 - Fix code generation when the function returns mut fixed array (fix #20366) (#20367)
 
 #### vfmt
+- vfmt: remove empty `__global()` (#20004)
 
 #### Tools
+- tools.vpm: evaluate dependencies earlier to fix potential recursive install loop (#19987)
+- tools.vpm: add support for ssh and hg version installations (#20125)
+- tools: simplify and remove redundancies in vshader.v (#20161)
 - ci: add new workflow, for doing the slower tests in vpm specifically with `-d network` (#20177)
 - tools.vpm: improve detection of already parsed modules (#20223)
 - scanner: change `-d debugscanner` to `-d trace_scanner` for uniformity with the other tracing options, described in CONTRIBUTING.md
@@ -103,8 +148,13 @@
 - os: small cleanup in the FreeBSD branch of os.executable/0: use fixed array for the sysctl params, instead of allocating a dynamic one (#20353)
 - os: improve os.executable() on OpenBSD (#20356)
 - v.util.diff: support OpenBSD's default `diff` tool (#20369)
+- os: fix os.open_file/3 `wb` mode creation of text files containing crlf on Windows (#20101)
+- os: fix File.tell for files > 2GB on windows, by using C._telli64(f.fd) (#20072)
 
 #### Examples
+- examples: show how to turn on CORS in a vweb server app
+- examples: serve the wasm mandelbrot project using a v web server (#19937)
+- examples: increase the resolution of the generated image in examples/wasm/mandelbrot
 - docs: update null convention in ORM example, since `@[nonull]` is no longer needed (#20286)
 - docs: add an example of a nullable ORM field (#20292)
 - example: add a path finding algorithm visualizer using gg (#20060)
