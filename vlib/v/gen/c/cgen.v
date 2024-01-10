@@ -6022,19 +6022,30 @@ fn (mut g Gen) write_init_function() {
 		println(g.out.after(fn_vcleanup_start_pos))
 	}
 
-	needs_constructor := g.pref.is_shared && g.pref.os != .windows
-	if needs_constructor {
+	if g.pref.is_shared {
 		// shared libraries need a way to call _vinit/2. For that purpose,
 		// provide a constructor/destructor pair, ensuring that all constants
 		// are initialized just once, and that they will be freed too.
 		// Note: os.args in this case will be [].
-		g.writeln('__attribute__ ((constructor))')
+		if g.pref.os == .windows {
+			g.writeln('// workaround for windows, export _vinit_caller, let dl.open() call it')
+			g.writeln('// NOTE: This is hardcoded in vlib/dl/dl_windows.c.v!')
+			g.writeln('VV_EXPORTED_SYMBOL void _vinit_caller();')
+		} else {
+			g.writeln('__attribute__ ((constructor))')
+		}
 		g.writeln('void _vinit_caller() {')
 		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
 		g.writeln('\t_vinit(0,0);')
 		g.writeln('}')
 
-		g.writeln('__attribute__ ((destructor))')
+		if g.pref.os == .windows {
+			g.writeln('// workaround for windows, export _vcleanup_caller, let dl.close() call it')
+			g.writeln('// NOTE: This is hardcoded in vlib/dl/dl_windows.c.v!')
+			g.writeln('VV_EXPORTED_SYMBOL void _vcleanup_caller();')
+		} else {
+			g.writeln('__attribute__ ((destructor))')
+		}
 		g.writeln('void _vcleanup_caller() {')
 		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
 		g.writeln('\t_vcleanup();')
