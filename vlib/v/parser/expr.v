@@ -900,7 +900,7 @@ fn (mut p Parser) lambda_expr() ?ast.LambdaExpr {
 	e := p.expr(0)
 	pos_end := p.tok.pos()
 	return ast.LambdaExpr{
-		pos: pos
+		pos: pos.extend(e.pos())
 		pos_expr: pos_expr
 		pos_end: pos_end
 		params: params
