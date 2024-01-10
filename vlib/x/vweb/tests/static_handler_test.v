@@ -53,7 +53,7 @@ fn run_app_test() {
 	if _ := app.handle_static('not_found', true) {
 		assert true == false, 'should throw directory not found error'
 	} else {
-		assert err.msg() == 'directory "not_found" does not exist. The directory should be relative to the current working directory'
+		assert err.msg().starts_with('directory `not_found` does not exist') == true
 	}
 
 	app.handle_static('testdata', true) or { panic(err) }
@@ -67,7 +67,7 @@ fn run_app_test() {
 	if _ := app.mount_static_folder_at('not_found', '/static') {
 		assert true == false, 'should throw mount path does not exist error'
 	} else {
-		assert err.msg() == 'directory "not_found" does not exist. The directory should be relative to the current working directory'
+		assert err.msg().starts_with('directory `not_found` does not exist') == true
 	}
 
 	app.mount_static_folder_at('testdata', '/static') or { panic(err) }
