@@ -805,11 +805,11 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	}
 	if gen_or {
 		g.or_block(tmp_opt, node.or_block, node.return_type)
-		mut unwrapped_typ := node.return_type.clear_flags(.option, .result)
+		mut unwrapped_typ := node.return_type.clear_option_and_result()
 		if g.table.sym(unwrapped_typ).kind == .alias {
 			unaliased_type := g.table.unaliased_type(unwrapped_typ)
 			if unaliased_type.has_option_or_result() {
-				unwrapped_typ = unaliased_type.clear_flags(.option, .result)
+				unwrapped_typ = unaliased_type.clear_option_and_result()
 			}
 		}
 		mut unwrapped_styp := g.typ(unwrapped_typ)
@@ -824,8 +824,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			if !g.inside_const_opt_or_res {
 				if g.assign_ct_type != 0
 					&& node.or_block.kind in [.propagate_option, .propagate_result] {
-					unwrapped_styp = g.typ(g.assign_ct_type.derive(node.return_type).clear_flags(.option,
-						.result))
+					unwrapped_styp = g.typ(g.assign_ct_type.derive(node.return_type).clear_option_and_result())
 				}
 				if g.table.sym(node.return_type).kind == .array_fixed
 					&& unwrapped_styp.starts_with('_v_') {

@@ -2629,6 +2629,7 @@ pub fn (mut f Fmt) map_init(node ast.MapInit) {
 			sym := f.table.sym(node.typ)
 			info := sym.info as ast.Map
 			f.mark_types_import_as_used(info.key_type)
+			f.mark_types_import_as_used(info.value_type)
 			f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
 		}
 		if node.pos.line_nr == node.pos.last_line {

@@ -1,7 +1,13 @@
 ## V 0.4.4
-*8 January 2024*
+*9 January 2024*
 
 #### Improvements in the language
+- Implement `@[aligned]` and `@[aligned:8]` attributes for structs and unions (#19915)
+- Update attributes to use new syntax
+- Update remaining deprecated attr syntax (#19908)
+- Support `$if T is $array_dynamic {` and `$if T is $array_fixed {` in addition to `$if T is $array {` (#19882)
+- Prepare for making `-W impure-v` the default (#19940)
+- Assigning `0` to reference fields now requires unsafe blocks (fix #14911) (#19955)
 - Unwrap const() blocks
 - Implement $for comptime T.variants (#20193)
 - Add `r` and `R` switches for repeating in string interpolation, `'${"abc":3r}'` == 'abcabcabc' (#20197)
@@ -12,8 +18,13 @@
 - Improve comptime var checking with `is` operator and smartcasting (#20315)
 
 #### Breaking changes
+*none*
 
 #### Checker improvements/fixes
+- Disallow `$for i in struct.values` and `$for i in enum.fields` (#19845)
+- Parser, checker: fix var scope in lambda(fix #19860) (#19871)
+- Change the warning `more than 1000 possibilities in match range`  to a notice (#19862)
+- Fix inability to use multiple `import some modname as _` in the same .v file (fix #19899) (#19900)
 - Disallow casting strings to pointers outside `unsafe` (#19977)
 - Disallow directly indexing sumtype and interface, when using as parameters(fix #19811) (#19982)
 - Fix loop on aggregates of arrays (in match branches) of sumtypes (fix #18548) (#19988)
@@ -37,6 +48,9 @@
 - Fix generic method calls with multi generic types (fix #20330) (#20360)
 
 #### Parser improvements
+- parser: fix parsing comments after new attribute syntax
+- parser: fix failures found with fuzzing (#19873)
+- parser: deprecate old attribute syntax & update remaining (missed) attributes (#19879)
 - parser: fix infix expr handling with cast on left side of << operator (#19985)
 - ast: fix generic structs with multiple levels of generic embedding (#20042)
 - parser: implement thread returns result and multi_returns (fix #19281) (#20194)
@@ -46,14 +60,24 @@
 - parser: fix parse_vet_file() with vfmt off/on flag (#20273)
 
 #### Compiler internals
+- scanner: implement support for UTF-32 escape codes in string literals (#19911)
 - scanner: add new_silent_scanner/0, Scanner.prepare_for_new_text/1, make .ident_char/0, .ident_string/0 and .text_scan/0 public (#20045)
 - pref: support VNORUN=1, to enable running of tests, vsh files etc (i.e. just compile them, for debugging later)
 - scanner: fix backslashes followed directly by newline in string literals (fix #20291) (#20296)
 - scanner: fix escape character handling in character/rune literals (fix #20301) (#20304)
 - pref: disable the -macosx_version_min clang flag by default (#20297)
 - builder: remove passing `-fno-strict-aliasing`, for `-prod` to gcc/icc (#20368)
+- markused: add `-skip-unused` for programs that `import x.vweb` too (do not skip unused routing methods)
 
 #### Standard library
+- json: fix recursive pointer encoding (#19840)
+- os,picohttpparser,sokol,strconv: prepare for making `-W impure-v` the default (#19846)
+- os: add fast path to mkdir_all, when the given folder already exists (#19869)
+- os: ignore empty path segments in `join_path` (#19877)
+- os: fix bootstrapping for OpenBSD
+- x.json2: replace deprecated type byte with u8 in the tests (#19909)
+- vlib: change byte to u8 (#19930)
+- sync: add a FreeBSD specific version of vlib/sync/sync_default.c.v (#19962)
 - datatypes: add push_many for doubly and singly linked list + add insert_many for heap (#19975)
 - datatypes: make `Direction` pub and fix and add tests for `push_many` (#19983)
 - gg: fn (data voidptr, e &Event) for events, allows methods
@@ -78,6 +102,9 @@
 - csv: Add a sequential reader too (suitable for very large .csv files, it does not read everything at once) (#20140)
 
 #### Web
+- net.mbedtls: use `char` and `usize` types for describing more precisely the C API of mbedtls (#19837)
+- vweb: add the mime type for .toml files (#19875)
+- net.openssl: use actual C values for the SSLError enum (#19945)
 - vweb: .html('custom_template.html')
 - vweb: add an optional parameter to the .redirect/2 method, to be able to set the http code for the redirects (#20082)
 - x.vweb: fix large payload (#20155)
@@ -90,6 +117,9 @@
 - net.http: support `-d no_vschannel` on windows, to fix long waits, while connecting on some systems (#20265)
 - x.vweb: fix `$vweb.html()` integration in cgen for the newer `x.vweb` module (fix #20204)
 - net: support only ip and ip6 in net.tcp_listener (#20336)
+- x.vweb.assets: reimplement assets module for x.vweb (#20280)
+- x.vweb.sse: reimplement SSE module for x.vweb (#20203)
+- js.dom: add querySelector[All] and NodeList (#20240)
 
 #### ORM
 - orm: fix code generation for an option time.Time field (#20031)
@@ -104,6 +134,13 @@
 #### Native backend
 
 #### C backend
+- Fix generic fn returning fixed array (#19885)
+- Fix arrays alias built-in methods call(fix #19896) (#19910)
+- Fix generic array initialization (fix #19903) (#19916)
+- Fix option sumtype auto deref (#19919)
+- Ast, checker, cgen: fix interface embeded methods call(fix #16496) (#19936)
+- Fix ref and deref when an interface is used as a function parameter (fix #19947) (#19966)
+- Fix auto str for interface struct member which implements str method (#19970)
 - Fix generics call with interface arg (fix #19976) (#20002)
 - Fix lambda initialization on option struct field (fix #19474) (#19995)
 - Fix live mode on windows (#20041)
@@ -129,9 +166,19 @@
 - Fix code generation when the function returns mut fixed array (fix #20366) (#20367)
 
 #### vfmt
+- vfmt: automate transition from the old `[attribute]` to the new `@[attribute]` syntax (#19912)
 - vfmt: remove empty `__global()` (#20004)
 
 #### Tools
+- tools: fix already installed detection when running v install --once without args (#19838)
+- compress.gzip: change the endianness for validation to conform to the gzip file specification (fix #19839) (#19849)
+- tools: support `v doc -run-examples math`, to ensure that all `// Example: code` doc comments are working (#19852)
+- Fix `v help` in the prebuilt v executables from the zips in the releases
+- ci,tools: remove skips for the wasm backend, since binaryen is not required anymore (#19883)
+- tools.vpm: support again `http` installs, when installing from an url (workaround) (#19914)
+- tools.vpm: improve version detection of installed modules (#19933)
+- tools: fix `v up`, by not deleting `./v` when missing a `.git` folder (#19965)
+- tools.vpm: fix installing of modules with conflicting names, extend tests (#19961)
 - tools.vpm: evaluate dependencies earlier to fix potential recursive install loop (#19987)
 - tools.vpm: add support for ssh and hg version installations (#20125)
 - tools: simplify and remove redundancies in vshader.v (#20161)
@@ -152,6 +199,7 @@
 - os: fix File.tell for files > 2GB on windows, by using C._telli64(f.fd) (#20072)
 
 #### Examples
+- encoding.xml: make functions public, add documentation, tests, fix attribute parsing for self-closing tags  (#19901)
 - examples: show how to turn on CORS in a vweb server app
 - examples: serve the wasm mandelbrot project using a v web server (#19937)
 - examples: increase the resolution of the generated image in examples/wasm/mandelbrot

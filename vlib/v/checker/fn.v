@@ -504,7 +504,7 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 					}
 				}
 			} else {
-				var.typ = parent_var.expr.expr_type.clear_flags(.option, .result)
+				var.typ = parent_var.expr.expr_type.clear_option_and_result()
 			}
 		} else {
 			var.typ = parent_var.typ
@@ -2644,7 +2644,7 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, node ast
 			} else if !is_map && arg_expr.return_type != ast.bool_type {
 				if arg_expr.or_block.kind != .absent && (arg_expr.return_type.has_flag(.option)
 					|| arg_expr.return_type.has_flag(.result))
-					&& arg_expr.return_type.clear_flags(.option, .result) == ast.bool_type {
+					&& arg_expr.return_type.clear_option_and_result() == ast.bool_type {
 					return
 				}
 				c.error('type mismatch, `${arg_expr.name}` must return a bool', arg_expr.pos)

@@ -1467,7 +1467,7 @@ pub fn (mut g Gen) write_typedef_types() {
 						g.type_definitions.writeln(def_str)
 					} else if !info.is_fn_ret && len.int() > 0 {
 						g.type_definitions.writeln('typedef ${fixed} ${styp} [${len}];')
-						base := g.typ(info.elem_type.clear_flags(.option, .result))
+						base := g.typ(info.elem_type.clear_option_and_result())
 						if info.elem_type.has_flag(.option) && base !in g.options_forward {
 							g.options_forward << base
 						} else if info.elem_type.has_flag(.result) && base !in g.results_forward {
@@ -3197,7 +3197,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			ret_type := if node.or_block.kind == .absent {
 				node.return_type
 			} else {
-				node.return_type.clear_flags(.option, .result)
+				node.return_type.clear_option_and_result()
 			}
 			mut shared_styp := ''
 			if g.is_shared && !ret_type.has_flag(.shared_f) && !g.inside_or_block {
@@ -3694,7 +3694,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		g.or_block(tmp_var, node.or_block, node.typ)
 		g.write(stmt_str)
 		g.write(' ')
-		unwrapped_typ := node.typ.clear_flags(.option, .result)
+		unwrapped_typ := node.typ.clear_option_and_result()
 		unwrapped_styp := g.typ(unwrapped_typ)
 		g.write('(*(${unwrapped_styp}*)${tmp_var}.data)')
 		return
@@ -4713,11 +4713,11 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 }
 
 fn (mut g Gen) concat_expr(node ast.ConcatExpr) {
-	mut styp := g.typ(node.return_type.clear_flags(.option, .result))
+	mut styp := g.typ(node.return_type.clear_option_and_result())
 	if g.inside_return {
-		styp = g.typ(g.fn_decl.return_type.clear_flags(.option, .result))
+		styp = g.typ(g.fn_decl.return_type.clear_option_and_result())
 	} else if g.inside_or_block {
-		styp = g.typ(g.or_expr_return_type.clear_flags(.option, .result))
+		styp = g.typ(g.or_expr_return_type.clear_option_and_result())
 	}
 	sym := g.table.sym(node.return_type)
 	is_multi := sym.kind == .multi_return
@@ -5209,8 +5209,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				if return_sym.kind == .array_fixed && expr !is ast.ArrayInit {
 					g.fixed_array_var_init(expr, (return_sym.info as ast.ArrayFixed).size)
 				} else {
-					g.expr_with_cast(expr, node.types[i], fn_ret_type.clear_flags(.option,
-						.result))
+					g.expr_with_cast(expr, node.types[i], fn_ret_type.clear_option_and_result())
 				}
 				if i < node.exprs.len - 1 {
 					g.write(', ')
@@ -6382,8 +6381,7 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 					}
 					old_inside_opt_data := g.inside_opt_data
 					g.inside_opt_data = true
-					g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_flags(.option,
-						.result))
+					g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_option_and_result())
 					g.inside_opt_data = old_inside_opt_data
 					g.writeln(';')
 					g.stmt_path_pos.delete_last()
@@ -6419,7 +6417,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 		}
 	}
 	if or_block.kind == .block {
-		g.or_expr_return_type = return_type.clear_flags(.option, .result)
+		g.or_expr_return_type = return_type.clear_option_and_result()
 		g.writeln('\tIError err = ${cvar_name}.err;')
 
 		g.inside_or_block = true
