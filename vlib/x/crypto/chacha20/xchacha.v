@@ -12,6 +12,7 @@ const h_nonce_size = 16
 // xchacha20 are intermediary step to build xchacha20 and initialized the same way as the ChaCha20 cipher,
 // except xchacha20 use a 128-bit (16 byte) nonce and has no counter to derive subkey
 // see https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-xchacha-03#section-2.2
+@[direct_array_access]
 fn xchacha20(key []u8, nonce []u8) ![]u8 {
 	// early bound check
 	if key.len != key_size {

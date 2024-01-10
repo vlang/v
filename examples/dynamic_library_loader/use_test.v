@@ -1,7 +1,5 @@
 module main
 
-// vtest flaky: true
-// vtest retry: 3
 import os
 import dl
 
@@ -31,6 +29,7 @@ fn test_can_compile_main_program() {
 	assert os.is_file(library_file_path)
 	result := v_compile('run use_shared_library.v')
 	// dump(result)
+	assert result.output.contains('hello from add_1 , num = 4')
 	assert result.output.contains('res: 4')
 	os.rm(library_file_path) or {}
 }

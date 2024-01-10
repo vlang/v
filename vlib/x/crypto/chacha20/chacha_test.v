@@ -1,6 +1,25 @@
 module chacha20
 
+import rand
 import encoding.hex
+
+fn test_chacha20_cipher_reset() ! {
+	mut key := []u8{len: 32}
+	mut nonce := []u8{len: 12}
+	rand.read(mut key)
+	rand.read(mut nonce)
+
+	mut c := new_cipher(key, nonce)!
+	unsafe { c.reset() }
+
+	for i, _ in c.key {
+		assert c.key[i] == u32(0)
+	}
+
+	for i, _ in c.nonce {
+		assert c.nonce[i] == u32(0)
+	}
+}
 
 struct BlockCase {
 	key     string

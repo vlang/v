@@ -76,6 +76,7 @@ pub fn decrypt(key []u8, nonce []u8, ciphertext []u8) ![]u8 {
 // in src and stores the ciphertext result in dst in a single run of encryption.
 // You must never use the same (key, nonce) pair more than once for encryption.
 // This would void any confidentiality guarantees for the messages encrypted with the same nonce and key.
+@[direct_array_access]
 pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 	if src.len == 0 {
 		return
@@ -86,14 +87,13 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 	if subtle.inexact_overlap(dst, src) {
 		panic('chacha20: invalid buffer overlap')
 	}
-	mut ciphertext := []u8{}
 
 	// ChaCha20's encryption mechanism is a relatively simple operation.
 	// for every block_sized block from src bytes, build ChaCha20  keystream block,
-	// then xor each byte in the block with keystresm block and then append xor-ed bytes
+	// then xor each byte in the block with keystresm block and then stores xor-ed bytes
 	// to the output buffer. If there are remaining (trailing) partial bytes,
 	// generate one more keystream block, xors keystream block with partial bytes
-	// and append to the result.
+	// and stores the result.
 	//
 	// Let's process for multiple blocks
 	// number of blocks the src bytes should be split into
@@ -104,33 +104,20 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []u8, src []u8) {
 		// get current src block to be xor-ed
 		block := unsafe { src[i * chacha20.block_size..(i + 1) * chacha20.block_size] }
 
-		// xor current block of plaintext with keystream in c.block and store result in out
-		mut out := []u8{len: block.len}
-		n := cipher.xor_bytes(mut out, block, c.block)
+		// instead allocating output buffer for every block, we use dst buffer directly.
+		// xor current block of plaintext with keystream in c.block
+		n := cipher.xor_bytes(mut dst[i * chacha20.block_size..(i + 1) * chacha20.block_size],
+			block, c.block)
 		assert n == c.block.len
-
-		// append current output to the ciphertext buffer
-		ciphertext << out
 	}
 	// process for partial block
 	if src.len % chacha20.block_size != 0 {
 		c.generic_key_stream()
-		// get the remaining partial block
+		// get the remaining last partial block
 		block := unsafe { src[nr_blocks * chacha20.block_size..] }
 		// xor block with keystream
-		mut out := []u8{len: block.len}
-		n := cipher.xor_bytes(mut out, block, c.block)
-		assert n == block.len
-
-		// make sure to take only remaining bytes
-		out = unsafe { out[0..src.len % chacha20.block_size] }
-
-		// append last output to the ciphertext buffer
-		ciphertext << out
+		_ := cipher.xor_bytes(mut dst[nr_blocks * chacha20.block_size..], block, c.block)
 	}
-	// copy ciphertext message results to the dst buffer
-	n := copy(mut dst, ciphertext)
-	assert n == src.len
 }
 
 // free the resources taken by the Cipher `c`. Dont use cipher after .free call
@@ -147,16 +134,11 @@ pub fn (mut c Cipher) free() {
 // reset quickly sets all Cipher's fields to default value
 @[unsafe]
 pub fn (mut c Cipher) reset() {
-	for i, _ in c.key {
-		c.key[i] = u32(0)
-	}
-	for j, _ in c.nonce {
-		c.nonce[j] = u32(0)
-	}
 	unsafe {
+		_ := vmemset(&c.key, 0, 32)
+		_ := vmemset(&c.nonce, 0, 12)
 		c.block.reset()
 	}
-
 	c.counter = u32(0)
 	c.overflow = false
 	c.precomp = false
@@ -189,13 +171,13 @@ pub fn (mut c Cipher) set_counter(ctr u32) {
 }
 
 // rekey resets internal Cipher's state and reinitializes state with the provided key and nonce
-@[unsafe]
 pub fn (mut c Cipher) rekey(key []u8, nonce []u8) ! {
 	unsafe { c.reset() }
 	c.do_rekey(key, nonce)!
 }
 
 // do_rekey reinitializes ChaCha20 instance with the provided key and nonce.
+@[direct_array_access]
 fn (mut c Cipher) do_rekey(key []u8, nonce []u8) ! {
 	// check for correctness of key and nonce length
 	if key.len != chacha20.key_size {
@@ -242,6 +224,7 @@ fn (mut c Cipher) do_rekey(key []u8, nonce []u8) ! {
 // chacha20_block transforms a ChaCha20 state by running
 // multiple quarter rounds.
 // see https://datatracker.ietf.org/doc/html/rfc8439#section-2.3
+@[direct_array_access]
 fn (mut c Cipher) chacha20_block() {
 	// initializes ChaCha20 state
 	//      0:cccccccc   1:cccccccc   2:cccccccc   3:cccccccc
@@ -334,6 +317,7 @@ fn (mut c Cipher) chacha20_block() {
 }
 
 // generic_key_stream creates generic ChaCha20 keystream block and stores the result in Cipher.block
+@[direct_array_access]
 fn (mut c Cipher) generic_key_stream() {
 	// creates ChaCha20 block stream
 	c.chacha20_block()
