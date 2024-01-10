@@ -20,3 +20,18 @@ fn test_const_below_at_struct_fixed_array_fields() {
 	foo := Foo{}
 	assert foo.posts == [0, 0, 0, 0, 0]!
 }
+
+// for issue 20311
+// When using a static variable to define a fixed array size,
+// if the static variable is defined below or in another module, the size value will not be calculated correctly.
+fn test_const_below_at_fixed_array() {
+	arr := [width][2][width + 1]f64{}
+	assert arr.len == 2
+	assert arr[0].len == 2
+	assert arr[0][0].len == 3
+	assert arr == [[[0.0, 0.0, 0.0]!, [0.0, 0.0, 0.0]!]!, [[0.0, 0.0, 0.0]!,
+		[0.0, 0.0, 0.0]!]!]!
+}
+
+// Do not move this definition; it must be below `fn test_const_below_at_fixed_array()`.
+const width = 2
