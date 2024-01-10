@@ -105,7 +105,13 @@ pub fn dial_tcp_with_bind(saddr string, laddr string) !&TcpConn {
 			read_timeout: net.tcp_default_read_timeout
 			write_timeout: net.tcp_default_write_timeout
 		}
+<<<<<<< HEAD
 		conn.set_blocking(true)!
+=======
+		$if !net_nonblocking_sockets ? {
+			conn.set_blocking(true)!
+		}
+>>>>>>> 405ca8169 (Update vlib/net/tcp.c.v)
 		return conn
 	}
 	// failed
