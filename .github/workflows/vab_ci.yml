@@ -39,7 +39,10 @@ jobs:
         run: vab --help
 
       - name: Run vab doctor
-        run: vab doctor
+        run: |
+          vab doctor
+          which d8 || true
+          which dx || true
 
       - name: Build graphical V examples as APK
         run: |
