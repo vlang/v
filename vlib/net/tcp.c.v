@@ -318,7 +318,13 @@ pub fn listen_tcp(family AddrFamily, saddr string, options ListenOptions) !&TcpL
 pub fn (mut l TcpListener) accept() !&TcpConn {
 	mut res := l.accept_only()!
 	res.set_sock()!
+<<<<<<< HEAD
 	res.set_blocking(true)!
+=======
+	$if !net_nonblocking_sockets ? {
+		res.set_blocking(true)!
+	}
+>>>>>>> 6f3f3cd8f (Update vlib/net/tcp.c.v)
 	return res
 }
 
