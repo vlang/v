@@ -247,89 +247,9 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		node.elem_type = elem_type
 	} else if node.is_fixed && node.exprs.len == 1 && node.elem_type != ast.void_type {
 		// `[50]u8`
-		mut fixed_size := i64(0)
 		mut init_expr := node.exprs[0]
-		c.expr(mut init_expr)
-		match mut init_expr {
-			ast.IntegerLiteral {
-				fixed_size = init_expr.val.int()
-			}
-			ast.CastExpr {
-				if !init_expr.typ.is_pure_int() {
-					c.error('only integer types are allowed', init_expr.pos)
-				}
-				match mut init_expr.expr {
-					ast.IntegerLiteral {
-						fixed_size = init_expr.expr.val.int()
-					}
-					ast.EnumVal {
-						if val := c.table.find_enum_field_val(init_expr.expr.enum_name,
-							init_expr.expr.val)
-						{
-							fixed_size = val
-						}
-					}
-					else {}
-				}
-			}
-			ast.EnumVal {
-				c.error('${init_expr.enum_name}.${init_expr.val} has to be casted to integer to be used as size',
-					init_expr.pos)
-			}
-			ast.Ident {
-				if mut init_expr.obj is ast.ConstField {
-					if mut init_expr.obj.expr is ast.EnumVal {
-						c.error('${init_expr.obj.expr.enum_name}.${init_expr.obj.expr.val} has to be casted to integer to be used as size',
-							init_expr.pos)
-					}
-					if mut init_expr.obj.expr is ast.CastExpr {
-						if !init_expr.obj.expr.typ.is_pure_int() {
-							c.error('only integer types are allowed', init_expr.pos)
-						}
-						if init_expr.obj.expr.expr is ast.IntegerLiteral {
-							if comptime_value := c.eval_comptime_const_expr(init_expr.obj.expr.expr,
-								0)
-							{
-								fixed_size = comptime_value.i64() or { fixed_size }
-							}
-						}
-						if init_expr.obj.expr.expr is ast.InfixExpr {
-							if comptime_value := c.eval_comptime_const_expr(init_expr.obj.expr.expr,
-								0)
-							{
-								fixed_size = comptime_value.i64() or { fixed_size }
-							}
-						}
-					}
-					if comptime_value := c.eval_comptime_const_expr(init_expr.obj.expr,
-						0)
-					{
-						fixed_size = comptime_value.i64() or { fixed_size }
-					}
-				} else {
-					c.error('non-constant array bound `${init_expr.name}`', init_expr.pos)
-				}
-			}
-			ast.InfixExpr {
-				if comptime_value := c.eval_comptime_const_expr(init_expr, 0) {
-					fixed_size = comptime_value.i64() or { fixed_size }
-				}
-			}
-			else {
-				c.error('fixed array size cannot use non-constant value', init_expr.pos())
-			}
-		}
-		if fixed_size <= 0 {
-			c.error('fixed size cannot be zero or negative (fixed_size: ${fixed_size})',
-				init_expr.pos())
-		}
-		idx := c.table.find_or_register_array_fixed(node.elem_type, int(fixed_size), init_expr,
-			false)
-		if node.elem_type.has_flag(.generic) {
-			node.typ = ast.new_type(idx).set_flag(.generic)
-		} else {
-			node.typ = ast.new_type(idx)
-		}
+		node.typ = c.eval_array_fixed_sizes(mut init_expr, 0, node.elem_type)
+		node.elem_type = (c.table.sym(node.typ).info as ast.ArrayFixed).elem_type
 		if node.has_init {
 			c.check_array_init_default_expr(mut node)
 		}
@@ -357,6 +277,107 @@ fn (mut c Checker) check_array_init_para_type(para string, mut expr ast.Expr, po
 		if lit.val.int() < 0 {
 			c.error('array ${para} can not be negative', lit.pos)
 		}
+	}
+}
+
+// When the fixed array has multiple dimensions, it needs to be evaluated recursively.
+// `[const]int`, `[const][3]int`, `[3][const]int`, `[const + 1][3][const]int`...
+fn (mut c Checker) eval_array_fixed_sizes(mut size_expr ast.Expr, size int, elem_type ast.Type) ast.Type {
+	elem_sym := c.table.sym(elem_type)
+	elem_info := elem_sym.info
+
+	new_elem_typ := if elem_sym.kind == .array_fixed {
+		mut info := elem_info as ast.ArrayFixed
+		mut elem_size_expr := unsafe { info.size_expr }
+		c.eval_array_fixed_sizes(mut elem_size_expr, info.size, info.elem_type)
+	} else {
+		elem_type
+	}
+
+	mut fixed_size := i64(size)
+	if fixed_size <= 0 {
+		c.expr(mut size_expr)
+		match mut size_expr {
+			ast.IntegerLiteral {
+				fixed_size = size_expr.val.int()
+			}
+			ast.CastExpr {
+				if !size_expr.typ.is_pure_int() {
+					c.error('only integer types are allowed', size_expr.pos)
+				}
+				match mut size_expr.expr {
+					ast.IntegerLiteral {
+						fixed_size = size_expr.expr.val.int()
+					}
+					ast.EnumVal {
+						if val := c.table.find_enum_field_val(size_expr.expr.enum_name,
+							size_expr.expr.val)
+						{
+							fixed_size = val
+						}
+					}
+					else {}
+				}
+			}
+			ast.EnumVal {
+				c.error('${size_expr.enum_name}.${size_expr.val} has to be casted to integer to be used as size',
+					size_expr.pos)
+			}
+			ast.Ident {
+				if mut size_expr.obj is ast.ConstField {
+					if mut size_expr.obj.expr is ast.EnumVal {
+						c.error('${size_expr.obj.expr.enum_name}.${size_expr.obj.expr.val} has to be casted to integer to be used as size',
+							size_expr.pos)
+					}
+					if mut size_expr.obj.expr is ast.CastExpr {
+						if !size_expr.obj.expr.typ.is_pure_int() {
+							c.error('only integer types are allowed', size_expr.pos)
+						}
+						if size_expr.obj.expr.expr is ast.IntegerLiteral {
+							if comptime_value := c.eval_comptime_const_expr(size_expr.obj.expr.expr,
+								0)
+							{
+								fixed_size = comptime_value.i64() or { fixed_size }
+							}
+						}
+						if size_expr.obj.expr.expr is ast.InfixExpr {
+							if comptime_value := c.eval_comptime_const_expr(size_expr.obj.expr.expr,
+								0)
+							{
+								fixed_size = comptime_value.i64() or { fixed_size }
+							}
+						}
+					}
+					if comptime_value := c.eval_comptime_const_expr(size_expr.obj.expr,
+						0)
+					{
+						fixed_size = comptime_value.i64() or { fixed_size }
+					}
+				} else {
+					c.error('non-constant array bound `${size_expr.name}`', size_expr.pos)
+				}
+			}
+			ast.InfixExpr {
+				if comptime_value := c.eval_comptime_const_expr(size_expr, 0) {
+					fixed_size = comptime_value.i64() or { fixed_size }
+				}
+			}
+			else {
+				c.error('fixed array size cannot use non-constant value', size_expr.pos())
+			}
+		}
+		if fixed_size <= 0 {
+			c.error('fixed size cannot be zero or negative (fixed_size: ${fixed_size})',
+				size_expr.pos())
+		}
+	}
+
+	idx := c.table.find_or_register_array_fixed(new_elem_typ, int(fixed_size), size_expr,
+		false)
+	return if elem_type.has_flag(.generic) {
+		ast.new_type(idx).set_flag(.generic)
+	} else {
+		ast.new_type(idx)
 	}
 }
 

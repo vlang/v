@@ -41,6 +41,16 @@ fn (mut c Checker) error(message string, pos token.Pos) {
 	c.warn_or_error(msg, pos, false)
 }
 
+fn (mut c Checker) fatal(message string, pos token.Pos) {
+	if (c.pref.translated || c.file.is_translated) && message.starts_with('mismatched types') {
+		// TODO move this
+		return
+	}
+	msg := message.replace('`Array_', '`[]')
+	c.pref.fatal_errors = true
+	c.warn_or_error(msg, pos, false)
+}
+
 fn (mut c Checker) note(message string, pos token.Pos) {
 	if c.pref.message_limit >= 0 && c.nr_notices >= c.pref.message_limit {
 		c.should_abort = true

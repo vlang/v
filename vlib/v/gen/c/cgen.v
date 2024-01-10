@@ -1455,23 +1455,25 @@ pub fn (mut g Gen) write_typedef_types() {
 					styp := sym.cname
 					// array_fixed_char_300 => char x[300]
 					len := styp.after('_')
-					mut fixed := g.typ(info.elem_type)
-					if elem_sym.info is ast.FnType {
-						pos := g.out.len
-						// pos2:=g.out_parallel[g.out_idx].len
-						g.write_fn_ptr_decl(&elem_sym.info, '')
-						fixed = g.out.cut_to(pos)
-						// g.out_parallel[g.out_idx].cut_to(pos2)
-						mut def_str := 'typedef ${fixed};'
-						def_str = def_str.replace_once('(*)', '(*${styp}[${len}])')
-						g.type_definitions.writeln(def_str)
-					} else if !info.is_fn_ret && len.int() > 0 {
-						g.type_definitions.writeln('typedef ${fixed} ${styp} [${len}];')
-						base := g.typ(info.elem_type.clear_option_and_result())
-						if info.elem_type.has_flag(.option) && base !in g.options_forward {
-							g.options_forward << base
-						} else if info.elem_type.has_flag(.result) && base !in g.results_forward {
-							g.results_forward << base
+					if len.int() > 0 {
+						mut fixed := g.typ(info.elem_type)
+						if elem_sym.info is ast.FnType {
+							pos := g.out.len
+							// pos2:=g.out_parallel[g.out_idx].len
+							g.write_fn_ptr_decl(&elem_sym.info, '')
+							fixed = g.out.cut_to(pos)
+							// g.out_parallel[g.out_idx].cut_to(pos2)
+							mut def_str := 'typedef ${fixed};'
+							def_str = def_str.replace_once('(*)', '(*${styp}[${len}])')
+							g.type_definitions.writeln(def_str)
+						} else if !info.is_fn_ret {
+							g.type_definitions.writeln('typedef ${fixed} ${styp} [${len}];')
+							base := g.typ(info.elem_type.clear_option_and_result())
+							if info.elem_type.has_flag(.option) && base !in g.options_forward {
+								g.options_forward << base
+							} else if info.elem_type.has_flag(.result) && base !in g.results_forward {
+								g.results_forward << base
+							}
 						}
 					}
 				}
@@ -6181,18 +6183,21 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 						fixed_elem_name += '*'.repeat(sym.info.elem_type.nr_muls())
 					}
 					len := sym.info.size
-					if fixed_elem_name.starts_with('C__') {
-						fixed_elem_name = fixed_elem_name[3..]
-					}
-					if elem_sym.info is ast.FnType {
-						pos := g.out.len
-						g.write_fn_ptr_decl(&elem_sym.info, '')
-						fixed_elem_name = g.out.cut_to(pos)
-						mut def_str := 'typedef ${fixed_elem_name};'
-						def_str = def_str.replace_once('(*)', '(*${styp}[${len}])')
-						g.type_definitions.writeln(def_str)
-					} else if len > 0 {
-						g.type_definitions.writeln('typedef ${fixed_elem_name} ${styp} [${len}];')
+					if len > 0 {
+						if fixed_elem_name.starts_with('C__') {
+							fixed_elem_name = fixed_elem_name[3..]
+						}
+						if elem_sym.info is ast.FnType {
+							pos := g.out.len
+							g.write_fn_ptr_decl(&elem_sym.info, '')
+							fixed_elem_name = g.out.cut_to(pos)
+							mut def_str := 'typedef ${fixed_elem_name};'
+							def_str = def_str.replace_once('(*)', '(*${styp}[${len}])')
+							g.type_definitions.writeln(def_str)
+						} else if elem_sym.info !is ast.ArrayFixed
+							|| (elem_sym.info as ast.ArrayFixed).size > 0 {
+							g.type_definitions.writeln('typedef ${fixed_elem_name} ${styp} [${len}];')
+						}
 					}
 				}
 			}
