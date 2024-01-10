@@ -54,7 +54,13 @@ pub fn dial_tcp(oaddress string) !&TcpConn {
 			read_timeout: net.tcp_default_read_timeout
 			write_timeout: net.tcp_default_write_timeout
 		}
+<<<<<<< HEAD
 		conn.set_blocking(true)!
+=======
+		$if !net_nonblocking_sockets ? {
+			conn.set_blocking(true)!
+		}
+>>>>>>> 8b3966520 (Update vlib/net/tcp.c.v)
 		return conn
 	}
 
