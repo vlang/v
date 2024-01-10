@@ -122,6 +122,9 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							is_comptime_type_is_expr = true
 							if var := left.scope.find_var(left.name) {
 								checked_type = c.unwrap_generic(var.typ)
+								if var.smartcasts.len > 0 {
+									checked_type = c.unwrap_generic(var.smartcasts.last())
+								}
 							}
 							skip_state = if c.comptime.is_comptime_type(checked_type,
 								right as ast.ComptimeType)
