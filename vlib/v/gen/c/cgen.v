@@ -5914,8 +5914,9 @@ fn (mut g Gen) write_init_function() {
 		g.writeln('\tv__trace_calls__on_call(_SLIT("_vinit"));')
 	}
 
-	if g.use_segfault_handler {
+	if g.use_segfault_handler && !g.pref.is_shared {
 		// 11 is SIGSEGV. It is hardcoded here, to avoid FreeBSD compilation errors for trivial examples.
+		// shared object does not need this
 		g.writeln('#if __STDC_HOSTED__ == 1\n\tsignal(11, v_segmentation_fault_handler);\n#endif')
 	}
 	if g.pref.is_bare {
@@ -5930,7 +5931,10 @@ fn (mut g Gen) write_init_function() {
 	// calling module init functions too, just in case they do fail...
 	g.write('\tas_cast_type_indexes = ')
 	g.writeln(g.as_cast_name_table())
-	g.writeln('\tbuiltin_init();')
+	if !g.pref.is_shared {
+		// shared object does not need this
+		g.writeln('\tbuiltin_init();')
+	}
 
 	if g.nr_closures > 0 {
 		g.writeln('\t_closure_mtx_init();')
