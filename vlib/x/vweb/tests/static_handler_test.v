@@ -51,7 +51,7 @@ fn run_app_test() {
 	app.static_mime_types['.what'] = vweb.mime_types['.txt']
 
 	if _ := app.handle_static('not_found', true) {
-		assert true == false, 'should throw directory not found error'
+		assert false, 'should throw directory not found error'
 	} else {
 		assert err.msg().starts_with('directory `not_found` does not exist') == true
 	}
