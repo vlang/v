@@ -1,11 +1,13 @@
 module chacha20
 
-import crypto.rand
+import rand
 import encoding.hex
 
 fn test_chacha20_cipher_reset() ! {
-	key := rand.read(32)!
-	nonce := rand.read(12)!
+	mut key := []u8{len: 32}
+	mut nonce := []u8{len: 12}
+	rand.read(mut key)
+	rand.read(mut nonce)
 
 	mut c := new_cipher(key, nonce)!
 	unsafe { c.reset() }
