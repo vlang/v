@@ -228,7 +228,8 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	mut type_name := g.typ(g.unwrap_generic(node.return_type))
 
 	ret_sym := g.table.sym(g.unwrap_generic(node.return_type))
-	if node.return_type.has_flag(.generic) && ret_sym.kind == .array_fixed {
+	if node.return_type.has_flag(.generic) && !node.return_type.has_flag(.option)
+		&& ret_sym.kind == .array_fixed {
 		type_name = '_v_${type_name}'
 	} else if ret_sym.kind == .alias && !node.return_type.has_flag(.option) {
 		unalias_typ := g.table.unaliased_type(node.return_type)
