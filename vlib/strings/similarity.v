@@ -1,8 +1,15 @@
 module strings
 
 @[inline]
-fn imin(x u16, y u16) u16 {
-	return if x < y { x } else { y }
+fn min(a u16, b u16, c u16) u16 {
+	mut m := a
+	if b < m {
+		m = b
+	}
+	if c < m {
+		m = c
+	}
+	return m
 }
 
 // levenshtein_distance uses the Levenshtein Distance algorithm to calculate
@@ -21,13 +28,13 @@ pub fn levenshtein_distance(a string, b string) int {
 
 	mut row := []u16{len: a.len + 1, init: u16(index)}
 
-	for i := 1; i < b.len; i++ {
+	for i := 1; i < b.len + 1; i++ {
 		mut prev := u16(i)
-		for j := 1; j < a.len; j++ {
+		for j := 1; j < a.len + 1; j++ {
 			mut current := row[j - 1] // match
 			if b[i - 1] != a[j - 1] {
 				// insertion, substitution, deletion
-				current = imin(imin(row[j - 1] + 1, prev + 1), row[j] + 1)
+				current = min(row[j - 1] + 1, prev + 1, row[j] + 1)
 			}
 			row[j - 1] = prev
 			prev = current
