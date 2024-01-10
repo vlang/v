@@ -1,6 +1,7 @@
 name: vab CI
 
 on:
+  workflow_call:
   push:
     paths-ignore:
       - "**.md"
@@ -19,7 +20,7 @@ jobs:
       - uses: actions/setup-java@v2
         with:
           distribution: 'adopt'
-          java-version: 8
+          java-version: 11
 
       - uses: actions/checkout@v3
       - name: Build V
