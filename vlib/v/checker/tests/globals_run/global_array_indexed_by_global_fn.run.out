@@ -1,0 +1,3 @@
+[vlib/v/checker/tests/globals_run/global_array_indexed_by_global_fn.vv:30] cpu_locals.map(it.x): [123, 456]
+[vlib/v/checker/tests/globals_run/global_array_indexed_by_global_fn.vv:33] x.x: 123
+[vlib/v/checker/tests/globals_run/global_array_indexed_by_global_fn.vv:36] y.x: 456

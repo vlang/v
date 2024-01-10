@@ -1,0 +1,6 @@
+vlib/v/checker/tests/interface_method_name_err.vv:2:2: error: method name `Fizz` cannot contain uppercase letters, use snake_case instead
+    1 | interface Foo {
+    2 |     Fizz()
+      |     ~~~~~~
+    3 | }
+    4 |

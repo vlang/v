@@ -1,0 +1,15 @@
+import v.ast
+
+fn abc_xxx(xobj ast.ScopeObject) {
+}
+
+fn abc_map(xmap map[string]ast.ScopeObject) {
+}
+
+fn (t Tree) objects(so map[string]ast.ScopeObject) &C.cJSON {
+	obj := create_object()
+	for key, val in so {
+		to_object(obj, key, t.scope_object(val))
+	}
+	return obj
+}

@@ -1,0 +1,5 @@
+fn main() {
+	a := &&char(unsafe { nil })
+	b := &&char(a)
+	println(b)
+}

@@ -1,0 +1,6 @@
+vlib/v/checker/tests/struct_none_field_type_err.vv:2:7: error: cannot use `none` as field type
+    1 | struct Jaca {
+    2 |     lala none
+      |          ~~~~
+    3 | }
+    4 |

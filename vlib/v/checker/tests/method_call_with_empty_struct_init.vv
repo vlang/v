@@ -1,0 +1,11 @@
+struct Abc {
+	x int
+}
+
+fn (s Abc) abc(x int, param Abc) {
+}
+
+fn main() {
+	s := Abc{}
+	s.abc(0, {})
+}

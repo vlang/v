@@ -1,0 +1,3 @@
+fn main() {
+	println(int('hi'.index_last('i')))
+}

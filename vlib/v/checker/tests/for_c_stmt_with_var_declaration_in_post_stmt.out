@@ -1,0 +1,5 @@
+vlib/v/checker/tests/for_c_stmt_with_var_declaration_in_post_stmt.vv:1:26: error: for loop post statement cannot be a variable declaration
+    1 | for i := 100; i < 200; j := 100 {
+      |                          ~~
+    2 |     println(j)
+    3 | }

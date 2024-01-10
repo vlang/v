@@ -1,0 +1,11 @@
+fn exit(x string) {
+	println('my exit: $x')
+}
+
+fn print_backtrace() {
+	println('hello')
+}
+
+fn main() {
+	print_backtrace()
+}

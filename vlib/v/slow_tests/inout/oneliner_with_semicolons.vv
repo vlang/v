@@ -1,0 +1,1 @@
+import os; import math; println(os.getenv('VEXE').len > 2); println(os.args.len); println(math.sin(math.pi / 2));

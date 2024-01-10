@@ -6,5 +6,5 @@ struct Context {
 fn main() {
 	mut ctx := Context{}
 	x := 2.32
-	ctx.vb = [1.1, x, 3.3, 4.4, 5.0, 6.0, 7.0, 8.9]!!
+	ctx.vb = [1.1, x, 3.3, 4.4, 5.0, 6.0, 7.0, 8.9]!
 }

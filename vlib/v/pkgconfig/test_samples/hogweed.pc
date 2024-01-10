@@ -1,0 +1,19 @@
+prefix=/usr
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+# Uses Requires.private and Libs.private, under the assumption that
+# when using shared libraries, the ELF dependencies from libhogweed.so
+# to nettle and gmp work.
+
+Name: Hogweed
+Description: Nettle low-level cryptographic library (public-key algorithms)
+URL: http://www.lysator.liu.se/~nisse/nettle
+Version: 3.8
+Requires: # nettle
+Requires.private:  nettle
+Libs: -L${libdir} -lhogweed # -lgmp 
+Libs.private:  -lgmp 
+Cflags: -I${includedir}
+

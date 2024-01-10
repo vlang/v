@@ -1,0 +1,55 @@
+*, body {
+	font-family: Menlo, Monospace, 'Courier New';
+}
+table, td, th {
+	border-collapse: collapse;
+	border: 1px solid #dfdfdf;
+}
+th {
+	background-color: lightgray;
+	color: black;
+	padding: 5px;
+}
+td {
+	padding: 5px;
+	position: relative;
+}
+table td:nth-child(3) {
+	width: 650px!important;
+	overflow: hidden;
+	display: block;
+	border: 0px;
+	border-bottom: 1px solid lightgray;
+}
+.diff {
+	border-radius: 2.5px;
+	color: #ffffff;
+	padding: 0 5px 0 5px;
+	position: absolute;
+	font-size: 14px;
+	bottom: 0px;
+	right: 0px;
+}
+.minus {
+	background-color: rgb(195, 74, 104);
+}
+.plus {
+	background-color: #8BC34A;
+}
+.equal {
+	background-color: rgb(113, 68, 172);
+}
+
+table {
+	counter-reset: rowNumber -1;
+}
+table tr {
+	counter-increment: rowNumber;
+}
+table tr td:first-child::after {
+	position: absolute;
+	top: -1px;
+	right: 0px;
+	content: counter(rowNumber);
+	font-size: 10px;
+}

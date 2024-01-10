@@ -1,0 +1,20 @@
+This command compiles the given target, along with their dependencies,
+into an executable using the Native code generation backend.
+
+Usage:
+  v -native [-options] ['run'] <target.v|target_directory> [run options]
+
+
+For more general build help, see also `v help build`.
+
+# Interfacing the Native code generation, passing options to it:
+   -v                         Display the assembly code generated
+                              (that may change to `-showasm` in the future)
+
+   -arch <arch>               Select target architecture
+                              Only `arm64` and `amd64` are supported
+
+   -os <os>, -target-os <os>  Change the target OS that V compiles for.
+
+
+The supported targets for the native backend are: `macos`, `linux` and 'windows'

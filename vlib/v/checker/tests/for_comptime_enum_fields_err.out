@@ -1,0 +1,7 @@
+vlib/v/checker/tests/for_comptime_enum_fields_err.vv:6:11: error: iterating over .fields is supported only for structs and interfaces, and Test is neither
+    4 | }
+    5 | 
+    6 | $for i in Test.fields {
+      |           ~~~~
+    7 |     println(i)
+    8 | }

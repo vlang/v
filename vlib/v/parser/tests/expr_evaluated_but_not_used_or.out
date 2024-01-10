@@ -1,0 +1,7 @@
+vlib/v/parser/tests/expr_evaluated_but_not_used_or.vv:3:5: error: expression evaluated but not used
+    1 | fn main() {
+    2 |   f() or {
+    3 |     0
+      |     ^
+    4 |     1
+    5 |   }

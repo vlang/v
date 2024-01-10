@@ -1,0 +1,13 @@
+type Expr = Int | String
+
+struct Int {}
+struct String {}
+
+fn foo(e Expr) {
+	x := e as Stringg
+	println(x)
+}
+
+fn main() {
+
+}

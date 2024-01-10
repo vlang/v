@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<head>
+   <!--Let browser know website is optimized for mobile-->
+   <meta charset="UTF-8" name="viewport" content="width=device-width, initial-scale=1.0">
+   <!-- Compiled and minified CSS -->
+   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+   <!-- Compiled and minified JavaScript -->
+   <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+   <!-- Material UI icons -->
+   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+   <title>${title}</title>
+</head>
+<body>
+   <div>@include 'templates/header_component.html'</div>
+   <div  class="card-panel center-align" style="max-width: 240px; padding: 10px; margin: 10px; border-radius: 5px;">
+      <form id="index_form" method='post' action=''>
+         <div style="display:flex; flex-direction: column;">
+            <input type='text' name='username' placeholder='Username' required autofocus>
+            <input type='password' name='password' placeholder='Password' required>
+         </div>
+         <div style="margin-top: 10px;">
+            <input class="waves-effect waves-light btn-small" type='submit' onclick="login()" formaction="javascript:void(0);" value='Login'>
+            <input class="waves-effect waves-light btn-small" type='submit' onclick="addUser()" formaction="javascript:void(0);" value='Register'>
+         </div>
+      </form>
+      <script type="text/javascript">
+        // function eraseCookie(name) {
+        //     document.cookie = name + '=; Max-Age=0'
+        // }
+         async function addUser() {
+         const form = document.querySelector('#index_form');
+         const formData = new FormData(form);
+            await fetch('/controller/user/create', {
+                 method: 'POST',
+                 body: formData
+             })                
+             .then( async (response) => {
+                 if (response.status != 201) {
+                     throw await response.text()
+                 }
+                 return await response.text()
+             })
+             .then((data) => {
+                 alert("User created successfully")
+             })
+             .catch((error) => {
+                 alert(error);
+             });
+         }
+         async function login() {
+            const form = document.querySelector('#index_form');
+            const formData = new FormData(form);
+             await fetch('/controller/auth', {
+                 method: 'POST',
+                 body: formData
+             })  
+             .then( async (response) => {
+                 if (response.status != 200) {
+                     throw await response.text()
+                 }
+                 return response.json()
+             })
+             .then((data) => {
+                document.cookie = 'token='+data+';';
+                window.location.href = '/products'
+             })
+             .catch((error) => {
+                 alert(error);
+             });
+         }
+      </script>
+   </div>
+</body>
+</html>

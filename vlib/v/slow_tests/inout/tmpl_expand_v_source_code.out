@@ -1,0 +1,33 @@
+module data
+
+//object: user
+//object_u: User
+//objects: users
+//objects_u: Users
+
+pub struct user {
+pub mut:
+	id          int
+	name        string
+	description string
+	tags		[]string
+	remarks		[]int
+}
+
+module data
+
+//object: circle
+//object_u: Circle
+//objects: circles
+//objects_u: Circles
+
+pub struct circle {
+pub mut:
+	id          int
+	name        string
+	description string
+	tags		[]string
+	remarks		[]int
+}
+
+OK

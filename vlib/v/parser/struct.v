@@ -1,18 +1,23 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
 
 import v.ast
-import v.table
 import v.token
 import v.util
 
-fn (mut p Parser) struct_decl() ast.StructDecl {
-	start_pos := p.tok.position()
-	is_pub := p.tok.kind == .key_pub
+fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
+	p.top_level_statement_start()
+	// save attributes, they will be changed later in fields
+	attrs := p.attrs
+	start_pos := p.tok.pos()
+	mut is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
+	}
+	if is_anon {
+		is_pub = true
 	}
 	is_union := p.tok.kind == .key_union
 	if p.tok.kind == .key_struct {
@@ -20,63 +25,110 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	} else {
 		p.check(.key_union)
 	}
-	language := if p.tok.lit == 'C' && p.peek_tok.kind == .dot {
-		table.Language.c
-	} else if p.tok.lit == 'JS' && p.peek_tok.kind == .dot {
-		table.Language.js
+	language := p.parse_language()
+	name_pos := p.tok.pos()
+	p.check_for_impure_v(language, name_pos)
+	if p.disallow_declarations_in_script_mode() {
+		return ast.StructDecl{}
+	}
+	mut name := if is_anon {
+		p.table.anon_struct_counter++
+		'_VAnonStruct${p.table.anon_struct_counter}'
 	} else {
-		table.Language.v
+		p.check_name()
 	}
-	if language != .v {
-		p.next() // C || JS
-		p.next() // .
+	if name.len == 1 && name[0].is_capital() {
+		p.error_with_pos('single letter capital names are reserved for generic template types.',
+			name_pos)
+		return ast.StructDecl{}
 	}
-	is_typedef := p.attr == 'typedef'
-	no_body := p.peek_tok.kind != .lcbr
+	if name == 'IError' && p.mod != 'builtin' {
+		p.error_with_pos('cannot register struct `IError`, it is builtin interface type',
+			name_pos)
+	}
+	// append module name before any type of parsing to enable recursion parsing
+	p.table.start_parsing_type(p.prepend_mod(name))
+	defer {
+		p.table.reset_parsing_type()
+	}
+	generic_types, _ := p.parse_generic_types()
+	mut pre_comments := p.eat_comments()
+	no_body := p.tok.kind != .lcbr
 	if language == .v && no_body {
-		p.error('`$p.tok.lit` lacks body')
-	}
-	end_pos := p.tok.position()
-	mut name := p.check_name()
-	if language == .v && p.mod != 'builtin' && name.len > 0 && !name[0].is_capital() {
-		p.error_with_pos('struct name `$name` must begin with capital letter', end_pos)
+		p.error('`${p.tok.lit}` lacks body')
+		return ast.StructDecl{}
 	}
 	if name.len == 1 {
-		p.error_with_pos('struct names must have more than one character', end_pos)
+		p.error_with_pos('struct names must have more than one character', name_pos)
+		return ast.StructDecl{}
 	}
-	// println('struct decl $name')
+	if name in p.imported_symbols {
+		p.error_with_pos('cannot register struct `${name}`, this type was already imported',
+			name_pos)
+		return ast.StructDecl{}
+	}
+	mut orig_name := name
+	if language == .c {
+		name = 'C.${name}'
+		orig_name = name
+	} else if language == .js {
+		name = 'JS.${name}'
+		orig_name = name
+	} else if language == .wasm {
+		name = 'WASM.${name}'
+		orig_name = name
+	} else {
+		name = p.prepend_mod(name)
+	}
 	mut ast_fields := []ast.StructField{}
-	mut fields := []table.Field{}
+	mut fields := []ast.StructField{}
+	mut embed_types := []ast.Type{}
+	mut embeds := []ast.Embed{}
+	mut embed_field_names := []string{}
 	mut mut_pos := -1
 	mut pub_pos := -1
 	mut pub_mut_pos := -1
 	mut global_pos := -1
+	mut module_pos := -1
 	mut is_field_mut := false
 	mut is_field_pub := false
 	mut is_field_global := false
+	mut last_line := p.prev_tok.pos().line_nr + 1
+	mut end_comments := []ast.Comment{}
 	if !no_body {
 		p.check(.lcbr)
+		pre_comments << p.eat_comments()
+		mut i := 0
 		for p.tok.kind != .rcbr {
-			mut comment := ast.Comment{}
-			if p.tok.kind == .comment {
-				comment = p.comment()
+			mut comments := []ast.Comment{}
+			for p.tok.kind == .comment {
+				comments << p.comment()
+				if p.tok.kind == .rcbr {
+					break
+				}
+			}
+			if p.tok.kind == .rcbr {
+				end_comments = p.eat_comments(same_line: true)
+				break
 			}
 			if p.tok.kind == .key_pub {
 				p.next()
 				if p.tok.kind == .key_mut {
 					if pub_mut_pos != -1 {
 						p.error('redefinition of `pub mut` section')
+						return ast.StructDecl{}
 					}
 					p.next()
-					pub_mut_pos = fields.len
+					pub_mut_pos = ast_fields.len
 					is_field_pub = true
 					is_field_mut = true
 					is_field_global = false
 				} else {
 					if pub_pos != -1 {
 						p.error('redefinition of `pub` section')
+						return ast.StructDecl{}
 					}
-					pub_pos = fields.len
+					pub_pos = ast_fields.len
 					is_field_pub = true
 					is_field_mut = false
 					is_field_global = false
@@ -85,259 +137,608 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			} else if p.tok.kind == .key_mut {
 				if mut_pos != -1 {
 					p.error('redefinition of `mut` section')
+					return ast.StructDecl{}
 				}
 				p.next()
 				p.check(.colon)
-				mut_pos = fields.len
+				mut_pos = ast_fields.len
 				is_field_pub = false
 				is_field_mut = true
 				is_field_global = false
 			} else if p.tok.kind == .key_global {
 				if global_pos != -1 {
 					p.error('redefinition of `global` section')
+					return ast.StructDecl{}
 				}
 				p.next()
 				p.check(.colon)
-				global_pos = fields.len
+				global_pos = ast_fields.len
 				is_field_pub = true
 				is_field_mut = true
 				is_field_global = true
-			}
-			field_start_pos := p.tok.position()
-			field_name := p.check_name()
-			// p.warn('field $field_name')
-			typ := p.parse_type()
-			field_pos := field_start_pos.extend(p.tok.position())
-			/*
-			if name == '_net_module_s' {
-			s := p.table.get_type_symbol(typ)
-			println('XXXX' + s.str())
-		}
-			*/
-			mut attrs := []string{}
-			if p.tok.kind == .lsbr {
-				parsed_attrs := p.attributes()
-				for attr in parsed_attrs {
-					attrs << attr.name
+			} else if p.tok.kind == .key_module {
+				if module_pos != -1 {
+					p.error('redefinition of `module` section')
+					return ast.StructDecl{}
 				}
-			}
-			mut default_expr := ast.Expr{}
-			mut has_default_expr := false
-			if p.tok.kind == .assign {
-				// Default value
 				p.next()
-				// default_expr = p.tok.lit
-				// p.expr(0)
-				default_expr = p.expr(0)
-				match default_expr {
-					ast.EnumVal { it.typ = typ }
-					// TODO: implement all types??
-					else {}
+				p.check(.colon)
+				module_pos = ast_fields.len
+				is_field_pub = false
+				is_field_mut = false
+				is_field_global = false
+			}
+			for p.tok.kind == .comment {
+				comments << p.comment()
+				if p.tok.kind == .rcbr {
+					break
 				}
-				has_default_expr = true
 			}
-			if p.tok.kind == .comment {
-				comment = p.comment()
+			field_start_pos := p.tok.pos()
+			mut is_field_volatile := false
+			mut is_field_deprecated := false
+			if p.tok.kind == .key_volatile {
+				p.next()
+				is_field_volatile = true
 			}
-			// TODO merge table and ast Fields?
-			ast_fields << ast.StructField{
+			is_embed := ((p.tok.lit.len > 1 && p.tok.lit[0].is_capital()
+				&& (p.peek_tok.line_nr != p.tok.line_nr || p.peek_tok.kind !in [.name, .amp])
+				&& (p.peek_tok.kind != .lsbr || p.peek_token(2).kind != .rsbr))
+				|| p.peek_tok.kind == .dot) && language == .v && p.peek_tok.kind != .key_fn
+			is_on_top := ast_fields.len == 0 && !(is_field_pub || is_field_mut || is_field_global)
+			mut field_name := ''
+			mut typ := ast.Type(0)
+			mut type_pos := token.Pos{}
+			mut field_pos := token.Pos{}
+			mut option_pos := token.Pos{}
+			if is_embed {
+				// struct embedding
+				type_pos = p.tok.pos()
+				typ = p.parse_type()
+				comments << p.eat_comments()
+				type_pos = type_pos.extend(p.prev_tok.pos())
+				if !is_on_top {
+					p.error_with_pos('struct embedding must be declared at the beginning of the struct body',
+						type_pos)
+					return ast.StructDecl{}
+				}
+				sym := p.table.sym(typ)
+				if typ in embed_types {
+					p.error_with_pos('cannot embed `${sym.name}` more than once', type_pos)
+					return ast.StructDecl{}
+				}
+				field_name = sym.embed_name()
+				if field_name in embed_field_names {
+					p.error_with_pos('duplicate field `${field_name}`', type_pos)
+					return ast.StructDecl{}
+				}
+				if p.tok.kind == .lsbr {
+					p.error('cannot use attributes on embedded structs')
+				}
+				embed_field_names << field_name
+				embed_types << typ
+				embeds << ast.Embed{
+					typ: typ
+					pos: type_pos
+					comments: comments
+				}
+			} else {
+				// struct field
+				field_name = p.check_name()
+				for p.tok.kind == .comment {
+					comments << p.comment()
+					if p.tok.kind == .rcbr {
+						break
+					}
+				}
+				p.inside_struct_field_decl = true
+				if p.tok.kind == .key_struct {
+					// Anon structs
+					p.anon_struct_decl = p.struct_decl(true)
+					// Find the registered anon struct type, it was registered above in `p.struct_decl()`
+					typ = p.table.find_type_idx(p.anon_struct_decl.name)
+				} else {
+					start_type_pos := p.tok.pos()
+					typ = p.parse_type()
+					type_pos = start_type_pos.extend(p.prev_tok.pos())
+				}
+				p.inside_struct_field_decl = false
+				if typ.idx() == 0 {
+					// error is set in parse_type
+					return ast.StructDecl{}
+				}
+				field_pos = field_start_pos.extend(p.prev_tok.pos())
+				if typ.has_option_or_result() {
+					option_pos = p.peek_token(-2).pos()
+				}
+			}
+			// Comments after type (same line)
+			prev_attrs := p.attrs
+			p.attrs = []
+			// TODO: remove once old syntax is no longer supported
+			if p.tok.kind == .lsbr {
+				p.inside_struct_attr_decl = true
+				// attrs are stored in `p.attrs`
+				p.attributes()
+				for fa in p.attrs {
+					if fa.name == 'deprecated' {
+						is_field_deprecated = true
+					}
+				}
+				p.inside_struct_attr_decl = false
+			}
+			comments << p.eat_comments()
+			mut default_expr := ast.empty_expr
+			mut has_default_expr := false
+			if !is_embed {
+				if p.tok.kind == .assign {
+					// Default value
+					p.next()
+					default_expr = p.expr(0)
+					match mut default_expr {
+						ast.EnumVal { default_expr.typ = typ }
+						// TODO: implement all types??
+						else {}
+					}
+					has_default_expr = true
+					comments << p.eat_comments()
+				}
+				if p.tok.kind == .at {
+					p.inside_struct_attr_decl = true
+					// attrs are stored in `p.attrs`
+					p.attributes()
+					for fa in p.attrs {
+						if fa.name == 'deprecated' {
+							is_field_deprecated = true
+						}
+					}
+					p.inside_struct_attr_decl = false
+					comments << p.eat_comments()
+				}
+				ast_fields << ast.StructField{
+					name: field_name
+					typ: typ
+					pos: field_pos
+					type_pos: type_pos
+					option_pos: option_pos
+					comments: comments
+					i: i
+					default_expr: default_expr
+					has_default_expr: has_default_expr
+					attrs: p.attrs
+					is_pub: is_embed || is_field_pub
+					is_mut: is_embed || is_field_mut
+					is_global: is_field_global
+					is_volatile: is_field_volatile
+					is_deprecated: is_field_deprecated
+					anon_struct_decl: p.anon_struct_decl
+				}
+			}
+			// save embeds as table fields too, it will be used in generation phase
+			fields << ast.StructField{
 				name: field_name
-				pos: field_pos
 				typ: typ
-				comment: comment
+				pos: field_pos
+				type_pos: type_pos
+				option_pos: option_pos
+				comments: comments
+				i: i
 				default_expr: default_expr
 				has_default_expr: has_default_expr
-				attrs: attrs
-				is_public: is_field_pub
-			}
-			fields << table.Field{
-				name: field_name
-				typ: typ
-				default_expr: ast.ex2fe(default_expr)
-				has_default_expr: has_default_expr
-				is_pub: is_field_pub
-				is_mut: is_field_mut
+				attrs: p.attrs
+				is_pub: is_embed || is_field_pub
+				is_mut: is_embed || is_field_mut
 				is_global: is_field_global
-				attrs: attrs
+				is_volatile: is_field_volatile
+				is_deprecated: is_field_deprecated
+				anon_struct_decl: p.anon_struct_decl
 			}
-			// println('struct field $ti.name $field_name')
+			p.anon_struct_decl = ast.StructDecl{}
+			p.attrs = prev_attrs
+			i++
 		}
+		p.top_level_statement_end()
+		last_line = p.tok.line_nr
 		p.check(.rcbr)
+		end_comments = p.eat_comments(same_line: true)
 	}
-	if language == .c {
-		name = 'C.$name'
-	} else if language == .js {
-		name = 'JS.$name'
-	} else {
-		name = p.prepend_mod(name)
-	}
-	t := table.TypeSymbol{
+	is_minify := attrs.contains('minify')
+	mut sym := ast.TypeSymbol{
 		kind: .struct_
+		language: language
 		name: name
-		info: table.Struct{
-			fields: fields
-			is_typedef: is_typedef
-			is_union: is_union
-			is_ref_only: p.attr == 'ref_only'
-		}
+		cname: util.no_dots(name)
 		mod: p.mod
-		is_public: is_pub
+		info: ast.Struct{
+			embeds: embed_types
+			fields: fields
+			is_typedef: attrs.contains('typedef')
+			is_union: is_union
+			is_heap: attrs.contains('heap')
+			is_minify: is_minify
+			is_generic: generic_types.len > 0
+			generic_types: generic_types
+			attrs: attrs
+			is_anon: is_anon
+		}
+		is_pub: is_pub
 	}
-	mut ret := 0
-	if p.builtin_mod && t.name in table.builtin_type_names {
-		// this allows overiding the builtins type
-		// with the real struct type info parsed from builtin
-		ret = p.table.register_builtin_type_symbol(t)
-	} else {
-		// println('reg type symbol $name mod=$p.mod')
-		ret = p.table.register_type_symbol(t)
+	if p.table.has_deep_child_no_ref(&sym, name) {
+		p.error_with_pos('invalid recursive struct `${orig_name}`', name_pos)
+		return ast.StructDecl{}
 	}
-	if ret == -1 {
-		p.error('cannot register type `$name`, another type with this name exists')
+	mut ret := p.table.register_sym(sym)
+	if is_anon {
+		p.table.register_anon_struct(name, ret)
+	}
+	// allow duplicate c struct declarations
+	if ret == -1 && language != .c {
+		p.error_with_pos('cannot register struct `${name}`, another type with this name exists',
+			name_pos)
+		return ast.StructDecl{}
 	}
 	p.expr_mod = ''
 	return ast.StructDecl{
 		name: name
 		is_pub: is_pub
 		fields: ast_fields
-		pos: start_pos.extend(end_pos)
+		pos: start_pos.extend_with_last_line(name_pos, last_line)
 		mut_pos: mut_pos
 		pub_pos: pub_pos
 		pub_mut_pos: pub_mut_pos
+		global_pos: global_pos
+		module_pos: module_pos
 		language: language
 		is_union: is_union
-		attr: p.attr
+		attrs: if is_anon { []ast.Attr{} } else { attrs } // anon structs can't have attributes
+		pre_comments: pre_comments
+		end_comments: end_comments
+		generic_types: generic_types
+		embeds: embeds
 	}
 }
 
-fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
-	first_pos := p.tok.position()
-	typ := if short_syntax { table.void_type } else { p.parse_type() }
+fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind, is_option bool) ast.StructInit {
+	first_pos := (if kind == .short_syntax && p.prev_tok.kind == .lcbr { p.prev_tok } else { p.tok }).pos()
+	p.struct_init_generic_types = []ast.Type{}
+	mut typ := if kind == .short_syntax { ast.void_type } else { p.parse_type() }
+	struct_init_generic_types := p.struct_init_generic_types.clone()
+	if is_option {
+		typ = typ.set_flag(.option)
+	}
 	p.expr_mod = ''
-	// sym := p.table.get_type_symbol(typ)
-	// p.warn('struct init typ=$sym.name')
-	if !short_syntax {
+	if kind != .short_syntax {
 		p.check(.lcbr)
 	}
-	mut fields := []ast.StructInitField{}
+	pre_comments := p.eat_comments()
+	mut init_fields := []ast.StructInitField{}
 	mut i := 0
-	no_keys := p.peek_tok.kind != .colon && p.tok.kind != .rcbr // `Vec{a,b,c}
-	// p.warn(is_short_syntax.str())
+	no_keys := p.peek_tok.kind != .colon && p.tok.kind != .rcbr && p.tok.kind != .ellipsis // `Vec{a,b,c}
 	saved_is_amp := p.is_amp
 	p.is_amp = false
-	for p.tok.kind != .rcbr && p.tok.kind != .rpar {
-		p.check_comment()
+	mut update_expr := ast.empty_expr
+	mut update_expr_comments := []ast.Comment{}
+	mut has_update_expr := false
+	mut update_expr_pos := token.Pos{}
+	for p.tok.kind !in [.rcbr, .rpar, .eof] {
 		mut field_name := ''
+		mut expr := ast.empty_expr
+		mut field_pos := token.Pos{}
+		mut first_field_pos := token.Pos{}
+		mut comments := []ast.Comment{}
+		mut nline_comments := []ast.Comment{}
+		is_update_expr := init_fields.len == 0 && p.tok.kind == .ellipsis
 		if no_keys {
-			expr := p.expr(0)
 			// name will be set later in checker
-			fields << ast.StructInitField{
-				expr: expr
-				pos: expr.position()
-			}
+			expr = p.expr(0)
+			field_pos = expr.pos()
+			first_field_pos = field_pos
+			comments = p.eat_comments(same_line: true)
+		} else if is_update_expr {
+			// struct updating syntax; f2 := Foo{ ...f, name: 'f2' }
+			update_expr_pos = p.tok.pos()
+			p.check(.ellipsis)
+			update_expr = p.expr(0)
+			update_expr_comments << p.eat_comments(same_line: true)
+			has_update_expr = true
 		} else {
-			first_field_pos := p.tok.position()
+			first_field_pos = p.tok.pos()
 			field_name = p.check_name()
 			p.check(.colon)
-			expr := p.expr(0)
-			last_field_pos := expr.position()
-			field_pos := token.Position{
+			expr = p.expr(0)
+			comments = p.eat_comments(same_line: true)
+			last_field_pos := expr.pos()
+			field_len := if last_field_pos.len > 0 {
+				last_field_pos.pos - first_field_pos.pos + last_field_pos.len
+			} else {
+				first_field_pos.len + 1
+			}
+			field_pos = token.Pos{
 				line_nr: first_field_pos.line_nr
 				pos: first_field_pos.pos
-				len: last_field_pos.pos - first_field_pos.pos + last_field_pos.len
-			}
-			fields << ast.StructInitField{
-				name: field_name
-				expr: expr
-				pos: field_pos
+				len: field_len
+				col: first_field_pos.col
 			}
 		}
 		i++
 		if p.tok.kind == .comma {
 			p.next()
 		}
-		p.check_comment()
+		comments << p.eat_comments(same_line: true)
+		nline_comments << p.eat_comments()
+		if !is_update_expr {
+			init_fields << ast.StructInitField{
+				name: field_name
+				expr: expr
+				pos: field_pos
+				name_pos: first_field_pos
+				comments: comments
+				next_comments: nline_comments
+				parent_type: typ
+			}
+		}
 	}
-	last_pos := p.tok.position()
-	if !short_syntax {
+	if kind != .short_syntax {
 		p.check(.rcbr)
 	}
 	p.is_amp = saved_is_amp
-	node := ast.StructInit{
+	return ast.StructInit{
+		unresolved: typ.has_flag(.generic)
+		typ_str: typ_str
 		typ: typ
-		fields: fields
-		pos: token.Position{
-			line_nr: first_pos.line_nr
-			pos: first_pos.pos
-			len: last_pos.pos - first_pos.pos + last_pos.len
-		}
-		is_short: no_keys
+		init_fields: init_fields
+		update_expr: update_expr
+		update_expr_pos: update_expr_pos
+		update_expr_comments: update_expr_comments
+		has_update_expr: has_update_expr
+		name_pos: first_pos
+		pos: first_pos.extend(if kind == .short_syntax { p.tok.pos() } else { p.prev_tok.pos() })
+		no_keys: no_keys
+		is_short_syntax: kind == .short_syntax
+		is_anon: kind == .anon
+		pre_comments: pre_comments
+		generic_types: struct_init_generic_types
 	}
-	return node
 }
 
 fn (mut p Parser) interface_decl() ast.InterfaceDecl {
-	start_pos := p.tok.position()
+	p.top_level_statement_start()
+	mut pos := p.tok.pos()
+	attrs := p.attrs
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
 	}
 	p.next() // `interface`
-	interface_name := p.prepend_mod(p.check_name())
-	// println('interface decl $interface_name')
+	language := p.parse_language()
+	name_pos := p.tok.pos()
+	p.check_for_impure_v(language, name_pos)
+	if p.disallow_declarations_in_script_mode() {
+		return ast.InterfaceDecl{}
+	}
+	modless_name := p.check_name()
+	if modless_name.len == 1 && modless_name[0].is_capital() {
+		p.error_with_pos('single letter capital names are reserved for generic template types.',
+			name_pos)
+		return ast.InterfaceDecl{}
+	}
+	if modless_name == 'IError' && p.mod != 'builtin' {
+		p.error_with_pos('cannot register interface `IError`, it is builtin interface type',
+			name_pos)
+	}
+	mut interface_name := ''
+	if language == .js {
+		interface_name = 'JS.' + modless_name
+	} else {
+		interface_name = p.prepend_mod(modless_name)
+	}
+	generic_types, _ := p.parse_generic_types()
+	mut pre_comments := p.eat_comments()
 	p.check(.lcbr)
+	pre_comments << p.eat_comments()
+	if modless_name in p.imported_symbols {
+		p.error_with_pos('cannot register interface `${interface_name}`, this type was already imported',
+			name_pos)
+		return ast.InterfaceDecl{}
+	}
 	// Declare the type
-	t := table.TypeSymbol{
+	reg_idx := p.table.register_sym(
+		is_pub: is_pub
 		kind: .interface_
 		name: interface_name
+		cname: util.no_dots(interface_name)
 		mod: p.mod
-		info: table.Interface{
+		info: ast.Interface{
 			types: []
+			is_generic: generic_types.len > 0
+			generic_types: generic_types
 		}
+		language: language
+	)
+	if reg_idx == -1 {
+		p.error_with_pos('cannot register interface `${interface_name}`, another type with this name exists',
+			name_pos)
+		return ast.InterfaceDecl{}
 	}
-	typ := table.new_type(p.table.register_type_symbol(t))
-	ts := p.table.get_type_symbol(typ) // TODO t vs ts
-	// Parse methods
-	mut methods := []ast.FnDecl{}
+	typ := ast.new_type(reg_idx)
+	mut ts := p.table.sym(typ)
+	mut info := ts.info as ast.Interface
+	// if methods were declared before, it's an error, ignore them
+	ts.methods = []ast.Fn{cap: 20}
+	// Parse fields or methods
+	mut fields := []ast.StructField{cap: 20}
+	mut methods := []ast.FnDecl{cap: 20}
+	mut embeds := []ast.InterfaceEmbedding{}
+	mut is_mut := false
+	mut mut_pos := -1
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
-		method_start_pos := p.tok.position()
-		line_nr := p.tok.line_nr
-		name := p.check_name()
-		if util.contains_capital(name) {
-			p.error('interface methods cannot contain uppercase letters, use snake_case instead')
+		// check embedded interface from internal module
+		if p.tok.kind == .name && p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
+			&& (p.peek_tok.line_nr != p.tok.line_nr
+			|| p.peek_tok.kind !in [.name, .amp, .lsbr, .lpar]
+			|| (p.peek_tok.kind == .lsbr && p.peek_tok.is_next_to(p.tok))) {
+			iface_pos := p.tok.pos()
+			mut iface_name := p.tok.lit
+			iface_type := p.parse_type()
+			if iface_name == 'JS' {
+				iface_name = p.table.sym(iface_type).name
+			}
+			comments := p.eat_comments()
+			embeds << ast.InterfaceEmbedding{
+				name: iface_name
+				typ: iface_type
+				pos: iface_pos
+				comments: comments
+			}
+			if p.tok.kind == .rcbr {
+				break
+			}
+			continue
 		}
-		// field_names << name
-		args2, _ := p.fn_args()
-		mut args := [table.Arg{
-			name: 'x'
-			typ: typ
-			is_hidden: true
-		}]
-		args << args2
-		mut method := ast.FnDecl{
-			name: name
-			args: args
-			file: p.file_name
-			return_type: table.void_type
-			is_pub: true
-			pos: method_start_pos.extend(p.prev_tok.position())
+		// check embedded interface from external module
+		if p.tok.kind == .name && p.peek_tok.kind == .dot {
+			if p.tok.lit !in p.imports {
+				p.error_with_pos('mod `${p.tok.lit}` not imported', p.tok.pos())
+				break
+			}
+			mod_name := p.tok.lit
+			from_mod_typ := p.parse_type()
+			from_mod_name := '${mod_name}.${p.prev_tok.lit}'
+			if from_mod_name.is_lower() {
+				p.error_with_pos('the interface name need to have the pascal case', p.prev_tok.pos())
+				break
+			}
+			comments := p.eat_comments()
+			embeds << ast.InterfaceEmbedding{
+				name: from_mod_name
+				typ: from_mod_typ
+				pos: p.prev_tok.pos()
+				comments: comments
+			}
+			if p.tok.kind == .rcbr {
+				break
+			}
+			continue
 		}
-		if p.tok.kind.is_start_of_type() && p.tok.line_nr == line_nr {
-			method.return_type = p.parse_type()
+
+		if p.tok.kind == .key_mut {
+			if is_mut {
+				p.error_with_pos('redefinition of `mut` section', p.tok.pos())
+				return ast.InterfaceDecl{}
+			}
+			p.next()
+			p.check(.colon)
+			is_mut = true
+			mut_pos = fields.len
 		}
-		methods << method
-		// println('register method $name')
-		ts.register_method(table.Fn{
-			name: name
-			args: args
-			return_type: method.return_type
-			is_pub: true
-		})
+		if p.peek_tok.kind in [.lt, .lsbr] && p.peek_tok.is_next_to(p.tok) {
+			p.error_with_pos("no need to add generic type names in generic interface's method",
+				p.peek_tok.pos())
+			return ast.InterfaceDecl{}
+		}
+		mut comments := p.eat_comments()
+		if p.peek_tok.kind == .lpar {
+			method_start_pos := p.tok.pos()
+			line_nr := p.tok.line_nr
+			name := p.check_name()
+
+			if name in ['type_name', 'type_idx'] {
+				p.error_with_pos('cannot override built-in method `${name}`', method_start_pos)
+				return ast.InterfaceDecl{}
+			}
+			if ts.has_method(name) {
+				p.error_with_pos('duplicate method `${name}`', method_start_pos)
+				return ast.InterfaceDecl{}
+			}
+			params_t, _, is_variadic := p.fn_params() // TODO merge ast.Param and ast.Arg to avoid this
+			mut params := [
+				ast.Param{
+					name: 'x'
+					is_mut: is_mut
+					typ: typ
+					is_hidden: true
+				},
+			]
+			params << params_t
+			mut method := ast.FnDecl{
+				name: name
+				short_name: name
+				mod: p.mod
+				params: params
+				file: p.file_name
+				return_type: ast.void_type
+				is_variadic: is_variadic
+				is_pub: true
+				pos: method_start_pos.extend(p.prev_tok.pos())
+				scope: p.scope
+			}
+			if p.tok.kind.is_start_of_type() && p.tok.line_nr == line_nr {
+				method.return_type_pos = p.tok.pos()
+				method.return_type = p.parse_type()
+				method.return_type_pos = method.return_type_pos.extend(p.tok.pos())
+				method.pos = method.pos.extend(method.return_type_pos)
+			}
+			comments << p.eat_comments(same_line: true)
+			mnext_comments := p.eat_comments()
+			method.comments = comments
+			method.next_comments = mnext_comments
+			methods << method
+			tmethod := ast.Fn{
+				name: name
+				params: params
+				pos: method.pos
+				return_type: method.return_type
+				is_variadic: is_variadic
+				is_pub: true
+				is_method: true
+				receiver_type: typ
+			}
+			ts.register_method(tmethod)
+			info.methods << tmethod
+		} else {
+			// interface fields
+			field_pos := p.tok.pos()
+			field_name := p.check_name()
+			mut type_pos := p.tok.pos()
+			field_typ := p.parse_type()
+			type_pos = type_pos.extend(p.prev_tok.pos())
+			comments << p.eat_comments(same_line: true)
+			fields << ast.StructField{
+				name: field_name
+				pos: field_pos
+				type_pos: type_pos
+				typ: field_typ
+				comments: comments
+				is_pub: true
+			}
+			info.fields << ast.StructField{
+				name: field_name
+				typ: field_typ
+				is_pub: true
+				is_mut: is_mut
+			}
+		}
 	}
+	info.embeds = embeds.map(it.typ)
+	ts.info = info
+	p.top_level_statement_end()
 	p.check(.rcbr)
-	return ast.InterfaceDecl{
+	pos = pos.extend_with_last_line(p.prev_tok.pos(), p.prev_tok.line_nr)
+	res := ast.InterfaceDecl{
 		name: interface_name
+		language: language
+		typ: typ
+		fields: fields
 		methods: methods
-		pos: start_pos
+		embeds: embeds
+		is_pub: is_pub
+		attrs: attrs
+		pos: pos
+		pre_comments: pre_comments
+		generic_types: generic_types
+		mut_pos: mut_pos
+		name_pos: name_pos
 	}
+	p.table.register_interface(res)
+	return res
 }

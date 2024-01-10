@@ -4,7 +4,7 @@ import time.misc as tmisc
 fn test_call_fn_that_requires_reference_with_function_that_returns_a_struct_manual() {
 	t1 := tmisc.random()
 	t2 := t1.unix_time()
-	println('res: $t2')
+	println('res: ${t2}')
 	assert true
 }
 

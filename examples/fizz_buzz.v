@@ -9,8 +9,7 @@ fn main() {
 		}
 		if s == '' {
 			println(n)
-		}
-		else {
+		} else {
 			println(s)
 		}
 		s = ''

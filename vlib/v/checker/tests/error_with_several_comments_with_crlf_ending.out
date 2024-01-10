@@ -1,0 +1,26 @@
+vlib/v/checker/tests/error_with_several_comments_with_crlf_ending.vv:9:2: error: undefined ident: `a` (use `:=` to declare a variable)
+    7 | fn main() {
+    8 |     func1()
+    9 |     a = 2
+      |     ^
+   10 |     println('a is $a')
+   11 | }
+vlib/v/checker/tests/error_with_several_comments_with_crlf_ending.vv:9:6: error: cannot assign to `a`: expected `void`, not `int literal`
+    7 | fn main() {
+    8 |     func1()
+    9 |     a = 2
+      |         ^
+   10 |     println('a is $a')
+   11 | }
+vlib/v/checker/tests/error_with_several_comments_with_crlf_ending.vv:10:17: error: undefined ident: `a`
+    8 |     func1()
+    9 |     a = 2
+   10 |     println('a is $a')
+      |                    ^
+   11 | }
+vlib/v/checker/tests/error_with_several_comments_with_crlf_ending.vv:10:17: error: expression does not return a value
+    8 |     func1()
+    9 |     a = 2
+   10 |     println('a is $a')
+      |                    ^
+   11 | }

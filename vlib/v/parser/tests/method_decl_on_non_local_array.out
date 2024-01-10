@@ -1,0 +1,5 @@
+vlib/v/parser/tests/method_decl_on_non_local_array.vv:1:7: error: cannot define new methods on non-local type []int
+    1 | fn (a []int) get_number() int { 
+      |       ~~~~~
+    2 |     return 1
+    3 | }

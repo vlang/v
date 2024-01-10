@@ -1,0 +1,16 @@
+type Value = bool | voidptr
+
+pub fn create[T](val T) Value {
+	$if T is bool {
+		println('bool ${val}')
+		return Value(val)
+	} $else {
+		$compile_error('11')
+		println('not bool ${val}')
+	}
+	return Value(voidptr(123))
+}
+
+fn main() {
+	println(create(123))
+}

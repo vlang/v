@@ -1,0 +1,10 @@
+type Expr = fn ([]Expr) Expr | int
+
+fn f(exprs []Expr) Expr {
+	return 0
+}
+
+fn main() {
+	mut m := map[string]Expr{}
+	m['f'] = f
+}

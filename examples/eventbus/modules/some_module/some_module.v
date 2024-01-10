@@ -2,33 +2,31 @@ module some_module
 
 import eventbus
 
-const (
-	eb = eventbus.new()
-)
+const eb = eventbus.new[string]()
 
-pub struct Work {
-	pub:
+pub struct Duration {
+pub:
 	hours int
 }
 
-pub struct Error {
-	pub:
+pub struct EventMetadata {
+pub:
 	message string
 }
 
-pub fn do_work(){
-	work := Work{20}
-	for i in 0..20 {
-		println("working...")
-		if i == 15 {
-			error := &Error{"There was an error."}
-			eb.publish("error", work, error)
-			eb.publish("error", work, error)
-			return
+pub fn do_work() {
+	duration := Duration{10}
+	for i in 0 .. 10 {
+		println('working...')
+		if i == 5 {
+			event_metadata := &EventMetadata{'Iteration ' + i.str()}
+			some_module.eb.publish('event_foo', duration, event_metadata)
+			some_module.eb.publish('event_bar', duration, event_metadata)
 		}
 	}
+	some_module.eb.publish('event_baz', &Duration{42}, &EventMetadata{'Additional data at the end.'})
 }
 
-pub fn get_subscriber() eventbus.Subscriber {
-	return eb.subscriber
+pub fn get_subscriber() eventbus.Subscriber[string] {
+	return *some_module.eb.subscriber
 }

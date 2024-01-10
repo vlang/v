@@ -1,0 +1,5 @@
+mynum := 10
+
+struct Abc {
+	x int
+}

@@ -1,0 +1,14 @@
+vlib/v/checker/tests/invalid_insert_references_test.vv:4:12: warning: cannot add a reference to an immutable object to a mutable array
+    2 | fn test_invalid_insert_references() {
+    3 |     b := 0
+    4 |     mut a := [&b]
+      |               ^
+    5 |     mut c := 1
+    6 |     a << &c
+vlib/v/checker/tests/invalid_insert_references_test.vv:8:7: error: cannot append `int literal` to `[]&int`
+    6 |     a << &c
+    7 |     c = 2
+    8 |     a << 1
+      |          ^
+    9 |     println(a)
+   10 | }

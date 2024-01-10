@@ -1,0 +1,7 @@
+vlib/v/checker/tests/reference_return.vv:6:9: error: fn `f` expects you to return a reference type `&Aa`, but you are returning `Aa` instead
+    4 | 
+    5 | fn f() &Aa {
+    6 |     return Aa{
+      |            ~~~
+    7 |         a: 1
+    8 |     }

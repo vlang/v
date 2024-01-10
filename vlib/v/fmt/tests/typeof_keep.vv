@@ -1,3 +1,3 @@
 fn test_typeof() {
-	println(typeof(x))
+	println(typeof(x).name)
 }

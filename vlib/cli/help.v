@@ -3,110 +3,174 @@ module cli
 import term
 import strings
 
-const (
-	c_base_indent = 2
-	c_abbrev_indent = 5
-	c_description_indent = 20
-)
+const base_indent_len = 2
+const min_description_indent_len = 20
+const spacing = 2
 
-fn help_flag() Flag {
+fn help_flag(with_abbrev bool) Flag {
+	sabbrev := if with_abbrev { 'h' } else { '' }
 	return Flag{
-		flag: .bool,
-		name: 'help',
-		abbrev: 'h',
-		description: 'Prints help information',
+		flag: .bool
+		name: 'help'
+		abbrev: sabbrev
+		description: 'Prints help information.'
 	}
 }
 
 fn help_cmd() Command {
 	return Command{
-		name: 'help',
-		description: 'Prints help information',
-		execute: help_func,
+		name: 'help'
+		usage: '<command>'
+		description: 'Prints help information.'
+		execute: print_help_for_command
 	}
 }
 
-fn help_func(help_cmd Command) {
-	cmd := help_cmd.parent
-	full_name := cmd.full_name()
+// print_help_for_command outputs the help message of `help_cmd`.
+pub fn print_help_for_command(help_cmd Command) ! {
+	if help_cmd.args.len > 0 {
+		mut cmd := help_cmd.parent
+		for arg in help_cmd.args {
+			mut found := false
+			for sub_cmd in cmd.commands {
+				if sub_cmd.name == arg {
+					cmd = unsafe { &sub_cmd }
+					found = true
+					break
+				}
+			}
+			if !found {
+				args := help_cmd.args.join(' ')
+				println('Invalid command: ${args}')
+				return
+			}
+		}
+		print(cmd.help_message())
+	} else {
+		if unsafe { help_cmd.parent != 0 } {
+			print(help_cmd.parent.help_message())
+		}
+	}
+}
 
+// help_message returns a generated help message as a `string` for the `Command`.
+pub fn (cmd Command) help_message() string {
 	mut help := ''
-	help += 'Usage: ${full_name}'
-	if cmd.flags.len > 0 { help += ' [FLAGS]'}
-	if cmd.commands.len > 0 { help += ' [COMMANDS]'}
-	help += '\n\n'
-
+	help += 'Usage: ${cmd.full_name()}'
+	if cmd.flags.len > 0 {
+		help += ' [flags]'
+	}
+	if cmd.commands.len > 0 {
+		help += ' [commands]'
+	}
+	if cmd.usage.len > 0 {
+		help += ' ${cmd.usage}'
+	} else {
+		for i in 0 .. cmd.required_args {
+			help += ' <arg${i}>'
+		}
+	}
+	help += '\n'
 	if cmd.description != '' {
-		help += '${cmd.description}\n\n'
+		help += '\n${cmd.description}\n'
+	}
+	mut abbrev_len := 0
+	mut name_len := cli.min_description_indent_len
+	if cmd.posix_mode {
+		for flag in cmd.flags {
+			if flag.abbrev != '' {
+				abbrev_len = max(abbrev_len, flag.abbrev.len + cli.spacing + 1) // + 1 for '-' in front
+			}
+			name_len = max(name_len, abbrev_len + flag.name.len + cli.spacing + 2) // + 2 for '--' in front
+		}
+		for command in cmd.commands {
+			name_len = max(name_len, command.name.len + cli.spacing)
+		}
+	} else {
+		for flag in cmd.flags {
+			if flag.abbrev != '' {
+				abbrev_len = max(abbrev_len, flag.abbrev.len + cli.spacing + 1) // + 1 for '-' in front
+			}
+			name_len = max(name_len, abbrev_len + flag.name.len + cli.spacing + 1) // + 1 for '-' in front
+		}
+		for command in cmd.commands {
+			name_len = max(name_len, command.name.len + cli.spacing)
+		}
 	}
 	if cmd.flags.len > 0 {
-		help += 'Flags:\n'
+		help += '\nFlags:\n'
 		for flag in cmd.flags {
 			mut flag_name := ''
+			prefix := if cmd.posix_mode { '--' } else { '-' }
 			if flag.abbrev != '' {
-				abbrev_indent := ' '.repeat(max(c_abbrev_indent-(flag.abbrev.len+1), 1))
-				flag_name = '-${flag.abbrev}${abbrev_indent}--${flag.name}'
+				abbrev_indent := ' '.repeat(abbrev_len - flag.abbrev.len - 1) // - 1 for '-' in front
+				flag_name = '-${flag.abbrev}${abbrev_indent}${prefix}${flag.name}'
 			} else {
-				abbrev_indent := ' '.repeat(max(c_abbrev_indent-(flag.abbrev.len), 1))
-				flag_name = '${abbrev_indent}--${flag.name}'
+				abbrev_indent := ' '.repeat(abbrev_len)
+				flag_name = '${abbrev_indent}${prefix}${flag.name}'
 			}
 			mut required := ''
 			if flag.required {
 				required = ' (required)'
 			}
-
-			base_indent := ' '.repeat(c_base_indent)
-			description_indent := ' '.repeat(max(c_description_indent-flag_name.len, 1))
+			base_indent := ' '.repeat(cli.base_indent_len)
+			description_indent := ' '.repeat(name_len - flag_name.len)
 			help += '${base_indent}${flag_name}${description_indent}' +
-				pretty_description(flag.description + required) + '\n'
+				pretty_description(flag.description + required, cli.base_indent_len + name_len) +
+				'\n'
 		}
-		help += '\n'
 	}
 	if cmd.commands.len > 0 {
-		help += 'Commands:\n'
+		help += '\nCommands:\n'
 		for command in cmd.commands {
-			base_indent := ' '.repeat(c_base_indent)
-			description_indent := ' '.repeat(max(c_description_indent-command.name.len, 1))
-
+			base_indent := ' '.repeat(cli.base_indent_len)
+			description_indent := ' '.repeat(name_len - command.name.len)
 			help += '${base_indent}${command.name}${description_indent}' +
-				pretty_description(command.description) + '\n'
+				pretty_description(command.description, name_len) + '\n'
 		}
-		help += '\n'
 	}
-
-	print(help)
+	return help
 }
 
 // pretty_description resizes description text depending on terminal width.
 // Essentially, smart wrap-around
-fn pretty_description(s string) string {
+fn pretty_description(s string, indent_len int) string {
 	width, _ := term.get_terminal_size()
 	// Don't prettify if the terminal is that small, it won't be pretty anyway.
-	if s.len + c_description_indent < width || c_description_indent > width {
+	if indent_len > width {
 		return s
 	}
-	indent := ' '.repeat(c_description_indent + 1)
-	chars_per_line := width - c_description_indent
+	indent := ' '.repeat(indent_len)
+	chars_per_line := width - indent_len
 	// Give us enough room, better a little bigger than smaller
 	mut acc := strings.new_builder(((s.len / chars_per_line) + 1) * (width + 1))
-
-	mut i := chars_per_line - 2
-	mut j := 0
-	for ; i < s.len ; i += chars_per_line - 2 {
-		for s.str[i] != ` ` { i-- }
-		// indent was already done the first iteration
-		if j != 0 { acc.write(indent) }
-		acc.writeln(s[j..i])
-		j = i
+	for k, line in s.split('\n') {
+		if k != 0 {
+			acc.write_string('\n${indent}')
+		}
+		mut i := chars_per_line - 2
+		mut j := 0
+		for ; i < line.len; i += chars_per_line - 2 {
+			for j > 0 && line[j] != ` ` {
+				j--
+			}
+			// indent was already done the first iteration
+			if j != 0 {
+				acc.write_string(indent)
+			}
+			acc.writeln(line[j..i].trim_space())
+			j = i
+		}
+		// We need this even though it should never happen
+		if j != 0 {
+			acc.write_string(indent)
+		}
+		acc.write_string(line[j..].trim_space())
 	}
-	// We need this even though it should never happen
-	if j != 0 {
-		acc.write(indent)
-	}
-	acc.write(s[j..])
 	return acc.str()
 }
 
-fn max(a, b int) int {
-	return if a > b {a} else {b}
+fn max(a int, b int) int {
+	res := if a > b { a } else { b }
+	return res
 }

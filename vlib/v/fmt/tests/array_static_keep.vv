@@ -1,0 +1,14 @@
+struct Board {
+mut:
+	field  [10][5]int
+	points int
+	shifts int
+}
+
+struct TileLine {
+	ypos int
+mut:
+	field  [5]int
+	points int
+	shifts int
+}

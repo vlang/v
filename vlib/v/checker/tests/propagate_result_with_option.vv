@@ -1,0 +1,10 @@
+fn foo() ?string {
+	return ''
+}
+
+fn bar() !string {
+	foo() !
+	return ''
+}
+
+fn main() {}

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/option_with_match_err.vv:4:3: error: `match` expression with Option type only checks against `none`, to match its value you must unwrap it first `var?`
+    2 |     mut a := ?int(12)
+    3 |     match a {
+    4 |         12 { println(a) }
+      |         ~~
+    5 |         else { println('else') }
+    6 |     }

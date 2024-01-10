@@ -1,0 +1,7 @@
+vlib/v/checker/tests/generics_struct_infer_err.vv:7:10: error: could not infer generic type `U` in generic struct `Foo[T, U]`
+    5 |
+    6 | fn main() {
+    7 |     st11 := Foo{
+      |             ~~~~
+    8 |         a: 'two'
+    9 |     }

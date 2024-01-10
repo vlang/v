@@ -1,0 +1,7 @@
+fn main() {
+	println('hello, world')
+}
+
+/*
+fn tt() {
+}

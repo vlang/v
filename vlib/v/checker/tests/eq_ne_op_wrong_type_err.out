@@ -1,0 +1,83 @@
+vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:12:10: error: infix expr: cannot use `int literal` (right expression) as `Aaa`
+   10 |
+   11 | fn main() {
+   12 |     println(Aaa{} == 10)
+      |             ~~~~~~~~~~~
+   13 |     println(10 == Aaa{})
+   14 |     println(Aaa{} != 10)
+vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:13:10: error: infix expr: cannot use `Aaa` (right expression) as `int literal`
+   11 | fn main() {
+   12 |     println(Aaa{} == 10)
+   13 |     println(10 == Aaa{})
+      |             ~~~~~~~~~~~
+   14 |     println(Aaa{} != 10)
+   15 |     println(10 != Aaa{})
+vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:14:10: error: infix expr: cannot use `int literal` (right expression) as `Aaa`
+   12 |     println(Aaa{} == 10)
+   13 |     println(10 == Aaa{})
+   14 |     println(Aaa{} != 10)
+      |             ~~~~~~~~~~~
+   15 |     println(10 != Aaa{})
+   16 |
+vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:15:10: error: infix expr: cannot use `Aaa` (right expression) as `int literal`
+   13 |     println(10 == Aaa{})
+   14 |     println(Aaa{} != 10)
+   15 |     println(10 != Aaa{})
+      |             ~~~~~~~~~~~
+   16 |
+   17 |     println(Aaa{0} == AAaa{0})
+vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:29:10: error: infix expr: cannot use `Arr` (right expression) as `ArrAaa`
+   27 |
+   28 |     arr_aaa := ArrAaa(arr)
+   29 |     println(arr_aaa == arr)
+      |             ~~~~~~~~~~~~~~
+   30 |     println(arr == arr_aaa)
+   31 |     println(arr_aaa != arr)
+vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:30:10: error: infix expr: cannot use `ArrAaa` (right expression) as `Arr`
+   28 |     arr_aaa := ArrAaa(arr)
+   29 |     println(arr_aaa == arr)
+   30 |     println(arr == arr_aaa)
+      |             ~~~~~~~~~~~~~~
+   31 |     println(arr_aaa != arr)
+   32 |     println(arr != arr_aaa)
+vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:31:10: error: infix expr: cannot use `Arr` (right expression) as `ArrAaa`
+   29 |     println(arr_aaa == arr)
+   30 |     println(arr == arr_aaa)
+   31 |     println(arr_aaa != arr)
+      |             ~~~~~~~~~~~~~~
+   32 |     println(arr != arr_aaa)
+   33 |
+vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:32:10: error: infix expr: cannot use `ArrAaa` (right expression) as `Arr`
+   30 |     println(arr == arr_aaa)
+   31 |     println(arr_aaa != arr)
+   32 |     println(arr != arr_aaa)
+      |             ~~~~~~~~~~~~~~
+   33 |
+   34 |     println(arr_aaa == [0])
+vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:34:10: error: infix expr: cannot use `[]int` (right expression) as `ArrAaa`
+   32 |     println(arr != arr_aaa)
+   33 |
+   34 |     println(arr_aaa == [0])
+      |             ~~~~~~~~~~~~~~
+   35 |     println([1] == arr_aaa)
+   36 |     println(arr_aaa != [0])
+vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:35:10: error: infix expr: cannot use `ArrAaa` (right expression) as `[]int`
+   33 |
+   34 |     println(arr_aaa == [0])
+   35 |     println([1] == arr_aaa)
+      |             ~~~~~~~~~~~~~~
+   36 |     println(arr_aaa != [0])
+   37 |     println([1] != arr_aaa)
+vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:36:10: error: infix expr: cannot use `[]int` (right expression) as `ArrAaa`
+   34 |     println(arr_aaa == [0])
+   35 |     println([1] == arr_aaa)
+   36 |     println(arr_aaa != [0])
+      |             ~~~~~~~~~~~~~~
+   37 |     println([1] != arr_aaa)
+   38 | }
+vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:37:10: error: infix expr: cannot use `ArrAaa` (right expression) as `[]int`
+   35 |     println([1] == arr_aaa)
+   36 |     println(arr_aaa != [0])
+   37 |     println([1] != arr_aaa)
+      |             ~~~~~~~~~~~~~~
+   38 | }

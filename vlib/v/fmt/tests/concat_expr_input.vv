@@ -5,3 +5,18 @@ _ := 'Simple'   +    'Concat'
 		'World' + '!'
 		_ := 'There' + ' ' + 'so' + ' ' + 'many' + ' ' + 'words' + ' ' + 'they' + ' ' + "don't" + ' ' + 'fit' + ' ' + 'in' + ' ' + 'one' + ' ' + 'line'
 }
+
+fn concat_inside_ternary() {
+	{ // This block is needed to force line wrapping
+		cline := if iline == pos.line_nr {
+			sline[..start_column] + color(kind, sline[start_column..end_column]) + sline[end_column..]
+		} else {
+			sline
+		}
+	}
+}
+
+fn concat_two_or_more_ternaries() {
+	x := if some_condition { 'very long string part' } else { 'def' } + if y == 'asd' { 'qwe' } else {'something else'}
+	var := if other_condition { 'concat three long ternary ifs' } else { 'def' } + if true {'shorter'} else {'quite short'} + if true { 'small' } else {'tiny'}
+}

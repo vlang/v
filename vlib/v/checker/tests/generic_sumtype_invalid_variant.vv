@@ -1,0 +1,11 @@
+type MultiGeneric[X, Y, Z] = X | Y | Z
+
+fn main() {
+	mut m := MultiGeneric[bool, int, string](true)
+	if m is u64 {
+		println('hi')
+	}
+	if m is X {
+		println('hi again')
+	}
+}

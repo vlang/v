@@ -1,0 +1,5 @@
+vlib/v/checker/tests/cast_string_to_char_err.vv:2:7: error: cannot cast string to `char`, use `'a'[index]` instead.
+    1 | fn main() {
+    2 |     _ := char('a')
+      |          ~~~~~~~~~
+    3 | }

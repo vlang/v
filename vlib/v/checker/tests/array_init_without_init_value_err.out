@@ -1,0 +1,70 @@
+vlib/v/checker/tests/array_init_without_init_value_err.vv:5:7: warning: arrays of sumtypes need to be initialized right away, therefore `len:` cannot be used (unless inside `unsafe`, or if you also use `init:`)
+    3 | 
+    4 | fn main_sum_type() {
+    5 |     a := []Foo{len: 10}
+      |          ~~~~~~
+    6 |     println(a)
+    7 |     fixed_a := [10]Foo{}
+vlib/v/checker/tests/array_init_without_init_value_err.vv:7:13: warning: fixed arrays of sumtypes need to be initialized right away (unless inside `unsafe`)
+    5 |     a := []Foo{len: 10}
+    6 |     println(a)
+    7 |     fixed_a := [10]Foo{}
+      |                ~~~~~~~~~
+    8 |     println(fixed_a)
+    9 | }
+vlib/v/checker/tests/array_init_without_init_value_err.vv:20:11: warning: arrays of references need to be initialized right away, therefore `len:` cannot be used (unless inside `unsafe`, or if you also use `init:`)
+   18 | // test references uninitialized.
+   19 | fn main_ref() {
+   20 |     println(*[]&int{len: 1}[0])
+      |              ~~~~~~~
+   21 |     println([1]&int{})
+   22 |     _ = [][1]&int{len: 1}[0][0]
+vlib/v/checker/tests/array_init_without_init_value_err.vv:21:10: warning: fixed arrays of references need to be initialized right away (unless inside `unsafe`)
+   19 | fn main_ref() {
+   20 |     println(*[]&int{len: 1}[0])
+   21 |     println([1]&int{})
+      |             ~~~~~~~~~
+   22 |     _ = [][1]&int{len: 1}[0][0]
+   23 |     _ = []map[int]&int{len: 1}
+vlib/v/checker/tests/array_init_without_init_value_err.vv:22:6: warning: arrays of references need to be initialized right away, therefore `len:` cannot be used (unless inside `unsafe`, or if you also use `init:`)
+   20 |     println(*[]&int{len: 1}[0])
+   21 |     println([1]&int{})
+   22 |     _ = [][1]&int{len: 1}[0][0]
+      |         ~~~~~~~~~~
+   23 |     _ = []map[int]&int{len: 1}
+   24 | }
+vlib/v/checker/tests/array_init_without_init_value_err.vv:23:6: warning: arrays of references need to be initialized right away, therefore `len:` cannot be used (unless inside `unsafe`, or if you also use `init:`)
+   21 |     println([1]&int{})
+   22 |     _ = [][1]&int{len: 1}[0][0]
+   23 |     _ = []map[int]&int{len: 1}
+      |         ~~~~~~~~~~~~~~~
+   24 | }
+   25 |
+vlib/v/checker/tests/array_init_without_init_value_err.vv:40:22: warning: arrays of interfaces need to be initialized right away, therefore `len:` cannot be used (unless inside `unsafe`, or if you also use `init:`)
+   38 | 
+   39 | fn main_interface() {
+   40 |     mut parsed_lines := []MObject{len: 9}
+      |                         ~~~~~~~~~~
+   41 |     println(parsed_lines)
+   42 | }
+vlib/v/checker/tests/array_init_without_init_value_err.vv:12:7: warning: arrays of sumtypes need to be initialized right away, therefore `len:` cannot be used (unless inside `unsafe`, or if you also use `init:`)
+   10 | 
+   11 | fn main_sum_type_2[T]() {
+   12 |     a := []T{len: 10}
+      |          ~~~~
+   13 |     println(a)
+   14 |     fixed_a := [10]T{}
+vlib/v/checker/tests/array_init_without_init_value_err.vv:14:13: warning: fixed arrays of sumtypes need to be initialized right away (unless inside `unsafe`)
+   12 |     a := []T{len: 10}
+   13 |     println(a)
+   14 |     fixed_a := [10]T{}
+      |                ~~~~~~~
+   15 |     println(fixed_a)
+   16 | }
+vlib/v/checker/tests/array_init_without_init_value_err.vv:45:22: warning: arrays of interfaces need to be initialized right away, therefore `len:` cannot be used (unless inside `unsafe`, or if you also use `init:`)
+   43 | 
+   44 | fn main_interface_2[T]() {
+   45 |     mut parsed_lines := []T{len: 9}
+      |                         ~~~~
+   46 |     println(parsed_lines)
+   47 | }

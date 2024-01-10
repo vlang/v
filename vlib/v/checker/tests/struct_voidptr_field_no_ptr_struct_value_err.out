@@ -1,0 +1,14 @@
+vlib/v/checker/tests/struct_voidptr_field_no_ptr_struct_value_err.vv:11:3: error: allocate `Foo` on the heap for use in other functions
+    9 | fn main() {
+   10 |     _ := Foo2{
+   11 |         a: Foo{}
+      |         ~~~~~~~~
+   12 |     }
+   13 | }
+vlib/v/checker/tests/struct_voidptr_field_no_ptr_struct_value_err.vv:11:3: error: cannot assign to field `a`: expected a pointer `voidptr`, but got `Foo`
+    9 | fn main() {
+   10 |     _ := Foo2{
+   11 |         a: Foo{}
+      |         ~~~~~~~~
+   12 |     }
+   13 | }

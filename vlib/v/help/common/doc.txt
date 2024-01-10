@@ -1,0 +1,52 @@
+Generates the documentation of a given MODULE, DIRECTORY, or FILE
+
+Usage:
+  v doc [options] [MODULE / DIRECTORY / FILE] [symbol name]
+
+Examples:
+  v doc os
+  v doc os File
+  v doc -no-color os
+  v doc -o math.html math
+  v doc -m -f html vlib/
+
+  Generates the documentation of a given MODULE, DIRECTORY, or FILE
+  and prints or saves them to its desired format: HTML, JSON,
+  TEXT, ANSI or Markdown.
+
+Options:
+  -all            Includes private and public functions/methods/structs/consts/enums.
+  -color          Forces the use of ANSI escape sequences to make the output colorful.
+  -no-color       Forces plain text output, without ANSI colors.
+                  Note: -color is on for -f ansi .
+  -f              Specifies the output format to be used.
+                  Available formats are: md/markdown, json, text, ansi and html/htm.
+  -h, -help       Prints this help text.
+  -m              Generate docs for modules listed in that folder.
+  -o              The output file/folder path where to store the docs. Use `-o stdout`
+                  or `-o -', to print the output instead of saving it to a file.
+  -readme         Include README.md to docs if present.
+  -v              Enables verbose logging. For debugging purposes.
+  -no-timestamp   Omits the timestamp in the output file.
+
+For HTML mode:
+  -inline-assets  Embeds the contents of the CSS and JS assets into the
+                  webpage directly.
+  -theme-dir      The directory for doc theme template
+
+The following options are useful for tests, that need stable output.
+They will omit generating text that is prone to changes, due to styling,
+but that otherwise do not affect the content.
+  -html-only-contents Produce just the main content of the page,
+                      without theming, styling, CSS and JS tags etc.
+  -html-no-vhash      Omits the version hash.
+  -html-no-assets     Omits the CSS and JS asset tags.
+  -html-no-right      Omits the doc-toc right panel.
+  -html-no-toc-urls   Omits the toc_links panel
+  -html-no-footer     Omits the footer panel.
+
+For the text and ansi modes:
+  -l              Shows the locations of the generated signatures.
+  -comments       Includes comments in the output.
+
+Note: set the environment variable `VDOC_SORT` to `false`, to avoid sorting the output.

@@ -1,0 +1,10 @@
+my_var := 1
+my_simple_closure := fn [my_var] () {
+	println(my_var)
+}
+my_closure_returns := fn [my_var] () int {
+	return my_var
+}
+my_closure_has_params := fn [my_var, my_closure_returns] (add int) {
+	println(my_var + my_closure_returns() + add)
+}

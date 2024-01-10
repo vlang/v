@@ -1,0 +1,22 @@
+const font = $embed_file('../assets/fonts/RobotoMono-Regular.ttf')
+
+const test_alignment = 123
+const foo = Foo{
+	f: 'foo'
+}
+const spam = 456
+const egg = 'lorem ipsum'
+const spameggs = true
+
+const bar = 'A string
+spanning multiple
+lines'
+
+const baz = 'short'
+const some_long_name = MyStruct{
+	x: 42
+}
+
+const a = 123
+const abc = 123
+const b = 123

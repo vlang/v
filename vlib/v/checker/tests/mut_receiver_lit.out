@@ -1,0 +1,20 @@
+vlib/v/checker/tests/mut_receiver_lit.vv:12:2: error: cannot pass expression as `mut`
+   10 | 
+   11 | fn non_mut_receiver() {
+   12 |     Box{}.set(0)
+      |     ~~~~~
+   13 | }
+   14 |
+vlib/v/checker/tests/mut_receiver_lit.vv:18:11: error: cannot pass expression as `mut`
+   16 | fn array_chained_method_calls() {
+   17 |     path := 'hello/file.txt'
+   18 |     _ = path.split('.').pop()
+      |              ~~~~~~~~~~
+   19 | }
+   20 |
+vlib/v/checker/tests/mut_receiver_lit.vv:24:4: error: cannot pass expression as `mut`
+   22 | fn map_chained_method_calls() {
+   23 |     mut m := map[int]int{}
+   24 |     m.clone().delete(0)
+      |       ~~~~~~~
+   25 | }

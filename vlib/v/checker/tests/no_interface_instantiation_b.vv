@@ -3,5 +3,5 @@ interface Speaker {}
 fn my_fn(s Speaker) {}
 
 fn main() {
-    my_fn({})
+    my_fn()
 }

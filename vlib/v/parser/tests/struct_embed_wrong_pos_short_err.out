@@ -1,0 +1,7 @@
+vlib/v/parser/tests/struct_embed_wrong_pos_short_err.vv:6:2: error: struct embedding must be declared at the beginning of the struct body
+    4 | struct Foo2 {
+    5 | mut:
+    6 |     Foo
+      |     ~~~
+    7 | }
+    8 | fn main() {}

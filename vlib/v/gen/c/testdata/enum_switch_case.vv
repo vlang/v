@@ -1,0 +1,24 @@
+enum Enum {
+	e1
+	e2
+	e3
+	e4
+	e5
+	e6
+}
+
+fn main() {
+	e := Enum.e5
+	match e {
+		.e1 {}
+		.e2 {}
+		.e3 {}
+		.e4 {}
+		4...5 {
+			println('4..5')
+		}
+		else {
+			println('else')
+		}
+	}
+}

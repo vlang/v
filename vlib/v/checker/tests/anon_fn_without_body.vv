@@ -1,0 +1,7 @@
+module main
+
+fn main() {
+	func := fn () int
+
+	println(func())
+}

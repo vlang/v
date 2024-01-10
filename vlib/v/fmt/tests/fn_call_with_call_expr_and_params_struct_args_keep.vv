@@ -1,0 +1,10 @@
+@[params]
+struct Bar {
+	bar bool
+}
+
+fn foo(msg string, opts Bar) {
+	println(msg)
+}
+
+foo(123.str(), bar: true)

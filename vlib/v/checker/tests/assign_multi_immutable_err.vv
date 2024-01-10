@@ -5,3 +5,17 @@ fn main() {
 
 	println('$a, $b')
 }
+
+fn f() int {
+	return 2
+}
+
+fn g() (int, int) {
+  return 1, 2
+}
+
+fn assign_fn() {
+	_, error = g()
+	g = f()
+}
+

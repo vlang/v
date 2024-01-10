@@ -1,0 +1,24 @@
+{
+  "name": "js_dom_draw_chart_ts",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/index.js",
+  "scripts": {
+    "start": "npm run build && node src/server.js",
+    "start:dev": "./node_modules/nodemon/bin/nodemon.js -e ts  --exec \"npm run start\"",
+    "build": "tsc"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "nodemon": "^2.0.19",
+    "reflect-metadata": "^0.1.13",
+    "sqlite3": "^5.0.11",
+    "typeorm": "^0.3.7",
+    "typescript": "^4.7.4"
+  },
+  "devDependencies": {
+    "@types/node": "^18.6.4"
+  }
+}

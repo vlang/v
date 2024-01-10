@@ -1,0 +1,5 @@
+case main__Enum__e1:
+case main__Enum__e4:
+case main__Enum__e6:
+default:
+(e >= 4 && e <= 5)

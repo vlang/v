@@ -1,0 +1,4 @@
+FN:              shuffle | T: &[]int
+FN:         shuffle_impl | T: &[]int
+FN:              shuffle | T: &[]f64
+FN:         shuffle_impl | T: &[]f64

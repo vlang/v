@@ -1,9 +1,0 @@
-Usage:
- a) v remove module [module] [module] [...]
-    ^^^^^^^^^^^^ will remove the listed modules
- b) v remove
-    ^^^^^^^^^^^^ will remove ALL installed modules
-Options:
-  -help        - Show usage info.
-  -verbose     - Print more details about the performed operation.
-  -server-url  - When doing network operations, use this vpm server. Can be given multiple times.

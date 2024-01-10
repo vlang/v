@@ -1,4 +1,4 @@
-vlib/v/checker/tests/dec_lit_wrong_digit_err.v:2:18: error: this number has unsuitable digit `q`
+vlib/v/checker/tests/dec_lit_wrong_digit_err.vv:2:18: error: this number has unsuitable digit `q`
     1 | fn main() {
     2 |     println(12345qrst+10)
       |                  ^

@@ -1,0 +1,8 @@
+module main
+
+fn main() {
+	a := [yo()]
+	println(a)
+}
+
+fn yo() {}

@@ -1,0 +1,42 @@
+vlib/v/checker/tests/alias_to_option_err.vv:11:7: error: alias to Option type requires to be used as Option type (?TestInt(...))
+    9 | 
+   10 | fn main() {
+   11 |     f := TestInt(1)
+      |          ~~~~~~~~~~
+   12 |     dump(f)
+   13 |     println(f)
+vlib/v/checker/tests/alias_to_option_err.vv:15:7: error: alias to Option type requires to be used as Option type (?TestString(...))
+   13 |     println(f)
+   14 | 
+   15 |     g := TestString('foo')
+      |          ~~~~~~~~~~~~~~~~~
+   16 |     dump(g)
+   17 |     println(g)
+vlib/v/checker/tests/alias_to_option_err.vv:19:7: error: alias to Option type requires to be used as Option type (?TestString(...))
+   17 |     println(g)
+   18 | 
+   19 |     h := TestString(none)
+      |          ~~~~~~~~~~~~~~~~
+   20 |     dump(h)
+   21 |
+vlib/v/checker/tests/alias_to_option_err.vv:22:7: error: alias to Option type requires to be used as Option type (?TestF64(...))
+   20 |     dump(h)
+   21 | 
+   22 |     i := TestF64(none)
+      |          ~~~~~~~~~~~~~
+   23 |     dump(i)
+   24 |
+vlib/v/checker/tests/alias_to_option_err.vv:25:7: error: alias to Option type requires to be used as Option type (?TestStruct(...))
+   23 |     dump(i)
+   24 | 
+   25 |     l := TestStruct(none)
+      |          ~~~~~~~~~~~~~~~~
+   26 |     dump(l)
+   27 |
+vlib/v/checker/tests/alias_to_option_err.vv:28:7: error: alias to Option type requires to be used as Option type (?TestStruct(...))
+   26 |     dump(l)
+   27 | 
+   28 |     k := TestStruct(Struct{})
+      |          ~~~~~~~~~~~~~~~~~~~~
+   29 |     dump(k)
+   30 | }

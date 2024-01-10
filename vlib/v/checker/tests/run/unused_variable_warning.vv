@@ -1,0 +1,6 @@
+// NB: this test should compile and run, but it also should produce a compiler warning.
+fn main() {
+	a := 1
+	b := 2
+	println('hello')
+}

@@ -1,0 +1,4 @@
+vlib/v/parser/tests/register_imported_interface.vv:2:11: error: cannot register interface `Reader`, this type was already imported
+    1 | import io { Reader }
+    2 | interface Reader {}
+      |           ~~~~~~

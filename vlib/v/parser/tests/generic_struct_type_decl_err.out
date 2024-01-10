@@ -1,0 +1,5 @@
+vlib/v/parser/tests/generic_struct_type_decl_err.vv:1:13: error: generic parameter name needs to be exactly one char
+    1 | struct GMap<Hashable<K>, V> {
+      |             ~~~~~~~~
+    2 |     map_ map[int]V
+    3 | }

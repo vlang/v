@@ -1,0 +1,13 @@
+struct Foo {
+	map1 map[string]!string
+	map2 map[string]?string
+}
+
+fn foo() {
+	map1 := map[string]!string{}
+	map2 := map[string]?string{}
+}
+
+fn bar(arg map[string]?string) ?string {
+	return arg['akey']
+}

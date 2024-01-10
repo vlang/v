@@ -1,0 +1,9 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 💬 General Questions and Answers about V
+    url: https://github.com/vlang/v/discussions/categories/questions-and-answers
+    about: You can ask and answer questions about V in the discussions forum.
+
+  - name: 💬 Discord Server
+    url: https://discord.gg/vlang
+    about: You can join our Discord server for real time discussion and support

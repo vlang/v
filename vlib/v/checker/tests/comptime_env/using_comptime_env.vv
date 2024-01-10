@@ -1,0 +1,8 @@
+#flag -I $env('VAR')/xyz
+#include "$env('VAR')/stdio.h"
+
+fn main() {
+	env := $env('VAR')
+	println(env)
+	println('done')
+}

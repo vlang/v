@@ -1,0 +1,7 @@
+vlib/v/checker/tests/right_hand_side_mut.vv:4:19: error: unexpected `mut` on right-hand side of assignment
+    2 |     mut flubbel := 123
+    3 |     mut wubbel := 234
+    4 |     _, _ := flubbel, mut wubbel
+      |                      ~~~
+    5 |     print(wubbel)
+    6 | }

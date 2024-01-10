@@ -1,0 +1,4 @@
+fn main() {
+	mut a := []int{len: 1, init: a}
+	println(a)
+}

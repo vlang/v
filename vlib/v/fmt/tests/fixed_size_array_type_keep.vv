@@ -1,0 +1,28 @@
+const size = 5
+
+struct Foo {
+	bar [size]int
+	baz [5]int
+}
+
+fn foo() [1]f32 {
+	return [f32(0.0)]!
+}
+
+fn main() {
+	_ := [5]string{init: 'abc'}
+}
+
+// NB: secret_key_size is missing here on purpose
+// vfmt should leave it as is, assuming it is coming
+// from another .v file
+
+struct VerifyKey {
+	public_key [public_key_size]u8
+}
+
+struct SigningKey {
+	secret_key [secret_key_size]u8
+pub:
+	verify_key VerifyKey
+}

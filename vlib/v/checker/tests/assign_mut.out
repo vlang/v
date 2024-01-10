@@ -1,0 +1,7 @@
+vlib/v/checker/tests/assign_mut.vv:3:11: error: expecting `:=` (e.g. `mut x :=`)
+    1 | fn main() {
+    2 |     mut z := 1
+    3 |     mut z = 1
+      |           ^
+    4 |     mut i := 2
+    5 |     i, mut z = 2,3

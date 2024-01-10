@@ -1,4 +1,4 @@
-vlib/v/checker/tests/import_duplicate_err.v:2:8: error: module name `time` duplicate
+vlib/v/checker/tests/import_duplicate_err.vv:2:8: error: `time` was already imported on line 1
     1 | import time
     2 | import time
       |        ~~~~

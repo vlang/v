@@ -1,0 +1,4 @@
+vlib/v/checker/tests/nested_fn_alias_err.vv:2:12: error: type `Fn1` is an alias, use the original alias type `fn ()` instead
+    1 | type Fn1 = fn ()
+    2 | type Fn2 = Fn1
+      |            ~~~

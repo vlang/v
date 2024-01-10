@@ -1,0 +1,16 @@
+struct Foo{}
+
+type FooFn = fn(mut f Foo) 
+
+struct Server{
+	foo_fn FooFn = unsafe{ nil }
+}
+
+fn foo(f &Foo) {}
+
+fn main(){
+	srv := Server{
+		foo_fn: foo
+	}
+	dump(isnil(srv.foo_fn))
+}

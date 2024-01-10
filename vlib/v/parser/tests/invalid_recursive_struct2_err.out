@@ -1,0 +1,7 @@
+vlib/v/parser/tests/invalid_recursive_struct2_err.vv:5:8: error: invalid recursive struct `Human`
+    3 | }
+    4 |
+    5 | struct Human {
+      |        ~~~~~
+    6 |     child Child
+    7 | }

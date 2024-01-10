@@ -1,0 +1,6 @@
+fn main() {
+    v := 'foo'
+    println(v['f'])
+    println(v[true])
+    println(v[[23]])
+}

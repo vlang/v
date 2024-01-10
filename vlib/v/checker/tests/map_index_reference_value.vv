@@ -1,0 +1,19 @@
+struct Foo {
+	bar string
+}
+
+struct Bar {
+	field &int
+}
+
+fn main() {
+	mut m := map[string]&Foo{}
+	m['bar'].bar = 'bar'
+	// m['bar'] << 'baz' // etc
+
+	mut m2 := map[string]Bar{}
+	_ = m2['key']
+
+	mut m3 := map[string][]Bar{}
+	_ = m3['key']
+}

@@ -1,0 +1,5 @@
+vlib/v/parser/tests/register_ierror_struct.vv:1:8: error: cannot register struct `IError`, it is builtin interface type
+    1 | struct IError {
+      |        ~~~~~~
+    2 |     msg string
+    3 | }

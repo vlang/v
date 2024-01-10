@@ -1,0 +1,23 @@
+pub struct Resources {}
+
+pub struct ConsumableResources[T] {
+mut:
+	total_resources Resources
+	used_resources  map[T]Resources
+}
+
+pub fn (cr &ConsumableResources) get_total_resources() Resources {
+	return cr.total_resources
+}
+
+// for issue 20362
+struct Foo[T] {}
+
+pub fn new_foo[F](arg F) !Foo[F] {
+}
+
+pub fn (f Foo) method() {
+}
+
+fn main() {
+}

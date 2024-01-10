@@ -10,7 +10,14 @@ du -s .
 
 ls -lat 
 
-./v test-compiler
+##./v test-all
+
+## try running the known failing tests first to get faster feedback
+./v test vlib/builtin/string_test.v vlib/strings/builder_test.v
+
+./v test-cleancode
+
+./v test-self
 
 ./v build-vbinaries
 

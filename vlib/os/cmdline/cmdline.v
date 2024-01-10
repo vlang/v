@@ -26,8 +26,7 @@ pub fn option(args []string, param string, def string) string {
 	for arg in args {
 		if found {
 			return arg
-		}
-		else if param == arg {
+		} else if param == arg {
 			found = true
 		}
 	}

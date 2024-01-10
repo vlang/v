@@ -1,0 +1,12 @@
+struct S1 {}
+
+fn (t S1) m(s string) int {
+	return 7
+}
+
+fn test_methods_arg() {
+	s1 := S1{}
+	$for method in S1.methods {
+		s1.$method(wrong)
+	}
+}

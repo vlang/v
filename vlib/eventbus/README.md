@@ -4,106 +4,119 @@ A module to provide eventing capabilities using pub/sub.
 
 ## API
 
-1. `new()` - create a new `EventBus`
+1. `new[T]()` - create a new `EventBus`
+2. `EventBus.new[T]()` - create a new `EventBus`
 
 ### Structs:
 
 **EventBus:**
 
-1. `publish(name string, sender voidptr, args voidptr)` - publish an event with provided Params & name
+1. `publish(name T, sender voidptr, args voidptr)` - publish an event with provided
+    Params & name
 2. `clear_all()` - clear all subscribers
-3. `has_subscriber(name string)` - check if a subscriber to an event exists
+3. `has_subscriber(name T)` - check if a subscriber to an event exists
 
 **Subscriber:**
 
-1. `subscribe(name string, handler EventHandlerFn)` - subscribe to an event
-2. `subscribe_once(name string, handler EventHandlerFn)` - subscribe only once to an event
-3. `subscribe_method(name string, handler EventHandlerFn, reciever voidptr)` - subscribe to an event and also recieve the `reciever` as a parameter. Since it's not yet possible to send methods as parameters, this is the workaround.
-4. `is_subscribed(name string)` - check if we are subscribed to an event
-5. `unsubscribe(name string)` - unsubscribe from an event
+1. `subscribe(name T, handler EventHandlerFn)` - subscribe to an event
+2. `subscribe_once(name T, handler EventHandlerFn)` - subscribe only once to an event
+3. `subscribe_method(name T, handler EventHandlerFn, receiver voidptr)` - subscribe to
+    an event and also set the `receiver` as a parameter.
+    Since it's not yet possible to send methods as parameters, this is a workaround.
+4. `is_subscribed(name T)` - check if we are subscribed to an event
+5. `unsubscribe(name T)` - unsubscribe from an event
 
 **Event Handler Signature:**
 
 The function given to `subscribe`, `subscribe_method` and `subscribe_once` must match this:
 
-```v
-fn(voidptr, voidptr, voidptr){
-
+```v oksyntax
+fn cb(receiver voidptr, args voidptr, sender voidptr) {
 }
 
 // Since V can map structs to voidptr, this also works
 struct ClickEvent {
-    x int
-    y int
+	x int
+	y int
 }
 
 // Example case where publisher sends ClickEvent as args.
-fn onPress(sender voidptr, e &ClickEvent){
-    println(e.x)
-    //your code here...
+fn on_press(receiver voidptr, e &ClickEvent, sender voidptr) {
+	println(e.x)
+	// your code here...
 }
 ```
 
 ## Usage
 
-For **usage across modules** [check the example](https://github.com/vlang/v/tree/master/examples/eventbus).
+For **usage across modules**
+[check the example](https://github.com/vlang/v/tree/master/examples/eventbus).
 
-_Note: As a general rule, you will need to **subscribe before publishing**._
+> **Note**
+> As a general rule, you will need to **subscribe before publishing**.
 
 **main.v**
 
-```v
+```v oksyntax
 module main
+
 import eventbus
 
 // initialize it globally
-const (
-    eb = eventbus.new()
-)
+const eb = eventbus.new[string]()
 
-fn main(){
-    // get a mutable reference to the subscriber
+fn main() {
+	// get a mutable reference to the subscriber
 	mut sub := eb.subscriber
-    // subscribe to the 'error' event
-	sub.subscribe("error", on_error)
-    // start the work
+	// subscribe to the 'error' event
+	sub.subscribe('error', on_error)
+	// start the work
 	do_work()
 }
 
 // the event handler
-fn on_error(work &Work, e &Error) {
-	println('error occured on ${work.hours}. Error: ${e.message}')
+fn on_error(receiver voidptr, e &Error, work &Work) {
+	println('error occurred on ${work.hours}. Error: ${e.message}')
 }
 ```
 
 **work.v**
 
-```v
+```v oksyntax
 module main
 
-struct Work{
-    hours int
+import eventbus
+
+const eb = eventbus.new[string]()
+
+struct Work {
+	hours int
 }
 
-struct Error {
-    message string
+struct AnError {
+	message string
 }
 
-fn do_work(){
-    work := Work{20}
-    // get a mutable Params instance & put some data into it
-	error := &Error{"Error: no internet connection."}
-    // publish the event
-    eb.publish("error", work, error)
+fn do_work() {
+	work := Work{20}
+	// get a mutable Params instance & put some data into it
+	error := &AnError{'Error: no internet connection.'}
+	// publish the event
+	eb.publish('error', work, error)
 }
 ```
 
 ### Notes:
 
-1. Each `EventBus` instance has it's own registry (i.e. there is no global event registry so you can't just subscribe to an event wherever you are.
-2. Each `EventBus` has a `Subscriber` instance which will need to be either exposed or you can make small public helper functions specific to your module like (`onPress`, `onError`) and etc.
-3. The `eventbus` module has some helpers to ease getting/setting of Params (since V doesn't support empty interfaces yet or reflection) so use them (see usage above).
+1. Each `EventBus` instance has it's own registry (i.e. there is no global event registry
+    so you can't just subscribe to an event wherever you are.
+2. Each `EventBus` has a `Subscriber` instance which will need to be either exposed or you can make
+    small public helper functions specific to your module like (`onPress`, `onError`) and etc.
+3. The `eventbus` module has some helpers to ease getting/setting of Params
+    (since V doesn't support empty interfaces yet or reflection) so use them (see usage above).
 
 **The rationale behind separating Subscriber & Publisher:**
 
-This is mainly for security because the if publisher & subscriber are both passed around, a client can easily publish events acting as the server. So a client should only be able to use the Subscriber methods.
+This is mainly for security because if publisher & subscriber are both passed around,
+a client can easily publish events acting as the server.
+So a client should only be able to use the Subscriber methods.

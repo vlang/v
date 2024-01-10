@@ -1,0 +1,7 @@
+vlib/v/checker/tests/return_duplicate_with_none_err_b.vv:3:2: error: unreachable code
+    1 | fn f() ?bool {
+    2 |     return none
+    3 |     return true
+      |     ~~~~~~~~~~~
+    4 | }
+    5 | fn main() {

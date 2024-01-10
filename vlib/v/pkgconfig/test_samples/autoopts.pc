@@ -1,0 +1,26 @@
+# pkg-config information for AutoOpts 42.1.17
+#
+prefix="/usr"
+datarootdir="/usr/share"
+datadir="/usr/share"
+package="autogen"
+includedir="/usr/include"
+exec_prefix="/usr"
+bindir="/usr/bin"
+libdir="/usr/lib/x86_64-linux-gnu"
+ldopts=""
+exeext=""
+version="42:1:17"
+dotver="42.1.17"
+pkgdatadir="/usr/share/autogen"
+autogen="/usr/bin/autogen"
+libs="-lopts"
+libsrc="/usr/share/autogen/libopts-42.1.17.tar.gz"
+static_libs="/usr/lib/x86_64-linux-gnu/libopts.a"
+
+Name:           AutoOpts
+Description:    A semi-automated generated/library option parser
+URL:            http://www.gnu.org/software/autogen
+Version:        42.1.17
+Libs:           -lopts
+Cflags:         

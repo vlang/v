@@ -1,0 +1,23 @@
+struct MyStruct[T] {
+	a T
+}
+
+fn mprint[T](s MyStruct[T]) {
+	println(s)
+}
+
+fn mprint_with_alias(s MyStructAlias) {
+	println(s)
+}
+
+type MyStructAlias = MyStruct[int]
+
+fn main() {
+	a := MyStruct[int]{}
+	mprint(a)
+	mprint_with_alias(a)
+
+	b := MyStructAlias{}
+	mprint(b)
+	mprint_with_alias(b)
+}

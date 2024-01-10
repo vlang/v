@@ -1,0 +1,12 @@
+type Sum = int | string
+
+fn ret_sum_result() !Sum {
+	return 0
+}
+
+fn ret_sum_option() ?Sum {
+	return '0'
+}
+
+_ := ret_sum_result() as int
+_ := ret_sum_option() as string

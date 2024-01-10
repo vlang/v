@@ -1,0 +1,39 @@
+pub struct ExpectedType {
+	a u32
+	b u32
+}
+
+struct WrongType {
+	c string
+	d int
+}
+
+pub type Fn = fn (&ExpectedType, i64, u64) int
+
+pub fn good_signature() Fn {
+	return fn (n &ExpectedType, a i64, b u64) int {
+		println('good signature param0=$n')
+		return 0
+	}
+}
+
+pub fn bad_signature() Fn {
+	// create closure that has nonmatching signature due to first arg. Compiler should reject it
+	return fn (n &WrongType, a i64, b u64) int {
+		println('bad signature param0=$n')
+		return 0
+	}
+}
+
+fn main() {
+	arg := &ExpectedType{
+		a: 3
+		b: 7
+	}
+
+	mut cb := good_signature()
+	cb(arg, 1, 1)
+
+	cb = bad_signature()
+	cb(arg, 1, 1)
+}

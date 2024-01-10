@@ -1,0 +1,82 @@
+name: native backend CI
+
+on:
+  push:
+    paths:
+      - '!**'
+      - '!**.md'
+      - 'vlib/v/gen/native/'
+      - 'cmd/tools/builders/**.v'
+      - 'vlib/builtin/**.v'
+      - 'vlib/v/ast/**.v'
+      - 'vlib/v/scanner/**.v'
+      - 'vlib/v/parser/**.v'
+      - 'vlib/v/checker/**.v'
+      - 'vlib/v/gen/c/**.v'
+      - 'vlib/v/builder/**.v'
+      - 'vlib/v/cflag/**.v'
+      - 'vlib/v/live/**.v'
+      - 'vlib/v/util/**.v'
+      - 'vlib/v/markused/**.v'
+      - 'vlib/v/preludes/**.v'
+      - 'vlib/v/gen/native/**.v'
+      - 'vlib/v/gen/native/tests/**.v'
+  pull_request:
+    paths:
+      - '!**'
+      - '!**.md'
+      - 'vlib/v/gen/native/'
+      - 'cmd/tools/builders/**.v'
+      - 'vlib/builtin/**.v'
+      - 'vlib/v/ast/**.v'
+      - 'vlib/v/scanner/**.v'
+      - 'vlib/v/parser/**.v'
+      - 'vlib/v/checker/**.v'
+      - 'vlib/v/gen/c/**.v'
+      - 'vlib/v/builder/**.v'
+      - 'vlib/v/cflag/**.v'
+      - 'vlib/v/live/**.v'
+      - 'vlib/v/util/**.v'
+      - 'vlib/v/markused/**.v'
+      - 'vlib/v/preludes/**.v'
+      - 'vlib/v/gen/native/**.v'
+      - 'vlib/v/gen/native/tests/**.v'
+
+concurrency:
+  group: native-backend-ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  native-backend:
+    strategy:
+      matrix:
+        os: [
+          ubuntu-20.04,
+          macos-11, macos-12,
+          windows-2019
+        ]
+    runs-on: ${{ matrix.os }}
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install linker
+        if: ${{ startsWith(matrix.os, 'ubuntu')}}
+        run: |
+          sudo apt-get install --quiet -y binutils
+
+      - name: Build V with make.bat
+        if: ${{ startsWith(matrix.os, 'windows') }}
+        run: |
+          .\make.bat
+          .\v.exe symlink -githubci
+      - name: Build V with make
+        if: ${{ !startsWith(matrix.os, 'windows') }}
+        run: |
+          make
+          ./v symlink -githubci
+
+      - name: Run the native backend tests serially with more details
+        run: |
+          v -stats vlib/v/gen/native/macho_test.v
+          v -stats vlib/v/gen/native/tests/native_test.v

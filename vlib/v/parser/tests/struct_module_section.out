@@ -1,0 +1,12 @@
+vlib/v/parser/tests/struct_module_section.vv:16:3: error: field `i` of struct `S1` is immutable
+   14 | 
+   15 | mut s := S1{}
+   16 | s.i++
+      |   ^
+   17 | mut s2 := S2{}
+   18 | s2.j++
+vlib/v/parser/tests/struct_module_section.vv:18:4: error: field `j` of struct `S2` is immutable
+   16 | s.i++
+   17 | mut s2 := S2{}
+   18 | s2.j++
+      |    ^

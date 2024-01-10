@@ -1,0 +1,7 @@
+vlib/v/checker/tests/with_check_option/v_tictactoe_fixed_syntax_error.vv:8:9: error: cannot use `[3][]string` as type `[][]string` in return argument
+    6 |         board[i / 3][i % 3] = (i + 1).str()
+    7 |     }
+    8 |     return board
+      |            ~~~~~
+    9 | }
+   10 |

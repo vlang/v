@@ -1,0 +1,7 @@
+vlib/v/parser/tests/if_guard_undefined_variable_err.vv:4:10: error: undefined variable: `f`
+    2 |
+    3 | fn main() {
+    4 |     if f := f.g.x() {
+      |             ^
+    5 |     }
+    6 | }

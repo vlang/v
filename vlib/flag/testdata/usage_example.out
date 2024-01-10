@@ -1,0 +1,1 @@
+[vlib/flag/testdata/usage_example.v:16] rest_of_args: ['abc', 'def']

@@ -1,5 +1,3 @@
-module main
-
 fn test_autoprint_string_vargs() {
 	add_s('a')
 	assert true
@@ -10,6 +8,8 @@ fn test_autoprint_string_vargs() {
 fn add_s(column string, other_columns ...string) {
 	println(column)
 	println(other_columns)
+	eprintln(column)
+	eprintln(other_columns)
 }
 
 //
@@ -23,6 +23,8 @@ fn test_autoprint_int_vargs() {
 fn add_i(column int, other_columns ...int) {
 	println(column)
 	println(other_columns)
+	eprintln(column)
+	eprintln(other_columns)
 }
 
 //
@@ -41,4 +43,6 @@ fn test_autoprint_struct_vargs() {
 fn add_point(column Point, other_columns ...Point) {
 	println(column)
 	println(other_columns)
+	eprintln(column)
+	eprintln(other_columns)
 }

@@ -1,0 +1,33 @@
+struct Table {
+pub mut:
+	name string
+}
+
+type MyFn = fn (zzzz Table)
+
+fn (mut t Table) rename() {
+	t.name = 'abc'
+}
+
+fn yyy(t Table) {
+	println(t.name)
+}
+
+fn xxx(mut mytable Table) {
+	mytable.rename()
+	println(mytable.name)
+}
+
+fn sum(myfn MyFn) {
+	mut t := Table{}
+	myfn(t)
+}
+
+fn main() {
+	sum(fn (mut t Table) {
+		t.rename()
+		println(t.name)
+	})
+	sum(xxx)
+	sum(yyy)
+}

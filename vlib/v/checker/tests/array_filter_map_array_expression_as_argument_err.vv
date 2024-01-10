@@ -1,0 +1,30 @@
+struct Graph {
+mut:
+	root   Node
+	forest []Node
+}
+
+struct Node {
+	name string
+mut:
+	kids map[string][]Node
+}
+
+fn (g Graph) pp() {
+	mut visited := map[string]bool{}
+	mut horizon := [g.root]
+
+	for horizon.len > 0 {
+		current := horizon.first()
+		horizon.delete(0)
+		println('$current.name -> $current.kids.keys()')
+		visited[current.name] = true
+		for k, v in current.kids {
+			_ = visited[k] or {
+				v.map(horizon << it)
+				true
+			}
+		}
+		println('HORIZON = $horizon')
+	}
+}

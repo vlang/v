@@ -1,0 +1,7 @@
+vlib/v/parser/tests/generic_struct_parameter_err.vv:17:16: error: cannot use `MyNode[string]` as `string` in argument 1 to `datatypes.LinkedList[string].push`
+   15 |         data: data
+   16 |     }
+   17 |     c.lst.push[T](node)
+      |                   ~~~~
+   18 | }
+   19 |

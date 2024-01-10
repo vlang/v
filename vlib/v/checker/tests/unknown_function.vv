@@ -1,0 +1,5 @@
+import math
+
+fn main() {
+	println(math.max_i64())
+}

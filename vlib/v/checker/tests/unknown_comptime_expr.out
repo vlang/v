@@ -1,0 +1,49 @@
+vlib/v/checker/tests/unknown_comptime_expr.vv:7:6: error: `foo` is mut and may have changed since its definition
+    5 | fn main() {
+    6 |     mut foo := 0
+    7 |     $if foo == 0 {
+      |         ~~~
+    8 |     }
+    9 |
+vlib/v/checker/tests/unknown_comptime_expr.vv:11:6: error: definition of `bar` is unknown at compile time
+    9 | 
+   10 |     bar := unknown_at_ct()
+   11 |     $if bar == 0 {
+      |         ~~~
+   12 |     }
+   13 | }
+vlib/v/checker/tests/unknown_comptime_expr.vv:17:6: error: undefined ident: `huh`
+   15 | fn if_is() {
+   16 |     s := S1{}
+   17 |     $if huh.typ is T {
+      |         ~~~
+   18 |     }
+   19 |     $if s is int {
+vlib/v/checker/tests/unknown_comptime_expr.vv:17:10: error: `huh` does not return a value
+   15 | fn if_is() {
+   16 |     s := S1{}
+   17 |     $if huh.typ is T {
+      |             ~~~
+   18 |     }
+   19 |     $if s is int {
+vlib/v/checker/tests/unknown_comptime_expr.vv:17:17: error: unknown type `T`
+   15 | fn if_is() {
+   16 |     s := S1{}
+   17 |     $if huh.typ is T {
+      |                    ^
+   18 |     }
+   19 |     $if s is int {
+vlib/v/checker/tests/unknown_comptime_expr.vv:21:13: error: invalid `$if` condition: expected a type
+   19 |     $if s is int {
+   20 |     }
+   21 |     $if s.i is 5 {
+      |                ^
+   22 |     }
+   23 |     $if s.i is T {
+vlib/v/checker/tests/unknown_comptime_expr.vv:23:13: error: unknown type `T`
+   21 |     $if s.i is 5 {
+   22 |     }
+   23 |     $if s.i is T {
+      |                ^
+   24 |     }
+   25 | }

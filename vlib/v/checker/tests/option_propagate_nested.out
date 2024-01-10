@@ -1,0 +1,56 @@
+vlib/v/checker/tests/option_propagate_nested.vv:10:18: error: to propagate the Option call, `xx_prop` must return an Option
+    8 | 
+    9 | fn xx_prop() string {
+   10 |     s := ret(raise()?)
+      |                     ^
+   11 |     return s
+   12 | }
+Details: vlib/v/checker/tests/option_propagate_nested.vv:9:14: details: prepend ? before the declaration of the return type of `xx_prop`
+    7 | }
+    8 | 
+    9 | fn xx_prop() string {
+      |              ~~~~~~
+   10 |     s := ret(raise()?)
+   11 |     return s
+vlib/v/checker/tests/option_propagate_nested.vv:10:18: error: to propagate the call, `xx_prop` must return an Option type
+    8 | 
+    9 | fn xx_prop() string {
+   10 |     s := ret(raise()?)
+      |                     ^
+   11 |     return s
+   12 | }
+Details: vlib/v/checker/tests/option_propagate_nested.vv:9:14: details: prepend ? before the declaration of the return type of `xx_prop`
+    7 | }
+    8 | 
+    9 | fn xx_prop() string {
+      |              ~~~~~~
+   10 |     s := ret(raise()?)
+   11 |     return s
+vlib/v/checker/tests/option_propagate_nested.vv:28:21: error: to propagate the Result call, `aa_propagate` must return a Result
+   26 | 
+   27 | fn (mut s St) aa_propagate() {
+   28 |     f := retf(s.raise()!)
+      |                        ^
+   29 |     s.z = 7.5
+   30 |     println(f)
+Details: vlib/v/checker/tests/option_propagate_nested.vv:27:30: details: prepend ! before the declaration of the return type of `aa_propagate`
+   25 | }
+   26 | 
+   27 | fn (mut s St) aa_propagate() {
+      |                              ^
+   28 |     f := retf(s.raise()!)
+   29 |     s.z = 7.5
+vlib/v/checker/tests/option_propagate_nested.vv:28:21: error: to propagate the call, `aa_propagate` must return a Result type
+   26 | 
+   27 | fn (mut s St) aa_propagate() {
+   28 |     f := retf(s.raise()!)
+      |                        ^
+   29 |     s.z = 7.5
+   30 |     println(f)
+Details: vlib/v/checker/tests/option_propagate_nested.vv:27:30: details: prepend ! before the declaration of the return type of `aa_propagate`
+   25 | }
+   26 | 
+   27 | fn (mut s St) aa_propagate() {
+      |                              ^
+   28 |     f := retf(s.raise()!)
+   29 |     s.z = 7.5

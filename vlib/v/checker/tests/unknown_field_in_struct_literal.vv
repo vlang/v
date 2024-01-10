@@ -1,0 +1,12 @@
+struct TileLine {
+	ypos int
+mut:
+	field  [5]int
+	points int
+	shifts int
+}
+
+hline := TileLine{
+	pos: 123
+}
+println(hline)

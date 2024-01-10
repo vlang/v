@@ -1,9 +1,10 @@
-
 type SumType = int | string
 
-fn s2s(s SumType) SumType { return s }
+fn s2s(s SumType) SumType {
+	return s
+}
 
-fn test_match_expression_on_sumtype_ordinary_branch(){
+fn test_match_expression_on_sumtype_ordinary_branch() {
 	// tests whether an ordinary branch supports multiple statements,
 	// followed by a default expression
 	mut c := 0
@@ -13,7 +14,8 @@ fn test_match_expression_on_sumtype_ordinary_branch(){
 			c = 1
 			eprintln('hi')
 			'a string'
-		}else{
+		}
+		else {
 			'unknown'
 		}
 	}
@@ -21,8 +23,7 @@ fn test_match_expression_on_sumtype_ordinary_branch(){
 	assert c == 1
 }
 
-
-fn test_match_expression_on_sumtype_else(){
+fn test_match_expression_on_sumtype_else() {
 	// tests whether else branches support multiple statements,
 	// when the other branches are simple default expressions
 	mut c := 0
@@ -30,7 +31,8 @@ fn test_match_expression_on_sumtype_else(){
 	res := match s {
 		string {
 			'a string'
-		}else{
+		}
+		else {
 			c = 3
 			eprintln('hi')
 			'unknown'
@@ -40,7 +42,7 @@ fn test_match_expression_on_sumtype_else(){
 	assert c == 3
 }
 
-fn test_match_expression_on_sumtype_full(){
+fn test_match_expression_on_sumtype_full() {
 	// tests whether all branches can have multiple statements,
 	// followed by a default expression
 	mut c := 0

@@ -1,0 +1,6 @@
+arr := [1,2,3]
+value := 2
+
+for value, _ in arr {
+	println(value)
+}

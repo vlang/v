@@ -1,0 +1,8 @@
+vlib/v/checker/tests/array_plus_assign_err.vv:1:5: warning: unused variable: `buffer`
+    1 | mut buffer := []u8{cap: 1024}
+      |     ~~~~~~
+    2 | buffer += "ipconfig && sudo apt-get install -y some_amazing_package name + command output".bytes()
+vlib/v/checker/tests/array_plus_assign_err.vv:2:1: error: operator `+=` not defined on left operand type `[]u8`
+    1 | mut buffer := []u8{cap: 1024}
+    2 | buffer += "ipconfig && sudo apt-get install -y some_amazing_package name + command output".bytes()
+      | ~~~~~~

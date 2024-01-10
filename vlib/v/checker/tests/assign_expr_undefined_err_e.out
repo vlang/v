@@ -1,4 +1,4 @@
-vlib/v/checker/tests/assign_expr_undefined_err_e.v:2:11: error: undefined variable: `a`
+vlib/v/checker/tests/assign_expr_undefined_err_e.vv:2:11: error: undefined variable: `a`
     1 | fn main() {
     2 |     a, b := -a, -b
       |              ^

@@ -1,0 +1,67 @@
+Runs test functions in the given FILEs and DIRECTORYs.
+Usage:
+  v   [-stats]   test    [-run-only GPATTERN1[,...]]   FILE|DIRECTORY[...]
+
+If '-stats' is given, more statistics about the tests are printed along
+with a report of passes/failures
+
+If you give `-run-only GPATTERN`, then *only* test functions, that do
+match by name the given glob pattern `GPATTERN` will run. You can separate
+multiple glob patterns with `,`.
+If a _test.v file lacks matching functions for all of the glob patterns, it
+will be ignored completely, so you can do in effect:
+  `v test . -run-only test_your_fn_name`
+... and V will run only that test function, no matter how many _test.v
+files you have, and how many other test_ functions exist in them.
+NB: glob patterns support `*` which matches anything, and `?`, that
+matches any single character. They are *NOT* regular expressions however.
+
+NB 1: very frequently, when you work on a module you can cd into its folder,
+and then you can perform:
+      v test .
+... to run all the module's '_test.v' files.
+
+NB 2: V builtin testing requires you to name your files with a _test.v
+suffix, and to name your test functions with test_ prefix. Each function,
+that starts with 'fn test_', and that is in a '_test.v' file will be called
+automatically by the test framework.
+
+NB 3: You can use `assert condition` inside each 'test_' function. If the
+asserted condition fails, then v will record that, and produce a more detailed
+error message, about where the failure was.
+
+NB 4: Alternative test runners (for IDE integrations):
+You can use several alternative test result formats, using `-test-runner name`,
+or by setting VTEST_RUNNER (the command line option has higher priority).
+
+The names of the available test runners are:
+    `simple`   Fastest, does not import additional modules, does no processing.
+    `tap`      Format the output as required by the Test Anything Protocol (TAP).
+    `normal`   Supports color output, nicest/most human readable, the default.
+    `teamcity` Format the output as required by the Teamcity and JetBrains IDEs.
+
+You can also implement your own custom test runner, by providing the path to
+your .v file, that implements it to this option. For example, see:
+vlib/v/preludes/test_runner_tap.v .
+
+NB 5: Filtering only specific _test.v files by name:
+You can set the environment variable `VTEST_ONLY` to a list of strings, that
+will have to be contained in the paths of the _test.v files.
+
+Example:
+    `VTEST_ONLY=complex,stats v test -run-only *sin* .`
+
+This will find all _test.v files that have either `complex` or `stats`
+in their path, then for these test files, V test will find all that contain
+`test_` functions that glob match `*sin*`, and run only them, so you
+should see something like this:
+```
+ OK    [1/2]   164.671 ms vlib/math/stats/stats_test.v
+ OK    [2/2]   184.842 ms vlib/math/complex/complex_test.v
+--------------------------------------------------------------------------------
+ Summary for all V _test.v files: 2 passed, 2 total. Runtime: 185 ms, on 2
+ parallel jobs.
+```
+
+See [TESTS.md](https://github.com/vlang/v/blob/master/TESTS.md) for more
+information about how to test V itself.

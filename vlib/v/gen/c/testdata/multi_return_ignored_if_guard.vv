@@ -1,0 +1,98 @@
+fn f1() !(int, int) {
+	return 1, 2
+}
+
+fn f2() ?(int, int) {
+	return 1, 2
+}
+
+fn f3() !(int, int, int) {
+	return 1, 2, 3
+}
+
+fn f4() ?(int, int, int) {
+	return 1, 2, 3
+}
+
+fn main() {
+	if l, r := f1() {
+		println(l)
+		println(r)
+	}
+	if l, _ := f1() {
+		println(l)
+	}
+	if _, r := f1() {
+		println(r)
+	}
+	if _, _ := f1() {
+	}
+	if l, r := f2() {
+		println(l)
+		println(r)
+	}
+	if l, _ := f2() {
+		println(l)
+	}
+	if _, r := f2() {
+		println(r)
+	}
+	if _, _ := f2() {
+	}
+	if x, y, z := f3() {
+		println(x)
+		println(y)
+		println(z)
+	}
+	if x, y, _ := f3() {
+		println(x)
+		println(y)
+	}
+	if x, _, z := f3() {
+		println(x)
+		println(z)
+	}
+	if x, _, _ := f3() {
+		println(x)
+	}
+	if _, y, z := f3() {
+		println(y)
+		println(z)
+	}
+	if _, y, _ := f3() {
+		println(y)
+	}
+	if _, _, z := f3() {
+		println(z)
+	}
+	if _, _, _ := f3() {
+	}
+	if x, y, z := f4() {
+		println(x)
+		println(y)
+		println(z)
+	}
+	if x, y, _ := f4() {
+		println(x)
+		println(y)
+	}
+	if x, _, z := f4() {
+		println(x)
+		println(z)
+	}
+	if x, _, _ := f4() {
+		println(x)
+	}
+	if _, y, z := f4() {
+		println(y)
+		println(z)
+	}
+	if _, y, _ := f4() {
+		println(y)
+	}
+	if _, _, z := f4() {
+		println(z)
+	}
+	if _, _, _ := f4() {
+	}
+}

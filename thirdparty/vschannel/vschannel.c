@@ -60,11 +60,13 @@ void vschannel_cleanup(TlsContext *tls_ctx) {
 	// Close socket.
 	if(tls_ctx->socket != INVALID_SOCKET) {
 		closesocket(tls_ctx->socket);
+		tls_ctx->socket = INVALID_SOCKET;
 	}
 	
 	// Close "MY" certificate store.
 	if(tls_ctx->cert_store) {
 		CertCloseStore(tls_ctx->cert_store, 0);
+		tls_ctx->cert_store = NULL;
 	}
 }
 
@@ -85,7 +87,7 @@ void vschannel_init(TlsContext *tls_ctx) {
 	tls_ctx->creds_initialized = TRUE;
 }
 
-INT request(TlsContext *tls_ctx, INT iport, LPWSTR host, CHAR *req, CHAR **out)
+INT request(TlsContext *tls_ctx, INT iport, LPWSTR host, CHAR *req, DWORD req_len, CHAR **out)
 {
 	SecBuffer  ExtraData;
 	SECURITY_STATUS Status;
@@ -147,7 +149,7 @@ INT request(TlsContext *tls_ctx, INT iport, LPWSTR host, CHAR *req, CHAR **out)
 	tls_ctx->p_pemote_cert_context = NULL;
 
 	// Request from server
-	if(https_make_request(tls_ctx, req, out, &resp_length)) {
+	if(https_make_request(tls_ctx, req, req_len, out, &resp_length)) {
 		vschannel_cleanup(tls_ctx);
 		return resp_length;
 	}
@@ -279,7 +281,7 @@ static INT connect_to_server(TlsContext *tls_ctx, LPWSTR host, INT port_number) 
 	WCHAR service_name[10];
 	int res = wsprintf(service_name, L"%d", port_number);
 
-	if(WSAConnectByName(Socket,connect_name, service_name, &local_address_length, 
+	if(WSAConnectByNameW(Socket,connect_name, service_name, &local_address_length, 
 		&local_address, &remote_address_length, &remote_address, &tv, NULL) == SOCKET_ERROR) {
 		wprintf(L"Error %d connecting to \"%s\" (%s)\n", 
 			WSAGetLastError(),
@@ -507,7 +509,7 @@ static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitia
 	// Allocate data buffer.
 	//
 
-	IoBuffer = LocalAlloc(LMEM_FIXED, IO_BUFFER_SIZE);
+	IoBuffer = LocalAlloc(LPTR, IO_BUFFER_SIZE);
 	if(IoBuffer == NULL)
 	{
 		wprintf(L"Out of memory (1)\n");
@@ -630,8 +632,7 @@ static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitia
 
 			if(InBuffers[1].BufferType == SECBUFFER_EXTRA)
 			{
-				pExtraData->pvBuffer = LocalAlloc(LMEM_FIXED, 
-												  InBuffers[1].cbBuffer);
+				pExtraData->pvBuffer = LocalAlloc(LPTR, InBuffers[1].cbBuffer);
 				if(pExtraData->pvBuffer == NULL) {
 					wprintf(L"Out of memory (2)\n");
 					return SEC_E_INTERNAL_ERROR;
@@ -710,7 +711,7 @@ static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitia
 }
 
 
-static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, CHAR **out, int *length) {
+static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD req_len, CHAR **out, int *length) {
 	SecPkgContext_StreamSizes Sizes;
 	SECURITY_STATUS scRet;
 	SecBufferDesc   Message;
@@ -741,7 +742,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, CHAR *
 	// size of this plus the header and trailer sizes should be safe enough.
 	cbIoBufferLength = Sizes.cbHeader +  Sizes.cbMaximumMessage + Sizes.cbTrailer;
 
-	pbIoBuffer = LocalAlloc(LMEM_FIXED, cbIoBufferLength);
+	pbIoBuffer = LocalAlloc(LPTR, cbIoBufferLength);
 	if(pbIoBuffer == NULL) {
 		wprintf(L"Out of memory (2)\n");
 		return SEC_E_INTERNAL_ERROR;
@@ -756,10 +757,8 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, CHAR *
 
 	// Build HTTP request. Note that I'm assuming that this is less than
 	// the maximum message size. If it weren't, it would have to be broken up.
-	sprintf(pbMessage,  req);
-
-	cbMessage = (DWORD)strlen(pbMessage);
-
+	memcpy(pbMessage, req, req_len);
+	cbMessage = req_len;
 
 	// Encrypt the HTTP request.
 	Buffers[0].pvBuffer     = pbIoBuffer;
@@ -876,7 +875,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, CHAR *
 		// increase buffer size if we need
 		int required_length = *length+(int)pDataBuffer->cbBuffer;
 		if( required_length > buff_size ) {
-			CHAR *a = realloc(*out, required_length);
+			CHAR *a = VSCHANNEL_REALLOC(*out, required_length);
 			if( a == NULL ) {
 				scRet = SEC_E_INTERNAL_ERROR;
 				return scRet;

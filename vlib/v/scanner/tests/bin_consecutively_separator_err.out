@@ -1,0 +1,5 @@
+vlib/v/scanner/tests/bin_consecutively_separator_err.vv:2:9: error: separator `_` is only valid between digits in a numeric literal
+    1 | fn main() {
+    2 |     _ := 0b_20
+      |            ^
+    3 | }

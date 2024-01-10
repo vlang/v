@@ -1,0 +1,14 @@
+vlib/v/checker/tests/wrong_fn_init_err.vv:4:7: error: functions must be defined, not instantiated like structs
+    2 | 
+    3 | fn main() {
+    4 |     a := MyCallback{}
+      |          ~~~~~~~~~~~~
+    5 |     println(a)
+    6 | }
+vlib/v/checker/tests/wrong_fn_init_err.vv:4:7: error: type `MyCallback` is private
+    2 | 
+    3 | fn main() {
+    4 |     a := MyCallback{}
+      |          ~~~~~~~~~~~~
+    5 |     println(a)
+    6 | }

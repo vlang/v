@@ -1,0 +1,10 @@
+struct Virt {
+	fns [2]fn (num u32) UnknownThing
+}
+
+fn (virt Virt) caller() {
+	func := virt.fns[0]
+	func(5)
+}
+
+fn main() {}

@@ -1,0 +1,18 @@
+struct Test {}
+
+fn (test Test) print() {
+	println('test')
+}
+
+fn main() {
+	test := Test{}
+	abc := 'print'
+	test.$abc() // OK
+	test.$w()
+	v := 4
+	test.$v()
+	s := 'x' + 'y'
+	test.$s()
+	s2 := 'x'
+	test.$s2()
+}

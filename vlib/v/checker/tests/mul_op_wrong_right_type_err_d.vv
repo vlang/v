@@ -1,8 +1,0 @@
-import math
-import math.complex as cmplx
-
-fn main() {
-	c1 := cmplx.complex(1,-2)
-	c2 := 2.0 * c1
-	println(c2)
-}

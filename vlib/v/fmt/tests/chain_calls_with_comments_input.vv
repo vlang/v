@@ -1,0 +1,10 @@
+fn main() {
+	options := cmdline
+                .only_options(args)
+          .filter(it != '-') // options, not including '-'
+              .map(if it.bytes().len>1{
+               1
+          })
+
+	   println(options)
+}

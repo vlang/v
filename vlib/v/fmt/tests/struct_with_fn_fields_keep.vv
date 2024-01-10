@@ -1,0 +1,4 @@
+struct FieldsWithOptionalVoidReturnType {
+	f fn () ?
+	g fn () ?
+}

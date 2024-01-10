@@ -1,0 +1,25 @@
+struct Type {
+mut:
+	something string
+}
+
+type Union = Type
+
+fn (mut t Type) returns() Union {
+	match t {
+		Type {
+			t.something = 'else'
+		}
+		else {}
+	}
+
+	return t
+}
+
+fn main() {
+	mut t := &Type{
+		something: 'something'
+	}
+	t.returns()
+	println(t)
+}

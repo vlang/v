@@ -1,0 +1,2 @@
+type Fn1 = fn ()
+type Fn2 = Fn1

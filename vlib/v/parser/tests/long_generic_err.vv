@@ -1,0 +1,1 @@
+fn long_generic<Abc>() {}

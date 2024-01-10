@@ -1,0 +1,34 @@
+vlib/v/checker/tests/array_index.vv:3:7: error: non-integer index `float literal` (array type `[2]int`)
+    1 | fn fixed() {
+    2 |     a := [1,2]!
+    3 |     _ = a[0.2]
+      |          ~~~~~
+    4 |     _ = a[1] // OK
+    5 |     _ = a[-1]
+vlib/v/checker/tests/array_index.vv:5:8: error: negative index `-1`
+    3 |     _ = a[0.2]
+    4 |     _ = a[1] // OK
+    5 |     _ = a[-1]
+      |           ~~
+    6 |     _ = a[2]
+    7 |     _ = a[1..2] // OK
+vlib/v/checker/tests/array_index.vv:6:8: error: index out of range (index: 2, len: 2)
+    4 |     _ = a[1] // OK
+    5 |     _ = a[-1]
+    6 |     _ = a[2]
+      |           ^
+    7 |     _ = a[1..2] // OK
+    8 |     _ = a[2..2] // empty, OK
+vlib/v/checker/tests/array_index.vv:9:11: error: index out of range (index: 3, len: 2)
+    7 |     _ = a[1..2] // OK
+    8 |     _ = a[2..2] // empty, OK
+    9 |     _ = a[1..3]
+      |              ^
+   10 |     _ = a[3..3]
+   11 | }
+vlib/v/checker/tests/array_index.vv:10:8: error: index out of range (index: 3, len: 2)
+    8 |     _ = a[2..2] // empty, OK
+    9 |     _ = a[1..3]
+   10 |     _ = a[3..3]
+      |           ^
+   11 | }

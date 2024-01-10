@@ -1,4 +1,4 @@
-vlib/v/checker/tests/const_field_dec_err.v:6:2: error: cannot modify constant `a`
+vlib/v/checker/tests/const_field_dec_err.vv:6:2: error: cannot modify constant `a`
     4 | 
     5 | fn main() {
     6 |     a--

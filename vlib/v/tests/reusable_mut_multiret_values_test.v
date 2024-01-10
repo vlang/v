@@ -1,5 +1,5 @@
 // verify fix for #2913
-fn some_multiret_fn(a, b int) (int, int) {
+fn some_multiret_fn(a int, b int) (int, int) {
 	return a + 1, b + 1
 }
 

@@ -1,20 +1,13 @@
 module util
 
-import os
-
-[inline]
-pub fn is_name_char(c byte) bool {
+@[inline]
+pub fn is_name_char(c u8) bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_`
 }
 
-[inline]
-pub fn is_func_char(c byte) bool {
-	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_` || c.is_digit()
-}
-
-[inline]
-pub fn is_nl(c byte) bool {
-	return c == `\r` || c == `\n`
+@[inline]
+pub fn is_func_char(c u8) bool {
+	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_` || (c >= `0` && c <= `9`)
 }
 
 pub fn contains_capital(s string) bool {
@@ -28,6 +21,7 @@ pub fn contains_capital(s string) bool {
 
 // HTTPRequest  bad
 // HttpRequest  good
+@[direct_array_access]
 pub fn good_type_name(s string) bool {
 	if s.len < 4 {
 		return true
@@ -40,10 +34,12 @@ pub fn good_type_name(s string) bool {
 	return true
 }
 
-pub fn cescaped_path(s string) string {
-	return s.replace('\\', '\\\\')
+// is_generic_type_name returns true if the current token is a generic type name.
+@[direct_array_access; inline]
+pub fn is_generic_type_name(name string) bool {
+	return name.len == 1 && name[0] != `C` && (name[0] >= `A` && name[0] <= `Z`)
 }
 
-pub fn is_fmt() bool {
-	return os.executable().contains('vfmt')
+pub fn cescaped_path(s string) string {
+	return s.replace('\\', '\\\\')
 }

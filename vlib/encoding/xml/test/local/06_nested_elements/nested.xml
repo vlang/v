@@ -1,0 +1,14 @@
+<level1>
+  <level2>
+    <level3>
+      <level4>
+        Deeply nested content.
+      </level4>
+    </level3>
+  </level2>
+  <level2>
+    <level3>
+      Less deeply nested content.
+    </level3>
+  </level2>
+</level1>

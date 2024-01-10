@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -8,17 +8,16 @@ module rand
 #flag windows -lbcrypt
 #include <bcrypt.h>
 
-const (
-	status_success                  = 0x00000000
-	bcrypt_use_system_preferred_rng = 0x00000002
-)
+const status_success = 0x00000000
+const bcrypt_use_system_preferred_rng = 0x00000002
 
-pub fn read(bytes_needed int) ?[]byte {
-	mut buffer := malloc(bytes_needed)
+// read returns an array of `bytes_needed` random bytes read from the OS.
+pub fn read(bytes_needed int) ![]u8 {
+	mut buffer := []u8{len: bytes_needed}
 	// use bcrypt_use_system_preferred_rng because we passed null as algo
-	status := C.BCryptGenRandom(0, buffer, bytes_needed, bcrypt_use_system_preferred_rng)
-	if status != status_success {
-		return read_error
+	status := C.BCryptGenRandom(0, buffer.data, bytes_needed, rand.bcrypt_use_system_preferred_rng)
+	if status != rand.status_success {
+		return &ReadError{}
 	}
-	return c_array_to_bytes_tmp(bytes_needed, buffer)
+	return buffer
 }

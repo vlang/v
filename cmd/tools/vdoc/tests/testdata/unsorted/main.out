@@ -1,0 +1,8 @@
+module main
+
+const omega = 3 // should be first
+const alpha = 5 // should be in the middle
+const beta = 2 // should be at the end
+fn abc()
+fn def()
+fn xyz()

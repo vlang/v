@@ -1,8 +1,8 @@
 module hello
 
-pub const (
-	hello = 'Hello'
-)
+import v.gen.js.tests.hello.hello1
+
+pub const hello = 'Hello'
 
 pub struct Aaa {
 pub mut:
@@ -23,9 +23,9 @@ pub enum Ccc {
 
 pub fn debugger() string {
 	v := Bbb{}
-	return hello
+	return hello.hello
 }
 
 pub fn excited() string {
-	return debugger() + "!"
+	return '${hello1.nested()} ${debugger()}!'
 }

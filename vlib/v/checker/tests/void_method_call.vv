@@ -1,0 +1,6 @@
+fn simple_fn() {
+}
+
+fn main() {
+    simple_fn().method()
+}

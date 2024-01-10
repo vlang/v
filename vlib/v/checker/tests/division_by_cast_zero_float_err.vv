@@ -1,0 +1,4 @@
+fn main() {
+	println(f32(1.0)/f32(0.0))
+	println(f64(1.0)/f64(0.0))
+}

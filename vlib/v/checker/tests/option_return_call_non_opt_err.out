@@ -1,0 +1,7 @@
+vlib/v/checker/tests/option_return_call_non_opt_err.vv:11:22: error: `or` block must provide a value of type `int`, not `?int`
+    9 | 
+   10 | fn (f Foo) get(param ?int) ?int {
+   11 |     return param or { f.get(1) }
+      |                         ~~~~~~
+   12 | }
+   13 |

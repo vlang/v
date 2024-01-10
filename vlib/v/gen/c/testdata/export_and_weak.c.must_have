@@ -1,0 +1,13 @@
+VV_LOCAL_SYMBOL int main__my_other_fn(void);
+VV_EXPORTED_SYMBOL VWEAK int wxyz(void); // exported fn main.my_other_fn
+VWEAK int wxyz(void) {
+VV_LOCAL_SYMBOL int main__my_other_fn(void) {
+
+VV_LOCAL_SYMBOL int main__my_fn(void);
+VV_EXPORTED_SYMBOL int abcd(void); // exported fn main.my_fn
+int abcd(void) {
+VV_LOCAL_SYMBOL int main__my_fn(void) {
+
+	println(int_str(main__my_fn()));
+	println(int_str(main__my_other_fn()));
+

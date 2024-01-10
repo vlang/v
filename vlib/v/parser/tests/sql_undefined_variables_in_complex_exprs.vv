@@ -1,0 +1,15 @@
+module main
+
+struct User {
+mut:
+	id       int    @[primary]
+	username string
+	age      string
+	city     string
+}
+
+fn main() {
+	_ := sql _ {
+		select from User where (age > 18) && (city == 'London' || username == username)
+	}!
+}

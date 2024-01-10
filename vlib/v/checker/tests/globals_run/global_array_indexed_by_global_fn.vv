@@ -1,0 +1,40 @@
+struct Local {
+	x int
+}
+
+__global (
+	cpu_locals []&Local
+)
+
+__global (
+	cpu_get_id fn () u64
+	cpu_set_id fn (u64)
+)
+
+fn abc0() u64 {
+	return 0
+}
+
+fn abc1() u64 {
+	return 1
+}
+
+pub fn current() &Local {
+	return cpu_locals[cpu_get_id()]
+}
+
+fn main() {
+	cpu_locals = []&Local{}
+	cpu_locals << &Local{123}
+	cpu_locals << &Local{456}
+	dump(cpu_locals.map(it.x))
+	cpu_get_id = abc0
+	x := current()
+	dump(x.x)
+	cpu_get_id = abc1
+	y := current()
+	dump(y.x)
+	assert x != y
+	assert x.x == 123
+	assert y.x == 456
+}

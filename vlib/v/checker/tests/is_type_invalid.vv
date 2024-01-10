@@ -1,0 +1,21 @@
+type IoS = int | string
+
+interface Animal {
+	speak()
+}
+
+struct Dog {}
+
+fn (d Dog) speak() {}
+
+struct Cat {}
+
+fn main() {
+	if IoS(1) is u8 {
+		println('not cool')
+	}
+	a := Animal(Dog{})
+	if a is Cat {
+		println('not cool either')
+	}
+}

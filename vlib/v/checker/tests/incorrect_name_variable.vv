@@ -1,4 +1,4 @@
 fn main() {
 	_abc := 1
-	_ := _abc
+	_ = _abc
 }

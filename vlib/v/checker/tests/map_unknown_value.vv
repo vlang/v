@@ -1,0 +1,3 @@
+struct App {
+    my_map map[string]DoesNotExist
+}

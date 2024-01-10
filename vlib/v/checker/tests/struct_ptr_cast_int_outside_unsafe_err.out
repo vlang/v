@@ -1,0 +1,18 @@
+vlib/v/checker/tests/struct_ptr_cast_int_outside_unsafe_err.vv:6:5: error: cannot cast int to a struct pointer outside `unsafe`
+    4 | a := 1
+    5 |
+    6 | _ = &Context(a)
+      |     ~~~~~~~~~~~
+    7 | _ = &Context(b)
+    8 | _ = &Context(1)
+vlib/v/checker/tests/struct_ptr_cast_int_outside_unsafe_err.vv:7:5: error: cannot cast int to a struct pointer outside `unsafe`
+    5 |
+    6 | _ = &Context(a)
+    7 | _ = &Context(b)
+      |     ~~~~~~~~~~~
+    8 | _ = &Context(1)
+vlib/v/checker/tests/struct_ptr_cast_int_outside_unsafe_err.vv:8:5: error: cannot cast int to a struct pointer outside `unsafe`
+    6 | _ = &Context(a)
+    7 | _ = &Context(b)
+    8 | _ = &Context(1)
+      |     ~~~~~~~~~~~

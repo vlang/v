@@ -1,0 +1,31 @@
+module main
+
+#import "fmt"
+
+fn println(x string){
+	#fmt.Println(x)
+}
+
+fn main() {
+	// basic literals
+	basic_a := 'What\'s your name?'
+	basic_b := "It's nice to meet you \"Bob\""
+	println(basic_a)
+	println(basic_b)
+
+	// raw
+	raw_a := r'I am a "raw" string'
+	raw_b := r"I am also a 'raw' string"
+	println(raw_a)
+	println(raw_b)
+
+	// TODO: interpolation
+	// apple := 'apple'
+	// bananna := 'bananna'
+	// number_one := 1
+	// number_two := 2
+	// inter_a := 'I have $number_one ${apple}\'s and $number_two ${bananna}\'s'
+	// inter_b := "I have \"$number_one ${apple}'s\" and \"$number_two ${bananna}'s\""
+	// println(inter_a)
+	// println(inter_b)
+}

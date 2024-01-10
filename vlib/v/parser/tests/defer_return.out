@@ -1,0 +1,7 @@
+vlib/v/parser/tests/defer_return.vv:3:3: error: `return` not allowed inside `defer` block
+    1 | fn main() {
+    2 |     defer {
+    3 |         return
+      |         ~~~~~~
+    4 |     }
+    5 | }

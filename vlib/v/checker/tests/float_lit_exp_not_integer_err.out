@@ -1,4 +1,4 @@
-vlib/v/checker/tests/float_lit_exp_not_integer_err.v:2:17: error: exponential part should be integer
+vlib/v/checker/tests/float_lit_exp_not_integer_err.vv:2:17: error: exponential part should be integer
     1 | fn main() {
     2 |     println(45e2.5)
       |                 ^

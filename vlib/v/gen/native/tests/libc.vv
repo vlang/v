@@ -1,0 +1,47 @@
+// because of an issue with checker, all C.* functions have to be declared first
+fn C.isalpha(c int) int
+fn C.isdigit(c int) int
+fn C.malloc(n u64) voidptr
+fn C.free(ptr voidptr)
+fn C.memset(ptr voidptr, c int, n u64) voidptr
+
+fn main() {
+	charutil()
+	memory()
+}
+
+fn charutil() {
+	// only linux and windows support linking right now
+	$if linux || windows {
+		// ascii for `V`
+		v_is_alpha := C.isalpha(86)
+		assert v_is_alpha != 0
+
+		null_is_alpha := C.isalpha(0)
+		assert null_is_alpha == 0
+
+		// ascii for `3`
+		three_is_digit := C.isdigit(51)
+		assert three_is_digit != 0
+	}
+}
+
+fn memory() {
+	// only linux and windows support linking right now
+	$if linux || windows {
+		// allocate some memory
+		buf := &int(C.malloc(100))
+		assert buf != unsafe { nil }
+
+		C.memset(buf, 0, 100)
+		assert *buf == 0
+
+		unsafe {
+			*buf = 123456
+			*(buf + sizeof(int)) = 100
+		}
+		assert *buf == 123456
+		assert *(buf + sizeof(int)) == 100
+		C.free(voidptr(buf))
+	}
+}

@@ -1,0 +1,65 @@
+module ui
+
+import gg
+import gx
+import eventbus
+
+pub type DrawFn = fn (ctx &gg.Context, state voidptr)
+
+pub type ClickFn = fn (e MouseEvent, func voidptr)
+
+pub type KeyFn = fn (e KeyEvent, func voidptr)
+
+pub type ScrollFn = fn (e ScrollEvent, func voidptr)
+
+pub type MouseMoveFn = fn (e MouseMoveEvent, func voidptr)
+
+@[heap]
+pub struct Window {
+pub mut:
+	ui            &UI = unsafe { nil }
+	children      []Widget
+	child_window  &Window = unsafe { nil }
+	parent_window &Window = unsafe { nil }
+	has_textbox   bool // for initial focus
+	tab_index     int
+	just_tabbed   bool
+	state         voidptr
+	draw_fn       DrawFn
+	title         string
+	mx            f64
+	my            f64
+	width         int
+	height        int
+	bg_color      gx.Color
+	click_fn      ClickFn
+	mouse_down_fn ClickFn
+	mouse_up_fn   ClickFn
+	scroll_fn     ScrollFn
+	key_down_fn   KeyFn
+	char_fn       KeyFn
+	mouse_move_fn MouseMoveFn
+	eventbus      &eventbus.EventBus = eventbus.new()
+}
+
+pub struct WindowConfig {
+pub:
+	width         int
+	height        int
+	resizable     bool
+	title         string
+	always_on_top bool
+	state         voidptr
+	draw_fn       DrawFn
+	bg_color      gx.Color = default_window_color
+	on_click      ClickFn
+	on_mouse_down ClickFn
+	on_mouse_up   ClickFn
+	on_key_down   KeyFn
+	on_scroll     ScrollFn
+	on_mouse_move MouseMoveFn
+	children      []Widget
+	font_path     string
+	// pub mut:
+	// parent_window &Window
+}

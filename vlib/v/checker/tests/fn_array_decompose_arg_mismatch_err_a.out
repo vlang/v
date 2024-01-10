@@ -1,0 +1,6 @@
+vlib/v/checker/tests/fn_array_decompose_arg_mismatch_err_a.vv:12:7: error: cannot use `...string` as `...Any` in argument 1 to `test`
+   10 |     mut args := []string{cap: 3}
+   11 |     args << ['test', 'test1', 'test2']
+   12 |     test(...args)
+      |          ~~~~~~~
+   13 | }

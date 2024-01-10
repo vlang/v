@@ -1,0 +1,7 @@
+vlib/v/checker/tests/struct_field_map_address_err.vv:12:26: error: cannot take the address of map values outside `unsafe`
+   10 |     mut s := &StructWithMap{}
+   11 |     s.m['abc'] = StructWithMap{'abc', {}}
+   12 |     pointer_to_map_value := &s.m['abc'].m['xyz'].m
+      |                             ^
+   13 |     dump(ptr_str(pointer_to_map_value))
+   14 |     return s, pointer_to_map_value

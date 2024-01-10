@@ -1,0 +1,6 @@
+vlib/v/checker/tests/option_in_println_mismatch.vv:6:23: error: wrong return type `string` in the `or {}` block, expected `int`
+    4 |
+    5 | fn main() {
+    6 |     println(funcy() or { '' })
+      |                          ~~
+    7 | }

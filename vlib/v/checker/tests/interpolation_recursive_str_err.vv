@@ -1,0 +1,15 @@
+module main
+
+struct Test {
+	a int
+}
+
+fn (t Test) str() string {
+	_ = '$t'
+	return 'test'
+}
+
+fn main() {
+	a := Test{}
+	println(a)
+}

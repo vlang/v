@@ -1,0 +1,4 @@
+var_none := ?f64(none)
+
+var3 := var_none or { var_none + 'foo' }
+println(var3)

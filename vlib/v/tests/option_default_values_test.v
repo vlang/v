@@ -4,28 +4,28 @@ struct Abc {
 
 fn i_0(x int) ?int {
 	if x == 0 {
-		return error('my error 1')
+		return none
 	}
 	return x
 }
 
 fn struct_0(x int) ?Abc {
 	if x == 0 {
-		return error('my error 2')
+		return none
 	}
 	return Abc{x}
 }
 
 fn string_0(x int) ?string {
 	if x == 0 {
-		return error('my error 3')
+		return none
 	}
-	return '$x'
+	return '${x}'
 }
 
 fn b_0(b bool) ?bool {
 	if b == false {
-		return error('my error 4')
+		return none
 	}
 	return b
 }
@@ -35,19 +35,15 @@ fn return_a_string() string {
 }
 
 //
-fn test_optional_int() {
-	a := i_0(0) or {
-		4999
-	}
+fn test_option_int() {
+	a := i_0(0) or { 4999 }
 	assert a == 4999
-	b := i_0(4123) or {
-		4999
-	}
+	b := i_0(4123) or { 4999 }
 	assert b == 4123
 }
 
 /*
-fn test_optional_bool() {
+fn test_option_bool() {
 	a := true && b_0(false) {
 		true
 	}
@@ -58,37 +54,29 @@ fn test_optional_bool() {
 	assert b == true
 }
 */
-fn test_optional_struct() {
-	sa := struct_0(0) or {
-		Abc{7999}
-	}
+fn test_option_struct() {
+	sa := struct_0(0) or { Abc{7999} }
 	assert sa.x == 7999
-	sb := struct_0(3456) or {
-		Abc{7999}
-	}
+	sb := struct_0(3456) or { Abc{7999} }
 	assert sb.x == 3456
 }
 
-fn test_optional_with_statements_before_last_expression() {
+fn test_option_with_statements_before_last_expression() {
 	s := struct_0(0) or {
 		eprintln('hello')
 		Abc{12345}
 	}
 	assert s.x == 12345
-	b := b_0(true) or {
-		false
-	}
+	b := b_0(true) or { false }
 	assert b == true
 }
 
-fn test_optional_with_fn_call_as_last_expression() {
-	s := string_0(0) or {
-		return_a_string()
-	}
+fn test_option_with_fn_call_as_last_expression() {
+	s := string_0(0) or { return_a_string() }
 	assert s == 'abcdef'
 }
 
-fn test_optional_with_fn_call_last_expr_and_preceding_statements() {
+fn test_option_with_fn_call_last_expr_and_preceding_statements() {
 	s := string_0(0) or {
 		eprintln('hello')
 		println('world')
@@ -97,50 +85,32 @@ fn test_optional_with_fn_call_last_expr_and_preceding_statements() {
 	assert s == 'abcdef'
 }
 
-fn test_nested_optional() {
+fn test_nested_option() {
 	a := i_0(1) or {
-		b := i_0(0) or {
-			3
-		}
+		b := i_0(0) or { 3 }
 		b
 	}
 	assert a == 1
 	b := i_0(0) or {
-		c := i_0(1) or {
-			3
-		}
+		c := i_0(1) or { 3 }
 		c
 	}
 	assert b == 1
 	c := i_0(0) or {
-		d := i_0(0) or {
-			3
-		}
+		d := i_0(0) or { 3 }
 		d
 	}
 	assert c == 3
 }
 
-fn test_nested_optional_with_opt_fn_call_as_last_value() {
-	a := i_0(1) or {
-		i_0(0) or {
-			3
-		}
-	}
+fn test_nested_option_with_opt_fn_call_as_last_value() {
+	a := i_0(1) or { i_0(0) or { 3 } }
 	assert a == 1
-	b := i_0(0) or {
-		i_0(1) or {
-			3
-		}
-	}
+	b := i_0(0) or { i_0(1) or { 3 } }
 	assert b == 1
-	c := i_0(0) or {
-		i_0(0) or {
-			3
-		}
-	}
+	c := i_0(0) or { i_0(0) or { 3 } }
 	assert c == 3
-	// TODO Enable once optional in boolean expressions are working
+	// TODO Enable once option in boolean expressions are working
 	// d := b_0(true) or {
 	// 	false && b_0(true) or {
 	// 		true
@@ -153,4 +123,14 @@ fn test_nested_optional_with_opt_fn_call_as_last_value() {
 	// 	}
 	// }
 	// assert e == false
+}
+
+fn remove_suffix1(s string) string {
+	n := s.len
+	i := s.index_last('.') or { n }
+	return s[0..i]
+}
+
+fn test_var_inside_or_block() {
+	assert remove_suffix1('Vlang.foo') == 'Vlang'
 }

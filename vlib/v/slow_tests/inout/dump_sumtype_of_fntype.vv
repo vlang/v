@@ -1,0 +1,11 @@
+import v.ast
+
+type MyFnSumtype = fn () | fn (int) ast.Expr
+
+fn f(z int) ast.Expr {
+	return ast.empty_expr
+}
+
+fn main() {
+	dump(MyFnSumtype(f))
+}

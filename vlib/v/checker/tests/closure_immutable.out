@@ -1,0 +1,21 @@
+vlib/v/checker/tests/closure_immutable.vv:4:3: error: the closure copy of `a` is immutable, declare it with `mut` to make it mutable
+    2 |     a := 1
+    3 |     f1 := fn [a] () {
+    4 |         a++
+      |         ^
+    5 |         println(a)
+    6 |     }
+vlib/v/checker/tests/closure_immutable.vv:7:16: error: original `a` is immutable, declare it with `mut` to make it mutable
+    5 |         println(a)
+    6 |     }
+    7 |     f2 := fn [mut a] () {
+      |                   ^
+    8 |         a++
+    9 |         println(a)
+vlib/v/checker/tests/closure_immutable.vv:13:3: error: the closure copy of `b` is immutable, declare it with `mut` to make it mutable
+   11 |     mut b := 2
+   12 |     f3 := fn [b] () {
+   13 |         b++
+      |         ^
+   14 |         println(b)
+   15 |     }

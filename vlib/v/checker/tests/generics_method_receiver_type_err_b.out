@@ -1,0 +1,14 @@
+vlib/v/checker/tests/generics_method_receiver_type_err_b.vv:9:12: error: generic struct `ConsumableResources` in fn declaration must specify the generic type names, e.g. ConsumableResources[T]
+    7 | }
+    8 | 
+    9 | pub fn (cr &ConsumableResources) get_total_resources() Resources {
+      |            ~~~~~~~~~~~~~~~~~~~~
+   10 |     return cr.total_resources
+   11 | }
+vlib/v/checker/tests/generics_method_receiver_type_err_b.vv:19:11: error: generic struct `Foo` in fn declaration must specify the generic type names, e.g. Foo[T]
+   17 | }
+   18 | 
+   19 | pub fn (f Foo) method() {
+      |           ~~~
+   20 | }
+   21 |

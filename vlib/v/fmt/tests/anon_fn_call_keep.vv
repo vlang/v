@@ -1,0 +1,7 @@
+fn main() {
+	fn () {
+		for {
+			println('Hello V!')
+		}
+	}()
+}

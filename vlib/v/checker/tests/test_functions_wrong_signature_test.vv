@@ -1,0 +1,20 @@
+// ordinary functions can return whatever they like,
+// since they are not called by V's testing system
+// in the generated main():
+fn abc() int {
+	return 1
+}
+
+// should be disallowed:
+fn test_returning_int() int {
+}
+
+// NB: this is allowed explicitly now, to allow for shorter tests
+// of functions returning options.
+fn test_returning_opt() {
+	assert true
+}
+
+// should be disallowed:
+fn test_take_parameters(v int) {
+}

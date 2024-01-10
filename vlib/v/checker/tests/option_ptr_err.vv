@@ -1,0 +1,4 @@
+fn main() {
+	mut var := unsafe { ?&int(none) }
+	assert *var == 0
+}

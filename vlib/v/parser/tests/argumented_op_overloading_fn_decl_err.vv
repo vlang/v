@@ -1,0 +1,21 @@
+struct Point {
+	x i64
+	y i64
+}
+
+fn (p Point) foo() {
+	println(p.x)
+}
+
+fn (p Point) += (q Point) Point {
+	return Point{p.x + q.x, p.y + q.y}
+}
+
+fn main() {
+	mut p := Point{1, 2}
+	q := Point{3, 4}
+	p += q
+	p -= q
+	println(p)
+}
+

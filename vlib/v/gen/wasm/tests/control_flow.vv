@@ -1,0 +1,124 @@
+fn func(a int, cond bool) i64 {
+	mut src := 0
+
+	if cond {
+		src = a
+	} else if cond {
+		src = 22
+	} else if cond {
+		src = 25
+	}
+
+	if cond {
+		src = a
+	} else if cond {
+		src = 22
+	} else if cond {
+		src = 25
+	} else {
+		src = src + src
+	}
+
+	return src
+}
+
+fn test(cond bool) int {
+	return if cond {
+		2
+	} else if !cond {
+		5
+	} else {
+		6
+	}
+}
+
+fn boolfor() int {
+	mut val := 0
+	for val == 0 {
+		val++
+	}
+	return val
+}
+
+fn inffor() int {
+	mut val := 0
+	for {
+		if val != 0 {
+			break
+		}
+		val++
+	}
+	return val
+}
+
+fn addcfor() int {
+	mut val := 0
+	for i := 0; i < 10; i++ {
+		val += i
+	}
+	return val
+}
+
+fn labelcfor() (int, int) {
+	mut idx := 0
+	mut val := 0
+
+	hello: for {
+		for {
+			val++
+			if val == 10 {
+				continue hello
+			}
+			idx++
+
+			if val == 100 {
+				break hello
+			}
+		}
+		break
+	}
+
+	return val, idx
+}
+
+fn infcfor() int {
+	mut val := 0
+
+	for i := 0; true; i++ {
+		if val >= 10 {
+			return val
+		}
+		val += i
+	}
+
+	return 0
+}
+
+fn main() {
+	println('--- func()')
+	println(func(10, true))
+	println(func(0, false))
+	println(func(0, true))
+
+	println('--- test()')
+	println(test(true))
+	println(test(false))
+	println(test(true && false))
+
+	println('--- boolfor()')
+	println(boolfor())
+
+	println('--- inffor()')
+	println(inffor())
+
+	println('--- addcfor()')
+	println(addcfor())
+
+	println('--- labelcfor()')
+	a, b := labelcfor()
+	println(a)
+	println(b)
+
+	println('--- infcfor()')
+	println(infcfor())
+}

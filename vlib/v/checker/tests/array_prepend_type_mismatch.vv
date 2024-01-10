@@ -1,0 +1,15 @@
+fn main() {
+	mut a := [1, 2]
+	a.prepend(2.3)
+	a.prepend('abc')
+	a.prepend([2.2, 3.3])
+	a.prepend(['aa', 'bb', 'cc'])
+	a.prepend([[1]])
+	a.prepend([[['aa']]])
+	println(a)
+
+	mut b := [[1, 2, 3]]
+	b.prepend([[[2]]])
+	b.prepend([[[['aa']]]])
+	println(b)
+}

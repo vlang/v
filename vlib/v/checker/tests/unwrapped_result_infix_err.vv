@@ -1,0 +1,12 @@
+fn f(k string) !bool {
+	return true
+}
+
+fn g() ! {
+	assert f('1')! == true
+	assert f('1') == true
+}
+
+fn main() {
+	g()!
+}

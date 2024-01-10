@@ -1,0 +1,6 @@
+vlib/v/checker/tests/generic_interface_method_decl_err.vv:2:8: error: no need to add generic type names in generic interface's method
+    1 | interface Expr {
+    2 |     accept<R>(v Visitor<R>) R
+      |           ^
+    3 | }
+    4 |

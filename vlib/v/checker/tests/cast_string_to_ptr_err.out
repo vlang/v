@@ -1,0 +1,5 @@
+vlib/v/checker/tests/cast_string_to_ptr_err.vv:2:7: error: cannot cast string to `&char`, use `'foo'.str` instead.
+    1 | fn main() {
+    2 |     _ := &char('foo')
+      |          ~~~~~~~~~~~~
+    3 | }

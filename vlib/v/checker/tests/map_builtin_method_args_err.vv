@@ -1,0 +1,12 @@
+fn main() {
+	mut m := {11: 22}
+
+	a1 := m.clone(11)
+	println(a1)
+
+	a2 := m.move(11)
+	println(a2)
+
+	a3 := m.keys('aaa')
+	println(a3)
+}

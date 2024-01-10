@@ -1,0 +1,24 @@
+struct Foo {
+mut:
+	value int
+}
+
+const constant = Foo{ 100 }
+
+fn main() {
+	f := Foo{}
+	mut pf := &f
+	pf = &f
+	p := &f
+	_ = p
+
+	mut c := &constant
+	c.value = 200
+	c = &constant
+	ic := &constant // ok
+	_=ic
+	
+	mut mf := f
+	pf = &mf // ok
+	_ = pf
+}

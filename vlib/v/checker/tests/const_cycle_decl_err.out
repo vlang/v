@@ -1,0 +1,6 @@
+vlib/v/checker/tests/const_cycle_decl_err.vv:1:11: error: cycle in constant `a`
+    1 | const a = a + 0
+      |           ^
+vlib/v/checker/tests/const_cycle_decl_err.vv:1:11: error: mismatched types `void` and `int literal`
+    1 | const a = a + 0
+      |           ~~~~~

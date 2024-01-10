@@ -1,0 +1,852 @@
+/*
+ * Copyright (c) 2003-2011 Hewlett-Packard Development Company, L.P.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+/* XSIZE_compare_and_swap (based on fetch_compare_and_swap) */
+#if defined(AO_HAVE_XSIZE_fetch_compare_and_swap_full) \
+    && !defined(AO_HAVE_XSIZE_compare_and_swap_full)
+  AO_INLINE int
+  AO_XSIZE_compare_and_swap_full(volatile XCTYPE *addr, XCTYPE old_val,
+                                 XCTYPE new_val)
+  {
+    return AO_XSIZE_fetch_compare_and_swap_full(addr, old_val, new_val)
+             == old_val;
+  }
+# define AO_HAVE_XSIZE_compare_and_swap_full
+#endif
+
+#if defined(AO_HAVE_XSIZE_fetch_compare_and_swap_acquire) \
+    && !defined(AO_HAVE_XSIZE_compare_and_swap_acquire)
+  AO_INLINE int
+  AO_XSIZE_compare_and_swap_acquire(volatile XCTYPE *addr, XCTYPE old_val,
+                                    XCTYPE new_val)
+  {
+    return AO_XSIZE_fetch_compare_and_swap_acquire(addr, old_val, new_val)
+             == old_val;
+  }
+# define AO_HAVE_XSIZE_compare_and_swap_acquire
+#endif
+
+#if defined(AO_HAVE_XSIZE_fetch_compare_and_swap_release) \
+    && !defined(AO_HAVE_XSIZE_compare_and_swap_release)
+  AO_INLINE int
+  AO_XSIZE_compare_and_swap_release(volatile XCTYPE *addr, XCTYPE old_val,
+                                    XCTYPE new_val)
+  {
+    return AO_XSIZE_fetch_compare_and_swap_release(addr, old_val, new_val)
+             == old_val;
+  }
+# define AO_HAVE_XSIZE_compare_and_swap_release
+#endif
+
+#if defined(AO_HAVE_XSIZE_fetch_compare_and_swap_write) \
+    && !defined(AO_HAVE_XSIZE_compare_and_swap_write)
+  AO_INLINE int
+  AO_XSIZE_compare_and_swap_write(volatile XCTYPE *addr, XCTYPE old_val,
+                                  XCTYPE new_val)
+  {
+    return AO_XSIZE_fetch_compare_and_swap_write(addr, old_val, new_val)
+             == old_val;
+  }
+# define AO_HAVE_XSIZE_compare_and_swap_write
+#endif
+
+#if defined(AO_HAVE_XSIZE_fetch_compare_and_swap_read) \
+    && !defined(AO_HAVE_XSIZE_compare_and_swap_read)
+  AO_INLINE int
+  AO_XSIZE_compare_and_swap_read(volatile XCTYPE *addr, XCTYPE old_val,
+                                 XCTYPE new_val)
+  {
+    return AO_XSIZE_fetch_compare_and_swap_read(addr, old_val, new_val)
+             == old_val;
+  }
+# define AO_HAVE_XSIZE_compare_and_swap_read
+#endif
+
+#if defined(AO_HAVE_XSIZE_fetch_compare_and_swap) \
+    && !defined(AO_HAVE_XSIZE_compare_and_swap)
+  AO_INLINE int
+  AO_XSIZE_compare_and_swap(volatile XCTYPE *addr, XCTYPE old_val,
+                            XCTYPE new_val)
+  {
+    return AO_XSIZE_fetch_compare_and_swap(addr, old_val, new_val) == old_val;
+  }
+# define AO_HAVE_XSIZE_compare_and_swap
+#endif
+
+#if defined(AO_HAVE_XSIZE_fetch_compare_and_swap_release_write) \
+    && !defined(AO_HAVE_XSIZE_compare_and_swap_release_write)
+  AO_INLINE int
+  AO_XSIZE_compare_and_swap_release_write(volatile XCTYPE *addr,
+                                          XCTYPE old_val, XCTYPE new_val)
+  {
+    return AO_XSIZE_fetch_compare_and_swap_release_write(addr, old_val,
+                                                         new_val) == old_val;
+  }
+# define AO_HAVE_XSIZE_compare_and_swap_release_write
+#endif
+
+#if defined(AO_HAVE_XSIZE_fetch_compare_and_swap_acquire_read) \
+    && !defined(AO_HAVE_XSIZE_compare_and_swap_acquire_read)
+  AO_INLINE int
+  AO_XSIZE_compare_and_swap_acquire_read(volatile XCTYPE *addr,
+                                         XCTYPE old_val, XCTYPE new_val)
+  {
+    return AO_XSIZE_fetch_compare_and_swap_acquire_read(addr, old_val,
+                                                        new_val) == old_val;
+  }
+# define AO_HAVE_XSIZE_compare_and_swap_acquire_read
+#endif
+
+#if defined(AO_HAVE_XSIZE_fetch_compare_and_swap_dd_acquire_read) \
+    && !defined(AO_HAVE_XSIZE_compare_and_swap_dd_acquire_read)
+  AO_INLINE int
+  AO_XSIZE_compare_and_swap_dd_acquire_read(volatile XCTYPE *addr,
+                                            XCTYPE old_val, XCTYPE new_val)
+  {
+    return AO_XSIZE_fetch_compare_and_swap_dd_acquire_read(addr, old_val,
+                                                           new_val) == old_val;
+  }
+# define AO_HAVE_XSIZE_compare_and_swap_dd_acquire_read
+#endif
+
+/* XSIZE_fetch_and_add */
+/* We first try to implement fetch_and_add variants in terms of the     */
+/* corresponding compare_and_swap variants to minimize adding barriers. */
+#if defined(AO_HAVE_XSIZE_compare_and_swap_full) \
+    && !defined(AO_HAVE_XSIZE_fetch_and_add_full)
+  AO_ATTR_NO_SANITIZE_THREAD
+  AO_INLINE XCTYPE
+  AO_XSIZE_fetch_and_add_full(volatile XCTYPE *addr, XCTYPE incr)
+  {
+    XCTYPE old;
+
+    do
+      {
+        old = *(XCTYPE *)addr;
+      }
+    while (AO_EXPECT_FALSE(!AO_XSIZE_compare_and_swap_full(addr, old,
+                                                           old + incr)));
+    return old;
+  }
+# define AO_HAVE_XSIZE_fetch_and_add_full
+#endif
+
+#if defined(AO_HAVE_XSIZE_compare_and_swap_acquire) \
+    && !defined(AO_HAVE_XSIZE_fetch_and_add_acquire)
+  AO_ATTR_NO_SANITIZE_THREAD
+  AO_INLINE XCTYPE
+  AO_XSIZE_fetch_and_add_acquire(volatile XCTYPE *addr, XCTYPE incr)
+  {
+    XCTYPE old;
+
+    do
+      {
+        old = *(XCTYPE *)addr;
+      }
+    while (AO_EXPECT_FALSE(!AO_XSIZE_compare_and_swap_acquire(addr, old,
+                                                              old + incr)));
+    return old;
+  }
+# define AO_HAVE_XSIZE_fetch_and_add_acquire
+#endif
+
+#if defined(AO_HAVE_XSIZE_compare_and_swap_release) \
+    && !defined(AO_HAVE_XSIZE_fetch_and_add_release)
+  AO_ATTR_NO_SANITIZE_THREAD
+  AO_INLINE XCTYPE
+  AO_XSIZE_fetch_and_add_release(volatile XCTYPE *addr, XCTYPE incr)
+  {
+    XCTYPE old;
+
+    do
+      {
+        old = *(XCTYPE *)addr;
+      }
+    while (AO_EXPECT_FALSE(!AO_XSIZE_compare_and_swap_release(addr, old,
+                                                              old + incr)));
+    return old;
+  }
+# define AO_HAVE_XSIZE_fetch_and_add_release
+#endif
+
+#if defined(AO_HAVE_XSIZE_compare_and_swap) \
+    && !defined(AO_HAVE_XSIZE_fetch_and_add)
+  AO_ATTR_NO_SANITIZE_THREAD
+  AO_INLINE XCTYPE
+  AO_XSIZE_fetch_and_add(volatile XCTYPE *addr, XCTYPE incr)
+  {
+    XCTYPE old;
+
+    do
+      {
+        old = *(XCTYPE *)addr;
+      }
+    while (AO_EXPECT_FALSE(!AO_XSIZE_compare_and_swap(addr, old,
+                                                      old + incr)));
+    return old;
+  }
+# define AO_HAVE_XSIZE_fetch_and_add
+#endif
+
+#if defined(AO_HAVE_XSIZE_fetch_and_add_full)
+# if !defined(AO_HAVE_XSIZE_fetch_and_add_release)
+#   define AO_XSIZE_fetch_and_add_release(addr, val) \
+                                AO_XSIZE_fetch_and_add_full(addr, val)
+#   define AO_HAVE_XSIZE_fetch_and_add_release
+# endif
+# if !defined(AO_HAVE_XSIZE_fetch_and_add_acquire)
+#   define AO_XSIZE_fetch_and_add_acquire(addr, val) \
+                                AO_XSIZE_fetch_and_add_full(addr, val)
+#   define AO_HAVE_XSIZE_fetch_and_add_acquire
+# endif
+# if !defined(AO_HAVE_XSIZE_fetch_and_add_write)
+#   define AO_XSIZE_fetch_and_add_write(addr, val) \
+                                AO_XSIZE_fetch_and_add_full(addr, val)
+#   define AO_HAVE_XSIZE_fetch_and_add_write
+# endif
+# if !defined(AO_HAVE_XSIZE_fetch_and_add_read)
+#   define AO_XSIZE_fetch_and_add_read(addr, val) \
+                                AO_XSIZE_fetch_and_add_full(addr, val)
+#   define AO_HAVE_XSIZE_fetch_and_add_read
+# endif
+#endif /* AO_HAVE_XSIZE_fetch_and_add_full */
+
+#if defined(AO_HAVE_XSIZE_fetch_and_add) && defined(AO_HAVE_nop_full) \
+    && !defined(AO_HAVE_XSIZE_fetch_and_add_acquire)
+  AO_INLINE XCTYPE
+  AO_XSIZE_fetch_and_add_acquire(volatile XCTYPE *addr, XCTYPE incr)
+  {
+    XCTYPE result = AO_XSIZE_fetch_and_add(addr, incr);
+    AO_nop_full();
+    return result;
+  }
+# define AO_HAVE_XSIZE_fetch_and_add_acquire
+#endif
+#if defined(AO_HAVE_XSIZE_fetch_and_add) && defined(AO_HAVE_nop_full) \
+    && !defined(AO_HAVE_XSIZE_fetch_and_add_release)
+# define AO_XSIZE_fetch_and_add_release(addr, incr) \
+                (AO_nop_full(), AO_XSIZE_fetch_and_add(addr, incr))
+# define AO_HAVE_XSIZE_fetch_and_add_release
+#endif
+
+#if !defined(AO_HAVE_XSIZE_fetch_and_add) \
+    && defined(AO_HAVE_XSIZE_fetch_and_add_release)
+# define AO_XSIZE_fetch_and_add(addr, val) \
+                                AO_XSIZE_fetch_and_add_release(addr, val)
+# define AO_HAVE_XSIZE_fetch_and_add
+#endif
+#if !defined(AO_HAVE_XSIZE_fetch_and_add) \
+    && defined(AO_HAVE_XSIZE_fetch_and_add_acquire)
+# define AO_XSIZE_fetch_and_add(addr, val) \
+                                AO_XSIZE_fetch_and_add_acquire(addr, val)
+# define AO_HAVE_XSIZE_fetch_and_add
+#endif
+#if !defined(AO_HAVE_XSIZE_fetch_and_add) \
+    && defined(AO_HAVE_XSIZE_fetch_and_add_write)
+# define AO_XSIZE_fetch_and_add(addr, val) \
+                                AO_XSIZE_fetch_and_add_write(addr, val)
+# define AO_HAVE_XSIZE_fetch_and_add
+#endif
+#if !defined(AO_HAVE_XSIZE_fetch_and_add) \
+    && defined(AO_HAVE_XSIZE_fetch_and_add_read)
+# define AO_XSIZE_fetch_and_add(addr, val) \
+                                AO_XSIZE_fetch_and_add_read(addr, val)
+# define AO_HAVE_XSIZE_fetch_and_add
+#endif
+
+#if defined(AO_HAVE_XSIZE_fetch_and_add_acquire) \
+    && defined(AO_HAVE_nop_full) && !defined(AO_HAVE_XSIZE_fetch_and_add_full)
+# define AO_XSIZE_fetch_and_add_full(addr, val) \
+                (AO_nop_full(), AO_XSIZE_fetch_and_add_acquire(addr, val))
+# define AO_HAVE_XSIZE_fetch_and_add_full
+#endif
+
+#if !defined(AO_HAVE_XSIZE_fetch_and_add_release_write) \
+    && defined(AO_HAVE_XSIZE_fetch_and_add_write)
+# define AO_XSIZE_fetch_and_add_release_write(addr, val) \
+                                AO_XSIZE_fetch_and_add_write(addr, val)
+# define AO_HAVE_XSIZE_fetch_and_add_release_write
+#endif
+#if !defined(AO_HAVE_XSIZE_fetch_and_add_release_write) \
+    && defined(AO_HAVE_XSIZE_fetch_and_add_release)
+# define AO_XSIZE_fetch_and_add_release_write(addr, val) \
+                                AO_XSIZE_fetch_and_add_release(addr, val)
+# define AO_HAVE_XSIZE_fetch_and_add_release_write
+#endif
+
+#if !defined(AO_HAVE_XSIZE_fetch_and_add_acquire_read) \
+    && defined(AO_HAVE_XSIZE_fetch_and_add_read)
+# define AO_XSIZE_fetch_and_add_acquire_read(addr, val) \
+                                AO_XSIZE_fetch_and_add_read(addr, val)
+# define AO_HAVE_XSIZE_fetch_and_add_acquire_read
+#endif
+#if !defined(AO_HAVE_XSIZE_fetch_and_add_acquire_read) \
+    && defined(AO_HAVE_XSIZE_fetch_and_add_acquire)
+# define AO_XSIZE_fetch_and_add_acquire_read(addr, val) \
+                                AO_XSIZE_fetch_and_add_acquire(addr, val)
+# define AO_HAVE_XSIZE_fetch_and_add_acquire_read
+#endif
+
+#ifdef AO_NO_DD_ORDERING
+# if defined(AO_HAVE_XSIZE_fetch_and_add_acquire_read)
+#   define AO_XSIZE_fetch_and_add_dd_acquire_read(addr, val) \
+                                AO_XSIZE_fetch_and_add_acquire_read(addr, val)
+#   define AO_HAVE_XSIZE_fetch_and_add_dd_acquire_read
+# endif
+#else
+# if defined(AO_HAVE_XSIZE_fetch_and_add)
+#   define AO_XSIZE_fetch_and_add_dd_acquire_read(addr, val) \
+                                AO_XSIZE_fetch_and_add(addr, val)
+#   define AO_HAVE_XSIZE_fetch_and_add_dd_acquire_read
+# endif
+#endif /* !AO_NO_DD_ORDERING */
+
+/* XSIZE_fetch_and_add1 */
+#if defined(AO_HAVE_XSIZE_fetch_and_add_full) \
+    && !defined(AO_HAVE_XSIZE_fetch_and_add1_full)
+# define AO_XSIZE_fetch_and_add1_full(addr) \
+                                AO_XSIZE_fetch_and_add_full(addr, 1)
+# define AO_HAVE_XSIZE_fetch_and_add1_full
+#endif
+#if defined(AO_HAVE_XSIZE_fetch_and_add_release) \
+    && !defined(AO_HAVE_XSIZE_fetch_and_add1_release)
+# define AO_XSIZE_fetch_and_add1_release(addr) \
+                                AO_XSIZE_fetch_and_add_release(addr, 1)
+# define AO_HAVE_XSIZE_fetch_and_add1_release
+#endif
+#if defined(AO_HAVE_XSIZE_fetch_and_add_acquire) \
+    && !defined(AO_HAVE_XSIZE_fetch_and_add1_acquire)
+# define AO_XSIZE_fetch_and_add1_acquire(addr) \
+                                AO_XSIZE_fetch_and_add_acquire(addr, 1)
+# define AO_HAVE_XSIZE_fetch_and_add1_acquire
+#endif
+#if defined(AO_HAVE_XSIZE_fetch_and_add_write) \
+    && !defined(AO_HAVE_XSIZE_fetch_and_add1_write)
+# define AO_XSIZE_fetch_and_add1_write(addr) \
+                                AO_XSIZE_fetch_and_add_write(addr, 1)
+# define AO_HAVE_XSIZE_fetch_and_add1_write
+#endif
+#if defined(AO_HAVE_XSIZE_fetch_and_add_read) \
+    && !defined(AO_HAVE_XSIZE_fetch_and_add1_read)
+# define AO_XSIZE_fetch_and_add1_read(addr) \
+                                AO_XSIZE_fetch_and_add_read(addr, 1)
+# define AO_HAVE_XSIZE_fetch_and_add1_read
+#endif
+#if defined(AO_HAVE_XSIZE_fetch_and_add_release_write) \
+    && !defined(AO_HAVE_XSIZE_fetch_and_add1_release_write)
+# define AO_XSIZE_fetch_and_add1_release_write(addr) \
+                                AO_XSIZE_fetch_and_add_release_write(addr, 1)
+# define AO_HAVE_XSIZE_fetch_and_add1_release_write
+#endif
+#if defined(AO_HAVE_XSIZE_fetch_and_add_acquire_read) \
+    && !defined(AO_HAVE_XSIZE_fetch_and_add1_acquire_read)
+# define AO_XSIZE_fetch_and_add1_acquire_read(addr) \
+                                AO_XSIZE_fetch_and_add_acquire_read(addr, 1)
+# define AO_HAVE_XSIZE_fetch_and_add1_acquire_read
+#endif
+#if defined(AO_HAVE_XSIZE_fetch_and_add) \
+    && !defined(AO_HAVE_XSIZE_fetch_and_add1)
+# define AO_XSIZE_fetch_and_add1(addr) AO_XSIZE_fetch_and_add(addr, 1)
+# define AO_HAVE_XSIZE_fetch_and_add1
+#endif
+
+#if defined(AO_HAVE_XSIZE_fetch_and_add1_full)
+# if !defined(AO_HAVE_XSIZE_fetch_and_add1_release)
+#   define AO_XSIZE_fetch_and_add1_release(addr) \
+                                AO_XSIZE_fetch_and_add1_full(addr)
+#   define AO_HAVE_XSIZE_fetch_and_add1_release
+# endif
+# if !defined(AO_HAVE_XSIZE_fetch_and_add1_acquire)
+#   define AO_XSIZE_fetch_and_add1_acquire(addr) \
+                                AO_XSIZE_fetch_and_add1_full(addr)
+#   define AO_HAVE_XSIZE_fetch_and_add1_acquire
+# endif
+# if !defined(AO_HAVE_XSIZE_fetch_and_add1_write)
+#   define AO_XSIZE_fetch_and_add1_write(addr) \
+                                AO_XSIZE_fetch_and_add1_full(addr)
+#   define AO_HAVE_XSIZE_fetch_and_add1_write
+# endif
+# if !defined(AO_HAVE_XSIZE_fetch_and_add1_read)
+#   define AO_XSIZE_fetch_and_add1_read(addr) \
+                                AO_XSIZE_fetch_and_add1_full(addr)
+#   define AO_HAVE_XSIZE_fetch_and_add1_read
+# endif
+#endif /* AO_HAVE_XSIZE_fetch_and_add1_full */
+
+#if !defined(AO_HAVE_XSIZE_fetch_and_add1) \
+    && defined(AO_HAVE_XSIZE_fetch_and_add1_release)
+# define AO_XSIZE_fetch_and_add1(addr) AO_XSIZE_fetch_and_add1_release(addr)
+# define AO_HAVE_XSIZE_fetch_and_add1
+#endif
+#if !defined(AO_HAVE_XSIZE_fetch_and_add1) \
+    && defined(AO_HAVE_XSIZE_fetch_and_add1_acquire)
+# define AO_XSIZE_fetch_and_add1(addr) AO_XSIZE_fetch_and_add1_acquire(addr)
+# define AO_HAVE_XSIZE_fetch_and_add1
+#endif
+#if !defined(AO_HAVE_XSIZE_fetch_and_add1) \
+    && defined(AO_HAVE_XSIZE_fetch_and_add1_write)
+# define AO_XSIZE_fetch_and_add1(addr) AO_XSIZE_fetch_and_add1_write(addr)
+# define AO_HAVE_XSIZE_fetch_and_add1
+#endif
+#if !defined(AO_HAVE_XSIZE_fetch_and_add1) \
+    && defined(AO_HAVE_XSIZE_fetch_and_add1_read)
+# define AO_XSIZE_fetch_and_add1(addr) AO_XSIZE_fetch_and_add1_read(addr)
+# define AO_HAVE_XSIZE_fetch_and_add1
+#endif
+
+#if defined(AO_HAVE_XSIZE_fetch_and_add1_acquire) \
+    && defined(AO_HAVE_nop_full) \
+    && !defined(AO_HAVE_XSIZE_fetch_and_add1_full)
+# define AO_XSIZE_fetch_and_add1_full(addr) \
+                        (AO_nop_full(), AO_XSIZE_fetch_and_add1_acquire(addr))
+# define AO_HAVE_XSIZE_fetch_and_add1_full
+#endif
+
+#if !defined(AO_HAVE_XSIZE_fetch_and_add1_release_write) \
+    && defined(AO_HAVE_XSIZE_fetch_and_add1_write)
+# define AO_XSIZE_fetch_and_add1_release_write(addr) \
+                                AO_XSIZE_fetch_and_add1_write(addr)
+# define AO_HAVE_XSIZE_fetch_and_add1_release_write
+#endif
+#if !defined(AO_HAVE_XSIZE_fetch_and_add1_release_write) \
+    && defined(AO_HAVE_XSIZE_fetch_and_add1_release)
+# define AO_XSIZE_fetch_and_add1_release_write(addr) \
+                                AO_XSIZE_fetch_and_add1_release(addr)
+# define AO_HAVE_XSIZE_fetch_and_add1_release_write
+#endif
+#if !defined(AO_HAVE_XSIZE_fetch_and_add1_acquire_read) \
+    && defined(AO_HAVE_XSIZE_fetch_and_add1_read)
+# define AO_XSIZE_fetch_and_add1_acquire_read(addr) \
+                                AO_XSIZE_fetch_and_add1_read(addr)
+# define AO_HAVE_XSIZE_fetch_and_add1_acquire_read
+#endif
+#if !defined(AO_HAVE_XSIZE_fetch_and_add1_acquire_read) \
+    && defined(AO_HAVE_XSIZE_fetch_and_add1_acquire)
+# define AO_XSIZE_fetch_and_add1_acquire_read(addr) \
+                                AO_XSIZE_fetch_and_add1_acquire(addr)
+# define AO_HAVE_XSIZE_fetch_and_add1_acquire_read
+#endif
+
+#ifdef AO_NO_DD_ORDERING
+# if defined(AO_HAVE_XSIZE_fetch_and_add1_acquire_read)
+#   define AO_XSIZE_fetch_and_add1_dd_acquire_read(addr) \
+                                AO_XSIZE_fetch_and_add1_acquire_read(addr)
+#   define AO_HAVE_XSIZE_fetch_and_add1_dd_acquire_read
+# endif
+#else
+# if defined(AO_HAVE_XSIZE_fetch_and_add1)
+#   define AO_XSIZE_fetch_and_add1_dd_acquire_read(addr) \
+                                AO_XSIZE_fetch_and_add1(addr)
+#   define AO_HAVE_XSIZE_fetch_and_add1_dd_acquire_read
+# endif
+#endif /* !AO_NO_DD_ORDERING */
+
+/* XSIZE_fetch_and_sub1 */
+#if defined(AO_HAVE_XSIZE_fetch_and_add_full) \
+    && !defined(AO_HAVE_XSIZE_fetch_and_sub1_full)
+# define AO_XSIZE_fetch_and_sub1_full(addr) \
+                AO_XSIZE_fetch_and_add_full(addr, (XCTYPE)(-1))
+# define AO_HAVE_XSIZE_fetch_and_sub1_full
+#endif
+#if defined(AO_HAVE_XSIZE_fetch_and_add_release) \
+    && !defined(AO_HAVE_XSIZE_fetch_and_sub1_release)
+# define AO_XSIZE_fetch_and_sub1_release(addr) \
+                AO_XSIZE_fetch_and_add_release(addr, (XCTYPE)(-1))
+# define AO_HAVE_XSIZE_fetch_and_sub1_release
+#endif
+#if defined(AO_HAVE_XSIZE_fetch_and_add_acquire) \
+    && !defined(AO_HAVE_XSIZE_fetch_and_sub1_acquire)
+# define AO_XSIZE_fetch_and_sub1_acquire(addr) \
+                AO_XSIZE_fetch_and_add_acquire(addr, (XCTYPE)(-1))
+# define AO_HAVE_XSIZE_fetch_and_sub1_acquire
+#endif
+#if defined(AO_HAVE_XSIZE_fetch_and_add_write) \
+    && !defined(AO_HAVE_XSIZE_fetch_and_sub1_write)
+# define AO_XSIZE_fetch_and_sub1_write(addr) \
+                AO_XSIZE_fetch_and_add_write(addr, (XCTYPE)(-1))
+# define AO_HAVE_XSIZE_fetch_and_sub1_write
+#endif
+#if defined(AO_HAVE_XSIZE_fetch_and_add_read) \
+    && !defined(AO_HAVE_XSIZE_fetch_and_sub1_read)
+# define AO_XSIZE_fetch_and_sub1_read(addr) \
+                AO_XSIZE_fetch_and_add_read(addr, (XCTYPE)(-1))
+# define AO_HAVE_XSIZE_fetch_and_sub1_read
+#endif
+#if defined(AO_HAVE_XSIZE_fetch_and_add_release_write) \
+    && !defined(AO_HAVE_XSIZE_fetch_and_sub1_release_write)
+# define AO_XSIZE_fetch_and_sub1_release_write(addr) \
+                AO_XSIZE_fetch_and_add_release_write(addr, (XCTYPE)(-1))
+# define AO_HAVE_XSIZE_fetch_and_sub1_release_write
+#endif
+#if defined(AO_HAVE_XSIZE_fetch_and_add_acquire_read) \
+    && !defined(AO_HAVE_XSIZE_fetch_and_sub1_acquire_read)
+# define AO_XSIZE_fetch_and_sub1_acquire_read(addr) \
+                AO_XSIZE_fetch_and_add_acquire_read(addr, (XCTYPE)(-1))
+# define AO_HAVE_XSIZE_fetch_and_sub1_acquire_read
+#endif
+#if defined(AO_HAVE_XSIZE_fetch_and_add) \
+    && !defined(AO_HAVE_XSIZE_fetch_and_sub1)
+# define AO_XSIZE_fetch_and_sub1(addr) \
+                AO_XSIZE_fetch_and_add(addr, (XCTYPE)(-1))
+# define AO_HAVE_XSIZE_fetch_and_sub1
+#endif
+
+#if defined(AO_HAVE_XSIZE_fetch_and_sub1_full)
+# if !defined(AO_HAVE_XSIZE_fetch_and_sub1_release)
+#   define AO_XSIZE_fetch_and_sub1_release(addr) \
+                                AO_XSIZE_fetch_and_sub1_full(addr)
+#   define AO_HAVE_XSIZE_fetch_and_sub1_release
+# endif
+# if !defined(AO_HAVE_XSIZE_fetch_and_sub1_acquire)
+#   define AO_XSIZE_fetch_and_sub1_acquire(addr) \
+                                AO_XSIZE_fetch_and_sub1_full(addr)
+#   define AO_HAVE_XSIZE_fetch_and_sub1_acquire
+# endif
+# if !defined(AO_HAVE_XSIZE_fetch_and_sub1_write)
+#   define AO_XSIZE_fetch_and_sub1_write(addr) \
+                                AO_XSIZE_fetch_and_sub1_full(addr)
+#   define AO_HAVE_XSIZE_fetch_and_sub1_write
+# endif
+# if !defined(AO_HAVE_XSIZE_fetch_and_sub1_read)
+#   define AO_XSIZE_fetch_and_sub1_read(addr) \
+                                AO_XSIZE_fetch_and_sub1_full(addr)
+#   define AO_HAVE_XSIZE_fetch_and_sub1_read
+# endif
+#endif /* AO_HAVE_XSIZE_fetch_and_sub1_full */
+
+#if !defined(AO_HAVE_XSIZE_fetch_and_sub1) \
+    && defined(AO_HAVE_XSIZE_fetch_and_sub1_release)
+# define AO_XSIZE_fetch_and_sub1(addr) AO_XSIZE_fetch_and_sub1_release(addr)
+# define AO_HAVE_XSIZE_fetch_and_sub1
+#endif
+#if !defined(AO_HAVE_XSIZE_fetch_and_sub1) \
+    && defined(AO_HAVE_XSIZE_fetch_and_sub1_acquire)
+# define AO_XSIZE_fetch_and_sub1(addr) AO_XSIZE_fetch_and_sub1_acquire(addr)
+# define AO_HAVE_XSIZE_fetch_and_sub1
+#endif
+#if !defined(AO_HAVE_XSIZE_fetch_and_sub1) \
+    && defined(AO_HAVE_XSIZE_fetch_and_sub1_write)
+# define AO_XSIZE_fetch_and_sub1(addr) AO_XSIZE_fetch_and_sub1_write(addr)
+# define AO_HAVE_XSIZE_fetch_and_sub1
+#endif
+#if !defined(AO_HAVE_XSIZE_fetch_and_sub1) \
+    && defined(AO_HAVE_XSIZE_fetch_and_sub1_read)
+# define AO_XSIZE_fetch_and_sub1(addr) AO_XSIZE_fetch_and_sub1_read(addr)
+# define AO_HAVE_XSIZE_fetch_and_sub1
+#endif
+
+#if defined(AO_HAVE_XSIZE_fetch_and_sub1_acquire) \
+    && defined(AO_HAVE_nop_full) \
+    && !defined(AO_HAVE_XSIZE_fetch_and_sub1_full)
+# define AO_XSIZE_fetch_and_sub1_full(addr) \
+                        (AO_nop_full(), AO_XSIZE_fetch_and_sub1_acquire(addr))
+# define AO_HAVE_XSIZE_fetch_and_sub1_full
+#endif
+
+#if !defined(AO_HAVE_XSIZE_fetch_and_sub1_release_write) \
+    && defined(AO_HAVE_XSIZE_fetch_and_sub1_write)
+# define AO_XSIZE_fetch_and_sub1_release_write(addr) \
+                                AO_XSIZE_fetch_and_sub1_write(addr)
+# define AO_HAVE_XSIZE_fetch_and_sub1_release_write
+#endif
+#if !defined(AO_HAVE_XSIZE_fetch_and_sub1_release_write) \
+    && defined(AO_HAVE_XSIZE_fetch_and_sub1_release)
+# define AO_XSIZE_fetch_and_sub1_release_write(addr) \
+                                AO_XSIZE_fetch_and_sub1_release(addr)
+# define AO_HAVE_XSIZE_fetch_and_sub1_release_write
+#endif
+#if !defined(AO_HAVE_XSIZE_fetch_and_sub1_acquire_read) \
+    && defined(AO_HAVE_XSIZE_fetch_and_sub1_read)
+# define AO_XSIZE_fetch_and_sub1_acquire_read(addr) \
+                                AO_XSIZE_fetch_and_sub1_read(addr)
+# define AO_HAVE_XSIZE_fetch_and_sub1_acquire_read
+#endif
+#if !defined(AO_HAVE_XSIZE_fetch_and_sub1_acquire_read) \
+    && defined(AO_HAVE_XSIZE_fetch_and_sub1_acquire)
+# define AO_XSIZE_fetch_and_sub1_acquire_read(addr) \
+                                AO_XSIZE_fetch_and_sub1_acquire(addr)
+# define AO_HAVE_XSIZE_fetch_and_sub1_acquire_read
+#endif
+
+#ifdef AO_NO_DD_ORDERING
+# if defined(AO_HAVE_XSIZE_fetch_and_sub1_acquire_read)
+#   define AO_XSIZE_fetch_and_sub1_dd_acquire_read(addr) \
+                                AO_XSIZE_fetch_and_sub1_acquire_read(addr)
+#   define AO_HAVE_XSIZE_fetch_and_sub1_dd_acquire_read
+# endif
+#else
+# if defined(AO_HAVE_XSIZE_fetch_and_sub1)
+#   define AO_XSIZE_fetch_and_sub1_dd_acquire_read(addr) \
+                                AO_XSIZE_fetch_and_sub1(addr)
+#   define AO_HAVE_XSIZE_fetch_and_sub1_dd_acquire_read
+# endif
+#endif /* !AO_NO_DD_ORDERING */
+
+/* XSIZE_and */
+#if defined(AO_HAVE_XSIZE_compare_and_swap_full) \
+    && !defined(AO_HAVE_XSIZE_and_full)
+  AO_ATTR_NO_SANITIZE_THREAD
+  AO_INLINE void
+  AO_XSIZE_and_full(volatile XCTYPE *addr, XCTYPE value)
+  {
+    XCTYPE old;
+
+    do
+      {
+        old = *(XCTYPE *)addr;
+      }
+    while (AO_EXPECT_FALSE(!AO_XSIZE_compare_and_swap_full(addr, old,
+                                                           old & value)));
+  }
+# define AO_HAVE_XSIZE_and_full
+#endif
+
+#if defined(AO_HAVE_XSIZE_and_full)
+# if !defined(AO_HAVE_XSIZE_and_release)
+#   define AO_XSIZE_and_release(addr, val) AO_XSIZE_and_full(addr, val)
+#   define AO_HAVE_XSIZE_and_release
+# endif
+# if !defined(AO_HAVE_XSIZE_and_acquire)
+#   define AO_XSIZE_and_acquire(addr, val) AO_XSIZE_and_full(addr, val)
+#   define AO_HAVE_XSIZE_and_acquire
+# endif
+# if !defined(AO_HAVE_XSIZE_and_write)
+#   define AO_XSIZE_and_write(addr, val) AO_XSIZE_and_full(addr, val)
+#   define AO_HAVE_XSIZE_and_write
+# endif
+# if !defined(AO_HAVE_XSIZE_and_read)
+#   define AO_XSIZE_and_read(addr, val) AO_XSIZE_and_full(addr, val)
+#   define AO_HAVE_XSIZE_and_read
+# endif
+#endif /* AO_HAVE_XSIZE_and_full */
+
+#if !defined(AO_HAVE_XSIZE_and) && defined(AO_HAVE_XSIZE_and_release)
+# define AO_XSIZE_and(addr, val) AO_XSIZE_and_release(addr, val)
+# define AO_HAVE_XSIZE_and
+#endif
+#if !defined(AO_HAVE_XSIZE_and) && defined(AO_HAVE_XSIZE_and_acquire)
+# define AO_XSIZE_and(addr, val) AO_XSIZE_and_acquire(addr, val)
+# define AO_HAVE_XSIZE_and
+#endif
+#if !defined(AO_HAVE_XSIZE_and) && defined(AO_HAVE_XSIZE_and_write)
+# define AO_XSIZE_and(addr, val) AO_XSIZE_and_write(addr, val)
+# define AO_HAVE_XSIZE_and
+#endif
+#if !defined(AO_HAVE_XSIZE_and) && defined(AO_HAVE_XSIZE_and_read)
+# define AO_XSIZE_and(addr, val) AO_XSIZE_and_read(addr, val)
+# define AO_HAVE_XSIZE_and
+#endif
+
+#if defined(AO_HAVE_XSIZE_and_acquire) && defined(AO_HAVE_nop_full) \
+    && !defined(AO_HAVE_XSIZE_and_full)
+# define AO_XSIZE_and_full(addr, val) \
+                        (AO_nop_full(), AO_XSIZE_and_acquire(addr, val))
+# define AO_HAVE_XSIZE_and_full
+#endif
+
+#if !defined(AO_HAVE_XSIZE_and_release_write) \
+    && defined(AO_HAVE_XSIZE_and_write)
+# define AO_XSIZE_and_release_write(addr, val) AO_XSIZE_and_write(addr, val)
+# define AO_HAVE_XSIZE_and_release_write
+#endif
+#if !defined(AO_HAVE_XSIZE_and_release_write) \
+    && defined(AO_HAVE_XSIZE_and_release)
+# define AO_XSIZE_and_release_write(addr, val) AO_XSIZE_and_release(addr, val)
+# define AO_HAVE_XSIZE_and_release_write
+#endif
+#if !defined(AO_HAVE_XSIZE_and_acquire_read) \
+    && defined(AO_HAVE_XSIZE_and_read)
+# define AO_XSIZE_and_acquire_read(addr, val) AO_XSIZE_and_read(addr, val)
+# define AO_HAVE_XSIZE_and_acquire_read
+#endif
+#if !defined(AO_HAVE_XSIZE_and_acquire_read) \
+    && defined(AO_HAVE_XSIZE_and_acquire)
+# define AO_XSIZE_and_acquire_read(addr, val) AO_XSIZE_and_acquire(addr, val)
+# define AO_HAVE_XSIZE_and_acquire_read
+#endif
+
+/* XSIZE_or */
+#if defined(AO_HAVE_XSIZE_compare_and_swap_full) \
+    && !defined(AO_HAVE_XSIZE_or_full)
+  AO_ATTR_NO_SANITIZE_THREAD
+  AO_INLINE void
+  AO_XSIZE_or_full(volatile XCTYPE *addr, XCTYPE value)
+  {
+    XCTYPE old;
+
+    do
+      {
+        old = *(XCTYPE *)addr;
+      }
+    while (AO_EXPECT_FALSE(!AO_XSIZE_compare_and_swap_full(addr, old,
+                                                           old | value)));
+  }
+# define AO_HAVE_XSIZE_or_full
+#endif
+
+#if defined(AO_HAVE_XSIZE_or_full)
+# if !defined(AO_HAVE_XSIZE_or_release)
+#   define AO_XSIZE_or_release(addr, val) AO_XSIZE_or_full(addr, val)
+#   define AO_HAVE_XSIZE_or_release
+# endif
+# if !defined(AO_HAVE_XSIZE_or_acquire)
+#   define AO_XSIZE_or_acquire(addr, val) AO_XSIZE_or_full(addr, val)
+#   define AO_HAVE_XSIZE_or_acquire
+# endif
+# if !defined(AO_HAVE_XSIZE_or_write)
+#   define AO_XSIZE_or_write(addr, val) AO_XSIZE_or_full(addr, val)
+#   define AO_HAVE_XSIZE_or_write
+# endif
+# if !defined(AO_HAVE_XSIZE_or_read)
+#   define AO_XSIZE_or_read(addr, val) AO_XSIZE_or_full(addr, val)
+#   define AO_HAVE_XSIZE_or_read
+# endif
+#endif /* AO_HAVE_XSIZE_or_full */
+
+#if !defined(AO_HAVE_XSIZE_or) && defined(AO_HAVE_XSIZE_or_release)
+# define AO_XSIZE_or(addr, val) AO_XSIZE_or_release(addr, val)
+# define AO_HAVE_XSIZE_or
+#endif
+#if !defined(AO_HAVE_XSIZE_or) && defined(AO_HAVE_XSIZE_or_acquire)
+# define AO_XSIZE_or(addr, val) AO_XSIZE_or_acquire(addr, val)
+# define AO_HAVE_XSIZE_or
+#endif
+#if !defined(AO_HAVE_XSIZE_or) && defined(AO_HAVE_XSIZE_or_write)
+# define AO_XSIZE_or(addr, val) AO_XSIZE_or_write(addr, val)
+# define AO_HAVE_XSIZE_or
+#endif
+#if !defined(AO_HAVE_XSIZE_or) && defined(AO_HAVE_XSIZE_or_read)
+# define AO_XSIZE_or(addr, val) AO_XSIZE_or_read(addr, val)
+# define AO_HAVE_XSIZE_or
+#endif
+
+#if defined(AO_HAVE_XSIZE_or_acquire) && defined(AO_HAVE_nop_full) \
+    && !defined(AO_HAVE_XSIZE_or_full)
+# define AO_XSIZE_or_full(addr, val) \
+                        (AO_nop_full(), AO_XSIZE_or_acquire(addr, val))
+# define AO_HAVE_XSIZE_or_full
+#endif
+
+#if !defined(AO_HAVE_XSIZE_or_release_write) \
+    && defined(AO_HAVE_XSIZE_or_write)
+# define AO_XSIZE_or_release_write(addr, val) AO_XSIZE_or_write(addr, val)
+# define AO_HAVE_XSIZE_or_release_write
+#endif
+#if !defined(AO_HAVE_XSIZE_or_release_write) \
+    && defined(AO_HAVE_XSIZE_or_release)
+# define AO_XSIZE_or_release_write(addr, val) AO_XSIZE_or_release(addr, val)
+# define AO_HAVE_XSIZE_or_release_write
+#endif
+#if !defined(AO_HAVE_XSIZE_or_acquire_read) && defined(AO_HAVE_XSIZE_or_read)
+# define AO_XSIZE_or_acquire_read(addr, val) AO_XSIZE_or_read(addr, val)
+# define AO_HAVE_XSIZE_or_acquire_read
+#endif
+#if !defined(AO_HAVE_XSIZE_or_acquire_read) \
+    && defined(AO_HAVE_XSIZE_or_acquire)
+# define AO_XSIZE_or_acquire_read(addr, val) AO_XSIZE_or_acquire(addr, val)
+# define AO_HAVE_XSIZE_or_acquire_read
+#endif
+
+/* XSIZE_xor */
+#if defined(AO_HAVE_XSIZE_compare_and_swap_full) \
+    && !defined(AO_HAVE_XSIZE_xor_full)
+  AO_ATTR_NO_SANITIZE_THREAD
+  AO_INLINE void
+  AO_XSIZE_xor_full(volatile XCTYPE *addr, XCTYPE value)
+  {
+    XCTYPE old;
+
+    do
+      {
+        old = *(XCTYPE *)addr;
+      }
+    while (AO_EXPECT_FALSE(!AO_XSIZE_compare_and_swap_full(addr, old,
+                                                           old ^ value)));
+  }
+# define AO_HAVE_XSIZE_xor_full
+#endif
+
+#if defined(AO_HAVE_XSIZE_xor_full)
+# if !defined(AO_HAVE_XSIZE_xor_release)
+#   define AO_XSIZE_xor_release(addr, val) AO_XSIZE_xor_full(addr, val)
+#   define AO_HAVE_XSIZE_xor_release
+# endif
+# if !defined(AO_HAVE_XSIZE_xor_acquire)
+#   define AO_XSIZE_xor_acquire(addr, val) AO_XSIZE_xor_full(addr, val)
+#   define AO_HAVE_XSIZE_xor_acquire
+# endif
+# if !defined(AO_HAVE_XSIZE_xor_write)
+#   define AO_XSIZE_xor_write(addr, val) AO_XSIZE_xor_full(addr, val)
+#   define AO_HAVE_XSIZE_xor_write
+# endif
+# if !defined(AO_HAVE_XSIZE_xor_read)
+#   define AO_XSIZE_xor_read(addr, val) AO_XSIZE_xor_full(addr, val)
+#   define AO_HAVE_XSIZE_xor_read
+# endif
+#endif /* AO_HAVE_XSIZE_xor_full */
+
+#if !defined(AO_HAVE_XSIZE_xor) && defined(AO_HAVE_XSIZE_xor_release)
+# define AO_XSIZE_xor(addr, val) AO_XSIZE_xor_release(addr, val)
+# define AO_HAVE_XSIZE_xor
+#endif
+#if !defined(AO_HAVE_XSIZE_xor) && defined(AO_HAVE_XSIZE_xor_acquire)
+# define AO_XSIZE_xor(addr, val) AO_XSIZE_xor_acquire(addr, val)
+# define AO_HAVE_XSIZE_xor
+#endif
+#if !defined(AO_HAVE_XSIZE_xor) && defined(AO_HAVE_XSIZE_xor_write)
+# define AO_XSIZE_xor(addr, val) AO_XSIZE_xor_write(addr, val)
+# define AO_HAVE_XSIZE_xor
+#endif
+#if !defined(AO_HAVE_XSIZE_xor) && defined(AO_HAVE_XSIZE_xor_read)
+# define AO_XSIZE_xor(addr, val) AO_XSIZE_xor_read(addr, val)
+# define AO_HAVE_XSIZE_xor
+#endif
+
+#if defined(AO_HAVE_XSIZE_xor_acquire) && defined(AO_HAVE_nop_full) \
+    && !defined(AO_HAVE_XSIZE_xor_full)
+# define AO_XSIZE_xor_full(addr, val) \
+                        (AO_nop_full(), AO_XSIZE_xor_acquire(addr, val))
+# define AO_HAVE_XSIZE_xor_full
+#endif
+
+#if !defined(AO_HAVE_XSIZE_xor_release_write) \
+    && defined(AO_HAVE_XSIZE_xor_write)
+# define AO_XSIZE_xor_release_write(addr, val) AO_XSIZE_xor_write(addr, val)
+# define AO_HAVE_XSIZE_xor_release_write
+#endif
+#if !defined(AO_HAVE_XSIZE_xor_release_write) \
+    && defined(AO_HAVE_XSIZE_xor_release)
+# define AO_XSIZE_xor_release_write(addr, val) AO_XSIZE_xor_release(addr, val)
+# define AO_HAVE_XSIZE_xor_release_write
+#endif
+#if !defined(AO_HAVE_XSIZE_xor_acquire_read) \
+    && defined(AO_HAVE_XSIZE_xor_read)
+# define AO_XSIZE_xor_acquire_read(addr, val) AO_XSIZE_xor_read(addr, val)
+# define AO_HAVE_XSIZE_xor_acquire_read
+#endif
+#if !defined(AO_HAVE_XSIZE_xor_acquire_read) \
+    && defined(AO_HAVE_XSIZE_xor_acquire)
+# define AO_XSIZE_xor_acquire_read(addr, val) AO_XSIZE_xor_acquire(addr, val)
+# define AO_HAVE_XSIZE_xor_acquire_read
+#endif
+
+/* XSIZE_and/or/xor_dd_acquire_read are meaningless.    */

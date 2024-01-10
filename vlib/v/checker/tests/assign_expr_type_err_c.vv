@@ -1,4 +1,5 @@
 fn main() {
 	mut foo := 'hello'
 	foo *= 10
+	_ = foo
 }

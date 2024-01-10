@@ -1,0 +1,6 @@
+vlib/v/checker/tests/globals/name_conflict_with_const.vv:6:2: error: duplicate global and const `foo`
+    4 | 
+    5 | __global (
+    6 |     foo = 123
+      |     ~~~
+    7 | )

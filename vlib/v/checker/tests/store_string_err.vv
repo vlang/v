@@ -1,0 +1,6 @@
+fn return_err() !int {
+	return error('')
+}
+
+err := return_err() or { err }
+eprintln(err)

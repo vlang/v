@@ -1,0 +1,223 @@
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:5:9: error: invalid number of operand for `+`. Only one allowed on each side.
+    3 | }
+    4 | 
+    5 | println(foo() + foo())
+      |         ~~~~~~~~~~~~~
+    6 | println(foo() - foo())
+    7 | println(foo() * foo())
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:6:9: error: invalid number of operand for `-`. Only one allowed on each side.
+    4 | 
+    5 | println(foo() + foo())
+    6 | println(foo() - foo())
+      |         ~~~~~~~~~~~~~
+    7 | println(foo() * foo())
+    8 | println(foo() / foo())
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:7:9: error: invalid number of operand for `*`. Only one allowed on each side.
+    5 | println(foo() + foo())
+    6 | println(foo() - foo())
+    7 | println(foo() * foo())
+      |         ~~~~~~~~~~~~~
+    8 | println(foo() / foo())
+    9 | println(foo() % foo())
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:8:9: error: invalid number of operand for `/`. Only one allowed on each side.
+    6 | println(foo() - foo())
+    7 | println(foo() * foo())
+    8 | println(foo() / foo())
+      |         ~~~~~~~~~~~~~
+    9 | println(foo() % foo())
+   10 | println(foo() ^ foo())
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:9:9: error: invalid number of operand for `%`. Only one allowed on each side.
+    7 | println(foo() * foo())
+    8 | println(foo() / foo())
+    9 | println(foo() % foo())
+      |         ~~~~~~~~~~~~~
+   10 | println(foo() ^ foo())
+   11 | println(foo() << foo())
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:10:9: error: invalid number of operand for `^`. Only one allowed on each side.
+    8 | println(foo() / foo())
+    9 | println(foo() % foo())
+   10 | println(foo() ^ foo())
+      |         ~~~~~~~~~~~~~
+   11 | println(foo() << foo())
+   12 | println(foo() >> foo())
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:11:9: error: invalid number of operand for `<<`. Only one allowed on each side.
+    9 | println(foo() % foo())
+   10 | println(foo() ^ foo())
+   11 | println(foo() << foo())
+      |         ~~~~~~~~~~~~~~
+   12 | println(foo() >> foo())
+   13 | println(foo() == foo())
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:11:9: error: invalid operation: shift on type `(int, int)`
+    9 | println(foo() % foo())
+   10 | println(foo() ^ foo())
+   11 | println(foo() << foo())
+      |         ~~~~~
+   12 | println(foo() >> foo())
+   13 | println(foo() == foo())
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:11:1: error: `println` can not print void expressions
+    9 | println(foo() % foo())
+   10 | println(foo() ^ foo())
+   11 | println(foo() << foo())
+      | ~~~~~~~~~~~~~~~~~~~~~~~
+   12 | println(foo() >> foo())
+   13 | println(foo() == foo())
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:12:9: error: invalid number of operand for `>>`. Only one allowed on each side.
+   10 | println(foo() ^ foo())
+   11 | println(foo() << foo())
+   12 | println(foo() >> foo())
+      |         ~~~~~~~~~~~~~~
+   13 | println(foo() == foo())
+   14 | println(foo() != foo())
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:12:9: error: invalid operation: shift on type `(int, int)`
+   10 | println(foo() ^ foo())
+   11 | println(foo() << foo())
+   12 | println(foo() >> foo())
+      |         ~~~~~
+   13 | println(foo() == foo())
+   14 | println(foo() != foo())
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:12:1: error: `println` can not print void expressions
+   10 | println(foo() ^ foo())
+   11 | println(foo() << foo())
+   12 | println(foo() >> foo())
+      | ~~~~~~~~~~~~~~~~~~~~~~~
+   13 | println(foo() == foo())
+   14 | println(foo() != foo())
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:13:9: error: invalid number of operand for `==`. Only one allowed on each side.
+   11 | println(foo() << foo())
+   12 | println(foo() >> foo())
+   13 | println(foo() == foo())
+      |         ~~~~~~~~~~~~~~
+   14 | println(foo() != foo())
+   15 | println(foo() > foo())
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:14:9: error: invalid number of operand for `!=`. Only one allowed on each side.
+   12 | println(foo() >> foo())
+   13 | println(foo() == foo())
+   14 | println(foo() != foo())
+      |         ~~~~~~~~~~~~~~
+   15 | println(foo() > foo())
+   16 | println(foo() < foo())
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:15:9: error: invalid number of operand for `>`. Only one allowed on each side.
+   13 | println(foo() == foo())
+   14 | println(foo() != foo())
+   15 | println(foo() > foo())
+      |         ~~~~~~~~~~~~~
+   16 | println(foo() < foo())
+   17 | println(foo() >= foo())
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:16:9: error: invalid number of operand for `<`. Only one allowed on each side.
+   14 | println(foo() != foo())
+   15 | println(foo() > foo())
+   16 | println(foo() < foo())
+      |         ~~~~~~~~~~~~~
+   17 | println(foo() >= foo())
+   18 | println(foo() <= foo())
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:17:9: error: invalid number of operand for `>=`. Only one allowed on each side.
+   15 | println(foo() > foo())
+   16 | println(foo() < foo())
+   17 | println(foo() >= foo())
+      |         ~~~~~~~~~~~~~~
+   18 | println(foo() <= foo())
+   19 | println(foo() && foo())
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:18:9: error: invalid number of operand for `<=`. Only one allowed on each side.
+   16 | println(foo() < foo())
+   17 | println(foo() >= foo())
+   18 | println(foo() <= foo())
+      |         ~~~~~~~~~~~~~~
+   19 | println(foo() && foo())
+   20 | println(foo() || foo())
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:19:9: error: invalid number of operand for `&&`. Only one allowed on each side.
+   17 | println(foo() >= foo())
+   18 | println(foo() <= foo())
+   19 | println(foo() && foo())
+      |         ~~~~~~~~~~~~~~
+   20 | println(foo() || foo())
+   21 | println(foo() in foo())
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:19:9: error: left operand for `&&` is not a boolean
+   17 | println(foo() >= foo())
+   18 | println(foo() <= foo())
+   19 | println(foo() && foo())
+      |         ~~~~~
+   20 | println(foo() || foo())
+   21 | println(foo() in foo())
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:19:18: error: right operand for `&&` is not a boolean
+   17 | println(foo() >= foo())
+   18 | println(foo() <= foo())
+   19 | println(foo() && foo())
+      |                  ~~~~~
+   20 | println(foo() || foo())
+   21 | println(foo() in foo())
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:20:9: error: invalid number of operand for `||`. Only one allowed on each side.
+   18 | println(foo() <= foo())
+   19 | println(foo() && foo())
+   20 | println(foo() || foo())
+      |         ~~~~~~~~~~~~~~
+   21 | println(foo() in foo())
+   22 | println(foo() !in foo())
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:20:9: error: left operand for `||` is not a boolean
+   18 | println(foo() <= foo())
+   19 | println(foo() && foo())
+   20 | println(foo() || foo())
+      |         ~~~~~
+   21 | println(foo() in foo())
+   22 | println(foo() !in foo())
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:20:18: error: right operand for `||` is not a boolean
+   18 | println(foo() <= foo())
+   19 | println(foo() && foo())
+   20 | println(foo() || foo())
+      |                  ~~~~~
+   21 | println(foo() in foo())
+   22 | println(foo() !in foo())
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:21:9: error: invalid number of operand for `in`. Only one allowed on each side.
+   19 | println(foo() && foo())
+   20 | println(foo() || foo())
+   21 | println(foo() in foo())
+      |         ~~~~~~~~~~~~~~
+   22 | println(foo() !in foo())
+   23 | println(foo() <- foo())
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:21:15: error: `in` can only be used with arrays and maps
+   19 | println(foo() && foo())
+   20 | println(foo() || foo())
+   21 | println(foo() in foo())
+      |               ~~
+   22 | println(foo() !in foo())
+   23 | println(foo() <- foo())
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:22:9: error: invalid number of operand for `!in`. Only one allowed on each side.
+   20 | println(foo() || foo())
+   21 | println(foo() in foo())
+   22 | println(foo() !in foo())
+      |         ~~~~~~~~~~~~~~~
+   23 | println(foo() <- foo())
+   24 |
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:22:15: error: `!in` can only be used with arrays and maps
+   20 | println(foo() || foo())
+   21 | println(foo() in foo())
+   22 | println(foo() !in foo())
+      |               ~~~
+   23 | println(foo() <- foo())
+   24 |
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:23:9: error: invalid number of operand for `<-`. Only one allowed on each side.
+   21 | println(foo() in foo())
+   22 | println(foo() !in foo())
+   23 | println(foo() <- foo())
+      |         ~~~~~~~~~~~~~~
+   24 | 
+   25 | for _ in foo() .. foo() {
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:23:9: error: cannot push on non-channel `(int, int)`
+   21 | println(foo() in foo())
+   22 | println(foo() !in foo())
+   23 | println(foo() <- foo())
+      |         ~~~~~
+   24 | 
+   25 | for _ in foo() .. foo() {
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:23:1: error: `println` can not print void expressions
+   21 | println(foo() in foo())
+   22 | println(foo() !in foo())
+   23 | println(foo() <- foo())
+      | ~~~~~~~~~~~~~~~~~~~~~~~
+   24 | 
+   25 | for _ in foo() .. foo() {
+vlib/v/checker/tests/invalid_multi_return_operations_err.vv:25:10: error: multi-returns cannot be used in ranges. A range is from a single value to a single higher value.
+   23 | println(foo() <- foo())
+   24 | 
+   25 | for _ in foo() .. foo() {
+      |          ~~~~~~~~~~~~~~
+   26 | }

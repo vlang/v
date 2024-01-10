@@ -1,0 +1,25 @@
+import cli { Command }
+import os
+
+struct App {}
+
+fn (a App) test_func() {}
+
+fn main() {
+	mut cmd := Command{
+		name: 'cli'
+		version: '0.0.1'
+	}
+
+	app := App{}
+
+	mut add := Command{
+		name: 'add'
+		description: 'Add something.'
+		execute: app.test_func()
+	}
+
+	cmd.add_command(add)
+	cmd.setup()
+	cmd.parse(os.args)
+}

@@ -1,0 +1,28 @@
+vlib/v/checker/tests/check_wrong_usage_of_break_and_continue.vv:9:3: error: continue is not allowed within a compile-time loop
+    7 |     $for field in Test.fields {
+    8 |         println(field)
+    9 |         continue
+      |         ~~~~~~~~
+   10 |     }
+   11 |     $for field in Test.fields {
+vlib/v/checker/tests/check_wrong_usage_of_break_and_continue.vv:13:3: error: break is not allowed within a compile-time loop
+   11 |     $for field in Test.fields {
+   12 |         println(field)
+   13 |         break
+      |         ~~~~~
+   14 |     }
+   15 |     {
+vlib/v/checker/tests/check_wrong_usage_of_break_and_continue.vv:16:3: error: break statement not within a loop
+   14 |     }
+   15 |     {
+   16 |         break
+      |         ~~~~~
+   17 |         continue
+   18 |     }
+vlib/v/checker/tests/check_wrong_usage_of_break_and_continue.vv:17:3: error: continue statement not within a loop
+   15 |     {
+   16 |         break
+   17 |         continue
+      |         ~~~~~~~~
+   18 |     }
+   19 | }

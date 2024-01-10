@@ -1,0 +1,37 @@
+fn test() {
+	print('hello!')
+	println('hello!')
+}
+
+fn str_methods() {
+	print(128.str())
+	println(i64(-192322).str())
+	println(false.str())
+}
+
+fn str_implicit() {
+	println(false)
+	println(true)
+	a := 100
+	println(a + 10)
+}
+
+fn assertions() {
+	assert true, 'hello'
+	assert true
+
+	// assert false, 'no can do'
+}
+
+fn main() {
+	test()
+	str_methods()
+	str_implicit()
+	assertions()
+
+	// panic('nooo!')
+
+	println('wasm builtins')
+	println(vwasm_memory_size())
+	println(vwasm_memory_grow(0))
+}

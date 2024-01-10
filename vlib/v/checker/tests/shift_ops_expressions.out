@@ -1,0 +1,119 @@
+vlib/v/checker/tests/shift_ops_expressions.vv:4:2: notice: shifting a value from a signed type `int` can change the sign
+    2 |     mut a := 12
+    3 |     mut arr := []int{}
+    4 |     a << 1
+      |     ^
+    5 |     if true {
+    6 |         a << 2
+vlib/v/checker/tests/shift_ops_expressions.vv:6:3: notice: shifting a value from a signed type `int` can change the sign
+    4 |     a << 1
+    5 |     if true {
+    6 |         a << 2
+      |         ^
+    7 |     }
+    8 |     c := if true { a << 111 } else { a << 333 }
+vlib/v/checker/tests/shift_ops_expressions.vv:8:17: notice: shifting a value from a signed type `int` can change the sign
+    6 |         a << 2
+    7 |     }
+    8 |     c := if true { a << 111 } else { a << 333 }
+      |                    ^
+    9 |     println(c)
+   10 |     a << 1
+vlib/v/checker/tests/shift_ops_expressions.vv:10:2: notice: shifting a value from a signed type `int` can change the sign
+    8 |     c := if true { a << 111 } else { a << 333 }
+    9 |     println(c)
+   10 |     a << 1
+      |     ^
+   11 |     println(a)
+   12 |     5 << 9
+vlib/v/checker/tests/shift_ops_expressions.vv:33:3: notice: shifting a value from a signed type `int` can change the sign
+   31 |     //
+   32 |     x := if true {
+   33 |         a << 1
+      |         ^
+   34 |         999
+   35 |     } else {
+vlib/v/checker/tests/shift_ops_expressions.vv:37:3: notice: shifting a value from a signed type `int` can change the sign
+   35 |     } else {
+   36 |         println('---')
+   37 |         a << 9999
+      |         ^
+   38 |         println('---')
+   39 |         555
+vlib/v/checker/tests/shift_ops_expressions.vv:4:2: error: unused expression
+    2 |     mut a := 12
+    3 |     mut arr := []int{}
+    4 |     a << 1
+      |     ~~~~~~
+    5 |     if true {
+    6 |         a << 2
+vlib/v/checker/tests/shift_ops_expressions.vv:6:3: error: unused expression
+    4 |     a << 1
+    5 |     if true {
+    6 |         a << 2
+      |         ~~~~~~
+    7 |     }
+    8 |     c := if true { a << 111 } else { a << 333 }
+vlib/v/checker/tests/shift_ops_expressions.vv:8:22: error: shift count for type `int` too large (maximum: 31 bits)
+    6 |         a << 2
+    7 |     }
+    8 |     c := if true { a << 111 } else { a << 333 }
+      |                         ~~~
+    9 |     println(c)
+   10 |     a << 1
+vlib/v/checker/tests/shift_ops_expressions.vv:10:2: error: unused expression
+    8 |     c := if true { a << 111 } else { a << 333 }
+    9 |     println(c)
+   10 |     a << 1
+      |     ~~~~~~
+   11 |     println(a)
+   12 |     5 << 9
+vlib/v/checker/tests/shift_ops_expressions.vv:12:2: error: unused expression
+   10 |     a << 1
+   11 |     println(a)
+   12 |     5 << 9
+      |     ~~~~~~
+   13 |     for i in 0 .. 10 {
+   14 |         z := i << 5
+vlib/v/checker/tests/shift_ops_expressions.vv:15:3: error: unused expression
+   13 |     for i in 0 .. 10 {
+   14 |         z := i << 5
+   15 |         i << 5
+      |         ~~~~~~
+   16 |         println(z)
+   17 |     }
+vlib/v/checker/tests/shift_ops_expressions.vv:33:3: error: unused expression
+   31 |     //
+   32 |     x := if true {
+   33 |         a << 1
+      |         ~~~~~~
+   34 |         999
+   35 |     } else {
+vlib/v/checker/tests/shift_ops_expressions.vv:37:8: error: shift count for type `int` too large (maximum: 31 bits)
+   35 |     } else {
+   36 |         println('---')
+   37 |         a << 9999
+      |              ~~~~
+   38 |         println('---')
+   39 |         555
+vlib/v/checker/tests/shift_ops_expressions.vv:37:3: error: unused expression
+   35 |     } else {
+   36 |         println('---')
+   37 |         a << 9999
+      |         ~~~~~~~~~
+   38 |         println('---')
+   39 |         555
+vlib/v/checker/tests/shift_ops_expressions.vv:50:23: error: shift count for type `int` too large (maximum: 31 bits)
+   48 |         rr >> 2
+   49 |     }
+   50 |     c := if true { rr >> 111 } else { rr >> 333 }
+      |                          ~~~
+   51 |     println(c)
+   52 |     rr >> 1
+vlib/v/checker/tests/shift_ops_expressions.vv:66:9: error: shift count for type `int` too large (maximum: 31 bits)
+   64 |     } else {
+   65 |         println('---')
+   66 |         rr >> 9999
+      |               ~~~~
+   67 |         println('---')
+   68 |         555

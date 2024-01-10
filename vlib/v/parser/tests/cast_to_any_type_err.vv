@@ -1,0 +1,4 @@
+fn main() {
+	a := any(22)
+	println(a)
+}

@@ -1,0 +1,8 @@
+fn main() {
+	println(test('whatever'))
+}
+
+fn test(aaaa string) string {
+	aaaa := 'bbbb' + aaaa
+	return aaaa
+}

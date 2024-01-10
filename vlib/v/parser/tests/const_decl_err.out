@@ -1,0 +1,7 @@
+vlib/v/parser/tests/const_decl_err.vv:6:3: error: const declaration do not support multiple assign yet
+    4 |
+    5 | const (
+    6 |     a, b, c = foo()
+      |      ^
+    7 | )
+    8 |

@@ -1,0 +1,248 @@
+vlib/v/checker/tests/invalid_none_operations_err.vv:1:9: error: invalid operator `+` to `none` and `none`
+    1 | println(none + none)
+      |         ~~~~~~~~~~~
+    2 | println(none - none)
+    3 | println(none * none)
+vlib/v/checker/tests/invalid_none_operations_err.vv:2:9: error: invalid operator `-` to `none` and `none`
+    1 | println(none + none)
+    2 | println(none - none)
+      |         ~~~~~~~~~~~
+    3 | println(none * none)
+    4 | println(none / none)
+vlib/v/checker/tests/invalid_none_operations_err.vv:3:9: error: invalid operator `*` to `none` and `none`
+    1 | println(none + none)
+    2 | println(none - none)
+    3 | println(none * none)
+      |         ~~~~~~~~~~~
+    4 | println(none / none)
+    5 | println(none % none)
+vlib/v/checker/tests/invalid_none_operations_err.vv:4:9: error: invalid operator `/` to `none` and `none`
+    2 | println(none - none)
+    3 | println(none * none)
+    4 | println(none / none)
+      |         ~~~~~~~~~~~
+    5 | println(none % none)
+    6 | println(none ^ none)
+vlib/v/checker/tests/invalid_none_operations_err.vv:5:9: error: invalid operator `%` to `none` and `none`
+    3 | println(none * none)
+    4 | println(none / none)
+    5 | println(none % none)
+      |         ~~~~~~~~~~~
+    6 | println(none ^ none)
+    7 | println(none << none)
+vlib/v/checker/tests/invalid_none_operations_err.vv:6:9: error: invalid operator `^` to `none` and `none`
+    4 | println(none / none)
+    5 | println(none % none)
+    6 | println(none ^ none)
+      |         ~~~~~~~~~~~
+    7 | println(none << none)
+    8 | println(none >> none)
+vlib/v/checker/tests/invalid_none_operations_err.vv:7:9: error: invalid operator `<<` to `none` and `none`
+    5 | println(none % none)
+    6 | println(none ^ none)
+    7 | println(none << none)
+      |         ~~~~~~~~~~~~
+    8 | println(none >> none)
+    9 | println(none == none)
+vlib/v/checker/tests/invalid_none_operations_err.vv:7:9: error: invalid operation: shift on type `none`
+    5 | println(none % none)
+    6 | println(none ^ none)
+    7 | println(none << none)
+      |         ~~~~
+    8 | println(none >> none)
+    9 | println(none == none)
+vlib/v/checker/tests/invalid_none_operations_err.vv:7:1: error: `println` can not print void expressions
+    5 | println(none % none)
+    6 | println(none ^ none)
+    7 | println(none << none)
+      | ~~~~~~~~~~~~~~~~~~~~~
+    8 | println(none >> none)
+    9 | println(none == none)
+vlib/v/checker/tests/invalid_none_operations_err.vv:8:9: error: invalid operator `>>` to `none` and `none`
+    6 | println(none ^ none)
+    7 | println(none << none)
+    8 | println(none >> none)
+      |         ~~~~~~~~~~~~
+    9 | println(none == none)
+   10 | println(none != none)
+vlib/v/checker/tests/invalid_none_operations_err.vv:8:9: error: invalid operation: shift on type `none`
+    6 | println(none ^ none)
+    7 | println(none << none)
+    8 | println(none >> none)
+      |         ~~~~
+    9 | println(none == none)
+   10 | println(none != none)
+vlib/v/checker/tests/invalid_none_operations_err.vv:8:1: error: `println` can not print void expressions
+    6 | println(none ^ none)
+    7 | println(none << none)
+    8 | println(none >> none)
+      | ~~~~~~~~~~~~~~~~~~~~~
+    9 | println(none == none)
+   10 | println(none != none)
+vlib/v/checker/tests/invalid_none_operations_err.vv:9:9: error: invalid operator `==` to `none` and `none`
+    7 | println(none << none)
+    8 | println(none >> none)
+    9 | println(none == none)
+      |         ~~~~~~~~~~~~
+   10 | println(none != none)
+   11 | println(none > none)
+vlib/v/checker/tests/invalid_none_operations_err.vv:10:9: error: invalid operator `!=` to `none` and `none`
+    8 | println(none >> none)
+    9 | println(none == none)
+   10 | println(none != none)
+      |         ~~~~~~~~~~~~
+   11 | println(none > none)
+   12 | println(none < none)
+vlib/v/checker/tests/invalid_none_operations_err.vv:11:9: error: invalid operator `>` to `none` and `none`
+    9 | println(none == none)
+   10 | println(none != none)
+   11 | println(none > none)
+      |         ~~~~~~~~~~~
+   12 | println(none < none)
+   13 | println(none >= none)
+vlib/v/checker/tests/invalid_none_operations_err.vv:12:9: error: invalid operator `<` to `none` and `none`
+   10 | println(none != none)
+   11 | println(none > none)
+   12 | println(none < none)
+      |         ~~~~~~~~~~~
+   13 | println(none >= none)
+   14 | println(none <= none)
+vlib/v/checker/tests/invalid_none_operations_err.vv:13:9: error: invalid operator `>=` to `none` and `none`
+   11 | println(none > none)
+   12 | println(none < none)
+   13 | println(none >= none)
+      |         ~~~~~~~~~~~~
+   14 | println(none <= none)
+   15 | println(none && none)
+vlib/v/checker/tests/invalid_none_operations_err.vv:14:9: error: invalid operator `<=` to `none` and `none`
+   12 | println(none < none)
+   13 | println(none >= none)
+   14 | println(none <= none)
+      |         ~~~~~~~~~~~~
+   15 | println(none && none)
+   16 | println(none || none)
+vlib/v/checker/tests/invalid_none_operations_err.vv:15:9: error: invalid operator `&&` to `none` and `none`
+   13 | println(none >= none)
+   14 | println(none <= none)
+   15 | println(none && none)
+      |         ~~~~~~~~~~~~
+   16 | println(none || none)
+   17 | println(none is none)
+vlib/v/checker/tests/invalid_none_operations_err.vv:15:9: error: left operand for `&&` is not a boolean
+   13 | println(none >= none)
+   14 | println(none <= none)
+   15 | println(none && none)
+      |         ~~~~
+   16 | println(none || none)
+   17 | println(none is none)
+vlib/v/checker/tests/invalid_none_operations_err.vv:15:17: error: right operand for `&&` is not a boolean
+   13 | println(none >= none)
+   14 | println(none <= none)
+   15 | println(none && none)
+      |                 ~~~~
+   16 | println(none || none)
+   17 | println(none is none)
+vlib/v/checker/tests/invalid_none_operations_err.vv:16:9: error: invalid operator `||` to `none` and `none`
+   14 | println(none <= none)
+   15 | println(none && none)
+   16 | println(none || none)
+      |         ~~~~~~~~~~~~
+   17 | println(none is none)
+   18 | println(none !is none)
+vlib/v/checker/tests/invalid_none_operations_err.vv:16:9: error: left operand for `||` is not a boolean
+   14 | println(none <= none)
+   15 | println(none && none)
+   16 | println(none || none)
+      |         ~~~~
+   17 | println(none is none)
+   18 | println(none !is none)
+vlib/v/checker/tests/invalid_none_operations_err.vv:16:17: error: right operand for `||` is not a boolean
+   14 | println(none <= none)
+   15 | println(none && none)
+   16 | println(none || none)
+      |                 ~~~~
+   17 | println(none is none)
+   18 | println(none !is none)
+vlib/v/checker/tests/invalid_none_operations_err.vv:17:9: error: invalid operator `is` to `none` and `none`
+   15 | println(none && none)
+   16 | println(none || none)
+   17 | println(none is none)
+      |         ~~~~~~~~~~~~
+   18 | println(none !is none)
+   19 | println(none in none)
+vlib/v/checker/tests/invalid_none_operations_err.vv:17:14: error: `is` can only be used with interfaces and sum types
+   15 | println(none && none)
+   16 | println(none || none)
+   17 | println(none is none)
+      |              ~~
+   18 | println(none !is none)
+   19 | println(none in none)
+vlib/v/checker/tests/invalid_none_operations_err.vv:18:9: error: invalid operator `!is` to `none` and `none`
+   16 | println(none || none)
+   17 | println(none is none)
+   18 | println(none !is none)
+      |         ~~~~~~~~~~~~~
+   19 | println(none in none)
+   20 | println(none !in none)
+vlib/v/checker/tests/invalid_none_operations_err.vv:18:14: error: `!is` can only be used with interfaces and sum types
+   16 | println(none || none)
+   17 | println(none is none)
+   18 | println(none !is none)
+      |              ~~~
+   19 | println(none in none)
+   20 | println(none !in none)
+vlib/v/checker/tests/invalid_none_operations_err.vv:19:9: error: invalid operator `in` to `none` and `none`
+   17 | println(none is none)
+   18 | println(none !is none)
+   19 | println(none in none)
+      |         ~~~~~~~~~~~~
+   20 | println(none !in none)
+   21 | println(none <- none)
+vlib/v/checker/tests/invalid_none_operations_err.vv:19:14: error: `in` can only be used with arrays and maps
+   17 | println(none is none)
+   18 | println(none !is none)
+   19 | println(none in none)
+      |              ~~
+   20 | println(none !in none)
+   21 | println(none <- none)
+vlib/v/checker/tests/invalid_none_operations_err.vv:20:9: error: invalid operator `!in` to `none` and `none`
+   18 | println(none !is none)
+   19 | println(none in none)
+   20 | println(none !in none)
+      |         ~~~~~~~~~~~~~
+   21 | println(none <- none)
+   22 |
+vlib/v/checker/tests/invalid_none_operations_err.vv:20:14: error: `!in` can only be used with arrays and maps
+   18 | println(none !is none)
+   19 | println(none in none)
+   20 | println(none !in none)
+      |              ~~~
+   21 | println(none <- none)
+   22 |
+vlib/v/checker/tests/invalid_none_operations_err.vv:21:9: error: invalid operator `<-` to `none` and `none`
+   19 | println(none in none)
+   20 | println(none !in none)
+   21 | println(none <- none)
+      |         ~~~~~~~~~~~~
+   22 | 
+   23 | for _ in none .. none {
+vlib/v/checker/tests/invalid_none_operations_err.vv:21:9: error: cannot push on non-channel `none`
+   19 | println(none in none)
+   20 | println(none !in none)
+   21 | println(none <- none)
+      |         ~~~~
+   22 | 
+   23 | for _ in none .. none {
+vlib/v/checker/tests/invalid_none_operations_err.vv:21:1: error: `println` can not print void expressions
+   19 | println(none in none)
+   20 | println(none !in none)
+   21 | println(none <- none)
+      | ~~~~~~~~~~~~~~~~~~~~~
+   22 | 
+   23 | for _ in none .. none {
+vlib/v/checker/tests/invalid_none_operations_err.vv:23:10: error: range type can only be an integer type
+   21 | println(none <- none)
+   22 | 
+   23 | for _ in none .. none {
+      |          ~~~~~~~~~~~~
+   24 | }

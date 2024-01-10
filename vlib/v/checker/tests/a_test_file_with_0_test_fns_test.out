@@ -1,0 +1,6 @@
+vlib/v/checker/tests/a_test_file_with_0_test_fns_test.vv:1:1: error: a _test.v file should have *at least* one `test_` function
+    1 | fn abc() {}
+      | ^
+Details: The name of a test function in V, should start with `test_`.
+The test function should take 0 parameters, and no return type. Example:
+fn test_xyz(){ assert 2 + 2 == 4 }

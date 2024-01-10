@@ -1,0 +1,5 @@
+fn add(a voidptr, b voidptr) int {
+	return int(a) + int(b)
+}
+
+println(add(5, 10))

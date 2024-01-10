@@ -1,0 +1,7 @@
+vlib/v/parser/tests/expr_evaluated_but_not_used_if.vv:3:5: error: expression evaluated but not used
+    1 | fn main() {
+    2 |   if true {
+    3 |     1 + 1
+      |     ~~~~~
+    4 |     1 + 1
+    5 |   } else {

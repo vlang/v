@@ -1,0 +1,201 @@
+struct AA {
+	a int = 22
+	b i64
+}
+
+pub fn zeroed() {
+	_ := AA{}
+}
+
+pub fn field() {
+	_ := AA{
+		a: 23
+	}
+}
+
+pub fn selector(input int) int {
+	mut a := AA{}
+
+	c := 10 + a.a
+
+	return c
+}
+
+pub fn reassign(input int) int {
+	mut a := AA{}
+
+	a = AA{
+		b: input
+	}
+
+	return int(a.b + input)
+}
+
+struct BB {
+mut:
+	a i64 = 22
+	b i64
+	c i64
+}
+
+pub fn give(val int) int {
+	mut a := BB{}
+
+	a.b = val
+
+	return take(a)
+}
+
+pub fn take(input BB) int {
+	return int(input.b)
+}
+
+struct BB_ {
+mut:
+	a i64 = 22
+	b AA_
+}
+
+struct AA_ {
+mut:
+	a i64 = 91
+	b i64 = 92
+	c i64 = 93
+}
+
+fn e() BB_ {
+	return BB_{
+		a: 2
+	}
+}
+
+pub fn make(nval AA_) i64 {
+	val := BB_{
+		b: nval
+	}
+
+	return val.b.b
+}
+
+pub fn return_make(nval int) int {
+	val := make(AA_{ b: nval })
+	return int(val)
+}
+
+fn my_func(val int) AA_ {
+	return AA_{
+		b: val
+	}
+}
+
+fn accept() {
+	my_func(20)
+}
+
+struct CC {
+mut:
+	a i64 = 91
+	b i64 = 92
+	c i64 = 93
+}
+
+fn my_func_multi(val int) (CC, CC) {
+	return CC{
+		b: val
+	}, CC{
+		a: val
+	}
+}
+
+pub fn accept_multi(val int) int {
+	a, b := my_func_multi(val)
+	return int(a.b + b.a)
+}
+
+struct Vector {
+	x int
+	y int
+}
+
+fn add(a Vector, b Vector) Vector {
+	return Vector{a.x + b.x, a.y + b.y}
+}
+
+pub fn test(a int, b int) (int, int) {
+	vec := Vector{a, b}
+
+	ret := add(vec, Vector{10, 5})
+
+	return ret.x, ret.y
+}
+
+struct Aello {
+	a int
+	b i64
+	c int
+}
+
+struct Hello {
+	a int = 20
+	b Aello
+	c int = 222
+}
+
+pub fn recurse() {
+	_ := Hello{}
+}
+
+struct DD {
+	x int
+	y int
+}
+
+fn (a DD) + (b DD) DD {
+	return DD{a.x + b.x, a.y + b.y}
+}
+
+pub fn valer() (int, int) {
+	mut a := DD{10, 15}
+
+	a += DD{10, 15}
+
+	return a.x, a.y
+}
+
+struct TEST {
+mut:
+	a int
+	b int
+}
+
+fn postfix_test() {
+	mut a := TEST{}
+	a.b++
+	a.a++
+}
+
+fn postfix_test_mut(mut a TEST) {
+	a.b++
+}
+
+fn main() {
+	zeroed()
+	field()
+	println(selector(0))
+	println(reassign(10))
+	println(give(42))
+	println(return_make(123))
+	accept()
+	println(accept_multi(5))
+	x, y := test(2, 3)
+	println(x)
+	println(y)
+	recurse()
+	z, w := valer()
+	println(z)
+	println(w)
+	postfix_test()
+	mut a := TEST{}
+	postfix_test_mut(mut a)
+	println(a.b)
+}

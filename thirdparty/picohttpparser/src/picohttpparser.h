@@ -39,12 +39,12 @@ extern "C" {
 
 /* contains name and value of a header (name == NULL if is a continuing line
  * of a multiline header */
-struct phr_header {
+typedef struct phr_header {
     const char *name;
     size_t name_len;
     const char *value;
     size_t value_len;
-};
+}phr_header;
 
 /* returns number of bytes consumed if successful, -2 if request is partial,
  * -1 if failed */

@@ -3,5 +3,5 @@ fn ret_zero() int {
 }
 
 fn main() {
-	_ := ret_zero() or { 1 }
+	_ = ret_zero() or { 1 }
 }

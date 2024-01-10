@@ -1,0 +1,6 @@
+vlib/v/checker/tests/method_call_arg_mismatch.vv:9:10: error: `baz()` (no value) used as value in argument 1 to `Foo.bar`
+    7 | fn main() {
+    8 |     foo := Foo{}
+    9 |     foo.bar(baz())
+      |             ~~~~~
+   10 | }

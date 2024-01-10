@@ -1,0 +1,12 @@
+fn foo() (int, int, int) {
+	return 1, 2, 3
+}
+
+const (
+	a, b, c = foo()
+)
+
+
+fn main() {
+	println("$a $b $c")
+}

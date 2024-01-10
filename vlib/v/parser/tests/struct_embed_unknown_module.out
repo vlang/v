@@ -1,0 +1,5 @@
+vlib/v/parser/tests/struct_embed_unknown_module.vv:2:2: error: unknown module `custom`
+    1 | struct WithEmbed {
+    2 |     custom.Foo
+      |     ~~~~~~
+    3 | }

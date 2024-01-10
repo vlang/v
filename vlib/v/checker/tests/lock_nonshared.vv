@@ -1,0 +1,14 @@
+struct St {
+mut:
+	x int
+}
+
+fn main() {
+	mut a := &St{
+		x: 5
+	}
+	lock a {
+		a.x++
+	}
+	println(a)
+}

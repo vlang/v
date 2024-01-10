@@ -1,0 +1,7 @@
+struct Foo{}
+
+type Foo = Foo
+
+fn main() {
+    
+}

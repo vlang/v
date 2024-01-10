@@ -1,0 +1,14 @@
+vlib/v/checker/tests/match_expr_and_expected_type_error.vv:3:3: error: cannot match `rune` with `string`
+    1 | ch := `a`
+    2 | match ch {
+    3 |   'a' {}
+      |   ~~~
+    4 |   else {}
+    5 | }
+vlib/v/checker/tests/match_expr_and_expected_type_error.vv:9:3: error: cannot match `int` with `string`
+    7 | i := 123
+    8 | match i {
+    9 |   'a' {}
+      |   ~~~
+   10 |   else {}
+   11 | }

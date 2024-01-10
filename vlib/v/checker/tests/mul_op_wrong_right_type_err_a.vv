@@ -1,4 +1,0 @@
-struct Aaa{}
-fn main() {
-    10 * Aaa{}
-}

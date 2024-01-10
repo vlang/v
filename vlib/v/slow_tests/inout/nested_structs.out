@@ -1,0 +1,11 @@
+Aaa{
+    test: false
+    b: Bbb{
+        pass: false
+        name: ''
+    }
+}
+&Bbb{
+    pass: false
+    name: ''
+}

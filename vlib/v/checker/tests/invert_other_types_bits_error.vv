@@ -1,0 +1,6 @@
+fn main() {
+    println(~3.0)
+    println(~10.5)
+    println(~'2')
+    println(~[2, 4, 6])
+}

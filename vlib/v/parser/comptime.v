@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -6,256 +6,462 @@ module parser
 import os
 import v.ast
 import v.pref
-import v.vmod
-import v.table
+import v.token
 
-const (
-	supported_platforms = ['windows', 'mac', 'macos', 'darwin', 'linux', 'freebsd', 'openbsd',
-		'netbsd', 'dragonfly', 'android', 'js', 'solaris', 'haiku', 'linux_or_macos']
-)
+const supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig', 'compile_error',
+	'compile_warn', 'res']
+const comptime_types = ['map', 'array', 'array_dynamic', 'array_fixed', 'int', 'float', 'struct',
+	'interface', 'enum', 'sumtype', 'alias', 'function', 'option', 'string']
 
-fn (mut p Parser)resolve_vroot(flag string) string {
-	mcache := vmod.get_cache()
-	vmod_file_location := mcache.get_by_folder(p.file_name_dir)
-	if vmod_file_location.vmod_file.len == 0 {
-		// There was no actual v.mod file found.
-		p.error('To use @VROOT, you need' + ' to have a "v.mod" file in ${p.file_name_dir},' +
-		' or in one of its parent folders.')
+fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
+	pos := p.tok.pos()
+	p.check(.dollar)
+	name := p.check_name()
+	if name !in parser.comptime_types {
+		p.error('unsupported compile-time type `${name}`: only ${parser.comptime_types} are supported')
 	}
-	vmod_path := vmod_file_location.vmod_folder
-	return flag.replace('@VROOT', os.real_path(vmod_path))
+	mut kind := ast.ComptimeTypeKind.unknown
+	kind = match name {
+		'map' {
+			.map_
+		}
+		'struct' {
+			.struct_
+		}
+		'interface' {
+			.iface
+		}
+		'int' {
+			.int
+		}
+		'float' {
+			.float
+		}
+		'alias' {
+			.alias
+		}
+		'function' {
+			.function
+		}
+		'array' {
+			.array
+		}
+		'array_fixed' {
+			.array_fixed
+		}
+		'array_dynamic' {
+			.array_dynamic
+		}
+		'enum' {
+			.enum_
+		}
+		'sumtype' {
+			.sum_type
+		}
+		'option' {
+			.option
+		}
+		'string' {
+			.string
+		}
+		else {
+			.unknown
+		}
+	}
+	return ast.ComptimeType{
+		kind: kind
+		pos: pos
+	}
 }
 
 // // #include, #flag, #v
 fn (mut p Parser) hash() ast.HashStmt {
-	mut val := p.tok.lit
+	pos := p.tok.pos()
+	val := p.tok.lit
+	kind := val.all_before(' ')
 	p.next()
-	if p.pref.backend == .js {
-		if !p.file_name.ends_with('.js.v') {
-			p.error('Hash statements are only allowed in backend specific files such "x.js.v"')
-		}
-		if p.mod == 'main' {
-			p.error('Hash statements are not allowed in the main module. Please place them in a separate module.')
-		}
-	}
-	if val.starts_with('include') {
-		mut flag := val[8..]
-		if flag.contains('@VROOT') {
-			vroot := p.resolve_vroot(flag)
-			val = 'include $vroot'
-		}
-	}
-	if val.starts_with('flag') {
-		// #flag linux -lm
-		mut flag := val[5..]
-		// expand `@VROOT` to its absolute path
-		if flag.contains('@VROOT') {
-			flag = p.resolve_vroot(flag)
-		}
-		for deprecated in ['@VMOD', '@VMODULE', '@VPATH', '@VLIB_PATH'] {
-			if flag.contains(deprecated) {
-				p.error('${deprecated} had been deprecated, use @VROOT instead.')
-			}
-		}
-		// println('adding flag "$flag"')
-		p.table.parse_cflag(flag, p.mod, p.pref.compile_defines_all) or {
-			p.error(err)
-		}
-		/*
-		words := val.split(' ')
-		if words.len > 1 && words[1] in supported_platforms {
-			if p.pref.os == .mac && words[1] == 'darwin' {
-				p.pref.cflags += val.after('darwin')
-			}
-		}
-		*/
+	mut main_str := ''
+	mut msg := ''
+	content := val.all_after('${kind} ').all_before('//')
+	if content.contains(' #') {
+		main_str = content.all_before(' #').trim_space()
+		msg = content.all_after(' #').trim_space()
+	} else {
+		main_str = content.trim_space()
+		msg = ''
 	}
 	return ast.HashStmt{
-		val: val
 		mod: p.mod
+		source_file: p.file_name
+		val: val
+		kind: kind
+		main: main_str
+		msg: msg
+		pos: pos
 	}
 }
 
-fn (mut p Parser) vweb() ast.ComptimeCall {
+fn (mut p Parser) comptime_call() ast.ComptimeCall {
+	err_node := ast.ComptimeCall{
+		scope: unsafe { nil }
+	}
+	start_pos := p.tok.pos()
 	p.check(.dollar)
-	p.check(.name) // skip `vweb.html()` TODO
-	p.check(.dot)
-	p.check(.name)
-	p.check(.lpar)
-	p.check(.rpar)
-	return ast.ComptimeCall{}
-}
-
-fn (mut p Parser) comp_if() ast.Stmt {
-	pos := p.tok.position()
-	p.next()
-	// if p.tok.kind == .name && p.tok.lit == 'vweb' {
-	// return p.vweb()
-	// }
-	p.check(.key_if)
-	is_not := p.tok.kind == .not
-	if is_not {
-		p.next()
+	error_msg := 'only `\$tmpl()`, `\$env()`, `\$embed_file()`, `\$pkgconfig()`, `\$vweb.html()`, `\$compile_error()`, `\$compile_warn()` and `\$res()` comptime functions are supported right now'
+	if p.peek_tok.kind == .dot {
+		name := p.check_name() // skip `vweb.html()` TODO
+		if name != 'vweb' {
+			p.error(error_msg)
+			return err_node
+		}
+		p.check(.dot)
 	}
-	val := p.check_name()
-	mut stmts := []ast.Stmt{}
-	mut skip_os := false
-	if val in supported_platforms {
-		os := os_from_string(val)
-		// `$if os {` for a different target, skip everything inside
-		// to avoid compilation errors (like including <windows.h> or calling WinAPI fns
-		// on non-Windows systems)
-		if !p.pref.is_fmt && ((!is_not && os != p.pref.os) || (is_not && os == p.pref.os)) &&
-			!p.pref.output_cross_c {
-			skip_os = true
-			p.check(.lcbr)
-			// p.warn('skipping $if $val os=$os p.pref.os=$p.pref.os')
-			mut stack := 1
-			for {
-				if p.tok.kind == .key_return {
-					p.returns = true
-				}
-				if p.tok.kind == .lcbr {
-					stack++
-				} else if p.tok.kind == .rcbr {
-					stack--
-				}
-				if p.tok.kind == .eof {
-					break
-				}
-				if stack <= 0 && p.tok.kind == .rcbr {
-					// p.warn('exiting $stack')
-					p.next()
-					break
-				}
-				p.next()
+	method_name := p.check_name()
+	if method_name !in parser.supported_comptime_calls {
+		p.error(error_msg)
+		return err_node
+	}
+	is_embed_file := method_name == 'embed_file'
+	is_html := method_name == 'html'
+	// $env('ENV_VAR_NAME')
+	p.check(.lpar)
+	arg_pos := p.tok.pos()
+	if method_name in ['env', 'pkgconfig', 'compile_error', 'compile_warn'] {
+		s := p.tok.lit
+		p.check(.string)
+		p.check(.rpar)
+		return ast.ComptimeCall{
+			scope: unsafe { nil }
+			method_name: method_name
+			args_var: s
+			is_env: method_name == 'env'
+			is_pkgconfig: method_name == 'pkgconfig'
+			env_pos: start_pos
+			pos: start_pos.extend(p.prev_tok.pos())
+		}
+	} else if method_name == 'res' {
+		mut has_args := false
+		mut type_index := ''
+		if p.tok.kind == .number {
+			has_args = true
+			type_index = p.tok.lit
+			p.check(.number)
+		}
+		p.check(.rpar)
+		if has_args {
+			return ast.ComptimeCall{
+				scope: unsafe { nil }
+				method_name: method_name
+				args_var: type_index
+				pos: start_pos.extend(p.prev_tok.pos())
+			}
+		}
+		return ast.ComptimeCall{
+			scope: unsafe { nil }
+			method_name: method_name
+			pos: start_pos.extend(p.prev_tok.pos())
+		}
+	}
+	has_string_arg := p.tok.kind == .string
+	mut literal_string_param := if is_html && !has_string_arg { '' } else { p.tok.lit }
+	if p.tok.kind == .name {
+		if var := p.scope.find_var(p.tok.lit) {
+			if var.expr is ast.StringLiteral {
+				literal_string_param = var.expr.val
+			}
+		} else if var := p.table.global_scope.find_const(p.mod + '.' + p.tok.lit) {
+			if var.expr is ast.StringLiteral {
+				literal_string_param = var.expr.val
 			}
 		}
 	}
-	mut is_opt := false
-	if p.tok.kind == .question {
-		p.next()
-		is_opt = true
+	path_of_literal_string_param := literal_string_param.replace('/', os.path_separator)
+	mut arg := ast.CallArg{}
+	if is_html && !(has_string_arg || p.tok.kind == .rpar) {
+		p.error('expecting `\$vweb.html()` for a default template path or `\$vweb.html("/path/to/template.html")`')
 	}
-	if !skip_os {
-		stmts = p.parse_block()
+	if is_html && p.tok.kind != .string {
+		// $vweb.html() can have no arguments
+	} else {
+		arg_expr := p.expr(0)
+		arg = ast.CallArg{
+			expr: arg_expr
+		}
 	}
-	mut node := ast.CompIf{
-		is_not: is_not
-		is_opt: is_opt
-		pos: pos
-		val: val
-		stmts: stmts
+	mut embed_compression_type := 'none'
+	if is_embed_file {
+		if p.tok.kind == .comma {
+			p.next()
+			p.check(.dot)
+			embed_compression_type = p.check_name()
+		}
 	}
-	if p.tok.kind == .dollar && p.peek_tok.kind == .key_else {
-		p.next()
-		p.next()
-		node.has_else = true
-		node.else_stmts = p.parse_block()
+	p.check(.rpar)
+	// $embed_file('/path/to/file')
+	if is_embed_file {
+		p.register_auto_import('v.preludes.embed_file')
+		if embed_compression_type == 'zlib' {
+			p.register_auto_import('v.preludes.embed_file.zlib')
+		}
+		return ast.ComptimeCall{
+			scope: unsafe { nil }
+			is_embed: true
+			embed_file: ast.EmbeddedFile{
+				compression_type: embed_compression_type
+			}
+			args: [arg]
+			pos: start_pos.extend(p.prev_tok.pos())
+		}
 	}
-	return node
+	// Compile vweb html template to V code, parse that V code and embed the resulting V function
+	// that returns an html string.
+	fn_path := p.cur_fn_name.split('_')
+	fn_path_joined := fn_path.join(os.path_separator)
+	compiled_vfile_path := os.real_path(p.scanner.file_path.replace('/', os.path_separator))
+	tmpl_path := if is_html && !has_string_arg {
+		'${fn_path.last()}.html'
+	} else {
+		path_of_literal_string_param
+	}
+	// Looking next to the vweb program
+	dir := os.dir(compiled_vfile_path)
+	mut path := os.join_path_single(dir, fn_path_joined)
+	path += '.html'
+	path = os.real_path(path)
+	if !is_html || has_string_arg {
+		if os.is_abs_path(tmpl_path) {
+			path = tmpl_path
+		} else {
+			path = os.join_path_single(dir, tmpl_path)
+		}
+	}
+	if !os.exists(path) {
+		if is_html {
+			// can be in `templates/`
+			path = os.join_path(dir, 'templates', fn_path_joined)
+			path += '.html'
+		}
+		if !os.exists(path) {
+			if p.pref.is_fmt {
+				return ast.ComptimeCall{
+					scope: unsafe { nil }
+					is_vweb: true
+					method_name: method_name
+					args_var: literal_string_param
+					args: [arg]
+					pos: start_pos.extend(p.prev_tok.pos())
+				}
+			}
+			if is_html {
+				p.error_with_pos('vweb HTML template "${tmpl_path}" not found', arg_pos)
+			} else {
+				p.error_with_pos('template file "${tmpl_path}" not found', arg_pos)
+			}
+			return err_node
+		}
+		// println('path is now "$path"')
+	}
+	tmp_fn_name := p.cur_fn_name.replace('.', '__') + start_pos.pos.str()
+	$if trace_comptime ? {
+		println('>>> compiling comptime template file "${path}" for ${tmp_fn_name}')
+	}
+	v_code := p.compile_template_file(path, tmp_fn_name)
+	$if print_vweb_template_expansions ? {
+		lines := v_code.split('\n')
+		for i, line in lines {
+			println('${path}:${i + 1}: ${line}')
+		}
+	}
+	$if trace_comptime ? {
+		println('')
+		println('>>> template for ${path}:')
+		println(v_code)
+		println('>>> end of template END')
+		println('')
+	}
+	// the tmpl inherits all parent scopes. previous functionality was just to
+	// inherit the scope from which the comptime call was made and no parents.
+	// this is much simpler and allows access to globals. can be changed if needed.
+	mut file := parse_comptime(tmpl_path, v_code, p.table, p.pref, p.scope)
+	file.path = tmpl_path
+	return ast.ComptimeCall{
+		scope: unsafe { nil }
+		is_vweb: true
+		vweb_tmpl: file
+		method_name: method_name
+		args_var: literal_string_param
+		args: [arg]
+		pos: start_pos.extend(p.prev_tok.pos())
+	}
 }
 
-// TODO import warning bug
-const (
-	todo_delete_me = pref.OS.linux
-)
-
-fn os_from_string(os string) pref.OS {
-	match os {
-		'linux' {
-			return .linux
+fn (mut p Parser) comptime_for() ast.ComptimeFor {
+	// p.comptime_for() handles these special forms:
+	// `$for method in App.methods {`
+	// `$for val in App.values {`
+	// `$for field in App.fields {`
+	// `$for attr in App.attributes {`
+	// `$for variant in App.variants {`
+	p.next()
+	p.check(.key_for)
+	var_pos := p.tok.pos()
+	val_var := p.check_name()
+	p.check(.key_in)
+	mut expr := ast.empty_expr
+	mut typ_pos := p.tok.pos()
+	lang := p.parse_language()
+	mut typ := ast.void_type
+	if p.tok.lit[0].is_capital() {
+		typ = p.parse_any_type(lang, false, false, false)
+	} else {
+		expr = p.ident(lang)
+		p.mark_var_as_used((expr as ast.Ident).name)
+	}
+	typ_pos = typ_pos.extend(p.prev_tok.pos())
+	p.check(.dot)
+	for_val := p.check_name()
+	mut kind := ast.ComptimeForKind.methods
+	p.open_scope()
+	match for_val {
+		'methods' {
+			p.scope.register(ast.Var{
+				name: val_var
+				typ: p.table.find_type_idx('FunctionData')
+				pos: var_pos
+			})
 		}
-		'windows' {
-			return .windows
+		'values' {
+			p.scope.register(ast.Var{
+				name: val_var
+				typ: p.table.find_type_idx('EnumData')
+				pos: var_pos
+			})
+			kind = .values
 		}
-		'mac' {
-			return .mac
+		'fields' {
+			p.scope.register(ast.Var{
+				name: val_var
+				typ: p.table.find_type_idx('FieldData')
+				pos: var_pos
+			})
+			kind = .fields
 		}
-		'macos' {
-			return .mac
+		'variants' {
+			p.scope.register(ast.Var{
+				name: val_var
+				typ: p.table.find_type_idx('VariantData')
+				pos: var_pos
+			})
+			kind = .variants
 		}
-		'freebsd' {
-			return .freebsd
-		}
-		'openbsd' {
-			return .openbsd
-		}
-		'netbsd' {
-			return .netbsd
-		}
-		'dragonfly' {
-			return .dragonfly
-		}
-		'js' {
-			return .js
-		}
-		'solaris' {
-			return .solaris
-		}
-		'android' {
-			return .android
-		}
-		'msvc' {
-			// notice that `-os msvc` became `-cc msvc`
-			verror('use the flag `-cc msvc` to build using msvc')
-		}
-		'haiku' {
-			return .haiku
-		}
-		'linux_or_macos' {
-			return .linux
+		'attributes' {
+			p.scope.register(ast.Var{
+				name: val_var
+				typ: p.table.find_type_idx('StructAttribute')
+				pos: var_pos
+			})
+			kind = .attributes
 		}
 		else {
-			panic('bad os $os')
+			p.error_with_pos('unknown kind `${for_val}`, available are: `methods`, `fields`, `values`, `variants` or `attributes`',
+				p.prev_tok.pos())
+			return ast.ComptimeFor{}
 		}
 	}
-	// println('bad os $os') // todo panic?
-	return .linux
+	spos := p.tok.pos()
+	stmts := p.parse_block()
+	p.close_scope()
+	return ast.ComptimeFor{
+		val_var: val_var
+		stmts: stmts
+		kind: kind
+		typ: typ
+		expr: expr
+		typ_pos: typ_pos
+		pos: spos.extend(p.tok.pos())
+	}
 }
 
-// `app.$action()` (`action` is a string)
-// `typ` is `App` in this example
-// fn (mut p Parser) comptime_method_call(typ table.Type) ast.ComptimeCall {
-fn (mut p Parser) comptime_method_call(left ast.Expr) ast.ComptimeCall {
+// @FN, @STRUCT, @MOD etc. See full list in token.valid_at_tokens
+fn (mut p Parser) at() ast.AtExpr {
+	name := p.tok.lit
+	kind := match name {
+		'@FN' { token.AtKind.fn_name }
+		'@METHOD' { token.AtKind.method_name }
+		'@MOD' { token.AtKind.mod_name }
+		'@STRUCT' { token.AtKind.struct_name }
+		'@FILE' { token.AtKind.file_path }
+		'@LINE' { token.AtKind.line_nr }
+		'@FILE_LINE' { token.AtKind.file_path_line_nr }
+		'@LOCATION' { token.AtKind.location }
+		'@COLUMN' { token.AtKind.column_nr }
+		'@VCURRENTHASH' { token.AtKind.v_current_hash }
+		'@VHASH' { token.AtKind.vhash }
+		'@VMOD_FILE' { token.AtKind.vmod_file }
+		'@VEXE' { token.AtKind.vexe_path }
+		'@VEXEROOT' { token.AtKind.vexeroot_path }
+		'@VMODROOT' { token.AtKind.vmodroot_path }
+		'@VROOT' { token.AtKind.vroot_path } // deprecated, use @VEXEROOT or @VMODROOT
+		else { token.AtKind.unknown }
+	}
+	expr := ast.AtExpr{
+		name: name
+		pos: p.tok.pos()
+		kind: kind
+	}
+	p.next()
+	return expr
+}
+
+fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 	p.check(.dollar)
-	method_name := p.check_name()
-	_ = method_name
-	/*
-	mut j := 0
-	sym := p.table.get_type_symbol(typ)
-	if sym.kind != .struct_ {
-		p.error('not a struct')
-	}
-	// info := sym.info as table.Struct
-	for method in sym.methods {
-		if method.return_type != table.void_type {
-			continue
+	start_pos := p.prev_tok.pos()
+	if p.peek_tok.kind == .lpar {
+		method_pos := p.tok.pos()
+		method_name := p.check_name()
+		p.mark_var_as_used(method_name)
+		// `app.$action()` (`action` is a string)
+		p.check(.lpar)
+		args := p.call_args()
+		p.check(.rpar)
+		mut or_kind := ast.OrKind.absent
+		mut or_pos := p.tok.pos()
+		mut or_stmts := []ast.Stmt{}
+		if p.tok.kind == .key_orelse {
+			// `$method() or {}``
+			or_kind = .block
+			or_stmts, or_pos = p.or_block(.with_err_var)
 		}
-		/*
-		receiver := method.args[0]
-		if !p.expr_var.ptr {
-			p.error('`$p.expr_var.name` needs to be a reference')
+		return ast.ComptimeCall{
+			left: left
+			method_name: method_name
+			method_pos: method_pos
+			scope: p.scope
+			args_var: ''
+			args: args
+			pos: start_pos.extend(p.prev_tok.pos())
+			or_block: ast.OrExpr{
+				stmts: or_stmts
+				kind: or_kind
+				pos: or_pos
+			}
 		}
-		amp := if receiver.is_mut && !p.expr_var.ptr { '&' } else { '' }
-		if j > 0 {
-			p.gen(' else ')
-		}
-		p.genln('if (string_eq($method_name, _STR("$method.name")) ) ' + '${typ.name}_$method.name ($amp $p.expr_var.name);')
-		*/
-		j++
 	}
-	*/
-	p.check(.lpar)
-	p.check(.rpar)
-	if p.tok.kind == .key_orelse {
-		p.check(.key_orelse)
-		// p.genln('else {')
-		p.check(.lcbr)
-		// p.statements()
+	mut has_parens := false
+	if p.tok.kind == .lpar {
+		p.next()
+		has_parens = true
+	} else {
+		p.warn_with_pos('use brackets instead e.g. `s.$(field.name)` - run vfmt', p.tok.pos())
 	}
-	return ast.ComptimeCall{
+	expr := p.expr(0)
+	if has_parens {
+		p.check(.rpar)
+	}
+	return ast.ComptimeSelector{
+		has_parens: has_parens
 		left: left
-		name: method_name
+		field_expr: expr
+		pos: start_pos.extend(p.prev_tok.pos())
 	}
 }

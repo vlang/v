@@ -1,0 +1,7 @@
+vlib/v/checker/tests/if_diff_expected_type_err.vv:7:11: error: mismatched types `&[]rune` and `[]rune`
+    5 | 
+    6 | fn main() {
+    7 |     runes := if true { &some_runes } else { some_other_runes }
+      |              ~~
+    8 |     println(runes)
+    9 | }

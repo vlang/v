@@ -1,0 +1,36 @@
+type MyInt = int
+type EmptyLineAfterLastType = fn() int
+struct EmptyLineAfterStructs {}
+fn empty_line_after_functions() {}
+fn squash_multiple_empty_lines() {
+	println('a')
+
+
+	println('b')
+
+	dump('c')
+
+
+	c := 0
+
+
+	d := 0
+}
+
+fn remove_leading_and_trailing_empty_lines() {
+
+	println('a')
+
+	println('b')
+
+	if test {
+
+		c := 0
+
+	} else {
+
+		d := 0
+
+	}
+
+}

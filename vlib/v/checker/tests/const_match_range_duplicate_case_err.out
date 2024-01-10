@@ -1,0 +1,154 @@
+vlib/v/checker/tests/const_match_range_duplicate_case_err.vv:9:2: error: match case `2` is handled more than once
+    7 |         println(1)
+    8 |     }
+    9 |     start...end {
+      |     ~~~~~~~~~~~
+   10 |         println(3)
+   11 |     }
+vlib/v/checker/tests/const_match_range_duplicate_case_err.vv:9:2: error: match case `3` is handled more than once
+    7 |         println(1)
+    8 |     }
+    9 |     start...end {
+      |     ~~~~~~~~~~~
+   10 |         println(3)
+   11 |     }
+vlib/v/checker/tests/const_match_range_duplicate_case_err.vv:9:2: error: match case `4` is handled more than once
+    7 |         println(1)
+    8 |     }
+    9 |     start...end {
+      |     ~~~~~~~~~~~
+   10 |         println(3)
+   11 |     }
+vlib/v/checker/tests/const_match_range_duplicate_case_err.vv:9:2: error: match case `5` is handled more than once
+    7 |         println(1)
+    8 |     }
+    9 |     start...end {
+      |     ~~~~~~~~~~~
+   10 |         println(3)
+   11 |     }
+vlib/v/checker/tests/const_match_range_duplicate_case_err.vv:9:2: error: match case `6` is handled more than once
+    7 |         println(1)
+    8 |     }
+    9 |     start...end {
+      |     ~~~~~~~~~~~
+   10 |         println(3)
+   11 |     }
+vlib/v/checker/tests/const_match_range_duplicate_case_err.vv:9:2: error: match case `7` is handled more than once
+    7 |         println(1)
+    8 |     }
+    9 |     start...end {
+      |     ~~~~~~~~~~~
+   10 |         println(3)
+   11 |     }
+vlib/v/checker/tests/const_match_range_duplicate_case_err.vv:9:2: error: match case `8` is handled more than once
+    7 |         println(1)
+    8 |     }
+    9 |     start...end {
+      |     ~~~~~~~~~~~
+   10 |         println(3)
+   11 |     }
+vlib/v/checker/tests/const_match_range_duplicate_case_err.vv:9:2: error: match case `9` is handled more than once
+    7 |         println(1)
+    8 |     }
+    9 |     start...end {
+      |     ~~~~~~~~~~~
+   10 |         println(3)
+   11 |     }
+vlib/v/checker/tests/const_match_range_duplicate_case_err.vv:9:2: error: match case `10` is handled more than once
+    7 |         println(1)
+    8 |     }
+    9 |     start...end {
+      |     ~~~~~~~~~~~
+   10 |         println(3)
+   11 |     }
+vlib/v/checker/tests/const_match_range_duplicate_case_err.vv:9:2: error: match case `11` is handled more than once
+    7 |         println(1)
+    8 |     }
+    9 |     start...end {
+      |     ~~~~~~~~~~~
+   10 |         println(3)
+   11 |     }
+vlib/v/checker/tests/const_match_range_duplicate_case_err.vv:9:2: error: match case `12` is handled more than once
+    7 |         println(1)
+    8 |     }
+    9 |     start...end {
+      |     ~~~~~~~~~~~
+   10 |         println(3)
+   11 |     }
+vlib/v/checker/tests/const_match_range_duplicate_case_err.vv:21:2: error: match case `2` is handled more than once
+   19 |         1
+   20 |     }
+   21 |     start...end {
+      |     ~~~~~~~~~~~
+   22 |         3
+   23 |     }
+vlib/v/checker/tests/const_match_range_duplicate_case_err.vv:21:2: error: match case `3` is handled more than once
+   19 |         1
+   20 |     }
+   21 |     start...end {
+      |     ~~~~~~~~~~~
+   22 |         3
+   23 |     }
+vlib/v/checker/tests/const_match_range_duplicate_case_err.vv:21:2: error: match case `4` is handled more than once
+   19 |         1
+   20 |     }
+   21 |     start...end {
+      |     ~~~~~~~~~~~
+   22 |         3
+   23 |     }
+vlib/v/checker/tests/const_match_range_duplicate_case_err.vv:21:2: error: match case `5` is handled more than once
+   19 |         1
+   20 |     }
+   21 |     start...end {
+      |     ~~~~~~~~~~~
+   22 |         3
+   23 |     }
+vlib/v/checker/tests/const_match_range_duplicate_case_err.vv:21:2: error: match case `6` is handled more than once
+   19 |         1
+   20 |     }
+   21 |     start...end {
+      |     ~~~~~~~~~~~
+   22 |         3
+   23 |     }
+vlib/v/checker/tests/const_match_range_duplicate_case_err.vv:21:2: error: match case `7` is handled more than once
+   19 |         1
+   20 |     }
+   21 |     start...end {
+      |     ~~~~~~~~~~~
+   22 |         3
+   23 |     }
+vlib/v/checker/tests/const_match_range_duplicate_case_err.vv:21:2: error: match case `8` is handled more than once
+   19 |         1
+   20 |     }
+   21 |     start...end {
+      |     ~~~~~~~~~~~
+   22 |         3
+   23 |     }
+vlib/v/checker/tests/const_match_range_duplicate_case_err.vv:21:2: error: match case `9` is handled more than once
+   19 |         1
+   20 |     }
+   21 |     start...end {
+      |     ~~~~~~~~~~~
+   22 |         3
+   23 |     }
+vlib/v/checker/tests/const_match_range_duplicate_case_err.vv:21:2: error: match case `10` is handled more than once
+   19 |         1
+   20 |     }
+   21 |     start...end {
+      |     ~~~~~~~~~~~
+   22 |         3
+   23 |     }
+vlib/v/checker/tests/const_match_range_duplicate_case_err.vv:21:2: error: match case `11` is handled more than once
+   19 |         1
+   20 |     }
+   21 |     start...end {
+      |     ~~~~~~~~~~~
+   22 |         3
+   23 |     }
+vlib/v/checker/tests/const_match_range_duplicate_case_err.vv:21:2: error: match case `12` is handled more than once
+   19 |         1
+   20 |     }
+   21 |     start...end {
+      |     ~~~~~~~~~~~
+   22 |         3
+   23 |     }

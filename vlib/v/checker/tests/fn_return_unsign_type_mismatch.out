@@ -1,0 +1,7 @@
+vlib/v/checker/tests/fn_return_unsign_type_mismatch.vv:6:9: notice: cannot use a negative value as value of type `u64` in return argument
+    4 | 
+    5 | fn bar() u64 {
+    6 |     return -1
+      |            ~~
+    7 | }
+    8 |

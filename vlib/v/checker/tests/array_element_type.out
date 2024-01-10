@@ -1,0 +1,12 @@
+vlib/v/checker/tests/array_element_type.vv:2:8: error: unknown type `abc`
+    1 | fn main() {
+    2 |     _ = []abc{}
+      |           ~~~
+    3 |     _ = [2, '']
+    4 | }
+vlib/v/checker/tests/array_element_type.vv:3:10: error: invalid array element: expected `int`, not `string`
+    1 | fn main() {
+    2 |     _ = []abc{}
+    3 |     _ = [2, '']
+      |             ~~
+    4 | }

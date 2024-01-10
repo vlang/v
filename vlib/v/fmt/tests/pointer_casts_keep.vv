@@ -1,0 +1,50 @@
+struct Struct {
+	name string
+	x    int
+}
+
+fn main() {
+	unsafe {
+		pb := &byte(0)
+		ppb := &&byte(0)
+		pppb := &&&byte(0)
+		ppppb := &&&&byte(0)
+		dump(voidptr(pb))
+		dump(voidptr(ppb))
+		dump(voidptr(pppb))
+		dump(voidptr(ppppb))
+		pc := &char(0)
+		ppc := &&char(0)
+		pppc := &&&char(0)
+		ppppc := &&&&char(0)
+		dump(voidptr(pc))
+		dump(voidptr(ppc))
+		dump(voidptr(pppc))
+		dump(voidptr(ppppc))
+		ps := &Struct(0)
+		pps := &&Struct(0)
+		ppps := &&&Struct(0)
+		pppps := &&&&Struct(0)
+		dump(voidptr(ps))
+		dump(voidptr(pps))
+		dump(voidptr(ppps))
+		dump(voidptr(pppps))
+	}
+	ss := &Struct{
+		name: 'abc'
+		x: 123
+	}
+	dump(ss)
+	pss := voidptr(ss)
+	if &Struct(pss).name == 'abc' {
+		println('ok')
+	}
+	if &Struct(pss).x == 123 {
+		// &Struct cast and selecting .x
+		println('ok')
+	}
+	if &&Struct(pss) != 0 {
+		// &&Struct
+		println('ok')
+	}
+}

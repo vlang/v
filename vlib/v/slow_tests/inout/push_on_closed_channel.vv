@@ -1,0 +1,7 @@
+module main
+
+fn main() {
+	ch := chan int{cap: 100}
+	ch.close()
+	ch <- 1 or { println('Channel closed.') }
+}

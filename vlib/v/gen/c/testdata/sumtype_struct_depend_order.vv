@@ -1,0 +1,20 @@
+type OneOrTwo = One | Two
+
+struct One {
+	sig   u32
+	num   u32
+	items [16]Three
+}
+
+struct Two {
+	sig   u32
+	num   u64
+	items [16]Three
+}
+
+struct Three {
+}
+
+pub fn (obj OneOrTwo) get_sig() u32 {
+	return obj.sig
+}

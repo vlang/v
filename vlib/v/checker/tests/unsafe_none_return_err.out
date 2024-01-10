@@ -1,0 +1,5 @@
+vlib/v/checker/tests/unsafe_none_return_err.vv:2:18: error: cannot return `none` in unsafe block
+    1 | fn f() ?int {
+    2 |     return unsafe { none }
+      |                     ~~~~
+    3 | }

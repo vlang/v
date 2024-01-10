@@ -1,0 +1,18 @@
+name: Cancel previous workflows
+
+on:
+  workflow_run:
+    workflows: ["Code CI"]
+    types:
+      - requested
+
+jobs:
+  cancel-previous-workflows:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: spaceface777/cancel-workflow-action@0.9.1
+      # don't cancel CI for commits pushed to vlang/v#master (if ci is still too slow, this can be removed safely)
+      if: ${{ github.event.workflow_run.head_repository.full_name != 'vlang/v' || github.event.workflow_run.head_branch != 'master' }}
+      with:
+        # workflow ids for `Code CI` and `Sanitized CI` (from https://api.github.com/repos/vlang/v/actions/workflows):
+        workflow_id: 4577,7940868 # the other workflows finish quickly - no need to skip them

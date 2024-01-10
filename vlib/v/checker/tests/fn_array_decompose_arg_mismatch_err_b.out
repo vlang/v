@@ -1,0 +1,6 @@
+vlib/v/checker/tests/fn_array_decompose_arg_mismatch_err_b.vv:14:4: error: cannot use `...Foo1` as `...Foo` in argument 1 to `f`
+   12 |
+   13 | fn main() {
+   14 |     f(...[Foo1{}, Foo1{}])
+      |       ~~~~~~~~~~~~~~~~~~~
+   15 | }

@@ -1,0 +1,9 @@
+fn f() ?bool {
+	return none
+	return true
+}
+fn main() {
+	f() or {
+		println('fail')
+	}
+}

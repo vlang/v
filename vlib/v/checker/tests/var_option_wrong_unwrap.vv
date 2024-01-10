@@ -1,0 +1,3 @@
+var1 := ?int(none)
+var2 := var1 or { var1? }
+println(var2?)

@@ -1,0 +1,28 @@
+const start = 2
+
+const end = 12
+
+match 5 {
+	start...end {
+		println(1)
+	}
+	start...end {
+		println(3)
+	}
+	else {
+		println(2)
+	}
+}
+
+a := match 5 {
+	start...end {
+		1
+	}
+	start...end {
+		3
+	}
+	else {
+		2
+	}
+}
+println(a)

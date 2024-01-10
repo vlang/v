@@ -1,0 +1,27 @@
+vlib/v/checker/tests/option_wrapped_cmp_op_err.vv:3:10: error: unwrapped Option cannot be used in an infix expression
+    1 | fn main() {
+    2 |     a := ?string("hi")
+    3 |     println(a == 'hi')
+      |             ^
+    4 |     println('hi' == a)
+    5 |     println(a != 'hi')
+vlib/v/checker/tests/option_wrapped_cmp_op_err.vv:4:18: error: unwrapped Option cannot be used in an infix expression
+    2 |     a := ?string("hi")
+    3 |     println(a == 'hi')
+    4 |     println('hi' == a)
+      |                     ^
+    5 |     println(a != 'hi')
+    6 |     println('hi' != a)
+vlib/v/checker/tests/option_wrapped_cmp_op_err.vv:5:10: error: unwrapped Option cannot be used in an infix expression
+    3 |     println(a == 'hi')
+    4 |     println('hi' == a)
+    5 |     println(a != 'hi')
+      |             ^
+    6 |     println('hi' != a)
+    7 | }
+vlib/v/checker/tests/option_wrapped_cmp_op_err.vv:6:18: error: unwrapped Option cannot be used in an infix expression
+    4 |     println('hi' == a)
+    5 |     println(a != 'hi')
+    6 |     println('hi' != a)
+      |                     ^
+    7 | }

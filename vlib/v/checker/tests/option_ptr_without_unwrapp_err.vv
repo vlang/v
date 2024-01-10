@@ -1,0 +1,17 @@
+struct Node {
+	parent ?&Node
+}
+
+fn set_trace(n Node) {
+	if n.parent != none {
+		set_trace(n.parent)
+	}
+}
+
+fn main() {
+	mut initial_node := Node{
+		parent: none
+	}
+	set_trace(initial_node)
+	assert true
+}

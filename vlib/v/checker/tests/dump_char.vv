@@ -1,0 +1,3 @@
+c := char(67)
+dump(byte(c))
+dump(c)

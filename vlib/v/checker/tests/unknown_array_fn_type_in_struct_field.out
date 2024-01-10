@@ -1,0 +1,14 @@
+vlib/v/checker/tests/unknown_array_fn_type_in_struct_field.vv:2:22: error: unknown type `UnknownThing`.
+Did you mean `[2]fn (u32) UnknownThing`?
+    1 | struct Virt {
+    2 |     fns [2]fn (num u32) UnknownThing
+      |                         ~~~~~~~~~~~~
+    3 | }
+    4 |
+vlib/v/checker/tests/unknown_array_fn_type_in_struct_field.vv:6:18: error: unknown return type: cannot assign `virt.fns[0]` as a function variable
+    4 | 
+    5 | fn (virt Virt) caller() {
+    6 |     func := virt.fns[0]
+      |                     ~~~
+    7 |     func(5)
+    8 | }

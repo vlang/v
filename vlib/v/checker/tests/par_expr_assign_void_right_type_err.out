@@ -1,0 +1,6 @@
+vlib/v/checker/tests/par_expr_assign_void_right_type_err.vv:1:6: warning: redundant parentheses are used
+    1 | _ := ((((print(10)))))
+      |      ~~~~~~~~~~~~~~~~~
+vlib/v/checker/tests/par_expr_assign_void_right_type_err.vv:1:3: error: assignment mismatch: expected 1 value(s) but `print()` returns 0 value(s)
+    1 | _ := ((((print(10)))))
+      |   ~~

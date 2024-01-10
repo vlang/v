@@ -1,16 +1,16 @@
 import time
+import math
 
-const (
-	time_to_test = time.Time{
-		year: 1980
-		month: 7
-		day: 11
-		hour: 21
-		minute: 23
-		second: 42
-		unix: 332198622
-	}
-)
+const time_to_test = time.Time{
+	year: 1980
+	month: 7
+	day: 11
+	hour: 21
+	minute: 23
+	second: 42
+	nanosecond: 123456789
+	unix: 332198622
+}
 
 fn test_is_leap_year() {
 	// 1996 % 4 = 0 and 1996 % 100 > 0
@@ -23,10 +23,8 @@ fn test_is_leap_year() {
 	assert time.is_leap_year(2100) == false
 }
 
-fn check_days_in_month(month, year, expected int) bool {
-	res := time.days_in_month(month, year) or {
-		return false
-	}
+fn check_days_in_month(month int, year int, expected int) bool {
+	res := time.days_in_month(month, year) or { return false }
 	return res == expected
 }
 
@@ -83,13 +81,46 @@ fn test_unix() {
 	assert t6.second == 29
 }
 
+fn test_format_rfc3339() {
+	// assert '1980-07-11T19:23:42.123Z'
+	res := time_to_test.format_rfc3339()
+	assert res.ends_with('23:42.123Z')
+	assert res.starts_with('1980-07-1')
+	assert res.contains('T')
+}
+
+fn test_format_rfc3339_nano() {
+	res := time_to_test.format_rfc3339_nano()
+	assert res.ends_with('23:42.123456789Z')
+	assert res.starts_with('1980-07-1')
+	assert res.contains('T')
+}
+
 fn test_format_ss() {
 	assert '11.07.1980 21:23:42' == time_to_test.get_fmt_str(.dot, .hhmmss24, .ddmmyyyy)
 }
 
+fn test_format_ss_milli() {
+	assert '11.07.1980 21:23:42.123' == time_to_test.get_fmt_str(.dot, .hhmmss24_milli,
+		.ddmmyyyy)
+	assert '1980-07-11 21:23:42.123' == time_to_test.format_ss_milli()
+}
+
+fn test_format_ss_micro() {
+	assert '11.07.1980 21:23:42.123456' == time_to_test.get_fmt_str(.dot, .hhmmss24_micro,
+		.ddmmyyyy)
+	assert '1980-07-11 21:23:42.123456' == time_to_test.format_ss_micro()
+}
+
+fn test_format_ss_nano() {
+	assert '11.07.1980 21:23:42.123456789' == time_to_test.get_fmt_str(.dot, .hhmmss24_nano,
+		.ddmmyyyy)
+	assert '1980-07-11 21:23:42.123456789' == time_to_test.format_ss_nano()
+}
+
 fn test_smonth() {
-	month_names := ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-	'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+	month_names := ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov',
+		'Dec']
 	for i, name in month_names {
 		month_num := i + 1
 		t := time.Time{
@@ -106,7 +137,7 @@ fn test_smonth() {
 }
 
 fn test_day_of_week() {
-	for i in 0..7 {
+	for i in 0 .. 7 {
 		day_of_week := i + 1
 		// 2 Dec 2019 is Monday
 		t := time.Time{
@@ -120,6 +151,25 @@ fn test_day_of_week() {
 		}
 		assert day_of_week == t.day_of_week()
 	}
+}
+
+fn test_year_day() {
+	// testing if December 31st in a leap year is numbered as 366
+	assert time.parse('2024-12-31 20:00:00')!.year_day() == 366
+
+	// testing December 31st's number in a non leap year
+	assert time.parse('2025-12-31 20:00:00')!.year_day() == 365
+
+	assert time.parse('2024-02-28 20:00:00')!.year_day() == 59
+	assert time.parse('2024-02-29 20:00:00')!.year_day() == 60
+	assert time.parse('2024-03-01 20:00:00')!.year_day() == 61
+	assert time.parse('2024-03-02 20:00:00')!.year_day() == 62
+
+	assert time.parse('2025-02-28 20:00:00')!.year_day() == 59
+	assert time.parse('2025-03-01 20:00:00')!.year_day() == 60
+
+	assert time.parse('2024-01-01 20:00:00')!.year_day() == 1
+	assert time.parse('2025-01-01 20:00:00')!.year_day() == 1
 }
 
 fn test_weekday_str() {
@@ -139,13 +189,158 @@ fn test_weekday_str() {
 	}
 }
 
+fn test_add() {
+	d_seconds := 3
+	d_nanoseconds := 13
+	duration := time.Duration(d_seconds * time.second + d_nanoseconds * time.nanosecond)
+	// dump(duration.debug())
+	t1 := time_to_test
+	// dump(t1.debug())
+	t2 := time_to_test.add(duration)
+	// dump(t2.debug())
+	assert t2.second == t1.second + d_seconds
+	assert t2.nanosecond == t1.nanosecond + d_nanoseconds
+	assert t2.unix == t1.unix + d_seconds
+	assert t2.is_local == t1.is_local
+	//
+	t3 := time_to_test.add(-duration)
+	// dump(t3.debug())
+	assert t3.second == t1.second - d_seconds
+	assert t3.nanosecond == t1.nanosecond - d_nanoseconds
+	assert t3.unix == t1.unix - d_seconds
+	assert t3.is_local == t1.is_local
+	//
+	t4 := time_to_test.as_local()
+	// dump(t4.debug())
+	t5 := t4.add(duration)
+	// dump(t5.debug())
+	assert t5.is_local == t4.is_local
+}
+
 fn test_add_days() {
 	num_of_days := 3
 	t := time_to_test.add_days(num_of_days)
 	assert t.day == time_to_test.day + num_of_days
-	assert t.unix == time_to_test.unix + 86400 * u64(num_of_days)
+	assert t.unix == time_to_test.unix + 86400 * num_of_days
 }
 
 fn test_str() {
 	assert '1980-07-11 21:23:42' == time_to_test.str()
+}
+
+// not optimal test but will find obvious bugs
+fn test_now() {
+	now := time.now()
+	// The year the test was built
+	assert now.year >= 2020
+	assert now.month > 0
+	assert now.month <= 12
+	assert now.minute >= 0
+	assert now.minute < 60
+	assert now.second >= 0
+	assert now.second <= 60 // <= 60 cause of leap seconds
+	assert now.nanosecond >= 0
+	assert now.nanosecond < time.second
+}
+
+fn test_utc() {
+	now := time.utc()
+	// The year the test was built
+	// dump(now.debug())
+	assert now.year >= 2020
+	assert now.month > 0
+	assert now.month <= 12
+	assert now.minute >= 0
+	assert now.minute < 60
+	assert now.second >= 0
+	assert now.second <= 60 // <= 60 cause of leap seconds
+	assert now.nanosecond >= 0
+	assert now.nanosecond < time.second
+}
+
+fn test_unix_time() {
+	t1 := time.utc()
+	time.sleep(50 * time.millisecond)
+	t2 := time.utc()
+	eprintln('  t1: ${t1}')
+	eprintln('  t2: ${t2}')
+	ut1 := t1.unix_time()
+	ut2 := t2.unix_time()
+	eprintln(' ut1: ${ut1}')
+	eprintln(' ut2: ${ut2}')
+	assert ut2 - ut1 < 2
+	//
+	utm1 := t1.unix_time_milli()
+	utm2 := t2.unix_time_milli()
+	eprintln('utm1: ${utm1}')
+	eprintln('utm2: ${utm2}')
+	assert (utm1 - ut1 * 1000) < 1000
+	assert (utm2 - ut2 * 1000) < 1000
+	//
+	assert utm2 - utm1 > 2
+	assert utm2 - utm1 < 999
+}
+
+fn test_offset() {
+	u := time.utc()
+	n := time.now()
+	//
+	mut diff_seconds := 0
+	if u.day != n.day {
+		if u.day > n.day {
+			diff_seconds = int(math.abs(((u.hour * 60 + u.minute) - (n.hour * 60 + n.minute)) * 60)) - 86400
+		} else {
+			diff_seconds = 86400 - int(math.abs(((u.hour * 60 + u.minute) - (n.hour * 60 + n.minute)) * 60))
+		}
+		if math.abs(u.day - n.day) > 1 { // different month
+			diff_seconds = diff_seconds * -1
+		}
+	} else { // same day
+		diff_seconds = ((n.hour * 60 + n.minute) - (u.hour * 60 + u.minute)) * 60
+	}
+
+	assert diff_seconds == time.offset()
+}
+
+fn test_since() {
+	t1 := time.now()
+	time.sleep(20 * time.millisecond)
+	d1 := time.since(t1)
+	assert d1 >= 20_000_000
+	time.sleep(20 * time.millisecond)
+	d2 := time.since(t1)
+	assert d2 >= 40_000_000
+}
+
+// issue relate https://github.com/vlang/v/issues/13828
+// problem: the local method add 2h on the time in a Linux machine
+// the other machine are not tested in a local env
+fn test_recursive_local_call() {
+	now_tm := time.now()
+	assert now_tm.str() == now_tm.local().str()
+	assert now_tm.local().str() == now_tm.local().local().str()
+}
+
+fn test_strftime() {
+	assert '1980 July 11' == time_to_test.strftime('%Y %B %d')
+}
+
+fn test_add_seconds_to_time() {
+	now_tm := time.now()
+	future_tm := now_tm.add_seconds(60)
+	assert now_tm.unix < future_tm.unix
+}
+
+fn test_plus_equals_duration() {
+	mut d := time.second
+	d += time.second
+	assert d == 2 * time.second
+}
+
+fn test_parse_three_letters_month() {
+	tm := time.now()
+	format := 'MMM DD HH:mm:ss YYYY'
+	tm_s := tm.custom_format(format)
+	tm_tm := time.parse_format(tm_s, format)!
+	assert tm_tm.month == tm.month
 }

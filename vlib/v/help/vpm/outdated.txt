@@ -1,0 +1,4 @@
+List all installed modules that need updates.
+
+Usage:
+  v outdated

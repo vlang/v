@@ -1,0 +1,5 @@
+$if linux {
+	$compile_error("This won't be formatted correctly by v fmt :')")
+}
+
+fn main() {}

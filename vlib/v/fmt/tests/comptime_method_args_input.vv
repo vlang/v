@@ -1,0 +1,3 @@
+$if !linux {
+	$compile_error("Only Lin\"ux is currently supported")
+}

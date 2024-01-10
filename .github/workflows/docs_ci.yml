@@ -1,0 +1,55 @@
+name: Docs CI
+
+### Run on *EVERY* .v or .md related commit.
+### The documentation *SHOULD* stay valid, and the developers should receive
+### early warning, if they break it.
+
+on:
+  push:
+    paths-ignore:
+      - "**.yml"
+  pull_request:
+    paths-ignore:
+      - "**.yml"
+
+jobs:
+  check-markdown:
+    runs-on: ubuntu-20.04
+    if: >
+      github.event_name != 'push'
+      || github.event.ref == 'refs/heads/master'
+      || github.event.repository.full_name != 'vlang/v'
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v3
+      - name: Build V
+        run: make
+      - name: Check markdown line length & code examples
+        run: ./v check-md -hide-warnings .
+        ## NB: -hide-warnings is used here, so that the output is less noisy,
+        ## thus real errors are easier to spot.
+
+  report-missing-fn-doc:
+    runs-on: ubuntu-20.04
+    if: >
+      github.event_name != 'push'
+      || github.event.ref == 'refs/heads/master'
+      || github.event.repository.full_name != 'vlang/v'
+    timeout-minutes: 5
+    env:
+      MOPTIONS: --diff --deprecated --relative-paths --exclude /vlib/v/ --exclude /builtin/linux_bare/ --exclude /testdata/ --exclude /tests/
+    steps:
+      - uses: actions/checkout@v3
+      - name: Build V
+        run: make
+
+      - name: Checkout previous v
+        uses: actions/checkout@v3
+        with:
+          repository: vlang/v
+          ref: master   # important
+          path: pv
+
+      - name: Check against parent commit
+        run: |
+          ./v missdoc $MOPTIONS pv/vlib vlib

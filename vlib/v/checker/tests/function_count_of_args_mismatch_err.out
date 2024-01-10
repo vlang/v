@@ -1,0 +1,27 @@
+vlib/v/checker/tests/function_count_of_args_mismatch_err.vv:8:13: error: expected 1 arguments, but got 3
+    6 | 
+    7 | fn main() {
+    8 |     test(true, false, 1)
+      |                ~~~~~~~~
+    9 |     test()
+   10 |     test2(true, false, 1)
+vlib/v/checker/tests/function_count_of_args_mismatch_err.vv:9:2: error: expected 1 arguments, but got 0
+    7 | fn main() {
+    8 |     test(true, false, 1)
+    9 |     test()
+      |     ~~~~~~
+   10 |     test2(true, false, 1)
+   11 |     test2(true)
+vlib/v/checker/tests/function_count_of_args_mismatch_err.vv:10:21: error: expected 2 arguments, but got 3
+    8 |     test(true, false, 1)
+    9 |     test()
+   10 |     test2(true, false, 1)
+      |                        ^
+   11 |     test2(true)
+   12 | }
+vlib/v/checker/tests/function_count_of_args_mismatch_err.vv:11:2: error: expected 2 arguments, but got 1
+    9 |     test()
+   10 |     test2(true, false, 1)
+   11 |     test2(true)
+      |     ~~~~~~~~~~~
+   12 | }

@@ -1,16 +1,11 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+@[has_globals]
 module builtin
 
-__global g_m2_buf byteptr
-__global g_m2_ptr byteptr
-
-pub fn exit(code int) {
-	C.exit(code)
-}
-
 // isnil returns true if an object is nil (only for C objects).
+@[inline]
 pub fn isnil(v voidptr) bool {
 	return v == 0
 }
@@ -21,209 +16,34 @@ fn on_panic(f fn(int)int) {
 }
 */
 
-pub fn print_backtrace() {
-	// at the time of backtrace_symbols_fd call, the C stack would look something like this:
-	// 1 frame for print_backtrace_skipping_top_frames
-	// 1 frame for print_backtrace itself
-	// ... print the rest of the backtrace frames ...
-	// => top 2 frames should be skipped, since they will not be informative to the developer
-	print_backtrace_skipping_top_frames(2)
+struct VCastTypeIndexName {
+	tindex int
+	tname  string
 }
 
-// replaces panic when -debug arg is passed
-fn panic_debug(line_no int, file, mod, fn_name, s string) {
-	// NB: the order here is important for a stabler test output
-	// module is less likely to change than function, etc...
-	// During edits, the line number will change most frequently,
-	// so it is last
-	eprintln('================ V panic ================')
-	eprintln('   module: $mod')
-	eprintln(' function: ${fn_name}()')
-	eprintln('  message: $s')
-	eprintln('     file: $file')
-	eprintln('     line: ' + line_no.str())
-	eprintln('=========================================')
-	print_backtrace_skipping_top_frames(1)
-	break_if_debugger_attached()
-	C.exit(1)
-}
+// will be filled in cgen
+__global as_cast_type_indexes []VCastTypeIndexName
 
-pub fn panic(s string) {
-	eprintln('V panic: $s')
-	print_backtrace()
-	break_if_debugger_attached()
-	C.exit(1)
-}
-
-pub fn eprintln(s string) {
-	// eprintln is used in panics, so it should not fail at all
-	if s.str == 0 {
-		eprintln('eprintln(NIL)')
-	}
-	$if !windows {
-		C.fflush(C.stdout)
-		C.fflush(C.stderr)
-		C.fprintf(C.stderr, '%.*s\n', s.len, s.str)
-		C.fflush(C.stderr)
-		return
-	}
-	// TODO issues with stderr and cross compiling for Linux
-	println(s)
-}
-
-pub fn eprint(s string) {
-	if s.str == 0 {
-		eprintln('eprint(NIL)')
-	}
-	$if !windows {
-		C.fflush(C.stdout)
-		C.fflush(C.stderr)
-		C.fprintf(C.stderr, '%.*s', s.len, s.str)
-		C.fflush(C.stderr)
-		return
-	}
-	print(s)
-}
-
-pub fn print(s string) {
-	$if windows {
-		output_handle := C.GetStdHandle(C.STD_OUTPUT_HANDLE)
-		mut bytes_written := 0
-		if is_atty(1) > 0 {
-			wide_str := s.to_wide()
-			wide_len := C.wcslen(wide_str)
-			C.WriteConsole(output_handle, wide_str, wide_len, &bytes_written, 0)
-			unsafe {
-				free(wide_str)
-			}
-		} else {
-			C.WriteFile(output_handle, s.str, s.len, &bytes_written, 0)
-		}
-	} $else {
-		C.printf('%.*s', s.len, s.str)
-	}
-}
-
-const (
-	new_line_character = '\n'
-)
-pub fn println(s string) {
-	$if windows {
-		print(s)
-		print(new_line_character)
-	} $else {
-		//  TODO: a syscall sys_write on linux works, except for the v repl.
-		//  Probably it is a stdio buffering issue. Needs more testing...
-		//	$if linux {
-		//		$if !android {
-		//			snl := s + '\n'
-		//			C.syscall(/* sys_write */ 1, /* stdout_value */ 1, snl.str, s.len+1)
-		//			return
-		//		}
-		//	}
-		C.printf('%.*s\n', s.len, s.str)
-	}
-}
-
-__global total_m i64=0
-__global nr_mallocs int=0
-
-fn looo(){} // TODO remove, [ pratt
-
-[unsafe_fn]
-pub fn malloc(n int) byteptr {
-	if n <= 0 {
-		panic('malloc(<=0)')
-	}
-	$if prealloc {
-		res := g_m2_ptr
-		g_m2_ptr += n
-		nr_mallocs++
-		return res
-	} $else {
-		ptr := C.malloc(n)
-		if ptr == 0 {
-			panic('malloc($n) failed')
-		}
-		return ptr
-	}
-	/*
-TODO
-#ifdef VPLAY
-	if n > 10000 {
-		panic('allocating more than 10 KB is not allowed in the playground')
-	}
-#endif
-#ifdef DEBUG_ALLOC
-	total_m += n
-	println('\n\n\nmalloc($n) total=$total_m')
-	print_backtrace()
-#endif
-*/
-}
-
-[unsafe_fn]
-pub fn v_realloc(b byteptr, n int) byteptr {
-	ptr := C.realloc(b, n)
-	if ptr == 0 {
-		panic('realloc($n) failed')
-	}
-
-	return ptr
-}
-
-pub fn v_calloc(n int) byteptr {
-	return C.calloc(n, 1)
-}
-
-pub fn vcalloc(n int) byteptr {
-	if n < 0 {
-		panic('calloc(<=0)')
-	} else if n == 0 {
-		return byteptr(0)
-	} else {
-		return C.calloc(n, 1)
-	}
-}
-
-[unsafe_fn]
-pub fn free(ptr voidptr) {
-	C.free(ptr)
-}
-
-pub fn memdup(src voidptr, sz int) voidptr {
-	if sz == 0 {
-		return vcalloc(1)
-	}
-	mem := malloc(sz)
-	return C.memcpy(mem, src, sz)
-}
-
-fn v_ptr_free(ptr voidptr) {
-	C.free(ptr)
-}
-
-pub fn is_atty(fd int) int {
-	$if windows {
-		mut mode := u32(0)
-		osfh := voidptr(C._get_osfhandle(fd))
-		C.GetConsoleMode(osfh, voidptr(&mode))
-		return int(mode)
-	} $else {
-		return C.isatty(fd)
-	}
-}
-
-fn __as_cast(obj voidptr, obj_type, expected_type int) voidptr {
+fn __as_cast(obj voidptr, obj_type int, expected_type int) voidptr {
 	if obj_type != expected_type {
-		panic('as cast: cannot cast $obj_type to $expected_type')
+		mut obj_name := as_cast_type_indexes[0].tname.clone()
+		mut expected_name := as_cast_type_indexes[0].tname.clone()
+		for x in as_cast_type_indexes {
+			if x.tindex == obj_type {
+				obj_name = x.tname.clone()
+			}
+			if x.tindex == expected_type {
+				expected_name = x.tname.clone()
+			}
+		}
+		panic('as cast: cannot cast `${obj_name}` to `${expected_name}`')
 	}
 	return obj
 }
 
-// VAssertMetaInfo is used during assertions. An instance of it
-// is filled in by compile time generated code, when an assertion fails.
-struct VAssertMetaInfo {
+// VAssertMetaInfo is used during assertions. An instance of it is filled in by
+// compile time generated code, when an assertion fails.
+pub struct VAssertMetaInfo {
 pub:
 	fpath   string // the source file path of the assertion
 	line_nr int    // the line number of the assertion
@@ -234,11 +54,107 @@ pub:
 	rlabel  string // the right side of the infix expressions as source
 	lvalue  string // the stringified *actual value* of the left side of a failed assertion
 	rvalue  string // the stringified *actual value* of the right side of a failed assertion
+	message string // the value of the `message` from `assert cond, message`
+	has_msg bool   // false for assertions like `assert cond`, true for `assert cond, 'oh no'`
 }
-fn __print_assert_failure(i &VAssertMetaInfo) {
-	eprintln('${i.fpath}:${i.line_nr+1}: FAIL: fn ${i.fn_name}: assert ${i.src}')
-	if i.op != 'call' {
-		eprintln('   left value: ${i.llabel} = ${i.lvalue}')
-		eprintln('  right value: ${i.rlabel} = ${i.rvalue}')
+
+// free frees the memory occupied by the assertion meta data. It is called automatically by
+// the code, that V's test framework generates, after all other callbacks have been called.
+@[manualfree; unsafe]
+pub fn (ami &VAssertMetaInfo) free() {
+	unsafe {
+		ami.fpath.free()
+		ami.fn_name.free()
+		ami.src.free()
+		ami.op.free()
+		ami.llabel.free()
+		ami.rlabel.free()
+		ami.lvalue.free()
+		ami.rvalue.free()
+		ami.message.free()
 	}
+}
+
+fn __print_assert_failure(i &VAssertMetaInfo) {
+	eprintln('${i.fpath}:${i.line_nr + 1}: FAIL: fn ${i.fn_name}: assert ${i.src}')
+	if i.op.len > 0 && i.op != 'call' {
+		eprintln('   left value: ${i.llabel} = ${i.lvalue}')
+		if i.rlabel == i.rvalue {
+			eprintln('  right value: ${i.rlabel}')
+		} else {
+			eprintln('  right value: ${i.rlabel} = ${i.rvalue}')
+		}
+	}
+	if i.has_msg {
+		eprintln('      message: ${i.message}')
+	}
+}
+
+// MethodArgs holds type information for function and/or method arguments.
+pub struct MethodArgs {
+pub:
+	typ  int
+	name string
+}
+
+// FunctionData holds information about a parsed function.
+pub struct FunctionData {
+pub:
+	name        string
+	attrs       []string
+	args        []MethodArgs
+	return_type int
+	typ         int
+}
+
+pub struct VariantData {
+pub:
+	typ int
+}
+
+pub struct EnumData {
+pub:
+	name  string
+	value i64
+	attrs []string
+}
+
+// FieldData holds information about a field. Fields reside on structs.
+pub struct FieldData {
+pub:
+	name          string // the name of the field f
+	typ           int    // the internal TypeID of the field f,
+	unaliased_typ int    // if f's type was an alias of int, this will be TypeID(int)
+	//
+	attrs  []string // the attributes of the field f
+	is_pub bool     // f is in a `pub:` section
+	is_mut bool     // f is in a `mut:` section
+	//
+	is_shared bool // `f shared Abc`
+	is_atomic bool // `f atomic int` , TODO
+	is_option bool // `f ?string` , TODO
+	//
+	is_array  bool // `f []string` , TODO
+	is_map    bool // `f map[string]int` , TODO
+	is_chan   bool // `f chan int` , TODO
+	is_enum   bool // `f Enum` where Enum is an enum
+	is_struct bool // `f Abc` where Abc is a struct , TODO
+	is_alias  bool // `f MyInt` where `type MyInt = int`, TODO
+	//
+	indirections u8 // 0 for `f int`, 1 for `f &int`, 2 for `f &&int` , TODO
+}
+
+pub enum AttributeKind {
+	plain // [name]
+	string // ['name']
+	number // [123]
+	comptime_define // [if name]
+}
+
+pub struct StructAttribute {
+pub:
+	name    string
+	has_arg bool
+	arg     string
+	kind    AttributeKind
 }

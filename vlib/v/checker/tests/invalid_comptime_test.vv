@@ -1,0 +1,7 @@
+$fn func(a int) int {
+    return a + a
+}
+
+fn main() {
+    println(func(5))
+}

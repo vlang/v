@@ -1,0 +1,7 @@
+vlib/v/checker/tests/array_filter_map_array_expression_as_argument_err.vv:24:19: error: array append cannot be used in an expression
+   22 |         for k, v in current.kids {
+   23 |             _ = visited[k] or {
+   24 |                 v.map(horizon << it)
+      |                               ~~
+   25 |                 true
+   26 |             }

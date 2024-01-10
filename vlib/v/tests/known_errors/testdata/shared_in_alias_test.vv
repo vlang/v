@@ -1,0 +1,12 @@
+struct Data {
+	field int
+}
+
+type AliasWithShared = shared Data
+
+fn test_shared_in_alias() {
+	data_with_shared := AliasWithShared(&Data{
+		field: 1
+	})
+	assert data_with_shared.field == 1
+}

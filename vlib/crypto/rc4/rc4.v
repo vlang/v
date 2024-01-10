@@ -1,43 +1,49 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+module rc4
+
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 // Package rc4 implements RC4 encryption, as defined in Bruce Schneier's
 // Applied Cryptography.
 //
 // RC4 is cryptographically broken and should not be used for secure
 // applications.
-
 // Based off:   https://github.com/golang/go/blob/master/src/crypto/rc4
 // Last commit: https://github.com/golang/go/commit/b35dacaac57b039205d9b07ea24098e2c3fcb12e
-
-module rc4
-
 import crypto.internal.subtle
 
 // A Cipher is an instance of RC4 using a particular key.
 struct Cipher {
 mut:
 	s []u32
-	i byte
-	j byte
+	i u8
+	j u8
+}
+
+// free the resources taken by the Cipher `c`
+@[unsafe]
+pub fn (mut c Cipher) free() {
+	$if prealloc {
+		return
+	}
+	unsafe { c.s.free() }
 }
 
 // new_cipher creates and returns a new Cipher. The key argument should be the
 // RC4 key, at least 1 byte and at most 256 bytes.
-pub fn new_cipher(key []byte) ?Cipher {
+pub fn new_cipher(key []u8) !Cipher {
 	if key.len < 1 || key.len > 256 {
 		return error('crypto.rc4: invalid key size ' + key.len.str())
 	}
 	mut c := Cipher{
-		s: [u32(0)].repeat(256)
+		s: []u32{len: (256)}
 	}
-	for i in 0..256 {
+	for i in 0 .. 256 {
 		c.s[i] = u32(i)
 	}
-	mut j := byte(0)
-	for i in 0..256 {
-		j += byte(c.s[i]) + key[i%key.len]
+	mut j := u8(0)
+	for i in 0 .. 256 {
+		j += u8(c.s[i]) + key[i % key.len]
 		tmp := c.s[i]
 		c.s[i] = c.s[j]
 		c.s[j] = tmp
@@ -59,7 +65,7 @@ pub fn (mut c Cipher) reset() {
 
 // xor_key_stream sets dst to the result of XORing src with the key stream.
 // Dst and src must overlap entirely or not at all.
-pub fn (mut c Cipher) xor_key_stream(dst mut []byte, src []byte) {
+pub fn (mut c Cipher) xor_key_stream(mut dst []u8, mut src []u8) {
 	if src.len == 0 {
 		return
 	}
@@ -69,13 +75,13 @@ pub fn (mut c Cipher) xor_key_stream(dst mut []byte, src []byte) {
 	mut i := c.i
 	mut j := c.j
 	for k, v in src {
-		i += byte(1)
+		i += u8(1)
 		x := c.s[i]
-		j += byte(x)
+		j += u8(x)
 		y := c.s[j]
 		c.s[i] = y
 		c.s[j] = x
-		dst[k] = v ^ byte(c.s[byte(x+y)])
+		dst[k] = v ^ u8(c.s[u8(x + y)])
 	}
 	c.i = i
 	c.j = j

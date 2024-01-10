@@ -1,4 +1,4 @@
-import hello
+import v.gen.js.tests.hello
 
 enum Test {
 	foo = 2
@@ -6,12 +6,14 @@ enum Test {
 	baz
 }
 
-mut a := hello.Ccc.a
-a = .b
-a = .c
-println(a)
+// TODO Remove `fn main` once vet supports scripts
+fn main() {
+	mut a := hello.Ccc.a
+	a = .b
+	a = .c
+	println(a)
 
-
-mut b := Test.foo
-b = .bar
-println(b)
+	mut b := Test.foo
+	b = .bar
+	println(b)
+}

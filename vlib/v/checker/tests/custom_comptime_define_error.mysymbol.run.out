@@ -1,0 +1,2 @@
+comptime option define works
+comptime non-option define works

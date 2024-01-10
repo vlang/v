@@ -1,0 +1,7 @@
+module json2
+
+import x.json2 as json
+
+any := json.Any(json.null)
+
+println(any)

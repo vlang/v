@@ -1,0 +1,7 @@
+vlib/v/checker/tests/wrong_option_unwrap_err.vv:3:14: error: `or` block must provide a value of type `string`, not `none`
+    1 | fn main() {
+    2 |     a := ?string('c')
+    3 |     b := a or { none }
+      |                 ~~~~
+    4 |     println(b)
+    5 | }

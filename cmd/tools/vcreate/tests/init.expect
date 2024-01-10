@@ -1,0 +1,15 @@
+#!/usr/bin/env expect
+
+set timeout 3
+
+# Pass v_root as arg, since we chdir into a temp directory during testing and create a project there.
+set v_root [lindex $argv 0]
+
+spawn $v_root/v init
+
+expect "Input your project description: " { send "\r" } timeout { exit 1 }
+expect "Input your project version: (0.0.0) " { send "\r" } timeout { exit 1 }
+expect "Input your project license: (MIT) " { send "\r" } timeout { exit 1 }
+# The completion message is verified in `vcreate_init_test.v`.
+
+expect eof

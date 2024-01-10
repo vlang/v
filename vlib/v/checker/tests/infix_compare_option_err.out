@@ -1,0 +1,14 @@
+vlib/v/checker/tests/infix_compare_option_err.vv:6:5: error: unwrapped Option cannot be compared in an infix expression
+    4 | 
+    5 | fn main() {
+    6 |     if foo() > foo() {
+      |        ~~~~~
+    7 |     }
+    8 | }
+vlib/v/checker/tests/infix_compare_option_err.vv:6:5: error: unwrapped Option cannot be used in an infix expression
+    4 | 
+    5 | fn main() {
+    6 |     if foo() > foo() {
+      |        ~~~~~
+    7 |     }
+    8 | }

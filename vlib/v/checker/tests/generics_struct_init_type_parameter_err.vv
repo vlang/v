@@ -1,0 +1,27 @@
+struct Response<U> {
+	result U
+}
+
+fn send_1<A, B>(res A, b B) string {
+	msg := Response<U>{
+		result: res
+	}
+	println(b)
+	return '$msg'
+}
+
+fn send_2<A, B>(res A, b B) string {
+	msg := Response<A, B>{
+		result: res
+	}
+	println(b)
+	return '$msg'
+}
+
+fn main() {
+	mut ret := send_1(123, 22.2)
+	println(ret)
+
+	ret = send_2(123, 22.2)
+	println(ret)
+}

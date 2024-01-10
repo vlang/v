@@ -1,0 +1,5 @@
+vlib/v/parser/tests/struct_field_unknown_module_b.vv:2:7: error: unknown module `term.unknownmod`
+    1 | struct Inter {
+    2 |     code term.unknownmod.KeyCode
+      |          ~~~~~~~~~~~~~~~
+    3 | }

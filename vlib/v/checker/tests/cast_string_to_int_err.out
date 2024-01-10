@@ -1,0 +1,61 @@
+vlib/v/checker/tests/cast_string_to_int_err.vv:2:7: error: cannot cast string to `int`, use `'456'.int()` instead.
+    1 | fn main(){
+    2 |     _ := int('456')
+      |          ~~~~~~~~~~
+    3 |     _ := i8('11')
+    4 |     _ := i16('111')
+vlib/v/checker/tests/cast_string_to_int_err.vv:3:7: error: cannot cast string to `i8`, use `'11'.i8()` instead.
+    1 | fn main(){
+    2 |     _ := int('456')
+    3 |     _ := i8('11')
+      |          ~~~~~~~~
+    4 |     _ := i16('111')
+    5 |     _ := i64('234')
+vlib/v/checker/tests/cast_string_to_int_err.vv:4:7: error: cannot cast string to `i16`, use `'111'.i16()` instead.
+    2 |     _ := int('456')
+    3 |     _ := i8('11')
+    4 |     _ := i16('111')
+      |          ~~~~~~~~~~
+    5 |     _ := i64('234')
+    6 |     _ := f32('2.22')
+vlib/v/checker/tests/cast_string_to_int_err.vv:5:7: error: cannot cast string to `i64`, use `'234'.i64()` instead.
+    3 |     _ := i8('11')
+    4 |     _ := i16('111')
+    5 |     _ := i64('234')
+      |          ~~~~~~~~~~
+    6 |     _ := f32('2.22')
+    7 |     _ := f64('2.33333')
+vlib/v/checker/tests/cast_string_to_int_err.vv:6:7: error: cannot cast string to `f32`, use `'2.22'.f32()` instead.
+    4 |     _ := i16('111')
+    5 |     _ := i64('234')
+    6 |     _ := f32('2.22')
+      |          ~~~~~~~~~~~
+    7 |     _ := f64('2.33333')
+    8 |     _ := u16('234')
+vlib/v/checker/tests/cast_string_to_int_err.vv:7:7: error: cannot cast string to `f64`, use `'2.33333'.f64()` instead.
+    5 |     _ := i64('234')
+    6 |     _ := f32('2.22')
+    7 |     _ := f64('2.33333')
+      |          ~~~~~~~~~~~~~~
+    8 |     _ := u16('234')
+    9 |     _ := u32('2')
+vlib/v/checker/tests/cast_string_to_int_err.vv:8:7: error: cannot cast string to `u16`, use `'234'.u16()` instead.
+    6 |     _ := f32('2.22')
+    7 |     _ := f64('2.33333')
+    8 |     _ := u16('234')
+      |          ~~~~~~~~~~
+    9 |     _ := u32('2')
+   10 |     _ := u64('22')
+vlib/v/checker/tests/cast_string_to_int_err.vv:9:7: error: cannot cast string to `u32`, use `'2'.u32()` instead.
+    7 |     _ := f64('2.33333')
+    8 |     _ := u16('234')
+    9 |     _ := u32('2')
+      |          ~~~~~~~~
+   10 |     _ := u64('22')
+   11 | }
+vlib/v/checker/tests/cast_string_to_int_err.vv:10:7: error: cannot cast string to `u64`, use `'22'.u64()` instead.
+    8 |     _ := u16('234')
+    9 |     _ := u32('2')
+   10 |     _ := u64('22')
+      |          ~~~~~~~~~
+   11 | }

@@ -1,0 +1,5 @@
+vlib/v/parser/tests/sql_no_db_expr_a.vv:4:1: error: invalid expression: unexpected token `}`
+    2 |     // SqlStmt
+    3 |     sql_ :=
+    4 | }
+      | ^

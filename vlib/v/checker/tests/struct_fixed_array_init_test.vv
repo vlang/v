@@ -1,0 +1,17 @@
+module main
+
+type Data = [3]int | int
+
+struct Sample {
+	data Data
+}
+
+fn test_main() {
+	test := Sample{
+		data: [5, 10, 15]!
+		// data: 5 /* works fine */
+	}
+
+	println(test)
+	assert test.data.str() == 'Data([5, 10, 15])'
+}

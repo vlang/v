@@ -1,0 +1,5 @@
+vlib/v/parser/tests/generic_fn_type_decl_err.vv:1:6: error: `Fn` type is generic fntype, must specify the generic type names, e.g. Fn[T]
+    1 | type Fn = fn (I) !(O, R)
+      |      ~~
+    2 |
+    3 | fn main() {

@@ -1,0 +1,60 @@
+------------------------------------
+[EventListener{
+    x: 123
+}, EventListener{
+    x: 0
+}, EventListener{
+    x: 0
+}]
+- 1 level of indirection -
+[&EventListener{
+    x: 123
+}, &0, &0]
+[&EventListener{
+    x: 123
+}, &0, &0]
+- 2 level of indirection -
+[&&EventListener{
+    x: 123
+}, &&0, &&0]
+- 3 level of indirection -
+[&&&EventListener{
+    x: 123
+}, &&&0, &&&0]
+-----------------------------------------------------
+- all:
+StructOfFixedArraysOfListeners{
+    elisteners: [EventListener{
+    x: 123
+}, EventListener{
+    x: 0
+}, EventListener{
+    x: 0
+}]
+    apelisteners: [&EventListener{
+    x: 123
+}, &0, &0]
+    pelisteners: [&EventListener{
+    x: 123
+}, &0, &0]
+    ppelisteners: [&&EventListener{
+    x: 123
+}, &&0, &&0]
+    pppelisteners: [&&&EventListener{
+    x: 123
+}, &&&0, &&&0]
+}
+-----------------------------------------------------
+[EventListener{
+    x: 0
+}, EventListener{
+    x: 0
+}]
+[&0, &0]
+[&&0, &&0]
+-----------------------------------------------------
+[&EventListener{
+    x: 123
+}, &EventListener{
+    x: 0
+}]

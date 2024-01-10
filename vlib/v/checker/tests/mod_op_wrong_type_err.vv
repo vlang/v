@@ -1,0 +1,13 @@
+struct Aaa{}
+fn main() {
+	println(0.5 % 1)
+	println(1 % 0.5)
+	println([1,2,3] % 1)
+	println(1 % [1,2,3])
+	a := Aaa{}
+	println(a % 1)
+	println(1 % a)
+	b := map[string]int
+	println(b % 1)
+	println(1 % b)
+}

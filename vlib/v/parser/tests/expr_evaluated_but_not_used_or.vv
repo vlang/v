@@ -1,0 +1,10 @@
+fn main() {
+  f() or {
+    0
+    1
+  }
+}
+
+fn f() ?int {
+  return none
+}

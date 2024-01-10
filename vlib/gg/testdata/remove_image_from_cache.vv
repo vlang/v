@@ -1,0 +1,40 @@
+module main
+
+import gg
+import sokol.gfx
+
+fn main() {
+	mut context := gg.new_context(
+		frame_fn: frame
+		width: 500
+		height: 500
+	)
+	context.run()
+}
+
+fn frame(mut ctx gg.Context) {
+	ctx.begin()
+	id := ctx.new_streaming_image(ctx.width, ctx.height, 4, pixel_format: .rgba8)
+	mut img := ctx.get_cached_image_by_idx(id)
+	mut bytes := []u8{len: img.width * img.height * 4, cap: img.width * img.height * 4}
+	for y in 0 .. img.height {
+		for x in 0 .. img.width {
+			unsafe {
+				bytes[(x + img.width * y) * 4] = 100
+				bytes[(x + img.width * y) * 4 + 1] = 100
+				bytes[(x + img.width * y) * 4 + 2] = 100
+				bytes[(x + img.width * y) * 4 + 3] = 255
+			}
+		}
+	}
+	unsafe {
+		img.update_pixel_data(&bytes[0])
+	}
+	ctx.draw_image(0, 0, ctx.width, ctx.height, img)
+	ctx.remove_cached_image_by_idx(id)
+	ctx.end()
+	gfx.destroy_image(img.simg)
+	unsafe {
+		free(&bytes[0])
+	}
+}

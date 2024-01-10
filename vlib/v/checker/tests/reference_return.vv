@@ -1,0 +1,14 @@
+struct Aa {
+	a int
+}
+
+fn f() &Aa {
+	return Aa{
+		a: 1
+	}
+}
+
+fn main() {
+	x := f()
+	println(x.a)
+}

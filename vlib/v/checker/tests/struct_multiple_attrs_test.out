@@ -1,0 +1,7 @@
+vlib/v/checker/tests/struct_multiple_attrs_test.vv:4:11: error: multiple attributes should be in the same @[], with ; separators
+    2 |
+    3 | struct Test {
+    4 |     a int @[a]@[b]
+      |              ~~
+    5 | }
+    6 |

@@ -1,0 +1,28 @@
+vlib/v/checker/tests/enum_cast.vv:17:19: warning: 12 does not represent a value of enum Color
+   15 |     println(unsafe { Color(0) })
+   16 |     println(unsafe { Color(10) })
+   17 |     println(unsafe { Color(12) })
+      |                      ~~~~~~~~~
+   18 |     println(unsafe { Color(-10) })
+   19 |
+vlib/v/checker/tests/enum_cast.vv:18:19: warning: -10 does not represent a value of enum Color
+   16 |     println(unsafe { Color(10) })
+   17 |     println(unsafe { Color(12) })
+   18 |     println(unsafe { Color(-10) })
+      |                      ~~~~~~~~~~
+   19 | 
+   20 |     println(unsafe { Permissions(0b101) })
+vlib/v/checker/tests/enum_cast.vv:21:19: warning: 10 does not represent a value of enum Permissions
+   19 | 
+   20 |     println(unsafe { Permissions(0b101) })
+   21 |     println(unsafe { Permissions(0b1010) })
+      |                      ~~~~~~~~~~~~~~~~~~~
+   22 |     println(unsafe { Permissions(-1) })
+   23 |     println(unsafe { Permissions(0) })
+vlib/v/checker/tests/enum_cast.vv:22:19: warning: -1 does not represent a value of enum Permissions
+   20 |     println(unsafe { Permissions(0b101) })
+   21 |     println(unsafe { Permissions(0b1010) })
+   22 |     println(unsafe { Permissions(-1) })
+      |                      ~~~~~~~~~~~~~~~
+   23 |     println(unsafe { Permissions(0) })
+   24 | }

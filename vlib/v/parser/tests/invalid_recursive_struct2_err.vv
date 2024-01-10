@@ -1,0 +1,7 @@
+struct Child {
+	be Human
+}
+
+struct Human {
+	child Child
+}

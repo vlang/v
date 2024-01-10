@@ -1,0 +1,10 @@
+struct Fail {
+	name string
+}
+
+fn foo(bar &&&Fail) {}
+
+fn main() {
+	f := Fail{}
+	foo(&&&f)
+}

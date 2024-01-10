@@ -1,0 +1,6 @@
+vlib/v/checker/tests/method_call_arg_no_mut_err.vv:25:14: error: method `alarm_fkt` parameter 1 is `mut`, so use `mut last` instead
+   23 |     c.arr << Alarm{}
+   24 |     mut last := c.arr.last()
+   25 |     c.alarm_fkt(last)
+      |                 ~~~~
+   26 | }

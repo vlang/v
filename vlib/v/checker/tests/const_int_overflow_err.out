@@ -1,0 +1,5 @@
+vlib/v/checker/tests/const_int_overflow_err.vv:1:11: error: overflow in implicit type `int`, use explicit type casting instead
+    1 | const c = 2847238432
+      |           ~~~~~~~~~~
+    2 | 
+    3 | fn main() {

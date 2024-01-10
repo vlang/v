@@ -1,0 +1,3 @@
+struct Foo {}
+
+interface Foo {}

@@ -1,0 +1,15 @@
+module main
+
+$if !serenity {
+    $compile_error('Only Serenity is supported')
+}
+
+$if !vinix {
+    $compile_warn('On non Vinix this warning should be shown')
+}
+
+fn main() {
+	println('Hello from Serenity')
+}
+	
+	

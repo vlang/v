@@ -1,0 +1,12 @@
+vlib/v/checker/tests/option_ptr_err.vv:3:10: error: type `?int` is an Option, it must be unwrapped first; use `*var?` to do it
+    1 | fn main() {
+    2 |     mut var := unsafe { ?&int(none) }
+    3 |     assert *var == 0
+      |             ~~~
+    4 | }
+vlib/v/checker/tests/option_ptr_err.vv:3:9: error: unwrapped Option cannot be used in an infix expression
+    1 | fn main() {
+    2 |     mut var := unsafe { ?&int(none) }
+    3 |     assert *var == 0
+      |            ^
+    4 | }

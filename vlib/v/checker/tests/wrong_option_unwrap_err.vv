@@ -1,0 +1,5 @@
+fn main() {
+	a := ?string('c')
+	b := a or { none }
+	println(b)
+}

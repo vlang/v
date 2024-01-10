@@ -1,0 +1,22 @@
+{
+    "options": {
+        "failByDrop": false
+    },
+    "outdir": "./reports/servers",
+    "servers": [
+        {
+            "agent": "AutobahnServer",
+            "url": "ws://autobahn_client:9002"
+        }
+    ],
+    "cases": [
+        "*"
+    ],
+    "exclude-cases": [
+        "9.*",
+        "11.*",
+        "12.*",
+        "13.*"
+    ],
+    "exclude-agent-cases": {}
+}

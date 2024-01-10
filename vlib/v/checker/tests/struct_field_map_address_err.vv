@@ -1,0 +1,27 @@
+import os
+
+struct StructWithMap {
+mut:
+	name string
+	m    map[string]StructWithMap
+}
+
+fn abc() (&StructWithMap, &map[string]StructWithMap) {
+	mut s := &StructWithMap{}
+	s.m['abc'] = StructWithMap{'abc', {}}
+	pointer_to_map_value := &s.m['abc'].m['xyz'].m
+	dump(ptr_str(pointer_to_map_value))
+	return s, pointer_to_map_value
+}
+
+fn main() {
+	mut s, p := abc()
+	n := os.args[1] or { '2' }.int()
+	dump(n)
+	for i in 0 .. n {
+		s.m['$i'] = StructWithMap{}
+	}
+	dump(s.m['abc'])
+	dump(p)
+	eprintln('-----------------------------------------------------')
+}

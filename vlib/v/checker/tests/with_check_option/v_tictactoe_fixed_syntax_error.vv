@@ -1,0 +1,27 @@
+module main
+
+fn new_board() [][]string {
+	mut board := [3][]string{init: []string{len: 3, init: ''}}
+	for i in 0 .. 9 {
+		board[i / 3][i % 3] = (i + 1).str()
+	}
+	return board
+}
+
+fn (mut b [][]string) place(player string, y int, x int) ? {
+	if b[y][x] == 'a' {
+		error('position is already occupied')
+	}
+	b[y][x] = player
+}
+
+fn prompt(player string) (int, int) {
+	return 0, 0
+}
+
+fn main() {
+	mut board := new_board()
+	mut player := 'X'
+	println(board)
+	println(player)
+}

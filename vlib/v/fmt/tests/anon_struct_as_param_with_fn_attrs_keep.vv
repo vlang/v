@@ -1,0 +1,14 @@
+// foo.v
+
+@[params]
+fn hello(person struct { name string }) string {
+	if person.name == '' {
+		return 'Hello World!'
+	} else {
+		return 'Hello ${person.name}'
+	}
+}
+
+fn main() {
+	println(hello())
+}

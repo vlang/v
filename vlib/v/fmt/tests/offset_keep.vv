@@ -1,0 +1,8 @@
+struct Animal {
+	breed string
+	age   u64
+}
+
+fn main() {
+	println(__offsetof(Animal, breed) + __offsetof(Animal, age))
+}

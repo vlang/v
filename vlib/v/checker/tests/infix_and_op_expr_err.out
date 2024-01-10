@@ -1,0 +1,7 @@
+vlib/v/checker/tests/infix_and_op_expr_err.vv:3:17: error: the right expression should be separated from the `&&` by a space
+    1 | fn main() {
+    2 |     ok1 := true
+    3 |     ok2 := false&&ok1
+      |                 ~~
+    4 |     println(ok2)
+    5 | }

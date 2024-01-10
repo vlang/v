@@ -1,0 +1,8 @@
+fn varargs(a ...int) {
+	println(a)
+}
+
+fn main() {
+	a := [1, 2, 3]
+	varargs(...a)
+}

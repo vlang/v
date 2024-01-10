@@ -1,0 +1,14 @@
+vlib/v/checker/tests/fn_variadic.vv:3:8: error: when forwarding a variadic variable, it must be the final argument
+    1 | fn f(vi ...int) int {
+    2 |     _ = f(...vi) // OK
+    3 |     _ = f(...vi, 2)
+      |           ~~~~~
+    4 |     return 0
+    5 | }
+vlib/v/checker/tests/fn_variadic.vv:11:10: error: when forwarding a variadic variable, it must be the final argument
+    9 | fn (s S1) m(vi ...int) int {
+   10 |     _ = s.m(...vi) // OK
+   11 |     _ = s.m(...vi, 2)
+      |             ~~~~~
+   12 |     return 0
+   13 | }

@@ -1,0 +1,96 @@
+// This file checks that using a single comment line like this: `// vfmt off`
+// should turn off the formatting that vfmt does, *till the end of the file*
+// or till it encounters a single comment line like this: `// vfmt on` .
+//
+// NOTE: all lines after a `// vfmt off` line, should be copied 1:1 from the
+// input source code, without any changes to the spacing/formatting.
+import sokol.sgl
+
+struct Abc {
+	b string
+}
+
+// vfmt off
+	struct St { a int	}
+// vfmt on
+
+fn xyz() {
+	println('hi')
+}
+
+// vfmt off
+fn abc() {
+	println('hello')
+	println('another')
+}
+// vfmt on
+
+fn main() {
+	println('hi')
+	// vfmt off
+	println( 'unformatted'	 )
+
+		 // some ASCII art here
+
+	  code( )
+	another( )
+	// vfmt on
+	println('end')
+}
+
+// vertex specification for a cube with colored sides and texture coords
+fn cube() {
+	sgl.begin_quads()
+	{
+		// edge color
+		sgl.c3f(1.0, 0.0, 0.0)
+		// edge coord
+		// x,y,z, texture cord: u,v
+		// vfmt off
+		sgl.v3f_t2f(-1.0,  1.0, -1.0, -1.0,  1.0)
+		sgl.v3f_t2f( 1.0,  1.0, -1.0,  1.0,  1.0)
+		sgl.v3f_t2f( 1.0, -1.0, -1.0,  1.0, -1.0)
+		sgl.v3f_t2f(-1.0, -1.0, -1.0, -1.0, -1.0)
+		sgl.c3f(0.0, 1.0, 0.0)
+		sgl.v3f_t2f(-1.0, -1.0,  1.0, -1.0,  1.0)
+		sgl.v3f_t2f( 1.0, -1.0,  1.0,  1.0,  1.0)
+		sgl.v3f_t2f( 1.0,  1.0,  1.0,  1.0, -1.0)
+		sgl.v3f_t2f(-1.0,  1.0,  1.0, -1.0, -1.0)
+		sgl.c3f(0.0, 0.0, 1.0)
+		sgl.v3f_t2f(-1.0, -1.0,  1.0, -1.0,  1.0)
+		sgl.v3f_t2f(-1.0,  1.0,  1.0,  1.0,  1.0)
+		sgl.v3f_t2f(-1.0,  1.0, -1.0,  1.0, -1.0)
+		sgl.v3f_t2f(-1.0, -1.0, -1.0, -1.0, -1.0)
+		sgl.c3f(1.0, 0.5, 0.0)
+		sgl.v3f_t2f(1.0, -1.0,	1.0, -1.0,	 1.0)
+		sgl.v3f_t2f(1.0, -1.0, -1.0,  1.0,	 1.0)
+		sgl.v3f_t2f(1.0,  1.0, -1.0,  1.0,	-1.0)
+		sgl.v3f_t2f(1.0,  1.0,	1.0, -1.0,	-1.0)
+		sgl.c3f(0.0, 0.5, 1.0)
+		sgl.v3f_t2f( 1.0, -1.0, -1.0, -1.0,  1.0)
+		sgl.v3f_t2f( 1.0, -1.0,  1.0,  1.0,  1.0)
+		sgl.v3f_t2f(-1.0, -1.0,  1.0,  1.0, -1.0)
+		sgl.v3f_t2f(-1.0, -1.0, -1.0, -1.0, -1.0)
+		sgl.c3f(1.0, 0.0, 0.5)
+		sgl.v3f_t2f(-1.0,  1.0, -1.0, -1.0,  1.0)
+		sgl.v3f_t2f(-1.0,  1.0,  1.0,  1.0,  1.0)
+		sgl.v3f_t2f( 1.0,  1.0,  1.0,  1.0, -1.0)
+		sgl.v3f_t2f( 1.0,  1.0, -1.0, -1.0, -1.0)
+		// vfmt on
+	}
+	sgl.end()
+}
+
+fn a_matrix_whose_formatting_vfmt_will_not_destroy() {
+	// vfmt off
+	indices := [
+		u16(0),  1,  2,    0,  2,  3,
+		    6,   5,  4,    7,  6,  4,
+		    8,   9, 10,    8, 10, 11,
+		    14, 13, 12,   15, 14, 12,
+		    16, 17, 18,   16, 18, 19,
+		    22, 21, 20,   23, 22, 20,
+	]
+	// vfmt on
+	println(indices)
+}

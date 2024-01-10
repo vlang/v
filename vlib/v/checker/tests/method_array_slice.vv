@@ -1,0 +1,7 @@
+import os
+
+fn main() {
+	a := os.args.clone()
+	println(a.slice(1))
+	println(a[1..])
+}

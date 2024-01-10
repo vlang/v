@@ -1,0 +1,4 @@
+fn main() {
+	a := 1.0
+	println(a)
+}

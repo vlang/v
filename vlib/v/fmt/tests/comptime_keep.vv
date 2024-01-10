@@ -1,0 +1,93 @@
+import vweb
+
+const embedded_file = $embed_file(r'C:\Users\user\path\to\file')
+
+struct App {
+	a string
+	b string
+mut:
+	c int
+	d f32
+pub:
+	e f32
+	f u64
+pub mut:
+	g string
+	h u8
+}
+
+fn comptime_for() {
+	println(@FN)
+	$for method in App.methods {
+		println('  method: ${method.name} | ${method}')
+	}
+}
+
+fn comptime_for_with_if() {
+	println(@FN)
+	$for method in App.methods {
+		println('  method: ${method}')
+		$if method.typ is fn () {
+			assert method.name in ['run', 'method2']
+		}
+		$if method.return_type is int {
+			assert method.name in ['int_method1', 'int_method2']
+		}
+		$if method.args[0].typ is string {
+			assert method.name == 'my_method'
+		}
+	}
+}
+
+fn comptime_for_fields() {
+	println(@FN)
+	$for field in App.fields {
+		println('  field: ${field.name} | ${field}')
+		$if field.typ is string {
+			assert field.name in ['a', 'b', 'g']
+		}
+		$if field.typ is f32 {
+			assert field.name in ['d', 'e']
+		}
+		if field.is_mut {
+			assert field.name in ['c', 'd', 'g', 'h']
+		}
+		if field.is_pub {
+			assert field.name in ['e', 'f', 'g', 'h']
+		}
+		if field.is_pub && field.is_mut {
+			assert field.name in ['g', 'h']
+		}
+	}
+}
+
+struct Result {}
+
+fn (mut a App) my_method(p string) Result {
+	println('>>>> ${@FN} | p: ${p}')
+	return Result{}
+}
+
+fn handle_conn[T](mut app T) {
+	$for method in T.methods {
+		$if method.return_type is Result {
+			app.$method('abc', 'def')
+		}
+	}
+}
+
+fn comptime_call_dollar_method() {
+	mut app := App{}
+	handle_conn[App](mut app)
+}
+
+fn (mut app App) create() vweb.Result {
+	return $vweb.html()
+}
+
+fn main() {
+	comptime_for()
+	comptime_for_with_if()
+	comptime_for_fields()
+	comptime_call_dollar_method()
+}

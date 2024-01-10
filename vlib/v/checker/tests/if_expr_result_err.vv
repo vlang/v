@@ -1,0 +1,9 @@
+fn get_bool() !bool {
+	return true
+}
+
+fn main() {
+	if get_bool() {
+		println("Using plain lists")
+	}
+}

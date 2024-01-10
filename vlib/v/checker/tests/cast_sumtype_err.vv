@@ -1,0 +1,12 @@
+module main
+
+type Test = int | u32 | f32
+type Bar = int | string
+
+fn main() {
+	data := Test(12)
+	eprintln(int(data))
+
+	foo := Bar('123.45')
+	println(f32(foo))
+}

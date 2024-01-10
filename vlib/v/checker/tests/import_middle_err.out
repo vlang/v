@@ -1,4 +1,4 @@
-vlib/v/checker/tests/import_middle_err.v:5:1: error: `import x` can only be declared at the beginning of the file
+vlib/v/checker/tests/import_middle_err.vv:5:1: error: `import x` can only be declared at the beginning of the file
     3 |     println('hello, world')
     4 | }
     5 | import os

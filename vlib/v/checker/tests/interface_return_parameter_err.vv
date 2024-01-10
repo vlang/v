@@ -1,0 +1,4 @@
+interface Foo {
+    bar(string) []Baz
+    bar2(Bax) string
+}

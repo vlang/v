@@ -1,0 +1,12 @@
+fn sum(a ...int) int {
+	mut total := 0
+	for x in a {
+		total += x
+	}
+	return total
+}
+
+fn main() {
+	b := [5, 6, 7]
+	println(sum(1, 2, ...b))
+}

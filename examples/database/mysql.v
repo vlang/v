@@ -1,15 +1,16 @@
-// import mysql
-
-// fn main() {
-// 	conn := mysql.connect('localhost', 'root', '', 'mysql')
-// 	res := conn.query('show tables')
-// 	for row in res.rows() {
-// 		println(row.vals.join(', '))
-// 	}
-// 	res.free()
-// 	conn.close()
-// }
+import db.mysql
 
 fn main() {
-	
-}	
+	mut conn := mysql.connect(
+		host: 'localhost'
+		port: 3306
+		username: 'root'
+		password: ''
+		dbname: 'mysql'
+	)!
+	res := conn.query('show tables')!
+	for row in res.rows() {
+		println(row.vals.join(', '))
+	}
+	conn.close()
+}

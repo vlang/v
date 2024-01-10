@@ -1,0 +1,8 @@
+struct Abc {
+	a int
+}
+
+fn main() {
+	abc := Abc{}
+	abc.a := 2
+}

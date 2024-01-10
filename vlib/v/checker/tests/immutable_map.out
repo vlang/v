@@ -1,0 +1,27 @@
+vlib/v/checker/tests/immutable_map.vv:3:2: error: `m` is immutable, declare it with `mut` to make it mutable
+    1 | fn main() {
+    2 |     m := map[string]int
+    3 |     m['test']++
+      |     ^
+    4 |     m['test']--
+    5 |     _ = m.move()
+vlib/v/checker/tests/immutable_map.vv:4:2: error: `m` is immutable, declare it with `mut` to make it mutable
+    2 |     m := map[string]int
+    3 |     m['test']++
+    4 |     m['test']--
+      |     ^
+    5 |     _ = m.move()
+    6 |     m.delete('s')
+vlib/v/checker/tests/immutable_map.vv:5:6: error: `m` is immutable, declare it with `mut` to make it mutable
+    3 |     m['test']++
+    4 |     m['test']--
+    5 |     _ = m.move()
+      |         ^
+    6 |     m.delete('s')
+    7 | }
+vlib/v/checker/tests/immutable_map.vv:6:2: error: `m` is immutable, declare it with `mut` to make it mutable
+    4 |     m['test']--
+    5 |     _ = m.move()
+    6 |     m.delete('s')
+      |     ^
+    7 | }

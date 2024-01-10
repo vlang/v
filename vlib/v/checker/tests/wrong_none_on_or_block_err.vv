@@ -1,0 +1,9 @@
+module main
+
+fn main() {
+	m := {
+		`л`: 1
+		`ő`: 25
+	}
+	println(m[`4`] or { none })
+}

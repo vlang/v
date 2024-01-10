@@ -1,0 +1,15 @@
+import os
+
+struct Dummy {}
+
+fn (d Dummy) sample(x int) int {
+	return x + 1
+}
+
+fn main() {
+	$for method in Dummy.methods {
+		if os.args.len > 1 {
+			Dummy{}.$method(os.args[1].int())
+		}
+	}
+}

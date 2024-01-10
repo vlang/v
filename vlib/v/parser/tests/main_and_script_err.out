@@ -1,0 +1,5 @@
+vlib/v/parser/tests/main_and_script_err.vv:4:1: error: function `main` is already defined, put your script statements inside it
+    2 |     println('main')
+    3 | }
+    4 | println('out')
+      | ~~~~~~~

@@ -1,0 +1,6 @@
+fn main() {
+	raw := r'\x00'
+	cstr := c'foo'
+	println(raw)
+	println(cstr)
+}

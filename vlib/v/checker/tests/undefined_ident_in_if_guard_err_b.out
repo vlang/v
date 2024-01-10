@@ -1,0 +1,6 @@
+vlib/v/checker/tests/undefined_ident_in_if_guard_err_b.vv:3:17: error: undefined variable: `id`
+    1 | fn main(){
+    2 |     items := {'a': 'A'}
+    3 |     if id := items[id] {} else {}
+      |                    ~~
+    4 | }

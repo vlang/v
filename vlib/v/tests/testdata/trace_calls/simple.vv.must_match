@@ -1,0 +1,9 @@
+*> trace * C.main*
+*> trace * _vinit*
+*> trace * main main.main/0*
+*> trace * main main.foo/0*
+*> trace * main main.bar/0*
+*> trace * main main.baz/0*
+*> trace * main main.Boo.call_1/1*
+*> trace * builtin eprintln/1*
+*> trace * _vcleanup*

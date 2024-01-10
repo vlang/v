@@ -1,0 +1,7 @@
+vlib/v/checker/tests/if_expr_result_err.vv:6:5: error: non-bool type `!bool` used as if condition
+    4 |
+    5 | fn main() {
+    6 |     if get_bool() {
+      |        ~~~~~~~~~~
+    7 |         println("Using plain lists")
+    8 |     }
