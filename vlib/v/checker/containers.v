@@ -249,6 +249,7 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		// `[50]u8`
 		mut init_expr := node.exprs[0]
 		node.typ = c.eval_array_fixed_sizes(mut init_expr, 0, node.elem_type)
+		node.elem_type = (c.table.sym(node.typ).info as ast.ArrayFixed).elem_type
 		if node.has_init {
 			c.check_array_init_default_expr(mut node)
 		}
