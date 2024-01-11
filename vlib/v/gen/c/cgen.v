@@ -4965,7 +4965,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	fn_return_is_multi := sym.kind == .multi_return
 	fn_return_is_option := fn_ret_type.has_flag(.option)
 	fn_return_is_result := fn_ret_type.has_flag(.result)
-	fn_return_is_fixed_array := sym.is_array_fixed() && !fn_ret_type.has_flag(.option)
+	fn_return_is_fixed_array := sym.is_array_fixed() && !fn_ret_type.has_option_or_result()
 
 	mut has_semicolon := false
 	if node.exprs.len == 0 {
@@ -5306,7 +5306,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			if g.fn_decl.return_type.has_flag(.option) {
 				g.expr_with_opt(node.exprs[0], node.types[0], g.fn_decl.return_type)
 			} else {
-				if fn_return_is_fixed_array && !node.types[0].has_flag(.option) {
+				if fn_return_is_fixed_array && !node.types[0].has_option_or_result() {
 					g.writeln('{0};')
 					if node.exprs[0] is ast.Ident {
 						typ := if expr0.is_auto_deref_var() {
@@ -6394,15 +6394,27 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 					g.writeln(';')
 					g.stmt_path_pos.delete_last()
 				} else {
+					mut is_array_fixed := false
 					if is_option {
-						g.write('*(${cast_typ}*) ${cvar_name}.data = ')
+						is_array_fixed = expr_stmt.expr is ast.ArrayInit
+							&& g.table.final_sym(return_type).kind == .array_fixed
+						if !is_array_fixed {
+							g.write('*(${cast_typ}*) ${cvar_name}.data = ')
+						}
 					} else {
 						g.write('${cvar_name} = ')
+					}
+
+					if is_array_fixed {
+						g.write('memcpy(${cvar_name}.data, (${cast_typ})')
 					}
 					old_inside_opt_data := g.inside_opt_data
 					g.inside_opt_data = true
 					g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_option_and_result())
 					g.inside_opt_data = old_inside_opt_data
+					if is_array_fixed {
+						g.write(', sizeof(${cast_typ}))')
+					}
 					g.writeln(';')
 					g.stmt_path_pos.delete_last()
 				}
