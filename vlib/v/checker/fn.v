@@ -346,6 +346,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 						sptype := c.table.type_to_str(param_type)
 						c.error('the receiver type `${srtype}` should be the same type as the operand `${sptype}`',
 							node.pos)
+					} else if node.return_type.has_option_or_result() {
+						c.error('return type cannot be Option or Result', node.return_type_pos)
 					}
 				}
 			}
