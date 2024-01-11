@@ -794,6 +794,10 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						} else {
 							if const_field := c.table.global_scope.find_const('${field.default_expr}') {
 								info.fields[i].default_expr_typ = const_field.typ
+							} else if type_sym.info is ast.Struct && type_sym.info.is_anon {
+								c.expected_type = field.typ
+								field.default_expr_typ = c.expr(mut field.default_expr)
+								info.fields[i].default_expr_typ = field.default_expr_typ
 							}
 						}
 					}
