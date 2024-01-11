@@ -10,6 +10,8 @@
             is_opened: false
         }
         output_target: console
+        time_format: tf_ss_micro
+        custom_time_format: 'MMMM Do YY N kk:mm:ss A'
         output_file_name: ''
     })
 }

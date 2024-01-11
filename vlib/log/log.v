@@ -6,13 +6,33 @@ module log
 import os
 import time
 
+// TimeFormat define the log time string format, come from time/format.v
+pub enum TimeFormat {
+	tf_ss_micro // YYYY-MM-DD HH:mm:ss.123456 (24h) default
+	tf_default // YYYY-MM-DD HH:mm (24h)
+	tf_ss // YYYY-MM-DD HH:mm:ss (24h)
+	tf_ss_milli // YYYY-MM-DD HH:mm:ss.123 (24h)
+	tf_ss_nano // YYYY-MM-DD HH:mm:ss.123456789 (24h)
+	tf_rfc3339 // YYYY-MM-DDTHH:mm:ss.123Z (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
+	tf_rfc3339_nano // YYYY-MM-DDTHH:mm:ss.123456789Z (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
+	tf_hhmm // HH:mm (24h)
+	tf_hhmmss // HH:mm:ss (24h)
+	tf_hhmm12 // hh:mm (12h)
+	tf_ymmdd // YYYY-MM-DD
+	tf_ddmmy // DD.MM.YYYY
+	tf_md // MMM D
+	tf_custom_format // 'MMMM Do YY N kk:mm:ss A' output like: January 1st 22 AD 13:45:33 PM
+}
+
 // Log represents a logging object
 pub struct Log {
 mut:
-	level         Level
-	output_label  string
-	ofile         os.File
-	output_target LogTarget // output to console (stdout/stderr) or file or both.
+	level              Level
+	output_label       string
+	ofile              os.File
+	output_target      LogTarget // output to console (stdout/stderr) or file or both.
+	time_format        TimeFormat
+	custom_time_format string = 'MMMM Do YY N kk:mm:ss A' // timestamp with custom format
 pub mut:
 	output_file_name string // log output to this file
 }
@@ -94,14 +114,14 @@ pub fn (mut l Log) reopen() ! {
 
 // log_file writes log line `s` with `level` to the log file.
 fn (mut l Log) log_file(s string, level Level) {
-	timestamp := time.now().format_ss_micro()
+	timestamp := l.time_format(time.now())
 	e := tag_to_file(level)
 	l.ofile.writeln('${timestamp} [${e}] ${s}') or { panic(err) }
 }
 
 // log_cli writes log line `s` with `level` to stdout.
 fn (l &Log) log_cli(s string, level Level) {
-	timestamp := time.now().format_ss_micro()
+	timestamp := l.time_format(time.now())
 	e := tag_to_cli(level)
 	println('${timestamp} [${e}] ${s}')
 }
@@ -168,4 +188,75 @@ pub fn (mut f Log) free() {
 		f.ofile.close()
 		f.output_file_name.free()
 	}
+}
+
+// time_format return a timestamp string in the pre-defined format
+fn (l Log) time_format(t time.Time) string {
+	match l.time_format {
+		.tf_ss_micro { // YYYY-MM-DD HH:mm:ss.123456 (24h) default
+			return t.format_ss_micro()
+		}
+		.tf_default { // YYYY-MM-DD HH:mm (24h)
+			return t.format()
+		}
+		.tf_ss { // YYYY-MM-DD HH:mm:ss (24h)
+			return t.format_ss()
+		}
+		.tf_ss_milli { // YYYY-MM-DD HH:mm:ss.123 (24h)
+			return t.format_ss_milli()
+		}
+		.tf_ss_nano { // YYYY-MM-DD HH:mm:ss.123456789 (24h)
+			return t.format_ss_nano()
+		}
+		.tf_rfc3339 { // YYYY-MM-DDTHH:mm:ss.123Z (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
+			return t.format_rfc3339()
+		}
+		.tf_rfc3339_nano { // YYYY-MM-DDTHH:mm:ss.123456789Z (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
+			return t.format_rfc3339_nano()
+		}
+		.tf_hhmm { // HH:mm (24h)
+			return t.hhmm()
+		}
+		.tf_hhmmss { // HH:mm:ss (24h)
+			return t.hhmmss()
+		}
+		.tf_hhmm12 { // hh:mm (12h)
+			return t.hhmm12()
+		}
+		.tf_ymmdd { // YYYY-MM-DD
+			return t.ymmdd()
+		}
+		.tf_ddmmy { // DD.MM.YYYY
+			return t.ddmmy()
+		}
+		.tf_md { // MMM D
+			return t.md()
+		}
+		.tf_custom_format { // 'MMMM Do YY N kk:mm:ss A' output like: January 1st 22 AD 13:45:33 PM
+			return t.custom_format(l.custom_time_format)
+		}
+	}
+}
+
+// set_time_format will set the log time format to a pre-defined format
+pub fn (mut l Log) set_time_format(f TimeFormat) {
+	l.time_format = f
+}
+
+// get_time_format will get the log time format
+pub fn (l Log) get_time_format() TimeFormat {
+	return l.time_format
+}
+
+// set_custom_time_format will set the log custom time format
+// refer to time/custom_format() for more information
+// eg. 'MMMM Do YY N kk:mm:ss A' output like: January 1st 22 AD 13:45:33 PM
+pub fn (mut l Log) set_custom_time_format(f string) {
+	l.time_format = .tf_custom_format
+	l.custom_time_format = f
+}
+
+// get_custom_time_format will get the log custom time format
+pub fn (l Log) get_custom_time_format() string {
+	return l.custom_time_format
 }
