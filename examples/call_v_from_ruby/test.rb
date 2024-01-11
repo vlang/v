@@ -22,7 +22,11 @@ end
 module Lib
   extend FFI::Library
 
-  ffi_lib File.join(File.dirname(__FILE__), 'test' + shared_library_extension)
+  begin
+    ffi_lib File.join(File.dirname(__FILE__), 'test' + shared_library_extension)
+  rescue LoadError
+    abort("No shared library test#{shared_library_extension} found. Check examples/call_v_from_ruby/README.md")
+  end
 
   attach_function :square, [:int], :int
   attach_function :sqrt_of_sum_of_squares, [:double, :double], :double
