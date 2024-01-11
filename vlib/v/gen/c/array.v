@@ -146,7 +146,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		ret_typ := g.typ(node.typ)
 		g.write('${ret_typ} ${tmp_var} = ')
 	}
-	if g.inside_cast {
+	if g.inside_struct_init && g.inside_cast {
 		ret_typ := g.typ(node.typ)
 		g.write('(${ret_typ})')
 	}
