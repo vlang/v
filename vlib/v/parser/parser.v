@@ -3315,7 +3315,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		next_token: p.tok.kind
 	}
 
-	if is_filter {
+	if is_filter || field_name == 'sort' || field_name == 'sorted' {
 		p.close_scope()
 	}
 	return sel_expr
