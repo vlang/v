@@ -21,7 +21,7 @@ pub enum TimeFormat {
 	tf_ymmdd // YYYY-MM-DD
 	tf_ddmmy // DD.MM.YYYY
 	tf_md // MMM D
-	tf_custom_format // 'MMMM Mo YY N kk:mm:ss A' output like: January 1st 22 AD 13:45:33 PM
+	tf_custom_format // 'MMMM Do YY N kk:mm:ss A' output like: January 1st 22 AD 13:45:33 PM
 }
 
 // Log represents a logging object
@@ -32,7 +32,7 @@ mut:
 	ofile              os.File
 	output_target      LogTarget // output to console (stdout/stderr) or file or both.
 	time_format        TimeFormat
-	custom_time_format string = 'MMMM Mo YY N kk:mm:ss A' // timestamp with custom format
+	custom_time_format string = 'MMMM Do YY N kk:mm:ss A' // timestamp with custom format
 pub mut:
 	output_file_name string // log output to this file
 }
@@ -232,13 +232,13 @@ fn (l Log) time_format(t time.Time) string {
 		.tf_md { // MMM D
 			return t.md()
 		}
-		.tf_custom_format { // 'MMMM Mo YY N kk:mm:ss A' output like: January 1st 22 AD 13:45:33 PM
+		.tf_custom_format { // 'MMMM Do YY N kk:mm:ss A' output like: January 1st 22 AD 13:45:33 PM
 			return t.custom_format(l.custom_time_format)
 		}
 	}
 }
 
-// set_time_format will set the log time format
+// set_time_format will set the log time format to a pre-defined format
 pub fn (mut l Log) set_time_format(f TimeFormat) {
 	l.time_format = f
 }
@@ -246,4 +246,17 @@ pub fn (mut l Log) set_time_format(f TimeFormat) {
 // get_time_format will get the log time format
 pub fn (l Log) get_time_format() TimeFormat {
 	return l.time_format
+}
+
+// set_custom_time_format will set the log custom time format
+// refer to time/custom_format() for more information
+// eg. 'MMMM Do YY N kk:mm:ss A' output like: January 1st 22 AD 13:45:33 PM
+pub fn (mut l Log) set_custom_time_format(f string) {
+	l.time_format = .tf_custom_format
+	l.custom_time_format = f
+}
+
+// get_custom_time_format will get the log custom time format
+pub fn (l Log) get_custom_time_format() string {
+	return l.custom_time_format
 }
