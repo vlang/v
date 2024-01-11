@@ -41,22 +41,25 @@ pub struct C.pthread_mutex {}
 
 pub struct C.pthread_rwlock {}
 
-pub struct C.pthread_rwlockattr {}
+@[typedef]
+pub struct C.pthread_rwlockattr_t {}
 
 @[typedef]
 pub struct C.sem_t {}
 
 // [init_with=new_mutex] // TODO: implement support for this struct attribute, and disallow Mutex{} from outside the sync.new_mutex() function.
+@[heap]
 pub struct Mutex {
 	mutex &C.pthread_mutex = unsafe { nil }
 }
 
+@[heap]
 pub struct RwMutex {
 	mutex &C.pthread_rwlock = unsafe { nil }
 }
 
 struct RwMutexAttr {
-	attr &C.pthread_rwlockattr = unsafe { nil }
+	attr C.pthread_rwlockattr_t
 }
 
 @[heap]

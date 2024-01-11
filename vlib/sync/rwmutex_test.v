@@ -51,12 +51,12 @@ fn test_try_lock_rwmutex() {
 
 	mx.unlock()
 
-	// try_rlock will always sucess when mx unlocked,
+	// try_rlock will always succeed when mx unlocked,
 	// multiple try_rlock can apply to the same mx
-	try_sucess_reading2 := mx.try_rlock()
-	try_sucess_reading3 := mx.try_rlock()
-	assert try_sucess_reading2 == true
-	assert try_sucess_reading3 == true
+	try_success_reading2 := mx.try_rlock()
+	try_success_reading3 := mx.try_rlock()
+	assert try_success_reading2 == true
+	assert try_success_reading3 == true
 
 	// if mx is rlocked, then the try_wlock will fail
 	try_fail_writing2 := mx.try_wlock()
@@ -65,10 +65,10 @@ fn test_try_lock_rwmutex() {
 	mx.runlock()
 	mx.runlock() // you must release rlock mutiple times, as it was rlocked multiple times
 
-	// after mx release all rlock, try_wlock will sucess
-	try_sucess_writing3 := mx.try_wlock()
-	assert try_sucess_writing3 == true
+	// after mx release all rlock, try_wlock will succeed
+	try_success_writing3 := mx.try_wlock()
+	assert try_success_writing3 == true
 
-	mx.unlock() // you must unlock it, after try_wlock sucess
+	mx.unlock() // you must unlock it, after try_wlock success
 	mx.destroy()
 }

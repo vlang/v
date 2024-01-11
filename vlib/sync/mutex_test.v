@@ -35,8 +35,8 @@ fn test_try_lock_mutex() {
 	try_fail := mx.try_lock()
 	assert try_fail == false
 	mx.unlock()
-	try_sucess := mx.try_lock()
-	assert try_sucess == true
-	mx.unlock() // you must unlock it, after try_lock sucess
+	try_success := mx.try_lock()
+	assert try_success == true
+	mx.unlock() // you must unlock it, after try_lock success
 	mx.destroy()
 }
