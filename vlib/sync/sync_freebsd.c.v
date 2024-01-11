@@ -16,6 +16,7 @@ $if !android {
 @[trusted]
 fn C.pthread_mutex_init(voidptr, voidptr) int
 fn C.pthread_mutex_lock(voidptr) int
+fn C.pthread_mutex_trylock(voidptr) int
 fn C.pthread_mutex_unlock(voidptr) int
 fn C.pthread_mutex_destroy(voidptr) int
 fn C.pthread_rwlockattr_init(voidptr) int
@@ -25,6 +26,8 @@ fn C.pthread_rwlockattr_destroy(voidptr) int
 fn C.pthread_rwlock_init(voidptr, voidptr) int
 fn C.pthread_rwlock_rdlock(voidptr) int
 fn C.pthread_rwlock_wrlock(voidptr) int
+fn C.pthread_rwlock_tryrdlock(voidptr) int
+fn C.pthread_rwlock_trywrlock(voidptr) int
 fn C.pthread_rwlock_unlock(voidptr) int
 fn C.pthread_rwlock_destroy(voidptr) int
 fn C.sem_init(voidptr, int, u32) int
@@ -38,22 +41,25 @@ pub struct C.pthread_mutex {}
 
 pub struct C.pthread_rwlock {}
 
-pub struct C.pthread_rwlockattr {}
+@[typedef]
+pub struct C.pthread_rwlockattr_t {}
 
 @[typedef]
 pub struct C.sem_t {}
 
 // [init_with=new_mutex] // TODO: implement support for this struct attribute, and disallow Mutex{} from outside the sync.new_mutex() function.
+@[heap]
 pub struct Mutex {
 	mutex &C.pthread_mutex = unsafe { nil }
 }
 
+@[heap]
 pub struct RwMutex {
 	mutex &C.pthread_rwlock = unsafe { nil }
 }
 
 struct RwMutexAttr {
-	attr &C.pthread_rwlockattr = unsafe { nil }
+	attr C.pthread_rwlockattr_t
 }
 
 @[heap]
@@ -101,6 +107,13 @@ pub fn (mut m Mutex) @lock() {
 	C.pthread_mutex_lock(&m.mutex)
 }
 
+// try_lock try to lock the mutex instance and return immediately.
+// If the mutex was already locked, it will return false.
+@[inline]
+pub fn (mut m Mutex) try_lock() bool {
+	return C.pthread_mutex_trylock(&m.mutex) == 0
+}
+
 // unlock unlocks the mutex instance. The mutex is released, and one of
 // the other threads, that were blocked, because they called @lock can continue.
 @[inline]
@@ -137,6 +150,20 @@ pub fn (mut m RwMutex) @rlock() {
 @[inline]
 pub fn (mut m RwMutex) @lock() {
 	C.pthread_rwlock_wrlock(&m.mutex)
+}
+
+// try_rlock try to lock the given RwMutex instance for reading and return immediately.
+// If the mutex was already locked, it will return false.
+@[inline]
+pub fn (mut m RwMutex) try_rlock() bool {
+	return C.pthread_rwlock_tryrdlock(&m.mutex) == 0
+}
+
+// try_wlock try to lock the given RwMutex instance for writing and return immediately.
+// If the mutex was already locked, it will return false.
+@[inline]
+pub fn (mut m RwMutex) try_wlock() bool {
+	return C.pthread_rwlock_trywrlock(&m.mutex) == 0
 }
 
 // destroy frees the resources associated with the rwmutex instance.
