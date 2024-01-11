@@ -3205,6 +3205,9 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	is_filter := field_name in ['filter', 'map', 'any', 'all']
 	if is_filter || field_name == 'sort' || field_name == 'sorted' {
 		p.open_scope()
+		defer {
+			p.close_scope()
+		}
 	}
 	// ! in mutable methods
 	if p.tok.kind == .not && p.peek_tok.kind == .lpar {
@@ -3267,9 +3270,6 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			scope: p.scope
 			comments: comments
 		}
-		if is_filter || field_name == 'sort' || field_name == 'sorted' {
-			p.close_scope()
-		}
 		return mcall_expr
 	}
 	mut is_mut := false
@@ -3315,9 +3315,6 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		next_token: p.tok.kind
 	}
 
-	if is_filter {
-		p.close_scope()
-	}
 	return sel_expr
 }
 
