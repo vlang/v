@@ -512,7 +512,8 @@ fn parse_url(rawurl string, via_request bool) !URL {
 				''))
 		}
 	}
-	if ((url.scheme != '' || !via_request) && !rest.starts_with('///')) && rest.starts_with('//') {
+	if ((url.scheme != '' || !via_request) && !rest.starts_with('///')) && rest.starts_with('//')
+		&& rest.len > 2 {
 		authority, r := split(rest[2..], `/`, false)
 		rest = r
 		a := parse_authority(authority)!

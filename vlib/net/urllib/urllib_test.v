@@ -122,3 +122,9 @@ fn test_parse() {
 		}
 	}
 }
+
+fn test_parse_slashes() {
+	assert urllib.parse('/')!.str() == '/'
+	assert urllib.parse('//')!.str() == '//'
+	assert urllib.parse('///')!.str() == '///'
+}
