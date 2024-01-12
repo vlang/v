@@ -272,7 +272,6 @@ pub struct Association {
 	price       APrice
 }
 
-//! FIX: returning null
 fn test_encoding_struct_with_pointers() {
 	value := Association{
 		association: &Association{
@@ -299,10 +298,11 @@ struct Data {
 mut:
 	countries []Country
 	users     map[string]User
+	extra     map[string]map[string]int
 }
 
 fn test_nested_type() {
-	data_expected := '{"countries":[{"cities":[{"name":"London"},{"name":"Manchester"}],"name":"UK"},{"cities":[{"name":"Donlon"},{"name":"Termanches"}],"name":"KU"}],"users":{"Foo":{"age":10,"nums":[1,2,3],"lastName":"Johnson","IsRegistered":true,"type":0,"pet_animals":"little foo"},"Boo":{"age":20,"nums":[5,3,1],"lastName":"Smith","IsRegistered":false,"type":4,"pet_animals":"little boo"}}}'
+	data_expected := '{"countries":[{"cities":[{"name":"London"},{"name":"Manchester"}],"name":"UK"},{"cities":[{"name":"Donlon"},{"name":"Termanches"}],"name":"KU"}],"users":{"Foo":{"age":10,"nums":[1,2,3],"lastName":"Johnson","IsRegistered":true,"type":0,"pet_animals":"little foo"},"Boo":{"age":20,"nums":[5,3,1],"lastName":"Smith","IsRegistered":false,"type":4,"pet_animals":"little boo"}},"extra":{"2":{"n1":2,"n2":4,"n3":8,"n4":16},"3":{"n1":3,"n2":9,"n3":27,"n4":81}}}'
 	data := Data{
 		countries: [
 			Country{
@@ -332,7 +332,111 @@ fn test_nested_type() {
 				pets: 'little boo'
 			}
 		}
+		extra: {
+			'2': {
+				'n1': 2
+				'n2': 4
+				'n3': 8
+				'n4': 16
+			}
+			'3': {
+				'n1': 3
+				'n2': 9
+				'n3': 27
+				'n4': 81
+			}
+		}
 	}
 	out := json.encode(data)
 	assert out == data_expected
 }
+
+struct Human {
+	name string
+}
+
+struct Item {
+	tag string
+}
+
+enum Animal {
+	dog // Will be encoded as `0`
+	cat
+}
+
+type Entity = Animal | Human | Item | string | time.Time
+
+struct SomeGame {
+	title  string
+	player Entity
+	other  []Entity
+}
+
+fn test_encode_decode_sumtype() {
+	t := time.now()
+	game := SomeGame{
+		title: 'Super Mega Game'
+		player: Human{'Monke'}
+		other: [
+			Entity(Item{'Pen'}),
+			Item{'Cookie'},
+			Animal.cat,
+			'Stool',
+			t,
+		]
+	}
+
+	enc := json.encode(game)
+
+	assert enc == '{"title":"Super Mega Game","player":{"name":"Monke"},"other":[{"tag":"Pen"},{"tag":"Cookie"},1,"Stool","${t.format_rfc3339()}"]}'
+}
+
+struct Foo3 {
+	name string
+	age  int    @[omitempty]
+}
+
+// fn test_omit_empty() {
+// 	foo := Foo3{'Bob', 0}
+// 	assert json.encode(foo) == '{"name":"Bob"}'
+// 	assert json.encode_pretty(foo) == '{
+//   "name": "Bob"
+// }'
+// }
+
+struct Foo31 {
+	name string
+	age  ?int
+}
+
+fn test_option_instead_of_omit_empty() {
+	foo := Foo31{
+		name: 'Bob'
+	}
+	assert json.encode_pretty(foo) == '{
+  "name": "Bob"
+}'
+}
+
+struct Asdasd {
+	data GamePacketData
+}
+
+type GamePacketData = GPEquipItem | GPScale
+
+struct GPScale {
+	value f32
+}
+
+struct GPEquipItem {
+	name string
+}
+
+fn create_game_packet(data &GamePacketData) string {
+	return json.encode(data)
+}
+
+// fn test_encode_sumtype_defined_ahead() {
+// 	ret := create_game_packet(&GamePacketData(GPScale{}))
+// 	assert ret == '{"value":0}'
+// }

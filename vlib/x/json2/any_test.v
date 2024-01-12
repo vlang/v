@@ -123,6 +123,6 @@ fn test_str() {
 	assert sample_data['bool'] or { 0 }.str() == 'false'
 	assert sample_data['str'] or { 0 }.str() == 'test'
 	assert sample_data['null'] or { 0 }.str() == 'null'
-	assert sample_data['arr'] or { 0 }.str() == '["lol"]'
+	assert sample_data['arr'] or { 'not lol' }.str() == '["lol"]'
 	assert sample_data.str() == '{"int":1,"i64":128,"f32":2.0,"f64":1.283,"bool":false,"str":"test","null":null,"arr":["lol"],"obj":{"foo":10}}'
 }

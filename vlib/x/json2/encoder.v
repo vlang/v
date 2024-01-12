@@ -50,80 +50,6 @@ fn (e &Encoder) encode_newline(level int, mut buf []u8) ! {
 	}
 }
 
-fn (e &Encoder) encode_any(val Any, level int, mut buf []u8) ! {
-	match val {
-		string {
-			e.encode_string(val, mut buf)!
-		}
-		bool {
-			if val == true {
-				unsafe { buf.push_many(json2.true_in_string.str, json2.true_in_string.len) }
-			} else {
-				unsafe { buf.push_many(json2.false_in_string.str, json2.false_in_string.len) }
-			}
-		}
-		i8, i16, int, i64 {
-			str_int := val.str()
-			unsafe { buf.push_many(str_int.str, str_int.len) }
-		}
-		u8, u16, u32, u64 {
-			str_int := val.str()
-			unsafe { buf.push_many(str_int.str, str_int.len) }
-		}
-		f32, f64 {
-			$if !nofloat ? {
-				str_float := val.str()
-				unsafe { buf.push_many(str_float.str, str_float.len) }
-				if str_float[str_float.len - 1] == `.` {
-					buf << json2.zero_rune
-				}
-				return
-			}
-			buf << json2.zero_rune
-		}
-		map[string]Any {
-			buf << json2.curly_open_rune
-			mut i := 0
-			for k, v in val {
-				e.encode_newline(level, mut buf)!
-				e.encode_string(k, mut buf)!
-				buf << json2.colon_rune
-				if e.newline != 0 {
-					buf << ` `
-				}
-				e.encode_value_with_level(v, level + 1, mut buf)!
-				if i < val.len - 1 {
-					buf << json2.comma_rune
-				}
-				i++
-			}
-			e.encode_newline(level - 1, mut buf)!
-			buf << json2.curly_close_rune
-		}
-		[]Any {
-			buf << `[`
-			for i in 0 .. val.len {
-				e.encode_newline(level, mut buf)!
-				e.encode_value_with_level(val[i], level + 1, mut buf)!
-				if i < val.len - 1 {
-					buf << json2.comma_rune
-				}
-			}
-			e.encode_newline(level - 1, mut buf)!
-			buf << `]`
-		}
-		time.Time {
-			str_time := val.format_rfc3339()
-			buf << `"`
-			unsafe { buf.push_many(str_time.str, str_time.len) }
-			buf << `"`
-		}
-		Null {
-			unsafe { buf.push_many(json2.null_in_bytes.str, json2.null_in_bytes.len) }
-		}
-	}
-}
-
 fn (e &Encoder) encode_map[T](value T, level int, mut buf []u8) ! {
 	buf << json2.curly_open_rune
 	mut idx := 0
@@ -135,7 +61,18 @@ fn (e &Encoder) encode_map[T](value T, level int, mut buf []u8) ! {
 		if e.newline != 0 {
 			buf << ` `
 		}
-		e.encode_value_with_level(v, level + 1, mut buf)!
+
+		// workaround to avoid `cannot convert 'struct x__json2__Any' to 'struct string'`
+		$if v is $sumtype {
+			$for variant_value in v.variants {
+				if v is variant_value {
+					e.encode_value_with_level(v, level + 1, mut buf)!
+				}
+			}
+		} $else {
+			e.encode_value_with_level(v, level + 1, mut buf)!
+		}
+
 		if idx < value.len - 1 {
 			buf << json2.comma_rune
 		}
@@ -147,31 +84,35 @@ fn (e &Encoder) encode_map[T](value T, level int, mut buf []u8) ! {
 }
 
 fn (e &Encoder) encode_value_with_level[T](val T, level int, mut buf []u8) ! {
-	$if T is string {
+	$if val is $option {
+		workaround := val
+		if workaround != none {
+			e.encode_value_with_level(val, level, mut buf)!
+		}
+	} $else $if T is string {
 		e.encode_string(val, mut buf)!
-	} $else $if T is Any {
-		e.encode_any(val, level, mut buf)!
 	} $else $if T is $sumtype {
-		if val.str() != 'unknown sum type value' {
-			$for v in val.variants {
-				if val is v {
-					e.encode_value_with_level(val, level, mut buf)!
-				}
+		$for v in val.variants {
+			if val is v {
+				e.encode_value_with_level(val, level, mut buf)!
 			}
 		}
 	} $else $if T is $alias {
 		// TODO
 	} $else $if T is time.Time {
-		parsed_time := time.parse(val.str()) or { time.Time{} }
-		e.encode_string(parsed_time.format_rfc3339(), mut buf)!
+		str_value := val.format_rfc3339()
+		buf << json2.quote_rune
+		unsafe { buf.push_many(str_value.str, str_value.len) }
+		buf << json2.quote_rune
 	} $else $if T is $map {
 		e.encode_map(val, level, mut buf)!
-	} $else $if T is []Any {
-		// TODO test
-		e.encode_any(val, level, mut buf)!
+	} $else $if T is $array {
+		e.encode_array(val, level, mut buf)!
 	} $else $if T is Encodable {
 		str_value := val.json_str()
 		unsafe { buf.push_many(str_value.str, str_value.len) }
+	} $else $if T is Null {
+		unsafe { buf.push_many(json2.null_in_bytes.str, json2.null_in_bytes.len) }
 	} $else $if T is $struct {
 		e.encode_struct(val, level, mut buf)!
 	} $else $if T is $enum {
@@ -180,8 +121,6 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut buf []u8) ! {
 	} $else $if T is $int || T is $float || T is bool {
 		str_int := val.str()
 		unsafe { buf.push_many(str_int.str, str_int.len) }
-	} $else $if T is Null {
-		unsafe { buf.push_many(json2.null_in_bytes.str, json2.null_in_bytes.len) }
 	} $else {
 		return error('cannot encode value with ${typeof(val).name} type')
 	}
@@ -203,6 +142,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 	}
 	$for field in U.fields {
 		mut ignore_field := false
+
 		value := val.$(field.name)
 
 		is_nil := val.$(field.name).str() == '&nil'
@@ -215,10 +155,9 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 			}
 		}
 
-		$if field.is_option {
-			is_none := value == none
-
-			if !is_none {
+		$if value is $option {
+			workaround := val.$(field.name)
+			if workaround != none { // smartcast
 				e.encode_newline(level, mut buf)!
 				if json_name != '' {
 					e.encode_string(json_name, mut buf)!
@@ -230,61 +169,12 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 				if e.newline != 0 {
 					buf << ` `
 				}
-
-				$if field.typ is ?string {
-					e.encode_string(val.$(field.name) ?.str(), mut buf)!
-				} $else $if field.typ is ?bool {
-					if value ?.str() == json2.true_in_string {
-						unsafe { buf.push_many(json2.true_in_string.str, json2.true_in_string.len) }
-					} else {
-						unsafe { buf.push_many(json2.false_in_string.str, json2.false_in_string.len) }
-					}
-				} $else $if field.typ is ?f32 || field.typ is ?f64 || field.typ is ?i8
-					|| field.typ is ?i16 || field.typ is ?int || field.typ is ?i64
-					|| field.typ is ?u8 || field.typ is ?u16 || field.typ is ?u32
-					|| field.typ is ?u64 {
-					str_value := val.$(field.name) ?.str()
-					unsafe { buf.push_many(str_value.str, str_value.len) }
-				} $else $if field.typ is ?time.Time {
-					option_value := val.$(field.name) as ?time.Time
-					parsed_time := option_value as time.Time
-					e.encode_string(parsed_time.format_rfc3339(), mut buf)!
-				} $else $if field.is_array {
-					e.encode_array(value, level + 1, mut buf)!
-				} $else $if field.is_struct {
-					e.encode_struct(value, level + 1, mut buf)!
-				} $else $if field.is_enum {
-					// FIXME - checker and cast error
-					// wr.write(int(val.$(field.name)?).str().bytes())!
-					return error('type ${typeof(val).name} cannot be encoded yet')
-				} $else $if field.is_alias {
-					match field.unaliased_typ {
-						typeof[string]().idx {
-							e.encode_string(value.str(), mut buf)!
-						}
-						typeof[bool]().idx {}
-						typeof[f32]().idx, typeof[f64]().idx, typeof[i8]().idx, typeof[i16]().idx,
-						typeof[int]().idx, typeof[i64]().idx, typeof[u8]().idx, typeof[u16]().idx,
-						typeof[u32]().idx, typeof[u64]().idx {
-							str_value := value.str()
-							unsafe { buf.push_many(str_value.str, str_value.len) }
-						}
-						typeof[[]int]().idx {
-							// FIXME - error: could not infer generic type `U` in call to `encode_array`
-							// e.encode_array(value, level, mut buf)!
-						}
-						else {
-							// e.encode_value_with_level(value, level + 1, mut buf)!
-						}
-					}
-				} $else {
-					return error('type ${typeof(val).name} cannot be array encoded')
-				}
+				e.encode_value_with_level(value, level, mut buf)!
 			} else {
 				ignore_field = true
 			}
 		} $else {
-			is_none := val.$(field.name).str() == 'unknown sum type value'
+			is_none := val.$(field.name).str() == 'unknown sum type value' // assert json.encode(StructType[SumTypes]{}) == '{}'
 			if !is_none && !is_nil {
 				e.encode_newline(level, mut buf)!
 				if json_name != '' {
@@ -410,15 +300,10 @@ fn (e &Encoder) encode_array[U](val []U, level int, mut buf []u8) ! {
 		} $else $if U is $struct {
 			e.encode_struct(val[i], level + 1, mut buf)!
 		} $else $if U is $sumtype {
-			// TODO test
-			$if U is Any {
-				e.encode_any(val[i], level + 1, mut buf)!
-			} $else {
-				// TODO
-			}
+			e.encode_value_with_level(val[i], level + 1, mut buf)!
 		} $else $if U is $enum {
 			// TODO test
-			e.encode_any(i64(val[i]), level + 1, mut buf)!
+			e.encode_value_with_level(val[i], level + 1, mut buf)!
 		} $else {
 			return error('type ${typeof(val).name} cannot be array encoded')
 		}
