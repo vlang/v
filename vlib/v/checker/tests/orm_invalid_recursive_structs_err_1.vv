@@ -14,12 +14,12 @@ struct Child {
 }
 
 fn main() {
-	mut db := sqlite.connect('/dev/null') or { panic(err) }
+	mut db := sqlite.connect(':memory:')!
 	defer {
 		db.close() or { panic(err) }
 	}
 
-	_ := sql db {
+	_ = sql db {
 		select from Parent
-	} or { panic(err) }
+	}!
 }
