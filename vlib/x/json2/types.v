@@ -3,7 +3,6 @@ module json2
 import time
 
 // `Any` is a sum type that lists the possible types to be decoded and used.
-
 pub type Any = Null
 	| []Any
 	| bool

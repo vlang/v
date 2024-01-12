@@ -417,7 +417,7 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 				hex_code := chr.hex()
 				unsafe { buf.push_many(hex_code.str, hex_code.len) }
 			} else {
-				buf << chr // breaking //  TODO test // FIXME
+				buf << chr
 			}
 		} else {
 			slice := s[i..i + char_len]
