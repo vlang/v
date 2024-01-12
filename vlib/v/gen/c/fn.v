@@ -228,10 +228,10 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	mut type_name := g.typ(g.unwrap_generic(node.return_type))
 
 	ret_sym := g.table.sym(g.unwrap_generic(node.return_type))
-	if node.return_type.has_flag(.generic) && !node.return_type.has_flag(.option)
+	if node.return_type.has_flag(.generic) && !node.return_type.has_option_or_result()
 		&& ret_sym.kind == .array_fixed {
 		type_name = '_v_${type_name}'
-	} else if ret_sym.kind == .alias && !node.return_type.has_flag(.option) {
+	} else if ret_sym.kind == .alias && !node.return_type.has_option_or_result() {
 		unalias_typ := g.table.unaliased_type(node.return_type)
 		unalias_sym := g.table.sym(unalias_typ)
 		if unalias_sym.kind == .array_fixed {
@@ -1606,8 +1606,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.write(', ${array_depth}')
 	}
 	g.write(')')
-	if node.return_type != 0 && !node.return_type.has_flag(.option)
-		&& !node.return_type.has_flag(.result)
+	if node.return_type != 0 && !node.return_type.has_option_or_result()
 		&& g.table.final_sym(node.return_type).kind == .array_fixed {
 		// it's non-option fixed array, requires accessing .ret_arr member to get the array
 		g.write('.ret_arr')
@@ -1946,8 +1945,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			if name != '&' {
 				g.write(')')
 			}
-			if node.return_type != 0 && !node.return_type.has_flag(.option)
-				&& !node.return_type.has_flag(.result)
+			if node.return_type != 0 && !node.return_type.has_option_or_result()
 				&& g.table.final_sym(node.return_type).kind == .array_fixed {
 				// it's non-option fixed array, requires accessing .ret_arr member to get the array
 				g.write('.ret_arr')
