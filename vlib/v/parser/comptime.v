@@ -322,6 +322,9 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 	for_val := p.check_name()
 	mut kind := ast.ComptimeForKind.methods
 	p.open_scope()
+	defer {
+		p.close_scope()
+	}
 	match for_val {
 		'methods' {
 			p.scope.register(ast.Var{
@@ -370,7 +373,6 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 	}
 	spos := p.tok.pos()
 	stmts := p.parse_block()
-	p.close_scope()
 	return ast.ComptimeFor{
 		val_var: val_var
 		stmts: stmts

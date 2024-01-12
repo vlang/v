@@ -63,6 +63,9 @@ fn (mut p Parser) lock_expr() ast.LockExpr {
 	// TODO Handle aliasing sync
 	p.register_auto_import('sync')
 	p.open_scope()
+	defer {
+		p.close_scope()
+	}
 	mut pos := p.tok.pos()
 	mut lockeds := []ast.Expr{}
 	mut is_rlocked := []bool{}
@@ -95,7 +98,6 @@ fn (mut p Parser) lock_expr() ast.LockExpr {
 	}
 	stmts := p.parse_block_no_scope(false)
 	scope := p.scope
-	p.close_scope()
 	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.LockExpr{
 		lockeds: lockeds
