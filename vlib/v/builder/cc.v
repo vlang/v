@@ -297,7 +297,11 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		ccoptions.args << '-Wl,--no-entry'
 	}
 	if ccoptions.debug_mode && builder.current_os != 'windows' && v.pref.build_mode != .build_module {
-		ccoptions.linker_flags << '-rdynamic' // needed for nicer symbolic backtraces
+		if builder.current_os == 'macos' {
+			ccoptions.linker_flags << '-Wl,-export_dynamic' // clang for mac needs export_dynamic instead of -rdynamic
+		} else {
+			ccoptions.linker_flags << '-rdynamic' // needed for nicer symbolic backtraces
+		}
 	}
 	if v.pref.os == .freebsd {
 		// Needed for -usecache on FreeBSD 13, otherwise we get `ld: error: duplicate symbol: _const_math__bits__de_bruijn32` errors there
