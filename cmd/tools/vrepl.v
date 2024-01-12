@@ -110,7 +110,7 @@ fn run_shell(command string) {
 		assert command_splited.len >= 2
 		dir := command_splited[command_splited.len - 1]
 
-		os.chdir(dir) or { println('Switch directory failed!') }
+		os.chdir(dir) or { eprintln('`${command}` failed, err: ${err}') }
 	} else {
 		os.system(command)
 	}
