@@ -8,7 +8,6 @@ import v.util
 import v.depgraph
 import encoding.base64
 import v.gen.js.sourcemap
-import x.json2
 
 // https://ecma-international.org/ecma-262/#sec-reserved-words
 const js_reserved = ['await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger',
@@ -335,8 +334,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) string 
 fn (g JsGen) create_sourcemap() string {
 	mut sm := g.sourcemap
 	mut out := '\n//# sourceMappingURL=data:application/json;base64,'
-	sourcemap_json := json2.encode(sm.to_sourcemap_json())
-	out += base64.encode(sourcemap_json.bytes())
+	out += base64.encode(sm.to_json().str().bytes())
 	out += '\n'
 
 	return out
