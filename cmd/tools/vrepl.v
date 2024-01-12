@@ -104,16 +104,15 @@ fn repl_help() {
 '.strip_margin())
 }
 
-fn get_shell(command string) {
-	if command.contains('cd') {
-		
+fn run_shell(command string) {
+	if command.len >= 2 && command[0..2] == 'cd' {
 		command_splited := command.split(' ')
 		assert command_splited.len >= 2
-		dir := command_splited[command_splited.len-1]
-		
-		os.chdir(dir) or { panic('Switch directory failed!') }
-	}else{
-		println(os.execute('timeout 1s ${command}').output)
+		dir := command_splited[command_splited.len - 1]
+
+		os.chdir(dir) or { println('Switch directory failed!') }
+	} else {
+		os.system(command)
 	}
 }
 
@@ -377,10 +376,10 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 		}
 
 		if r.line.len > 4 && r.line[0..3] == '!sh' {
-			get_shell(r.line[4..r.line.len])
+			run_shell(r.line[4..r.line.len])
 			continue
 		}
-		
+
 		if r.line.contains(':=') && r.line.contains('fn(') {
 			r.in_func = true
 			r.functions_name << r.line.all_before(':= fn(').trim_space()
