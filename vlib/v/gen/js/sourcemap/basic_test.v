@@ -133,7 +133,6 @@ fn test_simple() {
 	sm.add_mapping_list('hello.v', mlist) or { panic('x') }
 
 	json_data := sm.to_sourcemap_json()
-	println(sm)
 	expected := '{"version":3,"file":"hello.js","sourceRoot":"\\/","sources":["hello.v"],"sourcesContent":["fn main(){nprintln(\'Hello World! Helo \$a\')\\n}"],"names":["hello_name"],"mappings":"AAAA;AAAA,EAAA,OAAO,CAACA,GAAR,CAAY,aAAZ,CAAA,CAAA;AAAA"}'
 	assert json2.encode(json_data) == expected
 }
