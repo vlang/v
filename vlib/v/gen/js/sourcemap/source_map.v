@@ -6,7 +6,18 @@ import x.json2
 
 const source_map_version = 3
 
-type SourceMapJson = map[string]json2.Any
+type SourcesContentJson = json2.Null | string
+
+struct SourceMapJson {
+mut:
+	version         int
+	file            string
+	source_root     string               @[json: 'sourceRoot']
+	sources         []string
+	sources_content []SourcesContentJson @[json: 'sourcesContent']
+	names           []string
+	mappings        string
+}
 
 pub struct SourceMap {
 pub mut:
@@ -86,20 +97,39 @@ fn (mut sm SourceMap) export_mappings_string() string {
 	return output.bytes.bytestr()
 }
 
+/*
+pub struct SourceMap {
+pub mut:
+	version                int               @[json: version]
+	file                   string            @[json: file]
+	source_root            string            @[json: source_root]
+	sources                Sets              @[json: sources]
+	sources_content        map[string]string
+	names                  Sets
+	mappings               Mappings
+	sources_content_inline bool
+}
+*/
+/*
+pub struct Sets {
+mut:
+	value map[string]u32
+}
+*/
 // create a JSON representing the sourcemap
 // Sourcemap Specs http://sourcemaps.info/spec.html
-pub fn (mut sm SourceMap) to_json() SourceMapJson {
-	mut source_map_json := map[string]json2.Any{}
-	source_map_json['version'] = sm.version
+pub fn (mut sm SourceMap) to_sourcemap_json() SourceMapJson {
+	mut source_map_json := SourceMapJson{} // map[string]json2.Any{}
+	source_map_json.version = sm.version
 	if sm.file != '' {
-		source_map_json['file'] = json2.Any(sm.file)
+		source_map_json.file = sm.file
 	}
 	if sm.source_root != '' {
-		source_map_json['sourceRoot'] = json2.Any(sm.source_root)
+		source_map_json.source_root = sm.source_root
 	}
-	mut sources_json := []json2.Any{}
-	mut sources_content_json := []json2.Any{}
-	for source_file, _ in sm.sources.value {
+	mut sources_json := []string{}
+	mut sources_content_json := []SourcesContentJson{}
+	for source_file, _ in sm.sources.value { // value map[string]u32
 		sources_json << source_file
 		if source_file in sm.sources_content {
 			sources_content_json << sm.sources_content[source_file]
@@ -115,15 +145,15 @@ pub fn (mut sm SourceMap) to_json() SourceMapJson {
 			}
 		}
 	}
-	source_map_json['sources'] = json2.Any(sources_json)
-	source_map_json['sourcesContent'] = json2.Any(sources_content_json)
+	source_map_json.sources = sources_json // json2.Any(sources_json)
+	source_map_json.sources_content = sources_content_json // json2.Any(sources_content_json)
 
-	mut names_json := []json2.Any{}
+	mut names_json := []string{}
 	for name, _ in sm.names.value {
 		names_json << name
 	}
-	source_map_json['names'] = json2.Any(names_json)
-	source_map_json['mappings'] = sm.export_mappings_string()
+	source_map_json.names = names_json // json2.Any(names_json)
+	source_map_json.mappings = sm.export_mappings_string()
 	return source_map_json
 }
 

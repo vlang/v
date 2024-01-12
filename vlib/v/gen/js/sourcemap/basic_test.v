@@ -1,5 +1,7 @@
 module sourcemap
 
+import x.json2
+
 fn test_simple() {
 	mut sg := generate_empty_map()
 	mut sm := sg.add_map('hello.js', '/', true, 0, 0)
@@ -130,10 +132,10 @@ fn test_simple() {
 	]
 	sm.add_mapping_list('hello.v', mlist) or { panic('x') }
 
-	json_data := sm.to_json()
-
+	json_data := sm.to_sourcemap_json()
+	println(sm)
 	expected := '{"version":3,"file":"hello.js","sourceRoot":"\\/","sources":["hello.v"],"sourcesContent":["fn main(){nprintln(\'Hello World! Helo \$a\')\\n}"],"names":["hello_name"],"mappings":"AAAA;AAAA,EAAA,OAAO,CAACA,GAAR,CAAY,aAAZ,CAAA,CAAA;AAAA"}'
-	assert json_data.str() == expected
+	assert json2.encode(json_data) == expected
 }
 
 fn test_source_null() {
@@ -151,8 +153,8 @@ fn test_source_null() {
 		source_line: 0
 		source_column: 0
 	}, 3, 1, '')
-	json_data := sm.to_json()
+	json_data := sm.to_sourcemap_json()
 
 	expected := '{"version":3,"file":"hello.js","sourceRoot":"\\/","sources":["hello.v","hello_lib1.v","hello_lib2.v"],"sourcesContent":[null,null,null],"names":[],"mappings":"CA+\\/\\/\\/\\/\\/HA;CCAA;CCAA"}'
-	assert json_data.str() == expected
+	assert json2.encode(json_data) == expected
 }

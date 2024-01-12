@@ -6,7 +6,8 @@ import time
 
 // @[deprecated: 'use `Any` module']
 // @[deprecated_after: '2024-03-18']
-pub type Any = []Any
+pub type Any = Null
+	| []Any
 	| bool
 	| f32
 	| f64
@@ -31,6 +32,13 @@ pub interface Decodable {
 pub interface Encodable {
 	json_str() string
 }
+
+// `Null` struct is a simple representation of the `null` value in JSON.
+pub struct Null {
+	is_null bool = true
+}
+
+pub const null = Null{}
 
 // ValueKind enumerates the kinds of possible values of the Any sumtype.
 pub enum ValueKind {

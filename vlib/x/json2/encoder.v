@@ -127,6 +127,8 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut buf []u8) ! {
 	} $else $if T is Encodable {
 		str_value := val.json_str()
 		unsafe { buf.push_many(str_value.str, str_value.len) }
+	} $else $if T is Null {
+		unsafe { buf.push_many(json2.null_in_bytes.str, json2.null_in_bytes.len) }
 	} $else $if T is $struct {
 		e.encode_struct(val, level, mut buf)!
 	} $else $if T is $enum {
