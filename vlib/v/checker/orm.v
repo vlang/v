@@ -48,7 +48,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 		field_typ, field_sym := c.get_non_array_type(field.typ)
 		if field_sym.kind == .struct_ && (field_typ.idx() == node.table_expr.typ.idx()
 			|| c.check_recursive_structs(field_sym, table_sym.name)) {
-			c.error('invalid recursive struct `${field_sym.name}`', field.pos)
+			c.orm_error('invalid recursive struct `${field_sym.name}`', field.pos)
 			return ast.void_type
 		}
 
@@ -273,6 +273,13 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	non_primitive_fields := c.get_orm_non_primitive_fields(fields)
 
 	for field in non_primitive_fields {
+		field_typ, field_sym := c.get_non_array_type(field.typ)
+		if field_sym.kind == .struct_ && (field_typ.idx() == node.table_expr.typ.idx()
+			|| c.check_recursive_structs(field_sym, table_sym.name)) {
+			c.orm_error('invalid recursive struct `${field_sym.name}`', field.pos)
+			return ast.void_type
+		}
+
 		// Delete an uninitialized struct from fields and skip adding the current field
 		// to sub structs to skip inserting an empty struct in the related table.
 		if c.check_field_of_inserting_struct_is_uninitialized(node, field.name) {
