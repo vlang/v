@@ -4,8 +4,6 @@ import time
 
 // `Any` is a sum type that lists the possible types to be decoded and used.
 
-// @[deprecated: 'use `Any` module']
-// @[deprecated_after: '2024-03-18']
 pub type Any = Null
 	| []Any
 	| bool

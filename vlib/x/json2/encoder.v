@@ -84,22 +84,6 @@ fn (e &Encoder) encode_map[T](value T, level int, mut buf []u8) ! {
 }
 
 fn (e &Encoder) encode_value_with_level[T](val T, level int, mut buf []u8) ! {
-	// $if val.indirections != 0 {
-	// 	if val != unsafe { nil } {
-	// 		$if field.indirections == 1 {
-	// 			e.encode_value_with_level(*val, level + 1, mut buf)!
-	// 		}
-	// 		$if field.indirections == 2 {
-	// 			e.encode_value_with_level(**val, level + 1, mut
-	// 				buf)!
-	// 		}
-	// 		$if field.indirections == 3 {
-	// 			e.encode_value_with_level(***val, level + 1, mut
-	// 				buf)!
-	// 		}
-	// 	}
-	// } $else
-
 	$if val is $option {
 		workaround := val
 		if workaround != none {
@@ -333,23 +317,17 @@ fn (e &Encoder) encode_array[U](val []U, level int, mut buf []u8) ! {
 }
 
 // str returns the JSON string representation of the `map[string]Any` type.
-// @[deprecated: '`Any` module instead']
-// @[deprecated_after: '2024-03-18']
 pub fn (f map[string]Any) str() string {
 	return Any(f).json_str()
 }
 
 // str returns the JSON string representation of the `[]Any` type.
-// @[deprecated: '`Any` module instead']
-// @[deprecated_after: '2024-03-18']
 pub fn (f []Any) str() string {
 	return Any(f).json_str()
 }
 
 // str returns the string representation of the `Any` type. Use the `json_str` method
 // if you want to use the escaped str() version of the `Any` type.
-// @[deprecated: '`Any` module instead']
-// @[deprecated_after: '2024-03-18']
 pub fn (f Any) str() string {
 	if f is string {
 		return f
@@ -359,16 +337,12 @@ pub fn (f Any) str() string {
 }
 
 // json_str returns the JSON string representation of the `Any` type.
-// @[deprecated: '`Any` module instead']
-// @[deprecated_after: '2024-03-18']
 @[manualfree]
 pub fn (f Any) json_str() string {
 	return encode(f)
 }
 
 // prettify_json_str returns the pretty-formatted JSON string representation of the `Any` type.
-// @[deprecated: '`Any` module instead']
-// @[deprecated_after: '2024-03-18']
 @[manualfree]
 pub fn (f Any) prettify_json_str() string {
 	mut buf := []u8{}
@@ -419,7 +393,6 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 	}
 	mut i := 0
 	buf << json2.quote_rune
-	// println(char_lens)
 	for char_len in char_lens {
 		if char_len == 1 {
 			chr := s[i]
@@ -444,8 +417,6 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 				hex_code := chr.hex()
 				unsafe { buf.push_many(hex_code.str, hex_code.len) }
 			} else {
-				// println(buf.bytestr())
-				// println(chr)
 				buf << chr // breaking //  TODO test // FIXME
 			}
 		} else {

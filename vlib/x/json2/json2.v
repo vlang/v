@@ -202,8 +202,6 @@ pub fn encode_pretty[T](typed_data T) string {
 }
 
 // i8 - TODO
-// @[deprecated: 'use `Any` module']
-// @[deprecated_after: '2024-03-18']
 pub fn (f Any) i8() i8 {
 	match f {
 		i8 {
@@ -222,8 +220,6 @@ pub fn (f Any) i8() i8 {
 }
 
 // i16 - TODO
-// @[deprecated: 'use `Any` module']
-// @[deprecated_after: '2024-03-18']
 pub fn (f Any) i16() i16 {
 	match f {
 		i16 {
@@ -242,8 +238,6 @@ pub fn (f Any) i16() i16 {
 }
 
 // int uses `Any` as an integer.
-// @[deprecated: 'use `Any` module']
-// @[deprecated_after: '2024-03-18']
 pub fn (f Any) int() int {
 	match f {
 		int {
@@ -262,8 +256,6 @@ pub fn (f Any) int() int {
 }
 
 // i64 uses `Any` as a 64-bit integer.
-// @[deprecated: 'use `Any` module']
-// @[deprecated_after: '2024-03-18']
 pub fn (f Any) i64() i64 {
 	match f {
 		i64 {
@@ -282,8 +274,6 @@ pub fn (f Any) i64() i64 {
 }
 
 // u64 uses `Any` as a 64-bit unsigned integer.
-// @[deprecated: 'use `Any` module']
-// @[deprecated_after: '2024-03-18']
 pub fn (f Any) u64() u64 {
 	match f {
 		u64 {
@@ -302,8 +292,6 @@ pub fn (f Any) u64() u64 {
 }
 
 // f32 uses `Any` as a 32-bit float.
-// @[deprecated: 'use `Any` module']
-// @[deprecated_after: '2024-03-18']
 pub fn (f Any) f32() f32 {
 	match f {
 		f32 {
@@ -322,8 +310,6 @@ pub fn (f Any) f32() f32 {
 }
 
 // f64 uses `Any` as a 64-bit float.
-// @[deprecated: 'use `Any` module']
-// @[deprecated_after: '2024-03-18']
 pub fn (f Any) f64() f64 {
 	match f {
 		f64 {
@@ -342,8 +328,6 @@ pub fn (f Any) f64() f64 {
 }
 
 // bool uses `Any` as a bool.
-// @[deprecated: 'use `Any` module']
-// @[deprecated_after: '2024-03-18']
 pub fn (f Any) bool() bool {
 	match f {
 		bool {
@@ -378,8 +362,6 @@ pub fn (f Any) bool() bool {
 }
 
 // arr uses `Any` as an array.
-// @[deprecated: 'use `Any` module']
-// @[deprecated_after: '2024-03-18']
 pub fn (f Any) arr() []Any {
 	if f is []Any {
 		return f
@@ -394,8 +376,6 @@ pub fn (f Any) arr() []Any {
 }
 
 // as_map uses `Any` as a map.
-// @[deprecated: 'use `Any` module']
-// @[deprecated_after: '2024-03-18']
 pub fn (f Any) as_map() map[string]Any {
 	if f is map[string]Any {
 		return f
@@ -412,8 +392,6 @@ pub fn (f Any) as_map() map[string]Any {
 }
 
 // to_time uses `Any` as a time.Time.
-// @[deprecated: 'use `Any` module']
-// @[deprecated_after: '2024-03-18']
 pub fn (f Any) to_time() !time.Time {
 	match f {
 		time.Time {
@@ -453,8 +431,6 @@ pub fn (f Any) to_time() !time.Time {
 }
 
 // map_from convert a struct to map of Any
-// @[deprecated: 'use `Any` module']
-// @[deprecated_after: '2024-03-18']
 pub fn map_from[T](t T) map[string]Any {
 	mut m := map[string]Any{}
 	$if T is $struct {
