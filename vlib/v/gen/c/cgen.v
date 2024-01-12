@@ -1451,11 +1451,9 @@ pub fn (mut g Gen) write_typedef_types() {
 				info := sym.info as ast.ArrayFixed
 				elem_sym := g.table.sym(info.elem_type)
 				if elem_sym.is_builtin() {
-					// .array_fixed {
 					styp := sym.cname
-					// array_fixed_char_300 => char x[300]
-					len := styp.after('_')
-					if len.int() > 0 {
+					len := info.size
+					if len > 0 {
 						mut fixed := g.typ(info.elem_type)
 						if elem_sym.info is ast.FnType {
 							pos := g.out.len

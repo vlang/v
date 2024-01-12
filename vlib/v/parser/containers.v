@@ -242,6 +242,9 @@ fn (mut p Parser) scope_register_index() {
 fn (mut p Parser) handle_index_variable(mut default_expr ast.Expr) bool {
 	mut has_index := false
 	p.open_scope()
+	defer {
+		p.close_scope()
+	}
 	p.scope_register_index()
 	default_expr = p.expr(0)
 	if var := p.scope.find_var('index') {
@@ -261,6 +264,5 @@ fn (mut p Parser) handle_index_variable(mut default_expr ast.Expr) bool {
 			has_index = is_used
 		}
 	}
-	p.close_scope()
 	return has_index
 }

@@ -249,6 +249,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	p.check(.key_fn)
 	comments << p.eat_comments()
 	p.open_scope()
+	defer {
+		p.close_scope()
+	}
 	language_tok_pos := p.tok.pos()
 	mut language := p.parse_language()
 	p.fn_language = language
@@ -645,7 +648,6 @@ run them via `v file.v` instead',
 		p.table.register_fn_generic_types(fn_decl.fkey())
 	}
 	p.label_names = []
-	p.close_scope()
 	return fn_decl
 }
 
