@@ -9,21 +9,24 @@ fn test_consant_array_size() {
 	b = [1, 2]!
 }
 
+// for 19593
 // test const was declared below struct fixed array fields declaration
 struct Foo {
-	posts [max_posts_count]int
+	arr [width][2][width + 1]f64
 }
-
-const max_posts_count = 5
 
 fn test_const_below_at_struct_fixed_array_fields() {
 	foo := Foo{}
-	assert foo.posts == [0, 0, 0, 0, 0]!
+	assert foo.arr.len == 2
+	assert foo.arr[0].len == 2
+	assert foo.arr[0][0].len == 3
+	assert foo.arr == [[[0.0, 0.0, 0.0]!, [0.0, 0.0, 0.0]!]!,
+		[[0.0, 0.0, 0.0]!, [0.0, 0.0, 0.0]!]!]!
 }
 
 // for issue 20311
-// When using a static variable to define a fixed array size,
-// if the static variable is defined below or in another module, the size value will not be calculated correctly.
+// when using a const variable to define a fixed array size,
+// if the const variable is defined below or in another module, the size value will not be calculated correctly.
 fn test_const_below_at_fixed_array() {
 	arr := [width][2][width + 1]f64{}
 	assert arr.len == 2
@@ -33,5 +36,6 @@ fn test_const_below_at_fixed_array() {
 		[0.0, 0.0, 0.0]!]!]!
 }
 
-// Do not move this definition; it must be below `fn test_const_below_at_fixed_array()`.
+// do not move this definition,
+// it must be below `struct Foo {...}` and `fn test_const_below_at_fixed_array()`.
 const width = 2

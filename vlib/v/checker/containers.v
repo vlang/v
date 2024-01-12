@@ -247,9 +247,13 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		node.elem_type = elem_type
 	} else if node.is_fixed && node.exprs.len == 1 && node.elem_type != ast.void_type {
 		// `[50]u8`
-		mut init_expr := node.exprs[0]
-		node.typ = c.eval_array_fixed_sizes(mut init_expr, 0, node.elem_type)
-		node.elem_type = (c.table.sym(node.typ).info as ast.ArrayFixed).elem_type
+		sym := c.table.sym(node.typ)
+		if sym.info !is ast.ArrayFixed
+			|| c.array_fixed_has_unresolved_size(sym.info as ast.ArrayFixed) {
+			mut size_expr := node.exprs[0]
+			node.typ = c.eval_array_fixed_sizes(mut size_expr, 0, node.elem_type)
+			node.elem_type = (c.table.sym(node.typ).info as ast.ArrayFixed).elem_type
+		}
 		if node.has_init {
 			c.check_array_init_default_expr(mut node)
 		}
@@ -379,6 +383,26 @@ fn (mut c Checker) eval_array_fixed_sizes(mut size_expr ast.Expr, size int, elem
 	} else {
 		ast.new_type(idx)
 	}
+}
+
+fn (mut c Checker) array_fixed_has_unresolved_size(info &ast.ArrayFixed) bool {
+	if info.size <= 0 {
+		return true
+	}
+	mut elem_type := info.elem_type
+	mut elem_sym := c.table.sym(elem_type)
+	for {
+		if mut elem_sym.info is ast.ArrayFixed {
+			if elem_sym.info.size <= 0 {
+				return true
+			}
+			elem_type = elem_sym.info.elem_type
+			elem_sym = c.table.sym(elem_type)
+		} else {
+			break
+		}
+	}
+	return false
 }
 
 fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
