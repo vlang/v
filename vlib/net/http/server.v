@@ -228,7 +228,13 @@ fn (mut w HandlerWorker) handle_conn(mut conn net.TcpConn) {
 		resp.header.set(.content_length, '${resp.body.len}')
 	}
 
-	conn.write(resp.bytes()) or { eprintln('error sending response: ${err}') }
+	sent := conn.write(resp.bytes()) or {
+		eprintln('error sending response: ${err}')
+		-1
+	}
+	$if test {
+		eprintln('=====>${@FN} try send ${resp.bytes().len} bytes, sent: ${sent} bytes')
+	}
 }
 
 // DebugHandler implements the Handler interface by echoing the request

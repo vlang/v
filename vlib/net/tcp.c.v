@@ -165,18 +165,33 @@ pub fn (mut c TcpConn) write_ptr(b &u8, len int) !int {
 			'>>> TcpConn.write_ptr | data.len: ${len:6} | hex: ${unsafe { b.vbytes(len) }.hex()} | data: ' +
 			unsafe { b.vstring_with_len(len) })
 	}
-	mut sent := $if is_coroutine ? {
-		C.photon_send(c.sock.handle, b, len, msg_nosignal, c.write_timeout)
-	} $else {
-		C.send(c.sock.handle, b, len, msg_nosignal)
+	unsafe {
+		mut ptr_base := &u8(b)
+		mut total_sent := 0
+		for total_sent < len {
+			ptr := ptr_base + total_sent
+			remaining := len - total_sent
+			mut sent := $if is_coroutine ? {
+				C.photon_send(c.sock.handle, ptr, remaining, msg_nosignal, c.write_timeout)
+			} $else {
+				C.send(c.sock.handle, ptr, remaining, msg_nosignal)
+			}
+			$if trace_tcp_data_write ? {
+				eprintln('>>> TcpConn.write_ptr | data chunk, total_sent: ${total_sent:6}, remaining: ${remaining:6}, ptr: ${voidptr(ptr):x} => sent: ${sent:6}')
+			}
+			if sent < 0 {
+				code := error_code()
+				if c.is_blocking && (code == int(error_ewouldblock) || code == 35) { // EAGAIN
+					c.wait_for_write()!
+					continue
+				} else {
+					wrap_error(code)!
+				}
+			}
+			total_sent += sent
+		}
+		return total_sent
 	}
-	if sent < 0 {
-		wrap_error(error_code())!
-	}
-	$if trace_tcp_data_write ? {
-		eprintln('>>> TcpConn.write_ptr | data chunk, sent: ${sent:6}')
-	}
-	return sent
 }
 
 // write blocks and attempts to write all data
