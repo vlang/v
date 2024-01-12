@@ -200,6 +200,8 @@ pub fn (mut c TcpConn) write_ptr(b &u8, len int) !int {
 				eprintln('>>> TcpConn.write_ptr | data chunk, total_sent: ${total_sent:6}, remaining: ${remaining:6}, ptr: ${voidptr(ptr):x} => sent: ${sent:6}')
 			}
 			if sent < 0 {
+				// FreeBSD may return EAGAIN even the socket in blocking mode
+				// so we try again, ensure all data write
 				code := error_code()
 				if c.is_blocking && code == int(error_ewouldblock) {
 					c.wait_for_write()!
