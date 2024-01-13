@@ -1,0 +1,7 @@
+vlib/v/checker/tests/multi_return_option_not_propagated.vv:9:10: error: abc() returns an Option, so it should have either an `or {}` block, or `?` at the end
+    7 |
+    8 | fn main() {
+    9 |     a, b := abc(10)
+      |             ~~~~~~~
+   10 |     println(a)
+   11 |     println(b)

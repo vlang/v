@@ -1158,7 +1158,11 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 					'a Result'
 				}
 				return_modifier := if expr_ret_type.has_flag(.option) { '?' } else { '!' }
-				if expr_ret_type.has_flag(.result) && expr.or_block.kind == .absent {
+				requires_or_block := expr_ret_type.has_flag(.result)
+					|| (c.table.sym(expr_ret_type).kind == .multi_return
+					&& expr_ret_type.has_flag(.option))
+
+				if requires_or_block && expr.or_block.kind == .absent {
 					if c.inside_defer {
 						c.error('${expr.name}() returns ${return_modifier_kind}, so it should have an `or {}` block at the end',
 							expr.pos)

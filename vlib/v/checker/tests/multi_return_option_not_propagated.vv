@@ -1,0 +1,12 @@
+fn abc(n int) ?(int, int) {
+	if n == 5 {
+		return 5, 10
+	}
+	return none
+}
+
+fn main() {
+	a, b := abc(10)
+	println(a)
+	println(b)
+}

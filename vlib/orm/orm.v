@@ -505,12 +505,13 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 						}
 					} else {
 						if attr.arg.trim(' ') == '' {
-							return error("references attribute needs to be in the format [references], [references: 'tablename'], or [references: 'tablename(field_id)']")
+							return error("references attribute needs to be in the format @[references], @[references: 'tablename'], or @[references: 'tablename(field_id)']")
 						}
 						if attr.arg.contains('(') {
-							ref_table, ref_field := attr.arg.split_once('(')
+							err := error("explicit references attribute should be written as @[references: 'tablename(field_id)']")
+							ref_table, ref_field := attr.arg.split_once('(') or { return err }
 							if !ref_field.ends_with(')') {
-								return error("explicit references attribute should be written as [references: 'tablename(field_id)']")
+								return err
 							}
 							references_table = ref_table
 							references_field = ref_field[..ref_field.len - 1]
