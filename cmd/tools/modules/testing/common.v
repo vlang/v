@@ -277,8 +277,9 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			skip_files << 'examples/sokol/sounds/wav_player.v'
 			skip_files << 'examples/sokol/sounds/simple_sin_tones.v'
 		}
-		// examples/wasm/mandelbrot/mandelbrot.wasm.v requires special compilation flags: `-b wasm -os browser`, skip it for now:
+		// requires special compilation flags: `-b wasm -os browser`, skip it for now:
 		skip_files << 'examples/wasm/mandelbrot/mandelbrot.wasm.v'
+		skip_files << 'examples/wasm/change_color_by_id/change_color_by_id.wasm.v'
 	}
 	vargs := _vargs.replace('-progress', '')
 	vexe := pref.vexe_path()
