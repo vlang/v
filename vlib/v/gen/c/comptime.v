@@ -130,8 +130,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		} else {
 			false
 		}
-		mut has_decompose := !m.is_variadic
-			&& node.args.filter(it.expr is ast.ArrayDecompose).len > 0
+		mut has_decompose := !m.is_variadic && node.args.any(it.expr is ast.ArrayDecompose)
 		// check argument length and types
 		if m.params.len - 1 != node.args.len && !expand_strs {
 			if g.inside_call {

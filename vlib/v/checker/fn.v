@@ -440,7 +440,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	}
 
 	// vweb checks
-	if node.attrs.len > 0 && c.file.imports.filter(it.mod == 'vweb').len > 0 {
+	if node.attrs.len > 0 && c.file.imports.any(it.mod == 'vweb') {
 		// If it's a vweb action (has the ['/url'] attribute), make sure it returns a vweb.Result
 		for attr in node.attrs {
 			if attr.name.starts_with('/') {
@@ -879,7 +879,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		}
 	}
 	// already imported symbol (static Foo.new() in another module)
-	if !found && fn_name.contains('__static__') && fn_name[0].is_capital() {
+	if !found && fn_name.len > 0 && fn_name[0].is_capital() {
 		if index := fn_name.index('__static__') {
 			owner_name := fn_name#[..index]
 			for import_sym in c.file.imports.filter(it.syms.any(it.name == owner_name)) {
@@ -2526,7 +2526,7 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 	if f.is_variadic {
 		min_required_params--
 	} else {
-		has_decompose := node.args.filter(it.expr is ast.ArrayDecompose).len > 0
+		has_decompose := node.args.any(it.expr is ast.ArrayDecompose)
 		if has_decompose {
 			// if call(...args) is present
 			min_required_params = nr_args - 1
@@ -2540,7 +2540,7 @@ fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! 
 			last_typ := f.params.last().typ
 			last_sym := c.table.sym(last_typ)
 			if last_sym.info is ast.Struct {
-				is_params := last_sym.info.attrs.filter(it.name == 'params' && !it.has_arg).len > 0
+				is_params := last_sym.info.attrs.any(it.name == 'params' && !it.has_arg)
 				if is_params {
 					// allow empty trailing struct syntax arg (`f()` where `f` is `fn(ConfigStruct)`)
 					node.args << ast.CallArg{

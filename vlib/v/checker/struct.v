@@ -91,7 +91,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				sym := c.table.sym(field.typ)
 				if sym.kind == .function {
 					if !field.typ.has_flag(.option) && !field.has_default_expr
-						&& field.attrs.filter(it.name == 'required').len == 0 {
+						&& field.attrs.all(it.name != 'required') {
 						error_msg := 'uninitialized `fn` struct fields are not allowed, since they can result in segfaults; use `?fn` or `[required]` or initialize the field with `=` (if you absolutely want to have unsafe function pointers, use `= unsafe { nil }`)'
 						c.note(error_msg, field.pos)
 					}

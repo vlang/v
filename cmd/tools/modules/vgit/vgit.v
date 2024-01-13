@@ -97,7 +97,7 @@ pub fn clone_or_pull(remote_git_url string, local_worktree_path string) {
 		remote_git_config_path := os.join_path(remote_git_url, '.git', 'config')
 		if os.is_dir(remote_git_url) && os.is_file(remote_git_config_path) {
 			lines := os.read_lines(remote_git_config_path) or { [] }
-			is_blobless_clone = lines.filter(it.contains('partialclonefilter = blob:none')).len > 0
+			is_blobless_clone = lines.any(it.contains('partialclonefilter = blob:none'))
 		}
 		if is_blobless_clone {
 			// Note:
