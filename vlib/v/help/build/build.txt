@@ -149,6 +149,12 @@ NB: the build flags are shared with the run command too:
   -profile-no-inline
     Skip [inline] functions when profiling.
 
+  -skip-running
+    Skip the automatic running of a _test.v or .vsh file. Useful for debugging and testing.
+    V's testing program `v test` uses that option, to measure and report independently the
+    duration of each _test.v comptime, and then the duration of its runtime.
+    Note: the same effect can be achieved by setting the environment variable VNORUN to 1.
+
   -skip-unused
     Skip generating C/JS code for functions, that are provably not used by your project.
     This speeds up compilation, and reduces the generated output size.
