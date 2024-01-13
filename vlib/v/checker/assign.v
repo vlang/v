@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
@@ -37,7 +37,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			if i == 0 {
 				right_first_type = right_type
 				node.right_types = [
-					c.check_expr_opt_call(right, right_first_type),
+					c.check_expr_option_or_result_call(right, right_first_type),
 				]
 			}
 			if right_type_sym.kind == .multi_return {
@@ -159,7 +159,8 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			c.inside_decl_rhs = false
 			c.inside_ref_lit = old_inside_ref_lit
 			if node.right_types.len == i {
-				node.right_types << c.check_expr_opt_call(node.right[i], right_type)
+				node.right_types << c.check_expr_option_or_result_call(node.right[i],
+					right_type)
 			}
 		}
 		mut right := if i < node.right.len { node.right[i] } else { node.right[0] }
@@ -736,7 +737,8 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			}
 		}
 		if !is_blank_ident && right_sym.kind != .placeholder && left_sym.kind != .interface_
-			&& !right_type.has_flag(.generic) && !left_type.has_flag(.generic) {
+			&& ((!right_type.has_flag(.generic) && !left_type.has_flag(.generic))
+			|| right_sym.kind != left_sym.kind) {
 			// Dual sides check (compatibility check)
 			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
 				// allow literal values to auto deref var (e.g.`for mut v in values { v = 1.0 }`)

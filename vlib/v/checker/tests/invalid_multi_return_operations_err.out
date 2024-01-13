@@ -219,5 +219,5 @@ vlib/v/checker/tests/invalid_multi_return_operations_err.vv:25:10: error: multi-
    23 | println(foo() <- foo())
    24 | 
    25 | for _ in foo() .. foo() {
-      |          ~~~~~
+      |          ~~~~~~~~~~~~~~
    26 | }

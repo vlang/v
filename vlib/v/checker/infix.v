@@ -163,10 +163,10 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		// .eq, .ne, .gt, .lt, .ge, .le, .and, .logical_or, .dot, .key_as, .right_shift {}
 		.eq, .ne {
 			if node.left is ast.CallExpr && node.left.or_block.stmts.len > 0 {
-				c.check_expr_opt_call(node.left, left_type)
+				c.check_expr_option_or_result_call(node.left, left_type)
 			}
 			if node.right is ast.CallExpr && node.right.or_block.stmts.len > 0 {
-				c.check_expr_opt_call(node.right, right_type)
+				c.check_expr_option_or_result_call(node.right, right_type)
 			}
 			if left_type in ast.integer_type_idxs && right_type in ast.integer_type_idxs {
 				is_left_type_signed := left_type in ast.signed_integer_type_idxs
@@ -397,7 +397,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					left_name := c.table.type_to_str(unwrapped_left_type)
 					right_name := c.table.type_to_str(unwrapped_right_type)
 					c.error('mismatched types `${left_name}` and `${right_name}`', left_right_pos)
-				} else if promoted_type.has_flag(.option) || promoted_type.has_flag(.result) {
+				} else if promoted_type.has_option_or_result() {
 					s := c.table.type_to_str(promoted_type)
 					c.error('`${node.op}` cannot be used with `${s}`', node.pos)
 				} else if promoted_type.is_float() {
@@ -525,7 +525,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						node.pos)
 				}
 				// `array << elm`
-				c.check_expr_opt_call(node.right, right_type)
+				c.check_expr_option_or_result_call(node.right, right_type)
 				node.auto_locked, _ = c.fail_if_immutable(mut node.left)
 				left_value_type := c.table.value_type(c.unwrap_generic(left_type))
 				left_value_sym := c.table.sym(c.unwrap_generic(left_value_type))
@@ -648,6 +648,14 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				ast.None {
 					ast.none_type_idx
 				}
+				ast.Ident {
+					if right_expr.name == c.comptime.comptime_for_variant_var {
+						c.comptime.type_map['${c.comptime.comptime_for_variant_var}.typ']
+					} else {
+						c.error('invalid type `${right_expr}`', right_expr.pos)
+						ast.Type(0)
+					}
+				}
 				else {
 					c.error('invalid type `${right_expr}`', right_expr.pos())
 					ast.Type(0)
@@ -667,7 +675,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					if typ != ast.none_type_idx {
 						c.error('`${op}` can only be used to test for none in sql', node.pos)
 					}
-				} else if left_sym.kind !in [.interface_, .sum_type] {
+				} else if left_sym.kind !in [.interface_, .sum_type]
+					&& !c.comptime.is_comptime_var(node.left) {
 					c.error('`${op}` can only be used with interfaces and sum types',
 						node.pos) // can be used in sql too, but keep err simple
 				} else if mut left_sym.info is ast.SumType {

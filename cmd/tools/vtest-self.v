@@ -93,6 +93,7 @@ const skip_test_files = [
 	'vlib/db/mysql/prepared_stmt_test.v', // mysql not installed
 	'vlib/db/pg/pg_orm_test.v', // pg not installed
 	'vlib/db/pg/pg_test.v', // pg not installed
+	'vlib/db/pg/pg_double_test.v', // pg not installed
 ]
 // These tests are too slow to be run in the CI on each PR/commit
 // in the sanitized modes:
@@ -159,6 +160,7 @@ const skip_with_fsanitize_memory = [
 	'vlib/v/tests/orm_joined_tables_select_test.v',
 	'vlib/v/tests/sql_statement_inside_fn_call_test.v',
 	'vlib/v/tests/orm_stmt_wrong_return_checking_test.v',
+	'vlib/v/tests/orm_table_name_test.v',
 	'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
 	'vlib/vweb/tests/vweb_test.v',
 	'vlib/vweb/csrf/csrf_test.v',
@@ -244,6 +246,7 @@ const skip_on_ubuntu_musl = [
 	'vlib/v/tests/orm_sub_array_struct_test.v',
 	'vlib/v/tests/orm_joined_tables_select_test.v',
 	'vlib/v/tests/orm_stmt_wrong_return_checking_test.v',
+	'vlib/v/tests/orm_table_name_test.v',
 	'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
 	'vlib/v/tests/sql_statement_inside_fn_call_test.v',
 	'vlib/clipboard/clipboard_test.v',
@@ -366,6 +369,7 @@ fn main() {
 	}
 	testing.find_started_process('postgres') or {
 		tsession.skip_files << 'vlib/db/pg/pg_orm_test.v'
+		tsession.skip_files << 'vlib/db/pg/pg_double_test.v'
 	}
 
 	$if windows {

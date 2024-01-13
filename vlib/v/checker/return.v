@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
@@ -29,7 +29,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 	mut expected_type := c.unwrap_generic(c.expected_type)
 	if expected_type != 0 && c.table.sym(expected_type).kind == .alias {
 		unaliased_type := c.table.unaliased_type(expected_type)
-		if unaliased_type.has_flag(.option) || unaliased_type.has_flag(.result) {
+		if unaliased_type.has_option_or_result() {
 			expected_type = unaliased_type
 		}
 	}
@@ -171,8 +171,8 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 			}
 		}
 		got_type := c.unwrap_generic(got_types[i])
-		if got_type.has_flag(.option)
-			&& got_type.clear_flag(.option) != exp_type.clear_flag(.option) {
+		if got_type.has_flag(.option) && (!exp_type.has_flag(.option)
+			|| got_type.clear_flag(.option) != exp_type.clear_flag(.option)) {
 			pos := node.exprs[expr_idxs[i]].pos()
 			c.error('cannot use `${c.table.type_to_str(got_type)}` as ${c.error_type_name(exp_type)} in return argument',
 				pos)

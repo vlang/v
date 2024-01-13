@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 @[has_globals]
@@ -2536,11 +2536,17 @@ fn (mut p Parser) name_expr() ast.Expr {
 		}
 		p.expecting_type = false
 		// get type position before moving to next
-		type_pos := p.tok.pos()
-		typ := p.parse_type()
-		return ast.TypeNode{
-			typ: typ
-			pos: type_pos
+		is_known_var := p.scope.known_var(p.tok.lit)
+		if is_known_var {
+			p.mark_var_as_used(p.tok.lit)
+			return p.ident(ast.Language.v)
+		} else {
+			type_pos := p.tok.pos()
+			typ := p.parse_type()
+			return ast.TypeNode{
+				typ: typ
+				pos: type_pos
+			}
 		}
 	}
 	language := match p.tok.lit {
@@ -3199,6 +3205,9 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	is_filter := field_name in ['filter', 'map', 'any', 'all']
 	if is_filter || field_name == 'sort' || field_name == 'sorted' {
 		p.open_scope()
+		defer {
+			p.close_scope()
+		}
 	}
 	// ! in mutable methods
 	if p.tok.kind == .not && p.peek_tok.kind == .lpar {
@@ -3261,9 +3270,6 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			scope: p.scope
 			comments: comments
 		}
-		if is_filter || field_name == 'sort' || field_name == 'sorted' {
-			p.close_scope()
-		}
 		return mcall_expr
 	}
 	mut is_mut := false
@@ -3309,9 +3315,6 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		next_token: p.tok.kind
 	}
 
-	if is_filter {
-		p.close_scope()
-	}
 	return sel_expr
 }
 

@@ -29,7 +29,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	if !c.ensure_type_exists(node.cond_type, node.pos) {
 		return ast.void_type
 	}
-	c.check_expr_opt_call(node.cond, cond_type)
+	c.check_expr_option_or_result_call(node.cond, cond_type)
 	cond_type_sym := c.table.sym(cond_type)
 	cond_is_option := cond_type.has_flag(.option)
 	node.is_sum_type = cond_type_sym.kind in [.interface_, .sum_type]
@@ -476,7 +476,8 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					expr_type = expr_types[0].typ
 				}
 
-				c.smartcast(mut node.cond, node.cond_type, expr_type, mut branch.scope)
+				c.smartcast(mut node.cond, node.cond_type, expr_type, mut branch.scope,
+					false)
 			}
 		}
 	}

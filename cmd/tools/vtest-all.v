@@ -18,6 +18,8 @@ const vtest_nocleanup = os.getenv('VTEST_NOCLEANUP').bool()
 
 const hw_native_no_builtin_size_limit = 300
 
+const l2w_crosscc = os.find_abs_path_of_executable('x86_64-w64-mingw32-gcc-win32') or { '' }
+
 fn main() {
 	mut commands := get_all_commands()
 	// summary
@@ -85,6 +87,17 @@ fn get_all_commands() []Command {
 		line: '${vexe} examples/hello_world.v'
 		okmsg: 'V can compile hello world.'
 		rmfile: 'examples/hello_world'
+	}
+	$if linux {
+		if l2w_crosscc != '' {
+			res << Command{
+				line: '${vexe} -os windows examples/hello_world.v'
+				okmsg: 'V cross compiles hello_world.v on linux, to a windows .exe file'
+				rmfile: 'examples/hello_world.exe'
+			}
+		} else {
+			eprintln('Testing cross compilation from linux to windows needs x86_64-w64-mingw32-gcc-win32. Skipping hello_world.exe test.')
+		}
 	}
 	res << Command{
 		line: '${vexe} -o hhww.c examples/hello_world.v'
@@ -270,6 +283,36 @@ fn get_all_commands() []Command {
 			rmfile: 'str_array'
 		}
 	}
+	////////////////////////////////////////////////////////////////////////
+	// Test compilation of a shared library (.so, .dll. .dylib) with -shared:
+	common_shared_flags := '-shared -skip-unused -d no_backtrace -o library examples/dynamic_library_loader/modules/library/library.v'
+	$if macos {
+		res << Command{
+			line: '${vexe} ${common_shared_flags}'
+			okmsg: 'V compiles library.v with -shared on macos'
+			rmfile: 'library.dylib'
+		}
+	}
+	$if linux {
+		res << Command{
+			line: '${vexe} ${common_shared_flags}'
+			okmsg: 'V compiles library.v with -shared on linux'
+			rmfile: 'library.so'
+		}
+	}
+	// Test cross compilation to windows with -shared:
+	$if linux {
+		if l2w_crosscc != '' {
+			res << Command{
+				line: '${vexe} -os windows ${common_shared_flags}'
+				okmsg: 'V cross compiles library.v with -shared on linux, to a windows library.dll file'
+				rmfile: 'library.dll'
+			}
+		} else {
+			eprintln('Testing cross compilation from linux to windows needs x86_64-w64-mingw32-gcc-win32. Skipping library.dll test.')
+		}
+	}
+	////////////////////////////////////////////////////////////////////////
 	res << Command{
 		line: '${vexe} ${vargs} -progress test-cleancode'
 		okmsg: 'All .v files are invariant when processed with `v fmt`'

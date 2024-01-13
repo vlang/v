@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -31,7 +31,6 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 							fixed_size = const_field.expr.val.int()
 							size_unresolved = false
 						} else if mut const_field.expr is ast.InfixExpr {
-							// QUESTION: this should most likely no be done in the parser, right?
 							mut t := transformer.new_transformer_with_table(p.table, p.pref)
 							folded_expr := t.infix_expr(mut const_field.expr)
 
@@ -74,10 +73,8 @@ fn (mut p Parser) parse_array_type(expecting token.Kind, is_option bool) ast.Typ
 			// error is handled by parse_type
 			return 0
 		}
-		// TODO:
-		// For now, when a const variable or expression is temporarily unavailable to evaluate,
-		// only pending struct fields are deferred.
-		if fixed_size <= 0 && (!p.inside_struct_field_decl || !size_unresolved) {
+		// has been explicitly resolved, but size is 0
+		if fixed_size <= 0 && !size_unresolved {
 			p.error_with_pos('fixed size cannot be zero or negative', size_expr.pos())
 		}
 		idx := p.table.find_or_register_array_fixed(elem_type, fixed_size, size_expr,
@@ -434,6 +431,7 @@ fn (mut p Parser) parse_sum_type_variants() []ast.TypeNode {
 			pos: type_pos
 			end_comments: end_comments
 		}
+
 		if p.tok.kind != .pipe {
 			break
 		}

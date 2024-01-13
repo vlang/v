@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -322,6 +322,9 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 	for_val := p.check_name()
 	mut kind := ast.ComptimeForKind.methods
 	p.open_scope()
+	defer {
+		p.close_scope()
+	}
 	match for_val {
 		'methods' {
 			p.scope.register(ast.Var{
@@ -370,7 +373,6 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 	}
 	spos := p.tok.pos()
 	stmts := p.parse_block()
-	p.close_scope()
 	return ast.ComptimeFor{
 		val_var: val_var
 		stmts: stmts

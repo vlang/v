@@ -4,3 +4,9 @@ vlib/v/checker/tests/fn_return_array_sort_err.vv:6:14: error: the `sort()` metho
     6 |     ret_array().sort()
       |                 ~~~~~~
     7 | }
+vlib/v/checker/tests/fn_return_array_sort_err.vv:6:2: error: cannot pass expression as `mut`
+    4 | 
+    5 | fn main() {
+    6 |     ret_array().sort()
+      |     ~~~~~~~~~~~
+    7 | }

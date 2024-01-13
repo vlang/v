@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module sync
@@ -76,6 +76,19 @@ pub fn (mut m Mutex) @lock() {
 	C.AcquireSRWLockExclusive(&m.mx)
 }
 
+// try_lock try to lock the mutex instance and return immediately.
+// If the mutex was already locked, it will return false.
+// NOTE: try_lock require Windows 7 or later. Before Windows 7, it will always return false.
+// NOTE: To enable try_lock , you should compile your project with `-d windows_7`, like `v . -d windows_7`
+// https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-tryacquiresrwlockexclusive
+pub fn (mut m Mutex) try_lock() bool {
+	$if windows_7 ? {
+		return C.TryAcquireSRWLockExclusive(&m.mx) != 0
+	} $else {
+		return false
+	}
+}
+
 pub fn (mut m Mutex) unlock() {
 	C.ReleaseSRWLockExclusive(&m.mx)
 }
@@ -87,6 +100,32 @@ pub fn (mut m RwMutex) @rlock() {
 
 pub fn (mut m RwMutex) @lock() {
 	C.AcquireSRWLockExclusive(&m.mx)
+}
+
+// try_rlock try to lock the given RwMutex instance for reading and return immediately.
+// If the mutex was already locked, it will return false.
+// NOTE: try_rlock require Windows 7 or later. Before Windows 7, it will always return false.
+// NOTE: To enable try_rlock , you should compile your project with `-d windows_7`, like `v . -d windows_7`
+// https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-tryacquiresrwlockshared
+pub fn (mut m RwMutex) try_rlock() bool {
+	$if windows_7 ? {
+		return C.TryAcquireSRWLockShared(&m.mx) != 0
+	} $else {
+		return false
+	}
+}
+
+// try_wlock try to lock the given RwMutex instance for writing and return immediately.
+// If the mutex was already locked, it will return false.
+// NOTE: try_wlock require Windows 7 or later. Before Windows 7, it will always return false.
+// NOTE: To enable try_wlock , you should compile your project with `-d windows_7`, like `v . -d windows_7`
+// https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-tryacquiresrwlockexclusive
+pub fn (mut m RwMutex) try_wlock() bool {
+	$if windows_7 ? {
+		return C.TryAcquireSRWLockExclusive(&m.mx) != 0
+	} $else {
+		return false
+	}
 }
 
 // Windows SRWLocks have different function to unlock

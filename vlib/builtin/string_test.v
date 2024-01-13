@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -1067,22 +1067,57 @@ fn test_split_into_lines() {
 	}
 }
 
-fn test_string_literal_with_backslash() {
-	a := 'HelloWorld'
+const single_backslash = '\\'
+const double_backslash = '\\\\'
+const newline = '\n'
+
+// vfmt off
+fn test_string_literal_with_backslash_followed_by_newline() {
+	// Note `\` is followed *directly* by a newline, then some more whitespace, then a non whitespace string.
+	// In this case, the \ is treated as line breaking, and the whitespace after that on the new line,
+	// should be just ignored.
+	//
+	// See also https://doc.rust-lang.org/reference/tokens.html#string-literals
+	// >> Both byte sequences are normally translated to U+000A, but as a special exception,
+	// when an unescaped U+005C character occurs immediately before the line-break,
+	// the U+005C character, the line-break, and all whitespace at the beginning of the
+	// next line are ignored.
+	a := 'Hello\
+             World'
 	assert a == 'HelloWorld'
 
-	b := 'OneTwoThree'
-	assert b == 'OneTwoThree'
-}
+	// Here, `\\\` means `\\` followed by `\`, followed by a newline.
+	// the first is a single escaped \, that should go into the literal, the second together with
+	// the newline and the whitespace after it, is a line-break, and should be simply ignored.
+	// Same with `\\\\\`, which is `\\\\`, followed by `\`, i.e. an escaped double backslash,
+	// and a line-break after it:
+	b := 'One \
+	         Two Three \\\
+             Four \\\\
+    Five \\\\\
+    end'
+	assert b == 'One Two Three ${single_backslash}Four ${double_backslash}${newline}    Five ${double_backslash}end'
+	
+	// Note `\\` is followed *directly* by a newline, but `\\` is just an escape for `\`,
+	// and thus the newline has no special meaning, and should go into the string literal.
+	c := 'Hello\\
+        World'
+	assert c == 'Hello\\\n        World'
 
-/*
+	d := 'One\\
+    Two Three \\
+    Four'
+	assert d == 'One\\\n    Two Three \\\n    Four'
+}
+// vfmt on
+
 type MyString = string
 
 fn test_string_alias() {
 	s := MyString('hi')
 	ss := s + '!'
+	assert ss == 'hi!'
 }
-*/
 
 // sort an array of structs, by their string field values
 

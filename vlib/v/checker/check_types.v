@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module checker
@@ -146,7 +146,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	if expected == ast.charptr_type && got == ast.char_type.ref() {
 		return true
 	}
-	if expected.has_flag(.option) || expected.has_flag(.result) {
+	if expected.has_option_or_result() {
 		sym := c.table.sym(got)
 		if ((sym.idx == ast.error_type_idx || got in [ast.none_type, ast.error_type])
 			&& expected.has_flag(.option))
@@ -154,7 +154,7 @@ fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 			&& expected.has_flag(.result)) {
 			// IError
 			return true
-		} else if !c.check_basic(got, expected.clear_flags(.option, .result)) {
+		} else if !c.check_basic(got, expected.clear_option_and_result()) {
 			return false
 		}
 	}

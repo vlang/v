@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
@@ -38,6 +38,16 @@ fn (mut c Checker) error(message string, pos token.Pos) {
 		return
 	}
 	msg := message.replace('`Array_', '`[]')
+	c.warn_or_error(msg, pos, false)
+}
+
+fn (mut c Checker) fatal(message string, pos token.Pos) {
+	if (c.pref.translated || c.file.is_translated) && message.starts_with('mismatched types') {
+		// TODO move this
+		return
+	}
+	msg := message.replace('`Array_', '`[]')
+	c.pref.fatal_errors = true
 	c.warn_or_error(msg, pos, false)
 }
 

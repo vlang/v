@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module c
 
@@ -24,7 +24,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 	}
 	len := node.exprs.len
 	if array_type.unaliased_sym.kind == .array_fixed {
-		g.fixed_array_init(node, array_type, var_name)
+		g.fixed_array_init(node, array_type, var_name, is_amp)
 		if is_amp {
 			g.write(')')
 		}
@@ -79,7 +79,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 	}
 }
 
-fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name string) {
+fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name string, is_amp bool) {
 	prev_inside_lambda := g.inside_lambda
 	g.inside_lambda = true
 	defer {
@@ -146,6 +146,10 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		ret_typ := g.typ(node.typ)
 		g.write('${ret_typ} ${tmp_var} = ')
 	}
+	if g.inside_struct_init && g.inside_cast {
+		ret_typ := g.typ(node.typ)
+		g.write('(${ret_typ})')
+	}
 	g.write('{')
 	if node.has_val {
 		tmp_inside_array := g.inside_array_item
@@ -177,6 +181,8 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 				g.write(', ')
 			}
 		}
+	} else if is_amp {
+		g.write('0')
 	} else {
 		elem_sym := g.table.final_sym(node.elem_type)
 		if elem_sym.kind == .map {
@@ -1337,9 +1343,12 @@ fn (mut g Gen) fixed_array_var_init(expr ast.Expr, size int) {
 	g.write('{')
 	for i in 0 .. size {
 		if expr.is_auto_deref_var() {
-			g.write('*')
+			g.write('(*')
 		}
 		g.expr(expr)
+		if expr.is_auto_deref_var() {
+			g.write(')')
+		}
 		g.write('[${i}]')
 		if i != size - 1 {
 			g.write(', ')

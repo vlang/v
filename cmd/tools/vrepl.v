@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module main
@@ -100,7 +100,20 @@ fn repl_help() {
 	|Ctrl-C, Ctrl-D, exit   Exits the REPL.
 	|clear                  Clears the screen.
 	|pin                    Pins the entered program to the top.
+	|!sh [COMMAND]          Execute on REPL shell commands.
 '.strip_margin())
+}
+
+fn run_shell(command string) {
+	if command.len >= 2 && command[0..2] == 'cd' {
+		command_splited := command.split(' ')
+		assert command_splited.len >= 2
+		dir := command_splited[command_splited.len - 1]
+
+		os.chdir(dir) or { eprintln('`${command}` failed, err: ${err}') }
+	} else {
+		os.system(command)
+	}
 }
 
 fn (mut r Repl) checks() bool {
@@ -361,6 +374,12 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			repl_help()
 			continue
 		}
+
+		if r.line.len > 4 && r.line[0..3] == '!sh' {
+			run_shell(r.line[4..r.line.len])
+			continue
+		}
+
 		if r.line.contains(':=') && r.line.contains('fn(') {
 			r.in_func = true
 			r.functions_name << r.line.all_before(':= fn(').trim_space()

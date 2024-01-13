@@ -11,8 +11,8 @@ fn test_native() {
 		eprintln('>> skipping testing on ARM for now')
 		return
 	}
-	$if freebsd {
-		eprintln('>> skipping testing on FreeBSD for now')
+	$if freebsd || openbsd {
+		eprintln('>> skipping testing on FreeBSD/OpenBSD for now')
 		return
 	}
 	mut bench := benchmark.new_benchmark()

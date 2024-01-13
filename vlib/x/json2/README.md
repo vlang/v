@@ -150,3 +150,18 @@ The following list shows the possible outputs when casting a value to an incompa
 3. Casting non-string values to string (`str()`) will return the
 JSON string representation of the value.
 4. Casting non-numeric values to int/float (`int()`/`i64()`/`f32()`/`f64()`) will return zero.
+
+## Encoding using string builder instead of []u8
+To be more performant, `json2`, in PR 20052, decided to use buffers directly instead of Writers.
+If you want to use Writers you can follow the steps below:
+
+```v ignore
+mut sb := strings.new_builder(64)
+mut buffer := []u8{}
+
+json2.encode_value(<some value to be encoded here>, mut buffer)!
+
+sb.write(buffer)!
+
+unsafe { buffer.free() }
+```

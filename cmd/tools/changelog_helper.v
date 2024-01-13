@@ -149,7 +149,7 @@ fn (mut app App) process_line(text string) ! {
 	println('${app.counter} / ${app.total_lines}')
 	// println('\n')
 	println(text)
-	input := os.input('${category} ?')
+	input := os.input('${category}? ')
 	println("INPUT='${input}'")
 	match input {
 		'' {

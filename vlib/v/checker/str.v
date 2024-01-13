@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module checker
@@ -7,7 +7,7 @@ import v.ast
 import v.token
 
 fn (mut c Checker) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
-	if ftyp.has_flag(.option) || ftyp.has_flag(.result) {
+	if ftyp.has_option_or_result() {
 		return `s`
 	} else if typ.is_float() {
 		return `g`
@@ -32,7 +32,7 @@ fn (mut c Checker) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 		}
 		if ftyp in [ast.string_type, ast.bool_type]
 			|| sym.kind in [.enum_, .array, .array_fixed, .struct_, .map, .multi_return, .sum_type, .interface_, .none_]
-			|| ftyp.has_flag(.option) || ftyp.has_flag(.result) || sym.has_method('str') {
+			|| ftyp.has_option_or_result() || sym.has_method('str') {
 			return `s`
 		} else {
 			return `_`

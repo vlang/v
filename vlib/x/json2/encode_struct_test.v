@@ -18,7 +18,7 @@ type TimeAlias = time.Time
 type StructAlias = StructType[int]
 type EnumAlias = Enumerates
 
-type SumTypes = StructType[string] | bool | int | string | time.Time
+type SumTypes = StructType[string] | []SumTypes | []string | bool | int | string | time.Time
 
 enum Enumerates {
 	a
@@ -150,6 +150,11 @@ fn test_array() {
 		val: false
 	}]
 	assert json.encode(StructType[[]StructType[bool]]{ val: array_of_struct }) == '{"val":[{"val":true},{"val":false}]}'
+
+	assert json.encode(StructType[[][]string]{ val: [['1'], ['2']] }) == '{"val":[["1"],["2"]]}'
+
+	// error: cannot use `[][]string` as `[]string` in argument 1 to `x.json2.Encoder.encode_array`
+	// assert json.encode(StructType[[][][]string]{ val: [[['1']]] }) == '{"val":[[["1"]]]}'
 }
 
 fn test_option_array() {
@@ -229,26 +234,26 @@ fn test_alias() {
 
 fn test_pointer() {
 	mut string_initialized_with_reference := ''
-	assert json.encode(StructTypePointer[string]{ val: 0 }) == '{}'
+	assert json.encode(StructTypePointer[string]{ val: unsafe { nil } }) == '{}'
 	assert json.encode(StructTypePointer[string]{ val: &string_initialized_with_reference }) == '{"val":""}'
 	string_initialized_with_reference = 'a'
 	assert json.encode(StructTypePointer[string]{ val: &string_initialized_with_reference }) == '{"val":"a"}'
 
 	mut bool_initialized_with_reference := false
-	assert json.encode(StructTypePointer[bool]{ val: 0 }) == '{}'
+	assert json.encode(StructTypePointer[bool]{ val: unsafe { nil } }) == '{}'
 	assert json.encode(StructTypePointer[bool]{ val: &bool_initialized_with_reference }) == '{"val":false}'
 	bool_initialized_with_reference = true
 	assert json.encode(StructTypePointer[bool]{ val: &bool_initialized_with_reference }) == '{"val":true}'
 
 	mut int_initialized_with_reference := 0
-	assert json.encode(StructTypePointer[int]{ val: 0 }) == '{}'
+	assert json.encode(StructTypePointer[int]{ val: unsafe { nil } }) == '{}'
 	assert json.encode(StructTypePointer[int]{ val: &int_initialized_with_reference }) == '{"val":0}'
 	int_initialized_with_reference = 1
 	assert json.encode(StructTypePointer[int]{ val: &int_initialized_with_reference }) == '{"val":1}'
 }
 
 fn test_sumtypes() {
-	assert json.encode(StructType[SumTypes]{}) == '{}'
+	assert json.encode(StructType[SumTypes]{}) == '{}' // is_none := val.$(field.name).str() == 'unknown sum type value'
 	assert json.encode(StructType[SumTypes]{ val: '' }) == '{"val":""}'
 	assert json.encode(StructType[SumTypes]{ val: 'a' }) == '{"val":"a"}'
 
@@ -258,7 +263,7 @@ fn test_sumtypes() {
 	assert json.encode(StructType[SumTypes]{ val: 0 }) == '{"val":0}'
 	assert json.encode(StructType[SumTypes]{ val: 1 }) == '{"val":1}'
 
-	assert json.encode(StructType[SumTypes]{ val: fixed_time }) == '{"val":2022-03-11T13:54:25.000Z}'
+	assert json.encode(StructType[SumTypes]{ val: fixed_time }) == '{"val":"2022-03-11T13:54:25.000Z"}'
 
 	assert json.encode(StructType[StructType[SumTypes]]{
 		val: StructType[SumTypes]{
@@ -266,15 +271,22 @@ fn test_sumtypes() {
 		}
 	}) == '{"val":{"val":1}}'
 
-	// assert json.encode(StructType[SumTypes]{ val: StructType[string]{
-	// 		val: '111111'
-	// 	} }) == '{"val":1}'
+	assert json.encode(StructType[SumTypes]{
+		val: StructType[string]{
+			val: '111111'
+		}
+	}) == '{"val":{"val":"111111"}}'
 
 	assert json.encode(StructType[StructType[SumTypes]]{
 		val: StructType[SumTypes]{
 			val: 1
 		}
 	}) == '{"val":{"val":1}}'
+
+	// assert json.encode(StructType{ val: [SumTypes('a')] }) == '{"val":["a"]}'
+	// assert json.encode(StructType[SumTypes]{ val: ['a'] }) == '{"val":["a"]}'
+	// assert json.encode(StructType[SumTypes]{ val: [SumTypes('a')] }) == '{"val":["a"]}'
+	// assert json.encode(StructType[SumTypes]{ val: '' }) == '{"val":""}'
 }
 
 fn test_maps() {

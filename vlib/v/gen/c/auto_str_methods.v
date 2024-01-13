@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module c
 
@@ -1022,7 +1022,12 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 		// handle circular ref type of struct to the struct itself
 		if styp == field_styp && !allow_circular {
 			if is_field_array {
-				fn_body.write_string('it.${field_name}.len > 0 ? ${funcprefix}_SLIT("[<circular>]") : ${funcprefix}_SLIT("[]")')
+				if is_opt_field {
+					arr_styp := g.base_type(field.typ)
+					fn_body.write_string('it.${field_name}.state != 2 && (*(${arr_styp}*)it.${field_name}.data).len > 0 ? ${funcprefix}_SLIT("[<circular>]") : ${funcprefix}_SLIT("[]")')
+				} else {
+					fn_body.write_string('it.${field_name}.len > 0 ? ${funcprefix}_SLIT("[<circular>]") : ${funcprefix}_SLIT("[]")')
+				}
 			} else {
 				fn_body.write_string('${funcprefix}_SLIT("<circular>")')
 			}
@@ -1089,7 +1094,7 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 		return '${fn_name}(${deref}it.${final_field_name}${sufix})', false
 	} else {
 		mut method_str := ''
-		if !field_type.is_ptr() && (field_type.has_flag(.option) || field_type.has_flag(.result)) {
+		if !field_type.is_ptr() && field_type.has_option_or_result() {
 			method_str = '(*(${sym.name}*)it.${final_field_name}.data)'
 		} else {
 			method_str = 'it.${final_field_name}'

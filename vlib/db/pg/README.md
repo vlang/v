@@ -69,6 +69,11 @@ format *PG_VERSION_NUM 17* without 0 also should work
 
 7. Add libpq.dll to v/thirdparty/pg/win64
 
+If you are going to use the msvc compiler:
+7. Add libpq.lib(C:\Program Files\PostgreSQL\{version}\lib) to v/thirdparty/pg/win64/msvc
+
+8. Add libpq.dll, libcrypto-3-x64.dll, libssl-3-x64.dll to where your executable is.
+
 To get the libpq.dll file, you can install the PostgreSQL database, 
 and get this dll from its bin/ folder, or compile DB from source code.
 ```

@@ -9,7 +9,7 @@ pub const used_import = 1
 
 #flag linux -lX11 -lGL -lXcursor -lXi -lpthread
 #flag freebsd -L/usr/local/lib -lX11 -lGL -lXcursor -lXi
-#flag openbsd -L/usr/X11R6/lib -lX11 -lGL -lXcursor -lXi
+#flag openbsd -I/usr/X11R6/include -L/usr/X11R6/lib -lX11 -lGL -lXcursor -lXi
 #flag windows -lgdi32
 
 $if windows {

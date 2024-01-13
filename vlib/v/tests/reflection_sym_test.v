@@ -43,7 +43,7 @@ fn test_array_sym() {
 	assert typ.sym.kind == .array
 	assert typ.sym.language == .v
 	assert typ.sym.methods.len > 0
-	assert typ.sym.methods.filter(it.name == 'join').len > 0
+	assert typ.sym.methods.any(it.name == 'join')
 	assert typ.sym.name == '[]string'
 	assert (typ.sym.info as reflection.Array).nr_dims == 1
 	assert (typ.sym.info as reflection.Array).elem_type == typeof[string]().idx

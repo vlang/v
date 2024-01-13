@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module ast
@@ -804,6 +804,7 @@ pub enum ComptimeVarKind {
 	value_var // map value from `for k,v in t.$(field.name)`
 	field_var // comptime field var `a := t.$(field.name)`
 	generic_param // generic fn parameter
+	smartcast // smart cast when used in `is v` (when `v` is from $for .variants)
 }
 
 @[minify]

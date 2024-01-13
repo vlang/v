@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 
 module gg
@@ -440,6 +440,16 @@ fn gg_fail_fn(msg &char, user_data voidptr) {
 }
 
 //---- public methods
+
+// start creates a new context and runs it right away.
+// It is a convenient way to start short/throwaway gg based prototypes,
+// that do not need to keep and update their own state, like simple
+// animations/visualisations that depend only on the time, or the ctx.frame counter.
+// Use gg.new_context() for more complex ones.
+pub fn start(cfg Config) {
+	mut ctx := new_context(cfg)
+	ctx.run()
+}
 
 // new_context returns an initialized `Context` allocated on the heap.
 pub fn new_context(cfg Config) &Context {

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -330,7 +330,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			}
 			// TODO: no buffer fiddling
 			ast.AnonFn {
-				if !(var_type.has_flag(.option) || var_type.has_flag(.result)) {
+				if !var_type.has_option_or_result() {
 					if blank_assign {
 						g.write('{')
 					}
@@ -369,15 +369,15 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		right_sym := g.table.sym(unwrapped_val_type)
 		unaliased_right_sym := g.table.final_sym(unwrapped_val_type)
 		is_fixed_array_var := unaliased_right_sym.kind == .array_fixed && val !is ast.ArrayInit
-			&& (val in [ast.Ident, ast.IndexExpr, ast.CallExpr, ast.SelectorExpr, ast.DumpExpr]
+			&& (val in [ast.Ident, ast.IndexExpr, ast.CallExpr, ast.SelectorExpr, ast.DumpExpr, ast.InfixExpr]
 			|| (val is ast.CastExpr && val.expr !is ast.ArrayInit)
 			|| (val is ast.PrefixExpr && val.op == .arrow)
 			|| (val is ast.UnsafeExpr && val.expr is ast.Ident)) && !g.pref.translated
 		g.is_assign_lhs = true
 		g.assign_op = node.op
 
-		g.left_is_opt = var_type.has_flag(.option) || var_type.has_flag(.result)
-		g.right_is_opt = val_type.has_flag(.option) || val_type.has_flag(.result)
+		g.left_is_opt = var_type.has_option_or_result()
+		g.right_is_opt = val_type.has_option_or_result()
 		defer {
 			g.left_is_opt = false
 			g.right_is_opt = false
@@ -531,34 +531,38 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				if is_inside_ternary {
 					g.out.write_string(util.tabs(g.indent - g.inside_ternary))
 				}
-				ret_styp := g.typ(right_sym.info.func.return_type)
-
-				mut call_conv := ''
-				mut msvc_call_conv := ''
-				for attr in right_sym.info.func.attrs {
-					match attr.name {
-						'callconv' {
-							if g.is_cc_msvc {
-								msvc_call_conv = '__${attr.arg} '
-							} else {
-								call_conv = '${attr.arg}'
-							}
-						}
-						else {}
-					}
-				}
-				call_conv_attribute_suffix := if call_conv.len != 0 {
-					'__attribute__((${call_conv}))'
-				} else {
-					''
-				}
-
 				fn_name := c_fn_name(g.get_ternary_name(ident.name))
-				g.write('${ret_styp} (${msvc_call_conv}*${fn_name}) (')
-				def_pos := g.definitions.len
-				g.fn_decl_params(right_sym.info.func.params, unsafe { nil }, false)
-				g.definitions.go_back(g.definitions.len - def_pos)
-				g.write(')${call_conv_attribute_suffix}')
+
+				if val_type.has_flag(.option) && val is ast.SelectorExpr {
+					ret_styp := g.typ(g.unwrap_generic(val_type))
+					g.write('${ret_styp} ${fn_name}')
+				} else {
+					ret_styp := g.typ(right_sym.info.func.return_type)
+					mut call_conv := ''
+					mut msvc_call_conv := ''
+					for attr in right_sym.info.func.attrs {
+						match attr.name {
+							'callconv' {
+								if g.is_cc_msvc {
+									msvc_call_conv = '__${attr.arg} '
+								} else {
+									call_conv = '${attr.arg}'
+								}
+							}
+							else {}
+						}
+					}
+					call_conv_attribute_suffix := if call_conv.len != 0 {
+						'__attribute__((${call_conv}))'
+					} else {
+						''
+					}
+					g.write('${ret_styp} (${msvc_call_conv}*${fn_name}) (')
+					def_pos := g.definitions.len
+					g.fn_decl_params(right_sym.info.func.params, unsafe { nil }, false)
+					g.definitions.go_back(g.definitions.len - def_pos)
+					g.write(')${call_conv_attribute_suffix}')
+				}
 			} else {
 				if is_decl {
 					if is_inside_ternary {
@@ -771,7 +775,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 	mut mr_styp := g.typ(return_type.clear_flag(.result))
 	if node.right[0] is ast.CallExpr && node.right[0].or_block.kind != .absent {
 		is_option = false
-		mr_styp = g.typ(return_type.clear_flags(.option, .result))
+		mr_styp = g.typ(return_type.clear_option_and_result())
 	}
 	g.write('${mr_styp} ${mr_var_name} = ')
 	g.expr(node.right[0])

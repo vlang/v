@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -17,11 +17,17 @@ fn (mut g Gen) assert_stmt(original_assert_statement ast.AssertStmt) {
 	}
 	mut node := original_assert_statement
 	g.writeln('// assert')
+
+	mut save_left := ast.empty_expr
+	mut save_right := ast.empty_expr
+
 	if mut node.expr is ast.InfixExpr {
 		if subst_expr := g.assert_subexpression_to_ctemp(node.expr.left, node.expr.left_type) {
+			save_left = node.expr.left
 			node.expr.left = subst_expr
 		}
 		if subst_expr := g.assert_subexpression_to_ctemp(node.expr.right, node.expr.right_type) {
+			save_right = node.expr.right
 			node.expr.right = subst_expr
 		}
 	}
@@ -55,6 +61,15 @@ fn (mut g Gen) assert_stmt(original_assert_statement ast.AssertStmt) {
 		g.writeln('\t__print_assert_failure(&${metaname_panic});')
 		g.gen_assert_postfailure_mode(node)
 		g.writeln('}')
+	}
+
+	if mut node.expr is ast.InfixExpr {
+		if node.expr.left is ast.CTempVar {
+			node.expr.left = save_left
+		}
+		if node.expr.right is ast.CTempVar {
+			node.expr.right = save_right
+		}
 	}
 }
 

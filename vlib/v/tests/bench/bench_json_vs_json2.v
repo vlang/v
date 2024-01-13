@@ -5,8 +5,8 @@ import time
 import benchmark
 
 // recommendations:
-// MAX_ITERATIONS=90_000 ./v run vlib/v/tests/bench/bench_json_vs_json2.v
-// MAX_ITERATIONS=90_000 ./v -no-bounds-checking -prod -cc clang-15 crun vlib/v/tests/bench/bench_json_vs_json2.v
+// MAX_ITERATIONS=100_000 ./v run vlib/v/tests/bench/bench_json_vs_json2.v
+// MAX_ITERATIONS=100_000 ./v -no-bounds-checking -prod -cc clang-15 crun vlib/v/tests/bench/bench_json_vs_json2.v
 
 const max_iterations = os.getenv_opt('MAX_ITERATIONS') or { '1000' }.int()
 
@@ -77,7 +77,7 @@ fn benchmark_measure_json_vs_json2_on_complex_struct() ! {
 			return error('json.decode ${p}')
 		}
 	}
-	b.measure('json.decode')
+	b.measure('json.decode\n')
 
 	measure_json_encode_old_vs_new(json.decode(Person, s)!)!
 }
@@ -93,6 +93,7 @@ fn benchmark_measure_encode_by_type() ! {
 	measure_json_encode_old_vs_new(StructType[[]int]{})!
 	measure_json_encode_old_vs_new(StructType[StructType[int]]{ val: StructType[int]{} })!
 	measure_json_encode_old_vs_new(StructType[Enum]{})!
+	measure_json_encode_old_vs_new(StructType[SumTypes]{1})!
 }
 
 fn benchmark_measure_encode_by_alias_type() ! {
@@ -124,7 +125,7 @@ fn benchmark_measure_decode_by_type() ! {
 			return error('json.decode ${d}')
 		}
 	}
-	b.measure(' json.decode StructType[string]')
+	b.measure(' json.decode StructType[string]\n')
 
 	vb := '{"val": true}'
 	for _ in 0 .. max_iterations {
@@ -140,7 +141,7 @@ fn benchmark_measure_decode_by_type() ! {
 			return error('json.decode ${d}')
 		}
 	}
-	b.measure(' json.decode StructType[bool]')
+	b.measure(' json.decode StructType[bool]\n')
 
 	v0 := '{"val": 0}'
 	for _ in 0 .. max_iterations {
@@ -156,7 +157,7 @@ fn benchmark_measure_decode_by_type() ! {
 			return error('json.decode ${d}')
 		}
 	}
-	b.measure(' json.decode StructType[int]')
+	b.measure(' json.decode StructType[int]\n')
 
 	vt := '{"val": "2015-01-06 15:47:32"}'
 	for _ in 0 .. max_iterations {
@@ -172,7 +173,7 @@ fn benchmark_measure_decode_by_type() ! {
 			return error('json2.decode ${d}')
 		}
 	}
-	b.measure(' json.decode StructType[time.Time]')
+	b.measure(' json.decode StructType[time.Time]\n')
 }
 
 fn measure_json_encode_old_vs_new[T](val T) ! {
@@ -191,5 +192,5 @@ fn measure_json_encode_old_vs_new[T](val T) ! {
 			return error('json.encode ${e}')
 		}
 	}
-	b.measure(' json.encode ${typename}')
+	b.measure(' json.encode ${typename}\n')
 }

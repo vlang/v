@@ -57,6 +57,15 @@ pub const http_404 = http.new_response(
 	).join(headers_close)
 )
 
+pub const http_408 = http.new_response(
+	status: .request_timeout
+	body: '408 Request Timeout'
+	header: http.new_header(
+		key: .content_type
+		value: 'text/plain'
+	).join(headers_close)
+)
+
 pub const http_413 = http.new_response(
 	status: .request_entity_too_large
 	body: '413 Request entity is too large'
@@ -256,6 +265,13 @@ mut:
 	string_responses    []StringResponse
 }
 
+// reset request parameters for `fd`:
+// reset content-length index and the http request
+pub fn (mut params RequestParams) request_done(fd int) {
+	params.incomplete_requests[fd] = http.Request{}
+	params.idx[fd] = 0
+}
+
 // run_at - start a new VWeb server, listening only on a specific address `host`, at the specified `port`
 // Example: vweb.run_at(new_app(), vweb.RunParams{ host: 'localhost' port: 8099 family: .ip }) or { panic(err) }
 @[direct_array_access; manualfree]
@@ -306,7 +322,13 @@ pub fn run_at[A, X](mut global_app A, params RunParams) ! {
 fn ev_callback[A, X](mut pv picoev.Picoev, fd int, events int) {
 	mut params := unsafe { &RequestParams(pv.user_data) }
 
-	if events == picoev.picoev_write {
+	if events == picoev.picoev_timeout {
+		$if trace_picoev_callback ? {
+			eprintln('> request timeout on file descriptor ${fd}')
+		}
+
+		handle_timeout(mut pv, mut params, fd)
+	} else if events == picoev.picoev_write {
 		$if trace_picoev_callback ? {
 			eprintln('> write event on file descriptor ${fd}')
 		}
@@ -320,12 +342,28 @@ fn ev_callback[A, X](mut pv picoev.Picoev, fd int, events int) {
 			eprintln('[vweb] error: write event on connection should be closed')
 			pv.close_conn(fd)
 		}
-	} else {
+	} else if events == picoev.picoev_read {
 		$if trace_picoev_callback ? {
 			eprintln('> read event on file descriptor ${fd}')
 		}
 		handle_read[A, X](mut pv, mut params, fd)
+	} else {
+		// should never happen
+		eprintln('[vweb] error: invalid picoev event ${events}')
 	}
+}
+
+fn handle_timeout(mut pv picoev.Picoev, mut params RequestParams, fd int) {
+	mut conn := &net.TcpConn{
+		sock: net.tcp_socket_from_handle_raw(fd)
+		handle: fd
+		is_blocking: false
+	}
+
+	fast_send_resp(mut conn, vweb.http_408) or {}
+	pv.close_conn(fd)
+
+	params.request_done(fd)
 }
 
 // handle_write_file reads data from a file and sends that data over the socket.
@@ -507,9 +545,7 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 	}
 
 	defer {
-		// reset content-length index, the http request and close the connection
-		params.incomplete_requests[fd] = http.Request{}
-		params.idx[fd] = 0
+		params.request_done(fd)
 	}
 
 	if completed_context := handle_request[A, X](mut conn, req, params) {

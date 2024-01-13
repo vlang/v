@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builtin
@@ -572,16 +572,6 @@ pub fn (b u8) str_escaped() string {
 @[inline]
 pub fn (c u8) is_capital() bool {
 	return c >= `A` && c <= `Z`
-}
-
-// clone clones the byte array, and returns the newly created copy.
-pub fn (b []u8) clone() []u8 {
-	mut res := []u8{len: b.len}
-	// mut res := make([]u8, {repeat:b.len})
-	for i in 0 .. b.len {
-		res[i] = b[i]
-	}
-	return res
 }
 
 // bytestr produces a string from *all* the bytes in the array.

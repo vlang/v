@@ -214,6 +214,12 @@ NB: the build flags are shared with the run command too:
     The instrumented version will print detailed timing stats while processing
     each .v file.
 
+  -n
+    Hide all notices.
+
+  -N
+    Treat *all V notices* as errors.
+
   -w
     Hide all warnings.
 

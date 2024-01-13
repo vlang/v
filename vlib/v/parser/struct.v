@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2023 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -248,7 +248,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 					return ast.StructDecl{}
 				}
 				field_pos = field_start_pos.extend(p.prev_tok.pos())
-				if typ.has_flag(.option) || typ.has_flag(.result) {
+				if typ.has_option_or_result() {
 					option_pos = p.peek_token(-2).pos()
 				}
 			}

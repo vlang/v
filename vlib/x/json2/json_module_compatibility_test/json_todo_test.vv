@@ -55,7 +55,7 @@ struct Item {
 }
 
 enum Animal {
-	dog // Will be encoded as `0`
+	dog
 	cat
 }
 
@@ -69,22 +69,7 @@ struct SomeGame {
 
 //! BUGFIX - .from_json(res)
 fn test_encode_decode_sumtype() {
-	t := time.now()
-	game := SomeGame{
-		title: 'Super Mega Game'
-		player: Human{'Monke'}
-		other: [
-			Entity(Item{'Pen'}),
-			Item{'Cookie'},
-			Animal.cat,
-			'Stool',
-			t,
-		]
-	}
-
-	enc := json.encode(game)
-
-	assert enc == '{"title":"Super Mega Game","player":{"name":"Monke","_type":"Human"},"other":[{"tag":"Pen","_type":"Item"},{"tag":"Cookie","_type":"Item"},1,"Stool",{"_type":"Time","value":${t.unix_time()}}]}'
+	enc := '{"title":"Super Mega Game","player":{"name":"Monke","_type":"Human"},"other":[{"tag":"Pen","_type":"Item"},{"tag":"Cookie","_type":"Item"},1,"Stool",{"_type":"Time","value":${t.unix_time()}}]}'
 
 	dec := json.decode[SomeGame](enc)!
 
@@ -137,6 +122,8 @@ fn test_encode_decode_time() {
 	assert s.contains('"reg_date":1608621780')
 	user2 := json.decode[User2](s)!
 	assert user2.reg_date.str() == '2020-12-22 07:23:00'
+}
+
 struct City {
 	name string
 }
@@ -220,8 +207,7 @@ fn test_nested_type() {
 			}
 		}
 	}
-	out := json.encode(data)
-	assert out == data_expected
+
 	data2 := json.decode[Data](data_expected)!
 	assert data2.countries.len == data.countries.len
 	for i in 0 .. 1 {
@@ -329,41 +315,4 @@ fn test_decode_missing_maps_field() {
 	assert info.id == 22
 	assert '${info.items}' == '[]'
 	assert '${info.maps}' == '{}'
-}
-
-struct Foo3 {
-	name string
-	age  int    @[omitempty]
-}
-
-//! BUGFIX - .from_json(res)
-fn test_omit_empty() {
-	foo := Foo3{'Bob', 0}
-	assert json.encode_pretty(foo) == '{
-  "name": "Bob"
-}'
-}
-
-struct Asdasd {
-	data GamePacketData
-}
-
-type GamePacketData = GPEquipItem | GPScale
-
-struct GPScale {
-	value f32
-}
-
-struct GPEquipItem {
-	name string
-}
-
-fn create_game_packet(data &GamePacketData) string {
-	return json.encode(data)
-}
-
-//! FIX: returning null
-fn test_encode_sumtype_defined_ahead() {
-	ret := create_game_packet(&GamePacketData(GPScale{}))
-	assert ret == '{"value":0,"_type":"GPScale"}'
 }

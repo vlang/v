@@ -6,7 +6,11 @@ import orm
 $if $pkgconfig('libpq') {
 	#pkgconfig --cflags --libs libpq
 } $else {
-	#flag -lpq
+	$if msvc {
+		#flag -llibpq
+	} $else {
+		#flag -lpq
+	}
 	#flag linux -I/usr/include/postgresql
 
 	#flag darwin -I/opt/local/include/postgresql11

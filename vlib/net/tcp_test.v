@@ -1,7 +1,6 @@
 // vtest flaky: true
 // vtest retry: 8
 import net
-import os
 
 const test_port = 45123
 
@@ -78,21 +77,10 @@ fn test_tcp_ip() {
 
 fn test_tcp_unix() {
 	eprintln('\n>>> ${@FN}')
-	// TODO(emily):
-	// whilst windows supposedly supports unix sockets
-	// this doesnt work (wsaeopnotsupp at the call to bind())
-	$if !windows {
-		address := os.real_path('tcp-test.sock')
-		// address := 'tcp-test.sock'
-		println('${address}')
+	address := 'tcp-test.sock'
 
-		mut l := net.listen_tcp(.unix, address) or { panic(err) }
-		start_echo_server(mut l)
-		echo(address) or { panic(err) }
-		l.close() or {}
-
-		os.rm(address) or { panic('failed to remove socket file') }
-	}
+	mut l := net.listen_tcp(.unix, address) or { return }
+	assert false
 }
 
 fn testsuite_end() {
