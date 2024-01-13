@@ -70,6 +70,15 @@ pub fn (mut b Benchmark) step() {
 	}
 }
 
+// step_restart will restart the internal step timer.
+// Note that the step count will *stay the same*.
+// This method is useful, when you want to do some optional preparation
+// after you have called .step(), so that the time for that optional
+// preparation will *not* be added to the duration of the step.
+pub fn (mut b Benchmark) step_restart() {
+	b.step_timer.restart()
+}
+
 // fail increases the fail count by 1 and stops the internal timer.
 pub fn (mut b Benchmark) fail() {
 	b.step_timer.stop()
