@@ -9,6 +9,10 @@ pub fn main() {
 	change_color_by_id('description3', 'black')
 }
 
+pub fn click_callback() {
+	println('Hello from V')
+}
+
 fn change_color_by_id(id string, color string) {
 	JS.change_color_by_id(id.str, id.len, color.str, color.len)
 }

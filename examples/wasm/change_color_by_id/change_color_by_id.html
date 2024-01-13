@@ -11,9 +11,11 @@
     <p id="description1">Some cool description</p>
     <p id="description2">Some cool description</p>
     <p id="description3">Some cool description</p>
+    <button id="myButton" onclick="click_callback()">Click here</button>
 
     <script type="text/javascript">
       var memory;
+      var click_callback;
 
       function get_string(ptr, len) {
         const buf = new Uint8Array(memory.buffer, ptr, len);
@@ -41,9 +43,12 @@
         env: env,
       }).then((res) => {
         memory = res.instance.exports["memory"];
+
         console.time("main.main");
         res.instance.exports["main.main"]();
         console.timeEnd("main.main");
+
+        click_callback = res.instance.exports["main.click_callback"];
       });
     </script>
   </body>
