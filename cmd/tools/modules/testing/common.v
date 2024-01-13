@@ -137,7 +137,7 @@ pub fn (mut ts TestSession) print_messages() {
 		// first sent *all events* to the output reporter, so it can then process them however it wants:
 		ts.reporter.report(ts.nmessage_idx, rmessage)
 
-		if rmessage.kind in [.cmd_begin, .cmd_end] {
+		if rmessage.kind in [.cmd_begin, .cmd_end, .compile_begin, .compile_end] {
 			// The following events, are sent before the test framework has determined,
 			// what the full completion status is. They can also be repeated multiple times,
 			// for tests that are flaky and need repeating.
@@ -432,10 +432,17 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	is_vet := ts.vargs.contains('vet')
 	produces_file_output := !(is_fmt || is_vet)
 
-	if relative_file.ends_with('js.v') {
+	if relative_file.ends_with('.js.v') {
 		if produces_file_output {
 			cmd_options << ' -b js'
 			run_js = true
+		}
+	}
+
+	if relative_file.ends_with('.c.v') {
+		if produces_file_output {
+			cmd_options << ' -b c'
+			run_js = false
 		}
 	}
 
@@ -467,10 +474,15 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		os.mkdir_all(test_folder_path) or {}
 	}
 	fname := os.file_name(file)
+	// There are test files ending with `_test.v`, `_test.c.v` and `_test.js.v`.
+	mut fname_without_extension := fname.all_before_last('.v')
+	if fname_without_extension.ends_with('.c') {
+		fname_without_extension = fname_without_extension.all_before_last('.c')
+	}
 	generated_binary_fname := if os.user_os() == 'windows' && !run_js {
-		fname.all_before_last('.v') + '.exe'
+		fname_without_extension + '.exe'
 	} else {
-		fname.all_before_last('.v')
+		fname_without_extension
 	}
 	generated_binary_fpath := os.join_path_single(test_folder_path, generated_binary_fname)
 	if produces_file_output {
@@ -479,15 +491,17 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 		cmd_options << ' -o ${os.quoted_path(generated_binary_fpath)}'
 	}
-	cmd := '${os.quoted_path(ts.vexe)} ${cmd_options.join(' ')} ${os.quoted_path(file)}'
+	cmd := '${os.quoted_path(ts.vexe)} -skip-running ${cmd_options.join(' ')} ${os.quoted_path(file)}'
+	run_cmd := if run_js { 'node ${generated_binary_fpath}' } else { generated_binary_fpath }
 	ts.benchmark.step()
 	tls_bench.step()
 	if relative_file.replace('\\', '/') in ts.skip_files {
 		ts.benchmark.skip()
 		tls_bench.skip()
 		if !testing.hide_skips {
-			ts.append_message(.skip, tls_bench.step_message_skip(normalised_relative_file),
-				mtc)
+			ts.append_message(.skip, tls_bench.step_message_skip(normalised_relative_file,
+				preparation: 1 * time.microsecond
+			), mtc)
 		}
 		return pool.no_result
 	}
@@ -556,17 +570,29 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.append_message(.info, '                 starting ${relative_file} ...',
 				mtc)
 		}
-		ts.append_message(.cmd_begin, cmd, mtc)
+		//
+		ts.append_message(.compile_begin, cmd, mtc)
+		compile_d_cmd := time.new_stopwatch()
+		mut compile_r := os.execute(cmd)
+		mut compile_cmd_duration := compile_d_cmd.elapsed()
+		ts.append_message_with_duration(.compile_end, compile_r.output, compile_cmd_duration,
+			mtc)
+		//
+		ts.benchmark.step_restart()
+		tls_bench.step_restart()
+		//
+		ts.append_message(.cmd_begin, run_cmd, mtc)
 		d_cmd := time.new_stopwatch()
-		mut r := os.execute(cmd)
+		mut r := os.execute(run_cmd)
 		mut cmd_duration := d_cmd.elapsed()
 		ts.append_message_with_duration(.cmd_end, r.output, cmd_duration, mtc)
 
-		if r.exit_code < 0 {
+		if compile_r.exit_code != 0 || r.exit_code < 0 {
 			ts.benchmark.fail()
 			tls_bench.fail()
-			ts.append_message_with_duration(.fail, tls_bench.step_message_fail(normalised_relative_file),
-				cmd_duration, mtc)
+			ts.append_message_with_duration(.fail, tls_bench.step_message_fail(normalised_relative_file,
+				preparation: compile_cmd_duration
+			), cmd_duration, mtc)
 			ts.add_failed_cmd(cmd)
 			return pool.no_result
 		}
@@ -578,9 +604,9 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 					mtc)
 				os.setenv('VTEST_RETRY', '${retry}', true)
 
-				ts.append_message(.cmd_begin, cmd, mtc)
+				ts.append_message(.cmd_begin, run_cmd, mtc)
 				d_cmd_2 := time.new_stopwatch()
-				r = os.execute(cmd)
+				r = os.execute(run_cmd)
 				cmd_duration = d_cmd_2.elapsed()
 				ts.append_message_with_duration(.cmd_end, r.output, cmd_duration, mtc)
 
@@ -601,16 +627,18 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.benchmark.fail()
 			tls_bench.fail()
 			ending_newline := if r.output.ends_with('\n') { '\n' } else { '' }
-			ts.append_message_with_duration(.fail, tls_bench.step_message_fail('${normalised_relative_file}\n${r.output.trim_space()}${ending_newline}'),
-				cmd_duration, mtc)
+			ts.append_message_with_duration(.fail, tls_bench.step_message_fail('${normalised_relative_file}\n${r.output.trim_space()}${ending_newline}',
+				preparation: compile_cmd_duration
+			), cmd_duration, mtc)
 			ts.add_failed_cmd(cmd)
 		} else {
 			test_passed_execute:
 			ts.benchmark.ok()
 			tls_bench.ok()
 			if !testing.hide_oks {
-				ts.append_message_with_duration(.ok, tls_bench.step_message_ok(normalised_relative_file),
-					cmd_duration, mtc)
+				ts.append_message_with_duration(.ok, tls_bench.step_message_ok(normalised_relative_file,
+					preparation: compile_cmd_duration
+				), cmd_duration, mtc)
 			}
 		}
 	}
