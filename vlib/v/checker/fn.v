@@ -99,7 +99,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	if node.language == .v && node.attrs.len > 0 {
 		if attr_export := node.attrs.find_first('export') {
 			if attr_export.arg == '' {
-				c.error('missing argument for [export] attribute', attr_export.pos)
+				c.error('missing argument for @[export] attribute', attr_export.pos)
 			}
 		}
 	}

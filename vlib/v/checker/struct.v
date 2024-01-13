@@ -475,7 +475,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 	if type_sym.kind == .struct_ {
 		info := type_sym.info as ast.Struct
 		if info.attrs.len > 0 && info.attrs.contains('noinit') && type_sym.mod != c.mod {
-			c.error('struct `${type_sym.name}` is declared with a `[noinit]` attribute, so ' +
+			c.error('struct `${type_sym.name}` is declared with a `@[noinit]` attribute, so ' +
 				'it cannot be initialized with `${type_sym.name}{}`', node.pos)
 		}
 	}
@@ -498,6 +498,10 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 			sym := c.table.sym(c.unwrap_generic(node.typ))
 			if sym.kind == .struct_ {
 				info := sym.info as ast.Struct
+				if info.attrs.len > 0 && info.attrs.contains('noinit') && sym.mod != c.mod {
+					c.error('struct `${sym.name}` is declared with a `@[noinit]` attribute, so ' +
+						'it cannot be initialized with `${sym.name}{}`', node.pos)
+				}
 				if node.no_keys && node.init_fields.len != info.fields.len {
 					fname := if info.fields.len != 1 { 'fields' } else { 'field' }
 					c.error('initializing struct `${sym.name}` needs `${info.fields.len}` ${fname}, but got `${node.init_fields.len}`',
