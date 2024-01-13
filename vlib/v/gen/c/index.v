@@ -49,7 +49,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				}
 			}
 		} else if sym.info is ast.Aggregate
-			&& sym.info.types.filter(g.table.type_kind(it) !in [.array, .array_fixed, .string, .map]).len == 0 {
+			&& sym.info.types.all(g.table.type_kind(it) in [.array, .array_fixed, .string, .map]) {
 			// treating sumtype of array types
 			unwrapped_got_type := sym.info.types[g.aggregate_type_idx]
 			g.index_expr(ast.IndexExpr{ ...node, left_type: unwrapped_got_type })

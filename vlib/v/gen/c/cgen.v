@@ -1684,7 +1684,7 @@ pub fn (mut g Gen) write_multi_return_types() {
 			continue
 		}
 		info := sym.mr_info()
-		if info.types.filter(it.has_flag(.generic)).len > 0 {
+		if info.types.any(it.has_flag(.generic)) {
 			continue
 		}
 		g.typedefs.writeln('typedef struct ${sym.cname} ${sym.cname};')
