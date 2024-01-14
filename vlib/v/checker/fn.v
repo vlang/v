@@ -2367,7 +2367,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		node.receiver_type = method.params[0].typ
 	}
 	node.receiver_concrete_type = if is_method_from_embed {
-		node.receiver_type.clear_flag(.generic)
+		node.from_embed_types.last().derive(method.params[0].typ)
 	} else {
 		method.params[0].typ
 	}
