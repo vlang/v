@@ -1,6 +1,6 @@
 module sourcemap
 
-struct Sets {
+pub struct Sets {
 mut:
 	value map[string]u32
 }

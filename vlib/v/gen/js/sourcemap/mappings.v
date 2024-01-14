@@ -3,7 +3,7 @@ module sourcemap
 import v.gen.js.sourcemap.vlq
 import io
 
-struct Empty {}
+pub struct Empty {}
 
 pub struct SourcePosition {
 	source_line   u32
@@ -11,7 +11,7 @@ pub struct SourcePosition {
 }
 
 type IndexNumber = u32
-type SourcePositionType = Empty | SourcePosition
+pub type SourcePositionType = Empty | SourcePosition
 type NameIndexType = Empty | IndexNumber
 
 struct GenPosition {
@@ -25,7 +25,7 @@ struct MappingInput {
 	source_position SourcePositionType
 }
 
-struct Mapping {
+pub struct Mapping {
 	GenPosition
 	sources_ind     u32
 	names_ind       NameIndexType
