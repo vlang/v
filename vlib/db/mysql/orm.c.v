@@ -129,6 +129,7 @@ pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.Qu
 
 // insert is used internally by V's ORM for processing `INSERT ` queries
 pub fn (db DB) insert(table string, data orm.QueryData) ! {
+	db.insert_if_table_exist(table) or { panic(err) }
 	mut converted_primitive_array := db.convert_query_data_to_primitives(table, data)!
 
 	converted_primitive_data := orm.QueryData{
@@ -142,6 +143,15 @@ pub fn (db DB) insert(table string, data orm.QueryData) ! {
 	query, converted_data := orm.orm_stmt_gen(.default, table, '`', .insert, false, '?',
 		1, converted_primitive_data, orm.QueryData{})
 	mysql_stmt_worker(db, query, converted_data, orm.QueryData{})!
+}
+
+// validates the existence of a table in database before insertion, especially important when dealing with child fields in ORM operations
+fn (db DB) insert_if_table_exist(table_name string) ! {
+	query := 'SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name=?;'
+	res := db.exec_param(query, table_name)!
+	if res.len < 1 {
+		return error("MySQL 'insert' ORM Error: Failed to insert data into table '${table_name}' as the specified table does not exist. Please ensure the table is present before attempting insertion.")
+	}
 }
 
 // update is used internally by V's ORM for processing `UPDATE ` queries

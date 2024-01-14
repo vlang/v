@@ -53,9 +53,19 @@ pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.Qu
 
 // insert is used internally by V's ORM for processing `INSERT ` queries
 pub fn (db DB) insert(table string, data orm.QueryData) ! {
+	db.insert_if_table_exist(table) or { panic(err) }
 	query, converted_data := orm.orm_stmt_gen(.sqlite, table, '`', .insert, true, '?',
 		1, data, orm.QueryData{})
 	sqlite_stmt_worker(db, query, converted_data, orm.QueryData{})!
+}
+
+// validates the existence of a table in database before insertion, especially important when dealing with child fields in ORM operations
+fn (db DB) insert_if_table_exist(table_name string) ! {
+	query := "SELECT name FROM sqlite_master WHERE type='table' AND name=?;"
+	res := db.exec_param(query, table_name)!
+	if res.len < 1 {
+		return error("SQLITE 'insert' ORM Error : Failed to insert data into table '${table_name}' specified table does not exist. Please ensure the table is present before attempting insertion.")
+	}
 }
 
 // update is used internally by V's ORM for processing `UPDATE ` queries

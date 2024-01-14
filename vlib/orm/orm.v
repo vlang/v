@@ -198,6 +198,7 @@ pub interface Connection {
 	create(table string, fields []TableField) !
 	drop(table string) !
 	last_id() int
+	insert_if_table_exist(table_name string) !
 }
 
 // Generates an sql stmt, from universal parameter

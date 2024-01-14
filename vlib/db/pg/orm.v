@@ -32,9 +32,24 @@ pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.Qu
 
 // insert is used internally by V's ORM for processing `INSERT ` queries
 pub fn (db DB) insert(table string, data orm.QueryData) ! {
+	db.insert_if_table_exist(table) or { panic(err) }
 	query, converted_data := orm.orm_stmt_gen(.default, table, '"', .insert, true, '$',
 		1, data, orm.QueryData{})
 	pg_stmt_worker(db, query, converted_data, orm.QueryData{})!
+}
+
+// validates the existence of a table in database before insertion, especially important when dealing with child fields in ORM operations
+fn (db DB) insert_if_table_exist(table_name string) ! {
+	schema := db.exec('SELECT current_schema();')!
+	mut define_schema := 'public'
+	if schema.len > 0 && schema[0].vals.len > 0 {
+		define_schema = '${schema[0].vals[0]}'
+	}
+	query := 'SELECT table_name FROM information_schema.tables WHERE table_schema = \'${define_schema}\' AND table_name=?;'
+	res := db.exec_param(query, table_name)!
+	if res.len < 1 {
+		return error("PostgreSQL 'insert' ORM Error: Failed to insert data into table '${table_name}' as the specified table does not exist. Please ensure the table is present before attempting insertion.")
+	}
 }
 
 // update is used internally by V's ORM for processing `UPDATE ` queries
