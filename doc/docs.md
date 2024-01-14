@@ -6191,6 +6191,7 @@ To improve safety and maintainability, operator overloading is limited.
 
 - When overriding `<` and `==`, the return type must be strictly `bool`.
 - Both arguments must have the same type (just like with all operators in V).
+- Overloaded operators has to return the same type as the argument (with the expection `<` and `==` which returs boolean expressions).
 
 #### Other restrictions
 
