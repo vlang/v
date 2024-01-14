@@ -92,22 +92,22 @@ fn v__debugger(line_no int, file string, mod string, fn_name string) {
 				print_backtrace_skipping_top_frames(2)
 			}
 			'fn', 'func' {
-				prompt(fn_name)
+				println(fn_name)
 			}
 			'f', 'file' {
-				prompt(file)
+				println(file)
 			}
 			'h', 'help' {
 				print_help()
 			}
 			'l', 'line' {
-				prompt(line_no.str())
+				println(line_no.str())
 			}
 			'm', 'mod' {
-				prompt(mod)
+				println(mod)
 			}
 			else {
-				prompt('unknown command `${cmd}`')
+				println('unknown command `${cmd}`')
 			}
 		}
 	}
