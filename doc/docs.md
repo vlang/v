@@ -483,19 +483,19 @@ fn main() {
 While variable shadowing is not allowed, field shadowing is allowed. 
 ```v
 pub struct Dimension {
-    width int = -1
-    height int = -1
+	width  int = -1
+	height int = -1
 }
 
 pub struct Test {
-    Dimension
-    width int = 100
-    // height int
+	Dimension
+	width int = 100
+	// height int
 }
 
 fn main() {
-    test := Test { }
-    println("${test.width} ${test.height} ${test.Dimension.width}") // 100 -1 -1
+	test := Test{}
+	println('${test.width} ${test.height} ${test.Dimension.width}') // 100 -1 -1
 }
 ```
 ## V Types
