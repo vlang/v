@@ -69,12 +69,13 @@ fn prompt(out string) {
 
 fn print_help() {
 	println('vdbg commands: ')
+	println('  bt\t\tprints a backtrace')
 	println('  c, continue\t\tcontinue debugging')
-	println('  l, line\t\tshow current line number')
 	println('  f,file\t\tshow current file name')
 	println('  fn,func\t\tshow current function name')
-	println('  m,mod\t\tshow current module name')
 	println('  h, help\t\tshow this help')
+	println('  l, line\t\tshow current line number')
+	println('  m,mod\t\tshow current module name')
 	println('')
 }
 
@@ -85,17 +86,17 @@ fn v__debugger(line_no int, file string, mod string, fn_name string) {
 		print('${prompt} ')
 		cmd := get_raw_line().trim('\r\n')
 		match cmd {
-			'', 'c', 'continue' {
-				break
-			}
 			'bt' {
 				print_backtrace_skipping_top_frames(2)
 			}
-			'fn', 'func' {
-				println(fn_name)
+			'', 'c', 'continue' {
+				break
 			}
 			'f', 'file' {
 				println(file)
+			}
+			'fn', 'func' {
+				println(fn_name)
 			}
 			'h', 'help' {
 				print_help()
