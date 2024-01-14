@@ -516,6 +516,12 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		return
 	}
 	w.mark_fn_as_used(fn_name)
+	if node.is_method && node.receiver_type.has_flag(.generic) && node.receiver_concrete_type != 0 {
+		// We need the receiver to be T in cgen.
+		// so save the concrete type to node.receiver_concrete_type
+		fkey := '${int(node.receiver_concrete_type)}.${node.name}'
+		w.used_fns[fkey] = true
+	}
 	stmt := w.all_fns[fn_name] or { return }
 	if stmt.name == node.name {
 		if !node.is_method || node.receiver_type == stmt.receiver.typ {

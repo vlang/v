@@ -2360,10 +2360,16 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		node.receiver_type = node.from_embed_types.last().derive(method.params[0].typ)
 	} else if is_generic {
 		// We need the receiver to be T in cgen.
+		// so save the concrete type to node.receiver_concrete_type
 		// TODO: cant we just set all these to the concrete type in checker? then no need in gen
 		node.receiver_type = left_type.derive(method.params[0].typ).set_flag(.generic)
 	} else {
 		node.receiver_type = method.params[0].typ
+	}
+	node.receiver_concrete_type = if is_method_from_embed {
+		node.receiver_type.clear_flag(.generic)
+	} else {
+		method.params[0].typ
 	}
 	if left_sym.kind == .interface_ && is_method_from_embed && method.return_type.has_flag(.generic)
 		&& method.generic_names.len == 0 {
