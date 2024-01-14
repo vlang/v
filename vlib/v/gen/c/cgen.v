@@ -2071,6 +2071,10 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.ComptimeFor {
 			g.comptime_for(node)
 		}
+		ast.DebuggerStmt {
+			paline, pafile, pamod, pafn := g.panic_debug_info(node.pos)
+			g.write('v__debugger(${paline}, _SLIT("${pafile}"), _SLIT("${pamod}"), _SLIT("${pafn}"))')
+		}
 		ast.DeferStmt {
 			mut defer_stmt := node
 			defer_stmt.ifdef = g.defer_ifdef

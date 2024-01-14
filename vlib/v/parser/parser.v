@@ -1142,10 +1142,21 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		.semicolon {
 			return p.semicolon_stmt()
 		}
+		.key_debugger {
+			return p.debugger_stmt()
+		}
 		// literals, 'if', etc. in here
 		else {
 			return p.parse_multi_expr(is_top_level)
 		}
+	}
+}
+
+fn (mut p Parser) debugger_stmt() ast.DebuggerStmt {
+	pos := p.tok.pos()
+	p.check(.key_debugger)
+	return ast.DebuggerStmt{
+		pos: pos
 	}
 }
 

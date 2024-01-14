@@ -79,6 +79,7 @@ pub type Stmt = AsmStmt
 	| BranchStmt
 	| ComptimeFor
 	| ConstDecl
+	| DebuggerStmt
 	| DeferStmt
 	| EmptyStmt
 	| EnumDecl
@@ -1713,6 +1714,11 @@ pub const riscv_with_number_register_list = {
 	't#': 3
 	's#': 12
 	'a#': 8
+}
+
+pub struct DebuggerStmt {
+pub:
+	pos token.Pos
 }
 
 // `assert a == 0, 'a is zero'`

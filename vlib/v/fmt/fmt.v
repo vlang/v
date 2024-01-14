@@ -513,6 +513,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 		ast.ConstDecl {
 			f.const_decl(node)
 		}
+		ast.DebuggerStmt {}
 		ast.DeferStmt {
 			f.defer_stmt(node)
 		}

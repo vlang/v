@@ -1985,6 +1985,7 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 			}
 		}
 		ast.NodeError {}
+		ast.DebuggerStmt {}
 		ast.AsmStmt {
 			c.asm_stmt(mut node)
 		}
