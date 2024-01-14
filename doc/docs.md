@@ -481,7 +481,7 @@ fn main() {
 }
 ```
 While variable shadowing is not allowed, field shadowing is allowed. 
-```v failcompile nofmt
+```v
 pub struct Dimension {
     width int = -1
     height int = -1
