@@ -8,5 +8,5 @@ import os
 // new_reader_from_file create a csv reader from a file
 pub fn new_reader_from_file(csv_file_path string, config ReaderConfig) !&Reader {
 	csv_file_content := os.read_file(csv_file_path)!
-	return csv.new_reader(csv_file_content, config)
+	return new_reader(csv_file_content, config)
 }

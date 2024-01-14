@@ -11,8 +11,8 @@ fn test_new_reader_from_file() {
 	text := 'id,bonus,amount,yes\n1,bomb,1,true\n2,rocket,1,false,\n3,lightning,2,2\n'
 	os.write_file(test_file_path_for_reader, text)!
 
-	mut reader := csv.new_reader_from_file(test_file_path_for_reader)!
-	mut writer := csv.new_writer()
+	mut reader := new_reader_from_file(test_file_path_for_reader)!
+	mut writer := new_writer()
 
 	for {
 		row := reader.read() or { break }
