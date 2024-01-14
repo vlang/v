@@ -432,10 +432,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			source_code := r.current_source_code(false, false) + '\n${r.line}\n'
 			os.write_file(temp_file, source_code) or { panic(err) }
 			s := repl_run_vfile(temp_file) or { return 1 }
-			if s.output.len > r.last_output.len {
-				cur_line_output := s.output[r.last_output.len..]
-				print_output(cur_line_output)
-			}
+			print_output(s.output)
 		} else {
 			mut temp_line := r.line
 			func_call, fntype := r.function_call(r.line)
