@@ -539,20 +539,23 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 	routes := generate_routes(global_app)!
 	controllers_sorted := check_duplicate_routes_in_controllers[T](global_app, routes)!
 
-	host := if params.host == '' { 'localhost' } else { params.host }
-	listen_address := '${host}:${params.port}'
-	if params.show_startup_message {
-		if params.startup_message == '' {
-			println('[Vweb] Running app on http://${listen_address}/')
-		} else {
-			println(params.startup_message)
-		}
-	}
+	listen_address := '${params.host}:${params.port}'
 	mut l := net.listen_tcp(params.family, listen_address) or {
 		ecode := err.code()
 		return error('failed to listen ${ecode} ${err}')
 	}
-	// eprintln('>> vweb listen_address: `${listen_address}` | params.family: ${params.family} | l.addr: ${l.addr()} | params: $params')
+	$if trace_listen ? {
+		eprintln('>> vweb listen_address: `${listen_address}` | params.family: ${params.family} | l.addr: ${l.addr()} | params: ${params}')
+	}
+
+	if params.show_startup_message {
+		if params.startup_message == '' {
+			host := if params.host == '' { 'localhost' } else { params.host }
+			println('[Vweb] Running app on http://${host}:${params.port}/')
+		} else {
+			println(params.startup_message)
+		}
+	}
 
 	ch := chan &RequestParams{cap: params.pool_channel_slots}
 	mut ws := []thread{cap: params.nr_workers}
