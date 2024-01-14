@@ -13,7 +13,7 @@ import regex
 const too_long_line_length_example = 120
 const too_long_line_length_codeblock = 120
 const too_long_line_length_table = 160
-const too_long_line_length_link = 150
+const too_long_line_length_link = 250
 const too_long_line_length_other = 100
 const term_colors = term.can_show_color_on_stderr()
 const hide_warnings = '-hide-warnings' in os.args || '-w' in os.args
