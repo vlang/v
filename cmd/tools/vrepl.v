@@ -432,7 +432,10 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			source_code := r.current_source_code(false, false) + '\n${r.line}\n'
 			os.write_file(temp_file, source_code) or { panic(err) }
 			s := repl_run_vfile(temp_file) or { return 1 }
-			print_output(s.output)
+			if s.output.len > r.last_output.len {
+				cur_line_output := s.output[r.last_output.len..]
+				print_output(cur_line_output)
+			}
 		} else {
 			mut temp_line := r.line
 			func_call, fntype := r.function_call(r.line)
@@ -474,23 +477,13 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			} else if temp_line.starts_with('#include ') {
 				temp_source_code = '${temp_line}\n' + r.current_source_code(false, false)
 			} else {
-				for i, l in r.lines {
-					if (l.starts_with('for ') || l.starts_with('if ')) && l.contains('println') {
-						r.lines.delete(i)
-						break
-					}
-				}
 				temp_source_code = r.current_source_code(true, false) + '\n${temp_line}\n'
 			}
 			os.write_file(temp_file, temp_source_code) or { panic(err) }
 			s := repl_run_vfile(temp_file) or { return 1 }
 			if s.exit_code == 0 {
-				for r.temp_lines.len > 0 {
-					if !r.temp_lines[0].starts_with('print') {
-						r.lines << r.temp_lines[0]
-					}
-					r.temp_lines.delete(0)
-				}
+				r.lines << r.temp_lines
+				r.temp_lines.clear()
 				if r.line.starts_with('import ') {
 					r.parse_import(r.line)
 				} else if r.line.starts_with('#include ') {
@@ -597,7 +590,7 @@ fn repl_run_vfile(file string) !os.Result {
 	$if trace_repl_temp_files ? {
 		eprintln('>> repl_run_vfile file: ${file}')
 	}
-	s := os.execute('${os.quoted_path(vexe)} -repl run ${os.quoted_path(file)}')
+	s := os.execute('${os.quoted_path(vexe)} -message-limit 1 -repl run ${os.quoted_path(file)}')
 	if s.exit_code < 0 {
 		rerror(s.output)
 		return error(s.output)

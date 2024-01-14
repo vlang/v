@@ -1,0 +1,7 @@
+fn test() { println('foo') }
+fn test2(a int) {  println(a) }
+test()
+test2(42)
+===output===
+foo
+42
