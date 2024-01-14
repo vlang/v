@@ -40,12 +40,17 @@ pub fn (db DB) insert(table string, data orm.QueryData) ! {
 
 // validates the existence of a table in database before insertion, especially important when dealing with child fields in ORM operations
 fn (db DB) insert_if_table_exist(table_name string) ! {
+	// his code snippet extracts the schema name from PostgreSQL's query result, handling the "Option('...')" format to retrieve the actual schema name for SQL operations.
 	schema := db.exec('SELECT current_schema();')!
 	mut define_schema := 'public'
 	if schema.len > 0 && schema[0].vals.len > 0 {
 		define_schema = '${schema[0].vals[0]}'
+		parts := define_schema.split("'")
+		if parts.len > 1 {
+			define_schema = parts[1].trim_space()
+		}
 	}
-	query := 'SELECT table_name FROM information_schema.tables WHERE table_schema = \'${define_schema}\' AND table_name=?;'
+	query := 'SELECT table_name FROM information_schema.tables WHERE table_schema = \'${define_schema}\' AND table_name=$1;'
 	res := db.exec_param(query, table_name)!
 	if res.len < 1 {
 		return error("PostgreSQL 'insert' ORM Error: Failed to insert data into table '${table_name}' as the specified table does not exist. Please ensure the table is present before attempting insertion.")
