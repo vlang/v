@@ -4,6 +4,17 @@ const prompt = 'vdbg>'
 
 fn C.getline(voidptr, voidptr, voidptr) int
 
+fn is_atty(fd int) int {
+	$if windows {
+		mut mode := u32(0)
+		osfh := voidptr(C._get_osfhandle(fd))
+		C.GetConsoleMode(osfh, voidptr(&mode))
+		return int(mode)
+	} $else {
+		return C.isatty(fd)
+	}
+}
+
 fn get_raw_line() string {
 	$if windows {
 		unsafe {
