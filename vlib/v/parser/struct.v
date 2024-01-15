@@ -632,8 +632,13 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			mut_pos = fields.len
 		}
 		if p.peek_tok.kind in [.lt, .lsbr] && p.peek_tok.is_next_to(p.tok) {
-			p.error_with_pos("no need to add generic type names in generic interface's method",
-				p.peek_tok.pos())
+			if generic_types.len == 0 {
+				p.error_with_pos('non-generic interface `${interface_name}` cannot define a generic method',
+					p.peek_tok.pos())
+			} else {
+				p.error_with_pos("no need to add generic type names in generic interface's method",
+					p.peek_tok.pos())
+			}
 			return ast.InterfaceDecl{}
 		}
 		mut comments := p.eat_comments()
