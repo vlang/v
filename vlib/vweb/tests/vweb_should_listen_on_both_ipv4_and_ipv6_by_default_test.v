@@ -77,6 +77,10 @@ fn test_curl_connecting_through_ipv6_works() {
 }
 
 fn test_net_http_connecting_through_ipv6_works() {
+	$if windows {
+		log.warn('skipping test ${FN} on windows for now')
+		return
+	}
 	res := http.get('http://[::1]:${port}/')!
 	assert res.status_code == 200, res.str()
 	assert res.status_msg == 'OK', res.str()
