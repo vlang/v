@@ -1786,6 +1786,116 @@ fn (s string) at_with_check(idx int) ?u8 {
 	}
 }
 
+// Check if a string is an octal value. Returns 'true' if it is, or 'false' if it is not
+pub fn (str string) is_oct() bool {
+
+	mut tmp_string := str
+	if tmp_string.len < 3 { return false } 
+
+	if tmp_string[0..2] == '0o' {
+		tmp_string = tmp_string[2..tmp_string.len]
+	}else if tmp_string[0..3] == '-0o' {
+		tmp_string = tmp_string[3..tmp_string.len]
+	}
+
+	if tmp_string.len >= 1 {
+
+		for s in tmp_string {
+			if u8(s) >= `0` && u8(s) <= `7` {
+				continue
+			}else{
+				return false
+			}
+		}
+		return true
+	}else{
+		return false
+	}
+}
+
+
+// Check if a string is an binary value. Returns 'true' if it is, or 'false' if it is not
+pub fn (str string) is_bin() bool {
+
+	mut tmp_string := str
+	if tmp_string.len < 3 { return false } 
+
+	if tmp_string[0..2] == '0b' {
+		tmp_string = tmp_string[2..tmp_string.len]
+	}else if tmp_string[0..3] == '-0b' {
+		tmp_string = tmp_string[3..tmp_string.len]
+	}
+
+	if tmp_string.len >= 1 {
+
+		for s in tmp_string {
+			if u8(s) >= `0` && u8(s) <= `1` {
+				continue
+			}else{
+				return false
+			}
+		}
+		return true
+	}else{
+		return false
+	}
+}
+
+// Check if a string is an hexadecimal value. Returns 'true' if it is, or 'false' if it is not
+pub fn (str string) is_hex() bool {
+
+	mut tmp_string := str
+	if tmp_string.len < 3 { return false } 
+
+	if tmp_string[0..2] == '0x' {
+		tmp_string = tmp_string[2..tmp_string.len]
+	}else if tmp_string[0..3] == '-0x' {
+		tmp_string = tmp_string[3..tmp_string.len]
+	}else{
+		return false
+	}
+
+	if tmp_string.len >= 1 {
+		
+		for s in tmp_string {
+			if (u8(s) >= `0` && u8(s) <= `9`) || ((u8(s) >= `a` && u8(s) <= `f`) || (u8(s) >= `A` && u8(s) <= `F`))  {
+				continue
+			}else{
+				return false
+			}
+		}
+
+		return true
+	}else{
+		return false
+	}
+}
+
+// Check if a string is an integer value. Returns 'true' if it is, or 'false' if it is not
+pub fn (str string) is_int() bool {
+
+	mut tmp_string := str
+
+	if tmp_string.len < 1 { return false }
+
+	if tmp_string[0].ascii_str() == '-' {
+		tmp_string = tmp_string[1..tmp_string.len]
+	}
+
+	if tmp_string.len >= 1 {
+		for s in tmp_string {
+			if u8(s) >= `0` && u8(s) <= `9` {
+				continue
+			}else{
+				return false
+			}
+		}
+		return true
+	}else{
+		return false
+	}
+}
+
 // is_space returns `true` if the byte is a white space character.
 // The following list is considered white space characters: ` `, `\t`, `\n`, `\v`, `\f`, `\r`, 0x85, 0xa0
 // Example: assert u8(` `).is_space() == true
