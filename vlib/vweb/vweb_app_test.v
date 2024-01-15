@@ -49,18 +49,18 @@ pub fn (mut app App) new_article() vweb.Result {
 	return app.redirect('/')
 }
 
-fn (mut app App) time() {
-	app.text(time.now().format())
+fn (mut app App) time() vweb.Result {
+	return app.text(time.now().format())
 }
 
-fn (mut app App) time_json() {
-	app.json({
+fn (mut app App) time_json() vweb.Result {
+	return app.json({
 		'time': time.now().format()
 	})
 }
 
-fn (mut app App) time_json_pretty() {
-	app.json_pretty({
+fn (mut app App) time_json_pretty() vweb.Result {
+	return app.json_pretty({
 		'time': time.now().format()
 	})
 }
