@@ -1790,12 +1790,13 @@ fn (s string) at_with_check(idx int) ?u8 {
 pub fn (str string) is_oct() bool {
 
 	mut tmp_string := str
-	if tmp_string.len < 3 { return false } 
 
-	if tmp_string[0..2] == '0o' {
+	if tmp_string.starts_with('0o') {
 		tmp_string = tmp_string[2..tmp_string.len]
-	}else if tmp_string[0..3] == '-0o' {
+	}else if tmp_string.starts_with('-0o') {
 		tmp_string = tmp_string[3..tmp_string.len]
+	}else{
+		return false
 	}
 
 	if tmp_string.len >= 1 {
@@ -1818,12 +1819,13 @@ pub fn (str string) is_oct() bool {
 pub fn (str string) is_bin() bool {
 
 	mut tmp_string := str
-	if tmp_string.len < 3 { return false } 
 
-	if tmp_string[0..2] == '0b' {
+	if tmp_string.starts_with('0b') {
 		tmp_string = tmp_string[2..tmp_string.len]
-	}else if tmp_string[0..3] == '-0b' {
+	}else if tmp_string.starts_with('-0b') {
 		tmp_string = tmp_string[3..tmp_string.len]
+	}else{
+		return false
 	}
 
 	if tmp_string.len >= 1 {
@@ -1845,11 +1847,10 @@ pub fn (str string) is_bin() bool {
 pub fn (str string) is_hex() bool {
 
 	mut tmp_string := str
-	if tmp_string.len < 3 { return false } 
 
-	if tmp_string[0..2] == '0x' {
+	if tmp_string.starts_with('0x') {
 		tmp_string = tmp_string[2..tmp_string.len]
-	}else if tmp_string[0..3] == '-0x' {
+	}else if tmp_string.starts_with('-0x') {
 		tmp_string = tmp_string[3..tmp_string.len]
 	}else{
 		return false
@@ -1876,9 +1877,7 @@ pub fn (str string) is_int() bool {
 
 	mut tmp_string := str
 
-	if tmp_string.len < 1 { return false }
-
-	if tmp_string[0].ascii_str() == '-' {
+	if tmp_string.starts_with('-') {
 		tmp_string = tmp_string[1..tmp_string.len]
 	}
 
