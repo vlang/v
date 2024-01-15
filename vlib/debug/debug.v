@@ -35,7 +35,7 @@ fn print_help() {
 }
 
 @[unsafe]
-pub fn vdebugger(line_no int, file string, mod string, fn_name string) ! {
+pub fn debugger(line_no int, file string, mod string, fn_name string) ! {
 	mut static profile := u64(0)
 	mut static exited := 0
 	if exited != 0 {

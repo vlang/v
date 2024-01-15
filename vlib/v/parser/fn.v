@@ -295,7 +295,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut name := ''
 	mut type_sym := p.table.sym(rec.typ)
 	mut name_pos := p.tok.pos()
-	if p.tok.kind == .name {
+	if p.tok.kind in [.name, .key_debugger] {
 		mut check_name := ''
 		// TODO high order fn
 		is_static_type_method = p.tok.lit.len > 0 && p.tok.lit[0].is_capital()

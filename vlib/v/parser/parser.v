@@ -700,6 +700,7 @@ fn (mut p Parser) check_name() string {
 		.key_struct { p.check(.key_struct) }
 		.key_enum { p.check(.key_enum) }
 		.key_interface { p.check(.key_interface) }
+		.key_debugger { p.check(.key_debugger) }
 		else { p.check(.name) }
 	}
 	if !p.inside_orm && !p.inside_attr_decl && name == 'sql' {
