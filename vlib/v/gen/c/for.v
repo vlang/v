@@ -235,7 +235,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		mut cond_var := ''
 		if (node.cond is ast.Ident && !node.cond_type.has_flag(.option))
-			|| node.cond is ast.SelectorExpr {
+			|| (node.cond is ast.SelectorExpr && node.cond.or_block.kind == .absent) {
 			cond_var = g.expr_string(node.cond)
 		} else {
 			cond_var = g.new_tmp_var()
