@@ -42,10 +42,11 @@ pub fn vdebugger(line_no int, file string, mod string, fn_name string) ! {
 		return
 	}
 
-	println('debugger at ${file}:${line_no} - ctx: ${mod}:${fn_name}')
+	mut r := readline.Readline{}
 
+	println('debugger at ${file}:${line_no} - ctx: ${mod}:${fn_name}')
 	for {
-		cmd := readline.read_line(debug.prompt) or { '' }
+		cmd := r.read_line(debug.prompt) or { '' }
 		match cmd {
 			'bt' {
 				print_backtrace_skipping_top_frames(2)
