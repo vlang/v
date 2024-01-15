@@ -752,8 +752,8 @@ pub mut:
 	or_block               OrExpr
 	left                   Expr // `user` in `user.register()`
 	left_type              Type // type of `user`
-	receiver_type          Type // User
-	receiver_concrete_type Type // We need the receiver to be T in cgen, so save the concrete type to node.receiver_concrete_type
+	receiver_type          Type // User / T, if receiver is generic, then cgen requires receiver_type to be T
+	receiver_concrete_type Type // if receiver_type is T, then receiver_concrete_type is concrete type, otherwise it is the same as receiver_type
 	return_type            Type
 	fn_var_type            Type   // the fn type, when `is_fn_a_const` or `is_fn_var` is true
 	const_name             string // the fully qualified name of the const, i.e. `main.c`, given `const c = abc`, and callexpr: `c()`
