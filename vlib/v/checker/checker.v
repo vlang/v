@@ -80,6 +80,7 @@ pub mut:
 	inside_lambda              bool // true inside `|...| ...`
 	inside_ref_lit             bool // true inside `a := &something`
 	inside_defer               bool // true inside `defer {}` blocks
+	inside_return              bool // true inside `return ...` blocks
 	inside_fn_arg              bool // `a`, `b` in `a.f(b)`
 	inside_ct_attr             bool // true inside `[if expr]`
 	inside_x_is_type           bool // true inside the Type expression of `if x is Type {`
@@ -1208,7 +1209,21 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 		}
 		ast.IndexExpr {
 			if expr.or_expr.kind != .absent {
-				c.check_or_expr(expr.or_expr, ret_type, ret_type.set_flag(.result), expr)
+				mut return_none_or_error := false
+				if expr.or_expr.stmts.len > 0 {
+					last_stmt := expr.or_expr.stmts.last()
+					if last_stmt is ast.ExprStmt {
+						if c.inside_return && last_stmt.typ in [ast.none_type, ast.error_type] {
+							return_none_or_error = true
+						}
+					}
+				}
+				if return_none_or_error {
+					c.check_expr_option_or_result_call(expr.or_expr, c.table.cur_fn.return_type)
+				} else {
+					c.check_or_expr(expr.or_expr, ret_type, ret_type.set_flag(.result),
+						expr)
+				}
 			}
 		}
 		ast.CastExpr {
