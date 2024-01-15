@@ -1787,105 +1787,146 @@ fn (s string) at_with_check(idx int) ?u8 {
 }
 
 // Check if a string is an octal value. Returns 'true' if it is, or 'false' if it is not
+@[direct_array_access]
 pub fn (str string) is_oct() bool {
-	mut tmp_string := str
+	mut i := 0
 
-	if tmp_string.starts_with('0o') {
-		tmp_string = tmp_string[2..tmp_string.len]
-	} else if tmp_string.starts_with('-0o') {
-		tmp_string = tmp_string[3..tmp_string.len]
-	} else {
-		return false
-	}
+	if str[i] == `0` {
+		i++
+	} else if str[i] == `-` || str[i] == `+` {
+		i++
 
-	if tmp_string.len >= 1 {
-		for s in tmp_string {
-			if u8(s) >= `0` && u8(s) <= `7` {
-				continue
-			} else {
-				return false
-			}
+		if str[i] == `0` {
+			i++
+		} else {
+			return false
 		}
-		return true
 	} else {
 		return false
 	}
+
+	if str[i] == `o` {
+		i++
+	} else {
+		return false
+	}
+
+	if i == str.len {
+		return false
+	}
+
+	for i < str.len {
+		if str[i] < `0` || str[i] > `7` {
+			return false
+		}
+		i++
+	}
+
+	return true
 }
 
 // Check if a string is an binary value. Returns 'true' if it is, or 'false' if it is not
+@[direct_array_access]
 pub fn (str string) is_bin() bool {
-	mut tmp_string := str
+	mut i := 0
 
-	if tmp_string.starts_with('0b') {
-		tmp_string = tmp_string[2..tmp_string.len]
-	} else if tmp_string.starts_with('-0b') {
-		tmp_string = tmp_string[3..tmp_string.len]
-	} else {
-		return false
-	}
+	if str[i] == `0` {
+		i++
+	} else if str[i] == `-` || str[i] == `+` {
+		i++
 
-	if tmp_string.len >= 1 {
-		for s in tmp_string {
-			if u8(s) >= `0` && u8(s) <= `1` {
-				continue
-			} else {
-				return false
-			}
+		if str[i] == `0` {
+			i++
+		} else {
+			return false
 		}
-		return true
 	} else {
 		return false
 	}
+
+	if str[i] == `b` {
+		i++
+	} else {
+		return false
+	}
+
+	if i == str.len {
+		return false
+	}
+
+	for i < str.len {
+		if str[i] < `0` || str[i] > `1` {
+			return false
+		}
+		i++
+	}
+
+	return true
 }
 
 // Check if a string is an hexadecimal value. Returns 'true' if it is, or 'false' if it is not
+@[direct_array_access]
 pub fn (str string) is_hex() bool {
-	mut tmp_string := str
+	mut i := 0
 
-	if tmp_string.starts_with('0x') {
-		tmp_string = tmp_string[2..tmp_string.len]
-	} else if tmp_string.starts_with('-0x') {
-		tmp_string = tmp_string[3..tmp_string.len]
-	} else {
-		return false
-	}
+	if str[i] == `0` {
+		i++
+	} else if str[i] == `-` || str[i] == `+` {
+		i++
 
-	if tmp_string.len >= 1 {
-		for s in tmp_string {
-			if (u8(s) >= `0` && u8(s) <= `9`) || ((u8(s) >= `a` && u8(s) <= `f`)
-				|| (u8(s) >= `A` && u8(s) <= `F`)) {
-				continue
-			} else {
-				return false
-			}
+		if str[i] == `0` {
+			i++
+		} else {
+			return false
 		}
-
-		return true
 	} else {
 		return false
 	}
+
+	if str[i] == `x` {
+		i++
+	} else {
+		return false
+	}
+
+	if i == str.len {
+		return false
+	}
+
+	for i < str.len {
+		if (str[i] < `0` || str[i] > `9`) && ((str[i] < `a` || str[i] > `f`)
+			&& (str[i] < `A` || str[i] > `F`)) {
+			return false
+		}
+		i++
+	}
+
+	return true
 }
 
 // Check if a string is an integer value. Returns 'true' if it is, or 'false' if it is not
+@[direct_array_access]
 pub fn (str string) is_int() bool {
-	mut tmp_string := str
+	mut i := 0
 
-	if tmp_string.starts_with('-') {
-		tmp_string = tmp_string[1..tmp_string.len]
+	if (str[i] != `-` && str[i] != `+`) && (!str[i].is_digit()) {
+		return false
+	} else {
+		i++
 	}
 
-	if tmp_string.len >= 1 {
-		for s in tmp_string {
-			if u8(s) >= `0` && u8(s) <= `9` {
-				continue
-			} else {
-				return false
-			}
-		}
-		return true
-	} else {
+	if i == str.len && (!str[i - 1].is_digit()) {
 		return false
 	}
+
+	for i < str.len {
+		if str[i] < `0` || str[i] > `9` {
+			return false
+		}
+		i++
+	}
+
+	return true
 }
 
 // is_space returns `true` if the byte is a white space character.
