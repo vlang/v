@@ -480,7 +480,24 @@ fn main() {
 	}
 }
 ```
+While variable shadowing is not allowed, field shadowing is allowed. 
+```v
+pub struct Dimension {
+	width  int = -1
+	height int = -1
+}
 
+pub struct Test {
+	Dimension
+	width int = 100
+	// height int
+}
+
+fn main() {
+	test := Test{}
+	println('${test.width} ${test.height} ${test.Dimension.width}') // 100 -1 -1
+}
+```
 ## V Types
 
 ### Primitive types
@@ -6191,6 +6208,8 @@ To improve safety and maintainability, operator overloading is limited.
 
 - When overriding `<` and `==`, the return type must be strictly `bool`.
 - Both arguments must have the same type (just like with all operators in V).
+- Overloaded operators have to return the same type as the argument
+  (the exceptions are `<` and `==`).
 
 #### Other restrictions
 

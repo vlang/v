@@ -4,7 +4,12 @@
 </p>
 <h1>The V Programming Language</h1>
 
-[vlang.io](https://vlang.io) | [Docs](https://github.com/vlang/v/blob/master/doc/docs.md) | [Changelog](https://github.com/vlang/v/blob/master/CHANGELOG.md) | [Speed](https://fast.vlang.io/) | [Contributing & compiler design](https://github.com/vlang/v/blob/master/CONTRIBUTING.md)
+[vlang.io](https://vlang.io) 
+| [Docs](https://github.com/vlang/v/blob/master/doc/docs.md) 
+| [Changelog](https://github.com/vlang/v/blob/master/CHANGELOG.md) 
+| [Speed](https://fast.vlang.io/) 
+| [Contributing & compiler design](https://github.com/vlang/v/blob/master/CONTRIBUTING.md)
+
 </div>
 <div align="center" style="display:grid;place-items:center;">
 <!--
