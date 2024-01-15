@@ -988,7 +988,11 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		.key_for {
 			return p.for_stmt()
 		}
-		.name {
+		.name, .key_debugger {
+			if p.tok.kind == .key_debugger && p.peek_tok.kind == .semicolon {
+				// debugger;
+				return p.debugger_stmt()
+			}
 			if p.peek_tok.kind == .name && p.tok.lit == 'sql' {
 				return p.sql_stmt()
 			}
@@ -1142,9 +1146,6 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		}
 		.semicolon {
 			return p.semicolon_stmt()
-		}
-		.key_debugger {
-			return p.debugger_stmt()
 		}
 		// literals, 'if', etc. in here
 		else {
@@ -2292,7 +2293,7 @@ fn (mut p Parser) ident(language ast.Language) ast.Ident {
 	if is_volatile {
 		p.next()
 	}
-	if p.tok.kind != .name {
+	if p.tok.kind !in [.name, .key_debugger] {
 		if is_mut || is_static || is_volatile {
 			p.error_with_pos('the `${modifier_kind}` keyword is invalid here', mut_pos)
 		} else {
