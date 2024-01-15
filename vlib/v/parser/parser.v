@@ -1155,6 +1155,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 fn (mut p Parser) debugger_stmt() ast.DebuggerStmt {
 	pos := p.tok.pos()
 	p.check(.key_debugger)
+	p.register_auto_import('debug')
 	return ast.DebuggerStmt{
 		pos: pos
 	}

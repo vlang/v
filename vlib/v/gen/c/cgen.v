@@ -2073,7 +2073,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.DebuggerStmt {
 			paline, pafile, pamod, pafn := g.panic_debug_info(node.pos)
-			g.write('v__debugger(${paline}, _SLIT("${pafile}"), _SLIT("${pamod}"), _SLIT("${pafn}"))')
+			g.write('debug__vdebugger(${paline}, _SLIT("${pafile}"), _SLIT("${pamod}"), _SLIT("${pafn}"))')
 		}
 		ast.DeferStmt {
 			mut defer_stmt := node
