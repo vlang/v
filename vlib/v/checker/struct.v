@@ -101,6 +101,15 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			if field.has_default_expr {
 				c.expected_type = field.typ
 				field.default_expr_typ = c.expr(mut field.default_expr)
+				// disallow map `mut a = b`
+				field_sym := c.table.sym(field.typ)
+				expr_sym := c.table.sym(field.default_expr_typ)
+				if field_sym.kind == .map && expr_sym.kind == .map && field.default_expr.is_lvalue()
+					&& field.is_mut
+					&& (!field.default_expr_typ.is_ptr() || field.default_expr is ast.Ident) {
+					c.error('cannot copy map: call `move` or `clone` method (or use a reference)',
+						field.default_expr.pos())
+				}
 				for mut symfield in struct_sym.info.fields {
 					if symfield.name == field.name {
 						symfield.default_expr_typ = field.default_expr_typ
@@ -605,6 +614,13 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 					&& !got_type.is_ptr() {
 					c.error('allocate `${got_type_sym.name}` on the heap for use in other functions',
 						init_field.pos)
+				}
+				// disallow `mut a: b`, when b is const map
+				if exp_type_sym.kind == .map && got_type_sym.kind == .map && !got_type.is_ptr()
+					&& field_info.is_mut
+					&& (init_field.expr is ast.Ident && init_field.expr.obj is ast.ConstField) {
+					c.error('cannot assign a const map to mut struct field, call `clone` method (or use a reference)',
+						init_field.expr.pos())
 				}
 				if exp_type_sym.kind == .array && got_type_sym.kind == .array {
 					if init_field.expr is ast.IndexExpr
