@@ -34,6 +34,7 @@ fn print_help() {
 	println('')
 }
 
+// debugger is the implementation for C backend's debugger statement (debugger;)
 @[unsafe]
 pub fn debugger(line_no int, file string, mod string, fn_name string) ! {
 	mut static profile := u64(0)
