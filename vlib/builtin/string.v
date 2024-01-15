@@ -1788,93 +1788,86 @@ fn (s string) at_with_check(idx int) ?u8 {
 
 // Check if a string is an octal value. Returns 'true' if it is, or 'false' if it is not
 pub fn (str string) is_oct() bool {
-
 	mut tmp_string := str
 
 	if tmp_string.starts_with('0o') {
 		tmp_string = tmp_string[2..tmp_string.len]
-	}else if tmp_string.starts_with('-0o') {
+	} else if tmp_string.starts_with('-0o') {
 		tmp_string = tmp_string[3..tmp_string.len]
-	}else{
+	} else {
 		return false
 	}
 
 	if tmp_string.len >= 1 {
-
 		for s in tmp_string {
 			if u8(s) >= `0` && u8(s) <= `7` {
 				continue
-			}else{
+			} else {
 				return false
 			}
 		}
 		return true
-	}else{
+	} else {
 		return false
 	}
 }
 
-
 // Check if a string is an binary value. Returns 'true' if it is, or 'false' if it is not
 pub fn (str string) is_bin() bool {
-
 	mut tmp_string := str
 
 	if tmp_string.starts_with('0b') {
 		tmp_string = tmp_string[2..tmp_string.len]
-	}else if tmp_string.starts_with('-0b') {
+	} else if tmp_string.starts_with('-0b') {
 		tmp_string = tmp_string[3..tmp_string.len]
-	}else{
+	} else {
 		return false
 	}
 
 	if tmp_string.len >= 1 {
-
 		for s in tmp_string {
 			if u8(s) >= `0` && u8(s) <= `1` {
 				continue
-			}else{
+			} else {
 				return false
 			}
 		}
 		return true
-	}else{
+	} else {
 		return false
 	}
 }
 
 // Check if a string is an hexadecimal value. Returns 'true' if it is, or 'false' if it is not
 pub fn (str string) is_hex() bool {
-
 	mut tmp_string := str
 
 	if tmp_string.starts_with('0x') {
 		tmp_string = tmp_string[2..tmp_string.len]
-	}else if tmp_string.starts_with('-0x') {
+	} else if tmp_string.starts_with('-0x') {
 		tmp_string = tmp_string[3..tmp_string.len]
-	}else{
+	} else {
 		return false
 	}
 
 	if tmp_string.len >= 1 {
-		
 		for s in tmp_string {
-			if (u8(s) >= `0` && u8(s) <= `9`) || ((u8(s) >= `a` && u8(s) <= `f`) || (u8(s) >= `A` && u8(s) <= `F`))  {
+			if (u8(s) >= `0` && u8(s) <= `9`) || ((u8(s) >= `a` && u8(s) <= `f`)
+				|| (u8(s) >= `A` && u8(s) <= `F`)) {
 				continue
-			}else{
+			} else {
 				return false
 			}
 		}
 
 		return true
-	}else{
+	} else {
 		return false
 	}
 }
 
 // Check if a string is an integer value. Returns 'true' if it is, or 'false' if it is not
 pub fn (str string) is_int() bool {
-
 	mut tmp_string := str
 
 	if tmp_string.starts_with('-') {
@@ -1885,12 +1878,12 @@ pub fn (str string) is_int() bool {
 		for s in tmp_string {
 			if u8(s) >= `0` && u8(s) <= `9` {
 				continue
-			}else{
+			} else {
 				return false
 			}
 		}
 		return true
-	}else{
+	} else {
 		return false
 	}
 }
