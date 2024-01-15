@@ -1,4 +1,4 @@
-vlib/v/checker/tests/struct_field_init_and_default_is_map_err.vv:7:25: error: cannot copy map: call `move` or `clone` method (or use a reference)
+vlib/v/checker/tests/struct_field_init_and_default_is_map_err.vv:7:25: error: cannot copy map: call `clone` method (or use a reference)
     5 | struct Foo {
     6 | mut:
     7 |     field map[string]int = const_map

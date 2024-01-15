@@ -107,7 +107,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				if field_sym.kind == .map && expr_sym.kind == .map && field.default_expr.is_lvalue()
 					&& field.is_mut
 					&& (!field.default_expr_typ.is_ptr() || field.default_expr is ast.Ident) {
-					c.error('cannot copy map: call `move` or `clone` method (or use a reference)',
+					c.error('cannot copy map: call `clone` method (or use a reference)',
 						field.default_expr.pos())
 				}
 				for mut symfield in struct_sym.info.fields {
