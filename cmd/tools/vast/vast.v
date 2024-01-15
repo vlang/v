@@ -440,6 +440,7 @@ fn (t Tree) stmt(node ast.Stmt) &Node {
 		ast.AsmStmt { return t.asm_stmt(node) }
 		ast.NodeError { return t.node_error(node) }
 		ast.EmptyStmt { return t.empty_stmt(node) }
+		ast.DebuggerStmt { return t.debugger_stmt(node) }
 	}
 	return t.null_node()
 }
@@ -1923,6 +1924,13 @@ fn (t Tree) empty_expr(expr ast.EmptyExpr) &Node {
 fn (t Tree) empty_stmt(node ast.EmptyStmt) &Node {
 	mut obj := new_object()
 	obj.add_terse('ast_type', t.string_node('EmptyStmt'))
+	obj.add('pos', t.pos(node.pos))
+	return obj
+}
+
+fn (t Tree) debugger_stmt(node ast.DebuggerStmt) &Node {
+	mut obj := new_object()
+	obj.add_terse('ast_type', t.string_node('DebuggerStmt'))
 	obj.add('pos', t.pos(node.pos))
 	return obj
 }

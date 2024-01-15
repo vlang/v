@@ -2073,7 +2073,40 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.DebuggerStmt {
 			paline, pafile, pamod, pafn := g.panic_debug_info(node.pos)
-			g.write('debug__debugger(${paline}, _SLIT("${pafile}"), _SLIT("${pamod}"), _SLIT("${pafn}"))')
+			is_anon := g.cur_fn != unsafe { nil } && g.cur_fn.is_anon
+			is_generic := g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0
+			is_method := g.cur_fn != unsafe { nil } && g.cur_fn.is_method
+			receiver_type := if g.cur_fn != unsafe { nil } && g.cur_fn.is_method {
+				g.table.type_to_str(g.cur_fn.receiver.typ)
+			} else {
+				''
+			}
+			scope_vars := g.file.scope.innermost(node.pos.pos).objects.values().filter(|it| it is ast.Var)
+			g.writeln('Map_string_string _scope = new_map_init(&map_hash_string, &map_eq_string, &map_clone_string, &map_free_string, ${scope_vars.len}, sizeof(string), sizeof(debug__DebugContextVar),')
+			mut nvars := 1
+			g.write('_MOV((string[${scope_vars.len}]){')
+			for _, obj in scope_vars {
+				g.write('_SLIT("${obj.name}")')
+				if nvars != scope_vars.len {
+					g.write(',')
+				}
+				nvars += 1
+			}
+			g.write('}),')
+			nvars = 1
+			g.write('_MOV((debug__DebugContextVar[${scope_vars.len}]){')
+			for _, obj in scope_vars {
+				g.write('{.typ=_SLIT("${g.table.type_to_str(g.unwrap_generic(obj.typ))}"),.value=')
+				func := g.get_str_fn(obj.typ)
+				g.write('${func}(${obj.name})')
+				g.write('}')
+				if nvars != scope_vars.len {
+					g.write(',')
+				}
+				nvars += 1
+			}
+			g.writeln('}));')
+			g.write('debug__debugger((debug__DebugContextInfo){.is_anon=${is_anon},.is_generic=${is_generic},.is_method=${is_method},.receiver_typ_name=_SLIT("${receiver_type}"),.line=${paline},.file=_SLIT("${pafile}"),.mod=_SLIT("${pamod}"),.fn_name=_SLIT("${pafn}"),.scope=_scope})')
 		}
 		ast.DeferStmt {
 			mut defer_stmt := node
