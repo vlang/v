@@ -1501,12 +1501,16 @@ pub:
 	comments  [][]Comment // comments after key-value pairs
 	pre_cmnts []Comment   // comments before the first key-value pair
 pub mut:
-	keys       []Expr
-	vals       []Expr
-	val_types  []Type
-	typ        Type
-	key_type   Type
-	value_type Type
+	keys                 []Expr
+	vals                 []Expr
+	val_types            []Type
+	typ                  Type
+	key_type             Type
+	value_type           Type
+	has_update_expr      bool // has `...a`
+	update_expr          Expr // `a` in `...a`
+	update_expr_pos      token.Pos
+	update_expr_comments []Comment
 }
 
 // s[10..20]
