@@ -102,7 +102,7 @@ fn print_heap_usage() {
 	h := gc_heap_usage()
 	println('heap size: ${h.heap_size / 1024} MB')
 	println('free bytes: ${h.free_bytes / 1024} MB')
-	println('total bytes: ${h.total_bytes} MB')
+	println('total bytes: ${h.total_bytes / 1024} MB')
 }
 
 // debugger is the implementation for C backend's debugger statement (debugger;)
