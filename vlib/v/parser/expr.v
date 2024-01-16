@@ -43,7 +43,7 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			p.add_defer_var(ident)
 			p.is_stmt_ident = is_stmt_ident
 		}
-		.name, .question, .key_debugger {
+		.name, .question {
 			if p.peek_tok.kind == .name && p.tok.lit == 'sql' {
 				node = p.sql_expr()
 			} else if p.peek_tok.kind == .lcbr && p.tok.lit == 'map' && !(p.builtin_mod

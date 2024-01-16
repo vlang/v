@@ -700,7 +700,6 @@ fn (mut p Parser) check_name() string {
 		.key_struct { p.check(.key_struct) }
 		.key_enum { p.check(.key_enum) }
 		.key_interface { p.check(.key_interface) }
-		.key_debugger { p.check(.key_debugger) }
 		else { p.check(.name) }
 	}
 	if !p.inside_orm && !p.inside_attr_decl && name == 'sql' {
@@ -988,11 +987,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		.key_for {
 			return p.for_stmt()
 		}
-		.name, .key_debugger {
-			if p.tok.kind == .key_debugger && p.peek_tok.kind == .semicolon {
-				// debugger;
-				return p.debugger_stmt()
-			}
+		.name {
 			if p.peek_tok.kind == .name && p.tok.lit == 'sql' {
 				return p.sql_stmt()
 			}
@@ -1063,12 +1058,17 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					return p.comptime_for()
 				}
 				.name {
-					mut pos := p.tok.pos()
-					expr := p.expr(0)
-					pos.update_last_line(p.prev_tok.line_nr)
-					return ast.ExprStmt{
-						expr: expr
-						pos: pos
+					// handles $dbg directly without registering token
+					if p.peek_tok.lit == 'dbg' {
+						return p.dbg_stmt()
+					} else {
+						mut pos := p.tok.pos()
+						expr := p.expr(0)
+						pos.update_last_line(p.prev_tok.line_nr)
+						return ast.ExprStmt{
+							expr: expr
+							pos: pos
+						}
 					}
 				}
 				else {
@@ -1154,9 +1154,10 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 	}
 }
 
-fn (mut p Parser) debugger_stmt() ast.DebuggerStmt {
+fn (mut p Parser) dbg_stmt() ast.DebuggerStmt {
 	pos := p.tok.pos()
-	p.check(.key_debugger)
+	p.check(.dollar)
+	p.check(.name)
 	p.register_auto_import('debug')
 	return ast.DebuggerStmt{
 		pos: pos
@@ -2293,7 +2294,7 @@ fn (mut p Parser) ident(language ast.Language) ast.Ident {
 	if is_volatile {
 		p.next()
 	}
-	if p.tok.kind !in [.name, .key_debugger] {
+	if p.tok.kind != .name {
 		if is_mut || is_static || is_volatile {
 			p.error_with_pos('the `${modifier_kind}` keyword is invalid here', mut_pos)
 		} else {
