@@ -2,6 +2,7 @@ import os
 
 const vexe = @VEXE
 const gcc_path = os.find_abs_path_of_executable('gcc') or { '' }
+const cdefs_h_32bit_exists = os.exists('/usr/include/i386-linux-gnu/sys/cdefs.h')
 
 fn test_tracing() {
 	os.chdir(@VROOT)!
@@ -14,9 +15,11 @@ fn test_tracing() {
 			continue
 		}
 		run_single_program(fpath, should_match_fpath, '', '64bit')
-		if gcc_path != '' {
+		if cdefs_h_32bit_exists && gcc_path != '' {
 			// try running the same programs, compiled in 32bit mode too, if gcc is available:
 			run_single_program(fpath, should_match_fpath, '-cc gcc -m32 -gc none', '32bit')
+		} else {
+			eprintln('> skipping -m32 compilation since either 32bit headers are not installed, or you do not have gcc installed')
 		}
 		eprintln('-'.repeat(30))
 	}
