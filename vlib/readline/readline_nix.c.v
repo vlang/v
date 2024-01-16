@@ -458,12 +458,14 @@ fn (mut r Readline) delete_word_left() {
 
 	r.current.delete_many(r.cursor, orig_cursor - r.cursor)
 	r.refresh_line()
+	r.completion_clear()
 }
 
 fn (mut r Readline) delete_line() {
 	r.current = []
 	r.cursor = 0
 	r.refresh_line()
+	r.completion_clear()
 }
 
 // suppr_character removes (suppresses) the character in front of the cursor.
@@ -585,6 +587,7 @@ fn (mut r Readline) history_next() {
 	r.refresh_line()
 }
 
+// completion implements the tab completion feature
 fn (mut r Readline) completion() {
 	// check if completion is used
 	if r.completion_list.len == 0 && r.completion_callback == unsafe { nil } {
@@ -625,6 +628,7 @@ fn (mut r Readline) completion() {
 	r.refresh_line()
 }
 
+// completion_clear resets the completion state
 fn (mut r Readline) completion_clear() {
 	r.last_prefix_completion = []rune{}
 	r.last_completion_offset = 0
