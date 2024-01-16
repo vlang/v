@@ -1,60 +1,19 @@
-import os
-import time
+import io
 import json
+import time
 import net
 import net.http
-import io
+import vweb.tests.vweb_test_server
 
 const sport = 12380
 const localserver = '127.0.0.1:${sport}'
-const exit_after_time = 12000 // milliseconds
+const exit_after_time = 12 * time.second
 
-const vexe = os.getenv('VEXE')
-const vweb_logfile = os.getenv('VWEB_LOGFILE')
-const vroot = os.dir(vexe)
-const serverexe = os.join_path(os.cache_dir(), 'vweb_test_server.exe')
 const tcp_r_timeout = 30 * time.second
 const tcp_w_timeout = 30 * time.second
 
-// setup of vweb webserver
-fn testsuite_begin() {
-	os.chdir(vroot) or {}
-	if os.exists(serverexe) {
-		os.rm(serverexe) or {}
-	}
-}
-
-fn test_a_simple_vweb_app_can_be_compiled() {
-	// did_server_compile := os.system('${os.quoted_path(vexe)} -g -o ${os.quoted_path(serverexe)} vlib/vweb/tests/vweb_test_server.v')
-	// TODO: find out why it does not compile with -usecache and -g
-	did_server_compile := os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(serverexe)} vlib/vweb/tests/vweb_test_server.v')
-	assert did_server_compile == 0
-	assert os.exists(serverexe)
-}
-
 fn test_a_simple_vweb_app_runs_in_the_background() {
-	mut suffix := ''
-	$if !windows {
-		suffix = ' > /dev/null &'
-	}
-	if vweb_logfile != '' {
-		suffix = ' 2>> ${os.quoted_path(vweb_logfile)} >> ${os.quoted_path(vweb_logfile)} &'
-	}
-	server_exec_cmd := '${os.quoted_path(serverexe)} ${sport} ${exit_after_time} ${suffix}'
-	$if debug_net_socket_client ? {
-		eprintln('running:\n${server_exec_cmd}')
-	}
-	$if windows {
-		spawn os.system(server_exec_cmd)
-	} $else {
-		res := os.system(server_exec_cmd)
-		assert res == 0
-	}
-	$if macos {
-		time.sleep(1000 * time.millisecond)
-	} $else {
-		time.sleep(100 * time.millisecond)
-	}
+	vweb_test_server.start_in_background(sport, exit_after_time)!
 }
 
 // web client tests follow
