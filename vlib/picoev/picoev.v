@@ -87,7 +87,7 @@ pub fn (mut pv Picoev) init() {
 // add adds a file descriptor to the loop
 @[direct_array_access]
 pub fn (mut pv Picoev) add(fd int, events int, timeout int, cb voidptr) int {
-	if pv == nil || fd < 0 || fd >= picoev.max_fds {
+	if pv == unsafe { nil } || fd < 0 || fd >= picoev.max_fds {
 		return -1 // Invalid arguments
 	}
 
@@ -130,7 +130,7 @@ pub fn (mut pv Picoev) del(fd int) int {
 	pv.set_timeout(fd, 0)
 	target.loop_id = -1
 	target.fd = 0
-	target.cb = nil // Clear callback to prevent accidental invocations
+	target.cb = unsafe { nil } // Clear callback to prevent accidental invocations
 	return 0
 }
 
@@ -174,7 +174,7 @@ fn (mut pv Picoev) handle_timeout() {
 		if timeout <= pv.loop.now {
 			target := pv.file_descriptors[fd]
 			assert target.loop_id == pv.loop.id
-			if target.cb != nil { // Check for valid callback
+			if target.cb != unsafe { nil } { // Check for valid callback
 				unsafe { target.cb(fd, picoev.picoev_timeout, &pv) }
 			}
 			if pv.timeouts.delete(fd) != 0 {
@@ -319,7 +319,7 @@ fn default_err_cb(data voidptr, req picohttpparser.Request, mut res picohttppars
 fn new(config Config) &Picoev {
 	listening_socket_fd := listen(config) or {
 		eprintln('Error during listen: ${err}')
-		return nil
+		return unsafe { nil }
 	}
 
 	mut pv := &Picoev{
@@ -339,12 +339,6 @@ fn new(config Config) &Picoev {
 		pv.out = unsafe { malloc_noscan(picoev.max_fds * config.max_write + 1) }
 	}
 
-	if pv.loop == nil {
-		eprintln('Failed to create loop')
-		close_socket(listening_socket_fd) // Close socket on failure
-		return nil
-	}
-
 	// epoll for linux
 	// kqueue for macos and bsd
 	// select for windows and others
@@ -356,9 +350,15 @@ fn new(config Config) &Picoev {
 		pv.loop = create_select_loop(0) or { panic(err) }
 	}
 
+	if pv.loop == unsafe { nil } {
+		eprintln('Failed to create loop')
+		close_socket(listening_socket_fd) // Close socket on failure
+		return unsafe { nil }
+	}
+
 	pv.init()
 
-	pv.add(listen_fd, picoev.picoev_read, 0, accept_callback)
+	pv.add(listening_socket_fd, picoev.picoev_read, 0, accept_callback)
 	return pv
 }
 
