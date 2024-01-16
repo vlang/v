@@ -313,7 +313,7 @@ fn default_err_cb(data voidptr, req picohttpparser.Request, mut res picohttppars
 }
 
 // new creates a `Picoev` struct and initializes the main loop
-fn new(config Config) &Picoev {
+pub fn new(config Config) &Picoev {
 	listening_socket_fd := listen(config) or {
 		eprintln('Error during listen: ${err}')
 		return unsafe { nil }
