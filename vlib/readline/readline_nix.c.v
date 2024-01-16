@@ -630,7 +630,7 @@ fn (mut r Readline) completion() {
 
 // completion_clear resets the completion state
 fn (mut r Readline) completion_clear() {
-	r.last_prefix_completion = []rune{}
+	r.last_prefix_completion.clear()
 	r.last_completion_offset = 0
 }
 
