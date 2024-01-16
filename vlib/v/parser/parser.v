@@ -3875,6 +3875,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			is_pub: is_pub
 			expr: expr
 			pos: pos.extend(expr.pos())
+			attrs: attrs
 			comments: comments
 			end_comments: end_comments
 			is_markused: is_markused

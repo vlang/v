@@ -363,6 +363,7 @@ pub:
 	is_pub      bool
 	is_markused bool // an explicit `[markused]` tag; the const will NOT be removed by `-skip-unused`, no matter what
 	pos         token.Pos
+	attrs       []Attr // same value as `attrs` of the ConstDecl to which it belongs
 pub mut:
 	expr         Expr      // the value expr of field; everything after `=`
 	typ          Type      // the type of the const field, it can be any type in V
