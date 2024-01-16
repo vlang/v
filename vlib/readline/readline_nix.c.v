@@ -600,7 +600,8 @@ fn (mut r Readline) completion() {
 	}
 	// filtering by prefix
 	opts := if r.completion_list.len > 0 {
-		r.completion_list.filter(it.starts_with(prefix.string()))
+		sprefix := prefix.string()
+		r.completion_list.filter(it.starts_with(sprefix))
 	} else if r.completion_callback != unsafe { nil } {
 		r.completion_callback(prefix.string())
 	} else {
