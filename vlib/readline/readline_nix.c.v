@@ -36,7 +36,6 @@ enum Action {
 	overwrite
 	clear_screen
 	suspend
-	completion
 }
 
 // enable_raw_mode enables the raw mode of the terminal.
@@ -175,7 +174,7 @@ pub fn read_line(prompt string) !string {
 }
 
 // analyse returns an `Action` based on the type of input byte given in `c`.
-fn (mut r Readline) analyse(c int) Action {
+fn (r Readline) analyse(c int) Action {
 	if c > 255 {
 		return Action.insert_character
 	}
@@ -184,11 +183,7 @@ fn (mut r Readline) analyse(c int) Action {
 			return .eof
 		} // NUL, End of Text, End of Transmission
 		`\n`, `\r` {
-			r.last_prefix_completion = []rune{}
 			return .commit_line
-		}
-		`\t` {
-			return .completion
 		}
 		`\f` {
 			return .clear_screen
@@ -216,7 +211,6 @@ fn (mut r Readline) analyse(c int) Action {
 		} // CTRL + Z, SUB
 		else {
 			if c >= ` ` {
-				r.last_prefix_completion = []rune{}
 				return Action.insert_character
 			}
 			return Action.nothing
@@ -305,7 +299,6 @@ fn (mut r Readline) execute(a Action, c int) bool {
 		.overwrite { r.switch_overwrite() }
 		.clear_screen { r.clear_screen() }
 		.suspend { r.suspend() }
-		.completion { r.completion() }
 		else {}
 	}
 	return false
@@ -423,7 +416,6 @@ fn (mut r Readline) delete_character() {
 	r.cursor--
 	r.current.delete(r.cursor)
 	r.refresh_line()
-	r.completion_clear()
 }
 
 fn (mut r Readline) delete_word_left() {
@@ -583,51 +575,6 @@ fn (mut r Readline) history_next() {
 	r.current = r.previous_lines[r.search_index]
 	r.cursor = r.current.len
 	r.refresh_line()
-}
-
-fn (mut r Readline) completion() {
-	// check if completion is used
-	if r.completion_list.len == 0 && r.completion_callback == unsafe { nil } {
-		return
-	}
-
-	prefix := if r.last_prefix_completion.len > 0 { r.last_prefix_completion } else { r.current }
-	// no prefix set
-	if prefix.len == 0 {
-		return
-	}
-	// filtering by prefix
-	opts := if r.completion_list.len > 0 {
-		r.completion_list.filter(it.starts_with(prefix.string()))
-	} else {
-		r.completion_callback(prefix.string())
-	}
-	if opts.len == 0 {
-		r.completion_clear()
-		return
-	}
-
-	// moving for next completion match using initial prefix match
-	if r.last_prefix_completion.len != 0 {
-		if opts.len > r.last_completion_offset + 1 {
-			r.last_completion_offset += 1
-		} else {
-			// reset for initial option in completion list
-			r.last_completion_offset = 0
-		}
-	} else {
-		r.last_prefix_completion = r.current
-	}
-
-	// set the possible completion match
-	r.current = opts[r.last_completion_offset].runes()
-	r.cursor = r.current.len
-	r.refresh_line()
-}
-
-fn (mut r Readline) completion_clear() {
-	r.last_prefix_completion = []rune{}
-	r.last_completion_offset = 0
 }
 
 // suspend sends the `SIGSTOP` signal to the terminal.
