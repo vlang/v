@@ -29,8 +29,24 @@ fn test_map_init_with_update() {
 	assert foo['a'] == 4
 	assert foo['b'] == 88
 	assert foo['c'] == 99
-	assert bar.keys() == ['a', 'b', 'c']
+	assert bar.keys() == ['a', 'b', 'c', 'd']
 	assert bar['a'] == 4
 	assert bar['b'] == 6
+	assert bar['c'] == 99
 	assert bar['d'] == 7
+}
+
+fn test_map_init_with_only_update() {
+	mut foo := {
+		...base_map
+	}
+	bar := {
+		...foo
+	}
+	foo['a'] = 99
+	foo['c'] = 99
+	assert bar.keys() == ['a', 'b']
+	assert bar['a'] == 4
+	assert bar['b'] == 5
+	assert bar == base_map
 }
