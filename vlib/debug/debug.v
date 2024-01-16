@@ -10,15 +10,7 @@ import strings
 
 const prompt = 'vdbg> '
 
-fn print_current_file(path string, line int) ! {
-	file_content := os.read_file(path)!
-	chunks := file_content.split('\n')
-	offset := math.max(line - 4, 1)
-	for n, s in chunks[math.max(line - 5, 0)..math.min(chunks.len, line)] {
-		println('${n + offset:04} ${s}')
-	}
-}
-
+// print_help prints the debugger REPL commands help
 fn print_help() {
 	println('vdbg commands:')
 	println('  anon?\t\t\tcheck if the current context is anon')
@@ -88,6 +80,16 @@ fn (d DebugContextInfo) ctx() string {
 		s.write_string(' [generic]')
 	}
 	return s.str()
+}
+
+// print_current_file prints 5 lines before current location
+fn print_current_file(path string, line int) ! {
+	file_content := os.read_file(path)!
+	chunks := file_content.split('\n')
+	offset := math.max(line - 4, 1)
+	for n, s in chunks[math.max(line - 5, 0)..math.min(chunks.len, line)] {
+		println('${n + offset:04} ${s}')
+	}
 }
 
 // print_memory_use prints the GC memory use
