@@ -184,7 +184,7 @@ fn (mut r Readline) analyse(c int) Action {
 			return .eof
 		} // NUL, End of Text, End of Transmission
 		`\n`, `\r` {
-			r.last_prefix_completion = []rune{}
+			r.last_prefix_completion.clear()
 			return .commit_line
 		}
 		`\t` {
