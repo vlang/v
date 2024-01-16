@@ -216,7 +216,7 @@ fn (mut r Readline) analyse(c int) Action {
 		} // CTRL + Z, SUB
 		else {
 			if c >= ` ` {
-				r.last_prefix_completion = []rune{}
+				r.last_prefix_completion.clear()
 				return Action.insert_character
 			}
 			return Action.nothing
