@@ -184,7 +184,7 @@ fn (mut r Readline) analyse(c int) Action {
 			return .eof
 		} // NUL, End of Text, End of Transmission
 		`\n`, `\r` {
-			r.last_prefix_completion = []rune{}
+			r.last_prefix_completion.clear()
 			return .commit_line
 		}
 		`\t` {
@@ -216,7 +216,7 @@ fn (mut r Readline) analyse(c int) Action {
 		} // CTRL + Z, SUB
 		else {
 			if c >= ` ` {
-				r.last_prefix_completion = []rune{}
+				r.last_prefix_completion.clear()
 				return Action.insert_character
 			}
 			return Action.nothing
@@ -633,7 +633,7 @@ fn (mut r Readline) completion() {
 
 // completion_clear resets the completion state
 fn (mut r Readline) completion_clear() {
-	r.last_prefix_completion = []rune{}
+	r.last_prefix_completion.clear()
 	r.last_completion_offset = 0
 }
 
