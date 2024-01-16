@@ -10,5 +10,5 @@ pub fn (mut app App) index() vweb.Result {
 }
 
 fn main() {
-	vweb.run<App>(&App{}, 8181)
+	vweb.run[App](&App{}, 8181)
 }

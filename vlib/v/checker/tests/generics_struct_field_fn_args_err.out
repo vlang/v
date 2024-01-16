@@ -11,7 +11,7 @@ vlib/v/checker/tests/generics_struct_field_fn_args_err.vv:22:20: error: expected
    22 |     println(fun0.call(1234, 5678))
       |                       ~~~~~~~~~~
    23 |
-   24 |     fun1 := Fun<fn (int) int>{
+   24 |     fun1 := Fun[fn (int) int]{
 vlib/v/checker/tests/generics_struct_field_fn_args_err.vv:29:15: error: expected 1 arguments, but got 0
    27 |
    28 |     println(fun1.call(42))
