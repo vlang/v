@@ -63,9 +63,9 @@ pub struct DebugContextInfo {
 }
 
 // show_variable prints the variable info if found into the cur context
-fn (d DebugContextInfo) show_variable(args []string) {
-	if info := d.scope[args[0]] {
-		println('${args[0]} = ${info.value} (${info.typ})')
+fn (d DebugContextInfo) show_variable(var_name string) {
+	if info := d.scope[var_name] {
+		println('${var_name} = ${info.value} (${info.typ})')
 	}
 }
 
@@ -108,6 +108,9 @@ fn print_heap_usage() {
 pub fn debugger(info DebugContextInfo) ! {
 	mut static profile := u64(0)
 	mut static exited := 0
+	mut static last_cmd := ''
+	mut static last_args := [2]string{}
+
 	if exited != 0 {
 		return
 	}
@@ -116,10 +119,25 @@ pub fn debugger(info DebugContextInfo) ! {
 
 	println('debugger at ${info.file}:${info.line} - ${info.ctx()}')
 	for {
-		input := r.read_line(debug.prompt) or { '' }
+		mut is_ctrl := false
+		input := r.read_line(debug.prompt) or {
+			is_ctrl = true
+			''
+		}
 		splitted := input.split(' ')
-		cmd := splitted[0]
-		args := splitted[1..]
+
+		mut cmd := ''
+		mut args := [2]string{}
+		if !is_ctrl && splitted[0] == '' {
+			cmd = last_cmd
+			args = last_args
+		} else {
+			cmd = if is_ctrl { last_cmd } else { splitted[0] }
+			args[0] = if splitted.len > 1 { splitted[1] } else { '' }
+			args[1] = if splitted.len > 2 { splitted[2] } else { '' }
+			last_cmd = cmd
+			last_args = args
+		}
 		match cmd {
 			'anon?' {
 				println(info.is_anon)
@@ -161,7 +179,11 @@ pub fn debugger(info DebugContextInfo) ! {
 				println(info.mod)
 			}
 			'p', 'print' {
-				info.show_variable(args)
+				if args[0] == '' {
+					println('[error] var name is expected as parameter')
+				} else {
+					info.show_variable(args[0])
+				}
 			}
 			'scope' {
 				info.show_scope()
@@ -178,7 +200,10 @@ pub fn debugger(info DebugContextInfo) ! {
 				break
 			}
 			'' {
-				println('')
+				if is_ctrl {
+					println('')
+				} else {
+				}
 			}
 			else {
 				println('unknown command `${cmd}`')
