@@ -177,9 +177,7 @@ fn (mut pv Picoev) handle_timeout() {
 			if target.cb != unsafe { nil } { // Check for valid callback
 				unsafe { target.cb(fd, picoev.picoev_timeout, &pv) }
 			}
-			if pv.timeouts.delete(fd) != 0 {
-				eprintln('Error during timeouts.delete')
-			}
+			pv.timeouts.delete(fd)
 		}
 	}
 }
@@ -203,15 +201,14 @@ fn accept_callback(listen_fd int, events int, cb_arg voidptr) {
 		eprintln('accept ${accepted_fd}')
 	}
 
-	if setup_sock(accepted_fd) {
-		pv.add(accepted_fd, picoev.picoev_read, pv.timeout_secs, raw_callback)
-	} else {
+	setup_sock(accepted_fd) or {
 		eprintln('setup_sock failed, fd: ${accepted_fd}, listen_fd: ${listen_fd}, err: ${err.code()}')
 		pv.err_cb(pv.user_data, picohttpparser.Request{}, mut &picohttpparser.Response{},
 			err)
 		close_socket(accepted_fd) // Close fd on failure
 		return
 	}
+	pv.add(accepted_fd, picoev.picoev_read, pv.timeout_secs, raw_callback)
 }
 
 // close_conn closes the socket `fd` and removes it from the loop
