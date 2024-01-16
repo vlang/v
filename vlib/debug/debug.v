@@ -202,7 +202,6 @@ pub fn debugger(info DebugContextInfo) ! {
 			'' {
 				if is_ctrl {
 					println('')
-				} else {
 				}
 			}
 			else {
