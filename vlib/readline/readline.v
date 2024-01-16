@@ -21,16 +21,20 @@ struct Winsize {
 // Example: import readline { Readline }
 pub struct Readline {
 mut:
-	is_raw            bool
-	orig_termios      termios.Termios // Linux
-	current           []rune // Line being edited
-	cursor            int    // Cursor position
-	overwrite         bool
-	cursor_row_offset int
-	prompt            string
-	prompt_offset     int
-	previous_lines    [][]rune
-	skip_empty        bool // skip the empty lines when calling .history_previous()
-	search_index      int
-	is_tty            bool
+	is_raw                 bool
+	orig_termios           termios.Termios // Linux
+	current                []rune // Line being edited
+	cursor                 int    // Cursor position
+	overwrite              bool
+	cursor_row_offset      int
+	prompt                 string
+	prompt_offset          int
+	previous_lines         [][]rune
+	skip_empty             bool // skip the empty lines when calling .history_previous()
+	search_index           int
+	is_tty                 bool
+	last_prefix_completion []rune
+	last_completion_offset int
+	completion_list        []string
+	completion_callback    fn (string) []string
 }
