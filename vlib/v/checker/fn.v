@@ -1839,10 +1839,10 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			node.from_embed_types = [m.from_embeded_type]
 		}
 	} else {
-		if final_left_sym.kind in [.struct_, .sum_type, .interface_, .alias, .array] {
+		if final_left_sym.kind in [.struct_, .sum_type, .interface_, .array] {
 			mut parent_type := ast.void_type
 			match final_left_sym.info {
-				ast.Struct, ast.SumType, ast.Interface, ast.Alias {
+				ast.Struct, ast.SumType, ast.Interface {
 					parent_type = final_left_sym.info.parent_type
 				}
 				ast.Array {
