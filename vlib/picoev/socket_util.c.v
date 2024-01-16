@@ -67,11 +67,9 @@ fn setup_sock(fd int) ! {
 }
 
 @[inline]
-fn req_read(fd int, b &u8, max_len int, idx int) int {
+fn req_read(fd int, buffer &u8, max_len int, offset int) int {
 	// use `recv` instead of `read` for windows compatibility
-	unsafe {
-		return C.recv(fd, b + idx, max_len - idx, 0)
-	}
+	return unsafe { C.recv(fd, buffer + offset, max_len - offset, 0) }
 }
 
 fn fatal_socket_error(fd int) bool {
@@ -99,10 +97,12 @@ fn fatal_socket_error(fd int) bool {
 }
 
 // listen creates a listening tcp socket and returns its file descriptor
-fn listen(config Config) int {
+fn listen(config Config) !int {
 	// not using the `net` modules sockets, because not all socket options are defined
 	fd := C.socket(config.family, net.SocketType.tcp, 0)
-	assert fd != -1
+	if fd == -1 {
+		return error('Failed to create socket')
+	}
 
 	$if trace_fd ? {
 		eprintln('listen: ${fd}')
@@ -139,6 +139,9 @@ fn listen(config Config) int {
 		config.err_cb(config.user_data, picohttpparser.Request{}, mut &picohttpparser.Response{},
 			err)
 	}
+	// if setup_sock(fd) != 0 {
+	// 	return error('Failed to set up socket')
+	// }
 
 	return fd
 }

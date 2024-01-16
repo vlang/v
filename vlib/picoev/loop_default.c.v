@@ -32,7 +32,7 @@ fn (mut pv Picoev) update_events(fd int, events int) int {
 }
 
 @[direct_array_access]
-fn (mut pv Picoev) poll_once(max_wait int) int {
+fn (mut pv Picoev) poll_once(max_wait_in_sec int) int {
 	readfds, writefds, errorfds := C.fd_set{}, C.fd_set{}, C.fd_set{}
 
 	// setup
@@ -62,7 +62,7 @@ fn (mut pv Picoev) poll_once(max_wait int) int {
 
 	// select and handle sockets if any
 	tv := C.timeval{
-		tv_sec: u64(max_wait)
+		tv_sec: u64(max_wait_in_sec)
 		tv_usec: 0
 	}
 	r := C.@select(maxfd + 1, &readfds, &writefds, &errorfds, &tv)

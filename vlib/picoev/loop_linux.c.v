@@ -101,8 +101,8 @@ fn (mut pv Picoev) update_events(fd int, events int) int {
 }
 
 @[direct_array_access]
-fn (mut pv Picoev) poll_once(max_wait int) int {
-	nevents := C.epoll_wait(pv.loop.epoll_fd, &pv.loop.events, max_fds, max_wait * 1000)
+fn (mut pv Picoev) poll_once(max_wait_in_sec int) int {
+	nevents := C.epoll_wait(pv.loop.epoll_fd, &pv.loop.events, max_fds, max_wait_in_sec * 1000)
 
 	if nevents == -1 {
 		// timeout has occurred
