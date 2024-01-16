@@ -593,24 +593,25 @@ fn (mut r Readline) completion() {
 	if r.completion_list.len == 0 && r.completion_callback == unsafe { nil } {
 		return
 	}
-
+	// use last prefix for completion or current input
 	prefix := if r.last_prefix_completion.len > 0 { r.last_prefix_completion } else { r.current }
-	// no prefix set
 	if prefix.len == 0 {
 		return
 	}
 	// filtering by prefix
 	opts := if r.completion_list.len > 0 {
 		r.completion_list.filter(it.starts_with(prefix.string()))
-	} else {
+	} else if r.completion_callback != unsafe { nil } {
 		r.completion_callback(prefix.string())
+	} else {
+		[]string{}
 	}
 	if opts.len == 0 {
 		r.completion_clear()
 		return
 	}
 
-	// moving for next completion match using initial prefix match
+	// moving for next possible completion match using saved prefix
 	if r.last_prefix_completion.len != 0 {
 		if opts.len > r.last_completion_offset + 1 {
 			r.last_completion_offset += 1
@@ -619,10 +620,11 @@ fn (mut r Readline) completion() {
 			r.last_completion_offset = 0
 		}
 	} else {
+		// save current prefix before tab'ing
 		r.last_prefix_completion = r.current
 	}
 
-	// set the possible completion match
+	// set the text to the current completion match in the completion list
 	r.current = opts[r.last_completion_offset].runes()
 	r.cursor = r.current.len
 	r.refresh_line()
