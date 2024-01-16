@@ -3685,6 +3685,10 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					obj.typ = typ
 					node.obj = obj
 
+					if obj.attrs.contains('deprecated') && obj.mod != c.mod {
+						c.deprecate('const', '${obj.name}', obj.attrs, node.pos)
+					}
+
 					if node.or_expr.kind != .absent {
 						unwrapped_typ := typ.clear_option_and_result()
 						c.expected_or_type = unwrapped_typ
@@ -3736,6 +3740,12 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		saved_mod := node.mod
 		node.mod = 'builtin'
 		builtin_type := c.ident(mut node)
+		if node.obj is ast.ConstField {
+			field := node.obj as ast.ConstField
+			if field.attrs.contains('deprecated') && field.mod != c.mod {
+				c.deprecate('const', '${field.name}', field.attrs, node.pos)
+			}
+		}
 		if builtin_type != ast.void_type {
 			return builtin_type
 		}
