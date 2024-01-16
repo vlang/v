@@ -27,9 +27,11 @@ fn print_help() {
 	println('  f,file\t\tshow current file name')
 	println('  fn,func\t\tshow current function name')
 	println('  generic?\t\tcheck if the current context is generic')
+	println('  heap\t\tshow heap memory usage')
 	println('  h, help\t\tshow this help')
 	println('  list\t\t\tshow 5 lines from current file')
 	println('  l, line\t\tshow current line number')
+	println('  mem,memory\t\tshow memory usage')
 	println('  method?\t\tcheck if the current context is a method')
 	println('  m,mod\t\t\tshow current module name')
 	println('  p,print <arg>\t\tprints an variable')
@@ -40,18 +42,19 @@ fn print_help() {
 	println('')
 }
 
+// DebugContextVar holds the scope variable information
 pub struct DebugContextVar {
-	name  string
-	typ   string
-	value string
+	name  string // var name
+	typ   string // its type name
+	value string // its str value
 }
 
 // DebugContextInfo has the context info for the debugger repl
 pub struct DebugContextInfo {
-	is_anon           bool   // context: cur fn is anon?
-	is_generic        bool   // context: cur fn is a generic?
-	is_method         bool   // context: cur fn is a bool?
-	receiver_typ_name string // context: cur receiver type name (method only)
+	is_anon           bool   // cur fn is anon?
+	is_generic        bool   // cur fn is a generic?
+	is_method         bool   // cur fn is a bool?
+	receiver_typ_name string // cur receiver type name (method only)
 	line              int    // cur line number
 	file              string // cur file name
 	mod               string // cur module name
@@ -59,12 +62,14 @@ pub struct DebugContextInfo {
 	scope             map[string]DebugContextVar // inner most scope var data
 }
 
+// show_variable prints the variable info if found into the cur context
 fn (d DebugContextInfo) show_variable(args []string) {
 	if info := d.scope[args[0]] {
 		println('${args[0]} = ${info.value} (${info.typ})')
 	}
 }
 
+// show_scope prints the cur context scope variables
 fn (d DebugContextInfo) show_scope() {
 	for k, v in d.scope {
 		println('${k} = ${v.value} (${v.typ})')
@@ -83,6 +88,19 @@ fn (d DebugContextInfo) ctx() string {
 		s.write_string(' [generic]')
 	}
 	return s.str()
+}
+
+// print_memory_use prints the GC memory use
+fn print_memory_use() {
+	println('${gc_memory_use() / 1024} MB')
+}
+
+// print_heap_usage prints the GC heap usage
+fn print_heap_usage() {
+	h := gc_heap_usage()
+	println('heap size: ${h.heap_size / 1024} MB')
+	println('free bytes: ${h.free_bytes / 1024} MB')
+	println('total bytes: ${h.total_bytes} MB')
 }
 
 // debugger is the implementation for C backend's debugger statement (debugger;)
@@ -109,7 +127,7 @@ pub fn debugger(info DebugContextInfo) ! {
 			'bt' {
 				print_backtrace_skipping_top_frames(2)
 			}
-			'', 'c', 'continue' {
+			'c', 'continue' {
 				break
 			}
 			'f', 'file' {
@@ -120,6 +138,9 @@ pub fn debugger(info DebugContextInfo) ! {
 			}
 			'generic?' {
 				println(info.is_generic)
+			}
+			'heap' {
+				print_heap_usage()
 			}
 			'h', 'help' {
 				print_help()
@@ -132,6 +153,9 @@ pub fn debugger(info DebugContextInfo) ! {
 			}
 			'method?' {
 				println(info.is_method)
+			}
+			'mem', 'memory' {
+				print_memory_use()
 			}
 			'm', 'mod' {
 				println(info.mod)
@@ -152,6 +176,9 @@ pub fn debugger(info DebugContextInfo) ! {
 			'q', 'quit' {
 				exited = 1
 				break
+			}
+			'' {
+				println('')
 			}
 			else {
 				println('unknown command `${cmd}`')
