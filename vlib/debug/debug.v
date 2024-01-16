@@ -27,7 +27,7 @@ fn print_help() {
 	println('  f,file\t\tshow current file name')
 	println('  fn,func\t\tshow current function name')
 	println('  generic?\t\tcheck if the current context is generic')
-	println('  heap\t\tshow heap memory usage')
+	println('  heap\t\t\tshow heap memory usage')
 	println('  h, help\t\tshow this help')
 	println('  list\t\t\tshow 5 lines from current file')
 	println('  l, line\t\tshow current line number')
