@@ -243,3 +243,20 @@ fn test_cross_var_assign_with_inherited() {
 	}
 	f()
 }
+
+// for issue 20498
+// test array / string as closure params with -auto-free
+fn get_func_that_contains_closure() fn () {
+	arr := [1, 2, 3]
+	str := '${'a'}bcabc'
+	return fn [arr, str] () {
+		assert arr == [1, 2, 3]
+		assert str == 'abcabc'
+	}
+}
+
+fn test_array_and_string_as_closure_params_with_autofree() {
+	func := get_func_that_contains_closure()
+	func()
+	assert true
+}

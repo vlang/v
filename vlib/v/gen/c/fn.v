@@ -534,6 +534,10 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 					g.write('${var.name}[${i}],')
 				}
 				g.writeln('},')
+			} else if g.is_autofree && !var.is_mut && var_sym.info is ast.Array {
+				g.writeln('.${var.name} = array_clone(&${var.name}),')
+			} else if g.is_autofree && !var.is_mut && var_sym.kind == .string {
+				g.writeln('.${var.name} = string_clone(${var.name}),')
 			} else {
 				g.writeln('.${var.name} = ${var.name},')
 			}
