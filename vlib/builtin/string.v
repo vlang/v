@@ -1786,6 +1786,149 @@ fn (s string) at_with_check(idx int) ?u8 {
 	}
 }
 
+// Check if a string is an octal value. Returns 'true' if it is, or 'false' if it is not
+@[direct_array_access]
+pub fn (str string) is_oct() bool {
+	mut i := 0
+
+	if str[i] == `0` {
+		i++
+	} else if str[i] == `-` || str[i] == `+` {
+		i++
+
+		if str[i] == `0` {
+			i++
+		} else {
+			return false
+		}
+	} else {
+		return false
+	}
+
+	if str[i] == `o` {
+		i++
+	} else {
+		return false
+	}
+
+	if i == str.len {
+		return false
+	}
+
+	for i < str.len {
+		if str[i] < `0` || str[i] > `7` {
+			return false
+		}
+		i++
+	}
+
+	return true
+}
+
+// Check if a string is an binary value. Returns 'true' if it is, or 'false' if it is not
+@[direct_array_access]
+pub fn (str string) is_bin() bool {
+	mut i := 0
+
+	if str[i] == `0` {
+		i++
+	} else if str[i] == `-` || str[i] == `+` {
+		i++
+
+		if str[i] == `0` {
+			i++
+		} else {
+			return false
+		}
+	} else {
+		return false
+	}
+
+	if str[i] == `b` {
+		i++
+	} else {
+		return false
+	}
+
+	if i == str.len {
+		return false
+	}
+
+	for i < str.len {
+		if str[i] < `0` || str[i] > `1` {
+			return false
+		}
+		i++
+	}
+
+	return true
+}
+
+// Check if a string is an hexadecimal value. Returns 'true' if it is, or 'false' if it is not
+@[direct_array_access]
+pub fn (str string) is_hex() bool {
+	mut i := 0
+
+	if str[i] == `0` {
+		i++
+	} else if str[i] == `-` || str[i] == `+` {
+		i++
+
+		if str[i] == `0` {
+			i++
+		} else {
+			return false
+		}
+	} else {
+		return false
+	}
+
+	if str[i] == `x` {
+		i++
+	} else {
+		return false
+	}
+
+	if i == str.len {
+		return false
+	}
+
+	for i < str.len {
+		if (str[i] < `0` || str[i] > `9`) && ((str[i] < `a` || str[i] > `f`)
+			&& (str[i] < `A` || str[i] > `F`)) {
+			return false
+		}
+		i++
+	}
+
+	return true
+}
+
+// Check if a string is an integer value. Returns 'true' if it is, or 'false' if it is not
+@[direct_array_access]
+pub fn (str string) is_int() bool {
+	mut i := 0
+
+	if (str[i] != `-` && str[i] != `+`) && (!str[i].is_digit()) {
+		return false
+	} else {
+		i++
+	}
+
+	if i == str.len && (!str[i - 1].is_digit()) {
+		return false
+	}
+
+	for i < str.len {
+		if str[i] < `0` || str[i] > `9` {
+			return false
+		}
+		i++
+	}
+
+	return true
+}
+
 // is_space returns `true` if the byte is a white space character.
 // The following list is considered white space characters: ` `, `\t`, `\n`, `\v`, `\f`, `\r`, 0x85, 0xa0
 // Example: assert u8(` `).is_space() == true

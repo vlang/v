@@ -425,6 +425,168 @@ fn test_rsplit_once() ? {
 	assert ext3 == ''
 }
 
+fn test_is_bin() {
+	assert '0b1'.is_bin() == true
+	assert '0b0'.is_bin() == true
+	assert '0b'.is_bin() == false
+	assert '-0b'.is_bin() == false
+	assert '-0b1'.is_bin() == true
+	assert '-0b0'.is_bin() == true
+	assert '-0b1101'.is_bin() == true
+	assert '-0b0101'.is_bin() == true
+	assert '-324'.is_bin() == false
+	assert '-0'.is_bin() == false
+	assert '0x1'.is_bin() == false
+	assert '0x1A'.is_bin() == false
+	assert '+0b1101'.is_bin() == true
+	assert '+0b1'.is_bin() == true
+	assert '-0x1'.is_bin() == false
+	assert '-0x1A'.is_bin() == false
+	assert '0x'.is_bin() == false
+	assert '0'.is_bin() == false
+	assert '0xFF'.is_bin() == false
+	assert '0xG'.is_bin() == false
+	assert '-'.is_bin() == false
+	assert '+'.is_bin() == false
+	assert '-0xFF'.is_bin() == false
+	assert '0.34'.is_bin() == false
+	assert '0o23'.is_bin() == false
+	assert 'vlang'.is_bin() == false
+}
+
+fn test_is_oct() {
+	assert '0o0'.is_oct() == true
+	assert '0o1'.is_oct() == true
+	assert '0o2'.is_oct() == true
+	assert '-0o0'.is_oct() == true
+	assert '-0o1'.is_oct() == true
+	assert '-0o2'.is_oct() == true
+
+	assert '0o04'.is_oct() == true
+	assert '0o16'.is_oct() == true
+	assert '0o23'.is_oct() == true
+	assert '-0o05'.is_oct() == true
+	assert '-0o13'.is_oct() == true
+	assert '-0o22'.is_oct() == true
+
+	assert '0o8'.is_oct() == false
+	assert '0o9'.is_oct() == false
+	assert '-0o8'.is_oct() == false
+	assert '-0o9'.is_oct() == false
+	assert '0o84'.is_oct() == false
+	assert '0o96'.is_oct() == false
+	assert '-0o83'.is_oct() == false
+	assert '-0o2923'.is_oct() == false
+	assert '0b1'.is_oct() == false
+	assert '0b0'.is_oct() == false
+	assert '0b'.is_oct() == false
+	assert '-0b'.is_oct() == false
+	assert '-0b1'.is_oct() == false
+	assert '-0b0'.is_oct() == false
+	assert '-0b1101'.is_oct() == false
+	assert '+0o234'.is_oct() == true
+	assert '+0o432'.is_oct() == true
+	assert '-'.is_oct() == false
+	assert '+'.is_oct() == false
+	assert '-0b0101'.is_oct() == false
+	assert '-324'.is_oct() == false
+	assert '-0'.is_oct() == false
+	assert '0x1'.is_oct() == false
+	assert '0x1A'.is_oct() == false
+	assert '-0x1'.is_oct() == false
+	assert '-0x1A'.is_oct() == false
+	assert '0x'.is_oct() == false
+	assert '0'.is_oct() == false
+	assert '0xFF'.is_oct() == false
+	assert '0xG'.is_oct() == false
+	assert '-0xFF'.is_oct() == false
+	assert '0.34'.is_oct() == false
+	assert 'vlang'.is_oct() == false
+}
+
+fn test_is_hex() {
+	assert '-324'.is_hex() == false
+	assert '-0'.is_hex() == false
+	assert '0x1'.is_hex() == true
+	assert '0x1A'.is_hex() == true
+	assert '-0x1'.is_hex() == true
+	assert '-0x1A'.is_hex() == true
+	assert '+0x1'.is_hex() == true
+	assert '+0x1A'.is_hex() == true
+	assert '0x'.is_hex() == false
+	assert '0'.is_hex() == false
+	assert '-'.is_hex() == false
+	assert '+'.is_hex() == false
+	assert '0xFF'.is_hex() == true
+	assert '0xG'.is_hex() == false
+	assert '-0xFF'.is_hex() == true
+	assert '0b1101'.is_hex() == false
+	assert '0.34'.is_hex() == false
+	assert '0o23'.is_hex() == false
+	assert 'vlang'.is_hex() == false
+}
+
+fn test_is_int() {
+	assert '-324'.is_int() == true
+	assert '234'.is_int() == true
+	assert '-0'.is_int() == true
+	assert '-b'.is_int() == false
+	assert '-123456789'.is_int() == true
+	assert '123456789'.is_int() == true
+	assert '0x1'.is_int() == false
+	assert '0b1101'.is_int() == false
+	assert '0.34'.is_int() == false
+	assert '0o23'.is_int() == false
+	assert 'vlang'.is_int() == false
+
+	assert '0o0'.is_int() == false
+	assert '0o1'.is_int() == false
+	assert '0o2'.is_int() == false
+	assert '-0o0'.is_int() == false
+	assert '-0o1'.is_int() == false
+	assert '-0o2'.is_int() == false
+
+	assert '0o04'.is_int() == false
+	assert '0o16'.is_int() == false
+	assert '0o23'.is_int() == false
+	assert '-0o05'.is_int() == false
+	assert '-0o13'.is_int() == false
+	assert '-0o22'.is_int() == false
+
+	assert '0o8'.is_int() == false
+	assert '0o9'.is_int() == false
+	assert '-0o8'.is_int() == false
+	assert '-0o9'.is_int() == false
+	assert '0o84'.is_int() == false
+	assert '0o96'.is_int() == false
+	assert '-0o83'.is_int() == false
+	assert '-0o2923'.is_int() == false
+	assert '0b1'.is_int() == false
+	assert '0b0'.is_int() == false
+	assert '0b'.is_int() == false
+	assert '-0b'.is_int() == false
+	assert '-0b1'.is_int() == false
+	assert '-0b0'.is_int() == false
+	assert '-0b1101'.is_int() == false
+	assert '-0b0101'.is_int() == false
+	assert '-324'.is_int() == true
+	assert '-0'.is_int() == true
+	assert '0x1'.is_int() == false
+	assert '0x1A'.is_int() == false
+	assert '-0x1'.is_int() == false
+	assert '-0x1A'.is_oct() == false
+	assert '0x'.is_int() == false
+	assert '0'.is_int() == true
+	assert '0xFF'.is_int() == false
+	assert '0xG'.is_int() == false
+	assert '-0xFF'.is_int() == false
+	assert '0.34'.is_int() == false
+	assert '-'.is_int() == false
+	assert '+'.is_int() == false
+	assert '+3'.is_int() == true
+	assert '+3232'.is_int() == true
+}
+
 fn test_trim_space() {
 	a := ' a '
 	assert a.trim_space() == 'a'
