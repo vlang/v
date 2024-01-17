@@ -426,6 +426,7 @@ fn test_rsplit_once() ? {
 }
 
 fn test_is_bin() {
+	assert ''.is_bin() == false
 	assert '0b1'.is_bin() == true
 	assert '0b0'.is_bin() == true
 	assert '0b'.is_bin() == false
@@ -455,6 +456,7 @@ fn test_is_bin() {
 }
 
 fn test_is_oct() {
+	assert ''.is_oct() == false
 	assert '0o0'.is_oct() == true
 	assert '0o1'.is_oct() == true
 	assert '0o2'.is_oct() == true
@@ -505,6 +507,7 @@ fn test_is_oct() {
 }
 
 fn test_is_hex() {
+	assert ''.is_hex() == false
 	assert '-324'.is_hex() == false
 	assert '-0'.is_hex() == false
 	assert '0x1'.is_hex() == true
@@ -527,6 +530,7 @@ fn test_is_hex() {
 }
 
 fn test_is_int() {
+	assert ''.is_int() == false
 	assert '-324'.is_int() == true
 	assert '234'.is_int() == true
 	assert '-0'.is_int() == true

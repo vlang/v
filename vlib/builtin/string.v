@@ -1791,6 +1791,10 @@ fn (s string) at_with_check(idx int) ?u8 {
 pub fn (str string) is_oct() bool {
 	mut i := 0
 
+	if str.len == 0 {
+		return false
+	}
+
 	if str[i] == `0` {
 		i++
 	} else if str[i] == `-` || str[i] == `+` {
@@ -1829,6 +1833,10 @@ pub fn (str string) is_oct() bool {
 @[direct_array_access]
 pub fn (str string) is_bin() bool {
 	mut i := 0
+
+	if str.len == 0 {
+		return false
+	}
 
 	if str[i] == `0` {
 		i++
@@ -1869,6 +1877,10 @@ pub fn (str string) is_bin() bool {
 pub fn (str string) is_hex() bool {
 	mut i := 0
 
+	if str.len == 0 {
+		return false
+	}
+
 	if str[i] == `0` {
 		i++
 	} else if str[i] == `-` || str[i] == `+` {
@@ -1908,6 +1920,10 @@ pub fn (str string) is_hex() bool {
 @[direct_array_access]
 pub fn (str string) is_int() bool {
 	mut i := 0
+
+	if str.len == 0 {
+		return false
+	}
 
 	if (str[i] != `-` && str[i] != `+`) && (!str[i].is_digit()) {
 		return false
