@@ -116,6 +116,13 @@ pub fn (mut pv Picoev) add(fd int, events int, timeout int, callback voidptr) in
 }
 
 // removes a file descriptor from the event loop
+@[deprecated: 'use remove() instead']
+@[direct_array_access]
+pub fn (mut pv Picoev) del(fd int) int {
+	return pv.remove(fd)
+}
+
+// removes a file descriptor from the event loop
 @[direct_array_access]
 pub fn (mut pv Picoev) remove(fd int) int {
 	assert fd < picoev.max_fds
