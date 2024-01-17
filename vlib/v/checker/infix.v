@@ -524,6 +524,10 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					c.error('unwrapped Option cannot be used in an infix expression',
 						node.pos)
 				}
+				if !left_type.has_flag(.option) && right_type.has_flag(.option) {
+					c.error('unwrapped Option cannot be used in an infix expression',
+						node.pos)
+				}
 				// `array << elm`
 				c.check_expr_option_or_result_call(node.right, right_type)
 				node.auto_locked, _ = c.fail_if_immutable(mut node.left)

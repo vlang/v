@@ -40,6 +40,13 @@ vlib/v/checker/tests/option_fn_err.vv:49:6: error: cannot use `?int` as `int`, i
       |         ~~~~~~
    50 |
    51 |     // array
+vlib/v/checker/tests/option_fn_err.vv:53:6: error: unwrapped Option cannot be used in an infix expression
+   51 |     // array
+   52 |     mut arr := [1, 2]
+   53 |     arr << bar(0)
+      |         ~~
+   54 |     // init
+   55 |     _ := [bar(0)]
 vlib/v/checker/tests/option_fn_err.vv:56:27: error: cannot use unwrapped Option as initializer
    54 |     // init
    55 |     _ := [bar(0)]
