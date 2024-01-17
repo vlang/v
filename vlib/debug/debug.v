@@ -96,7 +96,7 @@ fn print_heap_usage() {
 }
 
 // debugger is the implementation for C backend's debugger statement (debugger;)
-@[unsafe]
+@[unsafe; markused]
 pub fn debugger(info DebugContextInfo) ! {
 	mut static profile := u64(0)
 	mut static exited := 0
