@@ -24,8 +24,6 @@ fn print_help() {
 	println('  p, print <arg>\tprints an variable')
 	println('  q, quit\t\texits debugging session in the code')
 	println('  scope\t\t\tshow the vars in the inner most scope')
-	println('  s, profile\t\tstart CPU profiling session')
-	println('  e, profileEnd\t\tstop current CPU profiling session')
 	println('')
 }
 
@@ -173,13 +171,6 @@ pub fn debugger(info DebugContextInfo) ! {
 			}
 			'scope' {
 				info.show_scope()
-			}
-			's', 'profile' {
-				profile = time.sys_mono_now()
-				println('profiler :: starting profiler')
-			}
-			'e', 'profileEnd' {
-				println('profiler :: elapsed time: ${time.Duration(time.sys_mono_now() - profile)}')
 			}
 			'q', 'quit' {
 				exited = 1
