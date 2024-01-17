@@ -136,7 +136,7 @@ fn listen(config Config) int {
 	}
 
 	setup_sock(fd) or {
-		config.err_cb(config.user_data, picohttpparser.Request{}, mut &picohttpparser.Response{},
+		config.error_callback(config.user_data, picohttpparser.Request{}, mut &picohttpparser.Response{},
 			err)
 	}
 

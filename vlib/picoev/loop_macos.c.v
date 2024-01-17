@@ -156,9 +156,9 @@ fn (mut pv Picoev) update_events(fd int, events int) int {
 }
 
 @[direct_array_access]
-fn (mut pv Picoev) poll_once(max_wait int) int {
+fn (mut pv Picoev) poll_once(max_wait_in_sec int) int {
 	ts := C.timespec{
-		tv_sec: max_wait
+		tv_sec: max_wait_in_sec
 		tv_nsec: 0
 	}
 
@@ -195,7 +195,7 @@ fn (mut pv Picoev) poll_once(max_wait int) int {
 			}
 
 			// do callback!
-			unsafe { target.cb(target.fd, read_events, &pv) }
+			unsafe { target.callback(target.fd, read_events, &pv) }
 		}
 	}
 
