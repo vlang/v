@@ -72,14 +72,13 @@ fn (mut pv Picoev) poll_once(max_wait int) int {
 	} else if r > 0 {
 		for target in pv.file_descriptors {
 			if target.loop_id == pv.loop.id {
-				mut read_events := 0
-				if C.FD_ISSET(target.fd, &readfds) != 0 {
-					read_events |= picoev_read
-				}
-				if C.FD_ISSET(target.fd, &writefds) != 0 {
-					read_events |= picoev_write
-				}
-
+				// vfmt off
+				read_events := (
+					(if C.FD_ISSET(target.fd, &readfds) != 0 { picoev_read } else { 0 })
+						|
+					(if C.FD_ISSET(target.fd, &writefds) != 0 { picoev_write } else { 0 })
+				)
+				// vfmt on
 				if read_events != 0 {
 					$if trace_fd ? {
 						eprintln('do callback ${target.fd}')
