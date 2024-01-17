@@ -3,11 +3,11 @@
 set timeout 3
 
 # Pass v_root as arg, since we chdir into a temp directory during testing and create a project there.
-set v_root [lindex $argv 0]
+set vexe [lindex $argv 0]
 set test_file [lindex $argv 1]
 set output_file [lindex $argv 2]
 
-spawn $v_root/v -o $output_file run $test_file
+spawn $vexe -o $output_file run $test_file
 
 expect "${test_file}:7 vdbg> " { send "p a\r" } timeout { exit 1 }
 expect "a = 0 (int)" { send "q\r" } timeout { exit 1 }

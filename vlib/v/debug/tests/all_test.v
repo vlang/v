@@ -1,73 +1,42 @@
 import os
+import term
 
-const vroot = @VEXEROOT
-// Expect has to be installed for the test.
+const vexe = @VEXE
+const expect_tests_path = os.join_path(@VEXEROOT, 'vlib', 'v', 'debug', 'tests')
+const test_module_path = os.join_path(os.vtmp_dir(), 'test_vdbg_input')
+const bar = term.yellow('-'.repeat(100))
+
 const expect_exe = os.quoted_path(os.find_abs_path_of_executable('expect') or {
 	eprintln('skipping test, since expect is missing')
 	exit(0)
 })
-// Directory that contains the Expect scripts used in the test.
-const expect_tests_path = os.join_path(@VEXEROOT, 'vlib', 'v', 'debug', 'tests')
-// Running tests appends a tsession path to VTMP, which is automatically cleaned up after the test.
-// The following will result in e.g. `$VTMP/tsession_7fe8e93bd740_1612958707536/test_vcreate_input/`.
-const test_module_path = os.join_path(os.vtmp_dir(), 'test_vdbg_input')
 
-fn prepare_test_path() ! {
+fn testsuite_begin() {
+	os.chdir(@VEXEROOT) or {}
 	os.rmdir_all(test_module_path) or {}
 	os.mkdir_all(test_module_path) or {}
+}
+
+fn testsuite_end() {
+	os.chdir(@VEXEROOT) or {}
+	os.rmdir_all(test_module_path) or {}
+}
+
+fn test_debugger() {
 	os.chdir(test_module_path)!
-}
-
-fn test_smartcast() {
-	prepare_test_path()!
-	test_file := os.join_path(@VEXEROOT, 'vlib', 'v', 'debug', 'tests', 'smartcast.vv')
-	output_file := os.join_path(test_module_path, @FN)
-	os.execute_opt('${expect_exe} ${os.join_path(expect_tests_path, 'smartcast.expect')} ${vroot} ${test_file} ${output_file}') or {
-		assert false, err.msg()
+	all_expect_files := os.walk_ext(expect_tests_path, '.expect')
+	for eidx, efile in all_expect_files {
+		vfile := efile.replace('.expect', '.vv')
+		output_file := os.file_name(efile).replace('.expect', '.exe')
+		expect_cmd := '${expect_exe} ${os.quoted_path(efile)} ${os.quoted_path(vexe)} ${os.quoted_path(vfile)} ${output_file}'
+		println(bar)
+		println('>>>> running test [${eidx + 1}/${all_expect_files.len}], ${term.magenta(efile)} ...')
+		flush_stdout()
+		res := os.system(expect_cmd)
+		if res != 0 {
+			assert false, term.red('failed expect cmd: `${expect_cmd}`')
+		}
 	}
-}
-
-fn test_comptime_smartcast() {
-	prepare_test_path()!
-	test_file := os.join_path(@VEXEROOT, 'vlib', 'v', 'debug', 'tests', 'comptime_smartcast.vv')
-	output_file := os.join_path(test_module_path, @FN)
-	os.execute_opt('${expect_exe} ${os.join_path(expect_tests_path, 'comptime_smartcast.expect')} ${vroot} ${test_file} ${output_file}') or {
-		assert false, err.msg()
-	}
-}
-
-fn test_comptime_variant() {
-	prepare_test_path()!
-	test_file := os.join_path(@VEXEROOT, 'vlib', 'v', 'debug', 'tests', 'comptime_variant.vv')
-	output_file := os.join_path(test_module_path, @FN)
-	os.execute_opt('${expect_exe} ${os.join_path(expect_tests_path, 'comptime_variant.expect')} ${vroot} ${test_file} ${output_file}') or {
-		assert false, err.msg()
-	}
-}
-
-fn test_interface_var() {
-	prepare_test_path()!
-	test_file := os.join_path(@VEXEROOT, 'vlib', 'v', 'debug', 'tests', 'interface_var.vv')
-	output_file := os.join_path(test_module_path, @FN)
-	os.execute_opt('${expect_exe} ${os.join_path(expect_tests_path, 'interface_var.expect')} ${vroot} ${test_file} ${output_file}') or {
-		assert false, err.msg()
-	}
-}
-
-fn test_option_unwrap() {
-	prepare_test_path()!
-	test_file := os.join_path(@VEXEROOT, 'vlib', 'v', 'debug', 'tests', 'option_unwrap.vv')
-	output_file := os.join_path(test_module_path, @FN)
-	os.execute_opt('${expect_exe} ${os.join_path(expect_tests_path, 'option_unwrap.expect')} ${vroot} ${test_file} ${output_file}') or {
-		assert false, err.msg()
-	}
-}
-
-fn test_sumtype() {
-	prepare_test_path()!
-	test_file := os.join_path(@VEXEROOT, 'vlib', 'v', 'debug', 'tests', 'sumtype.vv')
-	output_file := os.join_path(test_module_path, @FN)
-	os.execute_opt('${expect_exe} ${os.join_path(expect_tests_path, 'sumtype.expect')} ${vroot} ${test_file} ${output_file}') or {
-		assert false, err.msg()
-	}
+	println(bar)
+	println(term.bold('A total of ${all_expect_files.len} tests for the debugger are OK'))
 }
