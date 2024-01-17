@@ -3927,30 +3927,98 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 	scope_vars := g.file.scope.innermost(node.pos.pos).get_all_vars()
 
 	// prepares the map containing the scope variable infos
-	g.writeln('{')
-	g.writeln('\tMap_string_string _scope = new_map_init(&map_hash_string, &map_eq_string, &map_clone_string, &map_free_string, ${scope_vars.len}, sizeof(string), sizeof(v__debug__DebugContextVar),')
+	mut vars := []string{}
+	mut keys := strings.new_builder(100)
+	mut values := strings.new_builder(100)
 	mut count := 1
-	g.write('\t\t_MOV((string[${scope_vars.len}]){')
 	for _, obj in scope_vars {
-		g.write('_SLIT("${obj.name}")')
-		if count != scope_vars.len {
-			g.write(',')
+		if obj.name !in vars {
+			if obj is ast.Var && obj.pos.pos < node.pos.pos {
+				keys.write_string('_SLIT("${obj.name}")')
+				var_typ := if obj.smartcasts.len > 0 { obj.smartcasts.last() } else { obj.typ }
+				values.write_string('{.typ=_SLIT("${g.table.type_to_str(g.unwrap_generic(var_typ))}"),.value=')
+				func := g.get_str_fn(var_typ)
+				obj_sym := g.table.sym(obj.typ)
+				cast_sym := g.table.sym(var_typ)
+
+				mut param_var := strings.new_builder(50)
+				if obj.smartcasts.len > 0 {
+					is_option_unwrap := obj.typ.has_flag(.option)
+						&& var_typ == obj.typ.clear_flag(.option)
+					is_auto_heap := obj.is_auto_heap
+					is_option := obj.typ.has_flag(.option)
+					mut opt_cast := false
+
+					param_var.write_string('(')
+					if obj_sym.kind == .sum_type && !is_auto_heap {
+						if is_option {
+							if !is_option_unwrap {
+								param_var.write_string('*(')
+							}
+							styp := g.base_type(obj.typ)
+							param_var.write_string('*(${styp}*)')
+							opt_cast = true
+						} else {
+							param_var.write_string('*')
+						}
+					} else if g.table.is_interface_var(obj) || obj.ct_type_var == .smartcast {
+						param_var.write_string('*')
+					} else if is_option {
+						opt_cast = true
+						param_var.write_string('*(${g.base_type(obj.typ)}*)')
+					}
+
+					dot := if obj.orig_type.is_ptr() || is_auto_heap { '->' } else { '.' }
+					if obj.ct_type_var == .smartcast {
+						cur_variant_sym := g.table.sym(g.unwrap_generic(g.comptime.type_map['${g.comptime.comptime_for_variant_var}.typ']))
+						param_var.write_string('${obj.name}${dot}_${cur_variant_sym.cname}')
+					} else if obj_sym.kind == .interface_ && cast_sym.kind == .interface_ {
+						ptr := '*'.repeat(obj.typ.nr_muls())
+						param_var.write_string('I_${obj_sym.cname}_as_I_${cast_sym.cname}(${ptr}${obj.name})')
+					} else if obj_sym.kind in [.sum_type, .interface_] {
+						param_var.write_string('${obj.name}')
+						if opt_cast {
+							param_var.write_string('.data)')
+						}
+						param_var.write_string('${dot}_${cast_sym.cname}')
+					} else if obj.typ.has_flag(.option) && !var_typ.has_flag(.option) {
+						param_var.write_string('${obj.name}.data')
+					} else {
+						param_var.write_string('${obj.name}')
+					}
+					param_var.write_string(')')
+					values.write_string('${func}(${param_var.str()})}')
+				} else {
+					if obj.typ.has_flag(.option) && !var_typ.has_flag(.option) {
+						// option unwrap
+						base_typ := g.base_type(obj.typ)
+						values.write_string('${func}(*(${base_typ}*)${obj.name}.data)}')
+					} else {
+						deref := if obj.is_auto_heap
+							|| (!var_typ.has_flag(.option) && var_typ.is_ptr()) {
+							'*'
+						} else {
+							''
+						}
+						values.write_string('${func}(${deref}${obj.name})}')
+					}
+				}
+				vars << obj.name
+				if count != scope_vars.len {
+					keys.write_string(',')
+					values.write_string(',')
+				}
+			}
 		}
 		count += 1
 	}
+	g.writeln('{')
+	g.writeln('\tMap_string_string _scope = new_map_init(&map_hash_string, &map_eq_string, &map_clone_string, &map_free_string, ${vars.len}, sizeof(string), sizeof(v__debug__DebugContextVar),')
+	g.write('\t\t_MOV((string[${vars.len}]){')
+	g.write(keys.str())
 	g.writeln('}),')
-	count = 1
-	g.write('\t\t_MOV((v__debug__DebugContextVar[${scope_vars.len}]){')
-	for _, obj in scope_vars {
-		g.write('{.typ=_SLIT("${g.table.type_to_str(g.unwrap_generic(obj.typ))}"),.value=')
-		func := g.get_str_fn(obj.typ)
-		g.write('${func}(${obj.name})')
-		g.write('}')
-		if count != scope_vars.len {
-			g.write(',')
-		}
-		count += 1
-	}
+	g.write('\t\t_MOV((v__debug__DebugContextVar[${vars.len}]){')
+	g.write(values.str())
 	g.writeln('}));')
 	g.writeln('\tv__debug__debugger((v__debug__DebugContextInfo){.is_anon=${is_anon},.is_generic=${is_generic},.is_method=${is_method},.receiver_typ_name=_SLIT("${receiver_type}"),.line=${paline},.file=_SLIT("${pafile}"),.mod=_SLIT("${pamod}"),.fn_name=_SLIT("${pafn}"),.scope=_scope});')
 	g.write('}')
