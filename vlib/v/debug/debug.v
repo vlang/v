@@ -43,7 +43,7 @@ pub struct DebugContextInfo {
 	file              string // cur file name
 	mod               string // cur module name
 	fn_name           string // cur function name
-	scope             map[string]DebugContextVar // inner most scope var data
+	scope             map[string]DebugContextVar // scope var data
 }
 
 // show_variable prints the variable info if found into the cur context
