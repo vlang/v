@@ -101,7 +101,6 @@ pub fn (mut pv Picoev) add(fd int, events int, timeout int, cb voidptr) int {
 		if pv.del(fd) != 0 {
 			eprintln('Error during del')
 		}
-		close_socket(fd) // Close fd on failure
 		return -1
 	}
 
@@ -123,7 +122,7 @@ pub fn (mut pv Picoev) del(fd int) int {
 	}
 
 	if pv.update_events(fd, picoev.picoev_del) != 0 {
-		eprintln('Error during update_events')
+		eprintln('Error during update_events. event: `picoev.picoev_del`')
 		return -1
 	}
 
@@ -135,7 +134,7 @@ pub fn (mut pv Picoev) del(fd int) int {
 }
 
 fn (mut pv Picoev) loop_once(max_wait_in_sec int) int {
-	pv.loop.now = get_time() // Update loop start time
+	pv.loop.now = get_time()
 
 	if pv.poll_once(max_wait_in_sec) != 0 {
 		eprintln('Error during poll_once')
@@ -170,15 +169,19 @@ fn (mut pv Picoev) set_timeout(fd int, secs int) {
 // timeout event
 @[direct_array_access; inline]
 fn (mut pv Picoev) handle_timeout() {
+	mut to_remove := []int{}
+
 	for fd, timeout in pv.timeouts {
 		if timeout <= pv.loop.now {
-			target := pv.file_descriptors[fd]
-			assert target.loop_id == pv.loop.id
-			if target.cb != unsafe { nil } { // Check for valid callback
-				unsafe { target.cb(fd, picoev.picoev_timeout, &pv) }
-			}
-			pv.timeouts.delete(fd)
+			to_remove << fd
 		}
+	}
+
+	for fd in to_remove {
+		target := pv.file_descriptors[fd]
+		assert target.loop_id == pv.loop.id
+		pv.timeouts.delete(fd)
+		unsafe { target.cb(fd, picoev.picoev_timeout, &pv) }
 	}
 }
 
@@ -217,7 +220,7 @@ pub fn (mut pv Picoev) close_conn(fd int) {
 	if pv.del(fd) != 0 {
 		eprintln('Error during del')
 	}
-	close_socket(fd) // Close fd regardless of del outcome
+	close_socket(fd)
 }
 
 @[direct_array_access]
