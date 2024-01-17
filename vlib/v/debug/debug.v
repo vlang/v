@@ -22,7 +22,7 @@ fn print_help() {
 	println('  m, mod\t\tshow current module name')
 	println('  p, print <var>\tprints an variable')
 	println('  q, quit\t\texits debugging session in the code')
-	println('  scope\t\t\tshow the vars in the inner most scope')
+	println('  scope\t\t\tshow the vars in the current scope')
 	println('')
 }
 
