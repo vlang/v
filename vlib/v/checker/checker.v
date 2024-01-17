@@ -3883,7 +3883,7 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 					orig_type = expr.obj.typ
 				}
 				is_inherited = expr.obj.is_inherited
-				ct_type_var = if is_comptime && expr.obj.ct_type_var != .no_comptime {
+				ct_type_var = if is_comptime {
 					.smartcast
 				} else {
 					.no_comptime
