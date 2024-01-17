@@ -4,7 +4,6 @@ module debug
 
 import os
 import math
-import time
 import readline
 import strings
 

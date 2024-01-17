@@ -1158,7 +1158,7 @@ fn (mut p Parser) dbg_stmt() ast.DebuggerStmt {
 	pos := p.tok.pos()
 	p.check(.dollar)
 	p.check(.name)
-	p.register_auto_import('debug')
+	p.register_auto_import('v.debug')
 	return ast.DebuggerStmt{
 		pos: pos
 	}
