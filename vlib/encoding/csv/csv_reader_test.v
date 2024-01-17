@@ -317,7 +317,7 @@ fn test_coherence() {
 	f.close()
 
 	sum -= i
-	println('sum: ${sum}')
+	// println('sum: ${sum}')
 
 	// parse the temp file
 	mut csvr := csv.csv_reader(
@@ -326,19 +326,21 @@ fn test_coherence() {
 		end_line_len: csv.endline_cr_len
 	)!
 
-	sum = 0
+	mut sum1 := u64(0)
 	for row_index in 0 .. csvr.csv_map.len {
 		row := csvr.get_row(row_index)!
 		for x in row {
-			sum += u64(x.int())
+			sum1 += u64(x.int())
 		}
 	}
-	println('sum: ${sum}')
+	// println('sum: ${sum1}')
 
 	csvr.dispose_csv_reader()
 
 	// remove the temp file
 	os.rm(file_path_str)!
+
+	assert sum == sum1, 'csv coherence test failed'
 }
 
 // Debug code
