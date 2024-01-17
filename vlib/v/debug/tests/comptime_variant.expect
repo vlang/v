@@ -2,7 +2,6 @@
 
 set timeout 3
 
-# Pass v_root as arg, since we chdir into a temp directory during testing and create a project there.
 set vexe [lindex $argv 0]
 set test_file [lindex $argv 1]
 set output_file [lindex $argv 2]
