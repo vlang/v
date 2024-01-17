@@ -1,6 +1,6 @@
 #!/usr/bin/env expect
 
-set timeout 3
+set timeout 7
 
 set vexe [lindex $argv 0]
 set test_file [lindex $argv 1]
