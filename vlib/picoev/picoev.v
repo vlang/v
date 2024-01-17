@@ -43,17 +43,17 @@ pub mut:
 // Config configures the Picoev instance with server settings and callbacks
 pub struct Config {
 pub:
-	port           int = 8080
-	cb             fn (voidptr, picohttpparser.Request, mut picohttpparser.Response) = unsafe { nil }
-	error_callback fn (voidptr, picohttpparser.Request, mut picohttpparser.Response, IError) = default_error_callback
-	raw_callback   fn (mut Picoev, int, int) = unsafe { nil }
-	user_data      voidptr        = unsafe { nil }
-	timeout_secs   int            = 8
-	max_headers    int            = 100
-	max_read       int            = 4096
-	max_write      int            = 8192
-	family         net.AddrFamily = .ip
-	host           string = 'localhost'
+	port         int = 8080
+	cb           fn (voidptr, picohttpparser.Request, mut picohttpparser.Response) = unsafe { nil }
+	err_cb       fn (voidptr, picohttpparser.Request, mut picohttpparser.Response, IError) = default_error_callback
+	raw_cb       fn (mut Picoev, int, int) = unsafe { nil }
+	user_data    voidptr        = unsafe { nil }
+	timeout_secs int            = 8
+	max_headers  int            = 100
+	max_read     int            = 4096
+	max_write    int            = 8192
+	family       net.AddrFamily = .ip
+	host         string = 'localhost'
 }
 
 // Core structure for managing the event loop and connections.
@@ -320,8 +320,8 @@ pub fn new(config Config) &Picoev {
 	mut pv := &Picoev{
 		num_loops: 1
 		cb: config.cb
-		error_callback: config.error_callback
-		raw_callback: config.raw_callback
+		error_callback: config.err_cb
+		raw_callback: config.raw_cb
 		user_data: config.user_data
 		timeout_secs: config.timeout_secs
 		max_headers: config.max_headers
