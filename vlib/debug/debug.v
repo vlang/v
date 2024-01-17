@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2024 V devs. All rights reserved.
+// Copyright (c) 2019-2024 Felipe Pena. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module debug
 
@@ -8,29 +8,26 @@ import time
 import readline
 import strings
 
-const prompt = 'vdbg> '
-
 // print_help prints the debugger REPL commands help
 fn print_help() {
 	println('vdbg commands:')
 	println('  anon?\t\t\tcheck if the current context is anon')
 	println('  bt\t\t\tprints a backtrace')
 	println('  c, continue\t\tcontinue debugging')
-	println('  f,file\t\tshow current file name')
-	println('  fn,func\t\tshow current function name')
+	println('  F, file\t\tshow current file name')
+	println('  fn, func\t\tshow current function name')
 	println('  generic?\t\tcheck if the current context is generic')
 	println('  heap\t\t\tshow heap memory usage')
-	println('  h, help\t\tshow this help')
-	println('  list\t\t\tshow 5 lines from current file')
-	println('  l, line\t\tshow current line number')
-	println('  mem,memory\t\tshow memory usage')
+	println('  h, help, ?\t\tshow this help')
+	println('  l, list\t\tshow 5 lines from current file')
+	println('  mem, memory\t\tshow memory usage')
 	println('  method?\t\tcheck if the current context is a method')
-	println('  m,mod\t\t\tshow current module name')
-	println('  p,print <arg>\t\tprints an variable')
-	println('  q,quit\t\texits debugging session in the code')
+	println('  m, mod\t\tshow current module name')
+	println('  p, print <arg>\tprints an variable')
+	println('  q, quit\t\texits debugging session in the code')
 	println('  scope\t\t\tshow the vars in the inner most scope')
-	println('  s,profile\t\tstart CPU profiling session')
-	println('  e,profileEnd\t\tstop current CPU profiling session')
+	println('  s, profile\t\tstart CPU profiling session')
+	println('  e, profileEnd\t\tstop current CPU profiling session')
 	println('')
 }
 
@@ -76,9 +73,6 @@ fn (d DebugContextInfo) ctx() string {
 	} else {
 		s.write_string('[${d.mod}] ${d.fn_name}')
 	}
-	if d.is_generic {
-		s.write_string(' [generic]')
-	}
 	return s.str()
 }
 
@@ -94,15 +88,15 @@ fn print_current_file(path string, line int) ! {
 
 // print_memory_use prints the GC memory use
 fn print_memory_use() {
-	println('${gc_memory_use() / 1024} MB')
+	println(gc_memory_use())
 }
 
 // print_heap_usage prints the GC heap usage
 fn print_heap_usage() {
 	h := gc_heap_usage()
-	println('heap size: ${h.heap_size / 1024} MB')
-	println('free bytes: ${h.free_bytes / 1024} MB')
-	println('total bytes: ${h.total_bytes / 1024} MB')
+	println('heap size: ${h.heap_size}')
+	println('free bytes: ${h.free_bytes}')
+	println('total bytes: ${h.total_bytes}')
 }
 
 // debugger is the implementation for C backend's debugger statement (debugger;)
@@ -117,12 +111,13 @@ pub fn debugger(info DebugContextInfo) ! {
 		return
 	}
 
+	prompt := '${info.file}:${info.line} vdbg> '
 	mut r := readline.Readline{}
 
-	println('debugger at ${info.file}:${info.line} - ${info.ctx()}')
+	println('Break on ${info.ctx()} in ${info.file}:${info.line}')
 	for {
 		mut is_ctrl := false
-		input := r.read_line(debug.prompt) or {
+		input := r.read_line(prompt) or {
 			is_ctrl = true
 			''
 		}
@@ -150,7 +145,7 @@ pub fn debugger(info DebugContextInfo) ! {
 			'c', 'continue' {
 				break
 			}
-			'f', 'file' {
+			'F', 'file' {
 				println(info.file)
 			}
 			'fn', 'func' {
@@ -162,13 +157,13 @@ pub fn debugger(info DebugContextInfo) ! {
 			'heap' {
 				print_heap_usage()
 			}
-			'h', 'help' {
+			'?', 'h', 'help' {
 				print_help()
 			}
-			'list' {
+			'l', 'list' {
 				print_current_file(info.file, info.line)!
 			}
-			'l', 'line' {
+			'line' {
 				println(info.line.str())
 			}
 			'method?' {
