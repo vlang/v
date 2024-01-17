@@ -1,5 +1,6 @@
 import os
 import term
+import time
 
 const vexe = @VEXE
 const expect_tests_path = os.join_path(@VEXEROOT, 'vlib', 'v', 'debug', 'tests')
@@ -32,7 +33,9 @@ fn test_debugger() {
 		println(bar)
 		println('>>>> running test [${eidx + 1}/${all_expect_files.len}], ${term.magenta(efile)} ...')
 		flush_stdout()
+		sw := time.new_stopwatch()
 		res := os.system(expect_cmd)
+		eprintln('>>>>>>>>>>> took: ${sw.elapsed().milliseconds()} ms, res: ${res}')
 		if res != 0 {
 			assert false, term.red('failed expect cmd: `${expect_cmd}`')
 		}
