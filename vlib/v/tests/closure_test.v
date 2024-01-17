@@ -245,17 +245,25 @@ fn test_cross_var_assign_with_inherited() {
 }
 
 // for issue 20498
-// test array / string as closure params with -auto-free
+// test array / string / map as closure params with -autofree
 fn get_func_that_contains_closure() fn () {
 	arr := [1, 2, 3]
-	str := '${'a'}bcabc'
-	return fn [arr, str] () {
+	str := '${'a'}bcabc' // alloc on heap
+	m := {
+		'key1': 'abcabc'
+		'key2': 'abcabc'
+	}
+	return fn [arr, str, m] () {
 		assert arr == [1, 2, 3]
 		assert str == 'abcabc'
+		assert m == {
+			'key1': 'abcabc'
+			'key2': 'abcabc'
+		}
 	}
 }
 
-fn test_array_and_string_as_closure_params_with_autofree() {
+fn test_array_string_and_map_as_closure_params_with_autofree() {
 	func := get_func_that_contains_closure()
 	func()
 	assert true
