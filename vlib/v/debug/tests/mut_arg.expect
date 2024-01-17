@@ -1,0 +1,14 @@
+#!/usr/bin/env expect
+
+set timeout 10
+
+set vexe [lindex $argv 0]
+set test_file [lindex $argv 1]
+set output_file [lindex $argv 2]
+
+spawn $vexe -o $output_file run $test_file
+
+expect "${test_file}:10 vdbg> " { send "p b\r" } timeout { exit 1 }
+expect "b = foo (&main.Test)" { send "q\r" } timeout { exit 1 }
+
+expect eof
