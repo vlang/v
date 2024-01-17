@@ -1,0 +1,12 @@
+fn comptime_smartcast[T](v T) {
+	$if v is int {
+		$dbg;
+	} $else {
+		$dbg;
+	}
+}
+
+fn main() {
+	comptime_smartcast(1)
+	comptime_smartcast(true)
+}

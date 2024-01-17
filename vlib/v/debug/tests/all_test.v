@@ -26,3 +26,21 @@ fn test_smartcast() {
 		assert false, err.msg()
 	}
 }
+
+fn test_comptime_smartcast() {
+	prepare_test_path()!
+	test_file := os.join_path(@VEXEROOT, 'vlib', 'v', 'debug', 'tests', 'comptime_smartcast.vv')
+	output_file := os.join_path(test_module_path, @FN)
+	os.execute_opt('${expect_exe} ${os.join_path(expect_tests_path, 'comptime_smartcast.expect')} ${vroot} ${test_file} ${output_file}') or {
+		assert false, err.msg()
+	}
+}
+
+fn test_comptime_variant() {
+	prepare_test_path()!
+	test_file := os.join_path(@VEXEROOT, 'vlib', 'v', 'debug', 'tests', 'comptime_variant.vv')
+	output_file := os.join_path(test_module_path, @FN)
+	os.execute_opt('${expect_exe} ${os.join_path(expect_tests_path, 'comptime_variant.expect')} ${vroot} ${test_file} ${output_file}') or {
+		assert false, err.msg()
+	}
+}
