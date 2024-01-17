@@ -25,7 +25,11 @@ pub fn on_call(fname string) {
 		pfbase = &fbase
 		ssize = u64(g_stack_base) - u64(pfbase)
 	}
-	C.fprintf(C.stderr, c'> trace %8d %8ld %8d %s\n', tid, ns, ssize, fname.str)
+	$if x64 {
+		C.fprintf(C.stderr, c'> trace %8d %8ld %8ld %s\n', tid, ns, ssize, fname.str)
+	} $else {
+		C.fprintf(C.stderr, c'> trace %8d %8lld %8lld %s\n', tid, ns, ssize, fname.str)
+	}
 	C.fflush(C.stderr)
 }
 
