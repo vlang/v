@@ -296,14 +296,14 @@ fn test_csv_string() {
 	csvr.dispose_csv_reader()
 }
 
-fn test_coherence(){
-	file_path_str := os.join_path(os.temp_dir(),"test_csv.csv")
-	mut f := os.open_file(file_path_str,"w")!
+fn test_coherence() {
+	file_path_str := os.join_path(os.temp_dir(), 'test_csv.csv')
+	mut f := os.open_file(file_path_str, 'w')!
 	mut b := strings.new_builder(64536)
 	mut i := u64(0)
 	mut sum := u64(0)
-	for rows in 0..1000 {
-		for col in 0..1000 {
+	for rows in 0 .. 1000 {
+		for col in 0 .. 1000 {
 			if col > 0 {
 				b.write_u8(`,`)
 			}
@@ -311,21 +311,21 @@ fn test_coherence(){
 			i++
 			sum += i
 		}
-		b.write_string("\n")
+		b.write_string('\n')
 	}
 	f.write_string(b.str())!
 	f.close()
 
 	sum -= i
-	println("sum: ${sum}")
+	println('sum: ${sum}')
 
 	// parse the temp file
-	mut  csvr := csv.csv_reader(
+	mut csvr := csv.csv_reader(
 		file_path: file_path_str
 		mem_buf_size: 32
 		end_line_len: csv.endline_cr_len
 	)!
-	
+
 	sum = 0
 	for row_index in 0 .. csvr.csv_map.len {
 		row := csvr.get_row(row_index)!
@@ -333,7 +333,7 @@ fn test_coherence(){
 			sum += u64(x.int())
 		}
 	}
-	println("sum: ${sum}")
+	println('sum: ${sum}')
 
 	csvr.dispose_csv_reader()
 
