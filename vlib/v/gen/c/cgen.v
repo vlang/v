@@ -3927,9 +3927,10 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 	scope_vars := g.file.scope.innermost(node.pos.pos).get_all_vars()
 
 	// prepares the map containing the scope variable infos
-	g.writeln('Map_string_string _scope = new_map_init(&map_hash_string, &map_eq_string, &map_clone_string, &map_free_string, ${scope_vars.len}, sizeof(string), sizeof(v__debug__DebugContextVar),')
+	g.writeln('{')
+	g.writeln('\tMap_string_string _scope = new_map_init(&map_hash_string, &map_eq_string, &map_clone_string, &map_free_string, ${scope_vars.len}, sizeof(string), sizeof(v__debug__DebugContextVar),')
 	mut count := 1
-	g.write('_MOV((string[${scope_vars.len}]){')
+	g.write('\t\t_MOV((string[${scope_vars.len}]){')
 	for _, obj in scope_vars {
 		g.write('_SLIT("${obj.name}")')
 		if count != scope_vars.len {
@@ -3937,9 +3938,9 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 		}
 		count += 1
 	}
-	g.write('}),')
+	g.writeln('}),')
 	count = 1
-	g.write('_MOV((v__debug__DebugContextVar[${scope_vars.len}]){')
+	g.write('\t\t_MOV((v__debug__DebugContextVar[${scope_vars.len}]){')
 	for _, obj in scope_vars {
 		g.write('{.typ=_SLIT("${g.table.type_to_str(g.unwrap_generic(obj.typ))}"),.value=')
 		func := g.get_str_fn(obj.typ)
@@ -3951,7 +3952,8 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 		count += 1
 	}
 	g.writeln('}));')
-	g.write('v__debug__debugger((v__debug__DebugContextInfo){.is_anon=${is_anon},.is_generic=${is_generic},.is_method=${is_method},.receiver_typ_name=_SLIT("${receiver_type}"),.line=${paline},.file=_SLIT("${pafile}"),.mod=_SLIT("${pamod}"),.fn_name=_SLIT("${pafn}"),.scope=_scope})')
+	g.writeln('\tv__debug__debugger((v__debug__DebugContextInfo){.is_anon=${is_anon},.is_generic=${is_generic},.is_method=${is_method},.receiver_typ_name=_SLIT("${receiver_type}"),.line=${paline},.file=_SLIT("${pafile}"),.mod=_SLIT("${pamod}"),.fn_name=_SLIT("${pafn}"),.scope=_scope});')
+	g.write('}')
 }
 
 fn (mut g Gen) enum_decl(node ast.EnumDecl) {

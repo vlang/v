@@ -16,11 +16,11 @@ fn print_help() {
 	println('  generic?\t\tcheck if the current context is generic')
 	println('  heap\t\t\tshow heap memory usage')
 	println('  h, help, ?\t\tshow this help')
-	println('  l, list\t\tshow some lines from current break')
+	println('  l, list [lines]\tshow some lines from current break (default: 3)')
 	println('  mem, memory\t\tshow memory usage')
 	println('  method?\t\tcheck if the current context is a method')
 	println('  m, mod\t\tshow current module name')
-	println('  p, print <arg>\tprints an variable')
+	println('  p, print <var>\tprints an variable')
 	println('  q, quit\t\texits debugging session in the code')
 	println('  scope\t\t\tshow the vars in the inner most scope')
 	println('')
@@ -71,13 +71,14 @@ fn (d DebugContextInfo) ctx() string {
 	return s.str()
 }
 
-// print_current_file prints 5 lines before current location
-fn print_current_file(path string, line int) ! {
+// print_context_lines prints N lines before and after the current location
+fn print_context_lines(path string, line int, lines int) ! {
 	file_content := os.read_file(path)!
 	chunks := file_content.split('\n')
-	offset := math.max(line - 4, 1)
-	for n, s in chunks[math.max(line - 5, 0)..math.min(chunks.len, line)] {
-		println('${n + offset:04} ${s}')
+	offset := math.max(line - lines, 1)
+	for n, s in chunks[offset - 1..math.min(chunks.len, line + lines)] {
+		ind := if n + offset == line { '>' } else { ' ' }
+		println('${n + offset:04}${ind} ${s}')
 	}
 }
 
@@ -95,9 +96,8 @@ fn print_heap_usage() {
 }
 
 // debugger is the implementation for C backend's debugger statement (debugger;)
-@[unsafe; markused]
+@[markused; unsafe]
 pub fn debugger(info DebugContextInfo) ! {
-	mut static profile := u64(0)
 	mut static exited := 0
 	mut static last_cmd := ''
 	mut static last_args := [2]string{}
@@ -150,7 +150,12 @@ pub fn debugger(info DebugContextInfo) ! {
 				print_help()
 			}
 			'l', 'list' {
-				print_current_file(info.file, info.line)!
+				lines := if args[0] != '' { args[0].int() } else { 3 }
+				if lines < 0 {
+					println('[error] cannot use negative line amount')
+				} else {
+					print_context_lines(info.file, info.line, lines)!
+				}
 			}
 			'method?' {
 				println(info.is_method)
