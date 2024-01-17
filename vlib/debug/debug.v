@@ -14,12 +14,10 @@ fn print_help() {
 	println('  anon?\t\t\tcheck if the current context is anon')
 	println('  bt\t\t\tprints a backtrace')
 	println('  c, continue\t\tcontinue debugging')
-	println('  F, file\t\tshow current file name')
-	println('  fn, func\t\tshow current function name')
 	println('  generic?\t\tcheck if the current context is generic')
 	println('  heap\t\t\tshow heap memory usage')
 	println('  h, help, ?\t\tshow this help')
-	println('  l, list\t\tshow 5 lines from current file')
+	println('  l, list\t\tshow some lines from current break')
 	println('  mem, memory\t\tshow memory usage')
 	println('  method?\t\tcheck if the current context is a method')
 	println('  m, mod\t\tshow current module name')
@@ -145,12 +143,6 @@ pub fn debugger(info DebugContextInfo) ! {
 			'c', 'continue' {
 				break
 			}
-			'F', 'file' {
-				println(info.file)
-			}
-			'fn', 'func' {
-				println(info.fn_name)
-			}
 			'generic?' {
 				println(info.is_generic)
 			}
@@ -162,9 +154,6 @@ pub fn debugger(info DebugContextInfo) ! {
 			}
 			'l', 'list' {
 				print_current_file(info.file, info.line)!
-			}
-			'line' {
-				println(info.line.str())
 			}
 			'method?' {
 				println(info.is_method)
