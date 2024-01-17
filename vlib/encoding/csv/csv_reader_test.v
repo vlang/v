@@ -10,6 +10,7 @@ This file contains tests
 Known limitations:
 */
 import encoding.csv
+import strings
 import os
 
 /******************************************************************************
@@ -267,7 +268,7 @@ fn test_csv_string() {
 	// parse the temp file
 	csvr = csv.csv_reader(
 		file_path: file_path_str
-		mem_buf_size: 64
+		mem_buf_size: 32
 		end_line_len: csv.endline_crlf_len
 	)!
 	perform_test(mut csvr)!
@@ -293,6 +294,51 @@ fn test_csv_string() {
 	csvr = csv.csv_reader(scr_buf: txt4.str, scr_buf_len: txt4.len, end_line_len: csv.endline_cr_len)!
 	perform_test3(mut csvr)!
 	csvr.dispose_csv_reader()
+}
+
+fn test_coherence(){
+	file_path_str := os.join_path(os.temp_dir(),"test_csv.csv")
+	mut f := os.open_file(file_path_str,"w")!
+	mut b := strings.new_builder(64536)
+	mut i := u64(0)
+	mut sum := u64(0)
+	for rows in 0..1000 {
+		for col in 0..1000 {
+			if col > 0 {
+				b.write_u8(`,`)
+			}
+			b.write_string(i.str())
+			i++
+			sum += i
+		}
+		b.write_string("\n")
+	}
+	f.write_string(b.str())!
+	f.close()
+
+	sum -= i
+	println("sum: ${sum}")
+
+	// parse the temp file
+	mut  csvr := csv.csv_reader(
+		file_path: file_path_str
+		mem_buf_size: 32
+		end_line_len: csv.endline_cr_len
+	)!
+	
+	sum = 0
+	for row_index in 0 .. csvr.csv_map.len {
+		row := csvr.get_row(row_index)!
+		for x in row {
+			sum += u64(x.int())
+		}
+	}
+	println("sum: ${sum}")
+
+	csvr.dispose_csv_reader()
+
+	// remove the temp file
+	os.rm(file_path_str)!
 }
 
 // Debug code
