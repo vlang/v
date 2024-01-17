@@ -3994,7 +3994,14 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 						base_typ := g.base_type(obj.typ)
 						values.write_string('${func}(*(${base_typ}*)${obj.name}.data)}')
 					} else {
-						deref := if obj.is_auto_heap
+						_, str_method_expects_ptr, _ := cast_sym.str_method_info()
+						deref := if str_method_expects_ptr && !obj.typ.is_ptr() {
+							'&'
+						} else if obj.typ.is_ptr() && !obj.is_auto_deref {
+							'&'
+						} else if obj.typ.is_ptr() && obj.is_auto_deref {
+							''
+						} else if obj.is_auto_heap
 							|| (!var_typ.has_flag(.option) && var_typ.is_ptr()) {
 							'*'
 						} else {
