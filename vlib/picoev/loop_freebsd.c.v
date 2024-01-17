@@ -51,15 +51,13 @@ pub fn create_kqueue_loop(id int) !&KqueueLoop {
 // ev_set sets a new `kevent` with file descriptor `index`
 @[inline]
 pub fn (mut pv Picoev) ev_set(index int, operation int, events int) {
-	mut filter := 0
-	if events & picoev_read != 0 {
-		filter |= C.EVFILT_READ
-	}
-	if events & picoev_write != 0 {
-		filter |= C.EVFILT_WRITE
-	}
-	filter = i16(filter)
-
+	// vfmt off
+	filter := i16(
+		(if events & picoev_read != 0 { C.EVFILT_READ } else { 0 })
+			|
+		(if events & picoev_write != 0 { C.EVFILT_WRITE } else { 0 })
+	)
+	// vfmt on
 	C.EV_SET(&pv.loop.changelist[index], pv.loop.changed_fds, filter, operation, 0, 0,
 		0)
 }
