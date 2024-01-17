@@ -24,6 +24,41 @@ fn C.gmtime(t &C.time_t) &C.tm
 fn C.gmtime_r(t &C.time_t, res &C.tm) &C.tm
 fn C.strftime(buf &char, maxsize usize, const_format &char, const_tm &C.tm) usize
 
+// now_in_rfc3339_format returns the current UTC time in rfc3339 format
+pub fn now_in_rfc3339_format() string {
+	$if macos {
+		return ''
+	} $else $if windows {
+		return ''
+	} $else $if solaris {
+		return ''
+	} $else {
+		mut ts := C.timespec{}
+
+		C.clock_gettime(C.CLOCK_REALTIME_COARSE, &ts)
+
+		mut buf := [25]u8{}
+		formatted_time := unsafe { &u8(&buf) }
+
+		C.strftime(formatted_time, buf.len, c'%Y-%m-%dT%H:%M:%S', C.gmtime(&ts.tv_sec))
+
+		buf[19] = `.`
+		for i, decimal_value in ts.tv_nsec.str() {
+			buf[buf.len - 5 + i] = decimal_value
+			if i == 2 {
+				break
+			}
+		}
+		buf[buf.len - 2] = `Z`
+
+		defer {
+			unsafe { free(formatted_time) }
+		}
+
+		return unsafe { formatted_time.vstring_with_len(buf.len) }
+	}
+}
+
 // now returns the current local time.
 pub fn now() Time {
 	$if macos {
