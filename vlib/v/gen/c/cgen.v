@@ -3939,7 +3939,6 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 				keys.write_string('_SLIT("${obj.name}")')
 				var_typ := if obj.smartcasts.len > 0 { obj.smartcasts.last() } else { obj.typ }
 				values.write_string('{.typ=_SLIT("${g.table.type_to_str(g.unwrap_generic(var_typ))}"),.value=')
-				func := g.get_str_fn(var_typ)
 				obj_sym := g.table.sym(obj.typ)
 				cast_sym := g.table.sym(var_typ)
 
@@ -3947,12 +3946,16 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 				if obj.smartcasts.len > 0 {
 					is_option_unwrap := obj.typ.has_flag(.option)
 						&& var_typ == obj.typ.clear_flag(.option)
-					is_auto_heap := obj.is_auto_heap
 					is_option := obj.typ.has_flag(.option)
 					mut opt_cast := false
+					mut func := if cast_sym.info is ast.Aggregate {
+						''
+					} else {
+						g.get_str_fn(var_typ)
+					}
 
 					param_var.write_string('(')
-					if obj_sym.kind == .sum_type && !is_auto_heap {
+					if obj_sym.kind == .sum_type && !obj.is_auto_heap {
 						if is_option {
 							if !is_option_unwrap {
 								param_var.write_string('*(')
@@ -3970,10 +3973,14 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 						param_var.write_string('*(${g.base_type(obj.typ)}*)')
 					}
 
-					dot := if obj.orig_type.is_ptr() || is_auto_heap { '->' } else { '.' }
+					dot := if obj.orig_type.is_ptr() || obj.is_auto_heap { '->' } else { '.' }
 					if obj.ct_type_var == .smartcast {
 						cur_variant_sym := g.table.sym(g.unwrap_generic(g.comptime.type_map['${g.comptime.comptime_for_variant_var}.typ']))
 						param_var.write_string('${obj.name}${dot}_${cur_variant_sym.cname}')
+					} else if cast_sym.info is ast.Aggregate {
+						sym := g.table.sym(cast_sym.info.types[g.aggregate_type_idx])
+						func = g.get_str_fn(cast_sym.info.types[g.aggregate_type_idx])
+						param_var.write_string('${obj.name}${dot}_${sym.cname}')
 					} else if obj_sym.kind == .interface_ && cast_sym.kind == .interface_ {
 						ptr := '*'.repeat(obj.typ.nr_muls())
 						param_var.write_string('I_${obj_sym.cname}_as_I_${cast_sym.cname}(${ptr}${obj.name})')
@@ -3989,8 +3996,10 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 						param_var.write_string('${obj.name}')
 					}
 					param_var.write_string(')')
+
 					values.write_string('${func}(${param_var.str()})}')
 				} else {
+					func := g.get_str_fn(var_typ)
 					if obj.typ.has_flag(.option) && !var_typ.has_flag(.option) {
 						// option unwrap
 						base_typ := g.base_type(obj.typ)

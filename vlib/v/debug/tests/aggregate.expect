@@ -8,7 +8,7 @@ set output_file [lindex $argv 2]
 
 spawn $vexe -o $output_file run $test_file
 
-expect "${test_file}:3 vdbg> " { send "p a\r" } timeout { exit 1 }
-expect "a = 1 (int)" { send "q\r" } timeout { exit 1 }
+expect "${test_file}:23 vdbg> " { send "p a\r" } timeout { exit 1 }
+expect "a = Test{\r\n    a: 123\r\n} ((main.main.Test | main.main.Test2))" { send "q\r" } timeout { exit 1 }
 
 expect eof
