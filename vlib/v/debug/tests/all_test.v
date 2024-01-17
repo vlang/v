@@ -44,3 +44,30 @@ fn test_comptime_variant() {
 		assert false, err.msg()
 	}
 }
+
+fn test_interface_var() {
+	prepare_test_path()!
+	test_file := os.join_path(@VEXEROOT, 'vlib', 'v', 'debug', 'tests', 'interface_var.vv')
+	output_file := os.join_path(test_module_path, @FN)
+	os.execute_opt('${expect_exe} ${os.join_path(expect_tests_path, 'interface_var.expect')} ${vroot} ${test_file} ${output_file}') or {
+		assert false, err.msg()
+	}
+}
+
+fn test_option_unwrap() {
+	prepare_test_path()!
+	test_file := os.join_path(@VEXEROOT, 'vlib', 'v', 'debug', 'tests', 'option_unwrap.vv')
+	output_file := os.join_path(test_module_path, @FN)
+	os.execute_opt('${expect_exe} ${os.join_path(expect_tests_path, 'option_unwrap.expect')} ${vroot} ${test_file} ${output_file}') or {
+		assert false, err.msg()
+	}
+}
+
+fn test_sumtype() {
+	prepare_test_path()!
+	test_file := os.join_path(@VEXEROOT, 'vlib', 'v', 'debug', 'tests', 'sumtype.vv')
+	output_file := os.join_path(test_module_path, @FN)
+	os.execute_opt('${expect_exe} ${os.join_path(expect_tests_path, 'sumtype.expect')} ${vroot} ${test_file} ${output_file}') or {
+		assert false, err.msg()
+	}
+}
