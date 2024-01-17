@@ -240,10 +240,10 @@ mut:
 	/////////
 	// out_parallel []strings.Builder
 	// out_idx      int
-	out_fn_start_pos []int  // for generating multiple .c files, stores locations of all fn positions in `out` string builder
-	static_modifier  string // for parallel_cc
-
-	has_reflection       bool
+	out_fn_start_pos     []int  // for generating multiple .c files, stores locations of all fn positions in `out` string builder
+	static_modifier      string // for parallel_cc
+	has_reflection       bool   // v.reflection has been imported
+	has_debugger         bool   // $dbg has been used in the code
 	reflection_strings   &map[string]int
 	defer_return_tmp_var string
 	vweb_filter_fn_name  string // vweb__filter or x__vweb__filter, used by $vweb.html() for escaping strings in the templates, depending on which `vweb` import is used
@@ -319,6 +319,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) (string
 			|| pref_.os in [.wasm32, .wasm32_emscripten])
 		static_modifier: if pref_.parallel_cc { 'static' } else { '' }
 		has_reflection: 'v.reflection' in table.modules
+		has_debugger: 'v.debug' in table.modules
 		reflection_strings: &reflection_strings
 	}
 
@@ -687,6 +688,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		is_cc_msvc: global_g.is_cc_msvc
 		use_segfault_handler: global_g.use_segfault_handler
 		has_reflection: 'v.reflection' in global_g.table.modules
+		has_debugger: 'v.debug' in global_g.table.modules
 		reflection_strings: global_g.reflection_strings
 	}
 	g.comptime = &comptime.ComptimeInfo{
@@ -4027,7 +4029,7 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 	g.write('\t\t_MOV((v__debug__DebugContextVar[${vars.len}]){')
 	g.write(values.str())
 	g.writeln('}));')
-	g.writeln('\tv__debug__debugger((v__debug__DebugContextInfo){.is_anon=${is_anon},.is_generic=${is_generic},.is_method=${is_method},.receiver_typ_name=_SLIT("${receiver_type}"),.line=${paline},.file=_SLIT("${pafile}"),.mod=_SLIT("${pamod}"),.fn_name=_SLIT("${pafn}"),.scope=_scope});')
+	g.writeln('\tv__debug__Debugger_interact(&g_debugger, (v__debug__DebugContextInfo){.is_anon=${is_anon},.is_generic=${is_generic},.is_method=${is_method},.receiver_typ_name=_SLIT("${receiver_type}"),.line=${paline},.file=_SLIT("${pafile}"),.mod=_SLIT("${pamod}"),.fn_name=_SLIT("${pafn}"),.scope=_scope});')
 	g.write('}')
 }
 
@@ -6066,12 +6068,11 @@ fn (mut g Gen) write_init_function() {
 			g.gen_reflection_data()
 		}
 	}
-
 	mut cleaning_up_array := []string{cap: g.table.modules.len}
 
 	for mod_name in g.table.modules {
 		if g.has_reflection && mod_name == 'v.reflection' {
-			// ignore v.reflection already initialized above
+			// ignore v.reflection and v.debug already initialized above
 			continue
 		}
 		mut const_section_header_shown := false
