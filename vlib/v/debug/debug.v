@@ -47,15 +47,17 @@ fn flush_println(s string) {
 }
 
 // show_variable prints the variable info if found into the cur context
-fn (d DebugContextInfo) show_variable(var_name string) {
+fn (d DebugContextInfo) show_variable(var_name string, is_watch bool) {
 	if info := d.scope[var_name] {
 		flush_println('${var_name} = ${info.value} (${info.typ})')
+	} else if !is_watch {
+		eprintln('[error] var `${var_name}` not found')
 	}
 }
 
 fn (d DebugContextInfo) show_watched_vars(watch_vars []string) {
 	for var in watch_vars {
-		d.show_variable(var)
+		d.show_variable(var, true)
 	}
 }
 
@@ -123,10 +125,12 @@ fn (d &Debugger) print_heap_usage() {
 }
 
 // watch_var adds a variable to watch_list
-fn (mut d Debugger) watch_var(var string) {
+fn (mut d Debugger) watch_var(var string) bool {
 	if var !in d.watch_vars {
 		d.watch_vars << var
+		return true
 	}
+	return false
 }
 
 // unwatch_var removes a variable from watch list
@@ -209,7 +213,7 @@ pub fn (mut d Debugger) interact(info DebugContextInfo) ! {
 				if args == '' {
 					eprintln('[error] var name is expected as parameter')
 				} else {
-					info.show_variable(args)
+					info.show_variable(args, false)
 				}
 			}
 			'scope' {
@@ -230,7 +234,9 @@ pub fn (mut d Debugger) interact(info DebugContextInfo) ! {
 				if args == '' {
 					eprintln('[error] var name is expected as parameter')
 				} else {
-					d.watch_var(args)
+					if d.watch_var(args) {
+						info.show_variable(args, false)
+					}
 				}
 			}
 			'' {
