@@ -39,7 +39,7 @@ fn test_debugger() {
 		comp_res := os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(output_file)} ${os.quoted_path(vfile)}')
 		gprintln('>>>>>>>>>>> compilation took ${compile_sw.elapsed().milliseconds()} ms, comp_res: ${comp_res}')
 
-		expect_cmd := '${expect_exe} -d -c "set timeout 15" ${os.quoted_path(efile)} ${os.quoted_path(output_file)} ${os.quoted_path(vfile)}'
+		expect_cmd := '${expect_exe} -d -c "set stty_init {rows 24 cols 80}" -c "set timeout 15" ${os.quoted_path(efile)} ${os.quoted_path(output_file)} ${os.quoted_path(vfile)}'
 		println(term.cyan(expect_cmd))
 		flush_stdout()
 		sw := time.new_stopwatch()
