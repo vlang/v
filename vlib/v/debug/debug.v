@@ -7,6 +7,7 @@ import os
 import math
 import readline
 import strings
+import term.termios
 
 __global g_debugger = Debugger{}
 
@@ -14,6 +15,7 @@ __global g_debugger = Debugger{}
 @[heap]
 struct Debugger {
 mut:
+	is_tty     bool     // is tty?
 	exited     bool     // user exiting flag
 	last_cmd   string   // save the last cmd
 	last_args  string   // save the last args
@@ -167,6 +169,11 @@ pub fn (mut d Debugger) interact(info DebugContextInfo) ! {
 		return
 	}
 
+	$if !windows {
+		mut orig_termios := termios.Termios{}
+		d.is_tty = termios.tcgetattr(0, mut orig_termios) == 0
+	}
+
 	prompt := '${info.file}:${info.line} vdbg> '
 	flush_println('Break on ${info.ctx()} in ${info.file}:${info.line}')
 	if d.watch_vars.len > 0 {
@@ -174,9 +181,16 @@ pub fn (mut d Debugger) interact(info DebugContextInfo) ! {
 	}
 	for {
 		mut is_ctrl := false
-		input := d.cmdline.read_line(prompt) or {
-			is_ctrl = true
-			''
+		mut input := ''
+		if d.is_tty {
+			input = d.cmdline.read_line(prompt) or {
+				is_ctrl = true
+				''
+			}
+		} else {
+			print(prompt)
+			flush_stdout()
+			input = os.get_raw_line().trim_right('\r\n ')
 		}
 		splitted := input.split(' ')
 
