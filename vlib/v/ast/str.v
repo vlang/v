@@ -531,6 +531,9 @@ pub fn (x Expr) str() string {
 				mv := x.vals[ik].str()
 				pairs << '${kv}: ${mv}'
 			}
+			if x.has_update_expr {
+				return 'map{ ...${x.update_expr} ${pairs.join(' ')} }'
+			}
 			return 'map{ ${pairs.join(' ')} }'
 		}
 		Nil {

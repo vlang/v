@@ -1588,6 +1588,7 @@ fn (t Tree) struct_init(node ast.StructInit) &Node {
 	obj.add('pos', t.pos(node.pos))
 	obj.add('name_pos', t.pos(node.name_pos))
 	obj.add('update_expr_comments', t.array_node_comment(node.update_expr_comments))
+	obj.add('update_expr_pos', t.pos(node.update_expr_pos))
 	obj.add_terse('init_fields', t.array_node_struct_init_field(node.init_fields))
 	obj.add('pre_comments', t.array_node_comment(node.pre_comments))
 	return obj
@@ -1641,9 +1642,13 @@ fn (t Tree) map_init(node ast.MapInit) &Node {
 	obj.add_terse('keys', t.array_node_expr(node.keys))
 	obj.add_terse('vals', t.array_node_expr(node.vals))
 	obj.add_terse('val_types', t.array_node_type(node.val_types))
-	obj.add('comments', t.two_dimension_comment(node.comments))
-	obj.add('pre_cmnts', t.array_node_comment(node.pre_cmnts))
+	obj.add_terse('has_update_expr', t.bool_node(node.has_update_expr))
+	obj.add_terse('update_expr', t.expr(node.update_expr))
 	obj.add('pos', t.pos(node.pos))
+	obj.add('pre_cmnts', t.array_node_comment(node.pre_cmnts))
+	obj.add('comments', t.two_dimension_comment(node.comments))
+	obj.add('update_expr_comments', t.array_node_comment(node.update_expr_comments))
+	obj.add('update_expr_pos', t.pos(node.update_expr_pos))
 	return obj
 }
 

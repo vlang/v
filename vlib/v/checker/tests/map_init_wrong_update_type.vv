@@ -1,0 +1,28 @@
+struct Bar {
+	x string
+}
+
+type StrA = string
+type StrB = string
+
+fn main() {
+	foo := map[StrA]StrB{}
+	a := {
+		...foo // not ok
+		'a': 5
+		'b': 6
+	}
+	b := {
+		...foo // not ok
+		Bar{'yes'}: '5'
+		Bar{'now'}: '6'
+	}
+	c := {
+		...foo // ok
+		'up':   'down'
+		'left': 'right'
+	}
+	println(a)
+	println(b)
+	println(c)
+}

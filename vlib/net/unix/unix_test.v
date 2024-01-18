@@ -16,11 +16,11 @@ fn handle_conn(mut c unix.StreamConn) {
 	for {
 		mut buf := []u8{len: 100, init: 0}
 		read := c.read(mut buf) or {
-			println('Server: connection dropped')
+			println('Server read: connection dropped')
 			return
 		}
 		c.write(buf[..read]) or {
-			println('Server: connection dropped')
+			println('Server write: connection dropped')
 			return
 		}
 	}

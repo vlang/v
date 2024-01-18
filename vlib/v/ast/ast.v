@@ -364,6 +364,7 @@ pub:
 	is_pub      bool
 	is_markused bool // an explicit `[markused]` tag; the const will NOT be removed by `-skip-unused`, no matter what
 	pos         token.Pos
+	attrs       []Attr // same value as `attrs` of the ConstDecl to which it belongs
 pub mut:
 	expr         Expr      // the value expr of field; everything after `=`
 	typ          Type      // the type of the const field, it can be any type in V
@@ -737,34 +738,35 @@ pub:
 	name_pos token.Pos
 	mod      string
 pub mut:
-	name               string // left.name()
-	is_method          bool
-	is_field           bool // temp hack, remove ASAP when re-impl CallExpr / Selector (joe)
-	is_fn_var          bool // fn variable, `a := fn() {}`, then: `a()`
-	is_fn_a_const      bool // fn const, `const c = abc`, where `abc` is a function, then: `c()`
-	is_keep_alive      bool // GC must not free arguments before fn returns
-	is_noreturn        bool // whether the function/method is marked as [noreturn]
-	is_ctor_new        bool // if JS ctor calls requires `new` before call, marked as `[use_new]` in V
-	is_file_translated bool // true, when the file it resides in is `[translated]`
-	args               []CallArg
-	expected_arg_types []Type
-	comptime_ret_val   bool
-	language           Language
-	or_block           OrExpr
-	left               Expr // `user` in `user.register()`
-	left_type          Type // type of `user`
-	receiver_type      Type // User
-	return_type        Type
-	fn_var_type        Type   // the fn type, when `is_fn_a_const` or `is_fn_var` is true
-	const_name         string // the fully qualified name of the const, i.e. `main.c`, given `const c = abc`, and callexpr: `c()`
-	should_be_skipped  bool   // true for calls to `[if someflag?]` functions, when there is no `-d someflag`
-	concrete_types     []Type // concrete types, e.g. <int, string>
-	concrete_list_pos  token.Pos
-	raw_concrete_types []Type
-	free_receiver      bool // true if the receiver expression needs to be freed
-	scope              &Scope = unsafe { nil }
-	from_embed_types   []Type // holds the type of the embed that the method is called from
-	comments           []Comment
+	name                   string // left.name()
+	is_method              bool
+	is_field               bool // temp hack, remove ASAP when re-impl CallExpr / Selector (joe)
+	is_fn_var              bool // fn variable, `a := fn() {}`, then: `a()`
+	is_fn_a_const          bool // fn const, `const c = abc`, where `abc` is a function, then: `c()`
+	is_keep_alive          bool // GC must not free arguments before fn returns
+	is_noreturn            bool // whether the function/method is marked as [noreturn]
+	is_ctor_new            bool // if JS ctor calls requires `new` before call, marked as `[use_new]` in V
+	is_file_translated     bool // true, when the file it resides in is `[translated]`
+	args                   []CallArg
+	expected_arg_types     []Type
+	comptime_ret_val       bool
+	language               Language
+	or_block               OrExpr
+	left                   Expr // `user` in `user.register()`
+	left_type              Type // type of `user`
+	receiver_type          Type // User / T, if receiver is generic, then cgen requires receiver_type to be T
+	receiver_concrete_type Type // if receiver_type is T, then receiver_concrete_type is concrete type, otherwise it is the same as receiver_type
+	return_type            Type
+	fn_var_type            Type   // the fn type, when `is_fn_a_const` or `is_fn_var` is true
+	const_name             string // the fully qualified name of the const, i.e. `main.c`, given `const c = abc`, and callexpr: `c()`
+	should_be_skipped      bool   // true for calls to `[if someflag?]` functions, when there is no `-d someflag`
+	concrete_types         []Type // concrete types, e.g. <int, string>
+	concrete_list_pos      token.Pos
+	raw_concrete_types     []Type
+	free_receiver          bool // true if the receiver expression needs to be freed
+	scope                  &Scope = unsafe { nil }
+	from_embed_types       []Type // holds the type of the embed that the method is called from
+	comments               []Comment
 }
 
 /*
@@ -1501,12 +1503,16 @@ pub:
 	comments  [][]Comment // comments after key-value pairs
 	pre_cmnts []Comment   // comments before the first key-value pair
 pub mut:
-	keys       []Expr
-	vals       []Expr
-	val_types  []Type
-	typ        Type
-	key_type   Type
-	value_type Type
+	keys                 []Expr
+	vals                 []Expr
+	val_types            []Type
+	typ                  Type
+	key_type             Type
+	value_type           Type
+	has_update_expr      bool // has `...a`
+	update_expr          Expr // `a` in `...a`
+	update_expr_pos      token.Pos
+	update_expr_comments []Comment
 }
 
 // s[10..20]
