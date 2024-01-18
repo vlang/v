@@ -2,8 +2,9 @@
 spawn [lindex $argv 0]
 set test_file [lindex $argv 1]
 
-expect "${test_file}:17 vdbg> " { send "p a\r" } timeout { exit 1 }
-expect "a = Test{\r\n    a: MySum(false)\r\n} (main.Test)" { send "c\r" } timeout { exit 1 }
-expect "${test_file}:25 vdbg> " { send "p b\r" } timeout { exit 1 }
-expect "b = Test{\r\n    a: MySum(1)\r\n} (main.Test)" { send "q\r" } timeout { exit 1 }
+expect -ex "Break on \[main\] sumtype in ${test_file}:17"
+expect -ex "${test_file}:17 vdbg> " { send "p a\r" } timeout { exit 1 }
+expect -ex "a = Test{\r\n    a: MySum(false)\r\n} (main.Test)" { send "c\r" } timeout { exit 1 }
+expect -ex "${test_file}:25 vdbg> " { send "p b\r" } timeout { exit 1 }
+expect -ex "b = Test{\r\n    a: MySum(1)\r\n} (main.Test)" { send "q\r" } timeout { exit 1 }
 expect eof

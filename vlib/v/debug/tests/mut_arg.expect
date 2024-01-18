@@ -2,6 +2,7 @@
 spawn [lindex $argv 0]
 set test_file [lindex $argv 1]
 
+expect -ex "Break on \[main\] mut_arg in ${test_file}:10\r\n"
 expect "${test_file}:10 vdbg> " { send "p b\r" } timeout { exit 1 }
 expect "b = foo (&main.Test)" { send "q\r" } timeout { exit 1 }
 expect eof

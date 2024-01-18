@@ -2,7 +2,8 @@
 spawn [lindex $argv 0]
 set test_file [lindex $argv 1]
 
-expect "${test_file}:4 vdbg> " { send "p a\r" } timeout { exit 1 }
-expect "a = Option(123) (?int)" { send "p b\r" } timeout { exit 1 }
-expect "b = 123 (int)" { send "q\r" } timeout { exit 1 }
+expect -ex "Break on \[main\] option_unwrap in ${test_file}:4\r\n"
+expect -ex "${test_file}:4 vdbg> " { send "p a\r" } timeout { exit 1 }
+expect -ex "a = Option(123) (?int)" { send "p b\r" } timeout { exit 1 }
+expect -ex "b = 123 (int)" { send "q\r" } timeout { exit 1 }
 expect eof

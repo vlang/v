@@ -2,6 +2,7 @@
 spawn [lindex $argv 0]
 set test_file [lindex $argv 1]
 
-expect "${test_file}:14 vdbg> " { send "p a\r" } timeout { exit 1 }
-expect "a = Test{\r\n    a: MySum(true)" { send "q\r" } timeout { exit 1 }
+expect -ex "Break on \[main\] interface_var in ${test_file}:14\r\n"
+expect -ex "${test_file}:14 vdbg> " { send "p a\r" } timeout { exit 1 }
+expect -ex "a = Test{\r\n    a: MySum(true)" { send "q\r" } timeout { exit 1 }
 expect eof
