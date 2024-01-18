@@ -473,6 +473,13 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			unsafe { fff.free() }
 			g.write_orm_insert_with_last_ids(arr, connection_var_name, g.get_table_name_by_struct_type(arr.table_expr.typ),
 				last_ids, res_, id_name, fkeys[i], or_expr)
+			// Validates main insertion success before proceeding with sub insertions.
+			// If main insertion succeeds, errors in sub insertions are handled and propagated.
+			g.writeln('if (!${res}.is_error) {')
+			g.indent++
+			g.or_block(res_, or_expr, ast.int_type.set_flag(.result))
+			g.indent--
+			g.writeln('}')
 			g.indent--
 			g.writeln('}')
 		}
