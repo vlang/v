@@ -41,10 +41,15 @@ pub struct DebugContextInfo {
 	scope             map[string]DebugContextVar // scope var data
 }
 
+fn flush_println(s string) {
+	println(s)
+	flush_stdout()
+}
+
 // show_variable prints the variable info if found into the cur context
 fn (d DebugContextInfo) show_variable(var_name string) {
 	if info := d.scope[var_name] {
-		println('${var_name} = ${info.value} (${info.typ})')
+		flush_println('${var_name} = ${info.value} (${info.typ})')
 	}
 }
 
@@ -57,7 +62,7 @@ fn (d DebugContextInfo) show_watched_vars(watch_vars []string) {
 // show_scope prints the cur context scope variables
 fn (d DebugContextInfo) show_scope() {
 	for k, v in d.scope {
-		println('${k} = ${v.value} (${v.typ})')
+		flush_println('${k} = ${v.value} (${v.typ})')
 	}
 }
 
@@ -90,7 +95,7 @@ fn (mut d Debugger) print_help() {
 	println('  scope\t\t\tshow the vars in the current scope')
 	println('  u, unwatch <var>\t\tunwatches a variable')
 	println('  w, watch <var>\t\t\twatches a variable')
-	println('')
+	flush_println('')
 }
 
 // print_context_lines prints N lines before and after the current location
@@ -100,21 +105,21 @@ fn (mut d Debugger) print_context_lines(path string, line int, lines int) ! {
 	offset := math.max(line - lines, 1)
 	for n, s in chunks[offset - 1..math.min(chunks.len, line + lines)] {
 		ind := if n + offset == line { '>' } else { ' ' }
-		println('${n + offset:04}${ind} ${s}')
+		flush_println('${n + offset:04}${ind} ${s}')
 	}
 }
 
 // print_memory_use prints the GC memory use
 fn (d &Debugger) print_memory_use() {
-	println(gc_memory_use())
+	flush_println(gc_memory_use().str())
 }
 
 // print_heap_usage prints the GC heap usage
 fn (d &Debugger) print_heap_usage() {
 	h := gc_heap_usage()
-	println('heap size: ${h.heap_size}')
-	println('free bytes: ${h.free_bytes}')
-	println('total bytes: ${h.total_bytes}')
+	flush_println('heap size: ${h.heap_size}')
+	flush_println('free bytes: ${h.free_bytes}')
+	flush_println('total bytes: ${h.total_bytes}')
 }
 
 // watch_var adds a variable to watch_list
@@ -140,7 +145,7 @@ pub fn (mut d Debugger) interact(info DebugContextInfo) ! {
 	}
 
 	prompt := '${info.file}:${info.line} vdbg> '
-	println('Break on ${info.ctx()} in ${info.file}:${info.line}')
+	flush_println('Break on ${info.ctx()} in ${info.file}:${info.line}')
 	if d.watch_vars.len > 0 {
 		info.show_watched_vars(d.watch_vars)
 	}
@@ -165,16 +170,17 @@ pub fn (mut d Debugger) interact(info DebugContextInfo) ! {
 		}
 		match cmd {
 			'anon?' {
-				println(info.is_anon)
+				flush_println(info.is_anon.str())
 			}
 			'bt' {
 				print_backtrace_skipping_top_frames(2)
+				flush_stdout()
 			}
 			'c', 'continue' {
 				break
 			}
 			'generic?' {
-				println(info.is_generic)
+				flush_println(info.is_generic.str())
 			}
 			'heap' {
 				d.print_heap_usage()
@@ -185,23 +191,23 @@ pub fn (mut d Debugger) interact(info DebugContextInfo) ! {
 			'l', 'list' {
 				lines := if args != '' { args.int() } else { 3 }
 				if lines < 0 {
-					println('[error] cannot use negative line amount')
+					eprintln('[error] cannot use negative line amount')
 				} else {
 					d.print_context_lines(info.file, info.line, lines)!
 				}
 			}
 			'method?' {
-				println(info.is_method)
+				flush_println(info.is_method.str())
 			}
 			'mem', 'memory' {
 				d.print_memory_use()
 			}
 			'm', 'mod' {
-				println(info.mod)
+				flush_println(info.mod)
 			}
 			'p', 'print' {
 				if args == '' {
-					println('[error] var name is expected as parameter')
+					eprintln('[error] var name is expected as parameter')
 				} else {
 					info.show_variable(args)
 				}
@@ -215,25 +221,25 @@ pub fn (mut d Debugger) interact(info DebugContextInfo) ! {
 			}
 			'u', 'unwatch' {
 				if args == '' {
-					println('[error] var name is expected as parameter')
+					eprintln('[error] var name is expected as parameter')
 				} else {
 					d.unwatch_var(args)
 				}
 			}
 			'w', 'watch' {
 				if args == '' {
-					println('[error] var name is expected as parameter')
+					eprintln('[error] var name is expected as parameter')
 				} else {
 					d.watch_var(args)
 				}
 			}
 			'' {
 				if is_ctrl {
-					println('')
+					flush_println('')
 				}
 			}
 			else {
-				println('unknown command `${cmd}`')
+				eprintln('unknown command `${cmd}`')
 			}
 		}
 	}
