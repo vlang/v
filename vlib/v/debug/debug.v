@@ -14,7 +14,7 @@ __global g_debugger = Debugger{}
 @[heap]
 struct Debugger {
 mut:
-	is_tty     bool     // is tty?
+	is_tty     bool = os.is_atty(0) > 0 // is tty?
 	exited     bool     // user exiting flag
 	last_cmd   string   // save the last cmd
 	last_args  string   // save the last args
@@ -128,7 +128,7 @@ fn (mut d Debugger) read_line(prompt string) (string, bool) {
 			is_ctrl = true
 			''
 		}
-		return line, is_ctrl
+		return line.trim_right('\r\n '), is_ctrl
 	} else {
 		print(prompt)
 		flush_stdout()
@@ -196,18 +196,12 @@ pub fn (mut d Debugger) interact(info DebugContextInfo) ! {
 	if d.exited {
 		return
 	}
-
-	$if !windows {
-		d.is_tty = os.is_atty(0) > 0
-	}
-
-	prompt := '${info.file}:${info.line} vdbg> '
 	flush_println('Break on ${info.ctx()} in ${info.file}:${info.line}')
 	if d.watch_vars.len > 0 {
 		info.show_watched_vars(d.watch_vars)
 	}
 	for {
-		input, is_ctrl := d.read_line(prompt)
+		input, is_ctrl := d.read_line('${info.file}:${info.line} vdbg> ')
 		cmd, args := d.parse_input(input, is_ctrl)
 		match cmd {
 			'anon?' {
