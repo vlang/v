@@ -1465,7 +1465,7 @@ and
 
 ### Map update syntax
 
-As with stucts, V lets you initialise a map with an update applied on top of
+As with structs, V lets you initialise a map with an update applied on top of
 another map:
 
 ```v
