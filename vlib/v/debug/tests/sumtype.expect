@@ -1,12 +1,6 @@
 #!/usr/bin/env expect
-
-set timeout 15
-
-set vexe [lindex $argv 0]
+spawn [lindex $argv 0]
 set test_file [lindex $argv 1]
-set output_file [lindex $argv 2]
-
-spawn $vexe -o $output_file run $test_file
 
 expect "${test_file}:17 vdbg> " { send "p a\r" } timeout { exit 1 }
 expect "a = Test{\r\n    a: MySum(false)\r\n} (main.Test)" { send "c\r" } timeout { exit 1 }
