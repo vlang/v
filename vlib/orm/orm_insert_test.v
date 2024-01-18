@@ -393,7 +393,7 @@ fn test_orm_insert_with_child_element_and_no_table() {
 		select from Parent
 	}!
 
-	assert p_table[1].children[0].name == 'Sophia'
+	assert p_table[2].children[0].name == 'Sophia'
 }
 
 @[table: 'customers']
