@@ -49,6 +49,7 @@ fn test_debugger() {
 		if res != 0 {
 			assert false, term.red('failed expect cmd: ${expect_cmd}')
 		}
+		assert true
 	}
 	os.chdir(@VEXEROOT) or {}
 	os.rmdir_all(test_module_path) or {}
