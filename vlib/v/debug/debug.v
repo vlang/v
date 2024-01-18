@@ -115,8 +115,8 @@ fn (mut d Debugger) print_help() {
 	println('  p, print <var>\tprints an variable')
 	println('  q, quit\t\texits debugging session in the code')
 	println('  scope\t\t\tshow the vars in the current scope')
-	println('  u, unwatch <var>\t\tunwatches a variable')
-	println('  w, watch <var>\t\t\twatches a variable')
+	println('  u, unwatch <var>\tunwatches a variable')
+	println('  w, watch <var>\twatches a variable')
 	flush_println('')
 }
 
