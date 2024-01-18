@@ -18,7 +18,26 @@ mut:
 	last_cmd   string   // save the last cmd
 	last_args  string   // save the last args
 	watch_vars []string // save the watched vars
-	cmdline    readline.Readline
+	cmdline    readline.Readline = readline.Readline{
+		completion_list: [
+			'anon?',
+			'bt',
+			'continue',
+			'generic?',
+			'heap',
+			'help',
+			'list',
+			'mem',
+			'memory',
+			'method?',
+			'mod',
+			'print',
+			'quit',
+			'scope',
+			'unwatch',
+			'watch',
+		]
+	}
 }
 
 // DebugContextVar holds the scope variable information
