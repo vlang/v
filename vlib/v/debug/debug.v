@@ -7,7 +7,6 @@ import os
 import math
 import readline
 import strings
-import term.termios
 
 __global g_debugger = Debugger{}
 
@@ -121,6 +120,35 @@ fn (mut d Debugger) print_help() {
 	flush_println('')
 }
 
+// read_line provides the user prompt based on tty flag
+fn (mut d Debugger) read_line(prompt string) (string, bool) {
+	if d.is_tty {
+		mut is_ctrl := false
+		line := d.cmdline.read_line(prompt) or {
+			is_ctrl = true
+			''
+		}
+		return line, is_ctrl
+	} else {
+		print(prompt)
+		flush_stdout()
+		return os.get_raw_line().trim_right('\r\n '), false
+	}
+}
+
+fn (mut d Debugger) parse_input(input string, is_ctrl bool) (string, string) {
+	splitted := input.split(' ')
+	if !is_ctrl && splitted[0] == '' {
+		return d.last_cmd, d.last_args
+	} else {
+		cmd := if is_ctrl { d.last_cmd } else { splitted[0] }
+		args := if splitted.len > 1 { splitted[1] } else { '' }
+		d.last_cmd = cmd
+		d.last_args = args
+		return cmd, args
+	}
+}
+
 // print_context_lines prints N lines before and after the current location
 fn (mut d Debugger) print_context_lines(path string, line int, lines int) ! {
 	file_content := os.read_file(path)!
@@ -170,8 +198,7 @@ pub fn (mut d Debugger) interact(info DebugContextInfo) ! {
 	}
 
 	$if !windows {
-		mut orig_termios := termios.Termios{}
-		d.is_tty = termios.tcgetattr(0, mut orig_termios) == 0
+		d.is_tty = os.is_atty(0) > 0
 	}
 
 	prompt := '${info.file}:${info.line} vdbg> '
@@ -180,31 +207,8 @@ pub fn (mut d Debugger) interact(info DebugContextInfo) ! {
 		info.show_watched_vars(d.watch_vars)
 	}
 	for {
-		mut is_ctrl := false
-		mut input := ''
-		if d.is_tty {
-			input = d.cmdline.read_line(prompt) or {
-				is_ctrl = true
-				''
-			}
-		} else {
-			print(prompt)
-			flush_stdout()
-			input = os.get_raw_line().trim_right('\r\n ')
-		}
-		splitted := input.split(' ')
-
-		mut cmd := ''
-		mut args := ''
-		if !is_ctrl && splitted[0] == '' {
-			cmd = d.last_cmd
-			args = d.last_args
-		} else {
-			cmd = if is_ctrl { d.last_cmd } else { splitted[0] }
-			args = if splitted.len > 1 { splitted[1] } else { '' }
-			d.last_cmd = cmd
-			d.last_args = args
-		}
+		input, is_ctrl := d.read_line(prompt)
+		cmd, args := d.parse_input(input, is_ctrl)
 		match cmd {
 			'anon?' {
 				flush_println(info.is_anon.str())
