@@ -3,6 +3,6 @@ spawn [lindex $argv 0]
 set test_file [lindex $argv 1]
 
 expect -ex "Break on \[main\] smartcast in ${test_file}:3"
-expect -ex "${test_file}:3 vdbg> " { send "p a\r" } timeout { exit 1 }
-expect -ex "a = 1 (int)" { send "q\r" } timeout { exit 1 }
+expect -ex "${test_file}:3 vdbg> " { send "p a\n" } timeout { exit 1 }
+expect -ex "a = 1 (int)" { send "q\n" } timeout { exit 1 }
 expect eof
