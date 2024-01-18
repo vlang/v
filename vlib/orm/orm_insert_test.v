@@ -348,6 +348,54 @@ fn test_orm_insert_with_multiple_child_elements() {
 	assert parent.notes[2].text == 'Third note'
 }
 
+fn test_orm_insert_with_child_element_and_no_table() {
+	mut db := sqlite.connect(':memory:')!
+
+	sql db {
+		create table Parent
+	}!
+
+	new_parent := Parent{
+		name: 'test'
+		children: [
+			Child{
+				name: 'Lisa'
+			},
+		]
+	}
+
+	sql db {
+		insert new_parent into Parent
+	} or { assert true }
+
+	sql db {
+		create table Child
+	}!
+
+	sql db {
+		insert new_parent into Parent
+	} or { assert false }
+
+	new_parent_two := Parent{
+		name: 'retest'
+		children: [
+			Child{
+				name: 'Sophia'
+			},
+		]
+	}
+
+	sql db {
+		insert new_parent_two into Parent
+	} or { assert false }
+
+	p_table := sql db {
+		select from Parent
+	}!
+
+	assert p_table[1].children[0].name == 'Sophia'
+}
+
 @[table: 'customers']
 struct Customer {
 	id   i64    @[primary; sql: serial]
