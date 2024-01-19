@@ -120,29 +120,28 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 	return Result{}
 }
 
-// Response HTTP_OK with s as payload with content-type `text/html`
+// Response with payload and content-type `text/html`
 pub fn (mut ctx Context) html(s string) Result {
 	return ctx.send_response_to_client('text/html', s)
 }
 
-// Response HTTP_OK with s as payload with content-type `text/plain`
+// Response with `s` as payload and content-type `text/plain`
 pub fn (mut ctx Context) text(s string) Result {
 	return ctx.send_response_to_client('text/plain', s)
 }
 
-// Response HTTP_OK with j as payload with content-type `application/json`
+// Response with json_s as payload and content-type `application/json`
 pub fn (mut ctx Context) json[T](j T) Result {
 	json_s := json.encode(j)
 	return ctx.send_response_to_client('application/json', json_s)
 }
 
-// Response HTTP_OK with a pretty-printed JSON result
+// Response with a pretty-printed JSON result
 pub fn (mut ctx Context) json_pretty[T](j T) Result {
 	json_s := json.encode_pretty(j)
 	return ctx.send_response_to_client('application/json', json_s)
 }
 
-// TODO - test + turn read_file into streaming
 // Response HTTP_OK with file as payload
 pub fn (mut ctx Context) file(file_path string) Result {
 	if !os.exists(file_path) {
@@ -187,10 +186,7 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 	}
 	file.close()
 
-	// optimization: use max_read on purpose instead of max_write to take into account
-	// the HTTP header size and the fact that it's not likely that the socket/OS
-	// is able to write 8KB at once under load.
-	if file_size < max_read || ctx.takeover {
+	if ctx.takeover {
 		// it's a small file so we can send the response directly
 		data := os.read_file(file_path) or {
 			eprintln('[vweb] error while trying to read file: ${err.msg()}')
