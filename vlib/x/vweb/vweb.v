@@ -385,7 +385,6 @@ fn handle_write_file(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 
 	$if linux {
 		bytes_written := sendfile(fd, params.file_responses[fd].file.fd, bytes_to_write)
-		println('file write ${bytes_written}')
 		params.file_responses[fd].pos += bytes_written
 	} $else {
 		if bytes_to_write > vweb.max_write {
