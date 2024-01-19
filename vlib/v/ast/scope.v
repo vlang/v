@@ -182,6 +182,20 @@ pub fn (s &Scope) innermost(pos int) &Scope {
 	return s
 }
 
+// get_all_vars extracts all current scope vars
+pub fn (s &Scope) get_all_vars() []ScopeObject {
+	mut scope_vars := []ScopeObject{}
+	for sc := unsafe { s }; true; sc = sc.parent {
+		if sc.objects.len > 0 {
+			scope_vars << sc.objects.values().filter(|it| it is Var)
+		}
+		if sc.dont_lookup_parent() {
+			break
+		}
+	}
+	return scope_vars
+}
+
 @[inline]
 pub fn (s &Scope) contains(pos int) bool {
 	return pos >= s.start_pos && pos <= s.end_pos

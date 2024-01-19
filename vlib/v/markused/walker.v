@@ -101,6 +101,7 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 	mut node := unsafe { node_ }
 	match mut node {
 		ast.EmptyStmt {}
+		ast.DebuggerStmt {}
 		ast.AsmStmt {
 			w.asm_io(node.output)
 			w.asm_io(node.input)

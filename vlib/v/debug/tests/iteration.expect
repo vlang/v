@@ -1,0 +1,17 @@
+#!/usr/bin/env expect
+spawn [lindex $argv 0]
+set test_file [lindex $argv 1]
+
+expect "0"
+expect "1"
+expect "2"
+expect "4"
+expect "${test_file}:3 vdbg> " { send "p x\n" } timeout { exit 1 }
+expect "x = 5 (int literal)" { send "c\n"} timeout { exit 1 }
+expect "${test_file}:3 vdbg> " { send "p x\n" } timeout { exit 1 }
+expect "x = 6 (int literal)" { send "c\n"} timeout { exit 1 }
+expect "${test_file}:3 vdbg> " { send "q\n" } timeout { exit 1 }
+expect "7"
+expect "8"
+expect "9"
+expect eof

@@ -1,0 +1,9 @@
+#!/usr/bin/env expect
+spawn [lindex $argv 0]
+set test_file [lindex $argv 1]
+
+expect -ex "\[${test_file}:25\] a.a: 123\r\n"
+expect -ex "Break on \[main\] main in ${test_file}:26\r\n"
+expect -ex "${test_file}:26 vdbg> " { send "p a\n" } timeout { exit 1 }
+expect -ex "a = Test{\r\n    a: 123\r\n} ((main.main.Test | main.main.Test2))" { send "q\n" } timeout { exit 1 }
+expect eof

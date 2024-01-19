@@ -1,6 +1,7 @@
 module builtin
 
-fn print_backtrace_skipping_top_frames(xskipframes int) bool {
+// print_backtrace_skipping_top_frames prints the backtrace skipping N top frames
+pub fn print_backtrace_skipping_top_frames(xskipframes int) bool {
 	$if no_backtrace ? {
 		return false
 	} $else {

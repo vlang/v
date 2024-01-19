@@ -1058,12 +1058,17 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					return p.comptime_for()
 				}
 				.name {
-					mut pos := p.tok.pos()
-					expr := p.expr(0)
-					pos.update_last_line(p.prev_tok.line_nr)
-					return ast.ExprStmt{
-						expr: expr
-						pos: pos
+					// handles $dbg directly without registering token
+					if p.peek_tok.lit == 'dbg' {
+						return p.dbg_stmt()
+					} else {
+						mut pos := p.tok.pos()
+						expr := p.expr(0)
+						pos.update_last_line(p.prev_tok.line_nr)
+						return ast.ExprStmt{
+							expr: expr
+							pos: pos
+						}
 					}
 				}
 				else {
@@ -1146,6 +1151,16 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		else {
 			return p.parse_multi_expr(is_top_level)
 		}
+	}
+}
+
+fn (mut p Parser) dbg_stmt() ast.DebuggerStmt {
+	pos := p.tok.pos()
+	p.check(.dollar)
+	p.check(.name)
+	p.register_auto_import('v.debug')
+	return ast.DebuggerStmt{
+		pos: pos
 	}
 }
 

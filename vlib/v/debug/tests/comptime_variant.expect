@@ -1,0 +1,8 @@
+#!/usr/bin/env expect
+spawn [lindex $argv 0]
+set test_file [lindex $argv 1]
+
+expect -ex "Break on \[main\] comptime_variant_int in ${test_file}:7"
+expect -ex "${test_file}:7 vdbg> " { send "p a\n" } timeout { exit 1 }
+expect -ex "a = 0 (int)" { send "q\n" } timeout { exit 1 }
+expect eof
