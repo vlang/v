@@ -1,8 +1,9 @@
 #!/usr/bin/env expect
-spawn [lindex $argv 0]
-set test_file [lindex $argv 1]
+source "common.tcl"
 
-expect -ex "Break on \[main\] interface_var in ${test_file}:14\r\n"
-expect -ex "${test_file}:14 vdbg> " { send "p a\n" } timeout { exit 1 }
-expect -ex "a = Test{\r\n    a: MySum(true)" { send "q\n" } timeout { exit 1 }
+expect "Break on * interface_var in ${test_file}:14\r\n"
+expect "${test_file}:14 vdbg> "
+send "p a\n"
+expect "a = Test{\r\n    a: MySum(true)"
+send "q\n"
 expect eof
