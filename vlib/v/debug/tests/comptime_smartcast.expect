@@ -1,10 +1,13 @@
 #!/usr/bin/env expect
-spawn [lindex $argv 0]
-set test_file [lindex $argv 1]
+source "common.tcl"
 
-expect -ex "Break on \[main\] comptime_smartcast in ${test_file}:3\r\n"
-expect "${test_file}:3 vdbg> " { send "p v\n" } timeout { exit 1 }
-expect "v = 1 (int)" { send "c\n" } timeout { exit 1 }
-expect "${test_file}:5 vdbg> " { send "p v\n" } timeout { exit 1 }
-expect "v = true (bool)" { send "q\n" } timeout { exit 1 }
+expect "Break on * comptime_smartcast in ${test_file}:3\r\n"
+expect "${test_file}:3 vdbg> "
+send "p v\n"
+expect "v = 1 (int)"
+send "c\n"
+expect "${test_file}:5 vdbg> "
+send "p v\n"
+expect "v = true (bool)"
+send "q\n"
 expect eof

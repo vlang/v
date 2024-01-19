@@ -1,8 +1,9 @@
 #!/usr/bin/env expect
-spawn [lindex $argv 0]
-set test_file [lindex $argv 1]
+source "common.tcl"
 
-expect -ex "Break on \[main\] smartcast in ${test_file}:3"
-expect -ex "${test_file}:3 vdbg> " { send "p a\n" } timeout { exit 1 }
-expect -ex "a = 1 (int)" { send "q\n" } timeout { exit 1 }
+expect "Break on * smartcast in ${test_file}:3"
+expect "${test_file}:3 vdbg> "
+send "p a\n"
+expect "a = 1 (int)"
+send "q\n"
 expect eof
