@@ -30,7 +30,6 @@ fn gprint(msg string) {
 }
 
 fn test_debugger() {
-	os.chdir(expect_tests_path)!
 	all_expect_files := os.walk_ext(expect_tests_path, '.expect')
 	assert all_expect_files.len > 0, 'no .expect files found in ${expect_tests_path}'
 	mut oks := 0
@@ -56,7 +55,7 @@ fn test_debugger() {
 		}
 
 		verbose_options := if be_verbose { '-d' } else { '' }
-		expect_cmd := '${expect_exe} ${verbose_options} ${os.quoted_path(efile)} ${os.quoted_path(output_file)} ${os.quoted_path(vfile)}'
+		expect_cmd := '${expect_exe} ${verbose_options} -c "cd ${expect_tests_path}" ${os.quoted_path(efile)} ${os.quoted_path(output_file)} ${os.quoted_path(vfile)}'
 		if be_verbose {
 			gprintln(term.cyan(expect_cmd))
 		}
