@@ -67,5 +67,5 @@ fn (mut b Builder) gen_v_files() {
 }
 
 fn print_time(title string, time_d time.Duration) {
-	println(' * ${title}: ${time_d.milliseconds()}ms (${time_d.microseconds()}us)')
+	println(' * ${title}: ${time_d.milliseconds()}ms (${time_d.microseconds()}µs)')
 }

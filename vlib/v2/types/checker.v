@@ -159,7 +159,7 @@ pub fn (mut c Checker) check_file(file ast.File) {
 	}
 	if c.pref.verbose {
 		check_time := sw.elapsed()
-		println('type check ${file.name}: ${check_time.milliseconds()}ms (${check_time.microseconds()}us)')
+		println('type check ${file.name}: ${check_time.milliseconds()}ms (${check_time.microseconds()}µs)')
 	}
 }
 
