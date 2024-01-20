@@ -4008,7 +4008,9 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 						_, str_method_expects_ptr, _ := cast_sym.str_method_info()
 
 						// eprintln(">> ${obj.name} | str expects ptr? ${str_method_expects_ptr} | ptr? ${var_typ.is_ptr()} || auto heap? ${obj.is_auto_heap} | auto deref? ${obj.is_auto_deref}")
-						deref := if str_method_expects_ptr && !obj.typ.is_ptr() {
+						deref := if var_typ.has_flag(.option) {
+							''
+						} else if str_method_expects_ptr && !obj.typ.is_ptr() {
 							'&'
 						} else if obj.is_auto_heap && var_typ.is_ptr() && str_method_expects_ptr {
 							'*'
