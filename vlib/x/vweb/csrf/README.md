@@ -175,7 +175,7 @@ The secret key should be a random string that is not easily guessable.
 If your app supports some kind of user sessions, it is recommended to cryptographically
 bind the CSRF-token to the users' session. You can do that by providing the name
 of the session ID cookie. If an attacker changes the session ID in the cookie, in the
-token or both the hmac will be different adn the request will be rejected.
+token or both the hmac will be different and the request will be rejected.
 
 **Example**:
 ```v ignore
