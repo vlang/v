@@ -6156,7 +6156,7 @@ fn main() {
 ```
 
 Running again, we'll get:
-Break on [main] main in example.v:3
+`Break on [main] main in example.v:3`
 
 If we want to read the source code context, we can use the `l` or `list` command.
 
