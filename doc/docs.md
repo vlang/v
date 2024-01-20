@@ -6187,7 +6187,7 @@ Break on [main] main in example.v:3
 i = 1 (int)
 ```
 
-The `i` variable is automatically printed, because it is in the watch list.
+`i` and it's value is automatically printed, because it is in the watch list.
 
 To continue repeat the last command issued, in this case the `c` command, 
 just hit the *enter* key.
