@@ -6179,7 +6179,7 @@ example.v:3 vdbg> w i
 i = 0 (int)
 ```
 
-So to continues to the next breakpoint, type `c` or `continue` command.
+To continue to the next breakpoint, type `c` or `continue` command.
 
 ```
 example.v:3 vdbg> c
