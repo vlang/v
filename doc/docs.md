@@ -6135,7 +6135,7 @@ a = 1 (int)
 
 Cool! We have the variable name, its value and its type name.
 
-What about printing only a variable not whole scope?
+What about printing only a variable, not the whole scope?
 
 Just use `p a` for such.
 
