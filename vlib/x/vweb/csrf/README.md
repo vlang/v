@@ -1,6 +1,6 @@
 # Cross-Site Request Forgery (CSRF) protection
 
-This module implements the [double submit cookie][owasp] technique to protect routes 
+This module implements the [double submit cookie][owasp] technique to protect routes
 from CSRF attacks.
 
 CSRF is a type of attack that occurs when a malicious program/website (and others) causes
@@ -17,8 +17,8 @@ isn't vulnerable to CSRF-attacks.
 
 ## Usage
 
-To enable CSRF-protection for your vweb app you must embed the `CsrfContext` struct 
-on your `Context` struct. You must also provide configuration options 
+To enable CSRF-protection for your vweb app you must embed the `CsrfContext` struct
+on your `Context` struct. You must also provide configuration options
 (see [configuration & security](#configuration--security-considerations)).
 
 **Example:**
@@ -64,7 +64,7 @@ fn main() {
 ### Setting the token
 
 For the CSRF-protection to work we have to generate an anti-CSRF token and set it
-as an hidden input field on any form that will be submitted to the route we 
+as an hidden input field on any form that will be submitted to the route we
 want to protect.
 
 **Example:**
@@ -97,12 +97,12 @@ fn (app &App) login(mut ctx, password string) vweb.Result {
 </form>
 ```
 
-If we run the app with `v run main.v` and navigate to `http://localhost:8080/` 
+If we run the app with `v run main.v` and navigate to `http://localhost:8080/`
 we will see the login form and we can login using the password "password".
 
 If we remove the hidden input, by removing the line `@{ctx.csrf_token_input()}`
 from our html code we will see an error message indicating that the CSRF token
-is not set or invalid! By default the CSRF module sends an HTTP-403 response when 
+is not set or invalid! By default the CSRF module sends an HTTP-403 response when
 a token is invalid, if you want to send a custom response see the
 [advanced usage](#advanced-usage) section.
 
@@ -113,7 +113,7 @@ a token is invalid, if you want to send a custom response see the
 ## Advanced Usage
 
 If you want more control over what routes are protected or what action you want to
-do when a CSRF-token is invalid, you can call `csrf.protect`  yourself whenever you want 
+do when a CSRF-token is invalid, you can call `csrf.protect`  yourself whenever you want
 to protect a route against CSRF attacks. This function returns `false` if the current CSRF token
 and cookie combination is not valid.
 
@@ -150,10 +150,10 @@ ctx.clear_csrf_token()
 ```
 
 ## How it works
-This module implements the [double submit cookie][owasp] technique: a random token 
+This module implements the [double submit cookie][owasp] technique: a random token
 is generated, the CSRF-token. The hmac of this token and the secret key is stored in a cookie.
 
-When a request is made, the CSRF-token should be placed inside a HTML form element. 
+When a request is made, the CSRF-token should be placed inside a HTML form element.
 The CSRF-token the hmac of the CSRF-token in the formdata is compared to the cookie.
 If the values match, the request is accepted.
 
@@ -161,7 +161,7 @@ This approach has the advantage of being stateless: there is no need to store to
 side and validate them. The token and cookie are bound cryptographically to each other so
 an attacker would need to know both values in order to make a CSRF-attack succeed. That
 is why is it important to **not leak the CSRF-token** via an url, or some other way. This is way
-by default the `HTTPOnlye` flag on the cookie is set to true.
+by default the `HTTPOnly` flag on the cookie is set to true.
 See [client side CSRF][client-side-csrf] for more information.
 
 This is a high level overview of the implementation.
@@ -169,7 +169,7 @@ This is a high level overview of the implementation.
 ## Configuration & Security Considerations
 
 ### The secret key
-The secret key should be a random string that is not easily guessable. 
+The secret key should be a random string that is not easily guessable.
 
 ### Sessions
 If your app supports some kind of user sessions, it is recommended to cryptographically
@@ -186,7 +186,7 @@ csrf_config = csrf.CsrfConfig{
 ```
 
 ### Safe Methods
-The HTTP methods `GET`, `OPTIONS`, `HEAD` are considered 
+The HTTP methods `GET`, `OPTIONS`, `HEAD` are considered
 [safe methods][mozilla-safe-methods] meaning they should not alter the state of
 an application. If a request with a "safe method" is made, the csrf protection will be skipped.
 
@@ -212,12 +212,12 @@ config := csrf.CsrfConfig{
 ```
 
 #### Referer, Origin header check
-In some cases (like if your server is behind a proxy), the Origin or Referer header will 
-not be present. If that is your case you can set `check_origin_and_referer` to `false`. 
+In some cases (like if your server is behind a proxy), the Origin or Referer header will
+not be present. If that is your case you can set `check_origin_and_referer` to `false`.
 Request will now be accepted when the Origin *or* Referer header is valid.
 
 ### Share csrf cookie with subdomains
-If you need to share the CSRF-token cookie with subdomains, you can set 
+If you need to share the CSRF-token cookie with subdomains, you can set
 `same_site` to `.same_site_lax_mode`.
 
 ## Configuration
