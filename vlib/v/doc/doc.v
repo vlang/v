@@ -348,13 +348,13 @@ pub fn (mut d Doc) file_ast(mut file_ast ast.File) map[string]DocNode {
 			}
 			// the previous comments were probably a copyright/license one
 			module_comment := merge_doc_comments(preceding_comments)
-			preceding_comments = []
 			if !d.is_vlib && !module_comment.starts_with('Copyright (c)') {
 				if module_comment == '' {
 					continue
 				}
 				d.head.comments << preceding_comments
 			}
+			preceding_comments = []
 			continue
 		}
 		if last_import_stmt_idx > 0 && sidx == last_import_stmt_idx {
@@ -437,7 +437,7 @@ pub fn (mut d Doc) generate() ! {
 	} else {
 		os.real_path(os.dir(d.base_path))
 	}
-	d.is_vlib = !d.base_path.contains('vlib')
+	d.is_vlib = d.base_path.contains('vlib')
 	project_files := os.ls(d.base_path) or { return err }
 	v_files := d.prefs.should_compile_filtered_files(d.base_path, project_files)
 	if v_files.len == 0 {
@@ -514,7 +514,7 @@ pub fn (mut d Doc) file_asts(mut file_asts []ast.File) ! {
 }
 
 // generate documents a certain file directory and returns an
-// instance of `Doc` if it is successful. Otherwise, it will  throw an error.
+// instance of `Doc` if it is successful. Otherwise, it will throw an error.
 pub fn generate(input_path string, pub_only bool, with_comments bool, platform Platform, filter_symbol_names ...string) !Doc {
 	if platform == .js {
 		return error('vdoc: Platform `${platform}` is not supported.')
