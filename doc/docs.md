@@ -6189,7 +6189,7 @@ i = 1 (int)
 
 `i` and it's value is automatically printed, because it is in the watch list.
 
-To continue repeat the last command issued, in this case the `c` command, 
+To repeat the last command issued, in this case the `c` command, 
 just hit the *enter* key.
 
 ```
