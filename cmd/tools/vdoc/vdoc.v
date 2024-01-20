@@ -67,9 +67,9 @@ fn (mut vd VDoc) gen_plaintext(d doc.Doc) string {
 	mut pw := strings.new_builder(200)
 	if cfg.is_color {
 		content_arr := d.head.content.split(' ')
-		pw.writeln('${term.bright_blue(content_arr[0])} ${term.green(content_arr[1])}\n')
+		pw.writeln('${term.bright_blue(content_arr[0])} ${term.green(content_arr[1])}')
 	} else {
-		pw.writeln('${d.head.content}\n')
+		pw.writeln('${d.head.content}')
 	}
 	if cfg.include_comments {
 		comments := if cfg.include_examples {
@@ -81,6 +81,7 @@ fn (mut vd VDoc) gen_plaintext(d doc.Doc) string {
 			pw.writeln(indent(comments))
 		}
 	}
+	pw.writeln('')
 	vd.write_plaintext_content(d.contents.arr(), mut pw)
 	return pw.str()
 }
