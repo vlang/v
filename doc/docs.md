@@ -6104,7 +6104,7 @@ example.v:3 vdbg>
 At this point, execution is halted, and the debugger is now available.
 
 To see the available commands, type 
-?, h or help. (We have a completion for commands - Non-Windows only)
+?, h or help. (Completion for commands works - Non-Windows only)
 
 ```
 example.v:3 vdbg> ?
