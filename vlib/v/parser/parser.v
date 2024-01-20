@@ -4063,6 +4063,10 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		return ast.EnumDecl{}
 	}
 	enum_name := p.check_name()
+	if enum_name.len == 0 {
+		p.error_with_pos('enum names can not be empty', end_pos)
+		return ast.EnumDecl{}
+	}
 	if enum_name.len == 1 {
 		p.error_with_pos('single letter capital names are reserved for generic template types.',
 			end_pos)
