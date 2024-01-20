@@ -79,6 +79,72 @@ fn test_sqlite() {
 	db.exec("delete from users where name='Sam'")!
 	assert db.get_affected_rows_count() == 1
 
+	db.get_queryset('SELECT * FROM users') or { panic(err) }
+	assert db.get_affected_rows_count() == 1
+
+	db.get_queryset('Select * From users') or { panic(err) }
+	assert db.get_affected_rows_count() == 1
+
+	db.get_queryset('select * from users') or { panic(err) }
+	assert db.get_affected_rows_count() == 1
+
+	db.get_queryset('SELECT		* FROM		users') or { panic(err) }
+	assert db.get_affected_rows_count() == 1
+
+	db.get_queryset('Select		* From		users') or { panic(err) }
+	assert db.get_affected_rows_count() == 1
+
+	db.get_queryset('select		* from		users') or { panic(err) }
+	// assert db.get_affected_rows_count() == 1
+
+	db.get_queryset('SELECT name, id FROM users WHERE id = 3') or { panic(err) }
+	assert db.get_affected_rows_count() == 1
+
+	db.get_queryset('Select name as n From users WHERE id = 3') or { panic(err) }
+	assert db.get_affected_rows_count() == 1
+
+	db.get_queryset('select name n from users WHERE id = 3') or { panic(err) }
+	assert db.get_affected_rows_count() == 1
+
+	db.get_queryset('SELECT	name, id FROM 	users WHERE id = 3') or { panic(err) }
+	assert db.get_affected_rows_count() == 1
+
+	db.get_queryset('Select	name as name 	From users WHERE id = 3') or { panic(err) }
+	assert db.get_affected_rows_count() == 1
+
+	db.get_queryset('select	name n from 	users WHERE id = 3') or { panic(err) }
+	assert db.get_affected_rows_count() == 1
+
+	db.get_queryset('SELECT * FROM 	users WHERE id = 3') or { panic(err) }
+	assert db.get_affected_rows_count() == 1
+
+	db.get_queryset('select id from 	users WHERE id = 3') or { panic(err) }
+	assert db.get_affected_rows_count() == 1
+
+	db.get_queryset('select id as i, name as n from 	users WHERE id = 3') or { panic(err) }
+	assert db.get_affected_rows_count() == 1
+
+	db.get_queryset('select id _id, name _n from 	users WHERE id = 3') or { panic(err) }
+	assert db.get_affected_rows_count() == 1
+
+	db.get_queryset('select max(id), name from 	users WHERE id = 3') or { panic(err) }
+	assert db.get_affected_rows_count() == 1
+
+	db.get_queryset('select max(id) as max, name from 	users WHERE id = 3') or { panic(err) }
+	assert db.get_affected_rows_count() == 1
+
+	db.get_queryset('select max(id) from 	users WHERE id = 3') or { panic(err) }
+	assert db.get_affected_rows_count() == 1
+
+	db.get_queryset('select max(id) max, name n from 	users WHERE id = 3') or { panic(err) }
+	assert db.get_affected_rows_count() == 1
+
+	db.get_queryset('select * from 	users;') or { panic(err) }
+	assert db.get_affected_rows_count() == 1
+
+	db.get_queryset('select * from 	users	;') or { panic(err) }
+	assert db.get_affected_rows_count() == 1
+
 	db.close() or { panic(err) }
 	assert !db.is_open
 }
