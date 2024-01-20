@@ -13,6 +13,7 @@ import v.vet
 import v.errors
 import os
 import hash.fnv1a
+import strings
 
 @[minify]
 pub struct Parser {
@@ -365,7 +366,7 @@ pub fn (mut p Parser) parse() &ast.File {
 
 	// codegen
 	if p.codegen_text.len > 0 && !p.pref.is_fmt {
-		ptext := 'module ' + p.mod.all_after_last('.') + p.codegen_text
+		ptext := 'module ' + p.mod.all_after_last('.') + '\n' + p.codegen_text
 		codegen_files << parse_text(ptext, p.file_name, p.table, p.comments_mode, p.pref)
 	}
 
@@ -473,9 +474,9 @@ pub fn parse_files(paths []string, table &ast.Table, pref_ &pref.Preferences) []
 // checked, markused, cgen-ed etc further, just like user's V code.
 pub fn (mut p Parser) codegen(code string) {
 	$if debug_codegen ? {
-		eprintln('parser.codegen:\n ${code}')
+		eprintln('parser.codegen: ${code}')
 	}
-	p.codegen_text += '\n' + code
+	p.codegen_text += code
 }
 
 fn (mut p Parser) init_parse_fns() {
@@ -4055,6 +4056,13 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 	}
 }
 
+fn source_name(name string) string {
+	if token.is_key(name) {
+		return '@${name}'
+	}
+	return name
+}
+
 fn (mut p Parser) enum_decl() ast.EnumDecl {
 	p.top_level_statement_start()
 	is_pub := p.tok.kind == .key_pub
@@ -4068,6 +4076,10 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		return ast.EnumDecl{}
 	}
 	enum_name := p.check_name()
+	if enum_name.len == 0 {
+		p.error_with_pos('enum names can not be empty', end_pos)
+		return ast.EnumDecl{}
+	}
 	if enum_name.len == 1 {
 		p.error_with_pos('single letter capital names are reserved for generic template types.',
 			end_pos)
@@ -4119,6 +4131,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		next_comments := p.eat_comments()
 		fields << ast.EnumField{
 			name: val
+			source_name: source_name(val)
 			pos: pos
 			expr: expr
 			has_expr: has_expr
@@ -4131,6 +4144,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	p.check(.rcbr)
 	is_flag := p.attrs.contains('flag')
 	is_multi_allowed := p.attrs.contains('_allow_multiple_values')
+	pubfn := if p.mod == 'main' { 'fn' } else { 'pub fn' }
 	if is_flag {
 		if fields.len > 64 {
 			p.error('when an enum is used as bit field, it must have a max of 64 fields')
@@ -4143,7 +4157,6 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 				return ast.EnumDecl{}
 			}
 		}
-		pubfn := if p.mod == 'main' { 'fn' } else { 'pub fn' }
 		all_bits_set_value := '0b' + '1'.repeat(fields.len)
 		p.codegen('
 //
@@ -4158,6 +4171,49 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 //
 ')
 	}
+	// Add the generic `Enum.from[T](x T) !T {` static method too:
+	mut isb := strings.new_builder(1024)
+	isb.write_string('\n')
+	// TODO: see why changing `W` to `T` below, later fails `v vlib/vweb/tests/middleware_test_server.v` with seemingly unrelated error
+	isb.write_string('${pubfn} ${enum_name}.from[W](input W) !${enum_name} {\n')
+	isb.write_string('	\$if input is \$int {\n')
+	isb.write_string('		val := unsafe{ ${enum_name}(input) }\n')
+	isb.write_string('		match val {\n')
+	for f in fields {
+		isb.write_string('			.${f.source_name} { return ${enum_name}.${f.source_name} }\n')
+	}
+	if is_flag {
+		isb.write_string('			else{}\n')
+	}
+	isb.write_string('		}\n')
+	isb.write_string('	}\n')
+	isb.write_string('	\$if input is \$string {\n')
+	isb.write_string('		val := input.str()\n') // TODO: this should not be needed, the `$if input is $string` above should have already smartcasted `input`
+	isb.write_string('		match val {\n')
+	for f in fields {
+		isb.write_string('			\'${f.name}\' { return ${enum_name}.${f.source_name} }\n')
+	}
+	isb.write_string('			else{}\n')
+	isb.write_string('		}\n')
+	isb.write_string('	}\n')
+	isb.write_string("	return error('invalid value')\n")
+	isb.write_string('}\n')
+	isb.write_string('\n')
+	code_for_from_fn := isb.str()
+	$if debug_enumcodegen ? {
+		if p.mod == 'main' {
+			dump(code_for_from_fn)
+		}
+	}
+	if enum_name[0].is_capital() && fields.len > 0 {
+		// TODO: this check is to prevent avoidable later stage checker errors for generated code,
+		// since currently there is no way to show the proper source context :-|.
+		if p.pref.backend == .c {
+			// TODO: improve the other backends, to the point where they can handle generics or comptime checks too
+			p.codegen(code_for_from_fn)
+		}
+	}
+
 	idx := p.table.register_sym(ast.TypeSymbol{
 		kind: .enum_
 		name: name
