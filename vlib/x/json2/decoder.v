@@ -407,10 +407,10 @@ fn (mut p Parser) decode_object() !Any {
 		p.next_with_err()!
 		// step 3 -> value
 		fields[cur_key] = p.decode_value()!
-		if p.tok.kind != .comma && p.tok.kind != .rcbr {
-			return UnknownTokenError{
+		if p.tok.kind !in [.comma, .rcbr] {
+			return InvalidTokenError{
 				token: p.tok
-				kind: .object
+				expected: .comma
 			}
 		} else if p.tok.kind == .comma {
 			p.next_with_err()!
