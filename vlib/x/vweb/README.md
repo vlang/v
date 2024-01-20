@@ -798,7 +798,7 @@ error with a message.
 
 ## Advanced usage
 
-If you need more controll over the TCP connection with a client, for example when
+If you need more control over the TCP connection with a client, for example when
 you want to keep the connection open. You can call `ctx.takeover_conn`.
 
 When this function is called you are free to do anything you want with the TCP
