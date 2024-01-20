@@ -145,6 +145,12 @@ fn test_sqlite() {
 	db.get_queryset('select * from 	users	;') or { panic(err) }
 	assert db.get_affected_rows_count() == 1
 
+	db.get_queryset('select name,  id from 	users	;') or { panic(err) }
+	assert db.get_affected_rows_count() == 1
+
+	db.get_queryset('select name, id              from 	users;') or { panic(err) }
+	assert db.get_affected_rows_count() == 1
+
 	db.close() or { panic(err) }
 	assert !db.is_open
 }
