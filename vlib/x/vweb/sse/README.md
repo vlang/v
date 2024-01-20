@@ -49,7 +49,7 @@ Javascript code:
 const eventSource = new EventSource('/sse');
 
 eventSource.addEventListener('message', (event) => {
-	console.log('received mesage:', event.data);
+	console.log('received message:', event.data);
 });
 
 eventSource.addEventListener('close', () => {
