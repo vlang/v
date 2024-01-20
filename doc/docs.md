@@ -6101,7 +6101,9 @@ Break on [main] main in bug.v:3
 example.v:3 vdbg> 
 ```
 
-In this point, lets know the possible debugger commands. For such, just type 
+At this point, execution is halted, and the debugger is now available.
+
+To see the available commands, type 
 ?, h or help. (We have a completion for commands - Non-Windows only)
 
 ```
