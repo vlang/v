@@ -622,7 +622,7 @@ pub fn (app &Admin) path(mut ctx Context) vweb.Result {
     return ctx.text('Admin')
 }
 ```
-When we registerted the controller with
+When we registered the controller with
 `app.register_controller[Admin, Context]('/admin', mut admin_app)!`
 we told vweb that the namespace of that controller is `'/admin'` so in this example we would
 see the text "Admin" if we navigate to the url `'/admin/path'`.
