@@ -9,7 +9,7 @@ features.
 - **Easy to deploy** just one binary file that also includes all templates. No need to install any
   dependencies.
 - **Templates are precompiled** all errors are visible at compilation time, not at runtime.
-- **Middleware** functionality similair to other big frameworks.
+- **Middleware** functionality similar to other big frameworks.
 - **Controllers** to split up your apps logic.
 
 ## Quick Start
