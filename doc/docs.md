@@ -6202,7 +6202,7 @@ i = 3 (int)
 example.v:3 vdbg>
 ```
 
-You can also see the memory usage with `mem` or `memory` command. And to 
+You can also see memory usage with `mem` or `memory` command, and
 check if the current context is an anon function (`anon?`), a method (`method?`)  or a generic method (`generic?`).
 
 ## Memory-unsafe code
