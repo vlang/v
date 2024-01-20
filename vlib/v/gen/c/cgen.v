@@ -4006,14 +4006,19 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 						values.write_string('${func}(*(${base_typ}*)${obj.name}.data)}')
 					} else {
 						_, str_method_expects_ptr, _ := cast_sym.str_method_info()
+
+						// eprintln(">> ${obj.name} | str expects ptr? ${str_method_expects_ptr} | ptr? ${var_typ.is_ptr()} || auto heap? ${obj.is_auto_heap} | auto deref? ${obj.is_auto_deref}")
 						deref := if str_method_expects_ptr && !obj.typ.is_ptr() {
 							'&'
+						} else if obj.is_auto_heap && var_typ.is_ptr() && str_method_expects_ptr {
+							'*'
+						} else if !obj.is_auto_heap && var_typ.is_ptr() && str_method_expects_ptr {
+							''
+						} else if obj.is_auto_heap && var_typ.is_ptr() {
+							'*'
 						} else if obj.typ.is_ptr() && !obj.is_auto_deref {
 							'&'
 						} else if obj.typ.is_ptr() && obj.is_auto_deref {
-							''
-						} else if obj.is_auto_heap
-							|| (!var_typ.has_flag(.option) && var_typ.is_ptr()) {
 							'*'
 						} else {
 							''
