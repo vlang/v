@@ -1,0 +1,9 @@
+#!/usr/bin/env expect
+source "common.tcl"
+
+expect "Break on * comptime_variant_int in ${test_file}:7"
+expect "${test_file}:7 vdbg> "
+send "p a\n"
+expect "a = 0 (int)"
+send "q\n"
+expect eof

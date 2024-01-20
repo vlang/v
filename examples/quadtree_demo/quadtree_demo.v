@@ -112,7 +112,7 @@ fn (mut app App) find_particles() {
 
 fn main() {
 	mut app := &App{
-		gg: 0
+		gg: unsafe { nil }
 	}
 	app.gg = gg.new_context(
 		bg_color: gx.white

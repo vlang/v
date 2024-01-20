@@ -668,6 +668,7 @@ fn (mut g JsGen) stmt_no_semi(node_ ast.Stmt) {
 			g.write_v_source_line_info(node.pos)
 			g.gen_const_decl(node)
 		}
+		ast.DebuggerStmt {}
 		ast.DeferStmt {
 			g.defer_stmts << node
 		}
@@ -775,6 +776,7 @@ fn (mut g JsGen) stmt(node_ ast.Stmt) {
 			g.write_v_source_line_info(node.pos)
 			g.gen_const_decl(node)
 		}
+		ast.DebuggerStmt {}
 		ast.DeferStmt {
 			g.defer_stmts << node
 		}

@@ -513,6 +513,9 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 		ast.ConstDecl {
 			f.const_decl(node)
 		}
+		ast.DebuggerStmt {
+			f.debugger_stmt(node)
+		}
 		ast.DeferStmt {
 			f.defer_stmt(node)
 		}
@@ -872,6 +875,10 @@ pub fn (mut f Fmt) block(node ast.Block) {
 		f.stmts(node.stmts)
 	}
 	f.writeln('}')
+}
+
+pub fn (mut f Fmt) debugger_stmt(node ast.DebuggerStmt) {
+	f.writeln('\$dbg;')
 }
 
 pub fn (mut f Fmt) branch_stmt(node ast.BranchStmt) {

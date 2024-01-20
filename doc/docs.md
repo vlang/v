@@ -1465,7 +1465,7 @@ and
 
 ### Map update syntax
 
-As with stucts, V lets you initialise a map with an update applied on top of
+As with structs, V lets you initialise a map with an update applied on top of
 another map:
 
 ```v
@@ -3542,7 +3542,7 @@ fn fn1(s Foo) {
 
 We can test the underlying type of an interface using dynamic cast operators.
 > [!NOTE]
-> Dynamic cast converts variable `s` into a pointer inside the `if` statemnts in this example:
+> Dynamic cast converts variable `s` into a pointer inside the `if` statements in this example:
 
 ```v oksyntax
 // interface-example.3 (continued from interface-example.1)
@@ -6962,7 +6962,7 @@ To cast a `voidptr` to a V reference, use `user := &User(user_void_ptr)`.
 
 `voidptr` can also be dereferenced into a V struct through casting: `user := User(user_void_ptr)`.
 
-[an example of a module that calls C code from V](https://github.com/vlang/v/blob/master/vlib/v/tests/project_with_c_code/mod1/wrapper.v)
+[an example of a module that calls C code from V](https://github.com/vlang/v/blob/master/vlib/v/tests/project_with_c_code/mod1/wrapper.c.v)
 
 ### C Declarations
 
