@@ -56,6 +56,11 @@ fn get_all_processes() []string {
 	}
 }
 
+pub enum ActionMode {
+	compile
+	compile_and_run
+}
+
 pub struct TestSession {
 pub mut:
 	files         []string
@@ -77,6 +82,8 @@ pub mut:
 	failed_cmds   shared []string
 	reporter      Reporter = Reporter(NormalReporter{})
 	hash          string // used as part of the name of the temporary directory created for tests, to ease cleanup
+	//
+	exec_mode ActionMode = .compile // .compile_and_run only for `v test`
 }
 
 pub fn (mut ts TestSession) add_failed_cmd(cmd string) {
@@ -458,6 +465,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		flow_id: thread_id.str()
 	}
 	normalised_relative_file := relative_file.replace('\\', '/')
+
 	// Ensure that the generated binaries will be stored in an *unique*, fresh, and per test folder,
 	// inside the common session temporary folder, used for all the tests.
 	// This is done to provide a clean working environment, for each test, that will not contain
@@ -491,6 +499,12 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 		cmd_options << ' -o ${os.quoted_path(generated_binary_fpath)}'
 	}
+	defer {
+		if produces_file_output && ts.rm_binaries {
+			os.rmdir_all(test_folder_path) or {}
+		}
+	}
+
 	cmd := '${os.quoted_path(ts.vexe)} -skip-running ${cmd_options.join(' ')} ${os.quoted_path(file)}'
 	run_cmd := if run_js { 'node ${generated_binary_fpath}' } else { generated_binary_fpath }
 	ts.benchmark.step()
@@ -499,12 +513,15 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		ts.benchmark.skip()
 		tls_bench.skip()
 		if !testing.hide_skips {
-			ts.append_message(.skip, tls_bench.step_message_skip(normalised_relative_file,
+			ts.append_message(.skip, tls_bench.step_message_with_label_and_duration(benchmark.b_skip,
+				normalised_relative_file, 0,
 				preparation: 1 * time.microsecond
 			), mtc)
 		}
 		return pool.no_result
 	}
+	mut compile_cmd_duration := time.Duration(0)
+	mut cmd_duration := time.Duration(0)
 	if ts.show_stats {
 		ts.reporter.divider()
 
@@ -519,7 +536,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 		mut status := res.exit_code
 
-		mut cmd_duration := d_cmd.elapsed()
+		cmd_duration = d_cmd.elapsed()
 		ts.append_message_with_duration(.cmd_end, '', cmd_duration, mtc)
 
 		if status != 0 {
@@ -550,52 +567,49 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 					goto test_passed_system
 				}
 			}
-
 			// most probably compiler error
 			if res.output.contains(': error: ') {
 				ts.append_message(.cannot_compile, 'Cannot compile file ${file}', mtc)
 			}
-
 			ts.benchmark.fail()
 			tls_bench.fail()
 			ts.add_failed_cmd(cmd)
 			return pool.no_result
-		} else {
-			test_passed_system:
-			ts.benchmark.ok()
-			tls_bench.ok()
 		}
 	} else {
 		if testing.show_start {
 			ts.append_message(.info, '                 starting ${relative_file} ...',
 				mtc)
 		}
-		//
 		ts.append_message(.compile_begin, cmd, mtc)
 		compile_d_cmd := time.new_stopwatch()
 		mut compile_r := os.execute(cmd)
-		mut compile_cmd_duration := compile_d_cmd.elapsed()
+		compile_cmd_duration = compile_d_cmd.elapsed()
 		ts.append_message_with_duration(.compile_end, compile_r.output, compile_cmd_duration,
 			mtc)
-		//
-		ts.benchmark.step_restart()
-		tls_bench.step_restart()
-		//
-		ts.append_message(.cmd_begin, run_cmd, mtc)
-		d_cmd := time.new_stopwatch()
-		mut r := os.execute(run_cmd)
-		mut cmd_duration := d_cmd.elapsed()
-		ts.append_message_with_duration(.cmd_end, r.output, cmd_duration, mtc)
-
-		if compile_r.exit_code != 0 || r.exit_code < 0 {
+		if compile_r.exit_code != 0 {
 			ts.benchmark.fail()
 			tls_bench.fail()
-			ts.append_message_with_duration(.fail, tls_bench.step_message_fail(normalised_relative_file,
+			ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail,
+				normalised_relative_file, cmd_duration,
 				preparation: compile_cmd_duration
 			), cmd_duration, mtc)
 			ts.add_failed_cmd(cmd)
 			return pool.no_result
 		}
+		tls_bench.step_restart()
+		ts.benchmark.step_restart()
+		if ts.exec_mode == .compile {
+			unsafe {
+				goto test_passed_execute
+			}
+		}
+		//
+		ts.append_message(.cmd_begin, run_cmd, mtc)
+		d_cmd := time.new_stopwatch()
+		mut r := os.execute(run_cmd)
+		cmd_duration = d_cmd.elapsed()
+		ts.append_message_with_duration(.cmd_end, r.output, cmd_duration, mtc)
 		if r.exit_code != 0 {
 			details := get_test_details(file)
 			os.setenv('VTEST_RETRY_MAX', '${details.retry}', true)
@@ -627,23 +641,24 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.benchmark.fail()
 			tls_bench.fail()
 			ending_newline := if r.output.ends_with('\n') { '\n' } else { '' }
-			ts.append_message_with_duration(.fail, tls_bench.step_message_fail('${normalised_relative_file}\n${r.output.trim_space()}${ending_newline}',
+			ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail,
+				'${normalised_relative_file}\n${r.output.trim_space()}${ending_newline}',
+				cmd_duration,
 				preparation: compile_cmd_duration
 			), cmd_duration, mtc)
 			ts.add_failed_cmd(cmd)
-		} else {
-			test_passed_execute:
-			ts.benchmark.ok()
-			tls_bench.ok()
-			if !testing.hide_oks {
-				ts.append_message_with_duration(.ok, tls_bench.step_message_ok(normalised_relative_file,
-					preparation: compile_cmd_duration
-				), cmd_duration, mtc)
-			}
+			return pool.no_result
 		}
 	}
-	if produces_file_output && ts.rm_binaries {
-		os.rmdir_all(test_folder_path) or {}
+	test_passed_system:
+	test_passed_execute:
+	ts.benchmark.ok()
+	tls_bench.ok()
+	if !testing.hide_oks {
+		ts.append_message_with_duration(.ok, tls_bench.step_message_with_label_and_duration(benchmark.b_ok,
+			normalised_relative_file, cmd_duration,
+			preparation: compile_cmd_duration
+		), cmd_duration, mtc)
 	}
 	return pool.no_result
 }

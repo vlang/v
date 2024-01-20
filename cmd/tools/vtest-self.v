@@ -352,6 +352,7 @@ fn main() {
 	}
 	testing.eheader(title)
 	mut tsession := testing.new_test_session(cmd_prefix, true)
+	tsession.exec_mode = .compile_and_run
 	tsession.files << all_test_files.filter(!it.contains('testdata' + os.path_separator))
 	tsession.skip_files << skip_test_files
 

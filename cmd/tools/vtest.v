@@ -35,6 +35,7 @@ fn main() {
 	backend := if backend_pos == -1 { '.c' } else { args_before[backend_pos + 1] }
 
 	mut ts := testing.new_test_session(args_before.join(' '), true)
+	ts.exec_mode = .compile_and_run
 	ts.fail_fast = ctx.fail_fast
 	for targ in args_after {
 		if os.is_dir(targ) {
