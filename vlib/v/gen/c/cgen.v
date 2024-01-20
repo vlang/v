@@ -3937,7 +3937,13 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 		if obj.name !in vars {
 			if obj is ast.Var && obj.pos.pos < node.pos.pos {
 				keys.write_string('_SLIT("${obj.name}")')
-				var_typ := if obj.smartcasts.len > 0 { obj.smartcasts.last() } else { obj.typ }
+				var_typ := if obj.ct_type_var != .no_comptime {
+					g.comptime.get_comptime_var_type(ast.Ident{ obj: obj })
+				} else if obj.smartcasts.len > 0 {
+					obj.smartcasts.last()
+				} else {
+					obj.typ
+				}
 				values.write_string('{.typ=_SLIT("${g.table.type_to_str(g.unwrap_generic(var_typ))}"),.value=')
 				obj_sym := g.table.sym(obj.typ)
 				cast_sym := g.table.sym(var_typ)
