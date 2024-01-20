@@ -6083,7 +6083,7 @@ See also [Cross Compilation](#cross-compilation).
 
 ## Debugger
 
-To use the native *V debugger* you must to use the `$dbg` statement.
+To use the native *V debugger*, add the `$dbg` statement to your source, where you want the debugger to be invoked.
 
 ```V
 fn main() {
