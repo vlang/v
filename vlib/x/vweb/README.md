@@ -664,7 +664,7 @@ app.register_controller[Example, Context]('example.com', '/', mut example_app)!
 
 vweb has a number of utility methods that make it easier to handle requests and send responses.
 These methods are available on `vweb.Context` and directly on your own context struct if you
-embed `vweb.Context`. Below are some of te most used methods, look at the
+embed `vweb.Context`. Below are some of the most used methods, look at the
 [standard library documentation](https://modules.vlang.io/) to see them all.
 
 ### Request methods
