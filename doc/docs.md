@@ -6143,7 +6143,7 @@ To watch a variable by its name, use:
 
 `w a` (where `a` is the variable name)
 
-For unwatching the variable, use `u a`.
+To stop watching the variable (`unwatch` it), use `u a`.
 
 Lets see more one example:
 
