@@ -6139,7 +6139,7 @@ What about printing only a variable, not the whole scope?
 
 Just type `p a`.
 
-For watching a variable by its name, use:
+To watch a variable by its name, use:
 
 `w a` (where `a` is the variable name)
 
