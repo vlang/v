@@ -6083,7 +6083,8 @@ See also [Cross Compilation](#cross-compilation).
 
 ## Debugger
 
-To use the native *V debugger*, add the `$dbg` statement to your source, where you want the debugger to be invoked.
+To use the native *V debugger*, add the `$dbg` statement to your source, where you 
+want the debugger to be invoked.
 
 ```V
 fn main() {
@@ -6097,7 +6098,7 @@ reaches the `$dbg` statement.
 
 ```
 $ v run example.v
-Break on [main] main in bug.v:3
+Break on [main] main in example.v:3
 example.v:3 vdbg> 
 ```
 
@@ -6203,7 +6204,8 @@ example.v:3 vdbg>
 ```
 
 You can also see memory usage with `mem` or `memory` command, and
-check if the current context is an anon function (`anon?`), a method (`method?`)  or a generic method (`generic?`).
+check if the current context is an anon function (`anon?`), a method (`method?`) 
+or a generic method (`generic?`).
 
 ## Memory-unsafe code
 
