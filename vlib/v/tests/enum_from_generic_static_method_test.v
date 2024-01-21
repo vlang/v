@@ -60,3 +60,24 @@ fn test_enum_from_integer() {
 		assert err.msg() == 'invalid value'
 	}
 }
+
+@[flag]
+enum Test {
+	first
+	second
+	third
+}
+
+fn test_flagged_enum_from_0_and_empty_string() {
+	mut z := Test.first
+	z.clear_all()
+	dump(z)
+	//
+	x := Test.from(0)!
+	dump(x)
+	assert x == z
+	//
+	y := Test.from('')!
+	dump(y)
+	assert y == z
+}

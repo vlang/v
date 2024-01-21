@@ -4178,6 +4178,9 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	isb.write_string('${pubfn} ${enum_name}.from[W](input W) !${enum_name} {\n')
 	isb.write_string('	\$if input is \$int {\n')
 	isb.write_string('		val := unsafe{ ${enum_name}(input) }\n')
+	if is_flag {
+		isb.write_string('		if input == 0 { return val }\n')
+	}
 	isb.write_string('		match val {\n')
 	for f in fields {
 		isb.write_string('			.${f.source_name} { return ${enum_name}.${f.source_name} }\n')
@@ -4189,6 +4192,9 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	isb.write_string('	}\n')
 	isb.write_string('	\$if input is \$string {\n')
 	isb.write_string('		val := input.str()\n') // TODO: this should not be needed, the `$if input is $string` above should have already smartcasted `input`
+	if is_flag {
+		isb.write_string('		if val == \'\' { return unsafe{ ${enum_name}(0) } }\n')
+	}
 	isb.write_string('		match val {\n')
 	for f in fields {
 		isb.write_string('			\'${f.name}\' { return ${enum_name}.${f.source_name} }\n')
