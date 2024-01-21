@@ -8,8 +8,12 @@ import v.scanner
 import term
 
 const skip_tests = os.getenv_opt('SKIP_TESTS') or { '' }.bool()
+const comments_mode = scanner.CommentsMode.from(os.getenv('SCANNER_MODE')) or {
+	scanner.CommentsMode.skip_comments
+}
 
 fn main() {
+	dump(comments_mode)
 	files := os.args#[1..]
 	if files.len > 0 && files[0].starts_with('@') {
 		lst_path := files[0].all_after('@')
