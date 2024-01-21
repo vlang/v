@@ -4,6 +4,7 @@
 module util
 
 import os
+import rand
 import time
 import v.pref
 import v.vmod
@@ -176,8 +177,12 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		}
 
 		current_work_dir := os.getwd()
-		retry_max_count := 3
-		for i in 0 .. retry_max_count {
+		// The goal of the random sleep intervals below, is to reduce the chance of a thundering herd, on `v test` with VJOBS>10,
+		// when each compiled _test.c.v file could also need a recompilation of the js_builder in cmd/tools/builders/ .
+		// TODO: use the os.filelock's API for inter process coordination instead.
+		time.sleep((5 + rand.intn(15) or { 0 }) * time.millisecond)
+		tool_recompile_retry_max_count := 7
+		for i in 0 .. tool_recompile_retry_max_count {
 			// ensure a stable and known working folder, when compiling V's tools, to avoid module lookup problems:
 			os.chdir(vroot) or {}
 			tool_compilation := os.execute(compilation_command)
@@ -185,23 +190,35 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 			if tool_compilation.exit_code == 0 {
 				break
 			} else {
-				if i == retry_max_count - 1 {
-					eprintln('cannot compile `${tool_source}`: \n${tool_compilation.output}')
+				if i == tool_recompile_retry_max_count - 1 {
+					eprintln('cannot compile `${tool_source}`: ${tool_compilation.exit_code}\n${tool_compilation.output}')
 					exit(1)
 				}
-				time.sleep(20 * time.millisecond)
 			}
+			time.sleep((20 + rand.intn(40) or { 0 }) * time.millisecond)
 		}
 	}
 	$if windows {
-		exit(os.system('${os.quoted_path(tool_exe)} ${tool_args}'))
+		cmd_system('${os.quoted_path(tool_exe)} ${tool_args}')
 	} $else $if js {
 		// no way to implement os.execvp in JS backend
-		exit(os.system('${tool_exe} ${tool_args}'))
+		cmd_system('${tool_exe} ${tool_args}')
 	} $else {
-		os.execvp(tool_exe, args) or { panic(err) }
+		os.execvp(tool_exe, args) or {
+			eprintln('> error while executing: ${tool_exe} ${args}')
+			panic(err)
+		}
 	}
 	exit(2)
+}
+
+@[noreturn]
+fn cmd_system(cmd string) {
+	res := os.system(cmd)
+	if res != 0 {
+		eprintln('> error ${res}, while executing: ${cmd}')
+	}
+	exit(res)
 }
 
 // Note: should_recompile_tool/4 compares unix timestamps that have 1 second resolution
