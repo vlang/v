@@ -267,7 +267,7 @@ fn store_array_test(fname string) ! {
 	mut store_memory_trace := []MemoryTrace{cap: 1000}
 	for i in 0 .. 1000 {
 		store_memory_trace << MemoryTrace{
-			operation: `L`
+			operation: u64(`L`)
 			address: u64(i)
 			size: u8(i % 8)
 		}
