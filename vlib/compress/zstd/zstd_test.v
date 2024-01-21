@@ -9,7 +9,6 @@ fn s(fname string) string {
 }
 
 fn test_zstd() {
-	eprintln('zstd version: ${version_string()}')
 	assert version_number() >= 10505
 
 	uncompressed := 'Hello world!'.repeat(10000)
@@ -18,7 +17,7 @@ fn test_zstd() {
 	assert decompressed == uncompressed.bytes()
 }
 
-fn test_zstd_deferent_compress_level() {
+fn test_zstd_deferent_compression_level() {
 	uncompressed := 'Hello world!'.repeat(10000)
 
 	compressed_1000 := compress(uncompressed.bytes(), compression_level: 1000)!
@@ -223,17 +222,17 @@ fn decompress_file(fname string, oname string, params DecompressParams) ! {
 
 // zstd stream mode test
 fn test_zstd_stream() {
-	decompress_file(s('readme_level_19.zst'), s('tmp_file1')) or { panic(err) }
+	decompress_file(s('readme_level_19.zst'), s('tmp_file1'))!
 	compress_file(s('tmp_file1'), s('tmp_file.zst'),
 		compression_level: 6
 		nb_threads: 1
 		checksum_flag: true
-	) or { panic(err) }
-	decompress_file(s('tmp_file.zst'), s('tmp_file2')) or { panic(err) }
-	file1 := os.read_file(s('tmp_file1')) or { panic(err) }
+	)!
+	decompress_file(s('tmp_file.zst'), s('tmp_file2'))!
+	file1 := os.read_file(s('tmp_file1'))!
 	assert file1.contains('## Acknowledgement')
 	assert file1.contains('## Troubleshooting')
-	file2 := os.read_file(s('tmp_file2')) or { panic(err) }
+	file2 := os.read_file(s('tmp_file2'))!
 	assert file1 == file2
 	os.rm(s('tmp_file1'))!
 	os.rm(s('tmp_file2'))!
@@ -269,9 +268,9 @@ fn load_array_test(fname string) ! {
 }
 
 fn test_zstd_store_load_array() {
-	store_array_test(s('mem_trace.zst')) or { panic(err) }
-	load_array_test(s('mem_trace.zst')) or { panic(err) }
-	os.rm(s('mem_trace.zst')) or { panic(err) }
+	store_array_test(s('mem_trace.zst'))!
+	load_array_test(s('mem_trace.zst'))!
+	os.rm(s('mem_trace.zst'))!
 }
 
 fn assert_decompress_error(data []u8, reason string) ! {

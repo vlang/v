@@ -6,8 +6,7 @@ module zstd
 import os
 import encoding.binary
 
-#flag -I @VMODROOT/vlib/compress/zstd/lib
-#include "zstd.h"
+#flag -I @VMODROOT/thirdparty/zstd
 #include "zstd.c"	// msvc can't compile multiple source files, so included
 
 const zstd_frame_header_size_max = 18
