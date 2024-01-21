@@ -2219,7 +2219,9 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 				&& node !in [ast.CallExpr, ast.PostfixExpr, ast.ComptimeCall, ast.SelectorExpr, ast.DumpExpr] {
 				is_complex_infix_expr := node is ast.InfixExpr
 					&& node.op in [.left_shift, .right_shift, .unsigned_right_shift, .arrow]
-				if !is_complex_infix_expr {
+				if !is_complex_infix_expr && node !is ast.BoolLiteral && node !is ast.CharLiteral
+					&& node !is ast.FloatLiteral && node !is ast.IntegerLiteral
+					&& node !is ast.StringLiteral && node !is ast.StringInterLiteral {
 					return p.error_with_pos('expression evaluated but not used', node.pos())
 				}
 			}
