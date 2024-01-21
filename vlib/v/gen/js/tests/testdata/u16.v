@@ -4,4 +4,5 @@ fn main() {
 
 	println(u16(42) == u16(42))
 	println(u16(1000) * 56)
+	println(u16(0xFFFFFFFF))
 }
