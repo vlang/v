@@ -11,6 +11,7 @@ import v.pref
 import v.util.vtest
 import runtime
 import rand
+import strings
 
 pub const github_job = os.getenv('GITHUB_JOB')
 
@@ -42,6 +43,7 @@ pub const is_go_present = os.execute('go version').exit_code == 0
 pub const all_processes = get_all_processes()
 
 pub const header_bytes_to_search_for_module_main = 500
+pub const separator = '-'.repeat(100)
 
 fn get_fail_retry_delay_ms() time.Duration {
 	return os.getenv_opt('VTEST_FAIL_RETRY_DELAY_MS') or { '500' }.int() * time.millisecond
@@ -506,7 +508,11 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 
 	cmd := '${os.quoted_path(ts.vexe)} -skip-running ${cmd_options.join(' ')} ${os.quoted_path(file)}'
-	run_cmd := if run_js { 'node ${generated_binary_fpath}' } else { generated_binary_fpath }
+	run_cmd := if run_js {
+		'node ${os.quoted_path(generated_binary_fpath)}'
+	} else {
+		os.quoted_path(generated_binary_fpath)
+	}
 	ts.benchmark.step()
 	tls_bench.step()
 	if relative_file.replace('\\', '/') in ts.skip_files {
@@ -561,7 +567,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				time.sleep(testing.fail_retry_delay_ms)
 			}
 			if details.flaky && !testing.fail_flaky {
-				ts.append_message(.info, '   *FAILURE* of the known flaky test file ${relative_file} is ignored, since VTEST_FAIL_FLAKY is 0 . Retry count: ${details.retry} .',
+				ts.append_message(.info, '   *FAILURE* of the known flaky test file ${relative_file} is ignored, since VTEST_FAIL_FLAKY is 0 . Retry count: ${details.retry} .\ncmd: ${cmd}',
 					mtc)
 				unsafe {
 					goto test_passed_system
@@ -591,7 +597,8 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.benchmark.fail()
 			tls_bench.fail()
 			ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail,
-				normalised_relative_file, cmd_duration,
+				'${normalised_relative_file}\n>> compilation failed:\n${compile_r.output}',
+				cmd_duration,
 				preparation: compile_cmd_duration
 			), cmd_duration, mtc)
 			ts.add_failed_cmd(cmd)
@@ -606,11 +613,15 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 		//
 		ts.append_message(.cmd_begin, run_cmd, mtc)
+		mut failure_output := strings.new_builder(1024)
 		d_cmd := time.new_stopwatch()
 		mut r := os.execute(run_cmd)
 		cmd_duration = d_cmd.elapsed()
 		ts.append_message_with_duration(.cmd_end, r.output, cmd_duration, mtc)
 		if r.exit_code != 0 {
+			failure_output.write_string(testing.separator)
+			failure_output.writeln(' retry: 0')
+			failure_output.writeln(r.output.trim_space())
 			details := get_test_details(file)
 			os.setenv('VTEST_RETRY_MAX', '${details.retry}', true)
 			for retry := 1; retry <= details.retry; retry++ {
@@ -629,10 +640,14 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 						goto test_passed_execute
 					}
 				}
+				failure_output.write_string(testing.separator)
+				failure_output.writeln(' retry: ${retry}')
+				failure_output.writeln(r.output.trim_space())
 				time.sleep(testing.fail_retry_delay_ms)
 			}
+			full_failure_output := failure_output.str().trim_space()
 			if details.flaky && !testing.fail_flaky {
-				ts.append_message(.info, '   *FAILURE* of the known flaky test file ${relative_file} is ignored, since VTEST_FAIL_FLAKY is 0 . Retry count: ${details.retry} .',
+				ts.append_message(.info, '   *FAILURE* of the known flaky test file ${relative_file} is ignored, since VTEST_FAIL_FLAKY is 0 . Retry count: ${details.retry} .\n    comp_cmd: ${cmd}\n     run_cmd: ${run_cmd}',
 					mtc)
 				unsafe {
 					goto test_passed_execute
@@ -640,9 +655,9 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			}
 			ts.benchmark.fail()
 			tls_bench.fail()
-			ending_newline := if r.output.ends_with('\n') { '\n' } else { '' }
+			cmd_duration = d_cmd.elapsed() - (testing.fail_retry_delay_ms * details.retry)
 			ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail,
-				'${normalised_relative_file}\n${r.output.trim_space()}${ending_newline}',
+				'${normalised_relative_file}\n      comp_cmd: ${cmd}\n       run_cmd: ${run_cmd}\nfailure output:\n${full_failure_output}',
 				cmd_duration,
 				preparation: compile_cmd_duration
 			), cmd_duration, mtc)
