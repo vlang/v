@@ -274,7 +274,8 @@ fn init_os_args(argc int, argv &&u8) []string {
 }
 
 // ls returns ![]string of the files and folders in the given `path` ( os.ls uses C.readdir ). It includes symbolic links. See also: `os.is_dir`, `os.is_file`
-// Example: ```
+// Example: https://github.com/vlang/v/blob/master/examples/readdir.v
+// ```
 //   entries := os.ls(os.home_dir()) or { [] }
 //   for entry in entries {
 //     if os.is_dir(os.join_path(os.home_dir(), entry)) {
