@@ -6986,7 +6986,7 @@ It keeps all the accumulated state (from locals outside the @[live] functions,
 from heap variables and from globals), allowing to tweak the code in the merged functions quickly.
 
 When there are more substantial changes (to data structures, or to functions that were not marked),
-you will have to retart the running app manually.
+you will have to restart the running app manually.
 
 ### Cross-platform shell scripts in V
 
