@@ -69,7 +69,8 @@ enum Test {
 }
 
 fn test_flagged_enum_from_0_and_empty_string() {
-	z := Test.zero()
+	mut z := Test.first
+	z.clear_all()
 	dump(z)
 	//
 	x := Test.from(0)!
