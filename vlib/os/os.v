@@ -608,7 +608,7 @@ pub fn join_path_single(base string, elem string) string {
 }
 
 // walk_ext returns a recursive list of all files in `path` ending with `ext`.
-// For listing only one level deep, See: `os.ls`
+// For listing only one level deep, see: `os.ls`
 pub fn walk_ext(path string, ext string) []string {
 	mut res := []string{}
 	impl_walk_ext(path, ext, mut res)
@@ -638,7 +638,7 @@ fn impl_walk_ext(path string, ext string, mut out []string) {
 // When a file is encountered, it will call the callback `f` with current file as argument.
 // Note: walk can be called even for deeply nested folders,
 // since it does not recurse, but processes them iteratively.
-// For listing only one level deep, See: `os.ls`
+// For listing only one level deep, see: `os.ls`
 pub fn walk(path string, f fn (string)) {
 	if path.len == 0 {
 		return
@@ -676,7 +676,7 @@ pub type FnWalkContextCB = fn (voidptr, string)
 // and the path to the file in its second parameter.
 // Note: walk_with_context can be called even for deeply nested folders,
 // since it does not recurse, but processes them iteratively.
-// For listing only one level deep, See: `os.ls`
+// For listing only one level deep, see: `os.ls`
 pub fn walk_with_context(path string, context voidptr, fcb FnWalkContextCB) {
 	if path.len == 0 {
 		return
