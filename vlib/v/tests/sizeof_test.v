@@ -25,6 +25,6 @@ fn test_sizeof() {
 	assert sizeof(flag.Flag) > 4
 
 	assert sizeof(c'hello') == 6
-	assert sizeof(r'hello') == 16
-	assert sizeof('hello') == 16
+	assert sizeof(r'hello') == $if x64 { 16 } $else { 12 }
+	assert sizeof('hello') == $if x64 { 16 } $else { 12 }
 }
