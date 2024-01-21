@@ -243,7 +243,7 @@ fn test_zstd_stream() {
 // extra compression parameters can be set by `params`
 // WARNING: Because struct padding, some data in struct may be marked unused.
 // So, when `store_array`, it will cause memory fsanitize fail with 'use-of-uninitialized-value'.
-// It can be safely ignore. 
+// It can be safely ignored.
 // For example, following struct may cause memory fsanitize fail:
 // struct MemoryTrace {
 // 	operation u8
