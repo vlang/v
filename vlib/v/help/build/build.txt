@@ -20,7 +20,7 @@ named after the build target. ('v abc.v' and 'v abc/' both write either 'abc' or
 The '.exe' suffix is added automatically, when writing a Windows executable.
 By default, the executable is stored in the same directory as the compiled source code.
 
-The -o flag forces V to write the resulting executable or object to the d output file or directory,
+The -o flag forces V to write the resulting executable or object to the output file or directory,
 instead of the default behavior described in the last two paragraphs.
 
 You can put common options inside an environment variable named VFLAGS, so that
