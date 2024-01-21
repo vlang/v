@@ -2058,6 +2058,15 @@ for i in 0 .. 5 {
 `low..high` means an *exclusive* range, which represents all values
 from `low` up to *but not including* `high`.
 
+> [!NOTE]
+> This exclusive range notation and zero-based indexing follow principles of
+logical consistency and error reduction. As Edsger W. Dijkstra outlines in
+'Why Numbering Should Start at Zero' ([EWD831](https://www.cs.utexas.edu/users/EWD/transcriptions/EWD08xx/EWD831.html)), zero-based indexing aligns the 
+index with the preceding elements in a sequence, simplifying handling and 
+minimizing errors, especially with adjacent subsequences. This logical and 
+efficient approach shapes our language design, emphasizing clarity and reducing 
+confusion in programming.
+
 #### Condition `for`
 
 ```v
