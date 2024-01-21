@@ -1,6 +1,6 @@
 # Cross-Site Request Forgery (CSRF) protection
 
-This module implements the [double submit cookie][owasp] technique to protect routes 
+This module implements the [double submit cookie][owasp] technique to protect routes
 from CSRF attacks.
 
 CSRF is a type of attack that occurs when a malicious program/website (and others) causes
@@ -17,11 +17,11 @@ isn't vulnerable to CSRF-attacks.
 
 ## Usage
 
-You can add `CsrfApp` to your own `App` struct to have the functions available 
-in your app's context, or you can use it with the middleware of vweb. 
+You can add `CsrfApp` to your own `App` struct to have the functions available
+in your app's context, or you can use it with the middleware of vweb.
 
 The advantage of the middleware approach is that you have to define
-the configuration separate from your `App`. This makes it possible to share the 
+the configuration separate from your `App`. This makes it possible to share the
 configuration between modules or controllers.
 
 ### Usage with the CsrfApp
@@ -143,7 +143,7 @@ index.html (the hidden input has changed)
 ```
 
 ### Protect all routes
-It is possible to protect all routes against CSRF-attacks. Every request that is not 
+It is possible to protect all routes against CSRF-attacks. Every request that is not
 defined as a [safe method](#safe-methods) (`GET`, `OPTIONS`, `HEAD` by default)
 will have CSRF-protection.
 
@@ -157,10 +157,10 @@ pub fn (mut app App) before_request() {
 ```
 
 ## How it works
-This module implements the [double submit cookie][owasp] technique: a random token 
+This module implements the [double submit cookie][owasp] technique: a random token
 is generated, the CSRF-token. The hmac of this token and the secret key is stored in a cookie.
 
-When a request is made, the CSRF-token should be placed inside a HTML form element. 
+When a request is made, the CSRF-token should be placed inside a HTML form element.
 The CSRF-token the hmac of the CSRF-token in the formdata is compared to the cookie.
 If the values match, the request is accepted.
 
@@ -175,14 +175,14 @@ This is a high level overview of the implementation.
 ## Security Considerations
 
 ### The secret key
-The secret key should be a random string that is not easily guessable. 
+The secret key should be a random string that is not easily guessable.
 The recommended size is 64 bytes.
 
 ### Sessions
 If your app supports some kind of user sessions, it is recommended to cryptographically
 bind the CSRF-token to the users' session. You can do that by providing the name
 of the session ID cookie. If an attacker changes the session ID in the cookie, in the
-token or both the hmac will be different adn the request will be rejected.
+token or both the hmac will be different and the request will be rejected.
 
 **Example**:
 ```v ignore
@@ -193,7 +193,7 @@ csrf_config = csrf.CsrfConfig{
 ```
 
 ### Safe Methods
-The HTTP methods `GET`, `OPTIONS`, `HEAD` are considered 
+The HTTP methods `GET`, `OPTIONS`, `HEAD` are considered
 [safe methods][mozilla-safe-methods] meaning they should not alter the state of
 an application. If a request with a "safe method" is made, the csrf protection will be skipped.
 
@@ -219,12 +219,12 @@ config := csrf.CsrfConfig{
 ```
 
 #### Referer, Origin header check
-In some cases (like if your server is behind a proxy), the Origin or Referer header will 
-not be present. If that is your case you can set `check_origin_and_referer` to `false`. 
+In some cases (like if your server is behind a proxy), the Origin or Referer header will
+not be present. If that is your case you can set `check_origin_and_referer` to `false`.
 Request will now be accepted when the Origin *or* Referer header is valid.
 
 ### Share csrf cookie with subdomains
-If you need to share the CSRF-token cookie with subdomains, you can set 
+If you need to share the CSRF-token cookie with subdomains, you can set
 `same_site` to `.same_site_lax_mode`.
 
 ## Configuration
