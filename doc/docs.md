@@ -177,6 +177,7 @@ by using any of the following commands in a terminal:
         * [Compile time code](#compile-time-code)
         * [Compile time types](#compile-time-types)
         * [Environment specific files](#environment-specific-files)
+	* [Debugger](#debugger)
     * [Memory-unsafe code](#memory-unsafe-code)
     * [Structs with reference fields](#structs-with-reference-fields)
     * [sizeof and __offsetof](#sizeof-and-__offsetof)
@@ -6079,6 +6080,132 @@ With the example above:
   *only* if you do NOT pass `-d customflag` to V.
 
 See also [Cross Compilation](#cross-compilation).
+
+## Debugger
+
+To use the native *V debugger*, add the `$dbg` statement to your source, where you 
+want the debugger to be invoked.
+
+```V
+fn main() {
+	a := 1
+	$dbg
+}
+```
+
+Running this V code, you will get the debugger REPL break when the execution 
+reaches the `$dbg` statement.
+
+```
+$ v run example.v
+Break on [main] main in example.v:3
+example.v:3 vdbg> 
+```
+
+At this point, execution is halted, and the debugger is now available.
+
+To see the available commands, type 
+?, h or help. (Completion for commands works - Non-Windows only)
+
+```
+example.v:3 vdbg> ?
+vdbg commands:
+  anon?                 check if the current context is anon
+  bt                    prints a backtrace
+  c, continue           continue debugging
+  generic?              check if the current context is generic
+  heap                  show heap memory usage
+  h, help, ?            show this help
+  l, list [lines]       show some lines from current break (default: 3)
+  mem, memory           show memory usage
+  method?               check if the current context is a method
+  m, mod                show current module name
+  p, print <var>        prints an variable
+  q, quit               exits debugging session in the code
+  scope                 show the vars in the current scope
+  u, unwatch <var>      unwatches a variable
+  w, watch <var>        watches a variable
+```
+
+Lets try the `scope` command, to inspect the current scope context.
+
+```
+example.v:3 vdbg> scope
+a = 1 (int)
+```
+
+Cool! We have the variable name, its value and its type name.
+
+What about printing only a variable, not the whole scope?
+
+Just type `p a`.
+
+To watch a variable by its name, use:
+
+`w a` (where `a` is the variable name)
+
+To stop watching the variable (`unwatch` it), use `u a`.
+
+Lets see more one example:
+
+```
+fn main() {
+	for i := 0; i < 4; i++ {
+		$dbg
+	}
+}
+```
+
+Running again, we'll get:
+`Break on [main] main in example.v:3`
+
+If we want to read the source code context, we can use the `l` or `list` command.
+
+```
+example.v:3 vdbg> l
+0001  fn main() {
+0002    for i := 0; i < 4; i++ {
+0003>           $dbg
+0004    }
+0005  }
+```
+
+The default is read 3 lines before and 3 lines after, but you can 
+pass a parameter to the command to read more lines, like `l 5`.
+
+Now, lets watch the variable changing on this loop.
+
+```
+example.v:3 vdbg> w i
+i = 0 (int)
+```
+
+To continue to the next breakpoint, type `c` or `continue` command.
+
+```
+example.v:3 vdbg> c
+Break on [main] main in example.v:3
+i = 1 (int)
+```
+
+`i` and it's value is automatically printed, because it is in the watch list.
+
+To repeat the last command issued, in this case the `c` command, 
+just hit the *enter* key.
+
+```
+example.v:3 vdbg> 
+Break on [main] main in example.v:3
+i = 2 (int)
+example.v:3 vdbg> 
+Break on [main] main in example.v:3
+i = 3 (int)
+example.v:3 vdbg>
+```
+
+You can also see memory usage with `mem` or `memory` command, and
+check if the current context is an anon function (`anon?`), a method (`method?`) 
+or a generic method (`generic?`).
 
 ## Memory-unsafe code
 
