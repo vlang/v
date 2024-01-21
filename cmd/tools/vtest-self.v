@@ -345,6 +345,7 @@ fn main() {
 	all_test_files << os.walk_ext(os.join_path(vroot, 'cmd'), '_test.v')
 	test_js_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.js.v')
 	all_test_files << test_js_files
+	all_test_files << os.walk_ext(os.join_path(vroot, 'vlib'), '_test.c.v')
 
 	if just_essential {
 		rooted_essential_list := essential_list.map(os.join_path(vroot, it))
