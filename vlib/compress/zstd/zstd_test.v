@@ -81,31 +81,31 @@ fn test_zstd_deferent_strategy() {
 	assert decompressed_dfast == uncompressed.bytes()
 
 	compressed_greedy := compress(uncompressed.bytes(), strategy: .zstd_greedy)!
-	decompressed_greedy := decompress(compressed_dfast)!
+	decompressed_greedy := decompress(compressed_greedy)!
 	assert decompressed_greedy == uncompressed.bytes()
 
 	compressed_lazy := compress(uncompressed.bytes(), strategy: .zstd_lazy)!
-	decompressed_lazy := decompress(compressed_dfast)!
+	decompressed_lazy := decompress(compressed_lazy)!
 	assert decompressed_lazy == uncompressed.bytes()
 
 	compressed_lazy2 := compress(uncompressed.bytes(), strategy: .zstd_lazy2)!
-	decompressed_lazy2 := decompress(compressed_dfast)!
+	decompressed_lazy2 := decompress(compressed_lazy2)!
 	assert decompressed_lazy2 == uncompressed.bytes()
 
 	compressed_btlazy2 := compress(uncompressed.bytes(), strategy: .zstd_btlazy2)!
-	decompressed_btlazy2 := decompress(compressed_dfast)!
+	decompressed_btlazy2 := decompress(compressed_btlazy2)!
 	assert decompressed_btlazy2 == uncompressed.bytes()
 
 	compressed_btopt := compress(uncompressed.bytes(), strategy: .zstd_btopt)!
-	decompressed_btopt := decompress(compressed_dfast)!
+	decompressed_btopt := decompress(compressed_btopt)!
 	assert decompressed_btopt == uncompressed.bytes()
 
 	compressed_btultra := compress(uncompressed.bytes(), strategy: .zstd_btultra)!
-	decompressed_btultra := decompress(compressed_dfast)!
+	decompressed_btultra := decompress(compressed_btultra)!
 	assert decompressed_btultra == uncompressed.bytes()
 
 	compressed_btultra2 := compress(uncompressed.bytes(), strategy: .zstd_btultra2)!
-	decompressed_btultra2 := decompress(compressed_dfast)!
+	decompressed_btultra2 := decompress(compressed_btultra2)!
 	assert decompressed_btultra2 == uncompressed.bytes()
 }
 
@@ -239,10 +239,27 @@ fn test_zstd_stream() {
 	os.rm(s('tmp_file.zst'))!
 }
 
+// store_array compress an `array`'s data, and store it to file `fname`.
+// extra compression parameters can be set by `params`
+// WARNING: Because struct padding, some data in struct may be marked unused.
+// So, when `store_array`, it will cause memory fsanitize fail with 'use-of-uninitialized-value'.
+// It can be safely ignore. 
+// For example, following struct may cause memory fsanitize fail:
+// struct MemoryTrace {
+// 	operation u8
+// 	address   u64
+// 	size      u8
+// }
+// By changing it into following , you can pass the memory fsanitize check :
+// struct MemoryTrace {
+// 	operation u64
+// 	address   u64
+// 	size      u64
+// }
 struct MemoryTrace {
-	operation u8
+	operation u64
 	address   u64
-	size      u8
+	size      u64
 }
 
 fn store_array_test(fname string) ! {

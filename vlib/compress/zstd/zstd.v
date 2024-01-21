@@ -518,6 +518,21 @@ pub fn (mut u ZSTD_DCtx) free_dctx() usize {
 
 // store_array compress an `array`'s data, and store it to file `fname`.
 // extra compression parameters can be set by `params`
+// WARNING: Because struct padding, some data in struct may be marked unused.
+// So, when `store_array`, it will cause memory fsanitize fail with 'use-of-uninitialized-value'.
+// It can be safely ignore. 
+// For example, following struct may cause memory fsanitize fail:
+// struct MemoryTrace {
+// 	operation u8
+// 	address   u64
+// 	size      u8
+// }
+// By changing it into following , you can pass the memory fsanitize check :
+// struct MemoryTrace {
+// 	operation u64
+// 	address   u64
+// 	size      u64
+// }
 pub fn store_array[T](fname string, array []T, params CompressParams) ! {
 	mut fout := os.open_file(fname, 'wb')!
 	mut cctx := new_cctx(params)!
