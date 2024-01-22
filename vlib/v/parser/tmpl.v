@@ -173,7 +173,7 @@ fn vweb_tmpl_${fn_name}() string {
 				s := '@include '
 				position := line.index(s) or { 0 }
 				p.error_with_error(errors.Error{
-					message: "path for @include must be quoted with ' or \""
+					message: 'path for @include must be quoted with \' or "'
 					file_path: template_file
 					pos: token.Pos{
 						len: s.len
