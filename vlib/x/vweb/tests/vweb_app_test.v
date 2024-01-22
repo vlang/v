@@ -32,7 +32,7 @@ fn test_a_vweb_application_compiles() {
 		exit(0)
 	}()
 	mut app := &App{}
-	spawn vweb.run_at[App, Context](mut app, port: port, family: .ip, timeout_in_seconds: 2)!
+	spawn vweb.run_at[App, Context](mut app, port: port, family: .ip, timeout_in_seconds: 2)
 	// app startup time
 	_ := <-app.started
 }

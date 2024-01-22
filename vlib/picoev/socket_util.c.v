@@ -110,7 +110,11 @@ fn listen(config Config) int {
 
 	// Setting flags for socket
 	flag := 1
+	flag_zero := 0
 	assert C.setsockopt(fd, C.SOL_SOCKET, C.SO_REUSEADDR, &flag, sizeof(int)) == 0
+	// set socket to dualstack so connections to both ipv4 and ipv6 addresses
+	// can be accepted
+	assert C.setsockopt(fd, C.IPPROTO_IPV6, C.IPV6_V6ONLY, &flag_zero, sizeof(int)) == 0
 
 	$if linux {
 		// epoll socket options
