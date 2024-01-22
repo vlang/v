@@ -2017,6 +2017,9 @@ fn (mut p Parser) check_for_impure_v(language ast.Language, pos token.Pos) {
 	}
 	if p.file_backend_mode != language {
 		if p.file_backend_mode == .v {
+			if p.pref.is_bare {
+				return
+			}
 			p.language_not_allowed_warning(language, pos)
 			return
 		}
