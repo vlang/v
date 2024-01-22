@@ -82,12 +82,15 @@ fn event(e &tui.Event, mut app App) {
 	}
 }
 
+type EventFn = fn (&tui.Event, voidptr)
+type FrameFn = fn (voidptr)
+
 fn main() {
 	mut app := &App{}
 	app.tui = tui.init(
 		user_data: app
-		frame_fn: frame
-		event_fn: event
+		frame_fn: FrameFn(frame)
+		event_fn: EventFn(event)
 		hide_cursor: true
 	)
 	app.tui.run()!
