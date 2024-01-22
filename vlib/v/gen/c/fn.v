@@ -323,7 +323,11 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	if node.params.len == 0 {
 		g.definitions.write_string('void')
 	}
-	g.definitions.writeln(');')
+	if attr := node.attrs.find_first('linker_section') {
+		g.definitions.writeln(') __attribute__ ((section ("${attr.arg}")));')
+	} else {
+		g.definitions.writeln(');')
+	}
 	g.writeln(') {')
 	if is_closure {
 		g.writeln('${cur_closure_ctx}* ${c.closure_ctx} = __CLOSURE_GET_DATA();')
