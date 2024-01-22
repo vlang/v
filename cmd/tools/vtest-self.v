@@ -321,6 +321,8 @@ const skip_on_non_amd64_or_arm64 = [
 	'do_not_remove',
 	// closures aren't implemented yet:
 	'vlib/v/tests/closure_test.v',
+	// native aren't implemented:
+	'vlib/v/gen/native/tests/native_test.v',
 	'vlib/context/cancel_test.v',
 	'vlib/context/deadline_test.v',
 	'vlib/context/empty_test.v',
@@ -345,6 +347,7 @@ fn main() {
 	all_test_files << os.walk_ext(os.join_path(vroot, 'cmd'), '_test.v')
 	test_js_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.js.v')
 	all_test_files << test_js_files
+	all_test_files << os.walk_ext(os.join_path(vroot, 'vlib'), '_test.c.v')
 
 	if just_essential {
 		rooted_essential_list := essential_list.map(os.join_path(vroot, it))
@@ -436,7 +439,7 @@ fn main() {
 		tsession.skip_files << skip_on_ubuntu_musl
 	}
 	$if !amd64 && !arm64 {
-		tsession.skip_files << skip_on_non_amd64
+		tsession.skip_files << skip_on_non_amd64_or_arm64
 	}
 	$if amd64 {
 		tsession.skip_files << skip_on_amd64
