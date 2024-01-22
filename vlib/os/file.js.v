@@ -86,7 +86,7 @@ pub fn (f &File) read(mut buf []u8) !int {
 	#try {
 	#let buffer = $fs.readFileSync(f.val.fd.valueOf());
 	#
-	#for (const val of buffer.values()) { buf.arr[nbytes++] = val; }
+	#for (const val of buffer.values()) { buf.val.arr.arr[nbytes++] = new u8(val); }
 	#}
 	#catch (e) { return error('' + e); }
 
