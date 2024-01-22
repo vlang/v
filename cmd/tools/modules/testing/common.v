@@ -45,6 +45,12 @@ pub const all_processes = get_all_processes()
 pub const header_bytes_to_search_for_module_main = 500
 pub const separator = '-'.repeat(100)
 
+pub const max_compilation_retries = get_max_compilation_retries()
+
+fn get_max_compilation_retries() int {
+	return os.getenv_opt('VTEST_MAX_COMPILATION_RETRIES') or { '3' }.int()
+}
+
 fn get_fail_retry_delay_ms() time.Duration {
 	return os.getenv_opt('VTEST_FAIL_RETRY_DELAY_MS') or { '500' }.int() * time.millisecond
 }
@@ -589,8 +595,16 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 		ts.append_message(.compile_begin, cmd, mtc)
 		compile_d_cmd := time.new_stopwatch()
-		mut compile_r := os.execute(cmd)
-		compile_cmd_duration = compile_d_cmd.elapsed()
+		mut compile_r := os.Result{}
+		for cretry in 0 .. testing.max_compilation_retries {
+			compile_r = os.execute(cmd)
+			compile_cmd_duration = compile_d_cmd.elapsed()
+			// eprintln('>>>> cretry: $cretry | compile_r.exit_code: $compile_r.exit_code | compile_cmd_duration: ${compile_cmd_duration:8} | file: $normalised_relative_file')
+			if compile_r.exit_code == 0 {
+				break
+			}
+			random_sleep_ms(50, 100)
+		}
 		ts.append_message_with_duration(.compile_end, compile_r.output, compile_cmd_duration,
 			mtc)
 		if compile_r.exit_code != 0 {
@@ -837,4 +851,8 @@ pub fn eheader(msg string) {
 pub fn header(msg string) {
 	println(term.header_left(msg, '-'))
 	flush_stdout()
+}
+
+fn random_sleep_ms(min_ms int, random_add_ms int) {
+	time.sleep((100 + rand.intn(100) or { 0 }) * time.millisecond)
 }
