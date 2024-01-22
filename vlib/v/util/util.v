@@ -211,11 +211,13 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 			tlog('another process got the lock')
 			// wait till the other V tool recompilation process finished:
 			if l.wait_acquire(10 * time.second) {
+				tlog('the other process finished')
 				l.release()
 			} else {
 				tlog('timeout...')
 			}
-			tlog('the other process finished')
+			time.sleep((50 + rand.intn(40) or { 0 }) * time.millisecond)
+			tlog('result of the other process compiling ${tool_exe}: ${os.exists(tool_exe)}')
 		}
 	}
 	tlog('executing: ${tool_exe} with ${tool_args}')
