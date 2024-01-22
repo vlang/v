@@ -274,7 +274,7 @@ pub fn (mut d Debugger) interact(info DebugContextInfo) ! {
 					}
 				}
 			}
-			'cls', 'clear' {
+			'clear' {
 				term.erase_clear()
 			}
 			'' {
