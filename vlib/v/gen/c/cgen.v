@@ -6185,6 +6185,9 @@ fn (mut g Gen) write_init_function() {
 		}
 		g.writeln('void _vinit_caller() {')
 		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
+		if g.nr_closures > 0 {
+			g.writeln('\t__closure_init(); // vinit_caller()')
+		}
 		g.writeln('\t_vinit(0,0);')
 		g.writeln('}')
 
