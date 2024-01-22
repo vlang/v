@@ -215,8 +215,10 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 @[noreturn]
 fn cmd_system(cmd string) {
 	res := os.system(cmd)
-	if res != 0 {
-		eprintln('> error ${res}, while executing: ${cmd}')
+	$if trace_cmd_system_error ? {
+		if res != 0 {
+			eprintln('> error ${res}, while executing: ${cmd}')
+		}
 	}
 	exit(res)
 }
