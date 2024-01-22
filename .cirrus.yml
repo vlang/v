@@ -2,7 +2,7 @@ env:
   LANG: en_US.UTF-8
 
 freebsd_instance:
-  image_family: freebsd-13-0
+  image_family: freebsd-13-2
 
 ## Note: all tasks should end with _script: here, otherwise they will not be picked up!
 freebsd_task:
