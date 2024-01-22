@@ -1956,14 +1956,20 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 		if ret_typ.has_flag(.generic) {
 			if expr is ast.SelectorExpr && g.cur_concrete_types.len == 0 {
 				// resolve generic struct on selectorExpr inside non-generic function
-				if expr.expr is ast.Ident && expr.expr.obj is ast.Var {
-					if (expr.expr.obj as ast.Var).expr is ast.StructInit {
-						g.cur_concrete_types << (g.table.sym(expr.expr.obj.typ).info as ast.Struct).concrete_types
+				if expr.expr is ast.Ident {
+					if expr.expr.obj is ast.Var {
+						if expr.expr.obj.expr is ast.StructInit {
+							struct_info := g.table.sym(expr.expr.obj.typ).info
+							if struct_info is ast.Struct {
+								g.cur_concrete_types << struct_info.concrete_types
+							}
+						}
 					}
 				}
 			}
-			styp = g.base_type(g.unwrap_generic(ret_typ))
-			ret_styp := g.typ(g.unwrap_generic(ret_typ)).replace('*', '_ptr')
+			unwrapped_ret_typ := g.unwrap_generic(ret_typ)
+			styp = g.base_type(unwrapped_ret_typ)
+			ret_styp := g.typ(unwrapped_ret_typ).replace('*', '_ptr')
 			g.writeln('${ret_styp} ${tmp_var};')
 		} else {
 			g.writeln('${g.typ(ret_typ)} ${tmp_var};')
