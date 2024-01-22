@@ -320,7 +320,7 @@ pub fn run_at[A, X](mut global_app A, params RunParams) ! {
 		timeout_secs: params.timeout_in_seconds
 		family: params.family
 		host: params.host
-	)
+	)!
 
 	$if A is BeforeAcceptApp {
 		global_app.before_accept_loop()
