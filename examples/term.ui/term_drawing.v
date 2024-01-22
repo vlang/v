@@ -110,6 +110,7 @@ mut:
 }
 
 type EventFn = fn (&ui.Event, voidptr)
+
 type FrameFn = fn (voidptr)
 
 fn main() {

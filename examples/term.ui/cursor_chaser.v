@@ -83,6 +83,7 @@ fn event(e &tui.Event, mut app App) {
 }
 
 type EventFn = fn (&tui.Event, voidptr)
+
 type FrameFn = fn (voidptr)
 
 fn main() {

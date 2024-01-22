@@ -457,7 +457,9 @@ fn (mut a App) draw_gameover() {
 }
 
 type InitFn = fn (voidptr)
+
 type EventFn = fn (&termui.Event, voidptr)
+
 type FrameFn = fn (voidptr)
 
 fn main() {

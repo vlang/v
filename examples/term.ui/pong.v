@@ -481,8 +481,11 @@ fn event(e &ui.Event, mut app App) {
 }
 
 type InitFn = fn (voidptr)
+
 type EventFn = fn (&ui.Event, voidptr)
+
 type FrameFn = fn (voidptr)
+
 type CleanupFn = fn (voidptr)
 
 fn main() {
