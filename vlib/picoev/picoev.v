@@ -68,6 +68,9 @@ pub struct Picoev {
 	max_headers  int = 100
 	max_read     int = 4096
 	max_write    int = 8192
+
+	err_cb fn (voidptr, picohttpparser.Request, mut picohttpparser.Response, IError) = default_error_callback @[deprecated: 'use `error_callback` instead']
+	raw_cb fn (mut Picoev, int, int) = unsafe { nil }                                                 @[deprecated: 'use `raw_callback` instead']
 mut:
 	loop             &LoopType = unsafe { nil }
 	file_descriptors [max_fds]&Target
@@ -94,7 +97,7 @@ pub fn (mut pv Picoev) init() {
 	}
 }
 
-// adds a file descriptor to the event loop
+// add a file descriptor to the event loop
 @[direct_array_access]
 pub fn (mut pv Picoev) add(fd int, events int, timeout int, callback voidptr) int {
 	assert fd < picoev.max_fds
@@ -115,7 +118,7 @@ pub fn (mut pv Picoev) add(fd int, events int, timeout int, callback voidptr) in
 	return 0
 }
 
-// remove a file descriptor from the event loop
+// del remove a file descriptor from the event loop
 @[deprecated: 'use remove() instead']
 @[direct_array_access]
 pub fn (mut pv Picoev) del(fd int) int {
@@ -321,7 +324,7 @@ fn default_error_callback(data voidptr, req picohttpparser.Request, mut res pico
 
 // new creates a `Picoev` struct and initializes the main loop
 pub fn new(config Config) !&Picoev {
-	listening_socket_fd := listen(config)
+	listening_socket_fd := listen(config)!
 
 	mut pv := &Picoev{
 		num_loops: 1
@@ -357,7 +360,8 @@ pub fn new(config Config) !&Picoev {
 	return pv
 }
 
-// serve starts the event loop for listening and handling connections
+// serve starts the event loop for accepting new connections
+// See also picoev.new().
 pub fn (mut pv Picoev) serve() {
 	spawn update_date(mut pv)
 

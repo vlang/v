@@ -7,8 +7,6 @@ $if windows {
 	#include <sys/select.h>
 }
 
-// Represents the select-based event loop implementation.
-// Contains an ID and a timestamp for tracking time.
 pub struct SelectLoop {
 mut:
 	id  int
