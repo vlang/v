@@ -4649,7 +4649,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 				g.write('(*(')
 			}
 			if node.obj.smartcasts.len > 0 {
-				obj_sym := g.table.sym(node.obj.typ)
+				obj_sym := g.table.sym(g.unwrap_generic(node.obj.typ))
 				if !prevent_sum_type_unwrapping_once {
 					for _, typ in node.obj.smartcasts {
 						is_option_unwrap := is_option && typ == node.obj.typ.clear_flag(.option)
@@ -4665,7 +4665,9 @@ fn (mut g Gen) ident(node ast.Ident) {
 								g.write('*')
 							}
 						} else if (g.inside_interface_deref && g.table.is_interface_var(node.obj))
-							|| node.obj.ct_type_var == .smartcast {
+							|| node.obj.ct_type_var == .smartcast
+							|| (obj_sym.kind == .interface_
+							&& g.table.type_kind(node.obj.typ) == .any) {
 							g.write('*')
 						} else if is_option {
 							g.write('*(${g.base_type(node.obj.typ)}*)')
