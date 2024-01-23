@@ -7,6 +7,7 @@ import os
 import math
 import readline
 import strings
+import term
 
 __global g_debugger = Debugger{}
 
@@ -37,6 +38,7 @@ mut:
 			'scope',
 			'unwatch',
 			'watch',
+			'clear',
 		]
 	}
 }
@@ -117,6 +119,7 @@ fn (mut d Debugger) print_help() {
 	println('  scope\t\t\tshow the vars in the current scope')
 	println('  u, unwatch <var>\tunwatches a variable')
 	println('  w, watch <var>\twatches a variable')
+	println('  clear\tClears the terminal window.')
 	flush_println('')
 }
 
@@ -270,6 +273,9 @@ pub fn (mut d Debugger) interact(info DebugContextInfo) ! {
 						info.show_variable(args, false)
 					}
 				}
+			}
+			'clear' {
+				term.erase_clear()
 			}
 			'' {
 				if is_ctrl {
