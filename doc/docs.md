@@ -6215,7 +6215,7 @@ example.v:3 vdbg>
 
 You can also see memory usage with `mem` or `memory` command, and
 check if the current context is an anon function (`anon?`), a method (`method?`) 
-or a generic method (`generic?`).
+or a generic method (`generic?`) and clear the terminal window (`clear`).
 
 ## Memory-unsafe code
 
