@@ -223,12 +223,12 @@ fn decompress_file(fname string, oname string, params DecompressParams) ! {
 // zstd stream mode test
 fn test_zstd_stream() {
 	decompress_file(s('readme_level_19.zst'), s('tmp_file1'))!
-	compress_file(s('tmp_file1'), s('tmp_file.zst'),
+	compress_file(s('tmp_file1'), s('tmp_file.zstd'),
 		compression_level: 6
 		nb_threads: 1
 		checksum_flag: true
 	)!
-	decompress_file(s('tmp_file.zst'), s('tmp_file2'))!
+	decompress_file(s('tmp_file.zstd'), s('tmp_file2'))!
 	file1 := os.read_file(s('tmp_file1'))!
 	assert file1.contains('## Acknowledgement')
 	assert file1.contains('## Troubleshooting')
@@ -236,7 +236,7 @@ fn test_zstd_stream() {
 	assert file1 == file2
 	os.rm(s('tmp_file1'))!
 	os.rm(s('tmp_file2'))!
-	os.rm(s('tmp_file.zst'))!
+	os.rm(s('tmp_file.zstd'))!
 }
 
 // store_array compress an `array`'s data, and store it to file `fname`.
@@ -285,9 +285,9 @@ fn load_array_test(fname string) ! {
 }
 
 fn test_zstd_store_load_array() {
-	store_array_test(s('mem_trace.zst'))!
-	load_array_test(s('mem_trace.zst'))!
-	os.rm(s('mem_trace.zst'))!
+	store_array_test(s('mem_trace.zstd'))!
+	load_array_test(s('mem_trace.zstd'))!
+	os.rm(s('mem_trace.zstd'))!
 }
 
 fn assert_decompress_error(data []u8, reason string) ! {
