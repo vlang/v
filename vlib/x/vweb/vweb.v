@@ -640,7 +640,7 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 	}
 }
 
-fn handle_request[A, X](mut conn net.TcpConn, req http.Request, params &RequestParams) ?Context {
+fn handle_request[A, X](mut conn net.TcpConn, req http.Request, params &RequestParams) ?&Context {
 	mut global_app := unsafe { &A(params.global_app) }
 
 	// TODO: change this variable to include the total wait time over each network cycle
@@ -672,7 +672,7 @@ fn handle_request[A, X](mut conn net.TcpConn, req http.Request, params &RequestP
 	host, _ := urllib.split_host_port(host_with_port)
 
 	// Create Context with request data
-	mut ctx := Context{
+	mut ctx := &Context{
 		req: req
 		page_gen_start: page_gen_start
 		conn: conn
@@ -699,8 +699,8 @@ fn handle_request[A, X](mut conn net.TcpConn, req http.Request, params &RequestP
 	user_context.Context = ctx
 
 	handle_route[A, X](mut global_app, mut user_context, url, host, params.routes)
-
-	return user_context.Context
+	// we need to explicitly tell the V compiler to return a reference
+	return &user_context.Context
 }
 
 fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string, routes &map[string]Route) {

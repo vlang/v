@@ -20,6 +20,7 @@ pub enum RedirectType {
 
 // The Context struct represents the Context which holds the HTTP request and response.
 // It has fields for the query, form, files and methods for handling the request and response
+@[heap]
 pub struct Context {
 mut:
 	// vweb wil try to infer the content type base on file extension,
