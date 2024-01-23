@@ -3314,19 +3314,16 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		match e {
 			0 {}
 			-3 {
-				c.error('value `${node.expr.val}` overflows `${tt}`',
-					node.pos)
+				c.error('value `${node.expr.val}` overflows `${tt}`', node.pos)
 			}
 			else {
-				c.error('cannot cast value `${node.expr.val}` to `${tt}`',
-					node.pos)
+				c.error('cannot cast value `${node.expr.val}` to `${tt}`', node.pos)
 			}
 		}
 	} else if to_type.is_float() && mut node.expr is ast.FloatLiteral {
 		tt := c.table.type_to_str(to_type)
 		strconv.atof64(node.expr.val) or {
-			c.error('cannot cast value `${node.expr.val}` to `${tt}`',
-				node.pos)
+			c.error('cannot cast value `${node.expr.val}` to `${tt}`', node.pos)
 		}
 	}
 	if from_sym.language == .v && !from_type.is_ptr()
