@@ -1,0 +1,18 @@
+struct Test {
+	a string
+}
+
+fn (t &Test) str() string {
+	return t.a
+}
+
+fn test_mut(mut b Test) {
+	$dbg;
+}
+
+fn main() {
+	mut a := Test{
+		a: 'foo'
+	}
+	test_mut(mut a)
+}

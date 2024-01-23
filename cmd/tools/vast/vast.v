@@ -440,6 +440,7 @@ fn (t Tree) stmt(node ast.Stmt) &Node {
 		ast.AsmStmt { return t.asm_stmt(node) }
 		ast.NodeError { return t.node_error(node) }
 		ast.EmptyStmt { return t.empty_stmt(node) }
+		ast.DebuggerStmt { return t.debugger_stmt(node) }
 	}
 	return t.null_node()
 }
@@ -1587,6 +1588,7 @@ fn (t Tree) struct_init(node ast.StructInit) &Node {
 	obj.add('pos', t.pos(node.pos))
 	obj.add('name_pos', t.pos(node.name_pos))
 	obj.add('update_expr_comments', t.array_node_comment(node.update_expr_comments))
+	obj.add('update_expr_pos', t.pos(node.update_expr_pos))
 	obj.add_terse('init_fields', t.array_node_struct_init_field(node.init_fields))
 	obj.add('pre_comments', t.array_node_comment(node.pre_comments))
 	return obj
@@ -1640,9 +1642,13 @@ fn (t Tree) map_init(node ast.MapInit) &Node {
 	obj.add_terse('keys', t.array_node_expr(node.keys))
 	obj.add_terse('vals', t.array_node_expr(node.vals))
 	obj.add_terse('val_types', t.array_node_type(node.val_types))
-	obj.add('comments', t.two_dimension_comment(node.comments))
-	obj.add('pre_cmnts', t.array_node_comment(node.pre_cmnts))
+	obj.add_terse('has_update_expr', t.bool_node(node.has_update_expr))
+	obj.add_terse('update_expr', t.expr(node.update_expr))
 	obj.add('pos', t.pos(node.pos))
+	obj.add('pre_cmnts', t.array_node_comment(node.pre_cmnts))
+	obj.add('comments', t.two_dimension_comment(node.comments))
+	obj.add('update_expr_comments', t.array_node_comment(node.update_expr_comments))
+	obj.add('update_expr_pos', t.pos(node.update_expr_pos))
 	return obj
 }
 
@@ -1923,6 +1929,13 @@ fn (t Tree) empty_expr(expr ast.EmptyExpr) &Node {
 fn (t Tree) empty_stmt(node ast.EmptyStmt) &Node {
 	mut obj := new_object()
 	obj.add_terse('ast_type', t.string_node('EmptyStmt'))
+	obj.add('pos', t.pos(node.pos))
+	return obj
+}
+
+fn (t Tree) debugger_stmt(node ast.DebuggerStmt) &Node {
+	mut obj := new_object()
+	obj.add_terse('ast_type', t.string_node('DebuggerStmt'))
 	obj.add('pos', t.pos(node.pos))
 	return obj
 }

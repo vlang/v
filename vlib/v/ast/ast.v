@@ -79,6 +79,7 @@ pub type Stmt = AsmStmt
 	| BranchStmt
 	| ComptimeFor
 	| ConstDecl
+	| DebuggerStmt
 	| DeferStmt
 	| EmptyStmt
 	| EnumDecl
@@ -1332,7 +1333,8 @@ pub mut:
 // enum field in enum declaration
 pub struct EnumField {
 pub:
-	name          string
+	name          string // just `lock`, or `abc`, etc, no matter if the name is a keyword or not.
+	source_name   string // The name in the source, for example `@lock`, and `abc`. Note that `lock` is a keyword in V.
 	pos           token.Pos
 	comments      []Comment // comment after Enumfield in the same line
 	next_comments []Comment // comments between current EnumField and next EnumField
@@ -1502,12 +1504,16 @@ pub:
 	comments  [][]Comment // comments after key-value pairs
 	pre_cmnts []Comment   // comments before the first key-value pair
 pub mut:
-	keys       []Expr
-	vals       []Expr
-	val_types  []Type
-	typ        Type
-	key_type   Type
-	value_type Type
+	keys                 []Expr
+	vals                 []Expr
+	val_types            []Type
+	typ                  Type
+	key_type             Type
+	value_type           Type
+	has_update_expr      bool // has `...a`
+	update_expr          Expr // `a` in `...a`
+	update_expr_pos      token.Pos
+	update_expr_comments []Comment
 }
 
 // s[10..20]
@@ -1715,6 +1721,11 @@ pub const riscv_with_number_register_list = {
 	't#': 3
 	's#': 12
 	'a#': 8
+}
+
+pub struct DebuggerStmt {
+pub:
+	pos token.Pos
 }
 
 // `assert a == 0, 'a is zero'`

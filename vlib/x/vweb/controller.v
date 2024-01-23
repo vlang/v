@@ -2,7 +2,7 @@ module vweb
 
 import net.urllib
 
-type ControllerHandler = fn (ctx Context, mut url urllib.URL, host string) Context
+type ControllerHandler = fn (ctx &Context, mut url urllib.URL, host string) &Context
 
 pub struct ControllerPath {
 pub:
@@ -35,7 +35,7 @@ pub fn controller[A, X](path string, mut global_app A) !&ControllerPath {
 	// no need to type `ControllerHandler` as generic since it's not needed for closures
 	return &ControllerPath{
 		path: path
-		handler: fn [mut global_app, path, routes, controllers_sorted] [A, X](ctx Context, mut url urllib.URL, host string) Context {
+		handler: fn [mut global_app, path, routes, controllers_sorted] [A, X](ctx &Context, mut url urllib.URL, host string) &Context {
 			// transform the url
 			url.path = url.path.all_after_first(path)
 
@@ -53,7 +53,8 @@ pub fn controller[A, X](path string, mut global_app A) !&ControllerPath {
 			user_context.Context = ctx
 
 			handle_route[A, X](mut global_app, mut user_context, url, host, &routes)
-			return user_context.Context
+			// we need to explicitly tell the V compiler to return a reference
+			return &user_context.Context
 		}
 	}
 }
@@ -95,7 +96,7 @@ fn check_duplicate_routes_in_controllers[T](global_app &T, routes map[string]Rou
 	return controllers_sorted
 }
 
-fn handle_controllers[X](controllers []&ControllerPath, ctx Context, mut url urllib.URL, host string) ?Context {
+fn handle_controllers[X](controllers []&ControllerPath, ctx &Context, mut url urllib.URL, host string) ?&Context {
 	for controller in controllers {
 		// skip controller if the hosts don't match
 		if controller.host != '' && host != controller.host {

@@ -240,10 +240,10 @@ mut:
 	/////////
 	// out_parallel []strings.Builder
 	// out_idx      int
-	out_fn_start_pos []int  // for generating multiple .c files, stores locations of all fn positions in `out` string builder
-	static_modifier  string // for parallel_cc
-
-	has_reflection       bool
+	out_fn_start_pos     []int  // for generating multiple .c files, stores locations of all fn positions in `out` string builder
+	static_modifier      string // for parallel_cc
+	has_reflection       bool   // v.reflection has been imported
+	has_debugger         bool   // $dbg has been used in the code
 	reflection_strings   &map[string]int
 	defer_return_tmp_var string
 	vweb_filter_fn_name  string // vweb__filter or x__vweb__filter, used by $vweb.html() for escaping strings in the templates, depending on which `vweb` import is used
@@ -319,6 +319,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) (string
 			|| pref_.os in [.wasm32, .wasm32_emscripten])
 		static_modifier: if pref_.parallel_cc { 'static' } else { '' }
 		has_reflection: 'v.reflection' in table.modules
+		has_debugger: 'v.debug' in table.modules
 		reflection_strings: &reflection_strings
 	}
 
@@ -687,6 +688,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		is_cc_msvc: global_g.is_cc_msvc
 		use_segfault_handler: global_g.use_segfault_handler
 		has_reflection: 'v.reflection' in global_g.table.modules
+		has_debugger: 'v.debug' in global_g.table.modules
 		reflection_strings: global_g.reflection_strings
 	}
 	g.comptime = &comptime.ComptimeInfo{
@@ -1954,14 +1956,20 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 		if ret_typ.has_flag(.generic) {
 			if expr is ast.SelectorExpr && g.cur_concrete_types.len == 0 {
 				// resolve generic struct on selectorExpr inside non-generic function
-				if expr.expr is ast.Ident && expr.expr.obj is ast.Var {
-					if (expr.expr.obj as ast.Var).expr is ast.StructInit {
-						g.cur_concrete_types << (g.table.sym(expr.expr.obj.typ).info as ast.Struct).concrete_types
+				if expr.expr is ast.Ident {
+					if expr.expr.obj is ast.Var {
+						if expr.expr.obj.expr is ast.StructInit {
+							struct_info := g.table.sym(expr.expr.obj.typ).info
+							if struct_info is ast.Struct {
+								g.cur_concrete_types << struct_info.concrete_types
+							}
+						}
 					}
 				}
 			}
-			styp = g.base_type(g.unwrap_generic(ret_typ))
-			ret_styp := g.typ(g.unwrap_generic(ret_typ)).replace('*', '_ptr')
+			unwrapped_ret_typ := g.unwrap_generic(ret_typ)
+			styp = g.base_type(unwrapped_ret_typ)
+			ret_styp := g.typ(unwrapped_ret_typ).replace('*', '_ptr')
 			g.writeln('${ret_styp} ${tmp_var};')
 		} else {
 			g.writeln('${g.typ(ret_typ)} ${tmp_var};')
@@ -2070,6 +2078,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.ComptimeFor {
 			g.comptime_for(node)
+		}
+		ast.DebuggerStmt {
+			g.debugger_stmt(node)
 		}
 		ast.DeferStmt {
 			mut defer_stmt := node
@@ -3910,6 +3921,146 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 }
 
+// debugger_stmt writes the call to V debugger REPL
+fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
+	paline, pafile, pamod, pafn := g.panic_debug_info(node.pos)
+	is_anon := g.cur_fn != unsafe { nil } && g.cur_fn.is_anon
+	is_generic := g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0
+	is_method := g.cur_fn != unsafe { nil } && g.cur_fn.is_method
+	receiver_type := if g.cur_fn != unsafe { nil } && g.cur_fn.is_method {
+		g.table.type_to_str(g.cur_fn.receiver.typ)
+	} else {
+		''
+	}
+	scope_vars := g.file.scope.innermost(node.pos.pos).get_all_vars()
+
+	// prepares the map containing the scope variable infos
+	mut vars := []string{}
+	mut keys := strings.new_builder(100)
+	mut values := strings.new_builder(100)
+	mut count := 1
+	for _, obj in scope_vars {
+		if obj.name !in vars {
+			if obj is ast.Var && obj.pos.pos < node.pos.pos {
+				keys.write_string('_SLIT("${obj.name}")')
+				var_typ := if obj.ct_type_var != .no_comptime {
+					g.comptime.get_comptime_var_type(ast.Ident{ obj: obj })
+				} else if obj.smartcasts.len > 0 {
+					obj.smartcasts.last()
+				} else {
+					obj.typ
+				}
+				values.write_string('{.typ=_SLIT("${g.table.type_to_str(g.unwrap_generic(var_typ))}"),.value=')
+				obj_sym := g.table.sym(obj.typ)
+				cast_sym := g.table.sym(var_typ)
+
+				mut param_var := strings.new_builder(50)
+				if obj.smartcasts.len > 0 {
+					is_option_unwrap := obj.typ.has_flag(.option)
+						&& var_typ == obj.typ.clear_flag(.option)
+					is_option := obj.typ.has_flag(.option)
+					mut opt_cast := false
+					mut func := if cast_sym.info is ast.Aggregate {
+						''
+					} else {
+						g.get_str_fn(var_typ)
+					}
+
+					param_var.write_string('(')
+					if obj_sym.kind == .sum_type && !obj.is_auto_heap {
+						if is_option {
+							if !is_option_unwrap {
+								param_var.write_string('*(')
+							}
+							styp := g.base_type(obj.typ)
+							param_var.write_string('*(${styp}*)')
+							opt_cast = true
+						} else {
+							param_var.write_string('*')
+						}
+					} else if g.table.is_interface_var(obj) || obj.ct_type_var == .smartcast {
+						param_var.write_string('*')
+					} else if is_option {
+						opt_cast = true
+						param_var.write_string('*(${g.base_type(obj.typ)}*)')
+					}
+
+					dot := if obj.orig_type.is_ptr() || obj.is_auto_heap { '->' } else { '.' }
+					if obj.ct_type_var == .smartcast {
+						cur_variant_sym := g.table.sym(g.unwrap_generic(g.comptime.type_map['${g.comptime.comptime_for_variant_var}.typ']))
+						param_var.write_string('${obj.name}${dot}_${cur_variant_sym.cname}')
+					} else if cast_sym.info is ast.Aggregate {
+						sym := g.table.sym(cast_sym.info.types[g.aggregate_type_idx])
+						func = g.get_str_fn(cast_sym.info.types[g.aggregate_type_idx])
+						param_var.write_string('${obj.name}${dot}_${sym.cname}')
+					} else if obj_sym.kind == .interface_ && cast_sym.kind == .interface_ {
+						ptr := '*'.repeat(obj.typ.nr_muls())
+						param_var.write_string('I_${obj_sym.cname}_as_I_${cast_sym.cname}(${ptr}${obj.name})')
+					} else if obj_sym.kind in [.sum_type, .interface_] {
+						param_var.write_string('${obj.name}')
+						if opt_cast {
+							param_var.write_string('.data)')
+						}
+						param_var.write_string('${dot}_${cast_sym.cname}')
+					} else if obj.typ.has_flag(.option) && !var_typ.has_flag(.option) {
+						param_var.write_string('${obj.name}.data')
+					} else {
+						param_var.write_string('${obj.name}')
+					}
+					param_var.write_string(')')
+
+					values.write_string('${func}(${param_var.str()})}')
+				} else {
+					func := g.get_str_fn(var_typ)
+					if obj.typ.has_flag(.option) && !var_typ.has_flag(.option) {
+						// option unwrap
+						base_typ := g.base_type(obj.typ)
+						values.write_string('${func}(*(${base_typ}*)${obj.name}.data)}')
+					} else {
+						_, str_method_expects_ptr, _ := cast_sym.str_method_info()
+
+						// eprintln(">> ${obj.name} | str expects ptr? ${str_method_expects_ptr} | ptr? ${var_typ.is_ptr()} || auto heap? ${obj.is_auto_heap} | auto deref? ${obj.is_auto_deref}")
+						deref := if var_typ.has_flag(.option) {
+							''
+						} else if str_method_expects_ptr && !obj.typ.is_ptr() {
+							'&'
+						} else if obj.is_auto_heap && var_typ.is_ptr() && str_method_expects_ptr {
+							'*'
+						} else if !obj.is_auto_heap && var_typ.is_ptr() && str_method_expects_ptr {
+							''
+						} else if obj.is_auto_heap && var_typ.is_ptr() {
+							'*'
+						} else if obj.typ.is_ptr() && !obj.is_auto_deref {
+							'&'
+						} else if obj.typ.is_ptr() && obj.is_auto_deref {
+							'*'
+						} else {
+							''
+						}
+						values.write_string('${func}(${deref}${obj.name})}')
+					}
+				}
+				vars << obj.name
+				if count != scope_vars.len {
+					keys.write_string(',')
+					values.write_string(',')
+				}
+			}
+		}
+		count += 1
+	}
+	g.writeln('{')
+	g.writeln('\tMap_string_string _scope = new_map_init(&map_hash_string, &map_eq_string, &map_clone_string, &map_free_string, ${vars.len}, sizeof(string), sizeof(v__debug__DebugContextVar),')
+	g.write('\t\t_MOV((string[${vars.len}]){')
+	g.write(keys.str())
+	g.writeln('}),')
+	g.write('\t\t_MOV((v__debug__DebugContextVar[${vars.len}]){')
+	g.write(values.str())
+	g.writeln('}));')
+	g.writeln('\tv__debug__Debugger_interact(&g_debugger, (v__debug__DebugContextInfo){.is_anon=${is_anon},.is_generic=${is_generic},.is_method=${is_method},.receiver_typ_name=_SLIT("${receiver_type}"),.line=${paline},.file=_SLIT("${pafile}"),.mod=_SLIT("${pamod}"),.fn_name=_SLIT("${pafn}"),.scope=_scope});')
+	g.write('}')
+}
+
 fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 	enum_name := util.no_dots(node.name)
 	is_flag := node.is_flag
@@ -4136,25 +4287,25 @@ fn (mut g Gen) map_init(node ast.MapInit) {
 		}
 	}
 	if size > 0 {
-		if value_sym.kind == .function {
-			g.writeln('new_map_init${noscan}(${hash_fn}, ${key_eq_fn}, ${clone_fn}, ${free_fn}, ${size}, sizeof(${key_typ_str}), sizeof(voidptr),')
+		effective_typ_str := if value_sym.kind == .function { 'voidptr' } else { value_typ_str }
+		if node.has_update_expr {
+			g.writeln('new_map_update_init(')
+			g.write('\t&(')
+			g.expr(node.update_expr)
+			g.writeln('), ${size}, sizeof(${key_typ_str}), sizeof(${effective_typ_str}),')
 		} else {
-			g.writeln('new_map_init${noscan}(${hash_fn}, ${key_eq_fn}, ${clone_fn}, ${free_fn}, ${size}, sizeof(${key_typ_str}), sizeof(${value_typ_str}),')
+			g.writeln('new_map_init${noscan}(${hash_fn}, ${key_eq_fn}, ${clone_fn}, ${free_fn}, ${size}, sizeof(${key_typ_str}), sizeof(${effective_typ_str}),')
 		}
-		g.writeln('\t\t_MOV((${key_typ_str}[${size}]){')
+		g.writeln('\t_MOV((${key_typ_str}[${size}]){')
 		for expr in node.keys {
-			g.write('\t\t\t')
+			g.write('\t\t')
 			g.expr(expr)
-			g.writeln(', ')
+			g.writeln(',')
 		}
-		g.writeln('\t\t}),')
-		if value_sym.kind == .function {
-			g.writeln('\t\t_MOV((voidptr[${size}]){')
-		} else {
-			g.writeln('\t\t_MOV((${value_typ_str}[${size}]){')
-		}
+		g.writeln('\t}),')
+		g.writeln('\t_MOV((${effective_typ_str}[${size}]){')
 		for i, expr in node.vals {
-			g.write('\t\t\t')
+			g.write('\t\t')
 			if expr.is_auto_deref_var() {
 				g.write('*')
 			}
@@ -4167,12 +4318,15 @@ fn (mut g Gen) map_init(node ast.MapInit) {
 			}
 			g.writeln(', ')
 		}
-		g.writeln('\t\t})')
-		g.writeln('\t)')
+		g.writeln('\t})')
+		g.writeln(')')
+	} else if node.has_update_expr {
+		g.write('map_clone(&(')
+		g.expr(node.update_expr)
+		g.writeln('))')
 	} else {
-		g.write('new_map${noscan}(sizeof(${key_typ_str}), sizeof(${value_typ_str}), ${hash_fn}, ${key_eq_fn}, ${clone_fn}, ${free_fn})')
+		g.writeln('new_map${noscan}(sizeof(${key_typ_str}), sizeof(${value_typ_str}), ${hash_fn}, ${key_eq_fn}, ${clone_fn}, ${free_fn})')
 	}
-	g.writeln('')
 	if g.is_shared {
 		g.write('}, sizeof(${shared_styp}))')
 	} else if is_amp {
@@ -4495,7 +4649,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 				g.write('(*(')
 			}
 			if node.obj.smartcasts.len > 0 {
-				obj_sym := g.table.sym(node.obj.typ)
+				obj_sym := g.table.sym(g.unwrap_generic(node.obj.typ))
 				if !prevent_sum_type_unwrapping_once {
 					for _, typ in node.obj.smartcasts {
 						is_option_unwrap := is_option && typ == node.obj.typ.clear_flag(.option)
@@ -4511,7 +4665,9 @@ fn (mut g Gen) ident(node ast.Ident) {
 								g.write('*')
 							}
 						} else if (g.inside_interface_deref && g.table.is_interface_var(node.obj))
-							|| node.obj.ct_type_var == .smartcast {
+							|| node.obj.ct_type_var == .smartcast
+							|| (obj_sym.kind == .interface_
+							&& g.table.type_kind(node.obj.typ) == .any) {
 							g.write('*')
 						} else if is_option {
 							g.write('*(${g.base_type(node.obj.typ)}*)')
@@ -5945,12 +6101,11 @@ fn (mut g Gen) write_init_function() {
 			g.gen_reflection_data()
 		}
 	}
-
 	mut cleaning_up_array := []string{cap: g.table.modules.len}
 
 	for mod_name in g.table.modules {
 		if g.has_reflection && mod_name == 'v.reflection' {
-			// ignore v.reflection already initialized above
+			// ignore v.reflection and v.debug already initialized above
 			continue
 		}
 		mut const_section_header_shown := false
@@ -6038,6 +6193,9 @@ fn (mut g Gen) write_init_function() {
 		}
 		g.writeln('void _vinit_caller() {')
 		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
+		if g.nr_closures > 0 {
+			g.writeln('\t__closure_init(); // vinit_caller()')
+		}
 		g.writeln('\t_vinit(0,0);')
 		g.writeln('}')
 

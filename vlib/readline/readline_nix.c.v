@@ -36,6 +36,7 @@ enum Action {
 	overwrite
 	clear_screen
 	suspend
+	completion
 }
 
 // enable_raw_mode enables the raw mode of the terminal.
@@ -174,7 +175,7 @@ pub fn read_line(prompt string) !string {
 }
 
 // analyse returns an `Action` based on the type of input byte given in `c`.
-fn (r Readline) analyse(c int) Action {
+fn (mut r Readline) analyse(c int) Action {
 	if c > 255 {
 		return Action.insert_character
 	}
@@ -183,7 +184,11 @@ fn (r Readline) analyse(c int) Action {
 			return .eof
 		} // NUL, End of Text, End of Transmission
 		`\n`, `\r` {
+			r.last_prefix_completion.clear()
 			return .commit_line
+		}
+		`\t` {
+			return .completion
 		}
 		`\f` {
 			return .clear_screen
@@ -211,6 +216,7 @@ fn (r Readline) analyse(c int) Action {
 		} // CTRL + Z, SUB
 		else {
 			if c >= ` ` {
+				r.last_prefix_completion.clear()
 				return Action.insert_character
 			}
 			return Action.nothing
@@ -299,6 +305,7 @@ fn (mut r Readline) execute(a Action, c int) bool {
 		.overwrite { r.switch_overwrite() }
 		.clear_screen { r.clear_screen() }
 		.suspend { r.suspend() }
+		.completion { r.completion() }
 		else {}
 	}
 	return false
@@ -416,6 +423,7 @@ fn (mut r Readline) delete_character() {
 	r.cursor--
 	r.current.delete(r.cursor)
 	r.refresh_line()
+	r.completion_clear()
 }
 
 fn (mut r Readline) delete_word_left() {
@@ -450,12 +458,14 @@ fn (mut r Readline) delete_word_left() {
 
 	r.current.delete_many(r.cursor, orig_cursor - r.cursor)
 	r.refresh_line()
+	r.completion_clear()
 }
 
 fn (mut r Readline) delete_line() {
 	r.current = []
 	r.cursor = 0
 	r.refresh_line()
+	r.completion_clear()
 }
 
 // suppr_character removes (suppresses) the character in front of the cursor.
@@ -575,6 +585,56 @@ fn (mut r Readline) history_next() {
 	r.current = r.previous_lines[r.search_index]
 	r.cursor = r.current.len
 	r.refresh_line()
+}
+
+// completion implements the tab completion feature
+fn (mut r Readline) completion() {
+	// check if completion is used
+	if r.completion_list.len == 0 && r.completion_callback == unsafe { nil } {
+		return
+	}
+	// use last prefix for completion or current input
+	prefix := if r.last_prefix_completion.len > 0 { r.last_prefix_completion } else { r.current }
+	if prefix.len == 0 {
+		return
+	}
+	// filtering by prefix
+	opts := if r.completion_list.len > 0 {
+		sprefix := prefix.string()
+		r.completion_list.filter(it.starts_with(sprefix))
+	} else if r.completion_callback != unsafe { nil } {
+		r.completion_callback(prefix.string())
+	} else {
+		[]string{}
+	}
+	if opts.len == 0 {
+		r.completion_clear()
+		return
+	}
+
+	// moving for next possible completion match using saved prefix
+	if r.last_prefix_completion.len != 0 {
+		if opts.len > r.last_completion_offset + 1 {
+			r.last_completion_offset += 1
+		} else {
+			// reset for initial option in completion list
+			r.last_completion_offset = 0
+		}
+	} else {
+		// save current prefix before tab'ing
+		r.last_prefix_completion = r.current
+	}
+
+	// set the text to the current completion match in the completion list
+	r.current = opts[r.last_completion_offset].runes()
+	r.cursor = r.current.len
+	r.refresh_line()
+}
+
+// completion_clear resets the completion state
+fn (mut r Readline) completion_clear() {
+	r.last_prefix_completion.clear()
+	r.last_completion_offset = 0
 }
 
 // suspend sends the `SIGSTOP` signal to the terminal.

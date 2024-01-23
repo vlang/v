@@ -300,6 +300,7 @@ fn (mut c Checker) get_comptime_number_value(mut expr ast.Expr) ?i64 {
 fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSymbol) {
 	c.expected_type = node.expected_type
 	cond_sym := c.table.sym(node.cond_type)
+	mut enum_ref_checked := false
 	// branch_exprs is a histogram of how many times
 	// an expr was used in the match
 	mut branch_exprs := map[string]int{}
@@ -385,6 +386,13 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				}
 				ast.EnumVal {
 					key = expr.val
+					if !enum_ref_checked {
+						enum_ref_checked = true
+						if node.cond_type.is_ptr() {
+							c.error('missing `*` dereferencing `${node.cond}` in match statement',
+								node.cond.pos())
+						}
+					}
 				}
 				else {
 					key = (*expr).str()
