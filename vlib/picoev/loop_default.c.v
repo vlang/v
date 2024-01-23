@@ -91,7 +91,7 @@ fn (mut pv Picoev) poll_once(max_wait_in_sec int) int {
 					}
 
 					// do callback!
-					unsafe { target.callback(target.fd, read_events, &pv) }
+					unsafe { target.cb(target.fd, read_events, &pv) }
 				}
 			}
 		}

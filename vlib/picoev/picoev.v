@@ -32,10 +32,10 @@ pub const picoev_readwrite = 3
 // file descriptor (connection)
 pub struct Target {
 pub mut:
-	fd       int // file descriptor
-	loop_id  int = -1
-	events   u32
-	callback fn (int, int, voidptr) = unsafe { nil }
+	fd      int // file descriptor
+	loop_id int = -1
+	events  u32
+	cb      fn (int, int, voidptr) = unsafe { nil }
 	// used internally by the kqueue implementation
 	backend int
 }
@@ -101,7 +101,7 @@ pub fn (mut pv Picoev) add(fd int, events int, timeout int, callback voidptr) in
 
 	mut target := pv.file_descriptors[fd]
 	target.fd = fd
-	target.callback = callback
+	target.cb = callback
 	target.loop_id = pv.loop.id
 	target.events = 0
 
@@ -187,7 +187,7 @@ fn (mut pv Picoev) handle_timeout() {
 		target := pv.file_descriptors[fd]
 		assert target.loop_id == pv.loop.id
 		pv.timeouts.delete(fd)
-		unsafe { target.callback(fd, picoev.picoev_timeout, &pv) }
+		unsafe { target.cb(fd, picoev.picoev_timeout, &pv) }
 	}
 }
 

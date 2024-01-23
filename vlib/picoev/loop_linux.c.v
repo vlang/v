@@ -125,7 +125,7 @@ fn (mut pv Picoev) poll_once(max_wait_in_sec int) int {
 			// vfmt on
 			if read_events != 0 {
 				// do callback!
-				unsafe { target.callback(event.data.fd, read_events, &pv) }
+				unsafe { target.cb(event.data.fd, read_events, &pv) }
 			}
 		} else {
 			// defer epoll delete
