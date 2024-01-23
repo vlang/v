@@ -2473,8 +2473,10 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			if node.kind == 'define' {
 				if !c.is_builtin_mod && !c.file.path.ends_with('.c.v')
 					&& !c.file.path.contains('vlib') {
-					c.error("#define can only be used in vlib (V's standard library) and *.c.v files",
-						node.pos)
+					if !c.pref.is_bare {
+						c.error("#define can only be used in vlib (V's standard library) and *.c.v files",
+							node.pos)
+					}
 				}
 			} else {
 				c.error('expected `#define`, `#flag`, `#include`, `#insert` or `#pkgconfig` not ${node.val}',
@@ -3884,7 +3886,7 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 					orig_type = expr.obj.typ
 				}
 				is_inherited = expr.obj.is_inherited
-				ct_type_var = if is_comptime && expr.obj.ct_type_var != .no_comptime {
+				ct_type_var = if is_comptime {
 					.smartcast
 				} else {
 					.no_comptime

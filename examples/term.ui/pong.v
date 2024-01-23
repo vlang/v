@@ -480,14 +480,22 @@ fn event(e &ui.Event, mut app App) {
 	app.event(e)
 }
 
+type InitFn = fn (voidptr)
+
+type EventFn = fn (&ui.Event, voidptr)
+
+type FrameFn = fn (voidptr)
+
+type CleanupFn = fn (voidptr)
+
 fn main() {
 	mut app := &App{}
 	app.tui = ui.init(
 		user_data: app
-		init_fn: init
-		frame_fn: frame
-		cleanup_fn: cleanup
-		event_fn: event
+		init_fn: InitFn(init)
+		frame_fn: FrameFn(frame)
+		cleanup_fn: CleanupFn(cleanup)
+		event_fn: EventFn(event)
 		fail_fn: fail
 		capture_events: true
 		hide_cursor: true

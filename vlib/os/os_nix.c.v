@@ -282,6 +282,19 @@ fn init_os_args(argc int, argv &&u8) []string {
 	return args_
 }
 
+// ls returns ![]string of the files and dirs in the given `path` ( os.ls uses C.readdir ). Symbolic links are returned to be files. For recursive list see os.walk functions.
+// See also: `os.walk`, `os.walk_ext`, `os.is_dir`, `os.is_file`
+// Example: https://github.com/vlang/v/blob/master/examples/readdir.v
+// ```
+//   entries := os.ls(os.home_dir()) or { [] }
+//   for entry in entries {
+//     if os.is_dir(os.join_path(os.home_dir(), entry)) {
+//       println('dir: $entry')
+//     } else {
+//       println('file: $entry')
+//     }
+//   }
+// ```
 pub fn ls(path string) ![]string {
 	if path.len == 0 {
 		return error('ls() expects a folder, not an empty string')

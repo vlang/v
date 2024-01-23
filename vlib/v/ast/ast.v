@@ -1333,7 +1333,8 @@ pub mut:
 // enum field in enum declaration
 pub struct EnumField {
 pub:
-	name          string
+	name          string // just `lock`, or `abc`, etc, no matter if the name is a keyword or not.
+	source_name   string // The name in the source, for example `@lock`, and `abc`. Note that `lock` is a keyword in V.
 	pos           token.Pos
 	comments      []Comment // comment after Enumfield in the same line
 	next_comments []Comment // comments between current EnumField and next EnumField

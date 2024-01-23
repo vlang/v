@@ -427,6 +427,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-silent' {
 				res.output_mode = .silent
 			}
+			'-skip-running' {
+				res.skip_running = true
+			}
 			'-cstrict' {
 				res.is_cstrict = true
 			}
