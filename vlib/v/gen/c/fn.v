@@ -509,8 +509,10 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 	g.indent++
 	for var in node.inherited_vars {
 		mut has_inherited := false
+		mut is_ptr := false
 		if obj := node.decl.scope.find(var.name) {
 			if obj is ast.Var {
+				is_ptr = obj.typ.is_ptr()
 				if obj.has_inherited {
 					has_inherited = true
 					var_sym := g.table.sym(var.typ)
@@ -534,8 +536,22 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 					g.write('${var.name}[${i}],')
 				}
 				g.writeln('},')
+			} else if g.is_autofree && !var.is_mut && var_sym.info is ast.Array {
+				g.writeln('.${var.name} = array_clone(&${var.name}),')
+			} else if g.is_autofree && !var.is_mut && var_sym.kind == .string {
+				g.writeln('.${var.name} = string_clone(${var.name}),')
 			} else {
-				g.writeln('.${var.name} = ${var.name},')
+				mut is_auto_heap := false
+				if obj := node.decl.scope.parent.find(var.name) {
+					if obj is ast.Var {
+						is_auto_heap = !obj.is_stack_obj && obj.is_auto_heap
+					}
+				}
+				if is_auto_heap && !is_ptr {
+					g.writeln('.${var.name} = *${var.name},')
+				} else {
+					g.writeln('.${var.name} = ${var.name},')
+				}
 			}
 		}
 	}

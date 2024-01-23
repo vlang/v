@@ -513,6 +513,9 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 		ast.ConstDecl {
 			f.const_decl(node)
 		}
+		ast.DebuggerStmt {
+			f.debugger_stmt(node)
+		}
 		ast.DeferStmt {
 			f.defer_stmt(node)
 		}
@@ -872,6 +875,10 @@ pub fn (mut f Fmt) block(node ast.Block) {
 		f.stmts(node.stmts)
 	}
 	f.writeln('}')
+}
+
+pub fn (mut f Fmt) debugger_stmt(node ast.DebuggerStmt) {
+	f.writeln('\$dbg;')
 }
 
 pub fn (mut f Fmt) branch_stmt(node ast.BranchStmt) {
@@ -2624,7 +2631,7 @@ pub fn (mut f Fmt) lock_expr(node ast.LockExpr) {
 }
 
 pub fn (mut f Fmt) map_init(node ast.MapInit) {
-	if node.keys.len == 0 {
+	if node.keys.len == 0 && !node.has_update_expr {
 		if node.typ > ast.void_type {
 			sym := f.table.sym(node.typ)
 			info := sym.info as ast.Map
@@ -2644,6 +2651,15 @@ pub fn (mut f Fmt) map_init(node ast.MapInit) {
 	f.writeln('{')
 	f.indent++
 	f.comments(node.pre_cmnts)
+	if node.has_update_expr {
+		f.write('...')
+		f.expr(node.update_expr)
+		f.comments(node.update_expr_comments,
+			prev_line: node.update_expr_pos.last_line
+			has_nl: false
+		)
+		f.writeln('')
+	}
 	mut max_field_len := 0
 	mut skeys := []string{}
 	for key in node.keys {

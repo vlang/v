@@ -187,6 +187,12 @@ pub struct Context {
 
 pub struct App {
 	vweb.Middleware[Context]
+mut:
+	started chan bool
+}
+
+pub fn (mut app App) before_accept_loop() {
+	app.started <- true
 }
 
 fn (app &App) index(mut ctx Context) vweb.Result {
@@ -234,10 +240,9 @@ fn test_run_app_in_background() {
 	mut app := &App{}
 	app.route_use('/auth', csrf.middleware[Context](csrf_config))
 
-	spawn vweb.run_at[App, Context](mut app, port: sport, family: .ip)
 	spawn exit_after_timeout(mut app, exit_after_time)
-
-	time.sleep(500 * time.millisecond)
+	spawn vweb.run_at[App, Context](mut app, port: sport, family: .ip)
+	_ := <-app.started
 }
 
 fn test_token_input() {

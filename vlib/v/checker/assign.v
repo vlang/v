@@ -597,6 +597,13 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				}
 			}
 		}
+		if mut left is ast.Ident {
+			if mut left.info is ast.IdentVar {
+				if left.info.is_static && right_sym.kind == .map {
+					c.error('maps cannot be static', left.pos)
+				}
+			}
+		}
 		// Single side check
 		match node.op {
 			.assign {} // No need to do single side check for =. But here put it first for speed.

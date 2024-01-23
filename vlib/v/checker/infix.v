@@ -529,6 +529,10 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				node.auto_locked, _ = c.fail_if_immutable(mut node.left)
 				left_value_type := c.table.value_type(c.unwrap_generic(left_type))
 				left_value_sym := c.table.sym(c.unwrap_generic(left_value_type))
+				if !left_value_type.has_flag(.option) && right_type.has_flag(.option) {
+					c.error('unwrapped Option cannot be used in an infix expression',
+						node.pos)
+				}
 				if left_value_sym.kind == .interface_ {
 					if right_final_sym.kind != .array {
 						// []Animal << Cat

@@ -52,8 +52,8 @@ pub:
 	max_headers  int            = 100
 	max_read     int            = 4096
 	max_write    int            = 8192
-	family       net.AddrFamily = .ip
-	host         string = 'localhost'
+	family       net.AddrFamily = .ip6
+	host         string
 }
 
 // Core structure for managing the event loop and connections.
@@ -321,7 +321,7 @@ fn default_error_callback(data voidptr, req picohttpparser.Request, mut res pico
 }
 
 // new creates a `Picoev` struct and initializes the main loop
-pub fn new(config Config) &Picoev {
+pub fn new(config Config) !&Picoev {
 	listening_socket_fd := listen(config)
 
 	mut pv := &Picoev{

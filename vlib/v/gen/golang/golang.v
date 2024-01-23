@@ -425,6 +425,7 @@ pub fn (mut f Gen) stmt(node ast.Stmt) {
 		ast.ConstDecl {
 			f.const_decl(node)
 		}
+		ast.DebuggerStmt {}
 		ast.DeferStmt {
 			f.defer_stmt(node)
 		}

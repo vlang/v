@@ -9,7 +9,7 @@ features.
 - **Easy to deploy** just one binary file that also includes all templates. No need to install any
   dependencies.
 - **Templates are precompiled** all errors are visible at compilation time, not at runtime.
-- **Middleware** functionality similair to other big frameworks.
+- **Middleware** functionality similar to other big frameworks.
 - **Controllers** to split up your apps logic.
 
 ## Quick Start
@@ -27,7 +27,7 @@ Use the `-prod` flag when building for production.
 
 ## Getting Started
 
-To start, you must import the module `x.vweb` and define a structure which will 
+To start, you must import the module `x.vweb` and define a structure which will
 represent your app and a structure which will represent the context of a request.
 These structures must be declared with the `pub` keyword.
 
@@ -77,7 +77,7 @@ fn main() {
 You can use the `App` struct for data you want to keep during the lifetime of your program,
 or for data that you want to share between different routes.
 
-A new `Context` struct is created every time a request is received, 
+A new `Context` struct is created every time a request is received,
 so it can contain different data for each request.
 
 ## Defining endpoints
@@ -181,7 +181,7 @@ If we visit http://localhost:port/hello/vaesel we would see the text `Hello vaes
 
 ### Routes with Parameter Arrays
 
-If you want multiple parameters in your route and if you want to parse the parameters 
+If you want multiple parameters in your route and if you want to parse the parameters
 yourself, or you want a wildcard route, you can add `...`  after the `:` and name,
 e.g. `@['/:path...']`.
 
@@ -202,9 +202,9 @@ You have direct access to query values by accessing the `query` field on your co
 You are also able to access any formdata or files that were sent
 with the request with the fields `.form` and `.files` respectively.
 
-In the following example, visiting http://localhost:port/user?name=Vweb we 
+In the following example, visiting http://localhost:port/user?name=Vweb we
 will see the text `Hello Vweb!`. And if we access the route without the `name` parameter,
-http://localhost:port/user, we will see the text `no user was found`, 
+http://localhost:port/user, we will see the text `no user was found`,
 
 **Example:**
 ```v ignore
@@ -265,7 +265,7 @@ pub fn (app &App) normal(mut ctx Context) vweb.Result {
 ```
 
 In this example we defined an endpoint with a parameter first. If we access our app
-on the url http://localhost:port/normal we will not see `from normal`, but 
+on the url http://localhost:port/normal we will not see `from normal`, but
 `from with_parameter, path: "normal"`.
 
 ### Custom not found page
@@ -333,7 +333,7 @@ fn main() {
 }
 ```
 
-If we start the app with `v run main.v` we can access our `main.css` file at 
+If we start the app with `v run main.v` we can access our `main.css` file at
 http://localhost:8080/static/css/main.css
 
 ### Mounting folders at specific locations
@@ -406,7 +406,7 @@ pub struct App {
 
 ### Use case
 
-We could, for example, get the cookies for an HTTP request and check if the user has already 
+We could, for example, get the cookies for an HTTP request and check if the user has already
 accepted our cookie policy. Let's modify our Context struct to store whether the user has
 accepted our policy or not.
 
@@ -422,7 +422,7 @@ pub mut:
 In vweb middleware functions take a `mut` parameter with the type of your context struct
 and must return `bool`. We have full access to modify our Context struct!
 
-The return value indicates to vweb whether it can continue or has to stop. If we send a 
+The return value indicates to vweb whether it can continue or has to stop. If we send a
 response to the client in a middleware function vweb has to stop, so we return `false`.
 
 **Example:**
@@ -472,7 +472,7 @@ fn main() {
 
 ### Types of middleware
 
-In the previous example we used so called "global" middleware. This type of middleware 
+In the previous example we used so called "global" middleware. This type of middleware
 applies to every endpoint defined on our app struct; global. It is also possible
 to register middleware for only a certain route(s).
 
@@ -523,8 +523,8 @@ Vweb will handle requests in the following order:
 4. Execute global "after" middleware
 5. Execute "after" middleware that matches the requested route
 
-In each step, except for step `3`, vweb will evaluate the middleware in the order that 
-they are registered; when you call `app.use` or `app.route_use`. 
+In each step, except for step `3`, vweb will evaluate the middleware in the order that
+they are registered; when you call `app.use` or `app.route_use`.
 
 ### Early exit
 
@@ -555,7 +555,7 @@ Because we register `early_exit` before `logger` our logging middleware will nev
 
 Controllers can be used to split up your app logic so you are able to have one struct
 per "route group".  E.g. a struct `Admin` for urls starting with `'/admin'` and a struct `Foo`
-for urls starting with `'/foo'`. 
+for urls starting with `'/foo'`.
 
 To use controllers we have to embed `vweb.Controller` on
 our app struct and when we register a controller we also have to specify
@@ -622,8 +622,8 @@ pub fn (app &Admin) path(mut ctx Context) vweb.Result {
     return ctx.text('Admin')
 }
 ```
-When we registerted the controller with 
-`app.register_controller[Admin, Context]('/admin', mut admin_app)!` 
+When we registered the controller with
+`app.register_controller[Admin, Context]('/admin', mut admin_app)!`
 we told vweb that the namespace of that controller is `'/admin'` so in this example we would
 see the text "Admin" if we navigate to the url `'/admin/path'`.
 
@@ -664,7 +664,7 @@ app.register_controller[Example, Context]('example.com', '/', mut example_app)!
 
 vweb has a number of utility methods that make it easier to handle requests and send responses.
 These methods are available on `vweb.Context` and directly on your own context struct if you
-embed `vweb.Context`. Below are some of te most used methods, look at the 
+embed `vweb.Context`. Below are some of the most used methods, look at the
 [standard library documentation](https://modules.vlang.io/) to see them all.
 
 ### Request methods
@@ -695,7 +695,7 @@ pub fn (app &App) index(mut ctx Context) vweb.Result {
 
 ### Response methods
 
-You can directly modify the HTTP response by changing the `res` field, 
+You can directly modify the HTTP response by changing the `res` field,
 which is of the type `http.Response`.
 
 #### Send response with different MIME types
@@ -798,7 +798,7 @@ error with a message.
 
 ## Advanced usage
 
-If you need more controll over the TCP connection with a client, for example when 
+If you need more control over the TCP connection with a client, for example when
 you want to keep the connection open. You can call `ctx.takeover_conn`.
 
 When this function is called you are free to do anything you want with the TCP
@@ -807,9 +807,9 @@ sending a response over the connection and closing it.
 
 ### Empty Result
 
-Sometimes you want to send the response in another thread, for example when using 
+Sometimes you want to send the response in another thread, for example when using
 [Server Sent Events](sse/README.md). When you are sure that a response will be sent
-over the TCP connection you can return `vweb.no_result()`. This function does nothinng
+over the TCP connection you can return `vweb.no_result()`. This function does nothing
 and returns an empty `vweb.Result` struct, letting vweb know that we sent a response ourself.
 
 > **Note:**

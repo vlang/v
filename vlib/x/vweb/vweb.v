@@ -187,16 +187,18 @@ fn generate_routes[A, X](app &A) !map[string]Route {
 				return error('error parsing method attributes: ${err}')
 			}
 
-			routes[method.name] = Route{
+			mut route := Route{
 				methods: http_methods
 				path: route_path
 				host: host
 			}
 
 			$if A is MiddlewareApp {
-				routes[method.name].middlewares = app.Middleware.get_handlers_for_route[X](route_path)
-				routes[method.name].after_middlewares = app.Middleware.get_handlers_for_route_after[X](route_path)
+				route.middlewares = app.Middleware.get_handlers_for_route[X](route_path)
+				route.after_middlewares = app.Middleware.get_handlers_for_route_after[X](route_path)
 			}
+
+			routes[method.name] = route
 		}
 	}
 	return routes
@@ -272,6 +274,11 @@ pub fn (mut params RequestParams) request_done(fd int) {
 	params.idx[fd] = 0
 }
 
+interface BeforeAcceptApp {
+mut:
+	before_accept_loop()
+}
+
 // run_at - start a new VWeb server, listening only on a specific address `host`, at the specified `port`
 // Example: vweb.run_at(new_app(), vweb.RunParams{ host: 'localhost' port: 8099 family: .ip }) or { panic(err) }
 @[direct_array_access; manualfree]
@@ -284,7 +291,8 @@ pub fn run_at[A, X](mut global_app A, params RunParams) ! {
 	controllers_sorted := check_duplicate_routes_in_controllers[A](global_app, routes)!
 
 	if params.show_startup_message {
-		println('[Vweb] Running app on http://localhost:${params.port}/')
+		host := if params.host == '' { 'localhost' } else { params.host }
+		println('[Vweb] Running app on http://${host}:${params.port}/')
 	}
 	flush_stdout()
 
@@ -312,7 +320,11 @@ pub fn run_at[A, X](mut global_app A, params RunParams) ! {
 		timeout_secs: params.timeout_in_seconds
 		family: params.family
 		host: params.host
-	)
+	)!
+
+	$if A is BeforeAcceptApp {
+		global_app.before_accept_loop()
+	}
 
 	// Forever accept every connection that comes
 	pico.serve()
@@ -371,32 +383,38 @@ fn handle_timeout(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 fn handle_write_file(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 	mut bytes_to_write := int(params.file_responses[fd].total - params.file_responses[fd].pos)
 
-	if bytes_to_write > vweb.max_write {
-		bytes_to_write = vweb.max_write
-	}
-	data := unsafe { malloc(bytes_to_write) }
-	defer {
-		unsafe { free(data) }
+	$if linux {
+		bytes_written := sendfile(fd, params.file_responses[fd].file.fd, bytes_to_write)
+		params.file_responses[fd].pos += bytes_written
+	} $else {
+		if bytes_to_write > vweb.max_write {
+			bytes_to_write = vweb.max_write
+		}
+
+		data := unsafe { malloc(bytes_to_write) }
+		defer {
+			unsafe { free(data) }
+		}
+
+		mut conn := &net.TcpConn{
+			sock: net.tcp_socket_from_handle_raw(fd)
+			handle: fd
+			is_blocking: false
+		}
+
+		params.file_responses[fd].file.read_into_ptr(data, bytes_to_write) or {
+			params.file_responses[fd].done()
+			pv.close_conn(fd)
+			return
+		}
+		actual_written := send_string_ptr(mut conn, data, bytes_to_write) or {
+			params.file_responses[fd].done()
+			pv.close_conn(fd)
+			return
+		}
+		params.file_responses[fd].pos += actual_written
 	}
 
-	mut conn := &net.TcpConn{
-		sock: net.tcp_socket_from_handle_raw(fd)
-		handle: fd
-		is_blocking: false
-	}
-
-	// TODO: use `sendfile` in linux for optimizations (?)
-	params.file_responses[fd].file.read_into_ptr(data, bytes_to_write) or {
-		params.file_responses[fd].done()
-		pv.close_conn(fd)
-		return
-	}
-	actual_written := send_string_ptr(mut conn, data, bytes_to_write) or {
-		params.file_responses[fd].done()
-		pv.close_conn(fd)
-		return
-	}
-	params.file_responses[fd].pos += actual_written
 	if params.file_responses[fd].pos == params.file_responses[fd].total {
 		// file is done writing
 		params.file_responses[fd].done()
@@ -622,7 +640,7 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 	}
 }
 
-fn handle_request[A, X](mut conn net.TcpConn, req http.Request, params &RequestParams) ?Context {
+fn handle_request[A, X](mut conn net.TcpConn, req http.Request, params &RequestParams) ?&Context {
 	mut global_app := unsafe { &A(params.global_app) }
 
 	// TODO: change this variable to include the total wait time over each network cycle
@@ -654,7 +672,7 @@ fn handle_request[A, X](mut conn net.TcpConn, req http.Request, params &RequestP
 	host, _ := urllib.split_host_port(host_with_port)
 
 	// Create Context with request data
-	mut ctx := Context{
+	mut ctx := &Context{
 		req: req
 		page_gen_start: page_gen_start
 		conn: conn
@@ -681,8 +699,8 @@ fn handle_request[A, X](mut conn net.TcpConn, req http.Request, params &RequestP
 	user_context.Context = ctx
 
 	handle_route[A, X](mut global_app, mut user_context, url, host, params.routes)
-
-	return user_context.Context
+	// we need to explicitly tell the V compiler to return a reference
+	return &user_context.Context
 }
 
 fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string, routes &map[string]Route) {
