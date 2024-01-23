@@ -323,7 +323,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	if node.params.len == 0 {
 		g.definitions.write_string('void')
 	}
-	if attr := node.attrs.find_first('linker_section') {
+	if attr := node.attrs.find_first('_linker_section') {
 		g.definitions.writeln(') __attribute__ ((section ("${attr.arg}")));')
 	} else {
 		g.definitions.writeln(');')
