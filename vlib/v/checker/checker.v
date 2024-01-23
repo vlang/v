@@ -3295,26 +3295,8 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		}
 	} else if to_type.is_int() && mut node.expr is ast.IntegerLiteral {
 		tt := c.table.type_to_str(to_type)
-		bit_size := match to_type {
-			ast.u8_type, ast.i8_type, ast.char_type {
-				8
-			}
-			ast.u16_type, ast.i16_type {
-				16
-			}
-			ast.u32_type, ast.i32_type {
-				32
-			}
-			ast.u64_type, ast.i64_type {
-				64
-			}
-			ast.usize_type, ast.isize_type {
-				if c.pref.m64 { 64 } else { 32 }
-			}
-			else {
-				0
-			}
-		}
+		tsize, _ := c.table.type_size(to_type)
+		bit_size := tsize * 8
 		value_string := match node.expr.val[0] {
 			`-`, `+` {
 				node.expr.val[1..]
