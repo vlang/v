@@ -115,14 +115,14 @@ pub fn (mut pv Picoev) add(fd int, events int, timeout int, callback voidptr) in
 	return 0
 }
 
-// removes a file descriptor from the event loop
+// remove a file descriptor from the event loop
 @[deprecated: 'use remove() instead']
 @[direct_array_access]
 pub fn (mut pv Picoev) del(fd int) int {
 	return pv.remove(fd)
 }
 
-// removes a file descriptor from the event loop
+// remove a file descriptor from the event loop
 @[direct_array_access]
 pub fn (mut pv Picoev) remove(fd int) int {
 	assert fd < picoev.max_fds
@@ -139,7 +139,6 @@ pub fn (mut pv Picoev) remove(fd int) int {
 	pv.set_timeout(fd, 0)
 	target.loop_id = -1
 	target.fd = 0
-	// REVIEW - should not be better unsafe { free(target.fd) }?
 	return 0
 }
 
@@ -367,7 +366,7 @@ pub fn (mut pv Picoev) serve() {
 	}
 }
 
-// updates the date field of the Picoev instance every second for HTTP headers
+// update_date updates the date field of the Picoev instance every second for HTTP headers
 fn update_date(mut pv Picoev) {
 	for {
 		// get GMT (UTC) time for the HTTP Date header
