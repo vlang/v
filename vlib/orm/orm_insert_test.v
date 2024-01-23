@@ -373,3 +373,43 @@ fn test_i64_primary_field_works_with_insertions_of_id_0() {
 	assert users.len == 2
 	// println("${users}")
 }
+
+// for issue 20017, 20019
+// phenomenon:
+// cgen misses to generate the corresponding or_block when the associated subtable does not exist or the foreign key type does not match
+struct Master {
+	id       int      @[primary]
+	children []Detail @[fkey: parent_id]
+}
+
+struct Detail {
+	id        int @[primary]
+	parent_id int
+}
+
+fn test_or_block_when_has_error_in_insert_with_children_tables() {
+	db := sqlite.connect(':memory:')!
+
+	sql db {
+		create table Master
+	}!
+	// The Detail table is intentionally not created
+	// sql db {
+	// 	create table Detail
+	// }!
+
+	new_master := Master{
+		id: 1
+		children: [Detail{
+			id: 1
+			parent_id: 1
+		}]
+	}
+	sql db {
+		insert new_master into Master
+	} or {
+		assert true
+		return
+	}
+	assert false
+}

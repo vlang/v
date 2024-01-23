@@ -473,6 +473,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			unsafe { fff.free() }
 			g.write_orm_insert_with_last_ids(arr, connection_var_name, g.get_table_name_by_struct_type(arr.table_expr.typ),
 				last_ids, res_, id_name, fkeys[i], or_expr)
+			g.or_block(res_, or_expr, ast.int_type.set_flag(.result))
 			g.indent--
 			g.writeln('}')
 		}
