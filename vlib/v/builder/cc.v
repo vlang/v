@@ -332,7 +332,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 
 	// macOS code can include objective C  TODO remove once objective C is replaced with C
 	if v.pref.os == .macos || v.pref.os == .ios {
-		if !ccoptions.is_cc_tcc && !user_darwin_ppc {
+		if !ccoptions.is_cc_tcc && !user_darwin_ppc && !v.pref.is_bare {
 			ccoptions.source_args << '-x objective-c'
 		}
 	}
