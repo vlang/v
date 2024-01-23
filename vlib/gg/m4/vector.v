@@ -34,6 +34,19 @@ pub fn vec3(x f32, y f32, z f32) Vec4 {
 	}
 }
 
+// Check if two vector are equal using module precision
+@[direct_array_access]
+pub fn (x Vec4) is_equal(y Vec4) bool {
+	unsafe {
+		for c, value in x.e {
+			if f32_abs(value - y.e[c]) > precision {
+				return false
+			}
+		}
+		return true
+	}
+}
+
 // Remove all the raw zeros
 @[direct_array_access]
 pub fn (a Vec4) clean() Vec4 {

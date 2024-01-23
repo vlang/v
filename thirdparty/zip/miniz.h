@@ -4999,8 +4999,15 @@ static int mz_mkdir(const char *pDirname) {
 }
 
 #ifndef MINIZ_NO_TIME
+
+#if (defined(__FreeBSD__) || defined(__DragonFly__) || defined(__FreeBSD_kernel__)) && !defined(FREEBSD)
+#include <utime.h>
+#else
 #include <sys/utime.h>
 #endif
+
+#endif
+
 #define MZ_FOPEN mz_fopen
 #define MZ_FCLOSE fclose
 #define MZ_FREAD fread
@@ -5015,9 +5022,11 @@ static int mz_mkdir(const char *pDirname) {
 #define MZ_MKDIR(d) mz_mkdir(d)
 
 #elif defined(__MINGW32__) || defined(__WATCOMC__)
+
 #ifndef MINIZ_NO_TIME
 #include <sys/utime.h>
 #endif
+
 #define MZ_FOPEN(f, m) fopen(f, m)
 #define MZ_FCLOSE fclose
 #define MZ_FREAD fread
@@ -5032,8 +5041,15 @@ static int mz_mkdir(const char *pDirname) {
 #define MZ_MKDIR(d) _mkdir(d)
 
 #elif defined(__TINYC__)
+
 #ifndef MINIZ_NO_TIME
+
+#if (defined(__FreeBSD__) || defined(__DragonFly__) || defined(__FreeBSD_kernel__)) && !defined(FREEBSD)
+#include <utime.h>
+#else
 #include <sys/utime.h>
+#endif
+
 #endif
 #define MZ_FOPEN(f, m) fopen(f, m)
 #define MZ_FCLOSE fclose
