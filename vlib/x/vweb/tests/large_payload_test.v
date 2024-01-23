@@ -13,7 +13,14 @@ const exit_after = time.second * 10
 
 const tmp_file = os.join_path(os.vtmp_dir(), 'vweb_large_payload.txt')
 
-pub struct App {}
+pub struct App {
+mut:
+	started chan bool
+}
+
+pub fn (mut app App) before_accept_loop() {
+	app.started <- true
+}
 
 pub fn (mut app App) index(mut ctx Context) vweb.Result {
 	return ctx.text('Hello V!')
@@ -34,20 +41,15 @@ pub struct Context {
 
 fn testsuite_begin() {
 	spawn fn () {
-		mut app := &App{}
-		vweb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip) or {
-			panic('could not start vweb app')
-		}
-	}()
-
-	// app startup time
-	time.sleep(time.millisecond * 500)
-
-	spawn fn () {
 		time.sleep(exit_after)
 		assert true == false, 'timeout reached!'
 		exit(1)
 	}()
+
+	mut app := &App{}
+	spawn vweb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip)
+	// app startup time
+	_ := <-app.started
 }
 
 fn test_large_request_body() {
