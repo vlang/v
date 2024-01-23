@@ -603,7 +603,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			if compile_r.exit_code == 0 {
 				break
 			}
-			random_sleep_ms(50, 100)
+			random_sleep_ms(50, 100 * cretry)
 		}
 		ts.append_message_with_duration(.compile_end, compile_r.output, compile_cmd_duration,
 			mtc)
