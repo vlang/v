@@ -7,8 +7,8 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 	if node.is_checked {
 		return node.typ
 	}
-	if exp_typ == 0 {
-		c.error('lambda expressions are allowed only in places expecting function callbacks',
+	if exp_typ in [0, ast.void_type] {
+		c.fatal('lambda expressions are allowed only in places expecting function callbacks',
 			node.pos)
 		return ast.void_type
 	}
@@ -63,7 +63,7 @@ pub fn (mut c Checker) lambda_expr(mut node ast.LambdaExpr, exp_typ ast.Type) as
 
 		mut stmts := []ast.Stmt{}
 		mut has_return := false
-		if return_type == ast.void_type {
+		if return_type.clear_option_and_result() == ast.void_type {
 			stmts << ast.ExprStmt{
 				pos: node.pos
 				expr: node.expr

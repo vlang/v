@@ -814,7 +814,7 @@ fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) Comptime
 							}
 						}
 					} else {
-						c.error('invalid `\$if` condition: ${cond.left.type_name()}1',
+						c.error('invalid `\$if` condition: ${cond.left.type_name()}',
 							cond.pos)
 					}
 				}
@@ -878,7 +878,11 @@ fn (mut c Checker) comptime_if_branch(mut cond ast.Expr, pos token.Pos) Comptime
 					else { return .unknown }
 				}
 			} else if cname in ast.valid_comptime_if_cpu_features {
-				return .unknown
+				match cname {
+					'x64' { return if c.pref.m64 { .eval } else { .skip } }
+					'x32' { return if !c.pref.m64 { .eval } else { .skip } }
+					else { return .unknown }
+				}
 			} else if cname in ast.valid_comptime_if_other {
 				match cname {
 					'apk' {

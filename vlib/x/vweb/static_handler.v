@@ -56,7 +56,7 @@ pub fn (mut sh StaticHandler) handle_static(directory_path string, root bool) !b
 // ```
 pub fn (mut sh StaticHandler) host_handle_static(host string, directory_path string, root bool) !bool {
 	if !os.exists(directory_path) {
-		return false
+		return error('directory `${directory_path}` does not exist. The directory should be relative to the current working directory: ${os.getwd()}')
 	}
 	dir_path := directory_path.trim_space().trim_right('/')
 	mut mount_path := ''
@@ -84,7 +84,7 @@ pub fn (mut sh StaticHandler) host_mount_static_folder_at(host string, directory
 	if mount_path.len < 1 || mount_path[0] != `/` {
 		return error('invalid mount path! The path should start with `/`')
 	} else if !os.exists(directory_path) {
-		return error('directory "${directory_path}" does not exist')
+		return error('directory `${directory_path}` does not exist. The directory should be relative to the current working directory: ${os.getwd()}')
 	}
 
 	dir_path := directory_path.trim_right('/')

@@ -12,7 +12,7 @@ fn main() {
 	mut pico := picoev.new(
 		port: port
 		raw_cb: handle_conn
-	)
+	)!
 	pico.serve()
 }
 

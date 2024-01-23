@@ -673,7 +673,7 @@ fn (mut g Gen) gen_struct_enc_dec(utyp ast.Type, type_info ast.TypeInfo, styp st
 				is_option_field := field.typ.has_flag(.option)
 				if field.typ.has_flag(.option) {
 					gen_js_get_opt(js_dec_name(field_type), field_type, styp, tmp, name, mut
-						dec, true)
+						dec, is_required)
 					dec.writeln('\tif (jsonroot_${tmp} && !cJSON_IsNull(jsonroot_${tmp})) {')
 				} else {
 					gen_js_get(styp, tmp, name, mut dec, is_required)

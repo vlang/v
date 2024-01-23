@@ -18,7 +18,7 @@ fn test_fast_raw_decode() {
 	s := '{"name":"Peter","age":28,"salary":95000.5,"title":2}'
 	o := json.fast_raw_decode(s) or {
 		assert false
-		json.Any(json.null)
+		json.Any('')
 	}
 	str := o.str()
 	assert str == '{"name":"Peter","age":"28","salary":"95000.5","title":"2"}'

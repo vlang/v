@@ -400,7 +400,9 @@ fn test_eof() {
 	mut f := os.open(tfile)!
 	f.read_bytes(10)
 	assert !f.eof()
-	f.read_bytes(100)
+	x := f.read_bytes(100)
+	dump(x)
+	dump(x.len)
 	assert f.eof()
 	f.close()
 }
@@ -476,4 +478,19 @@ fn test_open_file_crlf_binary_mode() {
 	}
 
 	assert fcont_wb == teststr
+}
+
+fn test_path_devnull() {
+	dump(os.path_devnull)
+	content := os.read_file(os.path_devnull)!
+	// dump(content)
+	// dump(content.len)
+
+	os.write_file(os.path_devnull, 'something')!
+
+	content_after := os.read_file(os.path_devnull)!
+	// dump(content_after)
+	// dump(content_after.len)
+	assert content.len == 0
+	assert content_after.len == 0
 }

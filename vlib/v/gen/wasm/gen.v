@@ -147,7 +147,7 @@ pub fn (mut g Gen) fn_external_import(node ast.FnDecl) {
 	if node.language == .js && g.pref.os == .wasi {
 		g.v_error('javascript interop functions are not allowed in a `wasi` build', node.pos)
 	}
-	if node.return_type.has_flag(.option) || node.return_type.has_flag(.result) {
+	if node.return_type.has_option_or_result() {
 		g.v_error('interop functions must not return option or result', node.pos)
 	}
 

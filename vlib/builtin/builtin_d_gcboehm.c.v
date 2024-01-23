@@ -18,7 +18,9 @@ $if dynamic_boehm ? {
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		}
 	} $else {
-		$if $pkgconfig('bdw-gc') {
+		$if $pkgconfig('bdw-gc-threaded') {
+			#pkgconfig bdw-gc-threaded
+		} $else $if $pkgconfig('bdw-gc') {
 			#pkgconfig bdw-gc
 		} $else {
 			$if openbsd || freebsd {

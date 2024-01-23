@@ -204,9 +204,19 @@ pub fn (ctx Context) init_server() {
 	eprintln('init_server() has been deprecated, please init your web app in `fn main()`')
 }
 
+// before_accept_loop is called once the vweb app is started, and listening, but before the loop that accepts
+// incomming request connections.
+// It will be called in the main thread, that runs vweb.run/2 or vweb.run_at/2.
+// It allows you to be notified about the successfull start of your app, and to synchronise your other threads
+// with the webserver start, without error prone and slow pooling or time.sleep waiting.
 // Defining this method is optional.
-// This method is called before every request (aka middleware).
-// You can use it for checking user session cookies or to add headers.
+pub fn (ctx &Context) before_accept_loop() {
+}
+
+// before_request is called once before each request is routed.
+// It will be called in one of multiple threads in a pool, serving requests,
+// the same one, in which the matching route method will be executed right after it.
+// Defining this method is optional.
 pub fn (ctx Context) before_request() {}
 
 // TODO - test
@@ -240,26 +250,26 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	return true
 }
 
-// Response HTTP_OK with payload with content-type `text/html`
+// Response with payload and content-type `text/html`
 pub fn (mut ctx Context) html(payload string) Result {
 	ctx.send_response_to_client('text/html', payload)
 	return Result{}
 }
 
-// Response HTTP_OK with s as payload with content-type `text/plain`
+// Response with s as payload and content-type `text/plain`
 pub fn (mut ctx Context) text(s string) Result {
 	ctx.send_response_to_client('text/plain', s)
 	return Result{}
 }
 
-// Response HTTP_OK with json_s as payload with content-type `application/json`
+// Response with json_s as payload and content-type `application/json`
 pub fn (mut ctx Context) json[T](j T) Result {
 	json_s := json.encode(j)
 	ctx.send_response_to_client('application/json', json_s)
 	return Result{}
 }
 
-// Response HTTP_OK with a pretty-printed JSON result
+// Response with a pretty-printed JSON result
 pub fn (mut ctx Context) json_pretty[T](j T) Result {
 	json_s := json.encode_pretty(j)
 	ctx.send_response_to_client('application/json', json_s)
@@ -267,7 +277,7 @@ pub fn (mut ctx Context) json_pretty[T](j T) Result {
 }
 
 // TODO - test
-// Response HTTP_OK with file as payload
+// Response with file as payload
 pub fn (mut ctx Context) file(f_path string) Result {
 	if !os.exists(f_path) {
 		eprintln('[vweb] file ${f_path} does not exist')
@@ -289,8 +299,9 @@ pub fn (mut ctx Context) file(f_path string) Result {
 	return Result{}
 }
 
-// Response HTTP_OK with s as payload
+// Response with s as payload and sets the status code to HTTP_OK
 pub fn (mut ctx Context) ok(s string) Result {
+	ctx.set_status(200, 'OK')
 	ctx.send_response_to_client(ctx.content_type, s)
 	return Result{}
 }
@@ -535,15 +546,17 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 		return error('invalid nr_workers `${params.nr_workers}`, it should be above 0')
 	}
 
+	routes := generate_routes(global_app)!
+	controllers_sorted := check_duplicate_routes_in_controllers[T](global_app, routes)!
+
 	listen_address := '${params.host}:${params.port}'
 	mut l := net.listen_tcp(params.family, listen_address) or {
 		ecode := err.code()
 		return error('failed to listen ${ecode} ${err}')
 	}
-	// eprintln('>> vweb listen_address: `${listen_address}` | params.family: ${params.family} | l.addr: ${l.addr()} | params: $params')
-
-	routes := generate_routes(global_app)!
-	controllers_sorted := check_duplicate_routes_in_controllers[T](global_app, routes)!
+	$if trace_listen ? {
+		eprintln('>> vweb listen_address: `${listen_address}` | params.family: ${params.family} | l.addr: ${l.addr()} | params: ${params}')
+	}
 
 	if params.show_startup_message {
 		if params.startup_message == '' {
@@ -563,6 +576,10 @@ pub fn run_at[T](global_app &T, params RunParams) ! {
 		println('[Vweb] We have ${ws.len} workers')
 	}
 	flush_stdout()
+
+	unsafe {
+		global_app.before_accept_loop()
+	}
 
 	// Forever accept every connection that comes, and
 	// pass it through the channel, to the thread pool:

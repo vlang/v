@@ -608,6 +608,7 @@ pub fn join_path_single(base string, elem string) string {
 }
 
 // walk_ext returns a recursive list of all files in `path` ending with `ext`.
+// For listing only one level deep, see: `os.ls`
 pub fn walk_ext(path string, ext string) []string {
 	mut res := []string{}
 	impl_walk_ext(path, ext, mut res)
@@ -637,6 +638,7 @@ fn impl_walk_ext(path string, ext string, mut out []string) {
 // When a file is encountered, it will call the callback `f` with current file as argument.
 // Note: walk can be called even for deeply nested folders,
 // since it does not recurse, but processes them iteratively.
+// For listing only one level deep, see: `os.ls`
 pub fn walk(path string, f fn (string)) {
 	if path.len == 0 {
 		return
@@ -674,6 +676,7 @@ pub type FnWalkContextCB = fn (voidptr, string)
 // and the path to the file in its second parameter.
 // Note: walk_with_context can be called even for deeply nested folders,
 // since it does not recurse, but processes them iteratively.
+// For listing only one level deep, see: `os.ls`
 pub fn walk_with_context(path string, context voidptr, fcb FnWalkContextCB) {
 	if path.len == 0 {
 		return
@@ -738,6 +741,21 @@ pub fn mkdir_all(opath string, params MkdirParams) ! {
 	}
 }
 
+fn create_folder_when_it_does_not_exist(path string) {
+	if is_dir(path) || is_link(path) {
+		return
+	}
+	mkdir_all(path, mode: 0o700) or {
+		if is_dir(path) || is_link(path) {
+			// A race had been won, and the `path` folder had been created,
+			// by another concurrent V executable, since the folder now exists,
+			// but it did not right before ... we will just use it too.
+			return
+		}
+		panic(err)
+	}
+}
+
 // cache_dir returns the path to a *writable* user specific folder, suitable for writing non-essential data.
 pub fn cache_dir() string {
 	// See: https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html
@@ -748,16 +766,12 @@ pub fn cache_dir() string {
 	// non-essential data files should be stored. If $XDG_CACHE_HOME is either not set
 	// or empty, a default equal to $HOME/.cache should be used.
 	xdg_cache_home := getenv('XDG_CACHE_HOME')
-	if xdg_cache_home != '' {
-		if !is_dir(xdg_cache_home) && !is_link(xdg_cache_home) {
-			mkdir_all(xdg_cache_home, mode: 0o700) or { panic(err) }
-		}
-		return xdg_cache_home
+	cdir := if xdg_cache_home.len > 0 {
+		xdg_cache_home
+	} else {
+		join_path_single(home_dir(), '.cache')
 	}
-	cdir := join_path_single(home_dir(), '.cache')
-	if !is_dir(cdir) && !is_link(cdir) {
-		mkdir(cdir) or { panic(err) }
-	}
+	create_folder_when_it_does_not_exist(cdir)
 	return cdir
 }
 
@@ -803,14 +817,12 @@ pub fn temp_dir() string {
 pub fn vtmp_dir() string {
 	mut vtmp := getenv('VTMP')
 	if vtmp.len > 0 {
+		create_folder_when_it_does_not_exist(vtmp)
 		return vtmp
 	}
 	uid := getuid()
 	vtmp = join_path_single(temp_dir(), 'v_${uid}')
-	if !exists(vtmp) || !is_dir(vtmp) {
-		// create a new directory, that is private to the user:
-		mkdir_all(vtmp, mode: 0o700) or { panic(err) }
-	}
+	create_folder_when_it_does_not_exist(vtmp)
 	setenv('VTMP', vtmp, true)
 	return vtmp
 }

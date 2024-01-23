@@ -32,9 +32,10 @@ fn main() {
 		exit(1)
 	}
 	backend_pos := args_before.index('-b')
-	backend := if backend_pos == -1 { '.c' } else { args_before[backend_pos + 1] } // this giant mess because closures are not implemented
+	backend := if backend_pos == -1 { '.c' } else { args_before[backend_pos + 1] }
 
 	mut ts := testing.new_test_session(args_before.join(' '), true)
+	ts.exec_mode = .compile_and_run
 	ts.fail_fast = ctx.fail_fast
 	for targ in args_after {
 		if os.is_dir(targ) {
@@ -138,6 +139,9 @@ fn (mut ctx Context) should_test(path string, backend string) ShouldTestStatus {
 	if path.ends_with('pg_orm_test.v') {
 		testing.find_started_process('postgres') or { return .skip }
 	}
+	if path.ends_with('pg_double_test.v') {
+		testing.find_started_process('postgres') or { return .skip }
+	}
 	if path.ends_with('onecontext_test.v') {
 		return .skip
 	}
@@ -147,6 +151,9 @@ fn (mut ctx Context) should_test(path string, backend string) ShouldTestStatus {
 		}
 	}
 	if path.ends_with('_test.v') {
+		return ctx.should_test_when_it_contains_matching_fns(path, backend)
+	}
+	if path.ends_with('_test.c.v') {
 		return ctx.should_test_when_it_contains_matching_fns(path, backend)
 	}
 	if path.ends_with('_test.js.v') {

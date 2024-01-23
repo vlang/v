@@ -240,10 +240,10 @@ mut:
 	/////////
 	// out_parallel []strings.Builder
 	// out_idx      int
-	out_fn_start_pos []int  // for generating multiple .c files, stores locations of all fn positions in `out` string builder
-	static_modifier  string // for parallel_cc
-
-	has_reflection       bool
+	out_fn_start_pos     []int  // for generating multiple .c files, stores locations of all fn positions in `out` string builder
+	static_modifier      string // for parallel_cc
+	has_reflection       bool   // v.reflection has been imported
+	has_debugger         bool   // $dbg has been used in the code
 	reflection_strings   &map[string]int
 	defer_return_tmp_var string
 	vweb_filter_fn_name  string // vweb__filter or x__vweb__filter, used by $vweb.html() for escaping strings in the templates, depending on which `vweb` import is used
@@ -319,6 +319,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) (string
 			|| pref_.os in [.wasm32, .wasm32_emscripten])
 		static_modifier: if pref_.parallel_cc { 'static' } else { '' }
 		has_reflection: 'v.reflection' in table.modules
+		has_debugger: 'v.debug' in table.modules
 		reflection_strings: &reflection_strings
 	}
 
@@ -687,6 +688,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		is_cc_msvc: global_g.is_cc_msvc
 		use_segfault_handler: global_g.use_segfault_handler
 		has_reflection: 'v.reflection' in global_g.table.modules
+		has_debugger: 'v.debug' in global_g.table.modules
 		reflection_strings: global_g.reflection_strings
 	}
 	g.comptime = &comptime.ComptimeInfo{
@@ -1451,27 +1453,27 @@ pub fn (mut g Gen) write_typedef_types() {
 				info := sym.info as ast.ArrayFixed
 				elem_sym := g.table.sym(info.elem_type)
 				if elem_sym.is_builtin() {
-					// .array_fixed {
 					styp := sym.cname
-					// array_fixed_char_300 => char x[300]
-					len := styp.after('_')
-					mut fixed := g.typ(info.elem_type)
-					if elem_sym.info is ast.FnType {
-						pos := g.out.len
-						// pos2:=g.out_parallel[g.out_idx].len
-						g.write_fn_ptr_decl(&elem_sym.info, '')
-						fixed = g.out.cut_to(pos)
-						// g.out_parallel[g.out_idx].cut_to(pos2)
-						mut def_str := 'typedef ${fixed};'
-						def_str = def_str.replace_once('(*)', '(*${styp}[${len}])')
-						g.type_definitions.writeln(def_str)
-					} else if !info.is_fn_ret && len.int() > 0 {
-						g.type_definitions.writeln('typedef ${fixed} ${styp} [${len}];')
-						base := g.typ(info.elem_type.clear_flags(.option, .result))
-						if info.elem_type.has_flag(.option) && base !in g.options_forward {
-							g.options_forward << base
-						} else if info.elem_type.has_flag(.result) && base !in g.results_forward {
-							g.results_forward << base
+					len := info.size
+					if len > 0 {
+						mut fixed := g.typ(info.elem_type)
+						if elem_sym.info is ast.FnType {
+							pos := g.out.len
+							// pos2:=g.out_parallel[g.out_idx].len
+							g.write_fn_ptr_decl(&elem_sym.info, '')
+							fixed = g.out.cut_to(pos)
+							// g.out_parallel[g.out_idx].cut_to(pos2)
+							mut def_str := 'typedef ${fixed};'
+							def_str = def_str.replace_once('(*)', '(*${styp}[${len}])')
+							g.type_definitions.writeln(def_str)
+						} else if !info.is_fn_ret {
+							g.type_definitions.writeln('typedef ${fixed} ${styp} [${len}];')
+							base := g.typ(info.elem_type.clear_option_and_result())
+							if info.elem_type.has_flag(.option) && base !in g.options_forward {
+								g.options_forward << base
+							} else if info.elem_type.has_flag(.result) && base !in g.results_forward {
+								g.results_forward << base
+							}
 						}
 					}
 				}
@@ -1684,7 +1686,7 @@ pub fn (mut g Gen) write_multi_return_types() {
 			continue
 		}
 		info := sym.mr_info()
-		if info.types.filter(it.has_flag(.generic)).len > 0 {
+		if info.types.any(it.has_flag(.generic)) {
 			continue
 		}
 		g.typedefs.writeln('typedef struct ${sym.cname} ${sym.cname};')
@@ -1954,14 +1956,20 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 		if ret_typ.has_flag(.generic) {
 			if expr is ast.SelectorExpr && g.cur_concrete_types.len == 0 {
 				// resolve generic struct on selectorExpr inside non-generic function
-				if expr.expr is ast.Ident && expr.expr.obj is ast.Var {
-					if (expr.expr.obj as ast.Var).expr is ast.StructInit {
-						g.cur_concrete_types << (g.table.sym(expr.expr.obj.typ).info as ast.Struct).concrete_types
+				if expr.expr is ast.Ident {
+					if expr.expr.obj is ast.Var {
+						if expr.expr.obj.expr is ast.StructInit {
+							struct_info := g.table.sym(expr.expr.obj.typ).info
+							if struct_info is ast.Struct {
+								g.cur_concrete_types << struct_info.concrete_types
+							}
+						}
 					}
 				}
 			}
-			styp = g.base_type(g.unwrap_generic(ret_typ))
-			ret_styp := g.typ(g.unwrap_generic(ret_typ)).replace('*', '_ptr')
+			unwrapped_ret_typ := g.unwrap_generic(ret_typ)
+			styp = g.base_type(unwrapped_ret_typ)
+			ret_styp := g.typ(unwrapped_ret_typ).replace('*', '_ptr')
 			g.writeln('${ret_styp} ${tmp_var};')
 		} else {
 			g.writeln('${g.typ(ret_typ)} ${tmp_var};')
@@ -2070,6 +2078,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.ComptimeFor {
 			g.comptime_for(node)
+		}
+		ast.DebuggerStmt {
+			g.debugger_stmt(node)
 		}
 		ast.DeferStmt {
 			mut defer_stmt := node
@@ -2559,7 +2570,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		got_deref_type := got_type.deref()
 		deref_sym := g.table.sym(got_deref_type)
 		deref_will_match := expected_type in [got_type, got_deref_type, deref_sym.parent_idx]
-		got_is_opt_or_res := got_type.has_flag(.option) || got_type.has_flag(.result)
+		got_is_opt_or_res := got_type.has_option_or_result()
 		if deref_will_match || got_is_opt_or_res || expr.is_auto_deref_var() {
 			g.write('*')
 		}
@@ -3197,7 +3208,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			ret_type := if node.or_block.kind == .absent {
 				node.return_type
 			} else {
-				node.return_type.clear_flags(.option, .result)
+				node.return_type.clear_option_and_result()
 			}
 			mut shared_styp := ''
 			if g.is_shared && !ret_type.has_flag(.shared_f) && !g.inside_or_block {
@@ -3694,15 +3705,14 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		g.or_block(tmp_var, node.or_block, node.typ)
 		g.write(stmt_str)
 		g.write(' ')
-		unwrapped_typ := node.typ.clear_flags(.option, .result)
+		unwrapped_typ := node.typ.clear_option_and_result()
 		unwrapped_styp := g.typ(unwrapped_typ)
 		g.write('(*(${unwrapped_styp}*)${tmp_var}.data)')
 		return
 	}
 
 	// if node expr is a root ident and an optional
-	mut is_opt_or_res := node.expr is ast.Ident
-		&& (node.expr_type.has_flag(.option) || node.expr_type.has_flag(.result))
+	mut is_opt_or_res := node.expr is ast.Ident && node.expr_type.has_option_or_result()
 	if is_opt_or_res {
 		opt_base_typ := g.base_type(node.expr_type)
 		g.write('(*(${opt_base_typ}*)')
@@ -3909,6 +3919,146 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if sym.kind in [.interface_, .sum_type] {
 		g.write('))')
 	}
+}
+
+// debugger_stmt writes the call to V debugger REPL
+fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
+	paline, pafile, pamod, pafn := g.panic_debug_info(node.pos)
+	is_anon := g.cur_fn != unsafe { nil } && g.cur_fn.is_anon
+	is_generic := g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0
+	is_method := g.cur_fn != unsafe { nil } && g.cur_fn.is_method
+	receiver_type := if g.cur_fn != unsafe { nil } && g.cur_fn.is_method {
+		g.table.type_to_str(g.cur_fn.receiver.typ)
+	} else {
+		''
+	}
+	scope_vars := g.file.scope.innermost(node.pos.pos).get_all_vars()
+
+	// prepares the map containing the scope variable infos
+	mut vars := []string{}
+	mut keys := strings.new_builder(100)
+	mut values := strings.new_builder(100)
+	mut count := 1
+	for _, obj in scope_vars {
+		if obj.name !in vars {
+			if obj is ast.Var && obj.pos.pos < node.pos.pos {
+				keys.write_string('_SLIT("${obj.name}")')
+				var_typ := if obj.ct_type_var != .no_comptime {
+					g.comptime.get_comptime_var_type(ast.Ident{ obj: obj })
+				} else if obj.smartcasts.len > 0 {
+					obj.smartcasts.last()
+				} else {
+					obj.typ
+				}
+				values.write_string('{.typ=_SLIT("${g.table.type_to_str(g.unwrap_generic(var_typ))}"),.value=')
+				obj_sym := g.table.sym(obj.typ)
+				cast_sym := g.table.sym(var_typ)
+
+				mut param_var := strings.new_builder(50)
+				if obj.smartcasts.len > 0 {
+					is_option_unwrap := obj.typ.has_flag(.option)
+						&& var_typ == obj.typ.clear_flag(.option)
+					is_option := obj.typ.has_flag(.option)
+					mut opt_cast := false
+					mut func := if cast_sym.info is ast.Aggregate {
+						''
+					} else {
+						g.get_str_fn(var_typ)
+					}
+
+					param_var.write_string('(')
+					if obj_sym.kind == .sum_type && !obj.is_auto_heap {
+						if is_option {
+							if !is_option_unwrap {
+								param_var.write_string('*(')
+							}
+							styp := g.base_type(obj.typ)
+							param_var.write_string('*(${styp}*)')
+							opt_cast = true
+						} else {
+							param_var.write_string('*')
+						}
+					} else if g.table.is_interface_var(obj) || obj.ct_type_var == .smartcast {
+						param_var.write_string('*')
+					} else if is_option {
+						opt_cast = true
+						param_var.write_string('*(${g.base_type(obj.typ)}*)')
+					}
+
+					dot := if obj.orig_type.is_ptr() || obj.is_auto_heap { '->' } else { '.' }
+					if obj.ct_type_var == .smartcast {
+						cur_variant_sym := g.table.sym(g.unwrap_generic(g.comptime.type_map['${g.comptime.comptime_for_variant_var}.typ']))
+						param_var.write_string('${obj.name}${dot}_${cur_variant_sym.cname}')
+					} else if cast_sym.info is ast.Aggregate {
+						sym := g.table.sym(cast_sym.info.types[g.aggregate_type_idx])
+						func = g.get_str_fn(cast_sym.info.types[g.aggregate_type_idx])
+						param_var.write_string('${obj.name}${dot}_${sym.cname}')
+					} else if obj_sym.kind == .interface_ && cast_sym.kind == .interface_ {
+						ptr := '*'.repeat(obj.typ.nr_muls())
+						param_var.write_string('I_${obj_sym.cname}_as_I_${cast_sym.cname}(${ptr}${obj.name})')
+					} else if obj_sym.kind in [.sum_type, .interface_] {
+						param_var.write_string('${obj.name}')
+						if opt_cast {
+							param_var.write_string('.data)')
+						}
+						param_var.write_string('${dot}_${cast_sym.cname}')
+					} else if obj.typ.has_flag(.option) && !var_typ.has_flag(.option) {
+						param_var.write_string('${obj.name}.data')
+					} else {
+						param_var.write_string('${obj.name}')
+					}
+					param_var.write_string(')')
+
+					values.write_string('${func}(${param_var.str()})}')
+				} else {
+					func := g.get_str_fn(var_typ)
+					if obj.typ.has_flag(.option) && !var_typ.has_flag(.option) {
+						// option unwrap
+						base_typ := g.base_type(obj.typ)
+						values.write_string('${func}(*(${base_typ}*)${obj.name}.data)}')
+					} else {
+						_, str_method_expects_ptr, _ := cast_sym.str_method_info()
+
+						// eprintln(">> ${obj.name} | str expects ptr? ${str_method_expects_ptr} | ptr? ${var_typ.is_ptr()} || auto heap? ${obj.is_auto_heap} | auto deref? ${obj.is_auto_deref}")
+						deref := if var_typ.has_flag(.option) {
+							''
+						} else if str_method_expects_ptr && !obj.typ.is_ptr() {
+							'&'
+						} else if obj.is_auto_heap && var_typ.is_ptr() && str_method_expects_ptr {
+							'*'
+						} else if !obj.is_auto_heap && var_typ.is_ptr() && str_method_expects_ptr {
+							''
+						} else if obj.is_auto_heap && var_typ.is_ptr() {
+							'*'
+						} else if obj.typ.is_ptr() && !obj.is_auto_deref {
+							'&'
+						} else if obj.typ.is_ptr() && obj.is_auto_deref {
+							'*'
+						} else {
+							''
+						}
+						values.write_string('${func}(${deref}${obj.name})}')
+					}
+				}
+				vars << obj.name
+				if count != scope_vars.len {
+					keys.write_string(',')
+					values.write_string(',')
+				}
+			}
+		}
+		count += 1
+	}
+	g.writeln('{')
+	g.writeln('\tMap_string_string _scope = new_map_init(&map_hash_string, &map_eq_string, &map_clone_string, &map_free_string, ${vars.len}, sizeof(string), sizeof(v__debug__DebugContextVar),')
+	g.write('\t\t_MOV((string[${vars.len}]){')
+	g.write(keys.str())
+	g.writeln('}),')
+	g.write('\t\t_MOV((v__debug__DebugContextVar[${vars.len}]){')
+	g.write(values.str())
+	g.writeln('}));')
+	g.writeln('\tv__debug__Debugger_interact(&g_debugger, (v__debug__DebugContextInfo){.is_anon=${is_anon},.is_generic=${is_generic},.is_method=${is_method},.receiver_typ_name=_SLIT("${receiver_type}"),.line=${paline},.file=_SLIT("${pafile}"),.mod=_SLIT("${pamod}"),.fn_name=_SLIT("${pafn}"),.scope=_scope});')
+	g.write('}')
 }
 
 fn (mut g Gen) enum_decl(node ast.EnumDecl) {
@@ -4137,25 +4287,25 @@ fn (mut g Gen) map_init(node ast.MapInit) {
 		}
 	}
 	if size > 0 {
-		if value_sym.kind == .function {
-			g.writeln('new_map_init${noscan}(${hash_fn}, ${key_eq_fn}, ${clone_fn}, ${free_fn}, ${size}, sizeof(${key_typ_str}), sizeof(voidptr),')
+		effective_typ_str := if value_sym.kind == .function { 'voidptr' } else { value_typ_str }
+		if node.has_update_expr {
+			g.writeln('new_map_update_init(')
+			g.write('\t&(')
+			g.expr(node.update_expr)
+			g.writeln('), ${size}, sizeof(${key_typ_str}), sizeof(${effective_typ_str}),')
 		} else {
-			g.writeln('new_map_init${noscan}(${hash_fn}, ${key_eq_fn}, ${clone_fn}, ${free_fn}, ${size}, sizeof(${key_typ_str}), sizeof(${value_typ_str}),')
+			g.writeln('new_map_init${noscan}(${hash_fn}, ${key_eq_fn}, ${clone_fn}, ${free_fn}, ${size}, sizeof(${key_typ_str}), sizeof(${effective_typ_str}),')
 		}
-		g.writeln('\t\t_MOV((${key_typ_str}[${size}]){')
+		g.writeln('\t_MOV((${key_typ_str}[${size}]){')
 		for expr in node.keys {
-			g.write('\t\t\t')
+			g.write('\t\t')
 			g.expr(expr)
-			g.writeln(', ')
+			g.writeln(',')
 		}
-		g.writeln('\t\t}),')
-		if value_sym.kind == .function {
-			g.writeln('\t\t_MOV((voidptr[${size}]){')
-		} else {
-			g.writeln('\t\t_MOV((${value_typ_str}[${size}]){')
-		}
+		g.writeln('\t}),')
+		g.writeln('\t_MOV((${effective_typ_str}[${size}]){')
 		for i, expr in node.vals {
-			g.write('\t\t\t')
+			g.write('\t\t')
 			if expr.is_auto_deref_var() {
 				g.write('*')
 			}
@@ -4168,12 +4318,15 @@ fn (mut g Gen) map_init(node ast.MapInit) {
 			}
 			g.writeln(', ')
 		}
-		g.writeln('\t\t})')
-		g.writeln('\t)')
+		g.writeln('\t})')
+		g.writeln(')')
+	} else if node.has_update_expr {
+		g.write('map_clone(&(')
+		g.expr(node.update_expr)
+		g.writeln('))')
 	} else {
-		g.write('new_map${noscan}(sizeof(${key_typ_str}), sizeof(${value_typ_str}), ${hash_fn}, ${key_eq_fn}, ${clone_fn}, ${free_fn})')
+		g.writeln('new_map${noscan}(sizeof(${key_typ_str}), sizeof(${value_typ_str}), ${hash_fn}, ${key_eq_fn}, ${clone_fn}, ${free_fn})')
 	}
-	g.writeln('')
 	if g.is_shared {
 		g.write('}, sizeof(${shared_styp}))')
 	} else if is_amp {
@@ -4496,7 +4649,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 				g.write('(*(')
 			}
 			if node.obj.smartcasts.len > 0 {
-				obj_sym := g.table.sym(node.obj.typ)
+				obj_sym := g.table.sym(g.unwrap_generic(node.obj.typ))
 				if !prevent_sum_type_unwrapping_once {
 					for _, typ in node.obj.smartcasts {
 						is_option_unwrap := is_option && typ == node.obj.typ.clear_flag(.option)
@@ -4512,7 +4665,9 @@ fn (mut g Gen) ident(node ast.Ident) {
 								g.write('*')
 							}
 						} else if (g.inside_interface_deref && g.table.is_interface_var(node.obj))
-							|| node.obj.ct_type_var == .smartcast {
+							|| node.obj.ct_type_var == .smartcast
+							|| (obj_sym.kind == .interface_
+							&& g.table.type_kind(node.obj.typ) == .any) {
 							g.write('*')
 						} else if is_option {
 							g.write('*(${g.base_type(node.obj.typ)}*)')
@@ -4714,11 +4869,11 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 }
 
 fn (mut g Gen) concat_expr(node ast.ConcatExpr) {
-	mut styp := g.typ(node.return_type.clear_flags(.option, .result))
+	mut styp := g.typ(node.return_type.clear_option_and_result())
 	if g.inside_return {
-		styp = g.typ(g.fn_decl.return_type.clear_flags(.option, .result))
+		styp = g.typ(g.fn_decl.return_type.clear_option_and_result())
 	} else if g.inside_or_block {
-		styp = g.typ(g.or_expr_return_type.clear_flags(.option, .result))
+		styp = g.typ(g.or_expr_return_type.clear_option_and_result())
 	}
 	sym := g.table.sym(node.return_type)
 	is_multi := sym.kind == .multi_return
@@ -4957,14 +5112,14 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	mut fn_ret_type := g.fn_decl.return_type
 	if sym.kind == .alias {
 		unaliased_type := g.table.unaliased_type(fn_ret_type)
-		if unaliased_type.has_flag(.option) || unaliased_type.has_flag(.result) {
+		if unaliased_type.has_option_or_result() {
 			fn_ret_type = unaliased_type
 		}
 	}
 	fn_return_is_multi := sym.kind == .multi_return
 	fn_return_is_option := fn_ret_type.has_flag(.option)
 	fn_return_is_result := fn_ret_type.has_flag(.result)
-	fn_return_is_fixed_array := sym.is_array_fixed() && !fn_ret_type.has_flag(.option)
+	fn_return_is_fixed_array := sym.is_array_fixed() && !fn_ret_type.has_option_or_result()
 
 	mut has_semicolon := false
 	if node.exprs.len == 0 {
@@ -5210,8 +5365,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				if return_sym.kind == .array_fixed && expr !is ast.ArrayInit {
 					g.fixed_array_var_init(expr, (return_sym.info as ast.ArrayFixed).size)
 				} else {
-					g.expr_with_cast(expr, node.types[i], fn_ret_type.clear_flags(.option,
-						.result))
+					g.expr_with_cast(expr, node.types[i], fn_ret_type.clear_option_and_result())
 				}
 				if i < node.exprs.len - 1 {
 					g.write(', ')
@@ -5306,7 +5460,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			if g.fn_decl.return_type.has_flag(.option) {
 				g.expr_with_opt(node.exprs[0], node.types[0], g.fn_decl.return_type)
 			} else {
-				if fn_return_is_fixed_array && !node.types[0].has_flag(.option) {
+				if fn_return_is_fixed_array && !node.types[0].has_option_or_result() {
 					g.writeln('{0};')
 					if node.exprs[0] is ast.Ident {
 						typ := if expr0.is_auto_deref_var() {
@@ -5914,8 +6068,9 @@ fn (mut g Gen) write_init_function() {
 		g.writeln('\tv__trace_calls__on_call(_SLIT("_vinit"));')
 	}
 
-	if g.use_segfault_handler {
+	if g.use_segfault_handler && !g.pref.is_shared {
 		// 11 is SIGSEGV. It is hardcoded here, to avoid FreeBSD compilation errors for trivial examples.
+		// shared object does not need this
 		g.writeln('#if __STDC_HOSTED__ == 1\n\tsignal(11, v_segmentation_fault_handler);\n#endif')
 	}
 	if g.pref.is_bare {
@@ -5930,7 +6085,10 @@ fn (mut g Gen) write_init_function() {
 	// calling module init functions too, just in case they do fail...
 	g.write('\tas_cast_type_indexes = ')
 	g.writeln(g.as_cast_name_table())
-	g.writeln('\tbuiltin_init();')
+	if !g.pref.is_shared {
+		// shared object does not need this
+		g.writeln('\tbuiltin_init();')
+	}
 
 	if g.nr_closures > 0 {
 		g.writeln('\t_closure_mtx_init();')
@@ -5943,12 +6101,11 @@ fn (mut g Gen) write_init_function() {
 			g.gen_reflection_data()
 		}
 	}
-
 	mut cleaning_up_array := []string{cap: g.table.modules.len}
 
 	for mod_name in g.table.modules {
 		if g.has_reflection && mod_name == 'v.reflection' {
-			// ignore v.reflection already initialized above
+			// ignore v.reflection and v.debug already initialized above
 			continue
 		}
 		mut const_section_header_shown := false
@@ -6022,19 +6179,33 @@ fn (mut g Gen) write_init_function() {
 		println(g.out.after(fn_vcleanup_start_pos))
 	}
 
-	needs_constructor := g.pref.is_shared && g.pref.os != .windows
-	if needs_constructor {
+	if g.pref.is_shared {
 		// shared libraries need a way to call _vinit/2. For that purpose,
 		// provide a constructor/destructor pair, ensuring that all constants
 		// are initialized just once, and that they will be freed too.
 		// Note: os.args in this case will be [].
-		g.writeln('__attribute__ ((constructor))')
+		if g.pref.os == .windows {
+			g.writeln('// workaround for windows, export _vinit_caller, let dl.open() call it')
+			g.writeln('// NOTE: This is hardcoded in vlib/dl/dl_windows.c.v!')
+			g.writeln('VV_EXPORTED_SYMBOL void _vinit_caller();')
+		} else {
+			g.writeln('__attribute__ ((constructor))')
+		}
 		g.writeln('void _vinit_caller() {')
 		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
+		if g.nr_closures > 0 {
+			g.writeln('\t__closure_init(); // vinit_caller()')
+		}
 		g.writeln('\t_vinit(0,0);')
 		g.writeln('}')
 
-		g.writeln('__attribute__ ((destructor))')
+		if g.pref.os == .windows {
+			g.writeln('// workaround for windows, export _vcleanup_caller, let dl.close() call it')
+			g.writeln('// NOTE: This is hardcoded in vlib/dl/dl_windows.c.v!')
+			g.writeln('VV_EXPORTED_SYMBOL void _vcleanup_caller();')
+		} else {
+			g.writeln('__attribute__ ((destructor))')
+		}
 		g.writeln('void _vcleanup_caller() {')
 		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
 		g.writeln('\t_vcleanup();')
@@ -6168,18 +6339,21 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 						fixed_elem_name += '*'.repeat(sym.info.elem_type.nr_muls())
 					}
 					len := sym.info.size
-					if fixed_elem_name.starts_with('C__') {
-						fixed_elem_name = fixed_elem_name[3..]
-					}
-					if elem_sym.info is ast.FnType {
-						pos := g.out.len
-						g.write_fn_ptr_decl(&elem_sym.info, '')
-						fixed_elem_name = g.out.cut_to(pos)
-						mut def_str := 'typedef ${fixed_elem_name};'
-						def_str = def_str.replace_once('(*)', '(*${styp}[${len}])')
-						g.type_definitions.writeln(def_str)
-					} else if len > 0 {
-						g.type_definitions.writeln('typedef ${fixed_elem_name} ${styp} [${len}];')
+					if len > 0 {
+						if fixed_elem_name.starts_with('C__') {
+							fixed_elem_name = fixed_elem_name[3..]
+						}
+						if elem_sym.info is ast.FnType {
+							pos := g.out.len
+							g.write_fn_ptr_decl(&elem_sym.info, '')
+							fixed_elem_name = g.out.cut_to(pos)
+							mut def_str := 'typedef ${fixed_elem_name};'
+							def_str = def_str.replace_once('(*)', '(*${styp}[${len}])')
+							g.type_definitions.writeln(def_str)
+						} else if elem_sym.info !is ast.ArrayFixed
+							|| (elem_sym.info as ast.ArrayFixed).size > 0 {
+							g.type_definitions.writeln('typedef ${fixed_elem_name} ${styp} [${len}];')
+						}
 					}
 				}
 			}
@@ -6376,16 +6550,27 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 					g.writeln(';')
 					g.stmt_path_pos.delete_last()
 				} else {
+					mut is_array_fixed := false
 					if is_option {
-						g.write('*(${cast_typ}*) ${cvar_name}.data = ')
+						is_array_fixed = expr_stmt.expr is ast.ArrayInit
+							&& g.table.final_sym(return_type).kind == .array_fixed
+						if !is_array_fixed {
+							g.write('*(${cast_typ}*) ${cvar_name}.data = ')
+						}
 					} else {
 						g.write('${cvar_name} = ')
 					}
+
+					if is_array_fixed {
+						g.write('memcpy(${cvar_name}.data, (${cast_typ})')
+					}
 					old_inside_opt_data := g.inside_opt_data
 					g.inside_opt_data = true
-					g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_flags(.option,
-						.result))
+					g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_option_and_result())
 					g.inside_opt_data = old_inside_opt_data
+					if is_array_fixed {
+						g.write(', sizeof(${cast_typ}))')
+					}
 					g.writeln(';')
 					g.stmt_path_pos.delete_last()
 				}
@@ -6420,7 +6605,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 		}
 	}
 	if or_block.kind == .block {
-		g.or_expr_return_type = return_type.clear_flags(.option, .result)
+		g.or_expr_return_type = return_type.clear_option_and_result()
 		g.writeln('\tIError err = ${cvar_name}.err;')
 
 		g.inside_or_block = true
@@ -6521,7 +6706,7 @@ fn c_fn_name(name_ string) string {
 
 fn (mut g Gen) type_default(typ_ ast.Type) string {
 	typ := g.unwrap_generic(typ_)
-	if typ.has_flag(.option) || typ.has_flag(.result) {
+	if typ.has_option_or_result() {
 		return '{0}'
 	}
 	// Always set pointers to 0

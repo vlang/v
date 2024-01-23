@@ -1,0 +1,9 @@
+#!/usr/bin/env expect
+source "common.tcl"
+
+expect "Break on * smartcast in ${test_file}:3"
+expect "${test_file}:3 vdbg> "
+send "p a\n"
+expect "a = 1 (int)"
+send "q\n"
+expect eof

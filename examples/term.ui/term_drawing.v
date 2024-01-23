@@ -109,12 +109,16 @@ mut:
 	y int
 }
 
+type EventFn = fn (&ui.Event, voidptr)
+
+type FrameFn = fn (voidptr)
+
 fn main() {
 	mut app := &App{}
 	app.ui = ui.init(
 		user_data: app
-		frame_fn: frame
-		event_fn: event
+		frame_fn: FrameFn(frame)
+		event_fn: EventFn(event)
 		frame_rate: frame_rate
 		hide_cursor: true
 		window_title: 'V terminal pixelart drawing app'

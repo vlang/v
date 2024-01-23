@@ -45,6 +45,13 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	mut primary_field := ast.StructField{}
 
 	for field in fields {
+		field_typ, field_sym := c.get_non_array_type(field.typ)
+		if field_sym.kind == .struct_ && (field_typ.idx() == node.table_expr.typ.idx()
+			|| c.check_recursive_structs(field_sym, table_sym.name)) {
+			c.orm_error('invalid recursive struct `${field_sym.name}`', field.pos)
+			return ast.void_type
+		}
+
 		if field.attrs.contains('primary') {
 			if has_primary {
 				c.orm_error('a struct can only have one primary key', field.pos)
@@ -266,6 +273,13 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	non_primitive_fields := c.get_orm_non_primitive_fields(fields)
 
 	for field in non_primitive_fields {
+		field_typ, field_sym := c.get_non_array_type(field.typ)
+		if field_sym.kind == .struct_ && (field_typ.idx() == node.table_expr.typ.idx()
+			|| c.check_recursive_structs(field_sym, table_sym.name)) {
+			c.orm_error('invalid recursive struct `${field_sym.name}`', field.pos)
+			return ast.void_type
+		}
+
 		// Delete an uninitialized struct from fields and skip adding the current field
 		// to sub structs to skip inserting an empty struct in the related table.
 		if c.check_field_of_inserting_struct_is_uninitialized(node, field.name) {
@@ -717,4 +731,34 @@ fn (c &Checker) orm_get_field_pos(expr &ast.Expr) token.Pos {
 		pos = expr.pos()
 	}
 	return pos
+}
+
+// check_recursive_structs returns true if type is struct and has any child or nested child with the type of the given struct name,
+// array elements are all checked.
+fn (mut c Checker) check_recursive_structs(ts &ast.TypeSymbol, struct_name string) bool {
+	if ts.info is ast.Struct {
+		for field in ts.info.fields {
+			_, field_sym := c.get_non_array_type(field.typ)
+			if field_sym.kind == .struct_ && field_sym.name == struct_name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// returns the final non-array type by recursively retrieving the element type of an array type,
+// if the input type is not an array, it is returned directly.
+fn (mut c Checker) get_non_array_type(typ_ ast.Type) (ast.Type, &ast.TypeSymbol) {
+	mut typ := typ_
+	mut sym := c.table.sym(typ)
+	for {
+		if sym.kind == .array {
+			typ = sym.array_info().elem_type
+			sym = c.table.sym(typ)
+		} else {
+			break
+		}
+	}
+	return typ, sym
 }

@@ -456,13 +456,19 @@ fn (mut a App) draw_gameover() {
 	a.termui.draw_text(start_x, (a.height / 2) + 3 * block_size, '   #####  #    # #    # ######   #######   ##   ###### #    #  ')
 }
 
+type InitFn = fn (voidptr)
+
+type EventFn = fn (&termui.Event, voidptr)
+
+type FrameFn = fn (voidptr)
+
 fn main() {
 	mut app := &App{}
 	app.termui = termui.init(
 		user_data: app
-		event_fn: event
-		frame_fn: frame
-		init_fn: init
+		event_fn: EventFn(event)
+		frame_fn: FrameFn(frame)
+		init_fn: InitFn(init)
 		hide_cursor: true
 		frame_rate: 10
 	)

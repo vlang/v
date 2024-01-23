@@ -367,7 +367,7 @@ pub fn (mut b Builder) get_vtmp_filename(base_file_name string, postfix string) 
 	vtmp := os.vtmp_dir()
 	mut uniq := ''
 	if !b.pref.reuse_tmpc {
-		uniq = '.${rand.u64()}'
+		uniq = '.${rand.ulid()}'
 	}
 	fname := os.file_name(os.real_path(base_file_name)) + '${uniq}${postfix}'
 	return os.real_path(os.join_path(vtmp, fname))

@@ -101,6 +101,7 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 	mut node := unsafe { node_ }
 	match mut node {
 		ast.EmptyStmt {}
+		ast.DebuggerStmt {}
 		ast.AsmStmt {
 			w.asm_io(node.output)
 			w.asm_io(node.input)
@@ -516,6 +517,13 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		return
 	}
 	w.mark_fn_as_used(fn_name)
+	if node.is_method && node.receiver_type.has_flag(.generic) && node.receiver_concrete_type != 0
+		&& !node.receiver_concrete_type.has_flag(.generic) {
+		// if receiver is generic, then cgen requires `node.receiver_type` to be T.
+		// We therefore need to get the concrete type from `node.receiver_concrete_type`.
+		fkey := '${int(node.receiver_concrete_type)}.${node.name}'
+		w.used_fns[fkey] = true
+	}
 	stmt := w.all_fns[fn_name] or { return }
 	if stmt.name == node.name {
 		if !node.is_method || node.receiver_type == stmt.receiver.typ {

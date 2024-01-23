@@ -12,7 +12,12 @@ pub mut:
 
 pub struct App {
 pub mut:
-	db sqlite.DB
+	db      sqlite.DB
+	started chan bool
+}
+
+pub fn (mut app App) before_accept_loop() {
+	app.started <- true
 }
 
 struct Article {
@@ -27,7 +32,9 @@ fn test_a_vweb_application_compiles() {
 		exit(0)
 	}()
 	mut app := &App{}
-	vweb.run_at[App, Context](mut app, port: port, family: .ip, timeout_in_seconds: 10)!
+	spawn vweb.run_at[App, Context](mut app, port: port, family: .ip, timeout_in_seconds: 2)
+	// app startup time
+	_ := <-app.started
 }
 
 pub fn (mut ctx Context) before_request() {

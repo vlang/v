@@ -80,6 +80,7 @@ pub mut:
 	inside_lambda              bool // true inside `|...| ...`
 	inside_ref_lit             bool // true inside `a := &something`
 	inside_defer               bool // true inside `defer {}` blocks
+	inside_return              bool // true inside `return ...` blocks
 	inside_fn_arg              bool // `a`, `b` in `a.f(b)`
 	inside_ct_attr             bool // true inside `[if expr]`
 	inside_x_is_type           bool // true inside the Type expression of `if x is Type {`
@@ -1147,11 +1148,11 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 			mut expr_ret_type := expr.return_type
 			if expr_ret_type != 0 && c.table.sym(expr_ret_type).kind == .alias {
 				unaliased_ret_type := c.table.unaliased_type(expr_ret_type)
-				if unaliased_ret_type.has_flag(.option) || unaliased_ret_type.has_flag(.result) {
+				if unaliased_ret_type.has_option_or_result() {
 					expr_ret_type = unaliased_ret_type
 				}
 			}
-			if expr_ret_type.has_flag(.option) || expr_ret_type.has_flag(.result) {
+			if expr_ret_type.has_option_or_result() {
 				return_modifier_kind := if expr_ret_type.has_flag(.option) {
 					'an Option'
 				} else {
@@ -1179,7 +1180,7 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 		}
 		ast.SelectorExpr {
 			if c.table.sym(ret_type).kind != .chan {
-				if expr.typ.has_flag(.option) || expr.typ.has_flag(.result) {
+				if expr.typ.has_option_or_result() {
 					with_modifier_kind := if expr.typ.has_flag(.option) {
 						'an Option'
 					} else {
@@ -1208,7 +1209,21 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 		}
 		ast.IndexExpr {
 			if expr.or_expr.kind != .absent {
-				c.check_or_expr(expr.or_expr, ret_type, ret_type.set_flag(.result), expr)
+				mut return_none_or_error := false
+				if expr.or_expr.stmts.len > 0 {
+					last_stmt := expr.or_expr.stmts.last()
+					if last_stmt is ast.ExprStmt {
+						if c.inside_return && last_stmt.typ in [ast.none_type, ast.error_type] {
+							return_none_or_error = true
+						}
+					}
+				}
+				if return_none_or_error {
+					c.check_expr_option_or_result_call(expr.or_expr, c.table.cur_fn.return_type)
+				} else {
+					c.check_or_expr(expr.or_expr, ret_type, ret_type.set_flag(.result),
+						expr)
+				}
 			}
 		}
 		ast.CastExpr {
@@ -1271,8 +1286,7 @@ fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return
 		return
 	}
 	mut last_stmt := node.stmts.last()
-	c.check_or_last_stmt(mut last_stmt, ret_type, expr_return_type.clear_flags(.option,
-		.result))
+	c.check_or_last_stmt(mut last_stmt, ret_type, expr_return_type.clear_option_and_result())
 }
 
 fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr_return_type ast.Type) {
@@ -1280,13 +1294,12 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 		match mut stmt {
 			ast.ExprStmt {
 				c.expected_type = ret_type
-				c.expected_or_type = ret_type.clear_flags(.option, .result)
+				c.expected_or_type = ret_type.clear_option_and_result()
 				last_stmt_typ := c.expr(mut stmt.expr)
 
 				if last_stmt_typ.has_flag(.option) || last_stmt_typ == ast.none_type {
-					if stmt.expr in [ast.Ident, ast.SelectorExpr, ast.CallExpr, ast.None] {
-						expected_type_name := c.table.type_to_str(ret_type.clear_flags(.option,
-							.result))
+					if stmt.expr in [ast.Ident, ast.SelectorExpr, ast.CallExpr, ast.None, ast.CastExpr] {
+						expected_type_name := c.table.type_to_str(ret_type.clear_option_and_result())
 						got_type_name := c.table.type_to_str(last_stmt_typ)
 						c.error('`or` block must provide a value of type `${expected_type_name}`, not `${got_type_name}`',
 							stmt.expr.pos())
@@ -1319,8 +1332,7 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 						}
 						return
 					}
-					expected_type_name := c.table.type_to_str(ret_type.clear_flags(.option,
-						.result))
+					expected_type_name := c.table.type_to_str(ret_type.clear_option_and_result())
 					c.error('`or` block must provide a default value of type `${expected_type_name}`, or return/continue/break or call a [noreturn] function like panic(err) or exit(1)',
 						stmt.expr.pos())
 				} else {
@@ -1332,8 +1344,7 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 						return
 					}
 					type_name := c.table.type_to_str(last_stmt_typ)
-					expected_type_name := c.table.type_to_str(ret_type.clear_flags(.option,
-						.result))
+					expected_type_name := c.table.type_to_str(ret_type.clear_option_and_result())
 					c.error('wrong return type `${type_name}` in the `or {}` block, expected `${expected_type_name}`',
 						stmt.expr.pos())
 				}
@@ -1347,8 +1358,7 @@ fn (mut c Checker) check_or_last_stmt(mut stmt ast.Stmt, ret_type ast.Type, expr
 			}
 			ast.Return {}
 			else {
-				expected_type_name := c.table.type_to_str(ret_type.clear_flags(.option,
-					.result))
+				expected_type_name := c.table.type_to_str(ret_type.clear_option_and_result())
 				c.error('last statement in the `or {}` block should be an expression of type `${expected_type_name}` or exit parent scope',
 					stmt.pos)
 			}
@@ -1600,7 +1610,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		}
 		node.typ = field.typ
 		if node.or_block.kind == .block {
-			c.expected_or_type = node.typ.clear_flags(.option, .result)
+			c.expected_or_type = node.typ.clear_option_and_result()
 			c.stmts_ending_with_expression(mut node.or_block.stmts)
 			c.check_or_expr(node.or_block, node.typ, c.expected_or_type, node)
 			c.expected_or_type = ast.void_type
@@ -1990,6 +2000,7 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 			}
 		}
 		ast.NodeError {}
+		ast.DebuggerStmt {}
 		ast.AsmStmt {
 			c.asm_stmt(mut node)
 		}
@@ -2462,8 +2473,10 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			if node.kind == 'define' {
 				if !c.is_builtin_mod && !c.file.path.ends_with('.c.v')
 					&& !c.file.path.contains('vlib') {
-					c.error("#define can only be used in vlib (V's standard library) and *.c.v files",
-						node.pos)
+					if !c.pref.is_bare {
+						c.error("#define can only be used in vlib (V's standard library) and *.c.v files",
+							node.pos)
+					}
 				}
 			} else {
 				c.error('expected `#define`, `#flag`, `#include`, `#insert` or `#pkgconfig` not ${node.val}',
@@ -2671,11 +2684,11 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 			mut ret_type := c.call_expr(mut node)
 			if ret_type != 0 && c.table.sym(ret_type).kind == .alias {
 				unaliased_type := c.table.unaliased_type(ret_type)
-				if unaliased_type.has_flag(.option) || unaliased_type.has_flag(.result) {
+				if unaliased_type.has_option_or_result() {
 					ret_type = unaliased_type
 				}
 			}
-			if !ret_type.has_flag(.option) && !ret_type.has_flag(.result) {
+			if !ret_type.has_option_or_result() {
 				c.expr_or_block_err(node.or_block.kind, node.name, node.or_block.pos,
 					false)
 			}
@@ -2998,6 +3011,12 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	mut to_type := c.unwrap_generic(node.typ)
 	mut to_sym := c.table.sym(to_type) // type to be used as cast
 	mut final_to_sym := c.table.final_sym(to_type)
+	final_to_type := if mut to_sym.info is ast.Alias {
+		to_sym.info.parent_type
+	} else {
+		to_type
+	}
+	final_to_is_ptr := to_type.is_ptr() || final_to_type.is_ptr()
 
 	if to_type.has_flag(.result) {
 		c.error('casting to Result type is forbidden', node.pos)
@@ -3049,17 +3068,20 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			tt := c.table.type_to_str(to_type)
 			c.error('cannot cast `${ft}` to `${tt}`', node.pos)
 		}
-	} else if mut to_sym.info is ast.Alias && !(final_to_sym.kind == .struct_ && to_type.is_ptr()) {
-		if !c.check_types(from_type, to_sym.info.parent_type) && !(final_to_sym.is_int()
-			&& final_from_sym.kind in [.enum_, .bool, .i8, .u8, .char]) {
+	} else if mut to_sym.info is ast.Alias && !(final_to_sym.kind == .struct_ && final_to_is_ptr) {
+		if (!c.check_types(from_type, to_sym.info.parent_type) && !(final_to_sym.is_int()
+			&& final_from_sym.kind in [.enum_, .bool, .i8, .u8, .char]))
+			|| (final_to_sym.kind == .struct_
+			&& from_type.idx() in [ast.voidptr_type_idx, ast.nil_type_idx]) {
 			ft := c.table.type_to_str(from_type)
 			tt := c.table.type_to_str(to_type)
 			c.error('cannot cast `${ft}` to `${tt}` (alias to `${final_to_sym.name}`)',
 				node.pos)
 		}
-	} else if to_sym.kind == .struct_ && mut to_sym.info is ast.Struct && !to_sym.info.is_typedef
-		&& !to_type.is_ptr() {
-		// For now we ignore C typedef because of `C.Window(C.None)` in vlib/clipboard
+	} else if to_sym.kind == .struct_ && mut to_sym.info is ast.Struct
+		&& (!to_sym.info.is_typedef || from_type.idx() in [ast.voidptr_type_idx, ast.nil_type_idx])
+		&& !final_to_is_ptr {
+		// For now we ignore C typedef because of `C.Window(C.None)` in vlib/clipboard (except for `from_type` is voidptr/nil)
 		if from_sym.kind == .struct_ && from_sym.info is ast.Struct && !from_type.is_ptr() {
 			if !to_type.has_flag(.option) {
 				c.warn('casting to struct is deprecated, use e.g. `Struct{...expr}` instead',
@@ -3073,7 +3095,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			ft := c.table.type_to_str(from_type)
 			c.error('cannot cast `${ft}` to struct', node.pos)
 		}
-	} else if to_sym.kind == .struct_ && to_type.is_ptr() {
+	} else if to_sym.kind == .struct_ && final_to_is_ptr {
 		if from_sym.info is ast.Alias {
 			from_type = from_sym.info.parent_type.derive_add_muls(from_type)
 		}
@@ -3138,7 +3160,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		type_name := c.table.type_to_str(to_type)
 		c.error('cannot cast `none` to `${type_name}`', node.pos)
 	} else if from_sym.kind == .struct_ && !from_type.is_ptr() {
-		if (to_type.is_ptr() || to_sym.kind !in [.sum_type, .interface_]) && !c.is_builtin_mod {
+		if (final_to_is_ptr || to_sym.kind !in [.sum_type, .interface_]) && !c.is_builtin_mod {
 			from_type_name := c.table.type_to_str(from_type)
 			type_name := c.table.type_to_str(to_type)
 			c.error('cannot cast struct `${from_type_name}` to `${type_name}`', node.pos)
@@ -3172,7 +3194,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		tt := c.table.type_to_str(to_type)
 		c.error('cannot cast string to `${tt}`, use `${snexpr}.${final_to_sym.name}()` instead.',
 			node.pos)
-	} else if final_from_sym.kind == .string && to_type.is_ptr() && to_sym.kind != .string {
+	} else if final_from_sym.kind == .string && final_to_is_ptr && to_sym.kind != .string {
 		snexpr := node.expr.str()
 		tt := c.table.type_to_str(to_type)
 		c.error('cannot cast string to `${tt}`, use `${snexpr}.str` instead.', node.pos)
@@ -3500,7 +3522,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					c.error('cannot use `or {}` block on non-option variable', node.pos)
 				}
 			}
-			unwrapped_typ := typ.clear_flags(.option, .result)
+			unwrapped_typ := typ.clear_option_and_result()
 			c.expected_or_type = unwrapped_typ
 			c.stmts_ending_with_expression(mut node.or_expr.stmts)
 			c.check_or_expr(node.or_expr, typ, c.expected_or_type, node)
@@ -3574,7 +3596,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 									}
 								}
 							} else {
-								typ = obj.expr.expr_type.clear_flags(.option, .result)
+								typ = obj.expr.expr_type.clear_option_and_result()
 							}
 						} else if obj.expr is ast.EmptyExpr {
 							c.error('invalid variable `${node.name}`', node.pos)
@@ -3586,8 +3608,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					if c.inside_interface_deref && c.table.is_interface_var(obj) {
 						typ = typ.deref()
 					}
-					is_option := typ.has_flag(.option) || typ.has_flag(.result)
-						|| node.or_expr.kind != .absent
+					is_option := typ.has_option_or_result() || node.or_expr.kind != .absent
 					node.kind = .variable
 					node.info = ast.IdentVar{
 						typ: typ
@@ -3610,7 +3631,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 									node.pos)
 							}
 						}
-						unwrapped_typ := typ.clear_flags(.option, .result)
+						unwrapped_typ := typ.clear_option_and_result()
 						c.expected_or_type = unwrapped_typ
 						c.stmts_ending_with_expression(mut node.or_expr.stmts)
 						c.check_or_expr(node.or_expr, typ, c.expected_or_type, node)
@@ -3655,7 +3676,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 
 						if mut obj.expr is ast.CallExpr {
 							if obj.expr.or_block.kind != .absent {
-								typ = typ.clear_flags(.option, .result)
+								typ = typ.clear_option_and_result()
 							}
 						}
 					}
@@ -3667,8 +3688,12 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					obj.typ = typ
 					node.obj = obj
 
+					if obj.attrs.contains('deprecated') && obj.mod != c.mod {
+						c.deprecate('const', '${obj.name}', obj.attrs, node.pos)
+					}
+
 					if node.or_expr.kind != .absent {
-						unwrapped_typ := typ.clear_flags(.option, .result)
+						unwrapped_typ := typ.clear_option_and_result()
 						c.expected_or_type = unwrapped_typ
 						c.stmts_ending_with_expression(mut node.or_expr.stmts)
 						c.check_or_expr(node.or_expr, typ, c.expected_or_type, node)
@@ -3718,6 +3743,12 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		saved_mod := node.mod
 		node.mod = 'builtin'
 		builtin_type := c.ident(mut node)
+		if node.obj is ast.ConstField {
+			field := node.obj as ast.ConstField
+			if field.attrs.contains('deprecated') && field.mod != c.mod {
+				c.deprecate('const', '${field.name}', field.attrs, node.pos)
+			}
+		}
 		if builtin_type != ast.void_type {
 			return builtin_type
 		}
@@ -3855,7 +3886,7 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 					orig_type = expr.obj.typ
 				}
 				is_inherited = expr.obj.is_inherited
-				ct_type_var = if is_comptime && expr.obj.ct_type_var != .no_comptime {
+				ct_type_var = if is_comptime {
 					.smartcast
 				} else {
 					.no_comptime
@@ -4297,7 +4328,7 @@ fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_ty
 				}
 			}
 		}
-		if index_type.has_flag(.option) || index_type.has_flag(.result) {
+		if index_type.has_option_or_result() {
 			type_str := if typ_sym.kind == .string {
 				'(type `${typ_sym.name}`)'
 			} else {

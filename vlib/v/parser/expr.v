@@ -666,7 +666,17 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		p.inside_in_array = true
 	}
 
+	right_op_pos := p.tok.pos()
 	right = p.expr(precedence)
+	if op in [.plus, .minus, .mul, .div, .mod, .lt, .eq] && mut right is ast.PrefixExpr {
+		mut right_expr := right.right
+		for mut right_expr is ast.ParExpr {
+			right_expr = right_expr.expr
+		}
+		if right.op in [.plus, .minus, .mul, .div, .mod, .lt, .eq] && right_expr.is_pure_literal() {
+			p.error_with_pos('invalid expression: unexpected token `${op}`', right_op_pos)
+		}
+	}
 	if is_key_in {
 		p.inside_in_array = false
 	}
@@ -890,7 +900,7 @@ fn (mut p Parser) lambda_expr() ?ast.LambdaExpr {
 	e := p.expr(0)
 	pos_end := p.tok.pos()
 	return ast.LambdaExpr{
-		pos: pos
+		pos: pos.extend(e.pos())
 		pos_expr: pos_expr
 		pos_end: pos_end
 		params: params

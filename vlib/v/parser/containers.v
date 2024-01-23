@@ -196,7 +196,22 @@ fn (mut p Parser) map_init() ast.MapInit {
 	mut keys := []ast.Expr{}
 	mut vals := []ast.Expr{}
 	mut comments := [][]ast.Comment{}
+	mut has_update_expr := false
+	mut update_expr := ast.empty_expr
+	mut update_expr_comments := []ast.Comment{}
+	mut update_expr_pos := token.Pos{}
 	pre_cmnts := p.eat_comments()
+	if p.tok.kind == .ellipsis {
+		// updating init { ...base_map, 'b': 44, 'c': 55 }
+		has_update_expr = true
+		p.check(.ellipsis)
+		update_expr = p.expr(0)
+		update_expr_pos = update_expr.pos()
+		if p.tok.kind == .comma {
+			p.next()
+		}
+		update_expr_comments << p.eat_comments(same_line: true)
+	}
 	for p.tok.kind !in [.rcbr, .eof] {
 		if p.tok.kind == .name && p.tok.lit in ['r', 'c', 'js'] {
 			key := p.string_expr()
@@ -219,6 +234,10 @@ fn (mut p Parser) map_init() ast.MapInit {
 		pos: first_pos.extend_with_last_line(p.tok.pos(), p.tok.line_nr)
 		comments: comments
 		pre_cmnts: pre_cmnts
+		has_update_expr: has_update_expr
+		update_expr: update_expr
+		update_expr_pos: update_expr_pos
+		update_expr_comments: update_expr_comments
 	}
 }
 
@@ -242,6 +261,9 @@ fn (mut p Parser) scope_register_index() {
 fn (mut p Parser) handle_index_variable(mut default_expr ast.Expr) bool {
 	mut has_index := false
 	p.open_scope()
+	defer {
+		p.close_scope()
+	}
 	p.scope_register_index()
 	default_expr = p.expr(0)
 	if var := p.scope.find_var('index') {
@@ -261,6 +283,5 @@ fn (mut p Parser) handle_index_variable(mut default_expr ast.Expr) bool {
 			has_index = is_used
 		}
 	}
-	p.close_scope()
 	return has_index
 }

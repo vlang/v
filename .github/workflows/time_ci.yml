@@ -17,17 +17,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-nix:
+  test-time-linux:
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
-    strategy:
-      matrix:
-        os: [ubuntu-20.04, macos-12]
-      fail-fast: false
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Build V
-        run: make -j4
+        run: make
       - name: Test time functions in a timezone UTC-12
         run: TZ=Etc/GMT+12 ./v test vlib/time/
       - name: Test time functions in a timezone UTC-3
@@ -36,10 +32,28 @@ jobs:
         run: TZ=Etc/GMT-3 ./v test vlib/time/
       - name: Test time functions in a timezone UTC+12
         run: TZ=Etc/GMT-12 ./v test vlib/time/
-      - name: Test time functions in a timezone using daylight saving (Europe/Paris)
+      - name: Test in a timezone using daylight saving (Europe/Paris)
         run: TZ=Europe/Paris ./v test vlib/time/
 
-  test-windows:
+  test-time-macos:
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build V
+        run: make
+      - name: Test time functions in a timezone UTC-12
+        run: TZ=Etc/GMT+12 ./v test vlib/time/
+      - name: Test time functions in a timezone UTC-3
+        run: TZ=Etc/GMT+3 ./v test vlib/time/
+      - name: Test time functions in a timezone UTC+3
+        run: TZ=Etc/GMT-3 ./v test vlib/time/
+      - name: Test time functions in a timezone UTC+12
+        run: TZ=Etc/GMT-12 ./v test vlib/time/
+      - name: Test in a timezone using daylight saving (Europe/Paris)
+        run: TZ=Europe/Paris ./v test vlib/time/
+
+  test-time-windows:
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     runs-on: windows-2019
     steps:
@@ -54,5 +68,5 @@ jobs:
         run: tzutil /s "Russian Standard Time" && ./v test vlib/time/
       - name: Test time functions in a timezone UTC+12
         run: tzutil /s "New Zealand Standard Time" && ./v test vlib/time/
-      - name: Test time functions in a timezone using daylight saving (Europe/Paris)
+      - name: Test in a timezone using daylight saving (Europe/Paris)
         run: tzutil /s "W. Europe Standard Time" && ./v test vlib/time/

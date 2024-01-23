@@ -15,6 +15,12 @@ pub struct Context {
 
 pub struct App {
 	vweb.Controller
+mut:
+	started chan bool
+}
+
+pub fn (mut app App) before_accept_loop() {
+	app.started <- true
 }
 
 pub fn (app &App) index(mut ctx Context) vweb.Result {
@@ -49,24 +55,19 @@ pub fn (app &SubController) index(mut ctx Context) vweb.Result {
 fn testsuite_begin() {
 	os.chdir(os.dir(@FILE))!
 
-	spawn fn () ! {
-		mut sub := &SubController{}
-		mut other := &Other{}
-		other.register_controller[SubController, Context]('/sub', mut sub)!
-		mut hidden := &HiddenByOther{}
+	mut sub := &SubController{}
+	mut other := &Other{}
+	other.register_controller[SubController, Context]('/sub', mut sub)!
+	mut hidden := &HiddenByOther{}
 
-		mut app := &App{}
-		app.register_controller[Other, Context]('/other', mut other)!
-		// controllers should be sorted, so this controller should be accessible
-		// even though it is declared last
-		app.register_controller[HiddenByOther, Context]('/other/hide', mut hidden)!
+	mut app := &App{}
+	app.register_controller[Other, Context]('/other', mut other)!
+	// controllers should be sorted, so this controller should be accessible
+	// even though it is declared last
+	app.register_controller[HiddenByOther, Context]('/other/hide', mut hidden)!
 
-		vweb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip) or {
-			panic('could not start vweb app')
-		}
-	}()
-	// app startup time
-	time.sleep(time.second * 10)
+	spawn vweb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip)
+	_ := <-app.started
 
 	spawn fn () {
 		time.sleep(exit_after)

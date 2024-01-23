@@ -1,6 +1,7 @@
 name: vab CI
 
 on:
+  workflow_call:
   push:
     paths-ignore:
       - "**.md"
@@ -16,10 +17,10 @@ jobs:
     env:
       VAB_FLAGS: --api 30 --build-tools 29.0.0 -v 3
     steps:
-      - uses: actions/setup-java@v2
+      - uses: actions/setup-java@v4
         with:
-          distribution: 'adopt'
-          java-version: 8
+          distribution: 'temurin'
+          java-version: 11
 
       - uses: actions/checkout@v3
       - name: Build V
@@ -38,7 +39,10 @@ jobs:
         run: vab --help
 
       - name: Run vab doctor
-        run: vab doctor
+        run: |
+          vab doctor
+          which d8 || true
+          which dx || true
 
       - name: Build graphical V examples as APK
         run: |

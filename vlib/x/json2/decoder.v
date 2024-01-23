@@ -185,7 +185,9 @@ fn (mut p Parser) decode_value() !Any {
 			}
 		}
 	}
-	return Any(null)
+	return InvalidTokenError{
+		token: p.tok
+	}
 }
 
 @[manualfree]

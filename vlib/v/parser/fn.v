@@ -249,6 +249,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	p.check(.key_fn)
 	comments << p.eat_comments()
 	p.open_scope()
+	defer {
+		p.close_scope()
+	}
 	language_tok_pos := p.tok.pos()
 	mut language := p.parse_language()
 	p.fn_language = language
@@ -375,11 +378,16 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	if is_method && rec.typ.has_flag(.generic) {
 		sym := p.table.sym(rec.typ)
 		if sym.info is ast.Struct {
+			decl_generic_names := p.types_to_names(sym.info.generic_types, p.tok.pos(),
+				'sym.info.generic_types') or { return ast.FnDecl{
+				scope: unsafe { nil }
+			} }
 			fn_generic_names := generic_names.clone()
-			generic_names = p.types_to_names(sym.info.generic_types, p.tok.pos(), 'sym.info.generic_types') or {
-				return ast.FnDecl{
-					scope: unsafe { nil }
-				}
+			generic_names = p.table.generic_type_names(rec.typ)
+			if decl_generic_names.len != generic_names.len {
+				plural := if decl_generic_names.len == 1 { '' } else { 's' }
+				p.error_with_pos('expected ${decl_generic_names.len} generic parameter${plural}, got ${generic_names.len}',
+					rec.type_pos)
 			}
 			for gname in fn_generic_names {
 				if gname !in generic_names {
@@ -640,7 +648,6 @@ run them via `v file.v` instead',
 		p.table.register_fn_generic_types(fn_decl.fkey())
 	}
 	p.label_names = []
-	p.close_scope()
 	return fn_decl
 }
 

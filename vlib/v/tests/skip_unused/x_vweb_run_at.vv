@@ -13,6 +13,7 @@ fn main() {
 		println('done')
 		exit(0)
 	}()
+	time.sleep(10 * time.second)
 	mut app := &App{}
 	vweb.run_at[App, Context](mut app, port: 38090)!
 }

@@ -807,6 +807,12 @@ fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 			g.op_arg(node.right, method.params[1].typ, right.typ)
 		}
 		g.write(')')
+
+		if left.typ != 0 && !left.typ.has_option_or_result()
+			&& g.table.final_sym(left.typ).kind == .array_fixed {
+			// it's non-option fixed array, requires accessing .ret_arr member to get the array
+			g.write('.ret_arr')
+		}
 	}
 }
 

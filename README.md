@@ -4,7 +4,12 @@
 </p>
 <h1>The V Programming Language</h1>
 
-[vlang.io](https://vlang.io) | [Docs](https://github.com/vlang/v/blob/master/doc/docs.md) | [Changelog](https://github.com/vlang/v/blob/master/CHANGELOG.md) | [Speed](https://fast.vlang.io/) | [Contributing & compiler design](https://github.com/vlang/v/blob/master/CONTRIBUTING.md)
+[vlang.io](https://vlang.io) 
+| [Docs](https://github.com/vlang/v/blob/master/doc/docs.md) 
+| [Changelog](https://github.com/vlang/v/blob/master/CHANGELOG.md) 
+| [Speed](https://fast.vlang.io/) 
+| [Contributing & compiler design](https://github.com/vlang/v/blob/master/CONTRIBUTING.md)
+
 </div>
 <div align="center" style="display:grid;place-items:center;">
 <!--
@@ -206,7 +211,7 @@ make
 ## Editor/IDE Plugins
 
 To bring IDE functions for the V programming languages to your editor, check out
-[v-analyzer](https://github.com/v-analyzer/v-analyzer). It provides a
+[v-analyzer](https://github.com/vlang/v-analyzer). It provides a
 [VS Code extension](https://marketplace.visualstudio.com/items?itemName=VOSCA.vscode-v-analyzer)
 and language server capabilities for other editors.
 

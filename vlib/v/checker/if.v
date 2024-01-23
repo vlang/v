@@ -70,7 +70,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			}
 		}
 		if mut branch.cond is ast.IfGuardExpr {
-			if branch.cond.expr_type.clear_flags(.option, .result) == ast.void_type
+			if branch.cond.expr_type.clear_option_and_result() == ast.void_type
 				&& !(branch.cond.vars.len == 1 && branch.cond.vars[0].name == '_') {
 				c.error('if guard expects non-propagate option or result', branch.pos)
 				continue
@@ -122,6 +122,9 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							is_comptime_type_is_expr = true
 							if var := left.scope.find_var(left.name) {
 								checked_type = c.unwrap_generic(var.typ)
+								if var.smartcasts.len > 0 {
+									checked_type = c.unwrap_generic(var.smartcasts.last())
+								}
 							}
 							skip_state = if c.comptime.is_comptime_type(checked_type,
 								right as ast.ComptimeType)
@@ -381,7 +384,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						node.is_expr = true
 						node.typ = c.expected_type
 					}
-					if c.expected_type.has_flag(.option) || c.expected_type.has_flag(.result) {
+					if c.expected_type.has_option_or_result() {
 						if node.typ == ast.void_type {
 							node.is_expr = true
 							node.typ = c.expected_type
@@ -447,7 +450,7 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						if is_noreturn_callexpr(stmt.expr) {
 							continue
 						}
-						if (node.typ.has_flag(.option) || node.typ.has_flag(.result))
+						if (node.typ.has_option_or_result())
 							&& c.table.sym(stmt.typ).kind == .struct_
 							&& c.type_implements(stmt.typ, ast.error_type, node.pos) {
 							stmt.expr = ast.CastExpr{

@@ -5,7 +5,6 @@ module checker
 import v.ast
 import v.util
 import v.token
-import v.transformer
 
 fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 	util.timing_start(@METHOD)
@@ -57,56 +56,9 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 		// Evaluate the size of the unresolved fixed array
 		for mut field in node.fields {
 			sym := c.table.sym(field.typ)
-			if sym.kind == .array_fixed {
-				info := sym.info as ast.ArrayFixed
-				if info.size > 0 {
-					continue
-				}
-				mut fixed_size := 0
-				match info.size_expr {
-					ast.Ident {
-						if mut const_field := c.table.global_scope.find_const('${c.mod}.${info.size_expr.name}') {
-							if mut const_field.expr is ast.IntegerLiteral {
-								fixed_size = const_field.expr.val.int()
-							} else if mut const_field.expr is ast.InfixExpr {
-								mut t := transformer.new_transformer_with_table(c.table,
-									c.pref)
-								folded_expr := t.infix_expr(mut const_field.expr)
-								if folded_expr is ast.IntegerLiteral {
-									fixed_size = folded_expr.val.int()
-								}
-							}
-						}
-						if fixed_size <= 0 {
-							c.error('non-constant array bound `${info.size_expr.name}`',
-								info.size_expr.pos)
-						}
-					}
-					ast.InfixExpr {
-						mut t := transformer.new_transformer_with_table(c.table, c.pref)
-						mut size_expr := unsafe { &info.size_expr }
-						folded_expr := t.infix_expr(mut size_expr)
-
-						if folded_expr is ast.IntegerLiteral {
-							fixed_size = folded_expr.val.int()
-						}
-						if fixed_size <= 0 {
-							c.error('fixed array size cannot use non-constant eval value',
-								info.size_expr.pos)
-						}
-					}
-					else {}
-				}
-				if fixed_size <= 0 {
-					c.error('fixed size cannot be zero or negative', info.size_expr.pos())
-				}
-				idx := c.table.find_or_register_array_fixed(info.elem_type, fixed_size,
-					info.size_expr, false)
-				if info.elem_type.has_flag(.generic) {
-					field.typ = ast.new_type(idx).set_flag(.generic)
-				} else {
-					field.typ = ast.new_type(idx)
-				}
+			if sym.info is ast.ArrayFixed && c.array_fixed_has_unresolved_size(sym.info) {
+				mut size_expr := unsafe { sym.info.size_expr }
+				field.typ = c.eval_array_fixed_sizes(mut size_expr, 0, sym.info.elem_type)
 				for mut symfield in struct_sym.info.fields {
 					if symfield.name == field.name {
 						symfield.typ = field.typ
@@ -139,7 +91,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				sym := c.table.sym(field.typ)
 				if sym.kind == .function {
 					if !field.typ.has_flag(.option) && !field.has_default_expr
-						&& field.attrs.filter(it.name == 'required').len == 0 {
+						&& field.attrs.all(it.name != 'required') {
 						error_msg := 'uninitialized `fn` struct fields are not allowed, since they can result in segfaults; use `?fn` or `[required]` or initialize the field with `=` (if you absolutely want to have unsafe function pointers, use `= unsafe { nil }`)'
 						c.note(error_msg, field.pos)
 					}
@@ -149,6 +101,15 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			if field.has_default_expr {
 				c.expected_type = field.typ
 				field.default_expr_typ = c.expr(mut field.default_expr)
+				// disallow map `mut a = b`
+				field_sym := c.table.sym(field.typ)
+				expr_sym := c.table.sym(field.default_expr_typ)
+				if field_sym.kind == .map && expr_sym.kind == .map && field.default_expr.is_lvalue()
+					&& field.is_mut
+					&& (!field.default_expr_typ.is_ptr() || field.default_expr is ast.Ident) {
+					c.error('cannot copy map: call `clone` method (or use a reference)',
+						field.default_expr.pos())
+				}
 				for mut symfield in struct_sym.info.fields {
 					if symfield.name == field.name {
 						symfield.default_expr_typ = field.default_expr_typ
@@ -523,7 +484,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 	if type_sym.kind == .struct_ {
 		info := type_sym.info as ast.Struct
 		if info.attrs.len > 0 && info.attrs.contains('noinit') && type_sym.mod != c.mod {
-			c.error('struct `${type_sym.name}` is declared with a `[noinit]` attribute, so ' +
+			c.error('struct `${type_sym.name}` is declared with a `@[noinit]` attribute, so ' +
 				'it cannot be initialized with `${type_sym.name}{}`', node.pos)
 		}
 	}
@@ -546,6 +507,10 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 			sym := c.table.sym(c.unwrap_generic(node.typ))
 			if sym.kind == .struct_ {
 				info := sym.info as ast.Struct
+				if info.attrs.len > 0 && info.attrs.contains('noinit') && sym.mod != c.mod {
+					c.error('struct `${sym.name}` is declared with a `@[noinit]` attribute, so ' +
+						'it cannot be initialized with `${sym.name}{}`', node.pos)
+				}
 				if node.no_keys && node.init_fields.len != info.fields.len {
 					fname := if info.fields.len != 1 { 'fields' } else { 'field' }
 					c.error('initializing struct `${sym.name}` needs `${info.fields.len}` ${fname}, but got `${node.init_fields.len}`',
@@ -638,6 +603,9 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 							init_field.pos)
 					}
 				}
+				if got_type.has_flag(.result) {
+					c.check_expr_option_or_result_call(init_field.expr, init_field.typ)
+				}
 				if exp_type.has_flag(.option) && got_type.is_ptr() && !(exp_type.is_ptr()
 					&& exp_type_sym.kind == .struct_) {
 					c.error('cannot assign a pointer to option struct field', init_field.pos)
@@ -646,6 +614,13 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 					&& !got_type.is_ptr() {
 					c.error('allocate `${got_type_sym.name}` on the heap for use in other functions',
 						init_field.pos)
+				}
+				// disallow `mut a: b`, when b is const map
+				if exp_type_sym.kind == .map && got_type_sym.kind == .map && !got_type.is_ptr()
+					&& field_info.is_mut
+					&& (init_field.expr is ast.Ident && init_field.expr.obj is ast.ConstField) {
+					c.error('cannot assign a const map to mut struct field, call `clone` method (or use a reference)',
+						init_field.expr.pos())
 				}
 				if exp_type_sym.kind == .array && got_type_sym.kind == .array {
 					if init_field.expr is ast.IndexExpr
@@ -791,6 +766,10 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						} else {
 							if const_field := c.table.global_scope.find_const('${field.default_expr}') {
 								info.fields[i].default_expr_typ = const_field.typ
+							} else if type_sym.info is ast.Struct && type_sym.info.is_anon {
+								c.expected_type = field.typ
+								field.default_expr_typ = c.expr(mut field.default_expr)
+								info.fields[i].default_expr_typ = field.default_expr_typ
 							}
 						}
 					}

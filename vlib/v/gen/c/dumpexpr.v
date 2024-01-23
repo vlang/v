@@ -76,8 +76,8 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		g.inside_opt_or_res = old_inside_opt_or_res
 	}
 	g.write(')')
-	if (g.inside_assign || g.expected_fixed_arr) && !expr_type.has_flag(.option)
-		&& g.table.type_kind(expr_type) == .array_fixed {
+	if (g.inside_assign || g.expected_fixed_arr) && !expr_type.has_option_or_result()
+		&& g.table.final_sym(expr_type).kind == .array_fixed {
 		g.write('.ret_arr')
 	}
 }
@@ -121,7 +121,7 @@ fn (mut g Gen) dump_expr_definitions() {
 			g.go_back(str_tdef.len)
 			dump_typedefs['typedef ${str_tdef};'] = true
 			str_dumparg_ret_type = str_dumparg_type
-		} else if !typ.has_flag(.option) && dump_sym.is_array_fixed() {
+		} else if !typ.has_option_or_result() && dump_sym.is_array_fixed() {
 			match dump_sym.kind {
 				.array_fixed {
 					if (dump_sym.info as ast.ArrayFixed).is_fn_ret {

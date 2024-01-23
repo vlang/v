@@ -25,7 +25,7 @@ jobs:
         ./v run examples/hello_world.v
 
   macos-x86_64:
-    runs-on: macOS-latest
+    runs-on: macos-latest
     timeout-minutes: 5
     steps:
     - name: Install dependencies
