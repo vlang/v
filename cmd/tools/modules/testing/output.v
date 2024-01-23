@@ -3,6 +3,8 @@ module testing
 import time
 
 pub enum MessageKind {
+	compile_begin // sent right before *each* _test.v file compilation, the resulting status is not known yet, but the _test.v file itself is
+	compile_end // sent right after *each* _test.v file compilation, the message contains the output of that compilation
 	cmd_begin // sent right before *each* _test.v file execution, the resulting status is not known yet, but the _test.v file itself is
 	cmd_end // sent right after *each* _test.v file execution, the message contains the output of that execution
 	//
@@ -21,7 +23,7 @@ pub:
 	kind    MessageKind   // see the MessageKind declaration above
 	file    string        // the _test.v file that the message is about
 	when    time.Time     // when was the message sent (messages are sent by the execution threads at the *end* of each event)
-	flow_id string        // the messages of each thread, producing LogMessage, will have all the same unique flowid. Messages by other threads will have other flowid. If you use VJOBS=1 to serialise the execution, then all messages will have the same flowid.
+	flow_id string        // the messages of each thread, producing LogMessage, will have all the same unique flow_id. Messages by other threads will have other flow_id. If you use VJOBS=1 to serialise the execution, then all messages will have the same flow_id.
 	took    time.Duration // the duration of the event, that this message describes
 	message string        // the actual message text; the result of the event, that the message describes; most reporters could ignore this, since it could be reconstructed by the other fields
 }

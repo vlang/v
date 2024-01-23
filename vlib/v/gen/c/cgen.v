@@ -1956,14 +1956,20 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 		if ret_typ.has_flag(.generic) {
 			if expr is ast.SelectorExpr && g.cur_concrete_types.len == 0 {
 				// resolve generic struct on selectorExpr inside non-generic function
-				if expr.expr is ast.Ident && expr.expr.obj is ast.Var {
-					if (expr.expr.obj as ast.Var).expr is ast.StructInit {
-						g.cur_concrete_types << (g.table.sym(expr.expr.obj.typ).info as ast.Struct).concrete_types
+				if expr.expr is ast.Ident {
+					if expr.expr.obj is ast.Var {
+						if expr.expr.obj.expr is ast.StructInit {
+							struct_info := g.table.sym(expr.expr.obj.typ).info
+							if struct_info is ast.Struct {
+								g.cur_concrete_types << struct_info.concrete_types
+							}
+						}
 					}
 				}
 			}
-			styp = g.base_type(g.unwrap_generic(ret_typ))
-			ret_styp := g.typ(g.unwrap_generic(ret_typ)).replace('*', '_ptr')
+			unwrapped_ret_typ := g.unwrap_generic(ret_typ)
+			styp = g.base_type(unwrapped_ret_typ)
+			ret_styp := g.typ(unwrapped_ret_typ).replace('*', '_ptr')
 			g.writeln('${ret_styp} ${tmp_var};')
 		} else {
 			g.writeln('${g.typ(ret_typ)} ${tmp_var};')
@@ -3937,7 +3943,13 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 		if obj.name !in vars {
 			if obj is ast.Var && obj.pos.pos < node.pos.pos {
 				keys.write_string('_SLIT("${obj.name}")')
-				var_typ := if obj.smartcasts.len > 0 { obj.smartcasts.last() } else { obj.typ }
+				var_typ := if obj.ct_type_var != .no_comptime {
+					g.comptime.get_comptime_var_type(ast.Ident{ obj: obj })
+				} else if obj.smartcasts.len > 0 {
+					obj.smartcasts.last()
+				} else {
+					obj.typ
+				}
 				values.write_string('{.typ=_SLIT("${g.table.type_to_str(g.unwrap_generic(var_typ))}"),.value=')
 				obj_sym := g.table.sym(obj.typ)
 				cast_sym := g.table.sym(var_typ)
@@ -4006,14 +4018,21 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 						values.write_string('${func}(*(${base_typ}*)${obj.name}.data)}')
 					} else {
 						_, str_method_expects_ptr, _ := cast_sym.str_method_info()
-						deref := if str_method_expects_ptr && !obj.typ.is_ptr() {
+
+						// eprintln(">> ${obj.name} | str expects ptr? ${str_method_expects_ptr} | ptr? ${var_typ.is_ptr()} || auto heap? ${obj.is_auto_heap} | auto deref? ${obj.is_auto_deref}")
+						deref := if var_typ.has_flag(.option) {
+							''
+						} else if str_method_expects_ptr && !obj.typ.is_ptr() {
 							'&'
+						} else if obj.is_auto_heap && var_typ.is_ptr() && str_method_expects_ptr {
+							'*'
+						} else if !obj.is_auto_heap && var_typ.is_ptr() && str_method_expects_ptr {
+							''
+						} else if obj.is_auto_heap && var_typ.is_ptr() {
+							'*'
 						} else if obj.typ.is_ptr() && !obj.is_auto_deref {
 							'&'
 						} else if obj.typ.is_ptr() && obj.is_auto_deref {
-							''
-						} else if obj.is_auto_heap
-							|| (!var_typ.has_flag(.option) && var_typ.is_ptr()) {
 							'*'
 						} else {
 							''
@@ -6172,6 +6191,9 @@ fn (mut g Gen) write_init_function() {
 		}
 		g.writeln('void _vinit_caller() {')
 		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
+		if g.nr_closures > 0 {
+			g.writeln('\t__closure_init(); // vinit_caller()')
+		}
 		g.writeln('\t_vinit(0,0);')
 		g.writeln('}')
 

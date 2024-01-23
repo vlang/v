@@ -37,10 +37,12 @@ fn decode_struct[T](_ T, res map[string]Any) !T {
 			}
 
 			$if field.is_enum {
-				typ.$(field.name) = if key := res[field.name] {
-					key.int()
+				if v := res[json_name] {
+					typ.$(field.name) = v.int()
 				} else {
-					res[json_name]!.int()
+					$if field.is_option {
+						typ.$(field.name) = none
+					}
 				}
 			} $else $if field.typ is u8 {
 				typ.$(field.name) = res[json_name]!.u64()

@@ -45,7 +45,7 @@ jobs:
           echo "Clone https://github.com/DarpHome/discord.v/"
           git clone https://github.com/DarpHome/discord.v/ discord && cd discord
           echo "Checkout last known good commit"
-          git checkout 3b243977f00736ee62cf3af85aa7ff6c4c8c0269
+          git checkout 65448b687ae759e385c127c8739b97b6ac62d3e3
           echo "Execute Tests"
           v test .
 

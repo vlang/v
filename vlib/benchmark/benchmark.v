@@ -70,6 +70,15 @@ pub fn (mut b Benchmark) step() {
 	}
 }
 
+// step_restart will restart the internal step timer.
+// Note that the step count will *stay the same*.
+// This method is useful, when you want to do some optional preparation
+// after you have called .step(), so that the time for that optional
+// preparation will *not* be added to the duration of the step.
+pub fn (mut b Benchmark) step_restart() {
+	b.step_timer.restart()
+}
+
 // fail increases the fail count by 1 and stops the internal timer.
 pub fn (mut b Benchmark) fail() {
 	b.step_timer.stop()
@@ -140,8 +149,15 @@ pub fn (mut b Benchmark) record_measure(label string) i64 {
 	return res
 }
 
+// MessageOptions allows passing an optional preparation time too to each label method.
+// If it is set, the preparation time (compile time) will be shown before the measured runtime.
+@[params]
+pub struct MessageOptions {
+	preparation time.Duration // the duration of the preparation time for the step
+}
+
 // step_message_with_label_and_duration returns a string describing the current step.
-pub fn (b &Benchmark) step_message_with_label_and_duration(label string, msg string, sduration time.Duration) string {
+pub fn (b &Benchmark) step_message_with_label_and_duration(label string, msg string, sduration time.Duration, opts MessageOptions) string {
 	timed_line := b.tdiff_in_ms(msg, sduration.microseconds())
 	if b.nexpected_steps > 1 {
 		mut sprogress := ''
@@ -170,34 +186,38 @@ pub fn (b &Benchmark) step_message_with_label_and_duration(label string, msg str
 				'${b.cstep:4d}/${b.nexpected_steps:4d}'
 			}
 		}
+		if opts.preparation > 0 {
+			return '${label:-5s} [${sprogress}] C: ${f64(opts.preparation.microseconds()) / 1_000.0:6.1F} ms, R: ${timed_line}'
+		}
 		return '${label:-5s} [${sprogress}] ${timed_line}'
 	}
 	return '${label:-5s}${timed_line}'
 }
 
 // step_message_with_label returns a string describing the current step using current time as duration.
-pub fn (b &Benchmark) step_message_with_label(label string, msg string) string {
-	return b.step_message_with_label_and_duration(label, msg, b.step_timer.elapsed())
+pub fn (b &Benchmark) step_message_with_label(label string, msg string, opts MessageOptions) string {
+	return b.step_message_with_label_and_duration(label, msg, b.step_timer.elapsed(),
+		opts)
 }
 
 // step_message returns a string describing the current step.
-pub fn (b &Benchmark) step_message(msg string) string {
-	return b.step_message_with_label('', msg)
+pub fn (b &Benchmark) step_message(msg string, opts MessageOptions) string {
+	return b.step_message_with_label('', msg, opts)
 }
 
 // step_message_ok returns a string describing the current step with an standard "OK" label.
-pub fn (b &Benchmark) step_message_ok(msg string) string {
-	return b.step_message_with_label(benchmark.b_ok, msg)
+pub fn (b &Benchmark) step_message_ok(msg string, opts MessageOptions) string {
+	return b.step_message_with_label(benchmark.b_ok, msg, opts)
 }
 
 // step_message_fail returns a string describing the current step with an standard "FAIL" label.
-pub fn (b &Benchmark) step_message_fail(msg string) string {
-	return b.step_message_with_label(benchmark.b_fail, msg)
+pub fn (b &Benchmark) step_message_fail(msg string, opts MessageOptions) string {
+	return b.step_message_with_label(benchmark.b_fail, msg, opts)
 }
 
 // step_message_skip returns a string describing the current step with an standard "SKIP" label.
-pub fn (b &Benchmark) step_message_skip(msg string) string {
-	return b.step_message_with_label(benchmark.b_skip, msg)
+pub fn (b &Benchmark) step_message_skip(msg string, opts MessageOptions) string {
+	return b.step_message_with_label(benchmark.b_skip, msg, opts)
 }
 
 // total_message returns a string with total summary of the benchmark run.
@@ -221,7 +241,7 @@ pub fn (b &Benchmark) total_message(msg string) string {
 			njobs_label = ', on ${term.colorize(term.bold, b.njobs.str())} parallel jobs'
 		}
 	}
-	tmsg += '${b.ntotal} total. ${term.colorize(term.bold, 'Runtime:')} ${b.bench_timer.elapsed().microseconds() / 1000} ms${njobs_label}.\n'
+	tmsg += '${b.ntotal} total. ${term.colorize(term.bold, 'Elapsed time:')} ${b.bench_timer.elapsed().microseconds() / 1000} ms${njobs_label}.'
 	return tmsg
 }
 

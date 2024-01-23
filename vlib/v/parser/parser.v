@@ -2017,6 +2017,9 @@ fn (mut p Parser) check_for_impure_v(language ast.Language, pos token.Pos) {
 	}
 	if p.file_backend_mode != language {
 		if p.file_backend_mode == .v {
+			if p.pref.is_bare {
+				return
+			}
 			p.language_not_allowed_warning(language, pos)
 			return
 		}
@@ -4174,10 +4177,18 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	// Add the generic `Enum.from[T](x T) !T {` static method too:
 	mut isb := strings.new_builder(1024)
 	isb.write_string('\n')
+	if is_flag {
+		isb.write_string('@[inline] ${pubfn} ${enum_name}.zero() ${enum_name} {\n')
+		isb.write_string('		return unsafe{ ${enum_name}(0) }\n')
+		isb.write_string('}\n')
+	}
 	// TODO: see why changing `W` to `T` below, later fails `v vlib/vweb/tests/middleware_test_server.v` with seemingly unrelated error
 	isb.write_string('${pubfn} ${enum_name}.from[W](input W) !${enum_name} {\n')
 	isb.write_string('	\$if input is \$int {\n')
 	isb.write_string('		val := unsafe{ ${enum_name}(input) }\n')
+	if is_flag {
+		isb.write_string('		if input == 0 { return val }\n')
+	}
 	isb.write_string('		match val {\n')
 	for f in fields {
 		isb.write_string('			.${f.source_name} { return ${enum_name}.${f.source_name} }\n')
@@ -4189,6 +4200,9 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	isb.write_string('	}\n')
 	isb.write_string('	\$if input is \$string {\n')
 	isb.write_string('		val := input.str()\n') // TODO: this should not be needed, the `$if input is $string` above should have already smartcasted `input`
+	if is_flag {
+		isb.write_string('		if val == \'\' { return unsafe{ ${enum_name}(0) } }\n')
+	}
 	isb.write_string('		match val {\n')
 	for f in fields {
 		isb.write_string('			\'${f.name}\' { return ${enum_name}.${f.source_name} }\n')
