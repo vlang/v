@@ -391,8 +391,9 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	if !v.pref.is_bare && v.pref.build_mode != .build_module
 		&& v.pref.os in [.linux, .freebsd, .openbsd, .netbsd, .dragonfly, .solaris, .haiku] {
 		if v.pref.os in [.freebsd, .netbsd] {
-			// Free/NetBSD: backtrace needs execinfo library while linking
+			// Free/NetBSD: backtrace needs execinfo library while linking, also execinfo depends on elf.
 			ccoptions.linker_flags << '-lexecinfo'
+			ccoptions.linker_flags << '-lelf'
 		}
 	}
 	ccoptions.env_cflags = os.getenv('CFLAGS')
