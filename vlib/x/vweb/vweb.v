@@ -571,7 +571,7 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 			// the connection should be kept open, but removed from the picoev loop.
 			// This way vweb can continue handling other connections and the user can
 			// keep the connection open indefinitely
-			pv.del(fd)
+			pv.remove(fd)
 			return
 		}
 
