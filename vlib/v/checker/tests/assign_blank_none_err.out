@@ -1,0 +1,5 @@
+vlib/v/checker/tests/assign_blank_none_err.vv:2:2: error: cannot assign none to blank `_` identifier
+    1 | fn main() {
+    2 |     _ = none
+      |     ^
+    3 | }
