@@ -3955,8 +3955,10 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 	}
 
 	mut is_markused := false
+	mut is_exported := false
 	for ga in attrs {
 		match ga.name {
+			'export' { is_exported = true }
 			'markused' { is_markused = true }
 			else {}
 		}
@@ -4038,6 +4040,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 			comments: comments
 			is_markused: is_markused
 			is_volatile: is_volatile
+			is_exported: is_exported
 		}
 		fields << field
 		p.table.global_scope.register(field)

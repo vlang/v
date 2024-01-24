@@ -5887,6 +5887,9 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 	if node.attrs.contains('weak') {
 		attributes += 'VWEAK '
 	}
+	if node.attrs.contains('export') {
+		attributes += 'VV_EXPORTED_SYMBOL '
+	}
 	for field in node.fields {
 		if g.pref.skip_unused {
 			if field.name !in g.table.used_globals {
