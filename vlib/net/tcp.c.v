@@ -16,7 +16,7 @@ mut:
 	read_deadline  time.Time
 	read_timeout   time.Duration
 	write_timeout  time.Duration
-	is_blocking    bool
+	is_blocking    bool = true
 }
 
 pub fn dial_tcp(oaddress string) !&TcpConn {
@@ -54,8 +54,9 @@ pub fn dial_tcp(oaddress string) !&TcpConn {
 			read_timeout: net.tcp_default_read_timeout
 			write_timeout: net.tcp_default_write_timeout
 		}
-		$if !net_nonblocking_sockets ? {
-			conn.set_blocking(true)!
+		// The blocking / non-blocking mode is determined before the connection is established.
+		$if net_nonblocking_sockets ? {
+			conn.is_blocking = false
 		}
 		return conn
 	}
@@ -101,8 +102,9 @@ pub fn dial_tcp_with_bind(saddr string, laddr string) !&TcpConn {
 			read_timeout: net.tcp_default_read_timeout
 			write_timeout: net.tcp_default_write_timeout
 		}
-		$if !net_nonblocking_sockets ? {
-			conn.set_blocking(true)!
+		// The blocking / non-blocking mode is determined before the connection is established.
+		$if net_nonblocking_sockets ? {
+			conn.is_blocking = false
 		}
 		return conn
 	}
@@ -118,10 +120,25 @@ pub fn (mut c TcpConn) close() ! {
 }
 
 pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
+	mut should_ewouldblock := false
 	mut res := $if is_coroutine ? {
 		C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout)
 	} $else {
-		C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)
+		// The new socket returned by accept() behaves differently in blocking mode and needs special treatment.
+		mut has_data := true
+		if c.is_blocking {
+			if ok := @select(c.sock.handle, .read, 1) {
+				has_data = ok
+			} else {
+				false
+			}
+		}
+		if has_data {
+			C.recv(c.sock.handle, voidptr(buf_ptr), len, msg_dontwait)
+		} else {
+			should_ewouldblock = true
+			-1
+		}
 	}
 	$if trace_tcp ? {
 		eprintln('<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} len: ${len} | res: ${res}')
@@ -134,13 +151,13 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 		}
 		return res
 	}
-	code := error_code()
-	if c.is_blocking && code == int(error_ewouldblock) {
+	code := if should_ewouldblock { int(error_ewouldblock) } else { error_code() }
+	if code in [int(error_ewouldblock), int(error_eagain), C.EINTR] {
 		c.wait_for_read()!
 		res = $if is_coroutine ? {
 			C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout)
 		} $else {
-			C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)
+			C.recv(c.sock.handle, voidptr(buf_ptr), len, msg_dontwait)
 		}
 		$if trace_tcp ? {
 			eprintln('<<< TcpConn.read_ptr  | c.sock.handle: ${c.sock.handle} | buf_ptr: ${ptr_str(buf_ptr)} len: ${len} | res: ${res}')
@@ -200,10 +217,8 @@ pub fn (mut c TcpConn) write_ptr(b &u8, len int) !int {
 				eprintln('>>> TcpConn.write_ptr | data chunk, total_sent: ${total_sent:6}, remaining: ${remaining:6}, ptr: ${voidptr(ptr):x} => sent: ${sent:6}')
 			}
 			if sent < 0 {
-				// FreeBSD may return EAGAIN even the socket in blocking mode
-				// so we try again, ensure all data write
 				code := error_code()
-				if c.is_blocking && code == int(error_ewouldblock) {
+				if code in [int(error_ewouldblock), int(error_eagain), C.EINTR] {
 					c.wait_for_write()!
 					continue
 				} else {
@@ -301,6 +316,7 @@ pub mut:
 mut:
 	accept_timeout  time.Duration
 	accept_deadline time.Time
+	is_blocking     bool = true
 }
 
 @[params]
@@ -326,11 +342,48 @@ pub fn listen_tcp(family AddrFamily, saddr string, options ListenOptions) !&TcpL
 	// cast to the correct type
 	alen := addr.len()
 	socket_error_message(C.bind(s.handle, voidptr(&addr), alen), 'binding to ${saddr} failed')!
-	socket_error_message(C.listen(s.handle, options.backlog), 'listening on ${saddr} with maximum backlog pending queue of ${options.backlog}, failed')!
-	return &TcpListener{
-		sock: s
-		accept_deadline: no_deadline
-		accept_timeout: infinite_timeout
+	mut res := C.listen(s.handle, options.backlog)
+	if res == 0 {
+		mut listener := &TcpListener{
+			sock: s
+			accept_deadline: no_deadline
+			accept_timeout: infinite_timeout
+		}
+		// The blocking / non-blocking mode is determined before the connection is established.
+		$if net_nonblocking_sockets ? {
+			listener.is_blocking = false
+		}
+		return listener
+	}
+
+	$if !net_nonblocking_sockets ? {
+		socket_error_message(res, 'listening on ${saddr} with maximum backlog pending queue of ${options.backlog}, failed')!
+		return &TcpListener(unsafe { nil }) // for compiler passed
+	} $else {
+		// non-blocking sockets may also not succeed immediately when they listen() and need to check the status and take action accordingly.
+		for {
+			code := error_code()
+			if code in [int(error_einprogress), int(error_ewouldblock), int(error_eagain), C.EINTR] {
+				@select(s.handle, .read, net.connect_timeout)!
+				res = C.listen(s.handle, options.backlog)
+				if res == 0 {
+					break
+				}
+			} else {
+				socket_error_message(res, 'listening on ${saddr} with maximum backlog pending queue of ${options.backlog}, failed')!
+				break // for compiler passed
+			}
+		}
+		mut listener := &TcpListener{
+			sock: s
+			accept_deadline: no_deadline
+			accept_timeout: infinite_timeout
+		}
+		// The blocking / non-blocking mode is determined before the connection is established.
+		$if net_nonblocking_sockets ? {
+			listener.is_blocking = false
+		}
+		return listener
 	}
 }
 
@@ -338,9 +391,6 @@ pub fn listen_tcp(family AddrFamily, saddr string, options ListenOptions) !&TcpL
 pub fn (mut l TcpListener) accept() !&TcpConn {
 	mut res := l.accept_only()!
 	res.set_sock()!
-	$if !net_nonblocking_sockets ? {
-		res.set_blocking(true)!
-	}
 	return res
 }
 
@@ -357,10 +407,17 @@ pub fn (mut l TcpListener) accept() !&TcpConn {
 // See also vlib/vweb/vweb.v .
 //
 // If you do not need that, just call `.accept()!` instead, which will call
-// `.set_sock()!` and `.set_blocking(true)` for you.
+// `.set_sock()!` for you.
 pub fn (mut l TcpListener) accept_only() !&TcpConn {
 	$if trace_tcp ? {
 		eprintln('    TcpListener.accept | l.sock.handle: ${l.sock.handle:6}')
+	}
+
+	// The blocking mode `accept()` does not support a timeout option, so `select` is used instead.
+	$if !is_coroutine ? {
+		if l.is_blocking {
+			l.wait_for_accept()!
+		}
 	}
 
 	mut new_handle := $if is_coroutine ? {
@@ -368,24 +425,28 @@ pub fn (mut l TcpListener) accept_only() !&TcpConn {
 	} $else {
 		C.accept(l.sock.handle, 0, 0)
 	}
-	if new_handle <= 0 {
-		l.wait_for_accept()!
-		new_handle = $if is_coroutine ? {
-			C.photon_accept(l.sock.handle, 0, 0, net.tcp_default_read_timeout)
-		} $else {
-			C.accept(l.sock.handle, 0, 0)
-		}
-		if new_handle == -1 || new_handle == 0 {
-			return error('accept failed')
+
+	if !l.is_blocking && new_handle <= 0 {
+		code := error_code()
+		if code in [int(error_einprogress), int(error_ewouldblock), int(error_eagain), C.EINTR] {
+			l.wait_for_accept()!
+			new_handle = $if is_coroutine ? {
+				C.photon_accept(l.sock.handle, 0, 0, net.tcp_default_read_timeout)
+			} $else {
+				C.accept(l.sock.handle, 0, 0)
+			}
 		}
 	}
+	if new_handle <= 0 {
+		return error('accept failed')
+	}
 
-	mut conn := &TcpConn{
+	return &TcpConn{
 		handle: new_handle
 		read_timeout: net.tcp_default_read_timeout
 		write_timeout: net.tcp_default_write_timeout
+		is_blocking: l.is_blocking
 	}
-	return conn
 }
 
 pub fn (c &TcpListener) accept_deadline() !time.Time {
@@ -440,15 +501,13 @@ fn new_tcp_socket(family AddrFamily) !TcpSocket {
 	// we shouldn't be using ioctlsocket in the 21st century
 	// use the non-blocking socket option instead please :)
 
+	// Some options need to be set before the connection is established, otherwise they will not work.
 	s.set_default_options()!
 
-	$if !net_blocking_sockets ? {
-		$if windows {
-			t := u32(1) // true
-			socket_error(C.ioctlsocket(handle, fionbio, &t))!
-		} $else {
-			socket_error(C.fcntl(handle, C.F_SETFL, C.fcntl(handle, C.F_GETFL) | C.O_NONBLOCK))!
-		}
+	// Set the desired "blocking/non-blocking" mode before the connection is established,
+	// and do not change it once the connection is successful.
+	$if net_nonblocking_sockets ? {
+		set_blocking(handle, false)!
 	}
 	return s
 }
@@ -466,14 +525,6 @@ fn tcp_socket_from_handle(sockfd int) !TcpSocket {
 	}
 	s.set_default_options()!
 
-	$if !net_blocking_sockets ? {
-		$if windows {
-			t := u32(1) // true
-			socket_error(C.ioctlsocket(sockfd, fionbio, &t))!
-		} $else {
-			socket_error(C.fcntl(sockfd, C.F_SETFL, C.fcntl(sockfd, C.F_GETFL) | C.O_NONBLOCK))!
-		}
-	}
 	return s
 }
 
@@ -548,14 +599,10 @@ fn (mut s TcpSocket) close() ! {
 	return close(s.handle)
 }
 
-fn (mut s TcpSocket) @select(test Select, timeout time.Duration) !bool {
-	return @select(s.handle, test, timeout)
-}
-
 const connect_timeout = 5 * time.second
 
 fn (mut s TcpSocket) connect(a Addr) ! {
-	$if !net_blocking_sockets ? {
+	$if net_nonblocking_sockets ? {
 		res := $if is_coroutine ? {
 			C.photon_connect(s.handle, voidptr(&a), a.len(), net.tcp_default_read_timeout)
 		} $else {
@@ -567,8 +614,8 @@ fn (mut s TcpSocket) connect(a Addr) ! {
 		ecode := error_code()
 		// On nix non-blocking sockets we expect einprogress
 		// On windows we expect res == -1 && error_code() == ewouldblock
-		if (is_windows && ecode == int(error_ewouldblock))
-			|| (!is_windows && res == -1 && ecode == int(error_einprogress)) {
+		if (is_windows && ecode == int(error_ewouldblock)) || (!is_windows && res == -1
+			&& ecode in [int(error_einprogress), int(error_eagain), C.EINTR]) {
 			// The  socket  is  nonblocking and the connection cannot be completed
 			// immediately.  (UNIX domain sockets failed with EAGAIN instead.)
 			// It is possible to select(2) or poll(2) for completion by selecting
@@ -577,7 +624,7 @@ fn (mut s TcpSocket) connect(a Addr) ! {
 			// determine whether connect() completed successfully (SO_ERROR is zero) or
 			// unsuccessfully (SO_ERROR is one of the usual error codes  listed  here,
 			// ex‐ plaining the reason for the failure).
-			write_result := s.@select(.write, net.connect_timeout)!
+			write_result := @select(s.handle, .write, net.connect_timeout)!
 			err := 0
 			len := sizeof(err)
 			xyz := C.getsockopt(s.handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len)

@@ -2,29 +2,32 @@ import net
 import time
 
 fn server_thread(c_chan chan int) {
+	errors_no_data := [net.err_timed_out.code(), int(net.error_ewouldblock), int(net.error_eagain),
+		C.EINTR]
 	mut buf := []u8{len: 128}
 	mut times := 0
 	mut read_len := 0
 	mut listener := net.listen_tcp(.ip, ':22444') or { panic(err) }
 	c_chan <- 1
 	mut server := listener.accept() or { panic(err) }
+	server.set_read_timeout(2 * time.second)
 	server.set_blocking(false) or { panic(err) }
 	read_len = server.read(mut buf) or { // nothing can be read yet
-		assert err.code() == int(net.error_ewouldblock)
+		assert err.code() in errors_no_data
 		-1
 	}
-	assert read_len == -1 // ensure there is a error_ewouldblock
+	assert read_len == -1 // ensure there is an error with no data
 	read_len = server.read(mut buf) or { // nothing can be read yet
-		assert err.code() == int(net.error_ewouldblock)
+		assert err.code() in errors_no_data
 		-2
 	}
-	assert read_len == -2 // ensure there is a error_ewouldblock
+	assert read_len == -2 // ensure there is an error with no data
 	c_chan <- 2
 	for times < 10 {
 		times++
 		time.sleep(1 * time.millisecond)
 		read_len = server.read(mut buf) or {
-			if err.code() == int(net.error_ewouldblock) {
+			if err.code() in errors_no_data {
 				continue
 			} else {
 				panic(err)

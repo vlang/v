@@ -678,11 +678,6 @@ fn handle_conn[T](mut conn net.TcpConn, global_app &T, controllers []&Controller
 		return
 	}
 
-	conn.set_blocking(true) or {
-		eprintln('[vweb] tid: ${tid:03d}, error setting blocking')
-		return
-	}
-
 	mut reader := io.new_buffered_reader(reader: conn)
 	defer {
 		unsafe {

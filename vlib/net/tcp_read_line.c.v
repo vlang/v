@@ -18,25 +18,16 @@ pub fn (mut con TcpConn) get_blocking() bool {
 
 // set_blocking will change the state of the connection to either blocking,
 // when state is true, or non blocking (false).
-// The default for `net` tcp connections is the non blocking mode.
-// Calling .read_line, .accept, .dial_tcp, .dial_tcp_with_bind will set the connection to blocking mode.
+// The default for `net` tcp connections is the blocking mode.
+// Calling .read_line will set the connection to blocking mode.
+// In general, changing the blocking mode after a successful connection may cause unexpected surprises,
+// so this function is not recommended to be called anywhere but for this file.
 pub fn (mut con TcpConn) set_blocking(state bool) ! {
-	con.is_blocking = state
-	$if windows {
-		mut t := u32(0)
-		if !con.is_blocking {
-			t = 1
-		}
-		socket_error(C.ioctlsocket(con.sock.handle, fionbio, &t))!
-	} $else {
-		mut flags := C.fcntl(con.sock.handle, C.F_GETFL, 0)
-		if state {
-			flags &= ~C.O_NONBLOCK
-		} else {
-			flags |= C.O_NONBLOCK
-		}
-		socket_error(C.fcntl(con.sock.handle, C.F_SETFL, flags))!
+	if con.is_blocking == state {
+		return
 	}
+	con.is_blocking = state
+	set_blocking(con.sock.handle, state)!
 }
 
 // read_line is a *simple*, *non customizable*, blocking line reader.
