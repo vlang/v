@@ -97,7 +97,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		c.main_fn_decl_node = *node
 	}
 	if node.language == .v && node.attrs.len > 0 {
-		required_args_attr := ['export', 'linker_section']
+		required_args_attr := ['export', '_linker_section']
 		for attr_name in required_args_attr {
 			if attr := node.attrs.find_first(attr_name) {
 				if attr.arg == '' {
