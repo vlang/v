@@ -339,3 +339,16 @@ ${config.content}'
 	}
 	return read.bytestr()
 }
+
+// for issue 20476
+// phenomenon: parsing url error when querypath is `//`
+fn test_empty_querypath() {
+	mut x := http.get('http://${localserver}') or { panic(err) }
+	assert x.body == 'Welcome to VWeb'
+	x = http.get('http://${localserver}/') or { panic(err) }
+	assert x.body == 'Welcome to VWeb'
+	x = http.get('http://${localserver}//') or { panic(err) }
+	assert x.body == 'Welcome to VWeb'
+	x = http.get('http://${localserver}///') or { panic(err) }
+	assert x.body == 'Welcome to VWeb'
+}

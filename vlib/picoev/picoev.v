@@ -44,8 +44,8 @@ pub:
 	max_headers  int            = 100
 	max_read     int            = 4096
 	max_write    int            = 8192
-	family       net.AddrFamily = .ip
-	host         string = 'localhost'
+	family       net.AddrFamily = .ip6
+	host         string
 }
 
 @[heap]
@@ -302,8 +302,8 @@ fn default_err_cb(data voidptr, req picohttpparser.Request, mut res picohttppars
 }
 
 // new creates a `Picoev` struct and initializes the main loop
-pub fn new(config Config) &Picoev {
-	listen_fd := listen(config)
+pub fn new(config Config) !&Picoev {
+	listen_fd := listen(config)!
 
 	mut pv := &Picoev{
 		num_loops: 1

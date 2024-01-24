@@ -80,7 +80,7 @@ fn (mut p Process) win_spawn_process() int {
 		lp_reserved: unsafe { nil }
 		lp_desktop: unsafe { nil }
 		lp_title: unsafe { nil }
-		cb: sizeof(C.PROCESS_INFORMATION)
+		cb: sizeof(StartupInfo)
 	}
 	if p.use_stdio_ctl {
 		mut sa := SecurityAttributes{}
