@@ -25,7 +25,7 @@ of our session data.
 
 For any further example code we will use the `User` struct.
 **Example:**
-```v
+```v ignore
 import x.vweb
 import x.vweb.sessions
 
@@ -91,7 +91,7 @@ session data and load it into `sessions.CurrentSession`, which is embedded on th
 > and loaded correctly.
 
 **Example:**
-```v
+```v ignore
 pub struct App {
     // embed the Middleware struct from vweb
     vweb.Middleware[Context]
@@ -126,7 +126,7 @@ access any session data via `ctx.session_data`. This field is an option, it will
 if no data is set.
 
 **Example:**
-```v
+```v ignore
 pub fn (app &App) index(mut ctx Context) vweb.Result {
 	// check if a user is logged in
 	if user := ctx.session_data {
@@ -148,10 +148,9 @@ be sure that a new session id is generated when you save data, you can use the `
 method. This method will save the data and *always* set a new session id.
 
 **Example:**
-```v
+```v ignore
 pub fn (mut app App) login(mut ctx Context) vweb.Result {
-	// use resave, because the authentication status of the session changes.
-	// this function will set a new session id and destroy old session data
+	// set a session id cookie and save data for the new user
 	app.sessions.save(mut ctx, User{
 		name: '[no name provided]'
 	})
@@ -167,7 +166,7 @@ you can use this route via `http://localhost:8080/save?name=myname`. And if the
 query parameter is not passed an error 400 (bad request) is returned.
 
 **Example:**
-```v
+```v ignore
 pub fn (mut app App) save(mut ctx Context) vweb.Result {
 	// check if there is a session
 	app.sessions.get(ctx) or { return ctx.request_error('You are not logged in :(') }
@@ -192,7 +191,7 @@ clear the session id cookie. If you only want to destroy the session data use th
 method.
 
 **Example:**
-```v
+```v ignore
 pub fn (mut app App) logout(mut ctx Context) vweb.Result {
 	app.sessions.logout(mut ctx)
 	return ctx.text('You are now logged out!')
