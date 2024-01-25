@@ -350,13 +350,13 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 			}
 			// u16 / u32 requires special handling in JavaScript to correctly represent it as an unsigned 32-bit integer.
 			// The '>>> 0' bit operation ensures it is treated as unsigned, covering the full 0 to 2^32-1 range.
-			// For u16, '>>> 0' combined with a mask of 0xFFFF limits it to the 0 to 2^16-1 range, correctly handling values as unsigned 16-bit integers.
+			// For u16, '>>> 0' combined with a mask of 0xffff limits it to the 0 to 2^16-1 range, correctly handling values as unsigned 16-bit integers.
 			'u16', 'u32' {
 				g.gen_builtin_prototype(
 					typ_name: typ_name
 					default_value: 'new Number(0)'
 					constructor: "this.val = Math.floor(Number(val) & ('" + typ_name +
-						'\' === "u16" ? 0xFFFF : 0xffffffff)) >>> 0'
+						'\' === "u16" ? 0xffff : 0xffffffff)) >>> 0'
 					value_of: 'Number(this.val)'
 					to_string: 'this.valueOf().toString()'
 					eq: 'new bool(self.valueOf() === other.valueOf())'
