@@ -3266,6 +3266,19 @@ fn main() {
 * You can create modules anywhere.
 * All modules are compiled statically into a single executable.
 
+### Special considerations
+
+For the top level project folder (the one that is compiled with v .), and *only*
+that folder, you can have several .v files, that may be mentioning different modules
+with `module main`, `module abc` etc
+
+This is to ease the prototyping workflow in that folder:
+- you can start developing some new project with a single .v file
+- split functionality as necessary to different .v files in the same folder
+- when that makes logical sense to be further organised, put them into their own directory module.
+
+Note that in ordinary modules, all .v files must start with module name_of_folder.
+
 ### `init` functions
 
 If you want a module to automatically call some setup/initialization code when it is imported,
