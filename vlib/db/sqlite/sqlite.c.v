@@ -1,5 +1,7 @@
 module sqlite
 
+import regex { regex_opt }
+
 $if freebsd || openbsd {
 	#flag -I/usr/local/include
 	#flag -L/usr/local/lib
@@ -83,6 +85,11 @@ pub fn (db &DB) str() string {
 pub struct Row {
 pub mut:
 	vals []string
+}
+
+pub struct QuerySet {
+pub mut:
+	vals map[string]string
 }
 
 //
@@ -247,6 +254,109 @@ pub fn (db &DB) exec(query string) ![]Row {
 	}
 	return rows
 }
+
+@[manualfree]
+pub fn (db &DB) get_queryset(query string) ![]QuerySet {
+	query_lower := query.to_lower()
+
+	// 'select' syntax verified on: https://www.sqlite.org/lang_select.html and
+	// https://www.sqlite.org/syntax/join-clause.html
+	mut select_header := regex_opt(r'select((\s)+(all)|(distinct)(\s)+)|(\s)+')!
+	mut from := regex_opt(r'(\s)+from(\s)+')!
+
+	// This check eliminates queries that do not have the SELECT statement
+	if query_lower.count('select') == 1 {
+		// or do not include 'FROM', just like 'SELECT 1 + 1'
+		if select_header.matches_string(query_lower) && query_lower.contains(r'from') {
+			// The execution of this function indicates that the passed
+			// query is syntactically correct, which is why no additional verification
+			rows := db.exec(query)!
+
+			defer {
+				unsafe { rows.free() }
+			}
+
+			if rows.len == 0 {
+				return SQLError{
+					msg: 'No rows'
+					code: sqlite.sqlite_done
+				}
+			} else {
+				// Finding final index of select((\s)+(all)|(distinct)(\s)+)|(\s)+ inside query_lower string
+				_, end_select := select_header.match_string(query_lower)
+
+				// Finding initial and final index of (\s)+from(\s)+ inside query_lower string
+				init_from, end_from := from.find(query_lower)
+
+				// Get fields possibly separated by ',' like: select field_1, field_2 as f2, from table_name
+				fields := query.substr(end_select, init_from).split(',')
+
+				mut query_set := []QuerySet{}
+				mut tuple := map[string]string{}
+
+				if fields[0] == '*' {
+					table_name := query.substr(end_from, query.len).replace(';', '').split(' ')[0]
+
+					// Get all fields
+					all_columns_name := db.exec('pragma table_info(${table_name})')!
+
+					defer {
+						unsafe { all_columns_name.free() }
+					}
+
+					mut i := 0
+
+					for row in rows {
+						for i < row.vals.len {
+							// position 1 has a database column attribute
+							tuple[all_columns_name[i].vals[1]] = row.vals[i]
+							i++
+						}
+						i = 0
+
+						query_set << QuerySet{tuple}
+						tuple = map[string]string{}
+					}
+				} else {
+					mut i := 0
+
+					for row in rows {
+						for field in fields {
+							// verifying formats like:
+							// select column_1 as alias_column_1 from table_name  ->  alias creation with 'as'
+							// select column_1 alias_column_1 from table_name     ->  alias creationg without 'as'
+							// select column_1 from table_name -> with alias being column_1
+							all_field_alias := if field.contains('as') {
+								field.split('as')
+							} else {
+								field.split(' ')
+							}
+
+							alias := all_field_alias[all_field_alias.len - 1].replace(' ',
+								'')
+							tuple[alias] = row.vals[i]
+							i++
+						}
+
+						i = 0
+						query_set << QuerySet{tuple}
+						tuple = map[string]string{}
+					}
+				}
+
+				return query_set
+			}
+		} else {
+			return &SQLError{
+				msg: 'This is not a selection query'
+				code: sqlite.sqlite_done
+			}
+		}
+	} else {
+		return error('Subqueries are not supported!')
+	}
+}
+
 
 // exec_one executes a query on the given `db`.
 // It returns either the first row from the result, if the query was successful, or an error.
