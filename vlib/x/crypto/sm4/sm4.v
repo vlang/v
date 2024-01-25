@@ -1,6 +1,15 @@
-// SM4 is the block cipher algorithm in China's Standards of Encryption Algorithms
-// GM/T 0002-2012《SM4分组密码算法》（原SMS4分组密码算法）
+// SM4 is the block cipher algorithm in China's Standards of Encryption Algorithms.
+// For more information, see ISO/IEC 18033-3:2010/Amd 1:2021(https://www.iso.org/standard/81564.html)
 // Based on : https://github.com/scnucrypto/OptimizedSM4/tree/main/LUT-SM4
+
+// SM4 is a block symmetric cryptographic algorithm, with plaintext, ciphertext, and key lengths of 128 bits.
+// The SM4 algorithm mainly includes encryption and decryption algorithms and key extension algorithms,
+// adopting a mathematical structure of 32 rounds of nonlinear iteration, where each iteration operation
+// in the algorithm is a round of nonlinear transformation. The main operations include XOR, synthetic permutation,
+// nonlinear iteration, inverse transformation, cyclic shift, and S-box transformation. The mathematical architecture,
+// operation rules, and operations of encryption and decryption algorithms are completely identical, and decryption
+// operations only require the reverse order use of the round keys generated in the encryption algorithm.
+
 module sm4
 
 import encoding.binary
@@ -42,7 +51,7 @@ u8(0xd6), 0x90, 0xe9, 0xfe, 0xcc, 0xe1, 0x3d, 0xb7, 0x16, 0xb6, 0x14, 0xc2, 0x28
    0x89 , 0x69, 0x97, 0x4a, 0x0c, 0x96, 0x77, 0x7e, 0x65, 0xb9, 0xf1, 0x09, 0xc5, 0x6e, 0xc6, 0x84,
    0x18 , 0xf0, 0x7d, 0xec, 0x3a, 0xdc, 0x4d, 0x20, 0x79, 0xee, 0x5f, 0x3e, 0xd7, 0xcb, 0x39, 0x48,
 ]
-//4 T-box
+// pre-calculated tables for sbox & ROL operations
 const table0 = [
 u32(0x8ed55b5b), 0xd0924242, 0x4deaa7a7, 0x06fdfbfb, 0xfccf3333, 0x65e28787,
     0xc93df4f4 , 0x6bb5dede, 0x4e165858, 0x6eb4dada, 0x44145050, 0xcac10b0b,
@@ -227,20 +236,20 @@ u32(0xd55b5b8e), 0x924242d0, 0xeaa7a74d, 0xfdfbfb06, 0xcf3333fc, 0xe2878765,
 
 // calculate_irk Calculating round encryption key.
 // args:    [in] a: a is a 32 bits unsigned value
-// return: sk[i]: i{0,1,2,3,...31}.
+// return: rk[i]: i{0,1,2,3,...31}.
 fn calculate_irk(ka u32) u32 {
 	mut a := []u8{len: 4}
 	mut b := []u8{len: 4}
 	binary.big_endian_put_u32(mut a, ka)
 	b[3], b[2], b[1], b[0] = sm4.sbox[a[3]], sm4.sbox[a[2]], sm4.sbox[a[1]], sm4.sbox[a[0]]
 	bb := binary.big_endian_u32(b)
-	t_13 := bb << 13 | bb >> (32 - 13) // ROTL(bb, 13)
-	t_23 := bb << 23 | bb >> (32 - 23) // ROTL(bb, 23)
+	t_13 := bb << 13 | bb >> (32 - 13) // ROL(bb, 13)
+	t_23 := bb << 23 | bb >> (32 - 23) // ROL(bb, 23)
 	return bb ^ t_13 ^ t_23
 }
 
-// set_key
-fn set_key(mut sk []u32, key []u8) {
+// key_expansion
+fn key_expansion(mut rk []u32, key []u8) {
 	mut mk := []u32{len: 4}
 	mut k := []u32{len: 36}
 
@@ -251,12 +260,12 @@ fn set_key(mut sk []u32, key []u8) {
 	k[3], k[2], k[1], k[0] = mk[3] ^ sm4.fk[3], mk[2] ^ sm4.fk[2], mk[1] ^ sm4.fk[1], mk[0] ^ sm4.fk[0]
 	for i in 0 .. 32 {
 		k[i + 4] = k[i] ^ calculate_irk(k[i + 1] ^ k[i + 2] ^ k[i + 3] ^ sm4.ck[i])
-		sk[i] = k[i + 4]
+		rk[i] = k[i + 4]
 	}
 }
 
 // one_round SM4 standard one round processing
-fn one_round(sk []u32, input []u8, mut output []u8) {
+fn one_round(rk []u32, input []u8, mut output []u8) {
 	mut x := []u32{len: 4}
 	mut tmp := u32(0)
 	mut tmp1 := u32(0)
@@ -266,7 +275,7 @@ fn one_round(sk []u32, input []u8, mut output []u8) {
 	x[2] = binary.big_endian_u32(input[8..12])
 	x[3] = binary.big_endian_u32(input[12..16])
 	for i in 0 .. 32 {
-		tmp = x[1] ^ x[2] ^ x[3] ^ sk[i]
+		tmp = x[1] ^ x[2] ^ x[3] ^ rk[i]
 		tmp1 = x[0] ^ sm4.table0[(tmp >> 24) & 0xff] ^ sm4.table1[(tmp >> 16) & 0xff] ^ sm4.table2[(tmp >> 8) & 0xff] ^ sm4.table3[(tmp >> 0) & 0xff]
 		x[3], x[2], x[1], x[0] = tmp1, x[3], x[2], x[1]
 	}
@@ -284,7 +293,7 @@ pub enum Mode {
 pub struct SM4Cipher {
 mut:
 	mode Mode
-	sk   []u32 // SM4 subkeys
+	rk   []u32 // SM4 round keys
 }
 
 // new_cipher creates and returns a new SM4Cipher.
@@ -296,13 +305,14 @@ pub fn new_cipher(mode Mode, key []u8) !&SM4Cipher {
 	}
 	mut c := &SM4Cipher{
 		mode: mode
-		sk: []u32{len: 32}
+		rk: []u32{len: 32} // pre-alloc space for 32 round keys
 	}
-	set_key(mut c.sk, key)
+	key_expansion(mut c.rk, key)
 	if mode == .sm4_decrypt {
+		// In SM4, encrypt/decrypt use the same process, except the key order is reversed.
 		// reverse key in decrypt mode
 		for i in 0 .. 16 {
-			c.sk[i], c.sk[31 - i] = c.sk[31 - i], c.sk[i]
+			c.rk[i], c.rk[31 - i] = c.rk[31 - i], c.rk[i]
 		}
 	}
 	return c
@@ -321,7 +331,8 @@ pub fn (c &SM4Cipher) crypt_ecb(input []u8, mut output []u8) ! {
 	}
 	mut idx := 0
 	for length > 0 {
-		one_round(c.sk, input[idx..idx + 16], mut output[idx..idx + 16])
+		// use round keys encrypt/decrypt the input, 128bit per block
+		one_round(c.rk, input[idx..idx + 16], mut output[idx..idx + 16])
 		idx += 16
 		length -= 16
 	}
@@ -347,11 +358,14 @@ pub fn (c &SM4Cipher) crypt_cbc(mut iv []u8, input []u8, mut output []u8) ! {
 	match c.mode {
 		.sm4_encrypt {
 			for length > 0 {
+				// processing a 128bit block
+				// output = input xor iv
 				for i in 0 .. 16 {
 					output[idx + i] = input[idx + i] ^ iv[i]
 				}
-
-				one_round(c.sk, output[idx..idx + 16], mut output[idx..idx + 16])
+				// use round keys encrypt the output
+				one_round(c.rk, output[idx..idx + 16], mut output[idx..idx + 16])
+				// update iv with output
 				copy(mut iv, output[idx..])
 
 				idx += 16
@@ -361,12 +375,16 @@ pub fn (c &SM4Cipher) crypt_cbc(mut iv []u8, input []u8, mut output []u8) ! {
 		.sm4_decrypt {
 			mut temp := []u8{len: 16}
 			for length > 0 {
+				// processing a 128bit block
 				// If input=output, then input will be overwritten, so save input to temp
 				copy(mut temp, input[idx..])
-				one_round(c.sk, input[idx..idx + 16], mut output[idx..idx + 16])
+				// use round keys decrypt the input
+				one_round(c.rk, input[idx..idx + 16], mut output[idx..idx + 16])
+				// output = output xor iv
 				for i in 0 .. 16 {
 					output[idx + i] = output[idx + i] ^ iv[i]
 				}
+				// update iv with input
 				copy(mut iv, temp)
 				idx += 16
 				length -= 16
