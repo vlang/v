@@ -113,7 +113,7 @@ pub fn (r BufferedReader) end_of_stream() bool {
 	return r.end_of_stream
 }
 
-// read_line_until attempts to read a line from the buffered reader.
+// read_line attempts to read a line from the buffered reader.
 // It will read until it finds the specified line delimiter
 // such as (\n or \0) or the end of stream.
 pub fn (mut r BufferedReader) read_line(config BufferedReadLineConfig) !string {
