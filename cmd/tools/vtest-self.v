@@ -173,7 +173,7 @@ const skip_with_fsanitize_memory = [
 	'vlib/net/smtp/smtp_test.v',
 	'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
 	'vlib/v/tests/fn_literal_type_test.v',
-	'vlib/x/vweb/sessions/tests/db_store.v',
+	'vlib/x/vweb/sessions/tests/db_store_test.v',
 ]
 const skip_with_fsanitize_address = [
 	'do_not_remove',
