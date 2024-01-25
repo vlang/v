@@ -20,26 +20,48 @@ pub enum LogTarget {
 }
 
 // tag_to_cli returns the tag for log level `l` as a colored string.
-fn tag_to_cli(l Level) string {
-	return match l {
-		.disabled { '' }
-		.fatal { term.red('FATAL') }
-		.error { term.red('ERROR') }
-		.warn { term.yellow('WARN ') }
-		.info { term.white('INFO ') }
-		.debug { term.magenta('DEBUG') }
+fn tag_to_cli(l Level, short_tag bool) string {
+	if short_tag {
+		return match l {
+			.disabled { ' ' }
+			.fatal { term.red('F') }
+			.error { term.red('E') }
+			.warn { term.yellow('W') }
+			.info { term.white('I') }
+			.debug { term.magenta('D') }
+		}
+	} else {
+		return match l {
+			.disabled { '' }
+			.fatal { term.red('FATAL') }
+			.error { term.red('ERROR') }
+			.warn { term.yellow('WARN ') }
+			.info { term.white('INFO ') }
+			.debug { term.magenta('DEBUG') }
+		}
 	}
 }
 
 // tag_to_file returns the tag for log level `l` as a string.
-fn tag_to_file(l Level) string {
-	return match l {
-		.disabled { '     ' }
-		.fatal { 'FATAL' }
-		.error { 'ERROR' }
-		.warn { 'WARN ' }
-		.info { 'INFO ' }
-		.debug { 'DEBUG' }
+fn tag_to_file(l Level, short_tag bool) string {
+	if short_tag {
+		return match l {
+			.disabled { ' ' }
+			.fatal { 'F' }
+			.error { 'E' }
+			.warn { 'W' }
+			.info { 'I' }
+			.debug { 'D' }
+		}
+	} else {
+		return match l {
+			.disabled { '     ' }
+			.fatal { 'FATAL' }
+			.error { 'ERROR' }
+			.warn { 'WARN ' }
+			.info { 'INFO ' }
+			.debug { 'DEBUG' }
+		}
 	}
 }
 
@@ -47,12 +69,12 @@ fn tag_to_file(l Level) string {
 // It returns `none` when it does not find a match.
 pub fn level_from_tag(tag string) ?Level {
 	return match tag {
-		'DISABLED' { Level.disabled }
-		'FATAL' { Level.fatal }
-		'ERROR' { Level.error }
-		'WARN' { Level.warn }
-		'INFO' { Level.info }
-		'DEBUG' { Level.debug }
+		'DISABLED', ' ' { Level.disabled }
+		'FATAL', 'F' { Level.fatal }
+		'ERROR', 'E' { Level.error }
+		'WARN', 'W' { Level.warn }
+		'INFO', 'I' { Level.info }
+		'DEBUG', 'D' { Level.debug }
 		else { none }
 	}
 }
