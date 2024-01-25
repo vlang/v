@@ -29,8 +29,7 @@ pub fn no_result() Result {
 pub const methods_with_form = [http.Method.post, .put, .patch]
 
 pub const headers_close = http.new_custom_header_from_map({
-	'Server':                           'VWeb'
-	http.CommonHeader.connection.str(): 'close'
+	'Server': 'VWeb'
 }) or { panic('should never fail') }
 
 pub const http_302 = http.new_response(
@@ -221,10 +220,11 @@ pub struct RunParams {
 
 struct FileResponse {
 pub mut:
-	open  bool
-	file  os.File
-	total i64
-	pos   i64
+	open              bool
+	file              os.File
+	total             i64
+	pos               i64
+	should_close_conn bool
 }
 
 // close the open file and reset the struct to its default values
@@ -233,13 +233,15 @@ pub fn (mut fr FileResponse) done() {
 	fr.file.close()
 	fr.total = 0
 	fr.pos = 0
+	fr.should_close_conn = false
 }
 
 struct StringResponse {
 pub mut:
-	open bool
-	str  string
-	pos  i64
+	open              bool
+	str               string
+	pos               i64
+	should_close_conn bool
 }
 
 // free the current string and reset the struct to its default values
@@ -247,6 +249,7 @@ pub mut:
 pub fn (mut sr StringResponse) done() {
 	sr.open = false
 	sr.pos = 0
+	sr.should_close_conn = false
 	unsafe { sr.str.free() }
 }
 
@@ -418,7 +421,7 @@ fn handle_write_file(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 	if params.file_responses[fd].pos == params.file_responses[fd].total {
 		// file is done writing
 		params.file_responses[fd].done()
-		pv.close_conn(fd)
+		handle_complete_request(params.file_responses[fd].should_close_conn, mut pv, fd)
 		return
 	}
 }
@@ -450,6 +453,8 @@ fn handle_write_string(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 		// done writing
 		params.string_responses[fd].done()
 		pv.close_conn(fd)
+		handle_complete_request(params.string_responses[fd].should_close_conn, mut pv,
+			fd)
 		return
 	}
 }
@@ -490,6 +495,8 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 			if err.msg() != 'none' {
 				eprintln('[vweb] error parsing request: ${err}')
 			}
+			// the buffered reader was empty meaning that the client probably
+			// closed the connection.
 			pv.close_conn(fd)
 			params.incomplete_requests[fd] = http.Request{}
 			return
@@ -588,7 +595,8 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 				// See Context.send_file for why we use max_read instead of max_write.
 				if completed_context.res.body.len < vweb.max_read {
 					fast_send_resp(mut conn, completed_context.res) or {}
-					pv.close_conn(fd)
+					handle_complete_request(completed_context.client_wants_to_close, mut
+						pv, fd)
 				} else {
 					params.string_responses[fd].open = true
 					params.string_responses[fd].str = completed_context.res.body
@@ -599,7 +607,8 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 						// should not happen
 						params.string_responses[fd].done()
 						fast_send_resp(mut conn, vweb.http_500) or {}
-						pv.close_conn(fd)
+						handle_complete_request(completed_context.client_wants_to_close, mut
+							pv, fd)
 						return
 					}
 					// no errors we can send the HTTP headers
@@ -636,6 +645,15 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 			}
 		}
 	} else {
+		// invalid request headers/data
+		pv.close_conn(fd)
+	}
+}
+
+// close the connection when `should_close` is true.
+@[inline]
+fn handle_complete_request(should_close bool, mut pv picoev.Picoev, fd int) {
+	if should_close {
 		pv.close_conn(fd)
 	}
 }
@@ -679,6 +697,14 @@ fn handle_request[A, X](mut conn net.TcpConn, req http.Request, params &RequestP
 		query: query
 		form: form
 		files: files
+	}
+
+	if connection_header := req.header.get(.connection) {
+		// A client that does not support persistent connections MUST send the
+		// "close" connection option in every request message.
+		if connection_header.to_lower() == 'close' {
+			ctx.client_wants_to_close = true
+		}
 	}
 
 	$if A is StaticApp {

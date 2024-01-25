@@ -61,7 +61,6 @@ fn assert_common_headers(received string) {
 	assert received.starts_with('HTTP/1.1 200 OK\r\n')
 	assert received.contains('Server: VWeb\r\n')
 	assert received.contains('Content-Length:')
-	assert received.contains('Connection: close\r\n')
 }
 
 fn test_a_simple_tcp_client_can_connect_to_the_vweb_server() {
@@ -111,7 +110,6 @@ fn assert_common_http_headers(x http.Response) ! {
 	assert x.status() == .ok
 	assert x.header.get(.server)! == 'VWeb'
 	assert x.header.get(.content_length)!.int() > 0
-	assert x.header.get(.connection)! == 'close'
 }
 
 fn test_http_client_index() {
@@ -327,6 +325,7 @@ fn simple_tcp_client(config SimpleTcpClientConfig) !string {
 Host: ${config.host}
 User-Agent: ${config.agent}
 Accept: */*
+Connection: close
 ${config.headers}
 ${config.content}'
 	$if debug_net_socket_client ? {
