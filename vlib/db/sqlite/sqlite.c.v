@@ -357,7 +357,6 @@ pub fn (db &DB) get_queryset(query string) ![]QuerySet {
 	}
 }
 
-
 // exec_one executes a query on the given `db`.
 // It returns either the first row from the result, if the query was successful, or an error.
 @[manualfree]
