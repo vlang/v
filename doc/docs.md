@@ -3277,7 +3277,7 @@ This is to ease the prototyping workflow in that folder:
 - split functionality as necessary to different .v files in the same folder
 - when that makes logical sense to be further organised, put them into their own directory module.
 
-Note that in ordinary modules, all .v files must start with module name_of_folder.
+Note that in ordinary modules, all .v files must start with `module name_of_folder`.
 
 ### `init` functions
 
