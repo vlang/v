@@ -2873,7 +2873,8 @@ fn (mut g Gen) get_ternary_name(name string) string {
 }
 
 fn (mut g Gen) gen_clone_assignment(val ast.Expr, typ ast.Type, add_eq bool) bool {
-	if val !in [ast.Ident, ast.SelectorExpr] {
+	if val !in [ast.Ident, ast.SelectorExpr, ast.CallExpr, ast.MatchExpr, ast.IfExpr, ast.IndexExpr,
+		ast.ParExpr, ast.UnsafeExpr] {
 		return false
 	}
 	right_sym := g.table.sym(typ)
@@ -2976,6 +2977,11 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 				is_option := obj.typ.has_flag(.option)
 				if is_option {
 					// TODO: free options
+					continue
+				}
+				is_result := obj.typ.has_flag(.result)
+				if is_result {
+					// TODO: free result
 					continue
 				}
 				g.autofree_variable(obj)
@@ -5348,6 +5354,14 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				node.types[0].has_flag(.option)
 			}
 		}
+		// autofree before `return`
+		// set free_parent_scopes to true, since all variables defined in parent
+		// scopes need to be freed before the return
+		if g.is_autofree {
+			if expr0 is ast.Ident {
+				g.returned_var_name = expr0.name
+			}
+		}
 		if fn_return_is_option && !expr_type_is_opt && return_sym.name != c.option_name {
 			styp := g.base_type(fn_ret_type)
 			g.writeln('${ret_typ} ${tmpvar};')
@@ -5407,15 +5421,6 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			g.writeln('return ${tmpvar};')
 			return
-		}
-		// autofree before `return`
-		// set free_parent_scopes to true, since all variables defined in parent
-		// scopes need to be freed before the return
-		if g.is_autofree {
-			expr := node.exprs[0]
-			if expr is ast.Ident {
-				g.returned_var_name = expr.name
-			}
 		}
 		// free := g.is_autofree && !g.is_builtin_mod // node.exprs[0] is ast.CallExpr
 		// Create a temporary variable for the return expression
