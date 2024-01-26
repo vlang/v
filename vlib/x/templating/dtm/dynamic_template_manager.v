@@ -272,6 +272,8 @@ pub fn (mut tm DynamicTemplateManager) serve_dynamic_template(tmpl_path string, 
 				}
 			}
 			current_content_checksum = sha256.hexhash(combined_str)
+		} else {
+			current_content_checksum = content_checksum
 		}
 		// From this point, all the previously encountered variables are used to determine the routing in rendering the HTML template and creating/using its cache.
 		cash_req := cache_request_route(is_cache_exist, converted_cache_delay_expiration,
