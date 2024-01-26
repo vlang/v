@@ -12,11 +12,9 @@
 
 module sm4
 
-import encoding.binary
-
 // vfmt off
 // System parameter
-const fk = [u32(0xa3b1bac6), 0x56aa3350, 0x677d9197, 0xb27022dc, ]
+const fk = [u32(0xa3b1bac6), 0x56aa3350, 0x677d9197, 0xb27022dc, ]!
 
 // fixed parameter
 const ck =
@@ -29,7 +27,7 @@ u32(0x00070e15), 0x1c232a31, 0x383f464d, 0x545b6269,
     0x30373e45 , 0x4c535a61, 0x686f767d, 0x848b9299,
     0xa0a7aeb5 , 0xbcc3cad1, 0xd8dfe6ed, 0xf4fb0209,
     0x10171e25 , 0x2c333a41, 0x484f565d, 0x646b7279,
-]
+]!
 
 // Expanded SM4 S-boxes
 // Sbox table: 8bits input convert to 8 bits output
@@ -50,7 +48,7 @@ u8(0xd6), 0x90, 0xe9, 0xfe, 0xcc, 0xe1, 0x3d, 0xb7, 0x16, 0xb6, 0x14, 0xc2, 0x28
    0x0a , 0xc1, 0x31, 0x88, 0xa5, 0xcd, 0x7b, 0xbd, 0x2d, 0x74, 0xd0, 0x12, 0xb8, 0xe5, 0xb4, 0xb0,
    0x89 , 0x69, 0x97, 0x4a, 0x0c, 0x96, 0x77, 0x7e, 0x65, 0xb9, 0xf1, 0x09, 0xc5, 0x6e, 0xc6, 0x84,
    0x18 , 0xf0, 0x7d, 0xec, 0x3a, 0xdc, 0x4d, 0x20, 0x79, 0xee, 0x5f, 0x3e, 0xd7, 0xcb, 0x39, 0x48,
-]
+]!
 // pre-calculated tables for sbox & ROL operations
 const table0 = [
 u32(0x8ed55b5b), 0xd0924242, 0x4deaa7a7, 0x06fdfbfb, 0xfccf3333, 0x65e28787,
@@ -96,7 +94,7 @@ u32(0x8ed55b5b), 0xd0924242, 0x4deaa7a7, 0x06fdfbfb, 0xfccf3333, 0x65e28787,
     0x78186060 , 0x30f3c3c3, 0x897cf5f5, 0x5cefb3b3, 0xd23ae8e8, 0xacdf7373,
     0x794c3535 , 0xa0208080, 0x9d78e5e5, 0x56edbbbb, 0x235e7d7d, 0xc63ef8f8,
     0x8bd45f5f , 0xe7c82f2f, 0xdd39e4e4, 0x68492121,
-]
+]!
 const table1 = [
 u32(0x5b8ed55b), 0x42d09242, 0xa74deaa7, 0xfb06fdfb, 0x33fccf33, 0x8765e287,
     0xf4c93df4 , 0xde6bb5de, 0x584e1658, 0xda6eb4da, 0x50441450, 0x0bcac10b,
@@ -141,7 +139,7 @@ u32(0x5b8ed55b), 0x42d09242, 0xa74deaa7, 0xfb06fdfb, 0x33fccf33, 0x8765e287,
     0x60781860 , 0xc330f3c3, 0xf5897cf5, 0xb35cefb3, 0xe8d23ae8, 0x73acdf73,
     0x35794c35 , 0x80a02080, 0xe59d78e5, 0xbb56edbb, 0x7d235e7d, 0xf8c63ef8,
     0x5f8bd45f , 0x2fe7c82f, 0xe4dd39e4, 0x21684921,
-]
+]!
 const table2 = [
 u32(0x5b5b8ed5), 0x4242d092, 0xa7a74dea, 0xfbfb06fd, 0x3333fccf, 0x878765e2,
     0xf4f4c93d , 0xdede6bb5, 0x58584e16, 0xdada6eb4, 0x50504414, 0x0b0bcac1,
@@ -186,7 +184,7 @@ u32(0x5b5b8ed5), 0x4242d092, 0xa7a74dea, 0xfbfb06fd, 0x3333fccf, 0x878765e2,
     0x60607818 , 0xc3c330f3, 0xf5f5897c, 0xb3b35cef, 0xe8e8d23a, 0x7373acdf,
     0x3535794c , 0x8080a020, 0xe5e59d78, 0xbbbb56ed, 0x7d7d235e, 0xf8f8c63e,
     0x5f5f8bd4 , 0x2f2fe7c8, 0xe4e4dd39, 0x21216849,
-]
+]!
 const table3 = [
 u32(0xd55b5b8e), 0x924242d0, 0xeaa7a74d, 0xfdfbfb06, 0xcf3333fc, 0xe2878765,
     0x3df4f4c9 , 0xb5dede6b, 0x1658584e, 0xb4dada6e, 0x14505044, 0xc10b0bca,
@@ -231,58 +229,120 @@ u32(0xd55b5b8e), 0x924242d0, 0xeaa7a74d, 0xfdfbfb06, 0xcf3333fc, 0xe2878765,
     0x18606078 , 0xf3c3c330, 0x7cf5f589, 0xefb3b35c, 0x3ae8e8d2, 0xdf7373ac,
     0x4c353579 , 0x208080a0, 0x78e5e59d, 0xedbbbb56, 0x5e7d7d23, 0x3ef8f8c6,
     0xd45f5f8b , 0xc82f2fe7, 0x39e4e4dd, 0x49212168,
-]
+]!
 // vfmt on
 
-// calculate_irk Calculating round encryption key.
-// args:    [in] a: a is a 32 bits unsigned value
-// return: rk[i]: i{0,1,2,3,...31}.
-fn calculate_irk(ka u32) u32 {
-	mut a := []u8{len: 4}
-	mut b := []u8{len: 4}
-	binary.big_endian_put_u32(mut a, ka)
+// big_endian_u32 creates a u32 from four bytes in the array b in big endian order.
+@[direct_array_access; inline]
+fn big_endian_u32(b [4]u8) u32 {
+	return u32(b[3]) | (u32(b[2]) << u32(8)) | (u32(b[1]) << u32(16)) | (u32(b[0]) << u32(24))
+}
+
+// big_endian_put_u32 writes a u32 to the first four bytes in the array b in big endian order.
+@[direct_array_access; inline]
+fn big_endian_put_u32(mut b [4]u8, v u32) {
+	b[0] = u8(v >> u32(24))
+	b[1] = u8(v >> u32(16))
+	b[2] = u8(v >> u32(8))
+	b[3] = u8(v)
+}
+
+// big_endian_u128 convert 16 bytes in the array `b` into 4 u32 in the array `u` in big endian order.
+@[direct_array_access; inline]
+fn big_endian_u128(b [16]u8, mut u [4]u32) {
+	for i in 0 .. 4 {
+		u[i] = u32(b[i * 4 + 3]) | (u32(b[i * 4 + 2]) << u32(8)) | (u32(b[i * 4 + 1]) << u32(16)) | (u32(b[
+			i * 4 + 0]) << u32(24))
+	}
+}
+
+// big_endian_put_u128_reverse writes 4 u32 to the 16 bytes in the array `b` in big endian order.
+@[direct_array_access; inline]
+fn big_endian_put_u128_reverse(mut b [16]u8, v [4]u32) {
+	for i in 0 .. 4 {
+		b[i * 4 + 0] = u8(v[3 - i] >> u32(24))
+		b[i * 4 + 1] = u8(v[3 - i] >> u32(16))
+		b[i * 4 + 2] = u8(v[3 - i] >> u32(8))
+		b[i * 4 + 3] = u8(v[3 - i])
+	}
+}
+
+// sm4_tl performance the "T algorithm" == "t algorithm" + "L algorithm" funciton.
+@[direct_array_access; inline]
+fn sm4_tl(ka u32) u32 {
+	mut a := [4]u8{}
+	mut b := [4]u8{}
+
+	// Divide ka into 4 bytes, then use sbox transfer, combine again into a new u32
+	big_endian_put_u32(mut a, ka)
 	b[3], b[2], b[1], b[0] = sm4.sbox[a[3]], sm4.sbox[a[2]], sm4.sbox[a[1]], sm4.sbox[a[0]]
-	bb := binary.big_endian_u32(b)
+	bb := big_endian_u32(b)
+
+	// Rotate Left Shift 02, 10, 18, 24
+	t_02 := bb << 2 | bb >> (32 - 2) // ROL(bb, 02)
+	t_10 := bb << 10 | bb >> (32 - 10) // ROL(bb, 10)
+	t_18 := bb << 18 | bb >> (32 - 18) // ROL(bb, 18)
+	t_24 := bb << 24 | bb >> (32 - 24) // ROL(bb, 24)
+	return bb ^ t_02 ^ t_10 ^ t_18 ^ t_24
+}
+
+// calculate_irk calculating round encryption key.
+// args:    [in] ka: ka is a 32 bits unsigned value
+// return: rk[i]: i{0,1,2,3,...31}.
+@[direct_array_access; inline]
+fn calculate_irk(ka u32) u32 {
+	mut a := [4]u8{}
+	mut b := [4]u8{}
+
+	// Divide ka into 4 bytes, then use sbox transfer, combine them into a new u32
+	big_endian_put_u32(mut a, ka)
+	b[3], b[2], b[1], b[0] = sm4.sbox[a[3]], sm4.sbox[a[2]], sm4.sbox[a[1]], sm4.sbox[a[0]]
+	bb := big_endian_u32(b)
+
+	// Rotate Left Shift 13, 23
 	t_13 := bb << 13 | bb >> (32 - 13) // ROL(bb, 13)
 	t_23 := bb << 23 | bb >> (32 - 23) // ROL(bb, 23)
 	return bb ^ t_13 ^ t_23
 }
 
 // key_expansion
-fn key_expansion(mut rk []u32, key []u8) {
-	mut mk := []u32{len: 4}
-	mut k := []u32{len: 36}
+@[direct_array_access]
+fn key_expansion(mut rk [32]u32, key [16]u8) {
+	mut mk := [4]u32{}
+	mut k := [36]u32{}
 
-	mk[0] = binary.big_endian_u32(key[0..4])
-	mk[1] = binary.big_endian_u32(key[4..8])
-	mk[2] = binary.big_endian_u32(key[8..12])
-	mk[3] = binary.big_endian_u32(key[12..16])
+	// k = key ^ fk
+	big_endian_u128(key, mut mk)
 	k[3], k[2], k[1], k[0] = mk[3] ^ sm4.fk[3], mk[2] ^ sm4.fk[2], mk[1] ^ sm4.fk[1], mk[0] ^ sm4.fk[0]
+
+	// generate the round keys
 	for i in 0 .. 32 {
+		// TODO: use 8:32 lookup table speedup
 		k[i + 4] = k[i] ^ calculate_irk(k[i + 1] ^ k[i + 2] ^ k[i + 3] ^ sm4.ck[i])
 		rk[i] = k[i + 4]
 	}
 }
 
 // one_round SM4 standard one round processing
-fn one_round(rk []u32, input []u8, mut output []u8) {
-	mut x := []u32{len: 4}
+@[direct_array_access]
+fn one_round(rk [32]u32, input [16]u8, mut output [16]u8) {
+	mut x := [4]u32{}
 	mut tmp := u32(0)
 	mut tmp1 := u32(0)
 
-	x[0] = binary.big_endian_u32(input[0..4])
-	x[1] = binary.big_endian_u32(input[4..8])
-	x[2] = binary.big_endian_u32(input[8..12])
-	x[3] = binary.big_endian_u32(input[12..16])
+	big_endian_u128(input, mut x)
 	for i in 0 .. 32 {
 		tmp = x[1] ^ x[2] ^ x[3] ^ rk[i]
-		tmp1 = x[0] ^ sm4.table0[(tmp >> 24) & 0xff] ^ sm4.table1[(tmp >> 16) & 0xff] ^ sm4.table2[(tmp >> 8) & 0xff] ^ sm4.table3[(tmp >> 0) & 0xff]
+		$if sm4_slow_version ? {
+			// use official algorithm
+			tmp1 = x[0] ^ sm4_tl(tmp)
+		} $else {
+			// use 8:32 lookup table
+			tmp1 = x[0] ^ sm4.table0[(tmp >> 24) & 0xff] ^ sm4.table1[(tmp >> 16) & 0xff] ^ sm4.table2[(tmp >> 8) & 0xff] ^ sm4.table3[(tmp >> 0) & 0xff]
+		}
 		x[3], x[2], x[1], x[0] = tmp1, x[3], x[2], x[1]
 	}
-	binary.big_endian_put_u32(mut output[0..4], x[3])
-	binary.big_endian_put_u32(mut output[4..8], x[2])
-	binary.big_endian_put_u32(mut output[8..12], x[1])
-	binary.big_endian_put_u32(mut output[12..16], x[0])
+	big_endian_put_u128_reverse(mut output, x)
 }
 
 pub enum Mode {
@@ -293,21 +353,24 @@ pub enum Mode {
 pub struct SM4Cipher {
 mut:
 	mode Mode
-	rk   []u32 // SM4 round keys
+	rk   [32]u32 // SM4 round keys
 }
 
 // new_cipher creates and returns a new SM4Cipher.
 // The `mode` should be `.sm4_encrypt` or `.sm4_decrypt`.
-// The key argument should be the 16 bytes SM4 key.
+// The key argument must be the 16 bytes SM4 key.
+@[direct_array_access]
 pub fn new_cipher(mode Mode, key []u8) !&SM4Cipher {
 	if key.len != 16 {
 		return error('SM4 only support 128bit key length')
 	}
 	mut c := &SM4Cipher{
 		mode: mode
-		rk: []u32{len: 32} // pre-alloc space for 32 round keys
 	}
-	key_expansion(mut c.rk, key)
+	// fixed size array, avoid alloc on heap
+	key_16 := [key[0], key[1], key[2], key[3], key[4], key[5], key[6], key[7], key[8], key[9],
+		key[10], key[11], key[12], key[13], key[14], key[15]]!
+	key_expansion(mut c.rk, key_16)
 	if mode == .sm4_decrypt {
 		// In SM4, encrypt/decrypt use the same process, except the key order is reversed.
 		// reverse key in decrypt mode
@@ -319,20 +382,27 @@ pub fn new_cipher(mode Mode, key []u8) !&SM4Cipher {
 }
 
 // crypt_ecb SM4-ECB block encryption/decryption
-// `input` should be padded to mutiple of 16 bytes.
-// `output` should be exactly the same length of `input`'.
+// `input` must be padded to mutiple of 16 bytes.
+// `output` must be exactly the same length as `input`.
+@[direct_array_access]
 pub fn (c &SM4Cipher) crypt_ecb(input []u8, mut output []u8) ! {
 	mut length := input.len
 	if length & 0x0f != 0 || length == 0 {
-		return error('input length should be multiple of 16 bytes')
+		return error('input must be padded to mutiple of 16 bytes')
 	}
 	if length != output.len {
-		return error('output length should be exactly the same length of input')
+		return error('output must be exactly the same length as input')
 	}
 	mut idx := 0
+	// fixed size array, avoid alloc on heap
+	mut input_16 := [16]u8{}
+	mut output_16 := [16]u8{}
+
 	for length > 0 {
 		// use round keys encrypt/decrypt the input, 128bit per block
-		one_round(c.rk, input[idx..idx + 16], mut output[idx..idx + 16])
+		unsafe { vmemcpy(&input_16, &input[idx], 16) } // convert to fixed size array
+		one_round(c.rk, input_16, mut output_16)
+		unsafe { vmemcpy(&output[idx], &output_16, 16) } // convert from fixed size array
 		idx += 16
 		length -= 16
 	}
@@ -340,52 +410,51 @@ pub fn (c &SM4Cipher) crypt_ecb(input []u8, mut output []u8) ! {
 
 // crypt_cbc SM4-CBC buffer encryption/decryption
 // `iv` is a 16 bytes Initialization Vector.
-// `input` should be padded to mutiple of 16 bytes.
-// `output` should be exactly the same length of `input`'s length.
+// `input` must be padded to mutiple of 16 bytes.
+// `output` must be exactly the same length as `input`.
+@[direct_array_access]
 pub fn (c &SM4Cipher) crypt_cbc(mut iv []u8, input []u8, mut output []u8) ! {
 	mut idx := 0
 	mut length := input.len
 	if length & 0x0f != 0 || length == 0 {
-		return error('input length should be multiple of 16 bytes')
+		return error('input must be padded to mutiple of 16 bytes')
 	}
 	if length != output.len {
-		return error('output length should be exactly the same length of input')
+		return error('output must be exactly the same length as input')
 	}
 	if iv.len != 16 {
-		return error('iv length should be exactly 16 bytes')
+		return error('iv length must be exactly 16 bytes')
 	}
+
+	// fixed size array, avoid alloc on heap
+	mut input_16 := [16]u8{}
+	mut output_16 := [16]u8{}
 
 	match c.mode {
 		.sm4_encrypt {
 			for length > 0 {
 				// processing a 128bit block
-				// output = input xor iv
 				for i in 0 .. 16 {
-					output[idx + i] = input[idx + i] ^ iv[i]
+					input_16[i] = input[idx + i] ^ iv[i] // convert to fixed size array
 				}
-				// use round keys encrypt the output
-				one_round(c.rk, output[idx..idx + 16], mut output[idx..idx + 16])
-				// update iv with output
-				copy(mut iv, output[idx..])
-
+				// use round keys encrypt the input_16
+				one_round(c.rk, input_16, mut output_16)
+				unsafe { vmemcpy(&iv[0], &output_16, 16) } // update iv with output
+				unsafe { vmemcpy(&output[idx], &output_16, 16) } // convert from fixed size array
 				idx += 16
 				length -= 16
 			}
 		}
 		.sm4_decrypt {
-			mut temp := []u8{len: 16}
 			for length > 0 {
 				// processing a 128bit block
-				// If input=output, then input will be overwritten, so save input to temp
-				copy(mut temp, input[idx..])
-				// use round keys decrypt the input
-				one_round(c.rk, input[idx..idx + 16], mut output[idx..idx + 16])
-				// output = output xor iv
+				unsafe { vmemcpy(&input_16, &input[idx], 16) } // convert to fixed size array
+				// use round keys decrypt the input_16
+				one_round(c.rk, input_16, mut output_16)
 				for i in 0 .. 16 {
-					output[idx + i] = output[idx + i] ^ iv[i]
+					output[idx + i] = output_16[i] ^ iv[i] // update output with iv
+					iv[i] = input_16[i] // update iv with input
 				}
-				// update iv with input
-				copy(mut iv, temp)
 				idx += 16
 				length -= 16
 			}

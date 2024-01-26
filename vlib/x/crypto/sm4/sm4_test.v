@@ -171,7 +171,7 @@ fn test_sm4_wrong_length() ! {
 	mut c1 := sm4.new_cipher(.sm4_encrypt, [u8(0xff)].repeat(16))!
 	c1.crypt_ecb([u8(0xff)].repeat(111), mut output) or {
 		fail_flag = true
-		assert err.msg() == 'input length should be multiple of 16 bytes'
+		assert err.msg() == 'input must be padded to mutiple of 16 bytes'
 	}
 	assert fail_flag
 
@@ -180,7 +180,7 @@ fn test_sm4_wrong_length() ! {
 	mut c2 := sm4.new_cipher(.sm4_encrypt, [u8(0xff)].repeat(16))!
 	c2.crypt_ecb([u8(0xff)].repeat(16), mut output) or {
 		fail_flag = true
-		assert err.msg() == 'output length should be exactly the same length of input'
+		assert err.msg() == 'output must be exactly the same length as input'
 	}
 	assert fail_flag
 
@@ -189,7 +189,7 @@ fn test_sm4_wrong_length() ! {
 	mut c3 := sm4.new_cipher(.sm4_encrypt, [u8(0xff)].repeat(16))!
 	c3.crypt_cbc(mut [u8(0xff)].repeat(22), [u8(0xff)].repeat(16), mut [u8(0xff)].repeat(16)) or {
 		fail_flag = true
-		assert err.msg() == 'iv length should be exactly 16 bytes'
+		assert err.msg() == 'iv length must be exactly 16 bytes'
 	}
 	assert fail_flag
 
@@ -198,7 +198,7 @@ fn test_sm4_wrong_length() ! {
 	mut c4 := sm4.new_cipher(.sm4_encrypt, [u8(0xff)].repeat(16))!
 	c4.crypt_cbc(mut [u8(0xff)].repeat(16), [u8(0xff)].repeat(111), mut output) or {
 		fail_flag = true
-		assert err.msg() == 'input length should be multiple of 16 bytes'
+		assert err.msg() == 'input must be padded to mutiple of 16 bytes'
 	}
 	assert fail_flag
 
@@ -207,7 +207,7 @@ fn test_sm4_wrong_length() ! {
 	mut c5 := sm4.new_cipher(.sm4_encrypt, [u8(0xff)].repeat(16))!
 	c5.crypt_cbc(mut [u8(0xff)].repeat(16), [u8(0xff)].repeat(16), mut output) or {
 		fail_flag = true
-		assert err.msg() == 'output length should be exactly the same length of input'
+		assert err.msg() == 'output must be exactly the same length as input'
 	}
 	assert fail_flag
 }
