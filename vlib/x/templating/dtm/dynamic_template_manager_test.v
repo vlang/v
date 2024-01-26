@@ -135,14 +135,21 @@ fn test_remaining_template_request() {
 		dtmi.nbr_of_remaining_template_request << RemainingTemplateRequest{
 			id: 1
 		}
-
-		dtmi.remaining_template_request(true, 1)
+	}
+	dtmi.remaining_template_request(true, 1)
+	rlock dtmi.nbr_of_remaining_template_request {
 		assert dtmi.nbr_of_remaining_template_request[0].nbr_of_remaining_request == 1
-		dtmi.remaining_template_request(true, 1)
+	}
+	dtmi.remaining_template_request(true, 1)
+	rlock dtmi.nbr_of_remaining_template_request {
 		assert dtmi.nbr_of_remaining_template_request[0].nbr_of_remaining_request == 2
-		dtmi.remaining_template_request(false, 1)
+	}
+	dtmi.remaining_template_request(false, 1)
+	rlock dtmi.nbr_of_remaining_template_request {
 		assert dtmi.nbr_of_remaining_template_request[0].nbr_of_remaining_request == 1
-		dtmi.remaining_template_request(false, 1)
+	}
+	dtmi.remaining_template_request(false, 1)
+	rlock dtmi.nbr_of_remaining_template_request {
 		assert dtmi.nbr_of_remaining_template_request[0].nbr_of_remaining_request == 0
 	}
 }
