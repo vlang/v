@@ -5,7 +5,6 @@ module rec
 // fib Calculates the recursive fibonacci series
 // `n` is the rank to pass to function
 // I See these 3 lines only
-pub fn fib(n int) int
-{
-    return if n < 2 { n } else { fib(n - 1) + fib(n - 2) }
+pub fn fib(n int) int {
+	return if n < 2 { n } else { fib(n - 1) + fib(n - 2) }
 }
