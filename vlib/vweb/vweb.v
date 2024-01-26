@@ -690,7 +690,7 @@ fn handle_conn[T](mut conn net.TcpConn, global_app &T, controllers []&Controller
 	// Request parse
 	req := http.parse_request(mut reader) or {
 		// Prevents errors from being thrown when BufferedReader is empty
-		if '${err}' != 'none' {
+		if err !is io.Eof {
 			eprintln('[vweb] tid: ${tid:03d}, error parsing request: ${err}')
 		}
 		return

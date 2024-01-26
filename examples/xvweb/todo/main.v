@@ -6,6 +6,7 @@ module main
 
 import x.vweb
 import db.sqlite
+import os
 import time
 
 struct Todo {
@@ -125,6 +126,7 @@ pub fn (app &App) delete_todo(mut ctx Context, id int) vweb.Result {
 }
 
 fn main() {
+	os.chdir(os.dir(@FILE))!
 	// create a new App instance with a connection to the datbase
 	mut app := &App{
 		db: sqlite.connect('todo.db')!
