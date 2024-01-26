@@ -487,7 +487,7 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 		// request header first
 		req = http.parse_request_head(mut reader) or {
 			// Prevents errors from being thrown when BufferedReader is empty
-			if err.msg() != 'none' {
+			if err !is io.Eof {
 				eprintln('[vweb] error parsing request: ${err}')
 			}
 			pv.close_conn(fd)
