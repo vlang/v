@@ -143,7 +143,7 @@ pub fn delete(url string) !Response {
 	return fetch(method: .delete, url: url)
 }
 
-// TODO - @[noinline] attribut is used for temporary fix the 'get_text()' intermittent segfault with GCC 13.2.x ( Issue #20506 )
+// TODO - @[noinline] attribut is used for temporary fix the 'get_text()' intermittent segfault / nil value when compiling with GCC 13.2.x and -prod option ( Issue #20506 )
 // fetch sends an HTTP request to the `url` with the given method and configuration.
 @[noinline]
 pub fn fetch(config FetchConfig) !Response {
