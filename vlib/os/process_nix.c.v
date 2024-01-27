@@ -130,7 +130,7 @@ fn (mut p Process) win_stop_process() {
 
 fn (mut p Process) win_resume_process() {
 }
-		
+
 fn (mut p Process) win_term_process() {
 }
 
