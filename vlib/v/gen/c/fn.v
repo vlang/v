@@ -420,6 +420,12 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	} else {
 		g.defer_stmts = []
 	}
+	$if callstack ? {
+		if !g.fn_decl.is_main && g.has_debugger && !g.is_builtin_mod
+			&& g.file.imports.any(it.mod == 'v.debug') {
+			g.writeln('array_pop((array*)&g_callstack);')
+		}
+	}
 	if node.return_type != ast.void_type && node.stmts.len > 0 && node.stmts.last() !is ast.Return
 		&& !node.attrs.contains('_naked') {
 		default_expr := g.type_default(node.return_type)
@@ -710,6 +716,17 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	if node.should_be_skipped {
 		return
 	}
+	$if callstack ? {
+		if g.has_debugger && !g.is_builtin_mod && g.inside_ternary == 0
+			&& g.file.imports.any(it.mod == 'v.debug') {
+			line := g.go_before_last_stmt()
+			g.empty_line = true
+			g.writeln('array_push((array*)&g_callstack, _MOV((v__debug__FnTrace[]){ ((v__debug__FnTrace){.name = _SLIT("${g.cur_fn.name}"),.file = _SLIT("${g.file.path}"),.line = ${
+				node.pos.line_nr + 1},}) }));')
+			g.write(line)
+		}
+	}
+
 	// NOTE: everything could be done this way
 	// see my comment in parser near anon_fn
 	if node.left is ast.AnonFn {
@@ -873,6 +890,14 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			} $else {
 				g.write(', ({VUNREACHABLE();})')
 			}
+		}
+	}
+
+	$if callstack ? {
+		if !node.is_method && g.has_debugger && !g.is_builtin_mod
+			&& node.name == 'v.debug.dump_callstack' {
+			g.writeln(';')
+			g.writeln('array_pop((array*)&g_callstack);')
 		}
 	}
 }
