@@ -287,15 +287,9 @@ fn test_parse_html_file() {
 	mut placeholders := map[string]DtmMultiTypeMap{}
 
 	is_compressed := true
-	html, content_checksum := dtmi.parse_html_file(temp_html_file, dtm.temp_html_n, &placeholders,
-		is_compressed)
+	html := dtmi.parse_html_file(temp_html_file, dtm.temp_html_n, &placeholders, is_compressed)
 
 	assert html.len > 0
-	if placeholders.len > 0 {
-		assert content_checksum.len > 0
-	} else {
-		assert content_checksum.len == 0
-	}
 }
 
 fn test_check_if_cache_delay_iscorrect() {
@@ -400,8 +394,9 @@ fn (mut tm DynamicTemplateManager) create_cache() string {
 	c_time := get_current_unix_timestamp()
 	cache_delay_exp := i64(500) * i64(1000000)
 	placeholder := map[string]DtmMultiTypeMap{}
+	content_checksum := ''
 	html := tm.create_template_cache_and_display_html(.new, html_last_mod, c_time, temp_html_file,
-		dtm.temp_html_n, cache_delay_exp, &placeholder)
+		dtm.temp_html_n, cache_delay_exp, &placeholder, content_checksum)
 	time.sleep(3 * time.millisecond)
 	return html
 }
