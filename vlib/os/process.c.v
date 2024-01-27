@@ -298,6 +298,15 @@ fn (mut p Process) _signal_kill() {
 		p.unix_kill_process()
 	}
 }
+		
+// _signal_term - should not be called directly, except by p.signal_term
+fn (mut p Process) _signal_term() {
+	$if windows {
+		p.win_kill_process()
+	} $else {
+		p.unix_term_process()
+	}
+}
 
 // _signal_pgkill - should not be called directly, except by p.signal_pgkill
 fn (mut p Process) _signal_pgkill() {
