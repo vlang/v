@@ -302,7 +302,7 @@ fn (mut p Process) _signal_kill() {
 // _signal_term - should not be called directly, except by p.signal_term
 fn (mut p Process) _signal_term() {
 	$if windows {
-		p.win_kill_process()
+		p.win_term_process()
 	} $else {
 		p.unix_term_process()
 	}
