@@ -964,7 +964,7 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 			if node.end_comments.len > 0 && node.end_comments[0].text.contains('\n') {
 				f.writeln('\n')
 			}
-			f.comments(node.end_comments, same_line: true)
+			f.comments(node.end_comments, same_line: true, has_nl: false)
 		}
 		prev_field = field
 	}
