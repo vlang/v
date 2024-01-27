@@ -16,6 +16,15 @@ pub fn (mut p Process) signal_kill() {
 	p.status = .aborted
 	return
 }
+		
+// signal_term - terminate the process
+pub fn (mut p Process) signal_term() {
+	if p.status !in [.running, .stopped] {
+		return
+	}
+	p._signal_term()
+	return
+}
 
 // signal_pgkill - kills the whole process group
 pub fn (mut p Process) signal_pgkill() {
