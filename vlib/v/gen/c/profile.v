@@ -48,7 +48,7 @@ fn (mut g Gen) profile_fn(fn_decl ast.FnDecl) {
 }
 
 pub fn (mut g Gen) gen_vprint_profile_stats() {
-	g.pcs_declarations.writeln('void vprint_profile_stats(){')
+	g.pcs_declarations.writeln('void vprint_profile_stats(int sig){')
 	fstring := '"%14llu %14.3fms %14.0fns %s \\n"'
 	if g.pref.profile_file == '-' {
 		for pc_meta in g.pcs {
@@ -62,6 +62,7 @@ pub fn (mut g Gen) gen_vprint_profile_stats() {
 		}
 		g.pcs_declarations.writeln('\tfclose(fp);')
 	}
+	g.pcs_declarations.writeln('if (sig == SIGINT || sig == SIGTERM) { exit(0); }')
 	g.pcs_declarations.writeln('}')
 	g.pcs_declarations.writeln('')
 	g.pcs_declarations.writeln('void vreset_profile_stats(){')

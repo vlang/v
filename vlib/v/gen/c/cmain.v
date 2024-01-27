@@ -220,6 +220,8 @@ pub fn (mut g Gen) gen_failing_return_error_for_test_fn(return_stmt ast.Return, 
 pub fn (mut g Gen) gen_c_main_profile_hook() {
 	if g.pref.is_prof {
 		g.writeln('')
+		g.writeln('\tsignal(SIGINT, vprint_profile_stats);')
+		g.writeln('\tsignal(SIGTERM, vprint_profile_stats);')
 		g.writeln('\tatexit(vprint_profile_stats);')
 		g.writeln('')
 	}
