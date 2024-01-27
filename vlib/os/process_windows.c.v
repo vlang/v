@@ -156,6 +156,10 @@ fn (mut p Process) win_kill_process() {
 	wdata := unsafe { &WProcess(p.wdata) }
 	C.TerminateProcess(wdata.proc_info.h_process, 3)
 }
+		
+fn (mut p Process) win_term_process() {
+	p.win_kill_process()
+}
 
 fn (mut p Process) win_kill_pgroup() {
 	wdata := unsafe { &WProcess(p.wdata) }
