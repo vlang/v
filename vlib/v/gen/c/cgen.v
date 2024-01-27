@@ -6173,6 +6173,9 @@ fn (mut g Gen) write_init_function() {
 	for x in cleaning_up_array.reverse() {
 		g.writeln(x)
 	}
+	if g.pref.use_coroutines {
+		g.writeln('\tdelete_photon_work_pool();')
+	}
 	g.writeln('}')
 	if g.pref.printfn_list.len > 0 && '_vcleanup' in g.pref.printfn_list {
 		println(g.out.after(fn_vcleanup_start_pos))
