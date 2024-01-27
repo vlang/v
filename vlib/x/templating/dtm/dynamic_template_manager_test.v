@@ -356,7 +356,7 @@ fn test_cache_handler() {
 		id: 1
 		cache_request: .delete
 	}
-	time.sleep(3 * time.millisecond)
+	time.sleep(5 * time.millisecond)
 	lock dtmi.template_caches {
 		assert dtmi.template_caches.len == 0
 	}
@@ -397,6 +397,6 @@ fn (mut tm DynamicTemplateManager) create_cache() string {
 	content_checksum := ''
 	html := tm.create_template_cache_and_display_html(.new, html_last_mod, c_time, temp_html_file,
 		dtm.temp_html_n, cache_delay_exp, &placeholder, content_checksum)
-	time.sleep(3 * time.millisecond)
+	time.sleep(5 * time.millisecond)
 	return html
 }
