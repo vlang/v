@@ -16,7 +16,7 @@ pub fn (mut p Process) signal_kill() {
 	p.status = .aborted
 	return
 }
-		
+
 // signal_term - terminate the process
 pub fn (mut p Process) signal_term() {
 	if p.status !in [.running, .stopped] {
@@ -298,7 +298,7 @@ fn (mut p Process) _signal_kill() {
 		p.unix_kill_process()
 	}
 }
-		
+
 // _signal_term - should not be called directly, except by p.signal_term
 fn (mut p Process) _signal_term() {
 	$if windows {

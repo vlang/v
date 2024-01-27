@@ -77,7 +77,7 @@ fn (mut p Process) unix_resume_process() {
 fn (mut p Process) unix_term_process() {
 	C.kill(p.pid, C.SIGTERM)
 }
-			
+
 fn (mut p Process) unix_kill_process() {
 	C.kill(p.pid, C.SIGKILL)
 }
