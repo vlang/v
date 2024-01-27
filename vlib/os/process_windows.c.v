@@ -282,6 +282,9 @@ fn (mut p Process) unix_stop_process() {
 
 fn (mut p Process) unix_resume_process() {
 }
+			
+fn (mut p Process) unix_term_process() {
+}
 
 fn (mut p Process) unix_kill_process() {
 }
