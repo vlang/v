@@ -506,8 +506,6 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 #include <stdlib.h>
 #include <string.h>
 
-#include <signal.h> // for calling `vprint_profile_stats` upon SIGINT, SIGTERM
-
 #include <stdarg.h> // for va_list
 
 //================================== GLOBALS =================================*/
