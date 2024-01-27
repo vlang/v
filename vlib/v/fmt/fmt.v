@@ -958,13 +958,13 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 		if node.is_block && fidx < node.fields.len - 1 && node.fields.len > 1 {
 			// old style grouped consts, converted to the new style ungrouped const
 			f.writeln('')
-		} else {
+		} else if node.end_comments.len > 0 {
 			// Write out single line comments after const expr if present
 			// E.g.: `const x = 1 // <comment>`
-			if node.end_comments.len > 0 && node.end_comments[0].text.contains('\n') {
+			if node.end_comments[0].text.contains('\n') {
 				f.writeln('\n')
 			}
-			f.comments(node.end_comments, same_line: true)
+			f.comments(node.end_comments, same_line: true, has_nl: false)
 		}
 		prev_field = field
 	}
