@@ -1020,11 +1020,11 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 		// `none` "implements" the Error interface
 		return true
 	}
-	if typ_sym.kind == .interface_ && inter_sym.kind == .interface_ && !styp.starts_with('JS.')
-		&& !inter_sym.name.starts_with('JS.') {
-		c.error('cannot implement interface `${inter_sym.name}` with a different interface `${styp}`',
-			pos)
-	}
+	// if typ_sym.kind == .interface_ && inter_sym.kind == .interface_ && !styp.starts_with('JS.')
+	// 	&& !inter_sym.name.starts_with('JS.') {
+	// 	c.error('cannot implement interface `${inter_sym.name}` with a different interface `${styp}`',
+	// 		pos)
+	// }
 	imethods := if inter_sym.kind == .interface_ {
 		(inter_sym.info as ast.Interface).methods
 	} else {
@@ -1074,6 +1074,20 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 	if mut inter_sym.info is ast.Interface {
 		for ifield in inter_sym.info.fields {
 			if field := c.table.find_field_with_embeds(typ_sym, ifield.name) {
+				if ifield.typ != field.typ {
+					exp := c.table.type_to_str(ifield.typ)
+					got := c.table.type_to_str(field.typ)
+					c.error('`${styp}` incorrectly implements field `${ifield.name}` of interface `${inter_sym.name}`, expected `${exp}`, got `${got}`',
+						pos)
+					return false
+				} else if ifield.is_mut && !(field.is_mut || field.is_global) {
+					c.error('`${styp}` incorrectly implements interface `${inter_sym.name}`, field `${ifield.name}` must be mutable',
+						pos)
+					return false
+				}
+				continue
+			}
+			if field := inter_sym.info.find_field(ifield.name) {
 				if ifield.typ != field.typ {
 					exp := c.table.type_to_str(ifield.typ)
 					got := c.table.type_to_str(field.typ)

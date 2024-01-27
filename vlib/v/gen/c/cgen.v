@@ -2565,10 +2565,13 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		&& expr !is ast.InfixExpr {
 		got_deref_type := got_type.deref()
 		deref_sym := g.table.sym(got_deref_type)
-		deref_will_match := expected_type in [got_type, got_deref_type, deref_sym.parent_idx]
-		got_is_opt_or_res := got_type.has_option_or_result()
-		if deref_will_match || got_is_opt_or_res || expr.is_auto_deref_var() {
-			g.write('*')
+		if !(expr is ast.Ident
+			&& (expr as ast.Ident).obj is ast.Var && (expr as ast.Ident).obj.smartcasts.len > 0 && g.table.sym(((expr as ast.Ident).obj as ast.Var).smartcasts.last()).kind == .any && exp_sym.kind == .interface_) {
+			deref_will_match := expected_type in [got_type, got_deref_type, deref_sym.parent_idx]
+			got_is_opt_or_res := got_type.has_option_or_result()
+			if deref_will_match || got_is_opt_or_res || expr.is_auto_deref_var() {
+				g.write('*')
+			}
 		}
 	}
 	if expr is ast.IntegerLiteral {
