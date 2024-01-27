@@ -134,7 +134,7 @@ fn decrypt_block_generic(xk []u32, mut dst []u8, src []u8) {
 }
 
 // Apply s_box0 to each byte in w.
-@[direct_array_access;inline]
+@[direct_array_access; inline]
 fn subw(w u32) u32 {
 	return u32(s_box0[w >> 24]) << 24 | u32(s_box0[w >> 16 & 0xff]) << 16 | u32(s_box0[w >> 8 & 0xff]) << 8 | u32(s_box0[w & u32(0xff)])
 }
