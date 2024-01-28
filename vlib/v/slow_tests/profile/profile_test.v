@@ -12,9 +12,9 @@ fn test_vexe_exists() {
 
 fn test_v_profile_works_when_interrupted() {
 	println(@FN)
-	$if !linux {
+	$if !linux && !macos {
 		if os.getenv('VTEST_RUN_PROFILE_INTERRUPTION').int() == 0 {
-			eprintln('> skipping ${@FN} on !linux for now')
+			eprintln('> skipping ${@FN} on platforms that are not manually verified for now')
 			return
 		}
 	}
@@ -38,7 +38,7 @@ fn test_v_profile_works_when_interrupted() {
 	mut lines := []string{}
 	for p.is_alive() && lines.len < 5 {
 		if data := p.pipe_read(.stdout) {
-			lines << data.trim_space()
+			lines << data.trim_space().split_into_lines()
 		}
 		time.sleep(10 * time.millisecond)
 	}
