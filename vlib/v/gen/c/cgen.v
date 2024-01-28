@@ -2426,8 +2426,8 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		g.expr(expr)
 		return
 	}
-	if got_sym.info !is ast.Interface && exp_sym.info is ast.Interface
-		&& got_type.idx() != expected_type.idx() && !expected_type.has_flag(.result) {
+	if exp_sym.info is ast.Interface && got_type.idx() != expected_type.idx()
+		&& !expected_type.has_flag(.result) {
 		if expr is ast.StructInit && !got_type.is_ptr() {
 			g.inside_cast_in_heap++
 			got_styp := g.cc_type(got_type.ref(), true)
