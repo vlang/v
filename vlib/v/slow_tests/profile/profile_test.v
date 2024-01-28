@@ -11,6 +11,7 @@ fn test_vexe_exists() {
 }
 
 fn test_v_profile_works_when_interrupted() {
+	println(@FN)
 	$if !linux {
 		if os.getenv('VTEST_RUN_PROFILE_INTERRUPTION').int() == 0 {
 			eprintln('> skipping ${@FN} on !linux for now')
@@ -33,28 +34,25 @@ fn test_v_profile_works_when_interrupted() {
 	mut p := os.new_process(program_exe)
 	p.set_redirect_stdio()
 	p.run()
-	eprintln('> started  ${program_exe}    at: ${time.now().format_ss_micro()}')
-	end_at := time.now().add(1000 * time.millisecond)
-	eprintln('> stopping ${program_exe} after: ${end_at.format_ss_micro()}...')
-	for {
-		time.sleep(10 * time.millisecond)
-		ts := time.now()
-		if ts > end_at {
-			eprintln('> timeout, ts: ${ts.format_ss_micro()}, terminating ${program_exe}')
-			p.signal_term()
-			break
+	eprintln('> started  ${program_exe} at: ${time.now().format_ss_micro()}')
+	mut lines := []string{}
+	for p.is_alive() && lines.len < 5 {
+		if data := p.pipe_read(.stdout) {
+			lines << data.trim_space()
 		}
+		time.sleep(10 * time.millisecond)
 	}
-	eprintln('> slurping output')
-	output := p.stdout_slurp().trim_space().split_into_lines()
+	dump(lines)
+	assert lines.len > 4, lines.str()
+	assert lines.contains('0003 iteration'), lines.str()
+	eprintln('> stopping ${program_exe} at: ${time.now().format_ss_micro()}...')
+	p.signal_term()
 	eprintln('> waiting ${program_exe}')
 	p.wait()
 	eprintln('> closing ${program_exe}')
 	p.close()
 	assert p.code == 130
 	assert p.status == .closed
-	assert output.len > 4
-	assert output.contains('0003 iteration')
 	eprintln('> reading profile_content from ${program_profile} ...')
 	profile_content := os.read_file(program_profile)!
 	assert profile_content.contains('str_intp')
@@ -66,6 +64,7 @@ fn test_v_profile_works_when_interrupted() {
 }
 
 fn test_v_profile_works() {
+	println(@FN)
 	sfile := 'vlib/v/slow_tests/profile/profile_test_1.v'
 	validate_output(@FN, '', sfile, {
 		'os__init_os_args': 1
@@ -76,6 +75,7 @@ fn test_v_profile_works() {
 }
 
 fn test_v_profile_on_off_api_works() {
+	println(@FN)
 	sfile := 'vlib/v/slow_tests/profile/profile_test_2.v'
 	res_lines := validate_output(@FN, '', sfile, {
 		'builtin_init': 1
@@ -93,6 +93,7 @@ fn test_v_profile_on_off_api_works() {
 }
 
 fn test_v_profile_fns_option_works() {
+	println(@FN)
 	sfile := 'vlib/v/slow_tests/profile/profile_test_3.v'
 	validate_output(@FN, '-profile-fns println', sfile, {
 		'main__main': -1
