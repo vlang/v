@@ -6098,14 +6098,6 @@ fn (mut g Gen) write_init_function() {
 		g.writeln('\t_closure_mtx_init();')
 	}
 
-	$if callstack ? {
-		if g.has_debugger {
-			if var := g.global_const_defs['g_callstack'] {
-				g.writeln(var.init)
-			}
-		}
-	}
-
 	// reflection bootstrapping
 	if g.has_reflection {
 		if var := g.global_const_defs['g_reflection'] {
@@ -6119,11 +6111,6 @@ fn (mut g Gen) write_init_function() {
 		if g.has_reflection && mod_name == 'v.reflection' {
 			// ignore v.reflection and v.debug already initialized above
 			continue
-		}
-		$if callstack ? {
-			if mod_name == 'v.callstack' {
-				continue
-			}
 		}
 		mut const_section_header_shown := false
 		// write globals and consts init later
