@@ -1,4 +1,5 @@
 import os
+import time
 
 const vexe = os.getenv('VEXE')
 
@@ -7,6 +8,61 @@ const vroot = os.dir(vexe)
 fn test_vexe_exists() {
 	assert vexe.len > 0
 	assert os.is_file(vexe)
+}
+
+fn test_v_profile_works_when_interrupted() {
+	$if !linux {
+		if os.getenv('VTEST_RUN_PROFILE_INTERRUPTION').int() == 0 {
+			eprintln('> skipping ${@FN} on !linux for now')
+			return
+		}
+	}
+	sfile := 'vlib/v/slow_tests/profile/profile_test_interrupted.v'
+	program_source := os.join_path(vroot, sfile)
+	pid := os.getpid()
+	program_exe := os.join_path(os.cache_dir(), 'profile_test_interrupted_pid_${pid}.exe')
+	program_profile := os.join_path(os.cache_dir(), 'profile_test_interrupted_pid_${pid}.profile')
+	os.rm(program_exe) or {}
+	os.rm(program_profile) or {}
+	os.chdir(vroot) or {}
+	compile_cmd := '${os.quoted_path(vexe)} -skip-unused -o ${os.quoted_path(program_exe)} -profile ${os.quoted_path(program_profile)} ${os.quoted_path(program_source)}'
+	eprintln('> compiling cmd: ${compile_cmd}')
+	compilation_result := os.execute(compile_cmd)
+	assert compilation_result.exit_code == 0, compilation_result.output
+	eprintln('> compiled ${program_exe}')
+	mut p := os.new_process(program_exe)
+	p.set_redirect_stdio()
+	p.run()
+	eprintln('> started  ${program_exe}    at: ${time.now().format_ss_micro()}')
+	end_at := time.now().add(1000 * time.millisecond)
+	eprintln('> stopping ${program_exe} after: ${end_at.format_ss_micro()}...')
+	for {
+		time.sleep(10 * time.millisecond)
+		ts := time.now()
+		if ts > end_at {
+			eprintln('> timeout, ts: ${ts.format_ss_micro()}, terminating ${program_exe}')
+			p.signal_term()
+			break
+		}
+	}
+	eprintln('> slurping output')
+	output := p.stdout_slurp().trim_space().split_into_lines()
+	eprintln('> waiting ${program_exe}')
+	p.wait()
+	eprintln('> closing ${program_exe}')
+	p.close()
+	assert p.code == 130
+	assert p.status == .closed
+	assert output.len > 4
+	assert output.contains('0003 iteration')
+	eprintln('> reading profile_content from ${program_profile} ...')
+	profile_content := os.read_file(program_profile)!
+	assert profile_content.contains('str_intp')
+	assert profile_content.contains('println')
+	assert profile_content.contains('time__sleep')
+	assert profile_content.contains('main__main')
+	// dump(profile_content)
+	eprintln('-'.repeat(120))
 }
 
 fn test_v_profile_works() {
