@@ -138,19 +138,6 @@ pub fn (mut instance BitField) clear_bit(bitnr int) {
 	instance.field[bitslot(bitnr)] &= ~bitmask(bitnr)
 }
 
-// set_if sets bit number 'bit_nr' to 1 (count from 0) if `cond` is true or clear the bit.
-@[inline]
-pub fn (mut instance BitField) set_if(cond bool, bitnr int) {
-	if bitnr >= instance.size {
-		return
-	}
-	if cond {
-		instance.field[bitslot(bitnr)] |= bitmask(bitnr)
-	} else {
-		instance.field[bitslot(bitnr)] &= ~bitmask(bitnr)
-	}
-}
-
 // extract returns the value converted from a slice of bit numbers
 // from 'start' by the length of 'len'.
 // 0101 (1, 2) => 0b10
@@ -243,6 +230,85 @@ pub fn (mut instance BitField) toggle_bit(bitnr int) {
 		return
 	}
 	instance.field[bitslot(bitnr)] ^= bitmask(bitnr)
+}
+
+// set_if sets bit number 'bit_nr' to 1 (count from 0) if `cond` is true or clear the bit.
+@[inline]
+pub fn (mut instance BitField) set_if(cond bool, bitnr int) {
+	if bitnr >= instance.size {
+		return
+	}
+	if cond {
+		instance.field[bitslot(bitnr)] |= bitmask(bitnr)
+	} else {
+		instance.field[bitslot(bitnr)] &= ~bitmask(bitnr)
+	}
+}
+
+// toggle_bits changes the value (from 0 to 1 or from 1 to 0) of bits
+// Example: toggle_bits(1,3,5,7)
+@[inline]
+pub fn (mut instance BitField) toggle_bits(a ...int) {
+	for bitnr in a {
+		if bitnr >= instance.size {
+			return
+		}
+		instance.field[bitslot(bitnr)] ^= bitmask(bitnr)
+	}
+}
+
+// set_bits sets mutiple bits in the array to 1.
+// Example: set_bits(1,3,5,7)
+@[inline]
+pub fn (mut instance BitField) set_bits(a ...int) {
+	for bitnr in a {
+		if bitnr >= instance.size {
+			return
+		}
+		instance.field[bitslot(bitnr)] |= bitmask(bitnr)
+	}
+}
+
+// clear_bits clear mutiple bits in the array to 0.
+// Example: clear_bits(1,3,5,7)
+@[inline]
+pub fn (mut instance BitField) clear_bits(a ...int) {
+	for bitnr in a {
+		if bitnr >= instance.size {
+			return
+		}
+		instance.field[bitslot(bitnr)] &= ~bitmask(bitnr)
+	}
+}
+
+// has test if *at least one* of the bits is set
+// Example: has(1,3,5,7)
+@[inline]
+pub fn (mut instance BitField) has(a ...int) bool {
+	for bitnr in a {
+		if bitnr >= instance.size {
+			return false
+		}
+		if int((instance.field[bitslot(bitnr)] >> (bitnr % bitfield.slot_size)) & u32(1)) == 1 {
+			return true
+		}
+	}
+	return false
+}
+
+// all test if *all* of the bits are set
+// Example: all(1,3,5,7)
+@[inline]
+pub fn (mut instance BitField) all(a ...int) bool {
+	for bitnr in a {
+		if bitnr >= instance.size {
+			return false
+		}
+		if int((instance.field[bitslot(bitnr)] >> (bitnr % bitfield.slot_size)) & u32(1)) == 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // bf_and performs logical AND operation on every pair of bits from 'input1' and
