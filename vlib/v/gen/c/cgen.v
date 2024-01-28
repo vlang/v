@@ -6614,7 +6614,11 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 						is_array_fixed = expr_stmt.expr is ast.ArrayInit
 							&& g.table.final_sym(return_type).kind == .array_fixed
 						if !is_array_fixed {
-							g.write('*(${cast_typ}*) ${cvar_name}.data = ')
+							if expr_stmt.typ.has_option_or_result() {
+								g.write('${cvar_name} = ')
+							} else {
+								g.write('*(${cast_typ}*) ${cvar_name}.data = ')
+							}
 						}
 					} else {
 						g.write('${cvar_name} = ')
