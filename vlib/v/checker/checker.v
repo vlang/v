@@ -1087,20 +1087,6 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 				}
 				continue
 			}
-			if field := inter_sym.info.find_field(ifield.name) {
-				if ifield.typ != field.typ {
-					exp := c.table.type_to_str(ifield.typ)
-					got := c.table.type_to_str(field.typ)
-					c.error('`${styp}` incorrectly implements field `${ifield.name}` of interface `${inter_sym.name}`, expected `${exp}`, got `${got}`',
-						pos)
-					return false
-				} else if ifield.is_mut && !(field.is_mut || field.is_global) {
-					c.error('`${styp}` incorrectly implements interface `${inter_sym.name}`, field `${ifield.name}` must be mutable',
-						pos)
-					return false
-				}
-				continue
-			}
 			// voidptr is an escape hatch, it should be allowed to be passed
 			if utyp != ast.voidptr_type && utyp != ast.nil_type {
 				// >> Hack to allow old style custom error implementations

@@ -666,7 +666,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 			}
 			if typ != ast.Type(0) {
-				typ_sym := c.table.sym(typ)
+				typ_sym := c.table.sym(c.unwrap_generic(typ))
 				op := node.op.str()
 				if typ_sym.kind == .placeholder {
 					c.error('${op}: type `${typ_sym.name}` does not exist', right_expr.pos())
@@ -689,7 +689,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 							right_pos)
 					}
 				} else if left_sym.info is ast.Interface {
-					if typ_sym.kind != .interface_ && !c.type_implements(typ, left_type, right_pos) {
+					if typ_sym.kind != .interface_ && !c.type_implements(c.unwrap_generic(typ), left_type, right_pos) {
 						c.error("`${typ_sym.name}` doesn't implement interface `${left_sym.name}`",
 							right_pos)
 					}

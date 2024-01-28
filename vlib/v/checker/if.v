@@ -552,7 +552,7 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope) {
 				}
 			}
 			if right_type != ast.Type(0) {
-				right_sym := c.table.sym(right_type)
+				right_sym := c.table.sym(c.unwrap_generic(right_type))
 				mut expr_type := c.unwrap_generic(node.left_type)
 				left_sym := c.table.sym(expr_type)
 				if left_sym.kind == .aggregate {
