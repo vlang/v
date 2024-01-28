@@ -257,7 +257,7 @@ pub fn (mut instance BitField) toggle_bits(a ...int) {
 	}
 }
 
-// set_bits sets mutiple bits in the array to 1.
+// set_bits sets multiple bits in the array to 1.
 // Example: set_bits(1,3,5,7)
 @[inline]
 pub fn (mut instance BitField) set_bits(a ...int) {
@@ -269,7 +269,7 @@ pub fn (mut instance BitField) set_bits(a ...int) {
 	}
 }
 
-// clear_bits clear mutiple bits in the array to 0.
+// clear_bits clear multiple bits in the array to 0.
 // Example: clear_bits(1,3,5,7)
 @[inline]
 pub fn (mut instance BitField) clear_bits(a ...int) {
