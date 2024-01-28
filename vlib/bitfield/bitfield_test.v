@@ -14,6 +14,10 @@ fn test_bf_set_clear_toggle_get() {
 	assert instance.get_bit(47) == 0
 	instance.toggle_bit(47)
 	assert instance.get_bit(47) == 1
+	instance.set_if(true, 48)
+	assert instance.get_bit(48) == 1
+	instance.set_if(false, 48)
+	assert instance.get_bit(48) == 0
 }
 
 fn test_bf_insert_extract() {

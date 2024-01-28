@@ -138,6 +138,19 @@ pub fn (mut instance BitField) clear_bit(bitnr int) {
 	instance.field[bitslot(bitnr)] &= ~bitmask(bitnr)
 }
 
+// set_if sets bit number 'bit_nr' to 1 (count from 0) if `cond` is true or clear the bit.
+@[inline]
+pub fn (mut instance BitField) set_if(cond bool, bitnr int) {
+	if bitnr >= instance.size {
+		return
+	}
+	if cond {
+		instance.field[bitslot(bitnr)] |= bitmask(bitnr)
+	} else {
+		instance.field[bitslot(bitnr)] &= ~bitmask(bitnr)
+	}
+}
+
 // extract returns the value converted from a slice of bit numbers
 // from 'start' by the length of 'len'.
 // 0101 (1, 2) => 0b10
