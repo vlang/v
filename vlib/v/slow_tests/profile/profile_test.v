@@ -12,7 +12,7 @@ fn test_vexe_exists() {
 
 fn test_v_profile_works_when_interrupted() {
 	println(@FN)
-	$if !linux && !macos {
+	$if !windows {
 		if os.getenv('VTEST_RUN_PROFILE_INTERRUPTION').int() == 0 {
 			eprintln('> skipping ${@FN} on platforms that are not manually verified for now')
 			return
