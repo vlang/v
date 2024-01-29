@@ -2462,24 +2462,18 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		}
 		return
 	} else if got_sym.info is ast.Interface && exp_sym.info is ast.Interface && expr is ast.Ident
-		&& got_type.idx() != expected_type.idx() && !got_type.is_ptr() {
-		got_styp := g.cc_type(got_type, true)
-		got_is_shared := got_type.has_flag(.shared_f)
-		exp_styp := if got_is_shared { '__shared__${exp_sym.cname}' } else { exp_sym.cname }
-		mut fname := if got_is_shared {
-			'I___shared__${got_styp}_to_shared_Interface_${exp_styp}'
-		} else {
-			'I_${got_styp}_to_Interface_${exp_styp}'
-		}
-		lock g.referenced_fns {
-			g.referenced_fns[fname] = true
-		}
-		fname = '/*${exp_sym}*/${fname}'
+		&& got_type.idx() != expected_type.idx() && !got_type.is_ptr()
+		&& !expected_type.has_flag(.result) && !g.inside_struct_init {
+		g.inside_cast_in_heap++
+		got_styp := g.cc_type(got_type.ref(), true)
+		exp_styp := exp_sym.cname
+		mut fname := 'I_${got_styp}_to_Interface_${exp_styp}'
 		if exp_sym.info.is_generic {
 			fname = g.generic_fn_name(exp_sym.info.concrete_types, fname)
 		}
-		g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, exp_styp, got_is_ptr,
-			false, got_styp)
+		g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, exp_styp, true, false,
+			got_styp)
+		g.inside_cast_in_heap--
 		return
 	}
 	// cast to sum type
