@@ -604,9 +604,7 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 
 fn main() {
 	// App init
-	mut app := &App{
-		gg: 0
-	}
+	mut app := &App{}
 
 	mut a := [5]int{}
 	a[0] = 2

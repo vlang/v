@@ -492,15 +492,8 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 	}
 }
 
-/******************************************************************************
-* Main
-******************************************************************************/
 fn main() {
-	// App init
-	mut app := &App{
-		gg: 0
-	}
-
+	mut app := &App{}
 	// vfmt off
 	app.gg = gg.new_context(
 		width:         win_width
@@ -514,7 +507,6 @@ fn main() {
 		event_fn:      my_event_manager
 	)
 	// vfmt on
-
 	app.ticks = time.ticks()
 	app.gg.run()
 }

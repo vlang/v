@@ -409,15 +409,8 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 	}
 }
 
-/******************************************************************************
-* Main
-******************************************************************************/
 fn main() {
-	// App init
-	mut app := &App{
-		gg: 0
-	}
-
+	mut app := &App{}
 	app.gg = gg.new_context(
 		width: win_width
 		height: win_height
@@ -429,7 +422,6 @@ fn main() {
 		init_fn: my_init
 		event_fn: my_event_manager
 	)
-
 	app.ticks = time.ticks()
 	app.gg.run()
 }
