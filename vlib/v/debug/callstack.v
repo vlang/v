@@ -1,3 +1,5 @@
+// Copyright (c) 2019-2024 Felipe Pena. All rights reserved.
+// Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 @[has_globals]
 module debug
 
@@ -20,7 +22,7 @@ pub fn dump_callstack() {
 	C.printf(c'%s\n', bar)
 	callstack_len := g_callstack.len
 	for i := 0; i < callstack_len; i++ {
-		item := g_callstack[callstack_len - i - 1]
+		item := g_callstack[i]
 		C.printf(c'%s:%-4d | %s> %s\n', &char(item.file.str), item.line, ' '.repeat(i).str,
 			item.name)
 	}
