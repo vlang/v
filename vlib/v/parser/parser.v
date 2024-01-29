@@ -3684,14 +3684,16 @@ fn (mut p Parser) import_stmt() ast.Import {
 		p.error_with_pos('`import()` has been deprecated, use `import x` instead', pos)
 		return import_node
 	}
+	mut source_name := p.check_name()
 	mut mod_name_arr := []string{}
-	mod_name_arr << p.check_name()
+	mod_name_arr << source_name
 	if import_pos.line_nr != pos.line_nr {
 		p.error_with_pos('`import` statements must be a single line', pos)
 		return import_node
 	}
 	mut mod_alias := mod_name_arr[0]
 	import_node = ast.Import{
+		source_name: source_name
 		pos: import_pos.extend(pos)
 		mod_pos: pos
 		alias_pos: pos
@@ -3711,16 +3713,19 @@ fn (mut p Parser) import_stmt() ast.Import {
 		mod_name_arr << submod_name
 		mod_alias = submod_name
 		pos = pos.extend(submod_pos)
+		source_name = mod_name_arr.join('.')
 		import_node = ast.Import{
+			source_name: source_name
 			pos: import_pos.extend(pos)
 			mod_pos: pos
 			alias_pos: submod_pos
-			mod: util.qualify_import(p.pref, mod_name_arr.join('.'), p.file_name)
+			mod: util.qualify_import(p.pref, source_name, p.file_name)
 			alias: mod_alias
 		}
 	}
 	if mod_name_arr.len == 1 {
 		import_node = ast.Import{
+			source_name: source_name
 			pos: import_node.pos
 			mod_pos: import_node.mod_pos
 			alias_pos: import_node.alias_pos
@@ -3739,6 +3744,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 			return import_node
 		}
 		import_node = ast.Import{
+			source_name: source_name
 			pos: import_node.pos.extend(alias_pos)
 			mod_pos: import_node.mod_pos
 			alias_pos: alias_pos
@@ -3752,6 +3758,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 		initial_syms_pos = initial_syms_pos.extend(p.tok.pos())
 		import_node = ast.Import{
 			...import_node
+			source_name: source_name
 			syms_pos: initial_syms_pos
 			pos: import_node.pos.extend(initial_syms_pos)
 		}
