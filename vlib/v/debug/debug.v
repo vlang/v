@@ -16,10 +16,12 @@ __global g_debugger = Debugger{}
 struct Debugger {
 mut:
 	is_tty     bool = os.is_atty(0) > 0 // is tty?
-	exited     bool     // user exiting flag
-	last_cmd   string   // save the last cmd
-	last_args  string   // save the last args
-	watch_vars []string // save the watched vars
+	exited     bool        // user exiting flag
+	last_cmd   string      // save the last cmd
+	last_args  string      // save the last args
+	last_mem   usize       // save last memory usage snapshot
+	last_heap  GCHeapUsage // save last heap usage snapshot
+	watch_vars []string    // save the watched vars	
 	cmdline    readline.Readline = readline.Readline{
 		completion_list: [
 			'anon?',
@@ -164,16 +166,21 @@ fn (mut d Debugger) print_context_lines(path string, line int, lines int) ! {
 }
 
 // print_memory_use prints the GC memory use
-fn (d &Debugger) print_memory_use() {
-	flush_println(gc_memory_use().str())
+fn (mut d Debugger) print_memory_use() {
+	if d.last_mem == 0 {
+		d.last_mem = gc_memory_use()
+	}
+	flush_println(d.last_mem.str())
 }
 
 // print_heap_usage prints the GC heap usage
-fn (d &Debugger) print_heap_usage() {
-	h := gc_heap_usage()
-	flush_println('heap size: ${h.heap_size}')
-	flush_println('free bytes: ${h.free_bytes}')
-	flush_println('total bytes: ${h.total_bytes}')
+fn (mut d Debugger) print_heap_usage() {
+	if d.last_heap == GCHeapUsage{} {
+		d.last_heap = gc_heap_usage()
+	}
+	flush_println('heap size: ${d.last_heap.heap_size}')
+	flush_println('free bytes: ${d.last_heap.free_bytes}')
+	flush_println('total bytes: ${d.last_heap.total_bytes}')
 }
 
 // watch_var adds a variable to watch_list
@@ -204,9 +211,14 @@ pub fn (mut d Debugger) interact(info DebugContextInfo) ! {
 	if d.watch_vars.len > 0 {
 		info.show_watched_vars(d.watch_vars)
 	}
+
+	d.last_mem = 0
+	d.last_heap = GCHeapUsage{}
+
 	for {
 		input, is_ctrl := d.read_line('${info.file}:${info.line} vdbg> ')
 		cmd, args := d.parse_input(input, is_ctrl)
+
 		match cmd {
 			'anon?' {
 				flush_println(info.is_anon.str())
