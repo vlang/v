@@ -255,6 +255,7 @@ pub fn (db &DB) exec(query string) ![]Row {
 	return rows
 }
 
+// get_queryset returns the values resulting from a 'SELECT' query and the name of each column. If an alias is provided either through the 'as' command or not, the returned value becomes the alias.
 @[manualfree]
 pub fn (db &DB) get_queryset(query string) ![]QuerySet {
 	query_lower := query.to_lower()
@@ -277,10 +278,7 @@ pub fn (db &DB) get_queryset(query string) ![]QuerySet {
 			}
 
 			if rows.len == 0 {
-				return SQLError{
-					msg: 'No rows'
-					code: sqlite.sqlite_done
-				}
+				return []QuerySet{}
 			} else {
 				// Finding final index of select((\s)+(all)|(distinct)(\s)+)|(\s)+ inside query_lower string
 				_, end_select := select_header.match_string(query_lower)
