@@ -1,5 +1,3 @@
-// vtest flaky: true
-// vtest retry: 4
 import os
 import term
 import rand

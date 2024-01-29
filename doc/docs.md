@@ -2672,7 +2672,7 @@ Button{
 ```
 
 Unlike inheritance, you cannot type cast between structs and embedded structs
-(the embedding struct can also has its own fields, and it can also embed multiple structs).
+(the embedding struct can also have its own fields, and it can also embed multiple structs).
 
 If you need to access embedded structs directly, use an explicit reference like `button.Size`.
 
@@ -3265,6 +3265,19 @@ fn main() {
 * You can have as many .v files in a module as you want.
 * You can create modules anywhere.
 * All modules are compiled statically into a single executable.
+
+### Special considerations
+
+For the top level project folder (the one that is compiled with v .), and *only*
+that folder, you can have several .v files, that may be mentioning different modules
+with `module main`, `module abc` etc
+
+This is to ease the prototyping workflow in that folder:
+- you can start developing some new project with a single .v file
+- split functionality as necessary to different .v files in the same folder
+- when that makes logical sense to be further organised, put them into their own directory module.
+
+Note that in ordinary modules, all .v files must start with `module name_of_folder`.
 
 ### `init` functions
 
@@ -6215,7 +6228,7 @@ example.v:3 vdbg>
 
 You can also see memory usage with `mem` or `memory` command, and
 check if the current context is an anon function (`anon?`), a method (`method?`) 
-or a generic method (`generic?`).
+or a generic method (`generic?`) and clear the terminal window (`clear`).
 
 ## Memory-unsafe code
 

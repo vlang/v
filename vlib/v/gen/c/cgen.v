@@ -520,7 +520,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) (string
 
 	mut b := strings.new_builder(640000)
 	b.write_string(g.hashes())
-	if g.use_segfault_handler {
+	if g.use_segfault_handler || g.pref.is_prof {
 		b.writeln('\n#define V_USE_SIGNAL_H')
 	}
 	b.writeln('\n// V comptime_definitions:')
@@ -1515,11 +1515,7 @@ static inline void __${sym.cname}_pushval(${sym.cname} ch, ${push_arg} val) {
 			g.write_alias_typesymbol_declaration(sym)
 		}
 	}
-	for sym in g.table.type_symbols {
-		if sym.kind == .function && sym.name !in c.builtins {
-			g.write_fn_typesymbol_declaration(sym)
-		}
-	}
+	g.write_sorted_fn_typesymbol_declaration()
 	// Generating interfaces after all the common types have been defined
 	// to prevent generating interface struct before definition of field types
 	for sym in g.table.type_symbols {
@@ -5891,6 +5887,9 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 	if node.attrs.contains('weak') {
 		attributes += 'VWEAK '
 	}
+	if node.attrs.contains('export') {
+		attributes += 'VV_EXPORTED_SYMBOL '
+	}
 	for field in node.fields {
 		if g.pref.skip_unused {
 			if field.name !in g.table.used_globals {
@@ -6174,6 +6173,9 @@ fn (mut g Gen) write_init_function() {
 	for x in cleaning_up_array.reverse() {
 		g.writeln(x)
 	}
+	if g.pref.use_coroutines {
+		g.writeln('\tdelete_photon_work_pool();')
+	}
 	g.writeln('}')
 	if g.pref.printfn_list.len > 0 && '_vcleanup' in g.pref.printfn_list {
 		println(g.out.after(fn_vcleanup_start_pos))
@@ -6378,6 +6380,63 @@ fn (mut g Gen) sort_globals_consts() {
 			if node.value == order {
 				g.sorted_global_const_names << node.name
 			}
+		}
+	}
+}
+
+// sort functions by dependent arguments and return value
+// As functions may depend on one another, make sure they are
+// defined in the correct order: add non dependent ones first.
+fn (mut g Gen) write_sorted_fn_typesymbol_declaration() {
+	util.timing_start(@METHOD)
+	defer {
+		util.timing_measure(@METHOD)
+	}
+	mut syms := []&ast.TypeSymbol{} // functions to be defined
+	for sym in g.table.type_symbols {
+		if sym.kind == .function && sym.name !in c.builtins {
+			syms << sym
+		}
+	}
+	mut pending := []&ast.TypeSymbol{} // functions with a dependency
+	for {
+		// Add non dependent functions or functions which
+		// dependency has been added.
+		next: for sym in syms {
+			info := sym.info as ast.FnType
+			func := info.func
+			return_sym := g.table.sym(func.return_type)
+			if return_sym in syms {
+				pending << sym
+				continue
+			}
+			for param in func.params {
+				param_sym := g.table.sym(param.typ)
+				if param_sym in syms {
+					pending << sym
+					continue next
+				}
+			}
+			g.write_fn_typesymbol_declaration(sym)
+		}
+		if pending.len == 0 {
+			// All functions were added.
+			break
+		}
+		if syms.len == pending.len {
+			// Could not add any function: there is a circular
+			// dependency.
+			mut deps := []string{}
+			for sym in pending {
+				deps << sym.name
+			}
+			verror(
+				'cgen.write_sorted_fn_typesymbol_declaration(): the following functions form a dependency cycle:\n' +
+				deps.join(','))
+		}
+		unsafe {
+			// Swap the to-be-processed and the dependent functions.
+			syms, pending = pending, syms[..0]
 		}
 	}
 }

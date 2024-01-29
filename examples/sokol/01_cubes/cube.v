@@ -1,11 +1,8 @@
 /**********************************************************************
-*
 * Sokol 3d cube demo
-*
 * Copyright (c) 2021 Dario Deledda. All rights reserved.
 * Use of this source code is governed by an MIT license
 * that can be found in the LICENSE file.
-*
 * TODO:
 * - add instancing
 * - add an example with shaders
@@ -33,11 +30,6 @@ mut:
 	mouse_y     int = -1
 }
 
-/******************************************************************************
-*
-* Texture functions
-*
-******************************************************************************/
 fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {
 	sz := w * h * 4
 	mut img_desc := gfx.ImageDesc{
@@ -82,11 +74,6 @@ fn update_text_texture(sg_img gfx.Image, w int, h int, buf &u8) {
 	gfx.update_image(sg_img, &tmp_sbc)
 }
 
-/******************************************************************************
-*
-* Draw functions
-*
-******************************************************************************/
 fn draw_triangle() {
 	sgl.defaults()
 	sgl.begin_triangles()
@@ -306,11 +293,6 @@ fn frame(mut app App) {
 	app.gg.end()
 }
 
-/******************************************************************************
-*
-* Init / Cleanup
-*
-******************************************************************************/
 fn my_init(mut app App) {
 	app.init_flag = true
 
@@ -382,11 +364,6 @@ fn my_init(mut app App) {
 	}
 }
 
-/******************************************************************************
-*
-* event
-*
-******************************************************************************/
 fn my_event_manager(mut ev gg.Event, mut app App) {
 	if ev.typ == .mouse_move {
 		app.mouse_x = int(ev.mouse_x)
@@ -401,17 +378,8 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 	}
 }
 
-/******************************************************************************
-*
-* Main
-*
-******************************************************************************/
 fn main() {
-	// App init
-	mut app := &App{
-		gg: 0
-	}
-
+	mut app := &App{}
 	app.gg = gg.new_context(
 		width: win_width
 		height: win_height
@@ -423,6 +391,5 @@ fn main() {
 		init_fn: my_init
 		event_fn: my_event_manager
 	)
-
 	app.gg.run()
 }

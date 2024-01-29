@@ -283,6 +283,10 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							right.right.pos)
 					}
 				} else if left.kind == .blank_ident {
+					if !is_decl && mut right is ast.None {
+						c.error('cannot assign a `none` value to blank `_` identifier',
+							right.pos)
+					}
 					left_type = right_type
 					node.left_types[i] = right_type
 					if node.op !in [.assign, .decl_assign] {

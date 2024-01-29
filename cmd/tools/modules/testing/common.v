@@ -626,6 +626,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			}
 		}
 		//
+		mut retry := 1
 		ts.append_message(.cmd_begin, run_cmd, mtc)
 		mut failure_output := strings.new_builder(1024)
 		d_cmd := time.new_stopwatch()
@@ -633,12 +634,17 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		cmd_duration = d_cmd.elapsed()
 		ts.append_message_with_duration(.cmd_end, r.output, cmd_duration, mtc)
 		if r.exit_code != 0 {
+			mut details := get_test_details(file)
+			mut trimmed_output := r.output.trim_space()
+			if trimmed_output.len == 0 {
+				// retry running at least 1 more time, to avoid CI false positives as much as possible
+				details.retry++
+			}
 			failure_output.write_string(testing.separator)
-			failure_output.writeln(' retry: 0')
-			failure_output.writeln(r.output.trim_space())
-			details := get_test_details(file)
+			failure_output.writeln(' retry: 0 ; max_retry: ${details.retry} ; r.exit_code: ${r.exit_code} ; trimmed_output.len: ${trimmed_output.len}')
+			failure_output.writeln(trimmed_output)
 			os.setenv('VTEST_RETRY_MAX', '${details.retry}', true)
-			for retry := 1; retry <= details.retry; retry++ {
+			for retry = 1; retry <= details.retry; retry++ {
 				ts.append_message(.info, '                 retrying ${retry}/${details.retry} of ${relative_file} ; known flaky: ${details.flaky} ...',
 					mtc)
 				os.setenv('VTEST_RETRY', '${retry}', true)
@@ -654,9 +660,10 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 						goto test_passed_execute
 					}
 				}
+				trimmed_output = r.output.trim_space()
 				failure_output.write_string(testing.separator)
-				failure_output.writeln(' retry: ${retry}')
-				failure_output.writeln(r.output.trim_space())
+				failure_output.writeln(' retry: ${retry} ; max_retry: ${details.retry} ; r.exit_code: ${r.exit_code} ; trimmed_output.len: ${trimmed_output.len}')
+				failure_output.writeln(trimmed_output)
 				time.sleep(testing.fail_retry_delay_ms)
 			}
 			full_failure_output := failure_output.str().trim_space()
@@ -671,7 +678,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			tls_bench.fail()
 			cmd_duration = d_cmd.elapsed() - (testing.fail_retry_delay_ms * details.retry)
 			ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail,
-				'${normalised_relative_file}\n      comp_cmd: ${cmd}\n       run_cmd: ${run_cmd}\nfailure output:\n${full_failure_output}',
+				'${normalised_relative_file}\n         retry: ${retry}\n      comp_cmd: ${cmd}\n       run_cmd: ${run_cmd}\nfailure code: ${r.exit_code}; foutput.len: ${full_failure_output.len}; failure output:\n${full_failure_output}',
 				cmd_duration,
 				preparation: compile_cmd_duration
 			), cmd_duration, mtc)
