@@ -59,6 +59,9 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 			c.error('`match` expression with Option type only checks against `none`, to match its value you must unwrap it first `var?`',
 				branch.pos)
 		}
+		if cond_type_sym.kind == .none_ {
+			c.error('`none` cannot be a match condition', node.pos)
+		}
 		// If the last statement is an expression, return its type
 		if branch.stmts.len > 0 {
 			mut stmt := branch.stmts.last()
