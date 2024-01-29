@@ -101,7 +101,6 @@ fn parse_parallel_args(extra_workers int) !ParallelArgs {
 	fp.skip_executable()
 
 	workers := fp.int('workers', 0, args.max_parallel_workers, 'amount of workers to use on simulation. Defaults to ${args.max_parallel_workers}')
-	dump(workers)
 
 	// output parameters
 	width := fp.int('width', `w`, sim.default_width, 'width of the image output. Defaults to ${sim.default_width}')
@@ -141,10 +140,6 @@ fn parse_parallel_args(extra_workers int) !ParallelArgs {
 		grid: grid
 		workers: get_workers(workers, extra_workers)
 	}
-	dump(extra_workers)
-	dump(args.max_parallel_workers)
-	dump(args)
-
 	sim.log('${args}')
 
 	return args
