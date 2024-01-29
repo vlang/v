@@ -9,8 +9,7 @@ import sokol.gfx
 // Use `v shader` or `sokol-shdc` to generate the necessary `.h` file
 // Using `v shader -v .` in this directory will show some additional
 // info - and what you should include to make things work.
-#flag -I @VMODROOT/.
-#include "simple_shader.h"
+#include "@VMODROOT/simple_shader.h" # # It should be generated with `v shader .`
 
 // simple_shader_desc is a C function declaration defined by
 // the `@program` entry in the `simple_shader.glsl` shader file.

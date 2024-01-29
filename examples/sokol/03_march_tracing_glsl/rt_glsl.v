@@ -24,8 +24,7 @@ import time
 
 // GLSL Include and functions
 
-#flag -I @VMODROOT/.
-#include "rt_glsl.h" # Should be generated with `v shader .` (see the instructions at the top of this file)
+#include "@VMODROOT/rt_glsl.h" # It should be generated with `v shader .` (see the instructions at the top of this file)
 
 fn C.rt_shader_desc(gfx.Backend) &gfx.ShaderDesc
 

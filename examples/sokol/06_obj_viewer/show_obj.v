@@ -32,8 +32,7 @@ import obj
 
 // GLSL Include and functions
 
-#flag -I @VMODROOT/.
-#include "gouraud.h" # Should be generated with `v shader .` (see the instructions at the top of this file)
+#include "@VMODROOT/gouraud.h" # It should be generated with `v shader .` (see the instructions at the top of this file)
 
 fn C.gouraud_shader_desc(gfx.Backend) &gfx.ShaderDesc
 
