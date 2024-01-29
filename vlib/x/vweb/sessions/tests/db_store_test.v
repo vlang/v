@@ -11,6 +11,10 @@ fn testsuite_begin() {
 	os.rm(db_path) or {}
 }
 
+fn testsuite_end() {
+	os.rm(db_path) or {}
+}
+
 pub struct User {
 	name string
 	age  int
@@ -83,10 +87,6 @@ fn test_store_session_expired() {
 		select from sessions.DBStoreSessions where session_id == 'c'
 	}!
 	assert rows.len == 0
-}
-
-fn testsuite_end() {
-	os.rm(db_path) or {}
 }
 
 fn get_connection() !sqlite.DB {

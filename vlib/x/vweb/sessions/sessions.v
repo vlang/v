@@ -10,8 +10,8 @@ import x.vweb
 
 const session_id_length = 32
 
-// create and return a random session id and its signed version. You can directly use
-// the signed version as a cookie value
+// new_session_id creates and returns a random session id and its signed version.
+// You can directly use the signed version as a cookie value
 pub fn new_session_id(secret []u8) (string, string) {
 	sid := rand.hex(sessions.session_id_length)
 
@@ -21,8 +21,8 @@ pub fn new_session_id(secret []u8) (string, string) {
 	return sid, '${sid}.${base64.url_encode(hashed)}'
 }
 
-// verify the signed session id with `secret`. This function returns the session id
-// and if the session id is valid
+// verify_session_id verifies the signed session id with `secret`. This function returns
+// the session id and if the session id is valid
 pub fn verify_session_id(raw_sid string, secret []u8) (string, bool) {
 	parts := raw_sid.split('.')
 	if parts.len != 2 {
@@ -37,12 +37,23 @@ pub fn verify_session_id(raw_sid string, secret []u8) (string, bool) {
 	return sid, hmac.equal(actual_hmac, new_hmac)
 }
 
+// CurrentSession contains the session data during a request. If you use x.vweb you
+// could embed it on your Context struct to have easy access to the session id and data.
+// Example:
+// ```v
+// pub struct Context {
+//     vweb.Context
+//     sessions.CurrentSessions[User]
+// }
+// ```
 pub struct CurrentSession[T] {
 pub mut:
 	session_id   string
 	session_data ?T
 }
 
+// CookieOptions contains the default settings for the cookie created in
+// the `Sessions` struct.
 pub struct CookieOptions {
 	cookie_name string = 'sid'
 	domain      string
@@ -52,6 +63,16 @@ pub struct CookieOptions {
 	secure      bool
 }
 
+// Sessions can be used to easily integrate sessions with x.vweb.
+// This struct contains the store that holds all session data it also provides
+// an easy way to manage sessions in your vweb app.
+// Example:
+// ```v
+// pub struct App {
+// pub mut:
+//     sessions &sessions.Sessions[User]
+// }
+// ```
 @[heap]
 pub struct Sessions[T] {
 pub:
@@ -66,7 +87,7 @@ pub mut:
 	store Store[T] @[required]
 }
 
-// generate a new session id and set a Set-Cookie header on the response
+// set_session_id generates a new session id and set a Set-Cookie header on the response
 pub fn (mut s Sessions[T]) set_session_id[X](mut ctx X) string {
 	sid, signed := new_session_id(s.secret)
 	ctx.CurrentSession.session_id = sid
@@ -89,7 +110,7 @@ pub fn (mut s Sessions[T]) set_session_id[X](mut ctx X) string {
 	return sid
 }
 
-// validate the current session, returns the session id and the validation status
+// validate_session validates the current session, returns the session id and the validation status
 pub fn (mut s Sessions[T]) validate_session[X](ctx X) (string, bool) {
 	cookie := ctx.get_cookie(s.cookie_options.cookie_name) or { return '', false }
 
@@ -138,7 +159,7 @@ pub fn (mut s Sessions[T]) save[X](mut ctx X, data T) {
 	}
 }
 
-// Save `data` for the current session and reset the session id.
+// resave saves `data` for the current session and reset the session id.
 // You should use this function when the authentication or authorization status changes
 // e.g. when a user signs in or switches between accounts/permissions.
 // This function also destroys the data associtated to the old session id.
@@ -150,7 +171,7 @@ pub fn (mut s Sessions[T]) resave[X](mut ctx X, data T) {
 	s.save(mut ctx, data)
 }
 
-// get the current session id, if it is set
+// get_session_id retrieves the current session id, if it is set
 pub fn (s &Sessions[T]) get_session_id[X](ctx X) ?string {
 	// first check session id from `ctx`
 	sid_from_ctx := ctx.CurrentSession.session_id
@@ -173,9 +194,9 @@ pub fn (s &Sessions[T]) get_session_id[X](ctx X) ?string {
 	}
 }
 
-// You can add this middleware to your vweb app to ensure a valid session always
-// exists. If a valid session exists the session data will be loaded into
-// `session_data`, else a new session id will be generated.
+// middleware can be used to add session middleware to your vweb app to ensure
+// a valid session always exists. If a valid session exists the session data will
+// be loaded into `session_data`, else a new session id will be generated.
 // You have to pass the Context type as the generic type
 // Example: app.use(app.sessions.middleware[Context]())
 pub fn (mut s Sessions[T]) middleware[X]() vweb.MiddlewareOptions[X] {

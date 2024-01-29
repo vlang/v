@@ -4,8 +4,10 @@ import json
 import orm
 import time
 
+// DBStoreSessions is the table that is created in your database and represents
+// a session data record
 pub struct DBStoreSessions {
-pub:
+pub mut:
 	session_id string    @[primary]
 	created_at time.Time
 	data       string
@@ -29,7 +31,7 @@ pub fn DBStore.create[T](db orm.Connection) !DBStore[T] {
 	}
 }
 
-// get data from all sessions
+// all gets the data from all sessions
 pub fn (mut store DBStore[T]) all() []T {
 	rows := sql store.db {
 		select from DBStoreSessions

@@ -60,6 +60,7 @@ Currently vweb provides two options for storing session data:
 
 1. The `MemoryStore[T]` stores session data in memory only using the `map` datatype. 
 2. The `DBStore[T]` stores session data in a database by encoding the session data to JSON.
+It will create the table `DBStoreSessions` in your database where the session data will be stored.
 
 It is possible to create your own session store, see [custom stores](#custom-stores).
 
