@@ -183,7 +183,7 @@ fn vweb_tmpl_${fn_name}() string {
 					}
 					reporter: .parser
 				})
-				continue
+				''
 			}
 			mut file_ext := os.file_ext(file_name)
 			if file_ext == '' {
