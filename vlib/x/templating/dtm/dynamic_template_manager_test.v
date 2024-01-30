@@ -86,7 +86,7 @@ fn test_return_cache_info_isexistent() {
 			id: 1
 		}
 	}
-	cache_exists, _, _, _, _, _, _, _ := dtmi.return_cache_info_isexistent(path_template)
+	cache_exists, _, _, _, _, _, _ := dtmi.return_cache_info_isexistent(path_template)
 	assert cache_exists == true
 	lock dtmi.template_caches {
 		dtmi.template_caches[0].id_redirection = 2
@@ -124,7 +124,7 @@ fn test_return_cache_info_isexistent() {
 			id: 5
 		}
 	}
-	_, id, _, _, _, _, _, _ := dtmi.return_cache_info_isexistent(path_template)
+	_, id, _, _, _, _, _ := dtmi.return_cache_info_isexistent(path_template)
 	assert id == 5
 }
 
@@ -299,41 +299,42 @@ fn test_check_if_cache_delay_iscorrect() {
 }
 
 fn test_cache_request_route() {
+	mut dtmi := init_dtm(false, 0)!
 	mut is_cache_exist := true
 	mut cache_delay_expiration := i64(400)
-	mut last_template_mod := get_current_unix_timestamp()
+	mut last_template_mod := get_current_unix_micro_timestamp()
 	mut test_current_template_mod := last_template_mod
 	mut cache_del_exp := 300
 	mut gen_at := last_template_mod
 	mut content_checksum := 'checksumtest1'
 	mut current_content_checksum := 'checksumtest2'
 
-	mut request_type := cache_request_route(is_cache_exist, cache_delay_expiration, last_template_mod,
-		test_current_template_mod, cache_del_exp, gen_at, get_current_unix_timestamp(),
+	mut request_type, _ := dtmi.cache_request_route(is_cache_exist, cache_delay_expiration,
+		last_template_mod, test_current_template_mod, cache_del_exp, gen_at, get_current_unix_micro_timestamp(),
 		content_checksum, current_content_checksum)
 
 	assert request_type == CacheRequest.update
 
 	current_content_checksum = 'checksumtest1'
 
-	request_type = cache_request_route(is_cache_exist, cache_delay_expiration, last_template_mod,
-		test_current_template_mod, cache_del_exp, gen_at, get_current_unix_timestamp(),
+	request_type, _ = dtmi.cache_request_route(is_cache_exist, cache_delay_expiration,
+		last_template_mod, test_current_template_mod, cache_del_exp, gen_at, get_current_unix_micro_timestamp(),
 		content_checksum, current_content_checksum)
 
 	assert request_type == CacheRequest.cached
 
 	gen_at = (last_template_mod - 500)
 
-	request_type = cache_request_route(is_cache_exist, cache_delay_expiration, last_template_mod,
-		test_current_template_mod, cache_del_exp, gen_at, get_current_unix_timestamp(),
+	request_type, _ = dtmi.cache_request_route(is_cache_exist, cache_delay_expiration,
+		last_template_mod, test_current_template_mod, cache_del_exp, gen_at, get_current_unix_micro_timestamp(),
 		content_checksum, current_content_checksum)
 
 	assert request_type == CacheRequest.exp_update
 
 	is_cache_exist = false
 
-	request_type = cache_request_route(is_cache_exist, cache_delay_expiration, last_template_mod,
-		test_current_template_mod, cache_del_exp, gen_at, get_current_unix_timestamp(),
+	request_type, _ = dtmi.cache_request_route(is_cache_exist, cache_delay_expiration,
+		last_template_mod, test_current_template_mod, cache_del_exp, gen_at, get_current_unix_micro_timestamp(),
 		content_checksum, current_content_checksum)
 
 	assert request_type == CacheRequest.new
@@ -391,7 +392,7 @@ fn init_dtm(b bool, m int) !&DynamicTemplateManager {
 fn (mut tm DynamicTemplateManager) create_cache() string {
 	temp_html_file := os.join_path(tm.template_folder, dtm.temp_html_fp)
 	html_last_mod := os.file_last_mod_unix(temp_html_file)
-	c_time := get_current_unix_timestamp()
+	c_time := get_current_unix_micro_timestamp()
 	cache_delay_exp := i64(500) * i64(1000000)
 	placeholder := map[string]DtmMultiTypeMap{}
 	content_checksum := ''
