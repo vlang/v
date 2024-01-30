@@ -710,8 +710,10 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	if node.should_be_skipped {
 		return
 	}
-	if g.pref.is_callstack && g.has_debugger && !g.is_builtin_mod && g.inside_ternary == 0
-		&& g.file.imports.any(it.mod == 'v.debug') && node.name != 'v.debug.callstack' {
+	is_traceable := g.pref.is_callstack && g.has_debugger && !g.is_builtin_mod
+		&& g.inside_ternary == 0 && g.file.imports.any(it.mod == 'v.debug')
+		&& node.name != 'v.debug.callstack'
+	if is_traceable {
 		line := g.go_before_last_stmt()
 		g.empty_line = true
 		if g.cur_fn.is_method || g.cur_fn.is_static_type_method {
@@ -890,8 +892,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		}
 	}
 
-	if g.pref.is_callstack && g.has_debugger && !g.is_builtin_mod
-		&& g.file.imports.any(it.mod == 'v.debug') && node.name != 'v.debug.callstack' {
+	if is_traceable {
 		if g.inside_dump_fn {
 			g.writeln(');')
 			g.write('array_pop((array*)&g_callstack')
