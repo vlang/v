@@ -269,7 +269,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		node.left_types << left_type
 
 		if left is ast.ParExpr && is_decl {
-			c.error('non-name on the left side of `:=`', left.pos())
+			c.error('parentheses are not supported on the left side of `:=`', left.pos())
 		}
 
 		for left is ast.ParExpr {
