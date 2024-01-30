@@ -79,7 +79,9 @@ mut:
 	// This array is designed to store a control process that checks whether cached data is currently in use while simultaneously handling expiration.
 	// This allows for the harmonious management of both aspects and facilitates the necessary actions.
 	nbr_of_remaining_template_request shared []RemainingTemplateRequest = []RemainingTemplateRequest{}
-	//	cache_block_middleware ?MiddlewareFn
+	//	Dtm clock
+	c_time            i64
+	ch_stop_dtm_clock chan bool
 }
 
 // Represent individual template cache in database memory.
@@ -211,7 +213,9 @@ pub fn initialize_dtm(mut dtmref &DynamicTemplateManager, dtm_init_params Dynami
 		dtmref.active_cache_server = false
 	} else {
 		spawn dtmref.cache_handler()
+		spawn dtmref.handle_dtm_clock()
 	}
+	dtmref.c_time = get_current_unix_micro_timestamp()
 	dtmref.dtm_init_is_ok = true
 	println('${dtm.message_signature} Dynamic Template Manager mode activated')
 }
@@ -242,7 +246,7 @@ pub fn (mut tm DynamicTemplateManager) serve_dynamic_template(tmpl_path string, 
 		}
 		converted_cache_delay_expiration := i64(tmpl_var.cache_delay_expiration) * dtm.convert_seconds
 		// If cache exist, return necessary fields else, 'is_cache_exist' return false.
-		is_cache_exist, id, path, mut last_template_mod, gen_at, cache_del_exp, c_time, content_checksum := tm.return_cache_info_isexistent(file_path)
+		is_cache_exist, id, path, mut last_template_mod, gen_at, cache_del_exp, content_checksum := tm.return_cache_info_isexistent(file_path)
 		mut html := ''
 		// Definition of several variables used to assess the need for cache updates.sss
 		// This determination is based on modifications within the HTML template itself.
@@ -262,8 +266,8 @@ pub fn (mut tm DynamicTemplateManager) serve_dynamic_template(tmpl_path string, 
 		current_content_checksum := create_content_checksum(tmpl_var.placeholders, content_checksum)
 
 		// From this point, all the previously encountered variables are used to determine the routing in rendering the HTML template and creating/using its cache.
-		cash_req := cache_request_route(is_cache_exist, converted_cache_delay_expiration,
-			last_template_mod, test_current_template_mod, cache_del_exp, gen_at, c_time,
+		cash_req, unique_time := tm.cache_request_route(is_cache_exist, converted_cache_delay_expiration,
+			last_template_mod, test_current_template_mod, cache_del_exp, gen_at, tm.c_time,
 			content_checksum, current_content_checksum)
 		// Each of these match statements aims to provide HTML rendering, but each one sends a specific signal 'cash_req' of type CacheRequest
 		// or calls the appropriate function for managing the cache of the provided HTML.
@@ -271,16 +275,16 @@ pub fn (mut tm DynamicTemplateManager) serve_dynamic_template(tmpl_path string, 
 			.new {
 				// Create a new cache
 				html = tm.create_template_cache_and_display_html(cash_req, last_template_mod,
-					c_time, file_path, tmpl_name, converted_cache_delay_expiration, tmpl_var.placeholders,
-					current_content_checksum)
+					unique_time, file_path, tmpl_name, converted_cache_delay_expiration,
+					tmpl_var.placeholders, current_content_checksum)
 				//	println('create cache : ${cash_req}')
 			}
 			.update, .exp_update {
 				// Update an existing cache
 				tm.id_to_handlered = id
 				html = tm.create_template_cache_and_display_html(cash_req, test_current_template_mod,
-					c_time, file_path, tmpl_name, converted_cache_delay_expiration, tmpl_var.placeholders,
-					current_content_checksum)
+					unique_time, file_path, tmpl_name, converted_cache_delay_expiration,
+					tmpl_var.placeholders, current_content_checksum)
 				//	println('update cache : ${cash_req}')
 			}
 			else {
@@ -426,7 +430,7 @@ fn (tm DynamicTemplateManager) check_html_and_placeholders_size(f_path string, t
 // This request is then sent to the cache handler channel, signaling either the need for a new cache or an update to an existing one.
 // The function returns the rendered HTML string immediately, without waiting for the cache to be created or updated.
 //
-fn (mut tm DynamicTemplateManager) create_template_cache_and_display_html(tcs CacheRequest, last_template_mod i64, c_time i64, file_path string, tmpl_name string, cache_delay_expiration i64, placeholders &map[string]DtmMultiTypeMap, current_content_checksum string) string {
+fn (mut tm DynamicTemplateManager) create_template_cache_and_display_html(tcs CacheRequest, last_template_mod i64, unique_time i64, file_path string, tmpl_name string, cache_delay_expiration i64, placeholders &map[string]DtmMultiTypeMap, current_content_checksum string) string {
 	// Control if cache delay expiration is correctly setted. See the function itself for more details.
 	check_if_cache_delay_iscorrect(cache_delay_expiration, tmpl_name) or {
 		eprintln(err)
@@ -437,7 +441,7 @@ fn (mut tm DynamicTemplateManager) create_template_cache_and_display_html(tcs Ca
 	// If caching is enabled and the HTML content is valid, this section creates a temporary cache file, which is then used by the cache manager.
 	// If successfully temporary is created, a cache creation/update notification is sent through its dedicated channel to the cache manager
 	if cache_delay_expiration != -1 && html != dtm.internat_server_error && tm.active_cache_server {
-		op_success, tmp_name := tm.create_temp_cache(html, file_path, c_time)
+		op_success, tmp_name := tm.create_temp_cache(html, file_path, unique_time)
 		if op_success {
 			tm.ch_cache_handler <- TemplateCache{
 				id: tm.id_counter
@@ -449,7 +453,7 @@ fn (mut tm DynamicTemplateManager) create_template_cache_and_display_html(tcs Ca
 				// Last modified timestamp of HTML template
 				last_template_mod: last_template_mod
 				// Unix current local timestamp of cache generation request converted to UTC
-				generate_at: c_time
+				generate_at: unique_time
 				// Defines the cache expiration delay in seconds. This value is added to 'generate_at' to calculate the expiration time of the cache.
 				cache_delay_expiration: cache_delay_expiration
 				// The requested routing to define creation or updating cache.
@@ -539,13 +543,12 @@ fn (mut tm DynamicTemplateManager) get_cache(name string, path string, placehold
 	return html
 }
 
-// fn (mut DynamicTemplateManager) return_cache_info_isexistent(string) return (bool, int, string, i64, i64, i64, i64, string)
+// fn (mut DynamicTemplateManager) return_cache_info_isexistent(string) return (bool, int, string, i64, i64, i64, string)
 //
 // Exclusively used in 'serve_dynamic_template' to determine whether a cache exists for the provided HTML template.
 // If a cache exists, it returns the necessary information for its transformation. If not, it indicates the need to create a new cache.
 //
-fn (mut tm DynamicTemplateManager) return_cache_info_isexistent(tmpl_path string) (bool, int, string, i64, i64, i64, i64, string) {
-	c_time := get_current_unix_timestamp()
+fn (mut tm DynamicTemplateManager) return_cache_info_isexistent(tmpl_path string) (bool, int, string, i64, i64, i64, string) {
 	// Lock the cache database for writing.
 	rlock tm.template_caches {
 		for value in tm.template_caches {
@@ -569,7 +572,7 @@ fn (mut tm DynamicTemplateManager) return_cache_info_isexistent(tmpl_path string
 								} else {
 									// function is used to signal that the process has begun using the cache information.
 									tm.remaining_template_request(true, val.id)
-									return true, val.id, val.path, val.last_template_mod, val.generate_at, val.cache_delay_expiration, c_time, val.content_checksum
+									return true, val.id, val.path, val.last_template_mod, val.generate_at, val.cache_delay_expiration, val.content_checksum
 								}
 							}
 						}
@@ -582,13 +585,13 @@ fn (mut tm DynamicTemplateManager) return_cache_info_isexistent(tmpl_path string
 				} else {
 					// function is used to signal that the process has begun using the cache information.
 					tm.remaining_template_request(true, value.id)
-					return true, value.id, value.path, value.last_template_mod, value.generate_at, value.cache_delay_expiration, c_time, value.content_checksum
+					return true, value.id, value.path, value.last_template_mod, value.generate_at, value.cache_delay_expiration, value.content_checksum
 				}
 			}
 		}
 	}
 	// No existing cache, need to create it.
-	return false, 0, '', 0, 0, 0, c_time, ''
+	return false, 0, '', 0, 0, 0, ''
 }
 
 // fn (mut DynamicTemplateManager) remaining_template_request(bool, int)
@@ -619,6 +622,7 @@ fn (mut tm DynamicTemplateManager) remaining_template_request(b bool, v int) {
 						}
 					}
 				}
+
 				break
 			}
 		}
@@ -645,6 +649,7 @@ fn (mut tm DynamicTemplateManager) cache_handler() {
 		tm.active_cache_server = false
 		// Close channel if handler is stopped
 		tm.ch_cache_handler.close()
+		tm.ch_stop_dtm_clock <- true
 	}
 	for {
 		select {
@@ -1109,26 +1114,82 @@ fn check_if_cache_delay_iscorrect(cde i64, tmpl_name string) ! {
 	}
 }
 
-// fn cache_request_route(bool, i64, i64, i64, i64, i64, i64) return CacheRequest
+// fn cache_request_route(bool, i64, i64, i64, i64, i64, i64) return (CacheRequest, i64)
 //
 // Used exclusively in 'serve_dynamic_template' function, determines the appropriate cache request action for an HTML template.
 // It assesses various conditions such as cache existence, cache expiration settings, and last modification timestamps ( template or dynamic content )
 // to decide whether to create a new cache, update an existing or delivered a valid cache content.
 //
-fn cache_request_route(is_cache_exist bool, neg_cache_delay_expiration i64, last_template_mod i64, test_current_template_mod i64, cache_del_exp i64, gen_at i64, c_time i64, content_checksum string, current_content_checksum string) CacheRequest {
+fn (mut tm DynamicTemplateManager) cache_request_route(is_cache_exist bool, neg_cache_delay_expiration i64, last_template_mod i64, test_current_template_mod i64, cache_del_exp i64, gen_at i64, c_time i64, content_checksum string, current_content_checksum string) (CacheRequest, i64) {
 	if !is_cache_exist || neg_cache_delay_expiration == -1 {
 		// Requiere cache creation
-		return CacheRequest.new
+		unique_ts := get_current_unix_micro_timestamp()
+		tm.c_time = unique_ts
+		return CacheRequest.new, unique_ts
 	} else if last_template_mod < test_current_template_mod
 		|| content_checksum != current_content_checksum {
 		// Requires cache update as the HTML template has been modified since the last time. it can be the template itself or its dynamic content.
-		return CacheRequest.update
-	} else if cache_del_exp != 0 && (gen_at + cache_del_exp) < c_time {
+		unique_ts := get_current_unix_micro_timestamp()
+		tm.c_time = unique_ts
+		return CacheRequest.update, unique_ts
+	} else if cache_del_exp != 0 && (gen_at + cache_del_exp) < tm.c_time {
+		unique_ts := get_current_unix_micro_timestamp()
+		tm.c_time = unique_ts
 		// Requires cache update as the cache expiration delay has elapsed.
-		return CacheRequest.exp_update
+		return CacheRequest.exp_update, unique_ts
 	} else {
 		// Returns valid cached content, no update or creation necessary.
-		return CacheRequest.cached
+		return CacheRequest.cached, 0
+	}
+}
+
+// fn (mut tm DynamicTemplateManager) handle_dtm_clock()
+//
+// Manages the internal clock. It periodically updates ( 4 minutes minimum, if there has been a recent update elsewhere in the system, it will be taken into account by the clock handler. )
+// The goal is ensuring that the DTM's internal time is maintained, especially during prolonged periods of inactivity on the website,
+// this can potentially lead to cache expiration issues if there is zero traffic for a while."
+//
+
+// Minimum update interval ( in seconds ) set to 4 minutesminimum_wait_time_until_next_update
+const update_duration = 240
+
+fn (mut tm DynamicTemplateManager) handle_dtm_clock() {
+	defer {
+		tm.ch_stop_dtm_clock.close()
+		eprintln('${dtm.message_signature_info} DTM clock handler has been successfully stopped.')
+	}
+
+	for {
+		// Calculate the remaining time until the next update.
+		current_time := get_current_unix_micro_timestamp() / dtm.convert_seconds
+		mut time_since_last_update := int(current_time - (tm.c_time / dtm.convert_seconds))
+		mut minimum_wait_time_until_next_update := dtm.update_duration
+
+		// Update DTM clock if update interval exceeded otherwise, set next check based on time since last update
+		if time_since_last_update >= dtm.update_duration {
+			tm.c_time = current_time * dtm.convert_seconds
+		} else {
+			if time_since_last_update < 0 {
+				time_since_last_update = 0
+			}
+			minimum_wait_time_until_next_update = (dtm.update_duration - time_since_last_update) +
+				dtm.update_duration
+		}
+
+		// Wait until the next update interval or until a stop signal is received.
+		for elapsed_time := 0; elapsed_time < minimum_wait_time_until_next_update; elapsed_time++ {
+			select {
+				_ := <-tm.ch_stop_dtm_clock {
+					break
+				}
+				else {
+					// Attendre une seconde
+					time.sleep(1 * time.second)
+				}
+			}
+		}
+		// Reset wait time for next cycle.
+		minimum_wait_time_until_next_update = dtm.update_duration
 	}
 }
 
@@ -1136,8 +1197,6 @@ fn cache_request_route(is_cache_exist bool, neg_cache_delay_expiration i64, last
 //
 // This function is designed for handling timezone adjustments by converting the machine's local time at micro format to a universal micro format.
 //
-fn get_current_unix_timestamp() i64 {
-	current_time := time.now()
-	utc_time := current_time.local_to_utc()
-	return utc_time.unix_time_micro()
+fn get_current_unix_micro_timestamp() i64 {
+	return time.now().unix_time_micro()
 }
