@@ -6,6 +6,7 @@ module debug
 // function call location trace
 @[markused]
 pub struct FnTrace {
+pub:
 	name string
 	file string
 	line i64

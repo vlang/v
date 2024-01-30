@@ -138,6 +138,7 @@ mut:
 	inside_or_block           bool
 	inside_call               bool
 	inside_curry_call         bool // inside foo()()!, foo()()?, foo()()
+	inside_dump_fn            bool
 	expected_fixed_arr        bool
 	inside_for_c_stmt         bool
 	// inside_comptime_for_field bool
@@ -5086,11 +5087,6 @@ fn (mut g Gen) branch_stmt(node ast.BranchStmt) {
 fn (mut g Gen) return_stmt(node ast.Return) {
 	g.set_current_pos_as_last_stmt_pos()
 	g.write_v_source_line_info(node.pos)
-
-	if g.pref.is_callstack && g.has_debugger && !g.is_builtin_mod
-		&& g.file.imports.any(it.mod == 'v.debug') && g.file.mod.name != 'v.debug' {
-		g.writeln('array_pop((array*)&g_callstack);')
-	}
 
 	g.inside_return = true
 	defer {

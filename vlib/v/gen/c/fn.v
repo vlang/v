@@ -420,10 +420,6 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	} else {
 		g.defer_stmts = []
 	}
-	if g.pref.is_callstack && !g.fn_decl.is_main && g.has_debugger && !g.is_builtin_mod
-		&& g.file.imports.any(it.mod == 'v.debug') && g.file.mod.name != 'v.debug' {
-		g.writeln('array_pop((array*)&g_callstack);')
-	}
 	if node.return_type != ast.void_type && node.stmts.len > 0 && node.stmts.last() !is ast.Return
 		&& !node.attrs.contains('_naked') {
 		default_expr := g.type_default(node.return_type)
@@ -718,8 +714,13 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		&& g.file.imports.any(it.mod == 'v.debug') && node.name != 'v.debug.callstack' {
 		line := g.go_before_last_stmt()
 		g.empty_line = true
-		g.writeln('array_push((array*)&g_callstack, _MOV((v__debug__FnTrace[]){ ((v__debug__FnTrace){.name = _SLIT("${g.cur_fn.name}"),.file = _SLIT("${g.file.path}"),.line = ${
-			node.pos.line_nr + 1},}) }));')
+		if g.cur_fn.is_method || g.cur_fn.is_static_type_method {
+			g.writeln('array_push((array*)&g_callstack, _MOV((v__debug__FnTrace[]){ ((v__debug__FnTrace){.name = _SLIT("${g.table.type_to_str(g.cur_fn.receiver.typ)}.${g.cur_fn.name.all_after_last('__static__')}"),.file = _SLIT("${g.file.path}"),.line = ${
+				node.pos.line_nr + 1},}) }));')
+		} else {
+			g.writeln('array_push((array*)&g_callstack, _MOV((v__debug__FnTrace[]){ ((v__debug__FnTrace){.name = _SLIT("${g.cur_fn.name}"),.file = _SLIT("${g.file.path}"),.line = ${
+				node.pos.line_nr + 1},}) }));')
+		}
 		g.write(line)
 	}
 
@@ -889,10 +890,15 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		}
 	}
 
-	if g.pref.is_callstack && !node.is_method && g.has_debugger && !g.is_builtin_mod
-		&& g.file.imports.any(it.mod == 'v.debug') && node.name == 'v.debug.dump_callstack' {
-		g.writeln(';')
-		g.writeln('array_pop((array*)&g_callstack);')
+	if g.pref.is_callstack && g.has_debugger && !g.is_builtin_mod
+		&& g.file.imports.any(it.mod == 'v.debug') && node.name != 'v.debug.callstack' {
+		if g.inside_dump_fn {
+			g.writeln(');')
+			g.write('array_pop((array*)&g_callstack')
+		} else {
+			g.writeln(';')
+			g.writeln('array_pop((array*)&g_callstack);')
+		}
 	}
 }
 
