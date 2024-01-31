@@ -138,7 +138,6 @@ mut:
 	inside_or_block           bool
 	inside_call               bool
 	inside_curry_call         bool // inside foo()()!, foo()()?, foo()()
-	inside_dump_fn            bool
 	expected_fixed_arr        bool
 	inside_for_c_stmt         bool
 	// inside_comptime_for_field bool

@@ -15,13 +15,6 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 	mut name := node.cname
 	mut expr_type := node.expr_type
 
-	if node.expr is ast.CallExpr {
-		g.inside_dump_fn = true
-		defer {
-			g.inside_dump_fn = false
-		}
-	}
-
 	if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 {
 		// generic func with recursion rewrite node.expr_type
 		if node.expr is ast.Ident {
