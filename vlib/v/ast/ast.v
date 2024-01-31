@@ -617,6 +617,8 @@ pub:
 	file        string
 	line        i64
 	return_type Type
+	func        &Fn = unsafe { nil }
+	is_fn_var   bool
 }
 
 @[minify]

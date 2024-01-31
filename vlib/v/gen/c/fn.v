@@ -279,23 +279,38 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 			if trace_fn in g.trace_fn_definitions {
 				continue
 			}
-			g.writeln('VV_LOCAL_SYMBOL ${c_name(trace_fn)}() {')
+			trace_fn_ret_type := g.typ(call_fn.return_type)
+
+			g.write('VV_LOCAL_SYMBOL ${trace_fn_ret_type} ${c_name(trace_fn)}(')
+			g.definitions.write_string('VV_LOCAL_SYMBOL ${trace_fn_ret_type} ${c_name(trace_fn)}(')
+
+			if call_fn.is_fn_var {
+				g.write(g.fn_var_signature(call_fn.func.return_type, call_fn.func.params.map(it.typ),
+					call_fn.name))
+			} else {
+				g.fn_decl_params(call_fn.func.params, unsafe { nil }, call_fn.func.is_variadic)
+			}
+
+			g.writeln(') {')
+			g.definitions.write_string('); // ${call_fn.name}\n')
+
+			orig_fn_args := call_fn.func.params.map(it.name).join(', ')
+
 			if g.cur_fn.is_method || g.cur_fn.is_static_type_method {
 				g.writeln('\tarray_push((array*)&g_callstack, _MOV((v__debug__FnTrace[]){ ((v__debug__FnTrace){.name = _SLIT("${g.table.type_to_str(g.cur_fn.receiver.typ)}.${g.cur_fn.name.all_after_last('__static__')}"),.file = _SLIT("${call_fn.file}"),.line = ${call_fn.line},}) }));')
 			} else {
 				g.writeln('\tarray_push((array*)&g_callstack, _MOV((v__debug__FnTrace[]){ ((v__debug__FnTrace){.name = _SLIT("${g.cur_fn.name}"),.file = _SLIT("${call_fn.file}"),.line = ${call_fn.line},}) }));')
 			}
 			if call_fn.return_type == 0 || call_fn.return_type == ast.void_type {
-				g.writeln('\t${c_name(call_fn.name)}();')
+				g.writeln('\t${c_name(call_fn.name)}(${orig_fn_args});')
 				g.writeln('\tarray_pop((array*)&g_callstack);')
 			} else {
-				g.writeln('\t${g.typ(call_fn.return_type)} ret = ${c_name(call_fn.name)}();')
+				g.writeln('\t${g.typ(call_fn.return_type)} ret = ${c_name(call_fn.name)}(${orig_fn_args});')
 				g.writeln('\tarray_pop((array*)&g_callstack);')
 				g.writeln('\treturn ret;')
 			}
 			g.writeln('}')
 			g.writeln('')
-			g.definitions.write_string('VV_LOCAL_SYMBOL ${c_name(trace_fn)}(); // ${call_fn.name}\n')
 			g.trace_fn_definitions << trace_fn
 		}
 	}
@@ -1518,7 +1533,12 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 			g.write('${name}${noscan}(')
 		} else {
-			g.write('${name}(')
+			if g.cur_fn != unsafe { nil } && g.cur_fn.has_trace_fns {
+				g.gen_trace_call(node, name)
+				g.write('(')
+			} else {
+				g.write('${name}(')
+			}
 		}
 	}
 	is_array_method_first_last_repeat := final_left_sym.kind == .array
@@ -1963,15 +1983,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			}
 			if !is_fn_var {
 				if g.cur_fn != unsafe { nil } && g.cur_fn.has_trace_fns {
-					generic_name := node.concrete_types.map(g.table.type_to_str(it)).join('_')
-					trace_fn_name := '_v__trace__${g.cur_fn.name}_${node.name}_${generic_name}_${node.pos.line_nr}'
-					if _ := g.cur_fn.trace_fns[trace_fn_name] {
-						$if trace_fns ? {
-							eprintln('>> trace_fns | cgen | ${name} - ${trace_fn_name}')
-						}
-						g.write(c_name(trace_fn_name))
-					} else {
-						g.write(g.get_ternary_name(name))
+					g.gen_trace_call(node, name)
+					if node.is_fn_var {
+						return
 					}
 				} else {
 					g.write(g.get_ternary_name(name))
@@ -2017,6 +2031,20 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 	}
 	g.is_json_fn = false
+}
+
+// gen_trace_call generates call to the wrapper trace fn if the call is traceable
+fn (mut g Gen) gen_trace_call(node ast.CallExpr, name string) {
+	generic_name := node.concrete_types.map(g.table.type_to_str(it)).join('_')
+	trace_fn_name := '_v__trace__${g.cur_fn.name}_${node.name}_${generic_name}_${node.pos.line_nr}'
+	if _ := g.cur_fn.trace_fns[trace_fn_name] {
+		g.write(c_name(trace_fn_name))
+		if node.is_fn_var {
+			g.write('(${node.name})')
+		}
+	} else {
+		g.write(g.get_ternary_name(name))
+	}
 }
 
 fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
