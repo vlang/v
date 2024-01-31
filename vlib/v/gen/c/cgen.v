@@ -2973,6 +2973,15 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 					// Do not free vars that were declared after this scope
 					continue
 				}
+
+				// This condition prevents premature auto-freeing of variables declared before the current scope
+				// and ensures auto-freeing of variables declared within the current scope.
+				if (obj.pos.line_nr < line_nr || (obj.pos.line_nr == line_nr
+					&& obj.pos.pos < start_pos)) || (obj.pos.line_nr > line_nr
+					|| (obj.pos.line_nr == line_nr && obj.pos.pos > end_pos)) {
+					continue
+				}
+
 				is_option := obj.typ.has_flag(.option)
 				if is_option {
 					// TODO: free options
