@@ -162,9 +162,6 @@ pub fn (mut l Log) error(s string) {
 		return
 	}
 	l.send_output(s, .error)
-	if l.always_flush {
-		l.flush()
-	}
 }
 
 // warn logs line `s` via `send_output` if `Log.level` is greater than or equal to the `Level.warn` category.
