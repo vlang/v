@@ -294,7 +294,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 			}
 
 			g.writeln(') {')
-			g.definitions.write_string('); // ${call_fn.name}\n')
+			g.definitions.write_string(');\n')
 
 			orig_fn_args := call_fn.func.params.map(it.name).join(', ')
 
