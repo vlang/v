@@ -285,8 +285,10 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 			g.definitions.write_string('VV_LOCAL_SYMBOL ${trace_fn_ret_type} ${c_name(trace_fn)}(')
 
 			if call_fn.is_fn_var {
-				g.write(g.fn_var_signature(call_fn.func.return_type, call_fn.func.params.map(it.typ),
-					call_fn.name))
+				sig := g.fn_var_signature(call_fn.func.return_type, call_fn.func.params.map(it.typ),
+					call_fn.name)
+				g.write(sig)
+				g.definitions.write_string(sig)
 			} else {
 				g.fn_decl_params(call_fn.func.params, unsafe { nil }, call_fn.func.is_variadic)
 			}
