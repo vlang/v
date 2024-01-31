@@ -82,7 +82,8 @@ mut:
 	//	Dtm clock
 	c_time            i64
 	ch_stop_dtm_clock chan bool
-	html_file_info    shared map[string]HtmlFileInfo = map[string]HtmlFileInfo{}
+	// Store small informations about already cached pages to improve the verification speed of the check_html_and_placeholders_size function.
+	html_file_info shared map[string]HtmlFileInfo = map[string]HtmlFileInfo{}
 }
 
 // Represent individual template cache in database memory.
@@ -115,6 +116,8 @@ mut:
 	// This field is special as it determines if a cache is obsolete but still in use, allowing the system to redirect to the updated cache.
 	// This enables the eventual deletion of the obsolete cache without causing issues for requests utilizing the cache.
 	id_redirection int
+	// Contains the full path to a cache stored on disk.
+	cache_full_path_name string
 }
 
 // Represents controls stored in the 'nbr_of_remaining_template_request' of the DTM.
@@ -546,9 +549,7 @@ fn (mut tm DynamicTemplateManager) get_cache(name string, path string, placehold
 						html = value.html_data.bytestr()
 					}
 					.disk {
-						// Retrieve the HTML render from the file cache in disk and convert it to a string.
-						file_name := os.join_path(tm.template_cache_folder, '${value.name}_${value.checksum}.cache')
-						r_b_html := os.read_bytes(file_name) or {
+						r_b_html := os.read_bytes(value.cache_full_path_name) or {
 							eprintln('${dtm.message_signature_error} Get_cache() cannot read template cache file ${value.name} : ${err.msg()} ')
 							return dtm.internat_server_error
 						}
@@ -717,9 +718,9 @@ fn (mut tm DynamicTemplateManager) cache_handler() {
 							}
 							.disk {
 								// If the cache is stored on disk, the temporary file is renamed to become the definitive cache of the current version of the HTML template.
-								new_cache_file_name := os.join_path(tm.template_cache_folder,
+								tc.cache_full_path_name = os.join_path(tm.template_cache_folder,
 									'${tc.name}_${tc.checksum}.cache')
-								os.mv(f_path_tmp, new_cache_file_name) or {
+								os.mv(f_path_tmp, tc.cache_full_path_name) or {
 									eprintln('${dtm.message_signature_error} Cache Handler : Failed to rename tmp file, cache server will be stopped, you need to fix and restart application: ${err.msg()}')
 									break
 								}
