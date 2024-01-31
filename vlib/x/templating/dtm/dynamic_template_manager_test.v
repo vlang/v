@@ -155,14 +155,16 @@ fn test_remaining_template_request() {
 }
 
 fn test_check_html_and_placeholders_size() {
-	dtmi := init_dtm(false, 0)!
+	mut dtmi := init_dtm(false, 0)!
 	temp_html_file := os.join_path(dtmi.template_folder, dtm.temp_html_fp)
 	placeholders := map[string]DtmMultiTypeMap{}
 
-	path, filename := dtmi.check_html_and_placeholders_size(temp_html_file, &placeholders)!
+	path, filename, content_checksum := dtmi.check_html_and_placeholders_size(temp_html_file,
+		&placeholders)!
 
 	assert path.len > 10
 	assert filename.len > 3
+	//	assert content_checksum.len > 3
 }
 
 fn test_chandler_prevent_cache_duplicate_request() {
