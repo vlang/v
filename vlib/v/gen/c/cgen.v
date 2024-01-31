@@ -140,7 +140,6 @@ mut:
 	inside_curry_call         bool // inside foo()()!, foo()()?, foo()()
 	expected_fixed_arr        bool
 	inside_for_c_stmt         bool
-	// inside_comptime_for_field bool
 	inside_cast_in_heap     int // inside cast to interface type in heap (resolve recursive calls)
 	inside_cast             bool
 	inside_const            bool
