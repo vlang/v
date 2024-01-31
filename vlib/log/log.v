@@ -34,6 +34,7 @@ mut:
 	time_format        TimeFormat
 	custom_time_format string = 'MMMM Do YY N kk:mm:ss A' // timestamp with custom format
 	short_tag          bool
+	always_flush       bool   // flush after every single .fatal(), .error(), .warn(), .info(), .debug() call
 pub mut:
 	output_file_name string // log output to this file
 }
@@ -118,6 +119,9 @@ fn (mut l Log) log_file(s string, level Level) {
 	timestamp := l.time_format(time.now())
 	e := tag_to_file(level, l.short_tag)
 	l.ofile.writeln('${timestamp} [${e}] ${s}') or { panic(err) }
+	if l.always_flush {
+		l.flush()
+	}
 }
 
 // log_cli writes log line `s` with `level` to stdout.
@@ -125,6 +129,9 @@ fn (l &Log) log_cli(s string, level Level) {
 	timestamp := l.time_format(time.now())
 	e := tag_to_cli(level, l.short_tag)
 	println('${timestamp} [${e}] ${s}')
+	if l.always_flush {
+		flush_stdout()
+	}
 }
 
 // send_output writes log line `s` with `level` to either the log file or the console
@@ -155,6 +162,9 @@ pub fn (mut l Log) error(s string) {
 		return
 	}
 	l.send_output(s, .error)
+	if l.always_flush {
+		l.flush()
+	}
 }
 
 // warn logs line `s` via `send_output` if `Log.level` is greater than or equal to the `Level.warn` category.
@@ -242,6 +252,12 @@ fn (l Log) time_format(t time.Time) string {
 // set_time_format will set the log time format to a pre-defined format
 pub fn (mut l Log) set_time_format(f TimeFormat) {
 	l.time_format = f
+}
+
+// set_always_flush called with true, will make the log flush after every single .fatal(), .error(), .warn(), .info(), .debug() call.
+// That can be much slower, if you plan to do lots of frequent calls, but if your program exits early or crashes, your logs will be more complete.
+pub fn (mut l Log) set_always_flush(should_flush_every_time bool) {
+	l.always_flush = should_flush_every_time
 }
 
 // get_time_format will get the log time format
