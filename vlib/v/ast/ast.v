@@ -571,6 +571,8 @@ pub mut:
 	params            []Param
 	stmts             []Stmt
 	defer_stmts       []DeferStmt
+	trace_fns         map[string]FnTrace
+	has_trace_fns     bool
 	return_type       Type
 	return_type_pos   token.Pos // `string` in `fn (u User) name() string` position
 	has_return        bool
@@ -605,6 +607,16 @@ pub fn (f &FnDecl) new_method_with_receiver_type(new_type_ Type) FnDecl {
 		new_method.params[0].typ = new_type
 		return *new_method
 	}
+}
+
+@[minify]
+pub struct FnTrace {
+pub mut:
+	name string
+pub:
+	file        string
+	line        i64
+	return_type Type
 }
 
 @[minify]

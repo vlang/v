@@ -273,6 +273,33 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		g.last_fn_c_name = last_fn_c_name_save
 	}
 	g.last_fn_c_name = impl_fn_name
+
+	if node.trace_fns.len > 0 {
+		for trace_fn, call_fn in node.trace_fns {
+			if trace_fn in g.trace_fn_definitions {
+				continue
+			}
+			g.writeln('VV_LOCAL_SYMBOL ${c_name(trace_fn)}() {')
+			if g.cur_fn.is_method || g.cur_fn.is_static_type_method {
+				g.writeln('\tarray_push((array*)&g_callstack, _MOV((v__debug__FnTrace[]){ ((v__debug__FnTrace){.name = _SLIT("${g.table.type_to_str(g.cur_fn.receiver.typ)}.${g.cur_fn.name.all_after_last('__static__')}"),.file = _SLIT("${call_fn.file}"),.line = ${call_fn.line},}) }));')
+			} else {
+				g.writeln('\tarray_push((array*)&g_callstack, _MOV((v__debug__FnTrace[]){ ((v__debug__FnTrace){.name = _SLIT("${g.cur_fn.name}"),.file = _SLIT("${call_fn.file}"),.line = ${call_fn.line},}) }));')
+			}
+			if call_fn.return_type == 0 || call_fn.return_type == ast.void_type {
+				g.writeln('\t${c_name(call_fn.name)}();')
+				g.writeln('\tarray_pop((array*)&g_callstack);')
+			} else {
+				g.writeln('\t${g.typ(call_fn.return_type)} ret = ${c_name(call_fn.name)}();')
+				g.writeln('\tarray_pop((array*)&g_callstack);')
+				g.writeln('\treturn ret;')
+			}
+			g.writeln('}')
+			g.writeln('')
+			g.definitions.write_string('VV_LOCAL_SYMBOL ${c_name(trace_fn)}(); // ${call_fn.name}\n')
+			g.trace_fn_definitions << trace_fn
+		}
+	}
+
 	//
 	if is_live_wrap {
 		if is_livemain {
@@ -710,22 +737,6 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	if node.should_be_skipped {
 		return
 	}
-	is_traceable := g.pref.is_callstack && g.has_debugger && !g.is_builtin_mod
-		&& g.inside_ternary == 0 && g.file.imports.any(it.mod == 'v.debug')
-		&& node.name != 'v.debug.callstack'
-	if is_traceable {
-		line := g.go_before_last_stmt()
-		g.empty_line = true
-		if g.cur_fn.is_method || g.cur_fn.is_static_type_method {
-			g.writeln('array_push((array*)&g_callstack, _MOV((v__debug__FnTrace[]){ ((v__debug__FnTrace){.name = _SLIT("${g.table.type_to_str(g.cur_fn.receiver.typ)}.${g.cur_fn.name.all_after_last('__static__')}"),.file = _SLIT("${g.file.path}"),.line = ${
-				node.pos.line_nr + 1},}) }));')
-		} else {
-			g.writeln('array_push((array*)&g_callstack, _MOV((v__debug__FnTrace[]){ ((v__debug__FnTrace){.name = _SLIT("${g.cur_fn.name}"),.file = _SLIT("${g.file.path}"),.line = ${
-				node.pos.line_nr + 1},}) }));')
-		}
-		g.write(line)
-	}
-
 	// NOTE: everything could be done this way
 	// see my comment in parser near anon_fn
 	if node.left is ast.AnonFn {
@@ -889,16 +900,6 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			} $else {
 				g.write(', ({VUNREACHABLE();})')
 			}
-		}
-	}
-
-	if is_traceable {
-		if g.inside_dump_fn {
-			g.writeln(');')
-			g.write('array_pop((array*)&g_callstack')
-		} else {
-			g.writeln(';')
-			g.writeln('array_pop((array*)&g_callstack);')
 		}
 	}
 }
@@ -1961,7 +1962,20 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				}
 			}
 			if !is_fn_var {
-				g.write(g.get_ternary_name(name))
+				if g.cur_fn != unsafe { nil } && g.cur_fn.has_trace_fns {
+					generic_name := node.concrete_types.map(g.table.type_to_str(it)).join('_')
+					trace_fn_name := '_v__trace__${g.cur_fn.name}_${node.name}_${generic_name}_${node.pos.line_nr}'
+					if _ := g.cur_fn.trace_fns[trace_fn_name] {
+						$if trace_fns ? {
+							eprintln('>> trace_fns | cgen | ${name} - ${trace_fn_name}')
+						}
+						g.write(c_name(trace_fn_name))
+					} else {
+						g.write(g.get_ternary_name(name))
+					}
+				} else {
+					g.write(g.get_ternary_name(name))
+				}
 			}
 			if is_interface_call {
 				g.write(')')
