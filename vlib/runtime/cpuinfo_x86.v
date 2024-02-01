@@ -4,19 +4,13 @@ module runtime
 // https://github.com/torvalds/linux/blob/master/arch/x86/include/asm/cpufeatures.h
 import bitfield
 
-#flag -I @VEXEROOT/vlib/runtime/asm
-#insert "@VEXEROOT/vlib/runtime/asm/cpuinfo.h"
 $if msvc {
-	// msvc doesn't support embedded asm, so include a pre-compiled obj
-	$if x64 {
-		#flag @VEXEROOT/vlib/runtime/asm/cpuinfo_amd64.obj
-	} $else {
-		#flag @VEXEROOT/vlib/runtime/asm/cpuinfo_i386.obj
-	}
+	#include <intrin.h>
+	#include <immintrin.h>
 }
-fn C.cpuidex_asm([4]u32, u32, u32)
-fn C.xgetbv_asm([2]u32, u32)
-fn C.rdtscp_asm([4]u32)
+fn C.__cpuidex([4]u32, u32, u32)
+fn C._xgetbv(u32) u64
+fn C.__rdtscp(voidptr) u64
 
 // vfmt off
 // Vendor_X86 is a representation of a X86 CPU vendor.
@@ -27,7 +21,7 @@ pub enum Vendor_X86 {
 	via
 	transmeta
 	nsc
-	kvm	// Kernel-based Virtual Machine
+	kvm		// Kernel-based Virtual Machine
 	msvm	// Microsoft Hyper-V or Windows Virtual PC
 	vmware
 	xenhvm
@@ -370,8 +364,7 @@ pub fn cpuidex(op u32, op2 u32) (u32, u32, u32, u32) {
 		$if msvc {
 			mut result := [4]u32{}
 
-			// C.__cpuidex(result, op, op2)
-			C.cpuidex_asm(result, op, op2)
+			C.__cpuidex(result, op, op2)
 			return result[0], result[1], result[2], result[3]
 		} $else {
 			mut eax := u32(0)
@@ -404,9 +397,8 @@ fn cpuid(op u32) (u32, u32, u32, u32) {
 pub fn xgetbv(index u32) (u32, u32) {
 	$if i386 || amd64 {
 		$if msvc {
-			mut result := [2]u32{}
-			C.xgetbv_asm(result, index)
-			return result[0], result[1]
+			result := C._xgetbv(index)
+			return u32(result >> 32), u32(result)
 		} $else {
 			mut eax := u32(0)
 			mut edx := u32(0)
@@ -428,9 +420,9 @@ pub fn xgetbv(index u32) (u32, u32) {
 pub fn rdtscp() (u32, u32, u32, u32) {
 	$if i386 || amd64 {
 		$if msvc {
-			mut result := [4]u32{}
-			C.rdtscp_asm(result)
-			return result[0], result[1], result[2], result[3]
+			mut aux := u32(0)
+			result := C.__rdtscp(&aux)
+			return u32(result), 0, aux, u32(result >> 32)
 		} $else {
 			mut eax := u32(0)
 			mut ebx := u32(0)
