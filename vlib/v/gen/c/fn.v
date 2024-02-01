@@ -1535,7 +1535,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 			g.write('${name}${noscan}(')
 		} else {
-			if g.cur_fn != unsafe { nil } && g.cur_fn.has_trace_fns {
+			if g.cur_fn != unsafe { nil } && g.cur_fn.trace_fns.len > 0 {
 				g.gen_trace_call(node, name)
 				g.write('(')
 			} else {
@@ -1984,7 +1984,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				}
 			}
 			if !is_fn_var {
-				if g.cur_fn != unsafe { nil } && g.cur_fn.has_trace_fns {
+				if g.cur_fn != unsafe { nil } && g.cur_fn.trace_fns.len > 0 {
 					g.gen_trace_call(node, name)
 					if node.is_fn_var {
 						return
@@ -2037,10 +2037,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 
 // gen_trace_call generates call to the wrapper trace fn if the call is traceable
 fn (mut g Gen) gen_trace_call(node ast.CallExpr, name string) {
-	generic_name := node.concrete_types.map(g.table.type_to_str(it)).join('_')
-	trace_fn_name := '_v__trace__${g.cur_fn.name}_${node.name}_${generic_name}_${node.pos.line_nr}'
-	if _ := g.cur_fn.trace_fns[trace_fn_name] {
-		g.write(c_name(trace_fn_name))
+	hash_fn, _ := g.table.get_trace_fn_name(g.cur_fn, node)
+	if _ := g.cur_fn.trace_fns[hash_fn] {
+		g.write(c_name(hash_fn))
 		if node.is_fn_var {
 			g.write('(${node.name})')
 		}

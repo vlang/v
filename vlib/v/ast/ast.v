@@ -572,7 +572,6 @@ pub mut:
 	stmts             []Stmt
 	defer_stmts       []DeferStmt
 	trace_fns         map[string]FnTrace
-	has_trace_fns     bool
 	return_type       Type
 	return_type_pos   token.Pos // `string` in `fn (u User) name() string` position
 	has_return        bool
