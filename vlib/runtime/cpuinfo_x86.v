@@ -4,14 +4,14 @@ module runtime
 // https://github.com/torvalds/linux/blob/master/arch/x86/include/asm/cpufeatures.h
 import bitfield
 
-#flag -I@VMODROOT/vlib/runtime/asm
-#include "cpuinfo.h"
+#flag -I @VEXEROOT/vlib/runtime/asm
+#insert "@VEXEROOT/vlib/runtime/asm/cpuinfo.h"
 $if msvc {
 	// msvc doesn't support embedded asm, so include a pre-compiled obj
 	$if x64 {
-		#flag @VMODROOT/vlib/runtime/asm/cpuinfo_amd64.obj
+		#flag @VEXEROOT/vlib/runtime/asm/cpuinfo_amd64.obj
 	} $else {
-		#flag @VMODROOT/vlib/runtime/asm/cpuinfo_i386.obj
+		#flag @VEXEROOT/vlib/runtime/asm/cpuinfo_i386.obj
 	}
 }
 fn C.cpuidex_asm([4]u32, u32, u32)
