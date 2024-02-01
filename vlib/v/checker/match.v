@@ -55,6 +55,13 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					branch.branch_pos)
 			}
 		}
+		if !branch.is_else && cond_is_option && branch.exprs[0] !is ast.None {
+			c.error('`match` expression with Option type only checks against `none`, to match its value you must unwrap it first `var?`',
+				branch.pos)
+		}
+		if cond_type_sym.kind == .none_ {
+			c.error('`none` cannot be a match condition', node.pos)
+		}
 		// If the last statement is an expression, return its type
 		if branch.stmts.len > 0 {
 			mut stmt := branch.stmts.last()
@@ -63,10 +70,6 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					c.expected_type = node.expected_type
 				}
 				expr_type := c.expr(mut stmt.expr)
-				if !branch.is_else && cond_is_option && branch.exprs[0] !is ast.None {
-					c.error('`match` expression with Option type only checks against `none`, to match its value you must unwrap it first `var?`',
-						branch.pos)
-				}
 				stmt.typ = expr_type
 				if first_iteration {
 					if node.is_expr && (node.expected_type.has_flag(.option)

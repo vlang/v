@@ -14,7 +14,14 @@ pub fn (mut p Process) signal_kill() {
 	}
 	p._signal_kill()
 	p.status = .aborted
-	return
+}
+
+// signal_term - terminate the process
+pub fn (mut p Process) signal_term() {
+	if p.status !in [.running, .stopped] {
+		return
+	}
+	p._signal_term()
 }
 
 // signal_pgkill - kills the whole process group
@@ -23,7 +30,6 @@ pub fn (mut p Process) signal_pgkill() {
 		return
 	}
 	p._signal_pgkill()
-	return
 }
 
 // signal_stop - stops the process, you can resume it with p.signal_continue()
@@ -33,7 +39,6 @@ pub fn (mut p Process) signal_stop() {
 	}
 	p._signal_stop()
 	p.status = .stopped
-	return
 }
 
 // signal_continue - tell a stopped process to continue/resume its work
@@ -43,7 +48,6 @@ pub fn (mut p Process) signal_continue() {
 	}
 	p._signal_continue()
 	p.status = .running
-	return
 }
 
 // wait - wait for a process to finish.
@@ -60,7 +64,6 @@ pub fn (mut p Process) wait() {
 		return
 	}
 	p._wait()
-	return
 }
 
 // close - free the OS resources associated with the process.
@@ -132,7 +135,6 @@ pub fn (mut p Process) set_redirect_stdio() {
 	$if trace_process_pipes ? {
 		eprintln('${@LOCATION}, pid: ${p.pid}, status: ${p.status}')
 	}
-	return
 }
 
 // stdin_write will write the string `s`, to the stdin pipe of the child process.
@@ -290,6 +292,15 @@ fn (mut p Process) _signal_kill() {
 	}
 }
 
+// _signal_term - should not be called directly, except by p.signal_term
+fn (mut p Process) _signal_term() {
+	$if windows {
+		p.win_term_process()
+	} $else {
+		p.unix_term_process()
+	}
+}
+
 // _signal_pgkill - should not be called directly, except by p.signal_pgkill
 fn (mut p Process) _signal_pgkill() {
 	$if windows {
@@ -323,5 +334,4 @@ pub fn (mut p Process) run() {
 		return
 	}
 	p._spawn()
-	return
 }

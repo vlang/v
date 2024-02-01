@@ -478,7 +478,7 @@ fn change_user(mut ctx vweb.Context) bool {
 
 ### Redirect
 
-Used when you want be redirected to an url
+Used when you want to be redirected to an url
 
 **Examples:**
 

@@ -153,18 +153,18 @@ pub fn truncate(path string, len u64) ! {
 		C.open(&char(path.str), o_wronly | o_trunc, 0)
 	}
 	if fp < 0 {
-		return error_with_code(posix_get_error_msg(C.errno), C.errno)
+		return error_posix()
 	}
 	defer {
 		C.close(fp)
 	}
 	$if windows {
 		if C._chsize_s(fp, len) != 0 {
-			return error_with_code(posix_get_error_msg(C.errno), C.errno)
+			return error_posix()
 		}
 	} $else {
 		if C.ftruncate(fp, len) != 0 {
-			return error_with_code(posix_get_error_msg(C.errno), C.errno)
+			return error_posix()
 		}
 	}
 }
@@ -263,8 +263,7 @@ pub fn cp(src string, dst string) ! {
 		w_src := src.replace('/', '\\')
 		w_dst := dst.replace('/', '\\')
 		if C.CopyFile(w_src.to_wide(), w_dst.to_wide(), false) == 0 {
-			result := C.GetLastError()
-			return error_with_code('failed to copy ${src} to ${dst}', int(result))
+			return error_win32(msg: 'failed to copy ${src} to ${dst}')
 		}
 	} $else {
 		fp_from := C.open(&char(src.str), C.O_RDONLY, 0)
@@ -320,7 +319,7 @@ pub fn vfopen(path string, mode string) !&C.FILE {
 		fp = C.fopen(&char(path.str), &char(mode.str))
 	}
 	if isnil(fp) {
-		return error('failed to open file "${path}"')
+		return error_posix(msg: 'failed to open file "${path}"')
 	} else {
 		return fp
 	}
@@ -515,7 +514,7 @@ pub fn rm(path string) ! {
 		rc = C.remove(&char(path.str))
 	}
 	if rc == -1 {
-		return error('Failed to remove "${path}": ' + posix_get_error_msg(C.errno))
+		return error_posix(msg: 'Failed to remove "${path}": ' + posix_get_error_msg(C.errno))
 	}
 	// C.unlink(path.cstr())
 }
@@ -526,12 +525,14 @@ pub fn rmdir(path string) ! {
 		rc := C.RemoveDirectory(path.to_wide())
 		if !rc {
 			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-removedirectorya - 0 == false, is failure
-			return error('Failed to remove "${path}": ' + posix_get_error_msg(C.errno))
+			return error_win32(
+				msg: 'Failed to remove "${path}": ' + get_error_msg(int(C.GetLastError()))
+			)
 		}
 	} $else {
 		rc := C.rmdir(&char(path.str))
 		if rc == -1 {
-			return error(posix_get_error_msg(C.errno))
+			return error_posix()
 		}
 	}
 }
@@ -868,7 +869,7 @@ fn kind_of_existing_path(path string) PathKind {
 pub fn chdir(path string) ! {
 	ret := $if windows { C._wchdir(path.to_wide()) } $else { C.chdir(&char(path.str)) }
 	if ret == -1 {
-		return error_with_code(posix_get_error_msg(C.errno), C.errno)
+		return error_posix()
 	}
 }
 
@@ -1021,7 +1022,7 @@ pub fn flush() {
 // Octals like `0o600` can be used.
 pub fn chmod(path string, mode int) ! {
 	if C.chmod(&char(path.str), mode) != 0 {
-		return error_with_code('chmod failed: ' + posix_get_error_msg(C.errno), C.errno)
+		return error_posix(msg: 'chmod failed: ' + posix_get_error_msg(C.errno))
 	}
 }
 
@@ -1031,7 +1032,7 @@ pub fn chown(path string, owner int, group int) ! {
 		return error('os.chown() not implemented for Windows')
 	} $else {
 		if C.chown(&char(path.str), owner, group) != 0 {
-			return error_with_code(posix_get_error_msg(C.errno), C.errno)
+			return error_posix()
 		}
 	}
 }
@@ -1053,7 +1054,7 @@ pub fn open_append(path string) !File {
 		}
 	}
 	if isnil(file.cfile) {
-		return error('failed to create(append) file "${path}"')
+		return error_posix(msg: 'failed to create(append) file "${path}"')
 	}
 	file.is_opened = true
 	return file
@@ -1078,7 +1079,7 @@ pub fn execvp(cmdpath string, cmdargs []string) ! {
 		res = C.execvp(&char(cmdpath.str), cargs.data)
 	}
 	if res == -1 {
-		return error_with_code(posix_get_error_msg(C.errno), C.errno)
+		return error_posix()
 	}
 
 	// just in case C._execvp returned ... that happens on windows ...
@@ -1112,7 +1113,7 @@ pub fn execve(cmdpath string, cmdargs []string, envs []string) ! {
 	// Note: normally execve does not return at all.
 	// If it returns, then something went wrong...
 	if res == -1 {
-		return error_with_code(posix_get_error_msg(C.errno), C.errno)
+		return error_posix()
 	}
 }
 
@@ -1153,5 +1154,38 @@ pub fn last_error() IError {
 		code := C.errno
 		msg := posix_get_error_msg(code)
 		return error_with_code(msg, code)
+	}
+}
+
+// Magic constant because zero is used explicitly at times
+const error_code_not_set = 0x7EFEFEFE
+
+@[params]
+struct SystemError {
+	msg  string
+	code int = os.error_code_not_set
+}
+
+// Return a POSIX error:
+// Code defaults to last error (from C.errno)
+// Message defaults to POSIX error message for the error code
+@[inline]
+pub fn error_posix(e SystemError) IError {
+	code := if e.code == os.error_code_not_set { C.errno } else { e.code }
+	message := if e.msg == '' { posix_get_error_msg(code) } else { e.msg }
+	return error_with_code(message, code)
+}
+
+// Return a Win32 API error:
+// Code defaults to last error (calling C.GetLastError())
+// Message defaults to Win 32 API error message for the error code
+@[inline]
+pub fn error_win32(e SystemError) IError {
+	$if windows {
+		code := if e.code == os.error_code_not_set { int(C.GetLastError()) } else { e.code }
+		message := if e.msg == '' { get_error_msg(code) } else { e.msg }
+		return error_with_code(message, code)
+	} $else {
+		panic('Win32 API not available on this platform.')
 	}
 }

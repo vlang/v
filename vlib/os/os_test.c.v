@@ -642,6 +642,16 @@ fn test_rmdir_all() {
 	assert !os.exists('some')
 }
 
+fn test_rmdir_not_exist() ! {
+	dir := 'non_existing_dir'
+	assert !os.exists(dir)
+	os.rmdir(dir) or {
+		// 0x00000002 is both ENOENT in POSIX and ERROR_FILE_NOT_FOUND in Win32 API
+		assert err.code() == 0x00000002
+	}
+	assert !os.exists(dir)
+}
+
 fn test_dir() {
 	$if windows {
 		assert os.dir('C:\\a\\b\\c') == 'C:\\a\\b'

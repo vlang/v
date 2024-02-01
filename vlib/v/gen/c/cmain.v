@@ -110,7 +110,10 @@ fn (mut g Gen) gen_c_main_header() {
 			g.writeln('\tGC_set_find_leak(1);')
 		}
 		g.writeln('\tGC_set_pages_executable(0);')
+		// NOTE: required when using GC_MALLOC & GC_register_my_thread
+		// g.writeln('\tGC_allow_register_threads();')
 		g.writeln('\tGC_INIT();')
+
 		if g.pref.gc_mode in [.boehm_incr, .boehm_incr_opt] {
 			g.writeln('\tGC_enable_incremental();')
 		}
@@ -217,6 +220,8 @@ pub fn (mut g Gen) gen_failing_return_error_for_test_fn(return_stmt ast.Return, 
 pub fn (mut g Gen) gen_c_main_profile_hook() {
 	if g.pref.is_prof {
 		g.writeln('')
+		g.writeln('\tsignal(SIGINT, vprint_profile_stats_on_signal);')
+		g.writeln('\tsignal(SIGTERM, vprint_profile_stats_on_signal);')
 		g.writeln('\tatexit(vprint_profile_stats);')
 		g.writeln('')
 	}
@@ -242,6 +247,8 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 			g.writeln('\tGC_set_find_leak(1);')
 		}
 		g.writeln('\tGC_set_pages_executable(0);')
+		// NOTE: required when using GC_MALLOC & GC_register_my_thread
+		// g.writeln('\tGC_allow_register_threads();')
 		g.writeln('\tGC_INIT();')
 		if g.pref.gc_mode in [.boehm_incr, .boehm_incr_opt] {
 			g.writeln('\tGC_enable_incremental();')

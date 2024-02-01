@@ -138,6 +138,7 @@ mut:
 	inside_or_block           bool
 	inside_call               bool
 	inside_curry_call         bool // inside foo()()!, foo()()?, foo()()
+	inside_dump_fn            bool
 	expected_fixed_arr        bool
 	inside_for_c_stmt         bool
 	inside_cast_in_heap     int // inside cast to interface type in heap (resolve recursive calls)
@@ -520,7 +521,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) (string
 
 	mut b := strings.new_builder(640000)
 	b.write_string(g.hashes())
-	if g.use_segfault_handler {
+	if g.use_segfault_handler || g.pref.is_prof {
 		b.writeln('\n#define V_USE_SIGNAL_H')
 	}
 	b.writeln('\n// V comptime_definitions:')
@@ -6172,6 +6173,9 @@ fn (mut g Gen) write_init_function() {
 	}
 	for x in cleaning_up_array.reverse() {
 		g.writeln(x)
+	}
+	if g.pref.use_coroutines {
+		g.writeln('\tdelete_photon_work_pool();')
 	}
 	g.writeln('}')
 	if g.pref.printfn_list.len > 0 && '_vcleanup' in g.pref.printfn_list {
