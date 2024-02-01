@@ -179,7 +179,8 @@ fn vweb_tmpl_${fn_name}() string {
 						len: s.len
 						line_nr: tline_number
 						pos: start_of_line_pos + position + s.len
-						last_line: lines.len
+						col: position + s.len
+						last_line: lines.len + 1
 					}
 					reporter: .parser
 				})
