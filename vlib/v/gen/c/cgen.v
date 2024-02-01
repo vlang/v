@@ -138,6 +138,7 @@ mut:
 	inside_or_block           bool
 	inside_call               bool
 	inside_curry_call         bool // inside foo()()!, foo()()?, foo()()
+	inside_dump_fn            bool
 	expected_fixed_arr        bool
 	inside_for_c_stmt         bool
 	// inside_comptime_for_field bool
@@ -180,7 +181,8 @@ mut:
 	sumtype_casting_fns     []SumtypeCastingFn
 	anon_fn_definitions     []string     // anon generated functions definition list
 	sumtype_definitions     map[int]bool // `_TypeA_to_sumtype_TypeB()` fns that have been generated
-	json_types              []ast.Type   // to avoid json gen duplicates
+	trace_fn_definitions    []string
+	json_types              []ast.Type // to avoid json gen duplicates
 	pcs                     []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
 	hotcode_fn_names        []string
 	hotcode_fpaths          []string
