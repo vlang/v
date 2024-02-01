@@ -6,7 +6,7 @@ import bitfield
 
 $if msvc {
 	#flag -I@VMODROOT/vlib/runtime/asm
-	#include "cpuinfo_x86.h"
+	#include "cpuinfo.h"
 
 	// msvc doesn't support embedded asm, so include a pre-compiled obj
 	$if x64 {
