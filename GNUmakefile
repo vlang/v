@@ -101,8 +101,8 @@ ifdef WIN32
 	$(CC) $(CFLAGS) -std=c99 -municode -w -o v1.exe $(VC)/$(VCFILE) $(LDFLAGS) -lws2_32
 	v1.exe -no-parallel -o v2.exe $(VFLAGS) cmd/v
 	v2.exe -o $(VEXE) $(VFLAGS) cmd/v
-	del v1.exe
-	del v2.exe
+	$(RM) v1.exe
+	$(RM) v2.exe
 else
 ifdef LEGACY
 	$(MAKE) -C $(TMPLEGACY)
