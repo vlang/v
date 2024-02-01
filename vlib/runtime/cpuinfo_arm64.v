@@ -4,9 +4,9 @@ module runtime
 // https://www.kernel.org/doc/html/latest/arch/arm64/cpu-feature-registers.html
 import bitfield
 
+#flag -I@VMODROOT/vlib/runtime/asm
+#include "cpuinfo.h"
 $if arm64 {
-	#flag -I@VMODROOT/vlib/runtime/asm
-	#include "cpuinfo.h"
 	// doesn't support arm64 embedded asm, so include a pre-compiled obj
 	#flag @VMODROOT/vlib/runtime/asm/cpuinfo_arm64.o
 }

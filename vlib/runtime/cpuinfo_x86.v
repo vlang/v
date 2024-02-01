@@ -4,10 +4,9 @@ module runtime
 // https://github.com/torvalds/linux/blob/master/arch/x86/include/asm/cpufeatures.h
 import bitfield
 
+#flag -I@VMODROOT/vlib/runtime/asm
+#include "cpuinfo.h"
 $if msvc {
-	#flag -I@VMODROOT/vlib/runtime/asm
-	#include "cpuinfo.h"
-
 	// msvc doesn't support embedded asm, so include a pre-compiled obj
 	$if x64 {
 		#flag @VMODROOT/vlib/runtime/asm/cpuinfo_amd64.obj
