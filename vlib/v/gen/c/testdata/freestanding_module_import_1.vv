@@ -1,0 +1,3 @@
+import v.gen.c.testdata.freestanding_define
+
+freestanding_define.hi()
