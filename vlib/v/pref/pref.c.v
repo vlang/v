@@ -1043,6 +1043,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		res.compile_defines << 'musl'
 		res.compile_defines_all << 'musl'
 	}
+	if res.is_bare {
+		// make `$if freestanding? {` + file_freestanding.v + file_notd_freestanding.v work:
+		res.compile_defines << 'freestanding'
+		res.compile_defines_all << 'freestanding'
+	}
 	if 'callstack' in res.compile_defines_all {
 		res.is_callstack = true
 	}
