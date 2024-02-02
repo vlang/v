@@ -255,9 +255,13 @@ fn should_skip(relpath string) bool {
 			return true
 		}
 	}
-	if gcc_path == '' {
-		if relpath.contains('freestanding_module_import_') {
-			eprintln('> skipping ${relpath} since it needs gcc, which you do not have')
+	if relpath.contains('freestanding_module_import_') {
+		if user_os != 'linux' {
+			eprintln('> skipping ${relpath} on != linux')
+			return true
+		}
+		if gcc_path == '' {
+			eprintln('> skipping ${relpath} since it needs gcc, which is not detected')
 			return true
 		}
 	}
