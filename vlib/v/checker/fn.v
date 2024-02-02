@@ -1523,13 +1523,7 @@ fn (mut c Checker) register_trace_call(node ast.CallExpr, func ast.Fn) {
 	is_traceable := c.pref.is_callstack && c.table.cur_fn != unsafe { nil } && c.pref.is_callstack
 		&& c.file.imports.any(it.mod == 'v.debug') && node.name != 'v.debug.callstack'
 	if is_traceable {
-		generic_name := node.concrete_types.map(c.table.type_to_str(it)).join('_')
-		hash_fn := '_v__trace__${c.table.cur_fn.name}_${node.name}_${generic_name}_${node.pos.line_nr}'
-		fn_name := if generic_name != '' {
-			'${node.name}_T_${generic_name}'
-		} else {
-			node.name
-		}
+		hash_fn, fn_name := c.table.get_trace_fn_name(c.table.cur_fn, node)
 		calling_fn := if func.is_method {
 			'${c.table.type_to_str(c.unwrap_generic(node.left_type))}_${fn_name}'
 		} else {
@@ -1543,7 +1537,6 @@ fn (mut c Checker) register_trace_call(node ast.CallExpr, func ast.Fn) {
 			func: &func
 			is_fn_var: node.is_fn_var
 		}
-		c.table.cur_fn.has_trace_fns = true
 	}
 }
 
