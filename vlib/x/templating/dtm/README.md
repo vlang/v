@@ -1,17 +1,23 @@
 # dtm - Dynamic Template Manager
 
-A simple template manager integrated into the V project, designed to combine the power of V templates with Vweb, without the need to recompile the application with every change.
+A simple template manager integrated into the V project, designed to combine the power of V
+templates with Vweb, without the need to recompile the application with every change.
 
 **_This module is in the experimental phase, it lacks some features and may contain bugs_**
 
 ## Quick Start
 
-Using the dynamic template manager ( named '**dtm**' in this readme) is relatively straightforward. You just need to create an instance and initialize it. 
-Then, call the '**serve_dynamic_template**' function in the code that manages your web pages. 
+Using the dynamic template manager ( named '**dtm**' in this readme) is relatively straightforward.
+You just need to create an instance and initialize it. Then, call the '**serve_dynamic_template**'
+function in the code that manages your web pages. 
 
-Before starting, at the root directory of your vweb project, you need to create a '**templates**' folder as well as a '**vcache**' folder. The absence of these directories at the root of your project will prevent you from using the dtm.
+Before starting, at the root directory of your vweb project, you need to create a '**templates**'
+folder as well as a '**vcache**' folder. The absence of these directories at the root of your
+project will prevent you from using the dtm.
 
-Next, you must add your HTML file into the folder you previously created. ***Be aware that if the HTML templates are not placed in the correct directory, the DTM will return an error message indicating that it cannot find the template!!***
+Next, you must add your HTML file into the folder you previously created. ***Be aware that if the
+HTML templates are not placed in the correct directory, the DTM will return an error message
+indicating that it cannot find the template!!***
 
 A minimal quick start example:
 
@@ -44,7 +50,8 @@ pub fn (mut app App) index() vweb.Result {
 
 ```
 
-You have a ready-to-view demonstration available [here](https://github.com/vlang/v/tree/master/vlib/vweb/tests/dynamic_template_manager_test_server).
+You have a ready-to-view demonstration available
+[here](https://github.com/vlang/v/tree/master/vlib/vweb/tests/dynamic_template_manager_test_server).
 
 ## Available Options
 
@@ -57,9 +64,12 @@ There are two types of option possibilities:
 
 Three parameters are available:
 
-- `max_size_data_in_mem` : ( **Int** value ) Maximum size of data allowed in memory for each cached template. The value must be specified in kilobytes. ( Default is: 500KB / Limit max is : 500KB )
-- `compress_html` : ( **Bool** value ) Light compress of the HTML ouput, to remove all unnecessary spacing. ( Default is true )
-- `active_cache_server` : ( **Bool** value ) Activate or not the template cache system. ( Default is true, ***_Highly recommended to keep it enabled for optimal performance_*** )
+- `max_size_data_in_mem` : ( **Int** value ) Maximum size of data allowed in memory for each cached
+  template. The value must be specified in kilobytes. ( Default is: 500KB / Limit max is : 500KB )
+- `compress_html` : ( **Bool** value ) Light compress of the HTML ouput, to remove all unnecessary
+  spacing. ( Default is true )
+- `active_cache_server` : ( **Bool** value ) Activate or not the template cache system. ( Default is
+  true, ***_Highly recommended to keep it enabled for optimal performance_*** )
 
 Using like this :
 
@@ -74,11 +84,17 @@ initialize_dtm(mut app.dtm,
 
 ### Defined for each web page
 
-- `placeholders` ( **&map[string]DtmMultiTypeMap** value ) Used to map placeholders within the template to their corresponding content, facilitating dynamic content insertion, by specifying values in the placeholders map. Templates can dynamically display content.
+- `placeholders` ( **&map[string]DtmMultiTypeMap** value ) Used to map placeholders within the
+  template to their corresponding content, facilitating dynamic content insertion, by specifying
+  values in the placeholders map. Templates can dynamically display content.
 
-- `cache_delay_expiration` ( **i64** value ) Specifies the cache expiration time for the concerned page in seconds. ( Minimum value is **300** seconds and maximum is **31536000** seconds, equivalent to five minutes and one year. Default value is **86400** seconds or one day ). You can add any value you want in seconds as long as it remains within the previously indicated range. 
+- `cache_delay_expiration` ( **i64** value ) Specifies the cache expiration time for the concerned
+  page in seconds. ( Minimum value is **300** seconds and maximum is **31536000** seconds,
+  equivalent to five minutes and one year. Default value is **86400** seconds or one day ). You can
+  add any value you want in seconds as long as it remains within the previously indicated range. 
 
-Possibility to use already defined cache delay constants like: `cache_delay_expiration_at_min`, `cache_delay_expiration_at_max`, `cache_delay_expiration_by_default`
+Possibility to use already defined cache delay constants like: `cache_delay_expiration_at_min`,
+`cache_delay_expiration_at_max`, `cache_delay_expiration_by_default`
 
 Using like this :
 
@@ -93,7 +109,8 @@ serve_dynamic_template('path/of/template.html',
 
 ### On The User's Side Code :
 
-The placeholder system allows for the insertion of dynamic content into your template. As of the current state of the module, it accepts the following types like:
+The placeholder system allows for the insertion of dynamic content into your template. As of the
+current state of the module, it accepts the following types like:
 
 ```
 - string
@@ -114,7 +131,9 @@ serve_dynamic_template('path/of/template.html',
 		placeholders: &plhs
 )
 ```
-Pay attention to this particular tag: "**_#includehtml**", it enables you to include HTML in the dynamic content. Without this tag, all characters will be escaped for obvious security reasons. By using this tag, only certain HTML tags are allowed. Here is the list:
+Pay attention to this particular tag: "**_#includehtml**", it enables you to include HTML in the
+dynamic content. Without this tag, all characters will be escaped for obvious security reasons. By
+using this tag, only certain HTML tags are allowed. Here is the list:
 
 ```
 '<div>', '</div>', '<h1>', '</h1>', '<h2>', '</h2>', '<h3>', '</h3>', '<h4>',
@@ -147,10 +166,15 @@ An example of a template, corresponding to the previous subsection:
   </body>
 </html>
 ```
-You will note that the `'_#includehtml'` directive is not found in the template with `'@placeholder_name_3'`, and this is entirely normal. Directives are specially handled by the DTM, and including them in the name of your placeholders within the template will result in the placeholder not being found because it does not match the key name defined in the map containing the dynamic content.
+You will note that the `'_#includehtml'` directive is not found in the template with
+`'@placeholder_name_3'`, and this is entirely normal. Directives are specially handled by the DTM,
+and including them in the name of your placeholders within the template will result in the
+placeholder not being found because it does not match the key name defined in the map containing the
+dynamic content.
 
 
-Like the traditional template system in V, inclusions or placeholders start with the '**@**' character. The traditional inclusion system is still perfectly usable, such as:
+Like the traditional template system in V, inclusions or placeholders start with the '**@**'
+character. The traditional inclusion system is still perfectly usable, such as:
 
 ```
 - @include 'my/html/path.html'
@@ -160,7 +184,9 @@ Like the traditional template system in V, inclusions or placeholders start with
 
 ## In The Future
 
-As you've understood, the DTM is still under development and optimization. There are functionalities to be added, such as data compression, managing loops or conditions within the template itself. Able to be used in contexts other than HTML, such as text files, and for modules other than vweb.
+As you've understood, the DTM is still under development and optimization. There are functionalities
+to be added, such as data compression, managing loops or conditions within the template itself. Able
+to be used in contexts other than HTML, such as text files, and for modules other than vweb.
 
 This will come in time.
 
