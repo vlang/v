@@ -3663,7 +3663,10 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	sym := g.table.sym(g.unwrap_generic(node.expr_type))
 	field_name := if sym.language == .v { c_name(node.field_name) } else { node.field_name }
-
+	is_as_cast := node.expr is ast.AsCast
+	if is_as_cast {
+		g.write('(')
+	}
 	if node.or_block.kind != .absent && !g.is_assign_lhs && g.table.sym(node.typ).kind != .chan {
 		is_ptr := sym.kind in [.interface_, .sum_type]
 		stmt_str := g.go_before_last_stmt().trim_space()
@@ -3876,6 +3879,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	if is_opt_or_res {
 		g.write('.data)')
+	}
+	if is_as_cast {
+		g.write(')')
 	}
 	// struct embedding
 	if sym.info in [ast.Struct, ast.Aggregate] {
