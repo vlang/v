@@ -264,7 +264,7 @@ pub fn (db &DB) get_queryset(query string) ![]QuerySet {
 	// https://www.sqlite.org/syntax/join-clause.html
 	mut select_header := regex_opt(r'select((\s)+(all)|(distinct)(\s)+)|(\s)+')!
 	mut from := regex_opt(r'(\s)+from(\s)+')!
-	
+
 	// or do not include 'FROM', just like 'SELECT 1 + 1'
 	if query_lower.count('select') == 1 && query_lower.contains('from') {
 		// The execution of this function indicates that the passed
