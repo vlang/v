@@ -16,7 +16,7 @@ fn get_test(id int) (?ITest, string) {
 	}
 }
 
-fn main() {
+fn test_main() {
 	t, _ := get_test(0)
 
 	if tt := t {
