@@ -1436,6 +1436,10 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			c.expr(mut node_expr)
 			name_type = node.expr.typ
 		}
+		ast.AsCast {
+			c.add_error_detail('for example `(${node.expr.expr} as ${c.table.type_to_str(node.expr.typ)}).${node.field_name}`')
+			c.error('indeterminate `as` cast, use parenthesis to clarity', node.expr.pos)
+		}
 		else {}
 	}
 	if name_type > 0 {
