@@ -782,7 +782,10 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 	}
 
 	// first execute before_request
-	user_context.before_request()
+	$if A is HasBeforeRequest {
+		app.before_request()
+	}
+	// user_context.before_request()
 	if user_context.Context.done {
 		return
 	}
@@ -995,4 +998,10 @@ fn fast_send_resp_header(mut conn net.TcpConn, resp http.Response) ! {
 fn fast_send_resp(mut conn net.TcpConn, resp http.Response) ! {
 	fast_send_resp_header(mut conn, resp)!
 	send_string(mut conn, resp.body)!
+}
+
+// Set s to the form error
+pub fn (mut ctx Context) error(s string) {
+	eprintln('[vweb] Context.error: ${s}')
+	ctx.form_error = s
 }

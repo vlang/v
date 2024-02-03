@@ -169,3 +169,7 @@ pub fn decode_gzip[T]() MiddlewareOptions[T] {
 		}
 	}
 }
+
+interface HasBeforeRequest {
+	before_request()
+}
