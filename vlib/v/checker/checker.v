@@ -2036,7 +2036,8 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 			for i, ident in node.defer_vars {
 				mut id := ident
 				if mut id.info is ast.IdentVar {
-					if id.comptime && id.name in ast.valid_comptime_not_user_defined {
+					if id.comptime && (id.tok_kind == .question
+						|| id.name in ast.valid_comptime_not_user_defined) {
 						node.defer_vars[i] = ast.Ident{
 							scope: unsafe { nil }
 							name: ''
