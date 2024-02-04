@@ -202,7 +202,7 @@ pub:
 
 // set_headers adds the CORS headers on the response
 pub fn (options &CorsOptions) set_headers(mut ctx Context) {
-	// A browser will reject a CORS request when the Acess-Control-Allow-Origin header
+	// A browser will reject a CORS request when the Access-Control-Allow-Origin header
 	// is not present. By not setting the CORS headers when an invalid origin is supplied
 	// we force the browser to reject the preflight and the actual request.
 	origin := ctx.req.header.get(.origin) or { return }
