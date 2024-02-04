@@ -6622,19 +6622,29 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 						is_array_fixed = expr_stmt.expr is ast.ArrayInit
 							&& g.table.final_sym(return_type).kind == .array_fixed
 						if !is_array_fixed {
-							g.write('*(${cast_typ}*) ${cvar_name}.data = ')
+							if g.inside_return && expr_stmt.expr is ast.CallExpr
+								&& return_type.has_option_or_result() {
+								g.write('${cvar_name} = ')
+							} else {
+								g.write('*(${cast_typ}*) ${cvar_name}.data = ')
+							}
 						}
 					} else {
 						g.write('${cvar_name} = ')
 					}
-
 					if is_array_fixed {
 						g.write('memcpy(${cvar_name}.data, (${cast_typ})')
 					}
-					old_inside_opt_data := g.inside_opt_data
-					g.inside_opt_data = true
-					g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_option_and_result())
-					g.inside_opt_data = old_inside_opt_data
+					// return expr or { fn_returns_option() }
+					if is_option && g.inside_return && expr_stmt.expr is ast.CallExpr
+						&& return_type.has_option_or_result() {
+						g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type)
+					} else {
+						old_inside_opt_data := g.inside_opt_data
+						g.inside_opt_data = true
+						g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_option_and_result())
+						g.inside_opt_data = old_inside_opt_data
+					}
 					if is_array_fixed {
 						g.write(', sizeof(${cast_typ}))')
 					}
