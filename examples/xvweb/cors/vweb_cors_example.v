@@ -49,7 +49,7 @@ xhr.send();
 	// use vweb's cors middleware to handle CORS requests
 	app.use(vweb.cors[Context](vweb.CorsOptions{
 		// allow CORS requests from every domain
-		origins: ['google.com']
+		origins: ['*']
 		// allow CORS requests with the following request methods:
 		allowed_methods: [.get, .head, .patch, .put, .post, .delete]
 	}))
