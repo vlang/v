@@ -14,5 +14,5 @@ fn test_main() {
 	mut bar := Foobar(Bar{
 		y: 123
 	})
-	assert bar as Bar.y == 123
+	assert (bar as Bar).y == 123
 }
