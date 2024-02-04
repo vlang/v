@@ -5273,8 +5273,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				call_expr := expr as ast.CallExpr
 				expr_sym := g.table.sym(call_expr.return_type)
 				mut tmp := g.new_tmp_var()
-				if !call_expr.return_type.has_flag(.option)
-					&& !call_expr.return_type.has_flag(.result) {
+				if !call_expr.return_type.has_option_or_result() {
 					line := g.go_before_last_stmt()
 					expr_styp := g.typ(call_expr.return_type)
 					g.write('${expr_styp} ${tmp}=')
@@ -5305,10 +5304,10 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			if expr.is_auto_deref_var() {
 				g.write('*')
 			}
-			if g.table.sym(mr_info.types[i]).kind in [.sum_type, .interface_] {
-				g.expr_with_cast(expr, node.types[i], mr_info.types[i])
-			} else if mr_info.types[i].has_flag(.option) {
+			if mr_info.types[i].has_flag(.option) {
 				g.expr_with_opt(expr, node.types[i], mr_info.types[i])
+			} else if g.table.sym(mr_info.types[i]).kind in [.sum_type, .interface_] {
+				g.expr_with_cast(expr, node.types[i], mr_info.types[i])
 			} else {
 				g.expr(expr)
 			}
