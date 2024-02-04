@@ -2970,7 +2970,9 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 				// continue
 				// }
 				// if v.pos.pos > end_pos {
-				if obj.pos.pos > end_pos || (obj.pos.pos < start_pos && obj.pos.line_nr == line_nr) {
+				if obj.pos.pos > end_pos
+					|| (obj.pos.pos < start_pos && obj.pos.line_nr == line_nr)
+					|| (end_pos < scope.end_pos && obj.expr is ast.IfExpr) {
 					// Do not free vars that were declared after this scope
 					continue
 				}
