@@ -321,7 +321,12 @@ fn (mut p Parser) parse_fn_type(name string, generic_types []ast.Type) ast.Type 
 	// MapFooFn typedefs are manually added in cheaders.v
 	// because typedefs get generated after the map struct is generated
 	has_decl := p.builtin_mod && name.starts_with('Map') && name.ends_with('Fn')
+	already_exists := p.table.find_type_idx(name) != 0
 	idx := p.table.find_or_register_fn_type(func, false, has_decl)
+	if already_exists && p.table.sym_by_idx(idx).kind != .function {
+		p.error_with_pos('cannot register fn `${name}`, another type with this name exists',
+			fn_type_pos)
+	}
 	if has_generic {
 		return ast.new_type(idx).set_flag(.generic)
 	}
