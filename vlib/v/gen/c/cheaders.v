@@ -326,7 +326,8 @@ const c_common_macros = '
 #endif
 
 #ifdef __TINYC__
-	#define _Atomic volatile
+	// remove _Atomic , as latest tcc can't work with it
+	//#define _Atomic volatile 
 	#undef EMPTY_STRUCT_DECLARATION
 	#undef EMPTY_STRUCT_INITIALIZATION
 	#define EMPTY_STRUCT_DECLARATION unsigned char _dummy_pad
