@@ -353,8 +353,12 @@ fn ev_callback[A, X](mut pv picoev.Picoev, fd int, events int) {
 		} else if params.string_responses[fd].open {
 			handle_write_string(mut pv, mut params, fd)
 		} else {
-			// this should never happen
-			eprintln('[vweb] error: write event on connection should be closed')
+			// This should never happen, but it does on pages, that refer to static resources,
+			// in folders, added with `mount_static_folder_at`. See also
+			// https://github.com/vlang/edu-platform/blob/0c203f0384cf24f917f9a7c9bb150f8d64aca00f/main.v#L92
+			$if debug_ev_callback ? {
+				eprintln('[vweb] error: write event on connection should be closed')
+			}
 			pv.close_conn(fd)
 		}
 	} else if events == picoev.picoev_read {
