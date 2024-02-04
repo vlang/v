@@ -138,64 +138,65 @@ mut:
 	inside_or_block           bool
 	inside_call               bool
 	inside_curry_call         bool // inside foo()()!, foo()()?, foo()()
+	inside_dump_fn            bool
 	expected_fixed_arr        bool
 	inside_for_c_stmt         bool
-	// inside_comptime_for_field bool
-	inside_cast_in_heap     int // inside cast to interface type in heap (resolve recursive calls)
-	inside_cast             bool
-	inside_const            bool
-	inside_array_item       bool
-	inside_const_opt_or_res bool
-	inside_lambda           bool
-	inside_cinit            bool
-	inside_interface_deref  bool
-	last_tmp_call_var       []string
-	loop_depth              int
-	ternary_names           map[string]string
-	ternary_level_names     map[string][]string
-	arraymap_set_pos        int      // map or array set value position
-	stmt_path_pos           []int    // positions of each statement start, for inserting C statements before the current statement
-	skip_stmt_pos           bool     // for handling if expressions + autofree (since both prepend C statements)
-	left_is_opt             bool     // left hand side on assignment is an option
-	right_is_opt            bool     // right hand side on assignment is an option
-	assign_ct_type          ast.Type // left hand side resolved comptime type
-	indent                  int
-	empty_line              bool
-	assign_op               token.Kind // *=, =, etc (for array_set)
-	defer_stmts             []ast.DeferStmt
-	defer_ifdef             string
-	defer_profile_code      string
-	defer_vars              []string
-	str_types               []StrType       // types that need automatic str() generation
-	generated_str_fns       []StrType       // types that already have a str() function
-	str_fn_names            []string        // remove duplicate function names
-	threaded_fns            shared []string // for generating unique wrapper types and fns for `go xxx()`
-	waiter_fns              shared []string // functions that wait for `go xxx()` to finish
-	needed_equality_fns     []ast.Type
-	generated_eq_fns        []ast.Type
-	array_sort_fn           shared []string
-	array_contains_types    []ast.Type
-	array_index_types       []ast.Type
-	auto_fn_definitions     []string // auto generated functions definition list
-	sumtype_casting_fns     []SumtypeCastingFn
-	anon_fn_definitions     []string     // anon generated functions definition list
-	sumtype_definitions     map[int]bool // `_TypeA_to_sumtype_TypeB()` fns that have been generated
-	json_types              []ast.Type   // to avoid json gen duplicates
-	pcs                     []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
-	hotcode_fn_names        []string
-	hotcode_fpaths          []string
-	embedded_files          []ast.EmbeddedFile
-	sql_i                   int
-	sql_stmt_name           string
-	sql_bind_name           string
-	sql_idents              []string
-	sql_idents_types        []ast.Type
-	sql_left_type           ast.Type
-	sql_table_name          string
-	sql_fkey                string
-	sql_parent_id           string
-	sql_side                SqlExprSide // left or right, to distinguish idents in `name == name`
-	strs_to_free0           []string    // strings.Builder
+	inside_cast_in_heap       int // inside cast to interface type in heap (resolve recursive calls)
+	inside_cast               bool
+	inside_const              bool
+	inside_array_item         bool
+	inside_const_opt_or_res   bool
+	inside_lambda             bool
+	inside_cinit              bool
+	inside_interface_deref    bool
+	last_tmp_call_var         []string
+	loop_depth                int
+	ternary_names             map[string]string
+	ternary_level_names       map[string][]string
+	arraymap_set_pos          int      // map or array set value position
+	stmt_path_pos             []int    // positions of each statement start, for inserting C statements before the current statement
+	skip_stmt_pos             bool     // for handling if expressions + autofree (since both prepend C statements)
+	left_is_opt               bool     // left hand side on assignment is an option
+	right_is_opt              bool     // right hand side on assignment is an option
+	assign_ct_type            ast.Type // left hand side resolved comptime type
+	indent                    int
+	empty_line                bool
+	assign_op                 token.Kind // *=, =, etc (for array_set)
+	defer_stmts               []ast.DeferStmt
+	defer_ifdef               string
+	defer_profile_code        string
+	defer_vars                []string
+	str_types                 []StrType       // types that need automatic str() generation
+	generated_str_fns         []StrType       // types that already have a str() function
+	str_fn_names              []string        // remove duplicate function names
+	threaded_fns              shared []string // for generating unique wrapper types and fns for `go xxx()`
+	waiter_fns                shared []string // functions that wait for `go xxx()` to finish
+	needed_equality_fns       []ast.Type
+	generated_eq_fns          []ast.Type
+	array_sort_fn             shared []string
+	array_contains_types      []ast.Type
+	array_index_types         []ast.Type
+	auto_fn_definitions       []string // auto generated functions definition list
+	sumtype_casting_fns       []SumtypeCastingFn
+	anon_fn_definitions       []string     // anon generated functions definition list
+	sumtype_definitions       map[int]bool // `_TypeA_to_sumtype_TypeB()` fns that have been generated
+	trace_fn_definitions      []string
+	json_types                []ast.Type // to avoid json gen duplicates
+	pcs                       []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
+	hotcode_fn_names          []string
+	hotcode_fpaths            []string
+	embedded_files            []ast.EmbeddedFile
+	sql_i                     int
+	sql_stmt_name             string
+	sql_bind_name             string
+	sql_idents                []string
+	sql_idents_types          []ast.Type
+	sql_left_type             ast.Type
+	sql_table_name            string
+	sql_fkey                  string
+	sql_parent_id             string
+	sql_side                  SqlExprSide // left or right, to distinguish idents in `name == name`
+	strs_to_free0             []string    // strings.Builder
 	// strs_to_free          []string // strings.Builder
 	// tmp_arg_vars_to_free  []string
 	// autofree_pregen       map[string]string
@@ -3662,7 +3663,10 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	sym := g.table.sym(g.unwrap_generic(node.expr_type))
 	field_name := if sym.language == .v { c_name(node.field_name) } else { node.field_name }
-
+	is_as_cast := node.expr is ast.AsCast
+	if is_as_cast {
+		g.write('(')
+	}
 	if node.or_block.kind != .absent && !g.is_assign_lhs && g.table.sym(node.typ).kind != .chan {
 		is_ptr := sym.kind in [.interface_, .sum_type]
 		stmt_str := g.go_before_last_stmt().trim_space()
@@ -3876,6 +3880,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if is_opt_or_res {
 		g.write('.data)')
 	}
+	if is_as_cast {
+		g.write(')')
+	}
 	// struct embedding
 	if sym.info in [ast.Struct, ast.Aggregate] {
 		for i, embed in node.from_embed_types {
@@ -4020,6 +4027,8 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 							''
 						} else if str_method_expects_ptr && !obj.typ.is_ptr() {
 							'&'
+						} else if !str_method_expects_ptr && obj.typ.is_ptr() {
+							'*'.repeat(obj.typ.nr_muls())
 						} else if obj.is_auto_heap && var_typ.is_ptr() && str_method_expects_ptr {
 							'*'
 						} else if !obj.is_auto_heap && var_typ.is_ptr() && str_method_expects_ptr {
@@ -5264,8 +5273,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				call_expr := expr as ast.CallExpr
 				expr_sym := g.table.sym(call_expr.return_type)
 				mut tmp := g.new_tmp_var()
-				if !call_expr.return_type.has_flag(.option)
-					&& !call_expr.return_type.has_flag(.result) {
+				if !call_expr.return_type.has_option_or_result() {
 					line := g.go_before_last_stmt()
 					expr_styp := g.typ(call_expr.return_type)
 					g.write('${expr_styp} ${tmp}=')
@@ -5296,10 +5304,10 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			if expr.is_auto_deref_var() {
 				g.write('*')
 			}
-			if g.table.sym(mr_info.types[i]).kind in [.sum_type, .interface_] {
-				g.expr_with_cast(expr, node.types[i], mr_info.types[i])
-			} else if mr_info.types[i].has_flag(.option) {
+			if mr_info.types[i].has_flag(.option) {
 				g.expr_with_opt(expr, node.types[i], mr_info.types[i])
+			} else if g.table.sym(mr_info.types[i]).kind in [.sum_type, .interface_] {
+				g.expr_with_cast(expr, node.types[i], mr_info.types[i])
 			} else {
 				g.expr(expr)
 			}

@@ -143,7 +143,7 @@ pub fn (app &App) login(mut ctx Context) vweb.Result {
 		} else {
 			// we receive a POST request, so we want to explicitly tell the browser
 			// to send a GET request to the profile page.
-			return ctx.redirect('/profile', .see_other)
+			return ctx.redirect('/profile')
 		}
 	}
 }
@@ -772,7 +772,7 @@ pub fn (app &App) index(mut ctx Context) vweb.Result {
 	if token == '' {
 		// redirect the user to '/login' if the 'token' cookie is not set
 		// we explicitly tell the browser to send a GET request
-		return ctx.redirect('/login', .see_other)
+		return ctx.redirect('/login', typ: .see_other)
 	} else {
 		return ctx.text('Welcome!')
 	}

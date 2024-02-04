@@ -498,6 +498,8 @@ pub enum StructInitKind {
 // import statement
 pub struct Import {
 pub:
+	source_name string // The original name in the source, `import abc.def` -> 'abc.def', *no matter* how the module is resolved
+	//
 	mod       string // the module name of the import
 	alias     string // the `x` in `import xxx as x`
 	pos       token.Pos
@@ -571,6 +573,7 @@ pub mut:
 	params            []Param
 	stmts             []Stmt
 	defer_stmts       []DeferStmt
+	trace_fns         map[string]FnTrace
 	return_type       Type
 	return_type_pos   token.Pos // `string` in `fn (u User) name() string` position
 	has_return        bool
@@ -605,6 +608,18 @@ pub fn (f &FnDecl) new_method_with_receiver_type(new_type_ Type) FnDecl {
 		new_method.params[0].typ = new_type
 		return *new_method
 	}
+}
+
+@[minify]
+pub struct FnTrace {
+pub mut:
+	name string
+pub:
+	file        string
+	line        i64
+	return_type Type
+	func        &Fn = unsafe { nil }
+	is_fn_var   bool
 }
 
 @[minify]

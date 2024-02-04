@@ -448,6 +448,7 @@ fn (t Tree) stmt(node ast.Stmt) &Node {
 fn (t Tree) import_module(node ast.Import) &Node {
 	mut obj := new_object()
 	obj.add_terse('ast_type', t.string_node('Import'))
+	obj.add_terse('source_name', t.string_node(node.source_name))
 	obj.add_terse('mod', t.string_node(node.mod))
 	obj.add_terse('alias', t.string_node(node.alias))
 	obj.add_terse('syms', t.array_node_import_symbol(node.syms))

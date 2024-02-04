@@ -1436,6 +1436,10 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			c.expr(mut node_expr)
 			name_type = node.expr.typ
 		}
+		ast.AsCast {
+			c.add_error_detail('for example `(${node.expr.expr} as ${c.table.type_to_str(node.expr.typ)}).${node.field_name}`')
+			c.error('indeterminate `as` cast, use parenthesis to clarity', node.expr.pos)
+		}
 		else {}
 	}
 	if name_type > 0 {
@@ -2036,7 +2040,8 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 			for i, ident in node.defer_vars {
 				mut id := ident
 				if mut id.info is ast.IdentVar {
-					if id.comptime && id.name in ast.valid_comptime_not_user_defined {
+					if id.comptime && (id.tok_kind == .question
+						|| id.name in ast.valid_comptime_not_user_defined) {
 						node.defer_vars[i] = ast.Ident{
 							scope: unsafe { nil }
 							name: ''

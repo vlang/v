@@ -1459,6 +1459,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			}
 		}
 	}
+
 	// resolve return generics struct to concrete type
 	if func.generic_names.len > 0 && func.return_type.has_flag(.generic)
 		&& c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len == 0 {
@@ -1473,6 +1474,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 			concrete_types)
 		{
 			node.return_type = typ
+			c.register_trace_call(node, func)
 			return typ
 		}
 	}
@@ -1489,6 +1491,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					node.return_type = typ
 				}
 			}
+			c.register_trace_call(node, func)
 			return node.return_type
 		} else {
 			if node.concrete_types.len > 0 && !node.concrete_types.any(it.has_flag(.generic)) {
@@ -1496,6 +1499,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					node.concrete_types)
 				{
 					node.return_type = typ
+					c.register_trace_call(node, func)
 					return typ
 				}
 			}
@@ -1505,11 +1509,35 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				if typ.has_flag(.generic) {
 					node.return_type = typ
 				}
+				c.register_trace_call(node, func)
 				return typ
 			}
 		}
 	}
+	c.register_trace_call(node, func)
 	return func.return_type
+}
+
+// register_trace_call registers the wrapper funcs for calling funcs for callstack feature
+fn (mut c Checker) register_trace_call(node ast.CallExpr, func ast.Fn) {
+	is_traceable := c.pref.is_callstack && c.table.cur_fn != unsafe { nil } && c.pref.is_callstack
+		&& c.file.imports.any(it.mod == 'v.debug') && node.name != 'v.debug.callstack'
+	if is_traceable {
+		hash_fn, fn_name := c.table.get_trace_fn_name(c.table.cur_fn, node)
+		calling_fn := if func.is_method {
+			'${c.table.type_to_str(c.unwrap_generic(node.left_type))}_${fn_name}'
+		} else {
+			fn_name
+		}
+		c.table.cur_fn.trace_fns[hash_fn] = ast.FnTrace{
+			name: calling_fn
+			file: c.file.path
+			line: node.pos.line_nr + 1
+			return_type: node.return_type
+			func: &func
+			is_fn_var: node.is_fn_var
+		}
+	}
 }
 
 fn (mut c Checker) resolve_comptime_args(func ast.Fn, node_ ast.CallExpr, concrete_types []ast.Type) map[int]ast.Type {
@@ -2421,7 +2449,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			}
 		}
 	}
-
+	c.register_trace_call(node, method)
 	return node.return_type
 }
 

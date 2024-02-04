@@ -225,9 +225,14 @@ pub fn (mut ctx Context) server_error(msg string) Result {
 	return ctx.send_response_to_client('text/plain', msg)
 }
 
+@[params]
+pub struct RedirectParams {
+	typ RedirectType
+}
+
 // Redirect to an url
-pub fn (mut ctx Context) redirect(url string, redirect_type RedirectType) Result {
-	status := http.Status(redirect_type)
+pub fn (mut ctx Context) redirect(url string, params RedirectParams) Result {
+	status := http.Status(params.typ)
 	ctx.res.set_status(status)
 
 	ctx.res.header.add(.location, url)
