@@ -8,7 +8,7 @@ const localserver = 'http://localhost:${port}'
 const exit_after = time.second * 10
 const allowed_origin = 'https://vlang.io'
 const cors_options = vweb.CorsOptions{
-	origin: allowed_origin
+	origins: [allowed_origin]
 	allowed_methods: [.get, .head]
 }
 

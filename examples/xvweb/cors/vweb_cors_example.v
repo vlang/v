@@ -30,13 +30,6 @@ pub fn (app &App) time(mut ctx Context) vweb.Result {
 	})
 }
 
-// no_cors is a simple POST request handler, that returns a string.
-// For this example we don't want to expose the private route to any other origins/domains.
-@[post]
-pub fn (app &App) no_cors(mut ctx Context) vweb.Result {
-	return ctx.text('not available for cross-origin domains')
-}
-
 fn main() {
 	println("
 To test, if CORS works, copy this JS snippet, then go to for example https://stackoverflow.com/ , 
@@ -56,7 +49,7 @@ xhr.send();
 	// use vweb's cors middleware to handle CORS requests
 	app.use(vweb.cors[Context](vweb.CorsOptions{
 		// allow CORS requests from every domain
-		origin: '*'
+		origins: ['google.com']
 		// allow CORS requests with the following request methods:
 		allowed_methods: [.get, .head, .patch, .put, .post, .delete]
 	}))

@@ -184,7 +184,7 @@ pub const cors_safelisted_response_headers = [http.CommonHeader.cache_control, .
 pub struct CorsOptions {
 pub:
 	// from which origin(s) can cross-origin requests be made; `Access-Control-Allow-Origin`
-	origin string @[required]
+	origins []string @[required]
 	// indicate whether the server allows credentials, e.g. cookies, in cross-origin requests.
 	// ;`Access-Control-Allow-Credentials`
 	allow_credentials bool
@@ -202,7 +202,15 @@ pub:
 
 // set_headers adds the CORS headers on the response
 pub fn (options &CorsOptions) set_headers(mut ctx Context) {
-	ctx.set_header(.access_control_allow_origin, options.origin)
+	// A browser will reject a CORS request when the Acess-Control-Allow-Origin header
+	// is not present. By not setting the CORS headers when an invalid origin is supplied
+	// we force the browser to reject the preflight and the actual request.
+	origin := ctx.req.header.get(.origin) or { return }
+	if options.origins != ['*'] && origin !in options.origins {
+		return
+	}
+
+	ctx.set_header(.access_control_allow_origin, origin)
 	ctx.set_header(.vary, 'Origin, Access-Control-Request-Headers')
 
 	// dont' set the value of `Access-Control-Allow-Credentials` to 'false', but
@@ -237,16 +245,8 @@ pub fn (options &CorsOptions) set_headers(mut ctx Context) {
 // headers. If a cross-origin request is invalid this method will send a response
 // using `ctx`.
 pub fn (options &CorsOptions) validate_request(mut ctx Context) bool {
-	ctx.set_header(.access_control_allow_origin, options.origin)
-	ctx.set_header(.vary, 'Origin, Access-Control-Request-Headers')
-
-	origin := ctx.get_header(.origin) or { return true }
-
-	// detected a cross-origin request
-	// "${origin}": HTTP ${ctx.req.method} ${ctx.req.url}
-
-	// validate request origin
-	if options.origin !in ['*', 'null'] && origin != options.origin {
+	origin := ctx.req.header.get(.origin) or { return true }
+	if options.origins != ['*'] && origin !in options.origins {
 		ctx.res.set_status(.forbidden)
 		ctx.text('invalid CORS origin')
 
@@ -255,6 +255,10 @@ pub fn (options &CorsOptions) validate_request(mut ctx Context) bool {
 		}
 		return false
 	}
+
+	ctx.set_header(.access_control_allow_origin, origin)
+	ctx.set_header(.vary, 'Origin, Access-Control-Request-Headers')
+
 	// validate request method
 	if ctx.req.method !in options.allowed_methods {
 		ctx.res.set_status(.method_not_allowed)
