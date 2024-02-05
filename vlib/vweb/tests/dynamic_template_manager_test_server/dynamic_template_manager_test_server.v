@@ -6,7 +6,7 @@ import os
 struct App {
 	vweb.Context
 pub mut:
-	dtm                &dtm.DynamicTemplateManager = dtm.create_dtm() @[vweb_global]
+	dtmi               &dtm.DynamicTemplateManager = unsafe { nil } @[vweb_global]
 	shared_data_string []string                    @[vweb_global]
 	shared_data_int    []int                       @[vweb_global]
 	shared_switch      int = 1                         @[vweb_global]
@@ -23,12 +23,12 @@ fn main() {
 	app.shared_data_int << 123456
 	app.shared_data_int << 7891011
 
-	dtm.initialize_dtm(mut app.dtm) or { eprintln(err) }
+	app.dtmi = dtm.initialize()
 	/*
-	app.initialize_dtm(mut &app.dtm,
+	app.initialize_dtm(
 	compress_html: false
 	active_cache_server: false
-	max_size_data_in_mem: 100) or { eprintln(err) }
+	max_size_data_in_mem: 100)
 	*/
 	go app.update_data()
 
@@ -46,7 +46,7 @@ pub fn (mut app App) index() vweb.Result {
 	tmpl_var['html_#includehtml'] = app.shared_data_string[app.shared_switch + 2]
 
 	// You can also modify the HTML template file directly without having to recompile the application.
-	html_content := app.dtm.serve_dynamic_template('index.html',
+	html_content := app.dtmi.expand('index.html',
 		placeholders: &tmpl_var
 		cache_delay_expiration: dtm.cache_delay_expiration_at_min
 	)

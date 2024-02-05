@@ -81,7 +81,7 @@ mut:
 	nbr_of_remaining_template_request shared []RemainingTemplateRequest = []RemainingTemplateRequest{}
 	//	Dtm clock
 	c_time            i64
-	ch_stop_dtm_clock chan bool
+	ch_stop_dtm_clock chan bool = chan bool{cap: 5}
 	// Store small informations about already cached pages to improve the verification speed of the check_html_and_placeholders_size function.
 	html_file_info shared map[string]HtmlFileInfo = map[string]HtmlFileInfo{}
 	// Indicates whether the cache file storage directory is located in a temporary OS area
@@ -1201,7 +1201,7 @@ fn (mut tm DynamicTemplateManager) cache_request_route(is_cache_exist bool, neg_
 // this can potentially lead to cache expiration issues if there is zero traffic for a while."
 //
 
-// Minimum update interval ( in seconds ) set to 4 minutesminimum_wait_time_until_next_update
+// Minimum update interval ( in seconds ) set to 4 minutes minimum_wait_time_until_next_update
 const update_duration = 240
 
 fn (mut tm DynamicTemplateManager) handle_dtm_clock() {
@@ -1234,6 +1234,9 @@ fn (mut tm DynamicTemplateManager) handle_dtm_clock() {
 					break
 				}
 				else {
+					$if test {
+						break
+					}
 					// Attendre une seconde
 					time.sleep(1 * time.second)
 				}
@@ -1241,6 +1244,10 @@ fn (mut tm DynamicTemplateManager) handle_dtm_clock() {
 		}
 		// Reset wait time for next cycle.
 		minimum_wait_time_until_next_update = dtm.update_duration
+
+		$if test {
+			break
+		}
 	}
 }
 
