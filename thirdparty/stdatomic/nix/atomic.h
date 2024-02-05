@@ -143,12 +143,10 @@ static inline unsigned short atomic_fetch_xor_u16(unsigned short* x, unsigned sh
 }
 
 static inline unsigned char atomic_load_byte(unsigned char* x) {
-	atomic_thread_fence(memory_order_acquire);
 	return atomic_load_explicit((_Atomic(unsigned char)*)x, memory_order_seq_cst);
 }
 static inline void atomic_store_byte(unsigned char* x, unsigned char y) {
 	atomic_store_explicit((_Atomic(unsigned char)*)x, y, memory_order_seq_cst);
-	atomic_thread_fence(memory_order_release);
 }
 static inline int atomic_compare_exchange_weak_byte(unsigned char* x, unsigned char* expected, unsigned char y) {
 	return (int)atomic_compare_exchange_weak_explicit((_Atomic(unsigned char)*)x, expected, y, memory_order_seq_cst, memory_order_seq_cst);
