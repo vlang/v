@@ -84,6 +84,8 @@ mut:
 	ch_stop_dtm_clock chan bool
 	// Store small informations about already cached pages to improve the verification speed of the check_html_and_placeholders_size function.
 	html_file_info shared map[string]HtmlFileInfo = map[string]HtmlFileInfo{}
+	// Indicates whether the cache file storage directory is located in a temporary OS area
+	cache_folder_is_temporary_storage bool
 }
 
 // Represent individual template cache in database memory.
@@ -150,7 +152,7 @@ pub struct TemplateCacheParams {
 	cache_delay_expiration i64 = dtm.cache_delay_expiration_by_default
 }
 
-// DynamicTemplateManagerInitialisationParams is used with 'initialize_dtm' function. (See below at initialize_dtm section)
+// DynamicTemplateManagerInitialisationParams is used with 'initialize' function. (See below at initialize section)
 @[params]
 pub struct DynamicTemplateManagerInitialisationParams {
 	compress_html        bool = true
@@ -160,13 +162,9 @@ pub struct DynamicTemplateManagerInitialisationParams {
 	test_template_dir    string
 }
 
-// create_dtm initializes and returns a reference to a new instance of DynamicTemplateManager on the heap.
-pub fn create_dtm() &DynamicTemplateManager {
-	return &DynamicTemplateManager{}
-}
-
-// initialize_dtm init the 'DynamicTemplateManager' with the storage mode, cache/templates path folders. The DTM requires this initialization function to be operational.
-// A "vcache" directory must be created at the root of the project (where the executable is located) to use the DTM.
+// initialize create and init the 'DynamicTemplateManager' with the storage mode, cache/templates path folders.
+// A "vcache_dtm" directory must be created at the root of the project (where the executable is located) to use the DTM.
+// Otherwise, the DTM will attempt to create it in the temporary OS area. If this is impossible, the cache system will be deactivated.
 // Initalisation params are :
 // - max_size_data_in_mem 'type int' Maximum size of data allowed in memory for caching. The value must be specified in kilobytes. ( Default is: 500KB / Limit max is : 500KB)	
 // - compress_html: 'type bool' Light compress of the HTML ouput. ( default is true )
@@ -174,39 +172,61 @@ pub fn create_dtm() &DynamicTemplateManager {
 // - test_cache_dir: 'type string' Used only for DTM internal test file, parameter is ignored otherwise.
 // - test_template_dir: 'type string' Used only for DTM internal test file, parameter is ignored otherwise.
 //
-// vfmt off
-pub fn initialize_dtm(mut dtmref &DynamicTemplateManager, dtm_init_params DynamicTemplateManagerInitialisationParams) ! {
-	// vfmt on
+pub fn initialize(dtm_init_params DynamicTemplateManagerInitialisationParams) &DynamicTemplateManager {
 	mut dir_path := ''
 	mut dir_html_path := ''
+	mut max_size_memory := 0
+	mut active_cache_handler := dtm_init_params.active_cache_server
+	mut system_ready := true
+	mut cache_temporary_bool := false
 	$if test {
 		dir_path = dtm_init_params.test_cache_dir
 		dir_html_path = dtm_init_params.test_template_dir
 	} $else {
-		dir_path = os.join_path('${os.dir(os.executable())}/vcache')
+		dir_path = os.join_path('${os.dir(os.executable())}/vcache_dtm')
 		dir_html_path = os.join_path('${os.dir(os.executable())}/templates')
 	}
-	// Control if 'vcache' folder exist in the root project
-	if os.exists(dir_path) && os.is_dir(dir_path) {
-		dtmref.template_cache_folder = dir_path
-		// WARNING: When setting the directory for caching files and for testing purposes,
-		// 'check_and_clear_cache_files' function will delete all "*.cache" or "*.tmp" files inside the specified 'vcache' directory in the project root's. Ensure that
-		// directory used for the cache does not contain any important files.
-		dtmref.check_and_clear_cache_files()!
-		// Control if 'templates' folder exist in the root project
-		if !os.exists(dir_html_path) && !os.is_dir(dir_html_path) {
-			return error('${dtm.message_signature_error} The templates directory at the project root does not exist. Please create a "templates" directory at the root of your project with appropriate read permissions. This is a mandatory step for using the Dynamic Template Manager (DTM). Current path attempted for create the templates folder: "${dir_html_path}"')
+	if dtm_init_params.active_cache_server {
+		// Control if 'vcache_dtm' folder exist in the root project
+		if os.exists(dir_path) && os.is_dir(dir_path) {
+			// WARNING: When setting the directory for caching files and for testing purposes,
+			// 'check_and_clear_cache_files' function will delete all "*.cache" or "*.tmp" files inside the specified 'vcache_dtm' directory in the project root's. Ensure that
+			// directory used for the cache does not contain any important files.
+			check_and_clear_cache_files(dir_path) or {
+				system_ready = false
+				eprintln(err.msg())
+			}
 		} else {
-			dtmref.template_folder = dir_html_path
+			// If the 'vcache_dtm' folder is not found in the project root, the dtm will attempt to create it in the temporary OS area.
+			dir_path = os.join_path(os.temp_dir(), 'vcache_dtm')
+			if !os.exists(dir_path) || !os.is_dir(dir_path) {
+				os.mkdir(dir_path) or { active_cache_handler = false }
+			}
+			if active_cache_handler {
+				check_and_clear_cache_files(dir_path) or {
+					active_cache_handler = false
+					eprintln(err.msg())
+				}
+			}
+			// If it is impossible to use a 'vcache_dtm' directory, the cache system is deactivated, and the user is warned."
+			if !active_cache_handler {
+				eprintln('${dtm.message_signature_warn} The cache storage directory at the project root does not exist and it was also not possible to use a folder suitable for temporary storage. Therefore, the cache system will be disabled. It is recommended to address the aforementioned issues to utilize the cache system.')
+			} else {
+				cache_temporary_bool = true
+			}
 		}
-	} else {
-		return error('${dtm.message_signature_error} The cache storage directory at the project root does not exist. Please create a "vcache" directory at the root of your project with appropriate read/write permissions. This is a mandatory step for using the Dynamic Template Manager (DTM). Current path attempted for create the cache folder: "${dir_path}"')
+	}
+	// Control if 'templates' folder exist in the root project
+	if !os.exists(dir_html_path) && !os.is_dir(dir_html_path) {
+		system_ready = false
+		eprintln('${dtm.message_signature_error} The templates directory at the project root does not exist. Please create a "templates" directory at the root of your project with appropriate read permissions. This is a mandatory step for using the Dynamic Template Manager (DTM). Current path attempted for create the templates folder: "${dir_html_path}"')
 	}
 	// Validates the 'max_size_data_in_mem' setting in 'dtm_init_params'. If it's within the valid range, it's applied; otherwise, default value is used.
 	if dtm_init_params.max_size_data_in_mem <= dtm.max_size_data_in_memory
 		&& dtm_init_params.max_size_data_in_mem >= 0 {
-		dtmref.max_size_data_in_memory = dtm_init_params.max_size_data_in_mem
+		max_size_memory = dtm_init_params.max_size_data_in_mem
 	} else {
+		max_size_memory = dtm.max_size_data_in_memory
 		mut type_error := 'exceeds'
 		if dtm_init_params.max_size_data_in_mem < 0 {
 			type_error = 'is invalid for define'
@@ -214,20 +234,28 @@ pub fn initialize_dtm(mut dtmref &DynamicTemplateManager, dtm_init_params Dynami
 		eprintln('${dtm.message_signature_info} The value "${dtm_init_params.max_size_data_in_mem}KB" ${type_error} the memory storage limit. It will not be considered, and the limit will be set to ${dtm.max_size_data_in_memory}KB.')
 	}
 
-	// Disable light HTML compression if user doesn't required. ( By default is ON )
-	if !dtm_init_params.compress_html {
-		dtmref.compress_html = false
+	mut dtmi := &DynamicTemplateManager{
+		template_cache_folder: dir_path
+		template_folder: dir_html_path
+		max_size_data_in_memory: max_size_memory
+		compress_html: dtm_init_params.compress_html
+		active_cache_server: active_cache_handler
+		c_time: get_current_unix_micro_timestamp()
+		dtm_init_is_ok: system_ready
+		cache_folder_is_temporary_storage: cache_temporary_bool
 	}
-	// Disable cache handler if user doesn't required. Else, new thread is used to start the cache system. ( By default is ON )
-	if !dtm_init_params.active_cache_server {
-		dtmref.active_cache_server = false
+	if system_ready {
+		// Disable cache handler if user doesn't required. Else, new thread is used to start the cache system. ( By default is ON )
+		if active_cache_handler {
+			spawn dtmi.cache_handler()
+			spawn dtmi.handle_dtm_clock()
+		}
+		println('${dtm.message_signature} Dynamic Template Manager activated')
 	} else {
-		spawn dtmref.cache_handler()
-		spawn dtmref.handle_dtm_clock()
+		eprintln('${dtm.message_signature_error} Unable to use the Dynamic Template Manager, please refer to the above errors and correct them.')
 	}
-	dtmref.c_time = get_current_unix_micro_timestamp()
-	dtmref.dtm_init_is_ok = true
-	println('${dtm.message_signature} Dynamic Template Manager mode activated')
+
+	return dtmi
 }
 
 /*
@@ -244,12 +272,12 @@ fn init_cache_block_middleware(cache_dir string, mut dtm &DynamicTemplateManager
 }
 */
 
-// serve_dynamic_template manages the cache and returns generated HTML.
-// Requires an initialization via 'initialize_dtm' to running.
+// expand manages the cache and returns generated HTML.
+// Requires an initialization via 'initialize' to running.
 // To use this function, HTML templates must be located in the 'templates' directory at the project's root.
 // However, it allows the use of subfolder paths within the 'templates' directory,
 // enabling users to structure their templates in a way that best suits their project's organization.
-pub fn (mut tm DynamicTemplateManager) serve_dynamic_template(tmpl_path string, tmpl_var TemplateCacheParams) string {
+pub fn (mut tm DynamicTemplateManager) expand(tmpl_path string, tmpl_var TemplateCacheParams) string {
 	if tm.dtm_init_is_ok {
 		file_path, tmpl_name, current_content_checksum := tm.check_html_and_placeholders_size(tmpl_path,
 			tmpl_var.placeholders) or { return err.msg() }
@@ -306,7 +334,7 @@ pub fn (mut tm DynamicTemplateManager) serve_dynamic_template(tmpl_path string, 
 	}
 }
 
-// fn (DynamicTemplateManager) check_and_clear_cache_files()
+// fn check_and_clear_cache_files()
 //
 // Used exclusively during the initialization of the DTM (Dynamic Template Manager).
 // Its primary purpose is to ensure a clean starting environment by clearing all files
@@ -316,17 +344,17 @@ pub fn (mut tm DynamicTemplateManager) serve_dynamic_template(tmpl_path string, 
 // of the cache directory to ensure that the application has the necessary access to properly manage the cache files.
 //
 // WARNING: When setting the directory for caching files and for testing purposes,
-// this function will delete all "*.cache" or "*.tmp" files inside the 'vcache' directory in the project root's. Ensure that
+// this function will delete all "*.cache" or "*.tmp" files inside the 'vcache_dtm' directory in the project root's. Ensure that
 // directory used for the cache does not contain any important files.
 //
-fn (tm DynamicTemplateManager) check_and_clear_cache_files() ! {
-	//	println('${message_signature} WARNING! DTM needs to perform some file tests in the 'vcache' directory in your project. This operation will erase all "*.cache" or "*.tmp" files content in the folder : "${tm.template_cache_folder}"')
+fn check_and_clear_cache_files(c_folder string) ! {
+	//	println('${message_signature} WARNING! DTM needs to perform some file tests in the 'vcache_dtm' directory in your project. This operation will erase all "*.cache" or "*.tmp" files content in the folder : "${tm.template_cache_folder}"')
 	//	println('Do you want to continue the operation? (yes/no)')
 	//	mut user_response := os.input('>').to_lower()
 	//	if user_response != 'yes' && user_response != 'y' {
 	//		return error('${message_signature_error} Operation cancelled by the user. DTM initialization failed.')
 	//	} else {
-	file_p := os.join_path(tm.template_cache_folder, 'test.tmp')
+	file_p := os.join_path(c_folder, 'test.tmp')
 	// Create a text file for test permission access
 	mut f := os.create(file_p) or {
 		return error('${dtm.message_signature_error} Files are not writable. Test fail, DTM initialization failed : ${err.msg()}')
@@ -337,12 +365,12 @@ fn (tm DynamicTemplateManager) check_and_clear_cache_files() ! {
 		return error('${dtm.message_signature_error} Files are not readable. Test fail, DTM initialization failed : ${err.msg()}')
 	}
 	// List all files in the cache folder
-	files_list := os.ls(tm.template_cache_folder) or {
+	files_list := os.ls(c_folder) or {
 		return error('${dtm.message_signature_error} While listing the cache directorie files, DTM initialization failed : ${err.msg()}')
 	}
 	// Delete one by one "*.cache" or "*.tmp" files in the previous file list
 	for file in files_list {
-		file_path := os.join_path(tm.template_cache_folder, file)
+		file_path := os.join_path(c_folder, file)
 		file_extension := os.file_ext(file_path).to_lower()
 		if file_extension in ['.tmp', '.cache'] {
 			os.rm(file_path) or {
@@ -356,7 +384,7 @@ fn (tm DynamicTemplateManager) check_and_clear_cache_files() ! {
 
 // fn (mut DynamicTemplateManager) check_html_and_placeholders_size(string, &map[string]DtmMultiTypeMap) return !(string, string, string)
 //
-// Used exclusively in the 'serve_dynamic_template' function, this check verifies if the HTML file exists and is located within the 'templates' directory at the project's root.
+// Used exclusively in the 'expand' function, this check verifies if the HTML file exists and is located within the 'templates' directory at the project's root.
 // It also ensures the file extension is HTML and controls the size of placeholder keys and values in the provided map,
 // offering a basic validation and security measure against excessively long and potentially harmful inputs.
 // Size limits are defined by the 'max_placeholders_key_size' and 'max_placeholders_value_size' constants.
@@ -445,7 +473,7 @@ fn (mut tm DynamicTemplateManager) check_html_and_placeholders_size(f_path strin
 
 // fn (mut DynamicTemplateManager) create_template_cache_and_display_html(CacheRequest, i64, i64, string, string, i64, &map[string]DtmMultiTypeMap) return string
 //
-// Exclusively invoked from `serve_dynamic_template`.
+// Exclusively invoked from `expand`.
 // It role is generate the HTML rendering of a template and relaying informations
 // to the cache manager for either the creation or updating of the HTML cache.
 // It begin to starts by ensuring that the cache delay expiration is correctly set by user.
@@ -534,7 +562,7 @@ fn (tm DynamicTemplateManager) create_temp_cache(html &string, f_path string, ts
 
 // fn (mut DynamicTemplateManager) get_cache(string, string, &map[string]DtmMultiTypeMap) return string
 //
-// Exclusively invoked from `serve_dynamic_template', retrieves the rendered HTML from the cache.
+// Exclusively invoked from `expand', retrieves the rendered HTML from the cache.
 //
 fn (mut tm DynamicTemplateManager) get_cache(name string, path string, placeholders &map[string]DtmMultiTypeMap) string {
 	mut html := ''
@@ -568,7 +596,7 @@ fn (mut tm DynamicTemplateManager) get_cache(name string, path string, placehold
 
 // fn (mut DynamicTemplateManager) return_cache_info_isexistent(string) return (bool, int, string, i64, i64, i64, string)
 //
-// Exclusively used in 'serve_dynamic_template' to determine whether a cache exists for the provided HTML template.
+// Exclusively used in 'expand' to determine whether a cache exists for the provided HTML template.
 // If a cache exists, it returns the necessary information for its transformation. If not, it indicates the need to create a new cache.
 //
 fn (mut tm DynamicTemplateManager) return_cache_info_isexistent(tmpl_path string) (bool, int, string, i64, i64, i64, string) {
@@ -1139,7 +1167,7 @@ fn check_if_cache_delay_iscorrect(cde i64, tmpl_name string) ! {
 
 // fn cache_request_route(bool, i64, i64, i64, i64, i64, i64) return (CacheRequest, i64)
 //
-// Used exclusively in 'serve_dynamic_template' function, determines the appropriate cache request action for an HTML template.
+// Used exclusively in 'expand' function, determines the appropriate cache request action for an HTML template.
 // It assesses various conditions such as cache existence, cache expiration settings, and last modification timestamps ( template or dynamic content )
 // to decide whether to create a new cache, update an existing or delivered a valid cache content.
 //
