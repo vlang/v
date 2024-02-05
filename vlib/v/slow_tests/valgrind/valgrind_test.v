@@ -21,7 +21,6 @@ fn bold(s string) string {
 //
 const skip_compile_files = [
 	'vlib/v/slow_tests/valgrind/option_reassigned.v',
-	'vlib/v/slow_tests/valgrind/if_expr_autofree_optional.v',
 ]
 
 const skip_valgrind_files = [
