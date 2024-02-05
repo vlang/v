@@ -24,6 +24,9 @@ fn main() {
 	app.shared_data_int << 7891011
 
 	app.dtmi = dtm.initialize()
+	defer {
+		app.dtmi.stop_cache_handler()
+	}
 	/*
 	dtm.initialize(
 	compress_html: false

@@ -86,6 +86,8 @@ mut:
 	html_file_info shared map[string]HtmlFileInfo = map[string]HtmlFileInfo{}
 	// Indicates whether the cache file storage directory is located in a temporary OS area
 	cache_folder_is_temporary_storage bool
+	// Handler for all threads used in the DTM
+	threads_handler []thread = []thread{}
 }
 
 // Represent individual template cache in database memory.
@@ -247,8 +249,8 @@ pub fn initialize(dtm_init_params DynamicTemplateManagerInitialisationParams) &D
 	if system_ready {
 		// Disable cache handler if user doesn't required. Else, new thread is used to start the cache system. ( By default is ON )
 		if active_cache_handler {
-			spawn dtmi.cache_handler()
-			spawn dtmi.handle_dtm_clock()
+			dtmi.threads_handler << spawn dtmi.cache_handler()
+			dtmi.threads_handler << spawn dtmi.handle_dtm_clock()
 		}
 		println('${dtm.message_signature} Dynamic Template Manager activated')
 	} else {
@@ -927,17 +929,17 @@ fn (mut tm DynamicTemplateManager) chandler_remaining_cache_template_used(cr Cac
 	return true
 }
 
-// fn (mut DynamicTemplateManager) stop_cache_handler()
+// stop_cache_handler signals the termination of the cache handler by setting 'close_cache_handler' to true and sending a signal through the channel
+// which will trigger a cascading effect to close the cache handler thread as well as the DTM clock thread.
 //
-// Signals the termination of the cache handler by setting 'close_cache_handler' to true and sending a signal through the channel.
-//
-fn (mut tm DynamicTemplateManager) stop_cache_handler() {
+pub fn (mut tm DynamicTemplateManager) stop_cache_handler() {
 	if tm.active_cache_server {
 		tm.active_cache_server = false
 		tm.close_cache_handler = true
 		tm.ch_cache_handler <- TemplateCache{
 			id: 0
 		}
+		tm.threads_handler.wait()
 	}
 }
 
@@ -1205,6 +1207,7 @@ fn (mut tm DynamicTemplateManager) cache_request_route(is_cache_exist bool, neg_
 const update_duration = 240
 
 fn (mut tm DynamicTemplateManager) handle_dtm_clock() {
+	mut need_to_close := false
 	defer {
 		tm.ch_stop_dtm_clock.close()
 		eprintln('${dtm.message_signature_info} DTM clock handler has been successfully stopped.')
@@ -1231,6 +1234,7 @@ fn (mut tm DynamicTemplateManager) handle_dtm_clock() {
 		for elapsed_time := 0; elapsed_time < minimum_wait_time_until_next_update; elapsed_time++ {
 			select {
 				_ := <-tm.ch_stop_dtm_clock {
+					need_to_close = true
 					break
 				}
 				else {
@@ -1244,7 +1248,9 @@ fn (mut tm DynamicTemplateManager) handle_dtm_clock() {
 		}
 		// Reset wait time for next cycle.
 		minimum_wait_time_until_next_update = dtm.update_duration
-
+		if need_to_close {
+			break
+		}
 		$if test {
 			break
 		}
