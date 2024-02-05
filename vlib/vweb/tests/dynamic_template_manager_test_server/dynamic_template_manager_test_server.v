@@ -25,7 +25,7 @@ fn main() {
 
 	app.dtmi = dtm.initialize()
 	/*
-	app.initialize_dtm(
+	dtm.initialize(
 	compress_html: false
 	active_cache_server: false
 	max_size_data_in_mem: 100)
