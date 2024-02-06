@@ -209,7 +209,7 @@ plhs['placeholder_name_1'] = "title content"
 plhs['placeholder_name_2'] = 123456
 plhs['placeholder_name_3_#includehtml'] = "<p>allow to include</p><span>certain HTML tags</span>"
 
-serve_dynamic_template('path/of/template.html',
+expand('path/of/template.html',
 		placeholders: &plhs
 )
 ```
