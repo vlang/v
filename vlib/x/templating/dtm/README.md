@@ -153,7 +153,7 @@ initialize(
     max_size_data_in_mem: 500
     compress_html: true
     active_cache_server: true
-)!
+)
 ```
 
 ### Defined for each call of expand function
