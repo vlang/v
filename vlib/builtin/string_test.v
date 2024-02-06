@@ -811,6 +811,33 @@ fn test_to_num() {
 	assert big.i64() == 93993993939322
 }
 
+fn test_to_u8_array() {
+	// empty string
+	assert ''.u8_array() == []
+	// invalid hex digit
+	assert '-123'.u8_array() == []
+	assert '1_2xt'.u8_array() == []
+	assert 'd1_2xt'.u8_array() == []
+	assert '0x12'.u8_array() == []
+
+	// odd number of digits
+	assert '1'.u8_array() == [u8(0x01)]
+	assert '123'.u8_array() == [u8(0x01), 0x23]
+	assert '1_23'.u8_array() == [u8(0x01), 0x23]
+
+	// long digits
+	long_u8 := [u8(0x00), 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc,
+		0xdd, 0xee, 0xff]
+	assert '00112233445566778899aabbccddeeff'.u8_array() == long_u8
+	assert '00_112_2334455667788_99aabbccddeeff'.u8_array() == long_u8
+	assert '00112233445566778899AABBCCDDEEFF'.u8_array() == long_u8
+	assert '001_12233445566778899A_ABBCCDDEEFF'.u8_array() == long_u8
+
+	// 0b test, treated as hex digits, not binary
+	assert '0b0101'.u8_array() == [u8(0x0b), 0x01, 0x01]
+	assert '0b0101_0101'.u8_array() == [u8(0x0b), 0x01, 0x01, 0x01, 0x01]
+}
+
 fn test_inter_format_string() {
 	float_num := 1.52345
 	float_num_string := '-${float_num:.3f}-'

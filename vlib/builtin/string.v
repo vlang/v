@@ -613,6 +613,32 @@ pub fn (s string) u8() u8 {
 	return u8(strconv.common_parse_uint(s, 0, 8, false, false) or { 0 })
 }
 
+// u8_array returns the value of the string as u8 array `'1122334455'.u8_array() == [u8(0x11),0x22,0x33,0x44,0x55]`.
+// underscore in the string will be stripped.
+@[inline]
+pub fn (s string) u8_array() []u8 {
+	// strip underscore in the string
+	mut tmps := s.replace('_', '')
+	if tmps.len == 0 {
+		return []u8{}
+	}
+	tmps = tmps.to_lower()
+	// make sure every digit is valid hex digit
+	if !tmps.contains_only('0123456789abcdef') {
+		return []u8{}
+	}
+	// make sure tmps has even number digits
+	if tmps.len % 2 == 1 {
+		tmps = '0' + tmps
+	}
+
+	mut ret := []u8{len: tmps.len / 2}
+	for i in 0 .. ret.len {
+		ret[i] = u8(tmps[2 * i..2 * i + 2].parse_uint(16, 8) or { 0 })
+	}
+	return ret
+}
+
 // u16 returns the value of the string as u16 `'1'.u16() == u16(1)`.
 @[inline]
 pub fn (s string) u16() u16 {
