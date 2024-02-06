@@ -110,7 +110,6 @@ pub fn (mut app App) index(mut ctx Context) vweb.Result {
 #### and its template html format :
 
 ```html 
-index.html
 <!DOCTYPE html>
 <html>
   <head>
