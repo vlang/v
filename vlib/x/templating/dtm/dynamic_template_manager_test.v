@@ -4,7 +4,7 @@ import os
 import time
 
 const temp_dtm_dir = 'dynamic_template_manager_test'
-const temp_cache_dir = 'vcache'
+const temp_cache_dir = 'vcache_dtm'
 const temp_templates_dir = 'templates'
 const temp_html_fp = 'temp.html'
 const temp_html_n = 'temp'
@@ -39,20 +39,20 @@ fn testsuite_begin() {
 }
 
 fn test_initialize_dtm() {
-	dtmi := init_dtm(false, 0)!
+	dtmi := init_dtm(false, 0)
 	assert dtmi.dtm_init_is_ok == true
 }
 
 fn test_check_and_clear_cache_files() {
-	dtmi := init_dtm(false, 0)!
-	dtmi.check_and_clear_cache_files()!
+	dtmi := init_dtm(false, 0)
+	check_and_clear_cache_files(dtmi.template_cache_folder)!
 
 	count_cache_files := os.ls(dtmi.template_cache_folder)!
 	assert count_cache_files.len == 0
 }
 
 fn test_create_template_cache_and_display_html() {
-	mut dtmi := init_dtm(true, max_size_data_in_memory)!
+	mut dtmi := init_dtm(true, max_size_data_in_memory)
 	defer {
 		dtmi.stop_cache_handler()
 	}
@@ -61,7 +61,7 @@ fn test_create_template_cache_and_display_html() {
 }
 
 fn test_get_cache() {
-	mut dtmi := init_dtm(true, max_size_data_in_memory)!
+	mut dtmi := init_dtm(true, max_size_data_in_memory)
 	dtmi.create_cache()
 	defer {
 		dtmi.stop_cache_handler()
@@ -73,7 +73,7 @@ fn test_get_cache() {
 }
 
 fn test_return_cache_info_isexistent() {
-	mut dtmi := init_dtm(false, 0)!
+	mut dtmi := init_dtm(false, 0)
 	path_template := os.join_path(dtmi.template_folder, dtm.temp_html_fp)
 	lock dtmi.template_caches {
 		dtmi.template_caches << TemplateCache{
@@ -129,7 +129,7 @@ fn test_return_cache_info_isexistent() {
 }
 
 fn test_remaining_template_request() {
-	mut dtmi := init_dtm(false, 0)!
+	mut dtmi := init_dtm(false, 0)
 
 	lock dtmi.nbr_of_remaining_template_request {
 		dtmi.nbr_of_remaining_template_request << RemainingTemplateRequest{
@@ -154,21 +154,27 @@ fn test_remaining_template_request() {
 	}
 }
 
-fn test_check_html_and_placeholders_size() {
-	mut dtmi := init_dtm(false, 0)!
+fn test_check_tmpl_and_placeholders_size() {
+	mut dtmi := init_dtm(false, 0)
 	temp_html_file := os.join_path(dtmi.template_folder, dtm.temp_html_fp)
 	placeholders := map[string]DtmMultiTypeMap{}
 
-	path, filename, content_checksum := dtmi.check_html_and_placeholders_size(temp_html_file,
+	path, filename, content_checksum, tmpl_type := dtmi.check_tmpl_and_placeholders_size(temp_html_file,
 		&placeholders)!
 
+	is_html := if tmpl_type == TemplateType.html {
+		true
+	} else {
+		false
+	}
 	assert path.len > 10
 	assert filename.len > 3
+	assert is_html == true
 	//	assert content_checksum.len > 3
 }
 
 fn test_chandler_prevent_cache_duplicate_request() {
-	dtmi := init_dtm(false, 0)!
+	dtmi := init_dtm(false, 0)
 	temp_html_file := os.join_path(dtmi.template_folder, dtm.temp_html_fp)
 
 	lock dtmi.template_caches {
@@ -236,7 +242,7 @@ fn test_chandler_prevent_cache_duplicate_request() {
 }
 
 fn test_chandler_clear_specific_cache() {
-	mut dtmi := init_dtm(true, 0)!
+	mut dtmi := init_dtm(true, 0)
 	defer {
 		dtmi.stop_cache_handler()
 	}
@@ -252,7 +258,7 @@ fn test_chandler_clear_specific_cache() {
 }
 
 fn test_chandler_remaining_cache_template_used() {
-	mut dtmi := init_dtm(false, 0)!
+	mut dtmi := init_dtm(false, 0)
 	lock dtmi.nbr_of_remaining_template_request {
 		dtmi.nbr_of_remaining_template_request << RemainingTemplateRequest{
 			id: 1
@@ -280,8 +286,8 @@ fn test_chandler_remaining_cache_template_used() {
 	assert can_delete == true
 }
 
-fn test_parse_html_file() {
-	mut dtmi := init_dtm(false, 0)!
+fn test_parse_tmpl_file() {
+	mut dtmi := init_dtm(false, 0)
 	temp_folder := os.join_path(dtm.vtmp_dir, dtm.temp_dtm_dir)
 	templates_path := os.join_path(temp_folder, dtm.temp_templates_dir)
 	temp_html_file := os.join_path(templates_path, dtm.temp_html_fp)
@@ -289,7 +295,8 @@ fn test_parse_html_file() {
 	mut placeholders := map[string]DtmMultiTypeMap{}
 
 	is_compressed := true
-	html := dtmi.parse_html_file(temp_html_file, dtm.temp_html_n, &placeholders, is_compressed)
+	html := dtmi.parse_tmpl_file(temp_html_file, dtm.temp_html_n, &placeholders, is_compressed,
+		TemplateType.html)
 
 	assert html.len > 0
 }
@@ -301,7 +308,7 @@ fn test_check_if_cache_delay_iscorrect() {
 }
 
 fn test_cache_request_route() {
-	mut dtmi := init_dtm(false, 0)!
+	mut dtmi := init_dtm(false, 0)
 	mut is_cache_exist := true
 	mut cache_delay_expiration := i64(400)
 	mut last_template_mod := get_current_unix_micro_timestamp()
@@ -342,8 +349,18 @@ fn test_cache_request_route() {
 	assert request_type == CacheRequest.new
 }
 
+fn test_handle_dtm_clock() {
+	mut dtmi := init_dtm(true, max_size_data_in_memory)
+	defer {
+		dtmi.stop_cache_handler()
+	}
+	dtmi.handle_dtm_clock()
+	date_to_str := dtmi.c_time.str()
+	assert date_to_str.len > 10
+}
+
 fn test_cache_handler() {
-	mut dtmi := init_dtm(true, max_size_data_in_memory)!
+	mut dtmi := init_dtm(true, max_size_data_in_memory)
 	defer {
 		dtmi.stop_cache_handler()
 	}
@@ -372,12 +389,10 @@ fn testsuite_end() {
 
 // Utilities function :
 
-fn init_dtm(b bool, m int) !&DynamicTemplateManager {
+fn init_dtm(b bool, m int) &DynamicTemplateManager {
 	temp_folder := os.join_path(dtm.vtmp_dir, dtm.temp_dtm_dir)
 	vcache_path := os.join_path(temp_folder, dtm.temp_cache_dir)
 	templates_path := os.join_path(temp_folder, dtm.temp_templates_dir)
-
-	mut dtm := create_dtm()
 
 	init_params := DynamicTemplateManagerInitialisationParams{
 		active_cache_server: b
@@ -386,7 +401,7 @@ fn init_dtm(b bool, m int) !&DynamicTemplateManager {
 		test_template_dir: templates_path
 	}
 
-	initialize_dtm(mut dtm, init_params)!
+	dtm := initialize(init_params)
 
 	return dtm
 }
@@ -398,8 +413,8 @@ fn (mut tm DynamicTemplateManager) create_cache() string {
 	cache_delay_exp := i64(500) * i64(1000000)
 	placeholder := map[string]DtmMultiTypeMap{}
 	content_checksum := ''
-	html := tm.create_template_cache_and_display_html(.new, html_last_mod, c_time, temp_html_file,
-		dtm.temp_html_n, cache_delay_exp, &placeholder, content_checksum)
+	html := tm.create_template_cache_and_display(.new, html_last_mod, c_time, temp_html_file,
+		dtm.temp_html_n, cache_delay_exp, &placeholder, content_checksum, TemplateType.html)
 	time.sleep(5 * time.millisecond)
 	return html
 }
