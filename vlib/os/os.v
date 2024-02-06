@@ -977,3 +977,18 @@ pub fn config_dir() !string {
 	}
 	return error('Cannot find config directory')
 }
+
+pub struct Stat {
+pub:
+	dev   u64
+	inode u64
+	mode  u32
+	nlink u64
+	uid   u32
+	gid   u32
+	rdev  u64
+	size  u64
+	atime i64
+	mtime i64
+	ctime i64
+}
