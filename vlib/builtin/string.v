@@ -617,13 +617,9 @@ pub fn (s string) u8() u8 {
 // hex string example: `'0x11223344ee'.u8_array() == [u8(0x11),0x22,0x33,0x44,0xee]`.
 // bin string example: `'0b1101_1101'.u8_array() == [u8(0xdd)]`.
 // underscore in the string will be stripped.
-@[inline]
 pub fn (s string) u8_array() []u8 {
 	// strip underscore in the string
 	mut tmps := s.replace('_', '')
-	defer {
-		unsafe { tmps.free() }
-	}
 	if tmps.len == 0 {
 		return []u8{}
 	}
