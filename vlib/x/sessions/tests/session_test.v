@@ -1,5 +1,5 @@
 import time
-import x.vweb.sessions
+import x.sessions
 
 const max_age = time.second
 const secret = 'session_test'.bytes()

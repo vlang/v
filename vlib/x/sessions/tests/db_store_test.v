@@ -2,10 +2,10 @@ import db.sqlite
 import json
 import os
 import time
-import x.vweb.sessions
+import x.sessions
 
 const max_age = time.second
-const db_path = os.join_path(os.vtmp_dir(), 'xvweb_sessions_db_test.db')
+const db_path = os.join_path(os.vtmp_dir(), 'x_sessions_db_test.db')
 
 fn testsuite_begin() {
 	os.rm(db_path) or {}

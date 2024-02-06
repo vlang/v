@@ -1,8 +1,9 @@
 import net.http
 import os
 import time
+import x.sessions
 import x.vweb
-import x.vweb.sessions
+import x.sessions.vweb2_middleware
 
 const port = 13010
 const localserver = 'http://localhost:${port}'
@@ -98,7 +99,7 @@ fn testsuite_begin() {
 		}
 	}
 
-	app.use(app.sessions.middleware[Context]())
+	app.use(vweb2_middleware.create[User, Context](mut app.sessions))
 
 	spawn vweb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2)
 	// app startup time
