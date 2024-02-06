@@ -1,7 +1,6 @@
 # Sessions
 
-A sessions module for web projects. You can also use this module outside of vweb
-see [here](#advanced-usage).
+A sessions module for web projects.
 
 ## Usage
 
@@ -11,13 +10,16 @@ either use a store directly yourself, or you can use the `session.Sessions` stru
 which is easier to use since it also handles session verification and intergrates nicely
 with vweb.
 
-If you want to use `session.Sessions` in your vweb app the session id's will be
+If you want to use `session.Sessions` in your web app the session id's will be
 stored using cookies. The best way to get started is to follow the 
 [getting started](#getting-started) section.
 
 Otherwise have a look at the [advanced usage](#advanced-usage) section.
 
 ## Getting Started
+
+The examples in this section use `x.vweb`. See the [advanced usage](#advanced-usage) section
+for examples without `x.vweb`.
 
 To start using sessions in vweb embed `sessions.CurrentSession` on the
 Context struct and add `sessions.Sessions` to the app struct. We must also pass the type
@@ -26,8 +28,8 @@ of our session data.
 For any further example code we will use the `User` struct.
 **Example:**
 ```v ignore
+import x.sessions
 import x.vweb
-import x.vweb.sessions
 
 pub struct User {
 pub mut:
@@ -83,7 +85,7 @@ fn main() {
 
 ### Middleware
 
-The `sessions.Sessions` struct provides a middleware handler. This handler will execute 
+The `sessions.vweb2_middleware` module provides a middleware handler. This handler will execute 
 before your own route handlers and will verify the current session and fetch any associated
 session data and load it into `sessions.CurrentSession`, which is embedded on the Context struct.
 
@@ -93,6 +95,9 @@ session data and load it into `sessions.CurrentSession`, which is embedded on th
 
 **Example:**
 ```v ignore
+// add this import at the top of your file
+import x.sessions.vweb2_middleware
+
 pub struct App {
     // embed the Middleware struct from vweb
     vweb.Middleware[Context]
@@ -110,7 +115,7 @@ fn main() {
 	}
 
     // register the sessions middleware
-    app.use(app.sessions.middleware[Context]())
+    app.use(vweb2_middleware.create[User, Context](mut app.sessions))
 	
 	vweb.run[App, Context](mut app, 8080)
 }
@@ -177,7 +182,7 @@ pub fn (mut app App) save(mut ctx Context) vweb.Result {
 		app.sessions.save(mut ctx, User{
 			name: name
 		})
-		return ctx.redirect('/', .see_other)
+		return ctx.redirect('/', typ: .see_other)
 	} else {
 		// send HTTP 400 error
 		return ctx.request_error('query parameter "name" must be present!')
@@ -242,7 +247,7 @@ instance of a `Store` and directly interact with it.
 First we create an instance of the `MemoryStore` and pass the user struct as data type.
 **Example:**
 ```v
-import x.vweb.sessions
+import x.sessions
 
 const secret = 'my secret'.bytes()
 
