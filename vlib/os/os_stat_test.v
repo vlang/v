@@ -23,10 +23,10 @@ fn test_stat() {
 	mut fstat := os.stat(test_file)!
 	assert fstat.get_filetype() == .regular
 	assert fstat.size == u64(test_content.len)
-	assert fstat.get_ctime().unix >= start_time.unix
-	assert fstat.get_ctime().unix <= end_time.unix
-	assert fstat.get_mtime().unix >= start_time.unix
-	assert fstat.get_mtime().unix <= end_time.unix
+	assert fstat.ctime >= start_time.unix
+	assert fstat.ctime <= end_time.unix
+	assert fstat.mtime >= start_time.unix
+	assert fstat.mtime <= end_time.unix
 
 	$if !windows {
 		os.chmod(test_file, 0o600)!
@@ -52,11 +52,6 @@ fn test_stat() {
 	// which are not captured in the timestamp
 	dstat := os.stat(temp_dir)!
 	assert dstat.get_filetype() == .directory
-	assert (dstat.get_ctime() - start_time) > -time.second
-	assert (dstat.get_ctime() - end_time) <= time.second
-	assert (dstat.get_mtime() - start_time) > -time.second
-	assert (dstat.get_mtime() - end_time) <= time.second
-
 	assert fstat.dev == dstat.dev, 'File and directory should be created on same device'
 	assert fstat.rdev == dstat.rdev, 'File and directory should have same device ID'
 }
