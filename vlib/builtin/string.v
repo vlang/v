@@ -613,7 +613,9 @@ pub fn (s string) u8() u8 {
 	return u8(strconv.common_parse_uint(s, 0, 8, false, false) or { 0 })
 }
 
-// u8_array returns the value of the string as u8 array `'1122334455'.u8_array() == [u8(0x11),0x22,0x33,0x44,0x55]`.
+// u8_array returns the value of the hex/bin string as u8 array.
+// hex string example: `'0x11223344ee'.u8_array() == [u8(0x11),0x22,0x33,0x44,0xee]`.
+// bin string example: `'0b1101_1101'.u8_array() == [u8(0xdd)]`.
 // underscore in the string will be stripped.
 @[inline]
 pub fn (s string) u8_array() []u8 {
@@ -623,20 +625,46 @@ pub fn (s string) u8_array() []u8 {
 		return []u8{}
 	}
 	tmps = tmps.to_lower()
-	// make sure every digit is valid hex digit
-	if !tmps.contains_only('0123456789abcdef') {
-		return []u8{}
-	}
-	// make sure tmps has even number digits
-	if tmps.len % 2 == 1 {
-		tmps = '0' + tmps
-	}
+	if tmps.starts_with('0x') {
+		tmps = tmps[2..]
+		if tmps.len == 0 {
+			return []u8{}
+		}
+		// make sure every digit is valid hex digit
+		if !tmps.contains_only('0123456789abcdef') {
+			return []u8{}
+		}
+		// make sure tmps has even hex digits
+		if tmps.len % 2 == 1 {
+			tmps = '0' + tmps
+		}
 
-	mut ret := []u8{len: tmps.len / 2}
-	for i in 0 .. ret.len {
-		ret[i] = u8(tmps[2 * i..2 * i + 2].parse_uint(16, 8) or { 0 })
+		mut ret := []u8{len: tmps.len / 2}
+		for i in 0 .. ret.len {
+			ret[i] = u8(tmps[2 * i..2 * i + 2].parse_uint(16, 8) or { 0 })
+		}
+		return ret
+	} else if tmps.starts_with('0b') {
+		tmps = tmps[2..]
+		if tmps.len == 0 {
+			return []u8{}
+		}
+		// make sure every digit is valid binary digit
+		if !tmps.contains_only('01') {
+			return []u8{}
+		}
+		// make sure tmps has multiple of 8 binary digits
+		if tmps.len % 8 != 0 {
+			tmps = '0'.repeat(8 - tmps.len % 8) + tmps
+		}
+
+		mut ret := []u8{len: tmps.len / 8}
+		for i in 0 .. ret.len {
+			ret[i] = u8(tmps[8 * i..8 * i + 8].parse_uint(2, 8) or { 0 })
+		}
+		return ret
 	}
-	return ret
+	return []u8{}
 }
 
 // u16 returns the value of the string as u16 `'1'.u16() == u16(1)`.
