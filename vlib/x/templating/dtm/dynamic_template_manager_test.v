@@ -154,16 +154,22 @@ fn test_remaining_template_request() {
 	}
 }
 
-fn test_check_html_and_placeholders_size() {
+fn test_check_tmpl_and_placeholders_size() {
 	mut dtmi := init_dtm(false, 0)
 	temp_html_file := os.join_path(dtmi.template_folder, dtm.temp_html_fp)
 	placeholders := map[string]DtmMultiTypeMap{}
 
-	path, filename, content_checksum := dtmi.check_html_and_placeholders_size(temp_html_file,
+	path, filename, content_checksum, tmpl_type := dtmi.check_tmpl_and_placeholders_size(temp_html_file,
 		&placeholders)!
 
+	is_html := if tmpl_type == TemplateType.html {
+		true
+	} else {
+		false
+	}
 	assert path.len > 10
 	assert filename.len > 3
+	assert is_html == true
 	//	assert content_checksum.len > 3
 }
 
@@ -280,7 +286,7 @@ fn test_chandler_remaining_cache_template_used() {
 	assert can_delete == true
 }
 
-fn test_parse_html_file() {
+fn test_parse_tmpl_file() {
 	mut dtmi := init_dtm(false, 0)
 	temp_folder := os.join_path(dtm.vtmp_dir, dtm.temp_dtm_dir)
 	templates_path := os.join_path(temp_folder, dtm.temp_templates_dir)
@@ -289,7 +295,8 @@ fn test_parse_html_file() {
 	mut placeholders := map[string]DtmMultiTypeMap{}
 
 	is_compressed := true
-	html := dtmi.parse_html_file(temp_html_file, dtm.temp_html_n, &placeholders, is_compressed)
+	html := dtmi.parse_tmpl_file(temp_html_file, dtm.temp_html_n, &placeholders, is_compressed,
+		TemplateType.html)
 
 	assert html.len > 0
 }
@@ -406,8 +413,8 @@ fn (mut tm DynamicTemplateManager) create_cache() string {
 	cache_delay_exp := i64(500) * i64(1000000)
 	placeholder := map[string]DtmMultiTypeMap{}
 	content_checksum := ''
-	html := tm.create_template_cache_and_display_html(.new, html_last_mod, c_time, temp_html_file,
-		dtm.temp_html_n, cache_delay_exp, &placeholder, content_checksum)
+	html := tm.create_template_cache_and_display(.new, html_last_mod, c_time, temp_html_file,
+		dtm.temp_html_n, cache_delay_exp, &placeholder, content_checksum, TemplateType.html)
 	time.sleep(5 * time.millisecond)
 	return html
 }

@@ -53,6 +53,11 @@ enum CacheRequest {
 	delete
 }
 
+enum TemplateType {
+	html
+	text
+}
+
 // DynamicTemplateManager
 @[heap]
 pub struct DynamicTemplateManager {
@@ -82,7 +87,7 @@ mut:
 	//	Dtm clock
 	c_time            i64
 	ch_stop_dtm_clock chan bool = chan bool{cap: 5}
-	// Store small informations about already cached pages to improve the verification speed of the check_html_and_placeholders_size function.
+	// Store small informations about already cached pages to improve the verification speed of the check_tmpl_and_placeholders_size function.
 	html_file_info shared map[string]HtmlFileInfo = map[string]HtmlFileInfo{}
 	// Indicates whether the cache file storage directory is located in a temporary OS area
 	cache_folder_is_temporary_storage bool
@@ -145,6 +150,7 @@ mut:
 struct HtmlFileInfo {
 	file_full_path string
 	file_name      string
+	file_type      TemplateType
 }
 
 // TemplateCacheParams are used to specify cache expiration delay and provide placeholder data for substitution in templates.
@@ -166,8 +172,8 @@ pub struct DynamicTemplateManagerInitialisationParams {
 }
 
 // initialize create and init the 'DynamicTemplateManager' with the storage mode, cache/templates path folders.
-// A "vcache_dtm" directory must be created at the root of the project (where the executable is located) to use the DTM.
-// Otherwise, the DTM will attempt to create it in the temporary OS area. If this is impossible, the cache system will be deactivated.
+// A cache directory can be created by the user for storage. If it is not defined or encounters issues such as permission problems,
+// the DTM will attempt to create it in the OS's temporary area. If this proves impossible, the cache system will be deactivated and the user will be informed if cache system was required.
 // Initalisation params are :
 // - def_cache_path 'type string' User can define the path of cache folder.
 // - max_size_data_in_mem 'type int' Maximum size of data allowed in memory for caching. The value must be specified in kilobytes. ( Default is: 500KB / Limit max is : 500KB)	
@@ -191,18 +197,18 @@ pub fn initialize(dtm_init_params DynamicTemplateManagerInitialisationParams) &D
 		dir_path = dtm_init_params.def_cache_path
 		dir_html_path = os.join_path('${os.dir(os.executable())}/templates')
 	}
-	if dtm_init_params.active_cache_server {
-		// Control if 'vcache_dtm' folder exist in the root project
+	if active_cache_handler {
+		// Control if cache folder created by user exist
 		if dir_path.len > 0 && os.exists(dir_path) && os.is_dir(dir_path) {
 			// WARNING: When setting the directory for caching files and for testing purposes,
-			// 'check_and_clear_cache_files' function will delete all "*.cache" or "*.tmp" files inside the specified 'vcache_dtm' directory in the project root's. Ensure that
+			// 'check_and_clear_cache_files' function will delete all "*.cache" or "*.tmp" files inside the specified cache directory. Ensure that
 			// directory used for the cache does not contain any important files.
 			check_and_clear_cache_files(dir_path) or {
 				system_ready = false
 				eprintln(err.msg())
 			}
 		} else {
-			// If the 'vcache_dtm' folder is not found in the project root, the dtm will attempt to create it in the temporary OS area.
+			// If the cache folder is not found or problems, the dtm will attempt to create it in the temporary OS area.
 			dir_path = os.join_path(os.temp_dir(), 'vcache_dtm')
 			if !os.exists(dir_path) || !os.is_dir(dir_path) {
 				os.mkdir(dir_path) or {
@@ -216,7 +222,7 @@ pub fn initialize(dtm_init_params DynamicTemplateManagerInitialisationParams) &D
 					eprintln(err.msg())
 				}
 			}
-			// If it is impossible to use a 'vcache_dtm' directory, the cache system is deactivated, and the user is warned."
+			// If it is impossible to use a cache directory, the cache system is deactivated, and the user is warned."
 			if !active_cache_handler {
 				eprintln('${dtm.message_signature_warn} The cache storage directory does not exist or has a problem and it was also not possible to use a folder suitable for temporary storage. Therefore, the cache system will be disabled. It is recommended to address the aforementioned issues to utilize the cache system.')
 			} else {
@@ -287,7 +293,7 @@ fn init_cache_block_middleware(cache_dir string, mut dtm &DynamicTemplateManager
 // enabling users to structure their templates in a way that best suits their project's organization.
 pub fn (mut tm DynamicTemplateManager) expand(tmpl_path string, tmpl_var TemplateCacheParams) string {
 	if tm.dtm_init_is_ok {
-		file_path, tmpl_name, current_content_checksum := tm.check_html_and_placeholders_size(tmpl_path,
+		file_path, tmpl_name, current_content_checksum, tmpl_type := tm.check_tmpl_and_placeholders_size(tmpl_path,
 			tmpl_var.placeholders) or { return err.msg() }
 		converted_cache_delay_expiration := i64(tmpl_var.cache_delay_expiration) * dtm.convert_seconds
 		// If cache exist, return necessary fields else, 'is_cache_exist' return false.
@@ -315,17 +321,17 @@ pub fn (mut tm DynamicTemplateManager) expand(tmpl_path string, tmpl_var Templat
 		match cash_req {
 			.new {
 				// Create a new cache
-				html = tm.create_template_cache_and_display_html(cash_req, last_template_mod,
+				html = tm.create_template_cache_and_display(cash_req, last_template_mod,
 					unique_time, file_path, tmpl_name, converted_cache_delay_expiration,
-					tmpl_var.placeholders, current_content_checksum)
+					tmpl_var.placeholders, current_content_checksum, tmpl_type)
 				//	println('create cache : ${cash_req}')
 			}
 			.update, .exp_update {
 				// Update an existing cache
 				tm.id_to_handlered = id
-				html = tm.create_template_cache_and_display_html(cash_req, test_current_template_mod,
+				html = tm.create_template_cache_and_display(cash_req, test_current_template_mod,
 					unique_time, file_path, tmpl_name, converted_cache_delay_expiration,
-					tmpl_var.placeholders, current_content_checksum)
+					tmpl_var.placeholders, current_content_checksum, tmpl_type)
 				//	println('update cache : ${cash_req}')
 			}
 			else {
@@ -366,11 +372,11 @@ pub fn (mut tm DynamicTemplateManager) stop_cache_handler() {
 // of the cache directory to ensure that the application has the necessary access to properly manage the cache files.
 //
 // WARNING: When setting the directory for caching files and for testing purposes,
-// this function will delete all "*.cache" or "*.tmp" files inside the 'vcache_dtm' directory in the project root's. Ensure that
+// this function will delete all "*.cache" or "*.tmp" files inside the cache directory in the project root's. Ensure that
 // directory used for the cache does not contain any important files.
 //
 fn check_and_clear_cache_files(c_folder string) ! {
-	//	println('${message_signature} WARNING! DTM needs to perform some file tests in the 'vcache_dtm' directory in your project. This operation will erase all "*.cache" or "*.tmp" files content in the folder : "${tm.template_cache_folder}"')
+	//	println('${message_signature} WARNING! DTM needs to perform some file tests in the cache directory. This operation will erase all "*.cache" or "*.tmp" files content in the folder : "${tm.template_cache_folder}"')
 	//	println('Do you want to continue the operation? (yes/no)')
 	//	mut user_response := os.input('>').to_lower()
 	//	if user_response != 'yes' && user_response != 'y' {
@@ -404,19 +410,20 @@ fn check_and_clear_cache_files(c_folder string) ! {
 	//	}
 }
 
-// fn (mut DynamicTemplateManager) check_html_and_placeholders_size(string, &map[string]DtmMultiTypeMap) return !(string, string, string)
+// fn (mut DynamicTemplateManager) check_tmpl_and_placeholders_size(string, &map[string]DtmMultiTypeMap) return !(string, string, string, TemplateType)
 //
-// Used exclusively in the 'expand' function, this check verifies if the HTML file exists and is located within the 'templates' directory at the project's root.
-// It also ensures the file extension is HTML and controls the size of placeholder keys and values in the provided map,
+// Used exclusively in the 'expand' function, this check verifies if the template file exists.
+// It also ensures the file extension is correct ( like HTML or TXT ) and controls the size of placeholder keys and values in the provided map,
 // offering a basic validation and security measure against excessively long and potentially harmful inputs.
 // Size limits are defined by the 'max_placeholders_key_size' and 'max_placeholders_value_size' constants.
 // Monitor dynamic content for updates by generating a checksum that is compared against the cached version to verify any changes.
 //
-fn (mut tm DynamicTemplateManager) check_html_and_placeholders_size(f_path string, tmpl_var &map[string]DtmMultiTypeMap) !(string, string, string) {
+fn (mut tm DynamicTemplateManager) check_tmpl_and_placeholders_size(f_path string, tmpl_var &map[string]DtmMultiTypeMap) !(string, string, string, TemplateType) {
 	mut html_file := ''
 	mut file_name := ''
 	mut res_checksum_content := ''
 	mut need_to_create_entry := false
+	mut define_file_type := TemplateType.html
 
 	rlock tm.html_file_info {
 		if mapped_html_info := tm.html_file_info[f_path] {
@@ -439,23 +446,27 @@ fn (mut tm DynamicTemplateManager) check_html_and_placeholders_size(f_path strin
 			file_name = file_name_with_ext.all_before_last('.')
 			// Performs a basic check of the file extension.
 			ext := os.file_ext(html_file)
-			if ext != '.html' {
-				eprintln('${dtm.message_signature_error} ${html_file}, is not a HTML file')
+			if ext != '.html' && ext != '.txt' {
+				eprintln('${dtm.message_signature_error} ${html_file}, is not a valid template file like .html or .txt')
 				return error(dtm.internat_server_error)
+			}
+			if ext == '.txt' {
+				define_file_type = TemplateType.text
 			}
 			lock tm.html_file_info {
 				tm.html_file_info[f_path] = HtmlFileInfo{
 					file_full_path: html_file
 					file_name: file_name
+					file_type: define_file_type
 				}
 			}
 		} else {
-			eprintln("${dtm.message_signature_error} Template : '${html_file}' not found. Ensure all HTML templates are located in the 'templates' directory at the project's root.")
+			eprintln("${dtm.message_signature_error} Template : '${html_file}' not found. Ensure all templates are located in the template directory.")
 			return error(dtm.internat_server_error)
 		}
 	}
 
-	// checks if the dynamic content ( If, however, it contains dynamic content ) of an HTML page has been updated.
+	// checks if the dynamic content ( If, however, it contains dynamic content ) of an template has been updated.
 	// If it has, it creates a checksum of this content for analysis.
 	// The checksum is generated by concatenating all dynamic values and applying a fnv1a hash to the resulting string and generate a checksum.
 	if tmpl_var.len > 0 {
@@ -463,13 +474,13 @@ fn (mut tm DynamicTemplateManager) check_html_and_placeholders_size(f_path strin
 		// Control placeholder key and value sizes
 		for key, value in tmpl_var {
 			if key.len > dtm.max_placeholders_key_size {
-				eprintln('${dtm.message_signature_error} Length of placeholder key "${key}" exceeds the maximum allowed size for HTML content in file: ${html_file}. Max allowed size: ${dtm.max_placeholders_key_size} characters.')
+				eprintln('${dtm.message_signature_error} Length of placeholder key "${key}" exceeds the maximum allowed size for template content in file: ${html_file}. Max allowed size: ${dtm.max_placeholders_key_size} characters.')
 				return error(dtm.internat_server_error)
 			}
 			match value {
 				string {
 					if value.len > dtm.max_placeholders_value_size {
-						eprintln('${dtm.message_signature_error} Length of placeholder value for key "${key}" exceeds the maximum allowed size for HTML content in file: ${html_file}. Max allowed size: ${dtm.max_placeholders_value_size} characters.')
+						eprintln('${dtm.message_signature_error} Length of placeholder value for key "${key}" exceeds the maximum allowed size for template content in file: ${html_file}. Max allowed size: ${dtm.max_placeholders_value_size} characters.')
 						return error(dtm.internat_server_error)
 					}
 					combined_str += value
@@ -477,7 +488,7 @@ fn (mut tm DynamicTemplateManager) check_html_and_placeholders_size(f_path strin
 				else {
 					casted_value := value.str()
 					if casted_value.len > dtm.max_placeholders_value_size {
-						eprintln('${dtm.message_signature_error} Length of placeholder value for key "${key}" exceeds the maximum allowed size for HTML content in file: ${html_file}. Max allowed size: ${dtm.max_placeholders_value_size} characters.')
+						eprintln('${dtm.message_signature_error} Length of placeholder value for key "${key}" exceeds the maximum allowed size for template content in file: ${html_file}. Max allowed size: ${dtm.max_placeholders_value_size} characters.')
 						return error(dtm.internat_server_error)
 					}
 
@@ -489,31 +500,32 @@ fn (mut tm DynamicTemplateManager) check_html_and_placeholders_size(f_path strin
 		res_checksum_content = fnv1a.sum64_string(combined_str).str()
 	}
 
-	// If all is ok, return full path of HTML template file and HTML filename without extension
-	return html_file, file_name, res_checksum_content
+	// If all is ok, return full path of template file and filename without extension
+	return html_file, file_name, res_checksum_content, define_file_type
 }
 
-// fn (mut DynamicTemplateManager) create_template_cache_and_display_html(CacheRequest, i64, i64, string, string, i64, &map[string]DtmMultiTypeMap) return string
+// fn (mut DynamicTemplateManager) create_template_cache_and_display(CacheRequest, i64, i64, string, string, i64, &map[string]DtmMultiTypeMap, string, TemplateType) return string
 //
 // Exclusively invoked from `expand`.
-// It role is generate the HTML rendering of a template and relaying informations
-// to the cache manager for either the creation or updating of the HTML cache.
+// It role is generate the template rendering and relaying informations
+// to the cache manager for either the creation or updating of the template cache.
 // It begin to starts by ensuring that the cache delay expiration is correctly set by user.
-// It then parses the HTML file, replacing placeholders with actual dynamics/statics values.
-// If caching is enabled (indicated by a cache delay expiration different from -1) and the HTML content is valid,
+// It then parses the template file, replacing placeholders with actual dynamics/statics values.
+// If caching is enabled (indicated by a cache delay expiration different from -1) and the template content is valid,
 // the function constructs a `TemplateCache` request with all the necessary details.
 // This request is then sent to the cache handler channel, signaling either the need for a new cache or an update to an existing one.
-// The function returns the rendered HTML string immediately, without waiting for the cache to be created or updated.
+// The function returns the rendered immediately, without waiting for the cache to be created or updated.
 //
-fn (mut tm DynamicTemplateManager) create_template_cache_and_display_html(tcs CacheRequest, last_template_mod i64, unique_time i64, file_path string, tmpl_name string, cache_delay_expiration i64, placeholders &map[string]DtmMultiTypeMap, current_content_checksum string) string {
+fn (mut tm DynamicTemplateManager) create_template_cache_and_display(tcs CacheRequest, last_template_mod i64, unique_time i64, file_path string, tmpl_name string, cache_delay_expiration i64, placeholders &map[string]DtmMultiTypeMap, current_content_checksum string, tmpl_type TemplateType) string {
 	// Control if cache delay expiration is correctly setted. See the function itself for more details.
 	check_if_cache_delay_iscorrect(cache_delay_expiration, tmpl_name) or {
 		eprintln(err)
 		return dtm.internat_server_error
 	}
-	// Parses the HTML and stores the rendered output in the variable. See the function itself for more details.
-	mut html := tm.parse_html_file(file_path, tmpl_name, placeholders, tm.compress_html)
-	// If caching is enabled and the HTML content is valid, this section creates a temporary cache file, which is then used by the cache manager.
+	// Parses the template and stores the rendered output in the variable. See the function itself for more details.
+	mut html := tm.parse_tmpl_file(file_path, tmpl_name, placeholders, tm.compress_html,
+		tmpl_type)
+	// If caching is enabled and the template content is valid, this section creates a temporary cache file, which is then used by the cache manager.
 	// If successfully temporary is created, a cache creation/update notification is sent through its dedicated channel to the cache manager
 	if cache_delay_expiration != -1 && html != dtm.internat_server_error && tm.active_cache_server {
 		op_success, tmp_name := tm.create_temp_cache(html, file_path, unique_time)
@@ -540,7 +552,7 @@ fn (mut tm DynamicTemplateManager) create_template_cache_and_display_html(tcs Ca
 			}
 		}
 	} else {
-		// In the context of an HTML validity error, the 'nbr_of_remaining_request' counter is consistently updated to avoid anomalies in cache management.
+		// In the context of a template validity error, the 'nbr_of_remaining_request' counter is consistently updated to avoid anomalies in cache management.
 		tm.remaining_template_request(false, tm.id_to_handlered)
 	}
 
@@ -949,18 +961,18 @@ fn (mut tm DynamicTemplateManager) chandler_remaining_cache_template_used(cr Cac
 	return true
 }
 
-// fn (mut DynamicTemplateManager) parse_html_file(string, string, &map[string]DtmMultiTypeMap, bool) return (string, string)
+// fn (mut DynamicTemplateManager) parse_tmpl_file(string, string, &map[string]DtmMultiTypeMap, bool, TemplateType) return (string, string)
 //
-// The V compiler's template parser 'vlib/v/parser/tmpl.v', parses and transforms HTML template file content.
-// It ensures HTML format compatibility necessary for proper compilation and execution in its typical usage outside of DTM like managing various states,
+// The V compiler's template parser 'vlib/v/parser/tmpl.v', parses and transforms template file content.
+// It ensures template format compatibility necessary for proper compilation and execution in its typical usage outside of DTM like managing various states,
 // processing template tags, and supporting string interpolation...
 // This function checks for the presence and validity of template directives '@include'
 // to prevent runtime errors related to incorrect inclusion paths. Replaces placeholders with their actual values,
 // including dynamic content with the possibility of adding HTML code but only for certain specified tags and can also light compress HTML if required ( Removing usless spaces ).
 //
-// TODO - This function does not perform an in-depth check to ensure the file is indeed a valid HTML file, which could lead to possible runtime crashes,
+// TODO - This function does not perform an in-depth check to ensure the file is indeed a valid template file, which could lead to possible runtime crashes,
 // Addressing this by adding a control mechanism is recommended for enhanced stability.
-// For now, it is the user's responsibility to provide the correct HTML file(s) and HTML file(s)-content format.
+// For now, it is the user's responsibility.
 //
 const allowed_tags = ['<div>', '</div>', '<h1>', '</h1>', '<h2>', '</h2>', '<h3>', '</h3>', '<h4>',
 	'</h4>', '<h5>', '</h5>', '<h6>', '</h6>', '<p>', '</p>', '<br>', '<hr>', '<span>', '</span>',
@@ -974,20 +986,20 @@ const allowed_tags = ['<div>', '</div>', '<h1>', '</h1>', '<h2>', '</h2>', '<h3>
 
 const include_html_key_tag = '_#includehtml'
 
-fn (mut tm DynamicTemplateManager) parse_html_file(file_path string, tmpl_name string, placeholders &map[string]DtmMultiTypeMap, is_compressed bool) string {
+fn (mut tm DynamicTemplateManager) parse_tmpl_file(file_path string, tmpl_name string, placeholders &map[string]DtmMultiTypeMap, is_compressed bool, tmpl_type TemplateType) string {
 	// To prevent runtime crashes related to template include directives error,
 	// this code snippet ensures that the paths in include directives '@include' are correct.
-	html_content := os.read_file(file_path) or {
-		eprintln("${dtm.message_signature_error} Unable to read the file: '${file_path}' with HTML parser function.")
+	tmpl_content := os.read_file(file_path) or {
+		eprintln("${dtm.message_signature_error} Unable to read the file: '${file_path}' with parser function.")
 		return dtm.internat_server_error
 	}
 	mut re := regex.regex_opt('.*@include(?P<space_type>[ \t\r\n]+)(?P<quote_type_beg>[\'"])(?P<path>.*)(?P<quote_type_end>[\'"])') or {
 		tm.stop_cache_handler()
-		eprintln('${dtm.message_signature_error} with regular expression for template @inclusion in parse_html_file() function. Please check the syntax of the regex pattern : ${err.msg()}')
+		eprintln('${dtm.message_signature_error} with regular expression for template @inclusion in parse_tmpl_file() function. Please check the syntax of the regex pattern : ${err.msg()}')
 		return dtm.internat_server_error
 	}
-	// Find all occurrences of the compiled regular expression within the HTML content.
-	matches := re.find_all(html_content)
+	// Find all occurrences of the compiled regular expression within the template content.
+	matches := re.find_all(tmpl_content)
 	// Check if any matches were found.
 	if matches.len > 0 {
 		mut full_path := ''
@@ -996,8 +1008,8 @@ fn (mut tm DynamicTemplateManager) parse_html_file(file_path string, tmpl_name s
 			// Retrieve the start and end indices of the current match.
 			start := matches[i]
 			end := matches[i + 1]
-			// Extract the substring from the HTML content that corresponds to the current match.
-			match_text := html_content[start..end]
+			// Extract the substring from the template content that corresponds to the current match.
+			match_text := tmpl_content[start..end]
 			// Apply the regex to the extracted substring to enable group capturing.
 			re.match_string(match_text)
 			// Extract the path from the current match.
@@ -1010,29 +1022,38 @@ fn (mut tm DynamicTemplateManager) parse_html_file(file_path string, tmpl_name s
 			// Check if double quotes are used or if the whitespace sequence contains newline (\n) or carriage return (\r) characters
 			if quote_type_beg == '"' || quote_type_end == '"' || space_type.contains('\n')
 				|| space_type.contains('\r') {
-				eprintln("${dtm.message_signature_error} In the HTML template: '${file_path}', an error occurred in one of the '@include' directives. This could be due to the use of double quotes or unexpected newline/carriage return characters in the whitespace.")
+				eprintln("${dtm.message_signature_error} In the template: '${file_path}', an error occurred in one of the '@include' directives. This could be due to the use of double quotes or unexpected newline/carriage return characters in the whitespace.")
 				return dtm.internat_server_error
 			}
-			// Check if the 'path' string does not end with '.html'. If it doesn't, append '.html' to ensure the path has the correct extension.
-			if !path.ends_with('.html') {
-				path += '.html'
+			// Check if the 'path' string does not end with '.html' or '.txt'. If it doesn't, append '.html'/'.txt' to ensure the path has the correct extension.
+			match tmpl_type {
+				.html {
+					if !path.ends_with('.html') {
+						path += '.html'
+					}
+				}
+				.text {
+					if !path.ends_with('.txt') {
+						path += '.txt'
+					}
+				}
 			}
 			full_path = os.join_path(tm.template_folder, path)
-			// Check if the 'path' is empty or if the HTML template path does not exist.
+			// Check if the 'path' is empty or if the template path does not exist.
 			if path.len < 1 || !os.exists(full_path) {
-				eprintln("${dtm.message_signature_error} In the HTML template: '${file_path}', an error occurred in one of the '@include' directives. This could be due to the use of an invalid path: ${full_path}")
+				eprintln("${dtm.message_signature_error} In the template: '${file_path}', an error occurred in one of the '@include' directives. This could be due to the use of an invalid path: ${full_path}")
 				return dtm.internat_server_error
 			}
 		}
 	}
 	mut p := parser.Parser{}
-	// Parse/transform the HTML content, and a subsequent cleaning function restores the parsed content to a usable state for the DTM.
-	// Refer to the comments in 'clean_parsed_html' for details.
-	mut html := tm.clean_parsed_html(p.compile_template_file(file_path, tmpl_name), tmpl_name,
+	// Parse/transform the template content, and a subsequent cleaning function restores the parsed content to a usable state for the DTM.
+	// Refer to the comments in 'clean_parsed_tmpl' for details.
+	mut tmpl_ := tm.clean_parsed_tmpl(p.compile_template_file(file_path, tmpl_name), tmpl_name,
 		placeholders)
-	// If clean_parsed_html() return error
-	if html == dtm.internat_server_error {
-		return html
+	// If clean_parsed_tmpl() return error
+	if tmpl_ == dtm.internat_server_error {
+		return tmpl_
 	}
 	// This section completes the processing by replacing any placeholders that were not handled by the compiler template parser.
 	// If there are placeholders present, it iterates through them, applying necessary filters and substituting their values into the HTML content.
@@ -1046,72 +1067,76 @@ fn (mut tm DynamicTemplateManager) parse_html_file(file_path string, tmpl_name s
 				i8, i16, int, i64, u8, u16, u32, u64, f32, f64 {
 					// Converts value to string
 					temp_val := value.str()
-					// Filters the string value for safe HTML insertion
+					// Filters the string value for safe insertion
 					val = filter(temp_val)
 				}
 				string {
 					// Checks if the placeholder allows HTML inclusion
 					if key.ends_with(dtm.include_html_key_tag) {
-						// Iterates over allowed HTML tags for inclusion
-						for tag in dtm.allowed_tags {
-							// Escapes the HTML tag
-							escaped_tag := filter(tag)
-							// Replaces the escaped tags with actual HTML tags in the value
-							val = value.replace(escaped_tag, tag)
+						if tmpl_type == TemplateType.html {
+							// Iterates over allowed HTML tags for inclusion
+							for tag in dtm.allowed_tags {
+								// Escapes the HTML tag
+								escaped_tag := filter(tag)
+								// Replaces the escaped tags with actual HTML tags in the value
+								val = value.replace(escaped_tag, tag)
+							}
+						} else {
+							val = filter(value)
 						}
 						// Adjusts the placeholder key by removing the HTML inclusion tag
 						key_m = key.all_before_last(dtm.include_html_key_tag)
 					} else {
-						// Filters the string value for safe HTML insertion
+						// Filters the string value for safe insertion
 						val = filter(value)
 					}
 				}
 			}
-			// Forms the actual placeholder to be replaced in the HTML.
+			// Forms the actual placeholder to be replaced in the template render.
 			placeholder := '$${key_m}'
-			// Check if placeholder exist in the HTML
-			if html.contains(placeholder) {
-				// Replaces the placeholder if exist in the HTML with the actual value.
-				html = html.replace(placeholder, val)
+			// Check if placeholder exist in the template
+			if tmpl_.contains(placeholder) {
+				// Replaces the placeholder if exist in the template with the actual value.
+				tmpl_ = tmpl_.replace(placeholder, val)
 			}
 		}
 	}
 
 	// Performs a light compression of the HTML output by removing usless spaces, newlines, and tabs if user selected this option.
-	if is_compressed {
-		html = html.replace_each(['\n', '', '\t', '', '  ', ' '])
+	if is_compressed && tmpl_type == TemplateType.html {
+		tmpl_ = tmpl_.replace_each(['\n', '', '\t', '', '  ', ' '])
 		mut r := regex.regex_opt(r'>(\s+)<') or {
 			tm.stop_cache_handler()
-			eprintln('${dtm.message_signature_error} with regular expression for HTML light compression in parse_html_file() function. Please check the syntax of the regex pattern : ${err.msg()}')
+			eprintln('${dtm.message_signature_error} with regular expression for HTML light compression in parse_tmpl_file() function. Please check the syntax of the regex pattern : ${err.msg()}')
 			return dtm.internat_server_error
 		}
-		html = r.replace(html, '><')
-		for html.contains('  ') {
-			html = html.replace('  ', ' ')
+		tmpl_ = r.replace(tmpl_, '><')
+		for tmpl_.contains('  ') {
+			tmpl_ = tmpl_.replace('  ', ' ')
 		}
 	}
 
-	return html
+	return tmpl_
 }
 
-// fn (mut DynamicTemplateManager) clean_parsed_html(string, string) return string
+// fn (mut DynamicTemplateManager) clean_parsed_tmpl(string, string) return string
 //
-// Is specifically designed to clean the HTML output generated by V's compiler template parser.
-// It addresses the fact that the parser prepares HTML content for integration into an executable, rather than for direct use in a web browser.
+// Is specifically designed to clean the template output generated by V's compiler template parser.
+// It addresses the fact that the parser prepares template content for integration into an executable, rather than for direct use in a web browser.
 // The function adjusts markers and escapes specific characters to convert the parser's output into a format suitable for web browsers.
 //
-// TODO - Any changes to the HTML output made by the V lang compiler template parser in 'vlib/v/parser/tmpl.v'
-// may necessitate corresponding adjustments in this function. Perhaps a more independent function is needed to clean the HTML rendering?
+// TODO - Any changes to the template output made by the V lang compiler template parser in 'vlib/v/parser/tmpl.v'
+// may necessitate corresponding adjustments in this function. Perhaps a more independent function is needed to clean the template rendering?
 //
 // TODO - This function does not currently handle the cleanup of all template directives typically managed by the Vlang compiler, such as conditional statements or loops....
 // Implementation of these features will be necessary.
 //
-fn (mut tm DynamicTemplateManager) clean_parsed_html(tmpl string, tmpl_name string, provided_placeholders &map[string]DtmMultiTypeMap) string {
-	// Defines the start marker to encapsulate HTML content
+fn (mut tm DynamicTemplateManager) clean_parsed_tmpl(tmpl string, tmpl_name string, provided_placeholders &map[string]DtmMultiTypeMap) string {
+	// Defines the start marker to encapsulate template content
 	start_marker := "sb_${tmpl_name}.write_string('"
-	// Determines the end marker, signaling the end of HTML content
+	// Determines the end marker, signaling the end of template content
 	end_marker := "')\n\n\t_tmpl_res_${tmpl_name} := sb_${tmpl_name}.str()"
-	// Searches for the start marker in the processed HTML content. Triggers an error if the start marker is not found.
+	// Searches for the start marker in the processed template content. Triggers an error if the start marker is not found.
 	start := tmpl.index(start_marker) or {
 		eprintln("${dtm.message_signature_error} Start marker not found for '${tmpl_name}': ${err.msg()}")
 		// dtm.filter function used here. 'escape_html_strings_in_templates.v'
@@ -1123,25 +1148,25 @@ fn (mut tm DynamicTemplateManager) clean_parsed_html(tmpl string, tmpl_name stri
 		// dtm.filter function used here. 'escape_html_strings_in_templates.v'
 		return filter(tmpl)
 	}
-	// Extracts the portion of HTML content between the start and end markers.
-	mut html := tmpl[start + start_marker.len..end]
+	// Extracts the portion of template content between the start and end markers.
+	mut tmpl_ := tmpl[start + start_marker.len..end]
 
-	// Utilizes a regular expression to identify placeholders within the HTML template output.
+	// Utilizes a regular expression to identify placeholders within the template output.
 	// This process checks for placeholders that have no corresponding entries in the provided placeholders map.
 	// Any unmatched placeholders found are then safely escaped
 	mut r := regex.regex_opt(r'$([a-zA-Z_][a-zA-Z0-9_]*)') or {
 		tm.stop_cache_handler()
-		eprintln('${dtm.message_signature_error} with regular expression for identifying placeholders in the HTML template in clean_parsed_html() function. Please check the syntax of the regex pattern : ${err.msg()}')
+		eprintln('${dtm.message_signature_error} with regular expression for identifying placeholders in the template in clean_parsed_tmpl() function. Please check the syntax of the regex pattern : ${err.msg()}')
 		return dtm.internat_server_error
 	}
-	indices := r.find_all(html)
+	indices := r.find_all(tmpl_)
 	// Iterates through each found placeholder.
 	for i := 0; i < indices.len; i += 2 {
 		// Retrieves the start and end indices of the current placeholder.
 		beginning := indices[i]
 		ending := indices[i + 1]
-		// Extracts the placeholder from the HTML using the indices.
-		placeholder := html[beginning..ending]
+		// Extracts the placeholder from the template using the indices.
+		placeholder := tmpl_[beginning..ending]
 		// Removes the '$' symbol to get the placeholder name.
 		placeholder_name := placeholder[1..]
 		// Checks if the placeholder or its variant with '_#includehtml' is not in the provided placeholders map.
@@ -1149,33 +1174,33 @@ fn (mut tm DynamicTemplateManager) clean_parsed_html(tmpl string, tmpl_name stri
 			|| (placeholder_name + dtm.include_html_key_tag) in provided_placeholders) {
 			// If so, escapes the unresolved placeholder and replaces the original placeholder with the escaped version
 			escaped_placeholder := filter(placeholder)
-			html = html.replace(placeholder, escaped_placeholder)
+			tmpl_ = tmpl_.replace(placeholder, escaped_placeholder)
 		}
 	}
 
-	// Transforms parser-specific escape sequences into their respective characters for proper HTML
-	html = html.replace('\\n', '\n').replace("\\'", "'")
-	return html
+	// Transforms parser-specific escape sequences into their respective characters for proper template
+	tmpl_ = tmpl_.replace('\\n', '\n').replace("\\'", "'")
+	return tmpl_
 }
 
 // fn check_if_cache_delay_iscorrect(i64, string) return !
 //
-// Validates the user-specified cache expiration delay for HTML templates.
+// Validates the user-specified cache expiration delay for templates.
 // It enforces three permissible delay settings:
 // - A minimum of five minutes and a maximum of one year for standard cache expiration. ( Define in constants )
 // - A parameter of 0 for an infinite cache expiration delay
-// - A parameter of -1 for no caching, meaning the HTML template is processed every time without being stored in the cache."
+// - A parameter of -1 for no caching, meaning the template is processed every time without being stored in the cache."
 //
 fn check_if_cache_delay_iscorrect(cde i64, tmpl_name string) ! {
 	if (cde != 0 && cde != -1 && cde < dtm.converted_cache_delay_expiration_at_min)
 		|| (cde != 0 && cde != -1 && cde > dtm.converted_cache_delay_expiration_at_max) {
-		return error("${dtm.message_signature_error} The cache timeout for template '${tmpl_name}.html' cannot be set to a value less than '${dtm.cache_delay_expiration_at_min}' seconds and more than '${dtm.cache_delay_expiration_at_max}' seconds. Exception for the value '0' which means no cache expiration, and the value '-1' which means html generation without caching.")
+		return error("${dtm.message_signature_error} The cache timeout for template '${tmpl_name}' cannot be set to a value less than '${dtm.cache_delay_expiration_at_min}' seconds and more than '${dtm.cache_delay_expiration_at_max}' seconds. Exception for the value '0' which means no cache expiration, and the value '-1' which means html generation without caching.")
 	}
 }
 
 // fn cache_request_route(bool, i64, i64, i64, i64, i64, i64) return (CacheRequest, i64)
 //
-// Used exclusively in 'expand' function, determines the appropriate cache request action for an HTML template.
+// Used exclusively in 'expand' function, determines the appropriate cache request action for a template.
 // It assesses various conditions such as cache existence, cache expiration settings, and last modification timestamps ( template or dynamic content )
 // to decide whether to create a new cache, update an existing or delivered a valid cache content.
 //
@@ -1187,7 +1212,7 @@ fn (mut tm DynamicTemplateManager) cache_request_route(is_cache_exist bool, neg_
 		return CacheRequest.new, unique_ts
 	} else if last_template_mod < test_current_template_mod
 		|| content_checksum != current_content_checksum {
-		// Requires cache update as the HTML template has been modified since the last time. it can be the template itself or its dynamic content.
+		// Requires cache update as the template has been modified since the last time. it can be the template itself or its dynamic content.
 		unique_ts := get_current_unix_micro_timestamp()
 		tm.c_time = unique_ts
 		return CacheRequest.update, unique_ts
@@ -1252,14 +1277,14 @@ fn (mut tm DynamicTemplateManager) handle_dtm_clock() {
 				}
 			}
 		}
-		// Reset wait time for next cycle.
-		minimum_wait_time_until_next_update = dtm.update_duration
-		if need_to_close {
-			break
-		}
 		$if test {
 			break
 		}
+		if need_to_close {
+			break
+		}
+		// Reset wait time for next cycle.
+		minimum_wait_time_until_next_update = dtm.update_duration
 	}
 }
 
