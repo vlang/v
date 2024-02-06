@@ -157,6 +157,7 @@ pub struct TemplateCacheParams {
 // DynamicTemplateManagerInitialisationParams is used with 'initialize' function. (See below at initialize section)
 @[params]
 pub struct DynamicTemplateManagerInitialisationParams {
+	def_cache_path       string
 	compress_html        bool = true
 	active_cache_server  bool = true
 	max_size_data_in_mem int  = dtm.max_size_data_in_memory
@@ -168,6 +169,7 @@ pub struct DynamicTemplateManagerInitialisationParams {
 // A "vcache_dtm" directory must be created at the root of the project (where the executable is located) to use the DTM.
 // Otherwise, the DTM will attempt to create it in the temporary OS area. If this is impossible, the cache system will be deactivated.
 // Initalisation params are :
+// - def_cache_path 'type string' User can define the path of cache folder.
 // - max_size_data_in_mem 'type int' Maximum size of data allowed in memory for caching. The value must be specified in kilobytes. ( Default is: 500KB / Limit max is : 500KB)	
 // - compress_html: 'type bool' Light compress of the HTML ouput. ( default is true )
 // - active_cache_server: 'type bool' Activate or not the template cache system. ( default is true )
@@ -185,12 +187,13 @@ pub fn initialize(dtm_init_params DynamicTemplateManagerInitialisationParams) &D
 		dir_path = dtm_init_params.test_cache_dir
 		dir_html_path = dtm_init_params.test_template_dir
 	} $else {
-		dir_path = os.join_path('${os.dir(os.executable())}/vcache_dtm')
+		//	dir_path = os.join_path('${os.dir(os.executable())}/vcache_dtm')
+		dir_path = dtm_init_params.def_cache_path
 		dir_html_path = os.join_path('${os.dir(os.executable())}/templates')
 	}
 	if dtm_init_params.active_cache_server {
 		// Control if 'vcache_dtm' folder exist in the root project
-		if os.exists(dir_path) && os.is_dir(dir_path) {
+		if dir_path.len > 0 && os.exists(dir_path) && os.is_dir(dir_path) {
 			// WARNING: When setting the directory for caching files and for testing purposes,
 			// 'check_and_clear_cache_files' function will delete all "*.cache" or "*.tmp" files inside the specified 'vcache_dtm' directory in the project root's. Ensure that
 			// directory used for the cache does not contain any important files.
@@ -202,7 +205,10 @@ pub fn initialize(dtm_init_params DynamicTemplateManagerInitialisationParams) &D
 			// If the 'vcache_dtm' folder is not found in the project root, the dtm will attempt to create it in the temporary OS area.
 			dir_path = os.join_path(os.temp_dir(), 'vcache_dtm')
 			if !os.exists(dir_path) || !os.is_dir(dir_path) {
-				os.mkdir(dir_path) or { active_cache_handler = false }
+				os.mkdir(dir_path) or {
+					active_cache_handler = false
+					eprintln(err.msg())
+				}
 			}
 			if active_cache_handler {
 				check_and_clear_cache_files(dir_path) or {
@@ -212,7 +218,7 @@ pub fn initialize(dtm_init_params DynamicTemplateManagerInitialisationParams) &D
 			}
 			// If it is impossible to use a 'vcache_dtm' directory, the cache system is deactivated, and the user is warned."
 			if !active_cache_handler {
-				eprintln('${dtm.message_signature_warn} The cache storage directory at the project root does not exist and it was also not possible to use a folder suitable for temporary storage. Therefore, the cache system will be disabled. It is recommended to address the aforementioned issues to utilize the cache system.')
+				eprintln('${dtm.message_signature_warn} The cache storage directory does not exist or has a problem and it was also not possible to use a folder suitable for temporary storage. Therefore, the cache system will be disabled. It is recommended to address the aforementioned issues to utilize the cache system.')
 			} else {
 				cache_temporary_bool = true
 			}
@@ -333,6 +339,20 @@ pub fn (mut tm DynamicTemplateManager) expand(tmpl_path string, tmpl_var Templat
 		tm.stop_cache_handler()
 		eprintln('${dtm.message_signature_error} The initialization phase of DTM has failed. Therefore, you cannot use it. Please address the errors and then restart the dtm server.')
 		return dtm.internat_server_error
+	}
+}
+
+// stop_cache_handler signals the termination of the cache handler by setting 'close_cache_handler' to true and sending a signal through the channel
+// which will trigger a cascading effect to close the cache handler thread as well as the DTM clock thread.
+//
+pub fn (mut tm DynamicTemplateManager) stop_cache_handler() {
+	if tm.active_cache_server {
+		tm.active_cache_server = false
+		tm.close_cache_handler = true
+		tm.ch_cache_handler <- TemplateCache{
+			id: 0
+		}
+		tm.threads_handler.wait()
 	}
 }
 
@@ -927,20 +947,6 @@ fn (mut tm DynamicTemplateManager) chandler_remaining_cache_template_used(cr Cac
 		}
 	}
 	return true
-}
-
-// stop_cache_handler signals the termination of the cache handler by setting 'close_cache_handler' to true and sending a signal through the channel
-// which will trigger a cascading effect to close the cache handler thread as well as the DTM clock thread.
-//
-pub fn (mut tm DynamicTemplateManager) stop_cache_handler() {
-	if tm.active_cache_server {
-		tm.active_cache_server = false
-		tm.close_cache_handler = true
-		tm.ch_cache_handler <- TemplateCache{
-			id: 0
-		}
-		tm.threads_handler.wait()
-	}
 }
 
 // fn (mut DynamicTemplateManager) parse_html_file(string, string, &map[string]DtmMultiTypeMap, bool) return (string, string)

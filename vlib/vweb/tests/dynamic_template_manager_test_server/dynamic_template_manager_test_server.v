@@ -23,7 +23,8 @@ fn main() {
 	app.shared_data_int << 123456
 	app.shared_data_int << 7891011
 
-	app.dtmi = dtm.initialize()
+	cache_folder_path := os.join_path(os.dir(os.executable()), 'vcache_dtm')
+	app.dtmi = dtm.initialize(def_cache_path: cache_folder_path)
 	defer {
 		app.dtmi.stop_cache_handler()
 	}
