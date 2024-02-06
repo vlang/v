@@ -55,7 +55,7 @@ fn main() {
 ```
 Title of text : @title
 Value in the text : @non_string_type
-HTML tags is always escaped in text file : @html_section
+HTML tags are always escaped in text file : @html_section
 ```
 
 ### 2. Minimal Vweb example:
@@ -140,8 +140,8 @@ Three parameters are available:
 - `def_cache_path` : ( **String** value ) User can define the path of cache folder.
 - `max_size_data_in_mem` : ( **Int** value ) Maximum size of data allowed in memory for each cached
   template. The value must be specified in kilobytes. ( Default is: 500KB / Limit max is : 500KB )
-- `compress_html` : ( **Bool** value ) Light compress of the HTML ouput, to remove all unnecessary
-  spacing. ( Default is true, parameter taken into account only for HTML files )
+- `compress_html` : ( **Bool** value ) Light '**minifier**' of the HTML ouput, to remove all 
+unnecessary spacing. ( Default is true, parameter taken into account only for HTML files )
 - `active_cache_server` : ( **Bool** value ) Activate or not the template cache system. ( Default is
   true, ***_Highly recommended to keep it enabled for optimal performance_*** )
 
