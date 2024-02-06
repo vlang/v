@@ -30,26 +30,24 @@ Below you will find 2 usage contexts:
 
 ### 1. Minimal static generator example :
 
-```v ignore
+```v
 import x.templating.dtm
 
 fn main() {
+	mut dtmi := dtm.initialize()
 
-  mut dtmi := dtm.initialize()
-
-    // No need to add this 'defer' if you have chosen to disable the cache system in the options.
+	// No need to add this 'defer' if you have chosen to disable the cache system in the options.
 	defer {
 		dtmi.stop_cache_handler()
 	}
 	mut tmp_var := map[string]dtm.DtmMultiTypeMap{}
-	tmp_var['title'] = "V dtm best title" 
+	tmp_var['title'] = 'V dtm best title'
 	tmp_var['non_string_type'] = 7
 	tmp_var['html_section_#includehtml'] = '<span>will <br> be <br> escaped <br> in <br> text mode</span>'
 
 	render := dtmi.expand('test.txt', placeholders: &tmp_var)
 
 	println(render)
-
 }
 ```
 #### and its template text format :
@@ -62,28 +60,31 @@ HTML tags is always escaped in text file : @html_section
 
 ### 2. Minimal Vweb example:
 
-```v ignore
+```v
 import x.vweb
 import x.templating.dtm
 import os
 
-struct App {
-	vweb.Context
+pub struct App {
 pub mut:
-	dtmi &dtm.DynamicTemplateManager = unsafe { nil }                    
+	dtmi &dtm.DynamicTemplateManager = unsafe { nil }
+}
+
+pub struct Context {
+	vweb.Context
 }
 
 fn main() {
-	mut app := &App{}
 	cache_folder_path := os.join_path(os.dir(os.executable()), 'vcache_dtm')
-	app.dtmi = dtm.initialize(def_cache_path: cache_folder_path)
-
-    // No need to add this 'defer' if you have chosen to disable the cache system in the options.
+	mut app := &App{
+		dtmi: dtm.initialize(def_cache_path: cache_folder_path)
+	}
+	// No need to add this 'defer' if you have chosen to disable the cache system in the options.
 	defer {
 		app.dtmi.stop_cache_handler()
 	}
 
-	/* 
+	/*
     Here is an example of init configuration :
 
 	dtm.initialize(
@@ -94,17 +95,16 @@ fn main() {
     )
 	*/
 
-	vweb.run(app, 18081)
+	vweb.run[App, Context](mut app, 18081)
 }
 
 @['/']
-pub fn (mut app App) index() vweb.Result {
-    mut tmpl_var := map[string]dtm.DtmMultiTypeMap{}
-    tmpl_var['title'] = "The true title"
+pub fn (mut app App) index(mut ctx Context) vweb.Result {
+	mut tmpl_var := map[string]dtm.DtmMultiTypeMap{}
+	tmpl_var['title'] = 'The true title'
 	html_content := app.dtmi.expand('index.html', placeholders: &tmpl_var)
-	return app.html(html_content)
+	return ctx.html(html_content)
 }
-
 ```
 
 #### and its template html format :
