@@ -3,51 +3,124 @@
 A simple template manager integrated into the V project, designed to combine the power of V
 templates with Vweb, without the need to recompile the application with every change.
 
-**_This module is in the experimental phase, it lacks some features and may contain bugs_**
-
 ## Quick Start
 
 Using the dynamic template manager ( named '**dtm**' in this readme) is relatively straightforward.
-You just need to create an instance and initialize it. Then, call the '**serve_dynamic_template**'
-function in the code that manages your web pages. 
+You just need to initialize an instance. Then, call the '**expand**' function in the code that
+manages your template. 
 
-Before starting, at the root directory of your vweb project, you need to create a '**templates**'
-folder as well as a '**vcache**' folder. The absence of these directories at the root of your
-project will prevent you from using the dtm.
+Before starting, You can specify a folder, but it is not mandatory to store the generated cache. If
+nothing is specified or if there is a problem with the targeted folder (for example, a permission
+issue), the DTM will attempt to create a cache folder in the temporary file area of your OS.
+Finally, if all this does not prove successful, then the DTM will disable the cache system and
+notify the user if the cache system was previously required.
 
-Next, you must add your HTML file into the folder you previously created. ***Be aware that if the
-HTML templates are not placed in the correct directory, the DTM will return an error message
-indicating that it cannot find the template!!***
+However, at the root directory of your project, you need to create a '**templates**' folder. The
+absence of these directories will prevent you from using the dtm. You must add your template files
+into the folder you previously created. ***Be aware that if the templates are not placed in the
+correct directory, the DTM will return an error message indicating that it cannot find the
+template!***
 
-A minimal quick start example:
+The DTM currently only works with 2 types of files:
+
+- html
+- raw text
+
+Below you will find 2 usage contexts:
+
+### 1. Minimal static generator example :
+
+```v ignore
+import x.templating.dtm
+
+fn main() {
+
+  mut dtmi := dtm.initialize()
+
+    // No need to add this 'defer' if you have chosen to disable the cache system in the options.
+	defer {
+		dtmi.stop_cache_handler()
+	}
+	mut tmp_var := map[string]dtm.DtmMultiTypeMap{}
+	tmp_var['title'] = "V dtm best title" 
+	tmp_var['non_string_type'] = 7
+	tmp_var['html_section_#includehtml'] = '<span>will <br> be <br> escaped <br> in <br> text mode</span>'
+
+	render := dtmi.expand('test.txt', placeholders: &tmp_var)
+
+	println(render)
+
+}
+```
+#### and its template text format :
 
 ```
-import vweb
+Title of text : @title
+Value in the text : @non_string_type
+HTML tags is always escaped in text file : @html_section
+```
+
+### 2. Minimal Vweb example:
+
+```v ignore
+import x.vweb
 import x.templating.dtm
 
 struct App {
 	vweb.Context
 pub mut:
-    // The vweb_global attribute must be applied in order to use the dtm 
-    // (Dynamic Template Manager) throughout your application.
-    // However, you do not need the attribute if you are using x.vweb
-	dtm &dtm.DynamicTemplateManager = dtm.create_dtm() @[vweb_global] 
+	dtmi &dtm.DynamicTemplateManager = unsafe { nil }                    
 }
 
 fn main() {
 	mut app := &App{}
+	cache_folder_path := os.join_path(os.dir(os.executable()), 'vcache_dtm')
+	app.dtmi = dtm.initialize(def_cache_path: cache_folder_path)
 
-	dtm.initialize_dtm(mut app.dtm)!
+    // No need to add this 'defer' if you have chosen to disable the cache system in the options.
+	defer {
+		app.dtmi.stop_cache_handler()
+	}
+
+	/* 
+    Here is an example of init configuration :
+
+	dtm.initialize(
+      def_cache_path: cache_folder_path
+	  compress_html: false
+	  active_cache_server: false
+	  max_size_data_in_mem: 100
+    )
+	*/
 
 	vweb.run(app, 18081)
 }
 
 @['/']
 pub fn (mut app App) index() vweb.Result {
-	html_content := app.dtm.serve_dynamic_template('index.html')
+    mut tmpl_var := map[string]dtm.DtmMultiTypeMap{}
+    tmpl_var['title'] = "The true title"
+	html_content := app.dtmi.expand('index.html', placeholders: &tmpl_var)
 	return app.html(html_content)
 }
 
+```
+
+#### and its template html format :
+
+```html 
+index.html
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>@title</title>
+  </head>
+  <body>
+    <div id="container">
+      <H1>@title</H1>
+    </div>
+  </body>
+</html>
 ```
 
 You have a ready-to-view demonstration available
@@ -58,50 +131,59 @@ You have a ready-to-view demonstration available
 There are two types of option possibilities:
 
 - Specific to the initialization
-- Defined for each web page
+- Defined for each call of expand function
 
 ### Specific to the initialization
 
 Three parameters are available:
 
+- `def_cache_path` : ( **String** value ) User can define the path of cache folder.
 - `max_size_data_in_mem` : ( **Int** value ) Maximum size of data allowed in memory for each cached
   template. The value must be specified in kilobytes. ( Default is: 500KB / Limit max is : 500KB )
 - `compress_html` : ( **Bool** value ) Light compress of the HTML ouput, to remove all unnecessary
-  spacing. ( Default is true )
+  spacing. ( Default is true, parameter taken into account only for HTML files )
 - `active_cache_server` : ( **Bool** value ) Activate or not the template cache system. ( Default is
   true, ***_Highly recommended to keep it enabled for optimal performance_*** )
 
-Using like this :
+Use it like this :
 
-```
-initialize_dtm(mut app.dtm,
+```v ignore
+initialize(
+    def_cache_path: 'your/directorie/cache/path'
     max_size_data_in_mem: 500
     compress_html: true
     active_cache_server: true
 )!
 ```
 
-
-### Defined for each web page
+### Defined for each call of expand function
 
 - `placeholders` ( **&map[string]DtmMultiTypeMap** value ) Used to map placeholders within the
   template to their corresponding content, facilitating dynamic content insertion, by specifying
   values in the placeholders map. Templates can dynamically display content.
 
 - `cache_delay_expiration` ( **i64** value ) Specifies the cache expiration time for the concerned
-  page in seconds. ( Minimum value is **300** seconds and maximum is **31536000** seconds,
-  equivalent to five minutes and one year. Default value is **86400** seconds or one day ). You can
-  add any value you want in seconds as long as it remains within the previously indicated range. 
+  page in seconds. ( Default value is **86400** seconds or one day ). You can add any value you want
+  in seconds as long as it remains within the indicated range ( see below ). 
 
-Possibility to use already defined cache delay constants like: `cache_delay_expiration_at_min`,
-`cache_delay_expiration_at_max`, `cache_delay_expiration_by_default`
+Possibility to use already defined cache delay constants like:
+- `cache_delay_expiration_at_min` : five minutes
+- `cache_delay_expiration_at_max` : one year
+- `cache_delay_expiration_by_default` : one day
 
-Using like this :
+For specific cases, you can cancel the generation and use of cache file, even if the cache system is
+active :
+- `cache_delay_expiration` : -1
 
-```
-serve_dynamic_template('path/of/template.html',
+Or set a cache that will never expire:
+- `cache_delay_expiration` : 0
+
+Example :
+
+```v ignore
+expand('path/of/template.html',
 		placeholders: &the_map_var
-		cache_delay_expiration: cache_delay_expiration_by_default
+		cache_delay_expiration: -1
 )
 ```
 
@@ -119,9 +201,9 @@ current state of the module, it accepts the following types like:
 - f32, f64
 ```
 
-it is used as follows:
+Example:
 
-```
+```v ignore
 mut plhs := map[string]dtm.DtmMultiTypeMap{}
 plhs['placeholder_name_1'] = "title content"
 plhs['placeholder_name_2'] = 123456
@@ -135,7 +217,7 @@ Pay attention to this particular tag: "**_#includehtml**", it enables you to inc
 dynamic content. Without this tag, all characters will be escaped for obvious security reasons. By
 using this tag, only certain HTML tags are allowed. Here is the list:
 
-```
+```html
 '<div>', '</div>', '<h1>', '</h1>', '<h2>', '</h2>', '<h3>', '</h3>', '<h4>',
 '</h4>', '<h5>', '</h5>', '<h6>', '</h6>', '<p>', '</p>', '<br>', '<hr>', '<span>', '</span>',
 '<ul>', '</ul>', '<ol>', '</ol>', '<li>', '</li>', '<dl>', '</dl>', '<dt>', '</dt>', '<dd>',
@@ -147,11 +229,13 @@ using this tag, only certain HTML tags are allowed. Here is the list:
 '</summary>'
 ```
 
+#### Note that with a raw text template, all HTML tag inclusions are escaped.
+
 ### On The Template Side :
 
 An example of a template, corresponding to the previous subsection:
 
-```
+```html
 <!DOCTYPE html>
 <html>
   <head>
@@ -186,7 +270,7 @@ character. The traditional inclusion system is still perfectly usable, such as:
 
 As you've understood, the DTM is still under development and optimization. There are functionalities
 to be added, such as data compression, managing loops or conditions within the template itself. Able
-to be used in contexts other than HTML, such as text files, and for modules other than vweb.
+to be used in contexts other than HTML and raw text.
 
 This will come in time.
 
