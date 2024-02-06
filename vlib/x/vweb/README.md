@@ -359,6 +359,16 @@ app.mount_static_folder_at('static', '/public')
 
 If we run our app the `main.css` file is available at http://localhost:8080/public/main.css
 
+### Adding a single static asset
+
+If you don't want to mount an entire folder, but only a single file, you can use `serve_static`.
+
+**Example:**
+```v ignore
+// serve the `main.css` file at '/path/main.css'
+app.serve_static('/path/main.css',  'static/css/main.css')!
+```
+
 ### Dealing with MIME types
 
 By default vweb will map the extension of a file to a MIME type. If any of your static file's
