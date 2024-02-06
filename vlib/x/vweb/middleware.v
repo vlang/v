@@ -297,7 +297,7 @@ pub fn (options &CorsOptions) validate_request(mut ctx Context) bool {
 // Example:
 // ```v
 // app.use(vweb.cors[Context](vweb.CorsOptions{
-				//     origins: ['*']
+//     origins: ['*']
 //     allowed_methods: [.get, .head, .patch, .put, .post, .delete]
 // }))
 // ```
