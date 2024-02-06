@@ -621,6 +621,9 @@ pub fn (s string) u8() u8 {
 pub fn (s string) u8_array() []u8 {
 	// strip underscore in the string
 	mut tmps := s.replace('_', '')
+	defer {
+		unsafe { tmps.free() }
+	}
 	if tmps.len == 0 {
 		return []u8{}
 	}
