@@ -57,6 +57,8 @@ pub fn (st Stat) get_filetype() FileType {
 	}
 }
 
+// get_mode returns the file type and permissions (readable, writable, executable)
+// in owner/group/others format
 pub fn (st Stat) get_mode() FileMode {
 	return FileMode{
 		typ: st.get_filetype()
