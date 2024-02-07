@@ -963,7 +963,7 @@ fn (mut tm DynamicTemplateManager) chandler_remaining_cache_template_used(cr Cac
 
 // fn (mut DynamicTemplateManager) parse_tmpl_file(string, string, &map[string]DtmMultiTypeMap, bool, TemplateType) return (string, string)
 //
-// Parses and generate template file content.
+// Parses and generates template file content.
 // It ensures template format compatibility necessary for proper compilation and execution in its typical usage outside of DTM like managing various states,
 // processing template tags, and supporting string interpolation...
 // including dynamic content with the possibility of adding HTML code but only for certain specified tags and can also light compress HTML if required ( Removing usless spaces ).
