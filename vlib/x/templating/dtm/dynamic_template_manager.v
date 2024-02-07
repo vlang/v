@@ -1,7 +1,6 @@
 module dtm
 
 import os
-import v.parser
 import crypto.md5
 import hash.fnv1a
 import time
@@ -175,6 +174,7 @@ pub struct DynamicTemplateManagerInitialisationParams {
 // A cache directory can be created by the user for storage. If it is not defined or encounters issues such as permission problems,
 // the DTM will attempt to create it in the OS's temporary area. If this proves impossible, the cache system will be deactivated and the user will be informed if cache system was required.
 // Initalisation params are :
+//
 // - def_cache_path 'type string' User can define the path of cache folder.
 // - max_size_data_in_mem 'type int' Maximum size of data allowed in memory for caching. The value must be specified in kilobytes. ( Default is: 500KB / Limit max is : 500KB)	
 // - compress_html: 'type bool' Light compress of the HTML ouput. ( default is true )
@@ -963,16 +963,10 @@ fn (mut tm DynamicTemplateManager) chandler_remaining_cache_template_used(cr Cac
 
 // fn (mut DynamicTemplateManager) parse_tmpl_file(string, string, &map[string]DtmMultiTypeMap, bool, TemplateType) return (string, string)
 //
-// The V compiler's template parser 'vlib/v/parser/tmpl.v', parses and transforms template file content.
+// Parses and generate template file content.
 // It ensures template format compatibility necessary for proper compilation and execution in its typical usage outside of DTM like managing various states,
 // processing template tags, and supporting string interpolation...
-// This function checks for the presence and validity of template directives '@include'
-// to prevent runtime errors related to incorrect inclusion paths. Replaces placeholders with their actual values,
 // including dynamic content with the possibility of adding HTML code but only for certain specified tags and can also light compress HTML if required ( Removing usless spaces ).
-//
-// TODO - This function does not perform an in-depth check to ensure the file is indeed a valid template file, which could lead to possible runtime crashes,
-// Addressing this by adding a control mechanism is recommended for enhanced stability.
-// For now, it is the user's responsibility.
 //
 const allowed_tags = ['<div>', '</div>', '<h1>', '</h1>', '<h2>', '</h2>', '<h3>', '</h3>', '<h4>',
 	'</h4>', '<h5>', '</h5>', '<h6>', '</h6>', '<p>', '</p>', '<br>', '<hr>', '<span>', '</span>',
@@ -987,123 +981,10 @@ const allowed_tags = ['<div>', '</div>', '<h1>', '</h1>', '<h2>', '</h2>', '<h3>
 const include_html_key_tag = '_#includehtml'
 
 fn (mut tm DynamicTemplateManager) parse_tmpl_file(file_path string, tmpl_name string, placeholders &map[string]DtmMultiTypeMap, is_compressed bool, tmpl_type TemplateType) string {
-	// To prevent runtime crashes related to template include directives error,
-	// this code snippet ensures that the paths in include directives '@include' are correct.
-	tmpl_content := os.read_file(file_path) or {
-		eprintln("${dtm.message_signature_error} Unable to read the file: '${file_path}' with parser function.")
-		return dtm.internat_server_error
-	}
-	mut re := regex.regex_opt('.*@include(?P<space_type>[ \t\r\n]+)(?P<quote_type_beg>[\'"])(?P<path>.*)(?P<quote_type_end>[\'"])') or {
-		tm.stop_cache_handler()
-		eprintln('${dtm.message_signature_error} with regular expression for template @inclusion in parse_tmpl_file() function. Please check the syntax of the regex pattern : ${err.msg()}')
-		return dtm.internat_server_error
-	}
-	// Find all occurrences of the compiled regular expression within the template content.
-	matches := re.find_all(tmpl_content)
-	// Check if any matches were found.
-	if matches.len > 0 {
-		mut full_path := ''
-		// Iterate through the matches. Since each match has a start and end index, increment by 2 for each iteration.
-		for i := 0; i < matches.len; i += 2 {
-			// Retrieve the start and end indices of the current match.
-			start := matches[i]
-			end := matches[i + 1]
-			// Extract the substring from the template content that corresponds to the current match.
-			match_text := tmpl_content[start..end]
-			// Apply the regex to the extracted substring to enable group capturing.
-			re.match_string(match_text)
-			// Extract the path from the current match.
-			mut path := re.get_group_by_name(match_text, 'path')
-			// Extract the type of quotation marks.
-			quote_type_beg := re.get_group_by_name(match_text, 'quote_type_beg')
-			quote_type_end := re.get_group_by_name(match_text, 'quote_type_end')
-			// Extract the whitespace characters following the '@include' directive.
-			space_type := re.get_group_by_name(match_text, 'space_type')
-			// Check if double quotes are used or if the whitespace sequence contains newline (\n) or carriage return (\r) characters
-			if quote_type_beg == '"' || quote_type_end == '"' || space_type.contains('\n')
-				|| space_type.contains('\r') {
-				eprintln("${dtm.message_signature_error} In the template: '${file_path}', an error occurred in one of the '@include' directives. This could be due to the use of double quotes or unexpected newline/carriage return characters in the whitespace.")
-				return dtm.internat_server_error
-			}
-			// Check if the 'path' string does not end with '.html' or '.txt'. If it doesn't, append '.html'/'.txt' to ensure the path has the correct extension.
-			match tmpl_type {
-				.html {
-					if !path.ends_with('.html') {
-						path += '.html'
-					}
-				}
-				.text {
-					if !path.ends_with('.txt') {
-						path += '.txt'
-					}
-				}
-			}
-			full_path = os.join_path(tm.template_folder, path)
-			// Check if the 'path' is empty or if the template path does not exist.
-			if path.len < 1 || !os.exists(full_path) {
-				eprintln("${dtm.message_signature_error} In the template: '${file_path}', an error occurred in one of the '@include' directives. This could be due to the use of an invalid path: ${full_path}")
-				return dtm.internat_server_error
-			}
-		}
-	}
-	mut p := parser.Parser{}
-	// Parse/transform the template content, and a subsequent cleaning function restores the parsed content to a usable state for the DTM.
-	// Refer to the comments in 'clean_parsed_tmpl' for details.
-	mut tmpl_ := tm.clean_parsed_tmpl(p.compile_template_file(file_path, tmpl_name), tmpl_name,
-		placeholders)
-	// If clean_parsed_tmpl() return error
-	if tmpl_ == dtm.internat_server_error {
-		return tmpl_
-	}
-	// This section completes the processing by replacing any placeholders that were not handled by the compiler template parser.
-	// If there are placeholders present, it iterates through them, applying necessary filters and substituting their values into the HTML content.
-	// dtm.filter function used here. 'escape_html_strings_in_templates.v'
-	// Checks if there are any placeholders to process
-	if placeholders.len > 0 {
-		for key, value in placeholders {
-			mut val := ''
-			mut key_m := key
-			match value {
-				i8, i16, int, i64, u8, u16, u32, u64, f32, f64 {
-					// Converts value to string
-					temp_val := value.str()
-					// Filters the string value for safe insertion
-					val = filter(temp_val)
-				}
-				string {
-					// Checks if the placeholder allows HTML inclusion
-					if key.ends_with(dtm.include_html_key_tag) {
-						if tmpl_type == TemplateType.html {
-							// Iterates over allowed HTML tags for inclusion
-							for tag in dtm.allowed_tags {
-								// Escapes the HTML tag
-								escaped_tag := filter(tag)
-								// Replaces the escaped tags with actual HTML tags in the value
-								val = value.replace(escaped_tag, tag)
-							}
-						} else {
-							val = filter(value)
-						}
-						// Adjusts the placeholder key by removing the HTML inclusion tag
-						key_m = key.all_before_last(dtm.include_html_key_tag)
-					} else {
-						// Filters the string value for safe insertion
-						val = filter(value)
-					}
-				}
-			}
-			// Forms the actual placeholder to be replaced in the template render.
-			placeholder := '$${key_m}'
-			// Check if placeholder exist in the template
-			if tmpl_.contains(placeholder) {
-				// Replaces the placeholder if exist in the template with the actual value.
-				tmpl_ = tmpl_.replace(placeholder, val)
-			}
-		}
-	}
+	mut tmpl_ := compile_template_file(file_path, tmpl_name, placeholders)
 
 	// Performs a light compression of the HTML output by removing usless spaces, newlines, and tabs if user selected this option.
-	if is_compressed && tmpl_type == TemplateType.html {
+	if is_compressed && tmpl_type == TemplateType.html && tmpl_ != dtm.internat_server_error {
 		tmpl_ = tmpl_.replace_each(['\n', '', '\t', '', '  ', ' '])
 		mut r := regex.regex_opt(r'>(\s+)<') or {
 			tm.stop_cache_handler()
@@ -1116,70 +997,6 @@ fn (mut tm DynamicTemplateManager) parse_tmpl_file(file_path string, tmpl_name s
 		}
 	}
 
-	return tmpl_
-}
-
-// fn (mut DynamicTemplateManager) clean_parsed_tmpl(string, string) return string
-//
-// Is specifically designed to clean the template output generated by V's compiler template parser.
-// It addresses the fact that the parser prepares template content for integration into an executable, rather than for direct use in a web browser.
-// The function adjusts markers and escapes specific characters to convert the parser's output into a format suitable for web browsers.
-//
-// TODO - Any changes to the template output made by the V lang compiler template parser in 'vlib/v/parser/tmpl.v'
-// may necessitate corresponding adjustments in this function. Perhaps a more independent function is needed to clean the template rendering?
-//
-// TODO - This function does not currently handle the cleanup of all template directives typically managed by the Vlang compiler, such as conditional statements or loops....
-// Implementation of these features will be necessary.
-//
-fn (mut tm DynamicTemplateManager) clean_parsed_tmpl(tmpl string, tmpl_name string, provided_placeholders &map[string]DtmMultiTypeMap) string {
-	// Defines the start marker to encapsulate template content
-	start_marker := "sb_${tmpl_name}.write_string('"
-	// Determines the end marker, signaling the end of template content
-	end_marker := "')\n\n\t_tmpl_res_${tmpl_name} := sb_${tmpl_name}.str()"
-	// Searches for the start marker in the processed template content. Triggers an error if the start marker is not found.
-	start := tmpl.index(start_marker) or {
-		eprintln("${dtm.message_signature_error} Start marker not found for '${tmpl_name}': ${err.msg()}")
-		// dtm.filter function used here. 'escape_html_strings_in_templates.v'
-		return filter(tmpl)
-	}
-	// Identifies the last occurrence of the end marker. Signals an error if it is missing.
-	end := tmpl.index_last(end_marker) or {
-		eprintln("${dtm.message_signature_error} End marker not found for '${tmpl_name}': ${err.msg()}")
-		// dtm.filter function used here. 'escape_html_strings_in_templates.v'
-		return filter(tmpl)
-	}
-	// Extracts the portion of template content between the start and end markers.
-	mut tmpl_ := tmpl[start + start_marker.len..end]
-
-	// Utilizes a regular expression to identify placeholders within the template output.
-	// This process checks for placeholders that have no corresponding entries in the provided placeholders map.
-	// Any unmatched placeholders found are then safely escaped
-	mut r := regex.regex_opt(r'$([a-zA-Z_][a-zA-Z0-9_]*)') or {
-		tm.stop_cache_handler()
-		eprintln('${dtm.message_signature_error} with regular expression for identifying placeholders in the template in clean_parsed_tmpl() function. Please check the syntax of the regex pattern : ${err.msg()}')
-		return dtm.internat_server_error
-	}
-	indices := r.find_all(tmpl_)
-	// Iterates through each found placeholder.
-	for i := 0; i < indices.len; i += 2 {
-		// Retrieves the start and end indices of the current placeholder.
-		beginning := indices[i]
-		ending := indices[i + 1]
-		// Extracts the placeholder from the template using the indices.
-		placeholder := tmpl_[beginning..ending]
-		// Removes the '$' symbol to get the placeholder name.
-		placeholder_name := placeholder[1..]
-		// Checks if the placeholder or its variant with '_#includehtml' is not in the provided placeholders map.
-		if !(placeholder_name in provided_placeholders
-			|| (placeholder_name + dtm.include_html_key_tag) in provided_placeholders) {
-			// If so, escapes the unresolved placeholder and replaces the original placeholder with the escaped version
-			escaped_placeholder := filter(placeholder)
-			tmpl_ = tmpl_.replace(placeholder, escaped_placeholder)
-		}
-	}
-
-	// Transforms parser-specific escape sequences into their respective characters for proper template
-	tmpl_ = tmpl_.replace('\\n', '\n').replace("\\'", "'")
 	return tmpl_
 }
 
