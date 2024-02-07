@@ -186,12 +186,12 @@ pub fn ls(path string) ![]string {
 		return error('ls(): Could not get a file handle: ' + get_error_msg(int(C.GetLastError())))
 	}
 	first_filename := unsafe { string_from_wide(&find_file_data.c_file_name[0]) }
-	if first_filename != '.' && first_filename != '..' && exists('${path}\\${first_filename}') {
+	if first_filename != '.' && first_filename != '..' {
 		dir_files << first_filename
 	}
 	for C.FindNextFile(h_find_files, voidptr(&find_file_data)) > 0 {
 		filename := unsafe { string_from_wide(&find_file_data.c_file_name[0]) }
-		if filename != '.' && filename != '..' && exists('${path}\\${filename}') {
+		if filename != '.' && filename != '..' {
 			dir_files << filename.clone()
 		}
 	}
