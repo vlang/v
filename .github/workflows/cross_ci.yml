@@ -11,7 +11,7 @@ on:
 jobs:
 
   macos-cross:
-    runs-on: macos-latest
+    runs-on: macos-14
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 25
     env:

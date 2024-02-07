@@ -41,7 +41,7 @@ jobs:
           ./v test vlib/builtin vlib/os
 
   space-paths-macos:
-    runs-on: macos-latest
+    runs-on: macos-14
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 30
     env:
