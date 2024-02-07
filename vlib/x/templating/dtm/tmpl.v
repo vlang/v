@@ -151,7 +151,7 @@ fn insert_template_code(fn_name string, tmpl_str_start string, line string, data
 }
 
 // compile_file compiles the content of a file by the given path as a template
-fn compile_template_file(template_file string, fn_name string, data &map[string]DtmMultiTypeMap) string {
+pub fn compile_template_file(template_file string, fn_name string, data &map[string]DtmMultiTypeMap) string {
 	mut lines := os.read_lines(template_file) or {
 		eprintln('${message_signature_error} Template generator can not reading from ${template_file} file')
 		return internat_server_error
@@ -168,7 +168,7 @@ fn compile_template_file(template_file string, fn_name string, data &map[string]
 		state = .html
 	}
 
-	// mut in_span := false
+	mut in_span := false
 	mut end_of_line_pos := 0
 	mut start_of_line_pos := 0
 	mut tline_number := -1 // keep the original line numbers, even after insert/delete ops on lines; `i` changes
@@ -293,31 +293,31 @@ fn compile_template_file(template_file string, fn_name string, data &map[string]
 			.html {
 				line_t := line.trim_space()
 				if line_t.starts_with('span.') && line.ends_with('{') {
-					/*	`span.header {` => `<span class='header'>`
+					//`span.header {` => `<span class='header'>`
 					class := line.find_between('span.', '{').trim_space()
 					source.writeln('<span class="${class}">')
-					in_span = true */
+					in_span = true
 					continue
 				} else if line_t.starts_with('.') && line.ends_with('{') {
-					/* `.header {` => `<div class='header'>`
+					//`.header {` => `<div class='header'>`
 					class := line.find_between('.', '{').trim_space()
 					trimmed := line.trim_space()
 					source.write_string(strings.repeat(`\t`, line.len - trimmed.len)) // add the necessary indent to keep <div><div><div> code clean
-					source.writeln('<div class="${class}">') */
+					source.writeln('<div class="${class}">')
 					continue
 				} else if line_t.starts_with('#') && line.ends_with('{') {
-					/*	`#header {` => `<div id='header'>`
+					//`#header {` => `<div id='header'>`
 					class := line.find_between('#', '{').trim_space()
-					source.writeln('<div id="${class}">') */
+					source.writeln('<div id="${class}">')
 					continue
 				} else if line_t == '}' {
-					/*	source.write_string(strings.repeat(`\t`, line.len - line_t.len)) // add the necessary indent to keep <div><div><div> code clean
+					source.write_string(strings.repeat(`\t`, line.len - line_t.len)) // add the necessary indent to keep <div><div><div> code clean
 					if in_span {
-									source.writeln('</span>')
+						source.writeln('</span>')
 						in_span = false
 					} else {
-									source.writeln('</div>')
-					} */
+						source.writeln('</div>')
+					}
 					continue
 				}
 			}
