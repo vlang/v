@@ -151,7 +151,7 @@ fn insert_template_code(fn_name string, tmpl_str_start string, line string, data
 }
 
 // compile_file compiles the content of a file by the given path as a template
-pub fn compile_template_file(template_file string, fn_name string, data &map[string]DtmMultiTypeMap) string {
+fn compile_template_file(template_file string, fn_name string, data &map[string]DtmMultiTypeMap) string {
 	mut lines := os.read_lines(template_file) or {
 		eprintln('${message_signature_error} Template generator can not reading from ${template_file} file')
 		return internat_server_error
