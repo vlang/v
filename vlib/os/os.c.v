@@ -1158,10 +1158,11 @@ pub fn last_error() IError {
 }
 
 // Magic constant because zero is used explicitly at times
-const error_code_not_set = 0x7EFEFEFE
+pub const error_code_not_set = 0x7EFEFEFE
 
 @[params]
-struct SystemError {
+pub struct SystemError {
+pub:
 	msg  string
 	code int = os.error_code_not_set
 }
