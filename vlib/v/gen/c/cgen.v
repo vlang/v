@@ -6620,14 +6620,17 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 					g.stmt_path_pos.delete_last()
 				} else {
 					mut is_array_fixed := false
+					mut return_wrapped := false
 					if is_option {
 						is_array_fixed = expr_stmt.expr is ast.ArrayInit
 							&& g.table.final_sym(return_type).kind == .array_fixed
 						if !is_array_fixed {
 							if g.inside_return && !g.inside_struct_init
 								&& expr_stmt.expr is ast.CallExpr
-								&& return_type.has_option_or_result() {
+								&& return_type.has_option_or_result()
+								&& expr_stmt.expr.or_block.kind == .absent {
 								g.write('${cvar_name} = ')
+								return_wrapped = true
 							} else {
 								g.write('*(${cast_typ}*) ${cvar_name}.data = ')
 							}
@@ -6653,6 +6656,9 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 					}
 					g.writeln(';')
 					g.stmt_path_pos.delete_last()
+					if return_wrapped {
+						g.writeln('return ${cvar_name};')
+					}
 				}
 			}
 		} else {

@@ -13,8 +13,17 @@ fn find_any_startswith_string(a []string, b []string, search string) ?string {
 	return find_startswith_string(a, search) or { find_startswith_string(b, search) }
 }
 
+fn find_any_startswith_string_unwrapped(a []string, b []string, search string) ?string {
+	return find_startswith_string(a, search) or { find_startswith_string(b, search)? }
+}
+
 fn test_main() {
-	deadbeef := find_any_startswith_string(['foobar', 'barfoo'], ['deadbeef', 'beefdead'],
+	var1 := find_any_startswith_string(['foobar', 'barfoo'], ['deadbeef', 'beefdead'],
 		'dead')
-	assert deadbeef or { panic('unreachable') } == 'deadbeef'
+	assert var1 or { panic('unreachable') } == 'deadbeef'
+	dump(var1)
+
+	var2 := find_any_startswith_string_unwrapped(['foobar', 'barfoo'], ['deadbeef', 'beefdead'],
+		'dead')
+	dump(var2)
 }
