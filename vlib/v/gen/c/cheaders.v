@@ -326,7 +326,8 @@ const c_common_macros = '
 #endif
 
 #ifdef __TINYC__
-	#define _Atomic volatile
+	// tcc work now, tcc version 0.9.28rc 2024-02-05 HEAD@105d70f7
+	// #define _Atomic volatile
 	#undef EMPTY_STRUCT_DECLARATION
 	#undef EMPTY_STRUCT_INITIALIZATION
 	#define EMPTY_STRUCT_DECLARATION unsigned char _dummy_pad
@@ -403,11 +404,11 @@ const c_common_macros = '
 	#define _MOV
 #endif
 
-// tcc does not support has_include properly yet, turn it off completely
-#if defined(__TINYC__) && defined(__has_include)
-#undef __has_include
-#endif
-
+// tcc work now, tcc version 0.9.28rc 2024-02-05 HEAD@105d70f7
+// // tcc does not support has_include properly yet, turn it off completely
+// #if defined(__TINYC__) && defined(__has_include)
+// #undef __has_include
+// #endif
 
 #if !defined(VWEAK)
 	#define VWEAK __attribute__((weak))

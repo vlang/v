@@ -771,14 +771,16 @@ pub fn (mut g Gen) init() {
 			g.cheaders.writeln('#include <stdint.h>')
 			g.cheaders.writeln('#include <stddef.h>')
 		} else {
-			tcc_undef_has_include := '
-#if defined(__TINYC__) && defined(__has_include)
-// tcc does not support has_include properly yet, turn it off completely
-#undef __has_include
-#endif'
-			g.preincludes.writeln(tcc_undef_has_include)
-			g.cheaders.writeln(tcc_undef_has_include)
-			g.includes.writeln(tcc_undef_has_include)
+			// tcc work now, tcc version 0.9.28rc 2024-02-05 HEAD@105d70f7
+			//			tcc_undef_has_include := '
+			// #if defined(__TINYC__) && defined(__has_include)
+			// // tcc does not support has_include properly yet, turn it off completely
+			// #undef __has_include
+			// #endif'
+			//			g.preincludes.writeln(tcc_undef_has_include)
+			//			g.cheaders.writeln(tcc_undef_has_include)
+			//			g.includes.writeln(tcc_undef_has_include)
+
 			if g.pref.os == .freebsd {
 				g.cheaders.writeln('#include <inttypes.h>')
 				g.cheaders.writeln('#include <stddef.h>')

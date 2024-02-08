@@ -233,11 +233,12 @@ fn (mut tasks Tasks) run() {
 		m_skip_files = []
 	}
 	$if tinyc {
-		// Note: tcc does not support __has_include, so the detection mechanism
-		// used for the other compilers does not work. It still provides a
-		// cleaner error message, than a generic C error, but without the explanation.
-		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_1.vv'
-		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv'
+		// tcc work now, tcc version 0.9.28rc 2024-02-05 HEAD@105d70f7
+		// // Note: tcc does not support __has_include, so the detection mechanism
+		// // used for the other compilers does not work. It still provides a
+		// // cleaner error message, than a generic C error, but without the explanation.
+		// m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_1.vv'
+		// m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv'
 	}
 	$if msvc {
 		m_skip_files << 'vlib/v/checker/tests/asm_alias_does_not_exist.vv'
