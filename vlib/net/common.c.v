@@ -33,20 +33,76 @@ pub struct ShutdownConfig {
 // By default it shuts it down in both directions, both for reading
 // and for writing. You can change that using `net.shutdown(handle, how: .read)`
 // or `net.shutdown(handle, how: .write)`
+// In non-blocking mode, `shutdown()` may not succeed immediately,
+// so `select` is also used to make sure that the function doesn't return an incorrect result.
 pub fn shutdown(handle int, config ShutdownConfig) int {
-	$if windows {
-		return C.shutdown(handle, int(config.how))
+	res := C.shutdown(handle, int(config.how))
+	$if !net_nonblocking_sockets ? {
+		return res
 	} $else {
-		return C.shutdown(handle, int(config.how))
+		if res == 0 {
+			return 0
+		}
+		ecode := error_code()
+		if (is_windows && ecode == int(error_ewouldblock)) || (!is_windows && res == -1
+			&& ecode in [int(error_einprogress), int(error_eagain), C.EINTR]) {
+			write_result := select_deadline(handle, .write, time.now().add(connect_timeout)) or {
+				false
+			}
+			err := 0
+			len := sizeof(err)
+			xyz := C.getsockopt(handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len)
+			if xyz == 0 && err == 0 {
+				return 0
+			}
+			if write_result {
+				if xyz == 0 {
+					return err
+				}
+				return 0
+			}
+		}
+		return -ecode
 	}
 }
 
 // close a socket, given its file descriptor `handle`.
+// In non-blocking mode, if `close()` does not succeed immediately,
+// it causes an error to be propagated to `TcpSocket.close()`, which is not intended.
+// Therefore, `select` is used just like `connect()`.
 pub fn close(handle int) ! {
-	$if windows {
-		socket_error(C.closesocket(handle))!
+	res := $if windows {
+		C.closesocket(handle)
 	} $else {
-		socket_error(C.close(handle))!
+		C.close(handle)
+	}
+	$if !net_nonblocking_sockets ? {
+		socket_error(res)!
+		return
+	} $else {
+		if res == 0 {
+			return
+		}
+		ecode := error_code()
+		if (is_windows && ecode == int(error_ewouldblock)) || (!is_windows && res == -1
+			&& ecode in [int(error_einprogress), int(error_eagain), C.EINTR]) {
+			write_result := select_deadline(handle, .write, time.now().add(connect_timeout))!
+			err := 0
+			len := sizeof(err)
+			xyz := C.getsockopt(handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len)
+			if xyz == 0 && err == 0 {
+				return
+			}
+			if write_result {
+				if xyz == 0 {
+					wrap_error(err)!
+					return
+				}
+				return
+			}
+			return err_timed_out
+		}
+		wrap_error(ecode)!
 	}
 }
 
@@ -95,8 +151,8 @@ fn select_deadline(handle int, test Select, deadline time.Time) !bool {
 	for infinite || time.now() <= deadline {
 		timeout := if infinite { net.infinite_timeout } else { deadline - time.now() }
 		ready := @select(handle, test, timeout) or {
-			if err.code() == 4 {
-				// Spurious wakeup from signal, keep waiting
+			if err.code() == C.EINTR {
+				// errno is 4, Spurious wakeup from signal, keep waiting
 				continue
 			}
 
