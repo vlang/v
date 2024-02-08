@@ -169,52 +169,15 @@ pub fn truncate(path string, len u64) ! {
 	}
 }
 
-fn eprintln_unknown_file_size() {
-	eprintln('os.file_size() Cannot determine file-size: ' + posix_get_error_msg(C.errno))
-}
-
 // file_size returns the size of the file located in `path`.
 // If an error occurs it returns 0.
 // Note that use of this on symbolic links on Windows returns always 0.
 pub fn file_size(path string) u64 {
-	mut s := C.stat{}
-	unsafe {
-		$if x64 {
-			$if windows {
-				mut swin := C.__stat64{}
-				if C._wstat64(path.to_wide(), voidptr(&swin)) != 0 {
-					eprintln_unknown_file_size()
-					return 0
-				}
-				return swin.st_size
-			} $else {
-				if C.stat(&char(path.str), &s) != 0 {
-					eprintln_unknown_file_size()
-					return 0
-				}
-				return u64(s.st_size)
-			}
-		}
-		$if x32 {
-			$if debug {
-				eprintln('Using os.file_size() on 32bit systems may not work on big files.')
-			}
-			$if windows {
-				if C._wstat(path.to_wide(), voidptr(&s)) != 0 {
-					eprintln_unknown_file_size()
-					return 0
-				}
-				return u64(s.st_size)
-			} $else {
-				if C.stat(&char(path.str), &s) != 0 {
-					eprintln_unknown_file_size()
-					return 0
-				}
-				return u64(s.st_size)
-			}
-		}
+	attr := stat(path) or {
+		eprintln('os.file_size() Cannot determine file-size: ' + posix_get_error_msg(C.errno))
+		return 0
 	}
-	return 0
+	return attr.size
 }
 
 // rename_dir renames the folder from `src` to `dst`.
@@ -291,11 +254,8 @@ pub fn cp(src string, dst string) ! {
 				return error_with_code('cp: failed to write to ${dst}', int(-1))
 			}
 		}
-		from_attr := C.stat{}
-		unsafe {
-			C.stat(&char(src.str), &from_attr)
-		}
-		if C.chmod(&char(dst.str), from_attr.st_mode) < 0 {
+		from_attr := stat(src)!
+		if C.chmod(&char(dst.str), from_attr.mode) < 0 {
 			C.close(fp_to)
 			C.close(fp_from)
 			return error_with_code('failed to set permissions for ${dst}', int(-1))
@@ -460,13 +420,8 @@ pub fn is_executable(path string) bool {
 		return exists(p) && (p.ends_with('.exe') || p.ends_with('.bat') || p.ends_with('.cmd'))
 	}
 	$if solaris {
-		statbuf := C.stat{}
-		unsafe {
-			if C.stat(&char(path.str), &statbuf) != 0 {
-				return false
-			}
-		}
-		return (int(statbuf.st_mode) & (s_ixusr | s_ixgrp | s_ixoth)) != 0
+		attr := stat(path) or { return false }
+		return (int(attr.mode) & (s_ixusr | s_ixgrp | s_ixoth)) != 0
 	}
 	return C.access(&char(path.str), x_ok) != -1
 }
@@ -783,86 +738,11 @@ pub fn executable() string {
 	return executable_fallback()
 }
 
-// is_dir returns a `bool` indicating whether the given `path` is a directory.
-pub fn is_dir(path string) bool {
-	$if windows {
-		w_path := path.replace('/', '\\')
-		attr := C.GetFileAttributesW(w_path.to_wide())
-		if attr == u32(C.INVALID_FILE_ATTRIBUTES) {
-			return false
-		}
-		if int(attr) & C.FILE_ATTRIBUTE_DIRECTORY != 0 {
-			return true
-		}
-		return false
-	} $else {
-		statbuf := C.stat{}
-		if unsafe { C.stat(&char(path.str), &statbuf) } != 0 {
-			return false
-		}
-		// ref: https://code.woboq.org/gcc/include/sys/stat.h.html
-		val := int(statbuf.st_mode) & s_ifmt
-		return val == s_ifdir
-	}
-}
-
-// is_link returns a boolean indicating whether `path` is a link.
-// Warning: `is_link()` is known to cause a TOCTOU vulnerability when used incorrectly
-// (for more information: https://github.com/vlang/v/blob/master/vlib/os/README.md)
-pub fn is_link(path string) bool {
-	$if windows {
-		path_ := path.replace('/', '\\')
-		attr := C.GetFileAttributesW(path_.to_wide())
-		return int(attr) != int(C.INVALID_FILE_ATTRIBUTES) && (attr & 0x400) != 0
-	} $else {
-		statbuf := C.stat{}
-		if C.lstat(&char(path.str), &statbuf) != 0 {
-			return false
-		}
-		return int(statbuf.st_mode) & s_ifmt == s_iflnk
-	}
-}
-
 struct PathKind {
 mut:
 	is_file bool
 	is_dir  bool
 	is_link bool
-}
-
-fn kind_of_existing_path(path string) PathKind {
-	mut res := PathKind{}
-	$if windows {
-		attr := C.GetFileAttributesW(path.to_wide())
-		if attr != u32(C.INVALID_FILE_ATTRIBUTES) {
-			if (int(attr) & C.FILE_ATTRIBUTE_NORMAL) != 0 {
-				res.is_file = true
-			}
-			if (int(attr) & C.FILE_ATTRIBUTE_DIRECTORY) != 0 {
-				res.is_dir = true
-			}
-			if (int(attr) & 0x400) != 0 {
-				res.is_link = true
-			}
-		}
-	} $else {
-		statbuf := C.stat{}
-		// ref: https://code.woboq.org/gcc/include/sys/stat.h.html
-		res_stat := unsafe { C.lstat(&char(path.str), &statbuf) }
-		if res_stat == 0 {
-			kind := (int(statbuf.st_mode) & s_ifmt)
-			if kind == s_ifreg {
-				res.is_file = true
-			}
-			if kind == s_ifdir {
-				res.is_dir = true
-			}
-			if kind == s_iflnk {
-				res.is_link = true
-			}
-		}
-	}
-	return res
 }
 
 // chdir changes the current working directory to the new directory in `path`.
@@ -1005,12 +885,10 @@ pub fn wait() int {
 
 // file_last_mod_unix returns the "last modified" time stamp of file in `path`.
 pub fn file_last_mod_unix(path string) i64 {
-	attr := C.stat{}
-	// # struct stat attr;
-	unsafe { C.stat(&char(path.str), &attr) }
-	// # stat(path.str, &attr);
-	return i64(attr.st_mtime)
-	// # return attr.st_mtime ;
+	if attr := stat(path) {
+		return attr.mtime
+	}
+	return 0
 }
 
 // flush will flush the stdout buffer.

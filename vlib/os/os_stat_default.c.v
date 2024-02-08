@@ -79,3 +79,27 @@ pub fn (st Stat) get_mode() FileMode {
 		}
 	}
 }
+
+// is_dir returns a `bool` indicating whether the given `path` is a directory.
+pub fn is_dir(path string) bool {
+	attr := stat(path) or { return false }
+	return attr.get_filetype() == .directory
+}
+
+// is_link returns a boolean indicating whether `path` is a link.
+// Warning: `is_link()` is known to cause a TOCTOU vulnerability when used incorrectly
+// (for more information: https://github.com/vlang/v/blob/master/vlib/os/README.md)
+pub fn is_link(path string) bool {
+	attr := stat(path) or { return false }
+	return attr.get_filetype() == .symbolic_link
+}
+
+// kind_of_existing_path identifies whether path is a file, directory, or link
+fn kind_of_existing_path(path string) PathKind {
+	mut res := PathKind{}
+	attr := stat(path) or { return res }
+	res.is_file = attr.get_filetype() == .regular
+	res.is_dir = attr.get_filetype() == .directory
+	res.is_link = attr.get_filetype() == .symbolic_link
+	return res
+}

@@ -2,8 +2,10 @@ module os
 
 // stat returns a platform-agnostic Stat struct comparable to what is
 // available in other programming languages and fails with the POSIX
-// error if the stat call fails. If a link is stat'd, the stat info
-// for the link is provided.
+// error if the stat call fails. In Windows, there is no lstat so
+// information on a link cannot be provided.
+// C._wstat64() can be used on 32- and 64-bit Windows per
+// https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/stat-functions?view=msvc-170
 pub fn stat(path string) !Stat {
 	mut s := C.__stat64{}
 	unsafe {
@@ -60,4 +62,44 @@ pub fn (st Stat) get_mode() FileMode {
 			execute: (st.mode & u32(C.S_IEXEC)) != 0
 		}
 	}
+}
+
+// is_dir returns a `bool` indicating whether the given `path` is a directory.
+pub fn is_dir(path string) bool {
+	w_path := path.replace('/', '\\')
+	attr := C.GetFileAttributesW(w_path.to_wide())
+	if attr == u32(C.INVALID_FILE_ATTRIBUTES) {
+		return false
+	}
+	if int(attr) & C.FILE_ATTRIBUTE_DIRECTORY != 0 {
+		return true
+	}
+	return false
+}
+
+// is_link returns a boolean indicating whether `path` is a link.
+// Warning: `is_link()` is known to cause a TOCTOU vulnerability when used incorrectly
+// (for more information: https://github.com/vlang/v/blob/master/vlib/os/README.md)
+pub fn is_link(path string) bool {
+	path_ := path.replace('/', '\\')
+	attr := C.GetFileAttributesW(path_.to_wide())
+	return int(attr) != int(C.INVALID_FILE_ATTRIBUTES) && (attr & 0x400) != 0
+}
+
+// kind_of_existing_path identifies whether path is a file, directory, or link
+fn kind_of_existing_path(path string) PathKind {
+	mut res := PathKind{}
+	attr := C.GetFileAttributesW(path.to_wide())
+	if attr != u32(C.INVALID_FILE_ATTRIBUTES) {
+		if (int(attr) & C.FILE_ATTRIBUTE_NORMAL) != 0 {
+			res.is_file = true
+		}
+		if (int(attr) & C.FILE_ATTRIBUTE_DIRECTORY) != 0 {
+			res.is_dir = true
+		}
+		if (int(attr) & 0x400) != 0 {
+			res.is_link = true
+		}
+	}
+	return res
 }
