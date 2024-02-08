@@ -111,7 +111,6 @@ fn assert_common_http_headers(x http.Response) ! {
 	assert x.status() == .ok
 	assert x.header.get(.server)! == 'VWeb'
 	assert x.header.get(.content_length)!.int() > 0
-	assert x.header.get(.connection)! == 'close'
 }
 
 fn test_http_client_index() {
@@ -119,6 +118,7 @@ fn test_http_client_index() {
 	assert_common_http_headers(x)!
 	assert x.header.get(.content_type)! == 'text/plain'
 	assert x.body == 'Welcome to VWeb'
+	assert x.header.get(.connection)! == 'close'
 }
 
 fn test_http_client_404() {
@@ -327,6 +327,7 @@ fn simple_tcp_client(config SimpleTcpClientConfig) !string {
 Host: ${config.host}
 User-Agent: ${config.agent}
 Accept: */*
+Connection: close
 ${config.headers}
 ${config.content}'
 	$if debug_net_socket_client ? {

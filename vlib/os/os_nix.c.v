@@ -519,18 +519,15 @@ pub fn getegid() int {
 
 // Turns the given bit on or off, depending on the `enable` parameter
 pub fn posix_set_permission_bit(path_s string, mode u32, enable bool) {
-	mut s := C.stat{}
 	mut new_mode := u32(0)
-	path := &char(path_s.str)
-	unsafe {
-		C.stat(path, &s)
-		new_mode = s.st_mode
+	if s := stat(path_s) {
+		new_mode = s.mode
 	}
 	match enable {
 		true { new_mode |= mode }
 		false { new_mode &= (0o7777 - mode) }
 	}
-	C.chmod(path, int(new_mode))
+	C.chmod(&char(path_s.str), int(new_mode))
 }
 
 // get_long_path has no meaning for *nix, but has for windows, where `c:\folder\some~1` for example

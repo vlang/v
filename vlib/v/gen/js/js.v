@@ -102,13 +102,8 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) string 
 		definitions: strings.new_builder(100)
 		table: table
 		pref: pref_
-		fn_decl: 0
 		empty_line: true
-		doc: 0
-		ns: 0
 		enable_doc: true
-		file: 0
-		sourcemap: 0
 	}
 	g.doc = new_jsdoc(g)
 	// TODO: Add '[-no]-jsdoc' flag
@@ -441,7 +436,7 @@ pub fn (mut g JsGen) find_class_methods(stmts []ast.Stmt) {
 					// Found struct method, store it to be generated along with the class.
 					mut class_name := g.table.get_type_name(stmt.receiver.typ)
 					// Workaround until `map[key] << val` works.
-					mut arr := g.method_fn_decls[class_name]
+					mut arr := unsafe { g.method_fn_decls[class_name] }
 					arr << stmt
 					g.method_fn_decls[class_name] = arr
 				}
@@ -2049,7 +2044,7 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 			}
 		}
 	}
-	fns := g.method_fn_decls[name]
+	fns := unsafe { g.method_fn_decls[name] }
 	// gen toString method
 	fn_names := fns.map(it.name)
 	if 'toString' !in fn_names {

@@ -19,24 +19,39 @@
 #include <iostream>
 
 extern "C" {
-// using namespace photon;
+
 // WorkPool* work_pool;
-// WorkPool* new_photon_work_pool();
 photon::WorkPool* work_pool;
+
+// using namespace photon;
+// typedef WorkPool PhotonWorkPool;
+// typedef photon::WorkPool PhotonWorkPool1;
 #else
 #endif
 
+// using namespace photon;
+// typedef WorkPool PhotonWorkPool;
+// typedef photon::WorkPool PhotonWorkPool;
+// typedef WorkPool PhotonWorkPool;
+// typedef PhotonWorkPool1 PhotonWorkPool;
+// PhotonWorkPool* new_photon_work_pool();
+void* new_photon_work_pool(size_t);
+// void delete_photon_work_pool(void*);
+void delete_photon_work_pool();
 // custom v functions
 void init_photon_work_pool(size_t);
+// void photon_thread_migrate();
+// void photon_thread_migrate(void*);
 void photon_thread_create_and_migrate_to_work_pool(void* (* f)(void*), void* arg);
+// void photon_thread_create_and_migrate_to_work_pool(void*, void* (* f)(void*), void* arg);
 // direct wrappers to photon functions
 int photon_init_default();
 void photon_thread_create(void* (* f)(void*), void* arg);
 void photon_sleep_s(int n);
 void photon_sleep_ms(int n);
 
-// void* default_photon_thread_stack_alloc(void*, size_t size);
-// void default_photon_thread_stack_dealloc(void*, void* ptr, size_t size);
+void* default_photon_thread_stack_alloc(void*, size_t size);
+void default_photon_thread_stack_dealloc(void*, void* ptr, size_t size);
 void set_photon_thread_stack_allocator(
     void* (*alloc_func)(void*, size_t),
     void (*dealloc_func)(void*, void*, size_t)

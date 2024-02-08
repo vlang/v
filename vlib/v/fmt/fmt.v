@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module fmt
 
+import os
 import strings
 import v.ast
 import v.util
@@ -53,6 +54,7 @@ pub mut:
 	wsinfix_depth      int
 	format_state       FormatState
 	source_text        string // can be set by `echo "println('hi')" | v fmt`, i.e. when processing source not from a file, but from stdin. In this case, it will contain the entire input text. You can use f.file.path otherwise, and read from that file.
+	inside_vmodules    bool
 }
 
 @[params]
@@ -69,6 +71,13 @@ pub fn fmt(file ast.File, table &ast.Table, pref_ &pref.Preferences, is_debug bo
 		out: strings.new_builder(1000)
 		out_imports: strings.new_builder(200)
 	}
+	for vpath in os.vmodules_paths() {
+		if file.path.starts_with(vpath) {
+			f.inside_vmodules = true
+			break
+		}
+	}
+
 	f.source_text = options.source_text
 	f.process_file_imports(file)
 	f.set_current_module_name('main')
@@ -365,6 +374,9 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 }
 
 pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
+	if f.inside_vmodules {
+		return imp.source_name
+	}
 	mod := if imp.mod.len == 0 { imp.alias } else { imp.mod }
 	normalized_mod := mod.all_after('src.') // Ignore the 'src.' folder prefix since src/ folder is root of code
 	is_diff := imp.alias != normalized_mod && !normalized_mod.ends_with('.' + imp.alias)
@@ -958,13 +970,13 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 		if node.is_block && fidx < node.fields.len - 1 && node.fields.len > 1 {
 			// old style grouped consts, converted to the new style ungrouped const
 			f.writeln('')
-		} else {
+		} else if node.end_comments.len > 0 {
 			// Write out single line comments after const expr if present
 			// E.g.: `const x = 1 // <comment>`
-			if node.end_comments.len > 0 && node.end_comments[0].text.contains('\n') {
+			if node.end_comments[0].text.contains('\n') {
 				f.writeln('\n')
 			}
-			f.comments(node.end_comments, same_line: true)
+			f.comments(node.end_comments, same_line: true, has_nl: false)
 		}
 		prev_field = field
 	}
@@ -1945,6 +1957,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 			if node.left.name in ['time', 'os', 'strings', 'math', 'json', 'base64']
 				&& !node.left.scope.known_var(node.left.name) {
 				f.file.imports << ast.Import{
+					source_name: node.left.name
 					mod: node.left.name
 					alias: node.left.name
 				}

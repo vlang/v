@@ -143,7 +143,7 @@ pub fn (app &App) login(mut ctx Context) vweb.Result {
 		} else {
 			// we receive a POST request, so we want to explicitly tell the browser
 			// to send a GET request to the profile page.
-			return ctx.redirect('/profile', .see_other)
+			return ctx.redirect('/profile')
 		}
 	}
 }
@@ -358,6 +358,16 @@ app.mount_static_folder_at('static', '/public')
 ```
 
 If we run our app the `main.css` file is available at http://localhost:8080/public/main.css
+
+### Adding a single static asset
+
+If you don't want to mount an entire folder, but only a single file, you can use `serve_static`.
+
+**Example:**
+```v ignore
+// serve the `main.css` file at '/path/main.css'
+app.serve_static('/path/main.css',  'static/css/main.css')!
+```
 
 ### Dealing with MIME types
 
@@ -772,7 +782,7 @@ pub fn (app &App) index(mut ctx Context) vweb.Result {
 	if token == '' {
 		// redirect the user to '/login' if the 'token' cookie is not set
 		// we explicitly tell the browser to send a GET request
-		return ctx.redirect('/login', .see_other)
+		return ctx.redirect('/login', typ: .see_other)
 	} else {
 		return ctx.text('Welcome!')
 	}

@@ -21,8 +21,10 @@ fn init() {
 }
 
 pub const msg_nosignal = 0x4000
+pub const msg_dontwait = C.MSG_DONTWAIT
 
 pub const error_ewouldblock = C.EWOULDBLOCK
 pub const error_einprogress = C.EINPROGRESS
+pub const error_eagain = C.EAGAIN
 
 fn C.unlink(&char) int

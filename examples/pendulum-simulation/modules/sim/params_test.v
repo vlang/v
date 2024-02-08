@@ -42,7 +42,7 @@ pub fn test_get_rope_vector() {
 pub fn test_get_forces_sum() {
 	result := sim.params_test_mock_params.get_forces_sum(sim.params_test_mock_state)
 	expected := vector(
-		x: 3.637978807091713e-12
+		x: 3.410605131648481e-12
 		y: 5.229594535194337e-12
 		z: 9.094947017729282e-13
 	)
@@ -60,8 +60,8 @@ pub fn test_get_grav_force() {
 pub fn test_get_magnet_position() {
 	result := sim.params_test_mock_params.get_magnet_position(sim.params_test_mock_tetha)
 	expected := vector(
-		x: -0.024999999999999988
-		y: 0.043301270189221946
+		x: -0.02499999999999999
+		y: 0.04330127018922194
 		z: -0.03
 	)
 	assert result == expected
@@ -71,7 +71,7 @@ pub fn test_get_magnet_force() {
 	result := sim.params_test_mock_params.get_magnet_force(sim.params_test_mock_tetha,
 		sim.params_test_mock_state)
 	expected := vector(
-		x: -157.45722976925555
+		x: -157.4572297692556
 		y: 1422.736432604726
 		z: -632.5695169850264
 	)
@@ -98,7 +98,7 @@ pub fn test_get_magnet1_force() {
 pub fn test_get_magnet2_force() {
 	result := sim.params_test_mock_params.get_magnet2_force(sim.params_test_mock_state)
 	expected := vector(
-		x: -157.45722976925555
+		x: -157.4572297692556
 		y: 1422.736432604726
 		z: -632.5695169850264
 	)

@@ -1,5 +1,7 @@
 module vweb
 
+#include <sys/sendfile.h>
+
 fn C.sendfile(out_fd int, in_fd int, offset voidptr, count int) int
 
 fn sendfile(out_fd int, in_fd int, nr_bytes int) int {
