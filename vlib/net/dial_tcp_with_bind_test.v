@@ -1,5 +1,3 @@
-// vtest flaky: true
-// vtest retry: 3
 import net
 
 fn test_bind() {
