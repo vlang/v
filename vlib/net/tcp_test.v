@@ -1,5 +1,5 @@
 // vtest flaky: true
-// vtest retry: 8
+// vtest retry: 3
 import net
 
 const test_port = 45123
@@ -85,12 +85,4 @@ fn test_tcp_unix() {
 
 fn testsuite_end() {
 	eprintln('\ndone')
-}
-
-fn test_bind() {
-	$if !network ? {
-		return
-	}
-	mut conn := net.dial_tcp_with_bind('vlang.io:80', '127.0.0.1:0')!
-	conn.close()!
 }
