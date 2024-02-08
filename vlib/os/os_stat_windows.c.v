@@ -29,6 +29,12 @@ pub fn stat(path string) !Stat {
 	}
 }
 
+// lstat is the same as stat() for Windows
+@[inline]
+pub fn lstat(path string) !Stat {
+	return stat(path)
+}
+
 // get_filetype returns the FileType from the Stat struct
 pub fn (st Stat) get_filetype() FileType {
 	match st.mode & u32(C.S_IFMT) {

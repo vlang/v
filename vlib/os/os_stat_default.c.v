@@ -2,9 +2,36 @@ module os
 
 // stat returns a platform-agnostic Stat struct comparable to what is
 // available in other programming languages and fails with the POSIX
+// error if the stat call fails. Symlinks are followed and the resulting
+// Stat provided. (If this is not desired, use lstat().)
+pub fn stat(path string) !Stat {
+	mut s := C.stat{}
+	unsafe {
+		res := C.stat(&char(path.str), &s)
+		if res != 0 {
+			return error_posix()
+		}
+		return Stat{
+			dev: s.st_dev
+			inode: s.st_ino
+			nlink: s.st_nlink
+			mode: s.st_mode
+			uid: s.st_uid
+			gid: s.st_gid
+			rdev: s.st_rdev
+			size: s.st_size
+			atime: s.st_atime
+			mtime: s.st_mtime
+			ctime: s.st_ctime
+		}
+	}
+}
+
+// lstat returns a platform-agnostic Stat struct comparable to what is
+// available in other programming languages and fails with the POSIX
 // error if the stat call fails. If a link is stat'd, the stat info
 // for the link is provided.
-pub fn stat(path string) !Stat {
+pub fn lstat(path string) !Stat {
 	mut s := C.stat{}
 	unsafe {
 		res := C.lstat(&char(path.str), &s)

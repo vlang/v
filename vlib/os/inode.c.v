@@ -60,8 +60,9 @@ pub fn (m FileMode) bitmask() u32 {
 
 // inode returns the metadata of the file/inode, containing inode type, permission information, size and modification time.
 // it supports windows for regular files, but it doesn't matter if you use owner, group or others when checking permissions on windows.
+// if a symlink is targetted, it returns info on the link, not the target
 pub fn inode(path string) FileInfo {
-	attr := stat(path) or { Stat{} }
+	attr := lstat(path) or { Stat{} }
 	fm := attr.get_mode()
 	return FileInfo{
 		typ: fm.typ
