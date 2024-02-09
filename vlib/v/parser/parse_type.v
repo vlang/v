@@ -536,7 +536,9 @@ fn (mut p Parser) parse_type() ast.Type {
 		}
 
 		if is_option && sym.info is ast.Alias && sym.info.parent_type.has_flag(.option) {
-			p.error_with_pos('alias type cannot be option as parent type is already option',
+			alias_type_str := p.table.type_to_str(typ)
+			parent_type_str := p.table.type_to_str(sym.info.parent_type)
+			p.error_with_pos('cannot use double options like `?${parent_type_str}`, `?${alias_type_str}` is a double option. use `${alias_type_str}` instead',
 				option_pos.extend(p.prev_tok.pos()))
 		}
 	}
