@@ -534,6 +534,11 @@ fn (mut p Parser) parse_type() ast.Type {
 		if is_option && sym.info is ast.SumType && sym.info.is_anon {
 			p.error_with_pos('an inline sum type cannot be an Option', option_pos.extend(p.prev_tok.pos()))
 		}
+
+		if is_option && sym.info is ast.Alias && sym.info.parent_type.has_flag(.option) {
+			p.error_with_pos('alias type cannot be option as parent type is already option',
+				option_pos.extend(p.prev_tok.pos()))
+		}
 	}
 	if is_option {
 		typ = typ.set_flag(.option)

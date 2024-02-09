@@ -1,0 +1,6 @@
+vlib/v/parser/tests/option_alias_option_type_err.vv:4:11: error: alias type cannot be option as parent type is already option
+    2 | 
+    3 | struct Bar {
+    4 |         a ?Foo
+      |           ~~~~
+    5 | }
