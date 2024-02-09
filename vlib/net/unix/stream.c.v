@@ -374,13 +374,8 @@ fn new_stream_socket(socket_path string) !StreamSocket {
 		eprintln('    new_unix_socket | s.handle: ${s.handle:6}')
 	}
 
-	$if !net_blocking_sockets ? {
-		$if windows {
-			t := u32(1) // true
-			net.socket_error(C.ioctlsocket(handle, net.fionbio, &t))!
-		} $else {
-			net.socket_error(C.fcntl(handle, C.F_SETFL, C.fcntl(handle, C.F_GETFL) | C.O_NONBLOCK))!
-		}
+	$if net_nonblocking_sockets ? {
+		net.set_blocking(handle, false)!
 	}
 	return s
 }
@@ -430,7 +425,7 @@ fn (mut s StreamSocket) connect(socket_path string) ! {
 	alen := addr.len()
 	eprintln(addr)
 
-	$if !net_blocking_sockets ? {
+	$if net_nonblocking_sockets ? {
 		res := $if is_coroutine ? {
 			C.photon_connect(s.handle, voidptr(&addr), alen, unix.unix_default_read_timeout)
 		} $else {
@@ -487,13 +482,8 @@ pub fn stream_socket_from_handle(sockfd int) !&StreamSocket {
 		eprintln('    stream_socket_from_handle | s.handle: ${s.handle:6}')
 	}
 
-	$if !net_blocking_sockets ? {
-		$if windows {
-			t := u32(1) // true
-			net.socket_error(C.ioctlsocket(sockfd, net.fionbio, &t))!
-		} $else {
-			net.socket_error(C.fcntl(sockfd, C.F_SETFL, C.fcntl(sockfd, C.F_GETFL) | C.O_NONBLOCK))!
-		}
+	$if net_nonblocking_sockets ? {
+		net.set_blocking(sockfd, false)!
 	}
 	return s
 }

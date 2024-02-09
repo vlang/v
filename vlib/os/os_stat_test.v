@@ -3,7 +3,7 @@ import rand
 import time
 
 fn test_stat() {
-	start_time := time.utc()
+	start_time := time.utc().add(-2 * time.second)
 
 	temp_dir := os.join_path(os.temp_dir(), rand.ulid())
 	os.mkdir(temp_dir)!
@@ -21,6 +21,8 @@ fn test_stat() {
 	end_time := time.utc()
 
 	mut fstat := os.stat(test_file)!
+	eprintln(@LOCATION)
+	eprintln(' |  start_time: ${start_time.unix}\n |    end_time: ${end_time.unix}\n | fstat.ctime: ${fstat.ctime}\n | fstat.mtime: ${fstat.mtime}')
 	assert fstat.get_filetype() == .regular
 	assert fstat.size == u64(test_content.len)
 	assert fstat.ctime >= start_time.unix

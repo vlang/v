@@ -211,14 +211,8 @@ fn new_udp_socket(local_addr Addr) !&UdpSocket {
 		s.set_dualstack(true)!
 	}
 
-	$if !net_blocking_sockets ? {
-		// NOTE: refer to comments in tcp.v
-		$if windows {
-			t := u32(1) // true
-			socket_error(C.ioctlsocket(sockfd, fionbio, &t))!
-		} $else {
-			socket_error(C.fcntl(sockfd, C.F_SETFD, C.O_NONBLOCK))!
-		}
+	$if net_nonblocking_sockets ? {
+		set_blocking(sockfd, false)!
 	}
 
 	// cast to the correct type
