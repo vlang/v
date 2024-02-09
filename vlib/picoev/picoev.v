@@ -109,7 +109,7 @@ pub fn (mut pv Picoev) add(fd int, events int, timeout int, callback voidptr) in
 	target.events = 0
 
 	if pv.update_events(fd, events | picoev.picoev_add) != 0 {
-		pv.remove(fd)
+		pv.delete(fd)
 		return -1
 	}
 
@@ -119,15 +119,15 @@ pub fn (mut pv Picoev) add(fd int, events int, timeout int, callback voidptr) in
 }
 
 // del remove a file descriptor from the event loop
-@[deprecated: 'use remove() instead']
+@[deprecated: 'use delete() instead']
 @[direct_array_access]
 pub fn (mut pv Picoev) del(fd int) int {
-	return pv.remove(fd)
+	return pv.delete(fd)
 }
 
 // remove a file descriptor from the event loop
 @[direct_array_access]
-pub fn (mut pv Picoev) remove(fd int) int {
+pub fn (mut pv Picoev) delete(fd int) int {
 	assert fd < picoev.max_fds
 	mut target := pv.file_descriptors[fd]
 
@@ -221,7 +221,7 @@ fn accept_callback(listen_fd int, events int, cb_arg voidptr) {
 // close_conn closes the socket `fd` and removes it from the loop
 @[inline]
 pub fn (mut pv Picoev) close_conn(fd int) {
-	pv.remove(fd)
+	pv.delete(fd)
 	close_socket(fd)
 }
 
