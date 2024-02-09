@@ -4,6 +4,117 @@ import rand
 import encoding.hex
 import encoding.binary
 
+// see https://github.com/floodyberry/poly1305-donna/blob/master/poly1305-donna.c
+fn test_incremental_update_ported_from_poly1305donna() ! {
+	nacl_key := [u8(0xee), 0xa6, 0xa7, 0x25, 0x1c, 0x1e, 0x72, 0x91, 0x6d, 0x11, 0xc2, 0xcb, 0x21,
+		0x4d, 0x3c, 0x25, 0x25, 0x39, 0x12, 0x1d, 0x8e, 0x23, 0x4e, 0x65, 0x2d, 0x65, 0x1f, 0xa4,
+		0xc8, 0xcf, 0xf8, 0x80]
+	nacl_msg := [u8(0x8e), 0x99, 0x3b, 0x9f, 0x48, 0x68, 0x12, 0x73, 0xc2, 0x96, 0x50, 0xba, 0x32,
+		0xfc, 0x76, 0xce, 0x48, 0x33, 0x2e, 0xa7, 0x16, 0x4d, 0x96, 0xa4, 0x47, 0x6f, 0xb8, 0xc5,
+		0x31, 0xa1, 0x18, 0x6a, 0xc0, 0xdf, 0xc1, 0x7c, 0x98, 0xdc, 0xe8, 0x7b, 0x4d, 0xa7, 0xf0,
+		0x11, 0xec, 0x48, 0xc9, 0x72, 0x71, 0xd2, 0xc2, 0x0f, 0x9b, 0x92, 0x8f, 0xe2, 0x27, 0x0d,
+		0x6f, 0xb8, 0x63, 0xd5, 0x17, 0x38, 0xb4, 0x8e, 0xee, 0xe3, 0x14, 0xa7, 0xcc, 0x8a, 0xb9,
+		0x32, 0x16, 0x45, 0x48, 0xe5, 0x26, 0xae, 0x90, 0x22, 0x43, 0x68, 0x51, 0x7a, 0xcf, 0xea,
+		0xbd, 0x6b, 0xb3, 0x73, 0x2b, 0xc0, 0xe9, 0xda, 0x99, 0x83, 0x2b, 0x61, 0xca, 0x01, 0xb6,
+		0xde, 0x56, 0x24, 0x4a, 0x9e, 0x88, 0xd5, 0xf9, 0xb3, 0x79, 0x73, 0xf6, 0x22, 0xa4, 0x3d,
+		0x14, 0xa6, 0x59, 0x9b, 0x1f, 0x65, 0x4c, 0xb4, 0x5a, 0x74, 0xe3, 0x55, 0xa5]
+
+	nacl_mac := [u8(0xf3), 0xff, 0xc7, 0x70, 0x3f, 0x94, 0x00, 0xe5, 0x2a, 0x7d, 0xfb, 0x4b, 0x3d,
+		0x33, 0x05, 0xd9]
+	// generates a final value of (2^130 - 2) == 3
+	wrap_key := [u8(0x02), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00]
+
+	wrap_msg := [u8(0xff), 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+		0xff, 0xff, 0xff]
+
+	wrap_mac := [u8(0x03), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00]
+
+	// mac of the macs of messages of length 0 to 256, where the key and messages
+	// have all their values set to the length
+	total_key := [u8(0x01), 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0xff, 0xfe, 0xfd, 0xfc, 0xfb, 0xfa,
+		0xf9, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]
+
+	total_mac := [u8(0x64), 0xaf, 0xe2, 0xe8, 0xd6, 0xad, 0x7b, 0xbd, 0xd2, 0x87, 0xf9, 0x7c, 0x44,
+		0x62, 0x3d, 0x39]
+
+	// poly1305_auth(mac, nacl_msg, sizeof(nacl_msg), nacl_key);
+	mut mac := []u8{len: tag_size}
+	create_tag(mut mac, nacl_msg, nacl_key)!
+	assert mac == nacl_mac
+	// result &= poly1305_verify(nacl_mac, mac);
+	mut result := verify_tag(nacl_mac, nacl_msg, nacl_key)
+	assert result == true
+
+	// poly1305_init(&ctx, nacl_key);
+	// poly1305_update(&ctx, nacl_msg +   0, 32);
+	// poly1305_update(&ctx, nacl_msg +  32, 64);
+	// poly1305_update(&ctx, nacl_msg +  96, 16);
+	// poly1305_update(&ctx, nacl_msg + 112,  8);
+	// poly1305_update(&ctx, nacl_msg + 120,  4);
+	// poly1305_update(&ctx, nacl_msg + 124,  2);
+	// poly1305_update(&ctx, nacl_msg + 126,  1);
+	// poly1305_update(&ctx, nacl_msg + 127,  1);
+	// poly1305_update(&ctx, nacl_msg + 128,  1);
+	// poly1305_update(&ctx, nacl_msg + 129,  1);
+	// poly1305_update(&ctx, nacl_msg + 130,  1);
+	// poly1305_finish(&ctx, mac);
+	//	result &= poly1305_verify(nacl_mac, mac);
+	mut po := new(nacl_key)!
+	mut tag := []u8{len: tag_size}
+
+	po.update(nacl_msg)
+	po.finish(mut tag)
+	assert tag == nacl_mac
+
+	// lets reset and reinit poly1305 instance and performs test for incremental update
+	// Note: as security notes, you should use same key twice for authenticated same messages
+	po.reinit(nacl_key)
+	po.update(nacl_msg[0..32])
+	po.update(nacl_msg[32..96])
+	po.update(nacl_msg[96..112])
+	po.update(nacl_msg[112..120])
+	po.update(nacl_msg[120..124])
+	po.update(nacl_msg[124..126])
+	po.update(nacl_msg[126..127])
+	po.update(nacl_msg[127..128])
+	po.update(nacl_msg[128..129])
+	po.update(nacl_msg[129..130])
+	po.update(nacl_msg[130..131])
+	po.finish(mut tag)
+	assert tag == nacl_mac
+
+	// poly1305_auth(mac, wrap_msg, sizeof(wrap_msg), wrap_key);
+	// result &= poly1305_verify(wrap_mac, mac);
+	mut pi := new(wrap_key)!
+	pi.update(wrap_msg)
+	pi.finish(mut tag)
+	assert tag == wrap_mac
+
+	// poly1305_init(&total_ctx, total_key);
+	dump(total_key.len)
+	mut tkey := []u8{len: key_size}
+	_ := copy(mut tkey, total_key)
+	mut ptot := new(tkey)!
+	mut all_key := []u8{len: 32}
+	mut all_msg := []u8{len: 256}
+	for i := 0; i < 256; i++ {
+		// set key and message to 'i,i,i..'
+		for x := 0; x < sizeof(all_key); x++ {
+			all_key[x] = u8(i)
+		}
+		for y := 0; y < i; y++ {
+			all_msg[y] = u8(i)
+		}
+		create_tag(mut tag, all_msg[..i], all_key)!
+		ptot.update(tag)
+	}
+	ptot.finish(mut tag)
+	assert total_mac == tag
+}
+
 fn test_poly1305_with_smoked_messages_are_working_normally() ! {
 	key := rand.bytes(32)!
 	// generates smoked message with full bits is set
@@ -19,30 +130,30 @@ fn test_poly1305_with_smoked_messages_are_working_normally() ! {
 
 // This is a test case from RFC 8439 vector test data.
 // There are 12 cases provided.
-fn test_poly1305_core_vector_tests() ! {
+fn test_poly1305_core_rfc_vector_tests() ! {
 	for i, c in poly1305.rfc_test_cases {
 		mut key := hex.decode(c.key) or { panic(err.msg()) }
-		mut msg := hex.decode(c.msg) or { panic(err.msg()) }
-		mut msg2 := msg.clone()
-		msg3 := msg.clone()
+		msg := hex.decode(c.msg) or { panic(err.msg()) }
 		expected_tag := hex.decode(c.tag) or { panic(err.msg()) }
 
 		mut tag := []u8{len: tag_size}
 
 		// check for instance based method
-		mut p2 := new(key)!
-		// msg is mut, so we provide the clone
-		p2.update_block(mut msg2)
-		p2.finish(mut tag)
+		mut po := new(key)!
+		po.update(msg)
+		valid := po.verify(expected_tag)
+		assert valid == true
+
+		po.finish(mut tag)
 		// check tag same with expected_tag
 		assert tag == expected_tag
-		// verify the tag has right result
-		assert verify_tag(tag, msg3, key) == true
 
-		mut tag2 := []u8{len: tag_size}
-		create_tag(mut tag2, msg3, key)!
-		assert tag2 == expected_tag
-		assert verify_tag(tag2, msg3, key) == true
+		// verify the tag has right result
+		assert verify_tag(tag, msg, key) == true
+
+		create_tag(mut tag, msg, key)!
+		assert tag == expected_tag
+		assert verify_tag(tag, msg, key) == true
 	}
 }
 
@@ -55,8 +166,12 @@ fn test_poly1305_function_based_core_functionality() ! {
 		mut tag := []u8{len: tag_size}
 
 		mut po := new(key)!
-		update_generic(mut po, mut msg)
-		finalize(mut tag, mut po.h, po.s)
+
+		poly1305_update_block(mut po, msg)
+		// you can finalize directly, maybe there are some leftover bytes unprocessed
+		// call .finish instead
+		// finalize(mut tag, mut po.h, po.s)
+		po.finish(mut tag)
 		assert tag == expected_tag
 	}
 }
@@ -68,6 +183,7 @@ fn test_poly1305_smoked_data_vectors() ! {
 		mut msg := hex.decode(c.msg)!
 		expected_tag := hex.decode(c.tag)!
 		mut s := Uint192{}
+		mut poly := new(key)!
 		if c.state != '' {
 			// state is hex encoded in big-endian byte order
 			buf := hex.decode(c.state)!
@@ -79,26 +195,24 @@ fn test_poly1305_smoked_data_vectors() ! {
 			s.lo = binary.big_endian_u64(buf[16..24])
 			s.mi = binary.big_endian_u64(buf[8..16])
 			s.hi = binary.big_endian_u64(buf[0..8])
+			// set with accumulator s
+			poly.h = s
 		}
-		mut poly := new(key)!
-		// set with accumulator s
-		poly.h = s
 		mut tag := []u8{len: tag_size}
 
 		poly.update(msg)
 		poly.finish(mut tag)
-
 		assert tag == expected_tag
-		// after finish, the state is reseted, so reinit it
+		//
 		poly.reinit(key)
 		poly.h = s
-		mut res := poly.verify(tag, msg)
+		poly.update(msg)
+		mut res := poly.verify(expected_tag)
 		assert res == true
-
 		// If the key is zero, the tag will always be zero, independent of the input.
 		if msg.len > 0 && key.len != 32 {
 			msg[0] ^= 0xff
-			res = verify_tag(tag, msg, key)
+			res = poly.verify(tag) // same with verify_tag(tag, msg, key)
 			assert res == false
 			msg[0] ^= 0xff
 		}
