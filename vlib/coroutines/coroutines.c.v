@@ -8,26 +8,33 @@ import time
 
 #flag -I @VEXEROOT/thirdparty/photon
 #flag @VEXEROOT/thirdparty/photon/photonwrapper.so
-
 #include "photonwrapper.h"
 
+$if windows {
+	#include "processthreadsapi.h"
+} $else {
+	#include <pthread.h>
+}
+#flag -I @VEXEROOT/vlib/coroutines
+#include "sp_corrector.c"
+
 fn C.set_photon_thread_stack_allocator(fn (voidptr, int) voidptr, fn (voidptr, voidptr, int))
-fn C.default_photon_thread_stack_alloc(voidptr, int) voidptr
-fn C.default_photon_thread_stack_dealloc(voidptr, voidptr, int)
+
+// fn C.default_photon_thread_stack_alloc(voidptr, int) voidptr
+// fn C.default_photon_thread_stack_dealloc(voidptr, voidptr, int)
 fn C.new_photon_work_pool(int) voidptr
 fn C.delete_photon_work_pool()
 fn C.init_photon_work_pool(int)
-fn C.init_photon_manual(int, fn ())
-fn C.init_photon_manual2(fn (), fn ())
 fn C.photon_thread_create_and_migrate_to_work_pool(f voidptr, arg voidptr)
 fn C.photon_thread_create(f voidptr, arg voidptr)
 fn C.photon_thread_migrate()
 
 // fn C.photon_thread_migrate(work_pool voidptr)
 fn C.photon_init_default() int
-
 fn C.photon_sleep_s(n int)
 fn C.photon_sleep_ms(n int)
+
+fn C.sp_corrector(voidptr, voidptr)
 
 // sleep is coroutine-safe version of time.sleep()
 pub fn sleep(duration time.Duration) {
@@ -35,26 +42,28 @@ pub fn sleep(duration time.Duration) {
 }
 
 fn alloc(_ voidptr, stack_size int) voidptr {
-	// println('## alloc called')
 	unsafe {
-		// thread_id := C.pthread_self()
-		// println('## Thread ID: $thread_id')
+		$if gcboehm ? {
+			// TODO: do this only once when the worker thread is created.
+			// I'm currently just doing it here for convenience.
+			// The second time `C.GC_register_my_thread` gets called from the
+			// same thread it will just fail (returning non 0), so it't not
+			// really a problem, it's just not ideal.
+			mut sb := C.GC_stack_base{}
+			C.GC_get_stack_base(&sb)
+			C.GC_register_my_thread(&sb)
+		}
 
-		// $if gcboehm ? {
-		// 	mut sb := C.GC_stack_base{}
-		// 	C.GC_get_stack_base(&sb)
-		// 	C.GC_register_my_thread(&sb)
-		// 	// res = C.GC_register_my_thread(&sb)
-		// 	// println('## RES: $res')
-		// }
-
-		// NOTE: when using malloc (GC_MALLOC) we get a segfault
-		// when migrating from a new thread to a work pool thread
-		// stack_ptr := malloc(stack_size)
-		// stack_ptr := C.malloc(stack_size)
-		stack_ptr := C.default_photon_thread_stack_alloc(nil, stack_size)
+		stack_ptr := malloc(stack_size)
 
 		$if gcboehm ? {
+			// TODO: this wont work if a corouroutine gets moved to a different
+			// thread, so we are using `C.GC_set_sp_corrector` with our own
+			// corrector function which seems to be the best solution for now.
+			// It would probably be more performant if we could hook into photon's context
+			// switching code (currently not possible) or we write our own implementation.
+			// C.GC_set_stackbottom(0, stack_ptr)
+
 			C.GC_add_roots(stack_ptr, charptr(stack_ptr) + stack_size)
 		}
 
@@ -63,21 +72,30 @@ fn alloc(_ voidptr, stack_size int) voidptr {
 }
 
 fn dealloc(_ voidptr, stack_ptr voidptr, stack_size int) {
-	// println('## dealloc called')
 	unsafe {
 		$if gcboehm ? {
+			// TODO: only do this once when the worker thread is killed (not in each coroutine)
+			// come up with a solution for this and `C.GC_register_my_thread(` (see alloc above)
 			// C.GC_unregister_my_thread()
+
 			C.GC_remove_roots(stack_ptr, charptr(stack_ptr) + stack_size)
 		}
-		// free(stack_ptr)
-		C.default_photon_thread_stack_dealloc(nil, stack_ptr, stack_size)
+		free(stack_ptr)
 	}
 }
 
 fn init() {
+	C.GC_set_sp_corrector(C.sp_corrector)
+	if C.GC_get_sp_corrector() == unsafe { nil } {
+		panic('stack pointer correction unsupported')
+	}
+	// C.GC_set_sp_corrector(C.sp_corrector)
 	C.set_photon_thread_stack_allocator(alloc, dealloc)
 	ret := C.photon_init_default()
 
+	// NOTE: instead of using photon's WorkPool, we could start our own worker threads,
+	// then initialize photon in each of them. If we did that we would need to control
+	// the migration of coroutines across threads etc.
 	if util.nr_jobs >= 1 {
 		C.init_photon_work_pool(util.nr_jobs)
 	}
