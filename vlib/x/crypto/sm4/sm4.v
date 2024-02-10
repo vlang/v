@@ -12,6 +12,8 @@
 
 module sm4
 
+import encoding.binary { big_endian_put_u32_fixed, big_endian_u32_fixed }
+
 // vfmt off
 // System parameter
 const fk = [u32(0xa3b1bac6), 0x56aa3350, 0x677d9197, 0xb27022dc, ]!
@@ -232,33 +234,18 @@ u32(0xd55b5b8e), 0x924242d0, 0xeaa7a74d, 0xfdfbfb06, 0xcf3333fc, 0xe2878765,
 ]!
 // vfmt on
 
-// big_endian_u32 creates a u32 from four bytes in the array b in big endian order.
+// big_endian_u128_fixed convert 16 bytes in the array `b` into 4 u32 in the array `u` in big endian order.
 @[direct_array_access; inline]
-fn big_endian_u32(b [4]u8) u32 {
-	return u32(b[3]) | (u32(b[2]) << u32(8)) | (u32(b[1]) << u32(16)) | (u32(b[0]) << u32(24))
-}
-
-// big_endian_put_u32 writes a u32 to the first four bytes in the array b in big endian order.
-@[direct_array_access; inline]
-fn big_endian_put_u32(mut b [4]u8, v u32) {
-	b[0] = u8(v >> u32(24))
-	b[1] = u8(v >> u32(16))
-	b[2] = u8(v >> u32(8))
-	b[3] = u8(v)
-}
-
-// big_endian_u128 convert 16 bytes in the array `b` into 4 u32 in the array `u` in big endian order.
-@[direct_array_access; inline]
-fn big_endian_u128(b [16]u8, mut u [4]u32) {
+fn big_endian_u128_fixed(b [16]u8, mut u [4]u32) {
 	for i in 0 .. 4 {
 		u[i] = u32(b[i * 4 + 3]) | (u32(b[i * 4 + 2]) << u32(8)) | (u32(b[i * 4 + 1]) << u32(16)) | (u32(b[
 			i * 4 + 0]) << u32(24))
 	}
 }
 
-// big_endian_put_u128_reverse writes 4 u32 to the 16 bytes in the array `b` in big endian order.
+// big_endian_put_u128_fixed_reverse writes 4 u32 to the 16 bytes in the array `b` in big endian order.
 @[direct_array_access; inline]
-fn big_endian_put_u128_reverse(mut b [16]u8, v [4]u32) {
+fn big_endian_put_u128_fixed_reverse(mut b [16]u8, v [4]u32) {
 	for i in 0 .. 4 {
 		b[i * 4 + 0] = u8(v[3 - i] >> u32(24))
 		b[i * 4 + 1] = u8(v[3 - i] >> u32(16))
@@ -274,9 +261,9 @@ fn sm4_tl(ka u32) u32 {
 	mut b := [4]u8{}
 
 	// Divide ka into 4 bytes, then use sbox transfer, combine again into a new u32
-	big_endian_put_u32(mut a, ka)
+	big_endian_put_u32_fixed(mut a, ka)
 	b[3], b[2], b[1], b[0] = sm4.sbox[a[3]], sm4.sbox[a[2]], sm4.sbox[a[1]], sm4.sbox[a[0]]
-	bb := big_endian_u32(b)
+	bb := big_endian_u32_fixed(b)
 
 	// Rotate Left Shift 02, 10, 18, 24
 	t_02 := bb << 2 | bb >> (32 - 2) // ROL(bb, 02)
@@ -295,9 +282,9 @@ fn calculate_irk(ka u32) u32 {
 	mut b := [4]u8{}
 
 	// Divide ka into 4 bytes, then use sbox transfer, combine them into a new u32
-	big_endian_put_u32(mut a, ka)
+	big_endian_put_u32_fixed(mut a, ka)
 	b[3], b[2], b[1], b[0] = sm4.sbox[a[3]], sm4.sbox[a[2]], sm4.sbox[a[1]], sm4.sbox[a[0]]
-	bb := big_endian_u32(b)
+	bb := big_endian_u32_fixed(b)
 
 	// Rotate Left Shift 13, 23
 	t_13 := bb << 13 | bb >> (32 - 13) // ROL(bb, 13)
@@ -312,7 +299,7 @@ fn key_expansion(mut rk [32]u32, key [16]u8) {
 	mut k := [36]u32{}
 
 	// k = key ^ fk
-	big_endian_u128(key, mut mk)
+	big_endian_u128_fixed(key, mut mk)
 	k[3], k[2], k[1], k[0] = mk[3] ^ sm4.fk[3], mk[2] ^ sm4.fk[2], mk[1] ^ sm4.fk[1], mk[0] ^ sm4.fk[0]
 
 	// generate the round keys
@@ -330,7 +317,7 @@ fn one_round(rk [32]u32, input [16]u8, mut output [16]u8) {
 	mut tmp := u32(0)
 	mut tmp1 := u32(0)
 
-	big_endian_u128(input, mut x)
+	big_endian_u128_fixed(input, mut x)
 	for i in 0 .. 32 {
 		tmp = x[1] ^ x[2] ^ x[3] ^ rk[i]
 		$if sm4_slow_version ? {
@@ -342,7 +329,7 @@ fn one_round(rk [32]u32, input [16]u8, mut output [16]u8) {
 		}
 		x[3], x[2], x[1], x[0] = tmp1, x[3], x[2], x[1]
 	}
-	big_endian_put_u128_reverse(mut output, x)
+	big_endian_put_u128_fixed_reverse(mut output, x)
 }
 
 pub enum Mode {
