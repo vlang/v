@@ -26,7 +26,7 @@ static void sp_corrector(void** sp_ptr, void* tid) {
     pthread_attr_destroy(&gattr);
 #endif
     char sp = (char)*sp_ptr;
-    if(sp <= (char)stack_addr || sp >= (char)(stack_addr+stack_size)) {
+    if(sp <= stack_addr || sp >= stack_addr+stack_size) {
         *sp_ptr = (void*)stack_addr;
     }
 }
