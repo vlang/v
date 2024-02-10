@@ -72,11 +72,11 @@ $if dynamic_boehm ? {
 	} $else $if windows {
 		#flag -DGC_NOT_DLL=1
 		#flag -DGC_WIN32_THREADS=1
+		#flag -luser32
 		$if tinyc {
 			#flag -DGC_BUILTIN_ATOMIC=1
 			#flag -I @VEXEROOT/thirdparty/libgc/include
 			#flag @VEXEROOT/thirdparty/tcc/lib/libgc.a
-			#flag -luser32
 		} $else $if msvc {
 			// Build libatomic_ops
 			#flag @VEXEROOT/thirdparty/libatomic_ops/atomic_ops.o
