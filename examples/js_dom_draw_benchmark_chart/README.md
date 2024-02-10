@@ -12,7 +12,7 @@
 The steps below assume that your current directory path is the examples project directory.
 
 ```
-cd examples/js_dom_draw_bechmark_chart
+cd examples/js_dom_draw_benchmark_chart
 ```
 
 Execute the following commands in separate terminal instances.
