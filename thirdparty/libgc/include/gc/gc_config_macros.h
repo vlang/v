@@ -10,7 +10,7 @@
  * OR IMPLIED.  ANY USE IS AT YOUR OWN RISK.
  *
  * Permission is hereby granted to use or copy this program
- * for any purpose,  provided the above notices are retained on all copies.
+ * for any purpose, provided the above notices are retained on all copies.
  * Permission to modify the code and to distribute modified code is granted,
  * provided the above notices are retained, and a notice that the code was
  * modified is included with the above copyright notice.
@@ -20,13 +20,34 @@
 /* We separate it only to make gc.h more suitable as documentation.       */
 #if defined(GC_H)
 
-/* Convenient internal macro to test version of GCC.    */
+/* Convenient internal macro to test version of gcc.    */
 #if defined(__GNUC__) && defined(__GNUC_MINOR__)
 # define GC_GNUC_PREREQ(major, minor) \
-            ((__GNUC__ << 16) + __GNUC_MINOR__ >= ((major) << 16) + (minor))
+            ((__GNUC__ << 8) + __GNUC_MINOR__ >= ((major) << 8) + (minor))
 #else
 # define GC_GNUC_PREREQ(major, minor) 0 /* FALSE */
 #endif
+
+/* A macro to define integer types of a pointer size.  There seems to   */
+/* be no way to do this even semi-portably.  The following is probably  */
+/* no better/worse than almost anything else.                           */
+/* The ANSI standard suggests that size_t and ptrdiff_t might be        */
+/* better choices.  But those had incorrect definitions on some older   */
+/* systems; notably "typedef int size_t" is wrong.                      */
+#ifdef _WIN64
+# if defined(__int64) && !defined(CPPCHECK)
+#   define GC_SIGNEDWORD __int64
+# else
+#   define GC_SIGNEDWORD long long
+# endif
+#else
+# define GC_SIGNEDWORD long
+#endif
+#define GC_UNSIGNEDWORD unsigned GC_SIGNEDWORD
+
+/* The return type of GC_get_version().  A 32-bit unsigned integer  */
+/* or longer.                                                       */
+# define GC_VERSION_VAL_T unsigned
 
 /* Some tests for old macros.  These violate our namespace rules and    */
 /* will disappear shortly.  Use the GC_ names.                          */
@@ -328,6 +349,7 @@
 #endif /* GLIBC */
 
 #if defined(_MSC_VER) && _MSC_VER >= 1200 /* version 12.0+ (MSVC 6.0+) */ \
+        && !defined(_M_ARM) && !defined(_M_ARM64) \
         && !defined(_AMD64_) && !defined(_M_X64) && !defined(_WIN32_WCE) \
         && !defined(GC_HAVE_NO_BUILTIN_BACKTRACE) \
         && !defined(GC_HAVE_BUILTIN_BACKTRACE)
@@ -384,7 +406,7 @@
 # endif
 
 # if (defined(GC_DARWIN_THREADS) || defined(GC_WIN32_PTHREADS) \
-      || defined(GC_OPENBSD_THREADS) || defined(__native_client__)) \
+      || defined(__native_client__)) \
      && !defined(GC_NO_PTHREAD_SIGMASK)
     /* Either there is no pthread_sigmask() or no need to intercept it. */
 #   define GC_NO_PTHREAD_SIGMASK
@@ -449,6 +471,14 @@
 #   define GC_NOEXCEPT noexcept
 # else
 #   define GC_NOEXCEPT throw()
+# endif
+#endif
+
+#ifndef GC_CONSTEXPR
+# if __cplusplus >= 202002L
+#   define GC_CONSTEXPR constexpr
+# else
+#   define GC_CONSTEXPR /* empty */
 # endif
 #endif
 
