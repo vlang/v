@@ -18,6 +18,9 @@ pub mut:
 
 @[unsafe]
 pub fn (s &Scope) free() {
+	if s == unsafe { nil } {
+		return
+	}
 	unsafe {
 		s.objects.free()
 		s.struct_fields.free()
@@ -42,6 +45,9 @@ fn (s &Scope) dont_lookup_parent() bool {
 }
 
 pub fn (s &Scope) find(name string) ?ScopeObject {
+	if s == unsafe { nil } {
+		return none
+	}
 	for sc := unsafe { s }; true; sc = sc.parent {
 		if name in sc.objects {
 			return unsafe { sc.objects[name] }
@@ -55,6 +61,9 @@ pub fn (s &Scope) find(name string) ?ScopeObject {
 
 // selector_expr:  name.field_name
 pub fn (s &Scope) find_struct_field(name string, struct_type Type, field_name string) ?ScopeStructField {
+	if s == unsafe { nil } {
+		return none
+	}
 	for sc := unsafe { s }; true; sc = sc.parent {
 		if field := sc.struct_fields[name] {
 			if field.struct_type == struct_type && field.name == field_name {
@@ -184,6 +193,9 @@ pub fn (s &Scope) innermost(pos int) &Scope {
 
 // get_all_vars extracts all current scope vars
 pub fn (s &Scope) get_all_vars() []ScopeObject {
+	if s == unsafe { nil } {
+		return []
+	}
 	mut scope_vars := []ScopeObject{}
 	for sc := unsafe { s }; true; sc = sc.parent {
 		if sc.objects.len > 0 {
@@ -212,7 +224,7 @@ pub fn (s &Scope) has_inherited_vars() bool {
 	return false
 }
 
-pub fn (sc Scope) show(depth int, max_depth int) string {
+pub fn (sc &Scope) show(depth int, max_depth int) string {
 	mut out := ''
 	mut indent := ''
 	for _ in 0 .. depth * 4 {
@@ -237,6 +249,6 @@ pub fn (sc Scope) show(depth int, max_depth int) string {
 	return out
 }
 
-pub fn (sc Scope) str() string {
+pub fn (sc &Scope) str() string {
 	return sc.show(0, 0)
 }
