@@ -75,7 +75,7 @@ fn dealloc(_ voidptr, stack_ptr voidptr, stack_size int) {
 	unsafe {
 		$if gcboehm ? {
 			// TODO: only do this once when the worker thread is killed (not in each coroutine)
-			// come up with a solution for this and `C.GC_register_my_thread(` (see alloc above)
+			// come up with a solution for this and `C.GC_register_my_thread` (see alloc above)
 			// C.GC_unregister_my_thread()
 
 			C.GC_remove_roots(stack_ptr, charptr(stack_ptr) + stack_size)
@@ -92,7 +92,6 @@ fn init() {
 	if C.GC_get_sp_corrector() == unsafe { nil } {
 		panic('stack pointer correction unsupported')
 	}
-	// C.GC_set_sp_corrector(C.sp_corrector)
 	C.set_photon_thread_stack_allocator(alloc, dealloc)
 	ret := C.photon_init_default()
 
