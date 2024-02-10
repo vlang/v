@@ -3944,9 +3944,23 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 	mut keys := strings.new_builder(100)
 	mut values := strings.new_builder(100)
 	mut count := 1
-	for _, obj in scope_vars {
+	outer: for _, obj in scope_vars {
 		if obj.name !in vars {
 			if obj is ast.Var && obj.pos.pos < node.pos.pos {
+				if obj.expr is ast.IfExpr {
+					oscope := g.file.scope.innermost(obj.pos.pos)
+					mut nscope := g.file.scope.innermost(node.pos.pos)
+					if nscope != oscope && nscope.is_inner(oscope) {
+						continue outer
+					}
+				} else if obj.expr is ast.MatchExpr {
+					nscope := g.file.scope.innermost(node.pos.pos)
+					for branch in obj.expr.branches {
+						if branch.scope == nscope {
+							continue outer
+						}
+					}
+				}
 				keys.write_string('_SLIT("${obj.name}")')
 				var_typ := if obj.ct_type_var != .no_comptime {
 					g.comptime.get_comptime_var_type(ast.Ident{ obj: obj })
