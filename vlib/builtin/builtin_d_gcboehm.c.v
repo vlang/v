@@ -103,6 +103,7 @@ $if gcboehm_leak ? {
 }
 
 #include <gc.h>
+// #include <gc/gc_mark.h>
 
 // replacements for `malloc()/calloc()`, `realloc()` and `free()`
 // for use with Boehm-GC
@@ -148,11 +149,19 @@ pub struct C.GC_stack_base {
 	// reg_base voidptr
 }
 
-// pub struct C.GC_stack_base{}
-
 fn C.GC_get_stack_base(voidptr)
 fn C.GC_register_my_thread(voidptr) int
 fn C.GC_unregister_my_thread() int
 
+// fn C.GC_get_my_stackbottom(voidptr) voidptr
+// fn C.GC_set_stackbottom(voidptr, voidptr)
+// fn C.GC_push_all_stacks()
+
 fn C.GC_add_roots(voidptr, voidptr)
 fn C.GC_remove_roots(voidptr, voidptr)
+
+// fn C.GC_get_push_other_roots() fn()
+// fn C.GC_set_push_other_roots(fn())
+
+fn C.GC_get_sp_corrector() fn (voidptr, voidptr)
+fn C.GC_set_sp_corrector(fn (voidptr, voidptr))
