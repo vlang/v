@@ -34,27 +34,27 @@ fn test_compute_result() {
 	}
 	expected_state := SimState{
 		position: vector(
-			x: -0.01695723093017133
-			y: -0.02937078552673517
+			x: -0.01695723093017135
+			y: -0.029370785526735183
 			z: 0.002311063475327252
 		)
 		velocity: vector(
-			x: -7.251158929832518
-			y: -12.559375680226692
-			z: -105.91539687685668
+			x: -7.251158929831753
+			y: -12.55937568022536
+			z: -105.91539687684447
 		)
 		accel: vector(
-			x: -3.789561257387201e-12
-			y: 3.410605131648481e-11
-			z: 3.031649005909761e-11
+			x: -1.1368683772161603e-11
+			y: -1.5916157281026244e-10
+			z: 0
 		)
 	}
 	expected := &SimResult{
 		state: expected_state
 		id: 0
-		magnet1_distance: 0.07993696666249224
-		magnet2_distance: 0.07993696666249223
-		magnet3_distance: 0.03609361938278009
+		magnet1_distance: 0.07993696666249225
+		magnet2_distance: 0.07993696666249224
+		magnet3_distance: 0.03609361938278008
 	}
 	result := compute_result(request)
 	assert result == expected

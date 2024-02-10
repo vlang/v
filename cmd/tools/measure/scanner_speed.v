@@ -5,8 +5,12 @@ import v.scanner
 import v.pref
 
 const skip_tests = os.getenv_opt('SKIP_TESTS') or { '' }.bool()
+const comments_mode = scanner.CommentsMode.from(os.getenv('SCANNER_MODE')) or {
+	scanner.CommentsMode.skip_comments
+}
 
 fn main() {
+	dump(comments_mode)
 	files := os.args#[1..]
 	if files.len > 0 && files[0].starts_with('@') {
 		lst_path := files[0].all_after('@')
@@ -47,7 +51,7 @@ fn process_files(files []string) ! {
 		}
 		total_files++
 		sw.restart()
-		s := scanner.new_scanner_file(f, .skip_comments, pref_)!
+		s := scanner.new_scanner_file(f, comments_mode, pref_)!
 		f_us := sw.elapsed().microseconds()
 		total_us += f_us
 		total_bytes += s.text.len

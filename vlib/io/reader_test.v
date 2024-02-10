@@ -161,3 +161,26 @@ fn test_totalread_readline() {
 
 	assert r.total_read == text.len
 }
+
+fn test_read_line_until_zero_terminated() {
+	text := 'This is a test\0Nice try!\0'
+	mut s := StringReader{
+		text: text
+	}
+	mut r := new_buffered_reader(reader: s)
+	line1 := r.read_line(delim: `\0`) or {
+		assert false
+		panic('bad')
+	}
+	assert line1 == 'This is a test'
+	line2 := r.read_line(delim: `\0`) or {
+		assert false
+		panic('bad')
+	}
+	assert line2 == 'Nice try!'
+	if _ := r.read_line(delim: `\0`) {
+		assert false
+		panic('bad')
+	}
+	assert r.end_of_stream()
+}

@@ -608,6 +608,7 @@ pub fn join_path_single(base string, elem string) string {
 }
 
 // walk_ext returns a recursive list of all files in `path` ending with `ext`.
+// For listing only one level deep, see: `os.ls`
 pub fn walk_ext(path string, ext string) []string {
 	mut res := []string{}
 	impl_walk_ext(path, ext, mut res)
@@ -637,6 +638,7 @@ fn impl_walk_ext(path string, ext string, mut out []string) {
 // When a file is encountered, it will call the callback `f` with current file as argument.
 // Note: walk can be called even for deeply nested folders,
 // since it does not recurse, but processes them iteratively.
+// For listing only one level deep, see: `os.ls`
 pub fn walk(path string, f fn (string)) {
 	if path.len == 0 {
 		return
@@ -674,6 +676,7 @@ pub type FnWalkContextCB = fn (voidptr, string)
 // and the path to the file in its second parameter.
 // Note: walk_with_context can be called even for deeply nested folders,
 // since it does not recurse, but processes them iteratively.
+// For listing only one level deep, see: `os.ls`
 pub fn walk_with_context(path string, context voidptr, fcb FnWalkContextCB) {
 	if path.len == 0 {
 		return
@@ -973,4 +976,20 @@ pub fn config_dir() !string {
 		}
 	}
 	return error('Cannot find config directory')
+}
+
+// Stat struct modeled on POSIX
+pub struct Stat {
+pub:
+	dev   u64 // ID of device containing file
+	inode u64 // Inode number
+	mode  u32 // File type and user/group/world permission bits
+	nlink u64 // Number of hard links to file
+	uid   u32 // Owner user ID
+	gid   u32 // Owner group ID
+	rdev  u64 // Device ID (if special file)
+	size  u64 // Total size in bytes
+	atime i64 // Last access (seconds since UNIX epoch)
+	mtime i64 // Last modified (seconds since UNIX epoch)
+	ctime i64 // Last status change (seconds since UNIX epoch)
 }

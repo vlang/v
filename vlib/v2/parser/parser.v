@@ -125,7 +125,7 @@ pub fn (mut p Parser) parse_file(filename string, mut file_set token.FileSet) as
 	}
 	if p.pref.verbose {
 		parse_time := sw.elapsed()
-		println('scan & parse ${filename} (${p.file.line_count()} LOC): ${parse_time.milliseconds()}ms (${parse_time.microseconds()}us)')
+		println('scan & parse ${filename} (${p.file.line_count()} LOC): ${parse_time.milliseconds()}ms (${parse_time.microseconds()}µs)')
 	}
 	return ast.File{
 		attributes: attributes

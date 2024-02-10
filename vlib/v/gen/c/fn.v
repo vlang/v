@@ -273,6 +273,50 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		g.last_fn_c_name = last_fn_c_name_save
 	}
 	g.last_fn_c_name = impl_fn_name
+
+	if node.trace_fns.len > 0 {
+		for trace_fn, call_fn in node.trace_fns {
+			if trace_fn in g.trace_fn_definitions {
+				continue
+			}
+			trace_fn_ret_type := g.typ(call_fn.return_type)
+
+			g.write('VV_LOCAL_SYMBOL ${trace_fn_ret_type} ${c_name(trace_fn)}(')
+			g.definitions.write_string('VV_LOCAL_SYMBOL ${trace_fn_ret_type} ${c_name(trace_fn)}(')
+
+			if call_fn.is_fn_var {
+				sig := g.fn_var_signature(call_fn.func.return_type, call_fn.func.params.map(it.typ),
+					call_fn.name)
+				g.write(sig)
+				g.definitions.write_string(sig)
+			} else {
+				g.fn_decl_params(call_fn.func.params, unsafe { nil }, call_fn.func.is_variadic)
+			}
+
+			g.writeln(') {')
+			g.definitions.write_string(');\n')
+
+			orig_fn_args := call_fn.func.params.map(it.name).join(', ')
+
+			if g.cur_fn.is_method || g.cur_fn.is_static_type_method {
+				g.writeln('\tarray_push((array*)&g_callstack, _MOV((v__debug__FnTrace[]){ ((v__debug__FnTrace){.name = _SLIT("${g.table.type_to_str(g.cur_fn.receiver.typ)}.${g.cur_fn.name.all_after_last('__static__')}"),.file = _SLIT("${call_fn.file}"),.line = ${call_fn.line},}) }));')
+			} else {
+				g.writeln('\tarray_push((array*)&g_callstack, _MOV((v__debug__FnTrace[]){ ((v__debug__FnTrace){.name = _SLIT("${g.cur_fn.name}"),.file = _SLIT("${call_fn.file}"),.line = ${call_fn.line},}) }));')
+			}
+			if call_fn.return_type == 0 || call_fn.return_type == ast.void_type {
+				g.writeln('\t${c_name(call_fn.name)}(${orig_fn_args});')
+				g.writeln('\tarray_pop((array*)&g_callstack);')
+			} else {
+				g.writeln('\t${g.typ(call_fn.return_type)} ret = ${c_name(call_fn.name)}(${orig_fn_args});')
+				g.writeln('\tarray_pop((array*)&g_callstack);')
+				g.writeln('\treturn ret;')
+			}
+			g.writeln('}')
+			g.writeln('')
+			g.trace_fn_definitions << trace_fn
+		}
+	}
+
 	//
 	if is_live_wrap {
 		if is_livemain {
@@ -323,7 +367,11 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	if node.params.len == 0 {
 		g.definitions.write_string('void')
 	}
-	g.definitions.writeln(');')
+	if attr := node.attrs.find_first('_linker_section') {
+		g.definitions.writeln(') __attribute__ ((section ("${attr.arg}")));')
+	} else {
+		g.definitions.writeln(');')
+	}
 	g.writeln(') {')
 	if is_closure {
 		g.writeln('${cur_closure_ctx}* ${c.closure_ctx} = __CLOSURE_GET_DATA();')
@@ -509,8 +557,10 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 	g.indent++
 	for var in node.inherited_vars {
 		mut has_inherited := false
+		mut is_ptr := false
 		if obj := node.decl.scope.find(var.name) {
 			if obj is ast.Var {
+				is_ptr = obj.typ.is_ptr()
 				if obj.has_inherited {
 					has_inherited = true
 					var_sym := g.table.sym(var.typ)
@@ -534,8 +584,22 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 					g.write('${var.name}[${i}],')
 				}
 				g.writeln('},')
+			} else if g.is_autofree && !var.is_mut && var_sym.info is ast.Array {
+				g.writeln('.${var.name} = array_clone(&${var.name}),')
+			} else if g.is_autofree && !var.is_mut && var_sym.kind == .string {
+				g.writeln('.${var.name} = string_clone(${var.name}),')
 			} else {
-				g.writeln('.${var.name} = ${var.name},')
+				mut is_auto_heap := false
+				if obj := node.decl.scope.parent.find(var.name) {
+					if obj is ast.Var {
+						is_auto_heap = !obj.is_stack_obj && obj.is_auto_heap
+					}
+				}
+				if is_auto_heap && !is_ptr {
+					g.writeln('.${var.name} = *${var.name},')
+				} else {
+					g.writeln('.${var.name} = ${var.name},')
+				}
 			}
 		}
 	}
@@ -1243,10 +1307,14 @@ fn (mut g Gen) resolve_receiver_type(node ast.CallExpr) (ast.Type, &ast.TypeSymb
 	if node.from_embed_types.len == 0 && node.left is ast.Ident {
 		if node.left.obj is ast.Var {
 			if node.left.obj.smartcasts.len > 0 {
-				unwrapped_rec_type = g.unwrap_generic(node.left.obj.smartcasts.last())
-				cast_sym := g.table.sym(unwrapped_rec_type)
-				if cast_sym.info is ast.Aggregate {
-					unwrapped_rec_type = cast_sym.info.types[g.aggregate_type_idx]
+				if node.left.obj.ct_type_var == .smartcast {
+					unwrapped_rec_type = g.unwrap_generic(g.comptime.get_comptime_var_type(node.left))
+				} else {
+					unwrapped_rec_type = g.unwrap_generic(node.left.obj.smartcasts.last())
+					cast_sym := g.table.sym(unwrapped_rec_type)
+					if cast_sym.info is ast.Aggregate {
+						unwrapped_rec_type = cast_sym.info.types[g.aggregate_type_idx]
+					}
 				}
 			}
 		}
@@ -1471,7 +1539,12 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 			g.write('${name}${noscan}(')
 		} else {
-			g.write('${name}(')
+			if g.cur_fn != unsafe { nil } && g.cur_fn.trace_fns.len > 0 {
+				g.gen_trace_call(node, name)
+				g.write('(')
+			} else {
+				g.write('${name}(')
+			}
 		}
 	}
 	is_array_method_first_last_repeat := final_left_sym.kind == .array
@@ -1915,7 +1988,14 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				}
 			}
 			if !is_fn_var {
-				g.write(g.get_ternary_name(name))
+				if g.cur_fn != unsafe { nil } && g.cur_fn.trace_fns.len > 0 {
+					g.gen_trace_call(node, name)
+					if node.is_fn_var {
+						return
+					}
+				} else {
+					g.write(g.get_ternary_name(name))
+				}
 			}
 			if is_interface_call {
 				g.write(')')
@@ -1957,6 +2037,19 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 	}
 	g.is_json_fn = false
+}
+
+// gen_trace_call generates call to the wrapper trace fn if the call is traceable
+fn (mut g Gen) gen_trace_call(node ast.CallExpr, name string) {
+	hash_fn, _ := g.table.get_trace_fn_name(g.cur_fn, node)
+	if _ := g.cur_fn.trace_fns[hash_fn] {
+		g.write(c_name(hash_fn))
+		if node.is_fn_var {
+			g.write('(${node.name})')
+		}
+	} else {
+		g.write(g.get_ternary_name(name))
+	}
 }
 
 fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {

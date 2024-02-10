@@ -105,4 +105,24 @@ fn test_types() {
 	} else {
 		assert true
 	}
+
+	assert json.decode[StructType[Enumerates]]('{"val": 0}')!.val == .a
+	assert json.decode[StructType[Enumerates]]('{"val": 1}')!.val == .b
+	assert json.decode[StructType[Enumerates]]('{"val": 99}')!.val == .e
+	assert json.decode[StructType[Enumerates]]('{}')!.val == .a
+
+	if x := json.decode[StructTypeOption[Enumerates]]('{"val": 0}')!.val {
+		assert x == .a
+	}
+	if x := json.decode[StructTypeOption[Enumerates]]('{"val": 1}')!.val {
+		assert x == .b
+	}
+	if x := json.decode[StructTypeOption[Enumerates]]('{"val": 99}')!.val {
+		assert x == .e
+	}
+	if x := json.decode[StructTypeOption[Enumerates]]('{}')!.val {
+		assert false
+	} else {
+		assert true
+	}
 }

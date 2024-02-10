@@ -159,7 +159,7 @@ pub fn (mut c Checker) check_file(file ast.File) {
 	}
 	if c.pref.verbose {
 		check_time := sw.elapsed()
-		println('type check ${file.name}: ${check_time.milliseconds()}ms (${check_time.microseconds()}us)')
+		println('type check ${file.name}: ${check_time.milliseconds()}ms (${check_time.microseconds()}µs)')
 	}
 }
 
@@ -1590,7 +1590,7 @@ fn (mut c Checker) infer_generic_type(param_type Type, arg_type Type, mut type_m
 		if existing := type_map[name] {
 			// TODO: might need custom eq methods
 			if existing != typ && typ !is NamedType {
-				return error('${name} was previouly used as ${existing.name()}, got ${typ.name()}')
+				return error('${name} was previously used as ${existing.name()}, got ${typ.name()}')
 			}
 		}
 		type_map[name] = typ

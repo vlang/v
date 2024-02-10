@@ -17,7 +17,7 @@ fn get_folder_index_html(requested_file_path string, uri_path string, filter_mye
 	write_page_header(mut sb, uri_path)
 	write_page_crumbs(mut sb, uri_path)
 	write_page_table(mut sb, uri_path, requested_file_path, mut files)
-	sb.writeln('<p>Server time: <b>${time.now().format_ss()}</b>, generated in <b>${sw.elapsed().microseconds():6} us</b></p>')
+	sb.writeln('<p>Server time: <b>${time.now().format_ss()}</b>, generated in <b>${sw.elapsed().microseconds():6}µs</b></p>')
 	write_page_footer(mut sb, uri_path)
 	return sb.str()
 }

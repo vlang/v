@@ -11,6 +11,7 @@ import v.pref
 import v.util.vtest
 import runtime
 import rand
+import strings
 
 pub const github_job = os.getenv('GITHUB_JOB')
 
@@ -42,6 +43,13 @@ pub const is_go_present = os.execute('go version').exit_code == 0
 pub const all_processes = get_all_processes()
 
 pub const header_bytes_to_search_for_module_main = 500
+pub const separator = '-'.repeat(100)
+
+pub const max_compilation_retries = get_max_compilation_retries()
+
+fn get_max_compilation_retries() int {
+	return os.getenv_opt('VTEST_MAX_COMPILATION_RETRIES') or { '3' }.int()
+}
 
 fn get_fail_retry_delay_ms() time.Duration {
 	return os.getenv_opt('VTEST_FAIL_RETRY_DELAY_MS') or { '500' }.int() * time.millisecond
@@ -54,6 +62,11 @@ fn get_all_processes() []string {
 	} $else {
 		return os.execute('ps ax').output.split_any('\r\n')
 	}
+}
+
+pub enum ActionMode {
+	compile
+	compile_and_run
 }
 
 pub struct TestSession {
@@ -77,6 +90,8 @@ pub mut:
 	failed_cmds   shared []string
 	reporter      Reporter = Reporter(NormalReporter{})
 	hash          string // used as part of the name of the temporary directory created for tests, to ease cleanup
+	//
+	exec_mode ActionMode = .compile // .compile_and_run only for `v test`
 }
 
 pub fn (mut ts TestSession) add_failed_cmd(cmd string) {
@@ -137,7 +152,7 @@ pub fn (mut ts TestSession) print_messages() {
 		// first sent *all events* to the output reporter, so it can then process them however it wants:
 		ts.reporter.report(ts.nmessage_idx, rmessage)
 
-		if rmessage.kind in [.cmd_begin, .cmd_end] {
+		if rmessage.kind in [.cmd_begin, .cmd_end, .compile_begin, .compile_end] {
 			// The following events, are sent before the test framework has determined,
 			// what the full completion status is. They can also be repeated multiple times,
 			// for tests that are flaky and need repeating.
@@ -432,10 +447,17 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	is_vet := ts.vargs.contains('vet')
 	produces_file_output := !(is_fmt || is_vet)
 
-	if relative_file.ends_with('js.v') {
+	if relative_file.ends_with('.js.v') {
 		if produces_file_output {
 			cmd_options << ' -b js'
 			run_js = true
+		}
+	}
+
+	if relative_file.ends_with('.c.v') {
+		if produces_file_output {
+			cmd_options << ' -b c'
+			run_js = false
 		}
 	}
 
@@ -451,6 +473,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		flow_id: thread_id.str()
 	}
 	normalised_relative_file := relative_file.replace('\\', '/')
+
 	// Ensure that the generated binaries will be stored in an *unique*, fresh, and per test folder,
 	// inside the common session temporary folder, used for all the tests.
 	// This is done to provide a clean working environment, for each test, that will not contain
@@ -467,10 +490,15 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		os.mkdir_all(test_folder_path) or {}
 	}
 	fname := os.file_name(file)
+	// There are test files ending with `_test.v`, `_test.c.v` and `_test.js.v`.
+	mut fname_without_extension := fname.all_before_last('.v')
+	if fname_without_extension.ends_with('.c') {
+		fname_without_extension = fname_without_extension.all_before_last('.c')
+	}
 	generated_binary_fname := if os.user_os() == 'windows' && !run_js {
-		fname.all_before_last('.v') + '.exe'
+		fname_without_extension + '.exe'
 	} else {
-		fname.all_before_last('.v')
+		fname_without_extension
 	}
 	generated_binary_fpath := os.join_path_single(test_folder_path, generated_binary_fname)
 	if produces_file_output {
@@ -479,18 +507,33 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 		cmd_options << ' -o ${os.quoted_path(generated_binary_fpath)}'
 	}
-	cmd := '${os.quoted_path(ts.vexe)} ${cmd_options.join(' ')} ${os.quoted_path(file)}'
+	defer {
+		if produces_file_output && ts.rm_binaries {
+			os.rmdir_all(test_folder_path) or {}
+		}
+	}
+
+	cmd := '${os.quoted_path(ts.vexe)} -skip-running ${cmd_options.join(' ')} ${os.quoted_path(file)}'
+	run_cmd := if run_js {
+		'node ${os.quoted_path(generated_binary_fpath)}'
+	} else {
+		os.quoted_path(generated_binary_fpath)
+	}
 	ts.benchmark.step()
 	tls_bench.step()
 	if relative_file.replace('\\', '/') in ts.skip_files {
 		ts.benchmark.skip()
 		tls_bench.skip()
 		if !testing.hide_skips {
-			ts.append_message(.skip, tls_bench.step_message_skip(normalised_relative_file),
-				mtc)
+			ts.append_message(.skip, tls_bench.step_message_with_label_and_duration(benchmark.b_skip,
+				normalised_relative_file, 0,
+				preparation: 1 * time.microsecond
+			), mtc)
 		}
 		return pool.no_result
 	}
+	mut compile_cmd_duration := time.Duration(0)
+	mut cmd_duration := time.Duration(0)
 	if ts.show_stats {
 		ts.reporter.divider()
 
@@ -505,7 +548,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 		mut status := res.exit_code
 
-		mut cmd_duration := d_cmd.elapsed()
+		cmd_duration = d_cmd.elapsed()
 		ts.append_message_with_duration(.cmd_end, '', cmd_duration, mtc)
 
 		if status != 0 {
@@ -530,57 +573,85 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				time.sleep(testing.fail_retry_delay_ms)
 			}
 			if details.flaky && !testing.fail_flaky {
-				ts.append_message(.info, '   *FAILURE* of the known flaky test file ${relative_file} is ignored, since VTEST_FAIL_FLAKY is 0 . Retry count: ${details.retry} .',
+				ts.append_message(.info, '   *FAILURE* of the known flaky test file ${relative_file} is ignored, since VTEST_FAIL_FLAKY is 0 . Retry count: ${details.retry} .\ncmd: ${cmd}',
 					mtc)
 				unsafe {
 					goto test_passed_system
 				}
 			}
-
 			// most probably compiler error
 			if res.output.contains(': error: ') {
 				ts.append_message(.cannot_compile, 'Cannot compile file ${file}', mtc)
 			}
-
 			ts.benchmark.fail()
 			tls_bench.fail()
 			ts.add_failed_cmd(cmd)
 			return pool.no_result
-		} else {
-			test_passed_system:
-			ts.benchmark.ok()
-			tls_bench.ok()
 		}
 	} else {
 		if testing.show_start {
 			ts.append_message(.info, '                 starting ${relative_file} ...',
 				mtc)
 		}
-		ts.append_message(.cmd_begin, cmd, mtc)
-		d_cmd := time.new_stopwatch()
-		mut r := os.execute(cmd)
-		mut cmd_duration := d_cmd.elapsed()
-		ts.append_message_with_duration(.cmd_end, r.output, cmd_duration, mtc)
-
-		if r.exit_code < 0 {
+		ts.append_message(.compile_begin, cmd, mtc)
+		compile_d_cmd := time.new_stopwatch()
+		mut compile_r := os.Result{}
+		for cretry in 0 .. testing.max_compilation_retries {
+			compile_r = os.execute(cmd)
+			compile_cmd_duration = compile_d_cmd.elapsed()
+			// eprintln('>>>> cretry: $cretry | compile_r.exit_code: $compile_r.exit_code | compile_cmd_duration: ${compile_cmd_duration:8} | file: $normalised_relative_file')
+			if compile_r.exit_code == 0 {
+				break
+			}
+			random_sleep_ms(50, 100 * cretry)
+		}
+		ts.append_message_with_duration(.compile_end, compile_r.output, compile_cmd_duration,
+			mtc)
+		if compile_r.exit_code != 0 {
 			ts.benchmark.fail()
 			tls_bench.fail()
-			ts.append_message_with_duration(.fail, tls_bench.step_message_fail(normalised_relative_file),
-				cmd_duration, mtc)
+			ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail,
+				'${normalised_relative_file}\n>> compilation failed:\n${compile_r.output}',
+				cmd_duration,
+				preparation: compile_cmd_duration
+			), cmd_duration, mtc)
 			ts.add_failed_cmd(cmd)
 			return pool.no_result
 		}
+		tls_bench.step_restart()
+		ts.benchmark.step_restart()
+		if ts.exec_mode == .compile {
+			unsafe {
+				goto test_passed_execute
+			}
+		}
+		//
+		mut retry := 1
+		ts.append_message(.cmd_begin, run_cmd, mtc)
+		mut failure_output := strings.new_builder(1024)
+		d_cmd := time.new_stopwatch()
+		mut r := os.execute(run_cmd)
+		cmd_duration = d_cmd.elapsed()
+		ts.append_message_with_duration(.cmd_end, r.output, cmd_duration, mtc)
 		if r.exit_code != 0 {
-			details := get_test_details(file)
+			mut details := get_test_details(file)
+			mut trimmed_output := r.output.trim_space()
+			if trimmed_output.len == 0 {
+				// retry running at least 1 more time, to avoid CI false positives as much as possible
+				details.retry++
+			}
+			failure_output.write_string(testing.separator)
+			failure_output.writeln(' retry: 0 ; max_retry: ${details.retry} ; r.exit_code: ${r.exit_code} ; trimmed_output.len: ${trimmed_output.len}')
+			failure_output.writeln(trimmed_output)
 			os.setenv('VTEST_RETRY_MAX', '${details.retry}', true)
-			for retry := 1; retry <= details.retry; retry++ {
+			for retry = 1; retry <= details.retry; retry++ {
 				ts.append_message(.info, '                 retrying ${retry}/${details.retry} of ${relative_file} ; known flaky: ${details.flaky} ...',
 					mtc)
 				os.setenv('VTEST_RETRY', '${retry}', true)
 
-				ts.append_message(.cmd_begin, cmd, mtc)
+				ts.append_message(.cmd_begin, run_cmd, mtc)
 				d_cmd_2 := time.new_stopwatch()
-				r = os.execute(cmd)
+				r = os.execute(run_cmd)
 				cmd_duration = d_cmd_2.elapsed()
 				ts.append_message_with_duration(.cmd_end, r.output, cmd_duration, mtc)
 
@@ -589,10 +660,15 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 						goto test_passed_execute
 					}
 				}
+				trimmed_output = r.output.trim_space()
+				failure_output.write_string(testing.separator)
+				failure_output.writeln(' retry: ${retry} ; max_retry: ${details.retry} ; r.exit_code: ${r.exit_code} ; trimmed_output.len: ${trimmed_output.len}')
+				failure_output.writeln(trimmed_output)
 				time.sleep(testing.fail_retry_delay_ms)
 			}
+			full_failure_output := failure_output.str().trim_space()
 			if details.flaky && !testing.fail_flaky {
-				ts.append_message(.info, '   *FAILURE* of the known flaky test file ${relative_file} is ignored, since VTEST_FAIL_FLAKY is 0 . Retry count: ${details.retry} .',
+				ts.append_message(.info, '   *FAILURE* of the known flaky test file ${relative_file} is ignored, since VTEST_FAIL_FLAKY is 0 . Retry count: ${details.retry} .\n    comp_cmd: ${cmd}\n     run_cmd: ${run_cmd}',
 					mtc)
 				unsafe {
 					goto test_passed_execute
@@ -600,22 +676,25 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			}
 			ts.benchmark.fail()
 			tls_bench.fail()
-			ending_newline := if r.output.ends_with('\n') { '\n' } else { '' }
-			ts.append_message_with_duration(.fail, tls_bench.step_message_fail('${normalised_relative_file}\n${r.output.trim_space()}${ending_newline}'),
-				cmd_duration, mtc)
+			cmd_duration = d_cmd.elapsed() - (testing.fail_retry_delay_ms * details.retry)
+			ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail,
+				'${normalised_relative_file}\n         retry: ${retry}\n      comp_cmd: ${cmd}\n       run_cmd: ${run_cmd}\nfailure code: ${r.exit_code}; foutput.len: ${full_failure_output.len}; failure output:\n${full_failure_output}',
+				cmd_duration,
+				preparation: compile_cmd_duration
+			), cmd_duration, mtc)
 			ts.add_failed_cmd(cmd)
-		} else {
-			test_passed_execute:
-			ts.benchmark.ok()
-			tls_bench.ok()
-			if !testing.hide_oks {
-				ts.append_message_with_duration(.ok, tls_bench.step_message_ok(normalised_relative_file),
-					cmd_duration, mtc)
-			}
+			return pool.no_result
 		}
 	}
-	if produces_file_output && ts.rm_binaries {
-		os.rmdir_all(test_folder_path) or {}
+	test_passed_system:
+	test_passed_execute:
+	ts.benchmark.ok()
+	tls_bench.ok()
+	if !testing.hide_oks {
+		ts.append_message_with_duration(.ok, tls_bench.step_message_with_label_and_duration(benchmark.b_ok,
+			normalised_relative_file, cmd_duration,
+			preparation: compile_cmd_duration
+		), cmd_duration, mtc)
 	}
 	return pool.no_result
 }
@@ -779,4 +858,8 @@ pub fn eheader(msg string) {
 pub fn header(msg string) {
 	println(term.header_left(msg, '-'))
 	flush_stdout()
+}
+
+fn random_sleep_ms(min_ms int, random_add_ms int) {
+	time.sleep((100 + rand.intn(100) or { 0 }) * time.millisecond)
 }

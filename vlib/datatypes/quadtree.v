@@ -35,7 +35,7 @@ pub fn (mut q Quadtree) create(x f64, y f64, width f64, height f64, capacity int
 	}
 }
 
-// insert recursevely adds a particle in the correct index of the tree.
+// insert recursively adds a particle in the correct index of the tree.
 pub fn (mut q Quadtree) insert(p AABB) {
 	mut indexes := []int{}
 
@@ -64,7 +64,7 @@ pub fn (mut q Quadtree) insert(p AABB) {
 	}
 }
 
-// retrieve recursevely checks if a particle is in a specific index of the tree.
+// retrieve recursively checks if a particle is in a specific index of the tree.
 pub fn (mut q Quadtree) retrieve(p AABB) []AABB {
 	mut indexes := q.get_index(p)
 	mut detected_particles := q.particles.clone()
@@ -77,7 +77,7 @@ pub fn (mut q Quadtree) retrieve(p AABB) []AABB {
 	return detected_particles
 }
 
-// clear flushes out nodes and partcles from the tree.
+// clear flushes out nodes and particles from the tree.
 pub fn (mut q Quadtree) clear() {
 	q.particles = []
 	for j in 0 .. q.nodes.len {
@@ -88,7 +88,7 @@ pub fn (mut q Quadtree) clear() {
 	q.nodes = []
 }
 
-// get_nodes recursevely returns the subdivisions the tree has.
+// get_nodes recursively returns the subdivisions the tree has.
 pub fn (q Quadtree) get_nodes() []Quadtree {
 	mut nodes := []Quadtree{}
 	if q.nodes.len > 0 {

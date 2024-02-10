@@ -29,9 +29,9 @@ pub fn new_grid_settings(settings GridSettings) GridSettings {
 pub struct RunnerSettings {
 pub:
 	grid       GridSettings
-	on_request SimRequestHandler
-	on_start   SimStartHandler
-	on_finish  SimFinishHandler
+	on_request SimRequestHandler = unsafe { nil }
+	on_start   SimStartHandler   = unsafe { nil }
+	on_finish  SimFinishHandler  = unsafe { nil }
 }
 
 pub fn run(params SimParams, settings RunnerSettings) {

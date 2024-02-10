@@ -55,6 +55,13 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					branch.branch_pos)
 			}
 		}
+		if !branch.is_else && cond_is_option && branch.exprs[0] !is ast.None {
+			c.error('`match` expression with Option type only checks against `none`, to match its value you must unwrap it first `var?`',
+				branch.pos)
+		}
+		if cond_type_sym.kind == .none_ {
+			c.error('`none` cannot be a match condition', node.pos)
+		}
 		// If the last statement is an expression, return its type
 		if branch.stmts.len > 0 {
 			mut stmt := branch.stmts.last()
@@ -63,10 +70,6 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					c.expected_type = node.expected_type
 				}
 				expr_type := c.expr(mut stmt.expr)
-				if !branch.is_else && cond_is_option && branch.exprs[0] !is ast.None {
-					c.error('`match` expression with Option type only checks against `none`, to match its value you must unwrap it first `var?`',
-						branch.pos)
-				}
 				stmt.typ = expr_type
 				if first_iteration {
 					if node.is_expr && (node.expected_type.has_flag(.option)
@@ -300,6 +303,7 @@ fn (mut c Checker) get_comptime_number_value(mut expr ast.Expr) ?i64 {
 fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSymbol) {
 	c.expected_type = node.expected_type
 	cond_sym := c.table.sym(node.cond_type)
+	mut enum_ref_checked := false
 	// branch_exprs is a histogram of how many times
 	// an expr was used in the match
 	mut branch_exprs := map[string]int{}
@@ -385,6 +389,13 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				}
 				ast.EnumVal {
 					key = expr.val
+					if !enum_ref_checked {
+						enum_ref_checked = true
+						if node.cond_type.is_ptr() {
+							c.error('missing `*` dereferencing `${node.cond}` in match statement',
+								node.cond.pos())
+						}
+					}
 				}
 				else {
 					key = (*expr).str()

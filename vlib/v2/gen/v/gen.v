@@ -63,7 +63,7 @@ pub fn (mut g Gen) gen(file ast.File) {
 	g.stmt_list(g.file.stmts)
 	if g.pref.verbose {
 		gen_time := sw.elapsed()
-		println('gen (v) ${file.name}: ${gen_time.milliseconds()}ms (${gen_time.microseconds()}us)')
+		println('gen (v) ${file.name}: ${gen_time.milliseconds()}ms (${gen_time.microseconds()}µs)')
 	}
 }
 

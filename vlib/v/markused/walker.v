@@ -91,7 +91,7 @@ pub fn (mut w Walker) mark_markused_consts() {
 
 pub fn (mut w Walker) mark_markused_globals() {
 	for gkey, mut globalfield in w.all_globals {
-		if globalfield.is_markused {
+		if globalfield.is_markused || globalfield.is_exported {
 			w.mark_global_as_used(gkey)
 		}
 	}
@@ -101,6 +101,7 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 	mut node := unsafe { node_ }
 	match mut node {
 		ast.EmptyStmt {}
+		ast.DebuggerStmt {}
 		ast.AsmStmt {
 			w.asm_io(node.output)
 			w.asm_io(node.input)

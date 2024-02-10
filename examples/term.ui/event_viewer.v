@@ -30,11 +30,13 @@ fn event(e &tui.Event, mut app App) {
 	}
 }
 
+type EventFn = fn (&tui.Event, voidptr)
+
 fn main() {
 	mut app := &App{}
 	app.tui = tui.init(
 		user_data: app
-		event_fn: event
+		event_fn: EventFn(event)
 		window_title: 'V term.ui event viewer'
 		hide_cursor: true
 		capture_events: true
