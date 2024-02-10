@@ -162,6 +162,7 @@ const skip_with_fsanitize_memory = [
 	'vlib/v/tests/orm_stmt_wrong_return_checking_test.v',
 	'vlib/v/tests/orm_table_name_test.v',
 	'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
+	'vlib/v/tests/orm_create_several_tables_test.v',
 	'vlib/vweb/tests/vweb_test.v',
 	'vlib/vweb/csrf/csrf_test.v',
 	'vlib/vweb/request_test.v',
