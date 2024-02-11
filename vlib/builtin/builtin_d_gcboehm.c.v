@@ -134,6 +134,13 @@ fn C.GC_is_disabled() int
 // protect memory block from being freed before this call
 fn C.GC_reachable_here(voidptr)
 
+// gc_collect explicitly performs a garbage collection run.
+// Note, that garbage collections are done automatically when needed in most cases,
+// so usually you should need to call that function often.
+pub fn gc_collect() {
+	C.GC_gcollect()
+}
+
 // for leak detection it is advisable to do explicit garbage collections
 pub fn gc_check_leaks() {
 	$if gcboehm_leak ? {
@@ -165,3 +172,22 @@ fn C.GC_remove_roots(voidptr, voidptr)
 
 fn C.GC_get_sp_corrector() fn (voidptr, voidptr)
 fn C.GC_set_sp_corrector(fn (voidptr, voidptr))
+
+// GC warnings are silenced by default, but can be redirected to a custom cb function by programs too:
+type FnGC_WarnCB = fn (msg &char, arg usize)
+
+fn C.GC_get_warn_proc() FnGC_WarnCB
+fn C.GC_set_warn_proc(cb FnGC_WarnCB)
+
+// gc_get_warn_proc returns the current callback fn, that will be used for printing GC warnings
+pub fn gc_get_warn_proc() FnGC_WarnCB {
+	return C.GC_get_warn_proc()
+}
+
+// gc_set_warn_proc sets the callback fn, that will be used for printing GC warnings
+pub fn gc_set_warn_proc(cb FnGC_WarnCB) {
+	C.GC_set_warn_proc(cb)
+}
+
+// used by builtin_init:
+fn internal_gc_warn_proc_none(msg &char, arg usize) {}
