@@ -36,20 +36,16 @@ fn is_module_readme(dn doc.DocNode) bool {
 	return false
 }
 
-fn trim_doc_node_description(description string) string {
-	mut dn_description := description.replace_each(['\r\n', '\n', '"', '\\"'])
-	// 80 is enough to fill one line
-	if dn_description.len > 80 {
-		dn_description = dn_description[..80]
+fn trim_doc_node_description(desc string) string {
+	mut dn_desc := desc.replace_each(['\r\n', '\n', '"', '\\"'])
+		.trim_string_left('## Description\n\n') // Handle module READMEs.
+		.all_before('\n')
+	// 80 is enough to fill one line.
+	if dn_desc.len > 80 {
+		dn_desc = dn_desc[..80]
 	}
-	if dn_description.contains('\n') {
-		dn_description = dn_description.split('\n')[0]
-	}
-	// if \ is last character, it ends with \" which leads to a JS error
-	if dn_description.ends_with('\\') {
-		dn_description = dn_description.trim_right('\\')
-	}
-	return dn_description
+	// If `\` is last character, it ends with `\"` which leads to a JS error.
+	return dn_desc.trim_string_right('\\')
 }
 
 fn set_output_type_from_str(format string) OutputType {
