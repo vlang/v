@@ -3419,7 +3419,7 @@ println(Cycle.from(10) or { Cycle.three })
 println(Cycle.from('two')!)
 
 // Convert an enum value to a string
-println(Cycle.two.str())
+println(Cycle.one.str())
 ```
 
 Output:
