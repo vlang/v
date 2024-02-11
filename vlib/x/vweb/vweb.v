@@ -933,13 +933,25 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 @[manualfree]
 fn serve_if_static[A, X](app &A, mut user_context X, url urllib.URL, host string) bool {
 	// TODO: handle url parameters properly - for now, ignore them
-	static_file := app.static_files[url.path] or { return false }
+	mut asked_path := url.path
+	if !asked_path.contains('.') && !asked_path.ends_with('/') {
+		asked_path += '/'
+	}
+
+	if asked_path.ends_with('/') {
+		if app.static_files[asked_path + 'index.html'] != '' {
+			asked_path += 'index.html'
+		} else if app.static_files[asked_path + 'index.htm'] != '' {
+			asked_path += 'index.htm'
+		}
+	}
+	static_file := app.static_files[asked_path] or { return false }
 
 	// StaticHandler ensures that the mime type exists on either the App or in vweb
 	ext := os.file_ext(static_file)
 	mut mime_type := app.static_mime_types[ext] or { vweb.mime_types[ext] }
 
-	static_host := app.static_hosts[url.path] or { '' }
+	static_host := app.static_hosts[asked_path] or { '' }
 	if static_file == '' || mime_type == '' {
 		return false
 	}
