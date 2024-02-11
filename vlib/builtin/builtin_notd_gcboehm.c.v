@@ -20,18 +20,25 @@ fn C.GC_get_memory_use() usize
 
 fn C.GC_gcollect()
 
-// gc_check_leaks is useful for detecting leaks, but it needs the GC to run. When it is not used, it is a NOP.
+// gc_check_leaks is useful for detecting leaks, but it needs the GC to run.
+// When GC is not used, it is a NOP.
 pub fn gc_check_leaks() {}
 
-// gc_collect explicitly performs a garbage collection. When the GC is not on, it is a NOP.
+// gc_collect explicitly performs a garbage collection.
+// When the GC is not on, it is a NOP.
 pub fn gc_collect() {}
 
 type FnGC_WarnCB = fn (msg &char, arg usize)
 
 fn C.GC_get_warn_proc() FnGC_WarnCB
 fn C.GC_set_warn_proc(cb FnGC_WarnCB)
+
+// gc_get_warn_proc returns the current callback fn, that will be used for printing GC warnings.
+// When the GC is not on, it is a NOP.
 pub fn gc_get_warn_proc() {}
 
+// gc_set_warn_proc sets the callback fn, that will be used for printing GC warnings.
+// When the GC is not on, it is a NOP.
 pub fn gc_set_warn_proc(cb FnGC_WarnCB) {}
 
 // used by builtin_init
