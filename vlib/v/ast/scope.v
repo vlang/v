@@ -184,6 +184,9 @@ pub fn (s &Scope) innermost(pos int) &Scope {
 
 // is_inner verifies if the supplied scope is inner the scope
 pub fn (s &Scope) is_inner(s2 &Scope) bool {
+	if s == unsafe { nil } {
+		return false
+	}
 	for sc := unsafe { s }; true; sc = sc.parent {
 		if sc == s2 {
 			return true

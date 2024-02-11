@@ -3954,9 +3954,10 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 						continue outer
 					}
 				} else if obj.expr is ast.MatchExpr {
-					nscope := g.file.scope.innermost(node.pos.pos)
+					oscope := g.file.scope.innermost(obj.pos.pos)
+					mut nscope := g.file.scope.innermost(node.pos.pos)
 					for branch in obj.expr.branches {
-						if branch.scope == nscope {
+						if nscope != oscope && nscope.is_inner(oscope) {
 							continue outer
 						}
 					}
