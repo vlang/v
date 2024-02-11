@@ -38,8 +38,15 @@ fn is_module_readme(dn doc.DocNode) bool {
 
 fn trim_doc_node_description(desc string) string {
 	mut dn_desc := desc.replace_each(['\r\n', '\n', '"', '\\"'])
-		.trim_string_left('## Description\n\n') // Handle module READMEs.
-		.all_before('\n')
+	// Handle module READMEs.
+	if dn_desc.starts_with('## Description\n\n') {
+		dn_desc = dn_desc['## Description\n\n'.len..].all_before('\n')
+		if dn_desc.starts_with('`') && dn_desc.count('`') > 1 {
+			dn_desc = dn_desc.all_after('`').all_after('`').trim_left(' ')
+		}
+	} else {
+		dn_desc = dn_desc.all_before('\n')
+	}
 	// 80 is enough to fill one line.
 	if dn_desc.len > 80 {
 		dn_desc = dn_desc[..80]
