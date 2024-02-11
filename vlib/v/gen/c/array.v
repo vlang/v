@@ -96,8 +96,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		if var_name.len == 0 {
 			g.write('${ret_typ} ${past.tmp_var} =')
 		}
-		g.write('{0}')
-		g.writeln(';')
+		g.writeln('{0};')
 		g.writeln('{')
 		g.indent++
 		g.writeln('${elem_typ}* pelem = (${elem_typ}*)${past.tmp_var};')
