@@ -96,26 +96,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		if var_name.len == 0 {
 			g.write('${ret_typ} ${past.tmp_var} =')
 		}
-		g.write('{')
-		if node.has_val {
-			for i in 0 .. node.exprs.len {
-				g.write('0')
-				if i != node.exprs.len - 1 {
-					g.write(', ')
-				}
-			}
-		} else if node.has_init {
-			info := array_type.unaliased_sym.info as ast.ArrayFixed
-			for i in 0 .. info.size {
-				g.write('0')
-				if i != info.size - 1 {
-					g.write(', ')
-				}
-			}
-		} else {
-			g.write('0')
-		}
-		g.write('}')
+		g.write('{0}')
 		g.writeln(';')
 		g.writeln('{')
 		g.indent++
@@ -174,68 +155,39 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 			}
 		}
 	} else if node.has_init {
-		info := array_type.unaliased_sym.info as ast.ArrayFixed
-		for i in 0 .. info.size {
-			g.expr_with_init(node)
-			if i != info.size - 1 {
-				g.write(', ')
-			}
-		}
+		g.expr_with_init(node)
 	} else if is_amp {
 		g.write('0')
 	} else {
 		elem_sym := g.table.final_sym(node.elem_type)
+		// short array init, e.g. `Array_fixed_u8_2048 = {0}`, this works in C99
 		if elem_sym.kind == .map {
 			// fixed array for map -- [N]map[key_type]value_type
-			info := array_type.unaliased_sym.info as ast.ArrayFixed
 			map_info := elem_sym.map_info()
-			for i in 0 .. info.size {
-				g.expr(ast.MapInit{
-					key_type: map_info.key_type
-					value_type: map_info.value_type
-				})
-				if i != info.size - 1 {
-					g.write(', ')
-				}
-			}
+			g.expr(ast.MapInit{
+				key_type: map_info.key_type
+				value_type: map_info.value_type
+			})
 		} else if elem_sym.kind == .array_fixed {
 			// nested fixed array -- [N][N]type
-			info := array_type.unaliased_sym.info as ast.ArrayFixed
 			arr_info := elem_sym.array_fixed_info()
-			for i in 0 .. info.size {
-				g.expr(ast.ArrayInit{
-					exprs: [ast.IntegerLiteral{}]
-					typ: node.elem_type
-					elem_type: arr_info.elem_type
-				})
-				if i != info.size - 1 {
-					g.write(', ')
-				}
-			}
+			g.expr(ast.ArrayInit{
+				exprs: [ast.IntegerLiteral{}]
+				typ: node.elem_type
+				elem_type: arr_info.elem_type
+			})
 		} else if elem_sym.kind == .chan {
 			// fixed array for chan -- [N]chan
-			info := array_type.unaliased_sym.info as ast.ArrayFixed
 			chan_info := elem_sym.chan_info()
-			for i in 0 .. info.size {
-				g.expr(ast.ChanInit{
-					typ: node.elem_type
-					elem_type: chan_info.elem_type
-				})
-				if i != info.size - 1 {
-					g.write(', ')
-				}
-			}
+			g.expr(ast.ChanInit{
+				typ: node.elem_type
+				elem_type: chan_info.elem_type
+			})
 		} else {
-			info := array_type.unaliased_sym.info as ast.ArrayFixed
-			for i in 0 .. info.size {
-				if node.elem_type.has_flag(.option) {
-					g.expr_with_opt(ast.None{}, ast.none_type, node.elem_type)
-				} else {
-					g.write(g.type_default(node.elem_type))
-				}
-				if i != info.size - 1 {
-					g.write(', ')
-				}
+			if node.elem_type.has_flag(.option) {
+				g.expr_with_opt(ast.None{}, ast.none_type, node.elem_type)
+			} else {
+				g.write(g.type_default(node.elem_type))
 			}
 		}
 	}
