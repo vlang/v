@@ -898,7 +898,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					vexe := vexe_path()
 					vroot := os.dir(vexe)
 					so_path := os.join_path(vroot, 'thirdparty', 'photon', 'photonwrapper.so')
-					so_url := 'https://github.com/vlang/photonbin/raw/master/photonwrapper_macos_${arch}.so'
+					so_url := 'https://github.com/vlang/photonbin/raw/master/photonwrapper_${os.user_os()}_${arch}.so'
 					if !os.exists(so_path) {
 						println('coroutines .so not found, downloading...')
 						// http.download_file(so_url, so_path) or { panic(err) }
@@ -908,7 +908,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					res.compile_defines << 'is_coroutine'
 					res.compile_defines_all << 'is_coroutine'
 				} $else {
-					println('coroutines only work on macos for now')
+					println('coroutines only work on macos & linux for now')
 				}
 			}
 			else {
