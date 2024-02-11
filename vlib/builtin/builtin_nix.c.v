@@ -4,7 +4,9 @@
 module builtin
 
 fn builtin_init() {
-	gc_set_warn_proc(internal_gc_warn_proc_none)
+	$if !gc_warn_on_stderr ? {
+		gc_set_warn_proc(internal_gc_warn_proc_none)
+	}
 }
 
 fn break_if_debugger_attached() {
