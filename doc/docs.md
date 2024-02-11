@@ -3415,7 +3415,7 @@ enum Cycle {
 }
 
 // Create enum from value
-println(Cycle.from(2) or { Cycle.three })
+println(Cycle.from(10) or { Cycle.three })
 println(Cycle.from('two')!)
 
 // Convert an enum value to a string
