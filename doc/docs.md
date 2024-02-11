@@ -3427,7 +3427,7 @@ Output:
 ```
 three
 two
-two
+one
 ```
 
 ### Function Types
