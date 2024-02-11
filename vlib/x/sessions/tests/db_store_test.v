@@ -32,7 +32,7 @@ fn test_store_set() {
 		db.close() or {}
 	}
 	mut store := sessions.DBStore.create[User](db)!
-	store.set('a', default_user)
+	store.set('a', default_user)!
 
 	mut rows := sql db {
 		select from sessions.DBStoreSessions
@@ -44,7 +44,7 @@ fn test_store_set() {
 	assert rows[0].data == default_user_encoded
 
 	first_created := rows[0].created_at
-	store.set('a', User{ age: 99 })
+	store.set('a', User{ age: 99 })!
 
 	rows = sql db {
 		select from sessions.DBStoreSessions
@@ -60,12 +60,12 @@ fn test_store_get() {
 		db.close() or {}
 	}
 	mut store := sessions.DBStore.create[User](db)!
-	store.set('b', default_user)
+	store.set('b', default_user)!
 
 	if data := store.get('b', max_age) {
 		assert data == default_user
 	} else {
-		assert true == false, 'session data should not be none'
+		assert false, 'session data should not be none'
 	}
 }
 
@@ -75,12 +75,14 @@ fn test_store_session_expired() {
 		db.close() or {}
 	}
 	mut store := sessions.DBStore.create[User](db)!
-	store.set('c', default_user)
+	store.set('c', default_user)!
 
 	time.sleep(2 * max_age)
 
 	if data := store.get('c', max_age) {
-		assert true == false, 'session should be expired!'
+		assert false, 'session should be expired!'
+	} else {
+		assert err.msg() == 'session is expired'
 	}
 	// verify that data is deleted
 	rows := sql db {

@@ -159,7 +159,7 @@ pub fn (mut app App) login(mut ctx Context) vweb.Result {
 	// set a session id cookie and save data for the new user
 	app.sessions.save(mut ctx, User{
 		name: '[no name provided]'
-	})
+	}) or { return ctx.server_error('could not save session data, please try again') }
 	return ctx.text('You are now logged in!')
 }
 ```
@@ -181,7 +181,7 @@ pub fn (mut app App) save(mut ctx Context) vweb.Result {
 		// update the current user
 		app.sessions.save(mut ctx, User{
 			name: name
-		})
+		}) or { return ctx.server_error('could not save session data, please try again') }
 		return ctx.redirect('/', typ: .see_other)
 	} else {
 		// send HTTP 400 error
@@ -199,7 +199,7 @@ method.
 **Example:**
 ```v ignore
 pub fn (mut app App) logout(mut ctx Context) vweb.Result {
-	app.sessions.logout(mut ctx)
+	app.sessions.logout(mut ctx) or { return ctx.server_error('could logout, please try again') }
 	return ctx.text('You are now logged out!')
 }
 ```
@@ -277,7 +277,7 @@ and for verifying a signed session id. You can ofcourse generate your own sessio
 // generate a new session id and sign it
 session_id, signed_session_id := sessions.new_session_id(secret)
 // save session data to our store
-store.set(session_id, user)
+store.set(session_id, user)!
 
 // get a normal session id from the signed version and verify it
 verified_session_id, valid := sessions.verify_session_id(signed_session_id, secret)
@@ -310,20 +310,20 @@ mut:
 	// get the current session data if the id exists and if it's not expired.
 	// If the session is expired, any associated data should be destroyed.
 	// If `max_age=0` the store will not check for expiration of the session.
-	get(sid string, max_age time.Duration) ?T
+	get(sid string, max_age time.Duration) !T
 	// destroy session data for `sid`
-	destroy(sid string)
+	destroy(sid string) !
 	// set session data for `sid`
-	set(sid string, val T)
+	set(sid string, val T) !
 }
 
 // get data from all sessions, optional to implement
-pub fn (mut s Store) all[T]() []T {
+pub fn (mut s Store) all[T]() ![]T {
 	return []T{}
 }
 
 // clear all session data, optional to implement
-pub fn (mut s Store) clear[T]() {}
+pub fn (mut s Store) clear[T]() ! {}
 ```
 
 Only the `get`, `destroy` and `set` methods are required to implement.
