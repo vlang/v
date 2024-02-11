@@ -3417,7 +3417,6 @@ enum Cycle {
 // Create enum from value
 println(Cycle.from(2) or { Cycle.three })
 println(Cycle.from('two')!)
-println(Cycle.from_string('two') or { panic('unknown value') })
 
 // Enum to tring
 println(Cycle.two.str())
