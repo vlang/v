@@ -3418,7 +3418,7 @@ enum Cycle {
 println(Cycle.from(2) or { Cycle.three })
 println(Cycle.from('two')!)
 
-// Enum to tring
+// Converting an enum to a string
 println(Cycle.two.str())
 ```
 
