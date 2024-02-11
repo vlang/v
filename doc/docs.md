@@ -3428,7 +3428,6 @@ Output:
 three
 two
 two
-two
 ```
 
 ### Function Types
