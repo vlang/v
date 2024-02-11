@@ -199,7 +199,7 @@ method.
 **Example:**
 ```v ignore
 pub fn (mut app App) logout(mut ctx Context) vweb.Result {
-	app.sessions.logout(mut ctx) or { return ctx.server_error('could logout, please try again') }
+	app.sessions.logout(mut ctx) or { return ctx.server_error('could not logout, please try again') }
 	return ctx.text('You are now logged out!')
 }
 ```
