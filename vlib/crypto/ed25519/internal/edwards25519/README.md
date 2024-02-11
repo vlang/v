@@ -1,7 +1,7 @@
 ## Description
 
-This module provides arithmetic primitives operations that are useful to implement
-cryptographic schemes over curve edwards25519, includes:
+`crypto.ed25519.internal.edwards25519` provides arithmetic primitives operations that are useful to
+implement cryptographic schemes over the edwards25519 elliptic curve, including:
 
 1.  Arithmetic functions for point addition, doubling, negation, scalar multiplication
     with an arbitrary point, with the base point, etc.
