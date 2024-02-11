@@ -1,35 +1,35 @@
-interface Foo {
+interface TheInterfaceItself {
 	f() int
 }
 
-struct Bar {}
+struct SomeImplForTII1 {}
 
-fn (_ Bar) f() int {
+fn (_ SomeImplForTII1) f() int {
 	return 2
 }
 
-fn (_ Bar) secret1() int {
+fn (_ SomeImplForTII1) secret1() int {
 	return 42
 }
 
-struct Baz {}
+struct AnotherImplementation {}
 
-fn (_ Baz) f() int {
+fn (_ AnotherImplementation) f() int {
 	return 8
 }
 
-fn (_ Baz) secret2() int {
+fn (_ AnotherImplementation) secret2() int {
 	return 84
 }
 
-fn h(foo Foo, i int) int {
+fn h(foo TheInterfaceItself, i int) int {
 	j := foo.f()
 	match i {
 		0 {
-			return j + (foo as Bar).secret1()
+			return j + (foo as SomeImplForTII1).secret1()
 		}
 		1 {
-			return j + (foo as Baz).secret2()
+			return j + (foo as AnotherImplementation).secret2()
 		}
 		else {
 			return 1
@@ -38,6 +38,6 @@ fn h(foo Foo, i int) int {
 }
 
 fn test_casting_to_impl() {
-	assert h(Bar{}, 0) == 44
-	assert h(Baz{}, 1) == 92
+	assert h(SomeImplForTII1{}, 0) == 44
+	assert h(AnotherImplementation{}, 1) == 92
 }
