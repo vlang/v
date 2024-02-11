@@ -7057,6 +7057,10 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			g.as_cast_type_names[idx] = variant_sym.name
 		}
 	} else if mut expr_type_sym.info is ast.Interface {
+		if node.expr_type == node.typ {
+			g.expr(node.expr)
+			return
+		}
 		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
 		if node.expr.has_fn_call() && !g.is_cc_msvc {
 			tmp_var := g.new_tmp_var()
