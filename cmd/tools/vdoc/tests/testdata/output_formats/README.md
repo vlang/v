@@ -1,4 +1,4 @@
-## Description:
+## Description
 
 This is an example of a an .md file, used for adding more rich text
 documentation in a project or module.
@@ -9,9 +9,10 @@ This is a <b>bold text</b>.
 
 This is a script <script>console.log('hi from README.md');</script> .
 
-## Examples:
+## Examples
 
-### Processing command line args:
+### Processing command line args
+
 ```v
 import os
 
@@ -22,7 +23,8 @@ fn main() {
 }
 ```
 
-### A JWT example (test syntax highlighting):
+### A JWT example (test syntax highlighting)
+
 ```v
 import crypto.hmac
 import crypto.sha256

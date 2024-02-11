@@ -1,4 +1,4 @@
-## Description:
+## Description
 
 `crypto.sm4` is a module that assists in the encryption and
 decryption of binary data using the `SM4` block cipher.
