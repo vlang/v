@@ -3926,6 +3926,32 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 }
 
+// check_var_scope checks if the variable has its value known from the node position
+@[inline]
+fn (mut g Gen) check_var_scope(obj ast.Var, node_pos int) bool {
+	if obj.pos.pos >= node_pos {
+		return false
+	}
+	match obj.expr {
+		ast.MatchExpr {
+			for branch in obj.expr.branches {
+				if branch.scope.contains(node_pos) {
+					return false
+				}
+			}
+		}
+		ast.IfExpr {
+			for branch in obj.expr.branches {
+				if branch.scope.contains(node_pos) {
+					return false
+				}
+			}
+		}
+		else {}
+	}
+	return true
+}
+
 // debugger_stmt writes the call to V debugger REPL
 fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 	paline, pafile, pamod, pafn := g.panic_debug_info(node.pos)
@@ -3946,22 +3972,7 @@ fn (mut g Gen) debugger_stmt(node ast.DebuggerStmt) {
 	mut count := 1
 	outer: for _, obj in scope_vars {
 		if obj.name !in vars {
-			if obj is ast.Var && obj.pos.pos < node.pos.pos {
-				if obj.expr is ast.IfExpr {
-					oscope := g.file.scope.innermost(obj.pos.pos)
-					mut nscope := g.file.scope.innermost(node.pos.pos)
-					if nscope != oscope && nscope.is_inner(oscope) {
-						continue outer
-					}
-				} else if obj.expr is ast.MatchExpr {
-					oscope := g.file.scope.innermost(obj.pos.pos)
-					mut nscope := g.file.scope.innermost(node.pos.pos)
-					for branch in obj.expr.branches {
-						if nscope != oscope && nscope.is_inner(oscope) {
-							continue outer
-						}
-					}
-				}
+			if obj is ast.Var && g.check_var_scope(obj, node.pos.pos) {
 				keys.write_string('_SLIT("${obj.name}")')
 				var_typ := if obj.ct_type_var != .no_comptime {
 					g.comptime.get_comptime_var_type(ast.Ident{ obj: obj })

@@ -182,22 +182,6 @@ pub fn (s &Scope) innermost(pos int) &Scope {
 	return s
 }
 
-// is_inner verifies if the supplied scope is inner the scope
-pub fn (s &Scope) is_inner(s2 &Scope) bool {
-	if s == unsafe { nil } {
-		return false
-	}
-	for sc := unsafe { s }; true; sc = sc.parent {
-		if sc == s2 {
-			return true
-		}
-		if sc.dont_lookup_parent() {
-			break
-		}
-	}
-	return false
-}
-
 // get_all_vars extracts all current scope vars
 pub fn (s &Scope) get_all_vars() []ScopeObject {
 	mut scope_vars := []ScopeObject{}
