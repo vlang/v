@@ -30,10 +30,7 @@ fn get_node_id(dn doc.DocNode) string {
 }
 
 fn is_module_readme(dn doc.DocNode) bool {
-	if dn.comments.len > 0 && dn.content == 'module ${dn.name}' {
-		return true
-	}
-	return false
+	return dn.comments.len > 0 && dn.content == 'module ${dn.name}'
 }
 
 fn trim_doc_node_description(description string) string {
