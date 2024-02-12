@@ -280,7 +280,7 @@ pub fn (prefs &Preferences) should_compile_js(file string) bool {
 
 // is_target_of returns true if this_os is included in the target specified
 // for example, 'nix' is true for Linux and FreeBSD but not Windows
-pub fn (this_os &OS) is_target_of(target string) bool {
+pub fn (this_os OS) is_target_of(target string) bool {
 	if this_os == .all {
 		return true
 	}
