@@ -35,7 +35,7 @@ jobs:
            mv $ZIPNAME v/
            cd v/
       - name: Create artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: linux
           path: ${{ env.ZIPNAME }}
@@ -67,7 +67,7 @@ jobs:
            mv $ZIPNAME v/
            cd v/
       - name: Create artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: macos_x86_64
           path: ${{ env.ZIPNAME }}
@@ -100,7 +100,7 @@ jobs:
            mv $ZIPNAME v/
            cd v/
       - name: Create artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: macos_arm64
           path: ${{ env.ZIPNAME }}
@@ -140,7 +140,7 @@ jobs:
 # https://superuser.com/a/1336434/194881
 # It is needed, because `zip` is not installed by default :-|
       - name: Create artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: windows
           path: ${{ env.ZIPNAME }}
