@@ -3405,6 +3405,31 @@ three
 one
 ```
 
+Enums can be created from string or integer value and converted into string
+
+```v
+enum Cycle {
+	one
+	two   = 2
+	three
+}
+
+// Create enum from value
+println(Cycle.from(10) or { Cycle.three })
+println(Cycle.from('two')!)
+
+// Convert an enum value to a string
+println(Cycle.one.str())
+```
+
+Output:
+
+```
+three
+two
+one
+```
+
 ### Function Types
 
 You can use type aliases for naming specific function signatures - for
