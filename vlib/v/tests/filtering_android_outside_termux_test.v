@@ -1,5 +1,5 @@
-fn test_is_macos() {
-	$if android_outside_termux {
+fn test_is_android() {
+	$if android {
 		assert true
 	} $else {
 		assert false
