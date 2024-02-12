@@ -117,23 +117,23 @@ pub fn (mut s Sessions[T]) validate_session[X](ctx X) (string, bool) {
 }
 
 // get the data associated with the current session, if it exists
-pub fn (mut s Sessions[T]) get[X](ctx X) ?T {
-	sid := s.get_session_id(ctx) or { return none }
-	return s.store.get(sid, s.max_age)
+pub fn (mut s Sessions[T]) get[X](ctx X) !T {
+	sid := s.get_session_id(ctx) or { return error('cannot find session id') }
+	return s.store.get(sid, s.max_age)!
 }
 
 // destroy the data for the current session
-pub fn (mut s Sessions[T]) destroy[X](mut ctx X) {
+pub fn (mut s Sessions[T]) destroy[X](mut ctx X) ! {
 	if sid := s.get_session_id(ctx) {
-		s.store.destroy(sid)
+		s.store.destroy(sid)!
 		ctx.session_data = none
 	}
 }
 
 // logout destroys the data for the current session and removes
 // the session id Cookie
-pub fn (mut s Sessions[T]) logout[X](mut ctx X) {
-	s.destroy(mut ctx)
+pub fn (mut s Sessions[T]) logout[X](mut ctx X) ! {
+	s.destroy(mut ctx)!
 	ctx.set_cookie(http.Cookie{
 		name: s.cookie_options.cookie_name
 		value: ''
@@ -142,16 +142,16 @@ pub fn (mut s Sessions[T]) logout[X](mut ctx X) {
 }
 
 // save `data` for the current session
-pub fn (mut s Sessions[T]) save[X](mut ctx X, data T) {
+pub fn (mut s Sessions[T]) save[X](mut ctx X, data T) ! {
 	if sid := s.get_session_id(ctx) {
-		s.store.set(sid, data)
+		s.store.set(sid, data)!
 		ctx.CurrentSession.session_data = data
 	} else {
 		if s.save_uninitialized == false {
 			// no valid session id, but the user only wants to create a session
 			// when data is saved. So we create the session here
 			sid := s.set_session_id(mut ctx)
-			s.store.set(sid, data)
+			s.store.set(sid, data)!
 			ctx.CurrentSession.session_data = data
 		}
 		eprintln('[vweb.sessions] error: trying to save data without a valid session!')
@@ -162,9 +162,9 @@ pub fn (mut s Sessions[T]) save[X](mut ctx X, data T) {
 // You should use this function when the authentication or authorization status changes
 // e.g. when a user signs in or switches between accounts/permissions.
 // This function also destroys the data associtated to the old session id.
-pub fn (mut s Sessions[T]) resave[X](mut ctx X, data T) {
+pub fn (mut s Sessions[T]) resave[X](mut ctx X, data T) ! {
 	if sid := s.get_session_id(ctx) {
-		s.store.destroy(sid)
+		s.store.destroy(sid)!
 	}
 
 	s.save(mut ctx, data)

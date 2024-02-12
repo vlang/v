@@ -54,19 +54,19 @@ pub fn (app &App) protected(mut ctx Context) vweb.Result {
 }
 
 pub fn (mut app App) save_session(mut ctx Context) vweb.Result {
-	app.sessions.save(mut ctx, default_user)
+	app.sessions.save(mut ctx, default_user) or { return ctx.server_error(err.msg()) }
 	return ctx.ok('')
 }
 
 pub fn (mut app App) update_session(mut ctx Context) vweb.Result {
 	if mut user := ctx.session_data {
 		user.age++
-		app.sessions.save(mut ctx, user)
+		app.sessions.save(mut ctx, user) or { return ctx.server_error(err.msg()) }
 		// sessions module should also update the context
 		if new_user := ctx.session_data {
 			assert new_user == user, 'session data is not updated on the context'
 		} else {
-			assert true == false, 'session data should not be none'
+			assert false, 'session data should not be none'
 		}
 	}
 
@@ -74,7 +74,7 @@ pub fn (mut app App) update_session(mut ctx Context) vweb.Result {
 }
 
 pub fn (mut app App) destroy_session(mut ctx Context) vweb.Result {
-	app.sessions.destroy(mut ctx)
+	app.sessions.destroy(mut ctx) or { return ctx.server_error(err.msg()) }
 	// sessions module should also update the context
 	assert ctx.session_data == none
 
@@ -84,7 +84,7 @@ pub fn (mut app App) destroy_session(mut ctx Context) vweb.Result {
 fn testsuite_begin() {
 	spawn fn () {
 		time.sleep(exit_after)
-		assert true == false, 'timeout reached!'
+		assert false, 'timeout reached!'
 		exit(1)
 	}()
 
