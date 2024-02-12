@@ -2660,8 +2660,11 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 					c.error('cannot cast `${expr_type_sym.name}` to `${addr}${type_sym.name}`',
 						node.pos)
 				}
-			} else if expr_type_sym.kind == .interface_ && type_sym.kind == .interface_ {
+			} else if expr_type_sym.kind == .interface_ {
 				c.ensure_type_exists(node.typ, node.pos)
+				if type_sym.kind != .interface_ {
+					c.type_implements(node.typ, node.expr_type, node.pos)
+				}
 			} else if node.expr_type.clear_flag(.option) != node.typ.clear_flag(.option) {
 				mut s := 'cannot cast non-sum type `${expr_type_sym.name}` using `as`'
 				if type_sym.kind == .sum_type {

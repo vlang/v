@@ -7071,6 +7071,54 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			info.conversions[node.typ] = left_variants.filter(it in right_variants)
 		}
 		expr_type_sym.info = info
+	} else if mut expr_type_sym.info is ast.Interface && node.expr_type != node.typ {
+		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
+		if node.expr.has_fn_call() && !g.is_cc_msvc {
+			tmp_var := g.new_tmp_var()
+			expr_styp := g.typ(node.expr_type)
+			g.write('({ ${expr_styp} ${tmp_var} = ')
+			g.expr(node.expr)
+			g.write('; ')
+			if sym.info is ast.FnType {
+				g.write('/* as */ (${styp})__as_cast(')
+			} else {
+				g.write('/* as */ *(${styp}*)__as_cast(')
+			}
+			g.write(tmp_var)
+			g.write(dot)
+			g.write('_${sym.cname},v_typeof_interface_idx_${expr_type_sym.cname}(')
+			g.write(tmp_var)
+			g.write(dot)
+			sidx := g.type_sidx(unwrapped_node_typ)
+			g.write('_typ), ${sidx}); })')
+		} else {
+			if sym.info is ast.FnType {
+				g.write('/* as */ (${styp})__as_cast(')
+			} else {
+				g.write('/* as */ *(${styp}*)__as_cast(')
+			}
+			g.write('(')
+			g.expr(node.expr)
+			g.write(')')
+			g.write(dot)
+			g.write('_${sym.cname},v_typeof_interface_idx_${expr_type_sym.cname}(')
+			g.write('(')
+			g.expr(node.expr)
+			g.write(')')
+			g.write(dot)
+			sidx := g.type_sidx(unwrapped_node_typ)
+			g.write('_typ), ${sidx})')
+		}
+
+		// fill as cast name table
+		for typ in expr_type_sym.info.types {
+			idx := u32(typ).str()
+			if idx in g.as_cast_type_names {
+				continue
+			}
+			variant_sym := g.table.sym(typ)
+			g.as_cast_type_names[idx] = variant_sym.name
+		}
 	} else {
 		g.expr(node.expr)
 	}
