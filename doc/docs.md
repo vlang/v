@@ -3410,7 +3410,7 @@ Enums can be created from string or integer value and converted into string
 ```v
 enum Cycle {
 	one
-	two = 2
+	two   = 2
 	three
 }
 
