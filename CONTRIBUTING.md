@@ -102,6 +102,8 @@ accordingly in the steps below.)
    `git checkout -b fix_alabala`
    - Don't forget to keep formatting standards, run `v fmt -w YOUR_MODIFIED_FILES`
      before committing (if you have not run the commands from 3.1)
+   - If you changed Markdown (`.md`) files, check them `v check-md YOUR_MODIFIED_FILES`
+     before committing (if you have not run the commands from 3.1)
 6. `git push pullrequest` Note: The `pullrequest` remote was setup on step 4
 
 7. On GitHub's web interface, go to: https://github.com/vlang/v/pulls
