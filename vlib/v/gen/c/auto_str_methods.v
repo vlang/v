@@ -1156,7 +1156,7 @@ fn should_use_indent_func(kind ast.Kind) bool {
 	return kind in [.struct_, .alias, .array, .array_fixed, .map, .sum_type, .interface_]
 }
 
-fn (mut g Gen) gen_enum_static_from_string(fn_name string) {
+fn (mut g Gen) get_enum_type_idx_from_fn_name(fn_name string) (string, int) {
 	enum_name := fn_name.all_before('__static__')
 	mut mod_enum_name := if !enum_name.contains('.') {
 		g.cur_mod.name + '.' + enum_name
@@ -1174,6 +1174,10 @@ fn (mut g Gen) gen_enum_static_from_string(fn_name string) {
 			}
 		}
 	}
+	return mod_enum_name, idx
+}
+
+fn (mut g Gen) gen_enum_static_from_string(fn_name string, mod_enum_name string, idx int) {
 	enum_typ := ast.Type(idx)
 	enum_styp := g.typ(enum_typ)
 	option_enum_typ := ast.Type(idx).set_flag(.option)
@@ -1182,7 +1186,8 @@ fn (mut g Gen) gen_enum_static_from_string(fn_name string) {
 	enum_field_vals := g.table.get_enum_field_vals(mod_enum_name)
 
 	mut fn_builder := strings.new_builder(512)
-	fn_name_no_dots := util.no_dots(fn_name)
+	fn_mod := mod_enum_name.all_before_last('.')
+	fn_name_no_dots := util.no_dots('${fn_mod}.${fn_name}')
 	g.definitions.writeln('static ${option_enum_styp} ${fn_name_no_dots}(string name); // auto')
 
 	fn_builder.writeln('static ${option_enum_styp} ${fn_name_no_dots}(string name) {')
