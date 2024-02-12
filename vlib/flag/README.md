@@ -1,7 +1,8 @@
-## Description:
+## Description
 
 The `flag` module is a command line option parser.
 Its main features are:
+
 - simplicity of usage.
 - parses flags like `-f` or '--flag' or '--stuff=things' or '--things stuff'.
 - handles bool, int, float and string args.
@@ -12,7 +13,7 @@ See also the `cli` module, for a more complex command line option parser,
 that supports declaring multiple subcommands each having a separate set of
 options.
 
-Usage example:
+## Examples
 
 ```v
 module main

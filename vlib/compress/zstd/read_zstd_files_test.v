@@ -18,7 +18,7 @@ fn test_reading_and_decoding_a_known_zstded_file() {
 	compressed, content := read_and_decode_file(s('known.zst'))!
 	assert compressed#[0..3] == [u8(40), 181, 47]
 	assert compressed#[-5..] == [u8(10), 78, 32, 170, 44]
-	assert content.contains('## Description:')
+	assert content.contains('## Description')
 	assert content.contains('## Examples:')
 	assert content.ends_with('```')
 }

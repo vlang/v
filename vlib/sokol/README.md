@@ -1,4 +1,4 @@
-## Description:
+## Description
 
 `sokol` is a thin wrapper around [sokol](https://github.com/floooh/sokol),
 which in turn is a library of "Simple STB-style cross-platform libraries
@@ -9,7 +9,7 @@ Each `.h` file in the sokol source code is well-documented as can be seen here:
 
 [sokol_audio.h](https://github.com/floooh/sokol/blob/master/sokol_audio.h)
 
-## Example from `@VROOTDIR/examples/sokol/sounds/simple_sin_tones.v`:
+## Example from `@VROOTDIR/examples/sokol/sounds/simple_sin_tones.v`
 
 ```v cgen
 import time

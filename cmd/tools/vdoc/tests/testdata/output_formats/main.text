@@ -1,6 +1,5 @@
 module main
-
-    ## Description:
+    ## Description
     
     This is an example of a an .md file, used for adding more rich text documentation in a project or module.
     
@@ -10,9 +9,10 @@ module main
     
     This is a script <script>console.log('hi from README.md');</script> .
     
-    ## Examples:
+    ## Examples
     
-    ### Processing command line args:
+    ### Processing command line args
+    
     
     ```v
     import os
@@ -24,7 +24,8 @@ module main
     }
     ```
     
-    ### A JWT example (test syntax highlighting):
+    ### A JWT example (test syntax highlighting)
+    
     ```v
     import crypto.hmac
     import crypto.sha256
@@ -72,6 +73,7 @@ module main
     }
     ```
     
+
 const omega = 3 // should be first
 const alpha = 5 // should be in the middle
 const beta = 2 // should be at the end
