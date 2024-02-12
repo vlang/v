@@ -58,7 +58,7 @@ fn main() {
 						continue
 					}
 					ts.files << targ
-					ts.skip_files << targ
+					ts.skip_files << os.abs_path(targ)
 					continue
 				}
 				.ignore {}
@@ -116,7 +116,7 @@ pub fn (mut ctx Context) should_test_dir(path string, backend string) ([]string,
 						continue
 					}
 					res_files << p
-					skip_files << p
+					skip_files << os.abs_path(p)
 				}
 				.ignore {}
 			}

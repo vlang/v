@@ -296,6 +296,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		skip_files << 'examples/wasm/mandelbrot/mandelbrot.wasm.v'
 		skip_files << 'examples/wasm/change_color_by_id/change_color_by_id.wasm.v'
 	}
+	skip_files = skip_files.map(os.abs_path)
 	vargs := _vargs.replace('-progress', '')
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
@@ -439,7 +440,8 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	tls_bench.no_cstep = true
 	tls_bench.njobs = ts.benchmark.njobs
-	mut relative_file := os.real_path(p.get_item[string](idx))
+	abs_path := os.real_path(p.get_item[string](idx))
+	mut relative_file := abs_path
 	mut cmd_options := [ts.vargs]
 	mut run_js := false
 
@@ -521,7 +523,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	ts.benchmark.step()
 	tls_bench.step()
-	if relative_file.replace('\\', '/') in ts.skip_files {
+	if abs_path.replace('\\', '/') in ts.skip_files {
 		ts.benchmark.skip()
 		tls_bench.skip()
 		if !testing.hide_skips {
