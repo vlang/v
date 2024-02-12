@@ -168,7 +168,7 @@ mut:
 	defer_vars                []string
 	str_types                 []StrType       // types that need automatic str() generation
 	generated_str_fns         []StrType       // types that already have a str() function
-	str_fn_names              []string        // remove duplicate function names
+	str_fn_names              shared []string // remove duplicate function names
 	threaded_fns              shared []string // for generating unique wrapper types and fns for `go xxx()`
 	waiter_fns                shared []string // functions that wait for `go xxx()` to finish
 	needed_equality_fns       []ast.Type
@@ -679,6 +679,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		array_sort_fn: global_g.array_sort_fn
 		waiter_fns: global_g.waiter_fns
 		threaded_fns: global_g.threaded_fns
+		str_fn_names: global_g.str_fn_names
 		options_forward: global_g.options_forward
 		results_forward: global_g.results_forward
 		done_options: global_g.done_options

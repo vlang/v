@@ -1,4 +1,4 @@
-module mod
+module mod2
 
 pub enum MyEnum {
 	item1

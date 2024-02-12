@@ -108,7 +108,9 @@ fn (mut g Gen) final_gen_str(typ StrType) {
 	if str_fn_name in g.str_fn_names {
 		return
 	}
-	g.str_fn_names << str_fn_name
+	lock g.str_fn_names {
+		g.str_fn_names << str_fn_name
+	}
 	if typ.typ.has_flag(.option) {
 		g.gen_str_for_option(typ.typ, styp, str_fn_name)
 		return
@@ -1186,11 +1188,9 @@ fn (mut g Gen) gen_enum_static_from_string(fn_name string, mod_enum_name string,
 	enum_field_vals := g.table.get_enum_field_vals(mod_enum_name)
 
 	mut fn_builder := strings.new_builder(512)
-	fn_mod := mod_enum_name.all_before_last('.')
-	fn_name_no_dots := util.no_dots('${fn_mod}.${fn_name}')
-	g.definitions.writeln('static ${option_enum_styp} ${fn_name_no_dots}(string name); // auto')
+	g.definitions.writeln('static ${option_enum_styp} ${fn_name}(string name); // auto')
 
-	fn_builder.writeln('static ${option_enum_styp} ${fn_name_no_dots}(string name) {')
+	fn_builder.writeln('static ${option_enum_styp} ${fn_name}(string name) {')
 	fn_builder.writeln('\t${option_enum_styp} t1;')
 	fn_builder.writeln('\tbool exists = false;')
 	fn_builder.writeln('\tint inx = 0;')

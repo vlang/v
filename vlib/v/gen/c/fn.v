@@ -1919,12 +1919,15 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			g.write(')')
 		} else if node.name.ends_with('__static__from_string') && !g.table.known_fn(node.name) {
 			mod_enum_name, idx := g.get_enum_type_idx_from_fn_name(node.name)
-			if node.name !in g.str_fn_names {
-				g.gen_enum_static_from_string(node.name, mod_enum_name, idx)
-				g.str_fn_names << node.name
-			}
 			fn_mod := mod_enum_name.all_before_last('.')
-			fn_name := util.no_dots('${fn_mod}.${node.name}')
+			full_fn_name := '${fn_mod}.${node.name}'
+			fn_name := util.no_dots(full_fn_name)
+			lock g.str_fn_names {
+				if fn_name !in g.str_fn_names {
+					g.gen_enum_static_from_string(fn_name, mod_enum_name, idx)
+					g.str_fn_names << fn_name
+				}
+			}
 			g.write('${fn_name}(')
 			g.call_args(node)
 			g.write(')')
