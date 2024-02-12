@@ -284,7 +284,7 @@ pub fn (mut ctx Context) not_found() vweb.Result {
 }
 ```
 
-## Static files
+## Static files and website
 
 Vweb also provides a way of handling static files. We can mount a folder at the root
 of our web app, or at a custom route. To start using static files we have to embed
@@ -347,7 +347,12 @@ is available at `/`.
 // change the second argument to `true` to mount a folder at the app root
 app.handle_static('static', true)!
 ```
-We can now access `main.css` directly at http://localhost:8080/css/main.css
+We can now access `main.css` directly at http://localhost:8080/css/main.css.
+
+If a request is made to the root of a static folder, vweb will look for an
+`index.html` or `ìndex.htm` file and serve it if available.
+Thus, it's also a good way to host a complete website.
+A example is available [here](/examples/vweb/static_website).
 
 It is also possible to mount the `static` folder at a custom path.
 
