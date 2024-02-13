@@ -627,10 +627,15 @@ fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 	for variant in node.variants {
 		c.ensure_type_exists(variant.typ, variant.pos)
 		sym := c.table.sym(variant.typ)
-		if variant.typ.is_ptr() {
+		if variant.typ.is_ptr() || (sym.info is ast.Alias && sym.info.parent_type.is_ptr()) {
 			variant_name := sym.name.all_after_last('.')
 			lb, rb := if sym.kind == .struct_ { '{', '}' } else { '(', ')' }
-			c.add_error_detail('declare the sum type with non-reference types: `${node.name} = ${variant_name} | ...`
+			msg := if sym.info is ast.Alias && sym.info.parent_type.is_ptr() {
+				'alias as non-reference type'
+			} else {
+				'the sum type with non-reference types'
+			}
+			c.add_error_detail('declare ${msg}: `${node.name} = ${variant_name} | ...`
 and use a reference to the sum type instead: `var := &${node.name}(${variant_name}${lb}val${rb})`')
 			c.error('sum type cannot hold a reference type', variant.pos)
 		}
