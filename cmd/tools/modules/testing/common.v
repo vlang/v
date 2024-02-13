@@ -523,7 +523,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	ts.benchmark.step()
 	tls_bench.step()
-	if abs_path.replace('\\', '/') in ts.skip_files {
+	if abs_path in ts.skip_files {
 		ts.benchmark.skip()
 		tls_bench.skip()
 		if !testing.hide_skips {
