@@ -1,6 +1,8 @@
 # Host the vlang website
 
-Here is an example on how to use the vweb server's static capabiliiies to host a static website from the `dist/` folder. Just run the server, it will be available at http://localhost:8080:
+Here is an example on how to use the vweb server's static capabilities,
+to host a static website from the `dist/` folder. Just run the server,
+it will be available at http://localhost:8080/ :
 
 ```bash
 v run server.v

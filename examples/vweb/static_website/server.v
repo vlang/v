@@ -11,10 +11,10 @@ pub struct App {
 }
 
 fn main() {
-	folder := 'dist'
+	os.chdir(os.dir(os.executable()))!
 	port := 8080
 
 	mut app := &App{}
-	app.handle_static(folder, true)!
+	app.handle_static('dist', true)!
 	vweb.run[App, Context](mut app, port)
 }
