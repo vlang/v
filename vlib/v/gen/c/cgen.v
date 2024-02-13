@@ -5544,6 +5544,36 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	}
 }
 
+// check_expr_is_const checks if the expr is elegible to be used as const initializer on C global scope
+fn (mut g Gen) check_expr_is_const(expr ast.Expr) bool {
+	match expr {
+		ast.StringLiteral, ast.IntegerLiteral, ast.BoolLiteral, ast.FloatLiteral, ast.CharLiteral {
+			return true
+		}
+		ast.ArrayInit {
+			return expr.exprs.all(g.check_expr_is_const(it))
+		}
+		ast.ParExpr {
+			return g.check_expr_is_const(expr.expr)
+		}
+		ast.InfixExpr {
+			return g.check_expr_is_const(expr.left) && g.check_expr_is_const(expr.right)
+		}
+		ast.Ident, ast.StructInit, ast.EnumVal {
+			return true
+		}
+		ast.CastExpr {
+			return g.check_expr_is_const(expr.expr)
+		}
+		ast.PrefixExpr {
+			return g.check_expr_is_const(expr.right)
+		}
+		else {
+			return false
+		}
+	}
+}
+
 fn (mut g Gen) const_decl(node ast.ConstDecl) {
 	g.inside_const = true
 	defer {
@@ -5568,8 +5598,9 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 		field_expr := field.expr
 		match field.expr {
 			ast.ArrayInit {
+				elems_are_const := field.expr.exprs.all(g.check_expr_is_const(it))
 				if field.expr.is_fixed && g.pref.build_mode != .build_module
-					&& (!g.is_cc_msvc || field.expr.elem_type != ast.string_type) {
+					&& (!g.is_cc_msvc || field.expr.elem_type != ast.string_type) && elems_are_const {
 					styp := g.typ(field.expr.typ)
 					val := g.expr_string(field.expr)
 					g.global_const_defs[util.no_dots(field.name)] = GlobalConstDef{
@@ -5577,8 +5608,9 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 						def: '${styp} ${const_name} = ${val}; // fixed array const'
 						dep_names: g.table.dependent_names_in_expr(field_expr)
 					}
-				} else if field.expr.is_fixed && g.is_cc_msvc
-					&& field.expr.elem_type == ast.string_type {
+				} else if field.expr.is_fixed
+					&& ((g.is_cc_msvc && field.expr.elem_type == ast.string_type)
+					|| !elems_are_const) {
 					g.const_decl_init_later_msvc_string_fixed_array(field.mod, name, field.expr,
 						field.typ)
 				} else {
