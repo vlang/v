@@ -10,7 +10,7 @@ jobs:
   cancel-previous-workflows:
     runs-on: ubuntu-latest
     steps:
-    - uses: spaceface777/cancel-workflow-action@0.9.1
+    - uses: styfle/cancel-workflow-action@0.12.1
       # don't cancel CI for commits pushed to vlang/v#master (if ci is still too slow, this can be removed safely)
       if: ${{ github.event.workflow_run.head_repository.full_name != 'vlang/v' || github.event.workflow_run.head_branch != 'master' }}
       with:
