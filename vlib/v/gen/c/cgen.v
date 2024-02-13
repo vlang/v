@@ -5529,7 +5529,7 @@ fn (mut g Gen) check_expr_is_const(expr ast.Expr) bool {
 		ast.ParExpr {
 			return g.check_expr_is_const(expr.expr)
 		}
-		ast.Ident, ast.InfixExpr, ast.StructInit {
+		ast.Ident, ast.InfixExpr, ast.StructInit, ast.EnumVal {
 			return true
 		}
 		ast.CastExpr {
@@ -5568,22 +5568,19 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 		field_expr := field.expr
 		match field.expr {
 			ast.ArrayInit {
+				elems_are_const := field.expr.exprs.all(g.check_expr_is_const(it))
 				if field.expr.is_fixed && g.pref.build_mode != .build_module
-					&& (!g.is_cc_msvc || field.expr.elem_type != ast.string_type) {
-					if field.expr.exprs.all(g.check_expr_is_const(it)) {
-						styp := g.typ(field.expr.typ)
-						val := g.expr_string(field.expr)
-						g.global_const_defs[util.no_dots(field.name)] = GlobalConstDef{
-							mod: field.mod
-							def: '${styp} ${const_name} = ${val}; // fixed array const'
-							dep_names: g.table.dependent_names_in_expr(field_expr)
-						}
-					} else {
-						g.const_decl_init_later_msvc_string_fixed_array(field.mod, name,
-							field.expr, field.typ)
+					&& (!g.is_cc_msvc || field.expr.elem_type != ast.string_type) && elems_are_const {
+					styp := g.typ(field.expr.typ)
+					val := g.expr_string(field.expr)
+					g.global_const_defs[util.no_dots(field.name)] = GlobalConstDef{
+						mod: field.mod
+						def: '${styp} ${const_name} = ${val}; // fixed array const'
+						dep_names: g.table.dependent_names_in_expr(field_expr)
 					}
-				} else if field.expr.is_fixed && g.is_cc_msvc
-					&& field.expr.elem_type == ast.string_type {
+				} else if field.expr.is_fixed
+					&& ((g.is_cc_msvc && field.expr.elem_type == ast.string_type)
+					|| !elems_are_const) {
 					g.const_decl_init_later_msvc_string_fixed_array(field.mod, name, field.expr,
 						field.typ)
 				} else {
