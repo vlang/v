@@ -5532,6 +5532,9 @@ fn (mut g Gen) check_expr_is_const(expr ast.Expr) bool {
 		ast.StructInit {
 			return true
 		}
+		ast.PrefixExpr {
+			return g.check_expr_is_const(expr.right)
+		}
 		else {
 			return false
 		}
