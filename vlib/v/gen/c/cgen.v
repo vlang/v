@@ -5529,6 +5529,9 @@ fn (mut g Gen) check_expr_is_const(expr ast.Expr) bool {
 		ast.CastExpr {
 			return g.check_expr_is_const(expr.expr)
 		}
+		ast.StructInit {
+			return true
+		}
 		else {
 			return false
 		}
