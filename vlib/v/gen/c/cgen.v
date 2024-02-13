@@ -5523,14 +5523,17 @@ fn (mut g Gen) check_expr_is_const(expr ast.Expr) bool {
 		ast.StringLiteral, ast.IntegerLiteral, ast.BoolLiteral, ast.FloatLiteral, ast.CharLiteral {
 			return true
 		}
-		ast.Ident {
+		ast.ArrayInit {
+			return expr.exprs.all(g.check_expr_is_const(it))
+		}
+		ast.ParExpr {
+			return g.check_expr_is_const(expr.expr)
+		}
+		ast.Ident, ast.InfixExpr, ast.StructInit {
 			return true
 		}
 		ast.CastExpr {
 			return g.check_expr_is_const(expr.expr)
-		}
-		ast.StructInit {
-			return true
 		}
 		ast.PrefixExpr {
 			return g.check_expr_is_const(expr.right)
