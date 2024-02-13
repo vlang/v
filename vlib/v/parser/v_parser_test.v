@@ -6,6 +6,7 @@ import v.gen.c
 import v.checker
 import v.pref
 import term
+import os
 
 fn test_eval() {
 	/*
@@ -262,6 +263,42 @@ fn test_fn_is_html_open_tag() {
 	s = '<script>'
 	b = is_html_open_tag('style', s)
 	assert b == false
+}
+
+fn scan_v(mut files []string, path string) ! {
+	for i in os.ls(path)! {
+		p := os.join_path(path, i)
+		if os.is_file(p) {
+			if i.ends_with('.v') && !i.contains_any_substr(['_test.', 'test_', 'tests_']) {
+				files << p
+			}
+		} else {
+			if !i.starts_with('test') && !i.ends_with('_tests') && !i.ends_with('builtin') {
+				scan_v(mut files, p)!
+			}
+		}
+	}
+}
+
+fn parse(output_mode pref.OutputMode) ! {
+	mut pref_ := pref.new_preferences()
+	pref_.output_mode = output_mode
+	mut files := []string{}
+	scan_v(mut files, pref_.vlib)!
+	scan_v(mut files, os.join_path(pref_.vroot, 'cmd'))!
+	for f in files {
+		table := ast.new_table()
+		p := parse_file(f, table, .parse_comments, pref_)
+		assert isnil(p) == false
+	}
+}
+
+fn test_parse_with_silent() {
+	parse(.silent)!
+}
+
+fn test_parse_with_stdout() {
+	parse(.stdout)!
 }
 
 // For issue #15516

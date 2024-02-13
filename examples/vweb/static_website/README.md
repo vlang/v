@@ -1,4 +1,4 @@
-# Host the vlang website
+# Host a static website
 
 Here is an example on how to use the vweb server's static capabilities,
 to host a static website from the `dist/` folder. Just run the server,

@@ -5,8 +5,6 @@ import os.cmdline
 import testing
 import v.pref
 
-const host_os = pref.get_host_os()
-
 struct Context {
 mut:
 	verbose   bool
@@ -132,18 +130,6 @@ enum ShouldTestStatus {
 }
 
 fn (mut ctx Context) should_test(path string, backend string) ShouldTestStatus {
-	// Skip OS-specific tests if we are not running that OS
-	// Special case for android_outside_termux because of its
-	// underscores
-	if path.ends_with('_android_outside_termux_test.v') {
-		if !host_os.is_target_of('android_outside_termux') {
-			return .skip
-		}
-	}
-	os_target := path.all_before_last('_test.v').all_after_last('_')
-	if !host_os.is_target_of(os_target) {
-		return .skip
-	}
 	if path.ends_with('mysql_orm_test.v') {
 		testing.find_started_process('mysqld') or { return .skip }
 	}

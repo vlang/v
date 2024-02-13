@@ -3670,7 +3670,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if is_as_cast {
 		g.write('(')
 	}
-	if node.or_block.kind != .absent && !g.is_assign_lhs && g.table.sym(node.typ).kind != .chan {
+	if node.or_block.kind != .absent && g.table.sym(node.typ).kind != .chan {
 		is_ptr := sym.kind in [.interface_, .sum_type]
 		stmt_str := g.go_before_last_stmt().trim_space()
 		styp := g.typ(g.unwrap_generic(node.typ))
