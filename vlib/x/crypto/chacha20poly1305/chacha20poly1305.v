@@ -26,8 +26,6 @@ pub interface AEAD {
 	// nonce_size return the nonce size (in bytes) used by this AEAD algorithm that should be
 	// passed to `.encrypt` or `.decrypt`.
 	nonce_size() int
-	// tag_size returns the authenticated tag size (in bytes) produced by this AEAD algorithm.
-	tag_size() int
 	// overhead returns the maximum difference between the lengths of a plaintext and its ciphertext.
 	overhead() int
 	// encrypt encrypts and authenticates the provided plaintext along with a nonce, and
@@ -94,13 +92,8 @@ pub fn (c Chacha20Poly1305) nonce_size() int {
 	return c.ncsize
 }
 
-// tag_size returns the size of mac (tag), in bytes, produced by Chacha20Poly1305 AEAD.
-pub fn (c Chacha20Poly1305) tag_size() int {
-	return chacha20poly1305.tag_size
-}
-
 // overhead returns maximum difference between the lengths of a plaintext to be encrypted and
-// ciphertext's output. In the context of Chacha20Poly1305, `.overhead() == .tag_size()`.
+// ciphertext's output. In the context of Chacha20Poly1305, `.overhead() == .tag_size`.
 pub fn (c Chacha20Poly1305) overhead() int {
 	return chacha20poly1305.tag_size
 }
@@ -187,8 +180,8 @@ fn (c Chacha20Poly1305) decrypt_generic(ciphertext []u8, nonce []u8, ad []u8) ![
 	s.xor_key_stream(mut polykey, polykey)
 
 	// Remember, ciphertext is concatenation of associated cipher output plus tag (mac) bytes
-	encrypted := ciphertext[0..ciphertext.len - c.tag_size()]
-	mac := ciphertext[ciphertext.len - c.tag_size()..]
+	encrypted := ciphertext[0..ciphertext.len - c.overhead()]
+	mac := ciphertext[ciphertext.len - c.overhead()..]
 
 	mut plaintext := []u8{len: encrypted.len}
 	s.set_counter(1)

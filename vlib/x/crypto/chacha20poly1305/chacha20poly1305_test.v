@@ -88,8 +88,8 @@ fn test_decrypt_and_verify_tag() ! {
 		mut co := new(key, ncsize)!
 		ciphertext := co.encrypt(msg, nonce, aad)!
 
-		text0 := ciphertext[0..ciphertext.len - co.tag_size()]
-		mac0 := ciphertext[ciphertext.len - co.tag_size()..]
+		text0 := ciphertext[0..ciphertext.len - co.overhead()]
+		mac0 := ciphertext[ciphertext.len - co.overhead()..]
 		assert text0 == exp_out
 		assert mac0 == exp_tag
 
@@ -185,8 +185,8 @@ fn test_cha20poly1305_vector_data() ! {
 		mut co := new(key, ncsize)!
 
 		ciphertext := co.encrypt(plaintext, nonce, aad)!
-		assert ciphertext[0..ciphertext.len - co.tag_size()] == out_ciphertext
-		assert ciphertext[ciphertext.len - co.tag_size()..] == out_tag
+		assert ciphertext[0..ciphertext.len - co.overhead()] == out_ciphertext
+		assert ciphertext[ciphertext.len - co.overhead()..] == out_tag
 
 		assert ciphertext == out
 		message := co.decrypt(ciphertext, nonce, aad)!
