@@ -30,9 +30,9 @@ pub interface AEAD {
 	tag_size() int
 	// overhead returns the maximum difference between the lengths of a plaintext and its ciphertext.
 	overhead() int
-	// encrypt encrypts and authenticates the provided plaintext along with a nonce, and 
+	// encrypt encrypts and authenticates the provided plaintext along with a nonce, and
 	// to be authenticated additional data in `ad`.
-	// It returns ciphertext bytes where its encoded form is up to implementation and 
+	// It returns ciphertext bytes where its encoded form is up to implementation and
 	// not dictated by the interfaces.
 	// Usually its contains encrypted text plus some authentication tag, and maybe some other bytes.
 	encrypt(plaintext []u8, nonce []u8, ad []u8) ![]u8
