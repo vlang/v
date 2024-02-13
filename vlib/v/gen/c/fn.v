@@ -297,7 +297,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 			g.definitions.write_string(');\n')
 
 			orig_fn_args := call_fn.func.params.map(it.name).join(', ')
-			add_trace_hook := g.pref.is_trace && !g.inside_trace_hook_fn
+			add_trace_hook := g.pref.is_trace
 				&& call_fn.name !in ['v.debug.add_after_call', 'v.debug.add_before_call']
 			if g.pref.is_callstack {
 				if g.cur_fn.is_method || g.cur_fn.is_static_type_method {
