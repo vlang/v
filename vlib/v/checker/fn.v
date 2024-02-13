@@ -235,7 +235,6 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				c.error('Result type argument is not supported currently', param.type_pos)
 			}
 			arg_typ_sym := c.table.sym(param.typ)
-			pure_sym_name := arg_typ_sym.embed_name()
 			if arg_typ_sym.info is ast.Struct {
 				if !param.typ.is_ptr() && arg_typ_sym.info.is_heap { // set auto_heap to promote value parameter
 					mut v := node.scope.find_var(param.name) or { continue }
@@ -243,18 +242,21 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				}
 				if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
 					&& arg_typ_sym.info.concrete_types.len == 0 {
+					pure_sym_name := arg_typ_sym.embed_name()
 					c.error('generic struct `${pure_sym_name}` in fn declaration must specify the generic type names, e.g. ${pure_sym_name}[T]',
 						param.type_pos)
 				}
 			} else if arg_typ_sym.info is ast.Interface {
 				if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
 					&& arg_typ_sym.info.concrete_types.len == 0 {
+					pure_sym_name := arg_typ_sym.embed_name()
 					c.error('generic interface `${pure_sym_name}` in fn declaration must specify the generic type names, e.g. ${pure_sym_name}[T]',
 						param.type_pos)
 				}
 			} else if arg_typ_sym.info is ast.SumType {
 				if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
 					&& arg_typ_sym.info.concrete_types.len == 0 {
+					pure_sym_name := arg_typ_sym.embed_name()
 					c.error('generic sumtype `${pure_sym_name}` in fn declaration must specify the generic type names, e.g. ${pure_sym_name}[T]',
 						param.type_pos)
 				}
