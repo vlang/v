@@ -30,13 +30,15 @@ pub interface AEAD {
 	tag_size() int
 	// overhead returns the maximum difference between the lengths of a plaintext and its ciphertext.
 	overhead() int
-	// encrypt encrypts and authenticates the provided plaintext along with a nonce, and associated data.
-	// It returns ciphertext bytes where its encoded form is up to implementation and not dictated by the interfaces.
+	// encrypt encrypts and authenticates the provided plaintext along with a nonce, and 
+	// to be authenticated additional data in `ad`.
+	// It returns ciphertext bytes where its encoded form is up to implementation and 
+	// not dictated by the interfaces.
 	// Usually its contains encrypted text plus some authentication tag, and maybe some other bytes.
-	encrypt(plaintext []u8, nonce []u8, aad []u8) ![]u8
+	encrypt(plaintext []u8, nonce []u8, ad []u8) ![]u8
 	// decrypt decrypts and authenticates (verifies) the provided ciphertext along with a nonce, and
-	// associated data. If verified successfully, it returns the plaintext and error otherwise.
-	decrypt(ciphertext []u8, nonce []u8, aad []u8) ![]u8
+	// additional data. If verified successfully, it returns the plaintext and error otherwise.
+	decrypt(ciphertext []u8, nonce []u8, ad []u8) ![]u8
 }
 
 // key_size is the size of key (in bytes) which the Chacha20Poly1305 AEAD accepts.
@@ -50,18 +52,18 @@ pub const tag_size = 16
 
 // encrypt does one-shot encryption of given plaintext with associated key, nonce and additional data.
 // It return ciphertext output and authenticated tag appended into it.
-pub fn encrypt(plaintext []u8, key []u8, nonce []u8, aad []u8) ![]u8 {
+pub fn encrypt(plaintext []u8, key []u8, nonce []u8, ad []u8) ![]u8 {
 	mut c := new(key, nonce.len)!
-	out := c.encrypt(plaintext, nonce, aad)!
+	out := c.encrypt(plaintext, nonce, ad)!
 	return out
 }
 
 // decrypt does one-shot decryption of given ciphertext with associated key, nonce and additional data.
 // It return plaintext output and verify if resulting tag is a valid message authenticated code (mac)
 // for given message, key and additional data.
-pub fn decrypt(ciphertext []u8, key []u8, nonce []u8, aad []u8) ![]u8 {
+pub fn decrypt(ciphertext []u8, key []u8, nonce []u8, ad []u8) ![]u8 {
 	mut c := new(key, nonce.len)!
-	out := c.decrypt(ciphertext, nonce, aad)!
+	out := c.decrypt(ciphertext, nonce, ad)!
 	return out
 }
 
@@ -105,7 +107,7 @@ pub fn (c Chacha20Poly1305) overhead() int {
 
 // encrypt encrypts plaintext, along with nonce and additional data and generates
 // authenticated tag appended into ciphertext's output.
-pub fn (c Chacha20Poly1305) encrypt(plaintext []u8, nonce []u8, aad []u8) ![]u8 {
+pub fn (c Chacha20Poly1305) encrypt(plaintext []u8, nonce []u8, ad []u8) ![]u8 {
 	// makes sure if the nonce length is matching with internal nonce size
 	if nonce.len != c.nonce_size() {
 		return error('chacha20poly1305: unmatching nonce size')
@@ -118,14 +120,14 @@ pub fn (c Chacha20Poly1305) encrypt(plaintext []u8, nonce []u8, aad []u8) ![]u8 
 	if u64(plaintext.len) > (u64(1) << 38) - 64 {
 		panic('chacha20poly1305: plaintext too large')
 	}
-	if aad.len > max_u64 {
-		return error('chacha20poly1305: something bad in your aad')
+	if ad.len > max_u64 {
+		return error('chacha20poly1305: something bad in your additional data')
 	}
-	return c.encrypt_generic(plaintext, nonce, aad)
+	return c.encrypt_generic(plaintext, nonce, ad)
 }
 
 // encrypt_generic encrypts plaintext along with nonce and additional data
-fn (c Chacha20Poly1305) encrypt_generic(plaintext []u8, nonce []u8, aad []u8) ![]u8 {
+fn (c Chacha20Poly1305) encrypt_generic(plaintext []u8, nonce []u8, ad []u8) ![]u8 {
 	// First, generates a Poly1305 one-time key from the 256-bit key
 	// and given nonce. Actually its generates by performing ChaCha20 key stream function,
 	// and take the first 32 bytes as a one-time key for Poly1305 from 64 bytes results.
@@ -140,11 +142,11 @@ fn (c Chacha20Poly1305) encrypt_generic(plaintext []u8, nonce []u8, aad []u8) ![
 	s.set_counter(1)
 	s.xor_key_stream(mut ciphertext, plaintext)
 
-	// Finally, the Poly1305 function is called with the Poly1305 key
+	// Finally, the Poly1305 function is called with the generated Poly1305 one-time key
 	// calculated above, and a message constructed as descibed in
 	// https://datatracker.ietf.org/doc/html/rfc8439#section-2.8
 	mut constructed_msg := []u8{}
-	poly1305_construct_msg(mut constructed_msg, aad, ciphertext)
+	poly1305_construct_msg(mut constructed_msg, ad, ciphertext)
 
 	// Lets creates Poly1305 instance with one-time key generates in above step,
 	// updates Poly1305 state with this constructed_msg and finally generates tag.
@@ -166,7 +168,7 @@ fn (c Chacha20Poly1305) encrypt_generic(plaintext []u8, nonce []u8, aad []u8) ![
 // The Poly1305 function is still run on the AAD and the ciphertext, not the plaintext.
 // The calculated mac is bitwise compared to the received mac.
 // The message is authenticated if and only if the tags match, return error if failed to verify.
-pub fn (c Chacha20Poly1305) decrypt(ciphertext []u8, nonce []u8, aad []u8) ![]u8 {
+pub fn (c Chacha20Poly1305) decrypt(ciphertext []u8, nonce []u8, ad []u8) ![]u8 {
 	if nonce.len != c.nonce_size() {
 		return error('chacha20poly1305: unmatching nonce size')
 	}
@@ -175,10 +177,10 @@ pub fn (c Chacha20Poly1305) decrypt(ciphertext []u8, nonce []u8, aad []u8) ![]u8
 	if u64(ciphertext.len) > (u64(1) << 38) - 48 {
 		return error('chacha20poly1305: ciphertext too large')
 	}
-	return c.decrypt_generic(ciphertext, nonce, aad)
+	return c.decrypt_generic(ciphertext, nonce, ad)
 }
 
-fn (c Chacha20Poly1305) decrypt_generic(ciphertext []u8, nonce []u8, aad []u8) ![]u8 {
+fn (c Chacha20Poly1305) decrypt_generic(ciphertext []u8, nonce []u8, ad []u8) ![]u8 {
 	// generates poly1305 one-time key for later calculation
 	mut polykey := []u8{len: chacha20poly1305.key_size}
 	mut s := chacha20.new_cipher(c.key, nonce)!
@@ -195,7 +197,7 @@ fn (c Chacha20Poly1305) decrypt_generic(ciphertext []u8, nonce []u8, aad []u8) !
 
 	// authenticated messages part
 	mut constructed_msg := []u8{}
-	poly1305_construct_msg(mut constructed_msg, aad, encrypted)
+	poly1305_construct_msg(mut constructed_msg, ad, encrypted)
 
 	mut tag := []u8{len: chacha20poly1305.tag_size}
 	mut po := poly1305.new(polykey)!
@@ -237,11 +239,11 @@ fn pad_to_16(x []u8) []u8 {
 // 	*  padded to multiple of 16 bytes block of the ciphertext (or plaintext) bytes
 // 	*  The length of the additional data in octets (as a 64-bit little-endian integer).
 // 	*  The length of the ciphertext (or plaintext) in octets (as a 64-bit little-endian integer).
-fn poly1305_construct_msg(mut out []u8, aad []u8, bytes []u8) {
+fn poly1305_construct_msg(mut out []u8, ad []u8, bytes []u8) {
 	mut b8 := []u8{len: 8}
-	out << pad_to_16(aad)
+	out << pad_to_16(ad)
 	out << pad_to_16(bytes)
-	binary.little_endian_put_u64(mut b8, u64(aad.len))
+	binary.little_endian_put_u64(mut b8, u64(ad.len))
 	out << b8
 	binary.little_endian_put_u64(mut b8, u64(bytes.len))
 	out << b8
