@@ -229,9 +229,6 @@ fn (mut f MDFile) check() CheckResult {
 	}
 	anchor_data.check_link_target_match(f.path, mut res)
 	res += f.check_examples()
-	if res.errors == 0 {
-		res.oks = 1
-	}
 	return res
 }
 
