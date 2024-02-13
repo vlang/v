@@ -149,6 +149,7 @@ mut:
 	inside_lambda             bool
 	inside_cinit              bool
 	inside_interface_deref    bool
+	inside_trace_hook_fn      bool // prevent recursion inside a v.debug trace generated wrapper fn
 	last_tmp_call_var         []string
 	loop_depth                int
 	ternary_names             map[string]string
