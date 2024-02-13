@@ -1,5 +1,7 @@
 module picohttpparser
 
+import net
+
 pub struct Response {
 pub:
 	fd        int
