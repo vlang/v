@@ -94,6 +94,10 @@ const skip_test_files = [
 	'vlib/db/pg/pg_orm_test.v', // pg not installed
 	'vlib/db/pg/pg_test.v', // pg not installed
 	'vlib/db/pg/pg_double_test.v', // pg not installed
+	'vlib/v/tests/filtering_android_outside_termux_test.v', // platform filtering not baked into v test-self
+	'vlib/v/tests/filtering_macos_test.v', // platform filtering not baked into v test-self
+	'vlib/v/tests/filtering_nix_test.v', // platform filtering not baked into v test-self
+	'vlib/v/tests/filtering_windows_test.v', // platform filtering not baked into v test-self
 ]
 // These tests are too slow to be run in the CI on each PR/commit
 // in the sanitized modes:
@@ -474,6 +478,7 @@ fn main() {
 	$if !macos {
 		tsession.skip_files << skip_on_non_macos
 	}
+	tsession.skip_files = tsession.skip_files.map(os.abs_path)
 	tsession.test()
 	eprintln(tsession.benchmark.total_message(title))
 	if tsession.benchmark.nfail > 0 {
