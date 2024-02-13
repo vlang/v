@@ -5529,7 +5529,10 @@ fn (mut g Gen) check_expr_is_const(expr ast.Expr) bool {
 		ast.ParExpr {
 			return g.check_expr_is_const(expr.expr)
 		}
-		ast.Ident, ast.InfixExpr, ast.StructInit, ast.EnumVal {
+		ast.InfixExpr {
+			return g.check_expr_is_const(expr.left) && g.check_expr_is_const(expr.right)
+		}
+		ast.Ident, ast.StructInit, ast.EnumVal {
 			return true
 		}
 		ast.CastExpr {
