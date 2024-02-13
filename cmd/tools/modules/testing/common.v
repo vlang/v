@@ -13,6 +13,8 @@ import runtime
 import rand
 import strings
 
+pub const host_os = pref.get_host_os()
+
 pub const github_job = os.getenv('GITHUB_JOB')
 
 pub const runner_os = os.getenv('RUNNER_OS') // GitHub runner OS
@@ -384,6 +386,23 @@ pub fn (mut ts TestSession) test() {
 			}
 		}
 		if ts.build_tools && dot_relative_file.ends_with('_test.v') {
+			continue
+		}
+
+		// Skip OS-specific tests if we are not running that OS
+		// Special case for android_outside_termux because of its
+		// underscores
+		if file.ends_with('_android_outside_termux_test.v') {
+			if !testing.host_os.is_target_of('android_outside_termux') {
+				remaining_files << dot_relative_file
+				ts.skip_files << file
+				continue
+			}
+		}
+		os_target := file.all_before_last('_test.v').all_after_last('_')
+		if !testing.host_os.is_target_of(os_target) {
+			remaining_files << dot_relative_file
+			ts.skip_files << file
 			continue
 		}
 		remaining_files << dot_relative_file
