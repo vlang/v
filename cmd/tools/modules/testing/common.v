@@ -210,10 +210,12 @@ pub fn (mut ts TestSession) print_messages() {
 pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 	mut skip_files := []string{}
 	if will_compile {
-		// Skip the call_v_from_c files. They need special instructions for compilation.
+		// Skip the call_v_from_* files. They need special instructions for compilation.
 		// Check the README.md for detailed information.
 		skip_files << 'examples/call_v_from_c/v_test_print.v'
 		skip_files << 'examples/call_v_from_c/v_test_math.v'
+		skip_files << 'examples/call_v_from_python/test.v' // the example only makes sense to be compiled, when python is installed
+		skip_files << 'examples/call_v_from_ruby/test.v' // the example only makes sense to be compiled, when ruby is installed
 		// Skip the compilation of the coroutines example for now, since the Photon wrapper
 		// is only available on macos for now, and it is not yet trivial enough to
 		// build/install on the CI:
@@ -262,8 +264,6 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		}
 		if testing.runner_os != 'Linux' || testing.github_job != 'tcc' {
 			skip_files << 'examples/c_interop_wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
-			skip_files << 'examples/call_v_from_python/test.v' // the example only makes sense to be compiled, when python is installed
-			skip_files << 'examples/call_v_from_ruby/test.v' // the example only makes sense to be compiled, when ruby is installed
 			skip_files << 'vlib/vweb/vweb_app_test.v' // imports the `sqlite` module, which in turn includes sqlite3.h
 			skip_files << 'vlib/x/vweb/tests/vweb_app_test.v' // imports the `sqlite` module, which in turn includes sqlite3.h
 		}
