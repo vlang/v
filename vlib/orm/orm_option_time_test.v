@@ -27,6 +27,7 @@ fn test_main() {
 
 	sql db {
 		create table Foo
+		create table Child
 	}!
 	foo := Foo{
 		name: 'abc'

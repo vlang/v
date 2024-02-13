@@ -1,4 +1,4 @@
-## Description:
+## Description
 
 `pg` is a wrapper for the PostgreSQL client library. It provides access to a PostgreSQL
 database server.
@@ -11,6 +11,7 @@ To do this, find your OS and perform the actions listed.
 > or you need extra help, [go here](https://www.postgresql.org/download/).
 
 ### Fedora 31
+
 ```
 sudo dnf install postgresql-server postgresql-contrib
 sudo systemctl enable postgresql # to autostart on startup
@@ -18,6 +19,7 @@ sudo systemctl start  postgresql
 ```
 
 ### Ubuntu/Debian
+
 ```
 sudo apt-get install postgresql postgresql-client
 sudo systemctl enable postgresql # to autostart on startup
@@ -25,17 +27,19 @@ sudo systemctl start  postgresql
 ```
 
 ### MacOSX (Homebrew)
+
 ```
 brew install postgresql
 brew services start postgresql
 ```
 
 ### MacOSX (MacPorts)
+
 ```
 gem install pg -- --with-pg-config=/opt/local/lib/postgresql[version number]/bin/pg_config
 ```
 
-## Installing libpq-dev or its equivalent for your OS: ##
+## Installing libpq-dev or its equivalent for your OS:
 
 **Ubuntu/Debian**: `sudo apt-get install libpq-dev`
 
@@ -46,6 +50,7 @@ gem install pg -- --with-pg-config=/opt/local/lib/postgresql[version number]/bin
 **ArchLinux**: `pacman -S postgresql-libs`
 
 **Windows**:
+
 ```
 1. Download PostgreSQL SDK from official site
 2. Extract archive to postgres-master folder
@@ -74,7 +79,7 @@ If you are going to use the msvc compiler:
 
 8. Add libpq.dll, libcrypto-3-x64.dll, libssl-3-x64.dll to where your executable is.
 
-To get the libpq.dll file, you can install the PostgreSQL database, 
+To get the libpq.dll file, you can install the PostgreSQL database,
 and get this dll from its bin/ folder, or compile DB from source code.
 ```
 

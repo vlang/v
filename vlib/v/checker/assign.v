@@ -267,6 +267,11 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 		}
 		node.left_types << left_type
+
+		if left is ast.ParExpr && is_decl {
+			c.error('parentheses are not supported on the left side of `:=`', left.pos())
+		}
+
 		for left is ast.ParExpr {
 			left = (left as ast.ParExpr).expr
 		}
@@ -283,6 +288,10 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							right.right.pos)
 					}
 				} else if left.kind == .blank_ident {
+					if !is_decl && mut right is ast.None {
+						c.error('cannot assign a `none` value to blank `_` identifier',
+							right.pos)
+					}
 					left_type = right_type
 					node.left_types[i] = right_type
 					if node.op !in [.assign, .decl_assign] {

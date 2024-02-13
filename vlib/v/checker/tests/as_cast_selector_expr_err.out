@@ -1,0 +1,7 @@
+vlib/v/checker/tests/as_cast_selector_expr_err.vv:15:14: error: indeterminate `as` cast, use parenthesis to clarity
+   13 | fn main() {
+   14 |     mut bar := Foobar(Bar{y: 123})
+   15 |     println(bar as Bar.y == 123)
+      |                 ~~
+   16 | }
+Details: for example `(bar as main.Bar).y`

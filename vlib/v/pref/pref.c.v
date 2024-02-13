@@ -133,6 +133,7 @@ pub mut:
 	is_help            bool     // -h, -help or --help was passed
 	is_quiet           bool     // do not show the repetitive explanatory messages like the one for `v -prod run file.v` .
 	is_cstrict         bool     // turn on more C warnings; slightly slower
+	is_callstack       bool     // turn on callstack registers on each call when v.debug is imported
 	eval_argument      string   // `println(2+2)` on `v -e "println(2+2)"`. Note that this source code, will be evaluated in vsh mode, so 'v -e 'println(ls(".")!)' is valid.
 	test_runner        string   // can be 'simple' (fastest, but much less detailed), 'tap', 'normal'
 	profile_file       string   // the profile results will be stored inside profile_file
@@ -897,7 +898,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					vexe := vexe_path()
 					vroot := os.dir(vexe)
 					so_path := os.join_path(vroot, 'thirdparty', 'photon', 'photonwrapper.so')
-					so_url := 'https://github.com/vlang/photonbin/raw/master/photonwrapper_macos_${arch}.so'
+					so_url := 'https://github.com/vlang/photonbin/raw/master/photonwrapper_${os.user_os()}_${arch}.so'
 					if !os.exists(so_path) {
 						println('coroutines .so not found, downloading...')
 						// http.download_file(so_url, so_path) or { panic(err) }
@@ -907,7 +908,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					res.compile_defines << 'is_coroutine'
 					res.compile_defines_all << 'is_coroutine'
 				} $else {
-					println('coroutines only work on macos for now')
+					println('coroutines only work on macos & linux for now')
 				}
 			}
 			else {
@@ -1041,6 +1042,14 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		// make `$if musl? {` work:
 		res.compile_defines << 'musl'
 		res.compile_defines_all << 'musl'
+	}
+	if res.is_bare {
+		// make `$if freestanding? {` + file_freestanding.v + file_notd_freestanding.v work:
+		res.compile_defines << 'freestanding'
+		res.compile_defines_all << 'freestanding'
+	}
+	if 'callstack' in res.compile_defines_all {
+		res.is_callstack = true
 	}
 	// keep only the unique res.build_options:
 	mut m := map[string]string{}

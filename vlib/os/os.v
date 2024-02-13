@@ -977,3 +977,19 @@ pub fn config_dir() !string {
 	}
 	return error('Cannot find config directory')
 }
+
+// Stat struct modeled on POSIX
+pub struct Stat {
+pub:
+	dev   u64 // ID of device containing file
+	inode u64 // Inode number
+	mode  u32 // File type and user/group/world permission bits
+	nlink u64 // Number of hard links to file
+	uid   u32 // Owner user ID
+	gid   u32 // Owner group ID
+	rdev  u64 // Device ID (if special file)
+	size  u64 // Total size in bytes
+	atime i64 // Last access (seconds since UNIX epoch)
+	mtime i64 // Last modified (seconds since UNIX epoch)
+	ctime i64 // Last status change (seconds since UNIX epoch)
+}

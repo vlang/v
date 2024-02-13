@@ -35,7 +35,7 @@ jobs:
            mv $ZIPNAME v/
            cd v/
       - name: Create artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: linux
           path: ${{ env.ZIPNAME }}
@@ -67,7 +67,7 @@ jobs:
            mv $ZIPNAME v/
            cd v/
       - name: Create artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: macos_x86_64
           path: ${{ env.ZIPNAME }}
@@ -100,7 +100,7 @@ jobs:
            mv $ZIPNAME v/
            cd v/
       - name: Create artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: macos_arm64
           path: ${{ env.ZIPNAME }}
@@ -140,7 +140,7 @@ jobs:
 # https://superuser.com/a/1336434/194881
 # It is needed, because `zip` is not installed by default :-|
       - name: Create artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: windows
           path: ${{ env.ZIPNAME }}
@@ -176,7 +176,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Fetch artifacts
-        uses: actions/download-artifact@v1
+        uses: actions/download-artifact@v4
         with:
           name: ${{ matrix.version }}
           path: ./${{ matrix.version }}
@@ -195,7 +195,7 @@ jobs:
           tag_name: ${{ steps.split.outputs._2 }}
       - name: Upload Release Asset
         id: upload-release-asset
-        uses: actions/upload-release-asset@v1.0.1
+        uses: actions/upload-release-asset@v1.0.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

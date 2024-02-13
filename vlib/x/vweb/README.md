@@ -143,7 +143,7 @@ pub fn (app &App) login(mut ctx Context) vweb.Result {
 		} else {
 			// we receive a POST request, so we want to explicitly tell the browser
 			// to send a GET request to the profile page.
-			return ctx.redirect('/profile', .see_other)
+			return ctx.redirect('/profile')
 		}
 	}
 }
@@ -284,7 +284,7 @@ pub fn (mut ctx Context) not_found() vweb.Result {
 }
 ```
 
-## Static files
+## Static files and website
 
 Vweb also provides a way of handling static files. We can mount a folder at the root
 of our web app, or at a custom route. To start using static files we have to embed
@@ -347,7 +347,12 @@ is available at `/`.
 // change the second argument to `true` to mount a folder at the app root
 app.handle_static('static', true)!
 ```
-We can now access `main.css` directly at http://localhost:8080/css/main.css
+We can now access `main.css` directly at http://localhost:8080/css/main.css.
+
+If a request is made to the root of a static folder, vweb will look for an
+`index.html` or `ìndex.htm` file and serve it if available.
+Thus, it's also a good way to host a complete website.
+A example is available [here](/examples/vweb/static_website).
 
 It is also possible to mount the `static` folder at a custom path.
 
@@ -358,6 +363,16 @@ app.mount_static_folder_at('static', '/public')
 ```
 
 If we run our app the `main.css` file is available at http://localhost:8080/public/main.css
+
+### Adding a single static asset
+
+If you don't want to mount an entire folder, but only a single file, you can use `serve_static`.
+
+**Example:**
+```v ignore
+// serve the `main.css` file at '/path/main.css'
+app.serve_static('/path/main.css',  'static/css/main.css')!
+```
 
 ### Dealing with MIME types
 
@@ -772,7 +787,7 @@ pub fn (app &App) index(mut ctx Context) vweb.Result {
 	if token == '' {
 		// redirect the user to '/login' if the 'token' cookie is not set
 		// we explicitly tell the browser to send a GET request
-		return ctx.redirect('/login', .see_other)
+		return ctx.redirect('/login', typ: .see_other)
 	} else {
 		return ctx.text('Welcome!')
 	}

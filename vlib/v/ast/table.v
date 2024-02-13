@@ -2418,6 +2418,11 @@ pub fn (t &Table) dependent_names_in_expr(expr Expr) []string {
 		PrefixExpr {
 			names << t.dependent_names_in_expr(expr.right)
 		}
+		StringInterLiteral {
+			for inter_expr in expr.exprs {
+				names << t.dependent_names_in_expr(inter_expr)
+			}
+		}
 		SelectorExpr {
 			names << t.dependent_names_in_expr(expr.expr)
 		}
@@ -2484,4 +2489,15 @@ pub fn (t &Table) get_array_dims(arr Array) (int, Type) {
 		elem_sym = t.sym(elem_type)
 	}
 	return dims, elem_type
+}
+
+pub fn (t &Table) get_trace_fn_name(cur_fn FnDecl, node CallExpr) (string, string) {
+	generic_name := node.concrete_types.map(t.type_to_str(it)).join('_')
+	hash_fn := '_v__trace__${cur_fn.name}_${node.name}_${generic_name}_${node.pos.line_nr}'
+	fn_name := if node.concrete_types.len > 0 {
+		'${node.name}_T_${generic_name}'
+	} else {
+		node.name
+	}
+	return hash_fn, fn_name
 }

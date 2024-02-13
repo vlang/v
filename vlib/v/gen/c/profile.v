@@ -71,4 +71,9 @@ pub fn (mut g Gen) gen_vprint_profile_stats() {
 	}
 	g.pcs_declarations.writeln('}')
 	g.pcs_declarations.writeln('')
+
+	g.pcs_declarations.writeln('void vprint_profile_stats_on_signal(int sig){')
+	g.pcs_declarations.writeln('\texit(130);')
+	g.pcs_declarations.writeln('}')
+	g.pcs_declarations.writeln('')
 }

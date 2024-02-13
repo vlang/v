@@ -32,8 +32,7 @@ import obj
 
 // GLSL Include and functions
 
-#flag -I @VMODROOT/.
-#include "gouraud.h" # Should be generated with `v shader .` (see the instructions at the top of this file)
+#include "@VMODROOT/gouraud.h" # It should be generated with `v shader .` (see the instructions at the top of this file)
 
 fn C.gouraud_shader_desc(gfx.Backend) &gfx.ShaderDesc
 
@@ -55,7 +54,7 @@ mut:
 	// time
 	ticks i64
 	// model
-	obj_part &obj.ObjPart
+	obj_part &obj.ObjPart = unsafe { nil }
 	n_vertex u32
 	// init parameters
 	file_name            string
@@ -261,20 +260,13 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 	}
 }
 
-/******************************************************************************
-* Main
-******************************************************************************/
 fn main() {
 	/*
 	obj.tst()
 	exit(0)
 	*/
-
 	// App init
-	mut app := &App{
-		gg: 0
-		obj_part: 0
-	}
+	mut app := &App{}
 
 	// app.file_name = 'v.obj' // default object is the v logo
 	app.file_name = 'utahTeapot.obj' // default object is the v logo

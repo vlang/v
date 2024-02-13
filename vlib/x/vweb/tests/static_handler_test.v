@@ -94,6 +94,13 @@ fn test_scans_subdirs() {
 	assert x.body == 'sub'
 }
 
+fn test_index_subdirs() {
+	x := http.get('${localserver}/sub_folder/')!
+
+	assert x.status() == .ok
+	assert x.body.trim_space() == 'OK'
+}
+
 fn test_custom_mime_types() {
 	x := http.get('${localserver}/unkown_mime.what')!
 

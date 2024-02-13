@@ -162,6 +162,7 @@ const skip_with_fsanitize_memory = [
 	'vlib/v/tests/orm_stmt_wrong_return_checking_test.v',
 	'vlib/v/tests/orm_table_name_test.v',
 	'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
+	'vlib/v/tests/orm_create_several_tables_test.v',
 	'vlib/vweb/tests/vweb_test.v',
 	'vlib/vweb/csrf/csrf_test.v',
 	'vlib/vweb/request_test.v',
@@ -173,6 +174,7 @@ const skip_with_fsanitize_memory = [
 	'vlib/net/smtp/smtp_test.v',
 	'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
 	'vlib/v/tests/fn_literal_type_test.v',
+	'vlib/x/sessions/tests/db_store_test.v',
 ]
 const skip_with_fsanitize_address = [
 	'do_not_remove',
@@ -185,6 +187,7 @@ const skip_with_fsanitize_address = [
 	'vlib/v/tests/orm_enum_test.v',
 	'vlib/v/tests/orm_sub_array_struct_test.v',
 	'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
+	'vlib/v/tests/orm_create_several_tables_test.v',
 ]
 const skip_with_fsanitize_undefined = [
 	'do_not_remove',
@@ -195,6 +198,7 @@ const skip_with_fsanitize_undefined = [
 	'vlib/v/tests/orm_enum_test.v',
 	'vlib/v/tests/orm_sub_array_struct_test.v',
 	'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
+	'vlib/v/tests/orm_create_several_tables_test.v',
 	'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v', // fails compilation with: undefined reference to vtable for __cxxabiv1::__function_type_info'
 ]
 const skip_with_werror = [
@@ -248,6 +252,7 @@ const skip_on_ubuntu_musl = [
 	'vlib/v/tests/orm_stmt_wrong_return_checking_test.v',
 	'vlib/v/tests/orm_table_name_test.v',
 	'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
+	'vlib/v/tests/orm_create_several_tables_test.v',
 	'vlib/v/tests/sql_statement_inside_fn_call_test.v',
 	'vlib/clipboard/clipboard_test.v',
 	'vlib/vweb/tests/vweb_test.v',
@@ -264,6 +269,7 @@ const skip_on_ubuntu_musl = [
 	'vlib/net/smtp/smtp_test.v',
 	'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
 	'vlib/v/tests/fn_literal_type_test.v',
+	'vlib/x/sessions/tests/db_store_test.v',
 	'vlib/x/vweb/tests/vweb_test.v',
 	'vlib/x/vweb/tests/vweb_app_test.v',
 ]
@@ -468,6 +474,7 @@ fn main() {
 	$if !macos {
 		tsession.skip_files << skip_on_non_macos
 	}
+	tsession.skip_files = tsession.skip_files.map(os.abs_path)
 	tsession.test()
 	eprintln(tsession.benchmark.total_message(title))
 	if tsession.benchmark.nfail > 0 {

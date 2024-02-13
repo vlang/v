@@ -223,6 +223,30 @@ pub fn flush_stderr() {
 	}
 }
 
+// unbuffer_stdout will turn off the default buffering done for stdout.
+// It will affect all consequent print and println calls, effectively making them behave like
+// eprint and eprintln do. It is useful for programs, that want to produce progress bars, without
+// cluttering your code with a flush_stdout() call after every print() call. It is also useful for
+// programs (sensors), that produce small chunks of output, that you want to be able to process
+// immediately.
+// Note 1: if used, *it should be called at the start of your program*, before using
+// print or println().
+// Note 2: most libc implementations, have logic that use line buffering for stdout, when the output
+// stream is connected to an interactive device, like a terminal, and otherwise fully buffer it,
+// which is good for the output performance for programs that can produce a lot of output (like
+// filters, or cat etc), but bad for latency. Normally, it is usually what you want, so it is the
+// default for V programs too.
+// See https://www.gnu.org/software/libc/manual/html_node/Buffering-Concepts.html .
+// See https://pubs.opengroup.org/onlinepubs/9699919799/functions/V2_chap02.html#tag_15_05 .
+pub fn unbuffer_stdout() {
+	$if freestanding {
+		not_implemented := 'unbuffer_stdout is not implemented\n'
+		bare_eprint(not_implemented.str, u64(not_implemented.len))
+	} $else {
+		unsafe { C.setbuf(C.stdout, 0) }
+	}
+}
+
 // print prints a message to stdout. Note that unlike `eprint`, stdout is not automatically flushed.
 @[manualfree]
 pub fn print(s string) {

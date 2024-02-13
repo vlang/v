@@ -98,3 +98,13 @@ this is not ignored
 
 so, it's basically true"
 }
+
+fn test_tmpl_interpolation() {
+	my_var := 'foo'
+	s := $tmpl('tmpl/interpolation.txt')
+	assert s == 'result: foo\n'
+}
+
+fn my_fn(s string) string {
+	return s
+}

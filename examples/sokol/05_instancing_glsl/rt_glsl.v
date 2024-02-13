@@ -55,8 +55,7 @@ mut:
 /******************************************************************************
 * GLSL Include and functions
 ******************************************************************************/
-#flag -I @VMODROOT/.
-#include "rt_glsl_instancing.h" # Should be generated with `v shader .` (see the instructions at the top of this file)
+#include "@VMODROOT/rt_glsl_instancing.h" # It should be generated with `v shader .` (see the instructions at the top of this file)
 
 fn C.instancing_shader_desc(gfx.Backend) &gfx.ShaderDesc
 
@@ -492,15 +491,8 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 	}
 }
 
-/******************************************************************************
-* Main
-******************************************************************************/
 fn main() {
-	// App init
-	mut app := &App{
-		gg: 0
-	}
-
+	mut app := &App{}
 	// vfmt off
 	app.gg = gg.new_context(
 		width:         win_width
@@ -514,7 +506,6 @@ fn main() {
 		event_fn:      my_event_manager
 	)
 	// vfmt on
-
 	app.ticks = time.ticks()
 	app.gg.run()
 }

@@ -1,4 +1,4 @@
-## Description:
+## Description
 
 `js`  is frontend/browser specific module, that provides access to global JS functions.
 

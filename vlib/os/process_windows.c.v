@@ -157,6 +157,10 @@ fn (mut p Process) win_kill_process() {
 	C.TerminateProcess(wdata.proc_info.h_process, 3)
 }
 
+fn (mut p Process) win_term_process() {
+	p.win_kill_process()
+}
+
 fn (mut p Process) win_kill_pgroup() {
 	wdata := unsafe { &WProcess(p.wdata) }
 	C.GenerateConsoleCtrlEvent(C.CTRL_BREAK_EVENT, wdata.proc_info.dw_process_id)
@@ -277,6 +281,9 @@ fn (mut p Process) unix_stop_process() {
 }
 
 fn (mut p Process) unix_resume_process() {
+}
+
+fn (mut p Process) unix_term_process() {
 }
 
 fn (mut p Process) unix_kill_process() {
