@@ -26,6 +26,7 @@ const vexe = @VEXE
 
 struct CheckResult {
 pub mut:
+	files    int
 	warnings int
 	errors   int
 	oks      int
@@ -33,6 +34,7 @@ pub mut:
 
 fn (v1 CheckResult) + (v2 CheckResult) CheckResult {
 	return CheckResult{
+		files: v1.files + v2.files
 		warnings: v1.warnings + v2.warnings
 		errors: v1.errors + v2.errors
 		oks: v1.oks + v2.oks
@@ -83,9 +85,7 @@ fn main() {
 	if res.errors == 0 && show_progress {
 		clear_previous_line()
 	}
-	if res.warnings > 0 || res.errors > 0 || res.oks > 0 {
-		println('\nWarnings: ${res.warnings} | Errors: ${res.errors} | OKs: ${res.oks}')
-	}
+	println('Checked .md files: ${res.files} | OKs: ${res.oks} | Warnings: ${res.warnings} | Errors: ${res.errors}')
 	if res.errors > 0 {
 		exit(1)
 	}
@@ -171,40 +171,53 @@ fn (mut f MDFile) progress(message string) {
 	}
 }
 
+struct CheckResultContext {
+	path        string
+	line_number int
+	line        string
+}
+
+fn (mut res CheckResult) wcheck(actual int, limit int, ctx CheckResultContext, msg_template string) {
+	if actual > limit {
+		wprintln(wline(ctx.path, ctx.line_number, ctx.line.len, msg_template.replace('@',
+			limit.str())))
+		wprintln(ctx.line)
+		wprintln(ftext('-'.repeat(limit) + '^', term.gray))
+		res.warnings++
+	}
+}
+
+fn (mut res CheckResult) echeck(actual int, limit int, ctx CheckResultContext, msg_template string) {
+	if actual > limit {
+		eprintln(eline(ctx.path, ctx.line_number, ctx.line.len, msg_template.replace('@',
+			limit.str())))
+		eprintln(ctx.line)
+		eprintln(ftext('-'.repeat(limit) + '^', term.gray))
+		res.errors++
+	}
+}
+
 fn (mut f MDFile) check() CheckResult {
-	mut res := CheckResult{}
+	mut res := CheckResult{
+		files: 1
+	}
 	mut anchor_data := AnchorData{}
 	for j, line in f.lines {
 		// f.progress('line: $j')
 		if !f.skip_line_length_check {
+			ctx := CheckResultContext{f.path, j, line}
 			if f.state == .vexample {
-				if line.len > too_long_line_length_example {
-					wprintln(wline(f.path, j, line.len, 'example lines must be less than ${too_long_line_length_example} characters'))
-					wprintln(line)
-					res.warnings++
-				}
+				res.wcheck(line.len, too_long_line_length_example, ctx, 'example lines must be less than @ characters')
 			} else if f.state == .codeblock {
-				if line.len > too_long_line_length_codeblock {
-					wprintln(wline(f.path, j, line.len, 'code lines must be less than ${too_long_line_length_codeblock} characters'))
-					wprintln(line)
-					res.warnings++
-				}
+				res.wcheck(line.len, too_long_line_length_codeblock, ctx, 'code lines must be less than @ characters')
 			} else if line.starts_with('|') {
-				if line.len > too_long_line_length_table {
-					wprintln(wline(f.path, j, line.len, 'table lines must be less than ${too_long_line_length_table} characters'))
-					wprintln(line)
-					res.warnings++
-				}
+				res.wcheck(line.len, too_long_line_length_table, ctx, 'table lines must be less than @ characters')
 			} else if line.contains('http') {
-				if line.all_after('https').len > too_long_line_length_link {
-					wprintln(wline(f.path, j, line.len, 'link lines must be less than ${too_long_line_length_link} characters'))
-					wprintln(line)
-					res.warnings++
-				}
-			} else if line.len > too_long_line_length_other {
-				eprintln(eline(f.path, j, line.len, 'must be less than ${too_long_line_length_other} characters'))
-				eprintln(line)
-				res.errors++
+				// vfmt off
+				res.wcheck(line.all_after('https').len, too_long_line_length_link, ctx,	'link lines must be less than @ characters')
+				// vfmt on
+			} else {
+				res.echeck(line.len, too_long_line_length_other, ctx, 'must be less than @ characters')
 			}
 		}
 		if f.state == .markdown {
