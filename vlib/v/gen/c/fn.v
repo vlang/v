@@ -948,8 +948,16 @@ fn (mut g Gen) gen_arg_from_type(node_type ast.Type, node ast.Expr) {
 
 fn (mut g Gen) gen_map_method_call(node ast.CallExpr, left_type ast.Type, left_sym ast.TypeSymbol) bool {
 	match node.name {
-		'clear' {
-			g.write('map_clear(')
+		'reserve' {
+			g.write('map_reserve(')
+			g.gen_arg_from_type(left_type, node.left)
+			g.write(', ')
+			g.expr(node.args[0].expr)
+			g.write(')')
+			return true
+		}
+		'free', 'clear' {
+			g.write('map_${node.name}(')
 			g.gen_arg_from_type(left_type, node.left)
 			g.write(')')
 			return true
