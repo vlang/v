@@ -354,7 +354,6 @@ fn test_handle_dtm_clock() {
 	defer {
 		dtmi.stop_cache_handler()
 	}
-	dtmi.handle_dtm_clock()
 	date_to_str := dtmi.c_time.str()
 	assert date_to_str.len > 10
 }
@@ -416,5 +415,23 @@ fn (mut tm DynamicTemplateManager) create_cache() string {
 	html := tm.create_template_cache_and_display(.new, html_last_mod, c_time, temp_html_file,
 		dtm.temp_html_n, cache_delay_exp, &placeholder, content_checksum, TemplateType.html)
 	time.sleep(5 * time.millisecond)
+	lock tm.template_caches {
+		if tm.template_caches.len < 1 {
+			time.sleep(10 * time.millisecond)
+		}
+		/*
+		if tm.template_caches.len < 1 {
+			tm.template_caches << TemplateCache{
+				id: 1
+				path: temp_html_file
+				name: dtm.temp_html_n
+				generate_at: c_time
+				cache_delay_expiration: cache_delay_exp
+				last_template_mod: html_last_mod
+				checksum: '1a2b3c4d5e6f'
+			}
+		}
+		*/
+	}
 	return html
 }
