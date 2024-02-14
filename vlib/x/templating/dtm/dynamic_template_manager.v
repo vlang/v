@@ -1086,16 +1086,10 @@ fn (mut tm DynamicTemplateManager) handle_dtm_clock() {
 					break
 				}
 				else {
-					$if test {
-						break
-					}
 					// Attendre une seconde
 					time.sleep(1 * time.second)
 				}
 			}
-		}
-		$if test {
-			break
 		}
 		if need_to_close {
 			break
