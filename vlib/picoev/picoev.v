@@ -99,7 +99,7 @@ pub fn (mut pv Picoev) init() {
 
 // add a file descriptor to the event loop
 @[direct_array_access]
-pub fn (mut pv Picoev) add(fd int, events int, timeout int, cb voidptr) int {
+pub fn (mut pv Picoev) add(fd int, events int, timeout int, callback voidptr) int {
 	if pv == unsafe { nil } || fd < 0 || fd >= picoev.max_fds {
 		return -1 // Invalid arguments
 	}
