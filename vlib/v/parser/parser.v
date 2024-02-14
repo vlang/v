@@ -13,6 +13,7 @@ import v.vet
 import v.errors
 import os
 import hash.fnv1a
+import strings
 
 @[minify]
 pub struct Parser {
@@ -365,7 +366,7 @@ pub fn (mut p Parser) parse() &ast.File {
 
 	// codegen
 	if p.codegen_text.len > 0 && !p.pref.is_fmt {
-		ptext := 'module ' + p.mod.all_after_last('.') + p.codegen_text
+		ptext := 'module ' + p.mod.all_after_last('.') + '\n' + p.codegen_text
 		codegen_files << parse_text(ptext, p.file_name, p.table, p.comments_mode, p.pref)
 	}
 
@@ -473,9 +474,9 @@ pub fn parse_files(paths []string, table &ast.Table, pref_ &pref.Preferences) []
 // checked, markused, cgen-ed etc further, just like user's V code.
 pub fn (mut p Parser) codegen(code string) {
 	$if debug_codegen ? {
-		eprintln('parser.codegen:\n ${code}')
+		eprintln('parser.codegen: ${code}')
 	}
-	p.codegen_text += '\n' + code
+	p.codegen_text += code
 }
 
 fn (mut p Parser) init_parse_fns() {
@@ -1058,12 +1059,17 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					return p.comptime_for()
 				}
 				.name {
-					mut pos := p.tok.pos()
-					expr := p.expr(0)
-					pos.update_last_line(p.prev_tok.line_nr)
-					return ast.ExprStmt{
-						expr: expr
-						pos: pos
+					// handles $dbg directly without registering token
+					if p.peek_tok.lit == 'dbg' {
+						return p.dbg_stmt()
+					} else {
+						mut pos := p.tok.pos()
+						expr := p.expr(0)
+						pos.update_last_line(p.prev_tok.line_nr)
+						return ast.ExprStmt{
+							expr: expr
+							pos: pos
+						}
 					}
 				}
 				else {
@@ -1146,6 +1152,16 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		else {
 			return p.parse_multi_expr(is_top_level)
 		}
+	}
+}
+
+fn (mut p Parser) dbg_stmt() ast.DebuggerStmt {
+	pos := p.tok.pos()
+	p.check(.dollar)
+	p.check(.name)
+	p.register_auto_import('v.debug')
+	return ast.DebuggerStmt{
+		pos: pos
 	}
 }
 
@@ -2001,6 +2017,9 @@ fn (mut p Parser) check_for_impure_v(language ast.Language, pos token.Pos) {
 	}
 	if p.file_backend_mode != language {
 		if p.file_backend_mode == .v {
+			if p.pref.is_bare {
+				return
+			}
 			p.language_not_allowed_warning(language, pos)
 			return
 		}
@@ -2199,7 +2218,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	} else if !p.pref.translated && !p.is_translated && !p.pref.is_fmt && !p.pref.is_vet
 		&& tok.kind !in [.key_if, .key_match, .key_lock, .key_rlock, .key_select] {
 		for node in left {
-			if (is_top_level || p.tok.kind != .rcbr)
+			if (is_top_level || p.tok.kind !in [.comment, .rcbr])
 				&& node !in [ast.CallExpr, ast.PostfixExpr, ast.ComptimeCall, ast.SelectorExpr, ast.DumpExpr] {
 				is_complex_infix_expr := node is ast.InfixExpr
 					&& node.op in [.left_shift, .right_shift, .unsigned_right_shift, .arrow]
@@ -3665,14 +3684,16 @@ fn (mut p Parser) import_stmt() ast.Import {
 		p.error_with_pos('`import()` has been deprecated, use `import x` instead', pos)
 		return import_node
 	}
+	mut source_name := p.check_name()
 	mut mod_name_arr := []string{}
-	mod_name_arr << p.check_name()
+	mod_name_arr << source_name
 	if import_pos.line_nr != pos.line_nr {
 		p.error_with_pos('`import` statements must be a single line', pos)
 		return import_node
 	}
 	mut mod_alias := mod_name_arr[0]
 	import_node = ast.Import{
+		source_name: source_name
 		pos: import_pos.extend(pos)
 		mod_pos: pos
 		alias_pos: pos
@@ -3692,16 +3713,19 @@ fn (mut p Parser) import_stmt() ast.Import {
 		mod_name_arr << submod_name
 		mod_alias = submod_name
 		pos = pos.extend(submod_pos)
+		source_name = mod_name_arr.join('.')
 		import_node = ast.Import{
+			source_name: source_name
 			pos: import_pos.extend(pos)
 			mod_pos: pos
 			alias_pos: submod_pos
-			mod: util.qualify_import(p.pref, mod_name_arr.join('.'), p.file_name)
+			mod: util.qualify_import(p.pref, source_name, p.file_name)
 			alias: mod_alias
 		}
 	}
 	if mod_name_arr.len == 1 {
 		import_node = ast.Import{
+			source_name: source_name
 			pos: import_node.pos
 			mod_pos: import_node.mod_pos
 			alias_pos: import_node.alias_pos
@@ -3720,6 +3744,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 			return import_node
 		}
 		import_node = ast.Import{
+			source_name: source_name
 			pos: import_node.pos.extend(alias_pos)
 			mod_pos: import_node.mod_pos
 			alias_pos: alias_pos
@@ -3733,6 +3758,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 		initial_syms_pos = initial_syms_pos.extend(p.tok.pos())
 		import_node = ast.Import{
 			...import_node
+			source_name: source_name
 			syms_pos: initial_syms_pos
 			pos: import_node.pos.extend(initial_syms_pos)
 		}
@@ -3936,8 +3962,10 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 	}
 
 	mut is_markused := false
+	mut is_exported := false
 	for ga in attrs {
 		match ga.name {
+			'export' { is_exported = true }
 			'markused' { is_markused = true }
 			else {}
 		}
@@ -4019,6 +4047,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 			comments: comments
 			is_markused: is_markused
 			is_volatile: is_volatile
+			is_exported: is_exported
 		}
 		fields << field
 		p.table.global_scope.register(field)
@@ -4040,6 +4069,13 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 	}
 }
 
+fn source_name(name string) string {
+	if token.is_key(name) {
+		return '@${name}'
+	}
+	return name
+}
+
 fn (mut p Parser) enum_decl() ast.EnumDecl {
 	p.top_level_statement_start()
 	is_pub := p.tok.kind == .key_pub
@@ -4053,6 +4089,10 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		return ast.EnumDecl{}
 	}
 	enum_name := p.check_name()
+	if enum_name.len == 0 {
+		p.error_with_pos('enum names can not be empty', end_pos)
+		return ast.EnumDecl{}
+	}
 	if enum_name.len == 1 {
 		p.error_with_pos('single letter capital names are reserved for generic template types.',
 			end_pos)
@@ -4104,6 +4144,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		next_comments := p.eat_comments()
 		fields << ast.EnumField{
 			name: val
+			source_name: source_name(val)
 			pos: pos
 			expr: expr
 			has_expr: has_expr
@@ -4116,6 +4157,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	p.check(.rcbr)
 	is_flag := p.attrs.contains('flag')
 	is_multi_allowed := p.attrs.contains('_allow_multiple_values')
+	pubfn := if p.mod == 'main' { 'fn' } else { 'pub fn' }
 	if is_flag {
 		if fields.len > 64 {
 			p.error('when an enum is used as bit field, it must have a max of 64 fields')
@@ -4128,7 +4170,6 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 				return ast.EnumDecl{}
 			}
 		}
-		pubfn := if p.mod == 'main' { 'fn' } else { 'pub fn' }
 		all_bits_set_value := '0b' + '1'.repeat(fields.len)
 		p.codegen('
 //
@@ -4143,6 +4184,60 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 //
 ')
 	}
+	// Add the generic `Enum.from[T](x T) !T {` static method too:
+	mut isb := strings.new_builder(1024)
+	isb.write_string('\n')
+	if is_flag {
+		isb.write_string('@[inline] ${pubfn} ${enum_name}.zero() ${enum_name} {\n')
+		isb.write_string('		return unsafe{ ${enum_name}(0) }\n')
+		isb.write_string('}\n')
+	}
+	// TODO: see why changing `W` to `T` below, later fails `v vlib/vweb/tests/middleware_test_server.v` with seemingly unrelated error
+	isb.write_string('${pubfn} ${enum_name}.from[W](input W) !${enum_name} {\n')
+	isb.write_string('	\$if input is \$int {\n')
+	isb.write_string('		val := unsafe{ ${enum_name}(input) }\n')
+	if is_flag {
+		isb.write_string('		if input == 0 { return val }\n')
+	}
+	isb.write_string('		match val {\n')
+	for f in fields {
+		isb.write_string('			.${f.source_name} { return ${enum_name}.${f.source_name} }\n')
+	}
+	if is_flag {
+		isb.write_string('			else{}\n')
+	}
+	isb.write_string('		}\n')
+	isb.write_string('	}\n')
+	isb.write_string('	\$if input is \$string {\n')
+	isb.write_string('		val := input.str()\n') // TODO: this should not be needed, the `$if input is $string` above should have already smartcasted `input`
+	if is_flag {
+		isb.write_string('		if val == \'\' { return unsafe{ ${enum_name}(0) } }\n')
+	}
+	isb.write_string('		match val {\n')
+	for f in fields {
+		isb.write_string('			\'${f.name}\' { return ${enum_name}.${f.source_name} }\n')
+	}
+	isb.write_string('			else{}\n')
+	isb.write_string('		}\n')
+	isb.write_string('	}\n')
+	isb.write_string("	return error('invalid value')\n")
+	isb.write_string('}\n')
+	isb.write_string('\n')
+	code_for_from_fn := isb.str()
+	$if debug_enumcodegen ? {
+		if p.mod == 'main' {
+			dump(code_for_from_fn)
+		}
+	}
+	if enum_name[0].is_capital() && fields.len > 0 {
+		// TODO: this check is to prevent avoidable later stage checker errors for generated code,
+		// since currently there is no way to show the proper source context :-|.
+		if p.pref.backend == .c {
+			// TODO: improve the other backends, to the point where they can handle generics or comptime checks too
+			p.codegen(code_for_from_fn)
+		}
+	}
+
 	idx := p.table.register_sym(ast.TypeSymbol{
 		kind: .enum_
 		name: name

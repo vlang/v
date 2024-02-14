@@ -252,7 +252,7 @@ pub fn (mut cr RandomAccessReader) map_csv() ! {
 			// println("${i:-12d} of ${cr.f_len:-12d} readed: ${read_bytes_count}")
 			mut p1 := p
 			mut i1 := i64(0)
-			for i1 <= read_bytes_count {
+			for i1 < read_bytes_count {
 				// println("loop char: ${*&u8(p1):c}")
 				// manage quote char
 				if *p1 == cr.quote {
@@ -529,7 +529,7 @@ pub fn (mut cr RandomAccessReader) rows_count() !i64 {
 			// println("${i:-12d} of ${cr.f_len:-12d} readed: ${read_bytes_count}")
 			mut p1 := p
 			mut i1 := 0
-			for i1 <= read_bytes_count {
+			for i1 < read_bytes_count {
 				if *p1 == cr.end_line {
 					count++
 				}

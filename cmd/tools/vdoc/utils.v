@@ -30,26 +30,26 @@ fn get_node_id(dn doc.DocNode) string {
 }
 
 fn is_module_readme(dn doc.DocNode) bool {
-	if dn.comments.len > 0 && dn.content == 'module ${dn.name}' {
-		return true
-	}
-	return false
+	return dn.comments.len > 0 && dn.content == 'module ${dn.name}'
 }
 
-fn trim_doc_node_description(description string) string {
-	mut dn_description := description.replace_each(['\r\n', '\n', '"', '\\"'])
-	// 80 is enough to fill one line
-	if dn_description.len > 80 {
-		dn_description = dn_description[..80]
+fn trim_doc_node_description(desc string) string {
+	mut dn_desc := desc.replace_each(['\r\n', '\n', '"', '\\"'])
+	// Handle module READMEs.
+	if dn_desc.starts_with('## Description\n\n') {
+		dn_desc = dn_desc['## Description\n\n'.len..].all_before('\n')
+		if dn_desc.starts_with('`') && dn_desc.count('`') > 1 {
+			dn_desc = dn_desc.all_after('`').all_after('`').trim_left(' ')
+		}
+	} else {
+		dn_desc = dn_desc.all_before('\n')
 	}
-	if dn_description.contains('\n') {
-		dn_description = dn_description.split('\n')[0]
+	// 80 is enough to fill one line.
+	if dn_desc.len > 80 {
+		dn_desc = dn_desc[..80]
 	}
-	// if \ is last character, it ends with \" which leads to a JS error
-	if dn_description.ends_with('\\') {
-		dn_description = dn_description.trim_right('\\')
-	}
-	return dn_description
+	// If `\` is last character, it ends with `\"` which leads to a JS error.
+	return dn_desc.trim_string_right('\\')
 }
 
 fn set_output_type_from_str(format string) OutputType {

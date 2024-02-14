@@ -32,7 +32,7 @@ jobs:
         if: runner.os == 'Windows'
         run: cd vlang && ./make.bat && ./v doctor
       - name: Cache V
-        uses: actions/cache/save@v3
+        uses: actions/cache/save@v4
         with:
           path: vlang
           key: ${{ runner.os }}-${{ github.sha }}
@@ -62,7 +62,7 @@ jobs:
       VFLAGS: -cc ${{ matrix.cc }} -d network
     steps:
       - name: Restore V cache
-        uses: actions/cache/restore@v3
+        uses: actions/cache/restore@v4
         with:
           path: vlang
           key: ${{ runner.os }}-${{ github.sha }}

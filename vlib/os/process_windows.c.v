@@ -80,7 +80,7 @@ fn (mut p Process) win_spawn_process() int {
 		lp_reserved: unsafe { nil }
 		lp_desktop: unsafe { nil }
 		lp_title: unsafe { nil }
-		cb: sizeof(C.PROCESS_INFORMATION)
+		cb: sizeof(StartupInfo)
 	}
 	if p.use_stdio_ctl {
 		mut sa := SecurityAttributes{}
@@ -155,6 +155,10 @@ fn (mut p Process) win_resume_process() {
 fn (mut p Process) win_kill_process() {
 	wdata := unsafe { &WProcess(p.wdata) }
 	C.TerminateProcess(wdata.proc_info.h_process, 3)
+}
+
+fn (mut p Process) win_term_process() {
+	p.win_kill_process()
 }
 
 fn (mut p Process) win_kill_pgroup() {
@@ -277,6 +281,9 @@ fn (mut p Process) unix_stop_process() {
 }
 
 fn (mut p Process) unix_resume_process() {
+}
+
+fn (mut p Process) unix_term_process() {
 }
 
 fn (mut p Process) unix_kill_process() {

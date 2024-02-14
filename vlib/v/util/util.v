@@ -4,6 +4,9 @@
 module util
 
 import os
+import os.filelock
+import term
+import rand
 import time
 import v.pref
 import v.vmod
@@ -176,32 +179,75 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		}
 
 		current_work_dir := os.getwd()
-		retry_max_count := 3
-		for i in 0 .. retry_max_count {
-			// ensure a stable and known working folder, when compiling V's tools, to avoid module lookup problems:
-			os.chdir(vroot) or {}
-			tool_compilation := os.execute(compilation_command)
-			os.chdir(current_work_dir) or {}
-			if tool_compilation.exit_code == 0 {
-				break
-			} else {
-				if i == retry_max_count - 1 {
-					eprintln('cannot compile `${tool_source}`: \n${tool_compilation.output}')
-					exit(1)
+		tlog('recompiling ${tool_source}')
+		lockfile := tool_exe + '.lock'
+		tlog('lockfile: ${lockfile}')
+		mut l := filelock.new(lockfile)
+		if l.try_acquire() {
+			tlog('lockfile acquired')
+			tool_recompile_retry_max_count := 7
+			for i in 0 .. tool_recompile_retry_max_count {
+				tlog('looping i: ${i} / ${tool_recompile_retry_max_count}')
+				// ensure a stable and known working folder, when compiling V's tools, to avoid module lookup problems:
+				os.chdir(vroot) or {}
+				tool_compilation := os.execute(compilation_command)
+				os.chdir(current_work_dir) or {}
+				tlog('tool_compilation.exit_code: ${tool_compilation.exit_code}')
+				if tool_compilation.exit_code == 0 {
+					break
+				} else {
+					if i == tool_recompile_retry_max_count - 1 {
+						eprintln('cannot compile `${tool_source}`: ${tool_compilation.exit_code}\n${tool_compilation.output}')
+						l.release()
+						exit(1)
+					}
 				}
-				time.sleep(20 * time.millisecond)
+				time.sleep((20 + rand.intn(40) or { 0 }) * time.millisecond)
 			}
+			tlog('lockfile releasing')
+			l.release()
+			tlog('lockfile released')
+		} else {
+			tlog('another process got the lock')
+			// wait till the other V tool recompilation process finished:
+			if l.wait_acquire(10 * time.second) {
+				tlog('the other process finished')
+				l.release()
+			} else {
+				tlog('timeout...')
+			}
+			time.sleep((50 + rand.intn(40) or { 0 }) * time.millisecond)
+			tlog('result of the other process compiling ${tool_exe}: ${os.exists(tool_exe)}')
 		}
 	}
+	tlog('executing: ${tool_exe} with ${tool_args}')
 	$if windows {
-		exit(os.system('${os.quoted_path(tool_exe)} ${tool_args}'))
+		cmd_system('${os.quoted_path(tool_exe)} ${tool_args}')
 	} $else $if js {
 		// no way to implement os.execvp in JS backend
-		exit(os.system('${tool_exe} ${tool_args}'))
+		cmd_system('${tool_exe} ${tool_args}')
 	} $else {
-		os.execvp(tool_exe, args) or { panic(err) }
+		os.execvp(tool_exe, args) or {
+			eprintln('> error while executing: ${tool_exe} ${args}')
+			panic(err)
+		}
 	}
 	exit(2)
+}
+
+@[if trace_launch_tool ?]
+fn tlog(s string) {
+	ts := time.now().format_ss_micro()
+	eprintln('${term.yellow(ts)} ${term.gray(s)}')
+}
+
+@[noreturn]
+fn cmd_system(cmd string) {
+	res := os.system(cmd)
+	if res != 0 {
+		tlog('> error ${res}, while executing: ${cmd}')
+	}
+	exit(res)
 }
 
 // Note: should_recompile_tool/4 compares unix timestamps that have 1 second resolution
@@ -468,7 +514,7 @@ pub fn prepare_tool_when_needed(source_name string) {
 	stool := os.join_path(vroot, 'cmd', 'tools', source_name)
 	tool_name, tool_exe := tool_source2name_and_exe(stool)
 	if should_recompile_tool(vexe, stool, tool_name, tool_exe) {
-		time.sleep(1001 * time.millisecond) // TODO: remove this when we can get mtime with a better resolution
+		time.sleep((1001 + rand.intn(20) or { 0 }) * time.millisecond) // TODO: remove this when we can get mtime with a better resolution
 		recompile_file(vexe, stool)
 	}
 }

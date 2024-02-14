@@ -162,6 +162,7 @@ const skip_with_fsanitize_memory = [
 	'vlib/v/tests/orm_stmt_wrong_return_checking_test.v',
 	'vlib/v/tests/orm_table_name_test.v',
 	'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
+	'vlib/v/tests/orm_create_several_tables_test.v',
 	'vlib/vweb/tests/vweb_test.v',
 	'vlib/vweb/csrf/csrf_test.v',
 	'vlib/vweb/request_test.v',
@@ -173,6 +174,7 @@ const skip_with_fsanitize_memory = [
 	'vlib/net/smtp/smtp_test.v',
 	'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
 	'vlib/v/tests/fn_literal_type_test.v',
+	'vlib/x/sessions/tests/db_store_test.v',
 ]
 const skip_with_fsanitize_address = [
 	'do_not_remove',
@@ -185,6 +187,7 @@ const skip_with_fsanitize_address = [
 	'vlib/v/tests/orm_enum_test.v',
 	'vlib/v/tests/orm_sub_array_struct_test.v',
 	'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
+	'vlib/v/tests/orm_create_several_tables_test.v',
 ]
 const skip_with_fsanitize_undefined = [
 	'do_not_remove',
@@ -195,6 +198,7 @@ const skip_with_fsanitize_undefined = [
 	'vlib/v/tests/orm_enum_test.v',
 	'vlib/v/tests/orm_sub_array_struct_test.v',
 	'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
+	'vlib/v/tests/orm_create_several_tables_test.v',
 	'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v', // fails compilation with: undefined reference to vtable for __cxxabiv1::__function_type_info'
 ]
 const skip_with_werror = [
@@ -248,6 +252,7 @@ const skip_on_ubuntu_musl = [
 	'vlib/v/tests/orm_stmt_wrong_return_checking_test.v',
 	'vlib/v/tests/orm_table_name_test.v',
 	'vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v',
+	'vlib/v/tests/orm_create_several_tables_test.v',
 	'vlib/v/tests/sql_statement_inside_fn_call_test.v',
 	'vlib/clipboard/clipboard_test.v',
 	'vlib/vweb/tests/vweb_test.v',
@@ -264,8 +269,9 @@ const skip_on_ubuntu_musl = [
 	'vlib/net/smtp/smtp_test.v',
 	'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
 	'vlib/v/tests/fn_literal_type_test.v',
-	'vlib/vweb/x/tests/vweb_test.v',
-	'vlib/vweb/x/tests/vweb_app_test.v',
+	'vlib/x/sessions/tests/db_store_test.v',
+	'vlib/x/vweb/tests/vweb_test.v',
+	'vlib/x/vweb/tests/vweb_app_test.v',
 ]
 const skip_on_linux = [
 	'do_not_remove',
@@ -321,6 +327,8 @@ const skip_on_non_amd64_or_arm64 = [
 	'do_not_remove',
 	// closures aren't implemented yet:
 	'vlib/v/tests/closure_test.v',
+	// native aren't implemented:
+	'vlib/v/gen/native/tests/native_test.v',
 	'vlib/context/cancel_test.v',
 	'vlib/context/deadline_test.v',
 	'vlib/context/empty_test.v',
@@ -345,6 +353,7 @@ fn main() {
 	all_test_files << os.walk_ext(os.join_path(vroot, 'cmd'), '_test.v')
 	test_js_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.js.v')
 	all_test_files << test_js_files
+	all_test_files << os.walk_ext(os.join_path(vroot, 'vlib'), '_test.c.v')
 
 	if just_essential {
 		rooted_essential_list := essential_list.map(os.join_path(vroot, it))
@@ -352,6 +361,7 @@ fn main() {
 	}
 	testing.eheader(title)
 	mut tsession := testing.new_test_session(cmd_prefix, true)
+	tsession.exec_mode = .compile_and_run
 	tsession.files << all_test_files.filter(!it.contains('testdata' + os.path_separator))
 	tsession.skip_files << skip_test_files
 
@@ -435,7 +445,7 @@ fn main() {
 		tsession.skip_files << skip_on_ubuntu_musl
 	}
 	$if !amd64 && !arm64 {
-		tsession.skip_files << skip_on_non_amd64
+		tsession.skip_files << skip_on_non_amd64_or_arm64
 	}
 	$if amd64 {
 		tsession.skip_files << skip_on_amd64
@@ -464,6 +474,7 @@ fn main() {
 	$if !macos {
 		tsession.skip_files << skip_on_non_macos
 	}
+	tsession.skip_files = tsession.skip_files.map(os.abs_path)
 	tsession.test()
 	eprintln(tsession.benchmark.total_message(title))
 	if tsession.benchmark.nfail > 0 {

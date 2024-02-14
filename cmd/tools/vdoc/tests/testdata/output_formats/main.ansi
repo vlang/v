@@ -1,11 +1,11 @@
-Description:
+Description
 This is an example of a an .md file, used for adding more rich text
 documentation in a project or module.
 This is a link to the main V site.
 This is a bold text.
 This is a script console.log('hi from README.md'); .
-Examples:
-Processing command line args:
+Examples
+Processing command line args
 import os
 
 fn main() {
@@ -14,7 +14,7 @@ fn main() {
     assert os.args.len > 0
 }
 
-A JWT example (test syntax highlighting):
+A JWT example (test syntax highlighting)
 import crypto.hmac
 import crypto.sha256
 import encoding.base64
@@ -60,8 +60,7 @@ fn auth_verify(secret string, token string) bool {
     return hmac.equal(signature_from_token, signature_mirror)
 }
 [94mmodule[39m [32mmain[39m
-
-    ## Description:
+    ## Description
     
     This is an example of a an .md file, used for adding more rich text documentation in a project or module.
     
@@ -71,9 +70,10 @@ fn auth_verify(secret string, token string) bool {
     
     This is a script <script>console.log('hi from README.md');</script> .
     
-    ## Examples:
+    ## Examples
     
-    ### Processing command line args:
+    ### Processing command line args
+    
     
     ```v
     import os
@@ -85,7 +85,8 @@ fn auth_verify(secret string, token string) bool {
     }
     ```
     
-    ### A JWT example (test syntax highlighting):
+    ### A JWT example (test syntax highlighting)
+    
     ```v
     import crypto.hmac
     import crypto.sha256
@@ -133,6 +134,7 @@ fn auth_verify(secret string, token string) bool {
     }
     ```
     
+
 [94mconst[39m omega = [94m3[39m [90m// should be first[39m
 [94mconst[39m alpha = [94m5[39m [90m// should be in the middle[39m
 [94mconst[39m beta = [94m2[39m [90m// should be at the end[39m

@@ -331,8 +331,8 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	}
 
 	// macOS code can include objective C  TODO remove once objective C is replaced with C
-	if v.pref.os == .macos || v.pref.os == .ios {
-		if !ccoptions.is_cc_tcc && !user_darwin_ppc {
+	if v.pref.os in [.macos, .ios] {
+		if !ccoptions.is_cc_tcc && !user_darwin_ppc && !v.pref.is_bare && ccompiler != 'musl-gcc' {
 			ccoptions.source_args << '-x objective-c'
 		}
 	}
@@ -391,8 +391,9 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	if !v.pref.is_bare && v.pref.build_mode != .build_module
 		&& v.pref.os in [.linux, .freebsd, .openbsd, .netbsd, .dragonfly, .solaris, .haiku] {
 		if v.pref.os in [.freebsd, .netbsd] {
-			// Free/NetBSD: backtrace needs execinfo library while linking
+			// Free/NetBSD: backtrace needs execinfo library while linking, also execinfo depends on elf.
 			ccoptions.linker_flags << '-lexecinfo'
+			ccoptions.linker_flags << '-lelf'
 		}
 	}
 	ccoptions.env_cflags = os.getenv('CFLAGS')
@@ -974,8 +975,11 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 	v.pref.cache_manager.mod_save(mod, '.description.txt', obj_path, '${obj_path:-30} @ ${cmd}\n') or {
 		panic(err)
 	}
-	if res.output != '' {
-		println(res.output)
+	$if trace_thirdparty_obj_files ? {
+		if res.output != '' {
+			println(res.output)
+		}
+		println('>>> build_thirdparty_obj_files done')
 	}
 }
 

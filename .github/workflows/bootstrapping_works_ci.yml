@@ -18,7 +18,7 @@ jobs:
         || github.event.repository.full_name != 'vlang/v'
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-14]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     env:

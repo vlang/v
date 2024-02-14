@@ -198,13 +198,13 @@ fn test_left_and_right_shift() {
 	shift_digits_left(r, 1, mut r)
 	assert r == b
 
-	mut c := [u32(0xffffffff)]
+	mut c := [u32(0xffff_ffff)]
 	shift_digits_left(c, 16, mut c)
-	assert c == [u32(0xfffff0000), 0xffff]
+	assert c == [u32(0xffff_0000), 0xffff]
 	shift_digits_right(c, 8, mut c)
-	assert c == [u32(0xfffffff00), 0xff]
+	assert c == [u32(0xffff_ff00), 0xff]
 	shift_digits_right(c, 16, mut c)
-	assert c == [u32(0x00ffffff)]
+	assert c == [u32(0x00ff_ffff)]
 	shift_digits_right(c, 16, mut c)
 	assert c == [u32(0xff)]
 	shift_digits_right(c, 16, mut c)

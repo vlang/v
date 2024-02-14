@@ -7,14 +7,14 @@ for detailed description of the protocol, and a simple web browser client exampl
 
 ## Usage
 
-With SSE we want to keep the connection open, so we are able to 
+With SSE we want to keep the connection open, so we are able to
 keep sending events to the client. But if we hold the connection open indefinitely
-vweb isn't able to process any other requests. 
+vweb isn't able to process any other requests.
 
-We can let vweb know that it can continue processing other requests and that we will 
+We can let vweb know that it can continue processing other requests and that we will
 handle the connection ourself by calling `ctx.takeover_conn()` and and returning an empty result
 with `vweb.no_result()`. Vweb will not close the connection and we can handle
-the connection in a seperate thread.
+the connection in a separate thread.
 
 **Example:**
 ```v ignore
@@ -49,7 +49,7 @@ Javascript code:
 const eventSource = new EventSource('/sse');
 
 eventSource.addEventListener('message', (event) => {
-	console.log('received mesage:', event.data);
+	console.log('received message:', event.data);
 });
 
 eventSource.addEventListener('close', () => {

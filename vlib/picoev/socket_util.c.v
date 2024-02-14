@@ -110,16 +110,23 @@ fn listen(config Config) !int {
 
 	// Setting flags for socket
 	flag := 1
-	assert C.setsockopt(fd, C.SOL_SOCKET, C.SO_REUSEADDR, &flag, sizeof(int)) == 0
+	flag_zero := 0
+	net.socket_error(C.setsockopt(fd, C.SOL_SOCKET, C.SO_REUSEADDR, &flag, sizeof(int)))!
+
+	if config.family == .ip6 {
+		// set socket to dualstack so connections to both ipv4 and ipv6 addresses
+		// can be accepted
+		net.socket_error(C.setsockopt(fd, C.IPPROTO_IPV6, C.IPV6_V6ONLY, &flag_zero, sizeof(int)))!
+	}
 
 	$if linux {
 		// epoll socket options
-		assert C.setsockopt(fd, C.SOL_SOCKET, C.SO_REUSEPORT, &flag, sizeof(int)) == 0
-		assert C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_QUICKACK, &flag, sizeof(int)) == 0
-		assert C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_DEFER_ACCEPT, &config.timeout_secs,
-			sizeof(int)) == 0
+		net.socket_error(C.setsockopt(fd, C.SOL_SOCKET, C.SO_REUSEPORT, &flag, sizeof(int)))!
+		net.socket_error(C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_QUICKACK, &flag, sizeof(int)))!
+		net.socket_error(C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_DEFER_ACCEPT, &config.timeout_secs,
+			sizeof(int)))!
 		queue_len := max_queue
-		assert C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_FASTOPEN, &queue_len, sizeof(int)) == 0
+		net.socket_error(C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_FASTOPEN, &queue_len, sizeof(int)))!
 	}
 
 	// addr settings
@@ -128,12 +135,8 @@ fn listen(config Config) !int {
 	addr := addrs[0]
 	alen := addr.len()
 
-	net.socket_error_message(C.bind(fd, voidptr(&addr), alen), 'binding to ${saddr} failed') or {
-		panic(err)
-	}
-	net.socket_error_message(C.listen(fd, C.SOMAXCONN), 'listening on ${saddr} with maximum backlog pending queue of ${C.SOMAXCONN}, failed') or {
-		panic(err)
-	}
+	net.socket_error_message(C.bind(fd, voidptr(&addr), alen), 'binding to ${saddr} failed')!
+	net.socket_error_message(C.listen(fd, C.SOMAXCONN), 'listening on ${saddr} with maximum backlog pending queue of ${C.SOMAXCONN}, failed')!
 
 	setup_sock(fd) or {
 		config.err_cb(config.user_data, picohttpparser.Request{}, mut &picohttpparser.Response{},

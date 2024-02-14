@@ -1,8 +1,8 @@
-## Description:
+## Description
 
 `semver` is a library for processing versions, that use the [semver][semver] format.
 
-## Examples:
+## Examples
 
 ```v
 import semver

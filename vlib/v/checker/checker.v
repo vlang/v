@@ -3,6 +3,7 @@
 module checker
 
 import os
+import strconv
 import v.ast
 import v.vmod
 import v.token
@@ -626,10 +627,15 @@ fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 	for variant in node.variants {
 		c.ensure_type_exists(variant.typ, variant.pos)
 		sym := c.table.sym(variant.typ)
-		if variant.typ.is_ptr() {
+		if variant.typ.is_ptr() || (sym.info is ast.Alias && sym.info.parent_type.is_ptr()) {
 			variant_name := sym.name.all_after_last('.')
 			lb, rb := if sym.kind == .struct_ { '{', '}' } else { '(', ')' }
-			c.add_error_detail('declare the sum type with non-reference types: `${node.name} = ${variant_name} | ...`
+			msg := if sym.info is ast.Alias && sym.info.parent_type.is_ptr() {
+				'alias as non-reference type'
+			} else {
+				'the sum type with non-reference types'
+			}
+			c.add_error_detail('declare ${msg}: `${node.name} = ${variant_name} | ...`
 and use a reference to the sum type instead: `var := &${node.name}(${variant_name}${lb}val${rb})`')
 			c.error('sum type cannot hold a reference type', variant.pos)
 		}
@@ -1435,6 +1441,10 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			c.expr(mut node_expr)
 			name_type = node.expr.typ
 		}
+		ast.AsCast {
+			c.add_error_detail('for example `(${node.expr.expr} as ${c.table.type_to_str(node.expr.typ)}).${node.field_name}`')
+			c.error('indeterminate `as` cast, use parenthesis to clarity', node.expr.pos)
+		}
 		else {}
 	}
 	if name_type > 0 {
@@ -2000,6 +2010,7 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 			}
 		}
 		ast.NodeError {}
+		ast.DebuggerStmt {}
 		ast.AsmStmt {
 			c.asm_stmt(mut node)
 		}
@@ -2034,7 +2045,8 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 			for i, ident in node.defer_vars {
 				mut id := ident
 				if mut id.info is ast.IdentVar {
-					if id.comptime && id.name in ast.valid_comptime_not_user_defined {
+					if id.comptime && (id.tok_kind == .question
+						|| id.name in ast.valid_comptime_not_user_defined) {
 						node.defer_vars[i] = ast.Ident{
 							scope: unsafe { nil }
 							name: ''
@@ -2472,8 +2484,10 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			if node.kind == 'define' {
 				if !c.is_builtin_mod && !c.file.path.ends_with('.c.v')
 					&& !c.file.path.contains('vlib') {
-					c.error("#define can only be used in vlib (V's standard library) and *.c.v files",
-						node.pos)
+					if !c.pref.is_bare {
+						c.error("#define can only be used in vlib (V's standard library) and *.c.v files",
+							node.pos)
+					}
 				}
 			} else {
 				c.error('expected `#define`, `#flag`, `#include`, `#insert` or `#pkgconfig` not ${node.val}',
@@ -2651,8 +2665,11 @@ pub fn (mut c Checker) expr(mut node ast.Expr) ast.Type {
 					c.error('cannot cast `${expr_type_sym.name}` to `${addr}${type_sym.name}`',
 						node.pos)
 				}
-			} else if expr_type_sym.kind == .interface_ && type_sym.kind == .interface_ {
+			} else if expr_type_sym.kind == .interface_ {
 				c.ensure_type_exists(node.typ, node.pos)
+				if type_sym.kind != .interface_ {
+					c.type_implements(node.typ, node.expr_type, node.pos)
+				}
 			} else if node.expr_type.clear_flag(.option) != node.typ.clear_flag(.option) {
 				mut s := 'cannot cast non-sum type `${expr_type_sym.name}` using `as`'
 				if type_sym.kind == .sum_type {
@@ -3289,6 +3306,33 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			}
 			c.error(error_msg, node.pos)
 		}
+	} else if to_type.is_int() && mut node.expr is ast.IntegerLiteral {
+		tt := c.table.type_to_str(to_type)
+		tsize, _ := c.table.type_size(to_type.idx())
+		bit_size := tsize * 8
+		value_string := match node.expr.val[0] {
+			`-`, `+` {
+				node.expr.val[1..]
+			}
+			else {
+				node.expr.val
+			}
+		}
+		_, e := strconv.common_parse_uint2(value_string, 0, bit_size)
+		match e {
+			0 {}
+			-3 {
+				c.error('value `${node.expr.val}` overflows `${tt}`', node.pos)
+			}
+			else {
+				c.error('cannot cast value `${node.expr.val}` to `${tt}`', node.pos)
+			}
+		}
+	} else if to_type.is_float() && mut node.expr is ast.FloatLiteral {
+		tt := c.table.type_to_str(to_type)
+		strconv.atof64(node.expr.val) or {
+			c.error('cannot cast value `${node.expr.val}` to `${tt}`', node.pos)
+		}
 	}
 	if from_sym.language == .v && !from_type.is_ptr()
 		&& final_from_sym.kind in [.sum_type, .interface_]
@@ -3883,7 +3927,7 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 					orig_type = expr.obj.typ
 				}
 				is_inherited = expr.obj.is_inherited
-				ct_type_var = if is_comptime && expr.obj.ct_type_var != .no_comptime {
+				ct_type_var = if is_comptime {
 					.smartcast
 				} else {
 					.no_comptime

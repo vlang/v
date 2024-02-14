@@ -79,6 +79,7 @@ pub type Stmt = AsmStmt
 	| BranchStmt
 	| ComptimeFor
 	| ConstDecl
+	| DebuggerStmt
 	| DeferStmt
 	| EmptyStmt
 	| EnumDecl
@@ -497,6 +498,8 @@ pub enum StructInitKind {
 // import statement
 pub struct Import {
 pub:
+	source_name string // The original name in the source, `import abc.def` -> 'abc.def', *no matter* how the module is resolved
+	//
 	mod       string // the module name of the import
 	alias     string // the `x` in `import xxx as x`
 	pos       token.Pos
@@ -570,6 +573,7 @@ pub mut:
 	params            []Param
 	stmts             []Stmt
 	defer_stmts       []DeferStmt
+	trace_fns         map[string]FnTrace
 	return_type       Type
 	return_type_pos   token.Pos // `string` in `fn (u User) name() string` position
 	has_return        bool
@@ -604,6 +608,18 @@ pub fn (f &FnDecl) new_method_with_receiver_type(new_type_ Type) FnDecl {
 		new_method.params[0].typ = new_type
 		return *new_method
 	}
+}
+
+@[minify]
+pub struct FnTrace {
+pub mut:
+	name string
+pub:
+	file        string
+	line        i64
+	return_type Type
+	func        &Fn = unsafe { nil }
+	is_fn_var   bool
 }
 
 @[minify]
@@ -864,8 +880,9 @@ pub:
 	has_expr    bool
 	pos         token.Pos
 	typ_pos     token.Pos
-	is_markused bool // an explicit `[markused]` tag; the global will NOT be removed by `-skip-unused`
+	is_markused bool // an explicit `@[markused]` tag; the global will NOT be removed by `-skip-unused`
 	is_volatile bool
+	is_exported bool // an explicit `@[export]` tag; the global will NOT be removed by `-skip-unused`
 pub mut:
 	expr     Expr
 	typ      Type
@@ -1332,7 +1349,8 @@ pub mut:
 // enum field in enum declaration
 pub struct EnumField {
 pub:
-	name          string
+	name          string // just `lock`, or `abc`, etc, no matter if the name is a keyword or not.
+	source_name   string // The name in the source, for example `@lock`, and `abc`. Note that `lock` is a keyword in V.
 	pos           token.Pos
 	comments      []Comment // comment after Enumfield in the same line
 	next_comments []Comment // comments between current EnumField and next EnumField
@@ -1502,12 +1520,16 @@ pub:
 	comments  [][]Comment // comments after key-value pairs
 	pre_cmnts []Comment   // comments before the first key-value pair
 pub mut:
-	keys       []Expr
-	vals       []Expr
-	val_types  []Type
-	typ        Type
-	key_type   Type
-	value_type Type
+	keys                 []Expr
+	vals                 []Expr
+	val_types            []Type
+	typ                  Type
+	key_type             Type
+	value_type           Type
+	has_update_expr      bool // has `...a`
+	update_expr          Expr // `a` in `...a`
+	update_expr_pos      token.Pos
+	update_expr_comments []Comment
 }
 
 // s[10..20]
@@ -1715,6 +1737,11 @@ pub const riscv_with_number_register_list = {
 	't#': 3
 	's#': 12
 	'a#': 8
+}
+
+pub struct DebuggerStmt {
+pub:
+	pos token.Pos
 }
 
 // `assert a == 0, 'a is zero'`

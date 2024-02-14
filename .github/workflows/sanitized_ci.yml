@@ -83,7 +83,7 @@ jobs:
       VJOBS: 1
       VTEST_SHOW_START: 1
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -108,7 +108,7 @@ jobs:
       VJOBS: 1
       VTEST_SHOW_START: 1
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
           sudo apt update
@@ -132,7 +132,7 @@ jobs:
       VJOBS: 1
       VTEST_SHOW_START: 1
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
           sudo apt update
@@ -161,7 +161,7 @@ jobs:
       VJOBS: 1
       VTEST_SHOW_START: 1
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Build
         run: |
           echo %VFLAGS%
@@ -190,7 +190,7 @@ jobs:
       VJOBS: 1
       VTEST_SHOW_START: 1
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
           sudo apt update
@@ -219,7 +219,7 @@ jobs:
       VJOBS: 1
       VTEST_SHOW_START: 1
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
           sudo apt update

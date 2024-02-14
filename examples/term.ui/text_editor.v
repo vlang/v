@@ -629,6 +629,12 @@ fn event(e &tui.Event, mut a App) {
 	}
 }
 
+type InitFn = fn (voidptr)
+
+type EventFn = fn (&tui.Event, voidptr)
+
+type FrameFn = fn (voidptr)
+
 fn main() {
 	mut files := []string{}
 	if os.args.len > 1 {
@@ -639,9 +645,9 @@ fn main() {
 	}
 	a.tui = tui.init(
 		user_data: a
-		init_fn: init
-		frame_fn: frame
-		event_fn: event
+		init_fn: InitFn(init)
+		frame_fn: FrameFn(frame)
+		event_fn: EventFn(event)
 		capture_events: true
 	)
 	a.tui.run()!

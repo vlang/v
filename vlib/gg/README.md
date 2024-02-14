@@ -1,11 +1,11 @@
-## Description:
+## Description
 
 `gg` is V's simple graphics module.
 It is currently implemented using `sokol`, and makes easy creating
 apps that just need a way to draw simple 2D shapes, and to react to
 user's keyboard/mouse input.
 
-## Example:
+## Example
 
 ```v cgen
 module main

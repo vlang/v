@@ -1,17 +1,14 @@
 name: Test prebuilt binaries
+
 on:
   release:
     types: [edited, published]
+
 jobs:
   ubuntu:
     runs-on: ubuntu-20.04
     timeout-minutes: 5
     steps:
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install --quiet -y postgresql libpq-dev libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-        ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
     - name: Download V
       run: |
         tag=${GITHUB_REF##*/}
@@ -25,14 +22,9 @@ jobs:
         ./v run examples/hello_world.v
 
   macos-x86_64:
-    runs-on: macOS-latest
+    runs-on: macos-latest
     timeout-minutes: 5
     steps:
-    - name: Install dependencies
-      run: |
-        brew install freetype glfw openssl
-        # brew install sdl2 sdl2_ttf sdl2_mixer sdl2_image
-        export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
     - name: Download V
       run: |
         tag=${GITHUB_REF##*/}
@@ -44,10 +36,6 @@ jobs:
       run: |
         cd v
         ./v run examples/hello_world.v
-
-  # NOTE: we cannot currently test the macos arm64 build without a apple silicon runner
-  # the arm64 release is cross compiled from intel. the apple silicon hosted runner is
-  # only currently available on the macos-latest-xlarge plan, not on the free plans.
 
   windows:
     runs-on: windows-latest

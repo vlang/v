@@ -15,7 +15,7 @@ A message like `[Vweb] Running app on http://localhost:3001/` should appear
 
 # To implement new benchmarks in v
 
-In `examples/js_dom_draw_bechmark_chart/v_vweb_orm/src/main.v` path
+In `examples/js_dom_draw_benchmark_chart/v_vweb_orm/src/main.v` path
 Create a route returning a `Response` struct like:
 
 ```v ignore

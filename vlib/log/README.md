@@ -1,16 +1,18 @@
-## Description:
+## Description
 
 `log` provides your application logging services.
 You can log to file or to the console and use different
 logging levels, so that you are not overwhelmed by the logs.
 
-## Basic usage:
+## Basic usage
+
 The log module creates a default Log instance by default, and
 provides utility functions, that you can use to access it.
 Note: the default Log instance is thread safe.
 
 That makes it very convenient to use in subsystems, without having
 to thread a log instance everywhere:
+
 ```v
 import log
 
@@ -30,9 +32,11 @@ log.debug('a debug message')
 abc()
 ```
 
-## Advanced usage:
+## Advanced usage
+
 You can also create your own log instances, with different options
 applied to them:
+
 ```v
 import log
 
