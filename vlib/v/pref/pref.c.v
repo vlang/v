@@ -8,7 +8,7 @@ import os.cmdline
 import os
 import v.vcache
 import rand
-// import net.http // TODO can't use net.http on arm maccs: bignum.c arm asm error
+import net.http
 
 pub enum BuildMode {
 	// `v program.v'
@@ -901,8 +901,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					so_url := 'https://github.com/vlang/photonbin/raw/master/photonwrapper_${os.user_os()}_${arch}.so'
 					if !os.exists(so_path) {
 						println('coroutines .so not found, downloading...')
-						// http.download_file(so_url, so_path) or { panic(err) }
-						os.execute_or_panic('wget -O "${so_path}" "${so_url}"')
+						http.download_file(so_url, so_path) or {
+							panic('error downloading ${so_url}')
+						}
 						println('done!')
 					}
 					res.compile_defines << 'is_coroutine'
