@@ -36,6 +36,51 @@ const curly_open_rune = `{`
 
 const curly_close_rune = `}`
 
+// encode is a generic function that encodes a type into a JSON string.
+pub fn encode[T](val T) string {
+	$if T is $array {
+		return encode_array(val)
+	} $else {
+		mut buf := []u8{}
+
+		defer {
+			unsafe { buf.free() }
+		}
+		encoder := Encoder{}
+
+		encoder.encode_value(val, mut buf) or {
+			println(err)
+			encoder.encode_value[string]('null', mut buf) or {}
+		}
+
+		return buf.bytestr()
+	}
+}
+
+// encode_array is a generic function that encodes a array into a JSON string.
+fn encode_array[T](val []T) string {
+	mut buf := []u8{}
+
+	defer {
+		unsafe { buf.free() }
+	}
+
+	encoder := Encoder{}
+	encoder.encode_array(val, 1, mut buf) or {
+		println(err)
+		encoder.encode_value[string]('null', mut buf) or {}
+	}
+
+	return buf.bytestr()
+}
+
+// encode_pretty ...
+pub fn encode_pretty[T](typed_data T) string {
+	encoded := encode(typed_data)
+	raw_decoded := raw_decode(encoded) or { 0 }
+	return raw_decoded.prettify_json_str()
+}
+
 // encode_value encodes a value to the specific buffer.
 pub fn (e &Encoder) encode_value[T](val T, mut buf []u8) ! {
 	e.encode_value_with_level[T](val, 1, mut buf)!

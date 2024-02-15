@@ -5,7 +5,7 @@
 // Chacha20 symetric key stream cipher encryption based on RFC 8439
 module chacha20
 
-import math
+import math.bits
 import crypto.cipher
 import crypto.internal.subtle
 import encoding.binary
@@ -161,7 +161,7 @@ pub fn (mut c Cipher) reset() {
 
 // set_counter sets Cipher's counter
 pub fn (mut c Cipher) set_counter(ctr u32) {
-	if ctr == math.max_u32 {
+	if ctr >= max_u32 {
 		c.overflow = true
 	}
 	if c.overflow {
@@ -323,11 +323,78 @@ fn (mut c Cipher) generic_key_stream() {
 	c.chacha20_block()
 	// updates counter and checks for overflow
 	ctr := u64(c.counter) + u64(1)
-	if ctr == math.max_u32 {
+	if ctr >= max_u32 {
 		c.overflow = true
 	}
-	if c.overflow || ctr > math.max_u32 {
+	if c.overflow || ctr > max_u32 {
 		panic('counter overflow')
 	}
 	c.counter += 1
+}
+
+// Helper and core function for ChaCha20
+
+// quarter_round is the basic operation of the ChaCha algorithm. It operates
+// on four 32-bit unsigned integers, by performing AXR (add, xor, rotate)
+// operation on this quartet u32 numbers.
+fn quarter_round(a u32, b u32, c u32, d u32) (u32, u32, u32, u32) {
+	// The operation is as follows (in C-like notation):
+	// where `<<<=` denotes bits rotate left operation
+	// a += b; d ^= a; d <<<= 16;
+	// c += d; b ^= c; b <<<= 12;
+	// a += b; d ^= a; d <<<= 8;
+	// c += d; b ^= c; b <<<= 7;
+
+	mut ax := a
+	mut bx := b
+	mut cx := c
+	mut dx := d
+
+	ax += bx
+	dx ^= ax
+	dx = bits.rotate_left_32(dx, 16)
+
+	cx += dx
+	bx ^= cx
+	bx = bits.rotate_left_32(bx, 12)
+
+	ax += bx
+	dx ^= ax
+	dx = bits.rotate_left_32(dx, 8)
+
+	cx += dx
+	bx ^= cx
+	bx = bits.rotate_left_32(bx, 7)
+
+	return ax, bx, cx, dx
+}
+
+// encrypt_with_counter encrypts plaintext with internal counter set to ctr
+fn encrypt_with_counter(key []u8, nonce []u8, ctr u32, plaintext []u8) ![]u8 {
+	if key.len != chacha20.key_size {
+		return error('bad key size')
+	}
+	if nonce.len == chacha20.x_nonce_size {
+		ciphertext := xchacha20_encrypt_with_counter(key, nonce, ctr, plaintext)!
+		return ciphertext
+	}
+	if nonce.len == chacha20.nonce_size {
+		ciphertext := chacha20_encrypt_with_counter(key, nonce, ctr, plaintext)!
+		return ciphertext
+	}
+	return error('Wrong nonce size')
+}
+
+fn chacha20_encrypt(key []u8, nonce []u8, plaintext []u8) ![]u8 {
+	return chacha20_encrypt_with_counter(key, nonce, u32(0), plaintext)
+}
+
+fn chacha20_encrypt_with_counter(key []u8, nonce []u8, ctr u32, plaintext []u8) ![]u8 {
+	mut c := new_cipher(key, nonce)!
+	c.set_counter(ctr)
+	mut out := []u8{len: plaintext.len}
+
+	c.xor_key_stream(mut out, plaintext)
+
+	return out
 }
