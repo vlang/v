@@ -1162,6 +1162,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		} else {
 			func.params[i]
 		}
+		// registers if the arg must be passed by ref to disable auto deref args
+		call_arg.should_be_ptr = param.typ.is_ptr() && !param.is_mut
 		if func.is_variadic && call_arg.expr is ast.ArrayDecompose {
 			if i > func.params.len - 1 {
 				c.error('too many arguments in call to `${func.name}`', node.pos)
@@ -1969,6 +1971,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					} else {
 						info.func.params[i]
 					}
+					// registers if the arg must be passed by ref to disable auto deref args
+					arg.should_be_ptr = param.typ.is_ptr() && !param.is_mut
 					if c.table.sym(param.typ).kind == .interface_ {
 						// cannot hide interface expected type to make possible to pass its interface type automatically
 						earg_types << if targ.idx() != param.typ.idx() { param.typ } else { targ }
