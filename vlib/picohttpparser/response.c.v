@@ -1,5 +1,7 @@
 module picohttpparser
 
+#include <sys/socket.h>
+
 pub struct Response {
 pub:
 	fd        int
@@ -104,6 +106,8 @@ pub fn (mut r Response) http_500() {
 pub fn (mut r Response) raw(response string) {
 	r.write_string(response)
 }
+
+fn C.send(sockfd int, buf voidptr, len usize, flags int) int
 
 @[inline]
 pub fn (mut r Response) end() int {
