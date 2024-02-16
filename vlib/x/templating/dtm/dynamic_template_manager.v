@@ -94,7 +94,7 @@ mut:
 	threads_handler []thread = []thread{}
 	// This channel used only for CI. Allows to check during CI tests in case of slowness in the creation/management of the cache to allow enough time for it to be done
 	is_ready chan bool = chan bool{cap: 5}
-	// If, despite the synchronization attempt during the cache handler tests, nothing happens, then we cancel the tests targeting the cached data.
+	// If despite the synchronization attempt during the cache handler tests nothing happens, cancel the tests targeting the cached data
 	abort_test bool
 }
 
