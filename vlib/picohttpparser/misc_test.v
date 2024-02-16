@@ -1,7 +1,5 @@
 module picohttpparser
 
-import math
-
 // Test various values under 10,000
 pub fn test_u64toa_small_values() {
 	for v in [u64(0), 1, 10, 99, 100, 999, 1000, 9999] {
