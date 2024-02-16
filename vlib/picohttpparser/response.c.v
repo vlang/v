@@ -1,6 +1,8 @@
 module picohttpparser
 
-#include <sys/socket.h>
+$if !windows {
+	#include <sys/socket.h>
+}
 
 pub struct Response {
 pub:
