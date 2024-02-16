@@ -298,7 +298,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 
 			orig_fn_args := call_fn.func.params.map(it.name).join(', ')
 			add_trace_hook := g.pref.is_trace
-				&& call_fn.name !in ['v.debug.add_after_call', 'v.debug.add_before_call']
+				&& call_fn.name !in ['v.debug.add_after_call', 'v.debug.add_before_call', 'v.debug.remove_after_call', 'v.debug.remove_before_call']
 			if g.pref.is_callstack {
 				if g.cur_fn.is_method || g.cur_fn.is_static_type_method {
 					g.writeln('\tarray_push((array*)&g_callstack, _MOV((v__debug__FnTrace[]){ ((v__debug__FnTrace){.name = _SLIT("${g.table.type_to_str(g.cur_fn.receiver.typ)}.${g.cur_fn.name.all_after_last('__static__')}"),.file = _SLIT("${call_fn.file}"),.line = ${call_fn.line},}) }));')
