@@ -8,8 +8,8 @@ __global counter = HookCounter{}
 
 struct HookCounter {
 pub mut:
-	after  int = 0
-	before int = 0
+	after  int
+	before int
 }
 
 @[heap]
@@ -34,18 +34,30 @@ fn test_call() {
 	time.sleep(100)
 }
 
+fn hook_before(fn_name string) {
+	counter.before++
+}
+
+fn hook_after(fn_name string) {
+	counter.after++
+}
+
 fn test_main() {
 	counter = HookCounter{}
 	mut myprofiler := Profiler{}
-	id_callback := debug.add_after_call(myprofiler.trace_after)
-	id_callback2 := debug.add_before_call(myprofiler.trace_before)
+	hook1 := debug.add_after_call(myprofiler.trace_after)
+	hook2 := debug.add_before_call(myprofiler.trace_before)
+	hook3 := debug.add_before_call(hook_before)
+	hook4 := debug.add_after_call(hook_after)
 	test_call()
-	debug.remove_after_call(id_callback)
-	debug.remove_before_call(id_callback2)
+	debug.remove_after_call(hook1)
+	debug.remove_before_call(hook2)
+	debug.remove_before_call(hook3)
+	debug.remove_after_call(hook4)
 	test_call()
 	$if trace ? {
-		assert counter.before == 2
-		assert counter.after == 2
+		assert counter.before == 4
+		assert counter.after == 4
 	} $else {
 		assert counter.before == 0
 		assert counter.after == 0

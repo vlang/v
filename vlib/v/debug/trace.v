@@ -37,30 +37,32 @@ fn before_call_hook(fn_name string) {
 
 // add_after_call adds a fn hook to after hook list and returns its id
 @[inline]
-pub fn add_after_call(func &HookFnCall) int {
+pub fn add_after_call(func &HookFnCall) &HookFnCall {
 	g_trace.trace_after_call << func
-	return g_trace.trace_after_call.len - 1
+	return unsafe { func }
 }
 
 // add_before_call adds a fn hook to before hook list and return its id
 @[inline]
-pub fn add_before_call(func &HookFnCall) int {
+pub fn add_before_call(func &HookFnCall) &HookFnCall {
 	g_trace.trace_before_call << func
-	return g_trace.trace_before_call.len - 1
+	return unsafe { func }
 }
 
 // remove_after_call removes a fn hook from after hook list by its idx
 @[inline]
-pub fn remove_after_call(callback_idx int) {
-	if g_trace.trace_after_call.len > callback_idx {
-		g_trace.trace_after_call.delete(callback_idx)
+pub fn remove_after_call(func &HookFnCall) {
+	idx := g_trace.trace_after_call.index(func)
+	if idx != -1 {
+		g_trace.trace_after_call.delete(idx)
 	}
 }
 
 // remove_before_call removes a fn hook from before hook list by its idx
 @[inline]
-pub fn remove_before_call(callback_idx int) {
-	if g_trace.trace_before_call.len > callback_idx {
-		g_trace.trace_before_call.delete(callback_idx)
+pub fn remove_before_call(func &HookFnCall) {
+	idx := g_trace.trace_before_call.index(func)
+	if idx != -1 {
+		g_trace.trace_before_call.delete(idx)
 	}
 }
