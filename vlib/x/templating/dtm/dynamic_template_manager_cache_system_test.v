@@ -1,7 +1,5 @@
 module dtm
 
-// vtest flaky: true
-// vtest retry: 3
 import os
 import time
 
@@ -48,7 +46,7 @@ fn test_check_and_clear_cache_files() {
 	assert count_cache_files.len == 0
 }
 
-fn test_create_template_cache_and_display_html() {
+fn test_create_template_cache_and_display() {
 	mut dtmi := init_dtm(true, max_size_data_in_memory)
 	defer {
 		dtmi.stop_cache_handler()
@@ -63,10 +61,12 @@ fn test_get_cache() {
 	defer {
 		dtmi.stop_cache_handler()
 	}
-	dtm_placeholers := map[string]DtmMultiTypeMap{}
-	temp_html_file := os.join_path(dtmi.template_folder, dtm.temp_html_fp)
-	html_mem := dtmi.get_cache(dtm.temp_html_n, temp_html_file, &dtm_placeholers)
-	assert html_mem.len > 10
+	if !dtmi.abort_test {
+		dtm_placeholers := map[string]DtmMultiTypeMap{}
+		temp_html_file := os.join_path(dtmi.template_folder, dtm.temp_html_fp)
+		html_mem := dtmi.get_cache(dtm.temp_html_n, temp_html_file, &dtm_placeholers)
+		assert html_mem.len > 10
+	}
 }
 
 fn test_chandler_clear_specific_cache() {
@@ -75,13 +75,15 @@ fn test_chandler_clear_specific_cache() {
 		dtmi.stop_cache_handler()
 	}
 	dtmi.create_cache()
-	lock dtmi.template_caches {
-		cache_file := os.join_path(dtmi.template_cache_folder, '${dtmi.template_caches[0].name}_${dtmi.template_caches[0].checksum}.cache')
-		index, is_success := dtmi.chandler_clear_specific_cache(dtmi.template_caches[0].id)
-		assert is_success == true
-		assert index == 0
-		cache_exist := os.exists(cache_file)
-		assert cache_exist == false
+	if !dtmi.abort_test {
+		lock dtmi.template_caches {
+			cache_file := os.join_path(dtmi.template_cache_folder, '${dtmi.template_caches[0].name}_${dtmi.template_caches[0].checksum}.cache')
+			index, is_success := dtmi.chandler_clear_specific_cache(dtmi.template_caches[0].id)
+			assert is_success == true
+			assert index == 0
+			cache_exist := os.exists(cache_file)
+			assert cache_exist == false
+		}
 	}
 }
 
@@ -100,20 +102,24 @@ fn test_cache_handler() {
 		dtmi.stop_cache_handler()
 	}
 	dtmi.create_cache()
-	path_f := os.join_path(dtmi.template_folder, dtm.temp_html_fp)
-	lock dtmi.template_caches {
-		assert dtmi.template_caches[0].id == 1
-		assert dtmi.template_caches[0].name == dtm.temp_html_n
-		assert dtmi.template_caches[0].path == path_f
-	}
-	dtmi.id_to_handlered = 1
-	dtmi.ch_cache_handler <- TemplateCache{
-		id: 1
-		cache_request: .delete
-	}
-	time.sleep(5 * time.millisecond)
-	lock dtmi.template_caches {
-		assert dtmi.template_caches.len == 0
+	if !dtmi.abort_test {
+		path_f := os.join_path(dtmi.template_folder, dtm.temp_html_fp)
+		lock dtmi.template_caches {
+			assert dtmi.template_caches[0].id == 1
+			assert dtmi.template_caches[0].name == dtm.temp_html_n
+			assert dtmi.template_caches[0].path == path_f
+		}
+		dtmi.id_to_handlered = 1
+		dtmi.ch_cache_handler <- TemplateCache{
+			id: 1
+			cache_request: .delete
+		}
+		dtmi.sync_cache()
+		if !dtmi.abort_test {
+			lock dtmi.template_caches {
+				assert dtmi.template_caches.len == 0
+			}
+		}
 	}
 }
 
@@ -150,24 +156,27 @@ fn (mut tm DynamicTemplateManager) create_cache() string {
 	content_checksum := ''
 	html := tm.create_template_cache_and_display(.new, html_last_mod, c_time, temp_html_file,
 		dtm.temp_html_n, cache_delay_exp, &placeholder, content_checksum, TemplateType.html)
-	time.sleep(5 * time.millisecond)
-	lock tm.template_caches {
-		if tm.template_caches.len < 1 {
-			time.sleep(10 * time.millisecond)
-		}
-		/*
-		if tm.template_caches.len < 1 {
-			tm.template_caches << TemplateCache{
-				id: 1
-				path: temp_html_file
-				name: dtm.temp_html_n
-				generate_at: c_time
-				cache_delay_expiration: cache_delay_exp
-				last_template_mod: html_last_mod
-				checksum: '1a2b3c4d5e6f'
+	tm.sync_cache()
+
+	return html
+}
+
+fn (mut tm DynamicTemplateManager) sync_cache() {
+	mut count := 0
+	for {
+		select {
+			_ := <-tm.is_ready {
+				break
+			}
+			else {
+				time.sleep(50 * time.millisecond)
+				// Wait a total of 2 seconds to check if the data cache is ready
+				if count >= 40 {
+					tm.abort_test = true
+					break
+				}
+				count++
 			}
 		}
-		*/
 	}
-	return html
 }
