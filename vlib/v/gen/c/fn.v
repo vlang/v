@@ -975,8 +975,16 @@ fn (mut g Gen) gen_arg_from_type(node_type ast.Type, node ast.Expr) {
 
 fn (mut g Gen) gen_map_method_call(node ast.CallExpr, left_type ast.Type, left_sym ast.TypeSymbol) bool {
 	match node.name {
-		'clear' {
-			g.write('map_clear(')
+		'reserve' {
+			g.write('map_reserve(')
+			g.gen_arg_from_type(left_type, node.left)
+			g.write(', ')
+			g.expr(node.args[0].expr)
+			g.write(')')
+			return true
+		}
+		'free', 'clear' {
+			g.write('map_${node.name}(')
 			g.gen_arg_from_type(left_type, node.left)
 			g.write(')')
 			return true
@@ -2267,6 +2275,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 		if is_variadic && i == expected_types.len - 1 {
 			break
 		}
+		mut is_smartcast := false
 		if arg.expr is ast.Ident {
 			if arg.expr.obj is ast.Var {
 				if arg.expr.obj.smartcasts.len > 0 {
@@ -2279,6 +2288,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 						if cast_sym.info is ast.Aggregate {
 							expected_types[i] = cast_sym.info.types[g.aggregate_type_idx]
 						}
+						is_smartcast = true
 					}
 				}
 			}
@@ -2314,7 +2324,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 					g.write('/*autofree arg*/' + name)
 				}
 			} else {
-				g.ref_or_deref_arg(arg, expected_types[i], node.language)
+				g.ref_or_deref_arg(arg, expected_types[i], node.language, is_smartcast)
 			}
 		} else {
 			if use_tmp_var_autofree {
@@ -2385,7 +2395,8 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 					noscan := g.check_noscan(arr_info.elem_type)
 					g.write('new_array_from_c_array${noscan}(${variadic_count}, ${variadic_count}, sizeof(${elem_type}), _MOV((${elem_type}[${variadic_count}]){')
 					for j in arg_nr .. args.len {
-						g.ref_or_deref_arg(args[j], arr_info.elem_type, node.language)
+						g.ref_or_deref_arg(args[j], arr_info.elem_type, node.language,
+							false)
 						if j < args.len - 1 {
 							g.write(', ')
 						}
@@ -2412,7 +2423,7 @@ fn (mut g Gen) keep_alive_call_pregen(node ast.CallExpr) int {
 		expected_type := node.expected_arg_types[i]
 		typ := g.table.sym(expected_type).cname
 		g.write('${typ} __tmp_arg_${tmp_cnt_save + i} = ')
-		g.ref_or_deref_arg(arg, expected_type, node.language)
+		g.ref_or_deref_arg(arg, expected_type, node.language, false)
 		g.writeln(';')
 	}
 	g.empty_line = false
@@ -2429,7 +2440,7 @@ fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 }
 
 @[inline]
-fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang ast.Language) {
+fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang ast.Language, is_smartcast bool) {
 	arg_typ := if arg.expr is ast.ComptimeSelector {
 		g.unwrap_generic(g.comptime.get_comptime_var_type(arg.expr))
 	} else {
@@ -2544,7 +2555,10 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 			}
 		}
 	}
+	// check if the argument must be dereferenced or not
+	g.arg_no_auto_deref = is_smartcast && !arg_is_ptr && !exp_is_ptr && arg.should_be_ptr
 	g.expr_with_cast(arg.expr, arg_typ, expected_type)
+	g.arg_no_auto_deref = false
 	if needs_closing {
 		g.write(')')
 	}

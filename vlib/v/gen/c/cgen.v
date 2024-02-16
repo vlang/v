@@ -212,6 +212,7 @@ mut:
 	// where an aggregate (at least two types) is generated
 	// sum type deref needs to know which index to deref because unions take care of the correct field
 	aggregate_type_idx  int
+	arg_no_auto_deref   bool   // smartcast must not be dereferenced
 	branch_parent_pos   int    // used in BranchStmt (continue/break) for autofree stop position
 	returned_var_name   string // to detect that a var doesn't need to be freed since it's being returned
 	infix_left_var_name string // a && if expr
@@ -3670,7 +3671,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if is_as_cast {
 		g.write('(')
 	}
-	if node.or_block.kind != .absent && !g.is_assign_lhs && g.table.sym(node.typ).kind != .chan {
+	if node.or_block.kind != .absent && g.table.sym(node.typ).kind != .chan {
 		is_ptr := sym.kind in [.interface_, .sum_type]
 		stmt_str := g.go_before_last_stmt().trim_space()
 		styp := g.typ(g.unwrap_generic(node.typ))
@@ -4695,7 +4696,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 								}
 								styp := g.base_type(node.obj.typ)
 								g.write('*(${styp}*)')
-							} else {
+							} else if !g.arg_no_auto_deref {
 								g.write('*')
 							}
 						} else if (g.inside_interface_deref && g.table.is_interface_var(node.obj))

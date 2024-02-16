@@ -9,6 +9,7 @@ fn main() {
 			} else {
 				e := 3
 				$dbg;
+				println(e)
 			}
 			a
 		}
@@ -31,6 +32,7 @@ fn main() {
 				0
 			}
 			$dbg;
+			println(z)
 			1
 		} else {
 			0

@@ -235,7 +235,6 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				c.error('Result type argument is not supported currently', param.type_pos)
 			}
 			arg_typ_sym := c.table.sym(param.typ)
-			pure_sym_name := arg_typ_sym.embed_name()
 			if arg_typ_sym.info is ast.Struct {
 				if !param.typ.is_ptr() && arg_typ_sym.info.is_heap { // set auto_heap to promote value parameter
 					mut v := node.scope.find_var(param.name) or { continue }
@@ -243,18 +242,21 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				}
 				if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
 					&& arg_typ_sym.info.concrete_types.len == 0 {
+					pure_sym_name := arg_typ_sym.embed_name()
 					c.error('generic struct `${pure_sym_name}` in fn declaration must specify the generic type names, e.g. ${pure_sym_name}[T]',
 						param.type_pos)
 				}
 			} else if arg_typ_sym.info is ast.Interface {
 				if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
 					&& arg_typ_sym.info.concrete_types.len == 0 {
+					pure_sym_name := arg_typ_sym.embed_name()
 					c.error('generic interface `${pure_sym_name}` in fn declaration must specify the generic type names, e.g. ${pure_sym_name}[T]',
 						param.type_pos)
 				}
 			} else if arg_typ_sym.info is ast.SumType {
 				if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
 					&& arg_typ_sym.info.concrete_types.len == 0 {
+					pure_sym_name := arg_typ_sym.embed_name()
 					c.error('generic sumtype `${pure_sym_name}` in fn declaration must specify the generic type names, e.g. ${pure_sym_name}[T]',
 						param.type_pos)
 				}
@@ -1160,6 +1162,8 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		} else {
 			func.params[i]
 		}
+		// registers if the arg must be passed by ref to disable auto deref args
+		call_arg.should_be_ptr = param.typ.is_ptr() && !param.is_mut
 		if func.is_variadic && call_arg.expr is ast.ArrayDecompose {
 			if i > func.params.len - 1 {
 				c.error('too many arguments in call to `${func.name}`', node.pos)
@@ -1969,6 +1973,8 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					} else {
 						info.func.params[i]
 					}
+					// registers if the arg must be passed by ref to disable auto deref args
+					arg.should_be_ptr = param.typ.is_ptr() && !param.is_mut
 					if c.table.sym(param.typ).kind == .interface_ {
 						// cannot hide interface expected type to make possible to pass its interface type automatically
 						earg_types << if targ.idx() != param.typ.idx() { param.typ } else { targ }

@@ -5,7 +5,7 @@ import time
 const vexe = @VEXE
 const expect_tests_path = os.join_path(@VEXEROOT, 'vlib', 'v', 'debug', 'tests')
 const test_module_path = os.join_path(os.vtmp_dir(), 'test_vdbg_input')
-const bar = term.yellow('-'.repeat(105))
+const bar = term.yellow('-'.repeat(107))
 const be_verbose = os.getenv('GITHUB_JOB') != '' || os.getenv('VERBOSE') != ''
 
 const expect_exe = os.quoted_path(os.find_abs_path_of_executable('expect') or {
@@ -42,7 +42,7 @@ fn test_debugger() {
 		if be_verbose {
 			println(bar)
 		}
-		gprint('>>>> Running [${eidx + 1}/${all_expect_files.len}] ${term.magenta(efile):-68} ... ')
+		gprint('>>>> Running [${eidx + 1:2}/${all_expect_files.len:-2}] ${term.magenta(efile):-68} ... ')
 		if be_verbose {
 			println('')
 		}

@@ -92,6 +92,10 @@ mut:
 	cache_folder_is_temporary_storage bool
 	// Handler for all threads used in the DTM
 	threads_handler []thread = []thread{}
+	// This channel used only for CI. Allows to check during CI tests in case of slowness in the creation/management of the cache to allow enough time for it to be done
+	is_ready chan bool = chan bool{cap: 5}
+	// If despite the synchronization attempt during the cache handler tests nothing happens, cancel the tests targeting the cached data
+	abort_test bool
 }
 
 // Represent individual template cache in database memory.
@@ -734,6 +738,7 @@ fn (mut tm DynamicTemplateManager) cache_handler() {
 		tm.active_cache_server = false
 		// Close channel if handler is stopped
 		tm.ch_cache_handler.close()
+		tm.is_ready.close()
 		tm.ch_stop_dtm_clock <- true
 	}
 	for {
@@ -794,6 +799,10 @@ fn (mut tm DynamicTemplateManager) cache_handler() {
 						if tc.cache_request != .delete {
 							// Include Cache information in database.
 							tm.template_caches << tc
+
+							$if test {
+								tm.is_ready <- true
+							}
 						}
 						if tc.cache_request == .new {
 							tm.chandler_remaining_cache_template_used(tc.cache_request,
@@ -816,6 +825,10 @@ fn (mut tm DynamicTemplateManager) cache_handler() {
 								}
 								// Delete in database.
 								tm.template_caches.delete(key)
+
+								$if test {
+									tm.is_ready <- true
+								}
 							}
 						}
 					}
@@ -1086,16 +1099,10 @@ fn (mut tm DynamicTemplateManager) handle_dtm_clock() {
 					break
 				}
 				else {
-					$if test {
-						break
-					}
 					// Attendre une seconde
 					time.sleep(1 * time.second)
 				}
 			}
-		}
-		$if test {
-			break
 		}
 		if need_to_close {
 			break

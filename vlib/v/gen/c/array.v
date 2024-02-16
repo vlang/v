@@ -1061,7 +1061,7 @@ fn (mut g Gen) gen_array_index_methods() {
 			ptr_typ := g.equality_fn(info.elem_type)
 			fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq(*pelem, v)) {')
 		} else if elem_sym.kind == .function && !info.elem_type.is_ptr() {
-			fn_builder.writeln('\t\tif ( pelem == v) {')
+			fn_builder.writeln('\t\tif ( *pelem == v) {')
 		} else if elem_sym.kind == .map && !info.elem_type.is_ptr() {
 			ptr_typ := g.equality_fn(info.elem_type)
 			fn_builder.writeln('\t\tif (${ptr_typ}_map_eq((*pelem, v))) {')
