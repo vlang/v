@@ -27,7 +27,7 @@ fn gprint(msg string) {
 }
 
 fn test_trace() {
-	all_expect_files := os.walk_ext(trace_tests_path, '.vv')
+	all_expect_files := os.walk_ext(trace_tests_path, '.v')
 	assert all_expect_files.len > 0, 'no .v files found in ${trace_tests_path}'
 	mut oks := 0
 	for eidx, efile in all_expect_files.sorted() {
