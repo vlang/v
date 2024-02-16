@@ -6922,8 +6922,8 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 		}
 		.struct_ {
 			mut has_none_zero := false
-			mut init_str := '{'
 			info := sym.info as ast.Struct
+			mut init_str := if info.is_anon { '(${g.typ(typ)}){' } else { '{' }
 			if sym.language == .v {
 				for field in info.fields {
 					field_sym := g.table.sym(field.typ)
