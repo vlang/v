@@ -97,7 +97,13 @@ fn vpm_remove(query []string) {
 		final_module_path := get_path_of_existing_module(m) or { continue }
 		println('Removing module "${m}" ...')
 		vpm_log(@FILE_LINE, @FN, 'removing: ${final_module_path}')
-		os.rmdir_all(final_module_path) or { vpm_error(err.msg(), verbose: true) }
+		$if windows {
+			os.execute_opt('rd /s /q ${final_module_path}') or {
+				vpm_error(err.msg(), verbose: true)
+			}
+		} $else {
+			os.rmdir_all(final_module_path) or { vpm_error(err.msg(), verbose: true) }
+		}
 		// Delete author directory if it is empty.
 		author := m.split('.')[0]
 		author_dir := os.real_path(os.join_path(settings.vmodules_path, author))
@@ -106,7 +112,11 @@ fn vpm_remove(query []string) {
 		}
 		if os.is_dir_empty(author_dir) {
 			verbose_println('Removing author folder ${author_dir}')
-			os.rmdir(author_dir) or { vpm_error(err.msg(), verbose: true) }
+			$if windows {
+				os.execute_opt('rd /s /q ${author_dir}') or { vpm_error(err.msg(), verbose: true) }
+			} $else {
+				os.rmdir(author_dir) or { vpm_error(err.msg(), verbose: true) }
+			}
 		}
 	}
 }
