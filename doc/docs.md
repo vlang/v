@@ -6285,7 +6285,6 @@ fn main() {
 }
 ```
 
-Outputs:
 ```
 $ v -d callstack run example.v
 Backtrace:
