@@ -6259,7 +6259,7 @@ or a generic method (`generic?`) and clear the terminal window (`clear`).
 
 ## Call stack
 
-Using also `v.debug` module you can have call stack on your code for debugging 
+Also using the `v.debug` module you can have a call stack on your code for debugging 
 purpose!
 
 To enable such feature use `-d callstack` when running your code or building 
