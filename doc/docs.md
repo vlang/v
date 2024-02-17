@@ -6318,7 +6318,7 @@ fn main() {
 	}
 	anon()
 
-	// optionall you can remove the hooks:
+	// optionally you can remove the hooks:
 	debug.remove_before_call(hook1)
 	debug.remove_after_call(hook2)
 	anon()
