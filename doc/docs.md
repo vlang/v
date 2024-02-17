@@ -6259,9 +6259,11 @@ or a generic method (`generic?`) and clear the terminal window (`clear`).
 
 ## Call stack
 
-Using also `v.debug` module you can have call stack on your code for debugging purpose!
+Using also `v.debug` module you can have call stack on your code for debugging 
+purpose!
 
-To enable such feature use `-d callstack` when running your code or building source files, see below:
+To enable such feature use `-d callstack` when running your code or building 
+source files, see below:
 
 ```v
 import v.debug
@@ -6296,9 +6298,11 @@ example.v:5    |   > main.test
 
 ## Trace
 
-Another feature from `v.debug` is the possibility to add hook functions before and after each function call on your code.
+Another feature from `v.debug` is the possibility to add hook functions 
+before and after each function call on your code.
 
-To enable such feature use `-d trace` when running your code or building source files, see below:
+To enable such feature use `-d trace` when running your code or building 
+source files, see below:
 
 ```v
 import v.debug
