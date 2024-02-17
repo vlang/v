@@ -6269,19 +6269,19 @@ source files, see below:
 import v.debug
 
 fn test(i int) {
-    if i > 9 {
-        debug.dump_callstack()
-    }
+	if i > 9 {
+		debug.dump_callstack()
+	}
 }
 
 fn do_something() {
-    for i := 0; i <= 10; i++ {
-        test(i)
-    }
+	for i := 0; i <= 10; i++ {
+		test(i)
+	}
 }
 
 fn main() {
-    do_something()
+	do_something()
 }
 ```
 
@@ -6307,21 +6307,21 @@ source files, see below:
 import v.debug
 
 fn main() {
-    hook1 := debug.add_before_call(fn (fn_name string) {
-        println('> before ${fn_name}')
-    })
-    hook2 := debug.add_after_call(fn (fn_name string) {
-        println('> after ${fn_name}')
-    })
-    anon := fn () {
-        println('call')
-    }
-    anon()
+	hook1 := debug.add_before_call(fn (fn_name string) {
+		println('> before ${fn_name}')
+	})
+	hook2 := debug.add_after_call(fn (fn_name string) {
+		println('> after ${fn_name}')
+	})
+	anon := fn () {
+		println('call')
+	}
+	anon()
 
-    // optionall you can remove the hooks:
-    debug.remove_before_call(hook1)
-    debug.remove_after_call(hook2)
-    anon()
+	// optionall you can remove the hooks:
+	debug.remove_before_call(hook1)
+	debug.remove_after_call(hook2)
+	anon()
 }
 ```
 
