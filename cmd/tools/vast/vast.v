@@ -1560,6 +1560,7 @@ fn (t Tree) call_arg(node ast.CallArg) &Node {
 	obj.add_terse('is_mut', t.bool_node(node.is_mut))
 	obj.add_terse('share', t.enum_node(node.share))
 	obj.add_terse('expr', t.expr(node.expr))
+	obj.add_terse('should_be_ptr', t.bool_node(node.should_be_ptr))
 	obj.add('is_tmp_autofree', t.bool_node(node.is_tmp_autofree))
 	obj.add('pos', t.pos(node.pos))
 	obj.add('comments', t.array_node_comment(node.comments))

@@ -102,7 +102,7 @@ fn test_incremental_update_ported_from_poly1305donna() ! {
 	mut all_msg := []u8{len: 256}
 	for i := 0; i < 256; i++ {
 		// set key and message to 'i,i,i..'
-		for x := 0; x < sizeof(all_key); x++ {
+		for x := 0; x < all_key.len; x++ {
 			all_key[x] = u8(i)
 		}
 		for y := 0; y < i; y++ {

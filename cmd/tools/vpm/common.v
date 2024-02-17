@@ -291,3 +291,12 @@ fn fmt_mod_path(path string) string {
 fn at_version(version string) string {
 	return if version != '' { '@${version}' } else { '' }
 }
+
+// FIXME: Workaround for failing `rmdir` commands on Windows.
+fn rmdir_all(path string) ! {
+	$if windows {
+		os.execute_opt('rd /s /q ${path}')!
+	} $else {
+		os.rmdir_all(path)!
+	}
+}
