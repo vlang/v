@@ -574,7 +574,7 @@ for urls starting with `'/foo'`.
 
 To use controllers we have to embed `vweb.Controller` on
 our app struct and when we register a controller we also have to specify
-what the type of the context struct will be. That means that this is possible
+what the type of the context struct will be. That means that it is possible
 to have a different context struct for each controller and the main app struct.
 
 **Example:**
