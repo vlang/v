@@ -297,18 +297,45 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 			g.definitions.write_string(');\n')
 
 			orig_fn_args := call_fn.func.params.map(it.name).join(', ')
-
-			if g.cur_fn.is_method || g.cur_fn.is_static_type_method {
-				g.writeln('\tarray_push((array*)&g_callstack, _MOV((v__debug__FnTrace[]){ ((v__debug__FnTrace){.name = _SLIT("${g.table.type_to_str(g.cur_fn.receiver.typ)}.${g.cur_fn.name.all_after_last('__static__')}"),.file = _SLIT("${call_fn.file}"),.line = ${call_fn.line},}) }));')
-			} else {
-				g.writeln('\tarray_push((array*)&g_callstack, _MOV((v__debug__FnTrace[]){ ((v__debug__FnTrace){.name = _SLIT("${g.cur_fn.name}"),.file = _SLIT("${call_fn.file}"),.line = ${call_fn.line},}) }));')
+			add_trace_hook := g.pref.is_trace
+				&& call_fn.name !in ['v.debug.add_after_call', 'v.debug.add_before_call', 'v.debug.remove_after_call', 'v.debug.remove_before_call']
+			if g.pref.is_callstack {
+				if g.cur_fn.is_method || g.cur_fn.is_static_type_method {
+					g.writeln('\tarray_push((array*)&g_callstack, _MOV((v__debug__FnTrace[]){ ((v__debug__FnTrace){.name = _SLIT("${g.table.type_to_str(g.cur_fn.receiver.typ)}.${g.cur_fn.name.all_after_last('__static__')}"),.file = _SLIT("${call_fn.file}"),.line = ${call_fn.line},}) }));')
+				} else {
+					g.writeln('\tarray_push((array*)&g_callstack, _MOV((v__debug__FnTrace[]){ ((v__debug__FnTrace){.name = _SLIT("${g.cur_fn.name}"),.file = _SLIT("${call_fn.file}"),.line = ${call_fn.line},}) }));')
+				}
 			}
 			if call_fn.return_type == 0 || call_fn.return_type == ast.void_type {
+				if add_trace_hook {
+					g.writeln('\tif (!g_trace.in_hook) {')
+					g.writeln('\t\tv__debug__before_call_hook(_SLIT("${call_fn.name}"));')
+					g.writeln('\t}')
+				}
 				g.writeln('\t${c_name(call_fn.name)}(${orig_fn_args});')
-				g.writeln('\tarray_pop((array*)&g_callstack);')
+				if add_trace_hook {
+					g.writeln('\tif (!g_trace.in_hook) {')
+					g.writeln('\t\tv__debug__after_call_hook(_SLIT("${call_fn.name}"));')
+					g.writeln('\t}')
+				}
+				if g.pref.is_callstack {
+					g.writeln('\tarray_pop((array*)&g_callstack);')
+				}
 			} else {
+				if add_trace_hook {
+					g.writeln('\tif (!g_trace.in_hook) {')
+					g.writeln('\t\tv__debug__before_call_hook(_SLIT("${call_fn.name}"));')
+					g.writeln('\t}')
+				}
 				g.writeln('\t${g.typ(call_fn.return_type)} ret = ${c_name(call_fn.name)}(${orig_fn_args});')
-				g.writeln('\tarray_pop((array*)&g_callstack);')
+				if g.pref.is_callstack {
+					g.writeln('\tarray_pop((array*)&g_callstack);')
+				}
+				if add_trace_hook {
+					g.writeln('\tif (!g_trace.in_hook) {')
+					g.writeln('\t\tv__debug__after_call_hook(_SLIT("${call_fn.name}"));')
+					g.writeln('\t}')
+				}
 				g.writeln('\treturn ret;')
 			}
 			g.writeln('}')
