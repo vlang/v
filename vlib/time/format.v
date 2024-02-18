@@ -470,6 +470,14 @@ pub fn (t Time) utc_string() string {
 	return utc_string
 }
 
+// http_header_string returns a date string in the format used in HTTP headers, as defined in RFC 2616.
+pub fn (t Time) http_header_string() string {
+	day_str := t.weekday_str()
+	month_str := t.smonth()
+	http_header_string := '${day_str}, ${t.day} ${month_str} ${t.year} ${t.hour:02d}:${t.minute:02d}:${t.second:02d} GMT'
+	return http_header_string
+}
+
 // mceil returns the least integer value greater than or equal to x.
 fn mceil(x f64) f64 {
 	if x > 0 {

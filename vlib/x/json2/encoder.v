@@ -415,17 +415,21 @@ fn (mut iter CharLengthIterator) next() ?int {
 	if iter.idx >= iter.text.len {
 		return none
 	}
+
 	defer {
 		iter.idx++
 	}
+
 	mut len := 1
 	c := iter.text[iter.idx]
+
 	if (c & (1 << 7)) != 0 {
 		for t := u8(1 << 6); (c & t) != 0; t >>= 1 {
 			len++
 			iter.idx++
 		}
 	}
+
 	return len
 }
 
@@ -438,60 +442,71 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 	}
 	mut i := 0
 	buf << json2.quote_rune
+
 	for char_len in char_lens {
-		if char_len == 1 {
-			chr := s[i]
-			if chr in important_escapable_chars {
-				for j := 0; j < important_escapable_chars.len; j++ {
-					if chr == important_escapable_chars[j] {
-						unsafe { buf.push_many(json2.escaped_chars[j].str, json2.escaped_chars[j].len) }
-						break
-					}
-				}
-			} else if chr == `"` || chr == `/` || chr == `\\` {
-				buf << `\\`
-				buf << chr
-			} else if int(chr) < 0x20 {
-				// unsafe { buf.push_many(json2.unicode_escape_chars.str, json2.unicode_escape_chars.len) } // \u
-				for r in json2.unicode_escape_chars {
-					buf << r
-				}
-				buf << json2.zero_rune // \u0
-				buf << json2.zero_rune // \u00
+		chr := s[i]
 
-				hex_code := chr.hex()
-				unsafe { buf.push_many(hex_code.str, hex_code.len) }
-			} else {
-				buf << chr
-			}
+		if (char_len == 1 && chr < 0x20) || chr == `\\` || chr == `"` || chr == `/` {
+			handle_special_char(e, mut buf, chr)
 		} else {
-			slice := s[i..i + char_len]
-			hex_code := slice.utf32_code().hex()
-			if !e.escape_unicode || hex_code.len < 4 {
-				// unescaped non-ASCII char
-				unsafe { buf.push_many(slice.str, slice.len) }
-			} else if hex_code.len == 4 {
-				// a unicode endpoint
-
-				// unsafe { buf.push_many(json2.unicode_escape_chars.str, json2.unicode_escape_chars.len) }
-				for r in json2.unicode_escape_chars {
-					buf << r
-				}
-				unsafe { buf.push_many(hex_code.str, hex_code.len) }
+			if char_len == 1 {
+				buf << chr
 			} else {
-				// TODO: still figuring out what
-				// to do with more than 4 chars
-				// According to https://www.json.org/json-en.html however, any codepoint is valid inside a string,
-				// so just passing it along should hopefully also work.
-				unsafe { buf.push_many(slice.str, slice.len) }
-			}
-			unsafe {
-				slice.free()
-				hex_code.free()
+				handle_multi_byte_char(e, mut buf, s[i..i + char_len])
 			}
 		}
+
 		i += char_len
 	}
 
 	buf << json2.quote_rune
+}
+
+fn handle_special_char(e &Encoder, mut buf []u8, chr u8) {
+	if chr in important_escapable_chars {
+		for j := 0; j < important_escapable_chars.len; j++ {
+			if chr == important_escapable_chars[j] {
+				unsafe { buf.push_many(json2.escaped_chars[j].str, json2.escaped_chars[j].len) }
+				break
+			}
+		}
+	} else if chr == `"` || chr == `/` || chr == `\\` {
+		buf << `\\`
+		buf << chr
+	} else {
+		for r in json2.unicode_escape_chars {
+			buf << r
+		}
+
+		buf << json2.zero_rune // \u0
+		buf << json2.zero_rune // \u00
+
+		hex_code := chr.hex()
+		unsafe { buf.push_many(hex_code.str, hex_code.len) }
+	}
+}
+
+fn handle_multi_byte_char(e &Encoder, mut buf []u8, slice string) {
+	hex_code := slice.utf32_code().hex() // slow
+
+	if !e.escape_unicode || hex_code.len < 4 {
+		unsafe { buf.push_many(slice.str, slice.len) }
+	} else if hex_code.len == 4 {
+		// Handle unicode endpoint
+		for r in json2.unicode_escape_chars {
+			buf << r
+		}
+		unsafe { buf.push_many(hex_code.str, hex_code.len) }
+	} else {
+		// TODO: still figuring out what
+		// to do with more than 4 chars
+		// According to https://www.json.org/json-en.html however, any codepoint is valid inside a string,
+		// so just passing it along should hopefully also work.
+		unsafe { buf.push_many(slice.str, slice.len) }
+	}
+
+	unsafe {
+		slice.free()
+		hex_code.free()
+	}
 }
