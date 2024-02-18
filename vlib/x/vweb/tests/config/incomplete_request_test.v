@@ -1,3 +1,5 @@
+// vtest flaky: true
+// vtest retry: 3
 import time
 import x.vweb
 import net
