@@ -934,7 +934,9 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 fn serve_if_static[A, X](app &A, mut user_context X, url urllib.URL, host string) bool {
 	// TODO: handle url parameters properly - for now, ignore them
 	mut asked_path := url.path
-	if !asked_path.contains('.') && !asked_path.ends_with('/') {
+	base_path := os.base(asked_path)
+
+	if !base_path.contains('.') && !asked_path.ends_with('/') {
 		asked_path += '/'
 	}
 
