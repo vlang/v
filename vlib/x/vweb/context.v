@@ -11,8 +11,8 @@ enum ContextReturnType {
 }
 
 pub enum RedirectType {
-	moved_permanently  = int(http.Status.moved_permanently)
 	found              = int(http.Status.found)
+	moved_permanently  = int(http.Status.moved_permanently)
 	see_other          = int(http.Status.see_other)
 	temporary_redirect = int(http.Status.temporary_redirect)
 	permanent_redirect = int(http.Status.permanent_redirect)
