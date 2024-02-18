@@ -96,9 +96,13 @@ fn test_scans_subdirs() {
 
 fn test_index_subdirs() {
 	x := http.get('${localserver}/sub_folder/')!
+	y := http.get('${localserver}/sub.folder/sub_folder')!
 
 	assert x.status() == .ok
 	assert x.body.trim_space() == 'OK'
+
+	assert y.status() == .ok
+	assert y.body.trim_space() == 'OK'
 }
 
 fn test_custom_mime_types() {
