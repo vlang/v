@@ -10,6 +10,7 @@ const port = 13002
 const localserver = 'http://127.0.0.1:${port}'
 
 const exit_after = time.second * 10
+const header_size = vweb.max_read * 2
 
 const tmp_file = os.join_path(os.vtmp_dir(), 'vweb_large_payload.txt')
 
@@ -47,7 +48,14 @@ fn testsuite_begin() {
 	}()
 
 	mut app := &App{}
-	spawn vweb.run_at[App, Context](mut app, port: port, timeout_in_seconds: 2, family: .ip)
+	spawn vweb.run_at[App, Context](mut app,
+		port: port
+		timeout_in_seconds: 2
+		family: .ip
+		config: vweb.Config{
+			max_header_len: header_size
+		}
+	)
 	// app startup time
 	_ := <-app.started
 }
@@ -68,7 +76,7 @@ fn test_large_request_body() {
 fn test_large_request_header() {
 	// same test as test_large_request_body, but then with a large header,
 	// which is parsed seperately
-	mut buf := []u8{len: vweb.max_read * 2, init: `a`}
+	mut buf := []u8{len: header_size, init: `a`}
 
 	str := buf.bytestr()
 	// make 1 header longer than vwebs max read limit

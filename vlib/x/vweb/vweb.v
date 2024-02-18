@@ -216,6 +216,39 @@ pub struct RunParams {
 	port                 int  = 8080
 	show_startup_message bool = true
 	timeout_in_seconds   int  = 30
+	config               Config
+}
+
+// Config contains options that can change the internal behaviour of vweb
+pub struct Config {
+pub mut:
+	// maximum size of HTTP headers in bytes, default is 96KB
+	max_header_len int = 96_000
+	// maximum number of incomplete HTTP requests that can be send over a connection
+	// before vweb closes the connection
+	max_nr_of_incomplete_requests int = 3
+	// the maximum size of a request body in bytes, default is 1MB
+	max_request_body_len int = 1_000_000
+}
+
+struct IncomingRequest {
+pub mut:
+	req                    http.Request
+	buf                    []u8
+	nr_incomplete_requests int
+}
+
+// done frees the current incomplete request header buffer and reset the HTTP request.
+// use this function when the connection is kept open, but the request is handled
+@[manualfree]
+pub fn (mut ir IncomingRequest) done() {
+	ir.buf.clear()
+	ir.req = http.Request{}
+}
+
+// reset set the incomplete request counter to 0
+pub fn (mut ir IncomingRequest) reset() {
+	ir.nr_incomplete_requests = 0
 }
 
 struct FileResponse {
@@ -259,21 +292,22 @@ struct RequestParams {
 	controllers        []&ControllerPath
 	routes             &map[string]Route
 	timeout_in_seconds int
+	config             Config
 mut:
 	// request body buffer
 	buf &u8 = unsafe { nil }
 	// idx keeps track of how much of the request body has been read
 	// for each incomplete request, see `handle_conn`
-	idx                 []int
-	incomplete_requests []http.Request
-	file_responses      []FileResponse
-	string_responses    []StringResponse
+	idx               []int
+	incoming_requests []IncomingRequest
+	file_responses    []FileResponse
+	string_responses  []StringResponse
 }
 
 // reset request parameters for `fd`:
 // reset content-length index and the http request
 pub fn (mut params RequestParams) request_done(fd int) {
-	params.incomplete_requests[fd] = http.Request{}
+	params.incoming_requests[fd].done()
 	params.idx[fd] = 0
 }
 
@@ -304,6 +338,7 @@ pub fn run_at[A, X](mut global_app A, params RunParams) ! {
 		controllers: controllers_sorted
 		routes: &routes
 		timeout_in_seconds: params.timeout_in_seconds
+		config: params.config
 	}
 
 	pico_context.idx = []int{len: picoev.max_fds}
@@ -312,7 +347,7 @@ pub fn run_at[A, X](mut global_app A, params RunParams) ! {
 	defer {
 		unsafe { free(pico_context.buf) }
 	}
-	pico_context.incomplete_requests = []http.Request{len: picoev.max_fds}
+	pico_context.incoming_requests = []IncomingRequest{len: picoev.max_fds}
 	pico_context.file_responses = []FileResponse{len: picoev.max_fds}
 	pico_context.string_responses = []StringResponse{len: picoev.max_fds}
 
@@ -359,6 +394,7 @@ fn ev_callback[A, X](mut pv picoev.Picoev, fd int, events int) {
 			$if debug_ev_callback ? {
 				eprintln('[vweb] error: write event on connection should be closed')
 			}
+			params.incoming_requests[fd].reset()
 			pv.close_conn(fd)
 		}
 	} else if events == picoev.picoev_read {
@@ -380,6 +416,7 @@ fn handle_timeout(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 	}
 
 	fast_send_resp(mut conn, vweb.http_408) or {}
+	params.incoming_requests[fd].reset()
 	pv.close_conn(fd)
 
 	params.request_done(fd)
@@ -411,11 +448,13 @@ fn handle_write_file(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 
 		params.file_responses[fd].file.read_into_ptr(data, bytes_to_write) or {
 			params.file_responses[fd].done()
+			params.incoming_requests[fd].reset()
 			pv.close_conn(fd)
 			return
 		}
 		actual_written := send_string_ptr(mut conn, data, bytes_to_write) or {
 			params.file_responses[fd].done()
+			params.incoming_requests[fd].reset()
 			pv.close_conn(fd)
 			return
 		}
@@ -425,7 +464,8 @@ fn handle_write_file(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 	if params.file_responses[fd].pos == params.file_responses[fd].total {
 		// file is done writing
 		params.file_responses[fd].done()
-		handle_complete_request(params.file_responses[fd].should_close_conn, mut pv, fd)
+		handle_complete_request(params.file_responses[fd].should_close_conn, mut params, mut
+			pv, fd)
 		return
 	}
 }
@@ -449,6 +489,7 @@ fn handle_write_string(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 	data := unsafe { params.string_responses[fd].str.str + params.string_responses[fd].pos }
 	actual_written := send_string_ptr(mut conn, data, bytes_to_write) or {
 		params.string_responses[fd].done()
+		params.incoming_requests[fd].reset()
 		pv.close_conn(fd)
 		return
 	}
@@ -456,9 +497,8 @@ fn handle_write_string(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 	if params.string_responses[fd].pos == params.string_responses[fd].str.len {
 		// done writing
 		params.string_responses[fd].done()
-		pv.close_conn(fd)
-		handle_complete_request(params.string_responses[fd].should_close_conn, mut pv,
-			fd)
+		handle_complete_request(params.string_responses[fd].should_close_conn, mut params, mut
+			pv, fd)
 		return
 	}
 }
@@ -475,8 +515,28 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 		is_blocking: false
 	}
 
-	// cap the max_read to 8KB
-	mut reader := io.new_buffered_reader(reader: conn, cap: vweb.max_read)
+	mut incoming_req := &params.incoming_requests[fd]
+	is_first_data_of_request := incoming_req.buf.len == 0
+
+	mut reader := if !is_first_data_of_request {
+		// the previous request was incomplete, append incoming data to the buffer
+		// so the request headers can be parsed again in their entirety
+		max_size := incoming_req.buf.len + vweb.max_read
+		mut new_buf := []u8{len: max_size, cap: max_size}
+		// copy the previous request buffer to the new buffered reader
+		copy(mut new_buf, incoming_req.buf)
+		&io.BufferedReader{
+			reader: conn
+			buf: new_buf
+			len: incoming_req.buf.len
+			offset: 0
+			mfails: 2
+		}
+	} else {
+		// cap the max_read to 8KB
+		io.new_buffered_reader(reader: conn, cap: vweb.max_read)
+	}
+
 	defer {
 		unsafe {
 			reader.free()
@@ -484,7 +544,7 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 	}
 
 	// take the previous incomplete request
-	mut req := params.incomplete_requests[fd]
+	mut req := incoming_req.req
 
 	// check if there is an incomplete request for this file desriptor
 	if params.idx[fd] == 0 {
@@ -495,24 +555,39 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 		// first time that this connection is being read from, so we parse the
 		// request header first
 		req = http.parse_request_head(mut reader) or {
-			// Prevents errors from being thrown when BufferedReader is empty
-			if err !is io.Eof {
-				eprintln('[vweb] error parsing request: ${err}')
-			}
-			// the buffered reader was empty meaning that the client probably
+			// Prevents errors from being thrown when BufferedReader is empty.
+			// If the buffered reader was empty it means that the client probably
 			// closed the connection.
+			if err !is io.Eof {
+				// a request could not be parsed
+				if is_first_data_of_request
+					&& incoming_req.nr_incomplete_requests >= params.config.max_nr_of_incomplete_requests {
+					fast_send_resp(mut conn, vweb.http_400) or {}
+				} else if is_first_data_of_request {
+					// too many incomplete requests send by the client. Closing connection...
+					incoming_req.nr_incomplete_requests++
+				}
+
+				// store the currently read data and wait for the client to sent more data
+				if total_read := reader.get_read_data(incoming_req.buf.len, reader.total_read) {
+					incoming_req.buf << total_read
+					return
+				}
+			}
+
+			params.request_done(fd)
 			pv.close_conn(fd)
-			params.incomplete_requests[fd] = http.Request{}
 			return
 		}
-		if reader.total_read >= vweb.max_read {
+		if reader.total_read >= params.config.max_header_len {
 			// throw an error when the request header is larger than 8KB
 			// same limit that apache handles
-			eprintln('[vweb] error parsing request: too large')
+			eprintln('[vweb] error parsing request: request headers are too large')
 			fast_send_resp(mut conn, vweb.http_413) or {}
 
+			params.request_done(fd)
+			params.incoming_requests[fd].reset()
 			pv.close_conn(fd)
-			params.incomplete_requests[fd] = http.Request{}
 			return
 		}
 	}
@@ -536,16 +611,26 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 
 		n := reader.read(mut buf) or {
 			eprintln('[vweb] error parsing request: ${err}')
+			params.request_done(fd)
+			params.incoming_requests[fd].reset()
 			pv.close_conn(fd)
-			params.incomplete_requests[fd] = http.Request{}
-			params.idx[fd] = 0
 			return
 		}
 
+		// body size has exceeded the set limits
+		if params.idx[fd] + n > params.config.max_request_body_len {
+			eprintln('[vweb] error parsing request: request body is too large')
+			fast_send_resp(mut conn, vweb.http_413) or {}
+
+			params.request_done(fd)
+			params.incoming_requests[fd].reset()
+			pv.close_conn(fd)
+			return
+		}
 		// there is no more data to be sent, but it is less than the Content-Length header
 		// so it is a mismatch of body length and content length.
 		// Or if there is more data received then the Content-Length header specified
-		if (n == 0 && params.idx[fd] != 0) || params.idx[fd] + n > content_length.int() {
+		else if (n == 0 && params.idx[fd] != 0) || params.idx[fd] + n > content_length.int() {
 			fast_send_resp(mut conn, http.new_response(
 				status: .bad_request
 				body: 'Mismatch of body length and Content-Length header'
@@ -555,16 +640,16 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 				).join(vweb.headers_close)
 			)) or {}
 
+			params.request_done(fd)
+			params.incoming_requests[fd].reset()
 			pv.close_conn(fd)
-			params.incomplete_requests[fd] = http.Request{}
-			params.idx[fd] = 0
 			return
 		} else if n < bytes_to_read || params.idx[fd] + n < content_length.int() {
 			// request is incomplete wait until the socket becomes ready to read again
 			params.idx[fd] += n
 			// TODO: change this to a memcpy function?
 			req.data += buf[0..n].bytestr()
-			params.incomplete_requests[fd] = req
+			params.incoming_requests[fd].req = req
 			return
 		} else {
 			// request is complete: n = bytes_to_read
@@ -600,7 +685,7 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 				if completed_context.res.body.len < vweb.max_read {
 					fast_send_resp(mut conn, completed_context.res) or {}
 					handle_complete_request(completed_context.client_wants_to_close, mut
-						pv, fd)
+						params, mut pv, fd)
 				} else {
 					params.string_responses[fd].open = true
 					params.string_responses[fd].str = completed_context.res.body
@@ -612,7 +697,7 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 						params.string_responses[fd].done()
 						fast_send_resp(mut conn, vweb.http_500) or {}
 						handle_complete_request(completed_context.client_wants_to_close, mut
-							pv, fd)
+							params, mut pv, fd)
 						return
 					}
 					// no errors we can send the HTTP headers
@@ -630,6 +715,7 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 					// Context checks if the file is valid, so this should never happen
 					fast_send_resp(mut conn, vweb.http_500) or {}
 					params.file_responses[fd].done()
+					params.incoming_requests[fd].reset()
 					pv.close_conn(fd)
 					return
 				}
@@ -641,6 +727,7 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 					// should not happen
 					fast_send_resp(mut conn, vweb.http_500) or {}
 					params.file_responses[fd].done()
+					params.incoming_requests[fd].reset()
 					pv.close_conn(fd)
 					return
 				}
@@ -650,14 +737,16 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 		}
 	} else {
 		// invalid request headers/data
+		params.incoming_requests[fd].reset()
 		pv.close_conn(fd)
 	}
 }
 
 // close the connection when `should_close` is true.
 @[inline]
-fn handle_complete_request(should_close bool, mut pv picoev.Picoev, fd int) {
+fn handle_complete_request(should_close bool, mut params RequestParams, mut pv picoev.Picoev, fd int) {
 	if should_close {
+		params.incoming_requests[fd].reset()
 		pv.close_conn(fd)
 	}
 }

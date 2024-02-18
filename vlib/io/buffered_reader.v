@@ -156,3 +156,12 @@ pub fn (mut r BufferedReader) read_line(config BufferedReadLineConfig) !string {
 	}
 	return Eof{}
 }
+
+// get_read_data returns the data that the buffered reader has read from `start` until `end`
+pub fn (r &BufferedReader) get_read_data(start int, end int) ![]u8 {
+	if end > r.buf.len {
+		return Eof{}
+	}
+
+	return r.buf[start..end]
+}
