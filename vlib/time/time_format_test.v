@@ -86,3 +86,7 @@ fn test_get_fmt_str() {
 fn test_utc_string() {
 	assert 'Fri, 11 Jul 1980 21:23:42 UTC' == time_to_test.utc_string()
 }
+
+fn test_http_header_string() {
+	assert 'Fri, 11 Jul 1980 21:23:42 GMT' == time_to_test.http_header_string()
+}
