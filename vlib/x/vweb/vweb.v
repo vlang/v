@@ -521,13 +521,9 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 	mut reader := if !is_first_data_of_request {
 		// the previous request was incomplete, append incoming data to the buffer
 		// so the request headers can be parsed again in their entirety
-		max_size := incoming_req.buf.len + vweb.max_read
-		mut new_buf := []u8{len: max_size, cap: max_size}
-		// copy the previous request buffer to the new buffered reader
-		copy(mut new_buf, incoming_req.buf)
 		&io.BufferedReader{
 			reader: conn
-			buf: new_buf
+			buf: incoming_req.buf
 			len: incoming_req.buf.len
 			offset: 0
 			mfails: 2
