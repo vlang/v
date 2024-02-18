@@ -402,49 +402,28 @@ pub fn (f Any) prettify_json_str() string {
 	return buf.bytestr()
 }
 
-// CharLengthIterator is an iterator that generates a char
-// length value of every iteration based on the given text.
-// (e.g.: "t✔" => [t => 1, ✔ => 2])
-struct CharLengthIterator {
-	text string
-mut:
-	idx int
-}
-
-fn (mut iter CharLengthIterator) next() ?int {
-	if iter.idx >= iter.text.len {
-		return none
-	}
-
-	defer {
-		iter.idx++
-	}
-
-	mut len := 1
-	c := iter.text[iter.idx]
-
-	if (c & (1 << 7)) != 0 {
-		for t := u8(1 << 6); (c & t) != 0; t >>= 1 {
-			len++
-			iter.idx++
-		}
-	}
-
-	return len
-}
-
 // TODO - Need refactor. Is so slow. The longer the string, the lower the performance.
 // encode_string returns the JSON spec-compliant version of the string.
 @[manualfree]
 fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
-	mut char_lens := CharLengthIterator{
-		text: s
-	}
-	mut i := 0
 	buf << json2.quote_rune
 
-	for char_len in char_lens {
-		chr := s[i]
+	mut char_position := 0
+	for idx := 0; idx < s.len; {
+		// char length based on the given text
+		// (e.g.: "t".len == 1; "✔".len == 2
+		mut char_len := 1
+		current_byte := s[idx]
+
+		// Check for multi-byte characters
+		if (current_byte & (1 << 7)) != 0 {
+			for bit_mask := u8(1 << 6); (current_byte & bit_mask) != 0; bit_mask >>= 1 {
+				char_len++
+				idx++
+			}
+		}
+
+		chr := s[char_position]
 
 		if (char_len == 1 && chr < 0x20) || chr == `\\` || chr == `"` || chr == `/` {
 			handle_special_char(e, mut buf, chr)
@@ -452,11 +431,12 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 			if char_len == 1 {
 				buf << chr
 			} else {
-				handle_multi_byte_char(e, mut buf, s[i..i + char_len])
+				handle_multi_byte_char(e, mut buf, s[char_position..char_position + char_len])
 			}
 		}
 
-		i += char_len
+		char_position += char_len
+		idx++
 	}
 
 	buf << json2.quote_rune
@@ -486,6 +466,8 @@ fn handle_special_char(e &Encoder, mut buf []u8, chr u8) {
 	}
 }
 
+// handle_multi_byte_char - ...
+// (e.g.: ✔ => \u2714
 fn handle_multi_byte_char(e &Encoder, mut buf []u8, slice string) {
 	hex_code := slice.utf32_code().hex() // slow
 

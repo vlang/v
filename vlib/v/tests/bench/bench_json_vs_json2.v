@@ -85,9 +85,11 @@ fn benchmark_measure_json_vs_json2_on_complex_struct() ! {
 fn benchmark_measure_encode_by_type() ! {
 	println(@FN)
 	dump('👈')
-	measure_json_encode_old_vs_new(StructType[string]{})!
+	measure_json_encode_old_vs_new(StructType[string] {'✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t'})!
+	measure_json_encode_old_vs_new(StructType[string] {'jhsbhjhajbujhfbdjhgbxdljgbxdlkjgbxdlkgjbdlfjbszldjkfbdljgbzsljfzsbkfdjsbfljhsdhbfljzhsdbfljzshfblszdjfbjzhdsbfjzsdhbfljsdhbfljzsdfblzjsdfbzsjdfbhljzsdhfbljzsbfjsdbfjshdbfljzsdhbfljzsdhbfljszdbhfljzsbfljhzsbdfljhzbsdljfbsdljfbzlsjfhdbzdsljhfbszdljhfbzsldjfhbszdljhfbzsdljfhbzsdjhfbdsljhfbljsdhbflsjdhjhsbh jhajbujhfbdjhgbxdljgbxdlkjgbxdlkgjbdlfjbszldjkfbdljgbzsljfzsbkfdjsbfljhsdhbfljzhsdbfljzshfblszdjfbjzhdsbfjzsdhbfljsdhbfljzsdfblzjsdfbzsjdfbhljzsdhfbljzsbfjsdbfjshdbfljzsdhbfljzsdhbfljszdbhfljzsbfljhzsbdfljhzbsdljfbsdljfbzlsjfhdbzdsljhfbszdljhfbzsldjfhbszdljhfbzsdljfhbzsdjhfbdsljhfbljsdhbflsjdh'})!
 	measure_json_encode_old_vs_new(StructType[time.Time]{})!
 	measure_json_encode_old_vs_new(StructType[int]{})!
+	measure_json_encode_old_vs_new(StructType[u64]{u64(-1)})! // 18446744073709551615
 	measure_json_encode_old_vs_new(StructType[f64]{})!
 	measure_json_encode_old_vs_new(StructType[bool]{})!
 	measure_json_encode_old_vs_new(StructType[[]int]{})!
