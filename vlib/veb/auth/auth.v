@@ -1,14 +1,16 @@
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
 module auth
 
-import db.pg // TODO make work with any db, need to make a DB interface like in Go or use generics
 import rand
 import crypto.rand as crypto_rand
 import crypto.sha256
 
 const max_safe_unsigned_integer = u32(4_294_967_295)
 
-pub struct Auth {
-	db pg.DB
+pub struct Auth[T] {
+	db T
 	// pub:
 	// salt string
 }
@@ -21,19 +23,19 @@ pub:
 	// ip      string
 }
 
-pub fn new(db pg.DB) Auth {
+pub fn new[T](db T) Auth[T] {
 	set_rand_crypto_safe_seed()
 	sql db {
 		create table Token
 	} or { eprintln('veb.auth: failed to create table Token') }
-	return Auth{
+	return Auth[T]{
 		db: db
 		// salt: generate_salt()
 	}
 }
 
 // fn (mut app App) add_token(user_id int, ip string) !string {
-pub fn (mut app Auth) add_token(user_id int) !string {
+pub fn (mut app Auth[T]) add_token(user_id int) !string {
 	mut uuid := rand.uuid_v4()
 	token := Token{
 		user_id: user_id
@@ -46,7 +48,7 @@ pub fn (mut app Auth) add_token(user_id int) !string {
 	return uuid
 }
 
-pub fn (mut app Auth) find_token(value string) ?Token {
+pub fn (mut app Auth[T]) find_token(value string) ?Token {
 	tokens := sql app.db {
 		select from Token where value == value limit 1
 	} or { []Token{} }
@@ -56,7 +58,7 @@ pub fn (mut app Auth) find_token(value string) ?Token {
 	return tokens.first()
 }
 
-pub fn (mut app Auth) delete_tokens(user_id int) ! {
+pub fn (mut app Auth[T]) delete_tokens(user_id int) ! {
 	sql app.db {
 		delete from Token where user_id == user_id
 	}!
