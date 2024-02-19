@@ -53,18 +53,12 @@ const mend = ' --'
 // If there is no next marker, find_file_marker returns fixNL(data), '', ''.
 fn find_file_marker(data string) (string, string, string) {
 	mut i := 0
-	for {
-		if i >= data.len {
-			break
-		}
+	for i < data.len {
 		name, after := is_marker(data[i..])
 		if name != '' {
 			return data[..i], name, after
 		}
-		j := data[i..].index_position(txtar.nlm)
-		if j < 0 {
-			return fix_nl(data), '', ''
-		}
+		j := data[i..].index(txtar.nlm) or { return fix_nl(data), '', '' }
 		i += j + 1 // positioned at start of new possible marker
 	}
 	return '', '', ''

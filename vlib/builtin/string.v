@@ -1181,14 +1181,7 @@ pub fn (s string) substr_ni(_start int, _end int) string {
 	return res
 }
 
-// index_position returns the position of the first character of the `needle`.
-// It will return -1, if the `needle`, is not found in `s`.
-@[inline]
-pub fn (s string) index_position(needle string) int {
-	return s.index_(needle)
-}
-
-// index_ returns the position of the first character of the input string.
+// index returns the position of the first character of the input string.
 // It will return `-1` if the input string can't be found.
 @[direct_array_access]
 fn (s string) index_(p string) int {
