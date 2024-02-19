@@ -31,3 +31,32 @@ See the spec in the `txtar` Go package source code, linked above:
            parsers should consider a final newline to be present anyway.
 
        *   There are no possible syntax errors in a txtar archive.
+
+## Example
+```v
+import os
+import encoding.txtar
+
+a := txtar.parse('comment
+line1
+line2
+-- file.txt --
+some content that will go into file.txt
+some more content
+-- a/b/c/file.v --
+import os
+dump(os.args)
+-- bcd/def/another.v --
+dump(2+2)
+')
+assert a.files.len == 2
+assert a.files[0].path == 'file.txt'
+assert a.files[2].path == 'bcd/def/another.v'
+
+tfolder := os.join_path(os.temp_dir(), 'xyz')
+txtar.unpack(a, tfolder)!
+assert os.exists(os.join_path(tfolder, 'bcd/def/another.v'))
+b := txtar.pack(tfolder, '')!
+assert b.files.len == a.files.len
+os.rmdir_all(tfolder)!
+```
