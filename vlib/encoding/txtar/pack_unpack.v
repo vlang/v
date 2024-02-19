@@ -9,18 +9,19 @@ pub fn pack(path string, comment string) !Archive {
 	if !os.exists(path) {
 		return error('file or folder ${path} does not exist')
 	}
+	npath := path.replace(os.path_separator, '/')
 	mut a := Archive{
 		comment: comment
 	}
-	if os.is_file(path) {
-		fname := os.file_name(path)
-		fcontent := os.read_file(path)!
+	if os.is_file(npath) {
+		fname := os.file_name(npath)
+		fcontent := os.read_file(npath)!
 		a.files << File{fname, fcontent}
 		return a
 	}
-	files := os.walk_ext(path, '').map(it.replace(os.path_separator, '/'))
+	files := os.walk_ext(npath, '').map(it.replace(os.path_separator, '/'))
 	for f in files {
-		frelative := f.replace_once(path, '').trim_left('/')
+		frelative := f.replace_once(npath, '').trim_left('/')
 		fcontent := os.read_file(f)!
 		a.files << File{frelative, fcontent}
 	}

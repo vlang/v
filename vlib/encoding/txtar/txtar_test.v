@@ -104,7 +104,7 @@ fn test_unpack_to_folder_then_pack_same_folder() {
 	assert a.comment != b.comment
 	assert b.comment == 'abc'
 	assert b.files.len == a.files.len
-	ofiles := b.files.sorted(|x, y| x.path < y.path)
-	pfiles := a.files.sorted(|x, y| x.path < y.path)
+	ofiles := a.files.sorted(|x, y| x.path < y.path)
+	pfiles := b.files.sorted(|x, y| x.path < y.path)
 	assert ofiles == pfiles
 }
