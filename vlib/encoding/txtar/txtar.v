@@ -7,7 +7,7 @@ import strings
 pub struct Archive {
 pub mut:
 	comment string // the start of the archive; contains potentially multiple lines, before the files
-	files   []File // a series of files,
+	files   []File // a series of files
 }
 
 // File is a single file in an Archive. Each starting with a `-- FILENAME --` line.
@@ -17,7 +17,8 @@ pub mut:
 	content string // everything after that, till the next `-- name --` line.
 }
 
-// str returns a string representation of the a Archive. It is suitable for storing in a text file.
+// str returns a string representation of the `a` Archive.
+// It is suitable for storing in a text file.
 // It is also in the same format, that txtar.parse/1 expects.
 pub fn (a &Archive) str() string {
 	mut sb := strings.new_builder(a.comment.len + 200 * a.files.len)
