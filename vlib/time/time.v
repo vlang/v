@@ -45,7 +45,8 @@ pub:
 	second     int
 	nanosecond int
 	unix       i64
-	is_local   bool // used to make time.now().local().local() == time.now().local()
+	// is_local   bool // used to make time.now().local().local() == time.now().local() // make as deprecad
+	offset_from_utc_in_minutes i16 // values between `- 12 * 60` = -720 until `12 * 60` = 720
 	//
 	microsecond int @[deprecated: 'use t.nanosecond / 1000 instead'; deprecated_after: '2023-08-05']
 }
