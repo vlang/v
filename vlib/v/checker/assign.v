@@ -365,10 +365,11 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 									}
 								} else if mut right is ast.Ident && right.obj is ast.Var
 									&& right.or_expr.kind == .absent {
-									if (right.obj as ast.Var).ct_type_var != .no_comptime {
+									right_obj_var := right.obj as ast.Var
+									if right_obj_var.ct_type_var != .no_comptime {
 										ctyp := c.comptime.get_comptime_var_type(right)
 										if ctyp != ast.void_type {
-											left.obj.ct_type_var = (right.obj as ast.Var).ct_type_var
+											left.obj.ct_type_var = right_obj_var.ct_type_var
 											left.obj.typ = ctyp
 										}
 									}
@@ -522,10 +523,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					}
 				} else if mut left is ast.Ident && left.kind != .blank_ident
 					&& right is ast.IndexExpr {
-					if (right as ast.IndexExpr).left is ast.Ident
-						&& (right as ast.IndexExpr).index is ast.RangeExpr
-						&& ((right as ast.IndexExpr).left.is_mut() || left.is_mut())
-						&& !c.inside_unsafe {
+					right_index_expr := right as ast.IndexExpr
+					if right_index_expr.left is ast.Ident && right_index_expr.index is ast.RangeExpr
+						&& (right_index_expr.left.is_mut() || left.is_mut()) && !c.inside_unsafe {
 						// `mut a := arr[..]` auto add clone() -> `mut a := arr[..].clone()`
 						c.add_error_detail_with_pos('To silence this notice, use either an explicit `a[..].clone()`,
 or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
