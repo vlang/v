@@ -189,8 +189,8 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		if is_decl || is_shared_re_assign {
 			// check generic struct init and return unwrap generic struct type
 			if mut right is ast.StructInit {
+				c.expr(mut right)
 				if right.typ.has_flag(.generic) {
-					c.expr(mut right)
 					right_type = right.typ
 				}
 			} else if mut right is ast.PrefixExpr {
