@@ -26,15 +26,57 @@ const comma_rune = `,`
 
 const colon_rune = `:`
 
-const unicode_escape_chars = [`\\`, `u`]!
+const unicode_escape_chars = `\\u`
 
 const quote_rune = `"`
 
 const escaped_chars = [(r'\b'), (r'\f'), (r'\n'), (r'\r'), (r'\t')]!
 
+const ascii_control_characters = ['null', '\\t', '\\n', '\\r', '\\u0004', '\\u0005', '\\u0006',
+	'\\u0007', '\\b', '\\t', '\\n', '\\v', '\\f', '\\r', '\\u000e', '\\u000f', '\\u0010', '\\u0011',
+	'\\u0012', '\\u0013', '\\u0014', '\\u0015', '\\u0016', '\\u0017', '\\u0018', '\\u0019', '\\u001a',
+	'\\u001b', '\\u001c', '\\u001d', '\\u001e', '\\u001f']!
+
 const curly_open_rune = `{`
 
 const curly_close_rune = `}`
+
+// vfmt off
+const g_digits_lut = [
+`0`,`0`, `0`,`1`, `0`,`2`, `0`,`3`, `0`,`4`, `0`,`5`, `0`,`6`, `0`,`7` ,`0`,`8`, `0`,`9`, `0`,`a`, `0`,`b`, `0`,`c`, `0`,`d`, `0`,`e`, `0`,`f`,
+`1`,`0`, `1`,`1`, `1`,`2`, `1`,`3`, `1`,`4`, `1`,`5`, `1`,`6`, `1`,`7` ,`1`,`8`, `1`,`9`, `1`,`a`, `1`,`b`, `1`,`c`, `1`,`d`, `1`,`e`, `1`,`f`,
+`2`,`0`, `2`,`1`, `2`,`2`, `2`,`3`, `2`,`4`, `2`,`5`, `2`,`6`, `2`,`7` ,`2`,`8`, `2`,`9`, `2`,`a`, `2`,`b`, `2`,`c`, `2`,`d`, `2`,`e`, `2`,`f`,
+`3`,`0`, `3`,`1`, `3`,`2`, `3`,`3`, `3`,`4`, `3`,`5`, `3`,`6`, `3`,`7` ,`3`,`8`, `3`,`9`, `3`,`a`, `3`,`b`, `3`,`c`, `3`,`d`, `3`,`e`, `3`,`f`,
+`4`,`0`, `4`,`1`, `4`,`2`, `4`,`3`, `4`,`4`, `4`,`5`, `4`,`6`, `4`,`7` ,`4`,`8`, `4`,`9`, `4`,`a`, `4`,`b`, `4`,`c`, `4`,`d`, `4`,`e`, `4`,`f`,
+`5`,`0`, `5`,`1`, `5`,`2`, `5`,`3`, `5`,`4`, `5`,`5`, `5`,`6`, `5`,`7` ,`5`,`8`, `5`,`9`, `5`,`a`, `5`,`b`, `5`,`c`, `5`,`d`, `5`,`e`, `5`,`f`,
+`6`,`0`, `6`,`1`, `6`,`2`, `6`,`3`, `6`,`4`, `6`,`5`, `6`,`6`, `6`,`7` ,`6`,`8`, `6`,`9`, `6`,`a`, `6`,`b`, `6`,`c`, `6`,`d`, `6`,`e`, `6`,`f`,
+`7`,`0`, `7`,`1`, `7`,`2`, `7`,`3`, `7`,`4`, `7`,`5`, `7`,`6`, `7`,`7` ,`7`,`8`, `7`,`9`, `7`,`a`, `7`,`b`, `7`,`c`, `7`,`d`, `7`,`e`, `7`,`f`,
+`8`,`0`, `8`,`1`, `8`,`2`, `8`,`3`, `8`,`4`, `8`,`5`, `8`,`6`, `8`,`7` ,`8`,`8`, `8`,`9`, `8`,`a`, `8`,`b`, `8`,`c`, `8`,`d`, `8`,`e`, `8`,`f`,
+`9`,`0`, `9`,`1`, `9`,`2`, `9`,`3`, `9`,`4`, `9`,`5`, `9`,`6`, `9`,`7` ,`9`,`8`, `9`,`9`, `9`,`a`, `9`,`b`, `9`,`c`, `9`,`d`, `9`,`e`, `9`,`f`,
+`a`,`0`, `a`,`1`, `a`,`2`, `a`,`3`, `a`,`4`, `a`,`5`, `a`,`6`, `a`,`7` ,`a`,`8`, `a`,`9`, `a`,`a`, `a`,`b`, `a`,`c`, `a`,`d`, `a`,`e`, `a`,`f`,
+`b`,`0`, `b`,`1`, `b`,`2`, `b`,`3`, `b`,`4`, `b`,`5`, `b`,`6`, `b`,`7` ,`b`,`8`, `b`,`9`, `b`,`a`, `b`,`b`, `b`,`c`, `b`,`d`, `b`,`e`, `b`,`f`,
+`c`,`0`, `c`,`1`, `c`,`2`, `c`,`3`, `c`,`4`, `c`,`5`, `c`,`6`, `c`,`7` ,`c`,`8`, `c`,`9`, `c`,`a`, `c`,`b`, `c`,`c`, `c`,`d`, `c`,`e`, `c`,`f`,
+`d`,`0`, `d`,`1`, `d`,`2`, `d`,`3`, `d`,`4`, `d`,`5`, `d`,`6`, `d`,`7` ,`d`,`8`, `d`,`9`, `d`,`a`, `d`,`b`, `d`,`c`, `d`,`d`, `d`,`e`, `d`,`f`,
+`e`,`0`, `e`,`1`, `e`,`2`, `e`,`3`, `e`,`4`, `e`,`5`, `e`,`6`, `e`,`7` ,`e`,`8`, `e`,`9`, `e`,`a`, `e`,`b`, `e`,`c`, `e`,`d`, `e`,`e`, `e`,`f`,
+`f`,`0`, `f`,`1`, `f`,`2`, `f`,`3`, `f`,`4`, `f`,`5`, `f`,`6`, `f`,`7` ,`f`,`8`, `f`,`9`, `f`,`a`, `f`,`b`, `f`,`c`, `f`,`d`, `f`,`e`, `f`,`f`
+]!
+// vfmt on
+
+// Pre-computed lookup tables for UTF-8 encoding
+const g_ascii_lut = [u8(0), 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+	20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42,
+	43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65,
+	66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88,
+	89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109,
+	110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128]!
+
+// const g_multibyte_utf8_lengths = [
+// 	u8(0), // Unused (1-byte characters have length 1)
+// 	1,
+// 	2, // Length of 2-byte UTF-8 sequences
+// 	3, // Length of 3-byte UTF-8 sequences
+// 	4, // Length of 4-byte UTF-8 sequences
+// ]!
 
 // encode is a generic function that encodes a type into a JSON string.
 pub fn encode[T](val T) string {
@@ -139,6 +181,8 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut buf []u8) ! {
 	} $else $if T is $sumtype {
 		$for v in val.variants {
 			if val is v {
+				// dump(val)
+				// dump(typeof(val).name)
 				e.encode_value_with_level(val, level, mut buf)!
 			}
 		}
@@ -402,93 +446,153 @@ pub fn (f Any) prettify_json_str() string {
 	return buf.bytestr()
 }
 
+// const g_multibyte_utf8_lengths = [
+// 	u8(0), // Unused (1-byte characters have length 1)
+// 	2, // Length of 2-byte UTF-8 sequences
+// 	3, // Length of 3-byte UTF-8 sequences
+// 	4, // Length of 4-byte UTF-8 sequences
+// ]!
+
 // TODO - Need refactor. Is so slow. The longer the string, the lower the performance.
 // encode_string returns the JSON spec-compliant version of the string.
 @[manualfree]
 fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 	buf << json2.quote_rune
 
-	mut char_position := 0
-	for idx := 0; idx < s.len; {
-		// char length based on the given text
-		// (e.g.: "t".len == 1; "✔".len == 2
-		mut char_len := 1
-		current_byte := s[idx]
+	if !e.escape_unicode {
+		unsafe {
+			buf.push_many(s.str, s.len)
+			buf << json2.quote_rune
+		}
+		return
+	}
 
-		// Check for multi-byte characters
-		if (current_byte & (1 << 7)) != 0 {
-			for bit_mask := u8(1 << 6); (current_byte & bit_mask) != 0; bit_mask >>= 1 {
-				char_len++
-				idx++
+	for idx, current_byte in s {
+		mut utf8_len := ((0xe5000000 >> ((current_byte >> 3) & 0x1e)) & 3) + 1
+
+		if utf8_len == 1 {
+			// Invalid UTF-8 sequence, handle error or return error
+			if current_byte < 32 {
+				unsafe {
+					buf.push_many(json2.ascii_control_characters[current_byte].str, json2.ascii_control_characters[current_byte].len)
+				}
+				continue
+			} else if current_byte >= 32 && current_byte < 128 {
+				buf << json2.g_ascii_lut[current_byte]
+				continue
 			}
+			continue
+		} else if utf8_len == 2 {
+			// João, Schilddrüsenerkrankungen...
+			buf << current_byte
+			buf << s[idx + 1]
+			continue
+		} else if utf8_len == 3 {
+			// ✔, ひらがな ...
+			// buf << current_byte
+			// buf << s[idx + 1]
+			// buf << s[idx + 2]
+
+			// continue
+		} else if utf8_len == 4 {
+			// Emojis
+			buf << current_byte
+			buf << s[idx + 1]
+			buf << s[idx + 2]
+			buf << s[idx + 3]
+			// println([u8(240), 159, 146, 191].bytestr()) F09F92C0
+			// println([u8(240), 159, 128, 129].bytestr()) F09F8081
+			// emoji_ranges = [
+			// 	(0x1F300, 0x1F5FF),  # Miscellaneous Symbols and Pictographs
+			// 	(0x1F600, 0x1F64F),  # Emoticons
+			// 	(0x1F680, 0x1F6FF),  # Transport and Map Symbols
+			// 	# Add more ranges as needed
+			// ]
+			continue
 		}
 
-		chr := s[char_position]
-
-		if (char_len == 1 && chr < 0x20) || chr == `\\` || chr == `"` || chr == `/` {
-			handle_special_char(e, mut buf, chr)
-		} else {
-			if char_len == 1 {
-				buf << chr
-			} else {
-				handle_multi_byte_char(e, mut buf, s[char_position..char_position + char_len])
+		// Handle multi-byte characters byte-by-byte
+		mut codepoint := u32(current_byte & ((1 << (7 - utf8_len)) - 1))
+		for j in 1 .. utf8_len {
+			if idx + j >= s.len {
+				// Incomplete UTF-8 sequence, handle error or return error
+				continue
 			}
+
+			mut b := s[idx + j]
+			if (b & 0xC0) != 0x80 {
+				// Invalid continuation byte, handle error or return error
+				continue // comment to pass // assert json.encode('te✔st') == r'"te\u2714st"'
+			}
+
+			codepoint = u32((codepoint << 6) | (b & 0x3F))
 		}
 
-		char_position += char_len
-		idx++
+		// dump(codepoint)
+
+		// Append Unicode escape sequence to buf
+		// buf << `\u2714`
+		buf << `\\`
+		buf << `u`
+		buf << hex_digit((codepoint >> 12) & 0xF)
+		buf << hex_digit((codepoint >> 8) & 0xF)
+		buf << hex_digit((codepoint >> 4) & 0xF)
+		buf << hex_digit(codepoint & 0xF)
 	}
 
 	buf << json2.quote_rune
 }
 
-fn handle_special_char(e &Encoder, mut buf []u8, chr u8) {
-	if chr in important_escapable_chars {
-		for j := 0; j < important_escapable_chars.len; j++ {
-			if chr == important_escapable_chars[j] {
-				unsafe { buf.push_many(json2.escaped_chars[j].str, json2.escaped_chars[j].len) }
-				break
-			}
-		}
-	} else if chr == `"` || chr == `/` || chr == `\\` {
-		buf << `\\`
-		buf << chr
-	} else {
-		for r in json2.unicode_escape_chars {
-			buf << r
-		}
-
-		buf << json2.zero_rune // \u0
-		buf << json2.zero_rune // \u00
-
-		hex_code := chr.hex()
-		unsafe { buf.push_many(hex_code.str, hex_code.len) }
+fn hex_digit(n int) u8 {
+	if n < 10 {
+		// dump(n)
+		return `0` + n
 	}
+	return `a` + (n - 10)
 }
 
-// handle_multi_byte_char - ...
-// (e.g.: ✔ => \u2714
-fn handle_multi_byte_char(e &Encoder, mut buf []u8, slice string) {
-	hex_code := slice.utf32_code().hex() // slow
+// fn handle_special_char(e &Encoder, mut buf []u8, chr u8) {
+// 	if chr in important_escapable_chars {
+// 		for j := 0; j < important_escapable_chars.len; j++ {
+// 			if chr == important_escapable_chars[j] {
+// 				unsafe { buf.push_many(json2.escaped_chars[j].str, json2.escaped_chars[j].len) }
+// 				break
+// 			}
+// 		}
+// 	} else if chr == `"` || chr == `/` || chr == `\\` {
+// 		temp_buffer_to_be_pushed := [u8(`\\`), chr]
+// 		unsafe { buf.push_many(&temp_buffer_to_be_pushed[0], temp_buffer_to_be_pushed.len) }
+// 	} else {
+// 		temp_buffer_to_be_pushed := [u8(`\\`), u8(json2.unicode_escape_chars), json2.zero_rune,
+// 			json2.zero_rune, json2.g_digits_lut[chr * 2], json2.g_digits_lut[chr * 2 + 1]] // \u00xx
+// 		unsafe { buf.push_many(&temp_buffer_to_be_pushed[0], temp_buffer_to_be_pushed.len) }
+// 	}
+// }
 
-	if !e.escape_unicode || hex_code.len < 4 {
-		unsafe { buf.push_many(slice.str, slice.len) }
-	} else if hex_code.len == 4 {
-		// Handle unicode endpoint
-		for r in json2.unicode_escape_chars {
-			buf << r
-		}
-		unsafe { buf.push_many(hex_code.str, hex_code.len) }
-	} else {
-		// TODO: still figuring out what
-		// to do with more than 4 chars
-		// According to https://www.json.org/json-en.html however, any codepoint is valid inside a string,
-		// so just passing it along should hopefully also work.
-		unsafe { buf.push_many(slice.str, slice.len) }
-	}
+// // handle_multi_byte_char - ...
+// // (e.g.: ✔ => \u2714
+// @[direct_array_access]
+// fn handle_multi_byte_char(e &Encoder, mut buf []u8, slice string) {
+// 	utf32_bytes_code := slice.utf32_code() // slow // string
+// 	hex_code := utf32_bytes_code.hex()
 
-	unsafe {
-		slice.free()
-		hex_code.free()
-	}
-}
+// 	if !e.escape_unicode || hex_code.len < 4 {
+// 		unsafe { buf.push_many(slice.str, slice.len) }
+// 	} else if hex_code.len == 4 {
+// 		temp_buffer_to_be_pushed := [u8(`\\`), json2.unicode_escape_chars]! // \u00
+// 		// buf << json2.unicode_escape_chars
+// 		unsafe { buf.push_many(&temp_buffer_to_be_pushed[0], temp_buffer_to_be_pushed.len) }
+// 		unsafe { buf.push_many(hex_code.str, hex_code.len) }
+// 	} else {
+// 		// TODO: still figuring out what
+// 		// to do with more than 4 chars
+// 		// According to https://www.json.org/json-en.html however, any codepoint is valid inside a string,
+// 		// so just passing it along should hopefully also work.
+// 		// unsafe { buf.push_many(slice.str, slice.len) }
+// 	}
+
+// 	unsafe {
+// 		slice.free()
+// 		hex_code.free()
+// 	}
+// }
