@@ -133,6 +133,10 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 	mut lines := []ast.SqlStmtLine{}
 
 	for p.tok.kind != .rcbr {
+		if p.tok.kind == .eof {
+			p.unexpected_with_pos(pos, got: 'eof, while parsing an SQL statement')
+			return ast.SqlStmt{}
+		}
 		lines << p.parse_sql_stmt_line()
 	}
 

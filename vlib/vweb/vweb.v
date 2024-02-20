@@ -1111,6 +1111,7 @@ pub fn (ctx &Context) ip() string {
 pub fn (mut ctx Context) error(s string) {
 	eprintln('[vweb] Context.error: ${s}')
 	ctx.form_error = s
+	// ctx.set_cookie(name: 'veb.error', value: s)
 }
 
 // Returns an empty result
