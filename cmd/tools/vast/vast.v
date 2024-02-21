@@ -140,10 +140,10 @@ fn json(file string) string {
 
 // the ast tree
 struct Tree {
-	table &ast.Table        = unsafe { nil }
-	pref  &pref.Preferences = unsafe { nil }
+	pref &pref.Preferences = unsafe { nil }
 mut:
-	root Node // the root of tree
+	table &ast.Table = unsafe { nil }
+	root  Node // the root of tree
 }
 
 // tree node
