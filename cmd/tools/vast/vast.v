@@ -131,7 +131,7 @@ fn json(file string) string {
 		pref: pref_
 	}
 	// parse file with comment
-	ast_file := parser.parse_file(file, t.table, .parse_comments, t.pref)
+	ast_file := parser.parse_file(file, mut t.table, .parse_comments, t.pref)
 	t.root = t.ast_file(ast_file)
 	// generate the ast string
 	s := json_print(t.root)
