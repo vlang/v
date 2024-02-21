@@ -178,7 +178,9 @@ fn (foptions &FormatOptions) format_pipe() {
 	input_text := os.get_raw_lines_joined()
 	file_ast := parser.parse_text(input_text, '', mut table, .parse_comments, prefs)
 	// checker.new_checker(table, prefs).check(file_ast)
-	formatted_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug, source_text: input_text)
+	formatted_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug,
+		source_text: input_text
+	)
 	print(formatted_content)
 	flush_stdout()
 	foptions.vlog('fmt.fmt worked and ${formatted_content.len} bytes were written to stdout.')
