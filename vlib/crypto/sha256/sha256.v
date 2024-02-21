@@ -201,7 +201,13 @@ fn (mut d Digest) checksum_internal() []u8 {
 @[deprecated: 'checksum() will be changed to a private method, use sum() instead']
 @[deprecated_after: '2024-04-30']
 pub fn (mut d Digest) checksum() []u8 {
-	return d.checksum_internal()
+	out := d.checksum_internal()
+	// if this digest has `size224` length, return the correct `size224` checksum
+	if d.is224 {
+		return out[0..sha256.size224]
+	}
+	// otherwise, returns a normal size
+	return out
 }
 
 // sum returns the SHA256 checksum of the bytes in `data`.
