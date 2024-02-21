@@ -235,7 +235,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							if field_info.is_mut {
 								if init_field.expr is ast.Ident && !init_field.expr.is_mut()
 									&& init_field.typ.is_ptr() {
-									c.error('`${init_field.expr}` is immutable, cannot have a mutable reference to an immutable object',
+									c.error('`${init_field.expr.name}` is immutable, cannot have a mutable reference to an immutable object',
 										init_field.pos)
 								} else if init_field.expr is ast.PrefixExpr {
 									if init_field.expr.op == .amp
