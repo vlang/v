@@ -16,10 +16,10 @@ const max_len = [0, 35, 60, 85, 93, 100]
 
 @[minify]
 pub struct Fmt {
+	pref &pref.Preferences = unsafe { nil }
 pub mut:
 	file               ast.File
-	table              &ast.Table        = unsafe { nil }
-	pref               &pref.Preferences = unsafe { nil }
+	table              &ast.Table = unsafe { nil }
 	is_debug           bool
 	out                strings.Builder
 	out_imports        strings.Builder
@@ -62,7 +62,7 @@ pub struct FmtOptions {
 	source_text string
 }
 
-pub fn fmt(file ast.File, table &ast.Table, pref_ &pref.Preferences, is_debug bool, options FmtOptions) string {
+pub fn fmt(file ast.File, mut table ast.Table, pref_ &pref.Preferences, is_debug bool, options FmtOptions) string {
 	mut f := Fmt{
 		file: file
 		table: table

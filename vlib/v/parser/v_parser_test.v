@@ -79,9 +79,9 @@ fn main() {
   ff(8+x)
 }
 '
-	table := ast.new_table()
+	mut table := ast.new_table()
 	vpref := &pref.Preferences{}
-	mut prog := parse_text(source_text, '', table, .skip_comments, vpref)
+	mut prog := parse_text(source_text, '', mut table, .skip_comments, vpref)
 	mut checker_ := checker.new_checker(table, vpref)
 	checker_.check(mut prog)
 }
@@ -93,14 +93,14 @@ fn test_one() {
 	println(@LOCATION)
 	input := ['a := 10', 'b := -a', 'c := 20']
 	expected := 'int a = 10;int b = -a;int c = 20;'
-	table := ast.new_table()
+	mut table := ast.new_table()
 	vpref := &pref.Preferences{}
-	scope := &ast.Scope{
+	mut scope := &ast.Scope{
 		start_pos: 0
 	}
 	mut e := []ast.Stmt{}
 	for line in input {
-		e << parse_stmt(line, table, scope)
+		e << parse_stmt(line, mut table, mut scope)
 	}
 	mut program := &ast.File{
 		stmts: e
@@ -109,7 +109,7 @@ fn test_one() {
 	}
 	mut checker_ := checker.new_checker(table, vpref)
 	checker_.check(mut program)
-	mut res, _, _, _ := c.gen([program], table, vpref)
+	mut res, _, _, _ := c.gen([program], mut table, vpref)
 	res = res.replace('\n', '').trim_space().after('#endif')
 	println(res)
 	ok := expected == res
@@ -136,15 +136,15 @@ fn test_parse_expr() {
 		'string s = tos3("hi");', 'x = 11;', 'a += 10;', '1.2 + 3.4;', '4 + 4;', '1 + 2 * 5;',
 		'-a + 1;', '2 + 2;']
 	mut e := []ast.Stmt{}
-	table := ast.new_table()
+	mut table := ast.new_table()
 	vpref := &pref.Preferences{}
 	mut chk := checker.new_checker(table, vpref)
-	scope := &ast.Scope{
+	mut scope := &ast.Scope{
 		start_pos: 0
 	}
 	for s in input {
 		println('\n\nst="${s}"')
-		e << parse_stmt(s, table, scope)
+		e << parse_stmt(s, mut table, mut scope)
 	}
 	mut program := &ast.File{
 		stmts: e
@@ -152,7 +152,7 @@ fn test_parse_expr() {
 		global_scope: scope
 	}
 	chk.check(mut program)
-	mut res, _, _, _ := c.gen([program], table, vpref)
+	mut res, _, _, _ := c.gen([program], mut table, vpref)
 	res = res.after('#endif')
 	println('========')
 	println(res)
@@ -185,13 +185,13 @@ fn test_num_literals() {
 		'c := -12.',
 		'd := -a',
 	]
-	table := ast.new_table()
+	mut table := ast.new_table()
 	mut scope := &ast.Scope{
 		start_pos: 0
 	}
 	mut rhs_types := []string{}
 	for input in inputs {
-		stmt := parse_stmt(input, table, scope)
+		stmt := parse_stmt(input, mut table, mut scope)
 		r := (stmt as ast.AssignStmt).right
 		match r[0] {
 			ast.IntegerLiteral { rhs_types << 'int literal' }
@@ -297,8 +297,8 @@ fn parse(output_mode pref.OutputMode) ! {
 	pref_.output_mode = output_mode
 	for idx, f in files {
 		// eprintln('> parsing in mode: ${output_mode}, ${idx+1:5}/${files.len} $f ...')
-		table := ast.new_table()
-		p := parse_file(f, table, .parse_comments, pref_)
+		mut table := ast.new_table()
+		p := parse_file(f, mut table, .parse_comments, pref_)
 		assert !isnil(p), 'failed to parse `${f}` in mode: ${output_mode}'
 		assert p.errors.len == 0, 'file ${f} should have been parsed with 0 errors'
 	}

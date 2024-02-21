@@ -103,9 +103,9 @@ fn (mut vt Vet) vet_file(path string) {
 	mut prefs := pref.new_preferences()
 	prefs.is_vet = true
 	prefs.is_vsh = path.ends_with('.vsh')
-	table := ast.new_table()
+	mut table := ast.new_table()
 	vt.vprintln("vetting file '${path}'...")
-	_, errors, notices := parser.parse_vet_file(path, table, prefs)
+	_, errors, notices := parser.parse_vet_file(path, mut table, prefs)
 	// Transfer errors from scanner and parser
 	vt.errors << errors
 	vt.notices << notices
