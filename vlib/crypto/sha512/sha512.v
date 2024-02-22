@@ -274,7 +274,21 @@ fn (mut d Digest) checksum_internal() []u8 {
 @[deprecated: 'checksum() will be changed to a private method, use sum() instead']
 @[deprecated_after: '2024-04-30']
 pub fn (mut d Digest) checksum() []u8 {
-	return d.checksum_internal()
+	out := d.checksum_internal()
+	match d.function {
+		.sha384 {
+			return out[0..sha512.size384]
+		}
+		.sha512_224 {
+			return out[0..sha512.size224]
+		}
+		.sha512_256 {
+			return out[0..sha512.size256]
+		}
+		else {
+			return out
+		}
+	}
 }
 
 // sum512 returns the SHA512 checksum of the data.
