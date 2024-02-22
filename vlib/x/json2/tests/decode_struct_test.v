@@ -45,6 +45,30 @@ mut:
 	val &T
 }
 
+struct StructTypeSkippedFields[T] {
+mut:
+	val  T @[json: '-']
+	val1 T
+	val2 T @[json: '-']
+	val3 T
+}
+
+struct StructTypeSkippedFields2[T] {
+mut:
+	val  T
+	val1 T @[json: '-']
+	val2 T
+	val3 T @[json: '-']
+}
+
+struct StructTypeSkippedFields3[T] {
+mut:
+	val  T @[json: '-']
+	val1 T @[json: '-']
+	val2 T @[json: '-']
+	val3 T @[json: '-']
+}
+
 fn test_types() {
 	assert json.decode[StructType[string]]('{"val": ""}')!.val == ''
 	assert json.decode[StructType[string]]('{"val": "0"}')!.val == '0'
@@ -124,5 +148,34 @@ fn test_types() {
 		assert false
 	} else {
 		assert true
+	}
+}
+
+fn test_skipped_fields() {
+	if x := json.decode[StructTypeSkippedFields[int]]('{"val":10,"val1":10,"val2":10,"val3":10}') {
+		assert x.val == 0
+		assert x.val1 == 10
+		assert x.val2 == 0
+		assert x.val3 == 10
+	} else {
+		assert false
+	}
+
+	if x := json.decode[StructTypeSkippedFields2[int]]('{"val":10,"val1":10,"val2":10,"val3":10}') {
+		assert x.val == 10
+		assert x.val1 == 0
+		assert x.val2 == 10
+		assert x.val3 == 0
+	} else {
+		assert false
+	}
+
+	if x := json.decode[StructTypeSkippedFields3[int]]('{"val":10,"val1":10,"val2":10,"val3":10}') {
+		assert x.val == 0
+		assert x.val1 == 0
+		assert x.val2 == 0
+		assert x.val3 == 0
+	} else {
+		assert false
 	}
 }

@@ -177,12 +177,27 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 	mut fields_len := 0
 
 	$for field in U.fields {
-		$if field.is_option {
-			if val.$(field.name) != none {
+		mut skip_field := false
+
+		for attr in field.attrs {
+			if attr.contains('json: '){
+				json_name := attr.replace('json: ', '')
+				if json_name == '-' {
+					skip_field = true
+				}
+
+				break
+			}
+		}
+
+		if !skip_field {
+			$if field.is_option {
+				if val.$(field.name) != none {
+					fields_len++
+				}
+			} $else {
 				fields_len++
 			}
-		} $else {
-			fields_len++
 		}
 	}
 	$for field in U.fields {
