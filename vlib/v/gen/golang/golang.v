@@ -12,9 +12,9 @@ import os
 const bs = '\\'
 
 pub struct Gen {
+	pref &pref.Preferences = unsafe { nil }
 pub mut:
-	table &ast.Table        = unsafe { nil }
-	pref  &pref.Preferences = unsafe { nil }
+	table &ast.Table = unsafe { nil }
 	// is_debug           bool
 	out                strings.Builder
 	out_imports        strings.Builder
@@ -45,7 +45,7 @@ pub mut:
 	nlines             int
 }
 
-pub fn gen(files []&ast.File, table &ast.Table, out_file string, pref_ &pref.Preferences) (int, int) {
+pub fn gen(files []&ast.File, mut table ast.Table, out_file string, pref_ &pref.Preferences) (int, int) {
 	mut g := Gen{
 		table: table
 		pref: pref_

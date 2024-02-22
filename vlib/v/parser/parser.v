@@ -116,7 +116,7 @@ pub mut:
 __global codegen_files = unsafe { []&ast.File{} }
 
 // for tests
-pub fn parse_stmt(text string, table &ast.Table, scope &ast.Scope) ast.Stmt {
+pub fn parse_stmt(text string, mut table ast.Table, mut scope ast.Scope) ast.Stmt {
 	$if trace_parse_stmt ? {
 		eprintln('> ${@MOD}.${@FN} text: ${text}')
 	}
@@ -136,7 +136,7 @@ pub fn parse_stmt(text string, table &ast.Table, scope &ast.Scope) ast.Stmt {
 	return p.stmt(false)
 }
 
-pub fn parse_comptime(tmpl_path string, text string, table &ast.Table, pref_ &pref.Preferences, scope &ast.Scope) &ast.File {
+pub fn parse_comptime(tmpl_path string, text string, mut table ast.Table, pref_ &pref.Preferences, mut scope ast.Scope) &ast.File {
 	$if trace_parse_comptime ? {
 		eprintln('> ${@MOD}.${@FN} text: ${text}')
 	}
@@ -154,7 +154,7 @@ pub fn parse_comptime(tmpl_path string, text string, table &ast.Table, pref_ &pr
 	return res
 }
 
-pub fn parse_text(text string, path string, table &ast.Table, comments_mode scanner.CommentsMode, pref_ &pref.Preferences) &ast.File {
+pub fn parse_text(text string, path string, mut table ast.Table, comments_mode scanner.CommentsMode, pref_ &pref.Preferences) &ast.File {
 	$if trace_parse_text ? {
 		eprintln('> ${@MOD}.${@FN} comments_mode: ${comments_mode:-20} | path: ${path:-20} | text: ${text}')
 	}
@@ -232,7 +232,7 @@ pub fn (mut p Parser) set_path(path string) {
 	}
 }
 
-pub fn parse_file(path string, table &ast.Table, comments_mode scanner.CommentsMode, pref_ &pref.Preferences) &ast.File {
+pub fn parse_file(path string, mut table ast.Table, comments_mode scanner.CommentsMode, pref_ &pref.Preferences) &ast.File {
 	// Note: when comments_mode == .toplevel_comments,
 	// the parser gives feedback to the scanner about toplevel statements, so that the scanner can skip
 	// all the tricky inner comments. This is needed because we do not have a good general solution
@@ -258,7 +258,7 @@ pub fn parse_file(path string, table &ast.Table, comments_mode scanner.CommentsM
 	return res
 }
 
-pub fn parse_vet_file(path string, table_ &ast.Table, pref_ &pref.Preferences) (&ast.File, []vet.Error, []vet.Error) {
+pub fn parse_vet_file(path string, mut table_ ast.Table, pref_ &pref.Preferences) (&ast.File, []vet.Error, []vet.Error) {
 	$if trace_parse_vet_file ? {
 		eprintln('> ${@MOD}.${@FN} path: ${path}')
 	}
@@ -367,7 +367,8 @@ pub fn (mut p Parser) parse() &ast.File {
 	// codegen
 	if p.codegen_text.len > 0 && !p.pref.is_fmt {
 		ptext := 'module ' + p.mod.all_after_last('.') + '\n' + p.codegen_text
-		codegen_files << parse_text(ptext, p.file_name, p.table, p.comments_mode, p.pref)
+		codegen_files << parse_text(ptext, p.file_name, mut p.table, p.comments_mode,
+			p.pref)
 	}
 
 	return &ast.File{
@@ -427,7 +428,7 @@ fn (mut q Queue) run() {
 	}
 }
 */
-pub fn parse_files(paths []string, table &ast.Table, pref_ &pref.Preferences) []&ast.File {
+pub fn parse_files(paths []string, mut table ast.Table, pref_ &pref.Preferences) []&ast.File {
 	mut timers := util.new_timers(should_print: false, label: 'parse_files: ${paths}')
 	$if time_parsing ? {
 		timers.should_print = true
@@ -459,7 +460,7 @@ pub fn parse_files(paths []string, table &ast.Table, pref_ &pref.Preferences) []
 		mut files := []&ast.File{cap: paths.len}
 		for path in paths {
 			timers.start('parse_file ${path}')
-			files << parse_file(path, table, .skip_comments, pref_)
+			files << parse_file(path, mut table, .skip_comments, pref_)
 			timers.show('parse_file ${path}')
 		}
 		if codegen_files.len > 0 {
