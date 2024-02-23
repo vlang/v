@@ -407,10 +407,7 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 		}
 		.resized {
 			ctx.scale = dpi_scale()
-			mut ft_scale := &ctx.ft.scale
-			unsafe {
-				*ft_scale = ctx.scale
-			}
+			ctx.ft.scale = ctx.scale
 			if ctx.config.resized_fn != unsafe { nil } {
 				ctx.config.resized_fn(e, ctx.config.user_data)
 			}
