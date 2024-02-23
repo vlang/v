@@ -2,34 +2,43 @@ module io
 
 import strings
 
-// StringReader is able to read data from an Reader interface to a dynamically
+@[params]
+pub struct StringReaderParams {
+	// the reader interface
+	reader ?Reader
+	// initialize the builder with this source string
+	source ?string
+	// if no source is given the string builder is initialized with this size
+	initial_size int
+}
+
+// StringReader is able to read data from a Reader interface and/or source string to a dynamically
 // growing buffer using a string builder. Unlike the BufferedReader, StringReader will
 // keep the entire contents of the buffer in memory, allowing the incoming data to be reused
-// and read in an efficient matter
+// and read in an efficient matter.
 pub struct StringReader {
 mut:
-	reader Reader
+	reader ?Reader
 	offset int // current offset in the buffer
 pub mut:
 	end_of_stream bool // whether we reached the end of the upstream reader
 	builder       strings.Builder
 }
 
-// new creates a new StringReader and sets the string builder size to `initial_size`
-pub fn StringReader.new(reader Reader, initial_size int) StringReader {
-	return StringReader{
-		reader: reader
-		builder: strings.new_builder(initial_size)
-	}
-}
-
-// from_string creates a new StringReader and fills the builder with `source`
-pub fn StringReader.from_string(reader Reader, source string) StringReader {
+// new creates a new StringReader and sets the string builder size to `initial_size`.
+// If a source
+pub fn StringReader.new(params StringReaderParams) StringReader {
 	mut r := StringReader{
-		reader: reader
-		builder: strings.new_builder(source.len)
+		reader: params.reader
 	}
-	r.builder.write_string(source)
+
+	if source := params.source {
+		r.builder = strings.new_builder(source.len)
+		r.builder.write_string(source)
+	} else {
+		r.builder = strings.new_builder(params.initial_size)
+	}
+
 	return r
 }
 
@@ -51,6 +60,8 @@ pub fn (mut r StringReader) fill_buffer(read_till_end_of_stream bool) !int {
 		return Eof{}
 	}
 
+	mut reader := r.reader or { return error('reader is not set') }
+
 	start := r.builder.len
 	mut end := start
 
@@ -62,7 +73,7 @@ pub fn (mut r StringReader) fill_buffer(read_till_end_of_stream bool) !int {
 	}
 
 	for {
-		read := r.reader.read(mut r.builder[start..]) or {
+		read := reader.read(mut r.builder[start..]) or {
 			r.end_of_stream = true
 			break
 		}
@@ -89,6 +100,8 @@ pub fn (mut r StringReader) fill_buffer_until(n int) !int {
 		return Eof{}
 	}
 
+	mut reader := r.reader or { return error('reader is not set') }
+
 	start := r.builder.len
 	// make sure there is enough room in the string builder
 	if n > read_all_len {
@@ -99,7 +112,7 @@ pub fn (mut r StringReader) fill_buffer_until(n int) !int {
 
 	mut end := start
 	for {
-		read := r.reader.read(mut r.builder[start..]) or {
+		read := reader.read(mut r.builder[start..]) or {
 			r.end_of_stream = true
 			break
 		}

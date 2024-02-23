@@ -8,7 +8,6 @@ mut:
 }
 
 fn (mut b Buf) read(mut buf []u8) !int {
-	eprintln('try read ${b.i} ${b.bytes.len}')
 	if !(b.i < b.bytes.len) {
 		return Eof{}
 	}
@@ -18,7 +17,7 @@ fn (mut b Buf) read(mut buf []u8) !int {
 }
 
 fn test_read_all() {
-	mut reader := StringReader.new(Buf{}, 0)
+	mut reader := StringReader.new()
 
 	if _ := reader.read_all(false) {
 		assert false, 'should return io.Eof'
@@ -31,26 +30,26 @@ fn test_read_all() {
 		bytes: contents.bytes()
 	}
 
-	reader = StringReader.new(buf, 0)
+	reader = StringReader.new(reader: buf)
 	data := reader.read_all(false)!
 
 	assert data == contents
 }
 
 fn test_read_bytes() {
-	mut reader := StringReader.new(Buf{}, 0)
+	mut reader := StringReader.new()
 
 	if _ := reader.read_bytes(4) {
 		assert false, 'should return io.Eof'
 	} else {
-		assert err is Eof
+		assert err.msg() == 'reader is not set'
 	}
 
 	buf := Buf{
 		bytes: '12345678'.bytes()
 	}
 
-	reader = StringReader.new(buf, 0)
+	reader = StringReader.new(reader: buf)
 	mut data := reader.read_bytes(4)!
 	assert data == buf.bytes[..4]
 
@@ -59,7 +58,7 @@ fn test_read_bytes() {
 }
 
 fn test_read_line() {
-	mut reader := StringReader.new(Buf{}, 0)
+	mut reader := StringReader.new()
 
 	if _ := reader.read_line() {
 		assert false, 'should return io.Eof'
@@ -71,15 +70,29 @@ fn test_read_line() {
 		bytes: 'first line\r\nsecond line\n'.bytes()
 	}
 
-	reader = StringReader.new(buf, 0)
+	reader = StringReader.new(reader: buf)
 
 	assert reader.read_line()! == 'first line'
 	assert reader.read_line()! == 'second line'
 }
 
 fn test_from_string() {
-	buf := StringReader.new(Buf{}, 0)
-
-	mut reader := StringReader.from_string(buf, 'test')
+	mut reader := StringReader.new(source: 'test')
 	assert reader.read_all(false)! == 'test'
+
+	if _ := reader.read_all(false) {
+		assert false, 'should return Eof'
+	} else {
+		assert err is Eof
+	}
+}
+
+fn test_from_string_and_reader() {
+	buf := Buf{
+		bytes: 'buffer'.bytes()
+	}
+
+	mut reader := StringReader.new(reader: buf, source: 'string')
+
+	assert reader.read_all(false)! == 'stringbuffer'
 }
