@@ -261,7 +261,7 @@ struct GlobalConstDef {
 	is_precomputed bool     // can be declared as a const in C: primitive, and a simple definition
 }
 
-pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) (string, string, string, []int) {
+pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (string, string, string, []int) {
 	mut module_built := ''
 	if pref_.build_mode == .build_module {
 		for file in files {
@@ -313,7 +313,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) (string
 		module_built: module_built
 		timers_should_print: timers_should_print
 		timers: util.new_timers(should_print: timers_should_print, label: 'global_cgen')
-		inner_loop: &ast.empty_stmt
+		inner_loop: unsafe { &ast.empty_stmt }
 		field_data_type: ast.Type(table.find_type_idx('FieldData'))
 		enum_data_type: ast.Type(table.find_type_idx('EnumData'))
 		is_cc_msvc: pref_.ccompiler == 'msvc'

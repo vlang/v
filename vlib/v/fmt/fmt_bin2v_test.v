@@ -26,9 +26,9 @@ fn test_bin2v_formatting() {
 	}
 	prepare_bin2v_file()
 
-	table := ast.new_table()
-	file_ast := parser.parse_file(b2v_keep_path, table, .parse_comments, fpref)
-	result_ocontent := fmt.fmt(file_ast, table, fpref, false)
+	mut table := ast.new_table()
+	file_ast := parser.parse_file(b2v_keep_path, mut table, .parse_comments, fpref)
+	result_ocontent := fmt.fmt(file_ast, mut table, fpref, false)
 	eprintln('> the file ${b2v_keep_path} can be formatted.')
 	expected_ocontent := os.read_file(b2v_keep_path)!
 	if expected_ocontent != result_ocontent {

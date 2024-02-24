@@ -97,7 +97,7 @@ fn (mut g JsGen) write_tests_definitions() {
 	g.definitions.writeln('globalThis.g_test_fails = 0;')
 }
 
-pub fn gen(files []&ast.File, table &ast.Table, pref_ &pref.Preferences) string {
+pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) string {
 	mut g := &JsGen{
 		definitions: strings.new_builder(100)
 		table: table

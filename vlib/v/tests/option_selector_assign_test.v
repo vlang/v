@@ -13,7 +13,7 @@ fn test_main() {
 		nr_elems: 11
 	}
 	mut child := Tree{
-		parent: &parent
+		parent: unsafe { &parent }
 	}
 	child.set_nr_elems('Buzz', 123)
 	assert child.parent or { return }.nr_elems == 123

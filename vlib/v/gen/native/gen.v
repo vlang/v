@@ -327,7 +327,7 @@ fn get_backend(arch pref.Arch, target_os pref.OS) !CodeGen {
 	return error('unsupported architecture')
 }
 
-pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref_ &pref.Preferences) (int, int) {
+pub fn gen(files []&ast.File, mut table ast.Table, out_name string, pref_ &pref.Preferences) (int, int) {
 	exe_name := if pref_.os == .windows && !out_name.ends_with('.exe') {
 		out_name + '.exe'
 	} else {
