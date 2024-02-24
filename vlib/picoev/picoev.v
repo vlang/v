@@ -77,9 +77,9 @@ mut:
 	timeouts         map[int]i64
 	num_loops        int
 
-	buf &u8 = unsafe { nil }
+	buf []u8
 	idx [1024]int
-	out &u8 = unsafe { nil }
+	out []u8
 
 	date string
 pub:
@@ -252,17 +252,13 @@ fn raw_callback(fd int, events int, context voidptr) {
 			return
 		}
 
-		mut request_buffer := pv.buf
-		unsafe {
-			request_buffer += fd * pv.max_read // pointer magic
-		}
+		mut request_buffer := unsafe { pv.buf }
+
 		mut req := picohttpparser.Request{}
 
 		// Response init
-		mut response_buffer := pv.out
-		unsafe {
-			response_buffer += fd * pv.max_write // pointer magic
-		}
+		mut response_buffer := unsafe { pv.out }
+
 		mut res := picohttpparser.Response{
 			fd: fd
 			buf_start: response_buffer
@@ -272,7 +268,8 @@ fn raw_callback(fd int, events int, context voidptr) {
 
 		for {
 			// Request parsing loop
-			r := req_read(fd, request_buffer, pv.max_read, pv.idx[fd]) // Get data from socket
+
+			r := req_read(fd, (&u8(request_buffer.data)), pv.max_read, pv.idx[fd]) // Get data from socket
 			if r == 0 {
 				// connection closed by peer
 				pv.close_conn(fd)
@@ -288,7 +285,7 @@ fn raw_callback(fd int, events int, context voidptr) {
 			}
 			pv.idx[fd] += r
 
-			mut s := unsafe { tos(request_buffer, pv.idx[fd]) }
+			mut s := unsafe { tos((&u8(request_buffer.data)), pv.idx[fd]) }
 			pret := req.parse_request(s) or {
 				// Parse error
 				pv.error_callback(pv.user_data, req, mut &res, err)
@@ -339,8 +336,8 @@ pub fn new(config Config) !&Picoev {
 	}
 
 	if isnil(pv.raw_callback) {
-		pv.buf = unsafe { malloc_noscan(picoev.max_fds * config.max_read + 1) }
-		pv.out = unsafe { malloc_noscan(picoev.max_fds * config.max_write + 1) }
+		pv.buf = []u8{cap: picoev.max_fds * config.max_read + 1}
+		pv.out = []u8{cap: picoev.max_fds * config.max_write + 1}
 	}
 
 	// epoll on linux

@@ -8,16 +8,15 @@ pub struct Response {
 pub:
 	fd        int
 	date      &u8 = unsafe { nil }
-	buf_start &u8 = unsafe { nil }
+	buf_start []u8
 pub mut:
-	buf &u8 = unsafe { nil }
+	buf []u8
 }
 
 @[inline]
 pub fn (mut r Response) write_string(s string) {
 	unsafe {
-		vmemcpy(r.buf, s.str, s.len)
-		r.buf += s.len
+		r.buf.push_many(s.str, s.len)
 	}
 }
 
@@ -39,10 +38,7 @@ pub fn (mut r Response) header(k string, v string) &Response {
 @[inline]
 pub fn (mut r Response) header_date() &Response {
 	r.write_string('Date: ')
-	unsafe {
-		vmemcpy(r.buf, r.date, 29)
-		r.buf += 29
-	}
+	unsafe { r.buf.push_many(r.date, 29) } // TODO change date to []u8
 	r.write_string('\r\n')
 	return unsafe { r }
 }
@@ -83,7 +79,9 @@ pub fn (mut r Response) json() &Response {
 pub fn (mut r Response) body(body string) {
 	r.write_string('Content-Length: ')
 	unsafe {
-		r.buf += u64toa(r.buf, u64(body.len)) or { panic(err) }
+		// content_length := u64toa(&u8(r.buf.data), u64(body.len)) or { panic(err) }
+		content_length := body.len.str()
+		r.buf.push_many(content_length.str, content_length.len)
 	}
 	r.write_string('\r\n\r\n')
 	r.write_string(body)
@@ -113,9 +111,9 @@ fn C.send(sockfd int, buf voidptr, len usize, flags int) int
 
 @[inline]
 pub fn (mut r Response) end() int {
-	n := int(i64(r.buf) - i64(r.buf_start))
+	n := r.buf.len
 	// use send instead of write for windows compatibility
-	if C.send(r.fd, r.buf_start, n, 0) != n {
+	if C.send(r.fd, &u8(r.buf_start.data), n, 0) != n {
 		return -1
 	}
 	return n
