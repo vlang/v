@@ -69,6 +69,11 @@ mut:
 	val3 T @[json: '-']
 }
 
+struct StructTypeSkippedField4 {
+mut:
+	val map[string]string @[json: '-']
+}
+
 fn test_types() {
 	assert json.decode[StructType[string]]('{"val": ""}')!.val == ''
 	assert json.decode[StructType[string]]('{"val": "0"}')!.val == '0'
@@ -175,6 +180,12 @@ fn test_skipped_fields() {
 		assert x.val1 == 0
 		assert x.val2 == 0
 		assert x.val3 == 0
+	} else {
+		assert false
+	}
+
+	if x := json.decode[StructTypeSkippedField4]('{"val":{"a":"b"}}') {
+		assert x.val.len == 1
 	} else {
 		assert false
 	}

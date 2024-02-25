@@ -180,7 +180,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 		mut skip_field := false
 
 		for attr in field.attrs {
-			if attr.contains('json: '){
+			if attr.contains('json: ') {
 				json_name := attr.replace('json: ', '')
 				if json_name == '-' {
 					skip_field = true
