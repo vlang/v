@@ -5397,7 +5397,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			}
 			for i, expr in node.exprs {
 				if return_sym.kind == .array_fixed && expr !is ast.ArrayInit {
-					g.fixed_array_var_init(expr, (return_sym.info as ast.ArrayFixed).size)
+					info := return_sym.info as ast.ArrayFixed
+					g.fixed_array_var_init(g.expr_string(expr), expr.is_auto_deref_var(),
+						info.elem_type, info.size)
 				} else {
 					g.expr_with_cast(expr, node.types[i], fn_ret_type.clear_option_and_result())
 				}
@@ -5432,7 +5434,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				if fn_ret_type.has_flag(.option) {
 					g.expr_with_opt(expr, node.types[i], fn_ret_type.clear_flag(.result))
 				} else if return_sym.kind == .array_fixed && expr !is ast.ArrayInit {
-					g.fixed_array_var_init(expr, (return_sym.info as ast.ArrayFixed).size)
+					info := return_sym.info as ast.ArrayFixed
+					g.fixed_array_var_init(g.expr_string(expr), expr.is_auto_deref_var(),
+						info.elem_type, info.size)
 				} else {
 					g.expr_with_cast(expr, node.types[i], fn_ret_type.clear_flag(.result))
 				}
