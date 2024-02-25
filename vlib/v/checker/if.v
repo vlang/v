@@ -467,10 +467,19 @@ fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							node.pos)
 					} else {
 						if c.inside_assign && node.is_expr && !node.typ.has_flag(.shared_f)
-							&& stmt.typ.is_ptr() != node.typ.is_ptr()
 							&& stmt.typ != ast.voidptr_type {
-							c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(stmt.typ)}`',
-								node.pos)
+							if stmt.typ.is_ptr() != node.typ.is_ptr() {
+								c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(stmt.typ)}`',
+									node.pos)
+							} else if stmt.typ != ast.none_type {
+								if !node.typ.has_flag(.option) && stmt.typ.has_flag(.option) {
+									c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(stmt.typ)}`',
+										node.pos)
+								} else if !node.typ.has_flag(.result) && stmt.typ.has_flag(.result) {
+									c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(stmt.typ)}`',
+										node.pos)
+								}
+							}
 						}
 					}
 				} else if !node.is_comptime && stmt !in [ast.Return, ast.BranchStmt] {

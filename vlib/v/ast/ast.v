@@ -803,6 +803,7 @@ pub mut:
 	typ             Type
 	is_tmp_autofree bool // this tells cgen that a tmp variable has to be used for the arg expression in order to free it after the call
 	pos             token.Pos
+	should_be_ptr   bool // fn expects a ptr for this arg
 	// tmp_name        string // for autofree
 }
 

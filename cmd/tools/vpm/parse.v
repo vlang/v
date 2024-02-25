@@ -107,7 +107,7 @@ fn (mut p Parser) parse_module(m string) {
 			vpm_error('failed to find `v.mod` for `${ident}${at_version(version)}`.',
 				details: err.msg()
 			)
-			os.rmdir_all(tmp_path) or {}
+			rmdir_all(tmp_path) or {}
 			p.errors++
 			return
 		}
@@ -216,12 +216,7 @@ fn get_tmp_path(relative_path string) !string {
 	if os.exists(tmp_path) {
 		// It's unlikely that the tmp_path already exists, but it might
 		// occur if vpm was canceled during an installation or update.
-		$if windows {
-			// FIXME: Workaround for failing `rmdir` commands on Windows.
-			os.execute_opt('rd /s /q ${tmp_path}')!
-		} $else {
-			os.rmdir_all(tmp_path)!
-		}
+		rmdir_all(tmp_path)!
 	}
 	return tmp_path
 }

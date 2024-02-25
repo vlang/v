@@ -297,18 +297,45 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 			g.definitions.write_string(');\n')
 
 			orig_fn_args := call_fn.func.params.map(it.name).join(', ')
-
-			if g.cur_fn.is_method || g.cur_fn.is_static_type_method {
-				g.writeln('\tarray_push((array*)&g_callstack, _MOV((v__debug__FnTrace[]){ ((v__debug__FnTrace){.name = _SLIT("${g.table.type_to_str(g.cur_fn.receiver.typ)}.${g.cur_fn.name.all_after_last('__static__')}"),.file = _SLIT("${call_fn.file}"),.line = ${call_fn.line},}) }));')
-			} else {
-				g.writeln('\tarray_push((array*)&g_callstack, _MOV((v__debug__FnTrace[]){ ((v__debug__FnTrace){.name = _SLIT("${g.cur_fn.name}"),.file = _SLIT("${call_fn.file}"),.line = ${call_fn.line},}) }));')
+			add_trace_hook := g.pref.is_trace
+				&& call_fn.name !in ['v.debug.add_after_call', 'v.debug.add_before_call', 'v.debug.remove_after_call', 'v.debug.remove_before_call']
+			if g.pref.is_callstack {
+				if g.cur_fn.is_method || g.cur_fn.is_static_type_method {
+					g.writeln('\tarray_push((array*)&g_callstack, _MOV((v__debug__FnTrace[]){ ((v__debug__FnTrace){.name = _SLIT("${g.table.type_to_str(g.cur_fn.receiver.typ)}.${g.cur_fn.name.all_after_last('__static__')}"),.file = _SLIT("${call_fn.file}"),.line = ${call_fn.line},}) }));')
+				} else {
+					g.writeln('\tarray_push((array*)&g_callstack, _MOV((v__debug__FnTrace[]){ ((v__debug__FnTrace){.name = _SLIT("${g.cur_fn.name}"),.file = _SLIT("${call_fn.file}"),.line = ${call_fn.line},}) }));')
+				}
 			}
 			if call_fn.return_type == 0 || call_fn.return_type == ast.void_type {
+				if add_trace_hook {
+					g.writeln('\tif (!g_trace.in_hook) {')
+					g.writeln('\t\tv__debug__before_call_hook(_SLIT("${call_fn.name}"));')
+					g.writeln('\t}')
+				}
 				g.writeln('\t${c_name(call_fn.name)}(${orig_fn_args});')
-				g.writeln('\tarray_pop((array*)&g_callstack);')
+				if add_trace_hook {
+					g.writeln('\tif (!g_trace.in_hook) {')
+					g.writeln('\t\tv__debug__after_call_hook(_SLIT("${call_fn.name}"));')
+					g.writeln('\t}')
+				}
+				if g.pref.is_callstack {
+					g.writeln('\tarray_pop((array*)&g_callstack);')
+				}
 			} else {
+				if add_trace_hook {
+					g.writeln('\tif (!g_trace.in_hook) {')
+					g.writeln('\t\tv__debug__before_call_hook(_SLIT("${call_fn.name}"));')
+					g.writeln('\t}')
+				}
 				g.writeln('\t${g.typ(call_fn.return_type)} ret = ${c_name(call_fn.name)}(${orig_fn_args});')
-				g.writeln('\tarray_pop((array*)&g_callstack);')
+				if g.pref.is_callstack {
+					g.writeln('\tarray_pop((array*)&g_callstack);')
+				}
+				if add_trace_hook {
+					g.writeln('\tif (!g_trace.in_hook) {')
+					g.writeln('\t\tv__debug__after_call_hook(_SLIT("${call_fn.name}"));')
+					g.writeln('\t}')
+				}
 				g.writeln('\treturn ret;')
 			}
 			g.writeln('}')
@@ -948,8 +975,16 @@ fn (mut g Gen) gen_arg_from_type(node_type ast.Type, node ast.Expr) {
 
 fn (mut g Gen) gen_map_method_call(node ast.CallExpr, left_type ast.Type, left_sym ast.TypeSymbol) bool {
 	match node.name {
-		'clear' {
-			g.write('map_clear(')
+		'reserve' {
+			g.write('map_reserve(')
+			g.gen_arg_from_type(left_type, node.left)
+			g.write(', ')
+			g.expr(node.args[0].expr)
+			g.write(')')
+			return true
+		}
+		'free', 'clear' {
+			g.write('map_${node.name}(')
 			g.gen_arg_from_type(left_type, node.left)
 			g.write(')')
 			return true
@@ -2240,6 +2275,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 		if is_variadic && i == expected_types.len - 1 {
 			break
 		}
+		mut is_smartcast := false
 		if arg.expr is ast.Ident {
 			if arg.expr.obj is ast.Var {
 				if arg.expr.obj.smartcasts.len > 0 {
@@ -2252,6 +2288,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 						if cast_sym.info is ast.Aggregate {
 							expected_types[i] = cast_sym.info.types[g.aggregate_type_idx]
 						}
+						is_smartcast = true
 					}
 				}
 			}
@@ -2287,7 +2324,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 					g.write('/*autofree arg*/' + name)
 				}
 			} else {
-				g.ref_or_deref_arg(arg, expected_types[i], node.language)
+				g.ref_or_deref_arg(arg, expected_types[i], node.language, is_smartcast)
 			}
 		} else {
 			if use_tmp_var_autofree {
@@ -2358,7 +2395,8 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 					noscan := g.check_noscan(arr_info.elem_type)
 					g.write('new_array_from_c_array${noscan}(${variadic_count}, ${variadic_count}, sizeof(${elem_type}), _MOV((${elem_type}[${variadic_count}]){')
 					for j in arg_nr .. args.len {
-						g.ref_or_deref_arg(args[j], arr_info.elem_type, node.language)
+						g.ref_or_deref_arg(args[j], arr_info.elem_type, node.language,
+							false)
 						if j < args.len - 1 {
 							g.write(', ')
 						}
@@ -2385,7 +2423,7 @@ fn (mut g Gen) keep_alive_call_pregen(node ast.CallExpr) int {
 		expected_type := node.expected_arg_types[i]
 		typ := g.table.sym(expected_type).cname
 		g.write('${typ} __tmp_arg_${tmp_cnt_save + i} = ')
-		g.ref_or_deref_arg(arg, expected_type, node.language)
+		g.ref_or_deref_arg(arg, expected_type, node.language, false)
 		g.writeln(';')
 	}
 	g.empty_line = false
@@ -2402,7 +2440,7 @@ fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 }
 
 @[inline]
-fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang ast.Language) {
+fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang ast.Language, is_smartcast bool) {
 	arg_typ := if arg.expr is ast.ComptimeSelector {
 		g.unwrap_generic(g.comptime.get_comptime_var_type(arg.expr))
 	} else {
@@ -2517,7 +2555,10 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 			}
 		}
 	}
+	// check if the argument must be dereferenced or not
+	g.arg_no_auto_deref = is_smartcast && !arg_is_ptr && !exp_is_ptr && arg.should_be_ptr
 	g.expr_with_cast(arg.expr, arg_typ, expected_type)
+	g.arg_no_auto_deref = false
 	if needs_closing {
 		g.write(')')
 	}
