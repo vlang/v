@@ -15,7 +15,8 @@ pub struct StringReaderParams {
 // StringReader is able to read data from a Reader interface and/or source string to a dynamically
 // growing buffer using a string builder. Unlike the BufferedReader, StringReader will
 // keep the entire contents of the buffer in memory, allowing the incoming data to be reused
-// and read in an efficient matter.
+// and read in an efficient matter. The StringReader will not set a maximum capacity to the string
+// builders buffer and could grow very large.
 pub struct StringReader {
 mut:
 	reader ?Reader
@@ -271,4 +272,20 @@ pub fn (r StringReader) get_string_part(start int, n int) !string {
 	}
 
 	return r.builder.spart(start, n)
+}
+
+// flush clears the stringbuilder and returns the resulting string and the stringreaders
+// offset is reset to 0
+pub fn (mut r StringReader) flush() string {
+	r.offset = 0
+	return r.builder.str()
+}
+
+// free frees the memory block used for the string builders buffer,
+// a new string builder with size 0 is initialized and the stringreaders offset is reset to 0
+@[unsafe]
+pub fn (mut r StringReader) free() {
+	r.builder.free()
+	r.builder = strings.new_builder(0)
+	r.offset = 0
 }

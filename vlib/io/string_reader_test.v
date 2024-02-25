@@ -96,3 +96,13 @@ fn test_from_string_and_reader() {
 
 	assert reader.read_all(false)! == 'stringbuffer'
 }
+
+fn test_flush() {
+	mut reader := StringReader.new(source: 'flushed data')
+
+	str := reader.flush()
+	assert str == 'flushed data'
+
+	assert reader.offset == 0
+	assert reader.builder.len == 0
+}
