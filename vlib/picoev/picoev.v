@@ -299,7 +299,13 @@ fn raw_callback(fd int, events int, context voidptr) {
 				return
 			} else if r == -1 {
 				eprintln('Error during req_read')
-				close_socket(fd) // Close fd on failure
+
+				if fatal_socket_error(fd) == false {
+					return
+				}
+
+				// fatal error
+				pv.close_conn(fd)
 				return
 			}
 			pv.idx[fd] += r
