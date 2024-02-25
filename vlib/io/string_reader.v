@@ -285,7 +285,7 @@ pub fn (mut r StringReader) flush() string {
 // a new string builder with size 0 is initialized and the stringreaders offset is reset to 0
 @[unsafe]
 pub fn (mut r StringReader) free() {
-	r.builder.free()
+	unsafe { r.builder.free() }
 	r.builder = strings.new_builder(0)
 	r.offset = 0
 }
