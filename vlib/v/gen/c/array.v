@@ -56,7 +56,8 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 				} else if elem_type.unaliased_sym.kind == .array_fixed
 					&& expr in [ast.Ident, ast.SelectorExpr] {
 					info := elem_type.unaliased_sym.info as ast.ArrayFixed
-					g.fixed_array_var_init(expr, info.size)
+					g.fixed_array_var_init('${expr}', expr.is_auto_deref_var(), info.elem_type,
+						info.size)
 				} else {
 					g.expr_with_cast(expr, node.expr_types[i], node.elem_type)
 				}
@@ -162,7 +163,8 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		for i, expr in node.exprs {
 			if elem_sym.kind == .array_fixed && expr in [ast.Ident, ast.SelectorExpr] {
 				info := elem_sym.info as ast.ArrayFixed
-				g.fixed_array_var_init(expr, info.size)
+				g.fixed_array_var_init('${expr}', expr.is_auto_deref_var(), info.elem_type,
+					info.size)
 			} else {
 				if expr.is_auto_deref_var() {
 					g.write('*')
@@ -1339,17 +1341,23 @@ fn (mut g Gen) write_prepared_var(var_name string, inp_info ast.Array, inp_elem_
 	}
 }
 
-fn (mut g Gen) fixed_array_var_init(expr ast.Expr, size int) {
+fn (mut g Gen) fixed_array_var_init(expr_str string, is_auto_deref bool, elem_type ast.Type, size int) {
 	g.write('{')
 	for i in 0 .. size {
-		if expr.is_auto_deref_var() {
-			g.write('(*')
+		elem_sym := g.table.sym(elem_type)
+		if elem_sym.info is ast.ArrayFixed {
+			g.fixed_array_var_init('${expr_str}[${i}]', is_auto_deref, elem_sym.info.elem_type,
+				elem_sym.info.size)
+		} else {
+			if is_auto_deref {
+				g.write('(*')
+			}
+			g.write(expr_str)
+			if is_auto_deref {
+				g.write(')')
+			}
+			g.write('[${i}]')
 		}
-		g.expr(expr)
-		if expr.is_auto_deref_var() {
-			g.write(')')
-		}
-		g.write('[${i}]')
 		if i != size - 1 {
 			g.write(', ')
 		}
