@@ -603,7 +603,7 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 		field_unwrap_sym := g.table.sym(g.unwrap_generic(sfield.typ))
 		if field_unwrap_sym.kind == .array_fixed && sfield.expr in [ast.Ident, ast.SelectorExpr] {
 			info := field_unwrap_sym.info as ast.ArrayFixed
-			g.fixed_array_var_init('${sfield.expr}', sfield.expr.is_auto_deref_var(),
+			g.fixed_array_var_init(g.expr_string(sfield.expr), sfield.expr.is_auto_deref_var(),
 				info.elem_type, info.size)
 		} else {
 			if sfield.typ != ast.voidptr_type && sfield.typ != ast.nil_type

@@ -56,8 +56,8 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 				} else if elem_type.unaliased_sym.kind == .array_fixed
 					&& expr in [ast.Ident, ast.SelectorExpr] {
 					info := elem_type.unaliased_sym.info as ast.ArrayFixed
-					g.fixed_array_var_init('${expr}', expr.is_auto_deref_var(), info.elem_type,
-						info.size)
+					g.fixed_array_var_init(g.expr_string(expr), expr.is_auto_deref_var(),
+						info.elem_type, info.size)
 				} else {
 					g.expr_with_cast(expr, node.expr_types[i], node.elem_type)
 				}
@@ -163,8 +163,8 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		for i, expr in node.exprs {
 			if elem_sym.kind == .array_fixed && expr in [ast.Ident, ast.SelectorExpr] {
 				info := elem_sym.info as ast.ArrayFixed
-				g.fixed_array_var_init('${expr}', expr.is_auto_deref_var(), info.elem_type,
-					info.size)
+				g.fixed_array_var_init(g.expr_string(expr), expr.is_auto_deref_var(),
+					info.elem_type, info.size)
 			} else {
 				if expr.is_auto_deref_var() {
 					g.write('*')
