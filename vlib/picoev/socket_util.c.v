@@ -142,9 +142,6 @@ fn listen(config Config) !int {
 		config.err_cb(config.user_data, picohttpparser.Request{}, mut &picohttpparser.Response{},
 			err)
 	}
-	// if setup_sock(fd) != 0 {
-	// 	return error('Failed to set up socket')
-	// }
 
 	return fd
 }
