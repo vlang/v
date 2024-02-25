@@ -2543,6 +2543,19 @@ fn (mut p Parser) is_generic_cast() bool {
 	return false
 }
 
+fn (mut p Parser) alias_array_type() ast.Type {
+	full_name := p.prepend_mod(p.tok.lit)
+	if idx := p.table.type_idxs[full_name] {
+		sym := p.table.sym(idx)
+		if sym.info is ast.Alias {
+			if p.table.sym(sym.info.parent_type).kind == .array {
+				return idx
+			}
+		}
+	}
+	return ast.void_type
+}
+
 @[direct_array_access]
 fn (mut p Parser) name_expr() ast.Expr {
 	prev_tok_kind := p.prev_tok.kind
@@ -2840,7 +2853,13 @@ fn (mut p Parser) name_expr() ast.Expr {
 		&& (!p.inside_match || (p.inside_select && prev_tok_kind == .arrow && lit0_is_capital))
 		&& !p.inside_match_case && (!p.inside_if || p.inside_select)
 		&& (!p.inside_for || p.inside_select) {
-		return p.struct_init(p.mod + '.' + p.tok.lit, .normal, is_option) // short_syntax: false
+		alias_array_type := p.alias_array_type()
+		if alias_array_type != ast.void_type {
+			return p.array_init(is_option, alias_array_type)
+		} else {
+			// `if a == Foo{} {...}` or `match foo { Foo{} {...} }`
+			return p.struct_init(p.mod + '.' + p.tok.lit, .normal, is_option)
+		}
 	} else if p.peek_tok.kind == .lcbr
 		&& ((p.inside_if && lit0_is_capital && p.tok.lit.len > 1 && !known_var && language == .v)
 		|| (p.inside_match_case && p.tok.kind == .name && p.peek_tok.is_next_to(p.tok))) {
@@ -2957,7 +2976,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 			p.expr_mod = ''
 			return node
 		} else if is_option && p.tok.kind == .lsbr {
-			return p.array_init(is_option)
+			return p.array_init(is_option, ast.void_type)
 		} else if !known_var && language == .v && p.peek_tok.kind == .dot && !p.pref.is_fmt {
 			peek_tok2 := p.peek_token(2)
 			peek_tok3 := p.peek_token(3)

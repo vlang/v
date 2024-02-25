@@ -1492,6 +1492,7 @@ pub mut:
 	elem_type  Type   // element type
 	init_type  Type   // init: value type
 	typ        Type   // array type
+	alias_type Type   // alias type
 }
 
 pub struct ArrayDecompose {

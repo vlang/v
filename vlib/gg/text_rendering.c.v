@@ -16,7 +16,8 @@ pub:
 	font_bold   int
 	font_mono   int
 	font_italic int
-	scale       f32 = 1.0
+pub mut:
+	scale f32 = 1.0
 }
 
 fn new_ft(c FTConfig) ?&FT {
