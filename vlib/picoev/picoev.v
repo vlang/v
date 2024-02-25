@@ -381,7 +381,7 @@ pub fn new(config Config) !&Picoev {
 
 	if pv.loop == unsafe { nil } {
 		eprintln('Failed to create loop')
-		close_socket(listening_socket_fd) // Close socket on failure
+		close_socket(listening_socket_fd)
 		return unsafe { nil }
 	}
 
