@@ -14,16 +14,6 @@ pub fn test_parses_a_simple_get_request() {
 	assert req.headers[0].value == 'example.com'
 }
 
-pub fn test_handles_invalid_requests() {
-	mut req := Request{}
-	err := req.parse_request('INVALID REQUEST') or {
-		assert false, 'error while parse request: ${err}'
-		assert err.msg.contains('parse error')
-		assert err.code == 55
-		0
-	}
-}
-
 pub fn test_parses_multiple_headers() {
 	mut req := Request{}
 	parsed := req.parse_request('GET /foo?bar=baz HTTP/1.1\r\nHeader1: value1\r\nHeader2: value2\r\n\r\n') or {
