@@ -7,12 +7,13 @@ module time
 // #include <sysinfoapi.h>
 
 pub struct C.tm {
-	tm_year int
-	tm_mon  int
-	tm_mday int
-	tm_hour int
-	tm_min  int
-	tm_sec  int
+	tm_year   int
+	tm_mon    int
+	tm_mday   int
+	tm_hour   int
+	tm_min    int
+	tm_sec    int
+	tm_gmtoff int
 }
 
 pub struct C._FILETIME {
