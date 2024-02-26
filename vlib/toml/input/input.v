@@ -30,7 +30,7 @@ fn (c Config) validate() ! {
 pub fn (c Config) read_input() !string {
 	c.validate()!
 	mut text := c.text
-	if text == '' && os.is_file(c.file_path) {
+	if text == '' {
 		text = os.read_file(c.file_path) or {
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
 				' Could not read "${c.file_path}": "${err.msg()}"')
