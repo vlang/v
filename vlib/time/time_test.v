@@ -346,6 +346,9 @@ fn test_parse_three_letters_month() {
 }
 
 fn test_tm_gmtoff() {
+	$if windows {
+		return
+	}
 	rawtime := i64(0) // C.time_t{}
 
 	C.time(&rawtime) // C.tm{}
