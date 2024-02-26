@@ -63,18 +63,19 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 			c.error('`none` cannot be a match condition', node.pos)
 		}
 		// If the last statement is an expression, return its type
-		if branch.stmts.len > 0 {
+		if branch.stmts.len > 0 && node.is_expr {
 			mut stmt := branch.stmts.last()
 			if mut stmt is ast.ExprStmt {
-				if node.is_expr {
-					c.expected_type = node.expected_type
+				c.expected_type = node.expected_type
+				expr_type := if stmt.expr is ast.CallExpr {
+					stmt.typ
+				} else {
+					c.expr(mut stmt.expr)
 				}
-				expr_type := c.expr(mut stmt.expr)
 				stmt.typ = expr_type
 				if first_iteration {
-					if node.is_expr && (node.expected_type.has_flag(.option)
-						|| node.expected_type.has_flag(.result)
-						|| c.table.type_kind(node.expected_type) in [.sum_type, .multi_return]) {
+					if node.expected_type.has_flag(.option) || node.expected_type.has_flag(.result)
+						|| c.table.type_kind(node.expected_type) in [.sum_type, .multi_return] {
 						c.check_match_branch_last_stmt(stmt, node.expected_type, expr_type)
 						ret_type = node.expected_type
 					} else {
@@ -98,7 +99,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 						infer_cast_type = stmt.expr.typ
 					}
 				} else {
-					if node.is_expr && ret_type.idx() != expr_type.idx() {
+					if ret_type.idx() != expr_type.idx() {
 						if (node.expected_type.has_flag(.option)
 							|| node.expected_type.has_flag(.result))
 							&& c.table.sym(stmt.typ).kind == .struct_
@@ -115,7 +116,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 							c.check_match_branch_last_stmt(stmt, ret_type, expr_type)
 						}
 					}
-					if node.is_expr && stmt.typ != ast.error_type {
+					if stmt.typ != ast.error_type {
 						ret_sym := c.table.sym(ret_type)
 						stmt_sym := c.table.sym(stmt.typ)
 						if ret_sym.kind !in [.sum_type, .interface_]
@@ -208,7 +209,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					}
 				}
 			} else if stmt !in [ast.Return, ast.BranchStmt] {
-				if node.is_expr && ret_type != ast.void_type {
+				if ret_type != ast.void_type {
 					c.error('`match` expression requires an expression as the last statement of every branch',
 						stmt.pos)
 				}
