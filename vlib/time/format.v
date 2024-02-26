@@ -299,7 +299,7 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string('Anno Domini')
 			}
 			'Z' {
-				mut hours := offset() / seconds_per_hour
+				mut hours := offset_from_utc_in_seconds / seconds_per_hour
 				if hours >= 0 {
 					sb.write_string('+${hours}')
 				} else {
@@ -309,7 +309,7 @@ pub fn (t Time) custom_format(s string) string {
 			}
 			'ZZ' {
 				// TODO update if minute differs?
-				mut hours := offset() / seconds_per_hour
+				mut hours := offset_from_utc_in_seconds / seconds_per_hour
 				if hours >= 0 {
 					sb.write_string('+${hours:02}00')
 				} else {
@@ -319,7 +319,7 @@ pub fn (t Time) custom_format(s string) string {
 			}
 			'ZZZ' {
 				// TODO update if minute differs?
-				mut hours := offset() / seconds_per_hour
+				mut hours := offset_from_utc_in_seconds / seconds_per_hour
 				if hours >= 0 {
 					sb.write_string('+${hours:02}:00')
 				} else {
