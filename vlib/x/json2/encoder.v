@@ -247,7 +247,8 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 				$if field.indirections != 0 {
 					if val.$(field.name) != unsafe { nil } {
 						$if field.indirections == 1 {
-							e.encode_value_with_level(*val.$(field.name), level + 1, mut buf)!
+							e.encode_value_with_level(*val.$(field.name), level + 1, mut
+								buf)!
 						}
 						$if field.indirections == 2 {
 							e.encode_value_with_level(**val.$(field.name), level + 1, mut
