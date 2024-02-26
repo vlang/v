@@ -1,4 +1,6 @@
-module io
+module string_reader
+
+import io
 
 struct Buf {
 pub:
@@ -9,7 +11,7 @@ mut:
 
 fn (mut b Buf) read(mut buf []u8) !int {
 	if !(b.i < b.bytes.len) {
-		return Eof{}
+		return io.Eof{}
 	}
 	n := copy(mut buf, b.bytes[b.i..])
 	b.i += n
@@ -22,7 +24,7 @@ fn test_read_all() {
 	if _ := reader.read_all(false) {
 		assert false, 'should return io.Eof'
 	} else {
-		assert err is Eof
+		assert err is io.Eof
 	}
 
 	contents := 'test string'
@@ -63,7 +65,7 @@ fn test_read_line() {
 	if _ := reader.read_line() {
 		assert false, 'should return io.Eof'
 	} else {
-		assert err is Eof
+		assert err is io.Eof
 	}
 
 	buf := Buf{
@@ -83,7 +85,7 @@ fn test_from_string() {
 	if _ := reader.read_all(false) {
 		assert false, 'should return Eof'
 	} else {
-		assert err is Eof
+		assert err is io.Eof
 	}
 }
 

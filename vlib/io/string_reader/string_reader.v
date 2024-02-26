@@ -1,11 +1,12 @@
-module io
+module string_reader
 
+import io
 import strings
 
 @[params]
 pub struct StringReaderParams {
 	// the reader interface
-	reader ?Reader
+	reader ?io.Reader
 	// initialize the builder with this source string
 	source ?string
 	// if no source is given the string builder is initialized with this size
@@ -19,7 +20,7 @@ pub struct StringReaderParams {
 // builders buffer and could grow very large.
 pub struct StringReader {
 mut:
-	reader ?Reader
+	reader ?io.Reader
 	offset int // current offset in the buffer
 pub mut:
 	end_of_stream bool // whether we reached the end of the upstream reader
@@ -58,7 +59,7 @@ pub fn (r StringReader) needs_fill_until(n int) bool {
 // is true then the end of the stream. It returns the number of bytes read
 pub fn (mut r StringReader) fill_buffer(read_till_end_of_stream bool) !int {
 	if r.end_of_stream {
-		return Eof{}
+		return io.Eof{}
 	}
 
 	mut reader := r.reader or { return error('reader is not set') }
@@ -67,7 +68,7 @@ pub fn (mut r StringReader) fill_buffer(read_till_end_of_stream bool) !int {
 	mut end := start
 
 	// make sure there is enough room in the string builder
-	unsafe { r.builder.grow_len(read_all_len) }
+	unsafe { r.builder.grow_len(io.read_all_len) }
 	defer {
 		// shrink the length of the buffer to the total of bytes read
 		r.builder.go_back(r.builder.len - end)
@@ -83,12 +84,12 @@ pub fn (mut r StringReader) fill_buffer(read_till_end_of_stream bool) !int {
 		if !read_till_end_of_stream && read == 0 {
 			break
 		} else if r.builder.len == end {
-			unsafe { r.builder.grow_len(read_all_grow_len) }
+			unsafe { r.builder.grow_len(io.read_all_grow_len) }
 		}
 	}
 
 	if end == start {
-		return Eof{}
+		return io.Eof{}
 	}
 
 	return end - start
@@ -98,15 +99,15 @@ pub fn (mut r StringReader) fill_buffer(read_till_end_of_stream bool) !int {
 // and returns the actual number of bytes read
 pub fn (mut r StringReader) fill_buffer_until(n int) !int {
 	if r.end_of_stream {
-		return Eof{}
+		return io.Eof{}
 	}
 
 	mut reader := r.reader or { return error('reader is not set') }
 
 	start := r.builder.len
 	// make sure there is enough room in the string builder
-	if n > read_all_len {
-		unsafe { r.builder.grow_len(read_all_len) }
+	if n > io.read_all_len {
+		unsafe { r.builder.grow_len(io.read_all_len) }
 	} else {
 		unsafe { r.builder.grow_len(n) }
 	}
@@ -122,8 +123,8 @@ pub fn (mut r StringReader) fill_buffer_until(n int) !int {
 		if read == 0 || end - start == n {
 			break
 		} else if r.builder.len == end {
-			if n - end > read_all_grow_len {
-				unsafe { r.builder.grow_len(read_all_grow_len) }
+			if n - end > io.read_all_grow_len {
+				unsafe { r.builder.grow_len(io.read_all_grow_len) }
 			} else {
 				unsafe { r.builder.grow_len(n - end) }
 			}
@@ -131,7 +132,7 @@ pub fn (mut r StringReader) fill_buffer_until(n int) !int {
 	}
 
 	if end == start {
-		return Eof{}
+		return io.Eof{}
 	}
 	return end - start
 }
@@ -145,7 +146,7 @@ pub fn (mut r StringReader) read_all_bytes(read_till_end_of_stream bool) ![]u8 {
 	r.offset = r.builder.len
 	// check if there was still data in the buffer, but the reader has reached its end of stream
 	if start == r.offset {
-		return Eof{}
+		return io.Eof{}
 	}
 
 	return r.get_part(start, r.offset - start)!
@@ -194,9 +195,9 @@ pub fn (mut r StringReader) read(mut buf []u8) !int {
 // It will read until it finds the specified line delimiter
 // such as (\n, the default or \0) or the end of stream.
 @[direct_array_access]
-pub fn (mut r StringReader) read_line(config BufferedReadLineConfig) !string {
+pub fn (mut r StringReader) read_line(config io.BufferedReadLineConfig) !string {
 	if r.end_of_stream && r.needs_fill() {
-		return Eof{}
+		return io.Eof{}
 	}
 
 	start := r.offset
@@ -205,7 +206,7 @@ pub fn (mut r StringReader) read_line(config BufferedReadLineConfig) !string {
 			r.fill_buffer(false) or {
 				// we are at the end of the stream
 				if r.offset == start {
-					return Eof{}
+					return io.Eof{}
 				}
 				return r.get_string_part(start, r.offset - start)!
 			}
@@ -228,7 +229,7 @@ pub fn (mut r StringReader) read_line(config BufferedReadLineConfig) !string {
 		r.offset = i
 	}
 
-	return Eof{}
+	return io.Eof{}
 }
 
 // write implements the Writer interface
@@ -249,7 +250,7 @@ pub fn (r StringReader) get_data() []u8 {
 // get get_part returns a copy of a part of the buffer from `start` till `start` + `n`
 pub fn (r StringReader) get_part(start int, n int) ![]u8 {
 	if start + n > r.builder.len {
-		return Eof{}
+		return io.Eof{}
 	}
 
 	unsafe {
@@ -268,7 +269,7 @@ pub fn (r StringReader) get_string() string {
 // get_string_part produces a string from `start` till `start` + `n` of the buffer
 pub fn (r StringReader) get_string_part(start int, n int) !string {
 	if start + n > r.builder.len {
-		return Eof{}
+		return io.Eof{}
 	}
 
 	return r.builder.spart(start, n)
