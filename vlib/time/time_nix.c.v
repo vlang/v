@@ -78,13 +78,10 @@ fn vpc_now() u64 {
 // this should be implemented properly with support for leap seconds.
 // It uses the realtime clock to get and converts it to local time
 fn linux_now() Time {
-	// get the high precision time as UTC realtime clock
-	// and use the nanoseconds part
-	mut ts := C.timespec{}
-	C.clock_gettime(C.CLOCK_REALTIME, &ts)
-	loc_tm := C.tm{}
-	C.localtime_r(voidptr(&ts.tv_sec), &loc_tm)
-	return convert_ctime(loc_tm, int(ts.tv_nsec))
+	return Time{
+		...linux_utc().add_seconds(offset_from_utc_in_seconds)
+		is_local: true
+	}
 }
 
 fn linux_utc() Time {
