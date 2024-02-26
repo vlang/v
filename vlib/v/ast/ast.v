@@ -282,15 +282,16 @@ pub:
 	mut_pos    token.Pos
 	next_token token.Kind
 pub mut:
-	expr                Expr // expr.field_name
-	expr_type           Type // type of `Foo` in `Foo.bar`
-	typ                 Type // type of the entire thing (`Foo.bar`)
-	name_type           Type // T in `T.name` or typeof in `typeof(expr).name`
-	or_block            OrExpr
-	gkind_field         GenericKindField // `T.name` => ast.GenericKindField.name, `T.typ` => ast.GenericKindField.typ, or .unknown
-	scope               &Scope = unsafe { nil }
-	from_embed_types    []Type // holds the type of the embed that the method is called from
-	has_hidden_receiver bool
+	expr                     Expr // expr.field_name
+	expr_type                Type // type of `Foo` in `Foo.bar`
+	typ                      Type // type of the entire thing (`Foo.bar`)
+	name_type                Type // T in `T.name` or typeof in `typeof(expr).name`
+	or_block                 OrExpr
+	gkind_field              GenericKindField // `T.name` => ast.GenericKindField.name, `T.typ` => ast.GenericKindField.typ, or .unknown
+	scope                    &Scope = unsafe { nil }
+	from_embed_types         []Type   // holds the type of the embed that the method is called from
+	generic_from_embed_types [][]Type // holds the types of the embeds for each generic instance when the same generic method is called.
+	has_hidden_receiver      bool
 }
 
 // root_ident returns the origin ident where the selector started.
@@ -1492,6 +1493,7 @@ pub mut:
 	elem_type  Type   // element type
 	init_type  Type   // init: value type
 	typ        Type   // array type
+	alias_type Type   // alias type
 }
 
 pub struct ArrayDecompose {

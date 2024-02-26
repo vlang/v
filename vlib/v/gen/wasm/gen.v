@@ -1283,7 +1283,7 @@ pub fn (mut g Gen) calculate_enum_fields() {
 	}
 }
 
-pub fn gen(files []&ast.File, table &ast.Table, out_name string, w_pref &pref.Preferences) {
+pub fn gen(files []&ast.File, mut table ast.Table, out_name string, w_pref &pref.Preferences) {
 	stack_top := w_pref.wasm_stack_top
 	mut g := &Gen{
 		table: table

@@ -140,6 +140,12 @@ fn (mut p Parser) parse_map_type() ast.Type {
 		return 0
 	}
 	p.check(.rsbr)
+	if p.tok.kind == .lsbr {
+		if p.peek_tok.kind !in [.rsbr, .number] {
+			p.error_with_pos('maps can only have a single key', p.peek_tok.pos())
+			return 0
+		}
+	}
 	value_type := p.parse_type()
 	if value_type.idx() == 0 {
 		// error is reported in parse_type
