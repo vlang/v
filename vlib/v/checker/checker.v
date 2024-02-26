@@ -1583,6 +1583,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 					ast.StructField{}, []ast.Type{}
 				}
 				node.from_embed_types = embed_types
+				node.generic_from_embed_types << embed_types
 			}
 		}
 	}

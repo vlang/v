@@ -3889,20 +3889,26 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	// struct embedding
 	if sym.info in [ast.Struct, ast.Aggregate] {
-		for i, embed in node.from_embed_types {
-			embed_sym := g.table.sym(embed)
-			embed_name := embed_sym.embed_name()
-			is_left_ptr := if i == 0 {
-				node.expr_type.is_ptr()
+		if node.generic_from_embed_types.len > 0 && sym.info is ast.Struct {
+			if sym.info.embeds.len > 0 {
+				mut is_find := false
+				for arr_val in node.generic_from_embed_types {
+					if arr_val.len > 0 {
+						if arr_val[0] == sym.info.embeds[0] {
+							g.write_selector_expr_embed_name(node, arr_val)
+							is_find = true
+							break
+						}
+					}
+				}
+				if !is_find {
+					g.write_selector_expr_embed_name(node, node.from_embed_types)
+				}
 			} else {
-				node.from_embed_types[i - 1].is_ptr()
+				g.write_selector_expr_embed_name(node, node.from_embed_types)
 			}
-			if is_left_ptr {
-				g.write('->')
-			} else {
-				g.write('.')
-			}
-			g.write(embed_name)
+		} else {
+			g.write_selector_expr_embed_name(node, node.from_embed_types)
 		}
 	}
 	alias_to_ptr := sym.info is ast.Alias && sym.info.parent_type.is_ptr()
@@ -3925,6 +3931,24 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	if sym.kind in [.interface_, .sum_type] {
 		g.write('))')
+	}
+}
+
+fn (mut g Gen) write_selector_expr_embed_name(node ast.SelectorExpr, embed_types []ast.Type) {
+	for i, embed in embed_types {
+		embed_sym := g.table.sym(embed)
+		embed_name := embed_sym.embed_name()
+		is_left_ptr := if i == 0 {
+			node.expr_type.is_ptr()
+		} else {
+			embed_types[i - 1].is_ptr()
+		}
+		if is_left_ptr {
+			g.write('->')
+		} else {
+			g.write('.')
+		}
+		g.write(embed_name)
 	}
 }
 
@@ -5397,7 +5421,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			}
 			for i, expr in node.exprs {
 				if return_sym.kind == .array_fixed && expr !is ast.ArrayInit {
-					g.fixed_array_var_init(expr, (return_sym.info as ast.ArrayFixed).size)
+					info := return_sym.info as ast.ArrayFixed
+					g.fixed_array_var_init(g.expr_string(expr), expr.is_auto_deref_var(),
+						info.elem_type, info.size)
 				} else {
 					g.expr_with_cast(expr, node.types[i], fn_ret_type.clear_option_and_result())
 				}
@@ -5432,7 +5458,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				if fn_ret_type.has_flag(.option) {
 					g.expr_with_opt(expr, node.types[i], fn_ret_type.clear_flag(.result))
 				} else if return_sym.kind == .array_fixed && expr !is ast.ArrayInit {
-					g.fixed_array_var_init(expr, (return_sym.info as ast.ArrayFixed).size)
+					info := return_sym.info as ast.ArrayFixed
+					g.fixed_array_var_init(g.expr_string(expr), expr.is_auto_deref_var(),
+						info.elem_type, info.size)
 				} else {
 					g.expr_with_cast(expr, node.types[i], fn_ret_type.clear_flag(.result))
 				}
