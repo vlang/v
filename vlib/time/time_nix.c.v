@@ -35,9 +35,10 @@ pub fn (t Time) local() Time {
 	if t.is_local {
 		return t
 	}
-	loc_tm := C.tm{}
-	C.localtime_r(voidptr(&t.unix), &loc_tm)
-	return convert_ctime(loc_tm, t.nanosecond)
+	return Time{
+		...t.add_seconds(offset_from_utc_in_seconds)
+		is_local: true
+	}
 }
 
 // in most systems, these are __quad_t, which is an i64
