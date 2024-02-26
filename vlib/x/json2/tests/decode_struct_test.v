@@ -185,7 +185,7 @@ fn test_skipped_fields() {
 	}
 
 	if x := json.decode[StructTypeSkippedField4]('{"val":{"a":"b"}}') {
-		assert x.val.len == 1
+		assert x.val.len == 0
 	} else {
 		assert false
 	}

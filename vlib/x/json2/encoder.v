@@ -177,160 +177,156 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 	mut fields_len := 0
 
 	$for field in U.fields {
-		mut skip_field := false
-
-		for attr in field.attrs {
-			if attr.contains('json: ') {
-				json_name := attr.replace('json: ', '')
-				if json_name == '-' {
-					skip_field = true
-				}
-
-				break
-			}
-		}
-
-		if !skip_field {
-			$if field.is_option {
-				if val.$(field.name) != none {
-					fields_len++
-				}
-			} $else {
+		$if field.is_option {
+			if val.$(field.name) != none {
 				fields_len++
 			}
+		} $else {
+			fields_len++
 		}
 	}
 	$for field in U.fields {
 		mut ignore_field := false
+		mut skip_field := false
 
 		value := val.$(field.name)
 
 		is_nil := val.$(field.name).str() == '&nil'
 
 		mut json_name := ''
+
 		for attr in field.attrs {
 			if attr.contains('json: ') {
 				json_name = attr.replace('json: ', '')
+				if json_name == '-' {
+					ignore_field = true
+					skip_field = true
+				}
 				break
 			}
 		}
 
-		$if value is $option {
-			workaround := val.$(field.name)
-			if workaround != none { // smartcast
-				e.encode_newline(level, mut buf)!
-				if json_name != '' {
-					e.encode_string(json_name, mut buf)!
-				} else {
-					e.encode_string(field.name, mut buf)!
-				}
-				buf << json2.colon_rune
-
-				if e.newline != 0 {
-					buf << ` `
-				}
-				e.encode_value_with_level(value, level, mut buf)!
-			} else {
-				ignore_field = true
-			}
-		} $else {
-			is_none := val.$(field.name).str() == 'unknown sum type value' // assert json.encode(StructType[SumTypes]{}) == '{}'
-			if !is_none && !is_nil {
-				e.encode_newline(level, mut buf)!
-				if json_name != '' {
-					e.encode_string(json_name, mut buf)!
-				} else {
-					e.encode_string(field.name, mut buf)!
-				}
-				buf << json2.colon_rune
-
-				if e.newline != 0 {
-					buf << ` `
-				}
-			}
-
-			$if field.indirections != 0 {
-				if val.$(field.name) != unsafe { nil } {
-					$if field.indirections == 1 {
-						e.encode_value_with_level(*val.$(field.name), level + 1, mut buf)!
+		if skip_field {
+			i++
+			fields_len--
+		} else {
+			$if value is $option {
+				workaround := val.$(field.name)
+				if workaround != none { // smartcast
+					e.encode_newline(level, mut buf)!
+					if json_name != '' {
+						e.encode_string(json_name, mut buf)!
+					} else {
+						e.encode_string(field.name, mut buf)!
 					}
-					$if field.indirections == 2 {
-						e.encode_value_with_level(**val.$(field.name), level + 1, mut
-							buf)!
+					buf << json2.colon_rune
+
+					if e.newline != 0 {
+						buf << ` `
 					}
-					$if field.indirections == 3 {
-						e.encode_value_with_level(***val.$(field.name), level + 1, mut
-							buf)!
+					e.encode_value_with_level(value, level, mut buf)!
+				} else {
+					ignore_field = true
+				}
+			} $else {
+				is_none := val.$(field.name).str() == 'unknown sum type value' // assert json.encode(StructType[SumTypes]{}) == '{}'
+				if !is_none && !is_nil {
+					e.encode_newline(level, mut buf)!
+					if json_name != '' {
+						e.encode_string(json_name, mut buf)!
+					} else {
+						e.encode_string(field.name, mut buf)!
+					}
+					buf << json2.colon_rune
+
+					if e.newline != 0 {
+						buf << ` `
 					}
 				}
-			} $else $if field.typ is string {
-				e.encode_string(val.$(field.name).str(), mut buf)!
-			} $else $if field.typ is time.Time {
-				str_value := val.$(field.name).format_rfc3339()
-				buf << json2.quote_rune
-				unsafe { buf.push_many(str_value.str, str_value.len) }
-				buf << json2.quote_rune
-			} $else $if field.typ is bool {
-				if value {
-					unsafe { buf.push_many(json2.true_in_string.str, json2.true_in_string.len) }
-				} else {
-					unsafe { buf.push_many(json2.false_in_string.str, json2.false_in_string.len) }
-				}
-			} $else $if field.typ in [$float, $int] {
-				str_value := val.$(field.name).str()
-				unsafe { buf.push_many(str_value.str, str_value.len) }
-			} $else $if field.is_array {
-				// TODO - replace for `field.typ is $array`
-				e.encode_array(value, level + 1, mut buf)!
-			} $else $if field.typ is $array {
-				// e.encode_array(value, level + 1, mut buf)! // FIXME - error: could not infer generic type `U` in call to `encode_array`
-			} $else $if field.typ is $struct {
-				e.encode_struct(value, level + 1, mut buf)!
-			} $else $if field.is_map {
-				e.encode_map(value, level + 1, mut buf)!
-			} $else $if field.is_enum {
-				// TODO - replace for `field.typ is $enum`
-				// str_value := int(val.$(field.name)).str()
-				// unsafe { buf.push_many(str_value.str, str_value.len) }
-				e.encode_value_with_level(val.$(field.name), level + 1, mut buf)!
-			} $else $if field.typ is $enum {
-			} $else $if field.typ is $sumtype {
-				field_value := val.$(field.name)
-				if field_value.str() != 'unknown sum type value' {
-					$for v in field_value.variants {
-						if field_value is v {
-							e.encode_value_with_level(field_value, level, mut buf)!
+
+				$if field.indirections != 0 {
+					if val.$(field.name) != unsafe { nil } {
+						$if field.indirections == 1 {
+							e.encode_value_with_level(*val.$(field.name), level + 1, mut buf)!
+						}
+						$if field.indirections == 2 {
+							e.encode_value_with_level(**val.$(field.name), level + 1, mut
+								buf)!
+						}
+						$if field.indirections == 3 {
+							e.encode_value_with_level(***val.$(field.name), level + 1, mut
+								buf)!
 						}
 					}
-				}
-			} $else $if field.typ is $alias {
-				$if field.unaliased_typ is string {
+				} $else $if field.typ is string {
 					e.encode_string(val.$(field.name).str(), mut buf)!
-				} $else $if field.unaliased_typ is time.Time {
-					parsed_time := time.parse(val.$(field.name).str()) or { time.Time{} }
-					e.encode_string(parsed_time.format_rfc3339(), mut buf)!
-				} $else $if field.unaliased_typ is bool {
-					if val.$(field.name).str() == json2.true_in_string {
+				} $else $if field.typ is time.Time {
+					str_value := val.$(field.name).format_rfc3339()
+					buf << json2.quote_rune
+					unsafe { buf.push_many(str_value.str, str_value.len) }
+					buf << json2.quote_rune
+				} $else $if field.typ is bool {
+					if value {
 						unsafe { buf.push_many(json2.true_in_string.str, json2.true_in_string.len) }
 					} else {
 						unsafe { buf.push_many(json2.false_in_string.str, json2.false_in_string.len) }
 					}
-				} $else $if field.unaliased_typ in [$float, $int] {
+				} $else $if field.typ in [$float, $int] {
 					str_value := val.$(field.name).str()
 					unsafe { buf.push_many(str_value.str, str_value.len) }
-				} $else $if field.unaliased_typ is $array {
-					// TODO
-				} $else $if field.unaliased_typ is $struct {
+				} $else $if field.is_array {
+					// TODO - replace for `field.typ is $array`
+					e.encode_array(value, level + 1, mut buf)!
+				} $else $if field.typ is $array {
+					// e.encode_array(value, level + 1, mut buf)! // FIXME - error: could not infer generic type `U` in call to `encode_array`
+				} $else $if field.typ is $struct {
 					e.encode_struct(value, level + 1, mut buf)!
-				} $else $if field.unaliased_typ is $enum {
-					// TODO
-				} $else $if field.unaliased_typ is $sumtype {
-					// TODO
+				} $else $if field.is_map {
+					e.encode_map(value, level + 1, mut buf)!
+				} $else $if field.is_enum {
+					// TODO - replace for `field.typ is $enum`
+					// str_value := int(val.$(field.name)).str()
+					// unsafe { buf.push_many(str_value.str, str_value.len) }
+					e.encode_value_with_level(val.$(field.name), level + 1, mut buf)!
+				} $else $if field.typ is $enum {
+				} $else $if field.typ is $sumtype {
+					field_value := val.$(field.name)
+					if field_value.str() != 'unknown sum type value' {
+						$for v in field_value.variants {
+							if field_value is v {
+								e.encode_value_with_level(field_value, level, mut buf)!
+							}
+						}
+					}
+				} $else $if field.typ is $alias {
+					$if field.unaliased_typ is string {
+						e.encode_string(val.$(field.name).str(), mut buf)!
+					} $else $if field.unaliased_typ is time.Time {
+						parsed_time := time.parse(val.$(field.name).str()) or { time.Time{} }
+						e.encode_string(parsed_time.format_rfc3339(), mut buf)!
+					} $else $if field.unaliased_typ is bool {
+						if val.$(field.name).str() == json2.true_in_string {
+							unsafe { buf.push_many(json2.true_in_string.str, json2.true_in_string.len) }
+						} else {
+							unsafe { buf.push_many(json2.false_in_string.str, json2.false_in_string.len) }
+						}
+					} $else $if field.unaliased_typ in [$float, $int] {
+						str_value := val.$(field.name).str()
+						unsafe { buf.push_many(str_value.str, str_value.len) }
+					} $else $if field.unaliased_typ is $array {
+						// TODO
+					} $else $if field.unaliased_typ is $struct {
+						e.encode_struct(value, level + 1, mut buf)!
+					} $else $if field.unaliased_typ is $enum {
+						// TODO
+					} $else $if field.unaliased_typ is $sumtype {
+						// TODO
+					} $else {
+						return error('the alias ${typeof(val).name} cannot be encoded')
+					}
 				} $else {
-					return error('the alias ${typeof(val).name} cannot be encoded')
+					return error('type ${typeof(val).name} cannot be array encoded')
 				}
-			} $else {
-				return error('type ${typeof(val).name} cannot be array encoded')
 			}
 		}
 
