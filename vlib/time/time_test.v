@@ -1,7 +1,20 @@
 import time
 import math
 
-const time_to_test = time.Time{
+const local_time_to_test = time.Time{
+	...time.now() // extra fields
+	year: 1980
+	month: 7
+	day: 11
+	hour: 21
+	minute: 23
+	second: 42
+	nanosecond: 123456789
+	unix: 332198622
+}
+
+const utc_time_to_test = time.Time{
+	...time.utc() // extra fields
 	year: 1980
 	month: 7
 	day: 11
@@ -83,39 +96,65 @@ fn test_unix() {
 
 fn test_format_rfc3339() {
 	// assert '1980-07-11T19:23:42.123Z'
-	res := time_to_test.format_rfc3339()
+	res := local_time_to_test.format_rfc3339()
 	assert res.ends_with('23:42.123Z')
 	assert res.starts_with('1980-07-1')
 	assert res.contains('T')
+
+	// assert '1980-07-11T19:23:42.123Z'
+	utc_res := utc_time_to_test.format_rfc3339()
+	assert utc_res.ends_with('23:42.123Z')
+	assert utc_res.starts_with('1980-07-1')
+	assert utc_res.contains('T')
 }
 
 fn test_format_rfc3339_nano() {
-	res := time_to_test.format_rfc3339_nano()
+	res := local_time_to_test.format_rfc3339_nano()
+	assert res == '1980-07-12T01:23:42.123456789Z'
 	assert res.ends_with('23:42.123456789Z')
 	assert res.starts_with('1980-07-1')
 	assert res.contains('T')
+
+	utc_res := utc_time_to_test.format_rfc3339_nano()
+	assert utc_res.ends_with('23:42.123456789Z')
+	assert utc_res.starts_with('1980-07-1')
+	assert utc_res.contains('T')
 }
 
 fn test_format_ss() {
-	assert '11.07.1980 21:23:42' == time_to_test.get_fmt_str(.dot, .hhmmss24, .ddmmyyyy)
+	assert '11.07.1980 21:23:42' == local_time_to_test.get_fmt_str(.dot, .hhmmss24, .ddmmyyyy)
+
+	assert '11.07.1980 21:23:42' == utc_time_to_test.get_fmt_str(.dot, .hhmmss24, .ddmmyyyy)
 }
 
 fn test_format_ss_milli() {
-	assert '11.07.1980 21:23:42.123' == time_to_test.get_fmt_str(.dot, .hhmmss24_milli,
+	assert '11.07.1980 21:23:42.123' == local_time_to_test.get_fmt_str(.dot, .hhmmss24_milli,
 		.ddmmyyyy)
-	assert '1980-07-11 21:23:42.123' == time_to_test.format_ss_milli()
+	assert '1980-07-11 21:23:42.123' == local_time_to_test.format_ss_milli()
+
+	assert '11.07.1980 21:23:42.123' == utc_time_to_test.get_fmt_str(.dot, .hhmmss24_milli,
+		.ddmmyyyy)
+	assert '1980-07-11 21:23:42.123' == utc_time_to_test.format_ss_milli()
 }
 
 fn test_format_ss_micro() {
-	assert '11.07.1980 21:23:42.123456' == time_to_test.get_fmt_str(.dot, .hhmmss24_micro,
+	assert '11.07.1980 21:23:42.123456' == local_time_to_test.get_fmt_str(.dot, .hhmmss24_micro,
 		.ddmmyyyy)
-	assert '1980-07-11 21:23:42.123456' == time_to_test.format_ss_micro()
+	assert '1980-07-11 21:23:42.123456' == local_time_to_test.format_ss_micro()
+
+	assert '11.07.1980 21:23:42.123456' == utc_time_to_test.get_fmt_str(.dot, .hhmmss24_micro,
+		.ddmmyyyy)
+	assert '1980-07-11 21:23:42.123456' == utc_time_to_test.format_ss_micro()
 }
 
 fn test_format_ss_nano() {
-	assert '11.07.1980 21:23:42.123456789' == time_to_test.get_fmt_str(.dot, .hhmmss24_nano,
+	assert '11.07.1980 21:23:42.123456789' == local_time_to_test.get_fmt_str(.dot, .hhmmss24_nano,
 		.ddmmyyyy)
-	assert '1980-07-11 21:23:42.123456789' == time_to_test.format_ss_nano()
+	assert '1980-07-11 21:23:42.123456789' == local_time_to_test.format_ss_nano()
+
+	assert '11.07.1980 21:23:42.123456789' == utc_time_to_test.get_fmt_str(.dot, .hhmmss24_nano,
+		.ddmmyyyy)
+	assert '1980-07-11 21:23:42.123456789' == utc_time_to_test.format_ss_nano()
 }
 
 fn test_smonth() {
@@ -194,23 +233,23 @@ fn test_add() {
 	d_nanoseconds := 13
 	duration := time.Duration(d_seconds * time.second + d_nanoseconds * time.nanosecond)
 	// dump(duration.debug())
-	t1 := time_to_test
+	t1 := local_time_to_test
 	// dump(t1.debug())
-	t2 := time_to_test.add(duration)
+	t2 := local_time_to_test.add(duration)
 	// dump(t2.debug())
 	assert t2.second == t1.second + d_seconds
 	assert t2.nanosecond == t1.nanosecond + d_nanoseconds
 	assert t2.unix == t1.unix + d_seconds
 	assert t2.is_local == t1.is_local
 	//
-	t3 := time_to_test.add(-duration)
+	t3 := local_time_to_test.add(-duration)
 	// dump(t3.debug())
 	assert t3.second == t1.second - d_seconds
 	assert t3.nanosecond == t1.nanosecond - d_nanoseconds
 	assert t3.unix == t1.unix - d_seconds
 	assert t3.is_local == t1.is_local
 	//
-	t4 := time_to_test.as_local()
+	t4 := local_time_to_test.as_local()
 	// dump(t4.debug())
 	t5 := t4.add(duration)
 	// dump(t5.debug())
@@ -219,13 +258,15 @@ fn test_add() {
 
 fn test_add_days() {
 	num_of_days := 3
-	t := time_to_test.add_days(num_of_days)
-	assert t.day == time_to_test.day + num_of_days
-	assert t.unix == time_to_test.unix + 86400 * num_of_days
+	t := local_time_to_test.add_days(num_of_days)
+	assert t.day == local_time_to_test.day + num_of_days
+	assert t.unix == local_time_to_test.unix + 86400 * num_of_days
 }
 
 fn test_str() {
-	assert '1980-07-11 21:23:42' == time_to_test.str()
+	assert '1980-07-11 21:23:42' == local_time_to_test.str()
+
+	assert '1980-07-11 21:23:42' == utc_time_to_test.str()
 }
 
 // not optimal test but will find obvious bugs
@@ -322,7 +363,9 @@ fn test_recursive_local_call() {
 }
 
 fn test_strftime() {
-	assert '1980 July 11' == time_to_test.strftime('%Y %B %d')
+	assert '1980 July 11' == local_time_to_test.strftime('%Y %B %d')
+
+	assert '1980 July 11' == utc_time_to_test.strftime('%Y %B %d')
 }
 
 fn test_add_seconds_to_time() {
