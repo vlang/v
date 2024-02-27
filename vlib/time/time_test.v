@@ -2,7 +2,6 @@ import time
 import math
 
 const local_time_to_test = time.Time{
-	...time.now() // extra fields
 	year: 1980
 	month: 7
 	day: 11
@@ -11,10 +10,10 @@ const local_time_to_test = time.Time{
 	second: 42
 	nanosecond: 123456789
 	unix: 332198622
+	is_local: true
 }
 
 const utc_time_to_test = time.Time{
-	...time.utc() // extra fields
 	year: 1980
 	month: 7
 	day: 11
@@ -23,6 +22,7 @@ const utc_time_to_test = time.Time{
 	second: 42
 	nanosecond: 123456789
 	unix: 332198622
+	is_local: false
 }
 
 fn test_is_leap_year() {
