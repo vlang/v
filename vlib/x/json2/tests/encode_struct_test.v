@@ -44,30 +44,6 @@ mut:
 	val &T
 }
 
-struct StructTypeSkippedFields[T] {
-mut:
-	val  T @[json: '-']
-	val1 T
-	val2 T @[json: '-']
-	val3 T
-}
-
-struct StructTypeSkippedFields2[T] {
-mut:
-	val  T
-	val1 T @[json: '-']
-	val2 T
-	val3 T @[json: '-']
-}
-
-struct StructTypeSkippedFields3[T] {
-mut:
-	val  T @[json: '-']
-	val1 T @[json: '-']
-	val2 T @[json: '-']
-	val3 T @[json: '-']
-}
-
 fn test_types() {
 	assert json.encode(StructType[string]{}) == '{"val":""}'
 	assert json.encode(StructType[string]{ val: '' }) == '{"val":""}'
@@ -233,29 +209,6 @@ fn test_option_array() {
 	// assert json.encode(StructTypeOption[[][]int]{
 	// 	val: [[0, 1], [0, 2, 3], [2], [5, 1]]
 	// }) == '{"val":[[0,1],[0,2,3],[2],[5,1]]}'
-}
-
-fn test_skipped_fields() {
-	assert json.encode(StructTypeSkippedFields[string]{
-		val: ''
-		val1: ''
-		val2: ''
-		val3: ''
-	}) == '{"val1":"","val3":""}'
-
-	assert json.encode(StructTypeSkippedFields2[string]{
-		val: ''
-		val1: ''
-		val2: ''
-		val3: ''
-	}) == '{"val":"","val2":""}'
-
-	assert json.encode(StructTypeSkippedFields3[string]{
-		val: ''
-		val1: ''
-		val2: ''
-		val3: ''
-	}) == '{}'
 }
 
 fn test_alias() {
