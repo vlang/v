@@ -7,6 +7,7 @@ import strings
 
 // int_to_byte_array_no_pad fulfill buffer by part
 // it doesn't pad with leading zeros for performance reasons
+@[direct_array_access]
 fn int_to_byte_array_no_pad(value int, mut arr []u8, size int) {
 	mut num := value
 	if size <= 0 || num < 0 {
