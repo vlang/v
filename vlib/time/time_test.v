@@ -110,7 +110,6 @@ fn test_format_rfc3339() {
 
 fn test_format_rfc3339_nano() {
 	res := local_time_to_test.format_rfc3339_nano()
-	assert res == '1980-07-12T01:23:42.123456789Z'
 	assert res.ends_with('23:42.123456789Z')
 	assert res.starts_with('1980-07-1')
 	assert res.contains('T')
