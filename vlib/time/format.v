@@ -26,6 +26,7 @@ fn int_to_byte_array_no_pad(value int, mut arr []u8, size int) {
 }
 
 // format returns a date string in "YYYY-MM-DD HH:mm" format (24h).
+@[manualfree]
 pub fn (t Time) format() string {
 	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, ` `, `0`, `0`, `:`, `0`,
 		`0`]
@@ -45,6 +46,7 @@ pub fn (t Time) format() string {
 }
 
 // format_ss returns a date string in "YYYY-MM-DD HH:mm:ss" format (24h).
+@[manualfree]
 pub fn (t Time) format_ss() string {
 	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, ` `, `0`, `0`, `:`, `0`,
 		`0`, `:`, `0`, `0`]
@@ -65,6 +67,7 @@ pub fn (t Time) format_ss() string {
 }
 
 // format_ss_milli returns a date string in "YYYY-MM-DD HH:mm:ss.123" format (24h).
+@[manualfree]
 pub fn (t Time) format_ss_milli() string {
 	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, ` `, `0`, `0`, `:`, `0`,
 		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`]
@@ -89,6 +92,7 @@ pub fn (t Time) format_ss_milli() string {
 }
 
 // format_ss_micro returns a date string in "YYYY-MM-DD HH:mm:ss.123456" format (24h).
+@[manualfree]
 pub fn (t Time) format_ss_micro() string {
 	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, ` `, `0`, `0`, `:`, `0`,
 		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `0`, `0`, `0`]
@@ -113,6 +117,7 @@ pub fn (t Time) format_ss_micro() string {
 }
 
 // format_ss_nano returns a date string in "YYYY-MM-DD HH:mm:ss.123456789" format (24h).
+@[manualfree]
 pub fn (t Time) format_ss_nano() string {
 	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, ` `, `0`, `0`, `:`, `0`,
 		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `0`]
@@ -143,6 +148,7 @@ pub fn (t Time) format_ss_nano() string {
 // RFC3339 is an Internet profile, based on the ISO 8601 standard for for representation of dates and times using the Gregorian calendar.
 // It is intended to improve consistency and interoperability, when representing and using date and time in Internet protocols.
 @[markused]
+@[manualfree]
 pub fn (t Time) format_rfc3339() string {
 	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, `T`, `0`, `0`, `:`, `0`,
 		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `Z`]
@@ -178,6 +184,7 @@ pub fn (t Time) format_rfc3339() string {
 }
 
 // format_rfc3339_nano returns a date string in "YYYY-MM-DDTHH:mm:ss.123456789Z" format (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
+@[manualfree]
 pub fn (t Time) format_rfc3339_nano() string {
 	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, `T`, `0`, `0`, `:`, `0`,
 		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `Z`]
@@ -213,6 +220,7 @@ pub fn (t Time) format_rfc3339_nano() string {
 }
 
 // hhmm returns a date string in "HH:mm" format (24h).
+@[manualfree]
 pub fn (t Time) hhmm() string {
 	mut buf := [u8(`0`), `0`, `:`, `0`, `0`]
 
@@ -227,6 +235,7 @@ pub fn (t Time) hhmm() string {
 }
 
 // hhmmss returns a date string in "HH:mm:ss" format (24h).
+@[manualfree]
 pub fn (t Time) hhmmss() string {
 	mut buf := [u8(`0`), `0`, `:`, `0`, `0`, `:`, `0`, `0`]
 
