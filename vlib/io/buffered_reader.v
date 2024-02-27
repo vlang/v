@@ -24,6 +24,7 @@ pub struct BufferedReaderConfig {
 // BufferedReadLineConfig are options that can be given to the read_line() function.
 @[params]
 pub struct BufferedReadLineConfig {
+pub:
 	delim u8 = `\n` // line delimiter
 }
 
