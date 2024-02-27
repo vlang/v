@@ -282,10 +282,11 @@ fn ordinal_suffix(n int) string {
 	}
 }
 
+// TODO set as fixed array when JS gen support it
 const tokens_2 = ['MM', 'Mo', 'DD', 'Do', 'YY', 'ss', 'kk', 'NN', 'mm', 'hh', 'HH', 'ii', 'ZZ',
-	'dd', 'Qo', 'QQ', 'wo', 'ww']!
-const tokens_3 = ['MMM', 'DDD', 'ZZZ', 'ddd']!
-const tokens_4 = ['MMMM', 'DDDD', 'DDDo', 'dddd', 'YYYY']!
+	'dd', 'Qo', 'QQ', 'wo', 'ww']
+const tokens_3 = ['MMM', 'DDD', 'ZZZ', 'ddd']
+const tokens_4 = ['MMMM', 'DDDD', 'DDDo', 'dddd', 'YYYY']
 
 // custom_format returns a date with custom format
 //
