@@ -147,8 +147,7 @@ pub fn (t Time) format_ss_nano() string {
 // format_rfc3339 returns a date string in "YYYY-MM-DDTHH:mm:ss.123Z" format (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
 // RFC3339 is an Internet profile, based on the ISO 8601 standard for for representation of dates and times using the Gregorian calendar.
 // It is intended to improve consistency and interoperability, when representing and using date and time in Internet protocols.
-@[markused]
-@[manualfree]
+@[manualfree; markused]
 pub fn (t Time) format_rfc3339() string {
 	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, `T`, `0`, `0`, `:`, `0`,
 		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `Z`]
