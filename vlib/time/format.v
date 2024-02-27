@@ -184,14 +184,28 @@ pub fn (t Time) format_rfc3339_nano() string {
 		unsafe { buf.free() }
 	}
 
-	u := t.local_to_utc()
-	int_to_byte_array_no_pad(u.year, mut buf, 4)
-	int_to_byte_array_no_pad(u.month, mut buf, 7)
-	int_to_byte_array_no_pad(u.day, mut buf, 10)
-	int_to_byte_array_no_pad(u.hour, mut buf, 13)
-	int_to_byte_array_no_pad(u.minute, mut buf, 16)
-	int_to_byte_array_no_pad(u.second, mut buf, 19)
-	int_to_byte_array_no_pad(u.nanosecond, mut buf, 29) // Adjusted index for 9 digits
+	if t.unix == 0 && t.nanosecond == 0 {
+		return buf.bytestr()
+	}
+
+	if t.is_local {
+		utc_time := t.local_to_utc()
+		int_to_byte_array_no_pad(utc_time.year, mut buf, 4)
+		int_to_byte_array_no_pad(utc_time.month, mut buf, 7)
+		int_to_byte_array_no_pad(utc_time.day, mut buf, 10)
+		int_to_byte_array_no_pad(utc_time.hour, mut buf, 13)
+		int_to_byte_array_no_pad(utc_time.minute, mut buf, 16)
+		int_to_byte_array_no_pad(utc_time.second, mut buf, 19)
+		int_to_byte_array_no_pad(utc_time.nanosecond, mut buf, 29)
+	} else {
+		int_to_byte_array_no_pad(t.year, mut buf, 4)
+		int_to_byte_array_no_pad(t.month, mut buf, 7)
+		int_to_byte_array_no_pad(t.day, mut buf, 10)
+		int_to_byte_array_no_pad(t.hour, mut buf, 13)
+		int_to_byte_array_no_pad(t.minute, mut buf, 16)
+		int_to_byte_array_no_pad(t.second, mut buf, 19)
+		int_to_byte_array_no_pad(t.nanosecond, mut buf, 29)
+	}
 
 	return buf.bytestr()
 }
