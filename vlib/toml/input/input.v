@@ -13,28 +13,23 @@ pub:
 	file_path string // '/path/to/file.toml'
 }
 
-// validate returns an optional error if more than one of the fields
-// in `Config` has a non-default value (empty string).
-fn (c Config) validate() ! {
-	if c.file_path != '' && c.text != '' {
-		error(@MOD + '.' + @FN +
-			' ${typeof(c).name} should contain only one of the fields `file_path` OR `text` filled out')
-	} else if c.file_path == '' && c.text == '' {
-		error(@MOD + '.' + @FN +
-			' ${typeof(c).name} must either contain a valid `file_path` OR a non-empty `text` field')
-	}
-}
-
 // read_input returns either Config.text or the read file contents of Config.file_path
 // depending on which one is not empty.
 pub fn (c Config) read_input() !string {
-	c.validate()!
-	mut text := c.text
-	if text == '' {
-		text = os.read_file(c.file_path) or {
-			return error(@MOD + '.' + @STRUCT + '.' + @FN +
-				' Could not read "${c.file_path}": "${err.msg()}"')
-		}
+	if c.file_path != '' && c.text != '' {
+		return error(@MOD + '.' + @FN +
+			' ${typeof(c).name} should contain only one of the fields `file_path` OR `text` filled out')
+	}
+	if c.file_path == '' && c.text == '' {
+		// TODO: passing both empty is used *a lot* by `./v vlib/toml/tests/burntsushi_toml_test.v`; investigate why.
+		return ''
+	}
+	if c.text != '' {
+		return c.text
+	}
+	text := os.read_file(c.file_path) or {
+		return error(@MOD + '.' + @STRUCT + '.' + @FN +
+			' Could not read "${c.file_path}": "${err.msg()}"')
 	}
 	return text
 }
