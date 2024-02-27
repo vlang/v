@@ -34,8 +34,6 @@ pub const days_before = [
 	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31,
 ]
 
-pub const offset_from_utc_in_seconds = init_offset_from_utc_in_seconds_const()
-
 // Time contains various time units for a point in time.
 pub struct Time {
 pub:
@@ -465,7 +463,7 @@ pub fn (d Duration) debug() string {
 // offset returns time zone UTC offset in seconds.
 @[deprecated: 'use time.offset_from_utc_in_seconds']
 pub fn offset() int {
-	return time.offset_from_utc_in_seconds
+	return offset_from_utc_in_seconds
 }
 
 // local_to_utc converts the receiver `t` to the corresponding UTC time, if it contains local time.
@@ -475,7 +473,7 @@ pub fn (t Time) local_to_utc() Time {
 		return t
 	}
 	return Time{
-		...t.add_seconds((-time.offset_from_utc_in_seconds))
+		...t.add_seconds((-offset_from_utc_in_seconds))
 		is_local: false
 	}
 }
@@ -487,7 +485,7 @@ pub fn (u Time) utc_to_local() Time {
 		return u
 	}
 	return Time{
-		...u.add_seconds(time.offset_from_utc_in_seconds)
+		...u.add_seconds(offset_from_utc_in_seconds)
 		is_local: true
 	}
 }
@@ -517,12 +515,4 @@ pub fn (t Time) as_utc() Time {
 // See also #Time.utc_to_local .
 pub fn (t Time) is_utc() bool {
 	return !t.is_local
-}
-
-fn init_offset_from_utc_in_seconds_const() int {
-	rawtime := i64(0) // C.time_t{}
-
-	C.time(&rawtime) // C.tm{}
-
-	return C.localtime(&rawtime).tm_gmtoff
 }

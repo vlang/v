@@ -24,10 +24,12 @@ fn C.gmtime(t &C.time_t) &C.tm
 fn C.gmtime_r(t &C.time_t, res &C.tm) &C.tm
 fn C.strftime(buf &char, maxsize usize, const_format &char, const_tm &C.tm) usize
 
+pub const offset_from_utc_in_seconds = init_offset_from_utc_in_seconds_const()
+
 // now returns the current local time.
 pub fn now() Time {
 	return Time{
-		...utc().add_seconds(offset_from_utc_in_seconds)
+		...utc().add_seconds(time.offset_from_utc_in_seconds)
 		is_local: true
 	}
 }
@@ -130,4 +132,12 @@ pub fn (d Duration) sys_milliseconds() int {
 	} else {
 		return int(d / millisecond)
 	}
+}
+
+fn init_offset_from_utc_in_seconds_const() int {
+	rawtime := i64(0) // C.time_t{}
+
+	C.time(&rawtime) // C.tm{}
+
+	return C.localtime(&rawtime).tm_gmtoff
 }
