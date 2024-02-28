@@ -7,6 +7,7 @@ mut:
 	total int
 }
 
+// count_chars count json sizen whithout new encode
 pub fn (mut count Count) count_chars[T](val T) {
 	$if val is $option {
 		workaround := val
@@ -40,6 +41,7 @@ pub fn (mut count Count) count_chars[T](val T) {
 	}
 }
 
+// chars_in_struct
 fn (mut count Count) chars_in_struct[T](val T) {
 	count.total += 2 // {}
 	$for field in T.fields {
@@ -49,6 +51,7 @@ fn (mut count Count) chars_in_struct[T](val T) {
 	}
 }
 
+// chars_in_string
 fn (mut count Count) chars_in_string(val string) {
 	count.total += val.len + 2 // ""
 }
