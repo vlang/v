@@ -134,11 +134,6 @@ pub fn (t Time) format_ss_nano() string {
 	int_to_byte_array_no_pad(t.minute, mut buf, 16)
 	int_to_byte_array_no_pad(t.second, mut buf, 19)
 
-	// TODO
-	// if t.nanosecond >= 1_000_000_000 {
-	// 	return error('Nanoseconds exceed maximum value')
-	// }
-
 	int_to_byte_array_no_pad(t.nanosecond, mut buf, 29) // Adjusted index for 9 digits
 
 	return buf.bytestr()
@@ -291,7 +286,6 @@ fn ordinal_suffix(n int) string {
 	}
 }
 
-// TODO set as fixed array when JS gen support it
 const tokens_2 = ['MM', 'Mo', 'DD', 'Do', 'YY', 'ss', 'kk', 'NN', 'mm', 'hh', 'HH', 'ii', 'ZZ',
 	'dd', 'Qo', 'QQ', 'wo', 'ww']
 const tokens_3 = ['MMM', 'DDD', 'ZZZ', 'ddd']
@@ -659,7 +653,6 @@ pub fn (t Time) get_fmt_str(fmt_dlmtr FormatDelimiter, fmt_time FormatTime, fmt_
 }
 
 // This is just a TEMPORARY function for cookies and their expire dates
-// TODO deprecad it
 pub fn (t Time) utc_string() string {
 	day_str := t.weekday_str()
 	month_str := t.smonth()
@@ -668,7 +661,6 @@ pub fn (t Time) utc_string() string {
 }
 
 // http_header_string returns a date string in the format used in HTTP headers, as defined in RFC 2616.
-// TODO deprecad it
 pub fn (t Time) http_header_string() string {
 	day_str := t.weekday_str()
 	month_str := t.smonth()
