@@ -177,17 +177,27 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 	mut fields_len := 0
 
 	$for field in U.fields {
-		$if field.is_option {
-			if val.$(field.name) != none {
+		mut @continue := false
+		for attr in field.attrs {
+			if attr.contains('json: ') {
+				if attr.replace('json: ', '') == '-' {
+					@continue = true
+				}
+				break
+			}
+		}
+		if !@continue {
+			$if field.is_option {
+				if val.$(field.name) != none {
+					fields_len++
+				}
+			} $else {
 				fields_len++
 			}
-		} $else {
-			fields_len++
 		}
 	}
 	$for field in U.fields {
 		mut ignore_field := false
-		mut skip_field := false
 
 		value := val.$(field.name)
 
@@ -200,16 +210,12 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 				json_name = attr.replace('json: ', '')
 				if json_name == '-' {
 					ignore_field = true
-					skip_field = true
 				}
 				break
 			}
 		}
 
-		if skip_field {
-			i++
-			fields_len--
-		} else {
+		if !ignore_field {
 			$if value is $option {
 				workaround := val.$(field.name)
 				if workaround != none { // smartcast

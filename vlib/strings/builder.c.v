@@ -154,8 +154,9 @@ pub fn (mut b Builder) go_back(n int) {
 	b.trim(b.len - n)
 }
 
+// spart returns a part of the buffer as a string
 @[inline]
-fn (b &Builder) spart(start_pos int, n int) string {
+pub fn (b &Builder) spart(start_pos int, n int) string {
 	unsafe {
 		mut x := malloc_noscan(n + 1)
 		vmemcpy(x, &u8(b.data) + start_pos, n)
@@ -250,6 +251,20 @@ pub fn (mut b Builder) ensure_cap(n int) {
 		b.data = new_data
 		b.offset = 0
 		b.cap = n
+	}
+}
+
+// grow_len grows the length of the buffer by `n` bytes if necessary
+@[unsafe]
+pub fn (mut b Builder) grow_len(n int) {
+	if n <= 0 {
+		return
+	}
+
+	new_len := b.len + n
+	b.ensure_cap(new_len)
+	unsafe {
+		b.len = new_len
 	}
 }
 
