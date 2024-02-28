@@ -86,7 +86,12 @@ fn benchmark_measure_encode_by_type() ! {
 	println(@FN)
 	dump('👈')
 	measure_json_encode_old_vs_new(StructType[string]{})!
+	println('time.Time]{}')
 	measure_json_encode_old_vs_new(StructType[time.Time]{})!
+	println('time.utc()')
+	measure_json_encode_old_vs_new(StructType[time.Time]{time.utc()})!
+	println('time.now()')
+	measure_json_encode_old_vs_new(StructType[time.Time]{time.now()})!
 	measure_json_encode_old_vs_new(StructType[int]{})!
 	measure_json_encode_old_vs_new(StructType[f64]{})!
 	measure_json_encode_old_vs_new(StructType[bool]{})!
