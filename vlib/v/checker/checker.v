@@ -4317,8 +4317,17 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 			}
 		}
 	}
-	if node.op == .bit_not && !right_sym.is_int() && !c.pref.translated && !c.file.is_translated {
-		c.type_error_for_operator('~', 'integer', right_sym.name, node.pos)
+	if node.op == .bit_not && !c.pref.translated && !c.file.is_translated {
+		if right_sym.info is ast.Enum {
+			if !right_sym.info.is_flag {
+				c.error('operator `~` can only be used with enum `${right_sym.name}` with attribute `@[flag]`, but the value after `~` is without that flag',
+					node.pos)
+			}
+		}
+		// Only check for int not enum as it is done above
+		if !right_sym.is_int() && right_sym.info !is ast.Enum {
+			c.type_error_for_operator('~', 'integer', right_sym.name, node.pos)
+		}
 	}
 	if node.op == .not && right_sym.kind != .bool && !c.pref.translated && !c.file.is_translated {
 		c.type_error_for_operator('!', 'bool', right_sym.name, node.pos)
