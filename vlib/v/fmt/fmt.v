@@ -16,10 +16,10 @@ const max_len = [0, 35, 60, 85, 93, 100]
 
 @[minify]
 pub struct Fmt {
+	pref &pref.Preferences = unsafe { nil }
 pub mut:
 	file               ast.File
-	table              &ast.Table        = unsafe { nil }
-	pref               &pref.Preferences = unsafe { nil }
+	table              &ast.Table = unsafe { nil }
 	is_debug           bool
 	out                strings.Builder
 	out_imports        strings.Builder
@@ -62,7 +62,7 @@ pub struct FmtOptions {
 	source_text string
 }
 
-pub fn fmt(file ast.File, table &ast.Table, pref_ &pref.Preferences, is_debug bool, options FmtOptions) string {
+pub fn fmt(file ast.File, mut table ast.Table, pref_ &pref.Preferences, is_debug bool, options FmtOptions) string {
 	mut f := Fmt{
 		file: file
 		table: table
@@ -1710,7 +1710,11 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 	if node.exprs.len == 0 && node.typ != 0 && node.typ != ast.void_type {
 		// `x := []string{}`
 		f.mark_types_import_as_used(node.typ)
-		f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
+		if node.alias_type != ast.void_type {
+			f.write(f.table.type_to_str_using_aliases(node.alias_type, f.mod2alias))
+		} else {
+			f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
+		}
 		f.write('{')
 		if node.has_len {
 			f.write('len: ')

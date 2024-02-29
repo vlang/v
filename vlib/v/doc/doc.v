@@ -453,7 +453,7 @@ pub fn (mut d Doc) generate() ! {
 		if i == 0 {
 			d.parent_mod_name = get_parent_mod(d.base_path) or { '' }
 		}
-		file_asts << parser.parse_file(file_path, d.table, comments_mode, d.prefs)
+		file_asts << parser.parse_file(file_path, mut d.table, comments_mode, d.prefs)
 	}
 	return d.file_asts(mut file_asts)
 }

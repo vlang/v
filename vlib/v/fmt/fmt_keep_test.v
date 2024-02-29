@@ -50,9 +50,9 @@ fn test_fmt() {
 			eprintln(fmt_bench.step_message_fail('cannot read from ${vrelpath}'))
 			continue
 		}
-		table := ast.new_table()
-		file_ast := parser.parse_file(ipath, table, .parse_comments, fpref)
-		result_ocontent := fmt.fmt(file_ast, table, fpref, false)
+		mut table := ast.new_table()
+		file_ast := parser.parse_file(ipath, mut table, .parse_comments, fpref)
+		result_ocontent := fmt.fmt(file_ast, mut table, fpref, false)
 		if expected_ocontent != result_ocontent {
 			fmt_bench.fail()
 			eprintln(fmt_bench.step_message_fail('file ${vrelpath} after formatting, does not look as expected.'))

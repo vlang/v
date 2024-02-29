@@ -5,54 +5,243 @@ module time
 
 import strings
 
+// int_to_byte_array_no_pad fulfill buffer by part
+// it doesn't pad with leading zeros for performance reasons
+@[direct_array_access]
+fn int_to_byte_array_no_pad(value int, mut arr []u8, size int) {
+	mut num := value
+	if size <= 0 || num < 0 {
+		return
+	}
+
+	// Start from the end of the array
+	mut i := size - 1
+
+	// Convert each digit to a character and store it in the array
+	for num > 0 && i >= 0 {
+		arr[i] = (num % 10) + `0`
+		num /= 10
+		i--
+	}
+}
+
 // format returns a date string in "YYYY-MM-DD HH:mm" format (24h).
+@[manualfree]
 pub fn (t Time) format() string {
-	return '${t.year:04d}-${t.month:02d}-${t.day:02d} ${t.hour:02d}:${t.minute:02d}'
+	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, ` `, `0`, `0`, `:`, `0`,
+		`0`]
+
+	defer {
+		unsafe { buf.free() }
+	}
+
+	int_to_byte_array_no_pad(t.year, mut buf, 4)
+	int_to_byte_array_no_pad(t.month, mut buf, 7)
+	int_to_byte_array_no_pad(t.day, mut buf, 10)
+
+	int_to_byte_array_no_pad(t.hour, mut buf, 13)
+	int_to_byte_array_no_pad(t.minute, mut buf, 16)
+
+	return buf.bytestr()
 }
 
 // format_ss returns a date string in "YYYY-MM-DD HH:mm:ss" format (24h).
+@[manualfree]
 pub fn (t Time) format_ss() string {
-	return '${t.year:04d}-${t.month:02d}-${t.day:02d} ${t.hour:02d}:${t.minute:02d}:${t.second:02d}'
+	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, ` `, `0`, `0`, `:`, `0`,
+		`0`, `:`, `0`, `0`]
+
+	defer {
+		unsafe { buf.free() }
+	}
+
+	int_to_byte_array_no_pad(t.year, mut buf, 4)
+	int_to_byte_array_no_pad(t.month, mut buf, 7)
+	int_to_byte_array_no_pad(t.day, mut buf, 10)
+
+	int_to_byte_array_no_pad(t.hour, mut buf, 13)
+	int_to_byte_array_no_pad(t.minute, mut buf, 16)
+	int_to_byte_array_no_pad(t.second, mut buf, 19)
+
+	return buf.bytestr()
 }
 
 // format_ss_milli returns a date string in "YYYY-MM-DD HH:mm:ss.123" format (24h).
+@[manualfree]
 pub fn (t Time) format_ss_milli() string {
-	return '${t.year:04d}-${t.month:02d}-${t.day:02d} ${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${(t.nanosecond / 1_000_000):03d}'
+	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, ` `, `0`, `0`, `:`, `0`,
+		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`]
+
+	defer {
+		unsafe { buf.free() }
+	}
+
+	int_to_byte_array_no_pad(t.year, mut buf, 4)
+	int_to_byte_array_no_pad(t.month, mut buf, 7)
+	int_to_byte_array_no_pad(t.day, mut buf, 10)
+
+	int_to_byte_array_no_pad(t.hour, mut buf, 13)
+	int_to_byte_array_no_pad(t.minute, mut buf, 16)
+	int_to_byte_array_no_pad(t.second, mut buf, 19)
+
+	// Extract and format milliseconds
+	millis := t.nanosecond / 1_000_000
+	int_to_byte_array_no_pad(millis, mut buf, 23)
+
+	return buf.bytestr()
 }
 
 // format_ss_micro returns a date string in "YYYY-MM-DD HH:mm:ss.123456" format (24h).
+@[manualfree]
 pub fn (t Time) format_ss_micro() string {
-	return '${t.year:04d}-${t.month:02d}-${t.day:02d} ${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${(t.nanosecond / 1_000):06d}'
+	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, ` `, `0`, `0`, `:`, `0`,
+		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `0`, `0`, `0`]
+
+	defer {
+		unsafe { buf.free() }
+	}
+
+	int_to_byte_array_no_pad(t.year, mut buf, 4)
+	int_to_byte_array_no_pad(t.month, mut buf, 7)
+	int_to_byte_array_no_pad(t.day, mut buf, 10)
+
+	int_to_byte_array_no_pad(t.hour, mut buf, 13)
+	int_to_byte_array_no_pad(t.minute, mut buf, 16)
+	int_to_byte_array_no_pad(t.second, mut buf, 19)
+
+	// Extract and format microseconds
+	micros := t.nanosecond / 1_000
+	int_to_byte_array_no_pad(micros, mut buf, 26)
+
+	return buf.bytestr()
 }
 
 // format_ss_nano returns a date string in "YYYY-MM-DD HH:mm:ss.123456789" format (24h).
+@[manualfree]
 pub fn (t Time) format_ss_nano() string {
-	return '${t.year:04d}-${t.month:02d}-${t.day:02d} ${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${t.nanosecond:09d}'
+	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, ` `, `0`, `0`, `:`, `0`,
+		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `0`]
+
+	defer {
+		unsafe { buf.free() }
+	}
+
+	int_to_byte_array_no_pad(t.year, mut buf, 4)
+	int_to_byte_array_no_pad(t.month, mut buf, 7)
+	int_to_byte_array_no_pad(t.day, mut buf, 10)
+
+	int_to_byte_array_no_pad(t.hour, mut buf, 13)
+	int_to_byte_array_no_pad(t.minute, mut buf, 16)
+	int_to_byte_array_no_pad(t.second, mut buf, 19)
+
+	int_to_byte_array_no_pad(t.nanosecond, mut buf, 29) // Adjusted index for 9 digits
+
+	return buf.bytestr()
 }
 
 // format_rfc3339 returns a date string in "YYYY-MM-DDTHH:mm:ss.123Z" format (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
 // RFC3339 is an Internet profile, based on the ISO 8601 standard for for representation of dates and times using the Gregorian calendar.
 // It is intended to improve consistency and interoperability, when representing and using date and time in Internet protocols.
-@[markused]
+@[manualfree; markused]
 pub fn (t Time) format_rfc3339() string {
-	u := t.local_to_utc()
-	return '${u.year:04d}-${u.month:02d}-${u.day:02d}T${u.hour:02d}:${u.minute:02d}:${u.second:02d}.${(u.nanosecond / 1_000_000):03d}Z'
+	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, `T`, `0`, `0`, `:`, `0`,
+		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `Z`]
+
+	defer {
+		unsafe { buf.free() }
+	}
+
+	if t.unix == 0 && t.nanosecond == 0 {
+		return buf.bytestr()
+	}
+
+	if t.is_local {
+		utc_time := t.local_to_utc()
+		int_to_byte_array_no_pad(utc_time.year, mut buf, 4)
+		int_to_byte_array_no_pad(utc_time.month, mut buf, 7)
+		int_to_byte_array_no_pad(utc_time.day, mut buf, 10)
+		int_to_byte_array_no_pad(utc_time.hour, mut buf, 13)
+		int_to_byte_array_no_pad(utc_time.minute, mut buf, 16)
+		int_to_byte_array_no_pad(utc_time.second, mut buf, 19)
+		int_to_byte_array_no_pad(utc_time.nanosecond / 1_000_000, mut buf, 23)
+	} else {
+		int_to_byte_array_no_pad(t.year, mut buf, 4)
+		int_to_byte_array_no_pad(t.month, mut buf, 7)
+		int_to_byte_array_no_pad(t.day, mut buf, 10)
+		int_to_byte_array_no_pad(t.hour, mut buf, 13)
+		int_to_byte_array_no_pad(t.minute, mut buf, 16)
+		int_to_byte_array_no_pad(t.second, mut buf, 19)
+		int_to_byte_array_no_pad(t.nanosecond / 1_000_000, mut buf, 23)
+	}
+
+	return buf.bytestr()
 }
 
 // format_rfc3339_nano returns a date string in "YYYY-MM-DDTHH:mm:ss.123456789Z" format (24 hours, see https://www.rfc-editor.org/rfc/rfc3339.html)
+@[manualfree]
 pub fn (t Time) format_rfc3339_nano() string {
-	u := t.local_to_utc()
-	return '${u.year:04d}-${u.month:02d}-${u.day:02d}T${u.hour:02d}:${u.minute:02d}:${u.second:02d}.${(u.nanosecond):09d}Z'
+	mut buf := [u8(`0`), `0`, `0`, `0`, `-`, `0`, `0`, `-`, `0`, `0`, `T`, `0`, `0`, `:`, `0`,
+		`0`, `:`, `0`, `0`, `.`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `0`, `Z`]
+
+	defer {
+		unsafe { buf.free() }
+	}
+
+	if t.unix == 0 && t.nanosecond == 0 {
+		return buf.bytestr()
+	}
+
+	if t.is_local {
+		utc_time := t.local_to_utc()
+		int_to_byte_array_no_pad(utc_time.year, mut buf, 4)
+		int_to_byte_array_no_pad(utc_time.month, mut buf, 7)
+		int_to_byte_array_no_pad(utc_time.day, mut buf, 10)
+		int_to_byte_array_no_pad(utc_time.hour, mut buf, 13)
+		int_to_byte_array_no_pad(utc_time.minute, mut buf, 16)
+		int_to_byte_array_no_pad(utc_time.second, mut buf, 19)
+		int_to_byte_array_no_pad(utc_time.nanosecond, mut buf, 29)
+	} else {
+		int_to_byte_array_no_pad(t.year, mut buf, 4)
+		int_to_byte_array_no_pad(t.month, mut buf, 7)
+		int_to_byte_array_no_pad(t.day, mut buf, 10)
+		int_to_byte_array_no_pad(t.hour, mut buf, 13)
+		int_to_byte_array_no_pad(t.minute, mut buf, 16)
+		int_to_byte_array_no_pad(t.second, mut buf, 19)
+		int_to_byte_array_no_pad(t.nanosecond, mut buf, 29)
+	}
+
+	return buf.bytestr()
 }
 
 // hhmm returns a date string in "HH:mm" format (24h).
+@[manualfree]
 pub fn (t Time) hhmm() string {
-	return '${t.hour:02d}:${t.minute:02d}'
+	mut buf := [u8(`0`), `0`, `:`, `0`, `0`]
+
+	defer {
+		unsafe { buf.free() }
+	}
+
+	int_to_byte_array_no_pad(t.hour, mut buf, 2)
+	int_to_byte_array_no_pad(t.minute, mut buf, 5)
+
+	return buf.bytestr()
 }
 
 // hhmmss returns a date string in "HH:mm:ss" format (24h).
+@[manualfree]
 pub fn (t Time) hhmmss() string {
-	return '${t.hour:02d}:${t.minute:02d}:${t.second:02d}'
+	mut buf := [u8(`0`), `0`, `:`, `0`, `0`, `:`, `0`, `0`]
+
+	defer {
+		unsafe { buf.free() }
+	}
+
+	int_to_byte_array_no_pad(t.hour, mut buf, 2)
+	int_to_byte_array_no_pad(t.minute, mut buf, 5)
+	int_to_byte_array_no_pad(t.second, mut buf, 8)
+
+	return buf.bytestr()
 }
 
 // hhmm12 returns a date string in "hh:mm" format (12h).
@@ -75,6 +264,7 @@ pub fn (t Time) md() string {
 	return t.get_fmt_date_str(.space, .mmmd)
 }
 
+// TODO test, improve performance
 // appends ordinal suffix to a number
 fn ordinal_suffix(n int) string {
 	if n > 3 && n < 21 {

@@ -116,7 +116,7 @@ pub mut:
 __global codegen_files = unsafe { []&ast.File{} }
 
 // for tests
-pub fn parse_stmt(text string, table &ast.Table, scope &ast.Scope) ast.Stmt {
+pub fn parse_stmt(text string, mut table ast.Table, mut scope ast.Scope) ast.Stmt {
 	$if trace_parse_stmt ? {
 		eprintln('> ${@MOD}.${@FN} text: ${text}')
 	}
@@ -136,7 +136,7 @@ pub fn parse_stmt(text string, table &ast.Table, scope &ast.Scope) ast.Stmt {
 	return p.stmt(false)
 }
 
-pub fn parse_comptime(tmpl_path string, text string, table &ast.Table, pref_ &pref.Preferences, scope &ast.Scope) &ast.File {
+pub fn parse_comptime(tmpl_path string, text string, mut table ast.Table, pref_ &pref.Preferences, mut scope ast.Scope) &ast.File {
 	$if trace_parse_comptime ? {
 		eprintln('> ${@MOD}.${@FN} text: ${text}')
 	}
@@ -154,7 +154,7 @@ pub fn parse_comptime(tmpl_path string, text string, table &ast.Table, pref_ &pr
 	return res
 }
 
-pub fn parse_text(text string, path string, table &ast.Table, comments_mode scanner.CommentsMode, pref_ &pref.Preferences) &ast.File {
+pub fn parse_text(text string, path string, mut table ast.Table, comments_mode scanner.CommentsMode, pref_ &pref.Preferences) &ast.File {
 	$if trace_parse_text ? {
 		eprintln('> ${@MOD}.${@FN} comments_mode: ${comments_mode:-20} | path: ${path:-20} | text: ${text}')
 	}
@@ -232,7 +232,7 @@ pub fn (mut p Parser) set_path(path string) {
 	}
 }
 
-pub fn parse_file(path string, table &ast.Table, comments_mode scanner.CommentsMode, pref_ &pref.Preferences) &ast.File {
+pub fn parse_file(path string, mut table ast.Table, comments_mode scanner.CommentsMode, pref_ &pref.Preferences) &ast.File {
 	// Note: when comments_mode == .toplevel_comments,
 	// the parser gives feedback to the scanner about toplevel statements, so that the scanner can skip
 	// all the tricky inner comments. This is needed because we do not have a good general solution
@@ -258,7 +258,7 @@ pub fn parse_file(path string, table &ast.Table, comments_mode scanner.CommentsM
 	return res
 }
 
-pub fn parse_vet_file(path string, table_ &ast.Table, pref_ &pref.Preferences) (&ast.File, []vet.Error, []vet.Error) {
+pub fn parse_vet_file(path string, mut table_ ast.Table, pref_ &pref.Preferences) (&ast.File, []vet.Error, []vet.Error) {
 	$if trace_parse_vet_file ? {
 		eprintln('> ${@MOD}.${@FN} path: ${path}')
 	}
@@ -367,7 +367,8 @@ pub fn (mut p Parser) parse() &ast.File {
 	// codegen
 	if p.codegen_text.len > 0 && !p.pref.is_fmt {
 		ptext := 'module ' + p.mod.all_after_last('.') + '\n' + p.codegen_text
-		codegen_files << parse_text(ptext, p.file_name, p.table, p.comments_mode, p.pref)
+		codegen_files << parse_text(ptext, p.file_name, mut p.table, p.comments_mode,
+			p.pref)
 	}
 
 	return &ast.File{
@@ -427,7 +428,7 @@ fn (mut q Queue) run() {
 	}
 }
 */
-pub fn parse_files(paths []string, table &ast.Table, pref_ &pref.Preferences) []&ast.File {
+pub fn parse_files(paths []string, mut table ast.Table, pref_ &pref.Preferences) []&ast.File {
 	mut timers := util.new_timers(should_print: false, label: 'parse_files: ${paths}')
 	$if time_parsing ? {
 		timers.should_print = true
@@ -459,7 +460,7 @@ pub fn parse_files(paths []string, table &ast.Table, pref_ &pref.Preferences) []
 		mut files := []&ast.File{cap: paths.len}
 		for path in paths {
 			timers.start('parse_file ${path}')
-			files << parse_file(path, table, .skip_comments, pref_)
+			files << parse_file(path, mut table, .skip_comments, pref_)
 			timers.show('parse_file ${path}')
 		}
 		if codegen_files.len > 0 {
@@ -2542,6 +2543,19 @@ fn (mut p Parser) is_generic_cast() bool {
 	return false
 }
 
+fn (mut p Parser) alias_array_type() ast.Type {
+	full_name := p.prepend_mod(p.tok.lit)
+	if idx := p.table.type_idxs[full_name] {
+		sym := p.table.sym(idx)
+		if sym.info is ast.Alias {
+			if p.table.sym(sym.info.parent_type).kind == .array {
+				return idx
+			}
+		}
+	}
+	return ast.void_type
+}
+
 @[direct_array_access]
 fn (mut p Parser) name_expr() ast.Expr {
 	prev_tok_kind := p.prev_tok.kind
@@ -2839,7 +2853,13 @@ fn (mut p Parser) name_expr() ast.Expr {
 		&& (!p.inside_match || (p.inside_select && prev_tok_kind == .arrow && lit0_is_capital))
 		&& !p.inside_match_case && (!p.inside_if || p.inside_select)
 		&& (!p.inside_for || p.inside_select) {
-		return p.struct_init(p.mod + '.' + p.tok.lit, .normal, is_option) // short_syntax: false
+		alias_array_type := p.alias_array_type()
+		if alias_array_type != ast.void_type {
+			return p.array_init(is_option, alias_array_type)
+		} else {
+			// `if a == Foo{} {...}` or `match foo { Foo{} {...} }`
+			return p.struct_init(p.mod + '.' + p.tok.lit, .normal, is_option)
+		}
 	} else if p.peek_tok.kind == .lcbr
 		&& ((p.inside_if && lit0_is_capital && p.tok.lit.len > 1 && !known_var && language == .v)
 		|| (p.inside_match_case && p.tok.kind == .name && p.peek_tok.is_next_to(p.tok))) {
@@ -2956,7 +2976,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 			p.expr_mod = ''
 			return node
 		} else if is_option && p.tok.kind == .lsbr {
-			return p.array_init(is_option)
+			return p.array_init(is_option, ast.void_type)
 		} else if !known_var && language == .v && p.peek_tok.kind == .dot && !p.pref.is_fmt {
 			peek_tok2 := p.peek_token(2)
 			peek_tok3 := p.peek_token(3)

@@ -223,11 +223,31 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					}
 				}
 			}
-			if mut left is ast.Ident && mut right is ast.Ident {
-				if !c.inside_unsafe && left_type.is_ptr() && left.is_mut() && right_type.is_ptr()
-					&& !right.is_mut() {
+			if left is ast.Ident && left.is_mut() && !c.inside_unsafe {
+				if left_type.is_ptr() && mut right is ast.Ident && !right.is_mut()
+					&& right_type.is_ptr() {
 					c.error('`${right.name}` is immutable, cannot have a mutable reference to an immutable object',
 						right.pos)
+				} else if mut right is ast.StructInit {
+					typ_sym := c.table.sym(right.typ)
+					for init_field in right.init_fields {
+						if field_info := c.table.find_field_with_embeds(typ_sym, init_field.name) {
+							if field_info.is_mut {
+								if init_field.expr is ast.Ident && !init_field.expr.is_mut()
+									&& init_field.typ.is_ptr() {
+									c.note('`${init_field.expr.name}` is immutable, cannot have a mutable reference to an immutable object',
+										init_field.pos)
+								} else if init_field.expr is ast.PrefixExpr {
+									if init_field.expr.op == .amp
+										&& init_field.expr.right is ast.Ident
+										&& !init_field.expr.right.is_mut() {
+										c.note('`${init_field.expr.right.name}` is immutable, cannot have a mutable reference to an immutable object',
+											init_field.expr.right.pos)
+									}
+								}
+							}
+						}
+					}
 				}
 			}
 		} else {

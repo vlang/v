@@ -216,10 +216,10 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 						pos: pos
 					}
 				} else {
-					node = p.array_init(false)
+					node = p.array_init(false, ast.void_type)
 				}
 			} else {
-				node = p.array_init(false)
+				node = p.array_init(false, ast.void_type)
 			}
 		}
 		.key_none {

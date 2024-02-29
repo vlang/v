@@ -90,7 +90,13 @@ fn benchmark_measure_encode_by_type() ! {
 
 	measure_json_encode_old_vs_new(StructType[string]{'jhsbhjhajbujhfbdjhgbxdljgbxdlkjgbxdlkgjbdlfjbszldjkfbdljgbzsljfzsbkfdjsbfljhsdhbfljzhsdbfljzshfblszdjfbjzhdsbfjzsdhbfljsdhbfljzsdfblzjsdfbzsjdfbhljzsdhfbljzsbfjsdbfjshdbfljzsdhbfljzsdhbfljszdbhfljzsbfljhzsbdfljhzbsdljfbsdljfbzlsjfhdbzdsljhfbszdljhfbzsldjfhbszdljhfbzsdljfhbzsdjhfbdsljhfbljsdhbflsjdhjhsbh jhajbujhfbdjhgbxdljgbxdlkjgbxdlkgjbdlfjbszldjkfbdljgbzsljfzsbkfdjsbfljhsdhbfljzhsdbfljzshfblszdjfbjzhdsbfjzsdhbfljsdhbfljzsdfblzjsdfbzsjdfbhljzsdhfbljzsbfjsdbfjshdbfljzsdhbfljzsdhbfljszdbhfljzsbfljhzsbdfljhzbsdljfbsdljfbzlsjfhdbzdsljhfbszdljhfbzsldjfhbszdljhfbzsdljfhbzsdjhfbdsljhfbljsdhbflsjdh'})!
 
+	measure_json_encode_old_vs_new(StructType[string]{})!
+	println('time.Time]{}')
 	measure_json_encode_old_vs_new(StructType[time.Time]{})!
+	println('time.utc()')
+	measure_json_encode_old_vs_new(StructType[time.Time]{time.utc()})!
+	println('time.now()')
+	measure_json_encode_old_vs_new(StructType[time.Time]{time.now()})!
 	measure_json_encode_old_vs_new(StructType[int]{})!
 	measure_json_encode_old_vs_new(StructType[u64]{u64(-1)})! // 18446744073709551615
 	measure_json_encode_old_vs_new(StructType[f64]{})!

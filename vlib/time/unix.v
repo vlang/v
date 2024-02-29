@@ -11,8 +11,8 @@ pub fn unix(abs i64) Time {
 		// Compensate for round towards zero on integers as we want floored instead
 		day_offset--
 	}
-	year, month, day := calculate_date_from_offset(day_offset)
-	hr, min, sec := calculate_time_from_offset(abs % seconds_per_day)
+	year, month, day := calculate_date_from_day_offset(day_offset)
+	hr, min, sec := calculate_time_from_second_offset(abs % seconds_per_day)
 	return Time{
 		year: year
 		month: month
@@ -36,29 +36,30 @@ pub fn unix_microsecond(abs i64, microsecond int) Time {
 	return unix_nanosecond(abs, microsecond * 1000)
 }
 
-// unix_nanosecond returns a Time struct, given an Unix timestamp in seconds, and a nanosecond value
-pub fn unix_nanosecond(abs i64, nanosecond int) Time {
+// unix_nanosecond returns a Time struct given a Unix timestamp in seconds and a nanosecond value
+pub fn unix_nanosecond(abs_unix_timestamp i64, nanosecond int) Time {
 	// Split into day and time
-	mut day_offset := abs / seconds_per_day
-	if abs % seconds_per_day < 0 {
-		// Compensate for round towards zero on integers as we want floored instead
+	mut day_offset := abs_unix_timestamp / seconds_per_day
+	if abs_unix_timestamp % seconds_per_day < 0 {
+		// Compensate for rounding towards zero on integers as we want floored instead
 		day_offset--
 	}
-	year, month, day := calculate_date_from_offset(day_offset)
-	hr, min, sec := calculate_time_from_offset(abs % seconds_per_day)
+	year, month, day := calculate_date_from_day_offset(day_offset)
+	hour_, minute_, second_ := calculate_time_from_second_offset(abs_unix_timestamp % seconds_per_day)
 	return Time{
 		year: year
 		month: month
 		day: day
-		hour: hr
-		minute: min
-		second: sec
+		hour: hour_
+		minute: minute_
+		second: second_
 		nanosecond: nanosecond
-		unix: abs
+		unix: abs_unix_timestamp
 	}
 }
 
-fn calculate_date_from_offset(day_offset_ i64) (int, int, int) {
+// calculate_date_from_day_offset returns the year, month, and day based on the given day offset.
+fn calculate_date_from_day_offset(day_offset_ i64) (int, int, int) {
 	mut day_offset := day_offset_
 
 	// source: http://howardhinnant.github.io/date_algorithms.html#civil_from_days
@@ -72,37 +73,46 @@ fn calculate_date_from_offset(day_offset_ i64) (int, int, int) {
 	} else {
 		era = int((day_offset - days_per_400_years - 1) / days_per_400_years)
 	}
-	// doe(day of era) [0, 146096]
-	doe := day_offset - era * days_per_400_years
-	// yoe(year of era) [0, 399]
-	yoe := (doe - doe / (days_per_4_years - 1) + doe / days_per_100_years - doe / (days_per_400_years - 1)) / days_in_year
-	// year number
-	mut y := int(yoe + era * 400)
-	// doy (day of year), with year beginning Mar 1 [0, 365]
-	doy := doe - (days_in_year * yoe + yoe / 4 - yoe / 100)
 
-	mp := (5 * doy + 2) / 153
-	d := int(doy - (153 * mp + 2) / 5 + 1)
-	mut m := int(mp)
-	if mp < 10 {
-		m += 3
+	// day_of_era => [0..146096]
+	day_of_era := day_offset - era * days_per_400_years
+
+	// year_of_era => [0..399]
+	year_of_era := (day_of_era - day_of_era / (days_per_4_years - 1) +
+		day_of_era / days_per_100_years - day_of_era / (days_per_400_years - 1)) / days_in_year
+
+	mut year := int(year_of_era + era * 400)
+
+	// day_of_year => with year beginning Mar 1 [0..365]
+	day_of_year := day_of_era - (days_in_year * year_of_era + year_of_era / 4 - year_of_era / 100)
+
+	month_position := (5 * day_of_year + 2) / 153
+	day := int(day_of_year - (153 * month_position + 2) / 5 + 1)
+	mut month := int(month_position)
+
+	if month_position < 10 {
+		month += 3
 	} else {
-		m -= 9
+		month -= 9
 	}
-	if m <= 2 {
-		y += 1
+
+	if month <= 2 {
+		year += 1
 	}
-	return y, m, d
+
+	return year, month, day
 }
 
-fn calculate_time_from_offset(second_offset_ i64) (int, int, int) {
+// calculate_time_from_second_offset returns the hour, minute, and second
+// based on the given second offset.
+fn calculate_time_from_second_offset(second_offset_ i64) (int, int, int) {
 	mut second_offset := second_offset_
 	if second_offset < 0 {
 		second_offset += seconds_per_day
 	}
 	hour_ := second_offset / seconds_per_hour
 	second_offset %= seconds_per_hour
-	min := second_offset / seconds_per_minute
+	minute_ := second_offset / seconds_per_minute
 	second_offset %= seconds_per_minute
-	return int(hour_), int(min), int(second_offset)
+	return int(hour_), int(minute_), int(second_offset)
 }
