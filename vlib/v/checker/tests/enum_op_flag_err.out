@@ -40,7 +40,7 @@ vlib/v/checker/tests/enum_op_flag_err.vv:20:18: error: only `==` and `!=` are de
       |                     ^
    21 |     println(~f)
    22 | }
-vlib/v/checker/tests/enum_op_flag_err.vv:21:10: error: operator `~` can only be used with enum `Flags` with attribute `@[flag]`, but the value after `~` is without that flag
+vlib/v/checker/tests/enum_op_flag_err.vv:21:10: error: operator `~` can only be used with `@[flag]` tagged enums
    19 | 
    20 |     f := Flags.bit0 | Flags.bit1
    21 |     println(~f)
