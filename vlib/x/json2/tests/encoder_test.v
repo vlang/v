@@ -8,11 +8,15 @@ mut:
 }
 
 fn test_json_string_characters() {
+	assert json.encode([u8(`/`)].bytestr()).bytes() == r'"\/"'.bytes()
+	assert json.encode([u8(`\\`)].bytestr()).bytes() == r'"\\"'.bytes()
+	assert json.encode([u8(`"`)].bytestr()).bytes() == r'"\""'.bytes()
+	assert json.encode(r'\n\r\b\f\t') == r'"\\n\\r\\b\\f\\t"'
+
+	assert json.encode(r'\n\r\b\f\t\\\"\/') == r'"\\n\\r\\b\\f\\t\\\\\\\"\\\/"'
+
 	text := json.raw_decode(r'"\n\r\b\f\t\\\"\/"') or { '' }
 	assert text.json_str() == '"\\n\\r\\b\\f\\t\\\\\\"\\/"'
-
-	assert json.encode(r'"\n\r\b\f\t\\\"\/"') == r'""\n\r\b\f\t\\\"\/""'
-	assert json.encode('"\\n\\r\\b\\f\\t\\\\\\"\\/"') == r'""\n\r\b\f\t\\\"\/""'
 }
 
 fn test_json_escape_low_chars() {
