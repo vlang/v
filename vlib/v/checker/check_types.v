@@ -533,10 +533,11 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type_ ast.Type, righ
 			// a negative value, the resulting value is implementation-defined (ID).
 			left_sym_final := c.table.final_sym(left_type)
 			left_type_final := ast.Type(left_sym_final.idx)
-			if node.op == .left_shift && left_type_final.is_signed() && !(c.inside_unsafe
-				&& c.is_generated) && !c.pref.translated && !c.file.is_translated {
-				c.note('shifting a value from a signed type `${left_sym_final.name}` can change the sign',
-					node.left.pos())
+			if !(c.is_generated || c.inside_unsafe || c.file.is_translated || c.pref.translated) {
+				if node.op == .left_shift && left_type_final.is_signed() {
+					c.note('shifting a value from a signed type `${left_sym_final.name}` can change the sign',
+						node.left.pos())
+				}
 			}
 			if node.ct_right_value_evaled {
 				if node.ct_right_value !is ast.EmptyExpr {

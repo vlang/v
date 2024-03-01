@@ -1,0 +1,14 @@
+@[translated]
+module main
+
+pub struct CType {
+	t   int
+	ref &int
+}
+
+fn main() {
+	ctype := CType{
+		ref: 0
+	}
+	dump(ctype)
+}
