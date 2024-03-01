@@ -505,7 +505,7 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 			}
 			continue
 		} else if utf8_len == 2 {
-			// João, Schilddrüsenerkrankungen...
+			// runes like: ã, ü, etc.
 			unsafe { buf.push_many(s.str + idx, utf8_len) }
 
 			continue
