@@ -27,7 +27,7 @@ fn test_json_escape_low_chars() {
 
 	assert json.encode('\u000f') == r'"\u000f"'
 	assert json.encode('\u0020') == r'" "'
-	assert json.encode('\u0000') == r'"null"'
+	assert json.encode('\u0000') == r'"\u0000"'
 }
 
 fn test_json_string() {
