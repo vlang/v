@@ -6,5 +6,5 @@ fn f(i i32) i32 {
 }
 
 fn main() {
-	println(f(3))
+	assert f(3) == 12
 }
