@@ -32,6 +32,12 @@ const quote_rune = `"`
 
 const escaped_chars = [(r'\b'), (r'\f'), (r'\n'), (r'\r'), (r'\t')]!
 
+const back_slash = [u8(`\\`), `\\`]!
+
+const quote = [u8(`\\`), `"`]!
+
+const slash = [u8(`\\`), `/`]!
+
 const ascii_control_characters = ['null', '\\t', '\\n', '\\r', '\\u0004', '\\u0005', '\\u0006',
 	'\\u0007', '\\b', '\\t', '\\n', '\\v', '\\f', '\\r', '\\u000e', '\\u000f', '\\u0010', '\\u0011',
 	'\\u0012', '\\u0013', '\\u0014', '\\u0015', '\\u0016', '\\u0017', '\\u0018', '\\u0019', '\\u001a',
@@ -63,12 +69,13 @@ const g_digits_lut = [
 // vfmt on
 
 // Pre-computed lookup tables for UTF-8 encoding
-const g_ascii_lut = [u8(0), 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
-	20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42,
-	43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65,
-	66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88,
-	89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109,
-	110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128]!
+const g_ascii_lookup_table = [u8(0), 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
+	18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, `"`, 35, 36, 37, 38, 39, 40,
+	41, 42, 43, 44, 45, 46, `/`, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63,
+	64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86,
+	87, 88, 89, 90, 91, `\\`, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107,
+	108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126,
+	127, 128]!
 
 // const g_multibyte_utf8_lengths = [
 // 	u8(0), // Unused (1-byte characters have length 1)
@@ -473,7 +480,7 @@ pub fn (f Any) prettify_json_str() string {
 
 // TODO - Need refactor. Is so slow. The longer the string, the lower the performance.
 // encode_string returns the JSON spec-compliant version of the string.
-@[manualfree]
+@[direct_array_access]
 fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 	buf << json2.quote_rune
 
@@ -496,36 +503,38 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 				}
 				continue
 			} else if current_byte >= 32 && current_byte < 128 {
-				buf << json2.g_ascii_lut[current_byte]
+				if current_byte == `\\` {
+					unsafe { buf.push_many(&json2.back_slash[0], json2.back_slash.len) }
+					continue
+				} else if current_byte == `"` {
+					unsafe { buf.push_many(&json2.quote[0], json2.quote.len) }
+					continue
+				} else if current_byte == `/` {
+					unsafe { buf.push_many(&json2.slash[0], json2.slash.len) }
+					continue
+				}
+
+				buf << json2.g_ascii_lookup_table[current_byte]
 				continue
 			}
 			continue
 		} else if utf8_len == 2 {
 			// João, Schilddrüsenerkrankungen...
-			buf << current_byte
-			buf << s[idx + 1]
+			new_chars := [current_byte, s[idx + 1]]
+			unsafe { buf.push_many(&u8(new_chars.data), new_chars.len) }
+
 			continue
 		} else if utf8_len == 3 {
 			// ✔, ひらがな ...
-			// buf << current_byte
-			// buf << s[idx + 1]
-			// buf << s[idx + 2]
-
-			// continue
 		} else if utf8_len == 4 {
-			// Emojis
-			buf << current_byte
-			buf << s[idx + 1]
-			buf << s[idx + 2]
-			buf << s[idx + 3]
-			// println([u8(240), 159, 146, 191].bytestr()) F09F92C0
-			// println([u8(240), 159, 128, 129].bytestr()) F09F8081
-			// emoji_ranges = [
+			// Emojis ranges
 			// 	(0x1F300, 0x1F5FF),  # Miscellaneous Symbols and Pictographs
 			// 	(0x1F600, 0x1F64F),  # Emoticons
 			// 	(0x1F680, 0x1F6FF),  # Transport and Map Symbols
-			// 	# Add more ranges as needed
-			// ]
+
+			new_chars := [u8(current_byte), s[idx + 1], s[idx + 2], s[idx + 3]]
+			unsafe { buf.push_many(&u8(new_chars.data), new_chars.len) }
+
 			continue
 		}
 
@@ -540,22 +549,16 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 			mut b := s[idx + j]
 			if (b & 0xC0) != 0x80 {
 				// Invalid continuation byte, handle error or return error
-				continue // comment to pass // assert json.encode('te✔st') == r'"te\u2714st"'
+				continue // assert json.encode('te✔st') == r'"te\u2714st"'
 			}
 
 			codepoint = u32((codepoint << 6) | (b & 0x3F))
 		}
 
-		// dump(codepoint)
-
-		// Append Unicode escape sequence to buf
-		// buf << `\u2714`
-		buf << `\\`
-		buf << `u`
-		buf << hex_digit((codepoint >> 12) & 0xF)
-		buf << hex_digit((codepoint >> 8) & 0xF)
-		buf << hex_digit((codepoint >> 4) & 0xF)
-		buf << hex_digit(codepoint & 0xF)
+		new_chars := [u8(`\\`), `u`, hex_digit((codepoint >> 12) & 0xF),
+			hex_digit((codepoint >> 8) & 0xF), hex_digit((codepoint >> 4) & 0xF),
+			hex_digit(codepoint & 0xF)]
+		unsafe { buf.push_many(&u8(new_chars.data), new_chars.len) }
 	}
 
 	buf << json2.quote_rune
