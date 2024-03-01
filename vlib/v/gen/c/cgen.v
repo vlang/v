@@ -148,6 +148,7 @@ mut:
 	inside_const_opt_or_res   bool
 	inside_lambda             bool
 	inside_cinit              bool
+	inside_global_decl        bool
 	inside_interface_deref    bool
 	last_tmp_call_var         []string
 	loop_depth                int
@@ -5975,8 +5976,10 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 	// should the global be initialized now, not later in `vinit()`
 	cinit := node.attrs.contains('cinit')
 	g.inside_cinit = cinit
+	g.inside_global_decl = true
 	defer {
 		g.inside_cinit = false
+		g.inside_global_decl = false
 	}
 	cextern := node.attrs.contains('c_extern')
 	should_init := (!g.pref.use_cache && g.pref.build_mode != .build_module)
@@ -6951,7 +6954,11 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 		.struct_ {
 			mut has_none_zero := false
 			info := sym.info as ast.Struct
-			mut init_str := if info.is_anon { '(${g.typ(typ)}){' } else { '{' }
+			mut init_str := if info.is_anon && !g.inside_global_decl {
+				'(${g.typ(typ)}){'
+			} else {
+				'{'
+			}
 			if sym.language == .v {
 				for field in info.fields {
 					field_sym := g.table.sym(field.typ)
@@ -6987,7 +6994,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 			if has_none_zero {
 				init_str += '}'
 				if !typ_is_shared_f {
-					type_name := if info.is_anon {
+					type_name := if info.is_anon || g.inside_global_decl {
 						// No name needed for anon structs, C figures it out on its own.
 						''
 					} else {
