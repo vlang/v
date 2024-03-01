@@ -77,14 +77,6 @@ const g_ascii_lookup_table = [u8(0), 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 
 	108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126,
 	127, 128]!
 
-// const g_multibyte_utf8_lengths = [
-// 	u8(0), // Unused (1-byte characters have length 1)
-// 	1,
-// 	2, // Length of 2-byte UTF-8 sequences
-// 	3, // Length of 3-byte UTF-8 sequences
-// 	4, // Length of 4-byte UTF-8 sequences
-// ]!
-
 // encode is a generic function that encodes a type into a JSON string.
 pub fn encode[T](val T) string {
 	$if T is $array {
@@ -188,8 +180,6 @@ fn (e &Encoder) encode_value_with_level[T](val T, level int, mut buf []u8) ! {
 	} $else $if T is $sumtype {
 		$for v in val.variants {
 			if val is v {
-				// dump(val)
-				// dump(typeof(val).name)
 				e.encode_value_with_level(val, level, mut buf)!
 			}
 		}
@@ -535,13 +525,13 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 		mut codepoint := u32(current_byte & ((1 << (7 - utf8_len)) - 1))
 		for j in 1 .. utf8_len {
 			if idx + j >= s.len {
-				// Incomplete UTF-8 sequence, handle error or return error
+				// Incomplete UTF-8 sequence, TODO handle error
 				continue
 			}
 
 			mut b := s[idx + j]
 			if (b & 0xC0) != 0x80 {
-				// Invalid continuation byte, handle error or return error
+				// Invalid continuation byte, TODO handle error
 				continue // assert json.encode('te✔st') == r'"te\u2714st"'
 			}
 
