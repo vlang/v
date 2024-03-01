@@ -471,13 +471,6 @@ pub fn (f Any) prettify_json_str() string {
 	return buf.bytestr()
 }
 
-// const g_multibyte_utf8_lengths = [
-// 	u8(0), // Unused (1-byte characters have length 1)
-// 	2, // Length of 2-byte UTF-8 sequences
-// 	3, // Length of 3-byte UTF-8 sequences
-// 	4, // Length of 4-byte UTF-8 sequences
-// ]!
-
 // TODO - Need refactor. Is so slow. The longer the string, the lower the performance.
 // encode_string returns the JSON spec-compliant version of the string.
 @[direct_array_access]
