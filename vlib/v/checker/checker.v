@@ -3083,7 +3083,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			tt := c.table.type_to_str(to_type)
 			c.error('cannot cast `${ft}` to `${tt}`', node.pos)
 		} else if to_sym_info.variants.len != to_sym_info.get_deduplicated_variants().len {
-			// not a option type because of autofree bug; see https://github.com/vlang/v/actions/runs/8116684464/job/22187255774?pr=20936
+			// TODO: not a option type because of autofree bug; see https://github.com/vlang/v/issues/20937
 			mut msg := ''
 			print_notice := to_sym_info.attrs.any(!it.has_arg && it.name == 'notice_if_duplicate')
 			for attr in to_sym_info.attrs {
