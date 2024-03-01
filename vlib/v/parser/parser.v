@@ -4373,6 +4373,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			cname: util.no_dots(prepend_mod_name)
 			mod: p.mod
 			info: ast.SumType{
+				attrs: p.attrs
 				variants: variant_types
 				is_generic: generic_types.len > 0
 				generic_types: generic_types

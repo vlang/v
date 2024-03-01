@@ -925,7 +925,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 			g.writeln('${static_prefix}char * v_typeof_sumtype_${sym.cname}(int sidx) { /* ${sym.name} */ ')
 			if g.pref.build_mode == .build_module {
 				g.writeln('\t\tif( sidx == _v_type_idx_${sym.cname}() ) return "${util.strip_main_name(sym.name)}";')
-				for v in sum_info.variants {
+				for v in sum_info.get_deduplicated_variants() {
 					subtype := g.table.sym(v)
 					g.writeln('\tif( sidx == _v_type_idx_${subtype.cname}() ) return "${util.strip_main_name(subtype.name)}";')
 				}
@@ -934,7 +934,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 				tidx := g.table.find_type_idx(sym.name)
 				g.writeln('\tswitch(sidx) {')
 				g.writeln('\t\tcase ${tidx}: return "${util.strip_main_name(sym.name)}";')
-				for v in sum_info.variants {
+				for v in sum_info.get_deduplicated_variants() {
 					subtype := g.table.sym(v)
 					g.writeln('\t\tcase ${v.idx()}: return "${util.strip_main_name(subtype.name)}";')
 				}
@@ -946,7 +946,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 			g.writeln('${static_prefix}int v_typeof_sumtype_idx_${sym.cname}(int sidx) { /* ${sym.name} */ ')
 			if g.pref.build_mode == .build_module {
 				g.writeln('\t\tif( sidx == _v_type_idx_${sym.cname}() ) return ${int(ityp)};')
-				for v in sum_info.variants {
+				for v in sum_info.get_deduplicated_variants() {
 					subtype := g.table.sym(v)
 					g.writeln('\tif( sidx == _v_type_idx_${subtype.cname}() ) return ${int(v)};')
 				}
@@ -955,7 +955,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 				tidx := g.table.find_type_idx(sym.name)
 				g.writeln('\tswitch(sidx) {')
 				g.writeln('\t\tcase ${tidx}: return ${int(ityp)};')
-				for v in sum_info.variants {
+				for v in sum_info.get_deduplicated_variants() {
 					g.writeln('\t\tcase ${v.idx()}: return ${int(v)};')
 				}
 				g.writeln('\t\tdefault: return ${int(ityp)};')
@@ -6399,13 +6399,16 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 				struct_names[name] = true
 				g.typedefs.writeln('typedef struct ${name} ${name};')
 				g.type_definitions.writeln('')
+
 				g.type_definitions.writeln('// Union sum type ${name} = ')
-				for variant in sym.info.variants {
+				variants := sym.info.get_deduplicated_variants()
+				for variant in variants {
 					g.type_definitions.writeln('//          | ${variant:4d} = ${g.typ(variant.idx()):-20s}')
 				}
 				g.type_definitions.writeln('struct ${name} {')
 				g.type_definitions.writeln('\tunion {')
-				for variant in sym.info.variants {
+
+				for variant in variants {
 					variant_sym := g.table.sym(variant)
 					mut var := variant.ref()
 					if variant_sym.info is ast.FnType {

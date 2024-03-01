@@ -3082,6 +3082,21 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			ft := c.table.type_to_str(from_type)
 			tt := c.table.type_to_str(to_type)
 			c.error('cannot cast `${ft}` to `${tt}`', node.pos)
+		} else if to_sym_info.variants.len != to_sym_info.get_deduplicated_variants().len {
+			mut msg := ?string(none)
+			print_notice := to_sym_info.attrs.any(!it.has_arg && it.name == 'notice_if_duplicate')
+			for attr in to_sym_info.attrs {
+				if attr.name == 'on_duplicate' && attr.has_arg {
+					msg = attr.arg
+				}
+			}
+			if s := msg {
+				if print_notice {
+					c.note('duplicate type: ${s}', node.pos)
+				} else {
+					c.error('duplicate type: ${s}', node.pos)
+				}
+			}
 		}
 	} else if mut to_sym.info is ast.Alias && !(final_to_sym.kind == .struct_ && final_to_is_ptr) {
 		if (!c.check_types(from_type, to_sym.info.parent_type) && !(final_to_sym.is_int()
