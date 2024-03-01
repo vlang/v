@@ -496,13 +496,14 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 		mut utf8_len := ((0xe5000000 >> ((current_byte >> 3) & 0x1e)) & 3) + 1
 
 		if utf8_len == 1 {
-			// Invalid UTF-8 sequence, handle error or return error
 			if current_byte < 32 {
+				// ASCII Control Characters
 				unsafe {
 					buf.push_many(json2.ascii_control_characters[current_byte].str, json2.ascii_control_characters[current_byte].len)
 				}
 				continue
 			} else if current_byte >= 32 && current_byte < 128 {
+				// ASCII especial characters
 				if current_byte == `\\` {
 					unsafe { buf.push_many(&json2.back_slash[0], json2.back_slash.len) }
 					continue
@@ -514,6 +515,7 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 					continue
 				}
 
+				// ASCII no Control Characters or especial characters
 				buf << json2.g_ascii_lookup_table[current_byte]
 				continue
 			}
@@ -566,54 +568,7 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 
 fn hex_digit(n int) u8 {
 	if n < 10 {
-		// dump(n)
 		return `0` + n
 	}
 	return `a` + (n - 10)
 }
-
-// fn handle_special_char(e &Encoder, mut buf []u8, chr u8) {
-// 	if chr in important_escapable_chars {
-// 		for j := 0; j < important_escapable_chars.len; j++ {
-// 			if chr == important_escapable_chars[j] {
-// 				unsafe { buf.push_many(json2.escaped_chars[j].str, json2.escaped_chars[j].len) }
-// 				break
-// 			}
-// 		}
-// 	} else if chr == `"` || chr == `/` || chr == `\\` {
-// 		temp_buffer_to_be_pushed := [u8(`\\`), chr]
-// 		unsafe { buf.push_many(&temp_buffer_to_be_pushed[0], temp_buffer_to_be_pushed.len) }
-// 	} else {
-// 		temp_buffer_to_be_pushed := [u8(`\\`), u8(json2.unicode_escape_chars), json2.zero_rune,
-// 			json2.zero_rune, json2.g_digits_lut[chr * 2], json2.g_digits_lut[chr * 2 + 1]] // \u00xx
-// 		unsafe { buf.push_many(&temp_buffer_to_be_pushed[0], temp_buffer_to_be_pushed.len) }
-// 	}
-// }
-
-// // handle_multi_byte_char - ...
-// // (e.g.: ✔ => \u2714
-// @[direct_array_access]
-// fn handle_multi_byte_char(e &Encoder, mut buf []u8, slice string) {
-// 	utf32_bytes_code := slice.utf32_code() // slow // string
-// 	hex_code := utf32_bytes_code.hex()
-
-// 	if !e.escape_unicode || hex_code.len < 4 {
-// 		unsafe { buf.push_many(slice.str, slice.len) }
-// 	} else if hex_code.len == 4 {
-// 		temp_buffer_to_be_pushed := [u8(`\\`), json2.unicode_escape_chars]! // \u00
-// 		// buf << json2.unicode_escape_chars
-// 		unsafe { buf.push_many(&temp_buffer_to_be_pushed[0], temp_buffer_to_be_pushed.len) }
-// 		unsafe { buf.push_many(hex_code.str, hex_code.len) }
-// 	} else {
-// 		// TODO: still figuring out what
-// 		// to do with more than 4 chars
-// 		// According to https://www.json.org/json-en.html however, any codepoint is valid inside a string,
-// 		// so just passing it along should hopefully also work.
-// 		// unsafe { buf.push_many(slice.str, slice.len) }
-// 	}
-
-// 	unsafe {
-// 		slice.free()
-// 		hex_code.free()
-// 	}
-// }
