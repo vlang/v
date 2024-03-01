@@ -522,8 +522,7 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 			continue
 		} else if utf8_len == 2 {
 			// João, Schilddrüsenerkrankungen...
-			new_chars := [current_byte, s[idx + 1]]
-			unsafe { buf.push_many(&u8(new_chars.data), new_chars.len) }
+			unsafe { buf.push_many(s.str + idx, utf8_len) }
 
 			continue
 		} else if utf8_len == 3 {
@@ -534,8 +533,7 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 			// 	(0x1F600, 0x1F64F),  # Emoticons
 			// 	(0x1F680, 0x1F6FF),  # Transport and Map Symbols
 
-			new_chars := [u8(current_byte), s[idx + 1], s[idx + 2], s[idx + 3]]
-			unsafe { buf.push_many(&u8(new_chars.data), new_chars.len) }
+			unsafe { buf.push_many(s.str + idx, utf8_len) }
 
 			continue
 		}
