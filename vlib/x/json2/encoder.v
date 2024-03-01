@@ -510,7 +510,7 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 
 			continue
 		} else if utf8_len == 3 {
-			// ✔, ひらがな ...
+			// runes like: ✔, ひらがな ...
 		} else if utf8_len == 4 {
 			// Emojis ranges
 			// 	(0x1F300, 0x1F5FF),  # Miscellaneous Symbols and Pictographs
