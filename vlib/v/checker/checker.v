@@ -4319,8 +4319,7 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 	}
 	if node.op == .bit_not && !c.pref.translated && !c.file.is_translated {
 		if right_sym.info is ast.Enum && !right_sym.info.is_flag {
-			c.error('operator `~` can only be used with `@[flag]` tagged enums',
-				node.pos)
+			c.error('operator `~` can only be used with `@[flag]` tagged enums', node.pos)
 		}
 		// Only check for int not enum as it is done above
 		if !right_sym.is_int() && right_sym.info !is ast.Enum {
