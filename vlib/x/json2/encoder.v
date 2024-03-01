@@ -443,7 +443,6 @@ pub fn (f Any) str() string {
 }
 
 // json_str returns the JSON string representation of the `Any` type.
-@[manualfree]
 pub fn (f Any) json_str() string {
 	return encode(f)
 }
