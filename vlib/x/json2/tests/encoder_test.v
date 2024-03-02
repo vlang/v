@@ -24,6 +24,7 @@ fn test_json_string_characters() {
 
 	assert json.encode("fn main(){nprintln('Hello World! Helo \$a')\n}") == '"fn main(){nprintln(\'Hello World! Helo \$a\')\\n}"'
 	assert json.encode(' And when "\'s are in the string, along with # "') == '" And when \\"\'s are in the string, along with # \\""'
+	assert json.encode('a \\\nb') == r'"a \\\nb"'
 }
 
 fn test_json_escape_low_chars() {
