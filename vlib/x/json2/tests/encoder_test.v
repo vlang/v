@@ -23,6 +23,7 @@ fn test_json_string_characters() {
 	assert text.json_str() == '"\\n\\r\\b\\f\\t\\\\\\"\\/"'
 
 	assert json.encode("fn main(){nprintln('Hello World! Helo \$a')\n}") == '"fn main(){nprintln(\'Hello World! Helo \$a\')\\n}"'
+	assert json.encode(' And when "\'s are in the string, along with # "') == '" And when \\"\'s are in the string, along with # \\""'
 }
 
 fn test_json_escape_low_chars() {
