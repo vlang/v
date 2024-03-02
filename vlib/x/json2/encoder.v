@@ -505,11 +505,11 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 					if idx == s.len - 1 {
 					} else {
 						lenght := idx - last_no_buffer_expansible_char_position_candidate
-
 						unsafe {
 							buf.push_many(s.str + last_no_buffer_expansible_char_position_candidate,
 								lenght)
 						}
+						last_no_buffer_expansible_char_position_candidate = idx + 1
 					}
 				}
 			}
