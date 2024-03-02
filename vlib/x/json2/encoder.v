@@ -518,6 +518,7 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 				unsafe {
 					buf.push_many(json2.ascii_control_characters[current_byte].str, json2.ascii_control_characters[current_byte].len)
 				}
+				last_no_buffer_expansible_char_position_candidate = idx + 1
 			} else if current_byte >= 32 && current_byte < 128 {
 				// ASCII especial characters
 				if current_byte == `\\` {
