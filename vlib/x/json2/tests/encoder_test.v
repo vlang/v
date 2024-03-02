@@ -11,7 +11,11 @@ fn test_json_string_characters() {
 	assert json.encode([u8(`/`)].bytestr()).bytes() == r'"\/"'.bytes()
 	assert json.encode([u8(`\\`)].bytestr()).bytes() == r'"\\"'.bytes()
 	assert json.encode([u8(`"`)].bytestr()).bytes() == r'"\""'.bytes()
-	assert json.encode(r'\n\r\b\f\t') == r'"\\n\\r\\b\\f\\t"'
+	assert json.encode([u8(`\n`)].bytestr()).bytes() == r'"\n"'.bytes()
+	assert json.encode(r'\n\r') == r'"\\n\\r"'
+	assert json.encode('\\n') == r'"\\n"'
+	assert json.encode(r'\n\r\b') == r'"\\n\\r\\b"'
+	assert json.encode(r'\"/').bytes() == r'"\\\"\/"'.bytes()
 
 	assert json.encode(r'\n\r\b\f\t\\\"\/') == r'"\\n\\r\\b\\f\\t\\\\\\\"\\\/"'
 
@@ -53,6 +57,7 @@ fn test_json_string_emoji() {
 
 	assert json.encode('🐈') == r'"🐈"'
 	assert json.encode('💀') == r'"💀"'
+	// assert json.encode('🐈💀') == r'"🐈💀"'
 }
 
 fn test_json_string_non_ascii() {
@@ -67,6 +72,7 @@ fn test_utf8_strings_are_not_modified() {
 	deresult := json.raw_decode(original)!
 	assert deresult.str() == original
 
+	assert json.encode('ü') == '"ü"'
 	assert json.encode('Schilddrüsenerkrankungen') == '"Schilddrüsenerkrankungen"'
 }
 
