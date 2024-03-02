@@ -11,13 +11,13 @@ import benchmark
 const max_iterations = os.getenv_opt('MAX_ITERATIONS') or { '1000' }.int()
 
 fn main() {
-	benchmark_measure_json_vs_json2_on_complex_struct()!
-	println('')
-	benchmark_measure_decode_by_type()!
+	// benchmark_measure_json_vs_json2_on_complex_struct()!
+	// println('')
+	// benchmark_measure_decode_by_type()!
 	println('')
 	benchmark_measure_encode_by_type()!
-	println('')
-	benchmark_measure_encode_by_alias_type()!
+	// println('')
+	// benchmark_measure_encode_by_alias_type()!
 }
 
 type StringAlias = string
@@ -89,6 +89,10 @@ fn benchmark_measure_encode_by_type() ! {
 	big_multiple_type_string := '✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t'
 	println('✔な🐈\t = ${big_multiple_type_string.len}')
 	measure_json_encode_old_vs_new(StructType[string]{big_multiple_type_string})!
+
+	big_emoji_string := '🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀'
+	println('🐈🐟🐧🐀💀 = ${big_emoji_string.len}')
+	measure_json_encode_old_vs_new(StructType[string]{big_emoji_string})!
 
 	big_no_ancii_string := 'ひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがな'
 	println('ひらがな = ${big_no_ancii_string.len}')
