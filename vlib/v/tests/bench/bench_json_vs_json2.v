@@ -11,13 +11,13 @@ import benchmark
 const max_iterations = os.getenv_opt('MAX_ITERATIONS') or { '1000' }.int()
 
 fn main() {
-	// benchmark_measure_json_vs_json2_on_complex_struct()!
-	// println('')
-	// benchmark_measure_decode_by_type()!
+	benchmark_measure_json_vs_json2_on_complex_struct()!
+	println('')
+	benchmark_measure_decode_by_type()!
 	println('')
 	benchmark_measure_encode_by_type()!
-	// println('')
-	// benchmark_measure_encode_by_alias_type()!
+	println('')
+	benchmark_measure_encode_by_alias_type()!
 }
 
 type StringAlias = string
