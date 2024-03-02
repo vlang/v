@@ -21,6 +21,8 @@ fn test_json_string_characters() {
 
 	text := json.raw_decode(r'"\n\r\b\f\t\\\"\/"') or { '' }
 	assert text.json_str() == '"\\n\\r\\b\\f\\t\\\\\\"\\/"'
+
+	assert json.encode("fn main(){nprintln('Hello World! Helo \$a')\n}") == '"fn main(){nprintln(\'Hello World! Helo \$a\')\\n}"'
 }
 
 fn test_json_escape_low_chars() {
