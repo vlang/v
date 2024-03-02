@@ -38,6 +38,8 @@ const quote = [u8(`\\`), `"`]!
 
 const slash = [u8(`\\`), `/`]!
 
+const null_unicode = [u8(`\\`), `u`, `0`, `0`, `0`, `0`]!
+
 const ascii_control_characters = ['\\u0000', '\\t', '\\n', '\\r', '\\u0004', '\\u0005', '\\u0006',
 	'\\u0007', '\\b', '\\t', '\\n', '\\u000b', '\\f', '\\r', '\\u000e', '\\u000f', '\\u0010',
 	'\\u0011', '\\u0012', '\\u0013', '\\u0014', '\\u0015', '\\u0016', '\\u0017', '\\u0018', '\\u0019',
@@ -557,11 +559,12 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 
 				codepoint = u32((codepoint << 6) | (b & 0x3F))
 			}
-
-			new_chars := [u8(`\\`), `u`, hex_digit((codepoint >> 12) & 0xF),
-				hex_digit((codepoint >> 8) & 0xF), hex_digit((codepoint >> 4) & 0xF),
-				hex_digit(codepoint & 0xF)]
-			unsafe { buf.push_many(&u8(new_chars.data), new_chars.len) }
+			// runes like: ✔, ひらがな ...
+			unsafe { buf.push_many(&json2.null_unicode[0], json2.null_unicode.len) }
+			buf[buf.len - 1] = hex_digit(codepoint & 0xF)
+			buf[buf.len - 2] = hex_digit((codepoint >> 4) & 0xF)
+			buf[buf.len - 3] = hex_digit((codepoint >> 8) & 0xF)
+			buf[buf.len - 4] = hex_digit((codepoint >> 12) & 0xF)
 			idx += current_utf8_len - 1
 			last_no_buffer_expansible_char_position_candidate = idx + 1
 		}
