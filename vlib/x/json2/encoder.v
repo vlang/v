@@ -30,8 +30,6 @@ const unicode_escape_chars = `\\u`
 
 const quote_rune = `"`
 
-const escaped_chars = [(r'\b'), (r'\f'), (r'\n'), (r'\r'), (r'\t')]!
-
 const back_slash = [u8(`\\`), `\\`]!
 
 const quote = [u8(`\\`), `"`]!
@@ -494,23 +492,12 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 			}
 		} else {
 			if idx > 0 {
-				previous_byte := s[idx - 1]
-
-				previous_utf8_len := ((0xe5000000 >> ((previous_byte >> 3) & 0x1e)) & 3) + 1
-
-				previous_value_cause_buffer_expansion :=
-					(previous_utf8_len == 1 && ((previous_byte < 32 || previous_byte > 127)
-					|| json2.ascii_especial_characters.contains(previous_byte)))
-					|| previous_utf8_len == 3
-
-				if !previous_value_cause_buffer_expansion {
-					lenght := idx - last_no_buffer_expansible_char_position_candidate
-					unsafe {
-						buf.push_many(s.str + last_no_buffer_expansible_char_position_candidate,
-							lenght)
-					}
-					last_no_buffer_expansible_char_position_candidate = idx + 1
+				lenght := idx - last_no_buffer_expansible_char_position_candidate
+				unsafe {
+					buf.push_many(s.str + last_no_buffer_expansible_char_position_candidate,
+						lenght)
 				}
+				last_no_buffer_expansible_char_position_candidate = idx + 1
 			}
 		}
 
