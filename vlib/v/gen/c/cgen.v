@@ -6715,6 +6715,7 @@ fn (mut g Gen) gen_or_block_stmts(cvar_name string, cast_typ string, stmts []ast
 						if !is_array_fixed {
 							if g.inside_return && !g.inside_struct_init
 								&& expr_stmt.expr is ast.CallExpr
+								&& g.cur_fn.return_type.has_option_or_result()
 								&& return_type.has_option_or_result()
 								&& expr_stmt.expr.or_block.kind == .absent {
 								g.write('${cvar_name} = ')
