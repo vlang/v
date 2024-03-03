@@ -5506,7 +5506,7 @@ fn main() {
 	assert 2 == int(BitField.write)
 	mut bf := BitField.read
 	assert bf.has(.read | .other) // test if *at least one* of the flags is set
-	assert !bf.all(.read | .other) // test if *all* of the flags is set
+	assert !bf.all(.read | .other) // test if *all* of the flags are set
 	bf.set(.write | .other)
 	assert bf.has(.read | .write | .other)
 	assert bf.all(.read | .write | .other)
