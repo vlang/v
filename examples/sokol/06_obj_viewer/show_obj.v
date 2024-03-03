@@ -144,8 +144,6 @@ fn draw_model(app App, model_pos m4.Vec4) u32 {
 }
 
 fn frame(mut app App) {
-	ws := gg.window_size_real_pixels()
-
 	// clear
 	mut color_action := gfx.ColorAttachmentAction{
 		load_action: .clear
@@ -159,7 +157,8 @@ fn frame(mut app App) {
 
 	mut pass_action := gfx.PassAction{}
 	pass_action.colors[0] = color_action
-	gfx.begin_default_pass(&pass_action, ws.width, ws.height)
+	pass := sapp.create_default_pass(pass_action)
+	gfx.begin_pass(&pass)
 
 	// render the data
 	draw_start_glsl(app)

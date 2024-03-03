@@ -516,7 +516,8 @@ fn frame(mut app App) {
 	}
 	mut pass_action := gfx.PassAction{}
 	pass_action.colors[0] = color_action
-	gfx.begin_default_pass(&pass_action, ws.width, ws.height)
+	pass := sapp.create_default_pass(pass_action)
+	gfx.begin_pass(&pass)
 
 	/*
 	// glsl cube

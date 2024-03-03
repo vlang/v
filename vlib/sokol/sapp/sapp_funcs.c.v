@@ -110,11 +110,14 @@ fn C.sapp_html5_ask_leave_site(ask bool)
 // Metal: get ARC-bridged pointer to Metal device object
 fn C.sapp_metal_get_device() voidptr
 
-// Metal: get ARC-bridged pointer to this frame's renderpass descriptor
-fn C.sapp_metal_get_renderpass_descriptor() voidptr
-
 // Metal: get ARC-bridged pointer to current drawable
-fn C.sapp_metal_get_drawable() voidptr
+fn C.sapp_metal_get_current_drawable() voidptr
+
+// Metal: get bridged pointer to MTKView's depth-stencil texture of type MTLTexture
+fn C.sapp_metal_get_depth_stencil_texture() voidptr
+
+// Metal: get bridged pointer to MTKView's msaa-color-texture of type MTLTexture (may be null)
+fn C.sapp_metal_get_msaa_color_texture() voidptr
 
 // macOS: get ARC-bridged pointer to macOS NSWindow
 fn C.sapp_macos_get_window() voidptr
@@ -131,8 +134,11 @@ fn C.sapp_d3d11_get_device_context() voidptr
 // D3D11: get pointer to IDXGISwapChain object
 fn C.sapp_d3d11_get_swap_chain() voidptr
 
-// D3D11: get pointer to ID3D11RenderTargetView object
-fn C.sapp_d3d11_get_render_target_view() voidptr
+// D3D11: get pointer to ID3D11RenderView object
+fn C.sapp_d3d11_get_render_view() voidptr
+
+// D3D11: get pointer ID3D11RenderTargetView object for msaa-resolve (may return null)
+fn C.sapp_d3d11_get_resolve_view() voidptr
 
 // D3D11: get pointer to ID3D11DepthStencilView
 fn C.sapp_d3d11_get_depth_stencil_view() voidptr
@@ -151,6 +157,9 @@ fn C.sapp_wgpu_get_resolve_view() voidptr
 
 // WebGPU: get swapchain's WGPUTextureView for the depth-stencil surface
 fn C.sapp_wgpu_get_depth_stencil_view() voidptr
+
+// GL: get framebuffer object
+fn C.sapp_gl_get_framebuffer() u32
 
 // Android: get native activity handle
 fn C.sapp_android_get_native_activity() voidptr
