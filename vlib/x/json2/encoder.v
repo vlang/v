@@ -43,7 +43,7 @@ const curly_open_rune = `{`
 
 const curly_close_rune = `}`
 
-const ascii_especial_characters = [u8(`\\`), `"`, `/`]
+const ascii_especial_characters = [u8(`\\`), `"`, `/`]!
 
 // encode is a generic function that encodes a type into a JSON string.
 @[manualfree]
@@ -457,7 +457,7 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 
 		current_value_cause_buffer_expansion :=
 			(current_utf8_len == 1 && ((current_byte < 32 || current_byte > 127)
-			|| json2.ascii_especial_characters.contains(current_byte)))
+			|| current_byte in json2.ascii_especial_characters))
 			|| current_utf8_len == 3
 
 		if !current_value_cause_buffer_expansion {

@@ -5,8 +5,8 @@ import time
 import benchmark
 
 // recommendations:
-// MAX_ITERATIONS=100_000 ./v run vlib/v/tests/bench/bench_json_vs_json2.v
-// MAX_ITERATIONS=100_000 ./v -no-bounds-checking -prod -cc clang-15 crun vlib/v/tests/bench/bench_json_vs_json2.v
+// ./v wipe-cache && MAX_ITERATIONS=100_000 ./v run vlib/v/tests/bench/bench_json_vs_json2.v
+// ./v wipe-cache && MAX_ITERATIONS=100_000 ./v -prod crun vlib/v/tests/bench/bench_json_vs_json2.v
 
 const max_iterations = os.getenv_opt('MAX_ITERATIONS') or { '1000' }.int()
 
