@@ -115,7 +115,7 @@ fn benchmark_measure_encode_by_type() ! {
 	measure_json_encode_old_vs_new(StructType[int]{})!
 	measure_json_encode_old_vs_new(StructType[u64]{u64(-1)})! // 18446744073709551615
 	measure_json_encode_old_vs_new(StructType[f64]{})!
-	measure_json_encode_old_vs_new(StructType[bool]{})!
+	measure_json_encode_old_vs_new(StructType[bool]{false})!
 	measure_json_encode_old_vs_new(StructType[[]int]{})!
 	measure_json_encode_old_vs_new(StructType[StructType[int]]{ val: StructType[int]{} })!
 	measure_json_encode_old_vs_new(StructType[Enum]{})!
