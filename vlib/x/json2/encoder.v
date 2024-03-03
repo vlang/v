@@ -20,6 +20,8 @@ const true_in_string = [u8(`t`), `r`, `u`, `e`]!
 
 const false_in_string = [u8(`f`), `a`, `l`, `s`, `e`]!
 
+const empty_array = [u8(`[`), `]`]!
+
 const comma_rune = `,`
 
 const colon_rune = `:`
@@ -70,6 +72,10 @@ pub fn encode[T](val T) string {
 // encode_array is a generic function that encodes a array into a JSON string.
 @[manualfree]
 fn encode_array[T](val []T) string {
+	if val.len == 0 {
+		return '[]'
+	}
+
 	mut buf := []u8{}
 
 	defer {
@@ -363,6 +369,10 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 }
 
 fn (e &Encoder) encode_array[U](val []U, level int, mut buf []u8) ! {
+	if val.len == 0 {
+		unsafe { buf.push_many(&json2.empty_array[0], json2.empty_array.len) }
+		return
+	}
 	buf << `[`
 	for i in 0 .. val.len {
 		e.encode_newline(level, mut buf)!

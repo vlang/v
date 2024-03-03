@@ -116,7 +116,12 @@ fn benchmark_measure_encode_by_type() ! {
 	measure_json_encode_old_vs_new(StructType[u64]{u64(-1)})! // 18446744073709551615
 	measure_json_encode_old_vs_new(StructType[f64]{})!
 	measure_json_encode_old_vs_new(StructType[bool]{false})!
+
+	println('empty array')
 	measure_json_encode_old_vs_new(StructType[[]int]{})!
+
+	println('array with 10 elements [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]')
+	measure_json_encode_old_vs_new(StructType[[]int]{[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]})!
 	measure_json_encode_old_vs_new(StructType[StructType[int]]{ val: StructType[int]{} })!
 	measure_json_encode_old_vs_new(StructType[Enum]{})!
 	measure_json_encode_old_vs_new(StructType[SumTypes]{1})!
