@@ -488,10 +488,10 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 			}
 		} else {
 			if idx > 0 {
-				lenght := idx - last_no_buffer_expansible_char_position_candidate
+				length := idx - last_no_buffer_expansible_char_position_candidate
 				unsafe {
 					buf.push_many(s.str + last_no_buffer_expansible_char_position_candidate,
-						lenght)
+						length)
 				}
 				last_no_buffer_expansible_char_position_candidate = idx + 1
 			}
