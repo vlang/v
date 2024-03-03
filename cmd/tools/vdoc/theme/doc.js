@@ -162,11 +162,16 @@ function setupSearch() {
 	const searchInput = document.querySelector('#search input');
 	const url = document.location.toString();
 	if (url.includes('?')) {
-		const query = url.split('?').slice(1).filter(p => p.startsWith('q=')).map(p => p.replace(/^q=/, ''))[0] || '';
+		const query =
+			url
+				.split('?')
+				.slice(1)
+				.filter((p) => p.startsWith('q='))
+				.map((p) => p.replace(/^q=/, ''))[0] || '';
 		if (query) {
 			searchInput.value = query;
 			searchInput.focus();
-			onInputChange({ target: { value: query }});
+			onInputChange({ target: { value: query } });
 		}
 	}
 	const searchInputDiv = document.getElementById('search');
