@@ -20,13 +20,9 @@ const true_in_string = 'true'
 
 const false_in_string = 'false'
 
-const zero_rune = `0`
-
 const comma_rune = `,`
 
 const colon_rune = `:`
-
-const unicode_escape_chars = `\\u`
 
 const quote_rune = `"`
 
