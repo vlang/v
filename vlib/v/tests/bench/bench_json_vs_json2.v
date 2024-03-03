@@ -85,14 +85,35 @@ fn benchmark_measure_json_vs_json2_on_complex_struct() ! {
 fn benchmark_measure_encode_by_type() ! {
 	println(@FN)
 	dump('👈')
+
+	big_multiple_type_string := '✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t'
+	println('✔な🐈\t = ${big_multiple_type_string.len}')
+	measure_json_encode_old_vs_new(StructType[string]{big_multiple_type_string})!
+
+	big_emoji_string := '🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀'
+	println('🐈🐟🐧🐀💀 = ${big_emoji_string.len}')
+	measure_json_encode_old_vs_new(StructType[string]{big_emoji_string})!
+
+	big_no_ancii_string := 'ひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがな'
+	println('ひらがな = ${big_no_ancii_string.len}')
+	measure_json_encode_old_vs_new(StructType[string]{big_no_ancii_string})!
+
+	big_string := 'jhsbhjhajbujhfbdjhgbxdljgbxdlkjgbxdlkgjbdlfjbszldjkfbdljgbzsljfzsbkfdjsbfljhsdhbfljzhsdbfljzshfblszdjfbjzhdsbfjzsdhbfljsdhbfljzsdfblzjsdfbzsjdfbhljzsdhfbljzsbfjsdbfjshdbfljzsdhbfljzsdhbfljszdbhfljzsbfljhzsbdfljhzbsdljfbsdljfbzlsjfhdbzdsljhfbszdljhfbzsldjfhbszdljhfbzsdljfhbzsdjhfbdsljhfbljsdhbflsjdhjhsbh jhajbujhfbdjhgbxdljgbxdlkjgbxdlkgjbdlfjbszldjkfbdljgbzsljfzsbkfdjsbfljhsdhbfljzhsdbfljzshfblszdjfbjzhdsbfjzsdhbfljsdhbfljzsdfblzjsdfbzsjdfbhljzsdhfbljzsbfjsdbfjshdbfljzsdhbfljzsdhbfljszdbhfljzsbfljhzsbdfljhzbsdljfbsdljfbzlsjfhdbzdsljhfbszdljhfbzsldjfhbszdljhfbzsdljfhbzsdjhfbdsljhfbljsdhbflsjdh'
+
+	println('big string length = ${big_string.len}')
+	measure_json_encode_old_vs_new(StructType[string]{big_string})!
+
+	println('empty string')
 	measure_json_encode_old_vs_new(StructType[string]{})!
-	println('time.Time]{}')
+
+	println('empty time.Time')
 	measure_json_encode_old_vs_new(StructType[time.Time]{})!
 	println('time.utc()')
 	measure_json_encode_old_vs_new(StructType[time.Time]{time.utc()})!
 	println('time.now()')
 	measure_json_encode_old_vs_new(StructType[time.Time]{time.now()})!
 	measure_json_encode_old_vs_new(StructType[int]{})!
+	measure_json_encode_old_vs_new(StructType[u64]{u64(-1)})! // 18446744073709551615
 	measure_json_encode_old_vs_new(StructType[f64]{})!
 	measure_json_encode_old_vs_new(StructType[bool]{})!
 	measure_json_encode_old_vs_new(StructType[[]int]{})!

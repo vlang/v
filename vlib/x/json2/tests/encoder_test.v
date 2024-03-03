@@ -8,8 +8,24 @@ mut:
 }
 
 fn test_json_string_characters() {
+	assert json.encode([u8(`/`)].bytestr()).bytes() == r'"\/"'.bytes()
+	assert json.encode([u8(`\\`)].bytestr()).bytes() == r'"\\"'.bytes()
+	assert json.encode([u8(`"`)].bytestr()).bytes() == r'"\""'.bytes()
+	assert json.encode([u8(`\n`)].bytestr()).bytes() == r'"\n"'.bytes()
+	assert json.encode(r'\n\r') == r'"\\n\\r"'
+	assert json.encode('\\n') == r'"\\n"'
+	assert json.encode(r'\n\r\b') == r'"\\n\\r\\b"'
+	assert json.encode(r'\"/').bytes() == r'"\\\"\/"'.bytes()
+
+	assert json.encode(r'\n\r\b\f\t\\\"\/') == r'"\\n\\r\\b\\f\\t\\\\\\\"\\\/"'
+
 	text := json.raw_decode(r'"\n\r\b\f\t\\\"\/"') or { '' }
 	assert text.json_str() == '"\\n\\r\\b\\f\\t\\\\\\"\\/"'
+
+	assert json.encode("fn main(){nprintln('Hello World! Helo \$a')\n}") == '"fn main(){nprintln(\'Hello World! Helo \$a\')\\n}"'
+	assert json.encode(' And when "\'s are in the string, along with # "') == '" And when \\"\'s are in the string, along with # \\""'
+	assert json.encode('a \\\nb') == r'"a \\\nb"'
+	assert json.encode('Name\tJosé\nLocation\tSF.') == '"Name\\tJosé\\nLocation\\tSF."'
 }
 
 fn test_json_escape_low_chars() {
@@ -17,11 +33,18 @@ fn test_json_escape_low_chars() {
 	assert esc.len == 1
 	text := json.Any(esc)
 	assert text.json_str() == r'"\u001b"'
+
+	assert json.encode('\u000f') == r'"\u000f"'
+	assert json.encode('\u0020') == r'" "'
+	assert json.encode('\u0000') == r'"\u0000"'
 }
 
 fn test_json_string() {
 	text := json.Any('te✔st')
+
 	assert text.json_str() == r'"te\u2714st"'
+	assert json.encode('te✔st') == r'"te\u2714st"'
+
 	boolean := json.Any(true)
 	assert boolean.json_str() == 'true'
 	integer := json.Any(int(-5))
@@ -36,17 +59,26 @@ fn test_json_string_emoji() {
 	text := json.Any('🐈')
 	assert text.json_str() == r'"🐈"'
 	assert json.Any('💀').json_str() == r'"💀"'
+
+	assert json.encode('🐈') == r'"🐈"'
+	assert json.encode('💀') == r'"💀"'
+	// assert json.encode('🐈💀') == r'"🐈💀"'
 }
 
 fn test_json_string_non_ascii() {
 	text := json.Any('ひらがな')
 	assert text.json_str() == r'"\u3072\u3089\u304c\u306a"'
+
+	assert json.encode('ひらがな') == r'"\u3072\u3089\u304c\u306a"'
 }
 
 fn test_utf8_strings_are_not_modified() {
 	original := '{"s":"Schilddrüsenerkrankungen"}'
 	deresult := json.raw_decode(original)!
 	assert deresult.str() == original
+
+	assert json.encode('ü') == '"ü"'
+	assert json.encode('Schilddrüsenerkrankungen') == '"Schilddrüsenerkrankungen"'
 }
 
 fn test_encoder_unescaped_utf32() ! {
@@ -59,6 +91,7 @@ fn test_encoder_unescaped_utf32() ! {
 	defer {
 		unsafe { sb.free() }
 	}
+
 	enc.encode_value(jap_text, mut sb)!
 
 	assert sb.str() == '"${jap_text}"'
@@ -67,6 +100,13 @@ fn test_encoder_unescaped_utf32() ! {
 	emoji_text := json.Any('🐈')
 	enc.encode_value(emoji_text, mut sb)!
 	assert sb.str() == '"${emoji_text}"'
+
+	mut buf := []u8{cap: 14}
+
+	enc.encode_value('ひらがな', mut buf)!
+
+	assert buf.len == 14
+	assert buf.bytestr() == '"ひらがな"'
 }
 
 fn test_encoder_prettify() {
