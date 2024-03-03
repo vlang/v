@@ -29,9 +29,10 @@ pub fn glue_environment() gfx.Environment {
 	env.defaults.color_format = gfx.PixelFormat.from(color_format()) or { gfx.PixelFormat.@none }
 	env.defaults.depth_format = gfx.PixelFormat.from(depth_format()) or { gfx.PixelFormat.@none }
 	env.defaults.sample_count = sample_count()
-	$if macos {
-		env.metal.device = metal_get_device()
-	}
+	// if macos+metal
+	//$if macos {
+	//	env.metal.device = metal_get_device()
+	//}
 	// if windows and dx3d11
 	// env.d3d11.device = d3d11_get_device()
 	// env.d3d11.device_context = d3d11_get_device_context()
@@ -48,22 +49,21 @@ pub fn glue_swapchain() gfx.Swapchain {
 	swapchain.sample_count = sample_count()
 	swapchain.color_format = gfx.PixelFormat.from(color_format()) or { gfx.PixelFormat.@none }
 	swapchain.depth_format = gfx.PixelFormat.from(depth_format()) or { gfx.PixelFormat.@none }
-	$if macos {
-		swapchain.metal.current_drawable = metal_get_current_drawable()
-		swapchain.metal.depth_stencil_texture = metal_get_depth_stencil_texture()
-		swapchain.metal.msaa_color_texture = metal_get_msaa_color_texture()
-	}
+	// if macos+metal
+	//$if macos {
+	//	swapchain.metal.current_drawable = metal_get_current_drawable()
+	//	swapchain.metal.depth_stencil_texture = metal_get_depth_stencil_texture()
+	//	swapchain.metal.msaa_color_texture = metal_get_msaa_color_texture()
+	//}
 	// if windows and dx3d11
 	// swapchain.d3d11.render_view = d3d11_get_render_view()
-	//swapchain.d3d11.resolve_view = d3d11_get_resolve_view()
-	//swapchain.d3d11.depth_stencil_view = d3d11_get_depth_stencil_view()
+	// swapchain.d3d11.resolve_view = d3d11_get_resolve_view()
+	// swapchain.d3d11.depth_stencil_view = d3d11_get_depth_stencil_view()
 	// if webgpu
-	//swapchain.wgpu.render_view = wgpu_get_render_view()
-	//swapchain.wgpu.resolve_view = wgpu_get_resolve_view()
-	//swapchain.wgpu.depth_stencil_view = wgpu_get_depth_stencil_view()
-	$else {
-		swapchain.gl.framebuffer = gl_get_framebuffer()
-	}
+	// swapchain.wgpu.render_view = wgpu_get_render_view()
+	// swapchain.wgpu.resolve_view = wgpu_get_resolve_view()
+	// swapchain.wgpu.depth_stencil_view = wgpu_get_depth_stencil_view()
+	swapchain.gl.framebuffer = gl_get_framebuffer()
 	return swapchain
 }
 
