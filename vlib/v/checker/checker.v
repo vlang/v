@@ -3148,7 +3148,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			tt := c.table.type_to_str(to_type)
 			c.error('cannot cast `${ft}` to `${tt}`', node.pos)
 		}
-	} else if mut to_sym.info is ast.Interface {
+	} else if !from_type.has_option_or_result() && mut to_sym.info is ast.Interface {
 		if c.type_implements(from_type, to_type, node.pos) {
 			if !from_type.is_any_kind_of_pointer() && from_sym.kind != .interface_
 				&& !c.inside_unsafe {
