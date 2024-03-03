@@ -1,0 +1,10 @@
+@[translated]
+module main
+
+fn f(i i32) i32 {
+	return i << 2
+}
+
+fn main() {
+	assert f(3) == 12
+}
