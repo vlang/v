@@ -520,7 +520,7 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 									got_type)
 								if cond.op == .key_is {
 									if is_true {
-										g.write('1')
+										g.write('1 && ${exp_type.has_flag(.option)} == ${got_type.has_flag(.option)}')
 									} else {
 										g.write('0')
 									}
