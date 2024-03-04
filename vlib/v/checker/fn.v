@@ -1572,6 +1572,20 @@ fn (mut c Checker) resolve_comptime_args(func ast.Fn, node_ ast.CallExpr, concre
 							if arg_sym.info is ast.Array && param_typ.has_flag(.generic)
 								&& c.table.final_sym(param_typ).kind == .array {
 								ctyp = arg_sym.info.elem_type
+							} else if arg_sym.info is ast.Map && param_typ.has_flag(.generic)
+								&& c.table.final_sym(param_typ).kind == .map {
+								map_info := c.table.final_sym(param_typ).info as ast.Map
+								key_is_generic := map_info.key_type.has_flag(.generic)
+								if key_is_generic {
+									ctyp = c.unwrap_generic(arg_sym.info.key_type)
+								}
+								if map_info.value_type.has_flag(.generic) {
+									if key_is_generic {
+										comptime_args[k] = ctyp
+										k++
+									}
+									ctyp = c.unwrap_generic(arg_sym.info.key_type)
+								}
 							}
 							comptime_args[k] = ctyp
 						}
@@ -1645,9 +1659,23 @@ fn (mut c Checker) resolve_comptime_args(func ast.Fn, node_ ast.CallExpr, concre
 				ct_value := c.comptime.get_comptime_var_type(call_arg.expr)
 				param_typ_sym := c.table.sym(param_typ)
 				if ct_value != ast.void_type {
+					arg_sym := c.table.final_sym(call_arg.typ)
 					cparam_type_sym := c.table.sym(c.unwrap_generic(ct_value))
 					if param_typ_sym.kind == .array && cparam_type_sym.info is ast.Array {
 						comptime_args[k] = cparam_type_sym.info.elem_type
+					} else if arg_sym.info is ast.Map && param_typ.has_flag(.generic)
+						&& c.table.final_sym(param_typ).kind == .map {
+						map_info := c.table.final_sym(param_typ).info as ast.Map
+						key_is_generic := map_info.key_type.has_flag(.generic)
+						if key_is_generic {
+							comptime_args[k] = c.unwrap_generic(arg_sym.info.key_type)
+						}
+						if map_info.value_type.has_flag(.generic) {
+							if key_is_generic {
+								k++
+							}
+							comptime_args[k] = c.unwrap_generic(arg_sym.info.key_type)
+						}
 					} else {
 						comptime_args[k] = ct_value
 					}
