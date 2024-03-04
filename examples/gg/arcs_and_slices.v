@@ -9,7 +9,7 @@ const win_height = 800
 const bg_color = gx.white
 
 // A transparent color is used to aid in verifying that
-// rendering is precise on each of the the arc types (e.g. no overlapping or double rendered slices)
+// rendering is precise on each of the arc types (e.g. no overlapping or double rendered slices)
 const colour = gx.rgba(100, 100, 0, 100)
 
 enum Selection {

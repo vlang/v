@@ -46,7 +46,7 @@
 - [ ] Custom attributes
 - [ ] `arr.first() or { }` like `arr[0] or { }`
 - [ ] ORM migrations
-- [ ] Contexts that are passed implicitely (e.g. for custom allocation/memory management)
+- [ ] Contexts that are passed implicitly (e.g. for custom allocation/memory management)
 
 ## [Version 1.0]
 

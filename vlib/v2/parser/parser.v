@@ -408,7 +408,7 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 			// to currently do this is to check for an ident where the name's first char is a capital, this is not
 			// great at all, and would be the only place in the parser where a capital letter is relied upon, or even
 			// the name at all is relied upon. imo this is context the parser should not need, and we should either
-			// change the varibale capture syntax, or move the position of the capture list, for example:
+			// change the variable capture syntax, or move the position of the capture list, for example:
 			// change syntax: `fn <var_a, var_b> [T] () { ... }`, move position: `fn [T] () { ... } [var_a, var_b]`
 			// personally I think `fn <var_a, var_b> [T] () { ... }` is a great option.
 			mut captured_vars := []ast.Expr{}

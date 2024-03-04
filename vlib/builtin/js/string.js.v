@@ -438,7 +438,7 @@ pub fn (mut s []string) sort_ignore_case() {
 	s.sort_with_compare(compare_lower_strings)
 }
 
-// sort_by_len sorts the the string array by each string's `.len` length.
+// sort_by_len sorts the string array by each string's `.len` length.
 pub fn (mut s []string) sort_by_len() {
 	s.sort_with_compare(compare_strings_by_len)
 }
@@ -749,7 +749,7 @@ fn (s string) index_last_(p string) int {
 	return -1
 }
 
-// index_last returns the position of the first character of the *last* occurance of the `needle` string in `s`.
+// index_last returns the position of the first character of the *last* occurrence of the `needle` string in `s`.
 pub fn (s string) index_last(needle string) ?int {
 	idx := s.index_last_(needle)
 	if idx == -1 {
@@ -758,7 +758,7 @@ pub fn (s string) index_last(needle string) ?int {
 	return idx
 }
 
-// last_index returns the position of the first character of the *last* occurance of the `needle` string in `s`.
+// last_index returns the position of the first character of the *last* occurrence of the `needle` string in `s`.
 @[deprecated: 'use `.index_last(needle string)` instead']
 @[deprecated_after: '2023-12-18']
 @[inline]
