@@ -732,7 +732,7 @@ static int ssl_prepare_client_hello( mbedtls_ssl_context *ssl )
 
     /*
      * Generate the random bytes, except when responding to a verify request
-     * where we MUST reuse the previoulsy generated random bytes
+     * where we MUST reuse the previously generated random bytes
      * (RFC 6347 4.2.1).
      */
 #if defined(MBEDTLS_SSL_PROTO_DTLS)

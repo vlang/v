@@ -12,7 +12,7 @@ keep sending events to the client. But if we hold the connection open indefinite
 vweb isn't able to process any other requests.
 
 We can let vweb know that it can continue processing other requests and that we will
-handle the connection ourself by calling `ctx.takeover_conn()` and and returning an empty result
+handle the connection ourself by calling `ctx.takeover_conn()` and returning an empty result
 with `vweb.no_result()`. Vweb will not close the connection and we can handle
 the connection in a separate thread.
 
