@@ -315,7 +315,7 @@ fn (a string) clone_static() string {
 
 // clone returns a copy of the V string `a`.
 pub fn (a string) clone() string {
-	if a.len == 0 {
+	if a.len <= 0 {
 		return ''
 	}
 	mut b := string{
