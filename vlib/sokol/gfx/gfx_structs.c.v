@@ -554,9 +554,9 @@ pub type PassAction = C.sg_pass_action
 @[typedef]
 pub struct C.sg_metal_swapchain {
 pub mut:
-	current_drawable voidptr
-	depth_stencil_texture voidptr  // MTLTexture
-	msaa_color_texture voidptr    // MTLTexture
+	current_drawable      voidptr
+	depth_stencil_texture voidptr // MTLTexture
+	msaa_color_texture    voidptr // MTLTexture
 }
 
 pub type MetalSwapchain = C.sg_metal_swapchain
@@ -564,9 +564,9 @@ pub type MetalSwapchain = C.sg_metal_swapchain
 @[typedef]
 pub struct C.sg_d3d11_swapchain {
 pub mut:
-	render_view voidptr // ID3D11RenderTargetView
-	resolve_view voidptr           // ID3D11RenderTargetView
-    depth_stencil_view voidptr     // ID3D11DepthStencilView
+	render_view        voidptr // ID3D11RenderTargetView
+	resolve_view       voidptr // ID3D11RenderTargetView
+	depth_stencil_view voidptr // ID3D11DepthStencilView
 }
 
 pub type D3d11Swapchain = C.sg_d3d11_swapchain
@@ -574,9 +574,9 @@ pub type D3d11Swapchain = C.sg_d3d11_swapchain
 @[typedef]
 pub struct C.sg_wgpu_swapchain {
 pub mut:
-	render_view voidptr // WGPUTextureView
-    resolve_view voidptr           // WGPUTextureView
-    depth_stencil_view voidptr     // WGPUTextureView
+	render_view        voidptr // WGPUTextureView
+	resolve_view       voidptr // WGPUTextureView
+	depth_stencil_view voidptr // WGPUTextureView
 }
 
 pub type WgpuSwapchain = C.sg_wgpu_swapchain
