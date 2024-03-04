@@ -453,7 +453,7 @@
 
         sgl_set_context(ctx);
 
-    The currently active context will implicitely be used by most sokol-gl functions
+    The currently active context will implicitly be used by most sokol-gl functions
     which don't take an explicit context handle as argument.
 
     To switch back to the default context, pass the global constant SGL_DEFAULT_CONTEXT:
