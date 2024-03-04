@@ -19,7 +19,8 @@ fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
 			node.expr.pos())
 	}
 
-	if !c.inside_unsafe && is_non_void_pointer && !node.expr.is_auto_deref_var() {
+	if node.op != .question && !c.inside_unsafe && is_non_void_pointer
+		&& !node.expr.is_auto_deref_var() {
 		c.warn('pointer arithmetic is only allowed in `unsafe` blocks', node.pos)
 	}
 	if !(typ_sym.is_number() || ((c.inside_unsafe || c.pref.translated) && is_non_void_pointer)) {
