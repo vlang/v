@@ -516,11 +516,11 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 							got_sym := g.table.sym(got_type)
 
 							if got_sym.kind == .interface_ && got_sym.info is ast.Interface {
-								is_true := g.table.does_type_implement_interface(exp_type,
-									got_type)
+								is_true := exp_type.has_flag(.option) == got_type.has_flag(.option)
+									&& g.table.does_type_implement_interface(exp_type, got_type)
 								if cond.op == .key_is {
 									if is_true {
-										g.write('1')
+										g.write('1 && ${exp_type.has_flag(.option)} == ${got_type.has_flag(.option)}')
 									} else {
 										g.write('0')
 									}

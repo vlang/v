@@ -20,6 +20,8 @@ const true_in_string = 'true'
 
 const false_in_string = 'false'
 
+const empty_array = [u8(`[`), `]`]!
+
 const comma_rune = `,`
 
 const colon_rune = `:`
@@ -43,7 +45,7 @@ const curly_open_rune = `{`
 
 const curly_close_rune = `}`
 
-const ascii_especial_characters = [u8(`\\`), `"`, `/`]
+const ascii_especial_characters = [u8(`\\`), `"`, `/`]!
 
 // encode is a generic function that encodes a type into a JSON string.
 @[manualfree]
@@ -70,6 +72,10 @@ pub fn encode[T](val T) string {
 // encode_array is a generic function that encodes a array into a JSON string.
 @[manualfree]
 fn encode_array[T](val []T) string {
+	if val.len == 0 {
+		return '[]'
+	}
+
 	mut buf := []u8{}
 
 	defer {
@@ -323,7 +329,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 						parsed_time := time.parse(val.$(field.name).str()) or { time.Time{} }
 						e.encode_string(parsed_time.format_rfc3339(), mut buf)!
 					} $else $if field.unaliased_typ is bool {
-						if val.$(field.name).str() == json2.true_in_string {
+						if val.$(field.name) {
 							unsafe { buf.push_many(json2.true_in_string.str, json2.true_in_string.len) }
 						} else {
 							unsafe { buf.push_many(json2.false_in_string.str, json2.false_in_string.len) }
@@ -363,6 +369,10 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 }
 
 fn (e &Encoder) encode_array[U](val []U, level int, mut buf []u8) ! {
+	if val.len == 0 {
+		unsafe { buf.push_many(&json2.empty_array[0], json2.empty_array.len) }
+		return
+	}
 	buf << `[`
 	for i in 0 .. val.len {
 		e.encode_newline(level, mut buf)!
@@ -457,7 +467,7 @@ fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
 
 		current_value_cause_buffer_expansion :=
 			(current_utf8_len == 1 && ((current_byte < 32 || current_byte > 127)
-			|| json2.ascii_especial_characters.contains(current_byte)))
+			|| current_byte in json2.ascii_especial_characters))
 			|| current_utf8_len == 3
 
 		if !current_value_cause_buffer_expansion {
