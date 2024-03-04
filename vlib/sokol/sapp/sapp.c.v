@@ -55,12 +55,12 @@ pub fn glue_swapchain() gfx.Swapchain {
 	}
 	// if windows and dx3d11
 	// swapchain.d3d11.render_view = d3d11_get_render_view()
-	//swapchain.d3d11.resolve_view = d3d11_get_resolve_view()
-	//swapchain.d3d11.depth_stencil_view = d3d11_get_depth_stencil_view()
+	// swapchain.d3d11.resolve_view = d3d11_get_resolve_view()
+	// swapchain.d3d11.depth_stencil_view = d3d11_get_depth_stencil_view()
 	// if webgpu
-	//swapchain.wgpu.render_view = wgpu_get_render_view()
-	//swapchain.wgpu.resolve_view = wgpu_get_resolve_view()
-	//swapchain.wgpu.depth_stencil_view = wgpu_get_depth_stencil_view()
+	// swapchain.wgpu.render_view = wgpu_get_render_view()
+	// swapchain.wgpu.resolve_view = wgpu_get_resolve_view()
+	// swapchain.wgpu.depth_stencil_view = wgpu_get_depth_stencil_view()
 	$else {
 		swapchain.gl.framebuffer = gl_get_framebuffer()
 	}
