@@ -5629,7 +5629,8 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 		match field.expr {
 			ast.ArrayInit {
 				elems_are_const := field.expr.exprs.all(g.check_expr_is_const(it))
-				if field.expr.is_fixed && g.pref.build_mode != .build_module
+				if field.expr.is_fixed && !field.expr.has_index
+					&& g.pref.build_mode != .build_module
 					&& (!g.is_cc_msvc || field.expr.elem_type != ast.string_type) && elems_are_const {
 					styp := g.typ(field.expr.typ)
 					val := g.expr_string(field.expr)
@@ -5638,7 +5639,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 						def: '${styp} ${const_name} = ${val}; // fixed array const'
 						dep_names: g.table.dependent_names_in_expr(field_expr)
 					}
-				} else if field.expr.is_fixed
+				} else if field.expr.is_fixed && !field.expr.has_index
 					&& ((g.is_cc_msvc && field.expr.elem_type == ast.string_type)
 					|| !elems_are_const) {
 					g.const_decl_init_later_msvc_string_fixed_array(field.mod, name, field.expr,
@@ -5900,6 +5901,8 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ
 		}
 		if unwrap_option {
 			init.writeln(g.expr_string_surround('\t${cname} = *(${styp}*)', expr, '.data;'))
+		} else if expr is ast.ArrayInit && (expr as ast.ArrayInit).has_index {
+			init.writeln(g.expr_string_surround('\tmemcpy(&${cname}, &', expr, ', sizeof(${styp}));'))
 		} else {
 			init.writeln(g.expr_string_surround('\t${cname} = ', expr, ';'))
 		}
