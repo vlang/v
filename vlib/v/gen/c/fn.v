@@ -1202,6 +1202,18 @@ fn (mut g Gen) resolve_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concre
 									if param_sym.info.key_type.nr_muls() > 0 && ctyp.nr_muls() > 0 {
 										ctyp = ctyp.set_nr_muls(0)
 									}
+								} else {
+									key_is_generic := param_sym.info.key_type.has_flag(.generic)
+									if key_is_generic {
+										ctyp = g.unwrap_generic(arg_sym.info.key_type)
+									}
+									if param_sym.info.value_type.has_flag(.generic) {
+										if key_is_generic {
+											comptime_args[k] = ctyp
+											k++
+										}
+										ctyp = g.unwrap_generic(arg_sym.info.value_type)
+									}
 								}
 							}
 							comptime_args[k] = ctyp
@@ -1274,10 +1286,22 @@ fn (mut g Gen) resolve_comptime_args(func ast.Fn, mut node_ ast.CallExpr, concre
 			} else if mut call_arg.expr is ast.ComptimeSelector {
 				comptime_args[k] = g.comptime.comptime_for_field_type
 				arg_sym := g.table.final_sym(call_arg.typ)
-				param_typ_sym := g.table.sym(param_typ)
+				param_sym := g.table.sym(param_typ)
 				if arg_sym.kind == .array && param_typ.has_flag(.generic)
-					&& param_typ_sym.kind == .array {
+					&& param_sym.kind == .array {
 					comptime_args[k] = g.get_generic_array_element_type(arg_sym.info as ast.Array)
+				} else if arg_sym.info is ast.Map && param_sym.info is ast.Map
+					&& param_typ.has_flag(.generic) {
+					key_is_generic := param_sym.info.key_type.has_flag(.generic)
+					if key_is_generic {
+						comptime_args[k] = g.unwrap_generic(arg_sym.info.key_type)
+					}
+					if param_sym.info.value_type.has_flag(.generic) {
+						if key_is_generic {
+							k++
+						}
+						comptime_args[k] = g.unwrap_generic(arg_sym.info.value_type)
+					}
 				}
 				if param_typ.nr_muls() > 0 && comptime_args[k].nr_muls() > 0 {
 					comptime_args[k] = comptime_args[k].set_nr_muls(0)
