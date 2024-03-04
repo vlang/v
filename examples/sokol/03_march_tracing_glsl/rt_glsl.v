@@ -314,8 +314,6 @@ fn draw_cube_glsl(app App) {
 }
 
 fn frame(mut app App) {
-	ws := gg.window_size_real_pixels()
-
 	// clear
 	mut color_action := gfx.ColorAttachmentAction{
 		load_action: .clear
