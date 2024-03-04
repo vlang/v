@@ -16,9 +16,9 @@ pub struct Encoder {
 // byte array versions of the most common tokens/chars to avoid reallocations
 const null_in_bytes = 'null'
 
-const true_in_string = [u8(`t`), `r`, `u`, `e`]!
+const true_in_string = 'true'
 
-const false_in_string = [u8(`f`), `a`, `l`, `s`, `e`]!
+const false_in_string = 'false'
 
 const empty_array = [u8(`[`), `]`]!
 
@@ -291,9 +291,9 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 					buf << json2.quote_rune
 				} $else $if field.typ is bool {
 					if value {
-						unsafe { buf.push_many(&json2.true_in_string[0], json2.true_in_string.len) }
+						unsafe { buf.push_many(json2.true_in_string.str, json2.true_in_string.len) }
 					} else {
-						unsafe { buf.push_many(&json2.false_in_string[0], json2.false_in_string.len) }
+						unsafe { buf.push_many(json2.false_in_string.str, json2.false_in_string.len) }
 					}
 				} $else $if field.typ in [$float, $int] {
 					str_value := val.$(field.name).str()
@@ -330,9 +330,9 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 						e.encode_string(parsed_time.format_rfc3339(), mut buf)!
 					} $else $if field.unaliased_typ is bool {
 						if val.$(field.name) {
-							unsafe { buf.push_many(&json2.true_in_string[0], json2.true_in_string.len) }
+							unsafe { buf.push_many(json2.true_in_string.str, json2.true_in_string.len) }
 						} else {
-							unsafe { buf.push_many(&json2.false_in_string[0], json2.false_in_string.len) }
+							unsafe { buf.push_many(json2.false_in_string.str, json2.false_in_string.len) }
 						}
 					} $else $if field.unaliased_typ in [$float, $int] {
 						str_value := val.$(field.name).str()
