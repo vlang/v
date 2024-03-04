@@ -7112,7 +7112,7 @@ and `-cflags` settings, rather than including them in the build command each tim
 
 ### #pkgconfig
 
-Add `#pkgconfig` directive is used to tell the compiler which modules should be used for compiling
+Add `#pkgconfig` directives to tell the compiler which modules should be used for compiling
 and linking using the pkg-config files provided by the respective dependencies.
 
 As long as backticks can't be used in `#flag` and spawning processes is not desirable for security
