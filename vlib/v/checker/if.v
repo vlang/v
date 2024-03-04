@@ -10,6 +10,10 @@ fn (mut c Checker) check_compatible_types(left_type ast.Type, right ast.TypeNode
 	right_type := c.unwrap_generic(right.typ)
 	sym := c.table.sym(right_type)
 
+	if right_type.has_flag(.option) != left_type.has_flag(.option) {
+		return .skip
+	}
+
 	if sym.kind == .interface_ {
 		checked_type := c.unwrap_generic(left_type)
 		return if c.table.does_type_implement_interface(checked_type, right_type) {
