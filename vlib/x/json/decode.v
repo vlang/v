@@ -8,7 +8,7 @@ struct Node {
 	children ?[]Node
 }
 
-struct Encoder {
+struct Decoder {
 	json_data string
 mut:
 	idx int
@@ -27,41 +27,39 @@ pub fn decode[T](val string) !T {
 
 	mut nodes := []Node{}
 
-	mut encoder := Encoder{
+	mut decoder := Decoder{
 		json_data: val
 	}
 
 	// TODO needs performance improvements
-	encoder.fulfill_nodes(mut nodes)
+	decoder.fulfill_nodes(mut nodes)
 
 	mut result := T{}
 
-	encoder.decode_value(nodes, &result)
+	decoder.decode_value(nodes, &result)
 	return result
 }
 
 // decode_value
-fn (mut encoder Encoder) decode_value[T](nodes []Node, val &T) {
+fn (mut decoder Decoder) decode_value[T](nodes []Node, val &T) {
 	$if val is $option {
 		workaround := val
 		if workaround != none {
-			encoder.decode_value(nodes, workaround)
+			decoder.decode_value(nodes, workaround)
 		}
 	} $else $if T is string {
 	} $else $if T is $sumtype {
 		$for v in val.variants {
 			if val is v {
-				encoder.decode_value(nodes, val)
+				decoder.decode_value(nodes, val)
 			}
 		}
 	} $else $if T is $alias {
 	} $else $if T is time.Time {
 	} $else $if T is $map {
-		encoder.decode_map(nodes, val)
 	} $else $if T is $array {
-		encoder.decode_array(nodes, val)
 	} $else $if T is $struct {
-		encoder.decode_struct(nodes, val)
+		decoder.decode_struct(nodes, val)
 	} $else $if T is $enum {
 	} $else $if T is $int {
 	} $else $if T is $float {
@@ -72,46 +70,45 @@ fn (mut encoder Encoder) decode_value[T](nodes []Node, val &T) {
 }
 
 // decode_struct
-fn (mut encoder Encoder) decode_struct[T](nodes []Node, value &T) {
+fn (mut decoder Decoder) decode_struct[T](nodes []Node, value &T) {
 	$for field in T.fields {
 		for i := 0; i < nodes.len; i++ {
 			mut node := nodes[i]
 
 			if node.key_len == field.name.len {
 				if unsafe {
-					vmemcmp(encoder.json_data.str + node.key_pos, field.name.str, field.name.len) == 0
+					vmemcmp(decoder.json_data.str + node.key_pos, field.name.str, field.name.len) == 0
 				} {
 					$if field.typ is string {
 						start := (node.key_pos + node.key_len) + 4
 						mut end := start
 						for {
-							if encoder.json_data[end] == `"` {
-								if encoder.json_data[end + 1] == `,`
-									|| encoder.json_data[end + 1] == `}` {
+							if decoder.json_data[end] == `"` {
+								if decoder.json_data[end + 1] == `,`
+									|| decoder.json_data[end + 1] == `}` {
 									break
 								}
 							}
 							end++
 						}
-						value.$(field.name) = encoder.json_data[start..end]
+						value.$(field.name) = decoder.json_data[start..end]
 					} $else $if field.typ is $int {
 						start := (node.key_pos + node.key_len) + 3
 						mut end := start
 						for {
-							if encoder.json_data[end] == `,` || encoder.json_data[end] == `}` {
+							if decoder.json_data[end] == `,` || decoder.json_data[end] == `}` {
 								break
 							}
 
 							end++
 						}
-						value.$(field.name) = encoder.json_data[start..end].int()
+						value.$(field.name) = decoder.json_data[start..end].int()
 					} $else $if T is bool {
 					} $else $if T is time.Time {
 					} $else $if T is $struct {
 						if node.children != none {
-							encoder.decode_struct(node.children or {
-								panic('It will never happens')
-							}, value.$(field.name))
+							decoder.decode_value(node.children or { panic('It will never happens') },
+								value.$(field.name))
 						}
 					} $else {
 						eprintln('not supported')
@@ -124,26 +121,26 @@ fn (mut encoder Encoder) decode_struct[T](nodes []Node, value &T) {
 }
 
 // fulfill_nodes
-fn (mut encoder Encoder) fulfill_nodes(mut nodes []Node) {
+fn (mut decoder Decoder) fulfill_nodes(mut nodes []Node) {
 	mut inside_string := false
 	mut inside_key := false
 
 	mut actual_key_len := 0
-	for encoder.idx < encoder.json_data.len {
-		letter := encoder.json_data[encoder.idx]
+	for decoder.idx < decoder.json_data.len {
+		letter := decoder.json_data[decoder.idx]
 		if letter == ` ` && !inside_string {
 		} else if letter == `\"` {
-			if encoder.json_data[encoder.idx - 1] == `{`
-				|| encoder.json_data[encoder.idx - 2] == `,` {
+			if decoder.json_data[decoder.idx - 1] == `{`
+				|| decoder.json_data[decoder.idx - 2] == `,` {
 				inside_key = true
-			} else if encoder.json_data[encoder.idx + 1] == `:` {
-				if encoder.json_data[encoder.idx + 3] == `{` {
+			} else if decoder.json_data[decoder.idx + 1] == `:` {
+				if decoder.json_data[decoder.idx + 3] == `{` {
 					mut children := []Node{}
-					key_pos := encoder.idx - actual_key_len
+					key_pos := decoder.idx - actual_key_len
 					key_len := actual_key_len
 
-					encoder.idx += 3
-					encoder.fulfill_nodes(mut children)
+					decoder.idx += 3
+					decoder.fulfill_nodes(mut children)
 
 					nodes << Node{
 						key_pos: key_pos
@@ -152,7 +149,7 @@ fn (mut encoder Encoder) fulfill_nodes(mut nodes []Node) {
 					}
 				} else {
 					nodes << Node{
-						key_pos: encoder.idx - actual_key_len
+						key_pos: decoder.idx - actual_key_len
 						key_len: actual_key_len
 					}
 				}
@@ -160,7 +157,7 @@ fn (mut encoder Encoder) fulfill_nodes(mut nodes []Node) {
 				inside_key = false
 			}
 			inside_string = !inside_string
-			encoder.idx++
+			decoder.idx++
 			continue
 		} else if letter == `:` {
 			actual_key_len = 0
@@ -171,6 +168,6 @@ fn (mut encoder Encoder) fulfill_nodes(mut nodes []Node) {
 		if inside_key {
 			actual_key_len++
 		}
-		encoder.idx++
+		decoder.idx++
 	}
 }
