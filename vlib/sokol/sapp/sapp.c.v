@@ -33,7 +33,7 @@ pub fn glue_environment() gfx.Environment {
 	env.defaults.color_format = gfx.PixelFormat.from(color_format()) or { gfx.PixelFormat.@none }
 	env.defaults.depth_format = gfx.PixelFormat.from(depth_format()) or { gfx.PixelFormat.@none }
 	env.defaults.sample_count = sample_count()
-	$if macos {
+	$if macos && !darwin_sokol_glcore33 ? {
 		env.metal.device = metal_get_device()
 	}
 	// if windows and dx3d11
@@ -55,7 +55,7 @@ pub fn glue_swapchain() gfx.Swapchain {
 	swapchain.sample_count = sample_count()
 	swapchain.color_format = gfx.PixelFormat.from(color_format()) or { gfx.PixelFormat.@none }
 	swapchain.depth_format = gfx.PixelFormat.from(depth_format()) or { gfx.PixelFormat.@none }
-	$if macos {
+	$if macos && !darwin_sokol_glcore33 ? {
 		swapchain.metal.current_drawable = metal_get_current_drawable()
 		swapchain.metal.depth_stencil_texture = metal_get_depth_stencil_texture()
 		swapchain.metal.msaa_color_texture = metal_get_msaa_color_texture()
