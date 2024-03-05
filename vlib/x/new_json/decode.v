@@ -1,4 +1,4 @@
-module json
+module new_json
 
 import time
 

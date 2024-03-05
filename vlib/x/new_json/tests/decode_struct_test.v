@@ -1,4 +1,4 @@
-import x.json
+import x.new_json as json
 
 struct StructType[T] {
 mut:
