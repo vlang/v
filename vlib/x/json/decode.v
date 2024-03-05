@@ -8,7 +8,7 @@ struct Node {
 	children ?[]Node
 }
 
-struct Builder {
+struct Encoder {
 	json_data string
 mut:
 	idx int
@@ -25,40 +25,40 @@ pub fn decode[T](val string) !T {
 
 	mut nodes := []Node{}
 
-	mut builder := Builder{
+	mut encoder := Encoder{
 		json_data: val
 	}
 
 	// TODO needs performance improvements
-	builder.fulfill_nodes(mut nodes)
+	encoder.fulfill_nodes(mut nodes)
 
 	mut result := T{}
 
-	builder.decode_value(nodes, &result)
+	encoder.decode_value(nodes, &result)
 	return result
 }
 
-fn (mut builder Builder) decode_value[T](nodes []Node, val &T) {
+fn (mut encoder Encoder) decode_value[T](nodes []Node, val &T) {
 	$if val is $option {
 		workaround := val
 		if workaround != none {
-			builder.decode_value(nodes, workaround)
+			encoder.decode_value(nodes, workaround)
 		}
 	} $else $if T is string {
 	} $else $if T is $sumtype {
 		$for v in val.variants {
 			if val is v {
-				builder.decode_value(nodes, val)
+				encoder.decode_value(nodes, val)
 			}
 		}
 	} $else $if T is $alias {
 	} $else $if T is time.Time {
 	} $else $if T is $map {
-		builder.decode_map(nodes, val)
+		encoder.decode_map(nodes, val)
 	} $else $if T is $array {
-		builder.decode_array(nodes, val)
+		encoder.decode_array(nodes, val)
 	} $else $if T is $struct {
-		builder.decode_struct(nodes, val)
+		encoder.decode_struct(nodes, val)
 	} $else $if T is $enum {
 	} $else $if T is $int {
 	} $else $if T is $float {
@@ -68,44 +68,44 @@ fn (mut builder Builder) decode_value[T](nodes []Node, val &T) {
 	}
 }
 
-fn (mut builder Builder) decode_struct[T](nodes []Node, value &T) {
+fn (mut encoder Encoder) decode_struct[T](nodes []Node, value &T) {
 	$for field in T.fields {
 		for i := 0; i < nodes.len; i++ {
 			mut node := nodes[i]
 
 			if node.key_len == field.name.len {
 				if unsafe {
-					vmemcmp(builder.json_data.str + node.key_pos, field.name.str, field.name.len) == 0
+					vmemcmp(encoder.json_data.str + node.key_pos, field.name.str, field.name.len) == 0
 				} {
 					$if field.typ is string {
 						start := (node.key_pos + node.key_len) + 4
 						mut end := start
 						for {
-							if builder.json_data[end] == `"` {
-								if builder.json_data[end + 1] == `,`
-									|| builder.json_data[end + 1] == `}` {
+							if encoder.json_data[end] == `"` {
+								if encoder.json_data[end + 1] == `,`
+									|| encoder.json_data[end + 1] == `}` {
 									break
 								}
 							}
 							end++
 						}
-						value.$(field.name) = builder.json_data[start..end]
+						value.$(field.name) = encoder.json_data[start..end]
 					} $else $if field.typ is $int {
 						start := (node.key_pos + node.key_len) + 3
 						mut end := start
 						for {
-							if builder.json_data[end] == `,` || builder.json_data[end] == `}` {
+							if encoder.json_data[end] == `,` || encoder.json_data[end] == `}` {
 								break
 							}
 
 							end++
 						}
-						value.$(field.name) = builder.json_data[start..end].int()
+						value.$(field.name) = encoder.json_data[start..end].int()
 					} $else $if T is bool {
 					} $else $if T is time.Time {
 					} $else $if T is $struct {
 						if node.children != none {
-							builder.decode_struct(node.children or {
+							encoder.decode_struct(node.children or {
 								panic('It will never happens')
 							}, value.$(field.name))
 						}
@@ -119,26 +119,26 @@ fn (mut builder Builder) decode_struct[T](nodes []Node, value &T) {
 	}
 }
 
-fn (mut builder Builder) fulfill_nodes(mut nodes []Node) {
+fn (mut encoder Encoder) fulfill_nodes(mut nodes []Node) {
 	mut inside_string := false
 	mut inside_key := false
 
 	mut actual_key_len := 0
-	for builder.idx < builder.json_data.len {
-		letter := builder.json_data[builder.idx]
+	for encoder.idx < encoder.json_data.len {
+		letter := encoder.json_data[encoder.idx]
 		if letter == ` ` && !inside_string {
 		} else if letter == `\"` {
-			if builder.json_data[builder.idx - 1] == `{`
-				|| builder.json_data[builder.idx - 2] == `,` {
+			if encoder.json_data[encoder.idx - 1] == `{`
+				|| encoder.json_data[encoder.idx - 2] == `,` {
 				inside_key = true
-			} else if builder.json_data[builder.idx + 1] == `:` {
-				if builder.json_data[builder.idx + 3] == `{` {
+			} else if encoder.json_data[encoder.idx + 1] == `:` {
+				if encoder.json_data[encoder.idx + 3] == `{` {
 					mut children := []Node{}
-					key_pos := builder.idx - actual_key_len
+					key_pos := encoder.idx - actual_key_len
 					key_len := actual_key_len
 
-					builder.idx += 3
-					builder.fulfill_nodes(mut children)
+					encoder.idx += 3
+					encoder.fulfill_nodes(mut children)
 
 					nodes << Node{
 						key_pos: key_pos
@@ -147,7 +147,7 @@ fn (mut builder Builder) fulfill_nodes(mut nodes []Node) {
 					}
 				} else {
 					nodes << Node{
-						key_pos: builder.idx - actual_key_len
+						key_pos: encoder.idx - actual_key_len
 						key_len: actual_key_len
 					}
 				}
@@ -155,7 +155,7 @@ fn (mut builder Builder) fulfill_nodes(mut nodes []Node) {
 				inside_key = false
 			}
 			inside_string = !inside_string
-			builder.idx++
+			encoder.idx++
 			continue
 		} else if letter == `:` {
 			actual_key_len = 0
@@ -166,6 +166,6 @@ fn (mut builder Builder) fulfill_nodes(mut nodes []Node) {
 		if inside_key {
 			actual_key_len++
 		}
-		builder.idx++
+		encoder.idx++
 	}
 }
