@@ -36,7 +36,7 @@ fn main() {
 	mut app := &App{
 		width: 800
 		height: 400
-		pass_action: gfx.create_clear_pass(0.0, 0.0, 0.0, 1.0) // This will create a black color as a default pass (window background color)
+		pass_action: gfx.create_clear_pass_action(0.0, 0.0, 0.0, 1.0) // This will create a black color as a default pass (window background color)
 	}
 	app.run()
 }
@@ -143,7 +143,8 @@ fn cleanup(user_data voidptr) {
 fn frame(user_data voidptr) {
 	mut app := unsafe { &App(user_data) }
 
-	gfx.begin_default_pass(&app.pass_action, sapp.width(), sapp.height())
+	pass := sapp.create_default_pass(state.pass_action)
+	gfx.begin_pass(&pass)
 
 	gfx.apply_pipeline(app.shader_pipeline)
 	gfx.apply_bindings(&app.bind)
