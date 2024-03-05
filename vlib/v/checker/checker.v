@@ -3083,19 +3083,34 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			tt := c.table.type_to_str(to_type)
 			c.error('cannot cast `${ft}` to `${tt}`', node.pos)
 		} else if to_sym_info.variants.len != to_sym_info.get_deduplicated_variants().len {
-			// TODO: not a option type because of autofree bug; see https://github.com/vlang/v/issues/20937
-			mut msg := ''
-			print_notice := to_sym_info.attrs.any(!it.has_arg && it.name == 'notice_if_duplicate')
-			for attr in to_sym_info.attrs {
-				if attr.name == 'on_duplicate' && attr.has_arg {
-					msg = attr.arg
+			if !to_sym_info.attrs.any(!it.has_arg && it.name == 'ignore_generic_duplicates') {
+				// TODO: not a option type because of autofree bug; see https://github.com/vlang/v/issues/20937
+				mut message := '<no message was defined>'
+				mut message_type := 'error'
+				for attr in to_sym_info.attrs {
+					if attr.name == 'on_generic_duplicate' && attr.has_arg {
+						message = attr.arg
+					}
 				}
-			}
-			if msg.len > 0 {
-				if print_notice {
-					c.note('duplicate type: ${msg}', node.pos)
-				} else {
-					c.error('duplicate type: ${msg}', node.pos)
+				if message.starts_with('error: ') {
+					message = message[7..]
+				} else if message.starts_with('warn: ') {
+					message_type = 'warn'
+					message = message[6..]
+				} else if message.starts_with('notice: ') {
+					message_type = 'notice'
+					message = message[8..]
+				} else if message.starts_with('note: ') {
+					message_type = 'notice'
+					message = message[6..]
+				}
+				if message.len > 0 {
+					match message_type {
+						'warn' { c.warn('duplicate type: ${message}', node.pos) }
+						'notice' { c.note('duplicate type: ${message}', node.pos) }
+						'error' { c.error('duplicate type: ${message}', node.pos) }
+						else {}
+					}
 				}
 			}
 		}

@@ -1,3 +1,4 @@
+@[ignore_generic_duplicates]
 type Name[T] = T | int | string
 
 fn f(n Name[string]) {

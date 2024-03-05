@@ -1,0 +1,27 @@
+@[on_generic_duplicate: 'blah blah blah 11111']
+type Name1[T] = T | int | string
+
+@[on_generic_duplicate: 'notice: blah blah blah 22222']
+type Name2[T] = T | int | string
+
+@[on_generic_duplicate: 'warn: blah blah blah 33333']
+type Name3[T] = T | int | string
+
+@[on_generic_duplicate: 'note: blah blah blah 44444']
+@[ignore_generic_duplicates]
+type Name4[T] = T | int | string
+
+@[on_generic_duplicate: 'error: blah blah blah 55555']
+@[ignore_generic_duplicates]
+type Name5[T] = T | int | string
+
+type Name6[T] = T | int | string
+
+fn main() {
+	_ := Name1[int](2)
+	_ := Name2[int](4)
+	_ := Name3[int](6)
+	_ := Name4[int](8)
+	_ := Name5[int](9)
+	_ := Name6[int](10)
+}
