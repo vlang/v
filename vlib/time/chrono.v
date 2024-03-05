@@ -26,7 +26,7 @@ pub fn (t Time) days_from_unix_epoch() int {
 // date_from_days_after_unix_epoch - convert number of `days` after the unix epoch 1970-01-01, to a Time.
 // Only the year, month and day of the returned Time will be set, everything else will be 0.
 pub fn date_from_days_after_unix_epoch(days int) Time {
-	year, month, day := calculate_date_from_offset(i64(days))
+	year, month, day := calculate_date_from_day_offset(i64(days))
 	return Time{
 		year: year
 		month: month

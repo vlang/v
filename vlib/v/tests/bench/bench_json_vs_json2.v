@@ -5,8 +5,8 @@ import time
 import benchmark
 
 // recommendations:
-// MAX_ITERATIONS=100_000 ./v run vlib/v/tests/bench/bench_json_vs_json2.v
-// MAX_ITERATIONS=100_000 ./v -no-bounds-checking -prod -cc clang-15 crun vlib/v/tests/bench/bench_json_vs_json2.v
+// ./v wipe-cache && MAX_ITERATIONS=100_000 ./v run vlib/v/tests/bench/bench_json_vs_json2.v
+// ./v wipe-cache && MAX_ITERATIONS=100_000 ./v -prod crun vlib/v/tests/bench/bench_json_vs_json2.v
 
 const max_iterations = os.getenv_opt('MAX_ITERATIONS') or { '1000' }.int()
 
@@ -85,12 +85,43 @@ fn benchmark_measure_json_vs_json2_on_complex_struct() ! {
 fn benchmark_measure_encode_by_type() ! {
 	println(@FN)
 	dump('👈')
+
+	big_multiple_type_string := '✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t✔な🐈\t'
+	println('✔な🐈\t = ${big_multiple_type_string.len}')
+	measure_json_encode_old_vs_new(StructType[string]{big_multiple_type_string})!
+
+	big_emoji_string := '🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀🐈🐟🐧🐀💀'
+	println('🐈🐟🐧🐀💀 = ${big_emoji_string.len}')
+	measure_json_encode_old_vs_new(StructType[string]{big_emoji_string})!
+
+	big_no_ancii_string := 'ひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがなひらがな'
+	println('ひらがな = ${big_no_ancii_string.len}')
+	measure_json_encode_old_vs_new(StructType[string]{big_no_ancii_string})!
+
+	big_string := 'jhsbhjhajbujhfbdjhgbxdljgbxdlkjgbxdlkgjbdlfjbszldjkfbdljgbzsljfzsbkfdjsbfljhsdhbfljzhsdbfljzshfblszdjfbjzhdsbfjzsdhbfljsdhbfljzsdfblzjsdfbzsjdfbhljzsdhfbljzsbfjsdbfjshdbfljzsdhbfljzsdhbfljszdbhfljzsbfljhzsbdfljhzbsdljfbsdljfbzlsjfhdbzdsljhfbszdljhfbzsldjfhbszdljhfbzsdljfhbzsdjhfbdsljhfbljsdhbflsjdhjhsbh jhajbujhfbdjhgbxdljgbxdlkjgbxdlkgjbdlfjbszldjkfbdljgbzsljfzsbkfdjsbfljhsdhbfljzhsdbfljzshfblszdjfbjzhdsbfjzsdhbfljsdhbfljzsdfblzjsdfbzsjdfbhljzsdhfbljzsbfjsdbfjshdbfljzsdhbfljzsdhbfljszdbhfljzsbfljhzsbdfljhzbsdljfbsdljfbzlsjfhdbzdsljhfbszdljhfbzsldjfhbszdljhfbzsdljfhbzsdjhfbdsljhfbljsdhbflsjdh'
+
+	println('big string length = ${big_string.len}')
+	measure_json_encode_old_vs_new(StructType[string]{big_string})!
+
+	println('empty string')
 	measure_json_encode_old_vs_new(StructType[string]{})!
+
+	println('empty time.Time')
 	measure_json_encode_old_vs_new(StructType[time.Time]{})!
+	println('time.utc()')
+	measure_json_encode_old_vs_new(StructType[time.Time]{time.utc()})!
+	println('time.now()')
+	measure_json_encode_old_vs_new(StructType[time.Time]{time.now()})!
 	measure_json_encode_old_vs_new(StructType[int]{})!
+	measure_json_encode_old_vs_new(StructType[u64]{u64(-1)})! // 18446744073709551615
 	measure_json_encode_old_vs_new(StructType[f64]{})!
-	measure_json_encode_old_vs_new(StructType[bool]{})!
+	measure_json_encode_old_vs_new(StructType[bool]{false})!
+
+	println('empty array')
 	measure_json_encode_old_vs_new(StructType[[]int]{})!
+
+	println('array with 10 elements [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]')
+	measure_json_encode_old_vs_new(StructType[[]int]{[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]})!
 	measure_json_encode_old_vs_new(StructType[StructType[int]]{ val: StructType[int]{} })!
 	measure_json_encode_old_vs_new(StructType[Enum]{})!
 	measure_json_encode_old_vs_new(StructType[SumTypes]{1})!

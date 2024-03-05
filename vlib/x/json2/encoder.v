@@ -20,23 +20,35 @@ const true_in_string = 'true'
 
 const false_in_string = 'false'
 
-const zero_rune = `0`
+const empty_array = [u8(`[`), `]`]!
 
 const comma_rune = `,`
 
 const colon_rune = `:`
 
-const unicode_escape_chars = [`\\`, `u`]!
-
 const quote_rune = `"`
 
-const escaped_chars = [(r'\b'), (r'\f'), (r'\n'), (r'\r'), (r'\t')]!
+const back_slash = [u8(`\\`), `\\`]!
+
+const quote = [u8(`\\`), `"`]!
+
+const slash = [u8(`\\`), `/`]!
+
+const null_unicode = [u8(`\\`), `u`, `0`, `0`, `0`, `0`]!
+
+const ascii_control_characters = ['\\u0000', '\\t', '\\n', '\\r', '\\u0004', '\\u0005', '\\u0006',
+	'\\u0007', '\\b', '\\t', '\\n', '\\u000b', '\\f', '\\r', '\\u000e', '\\u000f', '\\u0010',
+	'\\u0011', '\\u0012', '\\u0013', '\\u0014', '\\u0015', '\\u0016', '\\u0017', '\\u0018', '\\u0019',
+	'\\u001a', '\\u001b', '\\u001c', '\\u001d', '\\u001e', '\\u001f']!
 
 const curly_open_rune = `{`
 
 const curly_close_rune = `}`
 
+const ascii_especial_characters = [u8(`\\`), `"`, `/`]!
+
 // encode is a generic function that encodes a type into a JSON string.
+@[manualfree]
 pub fn encode[T](val T) string {
 	$if T is $array {
 		return encode_array(val)
@@ -58,7 +70,12 @@ pub fn encode[T](val T) string {
 }
 
 // encode_array is a generic function that encodes a array into a JSON string.
+@[manualfree]
 fn encode_array[T](val []T) string {
+	if val.len == 0 {
+		return '[]'
+	}
+
 	mut buf := []u8{}
 
 	defer {
@@ -177,17 +194,27 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 	mut fields_len := 0
 
 	$for field in U.fields {
-		$if field.is_option {
-			if val.$(field.name) != none {
+		mut @continue := false
+		for attr in field.attrs {
+			if attr.contains('json: ') {
+				if attr.replace('json: ', '') == '-' {
+					@continue = true
+				}
+				break
+			}
+		}
+		if !@continue {
+			$if field.is_option {
+				if val.$(field.name) != none {
+					fields_len++
+				}
+			} $else {
 				fields_len++
 			}
-		} $else {
-			fields_len++
 		}
 	}
 	$for field in U.fields {
 		mut ignore_field := false
-		mut skip_field := false
 
 		value := val.$(field.name)
 
@@ -200,16 +227,12 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 				json_name = attr.replace('json: ', '')
 				if json_name == '-' {
 					ignore_field = true
-					skip_field = true
 				}
 				break
 			}
 		}
 
-		if skip_field {
-			i++
-			fields_len--
-		} else {
+		if !ignore_field {
 			$if value is $option {
 				workaround := val.$(field.name)
 				if workaround != none { // smartcast
@@ -306,7 +329,7 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 						parsed_time := time.parse(val.$(field.name).str()) or { time.Time{} }
 						e.encode_string(parsed_time.format_rfc3339(), mut buf)!
 					} $else $if field.unaliased_typ is bool {
-						if val.$(field.name).str() == json2.true_in_string {
+						if val.$(field.name) {
 							unsafe { buf.push_many(json2.true_in_string.str, json2.true_in_string.len) }
 						} else {
 							unsafe { buf.push_many(json2.false_in_string.str, json2.false_in_string.len) }
@@ -346,6 +369,10 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 }
 
 fn (e &Encoder) encode_array[U](val []U, level int, mut buf []u8) ! {
+	if val.len == 0 {
+		unsafe { buf.push_many(&json2.empty_array[0], json2.empty_array.len) }
+		return
+	}
 	buf << `[`
 	for i in 0 .. val.len {
 		e.encode_newline(level, mut buf)!
@@ -394,7 +421,6 @@ pub fn (f Any) str() string {
 }
 
 // json_str returns the JSON string representation of the `Any` type.
-@[manualfree]
 pub fn (f Any) json_str() string {
 	return encode(f)
 }
@@ -414,111 +440,135 @@ pub fn (f Any) prettify_json_str() string {
 	return buf.bytestr()
 }
 
-// CharLengthIterator is an iterator that generates a char
-// length value of every iteration based on the given text.
-// (e.g.: "t✔" => [t => 1, ✔ => 2])
-struct CharLengthIterator {
-	text string
-mut:
-	idx int
-}
-
-fn (mut iter CharLengthIterator) next() ?int {
-	if iter.idx >= iter.text.len {
-		return none
-	}
-
-	defer {
-		iter.idx++
-	}
-
-	mut len := 1
-	c := iter.text[iter.idx]
-
-	if (c & (1 << 7)) != 0 {
-		for t := u8(1 << 6); (c & t) != 0; t >>= 1 {
-			len++
-			iter.idx++
-		}
-	}
-
-	return len
-}
-
 // TODO - Need refactor. Is so slow. The longer the string, the lower the performance.
 // encode_string returns the JSON spec-compliant version of the string.
-@[manualfree]
+@[direct_array_access]
 fn (e &Encoder) encode_string(s string, mut buf []u8) ! {
-	mut char_lens := CharLengthIterator{
-		text: s
+	if s.len == 0 {
+		empty := [u8(json2.quote_rune), json2.quote_rune]!
+		unsafe { buf.push_many(&empty[0], 2) }
+		return
 	}
-	mut i := 0
+	mut last_no_buffer_expansible_char_position_candidate := 0
 	buf << json2.quote_rune
 
-	for char_len in char_lens {
-		chr := s[i]
+	if !e.escape_unicode {
+		unsafe {
+			buf.push_many(s.str, s.len)
+			buf << json2.quote_rune
+		}
+		return
+	}
 
-		if (char_len == 1 && chr < 0x20) || chr == `\\` || chr == `"` || chr == `/` {
-			handle_special_char(e, mut buf, chr)
+	for idx := 0; idx < s.len; idx++ {
+		current_byte := s[idx]
+
+		mut current_utf8_len := ((0xe5000000 >> ((current_byte >> 3) & 0x1e)) & 3) + 1
+
+		current_value_cause_buffer_expansion :=
+			(current_utf8_len == 1 && ((current_byte < 32 || current_byte > 127)
+			|| current_byte in json2.ascii_especial_characters))
+			|| current_utf8_len == 3
+
+		if !current_value_cause_buffer_expansion {
+			// while it is not the last one
+			if idx < s.len - 1 {
+				if s.len > (idx + current_utf8_len) {
+					if current_utf8_len == 2 || current_utf8_len == 4 {
+						// runes like: ã, ü, etc.
+						// Emojis ranges
+						// 	(0x1F300, 0x1F5FF),  # Miscellaneous Symbols and Pictographs
+						// 	(0x1F600, 0x1F64F),  # Emoticons
+						// 	(0x1F680, 0x1F6FF),  # Transport and Map Symbols
+						idx += current_utf8_len - 1
+						continue
+					}
+				} else {
+					unsafe {
+						buf.push_many(s.str + last_no_buffer_expansible_char_position_candidate,
+							s.len - last_no_buffer_expansible_char_position_candidate)
+					}
+					break
+				}
+			} else if idx == s.len - 1 {
+				unsafe {
+					buf.push_many(s.str + last_no_buffer_expansible_char_position_candidate,
+						s.len - last_no_buffer_expansible_char_position_candidate)
+				}
+			}
 		} else {
-			if char_len == 1 {
-				buf << chr
-			} else {
-				handle_multi_byte_char(e, mut buf, s[i..i + char_len])
+			if idx > 0 {
+				length := idx - last_no_buffer_expansible_char_position_candidate
+				unsafe {
+					buf.push_many(s.str + last_no_buffer_expansible_char_position_candidate,
+						length)
+				}
+				last_no_buffer_expansible_char_position_candidate = idx + 1
 			}
 		}
 
-		i += char_len
+		if current_utf8_len == 1 {
+			if current_byte < 32 {
+				// ASCII Control Characters
+				unsafe {
+					buf.push_many(json2.ascii_control_characters[current_byte].str, json2.ascii_control_characters[current_byte].len)
+				}
+				last_no_buffer_expansible_char_position_candidate = idx + 1
+			} else if current_byte >= 32 && current_byte < 128 {
+				// ASCII especial characters
+				if current_byte == `\\` {
+					unsafe { buf.push_many(&json2.back_slash[0], json2.back_slash.len) }
+					last_no_buffer_expansible_char_position_candidate = idx + 1
+					continue
+				} else if current_byte == `"` {
+					unsafe { buf.push_many(&json2.quote[0], json2.quote.len) }
+					last_no_buffer_expansible_char_position_candidate = idx + 1
+					continue
+				} else if current_byte == `/` {
+					unsafe { buf.push_many(&json2.slash[0], json2.slash.len) }
+					last_no_buffer_expansible_char_position_candidate = idx + 1
+					continue
+				}
+			}
+			continue
+		} else if current_utf8_len == 3 {
+			// runes like: ✔, ひらがな ...
+
+			// Handle multi-byte characters byte-by-byte
+			mut codepoint := u32(current_byte & ((1 << (7 - current_utf8_len)) - 1))
+			for j in 1 .. current_utf8_len {
+				if idx + j >= s.len {
+					// Incomplete UTF-8 sequence, TODO handle error
+					idx++
+					continue
+				}
+
+				mut b := s[idx + j]
+				if (b & 0xC0) != 0x80 {
+					// Invalid continuation byte, TODO handle error
+					idx++
+					continue
+				}
+
+				codepoint = u32((codepoint << 6) | (b & 0x3F))
+			}
+			// runes like: ✔, ひらがな ...
+			unsafe { buf.push_many(&json2.null_unicode[0], json2.null_unicode.len) }
+			buf[buf.len - 1] = hex_digit(codepoint & 0xF)
+			buf[buf.len - 2] = hex_digit((codepoint >> 4) & 0xF)
+			buf[buf.len - 3] = hex_digit((codepoint >> 8) & 0xF)
+			buf[buf.len - 4] = hex_digit((codepoint >> 12) & 0xF)
+			idx += current_utf8_len - 1
+			last_no_buffer_expansible_char_position_candidate = idx + 1
+		}
 	}
 
 	buf << json2.quote_rune
 }
 
-fn handle_special_char(e &Encoder, mut buf []u8, chr u8) {
-	if chr in important_escapable_chars {
-		for j := 0; j < important_escapable_chars.len; j++ {
-			if chr == important_escapable_chars[j] {
-				unsafe { buf.push_many(json2.escaped_chars[j].str, json2.escaped_chars[j].len) }
-				break
-			}
-		}
-	} else if chr == `"` || chr == `/` || chr == `\\` {
-		buf << `\\`
-		buf << chr
-	} else {
-		for r in json2.unicode_escape_chars {
-			buf << r
-		}
-
-		buf << json2.zero_rune // \u0
-		buf << json2.zero_rune // \u00
-
-		hex_code := chr.hex()
-		unsafe { buf.push_many(hex_code.str, hex_code.len) }
+fn hex_digit(n int) u8 {
+	if n < 10 {
+		return `0` + n
 	}
-}
-
-fn handle_multi_byte_char(e &Encoder, mut buf []u8, slice string) {
-	hex_code := slice.utf32_code().hex() // slow
-
-	if !e.escape_unicode || hex_code.len < 4 {
-		unsafe { buf.push_many(slice.str, slice.len) }
-	} else if hex_code.len == 4 {
-		// Handle unicode endpoint
-		for r in json2.unicode_escape_chars {
-			buf << r
-		}
-		unsafe { buf.push_many(hex_code.str, hex_code.len) }
-	} else {
-		// TODO: still figuring out what
-		// to do with more than 4 chars
-		// According to https://www.json.org/json-en.html however, any codepoint is valid inside a string,
-		// so just passing it along should hopefully also work.
-		unsafe { buf.push_many(slice.str, slice.len) }
-	}
-
-	unsafe {
-		slice.free()
-		hex_code.free()
-	}
+	return `a` + (n - 10)
 }

@@ -1,8 +1,8 @@
 module time
 
 pub const days_string = 'MonTueWedThuFriSatSun'
-pub const long_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-pub const month_days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+pub const long_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']!
+pub const month_days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]!
 pub const months_string = 'JanFebMarAprMayJunJulAugSepOctNovDec'
 pub const long_months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
 	'September', 'October', 'November', 'December']
@@ -32,7 +32,7 @@ pub const days_before = [
 	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31,
 	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30,
 	31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31,
-]
+]!
 
 // Time contains various time units for a point in time.
 pub struct Time {
@@ -125,22 +125,25 @@ pub fn (t Time) unix_time_nano() i64 {
 }
 
 // add returns a new time with the given duration added.
-pub fn (t Time) add(d Duration) Time {
+pub fn (t Time) add(duration_in_nanosecond Duration) Time {
 	// This expression overflows i64 for big years (and we do not have i128 yet):
 	// nanos := t.unix * 1_000_000_000 + i64(t.nanosecond) <-
 	// ... so instead, handle the addition manually in parts ¯\_(ツ)_/¯
-	mut unixs := t.unix
-	mut nanos := i64(t.nanosecond) + d.nanoseconds()
-	unixs += nanos / time.second
-	nanos = nanos % time.second
-	if nanos < 0 {
-		unixs--
-		nanos += time.second
+
+	mut increased_time_nanosecond := i64(t.nanosecond) + duration_in_nanosecond.nanoseconds()
+
+	// increased_time_second
+	mut increased_time_second := t.unix + (increased_time_nanosecond / time.second)
+
+	increased_time_nanosecond = increased_time_nanosecond % time.second
+	if increased_time_nanosecond < 0 {
+		increased_time_second--
+		increased_time_nanosecond += time.second
 	}
 	if t.is_local {
-		return unix_nanosecond(unixs, int(nanos)).as_local()
+		return unix_nanosecond(increased_time_second, int(increased_time_nanosecond)).as_local()
 	}
-	return unix_nanosecond(unixs, int(nanos))
+	return unix_nanosecond(increased_time_second, int(increased_time_nanosecond))
 }
 
 // add_seconds returns a new time struct with an added number of seconds.

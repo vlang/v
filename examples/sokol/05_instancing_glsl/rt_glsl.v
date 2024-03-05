@@ -388,8 +388,6 @@ fn draw_end_glsl(app App) {
 }
 
 fn frame(mut app App) {
-	ws := gg.window_size_real_pixels()
-
 	// clear
 	mut color_action := gfx.ColorAttachmentAction{
 		load_action: .clear
@@ -402,7 +400,8 @@ fn frame(mut app App) {
 	}
 	mut pass_action := gfx.PassAction{}
 	pass_action.colors[0] = color_action
-	gfx.begin_default_pass(&pass_action, ws.width, ws.height)
+	pass := gg.create_default_pass(pass_action)
+	gfx.begin_pass(&pass)
 
 	draw_start_glsl(app)
 	draw_cube_glsl_i(mut app)

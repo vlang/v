@@ -776,7 +776,7 @@ pub enum Kind {
 	thread
 }
 
-// str returns the the internal & source name of the type
+// str returns the internal & source name of the type
 pub fn (t TypeSymbol) str() string {
 	return t.name
 }
