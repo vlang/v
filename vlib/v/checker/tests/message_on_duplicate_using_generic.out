@@ -1,27 +1,34 @@
-vlib/v/checker/tests/message_on_duplicate_using_generic.vv:22:7: notice: duplicate type: blah blah blah 22222
-   20 | fn main() {
-   21 |     _ := Name1[int](2)
-   22 |     _ := Name2[int](4)
+vlib/v/checker/tests/message_on_duplicate_using_generic.vv:21:7: notice: duplicate type: blah blah blah 22222
+   19 | fn main() {
+   20 |     _ := Name1[int](2)
+   21 |     _ := Name2[int](4)
       |          ~~~~~~~~~~~~~
-   23 |     _ := Name3[int](6)
-   24 |     _ := Name4[int](8)
-vlib/v/checker/tests/message_on_duplicate_using_generic.vv:23:7: warning: duplicate type: blah blah blah 33333
-   21 |     _ := Name1[int](2)
-   22 |     _ := Name2[int](4)
-   23 |     _ := Name3[int](6)
+   22 |     _ := Name3[int](6)
+   23 |     _ := Name4[int](8)
+vlib/v/checker/tests/message_on_duplicate_using_generic.vv:22:7: warning: duplicate type: blah blah blah 33333
+   20 |     _ := Name1[int](2)
+   21 |     _ := Name2[int](4)
+   22 |     _ := Name3[int](6)
       |          ~~~~~~~~~~~~~
-   24 |     _ := Name4[int](8)
-   25 |     _ := Name5[int](9)
-vlib/v/checker/tests/message_on_duplicate_using_generic.vv:21:7: error: duplicate type: blah blah blah 11111
-   19 |
-   20 | fn main() {
-   21 |     _ := Name1[int](2)
+   23 |     _ := Name4[int](8)
+   24 |     _ := Name5[int](9)
+vlib/v/checker/tests/message_on_duplicate_using_generic.vv:20:7: error: duplicate type: blah blah blah 11111
+   18 |
+   19 | fn main() {
+   20 |     _ := Name1[int](2)
       |          ~~~~~~~~~~~~~
-   22 |     _ := Name2[int](4)
-   23 |     _ := Name3[int](6)
-vlib/v/checker/tests/message_on_duplicate_using_generic.vv:26:7: error: duplicate type: <no message was defined>
-   24 |     _ := Name4[int](8)
-   25 |     _ := Name5[int](9)
-   26 |     _ := Name6[int](10)
+   21 |     _ := Name2[int](4)
+   22 |     _ := Name3[int](6)
+vlib/v/checker/tests/message_on_duplicate_using_generic.vv:24:7: error: duplicate type: blah blah blah 55555
+   22 |     _ := Name3[int](6)
+   23 |     _ := Name4[int](8)
+   24 |     _ := Name5[int](9)
+      |          ~~~~~~~~~~~~~
+   25 |     _ := Name6[int](10)
+   26 | }
+vlib/v/checker/tests/message_on_duplicate_using_generic.vv:25:7: error: duplicate type: <no message was defined>
+   23 |     _ := Name4[int](8)
+   24 |     _ := Name5[int](9)
+   25 |     _ := Name6[int](10)
       |          ~~~~~~~~~~~~~~
-   27 | }
+   26 | }

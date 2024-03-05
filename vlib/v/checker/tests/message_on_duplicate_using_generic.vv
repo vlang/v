@@ -12,7 +12,6 @@ type Name3[T] = T | int | string
 type Name4[T] = T | int | string
 
 @[on_generic_duplicate: 'error: blah blah blah 55555']
-@[ignore_generic_duplicates]
 type Name5[T] = T | int | string
 
 type Name6[T] = T | int | string
