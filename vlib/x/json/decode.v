@@ -14,12 +14,14 @@ mut:
 	idx int
 }
 
+// check_json
 fn check_json(val string) ! {
 	if val.len == 0 {
 		return error('empty string')
 	}
 }
 
+// decode
 pub fn decode[T](val string) !T {
 	check_json(val)!
 
@@ -38,6 +40,7 @@ pub fn decode[T](val string) !T {
 	return result
 }
 
+// decode_value
 fn (mut encoder Encoder) decode_value[T](nodes []Node, val &T) {
 	$if val is $option {
 		workaround := val
@@ -68,6 +71,7 @@ fn (mut encoder Encoder) decode_value[T](nodes []Node, val &T) {
 	}
 }
 
+// decode_struct
 fn (mut encoder Encoder) decode_struct[T](nodes []Node, value &T) {
 	$for field in T.fields {
 		for i := 0; i < nodes.len; i++ {
@@ -119,6 +123,7 @@ fn (mut encoder Encoder) decode_struct[T](nodes []Node, value &T) {
 	}
 }
 
+// fulfill_nodes
 fn (mut encoder Encoder) fulfill_nodes(mut nodes []Node) {
 	mut inside_string := false
 	mut inside_key := false
