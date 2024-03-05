@@ -65,9 +65,9 @@ pub fn make_pipeline(desc &PipelineDesc) Pipeline {
 	return C.sg_make_pipeline(desc)
 }
 
-@[inline]
 // make_attachments creates an `Attachments` instance from `const_desc`.
 // See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
+@[inline]
 pub fn make_attachments(const_desc &AttachmentsDesc) Attachments {
 	return C.sg_make_attachments(const_desc)
 }
@@ -97,9 +97,9 @@ pub fn destroy_pipeline(pip Pipeline) {
 	C.sg_destroy_pipeline(pip)
 }
 
-@[inline]
 // destroy_attachments destroys the `atts` `Attachments`
 // See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
+@[inline]
 pub fn destroy_attachments(atts Attachments) {
 	C.sg_destroy_attachments(atts)
 }
@@ -224,9 +224,9 @@ pub fn query_pipeline_state(pip Pipeline) ResourceState {
 	return ResourceState(C.sg_query_pipeline_state(pip))
 }
 
-@[inline]
 // query_attachments_state returns the current state of a resource (INITIAL, ALLOC, VALID, FAILED, INVALID)
 // See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
+@[inline]
 pub fn query_attachments_state(atts Attachments) ResourceState {
 	return ResourceState(C.sg_query_attachments_state(atts))
 }
@@ -252,9 +252,9 @@ pub fn query_pipeline_info(pip Pipeline) PipelineInfo {
 	return C.sg_query_pipeline_info(pip)
 }
 
-@[inline]
 // query_attachments_info returns runtime information about the `atts` / `Attachments`.
 // See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
+@[inline]
 pub fn query_attachments_info(atts Attachments) AttachmentsInfo {
 	return C.sg_query_attachments_info(atts)
 }
@@ -280,9 +280,9 @@ pub fn query_pipeline_defaults(desc &Pipeline) PipelineDesc {
 	return C.sg_query_pipeline_defaults(unsafe { &PipelineDesc(voidptr(desc)) })
 }
 
-@[inline]
 // query_attachments_defaults returns `AttachmentsDesc` with default values replaced.
 // See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
+@[inline]
 pub fn query_attachments_defaults(desc &AttachmentsDesc) AttachmentsDesc {
 	return C.sg_query_attachments_defaults(unsafe { &AttachmentsDesc(voidptr(desc)) })
 }
