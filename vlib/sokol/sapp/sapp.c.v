@@ -16,6 +16,7 @@ pub fn create_desc() gfx.Desc {
 	}
 }
 
+// create_default_pass creates a default `gfx.Pass` compatible with `sapp` and `sokol.gfx.begin_pass/1`.
 pub fn create_default_pass(action gfx.PassAction) gfx.Pass {
 	return gfx.Pass{
 		action: action
@@ -23,6 +24,9 @@ pub fn create_default_pass(action gfx.PassAction) gfx.Pass {
 	}
 }
 
+// glue_environment returns a `gfx.Environment` compatible for use with `sapp` specific `gfx.Pass`es.
+// The retuned `gfx.Environment` can be used when rendering via `sapp`.
+// See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
 pub fn glue_environment() gfx.Environment {
 	mut env := gfx.Environment{}
 	unsafe { vmemset(&env, 0, int(sizeof(env))) }
@@ -40,6 +44,9 @@ pub fn glue_environment() gfx.Environment {
 	return env
 }
 
+// glue_swapchain returns a `gfx.Swapchain` compatible for use with `sapp` specific display/rendering `gfx.Pass`es.
+// The retuned `gfx.Swapchain` can be used when rendering via `sapp`.
+// See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
 pub fn glue_swapchain() gfx.Swapchain {
 	mut swapchain := gfx.Swapchain{}
 	unsafe { vmemset(&swapchain, 0, int(sizeof(swapchain))) }

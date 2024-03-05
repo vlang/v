@@ -76,8 +76,11 @@ pub struct C.sg_attachments {
 	id u32
 }
 
+// Attachments represents data that can be attached to a render pass.
+// See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
 pub type Attachments = C.sg_attachments
 
+// free frees the resources occupied by the struct
 pub fn (mut a C.sg_attachments) free() {
 	C.sg_destroy_attachments(*a)
 }

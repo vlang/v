@@ -66,6 +66,8 @@ pub fn make_pipeline(desc &PipelineDesc) Pipeline {
 }
 
 @[inline]
+// make_attachments creates an `Attachments` instance from `const_desc`.
+// See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
 pub fn make_attachments(const_desc &AttachmentsDesc) Attachments {
 	return C.sg_make_attachments(const_desc)
 }
@@ -96,6 +98,8 @@ pub fn destroy_pipeline(pip Pipeline) {
 }
 
 @[inline]
+// destroy_attachments destroys the `atts` `Attachments`
+// See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
 pub fn destroy_attachments(atts Attachments) {
 	C.sg_destroy_attachments(atts)
 }
@@ -123,12 +127,11 @@ pub fn query_buffer_overflow(buf Buffer) bool {
 // rendering functions
 
 @[deprecated: 'use begin_pass instead, please see examples/sokol/* for how to utilize new unified begin_pass']
-@[deprecated_after: '2024-09-03']
 @[inline]
-pub fn begin_default_pass(action voidptr, width int, height int) {
-	panic('use ${@MOD}.begin_pass instead, please see examples/sokol/* for how to utilize new unified begin_pass function')
-}
+pub fn begin_default_pass(actions &PassAction, width int, height int) {}
 
+// begin_pass begins a rendering pass.
+// See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
 @[inline]
 pub fn begin_pass(const_pass &Pass) {
 	C.sg_begin_pass(const_pass)
@@ -222,6 +225,8 @@ pub fn query_pipeline_state(pip Pipeline) ResourceState {
 }
 
 @[inline]
+// query_attachments_state returns the current state of a resource (INITIAL, ALLOC, VALID, FAILED, INVALID)
+// See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
 pub fn query_attachments_state(atts Attachments) ResourceState {
 	return ResourceState(C.sg_query_attachments_state(atts))
 }
@@ -248,6 +253,8 @@ pub fn query_pipeline_info(pip Pipeline) PipelineInfo {
 }
 
 @[inline]
+// query_attachments_info returns runtime information about the `atts` / `Attachments`.
+// See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
 pub fn query_attachments_info(atts Attachments) AttachmentsInfo {
 	return C.sg_query_attachments_info(atts)
 }
@@ -274,6 +281,8 @@ pub fn query_pipeline_defaults(desc &Pipeline) PipelineDesc {
 }
 
 @[inline]
+// query_attachments_defaults returns `AttachmentsDesc` with default values replaced.
+// See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
 pub fn query_attachments_defaults(desc &AttachmentsDesc) AttachmentsDesc {
 	return C.sg_query_attachments_defaults(unsafe { &AttachmentsDesc(voidptr(desc)) })
 }
