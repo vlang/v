@@ -5415,7 +5415,8 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			fn_ret_unwrapped := g.unwrap_generic(fn_ret_type)
 			styp := g.base_type(fn_ret_type)
 			g.writeln('${ret_typ} ${tmpvar};')
-			if g.table.final_sym(fn_ret_unwrapped).kind == .array_fixed {
+			if node.exprs[0] is ast.Ident
+				&& g.table.final_sym(fn_ret_unwrapped).kind == .array_fixed {
 				g.write('_option_ok((voidptr) { ')
 			} else {
 				g.write('_option_ok(&(${styp}[]) { ')
