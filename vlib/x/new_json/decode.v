@@ -236,6 +236,7 @@ fn (mut decoder Decoder) decode_struct[T](nodes []Node, value &T) {
 								if value_kind == .object {
 									// TODO
 								}
+							} $else $if T is $enum {
 							} $else {
 								eprintln('not supported')
 							}
@@ -311,6 +312,8 @@ fn (mut decoder Decoder) decode_struct[T](nodes []Node, value &T) {
 								}, mut value.$(field.name))
 							}
 						}
+					} $else $if field.typ is $enum {
+						value.$(field.name) = decoder.json_data[start..end].int()
 					} $else {
 						eprintln('not supported')
 					}

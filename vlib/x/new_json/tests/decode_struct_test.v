@@ -60,7 +60,8 @@ fn test_types() {
 
 	// assert json.decode[StructType[map[string]Any]]('{"val": {"val": "test"}}')!.val.val == 'test'
 
-	// assert json.decode[StructType[Enumerates]]('{"val": 2}')!.val == Enumerates(2)
+	assert json.decode[StructType[Enumerates]]('{"val": 0}')!.val == Enumerates.a
+	assert json.decode[StructType[Enumerates]]('{"val": 1}')!.val == Enumerates.b
 
 	// assert json.decode[StructType[IntAlias]]('{"val": 2}')!.val == IntAlias(2)
 
