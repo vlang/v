@@ -647,7 +647,11 @@ fn (mut c Checker) check_elements_initialized(typ ast.Type) ! {
 		return
 	}
 	if typ.is_any_kind_of_pointer() {
-		return checker.err_ref_uninitialized
+		if !c.pref.translated && !c.file.is_translated {
+			return checker.err_ref_uninitialized
+		} else {
+			return
+		}
 	}
 	sym := c.table.sym(typ)
 	if sym.kind == .interface_ {

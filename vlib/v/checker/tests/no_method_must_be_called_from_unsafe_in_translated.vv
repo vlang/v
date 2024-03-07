@@ -1,0 +1,12 @@
+@[translated]
+module main
+
+struct S1 {}
+
+@[unsafe]
+fn (s S1) f() {}
+
+fn main() {
+	s := S1{}
+	s.f()
+}

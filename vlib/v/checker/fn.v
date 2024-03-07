@@ -1102,7 +1102,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	if func.is_unsafe && !c.inside_unsafe
 		&& (func.language != .c || (func.name[2] in [`m`, `s`] && func.mod == 'builtin')) {
 		// builtin C.m*, C.s* only - temp
-		c.warn('function `${func.name}` must be called from an `unsafe` block', node.pos)
+		if !c.pref.translated && !c.file.is_translated {
+			c.warn('function `${func.name}` must be called from an `unsafe` block', node.pos)
+		}
 	}
 	node.is_keep_alive = func.is_keep_alive
 	if func.language == .v && func.no_body && !c.pref.translated && !c.file.is_translated
@@ -2415,8 +2417,10 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 	}
 	if method.is_unsafe && !c.inside_unsafe {
-		c.warn('method `${left_sym.name}.${method_name}` must be called from an `unsafe` block',
-			node.pos)
+		if !c.pref.translated && !c.file.is_translated {
+			c.warn('method `${left_sym.name}.${method_name}` must be called from an `unsafe` block',
+				node.pos)
+		}
 	}
 	if c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.is_deprecated && method.is_deprecated {
 		c.deprecate('method', '${left_sym.name}.${method.name}', method.attrs, node.pos)
