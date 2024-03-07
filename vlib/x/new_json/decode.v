@@ -290,7 +290,7 @@ fn (mut decoder Decoder) decode_struct[T](nodes []Node, value &T) {
 						}
 					} $else $if field.typ is time.Time {
 						if value_kind == .string_ {
-							value.$(field.name) = time.parse(decoder.json_data[start + 1..end - 1]) or {
+							value.$(field.name) = time.parse_rfc3339(decoder.json_data[start + 1..end - 1]) or {
 								time.Time{}
 							}
 						}
