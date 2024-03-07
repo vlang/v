@@ -314,6 +314,47 @@ fn (mut decoder Decoder) decode_struct[T](nodes []Node, value &T) {
 						}
 					} $else $if field.typ is $enum {
 						value.$(field.name) = decoder.json_data[start..end].int()
+					} $else $if field.typ is $alias {
+						$if field.unaliased_typ is string {
+							if value_kind == .string_ {
+								value.$(field.name) = decoder.json_data[start + 1..end - 1]
+							}
+						} $else $if field.unaliased_typ is time.Time {
+						} $else $if field.unaliased_typ is bool {
+						} $else $if field.unaliased_typ in [$float, $int] {
+							$if field.unaliased_typ is i8 {
+								value.$(field.name) = decoder.json_data[start..end].i8()
+							} $else $if field.unaliased_typ is i16 {
+								value.$(field.name) = decoder.json_data[start..end].i16()
+							} $else $if field.unaliased_typ is i32 {
+								value.$(field.name) = decoder.json_data[start..end].i32()
+							} $else $if field.unaliased_typ is int {
+								value.$(field.name) = decoder.json_data[start..end].int()
+							} $else $if field.unaliased_typ is i64 {
+								value.$(field.name) = decoder.json_data[start..end].i64()
+							} $else $if field.unaliased_typ is u8 {
+								value.$(field.name) = decoder.json_data[start..end].u8()
+							} $else $if field.unaliased_typ is u16 {
+								value.$(field.name) = decoder.json_data[start..end].u16()
+							} $else $if field.unaliased_typ is u32 {
+								value.$(field.name) = decoder.json_data[start..end].u32()
+							} $else $if field.unaliased_typ is u64 {
+								value.$(field.name) = decoder.json_data[start..end].u64()
+							} $else $if field.unaliased_typ is f32 {
+								value.$(field.name) = decoder.json_data[start..end].f32()
+							} $else $if field.unaliased_typ is f64 {
+								value.$(field.name) = decoder.json_data[start..end].f64()
+							}
+						} $else $if field.unaliased_typ is $array {
+							// TODO
+						} $else $if field.unaliased_typ is $struct {
+						} $else $if field.unaliased_typ is $enum {
+							// TODO
+						} $else $if field.unaliased_typ is $sumtype {
+							// TODO
+						} $else {
+							eprintln('the alias ${field.unaliased_typ} cannot be encoded')
+						}
 					} $else {
 						eprintln('not supported')
 					}

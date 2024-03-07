@@ -63,7 +63,8 @@ fn test_types() {
 	assert json.decode[StructType[Enumerates]]('{"val": 0}')!.val == Enumerates.a
 	assert json.decode[StructType[Enumerates]]('{"val": 1}')!.val == Enumerates.b
 
-	// assert json.decode[StructType[IntAlias]]('{"val": 2}')!.val == IntAlias(2)
+	assert json.decode[StructType[IntAlias]]('{"val": 2}')!.val == IntAlias(2)
+	assert json.decode[StructType[StringAlias]]('{"val": "2"}')!.val == StringAlias('2')
 
 	assert json.decode[StructType[time.Time]]('{"val": "2022-03-11T13:54:25.000Z"}')!.val.year == fixed_time.year
 	assert json.decode[StructType[time.Time]]('{"val": "2022-03-11T13:54:25.000Z"}')!.val.month == fixed_time.month
