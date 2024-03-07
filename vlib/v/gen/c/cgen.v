@@ -5412,10 +5412,15 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			}
 		}
 		if fn_return_is_option && !expr_type_is_opt && return_sym.name != c.option_name {
+			fn_ret_unwrapped := g.unwrap_generic(fn_ret_type)
 			styp := g.base_type(fn_ret_type)
 			g.writeln('${ret_typ} ${tmpvar};')
-			g.write('_option_ok(&(${styp}[]) { ')
-			if !g.unwrap_generic(fn_ret_type).is_ptr() && node.types[0].is_ptr() {
+			if g.table.final_sym(fn_ret_unwrapped).kind == .array_fixed {
+				g.write('_option_ok((voidptr) { ')
+			} else {
+				g.write('_option_ok(&(${styp}[]) { ')
+			}
+			if !fn_ret_unwrapped.is_ptr() && node.types[0].is_ptr() {
 				if !(node.exprs[0] is ast.Ident && !g.is_amp) {
 					g.write('*')
 				}
