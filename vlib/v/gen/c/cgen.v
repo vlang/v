@@ -5722,7 +5722,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 						has_unwrap_opt_res)
 				} else {
 					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false,
-						false)
+						true)
 				}
 			}
 		}
