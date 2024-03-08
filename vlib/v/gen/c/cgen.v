@@ -125,6 +125,7 @@ mut:
 	inside_assign             bool
 	inside_map_index          bool
 	inside_array_index        bool
+	inside_array_fixed_struct bool
 	inside_opt_or_res         bool
 	inside_opt_data           bool
 	inside_if_option          bool

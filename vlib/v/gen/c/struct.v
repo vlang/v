@@ -93,7 +93,9 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			g.write('&')
 		}
 		if is_array || const_msvc_init {
-			g.write('{')
+			if !(g.inside_return && sym.kind == .array_fixed) {
+				g.write('{')
+			}
 		} else if is_multiline {
 			g.writeln('(${styp}){')
 		} else {
@@ -302,6 +304,20 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			initialized = true
 		}
 		g.is_shared = old_is_shared
+	} else if sym.kind == .array_fixed {
+		save_inside_array_fixed_struct := g.inside_array_fixed_struct
+		g.inside_array_fixed_struct = g.inside_return && sym.kind == .array_fixed
+		defer {
+			g.inside_array_fixed_struct = save_inside_array_fixed_struct
+		}
+		g.fixed_array_init(ast.ArrayInit{
+			pos: node.pos
+			is_fixed: true
+			typ: g.unwrap_generic(node.typ)
+			exprs: [ast.empty_expr]
+			elem_type: g.unwrap_generic(node.typ)
+		}, g.unwrap(g.unwrap_generic(node.typ)), '', g.is_amp)
+		initialized = true
 	}
 	if is_multiline {
 		g.indent--
@@ -315,7 +331,9 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		}
 	}
 
-	g.write('}')
+	if !(g.inside_return && sym.kind == .array_fixed) {
+		g.write('}')
+	}
 	if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
 		g.write('}, sizeof(${shared_styp}))')
 	} else if is_amp || g.inside_cast_in_heap > 0 {
