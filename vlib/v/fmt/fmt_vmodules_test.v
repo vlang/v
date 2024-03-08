@@ -9,12 +9,16 @@ fn testsuite_begin() {
 	os.setenv('VMODULES', vmodules_tdir, true)
 }
 
+fn testsuite_end() {
+	os.rmdir_all(vmodules_tdir) or {}
+}
+
 fn test_fmt_vmodules() {
 	tfile_content := [
 		'import x.json2 as json',
 		'import datatypes { Stack }',
 		'',
-		'const my_datatype = Stack[string]{}',
+		'const foo = Stack[string]{}',
 		'',
 	].join_lines()
 	os.write_file(os.join_path(module_tdir, 'main.v'), tfile_content)!
