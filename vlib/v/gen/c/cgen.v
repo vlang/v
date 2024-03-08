@@ -125,6 +125,7 @@ mut:
 	inside_assign             bool
 	inside_map_index          bool
 	inside_array_index        bool
+	inside_array_fixed_struct bool
 	inside_opt_or_res         bool
 	inside_opt_data           bool
 	inside_if_option          bool
@@ -5400,7 +5401,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				node.pos)
 		}
 		// normal return
-		return_sym := g.table.sym(node.types[0])
+		return_sym := g.table.sym(g.unwrap_generic(node.types[0]))
 		expr0 := node.exprs[0]
 		// `return opt_ok(expr)` for functions that expect an option
 		expr_type_is_opt := match expr0 {
