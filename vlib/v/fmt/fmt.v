@@ -71,8 +71,8 @@ pub fn fmt(file ast.File, mut table ast.Table, pref_ &pref.Preferences, is_debug
 		out: strings.new_builder(1000)
 		out_imports: strings.new_builder(200)
 	}
-	for vpath in os.vmodules_paths() {
-		if file.path.starts_with(vpath) {
+	for p in os.vmodules_paths() {
+		if file.path.starts_with(os.real_path(p)) {
 			f.inside_vmodules = true
 			break
 		}
