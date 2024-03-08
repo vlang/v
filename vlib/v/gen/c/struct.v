@@ -45,10 +45,16 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		g.go_back(1) // delete the `&` already generated in `prefix_expr()
 	}
 	mut is_anon := false
+	mut is_array_fixed_struct_init := false // return T{} where T is fixed array
 	if mut sym.info is ast.Struct {
 		is_anon = sym.info.is_anon
 	}
 	is_array := sym.kind in [.array_fixed, .array]
+	if sym.kind == .array_fixed {
+		arr_info := sym.array_fixed_info()
+		is_array_fixed_struct_init = g.inside_return
+			&& g.table.final_sym(arr_info.elem_type).kind == .struct_
+	}
 
 	// detect if we need type casting on msvc initialization
 	const_msvc_init := g.is_cc_msvc && g.inside_const && !g.inside_cast && g.inside_array_item
@@ -93,7 +99,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			g.write('&')
 		}
 		if is_array || const_msvc_init {
-			if !(g.inside_return && sym.kind == .array_fixed) {
+			if !is_array_fixed_struct_init {
 				g.write('{')
 			}
 		} else if is_multiline {
@@ -304,25 +310,23 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			initialized = true
 		}
 		g.is_shared = old_is_shared
-	} else if sym.kind == .array_fixed {
+	} else if is_array_fixed_struct_init {
 		arr_info := sym.array_fixed_info()
-		is_struct_init := g.inside_return && g.table.final_sym(arr_info.elem_type).kind == .struct_
-		if is_struct_init {
-			save_inside_array_fixed_struct := g.inside_array_fixed_struct
-			g.inside_array_fixed_struct = is_struct_init
-			defer {
-				g.inside_array_fixed_struct = save_inside_array_fixed_struct
-			}
 
-			g.fixed_array_init(ast.ArrayInit{
-				pos: node.pos
-				is_fixed: true
-				typ: g.unwrap_generic(node.typ)
-				exprs: [ast.empty_expr]
-				elem_type: arr_info.elem_type
-			}, g.unwrap(g.unwrap_generic(node.typ)), '', g.is_amp)
-			initialized = true
+		save_inside_array_fixed_struct := g.inside_array_fixed_struct
+		g.inside_array_fixed_struct = is_array_fixed_struct_init
+		defer {
+			g.inside_array_fixed_struct = save_inside_array_fixed_struct
 		}
+
+		g.fixed_array_init(ast.ArrayInit{
+			pos: node.pos
+			is_fixed: true
+			typ: g.unwrap_generic(node.typ)
+			exprs: [ast.empty_expr]
+			elem_type: arr_info.elem_type
+		}, g.unwrap(g.unwrap_generic(node.typ)), '', g.is_amp)
+		initialized = true
 	}
 	if is_multiline {
 		g.indent--
@@ -336,7 +340,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		}
 	}
 
-	if !(g.inside_return && sym.kind == .array_fixed) {
+	if !is_array_fixed_struct_init {
 		g.write('}')
 	}
 	if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
