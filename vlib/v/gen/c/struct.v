@@ -305,19 +305,24 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		}
 		g.is_shared = old_is_shared
 	} else if sym.kind == .array_fixed {
-		save_inside_array_fixed_struct := g.inside_array_fixed_struct
-		g.inside_array_fixed_struct = g.inside_return && sym.kind == .array_fixed
-		defer {
-			g.inside_array_fixed_struct = save_inside_array_fixed_struct
+		arr_info := sym.array_fixed_info()
+		is_struct_init := g.inside_return && g.table.final_sym(arr_info.elem_type).kind == .struct_
+		if is_struct_init {
+			save_inside_array_fixed_struct := g.inside_array_fixed_struct
+			g.inside_array_fixed_struct = is_struct_init
+			defer {
+				g.inside_array_fixed_struct = save_inside_array_fixed_struct
+			}
+
+			g.fixed_array_init(ast.ArrayInit{
+				pos: node.pos
+				is_fixed: true
+				typ: g.unwrap_generic(node.typ)
+				exprs: [ast.empty_expr]
+				elem_type: arr_info.elem_type
+			}, g.unwrap(g.unwrap_generic(node.typ)), '', g.is_amp)
+			initialized = true
 		}
-		g.fixed_array_init(ast.ArrayInit{
-			pos: node.pos
-			is_fixed: true
-			typ: g.unwrap_generic(node.typ)
-			exprs: [ast.empty_expr]
-			elem_type: g.unwrap_generic(node.typ)
-		}, g.unwrap(g.unwrap_generic(node.typ)), '', g.is_amp)
-		initialized = true
 	}
 	if is_multiline {
 		g.indent--
