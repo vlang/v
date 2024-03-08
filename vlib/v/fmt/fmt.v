@@ -374,11 +374,12 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 }
 
 pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
-	if f.inside_vmodules {
-		return imp.source_name
+	normalized_mod := if f.inside_vmodules {
+		imp.source_name
+	} else {
+		mod := if imp.mod.len == 0 { imp.alias } else { imp.mod }
+		mod.all_after('src.') // Ignore the 'src.' folder prefix since src/ folder is root of code
 	}
-	mod := if imp.mod.len == 0 { imp.alias } else { imp.mod }
-	normalized_mod := mod.all_after('src.') // Ignore the 'src.' folder prefix since src/ folder is root of code
 	is_diff := imp.alias != normalized_mod && !normalized_mod.ends_with('.' + imp.alias)
 	mut imp_alias_suffix := if is_diff { ' as ${imp.alias}' } else { '' }
 	mut syms := imp.syms.map(it.name).filter(f.import_syms_used[it])
