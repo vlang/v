@@ -5400,7 +5400,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				node.pos)
 		}
 		// normal return
-		return_sym := g.table.sym(node.types[0])
+		return_sym := g.table.sym(g.unwrap_generic(node.types[0]))
 		expr0 := node.exprs[0]
 		// `return opt_ok(expr)` for functions that expect an option
 		expr_type_is_opt := match expr0 {
@@ -5412,16 +5412,10 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			}
 		}
 		if fn_return_is_option && !expr_type_is_opt && return_sym.name != c.option_name {
-			fn_ret_unwrapped := g.unwrap_generic(fn_ret_type)
 			styp := g.base_type(fn_ret_type)
 			g.writeln('${ret_typ} ${tmpvar};')
-			if node.exprs[0] is ast.Ident
-				&& g.table.final_sym(fn_ret_unwrapped).kind == .array_fixed {
-				g.write('_option_ok((voidptr) { ')
-			} else {
-				g.write('_option_ok(&(${styp}[]) { ')
-			}
-			if !fn_ret_unwrapped.is_ptr() && node.types[0].is_ptr() {
+			g.write('_option_ok(&(${styp}[]) { ')
+			if !g.unwrap_generic(fn_ret_type).is_ptr() && node.types[0].is_ptr() {
 				if !(node.exprs[0] is ast.Ident && !g.is_amp) {
 					g.write('*')
 				}
