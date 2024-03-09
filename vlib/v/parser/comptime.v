@@ -311,8 +311,8 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 	mut typ_pos := p.tok.pos()
 	lang := p.parse_language()
 	mut typ := ast.void_type
-	if p.tok.lit[0].is_capital() {
-		typ = p.parse_any_type(lang, false, false, false)
+	if p.tok.lit[0].is_capital() || p.tok.lit in p.imports {
+		typ = p.parse_any_type(lang, false, true, false)
 	} else {
 		expr = p.ident(lang)
 		p.mark_var_as_used((expr as ast.Ident).name)
