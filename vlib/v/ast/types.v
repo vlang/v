@@ -1467,33 +1467,33 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 	return res
 }
 
-fn (t Table) shorten_user_defined_typenames(originalname string, import_aliases map[string]string) string {
-	if alias := import_aliases[originalname] {
+fn (t Table) shorten_user_defined_typenames(original_name string, import_aliases map[string]string) string {
+	if alias := import_aliases[original_name] {
 		return alias
 	}
-	mut parts := originalname.split('.')
+	mut parts := original_name.split('.')
 	if parts.len > 1 {
 		// cur_mod.Type => Type
-		if t.cmod_prefix != '' && originalname.starts_with(t.cmod_prefix) {
-			return originalname.all_after(t.cmod_prefix)
+		if t.cmod_prefix != '' && original_name.starts_with(t.cmod_prefix) {
+			return original_name.all_after(t.cmod_prefix)
 		}
 		// mod.submod.submod2.Type => submod2.Type
 		if !parts[..parts.len - 1].any(it.contains('[')) {
 			mod_idx := parts.len - 2
 			if t.is_fmt {
-				parts[mod_idx] = originalname.all_before_last('.')
+				parts[mod_idx] = original_name.all_before_last('.')
 			}
 			if alias := import_aliases[parts[mod_idx]] {
 				parts[mod_idx] = alias
 			}
 			return parts[mod_idx..].join('.')
 		}
-		if originalname.contains('[]') {
+		if original_name.contains('[]') {
 			// []mod.name
-			return originalname.all_after('.')
+			return original_name.all_after('.')
 		}
 	}
-	return originalname
+	return original_name
 }
 
 @[minify]
