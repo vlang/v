@@ -34,8 +34,8 @@ mut:
 	init_flag   bool
 	frame_count int
 
-	mouse_x    int = -1
-	mouse_y    int = -1
+	mouse_x    int = 903
+	mouse_y    int = 638
 	mouse_down bool
 	// glsl
 	cube_pip_glsl gfx.Pipeline
@@ -48,8 +48,8 @@ mut:
 	// instances
 	inst_pos [num_inst]m4.Vec4
 	// camera
-	camera_x f32
-	camera_z f32
+	camera_x f32 = -8
+	camera_z f32 = 47
 }
 
 /******************************************************************************
@@ -488,6 +488,7 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 			else {}
 		}
 	}
+	eprintln('>> app.camera_x: ${app.camera_x} , app.camera_z: ${app.camera_z}, app.mouse_x: ${app.mouse_x}, app.mouse_y: ${app.mouse_y}')
 }
 
 fn main() {

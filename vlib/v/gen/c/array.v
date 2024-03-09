@@ -151,15 +151,20 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 		ret_typ := g.typ(node.typ)
 		g.write('(${ret_typ})')
 	}
-	g.write('{')
+	elem_type := (array_type.unaliased_sym.info as ast.ArrayFixed).elem_type
+	mut elem_sym := g.table.final_sym(elem_type)
+
+	is_struct := g.inside_array_fixed_struct && elem_sym.kind == .struct_
+
+	if !is_struct {
+		g.write('{')
+	}
 	if node.has_val {
 		tmp_inside_array := g.inside_array_item
 		g.inside_array_item = true
 		defer {
 			g.inside_array_item = tmp_inside_array
 		}
-		elem_type := (array_type.unaliased_sym.info as ast.ArrayFixed).elem_type
-		elem_sym := g.table.final_sym(elem_type)
 		for i, expr in node.exprs {
 			if elem_sym.kind == .array_fixed && expr in [ast.Ident, ast.SelectorExpr] {
 				info := elem_sym.info as ast.ArrayFixed
@@ -186,7 +191,7 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 	} else if is_amp {
 		g.write('0')
 	} else {
-		elem_sym := g.table.final_sym(node.elem_type)
+		elem_sym = g.table.final_sym(node.elem_type)
 		if elem_sym.kind == .map {
 			// fixed array for map -- [N]map[key_type]value_type
 			info := array_type.unaliased_sym.info as ast.ArrayFixed
@@ -241,7 +246,9 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name st
 			}
 		}
 	}
-	g.write('}')
+	if !is_struct {
+		g.write('}')
+	}
 	if need_tmp_var {
 		g.writeln(';')
 		g.write(stmt_str)
@@ -1342,12 +1349,17 @@ fn (mut g Gen) write_prepared_var(var_name string, inp_info ast.Array, inp_elem_
 }
 
 fn (mut g Gen) fixed_array_var_init(expr_str string, is_auto_deref bool, elem_type ast.Type, size int) {
-	g.write('{')
+	elem_sym := g.table.sym(elem_type)
+	if !g.inside_array_fixed_struct {
+		g.write('{')
+		defer {
+			g.write('}')
+		}
+	}
 	for i in 0 .. size {
-		elem_sym := g.table.sym(elem_type)
 		if elem_sym.info is ast.ArrayFixed {
-			g.fixed_array_var_init('${expr_str}[${i}]', is_auto_deref, elem_sym.info.elem_type,
-				elem_sym.info.size)
+			init_str := if g.inside_array_fixed_struct { '${expr_str}' } else { '${expr_str}[${i}]' }
+			g.fixed_array_var_init(init_str, is_auto_deref, elem_sym.info.elem_type, elem_sym.info.size)
 		} else {
 			if is_auto_deref {
 				g.write('(*')
@@ -1356,13 +1368,14 @@ fn (mut g Gen) fixed_array_var_init(expr_str string, is_auto_deref bool, elem_ty
 			if is_auto_deref {
 				g.write(')')
 			}
-			g.write('[${i}]')
+			if !expr_str.starts_with('(') && !expr_str.starts_with('{') {
+				g.write('[${i}]')
+			}
 		}
 		if i != size - 1 {
 			g.write(', ')
 		}
 	}
-	g.write('}')
 }
 
 fn (mut g Gen) get_array_expr_param_name(mut expr ast.Expr) string {
