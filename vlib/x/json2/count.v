@@ -47,7 +47,8 @@ fn (mut count Count) chars_in_struct[T](val T) {
 	$for field in T.fields {
 		// TODO handle attributes
 		count.total += field.name.len + 3 // "":
-		count.count_chars(val.$(field.name))
+		workaround := val.$(field.name)
+		count.count_chars(workaround)
 	}
 }
 
