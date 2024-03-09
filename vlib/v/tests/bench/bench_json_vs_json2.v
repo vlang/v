@@ -7,6 +7,8 @@ import benchmark
 // recommendations:
 // ./v wipe-cache && MAX_ITERATIONS=100_000 ./v run vlib/v/tests/bench/bench_json_vs_json2.v
 // ./v wipe-cache && MAX_ITERATIONS=100_000 ./v -prod crun vlib/v/tests/bench/bench_json_vs_json2.v
+// ./v wipe-cache && ./v -gc boehm_leak -o testcase_leak -prod vlib/v/tests/bench/bench_json_vs_json2.v && ./testcase_leak 2>leaks.txt
+// ./v wipe-cache && ./v -prod vlib/v/tests/bench/bench_json_vs_json2.v -o b_out && valgrind --track-origins=yes ./b_out
 
 const max_iterations = os.getenv_opt('MAX_ITERATIONS') or { '1000' }.int()
 
