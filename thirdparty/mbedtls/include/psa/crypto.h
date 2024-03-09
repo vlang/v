@@ -3823,7 +3823,7 @@ psa_status_t psa_key_derivation_verify_bytes(
  * compares those bytes to an expected value, provided as key of type
  * #PSA_KEY_TYPE_PASSWORD_HASH.
  * If you view the key derivation's output as a stream of bytes, this
- * function destructively reads the number of bytes corresponding the the
+ * function destructively reads the number of bytes corresponding the
  * length of the expected value from the stream before comparing them.
  * The operation's capacity decreases by the number of bytes read.
  *
