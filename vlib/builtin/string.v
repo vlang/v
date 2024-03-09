@@ -315,7 +315,7 @@ fn (a string) clone_static() string {
 
 // clone returns a copy of the V string `a`.
 pub fn (a string) clone() string {
-	if a.len == 0 {
+	if a.len <= 0 {
 		return ''
 	}
 	mut b := string{
@@ -1205,7 +1205,7 @@ fn (s string) index_(p string) int {
 	return -1
 }
 
-// index returns the position of the first character of the first occurance of the `needle` string in `s`.
+// index returns the position of the first character of the first occurrence of the `needle` string in `s`.
 // It will return `none` if the `needle` string can't be found in `s`.
 pub fn (s string) index(p string) ?int {
 	idx := s.index_(p)
@@ -1215,7 +1215,7 @@ pub fn (s string) index(p string) ?int {
 	return idx
 }
 
-// index_last returns the position of the first character of the *last* occurance of the `needle` string in `s`.
+// index_last returns the position of the first character of the *last* occurrence of the `needle` string in `s`.
 pub fn (s string) index_last(needle string) ?int {
 	idx := s.index_last_(needle)
 	if idx == -1 {
@@ -1224,7 +1224,7 @@ pub fn (s string) index_last(needle string) ?int {
 	return idx
 }
 
-// last_index returns the position of the first character of the *last* occurance of the `needle` string in `s`.
+// last_index returns the position of the first character of the *last* occurrence of the `needle` string in `s`.
 @[deprecated: 'use `.index_last(needle string)` instead']
 @[deprecated_after: '2023-12-18']
 @[inline]
@@ -1805,7 +1805,7 @@ pub fn (mut s []string) sort_ignore_case() {
 	s.sort_with_compare(compare_lower_strings)
 }
 
-// sort_by_len sorts the the string array by each string's `.len` length.
+// sort_by_len sorts the string array by each string's `.len` length.
 @[inline]
 pub fn (mut s []string) sort_by_len() {
 	s.sort_with_compare(compare_strings_by_len)

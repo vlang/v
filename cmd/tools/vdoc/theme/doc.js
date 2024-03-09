@@ -90,7 +90,6 @@ function setupDarkMode() {
 }
 
 function setupSearch() {
-	const searchInput = document.getElementById('search');
 	const onInputChange = debounce((e) => {
 		const searchValue = e.target.value.toLowerCase();
 		const docNav = document.querySelector('.doc-nav');
@@ -160,7 +159,23 @@ function setupSearch() {
 			});
 		}
 	});
-	searchInput.addEventListener('input', onInputChange);
+	const searchInput = document.querySelector('#search input');
+	const url = document.location.toString();
+	if (url.includes('?')) {
+		const query =
+			url
+				.split('?')
+				.slice(1)
+				.filter((p) => p.startsWith('q='))
+				.map((p) => p.replace(/^q=/, ''))[0] || '';
+		if (query) {
+			searchInput.value = query;
+			searchInput.focus();
+			onInputChange({ target: { value: query } });
+		}
+	}
+	const searchInputDiv = document.getElementById('search');
+	searchInputDiv.addEventListener('input', onInputChange);
 	setupSearchKeymaps();
 }
 

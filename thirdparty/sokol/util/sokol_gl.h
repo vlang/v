@@ -453,7 +453,7 @@
 
         sgl_set_context(ctx);
 
-    The currently active context will implicitely be used by most sokol-gl functions
+    The currently active context will implicitly be used by most sokol-gl functions
     which don't take an explicit context handle as argument.
 
     To switch back to the default context, pass the global constant SGL_DEFAULT_CONTEXT:
@@ -833,7 +833,7 @@ SOKOL_GL_API_DECL sgl_context sgl_get_context(void);
 SOKOL_GL_API_DECL sgl_context sgl_default_context(void);
 
 /* draw recorded commands (call inside a sokol-gfx render pass) */
-SOKOL_GL_API_DECL void sgl_draw();
+SOKOL_GL_API_DECL void sgl_draw(void);
 SOKOL_GL_API_DECL void sgl_context_draw(sgl_context ctx);
 SOKOL_GL_API_DECL void sgl_draw_layer(int layer_id);
 SOKOL_GL_API_DECL void sgl_context_draw_layer(sgl_context ctx, int layer_id);

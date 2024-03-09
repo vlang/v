@@ -1102,7 +1102,9 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 	if func.is_unsafe && !c.inside_unsafe
 		&& (func.language != .c || (func.name[2] in [`m`, `s`] && func.mod == 'builtin')) {
 		// builtin C.m*, C.s* only - temp
-		c.warn('function `${func.name}` must be called from an `unsafe` block', node.pos)
+		if !c.pref.translated && !c.file.is_translated {
+			c.warn('function `${func.name}` must be called from an `unsafe` block', node.pos)
+		}
 	}
 	node.is_keep_alive = func.is_keep_alive
 	if func.language == .v && func.no_body && !c.pref.translated && !c.file.is_translated
@@ -1572,6 +1574,20 @@ fn (mut c Checker) resolve_comptime_args(func ast.Fn, node_ ast.CallExpr, concre
 							if arg_sym.info is ast.Array && param_typ.has_flag(.generic)
 								&& c.table.final_sym(param_typ).kind == .array {
 								ctyp = arg_sym.info.elem_type
+							} else if arg_sym.info is ast.Map && param_typ.has_flag(.generic)
+								&& c.table.final_sym(param_typ).kind == .map {
+								map_info := c.table.final_sym(param_typ).info as ast.Map
+								key_is_generic := map_info.key_type.has_flag(.generic)
+								if key_is_generic {
+									ctyp = c.unwrap_generic(arg_sym.info.key_type)
+								}
+								if map_info.value_type.has_flag(.generic) {
+									if key_is_generic {
+										comptime_args[k] = ctyp
+										k++
+									}
+									ctyp = c.unwrap_generic(arg_sym.info.key_type)
+								}
 							}
 							comptime_args[k] = ctyp
 						}
@@ -1645,9 +1661,23 @@ fn (mut c Checker) resolve_comptime_args(func ast.Fn, node_ ast.CallExpr, concre
 				ct_value := c.comptime.get_comptime_var_type(call_arg.expr)
 				param_typ_sym := c.table.sym(param_typ)
 				if ct_value != ast.void_type {
+					arg_sym := c.table.final_sym(call_arg.typ)
 					cparam_type_sym := c.table.sym(c.unwrap_generic(ct_value))
 					if param_typ_sym.kind == .array && cparam_type_sym.info is ast.Array {
 						comptime_args[k] = cparam_type_sym.info.elem_type
+					} else if arg_sym.info is ast.Map && param_typ.has_flag(.generic)
+						&& c.table.final_sym(param_typ).kind == .map {
+						map_info := c.table.final_sym(param_typ).info as ast.Map
+						key_is_generic := map_info.key_type.has_flag(.generic)
+						if key_is_generic {
+							comptime_args[k] = c.unwrap_generic(arg_sym.info.key_type)
+						}
+						if map_info.value_type.has_flag(.generic) {
+							if key_is_generic {
+								k++
+							}
+							comptime_args[k] = c.unwrap_generic(arg_sym.info.key_type)
+						}
 					} else {
 						comptime_args[k] = ct_value
 					}
@@ -2387,8 +2417,10 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 	}
 	if method.is_unsafe && !c.inside_unsafe {
-		c.warn('method `${left_sym.name}.${method_name}` must be called from an `unsafe` block',
-			node.pos)
+		if !c.pref.translated && !c.file.is_translated {
+			c.warn('method `${left_sym.name}.${method_name}` must be called from an `unsafe` block',
+				node.pos)
+		}
 	}
 	if c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.is_deprecated && method.is_deprecated {
 		c.deprecate('method', '${left_sym.name}.${method.name}', method.attrs, node.pos)

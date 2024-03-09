@@ -52,7 +52,7 @@ pub fn new_benchmark_pointer() &Benchmark {
 	}
 }
 
-// set_total_expected_steps sets the the total amount of steps the benchmark is expected to take.
+// set_total_expected_steps sets the total amount of steps the benchmark is expected to take.
 pub fn (mut b Benchmark) set_total_expected_steps(n int) {
 	b.nexpected_steps = n
 }

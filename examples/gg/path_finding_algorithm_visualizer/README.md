@@ -24,7 +24,7 @@ $ ./aStar
 # Demo 
 ![Demo image of the algorithm](screenshot.png)
 
-# 🔴🔴🔴🔴 Area of improvments 🔴🔴🔴🔴🔴
+# 🔴🔴🔴🔴 Area of improvements 🔴🔴🔴🔴🔴
 
 - 🚧 Under Construction: We are using heap, but that is not correctly
 implemented, since instead of O(log(n)) it takes O(n). For that reason,

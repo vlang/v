@@ -56,15 +56,14 @@ enum Viewer_state {
 
 struct App {
 mut:
-	gg          &gg.Context = unsafe { nil }
-	pip_viewer  sgl.Pipeline
-	texture     gfx.Image
-	sampler     gfx.Sampler
-	init_flag   bool
-	frame_count int
-	mouse_x     int = -1
-	mouse_y     int = -1
-	scroll_y    int
+	gg         &gg.Context = unsafe { nil }
+	pip_viewer sgl.Pipeline
+	texture    gfx.Image
+	sampler    gfx.Sampler
+	init_flag  bool
+	mouse_x    int = -1
+	mouse_y    int = -1
+	scroll_y   int
 
 	state Viewer_state = .scanning
 	// translation
@@ -563,7 +562,6 @@ fn frame(mut app App) {
 	}
 
 	app.gg.end()
-	app.frame_count++
 }
 
 // draw readable text

@@ -5506,7 +5506,7 @@ fn main() {
 	assert 2 == int(BitField.write)
 	mut bf := BitField.read
 	assert bf.has(.read | .other) // test if *at least one* of the flags is set
-	assert !bf.all(.read | .other) // test if *all* of the flags is set
+	assert !bf.all(.read | .other) // test if *all* of the flags are set
 	bf.set(.write | .other)
 	assert bf.has(.read | .write | .other)
 	assert bf.all(.read | .write | .other)
@@ -7112,7 +7112,7 @@ and `-cflags` settings, rather than including them in the build command each tim
 
 ### #pkgconfig
 
-Add `#pkgconfig` directive is used to tell the compiler which modules should be used for compiling
+Add `#pkgconfig` directives to tell the compiler which modules should be used for compiling
 and linking using the pkg-config files provided by the respective dependencies.
 
 As long as backticks can't be used in `#flag` and spawning processes is not desirable for security

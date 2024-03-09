@@ -230,7 +230,8 @@ fn (mut cmd Command) parse_commands() {
 	// if no further command was found, execute current command
 	if cmd.required_args > 0 {
 		if cmd.required_args > cmd.args.len {
-			eprintln_exit('Command `${cmd.name}` needs at least ${cmd.required_args} arguments')
+			descriptor := if cmd.required_args == 1 { 'argument' } else { 'arguments' }
+			eprintln_exit('Command `${cmd.name}` needs at least ${cmd.required_args} ${descriptor}')
 		}
 	}
 	cmd.check_required_flags()

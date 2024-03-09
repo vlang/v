@@ -273,7 +273,9 @@ pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
 			match obj {
 				ast.Var {
 					if !obj.is_used && obj.name[0] != `_` {
-						c.warn('unused variable: `${obj.name}`', obj.pos)
+						if !c.pref.translated && !c.file.is_translated {
+							c.warn('unused variable: `${obj.name}`', obj.pos)
+						}
 					}
 					if obj.is_mut && !obj.is_changed && !c.is_builtin_mod && obj.name != 'it' {
 						// if obj.is_mut && !obj.is_changed && !c.is_builtin {  //TODO C error bad field not checked
@@ -1561,8 +1563,10 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		if !c.inside_unsafe {
 			if sym.info is ast.Struct {
 				if sym.info.is_union && node.next_token !in token.assign_tokens {
-					c.warn('reading a union field (or its address) requires `unsafe`',
-						node.pos)
+					if !c.pref.translated && !c.file.is_translated {
+						c.warn('reading a union field (or its address) requires `unsafe`',
+							node.pos)
+					}
 				}
 			}
 		}
@@ -2343,7 +2347,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 		node.ct_conds = c.ct_cond_stack.clone()
 	}
 	if c.pref.backend.is_js() || c.pref.backend == .golang {
-		// consider the the best way to handle the .go.vv files
+		// consider the best way to handle the .go.vv files
 		if !c.file.path.ends_with('.js.v') && !c.file.path.ends_with('.go.v')
 			&& !c.file.path.ends_with('.go.vv') {
 			c.error('hash statements are only allowed in backend specific files such "x.js.v" and "x.go.v"',
@@ -3148,7 +3152,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			tt := c.table.type_to_str(to_type)
 			c.error('cannot cast `${ft}` to `${tt}`', node.pos)
 		}
-	} else if mut to_sym.info is ast.Interface {
+	} else if !from_type.has_option_or_result() && mut to_sym.info is ast.Interface {
 		if c.type_implements(from_type, to_type, node.pos) {
 			if !from_type.is_any_kind_of_pointer() && from_sym.kind != .interface_
 				&& !c.inside_unsafe {
@@ -3174,7 +3178,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	} else if from_type == ast.none_type && !to_type.has_flag(.option) && !to_type.has_flag(.result) {
 		type_name := c.table.type_to_str(to_type)
 		c.error('cannot cast `none` to `${type_name}`', node.pos)
-	} else if from_sym.kind == .struct_ && !from_type.is_ptr() {
+	} else if !from_type.has_option_or_result() && from_sym.kind == .struct_ && !from_type.is_ptr() {
 		if (final_to_is_ptr || to_sym.kind !in [.sum_type, .interface_]) && !c.is_builtin_mod {
 			from_type_name := c.table.type_to_str(from_type)
 			type_name := c.table.type_to_str(to_type)
@@ -3202,7 +3206,9 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		tt := c.table.type_to_str(to_type)
 		c.warn('casting `${ft}` to `${tt}` is only allowed in `unsafe` code', node.pos)
 	} else if from_sym.kind == .array_fixed && !from_type.is_ptr() {
-		c.warn('cannot cast a fixed array (use e.g. `&arr[0]` instead)', node.pos)
+		if !c.pref.translated && !c.file.is_translated {
+			c.warn('cannot cast a fixed array (use e.g. `&arr[0]` instead)', node.pos)
+		}
 	} else if final_from_sym.kind == .string && final_to_sym.is_number()
 		&& final_to_sym.kind != .rune {
 		snexpr := node.expr.str()
@@ -4317,8 +4323,14 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 			}
 		}
 	}
-	if node.op == .bit_not && !right_sym.is_int() && !c.pref.translated && !c.file.is_translated {
-		c.type_error_for_operator('~', 'integer', right_sym.name, node.pos)
+	if node.op == .bit_not && !c.pref.translated && !c.file.is_translated {
+		if right_sym.info is ast.Enum && !right_sym.info.is_flag {
+			c.error('operator `~` can only be used with `@[flag]` tagged enums', node.pos)
+		}
+		// Only check for int not enum as it is done above
+		if !right_sym.is_int() && right_sym.info !is ast.Enum {
+			c.type_error_for_operator('~', 'integer', right_sym.name, node.pos)
+		}
 	}
 	if node.op == .not && right_sym.kind != .bool && !c.pref.translated && !c.file.is_translated {
 		c.type_error_for_operator('!', 'bool', right_sym.name, node.pos)
@@ -4835,8 +4847,10 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) bool {
 					pos)
 				return false
 			} else if sym.language == .c {
-				c.warn(util.new_suggestion(sym.name, c.table.known_type_names()).say('unknown type `${sym.name}` (all virtual C types must be defined, this will be an error soon)'),
-					pos)
+				if !c.pref.translated && !c.file.is_translated {
+					c.warn(util.new_suggestion(sym.name, c.table.known_type_names()).say('unknown type `${sym.name}` (all virtual C types must be defined, this will be an error soon)'),
+						pos)
+				}
 				// dump(sym)
 				// for _, t in c.table.type_symbols {
 				// println(t.name)
@@ -5005,7 +5019,10 @@ fn (mut c Checker) goto_stmt(node ast.GotoStmt) {
 		c.error('goto is not allowed in defer statements', node.pos)
 	}
 	if !c.inside_unsafe {
-		c.warn('`goto` requires `unsafe` (consider using labelled break/continue)', node.pos)
+		if !c.pref.translated && !c.file.is_translated {
+			c.warn('`goto` requires `unsafe` (consider using labelled break/continue)',
+				node.pos)
+		}
 	}
 	if c.table.cur_fn != unsafe { nil } && node.name !in c.table.cur_fn.label_names {
 		c.error('unknown label `${node.name}`', node.pos)

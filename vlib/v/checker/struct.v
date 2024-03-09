@@ -88,12 +88,14 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			// Do not allow uninitialized `fn` fields, or force `?fn`
 			// (allow them in `C.` structs)
 			if !c.is_builtin_mod && node.language == .v {
-				sym := c.table.sym(field.typ)
-				if sym.kind == .function {
-					if !field.typ.has_flag(.option) && !field.has_default_expr
-						&& field.attrs.all(it.name != 'required') {
-						error_msg := 'uninitialized `fn` struct fields are not allowed, since they can result in segfaults; use `?fn` or `[required]` or initialize the field with `=` (if you absolutely want to have unsafe function pointers, use `= unsafe { nil }`)'
-						c.note(error_msg, field.pos)
+				if !(c.file.is_translated || c.pref.translated) {
+					sym := c.table.sym(field.typ)
+					if sym.kind == .function {
+						if !field.typ.has_flag(.option) && !field.has_default_expr
+							&& field.attrs.all(it.name != 'required') {
+							error_msg := 'uninitialized `fn` struct fields are not allowed, since they can result in segfaults; use `?fn` or `[required]` or initialize the field with `=` (if you absolutely want to have unsafe function pointers, use `= unsafe { nil }`)'
+							c.note(error_msg, field.pos)
+						}
 					}
 				}
 			}
@@ -672,8 +674,10 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 						&& !exp_type.has_flag(.option) {
 						if init_field.expr.str() == '0' {
 							if !c.inside_unsafe && type_sym.language == .v {
-								c.note('assigning `0` to a reference field is only allowed in `unsafe` blocks',
-									init_field.pos)
+								if !(c.file.is_translated || c.pref.translated) {
+									c.note('assigning `0` to a reference field is only allowed in `unsafe` blocks',
+										init_field.pos)
+								}
 							}
 						} else {
 							c.error('reference field must be initialized with reference',
