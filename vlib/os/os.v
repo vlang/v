@@ -339,7 +339,7 @@ pub fn get_line() string {
 	return str.trim_right('\n')
 }
 
-// get_lines returns an array of strings read from from stdin.
+// get_lines returns an array of strings read from stdin.
 // reading is stopped when an empty line is read.
 pub fn get_lines() []string {
 	mut line := ''
@@ -355,7 +355,7 @@ pub fn get_lines() []string {
 	return inputstr
 }
 
-// get_lines_joined returns a string of the values read from from stdin.
+// get_lines_joined returns a string of the values read from stdin.
 // reading is stopped when an empty line is read.
 pub fn get_lines_joined() string {
 	mut line := ''
