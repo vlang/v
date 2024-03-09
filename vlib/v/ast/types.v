@@ -1473,10 +1473,6 @@ fn (t Table) shorten_user_defined_typenames(original_name string, import_aliases
 	}
 	mut parts := original_name.split('.')
 	if parts.len > 1 {
-		// cur_mod.Type => Type
-		if t.cmod_prefix != '' && original_name.starts_with(t.cmod_prefix) {
-			return original_name.all_after(t.cmod_prefix)
-		}
 		// mod.submod.submod2.Type => submod2.Type
 		if !parts[..parts.len - 1].any(it.contains('[')) {
 			mod_idx := parts.len - 2
@@ -1485,6 +1481,9 @@ fn (t Table) shorten_user_defined_typenames(original_name string, import_aliases
 			}
 			if alias := import_aliases[parts[mod_idx]] {
 				parts[mod_idx] = alias
+			} else if t.cmod_prefix != '' && original_name.starts_with(t.cmod_prefix) {
+				// cur_mod.Type => Type
+				return original_name.all_after(t.cmod_prefix)
 			}
 			return parts[mod_idx..].join('.')
 		}
