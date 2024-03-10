@@ -121,7 +121,7 @@ mut:
 
 // Digest holds the state needed to compute a Blake3 hash
 struct Digest {
-	key_words []u32 // these form the initial cahining value of a chunk
+	key_words []u32 // these form the initial chaining value of a chunk
 	flags     u32   // only the keyed_hash, derive_key_context, or derive_key_material bits
 mut:
 	chunk_counter u64        // number of the next chunk to be created
