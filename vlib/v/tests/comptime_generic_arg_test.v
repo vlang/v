@@ -36,7 +36,7 @@ fn (mut count Count) chars_in_struct[T](val T) {
 	assert true
 }
 
-fn main() {
+fn test_main() {
 	mut count := Count{}
 	count.count_chars(StructType[SumTypes]{ val: '' })
 	assert true
