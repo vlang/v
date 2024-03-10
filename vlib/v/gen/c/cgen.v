@@ -2514,7 +2514,6 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 					unwrapped_got_type = unwrapped_got_sym.info.types[g.aggregate_type_idx]
 					unwrapped_got_sym = g.table.sym(unwrapped_got_type)
 				}
-
 				fname := g.get_sumtype_casting_fn(unwrapped_got_type, unwrapped_expected_type)
 
 				if expr is ast.ArrayInit && got_sym.kind == .array_fixed {
