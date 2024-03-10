@@ -2303,7 +2303,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 		if arg.expr is ast.Ident {
 			if arg.expr.obj is ast.Var {
 				if i < node.expected_arg_types.len && node.expected_arg_types[i].has_flag(.generic)
-					&& arg.expr.obj.ct_type_var != .no_comptime {
+					&& arg.expr.obj.ct_type_var !in [.generic_param, .no_comptime] {
 					exp_option := node.expected_arg_types[i].has_flag(.option)
 					expected_types[i] = g.unwrap_generic(g.comptime.get_comptime_var_type(arg.expr))
 					if !exp_option {
