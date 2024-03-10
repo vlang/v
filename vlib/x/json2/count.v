@@ -34,7 +34,16 @@ pub fn (mut count Count) count_chars[T](val T) {
 	} $else $if T is $struct {
 		count.chars_in_struct(val)
 	} $else $if T is $enum {
-	} $else $if T is $int || T is $float {
+	} $else $if T is $int {
+		// TODO test
+		// TODO benchmark
+		if val < 0 {
+			count.total++ // -
+		}
+		for number_value := i64(val*1); number_value >= 1; number_value /= 10 {
+			count.total++
+		}
+	} $else $if T is $float {
 	} $else $if T is bool {
 		if val {
 			count.total += 4 // true
