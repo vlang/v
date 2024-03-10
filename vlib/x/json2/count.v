@@ -39,6 +39,7 @@ pub fn (mut count Count) count_chars[T](val T) {
 	} $else $if T is $struct {
 		count.chars_in_struct(val)
 	} $else $if T is $enum {
+		count.count_chars(int(val))
 	} $else $if T is $int {
 		// TODO test
 		// TODO benchmark
