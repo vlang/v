@@ -26,6 +26,11 @@ pub fn (mut count Count) count_chars[T](val T) {
 	} $else $if T is time.Time {
 		count.total += 26 // "YYYY-MM-DDTHH:mm:ss.123Z"
 	} $else $if T is $map {
+		count.total += 3 // {:}
+		for k, v in value {
+			count.count_chars(k)
+			count.count_chars(v)
+		}
 	} $else $if T is $array {
 		count.total += 2 // []
 		for element in val {
