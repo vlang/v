@@ -595,6 +595,10 @@ fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot b
 		for p.peek_tok.kind == .dot {
 			mod_pos = mod_pos.extend(p.tok.pos())
 			mod_last_part = p.tok.lit
+			if p.tok.lit[0].is_capital() {
+				// it's a type name, should break loop
+				break
+			}
 			mod += '.${mod_last_part}'
 			p.next()
 			p.check(.dot)

@@ -1467,42 +1467,32 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 	return res
 }
 
-fn (t Table) shorten_user_defined_typenames(originalname string, import_aliases map[string]string) string {
-	mut res := originalname
-	if t.cmod_prefix.len > 0 && res.starts_with(t.cmod_prefix) {
-		// cur_mod.Type => Type
-		res = res.replace_once(t.cmod_prefix, '')
-	} else if res in import_aliases {
-		res = import_aliases[res]
-	} else {
-		// FIXME: clean this case and remove the following if
-		// because it is an hack to format well the type when
-		// there is a []mod.name
-		if res.contains('[]') {
-			idx := res.index('.') or { -1 }
-			return res[idx + 1..]
-		}
-		// types defined by the user
+fn (t Table) shorten_user_defined_typenames(original_name string, import_aliases map[string]string) string {
+	if alias := import_aliases[original_name] {
+		return alias
+	}
+	mut parts := original_name.split('.')
+	if parts.len > 1 {
 		// mod.submod.submod2.Type => submod2.Type
-		mut parts := res.split('.')
-		if parts.len > 1 {
-			if parts[..parts.len - 1].all(!it.contains('[')) {
-				ind := parts.len - 2
-				if t.is_fmt {
-					// Rejoin the module parts for correct usage of aliases
-					parts[ind] = parts[..ind + 1].join('.')
-				}
-				if parts[ind] in import_aliases {
-					parts[ind] = import_aliases[parts[ind]]
-				}
-
-				res = parts[ind..].join('.')
+		if !parts[..parts.len - 1].any(it.contains('[')) {
+			mod_idx := parts.len - 2
+			if t.is_fmt {
+				parts[mod_idx] = original_name.all_before_last('.')
 			}
-		} else {
-			res = parts[0]
+			if alias := import_aliases[parts[mod_idx]] {
+				parts[mod_idx] = alias
+			} else if t.cmod_prefix != '' && original_name.starts_with(t.cmod_prefix) {
+				// cur_mod.Type => Type
+				return original_name.all_after(t.cmod_prefix)
+			}
+			return parts[mod_idx..].join('.')
+		}
+		if original_name.contains('[]') {
+			// []mod.name
+			return original_name.all_after('.')
 		}
 	}
-	return res
+	return original_name
 }
 
 @[minify]
