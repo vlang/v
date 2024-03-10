@@ -23,6 +23,7 @@ pub fn (mut count Count) count_chars[T](val T) {
 			}
 		}
 	} $else $if T is $alias {
+		// TODO
 	} $else $if T is time.Time {
 		count.total += 26 // "YYYY-MM-DDTHH:mm:ss.123Z"
 	} $else $if T is $map {
@@ -50,6 +51,7 @@ pub fn (mut count Count) count_chars[T](val T) {
 			count.total++
 		}
 	} $else $if T is $float {
+		// TODO
 	} $else $if T is bool {
 		if val {
 			count.total += 4 // true
