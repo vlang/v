@@ -27,6 +27,10 @@ pub fn (mut count Count) count_chars[T](val T) {
 		count.total += 26 // "YYYY-MM-DDTHH:mm:ss.123Z"
 	} $else $if T is $map {
 	} $else $if T is $array {
+		count.total += 2 // []
+		for element in val {
+			count.count_chars(element)
+		}
 	} $else $if T is $struct {
 		count.chars_in_struct(val)
 	} $else $if T is $enum {
