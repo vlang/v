@@ -62,3 +62,12 @@ pub fn a8() {
 pub fn a9() {
 	println('hi')
 }
+
+// foo does stuff
+// ```
+// this is a multiline codeblock.
+// second line
+// third line.
+// ```
+pub fn foo() {}
+

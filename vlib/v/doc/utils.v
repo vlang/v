@@ -62,8 +62,8 @@ pub fn merge_doc_comments(comments []DocComment) string {
 	}
 	mut comment := ''
 	mut next_on_newline := true
+	mut is_codeblock := false
 	for cmt in doc_comments.reverse() {
-		mut is_codeblock := false
 		line_loop: for line in cmt.split_into_lines() {
 			l := line.trim_left('\x01').trim_space()
 			if is_codeblock {
