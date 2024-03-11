@@ -2985,7 +2985,11 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 	f.write('sql ')
 	f.expr(node.db_expr)
 	f.writeln(' {')
-	f.write('\tselect ')
+	if node.is_insert {
+		f.write('\tinsert ')
+	} else {
+		f.write('\tselect ')
+	}
 	sym := f.table.sym(node.table_expr.typ)
 	mut table_name := sym.name
 	if !table_name.starts_with('C.') && !table_name.starts_with('JS.') {
@@ -3001,7 +3005,11 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 			}
 		}
 	}
-	f.write('from ${table_name}')
+	if node.is_insert {
+		f.write('${node.inserted_var} into ${table_name}')
+	} else {
+		f.write('from ${table_name}')
+	}
 	if node.has_where {
 		f.write(' where ')
 		f.expr(node.where_expr)

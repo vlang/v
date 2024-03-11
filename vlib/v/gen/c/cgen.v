@@ -3527,7 +3527,11 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			g.size_of(node)
 		}
 		ast.SqlExpr {
-			g.sql_select_expr(node)
+			if node.is_insert {
+				g.sql_insert_expr(node)
+			} else {
+				g.sql_select_expr(node)
+			}
 		}
 		ast.StringLiteral {
 			g.string_literal(node)

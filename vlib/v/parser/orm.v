@@ -5,6 +5,8 @@ module parser
 
 import v.ast
 
+// select from User
+// insert user into User returning id
 fn (mut p Parser) sql_expr() ast.Expr {
 	tmp_inside_match := p.inside_match
 	p.inside_orm = true
@@ -16,12 +18,32 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		p.unexpected(prepend_msg: 'invalid expression:', expecting: 'database')
 	}
 	p.check(.lcbr)
-	p.check(.key_select)
-	is_count := p.check_name() == 'count'
+	// p.check(.key_select)
+	is_select := p.tok.kind == .key_select
+	is_insert := p.tok.lit == 'insert'
+	if !is_select && !is_insert {
+		p.error('expected "select" or "insert" in an ORM expression')
+	}
+	p.next()
+	// kind := if is_select { ast.SqlExprKind.select_ } else { ast.SqlExprKind.insert }
+	mut inserted_var := ''
+	mut is_count := false
+	if is_insert {
+		inserted_var = p.check_name()
+		into := p.check_name()
+		if into != 'into' {
+			p.error('expecting `into`')
+		}
+	} else if is_select {
+		is_count = p.check_name() == 'count'
+	}
 	mut typ := ast.void_type
 
 	if is_count {
-		p.check_name() // from
+		n := p.check_name() // from
+		if n != 'from' {
+			p.error('expecting "from" in a "select count" ORM statement')
+		}
 	}
 
 	table_pos := p.tok.pos()
@@ -90,6 +112,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 
 	return ast.SqlExpr{
 		is_count: is_count
+		is_insert: is_insert
 		typ: typ.set_flag(.result)
 		or_expr: or_expr
 		db_expr: db_expr
@@ -104,6 +127,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		has_desc: has_desc
 		is_array: if is_count { false } else { true }
 		is_generated: false
+		inserted_var: inserted_var
 		pos: pos.extend(p.prev_tok.pos())
 		table_expr: ast.TypeNode{
 			typ: table_type
@@ -114,6 +138,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 
 // insert user into User
 // update User set nr_oders=nr_orders+1 where id == user_id
+// delete
 fn (mut p Parser) sql_stmt() ast.SqlStmt {
 	mut pos := p.tok.pos()
 	p.inside_orm = true

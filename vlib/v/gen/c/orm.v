@@ -42,6 +42,30 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	g.write('${left} *(${unwrapped_c_typ}*)${result_var}.data')
 }
 
+fn (mut g Gen) sql_insert_expr(node ast.SqlExpr) {
+	left := g.go_before_last_stmt()
+	g.writeln('')
+	connection_var_name := g.new_tmp_var()
+	g.write_orm_connection_init(connection_var_name, &node.db_expr)
+	table_name := g.get_table_name_by_struct_type(node.table_expr.typ)
+	result_var_name := g.new_tmp_var()
+	g.sql_table_name = g.table.sym(node.table_expr.typ).name
+
+	// orm_insert needs an SqlStmtLine, build it from SqlExpr (most nodes are the same)
+	hack_stmt_line := ast.SqlStmtLine{
+		object_var: node.inserted_var
+		fields: node.fields
+		// sub_structs: node.sub_structs
+	}
+	g.write_orm_insert(hack_stmt_line, table_name, connection_var_name, result_var_name,
+		node.or_expr)
+
+	g.write(left)
+	g.write('db__pg__DB_last_id(')
+	g.expr(node.db_expr)
+	g.write(');')
+}
+
 // sql_stmt writes C code that calls ORM functions for
 // performing various database operations such as creating and dropping tables,
 // as well as inserting and updating objects.
@@ -272,6 +296,7 @@ fn (mut g Gen) write_orm_delete(node &ast.SqlStmtLine, table_name string, connec
 // inserting a struct into a table, saving inserted `id` into a passed variable.
 fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_var_name string, table_name string, last_ids_arr string, res string, pid string, fkey string, or_expr ast.OrExpr) {
 	mut subs := []ast.SqlStmtLine{}
+
 	mut subs_unwrapped_c_typ := []string{}
 	mut arrs := []ast.SqlStmtLine{}
 	mut fkeys := []string{}
@@ -285,6 +310,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			unwrapped_c_typ := g.typ(field.typ.clear_flag(.option))
 			subs_unwrapped_c_typ << if field.typ.has_flag(.option) { unwrapped_c_typ } else { '' }
 		} else if sym.kind == .array {
+			// Handle foreign keys
 			if attr := field.attrs.find_first('fkey') {
 				fkeys << attr.arg
 			} else {
@@ -475,7 +501,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			unsafe { fff.free() }
 			g.write_orm_insert_with_last_ids(arr, connection_var_name, g.get_table_name_by_struct_type(arr.table_expr.typ),
 				last_ids, res_, id_name, fkeys[i], or_expr)
-			// Validates sub insertion success otherwise, handled and propagated error.	
+			// Validates sub insertion success otherwise, handled and propagated error.
 			g.or_block(res_, or_expr, ast.int_type.set_flag(.result))
 			g.indent--
 			g.writeln('}')

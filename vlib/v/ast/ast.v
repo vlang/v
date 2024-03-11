@@ -1960,6 +1960,11 @@ pub enum SqlStmtKind {
 	drop
 }
 
+pub enum SqlExprKind {
+	insert
+	select_
+}
+
 pub struct SqlStmt {
 pub:
 	pos token.Pos
@@ -1989,7 +1994,10 @@ pub mut:
 
 pub struct SqlExpr {
 pub:
-	is_count   bool
+	is_count     bool
+	is_insert    bool // for insert expressions
+	inserted_var string
+
 	has_where  bool
 	has_order  bool
 	has_limit  bool

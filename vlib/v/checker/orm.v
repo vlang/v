@@ -190,8 +190,15 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 			'offset')
 	}
 	c.expr(mut node.db_expr)
+	if node.is_insert {
+		node.typ = ast.int_type
+	}
 
 	c.check_orm_or_expr(mut node)
+
+	if node.is_insert {
+		return ast.int_type
+	}
 
 	return node.typ.clear_flag(.result)
 }
