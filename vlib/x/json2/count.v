@@ -1,7 +1,6 @@
 module json2
 
 import time
-import math
 
 pub struct Count {
 mut:
@@ -19,6 +18,7 @@ pub fn (mut count Count) reset_total() {
 }
 
 // count_chars count json sizen whithout new encode
+@[inline]
 pub fn (mut count Count) count_chars[T](val T) {
 	$if val is $option {
 		workaround := val
@@ -59,10 +59,12 @@ pub fn (mut count Count) count_chars[T](val T) {
 		count.count_chars(int(val))
 	} $else $if T is $int {
 		// TODO benchmark
+		mut abs_val := val
 		if val < 0 {
 			count.total++ // -
+			abs_val = -val
 		}
-		for number_value := math.abs(val); number_value >= 1; number_value /= 10 {
+		for number_value := abs_val; number_value >= 1; number_value /= 10 {
 			count.total++
 		}
 		if val == 0 {
