@@ -12,8 +12,8 @@ import v.util.diff
 
 const vroot = get_vroot()
 const tdir = os.join_path(vroot, 'vlib', 'v', 'fmt', 'tests')
-const error_missing_vexe = 1
-const error_failed_tests = 2
+const ecode_missing_vexe = 1
+const ecode_failed_tests = 2
 const fpref = &pref.Preferences{
 	is_fmt: true
 }
@@ -71,7 +71,7 @@ fn test_fmt() {
 	eprintln(term.h_divider('-'))
 	eprintln(fmt_bench.total_message(fmt_message))
 	if fmt_bench.nfail > 0 {
-		exit(error_failed_tests)
+		exit(ecode_failed_tests)
 	}
 }
 
