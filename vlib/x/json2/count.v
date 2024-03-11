@@ -1,10 +1,21 @@
 module json2
 
 import time
+import math
 
 pub struct Count {
 mut:
 	total int
+}
+
+// get_total
+pub fn (mut count Count) get_total() int {
+	return count.total
+}
+
+// reset_total
+pub fn (mut count Count) reset_total() {
+	count.total = 0
 }
 
 // count_chars count json sizen whithout new encode
@@ -27,27 +38,34 @@ pub fn (mut count Count) count_chars[T](val T) {
 	} $else $if T is time.Time {
 		count.total += 26 // "YYYY-MM-DDTHH:mm:ss.123Z"
 	} $else $if T is $map {
-		count.total += 3 // {:}
+		count.total++ // {
 		for k, v in val {
 			count.count_chars(k)
+			count.total++ // :
 			count.count_chars(v)
 		}
+		count.total++ // }
 	} $else $if T is $array {
 		count.total += 2 // []
-		for element in val {
-			count.count_chars(element)
+		if val.len > 0 {
+			for element in val {
+				count.count_chars(element)
+			}
+			count.total += val.len - 1 // ,
 		}
 	} $else $if T is $struct {
 		count.chars_in_struct(val)
 	} $else $if T is $enum {
 		count.count_chars(int(val))
 	} $else $if T is $int {
-		// TODO test
 		// TODO benchmark
 		if val < 0 {
 			count.total++ // -
 		}
-		for number_value := i64(val * 1); number_value >= 1; number_value /= 10 {
+		for number_value := math.abs(val); number_value >= 1; number_value /= 10 {
+			count.total++
+		}
+		if val == 0 {
 			count.total++
 		}
 	} $else $if T is $float {
