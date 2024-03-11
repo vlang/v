@@ -9,43 +9,42 @@ import v.parser
 import v.ast
 import v.pref
 import v.util.diff
-import v.util.vtest
 
+const vroot = get_vroot()
+const tdir = os.join_path(vroot, 'vlib', 'v', 'fmt', 'tests')
 const error_missing_vexe = 1
 const error_failed_tests = 2
 const fpref = &pref.Preferences{
 	is_fmt: true
 }
-const vexe = os.getenv('VEXE')
+
+fn get_vroot() string {
+	vexe := pref.vexe_path()
+	if vexe == '' || !os.exists(vexe) {
+		eprintln('VEXE must be set')
+		exit(ecode_missing_vexe)
+	}
+	return os.dir(vexe)
+}
 
 fn test_fmt() {
 	fmt_message := 'checking that v fmt keeps already formatted files *unchanged*'
 	eprintln(term.header(fmt_message, '-'))
-	if vexe.len == 0 || !os.exists(vexe) {
-		eprintln('VEXE must be set')
-		exit(error_missing_vexe)
-	}
-	vroot := os.dir(vexe)
-	os.chdir(vroot) or {}
-	basepath := vroot + '/'
+	mut input_files := []string{}
+	input_files << os.walk_ext(tdir, '_keep.vv')
+	input_files << os.walk_ext(tdir, '_expected.vv')
+	input_files.sort()
+	mut fmt_bench := benchmark.new_benchmark()
+	fmt_bench.set_total_expected_steps(input_files.len + 1)
+	basepath := vroot + os.path_separator
 	tmpfolder := os.temp_dir()
 	diff_cmd := diff.find_working_diff_command() or { '' }
-	mut fmt_bench := benchmark.new_benchmark()
-	keep_input_files := os.walk_ext('vlib/v/fmt/tests', '_keep.vv')
-	expected_input_files := os.walk_ext('vlib/v/fmt/tests', '_expected.vv')
-	mut input_files := []string{}
-	input_files << keep_input_files
-	input_files << expected_input_files
-	input_files = vtest.filter_vtest_only(input_files, basepath: vroot)
-	input_files.sort()
-	fmt_bench.set_total_expected_steps(input_files.len + 1)
 	for istep, ipath in input_files {
 		fmt_bench.cstep = istep + 1
 		fmt_bench.step()
 		ifilename := os.file_name(ipath)
-		vrelpath := ipath.replace(basepath, '')
-		opath := ipath
-		expected_ocontent := os.read_file(opath) or {
+		vrelpath := ipath.all_after(basepath)
+		expected_ocontent := os.read_file(ipath) or {
 			fmt_bench.fail()
 			eprintln(fmt_bench.step_message_fail('cannot read from ${vrelpath}'))
 			continue
@@ -62,7 +61,7 @@ fn test_fmt() {
 			}
 			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_${ifilename}')
 			os.write_file(vfmt_result_file, result_ocontent) or { panic(err) }
-			eprintln(diff.color_compare_files(diff_cmd, opath, vfmt_result_file))
+			eprintln(diff.color_compare_files(diff_cmd, ipath, vfmt_result_file))
 			continue
 		}
 		fmt_bench.ok()
@@ -74,4 +73,10 @@ fn test_fmt() {
 	if fmt_bench.nfail > 0 {
 		exit(error_failed_tests)
 	}
+}
+
+fn test_fmt_vmodules() {
+	os.setenv('VMODULES', tdir, true)
+	os.chdir(tdir)!
+	test_fmt()
 }
