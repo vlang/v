@@ -291,7 +291,9 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 					if config.img_id > 0 {
 						img = &ctx.image_cache[config.img_id]
 					} else {
+						//$if !noggverbose ? {
 						eprintln('gg: failed to get image to draw natively')
+						//}
 						return
 					}
 				}

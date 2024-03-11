@@ -37,7 +37,19 @@ fn (mut c Checker) error(message string, pos token.Pos) {
 		// TODO move this
 		return
 	}
-	msg := message.replace('`Array_', '`[]')
+	mut msg := message.replace('`Array_', '`[]')
+	if c.pref.is_vweb {
+		// Show in which veb action the error occurred (for easier debugging)
+		veb_action := c.table.cur_fn.name.replace('vweb_tmpl_', '')
+		mut j := 0
+		for _, ch in veb_action {
+			if ch.is_digit() {
+				break
+			}
+			j++
+		}
+		msg += ' (veb action: ${veb_action[..j]})'
+	}
 	c.warn_or_error(msg, pos, false)
 }
 

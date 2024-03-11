@@ -90,6 +90,16 @@ pub fn post_form(url string, data map[string]string) !Response {
 	)
 }
 
+pub fn post_form_with_cookies(url string, data map[string]string, cookies map[string]string) !Response {
+	return fetch(
+		method: .post
+		url: url
+		header: new_header(key: .content_type, value: 'application/x-www-form-urlencoded')
+		data: url_encode_form_data(data)
+		cookies: cookies
+	)
+}
+
 @[params]
 pub struct PostMultipartFormConfig {
 pub mut:
