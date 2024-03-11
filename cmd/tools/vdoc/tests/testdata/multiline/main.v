@@ -70,4 +70,3 @@ pub fn a9() {
 // third line.
 // ```
 pub fn foo() {}
-
