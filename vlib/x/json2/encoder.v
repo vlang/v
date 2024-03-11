@@ -55,7 +55,6 @@ pub fn encode[T](val T) string {
 	} $else {
 		mut count := Count{0}
 		count.count_chars(val)
-		count.total
 
 		mut buf := []u8{cap: count.total}
 
