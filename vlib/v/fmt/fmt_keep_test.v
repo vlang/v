@@ -9,6 +9,7 @@ import v.parser
 import v.ast
 import v.pref
 import v.util.diff
+import v.util.vtest
 
 const vroot = get_vroot()
 const tdir = os.join_path(vroot, 'vlib', 'v', 'fmt', 'tests')
@@ -33,6 +34,7 @@ fn test_fmt() {
 	mut input_files := []string{}
 	input_files << os.walk_ext(tdir, '_keep.vv')
 	input_files << os.walk_ext(tdir, '_expected.vv')
+	input_files = vtest.filter_vtest_only(input_files)
 	input_files.sort()
 	mut fmt_bench := benchmark.new_benchmark()
 	fmt_bench.set_total_expected_steps(input_files.len + 1)
