@@ -28,7 +28,7 @@ pub fn (mut count Count) count_chars[T](val T) {
 		count.total += 26 // "YYYY-MM-DDTHH:mm:ss.123Z"
 	} $else $if T is $map {
 		count.total += 3 // {:}
-		for k, v in value {
+		for k, v in val {
 			count.count_chars(k)
 			count.count_chars(v)
 		}
@@ -47,7 +47,7 @@ pub fn (mut count Count) count_chars[T](val T) {
 		if val < 0 {
 			count.total++ // -
 		}
-		for number_value := i64(val*1); number_value >= 1; number_value /= 10 {
+		for number_value := i64(val * 1); number_value >= 1; number_value /= 10 {
 			count.total++
 		}
 	} $else $if T is $float {
