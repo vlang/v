@@ -44,3 +44,10 @@ fn a8()
     Fixme: this should be it's own paragraph.
 fn a9()
     normal comment
+fn foo()
+    foo does stuff
+    ```
+    this is a multiline codeblock.
+    second line
+    third line.
+    ```
