@@ -1,5 +1,6 @@
 module testing
 
+import time
 import term
 
 pub const empty = term.header(' ', ' ')
@@ -8,6 +9,9 @@ pub const empty = term.header(' ', ' ')
 // It is used by default by `v test .`
 // It was extracted by the original non customiseable output implementation directly in cmd/tools/modules/testing/common.v
 pub struct NormalReporter {
+mut:
+	runtime  time.Duration
+	comptime time.Duration
 }
 
 pub fn (r NormalReporter) session_start(message string, mut ts TestSession) {
@@ -15,13 +19,19 @@ pub fn (r NormalReporter) session_start(message string, mut ts TestSession) {
 }
 
 pub fn (r NormalReporter) session_stop(message string, mut ts TestSession) {
-	println(ts.benchmark.total_message(message))
+	println('${ts.benchmark.total_message(message)} Comptime: ${r.comptime.microseconds() / 1000} ms. Runtime: ${r.runtime.microseconds() / 1000} ms.')
 }
 
 // the most general form; it may be useful for other reporters
 // in the normal one, it currently does nothing
-pub fn (r NormalReporter) report(index int, message LogMessage) {
+pub fn (mut r NormalReporter) report(index int, message LogMessage) {
 	// eprintln('> ${@METHOD} index: $index | message: $message')
+	if message.kind == .compile_end {
+		r.comptime += message.took
+	}
+	if message.kind == .cmd_end {
+		r.runtime += message.took
+	}
 }
 
 pub fn (r NormalReporter) report_stop() {

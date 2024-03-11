@@ -2,7 +2,7 @@ module stats
 
 import math
 
-// freq calculates the Measure of Occurance
+// freq calculates the Measure of Occurrence
 // Frequency of a given number
 // Based on
 // https://www.mathsisfun.com/data/frequency-distribution.html

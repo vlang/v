@@ -282,7 +282,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	// the tmpl inherits all parent scopes. previous functionality was just to
 	// inherit the scope from which the comptime call was made and no parents.
 	// this is much simpler and allows access to globals. can be changed if needed.
-	mut file := parse_comptime(tmpl_path, v_code, p.table, p.pref, p.scope)
+	mut file := parse_comptime(tmpl_path, v_code, mut p.table, p.pref, mut p.scope)
 	file.path = tmpl_path
 	return ast.ComptimeCall{
 		scope: unsafe { nil }
@@ -311,8 +311,8 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 	mut typ_pos := p.tok.pos()
 	lang := p.parse_language()
 	mut typ := ast.void_type
-	if p.tok.lit[0].is_capital() {
-		typ = p.parse_any_type(lang, false, false, false)
+	if p.tok.lit[0].is_capital() || p.tok.lit in p.imports {
+		typ = p.parse_any_type(lang, false, true, false)
 	} else {
 		expr = p.ident(lang)
 		p.mark_var_as_used((expr as ast.Ident).name)

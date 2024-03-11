@@ -17,6 +17,8 @@ const show_compilation_output = os.getenv('VTEST_SHOW_COMPILATION_OUTPUT').int()
 
 const user_os = os.user_os()
 
+const gcc_path = os.find_abs_path_of_executable('gcc') or { '' }
+
 fn mm(s string) string {
 	return term.colorize(term.magenta, s)
 }
@@ -247,9 +249,31 @@ fn should_skip(relpath string) bool {
 			eprintln('> skipping ${relpath} on windows')
 			return true
 		}
+		$if gcc {
+			if relpath.contains('_msvc_windows.vv') {
+				eprintln('> skipping ${relpath} on gcc')
+				return true
+			}
+		}
+		$if msvc {
+			if relpath.contains('_gcc_windows.vv') {
+				eprintln('> skipping ${relpath} on msvc')
+				return true
+			}
+		}
 	} else {
 		if relpath.contains('_windows.vv') {
 			eprintln('> skipping ${relpath} on !windows')
+			return true
+		}
+	}
+	if relpath.contains('freestanding_module_import_') {
+		if user_os != 'linux' {
+			eprintln('> skipping ${relpath} on != linux')
+			return true
+		}
+		if gcc_path == '' {
+			eprintln('> skipping ${relpath} since it needs gcc, which is not detected')
 			return true
 		}
 	}

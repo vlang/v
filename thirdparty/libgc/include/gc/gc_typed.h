@@ -7,7 +7,7 @@
  * OR IMPLIED.  ANY USE IS AT YOUR OWN RISK.
  *
  * Permission is hereby granted to use or copy this program
- * for any purpose,  provided the above notices are retained on all copies.
+ * for any purpose, provided the above notices are retained on all copies.
  * Permission to modify the code and to distribute modified code is granted,
  * provided the above notices are retained, and a notice that the code was
  * modified is included with the above copyright notice.
@@ -39,9 +39,9 @@ typedef GC_word * GC_bitmap;
         /* the first word in the object may be a pointer.               */
 
 #define GC_WORDSZ (8 * sizeof(GC_word))
-#define GC_get_bit(bm, index) \
+#define GC_get_bit(bm, index) /* index should be of unsigned type */ \
             (((bm)[(index) / GC_WORDSZ] >> ((index) % GC_WORDSZ)) & 1)
-#define GC_set_bit(bm, index) \
+#define GC_set_bit(bm, index) /* index should be of unsigned type */ \
             ((bm)[(index) / GC_WORDSZ] |= (GC_word)1 << ((index) % GC_WORDSZ))
 #define GC_WORD_OFFSET(t, f) (offsetof(t,f) / sizeof(GC_word))
 #define GC_WORD_LEN(t) (sizeof(t) / sizeof(GC_word))
@@ -104,13 +104,48 @@ GC_API GC_ATTR_MALLOC GC_ATTR_CALLOC_SIZE(1, 2) void * GC_CALL
         /* bitmap of d multiplied by sizeof GC_word.            */
         /* Returned object is cleared.                          */
 
+#define GC_CALLOC_TYPED_DESCR_WORDS 8
+
+#ifdef GC_BUILD
+  struct GC_calloc_typed_descr_s;
+#else
+  struct GC_calloc_typed_descr_s {
+    GC_word opaque[GC_CALLOC_TYPED_DESCR_WORDS];
+  };
+#endif
+
+GC_API int GC_CALL GC_calloc_prepare_explicitly_typed(
+                        struct GC_calloc_typed_descr_s * /* pctd */,
+                        size_t /* sizeof_ctd */, size_t /* nelements */,
+                        size_t /* element_size_in_bytes */, GC_descr);
+        /* This is same as GC_calloc_explicitly_typed but more optimal  */
+        /* in terms of the performance and memory usage if the client   */
+        /* needs to allocate multiple typed object arrays with the      */
+        /* same layout and number of elements.  The client should call  */
+        /* it to be prepared for the subsequent allocations by          */
+        /* GC_calloc_do_explicitly_typed, one or many.  The result of   */
+        /* the preparation is stored to *pctd, even in case of          */
+        /* a failure.  The prepared structure could be just dropped     */
+        /* when no longer needed.  Returns 0 on failure, 1 on success;  */
+        /* the result could be ignored (as it is also stored to *pctd   */
+        /* and checked later by GC_calloc_do_explicitly_typed).         */
+
+GC_API GC_ATTR_MALLOC void * GC_CALL GC_calloc_do_explicitly_typed(
+                        const struct GC_calloc_typed_descr_s * /* pctd */,
+                        size_t /* sizeof_ctd */);
+        /* The actual object allocation for the prepared description.   */
+
 #ifdef GC_DEBUG
 # define GC_MALLOC_EXPLICITLY_TYPED(bytes, d) ((void)(d), GC_MALLOC(bytes))
+# define GC_MALLOC_EXPLICITLY_TYPED_IGNORE_OFF_PAGE(bytes, d) \
+                        GC_MALLOC_EXPLICITLY_TYPED(bytes, d)
 # define GC_CALLOC_EXPLICITLY_TYPED(n, bytes, d) \
                         ((void)(d), GC_MALLOC((n) * (bytes)))
 #else
 # define GC_MALLOC_EXPLICITLY_TYPED(bytes, d) \
                         GC_malloc_explicitly_typed(bytes, d)
+# define GC_MALLOC_EXPLICITLY_TYPED_IGNORE_OFF_PAGE(bytes, d) \
+                        GC_malloc_explicitly_typed_ignore_off_page(bytes, d)
 # define GC_CALLOC_EXPLICITLY_TYPED(n, bytes, d) \
                         GC_calloc_explicitly_typed(n, bytes, d)
 #endif

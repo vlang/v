@@ -400,7 +400,9 @@ fn test_eof() {
 	mut f := os.open(tfile)!
 	f.read_bytes(10)
 	assert !f.eof()
-	f.read_bytes(100)
+	x := f.read_bytes(100)
+	dump(x)
+	dump(x.len)
 	assert f.eof()
 	f.close()
 }

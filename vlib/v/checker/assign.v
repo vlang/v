@@ -189,8 +189,8 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		if is_decl || is_shared_re_assign {
 			// check generic struct init and return unwrap generic struct type
 			if mut right is ast.StructInit {
+				c.expr(mut right)
 				if right.typ.has_flag(.generic) {
-					c.expr(mut right)
 					right_type = right.typ
 				}
 			} else if mut right is ast.PrefixExpr {
@@ -223,11 +223,31 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					}
 				}
 			}
-			if mut left is ast.Ident && mut right is ast.Ident {
-				if !c.inside_unsafe && left_type.is_ptr() && left.is_mut() && right_type.is_ptr()
-					&& !right.is_mut() {
+			if left is ast.Ident && left.is_mut() && !c.inside_unsafe {
+				if left_type.is_ptr() && mut right is ast.Ident && !right.is_mut()
+					&& right_type.is_ptr() {
 					c.error('`${right.name}` is immutable, cannot have a mutable reference to an immutable object',
 						right.pos)
+				} else if mut right is ast.StructInit {
+					typ_sym := c.table.sym(right.typ)
+					for init_field in right.init_fields {
+						if field_info := c.table.find_field_with_embeds(typ_sym, init_field.name) {
+							if field_info.is_mut {
+								if init_field.expr is ast.Ident && !init_field.expr.is_mut()
+									&& init_field.typ.is_ptr() {
+									c.note('`${init_field.expr.name}` is immutable, cannot have a mutable reference to an immutable object',
+										init_field.pos)
+								} else if init_field.expr is ast.PrefixExpr {
+									if init_field.expr.op == .amp
+										&& init_field.expr.right is ast.Ident
+										&& !init_field.expr.right.is_mut() {
+										c.note('`${init_field.expr.right.name}` is immutable, cannot have a mutable reference to an immutable object',
+											init_field.expr.right.pos)
+									}
+								}
+							}
+						}
+					}
 				}
 			}
 		} else {
@@ -267,6 +287,11 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 		}
 		node.left_types << left_type
+
+		if left is ast.ParExpr && is_decl {
+			c.error('parentheses are not supported on the left side of `:=`', left.pos())
+		}
+
 		for left is ast.ParExpr {
 			left = (left as ast.ParExpr).expr
 		}
@@ -283,6 +308,10 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							right.right.pos)
 					}
 				} else if left.kind == .blank_ident {
+					if !is_decl && mut right is ast.None {
+						c.error('cannot assign a `none` value to blank `_` identifier',
+							right.pos)
+					}
 					left_type = right_type
 					node.left_types[i] = right_type
 					if node.op !in [.assign, .decl_assign] {
@@ -356,10 +385,11 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 									}
 								} else if mut right is ast.Ident && right.obj is ast.Var
 									&& right.or_expr.kind == .absent {
-									if (right.obj as ast.Var).ct_type_var != .no_comptime {
+									right_obj_var := right.obj as ast.Var
+									if right_obj_var.ct_type_var != .no_comptime {
 										ctyp := c.comptime.get_comptime_var_type(right)
 										if ctyp != ast.void_type {
-											left.obj.ct_type_var = (right.obj as ast.Var).ct_type_var
+											left.obj.ct_type_var = right_obj_var.ct_type_var
 											left.obj.typ = ctyp
 										}
 									}
@@ -513,10 +543,9 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					}
 				} else if mut left is ast.Ident && left.kind != .blank_ident
 					&& right is ast.IndexExpr {
-					if (right as ast.IndexExpr).left is ast.Ident
-						&& (right as ast.IndexExpr).index is ast.RangeExpr
-						&& ((right as ast.IndexExpr).left.is_mut() || left.is_mut())
-						&& !c.inside_unsafe {
+					right_index_expr := right as ast.IndexExpr
+					if right_index_expr.left is ast.Ident && right_index_expr.index is ast.RangeExpr
+						&& (right_index_expr.left.is_mut() || left.is_mut()) && !c.inside_unsafe {
 						// `mut a := arr[..]` auto add clone() -> `mut a := arr[..].clone()`
 						c.add_error_detail_with_pos('To silence this notice, use either an explicit `a[..].clone()`,
 or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
@@ -577,7 +606,9 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 		if left_type.is_any_kind_of_pointer() && !left.is_auto_deref_var() {
 			if !c.inside_unsafe && node.op !in [.assign, .decl_assign] {
 				// ptr op=
-				c.warn('pointer arithmetic is only allowed in `unsafe` blocks', node.pos)
+				if !c.pref.translated && !c.file.is_translated {
+					c.warn('pointer arithmetic is only allowed in `unsafe` blocks', node.pos)
+				}
 			}
 			right_is_ptr := right_type.is_any_kind_of_pointer()
 			if !right_is_ptr && node.op == .assign && right_type_unwrapped.is_number() {
@@ -594,6 +625,13 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				right_name := c.table.type_to_str(rtype)
 				if !(left_type.has_flag(.option) && right_type == ast.none_type) {
 					c.error('mismatched types `${left_name}` and `${right_name}`', node.pos)
+				}
+			}
+		}
+		if mut left is ast.Ident {
+			if mut left.info is ast.IdentVar {
+				if left.info.is_static && right_sym.kind == .map {
+					c.error('maps cannot be static', left.pos)
 				}
 			}
 		}

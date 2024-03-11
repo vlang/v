@@ -141,11 +141,12 @@ pub fn (mut b Builder) write_string(s string) {
 	// b.buf << []u8(s)  // TODO
 }
 
-// writeln appends the string `s`+`\n` to the buffer
+// writeln_string appends the string `s`+`\n` to the buffer
+@[deprecated: 'use writeln() instead']
+@[deprecated_after: '2024-03-21']
 @[inline]
 pub fn (mut b Builder) writeln_string(s string) {
-	b.write_string(s)
-	b.write_string('\n')
+	b.writeln(s)
 }
 
 // go_back discards the last `n` bytes from the buffer
@@ -153,8 +154,9 @@ pub fn (mut b Builder) go_back(n int) {
 	b.trim(b.len - n)
 }
 
+// spart returns a part of the buffer as a string
 @[inline]
-fn (b &Builder) spart(start_pos int, n int) string {
+pub fn (b &Builder) spart(start_pos int, n int) string {
 	unsafe {
 		mut x := malloc_noscan(n + 1)
 		vmemcpy(x, &u8(b.data) + start_pos, n)
@@ -249,6 +251,20 @@ pub fn (mut b Builder) ensure_cap(n int) {
 		b.data = new_data
 		b.offset = 0
 		b.cap = n
+	}
+}
+
+// grow_len grows the length of the buffer by `n` bytes if necessary
+@[unsafe]
+pub fn (mut b Builder) grow_len(n int) {
+	if n <= 0 {
+		return
+	}
+
+	new_len := b.len + n
+	b.ensure_cap(new_len)
+	unsafe {
+		b.len = new_len
 	}
 }
 

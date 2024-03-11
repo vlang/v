@@ -7,7 +7,7 @@ The [gitly](https://gitly.org/) site is based on vweb.
 **_Some features may not be complete, and have some bugs._**
 
 ## Quick Start
-Just run **`v new <name> web`** in your terminal.
+Just run **`v new --web <name>`** in your terminal.
 
 Run your vweb app with a live reload via `v -d vweb_livereload watch run .`
 
@@ -478,7 +478,7 @@ fn change_user(mut ctx vweb.Context) bool {
 
 ### Redirect
 
-Used when you want be redirected to an url
+Used when you want to be redirected to an url
 
 **Examples:**
 

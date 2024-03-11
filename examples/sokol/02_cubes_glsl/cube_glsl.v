@@ -23,8 +23,7 @@ import time
 import gg.m4
 
 // GLSL Include and functions
-#flag -I @VMODROOT/.
-#include "cube_glsl.h" # Should be generated with `v shader .` (see the instructions at the top of this file)
+#include "@VMODROOT/cube_glsl.h" # It should be generated with `v shader .` (see the instructions at the top of this file)
 
 fn C.cube_shader_desc(gfx.Backend) &gfx.ShaderDesc
 
@@ -388,7 +387,8 @@ fn draw_cube_glsl(app App) {
 	}
 	mut pass_action := gfx.PassAction{}
 	pass_action.colors[0] = color_action
-	gfx.begin_default_pass(&pass_action, ws.width, ws.height)
+	pass := sapp.create_default_pass(pass_action)
+	gfx.begin_pass(&pass)
 	{
 		rot := [f32(app.mouse_y), f32(app.mouse_x)]
 		// ratio := f32(ws.width)/ws.height
@@ -604,9 +604,7 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 
 fn main() {
 	// App init
-	mut app := &App{
-		gg: 0
-	}
+	mut app := &App{}
 
 	mut a := [5]int{}
 	a[0] = 2

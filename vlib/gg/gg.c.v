@@ -406,6 +406,8 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 			}
 		}
 		.resized {
+			ctx.scale = dpi_scale()
+			ctx.ft.scale = ctx.scale
 			if ctx.config.resized_fn != unsafe { nil } {
 				ctx.config.resized_fn(e, ctx.config.user_data)
 			}
@@ -507,8 +509,8 @@ pub fn (ctx &Context) quit() {
 
 // set_bg_color sets the color of the window background to `c`.
 pub fn (mut ctx Context) set_bg_color(c gx.Color) {
-	ctx.clear_pass = gfx.create_clear_pass(f32(c.r) / 255.0, f32(c.g) / 255.0, f32(c.b) / 255.0,
-		f32(c.a) / 255.0)
+	ctx.clear_pass = gfx.create_clear_pass_action(f32(c.r) / 255.0, f32(c.g) / 255.0,
+		f32(c.b) / 255.0, f32(c.a) / 255.0)
 }
 
 // Resize the context's Window
@@ -564,6 +566,10 @@ const dontcare_pass = gfx.PassAction{
 	]!
 }
 
+pub fn create_default_pass(action gfx.PassAction) gfx.Pass {
+	return sapp.create_default_pass(action)
+}
+
 // end finishes all the drawing for the context ctx.
 // All accumulated draw calls before ctx.end(), will be done in a separate Sokol pass.
 //
@@ -590,14 +596,15 @@ pub fn (ctx &Context) end(options EndOptions) {
 			ctx.show_fps()
 		}
 	}
-	match options.how {
+	pass := match options.how {
 		.clear {
-			gfx.begin_default_pass(ctx.clear_pass, sapp.width(), sapp.height())
+			create_default_pass(ctx.clear_pass)
 		}
 		.passthru {
-			gfx.begin_default_pass(gg.dontcare_pass, sapp.width(), sapp.height())
+			create_default_pass(gg.dontcare_pass)
 		}
 	}
+	gfx.begin_pass(pass)
 	sgl.draw()
 	gfx.end_pass()
 	gfx.commit()

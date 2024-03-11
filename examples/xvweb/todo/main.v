@@ -6,6 +6,7 @@ module main
 
 import x.vweb
 import db.sqlite
+import os
 import time
 
 struct Todo {
@@ -94,7 +95,7 @@ pub fn (app &App) complete_todo(mut ctx Context, id int) vweb.Result {
 	} or { return ctx.server_error('could not update TODO') }
 
 	// redirect client to the home page and tell the browser to sent a GET request
-	return ctx.redirect('/', .see_other)
+	return ctx.redirect('/', typ: .see_other)
 }
 
 @['/todo/:id/delete'; post]
@@ -121,10 +122,11 @@ pub fn (app &App) delete_todo(mut ctx Context, id int) vweb.Result {
 	} or { return ctx.server_error('could not delete TODO') }
 
 	// redirect client to the home page and tell the browser to sent a GET request
-	return ctx.redirect('/', .see_other)
+	return ctx.redirect('/', typ: .see_other)
 }
 
 fn main() {
+	os.chdir(os.dir(@FILE))!
 	// create a new App instance with a connection to the datbase
 	mut app := &App{
 		db: sqlite.connect('todo.db')!

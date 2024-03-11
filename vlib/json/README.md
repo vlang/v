@@ -1,9 +1,10 @@
-## Description:
+## Description
 
 The `json` module provides encoding/decoding of V data structures to/from JSON.
-For more details, see also the 
+For more details, see also the
 [JSON section of the V documentation](https://github.com/vlang/v/blob/master/doc/docs.md#json)
-## Examples:
+
+## Examples
 
 Here is an example of encoding and decoding a V struct with several fields.
 Note that you can specify different names in the json encoding for the fields,

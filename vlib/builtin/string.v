@@ -315,7 +315,7 @@ fn (a string) clone_static() string {
 
 // clone returns a copy of the V string `a`.
 pub fn (a string) clone() string {
-	if a.len == 0 {
+	if a.len <= 0 {
 		return ''
 	}
 	mut b := string{
@@ -611,6 +611,59 @@ pub fn (s string) f64() f64 {
 @[inline]
 pub fn (s string) u8() u8 {
 	return u8(strconv.common_parse_uint(s, 0, 8, false, false) or { 0 })
+}
+
+// u8_array returns the value of the hex/bin string as u8 array.
+// hex string example: `'0x11223344ee'.u8_array() == [u8(0x11),0x22,0x33,0x44,0xee]`.
+// bin string example: `'0b1101_1101'.u8_array() == [u8(0xdd)]`.
+// underscore in the string will be stripped.
+pub fn (s string) u8_array() []u8 {
+	// strip underscore in the string
+	mut tmps := s.replace('_', '')
+	if tmps.len == 0 {
+		return []u8{}
+	}
+	tmps = tmps.to_lower()
+	if tmps.starts_with('0x') {
+		tmps = tmps[2..]
+		if tmps.len == 0 {
+			return []u8{}
+		}
+		// make sure every digit is valid hex digit
+		if !tmps.contains_only('0123456789abcdef') {
+			return []u8{}
+		}
+		// make sure tmps has even hex digits
+		if tmps.len % 2 == 1 {
+			tmps = '0' + tmps
+		}
+
+		mut ret := []u8{len: tmps.len / 2}
+		for i in 0 .. ret.len {
+			ret[i] = u8(tmps[2 * i..2 * i + 2].parse_uint(16, 8) or { 0 })
+		}
+		return ret
+	} else if tmps.starts_with('0b') {
+		tmps = tmps[2..]
+		if tmps.len == 0 {
+			return []u8{}
+		}
+		// make sure every digit is valid binary digit
+		if !tmps.contains_only('01') {
+			return []u8{}
+		}
+		// make sure tmps has multiple of 8 binary digits
+		if tmps.len % 8 != 0 {
+			tmps = '0'.repeat(8 - tmps.len % 8) + tmps
+		}
+
+		mut ret := []u8{len: tmps.len / 8}
+		for i in 0 .. ret.len {
+			ret[i] = u8(tmps[8 * i..8 * i + 8].parse_uint(2, 8) or { 0 })
+		}
+		return ret
+	}
+	return []u8{}
 }
 
 // u16 returns the value of the string as u16 `'1'.u16() == u16(1)`.
@@ -1152,7 +1205,7 @@ fn (s string) index_(p string) int {
 	return -1
 }
 
-// index returns the position of the first character of the first occurance of the `needle` string in `s`.
+// index returns the position of the first character of the first occurrence of the `needle` string in `s`.
 // It will return `none` if the `needle` string can't be found in `s`.
 pub fn (s string) index(p string) ?int {
 	idx := s.index_(p)
@@ -1162,7 +1215,7 @@ pub fn (s string) index(p string) ?int {
 	return idx
 }
 
-// index_last returns the position of the first character of the *last* occurance of the `needle` string in `s`.
+// index_last returns the position of the first character of the *last* occurrence of the `needle` string in `s`.
 pub fn (s string) index_last(needle string) ?int {
 	idx := s.index_last_(needle)
 	if idx == -1 {
@@ -1171,7 +1224,7 @@ pub fn (s string) index_last(needle string) ?int {
 	return idx
 }
 
-// last_index returns the position of the first character of the *last* occurance of the `needle` string in `s`.
+// last_index returns the position of the first character of the *last* occurrence of the `needle` string in `s`.
 @[deprecated: 'use `.index_last(needle string)` instead']
 @[deprecated_after: '2023-12-18']
 @[inline]
@@ -1752,7 +1805,7 @@ pub fn (mut s []string) sort_ignore_case() {
 	s.sort_with_compare(compare_lower_strings)
 }
 
-// sort_by_len sorts the the string array by each string's `.len` length.
+// sort_by_len sorts the string array by each string's `.len` length.
 @[inline]
 pub fn (mut s []string) sort_by_len() {
 	s.sort_with_compare(compare_strings_by_len)
@@ -1784,6 +1837,165 @@ fn (s string) at_with_check(idx int) ?u8 {
 	unsafe {
 		return s.str[idx]
 	}
+}
+
+// Check if a string is an octal value. Returns 'true' if it is, or 'false' if it is not
+@[direct_array_access]
+pub fn (str string) is_oct() bool {
+	mut i := 0
+
+	if str.len == 0 {
+		return false
+	}
+
+	if str[i] == `0` {
+		i++
+	} else if str[i] == `-` || str[i] == `+` {
+		i++
+
+		if str[i] == `0` {
+			i++
+		} else {
+			return false
+		}
+	} else {
+		return false
+	}
+
+	if str[i] == `o` {
+		i++
+	} else {
+		return false
+	}
+
+	if i == str.len {
+		return false
+	}
+
+	for i < str.len {
+		if str[i] < `0` || str[i] > `7` {
+			return false
+		}
+		i++
+	}
+
+	return true
+}
+
+// Check if a string is an binary value. Returns 'true' if it is, or 'false' if it is not
+@[direct_array_access]
+pub fn (str string) is_bin() bool {
+	mut i := 0
+
+	if str.len == 0 {
+		return false
+	}
+
+	if str[i] == `0` {
+		i++
+	} else if str[i] == `-` || str[i] == `+` {
+		i++
+
+		if str[i] == `0` {
+			i++
+		} else {
+			return false
+		}
+	} else {
+		return false
+	}
+
+	if str[i] == `b` {
+		i++
+	} else {
+		return false
+	}
+
+	if i == str.len {
+		return false
+	}
+
+	for i < str.len {
+		if str[i] < `0` || str[i] > `1` {
+			return false
+		}
+		i++
+	}
+
+	return true
+}
+
+// Check if a string is an hexadecimal value. Returns 'true' if it is, or 'false' if it is not
+@[direct_array_access]
+pub fn (str string) is_hex() bool {
+	mut i := 0
+
+	if str.len == 0 {
+		return false
+	}
+
+	if str[i] == `0` {
+		i++
+	} else if str[i] == `-` || str[i] == `+` {
+		i++
+
+		if str[i] == `0` {
+			i++
+		} else {
+			return false
+		}
+	} else {
+		return false
+	}
+
+	if str[i] == `x` {
+		i++
+	} else {
+		return false
+	}
+
+	if i == str.len {
+		return false
+	}
+
+	for i < str.len {
+		if (str[i] < `0` || str[i] > `9`) && ((str[i] < `a` || str[i] > `f`)
+			&& (str[i] < `A` || str[i] > `F`)) {
+			return false
+		}
+		i++
+	}
+
+	return true
+}
+
+// Check if a string is an integer value. Returns 'true' if it is, or 'false' if it is not
+@[direct_array_access]
+pub fn (str string) is_int() bool {
+	mut i := 0
+
+	if str.len == 0 {
+		return false
+	}
+
+	if (str[i] != `-` && str[i] != `+`) && (!str[i].is_digit()) {
+		return false
+	} else {
+		i++
+	}
+
+	if i == str.len && (!str[i - 1].is_digit()) {
+		return false
+	}
+
+	for i < str.len {
+		if str[i] < `0` || str[i] > `9` {
+			return false
+		}
+		i++
+	}
+
+	return true
 }
 
 // is_space returns `true` if the byte is a white space character.

@@ -216,10 +216,10 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 						pos: pos
 					}
 				} else {
-					node = p.array_init(false)
+					node = p.array_init(false, ast.void_type)
 				}
 			} else {
-				node = p.array_init(false)
+				node = p.array_init(false, ast.void_type)
 			}
 		}
 		.key_none {
@@ -579,8 +579,10 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 			// detect `f(x++)`, `a[x++]`
 			if p.peek_tok.kind in [.rpar, .rsbr] {
 				if !p.inside_ct_if_expr {
-					p.warn_with_pos('`${p.tok.kind}` operator can only be used as a statement',
-						p.tok.pos())
+					if !p.pref.translated && !p.is_translated {
+						p.warn_with_pos('`${p.tok.kind}` operator can only be used as a statement',
+							p.tok.pos())
+					}
 				}
 			}
 
@@ -613,7 +615,7 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 			if mut node is ast.IndexExpr {
 				node.recursive_mapset_is_setter(true)
 			}
-			is_c2v_prefix := p.peek_tok.kind == .dollar
+			is_c2v_prefix := p.peek_tok.kind == .dollar && p.peek_tok.is_next_to(p.tok)
 			node = ast.PostfixExpr{
 				op: p.tok.kind
 				expr: node

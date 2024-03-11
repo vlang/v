@@ -51,12 +51,16 @@ struct ParallelDoc {
 fn (vd &VDoc) gen_json(d doc.Doc) string {
 	cfg := vd.cfg
 	mut jw := strings.new_builder(200)
-	comments := if cfg.include_examples {
-		d.head.merge_comments()
-	} else {
-		d.head.merge_comments_without_examples()
+	jw.write_string('{"module_name":"${d.head.name}",')
+	if d.head.comments.len > 0 && cfg.include_comments {
+		comments := if cfg.include_examples {
+			d.head.merge_comments()
+		} else {
+			d.head.merge_comments_without_examples()
+		}
+		jw.write_string('"description":"${escape(comments)}",')
 	}
-	jw.write_string('{"module_name":"${d.head.name}","description":"${escape(comments)}","contents":')
+	jw.write_string('"contents":')
 	jw.write_string(json.encode(d.contents.keys().map(d.contents[it])))
 	jw.write_string(',"generator":"vdoc","time_generated":"${d.time_generated.str()}"}')
 	return jw.str()
@@ -67,9 +71,9 @@ fn (mut vd VDoc) gen_plaintext(d doc.Doc) string {
 	mut pw := strings.new_builder(200)
 	if cfg.is_color {
 		content_arr := d.head.content.split(' ')
-		pw.writeln('${term.bright_blue(content_arr[0])} ${term.green(content_arr[1])}\n')
+		pw.writeln('${term.bright_blue(content_arr[0])} ${term.green(content_arr[1])}')
 	} else {
-		pw.writeln('${d.head.content}\n')
+		pw.writeln('${d.head.content}')
 	}
 	if cfg.include_comments {
 		comments := if cfg.include_examples {
@@ -81,6 +85,7 @@ fn (mut vd VDoc) gen_plaintext(d doc.Doc) string {
 			pw.writeln(indent(comments))
 		}
 	}
+	pw.writeln('')
 	vd.write_plaintext_content(d.contents.arr(), mut pw)
 	return pw.str()
 }

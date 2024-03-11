@@ -9,8 +9,7 @@ import sokol.gfx
 // Use `v shader` or `sokol-shdc` to generate the necessary `.h` file
 // Using `v shader -v .` in this directory will show some additional
 // info - and what you should include to make things work.
-#flag -I @VMODROOT/.
-#include "simple_shader.h"
+#include "@VMODROOT/simple_shader.h" # # It should be generated with `v shader .`
 
 // simple_shader_desc is a C function declaration defined by
 // the `@program` entry in the `simple_shader.glsl` shader file.
@@ -37,7 +36,7 @@ fn main() {
 	mut app := &App{
 		width: 800
 		height: 400
-		pass_action: gfx.create_clear_pass(0.0, 0.0, 0.0, 1.0) // This will create a black color as a default pass (window background color)
+		pass_action: gfx.create_clear_pass_action(0.0, 0.0, 0.0, 1.0) // This will create a black color as a default pass (window background color)
 	}
 	app.run()
 }
@@ -144,7 +143,8 @@ fn cleanup(user_data voidptr) {
 fn frame(user_data voidptr) {
 	mut app := unsafe { &App(user_data) }
 
-	gfx.begin_default_pass(&app.pass_action, sapp.width(), sapp.height())
+	pass := sapp.create_default_pass(state.pass_action)
+	gfx.begin_pass(&pass)
 
 	gfx.apply_pipeline(app.shader_pipeline)
 	gfx.apply_bindings(&app.bind)

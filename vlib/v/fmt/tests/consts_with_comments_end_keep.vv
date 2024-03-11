@@ -1,0 +1,3 @@
+const a = 'a' // hello
+const b = 'b' // comment
+const c = 'c'

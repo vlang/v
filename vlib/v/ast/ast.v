@@ -79,6 +79,7 @@ pub type Stmt = AsmStmt
 	| BranchStmt
 	| ComptimeFor
 	| ConstDecl
+	| DebuggerStmt
 	| DeferStmt
 	| EmptyStmt
 	| EnumDecl
@@ -281,15 +282,16 @@ pub:
 	mut_pos    token.Pos
 	next_token token.Kind
 pub mut:
-	expr                Expr // expr.field_name
-	expr_type           Type // type of `Foo` in `Foo.bar`
-	typ                 Type // type of the entire thing (`Foo.bar`)
-	name_type           Type // T in `T.name` or typeof in `typeof(expr).name`
-	or_block            OrExpr
-	gkind_field         GenericKindField // `T.name` => ast.GenericKindField.name, `T.typ` => ast.GenericKindField.typ, or .unknown
-	scope               &Scope = unsafe { nil }
-	from_embed_types    []Type // holds the type of the embed that the method is called from
-	has_hidden_receiver bool
+	expr                     Expr // expr.field_name
+	expr_type                Type // type of `Foo` in `Foo.bar`
+	typ                      Type // type of the entire thing (`Foo.bar`)
+	name_type                Type // T in `T.name` or typeof in `typeof(expr).name`
+	or_block                 OrExpr
+	gkind_field              GenericKindField // `T.name` => ast.GenericKindField.name, `T.typ` => ast.GenericKindField.typ, or .unknown
+	scope                    &Scope = unsafe { nil }
+	from_embed_types         []Type   // holds the type of the embed that the method is called from
+	generic_from_embed_types [][]Type // holds the types of the embeds for each generic instance when the same generic method is called.
+	has_hidden_receiver      bool
 }
 
 // root_ident returns the origin ident where the selector started.
@@ -497,6 +499,8 @@ pub enum StructInitKind {
 // import statement
 pub struct Import {
 pub:
+	source_name string // The original name in the source, `import abc.def` -> 'abc.def', *no matter* how the module is resolved
+	//
 	mod       string // the module name of the import
 	alias     string // the `x` in `import xxx as x`
 	pos       token.Pos
@@ -570,6 +574,7 @@ pub mut:
 	params            []Param
 	stmts             []Stmt
 	defer_stmts       []DeferStmt
+	trace_fns         map[string]FnTrace
 	return_type       Type
 	return_type_pos   token.Pos // `string` in `fn (u User) name() string` position
 	has_return        bool
@@ -604,6 +609,18 @@ pub fn (f &FnDecl) new_method_with_receiver_type(new_type_ Type) FnDecl {
 		new_method.params[0].typ = new_type
 		return *new_method
 	}
+}
+
+@[minify]
+pub struct FnTrace {
+pub mut:
+	name string
+pub:
+	file        string
+	line        i64
+	return_type Type
+	func        &Fn = unsafe { nil }
+	is_fn_var   bool
 }
 
 @[minify]
@@ -787,6 +804,7 @@ pub mut:
 	typ             Type
 	is_tmp_autofree bool // this tells cgen that a tmp variable has to be used for the arg expression in order to free it after the call
 	pos             token.Pos
+	should_be_ptr   bool // fn expects a ptr for this arg
 	// tmp_name        string // for autofree
 }
 
@@ -864,8 +882,9 @@ pub:
 	has_expr    bool
 	pos         token.Pos
 	typ_pos     token.Pos
-	is_markused bool // an explicit `[markused]` tag; the global will NOT be removed by `-skip-unused`
+	is_markused bool // an explicit `@[markused]` tag; the global will NOT be removed by `-skip-unused`
 	is_volatile bool
+	is_exported bool // an explicit `@[export]` tag; the global will NOT be removed by `-skip-unused`
 pub mut:
 	expr     Expr
 	typ      Type
@@ -1332,7 +1351,8 @@ pub mut:
 // enum field in enum declaration
 pub struct EnumField {
 pub:
-	name          string
+	name          string // just `lock`, or `abc`, etc, no matter if the name is a keyword or not.
+	source_name   string // The name in the source, for example `@lock`, and `abc`. Note that `lock` is a keyword in V.
 	pos           token.Pos
 	comments      []Comment // comment after Enumfield in the same line
 	next_comments []Comment // comments between current EnumField and next EnumField
@@ -1473,6 +1493,7 @@ pub mut:
 	elem_type  Type   // element type
 	init_type  Type   // init: value type
 	typ        Type   // array type
+	alias_type Type   // alias type
 }
 
 pub struct ArrayDecompose {
@@ -1502,12 +1523,16 @@ pub:
 	comments  [][]Comment // comments after key-value pairs
 	pre_cmnts []Comment   // comments before the first key-value pair
 pub mut:
-	keys       []Expr
-	vals       []Expr
-	val_types  []Type
-	typ        Type
-	key_type   Type
-	value_type Type
+	keys                 []Expr
+	vals                 []Expr
+	val_types            []Type
+	typ                  Type
+	key_type             Type
+	value_type           Type
+	has_update_expr      bool // has `...a`
+	update_expr          Expr // `a` in `...a`
+	update_expr_pos      token.Pos
+	update_expr_comments []Comment
 }
 
 // s[10..20]
@@ -1715,6 +1740,11 @@ pub const riscv_with_number_register_list = {
 	't#': 3
 	's#': 12
 	'a#': 8
+}
+
+pub struct DebuggerStmt {
+pub:
+	pos token.Pos
 }
 
 // `assert a == 0, 'a is zero'`

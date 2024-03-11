@@ -33,6 +33,8 @@ mut:
 	output_target      LogTarget // output to console (stdout/stderr) or file or both.
 	time_format        TimeFormat
 	custom_time_format string = 'MMMM Do YY N kk:mm:ss A' // timestamp with custom format
+	short_tag          bool
+	always_flush       bool   // flush after every single .fatal(), .error(), .warn(), .info(), .debug() call
 pub mut:
 	output_file_name string // log output to this file
 }
@@ -115,15 +117,21 @@ pub fn (mut l Log) reopen() ! {
 // log_file writes log line `s` with `level` to the log file.
 fn (mut l Log) log_file(s string, level Level) {
 	timestamp := l.time_format(time.now())
-	e := tag_to_file(level)
+	e := tag_to_file(level, l.short_tag)
 	l.ofile.writeln('${timestamp} [${e}] ${s}') or { panic(err) }
+	if l.always_flush {
+		l.flush()
+	}
 }
 
 // log_cli writes log line `s` with `level` to stdout.
 fn (l &Log) log_cli(s string, level Level) {
 	timestamp := l.time_format(time.now())
-	e := tag_to_cli(level)
+	e := tag_to_cli(level, l.short_tag)
 	println('${timestamp} [${e}] ${s}')
+	if l.always_flush {
+		flush_stdout()
+	}
 }
 
 // send_output writes log line `s` with `level` to either the log file or the console
@@ -243,6 +251,12 @@ pub fn (mut l Log) set_time_format(f TimeFormat) {
 	l.time_format = f
 }
 
+// set_always_flush called with true, will make the log flush after every single .fatal(), .error(), .warn(), .info(), .debug() call.
+// That can be much slower, if you plan to do lots of frequent calls, but if your program exits early or crashes, your logs will be more complete.
+pub fn (mut l Log) set_always_flush(should_flush_every_time bool) {
+	l.always_flush = should_flush_every_time
+}
+
 // get_time_format will get the log time format
 pub fn (l Log) get_time_format() TimeFormat {
 	return l.time_format
@@ -259,4 +273,15 @@ pub fn (mut l Log) set_custom_time_format(f string) {
 // get_custom_time_format will get the log custom time format
 pub fn (l Log) get_custom_time_format() string {
 	return l.custom_time_format
+}
+
+// set_short_tag will set the log tag to it's short version
+// eg. '[FATAL]'=>'[F]', '[ERROR]'=>'[E]','[WARN ]'=>'[W]','[INFO ]'=>'[I]','[DEBUG]'=>'[D]'
+pub fn (mut l Log) set_short_tag(enabled bool) {
+	l.short_tag = enabled
+}
+
+// get_short_tag will get the log short tag enable state
+pub fn (l Log) get_short_tag() bool {
+	return l.short_tag
 }

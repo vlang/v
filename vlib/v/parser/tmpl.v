@@ -164,7 +164,28 @@ fn vweb_tmpl_${fn_name}() string {
 		}
 		if line.contains('@include ') {
 			lines.delete(i)
-			mut file_name := line.split("'")[1]
+			// Allow single or double quoted paths.
+			mut file_name := if line.contains('"') {
+				line.split('"')[1]
+			} else if line.contains("'") {
+				line.split("'")[1]
+			} else {
+				s := '@include '
+				position := line.index(s) or { 0 }
+				p.error_with_error(errors.Error{
+					message: 'path for @include must be quoted with \' or "'
+					file_path: template_file
+					pos: token.Pos{
+						len: s.len
+						line_nr: tline_number
+						pos: start_of_line_pos + position + s.len
+						col: position + s.len
+						last_line: lines.len + 1
+					}
+					reporter: .parser
+				})
+				''
+			}
 			mut file_ext := os.file_ext(file_name)
 			if file_ext == '' {
 				file_ext = '.html'

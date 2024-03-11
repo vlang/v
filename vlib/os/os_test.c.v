@@ -465,11 +465,19 @@ fn test_realpath_does_not_absolutize_non_existing_relative_paths() {
 	}
 }
 
-fn test_realpath_absolutepath_symlink() {
+fn handle_privilege_error(err IError) ! {
+	if err.msg().contains('required privilege is not held by the client') {
+		eprintln('skipping ${@METHOD} on windows, since the user is not administrator, err:\n    ${err}')
+		return err
+	}
+	panic(err)
+}
+
+fn test_realpath_absolutepath_symlink() ! {
 	file_name := 'tolink_file.txt'
 	symlink_name := 'symlink.txt'
 	create_file(file_name)!
-	os.symlink(file_name, symlink_name)!
+	os.symlink(file_name, symlink_name) or { handle_privilege_error(err) or { return } }
 	rpath := os.real_path(symlink_name)
 	println(rpath)
 	assert os.is_abs_path(rpath)
@@ -491,7 +499,7 @@ fn test_make_symlink_check_is_link_and_remove_symlink() {
 	os.mkdir(folder) or { panic(err) }
 	folder_contents := os.ls(folder) or { panic(err) }
 	assert folder_contents.len == 0
-	os.symlink(folder, symlink) or { panic(err) }
+	os.symlink(folder, symlink) or { handle_privilege_error(err) or { return } }
 	assert os.is_link(symlink)
 	$if windows {
 		os.rmdir(symlink) or { panic(err) }
@@ -511,7 +519,7 @@ fn test_make_symlink_check_is_link_and_remove_symlink_with_file() {
 	os.rm(symlink) or {}
 	os.rm(file) or {}
 	create_file(file)!
-	os.symlink(file, symlink) or { panic(err) }
+	os.symlink(file, symlink) or { handle_privilege_error(err) or { return } }
 	assert os.is_link(symlink)
 	os.rm(symlink) or { panic(err) }
 	os.rm(file) or { panic(err) }
@@ -557,7 +565,7 @@ fn test_make_hardlink_check_is_link_and_remove_hardlink_with_file() {
 
 fn test_symlink() {
 	os.mkdir('symlink') or { panic(err) }
-	os.symlink('symlink', 'symlink2') or { panic(err) }
+	os.symlink('symlink', 'symlink2') or { handle_privilege_error(err) or { return } }
 	assert os.exists('symlink2')
 	// cleanup
 	os.rmdir('symlink') or { panic(err) }
@@ -632,6 +640,16 @@ fn test_rmdir_all() {
 	}
 	os.rmdir_all('some') or { assert false }
 	assert !os.exists('some')
+}
+
+fn test_rmdir_not_exist() ! {
+	dir := 'non_existing_dir'
+	assert !os.exists(dir)
+	os.rmdir(dir) or {
+		// 0x00000002 is both ENOENT in POSIX and ERROR_FILE_NOT_FOUND in Win32 API
+		assert err.code() == 0x00000002
+	}
+	assert !os.exists(dir)
 }
 
 fn test_dir() {

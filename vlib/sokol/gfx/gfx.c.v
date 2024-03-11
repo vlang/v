@@ -65,9 +65,11 @@ pub fn make_pipeline(desc &PipelineDesc) Pipeline {
 	return C.sg_make_pipeline(desc)
 }
 
+// make_attachments creates an `Attachments` instance from `const_desc`.
+// See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
 @[inline]
-pub fn make_pass(desc &PassDesc) Pass {
-	return C.sg_make_pass(desc)
+pub fn make_attachments(const_desc &AttachmentsDesc) Attachments {
+	return C.sg_make_attachments(const_desc)
 }
 
 @[inline]
@@ -95,9 +97,11 @@ pub fn destroy_pipeline(pip Pipeline) {
 	C.sg_destroy_pipeline(pip)
 }
 
+// destroy_attachments destroys the `atts` `Attachments`
+// See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
 @[inline]
-pub fn destroy_pass(pass Pass) {
-	C.sg_destroy_pass(pass)
+pub fn destroy_attachments(atts Attachments) {
+	C.sg_destroy_attachments(atts)
 }
 
 @[inline]
@@ -121,14 +125,16 @@ pub fn query_buffer_overflow(buf Buffer) bool {
 }
 
 // rendering functions
-@[inline]
-pub fn begin_default_pass(actions &PassAction, width int, height int) {
-	C.sg_begin_default_pass(actions, width, height)
-}
 
+@[deprecated: 'use begin_pass instead, please see examples/sokol/* for how to utilize new unified begin_pass']
 @[inline]
-pub fn begin_pass(pass Pass, actions &PassAction) {
-	C.sg_begin_pass(pass, actions)
+pub fn begin_default_pass(actions &PassAction, width int, height int) {}
+
+// begin_pass begins a rendering pass.
+// See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
+@[inline]
+pub fn begin_pass(const_pass &Pass) {
+	C.sg_begin_pass(const_pass)
 }
 
 @[inline]
@@ -218,9 +224,11 @@ pub fn query_pipeline_state(pip Pipeline) ResourceState {
 	return ResourceState(C.sg_query_pipeline_state(pip))
 }
 
+// query_attachments_state returns the current state of a resource (INITIAL, ALLOC, VALID, FAILED, INVALID)
+// See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
 @[inline]
-pub fn query_pass_state(pass Pass) ResourceState {
-	return ResourceState(C.sg_query_pass_state(pass))
+pub fn query_attachments_state(atts Attachments) ResourceState {
+	return ResourceState(C.sg_query_attachments_state(atts))
 }
 
 // get runtime information about a resource
@@ -244,9 +252,11 @@ pub fn query_pipeline_info(pip Pipeline) PipelineInfo {
 	return C.sg_query_pipeline_info(pip)
 }
 
+// query_attachments_info returns runtime information about the `atts` / `Attachments`.
+// See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
 @[inline]
-pub fn query_pass_info(pass Pass) PassInfo {
-	return C.sg_query_pass_info(pass)
+pub fn query_attachments_info(atts Attachments) AttachmentsInfo {
+	return C.sg_query_attachments_info(atts)
 }
 
 // get resource creation desc struct with their default values replaced
@@ -270,25 +280,11 @@ pub fn query_pipeline_defaults(desc &Pipeline) PipelineDesc {
 	return C.sg_query_pipeline_defaults(unsafe { &PipelineDesc(voidptr(desc)) })
 }
 
+// query_attachments_defaults returns `AttachmentsDesc` with default values replaced.
+// See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
 @[inline]
-pub fn query_pass_defaults(desc &Pass) PassDesc {
-	return C.sg_query_pass_defaults(unsafe { &PassDesc(voidptr(desc)) })
-}
-
-// rendering contexts (optional)
-@[inline]
-pub fn setup_context() Context {
-	return C.sg_setup_context()
-}
-
-@[inline]
-pub fn activate_context(ctx_id Context) {
-	C.sg_activate_context(ctx_id)
-}
-
-@[inline]
-pub fn discard_context(ctx_id Context) {
-	C.sg_discard_context(ctx_id)
+pub fn query_attachments_defaults(desc &AttachmentsDesc) AttachmentsDesc {
+	return C.sg_query_attachments_defaults(unsafe { &AttachmentsDesc(voidptr(desc)) })
 }
 
 // frame stats

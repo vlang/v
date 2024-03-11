@@ -122,9 +122,8 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			gohandle_name = '__v_thread'
 		}
 	} else {
-		opt := if is_opt { '${option_name}_' } else { '' }
-		res := if is_res { '${result_name}_' } else { '' }
-		gohandle_name = '__v_thread_${opt}${res}${g.table.sym(g.unwrap_generic(node.call_expr.return_type)).cname}'
+		ret_styp := g.typ(g.unwrap_generic(node.call_expr.return_type)).replace('*', '_ptr')
+		gohandle_name = '__v_thread_${ret_styp}'
 	}
 	if is_spawn {
 		if g.pref.os == .windows {
@@ -162,7 +161,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			}
 		}
 	} else if is_go {
-		if util.nr_jobs > 0 {
+		if util.nr_jobs > 1 {
 			g.writeln('photon_thread_create_and_migrate_to_work_pool((void*)${wrapper_fn_name}, &${arg_tmp_var});')
 		} else {
 			g.writeln('photon_thread_create((void*)${wrapper_fn_name}, &${arg_tmp_var});')

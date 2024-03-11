@@ -1,0 +1,6 @@
+type Alias1 = &int
+type Alias2 = &string
+type Qwe = Alias1 | Alias2
+
+fn main() {
+}

@@ -1,0 +1,28 @@
+vlib/v/checker/tests/match_branch_call_expr_arg_mismatch.vv:16:19: error: cannot use `&Foobar` as `&Foo` in argument 1 to `mutate_foo`
+   14 |     match foobar {
+   15 |         Foo {
+   16 |             mutate_foo(mut foobar)
+      |                            ~~~~~~
+   17 |         }
+   18 |         Bar {
+vlib/v/checker/tests/match_branch_call_expr_arg_mismatch.vv:19:19: error: cannot use `&Foobar` as `&Bar` in argument 1 to `mutate_bar`
+   17 |         }
+   18 |         Bar {
+   19 |             mutate_bar(mut foobar)
+      |                            ~~~~~~
+   20 |         }
+   21 |     }
+vlib/v/checker/tests/match_branch_call_expr_arg_mismatch.vv:27:19: error: cannot use `&Foobar` as `&Foo` in argument 1 to `mutate_foo`
+   25 |     return match foobar {
+   26 |         Foo {
+   27 |             mutate_foo(mut foobar)
+      |                            ~~~~~~
+   28 |         }
+   29 |         Bar {
+vlib/v/checker/tests/match_branch_call_expr_arg_mismatch.vv:30:19: error: cannot use `&Foobar` as `&Bar` in argument 1 to `mutate_bar`
+   28 |         }
+   29 |         Bar {
+   30 |             mutate_bar(mut foobar)
+      |                            ~~~~~~
+   31 |         }
+   32 |     }

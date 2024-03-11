@@ -27,6 +27,9 @@ $if $pkgconfig('libpq') {
 
 	#flag windows -I @VEXEROOT/thirdparty/pg/libpq
 	#flag windows -L @VEXEROOT/thirdparty/pg/win64
+
+	#flag freebsd -I/usr/local/include
+	#flag freebsd -L/usr/local/lib
 }
 
 // PostgreSQL Source Code

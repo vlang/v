@@ -188,7 +188,13 @@ fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
 
 	// overloaded
 	if left.sym.has_method('==') {
-		fn_builder.writeln('\treturn ${fn_name}__eq(a, b);')
+		if left.typ.has_flag(.option) {
+			opt_ptr_styp := g.typ(left.typ.set_nr_muls(0).clear_flag(.option))
+			opt_fn_name := opt_ptr_styp.replace('struct ', '')
+			fn_builder.writeln('\treturn (a.state == b.state && b.state == 2) || ${opt_fn_name}__eq(*(${opt_ptr_styp}*)a.data, *(${opt_ptr_styp}*)b.data);')
+		} else {
+			fn_builder.writeln('\treturn ${fn_name}__eq(a, b);')
+		}
 		fn_builder.writeln('}')
 		return fn_name
 	}

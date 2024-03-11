@@ -284,6 +284,20 @@ fn new_map_init(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_
 	return out
 }
 
+fn new_map_update_init(update &map, n int, key_bytes int, value_bytes int, keys voidptr, values voidptr) map {
+	mut out := unsafe { update.clone() }
+	mut pkey := &u8(keys)
+	mut pval := &u8(values)
+	for _ in 0 .. n {
+		unsafe {
+			out.set(pkey, pval)
+			pkey = pkey + key_bytes
+			pval = pval + value_bytes
+		}
+	}
+	return out
+}
+
 // move moves the map to a new location in memory.
 // It does this by copying to a new location, then setting the
 // old location to all `0` with `vmemset`

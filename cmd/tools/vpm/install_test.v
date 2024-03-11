@@ -82,12 +82,7 @@ fn test_install_already_existent() {
 
 fn test_install_once() {
 	// Start with a clean test path.
-	$if windows {
-		// FIXME: Workaround for failing `rmdir` commands on Windows.
-		os.system('rd /s /q ${test_path}')
-	} $else {
-		os.rmdir_all(test_path) or {}
-	}
+	rmdir_all(test_path) or {}
 	os.mkdir_all(test_path) or {}
 
 	// Install markdown module.

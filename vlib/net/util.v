@@ -12,7 +12,7 @@ pub fn validate_port(port int) !u16 {
 	}
 }
 
-// split address splits an address into its host name and its port
+// split_address splits an address into its host name and its port
 pub fn split_address(addr string) !(string, u16) {
 	port := addr.all_after_last(':').int()
 	address := addr.all_before_last(':')

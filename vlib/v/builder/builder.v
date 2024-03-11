@@ -89,8 +89,8 @@ pub fn new_builder(pref_ &pref.Preferences) Builder {
 }
 
 pub fn (mut b Builder) interpret_text(code string, v_files []string) ! {
-	b.parsed_files = parser.parse_files(v_files, b.table, b.pref)
-	b.parsed_files << parser.parse_text(code, '', b.table, .skip_comments, b.pref)
+	b.parsed_files = parser.parse_files(v_files, mut b.table, b.pref)
+	b.parsed_files << parser.parse_text(code, '', mut b.table, .skip_comments, b.pref)
 	b.parse_imports()
 
 	if b.pref.only_check_syntax {
@@ -109,7 +109,7 @@ pub fn (mut b Builder) front_stages(v_files []string) ! {
 	util.timing_start('PARSE')
 
 	util.timing_start('Builder.front_stages.parse_files')
-	b.parsed_files = parser.parse_files(v_files, b.table, b.pref)
+	b.parsed_files = parser.parse_files(v_files, mut b.table, b.pref)
 	timers.show('Builder.front_stages.parse_files')
 
 	b.parse_imports()
@@ -144,7 +144,7 @@ pub fn (mut b Builder) middle_stages() ! {
 	//
 	b.table.complete_interface_check()
 	if b.pref.skip_unused {
-		markused.mark_used(mut b.table, b.pref, b.parsed_files)
+		markused.mark_used(mut b.table, mut b.pref, b.parsed_files)
 	}
 	if b.pref.show_callgraph {
 		callgraph.show(mut b.table, b.pref, b.parsed_files)
@@ -222,7 +222,7 @@ pub fn (mut b Builder) parse_imports() {
 			}
 			// eprintln('>> ast_file.path: $ast_file.path , done: $done_imports, `import $mod` => $v_files')
 			// Add all imports referenced by these libs
-			parsed_files := parser.parse_files(v_files, b.table, b.pref)
+			parsed_files := parser.parse_files(v_files, mut b.table, b.pref)
 			for file in parsed_files {
 				mut name := file.mod.name
 				if name == '' {

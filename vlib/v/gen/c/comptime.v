@@ -10,6 +10,10 @@ import v.pref
 import v.comptime
 
 fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
+	is_interface_field := g.table.sym(node.left_type).kind == .interface_
+	if is_interface_field {
+		g.write('*(')
+	}
 	g.expr(node.left)
 	if node.left_type.is_ptr() {
 		g.write('->')
@@ -23,11 +27,17 @@ fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 				&& node.field_expr.field_name == 'name' {
 				_, field_name := g.comptime.get_comptime_selector_var_type(node)
 				g.write(c_name(field_name))
+				if is_interface_field {
+					g.write(')')
+				}
 				return
 			}
 		}
 	}
 	g.expr(node.field_expr)
+	if is_interface_field {
+		g.write(')')
+	}
 }
 
 fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
@@ -506,11 +516,11 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 							got_sym := g.table.sym(got_type)
 
 							if got_sym.kind == .interface_ && got_sym.info is ast.Interface {
-								is_true := g.table.does_type_implement_interface(exp_type,
-									got_type)
+								is_true := exp_type.has_flag(.option) == got_type.has_flag(.option)
+									&& g.table.does_type_implement_interface(exp_type, got_type)
 								if cond.op == .key_is {
 									if is_true {
-										g.write('1')
+										g.write('1 && ${exp_type.has_flag(.option)} == ${got_type.has_flag(.option)}')
 									} else {
 										g.write('0')
 									}

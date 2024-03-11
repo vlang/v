@@ -335,13 +335,38 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 	for typ_name in v_types {
 		// TODO: JsDoc
 		match typ_name {
-			'i8', 'i16', 'int', 'u16', 'u32', 'int_literal' {
+			'i8', 'i16', 'int', 'int_literal' {
 				// TODO: Bounds checking
 				g.gen_builtin_prototype(
 					typ_name: typ_name
 					default_value: 'new Number(0)'
 					// mask <=32 bit numbers with 0xffffffff
 					constructor: 'this.val = Math.floor(Number(val) & 0xffffffff) '
+					value_of: 'Number(this.val)'
+					to_string: 'this.valueOf().toString()'
+					eq: 'new bool(self.valueOf() === other.valueOf())'
+					to_jsval: '+this'
+				)
+			}
+			// u16 and u32 requires special handling in JavaScript to correctly represent it.
+			// u16, '>>> 0' combined with a mask of 0xffff limits it to the 0 to 2^16-1 range, correctly handling values as unsigned 16-bit integers.
+			'u16' {
+				g.gen_builtin_prototype(
+					typ_name: typ_name
+					default_value: 'new Number(0)'
+					constructor: 'this.val = Math.floor(Number(val) & 0xffff) >>> 0'
+					value_of: 'Number(this.val)'
+					to_string: 'this.valueOf().toString()'
+					eq: 'new bool(self.valueOf() === other.valueOf())'
+					to_jsval: '+this'
+				)
+			}
+			// u32 '>>> 0' combined with a mask of 0xffffffff limits it to the 0 to 2^32-1 range, correctly handling values as unsigned 32-bit integers.
+			'u32' {
+				g.gen_builtin_prototype(
+					typ_name: typ_name
+					default_value: 'new Number(0)'
+					constructor: 'this.val = Math.floor(Number(val) & 0xffffffff) >>> 0'
 					value_of: 'Number(this.val)'
 					to_string: 'this.valueOf().toString()'
 					eq: 'new bool(self.valueOf() === other.valueOf())'

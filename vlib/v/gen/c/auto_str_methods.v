@@ -108,7 +108,9 @@ fn (mut g Gen) final_gen_str(typ StrType) {
 	if str_fn_name in g.str_fn_names {
 		return
 	}
-	g.str_fn_names << str_fn_name
+	lock g.str_fn_names {
+		g.str_fn_names << str_fn_name
+	}
 	if typ.typ.has_flag(.option) {
 		g.gen_str_for_option(typ.typ, styp, str_fn_name)
 		return
@@ -806,9 +808,11 @@ fn (mut g Gen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) {
 		tmp_str := str_intp_rune('${elem_str_fn_name}(*(${val_styp}*)DenseArray_value(&m.key_values, i))')
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${tmp_str});')
 	} else {
-		ptr_str := '*'.repeat(if receiver_is_ptr { val_typ.nr_muls() - 1 } else { val_typ.nr_muls() })
+		ptr_str := '*'.repeat(val_typ.nr_muls())
 		if val_typ.has_flag(.option) {
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${g.get_str_fn(val_typ)}(*${ptr_str}(${val_styp}*)DenseArray_value(&m.key_values, i)));')
+		} else if receiver_is_ptr {
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}(${ptr_str}(${val_styp}*)DenseArray_value(&m.key_values, i)));')
 		} else {
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}(*${ptr_str}(${val_styp}*)DenseArray_value(&m.key_values, i)));')
 		}
@@ -1154,7 +1158,7 @@ fn should_use_indent_func(kind ast.Kind) bool {
 	return kind in [.struct_, .alias, .array, .array_fixed, .map, .sum_type, .interface_]
 }
 
-fn (mut g Gen) gen_enum_static_from_string(fn_name string) {
+fn (mut g Gen) get_enum_type_idx_from_fn_name(fn_name string) (string, int) {
 	enum_name := fn_name.all_before('__static__')
 	mut mod_enum_name := if !enum_name.contains('.') {
 		g.cur_mod.name + '.' + enum_name
@@ -1172,6 +1176,10 @@ fn (mut g Gen) gen_enum_static_from_string(fn_name string) {
 			}
 		}
 	}
+	return mod_enum_name, idx
+}
+
+fn (mut g Gen) gen_enum_static_from_string(fn_name string, mod_enum_name string, idx int) {
 	enum_typ := ast.Type(idx)
 	enum_styp := g.typ(enum_typ)
 	option_enum_typ := ast.Type(idx).set_flag(.option)
@@ -1180,10 +1188,9 @@ fn (mut g Gen) gen_enum_static_from_string(fn_name string) {
 	enum_field_vals := g.table.get_enum_field_vals(mod_enum_name)
 
 	mut fn_builder := strings.new_builder(512)
-	fn_name_no_dots := util.no_dots(fn_name)
-	g.definitions.writeln('static ${option_enum_styp} ${fn_name_no_dots}(string name); // auto')
+	g.definitions.writeln('static ${option_enum_styp} ${fn_name}(string name); // auto')
 
-	fn_builder.writeln('static ${option_enum_styp} ${fn_name_no_dots}(string name) {')
+	fn_builder.writeln('static ${option_enum_styp} ${fn_name}(string name) {')
 	fn_builder.writeln('\t${option_enum_styp} t1;')
 	fn_builder.writeln('\tbool exists = false;')
 	fn_builder.writeln('\tint inx = 0;')

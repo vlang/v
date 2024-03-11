@@ -1,8 +1,8 @@
-## Description:
+## Description
 
 `arrays` is a module that provides utility functions to make working with arrays easier.
 
-## Examples:
+## Examples
 
 ```v
 import arrays

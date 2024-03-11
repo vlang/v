@@ -45,10 +45,16 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		g.go_back(1) // delete the `&` already generated in `prefix_expr()
 	}
 	mut is_anon := false
+	mut is_array_fixed_struct_init := false // return T{} where T is fixed array
 	if mut sym.info is ast.Struct {
 		is_anon = sym.info.is_anon
 	}
 	is_array := sym.kind in [.array_fixed, .array]
+	if sym.kind == .array_fixed {
+		arr_info := sym.array_fixed_info()
+		is_array_fixed_struct_init = g.inside_return
+			&& g.table.final_sym(arr_info.elem_type).kind == .struct_
+	}
 
 	// detect if we need type casting on msvc initialization
 	const_msvc_init := g.is_cc_msvc && g.inside_const && !g.inside_cast && g.inside_array_item
@@ -93,7 +99,9 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			g.write('&')
 		}
 		if is_array || const_msvc_init {
-			g.write('{')
+			if !is_array_fixed_struct_init {
+				g.write('{')
+			}
 		} else if is_multiline {
 			g.writeln('(${styp}){')
 		} else {
@@ -302,6 +310,23 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			initialized = true
 		}
 		g.is_shared = old_is_shared
+	} else if is_array_fixed_struct_init {
+		arr_info := sym.array_fixed_info()
+
+		save_inside_array_fixed_struct := g.inside_array_fixed_struct
+		g.inside_array_fixed_struct = is_array_fixed_struct_init
+		defer {
+			g.inside_array_fixed_struct = save_inside_array_fixed_struct
+		}
+
+		g.fixed_array_init(ast.ArrayInit{
+			pos: node.pos
+			is_fixed: true
+			typ: g.unwrap_generic(node.typ)
+			exprs: [ast.empty_expr]
+			elem_type: arr_info.elem_type
+		}, g.unwrap(g.unwrap_generic(node.typ)), '', g.is_amp)
+		initialized = true
 	}
 	if is_multiline {
 		g.indent--
@@ -315,7 +340,9 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		}
 	}
 
-	g.write('}')
+	if !is_array_fixed_struct_init {
+		g.write('}')
+	}
 	if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
 		g.write('}, sizeof(${shared_styp}))')
 	} else if is_amp || g.inside_cast_in_heap > 0 {
@@ -603,7 +630,8 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 		field_unwrap_sym := g.table.sym(g.unwrap_generic(sfield.typ))
 		if field_unwrap_sym.kind == .array_fixed && sfield.expr in [ast.Ident, ast.SelectorExpr] {
 			info := field_unwrap_sym.info as ast.ArrayFixed
-			g.fixed_array_var_init(sfield.expr, info.size)
+			g.fixed_array_var_init(g.expr_string(sfield.expr), sfield.expr.is_auto_deref_var(),
+				info.elem_type, info.size)
 		} else {
 			if sfield.typ != ast.voidptr_type && sfield.typ != ast.nil_type
 				&& (sfield.expected_type.is_ptr() && !sfield.expected_type.has_flag(.shared_f))
