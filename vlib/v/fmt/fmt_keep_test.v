@@ -19,8 +19,13 @@ const fpref = &pref.Preferences{
 fn run_fmt(mut input_files []string) {
 	fmt_message := 'checking that v fmt keeps already formatted files *unchanged*'
 	eprintln(term.header(fmt_message, '-'))
-	input_files = vtest.filter_vtest_only(input_files)
 	assert input_files.len > 0
+	input_files = vtest.filter_vtest_only(input_files)
+	if input_files.len == 0 {
+		// No need to produce a failing test here.
+		eprintln('no tests found with VTEST_ONLY filter set to: ' + os.getenv('VTEST_ONLY'))
+		exit(0)
+	}
 	input_files.sort()
 	mut fmt_bench := benchmark.new_benchmark()
 	fmt_bench.set_total_expected_steps(input_files.len + 1)

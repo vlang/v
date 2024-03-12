@@ -21,8 +21,13 @@ fn run_fmt(mut input_files []string) {
 	eprintln(term.header(fmt_message, '-'))
 	tmpfolder := os.temp_dir()
 	diff_cmd := diff.find_working_diff_command() or { '' }
-	input_files = vtest.filter_vtest_only(input_files)
 	assert input_files.len > 0
+	input_files = vtest.filter_vtest_only(input_files)
+	if input_files.len == 0 {
+		// No need to produce a failing test here.
+		eprintln('no tests found with VTEST_ONLY filter set to: ' + os.getenv('VTEST_ONLY'))
+		exit(0)
+	}
 	mut fmt_bench := benchmark.new_benchmark()
 	fmt_bench.set_total_expected_steps(input_files.len)
 	for istep, ipath in input_files {
