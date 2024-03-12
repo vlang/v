@@ -134,11 +134,35 @@ fn C.GC_is_disabled() int
 // protect memory block from being freed before this call
 fn C.GC_reachable_here(voidptr)
 
-// gc_collect explicitly performs a garbage collection run.
-// Note, that garbage collections are done automatically when needed in most cases,
-// so usually you should need to call that function often.
+// gc_is_enabled() returns true, if the GC is enabled at runtime.
+// See also gc_disable() and gc_enable().
+pub fn gc_is_enabled() bool {
+	return 0 == C.GC_is_disabled()
+}
+
+// gc_collect explicitly performs a single garbage collection run.
+// Note, that garbage collections, are done automatically, when needed in most cases,
+// so usually you should NOT need to call gc_collect() often.
+// Note that gc_collect() is a NOP with `-gc none`.
 pub fn gc_collect() {
 	C.GC_gcollect()
+}
+
+// gc_enable explicitly enables the GC.
+// Note, that garbage collections are done automatically, when needed in most cases,
+// and also that by default the GC is on, so you do not need to enable it.
+// See also gc_disable() and gc_collect().
+// Note that gc_enable() is a NOP with `-gc none`.
+pub fn gc_enable() {
+	C.GC_enable()
+}
+
+// gc_disable explicitly disables the GC. Do not forget to enable it again by calling gc_enable(),
+// when your program is otherwise idle, and can afford it.
+// See also gc_enable() and gc_collect().
+// Note that gc_disable() is a NOP with `-gc none`.
+pub fn gc_disable() {
+	C.GC_disable()
 }
 
 // for leak detection it is advisable to do explicit garbage collections
