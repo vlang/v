@@ -24,8 +24,28 @@ fn C.GC_gcollect()
 // When GC is not used, it is a NOP.
 pub fn gc_check_leaks() {}
 
+// gc_is_enabled() returns true, if the GC is enabled at runtime.
+// It will always return false, with `-gc none`.
+// See also gc_disable() and gc_enable().
+pub fn gc_is_enabled() bool {
+	return false
+}
+
+// gc_enable explicitly enables the GC.
+// Note, that garbage collections are done automatically, when needed in most cases,
+// and also that by default the GC is on, so you do not need to enable it.
+// See also gc_disable() and gc_collect().
+// Note that gc_enable() is a NOP with `-gc none`.
+pub fn gc_enable() {}
+
+// gc_disable explicitly disables the GC. Do not forget to enable it again by calling gc_enable(),
+// when your program is otherwise idle, and can afford it.
+// See also gc_enable() and gc_collect().
+// Note that gc_disable() is a NOP with `-gc none`.
+pub fn gc_disable() {}
+
 // gc_collect explicitly performs a garbage collection.
-// When the GC is not on, it is a NOP.
+// When the GC is not on, (with `-gc none`), it is a NOP.
 pub fn gc_collect() {}
 
 type FnGC_WarnCB = fn (msg &char, arg usize)
