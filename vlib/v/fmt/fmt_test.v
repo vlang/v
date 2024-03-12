@@ -11,18 +11,10 @@ import v.pref
 import v.util.diff
 import v.util.vtest
 
-const vroot = get_vroot()
+const vroot = @VEXEROOT
 const tdir = os.join_path(vroot, 'vlib', 'v', 'fmt', 'tests')
 const fpref = &pref.Preferences{
 	is_fmt: true
-}
-
-fn get_vroot() string {
-	vexe := pref.vexe_path()
-	if vexe == '' || !os.exists(vexe) {
-		assert false, '> failed to find VEXE'
-	}
-	return os.dir(vexe)
 }
 
 fn test_fmt() {
