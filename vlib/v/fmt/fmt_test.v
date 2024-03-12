@@ -12,17 +12,16 @@ import v.util.diff
 import v.util.vtest
 
 const vroot = @VEXEROOT
-const tdir = os.join_path(vroot, 'vlib', 'v', 'fmt', 'tests')
 const fpref = &pref.Preferences{
 	is_fmt: true
 }
 
-fn test_fmt() {
+fn run_fmt(mut input_files []string) {
 	fmt_message := 'vfmt tests'
 	eprintln(term.header(fmt_message, '-'))
 	tmpfolder := os.temp_dir()
 	diff_cmd := diff.find_working_diff_command() or { '' }
-	input_files := vtest.filter_vtest_only(os.walk_ext(tdir, '_input.vv'))
+	input_files = vtest.filter_vtest_only(input_files)
 	assert input_files.len > 0
 	mut fmt_bench := benchmark.new_benchmark()
 	fmt_bench.set_total_expected_steps(input_files.len)
@@ -64,7 +63,15 @@ fn test_fmt() {
 	assert fmt_bench.nfail == 0
 }
 
-fn test_fmt_vmodules() {
-	os.setenv('VMODULES', tdir, true)
-	test_fmt()
+fn test_fmt() {
+	mut input_files := os.walk_ext(os.join_path(vroot, 'vlib', 'v', 'fmt', 'tests'), '_input.vv')
+	run_fmt(mut input_files)
 }
+
+// NOTE: enable with upcommming `__input.vv` / `__expected.vv` files for vmodules
+/* fn test_fmt_vmodules() {
+	vmodules_tdir := os.join_path(vroot, 'vlib', 'v', 'fmt', 'testdata', 'vmodules')
+	os.setenv('VMODULES', vmodules_tdir, true)
+	mut input_files := os.walk_ext(vmodules_tdir, '_input.vv')
+	run_fmt(mut input_files)
+} */

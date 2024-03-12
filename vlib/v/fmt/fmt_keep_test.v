@@ -12,21 +12,13 @@ import v.util.diff
 import v.util.vtest
 
 const vroot = @VEXEROOT
-const tdir = os.join_path(vroot, 'vlib', 'v', 'fmt', 'tests')
 const fpref = &pref.Preferences{
 	is_fmt: true
 }
 
-fn test_fmt() {
+fn run_fmt(mut input_files []string) {
 	fmt_message := 'checking that v fmt keeps already formatted files *unchanged*'
 	eprintln(term.header(fmt_message, '-'))
-	mut input_files := []string{}
-	mut ref := &input_files
-	os.walk(tdir, fn [mut ref] (path string) {
-		if path.ends_with('_keep.vv') || path.ends_with('_expected.vv') {
-			ref << path
-		}
-	})
 	input_files = vtest.filter_vtest_only(input_files)
 	assert input_files.len > 0
 	input_files.sort()
@@ -66,7 +58,25 @@ fn test_fmt() {
 	assert fmt_bench.nfail == 0
 }
 
+fn get_test_files(path string) []string {
+	mut files := []string{}
+	mut ref := &files
+	os.walk(path, fn [mut ref] (p string) {
+		if p.ends_with('_keep.vv') || p.ends_with('_expected.vv') {
+			ref << p
+		}
+	})
+	return files
+}
+
+fn test_fmt() {
+	mut input_files := get_test_files(os.join_path(vroot, 'vlib', 'v', 'fmt', 'tests'))
+	run_fmt(mut input_files)
+}
+
 fn test_fmt_vmodules() {
-	os.setenv('VMODULES', tdir, true)
-	test_fmt()
+	vmodules_tdir := os.join_path(vroot, 'vlib', 'v', 'fmt', 'testdata', 'vmodules')
+	os.setenv('VMODULES', vmodules_tdir, true)
+	mut input_files := get_test_files(vmodules_tdir)
+	run_fmt(mut input_files)
 }
