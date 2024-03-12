@@ -3737,7 +3737,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					node.obj = obj
 
 					if obj.attrs.contains('deprecated') && obj.mod != c.mod {
-						c.deprecate('const', '${obj.name}', obj.attrs, node.pos)
+						c.deprecate('const', obj.name, obj.attrs, node.pos)
 					}
 
 					if node.or_expr.kind != .absent {
@@ -3794,7 +3794,7 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		if node.obj is ast.ConstField {
 			field := node.obj as ast.ConstField
 			if field.attrs.contains('deprecated') && field.mod != c.mod {
-				c.deprecate('const', '${field.name}', field.attrs, node.pos)
+				c.deprecate('const', field.name, field.attrs, node.pos)
 			}
 		}
 		if builtin_type != ast.void_type {
