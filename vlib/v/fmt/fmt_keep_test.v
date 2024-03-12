@@ -32,9 +32,14 @@ fn test_fmt() {
 	fmt_message := 'checking that v fmt keeps already formatted files *unchanged*'
 	eprintln(term.header(fmt_message, '-'))
 	mut input_files := []string{}
-	input_files << os.walk_ext(tdir, '_keep.vv')
-	input_files << os.walk_ext(tdir, '_expected.vv')
+	mut ref := &input_files
+	os.walk(tdir, fn [mut ref] (path string) {
+		if path.ends_with('_keep.vv') || path.ends_with('_expected.vv') {
+			ref << path
+		}
+	})
 	input_files = vtest.filter_vtest_only(input_files)
+	assert input_files.len > 0
 	input_files.sort()
 	mut fmt_bench := benchmark.new_benchmark()
 	fmt_bench.set_total_expected_steps(input_files.len + 1)

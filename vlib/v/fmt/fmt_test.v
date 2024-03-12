@@ -9,6 +9,7 @@ import v.fmt
 import v.parser
 import v.pref
 import v.util.diff
+import v.util.vtest
 
 const vroot = get_vroot()
 const ecode_missing_vexe = 1
@@ -32,9 +33,9 @@ fn test_fmt() {
 	eprintln(term.header(fmt_message, '-'))
 	tmpfolder := os.temp_dir()
 	diff_cmd := diff.find_working_diff_command() or { '' }
+	input_files := vtest.filter_vtest_only(os.walk_ext(tdir, '_input.vv'))
+	assert input_files.len > 0
 	mut fmt_bench := benchmark.new_benchmark()
-	// Lookup the existing test _input.vv files:
-	input_files := os.walk_ext(tdir, '_input.vv')
 	fmt_bench.set_total_expected_steps(input_files.len)
 	for istep, ipath in input_files {
 		fmt_bench.cstep = istep
