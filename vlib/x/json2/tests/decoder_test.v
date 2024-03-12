@@ -82,3 +82,29 @@ fn test_raw_decode_array_invalid() {
 	}
 	assert false
 }
+
+struct ContactItem {
+	description string
+	telnr       string
+}
+
+struct User {
+	name    string
+	age     int
+	contact ContactItem
+}
+
+fn test_decode_missing_comma() {
+	data := '{ 
+				"name": "Frodo", 
+				"age": 25 
+				"contact": {
+					"description": "descr",
+					"telnr": "+32333"
+				}
+			}'
+	user := json.decode[User](data) or {
+		assert err.msg().contains('invalid token')
+		return
+	}
+}
