@@ -1476,15 +1476,14 @@ fn (t Table) shorten_user_defined_typenames(original_name string, import_aliases
 		// mod.submod.submod2.Type => submod2.Type
 		if !parts[..parts.len - 1].any(it.contains('[')) {
 			mod_idx := parts.len - 2
-			if t.cmod_prefix != '' && original_name.starts_with(t.cmod_prefix) {
-				// cur_mod.Type => Type
-				return original_name.all_after(t.cmod_prefix)
-			}
 			if t.is_fmt {
 				parts[mod_idx] = original_name.all_before_last('.')
 			}
 			if alias := import_aliases[parts[mod_idx]] {
 				parts[mod_idx] = alias
+			} else if t.cmod_prefix != '' && original_name.starts_with(t.cmod_prefix) {
+				// cur_mod.Type => Type
+				return original_name.all_after(t.cmod_prefix)
 			}
 			return parts[mod_idx..].join('.')
 		}
