@@ -1487,9 +1487,15 @@ fn (t Table) shorten_user_defined_typenames(original_name string, import_aliases
 				}
 			}
 		}
+		// E.g.: []mod.Type => []Type; []mod.submod.Type => []submod.Type;
+		// imported_mod.Type[mod.Result[[]mod.Token]] => imported_mod.Type[Result[[]Token]]
 		if original_name.contains('[]') {
-			// []mod.name
-			return original_name.all_after('.')
+			if lhs, typ_after_lsbr := original_name.split_once('[') {
+				if mod_, typ_before_lsbr := lhs.rsplit_once('.') {
+					mod = mod_
+					typ = '${typ_before_lsbr}[${typ_after_lsbr}'
+				}
+			}
 		}
 		return '${mod}.${typ}'
 	}
