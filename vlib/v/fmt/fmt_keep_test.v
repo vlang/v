@@ -32,17 +32,14 @@ fn test_fmt() {
 	input_files.sort()
 	mut fmt_bench := benchmark.new_benchmark()
 	fmt_bench.set_total_expected_steps(input_files.len + 1)
-	basepath := vroot + os.path_separator
 	tmpfolder := os.temp_dir()
 	diff_cmd := diff.find_working_diff_command() or { '' }
 	for istep, ipath in input_files {
 		fmt_bench.cstep = istep + 1
 		fmt_bench.step()
-		ifilename := os.file_name(ipath)
-		vrelpath := ipath.all_after(basepath)
 		expected_ocontent := os.read_file(ipath) or {
 			fmt_bench.fail()
-			eprintln(fmt_bench.step_message_fail('cannot read from ${vrelpath}'))
+			eprintln(fmt_bench.step_message_fail('cannot read from ${ipath}'))
 			continue
 		}
 		mut table := ast.new_table()
@@ -50,18 +47,18 @@ fn test_fmt() {
 		result_ocontent := fmt.fmt(file_ast, mut table, fpref, false)
 		if expected_ocontent != result_ocontent {
 			fmt_bench.fail()
-			eprintln(fmt_bench.step_message_fail('file ${vrelpath} after formatting, does not look as expected.'))
+			eprintln(fmt_bench.step_message_fail('file ${ipath} after formatting, does not look as expected.'))
 			if diff_cmd == '' {
 				eprintln('>> sorry, but no working "diff" CLI command can be found')
 				continue
 			}
-			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_${ifilename}')
+			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_${os.file_name(ipath)}')
 			os.write_file(vfmt_result_file, result_ocontent) or { panic(err) }
 			eprintln(diff.color_compare_files(diff_cmd, ipath, vfmt_result_file))
 			continue
 		}
 		fmt_bench.ok()
-		eprintln(fmt_bench.step_message_ok(vrelpath))
+		eprintln(fmt_bench.step_message_ok(ipath))
 	}
 	fmt_bench.stop()
 	eprintln(term.h_divider('-'))
@@ -71,6 +68,5 @@ fn test_fmt() {
 
 fn test_fmt_vmodules() {
 	os.setenv('VMODULES', tdir, true)
-	os.chdir(tdir)!
 	test_fmt()
 }

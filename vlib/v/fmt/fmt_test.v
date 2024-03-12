@@ -29,7 +29,6 @@ fn test_fmt() {
 	for istep, ipath in input_files {
 		fmt_bench.cstep = istep
 		fmt_bench.step()
-		ifilename := os.file_name(ipath)
 		opath := ipath.replace('_input.vv', '_expected.vv')
 		if !os.exists(opath) {
 			fmt_bench.fail()
@@ -51,13 +50,13 @@ fn test_fmt() {
 				eprintln('>> sorry, but no working "diff" CLI command can be found')
 				continue
 			}
-			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_${ifilename}')
+			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_${os.file_name(ipath)}')
 			os.write_file(vfmt_result_file, result_ocontent) or { panic(err) }
 			eprintln(diff.color_compare_files(diff_cmd, opath, vfmt_result_file))
 			continue
 		}
 		fmt_bench.ok()
-		eprintln(fmt_bench.step_message_ok('${ipath}'))
+		eprintln(fmt_bench.step_message_ok(ipath))
 	}
 	fmt_bench.stop()
 	eprintln(term.h_divider('-'))
@@ -67,6 +66,5 @@ fn test_fmt() {
 
 fn test_fmt_vmodules() {
 	os.setenv('VMODULES', tdir, true)
-	os.chdir(tdir)!
 	test_fmt()
 }
