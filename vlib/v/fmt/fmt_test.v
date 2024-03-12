@@ -73,10 +73,9 @@ fn test_fmt() {
 	run_fmt(mut input_files)
 }
 
-// NOTE: enable with upcommming `__input.vv` / `__expected.vv` files for vmodules
-/* fn test_fmt_vmodules() {
+fn test_fmt_vmodules() {
 	vmodules_tdir := os.join_path(vroot, 'vlib', 'v', 'fmt', 'testdata', 'vmodules')
 	os.setenv('VMODULES', vmodules_tdir, true)
 	mut input_files := os.walk_ext(vmodules_tdir, '_input.vv')
 	run_fmt(mut input_files)
-} */
+}
