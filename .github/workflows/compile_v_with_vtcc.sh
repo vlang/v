@@ -1,8 +1,9 @@
 #!/bin/bash
 
-set -e
+set -ex
+
 function show() {
-  printf "\u001b[44m$1\u001b[0m\n"
+  printf "\u001b[35m$1\u001b[0m\n"
 }
 
 show "Prepare"
