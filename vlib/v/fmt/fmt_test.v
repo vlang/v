@@ -12,8 +12,6 @@ import v.util.diff
 import v.util.vtest
 
 const vroot = get_vroot()
-const ecode_missing_vexe = 1
-const ecode_failed_tests = 2
 const tdir = os.join_path(vroot, 'vlib', 'v', 'fmt', 'tests')
 const fpref = &pref.Preferences{
 	is_fmt: true
@@ -22,8 +20,7 @@ const fpref = &pref.Preferences{
 fn get_vroot() string {
 	vexe := pref.vexe_path()
 	if vexe == '' || !os.exists(vexe) {
-		eprintln('VEXE must be set')
-		exit(ecode_missing_vexe)
+		assert false, '> failed to find VEXE'
 	}
 	return os.dir(vexe)
 }
@@ -73,9 +70,7 @@ fn test_fmt() {
 	fmt_bench.stop()
 	eprintln(term.h_divider('-'))
 	eprintln(fmt_bench.total_message(fmt_message))
-	if fmt_bench.nfail > 0 {
-		exit(ecode_failed_tests)
-	}
+	assert fmt_bench.nfail == 0
 }
 
 fn test_fmt_vmodules() {
