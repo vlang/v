@@ -796,8 +796,8 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					}
 				}
 				// Do not allow empty uninitialized interfaces
-				if sym.kind == .interface_ && !node.has_update_expr && sym.language != .js
-					&& !field.typ.has_flag(.option) {
+				if sym.kind == .interface_ && !node.has_update_expr && !field.typ.has_flag(.option)
+					&& sym.language != .js && !field.attrs.contains('noinit') {
 					// TODO: should be an error instead, but first `ui` needs updating.
 					c.note('interface field `${type_sym.name}.${field.name}` must be initialized',
 						node.pos)
