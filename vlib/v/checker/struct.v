@@ -960,8 +960,7 @@ fn (mut c Checker) check_ref_fields_initialized_note(struct_sym &ast.TypeSymbol,
 	if c.pref.translated || c.file.is_translated {
 		return
 	}
-	if struct_sym.kind == .struct_ && struct_sym.language == .c
-		&& (struct_sym.info as ast.Struct).is_typedef {
+	if struct_sym.info is ast.Struct && struct_sym.language == .c && struct_sym.info.is_typedef {
 		return
 	}
 	fields := c.table.struct_fields(struct_sym)
@@ -978,8 +977,8 @@ fn (mut c Checker) check_ref_fields_initialized_note(struct_sym &ast.TypeSymbol,
 				pos)
 			continue
 		}
-		if sym.kind == .struct_ {
-			if sym.language == .c && (sym.info as ast.Struct).is_typedef {
+		if sym.info is ast.Struct {
+			if sym.language == .c && sym.info.is_typedef {
 				continue
 			}
 			if field.typ in checked_types {
@@ -988,8 +987,8 @@ fn (mut c Checker) check_ref_fields_initialized_note(struct_sym &ast.TypeSymbol,
 			checked_types << field.typ
 			c.check_ref_fields_initialized(sym, mut checked_types, '${linked_name}.${field.name}',
 				pos)
-		} else if sym.kind == .alias {
-			psym := c.table.sym((sym.info as ast.Alias).parent_type)
+		} else if sym.info is ast.Alias {
+			psym := c.table.sym(sym.info.parent_type)
 			if psym.kind == .struct_ {
 				checked_types << field.typ
 				c.check_ref_fields_initialized(psym, mut checked_types, '${linked_name}.${field.name}',
