@@ -29,12 +29,6 @@ photon::WorkPool* work_pool;
 #else
 #endif
 
-// using namespace photon;
-// typedef WorkPool PhotonWorkPool;
-// typedef photon::WorkPool PhotonWorkPool;
-// typedef WorkPool PhotonWorkPool;
-// typedef PhotonWorkPool1 PhotonWorkPool;
-// PhotonWorkPool* new_photon_work_pool();
 void* new_photon_work_pool(size_t);
 // void delete_photon_work_pool(void*);
 void delete_photon_work_pool();
@@ -44,6 +38,10 @@ void init_photon_work_pool(size_t);
 // void photon_thread_migrate(void*);
 void photon_thread_create_and_migrate_to_work_pool(void* (* f)(void*), void* arg);
 // void photon_thread_create_and_migrate_to_work_pool(void*, void* (* f)(void*), void* arg);
+int photon_join_current_thread_into_workpool();
+void photon_set_log_output_stdout();
+void photon_set_log_output_stderr();
+void photon_set_log_output_null();
 // direct wrappers to photon functions
 int photon_init_default();
 void photon_thread_create(void* (* f)(void*), void* arg);
