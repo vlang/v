@@ -92,6 +92,7 @@ fn init() {
 		// NOTE `sp_corrector` only works for platforms with the stack growing down
 		// MacOs, Win32 and Linux always have stack growing down.
 		// A proper solution is planned (hopefully) for boehm v8.4.0.
+		C.GC_set_sp_corrector(C.sp_corrector)
 		if C.GC_get_sp_corrector() == unsafe { nil } {
 			panic('stack pointer correction unsupported')
 		}
