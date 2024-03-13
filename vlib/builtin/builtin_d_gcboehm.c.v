@@ -180,7 +180,7 @@ pub struct C.GC_stack_base {
 	// reg_base voidptr
 }
 
-fn C.GC_get_stack_base(voidptr)
+fn C.GC_get_stack_base(voidptr) int
 fn C.GC_register_my_thread(voidptr) int
 fn C.GC_unregister_my_thread() int
 
