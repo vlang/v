@@ -1925,7 +1925,7 @@ pub fn (str string) is_bin() bool {
 	return true
 }
 
-// is_hex returns 'true' if the string is a hexadecimal value, or 'false' if it is not.
+// is_hex returns 'true' if the string is a hexadecimal value.
 @[direct_array_access]
 pub fn (str string) is_hex() bool {
 	mut i := 0
