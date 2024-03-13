@@ -20,19 +20,9 @@ pub fn filter_vtest_only(paths []string, config FilterVTestConfig) []string {
 		if config.fix_slashes {
 			file = file.replace('\\', '/')
 		}
-		if patterns.len > 0 {
-			mut found := 0
-			for okpat in patterns {
-				if file.contains(okpat) {
-					found++
-					break
-				}
-			}
-			if found == 0 {
-				continue
-			}
+		if patterns.len > 0 && patterns.any(file.contains(it)) {
+			res << file
 		}
-		res << file
 	}
 	return res
 }
