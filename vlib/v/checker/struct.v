@@ -867,15 +867,15 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			}
 		}
 	}
-	if struct_sym.info is ast.Struct && struct_sym.info.generic_types.len > 0 {
-		if struct_sym.info.concrete_types.len == 0 && c.table.cur_concrete_types.len == 0 {
+	if struct_sym.info is ast.Struct && struct_sym.info.generic_types.len > 0
+		&& c.table.cur_concrete_types.len == 0 {
+		if struct_sym.info.concrete_types.len == 0 {
 			concrete_types := c.infer_struct_generic_types(node.typ, node)
 			if concrete_types.len > 0 {
 				generic_names := struct_sym.info.generic_types.map(c.table.sym(it).name)
 				node.typ = c.table.unwrap_generic_type(node.typ, generic_names, concrete_types)
 			}
-		} else if struct_sym.info.generic_types.len == struct_sym.info.concrete_types.len
-			&& c.table.cur_concrete_types.len == 0 {
+		} else if struct_sym.info.generic_types.len == struct_sym.info.concrete_types.len {
 			parent_type := struct_sym.info.parent_type
 			parent_sym := c.table.sym(parent_type)
 			for method in parent_sym.methods {
