@@ -19,6 +19,7 @@ $if windows {
 #include "sp_corrector.c"
 
 fn C.set_photon_thread_stack_allocator(fn (voidptr, int) voidptr, fn (voidptr, voidptr, int))
+
 // fn C.default_photon_thread_stack_alloc(voidptr, int) voidptr
 // fn C.default_photon_thread_stack_dealloc(voidptr, voidptr, int)
 fn C.new_photon_work_pool(int) voidptr
@@ -105,11 +106,10 @@ fn init() {
 		// manual - pass 0 because we will start our own
 		C.init_photon_work_pool(0)
 		// start our own vcpu's manually
-		for _ in 1..util.nr_jobs {
+		for _ in 1 .. util.nr_jobs {
 			spawn init_photon_vcpu()
 		}
 	}
-	
 
 	if ret < 0 {
 		panic('failed to initialize coroutines via photon (ret=${ret})')
