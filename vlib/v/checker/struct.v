@@ -483,11 +483,21 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 		&& type_sym.mod != 'builtin')) && !is_field_zero_struct_init {
 		c.error('type `${type_sym.name}` is private', node.pos)
 	}
-	if type_sym.kind == .struct_ {
-		info := type_sym.info as ast.Struct
-		if info.attrs.len > 0 && info.attrs.contains('noinit') && type_sym.mod != c.mod {
-			c.error('struct `${type_sym.name}` is declared with a `@[noinit]` attribute, so ' +
-				'it cannot be initialized with `${type_sym.name}{}`', node.pos)
+	if type_sym.info is ast.Struct {
+		if type_sym.mod != c.mod {
+			for attr in type_sym.info.attrs {
+				match attr.name {
+					'noinit' {
+						c.error(
+							'struct `${type_sym.name}` is declared with a `@[noinit]` attribute, so ' +
+							'it cannot be initialized with `${type_sym.name}{}`', node.pos)
+					}
+					'deprecated' {
+						c.deprecate('struct', type_sym.name, type_sym.info.attrs, node.pos)
+					}
+					else {}
+				}
+			}
 		}
 	}
 	if type_sym.name.len == 1 && c.table.cur_fn != unsafe { nil }
@@ -507,15 +517,25 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				init_field.expected_type = init_field.typ
 			}
 			sym := c.table.sym(c.unwrap_generic(node.typ))
-			if sym.kind == .struct_ {
-				info := sym.info as ast.Struct
-				if info.attrs.len > 0 && info.attrs.contains('noinit') && sym.mod != c.mod {
-					c.error('struct `${sym.name}` is declared with a `@[noinit]` attribute, so ' +
-						'it cannot be initialized with `${sym.name}{}`', node.pos)
+			if sym.info is ast.Struct {
+				if type_sym.mod != c.mod {
+					for attr in sym.info.attrs {
+						match attr.name {
+							'noinit' {
+								c.error(
+									'struct `${sym.name}` is declared with a `@[noinit]` attribute, so ' +
+									'it cannot be initialized with `${sym.name}{}`', node.pos)
+							}
+							'deprecated' {
+								c.deprecate('struct', sym.name, sym.info.attrs, node.pos)
+							}
+							else {}
+						}
+					}
 				}
-				if node.no_keys && node.init_fields.len != info.fields.len {
-					fname := if info.fields.len != 1 { 'fields' } else { 'field' }
-					c.error('initializing struct `${sym.name}` needs `${info.fields.len}` ${fname}, but got `${node.init_fields.len}`',
+				if node.no_keys && node.init_fields.len != sym.info.fields.len {
+					fname := if sym.info.fields.len != 1 { 'fields' } else { 'field' }
+					c.error('initializing struct `${sym.name}` needs `${sym.info.fields.len}` ${fname}, but got `${node.init_fields.len}`',
 						node.pos)
 				}
 			}
@@ -745,6 +765,14 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 
 			for i, mut field in fields {
 				if field.name in inited_fields {
+					if field.attrs.contains('deprecated') {
+						for init_field in node.init_fields {
+							if field.name == init_field.name {
+								c.deprecate('field', field.name, field.attrs, init_field.pos)
+								break
+							}
+						}
+					}
 					continue
 				}
 				sym := c.table.sym(field.typ)
