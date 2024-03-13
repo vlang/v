@@ -965,10 +965,7 @@ fn (mut c Checker) check_ref_fields_initialized_note(struct_sym &ast.TypeSymbol,
 	}
 	fields := c.table.struct_fields(struct_sym)
 	for field in fields {
-		sym := c.table.sym(field.typ)
-		if field.name.len > 0 && field.name[0].is_capital() && sym.info is ast.Struct
-			&& sym.language == .v {
-			// an embedded struct field
+		if field.typ in checked_types {
 			continue
 		}
 		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !field.typ.has_flag(.option)
@@ -977,11 +974,14 @@ fn (mut c Checker) check_ref_fields_initialized_note(struct_sym &ast.TypeSymbol,
 				pos)
 			continue
 		}
+		sym := c.table.sym(field.typ)
+		if field.name.len > 0 && field.name[0].is_capital() && sym.info is ast.Struct
+			&& sym.language == .v {
+			// an embedded struct field
+			continue
+		}
 		if sym.info is ast.Struct {
 			if sym.language == .c && sym.info.is_typedef {
-				continue
-			}
-			if field.typ in checked_types {
 				continue
 			}
 			checked_types << field.typ
