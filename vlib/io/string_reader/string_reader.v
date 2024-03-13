@@ -52,7 +52,7 @@ pub fn (r StringReader) needs_fill() bool {
 // needs_fill_until returns whether the buffer needs refilling in order to read
 // `n` bytes
 pub fn (r StringReader) needs_fill_until(n int) bool {
-	return r.offset + n >= r.builder.len
+	return r.offset + n > r.builder.len
 }
 
 // fill_bufer tries to read data into the buffer until either a 0 length read or if read_to_end_of_stream
