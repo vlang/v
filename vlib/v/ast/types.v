@@ -1471,35 +1471,33 @@ fn (t Table) shorten_user_defined_typenames(original_name string, import_aliases
 	if alias := import_aliases[original_name] {
 		return alias
 	}
-	if mut mod, mut typ := original_name.rsplit_once('.') {
-		if !mod.contains('[') {
-			if !t.is_fmt {
-				mod = mod.all_after_last('.')
-			}
-			if alias := import_aliases[mod] {
+	mut mod, mut typ := original_name.rsplit_once('.') or { return original_name }
+	if !mod.contains('[') {
+		if !t.is_fmt {
+			mod = mod.all_after_last('.')
+		}
+		if alias := import_aliases[mod] {
+			mod = alias
+		} else if t.cmod_prefix != '' {
+			if alias := import_aliases[t.cmod_prefix + mod] {
 				mod = alias
-			} else if t.cmod_prefix != '' {
-				if alias := import_aliases[t.cmod_prefix + mod] {
-					mod = alias
-				} else {
-					// cur_mod.Type => Type
-					return original_name.all_after(t.cmod_prefix)
-				}
+			} else {
+				// cur_mod.Type => Type
+				return original_name.all_after(t.cmod_prefix)
 			}
 		}
-		// E.g.: []mod.Type => []Type; []mod.submod.Type => []submod.Type;
-		// imported_mod.Type[mod.Result[[]mod.Token]] => imported_mod.Type[Result[[]Token]]
-		if original_name.contains('[]') {
-			if lhs, typ_after_lsbr := original_name.split_once('[') {
-				if mod_, typ_before_lsbr := lhs.rsplit_once('.') {
-					mod = mod_
-					typ = '${typ_before_lsbr}[${typ_after_lsbr}'
-				}
-			}
-		}
-		return '${mod}.${typ}'
 	}
-	return original_name
+	// E.g.: []mod.Type => []Type; []mod.submod.Type => []submod.Type;
+	// imported_mod.Type[mod.Result[[]mod.Token]] => imported_mod.Type[Result[[]Token]]
+	if original_name.contains('[]') {
+		if lhs, typ_after_lsbr := original_name.split_once('[') {
+			if mod_, typ_before_lsbr := lhs.rsplit_once('.') {
+				mod = mod_
+				typ = '${typ_before_lsbr}[${typ_after_lsbr}'
+			}
+		}
+	}
+	return '${mod}.${typ}'
 }
 
 @[minify]
