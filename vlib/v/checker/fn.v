@@ -2740,11 +2740,10 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, node ast
 			}
 		}
 		ast.LambdaExpr {
-			if arg_expr.expr is ast.CallExpr {
-				if is_map && arg_expr.expr.return_type in [ast.void_type, 0] {
-					c.error('type mismatch, `${arg_expr.expr.name}` does not return anything',
-						arg_expr.expr.pos)
-				}
+			if arg_expr.expr is ast.CallExpr && is_map
+				&& arg_expr.expr.return_type in [ast.void_type, 0] {
+				c.error('type mismatch, `${arg_expr.expr.name}` does not return anything',
+					arg_expr.expr.pos)
 			}
 		}
 		else {}
