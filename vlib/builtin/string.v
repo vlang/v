@@ -1882,7 +1882,7 @@ pub fn (str string) is_oct() bool {
 	return true
 }
 
-// Check if a string is a binary value. Returns 'true' if it is, or 'false' if it is not
+// is_bin returns `true` if the string is a binary value.
 @[direct_array_access]
 pub fn (str string) is_bin() bool {
 	mut i := 0
@@ -1925,7 +1925,7 @@ pub fn (str string) is_bin() bool {
 	return true
 }
 
-// Check if a string is a hexadecimal value. Returns 'true' if it is, or 'false' if it is not
+// is_hex returns 'true' if the string is a hexadecimal value, or 'false' if it is not
 @[direct_array_access]
 pub fn (str string) is_hex() bool {
 	mut i := 0
