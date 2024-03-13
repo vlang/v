@@ -315,6 +315,9 @@ pub fn (db &DB) exec_param_many(query string, params []string) ![]Row {
 	for {
 		res = C.sqlite3_step(stmt)
 		if res != sqlite.sqlite_row {
+			if rows.len == 0 && is_error(res) {
+				return db.error_message(res, query)
+			}
 			break
 		}
 		mut row := Row{}
