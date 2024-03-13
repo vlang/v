@@ -975,12 +975,12 @@ fn (mut c Checker) check_ref_fields_initialized_note(struct_sym &ast.TypeSymbol,
 			continue
 		}
 		sym := c.table.sym(field.typ)
-		if field.name.is_capital() && sym.info is ast.Struct && sym.language == .v {
-			// an embedded struct field
-			continue
-		}
 		if sym.info is ast.Struct {
 			if sym.language == .c && sym.info.is_typedef {
+				continue
+			}
+			if field.name.is_capital() && sym.language == .v {
+				// an embedded struct field
 				continue
 			}
 			checked_types << field.typ
