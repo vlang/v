@@ -483,12 +483,10 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 		&& type_sym.mod != 'builtin')) && !is_field_zero_struct_init {
 		c.error('type `${type_sym.name}` is private', node.pos)
 	}
-	if type_sym.kind == .struct_ {
-		info := type_sym.info as ast.Struct
-		if info.attrs.len > 0 && info.attrs.contains('noinit') && type_sym.mod != c.mod {
-			c.error('struct `${type_sym.name}` is declared with a `@[noinit]` attribute, so ' +
-				'it cannot be initialized with `${type_sym.name}{}`', node.pos)
-		}
+	if type_sym.info is ast.Struct && type_sym.mod != c.mod
+		&& type_sym.info.attrs.contains('noinit') {
+		c.error('struct `${type_sym.name}` is declared with a `@[noinit]` attribute, so ' +
+			'it cannot be initialized with `${type_sym.name}{}`', node.pos)
 	}
 	if type_sym.name.len == 1 && c.table.cur_fn != unsafe { nil }
 		&& c.table.cur_fn.generic_names.len == 0 {
@@ -507,15 +505,14 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				init_field.expected_type = init_field.typ
 			}
 			sym := c.table.sym(c.unwrap_generic(node.typ))
-			if sym.kind == .struct_ {
-				info := sym.info as ast.Struct
-				if info.attrs.len > 0 && info.attrs.contains('noinit') && sym.mod != c.mod {
+			if sym.info is ast.Struct {
+				if sym.mod != c.mod && sym.info.attrs.contains('noinit') {
 					c.error('struct `${sym.name}` is declared with a `@[noinit]` attribute, so ' +
 						'it cannot be initialized with `${sym.name}{}`', node.pos)
 				}
-				if node.no_keys && node.init_fields.len != info.fields.len {
-					fname := if info.fields.len != 1 { 'fields' } else { 'field' }
-					c.error('initializing struct `${sym.name}` needs `${info.fields.len}` ${fname}, but got `${node.init_fields.len}`',
+				if node.no_keys && node.init_fields.len != sym.info.fields.len {
+					fname := if sym.info.fields.len != 1 { 'fields' } else { 'field' }
+					c.error('initializing struct `${sym.name}` needs `${sym.info.fields.len}` ${fname}, but got `${node.init_fields.len}`',
 						node.pos)
 				}
 			}
@@ -799,15 +796,8 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					}
 				}
 				// Do not allow empty uninitialized interfaces
-				mut has_noinit := false
-				for attr in field.attrs {
-					if attr.name == 'noinit' {
-						has_noinit = true
-						break
-					}
-				}
-				if !field.typ.has_flag(.option) && sym.kind == .interface_
-					&& (!has_noinit && sym.language != .js) && !node.has_update_expr {
+				if sym.kind == .interface_ && !node.has_update_expr && sym.language != .js
+					&& !field.typ.has_flag(.option) {
 					// TODO: should be an error instead, but first `ui` needs updating.
 					c.note('interface field `${type_sym.name}.${field.name}` must be initialized',
 						node.pos)
@@ -877,16 +867,14 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			}
 		}
 	}
-	if struct_sym.info is ast.Struct {
-		if struct_sym.info.generic_types.len > 0 && struct_sym.info.concrete_types.len == 0
-			&& c.table.cur_concrete_types.len == 0 {
+	if struct_sym.info is ast.Struct && struct_sym.info.generic_types.len > 0 {
+		if struct_sym.info.concrete_types.len == 0 && c.table.cur_concrete_types.len == 0 {
 			concrete_types := c.infer_struct_generic_types(node.typ, node)
 			if concrete_types.len > 0 {
 				generic_names := struct_sym.info.generic_types.map(c.table.sym(it).name)
 				node.typ = c.table.unwrap_generic_type(node.typ, generic_names, concrete_types)
 			}
-		} else if struct_sym.info.generic_types.len > 0
-			&& struct_sym.info.generic_types.len == struct_sym.info.concrete_types.len
+		} else if struct_sym.info.generic_types.len == struct_sym.info.concrete_types.len
 			&& c.table.cur_concrete_types.len == 0 {
 			parent_type := struct_sym.info.parent_type
 			parent_sym := c.table.sym(parent_type)
