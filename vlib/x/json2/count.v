@@ -2,23 +2,23 @@ module json2
 
 import time
 
-pub struct Count {
+struct Count {
 mut:
 	total int
 }
 
 // get_total
-pub fn (mut count Count) get_total() int {
+fn (mut count Count) get_total() int {
 	return count.total
 }
 
 // reset_total
-pub fn (mut count Count) reset_total() {
+fn (mut count Count) reset_total() {
 	count.total = 0
 }
 
 // count_chars count json sizen whithout new encode
-pub fn (mut count Count) count_chars[T](val T) {
+fn (mut count Count) count_chars[T](val T) {
 	$if val is $option {
 		workaround := val
 		if workaround != none {
