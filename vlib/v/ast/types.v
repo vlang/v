@@ -1471,28 +1471,33 @@ fn (t Table) shorten_user_defined_typenames(original_name string, import_aliases
 	if alias := import_aliases[original_name] {
 		return alias
 	}
-	mut parts := original_name.split('.')
-	if parts.len > 1 {
-		// mod.submod.submod2.Type => submod2.Type
-		if !parts[..parts.len - 1].any(it.contains('[')) {
-			mod_idx := parts.len - 2
-			if t.is_fmt {
-				parts[mod_idx] = original_name.all_before_last('.')
-			}
-			if alias := import_aliases[parts[mod_idx]] {
-				parts[mod_idx] = alias
-			} else if t.cmod_prefix != '' && original_name.starts_with(t.cmod_prefix) {
+	mut mod, mut typ := original_name.rsplit_once('.') or { return original_name }
+	if !mod.contains('[') {
+		if !t.is_fmt {
+			mod = mod.all_after_last('.')
+		}
+		if alias := import_aliases[mod] {
+			mod = alias
+		} else if t.cmod_prefix != '' {
+			if alias := import_aliases[t.cmod_prefix + mod] {
+				mod = alias
+			} else {
 				// cur_mod.Type => Type
 				return original_name.all_after(t.cmod_prefix)
 			}
-			return parts[mod_idx..].join('.')
-		}
-		if original_name.contains('[]') {
-			// []mod.name
-			return original_name.all_after('.')
 		}
 	}
-	return original_name
+	// E.g.: []mod.Type => []Type; []mod.submod.Type => []submod.Type;
+	// imported_mod.Type[mod.Result[[]mod.Token]] => imported_mod.Type[Result[[]Token]]
+	if original_name.contains('[]') {
+		if lhs, typ_after_lsbr := original_name.split_once('[') {
+			if mod_, typ_before_lsbr := lhs.rsplit_once('.') {
+				mod = mod_
+				typ = '${typ_before_lsbr}[${typ_after_lsbr}'
+			}
+		}
+	}
+	return '${mod}.${typ}'
 }
 
 @[minify]
