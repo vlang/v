@@ -16,8 +16,12 @@ $if freebsd {
 
 #include <X11/Xlib.h> # Please install a package with the X11 development headers, for example: `apt-get install libx11-dev`
 // X11
+
 @[typedef]
-pub struct C.Display {
+pub struct C.Display {}
+
+fn (d &C.Display) str() string {
+	return 'C.Display{}'
 }
 
 type Window = u64
