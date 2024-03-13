@@ -957,14 +957,11 @@ fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut 
 // The goal is to give only a notice, not an error, for now. After a while,
 // when we change the notice to error, we can remove this temporary method.
 fn (mut c Checker) check_ref_fields_initialized_note(struct_sym &ast.TypeSymbol, mut checked_types []ast.Type, linked_name string, pos &token.Pos) {
-	if c.pref.translated || c.file.is_translated {
+	if (c.pref.translated || c.file.is_translated) || (struct_sym.language == .c
+		&& struct_sym.info is ast.Struct && struct_sym.info.is_typedef) {
 		return
 	}
-	if struct_sym.info is ast.Struct && struct_sym.language == .c && struct_sym.info.is_typedef {
-		return
-	}
-	fields := c.table.struct_fields(struct_sym)
-	for field in fields {
+	for field in c.table.struct_fields(struct_sym) {
 		if field.typ in checked_types {
 			continue
 		}
