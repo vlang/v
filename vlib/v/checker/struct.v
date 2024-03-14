@@ -909,19 +909,12 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 
 // Recursively check whether the struct type field is initialized
 fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut checked_types []ast.Type, linked_name string, pos &token.Pos) {
-	if c.pref.translated || c.file.is_translated {
+	if (c.pref.translated || c.file.is_translated) || (struct_sym.language == .c
+		&& struct_sym.info is ast.Struct && struct_sym.info.is_typedef) {
 		return
 	}
-	if struct_sym.kind == .struct_ && struct_sym.language == .c
-		&& (struct_sym.info as ast.Struct).is_typedef {
-		return
-	}
-	fields := c.table.struct_fields(struct_sym)
-	for field in fields {
-		sym := c.table.sym(field.typ)
-		if field.name.len > 0 && field.name[0].is_capital() && sym.info is ast.Struct
-			&& sym.language == .v {
-			// an embedded struct field
+	for field in c.table.struct_fields(struct_sym) {
+		if field.typ in checked_types {
 			continue
 		}
 		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !field.typ.has_flag(.option)
@@ -930,18 +923,20 @@ fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut 
 				pos)
 			continue
 		}
-		if sym.kind == .struct_ {
-			if sym.language == .c && (sym.info as ast.Struct).is_typedef {
+		sym := c.table.sym(field.typ)
+		if sym.info is ast.Struct {
+			if sym.language == .c && sym.info.is_typedef {
 				continue
 			}
-			if field.typ in checked_types {
+			if field.name.is_capital() && sym.language == .v {
+				// an embedded struct field
 				continue
 			}
 			checked_types << field.typ
 			c.check_ref_fields_initialized(sym, mut checked_types, '${linked_name}.${field.name}',
 				pos)
-		} else if sym.kind == .alias {
-			psym := c.table.sym((sym.info as ast.Alias).parent_type)
+		} else if sym.info is ast.Alias {
+			psym := c.table.sym(sym.info.parent_type)
 			if psym.kind == .struct_ {
 				checked_types << field.typ
 				c.check_ref_fields_initialized(psym, mut checked_types, '${linked_name}.${field.name}',
@@ -957,19 +952,12 @@ fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut 
 // The goal is to give only a notice, not an error, for now. After a while,
 // when we change the notice to error, we can remove this temporary method.
 fn (mut c Checker) check_ref_fields_initialized_note(struct_sym &ast.TypeSymbol, mut checked_types []ast.Type, linked_name string, pos &token.Pos) {
-	if c.pref.translated || c.file.is_translated {
+	if (c.pref.translated || c.file.is_translated) || (struct_sym.language == .c
+		&& struct_sym.info is ast.Struct && struct_sym.info.is_typedef) {
 		return
 	}
-	if struct_sym.kind == .struct_ && struct_sym.language == .c
-		&& (struct_sym.info as ast.Struct).is_typedef {
-		return
-	}
-	fields := c.table.struct_fields(struct_sym)
-	for field in fields {
-		sym := c.table.sym(field.typ)
-		if field.name.len > 0 && field.name[0].is_capital() && sym.info is ast.Struct
-			&& sym.language == .v {
-			// an embedded struct field
+	for field in c.table.struct_fields(struct_sym) {
+		if field.typ in checked_types {
 			continue
 		}
 		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !field.typ.has_flag(.option)
@@ -978,18 +966,20 @@ fn (mut c Checker) check_ref_fields_initialized_note(struct_sym &ast.TypeSymbol,
 				pos)
 			continue
 		}
-		if sym.kind == .struct_ {
-			if sym.language == .c && (sym.info as ast.Struct).is_typedef {
+		sym := c.table.sym(field.typ)
+		if sym.info is ast.Struct {
+			if sym.language == .c && sym.info.is_typedef {
 				continue
 			}
-			if field.typ in checked_types {
+			if field.name.is_capital() && sym.language == .v {
+				// an embedded struct field
 				continue
 			}
 			checked_types << field.typ
 			c.check_ref_fields_initialized(sym, mut checked_types, '${linked_name}.${field.name}',
 				pos)
-		} else if sym.kind == .alias {
-			psym := c.table.sym((sym.info as ast.Alias).parent_type)
+		} else if sym.info is ast.Alias {
+			psym := c.table.sym(sym.info.parent_type)
 			if psym.kind == .struct_ {
 				checked_types << field.typ
 				c.check_ref_fields_initialized(psym, mut checked_types, '${linked_name}.${field.name}',
