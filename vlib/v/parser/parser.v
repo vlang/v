@@ -1350,23 +1350,6 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 						addressing.segment = segment
 						args << addressing
 					}
-					.lpar {
-						mut arg := '('
-						p.next()
-						if p.tok.kind == .mod {
-							arg += '%'
-							p.next()
-							if p.tok.kind == .name {
-								arg += p.tok.lit
-								p.next()
-							}
-							if p.tok.kind == .rpar {
-								arg += ')'
-								p.next()
-							}
-						}
-						args << arg
-					}
 					.rcbr {
 						break
 					}
