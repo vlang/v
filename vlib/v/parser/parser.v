@@ -1366,7 +1366,6 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 							}
 						}
 						args << arg
-						println('>>> ${arg}')
 					}
 					.rcbr {
 						break
