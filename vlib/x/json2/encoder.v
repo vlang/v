@@ -53,7 +53,10 @@ pub fn encode[T](val T) string {
 	$if T is $array {
 		return encode_array(val)
 	} $else {
-		mut buf := []u8{}
+		mut count := Count{0}
+		count.count_chars(val)
+
+		mut buf := []u8{cap: count.total}
 
 		defer {
 			unsafe { buf.free() }
