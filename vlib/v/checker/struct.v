@@ -763,7 +763,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 
 			for i, mut field in fields {
 				if field.name in inited_fields {
-					if field.attrs.contains('deprecated') {
+					if c.mod != type_sym.mod && field.is_deprecated {
 						for init_field in node.init_fields {
 							if field.name == init_field.name {
 								c.deprecate('field', field.name, field.attrs, init_field.pos)
