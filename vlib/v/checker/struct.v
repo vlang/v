@@ -314,18 +314,15 @@ fn minify_sort_fn(a &ast.StructField, b &ast.StructField) int {
 	// TODO: support enums with custom field values as well
 	if a_sym.info is ast.Enum {
 		if !a_sym.info.is_flag && !a_sym.info.uses_exprs {
-			if b_sym.kind == .enum_ {
-				a_nr_vals := (a_sym.info as ast.Enum).vals.len
-				b_nr_vals := (b_sym.info as ast.Enum).vals.len
-				return if a_nr_vals > b_nr_vals {
-					-1
-				} else if a_nr_vals < b_nr_vals {
-					1
-				} else {
-					0
+			return if b_sym.info is ast.Enum {
+				match true {
+					a_sym.info.vals.len > b_sym.info.vals.len { -1 }
+					a_sym.info.vals.len < b_sym.info.vals.len { 1 }
+					else { 0 }
 				}
+			} else {
+				1
 			}
-			return 1
 		}
 	} else if b_sym.info is ast.Enum {
 		if !b_sym.info.is_flag && !b_sym.info.uses_exprs {
@@ -335,16 +332,12 @@ fn minify_sort_fn(a &ast.StructField, b &ast.StructField) int {
 
 	a_size, a_align := t.type_size(a.typ)
 	b_size, b_align := t.type_size(b.typ)
-	return if a_align > b_align {
-		-1
-	} else if a_align < b_align {
-		1
-	} else if a_size > b_size {
-		-1
-	} else if a_size < b_size {
-		1
-	} else {
-		0
+	return match true {
+		a_align > b_align { -1 }
+		a_align < b_align { 1 }
+		a_size > b_size { -1 }
+		a_size < b_size { 1 }
+		else { 0 }
 	}
 }
 
