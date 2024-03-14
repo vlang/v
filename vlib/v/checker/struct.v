@@ -912,7 +912,7 @@ fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut 
 			if sym.language == .c && sym.info.is_typedef {
 				continue
 			}
-			if field.name.is_capital() && sym.language == .v {
+			if field.name.len > 0 && field.name[0].is_capital() && sym.language == .v {
 				// an embedded struct field
 				continue
 			}
@@ -955,7 +955,7 @@ fn (mut c Checker) check_ref_fields_initialized_note(struct_sym &ast.TypeSymbol,
 			if sym.language == .c && sym.info.is_typedef {
 				continue
 			}
-			if field.name.is_capital() && sym.language == .v {
+			if field.name.len > 0 && field.name[0].is_capital() && sym.language == .v {
 				// an embedded struct field
 				continue
 			}
