@@ -87,12 +87,10 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			if !c.is_builtin_mod && node.language == .v {
 				if !(c.file.is_translated || c.pref.translated) {
 					sym := c.table.sym(field.typ)
-					if sym.kind == .function {
-						if !field.typ.has_flag(.option) && !field.has_default_expr
-							&& field.attrs.all(it.name != 'required') {
-							error_msg := 'uninitialized `fn` struct fields are not allowed, since they can result in segfaults; use `?fn` or `[required]` or initialize the field with `=` (if you absolutely want to have unsafe function pointers, use `= unsafe { nil }`)'
-							c.note(error_msg, field.pos)
-						}
+					if sym.kind == .function && !field.typ.has_flag(.option)
+						&& !field.has_default_expr && !field.attrs.contains('required') {
+						error_msg := 'uninitialized `fn` struct fields are not allowed, since they can result in segfaults; use `?fn` or `[required]` or initialize the field with `=` (if you absolutely want to have unsafe function pointers, use `= unsafe { nil }`)'
+						c.note(error_msg, field.pos)
 					}
 				}
 			}
@@ -444,8 +442,8 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 		&& c.table.cur_concrete_types.len == 0 {
 		pos := type_sym.name.index_u8_last(`.`)
 		first_letter := type_sym.name[pos + 1]
-		if !first_letter.is_capital()
-			&& (type_sym.kind != .struct_ || !(type_sym.info as ast.Struct).is_anon)
+		if !first_letter.is_capital() && (type_sym.kind != .struct_
+			|| !(type_sym.info is ast.Struct && type_sym.info.is_anon))
 			&& type_sym.kind != .placeholder {
 			c.error('cannot initialize builtin type `${type_sym.name}`', node.pos)
 		}
@@ -612,8 +610,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 						init_field.expr.pos())
 				}
 				if exp_type_sym.kind == .array && got_type_sym.kind == .array {
-					if init_field.expr is ast.IndexExpr
-						&& (init_field.expr as ast.IndexExpr).left is ast.Ident
+					if init_field.expr is ast.IndexExpr && init_field.expr.left is ast.Ident
 						&& ((init_field.expr as ast.IndexExpr).left.is_mut()
 						|| field_info.is_mut) && init_field.expr.index is ast.RangeExpr
 						&& !c.inside_unsafe {
@@ -636,11 +633,9 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					}
 				}
 				if exp_type_sym.kind == .interface_ {
-					if c.type_implements(got_type, exp_type, init_field.pos) {
-						if !c.inside_unsafe && got_type_sym.kind != .interface_
-							&& !got_type.is_any_kind_of_pointer() {
-							c.mark_as_referenced(mut &init_field.expr, true)
-						}
+					if got_type_sym.kind != .interface_ && !got_type.is_any_kind_of_pointer()
+						&& c.type_implements(got_type, exp_type, init_field.pos) && !c.inside_unsafe {
+						c.mark_as_referenced(mut &init_field.expr, true)
 					}
 				} else if got_type != ast.void_type && got_type_sym.kind != .placeholder
 					&& !exp_type.has_flag(.generic) {
@@ -682,27 +677,19 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				node.init_fields[i].typ = got_type
 				node.init_fields[i].expected_type = exp_type
 
-				if got_type.is_ptr() && exp_type.is_ptr() {
-					if mut init_field.expr is ast.Ident {
-						c.fail_if_stack_struct_action_outside_unsafe(mut init_field.expr,
-							'assigned')
-					}
+				if got_type.is_ptr() && exp_type.is_ptr() && mut init_field.expr is ast.Ident {
+					c.fail_if_stack_struct_action_outside_unsafe(mut init_field.expr,
+						'assigned')
 				}
-				if field_info.typ in ast.unsigned_integer_type_idxs {
-					if mut init_field.expr is ast.IntegerLiteral {
-						if init_field.expr.val[0] == `-` {
-							c.error('cannot assign negative value to unsigned integer type',
-								init_field.expr.pos)
-						}
-					}
+				if field_info.typ in ast.unsigned_integer_type_idxs
+					&& mut init_field.expr is ast.IntegerLiteral
+					&& (init_field.expr as ast.IntegerLiteral).val[0] == `-` {
+					c.error('cannot assign negative value to unsigned integer type', init_field.expr.pos)
 				}
 
-				if exp_type_sym.kind == .struct_ && !(exp_type_sym.info as ast.Struct).is_anon
-					&& mut init_field.expr is ast.StructInit {
-					if init_field.expr.is_anon {
-						c.error('cannot assign anonymous `struct` to a typed `struct`',
-							init_field.expr.pos)
-					}
+				if exp_type_sym.info is ast.Struct && !exp_type_sym.info.is_anon
+					&& mut init_field.expr is ast.StructInit && init_field.expr.is_anon {
+					c.error('cannot assign anonymous `struct` to a typed `struct`', init_field.expr.pos)
 				}
 
 				// all the fields of initialized embedded struct are ignored, they are considered initialized
