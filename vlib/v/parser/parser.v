@@ -1253,6 +1253,11 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 		}
 		if p.tok.kind in [.key_in, .key_lock, .key_orelse, .key_select, .key_return] { // `in`, `lock`, `or`, `select`, `return` are v keywords that are also x86/arm/riscv/wasm instructions.
 			name += p.tok.kind.str()
+			if p.tok.kind == .key_lock && arch in [.i386, .amd64] {
+				p.next()
+				name += ' '
+				name += p.tok.lit
+			}
 			p.next()
 		} else if p.tok.kind == .number {
 			name += p.tok.lit
@@ -1344,6 +1349,24 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 						mut addressing := p.asm_addressing()
 						addressing.segment = segment
 						args << addressing
+					}
+					.lpar {
+						mut arg := '('
+						p.next()
+						if p.tok.kind == .mod {
+							arg += '%'
+							p.next()
+							if p.tok.kind == .name {
+								arg += p.tok.lit
+								p.next()
+							}
+							if p.tok.kind == .rpar {
+								arg += ')'
+								p.next()
+							}
+						}
+						args << arg
+						println('>>> ${arg}')
 					}
 					.rcbr {
 						break
