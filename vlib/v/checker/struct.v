@@ -652,15 +652,13 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				} else {
 					is_unsafe_0 := init_field.expr is ast.UnsafeExpr
 						&& (init_field.expr as ast.UnsafeExpr).expr.str() == '0'
-					if exp_type.is_ptr() && !is_unsafe_0 && !got_type.is_any_kind_of_pointer()
-						&& !exp_type.has_flag(.option) {
+					if !is_unsafe_0 && exp_type.is_ptr() && !got_type.is_any_kind_of_pointer()
+						&& !exp_type.has_flag(.option) && !c.inside_unsafe
+						&& type_sym.language == .v && !(c.file.is_translated
+						|| c.pref.translated) {
 						if init_field.expr.str() == '0' {
-							if !c.inside_unsafe && type_sym.language == .v {
-								if !(c.file.is_translated || c.pref.translated) {
-									c.note('assigning `0` to a reference field is only allowed in `unsafe` blocks',
-										init_field.pos)
-								}
-							}
+							c.note('assigning `0` to a reference field is only allowed in `unsafe` blocks',
+								init_field.pos)
 						} else {
 							c.error('reference field must be initialized with reference',
 								init_field.pos)
