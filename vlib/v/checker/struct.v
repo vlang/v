@@ -824,9 +824,8 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							node.pos)
 					}
 				}
-				if !node.has_update_expr && !field.has_default_expr && field.name !in inited_fields
-					&& !field.typ.is_ptr() && !field.typ.has_flag(.option)
-					&& c.table.final_sym(field.typ).kind == .struct_ {
+				if !node.has_update_expr && !field.has_default_expr && !field.typ.is_ptr()
+					&& !field.typ.has_flag(.option) && c.table.final_sym(field.typ).kind == .struct_ {
 					mut zero_struct_init := ast.StructInit{
 						pos: node.pos
 						typ: field.typ
