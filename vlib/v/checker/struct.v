@@ -801,18 +801,10 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				}
 				*/
 				// Check for `[required]` struct attr
-				if !node.no_keys && !node.has_update_expr && field.attrs.contains('required') {
-					mut found := false
-					for init_field in node.init_fields {
-						if field.name == init_field.name {
-							found = true
-							break
-						}
-					}
-					if !found {
-						c.error('field `${type_sym.name}.${field.name}` must be initialized',
-							node.pos)
-					}
+				if !node.no_keys && !node.has_update_expr && field.attrs.contains('required')
+					&& node.init_fields.all(it.name != field.name) {
+					c.error('field `${type_sym.name}.${field.name}` must be initialized',
+						node.pos)
 				}
 				if !node.has_update_expr && !field.has_default_expr && !field.typ.is_ptr()
 					&& !field.typ.has_flag(.option) && c.table.final_sym(field.typ).kind == .struct_ {
