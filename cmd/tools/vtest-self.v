@@ -85,7 +85,6 @@ const essential_list = [
 const skip_test_files = [
 	'do_not_remove',
 	'cmd/tools/vdoc/html_tag_escape_test.v', // can't locate local module: markdown
-	'cmd/tools/vdoc/tests/vdoc_file_test.v', // fails on Windows; order of output is not as expected
 	'vlib/context/deadline_test.v', // sometimes blocks
 	'vlib/context/onecontext/onecontext_test.v', // backtrace_symbols is missing
 	'vlib/db/mysql/mysql_orm_test.v', // mysql not installed
@@ -278,6 +277,7 @@ const skip_on_linux = [
 ]
 const skip_on_non_linux = [
 	'do_not_remove',
+	'cmd/tools/vdoc/tests/vdoc_file_test.v', // order of output is not as expected
 ]
 const skip_on_windows_msvc = [
 	'do_not_remove',
