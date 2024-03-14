@@ -18,17 +18,14 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			c.check_valid_pascal_case(node.name, 'struct name', node.pos)
 		}
 		for embed in node.embeds {
-			if embed.typ.has_flag(.generic) {
-				has_generic_types = true
-			}
 			embed_sym := c.table.sym(embed.typ)
 			if embed_sym.kind != .struct_ {
 				c.error('`${embed_sym.name}` is not a struct', embed.pos)
-			} else {
-				info := embed_sym.info as ast.Struct
-				if info.is_heap && !embed.typ.is_ptr() {
-					struct_sym.info.is_heap = true
-				}
+			} else if (embed_sym.info as ast.Struct).is_heap && !embed.typ.is_ptr() {
+				struct_sym.info.is_heap = true
+			}
+			if embed.typ.has_flag(.generic) {
+				has_generic_types = true
 			}
 			// Ensure each generic type of the embed was declared in the struct's definition
 			if node.generic_types.len > 0 && embed.typ.has_flag(.generic) {
