@@ -1,0 +1,35 @@
+vlib/v/checker/tests/struct_init_deprecations.vv:5:9: notice: struct `v.checker.tests.module_with_deprecated_structs.Present` will be deprecated after 2999-03-01, and will become an error after 2999-08-28; use Future instead
+    3 | fn init_deprecated_structs() {
+    4 |     o := m.Old{}
+    5 |     p := m.Present{}
+      |            ~~~~~~~~~
+    6 |     dump(o)
+    7 |     dump(p)
+vlib/v/checker/tests/struct_init_deprecations.vv:15:3: notice: field `d` will be deprecated after 2999-03-01, and will become an error after 2999-08-28; d use Xyz.a instead
+   13 |         b: 1
+   14 |         c: 2
+   15 |         d: 3
+      |         ~~~~
+   16 |     }
+   17 |     dump(x)
+vlib/v/checker/tests/struct_init_deprecations.vv:13:3: warning: field `b` has been deprecated
+   11 |     x := m.Xyz{
+   12 |         a: 0
+   13 |         b: 1
+      |         ~~~~
+   14 |         c: 2
+   15 |         d: 3
+vlib/v/checker/tests/struct_init_deprecations.vv:4:9: error: struct `v.checker.tests.module_with_deprecated_structs.Old` has been deprecated since 2021-03-01; use New instead
+    2 | 
+    3 | fn init_deprecated_structs() {
+    4 |     o := m.Old{}
+      |            ~~~~~
+    5 |     p := m.Present{}
+    6 |     dump(o)
+vlib/v/checker/tests/struct_init_deprecations.vv:14:3: error: field `c` has been deprecated since 2021-03-01; c use Xyz.a instead
+   12 |         a: 0
+   13 |         b: 1
+   14 |         c: 2
+      |         ~~~~
+   15 |         d: 3
+   16 |     }

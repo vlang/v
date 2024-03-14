@@ -1,4 +1,4 @@
-module module_with_structs_with_deprecated_fields
+module module_with_deprecated_structs
 
 pub struct Xyz {
 pub mut:
@@ -8,14 +8,26 @@ pub mut:
 	d int @[deprecated: 'd use Xyz.a instead'; deprecated_after: '2999-03-01']
 }
 
+@[deprecated: 'use New instead']
+@[deprecated_after: '2021-03-01']
+pub struct Old {}
+
+@[deprecated: 'use Future instead']
+@[deprecated_after: '2999-03-01']
+pub struct Present {}
+
 fn some_internal_function() {
 	mut x := Xyz{} // initialisation; no error
+	mut o := Old{}
+	mut p := Present{}
 
 	// reads:
 	dump(x.a) // no error
 	dump(x.b) // no error internally
 	dump(x.c) // no error internally
 	dump(x.d) // no error internally
+	dump(o) // no error internally
+	dump(p) // no error internally
 
 	// writes:
 	x.a = 1 // no error
