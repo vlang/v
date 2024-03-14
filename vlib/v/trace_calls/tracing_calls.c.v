@@ -49,10 +49,12 @@ fn current_time() u64 {
 }
 
 @[markused]
-pub fn on_c_main() {
+pub fn on_c_main(should_trace_c_main bool) {
 	g_start_time = current_time()
+	//                    > trace  2128896   714640    28148 fn
 	C.fprintf(C.stderr, c'#          tid       ns      ssize name\n')
 	C.fflush(C.stderr)
-	on_call('C.main')
-	//                    > trace  2128896   714640    28148 fn
+	if should_trace_c_main {
+		on_call('C.main')
+	}
 }

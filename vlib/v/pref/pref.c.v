@@ -174,8 +174,9 @@ pub mut:
 	no_bounds_checking bool // `-no-bounds-checking` turns off *all* bounds checks for all functions at runtime, as if they all had been tagged with `[direct_array_access]`
 	autofree           bool // `v -manualfree` => false, `v -autofree` => true; false by default for now.
 	// Disabling `free()` insertion results in better performance in some applications (e.g. compilers)
-	trace_calls bool // -trace-calls true = the transformer stage will generate and inject print calls for tracing function calls
-	compress    bool // when set, use `upx` to compress the generated executable
+	trace_calls bool     // -trace-calls true = the transformer stage will generate and inject print calls for tracing function calls
+	trace_fns   []string // when set, tracing will be done only for functions, whose names match the listed patterns.
+	compress    bool     // when set, use `upx` to compress the generated executable
 	// generating_vh    bool
 	no_builtin       bool   // Skip adding the `builtin` module implicitly. The generated C code may not compile.
 	enable_globals   bool   // allow __global for low level code
@@ -551,7 +552,18 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.build_options << arg
 			}
 			'-trace-calls' {
+				res.build_options << arg
 				res.trace_calls = true
+			}
+			'-trace-fns' {
+				value := cmdline.option(current_args, arg, '')
+				res.build_options << arg
+				res.build_options << value
+				trace_fns := value.split(',')
+				if trace_fns.len > 0 {
+					res.trace_fns << trace_fns
+				}
+				i++
 			}
 			'-manualfree' {
 				res.autofree = false
@@ -951,6 +963,17 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 		}
 	}
+	if res.trace_calls {
+		if res.trace_fns.len == 0 {
+			res.trace_fns << '*'
+		}
+		for mut fpattern in res.trace_fns {
+			if fpattern.contains('*') {
+				continue
+			}
+			fpattern = '*${fpattern}*'
+		}
+	}
 	if command == 'crun' {
 		res.is_crun = true
 	}
@@ -1244,4 +1267,8 @@ fn (mut prefs Preferences) diagnose_deprecated_defines(define_parts []string) {
 
 pub fn supported_test_runners_list() string {
 	return pref.supported_test_runners.map('`${it}`').join(', ')
+}
+
+pub fn (pref &Preferences) should_trace_fn_name(fname string) bool {
+	return pref.trace_fns.any(fname.match_glob(it))
 }
