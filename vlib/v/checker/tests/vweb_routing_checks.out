@@ -1,17 +1,3 @@
-vlib/net/http/http.v:169:3: warning: field `cookies` has been deprecated; use req.cookie(name) and req.add_cookie(name) instead
-  167 |         data: config.data
-  168 |         header: config.header
-  169 |         cookies: config.cookies
-      |         ~~~~~~~~~~~~~~~~~~~~~~~
-  170 |         user_agent: config.user_agent
-  171 |         user_ptr: config.user_ptr
-vlib/net/http/request.v:323:3: warning: field `cookies` has been deprecated; use req.cookie(name) and req.add_cookie(name) instead
-  321 |         host: header.get(.host) or { '' }
-  322 |         version: version
-  323 |         cookies: request_cookies
-      |         ~~~~~~~~~~~~~~~~~~~~~~~~
-  324 |     }
-  325 | }
 vlib/v/checker/tests/vweb_routing_checks.vv:20:1: warning: mismatched parameters count between vweb method `App.bar` (1) and route attribute ['/bar'] (0)
    18 | // segfault because path takes 0 vars and fcn takes 1 arg
    19 | @['/bar']

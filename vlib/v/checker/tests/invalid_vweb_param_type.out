@@ -1,19 +1,5 @@
-vlib/net/http/http.v:169:3: warning: field `cookies` has been deprecated; use req.cookie(name) and req.add_cookie(name) instead
-  167 |         data: config.data
-  168 |         header: config.header
-  169 |         cookies: config.cookies
-      |         ~~~~~~~~~~~~~~~~~~~~~~~
-  170 |         user_agent: config.user_agent
-  171 |         user_ptr: config.user_ptr
-vlib/net/http/request.v:323:3: warning: field `cookies` has been deprecated; use req.cookie(name) and req.add_cookie(name) instead
-  321 |         host: header.get(.host) or { '' }
-  322 |         version: version
-  323 |         cookies: request_cookies
-      |         ~~~~~~~~~~~~~~~~~~~~~~~~
-  324 |     }
-  325 | }
 vlib/v/checker/tests/invalid_vweb_param_type.vv:8:24: error: invalid type `[]bool` for parameter `list` in vweb app method `index` (only strings, numbers, and bools are allowed)
-    6 | 
+    6 |
     7 | @['/:list'; get]
     8 | fn (mut app App) index(list []bool) vweb.Result {
       |                        ~~~~
