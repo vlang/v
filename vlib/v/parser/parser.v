@@ -1769,7 +1769,11 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 			if p.tok.kind == .at {
 				p.next()
 			} else {
-				p.check(.name)
+				if p.tok.kind == .number {
+					p.check(.number)
+				} else {
+					p.check(.name)
+				}
 			}
 		}
 		mut expr := p.expr(0)
