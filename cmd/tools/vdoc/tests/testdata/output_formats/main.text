@@ -13,7 +13,6 @@ module main
     
     ### Processing command line args
     
-    
     ```v
     import os
     

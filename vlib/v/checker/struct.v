@@ -483,20 +483,10 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 		&& type_sym.mod != 'builtin')) && !is_field_zero_struct_init {
 		c.error('type `${type_sym.name}` is private', node.pos)
 	}
-	if type_sym.info is ast.Struct && type_sym.mod != c.mod {
-		for attr in type_sym.info.attrs {
-			match attr.name {
-				'noinit' {
-					c.error(
-						'struct `${type_sym.name}` is declared with a `@[noinit]` attribute, so ' +
-						'it cannot be initialized with `${type_sym.name}{}`', node.pos)
-				}
-				'deprecated' {
-					c.deprecate('struct', type_sym.name, type_sym.info.attrs, node.pos)
-				}
-				else {}
-			}
-		}
+	if type_sym.info is ast.Struct && type_sym.mod != c.mod
+		&& type_sym.info.attrs.contains('noinit') {
+		c.error('struct `${type_sym.name}` is declared with a `@[noinit]` attribute, so ' +
+			'it cannot be initialized with `${type_sym.name}{}`', node.pos)
 	}
 	if type_sym.name.len == 1 && c.table.cur_fn != unsafe { nil }
 		&& c.table.cur_fn.generic_names.len == 0 {
@@ -516,20 +506,9 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 			}
 			sym := c.table.sym(c.unwrap_generic(node.typ))
 			if sym.info is ast.Struct {
-				if sym.mod != c.mod {
-					for attr in sym.info.attrs {
-						match attr.name {
-							'noinit' {
-								c.error(
-									'struct `${sym.name}` is declared with a `@[noinit]` attribute, so ' +
-									'it cannot be initialized with `${sym.name}{}`', node.pos)
-							}
-							'deprecated' {
-								c.deprecate('struct', sym.name, sym.info.attrs, node.pos)
-							}
-							else {}
-						}
-					}
+				if sym.mod != c.mod && sym.info.attrs.contains('noinit') {
+					c.error('struct `${sym.name}` is declared with a `@[noinit]` attribute, so ' +
+						'it cannot be initialized with `${sym.name}{}`', node.pos)
 				}
 				if node.no_keys && node.init_fields.len != sym.info.fields.len {
 					fname := if sym.info.fields.len != 1 { 'fields' } else { 'field' }
@@ -825,15 +804,8 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					}
 				}
 				// Do not allow empty uninitialized interfaces
-				mut has_noinit := false
-				for attr in field.attrs {
-					if attr.name == 'noinit' {
-						has_noinit = true
-						break
-					}
-				}
-				if !field.typ.has_flag(.option) && sym.kind == .interface_
-					&& (!has_noinit && sym.language != .js) && !node.has_update_expr {
+				if sym.kind == .interface_ && !node.has_update_expr && !field.typ.has_flag(.option)
+					&& sym.language != .js && !field.attrs.contains('noinit') {
 					// TODO: should be an error instead, but first `ui` needs updating.
 					c.note('interface field `${type_sym.name}.${field.name}` must be initialized',
 						node.pos)
@@ -903,17 +875,15 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			}
 		}
 	}
-	if struct_sym.info is ast.Struct {
-		if struct_sym.info.generic_types.len > 0 && struct_sym.info.concrete_types.len == 0
-			&& c.table.cur_concrete_types.len == 0 {
+	if struct_sym.info is ast.Struct && struct_sym.info.generic_types.len > 0
+		&& c.table.cur_concrete_types.len == 0 {
+		if struct_sym.info.concrete_types.len == 0 {
 			concrete_types := c.infer_struct_generic_types(node.typ, node)
 			if concrete_types.len > 0 {
 				generic_names := struct_sym.info.generic_types.map(c.table.sym(it).name)
 				node.typ = c.table.unwrap_generic_type(node.typ, generic_names, concrete_types)
 			}
-		} else if struct_sym.info.generic_types.len > 0
-			&& struct_sym.info.generic_types.len == struct_sym.info.concrete_types.len
-			&& c.table.cur_concrete_types.len == 0 {
+		} else if struct_sym.info.generic_types.len == struct_sym.info.concrete_types.len {
 			parent_type := struct_sym.info.parent_type
 			parent_sym := c.table.sym(parent_type)
 			for method in parent_sym.methods {
@@ -935,19 +905,12 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 
 // Recursively check whether the struct type field is initialized
 fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut checked_types []ast.Type, linked_name string, pos &token.Pos) {
-	if c.pref.translated || c.file.is_translated {
+	if (c.pref.translated || c.file.is_translated) || (struct_sym.language == .c
+		&& struct_sym.info is ast.Struct && struct_sym.info.is_typedef) {
 		return
 	}
-	if struct_sym.kind == .struct_ && struct_sym.language == .c
-		&& (struct_sym.info as ast.Struct).is_typedef {
-		return
-	}
-	fields := c.table.struct_fields(struct_sym)
-	for field in fields {
-		sym := c.table.sym(field.typ)
-		if field.name.len > 0 && field.name[0].is_capital() && sym.info is ast.Struct
-			&& sym.language == .v {
-			// an embedded struct field
+	for field in c.table.struct_fields(struct_sym) {
+		if field.typ in checked_types {
 			continue
 		}
 		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !field.typ.has_flag(.option)
@@ -956,18 +919,20 @@ fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut 
 				pos)
 			continue
 		}
-		if sym.kind == .struct_ {
-			if sym.language == .c && (sym.info as ast.Struct).is_typedef {
+		sym := c.table.sym(field.typ)
+		if sym.info is ast.Struct {
+			if sym.language == .c && sym.info.is_typedef {
 				continue
 			}
-			if field.typ in checked_types {
+			if field.name.is_capital() && sym.language == .v {
+				// an embedded struct field
 				continue
 			}
 			checked_types << field.typ
 			c.check_ref_fields_initialized(sym, mut checked_types, '${linked_name}.${field.name}',
 				pos)
-		} else if sym.kind == .alias {
-			psym := c.table.sym((sym.info as ast.Alias).parent_type)
+		} else if sym.info is ast.Alias {
+			psym := c.table.sym(sym.info.parent_type)
 			if psym.kind == .struct_ {
 				checked_types << field.typ
 				c.check_ref_fields_initialized(psym, mut checked_types, '${linked_name}.${field.name}',
@@ -983,19 +948,12 @@ fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut 
 // The goal is to give only a notice, not an error, for now. After a while,
 // when we change the notice to error, we can remove this temporary method.
 fn (mut c Checker) check_ref_fields_initialized_note(struct_sym &ast.TypeSymbol, mut checked_types []ast.Type, linked_name string, pos &token.Pos) {
-	if c.pref.translated || c.file.is_translated {
+	if (c.pref.translated || c.file.is_translated) || (struct_sym.language == .c
+		&& struct_sym.info is ast.Struct && struct_sym.info.is_typedef) {
 		return
 	}
-	if struct_sym.kind == .struct_ && struct_sym.language == .c
-		&& (struct_sym.info as ast.Struct).is_typedef {
-		return
-	}
-	fields := c.table.struct_fields(struct_sym)
-	for field in fields {
-		sym := c.table.sym(field.typ)
-		if field.name.len > 0 && field.name[0].is_capital() && sym.info is ast.Struct
-			&& sym.language == .v {
-			// an embedded struct field
+	for field in c.table.struct_fields(struct_sym) {
+		if field.typ in checked_types {
 			continue
 		}
 		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !field.typ.has_flag(.option)
@@ -1004,18 +962,20 @@ fn (mut c Checker) check_ref_fields_initialized_note(struct_sym &ast.TypeSymbol,
 				pos)
 			continue
 		}
-		if sym.kind == .struct_ {
-			if sym.language == .c && (sym.info as ast.Struct).is_typedef {
+		sym := c.table.sym(field.typ)
+		if sym.info is ast.Struct {
+			if sym.language == .c && sym.info.is_typedef {
 				continue
 			}
-			if field.typ in checked_types {
+			if field.name.is_capital() && sym.language == .v {
+				// an embedded struct field
 				continue
 			}
 			checked_types << field.typ
 			c.check_ref_fields_initialized(sym, mut checked_types, '${linked_name}.${field.name}',
 				pos)
-		} else if sym.kind == .alias {
-			psym := c.table.sym((sym.info as ast.Alias).parent_type)
+		} else if sym.info is ast.Alias {
+			psym := c.table.sym(sym.info.parent_type)
 			if psym.kind == .struct_ {
 				checked_types << field.typ
 				c.check_ref_fields_initialized(psym, mut checked_types, '${linked_name}.${field.name}',

@@ -74,7 +74,6 @@ fn auth_verify(secret string, token string) bool {
     
     ### Processing command line args
     
-    
     ```v
     import os
     

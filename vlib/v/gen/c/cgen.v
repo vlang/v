@@ -6172,7 +6172,7 @@ fn (mut g Gen) write_init_function() {
 
 	g.write_debug_calls_typeof_functions()
 
-	if g.pref.trace_calls {
+	if g.pref.trace_calls && g.pref.should_trace_fn_name('_vinit') {
 		g.writeln('\tv__trace_calls__on_call(_SLIT("_vinit"));')
 	}
 
@@ -6267,7 +6267,7 @@ fn (mut g Gen) write_init_function() {
 
 	fn_vcleanup_start_pos := g.out.len
 	g.writeln('void _vcleanup(void) {')
-	if g.pref.trace_calls {
+	if g.pref.trace_calls && g.pref.should_trace_fn_name('_vcleanup') {
 		g.writeln('\tv__trace_calls__on_call(_SLIT("_vcleanup"));')
 	}
 	if g.is_autofree {
