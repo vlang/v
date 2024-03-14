@@ -80,7 +80,7 @@ pub fn merge_doc_comments(comments []DocComment) string {
 				}
 				continue
 			}
-			if l.starts_with('```') {
+			if has_codeblock_quote {
 				if !is_codeblock && !last_ends_with_lb {
 					comment += '\n'
 				}
