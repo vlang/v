@@ -633,8 +633,9 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					}
 				}
 				if exp_type_sym.kind == .interface_ {
-					if got_type_sym.kind != .interface_ && !got_type.is_any_kind_of_pointer()
-						&& c.type_implements(got_type, exp_type, init_field.pos) && !c.inside_unsafe {
+					if got_type_sym.kind != .interface_ && !c.inside_unsafe
+						&& !got_type.is_any_kind_of_pointer()
+						&& c.type_implements(got_type, exp_type, init_field.pos) {
 						c.mark_as_referenced(mut &init_field.expr, true)
 					}
 				} else if got_type != ast.void_type && got_type_sym.kind != .placeholder
@@ -650,12 +651,10 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							init_field.pos)
 					}
 				} else {
-					is_unsafe_0 := init_field.expr is ast.UnsafeExpr
-						&& (init_field.expr as ast.UnsafeExpr).expr.str() == '0'
-					if !is_unsafe_0 && exp_type.is_ptr() && !got_type.is_any_kind_of_pointer()
-						&& !exp_type.has_flag(.option) && !c.inside_unsafe
-						&& type_sym.language == .v && !(c.file.is_translated
-						|| c.pref.translated) {
+					if !c.inside_unsafe && type_sym.language == .v && !(c.file.is_translated
+						|| c.pref.translated) && exp_type.is_ptr()
+						&& !got_type.is_any_kind_of_pointer() && !exp_type.has_flag(.option)
+						&& !(init_field.expr is ast.UnsafeExpr && init_field.expr.expr.str() == '0') {
 						if init_field.expr.str() == '0' {
 							c.note('assigning `0` to a reference field is only allowed in `unsafe` blocks',
 								init_field.pos)
