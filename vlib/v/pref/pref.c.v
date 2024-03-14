@@ -175,7 +175,7 @@ pub mut:
 	autofree           bool // `v -manualfree` => false, `v -autofree` => true; false by default for now.
 	// Disabling `free()` insertion results in better performance in some applications (e.g. compilers)
 	trace_calls bool     // -trace-calls true = the transformer stage will generate and inject print calls for tracing function calls
-	trace_fns   []string // when set, tracing will done only for functions, whose names match the listed patterns.
+	trace_fns   []string // when set, tracing will be done only for functions, whose names match the listed patterns.
 	compress    bool     // when set, use `upx` to compress the generated executable
 	// generating_vh    bool
 	no_builtin       bool   // Skip adding the `builtin` module implicitly. The generated C code may not compile.
