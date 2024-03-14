@@ -483,10 +483,20 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 		&& type_sym.mod != 'builtin')) && !is_field_zero_struct_init {
 		c.error('type `${type_sym.name}` is private', node.pos)
 	}
-	if type_sym.info is ast.Struct && type_sym.mod != c.mod
-		&& type_sym.info.attrs.contains('noinit') {
-		c.error('struct `${type_sym.name}` is declared with a `@[noinit]` attribute, so ' +
-			'it cannot be initialized with `${type_sym.name}{}`', node.pos)
+	if type_sym.info is ast.Struct && type_sym.mod != c.mod {
+		for attr in type_sym.info.attrs {
+			match attr.name {
+				'noinit' {
+					c.error(
+						'struct `${type_sym.name}` is declared with a `@[noinit]` attribute, so ' +
+						'it cannot be initialized with `${type_sym.name}{}`', node.pos)
+				}
+				'deprecated' {
+					c.deprecate('struct', type_sym.name, type_sym.info.attrs, node.pos)
+				}
+				else {}
+			}
+		}
 	}
 	if type_sym.name.len == 1 && c.table.cur_fn != unsafe { nil }
 		&& c.table.cur_fn.generic_names.len == 0 {
@@ -506,9 +516,20 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 			}
 			sym := c.table.sym(c.unwrap_generic(node.typ))
 			if sym.info is ast.Struct {
-				if sym.mod != c.mod && sym.info.attrs.contains('noinit') {
-					c.error('struct `${sym.name}` is declared with a `@[noinit]` attribute, so ' +
-						'it cannot be initialized with `${sym.name}{}`', node.pos)
+				if sym.mod != c.mod {
+					for attr in sym.info.attrs {
+						match attr.name {
+							'noinit' {
+								c.error(
+									'struct `${sym.name}` is declared with a `@[noinit]` attribute, so ' +
+									'it cannot be initialized with `${sym.name}{}`', node.pos)
+							}
+							'deprecated' {
+								c.deprecate('struct', sym.name, sym.info.attrs, node.pos)
+							}
+							else {}
+						}
+					}
 				}
 				if node.no_keys && node.init_fields.len != sym.info.fields.len {
 					fname := if sym.info.fields.len != 1 { 'fields' } else { 'field' }
