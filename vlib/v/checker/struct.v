@@ -654,10 +654,11 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					}
 				}
 				if exp_type_sym.kind == .interface_ {
-					if got_type_sym.kind != .interface_ && !c.inside_unsafe
-						&& !got_type.is_any_kind_of_pointer()
-						&& c.type_implements(got_type, exp_type, init_field.pos) {
-						c.mark_as_referenced(mut &init_field.expr, true)
+					if c.type_implements(got_type, exp_type, init_field.pos) {
+						if !c.inside_unsafe && got_type_sym.kind != .interface_
+							&& !got_type.is_any_kind_of_pointer() {
+							c.mark_as_referenced(mut &init_field.expr, true)
+						}
 					}
 				} else if got_type != ast.void_type && got_type_sym.kind != .placeholder
 					&& !exp_type.has_flag(.generic) {
