@@ -351,6 +351,12 @@ pub fn (mut rng PRNG) ascii(len int) string {
 	return internal_string_from_set(mut rng, rand.ascii_chars, len)
 }
 
+// fill_buffer_from_set fills the mutable `buf` with random characters from the given `charset`
+@[inline]
+pub fn (mut rng PRNG) fill_buffer_from_set(charset string, mut buf []u8) {
+	internal_fill_buffer_from_set(mut rng, charset, mut buf)
+}
+
 // bernoulli returns true with a probability p. Note that 0 <= p <= 1.
 pub fn (mut rng PRNG) bernoulli(p f64) !bool {
 	if p < 0 || p > 1 {

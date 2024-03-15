@@ -109,6 +109,18 @@ fn internal_string_from_set(mut rng PRNG, charset string, len int) string {
 	return unsafe { buf.vstring_with_len(len) }
 }
 
+@[direct_array_access]
+fn internal_fill_buffer_from_set(mut rng PRNG, charset string, mut buf []u8) {
+	if buf.len == 0 {
+		return
+	}
+	for i in 0 .. buf.len {
+		unsafe {
+			buf[i] = charset[intn(charset.len) or { 0 }]
+		}
+	}
+}
+
 fn deinit() {
 	unsafe {
 		default_rng.free() // free the implementation
