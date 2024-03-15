@@ -421,6 +421,18 @@ const c_common_macros = '
 	#endif
 #endif
 
+#if !defined(VHIDDEN)
+	#define VHIDDEN __attribute__((visibility("hidden")))
+	#ifdef _MSC_VER
+		#undef VHIDDEN
+		#define VHIDDEN
+	#endif
+	#if defined(__MINGW32__) || defined(__MINGW64__)
+		#undef VHIDDEN
+		#define VHIDDEN
+	#endif
+#endif
+
 #if !defined(VNORETURN)
 	#if defined(__TINYC__)
 		#include <stdnoreturn.h>
