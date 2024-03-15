@@ -439,7 +439,7 @@ pub fn (x Expr) str() string {
 			return x.val.str()
 		}
 		CastExpr {
-			return '${x.typname}(${x.expr.str()})'
+			return '${global_table.type_to_str(x.typ)}(${x.expr.str()})'
 		}
 		CallExpr {
 			sargs := args2str(x.args)
