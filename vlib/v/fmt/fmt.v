@@ -97,9 +97,14 @@ pub fn fmt(file ast.File, mut table ast.Table, pref_ &pref.Preferences, is_debug
 		}
 		return res
 	}
-	source_for_imports := res[..f.import_pos] + f.out_imports.str()
-	source_after_imports := res[f.import_pos..]
-	return source_for_imports + source_after_imports
+	mut import_start_pos := f.import_pos
+	if stmt := file.stmts[1] {
+		if stmt is ast.ExprStmt && stmt.expr is ast.Comment
+			&& (stmt.expr as ast.Comment).text.starts_with('#!') {
+			import_start_pos = stmt.pos.len
+		}
+	}
+	return res[..import_start_pos] + f.out_imports.str() + res[import_start_pos..]
 }
 
 pub fn (mut f Fmt) process_file_imports(file &ast.File) {
