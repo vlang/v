@@ -1770,6 +1770,9 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 				p.next()
 			} else {
 				if p.tok.kind == .number {
+					if p.tok.lit.int() >= 10 {
+						p.error_with_pos('The digit must be between 0 and 9 only', pos)
+					}
 					p.check(.number)
 				} else {
 					p.check(.name)
