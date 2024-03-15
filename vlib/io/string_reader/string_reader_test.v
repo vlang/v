@@ -89,6 +89,20 @@ fn test_from_string() {
 	}
 }
 
+fn test_from_string_read_byte_one_by_one() {
+	mut reader := StringReader.new(source: 'test')
+	assert reader.read_bytes(1)![0].ascii_str() == 't'
+	assert reader.read_bytes(1)![0].ascii_str() == 'e'
+	assert reader.read_bytes(1)![0].ascii_str() == 's'
+	assert reader.read_bytes(1)![0].ascii_str() == 't'
+
+	if _ := reader.read_all(false) {
+		assert false, 'should return Eof'
+	} else {
+		assert err is io.Eof
+	}
+}
+
 fn test_from_string_and_reader() {
 	buf := Buf{
 		bytes: 'buffer'.bytes()

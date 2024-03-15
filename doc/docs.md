@@ -2469,6 +2469,7 @@ new_button(ButtonConfig{text:'Click me', width:100})
 
 This only works for functions that take a struct for the last argument.
 
+> [!NOTE]
 > Note the `[params]` tag is used to tell V, that the trailing struct parameter
 > can be omitted *entirely*, so that you can write `button := new_button()`.
 > Without it, you have to specify *at least* one of the field names, even if it

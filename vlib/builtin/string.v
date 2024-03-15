@@ -1507,7 +1507,7 @@ pub fn (s string) to_lower() string {
 	}
 }
 
-// is_lower returns `true` if all characters in the string is lowercase.
+// is_lower returns `true` if all characters in the string are lowercase.
 // Example: assert 'hello developer'.is_lower() == true
 @[direct_array_access]
 pub fn (s string) is_lower() bool {
@@ -1537,7 +1537,7 @@ pub fn (s string) to_upper() string {
 	}
 }
 
-// is_upper returns `true` if all characters in the string is uppercase.
+// is_upper returns `true` if all characters in the string are uppercase.
 // See also: [`byte.is_capital`](#byte.is_capital)
 // Example: assert 'HELLO V'.is_upper() == true
 @[direct_array_access]
@@ -1882,7 +1882,7 @@ pub fn (str string) is_oct() bool {
 	return true
 }
 
-// Check if a string is an binary value. Returns 'true' if it is, or 'false' if it is not
+// is_bin returns `true` if the string is a binary value.
 @[direct_array_access]
 pub fn (str string) is_bin() bool {
 	mut i := 0
@@ -1925,7 +1925,7 @@ pub fn (str string) is_bin() bool {
 	return true
 }
 
-// Check if a string is an hexadecimal value. Returns 'true' if it is, or 'false' if it is not
+// is_hex returns 'true' if the string is a hexadecimal value.
 @[direct_array_access]
 pub fn (str string) is_hex() bool {
 	mut i := 0

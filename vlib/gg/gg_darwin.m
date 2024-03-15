@@ -120,3 +120,16 @@ void darwin_draw_circle(float x, float y, float d, gx__Color color) {
 	[circlePath fill];
 	// NSRectFill(rect);
 }
+
+void darwin_draw_circle_empty(float x, float y, float d, gx__Color color) {
+	NSColor* outlineColor = nscolor(color);
+	CGFloat outlineWidth = 1.0; //2.0;
+
+	NSRect rect = NSMakeRect(x, y, d * 2, d * 2);
+	NSBezierPath* circlePath = [NSBezierPath bezierPath];
+	[circlePath appendBezierPathWithOvalInRect:rect];
+
+	[outlineColor setStroke];
+	[circlePath setLineWidth:outlineWidth];
+	[circlePath stroke];
+}

@@ -350,5 +350,6 @@ pub fn (mut g Gen) gen_c_main_trace_calls_hook() {
 	if !g.pref.trace_calls {
 		return
 	}
-	g.writeln('\tu8 bottom_of_stack = 0; g_stack_base = &bottom_of_stack; v__trace_calls__on_c_main();')
+	should_trace_c_main := g.pref.should_trace_fn_name('C.main')
+	g.writeln('\tu8 bottom_of_stack = 0; g_stack_base = &bottom_of_stack; v__trace_calls__on_c_main(${should_trace_c_main});')
 }

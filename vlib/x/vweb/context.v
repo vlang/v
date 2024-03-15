@@ -291,11 +291,16 @@ pub fn (ctx &Context) user_agent() string {
 
 // Returns the ip address from the current user
 pub fn (ctx &Context) ip() string {
-	mut ip := ctx.req.header.get(.x_forwarded_for) or { '' }
+	mut ip := ctx.req.header.get_custom('CF-Connecting-IP') or { '' }
+	if ip == '' {
+		ip = ctx.req.header.get(.x_forwarded_for) or { '' }
+	}
+	if ip == '' {
+		ip = ctx.req.header.get_custom('X-Forwarded-For') or { '' }
+	}
 	if ip == '' {
 		ip = ctx.req.header.get_custom('X-Real-Ip') or { '' }
 	}
-
 	if ip.contains(',') {
 		ip = ip.all_before(',')
 	}

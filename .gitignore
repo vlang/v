@@ -39,9 +39,10 @@ a.out
 fns.txt
 .noprefix.vrepl_temp.v
 
-# ignore temp directories
-/temp
-/tmp
+# ignore temp and cache directories
+temp/
+tmp/
+cache/
 
 # unignore special files without extension
 !.github/PULL_REQUEST_TEMPLATE

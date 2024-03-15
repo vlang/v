@@ -62,25 +62,30 @@ pub fn merge_doc_comments(comments []DocComment) string {
 	}
 	mut comment := ''
 	mut next_on_newline := true
+	mut is_codeblock := false
 	for cmt in doc_comments.reverse() {
-		mut is_codeblock := false
 		line_loop: for line in cmt.split_into_lines() {
 			l := line.trim_left('\x01').trim_space()
-			if is_codeblock {
-				comment += l + '\n'
+			last_ends_with_lb := comment.ends_with('\n')
+			if l == '' {
+				comment += if last_ends_with_lb { '\n' } else { '\n\n' }
+				next_on_newline = true
 				continue
 			}
-			if l.starts_with('```') {
-				if !is_codeblock {
+			has_codeblock_quote := l.starts_with('```')
+			if is_codeblock {
+				comment += l + '\n'
+				if has_codeblock_quote {
+					is_codeblock = !is_codeblock
+				}
+				continue
+			}
+			if has_codeblock_quote {
+				if !is_codeblock && !last_ends_with_lb {
 					comment += '\n'
 				}
 				comment += l + '\n'
 				is_codeblock = !is_codeblock
-				next_on_newline = true
-				continue
-			}
-			if l == '' {
-				comment += if comment.ends_with('\n') { '\n' } else { '\n\n' }
 				next_on_newline = true
 				continue
 			}

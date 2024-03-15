@@ -3527,7 +3527,11 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			g.size_of(node)
 		}
 		ast.SqlExpr {
-			g.sql_select_expr(node)
+			if node.is_insert {
+				g.sql_insert_expr(node)
+			} else {
+				g.sql_select_expr(node)
+			}
 		}
 		ast.StringLiteral {
 			g.string_literal(node)
@@ -5992,6 +5996,9 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 	if node.attrs.contains('weak') {
 		attributes += 'VWEAK '
 	}
+	if node.attrs.contains('hidden') {
+		attributes += 'VHIDDEN '
+	}
 	if node.attrs.contains('export') {
 		attributes += 'VV_EXPORTED_SYMBOL '
 	}
@@ -6168,7 +6175,7 @@ fn (mut g Gen) write_init_function() {
 
 	g.write_debug_calls_typeof_functions()
 
-	if g.pref.trace_calls {
+	if g.pref.trace_calls && g.pref.should_trace_fn_name('_vinit') {
 		g.writeln('\tv__trace_calls__on_call(_SLIT("_vinit"));')
 	}
 
@@ -6263,7 +6270,7 @@ fn (mut g Gen) write_init_function() {
 
 	fn_vcleanup_start_pos := g.out.len
 	g.writeln('void _vcleanup(void) {')
-	if g.pref.trace_calls {
+	if g.pref.trace_calls && g.pref.should_trace_fn_name('_vcleanup') {
 		g.writeln('\tv__trace_calls__on_call(_SLIT("_vcleanup"));')
 	}
 	if g.is_autofree {

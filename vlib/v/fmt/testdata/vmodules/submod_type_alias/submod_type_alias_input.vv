@@ -1,0 +1,7 @@
+// The module name has to match the modules dir name.
+module submod_type_alias
+
+// The submod dir structure that is imported has to be existent.
+import bar.baz
+
+type MyAlias = bar.baz.Baz

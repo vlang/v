@@ -417,7 +417,7 @@ fn (mut g Gen) should_check_low_bound_in_range_expr(expr ast.RangeExpr, node_con
 
 fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string) {
 	node_cond_type_unsigned := node.cond_type in [ast.u16_type, ast.u32_type, ast.u64_type]
-	type_sym := g.table.sym(node.cond_type)
+	type_sym := g.table.final_sym(node.cond_type)
 	use_ternary := is_expr && tmp_var.len == 0
 	for j, branch in node.branches {
 		is_last := j == node.branches.len - 1

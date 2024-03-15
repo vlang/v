@@ -9,32 +9,30 @@ import v.fmt
 import v.parser
 import v.pref
 import v.util.diff
+import v.util.vtest
 
-const error_missing_vexe = 1
-const error_failed_tests = 2
+const vroot = @VEXEROOT
 const fpref = &pref.Preferences{
 	is_fmt: true
 }
 
-fn test_fmt() {
+fn run_fmt(mut input_files []string) {
 	fmt_message := 'vfmt tests'
 	eprintln(term.header(fmt_message, '-'))
-	vexe := os.getenv('VEXE')
-	if vexe.len == 0 || !os.exists(vexe) {
-		eprintln('VEXE must be set')
-		exit(error_missing_vexe)
-	}
-	vroot := os.dir(vexe)
 	tmpfolder := os.temp_dir()
 	diff_cmd := diff.find_working_diff_command() or { '' }
+	assert input_files.len > 0
+	input_files = vtest.filter_vtest_only(input_files)
+	if input_files.len == 0 {
+		// No need to produce a failing test here.
+		eprintln('no tests found with VTEST_ONLY filter set to: ' + os.getenv('VTEST_ONLY'))
+		exit(0)
+	}
 	mut fmt_bench := benchmark.new_benchmark()
-	// Lookup the existing test _input.vv files:
-	input_files := os.walk_ext('${vroot}/vlib/v/fmt/tests', '_input.vv')
 	fmt_bench.set_total_expected_steps(input_files.len)
 	for istep, ipath in input_files {
 		fmt_bench.cstep = istep
 		fmt_bench.step()
-		ifilename := os.file_name(ipath)
 		opath := ipath.replace('_input.vv', '_expected.vv')
 		if !os.exists(opath) {
 			fmt_bench.fail()
@@ -56,18 +54,28 @@ fn test_fmt() {
 				eprintln('>> sorry, but no working "diff" CLI command can be found')
 				continue
 			}
-			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_${ifilename}')
+			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_${os.file_name(ipath)}')
 			os.write_file(vfmt_result_file, result_ocontent) or { panic(err) }
 			eprintln(diff.color_compare_files(diff_cmd, opath, vfmt_result_file))
 			continue
 		}
 		fmt_bench.ok()
-		eprintln(fmt_bench.step_message_ok('${ipath}'))
+		eprintln(fmt_bench.step_message_ok(ipath))
 	}
 	fmt_bench.stop()
 	eprintln(term.h_divider('-'))
 	eprintln(fmt_bench.total_message(fmt_message))
-	if fmt_bench.nfail > 0 {
-		exit(error_failed_tests)
-	}
+	assert fmt_bench.nfail == 0
+}
+
+fn test_fmt() {
+	mut input_files := os.walk_ext(os.join_path(vroot, 'vlib', 'v', 'fmt', 'tests'), '_input.vv')
+	run_fmt(mut input_files)
+}
+
+fn test_fmt_vmodules() {
+	vmodules_tdir := os.join_path(vroot, 'vlib', 'v', 'fmt', 'testdata', 'vmodules')
+	os.setenv('VMODULES', vmodules_tdir, true)
+	mut input_files := os.walk_ext(vmodules_tdir, '_input.vv')
+	run_fmt(mut input_files)
 }
