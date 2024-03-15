@@ -5996,6 +5996,9 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 	if node.attrs.contains('weak') {
 		attributes += 'VWEAK '
 	}
+	if node.attrs.contains('hidden') {
+		attributes += 'VHIDDEN '
+	}
 	if node.attrs.contains('export') {
 		attributes += 'VV_EXPORTED_SYMBOL '
 	}
