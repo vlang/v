@@ -959,6 +959,16 @@ pub fn (mut s Scanner) text_scan() token.Token {
 				if nextc == `!` {
 					// treat shebang line (#!) as a comment
 					comment := s.text[start - 1..s.pos].trim_space()
+					if s.line_nr != 1 {
+						comment_pos := token.Pos{
+							line_nr: s.line_nr - 1
+							len: comment.len
+							pos: start
+							col: s.current_column() - comment.len
+						}
+						s.error_with_pos('a shebang is only valid at the top of the file',
+							comment_pos)
+					}
 					// s.fgenln('// shebang line "$s.line_comment"')
 					return s.new_token(.comment, comment, comment.len + 2)
 				}
