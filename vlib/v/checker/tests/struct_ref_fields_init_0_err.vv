@@ -7,4 +7,9 @@ fn main() {
 	_ = Foo{
 		foo: 0
 	}
+
+	_ = Foo{unsafe { 0 }}
+	_ = Foo{
+		foo: unsafe { 0 }
+	}
 }

@@ -11,4 +11,4 @@ vlib/v/checker/tests/struct_ref_fields_init_0_err.vv:8:3: notice: assigning `0` 
     8 |         foo: 0
       |         ~~~~~~
     9 |     }
-   10 | }
+   10 |

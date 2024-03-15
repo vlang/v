@@ -18,17 +18,14 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			c.check_valid_pascal_case(node.name, 'struct name', node.pos)
 		}
 		for embed in node.embeds {
-			if embed.typ.has_flag(.generic) {
-				has_generic_types = true
-			}
 			embed_sym := c.table.sym(embed.typ)
 			if embed_sym.kind != .struct_ {
 				c.error('`${embed_sym.name}` is not a struct', embed.pos)
-			} else {
-				info := embed_sym.info as ast.Struct
-				if info.is_heap && !embed.typ.is_ptr() {
-					struct_sym.info.is_heap = true
-				}
+			} else if (embed_sym.info as ast.Struct).is_heap && !embed.typ.is_ptr() {
+				struct_sym.info.is_heap = true
+			}
+			if embed.typ.has_flag(.generic) {
+				has_generic_types = true
 			}
 			// Ensure each generic type of the embed was declared in the struct's definition
 			if node.generic_types.len > 0 && embed.typ.has_flag(.generic) {
@@ -90,12 +87,10 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			if !c.is_builtin_mod && node.language == .v {
 				if !(c.file.is_translated || c.pref.translated) {
 					sym := c.table.sym(field.typ)
-					if sym.kind == .function {
-						if !field.typ.has_flag(.option) && !field.has_default_expr
-							&& field.attrs.all(it.name != 'required') {
-							error_msg := 'uninitialized `fn` struct fields are not allowed, since they can result in segfaults; use `?fn` or `[required]` or initialize the field with `=` (if you absolutely want to have unsafe function pointers, use `= unsafe { nil }`)'
-							c.note(error_msg, field.pos)
-						}
+					if sym.kind == .function && !field.typ.has_flag(.option)
+						&& !field.has_default_expr && !field.attrs.contains('required') {
+						error_msg := 'uninitialized `fn` struct fields are not allowed, since they can result in segfaults; use `?fn` or `[required]` or initialize the field with `=` (if you absolutely want to have unsafe function pointers, use `= unsafe { nil }`)'
+						c.note(error_msg, field.pos)
 					}
 				}
 			}
@@ -317,18 +312,15 @@ fn minify_sort_fn(a &ast.StructField, b &ast.StructField) int {
 	// TODO: support enums with custom field values as well
 	if a_sym.info is ast.Enum {
 		if !a_sym.info.is_flag && !a_sym.info.uses_exprs {
-			if b_sym.kind == .enum_ {
-				a_nr_vals := (a_sym.info as ast.Enum).vals.len
-				b_nr_vals := (b_sym.info as ast.Enum).vals.len
-				return if a_nr_vals > b_nr_vals {
-					-1
-				} else if a_nr_vals < b_nr_vals {
-					1
-				} else {
-					0
+			return if b_sym.info is ast.Enum {
+				match true {
+					a_sym.info.vals.len > b_sym.info.vals.len { -1 }
+					a_sym.info.vals.len < b_sym.info.vals.len { 1 }
+					else { 0 }
 				}
+			} else {
+				1
 			}
-			return 1
 		}
 	} else if b_sym.info is ast.Enum {
 		if !b_sym.info.is_flag && !b_sym.info.uses_exprs {
@@ -338,16 +330,12 @@ fn minify_sort_fn(a &ast.StructField, b &ast.StructField) int {
 
 	a_size, a_align := t.type_size(a.typ)
 	b_size, b_align := t.type_size(b.typ)
-	return if a_align > b_align {
-		-1
-	} else if a_align < b_align {
-		1
-	} else if a_size > b_size {
-		-1
-	} else if a_size < b_size {
-		1
-	} else {
-		0
+	return match true {
+		a_align > b_align { -1 }
+		a_align < b_align { 1 }
+		a_size > b_size { -1 }
+		a_size < b_size { 1 }
+		else { 0 }
 	}
 }
 
@@ -454,8 +442,8 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 		&& c.table.cur_concrete_types.len == 0 {
 		pos := type_sym.name.index_u8_last(`.`)
 		first_letter := type_sym.name[pos + 1]
-		if !first_letter.is_capital()
-			&& (type_sym.kind != .struct_ || !(type_sym.info as ast.Struct).is_anon)
+		if !first_letter.is_capital() && (type_sym.kind != .struct_
+			|| !(type_sym.info is ast.Struct && type_sym.info.is_anon))
 			&& type_sym.kind != .placeholder {
 			c.error('cannot initialize builtin type `${type_sym.name}`', node.pos)
 		}
@@ -643,8 +631,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 						init_field.expr.pos())
 				}
 				if exp_type_sym.kind == .array && got_type_sym.kind == .array {
-					if init_field.expr is ast.IndexExpr
-						&& (init_field.expr as ast.IndexExpr).left is ast.Ident
+					if init_field.expr is ast.IndexExpr && init_field.expr.left is ast.Ident
 						&& ((init_field.expr as ast.IndexExpr).left.is_mut()
 						|| field_info.is_mut) && init_field.expr.index is ast.RangeExpr
 						&& !c.inside_unsafe {
@@ -667,11 +654,10 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					}
 				}
 				if exp_type_sym.kind == .interface_ {
-					if c.type_implements(got_type, exp_type, init_field.pos) {
-						if !c.inside_unsafe && got_type_sym.kind != .interface_
-							&& !got_type.is_any_kind_of_pointer() {
-							c.mark_as_referenced(mut &init_field.expr, true)
-						}
+					if got_type_sym.kind != .interface_ && !c.inside_unsafe
+						&& !got_type.is_any_kind_of_pointer()
+						&& c.type_implements(got_type, exp_type, init_field.pos) {
+						c.mark_as_referenced(mut &init_field.expr, true)
 					}
 				} else if got_type != ast.void_type && got_type_sym.kind != .placeholder
 					&& !exp_type.has_flag(.generic) {
@@ -686,17 +672,13 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 							init_field.pos)
 					}
 				} else {
-					is_unsafe_0 := init_field.expr is ast.UnsafeExpr
-						&& (init_field.expr as ast.UnsafeExpr).expr.str() == '0'
-					if exp_type.is_ptr() && !is_unsafe_0 && !got_type.is_any_kind_of_pointer()
-						&& !exp_type.has_flag(.option) {
+					if !c.inside_unsafe && type_sym.language == .v && !(c.file.is_translated
+						|| c.pref.translated) && exp_type.is_ptr()
+						&& !got_type.is_any_kind_of_pointer() && !exp_type.has_flag(.option)
+						&& !(init_field.expr is ast.UnsafeExpr && init_field.expr.expr.str() == '0') {
 						if init_field.expr.str() == '0' {
-							if !c.inside_unsafe && type_sym.language == .v {
-								if !(c.file.is_translated || c.pref.translated) {
-									c.note('assigning `0` to a reference field is only allowed in `unsafe` blocks',
-										init_field.pos)
-								}
-							}
+							c.note('assigning `0` to a reference field is only allowed in `unsafe` blocks',
+								init_field.pos)
 						} else {
 							c.error('reference field must be initialized with reference',
 								init_field.pos)
@@ -713,27 +695,19 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				node.init_fields[i].typ = got_type
 				node.init_fields[i].expected_type = exp_type
 
-				if got_type.is_ptr() && exp_type.is_ptr() {
-					if mut init_field.expr is ast.Ident {
-						c.fail_if_stack_struct_action_outside_unsafe(mut init_field.expr,
-							'assigned')
-					}
+				if got_type.is_ptr() && exp_type.is_ptr() && mut init_field.expr is ast.Ident {
+					c.fail_if_stack_struct_action_outside_unsafe(mut init_field.expr,
+						'assigned')
 				}
-				if field_info.typ in ast.unsigned_integer_type_idxs {
-					if mut init_field.expr is ast.IntegerLiteral {
-						if init_field.expr.val[0] == `-` {
-							c.error('cannot assign negative value to unsigned integer type',
-								init_field.expr.pos)
-						}
-					}
+				if field_info.typ in ast.unsigned_integer_type_idxs
+					&& mut init_field.expr is ast.IntegerLiteral
+					&& (init_field.expr as ast.IntegerLiteral).val[0] == `-` {
+					c.error('cannot assign negative value to unsigned integer type', init_field.expr.pos)
 				}
 
-				if exp_type_sym.kind == .struct_ && !(exp_type_sym.info as ast.Struct).is_anon
-					&& mut init_field.expr is ast.StructInit {
-					if init_field.expr.is_anon {
-						c.error('cannot assign anonymous `struct` to a typed `struct`',
-							init_field.expr.pos)
-					}
+				if exp_type_sym.info is ast.Struct && !exp_type_sym.info.is_anon
+					&& mut init_field.expr is ast.StructInit && init_field.expr.is_anon {
+					c.error('cannot assign anonymous `struct` to a typed `struct`', init_field.expr.pos)
 				}
 
 				// all the fields of initialized embedded struct are ignored, they are considered initialized
@@ -840,22 +814,13 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				}
 				*/
 				// Check for `[required]` struct attr
-				if !node.no_keys && !node.has_update_expr && field.attrs.contains('required') {
-					mut found := false
-					for init_field in node.init_fields {
-						if field.name == init_field.name {
-							found = true
-							break
-						}
-					}
-					if !found {
-						c.error('field `${type_sym.name}.${field.name}` must be initialized',
-							node.pos)
-					}
+				if !node.no_keys && !node.has_update_expr && field.attrs.contains('required')
+					&& node.init_fields.all(it.name != field.name) {
+					c.error('field `${type_sym.name}.${field.name}` must be initialized',
+						node.pos)
 				}
-				if !node.has_update_expr && !field.has_default_expr && field.name !in inited_fields
-					&& !field.typ.is_ptr() && !field.typ.has_flag(.option)
-					&& c.table.final_sym(field.typ).kind == .struct_ {
+				if !node.has_update_expr && !field.has_default_expr && !field.typ.is_ptr()
+					&& !field.typ.has_flag(.option) && c.table.final_sym(field.typ).kind == .struct_ {
 					mut zero_struct_init := ast.StructInit{
 						pos: node.pos
 						typ: field.typ
@@ -945,7 +910,7 @@ fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut 
 			if sym.language == .c && sym.info.is_typedef {
 				continue
 			}
-			if field.name.is_capital() && sym.language == .v {
+			if field.name.len > 0 && field.name[0].is_capital() && sym.language == .v {
 				// an embedded struct field
 				continue
 			}
@@ -988,7 +953,7 @@ fn (mut c Checker) check_ref_fields_initialized_note(struct_sym &ast.TypeSymbol,
 			if sym.language == .c && sym.info.is_typedef {
 				continue
 			}
-			if field.name.is_capital() && sym.language == .v {
+			if field.name.len > 0 && field.name[0].is_capital() && sym.language == .v {
 				// an embedded struct field
 				continue
 			}
