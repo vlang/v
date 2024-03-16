@@ -706,16 +706,17 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				elem_type := chan_info.elem_type
 				if right_type.is_ptr() != elem_type.is_ptr()
 					|| !c.check_types(right_type, elem_type) {
-					c.error('cannot push `${c.table.type_to_str(right_type)}` on `${left_sym.name}`',
-						right_pos)
+					if elem_type.is_ptr() && !right_type.is_ptr() {
+						c.error('cannot push non-reference `${right_sym.name}` on `${left_sym.name}`',
+							right_pos)
+					} else {
+						c.error('cannot push `${c.table.type_to_str(right_type)}` on `${left_sym.name}`',
+							right_pos)
+					}
 				}
 				if chan_info.is_mut {
 					// TODO: The error message of the following could be more specific...
 					c.fail_if_immutable(mut node.right)
-				}
-				if elem_type.is_ptr() && !right_type.is_ptr() {
-					c.error('cannot push non-reference `${right_sym.name}` on `${left_sym.name}`',
-						right_pos)
 				}
 				c.stmts_ending_with_expression(mut node.or_block.stmts)
 			} else {
