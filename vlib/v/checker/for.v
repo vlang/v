@@ -57,6 +57,9 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				node.cond.pos().extend(node.high.pos()))
 		} else if typ_idx !in ast.integer_type_idxs {
 			c.error('range type can only be an integer type', node.cond.pos().extend(node.high.pos()))
+		} else if high_type.has_option_or_result() {
+			c.error('the `high` value in a `for x in low..high {` loop, cannot be Result or Option',
+				node.high.pos())
 		}
 		if high_type in [ast.int_type, ast.int_literal_type] {
 			node.val_type = typ
