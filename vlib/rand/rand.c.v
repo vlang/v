@@ -93,6 +93,7 @@ fn internal_ulid_at_millisecond(mut rng PRNG, unix_time_milli u64) string {
 	}
 }
 
+@[direct_array_access]
 fn internal_string_from_set(mut rng PRNG, charset string, len int) string {
 	if len == 0 {
 		return ''
@@ -100,7 +101,7 @@ fn internal_string_from_set(mut rng PRNG, charset string, len int) string {
 	mut buf := unsafe { malloc_noscan(len + 1) }
 	for i in 0 .. len {
 		unsafe {
-			buf[i] = charset[intn(charset.len) or { 0 }]
+			buf[i] = charset[rng.u32() % charset.len]
 		}
 	}
 	unsafe {
@@ -114,9 +115,10 @@ fn internal_fill_buffer_from_set(mut rng PRNG, charset string, mut buf []u8) {
 	if buf.len == 0 {
 		return
 	}
-	for i in 0 .. buf.len {
+	blen := buf.len
+	for i in 0 .. blen {
 		unsafe {
-			buf[i] = charset[intn(charset.len) or { 0 }]
+			buf[i] = charset[rng.u32() % charset.len]
 		}
 	}
 }
