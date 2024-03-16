@@ -15,6 +15,10 @@ import os
 import hash.fnv1a
 import strings
 
+// https://www.felixcloutier.com/x86/lock
+const allowed_lock_prefix_ins = ['add', 'adc', 'and', 'btc', 'btr', 'bts', 'cmpxchg', 'cmpxchg8b',
+	'cmpxchg16b', 'dec', 'inc', 'neg', 'not', 'or', 'sbb', 'sub', 'xor', 'xadd', 'xchg']
+
 @[minify]
 pub struct Parser {
 	pref &pref.Preferences = unsafe { nil }
@@ -1255,12 +1259,10 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 			name += p.tok.kind.str()
 			if p.tok.kind == .key_lock && arch in [.i386, .amd64] {
 				p.next()
-				allowed_ins := ['add', 'adc', 'and', 'btc', 'btr', 'bts', 'cmpxchg', 'cmpxch8b',
-					'cmpxchg16b', 'dec', 'inc', 'neg', 'not', 'or', 'sbb', 'sub', 'xor', 'xadd',
-					'xchg']
+
 				has_suffix := p.tok.lit[p.tok.lit.len - 1] in [`b`, `w`, `l`, `q`]
-				if !(p.tok.lit in allowed_ins
-					|| (has_suffix && p.tok.lit[0..p.tok.lit.len - 1] in allowed_ins)) {
+				if !(p.tok.lit in parser.allowed_lock_prefix_ins || (has_suffix
+					&& p.tok.lit[0..p.tok.lit.len - 1] in parser.allowed_lock_prefix_ins)) {
 					p.error('The lock prefix cannot be used on this instruction')
 				}
 				name += ' '
@@ -1778,6 +1780,7 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 				p.next()
 			} else {
 				if p.tok.kind == .number {
+					// Numbered constraints - https://gcc.gnu.org/onlinedocs/gcc/Simple-Constraints.html
 					if p.tok.lit.int() >= 10 {
 						p.error_with_pos('The digit must be between 0 and 9 only', pos)
 					}
