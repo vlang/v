@@ -236,19 +236,44 @@ fn test_rand_string_from_set() {
 	}
 }
 
+fn test_rand_fill_buffer_from_set() {
+	rand.seed([u32(0), 1])
+	outputs := [
+		[u8(52), 48, 55, 57, 50, 49, 53, 49, 53, 53],
+		[u8(57), 51, 56, 53, 56, 55, 56, 52, 56, 51],
+		[u8(57), 54, 52, 53, 57, 56, 57, 57, 48, 57],
+		[u8(57), 54, 50, 50, 52, 57, 53, 55, 50, 57],
+		[u8(51), 48, 55, 54, 49, 55, 53, 54, 52, 57],
+		[u8(57), 50, 48, 50, 48, 49, 52, 54, 50, 48],
+		[u8(55), 54, 51, 48, 51, 54, 49, 55, 56, 52],
+		[u8(52), 56, 52, 54, 50, 50, 50, 56, 54, 53],
+		[u8(53), 53, 55, 52, 51, 54, 55, 56, 51, 51],
+		[u8(52), 50, 51, 57, 54, 52, 50, 48, 49, 53],
+		[u8(49), 51, 54, 57, 55, 51, 48, 51, 51, 50],
+		[u8(56), 54, 50, 54, 51, 54, 49, 55, 57, 49],
+	]
+	for output in outputs {
+		mut buf := []u8{len: 10}
+		rand.fill_buffer_from_set('0123456789', mut buf)
+		assert buf == output
+	}
+}
+
 fn test_rand_string() {
 	rand.seed([u32(0), 1])
 	outputs := [
-		'rzJfVBJgvAyCNpEdXIteDQezg',
-		'AJOeswgoelDOCfcrSUWzVPjeL',
-		'NQfKauQqsXYXSUMFPGnXXPJIn',
-		'vfBGUKbpLoBMQVYXfkvRplWih',
-		'aYHLjMJqvUJmJJHGxEnrEmQGl',
-		'rBJXkQZcembAteaRFoxXmECJo',
-		'HYVLfHmDOCTlSbiSzHrsAIaBH',
-		'zgOiwyISjLSdLGhLzJsSKHVBi',
-		'UiAtobWXGcHsEtgzuNatxfkoI',
-		'NisnYlffJgFEcIdcgzWcGjnHy',
+		'oIfPOHLBZTlvGhYtCMolfssbZ',
+		'yHFGzDYeWIRldsBzMtkDhzQqF',
+		'vwoeerAKsEZiludKtRKoCoiuE',
+		'EQAaJDRZkvKTKNLkEPhWeEKFX',
+		'rDIhxzIbDUIusiTuzLHRslfzu',
+		'KCUoAEugYvUwzXcKRrAiwMzXH',
+		'NIOXerfCpEwbfhLmbbWKjoxbL',
+		'baJWQWarRRRmXCvMKcEjxQBpk',
+		'CkVLxbJEPhviBTohEVBnMAFHZ',
+		'ZdnGGhYShqzwnDXqHncLgLcdo',
+		'zRiSLsgnApmvtlIVrQQaBzOJD',
+		'VeeBcztImGquJnzEsXCdUaUed',
 	]
 	for output in outputs {
 		assert rand.string(25) == output
@@ -258,16 +283,20 @@ fn test_rand_string() {
 fn test_rand_hex() {
 	rand.seed([u32(0), 1])
 	outputs := [
-		'fc30e495deee09e008e15ffc3',
-		'4320efa837788397fb59b28f4',
-		'4995210abf33b6765c240ce62',
-		'f3d20dbe0a8aa6b9c88cd1f6f',
-		'8d7d58b256ab00213dd519cf7',
-		'fa2251284bc20a21eff48127c',
-		'5fef90cdc0c37143117599092',
-		'2a6170531c76dfb50c54126bc',
-		'a686dfd536042d1c1a9afdaf4',
-		'7f12013f6e1177e2d63726de3',
+		'847b633d9f9765c1a84d38035',
+		'efdef342641958db89cfdb4e1',
+		'704ee34204d29e9e99aca0ae0',
+		'0c8e1fd5472f65fc4b9668adf',
+		'3349538378c2023ef7f14dfbe',
+		'ae4080a0cb4cbb0693c68037b',
+		'90e3a7be588b3dfeb3663c97f',
+		'f25a82eb559ab6f0288bd8590',
+		'649f579cb93e9f414d9f40539',
+		'553a210a52bcbfbafb0783850',
+		'3daef80b45ef518d30c6db6db',
+		'56a187106e6e5fb88761024a5',
+		'b5cd8b7a24054d7dc66e62f88',
+		'306eed0c4207d8db185f04afd',
 	]
 	for output in outputs {
 		assert rand.hex(25) == output
@@ -277,16 +306,15 @@ fn test_rand_hex() {
 fn test_rand_ascii() {
 	rand.seed([u32(0), 1])
 	outputs := [
-		"2Z:&PeD'V;9=mn\$C>yKg'DIr%",
-		'Ub7ix,}>I=&#2QJki{%FHKv&K',
-		'1WStRylMO|p.R~qqRtr&AOEsd',
-		'yka<GPZ&m+r0^Zi!ShB*1dU~W',
-		'uDA?.zU2X,<DkKT#_-halW\\ki',
-		'fsx!@uRc?re/fSPXj`Y&\\BU}p',
-		'fI_qM"):2;CUno!<dX:Yv*FX$',
-		'FnA(Fr|D`WZVWEzp<k)O;auub',
-		"QRkxH!kjXh&/j{)uSe&{D'v?|",
-		"_CyaU\$z':#}At*v2|xDu6w=;1",
+		r"KqdNI|*bDh42kn'z-}}nhmKd~",
+		r'IZ4wVRC-Q3@TviD>G4#Z(2}s4',
+		r"l7'1Ute)i?4Efo$sX^sOk;s%m",
+		r"3}3s^l(PeNY>I8&'a>$)AW14*",
+		r'V.a^b>GN"\\9e-Vs"&.vS0"F_',
+		r"U-;S}OY+e>Ca>p'UD|7{}?6`x",
+		r'$/EN5*2w@/KdN~pU||c=*yn6|',
+		r'FsLkK{gFrPn)>EVW53uJLa<8?',
+		r'1#PB<"P}pLtY@F}^\TfNyCDB$',
 	]
 	for output in outputs {
 		assert rand.ascii(25) == output

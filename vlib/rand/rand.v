@@ -351,6 +351,12 @@ pub fn (mut rng PRNG) ascii(len int) string {
 	return internal_string_from_set(mut rng, rand.ascii_chars, len)
 }
 
+// fill_buffer_from_set fills the mutable `buf` with random characters from the given `charset`
+@[inline]
+pub fn (mut rng PRNG) fill_buffer_from_set(charset string, mut buf []u8) {
+	internal_fill_buffer_from_set(mut rng, charset, mut buf)
+}
+
 // bernoulli returns true with a probability p. Note that 0 <= p <= 1.
 pub fn (mut rng PRNG) bernoulli(p f64) !bool {
 	if p < 0 || p > 1 {
@@ -673,6 +679,12 @@ pub fn ulid_at_millisecond(unix_time_milli u64) string {
 // string_from_set returns a string of length `len` containing random characters sampled from the given `charset`
 pub fn string_from_set(charset string, len int) string {
 	return default_rng.string_from_set(charset, len)
+}
+
+// fill_buffer_from_set fills the array `buf` with random characters sampled from the given `charset`
+@[inline]
+pub fn fill_buffer_from_set(charset string, mut buf []u8) {
+	default_rng.fill_buffer_from_set(charset, mut buf)
 }
 
 // string returns a string of length `len` containing random characters in range `[a-zA-Z]`.
