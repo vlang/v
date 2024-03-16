@@ -681,6 +681,12 @@ pub fn string_from_set(charset string, len int) string {
 	return default_rng.string_from_set(charset, len)
 }
 
+// fill_buffer_from_set fills the array `buf` with random characters sampled from the given `charset`
+@[inline]
+pub fn fill_buffer_from_set(charset string, mut buf []u8) {
+	default_rng.fill_buffer_from_set(charset, mut buf)
+}
+
 // string returns a string of length `len` containing random characters in range `[a-zA-Z]`.
 pub fn string(len int) string {
 	return string_from_set(rand.english_letters, len)

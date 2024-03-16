@@ -236,6 +236,24 @@ fn test_rand_string_from_set() {
 	}
 }
 
+fn test_rand_fill_buffer_from_set() {
+	rand.seed([u32(0), 1])
+	outputs := [
+		[u8(51), 53, 50, 55, 48, 51, 57, 54, 52, 57],
+		[u8(55), 51, 50, 53, 49, 52, 52, 52, 54, 51],
+		[u8(56), 52, 48, 52, 54, 54, 52, 55, 56, 53],
+		[u8(53), 50, 53, 57, 57, 57, 50, 56, 54, 52],
+		[u8(53), 53, 55, 53, 52, 48, 57, 50, 54, 49],
+		[u8(57), 48, 57, 51, 57, 50, 53, 48, 52, 49],
+	]
+	for output in outputs {
+		mut buf := []u8{len: 10}
+		rand.fill_buffer_from_set('0123456789', mut buf)
+		dump(buf)
+		assert buf == output
+	}
+}
+
 fn test_rand_string() {
 	rand.seed([u32(0), 1])
 	outputs := [
