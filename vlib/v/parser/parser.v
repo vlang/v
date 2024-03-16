@@ -15,6 +15,10 @@ import os
 import hash.fnv1a
 import strings
 
+// https://www.felixcloutier.com/x86/lock
+const allowed_lock_prefix_ins = ['add', 'adc', 'and', 'btc', 'btr', 'bts', 'cmpxchg', 'cmpxchg8b',
+	'cmpxchg16b', 'dec', 'inc', 'neg', 'not', 'or', 'sbb', 'sub', 'xor', 'xadd', 'xchg']
+
 @[minify]
 pub struct Parser {
 	pref &pref.Preferences = unsafe { nil }
@@ -1253,6 +1257,17 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 		}
 		if p.tok.kind in [.key_in, .key_lock, .key_orelse, .key_select, .key_return] { // `in`, `lock`, `or`, `select`, `return` are v keywords that are also x86/arm/riscv/wasm instructions.
 			name += p.tok.kind.str()
+			if p.tok.kind == .key_lock && arch in [.i386, .amd64] {
+				p.next()
+
+				has_suffix := p.tok.lit[p.tok.lit.len - 1] in [`b`, `w`, `l`, `q`]
+				if !(p.tok.lit in parser.allowed_lock_prefix_ins || (has_suffix
+					&& p.tok.lit[0..p.tok.lit.len - 1] in parser.allowed_lock_prefix_ins)) {
+					p.error('The lock prefix cannot be used on this instruction')
+				}
+				name += ' '
+				name += p.tok.lit
+			}
 			p.next()
 		} else if p.tok.kind == .number {
 			name += p.tok.lit
@@ -1764,7 +1779,15 @@ fn (mut p Parser) asm_ios(output bool) []ast.AsmIO {
 			if p.tok.kind == .at {
 				p.next()
 			} else {
-				p.check(.name)
+				if p.tok.kind == .number {
+					// Numbered constraints - https://gcc.gnu.org/onlinedocs/gcc/Simple-Constraints.html
+					if p.tok.lit.int() >= 10 {
+						p.error_with_pos('The digit must be between 0 and 9 only', pos)
+					}
+					p.check(.number)
+				} else {
+					p.check(.name)
+				}
 			}
 		}
 		mut expr := p.expr(0)
