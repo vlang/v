@@ -2220,10 +2220,6 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 				// continue
 				// }
 				is_option := obj.typ.has_flag(.option)
-				if is_option {
-					// TODO: free options
-					continue
-				}
 				is_result := obj.typ.has_flag(.result)
 				if is_result {
 					// TODO: free results
@@ -2237,7 +2233,7 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 					continue
 				}
 				obj.is_used = true // TODO bug? sets all vars is_used to true
-				g.autofree_variable(obj)
+				g.autofree_variable(obj, is_option)
 				// g.nr_vars_to_free--
 			}
 			else {}

@@ -619,7 +619,7 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 	mut cloned := false
 	if g.is_autofree && !sfield.typ.is_ptr() && field_type_sym.kind in [.array, .string] {
 		g.write('/*clone1*/')
-		if g.gen_clone_assignment(sfield.expr, sfield.typ, false) {
+		if g.gen_clone_assignment(sfield.typ, sfield.expr, sfield.typ, false) {
 			cloned = true
 		}
 	}

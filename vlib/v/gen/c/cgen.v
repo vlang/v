@@ -2877,7 +2877,7 @@ fn (mut g Gen) get_ternary_name(name string) string {
 	return g.ternary_names[name]
 }
 
-fn (mut g Gen) gen_clone_assignment(val ast.Expr, typ ast.Type, add_eq bool) bool {
+fn (mut g Gen) gen_clone_assignment(var_type ast.Type, val ast.Expr, typ ast.Type, add_eq bool) bool {
 	if val !in [ast.Ident, ast.SelectorExpr] {
 		return false
 	}
@@ -2905,7 +2905,11 @@ fn (mut g Gen) gen_clone_assignment(val ast.Expr, typ ast.Type, add_eq bool) boo
 			}
 		} else if right_sym.kind == .string {
 			// `str1 = str2` => `str1 = str2.clone()`
-			g.write(' string_clone_static(')
+			if var_type.has_flag(.option) {
+				g.write(' string_option_clone_static(')
+			} else {
+				g.write(' string_clone_static(')
+			}
 			g.expr(val)
 			g.write(')')
 		}
@@ -2981,11 +2985,7 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 					continue
 				}
 				is_option := obj.typ.has_flag(.option)
-				if is_option {
-					// TODO: free options
-					continue
-				}
-				g.autofree_variable(obj)
+				g.autofree_variable(obj, is_option)
 			}
 			else {}
 		}
@@ -3009,7 +3009,7 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 	}
 }
 
-fn (mut g Gen) autofree_variable(v ast.Var) {
+fn (mut g Gen) autofree_variable(v ast.Var, is_option bool) {
 	// filter out invalid variables
 	if v.typ == 0 {
 		return
@@ -3093,6 +3093,10 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 			af.write_string(free_fn_name)
 		}
 		af.write_string('(')
+		if v.typ.has_flag(.option) {
+			base_type := g.base_type(v.typ)
+			af.write_string('(${base_type}*)')
+		}
 		if v.typ.share() == .shared_t {
 			af.write_string('&')
 		}
@@ -3100,6 +3104,9 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 		af.write_string(c_name(v.name))
 		if v.typ.share() == .shared_t {
 			af.write_string('->val')
+		}
+		if v.typ.has_flag(.option) {
+			af.write_string('.data)')
 		}
 
 		af.writeln('); // autofreed ptr var')
@@ -3109,6 +3116,11 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 		}
 		if v.is_auto_heap {
 			af.writeln('\t${free_fn_name}(${c_name(v.name)}); // autofreed heap var ${g.cur_mod.name} ${g.is_builtin_mod}')
+		} else if v.typ.has_flag(.option) {
+			base_type := g.base_type(v.typ)
+			af.writeln('\tif (${c_name(v.name)}.state != 2) {')
+			af.writeln('\t\t${free_fn_name}((${base_type}*)${c_name(v.name)}.data); // autofreed option var ${g.cur_mod.name} ${g.is_builtin_mod}')
+			af.writeln('\t}')
 		} else {
 			af.writeln('\t${free_fn_name}(&${c_name(v.name)}); // autofreed var ${g.cur_mod.name} ${g.is_builtin_mod}')
 		}

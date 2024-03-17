@@ -313,6 +313,13 @@ fn (a string) clone_static() string {
 	return a.clone()
 }
 
+// option_clone_static returns an independent copy of a given array when lhs is an option type.
+// It should be used only in -autofree generated code.
+@[inline]
+fn (a string) option_clone_static() ?string {
+	return ?string(a.clone())
+}
+
 // clone returns a copy of the V string `a`.
 pub fn (a string) clone() string {
 	if a.len <= 0 {
