@@ -1084,7 +1084,7 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 	deref, _ := deref_kind(expects_ptr, field_type.is_ptr(), field_type)
 	final_field_name := if lang == .c { field_name } else { c_name(field_name) }
 	op := if lang == .c { '->' } else { '.' }
-	prefix := if lang == .c && !field_type.is_ptr() { '&' } else { '' }
+	prefix := if sym.language == .c && !field_type.is_ptr() { '&' } else { '' }
 	if sym.kind == .enum_ {
 		return '${fn_name}(${deref}(it${op}${final_field_name}))', true
 	} else if _field_type.has_flag(.option) || should_use_indent_func(sym.kind) {
