@@ -162,7 +162,12 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		} else if is_ptr && typ.has_flag(.option) {
 			g.write('*(${g.typ(typ)}*)&')
 		} else if !str_method_expects_ptr && !is_shared && (is_ptr || is_var_mut) {
-			g.write('*'.repeat(typ.nr_muls()))
+			if sym.language == .c {
+				ref_or_deref := if typ.nr_muls() == 0 { '&' } else { '*'.repeat(typ.nr_muls() - 1) }
+				g.write(ref_or_deref)
+			} else {
+				g.write('*'.repeat(typ.nr_muls()))
+			}
 		}
 		if expr is ast.ArrayInit {
 			if expr.is_fixed {

@@ -882,14 +882,24 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 		eprintln('> gen_str_for_struct: ${info.parent_type.debug()} | ${styp} | ${str_fn_name}')
 	}
 	// _str() functions should have a single argument, the indenting ones take 2:
-	g.definitions.writeln('static string ${str_fn_name}(${styp} it); // auto')
-	g.auto_str_funcs.writeln('static string ${str_fn_name}(${styp} it) { return indent_${str_fn_name}(it, 0);}')
-	g.definitions.writeln('static string indent_${str_fn_name}(${styp} it, int indent_count); // auto')
+	if lang == .c {
+		g.definitions.writeln('static string ${str_fn_name}(${styp}* it); // auto')
+		g.auto_str_funcs.writeln('static string ${str_fn_name}(${styp}* it) { return indent_${str_fn_name}(it, 0);}')
+		g.definitions.writeln('static string indent_${str_fn_name}(${styp}* it, int indent_count); // auto')
+	} else {
+		g.definitions.writeln('static string ${str_fn_name}(${styp} it); // auto')
+		g.auto_str_funcs.writeln('static string ${str_fn_name}(${styp} it) { return indent_${str_fn_name}(it, 0);}')
+		g.definitions.writeln('static string indent_${str_fn_name}(${styp} it, int indent_count); // auto')
+	}
 	mut fn_builder := strings.new_builder(512)
 	defer {
 		g.auto_fn_definitions << fn_builder.str()
 	}
-	fn_builder.writeln('static string indent_${str_fn_name}(${styp} it, int indent_count) {')
+	if lang == .c {
+		fn_builder.writeln('static string indent_${str_fn_name}(${styp}* it, int indent_count) {')
+	} else {
+		fn_builder.writeln('static string indent_${str_fn_name}(${styp} it, int indent_count) {')
+	}
 	clean_struct_v_type_name := if info.is_anon { 'struct ' } else { util.strip_main_name(typ_str) }
 	// generate ident / indent length = 4 spaces
 	if info.fields.len == 0 {
