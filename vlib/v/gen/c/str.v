@@ -204,6 +204,11 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				g.write('&')
 			} else if (!str_method_expects_ptr && is_ptr && !is_shared) || is_var_mut {
 				g.write('*')
+			} else {
+				final_sym := g.table.final_sym(typ)
+				if final_sym.language == .c && final_sym.kind == .struct_ {
+					g.write('&')
+				}
 			}
 			g.expr_with_cast(expr, typ, typ)
 		} else if typ.has_flag(.option) {

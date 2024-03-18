@@ -248,18 +248,23 @@ fn (mut g Gen) gen_str_for_result(typ ast.Type, styp string, str_fn_name string)
 
 fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string) {
 	parent_str_fn_name := g.get_str_fn(info.parent_type)
-	_, str_method_expects_ptr, _ := g.table.sym(info.parent_type).str_method_info()
+	parent_sym := g.table.sym(info.parent_type)
+	_, str_method_expects_ptr, _ := parent_sym.str_method_info()
 
 	$if trace_autostr ? {
 		eprintln('> gen_str_for_alias: ${parent_str_fn_name} | ${styp} | ${str_fn_name}')
 	}
 	mut clean_type_v_type_name := util.strip_main_name(styp.replace('__', '.'))
-	g.definitions.writeln('static string ${str_fn_name}(${styp} it); // auto')
-	g.auto_str_funcs.writeln('static string ${str_fn_name}(${styp} it) { return indent_${str_fn_name}(it, 0); }')
-	g.definitions.writeln('static string indent_${str_fn_name}(${styp} it, int indent_count); // auto')
-	g.auto_str_funcs.writeln('static string indent_${str_fn_name}(${styp} it, int indent_count) {')
+
+	is_ptr := parent_sym.language == .c && parent_sym.kind == .struct_
+	arg_def := if is_ptr { '${styp}* it' } else { '${styp} it' }
+
+	g.definitions.writeln('static string ${str_fn_name}(${arg_def}); // auto')
+	g.auto_str_funcs.writeln('static string ${str_fn_name}(${arg_def}) { return indent_${str_fn_name}(it, 0); }')
+	g.definitions.writeln('static string indent_${str_fn_name}(${arg_def}, int indent_count); // auto')
+	g.auto_str_funcs.writeln('static string indent_${str_fn_name}(${arg_def}, int indent_count) {')
 	g.auto_str_funcs.writeln('\tstring indents = string_repeat(_SLIT("    "), indent_count);')
-	if str_method_expects_ptr {
+	if str_method_expects_ptr || is_ptr {
 		g.auto_str_funcs.writeln('\tstring tmp_ds = ${parent_str_fn_name}(&it);')
 	} else {
 		deref, _ := deref_kind(str_method_expects_ptr, info.parent_type.is_ptr(), info.parent_type)
@@ -882,8 +887,8 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 		eprintln('> gen_str_for_struct: ${info.parent_type.debug()} | ${styp} | ${str_fn_name}')
 	}
 	// _str() functions should have a single argument, the indenting ones take 2:
-	mut is_ptr := lang == .c
-	mut arg_def := if is_ptr { '${styp}* it' } else { '${styp} it' }
+	is_ptr := lang == .c
+	arg_def := if is_ptr { '${styp}* it' } else { '${styp} it' }
 	g.definitions.writeln('static string ${str_fn_name}(${arg_def}); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}(${arg_def}) { return indent_${str_fn_name}(it, 0);}')
 	g.definitions.writeln('static string indent_${str_fn_name}(${arg_def}, int indent_count); // auto')
