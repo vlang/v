@@ -1,0 +1,14 @@
+vlib/v/checker/tests/map_result_callback_fn_err.vv:14:53: error: cannot use Result type in `map` calls without unwrapping or using an or block
+   12 | 
+   13 | fn execsync(cmd cli.Command) ! {
+   14 |     dens := os.read_lines('/etc/fox/dens')!.map(urllib.parse(it)!)
+      |                                                        ~~~~~~~~~
+   15 |     mut threads := []thread !{}
+   16 |     for den in dens {
+vlib/v/checker/tests/map_result_callback_fn_err.vv:19:17: error: cannot use Result type in `map`
+   17 |         threads << spawn update(den)
+   18 |     }
+   19 |     threads.map(it.wait()!)
+      |                    ~~~~~~~
+   20 | }
+   21 |
