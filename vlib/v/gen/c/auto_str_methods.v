@@ -1111,7 +1111,7 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 		if !field_type.is_ptr() && field_type.has_option_or_result() {
 			method_str = '(*(${sym.name}*)it${op}${final_field_name}.data)'
 		} else {
-			method_str += '${prefix}it${op}${final_field_name}'
+			method_str = '${prefix}it${op}${final_field_name}'
 		}
 		if sym.kind == .bool {
 			return '${method_str} ? _SLIT("true") : _SLIT("false")', false
