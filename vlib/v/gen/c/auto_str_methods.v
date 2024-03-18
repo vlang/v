@@ -83,6 +83,9 @@ fn (mut g Gen) get_str_fn(typ ast.Type) string {
 			else {}
 		}
 	}
+	if sym.language == .c && !typ.has_flag(.option) && sym.has_method('str') {
+		str_fn_name = util.no_dots(g.cc_type(unwrapped, false)) + '_str'
+	}
 	g.str_types << StrType{
 		typ: unwrapped
 		styp: styp
