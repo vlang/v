@@ -384,7 +384,11 @@ pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 		imp.source_name
 	} else {
 		mod := if imp.mod.len == 0 { imp.alias } else { imp.mod }
-		mod.all_after('src.') // Ignore the 'src.' folder prefix since src/ folder is root of code
+		if mod.starts_with('src.') {
+			mod.all_after('src.')
+		} else {
+			mod
+		}
 	}
 	is_diff := imp.alias != normalized_mod && !normalized_mod.ends_with('.' + imp.alias)
 	mut imp_alias_suffix := if is_diff { ' as ${imp.alias}' } else { '' }
