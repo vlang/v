@@ -27,16 +27,7 @@ fn get_ignore_paths(path string) ![]string {
 }
 
 fn is_included(path string, ignore_paths []string) bool {
-	if path == '' {
-		return true
-	}
-	for ignore_path in ignore_paths {
-		if !path.contains(ignore_path) {
-			continue
-		}
-		return false
-	}
-	return true
+	return if path != '' && ignore_paths.any(path.contains(it)) { false } else { true }
 }
 
 fn get_modules_list(opath string, ignore_paths2 []string) []string {
