@@ -37,15 +37,11 @@ fn get_modules_list(opath string, ignore_paths2 []string) []string {
 	ignore_paths << ignore_paths2
 	mut dirs := map[string]int{}
 	for name in names {
-		if name == 'testdata' {
-			continue
-		}
-		if name == 'tests' {
+		if name == 'testdata' || name == 'tests' {
 			continue
 		}
 		fpath := os.join_path(path, name)
-		fmeta := os.inode(fpath)
-		if fmeta.typ == .directory && is_included(fpath, ignore_paths) {
+		if os.is_dir(fpath) && is_included(fpath, ignore_paths) {
 			current_ignore_paths := ignore_paths.filter(it.starts_with(fpath))
 			for k in get_modules_list(fpath, current_ignore_paths) {
 				dirs[k]++
