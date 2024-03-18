@@ -882,24 +882,17 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 		eprintln('> gen_str_for_struct: ${info.parent_type.debug()} | ${styp} | ${str_fn_name}')
 	}
 	// _str() functions should have a single argument, the indenting ones take 2:
-	if lang == .c {
-		g.definitions.writeln('static string ${str_fn_name}(${styp}* it); // auto')
-		g.auto_str_funcs.writeln('static string ${str_fn_name}(${styp}* it) { return indent_${str_fn_name}(it, 0);}')
-		g.definitions.writeln('static string indent_${str_fn_name}(${styp}* it, int indent_count); // auto')
-	} else {
-		g.definitions.writeln('static string ${str_fn_name}(${styp} it); // auto')
-		g.auto_str_funcs.writeln('static string ${str_fn_name}(${styp} it) { return indent_${str_fn_name}(it, 0);}')
-		g.definitions.writeln('static string indent_${str_fn_name}(${styp} it, int indent_count); // auto')
-	}
+	mut is_ptr := lang == .c
+	mut arg_def := if is_ptr { '${styp}* it' } else { '${styp} it' }
+	g.definitions.writeln('static string ${str_fn_name}(${arg_def}); // auto')
+	g.auto_str_funcs.writeln('static string ${str_fn_name}(${arg_def}) { return indent_${str_fn_name}(it, 0);}')
+	g.definitions.writeln('static string indent_${str_fn_name}(${arg_def}, int indent_count); // auto')
 	mut fn_builder := strings.new_builder(512)
 	defer {
 		g.auto_fn_definitions << fn_builder.str()
 	}
-	if lang == .c {
-		fn_builder.writeln('static string indent_${str_fn_name}(${styp}* it, int indent_count) {')
-	} else {
-		fn_builder.writeln('static string indent_${str_fn_name}(${styp} it, int indent_count) {')
-	}
+	fn_builder.writeln('static string indent_${str_fn_name}(${arg_def}, int indent_count) {')
+
 	clean_struct_v_type_name := if info.is_anon { 'struct ' } else { util.strip_main_name(typ_str) }
 	// generate ident / indent length = 4 spaces
 	if info.fields.len == 0 {
@@ -1007,18 +1000,20 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 			field_styp_fn_name, field.name, sym_has_str_method, str_method_expects_ptr)
 		ftyp_nr_muls := field.typ.nr_muls()
 		field_name := if lang == .c { field.name } else { c_name(field.name) }
+		op := if is_ptr { '->' } else { '.' }
+		it_field_name := 'it${op}${field_name}'
 		if ftyp_nr_muls > 1 || field.typ in ast.cptr_types {
 			if is_opt_field {
 			} else {
-				func = '(voidptr) it.${field.name}'
+				func = '(voidptr) ${it_field_name}'
 				caller_should_free = false
 			}
 		} else if ftyp_noshared.is_ptr() {
 			// reference types can be "nil"
 			if ftyp_noshared.has_flag(.option) {
-				funcprefix += 'isnil(&it.${field_name}) || isnil(&it.${field_name}.data)'
+				funcprefix += 'isnil(&${it_field_name}) || isnil(&${it_field_name}.data)'
 			} else {
-				funcprefix += 'isnil(it.${field_name})'
+				funcprefix += 'isnil(${it_field_name})'
 			}
 			funcprefix += ' ? _SLIT("nil") : '
 			// struct, floats and ints have a special case through the _str function
@@ -1041,9 +1036,9 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 			if is_field_array {
 				if is_opt_field {
 					arr_styp := g.base_type(field.typ)
-					fn_body.write_string('it.${field_name}.state != 2 && (*(${arr_styp}*)it.${field_name}.data).len > 0 ? ${funcprefix}_SLIT("[<circular>]") : ${funcprefix}_SLIT("[]")')
+					fn_body.write_string('${it_field_name}.state != 2 && (*(${arr_styp}*)${it_field_name}.data).len > 0 ? ${funcprefix}_SLIT("[<circular>]") : ${funcprefix}_SLIT("[]")')
 				} else {
-					fn_body.write_string('it.${field_name}.len > 0 ? ${funcprefix}_SLIT("[<circular>]") : ${funcprefix}_SLIT("[]")')
+					fn_body.write_string('${it_field_name}.len > 0 ? ${funcprefix}_SLIT("[<circular>]") : ${funcprefix}_SLIT("[]")')
 				}
 			} else {
 				fn_body.write_string('${funcprefix}_SLIT("<circular>")')
@@ -1083,13 +1078,15 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 	sufix := if field_type.has_flag(.shared_f) { '->val' } else { '' }
 	deref, _ := deref_kind(expects_ptr, field_type.is_ptr(), field_type)
 	final_field_name := if lang == .c { field_name } else { c_name(field_name) }
+	op := if lang == .c { '->' } else { '.' }
+	prefix := if lang == .c && !field_type.is_ptr() { '&' } else { '' }
 	if sym.kind == .enum_ {
-		return '${fn_name}(${deref}(it.${final_field_name}))', true
+		return '${fn_name}(${deref}(it${op}${final_field_name}))', true
 	} else if _field_type.has_flag(.option) || should_use_indent_func(sym.kind) {
-		obj := '${deref}it.${final_field_name}${sufix}'
+		obj := '${prefix}${deref}it${op}${final_field_name}${sufix}'
 		if has_custom_str {
 			if sym.kind == .interface_ && (sym.info as ast.Interface).defines_method('str') {
-				iface_obj := 'it.${final_field_name}${sufix}'
+				iface_obj := '${prefix}it${op}${final_field_name}${sufix}'
 				dot := if field_type.is_ptr() { '->' } else { '.' }
 				return '${fn_name.trim_string_right('_str')}_name_table[${iface_obj}${dot}_typ]._method_str(${iface_obj}${dot}_object)', true
 			}
@@ -1097,24 +1094,24 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 		}
 		return 'indent_${fn_name}(${obj}, indent_count + 1)', true
 	} else if sym.kind in [.array, .array_fixed, .map, .sum_type] {
-		obj := '${deref}it.${final_field_name}${sufix}'
+		obj := '${deref}it${op}${final_field_name}${sufix}'
 		if has_custom_str {
 			return '${fn_name}(${obj})', true
 		}
 		return 'indent_${fn_name}(${obj}, indent_count + 1)', true
 	} else if sym.kind == .function {
-		obj := '${deref}it.${final_field_name}${sufix}'
+		obj := '${deref}it${op}${final_field_name}${sufix}'
 		return '${fn_name}(${obj})', true
 	} else if sym.kind == .chan {
-		return '${fn_name}(${deref}it.${final_field_name}${sufix})', true
+		return '${fn_name}(${deref}it${op}${final_field_name}${sufix})', true
 	} else if sym.kind == .thread {
-		return '${fn_name}(${deref}it.${final_field_name}${sufix})', false
+		return '${fn_name}(${deref}it${op}${final_field_name}${sufix})', false
 	} else {
 		mut method_str := ''
 		if !field_type.is_ptr() && field_type.has_option_or_result() {
-			method_str = '(*(${sym.name}*)it.${final_field_name}.data)'
+			method_str = '(*(${sym.name}*)it${op}${final_field_name}.data)'
 		} else {
-			method_str = 'it.${final_field_name}'
+			method_str += '${prefix}it${op}${final_field_name}'
 		}
 		if sym.kind == .bool {
 			return '${method_str} ? _SLIT("true") : _SLIT("false")', false
