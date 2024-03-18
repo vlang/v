@@ -98,7 +98,8 @@ pub fn fmt(file ast.File, mut table ast.Table, pref_ &pref.Preferences, is_debug
 		return res
 	}
 	mut import_start_pos := f.import_pos
-	if stmt := file.stmts[1] {
+	if f.import_pos == 0 && file.stmts.len > 1 {
+		stmt := file.stmts[1]
 		if stmt is ast.ExprStmt && stmt.expr is ast.Comment
 			&& (stmt.expr as ast.Comment).text.starts_with('#!') {
 			import_start_pos = stmt.pos.len
