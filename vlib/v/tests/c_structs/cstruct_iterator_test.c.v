@@ -1,4 +1,4 @@
-#include "@VMODROOT/vlib/v/tests/c_structs/iterator.c"
+#include "@VMODROOT/iterator.h"
 
 struct C.MyCStruct {
 mut:
