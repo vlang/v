@@ -1717,7 +1717,7 @@ pub fn (t &TypeSymbol) str_method_info() (bool, bool, int) {
 			expects_ptr = sym_str_method.params[0].typ.is_ptr()
 		}
 	}
-	expects_ptr = expects_ptr || (t.language == .c && t.kind == .struct_)
+	expects_ptr = expects_ptr || t.is_c_struct()
 	return has_str_method, expects_ptr, nr_args
 }
 

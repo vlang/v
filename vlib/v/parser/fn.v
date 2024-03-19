@@ -713,10 +713,16 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 	mut is_auto_rec := false
 	if type_sym.kind == .struct_ {
 		info := type_sym.info as ast.Struct
-		if !rec.is_mut && !rec.typ.is_ptr() && info.fields.len > 8 {
+
+		// struct with more than 8 fields or C structs are passed as pointer
+		if !rec.is_mut && !rec.typ.is_ptr() && (type_sym.language == .c || info.fields.len > 8) {
 			rec.typ = rec.typ.ref()
 			is_auto_rec = true
 		}
+	} else if !rec.typ.is_ptr() && type_sym.is_c_struct() {
+		// C struct are passed as pointer
+		rec.typ = rec.typ.ref()
+		is_auto_rec = true
 	}
 
 	if rec.language != .v {

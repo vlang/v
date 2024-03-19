@@ -256,15 +256,14 @@ fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string
 	}
 	mut clean_type_v_type_name := util.strip_main_name(styp.replace('__', '.'))
 
-	is_ptr := parent_sym.is_c_struct()
-	arg_def := if is_ptr { '${styp}* it' } else { '${styp} it' }
+	arg_def := if parent_sym.is_c_struct() { '${styp}* it' } else { '${styp} it' }
 
 	g.definitions.writeln('static string ${str_fn_name}(${arg_def}); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}(${arg_def}) { return indent_${str_fn_name}(it, 0); }')
 	g.definitions.writeln('static string indent_${str_fn_name}(${arg_def}, int indent_count); // auto')
 	g.auto_str_funcs.writeln('static string indent_${str_fn_name}(${arg_def}, int indent_count) {')
 	g.auto_str_funcs.writeln('\tstring indents = string_repeat(_SLIT("    "), indent_count);')
-	if str_method_expects_ptr || is_ptr {
+	if str_method_expects_ptr {
 		g.auto_str_funcs.writeln('\tstring tmp_ds = ${parent_str_fn_name}(&it);')
 	} else {
 		deref, _ := deref_kind(str_method_expects_ptr, info.parent_type.is_ptr(), info.parent_type)
@@ -887,8 +886,8 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 		eprintln('> gen_str_for_struct: ${info.parent_type.debug()} | ${styp} | ${str_fn_name}')
 	}
 	// _str() functions should have a single argument, the indenting ones take 2:
-	is_ptr := lang == .c
-	arg_def := if is_ptr { '${styp}* it' } else { '${styp} it' }
+	is_c_struct := lang == .c
+	arg_def := if is_c_struct { '${styp}* it' } else { '${styp} it' }
 	g.definitions.writeln('static string ${str_fn_name}(${arg_def}); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}(${arg_def}) { return indent_${str_fn_name}(it, 0);}')
 	g.definitions.writeln('static string indent_${str_fn_name}(${arg_def}, int indent_count); // auto')
@@ -1005,7 +1004,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 			field_styp_fn_name, field.name, sym_has_str_method, str_method_expects_ptr)
 		ftyp_nr_muls := field.typ.nr_muls()
 		field_name := if lang == .c { field.name } else { c_name(field.name) }
-		op := if is_ptr { '->' } else { '.' }
+		op := if is_c_struct { '->' } else { '.' }
 		it_field_name := 'it${op}${field_name}'
 		if ftyp_nr_muls > 1 || field.typ in ast.cptr_types {
 			if is_opt_field {
