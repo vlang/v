@@ -912,6 +912,10 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 			}
 			if is_mut {
 				if !param_type.has_flag(.generic) {
+					if is_variadic {
+						p.error_with_pos('variadic arguments cannot be `mut`, `shared` or `atomic`',
+							pos)
+					}
 					if is_shared {
 						p.check_fn_shared_arguments(param_type, pos)
 					} else if is_atomic {
@@ -1027,6 +1031,10 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 			}
 			if is_mut {
 				if !typ.has_flag(.generic) {
+					if is_variadic {
+						p.error_with_pos('variadic arguments cannot be `mut`, `shared` or `atomic`',
+							pos)
+					}
 					if is_shared {
 						p.check_fn_shared_arguments(typ, pos)
 					} else if is_atomic {
