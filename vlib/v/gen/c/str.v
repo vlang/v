@@ -151,7 +151,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		}
 		g.write('${str_fn_name}(')
 		if str_method_expects_ptr && !is_ptr {
-			if is_dump_expr || expr is ast.CallExpr {
+			if is_dump_expr {
 				g.write('ADDR(${g.typ(typ)}, ')
 				defer {
 					g.write(')')
