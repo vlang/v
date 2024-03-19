@@ -713,7 +713,6 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 	mut is_auto_rec := false
 	if type_sym.kind == .struct_ {
 		info := type_sym.info as ast.Struct
-
 		if !rec.is_mut && !rec.typ.is_ptr() && info.fields.len > 8 {
 			rec.typ = rec.typ.ref()
 			is_auto_rec = true
