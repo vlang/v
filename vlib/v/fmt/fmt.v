@@ -382,12 +382,14 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 	normalized_mod := if f.inside_vmodules {
 		imp.source_name
+	} else if imp.mod.len == 0 {
+		imp.alias
 	} else {
-		mod := if imp.mod.len == 0 { imp.alias } else { imp.mod }
-		if mod.starts_with('src.') {
-			mod.all_after('src.')
+		mod_last := imp.mod.all_after_last('.')
+		if imp.source_name == mod_last {
+			mod_last
 		} else {
-			mod
+			imp.mod
 		}
 	}
 	is_diff := imp.alias != normalized_mod && !normalized_mod.ends_with('.' + imp.alias)
