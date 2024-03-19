@@ -181,9 +181,8 @@ fn (mut g Gen) dump_expr_definitions() {
 				surrounder.add('\tstring value = isnil(&dump_arg.data) ? _SLIT("nil") : ${to_string_fn_name}(${deref}dump_arg);',
 					'\tstring_free(&value);')
 			} else {
-				final_sym := g.table.final_sym(dump_type)
-				prefix := if final_sym.language == .c && final_sym.kind == .struct_ {
-					'&'
+				prefix := if dump_sym.is_c_struct() {
+					c_struct_ptr(dump_sym, dump_type)
 				} else {
 					deref
 				}
@@ -191,9 +190,8 @@ fn (mut g Gen) dump_expr_definitions() {
 					'\tstring_free(&value);')
 			}
 		} else {
-			final_sym := g.table.final_sym(dump_type)
-			prefix := if final_sym.language == .c && final_sym.kind == .struct_ {
-				'&'
+			prefix := if dump_sym.is_c_struct() {
+				c_struct_ptr(dump_sym, dump_type)
 			} else {
 				deref
 			}
