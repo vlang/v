@@ -382,9 +382,15 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 	normalized_mod := if f.inside_vmodules {
 		imp.source_name
+	} else if imp.mod.len == 0 {
+		imp.alias
 	} else {
-		mod := if imp.mod.len == 0 { imp.alias } else { imp.mod }
-		mod.all_after('src.') // Ignore the 'src.' folder prefix since src/ folder is root of code
+		mod_last := imp.mod.all_after_last('.')
+		if imp.source_name == mod_last {
+			mod_last
+		} else {
+			imp.mod
+		}
 	}
 	is_diff := imp.alias != normalized_mod && !normalized_mod.ends_with('.' + imp.alias)
 	mut imp_alias_suffix := if is_diff { ' as ${imp.alias}' } else { '' }
