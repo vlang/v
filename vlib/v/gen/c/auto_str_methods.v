@@ -256,7 +256,7 @@ fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string
 	}
 	mut clean_type_v_type_name := util.strip_main_name(styp.replace('__', '.'))
 
-	is_c_struct := parent_sym.is_c_struct()
+	is_c_struct := parent_sym.is_c_struct() && str_method_expects_ptr
 	arg_def := if is_c_struct { '${styp}* it' } else { '${styp} it' }
 
 	g.definitions.writeln('static string ${str_fn_name}(${arg_def}); // auto')
@@ -1078,15 +1078,19 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 
 // c_struct_ptr generates the C struct ptr argument for .str() method
 @[inline]
-pub fn c_struct_ptr(sym &ast.TypeSymbol, typ ast.Type) string {
+pub fn c_struct_ptr(sym &ast.TypeSymbol, typ ast.Type, expects_ptr bool) string {
 	if sym.is_c_struct() {
 		if typ.has_flag(.option) {
 			return ''
 		}
 		if typ.nr_muls() >= 1 {
-			return '*'.repeat(typ.nr_muls() - 1)
+			if expects_ptr {
+				return '*'.repeat(typ.nr_muls() - 1)
+			} else {
+				return '*'.repeat(typ.nr_muls())
+			}
 		}
-		return '&'
+		return if expects_ptr { '&' } else { '' }
 	}
 	return ''
 }
@@ -1100,7 +1104,7 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 	deref, _ := deref_kind(expects_ptr, field_type.is_ptr(), field_type)
 	final_field_name := if lang == .c { field_name } else { c_name(field_name) }
 	op := if lang == .c { '->' } else { '.' }
-	prefix := if sym.is_c_struct() { c_struct_ptr(sym, _field_type) } else { deref }
+	prefix := if sym.is_c_struct() { c_struct_ptr(sym, _field_type, expects_ptr) } else { deref }
 	if sym.kind == .enum_ {
 		return '${fn_name}(${deref}(it${op}${final_field_name}))', true
 	} else if _field_type.has_flag(.option) || should_use_indent_func(sym.kind) {

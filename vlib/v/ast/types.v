@@ -1716,8 +1716,10 @@ pub fn (t &TypeSymbol) str_method_info() (bool, bool, int) {
 		if nr_args > 0 {
 			expects_ptr = sym_str_method.params[0].typ.is_ptr()
 		}
+	} else {
+		// C Struct which does not implement str() are passed as pointer to handle incomplete type
+		expects_ptr = t.is_c_struct()
 	}
-	expects_ptr = expects_ptr || t.is_c_struct()
 	return has_str_method, expects_ptr, nr_args
 }
 

@@ -182,7 +182,7 @@ fn (mut g Gen) dump_expr_definitions() {
 					'\tstring_free(&value);')
 			} else {
 				prefix := if dump_sym.is_c_struct() {
-					c_struct_ptr(dump_sym, dump_type)
+					c_struct_ptr(dump_sym, dump_type, str_method_expects_ptr)
 				} else {
 					deref
 				}
@@ -191,7 +191,7 @@ fn (mut g Gen) dump_expr_definitions() {
 			}
 		} else {
 			prefix := if dump_sym.is_c_struct() {
-				c_struct_ptr(dump_sym, dump_type)
+				c_struct_ptr(dump_sym, dump_type, str_method_expects_ptr)
 			} else {
 				deref
 			}

@@ -163,12 +163,12 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			g.write('*(${g.typ(typ)}*)&')
 		} else if !str_method_expects_ptr && !is_shared && (is_ptr || is_var_mut) {
 			if sym.is_c_struct() {
-				g.write(c_struct_ptr(sym, typ))
+				g.write(c_struct_ptr(sym, typ, str_method_expects_ptr))
 			} else {
 				g.write('*'.repeat(typ.nr_muls()))
 			}
 		} else if sym.is_c_struct() {
-			g.write(c_struct_ptr(sym, typ))
+			g.write(c_struct_ptr(sym, typ, str_method_expects_ptr))
 		}
 		if expr is ast.ArrayInit {
 			if expr.is_fixed {
@@ -207,7 +207,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				g.write('*')
 			} else {
 				if sym.is_c_struct() {
-					g.write(c_struct_ptr(sym, typ))
+					g.write(c_struct_ptr(sym, typ, str_method_expects_ptr))
 				}
 			}
 			g.expr_with_cast(expr, typ, typ)
