@@ -256,7 +256,7 @@ fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string
 	}
 	mut clean_type_v_type_name := util.strip_main_name(styp.replace('__', '.'))
 
-	is_ptr := parent_sym.language == .c && parent_sym.kind == .struct_
+	is_ptr := parent_sym.is_c_struct()
 	arg_def := if is_ptr { '${styp}* it' } else { '${styp} it' }
 
 	g.definitions.writeln('static string ${str_fn_name}(${arg_def}); // auto')
@@ -1075,6 +1075,17 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 	fn_body.writeln('\t}));')
 }
 
+@[inline]
+pub fn c_struct_ptr(sym &ast.TypeSymbol, typ ast.Type) string {
+	if sym.is_c_struct() {
+		if typ.nr_muls() >= 1 {
+			return '*'.repeat(typ.nr_muls() - 1)
+		}
+		return '&'
+	}
+	return ''
+}
+
 fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.Type, fn_name string, field_name string, has_custom_str bool, expects_ptr bool) (string, bool) {
 	$if trace_autostr ? {
 		eprintln('> struct_auto_str_func: ${sym.name} | field_type.debug() | ${fn_name} | ${field_name} | ${has_custom_str} | ${expects_ptr}')
@@ -1084,11 +1095,11 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 	deref, _ := deref_kind(expects_ptr, field_type.is_ptr(), field_type)
 	final_field_name := if lang == .c { field_name } else { c_name(field_name) }
 	op := if lang == .c { '->' } else { '.' }
-	prefix := if sym.language == .c && !field_type.is_ptr() { '&' } else { '' }
+	prefix := if sym.is_c_struct() { c_struct_ptr(sym, _field_type) } else { deref }
 	if sym.kind == .enum_ {
 		return '${fn_name}(${deref}(it${op}${final_field_name}))', true
 	} else if _field_type.has_flag(.option) || should_use_indent_func(sym.kind) {
-		obj := '${prefix}${deref}it${op}${final_field_name}${sufix}'
+		obj := '${prefix}it${op}${final_field_name}${sufix}'
 		if has_custom_str {
 			if sym.kind == .interface_ && (sym.info as ast.Interface).defines_method('str') {
 				iface_obj := '${prefix}it${op}${final_field_name}${sufix}'
@@ -1099,7 +1110,7 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 		}
 		return 'indent_${fn_name}(${obj}, indent_count + 1)', true
 	} else if sym.kind in [.array, .array_fixed, .map, .sum_type] {
-		obj := '${deref}it${op}${final_field_name}${sufix}'
+		obj := '${prefix}it${op}${final_field_name}${sufix}'
 		if has_custom_str {
 			return '${fn_name}(${obj})', true
 		}

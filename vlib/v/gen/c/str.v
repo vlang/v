@@ -162,15 +162,13 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		} else if is_ptr && typ.has_flag(.option) {
 			g.write('*(${g.typ(typ)}*)&')
 		} else if !str_method_expects_ptr && !is_shared && (is_ptr || is_var_mut) {
-			if sym.language == .c && sym.kind == .struct_ {
-				ref_or_deref := if typ.nr_muls() == 0 { '&' } else { '*'.repeat(typ.nr_muls() - 1) }
-				g.write(ref_or_deref)
+			if sym.is_c_struct() {
+				g.write(c_struct_ptr(sym, typ))
 			} else {
 				g.write('*'.repeat(typ.nr_muls()))
 			}
-		} else if sym.language == .c && sym.kind == .struct_ {
-			ref_or_deref := if typ.nr_muls() == 0 { '&' } else { '*'.repeat(typ.nr_muls() - 1) }
-			g.write(ref_or_deref)
+		} else if sym.is_c_struct() {
+			g.write(c_struct_ptr(sym, typ))
 		}
 		if expr is ast.ArrayInit {
 			if expr.is_fixed {
@@ -208,9 +206,8 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			} else if (!str_method_expects_ptr && is_ptr && !is_shared) || is_var_mut {
 				g.write('*')
 			} else {
-				final_sym := g.table.final_sym(typ)
-				if final_sym.language == .c && final_sym.kind == .struct_ {
-					g.write('&')
+				if sym.is_c_struct() {
+					g.write(c_struct_ptr(sym, typ))
 				}
 			}
 			g.expr_with_cast(expr, typ, typ)

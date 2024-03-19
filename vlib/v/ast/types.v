@@ -934,6 +934,15 @@ pub fn (t &TypeSymbol) is_array_fixed() bool {
 	}
 }
 
+pub fn (t &TypeSymbol) is_c_struct() bool {
+	if t.info is Struct {
+		return t.language == .c
+	} else if t.info is Alias {
+		return global_table.final_sym(t.info.parent_type).is_c_struct()
+	}
+	return false
+}
+
 pub fn (t &TypeSymbol) is_array_fixed_ret() bool {
 	if t.info is ArrayFixed {
 		return t.info.is_fn_ret
@@ -1708,6 +1717,7 @@ pub fn (t &TypeSymbol) str_method_info() (bool, bool, int) {
 			expects_ptr = sym_str_method.params[0].typ.is_ptr()
 		}
 	}
+	expects_ptr = expects_ptr || (t.language == .c && t.kind == .struct_)
 	return has_str_method, expects_ptr, nr_args
 }
 
