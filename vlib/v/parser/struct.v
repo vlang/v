@@ -707,7 +707,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			mut type_pos := p.tok.pos()
 			field_typ := p.parse_type()
 			type_pos = type_pos.extend(p.prev_tok.pos())
-			comments << p.eat_comments(same_line: true)
+			comments << p.eat_comments()
 			fields << ast.StructField{
 				name: field_name
 				pos: field_pos
