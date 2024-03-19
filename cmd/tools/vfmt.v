@@ -99,7 +99,7 @@ fn main() {
 		}
 	}
 	mut errors := 0
-	mut internal_error_code := 0
+	mut has_internal_error := false
 	for file in files {
 		fpath := os.real_path(file)
 		mut worker_command_array := cli_args_no_files.clone()
@@ -112,7 +112,8 @@ fn main() {
 			eprintln(worker_result.output)
 			if worker_result.exit_code == 1 {
 				eprintln('Internal vfmt error while formatting file: ${file}.')
-				internal_error_code = 128
+				has_internal_error = true
+				continue
 			}
 			errors++
 			continue
@@ -131,15 +132,17 @@ fn main() {
 		}
 		errors++
 	}
+	ecode := if has_internal_error { 5 } else { 0 }
 	if errors > 0 {
 		eprintln('Encountered a total of: ${errors} formatting errors.')
 		match true {
-			foptions.is_noerror { exit(0 + internal_error_code) }
-			foptions.is_verify { exit(1 + internal_error_code) }
-			foptions.is_c { exit(2 + internal_error_code) }
-			else { exit(1 + internal_error_code) }
+			foptions.is_noerror { exit(0 + ecode) }
+			foptions.is_verify { exit(1 + ecode) }
+			foptions.is_c { exit(2 + ecode) }
+			else { exit(1 + ecode) }
 		}
 	}
+	exit(ecode)
 }
 
 fn setup_preferences_and_table() (&pref.Preferences, &ast.Table) {
