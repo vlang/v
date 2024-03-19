@@ -195,3 +195,54 @@ jobs:
       #   run: ./v build-examples
       # - name: v2 self compilation
       #   run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
+
+
+  clang:
+    runs-on: windows-2019
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    timeout-minutes: 271
+    env:
+      VFLAGS: -cc clang
+      VERBOSE_MAKE: 1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: |
+          gcc --version
+          .\make.bat -clang
+      - name: Test new v.c
+        run: |
+          .\v.exe -o v.c cmd/v
+          clang -Werror -municode -w v.c -lws2_32
+      - name: Install dependencies
+        run: |
+          .\v.exe setup-freetype
+          .\.github\workflows\windows-install-sqlite.bat
+      - name: v doctor
+        run: |
+          ./v doctor
+      - name: Verify `v test` works
+        run: |
+          echo $VFLAGS
+          ./v cmd/tools/test_if_v_test_system_works.v
+          ./cmd/tools/test_if_v_test_system_works
+      - name: All code is formatted
+        run: ./v test-cleancode
+      - name: Test pure V math module
+        run: ./v -exclude @vlib/math/*.c.v test vlib/math/
+      - name: Self tests
+        run: .\v.exe test-self
+      - name: Build option_test.c.v with -autofree
+        run: .\v.exe -autofree vlib/v/tests/option_test.c.v
+      - name: Test v->js
+        run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+      - name: Test v binaries
+        run: ./v build-vbinaries
+      - name: Build examples
+        run: ./v build-examples
+      - name: v2 self compilation
+        run: ./v -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
+      - name: compile vdoctor.v with -skip-unused and -prod
+        run: ./v -showcc -skip-unused -prod cmd/tools/vdoctor.v
+      - name: compile vup.v with -skip-unused and -prod
+        run: ./v -showcc -skip-unused -prod cmd/tools/vup.v
