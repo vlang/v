@@ -256,7 +256,8 @@ fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string
 	}
 	mut clean_type_v_type_name := util.strip_main_name(styp.replace('__', '.'))
 
-	arg_def := if parent_sym.is_c_struct() { '${styp}* it' } else { '${styp} it' }
+	is_c_struct := parent_sym.is_c_struct()
+	arg_def := if is_c_struct { '${styp}* it' } else { '${styp} it' }
 
 	g.definitions.writeln('static string ${str_fn_name}(${arg_def}); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}(${arg_def}) { return indent_${str_fn_name}(it, 0); }')
@@ -264,7 +265,8 @@ fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string
 	g.auto_str_funcs.writeln('static string indent_${str_fn_name}(${arg_def}, int indent_count) {')
 	g.auto_str_funcs.writeln('\tstring indents = string_repeat(_SLIT("    "), indent_count);')
 	if str_method_expects_ptr {
-		g.auto_str_funcs.writeln('\tstring tmp_ds = ${parent_str_fn_name}(&it);')
+		it_arg := if is_c_struct { 'it' } else { '&it' }
+		g.auto_str_funcs.writeln('\tstring tmp_ds = ${parent_str_fn_name}(${it_arg});')
 	} else {
 		deref, _ := deref_kind(str_method_expects_ptr, info.parent_type.is_ptr(), info.parent_type)
 		g.auto_str_funcs.writeln('\tstring tmp_ds = ${parent_str_fn_name}(${deref}it);')
@@ -1074,9 +1076,13 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 	fn_body.writeln('\t}));')
 }
 
+// c_struct_ptr generates the C struct ptr argument for .str() method
 @[inline]
 pub fn c_struct_ptr(sym &ast.TypeSymbol, typ ast.Type) string {
 	if sym.is_c_struct() {
+		if typ.has_flag(.option) {
+			return ''
+		}
 		if typ.nr_muls() >= 1 {
 			return '*'.repeat(typ.nr_muls() - 1)
 		}
