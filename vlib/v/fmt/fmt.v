@@ -1427,7 +1427,8 @@ pub fn (mut f Fmt) calculate_alignment(fields []ast.StructField, mut field_align
 pub fn (mut f Fmt) interface_field(field ast.StructField, field_align AlignInfo) {
 	ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
 	before_comments := field.comments.filter(it.pos.pos < field.pos.pos)
-	end_comments := field.comments.filter(it.pos.pos > field.pos.pos)
+	next_line_comments := field.comments.filter(it.pos.line_nr > field.pos.last_line)
+	end_comments := field.comments.filter(it !in before_comments && it !in next_line_comments)
 	before_len := f.line_len
 	if before_comments.len > 0 {
 		f.comments(before_comments, level: .indent)
@@ -1449,11 +1450,13 @@ pub fn (mut f Fmt) interface_field(field ast.StructField, field_align AlignInfo)
 		f.write(strings.repeat(` `, field_align.max_len - field.name.len - comments_len))
 		f.write(ft)
 	}
-
 	if end_comments.len > 0 {
 		f.comments(end_comments, level: .indent)
 	} else {
 		f.writeln('')
+	}
+	if next_line_comments.len > 0 {
+		f.comments(next_line_comments, level: .indent)
 	}
 	f.mark_types_import_as_used(field.typ)
 }
