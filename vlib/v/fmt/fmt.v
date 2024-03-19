@@ -1426,12 +1426,17 @@ pub fn (mut f Fmt) calculate_alignment(fields []ast.StructField, mut field_align
 
 pub fn (mut f Fmt) interface_field(field ast.StructField, field_align AlignInfo) {
 	ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
-	before_comments := field.comments.filter(it.pos.pos < field.pos.pos)
-	next_line_comments := field.comments.filter(it.pos.line_nr > field.pos.last_line)
-	end_comments := field.comments.filter(it !in before_comments && it !in next_line_comments)
+	mut pre_cmts, mut end_cmts, mut next_line_cmts := []ast.Comment{}, []ast.Comment{}, []ast.Comment{}
+	for cmt in field.comments {
+		match true {
+			cmt.pos.pos < field.pos.pos { pre_cmts << cmt }
+			cmt.pos.line_nr > field.pos.last_line { next_line_cmts << cmt }
+			else { end_cmts << cmt }
+		}
+	}
 	before_len := f.line_len
-	if before_comments.len > 0 {
-		f.comments(before_comments, level: .indent)
+	if pre_cmts.len > 0 {
+		f.comments(pre_cmts, level: .indent)
 	}
 	comments_len := f.line_len - before_len
 
@@ -1450,13 +1455,13 @@ pub fn (mut f Fmt) interface_field(field ast.StructField, field_align AlignInfo)
 		f.write(strings.repeat(` `, field_align.max_len - field.name.len - comments_len))
 		f.write(ft)
 	}
-	if end_comments.len > 0 {
-		f.comments(end_comments, level: .indent)
+	if end_cmts.len > 0 {
+		f.comments(end_cmts, level: .indent)
 	} else {
 		f.writeln('')
 	}
-	if next_line_comments.len > 0 {
-		f.comments(next_line_comments, level: .indent)
+	if next_line_cmts.len > 0 {
+		f.comments(next_line_cmts, level: .indent)
 	}
 	f.mark_types_import_as_used(field.typ)
 }
