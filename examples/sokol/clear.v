@@ -3,10 +3,6 @@
 import sokol.gfx
 import sokol.sapp
 
-fn init(action &gfx.PassAction) {
-	gfx.setup(sapp.create_desc())
-}
-
 fn frame(mut action gfx.PassAction) {
 	g := f32(action.colors[0].clear_value.g + 0.01)
 	action.colors[0].clear_value.g = if g > 1.0 { 0 } else { g }
@@ -16,14 +12,14 @@ fn frame(mut action gfx.PassAction) {
 }
 
 fn main() {
-	mut action := gfx.create_clear_pass_action(1.0, 0, 0, 1.0)
-	desc := sapp.Desc{
-		window_title: 'Clear (sokol app)'.str
+	action := gfx.create_clear_pass_action(1.0, 0, 0, 1.0)
+	sapp.run(
+		window_title: c'Clear (sokol app)'
 		width: 400
 		height: 300
+		init_cb: || gfx.setup(sapp.create_desc())
+		cleanup_cb: || gfx.shutdown()
 		frame_userdata_cb: frame
-		init_userdata_cb: init
 		user_data: &action
-	}
-	sapp.run(&desc)
+	)
 }
