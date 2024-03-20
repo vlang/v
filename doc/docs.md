@@ -5703,7 +5703,7 @@ print($embed_file(@FILE).to_string())
 
 > [!NOTE]
 > you can have arbitrary source code in the file, without problems, since the full file
-> will be embeded into the executable, produced by compiling it. Also note that printing
+> will be embedded into the executable, produced by compiling it. Also note that printing
 > is done with `print` and not `println`, to not add another new line, missing in the
 > source code.
 
