@@ -102,8 +102,6 @@ jobs:
 
       - name: Shader examples can be built
         run: |
-          wget https://github.com/floooh/sokol-tools-bin/raw/6b84ea387a323db9e8e17f5abed2b254a6e409fe/bin/linux/sokol-shdc
-          chmod +x ./sokol-shdc
           for f in examples/sokol/sdf \
               examples/sokol/simple_shader_glsl \
               examples/sokol/02_cubes_glsl/cube_glsl \
@@ -113,8 +111,8 @@ jobs:
               examples/sokol/05_instancing_glsl/rt_glsl_instancing \
               examples/sokol/06_obj_viewer/gouraud \
               ; do \
-              echo "compiling shader $f.glsl ..."; \
-              ./sokol-shdc --input $f.glsl --output $f.h --slang glsl330 ; \
+              echo "compiling shaders for $f ..."; \
+              ./v shader $f \
           done
           ./v should-compile-all examples/sokol/*.v examples/sokol/0?*/*.v
 
