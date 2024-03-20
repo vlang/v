@@ -6,7 +6,7 @@
 - Improve coroutines, Photon vcpu creation, coroutines + GC fixes (#20549)
 - Update Boehm GC libs/headers to the latest version 8.3.0 (#20772)
 - $dbg statement - native V debugger REPL (#20533)
-- Implement @[_linker_section] attribute (#20629)
+- Implement `@[_linker_section]` attribute (#20629)
 - Enable `@[export]` for global variables too (#20649)
 - Add callstack support on v.debug (#20680)
 
@@ -29,7 +29,7 @@ x.vweb: Context.redirect(url string, redirect_type RedirectType) is now Context.
 - Fix checking give const map as default or init value to struct fields (fix #20512) (#20546)
 - Fix return map index with or_block (#20544)
 - Cleanup the generic tests (#20553)
-- Fix @[deprecated] attribute for consts (fix #20523) (#20550)
+- Fix `@[deprecated]` attribute for consts (fix #20523) (#20550)
 - Cleanup in method_call() (#20554)
 - Disallow `non_opt_array << optvalue` (#20573)
 - Fix non dereferenced enum in match statements (fixes #10045) (#20591)
@@ -77,7 +77,7 @@ x.vweb: Context.redirect(url string, redirect_type RedirectType) is now Context.
 - Implement `MyEnum.from(1)!` generic static method (#20411)
 - Fix `MyEnum.from(0)!`, implement `MyFlaggedEnum.zero()` (#20623)
 - vfmt,parser: keep the original import name in ast.Import, and use it without modifications for paths unders ~/.vmodules
-- Allow double quotes in @include template directives (#20628)
+- Allow double quotes in `@include` template directives (#20628)
 - Fn type declaration does not check already registered name (#20732)
 - Fix global const ordering with string inter literal (fix #20760) (#20770)
 - Disallow option alias with option parent type  (#20769)
@@ -738,7 +738,7 @@ x.vweb: Context.redirect(url string, redirect_type RedirectType) is now Context.
 - time: add `MMM` support for parse_format() (#19284)
 - os: include sys/sysctl.h on FreeBSD to avoid implicit definition of sysctl function (#19293)
 - crypto.md5: change the Digest.write return type, from `?int` to `!int` (#19311)
-- v.help: use os.executable() instead of @VEXE as an anchor, so `v help` will work more robustly.
+- v.help: use os.executable() instead of `@VEXE` as an anchor, so `v help` will work more robustly.
 - toml: fix custom `to_toml` for complex structs (#19338)
 - vlib: add net.http.file, allowing for `v -e "import net.http.file; file.serve()"` (#19348)
 - vlib: remove functions and fields, deprecated before 2023-03-20
@@ -833,7 +833,7 @@ x.vweb: Context.redirect(url string, redirect_type RedirectType) is now Context.
 - "v -line-info" for a quick run to fetch info about objects on one line
 - Make sure vweb actions return vweb.Result
 - Do not allow modifying immutable vars via arrays with refs
-- Support @STRUCT in static methods
+- Support `@STRUCT` in static methods
 - Fix generic struct field init recursively (related #19014) (#19025)
 - Fix struct field fntype value call (#19067)
 - Explicitly disallow creating type aliases of `none`, i.e. `type Abc = none` (#19078)
@@ -1963,7 +1963,7 @@ this backend.
 - vtalk, open source V forum software.
 - Generics (very limited right now, but they will be gradually improved).
 - Comptime codegen (`foo.$method()` where `method` is a string).
-- @ for escaping keywords (e.g. `struct Foo { @type string }`).
+- `@` for escaping keywords (e.g. `struct Foo { @type string }`).
 - Windows Unicode fixes (V can now work with non-ASCII paths etc on Windows).
 - Fix mutable args bugs + don't allow primitive arguments to be modified.
 - Declaring a mutable variable and never modifying it results in a compilation error.
