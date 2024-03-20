@@ -27,6 +27,7 @@ pub type ImageDesc = C.sapp_image_desc
 
 @[typedef]
 pub struct C.sapp_icon_desc {
+pub:
 	sokol_default bool
 	images        [max_iconimages]ImageDesc
 }
