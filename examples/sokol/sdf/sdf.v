@@ -26,10 +26,10 @@ fn init(mut state State) {
 	gfx.setup(sapp.create_desc())
 
 	fsq_verts := [f32(-1.0), -3.0, 3.0, 1.0, -1.0, 1.0]!
-	mut buffer := gfx.BufferDesc{}
-	buffer.label = c'fsq vertices'
-	buffer.data = unsafe { gfx.Range{&fsq_verts[0], sizeof(fsq_verts)} }
-	state.bind.vertex_buffers[0] = gfx.make_buffer(&buffer)
+	state.bind.vertex_buffers[0] = gfx.make_buffer(gfx.BufferDesc{
+		label: c'fsq vertices'
+		data: unsafe { gfx.Range{&fsq_verts[0], sizeof(fsq_verts)} }
+	})
 
 	mut pipeline := gfx.PipelineDesc{}
 	pipeline.layout.attrs[C.ATTR_vs_position].format = .float2
@@ -53,10 +53,6 @@ fn frame(mut state State) {
 	gfx.commit()
 }
 
-fn cleanup(mut state State) {
-	gfx.shutdown()
-}
-
 fn main() {
 	sapp.run(sapp.Desc{
 		window_title: c'SDF Rendering'
@@ -64,7 +60,7 @@ fn main() {
 		height: 512
 		frame_userdata_cb: frame
 		init_userdata_cb: init
-		cleanup_userdata_cb: cleanup
+		cleanup_cb: gfx.shutdown
 		icon: sapp.IconDesc{
 			sokol_default: true
 		}
