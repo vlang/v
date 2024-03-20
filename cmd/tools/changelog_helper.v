@@ -388,6 +388,7 @@ const stdlib_strings = [
 	'encoding.',
 	'bitfield:',
 	'io:',
+	'io.',
 	'log:',
 ]
 
@@ -466,6 +467,8 @@ const tools_strings = [
 	'benchmark',
 	'v.help:',
 	'vtest',
+	'repl',
+	'REPL',
 ]
 
 fn is_tools(text string) bool {
@@ -477,9 +480,12 @@ fn is_parser(text string) bool {
 }
 
 const web_strings = [
-	'vweb:',
-	'x.vweb:',
+	'vweb',
+	'veb',
+	'x.vweb',
 	'websocket:',
+	'pico',
+	'x.sessions',
 	'picoev:',
 	'mbedtls',
 	'net:',
