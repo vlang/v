@@ -934,6 +934,15 @@ pub fn (t &TypeSymbol) is_array_fixed() bool {
 	}
 }
 
+pub fn (t &TypeSymbol) is_c_struct() bool {
+	if t.info is Struct {
+		return t.language == .c
+	} else if t.info is Alias {
+		return global_table.final_sym(t.info.parent_type).is_c_struct()
+	}
+	return false
+}
+
 pub fn (t &TypeSymbol) is_array_fixed_ret() bool {
 	if t.info is ArrayFixed {
 		return t.info.is_fn_ret
@@ -1707,6 +1716,9 @@ pub fn (t &TypeSymbol) str_method_info() (bool, bool, int) {
 		if nr_args > 0 {
 			expects_ptr = sym_str_method.params[0].typ.is_ptr()
 		}
+	} else {
+		// C Struct which does not implement str() are passed as pointer to handle incomplete type
+		expects_ptr = t.is_c_struct()
 	}
 	return has_str_method, expects_ptr, nr_args
 }

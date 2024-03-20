@@ -181,11 +181,21 @@ fn (mut g Gen) dump_expr_definitions() {
 				surrounder.add('\tstring value = isnil(&dump_arg.data) ? _SLIT("nil") : ${to_string_fn_name}(${deref}dump_arg);',
 					'\tstring_free(&value);')
 			} else {
-				surrounder.add('\tstring value = (dump_arg == NULL) ? _SLIT("nil") : ${to_string_fn_name}(${deref}dump_arg);',
+				prefix := if dump_sym.is_c_struct() {
+					c_struct_ptr(dump_sym, dump_type, str_method_expects_ptr)
+				} else {
+					deref
+				}
+				surrounder.add('\tstring value = (dump_arg == NULL) ? _SLIT("nil") : ${to_string_fn_name}(${prefix}dump_arg);',
 					'\tstring_free(&value);')
 			}
 		} else {
-			surrounder.add('\tstring value = ${to_string_fn_name}(${deref}dump_arg);',
+			prefix := if dump_sym.is_c_struct() {
+				c_struct_ptr(dump_sym, dump_type, str_method_expects_ptr)
+			} else {
+				deref
+			}
+			surrounder.add('\tstring value = ${to_string_fn_name}(${prefix}dump_arg);',
 				'\tstring_free(&value);')
 		}
 		surrounder.add('

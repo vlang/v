@@ -248,19 +248,25 @@ fn (mut g Gen) gen_str_for_result(typ ast.Type, styp string, str_fn_name string)
 
 fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string) {
 	parent_str_fn_name := g.get_str_fn(info.parent_type)
-	_, str_method_expects_ptr, _ := g.table.sym(info.parent_type).str_method_info()
+	parent_sym := g.table.sym(info.parent_type)
+	_, str_method_expects_ptr, _ := parent_sym.str_method_info()
 
 	$if trace_autostr ? {
 		eprintln('> gen_str_for_alias: ${parent_str_fn_name} | ${styp} | ${str_fn_name}')
 	}
 	mut clean_type_v_type_name := util.strip_main_name(styp.replace('__', '.'))
-	g.definitions.writeln('static string ${str_fn_name}(${styp} it); // auto')
-	g.auto_str_funcs.writeln('static string ${str_fn_name}(${styp} it) { return indent_${str_fn_name}(it, 0); }')
-	g.definitions.writeln('static string indent_${str_fn_name}(${styp} it, int indent_count); // auto')
-	g.auto_str_funcs.writeln('static string indent_${str_fn_name}(${styp} it, int indent_count) {')
+
+	is_c_struct := parent_sym.is_c_struct() && str_method_expects_ptr
+	arg_def := if is_c_struct { '${styp}* it' } else { '${styp} it' }
+
+	g.definitions.writeln('static string ${str_fn_name}(${arg_def}); // auto')
+	g.auto_str_funcs.writeln('static string ${str_fn_name}(${arg_def}) { return indent_${str_fn_name}(it, 0); }')
+	g.definitions.writeln('static string indent_${str_fn_name}(${arg_def}, int indent_count); // auto')
+	g.auto_str_funcs.writeln('static string indent_${str_fn_name}(${arg_def}, int indent_count) {')
 	g.auto_str_funcs.writeln('\tstring indents = string_repeat(_SLIT("    "), indent_count);')
 	if str_method_expects_ptr {
-		g.auto_str_funcs.writeln('\tstring tmp_ds = ${parent_str_fn_name}(&it);')
+		it_arg := if is_c_struct { 'it' } else { '&it' }
+		g.auto_str_funcs.writeln('\tstring tmp_ds = ${parent_str_fn_name}(${it_arg});')
 	} else {
 		deref, _ := deref_kind(str_method_expects_ptr, info.parent_type.is_ptr(), info.parent_type)
 		g.auto_str_funcs.writeln('\tstring tmp_ds = ${parent_str_fn_name}(${deref}it);')
@@ -882,14 +888,17 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 		eprintln('> gen_str_for_struct: ${info.parent_type.debug()} | ${styp} | ${str_fn_name}')
 	}
 	// _str() functions should have a single argument, the indenting ones take 2:
-	g.definitions.writeln('static string ${str_fn_name}(${styp} it); // auto')
-	g.auto_str_funcs.writeln('static string ${str_fn_name}(${styp} it) { return indent_${str_fn_name}(it, 0);}')
-	g.definitions.writeln('static string indent_${str_fn_name}(${styp} it, int indent_count); // auto')
+	is_c_struct := lang == .c
+	arg_def := if is_c_struct { '${styp}* it' } else { '${styp} it' }
+	g.definitions.writeln('static string ${str_fn_name}(${arg_def}); // auto')
+	g.auto_str_funcs.writeln('static string ${str_fn_name}(${arg_def}) { return indent_${str_fn_name}(it, 0);}')
+	g.definitions.writeln('static string indent_${str_fn_name}(${arg_def}, int indent_count); // auto')
 	mut fn_builder := strings.new_builder(512)
 	defer {
 		g.auto_fn_definitions << fn_builder.str()
 	}
-	fn_builder.writeln('static string indent_${str_fn_name}(${styp} it, int indent_count) {')
+	fn_builder.writeln('static string indent_${str_fn_name}(${arg_def}, int indent_count) {')
+
 	clean_struct_v_type_name := if info.is_anon { 'struct ' } else { util.strip_main_name(typ_str) }
 	// generate ident / indent length = 4 spaces
 	if info.fields.len == 0 {
@@ -997,18 +1006,20 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 			field_styp_fn_name, field.name, sym_has_str_method, str_method_expects_ptr)
 		ftyp_nr_muls := field.typ.nr_muls()
 		field_name := if lang == .c { field.name } else { c_name(field.name) }
+		op := if is_c_struct { '->' } else { '.' }
+		it_field_name := 'it${op}${field_name}'
 		if ftyp_nr_muls > 1 || field.typ in ast.cptr_types {
 			if is_opt_field {
 			} else {
-				func = '(voidptr) it.${field.name}'
+				func = '(voidptr) ${it_field_name}'
 				caller_should_free = false
 			}
 		} else if ftyp_noshared.is_ptr() {
 			// reference types can be "nil"
 			if ftyp_noshared.has_flag(.option) {
-				funcprefix += 'isnil(&it.${field_name}) || isnil(&it.${field_name}.data)'
+				funcprefix += 'isnil(&${it_field_name}) || isnil(&${it_field_name}.data)'
 			} else {
-				funcprefix += 'isnil(it.${field_name})'
+				funcprefix += 'isnil(${it_field_name})'
 			}
 			funcprefix += ' ? _SLIT("nil") : '
 			// struct, floats and ints have a special case through the _str function
@@ -1031,9 +1042,9 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 			if is_field_array {
 				if is_opt_field {
 					arr_styp := g.base_type(field.typ)
-					fn_body.write_string('it.${field_name}.state != 2 && (*(${arr_styp}*)it.${field_name}.data).len > 0 ? ${funcprefix}_SLIT("[<circular>]") : ${funcprefix}_SLIT("[]")')
+					fn_body.write_string('${it_field_name}.state != 2 && (*(${arr_styp}*)${it_field_name}.data).len > 0 ? ${funcprefix}_SLIT("[<circular>]") : ${funcprefix}_SLIT("[]")')
 				} else {
-					fn_body.write_string('it.${field_name}.len > 0 ? ${funcprefix}_SLIT("[<circular>]") : ${funcprefix}_SLIT("[]")')
+					fn_body.write_string('${it_field_name}.len > 0 ? ${funcprefix}_SLIT("[<circular>]") : ${funcprefix}_SLIT("[]")')
 				}
 			} else {
 				fn_body.write_string('${funcprefix}_SLIT("<circular>")')
@@ -1065,6 +1076,25 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 	fn_body.writeln('\t}));')
 }
 
+// c_struct_ptr handles the C struct argument for .str() method
+@[inline]
+pub fn c_struct_ptr(sym &ast.TypeSymbol, typ ast.Type, expects_ptr bool) string {
+	if sym.is_c_struct() {
+		if typ.has_flag(.option) {
+			return ''
+		}
+		if typ.nr_muls() >= 1 {
+			if expects_ptr {
+				return '*'.repeat(typ.nr_muls() - 1)
+			} else {
+				return '*'.repeat(typ.nr_muls())
+			}
+		}
+		return if expects_ptr { '&' } else { '' }
+	}
+	return ''
+}
+
 fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.Type, fn_name string, field_name string, has_custom_str bool, expects_ptr bool) (string, bool) {
 	$if trace_autostr ? {
 		eprintln('> struct_auto_str_func: ${sym.name} | field_type.debug() | ${fn_name} | ${field_name} | ${has_custom_str} | ${expects_ptr}')
@@ -1073,13 +1103,15 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 	sufix := if field_type.has_flag(.shared_f) { '->val' } else { '' }
 	deref, _ := deref_kind(expects_ptr, field_type.is_ptr(), field_type)
 	final_field_name := if lang == .c { field_name } else { c_name(field_name) }
+	op := if lang == .c { '->' } else { '.' }
+	prefix := if sym.is_c_struct() { c_struct_ptr(sym, _field_type, expects_ptr) } else { deref }
 	if sym.kind == .enum_ {
-		return '${fn_name}(${deref}(it.${final_field_name}))', true
+		return '${fn_name}(${deref}(it${op}${final_field_name}))', true
 	} else if _field_type.has_flag(.option) || should_use_indent_func(sym.kind) {
-		obj := '${deref}it.${final_field_name}${sufix}'
+		obj := '${prefix}it${op}${final_field_name}${sufix}'
 		if has_custom_str {
 			if sym.kind == .interface_ && (sym.info as ast.Interface).defines_method('str') {
-				iface_obj := 'it.${final_field_name}${sufix}'
+				iface_obj := '${prefix}it${op}${final_field_name}${sufix}'
 				dot := if field_type.is_ptr() { '->' } else { '.' }
 				return '${fn_name.trim_string_right('_str')}_name_table[${iface_obj}${dot}_typ]._method_str(${iface_obj}${dot}_object)', true
 			}
@@ -1087,24 +1119,24 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 		}
 		return 'indent_${fn_name}(${obj}, indent_count + 1)', true
 	} else if sym.kind in [.array, .array_fixed, .map, .sum_type] {
-		obj := '${deref}it.${final_field_name}${sufix}'
+		obj := '${prefix}it${op}${final_field_name}${sufix}'
 		if has_custom_str {
 			return '${fn_name}(${obj})', true
 		}
 		return 'indent_${fn_name}(${obj}, indent_count + 1)', true
 	} else if sym.kind == .function {
-		obj := '${deref}it.${final_field_name}${sufix}'
+		obj := '${deref}it${op}${final_field_name}${sufix}'
 		return '${fn_name}(${obj})', true
 	} else if sym.kind == .chan {
-		return '${fn_name}(${deref}it.${final_field_name}${sufix})', true
+		return '${fn_name}(${deref}it${op}${final_field_name}${sufix})', true
 	} else if sym.kind == .thread {
-		return '${fn_name}(${deref}it.${final_field_name}${sufix})', false
+		return '${fn_name}(${deref}it${op}${final_field_name}${sufix})', false
 	} else {
 		mut method_str := ''
 		if !field_type.is_ptr() && field_type.has_option_or_result() {
-			method_str = '(*(${sym.name}*)it.${final_field_name}.data)'
+			method_str = '(*(${sym.name}*)it${op}${final_field_name}.data)'
 		} else {
-			method_str = 'it.${final_field_name}'
+			method_str = 'it${op}${final_field_name}'
 		}
 		if sym.kind == .bool {
 			return '${method_str} ? _SLIT("true") : _SLIT("false")', false

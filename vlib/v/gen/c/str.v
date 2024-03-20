@@ -151,7 +151,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		}
 		g.write('${str_fn_name}(')
 		if str_method_expects_ptr && !is_ptr {
-			if is_dump_expr {
+			if is_dump_expr || (g.pref.ccompiler_type != .tinyc && expr is ast.CallExpr) {
 				g.write('ADDR(${g.typ(typ)}, ')
 				defer {
 					g.write(')')
@@ -162,7 +162,13 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		} else if is_ptr && typ.has_flag(.option) {
 			g.write('*(${g.typ(typ)}*)&')
 		} else if !str_method_expects_ptr && !is_shared && (is_ptr || is_var_mut) {
-			g.write('*'.repeat(typ.nr_muls()))
+			if sym.is_c_struct() {
+				g.write(c_struct_ptr(sym, typ, str_method_expects_ptr))
+			} else {
+				g.write('*'.repeat(typ.nr_muls()))
+			}
+		} else if sym.is_c_struct() {
+			g.write(c_struct_ptr(sym, typ, str_method_expects_ptr))
 		}
 		if expr is ast.ArrayInit {
 			if expr.is_fixed {
@@ -199,6 +205,10 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 				g.write('&')
 			} else if (!str_method_expects_ptr && is_ptr && !is_shared) || is_var_mut {
 				g.write('*')
+			} else {
+				if sym.is_c_struct() {
+					g.write(c_struct_ptr(sym, typ, str_method_expects_ptr))
+				}
 			}
 			g.expr_with_cast(expr, typ, typ)
 		} else if typ.has_flag(.option) {
