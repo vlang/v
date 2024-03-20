@@ -100,7 +100,6 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 			}
 			else {}
 		}
-		end_pos := field.pos.pos + field.pos.len
 		mut pre_cmts, mut end_cmts, mut next_line_cmts := []ast.Comment{}, []ast.Comment{}, []ast.Comment{}
 		for cmt in field.comments {
 			match true {
