@@ -4,7 +4,7 @@ struct Abc {
 };
 
 typedef struct Test2 {
-
+    int a;
 } Test2;
 
 typedef struct Test1 {

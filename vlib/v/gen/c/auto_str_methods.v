@@ -1076,7 +1076,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 	fn_body.writeln('\t}));')
 }
 
-// c_struct_ptr generates the C struct ptr argument for .str() method
+// c_struct_ptr handles the C struct argument for .str() method
 @[inline]
 pub fn c_struct_ptr(sym &ast.TypeSymbol, typ ast.Type, expects_ptr bool) string {
 	if sym.is_c_struct() {
