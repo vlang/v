@@ -11,7 +11,11 @@
 - Add callstack support on v.debug (#20680)
 
 #### Breaking changes
-*none*
+sokol: the sokol wrapper was updated, to match its upstream version at commit 058a4c5, several of its APIs no longer exist
+templating.dtm: compile_template_file is no longer public
+v.trace_calls: `pub fn on_c_main() {`, is now `pub fn on_c_main(should_trace_c_main bool) {`
+v.transformer: Transformer.fn_decl is now Transformer.fn_decl_trace_calls
+x.vweb: Context.redirect(url string, redirect_type RedirectType) is now Context.redirect(url string, params RedirectParams)
 
 #### Checker improvements/fixes
 - Check invalid lambda expr (#20461)
@@ -202,8 +206,6 @@
 
 #### Database drivers
 - db.sqlite: fix exec_param_many bug (#21008)
-
-#### Native backend
 
 #### C backend
 - Fix multidimensional fixed array size expression evaluation (fix #20311) (#20458)
