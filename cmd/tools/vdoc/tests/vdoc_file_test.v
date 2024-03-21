@@ -62,37 +62,20 @@ fn check_path(dir string, tests []string) int {
 		qpath := os.quoted_path(path)
 		path_no_ext := path.all_before_last('.')
 		print(path + ' ')
-		fails += check_output(
-			'${vexe} doc ${qpath}',
-			path_no_ext + '.out',
-		)
-		fails += check_output(
-			'${vexe} doc -comments ${qpath}',
-			path_no_ext + '.unsorted.out',
+		fails += check_output('${vexe} doc ${qpath}', path_no_ext + '.out')
+		fails += check_output('${vexe} doc -comments ${qpath}', '${path_no_ext}.unsorted.out',
 			should_sort: false
 		)
-		fails += check_output(
-			'${vexe} doc -comments ${qpath}',
-			path_no_ext + '.comments.out'
-		)
-		fails += check_output(
-			'${vexe} doc -readme -comments ${qpath}',
-			path_no_ext + '.readme.comments.out'
-		)
+		fails += check_output('${vexe} doc -comments ${qpath}', '${path_no_ext}.comments.out')
+		fails += check_output('${vexe} doc -readme -comments ${qpath}', '${path_no_ext}.readme.comments.out')
 		// test the main 3 different formats:
 		program_dir := os.quoted_path(if os.is_file(path) { os.dir(path) } else { path })
-		fails += check_output(
-			'${vexe} doc -f html -o - -html-only-contents -readme -comments ${program_dir}',
-			path_no_ext + '.html'
-		)
-		fails += check_output(
-			'${vexe} doc -f ansi -o - -html-only-contents -readme -comments ${program_dir}',
-			path_no_ext + '.ansi'
-		)
-		fails += check_output(
-			'${vexe} doc -f text -o - -html-only-contents -readme -comments ${program_dir}',
-			path_no_ext + '.text'
-		)
+		fails += check_output('${vexe} doc -f html -o - -html-only-contents -readme -comments ${program_dir}',
+			'${path_no_ext}.html')
+		fails += check_output('${vexe} doc -f ansi -o - -html-only-contents -readme -comments ${program_dir}',
+			'${path_no_ext}.ansi')
+		fails += check_output('${vexe} doc -f text -o - -html-only-contents -readme -comments ${program_dir}',
+			'${path_no_ext}.text')
 		//
 		total_fails += fails
 		if fails == 0 {
@@ -128,7 +111,7 @@ fn clean_line_endings(s string) string {
 
 @[params]
 struct CheckOutputParams {
-	should_sort   bool   = true
+	should_sort bool = true
 }
 
 fn check_output(cmd string, out_path string, opts CheckOutputParams) int {
