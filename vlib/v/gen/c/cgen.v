@@ -198,7 +198,8 @@ mut:
 	sql_fkey                  string
 	sql_parent_id             string
 	sql_side                  SqlExprSide // left or right, to distinguish idents in `name == name`
-	strs_to_free0             []string    // strings.Builder
+	sql_last_stmt_out_len     int
+	strs_to_free0             []string // strings.Builder
 	// strs_to_free          []string // strings.Builder
 	// tmp_arg_vars_to_free  []string
 	// autofree_pregen       map[string]string
