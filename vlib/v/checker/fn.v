@@ -676,7 +676,14 @@ fn (mut c Checker) needs_unwrap_generic_type(typ ast.Type) bool {
 }
 
 fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.Type {
-	fn_name := node.name
+	mut fn_name := node.name
+	if index := node.name.index('__static__') {
+		// resolve static call T.name()
+		if index > 0 && c.table.cur_fn != unsafe { nil } {
+			fn_name = c.table.resolve_generic_static_type_name(fn_name, c.table.cur_fn.generic_names,
+				c.table.cur_concrete_types)
+		}
+	}
 	if fn_name == 'main' {
 		c.error('the `main` function cannot be called in the program', node.pos)
 	}

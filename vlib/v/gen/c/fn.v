@@ -1783,6 +1783,13 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		is_selector_call = true
 	}
 	mut name := node.name
+	if index := node.name.index('__static__') {
+		// resolve static call T.name()
+		if index > 0 && g.cur_fn != unsafe { nil } {
+			name = g.table.resolve_generic_static_type_name(node.name, g.cur_fn.generic_names,
+				g.cur_concrete_types)
+		}
+	}
 	is_print := name in ['print', 'println', 'eprint', 'eprintln', 'panic']
 	print_method := name
 	is_json_encode := name == 'json.encode'

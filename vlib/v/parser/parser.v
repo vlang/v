@@ -2889,8 +2889,8 @@ fn (mut p Parser) name_expr() ast.Expr {
 		// `if a == Foo{} {...}` or `match foo { Foo{} {...} }`
 		return p.struct_init(p.mod + '.' + p.tok.lit, .normal, is_option)
 	} else if p.peek_tok.kind == .dot && lit0_is_capital && !known_var && language == .v {
-		// T.name
-		if p.is_generic_name() {
+		// T.name selector
+		if p.is_generic_name() && p.peek_token(3).kind != .lpar {
 			pos := p.tok.pos()
 			name := p.check_name()
 			p.check(.dot)
