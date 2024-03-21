@@ -72,3 +72,4 @@
 # 'examples/sokol/04_multi_shader_glsl/rt_glsl.v',  // Inaccurate captures
 # 'examples/sokol/05_instancing_glsl/rt_glsl.v',    // Inaccurate captures
 # 'examples/sokol/06_obj_viewer/show_obj.v',        // Inaccurate captures
+# 'examples/sokol/sdf/sdf.v',                       // Inaccurate captures
