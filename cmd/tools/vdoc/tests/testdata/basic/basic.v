@@ -1,3 +1,5 @@
+module basic
+
 pub const source_root = 'temp' // some const
 
 pub const another = int(5)
