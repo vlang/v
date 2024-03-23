@@ -77,7 +77,9 @@ fn (mut g Gen) gen_sumtype_equality_fn(left_type ast.Type) string {
 		left_arg := g.read_field(left_type, name, 'a')
 		right_arg := g.read_field(left_type, name, 'b')
 
-		if variant.sym.kind == .string {
+		if variant.typ.has_flag(.option) {
+			fn_builder.writeln('\t\treturn ((*${left_arg}).state == 2 && (*${right_arg}).state == 2) || !memcmp(&(*${left_arg}).data, &(*${right_arg}).data, sizeof(${g.base_type(variant.typ)}));')
+		} else if variant.sym.kind == .string {
 			fn_builder.writeln('\t\treturn string__eq(*${left_arg}, *${right_arg});')
 		} else if variant.sym.kind == .sum_type && !typ.is_ptr() {
 			eq_fn := g.gen_sumtype_equality_fn(typ)

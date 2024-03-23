@@ -11,7 +11,7 @@ fn is_opt(f Foo) bool {
 	}
 }
 
-fn main() {
+fn test_main() {
 	dump(is_opt(Foo(?Bar(none))))
 	dump(is_opt(Foo(Baz{})))
 }

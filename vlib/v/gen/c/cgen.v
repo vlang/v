@@ -6425,13 +6425,6 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 				struct_names[name] = true
 				g.typedefs.writeln('typedef struct ${name} ${name};')
 				g.type_definitions.writeln('')
-
-				opt_types := sym.info.variants.filter(it.has_flag(.option))
-				for opt_type in opt_types {
-					// Option sum types are declared as _option_xx_ptr must be declared forward
-					g.options_forward << g.typ(opt_type.clear_option_and_result().set_nr_muls(1))
-				}
-
 				g.type_definitions.writeln('// Union sum type ${name} = ')
 				for variant in sym.info.variants {
 					g.type_definitions.writeln('//          | ${variant:4d} = ${g.typ(variant.idx()):-20s}')
@@ -6440,13 +6433,14 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 				g.type_definitions.writeln('\tunion {')
 				for variant in sym.info.variants {
 					variant_sym := g.table.sym(variant)
-					mut var := variant.ref()
+					mut var := if variant.has_flag(.option) { variant } else { variant.ref() }
 					if variant_sym.info is ast.FnType {
 						if variant_sym.info.is_anon {
 							var = variant
 						}
 					}
-					g.type_definitions.writeln('\t\t${g.typ(var)} _${variant_sym.cname};')
+					var_type := if variant.has_flag(.option) { '${g.typ(var)}*' } else { g.typ(var) }
+					g.type_definitions.writeln('\t\t${var_type} _${variant_sym.cname};')
 				}
 				g.type_definitions.writeln('\t};')
 				g.type_definitions.writeln('\tint _typ;')
