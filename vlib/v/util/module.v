@@ -107,8 +107,10 @@ fn mod_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !stri
 		}
 	}
 	mut in_vmod_path := false
+	mut parts := path.split(os.path_separator)
+	parts.delete_last()
 	for vmod_folder in vmod_folders {
-		if path.contains(vmod_folder + os.path_separator) {
+		if vmod_folder in parts {
 			in_vmod_path = true
 			break
 		}
