@@ -1473,12 +1473,20 @@ pub fn (mut g Gen) write_typedef_types() {
 							def_str = def_str.replace_once('(*)', '(*${styp}[${len}])')
 							g.type_definitions.writeln(def_str)
 						} else if !info.is_fn_ret {
-							g.type_definitions.writeln('typedef ${fixed} ${styp} [${len}];')
 							base := g.typ(info.elem_type.clear_option_and_result())
 							if info.elem_type.has_flag(.option) && base !in g.options_forward {
-								g.options_forward << base
-							} else if info.elem_type.has_flag(.result) && base !in g.results_forward {
-								g.results_forward << base
+								lock g.done_options {
+									if base !in g.done_options {
+										g.type_definitions.writeln('typedef ${fixed} ${styp} [${len}];')
+										g.options_forward << base
+										g.done_options << styp
+									}
+								}
+							} else {
+								g.type_definitions.writeln('typedef ${fixed} ${styp} [${len}];')
+								if info.elem_type.has_flag(.result) && base !in g.results_forward {
+									g.results_forward << base
+								}
 							}
 						}
 					}
