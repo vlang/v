@@ -6396,6 +6396,24 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 		match sym.info {
 			ast.Struct {
 				if !struct_names[name] {
+					// generate field option types for fixed array of option struct before struct declaration
+					opt_fields := sym.info.fields.filter(g.table.final_sym(it.typ).kind == .array_fixed)
+					for opt_field in opt_fields {
+						field_sym := g.table.final_sym(opt_field.typ)
+						arr := field_sym.info as ast.ArrayFixed
+						styp := field_sym.cname
+						mut fixed_elem_name := g.typ(arr.elem_type.set_nr_muls(0))
+						if arr.elem_type.is_ptr() {
+							fixed_elem_name += '*'.repeat(arr.elem_type.nr_muls())
+						}
+						len := arr.size
+						lock g.done_options {
+							if styp !in g.done_options {
+								g.type_definitions.writeln('typedef ${fixed_elem_name} ${styp} [${len}];')
+								g.done_options << styp
+							}
+						}
+					}
 					g.struct_decl(sym.info, name, false)
 					struct_names[name] = true
 				}
@@ -6478,7 +6496,20 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 							g.type_definitions.writeln(def_str)
 						} else if elem_sym.info !is ast.ArrayFixed
 							|| (elem_sym.info as ast.ArrayFixed).size > 0 {
-							g.type_definitions.writeln('typedef ${fixed_elem_name} ${styp} [${len}];')
+							// fixed array of option struct must be defined backwards
+							if sym.info.elem_type.has_flag(.option) && elem_sym.info is ast.Struct {
+								styp_elem, base := g.option_type_name(sym.info.elem_type)
+								lock g.done_options {
+									if base !in g.done_options {
+										g.done_options << base
+										g.typedefs.writeln('typedef struct ${styp_elem} ${styp_elem};')
+										g.type_definitions.writeln('${g.option_type_text(styp_elem,
+											base)};')
+									}
+								}
+							} else {
+								g.type_definitions.writeln('typedef ${fixed_elem_name} ${styp} [${len}];')
+							}
 						}
 					}
 				}
