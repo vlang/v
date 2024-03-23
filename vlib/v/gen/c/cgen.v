@@ -6425,6 +6425,13 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 				struct_names[name] = true
 				g.typedefs.writeln('typedef struct ${name} ${name};')
 				g.type_definitions.writeln('')
+
+				opt_types := sym.info.variants.filter(it.has_flag(.option))
+				for opt_type in opt_types {
+					// Option sum types are declared as _option_xx_ptr must be declared forward
+					g.options_forward << g.typ(opt_type.clear_option_and_result().set_nr_muls(1))
+				}
+
 				g.type_definitions.writeln('// Union sum type ${name} = ')
 				for variant in sym.info.variants {
 					g.type_definitions.writeln('//          | ${variant:4d} = ${g.typ(variant.idx()):-20s}')
