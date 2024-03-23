@@ -6409,6 +6409,9 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 					for opt_field in opt_fields {
 						field_sym := g.table.final_sym(opt_field.typ)
 						arr := field_sym.info as ast.ArrayFixed
+						if !arr.elem_type.has_flag(.option) {
+							continue
+						}
 						styp := field_sym.cname
 						mut fixed_elem_name := g.typ(arr.elem_type.set_nr_muls(0))
 						if arr.elem_type.is_ptr() {
