@@ -685,14 +685,11 @@ pub mut:
 }
 
 pub fn (p &Param) specifier() string {
-	if p.is_shared {
-		return 'shared'
-	} else if p.is_atomic {
-		return 'atomic'
-	} else if p.is_mut {
-		return 'mut'
-	} else {
-		return ''
+	return match true {
+		p.is_shared { 'shared' }
+		p.is_atomic { 'atomic' }
+		p.is_mut { 'mut' }
+		else { '' }
 	}
 }
 
@@ -1016,38 +1013,24 @@ pub mut:
 }
 
 pub fn (i &Ident) is_auto_heap() bool {
-	match i.obj {
-		Var {
-			return i.obj.is_auto_heap
-		}
-		else {
-			return false
-		}
+	return match i.obj {
+		Var { i.obj.is_auto_heap }
+		else { false }
 	}
 }
 
 pub fn (i &Ident) is_mut() bool {
-	match i.obj {
-		Var {
-			return i.obj.is_mut
-		}
-		ConstField {
-			return false
-		}
-		AsmRegister, GlobalField {
-			return true
-		}
+	return match i.obj {
+		Var { i.obj.is_mut }
+		ConstField { false }
+		AsmRegister, GlobalField { true }
 	}
 }
 
 pub fn (i &Ident) var_info() IdentVar {
 	match i.info {
-		IdentVar {
-			return i.info
-		}
-		else {
-			panic('Ident.var_info(): info is not IdentVar variant')
-		}
+		IdentVar { return i.info }
+		else { panic('Ident.var_info(): info is not IdentVar variant') }
 	}
 }
 
@@ -2038,13 +2021,13 @@ pub fn (expr Expr) pos() token.Pos {
 	// all uncommented have to be implemented
 	// Note: please do not print here. the language server will hang
 	// as it uses STDIO primarily to communicate ~Ned
-	match expr {
+	return match expr {
 		AnonFn {
-			return expr.decl.pos
+			expr.decl.pos
 		}
 		CTempVar, EmptyExpr {
 			// println('compiler bug, unhandled EmptyExpr pos()')
-			return token.Pos{}
+			token.Pos{}
 		}
 		NodeError, ArrayDecompose, ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr,
 		CastExpr, ChanInit, CharLiteral, ConcatExpr, Comment, ComptimeCall, ComptimeSelector,
@@ -2053,21 +2036,22 @@ pub fn (expr Expr) pos() token.Pos {
 		PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr,
 		StringInterLiteral, StringLiteral, StructInit, TypeNode, TypeOf, UnsafeExpr, ComptimeType,
 		LambdaExpr, Nil {
-			return expr.pos
+			expr.pos
 		}
 		IndexExpr {
 			if expr.or_expr.kind != .absent {
-				return expr.or_expr.pos
+				expr.or_expr.pos
+			} else {
+				expr.pos
 			}
-			return expr.pos
 		}
 		IfGuardExpr {
-			return expr.expr.pos()
+			expr.expr.pos()
 		}
 		InfixExpr {
 			left_pos := expr.left.pos()
 			right_pos := expr.right.pos()
-			return token.Pos{
+			token.Pos{
 				line_nr: expr.pos.line_nr
 				pos: left_pos.pos
 				len: right_pos.pos - left_pos.pos + right_pos.len
@@ -2101,13 +2085,13 @@ pub fn (expr Expr) is_expr() bool {
 }
 
 pub fn (expr Expr) get_pure_type() Type {
-	match expr {
-		BoolLiteral { return bool_type }
-		CharLiteral { return char_type }
-		FloatLiteral { return f64_type }
-		StringLiteral { return string_type }
-		IntegerLiteral { return i64_type }
-		else { return void_type }
+	return match expr {
+		BoolLiteral { bool_type }
+		CharLiteral { char_type }
+		FloatLiteral { f64_type }
+		StringLiteral { string_type }
+		IntegerLiteral { i64_type }
+		else { void_type }
 	}
 }
 
@@ -2119,22 +2103,11 @@ pub fn (expr Expr) is_pure_literal() bool {
 }
 
 pub fn (expr Expr) is_auto_deref_var() bool {
-	match expr {
-		Ident {
-			if expr.obj is Var {
-				if expr.obj.is_auto_deref {
-					return true
-				}
-			}
-		}
-		PrefixExpr {
-			if expr.op == .amp && expr.right.is_auto_deref_var() {
-				return true
-			}
-		}
-		else {}
+	return match expr {
+		Ident { expr.obj is Var && expr.obj.is_auto_deref }
+		PrefixExpr { expr.op == .amp && expr.right.is_auto_deref_var() }
+		else { false }
 	}
-	return false
 }
 
 // returns if an expression can be used in `lock x, y.z {`
@@ -2394,10 +2367,8 @@ pub fn (node Node) children() []Node {
 // helper for dealing with `m[k1][k2][k3][k3] = value`
 pub fn (mut lx IndexExpr) recursive_mapset_is_setter(val bool) {
 	lx.is_setter = val
-	if mut lx.left is IndexExpr {
-		if lx.left.is_map {
-			lx.left.recursive_mapset_is_setter(val)
-		}
+	if mut lx.left is IndexExpr && lx.left.is_map {
+		lx.left.recursive_mapset_is_setter(val)
 	}
 }
 
@@ -2507,55 +2478,48 @@ fn gen_all_registers(mut t Table, without_numbers []string, with_numbers map[str
 
 // is `expr` a literal, i.e. it does not depend on any other declarations (C compile time constant)
 pub fn (expr Expr) is_literal() bool {
-	match expr {
+	return match expr {
 		BoolLiteral, CharLiteral, FloatLiteral, IntegerLiteral, StringLiteral, StringInterLiteral {
-			return true
+			true
 		}
 		PrefixExpr {
-			return expr.right.is_literal()
+			expr.right.is_literal()
 		}
 		InfixExpr {
-			return expr.left.is_literal() && expr.right.is_literal()
+			expr.left.is_literal() && expr.right.is_literal()
 		}
 		ParExpr {
-			return expr.expr.is_literal()
+			expr.expr.is_literal()
 		}
 		CastExpr {
-			return !expr.has_arg && expr.expr.is_literal() && (expr.typ.is_any_kind_of_pointer()
+			!expr.has_arg && expr.expr.is_literal() && (expr.typ.is_any_kind_of_pointer()
 				|| expr.typ in [i8_type, i16_type, int_type, i64_type, u8_type, u16_type, u32_type, u64_type, f32_type, f64_type, char_type, bool_type, rune_type])
 		}
 		SizeOf, IsRefType {
-			return expr.is_type || expr.expr.is_literal()
+			expr.is_type || expr.expr.is_literal()
 		}
 		else {
-			return false
+			false
 		}
 	}
 }
 
 pub fn (e Expr) is_nil() bool {
-	if e is Nil {
-		return true
-	}
-	if e is UnsafeExpr {
-		if e.expr is Nil {
-			return true
-		}
-	}
-	return false
+	return e is Nil || (e is UnsafeExpr && e.expr is Nil)
 }
 
 pub fn type_can_start_with_token(tok &token.Token) bool {
-	match tok.kind {
+	return match tok.kind {
 		.name {
-			return (tok.lit.len > 0 && tok.lit[0].is_capital())
+			(tok.lit.len > 0 && tok.lit[0].is_capital())
 				|| builtin_type_names_matcher.matches(tok.lit)
 		}
 		// Note: return type (T1, T2) should be handled elsewhere
 		.amp, .key_fn, .lsbr, .question {
-			return true
+			true
 		}
-		else {}
+		else {
+			false
+		}
 	}
-	return false
 }
