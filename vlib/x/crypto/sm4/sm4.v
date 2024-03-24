@@ -254,7 +254,7 @@ fn big_endian_put_u128_fixed_reverse(mut b [16]u8, v [4]u32) {
 	}
 }
 
-// sm4_tl performance the "T algorithm" == "t algorithm" + "L algorithm" funciton.
+// sm4_tl performance the "T algorithm" == "t algorithm" + "L algorithm" function.
 @[direct_array_access; inline]
 fn sm4_tl(ka u32) u32 {
 	mut a := [4]u8{}
@@ -369,13 +369,13 @@ pub fn new_cipher(mode Mode, key []u8) !&SM4Cipher {
 }
 
 // crypt_ecb SM4-ECB block encryption/decryption
-// `input` must be padded to mutiple of 16 bytes.
+// `input` must be padded to multiple of 16 bytes.
 // `output` must be exactly the same length as `input`.
 @[direct_array_access]
 pub fn (c &SM4Cipher) crypt_ecb(input []u8, mut output []u8) ! {
 	mut length := input.len
 	if length & 0x0f != 0 || length == 0 {
-		return error('input must be padded to mutiple of 16 bytes')
+		return error('input must be padded to multiple of 16 bytes')
 	}
 	if length != output.len {
 		return error('output must be exactly the same length as input')
@@ -397,14 +397,14 @@ pub fn (c &SM4Cipher) crypt_ecb(input []u8, mut output []u8) ! {
 
 // crypt_cbc SM4-CBC buffer encryption/decryption
 // `iv` is a 16 bytes Initialization Vector.
-// `input` must be padded to mutiple of 16 bytes.
+// `input` must be padded to multiple of 16 bytes.
 // `output` must be exactly the same length as `input`.
 @[direct_array_access]
 pub fn (c &SM4Cipher) crypt_cbc(mut iv []u8, input []u8, mut output []u8) ! {
 	mut idx := 0
 	mut length := input.len
 	if length & 0x0f != 0 || length == 0 {
-		return error('input must be padded to mutiple of 16 bytes')
+		return error('input must be padded to multiple of 16 bytes')
 	}
 	if length != output.len {
 		return error('output must be exactly the same length as input')

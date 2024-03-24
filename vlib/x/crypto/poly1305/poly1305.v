@@ -73,7 +73,7 @@ pub fn create_tag(mut out []u8, msg []u8, key []u8) ! {
 }
 
 // verify_tag verifies the tag is a valid message authentication code for the msg
-// compared to the tag outputed from the calculated process.
+// compared to the tag output from the calculated process.
 // It returns `true` if two tags is matching, `false` otherwise.
 pub fn verify_tag(tag []u8, msg []u8, key []u8) bool {
 	mut po := new(key) or { panic(err) }
@@ -369,7 +369,7 @@ fn poly1305_squeeze(mut h Uint192, t [4]u64) {
 	ac, c = ac.add_128_checked(cc, c)
 	cc = shift_right_by2(mut cc)
 
-	// once agains
+	// once again
 	ac, c = ac.add_128_checked(cc, 0)
 	// updates accumulator
 	h = ac
