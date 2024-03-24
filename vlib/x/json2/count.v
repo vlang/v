@@ -17,7 +17,7 @@ fn (mut count Count) reset_total() {
 	count.total = 0
 }
 
-// count_chars count json sizen whithout new encode
+// count_chars count json sizen without new encode
 fn (mut count Count) count_chars[T](val T) {
 	$if val is $option {
 		workaround := val

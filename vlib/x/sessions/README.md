@@ -4,14 +4,14 @@ A sessions module for web projects.
 
 ## Usage
 
-The sessions module provides an implemention for [session stores](#custom-stores). 
+The sessions module provides an implementation for [session stores](#custom-stores).
 The session store handles the saving, storing and retrieving of data. You can
 either use a store directly yourself, or you can use the `session.Sessions` struct
-which is easier to use since it also handles session verification and intergrates nicely
+which is easier to use since it also handles session verification and integrates nicely
 with vweb.
 
 If you want to use `session.Sessions` in your web app the session id's will be
-stored using cookies. The best way to get started is to follow the 
+stored using cookies. The best way to get started is to follow the
 [getting started](#getting-started) section.
 
 Otherwise have a look at the [advanced usage](#advanced-usage) section.
@@ -23,10 +23,11 @@ for examples without `x.vweb`.
 
 To start using sessions in vweb embed `sessions.CurrentSession` on the
 Context struct and add `sessions.Sessions` to the app struct. We must also pass the type
-of our session data. 
+of our session data.
 
 For any further example code we will use the `User` struct.
 **Example:**
+
 ```v ignore
 import x.sessions
 import x.vweb
@@ -52,17 +53,17 @@ pub mut:
 }
 ```
 
-Next we need to create the `&sessions.Sessions[User]` instance for our app. This 
-struct provides functionality to easier manage sessions in a vweb app. 
+Next we need to create the `&sessions.Sessions[User]` instance for our app. This
+struct provides functionality to easier manage sessions in a vweb app.
 
 ### Session Stores
 
 To create `sessions.Sessions` We must specify a "store" which handles the session data.
 Currently vweb provides two options for storing session data:
 
-1. The `MemoryStore[T]` stores session data in memory only using the `map` datatype. 
+1. The `MemoryStore[T]` stores session data in memory only using the `map` datatype.
 2. The `DBStore[T]` stores session data in a database by encoding the session data to JSON.
-It will create the table `DBStoreSessions` in your database where the session data will be stored.
+   It will create the table `DBStoreSessions` in your database, to store the session data.
 
 It is possible to create your own session store, see [custom stores](#custom-stores).
 
@@ -71,6 +72,7 @@ It is possible to create your own session store, see [custom stores](#custom-sto
 For this example we will use the memory store.
 
 **Example:**
+
 ```v ignore
 fn main() {
 	mut app := &App{
@@ -78,14 +80,14 @@ fn main() {
 		// use your own secret which will be used to verify session id's
 		secret: 'my secret'.bytes()
 	}
-	
+
 	vweb.run[App, Context](mut app, 8080)
 }
 ```
 
 ### Middleware
 
-The `sessions.vweb2_middleware` module provides a middleware handler. This handler will execute 
+The `sessions.vweb2_middleware` module provides a middleware handler. This handler will execute
 before your own route handlers and will verify the current session and fetch any associated
 session data and load it into `sessions.CurrentSession`, which is embedded on the Context struct.
 
@@ -94,6 +96,7 @@ session data and load it into `sessions.CurrentSession`, which is embedded on th
 > and loaded correctly.
 
 **Example:**
+
 ```v ignore
 // add this import at the top of your file
 import x.sessions.vweb2_middleware
@@ -116,7 +119,7 @@ fn main() {
 
     // register the sessions middleware
     app.use(vweb2_middleware.create[User, Context](mut app.sessions))
-	
+
 	vweb.run[App, Context](mut app, 8080)
 }
 ```
@@ -132,6 +135,7 @@ access any session data via `ctx.session_data`. This field is an option, it will
 if no data is set.
 
 **Example:**
+
 ```v ignore
 pub fn (app &App) index(mut ctx Context) vweb.Result {
 	// check if a user is logged in
@@ -149,11 +153,12 @@ pub fn (app &App) index(mut ctx Context) vweb.Result {
 You can use the `save` method to update and save any session data.
 
 When the user logs in, the `save` method is called and a new session id is generated
-and set as cookie. Assuming there wasn't already a session going on. If you want to 
+and set as cookie. Assuming there wasn't already a session going on. If you want to
 be sure that a new session id is generated when you save data, you can use the `resave`
 method. This method will save the data and *always* set a new session id.
 
 **Example:**
+
 ```v ignore
 pub fn (mut app App) login(mut ctx Context) vweb.Result {
 	// set a session id cookie and save data for the new user
@@ -172,6 +177,7 @@ you can use this route via `http://localhost:8080/save?name=myname`. And if the
 query parameter is not passed an error 400 (bad request) is returned.
 
 **Example:**
+
 ```v ignore
 pub fn (mut app App) save(mut ctx Context) vweb.Result {
 	// check if there is a session
@@ -192,11 +198,12 @@ pub fn (mut app App) save(mut ctx Context) vweb.Result {
 
 #### Destroying data / logging out
 
-If a user logs out you can use the `logout` method to destroy the session data and 
-clear the session id cookie. If you only want to destroy the session data use the `destroy` 
+If a user logs out you can use the `logout` method to destroy the session data and
+clear the session id cookie. If you only want to destroy the session data use the `destroy`
 method.
 
 **Example:**
+
 ```v ignore
 pub fn (mut app App) logout(mut ctx Context) vweb.Result {
 	app.sessions.logout(mut ctx) or { return ctx.server_error('could not logout, please try again') }
@@ -209,6 +216,7 @@ pub fn (mut app App) logout(mut ctx Context) vweb.Result {
 Change the `cookie_options` field to modify how the session cookie is stored.
 
 **Example:**
+
 ```v ignore
 mut app := &App{
 	sessions: &sessions.Sessions[User]{
@@ -234,8 +242,8 @@ By setting `save_uninitialized` to `true` a session cookie will always be set,
 even if there is no data for the session yet. This is useful when you need session
 data to be always available.
 
-Or, for example, you could use pre-sessions to mittigate login-csrf, 
-since you can bind a csrf-token to the "pre-session" id. Then when the user logs 
+Or, for example, you could use pre-sessions to mitigate login-csrf,
+since you can bind a csrf-token to the "pre-session" id. Then when the user logs
 in, you can set a new session id with `resave`..
 
 ## Advanced Usage
@@ -246,6 +254,7 @@ instance of a `Store` and directly interact with it.
 
 First we create an instance of the `MemoryStore` and pass the user struct as data type.
 **Example:**
+
 ```v
 import x.sessions
 
@@ -272,6 +281,7 @@ The session module provides a function for generating a new signed session id
 and for verifying a signed session id. You can ofcourse generate your own session id's.
 
 **Example:**
+
 ```v ignore
 // fn main
 // generate a new session id and sign it
@@ -288,6 +298,7 @@ We can retrieve the saved user and verify that the data we saved can be retrieve
 from the verified session id.
 
 **Example:**
+
 ```v ignore
 // fn main
 // pass `max_age = 0` to ignore the expiration time.
@@ -301,7 +312,7 @@ if saved_user := store.get(verified_session_id, 0) {
 
 ## Custom Stores
 
-You can easily create your own custom store in order to control how session data is 
+You can easily create your own custom store in order to control how session data is
 stored and retrieved. Each session store needs to implement the `Store[T]` interface.
 
 ```v ignore
@@ -330,6 +341,6 @@ Only the `get`, `destroy` and `set` methods are required to implement.
 
 ### Session Expire time
 
-The `max_age` argument in `get` can be used to check whether the session is still valid. 
+The `max_age` argument in `get` can be used to check whether the session is still valid.
 The database and memory store both check the expiration time from the time the session data
 first inserted. But if `max_age = 0`, the stores will not check for expiration time.

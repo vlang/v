@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
-// Chacha20 symetric key stream cipher encryption based on RFC 8439
+// Chacha20 symmetric key stream cipher encryption based on RFC 8439
 module chacha20
 
 import math.bits
@@ -32,8 +32,8 @@ struct Cipher {
 mut:
 	// internal's of ChaCha20 states, ie, 16 of u32 words, 4 of ChaCha20 constants,
 	// 8 word (32 bytes) of keys, 3 word (24 bytes) of nonces and 1 word of counter
-	key      [8]u32  
-	nonce    [3]u32  
+	key      [8]u32
+	nonce    [3]u32
 	counter  u32
 	overflow bool
 	// internal buffer for storing key stream results
@@ -72,7 +72,7 @@ pub fn decrypt(key []u8, nonce []u8, ciphertext []u8) ![]u8 {
 }
 
 // xor_key_stream xors each byte in the given slice in the src with a byte from the
-// cipher's key stream. It fullfills `cipher.Stream` interface. It encrypts the plaintext message
+// cipher's key stream. It fulfills `cipher.Stream` interface. It encrypts the plaintext message
 // in src and stores the ciphertext result in dst in a single run of encryption.
 // You must never use the same (key, nonce) pair more than once for encryption.
 // This would void any confidentiality guarantees for the messages encrypted with the same nonce and key.

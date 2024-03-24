@@ -466,7 +466,7 @@ fn handle_write_string(mut pv picoev.Picoev, mut params RequestParams, fd int) {
 // handle_read reads data from the connection and if the request is complete
 // it calls `handle_route` and closes the connection.
 // If the request is not complete it stores the incomplete request in `params`
-// and the conenction stays open until it is ready to read again
+// and the connection stays open until it is ready to read again
 @[direct_array_access; manualfree]
 fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 	mut conn := &net.TcpConn{
@@ -486,7 +486,7 @@ fn handle_read[A, X](mut pv picoev.Picoev, mut params RequestParams, fd int) {
 	// take the previous incomplete request
 	mut req := params.incomplete_requests[fd]
 
-	// check if there is an incomplete request for this file desriptor
+	// check if there is an incomplete request for this file descriptor
 	if params.idx[fd] == 0 {
 		// set the read and write timeout according to picoev settings when the
 		// connection is first encountered
@@ -900,7 +900,7 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 	if url_words.len == route_words.len {
 		for i in 0 .. url_words.len {
 			if route_words[i].starts_with(':') {
-				// We found a path paramater
+				// We found a path parameter
 				params << url_words[i]
 			} else if route_words[i] != url_words[i] {
 				// This url does not match the route
@@ -917,7 +917,7 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 
 	for i in 0 .. route_words.len - 1 {
 		if route_words[i].starts_with(':') {
-			// We found a path paramater
+			// We found a path parameter
 			params << url_words[i]
 		} else if route_words[i] != url_words[i] {
 			// This url does not match the route

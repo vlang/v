@@ -19,7 +19,7 @@ pub const cache_delay_expiration_at_max = 31536000
 pub const cache_delay_expiration_by_default = 86400
 // Setting channel capacity of the cache handler.
 const cache_handler_channel_cap = 200
-// Setting the maximum data size (500 KB) to be stored at memory mode. If this limit is exceeded, cache hander switch to disk mode.
+// Setting the maximum data size (500 KB) to be stored at memory mode. If this limit is exceeded, cache handler switch to disk mode.
 const max_size_data_in_memory = 500
 // Defines the maximum character length for placeholder keys.
 const max_placeholders_key_size = 50
@@ -86,7 +86,7 @@ mut:
 	//	Dtm clock
 	c_time            i64
 	ch_stop_dtm_clock chan bool = chan bool{cap: 5}
-	// Store small informations about already cached pages to improve the verification speed of the check_tmpl_and_placeholders_size function.
+	// Store small information about already cached pages to improve the verification speed of the check_tmpl_and_placeholders_size function.
 	html_file_info shared map[string]HtmlFileInfo = map[string]HtmlFileInfo{}
 	// Indicates whether the cache file storage directory is located in a temporary OS area
 	cache_folder_is_temporary_storage bool
@@ -177,11 +177,11 @@ pub struct DynamicTemplateManagerInitialisationParams {
 // initialize create and init the 'DynamicTemplateManager' with the storage mode, cache/templates path folders.
 // A cache directory can be created by the user for storage. If it is not defined or encounters issues such as permission problems,
 // the DTM will attempt to create it in the OS's temporary area. If this proves impossible, the cache system will be deactivated and the user will be informed if cache system was required.
-// Initalisation params are :
+// Initialisation params are :
 //
 // - def_cache_path 'type string' User can define the path of cache folder.
 // - max_size_data_in_mem 'type int' Maximum size of data allowed in memory for caching. The value must be specified in kilobytes. ( Default is: 500KB / Limit max is : 500KB)	
-// - compress_html: 'type bool' Light compress of the HTML ouput. ( default is true )
+// - compress_html: 'type bool' Light compress of the HTML output. ( default is true )
 // - active_cache_server: 'type bool' Activate or not the template cache system. ( default is true )
 // - test_cache_dir: 'type string' Used only for DTM internal test file, parameter is ignored otherwise.
 // - test_template_dir: 'type string' Used only for DTM internal test file, parameter is ignored otherwise.
@@ -312,7 +312,7 @@ pub fn (mut tm DynamicTemplateManager) expand(tmpl_path string, tmpl_var Templat
 			// Get last modification timestamp of HTML template to adding info for the creation of cache.
 			last_template_mod = os.file_last_mod_unix(file_path)
 		} else {
-			// Get last modification timestamp of HTML template to compare with cache info already existant.
+			// Get last modification timestamp of HTML template to compare with cache info already existent.
 			test_current_template_mod = os.file_last_mod_unix(file_path)
 		}
 
@@ -511,7 +511,7 @@ fn (mut tm DynamicTemplateManager) check_tmpl_and_placeholders_size(f_path strin
 // fn (mut DynamicTemplateManager) create_template_cache_and_display(CacheRequest, i64, i64, string, string, i64, &map[string]DtmMultiTypeMap, string, TemplateType) return string
 //
 // Exclusively invoked from `expand`.
-// It role is generate the template rendering and relaying informations
+// It role is generate the template rendering and relaying information
 // to the cache manager for either the creation or updating of the template cache.
 // It begin to starts by ensuring that the cache delay expiration is correctly set by user.
 // It then parses the template file, replacing placeholders with actual dynamics/statics values.
@@ -521,7 +521,7 @@ fn (mut tm DynamicTemplateManager) check_tmpl_and_placeholders_size(f_path strin
 // The function returns the rendered immediately, without waiting for the cache to be created or updated.
 //
 fn (mut tm DynamicTemplateManager) create_template_cache_and_display(tcs CacheRequest, last_template_mod i64, unique_time i64, file_path string, tmpl_name string, cache_delay_expiration i64, placeholders &map[string]DtmMultiTypeMap, current_content_checksum string, tmpl_type TemplateType) string {
-	// Control if cache delay expiration is correctly setted. See the function itself for more details.
+	// Control if cache delay expiration is correctly set. See the function itself for more details.
 	check_if_cache_delay_iscorrect(cache_delay_expiration, tmpl_name) or {
 		eprintln(err)
 		return dtm.internat_server_error
@@ -586,7 +586,7 @@ fn (tm DynamicTemplateManager) create_temp_cache(html &string, f_path string, ts
 	// Converts the HTML content into a byte array
 	html_bytes := html.bytes()
 	mut f := os.create(cache_path) or {
-		eprintln('${dtm.message_signature_error} Cannot create tempory cache file : ${err.msg()}')
+		eprintln('${dtm.message_signature_error} Cannot create temporary cache file : ${err.msg()}')
 		return false, ''
 	}
 	f.write(html_bytes) or {
@@ -670,7 +670,7 @@ fn (mut tm DynamicTemplateManager) return_cache_info_isexistent(tmpl_path string
 							goto re_loop
 						}
 					}
-					// No cache redirection, get cache current informations.
+					// No cache redirection, get cache current information.
 				} else {
 					// function is used to signal that the process has begun using the cache information.
 					tm.remaining_template_request(true, value.id)
@@ -1036,7 +1036,7 @@ fn check_if_cache_delay_iscorrect(cde i64, tmpl_name string) ! {
 //
 fn (mut tm DynamicTemplateManager) cache_request_route(is_cache_exist bool, neg_cache_delay_expiration i64, last_template_mod i64, test_current_template_mod i64, cache_del_exp i64, gen_at i64, c_time i64, content_checksum string, current_content_checksum string) (CacheRequest, i64) {
 	if !is_cache_exist || neg_cache_delay_expiration == -1 {
-		// Requiere cache creation
+		// Require cache creation
 		unique_ts := get_current_unix_micro_timestamp()
 		tm.c_time = unique_ts
 		return CacheRequest.new, unique_ts

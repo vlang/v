@@ -46,9 +46,9 @@ fn testsuite_begin() {
 fn run_app_test() {
 	mut app := &App{}
 	if _ := app.handle_static('testdata', true) {
-		assert true == false, 'should throw unkown mime type error'
+		assert true == false, 'should throw unknown mime type error'
 	} else {
-		assert err.msg().starts_with('unkown MIME type for file extension ".what"'), 'throws error on unkown mime type'
+		assert err.msg().starts_with('unknown MIME type for file extension ".what"'), 'throws error on unkown mime type'
 	}
 
 	app.static_mime_types['.what'] = vweb.mime_types['.txt']
@@ -106,11 +106,11 @@ fn test_index_subdirs() {
 }
 
 fn test_custom_mime_types() {
-	x := http.get('${localserver}/unkown_mime.what')!
+	x := http.get('${localserver}/unknown_mime.what')!
 
 	assert x.status() == .ok
 	assert x.header.get(.content_type)! == vweb.mime_types['.txt']
-	assert x.body == 'unkown_mime'
+	assert x.body.trim_space() == 'unknown_mime'
 }
 
 fn test_custom_folder_mount() {
