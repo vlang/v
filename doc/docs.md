@@ -5222,7 +5222,6 @@ To generate documentation use vdoc, for example `v doc net.http`.
 Comments spanning multiple lines are merged together using spaces, unless
 
 - the line is empty
-- the line ends with a `.` (end of sentence)
 - the line is purely of at least 3 of `-`, `=`, `_`, `*`, `~` (horizontal rule)
 - the line starts with at least one `#` followed by a space (header)
 - the line starts and ends with a `|` (table)
