@@ -6433,13 +6433,14 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 				g.type_definitions.writeln('\tunion {')
 				for variant in sym.info.variants {
 					variant_sym := g.table.sym(variant)
-					mut var := variant.ref()
+					mut var := if variant.has_flag(.option) { variant } else { variant.ref() }
 					if variant_sym.info is ast.FnType {
 						if variant_sym.info.is_anon {
 							var = variant
 						}
 					}
-					g.type_definitions.writeln('\t\t${g.typ(var)} _${variant_sym.cname};')
+					var_type := if variant.has_flag(.option) { '${g.typ(var)}*' } else { g.typ(var) }
+					g.type_definitions.writeln('\t\t${var_type} _${variant_sym.cname};')
 				}
 				g.type_definitions.writeln('\t};')
 				g.type_definitions.writeln('\tint _typ;')
