@@ -577,7 +577,7 @@ run them via `v file.v` instead',
 	mut stmts := []ast.Stmt{}
 	body_start_pos := p.tok.pos()
 	if p.tok.kind == .lcbr {
-		if language != .v && !(language == .js && type_sym.info is ast.Interface){
+		if language != .v && !(language == .js && type_sym.info is ast.Interface) {
 			p.error_with_pos('interop functions cannot have a body', body_start_pos)
 		}
 		p.inside_fn = true
