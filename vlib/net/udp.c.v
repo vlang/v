@@ -284,3 +284,7 @@ fn (s &UdpSocket) remote() !Addr {
 	}
 	return error('none')
 }
+		
+pub fn (s &UdpSocket) local_addr() Addr {
+	return s.l
+}
