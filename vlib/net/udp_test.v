@@ -59,3 +59,10 @@ fn test_udp() {
 
 	l.close() or {}
 }
+
+fn test_udp_local_addr() {
+	mut l := net.listen_udp(server_addr) or { panic('could not listen_udp: ${err}') }
+	assert server_addr == l.sock.local_addr().str()
+	l.close() or {}
+}
+
