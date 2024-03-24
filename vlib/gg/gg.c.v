@@ -729,7 +729,7 @@ pub fn screen_size() Size {
 			height: int(C.GetSystemMetrics(C.SM_CYSCREEN))
 		}
 	}
-	// TODO linux, etc
+	// TODO: linux, etc
 	return Size{}
 }
 

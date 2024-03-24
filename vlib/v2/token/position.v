@@ -95,7 +95,7 @@ fn search_files(files []&File, x int) int {
 	}
 	return min - 1
 
-	// linear seach
+	// linear search
 	// for i := files.len-1; i>=0; i-- {
 	// 	file := files[i]
 	// 	if file.base < x && x <= file.base + file.size {
@@ -154,7 +154,7 @@ pub fn (f &File) line_count() int {
 
 pub fn (f &File) line_start(line int) int {
 	return f.line_offsets[line - 1] or {
-		panic('invlid line `${line}` (must be > 0 & < ${f.line_count()})')
+		panic('invalid line `${line}` (must be > 0 & < ${f.line_count()})')
 	}
 }
 

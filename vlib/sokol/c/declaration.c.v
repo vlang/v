@@ -59,7 +59,7 @@ $if emscripten ? {
 // for simplicity, all header includes are here because import order matters and we dont have any way
 // to ensure import order with V yet
 #define SOKOL_IMPL
-// TODO should not be defined for android graphic (apk/aab using sokol) builds, but we have no ways to undefine
+// TODO: should not be defined for android graphic (apk/aab using sokol) builds, but we have no ways to undefine
 //#define SOKOL_NO_ENTRY
 #flag linux   -DSOKOL_NO_ENTRY
 #flag darwin  -DSOKOL_NO_ENTRY
@@ -68,7 +68,7 @@ $if emscripten ? {
 #flag freebsd -DSOKOL_NO_ENTRY
 #flag openbsd -DSOKOL_NO_ENTRY
 #flag solaris -DSOKOL_NO_ENTRY
-// TODO end
+// TODO: end
 
 #flag linux -ldl
 

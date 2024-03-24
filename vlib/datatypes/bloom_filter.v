@@ -4,7 +4,7 @@ module datatypes
 
 @[heap]
 struct BloomFilter[T] {
-	// TODO V bug
+	// TODO: V bug
 	hash_func fn (T) u32 = unsafe { nil } // hash function, input [T] , output u32
 	// hash_func     fn (T) u32 = empty_cb // hash function, input [T] , output u32
 	table_size    int // every entry is one-bit, packed into `table`

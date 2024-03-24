@@ -367,7 +367,7 @@ fn to_iarna(value ast.Value, skip_value_map bool) string {
 				return '{ "type": "float", "value": "${val}" }'
 			}
 			v := value.i64()
-			// TODO workaround https://github.com/vlang/v/issues/9507
+			// TODO: workaround https://github.com/vlang/v/issues/9507
 			if v == i64(-9223372036854775807 - 1) {
 				if skip_value_map {
 					return '-9223372036854775808'

@@ -221,7 +221,7 @@ fn (mut app App) read_bytes(path string) bool {
 pub fn read_bytes_from_file(file_path string) []u8 {
 	mut buffer := []u8{}
 	buffer = os.read_bytes(file_path) or {
-		eprintln('ERROR: Texure file: [${file_path}] NOT FOUND.')
+		eprintln('ERROR: Texture file: [${file_path}] NOT FOUND.')
 		exit(0)
 	}
 	return buffer

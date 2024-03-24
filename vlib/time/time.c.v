@@ -96,7 +96,7 @@ pub fn ticks() i64 {
 
 // str returns the time in the same format as `parse` expects ("YYYY-MM-DD HH:mm:ss").
 pub fn (t Time) str() string {
-	// TODO Define common default format for
+	// TODO: Define common default format for
 	// `str` and `parse` and use it in both ways
 	return t.format_ss()
 }

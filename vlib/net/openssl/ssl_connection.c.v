@@ -345,7 +345,7 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 					$if trace_ssl ? {
 						eprintln('${@METHOD} ---> res: ssl write on closed connection .ssl_error_zero_return')
 					}
-					return error('ssl write on closed connection') // Todo error_with_code close
+					return error('ssl write on closed connection') // TODO: error_with_code close
 				}
 				$if trace_ssl ? {
 					eprintln('${@METHOD} ---> res: could not write SSL, err_res: ${err_res}')

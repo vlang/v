@@ -240,8 +240,8 @@ fn (mut c Checker) decl(decl ast.Stmt) {
 					// typ: c.expr(field.value)
 				}
 				c.scope.insert(obj.name, obj)
-				// TODO: check if constains references to other consts and only
-				// delay those. or keep dererring until type is known othewise error
+				// TODO: check if contains references to other consts and only
+				// delay those. or keep deferring until type is known otherwise error
 				// work out best way to do this, and use same approach for everything
 				c.later(fn [mut c, field] () {
 					// c.log('updating const $field.name type')
@@ -491,9 +491,9 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 					}
 					// sum type, check variants
 					if (expected_type is SumType && elem_type !in expected_type.variants)
-						&& elem_type != first_elem_type // everyting else
+						&& elem_type != first_elem_type // everything else
 					  {
-						// TOOD: add generl method for promotion/coersion
+						// TODO: add general method for promotion/coercion
 						c.error_with_pos('expecting element of type: ${first_elem_type.name()}, got ${elem_type.name()}',
 							expr.pos)
 					}
@@ -555,7 +555,7 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			return c.expr(c.resolve_call_or_cast_expr(expr))
 		}
 		ast.CallExpr {
-			// TOOD/FIXME: proper
+			// TODO/FIXME:
 			// we need a way to handle C.stat|sigaction() / C.stat|sigaction{}
 			// multiple items with same name inside scope lookup.
 			if expr.lhs is ast.SelectorExpr {
@@ -723,7 +723,7 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 			}
 		}
 		ast.MapInitExpr {
-			// TOOD: type check keys/vals
+			// TODO: type check keys/vals
 			// `map[type]type{}`
 			if expr.typ !is ast.EmptyExpr {
 				typ := c.expr(expr.typ)
@@ -946,7 +946,7 @@ fn (mut c Checker) expr(expr ast.Expr) Type {
 		}
 		else {}
 	}
-	// TOODO: remove (add all variants)
+	// TODO: remove (add all variants)
 	c.log('expr: unhandled ${expr.type_name()}')
 	return int_
 }
@@ -1681,7 +1681,7 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 	// TODO: time.StopWatch has a fields and methods with the same name
 	// and field was being returned instead of the methods. we could set a precedence
 	// however what if the field is a fn type? (i guess one or the other could still habve priority)
-	// TOOD: talk to alex and spy about this
+	// TODO: talk to alex and spy about this
 	if expr.lhs is ast.SelectorExpr {
 		// POO POO
 		// if expr.lhs.lhs is ast.Ident {
@@ -1756,7 +1756,7 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 			// eprintln('========================')
 			// if expr.lhs is ast.Ident {
 			// 	if expr.lhs.name == 'generic_fn_d' {
-			// 		panic('.')	
+			// 		panic('.')
 			// 	}
 			// }
 			// dump(generic_type_map)
@@ -1770,8 +1770,8 @@ fn (mut c Checker) call_expr(expr ast.CallExpr) Type {
 		}
 
 		// TODO: is this best place for this?
-		// why is it not beeing used any more? check if we are somehow skipping its uses
-		// need to find a better way to do this, this only happens becasue there are
+		// why is it not being used any more? check if we are somehow skipping its uses
+		// need to find a better way to do this, this only happens because there are
 		// compiler magic, call_expr & selector expr both end up needing information which
 		// the other one has
 		if lhs_expr is ast.SelectorExpr {

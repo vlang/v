@@ -57,7 +57,7 @@ pub fn (mut s Scanner) init(file &token.File, src string) {
 
 @[direct_array_access]
 pub fn (mut s Scanner) scan() token.Token {
-	// before whitespace call to keep whitepsaces in string
+	// before whitespace call to keep whitespaces in string
 	// NOTE: before start: simply for a little more efficiency
 	// if !s.skip_interpolation && s.in_str_incomplete {
 	if s.in_str_incomplete {

@@ -8,7 +8,7 @@ const bin = $if linux {
 	''
 }
 
-fn test_const_from_mutli_branchs_of_if_expr() {
+fn test_const_from_multi_branches_of_if_expr() {
 	println('Hello')
 	assert true
 }

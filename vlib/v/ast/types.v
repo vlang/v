@@ -1150,7 +1150,7 @@ pub fn (t &Table) type_size(typ Type) (int, int) {
 			size = info.size * elem_size
 			align = elem_align
 		}
-		// TODO hardcoded:
+		// TODO: hardcoded:
 		.map {
 			size = if t.pointer_size == 8 { 120 } else { 80 }
 			align = t.pointer_size
@@ -1338,7 +1338,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			}
 		}
 		.chan {
-			// TODO currently the `chan` struct in builtin is not considered a struct but a chan
+			// TODO: currently the `chan` struct in builtin is not considered a struct but a chan
 			if sym.mod != 'builtin' && sym.name != 'chan' {
 				info := sym.info as Chan
 				mut elem_type := info.elem_type
@@ -1523,7 +1523,7 @@ pub fn (t &Table) fn_signature_using_aliases(func &Fn, import_aliases map[string
 	mut sb := strings.new_builder(20)
 	if !opts.skip_receiver {
 		sb.write_string('fn ')
-		// TODO write receiver
+		// TODO: write receiver
 	}
 	if !opts.type_only {
 		sb.write_string(func.name)

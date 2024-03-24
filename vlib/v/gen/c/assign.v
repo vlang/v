@@ -165,7 +165,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			}
 			if ok {
 				sref_name = '_sref${node.pos.pos}'
-				g.write('${type_to_free} ${sref_name} = (') // TODO we are copying the entire string here, optimize
+				g.write('${type_to_free} ${sref_name} = (') // TODO: we are copying the entire string here, optimize
 				// we can't just do `.str` since we need the extra data from the string struct
 				// doing `&string` is also not an option since the stack memory with the data will be overwritten
 				g.expr(left0) // node.left[0])
@@ -671,7 +671,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					tmp_var := g.new_tmp_var()
 					g.expr_with_tmp_var(val, val_type, var_type, tmp_var)
 				} else if is_fixed_array_var {
-					// TODO Instead of the translated check, check if it's a pointer already
+					// TODO: Instead of the translated check, check if it's a pointer already
 					// and don't generate memcpy &
 					typ_str := g.typ(val_type).trim('*')
 					final_typ_str := if is_fixed_array_var { '' } else { '(${typ_str}*)' }
@@ -769,7 +769,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 
 fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Type, return_sym ast.TypeSymbol) {
 	// multi return
-	// TODO Handle in if_expr
+	// TODO: Handle in if_expr
 	mr_var_name := 'mr_${node.pos.pos}'
 	mut is_option := return_type.has_flag(.option)
 	mut mr_styp := g.typ(return_type.clear_flag(.result))

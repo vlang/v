@@ -100,7 +100,7 @@ gg__Image darwin_create_image(string path_) {
 	res.path = path_;
 	res.ok = true;
 	// printf("inited img width=%d\n", res.width) ;
-	//  need __brige_retained so that the pointer is not freed by ARC
+	//  need __bridge_retained so that the pointer is not freed by ARC
 	res.data = (__bridge_retained voidptr)(img);
 	return res;
 }

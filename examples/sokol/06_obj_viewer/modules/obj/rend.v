@@ -59,7 +59,7 @@ pub fn load_texture(file_name string) (gfx.Image, gfx.Sampler) {
 	buffer := read_bytes_from_file(file_name)
 	stbi.set_flip_vertically_on_load(true)
 	img := stbi.load_from_memory(buffer.data, buffer.len) or {
-		eprintln('Texure file: [${file_name}] ERROR!')
+		eprintln('Texture file: [${file_name}] ERROR!')
 		exit(0)
 	}
 	sg_img, sg_smp := create_texture(int(img.width), int(img.height), img.data)

@@ -77,7 +77,7 @@ fn show(game [][]bool) {
 	}
 }
 
-// TODO Remove `fn main` once vet supports scripts
+// TODO: Remove `fn main` once vet supports scripts
 fn main() {
 	mut game := [][]bool{len: h, init: []bool{len: w}}
 

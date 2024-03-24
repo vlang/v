@@ -459,7 +459,7 @@ pub fn format_es(f f64, p BF_param) string {
 	}
 }
 
-// remove_tail_zeros strips traling zeros from `s` and return the resulting `string`.
+// remove_tail_zeros strips trailing zeros from `s` and return the resulting `string`.
 @[direct_array_access]
 pub fn remove_tail_zeros(s string) string {
 	unsafe {

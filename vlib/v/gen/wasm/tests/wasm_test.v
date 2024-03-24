@@ -4,7 +4,7 @@ import term
 
 const is_verbose = os.getenv('VTEST_SHOW_CMD') != ''
 
-// TODO some logic copy pasted from valgrind_test.v and compiler_test.v, move to a module
+// TODO: some logic copy pasted from valgrind_test.v and compiler_test.v, move to a module
 fn test_wasm() {
 	mut runtimes := ['wasmer', 'wasmtime', 'wavm', 'wasm3']
 	mut runtime_found := false

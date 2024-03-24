@@ -92,7 +92,7 @@ fn handshake(mut con net.TcpConn, host string, username string, password string)
 	} else if address.contains_only(':1234567890abcdf') {
 		// v << addr_type_ipv6
 		// v << parse_ipv4(address)!
-		// todo support ipv6
+		// TODO: support ipv6
 	} else { // domain
 		if address.len > 255 {
 			return error('${address} is too long')

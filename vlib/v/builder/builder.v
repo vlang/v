@@ -169,7 +169,7 @@ pub fn (mut b Builder) parse_imports() {
 	if b.pref.is_vsh {
 		done_imports << 'os'
 	}
-	// TODO (joe): decide if this is correct solution.
+	// TODO: (joe): decide if this is correct solution.
 	// in the case of building a module, the actual module files
 	// are passed via cmd line, so they have already been parsed
 	// by this stage. note that if one files from a module was
@@ -315,7 +315,7 @@ pub fn (b &Builder) import_graph() &depgraph.DepGraph {
 		if p.mod.name !in builtins {
 			deps << 'builtin'
 			if b.pref.backend == .c {
-				// TODO JavaScript backend doesn't handle os for now
+				// TODO: JavaScript backend doesn't handle os for now
 				// os import libraries so we exclude anything which could cause a loop
 				// git grep import vlib/os | cut -f2 -d: | cut -f2 -d" " | sort -u
 				// dl, os, os.cmdline, os.filelock, os.notify, strings, strings.textscanner, term.termios, time

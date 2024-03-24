@@ -30,13 +30,13 @@ pub fn read_bytes_from_file(file_path string) []u8 {
 	$if android {
 		path = 'models/' + file_path
 		buffer = os.read_apk_asset(path) or {
-			eprintln('Texure file: [${path}] NOT FOUND!')
+			eprintln('Texture file: [${path}] NOT FOUND!')
 			exit(0)
 		}
 	} $else {
 		path = os.resource_abs_path('assets/models/' + file_path)
 		buffer = os.read_bytes(path) or {
-			eprintln('Texure file: [${path}] NOT FOUND!')
+			eprintln('Texture file: [${path}] NOT FOUND!')
 			exit(0)
 		}
 	}

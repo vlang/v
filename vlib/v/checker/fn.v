@@ -169,7 +169,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 		mut sym := c.table.sym(node.receiver.typ)
 		if sym.kind == .array && !c.is_builtin_mod && node.name == 'map' {
-			// TODO `node.map in array_builtin_methods`
+			// TODO: `node.map in array_builtin_methods`
 			c.error('method overrides built-in array method', node.pos)
 		} else if sym.kind == .sum_type && node.name == 'type_name' {
 			c.error('method overrides built-in sum type method', node.pos)
@@ -327,7 +327,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 
 				if param_sym.kind == .string && receiver_sym.kind == .string {
 					// bypass check for strings
-					// TODO there must be a better way to handle that
+					// TODO: there must be a better way to handle that
 				} else if param_sym.kind !in [.struct_, .alias]
 					|| receiver_sym.kind !in [.struct_, .alias] {
 					c.error('operator methods are only allowed for struct and type alias',
@@ -358,7 +358,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 		}
 	}
-	// TODO c.pref.is_vet
+	// TODO: c.pref.is_vet
 	if c.file.is_test && (!node.is_method && (node.short_name.starts_with('test_')
 		|| node.short_name.starts_with('testsuite_'))) {
 		if !c.pref.is_test {
@@ -540,7 +540,7 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	// If the left expr has an or_block, it needs to be checked for legal or_block statement.
 	left_type := c.expr(mut node.left)
 	c.check_expr_option_or_result_call(node.left, left_type)
-	// TODO merge logic from method_call and fn_call
+	// TODO: merge logic from method_call and fn_call
 	// First check everything that applies to both fns and methods
 	old_inside_fn_arg := c.inside_fn_arg
 	c.inside_fn_arg = true
@@ -576,7 +576,7 @@ fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 			}
 			node.args[i].is_tmp_autofree = true
 		}
-		// TODO copy pasta from above
+		// TODO: copy pasta from above
 		if node.receiver_type == ast.string_type
 			&& node.left !in [ast.Ident, ast.StringLiteral, ast.SelectorExpr] {
 			node.free_receiver = true
@@ -1347,7 +1347,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 				} else {
 					param.typ
 				}
-				// TODO duplicated logic in check_types() (check_types.v)
+				// TODO: duplicated logic in check_types() (check_types.v)
 				// Allow enums to be used as ints and vice versa in translated code
 				if param_type.idx() in ast.integer_type_idxs && arg_typ_sym.kind == .enum_ {
 					continue
@@ -1907,9 +1907,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	if m := c.table.find_method(left_sym, method_name) {
 		method = m
 		has_method = true
-		if left_sym.kind == .interface_ && m.from_embeded_type != 0 {
+		if left_sym.kind == .interface_ && m.from_embedded_type != 0 {
 			is_method_from_embed = true
-			node.from_embed_types = [m.from_embeded_type]
+			node.from_embed_types = [m.from_embedded_type]
 		}
 	} else {
 		if final_left_sym.kind in [.struct_, .sum_type, .interface_, .array] {
@@ -1930,9 +1930,9 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					method = m
 					has_method = true
 					is_generic = true
-					if left_sym.kind == .interface_ && m.from_embeded_type != 0 {
+					if left_sym.kind == .interface_ && m.from_embedded_type != 0 {
 						is_method_from_embed = true
-						node.from_embed_types = [m.from_embeded_type]
+						node.from_embed_types = [m.from_embedded_type]
 					}
 				}
 			}
@@ -2526,7 +2526,7 @@ fn (mut c Checker) spawn_expr(mut node ast.SpawnExpr) ast.Type {
 }
 
 fn (mut c Checker) go_expr(mut node ast.GoExpr) ast.Type {
-	// TODO copypasta from spawn_expr
+	// TODO: copypasta from spawn_expr
 	ret_type := c.call_expr(mut node.call_expr)
 	if node.call_expr.or_block.kind != .absent {
 		c.error('option handling cannot be done in `go` call. Do it when calling `.wait()`',

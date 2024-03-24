@@ -411,7 +411,7 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 				exit(0)
 			} else if file.path.starts_with('./') {
 				// Maybe it's a "./foo.v", linfo.path has an absolute path
-				abs_path := os.join_path(os.getwd(), file.path).replace('/./', '/') // TODO join_path shouldn't have /./
+				abs_path := os.join_path(os.getwd(), file.path).replace('/./', '/') // TODO: join_path shouldn't have /./
 				if abs_path == c.pref.linfo.path {
 					c.check_files([ast_files[i]])
 					exit(0)
@@ -788,7 +788,7 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 				}
 			} else if expr.obj is ast.ConstField && expr.name in c.const_names {
 				if !c.inside_unsafe && !c.pref.translated {
-					// TODO fix this in c2v, do not allow modification of all consts
+					// TODO: fix this in c2v, do not allow modification of all consts
 					// in translated code
 					c.error('cannot modify constant `${expr.name}`', expr.pos)
 				}
@@ -1418,7 +1418,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	c.prevent_sum_type_unwrapping_once = false
 
 	using_new_err_struct_save := c.using_new_err_struct
-	// TODO remove; this avoids a breaking change in syntax
+	// TODO: remove; this avoids a breaking change in syntax
 	if '${node.expr}' == 'err' {
 		c.using_new_err_struct = true
 	}
@@ -1704,7 +1704,7 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 		if checker.reserved_type_names_chk.matches(util.no_cur_mod(field.name, c.mod)) {
 			c.error('invalid use of reserved type `${field.name}` as a const name', field.pos)
 		}
-		// TODO Check const name once the syntax is decided
+		// TODO: Check const name once the syntax is decided
 		if field.name in c.const_names {
 			name_pos := token.Pos{
 				...field.pos
@@ -1837,7 +1837,7 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 	}
 	for i, mut field in node.fields {
 		if !c.pref.experimental && util.contains_capital(field.name) {
-			// TODO C2V uses hundreds of enums with capitals, remove -experimental check once it's handled
+			// TODO: C2V uses hundreds of enums with capitals, remove -experimental check once it's handled
 			c.error('field name `${field.name}` cannot contain uppercase letters, use snake_case instead',
 				field.pos)
 		}
@@ -2104,7 +2104,7 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 				}
 			}
 			c.check_expr_option_or_result_call(node.expr, or_typ)
-			// TODO This should work, even if it's prolly useless .-.
+			// TODO: This should work, even if it's prolly useless .-.
 			// node.typ = c.check_expr_option_or_result_call(node.expr, ast.void_type)
 		}
 		ast.FnDecl {
@@ -4580,7 +4580,7 @@ fn (mut c Checker) enum_val(mut node ast.EnumVal) ast.Type {
 	}
 	mut typ := ast.new_type(typ_idx)
 	if c.pref.translated || c.file.is_translated {
-		// TODO make more strict
+		// TODO: make more strict
 		node.typ = typ
 		return typ
 	}
@@ -4596,7 +4596,7 @@ fn (mut c Checker) enum_val(mut node ast.EnumVal) ast.Type {
 	}
 	fsym := c.table.final_sym(typ)
 	if fsym.kind != .enum_ && !c.pref.translated && !c.file.is_translated {
-		// TODO in C int fields can be compared to enums, need to handle that in C2V
+		// TODO: in C int fields can be compared to enums, need to handle that in C2V
 		if typ_sym.kind == .placeholder {
 			// If it's a placeholder, the type doesn't exist, print
 			// an error that makes sense here.
@@ -4837,7 +4837,7 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) bool {
 	match sym.kind {
 		.placeholder {
 			// if sym.language == .c && sym.name == 'C.time_t' {
-			// TODO temporary hack until we can define C aliases
+			// TODO: temporary hack until we can define C aliases
 			// return true
 			//}
 			// if sym.language == .v && !sym.name.starts_with('C.') {
@@ -5034,7 +5034,7 @@ fn (mut c Checker) goto_stmt(node ast.GotoStmt) {
 fn (mut c Checker) check_unused_labels() {
 	for name, label in c.goto_labels {
 		if !label.is_used {
-			// TODO show label's location
+			// TODO: show label's location
 			c.warn('label `${name}` defined and not used', label.pos)
 			c.goto_labels[name].is_used = true // so that this warning is not shown again
 		}

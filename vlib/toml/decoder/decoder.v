@@ -74,7 +74,7 @@ fn (d Decoder) decode_number(mut n ast.Number) ! {
 pub fn decode_quoted_escapes(mut q ast.Quoted) ! {
 	// Setup a scanner in stack memory for easier navigation.
 	mut eat_whitespace := false
-	// TODO use string builder
+	// TODO: use string builder
 	mut decoded_s := ''
 	// See https://toml.io/en/v1.0.0#string for more info on string types.
 	is_basic := q.quote == `\"`

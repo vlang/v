@@ -467,7 +467,7 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 			g.typedefs.writeln('typedef struct ${name} ${name};')
 		}
 	}
-	// TODO avoid buffer manip
+	// TODO: avoid buffer manip
 	start_pos := g.type_definitions.len
 
 	mut pre_pragma := ''

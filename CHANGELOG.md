@@ -146,7 +146,7 @@
 - io: add a `string_reader` submodule (#20893)
 - toml: return an error from toml.parse_file(), when the passed file path does not exist (#20912)
 - x.json2: fix encoder commas (#20916)
-- time: microoptimise the Time formating methods (use custom number->string conversion, instead of string interpolation) (#20917)
+- time: microoptimise the Time formatting methods (use custom number->string conversion, instead of string interpolation) (#20917)
 - x.json2: improve performance of string encoding for unicode special characters and emojis (#20867)
 - x.json2: minor performance improvement, update benchmark recommendations (#20954)
 - os: workaround a `-prod -cc gcc` bug, affecting os.open_file (fix #20923) (related to #20872) (#20960)
@@ -168,7 +168,7 @@
 - net: remove unused import in tcp_test.v
 - x.vweb: add error, when static directory does not exist (#20455)
 - net.urllib: fix parsing url error, when querypath is '//' (fix #20476) (#20504)
-- vweb: unify listen addres from tcp and print (#20448)
+- vweb: unify listen address from tcp and print (#20448)
 - net.unix: make the error messages in unix_test.v more specific (#20537)
 - vweb: add an optional Context.before_accept_loop/0 method, to make testing easier and more robust (#20538)
 - vweb: fix routes without results in vweb_app_test.v (#20548)
@@ -182,7 +182,7 @@
 - x.vweb: add cors middleware (#20713)
 - x.vweb: add new sessions module (#20642)
 - net: fix non-blocking read/write (#20438)
-- net: reduce flakyness of tcp test (#20761)
+- net: reduce flakiness of tcp test (#20761)
 - picoev: renaming, doc (#20567)
 - x.vweb: add full static host support, for urls ending with /folder/ , where the folder backing it, has `index.html` inside (#20784)
 - x.sessions: change session Store interface to use results instead of options (#20796)
@@ -464,7 +464,7 @@
 - Fix arrays alias built-in methods call(fix #19896) (#19910)
 - Fix generic array initialization (fix #19903) (#19916)
 - Fix option sumtype auto deref (#19919)
-- Ast, checker, cgen: fix interface embeded methods call(fix #16496) (#19936)
+- Ast, checker, cgen: fix interface embedded methods call(fix #16496) (#19936)
 - Fix ref and deref when an interface is used as a function parameter (fix #19947) (#19966)
 - Fix auto str for interface struct member which implements str method (#19970)
 - Fix generics call with interface arg (fix #19976) (#20002)
@@ -559,7 +559,7 @@
 - Fix fn call with option call argument in autofree mode (#19515)
 - Bring back pascal case check for aliases
 - C.xx = C.yy aliases
-- Allow casted integeral types in match ranges (#19572)
+- Allow casted integral types in match ranges (#19572)
 - Warn about byte deprecation, when used as a fn parameter (#19629)
 - Allow size of fixed array to be integral casts (#19663)
 - Fix generic array append (#19658)
@@ -631,7 +631,7 @@
 - orm: make is_null/is_not_null unary ops; don't bind null in where (#19635)
 
 #### Database drivers
-- pg: hande C calls, move to .c.v files (#19739)
+- pg: handle C calls, move to .c.v files (#19739)
 
 #### Native backend
 - native: support `-no-builtin` (generate executables < 1KB Linux with `v -no-builtin -b native examples/hello_world.v`)
@@ -654,7 +654,7 @@
 
 #### vfmt
 - Remove additional line breaks after call_expr before params struct args (#19795)
-- Fix map value aligment when using keys with uft8 symbols (#19689)
+- Fix map value alignment when using keys with uft8 symbols (#19689)
 - Align ternary expressions in const blocks (#19721)
 - Respect range index expressions in match branches (#19684)
 - Respect raw strings in `$embed_file(r'/some/path')` expressions (#19753)
@@ -1021,7 +1021,7 @@ https://github.com/vlang/v/blob/master/changelogs0.x/0.4.md
 - Disallow type matching with primitive vars.
 - Warning instead of error for unnecessary brackets in if/match.
 - Include import aliases when checking for import duplicates.
-- Fix infering generic array type in nested call.
+- Fix inferring generic array type in nested call.
 - Allow casted `enum val` and `const` as fixed array size.
 - Disallow multiple return values in const declarations.
 - Fix contains() with array of interfaces.

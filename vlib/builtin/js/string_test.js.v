@@ -670,7 +670,7 @@ fn test_repeat() {
 	assert s2.repeat(5) == s2
 	assert s2.repeat(1) == s2
 	assert s2.repeat(0) == s2
-	// TODO Add test for negative values
+	// TODO: Add test for negative values
 }
 
 fn test_starts_with() {

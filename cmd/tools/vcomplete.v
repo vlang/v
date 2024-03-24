@@ -525,7 +525,7 @@ fn auto_complete_request(args []string) []string {
 				add_sep := if part == '~' { os.path_separator } else { '' }
 				part = part.replace_once('~', os.home_dir().trim_right(os.path_separator)) + add_sep
 			}
-			is_abs_path := part.starts_with(os.path_separator) // TODO Windows support for drive prefixes
+			is_abs_path := part.starts_with(os.path_separator) // TODO: Windows support for drive prefixes
 			if part.ends_with(os.path_separator) || part == '.' || part == '..' {
 				// 'v <command>(.*/$|.|..)<tab>' -> output full directory list
 				ls_path = '.' + os.path_separator + part

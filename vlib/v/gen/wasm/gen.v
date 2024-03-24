@@ -320,7 +320,7 @@ pub fn (mut g Gen) bare_function_frame(func_start wasm.PatchPos) {
 	// stack pointer is perfectly acceptable.
 	//
 	if g.stack_frame != 0 {
-		prolouge := g.func.patch_pos()
+		prologue := g.func.patch_pos()
 		{
 			g.func.global_get(g.sp())
 			g.func.i32_const(i32(g.stack_frame))
@@ -332,7 +332,7 @@ pub fn (mut g Gen) bare_function_frame(func_start wasm.PatchPos) {
 				g.func.local_set(g.bp())
 			}
 		}
-		g.func.patch(func_start, prolouge)
+		g.func.patch(func_start, prologue)
 		if !g.is_leaf_function {
 			g.func.global_get(g.sp())
 			g.func.i32_const(i32(g.stack_frame))

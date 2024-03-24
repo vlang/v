@@ -228,7 +228,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 	mut node := unsafe { node_ }
 	match mut node {
 		ast.EmptyExpr {
-			// TODO make sure this doesn't happen
+			// TODO: make sure this doesn't happen
 			// panic('Walker: EmptyExpr')
 		}
 		ast.ComptimeType {}

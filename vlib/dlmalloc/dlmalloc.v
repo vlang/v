@@ -199,7 +199,7 @@ fn overhead_for(c &Chunk) usize {
 	}
 }
 
-// In order for dlmalloc to efficently manage memory, it needs a way to communicate with the underlying platform.
+// In order for dlmalloc to efficiently manage memory, it needs a way to communicate with the underlying platform.
 // This `Allocator` type provides an interface for this communication.
 //
 //
@@ -954,7 +954,7 @@ fn (mut dl Dlmalloc) malloc_real(size usize) voidptr {
 
 				// todo(playXE): Find out why in the world this part of code does not work in
 				// some programs (esp. x.json2). Theoretically disabling this path just
-				// makes fragmentation a little worser but nothing really bad should happen
+				// makes fragmentation a little worse but nothing really bad should happen
 				if false && smallbits != 0 {
 					leftbits := (smallbits << idx) & left_bits(1 << idx)
 					leastbit := least_bit(leftbits)

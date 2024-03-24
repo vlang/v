@@ -69,7 +69,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	pos := g.out.len
 	should_bundle_module := util.should_bundle_module(node.mod)
 	if g.pref.build_mode == .build_module {
-		// TODO true for not just "builtin"
+		// TODO: true for not just "builtin"
 		// TODO: clean this up
 		mod := if g.is_builtin_mod { 'builtin' } else { node.name.all_before_last('.') }
 		// for now dont skip generic functions as they are being marked as static
@@ -102,7 +102,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	if node.is_main {
 		g.has_main = true
 	}
-	// TODO PERF remove this from here
+	// TODO: PERF remove this from here
 	is_backtrace := node.name.starts_with('backtrace')
 		&& node.name in ['backtrace_symbols', 'backtrace', 'backtrace_symbols_fd']
 	if is_backtrace {
@@ -129,7 +129,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 }
 
 fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
-	// TODO For some reason, build fails with autofree with this line
+	// TODO: For some reason, build fails with autofree with this line
 	// as it's only informative, comment it for now
 	// g.gen_attrs(it.attrs)
 	if node.language == .c {
@@ -199,7 +199,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		g.cur_fn = cur_fn_save
 	}
 	unsafe {
-		// TODO remove unsafe
+		// TODO: remove unsafe
 		g.cur_fn = node
 	}
 	fn_start_pos := g.out.len
@@ -579,7 +579,7 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 	}
 	ctx_struct := g.closure_ctx(node.decl)
 	// it may be possible to optimize `memdup` out if the closure never leaves current scope
-	// TODO in case of an assignment, this should only call "__closure_set_data" and "__closure_set_function" (and free the former data)
+	// TODO: in case of an assignment, this should only call "__closure_set_data" and "__closure_set_function" (and free the former data)
 	g.write('__closure_create(${fn_name}, (${ctx_struct}*) memdup_uncollectable(&(${ctx_struct}){')
 	g.indent++
 	for var in node.inherited_vars {
@@ -1614,7 +1614,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		|| node.from_embed_types.len != 0 || (left_type.has_flag(.shared_f) && node.name != 'str')) {
 		// The receiver is a reference, but the caller provided a value
 		// Add `&` automatically.
-		// TODO same logic in call_args()
+		// TODO: same logic in call_args()
 		if !is_range_slice {
 			if !node.left.is_lvalue() {
 				g.write('ADDR(${rec_cc_type}, ')
@@ -1856,7 +1856,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		// For `[c: 'P_TryMove'] fn p_trymove( ... `
 		// every time `p_trymove` is called, `P_TryMove` must be generated instead.
 		if f := g.table.find_fn(node.name) {
-			// TODO PERF fn lookup for each fn call in translated mode
+			// TODO: PERF fn lookup for each fn call in translated mode
 			if cattr := f.attrs.find_first('c') {
 				name = cattr.arg
 			}
@@ -2130,7 +2130,7 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 	// like `foo(get_string())` or `foo(a + b)`
 	mut free_tmp_arg_vars := g.is_autofree && !g.is_builtin_mod && node.args.len > 0
 		&& !node.args[0].typ.has_flag(.option)
-		&& !node.args[0].typ.has_flag(.result) // TODO copy pasta checker.v
+		&& !node.args[0].typ.has_flag(.result) // TODO: copy pasta checker.v
 	if !free_tmp_arg_vars {
 		return
 	}
@@ -2223,7 +2223,7 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 		match mut obj {
 			ast.Var {
 				// if var.typ == 0 {
-				// // TODO why 0?
+				// // TODO: why 0?
 				// continue
 				// }
 				is_option := obj.typ.has_flag(.option)
@@ -2239,7 +2239,7 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 					// this means this tmp expr var has already been freed
 					continue
 				}
-				obj.is_used = true // TODO bug? sets all vars is_used to true
+				obj.is_used = true // TODO: bug? sets all vars is_used to true
 				g.autofree_variable(obj, is_option)
 				// g.nr_vars_to_free--
 			}
@@ -2369,7 +2369,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			}
 		} else {
 			if use_tmp_var_autofree {
-				// TODO copypasta, move to an inline fn
+				// TODO: copypasta, move to an inline fn
 				fn_name := node.name.replace('.', '_')
 				name := '_arg_expr_${fn_name}_${i + 1}_${node.pos.pos}'
 				g.write('/*af arg2*/' + name)

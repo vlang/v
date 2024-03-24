@@ -409,7 +409,7 @@ pub fn compress(data []u8, params CompressParams) ![]u8 {
 	}
 	check_zstd(cctx.set_parameter(.zstd_c_compression_level, params.compression_level))!
 	$if !(tinyc && windows) {
-		// TODO: tinyc on windows doesn't support mutiple thread
+		// TODO: tinyc on windows doesn't support multiple thread
 		check_zstd(cctx.set_parameter(.zstd_c_nb_workers, params.nb_threads))!
 	}
 	check_zstd(cctx.set_parameter(.zstd_c_checksum_flag, if params.checksum_flag { 1 } else { 0 }))!
@@ -457,7 +457,7 @@ pub fn new_cctx(params CompressParams) !&ZSTD_CCtx {
 	}
 	check_zstd(cctx.set_parameter(.zstd_c_compression_level, params.compression_level))!
 	$if !(tinyc && windows) {
-		// TODO: tinyc on windows doesn't support mutiple thread
+		// TODO: tinyc on windows doesn't support multiple thread
 		check_zstd(cctx.set_parameter(.zstd_c_nb_workers, params.nb_threads))!
 	}
 	check_zstd(cctx.set_parameter(.zstd_c_checksum_flag, if params.checksum_flag { 1 } else { 0 }))!

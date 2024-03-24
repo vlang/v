@@ -316,7 +316,7 @@ pub fn (mut rng PRNG) f64_in_range(min f64, max f64) !f64 {
 	return min + rng.f64n(max - min)!
 }
 
-// ulid generates an Unique Lexicographically sortable IDentifier.
+// ulid generates an unique lexicographically sortable identifier.
 // See https://github.com/ulid/spec .
 // Note: ULIDs can leak timing information, if you make them public, because
 // you can infer the rate at which some resource is being created, like
@@ -661,7 +661,7 @@ const english_letters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
 const hex_chars = 'abcdef0123456789'
 const ascii_chars = '!"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ\\^_`abcdefghijklmnopqrstuvwxyz{|}~'
 
-// ulid generates an Unique Lexicographically sortable IDentifier.
+// ulid generates an unique lexicographically sortable identifier.
 // See https://github.com/ulid/spec .
 // Note: ULIDs can leak timing information, if you make them public, because
 // you can infer the rate at which some resource is being created, like

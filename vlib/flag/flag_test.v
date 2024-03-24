@@ -321,7 +321,7 @@ fn test_multiple_arguments() {
 		'-c',
 		'3.45',
 	])
-	// TODO Move to array comparison once it's implemented
+	// TODO: Move to array comparison once it's implemented
 	// assert fp.int_multi('some-flag', `a`, '') == [2, 3, 5] &&
 	//	fp.string_multi('some-flag', `b`, '') == ['a', 'c', 'b'] &&
 	//	fp.float_multi('some-flag', `c`, '') == [1.23, 2.34, 3.45]

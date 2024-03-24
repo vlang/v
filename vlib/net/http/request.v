@@ -218,7 +218,7 @@ fn (req &Request) http_do(host string, method Method, path string) !Response {
 	mut client := net.dial_tcp(host)!
 	client.set_read_timeout(req.read_timeout)
 	client.set_write_timeout(req.write_timeout)
-	// TODO this really needs to be exposed somehow
+	// TODO: this really needs to be exposed somehow
 	client.write(s.bytes())!
 	$if trace_http_request ? {
 		eprintln('> ${s}')

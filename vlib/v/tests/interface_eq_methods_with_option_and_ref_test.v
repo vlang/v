@@ -14,7 +14,7 @@ pub struct Struct {
 	field2 ?&Iface
 }
 
-// test non-ref and embeded
+// test non-ref and embedded
 pub struct Mixin {
 	Derived
 	Struct

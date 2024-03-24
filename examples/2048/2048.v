@@ -712,7 +712,7 @@ fn (mut app App) handle_tap() {
 			} else if avgy < (m * 9 / 10) + ypad {
 				app.new_game()
 			} else {
-				// TODO remove and implement an actual way to toggle themes on mobile
+				// TODO: remove and implement an actual way to toggle themes on mobile
 			}
 		}
 	} else if app.state == .over {

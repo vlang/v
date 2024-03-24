@@ -78,7 +78,7 @@ fn test_defer_with_anon_fn() {
 	}()
 	x := fn () {
 		defer {
-			println('defered 2')
+			println('deferred 2')
 		}
 		return
 	}

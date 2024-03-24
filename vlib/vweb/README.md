@@ -323,7 +323,7 @@ executed when the url starts with the defined key.
 In the following example, if a user navigates to `/path/to/test` the middleware
 is executed in the following order: `middleware_func`, `other_func`, `global_middleware`.
 The middleware is executed in the same order as they are defined and if any function in
-the chain returns `false` the propogation is stopped.
+the chain returns `false` the propagation is stopped.
 
 **Example:**
 ```v

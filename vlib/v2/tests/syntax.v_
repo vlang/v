@@ -633,7 +633,7 @@ fn main_a() {
 		select from User where name == 'first${user_suffix}'
 	}
 
-	// REMOVE BELOW - TEMP TESTING OR MOVE TO APPRIPRIATE PLACE ABOVE
+	// TODO: REMOVE BELOW - TEMP TESTING OR MOVE TO APPROPRIATE PLACE ABOVE
 
 	x.member.free()
 	x.member.submember1.free()

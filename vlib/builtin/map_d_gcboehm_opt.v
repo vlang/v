@@ -98,7 +98,7 @@ fn new_map_noscan_key_value(key_bytes int, value_bytes int, hash_fn MapHashFn, k
 fn new_map_init_noscan_key(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn, n int, key_bytes int, value_bytes int, keys voidptr, values voidptr) map {
 	mut out := new_map_noscan_key(key_bytes, value_bytes, hash_fn, key_eq_fn, clone_fn,
 		free_fn)
-	// TODO pre-allocate n slots
+	// TODO: pre-allocate n slots
 	mut pkey := &u8(keys)
 	mut pval := &u8(values)
 	for _ in 0 .. n {
@@ -114,7 +114,7 @@ fn new_map_init_noscan_key(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapClo
 fn new_map_init_noscan_value(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn, n int, key_bytes int, value_bytes int, keys voidptr, values voidptr) map {
 	mut out := new_map_noscan_value(key_bytes, value_bytes, hash_fn, key_eq_fn, clone_fn,
 		free_fn)
-	// TODO pre-allocate n slots
+	// TODO: pre-allocate n slots
 	mut pkey := &u8(keys)
 	mut pval := &u8(values)
 	for _ in 0 .. n {
@@ -130,7 +130,7 @@ fn new_map_init_noscan_value(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapC
 fn new_map_init_noscan_key_value(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn, n int, key_bytes int, value_bytes int, keys voidptr, values voidptr) map {
 	mut out := new_map_noscan_key_value(key_bytes, value_bytes, hash_fn, key_eq_fn, clone_fn,
 		free_fn)
-	// TODO pre-allocate n slots
+	// TODO: pre-allocate n slots
 	mut pkey := &u8(keys)
 	mut pval := &u8(values)
 	for _ in 0 .. n {

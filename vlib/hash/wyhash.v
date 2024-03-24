@@ -9,7 +9,7 @@
 // currently the C version performs slightly better
 // because it uses 128 bit int when available and
 // branch prediction hints. the C version will be
-// removed once the perfomance is matched.
+// removed once the performance is matched.
 // you can test performance by running:
 // `v run cmd/tools/bench/wyhash.v`
 // try running with and without the `-prod` flag

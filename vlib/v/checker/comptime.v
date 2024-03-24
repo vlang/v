@@ -84,7 +84,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		return c.table.find_type_idx('v.embed_file.EmbedFileData')
 	}
 	if node.is_vweb {
-		// TODO assoc parser bug
+		// TODO: assoc parser bug
 		save_cur_fn := c.table.cur_fn
 		pref_ := *c.pref
 		pref2 := &pref.Preferences{

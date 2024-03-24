@@ -65,7 +65,7 @@ fn C.sapp_request_quit()
 // cancel a pending quit (when SAPP_EVENTTYPE_QUIT_REQUESTED has been received)
 fn C.sapp_cancel_quit()
 
-// intiate a "hard quit" (quit application without sending SAPP_EVENTTYPE_QUIT_REQUSTED)
+// intiate a "hard quit" (quit application without sending SAPP_EVENTTYPE_QUIT_REQUESTED)
 fn C.sapp_quit()
 
 // call from inside event callback to consume the current event (don't forward to platform)

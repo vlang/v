@@ -239,7 +239,7 @@ pub fn cp(src string, dst string) ! {
 			return error_with_code('cp (permission): failed to write to ${dst} (fp_to: ${fp_to})',
 				int(fp_to))
 		}
-		// TODO use defer{} to close files in case of error or return.
+		// TODO: use defer{} to close files in case of error or return.
 		// Currently there is a C-Error when building.
 		mut buf := [1024]u8{}
 		mut count := 0
@@ -351,7 +351,7 @@ fn vpclose(f voidptr) int {
 // system works like `exec`, but only returns a return code.
 pub fn system(cmd string) int {
 	// if cmd.contains(';') || cmd.contains('&&') || cmd.contains('||') || cmd.contains('\n') {
-	// TODO remove panic
+	// TODO: remove panic
 	// panic(';, &&, || and \\n are not allowed in shell commands')
 	// }
 	mut ret := 0
