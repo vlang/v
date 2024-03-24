@@ -225,8 +225,18 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 			return
 		}
 	} else {
+		if expected.has_flag(.option) {
+			got_is_ptr := got.is_ptr()
+				|| (arg.expr is ast.Ident && (arg.expr as ast.Ident).is_mut())
+			if (expected.is_ptr() && !got_is_ptr) || (!expected.is_ptr() && got.is_ptr()) {
+				got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
+				return error('cannot use `${got_typ_str}` as `${expected_typ_str}`')
+			}
+		}
+
 		exp_sym_idx := c.table.sym(expected).idx
 		got_sym_idx := c.table.sym(got).idx
+
 		if expected.is_ptr() && got.is_ptr() && exp_sym_idx != got_sym_idx
 			&& exp_sym_idx in [ast.u8_type_idx, ast.byteptr_type_idx]
 			&& got_sym_idx !in [ast.u8_type_idx, ast.byteptr_type_idx] {

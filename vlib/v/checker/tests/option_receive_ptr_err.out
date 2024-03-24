@@ -1,0 +1,7 @@
+vlib/v/checker/tests/option_receive_ptr_err.vv:14:23: error: cannot use `&MyStruct` as `?MyStruct` in argument 1 to `unwrap_option`
+   12 | 
+   13 | fn wrap_unwrap_ptr(event_data &MyStruct) int {
+   14 |     return unwrap_option(event_data)
+      |                          ~~~~~~~~~~
+   15 | }
+   16 |
