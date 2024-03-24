@@ -57,6 +57,8 @@ jobs:
       #   run: V_CI_CSTRICT=1 ./v -cstrict test-self
       - name: Build examples
         run: ./v -W build-examples
+      - name: Run the submodule example, using a relative path
+        run: ./v -W run examples/submodule
       - name: Build v tools
         run: ./v -W build-tools
       - name: Build v binaries
