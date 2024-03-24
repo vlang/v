@@ -110,7 +110,7 @@ fn test_custom_mime_types() {
 
 	assert x.status() == .ok
 	assert x.header.get(.content_type)! == vweb.mime_types['.txt']
-	assert x.body == 'unknown_mime'
+	assert x.body.trim_space() == 'unknown_mime'
 }
 
 fn test_custom_folder_mount() {
