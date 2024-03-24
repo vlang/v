@@ -23,7 +23,7 @@ pub enum RedirectType {
 @[heap]
 pub struct Context {
 mut:
-	// vweb wil try to infer the content type base on file extension,
+	// vweb will try to infer the content type base on file extension,
 	// and if `content_type` is not empty the `Content-Type` header will always be
 	// set to this value
 	content_type string
@@ -277,8 +277,8 @@ pub fn (mut ctx Context) set_content_type(mime string) {
 // takeover_conn prevents vweb from automatically sending a response and closing
 // the connection. You are responsible for closing the connection.
 // In takeover mode if you call a Context method the response will be directly
-// send over the connetion and you can send multiple responses.
-// This function is usefull when you want to keep the connection alive and/or
+// send over the connection and you can send multiple responses.
+// This function is useful when you want to keep the connection alive and/or
 // send multiple responses. Like with the SSE.
 pub fn (mut ctx Context) takeover_conn() {
 	ctx.takeover = true
