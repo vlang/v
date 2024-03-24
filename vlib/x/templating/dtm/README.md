@@ -7,7 +7,7 @@ templates with Vweb, without the need to recompile the application with every ch
 
 Using the dynamic template manager ( named '**dtm**' in this readme) is relatively straightforward.
 You just need to initialize an instance. Then, call the '**expand**' function in the code that
-manages your template. 
+manages your template.
 
 Before starting, You can specify a folder, but it is not mandatory to store the generated cache. If
 nothing is specified or if there is a problem with the targeted folder (for example, a permission
@@ -50,6 +50,7 @@ fn main() {
 	println(render)
 }
 ```
+
 #### and its template text format :
 
 ```
@@ -109,17 +110,17 @@ pub fn (mut app App) index(mut ctx Context) vweb.Result {
 
 #### and its template html format :
 
-```html 
-<!DOCTYPE html>
+```html
+<!doctype html>
 <html>
-  <head>
-    <title>@title</title>
-  </head>
-  <body>
-    <div id="container">
-      <H1>@title</H1>
-    </div>
-  </body>
+	<head>
+		<title>@title</title>
+	</head>
+	<body>
+		<div id="container">
+			<h1>@title</h1>
+		</div>
+	</body>
 </html>
 ```
 
@@ -140,12 +141,12 @@ Three parameters are available:
 - `def_cache_path` : ( **String** value ) User can define the path of cache folder.
 - `max_size_data_in_mem` : ( **Int** value ) Maximum size of data allowed in memory for each cached
   template. The value must be specified in kilobytes. ( Default is: 500KB / Limit max is : 500KB )
-- `compress_html` : ( **Bool** value ) Light '**minifier**' of the HTML ouput, to remove all
+- `compress_html` : ( **Bool** value ) Light '**minifier**' of the HTML output, to remove all
 unnecessary spacing. ( Default is true, parameter taken into account only for HTML files )
 - `active_cache_server` : ( **Bool** value ) Activate or not the template cache system. ( Default
   is true, ***_Highly recommended to keep it enabled for optimal performance_*** )
 
-Regarding the `compress_html` option, it is recommended for performance reasons to disable it 
+Regarding the `compress_html` option, it is recommended for performance reasons to disable it
 when working directly with raw template generation (i.e., with the cache system disabled).
 
 Use it like this :
@@ -167,18 +168,21 @@ initialize(
 
 - `cache_delay_expiration` ( **i64** value ) Specifies the cache expiration time for the concerned
   page in seconds. ( Default value is **86400** seconds or one day ). You can add any value you
-  want in seconds as long as it remains within the indicated range ( see below ). 
+  want in seconds as long as it remains within the indicated range ( see below ).
 
 Possibility to use already defined cache delay constants like:
+
 - `cache_delay_expiration_at_min` : five minutes
 - `cache_delay_expiration_at_max` : one year
 - `cache_delay_expiration_by_default` : one day
 
 For specific cases, you can cancel the generation and use of cache file, even if the cache system
 is active :
+
 - `cache_delay_expiration` : -1
 
 Or set a cache that will never expire:
+
 - `cache_delay_expiration` : 0
 
 Example :
@@ -216,6 +220,7 @@ expand('path/of/template.html',
 		placeholders: &plhs
 )
 ```
+
 Pay attention to this particular tag: "**_#includehtml**", it enables you to include HTML in the
 dynamic content. Without this tag, all characters will be escaped for obvious security reasons. By
 using this tag, only certain HTML tags are allowed. Here is the list:
@@ -239,26 +244,26 @@ using this tag, only certain HTML tags are allowed. Here is the list:
 An example of a template, corresponding to the previous subsection:
 
 ```html
-<!DOCTYPE html>
+<!doctype html>
 <html>
-  <head>
-    <title>@placeholder_name_1</title>
-  </head>
-  <body>
-    <div id="container">
-      <H1>@placeholder_name_1</H1>
-      <p>@placeholder_name_2</p>
-      @placeholder_name_3
-    </div>
-  </body>
+	<head>
+		<title>@placeholder_name_1</title>
+	</head>
+	<body>
+		<div id="container">
+			<h1>@placeholder_name_1</h1>
+			<p>@placeholder_name_2</p>
+			@placeholder_name_3
+		</div>
+	</body>
 </html>
 ```
+
 You will note that the `'_#includehtml'` directive is not found in the template with
 `'@placeholder_name_3'`, and this is entirely normal. Directives are specially handled by the DTM,
 and including them in the name of your placeholders within the template will result in the
 placeholder not being found because it does not match the key name defined in the map containing
 the dynamic content.
-
 
 Like the traditional template system in V, inclusions or placeholders start with the '**@**'
 character. The traditional inclusion system is still perfectly usable, such as:
