@@ -17,23 +17,23 @@ import encoding.hex
 import x.crypto.chacha20poly1305
 
 fn main() {
-    // plaintext message to be encrypted and authenticated
-    message := "Ladies and Gentlemen of the class of '99: If I could offer you only \
-    one tip for the future, sunscreen would be it.".bytes()
+	// plaintext message to be encrypted and authenticated
+	message := "Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it."
+		.bytes()
 
-    // sets your secure random key
-    key := hex.decode('808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f')!
-    // give yours nonce
-    nonce := hex.decode('070000004041424344454647')!
-    // yours additional data
-    aad := hex.decode('50515253c0c1c2c3c4c5c6c7')!
+	// sets your secure random key
+	key := hex.decode('808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f')!
+	// give yours nonce
+	nonce := hex.decode('070000004041424344454647')!
+	// yours additional data
+	aad := hex.decode('50515253c0c1c2c3c4c5c6c7')!
 
-    // lets doing authenticated encryption
-    ciphertext := chacha20poly1305.encrypt(message, key, nonce, aad)!
+	// lets doing authenticated encryption
+	ciphertext := chacha20poly1305.encrypt(message, key, nonce, aad)!
 
-    // lets perform decryption back
-    plaintext := chacha20poly1305.decrypt(ciphertext, key, nonce, aad)!
+	// lets perform decryption back
+	plaintext := chacha20poly1305.decrypt(ciphertext, key, nonce, aad)!
 
-    assert plaintext == message
+	assert plaintext == message
 }
 ```
