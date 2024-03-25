@@ -60,7 +60,7 @@ pub struct Clipboard {
 	retry_delay int
 mut:
 	hwnd voidptr
-	foo  int // TODO remove
+	foo  int // TODO: remove
 }
 
 fn (cb &Clipboard) get_clipboard_lock() bool {

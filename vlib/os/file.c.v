@@ -291,7 +291,7 @@ pub fn (mut f File) writeln(s string) !int {
 		}
 	}
 	*/
-	// TODO perf
+	// TODO: perf
 	written := int(C.fwrite(s.str, 1, s.len, f.cfile))
 	if written == 0 && s.len != 0 {
 		return error('0 bytes written')
@@ -751,7 +751,7 @@ pub fn (mut f File) write_struct_at[T](t &T, pos u64) ! {
 	}
 }
 
-// TODO `write_raw[_at]` implementations are copy-pasted from `write_struct[_at]`
+// TODO: `write_raw[_at]` implementations are copy-pasted from `write_struct[_at]`
 
 // write_raw writes a single instance of type `T`
 pub fn (mut f File) write_raw[T](t &T) ! {

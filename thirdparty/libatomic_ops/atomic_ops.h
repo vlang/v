@@ -270,7 +270,7 @@
 #   include <machine/sys/inline.h>
 #   define AO_compiler_barrier() _Asm_sched_fence()
 # else
-    /* FIXME - We do not know how to do this.  This is a guess. */
+    /* FIXME: We do not know how to do this.  This is a guess. */
     /* And probably a bad one.                                  */
     static volatile int AO_barrier_dummy;
 #   define AO_compiler_barrier() (void)(AO_barrier_dummy = AO_barrier_dummy)

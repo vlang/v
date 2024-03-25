@@ -51,7 +51,7 @@ pub mut:
 }
 
 // used by vls to avoid leaks
-// TODO remove manual memory management
+// TODO: remove manual memory management
 @[unsafe]
 pub fn (mut t Table) free() {
 	unsafe {
@@ -531,7 +531,7 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) !StructField {
 					return field
 				}
 				// mut info := ts.info as SumType
-				// TODO a more detailed error so that it's easier to fix?
+				// TODO: a more detailed error so that it's easier to fix?
 				return error('field `${name}` does not exist or have the same type in all sumtype variants')
 			}
 			else {}

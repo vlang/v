@@ -935,12 +935,12 @@ fn (mut p Parser) expr(min_bp token.BindingPower) ast.Expr {
 	}
 
 	// expr chaining
-	// TOOD: make sure there are no cases where we get stuck stuck in this loop
+	// TODO: make sure there are no cases where we get stuck stuck in this loop
 	// for p.tok != .eof {
 	for {
 		// as cast
 		// this could be handled with infix instead
-		// if we choose not to support or chaning
+		// if we choose not to support or chaining
 		if p.tok == .key_as {
 			p.next()
 			lhs = ast.AsCastExpr{

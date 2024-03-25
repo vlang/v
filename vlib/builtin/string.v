@@ -354,7 +354,7 @@ pub fn (s string) replace(rep string, with string) string {
 	if !s.contains(rep) {
 		return s.clone()
 	}
-	// TODO PERF Allocating ints is expensive. Should be a stack array
+	// TODO: PERF Allocating ints is expensive. Should be a stack array
 	// Get locations of all reps within this string
 	mut idxs := []int{cap: s.len / rep.len}
 	defer {
@@ -515,7 +515,7 @@ pub fn (s string) replace_char(rep u8, with u8, repeat int) string {
 	if s.len == 0 {
 		return s.clone()
 	}
-	// TODO Allocating ints is expensive. Should be a stack array
+	// TODO: Allocating ints is expensive. Should be a stack array
 	// - string.replace()
 	mut idxs := []int{cap: s.len}
 	defer {
@@ -575,7 +575,7 @@ pub fn (s string) normalize_tabs(tab_len int) string {
 // bool returns `true` if the string equals the word "true" it will return `false` otherwise.
 @[inline]
 pub fn (s string) bool() bool {
-	return s == 'true' || s == 't' // TODO t for pg, remove
+	return s == 'true' || s == 't' // TODO: t for pg, remove
 }
 
 // int returns the value of the string as an integer `'1'.int() == 1`.
@@ -1402,7 +1402,7 @@ pub fn (s string) count(substr string) int {
 		i += substr.len
 		n++
 	}
-	return 0 // TODO can never get here - v doesn't know that
+	return 0 // TODO: can never get here - v doesn't know that
 }
 
 // contains_u8 returns `true` if the string contains the byte value `x`.
@@ -1497,7 +1497,7 @@ pub fn (s string) ends_with(p string) bool {
 }
 
 // to_lower returns the string in all lowercase characters.
-// TODO only works with ASCII
+// TODO: only works with ASCII
 @[direct_array_access]
 pub fn (s string) to_lower() string {
 	unsafe {
@@ -2102,7 +2102,7 @@ pub fn (s string) before(sub string) string {
 // Example: assert '23:34:45.234'.all_before('.') == '23:34:45'
 // Example: assert 'abcd'.all_before('.') == 'abcd'
 pub fn (s string) all_before(sub string) string {
-	// TODO remove dup method
+	// TODO: remove dup method
 	pos := s.index_(sub)
 	if pos == -1 {
 		return s.clone()

@@ -213,7 +213,7 @@ fn build_keys() map[string]Kind {
 	return res
 }
 
-// TODO remove once we have `enum Kind { name('name') if('if') ... }`
+// TODO: remove once we have `enum Kind { name('name') if('if') ... }`
 fn build_token_str() []string {
 	mut s := []string{len: int(Kind._end_)}
 	s[Kind.unknown] = 'unknown'

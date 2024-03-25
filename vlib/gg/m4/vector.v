@@ -191,7 +191,7 @@ pub fn (x Vec4) sum() f32 {
 /*********************************************************************
 * Operators
 *********************************************************************/
-// + returns `a` + `b` (corresponding elements are addded)
+// + returns `a` + `b` (corresponding elements are added)
 @[inline]
 pub fn (a Vec4) + (b Vec4) Vec4 {
 	return Vec4{
@@ -236,7 +236,7 @@ pub fn (a Vec4) % (b Vec4) Vec4 {
 	}
 }
 
-// mul_vec4 returns a vectore, where the corresponding `x` and `y` elements are multiplied
+// mul_vec4 returns a vector, where the corresponding `x` and `y` elements are multiplied
 @[inline]
 pub fn (x Vec4) mul_vec4(y Vec4) Vec4 {
 	return Vec4{

@@ -53,7 +53,7 @@ pub fn (mut m Middleware[T]) use(options MiddlewareOptions[T]) {
 	}
 }
 
-// route_use registers a middlware handler for a specific route(s)
+// route_use registers a middleware handler for a specific route(s)
 pub fn (mut m Middleware[T]) route_use(route string, options MiddlewareOptions[T]) {
 	middleware := RouteMiddleware{
 		url_parts: route.split('/').filter(it != '')
@@ -134,7 +134,7 @@ pub fn encode_gzip[T]() MiddlewareOptions[T] {
 				eprintln('[vweb] error while compressing with gzip: ${err.msg()}')
 				return true
 			}
-			// enables us to have full controll over what response is send over the connection
+			// enables us to have full control over what response is send over the connection
 			// and how.
 			ctx.takeover_conn()
 
@@ -195,7 +195,7 @@ pub:
 	// indicate if clients are able to access other headers than the "CORS-safelisted"
 	// response headers; `Access-Control-Expose-Headers`
 	expose_headers []string
-	// how long the results of a preflight requets can be cached, value is in seconds
+	// how long the results of a preflight request can be cached, value is in seconds
 	// ; `Access-Control-Max-Age`
 	max_age ?int
 }

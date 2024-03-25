@@ -85,7 +85,7 @@ fn is_marker(data string) (string, string) {
 }
 
 // fix_nl returns the data, if it is empty, or if it ends in \n.
-// Otherwise it returns data + a final \n addded.
+// Otherwise it returns data + a final \n added.
 fn fix_nl(data string) string {
 	if data.len == 0 || data[data.len - 1] == `\n` {
 		return data

@@ -224,8 +224,8 @@ pub fn (f Any) to_time() !time.Time {
 			if is_unix_timestamp {
 				return time.unix(f.i64())
 			}
-			// TODO - parse_iso8601
-			// TODO - parse_rfc2822
+			// TODO: parse_iso8601
+			// TODO: parse_rfc2822
 			return time.parse(f)!
 		}
 		else {
@@ -257,7 +257,7 @@ pub fn map_from[T](t T) map[string]Any {
 			} $else $if field.is_option {
 				// TODO
 			} $else {
-				// TODO improve memory usage when convert
+				// TODO: improve memory usage when convert
 				$if field.typ is string {
 					m[field.name] = value.str()
 				} $else $if field.typ is bool {

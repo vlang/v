@@ -705,7 +705,7 @@ fn (mut g Gen) unwrap(typ ast.Type) ast.Type {
 
 // get type size, and calculate size and align and store them to the cache when the type is struct
 fn (mut g Gen) get_type_size(raw_type ast.Type) i32 {
-	// TODO type flags
+	// TODO: type flags
 	typ := g.unwrap(raw_type)
 	if raw_type.is_any_kind_of_pointer() || typ.is_any_kind_of_pointer() {
 		return g.code_gen.address_size()
@@ -1165,7 +1165,7 @@ fn (mut g Gen) gen_concat_expr(node ast.ConcatExpr) {
 	for i, expr in node.vals {
 		offset := g.structs[typ.idx()].offsets[i]
 		g.expr(expr)
-		// TODO expr not on rax
+		// TODO: expr not on rax
 		g.code_gen.mov_reg_to_var(var, main_reg,
 			offset: offset
 			typ: ts.mr_info().types[i]

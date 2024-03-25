@@ -14592,7 +14592,7 @@ _SOKOL_PRIVATE void _sg_wgpu_commit(void) {
 
 _SOKOL_PRIVATE void _sg_wgpu_apply_viewport(int x, int y, int w, int h, bool origin_top_left) {
     SOKOL_ASSERT(_sg.wgpu.pass_enc);
-    // FIXME FIXME FIXME: CLIPPING THE VIEWPORT HERE IS WRONG!!!
+    // FIXME: CLIPPING THE VIEWPORT HERE IS WRONG!!!
     // (but currently required because WebGPU insists that the viewport rectangle must be
     // fully contained inside the framebuffer, but this doesn't make any sense, and also
     // isn't required by the backend APIs)

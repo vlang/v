@@ -285,7 +285,7 @@ fn to_alexcrichton(value ast.Value, array_type int) string {
 				return '{ "type": "float", "value": "${val}" }'
 			}
 			v := value.i64()
-			// TODO workaround https://github.com/vlang/v/issues/9507
+			// TODO: workaround https://github.com/vlang/v/issues/9507
 			if v == i64(-9223372036854775807 - 1) {
 				return '{ "type": "integer", "value": "-9223372036854775808" }'
 			}

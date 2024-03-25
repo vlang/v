@@ -32,7 +32,7 @@ fn (mut p Reader) next() ?&Packet {
 	return unsafe { packets[p.index - 1] }
 }
 
-fn test_for_in_mut_interator_val() {
+fn test_for_in_mut_iterator_val() {
 	r := Reader{}
 	mut rets := []string{}
 

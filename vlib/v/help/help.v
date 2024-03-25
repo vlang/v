@@ -34,7 +34,7 @@ pub fn print_and_exit(topic string, opts ExitOptions) {
 	fail_code := if opts.exit_code != 0 { opts.exit_code } else { 1 }
 	for c in topic {
 		if !c.is_letter() && !c.is_digit() && c != `-` {
-			print_topic_unkown(topic)
+			print_topic_unknown(topic)
 			exit(fail_code)
 		}
 	}
@@ -51,7 +51,7 @@ pub fn print_and_exit(topic string, opts ExitOptions) {
 		}
 	}
 	if topic_path == '' {
-		print_topic_unkown(topic)
+		print_topic_unknown(topic)
 		print_known_topics()
 		exit(fail_code)
 	}
@@ -62,7 +62,7 @@ pub fn print_and_exit(topic string, opts ExitOptions) {
 	exit(opts.exit_code)
 }
 
-fn print_topic_unkown(topic string) {
+fn print_topic_unknown(topic string) {
 	eprintln('error: unknown help topic "${topic}". Use `v help` for usage information.')
 }
 

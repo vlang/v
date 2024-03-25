@@ -67,7 +67,7 @@ fn builtin_init() {
 	}
 }
 
-// TODO copypaste from os
+// TODO: copypaste from os
 // we want to be able to use this here without having to `import os`
 struct ExceptionRecord {
 pub:

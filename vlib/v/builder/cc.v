@@ -794,7 +794,7 @@ fn (mut b Builder) cc_linux_cross() {
 		ldlld = 'ld.lld.exe'
 	}
 	linker_cmd := '${b.quote_compiler_name(ldlld)} ' + linker_args.join(' ')
-	// s = s.replace('SYSROOT', sysroot) // TODO $ inter bug
+	// s = s.replace('SYSROOT', sysroot) // TODO: $ inter bug
 	// s = s.replace('-o hi', '-o ' + c.pref.out_name)
 	if b.pref.show_cc {
 		println(linker_cmd)

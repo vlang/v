@@ -154,7 +154,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		cond := p.expr(0)
 		// 0 .. 10
 		// start := p.tok.lit.int()
-		// TODO use RangeExpr
+		// TODO: use RangeExpr
 		mut high_expr := ast.empty_expr
 		mut is_range := false
 		if p.tok.kind == .ellipsis {

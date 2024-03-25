@@ -320,7 +320,7 @@ fn (mut g Game) get_tetro() {
 	// g.tetro = g.tetros_cache[idx..idx + tetro_size].clone()
 }
 
-// TODO mut
+// TODO: mut
 fn (mut g Game) drop_tetro() {
 	for i in 0 .. tetro_size {
 		tetro := g.tetro[i]

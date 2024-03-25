@@ -27,7 +27,7 @@ enum Action {
 	delete_line
 	move_cursor_left
 	move_cursor_right
-	move_cursor_begining
+	move_cursor_start
 	move_cursor_end
 	move_cursor_word_left
 	move_cursor_word_right
@@ -206,7 +206,7 @@ fn (mut r Readline) analyse(c int) Action {
 			return .delete_word_left
 		} // CTRL + W
 		1 {
-			return .move_cursor_begining
+			return .move_cursor_start
 		} // ^A
 		5 {
 			return .move_cursor_end
@@ -235,7 +235,7 @@ fn (r Readline) analyse_control() Action {
 				`D` { return .move_cursor_left }
 				`B` { return .history_next }
 				`A` { return .history_previous }
-				`H` { return .move_cursor_begining }
+				`H` { return .move_cursor_start }
 				`F` { return .move_cursor_end }
 				`1` { return r.analyse_extended_control() }
 				`2`, `3` { return r.analyse_extended_control_no_eat(u8(sequence)) }
@@ -296,7 +296,7 @@ fn (mut r Readline) execute(a Action, c int) bool {
 		.delete_word_left { r.delete_word_left() }
 		.move_cursor_left { r.move_cursor_left() }
 		.move_cursor_right { r.move_cursor_right() }
-		.move_cursor_begining { r.move_cursor_begining() }
+		.move_cursor_start { r.move_cursor_start() }
 		.move_cursor_end { r.move_cursor_end() }
 		.move_cursor_word_left { r.move_cursor_word_left() }
 		.move_cursor_word_right { r.move_cursor_word_right() }
@@ -505,8 +505,8 @@ fn (mut r Readline) move_cursor_right() {
 	}
 }
 
-// move_cursor_begining moves the cursor to the beginning of the current line.
-fn (mut r Readline) move_cursor_begining() {
+// move_cursor_start moves the cursor to the beginning of the current line.
+fn (mut r Readline) move_cursor_start() {
 	r.cursor = 0
 	r.refresh_line()
 }

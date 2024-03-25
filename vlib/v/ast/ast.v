@@ -550,7 +550,7 @@ pub:
 	is_unsafe             bool        // true, when [unsafe] is used on a fn
 	is_markused           bool        // true, when an explicit `[markused]` tag was put on a fn; `-skip-unused` will not remove that fn
 	is_file_translated    bool        // true, when the file it resides in is `[translated]`
-	receiver              StructField // TODO this is not a struct field
+	receiver              StructField // TODO: this is not a struct field
 	receiver_pos          token.Pos   // `(u User)` in `fn (u User) name()` position
 	is_method             bool
 	is_static_type_method bool      // true for `fn Foo.bar() {}`
@@ -647,18 +647,19 @@ pub:
 	pos                   token.Pos
 	return_type_pos       token.Pos
 pub mut:
-	return_type       Type
-	receiver_type     Type // != 0, when .is_method == true
-	name              string
-	params            []Param
-	source_fn         voidptr // set in the checker, while processing fn declarations // TODO get rid of voidptr
-	usages            int
-	generic_names     []string
-	dep_names         []string // globals or consts dependent names
-	attrs             []Attr   // all fn attributes
-	is_conditional    bool     // true for `[if abc]fn(){}`
-	ctdefine_idx      int      // the index of the attribute, containing the compile time define [if mytag]
-	from_embeded_type Type     // for interface only, fn from the embedded interface
+	return_type        Type
+	receiver_type      Type // != 0, when .is_method == true
+	name               string
+	params             []Param
+	source_fn          voidptr // set in the checker, while processing fn declarations // TODO: get rid of voidptr
+	usages             int
+	generic_names      []string
+	dep_names          []string // globals or consts dependent names
+	attrs              []Attr   // all fn attributes
+	is_conditional     bool     // true for `[if abc]fn(){}`
+	ctdefine_idx       int      // the index of the attribute, containing the compile time define [if mytag]
+	from_embedded_type Type     // for interface only, fn from the embedded interface
+	from_embeded_type  Type     @[deprecated: 'use from_embedded_type instead'; deprecated_after: '2024-03-31']
 }
 
 fn (f &Fn) method_equals(o &Fn) bool {
@@ -710,8 +711,8 @@ pub fn (f &Fn) new_method_with_receiver_type(new_type_ Type) Fn {
 				new_method.params[i].typ = new_type
 			}
 		}
-		new_method.from_embeded_type = if f.from_embeded_type != 0 {
-			f.from_embeded_type
+		new_method.from_embedded_type = if f.from_embedded_type != 0 {
+			f.from_embedded_type
 		} else {
 			f.params[0].typ
 		}

@@ -55,7 +55,7 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	last_pos := p.tok.pos()
 	p.check(.rpar)
 	mut pos := first_pos.extend(last_pos)
-	mut or_stmts := []ast.Stmt{} // TODO remove unnecessary allocations by just using .absent
+	mut or_stmts := []ast.Stmt{} // TODO: remove unnecessary allocations by just using .absent
 	mut or_pos := p.tok.pos()
 	if p.tok.kind == .key_orelse {
 		// `foo() or {}``
@@ -297,7 +297,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut name_pos := p.tok.pos()
 	if p.tok.kind == .name {
 		mut check_name := ''
-		// TODO high order fn
+		// TODO: high order fn
 		is_static_type_method = p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
 			&& p.peek_tok.kind == .dot && language == .v // `fn Foo.bar() {}`
 		if is_static_type_method {
@@ -878,7 +878,7 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 		|| (p.tok.kind == .key_mut && (p.peek_tok.kind in [.amp, .ellipsis, .key_fn, .lsbr]
 		|| p.peek_token(2).kind == .comma || p.peek_token(2).kind == .rpar
 		|| (p.peek_tok.kind == .name && p.peek_token(2).kind == .dot)))
-	// TODO copy paste, merge 2 branches
+	// TODO: copy paste, merge 2 branches
 	if types_only {
 		mut param_no := 1
 		for p.tok.kind != .rpar {
@@ -1009,7 +1009,7 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 				type_pos << p.tok.pos()
 			}
 			if p.tok.kind == .key_mut {
-				// TODO remove old syntax
+				// TODO: remove old syntax
 				if !p.pref.is_fmt {
 					p.warn_with_pos('use `mut f Foo` instead of `f mut Foo`', p.tok.pos())
 				}
@@ -1144,7 +1144,7 @@ fn (mut p Parser) closure_vars() []ast.Param {
 		is_shared := p.tok.kind == .key_shared
 		is_atomic := p.tok.kind == .key_atomic
 		is_mut := p.tok.kind == .key_mut || is_shared || is_atomic
-		// FIXME is_shared & is_atomic aren't used further
+		// FIXME: is_shared & is_atomic aren't used further
 		if is_mut {
 			p.next()
 		}

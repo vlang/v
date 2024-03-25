@@ -302,16 +302,16 @@ fn (e &Encoder) encode_struct[U](val U, level int, mut buf []u8) ! {
 					str_value := val.$(field.name).str()
 					unsafe { buf.push_many(str_value.str, str_value.len) }
 				} $else $if field.is_array {
-					// TODO - replace for `field.typ is $array`
+					// TODO: replace for `field.typ is $array`
 					e.encode_array(value, level + 1, mut buf)!
 				} $else $if field.typ is $array {
-					// e.encode_array(value, level + 1, mut buf)! // FIXME - error: could not infer generic type `U` in call to `encode_array`
+					// e.encode_array(value, level + 1, mut buf)! // FIXME: error: could not infer generic type `U` in call to `encode_array`
 				} $else $if field.typ is $struct {
 					e.encode_struct(value, level + 1, mut buf)!
 				} $else $if field.is_map {
 					e.encode_map(value, level + 1, mut buf)!
 				} $else $if field.is_enum {
-					// TODO - replace for `field.typ is $enum`
+					// TODO: replace for `field.typ is $enum`
 					// str_value := int(val.$(field.name)).str()
 					// unsafe { buf.push_many(str_value.str, str_value.len) }
 					e.encode_value_with_level(val.$(field.name), level + 1, mut buf)!
@@ -389,7 +389,7 @@ fn (e &Encoder) encode_array[U](val []U, level int, mut buf []u8) ! {
 		} $else $if U is $sumtype {
 			e.encode_value_with_level(val[i], level + 1, mut buf)!
 		} $else $if U is $enum {
-			// TODO test
+			// TODO: test
 			e.encode_value_with_level(val[i], level + 1, mut buf)!
 		} $else {
 			return error('type ${typeof(val).name} cannot be array encoded')
@@ -443,7 +443,7 @@ pub fn (f Any) prettify_json_str() string {
 	return buf.bytestr()
 }
 
-// TODO - Need refactor. Is so slow. The longer the string, the lower the performance.
+// TODO: Need refactor. Is so slow. The longer the string, the lower the performance.
 // encode_string returns the JSON spec-compliant version of the string.
 @[direct_array_access]
 fn (e &Encoder) encode_string(s string, mut buf []u8) ! {

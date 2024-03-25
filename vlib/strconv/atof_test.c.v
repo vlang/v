@@ -54,7 +54,7 @@ fn test_atof() {
 	}
 
 	// check conversion case 2 string <==> f64
-	// we don't test atof_quick beacuse we already know the rounding error
+	// we don't test atof_quick because we already know the rounding error
 	for c, x in src_num_str {
 		b := src_num[c].strlong()
 		value := strconv.atof64(x) or { panic(err) }

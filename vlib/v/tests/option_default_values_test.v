@@ -110,7 +110,7 @@ fn test_nested_option_with_opt_fn_call_as_last_value() {
 	assert b == 1
 	c := i_0(0) or { i_0(0) or { 3 } }
 	assert c == 3
-	// TODO Enable once option in boolean expressions are working
+	// TODO: Enable once option in boolean expressions are working
 	// d := b_0(true) or {
 	// 	false && b_0(true) or {
 	// 		true

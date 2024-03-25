@@ -69,7 +69,7 @@ pub fn (app &App) create_todo(mut ctx Context, name string) vweb.Result {
 	// insert the todo into our database
 	sql app.db {
 		insert todo into Todo
-	} or { return ctx.server_error('could not insert a new TODO in the datbase') }
+	} or { return ctx.server_error('could not insert a new TODO in the database') }
 
 	ctx.created_todo = true
 
@@ -127,7 +127,7 @@ pub fn (app &App) delete_todo(mut ctx Context, id int) vweb.Result {
 
 fn main() {
 	os.chdir(os.dir(@FILE))!
-	// create a new App instance with a connection to the datbase
+	// create a new App instance with a connection to the database
 	mut app := &App{
 		db: sqlite.connect('todo.db')!
 	}

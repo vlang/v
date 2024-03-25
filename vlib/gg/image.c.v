@@ -195,7 +195,7 @@ pub fn (mut img Image) update_pixel_data(buf &u8) {
 // create_image_with_size creates an `Image` from `file` in the given
 // `width` x `height` dimension.
 //
-// TODO copypasta
+// TODO: copypasta
 pub fn (mut ctx Context) create_image_with_size(file string, width int, height int) Image {
 	if !gfx.is_valid() {
 		// Sokol is not initialized yet, add stbi object to a queue/cache
@@ -222,7 +222,7 @@ pub fn (mut ctx Context) create_image_with_size(file string, width int, height i
 
 // create_image creates an `Image` from `file`.
 //
-// TODO remove this
+// TODO: remove this
 fn create_image(file string) Image {
 	if !os.exists(file) {
 		println('gg.create_image(): file not found: ${file}')

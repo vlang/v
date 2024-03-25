@@ -28976,7 +28976,7 @@ GC_API GC_push_other_roots_proc GC_CALL GC_get_push_other_roots(void)
             in_allocd_block = is_header_found_async(addr);
 #       endif
         if (!in_allocd_block) {
-            /* FIXME - We should make sure that we invoke the   */
+            /* FIXME: We should make sure that we invoke the   */
             /* old handler with the appropriate calling         */
             /* sequence, which often depends on SA_SIGINFO.     */
 

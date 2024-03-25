@@ -16,7 +16,7 @@ fn vararg_test() {
 	variadic(1, 2, 3)
 }
 
-// TODO Remove `fn main` once vet supports scripts
+// TODO: Remove `fn main` once vet supports scripts
 fn main() {
 	vararg_test()
 

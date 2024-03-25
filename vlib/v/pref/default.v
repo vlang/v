@@ -242,7 +242,7 @@ pub fn default_tcc_compiler() string {
 }
 
 pub fn (mut p Preferences) default_c_compiler() {
-	// TODO fix $if after 'string'
+	// TODO: fix $if after 'string'
 	$if windows {
 		p.ccompiler = 'gcc'
 		return

@@ -191,7 +191,7 @@ pub fn (c &StreamConn) write_timeout() time.Duration {
 	return c.write_timeout
 }
 
-// set_write_timout sets the write timeout
+// set_write_timeout sets the write timeout
 pub fn (mut c StreamConn) set_write_timeout(t time.Duration) {
 	c.write_timeout = t
 }

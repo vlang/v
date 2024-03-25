@@ -34,7 +34,7 @@ fn (mut c Checker) warn(s string, pos token.Pos) {
 
 fn (mut c Checker) error(message string, pos token.Pos) {
 	if (c.pref.translated || c.file.is_translated) && message.starts_with('mismatched types') {
-		// TODO move this
+		// TODO: move this
 		return
 	}
 	mut msg := message.replace('`Array_', '`[]')
@@ -55,7 +55,7 @@ fn (mut c Checker) error(message string, pos token.Pos) {
 
 fn (mut c Checker) fatal(message string, pos token.Pos) {
 	if (c.pref.translated || c.file.is_translated) && message.starts_with('mismatched types') {
-		// TODO move this
+		// TODO: move this
 		return
 	}
 	msg := message.replace('`Array_', '`[]')

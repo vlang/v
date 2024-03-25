@@ -655,7 +655,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 				p.error_with_pos('duplicate method `${name}`', method_start_pos)
 				return ast.InterfaceDecl{}
 			}
-			params_t, _, is_variadic := p.fn_params() // TODO merge ast.Param and ast.Arg to avoid this
+			params_t, _, is_variadic := p.fn_params() // TODO: merge ast.Param and ast.Arg to avoid this
 			mut params := [
 				ast.Param{
 					name: 'x'

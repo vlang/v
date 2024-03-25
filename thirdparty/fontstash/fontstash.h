@@ -102,7 +102,7 @@ typedef struct FONStextIter FONStextIter;
 
 typedef struct FONScontext FONScontext;
 
-// Contructor and destructor.
+// Constructor and destructor.
 FONS_DEF FONScontext* fonsCreateInternal(FONSparams* params);
 FONS_DEF void fonsDeleteInternal(FONScontext* s);
 

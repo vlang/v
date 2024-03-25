@@ -179,7 +179,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 			is_last := j == node.branches.len - 1 && sumtype_index == branch.exprs.len - 1
 			if branch.is_else || (use_ternary && is_last) {
 				if use_ternary {
-					// TODO too many branches. maybe separate ?: matches
+					// TODO: too many branches. maybe separate ?: matches
 					g.write(' : ')
 				} else {
 					g.writeln('')
@@ -424,7 +424,7 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 		if branch.is_else || (use_ternary && is_last) {
 			if node.branches.len > 1 {
 				if use_ternary {
-					// TODO too many branches. maybe separate ?: matches
+					// TODO: too many branches. maybe separate ?: matches
 					g.write(' : ')
 				} else {
 					g.writeln('')

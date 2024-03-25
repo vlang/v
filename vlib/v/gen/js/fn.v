@@ -638,7 +638,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 	for attr in it.attrs {
 		if attr.name == 'async' {
 			if g.pref.output_es5 {
-				verror('cannot use [async] attribute when outputing ES5 source code')
+				verror('cannot use [async] attribute when outputting ES5 source code')
 			}
 			has_go = true
 			break

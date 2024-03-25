@@ -156,7 +156,7 @@ mut:
 pub:
 	// HTTP Request
 	req http.Request
-	// TODO Response
+	// TODO: Response
 pub mut:
 	done bool
 	// time.ticks() from start of vweb connection handle.
@@ -205,9 +205,9 @@ pub fn (ctx Context) init_server() {
 }
 
 // before_accept_loop is called once the vweb app is started, and listening, but before the loop that accepts
-// incomming request connections.
+// incoming request connections.
 // It will be called in the main thread, that runs vweb.run/2 or vweb.run_at/2.
-// It allows you to be notified about the successfull start of your app, and to synchronise your other threads
+// It allows you to be notified about the successful start of your app, and to synchronise your other threads
 // with the webserver start, without error prone and slow pooling or time.sleep waiting.
 // Defining this method is optional.
 pub fn (ctx &Context) before_accept_loop() {
@@ -219,7 +219,7 @@ pub fn (ctx &Context) before_accept_loop() {
 // Defining this method is optional.
 pub fn (ctx Context) before_request() {}
 
-// TODO - test
+// TODO: test
 // vweb intern function
 @[manualfree]
 pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bool {
@@ -276,7 +276,7 @@ pub fn (mut ctx Context) json_pretty[T](j T) Result {
 	return Result{}
 }
 
-// TODO - test
+// TODO: test
 // Response with file as payload
 pub fn (mut ctx Context) file(f_path string) Result {
 	if !os.exists(f_path) {
@@ -306,7 +306,7 @@ pub fn (mut ctx Context) ok(s string) Result {
 	return Result{}
 }
 
-// TODO - test
+// TODO: test
 // Response a server error
 pub fn (mut ctx Context) server_error(ecode int) Result {
 	$if debug {
@@ -342,7 +342,7 @@ pub fn (mut ctx Context) redirect(url string, params RedirectParams) Result {
 
 // Send an not_found response
 pub fn (mut ctx Context) not_found() Result {
-	// TODO add a [must_be_returned] attribute, so that the caller is forced to use `return app.not_found()`
+	// TODO: add a [must_be_returned] attribute, so that the caller is forced to use `return app.not_found()`
 	if ctx.done {
 		return Result{}
 	}
@@ -351,7 +351,7 @@ pub fn (mut ctx Context) not_found() Result {
 	return Result{}
 }
 
-// TODO - test
+// TODO: test
 // Sets a cookie
 pub fn (mut ctx Context) set_cookie(cookie http.Cookie) {
 	cookie_raw := cookie.str()
@@ -367,7 +367,7 @@ pub fn (mut ctx Context) set_content_type(typ string) {
 	ctx.content_type = typ
 }
 
-// TODO - test
+// TODO: test
 // Sets a cookie with a `expire_date`
 pub fn (mut ctx Context) set_cookie_with_expire_date(key string, val string, expire_date time.Time) {
 	cookie := http.Cookie{
@@ -387,7 +387,7 @@ pub fn (ctx &Context) get_cookie(key string) !string {
 	//}
 }
 
-// TODO - test
+// TODO: test
 // Sets the response status
 pub fn (mut ctx Context) set_status(code int, desc string) {
 	if code < 100 || code > 599 {
@@ -397,13 +397,13 @@ pub fn (mut ctx Context) set_status(code int, desc string) {
 	}
 }
 
-// TODO - test
+// TODO: test
 // Adds an header to the response with key and val
 pub fn (mut ctx Context) add_header(key string, val string) {
 	ctx.header.add_custom(key, val) or {}
 }
 
-// TODO - test
+// TODO: test
 // Returns the header data from the key
 pub fn (ctx &Context) get_header(key string) string {
 	return ctx.req.header.get_custom(key) or { '' }
@@ -1042,7 +1042,7 @@ pub fn (mut ctx Context) host_handle_static(host string, directory_path string, 
 	return true
 }
 
-// TODO - test
+// TODO: test
 // mount_static_folder_at - makes all static files in `directory_path` and inside it, available at http://server/mount_path
 // For example: suppose you have called .mount_static_folder_at('/var/share/myassets', '/assets'),
 // and you have a file /var/share/myassets/main.css .
@@ -1051,7 +1051,7 @@ pub fn (mut ctx Context) mount_static_folder_at(directory_path string, mount_pat
 	return ctx.host_mount_static_folder_at('', directory_path, mount_path)
 }
 
-// TODO - test
+// TODO: test
 // host_mount_static_folder_at - makes all static files in `directory_path` and inside it, available at http://host/mount_path
 // For example: suppose you have called .host_mount_static_folder_at('localhost', '/var/share/myassets', '/assets'),
 // and you have a file /var/share/myassets/main.css .
@@ -1067,14 +1067,14 @@ pub fn (mut ctx Context) host_mount_static_folder_at(host string, directory_path
 	return true
 }
 
-// TODO - test
+// TODO: test
 // Serves a file static
 // `url` is the access path on the site, `file_path` is the real path to the file, `mime_type` is the file type
 pub fn (mut ctx Context) serve_static(url string, file_path string) {
 	ctx.host_serve_static('', url, file_path)
 }
 
-// TODO - test
+// TODO: test
 // Serves a file static
 // `url` is the access path on the site, `file_path` is the real path to the file
 // `mime_type` is the file type, `host` is the host to serve the file from

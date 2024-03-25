@@ -728,7 +728,7 @@ fn (mut tm DynamicTemplateManager) remaining_template_request(b bool, v int) {
 // The manager handles cache operations in a multithreaded context, accepting up to a list of 200 operation requests. (Define in 'cache_handler_channel_cap' constant)
 // The HTML rendering is stored as a u8 array.
 //
-// TODO - Currently, the cache manager stops when it encounters an internal error requiring a restart of the program.
+// TODO: Currently, the cache manager stops when it encounters an internal error requiring a restart of the program.
 // ( it is designed to ignore external errors since these are already handled in a way that ensures no cache processing requests are affected ),
 // A recovery system will need to be implemented to ensure service continuity.
 //

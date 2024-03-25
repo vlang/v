@@ -514,7 +514,7 @@ const c_headers = c_helper_macros + c_unsigned_comparison_functions + c_common_m
 	r'
 // c_headers
 typedef int (*qsort_callback_func)(const void*, const void*);
-#include <stdio.h>  // TODO remove all these includes, define all function signatures and types manually
+#include <stdio.h>  // TODO: remove all these includes, define all function signatures and types manually
 #include <stdlib.h>
 #include <string.h>
 

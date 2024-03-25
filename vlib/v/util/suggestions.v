@@ -71,9 +71,9 @@ pub fn (s Suggestion) say(msg string) string {
 	mut res := msg
 	mut found := false
 	if s.known.len > 0 {
-		top_posibility := s.known.last()
-		if top_posibility.similarity > 0.5 {
-			val := top_posibility.value
+		top_possibility := s.known.last()
+		if top_possibility.similarity > 0.5 {
+			val := top_possibility.value
 			if !val.starts_with('[]') {
 				res += '.\nDid you mean `${highlight_suggestion(val)}`?'
 				found = true

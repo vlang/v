@@ -99,8 +99,8 @@ fn test_remove_from_bst_one() {
 	assert bst.in_order_traversal() == [1, 10, 20]
 }
 
-// Another test n the remove BST, this remove an intermidia node
-// that it is a triky operation.
+// Another test n the remove BST, this remove an intermediate node
+// that it is a tricky operation.
 fn test_remove_from_bst_two() {
 	mut bst := BSTree[int]{}
 	assert bst.insert(10)

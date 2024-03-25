@@ -79,7 +79,7 @@ pub fn (f Foo) set[T, B](mut opt Optional[T], value T, b B) {
 	opt.typ = typeof(b).name
 }
 
-fn test_inconstent_types_generics_method_return_generics_struct() {
+fn test_inconsistent_types_generics_method_return_generics_struct() {
 	foo := Foo{}
 	mut o := foo.new_some[int, string](23, 'aaa')
 	println(foo.some[int](o))

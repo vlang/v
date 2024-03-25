@@ -48,7 +48,7 @@ fn run_app_test() {
 	if _ := app.handle_static('testdata', true) {
 		assert true == false, 'should throw unknown mime type error'
 	} else {
-		assert err.msg().starts_with('unknown MIME type for file extension ".what"'), 'throws error on unkown mime type'
+		assert err.msg().starts_with('unknown MIME type for file extension ".what"'), 'throws error on unknown mime type'
 	}
 
 	app.static_mime_types['.what'] = vweb.mime_types['.txt']

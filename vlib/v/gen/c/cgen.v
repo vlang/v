@@ -1010,7 +1010,7 @@ fn (mut g Gen) typ(t ast.Type) string {
 fn (mut g Gen) base_type(_t ast.Type) string {
 	t := g.unwrap_generic(_t)
 	if g.pref.nofloat {
-		// todo compile time if for perf?
+		// TODO: compile time if for perf?
 		if t == ast.f32_type {
 			return 'u32'
 		} else if t == ast.f64_type {
@@ -1082,7 +1082,7 @@ fn (mut g Gen) expr_string_surround(prepend string, expr ast.Expr, append string
 	return g.out.cut_to(pos)
 }
 
-// TODO this really shouldn't be separate from typ
+// TODO: this really shouldn't be separate from typ
 // but I(emily) would rather have this generation
 // all unified in one place so that it doesn't break
 // if one location changes
@@ -1832,7 +1832,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 							g.expr(stmt.expr)
 							g.writeln(';')
 						} else {
-							// on assignemnt or struct field initialization
+							// on assignment or struct field initialization
 							ret_typ := if g.inside_struct_init || g.inside_assign {
 								stmt.typ
 							} else {
@@ -2233,7 +2233,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			} else {
 				c_name(node.name)
 			}
-			// TODO For some reason, build fails with autofree with this line
+			// TODO: For some reason, build fails with autofree with this line
 			// as it's only informative, comment it for now
 			// g.gen_attrs(node.attrs)
 			// g.writeln('typedef struct {')
@@ -2935,13 +2935,13 @@ fn (mut g Gen) autofree_scope_vars_stop(pos int, line_nr int, free_parent_scopes
 		return
 	}
 	if pos == -1 {
-		// TODO why can pos be -1?
+		// TODO: why can pos be -1?
 		return
 	}
 	// eprintln('> free_scope_vars($pos)')
 	scope := g.file.scope.innermost(pos)
 	if scope.start_pos == 0 {
-		// TODO why can scope.pos be 0? (only outside fns?)
+		// TODO: why can scope.pos be 0? (only outside fns?)
 		return
 	}
 	g.trace_autofree('// autofree_scope_vars(pos=${pos} line_nr=${line_nr} scope.pos=${scope.start_pos} scope.end_pos=${scope.end_pos})')
@@ -2982,7 +2982,7 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 					continue
 				}
 				// if var.typ == 0 {
-				// // TODO why 0?
+				// // TODO: why 0?
 				// continue
 				// }
 				// if v.pos.pos > end_pos {
@@ -3089,7 +3089,7 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 	// return
 	// }
 	if v.name.contains('expr_write_string_1_') {
-		// TODO remove this temporary hack
+		// TODO: remove this temporary hack
 		return
 	}
 	mut af := strings.new_builder(128)
@@ -4634,7 +4634,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 					g.write('.data)')
 				}
 			}
-			// TODO globals hack
+			// TODO: globals hack
 			g.write('_const_')
 		}
 	}
@@ -4808,7 +4808,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 			}
 		}
 	} else if node.info is ast.IdentFn {
-		// TODO PERF fn lookup for each fn call in translated mode
+		// TODO: PERF fn lookup for each fn call in translated mode
 		if func := g.table.find_fn(node.name) {
 			if g.pref.translated || g.file.is_translated || func.is_file_translated {
 				// `p_mobjthinker` => `P_MobjThinker`
@@ -4885,7 +4885,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 	} else {
 		styp := g.typ(node.typ)
 		if (g.pref.translated || g.file.is_translated) && sym.kind == .function {
-			// TODO handle the type in fn casts, not just exprs
+			// TODO: handle the type in fn casts, not just exprs
 			/*
 			info := sym.info as ast.FnType
 			if cattr := info.func.attrs.find_first('c') {
@@ -5599,7 +5599,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	}
 }
 
-// check_expr_is_const checks if the expr is elegible to be used as const initializer on C global scope
+// check_expr_is_const checks if the expr is eligible to be used as const initializer on C global scope
 fn (mut g Gen) check_expr_is_const(expr ast.Expr) bool {
 	match expr {
 		ast.StringLiteral, ast.IntegerLiteral, ast.BoolLiteral, ast.FloatLiteral, ast.CharLiteral {
@@ -5999,7 +5999,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		&& !util.should_bundle_module(node.mod) {
 		'extern '
 	} else {
-		'${g.static_modifier} ' // TODO used to be '' before parallel_cc, may cause issues
+		'${g.static_modifier} ' // TODO: used to be '' before parallel_cc, may cause issues
 	}
 	// should the global be initialized now, not later in `vinit()`
 	cinit := node.attrs.contains('cinit')
@@ -7347,7 +7347,7 @@ fn (mut g Gen) interface_table() string {
 				arg := method.params[i]
 				methods_struct_def.write_string(', ${g.typ(arg.typ)} ${arg.name}')
 			}
-			// TODO g.fn_args(method.args[1..])
+			// TODO: g.fn_args(method.args[1..])
 			methods_struct_def.writeln(');')
 		}
 		methods_struct_def.writeln('};')
@@ -7387,7 +7387,7 @@ fn (mut g Gen) interface_table() string {
 			}
 			already_generated_mwrappers[interface_index_name] = current_iinidx
 			current_iinidx++
-			if isym.name != 'vweb.DbInterface' { // TODO remove this
+			if isym.name != 'vweb.DbInterface' { // TODO: remove this
 				sb.writeln('static ${interface_name} I_${cctype}_to_Interface_${interface_name}(${cctype}* x);')
 				mut cast_struct := strings.new_builder(100)
 				cast_struct.writeln('(${interface_name}) {')

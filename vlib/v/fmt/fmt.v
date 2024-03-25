@@ -349,7 +349,7 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 
 	for imp in imports {
 		if imp.mod !in f.used_imports {
-			// TODO bring back once only unused imports are removed
+			// TODO: bring back once only unused imports are removed
 			// continue
 		}
 		if imp.mod in f.auto_imports && imp.mod !in f.used_imports {
@@ -1538,7 +1538,7 @@ pub fn (mut f Fmt) sql_stmt_line(node ast.SqlStmtLine) {
 	sym := f.table.sym(node.table_expr.typ)
 	mut table_name := sym.name
 	if !table_name.starts_with('C.') && !table_name.starts_with('JS.') {
-		table_name = f.no_cur_mod(f.short_module(sym.name)) // TODO f.type_to_str?
+		table_name = f.no_cur_mod(f.short_module(sym.name)) // TODO: f.type_to_str?
 	}
 
 	f.mark_types_import_as_used(node.table_expr.typ)
@@ -1978,7 +1978,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		if node.left is ast.Ident {
 			// `time.now()` without `time imported` is processed as a method call with `time` being
 			// a `node.left` expression. Import `time` automatically.
-			// TODO fetch all available modules
+			// TODO: fetch all available modules
 			if node.left.name in ['time', 'os', 'strings', 'math', 'json', 'base64']
 				&& !node.left.scope.known_var(node.left.name) {
 				f.file.imports << ast.Import{
@@ -3013,7 +3013,7 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 	sym := f.table.sym(node.table_expr.typ)
 	mut table_name := sym.name
 	if !table_name.starts_with('C.') && !table_name.starts_with('JS.') {
-		table_name = f.no_cur_mod(f.short_module(sym.name)) // TODO f.type_to_str?
+		table_name = f.no_cur_mod(f.short_module(sym.name)) // TODO: f.type_to_str?
 	}
 	if node.is_count {
 		f.write('count ')
