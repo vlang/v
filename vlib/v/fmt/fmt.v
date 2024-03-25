@@ -1104,7 +1104,7 @@ fn (mut f Fmt) fn_body(node ast.FnDecl) {
 	defer {
 		f.fn_scope = prev_fn_scope
 	}
-	if node.language == .v {
+	if node.language == .v || (node.is_method && node.language == .js) {
 		if !node.no_body {
 			f.write(' {')
 			pre_comments := node.comments.filter(it.pos.pos < node.name_pos.pos)
