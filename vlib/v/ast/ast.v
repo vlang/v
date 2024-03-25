@@ -1020,10 +1020,10 @@ pub fn (i &Ident) is_auto_heap() bool {
 }
 
 pub fn (i &Ident) is_mut() bool {
-	return match i.obj {
-		Var { i.obj.is_mut }
-		ConstField { false }
-		AsmRegister, GlobalField { true }
+	match i.obj {
+		Var { return i.obj.is_mut }
+		ConstField { return false }
+		AsmRegister, GlobalField { return true }
 	}
 }
 
