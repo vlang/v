@@ -17,7 +17,7 @@ pub fn vhash() string {
 
 pub fn full_hash() string {
 	build_hash := vhash()
-	current_hash := githash(false)
+	current_hash := @VCURRENTHASH
 	if build_hash == current_hash {
 		return build_hash
 	}
@@ -29,8 +29,7 @@ pub fn full_v_version(is_verbose bool) string {
 	if is_verbose {
 		return 'V ${version.v_version} ${full_hash()}'
 	}
-	hash := githash(false)
-	return 'V ${version.v_version} ${hash}'
+	return 'V ${version.v_version} ${@VCURRENTHASH}'
 }
 
 // githash(x) returns the current git commit hash.
@@ -75,6 +74,5 @@ pub fn githash(should_get_from_filesystem bool) string {
 		}
 		break
 	}
-
 	return @VCURRENTHASH
 }
