@@ -402,6 +402,7 @@ fn (mut p Parser) at() ast.AtExpr {
 		'@VEXE' { token.AtKind.vexe_path }
 		'@VEXEROOT' { token.AtKind.vexeroot_path }
 		'@VMODROOT' { token.AtKind.vmodroot_path }
+		'@VMODHASH' { token.AtKind.vmod_hash }
 		'@VROOT' { token.AtKind.vroot_path } // deprecated, use @VEXEROOT or @VMODROOT
 		else { token.AtKind.unknown }
 	}
