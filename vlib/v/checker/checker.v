@@ -3477,7 +3477,7 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 				mut mcache := vmod.get_cache()
 				vmod_file_location := mcache.get_by_file(c.file.path)
 				if vmod_file_location.vmod_file.len == 0 {
-					c.error('@VMOD_FILE can be used only in projects, that have v.mod file',
+					c.error('@VMOD_FILE can only be used in projects that have a v.mod file',
 						node.pos)
 				}
 				vmod_content := os.read_file(vmod_file_location.vmod_file) or { '' }
@@ -3591,7 +3591,8 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 	} else if node.kind == .unresolved {
 		// first use
 		if node.tok_kind == .assign && node.is_mut {
-			c.error('`mut` not allowed with `=` (use `:=` to declare a variable)', node.pos)
+			c.error('`mut` is not allowed with `=` (use `:=` to declare a variable)',
+				node.pos)
 		}
 		if mut obj := node.scope.find(node.name) {
 			match mut obj {
@@ -3834,7 +3835,8 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 							// Lambdas don't support capturing variables yet, so that's the only hint.
 							c.error('undefined variable `${node.name}`', node.pos)
 						} else {
-							c.error('`${node.name}` must be added to the capture list for the closure to be used inside',
+							c.add_error_detail('use `fn [${node.name}] () {` instead of `fn () {`')
+							c.error('`${node.name}` must be explictly listed as inherited variable to be used inside a closure',
 								node.pos)
 						}
 						return ast.void_type
