@@ -944,7 +944,7 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 	}
 	// prepare for tcc, it needs relative paths to thirdparty/tcc to work:
 	current_folder := os.getwd()
-	os.chdir(os.dir(pref.vexe_path())) or {}
+	os.chdir(v.pref.vroot) or {}
 	//
 	mut all_options := []string{}
 	all_options << v.pref.third_party_option

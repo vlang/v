@@ -2374,7 +2374,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 				flag = vroot
 			}
 			if flag.contains('@VEXEROOT') {
-				vroot := flag.replace('@VEXEROOT', os.dir(pref.vexe_path()))
+				vroot := flag.replace('@VEXEROOT', c.pref.vroot)
 				node.val = '${node.kind} ${vroot}'
 				node.main = vroot
 				flag = vroot
@@ -2459,7 +2459,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			}
 			if flag.contains('@VEXEROOT') {
 				// expand `@VEXEROOT` to its absolute path
-				flag = flag.replace('@VEXEROOT', os.dir(pref.vexe_path()))
+				flag = flag.replace('@VEXEROOT', c.pref.vroot)
 			}
 			if flag.contains('@VMODROOT') {
 				flag = util.resolve_vmodroot(flag, c.file.path) or {
@@ -3486,10 +3486,10 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 			node.val = c.vmod_file_content
 		}
 		.vroot_path {
-			node.val = os.dir(pref.vexe_path())
+			node.val = c.pref.vroot
 		}
 		.vexeroot_path {
-			node.val = os.dir(pref.vexe_path())
+			node.val = c.pref.vroot
 		}
 		.vmodroot_path {
 			mut mcache := vmod.get_cache()
