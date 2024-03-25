@@ -19,7 +19,9 @@ const tools_in_subfolders = ['vast', 'vcreate', 'vdoc', 'vpm', 'vvet', 'vwhere']
 const non_packaged_tools = ['gen1m', 'gen_vc', 'fast', 'wyhash']
 
 fn main() {
-	util.ensure_modules_for_all_tools_are_installed('-v' in os.args)
+	if os.getenv('VTEST_SANDBOXED_PACKAGING') == '' {
+		util.ensure_modules_for_all_tools_are_installed('-v' in os.args)
+	}
 	args_string := os.args[1..].join(' ')
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
