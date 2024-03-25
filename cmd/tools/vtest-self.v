@@ -342,6 +342,7 @@ const skip_on_non_amd64_or_arm64 = [
 const skip_on_sandboxed_packaging = [
 	'do_not_remove',
 	'vlib/v/slow_tests/inout/compiler_test.v',
+	'vlib/v/gen/native/tests/native_test.v',
 	'vlib/v/compiler_errors_test.v',
 	'vlib/v/gen/c/coutput_test.v',
 ]
