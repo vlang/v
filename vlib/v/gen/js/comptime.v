@@ -303,10 +303,10 @@ fn (mut g JsGen) comptime_if_to_ifdef(name string, is_comptime_option bool) !str
 		}
 		// endianness:
 		'little_endian' {
-			return '(\$os.endianess == "LE")'
+			return '(\$os.endianness == "LE")'
 		}
 		'big_endian' {
-			return '(\$os.endianess == "BE")'
+			return '(\$os.endianness == "BE")'
 		}
 		else {
 			if is_comptime_option
