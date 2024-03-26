@@ -1078,7 +1078,6 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 }
 
 // c_struct_ptr handles the C struct argument for .str() method
-@[inline]
 fn c_struct_ptr(sym &ast.TypeSymbol, typ ast.Type, expects_ptr bool) string {
 	if sym.is_c_struct() {
 		if typ.has_flag(.option) {
