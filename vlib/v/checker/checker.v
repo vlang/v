@@ -641,7 +641,8 @@ fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 and use a reference to the sum type instead: `var := &${node.name}(${variant_name}${lb}val${rb})`')
 			c.error('sum type cannot hold a reference type', variant.pos)
 		}
-		if sym.name in names_used {
+		variant_name := c.table.type_to_str(variant.typ)
+		if variant_name in names_used {
 			c.error('sum type ${node.name} cannot hold the type `${sym.name}` more than once',
 				variant.pos)
 		} else if sym.kind in [.placeholder, .int_literal, .float_literal] {
@@ -696,7 +697,7 @@ and use a reference to the sum type instead: `var := &${node.name}(${variant_nam
 		if sym.name.trim_string_left(sym.mod + '.') == node.name {
 			c.error('sum type cannot hold itself', variant.pos)
 		}
-		names_used << sym.name
+		names_used << variant_name
 	}
 }
 
