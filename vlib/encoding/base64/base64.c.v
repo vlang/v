@@ -129,7 +129,7 @@ fn decode_from_buffer(dest &u8, src &u8, src_len int) int {
 				u8(index[d[si + 2]]), u8(index[d[si + 3]]), u8(index[d[si + 4]]), u8(index[d[si + 5]]),
 				u8(index[d[si + 6]]), u8(index[d[si + 7]]))
 
-			// Reading out the individual bytes from the u64. Watch out with endianess.
+			// Reading out the individual bytes from the u64. Watch out with endianness.
 			$if little_endian {
 				b[n_decoded_bytes + 0] = datablock_64.data_byte[7]
 				b[n_decoded_bytes + 1] = datablock_64.data_byte[6]

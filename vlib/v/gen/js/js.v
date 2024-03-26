@@ -468,7 +468,7 @@ pub fn (mut g JsGen) init() {
 		g.definitions.writeln('}')
 
 		g.definitions.writeln('const \$os = {')
-		g.definitions.writeln('  endianess: "LE",')
+		g.definitions.writeln('  endianness: "LE",')
 		g.definitions.writeln('}')
 	} else {
 		g.definitions.writeln('const \$os = require("os");')
