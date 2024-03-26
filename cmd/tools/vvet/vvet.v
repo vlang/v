@@ -9,6 +9,7 @@ import v.pref
 import v.parser
 import v.token
 import v.ast
+import v.help
 import term
 
 struct Vet {
@@ -49,6 +50,9 @@ fn main() {
 	if vtmp != '' {
 		// `v test-cleancode` passes also `-o tmpfolder` as well as all options in VFLAGS
 		paths = paths.filter(!it.starts_with(vtmp))
+	}
+	if paths.len == 0 || '-help' in vet_options || '--help' in vet_options {
+		help.print_and_exit('vet')
 	}
 	for path in paths {
 		if !os.exists(path) {
