@@ -6,7 +6,7 @@ struct Bar {
 	i int
 }
 
-fn main() {
+fn test_main() {
 	f := Foo(?Bar{
 		i: 0
 	})
@@ -31,4 +31,16 @@ fn main() {
 		i: 0
 	})
 	dump(f)
+}
+
+fn test_none() {
+	f := Foo(?Bar{})
+	match f {
+		?Bar {
+			assert f == none
+		}
+		else {
+			assert false
+		}
+	}
 }

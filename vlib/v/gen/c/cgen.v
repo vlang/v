@@ -915,8 +915,9 @@ pub fn (mut g Gen) finish() {
 	}
 }
 
+// get_sumtype_variant_name returns the variant name according to its type
 @[inline]
-pub fn (mut g Gen) get_sum_type_variant_name(typ ast.Type, name string) string {
+pub fn (mut g Gen) get_sumtype_variant_name(typ ast.Type, name string) string {
 	return if typ.has_flag(.option) { '_option_${name}' } else { name }
 }
 
@@ -935,7 +936,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 				g.writeln('\t\tif( sidx == _v_type_idx_${sym.cname}() ) return "${util.strip_main_name(sym.name)}";')
 				for v in sum_info.variants {
 					subtype := g.table.sym(v)
-					g.writeln('\tif( sidx == _v_type_idx_${g.get_sum_type_variant_name(v,
+					g.writeln('\tif( sidx == _v_type_idx_${g.get_sumtype_variant_name(v,
 						subtype.cname)}() ) return "${util.strip_main_name(subtype.name)}";')
 				}
 				g.writeln('\treturn "unknown ${util.strip_main_name(sym.name)}";')
@@ -2316,10 +2317,10 @@ fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 	cname := if exp == ast.int_type_idx {
 		ast.int_type_name
 	} else {
-		g.get_sum_type_variant_name(exp_, exp_sym.cname)
+		g.get_sumtype_variant_name(exp_, exp_sym.cname)
 	}
 	// fn_name := '${got_sym.cname}_to_sumtype_${exp_sym.cname}'
-	fn_name := '${g.get_sum_type_variant_name(got_, got_sym.cname)}_to_sumtype_${cname}/*KEK*/'
+	fn_name := '${g.get_sumtype_variant_name(got_, got_sym.cname)}_to_sumtype_${cname}/*KEK*/'
 	if got == exp || g.sumtype_definitions[i] {
 		return fn_name
 	}
@@ -2348,7 +2349,7 @@ fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 	got, exp := fun.got, fun.exp
 	got_sym, exp_sym := g.table.sym(got), g.table.sym(exp)
-	mut got_cname, exp_cname := g.get_sum_type_variant_name(got, got_sym.cname), exp_sym.cname
+	mut got_cname, exp_cname := g.get_sumtype_variant_name(got, got_sym.cname), exp_sym.cname
 	mut type_idx := g.type_sidx(got)
 	mut sb := strings.new_builder(128)
 	mut is_anon_fn := false
@@ -4750,7 +4751,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 					if obj_sym.kind == .sum_type {
 						variant_typ := g.unwrap_generic(node.obj.smartcasts.last())
 						cast_sym := g.table.sym(g.unwrap_generic(node.obj.smartcasts.last()))
-						variant_name := g.get_sum_type_variant_name(variant_typ, cast_sym.cname)
+						variant_name := g.get_sumtype_variant_name(variant_typ, cast_sym.cname)
 						g.write('._${variant_name}')
 					}
 					g.write(')')
@@ -6499,7 +6500,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 				for variant in sym.info.variants {
 					variant_sym := g.table.sym(variant)
 					mut var := if variant.has_flag(.option) { variant } else { variant.ref() }
-					variant_name := g.get_sum_type_variant_name(variant, variant_sym.cname)
+					variant_name := g.get_sumtype_variant_name(variant, variant_sym.cname)
 					if variant_sym.info is ast.FnType {
 						if variant_sym.info.is_anon {
 							var = variant
