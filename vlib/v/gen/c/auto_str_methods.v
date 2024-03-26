@@ -457,9 +457,10 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, typ_str
 				{_SLIT("${clean_sum_type_v_type_name}(\'"), ${c.si_s_code}, {.d_s = ${val}}},
 				{_SLIT("\')"), 0, {.d_c = 0 }}
 			}))'
-			fn_builder.write_string('\t\tcase ${typ.idx()}: return ${res};\n')
+			fn_builder.write_string('\t\tcase ${int(typ)}: return ${res};\n')
 		} else {
-			mut val := '${func_name}(${deref}(${typ_name}*)x._${sym.cname}'
+			mut val := '${func_name}(${deref}(${typ_name}*)x._${g.get_sum_type_variant_name(typ,
+				sym.cname)}'
 			if should_use_indent_func(sym.kind) && !sym_has_str_method {
 				val += ', indent_count'
 			}
@@ -468,7 +469,7 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, typ_str
 				{_SLIT("${clean_sum_type_v_type_name}("), ${c.si_s_code}, {.d_s = ${val}}},
 				{_SLIT(")"), 0, {.d_c = 0 }}
 			}))'
-			fn_builder.write_string('\t\tcase ${typ.idx()}: return ${res};\n')
+			fn_builder.write_string('\t\tcase ${int(typ)}: return ${res};\n')
 		}
 	}
 	fn_builder.writeln('\t\tdefault: return _SLIT("unknown sum type value");')
@@ -1078,7 +1079,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 
 // c_struct_ptr handles the C struct argument for .str() method
 @[inline]
-pub fn c_struct_ptr(sym &ast.TypeSymbol, typ ast.Type, expects_ptr bool) string {
+fn c_struct_ptr(sym &ast.TypeSymbol, typ ast.Type, expects_ptr bool) string {
 	if sym.is_c_struct() {
 		if typ.has_flag(.option) {
 			return ''
