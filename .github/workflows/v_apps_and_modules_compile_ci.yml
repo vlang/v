@@ -113,7 +113,7 @@ jobs:
           .github/workflows/retry.sh git clone --depth=1 --filter=blob:none --recursive --shallow-submodules https://github.com/vlang/v-analyzer /tmp/v-analyzer
           cd /tmp/v-analyzer
           echo "Installing dependencies"
-          .github/workflows/retry.sh v install
+          v install
           echo "Build v-analyzer debug"
           v build.vsh debug
           echo "Build v-analyzer release"
