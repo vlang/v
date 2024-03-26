@@ -107,10 +107,10 @@ jobs:
           # v -cc gcc run /tmp/gitly/tests/first_run.v
           # # /tmp/gitly/gitly -ci_run
 
-      - name: Build V Language Server (v-analyzer) v-analyzer/v-analyzer
+      - name: Build V Language Server (v-analyzer) vlang/v-analyzer
         run: |
           echo "Clone v-analyzer"
-          git clone --depth=1 --recursive --shallow-submodules https://github.com/v-analyzer/v-analyzer /tmp/v-analyzer
+          git clone --depth=1 --filter=blob:none --recursive --shallow-submodules https://github.com/vlang/v-analyzer /tmp/v-analyzer
           cd /tmp/v-analyzer
           echo "Installing dependencies"
           v install
