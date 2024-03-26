@@ -1585,10 +1585,11 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	// TODO2
 	// g.generate_tmp_autofree_arg_vars(node, name)
-	if !node.receiver_type.is_ptr() && left_type.is_ptr() && node.name == 'str' {
+	has_str_method := node.name == 'str' && left_sym.has_method('str')
+	if !has_str_method && !node.receiver_type.is_ptr() && left_type.is_ptr() && node.name == 'str' {
 		g.write('ptr_str(')
-	} else if node.receiver_type.is_ptr() && left_type.is_ptr() && node.name == 'str'
-		&& !left_sym.has_method('str') {
+	} else if !has_str_method && node.receiver_type.is_ptr() && left_type.is_ptr()
+		&& node.name == 'str' {
 		g.gen_expr_to_string(node.left, left_type)
 		return
 	} else {
@@ -1701,6 +1702,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				g.write(')')
 			}
 		} else {
+			if node.left is ast.Ident && has_str_method && left_type.is_ptr()
+				&& !node.receiver_type.is_ptr() {
+				g.write('*')
+			}
 			g.expr(node.left)
 		}
 		if !is_interface || node.from_embed_types.len == 0 {
