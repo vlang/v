@@ -959,7 +959,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.comptime.type_map['${node.val_var}.typ'] = variant
 
 				g.writeln('/* variant ${i} */ {')
-				g.writeln('\t${node.val_var}.typ = ${variant.idx()};')
+				g.writeln('\t${node.val_var}.typ = ${int(variant)};')
 				g.stmts(node.stmts)
 				g.writeln('}')
 				i++

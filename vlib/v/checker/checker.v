@@ -3946,7 +3946,26 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 				smartcasts << to_type
 				if var := scope.find_var(expr.name) {
 					if is_comptime && var.ct_type_var == .smartcast {
-						scope.update_smartcasts(expr.name, to_type)
+						if cur_type.has_flag(.option) && !to_type.has_flag(.option) {
+							if !var.is_unwrapped {
+								scope.register(ast.Var{
+									name: expr.name
+									typ: cur_type
+									pos: expr.pos
+									is_used: true
+									is_mut: expr.is_mut
+									is_inherited: is_inherited
+									smartcasts: [to_type]
+									orig_type: orig_type
+									ct_type_var: ct_type_var
+									is_unwrapped: true
+								})
+							} else {
+								scope.update_smartcasts(expr.name, to_type, true)
+							}
+						} else {
+							scope.update_smartcasts(expr.name, to_type, false)
+						}
 						return
 					}
 				}

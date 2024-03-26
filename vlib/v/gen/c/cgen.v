@@ -4747,8 +4747,17 @@ fn (mut g Gen) ident(node ast.Ident) {
 			}
 			if node.obj is ast.Var {
 				if node.obj.smartcasts.len > 0 {
+					typ := g.unwrap_generic(node.obj.smartcasts.last())
 					obj_sym := g.table.sym(g.unwrap_generic(node.obj.typ))
-					if obj_sym.kind == .sum_type {
+					if node.obj.ct_type_var == .smartcast {
+						ctyp := g.unwrap_generic(g.comptime.get_comptime_var_type(node))
+						cur_variant_sym := g.table.sym(ctyp)
+						variant_name := g.get_sumtype_variant_name(ctyp, cur_variant_sym.cname)
+						g.write('._${variant_name}')
+						if node.obj.is_unwrapped {
+							g.write('.data')
+						}
+					} else if obj_sym.kind == .sum_type {
 						variant_typ := g.unwrap_generic(node.obj.smartcasts.last())
 						cast_sym := g.table.sym(g.unwrap_generic(node.obj.smartcasts.last()))
 						variant_name := g.get_sumtype_variant_name(variant_typ, cast_sym.cname)
@@ -4773,9 +4782,13 @@ fn (mut g Gen) ident(node ast.Ident) {
 			if node.obj.smartcasts.len > 0 {
 				obj_sym := g.table.sym(g.unwrap_generic(node.obj.typ))
 				if !prevent_sum_type_unwrapping_once {
-					for _, typ in node.obj.smartcasts {
+					for i, typ in node.obj.smartcasts {
 						is_option_unwrap := is_option && typ == node.obj.typ.clear_flag(.option)
 						g.write('(')
+						if i == 0 && node.obj.is_unwrapped {
+							ctyp := g.unwrap_generic(g.comptime.get_comptime_var_type(node))
+							g.write('*(${g.base_type(ctyp)}*)(')
+						}
 						if obj_sym.kind == .sum_type && !is_auto_heap {
 							if is_option {
 								if !is_option_unwrap {
@@ -4817,15 +4830,24 @@ fn (mut g Gen) ident(node ast.Ident) {
 								sym := g.table.sym(cast_sym.info.types[g.aggregate_type_idx])
 								g.write('${dot}_${sym.cname}')
 							} else {
-								if is_option {
+								if is_option && !node.obj.is_unwrapped {
 									g.write('.data')
 									if !is_option_unwrap {
 										g.write(')')
 									}
 								}
 								if node.obj.ct_type_var == .smartcast {
-									cur_variant_sym := g.table.sym(g.unwrap_generic(g.comptime.get_comptime_var_type(node)))
-									g.write('${dot}_${cur_variant_sym.cname}')
+									mut ctyp := g.unwrap_generic(g.comptime.get_comptime_var_type(node))
+									cur_variant_sym := g.table.sym(ctyp)
+									if node.obj.is_unwrapped {
+										ctyp = ctyp.set_flag(.option)
+										g.write('${dot}_${g.get_sumtype_variant_name(ctyp,
+											cur_variant_sym.cname)}')
+										g.write(').data')
+									} else {
+										g.write('${dot}_${g.get_sumtype_variant_name(ctyp,
+											cur_variant_sym.cname)}')
+									}
 								} else if !is_option_unwrap
 									&& obj_sym.kind in [.sum_type, .interface_] {
 									g.write('${dot}_${cast_sym.cname}')

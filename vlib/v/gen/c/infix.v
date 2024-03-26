@@ -728,7 +728,7 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 		variant_idx := g.comptime.type_map['${g.comptime.comptime_for_variant_var}.typ'] or {
 			ast.void_type
 		}
-		g.write('${variant_idx.idx()}')
+		g.write('${int(variant_idx)}')
 	} else {
 		g.expr(node.right)
 	}

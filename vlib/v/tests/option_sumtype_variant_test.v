@@ -1,4 +1,4 @@
-type Foo = ?Bar | Bar | Baz
+type Foo = ?Bar | ?string | Bar | Baz
 
 struct Baz {}
 
@@ -41,6 +41,20 @@ fn test_none() {
 		}
 		else {
 			assert false
+		}
+	}
+}
+
+fn test_unwrap_smarcast() {
+	a := Foo(?string('foo'))
+
+	$for v in Foo.variants {
+		if a is v {
+			$if a is ?string {
+				if a != none {
+					assert a == 'foo'
+				}
+			}
 		}
 	}
 }
