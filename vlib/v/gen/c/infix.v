@@ -683,7 +683,7 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 		parent_left_type := (left_sym.info as ast.Aggregate).sum_type
 		left_sym = g.table.sym(parent_left_type)
 	}
-	right_sym := g.table.sym(node.right_type)
+	right_sym := g.table.sym(g.unwrap_generic(node.right_type))
 	if left_sym.kind == .interface_ && right_sym.kind == .interface_ {
 		g.gen_interface_is_op(node)
 		return
@@ -736,7 +736,8 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 
 fn (mut g Gen) gen_interface_is_op(node ast.InfixExpr) {
 	mut left_sym := g.table.sym(node.left_type)
-	right_sym := g.table.sym(node.right_type)
+	right_type := g.unwrap_generic(node.right_type)
+	right_sym := g.table.sym(right_type)
 
 	mut info := left_sym.info as ast.Interface
 
@@ -744,7 +745,7 @@ fn (mut g Gen) gen_interface_is_op(node ast.InfixExpr) {
 		left_variants := g.table.iface_types[left_sym.name]
 		right_variants := g.table.iface_types[right_sym.name]
 		c := left_variants.filter(it in right_variants)
-		info.conversions[node.right_type] = c
+		info.conversions[right_type] = c
 		c
 	}
 	left_sym.info = info
