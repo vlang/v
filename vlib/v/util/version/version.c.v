@@ -17,7 +17,7 @@ pub fn vhash() string {
 
 pub fn full_hash() string {
 	build_hash := vhash()
-	current_hash := githash(false)
+	current_hash := @VCURRENTHASH
 	if build_hash == current_hash {
 		return build_hash
 	}
@@ -29,7 +29,7 @@ pub fn full_v_version(is_verbose bool) string {
 	if is_verbose {
 		return 'V ${version.v_version} ${full_hash()}'
 	}
-	hash := githash(false)
+	hash := @VCURRENTHASH
 	return 'V ${version.v_version} ${hash}'
 }
 
@@ -41,40 +41,29 @@ pub fn full_v_version(is_verbose bool) string {
 // defaults to getting the predefined C constant again.
 // Note: githash(true) must be called only when v detects that it builds itself.
 // For all other programs, githash(false) should be used.
-pub fn githash(should_get_from_filesystem bool) string {
-	for {
-		// The `for` construct here is used as a goto substitute.
-		// The code in this function will break out of the `for`
-		// if it detects an error and can not continue.
-		if should_get_from_filesystem {
-			vexe := os.getenv('VEXE')
-			vroot := os.dir(vexe)
-			// .git/HEAD
-			git_head_file := os.join_path(vroot, '.git', 'HEAD')
-			if !os.exists(git_head_file) {
-				break
-			}
-			// 'ref: refs/heads/master' ... the current branch name
-			head_content := os.read_file(git_head_file) or { break }
-			mut current_branch_hash := head_content
-			if head_content.starts_with('ref: ') {
-				gcbranch_rel_path := head_content.replace('ref: ', '').trim_space()
-				gcbranch_file := os.join_path(vroot, '.git', gcbranch_rel_path)
-				// .git/refs/heads/master
-				if !os.exists(gcbranch_file) {
-					break
-				}
-				// get the full commit hash contained in the ref heads file
-				branch_hash := os.read_file(gcbranch_file) or { break }
-				current_branch_hash = branch_hash
-			}
-			desired_hash_length := 7
-			if current_branch_hash.len > desired_hash_length {
-				return current_branch_hash[0..desired_hash_length]
-			}
-		}
-		break
+pub fn githash(mod_path string, is_vroot bool) string {
+	mut res := if is_vroot { @VCURRENTHASH } else { '' }
+	git_head_file := os.join_path(mod_path, '.git', 'HEAD')
+	if !os.exists(git_head_file) {
+		return res
 	}
-
-	return @VCURRENTHASH
+	// 'ref: refs/heads/master' ... the current branch name
+	head_content := os.read_file(git_head_file) or { return res }
+	mut current_branch_hash := head_content
+	if head_content.starts_with('ref: ') {
+		gcbranch_rel_path := head_content.replace('ref: ', '').trim_space()
+		gcbranch_file := os.join_path(mod_path, '.git', gcbranch_rel_path)
+		// .git/refs/heads/master
+		if !os.exists(gcbranch_file) {
+			return res
+		}
+		// get the full commit hash contained in the ref heads file
+		branch_hash := os.read_file(gcbranch_file) or { return res }
+		current_branch_hash = branch_hash
+	}
+	desired_hash_length := 7
+	if current_branch_hash.len > desired_hash_length {
+		return current_branch_hash[0..desired_hash_length]
+	}
+	return res
 }
