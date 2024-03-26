@@ -4747,7 +4747,6 @@ fn (mut g Gen) ident(node ast.Ident) {
 			}
 			if node.obj is ast.Var {
 				if node.obj.smartcasts.len > 0 {
-					typ := g.unwrap_generic(node.obj.smartcasts.last())
 					obj_sym := g.table.sym(g.unwrap_generic(node.obj.typ))
 					if node.obj.ct_type_var == .smartcast {
 						ctyp := g.unwrap_generic(g.comptime.get_comptime_var_type(node))
