@@ -1323,7 +1323,8 @@ fn (t &Table) sumtype_check_function_variant(parent_info SumType, variant Type, 
 
 fn (t &Table) sumtype_check_variant_in_type(parent_info SumType, variant Type, is_as bool) bool {
 	for v in parent_info.variants {
-		if v.idx() == variant.idx() && variant.has_flag(.option) == v.has_flag(.option) && (!is_as || v.nr_muls() == variant.nr_muls()) {
+		if v.idx() == variant.idx() && variant.has_flag(.option) == v.has_flag(.option)
+			&& (!is_as || v.nr_muls() == variant.nr_muls()) {
 			return true
 		}
 	}
