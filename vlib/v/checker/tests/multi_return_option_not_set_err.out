@@ -1,0 +1,5 @@
+vlib/v/checker/tests/multi_return_option_not_set_err.vv:1:19: error: cannot multi assign as Option isn't propagated
+    1 | a, b := 'fdf:df:'.split_once(',')
+      |                   ~~~~~~~~~~~~~~~
+    2 | println(a)
+    3 | println(b)
