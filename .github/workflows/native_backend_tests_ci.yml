@@ -63,7 +63,7 @@ jobs:
       - name: Install linker
         if: ${{ startsWith(matrix.os, 'ubuntu')}}
         run: |
-          sudo apt-get install --quiet -y binutils
+          .github/workflows/retry.sh sudo apt-get install --quiet -y binutils
 
       - name: Build V with make.bat
         if: ${{ startsWith(matrix.os, 'windows') }}

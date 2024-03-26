@@ -23,9 +23,9 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install --quiet -y libgc-dev libsodium-dev libssl-dev sqlite3 libsqlite3-dev libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
-          sudo apt-get install --quiet -y --no-install-recommends sassc libgit2-dev ## needed by gitly
+          .github/workflows/retry.sh sudo apt-get update
+          .github/workflows/retry.sh sudo apt-get install --quiet -y libgc-dev libsodium-dev libssl-dev sqlite3 libsqlite3-dev libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
+          .github/workflows/retry.sh sudo apt-get install --quiet -y --no-install-recommends sassc libgit2-dev ## needed by gitly
 
       - name: Test vtcc
         run: .github/workflows/compile_v_with_vtcc.sh
@@ -33,7 +33,7 @@ jobs:
       - name: Test vsql compilation and examples
         run: |
           echo "Install vsql"
-          v install elliotchance.vsql ; cd ~/.vmodules/elliotchance/vsql
+          .github/workflows/retry.sh v install elliotchance.vsql ; cd ~/.vmodules/elliotchance/vsql
           echo "Generate vsql/grammar.v"
           make vsql/grammar.v
           echo "Compile vsql"
@@ -46,7 +46,7 @@ jobs:
       - name: Test discord.v
         run: |
           echo "Clone https://github.com/DarpHome/discord.v/"
-          git clone https://github.com/DarpHome/discord.v/ discord && cd discord
+          .github/workflows/retry.sh git clone https://github.com/DarpHome/discord.v/ discord && cd discord
           echo "Checkout last known good commit"
           git checkout 65448b687ae759e385c127c8739b97b6ac62d3e3
           echo "Execute Tests"
@@ -55,7 +55,7 @@ jobs:
       - name: Build vlang/vab
         run: |
           echo "Install VAB"
-          v install vab
+          .github/workflows/retry.sh v install vab
           echo "Build vab"
           v ~/.vmodules/vab
           echo "Build vab with -gc boehm -skip-unused"
@@ -63,7 +63,7 @@ jobs:
 
       - name: Build vlang/ved
         run: |
-          git clone --depth 1 https://github.com/vlang/ved
+          .github/workflows/retry.sh git clone --depth 1 https://github.com/vlang/ved
           cd ved && ../v -o ved .
           ../v -autofree .
           ../v -prod .
@@ -71,32 +71,32 @@ jobs:
 
       - name: Build vlang/pdf
         run: |
-          v install pdf
+          .github/workflows/retry.sh v install pdf
           echo "PDF examples should compile"
           v should-compile-all ~/.vmodules/pdf/examples
 
       - name: Build vlang/libsodium
         run: |
           echo "Install the libsodium wrapper"
-          v install libsodium
+          .github/workflows/retry.sh v install libsodium
           echo "Test libsodium"
           VJOBS=1 v test ~/.vmodules/libsodium
 
       - name: Build vlang/coreutils
         run: |
           echo "Clone Coreutils"
-          git clone --depth 1 https://github.com/vlang/coreutils /tmp/coreutils
+          .github/workflows/retry.sh git clone --depth 1 https://github.com/vlang/coreutils /tmp/coreutils
           echo "Build Coreutils"
           cd /tmp/coreutils; make
 
       - name: Build vlang/gitly
         run: |
           echo "Install markdown"
-          v install markdown
+          .github/workflows/retry.sh v install markdown
           echo "Install pcre"
-          v install pcre
+          .github/workflows/retry.sh v install pcre
           echo "Clone Gitly"
-          git clone https://github.com/vlang/gitly /tmp/gitly
+          .github/workflows/retry.sh git clone https://github.com/vlang/gitly /tmp/gitly
           echo "Build Gitly"
           v -cc gcc /tmp/gitly
           ## echo "Build Gitly with -autofree"
@@ -110,7 +110,7 @@ jobs:
       - name: Build V Language Server (v-analyzer) vlang/v-analyzer
         run: |
           echo "Clone v-analyzer"
-          git clone --depth=1 --filter=blob:none --recursive --shallow-submodules https://github.com/vlang/v-analyzer /tmp/v-analyzer
+          .github/workflows/retry.sh git clone --depth=1 --filter=blob:none --recursive --shallow-submodules https://github.com/vlang/v-analyzer /tmp/v-analyzer
           cd /tmp/v-analyzer
           echo "Installing dependencies"
           v install
@@ -122,7 +122,7 @@ jobs:
       - name: Build vlang/go2v
         run: |
           echo "Clone Go2V"
-          git clone --depth=1 https://github.com/vlang/go2v /tmp/go2v/
+          .github/workflows/retry.sh git clone --depth=1 https://github.com/vlang/go2v /tmp/go2v/
           echo "Build Go2V"
           v /tmp/go2v/
           echo "Run Go2V tests"
@@ -131,23 +131,23 @@ jobs:
       - name: Install UI through VPM and make sure its examples compile
         run: |
           echo "Official VPM modules should be installable"
-          v install ui
+          .github/workflows/retry.sh v install ui
           echo "Examples of UI should compile"
           v ~/.vmodules/ui/examples/build_examples.vsh
 
       - name: Build vlang/adventofcode
         run: |
           echo "Clone the AdventOfCode repo"
-          git clone --depth 1 https://github.com/vlang/adventofcode  /tmp/adventofcode
+          .github/workflows/retry.sh git clone --depth 1 https://github.com/vlang/adventofcode  /tmp/adventofcode
           echo "Install dependencies"
-          v install pcre
+          .github/workflows/retry.sh v install pcre
           echo "Execute Tests"
           cd /tmp/adventofcode && v run verify.v
 
       - name: Build vlang/msgpack
         run: |
           echo "Install msgpack"
-          v install msgpack
+          .github/workflows/retry.sh v install msgpack
           echo "Build msgpack"
           v -shared ~/.vmodules/msgpack/
           echo "Run msgpack tests"
@@ -159,7 +159,7 @@ jobs:
 #      - name: Build VEX
 #        run: |
 #          echo "Install Vex"
-#          v install nedpals.vex
+#          .github/workflows/retry.sh v install nedpals.vex
 #          echo "Compile all of the Vex examples"
 #          v should-compile-all ~/.vmodules/nedpals/vex/examples
 #          echo "Compile the simple Vex example with -skip-unused"
@@ -184,15 +184,15 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install --quiet -y libgc-dev   libsodium-dev libssl-dev sqlite3 libsqlite3-dev libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
-          sudo apt-get install --quiet -y --no-install-recommends gfortran liblapacke-dev libopenblas-dev ## for vsl/vtl
-          sudo apt-get install --quiet -y --no-install-recommends libhdf5-cpp-103 libhdf5-dev libhdf5-mpi-dev hdf5-tools libopenmpi-dev opencl-headers liblapacke-dev libopenblas-dev ## needed by VSL
+          .github/workflows/retry.sh sudo apt-get update
+          .github/workflows/retry.sh sudo apt-get install --quiet -y libgc-dev   libsodium-dev libssl-dev sqlite3 libsqlite3-dev libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
+          .github/workflows/retry.sh sudo apt-get install --quiet -y --no-install-recommends gfortran liblapacke-dev libopenblas-dev ## for vsl/vtl
+          .github/workflows/retry.sh sudo apt-get install --quiet -y --no-install-recommends libhdf5-cpp-103 libhdf5-dev libhdf5-mpi-dev hdf5-tools libopenmpi-dev opencl-headers liblapacke-dev libopenblas-dev ## needed by VSL
 
       - name: Build vlang/vsl
         run: |
           echo "Installing dependencies"
-          sudo apt-get install --quiet -y --no-install-recommends \
+          .github/workflows/retry.sh sudo apt-get install --quiet -y --no-install-recommends \
             gfortran \
             libxi-dev \
             libxcursor-dev \
@@ -204,7 +204,7 @@ jobs:
             libopenmpi-dev \
             opencl-headers
           echo "Install VSL"
-          v install vsl
+          .github/workflows/retry.sh v install vsl
           echo "Execute Tests using Pure V Backend"
           ~/.vmodules/vsl/bin/test
           echo "Execute Tests using Pure V Backend with Pure V Math"
@@ -217,7 +217,7 @@ jobs:
       - name: Build vlang/vtl
         run: |
           echo "Install VTL"
-          v install vtl
+          .github/workflows/retry.sh v install vtl
           echo "Install dependencies"
           echo "Execute Tests using Pure V Backend"
           ~/.vmodules/vtl/bin/test

@@ -26,7 +26,7 @@ jobs:
           COMMIT_MSG=$(git log -1 --oneline --pretty='%s' HEAD)
 
           rm -rf vc
-          git clone --depth=1 \
+          .github/workflows/retry.sh git clone --depth=1 \
             https://vlang-bot:${{ secrets.VLANG_BOT_SECRET }}@$VREPO
 
           rm -rf vc/v.c vc/v_win.c
@@ -45,7 +45,7 @@ jobs:
           git -C vc commit -m "[v:master] $COMMIT_HASH - $COMMIT_MSG"
 
           # in case there are recent commits:
-          git -C vc pull --rebase origin master
+          .github/workflows/retry.sh git -C vc pull --rebase origin master
           # Note that failure below may happen, due to vlang/vc rejecting the push
           # from forked repos; that is not usually a problem.
           git -C vc push || true 
