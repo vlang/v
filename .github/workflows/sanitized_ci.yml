@@ -86,10 +86,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
-          sudo apt-get install clang
+          .github/workflows/retry.sh sudo apt-get update
+          .github/workflows/retry.sh sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          .github/workflows/retry.sh sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
+          .github/workflows/retry.sh sudo apt-get install clang
       - name: Build V
         run: make && ./v -cg -cstrict -o v cmd/v
       - name: Ensure code is well formatted
@@ -111,9 +111,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
-          sudo apt update
-          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
+          .github/workflows/retry.sh sudo apt update
+          .github/workflows/retry.sh sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          .github/workflows/retry.sh sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
       - name: Build V
         run: make && ./v -cg -cstrict -o v cmd/v
       - name: Ensure code is well formatted
@@ -135,10 +135,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
-          sudo apt update
-          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
-          sudo apt-get install clang
+          .github/workflows/retry.sh sudo apt update
+          .github/workflows/retry.sh sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          .github/workflows/retry.sh sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
+          .github/workflows/retry.sh sudo apt-get install clang
       - name: Build V
         run: make && ./v -cg -cstrict -o v cmd/v
       - name: Ensure code is well formatted
@@ -193,10 +193,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
-          sudo apt update
-          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
-          sudo apt-get install clang
+          .github/workflows/retry.sh sudo apt update
+          .github/workflows/retry.sh sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          .github/workflows/retry.sh sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
+          .github/workflows/retry.sh sudo apt-get install clang
       - name: Build V
         run: make && ./v -cg -cstrict -o v cmd/v
       - name: Ensure code is well formatted
@@ -222,10 +222,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
-          sudo apt update
-          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
-          sudo apt-get install clang
+          .github/workflows/retry.sh sudo apt update
+          .github/workflows/retry.sh sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          .github/workflows/retry.sh sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
+          .github/workflows/retry.sh sudo apt-get install clang
       - name: Build V
         run: make && ./v -cc clang -cg -cstrict -o v cmd/v
       - name: Ensure code is well formatted

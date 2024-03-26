@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies 1
-        run: sudo apt-get install --quiet -y sqlite3 libsqlite3-dev
+        run: .github/workflows/retry.sh sudo apt-get install --quiet -y sqlite3 libsqlite3-dev
       - name: Build v
         run: make
       - name: Symlink V

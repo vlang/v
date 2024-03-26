@@ -28,16 +28,16 @@ jobs:
 
       - name: Clone sdl into .vmodules
         run: |
-          git clone --depth 1 https://github.com/vlang/sdl
+          .github/workflows/retry.sh git clone --depth 1 https://github.com/vlang/sdl
           cd sdl
           mkdir -p ~/.vmodules
           ln -s $(pwd) ~/.vmodules/sdl
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev
-          sudo apt-get install --quiet -y libsdl2-mixer-dev libsdl2-image-dev
+          .github/workflows/retry.sh sudo apt-get update
+          .github/workflows/retry.sh sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev
+          .github/workflows/retry.sh sudo apt-get install --quiet -y libsdl2-mixer-dev libsdl2-image-dev
 
       - name: Run tests
         run: ./v test sdl

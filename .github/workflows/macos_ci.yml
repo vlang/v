@@ -16,7 +16,7 @@ jobs:
       - name: Install dependencies
         run: |
           echo "PKG_CONFIG_PATH is '$PKG_CONFIG_PATH'"
-          brew install libpq openssl mercurial
+          .github/workflows/retry.sh brew install libpq openssl mercurial
           export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
           echo "LIBRARY_PATH is '$LIBRARY_PATH'"
       - name: Build V
@@ -30,7 +30,7 @@ jobs:
       - name: Test symlink
         run: ./v symlink
       - name: Build vpm
-        run: ./v install markdown && git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . || ../v cmd/vpm && cd ..
+        run: .github/workflows/retry.sh ./v install markdown && .github/workflows/retry.sh git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . || ../v cmd/vpm && cd ..
       # - name: Set up pg database
       #   run: |
       #     pg_ctl -D /usr/local/var/postgres -l /usr/local/var/postgres/server.log start
@@ -68,14 +68,14 @@ jobs:
           ./v doctor
       - name: Test ved
         run: |
-          git clone --depth 1 https://github.com/vlang/ved
+          .github/workflows/retry.sh git clone --depth 1 https://github.com/vlang/ved
           cd ved && ../v -o ved .
           ../v -autofree .
           ../v -prod .
           cd ..
       - name: Build V UI examples
         run: |
-          git clone --depth 1 https://github.com/vlang/ui
+          .github/workflows/retry.sh git clone --depth 1 https://github.com/vlang/ui
           cd ui
           mkdir -p ~/.vmodules
           ln -s $(pwd) ~/.vmodules/ui

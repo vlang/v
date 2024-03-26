@@ -7,7 +7,7 @@ rm -rf thirdparty/tcc/
 
 pushd .
 
-git clone git://repo.or.cz/tinycc.git
+.github/workflows/retry.sh git clone git://repo.or.cz/tinycc.git
 cd tinycc
 
 export CC=clang

@@ -27,8 +27,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install --quiet -y jq libgc-dev
+          .github/workflows/retry.sh sudo apt-get update
+          .github/workflows/retry.sh sudo apt-get install --quiet -y jq libgc-dev
       - name: Build V
         run: make -j2 && ./v -cc gcc -o v cmd/v
 
@@ -41,15 +41,15 @@ jobs:
         # Tests found at https://github.com/BurntSushi/toml-test
       - name: Clone BurntSushi/toml-test
         run: |
-          git clone -n https://github.com/BurntSushi/toml-test.git $TOML_BS_TESTS_PATH
-          git -C $TOML_BS_TESTS_PATH checkout $TOML_BS_TESTS_PINNED_COMMIT
+          .github/workflows/retry.sh git clone -n https://github.com/BurntSushi/toml-test.git $TOML_BS_TESTS_PATH
+          .github/workflows/retry.sh git -C $TOML_BS_TESTS_PATH checkout $TOML_BS_TESTS_PINNED_COMMIT
 
       - name: Run BurntSushi TOML tests
         run: ./v vlib/toml/tests/burntsushi_toml_test.v
 
         # Tests found at gist
       - name: Get large_toml_file_test.toml
-        run: wget https://gist.githubusercontent.com/Larpon/89b0e3d94c6903851ff15559e5df7a05/raw/62a1f87a4e37bf157f2e0bfb32d85d840c98e422/large_toml_file_test.toml -O vlib/toml/tests/testdata/large_toml_file_test.toml
+        run: .github/workflows/retry.sh wget https://gist.githubusercontent.com/Larpon/89b0e3d94c6903851ff15559e5df7a05/raw/62a1f87a4e37bf157f2e0bfb32d85d840c98e422/large_toml_file_test.toml -O vlib/toml/tests/testdata/large_toml_file_test.toml
 
       - name: Run large TOML file tests
         run: ./v vlib/toml/tests/large_toml_file_test.v
@@ -57,7 +57,7 @@ jobs:
         # Tests found at https://github.com/iarna/toml-spec-tests
       - name: Clone iarna/toml-spec-tests
         run: |
-          git clone -n https://github.com/iarna/toml-spec-tests.git $TOML_IARNA_TESTS_PATH
+          .github/workflows/retry.sh git clone -n https://github.com/iarna/toml-spec-tests.git $TOML_IARNA_TESTS_PATH
           git -C $TOML_IARNA_TESTS_PATH checkout $TOML_IARNA_TESTS_PINNED_COMMIT
 
       - name: Run iarna TOML tests
@@ -66,7 +66,7 @@ jobs:
         # Tests found at https://github.com/alexcrichton/toml-rs
       - name: Clone alexcrichton/toml-rs
         run: |
-          git clone -n https://github.com/alexcrichton/toml-rs.git $TOML_AC_TESTS_PATH
+          .github/workflows/retry.sh git clone -n https://github.com/alexcrichton/toml-rs.git $TOML_AC_TESTS_PATH
           git -C $TOML_AC_TESTS_PATH checkout $TOML_AC_TESTS_PINNED_COMMIT
 
       - name: Run alexcrichton TOML tests
