@@ -1053,7 +1053,7 @@ fn (mut g Gen) gen_is_none_check(node ast.InfixExpr) {
 		g.inside_opt_or_res = true
 		g.write('(')
 		g.expr(node.left)
-		g.write(')')	
+		g.write(')')
 		g.inside_opt_or_res = old_inside_opt_or_res
 		g.write('.state')
 	} else {
