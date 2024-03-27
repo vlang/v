@@ -4,9 +4,7 @@ const tfolder = os.join_path(os.vtmp_dir(), 'tests', 'os_file_test')
 const tfile = os.join_path_single(tfolder, 'test_file')
 
 fn testsuite_begin() {
-	os.rmdir_all(tfolder) or {}
-	assert !os.is_dir(tfolder)
-	os.mkdir_all(tfolder)!
+	os.mkdir_all(tfolder) or {}
 	os.chdir(tfolder)!
 	assert os.is_dir(tfolder)
 }
