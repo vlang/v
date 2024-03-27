@@ -250,6 +250,8 @@ pub mut:
 
 @[minify]
 pub struct SumType {
+pub:
+	attrs []Attr
 pub mut:
 	fields       []StructField
 	found_fields bool
@@ -260,6 +262,17 @@ pub mut:
 	generic_types  []Type
 	concrete_types []Type
 	parent_type    Type
+}
+
+// used to check whether there a generic type which is duplicate, returns array with no duplicates
+pub fn (st &SumType) get_deduplicated_variants() []Type {
+	mut variants := []Type{}
+	for v in st.variants {
+		if v !in variants {
+			variants << v
+		}
+	}
+	return variants
 }
 
 // <atomic.h> defines special typenames
