@@ -23,7 +23,7 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 		'JS.${name}'
 	} else if language == .wasm {
 		'WASM.${name}'
-	} else if mod.len > 0 {
+	} else if mod != '' {
 		'${mod}.${name}'
 	} else {
 		name
@@ -52,8 +52,23 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	}
 	p.check(.lpar)
 	args := p.call_args()
+	if p.tok.kind != .rpar {
+		params := p.table.fns[fn_name] or { unsafe { p.table.fns['${p.mod}.${fn_name}'] } }.params
+		if args.len < params.len && p.prev_tok.kind != .comma {
+			p.unexpected_with_pos(p.prev_tok.pos(), expecting: '`,`')
+		} else if args.len > params.len {
+			ok_arg_pos := (args[params.len - 1] or { args[0] }).pos
+			pos := token.Pos{
+				...ok_arg_pos
+				col: ok_arg_pos.col + ok_arg_pos.len
+			}
+			p.unexpected_with_pos(pos.extend(p.tok.pos()), expecting: '`)`')
+		} else {
+			p.unexpected_with_pos(p.prev_tok.pos(), expecting: '`)`')
+		}
+	}
 	last_pos := p.tok.pos()
-	p.check(.rpar)
+	p.next()
 	mut pos := first_pos.extend(last_pos)
 	mut or_stmts := []ast.Stmt{} // TODO: remove unnecessary allocations by just using .absent
 	mut or_pos := p.tok.pos()
@@ -104,11 +119,9 @@ fn (mut p Parser) call_args() []ast.CallArg {
 		p.inside_call_args = prev_inside_call_args
 	}
 	mut args := []ast.CallArg{}
-	start_pos := p.tok.pos()
-	for p.tok.kind != .rpar {
+	for p.tok.kind != .rpar && p.tok.kind != .comma {
 		if p.tok.kind == .eof {
-			p.error_with_pos('unexpected eof reached, while parsing call argument', start_pos)
-			return []
+			return args
 		}
 		is_shared := p.tok.kind == .key_shared
 		is_atomic := p.tok.kind == .key_atomic
@@ -149,8 +162,8 @@ fn (mut p Parser) call_args() []ast.CallArg {
 			comments: comments
 			pos: pos
 		}
-		if p.tok.kind != .rpar {
-			p.check(.comma)
+		if p.tok.kind == .comma {
+			p.next()
 		}
 	}
 	return args
