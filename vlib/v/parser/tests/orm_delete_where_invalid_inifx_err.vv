@@ -1,0 +1,25 @@
+import db.sqlite
+import rand
+import time
+
+@[table: 'parameter_tables']
+struct ParameterTable {
+	id          string = rand.ulid()    @[primary]
+	name  		string    @[unique: 'client_table']
+	description string
+	table_type  string = 'parameter'
+	client_id   string    @[unique: 'client_table']
+	created     time.Time @[default: 'CURRENT_TIMESTAMP'; sql_type: 'datetime']
+}
+
+fn main() {
+	mut db := sqlite.connect('test.db')!
+	db.synchronization_mode(sqlite.SyncMode.off)!
+	db.journal_mode(sqlite.JournalMode.memory)!	
+	sql db {
+		create table ParameterTable
+	}!
+	sql db {
+		delete from ParameterTable where client_id == client_id && name == name
+	} or { panic(err) }	
+}
