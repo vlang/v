@@ -143,7 +143,7 @@ fn cleanup(user_data voidptr) {
 fn frame(user_data voidptr) {
 	mut app := unsafe { &App(user_data) }
 
-	pass := sapp.create_default_pass(state.pass_action)
+	pass := sapp.create_default_pass(app.pass_action)
 	gfx.begin_pass(&pass)
 
 	gfx.apply_pipeline(app.shader_pipeline)
