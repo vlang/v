@@ -95,7 +95,7 @@ fn vpm_remove(query []string) {
 	}
 	for m in query {
 		final_module_path := get_path_of_existing_module(m) or { continue }
-		println('Removing module "${m}" ...')
+		println('Removing module "${m}" from ${fmt_mod_path(final_module_path)} ...')
 		vpm_log(@FILE_LINE, @FN, 'removing: ${final_module_path}')
 		rmdir_all(final_module_path) or { vpm_error(err.msg(), verbose: true) }
 		// Delete author directory if it is empty.

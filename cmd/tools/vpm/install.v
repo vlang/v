@@ -91,7 +91,7 @@ fn install_modules(modules []Module) {
 				errors++
 			}
 		}
-		println('Installed `${m.name}`.')
+		println('Installed `${m.name}` in ${m.install_path_fmted} .')
 	}
 	if errors > 0 {
 		exit(1)
