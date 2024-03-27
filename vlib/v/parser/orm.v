@@ -295,11 +295,23 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 	} else if kind == .update {
 		p.check_sql_keyword('where') or { return ast.SqlStmtLine{} }
 		where_expr = p.expr(0)
+
+		where_expr_result := p.check_sql_where_expr_has_no_undefined_variables(&where_expr,
+			[])
+		if where_expr_result is ast.NodeError {
+			return ast.SqlStmtLine{}
+		}
 	} else if kind == .delete {
 		table_pos = p.tok.pos()
 		table_type = p.parse_type()
 		p.check_sql_keyword('where') or { return ast.SqlStmtLine{} }
 		where_expr = p.expr(0)
+
+		where_expr_result := p.check_sql_where_expr_has_no_undefined_variables(&where_expr,
+			[])
+		if where_expr_result is ast.NodeError {
+			return ast.SqlStmtLine{}
+		}
 	}
 	return ast.SqlStmtLine{
 		table_expr: ast.TypeNode{
