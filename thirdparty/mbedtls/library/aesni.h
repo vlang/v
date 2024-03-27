@@ -21,7 +21,8 @@
 #define MBEDTLS_AESNI_CLMUL    0x00000002u
 
 #if defined(MBEDTLS_AESNI_C) && \
-    (defined(MBEDTLS_ARCH_IS_X64) || defined(MBEDTLS_ARCH_IS_X86))
+    (defined(MBEDTLS_ARCH_IS_X64) || defined(MBEDTLS_ARCH_IS_X86)) && \
+    defined(MBEDTLS_HAVE_ASM) && defined(__GNUC__)
 
 /* Can we do AESNI with intrinsics?
  * (Only implemented with certain compilers, only for certain targets.)
