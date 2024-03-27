@@ -168,7 +168,7 @@ fn test_closure_return_${styp}_${i}() ! {
 
 	code := v_code.str()
 	println('Compiling V code (${code.count('\n')} lines) ...')
-	wrkdir := os.join_path(os.vtmp_dir(), 'tests', 'closures')
+	wrkdir := os.join_path(os.vtmp_dir(), 'closure_generator_tests')
 	os.mkdir_all(wrkdir)!
 	os.chdir(wrkdir)!
 	full_path_to_target := os.join_path(wrkdir, 'closure_return_test.v')

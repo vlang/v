@@ -32,7 +32,7 @@ not very flaky way.
 TODO: Cleanup this when/if v has better process control/communication primitives.
 */
 const vexe = os.getenv('VEXE')
-const vtmp_folder = os.join_path(os.vtmp_dir(), 'tests', 'live')
+const vtmp_folder = os.join_path(os.vtmp_dir(), 'live_tests')
 const main_source_file = os.join_path(vtmp_folder, 'main.v')
 const tmp_file = os.join_path(vtmp_folder, 'mymodule', 'generated_live_module.tmp')
 const source_file = os.join_path(vtmp_folder, 'mymodule', 'mymodule.v')

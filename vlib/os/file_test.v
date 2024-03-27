@@ -1,6 +1,6 @@
 import os
 
-const tfolder = os.join_path(os.vtmp_dir(), 'tests', 'os_file_test')
+const tfolder = os.join_path(os.vtmp_dir(), 'os_file_tests')
 const tfile = os.join_path_single(tfolder, 'test_file')
 
 fn testsuite_begin() {
