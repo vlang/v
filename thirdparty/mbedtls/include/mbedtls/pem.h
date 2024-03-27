@@ -5,19 +5,7 @@
  */
 /*
  *  Copyright The Mbed TLS Contributors
- *  SPDX-License-Identifier: Apache-2.0
- *
- *  Licensed under the Apache License, Version 2.0 (the "License"); you may
- *  not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
- *
- *  http://www.apache.org/licenses/LICENSE-2.0
- *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- *  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
  */
 #ifndef MBEDTLS_PEM_H
 #define MBEDTLS_PEM_H
@@ -26,11 +14,6 @@
 #include "mbedtls/build_info.h"
 
 #include <stddef.h>
-
-#if ( defined(__ARMCC_VERSION) || defined(_MSC_VER) ) && \
-    !defined(inline) && !defined(__cplusplus)
-#define inline __inline
-#endif
 
 /**
  * \name PEM Error codes
@@ -66,8 +49,7 @@ extern "C" {
 /**
  * \brief       PEM context structure
  */
-typedef struct mbedtls_pem_context
-{
+typedef struct mbedtls_pem_context {
     unsigned char *MBEDTLS_PRIVATE(buf);     /*!< buffer for decoded data             */
     size_t MBEDTLS_PRIVATE(buflen);          /*!< length of the buffer                */
     unsigned char *MBEDTLS_PRIVATE(info);    /*!< buffer for extra header information */
@@ -79,7 +61,7 @@ mbedtls_pem_context;
  *
  * \param ctx   context to be initialized
  */
-void mbedtls_pem_init( mbedtls_pem_context *ctx );
+void mbedtls_pem_init(mbedtls_pem_context *ctx);
 
 /**
  * \brief       Read a buffer for PEM information and store the resulting
@@ -107,10 +89,10 @@ void mbedtls_pem_init( mbedtls_pem_context *ctx );
  *
  * \return          0 on success, or a specific PEM error code
  */
-int mbedtls_pem_read_buffer( mbedtls_pem_context *ctx, const char *header, const char *footer,
-                     const unsigned char *data,
-                     const unsigned char *pwd,
-                     size_t pwdlen, size_t *use_len );
+int mbedtls_pem_read_buffer(mbedtls_pem_context *ctx, const char *header, const char *footer,
+                            const unsigned char *data,
+                            const unsigned char *pwd,
+                            size_t pwdlen, size_t *use_len);
 
 /**
  * \brief       Get the pointer to the decoded binary data in a PEM context.
@@ -124,10 +106,10 @@ int mbedtls_pem_read_buffer( mbedtls_pem_context *ctx, const char *header, const
  * \note            The returned pointer remains valid only until \p ctx is
                     modified or freed.
  */
-static inline const unsigned char *mbedtls_pem_get_buffer( mbedtls_pem_context *ctx, size_t *buflen )
+static inline const unsigned char *mbedtls_pem_get_buffer(mbedtls_pem_context *ctx, size_t *buflen)
 {
     *buflen = ctx->MBEDTLS_PRIVATE(buflen);
-    return( ctx->MBEDTLS_PRIVATE(buf) );
+    return ctx->MBEDTLS_PRIVATE(buf);
 }
 
 
@@ -136,7 +118,7 @@ static inline const unsigned char *mbedtls_pem_get_buffer( mbedtls_pem_context *
  *
  * \param ctx   context to be freed
  */
-void mbedtls_pem_free( mbedtls_pem_context *ctx );
+void mbedtls_pem_free(mbedtls_pem_context *ctx);
 #endif /* MBEDTLS_PEM_PARSE_C */
 
 #if defined(MBEDTLS_PEM_WRITE_C)
@@ -166,9 +148,9 @@ void mbedtls_pem_free( mbedtls_pem_context *ctx );
  *                  the required minimum size of \p buf.
  * \return          Another PEM or BASE64 error code on other kinds of failure.
  */
-int mbedtls_pem_write_buffer( const char *header, const char *footer,
-                      const unsigned char *der_data, size_t der_len,
-                      unsigned char *buf, size_t buf_len, size_t *olen );
+int mbedtls_pem_write_buffer(const char *header, const char *footer,
+                             const unsigned char *der_data, size_t der_len,
+                             unsigned char *buf, size_t buf_len, size_t *olen);
 #endif /* MBEDTLS_PEM_WRITE_C */
 
 #ifdef __cplusplus

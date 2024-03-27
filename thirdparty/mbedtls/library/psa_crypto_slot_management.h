@@ -3,19 +3,7 @@
  */
 /*
  *  Copyright The Mbed TLS Contributors
- *  SPDX-License-Identifier: Apache-2.0
- *
- *  Licensed under the Apache License, Version 2.0 (the "License"); you may
- *  not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
- *
- *  http://www.apache.org/licenses/LICENSE-2.0
- *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- *  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
  */
 
 #ifndef PSA_CRYPTO_SLOT_MANAGEMENT_H
@@ -35,8 +23,8 @@
 
 /** The minimum value for a volatile key identifier.
  */
-#define PSA_KEY_ID_VOLATILE_MIN  ( PSA_KEY_ID_VENDOR_MAX - \
-                                   MBEDTLS_PSA_KEY_SLOT_COUNT + 1 )
+#define PSA_KEY_ID_VOLATILE_MIN  (PSA_KEY_ID_VENDOR_MAX - \
+                                  MBEDTLS_PSA_KEY_SLOT_COUNT + 1)
 
 /** The maximum value for a volatile key identifier.
  */
@@ -51,10 +39,10 @@
  * \retval 0
  *         The key identifier is not a volatile key identifier.
  */
-static inline int psa_key_id_is_volatile( psa_key_id_t key_id )
+static inline int psa_key_id_is_volatile(psa_key_id_t key_id)
 {
-    return( ( key_id >= PSA_KEY_ID_VOLATILE_MIN ) &&
-            ( key_id <= PSA_KEY_ID_VOLATILE_MAX ) );
+    return (key_id >= PSA_KEY_ID_VOLATILE_MIN) &&
+           (key_id <= PSA_KEY_ID_VOLATILE_MAX);
 }
 
 /** Get the description of a key given its identifier and lock it.
@@ -88,24 +76,24 @@ static inline int psa_key_id_is_volatile( psa_key_id_t key_id )
  *         due to a lack of empty key slot, or available memory.
  * \retval #PSA_ERROR_DOES_NOT_EXIST
  *         There is no key with key identifier \p key.
- * \retval #PSA_ERROR_CORRUPTION_DETECTED
- * \retval #PSA_ERROR_STORAGE_FAILURE
- * \retval #PSA_ERROR_DATA_CORRUPT
+ * \retval #PSA_ERROR_CORRUPTION_DETECTED \emptydescription
+ * \retval #PSA_ERROR_STORAGE_FAILURE \emptydescription
+ * \retval #PSA_ERROR_DATA_CORRUPT \emptydescription
  */
-psa_status_t psa_get_and_lock_key_slot( mbedtls_svc_key_id_t key,
-                                        psa_key_slot_t **p_slot );
+psa_status_t psa_get_and_lock_key_slot(mbedtls_svc_key_id_t key,
+                                       psa_key_slot_t **p_slot);
 
 /** Initialize the key slot structures.
  *
  * \retval #PSA_SUCCESS
  *         Currently this function always succeeds.
  */
-psa_status_t psa_initialize_key_slots( void );
+psa_status_t psa_initialize_key_slots(void);
 
 /** Delete all data from key slots in memory.
  *
  * This does not affect persistent storage. */
-void psa_wipe_all_key_slots( void );
+void psa_wipe_all_key_slots(void);
 
 /** Find a free key slot.
  *
@@ -118,12 +106,12 @@ void psa_wipe_all_key_slots( void );
  *                               associated to the returned slot.
  * \param[out] p_slot            On success, a pointer to the slot.
  *
- * \retval #PSA_SUCCESS
- * \retval #PSA_ERROR_INSUFFICIENT_MEMORY
- * \retval #PSA_ERROR_BAD_STATE
+ * \retval #PSA_SUCCESS \emptydescription
+ * \retval #PSA_ERROR_INSUFFICIENT_MEMORY \emptydescription
+ * \retval #PSA_ERROR_BAD_STATE \emptydescription
  */
-psa_status_t psa_get_empty_key_slot( psa_key_id_t *volatile_key_id,
-                                     psa_key_slot_t **p_slot );
+psa_status_t psa_get_empty_key_slot(psa_key_id_t *volatile_key_id,
+                                    psa_key_slot_t **p_slot);
 
 /** Lock a key slot.
  *
@@ -137,14 +125,15 @@ psa_status_t psa_get_empty_key_slot( psa_key_id_t *volatile_key_id,
  *             The lock counter already reached its maximum value and was not
  *             increased.
  */
-static inline psa_status_t psa_lock_key_slot( psa_key_slot_t *slot )
+static inline psa_status_t psa_lock_key_slot(psa_key_slot_t *slot)
 {
-    if( slot->lock_count >= SIZE_MAX )
-        return( PSA_ERROR_CORRUPTION_DETECTED );
+    if (slot->lock_count >= SIZE_MAX) {
+        return PSA_ERROR_CORRUPTION_DETECTED;
+    }
 
     slot->lock_count++;
 
-    return( PSA_SUCCESS );
+    return PSA_SUCCESS;
 }
 
 /** Unlock a key slot.
@@ -163,7 +152,7 @@ static inline psa_status_t psa_lock_key_slot( psa_key_slot_t *slot )
  *             The lock counter was equal to 0.
  *
  */
-psa_status_t psa_unlock_key_slot( psa_key_slot_t *slot );
+psa_status_t psa_unlock_key_slot(psa_key_slot_t *slot);
 
 /** Test whether a lifetime designates a key in an external cryptoprocessor.
  *
@@ -177,10 +166,10 @@ psa_status_t psa_unlock_key_slot( psa_key_slot_t *slot );
  *         The lifetime designates a key that is volatile or in internal
  *         storage.
  */
-static inline int psa_key_lifetime_is_external( psa_key_lifetime_t lifetime )
+static inline int psa_key_lifetime_is_external(psa_key_lifetime_t lifetime)
 {
-    return( PSA_KEY_LIFETIME_GET_LOCATION( lifetime )
-                != PSA_KEY_LOCATION_LOCAL_STORAGE );
+    return PSA_KEY_LIFETIME_GET_LOCATION(lifetime)
+           != PSA_KEY_LOCATION_LOCAL_STORAGE;
 }
 
 /** Validate a key's location.
@@ -194,21 +183,21 @@ static inline int psa_key_lifetime_is_external( psa_key_lifetime_t lifetime )
  *                          storage, returns a pointer to the driver table
  *                          associated with the key's storage location.
  *
- * \retval #PSA_SUCCESS
- * \retval #PSA_ERROR_INVALID_ARGUMENT
+ * \retval #PSA_SUCCESS \emptydescription
+ * \retval #PSA_ERROR_INVALID_ARGUMENT \emptydescription
  */
-psa_status_t psa_validate_key_location( psa_key_lifetime_t lifetime,
-                                        psa_se_drv_table_entry_t **p_drv );
+psa_status_t psa_validate_key_location(psa_key_lifetime_t lifetime,
+                                       psa_se_drv_table_entry_t **p_drv);
 
 /** Validate the persistence of a key.
  *
  * \param[in] lifetime  The key lifetime attribute.
  *
- * \retval #PSA_SUCCESS
+ * \retval #PSA_SUCCESS \emptydescription
  * \retval #PSA_ERROR_NOT_SUPPORTED The key is persistent but persistent keys
  *             are not supported.
  */
-psa_status_t psa_validate_key_persistence( psa_key_lifetime_t lifetime );
+psa_status_t psa_validate_key_persistence(psa_key_lifetime_t lifetime);
 
 /** Validate a key identifier.
  *
@@ -219,6 +208,6 @@ psa_status_t psa_validate_key_persistence( psa_key_lifetime_t lifetime );
  *
  * \retval <> 0 if the key identifier is valid, 0 otherwise.
  */
-int psa_is_valid_key_id( mbedtls_svc_key_id_t key, int vendor_ok );
+int psa_is_valid_key_id(mbedtls_svc_key_id_t key, int vendor_ok);
 
 #endif /* PSA_CRYPTO_SLOT_MANAGEMENT_H */

@@ -3,19 +3,7 @@
  */
 /*
  *  Copyright The Mbed TLS Contributors
- *  SPDX-License-Identifier: Apache-2.0
- *
- *  Licensed under the Apache License, Version 2.0 (the "License"); you may
- *  not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
- *
- *  http://www.apache.org/licenses/LICENSE-2.0
- *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- *  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
  */
 
 #ifndef PSA_CRYPTO_ECP_H
@@ -42,11 +30,20 @@
  *                          contents of the context and the context itself
  *                          when done.
  */
-psa_status_t mbedtls_psa_ecp_load_representation( psa_key_type_t type,
-                                                  size_t curve_bits,
-                                                  const uint8_t *data,
-                                                  size_t data_length,
-                                                  mbedtls_ecp_keypair **p_ecp );
+psa_status_t mbedtls_psa_ecp_load_representation(psa_key_type_t type,
+                                                 size_t curve_bits,
+                                                 const uint8_t *data,
+                                                 size_t data_length,
+                                                 mbedtls_ecp_keypair **p_ecp);
+
+/** Load the public part of an internal ECP, if required.
+ *
+ * \param ecp               The ECP context to load the public part for.
+ *
+ * \return PSA_SUCCESS on success, otherwise an MPI error.
+ */
+
+psa_status_t mbedtls_psa_ecp_load_public_part(mbedtls_ecp_keypair *ecp);
 
 /** Import an ECP key in binary format.
  *
@@ -70,15 +67,15 @@ psa_status_t mbedtls_psa_ecp_load_representation( psa_key_type_t type,
  * \retval #PSA_SUCCESS  The ECP key was imported successfully.
  * \retval #PSA_ERROR_INVALID_ARGUMENT
  *         The key data is not correctly formatted.
- * \retval #PSA_ERROR_NOT_SUPPORTED
- * \retval #PSA_ERROR_INSUFFICIENT_MEMORY
- * \retval #PSA_ERROR_CORRUPTION_DETECTED
+ * \retval #PSA_ERROR_NOT_SUPPORTED \emptydescription
+ * \retval #PSA_ERROR_INSUFFICIENT_MEMORY \emptydescription
+ * \retval #PSA_ERROR_CORRUPTION_DETECTED \emptydescription
  */
 psa_status_t mbedtls_psa_ecp_import_key(
     const psa_key_attributes_t *attributes,
     const uint8_t *data, size_t data_length,
     uint8_t *key_buffer, size_t key_buffer_size,
-    size_t *key_buffer_length, size_t *bits );
+    size_t *key_buffer_length, size_t *bits);
 
 /** Export an ECP key to export representation
  *
@@ -88,11 +85,11 @@ psa_status_t mbedtls_psa_ecp_import_key(
  * \param[in] data_size     The length of the buffer to export to
  * \param[out] data_length  The amount of bytes written to \p data
  */
-psa_status_t mbedtls_psa_ecp_export_key( psa_key_type_t type,
-                                         mbedtls_ecp_keypair *ecp,
-                                         uint8_t *data,
-                                         size_t data_size,
-                                         size_t *data_length );
+psa_status_t mbedtls_psa_ecp_export_key(psa_key_type_t type,
+                                        mbedtls_ecp_keypair *ecp,
+                                        uint8_t *data,
+                                        size_t data_size,
+                                        size_t *data_length);
 
 /** Export an ECP public key or the public part of an ECP key pair in binary
  *  format.
@@ -111,17 +108,17 @@ psa_status_t mbedtls_psa_ecp_export_key( psa_key_type_t type,
  *                              \p data
  *
  * \retval #PSA_SUCCESS  The ECP public key was exported successfully.
- * \retval #PSA_ERROR_NOT_SUPPORTED
- * \retval #PSA_ERROR_COMMUNICATION_FAILURE
- * \retval #PSA_ERROR_HARDWARE_FAILURE
- * \retval #PSA_ERROR_CORRUPTION_DETECTED
- * \retval #PSA_ERROR_STORAGE_FAILURE
- * \retval #PSA_ERROR_INSUFFICIENT_MEMORY
+ * \retval #PSA_ERROR_NOT_SUPPORTED \emptydescription
+ * \retval #PSA_ERROR_COMMUNICATION_FAILURE \emptydescription
+ * \retval #PSA_ERROR_HARDWARE_FAILURE \emptydescription
+ * \retval #PSA_ERROR_CORRUPTION_DETECTED \emptydescription
+ * \retval #PSA_ERROR_STORAGE_FAILURE \emptydescription
+ * \retval #PSA_ERROR_INSUFFICIENT_MEMORY \emptydescription
  */
 psa_status_t mbedtls_psa_ecp_export_public_key(
     const psa_key_attributes_t *attributes,
     const uint8_t *key_buffer, size_t key_buffer_size,
-    uint8_t *data, size_t data_size, size_t *data_length );
+    uint8_t *data, size_t data_size, size_t *data_length);
 
 /**
  * \brief Generate an ECP key.
@@ -144,7 +141,7 @@ psa_status_t mbedtls_psa_ecp_export_public_key(
  */
 psa_status_t mbedtls_psa_ecp_generate_key(
     const psa_key_attributes_t *attributes,
-    uint8_t *key_buffer, size_t key_buffer_size, size_t *key_buffer_length );
+    uint8_t *key_buffer, size_t key_buffer_size, size_t *key_buffer_length);
 
 /** Sign an already-calculated hash with ECDSA.
  *
@@ -166,23 +163,23 @@ psa_status_t mbedtls_psa_ecp_generate_key(
  * \param[out] signature_length On success, the number of bytes
  *                              that make up the returned signature value.
  *
- * \retval #PSA_SUCCESS
+ * \retval #PSA_SUCCESS \emptydescription
  * \retval #PSA_ERROR_BUFFER_TOO_SMALL
  *         The size of the \p signature buffer is too small. You can
  *         determine a sufficient buffer size by calling
  *         #PSA_SIGN_OUTPUT_SIZE(\c PSA_KEY_TYPE_ECC_KEY_PAIR, \c key_bits,
  *         \p alg) where \c key_bits is the bit-size of the ECC key.
- * \retval #PSA_ERROR_NOT_SUPPORTED
- * \retval #PSA_ERROR_INVALID_ARGUMENT
- * \retval #PSA_ERROR_INSUFFICIENT_MEMORY
- * \retval #PSA_ERROR_CORRUPTION_DETECTED
- * \retval #PSA_ERROR_INSUFFICIENT_ENTROPY
+ * \retval #PSA_ERROR_NOT_SUPPORTED \emptydescription
+ * \retval #PSA_ERROR_INVALID_ARGUMENT \emptydescription
+ * \retval #PSA_ERROR_INSUFFICIENT_MEMORY \emptydescription
+ * \retval #PSA_ERROR_CORRUPTION_DETECTED \emptydescription
+ * \retval #PSA_ERROR_INSUFFICIENT_ENTROPY \emptydescription
  */
 psa_status_t mbedtls_psa_ecdsa_sign_hash(
     const psa_key_attributes_t *attributes,
     const uint8_t *key_buffer, size_t key_buffer_size,
     psa_algorithm_t alg, const uint8_t *hash, size_t hash_length,
-    uint8_t *signature, size_t signature_size, size_t *signature_length );
+    uint8_t *signature, size_t signature_size, size_t *signature_length);
 
 /**
  * \brief Verify an ECDSA hash or short message signature.
@@ -209,13 +206,62 @@ psa_status_t mbedtls_psa_ecdsa_sign_hash(
  * \retval #PSA_ERROR_INVALID_SIGNATURE
  *         The calculation was performed successfully, but the passed
  *         signature is not a valid signature.
- * \retval #PSA_ERROR_NOT_SUPPORTED
- * \retval #PSA_ERROR_INVALID_ARGUMENT
- * \retval #PSA_ERROR_INSUFFICIENT_MEMORY
+ * \retval #PSA_ERROR_NOT_SUPPORTED \emptydescription
+ * \retval #PSA_ERROR_INVALID_ARGUMENT \emptydescription
+ * \retval #PSA_ERROR_INSUFFICIENT_MEMORY \emptydescription
  */
 psa_status_t mbedtls_psa_ecdsa_verify_hash(
     const psa_key_attributes_t *attributes,
     const uint8_t *key_buffer, size_t key_buffer_size,
     psa_algorithm_t alg, const uint8_t *hash, size_t hash_length,
-    const uint8_t *signature, size_t signature_length );
+    const uint8_t *signature, size_t signature_length);
+
+
+/** Perform a key agreement and return the raw ECDH shared secret.
+ *
+ * \note The signature of this function is that of a PSA driver
+ *       key_agreement entry point. This function behaves as a key_agreement
+ *       entry point as defined in the PSA driver interface specification for
+ *       transparent drivers.
+ *
+ * \param[in]  attributes           The attributes of the key to use for the
+ *                                  operation.
+ * \param[in]  key_buffer           The buffer containing the private key
+ *                                  context.
+ * \param[in]  key_buffer_size      Size of the \p key_buffer buffer in
+ *                                  bytes.
+ * \param[in]  alg                  A key agreement algorithm that is
+ *                                  compatible with the type of the key.
+ * \param[in]  peer_key             The buffer containing the key context
+ *                                  of the peer's public key.
+ * \param[in]  peer_key_length      Size of the \p peer_key buffer in
+ *                                  bytes.
+ * \param[out] shared_secret        The buffer to which the shared secret
+ *                                  is to be written.
+ * \param[in]  shared_secret_size   Size of the \p shared_secret buffer in
+ *                                  bytes.
+ * \param[out] shared_secret_length On success, the number of bytes that make
+ *                                  up the returned shared secret.
+ * \retval #PSA_SUCCESS
+ *         Success. Shared secret successfully calculated.
+ * \retval #PSA_ERROR_INVALID_HANDLE \emptydescription
+ * \retval #PSA_ERROR_NOT_PERMITTED \emptydescription
+ * \retval #PSA_ERROR_INVALID_ARGUMENT
+ *         \p alg is not a key agreement algorithm, or
+ *         \p private_key is not compatible with \p alg,
+ *         or \p peer_key is not valid for \p alg or not compatible with
+ *         \p private_key.
+ * \retval #PSA_ERROR_BUFFER_TOO_SMALL
+ *         \p shared_secret_size is too small
+ * \retval #PSA_ERROR_NOT_SUPPORTED
+ *         \p alg is not a supported key agreement algorithm.
+ * \retval #PSA_ERROR_INSUFFICIENT_MEMORY \emptydescription
+ * \retval #PSA_ERROR_CORRUPTION_DETECTED \emptydescription
+ */
+psa_status_t mbedtls_psa_key_agreement_ecdh(
+    const psa_key_attributes_t *attributes,
+    const uint8_t *key_buffer, size_t key_buffer_size,
+    psa_algorithm_t alg, const uint8_t *peer_key, size_t peer_key_length,
+    uint8_t *shared_secret, size_t shared_secret_size,
+    size_t *shared_secret_length);
 #endif /* PSA_CRYPTO_ECP_H */
