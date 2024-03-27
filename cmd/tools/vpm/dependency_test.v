@@ -3,6 +3,7 @@ import os
 import time
 import rand
 import v.vmod
+import test_utils { cmd_ok }
 
 const v = os.quoted_path(@VEXE)
 const test_path = os.join_path(os.vtmp_dir(), 'vpm_dependency_test_${rand.ulid()}')
@@ -52,8 +53,7 @@ fn test_install_dependencies_in_module_dir() {
 	}
 	assert v_mod.dependencies == ['markdown', 'pcre', 'https://github.com/spytheman/vtray']
 	// Run `v install`
-	mut res := os.execute('${v} install --once')
-	assert res.exit_code == 0, res.str()
+	mut res := cmd_ok(@LOCATION, '${v} install --once')
 	assert res.output.contains('Detected v.mod file inside the project directory. Using it...'), res.output
 	assert res.output.contains('Installing `markdown`'), res.output
 	assert res.output.contains('Installing `pcre`'), res.output
@@ -62,14 +62,12 @@ fn test_install_dependencies_in_module_dir() {
 	assert get_mod_name(os.join_path(test_path, 'markdown', 'v.mod')) == 'markdown'
 	assert get_mod_name(os.join_path(test_path, 'pcre', 'v.mod')) == 'pcre'
 	assert get_mod_name(os.join_path(test_path, 'vtray', 'v.mod')) == 'vtray'
-	res = os.execute('${v} install --once')
-	assert res.exit_code == 0, res.str()
+	res = cmd_ok(@LOCATION, '${v} install --once')
 	assert res.output.contains('All modules are already installed.'), res.output
 }
 
 fn test_resolve_external_dependencies_during_module_install() {
-	res := os.execute('${v} install -v https://github.com/ttytm/emoji-mart-desktop')
-	assert res.exit_code == 0, res.str()
+	res := cmd_ok(@LOCATION, '${v} install -v https://github.com/ttytm/emoji-mart-desktop')
 	assert res.output.contains('Found 2 dependencies'), res.output
 	assert res.output.contains('Installing `webview`'), res.output
 	assert res.output.contains('Installing `miniaudio`'), res.output
@@ -84,14 +82,11 @@ fn test_install_with_recursive_dependencies() {
 		eprintln('Timeout while testing installation with recursive dependencies.')
 		exit(1)
 	}()
-	mut res := os.execute('${v} install https://gitlab.com/tobealive/a')
-	assert res.exit_code == 0, res.str()
+	cmd_ok(@LOCATION, '${v} install https://gitlab.com/tobealive/a')
 
 	// Test the installation of a module when passing its URL with the `.git` extension.
 	// One of the modules dependencies `https://gitlab.com/tobealive/c` has the
 	// `https://gitlab.com/tobealive/a` dependency without `.git`.
-	res = os.execute('${v} remove a b c')
-	assert res.exit_code == 0, res.str()
-	res = os.execute('${v} install https://gitlab.com/tobealive/a.git')
-	assert res.exit_code == 0, res.str()
+	cmd_ok(@LOCATION, '${v} remove a b c')
+	cmd_ok(@LOCATION, '${v} install https://gitlab.com/tobealive/a.git')
 }

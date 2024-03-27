@@ -40,3 +40,17 @@ pub fn hg_serve(hg_path string, path string) (&os.Process, int) {
 	}
 	return p, port
 }
+
+pub fn cmd_ok(location string, cmd string) os.Result {
+	eprintln('>   cmd_ok for cmd: "${cmd}"')
+	res := os.execute(cmd)
+	assert res.exit_code == 0, 'success expected, but not found\n    location: ${location}\n    cmd:\n${cmd}\n    res:\n${res}\n'
+	return res
+}
+
+pub fn cmd_fail(location string, cmd string) os.Result {
+	eprintln('> cmd_fail for cmd: "${cmd}"')
+	res := os.execute(cmd)
+	assert res.exit_code == 1, 'failure expected, but not found\n    location: ${location}\n    cmd:\n${cmd}\n    res:\n${res}\n'
+	return res
+}
