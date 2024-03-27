@@ -286,7 +286,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			skip_files << 'examples/sokol/03_march_tracing_glsl/rt_glsl.v'
 			skip_files << 'examples/sokol/04_multi_shader_glsl/rt_glsl.v'
 			skip_files << 'examples/sokol/05_instancing_glsl/rt_glsl.v'
-			skip_files << 'examples/sokol/07_simple_shader/simple_shader.v'
+			skip_files << 'examples/sokol/07_simple_shader_glsl/simple_shader.v'
 			skip_files << 'examples/sokol/08_sdf/sdf.v'
 			// Skip obj_viewer code in the CI
 			skip_files << 'examples/sokol/06_obj_viewer/show_obj.v'
