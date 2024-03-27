@@ -1,5 +1,0 @@
-vlib/v/parser/tests/fn_call_unexpected_eof_multi_lines_rpar_err.vv:1:14: error: unexpected eof, expecting `)`
-    1 | println('foo' bar
-      |              ~~~~
-    2 | println('baz')
-    3 |
