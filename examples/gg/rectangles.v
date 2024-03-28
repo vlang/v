@@ -14,9 +14,7 @@ mut:
 }
 
 fn main() {
-	mut app := &App{
-		gg: 0
-	}
+	mut app := &App{}
 	app.gg = gg.new_context(
 		bg_color: gx.white
 		width: win_width
