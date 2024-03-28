@@ -525,7 +525,7 @@ psa_status_t psa_copy_key(mbedtls_svc_key_id_t source_key,
  *
  * This function destroys a key from both volatile
  * memory and, if applicable, non-volatile storage. Implementations shall
- * make a best effort to ensure that that the key material cannot be recovered.
+ * make a best effort to ensure that the key material cannot be recovered.
  *
  * This function also erases any metadata such as policies and frees
  * resources associated with the key.
@@ -545,7 +545,7 @@ psa_status_t psa_copy_key(mbedtls_svc_key_id_t source_key,
  * \retval #PSA_ERROR_INVALID_HANDLE
  *         \p key is not a valid identifier nor \c 0.
  * \retval #PSA_ERROR_COMMUNICATION_FAILURE
- *         There was an failure in communication with the cryptoprocessor.
+ *         There was a failure in communication with the cryptoprocessor.
  *         The key material may still be present in the cryptoprocessor.
  * \retval #PSA_ERROR_DATA_INVALID
  *         This error is typically a result of either storage corruption on a
@@ -3823,7 +3823,7 @@ psa_status_t psa_key_derivation_verify_bytes(
  * compares those bytes to an expected value, provided as key of type
  * #PSA_KEY_TYPE_PASSWORD_HASH.
  * If you view the key derivation's output as a stream of bytes, this
- * function destructively reads the number of bytes corresponding the
+ * function destructively reads the number of bytes corresponding to the
  * length of the expected value from the stream before comparing them.
  * The operation's capacity decreases by the number of bytes read.
  *

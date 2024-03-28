@@ -21,6 +21,9 @@ $if prod && opt_size ? {
 #flag @VEXEROOT/thirdparty/mbedtls/library/asn1write.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/base64.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/bignum.o
+#flag @VEXEROOT/thirdparty/mbedtls/library/bignum_core.o
+#flag @VEXEROOT/thirdparty/mbedtls/library/bignum_mod.o
+#flag @VEXEROOT/thirdparty/mbedtls/library/bignum_mod_raw.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/camellia.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/ccm.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/chacha20.o
@@ -30,6 +33,7 @@ $if prod && opt_size ? {
 #flag @VEXEROOT/thirdparty/mbedtls/library/cmac.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/constant_time.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/ctr_drbg.o
+#flag @VEXEROOT/thirdparty/mbedtls/library/debug.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/des.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/dhm.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/ecdh.o
@@ -41,13 +45,17 @@ $if prod && opt_size ? {
 #flag @VEXEROOT/thirdparty/mbedtls/library/entropy_poll.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/error.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/gcm.o
+#flag @VEXEROOT/thirdparty/mbedtls/library/hash_info.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/hkdf.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/hmac_drbg.o
+#flag @VEXEROOT/thirdparty/mbedtls/library/lmots.o
+#flag @VEXEROOT/thirdparty/mbedtls/library/lms.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/md.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/md5.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/memory_buffer_alloc.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/mps_reader.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/mps_trace.o
+#flag @VEXEROOT/thirdparty/mbedtls/library/net_sockets.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/nist_kw.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/oid.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/padlock.o
@@ -56,6 +64,7 @@ $if prod && opt_size ? {
 #flag @VEXEROOT/thirdparty/mbedtls/library/pk_wrap.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/pkcs12.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/pkcs5.o
+#flag @VEXEROOT/thirdparty/mbedtls/library/pkcs7.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/pkparse.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/pkwrite.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/platform.o
@@ -69,6 +78,7 @@ $if prod && opt_size ? {
 #flag @VEXEROOT/thirdparty/mbedtls/library/psa_crypto_ecp.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/psa_crypto_hash.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/psa_crypto_mac.o
+#flag @VEXEROOT/thirdparty/mbedtls/library/psa_crypto_pake.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/psa_crypto_rsa.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/psa_crypto_se.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/psa_crypto_slot_management.o
@@ -80,7 +90,20 @@ $if prod && opt_size ? {
 #flag @VEXEROOT/thirdparty/mbedtls/library/sha1.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/sha256.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/sha512.o
+#flag @VEXEROOT/thirdparty/mbedtls/library/ssl_cache.o
+#flag @VEXEROOT/thirdparty/mbedtls/library/ssl_ciphersuites.o
+#flag @VEXEROOT/thirdparty/mbedtls/library/ssl_client.o
+#flag @VEXEROOT/thirdparty/mbedtls/library/ssl_cookie.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/ssl_debug_helpers_generated.o
+#flag @VEXEROOT/thirdparty/mbedtls/library/ssl_msg.o
+#flag @VEXEROOT/thirdparty/mbedtls/library/ssl_ticket.o
+#flag @VEXEROOT/thirdparty/mbedtls/library/ssl_tls.o
+#flag @VEXEROOT/thirdparty/mbedtls/library/ssl_tls12_client.o
+#flag @VEXEROOT/thirdparty/mbedtls/library/ssl_tls12_server.o
+#flag @VEXEROOT/thirdparty/mbedtls/library/ssl_tls13_client.o
+#flag @VEXEROOT/thirdparty/mbedtls/library/ssl_tls13_generic.o
+#flag @VEXEROOT/thirdparty/mbedtls/library/ssl_tls13_keys.o
+#flag @VEXEROOT/thirdparty/mbedtls/library/ssl_tls13_server.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/threading.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/timing.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/version.o
@@ -92,24 +115,9 @@ $if prod && opt_size ? {
 #flag @VEXEROOT/thirdparty/mbedtls/library/x509_csr.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/x509write_crt.o
 #flag @VEXEROOT/thirdparty/mbedtls/library/x509write_csr.o
-#flag @VEXEROOT/thirdparty/mbedtls/library/debug.o
-#flag @VEXEROOT/thirdparty/mbedtls/library/net_sockets.o
-#flag @VEXEROOT/thirdparty/mbedtls/library/ssl_cache.o
-#flag @VEXEROOT/thirdparty/mbedtls/library/ssl_ciphersuites.o
-#flag @VEXEROOT/thirdparty/mbedtls/library/ssl_client.o
-#flag @VEXEROOT/thirdparty/mbedtls/library/ssl_cookie.o
-#flag @VEXEROOT/thirdparty/mbedtls/library/ssl_msg.o
-#flag @VEXEROOT/thirdparty/mbedtls/library/ssl_ticket.o
-#flag @VEXEROOT/thirdparty/mbedtls/library/ssl_tls.o
-#flag @VEXEROOT/thirdparty/mbedtls/library/ssl_tls12_client.o
-#flag @VEXEROOT/thirdparty/mbedtls/library/ssl_tls12_server.o
-#flag @VEXEROOT/thirdparty/mbedtls/library/ssl_tls13_keys.o
-#flag @VEXEROOT/thirdparty/mbedtls/library/ssl_tls13_client.o
-#flag @VEXEROOT/thirdparty/mbedtls/library/ssl_tls13_server.o
-#flag @VEXEROOT/thirdparty/mbedtls/library/ssl_tls13_generic.o
+#flag @VEXEROOT/thirdparty/mbedtls/3rdparty/everest/library/Hacl_Curve25519_joined.o
 #flag @VEXEROOT/thirdparty/mbedtls/3rdparty/everest/library/everest.o
 #flag @VEXEROOT/thirdparty/mbedtls/3rdparty/everest/library/x25519.o
-#flag @VEXEROOT/thirdparty/mbedtls/3rdparty/everest/library/Hacl_Curve25519_joined.o
 
 #include <mbedtls/net_sockets.h>
 #include <mbedtls/ssl.h>
@@ -196,13 +204,3 @@ fn C.mbedtls_x509_crt_parse(&C.mbedtls_x509_crt, &u8, usize) int
 fn C.mbedtls_x509_crt_parse_file(&C.mbedtls_x509_crt, &char) int
 
 fn C.mbedtls_high_level_strerr(int) &char
-
-// fn init() {
-// 	$if ssl_pre_1_1_version ? {
-// 		// OPENSSL_VERSION_NUMBER < 0x10100000L
-// 		C.SSL_load_error_strings()
-// 		C.SSL_library_init()
-// 	} $else {
-// 		C.OPENSSL_init_ssl(C.OPENSSL_INIT_LOAD_SSL_STRINGS, 0)
-// 	}
-// }

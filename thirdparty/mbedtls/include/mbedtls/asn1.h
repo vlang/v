@@ -24,6 +24,7 @@
 #include "mbedtls/private_access.h"
 
 #include "mbedtls/build_info.h"
+#include "mbedtls/platform_util.h"
 
 #include <stddef.h>
 
@@ -38,8 +39,9 @@
 
 /**
  * \name ASN1 Error codes
- * These error codes are OR'ed to X509 error codes for
+ * These error codes are combined with other error codes for
  * higher error granularity.
+ * e.g. X.509 and PKCS #7 error codes
  * ASN1 is a standard to specify data structures.
  * \{
  */
@@ -606,24 +608,40 @@ int mbedtls_asn1_get_alg_null( unsigned char **p,
 const mbedtls_asn1_named_data *mbedtls_asn1_find_named_data( const mbedtls_asn1_named_data *list,
                                        const char *oid, size_t len );
 
+#if !defined(MBEDTLS_DEPRECATED_REMOVED)
 /**
  * \brief       Free a mbedtls_asn1_named_data entry
+ *
+ * \deprecated  This function is deprecated and will be removed in a
+ *              future version of the library.
+ *              Please use mbedtls_asn1_free_named_data_list()
+ *              or mbedtls_asn1_free_named_data_list_shallow().
  *
  * \param entry The named data entry to free.
  *              This function calls mbedtls_free() on
  *              `entry->oid.p` and `entry->val.p`.
  */
-void mbedtls_asn1_free_named_data( mbedtls_asn1_named_data *entry );
+void MBEDTLS_DEPRECATED mbedtls_asn1_free_named_data( mbedtls_asn1_named_data *entry );
+#endif /* MBEDTLS_DEPRECATED_REMOVED */
 
 /**
  * \brief       Free all entries in a mbedtls_asn1_named_data list.
  *
  * \param head  Pointer to the head of the list of named data entries to free.
- *              This function calls mbedtls_asn1_free_named_data() and
- *              mbedtls_free() on each list element and
- *              sets \c *head to \c NULL.
+ *              This function calls mbedtls_free() on
+ *              `entry->oid.p` and `entry->val.p` and then on `entry`
+ *              for each list entry, and sets \c *head to \c NULL.
  */
 void mbedtls_asn1_free_named_data_list( mbedtls_asn1_named_data **head );
+
+/**
+ * \brief       Free all shallow entries in a mbedtls_asn1_named_data list,
+ *              but do not free internal pointer targets.
+ *
+ * \param name  Head of the list of named data entries to free.
+ *              This function calls mbedtls_free() on each list element.
+ */
+void mbedtls_asn1_free_named_data_list_shallow( mbedtls_asn1_named_data *name );
 
 /** \} name Functions to parse ASN.1 data structures */
 /** \} addtogroup asn1_module */

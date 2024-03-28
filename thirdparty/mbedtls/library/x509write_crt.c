@@ -45,6 +45,9 @@
 #include "mbedtls/psa_util.h"
 #endif /* MBEDTLS_USE_PSA_CRYPTO */
 
+#include "hash_info.h"
+#include "mbedtls/legacy_or_psa.h"
+
 void mbedtls_x509write_crt_init( mbedtls_x509write_cert *ctx )
 {
     memset( ctx, 0, sizeof( mbedtls_x509write_cert ) );
@@ -171,7 +174,7 @@ int mbedtls_x509write_crt_set_basic_constraints( mbedtls_x509write_cert *ctx,
                              is_ca, buf + sizeof(buf) - len, len ) );
 }
 
-#if defined(MBEDTLS_SHA1_C)
+#if defined(MBEDTLS_HAS_ALG_SHA_1_VIA_MD_OR_PSA_BASED_ON_USE_PSA)
 static int mbedtls_x509write_crt_set_key_identifier( mbedtls_x509write_cert *ctx,
                                               int is_ca,
                                               unsigned char tag )
@@ -253,7 +256,7 @@ int mbedtls_x509write_crt_set_authority_key_identifier( mbedtls_x509write_cert *
                                                      1,
                                                      (MBEDTLS_ASN1_CONTEXT_SPECIFIC | 0) );
 }
-#endif /* MBEDTLS_SHA1_C */
+#endif /* MBEDTLS_HAS_ALG_SHA_1_VIA_MD_OR_PSA_BASED_ON_USE_PSA */
 
 int mbedtls_x509write_crt_set_key_usage( mbedtls_x509write_cert *ctx,
                                          unsigned int key_usage )
@@ -291,6 +294,43 @@ int mbedtls_x509write_crt_set_key_usage( mbedtls_x509write_cert *ctx,
         return( ret );
 
     return( 0 );
+}
+
+int mbedtls_x509write_crt_set_ext_key_usage( mbedtls_x509write_cert *ctx,
+                                             const mbedtls_asn1_sequence *exts )
+{
+    unsigned char buf[256];
+    unsigned char *c = buf + sizeof(buf);
+    int ret;
+    size_t len = 0;
+    const mbedtls_asn1_sequence *last_ext = NULL;
+    const mbedtls_asn1_sequence *ext;
+
+    memset( buf, 0, sizeof(buf) );
+
+    /* We need at least one extension: SEQUENCE SIZE (1..MAX) OF KeyPurposeId */
+    if( exts == NULL )
+        return( MBEDTLS_ERR_X509_BAD_INPUT_DATA );
+
+    /* Iterate over exts backwards, so we write them out in the requested order */
+    while( last_ext != exts )
+    {
+        for( ext = exts; ext->next != last_ext; ext = ext->next ) {}
+        if( ext->buf.tag != MBEDTLS_ASN1_OID )
+            return( MBEDTLS_ERR_X509_BAD_INPUT_DATA );
+        MBEDTLS_ASN1_CHK_ADD( len, mbedtls_asn1_write_raw_buffer( &c, buf, ext->buf.p, ext->buf.len ) );
+        MBEDTLS_ASN1_CHK_ADD( len, mbedtls_asn1_write_len( &c, buf, ext->buf.len ) );
+        MBEDTLS_ASN1_CHK_ADD( len, mbedtls_asn1_write_tag( &c, buf, MBEDTLS_ASN1_OID ) );
+        last_ext = ext;
+    }
+
+    MBEDTLS_ASN1_CHK_ADD( len, mbedtls_asn1_write_len( &c, buf, len ) );
+    MBEDTLS_ASN1_CHK_ADD( len, mbedtls_asn1_write_tag( &c, buf, MBEDTLS_ASN1_CONSTRUCTED | MBEDTLS_ASN1_SEQUENCE ) );
+
+    return mbedtls_x509write_crt_set_extension( ctx,
+                         MBEDTLS_OID_EXTENDED_KEY_USAGE,
+                         MBEDTLS_OID_SIZE( MBEDTLS_OID_EXTENDED_KEY_USAGE ),
+                         1, c, len );
 }
 
 int mbedtls_x509write_crt_set_ns_cert_type( mbedtls_x509write_cert *ctx,
@@ -357,12 +397,10 @@ int mbedtls_x509write_crt_der( mbedtls_x509write_cert *ctx,
     unsigned char *c, *c2;
     unsigned char sig[MBEDTLS_PK_SIGNATURE_MAX_SIZE];
     size_t hash_length = 0;
+    unsigned char hash[MBEDTLS_HASH_MAX_SIZE];
 #if defined(MBEDTLS_USE_PSA_CRYPTO)
     psa_status_t status = PSA_ERROR_CORRUPTION_DETECTED;
     psa_algorithm_t psa_algorithm;
-    unsigned char hash[PSA_HASH_MAX_SIZE];
-#else
-    unsigned char hash[64];
 #endif /* MBEDTLS_USE_PSA_CRYPTO */
 
     size_t sub_len = 0, pub_len = 0, sig_and_oid_len = 0, sig_len;
@@ -500,7 +538,7 @@ int mbedtls_x509write_crt_der( mbedtls_x509write_cert *ctx,
 
     /* Compute hash of CRT. */
 #if defined(MBEDTLS_USE_PSA_CRYPTO)
-    psa_algorithm = mbedtls_psa_translate_md( ctx->md_alg );
+    psa_algorithm = mbedtls_hash_info_psa_from_md( ctx->md_alg );
 
     status = psa_hash_compute( psa_algorithm,
                                c,
