@@ -54,7 +54,6 @@ pub mut:
 	wsinfix_depth      int
 	format_state       FormatState
 	source_text        string // can be set by `echo "println('hi')" | v fmt`, i.e. when processing source not from a file, but from stdin. In this case, it will contain the entire input text. You can use f.file.path otherwise, and read from that file.
-	inside_vmodules    bool
 }
 
 @[params]
@@ -70,12 +69,6 @@ pub fn fmt(file ast.File, mut table ast.Table, pref_ &pref.Preferences, is_debug
 		is_debug: is_debug
 		out: strings.new_builder(1000)
 		out_imports: strings.new_builder(200)
-	}
-	for p in os.vmodules_paths() {
-		if file.path.starts_with(os.real_path(p)) {
-			f.inside_vmodules = true
-			break
-		}
 	}
 
 	f.source_text = options.source_text
@@ -380,30 +373,27 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 }
 
 pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
-	normalized_mod := if f.inside_vmodules {
-		imp.source_name
-	} else if imp.mod.len == 0 {
-		imp.alias
-	} else {
-		mod_last := imp.mod.all_after_last('.')
-		if imp.source_name == mod_last {
-			mod_last
-		} else {
-			imp.mod
+	mut imp_res := imp.source_name
+	if imp.mod.starts_with('src.') || (imp.mod.contains('src.') && imp.mod != imp.source_name) {
+		imp_after_src := imp.mod.all_after('src.')
+		if imp.source_name.all_after('src.') == imp_after_src {
+			imp_res = imp_after_src
 		}
 	}
-	is_diff := imp.alias != normalized_mod && !normalized_mod.ends_with('.' + imp.alias)
-	mut imp_alias_suffix := if is_diff { ' as ${imp.alias}' } else { '' }
+	// Format / remove unused selective import symbols
+	// E.g.: `import foo { Foo }` || `import foo as f { Foo }`
+	has_alias := imp.alias != imp.source_name.all_after_last('.')
+	mut suffix := if has_alias { ' as ${imp.alias}' } else { '' }
 	mut syms := imp.syms.map(it.name).filter(f.import_syms_used[it])
 	syms.sort()
 	if syms.len > 0 {
-		imp_alias_suffix += if imp.syms[0].pos.line_nr == imp.pos.line_nr {
+		suffix += if imp.syms[0].pos.line_nr == imp.pos.line_nr {
 			' { ' + syms.join(', ') + ' }'
 		} else {
 			' {\n\t' + syms.join(',\n\t') + ',\n}'
 		}
 	}
-	return '${normalized_mod}${imp_alias_suffix}'
+	return '${imp_res}${suffix}'
 }
 
 //=== Node helpers ===//
