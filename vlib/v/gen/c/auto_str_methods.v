@@ -928,6 +928,11 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 			}
 		}
 	}
+	// -hide-auto-str hides potential sensitive struct data from resulting binary files
+	if g.pref.hide_auto_str {
+		fn_body.writeln('\tstring res = { .str ="str() used with -hide-auto-str", .len=30 }; return res;')
+		return
+	}
 	fn_body.writeln('\tstring res = str_intp( ${(info.fields.len - field_skips.len) * 4 + 3}, _MOV((StrIntpData[]){')
 	fn_body.writeln('\t\t{_SLIT("${clean_struct_v_type_name}{\\n"), 0, {.d_c=0}},')
 

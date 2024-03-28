@@ -54,6 +54,7 @@ pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c gx.Color) {
 	$if macos {
 		if ctx.native_rendering {
 			// Make the line more clear on hi dpi screens: draw a rectangle
+			// TODO this is broken if the line's x1 != x2
 			mut width := math.abs(x2 - x)
 			mut height := math.abs(y2 - y)
 			if width == 0 {

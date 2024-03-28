@@ -269,6 +269,9 @@ pub fn println(s string) {
 		println('println(NIL)')
 		return
 	}
+	$if noprintln ? {
+		return
+	}
 	$if android && !termux {
 		C.android_print(C.stdout, c'%.*s\n', s.len, s.str)
 		return
