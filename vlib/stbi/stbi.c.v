@@ -32,7 +32,7 @@ fn cb_free(p voidptr) {
 #flag -I @VEXEROOT/thirdparty/stb_image
 #include "stb_image.h"
 #include "stb_image_write.h"
-#include "stb_image_resize.h"
+#include "stb_image_resize2.h"
 #include "stb_v_header.h"
 #flag @VEXEROOT/thirdparty/stb_image/stbi.o
 
@@ -153,7 +153,7 @@ pub fn load_from_memory(buf &u8, bufsize int, params LoadParams) !Image {
 // Resize functions
 //
 //-----------------------------------------------------------------------------
-fn C.stbir_resize_uint8(input_pixels &u8, input_w int, input_h int, input_stride_in_bytes int, output_pixels &u8, output_w int, output_h int, output_stride_in_bytes int, num_channels int) int
+fn C.stbir_resize_uint8_linear(input_pixels &u8, input_w int, input_h int, input_stride_in_bytes int, output_pixels &u8, output_w int, output_h int, output_stride_in_bytes int, num_channels int) int
 
 // resize_uint8 resizes `img` to dimensions of `output_w` and `output_h`
 pub fn resize_uint8(img &Image, output_w int, output_h int) !Image {
@@ -171,7 +171,7 @@ pub fn resize_uint8(img &Image, output_w int, output_h int) !Image {
 		return error('stbi_image failed to resize file')
 	}
 
-	if 0 == C.stbir_resize_uint8(img.data, img.width, img.height, 0, res.data, output_w,
+	if 0 == C.stbir_resize_uint8_linear(img.data, img.width, img.height, 0, res.data, output_w,
 		output_h, 0, img.nr_channels) {
 		return error('stbi_image failed to resize file')
 	}
