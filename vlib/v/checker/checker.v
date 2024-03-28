@@ -1731,6 +1731,7 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 		prev_const_var := c.const_var
 		c.const_var = unsafe { field }
 		mut typ := c.check_expr_option_or_result_call(field.expr, c.expr(mut field.expr))
+		typ = c.cast_fixed_array_ret(typ, c.table.sym(typ))
 		if ct_value := c.eval_comptime_const_expr(field.expr, 0) {
 			field.comptime_expr_value = ct_value
 			if ct_value is u64 {
