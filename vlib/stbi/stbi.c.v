@@ -171,8 +171,8 @@ pub fn resize_uint8(img &Image, output_w int, output_h int) !Image {
 		return error('stbi_image failed to resize file')
 	}
 
-	if 0 == C.stbir_resize_uint8_linear(img.data, img.width, img.height, 0, res.data, output_w,
-		output_h, 0, img.nr_channels) {
+	if 0 == C.stbir_resize_uint8_linear(img.data, img.width, img.height, 0, res.data,
+		output_w, output_h, 0, img.nr_channels) {
 		return error('stbi_image failed to resize file')
 	}
 	return res
