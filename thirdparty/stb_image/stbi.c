@@ -17,7 +17,7 @@ extern void   stbi__callback_free(void *ptr);
 
 #include "stb_image.h"
 #include "stb_image_write.h"
-#include "stb_image_resize.h"
+#include "stb_image_resize2.h"
 
 /*
 void set_png_compression_level(int level);
