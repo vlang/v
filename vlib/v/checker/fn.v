@@ -107,6 +107,15 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	c.fn_return_type = node.return_type
+	return_type_unaliased := c.table.unaliased_type(node.return_type)
+	if node.return_type.has_flag(.option) && return_type_unaliased.has_flag(.result) {
+		c.error('the fn returns ${c.error_type_name(node.return_type)}, but ${c.error_type_name(node.return_type.clear_flag(.option))} is a Result alias, you can not mix them',
+			node.return_type_pos)
+	}
+	if node.return_type.has_flag(.result) && return_type_unaliased.has_flag(.option) {
+		c.error('the fn returns ${c.error_type_name(node.return_type)}, but ${c.error_type_name(node.return_type.clear_flag(.result))} is an Option alias, you can not mix them',
+			node.return_type_pos)
+	}
 	if node.return_type != ast.void_type {
 		if ct_attr_idx := node.attrs.find_comptime_define() {
 			sexpr := node.attrs[ct_attr_idx].ct_expr.str()

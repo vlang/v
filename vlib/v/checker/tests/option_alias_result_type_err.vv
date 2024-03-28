@@ -1,0 +1,27 @@
+struct Foo {
+	x int
+}
+
+type Bar = ?Foo
+
+enum Baz {
+	nothing
+	bad
+	value
+}
+
+fn f(b Baz) !Bar {
+	match b {
+		.nothing {
+			return none
+		}
+		.value {
+			return Foo{
+				x: 42
+			}
+		}
+		else {
+			return none
+		}
+	}
+}
