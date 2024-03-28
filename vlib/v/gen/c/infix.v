@@ -728,7 +728,7 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 		variant_idx := g.comptime.type_map['${g.comptime.comptime_for_variant_var}.typ'] or {
 			ast.void_type
 		}
-		g.write('${variant_idx.idx()}')
+		g.write('${int(variant_idx)}')
 	} else {
 		g.expr(node.right)
 	}
@@ -1051,7 +1051,9 @@ fn (mut g Gen) gen_is_none_check(node ast.InfixExpr) {
 	if node.left in [ast.Ident, ast.SelectorExpr, ast.IndexExpr, ast.CallExpr] {
 		old_inside_opt_or_res := g.inside_opt_or_res
 		g.inside_opt_or_res = true
+		g.write('(')
 		g.expr(node.left)
+		g.write(')')
 		g.inside_opt_or_res = old_inside_opt_or_res
 		g.write('.state')
 	} else {

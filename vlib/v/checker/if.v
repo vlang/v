@@ -533,8 +533,14 @@ fn (mut c Checker) smartcast_if_conds(mut node ast.Expr, mut scope ast.Scope) {
 			c.smartcast_if_conds(mut node.left, mut scope)
 			c.smartcast_if_conds(mut node.right, mut scope)
 		} else if node.left is ast.Ident && node.op == .ne && node.right is ast.None {
-			c.smartcast(mut node.left, node.left_type, node.left_type.clear_flag(.option), mut
-				scope, false)
+			if node.left is ast.Ident && c.comptime.get_ct_type_var(node.left) == .smartcast {
+				node.left_type = c.comptime.get_comptime_var_type(node.left)
+				c.smartcast(mut node.left, node.left_type, node.left_type.clear_flag(.option), mut
+					scope, true)
+			} else {
+				c.smartcast(mut node.left, node.left_type, node.left_type.clear_flag(.option), mut
+					scope, false)
+			}
 		} else if node.op == .key_is {
 			if node.left is ast.Ident && c.comptime.is_comptime_var(node.left) {
 				node.left_type = c.comptime.get_comptime_var_type(node.left)

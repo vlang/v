@@ -138,10 +138,11 @@ pub fn (mut s Scope) update_ct_var_kind(name string, kind ComptimeVarKind) {
 	}
 }
 
-pub fn (mut s Scope) update_smartcasts(name string, typ Type) {
+pub fn (mut s Scope) update_smartcasts(name string, typ Type, is_unwrapped bool) {
 	mut obj := unsafe { s.objects[name] }
 	if mut obj is Var {
 		obj.smartcasts = [typ]
+		obj.is_unwrapped = is_unwrapped
 	}
 }
 
