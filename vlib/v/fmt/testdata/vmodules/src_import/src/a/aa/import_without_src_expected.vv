@@ -1,0 +1,4 @@
+// NOTE: A test that follows a directory strucutre and module naming like this one
+// also tests whether vfmt would add a prefix to the import.
+
+import a.ab
