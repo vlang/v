@@ -48,7 +48,7 @@ You need the following tools to build the library with the provided makefiles:
 
 * GNU Make 3.82 or a build tool that CMake supports.
 * A C99 toolchain (compiler, linker, archiver). We actively test with GCC 5.4, Clang 3.8, IAR 8 and Visual Studio 2013. More recent versions should work. Slightly older versions may work.
-* Python 3.8 to generate the test code. Python is also needed to integrate PSA drivers and to build the development branch (see next section).
+* Python 3.6 to generate the test code, and to generate sample programs in the development branch.
 * Perl to run the tests, and to generate some source files in the development branch.
 * CMake 3.10.2 or later (if using CMake).
 * Microsoft Visual Studio 2013 or later (if using Visual Studio).
@@ -61,11 +61,10 @@ The source code of Mbed TLS includes some files that are automatically generated
 The following tools are required:
 
 * Perl, for some library source files and for Visual Studio build files.
-* Python 3.8 and some Python packages, for some library source files, sample programs and test data. To install the necessary packages, run:
+* Python 3 and some Python packages, for some library source files, sample programs and test data. To install the necessary packages, run
     ```
-    python3 -m pip install --user -r scripts/basic.requirements.txt
+    python -m pip install -r scripts/basic.requirements.txt
     ```
-    Depending on your Python installation, you may need to invoke `python` instead of `python3`. To install the packages system-wide, omit the `--user` option.
 * A C compiler for the host platform, for some test data.
 
 If you are cross-compiling, you must set the `CC` environment variable to a C compiler for the host platform when generating the configuration-independent files.
@@ -221,7 +220,7 @@ subproject.
 
 ### Microsoft Visual Studio
 
-The build files for Microsoft Visual Studio are generated for Visual Studio 2013.
+The build files for Microsoft Visual Studio are generated for Visual Studio 2010.
 
 The solution file `mbedTLS.sln` contains all the basic projects needed to build the library and all the programs. The files in tests are not generated and compiled, as these need Python and perl environments as well. However, the selftest program in `programs/test/` is still available.
 
@@ -246,8 +245,6 @@ For machines with a Unix shell and OpenSSL (and optionally GnuTLS) installed, ad
 -   `tests/scripts/depends.py` test builds in configurations with a single curve, key exchange, hash, cipher, or pkalg on.
 -   `tests/scripts/all.sh` runs a combination of the above tests, plus some more, with various build options (such as ASan, full `mbedtls_config.h`, etc).
 
-Instead of manually installing the required versions of all tools required for testing, it is possible to use the Docker images from our CI systems, as explained in [our testing infrastructure repository](https://github.com/Mbed-TLS/mbedtls-test/blob/master/README.md#quick-start).
-
 Porting Mbed TLS
 ----------------
 
@@ -264,8 +261,6 @@ Mbed TLS is mostly written in portable C99; however, it has a few platform requi
 - Signed integers must be represented using two's complement.
 - `int` and `size_t` must be at least 32 bits wide.
 - The types `uint8_t`, `uint16_t`, `uint32_t` and their signed equivalents must be available.
-- Mixed-endian platforms are not supported.
-- SIZE_MAX must be at least as big as INT_MAX and UINT_MAX.
 
 PSA cryptography API
 --------------------
@@ -293,28 +288,19 @@ However, it does not aim to implement the whole specification; in particular it 
 
 The X.509 and TLS code can use PSA cryptography for most operations. To enable this support, activate the compilation option `MBEDTLS_USE_PSA_CRYPTO` in `mbedtls_config.h`. Note that TLS 1.3 uses PSA cryptography for most operations regardless of this option. See `docs/use-psa-crypto.md` for details.
 
-### PSA drivers
+### Upcoming features
 
-Mbed TLS supports drivers for cryptographic accelerators, secure elements and random generators. This is work in progress. Please note that the driver interfaces are not fully stable yet and may change without notice. We intend to preserve backward compatibility for application code (using the PSA Crypto API), but the code of the drivers may have to change in future minor releases of Mbed TLS.
+Future releases of this library will include:
 
-Please see the [PSA driver example and guide](docs/psa-driver-example-and-guide.md) for information on writing a driver.
-
-When using drivers, you will generally want to enable two compilation options (see the reference manual for more information):
-
-* `MBEDTLS_USE_PSA_CRYPTO` is necessary so that the X.509 and TLS code calls the PSA drivers rather than the built-in software implementation.
-* `MBEDTLS_PSA_CRYPTO_CONFIG` allows you to enable PSA cryptographic mechanisms without including the code of the corresponding software implementation. This is not yet supported for all mechanisms.
+* A driver programming interface, which makes it possible to use hardware accelerators instead of the default software implementation for chosen algorithms.
+* Support for external keys to be stored and manipulated exclusively in a separate cryptoprocessor.
+* A configuration mechanism to compile only the algorithms you need for your application.
+* A wider set of cryptographic algorithms.
 
 License
 -------
 
-Unless specifically indicated otherwise in a file, Mbed TLS files are provided under a dual [Apache-2.0](https://spdx.org/licenses/Apache-2.0.html) OR [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) license. See the [LICENSE](LICENSE) file for the full text of these licenses, and [the 'License and Copyright' section in the contributing guidelines](CONTRIBUTING.md#License-and-Copyright) for more information.
-
-### Third-party code included in Mbed TLS
-
-This project contains code from other projects. This code is located within the `3rdparty/` directory. The original license text is included within project subdirectories, where it differs from the normal Mbed TLS license, and/or in source files. The projects are listed below:
-
-* `3rdparty/everest/`: Files stem from [Project Everest](https://project-everest.github.io/) and are distributed under the Apache 2.0 license.
-* `3rdparty/p256-m/p256-m/`: Files have been taken from the [p256-m](https://github.com/mpg/p256-m) repository. The code in the original repository is distributed under the Apache 2.0 license. It is distributed in Mbed TLS under a dual Apache-2.0 OR GPL-2.0-or-later license with permission from the author.
+Unless specifically indicated otherwise in a file, Mbed TLS files are provided under the [Apache-2.0](https://spdx.org/licenses/Apache-2.0.html) license. See the [LICENSE](LICENSE) file for the full text of this license. Contributors must accept that their contributions are made under both the Apache-2.0 AND [GPL-2.0-or-later](https://spdx.org/licenses/GPL-2.0-or-later.html) licenses. This enables LTS (Long Term Support) branches of the software to be provided under either the Apache-2.0 OR GPL-2.0-or-later licenses.
 
 Contributing
 ------------
