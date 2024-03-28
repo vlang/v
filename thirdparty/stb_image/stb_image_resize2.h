@@ -1239,7 +1239,7 @@ static stbir__inline stbir_uint8 stbir__linear_to_srgb_uchar(float in)
 
 #else // STBIR_SIMD
 
-#ifdef STBIR_SSE2
+#if defined(STBIR_SSE2) && !defined(__TINYC__)
   #include <emmintrin.h>
 
   #define stbir__simdf __m128
