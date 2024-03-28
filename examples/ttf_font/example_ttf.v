@@ -115,9 +115,7 @@ fn my_event_manager(mut ev gg.Event, mut app App_data) {
 }
 
 fn main() {
-	mut app := &App_data{
-		gg: 0
-	}
+	mut app := &App_data{}
 	app.gg = gg.new_context(
 		width: win_width
 		height: win_height

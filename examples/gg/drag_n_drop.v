@@ -17,9 +17,7 @@ mut:
 
 fn main() {
 	mut font_path := os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'RobotoMono-Regular.ttf'))
-	mut app := &App{
-		gg: 0
-	}
+	mut app := &App{}
 	app.gg = gg.new_context(
 		bg_color: gx.rgb(174, 198, 255)
 		width: 600

@@ -43,7 +43,6 @@ mut:
 
 fn main() {
 	mut app := &App{
-		gg: 0
 		stars: []Star{len: max_stars}
 		v_letters: []VLetter{len: max_v_letters}
 	}

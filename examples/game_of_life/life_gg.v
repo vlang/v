@@ -37,7 +37,6 @@ fn frame(mut app App) {
 
 fn main() {
 	mut app := App{
-		gg: 0
 		a: automaton.gun()
 	}
 	app.gg = gg.new_context(

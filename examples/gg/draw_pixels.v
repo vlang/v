@@ -25,7 +25,6 @@ fn main() {
 		}
 	}
 	mut app := &App{
-		gg: 0
 		pixels: pixels
 	}
 	app.gg = gg.new_context(

@@ -22,9 +22,7 @@ mut:
 }
 
 fn main() {
-	mut app := &App{
-		gg: 0
-	}
+	mut app := &App{}
 	app.gg = gg.new_context(
 		width: win_width
 		height: win_height
