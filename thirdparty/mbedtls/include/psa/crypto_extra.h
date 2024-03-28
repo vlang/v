@@ -359,7 +359,7 @@ psa_status_t mbedtls_psa_inject_entropy(const uint8_t *seed,
  */
 #define PSA_KEY_TYPE_DSA_KEY_PAIR                    ((psa_key_type_t)0x7002)
 
-/** Whether a key type is an DSA key (pair or public-only). */
+/** Whether a key type is a DSA key (pair or public-only). */
 #define PSA_KEY_TYPE_IS_DSA(type)                                       \
     (PSA_KEY_TYPE_PUBLIC_KEY_OF_KEY_PAIR(type) == PSA_KEY_TYPE_DSA_PUBLIC_KEY)
 
@@ -1287,7 +1287,7 @@ static void psa_pake_cs_set_hash( psa_pake_cipher_suite_t *cipher_suite,
  * Implementation details can change in future versions without notice. */
 typedef struct psa_pake_operation_s psa_pake_operation_t;
 
-/** Return an initial value for an PAKE operation object.
+/** Return an initial value for a PAKE operation object.
  */
 static psa_pake_operation_t psa_pake_operation_init( void );
 
@@ -1760,7 +1760,16 @@ psa_status_t psa_pake_abort( psa_pake_operation_t * operation );
  *                      recognized, or the parameters are incompatible,
  *                      return 0.
  */
-#define PSA_PAKE_OUTPUT_SIZE(alg, primitive, output_step) 0
+#define PSA_PAKE_OUTPUT_SIZE(alg, primitive, output_step)               \
+    ( alg == PSA_ALG_JPAKE &&                                           \
+      primitive == PSA_PAKE_PRIMITIVE(PSA_PAKE_PRIMITIVE_TYPE_ECC,      \
+                                      PSA_ECC_FAMILY_SECP_R1, 256) ?    \
+      (                                                                 \
+        output_step == PSA_PAKE_STEP_KEY_SHARE ? 65 :                   \
+        output_step == PSA_PAKE_STEP_ZK_PUBLIC ? 65 :                   \
+        32                                                              \
+      ) :                                                               \
+      0 )
 
 /** A sufficient input buffer size for psa_pake_input().
  *
@@ -1781,7 +1790,16 @@ psa_status_t psa_pake_abort( psa_pake_operation_t * operation );
  *                      the input type or PAKE algorithm is not recognized, or
  *                      the parameters are incompatible, return 0.
  */
-#define PSA_PAKE_INPUT_SIZE(alg, primitive, input_step) 0
+#define PSA_PAKE_INPUT_SIZE(alg, primitive, input_step)                 \
+    ( alg == PSA_ALG_JPAKE &&                                           \
+      primitive == PSA_PAKE_PRIMITIVE(PSA_PAKE_PRIMITIVE_TYPE_ECC,      \
+                                      PSA_ECC_FAMILY_SECP_R1, 256) ?    \
+      (                                                                 \
+        input_step == PSA_PAKE_STEP_KEY_SHARE ? 65 :                    \
+        input_step == PSA_PAKE_STEP_ZK_PUBLIC ? 65 :                    \
+        32                                                              \
+      ) :                                                               \
+      0 )
 
 /** Output buffer size for psa_pake_output() for any of the supported PAKE
  * algorithm and primitive suites and output step.
@@ -1790,7 +1808,7 @@ psa_status_t psa_pake_abort( psa_pake_operation_t * operation );
  *
  * See also #PSA_PAKE_OUTPUT_SIZE(\p alg, \p primitive, \p step).
  */
-#define PSA_PAKE_OUTPUT_MAX_SIZE 0
+#define PSA_PAKE_OUTPUT_MAX_SIZE 65
 
 /** Input buffer size for psa_pake_input() for any of the supported PAKE
  * algorithm and primitive suites and input step.
@@ -1799,7 +1817,7 @@ psa_status_t psa_pake_abort( psa_pake_operation_t * operation );
  *
  * See also #PSA_PAKE_INPUT_SIZE(\p alg, \p primitive, \p step).
  */
-#define PSA_PAKE_INPUT_MAX_SIZE 0
+#define PSA_PAKE_INPUT_MAX_SIZE 65
 
 /** Returns a suitable initializer for a PAKE cipher suite object of type
  * psa_pake_cipher_suite_t.
@@ -1809,7 +1827,14 @@ psa_status_t psa_pake_abort( psa_pake_operation_t * operation );
 /** Returns a suitable initializer for a PAKE operation object of type
  * psa_pake_operation_t.
  */
-#define PSA_PAKE_OPERATION_INIT {PSA_ALG_NONE, {0}}
+#if defined(MBEDTLS_PSA_BUILTIN_PAKE)
+#define PSA_PAKE_OPERATION_INIT {PSA_ALG_NONE, 0, 0, 0, 0,              \
+                                 NULL, 0                ,               \
+                                 PSA_PAKE_ROLE_NONE, {0}, 0, 0,         \
+                                 {.dummy = 0}}
+#else
+#define PSA_PAKE_OPERATION_INIT {PSA_ALG_NONE, 0, 0, {0}}
+#endif
 
 struct psa_pake_cipher_suite_s
 {
@@ -1879,14 +1904,37 @@ static inline void psa_pake_cs_set_hash( psa_pake_cipher_suite_t *cipher_suite,
         cipher_suite->hash = hash;
 }
 
+#if defined(MBEDTLS_PSA_BUILTIN_ALG_JPAKE)
+#include <mbedtls/ecjpake.h>
+/* Note: the format for mbedtls_ecjpake_read/write function has an extra
+ * length byte for each step, plus an extra 3 bytes for ECParameters in the
+ * server's 2nd round. */
+#define MBEDTLS_PSA_PAKE_BUFFER_SIZE ( ( 3 + 1 + 65 + 1 + 65 + 1 + 32 ) * 2 )
+#endif
+
 struct psa_pake_operation_s
 {
-    psa_algorithm_t alg;
+    psa_algorithm_t MBEDTLS_PRIVATE(alg);
+    unsigned int MBEDTLS_PRIVATE(state);
+    unsigned int MBEDTLS_PRIVATE(sequence);
+#if defined(MBEDTLS_PSA_BUILTIN_PAKE)
+    unsigned int MBEDTLS_PRIVATE(input_step);
+    unsigned int MBEDTLS_PRIVATE(output_step);
+    uint8_t* MBEDTLS_PRIVATE(password);
+    size_t MBEDTLS_PRIVATE(password_len);
+    psa_pake_role_t MBEDTLS_PRIVATE(role);
+    uint8_t MBEDTLS_PRIVATE(buffer[MBEDTLS_PSA_PAKE_BUFFER_SIZE]);
+    size_t MBEDTLS_PRIVATE(buffer_length);
+    size_t MBEDTLS_PRIVATE(buffer_offset);
+#endif
     union
     {
+#if defined(MBEDTLS_PSA_BUILTIN_ALG_JPAKE)
+        mbedtls_ecjpake_context ecjpake;
+#endif
         /* Make the union non-empty even with no supported algorithms. */
         uint8_t dummy;
-    } ctx;
+    } MBEDTLS_PRIVATE(ctx);
 };
 
 static inline struct psa_pake_cipher_suite_s psa_pake_cipher_suite_init( void )

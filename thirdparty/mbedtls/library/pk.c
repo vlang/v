@@ -24,6 +24,8 @@
 #include "pk_wrap.h"
 #include "pkwrite.h"
 
+#include "hash_info.h"
+
 #include "mbedtls/platform_util.h"
 #include "mbedtls/error.h"
 
@@ -44,19 +46,11 @@
 #include <limits.h>
 #include <stdint.h>
 
-/* Parameter validation macros based on platform_util.h */
-#define PK_VALIDATE_RET( cond )    \
-    MBEDTLS_INTERNAL_VALIDATE_RET( cond, MBEDTLS_ERR_PK_BAD_INPUT_DATA )
-#define PK_VALIDATE( cond )        \
-    MBEDTLS_INTERNAL_VALIDATE( cond )
-
 /*
  * Initialise a mbedtls_pk_context
  */
 void mbedtls_pk_init( mbedtls_pk_context *ctx )
 {
-    PK_VALIDATE( ctx != NULL );
-
     ctx->pk_info = NULL;
     ctx->pk_ctx = NULL;
 }
@@ -81,7 +75,6 @@ void mbedtls_pk_free( mbedtls_pk_context *ctx )
  */
 void mbedtls_pk_restart_init( mbedtls_pk_restart_ctx *ctx )
 {
-    PK_VALIDATE( ctx != NULL );
     ctx->pk_info = NULL;
     ctx->rs_ctx = NULL;
 }
@@ -135,7 +128,6 @@ const mbedtls_pk_info_t * mbedtls_pk_info_from_type( mbedtls_pk_type_t pk_type )
  */
 int mbedtls_pk_setup( mbedtls_pk_context *ctx, const mbedtls_pk_info_t *info )
 {
-    PK_VALIDATE_RET( ctx != NULL );
     if( info == NULL || ctx->pk_info != NULL )
         return( MBEDTLS_ERR_PK_BAD_INPUT_DATA );
 
@@ -198,7 +190,6 @@ int mbedtls_pk_setup_rsa_alt( mbedtls_pk_context *ctx, void * key,
     mbedtls_rsa_alt_context *rsa_alt;
     const mbedtls_pk_info_t *info = &mbedtls_rsa_alt_info;
 
-    PK_VALIDATE_RET( ctx != NULL );
     if( ctx->pk_info != NULL )
         return( MBEDTLS_ERR_PK_BAD_INPUT_DATA );
 
@@ -358,15 +349,14 @@ int mbedtls_pk_can_do_ext( const mbedtls_pk_context *ctx, psa_algorithm_t alg,
  */
 static inline int pk_hashlen_helper( mbedtls_md_type_t md_alg, size_t *hash_len )
 {
-    const mbedtls_md_info_t *md_info;
-
     if( *hash_len != 0 )
         return( 0 );
 
-    if( ( md_info = mbedtls_md_info_from_type( md_alg ) ) == NULL )
+    *hash_len = mbedtls_hash_info_get_size( md_alg );
+
+    if( *hash_len == 0 )
         return( -1 );
 
-    *hash_len = mbedtls_md_get_size( md_info );
     return( 0 );
 }
 
@@ -403,10 +393,8 @@ int mbedtls_pk_verify_restartable( mbedtls_pk_context *ctx,
                const unsigned char *sig, size_t sig_len,
                mbedtls_pk_restart_ctx *rs_ctx )
 {
-    PK_VALIDATE_RET( ctx != NULL );
-    PK_VALIDATE_RET( ( md_alg == MBEDTLS_MD_NONE && hash_len == 0 ) ||
-                     hash != NULL );
-    PK_VALIDATE_RET( sig != NULL );
+    if( ( md_alg != MBEDTLS_MD_NONE || hash_len != 0 ) && hash == NULL )
+        return MBEDTLS_ERR_PK_BAD_INPUT_DATA;
 
     if( ctx->pk_info == NULL ||
         pk_hashlen_helper( md_alg, &hash_len ) != 0 )
@@ -461,10 +449,8 @@ int mbedtls_pk_verify_ext( mbedtls_pk_type_t type, const void *options,
                    const unsigned char *hash, size_t hash_len,
                    const unsigned char *sig, size_t sig_len )
 {
-    PK_VALIDATE_RET( ctx != NULL );
-    PK_VALIDATE_RET( ( md_alg == MBEDTLS_MD_NONE && hash_len == 0 ) ||
-                     hash != NULL );
-    PK_VALIDATE_RET( sig != NULL );
+    if( ( md_alg != MBEDTLS_MD_NONE || hash_len != 0 ) && hash == NULL )
+        return MBEDTLS_ERR_PK_BAD_INPUT_DATA;
 
     if( ctx->pk_info == NULL )
         return( MBEDTLS_ERR_PK_BAD_INPUT_DATA );
@@ -508,7 +494,7 @@ int mbedtls_pk_verify_ext( mbedtls_pk_type_t type, const void *options,
         psa_status_t status = PSA_ERROR_DATA_CORRUPT;
         psa_status_t destruction_status = PSA_ERROR_DATA_CORRUPT;
 
-        psa_algorithm_t psa_md_alg = mbedtls_psa_translate_md( md_alg );
+        psa_algorithm_t psa_md_alg = mbedtls_hash_info_psa_from_md( md_alg );
         mbedtls_svc_key_id_t key_id = MBEDTLS_SVC_KEY_ID_INIT;
         psa_key_attributes_t attributes = PSA_KEY_ATTRIBUTES_INIT;
         psa_algorithm_t psa_sig_alg =
@@ -587,13 +573,10 @@ int mbedtls_pk_sign_restartable( mbedtls_pk_context *ctx,
              int (*f_rng)(void *, unsigned char *, size_t), void *p_rng,
              mbedtls_pk_restart_ctx *rs_ctx )
 {
-    PK_VALIDATE_RET( ctx != NULL );
-    PK_VALIDATE_RET( ( md_alg == MBEDTLS_MD_NONE && hash_len == 0 ) ||
-                     hash != NULL );
-    PK_VALIDATE_RET( sig != NULL );
+    if( ( md_alg != MBEDTLS_MD_NONE || hash_len != 0 ) && hash == NULL )
+        return MBEDTLS_ERR_PK_BAD_INPUT_DATA;
 
-    if( ctx->pk_info == NULL ||
-        pk_hashlen_helper( md_alg, &hash_len ) != 0 )
+    if( ctx->pk_info == NULL || pk_hashlen_helper( md_alg, &hash_len ) != 0 )
         return( MBEDTLS_ERR_PK_BAD_INPUT_DATA );
 
 #if defined(MBEDTLS_ECDSA_C) && defined(MBEDTLS_ECP_RESTARTABLE)
@@ -673,7 +656,7 @@ int mbedtls_pk_sign_ext( mbedtls_pk_type_t pk_type,
     }
 
 #if defined(MBEDTLS_RSA_C)
-    psa_md_alg = mbedtls_psa_translate_md( md_alg );
+    psa_md_alg = mbedtls_hash_info_psa_from_md( md_alg );
     if( psa_md_alg == 0 )
         return( MBEDTLS_ERR_PK_BAD_INPUT_DATA );
 
@@ -706,11 +689,6 @@ int mbedtls_pk_decrypt( mbedtls_pk_context *ctx,
                 unsigned char *output, size_t *olen, size_t osize,
                 int (*f_rng)(void *, unsigned char *, size_t), void *p_rng )
 {
-    PK_VALIDATE_RET( ctx != NULL );
-    PK_VALIDATE_RET( input != NULL || ilen == 0 );
-    PK_VALIDATE_RET( output != NULL || osize == 0 );
-    PK_VALIDATE_RET( olen != NULL );
-
     if( ctx->pk_info == NULL )
         return( MBEDTLS_ERR_PK_BAD_INPUT_DATA );
 
@@ -729,11 +707,6 @@ int mbedtls_pk_encrypt( mbedtls_pk_context *ctx,
                 unsigned char *output, size_t *olen, size_t osize,
                 int (*f_rng)(void *, unsigned char *, size_t), void *p_rng )
 {
-    PK_VALIDATE_RET( ctx != NULL );
-    PK_VALIDATE_RET( input != NULL || ilen == 0 );
-    PK_VALIDATE_RET( output != NULL || osize == 0 );
-    PK_VALIDATE_RET( olen != NULL );
-
     if( ctx->pk_info == NULL )
         return( MBEDTLS_ERR_PK_BAD_INPUT_DATA );
 
@@ -752,9 +725,6 @@ int mbedtls_pk_check_pair( const mbedtls_pk_context *pub,
                            int (*f_rng)(void *, unsigned char *, size_t),
                            void *p_rng )
 {
-    PK_VALIDATE_RET( pub != NULL );
-    PK_VALIDATE_RET( prv != NULL );
-
     if( pub->pk_info == NULL ||
         prv->pk_info == NULL )
     {
@@ -799,7 +769,6 @@ size_t mbedtls_pk_get_bitlen( const mbedtls_pk_context *ctx )
  */
 int mbedtls_pk_debug( const mbedtls_pk_context *ctx, mbedtls_pk_debug_item *items )
 {
-    PK_VALIDATE_RET( ctx != NULL );
     if( ctx->pk_info == NULL )
         return( MBEDTLS_ERR_PK_BAD_INPUT_DATA );
 

@@ -26,7 +26,7 @@
 #include "mbedtls/error.h"
 
 #include "bn_mul.h"
-#include "bignum_internal.h"
+#include "bignum_core.h"
 #include "ecp_invasive.h"
 
 #include <string.h>
@@ -38,11 +38,6 @@
     MBEDTLS_INTERNAL_VALIDATE_RET( cond, MBEDTLS_ERR_ECP_BAD_INPUT_DATA )
 #define ECP_VALIDATE( cond )        \
     MBEDTLS_INTERNAL_VALIDATE( cond )
-
-#if ( defined(__ARMCC_VERSION) || defined(_MSC_VER) ) && \
-    !defined(inline) && !defined(__cplusplus)
-#define inline __inline
-#endif
 
 #define ECP_MPI_INIT(s, n, p) {s, (n), (mbedtls_mpi_uint *)(p)}
 
@@ -4968,9 +4963,6 @@ static inline void sub32( uint32_t *dst, uint32_t src, signed char *carry )
 
 #define ADD( j )    add32( &cur, A( j ), &c );
 #define SUB( j )    sub32( &cur, A( j ), &c );
-
-#define ciL    (sizeof(mbedtls_mpi_uint))         /* chars in limb  */
-#define biL    (ciL << 3)                         /* bits  in limb  */
 
 /*
  * Helpers for the main 'loop'

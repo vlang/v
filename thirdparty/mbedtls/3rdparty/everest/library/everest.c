@@ -28,12 +28,7 @@
 #include "everest/x25519.h"
 #include "everest/everest.h"
 
-#if defined(MBEDTLS_PLATFORM_C)
 #include "mbedtls/platform.h"
-#else
-#define mbedtls_calloc calloc
-#define mbedtls_free   free
-#endif
 
 #if defined(MBEDTLS_ECDH_VARIANT_EVEREST_ENABLED)
 
