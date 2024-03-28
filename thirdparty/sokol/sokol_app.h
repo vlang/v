@@ -1728,6 +1728,8 @@ typedef struct sapp_desc {
     bool ios_keyboard_resizes_canvas;   // if true, showing the iOS keyboard shrinks the canvas
     // __v_ start
     bool __v_native_render;             // V patch to allow for native rendering
+    int min_width;
+    int min_height;
     // __v_ end
 } sapp_desc;
 
@@ -3936,6 +3938,8 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
     _sapp.macos.window.restorable = YES;
 
     // __v_ start
+   // Set min width/height
+    [_sapp.macos.window setMinSize:NSMakeSize(_sapp.desc.min_width, _sapp.desc.min_height)];
           // Quit menu
        NSMenu* menu_bar = [[NSMenu alloc] init];
 		NSMenuItem* app_menu_item = [[NSMenuItem alloc] init];
@@ -3950,6 +3954,16 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
 		       action:@selector(terminate:)
 		       keyEquivalent:@"q"];
 		[app_menu addItem:quit_menu_item];
+		// Paste menu
+		/*
+NSMenuItem *paste_menu_item = [[NSMenuItem alloc] initWithTitle:@"Paste" action:@selector(paste:)
+keyEquivalent:@"v"];
+//[paste_menu_item setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
+//[paste_menu_item setTarget:self];
+ [paste_menu_item setEnabled:true];
+[app_menu addItem:paste_menu_item];
+*/
+
 		app_menu_item.submenu = app_menu;
 		_SAPP_OBJC_RELEASE( window_title_as_nsstring );
 		_SAPP_OBJC_RELEASE( app_menu );
@@ -4075,6 +4089,7 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
         [overlayWindow setOpaque:YES];
         [_sapp.macos.window setIgnoresMouseEvents:NO];
         g_view = [[MyView2 alloc] init];
+        g_view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         overlayWindow.contentView = g_view;
 
         [   contentView addSubview:g_view];
@@ -4083,7 +4098,7 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
     }
     //////////////////////////////////
     // __v_ end
-	
+
 
     [_sapp.macos.window makeKeyAndOrderFront:nil];
     _sapp_macos_update_dimensions();
