@@ -25,6 +25,3 @@ fn f(b Baz) !Bar {
 		}
 	}
 }
-
-fn main() {
-}
