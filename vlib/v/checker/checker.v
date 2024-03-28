@@ -1161,17 +1161,20 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 				}
 			}
 			if expr_ret_type.has_option_or_result() {
-				if expr.or_block.kind == .absent && expr_ret_type.has_flag(.result) {
+				if expr.or_block.kind == .absent {
 					ret_sym := c.table.sym(expr_ret_type)
-					ret_typ_tok := if expr_ret_type.has_flag(.option) { '?' } else { '!' }
-					if c.inside_defer {
-						c.error('${expr.name}() returns `${ret_typ_tok}${ret_sym.name}`, so it should have an `or {}` block at the end',
-							expr.pos)
-					} else {
-						c.error('${expr.name}() returns `${ret_typ_tok}${ret_sym.name}`, so it should have either an `or {}` block, or `${ret_typ_tok}` at the end',
-							expr.pos)
+					if expr_ret_type.has_flag(.result)
+						|| (expr_ret_type.has_flag(.option) && ret_sym.kind == .multi_return) {
+						ret_typ_tok := if expr_ret_type.has_flag(.option) { '?' } else { '!' }
+						if c.inside_defer {
+							c.error('${expr.name}() returns `${ret_typ_tok}${ret_sym.name}`, so it should have an `or {}` block at the end',
+								expr.pos)
+						} else {
+							c.error('${expr.name}() returns `${ret_typ_tok}${ret_sym.name}`, so it should have either an `or {}` block, or `${ret_typ_tok}` at the end',
+								expr.pos)
+						}
 					}
-				} else if expr.or_block.kind != .absent {
+				} else {
 					c.check_or_expr(expr.or_block, ret_type, expr_ret_type, expr)
 				}
 				return ret_type.clear_flag(.result)

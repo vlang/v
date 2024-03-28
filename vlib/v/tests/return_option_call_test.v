@@ -10,8 +10,9 @@ fn wrapper(data string) ?(int, string) {
 }
 
 fn test_return_option_call() {
-	dump(wrapper('issue'))
-	dump(wrapper('foobar'))
-	dump(wrapper(''))
-	assert true
+	dump(wrapper('issue')?)
+	dump(wrapper('foobar')?)
+	if a, b := wrapper('') {
+		assert false, '${a}, ${b}'
+	}
 }
