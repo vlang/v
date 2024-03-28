@@ -1,0 +1,7 @@
+vlib/v/parser/tests/option_alias_result_type_err.vv:13:13: error: cannot use `!Bar`, as parent type `?Foo` is an Option
+   11 | }
+   12 | 
+   13 | fn f(b Baz) !Bar {
+      |             ~~~~
+   14 |     match b {
+   15 |         .nothing {
