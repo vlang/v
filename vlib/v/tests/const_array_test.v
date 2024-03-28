@@ -11,7 +11,7 @@ fn make_array2() []u8 {
 	return arr
 }
 
-fn main() {
+fn test_main() {
 	assert some_arr.len == 64
 	assert some_arr2.len == 0
 }
