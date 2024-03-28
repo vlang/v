@@ -19,7 +19,7 @@ fn test_golang() {
 	dir := os.join_path(vroot, 'vlib/v/gen/golang/tests')
 	files := os.ls(dir) or { panic(err) }
 	//
-	wrkdir := os.join_path(os.vtmp_dir(), 'tests', 'golang')
+	wrkdir := os.join_path(os.vtmp_dir(), 'golang_tests')
 	os.mkdir_all(wrkdir) or { panic(err) }
 	defer {
 		os.rmdir_all(wrkdir) or {}

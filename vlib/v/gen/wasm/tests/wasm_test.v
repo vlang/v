@@ -29,7 +29,7 @@ fn test_wasm() {
 	dir := os.join_path(vroot, 'vlib/v/gen/wasm/tests')
 	files := os.ls(dir) or { panic(err) }
 	//
-	wrkdir := os.join_path(os.vtmp_dir(), 'tests', 'wasm')
+	wrkdir := os.join_path(os.vtmp_dir(), 'wasm_tests')
 	os.mkdir_all(wrkdir) or { panic(err) }
 	defer {
 		os.rmdir_all(wrkdir) or {}
