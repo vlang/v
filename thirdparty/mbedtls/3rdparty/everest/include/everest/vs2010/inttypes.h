@@ -1,5 +1,5 @@
 /*
- *  Custom stdbool.h for VS2010 KreMLin requires these definitions,
+ *  Custom inttypes.h for VS2010 KreMLin requires these definitions,
  *  but VS2010 doesn't provide them.
  *
  *  Copyright 2016-2018 INRIA and Microsoft Corporation
@@ -17,15 +17,20 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  This file is part of Mbed TLS (https://tls.mbed.org)
+ *  This file is part of mbed TLS (https://tls.mbed.org)
  */
 
-#ifndef _STDBOOL_H_VS2010
-#define _STDBOOL_H_VS2010
+#ifndef _INTTYPES_H_VS2010
+#define _INTTYPES_H_VS2010
 
-typedef int bool;
+#include <stdint.h>
 
-static bool true = 1;
-static bool false = 0;
+#ifdef _MSC_VER
+#define inline __inline
+#endif
+
+/* VS2010 unsigned long == 8 bytes */
+
+#define PRIu64 "I64u"
 
 #endif

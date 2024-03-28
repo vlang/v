@@ -15,24 +15,40 @@
  */
 /*
  *  Copyright The Mbed TLS Contributors
- *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ *  SPDX-License-Identifier: Apache-2.0
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License"); you may
+ *  not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ *  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  */
 
 #ifndef PSA_CRYPTO_PLATFORM_H
 #define PSA_CRYPTO_PLATFORM_H
 #include "mbedtls/private_access.h"
 
-/*
- * Include the build-time configuration information file. Here, we do not
- * include `"mbedtls/build_info.h"` directly but `"psa/build_info.h"`, which
- * is basically just an alias to it. This is to ease the maintenance of the
- * PSA cryptography repository which has a different build system and
- * configuration.
- */
-#include "psa/build_info.h"
+/* Include the Mbed TLS configuration file, the way Mbed TLS does it
+ * in each of its header files. */
+#include "mbedtls/build_info.h"
+
+/* Translate between classic MBEDTLS_xxx feature symbols and PSA_xxx
+ * feature symbols. */
+#include "mbedtls/config_psa.h"
 
 /* PSA requires several types which C99 provides in stdint.h. */
 #include <stdint.h>
+
+#if ( defined(__ARMCC_VERSION) || defined(_MSC_VER) ) && \
+    !defined(inline) && !defined(__cplusplus)
+#define inline __inline
+#endif
 
 #if defined(MBEDTLS_PSA_CRYPTO_KEY_ID_ENCODES_OWNER)
 
@@ -41,8 +57,8 @@
  *
  * The function psa_its_identifier_of_slot() in psa_crypto_storage.c that
  * translates a key identifier to a key storage file name assumes that
- * mbedtls_key_owner_id_t is a 32-bit integer. This function thus needs
- * reworking if mbedtls_key_owner_id_t is not defined as a 32-bit integer
+ * mbedtls_key_owner_id_t is an 32 bits integer. This function thus needs
+ * reworking if mbedtls_key_owner_id_t is not defined as a 32 bits integer
  * here anymore.
  */
 typedef int32_t mbedtls_key_owner_id_t;
@@ -54,10 +70,10 @@ typedef int32_t mbedtls_key_owner_id_t;
  *
  * \return Non-zero if the two key owner identifiers are equal, zero otherwise.
  */
-static inline int mbedtls_key_owner_id_equal(mbedtls_key_owner_id_t id1,
-                                             mbedtls_key_owner_id_t id2)
+static inline int mbedtls_key_owner_id_equal( mbedtls_key_owner_id_t id1,
+                                              mbedtls_key_owner_id_t id2 )
 {
-    return id1 == id2;
+    return( id1 == id2 );
 }
 
 #endif /* MBEDTLS_PSA_CRYPTO_KEY_ID_ENCODES_OWNER */

@@ -3,7 +3,19 @@
  */
 /*
  *  Copyright The Mbed TLS Contributors
- *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ *  SPDX-License-Identifier: Apache-2.0
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License"); you may
+ *  not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ *  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  */
 
 #ifndef PSA_CRYPTO_CORE_H
@@ -14,22 +26,31 @@
 #include "psa/crypto.h"
 #include "psa/crypto_se_driver.h"
 
-/**
- * Tell if PSA is ready for this hash.
+/** Constant-time buffer comparison
  *
- * \note            For now, only checks the state of the driver subsystem,
- *                  not the algorithm. Might do more in the future.
+ * \param[in]  a    Left-hand buffer for comparison.
+ * \param[in]  b    Right-hand buffer for comparison.
+ * \param n         Amount of bytes to compare.
  *
- * \param hash_alg  The hash algorithm (ignored for now).
- *
- * \return 1 if the driver subsytem is ready, 0 otherwise.
+ * \return 0 if the buffer contents are equal, non-zero otherwise
  */
-int psa_can_do_hash(psa_algorithm_t hash_alg);
+static inline int mbedtls_psa_safer_memcmp(
+    const uint8_t *a, const uint8_t *b, size_t n )
+{
+    size_t i;
+    unsigned char diff = 0;
+
+    for( i = 0; i < n; i++ )
+        diff |= a[i] ^ b[i];
+
+    return( diff );
+}
 
 /** The data structure representing a key slot, containing key material
  * and metadata for one key.
  */
-typedef struct {
+typedef struct
+{
     psa_core_key_attributes_t attr;
 
     /*
@@ -59,7 +80,8 @@ typedef struct {
 
     /* Dynamically allocated key data buffer.
      * Format as specified in psa_export_key(). */
-    struct key_data {
+    struct key_data
+    {
         uint8_t *data;
         size_t bytes;
     } key;
@@ -68,7 +90,7 @@ typedef struct {
 /* A mask of key attribute flags used only internally.
  * Currently there aren't any. */
 #define PSA_KA_MASK_INTERNAL_ONLY (     \
-        0)
+        0 )
 
 /** Test whether a key slot is occupied.
  *
@@ -79,9 +101,9 @@ typedef struct {
  *
  * \return 1 if the slot is occupied, 0 otherwise.
  */
-static inline int psa_is_key_slot_occupied(const psa_key_slot_t *slot)
+static inline int psa_is_key_slot_occupied( const psa_key_slot_t *slot )
 {
-    return slot->attr.type != 0;
+    return( slot->attr.type != 0 );
 }
 
 /** Test whether a key slot is locked.
@@ -92,9 +114,9 @@ static inline int psa_is_key_slot_occupied(const psa_key_slot_t *slot)
  *
  * \return 1 if the slot is locked, 0 otherwise.
  */
-static inline int psa_is_key_slot_locked(const psa_key_slot_t *slot)
+static inline int psa_is_key_slot_locked( const psa_key_slot_t *slot )
 {
-    return slot->lock_count > 0;
+    return( slot->lock_count > 0 );
 }
 
 /** Retrieve flags from psa_key_slot_t::attr::core::flags.
@@ -105,10 +127,10 @@ static inline int psa_is_key_slot_locked(const psa_key_slot_t *slot)
  * \return The key attribute flags in the given slot,
  *         bitwise-anded with \p mask.
  */
-static inline uint16_t psa_key_slot_get_flags(const psa_key_slot_t *slot,
-                                              uint16_t mask)
+static inline uint16_t psa_key_slot_get_flags( const psa_key_slot_t *slot,
+                                               uint16_t mask )
 {
-    return slot->attr.flags & mask;
+    return( slot->attr.flags & mask );
 }
 
 /** Set flags in psa_key_slot_t::attr::core::flags.
@@ -117,12 +139,12 @@ static inline uint16_t psa_key_slot_get_flags(const psa_key_slot_t *slot,
  * \param mask          The mask of bits to modify.
  * \param value         The new value of the selected bits.
  */
-static inline void psa_key_slot_set_flags(psa_key_slot_t *slot,
-                                          uint16_t mask,
-                                          uint16_t value)
+static inline void psa_key_slot_set_flags( psa_key_slot_t *slot,
+                                           uint16_t mask,
+                                           uint16_t value )
 {
-    slot->attr.flags = ((~mask & slot->attr.flags) |
-                        (mask & value));
+    slot->attr.flags = ( ( ~mask & slot->attr.flags ) |
+                              ( mask & value ) );
 }
 
 /** Turn on flags in psa_key_slot_t::attr::core::flags.
@@ -130,8 +152,8 @@ static inline void psa_key_slot_set_flags(psa_key_slot_t *slot,
  * \param[in,out] slot  The key slot to modify.
  * \param mask          The mask of bits to set.
  */
-static inline void psa_key_slot_set_bits_in_flags(psa_key_slot_t *slot,
-                                                  uint16_t mask)
+static inline void psa_key_slot_set_bits_in_flags( psa_key_slot_t *slot,
+                                                   uint16_t mask )
 {
     slot->attr.flags |= mask;
 }
@@ -141,8 +163,8 @@ static inline void psa_key_slot_set_bits_in_flags(psa_key_slot_t *slot,
  * \param[in,out] slot  The key slot to modify.
  * \param mask          The mask of bits to clear.
  */
-static inline void psa_key_slot_clear_bits(psa_key_slot_t *slot,
-                                           uint16_t mask)
+static inline void psa_key_slot_clear_bits( psa_key_slot_t *slot,
+                                            uint16_t mask )
 {
     slot->attr.flags &= ~mask;
 }
@@ -155,9 +177,9 @@ static inline void psa_key_slot_clear_bits(psa_key_slot_t *slot,
  *                   secure element, otherwise the behaviour is undefined.
  */
 static inline psa_key_slot_number_t psa_key_slot_get_slot_number(
-    const psa_key_slot_t *slot)
+    const psa_key_slot_t *slot )
 {
-    return *((psa_key_slot_number_t *) (slot->key.data));
+    return( *( (psa_key_slot_number_t *)( slot->key.data ) ) );
 }
 #endif
 
@@ -170,9 +192,9 @@ static inline psa_key_slot_number_t psa_key_slot_get_slot_number(
  * \retval #PSA_SUCCESS
  *         Success. This includes the case of a key slot that was
  *         already fully wiped.
- * \retval #PSA_ERROR_CORRUPTION_DETECTED \emptydescription
+ * \retval #PSA_ERROR_CORRUPTION_DETECTED
  */
-psa_status_t psa_wipe_key_slot(psa_key_slot_t *slot);
+psa_status_t psa_wipe_key_slot( psa_key_slot_t *slot );
 
 /** Try to allocate a buffer to an empty key slot.
  *
@@ -186,11 +208,11 @@ psa_status_t psa_wipe_key_slot(psa_key_slot_t *slot);
  * \retval #PSA_ERROR_ALREADY_EXISTS
  *         Trying to allocate a buffer to a non-empty key slot.
  */
-psa_status_t psa_allocate_buffer_to_slot(psa_key_slot_t *slot,
-                                         size_t buffer_length);
+psa_status_t psa_allocate_buffer_to_slot( psa_key_slot_t *slot,
+                                          size_t buffer_length );
 
 /** Wipe key data from a slot. Preserves metadata such as the policy. */
-psa_status_t psa_remove_key_data_from_memory(psa_key_slot_t *slot);
+psa_status_t psa_remove_key_data_from_memory( psa_key_slot_t *slot );
 
 /** Copy key data (in export format) into an empty key slot.
  *
@@ -209,20 +231,36 @@ psa_status_t psa_remove_key_data_from_memory(psa_key_slot_t *slot);
  * \retval #PSA_ERROR_ALREADY_EXISTS
  *         There was other key material already present in the slot.
  */
-psa_status_t psa_copy_key_material_into_slot(psa_key_slot_t *slot,
-                                             const uint8_t *data,
-                                             size_t data_length);
+psa_status_t psa_copy_key_material_into_slot( psa_key_slot_t *slot,
+                                              const uint8_t *data,
+                                              size_t data_length );
 
-/** Convert an Mbed TLS error code to a PSA error code
+/** Convert an mbed TLS error code to a PSA error code
  *
  * \note This function is provided solely for the convenience of
  *       Mbed TLS and may be removed at any time without notice.
  *
- * \param ret           An Mbed TLS-thrown error code
+ * \param ret           An mbed TLS-thrown error code
  *
  * \return              The corresponding PSA error code
  */
-psa_status_t mbedtls_to_psa_error(int ret);
+psa_status_t mbedtls_to_psa_error( int ret );
+
+/** Get Mbed TLS cipher information given the cipher algorithm PSA identifier
+ *  as well as the PSA type and size of the key to be used with the cipher
+ *  algorithm.
+ *
+ * \param       alg        PSA cipher algorithm identifier
+ * \param       key_type   PSA key type
+ * \param       key_bits   Size of the key in bits
+ * \param[out]  cipher_id  Mbed TLS cipher algorithm identifier
+ *
+ * \return  The Mbed TLS cipher information of the cipher algorithm.
+ *          \c NULL if the PSA cipher algorithm is not supported.
+ */
+const mbedtls_cipher_info_t *mbedtls_cipher_info_from_psa(
+    psa_algorithm_t alg, psa_key_type_t key_type, size_t key_bits,
+    mbedtls_cipher_id_t *cipher_id );
 
 /** Import a key in binary format.
  *
@@ -246,15 +284,15 @@ psa_status_t mbedtls_to_psa_error(int ret);
  * \retval #PSA_SUCCESS  The key was imported successfully.
  * \retval #PSA_ERROR_INVALID_ARGUMENT
  *         The key data is not correctly formatted.
- * \retval #PSA_ERROR_NOT_SUPPORTED \emptydescription
- * \retval #PSA_ERROR_INSUFFICIENT_MEMORY \emptydescription
- * \retval #PSA_ERROR_CORRUPTION_DETECTED \emptydescription
+ * \retval #PSA_ERROR_NOT_SUPPORTED
+ * \retval #PSA_ERROR_INSUFFICIENT_MEMORY
+ * \retval #PSA_ERROR_CORRUPTION_DETECTED
  */
 psa_status_t psa_import_key_into_slot(
     const psa_key_attributes_t *attributes,
     const uint8_t *data, size_t data_length,
     uint8_t *key_buffer, size_t key_buffer_size,
-    size_t *key_buffer_length, size_t *bits);
+    size_t *key_buffer_length, size_t *bits );
 
 /** Export a key in binary format
  *
@@ -271,17 +309,17 @@ psa_status_t psa_import_key_into_slot(
  *                              \p data
  *
  * \retval #PSA_SUCCESS  The key was exported successfully.
- * \retval #PSA_ERROR_NOT_SUPPORTED \emptydescription
- * \retval #PSA_ERROR_COMMUNICATION_FAILURE \emptydescription
- * \retval #PSA_ERROR_HARDWARE_FAILURE \emptydescription
- * \retval #PSA_ERROR_CORRUPTION_DETECTED \emptydescription
- * \retval #PSA_ERROR_STORAGE_FAILURE \emptydescription
- * \retval #PSA_ERROR_INSUFFICIENT_MEMORY \emptydescription
+ * \retval #PSA_ERROR_NOT_SUPPORTED
+ * \retval #PSA_ERROR_COMMUNICATION_FAILURE
+ * \retval #PSA_ERROR_HARDWARE_FAILURE
+ * \retval #PSA_ERROR_CORRUPTION_DETECTED
+ * \retval #PSA_ERROR_STORAGE_FAILURE
+ * \retval #PSA_ERROR_INSUFFICIENT_MEMORY
  */
 psa_status_t psa_export_key_internal(
     const psa_key_attributes_t *attributes,
     const uint8_t *key_buffer, size_t key_buffer_size,
-    uint8_t *data, size_t data_size, size_t *data_length);
+    uint8_t *data, size_t data_size, size_t *data_length );
 
 /** Export a public key or the public part of a key pair in binary format.
  *
@@ -299,17 +337,17 @@ psa_status_t psa_export_key_internal(
  *                              \p data
  *
  * \retval #PSA_SUCCESS  The public key was exported successfully.
- * \retval #PSA_ERROR_NOT_SUPPORTED \emptydescription
- * \retval #PSA_ERROR_COMMUNICATION_FAILURE \emptydescription
- * \retval #PSA_ERROR_HARDWARE_FAILURE \emptydescription
- * \retval #PSA_ERROR_CORRUPTION_DETECTED \emptydescription
- * \retval #PSA_ERROR_STORAGE_FAILURE \emptydescription
- * \retval #PSA_ERROR_INSUFFICIENT_MEMORY \emptydescription
+ * \retval #PSA_ERROR_NOT_SUPPORTED
+ * \retval #PSA_ERROR_COMMUNICATION_FAILURE
+ * \retval #PSA_ERROR_HARDWARE_FAILURE
+ * \retval #PSA_ERROR_CORRUPTION_DETECTED
+ * \retval #PSA_ERROR_STORAGE_FAILURE
+ * \retval #PSA_ERROR_INSUFFICIENT_MEMORY
  */
 psa_status_t psa_export_public_key_internal(
     const psa_key_attributes_t *attributes,
     const uint8_t *key_buffer, size_t key_buffer_size,
-    uint8_t *data, size_t data_size, size_t *data_length);
+    uint8_t *data, size_t data_size, size_t *data_length );
 
 /**
  * \brief Generate a key.
@@ -325,16 +363,16 @@ psa_status_t psa_export_public_key_internal(
  *
  * \retval #PSA_SUCCESS
  *         The key was generated successfully.
- * \retval #PSA_ERROR_INVALID_ARGUMENT \emptydescription
+ * \retval #PSA_ERROR_INVALID_ARGUMENT
  * \retval #PSA_ERROR_NOT_SUPPORTED
  *         Key size in bits or type not supported.
  * \retval #PSA_ERROR_BUFFER_TOO_SMALL
  *         The size of \p key_buffer is too small.
  */
-psa_status_t psa_generate_key_internal(const psa_key_attributes_t *attributes,
-                                       uint8_t *key_buffer,
-                                       size_t key_buffer_size,
-                                       size_t *key_buffer_length);
+psa_status_t psa_generate_key_internal( const psa_key_attributes_t *attributes,
+                                        uint8_t *key_buffer,
+                                        size_t key_buffer_size,
+                                        size_t *key_buffer_length );
 
 /** Sign a message with a private key. For hash-and-sign algorithms,
  *  this includes the hashing step.
@@ -360,24 +398,24 @@ psa_status_t psa_generate_key_internal(const psa_key_attributes_t *attributes,
  * \param[out] signature_length On success, the number of bytes
  *                              that make up the returned signature value.
  *
- * \retval #PSA_SUCCESS \emptydescription
+ * \retval #PSA_SUCCESS
  * \retval #PSA_ERROR_BUFFER_TOO_SMALL
  *         The size of the \p signature buffer is too small. You can
  *         determine a sufficient buffer size by calling
  *         #PSA_SIGN_OUTPUT_SIZE(\c key_type, \c key_bits, \p alg)
  *         where \c key_type and \c key_bits are the type and bit-size
  *         respectively of the key.
- * \retval #PSA_ERROR_NOT_SUPPORTED \emptydescription
- * \retval #PSA_ERROR_INVALID_ARGUMENT \emptydescription
- * \retval #PSA_ERROR_INSUFFICIENT_MEMORY \emptydescription
- * \retval #PSA_ERROR_CORRUPTION_DETECTED \emptydescription
- * \retval #PSA_ERROR_INSUFFICIENT_ENTROPY \emptydescription
+ * \retval #PSA_ERROR_NOT_SUPPORTED
+ * \retval #PSA_ERROR_INVALID_ARGUMENT
+ * \retval #PSA_ERROR_INSUFFICIENT_MEMORY
+ * \retval #PSA_ERROR_CORRUPTION_DETECTED
+ * \retval #PSA_ERROR_INSUFFICIENT_ENTROPY
  */
 psa_status_t psa_sign_message_builtin(
     const psa_key_attributes_t *attributes,
     const uint8_t *key_buffer, size_t key_buffer_size,
     psa_algorithm_t alg, const uint8_t *input, size_t input_length,
-    uint8_t *signature, size_t signature_size, size_t *signature_length);
+    uint8_t *signature, size_t signature_size, size_t *signature_length );
 
 /** Verify the signature of a message with a public key, using
  *  a hash-and-sign verification algorithm.
@@ -406,15 +444,15 @@ psa_status_t psa_sign_message_builtin(
  * \retval #PSA_ERROR_INVALID_SIGNATURE
  *         The calculation was performed successfully, but the passed
  *         signature is not a valid signature.
- * \retval #PSA_ERROR_NOT_SUPPORTED \emptydescription
- * \retval #PSA_ERROR_INVALID_ARGUMENT \emptydescription
- * \retval #PSA_ERROR_INSUFFICIENT_MEMORY \emptydescription
+ * \retval #PSA_ERROR_NOT_SUPPORTED
+ * \retval #PSA_ERROR_INVALID_ARGUMENT
+ * \retval #PSA_ERROR_INSUFFICIENT_MEMORY
  */
 psa_status_t psa_verify_message_builtin(
     const psa_key_attributes_t *attributes,
     const uint8_t *key_buffer, size_t key_buffer_size,
     psa_algorithm_t alg, const uint8_t *input, size_t input_length,
-    const uint8_t *signature, size_t signature_length);
+    const uint8_t *signature, size_t signature_length );
 
 /** Sign an already-calculated hash with a private key.
  *
@@ -436,24 +474,24 @@ psa_status_t psa_verify_message_builtin(
  * \param[out] signature_length On success, the number of bytes
  *                              that make up the returned signature value.
  *
- * \retval #PSA_SUCCESS \emptydescription
+ * \retval #PSA_SUCCESS
  * \retval #PSA_ERROR_BUFFER_TOO_SMALL
  *         The size of the \p signature buffer is too small. You can
  *         determine a sufficient buffer size by calling
  *         #PSA_SIGN_OUTPUT_SIZE(\c key_type, \c key_bits, \p alg)
  *         where \c key_type and \c key_bits are the type and bit-size
  *         respectively of the key.
- * \retval #PSA_ERROR_NOT_SUPPORTED \emptydescription
- * \retval #PSA_ERROR_INVALID_ARGUMENT \emptydescription
- * \retval #PSA_ERROR_INSUFFICIENT_MEMORY \emptydescription
- * \retval #PSA_ERROR_CORRUPTION_DETECTED \emptydescription
- * \retval #PSA_ERROR_INSUFFICIENT_ENTROPY \emptydescription
+ * \retval #PSA_ERROR_NOT_SUPPORTED
+ * \retval #PSA_ERROR_INVALID_ARGUMENT
+ * \retval #PSA_ERROR_INSUFFICIENT_MEMORY
+ * \retval #PSA_ERROR_CORRUPTION_DETECTED
+ * \retval #PSA_ERROR_INSUFFICIENT_ENTROPY
  */
 psa_status_t psa_sign_hash_builtin(
     const psa_key_attributes_t *attributes,
     const uint8_t *key_buffer, size_t key_buffer_size,
     psa_algorithm_t alg, const uint8_t *hash, size_t hash_length,
-    uint8_t *signature, size_t signature_size, size_t *signature_length);
+    uint8_t *signature, size_t signature_size, size_t *signature_length );
 
 /**
  * \brief Verify the signature a hash or short message using a public key.
@@ -480,15 +518,15 @@ psa_status_t psa_sign_hash_builtin(
  * \retval #PSA_ERROR_INVALID_SIGNATURE
  *         The calculation was performed successfully, but the passed
  *         signature is not a valid signature.
- * \retval #PSA_ERROR_NOT_SUPPORTED \emptydescription
- * \retval #PSA_ERROR_INVALID_ARGUMENT \emptydescription
- * \retval #PSA_ERROR_INSUFFICIENT_MEMORY \emptydescription
+ * \retval #PSA_ERROR_NOT_SUPPORTED
+ * \retval #PSA_ERROR_INVALID_ARGUMENT
+ * \retval #PSA_ERROR_INSUFFICIENT_MEMORY
  */
 psa_status_t psa_verify_hash_builtin(
     const psa_key_attributes_t *attributes,
     const uint8_t *key_buffer, size_t key_buffer_size,
     psa_algorithm_t alg, const uint8_t *hash, size_t hash_length,
-    const uint8_t *signature, size_t signature_length);
+    const uint8_t *signature, size_t signature_length );
 
 /**
  * \brief Validate the key bit size for unstructured keys.
@@ -507,332 +545,6 @@ psa_status_t psa_verify_hash_builtin(
  *         The type and/or the size in bits of the key or the combination of
  *         the two is not supported.
  */
-psa_status_t psa_validate_unstructured_key_bit_size(psa_key_type_t type,
-                                                    size_t bits);
-
-/** Perform a key agreement and return the raw shared secret, using
-    built-in raw key agreement functions.
- *
- * \note The signature of this function is that of a PSA driver
- *       key_agreement entry point. This function behaves as a key_agreement
- *       entry point as defined in the PSA driver interface specification for
- *       transparent drivers.
- *
- * \param[in]  attributes           The attributes of the key to use for the
- *                                  operation.
- * \param[in]  key_buffer           The buffer containing the private key
- *                                  context.
- * \param[in]  key_buffer_size      Size of the \p key_buffer buffer in
- *                                  bytes.
- * \param[in]  alg                  A key agreement algorithm that is
- *                                  compatible with the type of the key.
- * \param[in]  peer_key             The buffer containing the key context
- *                                  of the peer's public key.
- * \param[in]  peer_key_length      Size of the \p peer_key buffer in
- *                                  bytes.
- * \param[out] shared_secret        The buffer to which the shared secret
- *                                  is to be written.
- * \param[in]  shared_secret_size   Size of the \p shared_secret buffer in
- *                                  bytes.
- * \param[out] shared_secret_length On success, the number of bytes that make
- *                                  up the returned shared secret.
- * \retval #PSA_SUCCESS
- *         Success. Shared secret successfully calculated.
- * \retval #PSA_ERROR_INVALID_HANDLE \emptydescription
- * \retval #PSA_ERROR_NOT_PERMITTED \emptydescription
- * \retval #PSA_ERROR_INVALID_ARGUMENT
- *         \p alg is not a key agreement algorithm, or
- *         \p private_key is not compatible with \p alg,
- *         or \p peer_key is not valid for \p alg or not compatible with
- *         \p private_key.
- * \retval #PSA_ERROR_BUFFER_TOO_SMALL
- *         \p shared_secret_size is too small
- * \retval #PSA_ERROR_NOT_SUPPORTED
- *         \p alg is not a supported key agreement algorithm.
- * \retval #PSA_ERROR_INSUFFICIENT_MEMORY \emptydescription
- * \retval #PSA_ERROR_COMMUNICATION_FAILURE \emptydescription
- * \retval #PSA_ERROR_HARDWARE_FAILURE \emptydescription
- * \retval #PSA_ERROR_CORRUPTION_DETECTED \emptydescription
- * \retval #PSA_ERROR_STORAGE_FAILURE \emptydescription
- * \retval #PSA_ERROR_BAD_STATE \emptydescription
- */
-psa_status_t psa_key_agreement_raw_builtin(
-    const psa_key_attributes_t *attributes,
-    const uint8_t *key_buffer,
-    size_t key_buffer_size,
-    psa_algorithm_t alg,
-    const uint8_t *peer_key,
-    size_t peer_key_length,
-    uint8_t *shared_secret,
-    size_t shared_secret_size,
-    size_t *shared_secret_length);
-
-/**
- * \brief Set the maximum number of ops allowed to be executed by an
- *        interruptible function in a single call.
- *
- * \note The signature of this function is that of a PSA driver
- *       interruptible_set_max_ops entry point. This function behaves as an
- *       interruptible_set_max_ops entry point as defined in the PSA driver
- *       interface specification for transparent drivers.
- *
- * \param[in]  max_ops          The maximum number of ops to be executed in a
- *                              single call, this can be a number from 0 to
- *                              #PSA_INTERRUPTIBLE_MAX_OPS_UNLIMITED, where 0
- *                              is obviously the least amount of work done per
- *                              call.
- */
-void mbedtls_psa_interruptible_set_max_ops(uint32_t max_ops);
-
-/**
- * \brief Get the maximum number of ops allowed to be executed by an
- *        interruptible function in a single call.
- *
- * \note The signature of this function is that of a PSA driver
- *       interruptible_get_max_ops entry point. This function behaves as an
- *       interruptible_get_max_ops entry point as defined in the PSA driver
- *       interface specification for transparent drivers.
- *
- * \return                      Maximum number of ops allowed to be executed
- *                              by an interruptible function in a single call.
- */
-uint32_t mbedtls_psa_interruptible_get_max_ops(void);
-
-/**
- * \brief Get the number of ops that a hash signing operation has taken for the
- *        previous call. If no call or work has taken place, this will return
- *        zero.
- *
- * \note The signature of this function is that of a PSA driver
- *       sign_hash_get_num_ops entry point. This function behaves as an
- *       sign_hash_get_num_ops entry point as defined in the PSA driver
- *       interface specification for transparent drivers.
- *
- * \param   operation           The \c
- *                              mbedtls_psa_sign_hash_interruptible_operation_t
- *                              to use. This must be initialized first.
- *
- * \return                      Number of ops that were completed
- *                              in the last call to \c
- *                              mbedtls_psa_sign_hash_complete().
- */
-uint32_t mbedtls_psa_sign_hash_get_num_ops(
-    const mbedtls_psa_sign_hash_interruptible_operation_t *operation);
-
-/**
- * \brief Get the number of ops that a hash verification operation has taken for
- *        the previous call. If no call or work has taken place, this will
- *        return zero.
- *
- * \note The signature of this function is that of a PSA driver
- *       verify_hash_get_num_ops entry point. This function behaves as an
- *       verify_hash_get_num_ops entry point as defined in the PSA driver
- *       interface specification for transparent drivers.
- *
- * \param   operation           The \c
- *                              mbedtls_psa_verify_hash_interruptible_operation_t
- *                              to use. This must be initialized first.
- *
- * \return                      Number of ops that were completed
- *                              in the last call to \c
- *                              mbedtls_psa_verify_hash_complete().
- */
-uint32_t mbedtls_psa_verify_hash_get_num_ops(
-    const mbedtls_psa_verify_hash_interruptible_operation_t *operation);
-
-/**
- * \brief  Start signing a hash or short message with a private key, in an
- *         interruptible manner.
- *
- * \note The signature of this function is that of a PSA driver
- *       sign_hash_start entry point. This function behaves as a
- *       sign_hash_start entry point as defined in the PSA driver interface
- *       specification for transparent drivers.
- *
- * \param[in]  operation        The \c
- *                              mbedtls_psa_sign_hash_interruptible_operation_t
- *                              to use. This must be initialized first.
- * \param[in]  attributes       The attributes of the key to use for the
- *                              operation.
- * \param[in]  key_buffer       The buffer containing the key context.
- * \param[in]  key_buffer_size  Size of the \p key_buffer buffer in bytes.
- * \param[in]  alg              A signature algorithm that is compatible with
- *                              the type of the key.
- * \param[in] hash              The hash or message to sign.
- * \param hash_length           Size of the \p hash buffer in bytes.
- *
- * \retval #PSA_SUCCESS
- *         The operation started successfully - call \c psa_sign_hash_complete()
- *         with the same context to complete the operation
- * \retval #PSA_ERROR_INVALID_ARGUMENT
- *         An unsupported, incorrectly formatted or incorrect type of key was
- *         used.
- * \retval #PSA_ERROR_NOT_SUPPORTED Either no internal interruptible operations
- *         are currently supported, or the key type is currently unsupported.
- * \retval #PSA_ERROR_INSUFFICIENT_MEMORY
- *         There was insufficient memory to load the key representation.
- */
-psa_status_t mbedtls_psa_sign_hash_start(
-    mbedtls_psa_sign_hash_interruptible_operation_t *operation,
-    const psa_key_attributes_t *attributes, const uint8_t *key_buffer,
-    size_t key_buffer_size, psa_algorithm_t alg,
-    const uint8_t *hash, size_t hash_length);
-
-/**
- * \brief Continue and eventually complete the action of signing a hash or
- *        short message with a private key, in an interruptible manner.
- *
- * \note The signature of this function is that of a PSA driver
- *       sign_hash_complete entry point. This function behaves as a
- *       sign_hash_complete entry point as defined in the PSA driver interface
- *       specification for transparent drivers.
- *
- * \param[in]  operation        The \c
- *                              mbedtls_psa_sign_hash_interruptible_operation_t
- *                              to use. This must be initialized first.
- *
- * \param[out] signature        Buffer where the signature is to be written.
- * \param signature_size        Size of the \p signature buffer in bytes. This
- *                              must be appropriate for the selected
- *                              algorithm and key.
- * \param[out] signature_length On success, the number of bytes that make up
- *                              the returned signature value.
- *
- * \retval #PSA_SUCCESS
- *         Operation completed successfully
- *
- * \retval #PSA_OPERATION_INCOMPLETE
- *         Operation was interrupted due to the setting of \c
- *         psa_interruptible_set_max_ops(), there is still work to be done,
- *         please call this function again with the same operation object.
- *
- * \retval #PSA_ERROR_BUFFER_TOO_SMALL
- *         The size of the \p signature buffer is too small. You can
- *         determine a sufficient buffer size by calling
- *         #PSA_SIGN_OUTPUT_SIZE(\c key_type, \c key_bits, \p alg)
- *         where \c key_type and \c key_bits are the type and bit-size
- *         respectively of \p key.
- *
- * \retval #PSA_ERROR_NOT_SUPPORTED \emptydescription
- * \retval #PSA_ERROR_INVALID_ARGUMENT \emptydescription
- * \retval #PSA_ERROR_INSUFFICIENT_MEMORY \emptydescription
- * \retval #PSA_ERROR_CORRUPTION_DETECTED \emptydescription
- * \retval #PSA_ERROR_INSUFFICIENT_ENTROPY \emptydescription
- */
-psa_status_t mbedtls_psa_sign_hash_complete(
-    mbedtls_psa_sign_hash_interruptible_operation_t *operation,
-    uint8_t *signature, size_t signature_size,
-    size_t *signature_length);
-
-/**
- * \brief Abort a sign hash operation.
- *
- * \note The signature of this function is that of a PSA driver sign_hash_abort
- *       entry point. This function behaves as a sign_hash_abort entry point as
- *       defined in the PSA driver interface specification for transparent
- *       drivers.
- *
- * \param[in]  operation        The \c
- *                              mbedtls_psa_sign_hash_interruptible_operation_t
- *                              to abort.
- *
- * \retval #PSA_SUCCESS
- *         The operation was aborted successfully.
- */
-psa_status_t mbedtls_psa_sign_hash_abort(
-    mbedtls_psa_sign_hash_interruptible_operation_t *operation);
-
-/**
- * \brief  Start reading and verifying a hash or short message, in an
- *         interruptible manner.
- *
- * \note The signature of this function is that of a PSA driver
- *       verify_hash_start entry point. This function behaves as a
- *       verify_hash_start entry point as defined in the PSA driver interface
- *       specification for transparent drivers.
- *
- * \param[in]  operation        The \c
- *                              mbedtls_psa_verify_hash_interruptible_operation_t
- *                              to use. This must be initialized first.
- * \param[in]  attributes       The attributes of the key to use for the
- *                              operation.
- * \param[in]  key_buffer       The buffer containing the key context.
- * \param[in]  key_buffer_size  Size of the \p key_buffer buffer in bytes.
- * \param[in]  alg              A signature algorithm that is compatible with
- *                              the type of the key.
- * \param[in] hash              The hash whose signature is to be verified.
- * \param hash_length           Size of the \p hash buffer in bytes.
- * \param[in] signature         Buffer containing the signature to verify.
- * \param signature_length      Size of the \p signature buffer in bytes.
- *
- * \retval #PSA_SUCCESS
- *         The operation started successfully - call \c psa_sign_hash_complete()
- *         with the same context to complete the operation
- * \retval #PSA_ERROR_INVALID_ARGUMENT
- *         An unsupported or incorrect type of key was used.
- * \retval #PSA_ERROR_NOT_SUPPORTED
- *        Either no internal interruptible operations are currently supported,
- *         or the key type is currently unsupported.
- * \retval #PSA_ERROR_INSUFFICIENT_MEMORY
- *        There was insufficient memory either to load the key representation,
- *        or to prepare the operation.
- */
-psa_status_t mbedtls_psa_verify_hash_start(
-    mbedtls_psa_verify_hash_interruptible_operation_t *operation,
-    const psa_key_attributes_t *attributes,
-    const uint8_t *key_buffer, size_t key_buffer_size,
-    psa_algorithm_t alg,
-    const uint8_t *hash, size_t hash_length,
-    const uint8_t *signature, size_t signature_length);
-
-/**
- * \brief Continue and eventually complete the action of signing a hash or
- *        short message with a private key, in an interruptible manner.
- *
- * \note The signature of this function is that of a PSA driver
- *       sign_hash_complete entry point. This function behaves as a
- *       sign_hash_complete entry point as defined in the PSA driver interface
- *       specification for transparent drivers.
- *
- * \param[in]  operation        The \c
- *                              mbedtls_psa_sign_hash_interruptible_operation_t
- *                              to use. This must be initialized first.
- *
- * \retval #PSA_SUCCESS
- *         Operation completed successfully, and the passed signature is valid.
- *
- * \retval #PSA_OPERATION_INCOMPLETE
- *         Operation was interrupted due to the setting of \c
- *         psa_interruptible_set_max_ops(), there is still work to be done,
- *         please call this function again with the same operation object.
- *
- * \retval #PSA_ERROR_INVALID_SIGNATURE
- *         The calculation was performed successfully, but the passed
- *         signature is not a valid signature.
- *
- * \retval #PSA_ERROR_NOT_SUPPORTED \emptydescription
- * \retval #PSA_ERROR_INVALID_ARGUMENT \emptydescription
- * \retval #PSA_ERROR_INSUFFICIENT_MEMORY \emptydescription
- */
-psa_status_t mbedtls_psa_verify_hash_complete(
-    mbedtls_psa_verify_hash_interruptible_operation_t *operation);
-
-/**
- * \brief Abort a verify signed hash operation.
- *
- * \note The signature of this function is that of a PSA driver
- *       verify_hash_abort entry point. This function behaves as a
- *       verify_hash_abort entry point as defined in the PSA driver interface
- *       specification for transparent drivers.
- *
- * \param[in]  operation        The \c
- *                              mbedtls_psa_verify_hash_interruptible_operation_t
- *                              to abort.
- *
- * \retval #PSA_SUCCESS
- *         The operation was aborted successfully.
- */
-psa_status_t mbedtls_psa_verify_hash_abort(
-    mbedtls_psa_verify_hash_interruptible_operation_t *operation);
-
+psa_status_t psa_validate_unstructured_key_bit_size( psa_key_type_t type,
+                                                     size_t bits );
 #endif /* PSA_CRYPTO_CORE_H */

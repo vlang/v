@@ -1,11 +1,23 @@
 /**
  * \file ssl_ciphersuites.h
  *
- * \brief SSL Ciphersuites for Mbed TLS
+ * \brief SSL Ciphersuites for mbed TLS
  */
 /*
  *  Copyright The Mbed TLS Contributors
- *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ *  SPDX-License-Identifier: Apache-2.0
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License"); you may
+ *  not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ *  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  */
 #ifndef MBEDTLS_SSL_CIPHERSUITES_H
 #define MBEDTLS_SSL_CIPHERSUITES_H
@@ -280,47 +292,14 @@ typedef enum {
 #define MBEDTLS_KEY_EXCHANGE_WITH_CERT_ENABLED
 #endif
 
-/* Key exchanges in either TLS 1.2 or 1.3 which are using an ECDSA
- * signature */
-#if defined(MBEDTLS_KEY_EXCHANGE_ECDHE_ECDSA_ENABLED) || \
-    defined(MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_EPHEMERAL_ENABLED)
-#define MBEDTLS_KEY_EXCHANGE_WITH_ECDSA_ANY_ENABLED
-#endif
-
-#if defined(MBEDTLS_KEY_EXCHANGE_WITH_CERT_ENABLED) || \
-    defined(MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_EPHEMERAL_ENABLED)
-#define MBEDTLS_SSL_HANDSHAKE_WITH_CERT_ENABLED
-#endif
-
-/* Key exchanges allowing client certificate requests.
- *
- * Note: that's almost the same as MBEDTLS_KEY_EXCHANGE_WITH_CERT_ENABLED
- * above, except RSA-PSK uses a server certificate but no client cert.
- *
- * Note: this difference is specific to TLS 1.2, as with TLS 1.3, things are
- * more symmetrical: client certs and server certs are either both allowed
- * (Ephemeral mode) or both disallowed (PSK and PKS-Ephemeral modes).
- */
+/* Key exchanges allowing client certificate requests */
 #if defined(MBEDTLS_KEY_EXCHANGE_RSA_ENABLED)           ||       \
     defined(MBEDTLS_KEY_EXCHANGE_DHE_RSA_ENABLED)       ||       \
+    defined(MBEDTLS_KEY_EXCHANGE_ECDH_RSA_ENABLED)      ||       \
     defined(MBEDTLS_KEY_EXCHANGE_ECDHE_RSA_ENABLED)     ||       \
-    defined(MBEDTLS_KEY_EXCHANGE_ECDHE_ECDSA_ENABLED)   ||       \
     defined(MBEDTLS_KEY_EXCHANGE_ECDH_ECDSA_ENABLED)    ||       \
-    defined(MBEDTLS_KEY_EXCHANGE_ECDH_RSA_ENABLED)
+    defined(MBEDTLS_KEY_EXCHANGE_ECDHE_ECDSA_ENABLED)
 #define MBEDTLS_KEY_EXCHANGE_CERT_REQ_ALLOWED_ENABLED
-#endif
-
-/* Helper to state that certificate-based client authentication through ECDSA
- * is supported in TLS 1.2 */
-#if defined(MBEDTLS_KEY_EXCHANGE_CERT_REQ_ALLOWED_ENABLED) && \
-    defined(MBEDTLS_PK_CAN_ECDSA_SIGN) && defined(MBEDTLS_PK_CAN_ECDSA_VERIFY)
-#define MBEDTLS_KEY_EXCHANGE_ECDSA_CERT_REQ_ALLOWED_ENABLED
-#endif
-
-/* ECDSA required for certificates in either TLS 1.2 or 1.3 */
-#if defined(MBEDTLS_KEY_EXCHANGE_ECDSA_CERT_REQ_ALLOWED_ENABLED) || \
-    defined(MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_EPHEMERAL_ENABLED)
-#define MBEDTLS_KEY_EXCHANGE_ECDSA_CERT_REQ_ANY_ALLOWED_ENABLED
 #endif
 
 /* Key exchanges involving server signature in ServerKeyExchange */
@@ -375,62 +354,6 @@ typedef enum {
 #define MBEDTLS_KEY_EXCHANGE_SOME_ECDHE_ENABLED
 #endif
 
-/* TLS 1.2 key exchanges using ECDH or ECDHE*/
-#if defined(MBEDTLS_KEY_EXCHANGE_SOME_ECDH_ENABLED) || \
-    defined(MBEDTLS_KEY_EXCHANGE_SOME_ECDHE_ENABLED)
-#define MBEDTLS_KEY_EXCHANGE_SOME_ECDH_OR_ECDHE_1_2_ENABLED
-#endif
-
-/* TLS 1.3 PSK key exchanges */
-#if defined(MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_PSK_ENABLED) || \
-    defined(MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_PSK_EPHEMERAL_ENABLED)
-#define MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_SOME_PSK_ENABLED
-#endif
-
-/* TLS 1.2 or 1.3 key exchanges with PSK */
-#if defined(MBEDTLS_KEY_EXCHANGE_SOME_PSK_ENABLED) || \
-    defined(MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_SOME_PSK_ENABLED)
-#define MBEDTLS_SSL_HANDSHAKE_WITH_PSK_ENABLED
-#endif
-
-/* TLS 1.3 ephemeral key exchanges */
-#if defined(MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_EPHEMERAL_ENABLED) || \
-    defined(MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_PSK_EPHEMERAL_ENABLED)
-#define MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_SOME_EPHEMERAL_ENABLED
-#endif
-
-/* TLS 1.3 key exchanges using ECDHE */
-#if defined(MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_SOME_EPHEMERAL_ENABLED) && \
-    defined(PSA_WANT_ALG_ECDH)
-#define MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_SOME_ECDHE_ENABLED
-#endif
-
-/* TLS 1.2 or 1.3 key exchanges using ECDH or ECDHE */
-#if defined(MBEDTLS_KEY_EXCHANGE_SOME_ECDH_OR_ECDHE_1_2_ENABLED) || \
-    defined(MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_SOME_ECDHE_ENABLED)
-#define MBEDTLS_KEY_EXCHANGE_SOME_ECDH_OR_ECDHE_ANY_ENABLED
-#endif
-
-/* TLS 1.2 XXDH key exchanges: ECDH or ECDHE or FFDH */
-#if (defined(MBEDTLS_KEY_EXCHANGE_SOME_ECDH_OR_ECDHE_1_2_ENABLED) || \
-    defined(MBEDTLS_KEY_EXCHANGE_SOME_DHE_ENABLED))
-#define MBEDTLS_KEY_EXCHANGE_SOME_XXDH_1_2_ENABLED
-#endif
-
-/* The handshake params structure has a set of fields called xxdh_psa which are used:
- * - by TLS 1.2 with `USE_PSA` to do ECDH or ECDHE;
- * - by TLS 1.3 to do ECDHE or FFDHE.
- * The following macros can be used to guard their declaration and use.
- */
-#if defined(MBEDTLS_KEY_EXCHANGE_SOME_ECDH_OR_ECDHE_1_2_ENABLED) && \
-    defined(MBEDTLS_USE_PSA_CRYPTO)
-#define MBEDTLS_KEY_EXCHANGE_SOME_XXDH_PSA_1_2_ENABLED
-#endif
-#if defined(MBEDTLS_KEY_EXCHANGE_SOME_XXDH_PSA_1_2_ENABLED) || \
-    defined(MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_SOME_EPHEMERAL_ENABLED)
-#define MBEDTLS_KEY_EXCHANGE_SOME_XXDH_PSA_ANY_ENABLED
-#endif
-
 typedef struct mbedtls_ssl_ciphersuite_t mbedtls_ssl_ciphersuite_t;
 
 #define MBEDTLS_CIPHERSUITE_WEAK       0x01    /**< Weak ciphersuite flag  */
@@ -445,9 +368,10 @@ typedef struct mbedtls_ssl_ciphersuite_t mbedtls_ssl_ciphersuite_t;
  *          in order to pack structure and reduce memory usage by internal
  *          \c ciphersuite_definitions[]
  */
-struct mbedtls_ssl_ciphersuite_t {
+struct mbedtls_ssl_ciphersuite_t
+{
     int MBEDTLS_PRIVATE(id);
-    const char *MBEDTLS_PRIVATE(name);
+    const char * MBEDTLS_PRIVATE(name);
 
     uint8_t MBEDTLS_PRIVATE(cipher);           /* mbedtls_cipher_type_t */
     uint8_t MBEDTLS_PRIVATE(mac);              /* mbedtls_md_type_t */
@@ -458,98 +382,103 @@ struct mbedtls_ssl_ciphersuite_t {
     uint16_t MBEDTLS_PRIVATE(max_tls_version); /* mbedtls_ssl_protocol_version */
 };
 
-const int *mbedtls_ssl_list_ciphersuites(void);
+const int *mbedtls_ssl_list_ciphersuites( void );
 
-const mbedtls_ssl_ciphersuite_t *mbedtls_ssl_ciphersuite_from_string(const char *ciphersuite_name);
-const mbedtls_ssl_ciphersuite_t *mbedtls_ssl_ciphersuite_from_id(int ciphersuite_id);
+const mbedtls_ssl_ciphersuite_t *mbedtls_ssl_ciphersuite_from_string( const char *ciphersuite_name );
+const mbedtls_ssl_ciphersuite_t *mbedtls_ssl_ciphersuite_from_id( int ciphersuite_id );
 
 #if defined(MBEDTLS_PK_C)
-mbedtls_pk_type_t mbedtls_ssl_get_ciphersuite_sig_pk_alg(const mbedtls_ssl_ciphersuite_t *info);
+mbedtls_pk_type_t mbedtls_ssl_get_ciphersuite_sig_pk_alg( const mbedtls_ssl_ciphersuite_t *info );
 #if defined(MBEDTLS_USE_PSA_CRYPTO)
-psa_algorithm_t mbedtls_ssl_get_ciphersuite_sig_pk_psa_alg(const mbedtls_ssl_ciphersuite_t *info);
-psa_key_usage_t mbedtls_ssl_get_ciphersuite_sig_pk_psa_usage(const mbedtls_ssl_ciphersuite_t *info);
+psa_algorithm_t mbedtls_ssl_get_ciphersuite_sig_pk_psa_alg( const mbedtls_ssl_ciphersuite_t *info );
+psa_key_usage_t mbedtls_ssl_get_ciphersuite_sig_pk_psa_usage( const mbedtls_ssl_ciphersuite_t *info );
 #endif
-mbedtls_pk_type_t mbedtls_ssl_get_ciphersuite_sig_alg(const mbedtls_ssl_ciphersuite_t *info);
+mbedtls_pk_type_t mbedtls_ssl_get_ciphersuite_sig_alg( const mbedtls_ssl_ciphersuite_t *info );
 #endif
 
-int mbedtls_ssl_ciphersuite_uses_ec(const mbedtls_ssl_ciphersuite_t *info);
-int mbedtls_ssl_ciphersuite_uses_psk(const mbedtls_ssl_ciphersuite_t *info);
+int mbedtls_ssl_ciphersuite_uses_ec( const mbedtls_ssl_ciphersuite_t *info );
+int mbedtls_ssl_ciphersuite_uses_psk( const mbedtls_ssl_ciphersuite_t *info );
 
-static inline const char *mbedtls_ssl_ciphersuite_get_name(const mbedtls_ssl_ciphersuite_t *info)
+static inline const char *mbedtls_ssl_ciphersuite_get_name( const mbedtls_ssl_ciphersuite_t *info )
 {
     return info->MBEDTLS_PRIVATE(name);
 }
 
-size_t mbedtls_ssl_ciphersuite_get_cipher_key_bitlen(const mbedtls_ssl_ciphersuite_t *info);
+size_t mbedtls_ssl_ciphersuite_get_cipher_key_bitlen( const mbedtls_ssl_ciphersuite_t *info );
 
 #if defined(MBEDTLS_KEY_EXCHANGE_SOME_PFS_ENABLED)
-static inline int mbedtls_ssl_ciphersuite_has_pfs(const mbedtls_ssl_ciphersuite_t *info)
+static inline int mbedtls_ssl_ciphersuite_has_pfs( const mbedtls_ssl_ciphersuite_t *info )
 {
-    switch (info->MBEDTLS_PRIVATE(key_exchange)) {
+    switch( info->MBEDTLS_PRIVATE(key_exchange) )
+    {
         case MBEDTLS_KEY_EXCHANGE_DHE_RSA:
         case MBEDTLS_KEY_EXCHANGE_DHE_PSK:
         case MBEDTLS_KEY_EXCHANGE_ECDHE_RSA:
         case MBEDTLS_KEY_EXCHANGE_ECDHE_PSK:
         case MBEDTLS_KEY_EXCHANGE_ECDHE_ECDSA:
         case MBEDTLS_KEY_EXCHANGE_ECJPAKE:
-            return 1;
+            return( 1 );
 
         default:
-            return 0;
+            return( 0 );
     }
 }
 #endif /* MBEDTLS_KEY_EXCHANGE_SOME_PFS_ENABLED */
 
 #if defined(MBEDTLS_KEY_EXCHANGE_SOME_NON_PFS_ENABLED)
-static inline int mbedtls_ssl_ciphersuite_no_pfs(const mbedtls_ssl_ciphersuite_t *info)
+static inline int mbedtls_ssl_ciphersuite_no_pfs( const mbedtls_ssl_ciphersuite_t *info )
 {
-    switch (info->MBEDTLS_PRIVATE(key_exchange)) {
+    switch( info->MBEDTLS_PRIVATE(key_exchange) )
+    {
         case MBEDTLS_KEY_EXCHANGE_ECDH_RSA:
         case MBEDTLS_KEY_EXCHANGE_ECDH_ECDSA:
         case MBEDTLS_KEY_EXCHANGE_RSA:
         case MBEDTLS_KEY_EXCHANGE_PSK:
         case MBEDTLS_KEY_EXCHANGE_RSA_PSK:
-            return 1;
+            return( 1 );
 
         default:
-            return 0;
+            return( 0 );
     }
 }
 #endif /* MBEDTLS_KEY_EXCHANGE_SOME_NON_PFS_ENABLED */
 
 #if defined(MBEDTLS_KEY_EXCHANGE_SOME_ECDH_ENABLED)
-static inline int mbedtls_ssl_ciphersuite_uses_ecdh(const mbedtls_ssl_ciphersuite_t *info)
+static inline int mbedtls_ssl_ciphersuite_uses_ecdh( const mbedtls_ssl_ciphersuite_t *info )
 {
-    switch (info->MBEDTLS_PRIVATE(key_exchange)) {
+    switch( info->MBEDTLS_PRIVATE(key_exchange) )
+    {
         case MBEDTLS_KEY_EXCHANGE_ECDH_RSA:
         case MBEDTLS_KEY_EXCHANGE_ECDH_ECDSA:
-            return 1;
+            return( 1 );
 
         default:
-            return 0;
+            return( 0 );
     }
 }
 #endif /* MBEDTLS_KEY_EXCHANGE_SOME_ECDH_ENABLED */
 
-static inline int mbedtls_ssl_ciphersuite_cert_req_allowed(const mbedtls_ssl_ciphersuite_t *info)
+static inline int mbedtls_ssl_ciphersuite_cert_req_allowed( const mbedtls_ssl_ciphersuite_t *info )
 {
-    switch (info->MBEDTLS_PRIVATE(key_exchange)) {
+    switch( info->MBEDTLS_PRIVATE(key_exchange) )
+    {
         case MBEDTLS_KEY_EXCHANGE_RSA:
         case MBEDTLS_KEY_EXCHANGE_DHE_RSA:
         case MBEDTLS_KEY_EXCHANGE_ECDH_RSA:
         case MBEDTLS_KEY_EXCHANGE_ECDHE_RSA:
         case MBEDTLS_KEY_EXCHANGE_ECDH_ECDSA:
         case MBEDTLS_KEY_EXCHANGE_ECDHE_ECDSA:
-            return 1;
+            return( 1 );
 
         default:
-            return 0;
+            return( 0 );
     }
 }
 
-static inline int mbedtls_ssl_ciphersuite_uses_srv_cert(const mbedtls_ssl_ciphersuite_t *info)
+static inline int mbedtls_ssl_ciphersuite_uses_srv_cert( const mbedtls_ssl_ciphersuite_t *info )
 {
-    switch (info->MBEDTLS_PRIVATE(key_exchange)) {
+    switch( info->MBEDTLS_PRIVATE(key_exchange) )
+    {
         case MBEDTLS_KEY_EXCHANGE_RSA:
         case MBEDTLS_KEY_EXCHANGE_RSA_PSK:
         case MBEDTLS_KEY_EXCHANGE_DHE_RSA:
@@ -557,54 +486,56 @@ static inline int mbedtls_ssl_ciphersuite_uses_srv_cert(const mbedtls_ssl_cipher
         case MBEDTLS_KEY_EXCHANGE_ECDHE_RSA:
         case MBEDTLS_KEY_EXCHANGE_ECDH_ECDSA:
         case MBEDTLS_KEY_EXCHANGE_ECDHE_ECDSA:
-            return 1;
+            return( 1 );
 
         default:
-            return 0;
+            return( 0 );
     }
 }
 
 #if defined(MBEDTLS_KEY_EXCHANGE_SOME_DHE_ENABLED)
-static inline int mbedtls_ssl_ciphersuite_uses_dhe(const mbedtls_ssl_ciphersuite_t *info)
+static inline int mbedtls_ssl_ciphersuite_uses_dhe( const mbedtls_ssl_ciphersuite_t *info )
 {
-    switch (info->MBEDTLS_PRIVATE(key_exchange)) {
+    switch( info->MBEDTLS_PRIVATE(key_exchange) )
+    {
         case MBEDTLS_KEY_EXCHANGE_DHE_RSA:
         case MBEDTLS_KEY_EXCHANGE_DHE_PSK:
-            return 1;
+            return( 1 );
 
         default:
-            return 0;
+            return( 0 );
     }
 }
 #endif /* MBEDTLS_KEY_EXCHANGE_SOME_DHE_ENABLED) */
 
 #if defined(MBEDTLS_KEY_EXCHANGE_SOME_ECDHE_ENABLED)
-static inline int mbedtls_ssl_ciphersuite_uses_ecdhe(const mbedtls_ssl_ciphersuite_t *info)
+static inline int mbedtls_ssl_ciphersuite_uses_ecdhe( const mbedtls_ssl_ciphersuite_t *info )
 {
-    switch (info->MBEDTLS_PRIVATE(key_exchange)) {
+    switch( info->MBEDTLS_PRIVATE(key_exchange) )
+    {
         case MBEDTLS_KEY_EXCHANGE_ECDHE_ECDSA:
         case MBEDTLS_KEY_EXCHANGE_ECDHE_RSA:
         case MBEDTLS_KEY_EXCHANGE_ECDHE_PSK:
-            return 1;
+            return( 1 );
 
         default:
-            return 0;
+            return( 0 );
     }
 }
 #endif /* MBEDTLS_KEY_EXCHANGE_SOME_ECDHE_ENABLED) */
 
 #if defined(MBEDTLS_KEY_EXCHANGE_WITH_SERVER_SIGNATURE_ENABLED)
-static inline int mbedtls_ssl_ciphersuite_uses_server_signature(
-    const mbedtls_ssl_ciphersuite_t *info)
+static inline int mbedtls_ssl_ciphersuite_uses_server_signature( const mbedtls_ssl_ciphersuite_t *info )
 {
-    switch (info->MBEDTLS_PRIVATE(key_exchange)) {
+    switch( info->MBEDTLS_PRIVATE(key_exchange) )
+    {
         case MBEDTLS_KEY_EXCHANGE_DHE_RSA:
         case MBEDTLS_KEY_EXCHANGE_ECDHE_RSA:
         case MBEDTLS_KEY_EXCHANGE_ECDHE_ECDSA:
-            return 1;
+            return( 1 );
 
         default:
-            return 0;
+            return( 0 );
     }
 }
 #endif /* MBEDTLS_KEY_EXCHANGE_WITH_SERVER_SIGNATURE_ENABLED */

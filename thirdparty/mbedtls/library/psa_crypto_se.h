@@ -3,7 +3,19 @@
  */
 /*
  *  Copyright The Mbed TLS Contributors
- *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ *  SPDX-License-Identifier: Apache-2.0
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License"); you may
+ *  not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ *  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  */
 
 #ifndef PSA_CRYPTO_SE_H
@@ -35,7 +47,7 @@
  * actually not used since it corresponds to #PSA_KEY_LOCATION_LOCAL_STORAGE
  * which doesn't have a driver.
  */
-#define PSA_CRYPTO_SE_DRIVER_ITS_UID_BASE ((psa_key_id_t) 0xfffffe00)
+#define PSA_CRYPTO_SE_DRIVER_ITS_UID_BASE ( (psa_key_id_t) 0xfffffe00 )
 
 /** The maximum number of registered secure element driver locations. */
 #define PSA_MAX_SE_DRIVERS 4
@@ -46,13 +58,13 @@
  *          state. This function is only intended to be called at the end
  *          of mbedtls_psa_crypto_free().
  */
-void psa_unregister_all_se_drivers(void);
+void psa_unregister_all_se_drivers( void );
 
 /** Initialize all secure element drivers.
  *
  * Called from psa_crypto_init().
  */
-psa_status_t psa_init_all_se_drivers(void);
+psa_status_t psa_init_all_se_drivers( void );
 
 /** A structure that describes a registered secure element driver.
  *
@@ -77,9 +89,9 @@ typedef struct psa_se_drv_table_entry_s psa_se_drv_table_entry_t;
  * \retval 0
  *         \p lifetime does not correspond to a registered driver.
  */
-int psa_get_se_driver(psa_key_lifetime_t lifetime,
-                      const psa_drv_se_t **p_methods,
-                      psa_drv_se_context_t **p_drv_context);
+int psa_get_se_driver( psa_key_lifetime_t lifetime,
+                       const psa_drv_se_t **p_methods,
+                       psa_drv_se_context_t **p_drv_context);
 
 /** Return the secure element driver table entry for a lifetime value.
  *
@@ -89,7 +101,7 @@ int psa_get_se_driver(psa_key_lifetime_t lifetime,
  *         \p NULL if \p lifetime does not correspond to a registered driver.
  */
 psa_se_drv_table_entry_t *psa_get_se_driver_entry(
-    psa_key_lifetime_t lifetime);
+    psa_key_lifetime_t lifetime );
 
 /** Return the method table for a secure element driver.
  *
@@ -99,7 +111,7 @@ psa_se_drv_table_entry_t *psa_get_se_driver_entry(
  *         \c NULL if \p driver is \c NULL.
  */
 const psa_drv_se_t *psa_get_se_driver_methods(
-    const psa_se_drv_table_entry_t *driver);
+    const psa_se_drv_table_entry_t *driver );
 
 /** Return the context of a secure element driver.
  *
@@ -109,7 +121,7 @@ const psa_drv_se_t *psa_get_se_driver_methods(
  *         \c NULL if \p driver is \c NULL.
  */
 psa_drv_se_context_t *psa_get_se_driver_context(
-    psa_se_drv_table_entry_t *driver);
+    psa_se_drv_table_entry_t *driver );
 
 /** Find a free slot for a key that is to be created.
  *
@@ -125,15 +137,15 @@ psa_status_t psa_find_se_slot_for_key(
     const psa_key_attributes_t *attributes,
     psa_key_creation_method_t method,
     psa_se_drv_table_entry_t *driver,
-    psa_key_slot_number_t *slot_number);
+    psa_key_slot_number_t *slot_number );
 
-/** Destroy a key in a secure element.
+/** Destoy a key in a secure element.
  *
  * This function calls the relevant driver method to destroy a key
  * and updates the driver's persistent data.
  */
-psa_status_t psa_destroy_se_key(psa_se_drv_table_entry_t *driver,
-                                psa_key_slot_number_t slot_number);
+psa_status_t psa_destroy_se_key( psa_se_drv_table_entry_t *driver,
+                                 psa_key_slot_number_t slot_number );
 
 /** Load the persistent data of a secure element driver.
  *
@@ -148,7 +160,7 @@ psa_status_t psa_destroy_se_key(psa_se_drv_table_entry_t *driver,
  * \return #PSA_ERROR_INVALID_ARGUMENT
  */
 psa_status_t psa_load_se_persistent_data(
-    const psa_se_drv_table_entry_t *driver);
+    const psa_se_drv_table_entry_t *driver );
 
 /** Save the persistent data of a secure element driver.
  *
@@ -164,7 +176,7 @@ psa_status_t psa_load_se_persistent_data(
  * \return #PSA_ERROR_INVALID_ARGUMENT
  */
 psa_status_t psa_save_se_persistent_data(
-    const psa_se_drv_table_entry_t *driver);
+    const psa_se_drv_table_entry_t *driver );
 
 /** Destroy the persistent data of a secure element driver.
  *
@@ -173,13 +185,14 @@ psa_status_t psa_save_se_persistent_data(
  * \param[in] location  The location identifier for the driver whose
  *                      persistent data is to be erased.
  */
-psa_status_t psa_destroy_se_persistent_data(psa_key_location_t location);
+psa_status_t psa_destroy_se_persistent_data( psa_key_location_t location );
 
 
 /** The storage representation of a key whose data is in a secure element.
  */
-typedef struct {
-    uint8_t slot_number[sizeof(psa_key_slot_number_t)];
+typedef struct
+{
+    uint8_t slot_number[sizeof( psa_key_slot_number_t )];
 } psa_se_key_data_storage_t;
 
 #endif /* PSA_CRYPTO_SE_H */

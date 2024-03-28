@@ -8,7 +8,19 @@
  */
 /*
  *  Copyright The Mbed TLS Contributors
- *  SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
+ *  SPDX-License-Identifier: Apache-2.0
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License"); you may
+ *  not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ *  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  */
 #ifndef MBEDTLS_SHA256_H
 #define MBEDTLS_SHA256_H
@@ -37,12 +49,13 @@ extern "C" {
  *                 checksum calculations. The choice between these two is
  *                 made in the call to mbedtls_sha256_starts().
  */
-typedef struct mbedtls_sha256_context {
-    unsigned char MBEDTLS_PRIVATE(buffer)[64];   /*!< The data block being processed. */
+typedef struct mbedtls_sha256_context
+{
     uint32_t MBEDTLS_PRIVATE(total)[2];          /*!< The number of Bytes processed.  */
     uint32_t MBEDTLS_PRIVATE(state)[8];          /*!< The intermediate digest state.  */
+    unsigned char MBEDTLS_PRIVATE(buffer)[64];   /*!< The data block being processed. */
     int MBEDTLS_PRIVATE(is224);                  /*!< Determines which function to use:
-                                                    0: Use SHA-256, or 1: Use SHA-224. */
+                                     0: Use SHA-256, or 1: Use SHA-224. */
 }
 mbedtls_sha256_context;
 
@@ -55,7 +68,7 @@ mbedtls_sha256_context;
  *
  * \param ctx      The SHA-256 context to initialize. This must not be \c NULL.
  */
-void mbedtls_sha256_init(mbedtls_sha256_context *ctx);
+void mbedtls_sha256_init( mbedtls_sha256_context *ctx );
 
 /**
  * \brief          This function clears a SHA-256 context.
@@ -64,7 +77,7 @@ void mbedtls_sha256_init(mbedtls_sha256_context *ctx);
  *                 case this function returns immediately. If it is not \c NULL,
  *                 it must point to an initialized SHA-256 context.
  */
-void mbedtls_sha256_free(mbedtls_sha256_context *ctx);
+void mbedtls_sha256_free( mbedtls_sha256_context *ctx );
 
 /**
  * \brief          This function clones the state of a SHA-256 context.
@@ -72,8 +85,8 @@ void mbedtls_sha256_free(mbedtls_sha256_context *ctx);
  * \param dst      The destination context. This must be initialized.
  * \param src      The context to clone. This must be initialized.
  */
-void mbedtls_sha256_clone(mbedtls_sha256_context *dst,
-                          const mbedtls_sha256_context *src);
+void mbedtls_sha256_clone( mbedtls_sha256_context *dst,
+                           const mbedtls_sha256_context *src );
 
 /**
  * \brief          This function starts a SHA-224 or SHA-256 checksum
@@ -83,14 +96,10 @@ void mbedtls_sha256_clone(mbedtls_sha256_context *dst,
  * \param is224    This determines which function to use. This must be
  *                 either \c 0 for SHA-256, or \c 1 for SHA-224.
  *
- * \note           is224 must be defined accordingly to the enabled
- *                 MBEDTLS_SHA224_C/MBEDTLS_SHA256_C symbols otherwise the
- *                 function will return #MBEDTLS_ERR_SHA512_BAD_INPUT_DATA.
- *
  * \return         \c 0 on success.
  * \return         A negative error code on failure.
  */
-int mbedtls_sha256_starts(mbedtls_sha256_context *ctx, int is224);
+int mbedtls_sha256_starts( mbedtls_sha256_context *ctx, int is224 );
 
 /**
  * \brief          This function feeds an input buffer into an ongoing
@@ -105,9 +114,9 @@ int mbedtls_sha256_starts(mbedtls_sha256_context *ctx, int is224);
  * \return         \c 0 on success.
  * \return         A negative error code on failure.
  */
-int mbedtls_sha256_update(mbedtls_sha256_context *ctx,
-                          const unsigned char *input,
-                          size_t ilen);
+int mbedtls_sha256_update( mbedtls_sha256_context *ctx,
+                           const unsigned char *input,
+                           size_t ilen );
 
 /**
  * \brief          This function finishes the SHA-256 operation, and writes
@@ -122,8 +131,8 @@ int mbedtls_sha256_update(mbedtls_sha256_context *ctx,
  * \return         \c 0 on success.
  * \return         A negative error code on failure.
  */
-int mbedtls_sha256_finish(mbedtls_sha256_context *ctx,
-                          unsigned char *output);
+int mbedtls_sha256_finish( mbedtls_sha256_context *ctx,
+                           unsigned char *output );
 
 /**
  * \brief          This function processes a single data block within
@@ -137,8 +146,8 @@ int mbedtls_sha256_finish(mbedtls_sha256_context *ctx,
  * \return         \c 0 on success.
  * \return         A negative error code on failure.
  */
-int mbedtls_internal_sha256_process(mbedtls_sha256_context *ctx,
-                                    const unsigned char data[64]);
+int mbedtls_internal_sha256_process( mbedtls_sha256_context *ctx,
+                                     const unsigned char data[64] );
 
 /**
  * \brief          This function calculates the SHA-224 or SHA-256
@@ -162,32 +171,20 @@ int mbedtls_internal_sha256_process(mbedtls_sha256_context *ctx,
  * \return         \c 0 on success.
  * \return         A negative error code on failure.
  */
-int mbedtls_sha256(const unsigned char *input,
-                   size_t ilen,
-                   unsigned char *output,
-                   int is224);
+int mbedtls_sha256( const unsigned char *input,
+                    size_t ilen,
+                    unsigned char *output,
+                    int is224 );
 
 #if defined(MBEDTLS_SELF_TEST)
 
-#if defined(MBEDTLS_SHA224_C)
 /**
- * \brief          The SHA-224 checkup routine.
+ * \brief          The SHA-224 and SHA-256 checkup routine.
  *
  * \return         \c 0 on success.
  * \return         \c 1 on failure.
  */
-int mbedtls_sha224_self_test(int verbose);
-#endif /* MBEDTLS_SHA224_C */
-
-#if defined(MBEDTLS_SHA256_C)
-/**
- * \brief          The SHA-256 checkup routine.
- *
- * \return         \c 0 on success.
- * \return         \c 1 on failure.
- */
-int mbedtls_sha256_self_test(int verbose);
-#endif /* MBEDTLS_SHA256_C */
+int mbedtls_sha256_self_test( int verbose );
 
 #endif /* MBEDTLS_SELF_TEST */
 
