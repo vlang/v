@@ -48,7 +48,7 @@ pub fn (mut app Auth[T]) add_token(user_id int) !string {
 	return uuid
 }
 
-pub fn (mut app Auth[T]) find_token(value string) ?Token {
+pub fn (app &Auth[T]) find_token(value string) ?Token {
 	tokens := sql app.db {
 		select from Token where value == value limit 1
 	} or { []Token{} }
