@@ -118,7 +118,6 @@ fn main() {
 		bg_color: gx.white
 		width: win_width
 		height: win_height
-		use_ortho: true
 		create_window: true
 		window_title: 'Quadtree Demo'
 		frame_fn: frame

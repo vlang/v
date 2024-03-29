@@ -186,6 +186,7 @@ pub fn (ctx &Context) draw_text(x int, y int, text_ string, cfg gx.TextCfg) {
 		if ctx.native_rendering {
 			if cfg.align == gx.align_right {
 				width := ctx.text_width(text_)
+				// println('draw text ctx.height = ${ctx.height}')
 				C.darwin_draw_string(x - width, ctx.height - y, text_, cfg)
 			} else {
 				C.darwin_draw_string(x, ctx.height - y, text_, cfg)

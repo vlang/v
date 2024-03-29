@@ -609,7 +609,8 @@ pub fn (x Expr) str() string {
 			return "'${x.val}'"
 		}
 		TypeNode {
-			return 'TypeNode(${global_table.type_str(x.typ)})'
+			opt_prefix := if x.typ.has_flag(.option) { '?' } else { '' }
+			return 'TypeNode(${opt_prefix}${global_table.type_str(x.typ)})'
 		}
 		TypeOf {
 			if x.is_type {

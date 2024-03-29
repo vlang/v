@@ -274,7 +274,7 @@ pub fn dir(opath string) string {
 	}
 	other_separator := if path_separator == '/' { '\\' } else { '/' }
 	path := opath.replace(other_separator, path_separator)
-	pos := path.index_last(path_separator) or { return '.' }
+	pos := path.last_index(path_separator) or { return '.' }
 	if pos == 0 && path_separator == '/' {
 		return '/'
 	}
@@ -296,10 +296,10 @@ pub fn base(opath string) string {
 	}
 	if path.ends_with(path_separator) {
 		path2 := path[..path.len - 1]
-		pos := path2.index_last(path_separator) or { return path2.clone() }
+		pos := path2.last_index(path_separator) or { return path2.clone() }
 		return path2[pos + 1..]
 	}
-	pos := path.index_last(path_separator) or { return path.clone() }
+	pos := path.last_index(path_separator) or { return path.clone() }
 	return path[pos + 1..]
 }
 

@@ -837,6 +837,7 @@ pub:
 pub mut:
 	is_arg        bool // fn args should not be autofreed
 	is_auto_deref bool
+	is_unwrapped  bool // ct type smartcast unwrapped
 	expr          Expr
 	typ           Type
 	orig_type     Type   // original sumtype type; 0 if it's not a sumtype

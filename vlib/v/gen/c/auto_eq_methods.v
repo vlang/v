@@ -71,8 +71,8 @@ fn (mut g Gen) gen_sumtype_equality_fn(left_type ast.Type) string {
 	fn_builder.writeln('\tif (${left_typ} == ${right_typ} && ${right_typ} == 0) { return true; } // uninitialized')
 	for typ in info.variants {
 		variant := g.unwrap(typ)
-		fn_builder.writeln('\tif (${left_typ} == ${variant.typ.idx()}) {')
-		name := '_${variant.sym.cname}'
+		fn_builder.writeln('\tif (${left_typ} == ${int(variant.typ)}) {')
+		name := '_${g.get_sumtype_variant_name(variant.typ, variant.sym.cname)}'
 
 		left_arg := g.read_field(left_type, name, 'a')
 		right_arg := g.read_field(left_type, name, 'b')

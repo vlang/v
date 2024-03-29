@@ -484,7 +484,7 @@ fn (mut c Checker) check_valid_snake_case(name string, identifier string, pos to
 }
 
 fn stripped_name(name string) string {
-	idx := name.index_last('.') or { -1 }
+	idx := name.last_index('.') or { -1 }
 	return name[(idx + 1)..]
 }
 
@@ -641,7 +641,8 @@ fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 and use a reference to the sum type instead: `var := &${node.name}(${variant_name}${lb}val${rb})`')
 			c.error('sum type cannot hold a reference type', variant.pos)
 		}
-		if sym.name in names_used {
+		variant_name := c.table.type_to_str(variant.typ)
+		if variant_name in names_used {
 			c.error('sum type ${node.name} cannot hold the type `${sym.name}` more than once',
 				variant.pos)
 		} else if sym.kind in [.placeholder, .int_literal, .float_literal] {
@@ -696,7 +697,7 @@ and use a reference to the sum type instead: `var := &${node.name}(${variant_nam
 		if sym.name.trim_string_left(sym.mod + '.') == node.name {
 			c.error('sum type cannot hold itself', variant.pos)
 		}
-		names_used << sym.name
+		names_used << variant_name
 	}
 }
 
@@ -3944,7 +3945,26 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 				smartcasts << to_type
 				if var := scope.find_var(expr.name) {
 					if is_comptime && var.ct_type_var == .smartcast {
-						scope.update_smartcasts(expr.name, to_type)
+						if cur_type.has_flag(.option) && !to_type.has_flag(.option) {
+							if !var.is_unwrapped {
+								scope.register(ast.Var{
+									name: expr.name
+									typ: cur_type
+									pos: expr.pos
+									is_used: true
+									is_mut: expr.is_mut
+									is_inherited: is_inherited
+									smartcasts: [to_type]
+									orig_type: orig_type
+									ct_type_var: ct_type_var
+									is_unwrapped: true
+								})
+							} else {
+								scope.update_smartcasts(expr.name, to_type, true)
+							}
+						} else {
+							scope.update_smartcasts(expr.name, to_type, false)
+						}
 						return
 					}
 				}
