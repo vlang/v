@@ -330,7 +330,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 				if single_line_fields && (init_field.comments.len > 0
 					|| init_field.next_comments.len > 0
 					|| !expr_is_single_line(init_field.expr)
-					|| f.line_len > fmt.max_len[fmt.max_len.len - 1]) {
+					|| f.line_len > max_len[max_len.len - 1]) {
 					single_line_fields = false
 					f.out.go_back_to(fields_start)
 					f.line_len = fields_start

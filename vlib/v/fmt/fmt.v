@@ -1696,7 +1696,8 @@ pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
 	for variant in variants {
 		// 3 = length of ' = ' or ' | '
 		line_length += 3 + variant.name.len
-		if line_length > fmt.max_len[fmt.max_len.len - 1] || (variant.id != node.variants.len - 1
+		if line_length > fmt.max_len[fmt.max_len.len - 1]
+			|| (variant.id != node.variants.len - 1
 			&& node.variants[variant.id].end_comments.len > 0) {
 			separator = '\n\t| '
 			is_multiline = true
@@ -1825,7 +1826,8 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		single_line_expr := expr_is_single_line(expr)
 		if single_line_expr {
 			mut estr := ''
-			if !is_new_line && !f.buffering && f.line_len + expr.pos().len > fmt.max_len[fmt.max_len.len - 1] {
+			if !is_new_line && !f.buffering
+				&& f.line_len + expr.pos().len > fmt.max_len[fmt.max_len.len - 1] {
 				if inc_indent {
 					estr = f.node_str(expr)
 				}
