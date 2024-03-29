@@ -64,14 +64,11 @@ fn main() {
 		}
 		if os.is_dir(path) {
 			vt.vprintln("vetting folder: '${path}' ...")
-			vfiles := os.walk_ext(path, '.v')
-			vvfiles := os.walk_ext(path, '.vv')
-			mut files := []string{}
-			files << vfiles
-			files << vvfiles
-			for file in files {
-				vt.vet_file(file)
-			}
+			os.walk(path, fn [mut vt] (p string) {
+				if p.ends_with('.v') || p.ends_with('.vv') {
+					vt.vet_file(p)
+				}
+			})
 		}
 	}
 	vfmt_err_count := vt.errors.filter(it.fix == .vfmt).len
