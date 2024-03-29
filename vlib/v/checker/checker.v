@@ -4259,7 +4259,8 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 		}
 	}
 	// TODO: testing ref/deref strategy
-	if node.op == .amp && !right_type.is_ptr() {
+	right_is_ptr := right_type.is_ptr()
+	if node.op == .amp && (!right_is_ptr || (right_is_ptr && node.right is ast.CallExpr)) {
 		mut expr := node.right
 		// if ParExpr get the innermost expr
 		for mut expr is ast.ParExpr {
