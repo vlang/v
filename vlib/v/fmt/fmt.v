@@ -2255,18 +2255,14 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 			// This makes it clear that a module const is being used
 			// (since V's consts are no longer ALL_CAP).
 			// ^^^ except for `main`, where consts are allowed to not have a `main.` prefix.
-			mod := f.cur_mod
-			full_name := mod + '.' + node.name
-			if obj := f.file.global_scope.find(full_name) {
+			if obj := f.file.global_scope.find('${f.cur_mod}.${node.name}') {
 				if obj is ast.ConstField {
 					// "v.fmt.foo" => "fmt.foo"
-					vals := full_name.split('.')
-					mod_prefix := vals[vals.len - 2]
-					const_name := vals.last()
-					if mod_prefix == 'main' {
+					const_name := node.name.all_after_last('.')
+					if f.cur_mod == 'main' {
 						f.write(const_name)
 					} else {
-						short := mod_prefix + '.' + const_name
+						short := '${f.cur_mod.all_after_last('.')}.${const_name}'
 						f.write(short)
 						f.mark_import_as_used(short)
 					}
