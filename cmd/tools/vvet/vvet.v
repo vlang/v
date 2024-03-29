@@ -37,7 +37,6 @@ fn main() {
 	vet_options := cmdline.options_after(os.args, ['vet'])
 	mut vt := Vet{
 		opt: Options{
-			is_force: '-force' in vet_options
 			is_werror: '-W' in vet_options
 			is_verbose: '-verbose' in vet_options || '-v' in vet_options
 			show_warnings: '-hide-warnings' !in vet_options && '-w' !in vet_options
