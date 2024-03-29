@@ -3,7 +3,6 @@
 // that can be found in the LICENSE file.
 module fmt
 
-import os
 import strings
 import v.ast
 import v.util
