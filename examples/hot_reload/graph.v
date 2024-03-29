@@ -14,9 +14,7 @@ mut:
 }
 
 fn main() {
-	mut context := &Context{
-		gg: 0
-	}
+	mut context := &Context{}
 	context.gg = gg.new_context(
 		width: size
 		height: size

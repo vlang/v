@@ -195,9 +195,7 @@ const font = $embed_file('../assets/fonts/RobotoMono-Regular.ttf')
 
 // setup
 fn main() {
-	mut app := App{
-		gg: 0
-	}
+	mut app := App{}
 	app.reset_game()
 	app.best.load()
 
