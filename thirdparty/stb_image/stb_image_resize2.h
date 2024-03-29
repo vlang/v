@@ -349,6 +349,11 @@
      See end of file for license information.
 */
 
+
+#ifdef __TINYC__
+#define STBIR_NO_SIMD
+#endif
+
 #if !defined(STB_IMAGE_RESIZE_DO_HORIZONTALS) && !defined(STB_IMAGE_RESIZE_DO_VERTICALS) && !defined(STB_IMAGE_RESIZE_DO_CODERS)   // for internal re-includes
 
 #ifndef STBIR_INCLUDE_STB_IMAGE_RESIZE2_H
