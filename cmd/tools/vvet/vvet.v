@@ -63,13 +63,8 @@ fn main() {
 			vt.vet_file(path)
 		}
 		if os.is_dir(path) {
-			mut overwrite_exclude := false
-			for d in exclude_dirs {
-				if path.contains(d) {
-					overwrite_exclude = true
-				}
-			}
 			vt.vprintln("vetting folder: '${path}' ...")
+			overwrite_exclude := exclude_dirs.any(path.contains(it))
 			os.walk(path, fn [mut vt, overwrite_exclude] (p string) {
 				if p.ends_with('.v') || p.ends_with('.vv') {
 					if !overwrite_exclude {
