@@ -5926,10 +5926,11 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ
 		}
 		if unwrap_option {
 			init.writeln(g.expr_string_surround('\t${cname} = *(${styp}*)', expr, '.data;'))
-		} else if (expr is ast.ArrayInit && (expr as ast.ArrayInit).has_index)
-			|| (expr is ast.CallExpr
-			&& g.table.final_sym(g.unwrap_generic((expr as ast.CallExpr).return_type)).kind == .array_fixed) {
+		} else if expr is ast.ArrayInit && (expr as ast.ArrayInit).has_index {
 			init.writeln(g.expr_string_surround('\tmemcpy(&${cname}, &', expr, ', sizeof(${styp}));'))
+		} else if expr is ast.CallExpr
+			&& g.table.final_sym(g.unwrap_generic((expr as ast.CallExpr).return_type)).kind == .array_fixed {
+			init.writeln(g.expr_string_surround('\tmemcpy(&${cname}, ', expr, ', sizeof(${styp}));'))
 		} else {
 			init.writeln(g.expr_string_surround('\t${cname} = ', expr, ';'))
 		}
