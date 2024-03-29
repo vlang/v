@@ -5476,7 +5476,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.writeln('${ret_typ} ${tmpvar};')
 			g.write('_result_ok(&(${styp}[]) { ')
 			if !fn_ret_type.is_ptr() && node.types[0].is_ptr() {
-				if !(node.exprs[0] is ast.Ident && !g.is_amp) {
+				if !((node.exprs[0] is ast.Ident && !g.is_amp) || sym.kind == .interface_) {
 					g.write('*')
 				}
 			}
