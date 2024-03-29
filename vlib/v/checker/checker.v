@@ -579,11 +579,17 @@ fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 		}
 		// The rest of the parent symbol kinds are also allowed, since they are either primitive types,
 		// that in turn do not allow recursion, or are abstract enough so that they can not be checked at comptime:
+		.any {
+			if parent_typ_sym.language != .js && !node.parent_type.has_flag(.generic)
+				&& c.file.mod.name != 'builtin' {
+				c.error('cannot use type `any` here', node.type_pos)
+			}
+		}
 		else {}
 		/*
 		.voidptr, .byteptr, .charptr {}
 		.char, .rune, .bool {}
-		.string, .enum_, .none_, .any {}
+		.string, .enum_, .none_,
 		.i8, .i16, .int, .i64, .isize {}
 		.u8, .u16, .u32, .u64, .usize {}
 		.f32, .f64 {}
@@ -649,6 +655,9 @@ and use a reference to the sum type instead: `var := &${node.name}(${variant_nam
 			c.error('unknown type `${sym.name}`', variant.pos)
 		} else if sym.kind == .interface_ && sym.language != .js {
 			c.error('sum type cannot hold an interface', variant.pos)
+		} else if sym.kind == .any && !variant.typ.has_flag(.generic)
+			&& c.file.mod.name != 'builtin' {
+			c.error('cannot use type `any` here', variant.pos)
 		} else if sym.kind == .struct_ && sym.language == .js {
 			c.error('sum type cannot hold a JS struct', variant.pos)
 		} else if sym.info is ast.Struct {
@@ -3038,6 +3047,10 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 
 	if to_type.has_flag(.result) {
 		c.error('casting to Result type is forbidden', node.pos)
+	}
+	if to_sym.kind == .any && to_sym.language != .js && !to_type.has_flag(.generic)
+		&& c.file.mod.name != 'builtin' {
+		c.error('cannot use type `any` here', node.pos)
 	}
 
 	if (to_sym.is_number() && from_sym.name == 'JS.Number')
