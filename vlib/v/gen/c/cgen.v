@@ -2376,6 +2376,7 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 			if variant_sym.info is ast.FnType {
 				if g.table.fn_type_source_signature(variant_sym.info.func) == g.table.fn_type_source_signature(got_sym.info.func) {
 					variant_name = g.get_sumtype_variant_name(variant, variant_sym)
+					got_cname = g.get_sumtype_variant_type_name(variant, variant_sym)
 					type_idx = int(variant).str()
 					break
 				}
