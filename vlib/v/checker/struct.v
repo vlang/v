@@ -182,12 +182,9 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 						c.warn('byte is deprecated, use u8 instead', field.type_pos)
 					}
 				}
-				.any {
-					if sym.language != .js && !has_generic_types && c.file.mod.name != 'builtin' {
-						c.error('cannot use type `any` here', field.type_pos)
-					}
+				else {
+					c.check_any_type(field.typ, sym, field.type_pos)
 				}
-				else {}
 			}
 
 			if field.has_default_expr {

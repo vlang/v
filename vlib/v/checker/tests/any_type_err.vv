@@ -7,7 +7,7 @@ type AnyPolySumType = T | any
 type PolyType = T
 type PolySumType = T | string
 
-struct AnyStructField {
+struct AnyStructField[T] {
 	foo any
 	bar T
 }

@@ -21,18 +21,11 @@ vlib/v/checker/tests/any_type_err.vv:5:27: error: cannot use type `any` here
     7 | type PolyType = T
 vlib/v/checker/tests/any_type_err.vv:11:6: error: cannot use type `any` here
     9 | 
-   10 | struct AnyStructField {
+   10 | struct AnyStructField[T] {
    11 |     foo any
       |         ~~~
    12 |     bar T
    13 | }
-vlib/v/checker/tests/any_type_err.vv:10:1: error: generic struct `AnyStructField` declaration must specify the generic type names, e.g. AnyStructField[T]
-    8 | type PolySumType = T | string
-    9 | 
-   10 | struct AnyStructField {
-      | ~~~~~~~~~~~~~~~~~~~~~
-   11 |     foo any
-   12 |     bar T
 vlib/v/checker/tests/any_type_err.vv:16:7: error: cannot use type `any` here
    14 | 
    15 | fn any_cast() {
