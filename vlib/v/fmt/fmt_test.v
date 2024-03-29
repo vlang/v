@@ -12,6 +12,7 @@ import v.util.diff
 import v.util.vtest
 
 const vroot = @VEXEROOT
+const tdir = os.join_path(vroot, 'vlib', 'v', 'fmt')
 const fpref = &pref.Preferences{
 	is_fmt: true
 }
@@ -69,13 +70,21 @@ fn run_fmt(mut input_files []string) {
 }
 
 fn test_fmt() {
-	mut input_files := os.walk_ext(os.join_path(vroot, 'vlib', 'v', 'fmt', 'tests'), '_input.vv')
+	mut input_files := os.walk_ext(os.join_path(tdir, 'tests'), '_input.vv')
+	run_fmt(mut input_files)
+
+	input_files = os.walk_ext(os.join_path(tdir, 'testdata', 'vmodules'), '_input.vv')
 	run_fmt(mut input_files)
 }
 
 fn test_fmt_vmodules() {
-	vmodules_tdir := os.join_path(vroot, 'vlib', 'v', 'fmt', 'testdata', 'vmodules')
+	mut vmodules_tdir := os.join_path(tdir, 'tests')
 	os.setenv('VMODULES', vmodules_tdir, true)
 	mut input_files := os.walk_ext(vmodules_tdir, '_input.vv')
+	run_fmt(mut input_files)
+
+	vmodules_tdir = os.join_path(tdir, 'testdata', 'vmodules')
+	os.setenv('VMODULES', vmodules_tdir, true)
+	input_files = os.walk_ext(vmodules_tdir, '_input.vv')
 	run_fmt(mut input_files)
 }
