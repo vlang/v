@@ -32,12 +32,12 @@ struct Options {
 
 const term_colors = term.can_show_color_on_stderr()
 const clean_seq = ['[', '', ']', '', ' ', '']
+const exclude_dirs = ['test', 'slow_test', 'testdata']
 
 fn main() {
 	vet_options := cmdline.options_after(os.args, ['vet'])
 	mut vt := Vet{
 		opt: Options{
-			is_force: '-force' in vet_options
 			is_werror: '-W' in vet_options
 			is_verbose: '-verbose' in vet_options || '-v' in vet_options
 			show_warnings: '-hide-warnings' !in vet_options && '-w' !in vet_options
@@ -64,8 +64,16 @@ fn main() {
 		}
 		if os.is_dir(path) {
 			vt.vprintln("vetting folder: '${path}' ...")
-			os.walk(path, fn [mut vt] (p string) {
+			overwrite_exclude := exclude_dirs.any(path.contains(it))
+			os.walk(path, fn [mut vt, overwrite_exclude] (p string) {
 				if p.ends_with('.v') || p.ends_with('.vv') {
+					if !overwrite_exclude {
+						for d in exclude_dirs {
+							if p.contains(d) {
+								return
+							}
+						}
+					}
 					vt.vet_file(p)
 				}
 			})
@@ -93,14 +101,6 @@ fn main() {
 
 // vet_file vets the file read from `path`.
 fn (mut vt Vet) vet_file(path string) {
-	if !vt.opt.is_force && (path.contains('/tests/') || path.contains('/slow_tests/')
-		|| path.contains('/testdata/')) {
-		// skip all /tests/ files, since usually their content is not
-		// important enough to be documented/vetted, and they may even
-		// contain intentionally invalid code.
-		vt.vprintln("skipping test file: '${path}' ...")
-		return
-	}
 	vt.file = path
 	mut prefs := pref.new_preferences()
 	prefs.is_vet = true
