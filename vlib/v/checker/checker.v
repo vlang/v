@@ -579,7 +579,9 @@ fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 		}
 		// The rest of the parent symbol kinds are also allowed, since they are either primitive types,
 		// that in turn do not allow recursion, or are abstract enough so that they can not be checked at comptime:
-		else {}
+		else {
+			c.check_any_type(node.parent_type, parent_typ_sym, node.type_pos)
+		}
 		/*
 		.voidptr, .byteptr, .charptr {}
 		.char, .rune, .bool {}
@@ -600,6 +602,13 @@ fn (mut c Checker) check_alias_vs_element_type_of_parent(node ast.AliasTypeDecl,
 	}
 	c.error('recursive declarations of aliases are not allowed - the alias `${node.name}` is used in the ${label}',
 		node.type_pos)
+}
+
+fn (mut c Checker) check_any_type(typ ast.Type, sym &ast.TypeSymbol, pos token.Pos) {
+	if sym.kind == .any && !typ.has_flag(.generic) && sym.language != .js
+		&& c.file.mod.name != 'builtin' {
+		c.error('cannot use type `any` here', pos)
+	}
 }
 
 fn (mut c Checker) fn_type_decl(node ast.FnTypeDecl) {
@@ -693,6 +702,7 @@ and use a reference to the sum type instead: `var := &${node.name}(${variant_nam
 				}
 			}
 		}
+		c.check_any_type(variant.typ, sym, variant.pos)
 
 		if sym.name.trim_string_left(sym.mod + '.') == node.name {
 			c.error('sum type cannot hold itself', variant.pos)
@@ -3039,6 +3049,7 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	if to_type.has_flag(.result) {
 		c.error('casting to Result type is forbidden', node.pos)
 	}
+	c.check_any_type(to_type, to_sym, node.pos)
 
 	if (to_sym.is_number() && from_sym.name == 'JS.Number')
 		|| (to_sym.is_number() && from_sym.name == 'JS.BigInt')
