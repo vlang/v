@@ -3878,7 +3878,12 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 fn (mut c Checker) concat_expr(mut node ast.ConcatExpr) ast.Type {
 	mut mr_types := []ast.Type{}
 	for mut expr in node.vals {
-		mr_types << c.expr(mut expr)
+		mut typ := c.expr(mut expr)
+		if typ == ast.nil_type {
+			// nil and voidptr produces the same struct type name
+			typ = ast.voidptr_type
+		}
+		mr_types << typ
 	}
 	if node.vals.len == 1 {
 		typ := mr_types[0]
