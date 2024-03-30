@@ -20,8 +20,3 @@ typedef struct Foo {
 typedef struct Bar {
     int a;
 } Bar;
-
-typedef union Baz {
-    Foo foo;
-    Bar bar;
-} Baz;
