@@ -372,13 +372,6 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 }
 
 pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
-	mut imp_res := imp.source_name
-	if imp.mod.starts_with('src.') || (imp.mod.contains('src.') && imp.mod != imp.source_name) {
-		imp_after_src := imp.mod.all_after('src.')
-		if imp.source_name.all_after('src.') == imp_after_src {
-			imp_res = imp_after_src
-		}
-	}
 	// Format / remove unused selective import symbols
 	// E.g.: `import foo { Foo }` || `import foo as f { Foo }`
 	has_alias := imp.alias != imp.source_name.all_after_last('.')
@@ -392,7 +385,7 @@ pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 			' {\n\t' + syms.join(',\n\t') + ',\n}'
 		}
 	}
-	return '${imp_res}${suffix}'
+	return '${imp.source_name}${suffix}'
 }
 
 //=== Node helpers ===//
