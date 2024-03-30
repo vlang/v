@@ -9,6 +9,7 @@ import v.pref
 import v.parser
 import v.token
 import v.ast
+import v.help
 import term
 
 struct Vet {
@@ -50,6 +51,9 @@ fn main() {
 		// `v test-cleancode` passes also `-o tmpfolder` as well as all options in VFLAGS
 		paths = paths.filter(!it.starts_with(vtmp))
 	}
+	if paths.len == 0 || '-help' in vet_options || '--help' in vet_options {
+		help.print_and_exit('vet')
+	}
 	for path in paths {
 		if !os.exists(path) {
 			eprintln('File/folder ${path} does not exist')
@@ -60,14 +64,11 @@ fn main() {
 		}
 		if os.is_dir(path) {
 			vt.vprintln("vetting folder: '${path}' ...")
-			vfiles := os.walk_ext(path, '.v')
-			vvfiles := os.walk_ext(path, '.vv')
-			mut files := []string{}
-			files << vfiles
-			files << vvfiles
-			for file in files {
-				vt.vet_file(file)
-			}
+			os.walk(path, fn [mut vt] (p string) {
+				if p.ends_with('.v') || p.ends_with('.vv') {
+					vt.vet_file(p)
+				}
+			})
 		}
 	}
 	vfmt_err_count := vt.errors.filter(it.fix == .vfmt).len
@@ -92,7 +93,8 @@ fn main() {
 
 // vet_file vets the file read from `path`.
 fn (mut vt Vet) vet_file(path string) {
-	if !vt.opt.is_force && (path.contains('/tests/') || path.contains('/slow_tests/')) {
+	if !vt.opt.is_force && (path.contains('/tests/') || path.contains('/slow_tests/')
+		|| path.contains('/testdata/')) {
 		// skip all /tests/ files, since usually their content is not
 		// important enough to be documented/vetted, and they may even
 		// contain intentionally invalid code.

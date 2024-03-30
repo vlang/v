@@ -23,7 +23,7 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 		'JS.${name}'
 	} else if language == .wasm {
 		'WASM.${name}'
-	} else if mod.len > 0 {
+	} else if mod != '' {
 		'${mod}.${name}'
 	} else {
 		name
@@ -52,10 +52,25 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	}
 	p.check(.lpar)
 	args := p.call_args()
+	if p.tok.kind != .rpar {
+		params := p.table.fns[fn_name] or { unsafe { p.table.fns['${p.mod}.${fn_name}'] } }.params
+		if args.len < params.len && p.prev_tok.kind != .comma {
+			p.unexpected_with_pos(p.prev_tok.pos(), expecting: '`,`')
+		} else if args.len > params.len {
+			ok_arg_pos := (args[params.len - 1] or { args[0] }).pos
+			pos := token.Pos{
+				...ok_arg_pos
+				col: ok_arg_pos.col + ok_arg_pos.len
+			}
+			p.unexpected_with_pos(pos.extend(p.tok.pos()), expecting: '`)`')
+		} else {
+			p.unexpected_with_pos(p.prev_tok.pos(), expecting: '`)`')
+		}
+	}
 	last_pos := p.tok.pos()
-	p.check(.rpar)
+	p.next()
 	mut pos := first_pos.extend(last_pos)
-	mut or_stmts := []ast.Stmt{} // TODO remove unnecessary allocations by just using .absent
+	mut or_stmts := []ast.Stmt{} // TODO: remove unnecessary allocations by just using .absent
 	mut or_pos := p.tok.pos()
 	if p.tok.kind == .key_orelse {
 		// `foo() or {}``
@@ -104,11 +119,9 @@ fn (mut p Parser) call_args() []ast.CallArg {
 		p.inside_call_args = prev_inside_call_args
 	}
 	mut args := []ast.CallArg{}
-	start_pos := p.tok.pos()
-	for p.tok.kind != .rpar {
+	for p.tok.kind != .rpar && p.tok.kind != .comma {
 		if p.tok.kind == .eof {
-			p.error_with_pos('unexpected eof reached, while parsing call argument', start_pos)
-			return []
+			return args
 		}
 		is_shared := p.tok.kind == .key_shared
 		is_atomic := p.tok.kind == .key_atomic
@@ -149,8 +162,8 @@ fn (mut p Parser) call_args() []ast.CallArg {
 			comments: comments
 			pos: pos
 		}
-		if p.tok.kind != .rpar {
-			p.check(.comma)
+		if p.tok.kind == .comma {
+			p.next()
 		}
 	}
 	return args
@@ -297,7 +310,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut name_pos := p.tok.pos()
 	if p.tok.kind == .name {
 		mut check_name := ''
-		// TODO high order fn
+		// TODO: high order fn
 		is_static_type_method = p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
 			&& p.peek_tok.kind == .dot && language == .v // `fn Foo.bar() {}`
 		if is_static_type_method {
@@ -577,7 +590,7 @@ run them via `v file.v` instead',
 	mut stmts := []ast.Stmt{}
 	body_start_pos := p.tok.pos()
 	if p.tok.kind == .lcbr {
-		if language != .v && language != .js {
+		if language != .v && !(language == .js && type_sym.info is ast.Interface) {
 			p.error_with_pos('interop functions cannot have a body', body_start_pos)
 		}
 		p.inside_fn = true
@@ -878,7 +891,7 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 		|| (p.tok.kind == .key_mut && (p.peek_tok.kind in [.amp, .ellipsis, .key_fn, .lsbr]
 		|| p.peek_token(2).kind == .comma || p.peek_token(2).kind == .rpar
 		|| (p.peek_tok.kind == .name && p.peek_token(2).kind == .dot)))
-	// TODO copy paste, merge 2 branches
+	// TODO: copy paste, merge 2 branches
 	if types_only {
 		mut param_no := 1
 		for p.tok.kind != .rpar {
@@ -912,6 +925,10 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 			}
 			if is_mut {
 				if !param_type.has_flag(.generic) {
+					if is_variadic {
+						p.error_with_pos('variadic arguments cannot be `mut`, `shared` or `atomic`',
+							pos)
+					}
 					if is_shared {
 						p.check_fn_shared_arguments(param_type, pos)
 					} else if is_atomic {
@@ -1005,7 +1022,7 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 				type_pos << p.tok.pos()
 			}
 			if p.tok.kind == .key_mut {
-				// TODO remove old syntax
+				// TODO: remove old syntax
 				if !p.pref.is_fmt {
 					p.warn_with_pos('use `mut f Foo` instead of `f mut Foo`', p.tok.pos())
 				}
@@ -1027,6 +1044,10 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool) {
 			}
 			if is_mut {
 				if !typ.has_flag(.generic) {
+					if is_variadic {
+						p.error_with_pos('variadic arguments cannot be `mut`, `shared` or `atomic`',
+							pos)
+					}
 					if is_shared {
 						p.check_fn_shared_arguments(typ, pos)
 					} else if is_atomic {
@@ -1136,7 +1157,7 @@ fn (mut p Parser) closure_vars() []ast.Param {
 		is_shared := p.tok.kind == .key_shared
 		is_atomic := p.tok.kind == .key_atomic
 		is_mut := p.tok.kind == .key_mut || is_shared || is_atomic
-		// FIXME is_shared & is_atomic aren't used further
+		// FIXME: is_shared & is_atomic aren't used further
 		if is_mut {
 			p.next()
 		}

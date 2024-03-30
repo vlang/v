@@ -6,6 +6,7 @@ import testing
 const github_job = os.getenv('GITHUB_JOB')
 
 const just_essential = os.getenv('VTEST_JUST_ESSENTIAL') != ''
+	|| os.getenv('VTEST_SANDBOXED_PACKAGING') != ''
 
 const essential_list = [
 	'cmd/tools/vvet/vet_test.v',
@@ -338,6 +339,13 @@ const skip_on_non_amd64_or_arm64 = [
 	'vlib/sync/many_times_test.v',
 	'do_not_remove',
 ]
+const skip_on_sandboxed_packaging = [
+	'do_not_remove',
+	'vlib/v/slow_tests/inout/compiler_test.v',
+	'vlib/v/gen/native/tests/native_test.v',
+	'vlib/v/compiler_errors_test.v',
+	'vlib/v/gen/c/coutput_test.v',
+]
 
 // Note: musl misses openssl, thus the http tests can not be done there
 // Note: http_httpbin_test.v: fails with 'cgen error: json: map_string_string is not struct'
@@ -443,6 +451,9 @@ fn main() {
 	}
 	if os.getenv('V_CI_UBUNTU_MUSL').len > 0 {
 		tsession.skip_files << skip_on_ubuntu_musl
+	}
+	if os.getenv('VTEST_SANDBOXED_PACKAGING').len > 0 {
+		tsession.skip_files << skip_on_sandboxed_packaging
 	}
 	$if !amd64 && !arm64 {
 		tsession.skip_files << skip_on_non_amd64_or_arm64

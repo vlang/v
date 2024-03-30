@@ -189,7 +189,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					ls, _ := c.table.type_size(left_type)
 					rs, _ := c.table.type_size(right_type)
 					// prevent e.g. `u32 == i16` but not `u16 == i32` as max_u16 fits in i32
-					// TODO u32 == i32, change < to <=
+					// TODO: u32 == i32, change < to <=
 					if !c.pref.translated && ((is_left_type_signed && ls < rs)
 						|| (is_right_type_signed && rs < ls)) {
 						lt := c.table.sym(left_type).name
@@ -450,7 +450,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					if left_name == right_name {
 						if !(node.op == .lt && c.pref.translated) {
 							// Allow `&Foo < &Foo` in translated code.
-							// TODO maybe in unsafe as well?
+							// TODO: maybe in unsafe as well?
 							c.error('undefined operation `${left_name}` ${node.op.str()} `${right_name}`',
 								left_right_pos)
 						}
@@ -705,7 +705,8 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				chan_info := left_sym.chan_info()
 				elem_type := chan_info.elem_type
 				if !c.check_types(right_type, elem_type) {
-					c.error('cannot push `${right_sym.name}` on `${left_sym.name}`', right_pos)
+					c.error('cannot push `${c.table.type_to_str(right_type)}` on `${left_sym.name}`',
+						right_pos)
 				}
 				if chan_info.is_mut {
 					// TODO: The error message of the following could be more specific...
@@ -713,6 +714,9 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 				if elem_type.is_ptr() && !right_type.is_ptr() {
 					c.error('cannot push non-reference `${right_sym.name}` on `${left_sym.name}`',
+						right_pos)
+				} else if right_type.is_ptr() != elem_type.is_ptr() {
+					c.error('cannot push `${c.table.type_to_str(right_type)}` on `${left_sym.name}`',
 						right_pos)
 				}
 				c.stmts_ending_with_expression(mut node.or_block.stmts)
@@ -745,7 +749,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		c.error('bool types only have the following operators defined: `==`, `!=`, `||`, and `&&`',
 			node.pos)
 	} else if left_type == ast.string_type && node.op !in [.plus, .eq, .ne, .lt, .gt, .le, .ge] {
-		// TODO broken !in
+		// TODO: broken !in
 		c.error('string types only have the following operators defined: `==`, `!=`, `<`, `>`, `<=`, `>=`, and `+`',
 			node.pos)
 	} else if left_sym.kind == .enum_ && right_sym.kind == .enum_ && !eq_ne {
@@ -771,7 +775,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	} else if c.table.type_kind(right_type) == .sum_type && !eq_ne {
 		c.error('cannot use operator `${node.op}` with `${right_sym.name}`', node.pos)
 	}
-	// TODO move this to symmetric_check? Right now it would break `return 0` for `fn()?int `
+	// TODO: move this to symmetric_check? Right now it would break `return 0` for `fn()?int `
 	left_is_option := left_type.has_flag(.option)
 	right_is_option := right_type.has_flag(.option)
 	if left_is_option || right_is_option {

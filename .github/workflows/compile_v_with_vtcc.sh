@@ -10,7 +10,7 @@ show "Prepare"
 rm -rf vtcc/
 
 show "Clone vtcc"
-git clone https://github.com/felipensp/vtcc --branch stable --quiet vtcc/
+.github/workflows/retry.sh git clone https://github.com/felipensp/vtcc --branch stable --quiet vtcc/
 du -s vtcc/
 ## TODO: just `./v vtcc`, later will cause V, to detect the compiler as tcc (which it is), and add `-fwrapv`, which causes the vtcc compiler to panic currently
 show "Compile vtcc"

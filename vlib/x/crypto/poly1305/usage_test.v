@@ -4,7 +4,7 @@ import x.crypto.poly1305
 // perform test for oneshot function for poly1305 mac creation and verifying it.
 fn test_fn_create_and_verify_tag() ! {
 	// Sample messages from RFC A.3 Test vector 2
-	// set yur secure key
+	// set secure key
 	key := hex.decode('0000000000000000000000000000000036e5f6b5c5e06070f0efca96227a863e')!
 	// messages to be authenticated
 	msg := 'Any submission to the IETF intended by the Contributor for publication as all or part of an IETF Internet-Draft or RFC and any statement made within the context of an IETF activity is considered an "IETF Contribution". Such statements include oral statements in IETF sessions, as well as written and electronic communications made at any time or place, which are addressed to'
@@ -25,7 +25,7 @@ fn test_fn_create_and_verify_tag() ! {
 // perform test for instance based method.
 fn test_create_and_verify_tag_with_poly1305_instance() ! {
 	// Sample messages from RFC A.3 Test vector 2
-	// set yur secure key
+	// set secure key
 	key := hex.decode('0000000000000000000000000000000036e5f6b5c5e06070f0efca96227a863e')!
 	// messages to be authenticated
 	msg := 'Any submission to the IETF intended by the Contributor for publication as all or part of an IETF Internet-Draft or RFC and any statement made within the context of an IETF activity is considered an "IETF Contribution". Such statements include oral statements in IETF sessions, as well as written and electronic communications made at any time or place, which are addressed to'
@@ -54,7 +54,7 @@ fn test_create_and_verify_tag_with_poly1305_instance() ! {
 // updates state by multiples block of messages by calling .update method of the Poly1305 instance
 fn test_create_and_verify_tag_with_poly1305_instance_in_incremental_updates() ! {
 	// Sample messages from RFC A.3 Test vector 2
-	// set yur secure key
+	// set secure key
 	key := hex.decode('0000000000000000000000000000000036e5f6b5c5e06070f0efca96227a863e')!
 	// messages to be authenticated
 	// msg := 'Any submission to the IETF intended by the Contributor for publication as all or part of an IETF Internet-Draft or RFC and any statement made within the context of an IETF activity is considered an "IETF Contribution". Such statements include oral statements in IETF sessions, as well as written and electronic communications made at any time or place, which are addressed to'

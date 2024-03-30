@@ -501,7 +501,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 		}
 		ast.StructInit {
 			// eprintln('unhandled struct init at line $expr.pos.line_nr')
-			return 'helo'
+			return ''
 		}
 		ast.SizeOf {
 			return Uint{e.type_to_size(expr.typ), 64}

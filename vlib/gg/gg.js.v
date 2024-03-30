@@ -202,7 +202,6 @@ pub struct Config {
 pub:
 	width         int
 	height        int
-	use_ortho     bool // unused, still here just for backwards compatibility
 	retina        bool
 	resizable     bool
 	user_data     voidptr
@@ -250,7 +249,7 @@ pub:
 	font_bytes_italic []u8
 	native_rendering  bool // Cocoa on macOS/iOS, GDI+ on Windows
 	// drag&drop
-	enable_dragndrop             bool // enable file dropping (drag'n'drop), default is false
+	enable_dragndrop             bool   // enable file dropping (drag'n'drop), default is false
 	max_dropped_files            int    = 1 // max number of dropped files to process (default: 1)
 	max_dropped_file_path_length int    = 2048 // max length in bytes of a dropped UTF-8 file path (default: 2048)
 	html5_canvas_name            string = 'canvas' // the id/name of the canvas element, that will be used to render GG apps

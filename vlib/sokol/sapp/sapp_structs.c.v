@@ -27,6 +27,7 @@ pub type ImageDesc = C.sapp_image_desc
 
 @[typedef]
 pub struct C.sapp_icon_desc {
+pub:
 	sokol_default bool
 	images        [max_iconimages]ImageDesc
 }
@@ -76,6 +77,8 @@ pub:
 	ios_keyboard_resizes_canvas   bool  // if true, showing the iOS keyboard shrinks the canvas
 	// V patches
 	__v_native_render bool // V patch to allow for native rendering
+	min_width         int  // V patch to allow for min window width
+	min_height        int  // V patch to allow for min window height
 pub mut:
 	allocator C.sapp_allocator // optional memory allocation overrides (default: malloc/free)
 	logger    C.sapp_logger    // optional log callback overrides (default: SAPP_LOG(message))

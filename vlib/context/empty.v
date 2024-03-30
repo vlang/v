@@ -60,7 +60,7 @@ pub fn (ctx &TodoContext) str() string {
 	return 'context.TODO'
 }
 
-// todo returns an empty Context. Code should use todo when
+// TODO: returns an empty Context. Code should use todo when
 // it's unclear which Context to use or it is not yet available (because the
 // surrounding function has not yet been extended to accept a Context
 // parameter).

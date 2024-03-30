@@ -38,7 +38,7 @@ fn init_settings() VpmSettings {
 		server_urls: cmdline.options(args, '--server-urls')
 		vcs: if '--hg' in opts { .hg } else { .git }
 		vmodules_path: os.vmodules_dir()
-		tmp_path: os.join_path(os.vtmp_dir(), 'vpm', 'modules')
+		tmp_path: os.join_path(os.vtmp_dir(), 'vpm_modules')
 		no_dl_count_increment: os.getenv('CI') != '' || (no_inc_env != '' && no_inc_env != '0')
 		fail_on_prompt: os.getenv('VPM_FAIL_ON_PROMPT') != ''
 	}

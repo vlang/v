@@ -209,7 +209,7 @@ fn unescape(s_ string, mode EncodingMode) !string {
 		}
 	}
 	if n == 0 && !has_plus {
-		return '${s}' // TODO `return s` once an autofree bug is fixed
+		return '${s}' // TODO: `return s` once an autofree bug is fixed
 	}
 	if s.len < 2 * n {
 		return error(error_msg('unescape: invalid escape sequence', ''))
@@ -751,7 +751,7 @@ pub fn (u URL) str() string {
 			// path reference.
 			i := path.index_u8(`:`)
 			if i > -1 {
-				// TODO remove this when autofree handles tmp
+				// TODO: remove this when autofree handles tmp
 				// expressions like this
 				if i > -1 && path[..i].index_u8(`/`) == -1 {
 					buf.write_string('./')

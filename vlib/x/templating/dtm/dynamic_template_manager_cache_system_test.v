@@ -62,9 +62,9 @@ fn test_get_cache() {
 		dtmi.stop_cache_handler()
 	}
 	if !dtmi.abort_test {
-		dtm_placeholers := map[string]DtmMultiTypeMap{}
+		dtm_placeholders := map[string]DtmMultiTypeMap{}
 		temp_html_file := os.join_path(dtmi.template_folder, dtm.temp_html_fp)
-		html_mem := dtmi.get_cache(dtm.temp_html_n, temp_html_file, &dtm_placeholers)
+		html_mem := dtmi.get_cache(dtm.temp_html_n, temp_html_file, &dtm_placeholders)
 		assert html_mem.len > 10
 	}
 }

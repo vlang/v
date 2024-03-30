@@ -44,7 +44,7 @@ typedef mbedtls_svc_key_id_t psa_key_handle_t;
 
 #define PSA_KEY_HANDLE_INIT MBEDTLS_SVC_KEY_ID_INIT
 
-/** Check whether an handle is null.
+/** Check whether a handle is null.
  *
  * \param handle  Handle
  *

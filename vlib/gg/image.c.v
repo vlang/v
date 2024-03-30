@@ -195,7 +195,7 @@ pub fn (mut img Image) update_pixel_data(buf &u8) {
 // create_image_with_size creates an `Image` from `file` in the given
 // `width` x `height` dimension.
 //
-// TODO copypasta
+// TODO: copypasta
 pub fn (mut ctx Context) create_image_with_size(file string, width int, height int) Image {
 	if !gfx.is_valid() {
 		// Sokol is not initialized yet, add stbi object to a queue/cache
@@ -222,7 +222,7 @@ pub fn (mut ctx Context) create_image_with_size(file string, width int, height i
 
 // create_image creates an `Image` from `file`.
 //
-// TODO remove this
+// TODO: remove this
 fn create_image(file string) Image {
 	if !os.exists(file) {
 		println('gg.create_image(): file not found: ${file}')
@@ -291,9 +291,9 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 					if config.img_id > 0 {
 						img = &ctx.image_cache[config.img_id]
 					} else {
-						//$if !noggverbose ? {
-						eprintln('gg: failed to get image to draw natively')
-						//}
+						$if !noggverbose ? {
+							eprintln('gg: failed to get image to draw natively')
+						}
 						return
 					}
 				}
@@ -301,31 +301,33 @@ pub fn (ctx &Context) draw_image_with_config(config DrawImageConfig) {
 					eprintln('gg: draw_image() bad img id ${img.id} (img cache len = ${ctx.image_cache.len})')
 					return
 				}
-				if ctx.native_rendering {
-					if img.width == 0 {
-						println('w=0')
-						return
-					}
-					if !os.exists(img.path) {
-						println('not exist path')
-						return
-					}
-					x := config.img_rect.x
-					y := config.img_rect.y
-					width := if config.img_rect.width == 0 {
-						f32(img.width)
-					} else {
-						config.img_rect.width
-					}
-					height := if config.img_rect.height == 0 {
-						f32(img.height)
-					} else {
-						config.img_rect.height
-					}
-					C.darwin_draw_image(x, ctx.height - (y + config.img_rect.height),
-						width, height, img)
+				if img.width == 0 {
+					println('w=0')
 					return
 				}
+				if !os.exists(img.path) {
+					println('not exist path')
+					return
+				}
+				x := config.img_rect.x
+				y := config.img_rect.y
+				width := if config.img_rect.width == 0 {
+					// Calculate the width by dividing it by the height ratio.
+					// e.g. the original image is 100x100, we're drawing 0x20. Find the ratio (5)
+					// by dividing the	height	100 by 20, and then divide the width by 5.
+					f32(img.width / (img.height / config.img_rect.height))
+				} else {
+					config.img_rect.width
+				}
+				height := if config.img_rect.height == 0 {
+					// Same as above.
+					f32(img.height / (img.width / config.img_rect.width))
+				} else {
+					config.img_rect.height
+				}
+				C.darwin_draw_image(x, ctx.height - (y + config.img_rect.height), width,
+					height, img)
+				return
 			}
 		}
 	}

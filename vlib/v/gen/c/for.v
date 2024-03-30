@@ -435,7 +435,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		t_var := g.new_tmp_var()
 		receiver_typ := g.unwrap_generic(next_fn.params[0].typ)
-		receiver_styp := g.typ(receiver_typ)
+		receiver_styp := g.cc_type(receiver_typ, false)
 		mut fn_name := receiver_styp.replace_each(['*', '', '.', '__']) + '_next'
 		receiver_sym := g.table.sym(receiver_typ)
 		if receiver_sym.info is ast.Struct {

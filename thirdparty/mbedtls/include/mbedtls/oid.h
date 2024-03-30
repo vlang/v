@@ -34,9 +34,7 @@
 #include "mbedtls/cipher.h"
 #endif
 
-#if defined(MBEDTLS_MD_C)
 #include "mbedtls/md.h"
-#endif
 
 /** OID is not found. */
 #define MBEDTLS_ERR_OID_NOT_FOUND                         -0x002E
@@ -222,6 +220,7 @@
 #define MBEDTLS_OID_PKCS                MBEDTLS_OID_RSA_COMPANY "\x01" /**< pkcs OBJECT IDENTIFIER ::= { iso(1) member-body(2) us(840) rsadsi(113549) 1 } */
 #define MBEDTLS_OID_PKCS1               MBEDTLS_OID_PKCS "\x01" /**< pkcs-1 OBJECT IDENTIFIER ::= { iso(1) member-body(2) us(840) rsadsi(113549) pkcs(1) 1 } */
 #define MBEDTLS_OID_PKCS5               MBEDTLS_OID_PKCS "\x05" /**< pkcs-5 OBJECT IDENTIFIER ::= { iso(1) member-body(2) us(840) rsadsi(113549) pkcs(1) 5 } */
+#define MBEDTLS_OID_PKCS7               MBEDTLS_OID_PKCS "\x07" /**< pkcs-7 OBJECT IDENTIFIER ::= { iso(1) member-body(2) us(840) rsadsi(113549) pkcs(1) 7 } */
 #define MBEDTLS_OID_PKCS9               MBEDTLS_OID_PKCS "\x09" /**< pkcs-9 OBJECT IDENTIFIER ::= { iso(1) member-body(2) us(840) rsadsi(113549) pkcs(1) 9 } */
 #define MBEDTLS_OID_PKCS12              MBEDTLS_OID_PKCS "\x0c" /**< pkcs-12 OBJECT IDENTIFIER ::= { iso(1) member-body(2) us(840) rsadsi(113549) pkcs(1) 12 } */
 
@@ -301,6 +300,16 @@
 #define MBEDTLS_OID_PKCS5_PBE_MD5_RC2_CBC       MBEDTLS_OID_PKCS5 "\x06" /**< pbeWithMD5AndRC2-CBC OBJECT IDENTIFIER ::= {pkcs-5 6} */
 #define MBEDTLS_OID_PKCS5_PBE_SHA1_DES_CBC      MBEDTLS_OID_PKCS5 "\x0a" /**< pbeWithSHA1AndDES-CBC OBJECT IDENTIFIER ::= {pkcs-5 10} */
 #define MBEDTLS_OID_PKCS5_PBE_SHA1_RC2_CBC      MBEDTLS_OID_PKCS5 "\x0b" /**< pbeWithSHA1AndRC2-CBC OBJECT IDENTIFIER ::= {pkcs-5 11} */
+
+/*
+ * PKCS#7 OIDs
+ */
+#define MBEDTLS_OID_PKCS7_DATA                        MBEDTLS_OID_PKCS7 "\x01" /**< Content type is Data OBJECT IDENTIFIER ::= {pkcs-7 1} */
+#define MBEDTLS_OID_PKCS7_SIGNED_DATA                 MBEDTLS_OID_PKCS7 "\x02" /**< Content type is Signed Data OBJECT IDENTIFIER ::= {pkcs-7 2} */
+#define MBEDTLS_OID_PKCS7_ENVELOPED_DATA              MBEDTLS_OID_PKCS7 "\x03" /**< Content type is Enveloped Data OBJECT IDENTIFIER ::= {pkcs-7 3} */
+#define MBEDTLS_OID_PKCS7_SIGNED_AND_ENVELOPED_DATA   MBEDTLS_OID_PKCS7 "\x04" /**< Content type is Signed and Enveloped Data OBJECT IDENTIFIER ::= {pkcs-7 4} */
+#define MBEDTLS_OID_PKCS7_DIGESTED_DATA               MBEDTLS_OID_PKCS7 "\x05" /**< Content type is Digested Data OBJECT IDENTIFIER ::= {pkcs-7 5} */
+#define MBEDTLS_OID_PKCS7_ENCRYPTED_DATA              MBEDTLS_OID_PKCS7 "\x06" /**< Content type is Encrypted Data OBJECT IDENTIFIER ::= {pkcs-7 6} */
 
 /*
  * PKCS#8 OIDs
@@ -519,7 +528,6 @@ int mbedtls_oid_get_oid_by_ec_grp( mbedtls_ecp_group_id grp_id,
                            const char **oid, size_t *olen );
 #endif /* MBEDTLS_ECP_C */
 
-#if defined(MBEDTLS_MD_C)
 /**
  * \brief          Translate SignatureAlgorithm OID into md_type and pk_type
  *
@@ -556,16 +564,6 @@ int mbedtls_oid_get_oid_by_sig_alg( mbedtls_pk_type_t pk_alg, mbedtls_md_type_t 
                             const char **oid, size_t *olen );
 
 /**
- * \brief          Translate hash algorithm OID into md_type
- *
- * \param oid      OID to use
- * \param md_alg   place to store message digest algorithm
- *
- * \return         0 if successful, or MBEDTLS_ERR_OID_NOT_FOUND
- */
-int mbedtls_oid_get_md_alg( const mbedtls_asn1_buf *oid, mbedtls_md_type_t *md_alg );
-
-/**
  * \brief          Translate hmac algorithm OID into md_type
  *
  * \param oid      OID to use
@@ -574,7 +572,16 @@ int mbedtls_oid_get_md_alg( const mbedtls_asn1_buf *oid, mbedtls_md_type_t *md_a
  * \return         0 if successful, or MBEDTLS_ERR_OID_NOT_FOUND
  */
 int mbedtls_oid_get_md_hmac( const mbedtls_asn1_buf *oid, mbedtls_md_type_t *md_hmac );
-#endif /* MBEDTLS_MD_C */
+
+/**
+ * \brief          Translate hash algorithm OID into md_type
+ *
+ * \param oid      OID to use
+ * \param md_alg   place to store message digest algorithm
+ *
+ * \return         0 if successful, or MBEDTLS_ERR_OID_NOT_FOUND
+ */
+int mbedtls_oid_get_md_alg( const mbedtls_asn1_buf *oid, mbedtls_md_type_t *md_alg );
 
 #if !defined(MBEDTLS_X509_REMOVE_INFO)
 /**

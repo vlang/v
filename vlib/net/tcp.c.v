@@ -547,7 +547,7 @@ fn (mut s TcpSocket) set_option(level int, opt int, value int) ! {
 }
 
 pub fn (mut s TcpSocket) set_option_bool(opt SocketOption, value bool) ! {
-	// TODO reenable when this `in` operation works again
+	// TODO: reenable when this `in` operation works again
 	// if opt !in opts_can_set {
 	// 	return err_option_not_settable
 	// }

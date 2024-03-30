@@ -51,7 +51,7 @@ pub mut:
 }
 
 // used by vls to avoid leaks
-// TODO remove manual memory management
+// TODO: remove manual memory management
 @[unsafe]
 pub fn (mut t Table) free() {
 	unsafe {
@@ -531,7 +531,7 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) !StructField {
 					return field
 				}
 				// mut info := ts.info as SumType
-				// TODO a more detailed error so that it's easier to fix?
+				// TODO: a more detailed error so that it's easier to fix?
 				return error('field `${name}` does not exist or have the same type in all sumtype variants')
 			}
 			else {}
@@ -1323,7 +1323,8 @@ fn (t &Table) sumtype_check_function_variant(parent_info SumType, variant Type, 
 
 fn (t &Table) sumtype_check_variant_in_type(parent_info SumType, variant Type, is_as bool) bool {
 	for v in parent_info.variants {
-		if v.idx() == variant.idx() && (!is_as || v.nr_muls() == variant.nr_muls()) {
+		if v.idx() == variant.idx() && variant.has_flag(.option) == v.has_flag(.option)
+			&& (!is_as || v.nr_muls() == variant.nr_muls()) {
 			return true
 		}
 	}
@@ -1542,6 +1543,23 @@ pub fn (t Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 		return true
 	}
 	return false
+}
+
+pub fn (mut t Table) resolve_generic_static_type_name(fn_name string, generic_names []string, concrete_types []Type) string {
+	if index := fn_name.index('__static__') {
+		if index > 0 {
+			generic_name := fn_name[0..index]
+			valid_generic := util.is_generic_type_name(generic_name)
+				&& generic_name in generic_names
+			if valid_generic {
+				name_type := Type(t.find_type_idx(generic_name)).set_flag(.generic)
+				if typ := t.resolve_generic_to_concrete(name_type, generic_names, concrete_types) {
+					return '${t.type_to_str(typ)}${fn_name[index..]}'
+				}
+			}
+		}
+	}
+	return fn_name
 }
 
 // resolve_generic_to_concrete resolves generics to real types T => int.

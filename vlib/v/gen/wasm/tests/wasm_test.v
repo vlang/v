@@ -4,7 +4,7 @@ import term
 
 const is_verbose = os.getenv('VTEST_SHOW_CMD') != ''
 
-// TODO some logic copy pasted from valgrind_test.v and compiler_test.v, move to a module
+// TODO: some logic copy pasted from valgrind_test.v and compiler_test.v, move to a module
 fn test_wasm() {
 	mut runtimes := ['wasmer', 'wasmtime', 'wavm', 'wasm3']
 	mut runtime_found := false
@@ -29,7 +29,7 @@ fn test_wasm() {
 	dir := os.join_path(vroot, 'vlib/v/gen/wasm/tests')
 	files := os.ls(dir) or { panic(err) }
 	//
-	wrkdir := os.join_path(os.vtmp_dir(), 'tests', 'wasm')
+	wrkdir := os.join_path(os.vtmp_dir(), 'wasm_tests')
 	os.mkdir_all(wrkdir) or { panic(err) }
 	defer {
 		os.rmdir_all(wrkdir) or {}

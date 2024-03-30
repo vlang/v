@@ -6,15 +6,15 @@ Poly1305 takes a 32-byte one-time key and a message and produces a
 
 This module provides generic `poly1305` message authentication code (MAC) module in pure V.
 
-As a note,  <b>a key must only be used for a single message</b>. Authenticating two different
+As a note, **a key must only be used for a single message**. Authenticating two different
 messages with the same key allows an attacker to forge authenticators for other
 messages with the same key.
 
 > [!Warning]
 > This is an experimental module, which is subject to change, please use it carefully and thoroughly
 
-Examples
---------
+## Examples
+
 ```v
 module main
 

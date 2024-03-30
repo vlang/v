@@ -37,19 +37,19 @@ jobs:
         run: make && ./v symlink -githubci
       - name: Install C2V
         run: |
-          v install --git https://github.com/vlang/c2v
+          .github/workflows/retry.sh v install --git https://github.com/vlang/c2v
           v -g ~/.vmodules/c2v/ || true
       - name: Install dependencies
         run: |
           if [ "${{ runner.os }}" == "Linux" ]; then
-            sudo apt update -y -qq
-            sudo apt install libsdl2-dev libsdl2-mixer-dev libsdl2-net-dev libpng-dev libsamplerate0-dev
+            .github/workflows/retry.sh sudo apt update -y -qq
+            .github/workflows/retry.sh sudo apt install libsdl2-dev libsdl2-mixer-dev libsdl2-net-dev libpng-dev libsamplerate0-dev
           else
-            brew install sdl2 sdl2_mixer sdl2_net libpng libsamplerate
+            .github/workflows/retry.sh brew install sdl2 sdl2_mixer sdl2_net libpng libsamplerate
           fi
       - name: Build original Chocolate Doom
         run: |
-          git clone --quiet --depth 1 https://github.com/vlang/doom ~/code/doom
+          .github/workflows/retry.sh git clone --quiet --depth 1 https://github.com/vlang/doom ~/code/doom
           cd ~/code/doom/chocolate-doom
           cmake -DCMAKE_BUILD_TYPE=Debug .
           make chocolate-doom
@@ -73,12 +73,12 @@ jobs:
         run: make && ./v symlink -githubci
       - name: Install C2V
         run: |
-          v install --git https://github.com/vlang/c2v
+          .github/workflows/retry.sh v install --git https://github.com/vlang/c2v
           v -g ~/.vmodules/c2v/ || true
       - name: Install dependencies
         run: |
-          sudo apt update -y -qq
-          sudo apt install libsdl2-dev libsdl2-mixer-dev libsdl2-net-dev libpng-dev libsamplerate0-dev
+          .github/workflows/retry.sh sudo apt update -y -qq
+          .github/workflows/retry.sh sudo apt install libsdl2-dev libsdl2-mixer-dev libsdl2-net-dev libpng-dev libsamplerate0-dev
           # c2v / DOOM dependencies
           # vgret dependencies
           # imagemagick              : convert, mogrify, import
@@ -86,19 +86,19 @@ jobs:
           # openimageio-tools        : idiff
           # libgl1-mesa-dri          : For headless rendering / software DRI driver (LIBGL_ALWAYS_SOFTWARE=true)
           # freeglut3-dev            : Fixes graphic apps compilation with tcc
-          sudo apt install imagemagick openimageio-tools freeglut3-dev libgl1-mesa-dri xvfb xsel xclip
+          .github/workflows/retry.sh sudo apt install imagemagick openimageio-tools freeglut3-dev libgl1-mesa-dri xvfb xsel xclip
       - name: Setup test tools
         run: |
           # Fetch the free ~4MB DOOM1.WAD from the link at https://doomwiki.org/wiki/DOOM1.WAD
-          wget https://distro.ibiblio.org/slitaz/sources/packages/d/doom1.wad -O ~/doom1.wad
+          .github/workflows/retry.sh wget https://distro.ibiblio.org/slitaz/sources/packages/d/doom1.wad -O ~/doom1.wad
           # Get imgur upload script
-          wget https://raw.githubusercontent.com/tremby/imgur.sh/c98345d/imgur.sh
+          .github/workflows/retry.sh wget https://raw.githubusercontent.com/tremby/imgur.sh/c98345d/imgur.sh
           chmod +x ./imgur.sh
           # Get regression images to test against
-          git clone https://github.com/Larpon/doom-regression-images
+          .github/workflows/retry.sh git clone https://github.com/Larpon/doom-regression-images
       - name: Build original Chocolate Doom
         run: |
-          git clone --quiet --depth 1 https://github.com/vlang/doom ~/code/doom
+          .github/workflows/retry.sh git clone --quiet --depth 1 https://github.com/vlang/doom ~/code/doom
           cd ~/code/doom/chocolate-doom
           cmake -DCMAKE_BUILD_TYPE=Debug .
           make chocolate-doom

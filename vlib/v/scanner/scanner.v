@@ -810,14 +810,14 @@ pub fn (mut s Scanner) text_scan() token.Token {
 				return s.new_token(.chartoken, ident_char, ident_char.len + 2) // + two quotes
 			}
 			`(` {
-				// TODO `$if vet {` for performance
+				// TODO: `$if vet {` for performance
 				if s.pref.is_vet && s.text[s.pos + 1] == ` ` {
 					s.vet_error('Looks like you are adding a space after `(`', .vfmt)
 				}
 				return s.new_token(.lpar, '', 1)
 			}
 			`)` {
-				// TODO `$if vet {` for performance
+				// TODO: `$if vet {` for performance
 				if s.pref.is_vet && s.text[s.pos - 1] == ` ` {
 					s.vet_error('Looks like you are adding a space before `)`', .vfmt)
 				}

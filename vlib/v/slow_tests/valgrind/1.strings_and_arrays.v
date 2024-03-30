@@ -133,7 +133,7 @@ fn reassign_arr() {
 	mut foo := Foo2{[10, 20, 30]}
 	foo.nums = [40, 50, 60] // same with struct fields
 	foo.nums = [70, 80, 90]
-	// TODO remove this once structs are freed automatically
+	// TODO: remove this once structs are freed automatically
 	foo.nums.free()
 }
 
@@ -211,7 +211,7 @@ fn tt() {
 }
 
 fn get_string(s string) string {
-	return s.clone() // TODO handle returning the argument without clone()
+	return s.clone() // TODO: handle returning the argument without clone()
 }
 
 fn if_expr() string {

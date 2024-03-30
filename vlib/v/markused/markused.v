@@ -80,6 +80,7 @@ pub fn mark_used(mut table ast.Table, mut pref_ pref.Preferences, ast_files []&a
 			string_idx_str + '.trim',
 			string_idx_str + '.substr',
 			string_idx_str + '.substr_ni',
+			string_idx_str + '.substr_with_check',
 			string_idx_str + '.at',
 			string_idx_str + '.at_with_check',
 			string_idx_str + '.index_kmp',

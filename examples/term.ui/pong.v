@@ -80,7 +80,7 @@ fn (mut a App) event(e &ui.Event) {
 			if a.mode != .game {
 				return
 			}
-			// TODO mouse movement for real Pong sharks
+			// TODO: mouse movement for real Pong sharks
 			// a.game.move_player(player_one, 0, -1)
 		}
 		.key_down {
@@ -344,7 +344,7 @@ fn (mut g Game) quit() {
 }
 
 fn (mut g Game) draw_big_digit(px f32, py f32, digit int) {
-	// TODO use draw_line or draw_point to fix tearing with non-monospaced terminal fonts
+	// TODO: use draw_line or draw_point to fix tearing with non-monospaced terminal fonts
 	mut gfx := g.app.tui
 	x, y := int(px), int(py)
 	match digit {
@@ -457,7 +457,7 @@ fn (mut g Game) free() {
 	g.players.clear()
 }
 
-// TODO Remove these wrapper functions when we can assign methods as callbacks
+// TODO: Remove these wrapper functions when we can assign methods as callbacks
 fn init(mut app App) {
 	app.init()
 }

@@ -93,6 +93,7 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 // as well as inserting and updating objects.
 // It is part of a multi-line query. For example, `create table User`
 fn (mut g Gen) sql_stmt_line(stmt_line ast.SqlStmtLine, connection_var_name string, or_expr ast.OrExpr) {
+	g.sql_last_stmt_out_len = g.out.len
 	mut node := stmt_line
 	table_name := g.get_table_name_by_struct_type(node.table_expr.typ)
 	result_var_name := g.new_tmp_var()
@@ -554,6 +555,9 @@ fn (mut g Gen) write_orm_expr_to_primitive(expr ast.Expr) {
 // write_orm_primitive writes C code for casting expressions into a primitive type,
 // which will be used in low-level database libs.
 fn (mut g Gen) write_orm_primitive(t ast.Type, expr ast.Expr) {
+	if t == 0 {
+		verror('${g.file.path}:${expr.pos().line_nr + 1}: ORM: unknown type t == 0\nexpr: ${expr}\nlast SQL stmt:\n${g.out.after(g.sql_last_stmt_out_len)}')
+	}
 	mut sym := g.table.sym(t)
 	mut typ := sym.cname
 	if typ == 'orm__Primitive' {

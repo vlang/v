@@ -156,7 +156,7 @@ fn new_array_from_c_array(len int, cap int, elm_size int, c_array voidptr) array
 		len: len
 		cap: cap_
 	}
-	// TODO Write all memory functions (like memcpy) in V
+	// TODO: Write all memory functions (like memcpy) in V
 	unsafe { vmemcpy(arr.data, c_array, u64(len) * u64(elm_size)) }
 	return arr
 }

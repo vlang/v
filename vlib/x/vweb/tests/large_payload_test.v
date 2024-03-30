@@ -67,7 +67,7 @@ fn test_large_request_body() {
 
 fn test_large_request_header() {
 	// same test as test_large_request_body, but then with a large header,
-	// which is parsed seperately
+	// which is parsed separately
 	mut buf := []u8{len: vweb.max_read * 2, init: `a`}
 
 	str := buf.bytestr()

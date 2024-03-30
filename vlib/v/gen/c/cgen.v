@@ -198,7 +198,8 @@ mut:
 	sql_fkey                  string
 	sql_parent_id             string
 	sql_side                  SqlExprSide // left or right, to distinguish idents in `name == name`
-	strs_to_free0             []string    // strings.Builder
+	sql_last_stmt_out_len     int
+	strs_to_free0             []string // strings.Builder
 	// strs_to_free          []string // strings.Builder
 	// tmp_arg_vars_to_free  []string
 	// autofree_pregen       map[string]string
@@ -914,6 +915,12 @@ pub fn (mut g Gen) finish() {
 	}
 }
 
+// get_sumtype_variant_name returns the variant name according to its type
+@[inline]
+pub fn (mut g Gen) get_sumtype_variant_name(typ ast.Type, name string) string {
+	return if typ.has_flag(.option) { '_option_${name}' } else { name }
+}
+
 pub fn (mut g Gen) write_typeof_functions() {
 	g.writeln('')
 	g.writeln('// >> typeof() support for sum types / interfaces')
@@ -929,7 +936,8 @@ pub fn (mut g Gen) write_typeof_functions() {
 				g.writeln('\t\tif( sidx == _v_type_idx_${sym.cname}() ) return "${util.strip_main_name(sym.name)}";')
 				for v in sum_info.variants {
 					subtype := g.table.sym(v)
-					g.writeln('\tif( sidx == _v_type_idx_${subtype.cname}() ) return "${util.strip_main_name(subtype.name)}";')
+					g.writeln('\tif( sidx == _v_type_idx_${g.get_sumtype_variant_name(v,
+						subtype.cname)}() ) return "${util.strip_main_name(subtype.name)}";')
 				}
 				g.writeln('\treturn "unknown ${util.strip_main_name(sym.name)}";')
 			} else {
@@ -938,7 +946,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 				g.writeln('\t\tcase ${tidx}: return "${util.strip_main_name(sym.name)}";')
 				for v in sum_info.variants {
 					subtype := g.table.sym(v)
-					g.writeln('\t\tcase ${v.idx()}: return "${util.strip_main_name(subtype.name)}";')
+					g.writeln('\t\tcase ${int(v)}: return "${util.strip_main_name(subtype.name)}";')
 				}
 				g.writeln('\t\tdefault: return "unknown ${util.strip_main_name(sym.name)}";')
 				g.writeln('\t}')
@@ -958,7 +966,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 				g.writeln('\tswitch(sidx) {')
 				g.writeln('\t\tcase ${tidx}: return ${int(ityp)};')
 				for v in sum_info.variants {
-					g.writeln('\t\tcase ${v.idx()}: return ${int(v)};')
+					g.writeln('\t\tcase ${int(v)}: return ${int(v)};')
 				}
 				g.writeln('\t\tdefault: return ${int(ityp)};')
 				g.writeln('\t}')
@@ -1009,7 +1017,7 @@ fn (mut g Gen) typ(t ast.Type) string {
 fn (mut g Gen) base_type(_t ast.Type) string {
 	t := g.unwrap_generic(_t)
 	if g.pref.nofloat {
-		// todo compile time if for perf?
+		// TODO: compile time if for perf?
 		if t == ast.f32_type {
 			return 'u32'
 		} else if t == ast.f64_type {
@@ -1081,7 +1089,7 @@ fn (mut g Gen) expr_string_surround(prepend string, expr ast.Expr, append string
 	return g.out.cut_to(pos)
 }
 
-// TODO this really shouldn't be separate from typ
+// TODO: this really shouldn't be separate from typ
 // but I(emily) would rather have this generation
 // all unified in one place so that it doesn't break
 // if one location changes
@@ -1438,7 +1446,7 @@ fn (g &Gen) type_sidx(t ast.Type) string {
 		sym := g.table.sym(t)
 		return '_v_type_idx_${sym.cname}()'
 	}
-	return t.idx().str()
+	return int(t).str()
 }
 
 pub fn (mut g Gen) write_typedef_types() {
@@ -1472,12 +1480,20 @@ pub fn (mut g Gen) write_typedef_types() {
 							def_str = def_str.replace_once('(*)', '(*${styp}[${len}])')
 							g.type_definitions.writeln(def_str)
 						} else if !info.is_fn_ret {
-							g.type_definitions.writeln('typedef ${fixed} ${styp} [${len}];')
 							base := g.typ(info.elem_type.clear_option_and_result())
 							if info.elem_type.has_flag(.option) && base !in g.options_forward {
-								g.options_forward << base
-							} else if info.elem_type.has_flag(.result) && base !in g.results_forward {
-								g.results_forward << base
+								lock g.done_options {
+									if base !in g.done_options {
+										g.type_definitions.writeln('typedef ${fixed} ${styp} [${len}];')
+										g.options_forward << base
+										g.done_options << styp
+									}
+								}
+							} else {
+								g.type_definitions.writeln('typedef ${fixed} ${styp} [${len}];')
+								if info.elem_type.has_flag(.result) && base !in g.results_forward {
+									g.results_forward << base
+								}
 							}
 						}
 					}
@@ -1823,7 +1839,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 							g.expr(stmt.expr)
 							g.writeln(';')
 						} else {
-							// on assignemnt or struct field initialization
+							// on assignment or struct field initialization
 							ret_typ := if g.inside_struct_init || g.inside_assign {
 								stmt.typ
 							} else {
@@ -1953,7 +1969,7 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 		g.gen_option_error(ret_typ, expr)
 		g.writeln(';')
 	} else {
-		mut is_ptr_to_ptr_assign := false
+		mut simple_assign := false
 		if ret_typ.has_flag(.generic) {
 			if expr is ast.SelectorExpr && g.cur_concrete_types.len == 0 {
 				// resolve generic struct on selectorExpr inside non-generic function
@@ -1977,17 +1993,18 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 		}
 		if ret_typ.has_flag(.option) {
 			if expr_typ.has_flag(.option) && expr in [ast.StructInit, ast.ArrayInit, ast.MapInit] {
-				if expr is ast.StructInit && expr.init_fields.len > 0 {
-					g.write('_option_ok(&(${styp}[]) { ')
+				simple_assign = expr is ast.StructInit
+				if simple_assign {
+					g.write('${tmp_var} = ')
 				} else {
 					g.write('_option_none(&(${styp}[]) { ')
 				}
 			} else {
-				is_ptr_to_ptr_assign =
+				simple_assign =
 					(expr is ast.SelectorExpr || (expr is ast.Ident && !expr.is_auto_heap()))
 					&& ret_typ.is_ptr() && expr_typ.is_ptr() && expr_typ.has_flag(.option)
 				// option ptr assignment simplification
-				if is_ptr_to_ptr_assign {
+				if simple_assign {
 					g.write('${tmp_var} = ')
 				} else if expr_typ.has_flag(.option) && expr is ast.PrefixExpr
 					&& expr.right is ast.StructInit
@@ -2005,7 +2022,7 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 		}
 		g.expr_with_cast(expr, expr_typ, ret_typ)
 		if ret_typ.has_flag(.option) {
-			if is_ptr_to_ptr_assign {
+			if simple_assign {
 				g.writeln(';')
 			} else {
 				g.writeln(' }, (${c.option_name}*)(&${tmp_var}), sizeof(${styp}));')
@@ -2224,7 +2241,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			} else {
 				c_name(node.name)
 			}
-			// TODO For some reason, build fails with autofree with this line
+			// TODO: For some reason, build fails with autofree with this line
 			// as it's only informative, comment it for now
 			// g.gen_attrs(node.attrs)
 			// g.writeln('typedef struct {')
@@ -2293,13 +2310,17 @@ struct SumtypeCastingFn {
 }
 
 fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
-	got, exp := got_.idx(), exp_.idx()
-	i := got | int(u32(exp) << 16)
+	mut got, exp := got_.idx(), exp_.idx()
+	i := got | int(u32(exp) << 17) | int(u32(exp_.has_flag(.option)) << 16)
 	exp_sym := g.table.sym(exp)
 	mut got_sym := g.table.sym(got)
-	cname := if exp == ast.int_type_idx { ast.int_type_name } else { exp_sym.cname }
+	cname := if exp == ast.int_type_idx {
+		ast.int_type_name
+	} else {
+		g.get_sumtype_variant_name(exp_, exp_sym.cname)
+	}
 	// fn_name := '${got_sym.cname}_to_sumtype_${exp_sym.cname}'
-	fn_name := '${got_sym.cname}_to_sumtype_${cname}/*KEK*/'
+	fn_name := '${g.get_sumtype_variant_name(got_, got_sym.cname)}_to_sumtype_${cname}/*KEK*/'
 	if got == exp || g.sumtype_definitions[i] {
 		return fn_name
 	}
@@ -2309,8 +2330,18 @@ fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 	g.sumtype_definitions[i] = true
 	g.sumtype_casting_fns << SumtypeCastingFn{
 		fn_name: fn_name
-		got: got_sym.idx
-		exp: exp
+		got: if got_.has_flag(.option) {
+			new_got := ast.Type(got_sym.idx).set_flag(.option)
+			new_got
+		} else {
+			got_sym.idx
+		}
+		exp: if exp_.has_flag(.option) {
+			new_exp := ast.Type(exp).set_flag(.option)
+			new_exp
+		} else {
+			exp
+		}
 	}
 	return fn_name
 }
@@ -2318,7 +2349,7 @@ fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 	got, exp := fun.got, fun.exp
 	got_sym, exp_sym := g.table.sym(got), g.table.sym(exp)
-	mut got_cname, exp_cname := got_sym.cname, exp_sym.cname
+	mut got_cname, exp_cname := g.get_sumtype_variant_name(got, got_sym.cname), exp_sym.cname
 	mut type_idx := g.type_sidx(got)
 	mut sb := strings.new_builder(128)
 	mut is_anon_fn := false
@@ -2458,7 +2489,6 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			lock g.referenced_fns {
 				g.referenced_fns[fname] = true
 			}
-			fname = '/*${exp_sym}*/${fname}'
 			if exp_sym.info.is_generic {
 				fname = g.generic_fn_name(exp_sym.info.concrete_types, fname)
 			}
@@ -2877,7 +2907,7 @@ fn (mut g Gen) get_ternary_name(name string) string {
 	return g.ternary_names[name]
 }
 
-fn (mut g Gen) gen_clone_assignment(val ast.Expr, typ ast.Type, add_eq bool) bool {
+fn (mut g Gen) gen_clone_assignment(var_type ast.Type, val ast.Expr, typ ast.Type, add_eq bool) bool {
 	if val !in [ast.Ident, ast.SelectorExpr] {
 		return false
 	}
@@ -2905,7 +2935,11 @@ fn (mut g Gen) gen_clone_assignment(val ast.Expr, typ ast.Type, add_eq bool) boo
 			}
 		} else if right_sym.kind == .string {
 			// `str1 = str2` => `str1 = str2.clone()`
-			g.write(' string_clone_static(')
+			if var_type.has_flag(.option) {
+				g.write(' string_option_clone_static(')
+			} else {
+				g.write(' string_clone_static(')
+			}
 			g.expr(val)
 			g.write(')')
 		}
@@ -2923,13 +2957,13 @@ fn (mut g Gen) autofree_scope_vars_stop(pos int, line_nr int, free_parent_scopes
 		return
 	}
 	if pos == -1 {
-		// TODO why can pos be -1?
+		// TODO: why can pos be -1?
 		return
 	}
 	// eprintln('> free_scope_vars($pos)')
 	scope := g.file.scope.innermost(pos)
 	if scope.start_pos == 0 {
-		// TODO why can scope.pos be 0? (only outside fns?)
+		// TODO: why can scope.pos be 0? (only outside fns?)
 		return
 	}
 	g.trace_autofree('// autofree_scope_vars(pos=${pos} line_nr=${line_nr} scope.pos=${scope.start_pos} scope.end_pos=${scope.end_pos})')
@@ -2970,7 +3004,7 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 					continue
 				}
 				// if var.typ == 0 {
-				// // TODO why 0?
+				// // TODO: why 0?
 				// continue
 				// }
 				// if v.pos.pos > end_pos {
@@ -2981,11 +3015,7 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 					continue
 				}
 				is_option := obj.typ.has_flag(.option)
-				if is_option {
-					// TODO: free options
-					continue
-				}
-				g.autofree_variable(obj)
+				g.autofree_variable(obj, is_option)
 			}
 			else {}
 		}
@@ -3009,7 +3039,7 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 	}
 }
 
-fn (mut g Gen) autofree_variable(v ast.Var) {
+fn (mut g Gen) autofree_variable(v ast.Var, is_option bool) {
 	// filter out invalid variables
 	if v.typ == 0 {
 		return
@@ -3081,7 +3111,7 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 	// return
 	// }
 	if v.name.contains('expr_write_string_1_') {
-		// TODO remove this temporary hack
+		// TODO: remove this temporary hack
 		return
 	}
 	mut af := strings.new_builder(128)
@@ -3093,6 +3123,10 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 			af.write_string(free_fn_name)
 		}
 		af.write_string('(')
+		if v.typ.has_flag(.option) {
+			base_type := g.base_type(v.typ)
+			af.write_string('(${base_type}*)')
+		}
 		if v.typ.share() == .shared_t {
 			af.write_string('&')
 		}
@@ -3100,6 +3134,9 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 		af.write_string(c_name(v.name))
 		if v.typ.share() == .shared_t {
 			af.write_string('->val')
+		}
+		if v.typ.has_flag(.option) {
+			af.write_string('.data)')
 		}
 
 		af.writeln('); // autofreed ptr var')
@@ -3109,6 +3146,11 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 		}
 		if v.is_auto_heap {
 			af.writeln('\t${free_fn_name}(${c_name(v.name)}); // autofreed heap var ${g.cur_mod.name} ${g.is_builtin_mod}')
+		} else if v.typ.has_flag(.option) {
+			base_type := g.base_type(v.typ)
+			af.writeln('\tif (${c_name(v.name)}.state != 2) {')
+			af.writeln('\t\t${free_fn_name}((${base_type}*)${c_name(v.name)}.data); // autofreed option var ${g.cur_mod.name} ${g.is_builtin_mod}')
+			af.writeln('\t}')
 		} else {
 			af.writeln('\t${free_fn_name}(&${c_name(v.name)}); // autofreed var ${g.cur_mod.name} ${g.is_builtin_mod}')
 		}
@@ -4614,7 +4656,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 					g.write('.data)')
 				}
 			}
-			// TODO globals hack
+			// TODO: globals hack
 			g.write('_const_')
 		}
 	}
@@ -4660,6 +4702,9 @@ fn (mut g Gen) ident(node ast.Ident) {
 		// `x = new_opt()` => `x = new_opt()` (g.right_is_opt == true)
 		// `println(x)` => `println(*(int*)x.data)`
 		if node.info.is_option && !(g.is_assign_lhs && g.right_is_opt) {
+			if node.obj is ast.Var && node.obj.smartcasts.len > 0 {
+				g.write('*(')
+			}
 			if (g.inside_opt_or_res || g.left_is_opt) && node.or_expr.kind == .absent {
 				if !g.is_assign_lhs && is_auto_heap {
 					g.write('(*${name})')
@@ -4700,6 +4745,26 @@ fn (mut g Gen) ident(node ast.Ident) {
 				g.or_block(var_name, node.or_expr, node.info.typ)
 				g.write(stmt_str)
 			}
+			if node.obj is ast.Var {
+				if node.obj.smartcasts.len > 0 {
+					obj_sym := g.table.sym(g.unwrap_generic(node.obj.typ))
+					if node.obj.ct_type_var == .smartcast {
+						ctyp := g.unwrap_generic(g.comptime.get_comptime_var_type(node))
+						cur_variant_sym := g.table.sym(ctyp)
+						variant_name := g.get_sumtype_variant_name(ctyp, cur_variant_sym.cname)
+						g.write('._${variant_name}')
+						if node.obj.is_unwrapped {
+							g.write('.data')
+						}
+					} else if obj_sym.kind == .sum_type {
+						variant_typ := g.unwrap_generic(node.obj.smartcasts.last())
+						cast_sym := g.table.sym(g.unwrap_generic(node.obj.smartcasts.last()))
+						variant_name := g.get_sumtype_variant_name(variant_typ, cast_sym.cname)
+						g.write('._${variant_name}')
+					}
+					g.write(')')
+				}
+			}
 			return
 		}
 		if !g.is_assign_lhs && node.info.share == .shared_t {
@@ -4716,9 +4781,13 @@ fn (mut g Gen) ident(node ast.Ident) {
 			if node.obj.smartcasts.len > 0 {
 				obj_sym := g.table.sym(g.unwrap_generic(node.obj.typ))
 				if !prevent_sum_type_unwrapping_once {
-					for _, typ in node.obj.smartcasts {
+					for i, typ in node.obj.smartcasts {
 						is_option_unwrap := is_option && typ == node.obj.typ.clear_flag(.option)
 						g.write('(')
+						if i == 0 && node.obj.is_unwrapped {
+							ctyp := g.unwrap_generic(g.comptime.get_comptime_var_type(node))
+							g.write('*(${g.base_type(ctyp)}*)(')
+						}
 						if obj_sym.kind == .sum_type && !is_auto_heap {
 							if is_option {
 								if !is_option_unwrap {
@@ -4760,15 +4829,24 @@ fn (mut g Gen) ident(node ast.Ident) {
 								sym := g.table.sym(cast_sym.info.types[g.aggregate_type_idx])
 								g.write('${dot}_${sym.cname}')
 							} else {
-								if is_option {
+								if is_option && !node.obj.is_unwrapped {
 									g.write('.data')
 									if !is_option_unwrap {
 										g.write(')')
 									}
 								}
 								if node.obj.ct_type_var == .smartcast {
-									cur_variant_sym := g.table.sym(g.unwrap_generic(g.comptime.get_comptime_var_type(node)))
-									g.write('${dot}_${cur_variant_sym.cname}')
+									mut ctyp := g.unwrap_generic(g.comptime.get_comptime_var_type(node))
+									cur_variant_sym := g.table.sym(ctyp)
+									if node.obj.is_unwrapped {
+										ctyp = ctyp.set_flag(.option)
+										g.write('${dot}_${g.get_sumtype_variant_name(ctyp,
+											cur_variant_sym.cname)}')
+										g.write(').data')
+									} else {
+										g.write('${dot}_${g.get_sumtype_variant_name(ctyp,
+											cur_variant_sym.cname)}')
+									}
 								} else if !is_option_unwrap
 									&& obj_sym.kind in [.sum_type, .interface_] {
 									g.write('${dot}_${cast_sym.cname}')
@@ -4788,7 +4866,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 			}
 		}
 	} else if node.info is ast.IdentFn {
-		// TODO PERF fn lookup for each fn call in translated mode
+		// TODO: PERF fn lookup for each fn call in translated mode
 		if func := g.table.find_fn(node.name) {
 			if g.pref.translated || g.file.is_translated || func.is_file_translated {
 				// `p_mobjthinker` => `P_MobjThinker`
@@ -4865,7 +4943,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 	} else {
 		styp := g.typ(node.typ)
 		if (g.pref.translated || g.file.is_translated) && sym.kind == .function {
-			// TODO handle the type in fn casts, not just exprs
+			// TODO: handle the type in fn casts, not just exprs
 			/*
 			info := sym.info as ast.FnType
 			if cattr := info.func.attrs.find_first('c') {
@@ -5456,7 +5534,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.writeln('${ret_typ} ${tmpvar};')
 			g.write('_result_ok(&(${styp}[]) { ')
 			if !fn_ret_type.is_ptr() && node.types[0].is_ptr() {
-				if !(node.exprs[0] is ast.Ident && !g.is_amp) {
+				if !((node.exprs[0] is ast.Ident && !g.is_amp) || sym.kind == .interface_) {
 					g.write('*')
 				}
 			}
@@ -5579,7 +5657,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	}
 }
 
-// check_expr_is_const checks if the expr is elegible to be used as const initializer on C global scope
+// check_expr_is_const checks if the expr is eligible to be used as const initializer on C global scope
 fn (mut g Gen) check_expr_is_const(expr ast.Expr) bool {
 	match expr {
 		ast.StringLiteral, ast.IntegerLiteral, ast.BoolLiteral, ast.FloatLiteral, ast.CharLiteral {
@@ -5908,6 +5986,9 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ
 			init.writeln(g.expr_string_surround('\t${cname} = *(${styp}*)', expr, '.data;'))
 		} else if expr is ast.ArrayInit && (expr as ast.ArrayInit).has_index {
 			init.writeln(g.expr_string_surround('\tmemcpy(&${cname}, &', expr, ', sizeof(${styp}));'))
+		} else if expr is ast.CallExpr
+			&& g.table.final_sym(g.unwrap_generic((expr as ast.CallExpr).return_type)).kind == .array_fixed {
+			init.writeln(g.expr_string_surround('\tmemcpy(&${cname}, ', expr, ', sizeof(${styp}));'))
 		} else {
 			init.writeln(g.expr_string_surround('\t${cname} = ', expr, ';'))
 		}
@@ -5979,7 +6060,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		&& !util.should_bundle_module(node.mod) {
 		'extern '
 	} else {
-		'${g.static_modifier} ' // TODO used to be '' before parallel_cc, may cause issues
+		'${g.static_modifier} ' // TODO: used to be '' before parallel_cc, may cause issues
 	}
 	// should the global be initialized now, not later in `vinit()`
 	cinit := node.attrs.contains('cinit')
@@ -6384,6 +6465,27 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 		match sym.info {
 			ast.Struct {
 				if !struct_names[name] {
+					// generate field option types for fixed array of option struct before struct declaration
+					opt_fields := sym.info.fields.filter(g.table.final_sym(it.typ).kind == .array_fixed)
+					for opt_field in opt_fields {
+						field_sym := g.table.final_sym(opt_field.typ)
+						arr := field_sym.info as ast.ArrayFixed
+						if !arr.elem_type.has_flag(.option) {
+							continue
+						}
+						styp := field_sym.cname
+						mut fixed_elem_name := g.typ(arr.elem_type.set_nr_muls(0))
+						if arr.elem_type.is_ptr() {
+							fixed_elem_name += '*'.repeat(arr.elem_type.nr_muls())
+						}
+						len := arr.size
+						lock g.done_options {
+							if styp !in g.done_options {
+								g.type_definitions.writeln('typedef ${fixed_elem_name} ${styp} [${len}];')
+								g.done_options << styp
+							}
+						}
+					}
 					g.struct_decl(sym.info, name, false)
 					struct_names[name] = true
 				}
@@ -6421,13 +6523,15 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 				g.type_definitions.writeln('\tunion {')
 				for variant in sym.info.variants {
 					variant_sym := g.table.sym(variant)
-					mut var := variant.ref()
+					mut var := if variant.has_flag(.option) { variant } else { variant.ref() }
+					variant_name := g.get_sumtype_variant_name(variant, variant_sym.cname)
 					if variant_sym.info is ast.FnType {
 						if variant_sym.info.is_anon {
 							var = variant
 						}
 					}
-					g.type_definitions.writeln('\t\t${g.typ(var)} _${variant_sym.cname};')
+					var_type := if variant.has_flag(.option) { '${g.typ(var)}*' } else { g.typ(var) }
+					g.type_definitions.writeln('\t\t${var_type} _${variant_name};')
 				}
 				g.type_definitions.writeln('\t};')
 				g.type_definitions.writeln('\tint _typ;')
@@ -6466,7 +6570,20 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 							g.type_definitions.writeln(def_str)
 						} else if elem_sym.info !is ast.ArrayFixed
 							|| (elem_sym.info as ast.ArrayFixed).size > 0 {
-							g.type_definitions.writeln('typedef ${fixed_elem_name} ${styp} [${len}];')
+							// fixed array of option struct must be defined backwards
+							if sym.info.elem_type.has_flag(.option) && elem_sym.info is ast.Struct {
+								styp_elem, base := g.option_type_name(sym.info.elem_type)
+								lock g.done_options {
+									if base !in g.done_options {
+										g.done_options << base
+										g.typedefs.writeln('typedef struct ${styp_elem} ${styp_elem};')
+										g.type_definitions.writeln('${g.option_type_text(styp_elem,
+											base)};')
+									}
+								}
+							} else {
+								g.type_definitions.writeln('typedef ${fixed_elem_name} ${styp} [${len}];')
+							}
 						}
 					}
 				}
@@ -7292,7 +7409,7 @@ fn (mut g Gen) interface_table() string {
 				arg := method.params[i]
 				methods_struct_def.write_string(', ${g.typ(arg.typ)} ${arg.name}')
 			}
-			// TODO g.fn_args(method.args[1..])
+			// TODO: g.fn_args(method.args[1..])
 			methods_struct_def.writeln(');')
 		}
 		methods_struct_def.writeln('};')
@@ -7332,7 +7449,7 @@ fn (mut g Gen) interface_table() string {
 			}
 			already_generated_mwrappers[interface_index_name] = current_iinidx
 			current_iinidx++
-			if isym.name != 'vweb.DbInterface' { // TODO remove this
+			if isym.name != 'vweb.DbInterface' { // TODO: remove this
 				sb.writeln('static ${interface_name} I_${cctype}_to_Interface_${interface_name}(${cctype}* x);')
 				mut cast_struct := strings.new_builder(100)
 				cast_struct.writeln('(${interface_name}) {')

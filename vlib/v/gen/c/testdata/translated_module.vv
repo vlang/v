@@ -6,4 +6,5 @@ fn main() {
 	a := external_symbol(c'hello')
 	println('result: ${a}')
 	assert a == 104
+	assert translated.is_my_instance_active() == true
 }

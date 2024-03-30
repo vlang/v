@@ -934,6 +934,15 @@ pub fn (t &TypeSymbol) is_array_fixed() bool {
 	}
 }
 
+pub fn (t &TypeSymbol) is_c_struct() bool {
+	if t.info is Struct {
+		return t.language == .c
+	} else if t.info is Alias {
+		return global_table.final_sym(t.info.parent_type).is_c_struct()
+	}
+	return false
+}
+
 pub fn (t &TypeSymbol) is_array_fixed_ret() bool {
 	if t.info is ArrayFixed {
 		return t.info.is_fn_ret
@@ -1141,7 +1150,7 @@ pub fn (t &Table) type_size(typ Type) (int, int) {
 			size = info.size * elem_size
 			align = elem_align
 		}
-		// TODO hardcoded:
+		// TODO: hardcoded:
 		.map {
 			size = if t.pointer_size == 8 { 120 } else { 80 }
 			align = t.pointer_size
@@ -1329,7 +1338,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			}
 		}
 		.chan {
-			// TODO currently the `chan` struct in builtin is not considered a struct but a chan
+			// TODO: currently the `chan` struct in builtin is not considered a struct but a chan
 			if sym.mod != 'builtin' && sym.name != 'chan' {
 				info := sym.info as Chan
 				mut elem_type := info.elem_type
@@ -1514,7 +1523,7 @@ pub fn (t &Table) fn_signature_using_aliases(func &Fn, import_aliases map[string
 	mut sb := strings.new_builder(20)
 	if !opts.skip_receiver {
 		sb.write_string('fn ')
-		// TODO write receiver
+		// TODO: write receiver
 	}
 	if !opts.type_only {
 		sb.write_string(func.name)
@@ -1707,6 +1716,9 @@ pub fn (t &TypeSymbol) str_method_info() (bool, bool, int) {
 		if nr_args > 0 {
 			expects_ptr = sym_str_method.params[0].typ.is_ptr()
 		}
+	} else {
+		// C Struct which does not implement str() are passed as pointer to handle incomplete type
+		expects_ptr = t.is_c_struct()
 	}
 	return has_str_method, expects_ptr, nr_args
 }

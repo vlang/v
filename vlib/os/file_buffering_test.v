@@ -1,6 +1,6 @@
 import os
 
-const tfolder = os.join_path(os.vtmp_dir(), 'tests', 'os_file_buffering_test')
+const tfolder = os.join_path(os.vtmp_dir(), 'os_file_buffering_tests')
 
 fn testsuite_begin() {
 	os.rmdir_all(tfolder) or {}

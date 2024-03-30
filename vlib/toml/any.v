@@ -37,7 +37,7 @@ pub fn (a Any) string() string {
 pub fn (a Any) to_toml() string {
 	match a {
 		map[string]Any {
-			// TODO more format control?
+			// TODO: more format control?
 			return a.to_inline_toml()
 		}
 		[]Any {

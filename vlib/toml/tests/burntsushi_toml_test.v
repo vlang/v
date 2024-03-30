@@ -25,10 +25,10 @@ const invalid_exceptions = [
 ]
 const valid_value_exceptions = []string{}
 // BUG with string interpolation of '${i64(-9223372036854775808)}') see below for workaround
-//'integer/long.toml', // TODO https://github.com/vlang/v/issues/9507
+//'integer/long.toml', // TODO: https://github.com/vlang/v/issues/9507
 
 const jq = os.find_abs_path_of_executable('jq') or { '' }
-const compare_work_dir_root = os.join_path(os.vtmp_dir(), 'toml', 'burntsushi')
+const compare_work_dir_root = os.join_path(os.vtmp_dir(), 'toml_burntsushi')
 // From: https://stackoverflow.com/a/38266731/1904615
 const jq_normalize = r'# Apply f to composite entities recursively using keys[], and to atoms
 def sorted_walk(f):
@@ -251,7 +251,7 @@ fn to_burntsushi(value ast.Value) string {
 				return '{ "type": "float", "value": "${val}" }'
 			}
 			v := value.i64()
-			// TODO workaround https://github.com/vlang/v/issues/9507
+			// TODO: workaround https://github.com/vlang/v/issues/9507
 			if v == i64(-9223372036854775807 - 1) {
 				return '{ "type": "integer", "value": "-9223372036854775808" }'
 			}

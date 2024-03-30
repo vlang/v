@@ -411,7 +411,7 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 				exit(0)
 			} else if file.path.starts_with('./') {
 				// Maybe it's a "./foo.v", linfo.path has an absolute path
-				abs_path := os.join_path(os.getwd(), file.path).replace('/./', '/') // TODO join_path shouldn't have /./
+				abs_path := os.join_path(os.getwd(), file.path).replace('/./', '/') // TODO: join_path shouldn't have /./
 				if abs_path == c.pref.linfo.path {
 					c.check_files([ast_files[i]])
 					exit(0)
@@ -484,7 +484,7 @@ fn (mut c Checker) check_valid_snake_case(name string, identifier string, pos to
 }
 
 fn stripped_name(name string) string {
-	idx := name.index_last('.') or { -1 }
+	idx := name.last_index('.') or { -1 }
 	return name[(idx + 1)..]
 }
 
@@ -641,7 +641,8 @@ fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 and use a reference to the sum type instead: `var := &${node.name}(${variant_name}${lb}val${rb})`')
 			c.error('sum type cannot hold a reference type', variant.pos)
 		}
-		if sym.name in names_used {
+		variant_name := c.table.type_to_str(variant.typ)
+		if variant_name in names_used {
 			c.error('sum type ${node.name} cannot hold the type `${sym.name}` more than once',
 				variant.pos)
 		} else if sym.kind in [.placeholder, .int_literal, .float_literal] {
@@ -696,7 +697,7 @@ and use a reference to the sum type instead: `var := &${node.name}(${variant_nam
 		if sym.name.trim_string_left(sym.mod + '.') == node.name {
 			c.error('sum type cannot hold itself', variant.pos)
 		}
-		names_used << sym.name
+		names_used << variant_name
 	}
 }
 
@@ -788,7 +789,7 @@ fn (mut c Checker) fail_if_immutable(mut expr ast.Expr) (string, token.Pos) {
 				}
 			} else if expr.obj is ast.ConstField && expr.name in c.const_names {
 				if !c.inside_unsafe && !c.pref.translated {
-					// TODO fix this in c2v, do not allow modification of all consts
+					// TODO: fix this in c2v, do not allow modification of all consts
 					// in translated code
 					c.error('cannot modify constant `${expr.name}`', expr.pos)
 				}
@@ -1161,24 +1162,21 @@ fn (mut c Checker) check_expr_option_or_result_call(expr ast.Expr, ret_type ast.
 				}
 			}
 			if expr_ret_type.has_option_or_result() {
-				return_modifier_kind := if expr_ret_type.has_flag(.option) {
-					'an Option'
-				} else {
-					'a Result'
-				}
-				return_modifier := if expr_ret_type.has_flag(.option) { '?' } else { '!' }
-				if expr_ret_type.has_flag(.result) && expr.or_block.kind == .absent {
-					if c.inside_defer {
-						c.error('${expr.name}() returns ${return_modifier_kind}, so it should have an `or {}` block at the end',
-							expr.pos)
-					} else {
-						c.error('${expr.name}() returns ${return_modifier_kind}, so it should have either an `or {}` block, or `${return_modifier}` at the end',
-							expr.pos)
+				if expr.or_block.kind == .absent {
+					ret_sym := c.table.sym(expr_ret_type)
+					if expr_ret_type.has_flag(.result)
+						|| (expr_ret_type.has_flag(.option) && ret_sym.kind == .multi_return) {
+						ret_typ_tok := if expr_ret_type.has_flag(.option) { '?' } else { '!' }
+						if c.inside_defer {
+							c.error('${expr.name}() returns `${ret_typ_tok}${ret_sym.name}`, so it should have an `or {}` block at the end',
+								expr.pos)
+						} else {
+							c.error('${expr.name}() returns `${ret_typ_tok}${ret_sym.name}`, so it should have either an `or {}` block, or `${ret_typ_tok}` at the end',
+								expr.pos)
+						}
 					}
 				} else {
-					if expr.or_block.kind != .absent {
-						c.check_or_expr(expr.or_block, ret_type, expr_ret_type, expr)
-					}
+					c.check_or_expr(expr.or_block, ret_type, expr_ret_type, expr)
 				}
 				return ret_type.clear_flag(.result)
 			} else {
@@ -1418,7 +1416,7 @@ fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	c.prevent_sum_type_unwrapping_once = false
 
 	using_new_err_struct_save := c.using_new_err_struct
-	// TODO remove; this avoids a breaking change in syntax
+	// TODO: remove; this avoids a breaking change in syntax
 	if '${node.expr}' == 'err' {
 		c.using_new_err_struct = true
 	}
@@ -1704,7 +1702,7 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 		if checker.reserved_type_names_chk.matches(util.no_cur_mod(field.name, c.mod)) {
 			c.error('invalid use of reserved type `${field.name}` as a const name', field.pos)
 		}
-		// TODO Check const name once the syntax is decided
+		// TODO: Check const name once the syntax is decided
 		if field.name in c.const_names {
 			name_pos := token.Pos{
 				...field.pos
@@ -1734,6 +1732,7 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 		prev_const_var := c.const_var
 		c.const_var = unsafe { field }
 		mut typ := c.check_expr_option_or_result_call(field.expr, c.expr(mut field.expr))
+		typ = c.cast_fixed_array_ret(typ, c.table.sym(typ))
 		if ct_value := c.eval_comptime_const_expr(field.expr, 0) {
 			field.comptime_expr_value = ct_value
 			if ct_value is u64 {
@@ -1837,7 +1836,7 @@ fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 	}
 	for i, mut field in node.fields {
 		if !c.pref.experimental && util.contains_capital(field.name) {
-			// TODO C2V uses hundreds of enums with capitals, remove -experimental check once it's handled
+			// TODO: C2V uses hundreds of enums with capitals, remove -experimental check once it's handled
 			c.error('field name `${field.name}` cannot contain uppercase letters, use snake_case instead',
 				field.pos)
 		}
@@ -2104,7 +2103,7 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 				}
 			}
 			c.check_expr_option_or_result_call(node.expr, or_typ)
-			// TODO This should work, even if it's prolly useless .-.
+			// TODO: This should work, even if it's prolly useless .-.
 			// node.typ = c.check_expr_option_or_result_call(node.expr, ast.void_type)
 		}
 		ast.FnDecl {
@@ -2374,7 +2373,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 				flag = vroot
 			}
 			if flag.contains('@VEXEROOT') {
-				vroot := flag.replace('@VEXEROOT', os.dir(pref.vexe_path()))
+				vroot := flag.replace('@VEXEROOT', c.pref.vroot)
 				node.val = '${node.kind} ${vroot}'
 				node.main = vroot
 				flag = vroot
@@ -2459,7 +2458,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			}
 			if flag.contains('@VEXEROOT') {
 				// expand `@VEXEROOT` to its absolute path
-				flag = flag.replace('@VEXEROOT', os.dir(pref.vexe_path()))
+				flag = flag.replace('@VEXEROOT', c.pref.vroot)
 			}
 			if flag.contains('@VMODROOT') {
 				flag = util.resolve_vmodroot(flag, c.file.path) or {
@@ -3477,7 +3476,7 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 				mut mcache := vmod.get_cache()
 				vmod_file_location := mcache.get_by_file(c.file.path)
 				if vmod_file_location.vmod_file.len == 0 {
-					c.error('@VMOD_FILE can be used only in projects, that have v.mod file',
+					c.error('@VMOD_FILE can only be used in projects that have a v.mod file',
 						node.pos)
 				}
 				vmod_content := os.read_file(vmod_file_location.vmod_file) or { '' }
@@ -3486,10 +3485,10 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 			node.val = c.vmod_file_content
 		}
 		.vroot_path {
-			node.val = os.dir(pref.vexe_path())
+			node.val = c.pref.vroot
 		}
 		.vexeroot_path {
-			node.val = os.dir(pref.vexe_path())
+			node.val = c.pref.vroot
 		}
 		.vmodroot_path {
 			mut mcache := vmod.get_cache()
@@ -3591,7 +3590,8 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 	} else if node.kind == .unresolved {
 		// first use
 		if node.tok_kind == .assign && node.is_mut {
-			c.error('`mut` not allowed with `=` (use `:=` to declare a variable)', node.pos)
+			c.error('`mut` is not allowed with `=` (use `:=` to declare a variable)',
+				node.pos)
 		}
 		if mut obj := node.scope.find(node.name) {
 			match mut obj {
@@ -3834,7 +3834,8 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 							// Lambdas don't support capturing variables yet, so that's the only hint.
 							c.error('undefined variable `${node.name}`', node.pos)
 						} else {
-							c.error('`${node.name}` must be added to the capture list for the closure to be used inside',
+							c.add_error_detail('use `fn [${node.name}] () {` instead of `fn () {`')
+							c.error('`${node.name}` must be explictly listed as inherited variable to be used inside a closure',
 								node.pos)
 						}
 						return ast.void_type
@@ -3945,7 +3946,26 @@ fn (mut c Checker) smartcast(mut expr ast.Expr, cur_type ast.Type, to_type_ ast.
 				smartcasts << to_type
 				if var := scope.find_var(expr.name) {
 					if is_comptime && var.ct_type_var == .smartcast {
-						scope.update_smartcasts(expr.name, to_type)
+						if cur_type.has_flag(.option) && !to_type.has_flag(.option) {
+							if !var.is_unwrapped {
+								scope.register(ast.Var{
+									name: expr.name
+									typ: cur_type
+									pos: expr.pos
+									is_used: true
+									is_mut: expr.is_mut
+									is_inherited: is_inherited
+									smartcasts: [to_type]
+									orig_type: orig_type
+									ct_type_var: ct_type_var
+									is_unwrapped: true
+								})
+							} else {
+								scope.update_smartcasts(expr.name, to_type, true)
+							}
+						} else {
+							scope.update_smartcasts(expr.name, to_type, false)
+						}
 						return
 					}
 				}
@@ -4580,7 +4600,7 @@ fn (mut c Checker) enum_val(mut node ast.EnumVal) ast.Type {
 	}
 	mut typ := ast.new_type(typ_idx)
 	if c.pref.translated || c.file.is_translated {
-		// TODO make more strict
+		// TODO: make more strict
 		node.typ = typ
 		return typ
 	}
@@ -4596,7 +4616,7 @@ fn (mut c Checker) enum_val(mut node ast.EnumVal) ast.Type {
 	}
 	fsym := c.table.final_sym(typ)
 	if fsym.kind != .enum_ && !c.pref.translated && !c.file.is_translated {
-		// TODO in C int fields can be compared to enums, need to handle that in C2V
+		// TODO: in C int fields can be compared to enums, need to handle that in C2V
 		if typ_sym.kind == .placeholder {
 			// If it's a placeholder, the type doesn't exist, print
 			// an error that makes sense here.
@@ -4837,7 +4857,7 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) bool {
 	match sym.kind {
 		.placeholder {
 			// if sym.language == .c && sym.name == 'C.time_t' {
-			// TODO temporary hack until we can define C aliases
+			// TODO: temporary hack until we can define C aliases
 			// return true
 			//}
 			// if sym.language == .v && !sym.name.starts_with('C.') {
@@ -5034,7 +5054,7 @@ fn (mut c Checker) goto_stmt(node ast.GotoStmt) {
 fn (mut c Checker) check_unused_labels() {
 	for name, label in c.goto_labels {
 		if !label.is_used {
-			// TODO show label's location
+			// TODO: show label's location
 			c.warn('label `${name}` defined and not used', label.pos)
 			c.goto_labels[name].is_used = true // so that this warning is not shown again
 		}

@@ -36,7 +36,7 @@ const use_type_2_arrays = [
 ]
 const tests_folder = os.join_path('test-suite', 'tests')
 const jq = os.find_abs_path_of_executable('jq') or { '' }
-const compare_work_dir_root = os.join_path(os.vtmp_dir(), 'toml', 'alexcrichton')
+const compare_work_dir_root = os.join_path(os.vtmp_dir(), 'toml_alexcrichton')
 // From: https://stackoverflow.com/a/38266731/1904615
 const jq_normalize = r'# Apply f to composite entities recursively using keys[], and to atoms
 def sorted_walk(f):
@@ -285,7 +285,7 @@ fn to_alexcrichton(value ast.Value, array_type int) string {
 				return '{ "type": "float", "value": "${val}" }'
 			}
 			v := value.i64()
-			// TODO workaround https://github.com/vlang/v/issues/9507
+			// TODO: workaround https://github.com/vlang/v/issues/9507
 			if v == i64(-9223372036854775807 - 1) {
 				return '{ "type": "integer", "value": "-9223372036854775808" }'
 			}

@@ -10,7 +10,7 @@ mut:
 	total int
 }
 
-// count_chars count json sizen whithout new encode
+// count_chars count json sizen without new encode
 pub fn (mut count Count) count_chars[T](val T) {
 	$if T is $sumtype {
 		$for v in val.variants {

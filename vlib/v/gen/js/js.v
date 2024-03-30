@@ -246,7 +246,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) stri
 		out += 'const loadRoutine = async () => {\n'
 		for mod, functions in g.wasm_import {
 			if g.pref.backend == .js_browser {
-				out += '\nawait fetch("${mod}").then(respone => respone.arrayBuffer()).then(bytes => '
+				out += '\nawait fetch("${mod}").then(resp => resp.arrayBuffer()).then(bytes => '
 				out += 'WebAssembly.instantiate(bytes,'
 				exports := g.wasm_export[mod]
 				out += '{ imports: { \n'
@@ -468,7 +468,7 @@ pub fn (mut g JsGen) init() {
 		g.definitions.writeln('}')
 
 		g.definitions.writeln('const \$os = {')
-		g.definitions.writeln('  endianess: "LE",')
+		g.definitions.writeln('  endianness: "LE",')
 		g.definitions.writeln('}')
 	} else {
 		g.definitions.writeln('const \$os = require("os");')
@@ -942,7 +942,7 @@ fn (mut g JsGen) expr(node_ ast.Expr) {
 			g.gen_if_expr(node)
 		}
 		ast.IfGuardExpr {
-			// TODO no options yet
+			// TODO: no options yet
 		}
 		ast.IndexExpr {
 			g.gen_index_expr(node)
@@ -2218,8 +2218,8 @@ fn (mut g JsGen) gen_ident(node ast.Ident) {
 	if node.kind == .blank_ident || name in ['', '_'] {
 		name = g.new_tmp_var()
 	}
-	// TODO `is`
-	// TODO handle options
+	// TODO: `is`
+	// TODO: handle options
 	g.write(name)
 
 	// TODO: Generate .val for basic types
@@ -2264,7 +2264,7 @@ fn (mut g JsGen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var M
 		if branch.is_else || (node.is_expr && is_last && tmp_var.len == 0) {
 			if node.branches.len > 1 {
 				if is_expr && tmp_var.len == 0 {
-					// TODO too many branches. maybe separate ?: matches
+					// TODO: too many branches. maybe separate ?: matches
 					g.write(' : ')
 				} else {
 					g.writeln('')
@@ -2974,7 +2974,7 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 			g.write('))')
 		}
 	} else {
-		// TODO Does this cover all cases?
+		// TODO: Does this cover all cases?
 		g.expr(expr.left)
 		if expr.left_type.is_ptr() {
 			g.write('.valueOf()')

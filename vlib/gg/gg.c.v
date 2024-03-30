@@ -52,7 +52,6 @@ pub struct Config {
 pub:
 	width         int
 	height        int
-	use_ortho     bool // unused, still here just for backwards compatibility
 	retina        bool
 	resizable     bool
 	user_data     voidptr
@@ -105,6 +104,9 @@ pub:
 	enable_dragndrop             bool // enable file dropping (drag'n'drop), default is false
 	max_dropped_files            int = 1 // max number of dropped files to process (default: 1)
 	max_dropped_file_path_length int = 2048 // max length in bytes of a dropped UTF-8 file path (default: 2048)
+	//
+	min_width  int
+	min_height int
 }
 
 @[heap]
@@ -477,6 +479,8 @@ pub fn new_context(cfg Config) &Context {
 			high_dpi: true
 			fullscreen: cfg.fullscreen
 			__v_native_render: cfg.native_rendering
+			min_width: cfg.min_width
+			min_height: cfg.min_height
 			// drag&drop
 			enable_dragndrop: cfg.enable_dragndrop
 			max_dropped_files: cfg.max_dropped_files
@@ -729,7 +733,7 @@ pub fn screen_size() Size {
 			height: int(C.GetSystemMetrics(C.SM_CYSCREEN))
 		}
 	}
-	// TODO linux, etc
+	// TODO: linux, etc
 	return Size{}
 }
 

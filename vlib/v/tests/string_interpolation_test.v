@@ -31,7 +31,7 @@ fn test_formatted_string_interpolation() {
 	assert si__left == '23        '
 }
 
-fn test_excape_dollar_in_string() {
+fn test_escape_dollar_in_string() {
 	i := 42
 	assert '(${i})' == '(42)'
 	assert '(\$i)'.contains('i') && !'(\$i)'.contains('42')

@@ -186,7 +186,7 @@ pub fn cancel_quit() {
 	C.sapp_cancel_quit()
 }
 
-// intiate a "hard quit" (quit application without sending SAPP_EVENTTYPE_QUIT_REQUSTED)
+// initiate a "hard quit" (quit application without sending SAPP_EVENTTYPE_QUIT_REQUESTED)
 @[inline]
 pub fn quit() {
 	C.sapp_quit()

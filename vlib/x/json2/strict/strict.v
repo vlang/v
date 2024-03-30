@@ -40,7 +40,7 @@ pub fn strict_check[T](json_data string) StructCheckResult {
 					return k.key == field_name
 				}) or { panic('${field.name} not found') }
 
-				// TODO get path here from `last_key.key`
+				// TODO: get path here from `last_key.key`
 				if last_key.value_type == .map {
 					check(val.$(field.name), tokens[last_key.token_pos + 2..], mut duplicates, mut
 						superfluous)

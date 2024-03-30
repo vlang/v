@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module builtin
 
-// TODO implement compile time conditional include
+// TODO: implement compile time conditional include
 // [if !nofloat]
 import strconv
 

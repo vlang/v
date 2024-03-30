@@ -17,7 +17,7 @@ fn (mut count Count) reset_total() {
 	count.total = 0
 }
 
-// count_chars count json sizen whithout new encode
+// count_chars count json sizen without new encode
 fn (mut count Count) count_chars[T](val T) {
 	$if val is $option {
 		workaround := val
@@ -57,7 +57,7 @@ fn (mut count Count) count_chars[T](val T) {
 	} $else $if T is $enum {
 		count.count_chars(int(val))
 	} $else $if T is $int {
-		// TODO benchmark
+		// TODO: benchmark
 		mut abs_val := val
 		if val < 0 {
 			count.total++ // -
@@ -85,7 +85,7 @@ fn (mut count Count) count_chars[T](val T) {
 fn (mut count Count) chars_in_struct[T](val T) {
 	count.total += 2 // {}
 	$for field in T.fields {
-		// TODO handle attributes
+		// TODO: handle attributes
 		count.total += field.name.len + 3 // "":
 		workaround := val.$(field.name)
 		count.count_chars(workaround)

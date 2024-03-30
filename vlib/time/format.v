@@ -264,7 +264,7 @@ pub fn (t Time) md() string {
 	return t.get_fmt_date_str(.space, .mmmd)
 }
 
-// TODO test, improve performance
+// TODO: test, improve performance
 // appends ordinal suffix to a number
 fn ordinal_suffix(n int) string {
 	if n > 3 && n < 21 {
@@ -481,11 +481,11 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string('${t.day_of_week() + 1}')
 			}
 			'N' {
-				// TODO integrate BC
+				// TODO: integrate BC
 				sb.write_string('AD')
 			}
 			'NN' {
-				// TODO integrate Before Christ
+				// TODO: integrate Before Christ
 				sb.write_string('Anno Domini')
 			}
 			'Z' {
@@ -498,7 +498,7 @@ pub fn (t Time) custom_format(s string) string {
 				}
 			}
 			'ZZ' {
-				// TODO update if minute differs?
+				// TODO: update if minute differs?
 				mut hours := offset() / seconds_per_hour
 				if hours >= 0 {
 					sb.write_string('+${hours:02}00')
@@ -508,7 +508,7 @@ pub fn (t Time) custom_format(s string) string {
 				}
 			}
 			'ZZZ' {
-				// TODO update if minute differs?
+				// TODO: update if minute differs?
 				mut hours := offset() / seconds_per_hour
 				if hours >= 0 {
 					sb.write_string('+${hours:02}:00')

@@ -54,7 +54,7 @@ jobs:
         run: make -j4
       - name: Clone & Build previous vmaster/v
         run: |
-          git clone --depth=1 https://github.com/vlang/v vmaster/
+          .github/workflows/retry.sh git clone --depth=1 https://github.com/vlang/v vmaster/
           (cd vmaster; make -j4)
       - name: V versions
         run: ./v version && ./vmaster/v version
@@ -78,10 +78,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install --quiet -y libsodium-dev libssl-dev sqlite3 libsqlite3-dev postgresql libpq-dev valgrind
-          sudo apt-get install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
-          sudo apt-get install --quiet -y g++-9 g++-11
+          .github/workflows/retry.sh sudo apt-get update
+          .github/workflows/retry.sh sudo apt-get install --quiet -y libsodium-dev libssl-dev sqlite3 libsqlite3-dev postgresql libpq-dev valgrind
+          .github/workflows/retry.sh sudo apt-get install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
+          .github/workflows/retry.sh sudo apt-get install --quiet -y g++-9 g++-11
 
       - name: Build v
         run: make
@@ -102,18 +102,7 @@ jobs:
 
       - name: Shader examples can be built
         run: |
-          wget https://github.com/floooh/sokol-tools-bin/raw/6b84ea387a323db9e8e17f5abed2b254a6e409fe/bin/linux/sokol-shdc
-          chmod +x ./sokol-shdc
-          for f in examples/sokol/02_cubes_glsl/cube_glsl \
-              examples/sokol/03_march_tracing_glsl/rt_glsl \
-              examples/sokol/04_multi_shader_glsl/rt_glsl_puppy \
-              examples/sokol/04_multi_shader_glsl/rt_glsl_march \
-              examples/sokol/05_instancing_glsl/rt_glsl_instancing \
-              examples/sokol/06_obj_viewer/gouraud \
-              ; do \
-              echo "compiling shader $f.glsl ..."; \
-              ./sokol-shdc --input $f.glsl --output $f.h --slang glsl330 ; \
-          done
+          .github/workflows/compile_shaders_in_examples.sh
           ./v should-compile-all examples/sokol/*.v examples/sokol/0?*/*.v
 
   parser-silent:
@@ -123,7 +112,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install zzuf
-        run: sudo apt install -qq zzuf
+        run: .github/workflows/retry.sh sudo apt install -qq zzuf
       - name: Build local v
         run: |
           make -j4

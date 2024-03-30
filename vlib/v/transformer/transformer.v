@@ -470,7 +470,7 @@ pub fn (mut t Transformer) expr_stmt_match_expr(mut node ast.MatchExpr) ast.Expr
 }
 
 pub fn (mut t Transformer) for_c_stmt(mut node ast.ForCStmt) ast.Stmt {
-	// TODO we do not optimise array access for multi init
+	// TODO: we do not optimise array access for multi init
 	// for a,b := 0,1; a < 10; a,b = a+b, a {...}
 
 	if node.has_init && !node.is_multi {

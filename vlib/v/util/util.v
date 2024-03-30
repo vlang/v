@@ -270,7 +270,7 @@ pub fn should_recompile_tool(vexe string, tool_source string, tool_name string, 
 		// eprintln('>>> should_recompile_tool: tool_source: $tool_source | $single_file_recompile | $newest_sfile')
 		return single_file_recompile
 	}
-	// TODO Caching should be done on the `vlib/v` level.
+	// TODO: Caching should be done on the `vlib/v` level.
 	mut should_compile := false
 	if !os.exists(tool_exe) {
 		should_compile = true

@@ -81,7 +81,7 @@ fn read_toml_file() map[string][]string {
 		eprintln(err_msg)
 		panic(err)
 	}
-	// TODO what happens if this goes wrong ?
+	// TODO: what happens if this goes wrong ?
 	tm_primes := tm_doc.value('primes') as map[string]toml.Any
 
 	msg := 'expected a map[string][]string in TOML-data ? corrupt ?'

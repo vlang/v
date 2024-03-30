@@ -1,4 +1,4 @@
-vlib/v/checker/tests/result_type_call_err.vv:12:2: error: new_foo() returns a Result, so it should have either an `or {}` block, or `!` at the end
+vlib/v/checker/tests/result_type_call_err.vv:12:2: error: new_foo() returns `!Foo`, so it should have either an `or {}` block, or `!` at the end
    10 | 
    11 | fn main() {
    12 |     new_foo().foo()
@@ -10,7 +10,7 @@ vlib/v/checker/tests/result_type_call_err.vv:12:2: error: Result type cannot be 
    12 |     new_foo().foo()
       |     ~~~~~~~~~
    13 | }
-vlib/v/checker/tests/result_type_call_err.vv:12:12: error: foo() returns a Result, so it should have either an `or {}` block, or `!` at the end
+vlib/v/checker/tests/result_type_call_err.vv:12:12: error: foo() returns `!Foo`, so it should have either an `or {}` block, or `!` at the end
    10 | 
    11 | fn main() {
    12 |     new_foo().foo()

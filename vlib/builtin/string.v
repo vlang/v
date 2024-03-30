@@ -313,6 +313,13 @@ fn (a string) clone_static() string {
 	return a.clone()
 }
 
+// option_clone_static returns an independent copy of a given array when lhs is an option type.
+// It should be used only in -autofree generated code.
+@[inline; markused]
+fn (a string) option_clone_static() ?string {
+	return ?string(a.clone())
+}
+
 // clone returns a copy of the V string `a`.
 pub fn (a string) clone() string {
 	if a.len <= 0 {
@@ -347,7 +354,7 @@ pub fn (s string) replace(rep string, with string) string {
 	if !s.contains(rep) {
 		return s.clone()
 	}
-	// TODO PERF Allocating ints is expensive. Should be a stack array
+	// TODO: PERF Allocating ints is expensive. Should be a stack array
 	// Get locations of all reps within this string
 	mut idxs := []int{cap: s.len / rep.len}
 	defer {
@@ -508,7 +515,7 @@ pub fn (s string) replace_char(rep u8, with u8, repeat int) string {
 	if s.len == 0 {
 		return s.clone()
 	}
-	// TODO Allocating ints is expensive. Should be a stack array
+	// TODO: Allocating ints is expensive. Should be a stack array
 	// - string.replace()
 	mut idxs := []int{cap: s.len}
 	defer {
@@ -568,7 +575,7 @@ pub fn (s string) normalize_tabs(tab_len int) string {
 // bool returns `true` if the string equals the word "true" it will return `false` otherwise.
 @[inline]
 pub fn (s string) bool() bool {
-	return s == 'true' || s == 't' // TODO t for pg, remove
+	return s == 'true' || s == 't' // TODO: t for pg, remove
 }
 
 // int returns the value of the string as an integer `'1'.int() == 1`.
@@ -1083,7 +1090,7 @@ pub fn (s string) substr(start int, _end int) string {
 	end := if _end == max_int { s.len } else { _end } // max_int
 	$if !no_bounds_checking {
 		if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
-			panic('substr(${start}, ${end}) out of bounds (len=${s.len})')
+			panic('substr(${start}, ${end}) out of bounds (len=${s.len}) s="${s}"')
 		}
 	}
 	len := end - start
@@ -1216,20 +1223,20 @@ pub fn (s string) index(p string) ?int {
 }
 
 // index_last returns the position of the first character of the *last* occurrence of the `needle` string in `s`.
+@[deprecated: 'use `.last_index(needle string)` instead']
+@[deprecated_after: '2024-03-27']
 pub fn (s string) index_last(needle string) ?int {
+	return s.last_index(needle)
+}
+
+// last_index returns the position of the first character of the *last* occurrence of the `needle` string in `s`.
+@[inline]
+pub fn (s string) last_index(needle string) ?int {
 	idx := s.index_last_(needle)
 	if idx == -1 {
 		return none
 	}
 	return idx
-}
-
-// last_index returns the position of the first character of the *last* occurrence of the `needle` string in `s`.
-@[deprecated: 'use `.index_last(needle string)` instead']
-@[deprecated_after: '2023-12-18']
-@[inline]
-pub fn (s string) last_index(needle string) ?int {
-	return s.index_last(needle)
 }
 
 // index_kmp does KMP search.
@@ -1395,7 +1402,7 @@ pub fn (s string) count(substr string) int {
 		i += substr.len
 		n++
 	}
-	return 0 // TODO can never get here - v doesn't know that
+	return 0 // TODO: can never get here - v doesn't know that
 }
 
 // contains_u8 returns `true` if the string contains the byte value `x`.
@@ -1490,7 +1497,7 @@ pub fn (s string) ends_with(p string) bool {
 }
 
 // to_lower returns the string in all lowercase characters.
-// TODO only works with ASCII
+// TODO: only works with ASCII
 @[direct_array_access]
 pub fn (s string) to_lower() string {
 	unsafe {
@@ -2095,7 +2102,7 @@ pub fn (s string) before(sub string) string {
 // Example: assert '23:34:45.234'.all_before('.') == '23:34:45'
 // Example: assert 'abcd'.all_before('.') == 'abcd'
 pub fn (s string) all_before(sub string) string {
-	// TODO remove dup method
+	// TODO: remove dup method
 	pos := s.index_(sub)
 	if pos == -1 {
 		return s.clone()

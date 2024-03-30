@@ -27,7 +27,7 @@ mut:
 	salary f32
 	title  JobTitle @[json: 'ETitle'] // the key for this field will be 'ETitle', not 'title'
 	notes  string   @[omitempty]        // the JSON property is not created if the string is equal to '' (an empty string).
-	// TODO document @[raw]
+	// TODO: document @[raw]
 }
 
 fn main() {

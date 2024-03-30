@@ -223,6 +223,18 @@ fn (mut p Parser) is_only_array_type() bool {
 	return false
 }
 
+fn (mut p Parser) is_match_sumtype_type() bool {
+	is_option := p.tok.kind == .question
+	name_tok := if is_option { p.peek_tok } else { p.tok }
+	next_tok_kind := if is_option { p.peek_token(2).kind } else { p.peek_tok.kind }
+	next_next_tok := if is_option { p.peek_token(3) } else { p.peek_token(2) }
+
+	return name_tok.kind == .name && !(name_tok.lit == 'C' && next_tok_kind == .dot)
+		&& (((ast.builtin_type_names_matcher.matches(name_tok.lit) || name_tok.lit[0].is_capital())
+		&& next_tok_kind != .lpar) || (next_tok_kind == .dot && next_next_tok.lit.len > 0
+		&& next_next_tok.lit[0].is_capital()))
+}
+
 fn (mut p Parser) match_expr() ast.MatchExpr {
 	match_first_pos := p.tok.pos()
 	mut else_count := 0
@@ -248,10 +260,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			is_else = true
 			else_count += 1
 			p.next()
-		} else if (p.tok.kind == .name && !(p.tok.lit == 'C' && p.peek_tok.kind == .dot)
-			&& (((ast.builtin_type_names_matcher.matches(p.tok.lit) || p.tok.lit[0].is_capital())
-			&& p.peek_tok.kind != .lpar) || (p.peek_tok.kind == .dot && p.peek_token(2).lit.len > 0
-			&& p.peek_token(2).lit[0].is_capital()))) || p.is_only_array_type()
+		} else if p.is_match_sumtype_type() || p.is_only_array_type()
 			|| p.tok.kind == .key_fn
 			|| (p.tok.kind == .lsbr && p.peek_token(2).kind == .amp) {
 			mut types := []ast.Type{}

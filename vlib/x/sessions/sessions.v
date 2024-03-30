@@ -16,7 +16,7 @@ pub fn new_session_id(secret []u8) (string, string) {
 
 	hashed := hmac.new(secret, sid.bytes(), sha256.sum, sha256.block_size)
 
-	// seperate session id and hmac with a `.`
+	// separate session id and hmac with a `.`
 	return sid, '${sid}.${base64.url_encode(hashed)}'
 }
 
@@ -161,7 +161,7 @@ pub fn (mut s Sessions[T]) save[X](mut ctx X, data T) ! {
 // resave saves `data` for the current session and reset the session id.
 // You should use this function when the authentication or authorization status changes
 // e.g. when a user signs in or switches between accounts/permissions.
-// This function also destroys the data associtated to the old session id.
+// This function also destroys the data associated to the old session id.
 pub fn (mut s Sessions[T]) resave[X](mut ctx X, data T) ! {
 	if sid := s.get_session_id(ctx) {
 		s.store.destroy(sid)!

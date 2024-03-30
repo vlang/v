@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module pref
 
-// import v.ast // TODO this results in a compiler bug
+// import v.ast // TODO: this results in a compiler bug
 import os.cmdline
 import os
 import v.vcache
@@ -141,6 +141,7 @@ pub mut:
 	profile_fns        []string // when set, profiling will be off by default, but inside these functions (and what they call) it will be on.
 	translated         bool     // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
 	obfuscate          bool     // `v -obf program.v`, renames functions to "f_XXX"
+	hide_auto_str      bool     // `v -hide-auto-str program.v`, doesn't generate str() with struct data
 	// Note: passing -cg instead of -g will set is_vlines to false and is_debug to true, thus making v generate cleaner C files,
 	// which are sometimes easier to debug / inspect manually than the .tmp.c files by plain -g (when/if v line number generation breaks).
 	sanitize               bool   // use Clang's new "-fsanitize" option
@@ -159,7 +160,7 @@ pub mut:
 	retry_compilation      bool = true // retry the compilation with another C compiler, if tcc fails.
 	use_os_system_to_run   bool   // when set, use os.system() to run the produced executable, instead of os.new_process; works around segfaults on macos, that may happen when xcode is updated
 	macosx_version_min     string = '0' // relevant only for macos and ios targets
-	// TODO Convert this into a []string
+	// TODO: Convert this into a []string
 	cflags  string // Additional options which will be passed to the C compiler *before* other options.
 	ldflags string // Additional options which will be passed to the C compiler *after* everything else.
 	// For example, passing -cflags -Os will cause the C compiler to optimize the generated binaries for size.
@@ -641,6 +642,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-obf', '-obfuscate' {
 				res.obfuscate = true
+			}
+			'-hide-auto-str' {
+				res.hide_auto_str = true
 			}
 			'-translated' {
 				res.translated = true

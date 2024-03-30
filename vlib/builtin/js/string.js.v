@@ -750,20 +750,19 @@ fn (s string) index_last_(p string) int {
 }
 
 // index_last returns the position of the first character of the *last* occurrence of the `needle` string in `s`.
+@[deprecated: 'use `.last_index(needle string)` instead']
 pub fn (s string) index_last(needle string) ?int {
+	return s.last_index(needle)
+}
+
+// last_index returns the position of the first character of the *last* occurrence of the `needle` string in `s`.
+@[inline]
+pub fn (s string) last_index(needle string) ?int {
 	idx := s.index_last_(needle)
 	if idx == -1 {
 		return none
 	}
 	return idx
-}
-
-// last_index returns the position of the first character of the *last* occurrence of the `needle` string in `s`.
-@[deprecated: 'use `.index_last(needle string)` instead']
-@[deprecated_after: '2023-12-18']
-@[inline]
-pub fn (s string) last_index(needle string) ?int {
-	return s.index_last(needle)
 }
 
 pub fn (s string) trim_space() string {

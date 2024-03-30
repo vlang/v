@@ -18,7 +18,7 @@ pub fn merge_comments(comments []ast.Comment) string {
 
 // ast_comment_to_doc_comment converts an `ast.Comment` node type to a `DocComment`
 pub fn ast_comment_to_doc_comment(ast_node ast.Comment) DocComment {
-	text := ast_node.text // TODO .trim_left('\x01') // BUG why are this byte here in the first place?
+	text := ast_node.text // TODO: .trim_left('\x01') // BUG why are this byte here in the first place?
 	return DocComment{
 		text: text
 		is_multi: ast_node.is_multi

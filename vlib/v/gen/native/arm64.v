@@ -97,7 +97,7 @@ fn (mut c Arm64) neg_regs(a Arm64Register, b Arm64Register) {
 
 fn (mut c Arm64) sub_sp(v i32) {
 	if c.g.pref.arch != .arm64 {
-		c.g.n_error('sub_sp is arm64-specifig')
+		c.g.n_error('sub_sp is arm64-specific')
 		return
 	}
 	// this is for 0x20 only
@@ -140,7 +140,7 @@ pub fn (mut c Arm64) fn_decl(node ast.FnDecl) {
 	mut offset := 0
 	for i in 0 .. node.params.len {
 		name := node.params[i].name
-		// TODO optimize. Right now 2 mov's are used instead of 1.
+		// TODO: optimize. Right now 2 mov's are used instead of 1.
 		g.allocate_var(name, 4, 0)
 		// `mov DWORD PTR [rbp-0x4],edi`
 		offset += 4

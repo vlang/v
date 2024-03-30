@@ -1,5 +1,5 @@
 /*
- *  PSA cipher driver entry points
+ *  PSA cipher driver entry points and associated auxiliary functions
  */
 /*
  *  Copyright The Mbed TLS Contributors

@@ -173,7 +173,7 @@ pub fn sigint_to_signal_name(si int) string {
 	$if linux {
 		// From `man 7 signal` on linux:
 		match si {
-			// TODO dependent on platform
+			// TODO: dependent on platform
 			// works only on x86/ARM/most others
 			10 { // , 30, 16
 				return 'SIGUSR1'
@@ -274,7 +274,7 @@ pub fn dir(opath string) string {
 	}
 	other_separator := if path_separator == '/' { '\\' } else { '/' }
 	path := opath.replace(other_separator, path_separator)
-	pos := path.index_last(path_separator) or { return '.' }
+	pos := path.last_index(path_separator) or { return '.' }
 	if pos == 0 && path_separator == '/' {
 		return '/'
 	}
@@ -296,10 +296,10 @@ pub fn base(opath string) string {
 	}
 	if path.ends_with(path_separator) {
 		path2 := path[..path.len - 1]
-		pos := path2.index_last(path_separator) or { return path2.clone() }
+		pos := path2.last_index(path_separator) or { return path2.clone() }
 		return path2[pos + 1..]
 	}
-	pos := path.index_last(path_separator) or { return path.clone() }
+	pos := path.last_index(path_separator) or { return path.clone() }
 	return path[pos + 1..]
 }
 
@@ -780,7 +780,7 @@ pub fn temp_dir() string {
 	mut path := getenv('TMPDIR')
 	$if windows {
 		if path == '' {
-			// TODO see Qt's implementation?
+			// TODO: see Qt's implementation?
 			// https://doc.qt.io/qt-5/qdir.html#tempPath
 			// https://github.com/qt/qtbase/blob/e164d61ca8263fc4b46fdd916e1ea77c7dd2b735/src/corelib/io/qfilesystemengine_win.cpp#L1275
 			path = getenv('TEMP')
@@ -798,7 +798,7 @@ pub fn temp_dir() string {
 		return '/tmp'
 	}
 	$if android {
-		// TODO test+use '/data/local/tmp' on Android before using cache_dir()
+		// TODO: test+use '/data/local/tmp' on Android before using cache_dir()
 		if path == '' {
 			path = cache_dir()
 		}

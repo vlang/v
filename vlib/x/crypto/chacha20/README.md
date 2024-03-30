@@ -1,13 +1,12 @@
 # module chacha20
 
-chacha20
--------
+## chacha20
 
 Chacha20 (and XChacha20) stream cipher encryption algorithm in pure V.
 Its mostly based on [RFC 8439](https://datatracker.ietf.org/doc/html/rfc8439) and inspired by Go version of the same library.
 
-Examples
---------
+## Examples
+
 ```v
 module main
 

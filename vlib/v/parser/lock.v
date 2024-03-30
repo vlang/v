@@ -60,7 +60,7 @@ fn (mut p Parser) lockable_list() []ast.Expr {
 }
 
 fn (mut p Parser) lock_expr() ast.LockExpr {
-	// TODO Handle aliasing sync
+	// TODO: Handle aliasing sync
 	p.register_auto_import('sync')
 	p.open_scope()
 	defer {

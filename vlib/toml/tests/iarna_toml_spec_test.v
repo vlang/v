@@ -42,7 +42,7 @@ const yaml_value_exceptions = [
 
 const jq = os.find_abs_path_of_executable('jq') or { '' }
 const python = os.find_abs_path_of_executable('python') or { '' }
-const compare_work_dir_root = os.join_path(os.vtmp_dir(), 'toml', 'iarna')
+const compare_work_dir_root = os.join_path(os.vtmp_dir(), 'toml_iarna')
 // From: https://stackoverflow.com/a/38266731/1904615
 const jq_normalize = r'# Apply f to composite entities recursively using keys[], and to atoms
 def sorted_walk(f):
@@ -367,7 +367,7 @@ fn to_iarna(value ast.Value, skip_value_map bool) string {
 				return '{ "type": "float", "value": "${val}" }'
 			}
 			v := value.i64()
-			// TODO workaround https://github.com/vlang/v/issues/9507
+			// TODO: workaround https://github.com/vlang/v/issues/9507
 			if v == i64(-9223372036854775807 - 1) {
 				if skip_value_map {
 					return '-9223372036854775808'

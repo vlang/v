@@ -108,7 +108,7 @@ pub fn (mut sh StaticHandler) host_serve_static(host string, url string, file_pa
 
 	// Rudimentary guard against adding files not in mime_types.
 	if ext !in sh.static_mime_types && ext !in mime_types {
-		return error('unkown MIME type for file extension "${ext}". You can register your MIME type in `app.static_mime_types`')
+		return error('unknown MIME type for file extension "${ext}". You can register your MIME type in `app.static_mime_types`')
 	}
 	sh.static_files[url] = file_path
 	sh.static_hosts[url] = host

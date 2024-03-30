@@ -63,7 +63,7 @@ fn test_try_lock_rwmutex() {
 	assert try_fail_writing2 == false
 
 	mx.runlock()
-	mx.runlock() // you must release rlock mutiple times, as it was rlocked multiple times
+	mx.runlock() // you must release rlock multiple times, as it was rlocked multiple times
 
 	// after mx release all rlock, try_wlock will succeed
 	try_success_writing3 := mx.try_wlock()

@@ -832,7 +832,7 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 			break
 		}
 	}
-	// TODO remove dummy return statement
+	// TODO: remove dummy return statement
 	// the compiler complains if it's not there
 	return ast.empty_stmt
 }
@@ -898,7 +898,7 @@ fn (mut p Parser) other_stmts(cur_stmt ast.Stmt) ast.Stmt {
 	}
 }
 
-// TODO [if vfmt]
+// TODO: [if vfmt]
 fn (mut p Parser) check_comment() ast.Comment {
 	if p.tok.kind == .comment {
 		return p.comment()
@@ -2236,7 +2236,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	if tok.kind == .key_mut && p.tok.kind != .decl_assign {
 		return p.error('expecting `:=` (e.g. `mut x :=`)')
 	}
-	// TODO remove translated
+	// TODO: remove translated
 	if p.tok.kind in [.assign, .decl_assign] || p.tok.kind.is_assign() {
 		return p.partial_assign_stmt(left)
 	} else if !p.pref.translated && !p.is_translated && !p.pref.is_fmt && !p.pref.is_vet
@@ -2797,7 +2797,7 @@ fn (mut p Parser) name_expr() ast.Expr {
 			|| name_w_mod in p.table.type_idxs))
 			|| name.all_after_last('.')[0].is_capital()))) {
 			// MainLetter(x) is *always* a cast, as long as it is not `C.`
-			// TODO handle C.stat()
+			// TODO: handle C.stat()
 			start_pos := p.tok.pos()
 			mut to_typ := p.parse_type()
 			// this prevents inner casts to also have an `&`
@@ -2889,8 +2889,8 @@ fn (mut p Parser) name_expr() ast.Expr {
 		// `if a == Foo{} {...}` or `match foo { Foo{} {...} }`
 		return p.struct_init(p.mod + '.' + p.tok.lit, .normal, is_option)
 	} else if p.peek_tok.kind == .dot && lit0_is_capital && !known_var && language == .v {
-		// T.name
-		if p.is_generic_name() {
+		// T.name selector
+		if p.is_generic_name() && p.peek_token(3).kind != .lpar {
 			pos := p.tok.pos()
 			name := p.check_name()
 			p.check(.dot)
@@ -3276,7 +3276,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		p.next()
 	}
 	// Method call
-	// TODO move to fn.v call_expr()
+	// TODO: move to fn.v call_expr()
 	mut concrete_types := []ast.Type{}
 	mut concrete_list_pos := p.tok.pos()
 	if is_generic_call {

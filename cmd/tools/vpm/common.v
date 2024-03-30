@@ -251,13 +251,13 @@ fn vpm_error(msg string, opts ErrorOptions) {
 	}
 	eprintln(term.ecolorize(term.red, 'error: ') + msg)
 	if opts.details.len > 0 && settings.is_verbose {
-		eprint(term.ecolorize(term.blue, 'details: '))
+		eprint(term.ecolorize(term.cyan, 'details: '))
 		padding := ' '.repeat('details: '.len)
 		for i, line in opts.details.split_into_lines() {
 			if i > 0 {
 				eprint(padding)
 			}
-			eprintln(term.ecolorize(term.blue, line))
+			eprintln(term.ecolorize(term.cyan, line))
 		}
 	}
 }
@@ -265,13 +265,13 @@ fn vpm_error(msg string, opts ErrorOptions) {
 fn vpm_warn(msg string, opts ErrorOptions) {
 	eprintln(term.ecolorize(term.yellow, 'warning: ') + msg)
 	if opts.details.len > 0 {
-		eprint(term.ecolorize(term.blue, 'details: '))
+		eprint(term.ecolorize(term.cyan, 'details: '))
 		padding := ' '.repeat('details: '.len)
 		for i, line in opts.details.split_into_lines() {
 			if i > 0 {
 				eprint(padding)
 			}
-			eprintln(term.ecolorize(term.blue, line))
+			eprintln(term.ecolorize(term.cyan, line))
 		}
 	}
 }

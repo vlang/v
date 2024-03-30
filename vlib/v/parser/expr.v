@@ -416,7 +416,7 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 					args := p.call_args()
 					p.check(.rpar)
 					mut or_kind := ast.OrKind.absent
-					mut or_stmts := []ast.Stmt{} // TODO remove unnecessary allocations by just using .absent
+					mut or_stmts := []ast.Stmt{} // TODO: remove unnecessary allocations by just using .absent
 					mut or_pos := p.tok.pos()
 					if p.tok.kind == .key_orelse {
 						// `foo() or {}``
@@ -626,7 +626,7 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 				p.next()
 			}
 			p.next()
-			// return node // TODO bring back, only allow ++/-- in exprs in translated code
+			// return node // TODO: bring back, only allow ++/-- in exprs in translated code
 		} else {
 			return node
 		}

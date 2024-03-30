@@ -81,7 +81,7 @@ extern const struct mbedtls_ssl_tls13_labels_struct mbedtls_ssl_tls13_labels;
  * Since contexts are always hashes of message transcripts, this can
  * be approximated from above by the maximum hash size. */
 #define MBEDTLS_SSL_TLS1_3_KEY_SCHEDULE_MAX_CONTEXT_LEN  \
-    MBEDTLS_MD_MAX_SIZE
+    PSA_HASH_MAX_SIZE
 
 /* Maximum desired length for expanded key material generated
  * by HKDF-Expand-Label.
@@ -636,8 +636,7 @@ int mbedtls_ssl_tls13_generate_application_keys(
  * \returns    A negative error code on failure.
  */
 MBEDTLS_CHECK_RETURN_CRITICAL
-int mbedtls_ssl_tls13_generate_resumption_master_secret(
-    mbedtls_ssl_context *ssl );
+int mbedtls_ssl_tls13_compute_resumption_master_secret( mbedtls_ssl_context *ssl );
 
 /**
  * \brief Calculate the verify_data value for the client or server TLS 1.3
@@ -668,6 +667,27 @@ int mbedtls_ssl_tls13_calculate_verify_data( mbedtls_ssl_context *ssl,
                                              size_t *actual_len,
                                              int which );
 
+#if defined(MBEDTLS_SSL_EARLY_DATA)
+/**
+ * \brief Compute TLS 1.3 early transform
+ *
+ * \param ssl  The SSL context to operate on.
+ *
+ * \returns    \c 0 on success.
+ * \returns    A negative error code on failure.
+ *
+ * \warning    The function does not compute the early master secret. Call
+ *             mbedtls_ssl_tls13_key_schedule_stage_early() before to
+ *             call this function to generate the early master secret.
+ * \note       For a client/server endpoint, the function computes only the
+ *             encryption/decryption part of the transform as the decryption/
+ *             encryption part is not defined by the specification (no early
+ *             traffic from the server to the client).
+ */
+MBEDTLS_CHECK_RETURN_CRITICAL
+int mbedtls_ssl_tls13_compute_early_transform( mbedtls_ssl_context *ssl );
+#endif /* MBEDTLS_SSL_EARLY_DATA */
+
 /**
  * \brief Compute TLS 1.3 handshake transform
  *
@@ -691,6 +711,24 @@ int mbedtls_ssl_tls13_compute_handshake_transform( mbedtls_ssl_context *ssl );
  */
 MBEDTLS_CHECK_RETURN_CRITICAL
 int mbedtls_ssl_tls13_compute_application_transform( mbedtls_ssl_context *ssl );
+
+#if defined(MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_SOME_PSK_ENABLED)
+/**
+ * \brief Export TLS 1.3 PSK from handshake context
+ *
+ * \param[in]   ssl  The SSL context to operate on.
+ * \param[out]  psk  PSK output pointer.
+ * \param[out]  psk_len Length of PSK.
+ *
+ * \returns     \c 0 if there is a configured PSK and it was exported
+ *              successfully.
+ * \returns     A negative error code on failure.
+ */
+MBEDTLS_CHECK_RETURN_CRITICAL
+int mbedtls_ssl_tls13_export_handshake_psk( mbedtls_ssl_context *ssl,
+                                            unsigned char **psk,
+                                            size_t *psk_len );
+#endif
 
 #endif /* MBEDTLS_SSL_PROTO_TLS1_3 */
 

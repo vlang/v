@@ -41,7 +41,7 @@ pub interface AEAD {
 
 // key_size is the size of key (in bytes) which the Chacha20Poly1305 AEAD accepts.
 pub const key_size = 32
-// nonce_size is the size of the standar nonce (in bytes) which the Chacha20Poly1305 AEAD accepts.
+// nonce_size is the size of the standard nonce (in bytes) which the Chacha20Poly1305 AEAD accepts.
 pub const nonce_size = 12
 // nonce_size is the size of the extended nonce (in bytes) which the Chacha20Poly1305 AEAD accepts.
 pub const x_nonce_size = 24
@@ -136,7 +136,7 @@ fn (c Chacha20Poly1305) encrypt_generic(plaintext []u8, nonce []u8, ad []u8) ![]
 	s.xor_key_stream(mut ciphertext, plaintext)
 
 	// Finally, the Poly1305 function is called with the generated Poly1305 one-time key
-	// calculated above, and a message constructed as descibed in
+	// calculated above, and a message constructed as described in
 	// https://datatracker.ietf.org/doc/html/rfc8439#section-2.8
 	mut constructed_msg := []u8{}
 	poly1305_construct_msg(mut constructed_msg, ad, ciphertext)
@@ -155,7 +155,7 @@ fn (c Chacha20Poly1305) encrypt_generic(plaintext []u8, nonce []u8, ad []u8) ![]
 }
 
 // decrypt decrypts ciphertext along with provided nonce and additional data.
-// Decryption is similar with the encryption processs with slight differences in:
+// Decryption is similar with the encryption process with slight differences in:
 // The roles of ciphertext and plaintext are reversed, so the ChaCha20 encryption
 // function is applied to the ciphertext, producing the plaintext.
 // The Poly1305 function is still run on the AAD and the ciphertext, not the plaintext.

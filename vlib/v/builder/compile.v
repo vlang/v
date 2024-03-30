@@ -263,7 +263,7 @@ pub fn (v Builder) get_builtin_files() []string {
 				builtin_files << v.v_files_from_dir(v.pref.bare_builtin_dir)
 			}
 			if v.pref.backend == .c {
-				// TODO JavaScript backend doesn't handle os for now
+				// TODO: JavaScript backend doesn't handle os for now
 				if v.pref.is_vsh && os.exists(os.join_path(location, 'os')) {
 					builtin_files << v.v_files_from_dir(os.join_path(location, 'os'))
 				}
@@ -290,10 +290,9 @@ pub fn (v &Builder) get_user_files() []string {
 	// libs, but we dont know	which libs need to be added yet
 	mut user_files := []string{}
 	// See cmd/tools/preludes/README.md for more info about what preludes are
-	vroot := os.dir(pref.vexe_path())
-	mut preludes_path := os.join_path(vroot, 'vlib', 'v', 'preludes')
+	mut preludes_path := os.join_path(v.pref.vroot, 'vlib', 'v', 'preludes')
 	if v.pref.backend == .js_node {
-		preludes_path = os.join_path(vroot, 'vlib', 'v', 'preludes_js')
+		preludes_path = os.join_path(v.pref.vroot, 'vlib', 'v', 'preludes_js')
 	}
 	if v.pref.trace_calls {
 		user_files << os.join_path(preludes_path, 'trace_calls.v')

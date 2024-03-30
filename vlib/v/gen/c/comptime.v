@@ -545,7 +545,7 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) (bool, bool) {
 					}
 				}
 				.eq, .ne {
-					// TODO Implement `$if method.args.len == 1`
+					// TODO: Implement `$if method.args.len == 1`
 					if cond.left is ast.SelectorExpr && (g.comptime.comptime_for_field_var.len > 0
 						|| g.comptime.comptime_for_method.len > 0) {
 						if cond.right is ast.StringLiteral {
@@ -959,7 +959,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.comptime.type_map['${node.val_var}.typ'] = variant
 
 				g.writeln('/* variant ${i} */ {')
-				g.writeln('\t${node.val_var}.typ = ${variant.idx()};')
+				g.writeln('\t${node.val_var}.typ = ${int(variant)};')
 				g.stmts(node.stmts)
 				g.writeln('}')
 				i++

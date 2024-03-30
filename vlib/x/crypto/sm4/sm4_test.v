@@ -171,7 +171,7 @@ fn test_sm4_wrong_length() ! {
 	mut c1 := sm4.new_cipher(.sm4_encrypt, [u8(0xff)].repeat(16))!
 	c1.crypt_ecb([u8(0xff)].repeat(111), mut output) or {
 		fail_flag = true
-		assert err.msg() == 'input must be padded to mutiple of 16 bytes'
+		assert err.msg() == 'input must be padded to multiple of 16 bytes'
 	}
 	assert fail_flag
 
@@ -198,7 +198,7 @@ fn test_sm4_wrong_length() ! {
 	mut c4 := sm4.new_cipher(.sm4_encrypt, [u8(0xff)].repeat(16))!
 	c4.crypt_cbc(mut [u8(0xff)].repeat(16), [u8(0xff)].repeat(111), mut output) or {
 		fail_flag = true
-		assert err.msg() == 'input must be padded to mutiple of 16 bytes'
+		assert err.msg() == 'input must be padded to multiple of 16 bytes'
 	}
 	assert fail_flag
 

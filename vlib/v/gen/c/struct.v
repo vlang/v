@@ -86,7 +86,27 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			g.write('&(${basetyp}){')
 		}
 	} else if node.typ.has_flag(.option) {
-		g.write('(${g.base_type(node.typ)}){')
+		tmp_var := g.new_tmp_var()
+		s := g.go_before_last_stmt()
+		g.empty_line = true
+
+		base_styp := g.typ(node.typ.clear_option_and_result())
+		g.writeln('${styp} ${tmp_var} = {0};')
+
+		if node.init_fields.len > 0 {
+			g.write('_option_ok(&(${base_styp}[]) { ')
+		} else {
+			g.write('_option_none(&(${base_styp}[]) { ')
+		}
+		g.struct_init(ast.StructInit{
+			...node
+			typ: node.typ.clear_option_and_result()
+		})
+		g.writeln('}, &${tmp_var}, sizeof(${base_styp}));')
+		g.empty_line = false
+		g.write(s)
+		g.write(tmp_var)
+		return
 	} else if g.inside_cinit {
 		if is_multiline {
 			g.writeln('{')
@@ -467,7 +487,7 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 			g.typedefs.writeln('typedef struct ${name} ${name};')
 		}
 	}
-	// TODO avoid buffer manip
+	// TODO: avoid buffer manip
 	start_pos := g.type_definitions.len
 
 	mut pre_pragma := ''
@@ -619,7 +639,7 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 	mut cloned := false
 	if g.is_autofree && !sfield.typ.is_ptr() && field_type_sym.kind in [.array, .string] {
 		g.write('/*clone1*/')
-		if g.gen_clone_assignment(sfield.expr, sfield.typ, false) {
+		if g.gen_clone_assignment(sfield.typ, sfield.expr, sfield.typ, false) {
 			cloned = true
 		}
 	}

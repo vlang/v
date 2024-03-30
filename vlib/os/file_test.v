@@ -1,12 +1,10 @@
 import os
 
-const tfolder = os.join_path(os.vtmp_dir(), 'tests', 'os_file_test')
+const tfolder = os.join_path(os.vtmp_dir(), 'os_file_tests')
 const tfile = os.join_path_single(tfolder, 'test_file')
 
 fn testsuite_begin() {
-	os.rmdir_all(tfolder) or {}
-	assert !os.is_dir(tfolder)
-	os.mkdir_all(tfolder)!
+	os.mkdir_all(tfolder) or {}
 	os.chdir(tfolder)!
 	assert os.is_dir(tfolder)
 }
@@ -84,7 +82,7 @@ fn test_read_bytes_into_newline_text() {
 // This test simulates the scenario when a byte stream is read and a newline byte
 // appears in that stream and an EOF occurs before the buffer is full.
 fn test_read_bytes_into_newline_binary() {
-	os.rm(tfile) or {} // FIXME This is a workaround for macos, because the file isn't truncated when open with 'w'
+	os.rm(tfile) or {} // FIXME: This is a workaround for macos, because the file isn't truncated when open with 'w'
 	mut bw := []u8{len: 15}
 	bw[9] = 0xff
 	bw[12] = 10 // newline
@@ -179,7 +177,7 @@ fn test_read_eof_last_read_full_buffer_fill() {
 }
 
 fn test_write_struct() {
-	os.rm(tfile) or {} // FIXME This is a workaround for macos, because the file isn't truncated when open with 'w'
+	os.rm(tfile) or {} // FIXME: This is a workaround for macos, because the file isn't truncated when open with 'w'
 	size_of_point := int(sizeof(Point))
 	mut f := os.open_file(tfile, 'w')!
 	f.write_struct(another_point)!
@@ -234,7 +232,7 @@ fn test_read_struct_at() {
 }
 
 fn test_write_raw() {
-	os.rm(tfile) or {} // FIXME This is a workaround for macos, because the file isn't truncated when open with 'w'
+	os.rm(tfile) or {} // FIXME: This is a workaround for macos, because the file isn't truncated when open with 'w'
 	size_of_point := int(sizeof(Point))
 	mut f := os.open_file(tfile, 'w')!
 	f.write_raw(another_point)!

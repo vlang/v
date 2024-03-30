@@ -282,11 +282,12 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		if testing.github_job != 'misc-tooling' {
 			// These examples need .h files that are produced from the supplied .glsl files,
 			// using by the shader compiler tools in https://github.com/floooh/sokol-tools-bin/archive/pre-feb2021-api-changes.tar.gz
-			skip_files << 'examples/sokol/simple_shader_glsl/simple_shader.v'
 			skip_files << 'examples/sokol/02_cubes_glsl/cube_glsl.v'
 			skip_files << 'examples/sokol/03_march_tracing_glsl/rt_glsl.v'
 			skip_files << 'examples/sokol/04_multi_shader_glsl/rt_glsl.v'
 			skip_files << 'examples/sokol/05_instancing_glsl/rt_glsl.v'
+			skip_files << 'examples/sokol/07_simple_shader_glsl/simple_shader.v'
+			skip_files << 'examples/sokol/08_sdf/sdf.v'
 			// Skip obj_viewer code in the CI
 			skip_files << 'examples/sokol/06_obj_viewer/show_obj.v'
 			// skip the audio examples too on most CI jobs
@@ -542,7 +543,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	ts.benchmark.step()
 	tls_bench.step()
-	if abs_path in ts.skip_files {
+	if !ts.build_tools && abs_path in ts.skip_files {
 		ts.benchmark.skip()
 		tls_bench.skip()
 		if !testing.hide_skips {

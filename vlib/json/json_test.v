@@ -324,7 +324,7 @@ fn test_nested_type() {
 		assert data2.users[key].last_name == user.last_name
 		assert data2.users[key].is_registered == user.is_registered
 		assert data2.users[key].typ == user.typ
-		// assert data2.users[key].pets == user.pets // TODO FIX
+		// assert data2.users[key].pets == user.pets // TODO: FIX
 	}
 	for k, v in data.extra {
 		for k2, v2 in v {

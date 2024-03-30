@@ -3,7 +3,6 @@
 // that can be found in the LICENSE file.
 module fmt
 
-import os
 import strings
 import v.ast
 import v.util
@@ -54,7 +53,6 @@ pub mut:
 	wsinfix_depth      int
 	format_state       FormatState
 	source_text        string // can be set by `echo "println('hi')" | v fmt`, i.e. when processing source not from a file, but from stdin. In this case, it will contain the entire input text. You can use f.file.path otherwise, and read from that file.
-	inside_vmodules    bool
 }
 
 @[params]
@@ -70,12 +68,6 @@ pub fn fmt(file ast.File, mut table ast.Table, pref_ &pref.Preferences, is_debug
 		is_debug: is_debug
 		out: strings.new_builder(1000)
 		out_imports: strings.new_builder(200)
-	}
-	for p in os.vmodules_paths() {
-		if file.path.starts_with(os.real_path(p)) {
-			f.inside_vmodules = true
-			break
-		}
 	}
 
 	f.source_text = options.source_text
@@ -98,7 +90,8 @@ pub fn fmt(file ast.File, mut table ast.Table, pref_ &pref.Preferences, is_debug
 		return res
 	}
 	mut import_start_pos := f.import_pos
-	if stmt := file.stmts[1] {
+	if f.import_pos == 0 && file.stmts.len > 1 {
+		stmt := file.stmts[1]
 		if stmt is ast.ExprStmt && stmt.expr is ast.Comment
 			&& (stmt.expr as ast.Comment).text.starts_with('#!') {
 			import_start_pos = stmt.pos.len
@@ -348,7 +341,7 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 
 	for imp in imports {
 		if imp.mod !in f.used_imports {
-			// TODO bring back once only unused imports are removed
+			// TODO: bring back once only unused imports are removed
 			// continue
 		}
 		if imp.mod in f.auto_imports && imp.mod !in f.used_imports {
@@ -379,24 +372,27 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 }
 
 pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
-	normalized_mod := if f.inside_vmodules {
-		imp.source_name
-	} else {
-		mod := if imp.mod.len == 0 { imp.alias } else { imp.mod }
-		mod.all_after('src.') // Ignore the 'src.' folder prefix since src/ folder is root of code
+	mut imp_res := imp.source_name
+	if imp.mod.starts_with('src.') || (imp.mod.contains('src.') && imp.mod != imp.source_name) {
+		imp_after_src := imp.mod.all_after('src.')
+		if imp.source_name.all_after('src.') == imp_after_src {
+			imp_res = imp_after_src
+		}
 	}
-	is_diff := imp.alias != normalized_mod && !normalized_mod.ends_with('.' + imp.alias)
-	mut imp_alias_suffix := if is_diff { ' as ${imp.alias}' } else { '' }
+	// Format / remove unused selective import symbols
+	// E.g.: `import foo { Foo }` || `import foo as f { Foo }`
+	has_alias := imp.alias != imp.source_name.all_after_last('.')
+	mut suffix := if has_alias { ' as ${imp.alias}' } else { '' }
 	mut syms := imp.syms.map(it.name).filter(f.import_syms_used[it])
 	syms.sort()
 	if syms.len > 0 {
-		imp_alias_suffix += if imp.syms[0].pos.line_nr == imp.pos.line_nr {
+		suffix += if imp.syms[0].pos.line_nr == imp.pos.line_nr {
 			' { ' + syms.join(', ') + ' }'
 		} else {
 			' {\n\t' + syms.join(',\n\t') + ',\n}'
 		}
 	}
-	return '${normalized_mod}${imp_alias_suffix}'
+	return '${imp_res}${suffix}'
 }
 
 //=== Node helpers ===//
@@ -1097,7 +1093,7 @@ fn (mut f Fmt) fn_body(node ast.FnDecl) {
 	defer {
 		f.fn_scope = prev_fn_scope
 	}
-	if node.language == .v {
+	if node.language == .v || (node.is_method && node.language == .js) {
 		if !node.no_body {
 			f.write(' {')
 			pre_comments := node.comments.filter(it.pos.pos < node.name_pos.pos)
@@ -1419,11 +1415,17 @@ pub fn (mut f Fmt) calculate_alignment(fields []ast.StructField, mut field_align
 
 pub fn (mut f Fmt) interface_field(field ast.StructField, field_align AlignInfo) {
 	ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
-	before_comments := field.comments.filter(it.pos.pos < field.pos.pos)
-	end_comments := field.comments.filter(it.pos.pos > field.pos.pos)
+	mut pre_cmts, mut end_cmts, mut next_line_cmts := []ast.Comment{}, []ast.Comment{}, []ast.Comment{}
+	for cmt in field.comments {
+		match true {
+			cmt.pos.pos < field.pos.pos { pre_cmts << cmt }
+			cmt.pos.line_nr > field.pos.last_line { next_line_cmts << cmt }
+			else { end_cmts << cmt }
+		}
+	}
 	before_len := f.line_len
-	if before_comments.len > 0 {
-		f.comments(before_comments, level: .indent)
+	if pre_cmts.len > 0 {
+		f.comments(pre_cmts, level: .indent)
 	}
 	comments_len := f.line_len - before_len
 
@@ -1442,11 +1444,13 @@ pub fn (mut f Fmt) interface_field(field ast.StructField, field_align AlignInfo)
 		f.write(strings.repeat(` `, field_align.max_len - field.name.len - comments_len))
 		f.write(ft)
 	}
-
-	if end_comments.len > 0 {
-		f.comments(end_comments, level: .indent)
+	if end_cmts.len > 0 {
+		f.comments(end_cmts, level: .indent)
 	} else {
 		f.writeln('')
+	}
+	if next_line_cmts.len > 0 {
+		f.comments(next_line_cmts, level: .indent)
 	}
 	f.mark_types_import_as_used(field.typ)
 }
@@ -1523,7 +1527,7 @@ pub fn (mut f Fmt) sql_stmt_line(node ast.SqlStmtLine) {
 	sym := f.table.sym(node.table_expr.typ)
 	mut table_name := sym.name
 	if !table_name.starts_with('C.') && !table_name.starts_with('JS.') {
-		table_name = f.no_cur_mod(f.short_module(sym.name)) // TODO f.type_to_str?
+		table_name = f.no_cur_mod(f.short_module(sym.name)) // TODO: f.type_to_str?
 	}
 
 	f.mark_types_import_as_used(node.table_expr.typ)
@@ -1963,7 +1967,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		if node.left is ast.Ident {
 			// `time.now()` without `time imported` is processed as a method call with `time` being
 			// a `node.left` expression. Import `time` automatically.
-			// TODO fetch all available modules
+			// TODO: fetch all available modules
 			if node.left.name in ['time', 'os', 'strings', 'math', 'json', 'base64']
 				&& !node.left.scope.known_var(node.left.name) {
 				f.file.imports << ast.Import{
@@ -2998,7 +3002,7 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 	sym := f.table.sym(node.table_expr.typ)
 	mut table_name := sym.name
 	if !table_name.starts_with('C.') && !table_name.starts_with('JS.') {
-		table_name = f.no_cur_mod(f.short_module(sym.name)) // TODO f.type_to_str?
+		table_name = f.no_cur_mod(f.short_module(sym.name)) // TODO: f.type_to_str?
 	}
 	if node.is_count {
 		f.write('count ')

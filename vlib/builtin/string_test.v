@@ -1111,7 +1111,7 @@ fn test_repeat() {
 	assert s2.repeat(5) == s2
 	assert s2.repeat(1) == s2
 	assert s2.repeat(0) == s2
-	// TODO Add test for negative values
+	// TODO: Add test for negative values
 }
 
 fn test_starts_with() {
@@ -1309,7 +1309,7 @@ fn test_string_literal_with_backslash_followed_by_newline() {
     Five \\\\\
     end'
 	assert b == 'One Two Three ${single_backslash}Four ${double_backslash}${newline}    Five ${double_backslash}end'
-	
+
 	// Note `\\` is followed *directly* by a newline, but `\\` is just an escape for `\`,
 	// and thus the newline has no special meaning, and should go into the string literal.
 	c := 'Hello\\
@@ -1481,11 +1481,11 @@ fn test_index_u8() {
 }
 
 fn test_index_last() {
-	assert 'abcabca'.index_last('ca')? == 5
-	assert 'abcabca'.index_last('ab')? == 3
-	assert 'abcabca'.index_last('b')? == 4
-	assert 'Zabcabca'.index_last('Z')? == 0
-	x := 'Zabcabca'.index_last('Y')
+	assert 'abcabca'.last_index('ca')? == 5
+	assert 'abcabca'.last_index('ab')? == 3
+	assert 'abcabca'.last_index('b')? == 4
+	assert 'Zabcabca'.last_index('Z')? == 0
+	x := 'Zabcabca'.last_index('Y')
 	assert x == none
 	// TODO: `assert 'Zabcabca'.index_last('Y') == none` is a cgen error, 2023/12/04
 }

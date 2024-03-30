@@ -5,11 +5,11 @@ module checker
 import v.ast
 import v.pref
 
-// TODO 600 line function
+// TODO: 600 line function
 fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	prev_inside_assign := c.inside_assign
 	c.inside_assign = true
-	c.expected_type = ast.none_type // TODO a hack to make `x := if ... work`
+	c.expected_type = ast.none_type // TODO: a hack to make `x := if ... work`
 	defer {
 		c.expected_type = ast.void_type
 		c.inside_assign = prev_inside_assign
@@ -489,8 +489,8 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			continue
 		}
 		if c.pref.translated || c.file.is_translated {
-			// TODO fix this in C2V instead, for example cast enums to int before using `|` on them.
-			// TODO replace all c.pref.translated checks with `$if !translated` for performance
+			// TODO: fix this in C2V instead, for example cast enums to int before using `|` on them.
+			// TODO: replace all c.pref.translated checks with `$if !translated` for performance
 			continue
 		}
 		if left_type_unwrapped == 0 {

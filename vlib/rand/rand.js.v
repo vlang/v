@@ -5,6 +5,10 @@ fn init() {
 	default_rng = new_default()
 }
 
+fn internal_fill_buffer_from_set(mut rng PRNG, charset string, mut buf []u8) {
+	panic('todo')
+}
+
 fn internal_string_from_set(mut rng PRNG, charset string, len int) string {
 	result := ''
 	#

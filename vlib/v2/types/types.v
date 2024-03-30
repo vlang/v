@@ -230,7 +230,7 @@ type None = u8
 
 fn (t Type) base_type() Type {
 	match t {
-		// TOOD: add base_type method
+		// TODO: add base_type method
 		Alias {
 			return t.base_type
 			// should we fully resolve all aliases, or just one level here?
@@ -254,7 +254,7 @@ fn (t Type) base_type() Type {
 fn (t Type) key_type() Type {
 	match t {
 		Map { return t.key_type }
-		// TOOD: struct here is 'struct string', need to fix this.
+		// TODO: struct here is 'struct string', need to fix this.
 		// we could use an alias? remove once fixed.
 		// Array, ArrayFixed, String, Struct { return int_ }
 		// else { panic('TODO: should never be called on ${t.type_name()}') }
