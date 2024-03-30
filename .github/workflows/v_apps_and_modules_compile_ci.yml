@@ -107,7 +107,7 @@ jobs:
           # v -cc gcc run /tmp/gitly/tests/first_run.v
           # # /tmp/gitly/gitly -ci_run
 
-      - name: Build V Language Server (v-analyzer) vlang/v-analyzer
+      - name: Build vlang/v-analyzer
         run: |
           echo "Clone v-analyzer"
           .github/workflows/retry.sh git clone --depth=1 --filter=blob:none --recursive --shallow-submodules https://github.com/vlang/v-analyzer /tmp/v-analyzer
@@ -118,6 +118,18 @@ jobs:
           v build.vsh debug
           echo "Build v-analyzer release"
           v build.vsh release
+
+      - name: Format vlang/v-analyzer
+        run: |
+          cd /tmp/v-analyzer
+          set +e
+          v fmt -c .
+          exit_code=$?
+          if [[ $exit_code -ne 0 && $exit_code -ne 5 ]]; then
+            # Don't fail on on internal errors
+            v fmt -diff .
+            exit 1
+          fi
 
       - name: Build vlang/go2v
         run: |
