@@ -499,6 +499,12 @@ fn (mut c Checker) check_valid_pascal_case(name string, identifier string, pos t
 }
 
 fn (mut c Checker) type_decl(node ast.TypeDecl) {
+	if node.typ == ast.invalid_type_idx && (node is ast.AliasTypeDecl || node is ast.SumTypeDecl) {
+		typ_desc := if node is ast.AliasTypeDecl { 'alias' } else { 'sum type' }
+		c.error('cannot register ${typ_desc} `${node.name}`, another type with this name exists',
+			node.pos)
+		return
+	}
 	match node {
 		ast.AliasTypeDecl { c.alias_type_decl(node) }
 		ast.FnTypeDecl { c.fn_type_decl(node) }
@@ -1778,6 +1784,11 @@ fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 
 fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 	c.check_valid_pascal_case(node.name, 'enum name', node.pos)
+	if node.typ == ast.invalid_type_idx {
+		c.error('cannot register enum `${node.name}`, another type with this name exists',
+			node.pos)
+		return
+	}
 	mut useen := []u64{}
 	mut iseen := []i64{}
 	mut seen_enum_field_names := map[string]int{}
