@@ -1002,7 +1002,7 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 		f.write('pub ')
 	}
 	mut name := node.name.after('.')
-	if node.typ != ast.int_type {
+	if node.typ != ast.int_type && node.typ != ast.invalid_type_idx {
 		senum_type := f.table.type_to_str_using_aliases(node.typ, f.mod2alias)
 		name += ' as ${senum_type}'
 	}
