@@ -10,8 +10,8 @@ import v.pref
 
 const bs = '\\'
 
-// when to break a line depending on the penalty
-const max_len = [0, 35, 60, 85, 93, 100]
+const break_points = [0, 35, 60, 85, 93, 100]! // when to break a line depending on the penalty
+const max_len = break_points[break_points.len - 1]
 
 @[minify]
 pub struct Fmt {
@@ -145,7 +145,7 @@ pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
 	if f.buffering {
 		return false
 	}
-	if penalty_idx > 0 && f.line_len <= fmt.max_len[penalty_idx] {
+	if penalty_idx > 0 && f.line_len <= fmt.break_points[penalty_idx] {
 		return false
 	}
 	if f.out.last() == ` ` {
@@ -1678,7 +1678,7 @@ pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
 	for variant in variants {
 		// 3 = length of ' = ' or ' | '
 		line_length += 3 + variant.name.len
-		if line_length > fmt.max_len.last() || (variant.id != node.variants.len - 1
+		if line_length > fmt.max_len || (variant.id != node.variants.len - 1
 			&& node.variants[variant.id].end_comments.len > 0) {
 			separator = '\n\t| '
 			is_multiline = true
@@ -1785,7 +1785,7 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		if i == 0 {
 			if f.array_init_depth > f.array_init_break.len {
 				f.array_init_break << pos.line_nr > last_line_nr
-					|| f.line_len + expr.pos().len > fmt.max_len[3]
+					|| f.line_len + expr.pos().len > fmt.break_points[3]
 			}
 		}
 		mut line_break := f.array_init_break[f.array_init_depth - 1]
@@ -1807,7 +1807,7 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		single_line_expr := expr_is_single_line(expr)
 		if single_line_expr {
 			mut estr := ''
-			if !is_new_line && !f.buffering && f.line_len + expr.pos().len > fmt.max_len.last() {
+			if !is_new_line && !f.buffering && f.line_len + expr.pos().len > fmt.max_len {
 				if inc_indent {
 					estr = f.node_str(expr)
 				}
@@ -2361,7 +2361,7 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 		}
 		// When a single line if is really long, write it again as multiline,
 		// except it is part of an InfixExpr.
-		if is_ternary && f.line_len > fmt.max_len.last() && !f.buffering {
+		if is_ternary && f.line_len > fmt.max_len && !f.buffering {
 			is_ternary = false
 			f.single_line_if = false
 			f.out.go_back_to(start_pos)
@@ -2486,7 +2486,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	}
 	if !buffering_save && f.buffering {
 		f.buffering = false
-		if !f.single_line_if && f.line_len > fmt.max_len.last() {
+		if !f.single_line_if && f.line_len > fmt.max_len {
 			is_cond := node.op in [.and, .logical_or]
 			f.wrap_infix(start_pos, start_len, is_cond)
 		}
@@ -2556,7 +2556,7 @@ fn (mut f Fmt) write_splitted_infix(conditions []string, penalties []int, ignore
 	}
 	for i, cnd in conditions {
 		c := cnd.trim_space()
-		if f.line_len + c.len < fmt.max_len[penalties[i]] {
+		if f.line_len + c.len < fmt.break_points[penalties[i]] {
 			if (i > 0 && i < conditions.len) || (ignore_paren && i == 0 && c.len > 5 && c[3] == `(`) {
 				f.write(' ')
 			}
@@ -2569,7 +2569,7 @@ fn (mut f Fmt) write_splitted_infix(conditions []string, penalties []int, ignore
 				f.write(c)
 				continue
 			}
-			if final_len > fmt.max_len.last() && is_paren_expr {
+			if final_len > fmt.max_len && is_paren_expr {
 				conds, pens := split_up_infix(c, true, is_cond)
 				f.write_splitted_infix(conds, pens, true, is_cond)
 				continue
@@ -2710,7 +2710,7 @@ fn (mut f Fmt) match_branch(branch ast.MatchBranch, single_line bool) {
 		f.is_mbranch_expr = true
 		for j, expr in branch.exprs {
 			estr := f.node_str(expr).trim_space()
-			if f.line_len + estr.len + 2 > fmt.max_len[5] {
+			if f.line_len + estr.len + 2 > fmt.max_len {
 				f.remove_new_line()
 				f.writeln('')
 			}
@@ -2809,7 +2809,7 @@ pub fn (mut f Fmt) or_expr(node ast.OrExpr) {
 				// so, since this'll all be on one line, trim any possible whitespace
 				str := f.node_str(node.stmts[0]).trim_space()
 				single_line := ' or { ${str} }'
-				if single_line.len + f.line_len <= fmt.max_len.last() {
+				if single_line.len + f.line_len <= fmt.max_len {
 					f.write(single_line)
 					return
 				}
