@@ -194,7 +194,9 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				}
 				g.write('${ptr_typ}_arr_eq(')
 				if left.typ.is_ptr() && !left.typ.has_flag(.shared_f) {
-					g.write('*'.repeat(left.typ.nr_muls()))
+					if node.left !is ast.ArrayInit {
+						g.write('*'.repeat(left.typ.nr_muls()))
+					}
 				}
 				g.expr(node.left)
 				if left.typ.has_flag(.shared_f) {
@@ -202,7 +204,9 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				}
 				g.write(', ')
 				if right.typ.is_ptr() && !right.typ.has_flag(.shared_f) {
-					g.write('*'.repeat(right.typ.nr_muls()))
+					if node.right !is ast.ArrayInit {
+						g.write('*'.repeat(right.typ.nr_muls()))
+					}
 				}
 				g.expr(node.right)
 				if right.typ.has_flag(.shared_f) {

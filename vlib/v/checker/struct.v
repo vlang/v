@@ -182,7 +182,9 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 						c.warn('byte is deprecated, use u8 instead', field.type_pos)
 					}
 				}
-				else {}
+				else {
+					c.check_any_type(field.typ, sym, field.type_pos)
+				}
 			}
 
 			if field.has_default_expr {

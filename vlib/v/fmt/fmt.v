@@ -3,7 +3,6 @@
 // that can be found in the LICENSE file.
 module fmt
 
-import os
 import strings
 import v.ast
 import v.util
@@ -11,8 +10,8 @@ import v.pref
 
 const bs = '\\'
 
-// when to break a line depending on the penalty
-const max_len = [0, 35, 60, 85, 93, 100]
+const break_points = [0, 35, 60, 85, 93, 100]! // when to break a line depending on the penalty
+const max_len = break_points[break_points.len - 1]
 
 @[minify]
 pub struct Fmt {
@@ -54,7 +53,6 @@ pub mut:
 	wsinfix_depth      int
 	format_state       FormatState
 	source_text        string // can be set by `echo "println('hi')" | v fmt`, i.e. when processing source not from a file, but from stdin. In this case, it will contain the entire input text. You can use f.file.path otherwise, and read from that file.
-	inside_vmodules    bool
 }
 
 @[params]
@@ -70,12 +68,6 @@ pub fn fmt(file ast.File, mut table ast.Table, pref_ &pref.Preferences, is_debug
 		is_debug: is_debug
 		out: strings.new_builder(1000)
 		out_imports: strings.new_builder(200)
-	}
-	for p in os.vmodules_paths() {
-		if file.path.starts_with(os.real_path(p)) {
-			f.inside_vmodules = true
-			break
-		}
 	}
 
 	f.source_text = options.source_text
@@ -153,7 +145,7 @@ pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
 	if f.buffering {
 		return false
 	}
-	if penalty_idx > 0 && f.line_len <= fmt.max_len[penalty_idx] {
+	if penalty_idx > 0 && f.line_len <= fmt.break_points[penalty_idx] {
 		return false
 	}
 	if f.out.last() == ` ` {
@@ -380,30 +372,20 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 }
 
 pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
-	normalized_mod := if f.inside_vmodules {
-		imp.source_name
-	} else if imp.mod.len == 0 {
-		imp.alias
-	} else {
-		mod_last := imp.mod.all_after_last('.')
-		if imp.source_name == mod_last {
-			mod_last
-		} else {
-			imp.mod
-		}
-	}
-	is_diff := imp.alias != normalized_mod && !normalized_mod.ends_with('.' + imp.alias)
-	mut imp_alias_suffix := if is_diff { ' as ${imp.alias}' } else { '' }
+	// Format / remove unused selective import symbols
+	// E.g.: `import foo { Foo }` || `import foo as f { Foo }`
+	has_alias := imp.alias != imp.source_name.all_after_last('.')
+	mut suffix := if has_alias { ' as ${imp.alias}' } else { '' }
 	mut syms := imp.syms.map(it.name).filter(f.import_syms_used[it])
 	syms.sort()
 	if syms.len > 0 {
-		imp_alias_suffix += if imp.syms[0].pos.line_nr == imp.pos.line_nr {
+		suffix += if imp.syms[0].pos.line_nr == imp.pos.line_nr {
 			' { ' + syms.join(', ') + ' }'
 		} else {
 			' {\n\t' + syms.join(',\n\t') + ',\n}'
 		}
 	}
-	return '${normalized_mod}${imp_alias_suffix}'
+	return '${imp.source_name}${suffix}'
 }
 
 //=== Node helpers ===//
@@ -1020,7 +1002,7 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 		f.write('pub ')
 	}
 	mut name := node.name.after('.')
-	if node.typ != ast.int_type {
+	if node.typ != ast.int_type && node.typ != ast.invalid_type_idx {
 		senum_type := f.table.type_to_str_using_aliases(node.typ, f.mod2alias)
 		name += ' as ${senum_type}'
 	}
@@ -1696,7 +1678,7 @@ pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
 	for variant in variants {
 		// 3 = length of ' = ' or ' | '
 		line_length += 3 + variant.name.len
-		if line_length > fmt.max_len.last() || (variant.id != node.variants.len - 1
+		if line_length > fmt.max_len || (variant.id != node.variants.len - 1
 			&& node.variants[variant.id].end_comments.len > 0) {
 			separator = '\n\t| '
 			is_multiline = true
@@ -1803,7 +1785,7 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		if i == 0 {
 			if f.array_init_depth > f.array_init_break.len {
 				f.array_init_break << pos.line_nr > last_line_nr
-					|| f.line_len + expr.pos().len > fmt.max_len[3]
+					|| f.line_len + expr.pos().len > fmt.break_points[3]
 			}
 		}
 		mut line_break := f.array_init_break[f.array_init_depth - 1]
@@ -1825,7 +1807,7 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		single_line_expr := expr_is_single_line(expr)
 		if single_line_expr {
 			mut estr := ''
-			if !is_new_line && !f.buffering && f.line_len + expr.pos().len > fmt.max_len.last() {
+			if !is_new_line && !f.buffering && f.line_len + expr.pos().len > fmt.max_len {
 				if inc_indent {
 					estr = f.node_str(expr)
 				}
@@ -2266,18 +2248,14 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 			// This makes it clear that a module const is being used
 			// (since V's consts are no longer ALL_CAP).
 			// ^^^ except for `main`, where consts are allowed to not have a `main.` prefix.
-			mod := f.cur_mod
-			full_name := mod + '.' + node.name
-			if obj := f.file.global_scope.find(full_name) {
+			if obj := f.file.global_scope.find('${f.cur_mod}.${node.name}') {
 				if obj is ast.ConstField {
 					// "v.fmt.foo" => "fmt.foo"
-					vals := full_name.split('.')
-					mod_prefix := vals[vals.len - 2]
-					const_name := vals.last()
-					if mod_prefix == 'main' {
+					const_name := node.name.all_after_last('.')
+					if f.cur_mod == 'main' {
 						f.write(const_name)
 					} else {
-						short := mod_prefix + '.' + const_name
+						short := '${f.cur_mod.all_after_last('.')}.${const_name}'
 						f.write(short)
 						f.mark_import_as_used(short)
 					}
@@ -2379,7 +2357,7 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 		}
 		// When a single line if is really long, write it again as multiline,
 		// except it is part of an InfixExpr.
-		if is_ternary && f.line_len > fmt.max_len.last() && !f.buffering {
+		if is_ternary && f.line_len > fmt.max_len && !f.buffering {
 			is_ternary = false
 			f.single_line_if = false
 			f.out.go_back_to(start_pos)
@@ -2504,7 +2482,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	}
 	if !buffering_save && f.buffering {
 		f.buffering = false
-		if !f.single_line_if && f.line_len > fmt.max_len.last() {
+		if !f.single_line_if && f.line_len > fmt.max_len {
 			is_cond := node.op in [.and, .logical_or]
 			f.wrap_infix(start_pos, start_len, is_cond)
 		}
@@ -2574,7 +2552,7 @@ fn (mut f Fmt) write_splitted_infix(conditions []string, penalties []int, ignore
 	}
 	for i, cnd in conditions {
 		c := cnd.trim_space()
-		if f.line_len + c.len < fmt.max_len[penalties[i]] {
+		if f.line_len + c.len < fmt.break_points[penalties[i]] {
 			if (i > 0 && i < conditions.len) || (ignore_paren && i == 0 && c.len > 5 && c[3] == `(`) {
 				f.write(' ')
 			}
@@ -2587,7 +2565,7 @@ fn (mut f Fmt) write_splitted_infix(conditions []string, penalties []int, ignore
 				f.write(c)
 				continue
 			}
-			if final_len > fmt.max_len.last() && is_paren_expr {
+			if final_len > fmt.max_len && is_paren_expr {
 				conds, pens := split_up_infix(c, true, is_cond)
 				f.write_splitted_infix(conds, pens, true, is_cond)
 				continue
@@ -2728,7 +2706,7 @@ fn (mut f Fmt) match_branch(branch ast.MatchBranch, single_line bool) {
 		f.is_mbranch_expr = true
 		for j, expr in branch.exprs {
 			estr := f.node_str(expr).trim_space()
-			if f.line_len + estr.len + 2 > fmt.max_len[5] {
+			if f.line_len + estr.len + 2 > fmt.max_len {
 				f.remove_new_line()
 				f.writeln('')
 			}
@@ -2827,7 +2805,7 @@ pub fn (mut f Fmt) or_expr(node ast.OrExpr) {
 				// so, since this'll all be on one line, trim any possible whitespace
 				str := f.node_str(node.stmts[0]).trim_space()
 				single_line := ' or { ${str} }'
-				if single_line.len + f.line_len <= fmt.max_len.last() {
+				if single_line.len + f.line_len <= fmt.max_len {
 					f.write(single_line)
 					return
 				}
