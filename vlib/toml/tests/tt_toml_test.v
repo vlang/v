@@ -1,10 +1,8 @@
+// TODO: delete either tt_toml_test.v or burntsushi_toml_test.v
 import os
 import toml
 import toml.ast
 import x.json2
-
-const hide_oks = os.getenv('VTEST_HIDE_OK') == '1'
-const no_jq = os.getenv('VNO_JQ') == '1'
 
 // Instructions for developers:
 // The actual tests and data can be obtained by doing:
@@ -12,6 +10,10 @@ const no_jq = os.getenv('VNO_JQ') == '1'
 // `git -C vlib/toml/tests/testdata/tt reset --hard f30c716
 // See also the CI toml tests
 // Kept for easier handling of future updates to the tests
+
+const hide_oks = os.getenv('VTEST_HIDE_OK') == '1'
+const no_jq = os.getenv('VNO_JQ') == '1'
+
 const valid_exceptions = [
 	'do_not_remove',
 	'valid/example-v0.3.0.toml',
