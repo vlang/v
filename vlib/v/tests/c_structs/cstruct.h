@@ -13,6 +13,12 @@ typedef struct Test1 {
 
 /////
 
+typedef struct MyCStruct {
+	char* data;
+} MyCStruct;
+
+/////
+
 typedef struct Foo {
     int a;
 } Foo;
