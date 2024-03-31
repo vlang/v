@@ -119,6 +119,9 @@ mut:
 	labeled_loops             map[string]&ast.Stmt
 	inner_loop                &ast.Stmt = unsafe { nil }
 	shareds                   map[int]string // types with hidden mutex for which decl has been emitted
+	coverage_files            []&ast.File
+	coverage_total_lines      int
+	coverage_idx              int
 	inside_ternary            int  // ?: comma separated statements on a single line
 	inside_map_postfix        bool // inside map++/-- postfix expr
 	inside_map_infix          bool // inside map<</+=/-= infix expr
@@ -503,6 +506,10 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 	if g.pref.build_mode != .build_module {
 		// no init in builtin.o
 		g.write_init_function()
+	}
+
+	if g.pref.is_coverage {
+		g.cheaders.writeln('char _v_cov[${g.coverage_total_lines}] = {0};')
 	}
 
 	// insert for options forward
@@ -2051,7 +2058,7 @@ fn (mut g Gen) expr_with_tmp_var(expr ast.Expr, expr_typ ast.Type, ret_typ ast.T
 }
 
 @[inline]
-fn (mut g Gen) write_v_source_line_info(pos token.Pos) {
+fn (mut g Gen) write_v_source_line_info_pos(pos token.Pos) {
 	if g.inside_ternary == 0 && g.pref.is_vlines && g.is_vlines_enabled {
 		nline := pos.line_nr + 1
 		lineinfo := '\n#line ${nline} "${g.vlines_path}"'
@@ -2059,6 +2066,46 @@ fn (mut g Gen) write_v_source_line_info(pos token.Pos) {
 			eprintln('> lineinfo: ${lineinfo.replace('\n', '')}')
 		}
 		g.writeln(lineinfo)
+	}
+}
+
+@[inline]
+fn (mut g Gen) write_v_source_line_info(node ast.Node) {
+	g.write_v_source_line_info_pos(node.pos())
+	if g.inside_ternary == 0 && g.pref.is_coverage
+		&& node !in [ast.MatchBranch, ast.IfBranch, ast.InfixExpr] {
+		if g.file !in g.coverage_files {
+			g.coverage_idx = if g.coverage_files.len == 0 {
+				0
+			} else {
+				g.coverage_total_lines
+			}
+			g.coverage_total_lines += g.file.nr_lines
+			g.coverage_files << g.file
+		}
+		if g.fn_decl != unsafe { nil } {
+			g.writeln('_v_cov[${g.coverage_idx}+${node.pos().line_nr}] = 1;')
+		}
+	}
+}
+
+@[inline]
+fn (mut g Gen) write_v_source_line_info_stmt(stmt ast.Stmt) {
+	g.write_v_source_line_info_pos(stmt.pos)
+	if g.inside_ternary == 0 && g.pref.is_coverage && !g.inside_for_c_stmt
+		&& stmt !in [ast.ExprStmt, ast.FnDecl, ast.ForCStmt, ast.ForInStmt, ast.ForStmt] {
+		if g.file !in g.coverage_files {
+			g.coverage_idx = if g.coverage_files.len == 0 {
+				0
+			} else {
+				g.coverage_total_lines
+			}
+			g.coverage_total_lines += g.file.nr_lines
+			g.coverage_files << g.file
+		}
+		if g.fn_decl != unsafe { nil } {
+			g.writeln('_v_cov[${g.coverage_idx}+${stmt.pos.line_nr}] = \'1\';')
+		}
 	}
 }
 
@@ -2077,19 +2124,19 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	}
 	match node {
 		ast.AsmStmt {
-			g.write_v_source_line_info(node.pos)
+			g.write_v_source_line_info_stmt(node)
 			g.asm_stmt(node)
 		}
 		ast.AssertStmt {
-			g.write_v_source_line_info(node.pos)
+			g.write_v_source_line_info_stmt(node)
 			g.assert_stmt(node)
 		}
 		ast.AssignStmt {
-			g.write_v_source_line_info(node.pos)
+			g.write_v_source_line_info_stmt(node)
 			g.assign_stmt(node)
 		}
 		ast.Block {
-			g.write_v_source_line_info(node.pos)
+			g.write_v_source_line_info_stmt(node)
 			if node.is_unsafe {
 				g.writeln('{ // Unsafe block')
 			} else {
@@ -2099,11 +2146,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.writeln('}')
 		}
 		ast.BranchStmt {
-			g.write_v_source_line_info(node.pos)
+			g.write_v_source_line_info_stmt(node)
 			g.branch_stmt(node)
 		}
 		ast.ConstDecl {
-			g.write_v_source_line_info(node.pos)
+			g.write_v_source_line_info_stmt(node)
 			g.const_decl(node)
 		}
 		ast.ComptimeFor {
@@ -2123,7 +2170,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.enum_decl(node)
 		}
 		ast.ExprStmt {
-			g.write_v_source_line_info(node.pos)
+			g.write_v_source_line_info_stmt(node)
 			// af := g.autofree && node.expr is ast.CallExpr && !g.is_builtin_mod
 			// if af {
 			// g.autofree_call_pregen(node.expr as ast.CallExpr)
@@ -2163,7 +2210,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					g.labeled_loops[node.label] = &node
 				}
 			}
-			g.write_v_source_line_info(node.pos)
+			g.write_v_source_line_info_stmt(node)
 			g.for_c_stmt(node)
 			g.branch_parent_pos = prev_branch_parent_pos
 			g.labeled_loops.delete(node.label)
@@ -2179,7 +2226,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					g.labeled_loops[node.label] = &node
 				}
 			}
-			g.write_v_source_line_info(node.pos)
+			g.write_v_source_line_info_stmt(node)
 			g.for_in_stmt(node)
 			g.branch_parent_pos = prev_branch_parent_pos
 			g.labeled_loops.delete(node.label)
@@ -2195,7 +2242,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					g.labeled_loops[node.label] = &node
 				}
 			}
-			g.write_v_source_line_info(node.pos)
+			g.write_v_source_line_info_stmt(node)
 			g.for_stmt(node)
 			g.branch_parent_pos = prev_branch_parent_pos
 			g.labeled_loops.delete(node.label)
@@ -2208,7 +2255,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.writeln('${c_name(node.name)}: {}')
 		}
 		ast.GotoStmt {
-			g.write_v_source_line_info(node.pos)
+			g.write_v_source_line_info_stmt(node)
 			g.writeln('goto ${c_name(node.name)};')
 		}
 		ast.HashStmt {
@@ -5246,7 +5293,7 @@ fn (mut g Gen) branch_stmt(node ast.BranchStmt) {
 
 fn (mut g Gen) return_stmt(node ast.Return) {
 	g.set_current_pos_as_last_stmt_pos()
-	g.write_v_source_line_info(node.pos)
+	g.write_v_source_line_info_stmt(node)
 
 	g.inside_return = true
 	defer {
@@ -6382,6 +6429,20 @@ fn (mut g Gen) write_init_function() {
 	}
 	if g.pref.use_coroutines {
 		g.writeln('\tdelete_photon_work_pool();')
+	}
+	if g.pref.is_coverage {
+		g.writeln('\tprintf("V coverage\\n");')
+		g.writeln('\tprintf("${'-':50r}\\n");')
+		mut last_offset := 0
+		for file in g.coverage_files {
+			g.writeln('{')
+			g.writeln('\tint counter = 0;')
+			g.writeln('\tfor (int i = 0, offset = ${last_offset}; i < ${file.nr_lines}; ++i)')
+			g.writeln('\t\tif (_v_cov[offset+i]) counter++;')
+			g.writeln('\tprintf("> ${file.path} | ${file.nr_lines} | %d\\n", counter);')
+			g.writeln('}')
+			last_offset += file.nr_lines
+		}
 	}
 	g.writeln('}')
 	if g.pref.printfn_list.len > 0 && '_vcleanup' in g.pref.printfn_list {

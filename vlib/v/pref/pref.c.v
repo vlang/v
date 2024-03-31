@@ -134,6 +134,7 @@ pub mut:
 	is_cstrict         bool     // turn on more C warnings; slightly slower
 	is_callstack       bool     // turn on callstack registers on each call when v.debug is imported
 	is_trace           bool     // turn on possibility to trace fn call where v.debug is imported
+	is_coverage        bool     // turn on code coverage stats
 	eval_argument      string   // `println(2+2)` on `v -e "println(2+2)"`. Note that this source code, will be evaluated in vsh mode, so 'v -e 'println(ls(".")!)' is valid.
 	test_runner        string   // can be 'simple' (fastest, but much less detailed), 'tap', 'normal'
 	profile_file       string   // the profile results will be stored inside profile_file
@@ -1083,6 +1084,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	}
 	if 'trace' in res.compile_defines_all {
 		res.is_trace = true
+	}
+	if 'coverage' in res.compile_defines_all {
+		res.is_coverage = true
 	}
 	// keep only the unique res.build_options:
 	mut m := map[string]string{}
