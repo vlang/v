@@ -4409,7 +4409,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 				name_pos)
 			return ast.SumTypeDecl{}
 		}
-		return ast.SumTypeDecl{
+		node := ast.SumTypeDecl{
 			name: name
 			typ: typ
 			is_pub: is_pub
@@ -4419,6 +4419,8 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			pos: decl_pos
 			name_pos: name_pos
 		}
+		p.table.register_sumtype(node)
+		return node
 	}
 	// type MyType = int
 	if generic_types.len > 0 {

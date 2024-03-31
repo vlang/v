@@ -360,7 +360,7 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 		'attributes' {
 			p.scope.register(ast.Var{
 				name: val_var
-				typ: p.table.find_type_idx('StructAttribute')
+				typ: p.table.find_type_idx('VAttribute')
 				pos: var_pos
 			})
 			kind = .attributes

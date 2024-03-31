@@ -24,6 +24,7 @@ pub mut:
 	redefined_fns      []string
 	fn_generic_types   map[string][][]Type // for generic functions
 	interfaces         map[int]InterfaceDecl
+	sumtypes           map[int]SumTypeDecl
 	cmod_prefix        string // needed for ast.type_to_str(Type) while vfmt; contains `os.`
 	is_fmt             bool
 	used_fns           map[string]bool // filled in by the checker, when pref.skip_unused = true;
@@ -220,6 +221,10 @@ pub fn (mut t Table) register_fn(new_fn Fn) {
 
 pub fn (mut t Table) register_interface(idecl InterfaceDecl) {
 	t.interfaces[idecl.typ] = idecl
+}
+
+pub fn (mut t Table) register_sumtype(sumtyp SumTypeDecl) {
+	t.sumtypes[sumtyp.typ] = sumtyp
 }
 
 pub fn (mut t TypeSymbol) register_method(new_fn Fn) int {
@@ -2518,4 +2523,28 @@ pub fn (t &Table) get_trace_fn_name(cur_fn FnDecl, node CallExpr) (string, strin
 		node.name
 	}
 	return hash_fn, fn_name
+}
+
+// get_attrs retrieve the attribrutes from the type symbol
+pub fn (t &Table) get_attrs(sym TypeSymbol) []Attr {
+	match sym.info {
+		Enum {
+			return t.enum_decls[sym.name].attrs
+		}
+		Struct {
+			return sym.info.attrs
+		}
+		FnType {
+			return sym.info.func.attrs
+		}
+		Interface {
+			return unsafe { t.interfaces[sym.idx].attrs }
+		}
+		SumType {
+			return unsafe { t.sumtypes[sym.idx].attrs }
+		}
+		else {
+			return []
+		}
+	}
 }

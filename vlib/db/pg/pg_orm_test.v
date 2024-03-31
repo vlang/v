@@ -55,13 +55,13 @@ fn test_pg_orm() {
 			default_val: ''
 			is_arr: false
 			attrs: [
-				StructAttribute{
+				VAttribute{
 					name: 'primary'
 					has_arg: false
 					arg: ''
 					kind: .plain
 				},
-				StructAttribute{
+				VAttribute{
 					name: 'sql'
 					has_arg: true
 					arg: 'serial'

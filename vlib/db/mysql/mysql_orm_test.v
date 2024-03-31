@@ -51,10 +51,10 @@ fn test_mysql_orm() {
 			name: 'id'
 			typ: typeof[int]().idx
 			attrs: [
-				StructAttribute{
+				VAttribute{
 					name: 'primary'
 				},
-				StructAttribute{
+				VAttribute{
 					name: 'sql'
 					has_arg: true
 					kind: .plain

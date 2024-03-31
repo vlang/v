@@ -152,7 +152,7 @@ pub:
 	typ         int
 	nullable    bool
 	default_val string
-	attrs       []StructAttribute
+	attrs       []VAttribute
 	is_arr      bool
 }
 
