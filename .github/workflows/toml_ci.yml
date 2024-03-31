@@ -13,15 +13,6 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 30
-    env:
-      TOML_BS_TESTS_PATH:             vlib/toml/tests/testdata/burntsushi/toml-test
-      TOML_BS_TESTS_PINNED_COMMIT:    4634fdf
-      TOML_IARNA_TESTS_PATH:          vlib/toml/tests/testdata/iarna/toml-test
-      TOML_IARNA_TESTS_PINNED_COMMIT: 1880b1a
-      TOML_TT_TESTS_PATH:             vlib/toml/tests/testdata/tt
-      TOML_TT_TESTS_PINNED_COMMIT:    f30c716
-      VTEST_TOML_DO_LARGE_FILES: 1
-      VTEST_TOML_DO_YAML_CONVERSION: 1
     steps:
 
       - uses: actions/checkout@v4
@@ -30,21 +21,13 @@ jobs:
           .github/workflows/retry.sh sudo apt-get update
           .github/workflows/retry.sh sudo apt-get install --quiet -y jq libgc-dev
       - name: Build V
-        run: make -j2 && ./v -cc gcc -o v cmd/v
+        run: make
 
       - name: Show JQ Version
         run: jq --version
 
       - name: Run local TOML tests
         run: ./v test vlib/toml
-
-        # Tests found at https://github.com/BurntSushi/toml-test
-      - name: Clone BurntSushi/toml-test
-        run: |
-          .github/workflows/retry.sh git clone -n https://github.com/BurntSushi/toml-test.git $TOML_BS_TESTS_PATH
-          .github/workflows/retry.sh git -C $TOML_BS_TESTS_PATH checkout $TOML_BS_TESTS_PINNED_COMMIT
-      - name: Run BurntSushi TOML tests
-        run: ./v vlib/toml/tests/burntsushi_toml_test.v
 
         # Tests found at gist
       - name: Get large_toml_file_test.toml
@@ -55,15 +38,17 @@ jobs:
         # Tests found at https://github.com/iarna/toml-spec-tests
       - name: Clone iarna/toml-spec-tests
         run: |
-          .github/workflows/retry.sh git clone -n https://github.com/iarna/toml-spec-tests.git $TOML_IARNA_TESTS_PATH
-          git -C $TOML_IARNA_TESTS_PATH checkout $TOML_IARNA_TESTS_PINNED_COMMIT
+          .github/workflows/retry.sh git clone -n https://github.com/iarna/toml-spec-tests.git vlib/toml/tests/testdata/iarna
+          git -C vlib/toml/tests/testdata/iarna checkout 1880b1a
       - name: Run iarna TOML tests
-        run: ./v -gc boehm vlib/toml/tests/iarna_toml_spec_test.v
+        run: VTEST_TOML_DO_YAML_CONVERSION=1 VTEST_TOML_DO_LARGE_FILES=1 ./v vlib/toml/tests/iarna_toml_spec_test.v
 
         # Tests found at https://github.com/toml-lang/toml-test
       - name: Clone tt
         run: |
-          .github/workflows/retry.sh git clone -n https://github.com/toml-lang/toml-test.git $TOML_TT_TESTS_PATH
-          git -C $TOML_TT_TESTS_PATH checkout $TOML_TT_TESTS_PINNED_COMMIT
+          .github/workflows/retry.sh git clone -n https://github.com/toml-lang/toml-test.git vlib/toml/tests/testdata/tt
+          git -C vlib/toml/tests/testdata/tt checkout f30c716
       - name: Run tt TOML tests
-        run: ./v vlib/toml/tests/tt_toml_test.v
+        run: |
+             ./v vlib/toml/tests/tt_toml_test.v
+             ./v vlib/toml/tests/burntsushi_toml_test.v
