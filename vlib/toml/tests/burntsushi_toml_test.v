@@ -1,11 +1,10 @@
-// TODO: delete either tt_toml_test.v or burntsushi_toml_test.v
 // vtest flaky: true
 // vtest retry: 3
 
 // Instructions for developers:
 // The actual tests and data can be obtained by doing:
-// `git clone -n https://github.com/toml-lang/toml-test.git vlib/toml/tests/testdata/tt`
-// `git -C vlib/toml/tests/testdata/tt reset --hard f30c716
+// `git clone -n https://github.com/toml-lang/toml-test.git vlib/toml/tests/testdata/burntsushi`
+// `git -C vlib/toml/tests/testdata/burntsushi reset --hard f30c716
 // See also the CI toml tests
 import os
 import toml
@@ -110,7 +109,7 @@ fn run(args []string) !string {
 // test_burnt_sushi_tomltest run though 'testdata/burntsushi/toml-test/*' if found.
 fn test_burnt_sushi_tomltest() {
 	eprintln('> running ${@LOCATION}')
-	test_root := '${@VROOT}/vlib/toml/tests/testdata/tt/tests'
+	test_root := '${@VROOT}/vlib/toml/tests/testdata/burntsushi/tests'
 	if !os.is_dir(test_root) {
 		println('No test data directory found in "${test_root}"')
 		assert true
