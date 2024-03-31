@@ -37,6 +37,64 @@ const jq_errors = [
 	'valid/spec/float-2.toml',
 	'valid/float/inf-and-nan.toml',
 ]
+const jq_not_equals = [
+	'valid/array/array-subtables.toml',
+	'valid/array/array.toml',
+	'valid/array/bool.toml',
+	'valid/array/empty.toml',
+	'valid/array/hetergeneous.toml',
+	'valid/array/mixed-int-array.toml',
+	'valid/array/mixed-int-float.toml',
+	'valid/array/mixed-int-string.toml',
+	'valid/array/mixed-string-table.toml',
+	'valid/array/nested-double.toml',
+	'valid/array/nested-inline-table.toml',
+	'valid/array/nested.toml',
+	'valid/array/nospaces.toml',
+	'valid/array/string-quote-comma-2.toml',
+	'valid/array/string-quote-comma.toml',
+	'valid/array/string-with-comma-2.toml',
+	'valid/array/string-with-comma.toml',
+	'valid/array/strings.toml',
+	'valid/array/table-array-string-backslash.toml',
+	'valid/array/trailing-comma.toml',
+	'valid/comment/tricky.toml',
+	'valid/datetime/edge.toml',
+	'valid/datetime/leap-year.toml',
+	'valid/datetime/local-date.toml',
+	'valid/datetime/local-time.toml',
+	'valid/datetime/milliseconds.toml',
+	'valid/example.toml',
+	'valid/float/underscore.toml',
+	'valid/float/zero.toml',
+	'valid/inline-table/array-values.toml',
+	'valid/inline-table/array.toml',
+	'valid/inline-table/empty.toml',
+	'valid/inline-table/inline-table.toml',
+	'valid/inline-table/key-dotted.toml',
+	'valid/inline-table/nest.toml',
+	'valid/inline-table/spaces.toml',
+	'valid/key/dotted.toml',
+	'valid/spec-example-1-compact.toml',
+	'valid/spec-example-1.toml',
+	'valid/spec/array-0.toml',
+	'valid/spec/array-1.toml',
+	'valid/spec/array-of-tables-0.toml',
+	'valid/spec/array-of-tables-1.toml',
+	'valid/spec/array-of-tables-2.toml',
+	'valid/spec/float-0.toml',
+	'valid/spec/local-date-0.toml',
+	'valid/spec/local-date-time-0.toml',
+	'valid/spec/local-time-0.toml',
+	'valid/spec/offset-date-time-0.toml',
+	'valid/spec/table-7.toml',
+	'valid/table/array-implicit.toml',
+	'valid/table/array-many.toml',
+	'valid/table/array-nest.toml',
+	'valid/table/array-one.toml',
+	'valid/table/array-table-array.toml',
+]
+
 const invalid_exceptions = [
 	'do_not_remove',
 	'invalid/control/bare-cr.toml',
@@ -213,6 +271,12 @@ fn test_tt_toml_rs() {
 				println('SKIP [${i + 1:3}/${valid_test_files.len}] running jq with ${valid_test_file}, since ${relative} is in jq_errors at idx: [${idx:3}/${jq_errors.len}]')
 				continue
 			}
+			if relative in jq_not_equals {
+				e++
+				idx := jq_not_equals.index(relative) + 1
+				println('SKIP [${i + 1:3}/${valid_test_files.len}] running jq with ${valid_test_file}, since ${relative} is in jq_not_equals at idx: [${idx:3}/${jq_not_equals.len}]')
+				continue
+			}
 			v_normalized_json := run([jq, '-S', '-f "${jq_normalize_path}"', v_toml_json_path]) or {
 				contents := os.read_file(v_toml_json_path)!
 				panic(err.msg() + '\n${contents}')
@@ -220,11 +284,6 @@ fn test_tt_toml_rs() {
 			tt_normalized_json := run([jq, '-S', '-f "${jq_normalize_path}"', tt_toml_json_path]) or {
 				contents := os.read_file(v_toml_json_path)!
 				panic(err.msg() + '\n${contents}')
-			}
-
-			if tt_normalized_json != v_normalized_json {
-				e++
-				continue
 			}
 
 			assert tt_normalized_json == v_normalized_json
