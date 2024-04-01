@@ -2,7 +2,6 @@ module builder
 
 import os
 import time
-import v.pref
 import v.util
 import v.cflag
 
