@@ -3,9 +3,8 @@
 module gg
 
 import gx
-import sokol
-import sokol.sgl
 import math
+import sokol.sgl
 
 // draw_pixel draws one pixel on the screen.
 //
