@@ -4296,10 +4296,12 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		}
 		is_pub: is_pub
 	})
-	if idx in [ast.invalid_type_idx, ast.string_type_idx, ast.rune_type_idx, ast.array_type_idx,
-		ast.map_type_idx] {
+	if idx in [ast.string_type_idx, ast.rune_type_idx, ast.array_type_idx, ast.map_type_idx] {
 		p.error_with_pos('cannot register enum `${name}`, another type with this name exists',
 			end_pos)
+	}
+	if idx == ast.invalid_type_idx {
+		enum_type = idx
 	}
 
 	enum_decl := ast.EnumDecl{
@@ -4402,13 +4404,12 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			}
 			is_pub: is_pub
 		})
-		if typ in [ast.invalid_type_idx, ast.string_type_idx, ast.rune_type_idx, ast.array_type_idx,
-			ast.map_type_idx] {
+		if typ in [ast.string_type_idx, ast.rune_type_idx, ast.array_type_idx, ast.map_type_idx] {
 			p.error_with_pos('cannot register sum type `${name}`, another type with this name exists',
 				name_pos)
 			return ast.SumTypeDecl{}
 		}
-		return ast.SumTypeDecl{
+		node := ast.SumTypeDecl{
 			name: name
 			typ: typ
 			is_pub: is_pub
@@ -4418,6 +4419,8 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			pos: decl_pos
 			name_pos: name_pos
 		}
+		p.table.register_sumtype(node)
+		return node
 	}
 	// type MyType = int
 	if generic_types.len > 0 {
@@ -4443,8 +4446,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		is_pub: is_pub
 	})
 	type_end_pos := p.prev_tok.pos()
-	if idx in [ast.invalid_type_idx, ast.string_type_idx, ast.rune_type_idx, ast.array_type_idx,
-		ast.map_type_idx] {
+	if idx in [ast.string_type_idx, ast.rune_type_idx, ast.array_type_idx, ast.map_type_idx] {
 		p.error_with_pos('cannot register alias `${name}`, another type with this name exists',
 			name_pos)
 		return ast.AliasTypeDecl{}

@@ -60,6 +60,10 @@ fn test_stat() {
 	} $else {
 		// On FreeBSD, the rdev values are not necessarily the same for non-devices
 		// such as regular files and directories.
-		assert fstat.rdev != dstat.rdev, 'File and directory should not have same device ID'
+		//    assert fstat.rdev != dstat.rdev, 'File and directory should not have same device ID'
+		// However, see also https://discord.com/channels/592103645835821068/592114487759470596/1222322061217632347 :
+		// > They may be different but don't have to be.
+		// > On zfs it seems to be 0.
+		// Once upon a time (Unix v7) it was (major<<8)|minor to indicate the underlying raw device but those days are long gone.
 	}
 }

@@ -440,8 +440,13 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, typ_str
 		typ_name := g.typ(typ)
 		mut func_name := g.get_str_fn(typ)
 		sym := g.table.sym(typ)
+		is_c_struct := sym.is_c_struct()
 		sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
-		deref := if sym_has_str_method && str_method_expects_ptr { ' ' } else { '*' }
+		deref := if is_c_struct || (sym_has_str_method && str_method_expects_ptr) {
+			' '
+		} else {
+			'*'
+		}
 		if should_use_indent_func(sym.kind) && !sym_has_str_method {
 			func_name = 'indent_${func_name}'
 		}
@@ -460,7 +465,7 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, typ_str
 			fn_builder.write_string('\t\tcase ${int(typ)}: return ${res};\n')
 		} else {
 			mut val := '${func_name}(${deref}(${typ_name}*)x._${g.get_sumtype_variant_name(typ,
-				sym.cname)}'
+				sym)}'
 			if should_use_indent_func(sym.kind) && !sym_has_str_method {
 				val += ', indent_count'
 			}

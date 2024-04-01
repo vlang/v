@@ -170,14 +170,14 @@ fn (mut g Gen) write_orm_create_table(node ast.SqlStmtLine, table_name string, c
 			g.writeln('.is_arr = ${sym.kind == .array}, ')
 			g.writeln('.nullable = ${field.typ.has_flag(.option)},')
 			g.writeln('.default_val = (string){ .str = (byteptr) "${field.default_val}", .is_lit = 1 },')
-			g.writeln('.attrs = new_array_from_c_array(${field.attrs.len}, ${field.attrs.len}, sizeof(StructAttribute),')
+			g.writeln('.attrs = new_array_from_c_array(${field.attrs.len}, ${field.attrs.len}, sizeof(VAttribute),')
 			g.indent++
 
 			if field.attrs.len > 0 {
-				g.write('_MOV((StructAttribute[${field.attrs.len}]){')
+				g.write('_MOV((VAttribute[${field.attrs.len}]){')
 				g.indent++
 				for attr in field.attrs {
-					g.write('(StructAttribute){')
+					g.write('(VAttribute){')
 					g.indent++
 					g.write(' .name = _SLIT("${attr.name}"),')
 					g.write(' .has_arg = ${attr.has_arg},')

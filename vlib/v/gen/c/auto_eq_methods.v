@@ -72,7 +72,7 @@ fn (mut g Gen) gen_sumtype_equality_fn(left_type ast.Type) string {
 	for typ in info.variants {
 		variant := g.unwrap(typ)
 		fn_builder.writeln('\tif (${left_typ} == ${int(variant.typ)}) {')
-		name := '_${g.get_sumtype_variant_name(variant.typ, variant.sym.cname)}'
+		name := '_${g.get_sumtype_variant_name(variant.typ, variant.sym)}'
 
 		left_arg := g.read_field(left_type, name, 'a')
 		right_arg := g.read_field(left_type, name, 'b')

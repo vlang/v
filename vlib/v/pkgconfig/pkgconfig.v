@@ -15,6 +15,7 @@ const default_paths = [
 	'/usr/share/pkgconfig',
 	'/opt/homebrew/lib/pkgconfig', // Brew on macOS
 	'/usr/local/libdata/pkgconfig', // FreeBSD
+	'/usr/libdata/pkgconfig', // FreeBSD
 	'/usr/lib/i386-linux-gnu/pkgconfig', // Debian 32bit
 ]
 const version = '0.3.3'

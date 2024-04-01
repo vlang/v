@@ -151,7 +151,7 @@ pub enum AttributeKind {
 	comptime_define // [if name]
 }
 
-pub struct StructAttribute {
+pub struct VAttribute {
 pub:
 	name    string
 	has_arg bool

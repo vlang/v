@@ -182,7 +182,9 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 						c.warn('byte is deprecated, use u8 instead', field.type_pos)
 					}
 				}
-				else {}
+				else {
+					c.check_any_type(field.typ, sym, field.type_pos)
+				}
 			}
 
 			if field.has_default_expr {
@@ -749,8 +751,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 					continue
 				}
 				sym := c.table.sym(field.typ)
-				if field.name.len > 0 && field.name[0].is_capital() && sym.info is ast.Struct
-					&& sym.language == .v {
+				if field.name.len > 0 && field.name[0].is_capital() && sym.info is ast.Struct {
 					// struct embeds
 					continue
 				}
@@ -892,8 +893,7 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 
 // Recursively check whether the struct type field is initialized
 fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut checked_types []ast.Type, linked_name string, pos &token.Pos) {
-	if (c.pref.translated || c.file.is_translated) || (struct_sym.language == .c
-		&& struct_sym.info is ast.Struct && struct_sym.info.is_typedef) {
+	if (c.pref.translated || c.file.is_translated) || struct_sym.language == .c {
 		return
 	}
 	for field in c.table.struct_fields(struct_sym) {
@@ -908,7 +908,7 @@ fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut 
 		}
 		sym := c.table.sym(field.typ)
 		if sym.info is ast.Struct {
-			if sym.language == .c && sym.info.is_typedef {
+			if sym.language == .c {
 				continue
 			}
 			if field.name.len > 0 && field.name[0].is_capital() && sym.language == .v {
@@ -935,8 +935,7 @@ fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut 
 // The goal is to give only a notice, not an error, for now. After a while,
 // when we change the notice to error, we can remove this temporary method.
 fn (mut c Checker) check_ref_fields_initialized_note(struct_sym &ast.TypeSymbol, mut checked_types []ast.Type, linked_name string, pos &token.Pos) {
-	if (c.pref.translated || c.file.is_translated) || (struct_sym.language == .c
-		&& struct_sym.info is ast.Struct && struct_sym.info.is_typedef) {
+	if (c.pref.translated || c.file.is_translated) || struct_sym.language == .c {
 		return
 	}
 	for field in c.table.struct_fields(struct_sym) {
@@ -951,7 +950,7 @@ fn (mut c Checker) check_ref_fields_initialized_note(struct_sym &ast.TypeSymbol,
 		}
 		sym := c.table.sym(field.typ)
 		if sym.info is ast.Struct {
-			if sym.language == .c && sym.info.is_typedef {
+			if sym.language == .c {
 				continue
 			}
 			if field.name.len > 0 && field.name[0].is_capital() && sym.language == .v {
