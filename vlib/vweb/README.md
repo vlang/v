@@ -20,9 +20,10 @@ in the browser. No need to quit the app, rebuild it, and refresh the page in the
 
 - **Very fast** performance of C on the web.
 - **Small binary** hello world website is <100 KB.
-- **Easy to deploy** just one binary file that also includes all templates. No need to install any dependencies.
 - **Templates are precompiled** all errors are visible at compilation time, not at runtime.
 - **Multithreaded** by default
+- **Easy to deploy** just one binary file that also includes all templates. No need to install any
+  dependencies.
 
 ### Examples
 
