@@ -28,8 +28,6 @@ pub:
 	// TODO: `@string &char` from above does not work. It should be fixed, at least inside `struct C.`.
 }
 
-pub const used = 1
-
 pub type Node = C.cJSON
 
 fn C.cJSON_Version() &char
