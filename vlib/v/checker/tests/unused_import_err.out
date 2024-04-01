@@ -1,0 +1,12 @@
+vlib/v/checker/tests/unused_import_err.vv:1:8: warning: module 'te (term)' is imported but never used
+    1 | import term as te
+      |        ~~~~
+    2 | import te.ui
+vlib/v/checker/tests/unused_import_err.vv:2:8: warning: module 'ui (te.ui)' is imported but never used
+    1 | import term as te
+    2 | import te.ui
+      |        ~~~~~
+vlib/v/checker/tests/unused_import_err.vv:2:1: builder error: cannot import module "te.ui" (not found)
+    1 | import term as te
+    2 | import te.ui
+      | ~~~~~~~~~~~~
