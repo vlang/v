@@ -619,10 +619,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				i++
 			}
 			'-cov', '-coverage' {
-				// res.coverage_file = cmdline.option(current_args, arg, '-')
+				res.coverage_file = cmdline.option(current_args, arg, '-')
 				res.is_coverage = true
-				// res.build_options << '${arg} ${res.profile_file}'
-				// i++
+				res.build_options << '${arg} ${res.coverage_file}'
+				i++
 			}
 			'-profile-fns' {
 				profile_fns := cmdline.option(current_args, arg, '').split(',')

@@ -78,6 +78,7 @@ mut:
 	auto_str_funcs            strings.Builder // function bodies of all auto generated _str funcs
 	dump_funcs                strings.Builder // function bodies of all auto generated _str funcs
 	pcs_declarations          strings.Builder // -prof profile counter declarations for each function
+	cov_declarations          strings.Builder // -cov coverage
 	embedded_data             strings.Builder // data to embed in the executable/binary
 	shared_types              strings.Builder // shared/lock types
 	shared_functions          strings.Builder // shared constructors
@@ -309,6 +310,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 		auto_str_funcs: strings.new_builder(100)
 		dump_funcs: strings.new_builder(100)
 		pcs_declarations: strings.new_builder(100)
+		cov_declarations: strings.new_builder(100)
 		embedded_data: strings.new_builder(1000)
 		out_options_forward: strings.new_builder(100)
 		out_options: strings.new_builder(100)
@@ -389,6 +391,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 			global_g.dump_funcs.write(g.auto_str_funcs) or { panic(err) }
 			global_g.comptime_definitions.write(g.comptime_definitions) or { panic(err) }
 			global_g.pcs_declarations.write(g.pcs_declarations) or { panic(err) }
+			global_g.cov_declarations.write(g.cov_declarations) or { panic(err) }
 			global_g.hotcode_definitions.write(g.hotcode_definitions) or { panic(err) }
 			global_g.embedded_data.write(g.embedded_data) or { panic(err) }
 			global_g.shared_types.write(g.shared_types) or { panic(err) }
@@ -562,6 +565,10 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 		b.writeln('\n// V profile counters:')
 		b.write_string(g.pcs_declarations.str())
 	}
+	if g.pref.is_coverage {
+		b.writeln('\n// V coverage:')
+		b.write_string(g.cov_declarations.str())
+	}
 	b.writeln('\n// V includes:')
 	b.write_string(g.includes.str())
 	b.writeln('\n// Enum definitions:')
@@ -676,6 +683,7 @@ fn cgen_process_one_file_cb(mut p pool.PoolProcessor, idx int, wid int) &Gen {
 		auto_str_funcs: strings.new_builder(100)
 		comptime_definitions: strings.new_builder(100)
 		pcs_declarations: strings.new_builder(100)
+		cov_declarations: strings.new_builder(100)
 		hotcode_definitions: strings.new_builder(100)
 		embedded_data: strings.new_builder(1000)
 		out_options_forward: strings.new_builder(100)
@@ -746,6 +754,7 @@ pub fn (mut g Gen) free_builders() {
 		g.dump_funcs.free()
 		g.comptime_definitions.free()
 		g.pcs_declarations.free()
+		g.cov_declarations.free()
 		g.hotcode_definitions.free()
 		g.embedded_data.free()
 		g.shared_types.free()
@@ -2081,24 +2090,6 @@ fn (mut g Gen) write_v_source_line_info_pos(pos token.Pos) {
 			eprintln('> lineinfo: ${lineinfo.replace('\n', '')}')
 		}
 		g.writeln(lineinfo)
-	}
-}
-
-@[inline]
-fn (mut g Gen) write_coverage_point(pos token.Pos) {
-	if g.unique_file_path_hash !in g.coverage_files {
-		g.coverage_files[g.unique_file_path_hash] = &CoverageInfo{
-			points: []
-			file: g.file
-		}
-	}
-	if g.fn_decl != unsafe { nil } {
-		curr_line := u64(pos.line_nr)
-		mut curr_cov := unsafe { g.coverage_files[g.unique_file_path_hash] }
-		if curr_line !in curr_cov.points {
-			curr_cov.points << curr_line
-		}
-		g.writeln('_v_cov[_v_cov_file_offset_${g.unique_file_path_hash}+${curr_cov.points.len - 1}] = 1;')
 	}
 }
 
@@ -6442,25 +6433,8 @@ fn (mut g Gen) write_init_function() {
 		g.writeln('\tdelete_photon_work_pool();')
 	}
 	if g.pref.is_coverage {
-		g.writeln('\tprintf("V coverage\\n");')
-		g.writeln('\tprintf("${'-':50r}\\n");')
-		g.writeln('int t_counter = 0;')
-		mut last_offset := 0
-		mut t_points := 0
-		for k, cov in g.coverage_files {
-			nr_points := cov.points.len
-			t_points += nr_points
-			g.writeln('{')
-			g.writeln('\tint counter = 0;')
-			g.writeln('\tfor (int i = 0, offset = ${last_offset}; i < ${nr_points}; ++i)')
-			g.writeln('\t\tif (_v_cov[_v_cov_file_offset_${k}+i]) counter++;')
-			g.writeln('\tt_counter += counter;')
-			g.writeln('\tprintf("> ${cov.file.path} | ${nr_points} | %d | %.2f% \\n", counter, ${nr_points} > 0 ? ((double)counter/${nr_points})*100 : 0);')
-			g.writeln('}')
-			last_offset += nr_points
-		}
-		g.writeln('\tprintf("${'-':50r}\\n");')
-		g.writeln('\tprintf("Total coverage: ${g.coverage_files.len} files, %.2f%% coverage\\n", ((double)t_counter/${t_points})*100);')
+		g.write_coverage_stats()
+		g.writeln('\tvprint_coverage_stats();')
 	}
 	g.writeln('}')
 	if g.pref.printfn_list.len > 0 && '_vcleanup' in g.pref.printfn_list {
