@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2024 Felipe Pena. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -31,28 +31,28 @@ fn (mut g Gen) write_coverage_stats() {
 		g.cov_declarations.writeln('\tprintf("V coverage\\n");')
 		g.cov_declarations.writeln('\tprintf("${'-':50r}\\n");')
 	} else {
-		g.cov_declarations.writeln('FILE *fp = stdout;')
-		g.cov_declarations.writeln('fp = fopen ("${g.pref.coverage_file}", "w+");')
+		g.cov_declarations.writeln('\tFILE *fp = stdout;')
+		g.cov_declarations.writeln('\tfp = fopen ("${g.pref.coverage_file}", "w+");')
 		g.cov_declarations.writeln('\tfprintf(fp, "V coverage\\n");')
 		g.cov_declarations.writeln('\tfprintf(fp, "${'-':50r}\\n");')
 	}
-	g.cov_declarations.writeln('int t_counter = 0;')
+	g.cov_declarations.writeln('\tint t_counter = 0;')
 	mut last_offset := 0
 	mut t_points := 0
 	for k, cov in g.coverage_files {
 		nr_points := cov.points.len
 		t_points += nr_points
-		g.cov_declarations.writeln('{')
-		g.cov_declarations.writeln('\tint counter = 0;')
-		g.cov_declarations.writeln('\tfor (int i = 0, offset = ${last_offset}; i < ${nr_points}; ++i)')
-		g.cov_declarations.writeln('\t\tif (_v_cov[_v_cov_file_offset_${k}+i]) counter++;')
-		g.cov_declarations.writeln('\tt_counter += counter;')
+		g.cov_declarations.writeln('\t{')
+		g.cov_declarations.writeln('\t\tint counter = 0;')
+		g.cov_declarations.writeln('\t\tfor (int i = 0, offset = ${last_offset}; i < ${nr_points}; ++i)')
+		g.cov_declarations.writeln('\t\t\tif (_v_cov[_v_cov_file_offset_${k}+i]) counter++;')
+		g.cov_declarations.writeln('\t\tt_counter += counter;')
 		if is_stdout {
-			g.cov_declarations.writeln('\tprintf("> ${cov.file.path} | ${nr_points} | %d | %.2f% \\n", counter, ${nr_points} > 0 ? ((double)counter/${nr_points})*100 : 0);')
+			g.cov_declarations.writeln('\t\tprintf("> ${cov.file.path} | ${nr_points} | %d | %.2f%% \\n", counter, ${nr_points} > 0 ? ((double)counter/${nr_points})*100 : 0);')
 		} else {
-			g.cov_declarations.writeln('\tfprintf(fp, "> ${cov.file.path} | ${nr_points} | %d | %.2f% \\n", counter, ${nr_points} > 0 ? ((double)counter/${nr_points})*100 : 0);')
+			g.cov_declarations.writeln('\t\tfprintf(fp, "> ${cov.file.path} | ${nr_points} | %d | %.2f%% \\n", counter, ${nr_points} > 0 ? ((double)counter/${nr_points})*100 : 0);')
 		}
-		g.cov_declarations.writeln('}')
+		g.cov_declarations.writeln('\t}')
 		last_offset += nr_points
 	}
 	if is_stdout {
