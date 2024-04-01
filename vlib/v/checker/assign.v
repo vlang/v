@@ -3,7 +3,6 @@
 module checker
 
 import v.ast
-import v.pref
 
 // TODO: 600 line function
 fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {

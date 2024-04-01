@@ -5,7 +5,6 @@ module parser
 
 import os
 import v.ast
-import v.pref
 import v.token
 
 const supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig', 'compile_error',

@@ -1,7 +1,6 @@
 module checker
 
 import v.ast
-import v.pref
 import v.token
 
 fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
