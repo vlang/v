@@ -176,9 +176,9 @@ fn (mut decoder Decoder) decode_struct[T](nodes []Node, value &T) {
 						$for v in workaround.variants {
 							$if v.typ is string {
 								if value_kind == .string_ {
-									value.$(field.name) = decoder.json_data[start + 1..end - 1]
+									// value.$(field.name) = decoder.json_data[start + 1..end - 1]
 								} else {
-									value.$(field.name) = decoder.json_data[start..end]
+									// value.$(field.name) = decoder.json_data[start..end]
 								}
 							} $else $if v.typ in [$int, $float] {
 								$if v.typ is u32 {
@@ -242,7 +242,7 @@ fn (mut decoder Decoder) decode_struct[T](nodes []Node, value &T) {
 							}
 						}
 						if value_kind == .string_ {
-							value.$(field.name) = decoder.json_data[start + 1..end - 1]
+							// value.$(field.name) = decoder.json_data[start + 1..end - 1]
 						} else if decoder.json_data[start] == `t` {
 							value.$(field.name) = true
 						} else if decoder.json_data[start] == `f` {
