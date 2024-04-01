@@ -42,6 +42,15 @@ fn string_array_to_map(a []string) map[string]bool {
 	return res
 }
 
+// V coverage info
+@[heap]
+struct CoverageInfo {
+pub mut:
+	idx    int   // index
+	points []u64 // code point line nr
+	file   &ast.File = unsafe { nil }
+}
+
 pub struct Gen {
 	pref                &pref.Preferences = unsafe { nil }
 	field_data_type     ast.Type // cache her to avoid map lookups
@@ -119,9 +128,7 @@ mut:
 	labeled_loops             map[string]&ast.Stmt
 	inner_loop                &ast.Stmt = unsafe { nil }
 	shareds                   map[int]string // types with hidden mutex for which decl has been emitted
-	coverage_files            []&ast.File
-	coverage_total_lines      int
-	coverage_idx              int
+	coverage_files            map[u64]&CoverageInfo
 	inside_ternary            int  // ?: comma separated statements on a single line
 	inside_map_postfix        bool // inside map++/-- postfix expr
 	inside_map_infix          bool // inside map<</+=/-= infix expr
@@ -414,6 +421,9 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 			for k, v in g.sumtype_definitions {
 				global_g.sumtype_definitions[k] = v
 			}
+			for k, v in g.coverage_files {
+				global_g.coverage_files[k] = v
+			}
 			global_g.json_forward_decls.write(g.json_forward_decls) or { panic(err) }
 			global_g.enum_typedefs.write(g.enum_typedefs) or { panic(err) }
 			global_g.channel_definitions.write(g.channel_definitions) or { panic(err) }
@@ -509,7 +519,12 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) (str
 	}
 
 	if g.pref.is_coverage {
-		g.cheaders.writeln('char _v_cov[${g.coverage_total_lines}] = {0};')
+		mut total_code_points := 0
+		for k, cov in g.coverage_files {
+			g.cheaders.writeln('#define _v_cov_file_offset_${k} ${total_code_points}')
+			total_code_points += cov.points.len
+		}
+		g.cheaders.writeln('char _v_cov[${total_code_points}] = {0};')
 	}
 
 	// insert for options forward
@@ -2070,22 +2085,29 @@ fn (mut g Gen) write_v_source_line_info_pos(pos token.Pos) {
 }
 
 @[inline]
+fn (mut g Gen) write_coverage_point(pos token.Pos) {
+	if g.unique_file_path_hash !in g.coverage_files {
+		g.coverage_files[g.unique_file_path_hash] = &CoverageInfo{
+			points: []
+			file: g.file
+		}
+	}
+	if g.fn_decl != unsafe { nil } {
+		curr_line := u64(pos.line_nr)
+		mut curr_cov := unsafe { g.coverage_files[g.unique_file_path_hash] }
+		if curr_line !in curr_cov.points {
+			curr_cov.points << curr_line
+		}
+		g.writeln('_v_cov[_v_cov_file_offset_${g.unique_file_path_hash}+${curr_cov.points.len - 1}] = 1;')
+	}
+}
+
+@[inline]
 fn (mut g Gen) write_v_source_line_info(node ast.Node) {
 	g.write_v_source_line_info_pos(node.pos())
 	if g.inside_ternary == 0 && g.pref.is_coverage
 		&& node !in [ast.MatchBranch, ast.IfBranch, ast.InfixExpr] {
-		if g.file !in g.coverage_files {
-			g.coverage_idx = if g.coverage_files.len == 0 {
-				0
-			} else {
-				g.coverage_total_lines
-			}
-			g.coverage_total_lines += g.file.nr_lines
-			g.coverage_files << g.file
-		}
-		if g.fn_decl != unsafe { nil } {
-			g.writeln('_v_cov[${g.coverage_idx}+${node.pos().line_nr}] = 1;')
-		}
+		g.write_coverage_point(node.pos())
 	}
 }
 
@@ -2094,18 +2116,7 @@ fn (mut g Gen) write_v_source_line_info_stmt(stmt ast.Stmt) {
 	g.write_v_source_line_info_pos(stmt.pos)
 	if g.inside_ternary == 0 && g.pref.is_coverage && !g.inside_for_c_stmt
 		&& stmt !in [ast.ExprStmt, ast.FnDecl, ast.ForCStmt, ast.ForInStmt, ast.ForStmt] {
-		if g.file !in g.coverage_files {
-			g.coverage_idx = if g.coverage_files.len == 0 {
-				0
-			} else {
-				g.coverage_total_lines
-			}
-			g.coverage_total_lines += g.file.nr_lines
-			g.coverage_files << g.file
-		}
-		if g.fn_decl != unsafe { nil } {
-			g.writeln('_v_cov[${g.coverage_idx}+${stmt.pos.line_nr}] = \'1\';')
-		}
+		g.write_coverage_point(stmt.pos)
 	}
 }
 
@@ -6433,16 +6444,23 @@ fn (mut g Gen) write_init_function() {
 	if g.pref.is_coverage {
 		g.writeln('\tprintf("V coverage\\n");')
 		g.writeln('\tprintf("${'-':50r}\\n");')
+		g.writeln('int t_counter = 0;')
 		mut last_offset := 0
-		for file in g.coverage_files {
+		mut t_points := 0
+		for k, cov in g.coverage_files {
+			nr_points := cov.points.len
+			t_points += nr_points
 			g.writeln('{')
 			g.writeln('\tint counter = 0;')
-			g.writeln('\tfor (int i = 0, offset = ${last_offset}; i < ${file.nr_lines}; ++i)')
-			g.writeln('\t\tif (_v_cov[offset+i]) counter++;')
-			g.writeln('\tprintf("> ${file.path} | ${file.nr_lines} | %d\\n", counter);')
+			g.writeln('\tfor (int i = 0, offset = ${last_offset}; i < ${nr_points}; ++i)')
+			g.writeln('\t\tif (_v_cov[_v_cov_file_offset_${k}+i]) counter++;')
+			g.writeln('\tt_counter += counter;')
+			g.writeln('\tprintf("> ${cov.file.path} | ${nr_points} | %d | %.2f% \\n", counter, ${nr_points} > 0 ? ((double)counter/${nr_points})*100 : 0);')
 			g.writeln('}')
-			last_offset += file.nr_lines
+			last_offset += nr_points
 		}
+		g.writeln('\tprintf("${'-':50r}\\n");')
+		g.writeln('\tprintf("Total coverage: ${g.coverage_files.len} files, %.2f%% coverage\\n", ((double)t_counter/${t_points})*100);')
 	}
 	g.writeln('}')
 	if g.pref.printfn_list.len > 0 && '_vcleanup' in g.pref.printfn_list {

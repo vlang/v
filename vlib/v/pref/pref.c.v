@@ -138,6 +138,7 @@ pub mut:
 	eval_argument      string   // `println(2+2)` on `v -e "println(2+2)"`. Note that this source code, will be evaluated in vsh mode, so 'v -e 'println(ls(".")!)' is valid.
 	test_runner        string   // can be 'simple' (fastest, but much less detailed), 'tap', 'normal'
 	profile_file       string   // the profile results will be stored inside profile_file
+	coverage_file      string   // the coverage results will be stored inside coverage_file
 	profile_no_inline  bool     // when true, [inline] functions would not be profiled
 	profile_fns        []string // when set, profiling will be off by default, but inside these functions (and what they call) it will be on.
 	translated         bool     // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
@@ -617,6 +618,12 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.build_options << '${arg} ${res.profile_file}'
 				i++
 			}
+			'-cov', '-coverage' {
+				// res.coverage_file = cmdline.option(current_args, arg, '-')
+				res.is_coverage = true
+				// res.build_options << '${arg} ${res.profile_file}'
+				// i++
+			}
 			'-profile-fns' {
 				profile_fns := cmdline.option(current_args, arg, '').split(',')
 				if profile_fns.len > 0 {
@@ -1084,9 +1091,6 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	}
 	if 'trace' in res.compile_defines_all {
 		res.is_trace = true
-	}
-	if 'coverage' in res.compile_defines_all {
-		res.is_coverage = true
 	}
 	// keep only the unique res.build_options:
 	mut m := map[string]string{}
