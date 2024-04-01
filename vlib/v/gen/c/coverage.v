@@ -48,9 +48,9 @@ fn (mut g Gen) write_coverage_stats() {
 		g.cov_declarations.writeln('\t\t\tif (_v_cov[_v_cov_file_offset_${k}+i]) counter++;')
 		g.cov_declarations.writeln('\t\tt_counter += counter;')
 		if is_stdout {
-			g.cov_declarations.writeln('\t\tprintf("> ${cov.file.path} | ${nr_points} | %d | %.2f%% \\n", counter, ${nr_points} > 0 ? ((double)counter/${nr_points})*100 : 0);')
+			g.cov_declarations.writeln('\t\tprintf("[%7.2f%%] %4d / ${nr_points:4d} | ${cov.file.path}\\n", ${nr_points} > 0 ? ((double)counter/${nr_points})*100 : 0, counter);')
 		} else {
-			g.cov_declarations.writeln('\t\tfprintf(fp, "> ${cov.file.path} | ${nr_points} | %d | %.2f%% \\n", counter, ${nr_points} > 0 ? ((double)counter/${nr_points})*100 : 0);')
+			g.cov_declarations.writeln('\t\tfprintf(fp, "[%7.2f%%] %4d / ${nr_points:4d} | ${cov.file.path}\\n", ${nr_points} > 0 ? ((double)counter/${nr_points})*100 : 0, counter);')
 		}
 		g.cov_declarations.writeln('\t}')
 		last_offset += nr_points
