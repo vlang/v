@@ -1,4 +1,3 @@
-import sokol
 import sokol.sapp
 import sokol.gfx
 import sokol.sgl
@@ -6,8 +5,6 @@ import sokol.sgl
 struct AppState {
 	pass_action gfx.PassAction
 }
-
-const used_import = sokol.used_import
 
 fn main() {
 	state := &AppState{

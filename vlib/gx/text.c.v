@@ -1,8 +1,6 @@
 module gx
 
-import fontstash
-
-const used_import = fontstash.used_import
+import fontstash as _
 
 pub enum HorizontalAlign {
 	left   = C.FONS_ALIGN_LEFT

@@ -5,8 +5,6 @@ import time
 import dl
 import v.live
 
-pub const is_used = 1
-
 // The live reloader code is implemented here.
 // Note: new_live_reload_info will be called by generated C code inside main()
 @[markused]

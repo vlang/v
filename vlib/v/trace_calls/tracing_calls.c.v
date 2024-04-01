@@ -5,8 +5,6 @@ module trace_calls
 __global g_stack_base = &u8(0)
 __global g_start_time = u64(0)
 
-pub const is_used = 1
-
 @[markused]
 pub fn on_call(fname string) {
 	mut volatile pfbase := unsafe { &u8(0) }

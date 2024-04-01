@@ -3,13 +3,10 @@
 module main
 
 import time
-import sokol
 import sokol.sapp
 import sokol.gfx
 import sokol.sgl
 import particle
-
-const used_import = sokol.used_import
 
 fn main() {
 	mut app := &App{

@@ -2,9 +2,6 @@ module sync
 
 import time
 import rand
-import sync.stdatomic
-
-const aops_used = stdatomic.used
 
 // how often to try to get data without blocking before to wait for semaphore
 const spinloops = 750
