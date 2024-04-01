@@ -1,4 +1,3 @@
-import math
 import math.complex as cmplx
 struct Aaa{}
 fn main() {

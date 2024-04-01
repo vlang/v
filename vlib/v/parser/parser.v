@@ -699,7 +699,7 @@ fn (mut p Parser) check_js_name() string {
 fn (mut p Parser) check_name() string {
 	pos := p.tok.pos()
 	name := p.tok.lit
-	if p.peek_tok.kind == .dot && name in p.imports {
+	if p.tok.kind != .name && p.peek_tok.kind == .dot && name in p.imports {
 		p.register_used_import(name)
 	}
 	match p.tok.kind {

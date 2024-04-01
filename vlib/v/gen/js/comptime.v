@@ -1,7 +1,6 @@
 module js
 
 import v.ast
-import v.pref
 
 fn (mut g JsGen) comptime_if(node ast.IfExpr) {
 	if !node.is_expr && !node.has_else && node.branches.len == 1 {

@@ -6,7 +6,6 @@ module builder
 import os
 import v.pref
 import v.util
-import v.checker
 
 pub type FnBackend = fn (mut b Builder)
 

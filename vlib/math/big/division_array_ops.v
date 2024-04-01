@@ -1,6 +1,5 @@
 module big
 
-import math
 import math.bits
 
 // suppose operand_a bigger than operand_b and both not null.
