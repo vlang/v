@@ -16,7 +16,7 @@ fn (it C.MyCStruct) wrap() MyWrapper {
 
 fn test_main() {
 	dump(C.MyCStruct{
-		data: 123
+		data: &u8(123)
 	}.wrap())
 	assert true
 }
