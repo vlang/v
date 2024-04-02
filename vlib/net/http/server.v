@@ -62,10 +62,10 @@ pub fn (mut s Server) listen_and_serve() {
 		return
 	}
 	if l.family() == net.AddrFamily.unspec {
-		listen_addr := if s.addr == '' || s.addr == ':0' { 'localhost:0' } else { s.addr }
-		listen_fam := net.AddrFamily.ip
-		// listen_fam := $if windows { net.AddrFamily.ip } $else { net.AddrFamily.ip6 }
-		s.listener = net.listen_tcp(listen_fam, listen_addr) or {
+		listening_address := if s.addr == '' || s.addr == ':0' { 'localhost:0' } else { s.addr }
+		listen_family := net.AddrFamily.ip
+		// listen_family := $if windows { net.AddrFamily.ip } $else { net.AddrFamily.ip6 }
+		s.listener = net.listen_tcp(listen_family, listening_address) or {
 			eprintln('Listening on ${s.addr} failed, err: ${err}')
 			return
 		}
