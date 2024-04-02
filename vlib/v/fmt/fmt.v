@@ -32,7 +32,7 @@ pub mut:
 	cur_mod            string
 	did_imports        bool
 	import_pos         int // position of the imports in the resulting string for later autoimports insertion
-	auto_imports       map[string]bool   // imports that might be hidden like `sync` when when using channels
+	auto_imports       map[string]bool   // potentially hidden imports(`sync` when using channels) and preludes(when embedding files)
 	used_imports       map[string]bool   // to remove unused imports
 	import_syms_used   map[string]bool   // to remove unused import symbols
 	mod2alias          map[string]string // for `import time as t`, will contain: 'time'=>'t'
