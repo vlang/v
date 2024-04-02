@@ -249,6 +249,39 @@ fn decode_struct[T](_ T, res map[string]Any) !T {
 						typ.$(field.name) = res[json_name]!.to_time()!
 					}
 				} $else $if field.is_array {
+					arr := res[field.name]! as []Any
+					match typeof(typ.$(field.name)).name {
+						'[]bool' { typ.$(field.name) = arr.map(it.bool()) }
+						'[]?bool' { typ.$(field.name) = arr.map(?bool(it.bool())) }
+						'[]f32' { typ.$(field.name) = arr.map(it.f32()) }
+						'[]?f32' { typ.$(field.name) = arr.map(?f32(it.f32())) }
+						'[]f64' { typ.$(field.name) = arr.map(it.f64()) }
+						'[]?f64' { typ.$(field.name) = arr.map(?f64(it.f64())) }
+						'[]i8' { typ.$(field.name) = arr.map(it.i8()) }
+						'[]?i8' { typ.$(field.name) = arr.map(?i8(it.i8())) }
+						'[]i16' { typ.$(field.name) = arr.map(it.i16()) }
+						'[]?i16' { typ.$(field.name) = arr.map(?i16(it.i16())) }
+						'[]i64' { typ.$(field.name) = arr.map(it.i64()) }
+						'[]?i64' { typ.$(field.name) = arr.map(?i64(it.i64())) }
+						'[]int' { typ.$(field.name) = arr.map(it.int()) }
+						'[]?int' { typ.$(field.name) = arr.map(?int(it.int())) }
+						'[]string' { typ.$(field.name) = arr.map(it.str()) }
+						'[]?string' { typ.$(field.name) = arr.map(?string(it.str())) }
+						// NOTE: Using `!` on `to_time()` inside the array method causes a builder error - 2024/04/01.
+						'[]time.Time' { typ.$(field.name) = arr.map(it.to_time() or { time.Time{} }) }
+						// vfmt off
+						'[]?time.Time' { typ.$(field.name) = arr.map(?time.Time(it.to_time() or { time.Time{} })) }
+						// vfmt on
+						'[]u8' { typ.$(field.name) = arr.map(it.u64()) }
+						'[]?u8' { typ.$(field.name) = arr.map(?u8(it.u64())) }
+						'[]u16' { typ.$(field.name) = arr.map(it.u64()) }
+						'[]?u16' { typ.$(field.name) = arr.map(?u16(it.u64())) }
+						'[]u32' { typ.$(field.name) = arr.map(it.u64()) }
+						'[]?u32' { typ.$(field.name) = arr.map(?u32(it.u64())) }
+						'[]u64' { typ.$(field.name) = arr.map(it.u64()) }
+						'[]?u64' { typ.$(field.name) = arr.map(?u64(it.u64())) }
+						else {}
+					}
 				} $else $if field.is_struct {
 					typ.$(field.name) = decode_struct(typ.$(field.name), res[field.name]!.as_map())!
 				} $else $if field.is_alias {
