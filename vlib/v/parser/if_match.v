@@ -293,7 +293,10 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			for {
 				p.inside_match_case = true
 				mut range_pos := p.tok.pos()
-				expr := p.expr(0)
+				expr := if p.tok.kind == .ellipsis { ast.Expr(ast.IntegerLiteral{
+						val: '0'
+						pos: range_pos
+					}) } else { p.expr(0) }
 				p.inside_match_case = false
 				if p.tok.kind == .dotdot {
 					p.error_with_pos('match only supports inclusive (`...`) ranges, not exclusive (`..`)',
