@@ -1975,10 +1975,9 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 			if node.name.contains('__static__') {
 				f.write_static_method(node.name, name)
 			} else {
-				f.mark_import_as_used(name)
 				f.write(name)
+				f.mark_import_as_used(name)
 			}
-			f.mark_import_as_used(node.name)
 		}
 	}
 	if node.mod == '' && node.name == '' {
