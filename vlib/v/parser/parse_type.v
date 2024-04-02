@@ -603,7 +603,7 @@ fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot b
 			p.next()
 			p.check(.dot)
 		}
-		if !p.known_import(mod) && !p.pref.is_fmt {
+		if mod != p.mod && !p.known_import(mod) && !p.pref.is_fmt {
 			mut msg := 'unknown module `${mod}`'
 			if mod.len > mod_last_part.len && p.known_import(mod_last_part) {
 				msg += '; did you mean `${mod_last_part}`?'
