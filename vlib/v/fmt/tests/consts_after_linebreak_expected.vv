@@ -1,4 +1,4 @@
-import os
+module main
 
 const foo = 'foo'
 const bar = 1

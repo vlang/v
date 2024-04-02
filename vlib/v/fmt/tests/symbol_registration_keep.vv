@@ -1,7 +1,5 @@
 module analyzer
 
-import os
-
 const mut_struct_keyword = 'mut:'
 const pub_struct_keyword = 'pub:'
 const pub_mut_struct_keyword = 'pub mut:'

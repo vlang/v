@@ -1,7 +1,6 @@
 #!/usr/bin/env -S v
 
 // Comment
-import json
 import os
 
 os.join_path('', '')

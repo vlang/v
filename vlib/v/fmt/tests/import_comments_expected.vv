@@ -1,0 +1,10 @@
+// import time This should be commented out
+// line comment
+// 1.0 between
+import rand as _
+// 2.0 between
+// 2.1 between
+// 3.0 after the last import
+// 3.1 also after the last import
+
+// this comment does not belong to the imports anymore

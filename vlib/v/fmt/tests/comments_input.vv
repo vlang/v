@@ -36,8 +36,8 @@ fn main() {
 
 	*/
 	a :=  1 // this is a comment
-	d := c // and an extra one
-	e := c
+	b := time.now() // and an extra one
+	c := d
 	// more comments = more good
 	arr := [
 		//   block foo bar

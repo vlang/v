@@ -3,7 +3,6 @@
 
 module gzip
 
-import compress as z
 import hash.crc32
 
 // compresses an array of bytes using gzip and returns the compressed bytes in a new array

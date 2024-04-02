@@ -1,1 +1,3 @@
 import foo.bar.src.baz
+
+_ := baz.Baz{}

@@ -1,4 +1,4 @@
-import v.token
+import v.token as _
 
 struct Foo {
 	bar string|int

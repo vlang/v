@@ -1,5 +1,3 @@
-import v.ast
-
 struct Data {
 	a fn (stmt ast.Stmt, vp voidptr) bool
 }

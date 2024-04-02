@@ -1,5 +1,3 @@
-import v.ast
-
 fn foo(my_map map[string]map[string]int) int {
 	return 0
 }

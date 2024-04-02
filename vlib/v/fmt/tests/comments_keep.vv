@@ -1,4 +1,4 @@
-import semver // as sv
+import semver as _ // as sv
 
 enum Abc {
 	a
