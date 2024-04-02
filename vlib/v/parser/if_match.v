@@ -293,6 +293,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			for {
 				p.inside_match_case = true
 				mut range_pos := p.tok.pos()
+				// Parse `...x` as `0...x`.
 				expr := if p.tok.kind == .ellipsis { ast.Expr(ast.IntegerLiteral{
 						val: '0'
 						pos: range_pos
