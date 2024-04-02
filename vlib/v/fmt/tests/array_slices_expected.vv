@@ -1,6 +1,6 @@
 fn fn_contains_index_expr() {
 	arr := [1, 2, 3, 4, 5]
-	a := 1 in arr[0..]
+	a := 1 in arr[..]
 	_ := a
 	_ := 1 in arr[..2]
 	_ := 1 in arr[1..3]

@@ -13,7 +13,7 @@ fn main() {
 	_ = ' ${foo.method(bar).str()} '
 	println('(${some_struct.@type}, ${some_struct.y})')
 	_ := 'CastExpr ${int(d.e).str()}'
-	println('${f[0..4].bytestr()}')
+	println('${f[..4].bytestr()}')
 	_ := '${generic_fn[int]()}'
 	_ := '${foo.generic_method[int]()}'
 }

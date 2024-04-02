@@ -1262,7 +1262,7 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 
 				has_suffix := p.tok.lit[p.tok.lit.len - 1] in [`b`, `w`, `l`, `q`]
 				if !(p.tok.lit in parser.allowed_lock_prefix_ins || (has_suffix
-					&& p.tok.lit[0..p.tok.lit.len - 1] in parser.allowed_lock_prefix_ins)) {
+					&& p.tok.lit[..p.tok.lit.len - 1] in parser.allowed_lock_prefix_ins)) {
 					p.error('The lock prefix cannot be used on this instruction')
 				}
 				name += ' '

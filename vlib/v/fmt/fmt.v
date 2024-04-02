@@ -2890,7 +2890,9 @@ pub fn (mut f Fmt) prefix_expr(node ast.PrefixExpr) {
 }
 
 pub fn (mut f Fmt) range_expr(node ast.RangeExpr) {
-	f.expr(node.low)
+	if node.low !is ast.IntegerLiteral || (node.low is ast.IntegerLiteral && node.low.val != '0') {
+		f.expr(node.low)
+	}
 	if f.is_mbranch_expr && !f.is_index_expr {
 		f.write('...')
 	} else {

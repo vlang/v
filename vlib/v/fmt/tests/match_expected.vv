@@ -43,7 +43,7 @@ fn match_branch_extra_comma() {
 		int, string {}
 	}
 	match n {
-		0...5 {}
+		...5 {}
 		2, 3 {}
 		else {}
 	}
