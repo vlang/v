@@ -212,6 +212,8 @@ fn (mut p Parser) is_only_array_type() bool {
 				next_kind := p.peek_token(i + 1).kind
 				if next_kind == .name {
 					return true
+				} else if next_kind == .question && p.peek_token(i + 2).kind == .name {
+					return true
 				} else if next_kind == .lsbr {
 					continue
 				} else {
