@@ -8,10 +8,9 @@ import v.ast
 import v.util
 import v.pref
 
-const bs = '\\'
-
 const break_points = [0, 35, 60, 85, 93, 100]! // when to break a line depending on the penalty
 const max_len = break_points[break_points.len - 1]
+const bs = '\\'
 
 @[minify]
 pub struct Fmt {
@@ -69,11 +68,9 @@ pub fn fmt(file ast.File, mut table ast.Table, pref_ &pref.Preferences, is_debug
 		out: strings.new_builder(1000)
 		out_imports: strings.new_builder(200)
 	}
-
 	f.source_text = options.source_text
 	f.process_file_imports(file)
-	f.set_current_module_name('main')
-	// As these are toplevel stmts, the indent increase done in f.stmts() has to be compensated
+	// As these are toplevel stmts, the indent increase done in f.stmts() has to be compensated.
 	f.indent--
 	f.stmts(file.stmts)
 	f.indent++
@@ -91,6 +88,7 @@ pub fn fmt(file ast.File, mut table ast.Table, pref_ &pref.Preferences, is_debug
 	}
 	mut import_start_pos := f.import_pos
 	if f.import_pos == 0 && file.stmts.len > 1 {
+		// Check shebang.
 		stmt := file.stmts[1]
 		if stmt is ast.ExprStmt && stmt.expr is ast.Comment
 			&& (stmt.expr as ast.Comment).text.starts_with('#!') {
@@ -314,7 +312,6 @@ pub fn (mut f Fmt) mark_types_import_as_used(typ ast.Type) {
 	f.mark_import_as_used(name)
 }
 
-// `name` is a function (`foo.bar()`) or type (`foo.Bar{}`)
 pub fn (mut f Fmt) mark_import_as_used(name string) {
 	parts := name.split('.')
 	last := parts.last()
