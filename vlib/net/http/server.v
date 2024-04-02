@@ -61,15 +61,10 @@ pub fn (mut s Server) listen_and_serve() {
 		eprintln('Failed getting listener address, err: ${err}')
 		return
 	}
-	mut listening_address := s.addr.clone()
 	if l.family() == net.AddrFamily.unspec {
-		if listening_address == ':0' {
-			listening_address = 'localhost:0'
-		}
-		mut listen_family := net.AddrFamily.ip
-		//		$if !windows {
-		//			listen_family = net.AddrFamily.ip6
-		//		}
+		listening_address := if s.addr == '' || s.addr == ':0' { 'localhost:0' } else { s.addr }
+		listen_family := net.AddrFamily.ip
+		// listen_family := $if windows { net.AddrFamily.ip } $else { net.AddrFamily.ip6 }
 		s.listener = net.listen_tcp(listen_family, listening_address) or {
 			eprintln('Listening on ${s.addr} failed, err: ${err}')
 			return
@@ -84,7 +79,6 @@ pub fn (mut s Server) listen_and_serve() {
 
 	// Create tcp connection channel
 	ch := chan &net.TcpConn{cap: s.pool_channel_slots}
-
 	// Create workers
 	mut ws := []thread{cap: s.worker_num}
 	for wid in 0 .. s.worker_num {
@@ -101,14 +95,10 @@ pub fn (mut s Server) listen_and_serve() {
 	if s.on_running != unsafe { nil } {
 		s.on_running(mut s)
 	}
-	for {
-		// break if we have a stop signal
-		if s.state != .running {
-			break
-		}
+	for s.state == .running {
 		mut conn := s.listener.accept() or {
 			if err.code() == net.err_timed_out_code {
-				// just skip network timeouts, they are normal
+				// Skip network timeouts, they are normal
 				continue
 			}
 			eprintln('accept() failed, reason: ${err}; skipping')
