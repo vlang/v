@@ -33,7 +33,7 @@ pub mut:
 	did_imports        bool
 	auto_imports       []string          // automatically inserted imports that the user forgot to specify
 	import_pos         int               // position of the imports in the resulting string for later autoimports insertion
-	used_imports       []string          // to remove unused imports
+	used_imports       map[string]bool   // to remove unused imports
 	import_syms_used   map[string]bool   // to remove unused import symbols.
 	mod2alias          map[string]string // for `import time as t`, will contain: 'time'=>'t'
 	mod2syms           map[string]string // import time { now } 'time.now'=>'now'
@@ -308,7 +308,8 @@ pub fn (mut f Fmt) mark_types_import_as_used(typ ast.Type) {
 		}
 		else {}
 	}
-	name := sym.name.split('[')[0] // take `Type` from `Type[T]`
+	// `Type[T]` -> `Type` || `[]thread Type` -> `Type`
+	name := sym.name.all_before('[').all_after(' ')
 	f.mark_import_as_used(name)
 }
 
@@ -321,11 +322,8 @@ pub fn (mut f Fmt) mark_import_as_used(name string) {
 	if parts.len == 1 {
 		return
 	}
-	mod := parts[0..parts.len - 1].join('.')
-	if mod in f.used_imports {
-		return
-	}
-	f.used_imports << mod
+	mod := parts[..parts.len - 1].join('.')
+	f.used_imports[mod] = true
 }
 
 pub fn (mut f Fmt) imports(imports []ast.Import) {
@@ -1585,6 +1583,8 @@ pub fn (mut f Fmt) alias_type_decl(node ast.AliasTypeDecl) {
 
 	f.comments(node.comments, has_nl: false)
 	f.mark_types_import_as_used(node.parent_type)
+	mod := f.mod2alias.keys()[0] or { return }
+	f.used_imports[mod] = true
 }
 
 pub fn (mut f Fmt) fn_type_decl(node ast.FnTypeDecl) {
@@ -1965,6 +1965,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 					mod: node.left.name
 					alias: node.left.name
 				}
+				f.used_imports[node.left.name] = true
 			}
 		}
 		f.expr(node.left)
@@ -1988,6 +1989,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 				f.mark_import_as_used(name)
 				f.write(name)
 			}
+			f.mark_import_as_used(node.name)
 		}
 	}
 	if node.mod == '' && node.name == '' {
@@ -2020,7 +2022,7 @@ fn (mut f Fmt) write_generic_call_if_require(node ast.CallExpr) {
 				name = 'JS.' + name
 			}
 			f.write(name)
-			f.mark_import_as_used(name)
+			f.mark_types_import_as_used(concrete_type)
 			if i != node.concrete_types.len - 1 {
 				f.write(', ')
 			}
