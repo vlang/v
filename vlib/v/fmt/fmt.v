@@ -8,10 +8,9 @@ import v.ast
 import v.util
 import v.pref
 
-const bs = '\\'
-
 const break_points = [0, 35, 60, 85, 93, 100]! // when to break a line depending on the penalty
 const max_len = break_points[break_points.len - 1]
+const bs = '\\'
 
 @[minify]
 pub struct Fmt {
@@ -32,10 +31,10 @@ pub mut:
 	single_line_if     bool
 	cur_mod            string
 	did_imports        bool
-	auto_imports       []string          // automatically inserted imports that the user forgot to specify
-	import_pos         int               // position of the imports in the resulting string for later autoimports insertion
-	used_imports       []string          // to remove unused imports
-	import_syms_used   map[string]bool   // to remove unused import symbols.
+	import_pos         int // position of the imports in the resulting string for later autoimports insertion
+	auto_imports       map[string]bool   // imports that might be hidden like `sync` when when using channels
+	used_imports       map[string]bool   // to remove unused imports
+	import_syms_used   map[string]bool   // to remove unused import symbols
 	mod2alias          map[string]string // for `import time as t`, will contain: 'time'=>'t'
 	mod2syms           map[string]string // import time { now } 'time.now'=>'now'
 	use_short_fn_args  bool
@@ -69,15 +68,14 @@ pub fn fmt(file ast.File, mut table ast.Table, pref_ &pref.Preferences, is_debug
 		out: strings.new_builder(1000)
 		out_imports: strings.new_builder(200)
 	}
-
 	f.source_text = options.source_text
 	f.process_file_imports(file)
-	f.set_current_module_name('main')
-	// As these are toplevel stmts, the indent increase done in f.stmts() has to be compensated
+	// Compensate for indent increase of toplevel stmts done in `f.stmts()`.
 	f.indent--
 	f.stmts(file.stmts)
 	f.indent++
-	f.imports(f.file.imports) // now that we have all autoimports, handle them
+	// Format after file import symbols are processed.
+	f.imports(f.file.imports)
 	res := f.out.str().trim_space() + '\n'
 	if res.len == 1 {
 		return f.out_imports.str().trim_space() + '\n'
@@ -91,6 +89,7 @@ pub fn fmt(file ast.File, mut table ast.Table, pref_ &pref.Preferences, is_debug
 	}
 	mut import_start_pos := f.import_pos
 	if f.import_pos == 0 && file.stmts.len > 1 {
+		// Check shebang.
 		stmt := file.stmts[1]
 		if stmt is ast.ExprStmt && stmt.expr is ast.Comment
 			&& (stmt.expr as ast.Comment).text.starts_with('#!') {
@@ -113,7 +112,9 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 			f.import_syms_used[sym.name] = false
 		}
 	}
-	f.auto_imports = file.auto_imports
+	for mod in f.file.auto_imports {
+		f.auto_imports[mod] = true
+	}
 }
 
 //=== Basic buffer write operations ===//
@@ -310,25 +311,17 @@ pub fn (mut f Fmt) mark_types_import_as_used(typ ast.Type) {
 		}
 		else {}
 	}
-	name := sym.name.split('[')[0] // take `Type` from `Type[T]`
+	// `Type[T]` -> `Type` || `[]thread Type` -> `Type`.
+	name := sym.name.all_before('[').all_after(' ')
 	f.mark_import_as_used(name)
 }
 
-// `name` is a function (`foo.bar()`) or type (`foo.Bar{}`)
 pub fn (mut f Fmt) mark_import_as_used(name string) {
-	parts := name.split('.')
-	last := parts.last()
-	if last in f.import_syms_used {
-		f.import_syms_used[last] = true
+	mod, sym := name.rsplit_once('.') or { '', name }
+	f.import_syms_used[sym] = true
+	if mod != '' {
+		f.used_imports[mod] = true
 	}
-	if parts.len == 1 {
-		return
-	}
-	mod := parts[0..parts.len - 1].join('.')
-	if mod in f.used_imports {
-		return
-	}
-	f.used_imports << mod
 }
 
 pub fn (mut f Fmt) imports(imports []ast.Import) {
@@ -336,37 +329,26 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 		return
 	}
 	f.did_imports = true
-	mut num_imports := 0
-	mut already_imported := map[string]bool{}
-
+	// Check for duplicates.
+	mut processed_imports := map[string]bool{}
 	for imp in imports {
-		if imp.mod !in f.used_imports {
-			// TODO: bring back once only unused imports are removed
-			// continue
-		}
-		if imp.mod in f.auto_imports && imp.mod !in f.used_imports {
+		if processed_imports[imp.mod] || (!f.used_imports[imp.mod] && f.auto_imports[imp.mod]) {
+			// Skip duplicates and inherit imports, e.g., `sync` when when using channels.
 			continue
 		}
-		import_text := 'import ${f.imp_stmt_str(imp)}'
-		if already_imported[import_text] {
-			continue
-		}
-		already_imported[import_text] = true
-
+		processed_imports[imp.mod] = true
 		if !f.format_state.is_vfmt_on {
-			import_original_source_lines := f.get_source_lines()#[imp.pos.line_nr..
-				imp.pos.last_line + 1].join('\n')
-			f.out_imports.writeln(import_original_source_lines)
-			// NOTE: imp.comments are on the *same line*, so they are already included in import_original_source_lines
+			original_imp_line := f.get_source_lines()#[imp.pos.line_nr..imp.pos.last_line + 1].join('\n')
+			// Same line comments(`imp.comments`) are included in the `original_imp_line`.
+			f.out_imports.writeln(original_imp_line)
 			f.import_comments(imp.next_comments)
-		} else {
-			f.out_imports.writeln(import_text)
-			f.import_comments(imp.comments, same_line: true)
-			f.import_comments(imp.next_comments)
+			continue
 		}
-		num_imports++
+		f.out_imports.writeln('import ${f.imp_stmt_str(imp)}')
+		f.import_comments(imp.comments, same_line: true)
+		f.import_comments(imp.next_comments)
 	}
-	if num_imports > 0 {
+	if processed_imports.len > 0 {
 		f.out_imports.writeln('')
 	}
 }
@@ -1968,6 +1950,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 					mod: node.left.name
 					alias: node.left.name
 				}
+				f.used_imports[node.left.name] = true
 			}
 		}
 		f.expr(node.left)
@@ -1991,6 +1974,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 				f.mark_import_as_used(name)
 				f.write(name)
 			}
+			f.mark_import_as_used(node.name)
 		}
 	}
 	if node.mod == '' && node.name == '' {
@@ -2023,7 +2007,7 @@ fn (mut f Fmt) write_generic_call_if_require(node ast.CallExpr) {
 				name = 'JS.' + name
 			}
 			f.write(name)
-			f.mark_import_as_used(name)
+			f.mark_types_import_as_used(concrete_type)
 			if i != node.concrete_types.len - 1 {
 				f.write(', ')
 			}
